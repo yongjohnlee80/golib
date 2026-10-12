@@ -16,18 +16,36 @@ import (
 	tuiwidget "github.com/yongjohnlee80/golib/tui/widget"
 )
 
-// HTMLVIEW'S PIXEL LAYOUT — tui/widget's HTMLView drawn natively: the page parsed by parse/html,
-// styled by the CSS subset (htmlcss.go), laid out as boxes (htmlview_box.go) with its text in
-// flow paragraphs, painted on the window's canvas. The selection, the scroll and the signals stay
-// the tui widget's; this answers its questions in document pixels.
+// HTML View Incremental Pixel Layout Pipeline:
 //
-// RE-RENDERING IS INCREMENTAL. The page's top-level blocks are keyed by their source bytes, the
-// width, the stylesheets, the text size and the images they hold; a block whose key is unchanged
-// keeps its layout, moved and not laid out again. Blocks are laid out only as far as the view's
-// bottom and one screen more; below, a block carries an estimated height until it is reached.
-
-// BindHTML binds an HTMLView to a pixel layout drawn in the window: gui/decl's Native style does
-// it for a document's HTMLView, and a Go program building one does it before showing it.
+//	[ Raw HTML Source & Inline Stylesheets ]
+//	                   |
+//	                   v
+//	       [ parse/html HTML5 Parser ] ----------> DOM Element Tree
+//	                                                  |
+//	                                                  v
+//	[ CSS Style Cascade & Rule Engine ] ---------> Computed Styles
+//	                                                  |
+//	                                                  v
+//	[ Incremental Top-Level Block Partitioning ]
+//	(Blocks keyed by source bytes, stylesheets, text size, and images)
+//	      /                                    \
+//	[ Cache Hit ]                         [ Cache Miss ]
+//	Reuse cached boxes & text             Compute box geometry, margins,
+//	Update Y offsets only                 and flow paragraphs
+//	      \                                    /
+//	       +-----------------+----------------+
+//	                         |
+//	                         v
+//	       [ Viewport-Clipped Vector Painting ]
+//	       (Renders visible blocks + 1 screen lookahead)
+//
+// BindHTML binds a standard [tuiwidget.HTMLView] component to hardware-accelerated
+// pixel-level layout and vector graphics rendering.
+//
+// When bound, the widget parses HTML documents into a structured DOM tree, resolves CSS
+// styling rules, computes CSS box models (padding, border, margin, flexbox), and renders
+// proportional typography, embedded images, and vector diagrams with sub-pixel precision.
 func BindHTML(v *tuiwidget.HTMLView) {
 	v.BindLayout(newHTMLLayout(v))
 }

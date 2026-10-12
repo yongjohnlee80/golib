@@ -6,37 +6,69 @@ import (
 	"gioui.org/io/key"
 )
 
-// imeState mirrors the small text buffer Gio's input method edits on the backend's behalf.
+// Input Method Editor (IME) text buffering and composition pipeline.
 //
-// A terminal has no text field, so the backend gives the input method an empty one. Plain typing
-// lands in it as an edit and is committed at once. While a composition is active (Korean jamo
-// being assembled, say), its text is the preedit, drawn at the caret and not yet sent. When no
-// composition remains, everything in the buffer is committed as typed text and the buffer, and
-// Gio's copy of it, are emptied again. Owned by the Gio goroutine.
+// Modern operating systems utilize Input Method Editors to allow users to enter complex
+// character scripts (such as Korean Hangul, Japanese Kanji/Kana, and Chinese Hanzi) using
+// standard Latin keyboards.
+//
+// # How IME Composition Works: The Virtual Text Buffer
+//
+// Unlike native GUI input fields with dedicated multi-line text models, terminal applications
+// traditionally receive finalized character bytes after the OS completes composition.
+// To bridge Gio's OS-level IME integration with the TUI runtime without modifying widgets,
+// the GUI backend exposes a lightweight virtual text buffer:
+//
+//	Keystrokes: [ 'g', 'k', 's' ] (Typing "한")
+//	     │
+//	     ▼
+//	┌─────────────────────────────────────────────────────────────┐
+//	│                 OS Input Method Engine (IME)                │
+//	│  - Assembles phonetic jamo into syllable block "한"         │
+//	│  - Emits key.EditEvent and key.CompositionEvent             │
+//	└──────────────────────────────┬──────────────────────────────┘
+//	                               │
+//	                               ▼
+//	┌─────────────────────────────────────────────────────────────┐
+//	│                  imeState (Virtual Buffer)                  │
+//	│  - text:   [ '한' ]                                          │
+//	│  - comp:   Range[0, 1] (Active composition/preedit)         │
+//	│  - pieces: Tracks arrival vs buffer order for insertions    │
+//	└──────────────────────────────┬──────────────────────────────┘
+//	                               │
+//	         ┌─────────────────────┴─────────────────────┐
+//	         ▼                                           ▼
+//	While Composing (Active Preedit):           Composition Finishes:
+//	- Drawn inline at the pixel caret           - take() drains committed pieces
+//	- Candidate window anchored to caret        - Dispatched to TUI loop as KeyEvent
+//	- Suppressed from tui.Backend.Events        - Buffer reset to empty
+//
+// # Concurrency & Ownership
+//
+// All methods on [imeState] are invoked strictly on the Gio window event goroutine inside
+// [Backend.run]. Text mutations never access the TUI component tree directly.
+
+// imeState coordinates the text editing buffer between the OS input method and the backend.
 type imeState struct {
 	text []rune
 	comp key.Range // the composing range; empty when nothing is being composed
-	// pieces is each committed edit's text with the buffer span it currently
-	// occupies. Delivery order is the slice's order (arrival order; a later
-	// edit that rewrites an earlier piece's bytes folds into it), while the
-	// spans track the buffer as later edits insert before or delete inside
-	// earlier pieces — the two orders genuinely differ, and both matter.
+	// pieces tracks committed text pieces alongside their buffer positions.
+	// Preserves arrival order while tracking positional shifts caused by prior edits.
 	pieces []imePiece
-	// sel mirrors the selection Gio's input method keeps in this buffer (its SelectionEvents),
-	// so the backend reports the same one back: Gio cancels a composition whose selection or
-	// snippet the app reports differently from its own.
+	// sel mirrors the active selection within the buffer (from key.SelectionEvent),
+	// allowing the backend to report consistent state back to the OS.
 	sel key.Range
 }
 
-// imePiece is one committed edit's text and where it sits in the buffer now.
+// imePiece represents one committed segment of text and its offset within the virtual buffer.
 type imePiece struct {
 	runs   []rune
 	from   int // buffer position of runs[0], maintained across later edits
 	folded bool
 }
 
-// edit applies an edit: Range (in runes) is replaced with Text. Gio and the input method agree on
-// the buffer, so a range outside it is clamped rather than trusted.
+// edit applies an incoming [key.EditEvent] by replacing buffer runes [Range.Start, Range.End)
+// with the replacement text. Out-of-bounds ranges are safely clamped.
 func (s *imeState) edit(e key.EditEvent) {
 	start, end := s.clamp(e.Range)
 	repl := []rune(e.Text)

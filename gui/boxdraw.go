@@ -10,12 +10,41 @@ import (
 	"gioui.org/op/paint"
 )
 
-// Box-drawing and block characters are drawn from the cell's own geometry, not the font, as
-// kitty and Ghostty do: a font's glyphs rarely meet the next cell exactly, and a border drawn
-// from them shows seams at any scale but the font's own. Characters not in these tables fall
-// back to the font.
-
-// arms is a line character's four arms, up, right, down, left: 0 none, 1 light, 2 heavy, 3 double.
+// Box-drawing and block characters (Unicode ranges U+2500–U+257F and U+2580–U+259F)
+// are rendered using cell-relative vector geometry rather than font glyphs.
+//
+// # Why Font Glyphs Are Bypassed
+//
+// Traditional terminal emulators often draw box-drawing characters using font glyphs.
+// However, font glyph metrics rarely align seamlessly with cell boundaries:
+//
+//	Font Glyph Approach (Prone to Gaps & Misalignment):
+//	┌─────────┐┌─────────┐
+//	│  ───    ││    ───  │  <-- Gaps and misalignments appear at non-integer scales
+//	└─────────┘└─────────┘
+//
+//	Geometric Cell Approach (Pixel-Exact):
+//	┌─────────┬─────────┐
+//	│─────────┼─────────│  <-- Continuous lines snap to cell centers and edges exactly
+//	└─────────┴─────────┘
+//
+// By calculating vector geometries directly from cell bounds:
+//   - Horizontal and vertical lines span from cell edge to cell edge without fractional gaps.
+//   - Intersections, T-junctions, and cross-pieces meet at cell centers with exact corner filling.
+//   - Rounded corners (arcs) connect arm endpoints smoothly using quadratic Bézier curves.
+//   - Block characters (half, quarter, eighth blocks, and shades) fill exact proportional fractions
+//     of the cell rectangle.
+//
+// Any character not present in these geometric tables falls back to font shaping.
+//
+// # Line Weights and Arm Model
+//
+// A line character is parameterized by four directional arms: up, right, down, and left.
+// Each arm carries a line weight:
+//   - none (0): no line segment in this direction
+//   - light (1): standard stroke width (1 device-independent pixel, scaled to display dpi)
+//   - heavy (2): double-weight stroke width
+//   - double (3): two parallel light strokes separated by a light stroke gap
 type arms [4]uint8
 
 const (
@@ -55,7 +84,11 @@ var arcArms = map[rune][2]int{ // arm indexes: 0 up, 1 right, 2 down, 3 left
 	'╭': {1, 2}, '╮': {3, 2}, '╯': {3, 0}, '╰': {1, 0},
 }
 
-// drawable reports whether r is drawn from geometry rather than the font.
+// drawable reports whether rune r is supported by custom geometric rendering
+// rather than standard font shaping.
+//
+// Returns true for supported box-drawing lines, rounded arcs, and block elements
+// (U+2580 through U+2595).
 func drawable(r rune) bool {
 	if _, ok := lineArms[r]; ok {
 		return true
@@ -66,7 +99,17 @@ func drawable(r rune) bool {
 	return r >= 0x2580 && r <= 0x2595
 }
 
-// drawBox draws r over cell rect in c. It reports false for a rune it does not draw.
+// drawBox renders a geometric box-drawing rune r over the specified cell rectangle.
+//
+// Parameters:
+//   - ops: Gio operation list recording vector drawing commands.
+//   - r: the box-drawing or block character rune.
+//   - rect: pixel boundary rectangle of the target cell.
+//   - c: stroke or fill color.
+//   - scale: display scaling factor (dpi multiplier).
+//
+// Returns true if the character was recognized and drawn geometrically, or false
+// if the character must fall back to font glyph rasterization.
 func drawBox(ops *op.Ops, r rune, rect image.Rectangle, c color.NRGBA, scale float32) bool {
 	lw := max(1, int(scale+0.5)) // a light line: one device-independent pixel
 	if a, ok := lineArms[r]; ok {
@@ -80,10 +123,13 @@ func drawBox(ops *op.Ops, r rune, rect image.Rectangle, c color.NRGBA, scale flo
 	return drawBlock(ops, r, rect, c)
 }
 
-// drawArms draws a line character's arms. Lines are centred on the cell's middle. A vertical
-// arm runs to the far edge of the horizontal line it meets, and a horizontal arm to the far edge
-// of the vertical one, so corners and junctions are filled exactly, with no stub past the join.
-// A double arm is two light lines a light line apart.
+// drawArms renders the directional line segments of a box-drawing rune.
+//
+// Lines are centered on the cell's midpoint. Vertical arms extend fully to the outer
+// edge of any horizontal line they meet, and horizontal arms extend to the outer edge
+// of any vertical line, ensuring junctions and corners are solid rectangles with no
+// gaps or overlapping stubs. Double arms render as two parallel light lines separated
+// by a light stroke gap.
 func drawArms(ops *op.Ops, a arms, rect image.Rectangle, c color.NRGBA, lw int) {
 	for _, r := range armRects(a, rect, lw) {
 		fillRect(ops, r, c)
@@ -144,7 +190,14 @@ func armRects(a arms, rect image.Rectangle, lw int) []image.Rectangle {
 	return out
 }
 
-// drawArc draws a rounded corner joining two light arms through a quarter circle.
+// drawArc renders a smooth quarter-circle rounded corner connecting two arms.
+//
+// Parameters:
+//   - ops: Gio operation buffer receiving path clipping and fill operations.
+//   - a: pair of arm directions being connected (e.g., [1, 2] for top-left arc connecting right and down).
+//   - rect: cell boundary rectangle.
+//   - c: stroke color.
+//   - lw: stroke line width in pixels.
 func drawArc(ops *op.Ops, a [2]int, rect image.Rectangle, c color.NRGBA, lw int) {
 	cx := float32(rect.Min.X) + float32(rect.Dx()/2) + 0.5*float32(lw%2)
 	cy := float32(rect.Min.Y) + float32(rect.Dy()/2) + 0.5*float32(lw%2)
@@ -175,7 +228,16 @@ func drawArc(ops *op.Ops, a [2]int, rect image.Rectangle, c color.NRGBA, lw int)
 	st.Pop()
 }
 
-// drawBlock draws the block elements U+2580–U+2595: halves, eighths and shades.
+// drawBlock renders Unicode block elements (U+2580 through U+2595).
+//
+// Supports:
+//   - Half blocks: upper half ('▀'), right half ('▐')
+//   - Lower eighth blocks: U+2581 (' ') through U+2588 ('█')
+//   - Left eighth blocks: U+2589 ('▉') through U+258F ('▏')
+//   - Upper and right eighth blocks: U+2594 ('▔'), U+2595 ('▕')
+//   - Shading blocks: light 25% ('░'), medium 50% ('▒'), dark 75% ('▓')
+//
+// Returns true if rune r is a handled block element, false otherwise.
 func drawBlock(ops *op.Ops, r rune, rect image.Rectangle, c color.NRGBA) bool {
 	w, h := rect.Dx(), rect.Dy()
 	frac := func(n, of, total int) int { return (total*n + of/2) / of }
@@ -204,7 +266,7 @@ func drawBlock(ops *op.Ops, r rune, rect image.Rectangle, c color.NRGBA) bool {
 	return true
 }
 
-// fillRect paints rect in c.
+// fillRect renders a solid rectangular fill in color c clipped to rect.
 func fillRect(ops *op.Ops, rect image.Rectangle, c color.NRGBA) {
 	st := clip.Rect(rect).Push(ops)
 	paint.ColorOp{Color: c}.Add(ops)

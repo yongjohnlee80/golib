@@ -15,14 +15,39 @@ import (
 	"github.com/yongjohnlee80/golib/gui"
 )
 
-// Span is a stretch of text in one style.
+// Rich Text Layout and Line Breaking Pipeline:
+//
+//	+--------------------------------------------+
+//	| Spans ([]Span: fonts, colors, links, atoms)|
+//	+--------------------------------------------+
+//	                       |
+//	                       v
+//	+--------------------------------------------+
+//	| Segmentation & Measuring (Shaper, Metrics) |
+//	+--------------------------------------------+
+//	                       |
+//	                       v
+//	+--------------------------------------------+
+//	| Line Breaking & Alignment (Para.Lines)     |
+//	|  - Normal / Pre / PreWrap                  |
+//	|  - Start / Center / End                    |
+//	|  - Left margin & hanging list indentations |
+//	+--------------------------------------------+
+//	                       |
+//	                       v
+//	+--------------------------------------------+
+//	| Grapheme Clusters, Caret Pos & Hit Testing |
+//	+--------------------------------------------+
+//
+// Span represents a contiguous run of inline text or an embedded atom sharing uniform
+// typographical styling (font family, weight, size, color, background, link, or decoration).
 type Span struct {
-	Text              string
-	Font              gui.Font
-	Color             color.NRGBA // zero: Options.Color
-	Background        color.NRGBA // zero: none
-	Underline, Strike bool
-	Link              string // "": not a link
+	Text              string      // UTF-8 text content
+	Font              gui.Font    // Typeface, size, and style attributes
+	Color             color.NRGBA // Text color (zero-value defaults to Options.Color)
+	Background        color.NRGBA // Optional highlight background color
+	Underline, Strike bool        // Text decoration lines
+	Link              string      // Hyperlink target URI (empty if not interactive)
 	// Line and Col place the span's first cluster in a line-based source: cluster i of Text is
 	// cluster Col+i of Line, one to one. Line < 0: no such mapping, and Src is used instead.
 	Line, Col int

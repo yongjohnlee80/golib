@@ -12,6 +12,19 @@ import (
 // move and a line). Arcs become cubics, at most four each. Every segment counts against the
 // drawing's MaxSegments.
 
+// SVG Path Data State Machine & Operator Decomposition:
+//
+//	Path Data String ("M 10 20 L 30 40 A 5 5 0 0 1 50 60 Z")
+//	                       |
+//	                       v
+//	             [ Command Tokenizer ]
+//	            /         |           \
+//	     'M'/'m' (Move)  'L'/'l' (Line) 'A'/'a' (Arc)
+//	          \           |           /
+//	           v          v          v
+//	   gui.Path.MoveTo  gui.Path.LineTo  Arc to Cubics (at most 4 Béziers)
+//	                                     gui.Path.CubeTo
+//
 // scanner reads numbers, flags and command letters from path data or a number list.
 type scanner struct {
 	s string

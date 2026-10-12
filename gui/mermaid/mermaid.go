@@ -1,17 +1,24 @@
-// Package mermaid draws Mermaid diagrams natively on a gui Canvas: parse/mermaid's models, laid
-// out by graph/layout or by a diagram's own geometry, in a theme's colours, as vectors (ADR
-// 1791430025).
+// Package mermaid renders Mermaid diagram specifications natively into vector graphics on a [gui.Canvas].
 //
-// Lay runs on a worker: it parses, measures every label with a Measurer the worker holds (never
-// the Canvas's shaper, which only the UI loop may use) and lays the diagram out. Its result is a
-// Laid: plain geometry, label strings and fonts. Paint draws a Laid on the loop, shaping its labels
-// there. A diagram type with no layer here is mermaid.ErrUnsupported, for a caller's fallback to
-// render.
+// Pipeline Architecture:
 //
-// Each diagram type is a layer: a function from its model to a Laid, registered in layers by the
-// file that draws it. A Laid is the same few primitives for every type: boxes (a form, a title,
-// compartments), edges (a polyline, its ends, its labels), groups (a frame, a title, dividers)
-// and free text.
+//	Worker Goroutine (Background):
+//	[ Mermaid Source DSL ] ---> [ parse/mermaid.Parse ] ---> [ Model AST ]
+//	                                                             |
+//	                                                             v
+//	[ Text Measurer Pool ] --------------------------------> [ layer Layout ]
+//	                                                             |
+//	                                                             v
+//	                                                       [ *Laid Geometry ]
+//	                                                       (Nodes, Edges, Groups)
+//
+//	UI Loop Goroutine (Foreground):
+//	[ *Laid Geometry ] --------> [ Laid.Paint(Canvas) ] ----> GPU Vectors
+//	                             (Shapes text via Canvas)
+//
+// Lay runs asynchronously on worker goroutines: it parses DSL text, measures labels via a pooled
+// [gui.Measurer] (completely off the main UI loop), and computes node/edge coordinates. The resulting
+// [Laid] structure encapsulates resolution-independent geometry ready for instant rasterization.
 package mermaid
 
 import (

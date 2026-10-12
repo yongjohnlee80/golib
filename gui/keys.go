@@ -9,18 +9,36 @@ import (
 	"github.com/yongjohnlee80/golib/tui"
 )
 
-// Keys reach the window two ways, and the backend turns both into the tui.KeyEvent that tui/term
-// decodes for the same keystroke under the kitty keyboard protocol (flags 1 and 2):
+// Keyboard event translation and protocol mapping.
 //
-//   - text arrives as Gio edit events (key.EditEvent): plain printable keys, shifted ones, and IME
-//     commits. Each rune becomes KeyEvent{Code: r, Text: string(r)}, as a terminal's printed text does.
-//   - everything else arrives as key.Event: functional keys, and printable keys held with Ctrl,
-//     Alt or Super. Those become KeyEvent{Code, Mods} with no text, and their release is reported.
+// Keyboard inputs in the native GUI backend are normalized to match the Kitty keyboard
+// protocol conventions implemented by the terminal driver (tui/term):
 //
-// Gio sends a key.Event for a plain printable key as well as its edit event; that one is dropped,
-// so the text is not delivered twice.
+//	┌─────────────────────────────────────────────────────────────┐
+//	│                 Gio Raw Key & Edit Events                   │
+//	└──────────────────────────────┬──────────────────────────────┘
+//	                               │
+//	        ┌──────────────────────┴──────────────────────┐
+//	        ▼                                             ▼
+//	key.EditEvent (Printable / IME)              key.Event (Functional / Chords)
+//	(e.g., typing 'a', 'Z', '9', or IME commit)   (e.g., Enter, Esc, Ctrl+C, F1)
+//	        │                                             │
+//	        ▼                                             ▼
+//	Emits tui.KeyEvent with Text:                 Emits tui.KeyEvent with Code & Mods:
+//	KeyEvent{Code: 'a', Text: "a"}               KeyEvent{Code: 'c', Mods: ModCtrl}
+//	        │                                             │
+//	        └──────────────────────┬──────────────────────┘
+//	                               ▼
+//	┌─────────────────────────────────────────────────────────────┐
+//	│       tui.App (Consumes standardized tui.KeyEvent)          │
+//	└─────────────────────────────────────────────────────────────┘
+//
+// Dual-Event Deduplication:
+// Gio emits both a key.Event and a key.EditEvent for standard printable keys. To prevent
+// duplicate character delivery, un-chorded printable key.Event instances are dropped,
+// allowing the key.EditEvent to serve as the single source of truth for text entry.
 
-// named maps Gio's functional key names to tui's codes (tui/events_keys.go).
+// named maps Gio functional key names to standardized golib/tui key codes.
 var named = map[key.Name]rune{
 	key.NameReturn:         tui.KeyEnter,
 	key.NameEnter:          tui.KeyEnter,
@@ -71,8 +89,15 @@ func modsOf(m key.Modifiers) tui.Mods {
 // chordMods are the modifiers that stop a printable key from typing text.
 const chordMods = key.ModCtrl | key.ModAlt | key.ModSuper | key.ModCommand
 
-// translateKey is the tui event for a Gio key event, or ok=false when the key's text arrives as
-// an edit event instead, or the key is a modifier on its own.
+// translateKey translates a raw Gio [key.Event] into a standardized [tui.KeyEvent].
+//
+// Key Mapping Behavior:
+//   - Functional keys (Enter, Esc, arrows, F-keys, etc.) map directly to their tui keycodes.
+//   - Modifier-chorded keys (Ctrl, Alt, Super) produce KeyPress or KeyRelease events with
+//     lowercase rune codes and active modifier bitflags.
+//   - Unchorded printable keys return ok=false because their text content arrives via
+//     corresponding [key.EditEvent] callbacks.
+//   - Bare modifier keys (Shift, Ctrl, Alt, Super pressed alone) return ok=false.
 func translateKey(e key.Event) (tui.KeyEvent, bool) {
 	kind := tui.KeyPress
 	if e.State == key.Release {
@@ -101,7 +126,8 @@ func translateKey(e key.Event) (tui.KeyEvent, bool) {
 	return tui.KeyEvent{Kind: kind, Code: unicode.ToLower(r), Mods: mods}, true
 }
 
-// textKeys is the tui events for typed text: one per rune, as tui/term decodes printed text.
+// textKeys converts a string of typed characters into individual [tui.KeyEvent] records,
+// mimicking standard terminal ANSI stream reception.
 func textKeys(s string) []tui.KeyEvent {
 	out := make([]tui.KeyEvent, 0, utf8.RuneCountInString(s))
 	for _, r := range s {
@@ -110,8 +136,14 @@ func textKeys(s string) []tui.KeyEvent {
 	return out
 }
 
-// isPasteChord reports the chord the window keeps for itself to paste the system clipboard, as a
-// terminal emulator does: Cmd+V on macOS, Ctrl+Shift+V elsewhere. It becomes a tui.PasteEvent.
+// isPasteChord reports whether a keyboard event matches the host platform's standard clipboard paste shortcut.
+//
+// Platform Mappings:
+//   - macOS: Command + V (Cmd+V)
+//   - Linux / Windows / BSD: Ctrl + Shift + V
+//
+// When matched, the backend intercepts the keystroke and dispatches a [tui.PasteEvent]
+// carrying the current OS clipboard text.
 func isPasteChord(e key.Event) bool {
 	if e.State != key.Press || e.Name != "V" {
 		return false

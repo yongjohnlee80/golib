@@ -18,6 +18,26 @@ import (
 	"github.com/yongjohnlee80/golib/tui"
 )
 
+// Rendering Pipeline and Op Macro Architecture:
+//
+//	+-----------------------+     Row Dirty Flags      +------------------------+
+//	| Active Grid & Metrics | -----------------------> | Incremental Row Cache  |
+//	+-----------------------+                          | (r.rows []op.CallOp)   |
+//	           |                                       +------------------------+
+//	           v                                                   |
+//	+-----------------------+       Draw Margins & Replay          v
+//	| Full Frame Assembly   | <------------------------------------+
+//	+-----------------------+
+//	           |
+//	           +---> 1. Page Margin Fill (r.drawMargins)
+//	           +---> 2. Cached Rows Add(ops) (Background runs, line arms, glyph batching)
+//	           +---> 3. Compositing Layer (Native views & Kitty PNG images)
+//	           +---> 4. Hardware Caret (Block, Underline, Bar, or Hollow focus frame)
+//	           v
+//	+-----------------------+
+//	| op.Record -> CallOp   |  (Latching handoff to Gio presentation loop)
+//	+-----------------------+
+//
 // renderer translates the active [grid] into optimized Gio vector drawing operations.
 //
 // Concurrency & Lifecycle:

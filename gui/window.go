@@ -27,15 +27,38 @@ import (
 // textType is the MIME type the clipboard is read and written as.
 const textType = "application/text"
 
-// gioState is what the Gio goroutine owns.
+// Gio Window Event Loop & GPU Presentation Architecture:
+//
+//	              +------------------------+
+//	              |   Gio app.Window       |
+//	              +------------------------+
+//	                          |
+//	        +-----------------+-----------------+
+//	        |                 |                 |
+//	        v                 v                 v
+//	  ConfigEvent        FrameEvent       DestroyEvent
+//	  (Focus shift)     (Rasterize ops)   (Exit/Cleanup)
+//	        |                 |                 |
+//	        |       +---------+---------+       v
+//	        |       |                   |    b.q.end()
+//	        |       v                   v
+//	        |   readInput()         present()
+//	        |   (Keys/Mouse/IME)    (Latest CallOp + Caret)
+//	        v       |                   |
+//	  +-------------+                   v
+//	  | Push Events |               e.Frame(ops)
+//	  v             v               (GPU Output)
+//	eventQueue -> Backend.Events()
+//
+// gioState encapsulates state owned exclusively by the Gio window goroutine.
 type gioState struct {
-	shaper  *text.Shaper // the preedit's; the cells have their own on tui's loop
-	ops     op.Ops
-	ime     imeState
-	ptr     pointerState
-	caret   image.Rectangle // the caret the IME was last told about
-	focused bool            // key focus requested for the window's tag
-	shown   *frame          // the frame last submitted
+	shaper  *text.Shaper    // Preedit IME text shaper (independent of TUI loop text shaper)
+	ops     op.Ops          // Reusable Gio GPU operation buffer
+	ime     imeState        // Virtual IME input buffer and composition tracking
+	ptr     pointerState    // Pointer position, button transitions, and drag tracker
+	caret   image.Rectangle // Physical pixel bounding box of the active caret
+	focused bool            // Tracks whether OS keyboard focus has been registered for this window
+	shown   *frame          // Most recently presented frame macro
 }
 
 func (c config) windowOptions() []app.Option {

@@ -8,24 +8,62 @@ import (
 	"gioui.org/text"
 )
 
-// Measurer measures text with a shaper of its own: the same font collection as every window's
-// (the Go fonts, then the system's), at one scale, so a measure equals what the loop's shaper
-// draws. It returns numbers only, and is for one goroutine at a time: a worker laying out a
-// diagram off the UI loop, where the Canvas's shaper may not be used.
+// Thread-isolated typographical measurement and line wrapping for background workers.
+//
+// Because Gio's [text.Shaper] is not safe for concurrent use, background worker goroutines
+// (such as asynchronous diagram layout engines, markdown formatters, and table calculators)
+// cannot access the UI event loop's [Canvas.Text] shaper.
+//
+// # Concurrency Architecture: Off-Loop Measurement Pooling
+//
+// [Measurer] provides thread-safe measurement isolation by maintaining thread-local shaper
+// instances pooled by display scale factor:
+//
+//	┌─────────────────────────────────────────────────────────────┐
+//	│                    Background Worker Task                   │
+//	│       (e.g., Mermaid diagram parser, Markdown layout)       │
+//	└──────────────────────────────┬──────────────────────────────┘
+//	                               │
+//	       1. Acquire:             ▼ AcquireMeasurer(scale)
+//	┌─────────────────────────────────────────────────────────────┐
+//	│                    sync.Pool by Scale                       │
+//	│  - Reuses pre-warmed [TextShaper] instances                 │
+//	│  - Avoids re-loading system font collections per task       │
+//	└──────────────────────────────┬──────────────────────────────┘
+//	                               │
+//	       2. Measure/Wrap:        ▼ Measurer.Measure(s, f) / Wrap(s, f, w)
+//	┌─────────────────────────────────────────────────────────────┐
+//	│                 Isolated Measurer Instance                  │
+//	│  - Calculates identical cluster metrics as main UI loop     │
+//	│  - Returns numerical bounds ([Measured], [Size]) only       │
+//	└──────────────────────────────┬──────────────────────────────┘
+//	                               │
+//	       3. Release:             ▼ release()
+//	                               Returned to pool for next task
+
+// Measurer calculates typographical bounds and wraps multi-line text on background goroutines.
+//
+// Invariants:
+//   - Safe for use on a single goroutine at a time.
+//   - Returns numerical measurements only; does not generate GPU drawing operations.
 type Measurer interface {
-	// Measure is TextShaper.Measure: s on one line, in f.
+	// Measure computes grapheme cluster coordinates and line ascent/descent for a single line of text.
 	Measure(s string, f Font) Measured
-	// Wrap breaks s into lines no wider than width at its spaces (a word wider than width is a
-	// line of its own), and reports the lines and the size they take, each line f.Size × 1.2
-	// tall. A '\n' in s breaks a line.
+
+	// Wrap splits text string s into lines no wider than width (in logical pixels), breaking on
+	// whitespace. Returns the wrapped line slices and the total bounding [Size].
 	Wrap(s string, f Font, width float32) (lines []string, size Size)
 }
 
-// AcquireMeasurer takes a measurer for scale (device pixels per logical pixel) for one
-// goroutine's use; release gives it back. Measurers are pooled by scale: a shaper loads its fonts
-// once, so a worker reuses one rather than paying that each time. The font set is the same for
-// every window and never changes while the program runs, so the scale is all a measurer differs
-// by.
+// AcquireMeasurer leases a [Measurer] configured for the specified display scale.
+//
+// Parameters:
+//   - scale: physical device pixels per logical pixel (dpi ratio). Non-positive values default to 1.0.
+//
+// Returns:
+//   - m: thread-isolated [Measurer] instance.
+//   - release: cleanup callback that returns m to the internal scale pool. The caller MUST invoke
+//     release when finished.
 func AcquireMeasurer(scale float32) (m Measurer, release func()) {
 	if scale <= 0 {
 		scale = 1

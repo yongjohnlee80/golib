@@ -6,8 +6,29 @@ import (
 	"github.com/yongjohnlee80/golib/gui"
 )
 
-// Paint draws the paragraph with its top-left at at. spans are the ones it was laid out from;
-// passing them again lets a caller recolour without laying out again.
+// Hit-Testing, Selection Rects, and Caret Projection Architecture:
+//
+//	Point (pt.X, pt.Y)
+//	       |
+//	       v
+//	[ Para.At(pt) ] -------------> Locate Line (pt.Y within line vertical bounds)
+//	                                     |
+//	                                     v
+//	                               Locate Frag (Search cluster offset boundaries xs[i])
+//	                                     |
+//	                                     v
+//	                               Pos{Span, Offset}
+//	                                     |
+//	                       +-------------+-------------+
+//	                       |                           |
+//	                       v                           v
+//	                [ Para.Caret(pos) ]         [ Para.Rects(from, to) ]
+//	                1px vertical cursor         Continuous highlight rects
+//	                positioned at cluster edge  per affected line
+//
+// Paint renders the laid-out paragraph onto canvas c with its top-left origin at position at.
+// The provided spans slice specifies the styles and color palettes; passing updated spans allows
+// an application to restyle or tint text without re-executing paragraph line layout.
 func (p *Para) Paint(c gui.Canvas, at gui.Point, spans []Span) {
 	for _, l := range p.Lines {
 		for _, f := range l.Frags {

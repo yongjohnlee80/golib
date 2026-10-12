@@ -8,30 +8,69 @@ import (
 	"github.com/yongjohnlee80/golib/tui"
 )
 
-// fontMetrics is the monospace font's cell, per em: what one cell is at a font size of 1px.
-// Glyph metrics scale linearly with the font size, so it is measured once and scaled.
-type fontMetrics struct {
-	advance, ascent, descent float32
-}
+// Package gui provides high-performance graphical terminal rendering, layout,
+// typography, and event handling layered on top of vector graphics and GPU surfaces.
 
-// metrics is ONE snapshot of everything that turns cells into pixels. The Gio goroutine
-// publishes a new one when the window or its scale changes; Size, Flush and pointer translation
-// each read one and use it throughout, so a frame is never composed from two.
+// Coordinate Systems and Metric Layout:
 //
-// It is a comparable value: two snapshots are equal exactly when nothing a cell needs changed.
-type metrics struct {
-	window   image.Point // the window, in device pixels
-	origin   image.Point // the top-left of cell (0, 0): the padding plus half the leftover, device pixels
-	scale    float32     // device pixels per device-independent pixel
-	ppem     float32     // the font size, in device pixels
-	cell     image.Point // one cell, in device pixels: whole pixels, so the grid has no seams
-	baseline int         // device pixels from a cell's top to the glyphs' baseline
-	grid     tui.Size    // whole cells that fit the window inside its padding; at least 1×1
-	fontGen  uint64      // the fontState it was measured with: a new one is a change, at any size
+//	+-------------------------------------------------------------+
+//	| Window Bounds (Device Pixels: win.X * win.Y)                |
+//	|                                                             |
+//	|   origin.X                                                  |
+//	|   |<----->|                                                 |
+//	|   +-------+---------------------------------------+         |
+//	|   | pad   | Top Margin (p + spare.Y/2)            |         |
+//	|   +-------+---------------------------------------+         |
+//	|   | Left  | Grid Cell (0, 0)      ...  Grid (W-1) | Right   |
+//	|   | Margin| +-------------+           +---------+ | Margin  |
+//	|   |       | | cell.X      |           |         | |         |
+//	|   |       | |*----*       |           |         | |         |
+//	|   |       | |cell.Y       |           |         | |         |
+//	|   |       | +-------------+           +---------+ |         |
+//	|   |       |                                       |         |
+//	|   |       | Grid (0, H-1)         ...  Grid(W, H) |         |
+//	|   +-------+---------------------------------------+         |
+//	|   |       | Bottom Margin                         |         |
+//	|   +-------+---------------------------------------+         |
+//	+-------------------------------------------------------------+
+//
+// fontMetrics captures monospace font dimension ratios per em unit (1px font size).
+// Glyph dimensions scale linearly with font size, so base ratios are measured once
+// and scaled across device displays.
+type fontMetrics struct {
+	advance float32 // Horizontal cell advance width per em unit
+	ascent  float32 // Distance above baseline per em unit
+	descent float32 // Distance below baseline per em unit
 }
 
-// measure computes the snapshot for a window of win device pixels at metric m, with pad of
-// padding on every side, as terminals keep their cells off the window's edge.
+// metrics represents an immutable snapshot of all geometric calculations that translate
+// logical terminal cells into physical device pixels.
+//
+// Whenever the host window size, display scale factor (DPI), or font configuration changes,
+// a new metrics snapshot is constructed and published atomically. The layout, paint, and
+// input dispatch routines borrow a single consistent snapshot per frame to guarantee that
+// rendering artifacts or tearing never occur across frame composition.
+//
+// It is a comparable value: two snapshots are identical if and only if cell geometry,
+// font generation, and scale factors match exactly.
+type metrics struct {
+	window   image.Point // Total window dimension in physical device pixels
+	origin   image.Point // Top-left pixel coordinate of grid cell (0, 0), including margins
+	scale    float32     // Physical device pixels per device-independent pixel (DPI scale)
+	ppem     float32     // Rendered font size in physical device pixels (pixels per em)
+	cell     image.Point // Width and height of an individual cell in physical device pixels
+	baseline int         // Distance in device pixels from the cell top edge to the font baseline
+	grid     tui.Size    // Number of columns and rows that fit into the available window grid
+	fontGen  uint64      // Generation counter of the underlying font state (invalidates on change)
+}
+
+// measure computes a geometric snapshot for a window of win physical device pixels,
+// scaling according to display metric m, and reserving pad margin on each edge.
+//
+// Terminals require padding around their cells to prevent character glyphs from touching
+// window border decorations. If the remaining inner window area is not an integer multiple
+// of cell dimensions, the remaining spare pixels are evenly divided between opposite sides
+// so that the character grid remains centered.
 func measure(fm fontMetrics, size unit.Sp, pad unit.Dp, win image.Point, m unit.Metric) metrics {
 	ppem := float32(m.Sp(size))
 	if ppem <= 0 {
@@ -64,16 +103,18 @@ func measure(fm fontMetrics, size unit.Sp, pad unit.Dp, win image.Point, m unit.
 	}
 }
 
-// cellAt is the cell under the device-pixel point (x, y), clamped to the grid: a captured drag
-// outside the window reports the edge cell, as a terminal does.
+// cellAt maps a physical device-pixel coordinate (x, y) to the corresponding grid cell
+// indices (cx, cy). Coordinates falling outside the grid area (such as during window drags
+// beyond edge boundaries) are clamped to the nearest edge cell.
 func (m metrics) cellAt(x, y float32) (cx, cy int) {
 	cx = int(math.Floor(float64(x-float32(m.origin.X)) / float64(m.cell.X)))
 	cy = int(math.Floor(float64(y-float32(m.origin.Y)) / float64(m.cell.Y)))
 	return min(max(cx, 0), m.grid.W-1), min(max(cy, 0), m.grid.H-1)
 }
 
-// subCell is where the device-pixel point (x, y) falls inside cell (cx, cy), each in [0, 1). A
-// point outside the cell (a drag past the window's edge, clamped by cellAt) reports the edge.
+// subCell calculates the normalized sub-cell relative offset [0, 1) where physical coordinate
+// (x, y) falls inside the cell indexed by (cx, cy). This sub-cell precision enables smooth
+// high-resolution pointer tracking, fine selection highlights, and fluid scroll gestures.
 func (m metrics) subCell(x, y float32, cx, cy int) (sx, sy float32) {
 	in := func(v float32) float32 { return min(max(v, 0), math.Nextafter32(1, 0)) }
 	sx = in((x-float32(m.origin.X))/float32(m.cell.X) - float32(cx))
@@ -81,13 +122,15 @@ func (m metrics) subCell(x, y float32, cx, cy int) (sx, sy float32) {
 	return sx, sy
 }
 
-// cellRect is the device-pixel rectangle, in the window, of cells (x, y) through (x+w, y+h).
+// cellRect converts a rectangular block of cells spanning (x, y) with size (w, h)
+// into an absolute bounding rectangle expressed in physical device pixels.
 func (m metrics) cellRect(x, y, w, h int) image.Rectangle {
 	return image.Rect(x*m.cell.X, y*m.cell.Y, (x+w)*m.cell.X, (y+h)*m.cell.Y).Add(m.origin)
 }
 
-// sameCells reports whether o draws cells exactly as m does: everything but the window's size,
-// which only moves the margins around the grid.
+// sameCells reports whether another metrics instance produces identical cell rendering.
+// Changes solely to total window size merely alter surrounding margins and do not invalidate
+// cached glyph rasterizations or internal cell geometry.
 func (m metrics) sameCells(o metrics) bool {
 	m.window, o.window = image.Point{}, image.Point{}
 	return m == o

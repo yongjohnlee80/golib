@@ -13,14 +13,34 @@ import (
 	tuiwidget "github.com/yongjohnlee80/golib/tui/widget"
 )
 
-// MarkdownRenderer draws Markdown in an Editor's Rendered mode, as a live preview does: a heading
-// at its size, emphasis, strong, strikethrough, code and links in their styles, with their marks
-// hidden, and a fenced code block on a tinted ground. The block holding the cursor shows its
-// source, every mark visible, in the monospace font.
+// Markdown Live-Preview Rendering Pipeline:
 //
-// A fenced block's fences are hidden off the cursor, the opening's info string (its language)
-// kept as a small muted label: the fence lines keep their rows, so the caret has a place to land
-// and the block a margin. A list item's bullet is drawn as a bullet, its nesting as room.
+//	[ Raw Markdown Source Buffer ]
+//	               |
+//	               v
+//	[ parse/markdown Block & Inline Parser ]
+//	               |
+//	               +---> Cursor Block Inspection:
+//	               |       - Active Cursor Block: display raw source & editable markup
+//	               |       - Inactive Blocks: format styled prose & hide delimiters
+//	               |
+//	               v
+//	[ Flow Paragraph Assembly & Styling ]
+//	     - Scaled Headings (H1 to H6 proportional scaling)
+//	     - Bullet and numbered list formatting
+//	     - Fenced code block syntax highlighting
+//	     - Embedded Mermaid diagram vector rendering
+//	               |
+//	               v
+//	[ Pixel Canvas Layout & Vector Output ]
+//
+// MarkdownRenderer renders Markdown text inside an [Editor]'s Rendered mode as a dynamic,
+// high-fidelity live preview.
+//
+// Headings scale proportionally based on level; inline formatting (emphasis, strong, strikethrough,
+// links) formats visually with delimiters hidden; and fenced code blocks feature syntax highlighting
+// and embedded vector diagrams. When the user positions the caret within a block, that block
+// seamlessly reveals its raw markdown syntax for editing.
 type MarkdownRenderer struct {
 	h1        float32
 	diagrams  Diagrammer

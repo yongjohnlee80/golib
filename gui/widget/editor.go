@@ -12,10 +12,38 @@ import (
 	tuiwidget "github.com/yongjohnlee80/golib/tui/widget"
 )
 
-// Editor is a text editor in a Panel: the tui Editor's behaviour (its EditorCore: modes,
-// keymaps, undo, the register, highlighting) over a layout in pixels. Raw draws the text in
-// monospace with its syntax colours; Rendered draws it through a Renderer, such as
-// MarkdownRenderer. The title bar's [ Raw | Rendered ] switch and Ctrl+T change the mode.
+// Dual-Mode Editor Architecture:
+//
+//	    +--------------------------------------------+
+//	    |          Panel Chrome & Title Bar          |
+//	    |   [ Title ]             [ Raw | Rendered ] |
+//	    +--------------------------------------------+
+//	                           |
+//	           +---------------+---------------+
+//	           |                               |
+//	           v (Mode: Raw)                   v (Mode: Rendered)
+//	+----------------------+        +-----------------------+
+//	| Monospace Text View  |        | Renderer Engine       |
+//	|  - Syntax Highlight  |        |  (e.g., Markdown,     |
+//	|  - Line number gutter|        |   HTML, Diagrams)     |
+//	|  - Column ruler guide|        |  - Proportional fonts |
+//	|  - Cursor & selections|       |  - Embedded widgets   |
+//	+----------------------+        +-----------------------+
+//	           \                               /
+//	            \                             /
+//	             v                           v
+//	    +--------------------------------------------+
+//	    |  Shared EditorCore (Keymaps, Undo, Buffer) |
+//	    +--------------------------------------------+
+//
+// Editor is a full-featured text editor embedded inside a [Panel]. It combines standard
+// terminal editor semantics (undo/redo, registers, modal keybindings, syntax highlighting)
+// with high-resolution pixel layout and rich vector rendering.
+//
+// In Raw mode, the document renders in crisp monospace cells with exact column guides, line gutters,
+// and selection spans. In Rendered mode, the document transforms through a [Renderer] (such as
+// [MarkdownRenderer]) into styled prose with proportional fonts, tables, and vector diagrams.
+// Toggling between modes occurs via the title bar switch or Ctrl+T.
 type Editor struct {
 	panel *Panel // a field, not embedded: Panel's methods call each other on their receiver
 

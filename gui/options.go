@@ -7,6 +7,24 @@ import (
 	"gioui.org/unit"
 )
 
+// Backend Configuration Model:
+//
+//	             +--------------------------------------+
+//	             |          defaultConfig()             |
+//	             | (1100x700dp, Go Mono 14sp, 4dp pad)  |
+//	             +--------------------------------------+
+//	                                |
+//	                                v
+//	+------------------+  +-------------------+  +--------------------+
+//	| WithTitle(...)   |  | WithFont(...)     |  | WithTheme(...)     |
+//	| WithSize(...)    |  | WithPadding(...)  |  | WithDecorations(..)|
+//	+------------------+  +-------------------+  +--------------------+
+//	        \                       |                       /
+//	         \                      v                      /
+//	          +-------------------------------------------+
+//	          |   Resolved Window & Backend Settings      |
+//	          +-------------------------------------------+
+//
 // Theme defines the baseline color palette utilized by the window when cell styles reference
 // default terminal colors (such as [tui.CellColorDefault]), default cursor styling, or indexed
 // 16-color ANSI palettes.
@@ -15,12 +33,14 @@ import (
 // When cells specify unmapped defaults or ANSI indices, Theme resolves them into concrete
 // [color.NRGBA] values for vector rasterization.
 type Theme struct {
-	FG, BG color.NRGBA
-	Cursor color.NRGBA // caret color; zero-value draws the caret using the color of the underlying text cell
-	ANSI   [16]color.NRGBA
+	FG     color.NRGBA     // Default foreground text color
+	BG     color.NRGBA     // Default window background color
+	Cursor color.NRGBA     // Caret color; zero-value draws using the color of the underlying text cell
+	ANSI   [16]color.NRGBA // Standard 16-color terminal palette (0-7 normal, 8-15 bright)
 }
 
-// DefaultTheme is a dark theme with the xterm ANSI palette.
+// DefaultTheme returns a modern dark palette featuring high-contrast text and the standard
+// xterm ANSI color palette.
 func DefaultTheme() Theme {
 	return Theme{
 		FG: color.NRGBA{R: 0xd8, G: 0xde, B: 0xe9, A: 0xff},
@@ -34,13 +54,14 @@ func DefaultTheme() Theme {
 	}
 }
 
-// dark reports whether t's background is dark, by relative luminance, as tui/term decides
-// Capabilities.DarkBackground from a terminal's OSC 11 reply.
+// dark reports whether the background color represents a dark shade based on perceived
+// relative luminance calculation (standard ITU-R BT.709 coefficients).
 func (t Theme) dark() bool {
 	l := 0.2126*float64(t.BG.R) + 0.7152*float64(t.BG.G) + 0.0722*float64(t.BG.B)
 	return l/255 < 0.5
 }
 
+// config stores all resolved launch parameters and visual styles for the window and renderer.
 type config struct {
 	title      string
 	width      unit.Dp

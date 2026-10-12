@@ -11,9 +11,27 @@ import (
 	tuiwidget "github.com/yongjohnlee80/golib/tui/widget"
 )
 
-// Panel is a window inside the app: a title bar over its content. Every capability is off until
-// an option turns it on. A movable or resizable Panel lives in a tui Float (InFloat); in an
-// ordinary layout it ignores both.
+// Floating Window & Panel Architecture:
+//
+//	+-------------------------------------------------------------+
+//	| [Leading Widgets]  Window Title             [_]  [^]  [X]   |  <- Title Bar Chrome
+//	+-------------------------------------------------------------+
+//	|                                                             |
+//	|                                                             |
+//	|                 Embedded Child Content                      |
+//	|                 (Editor, HTMLView, Trees)                   |
+//	|                                                             |
+//	|                                                             |
+//	+-------------------------------------------------------------+
+//	|                                                         /// |  <- Resize Grip
+//	+-------------------------------------------------------------+
+//
+// Panel implements an in-application window container featuring a draggable title bar,
+// window control buttons (minimize, maximize/restore, close), and optional resize handles.
+//
+// In floating layouts, Panel cooperates with [tuiwidget.Float] to support mouse dragging,
+// window z-ordering, and edge resizing. When hosted under a GUI backend, Panel renders
+// hardware-accelerated vector title bars, anti-aliased control icons, and smooth shadows.
 type Panel struct {
 	tui.MultiChild
 	ctx *tui.Context

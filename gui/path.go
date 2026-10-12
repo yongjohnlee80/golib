@@ -6,14 +6,24 @@ import (
 	"gioui.org/op/clip"
 )
 
-// Path is an outline for FillPath and StrokePath, in the canvas's logical coordinates. Build it
-// with MoveTo, LineTo, QuadTo, CubeTo and Close; it may be painted any number of times.
+// Vector Path Geometry and Bézier Curves:
+//
+//	MoveTo (M)       LineTo (L)           QuadTo (Q)             CubeTo (C)
+//	  (x, y)          --------->            .--.                  .----.
+//	 (Start)         (Endpoint)            /    \                /      \
+//	                                     (ctrl)  (to)        (ctrl0)  (ctrl1) (to)
+//
+// Path represents a reusable, resolution-independent 2D vector path composed of linear
+// segments and Bézier curves. It can be constructed via [Path.MoveTo], [Path.LineTo],
+// [Path.QuadTo], [Path.CubeTo], and [Path.Close], and rasterized across [Canvas.FillPath]
+// and [Canvas.StrokePath] without reallocating geometry buffers.
 type Path struct {
 	cmds []pathCmd
 }
 
+// pathCmd represents a single path instruction and its associated coordinate operands.
 type pathCmd struct {
-	kind    byte // 'M', 'L', 'Q', 'C', 'Z'
+	kind    byte // Command operator: 'M' (move), 'L' (line), 'Q' (quadratic), 'C' (cubic), 'Z' (close)
 	pts     [3]Point
 	npoints int
 }

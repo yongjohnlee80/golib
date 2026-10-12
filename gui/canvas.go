@@ -12,52 +12,106 @@ import (
 	"gioui.org/op/paint"
 )
 
-// View is the pixel side of a native widget. The backend calls Paint on tui's loop goroutine,
-// inside Flush, so a view reads its component's state with the component's one owner.
+// Vector painting and native widget rendering surface.
+//
+// While the base terminal renderer maps characters to a 2D grid of text cells, native graphical
+// components (such as vector diagrams, custom buttons, rich text document views, and image canvases)
+// paint directly into sub-pixel resolution via [Canvas].
+//
+// # Architectural Model: The Pixel Twin of tui.Surface
+//
+// [Canvas] serves as the vector graphics counterpart to [tui.Surface]:
+//
+//	┌─────────────────────────────────────────────────────────────┐
+//	│                       tui.App Screen                        │
+//	│                                                             │
+//	│  [ Terminal Character Grid ]       [ Native Vector View ]   │
+//	│  - Discrete cell coordinates       - Device-independent dp  │
+//	│  - tui.Surface.SetCell(...)        - Canvas.FillRRect(...)  │
+//	│                                    - Canvas.DrawText(...)   │
+//	└─────────────────────────────────────────────────────────────┘
+//
+// Coordinates and Scaling:
+//   - All coordinates and dimensions passed to [Canvas] methods are expressed in logical
+//     device-independent pixels (dp), with origin (0, 0) positioned at the component's top-left.
+//   - Drawing operations are clipped to the component's assigned layout bounds.
+//   - Transformations (translation, scaling, rotation) and opacity modifiers are pushed and
+//     popped using [Canvas.PushTransform], [Canvas.PushOpacity], and [Canvas.Pop].
+//   - Native views can inspect underlying cell contents or paint them selectively via [Canvas.PaintCells].
+
+// View represents the pixel-rendering interface implemented by native GUI components.
+//
+// Concurrency & Lifecycle:
+//   - The GUI backend invokes [View.Paint] exclusively on the TUI event loop goroutine
+//     during [Backend.Flush].
+//   - This guarantees that views read their component state synchronously alongside the
+//     owning event loop, eliminating cross-thread race conditions.
 type View interface {
-	Paint(c Canvas) // c is the component's cell rect in logical px, (0,0) at its top-left
+	// Paint renders the component into the provided vector canvas.
+	// The canvas origin (0, 0) corresponds to the component's top-left pixel.
+	Paint(c Canvas)
 }
 
-// ViewFunc is a View that is a function.
+// ViewFunc wraps a standalone painting function into a [View].
 type ViewFunc func(c Canvas)
 
-// Paint calls f.
+// Paint invokes f(c).
 func (f ViewFunc) Paint(c Canvas) { f(c) }
 
-// Canvas is the pixel twin of tui.Surface: pre-clipped, (0,0) at the widget's top-left, in
-// logical pixels.
+// Canvas provides immediate-mode 2D vector drawing operations in logical pixels.
 type Canvas interface {
-	// Sub is the part of the canvas at r, clipped to it, with (0,0) at r's top-left. It starts
-	// with no transform of its own; r is in this canvas's untransformed coordinates.
+	// Sub returns a sub-canvas bounded by rect r, pre-clipped to r, with (0,0) mapped to r.Min.
 	Sub(r Rect) Canvas
+
+	// Size returns the canvas dimensions in logical pixels.
 	Size() Size
 
+	// FillRect paints a filled rectangle using brush b.
 	FillRect(r Rect, b Brush)
+
+	// FillRRect paints a filled rounded rectangle with corner radius using brush b.
 	FillRRect(r Rect, radius float32, b Brush)
+
+	// StrokeRRect strokes the outline of a rounded rectangle with specified radius and line width.
 	StrokeRRect(r Rect, radius, width float32, b Brush)
+
+	// FillEllipse paints a filled ellipse bounded by rect r.
 	FillEllipse(r Rect, b Brush)
+
+	// FillPath paints the interior of vector path p using brush b.
 	FillPath(p *Path, b Brush)
+
+	// StrokePath strokes the outline of vector path p with line width using brush b.
 	StrokePath(p *Path, width float32, b Brush)
-	// DrawText draws t with the top-left of its first line at at.
+
+	// DrawText renders shaped text layout t with its top-left origin at position at.
 	DrawText(t *TextLayout, at Point, b Brush)
-	// DrawImage draws the src part of img (image pixels; the zero Rect is all of it) into dst.
+
+	// DrawImage draws the src sub-rectangle of img into destination rectangle dst.
+	// If src is the zero Rect, the entire image is drawn.
 	DrawImage(img *Image, dst, src Rect)
 
-	PushTransform(m Affine) // applied to what is drawn until the matching Pop
-	PushOpacity(a float32)  // multiplies the opacity until the matching Pop
+	// PushTransform applies an affine transformation matrix (translation, scale, rotation)
+	// to all subsequent drawing operations until the matching Pop.
+	PushTransform(m Affine)
+
+	// PushOpacity multiplies the alpha channel opacity by a (0.0 to 1.0) until the matching Pop.
+	PushOpacity(a float32)
+
+	// Pop restores the most recently saved transformation or opacity state.
 	Pop()
 
-	// WindowMoveArea makes r a handle that moves the window when dragged.
+	// WindowMoveArea designates rect r as an interactive handle that drags the OS window.
 	WindowMoveArea(r Rect)
 
-	Text() *TextShaper // the window's shaper: measure with this, never another
-	Scale() float32    // device pixels per logical pixel
+	// Text returns the window's text shaper for measuring fonts and shaping layouts.
+	Text() *TextShaper
 
-	// The cells under the view, as tui painted them: a native style that changes the look and not
-	// the geometry draws its text and marks at these cells. Column and row are the view's own
-	// (0, 0 at its top-left cell), whatever Sub or transform is current.
+	// Scale returns the display scaling factor (physical device pixels per logical pixel).
+	Scale() float32
 
-	CellSize() Size // one cell, in logical pixels
+	// CellSize returns the physical dimensions of a single character cell in logical pixels.
+	CellSize() Size
 	// TextSize is the size of the window's text (the cells' font), in logical pixels: what a
 	// view sizes its own text by, so it reads at the size of everything around it.
 	TextSize() float32

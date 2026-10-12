@@ -10,12 +10,32 @@ import (
 	"github.com/yongjohnlee80/golib/tui/widget"
 )
 
-// NativeStyle is golib's painter set: push buttons, check boxes, text fields, progress bars, tab
-// bars, scrollbars on lists and trees, a dialog's shadow and a floating panel's, a real dim behind a
-// dialog, and an HTMLView's pixel layout. Each painter takes its colours
-// from the cells the widget painted, so the app's theme and the widget's state (focused, armed,
-// disabled) carry over, and it draws text at the cells tui gave it. It returns a new Style each
-// call, for a consumer to change.
+// Native Styling and Painter Pipeline:
+//
+//	+------------------+     Cell Grid      +--------------------+
+//	| tui.Component    | -----------------> | Canvas Interrogation|
+//	| (Button, Dialog, |                    | (CellColors, Size, |
+//	|  TextInput, etc.)|                    |  CellSize, Bounds) |
+//	+------------------+                    +--------------------+
+//	         |                                        |
+//	         | Registered Painter                     |
+//	         v                                        v
+//	+------------------+    Vector Shapes   +--------------------+
+//	| Style Registry   | -----------------> | Smooth GPU Prims   |
+//	| (Role / Type)    |                    | (RRect, Shadow,    |
+//	|                  |                    |  Alpha Mix, Scrim) |
+//	+------------------+                    +--------------------+
+//
+// NativeStyle returns golib's standard vector painter configuration.
+// It maps higher-level widget roles (push buttons, check boxes, text fields,
+// progress bars, tab bars, scrollbars, a dialog's shadow and a floating panel's,
+// a real dim behind a dialog, and HTML views) to hardware-accelerated vector rendering routines.
+//
+// Each painter inspects the cell colors, text content, and theme attributes chosen by
+// the underlying terminal widget, preserving active theme styling, focused/armed states,
+// and mnemonic highlights while elevating them to anti-aliased vector graphics.
+// It constructs and returns a newly allocated [Style] instance on each invocation,
+// permitting caller customization.
 func NativeStyle() *Style {
 	s := NewStyle()
 	s.ForRole(tui.RolePushButton, paintButton)

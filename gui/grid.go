@@ -5,18 +5,28 @@ import "github.com/yongjohnlee80/golib/tui"
 // blank is an empty cell in the default colours, what tui's buffer starts from.
 var blank = tui.Cell{Content: " ", Width: 1}
 
+// Grid Buffer Layout and Incremental Redraw Tracking:
+//
+//	      0       1       2       3      ...     w-1
+//	  +-------+-------+-------+-------+-------+-------+
+//	0 | Cell  | Cell  | Cell  | Cell  |  ...  | Cell  |  dirty[0] = false (Clean)
+//	  +-------+-------+-------+-------+-------+-------+
+//	1 | Head  | Cont* | Cell  | Cell  |  ...  | Cell  |  dirty[1] = true  (Repaint Row)
+//	  +-------+-------+-------+-------+-------+-------+
+//	  * Note: Wide glyphs (Width: 2) synthesize a continuation cell in the adjacent slot.
+//
 // grid maintains the backend's local mirror of the active terminal cell buffer, tracking
 // flushed [tui.Cell] values and per-row dirty flags to drive incremental redraws.
 //
 // Invariants & State Ownership:
 //   - Owned exclusively by the TUI event loop goroutine.
-//   - Cells are stored in a contiguous 1D slice of size w × h in row-major order.
+//   - Cells are stored in a contiguous 1D slice of size w * h in row-major order.
 //   - The dirty slice holds one boolean per row. Flushed cell diffs mark their corresponding
 //     row dirty, allowing unchanged rows to reuse cached vector operations.
 type grid struct {
 	w, h  int
 	cells []tui.Cell
-	dirty []bool // per row
+	dirty []bool // per row dirty flag for damage region optimization
 }
 
 // resize sets the grid to w×h, blank and every row dirty. The App never diffs across a size

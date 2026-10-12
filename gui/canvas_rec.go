@@ -7,22 +7,37 @@ import (
 	"gioui.org/text"
 )
 
-// PaintCall is one drawing call a RecordingCanvas received. Rect is in the recording canvas's
-// root coordinates (a Sub's offset applied); transforms are recorded as calls, not applied.
+// Test Recording Architecture for Canvas:
+//
+//	+------------------+     Draw Calls      +--------------------+
+//	| Custom View /    | ------------------> | RecordingCanvas    |
+//	| Embedded Widget  |                     | (Root or Sub)      |
+//	+------------------+                     +--------------------+
+//	                                                   |
+//	                                                   v
+//	                                         +--------------------+
+//	                                         | Calls []PaintCall  |
+//	                                         | (Inspectable trace |
+//	                                         |  for Unit Tests)   |
+//	                                         +--------------------+
+//
+// PaintCall records an individual drawing command received by a [RecordingCanvas].
+// Rect is specified in root canvas coordinates (with any sub-canvas offsets pre-applied).
 type PaintCall struct {
-	Op         string // "FillRect", "FillRRect", "StrokeRRect", "FillEllipse", "FillPath", "StrokePath", "DrawText", "DrawImage", "PushTransform", "PushOpacity", "Pop", "WindowMoveArea", "PaintCells"
+	Op         string // Name of the operation: "FillRect", "FillRRect", "StrokeRRect", "DrawText", etc.
 	Rect       Rect
 	Radius     float32
-	Width      float32 // a stroke's
+	Width      float32 // Stroke width
 	Brush      Brush
 	Text       *TextLayout
-	Cells      CellRect // PaintCells's, in the root's cells
+	Cells      CellRect // Grid cells specified in PaintCells
 	GlyphsOnly bool
 	Opacity    float32
 }
 
-// RecordingCanvas is a Canvas that records what is drawn on it instead of drawing, for testing a
-// View without a window or a GPU.
+// RecordingCanvas implements [Canvas] by recording all invoked operations into an inspectable
+// slice of [PaintCall] values. It allows native vector views and UI widgets to be rigorously
+// tested in headless unit tests without requiring a window or GPU environment.
 type RecordingCanvas struct {
 	Calls []PaintCall
 	// Colors answers CellColors; nil answers zero colours.
