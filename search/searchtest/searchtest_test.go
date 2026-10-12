@@ -3,8 +3,8 @@ package searchtest
 import (
 	"context"
 	"fmt"
-	"math/rand/v2"
 	"runtime"
+	"slices"
 	"strings"
 	"sync"
 	"testing"
@@ -102,8 +102,10 @@ func (v *brokenView) Lexical(ctx context.Context, terms []search.Term, f search.
 		}
 		return out, err
 	case "ties in no set order":
+		// reversed, never shuffled: a shuffle of three ties comes out in path order one time in
+		// six, and the suite's three asks all did so one time in 216, the broken store passing
 		out, err := v.MemView.Lexical(ctx, terms, f, n)
-		rand.Shuffle(len(out), func(i, j int) { out[i], out[j] = out[j], out[i] })
+		slices.Reverse(out)
 		return out, err
 	}
 	return v.MemView.Lexical(ctx, terms, f, n)
