@@ -1,0 +1,2 @@
+{"Seq":0,"At":"2026-10-12T00:00:00Z","Stage":"frame","Kind":"begin","Data":{"n":1}}
+{"Seq":1,"At":"2026-10-12T00:00:00Z","Stage":"in","Kind":"TextEdit","Data":{"start":0,"end":0,"text":"a"}}

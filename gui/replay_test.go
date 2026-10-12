@@ -36,6 +36,16 @@ package gui
 // layout: a caret tell's geometry comes from the frame, so the replay checks
 // its selection and takes the caret as environment.
 
+// # When a recording can be replayed
+//
+// The replay needs a complete trace, and says so when it does not have one. The
+// frames must pair — every begin has its end, the frame numbers march strictly
+// forward — nothing input-shaped may sit outside a frame's begin and end (a
+// frame's presentation tail, its caret tell and its draws, may), and a recording
+// that dropped records under load is refused outright: what it holds is not what
+// happened, so it cannot be checked against anything. A legacy recording, with
+// no frame records at all, replays as the one frame it claims to be.
+
 import (
 	"encoding/json"
 	"fmt"
@@ -190,6 +200,67 @@ func hasFrames(recs []Record) bool {
 	return false
 }
 
+// validateTrace checks a recording's integrity before it is replayed: every
+// frame's begin must have its end, the frame numbers must march strictly
+// forward, nothing input-shaped may sit outside a frame's begin and end (a
+// frame's presentation tail — its caret tell, its draws — may), and a recording
+// that dropped records under load is refused outright: what it holds is not what
+// happened. A legacy recording, with no frame records, is exempt from the frame
+// rules and replays as the one frame it claims to be.
+func validateTrace(recs []Record) error {
+	framed, inside := false, false
+	last := 0
+	for _, rec := range recs {
+		if rec.Stage == StageMeta && rec.Kind == "dropped" {
+			return errf("recording dropped %v records under load; re-record (replay needs a complete trace)", rec.Data["n"])
+		}
+		if rec.Stage == StageDraw || (rec.Stage == StageCmd && rec.Kind == "SelectionTell") {
+			continue // a frame's presentation tail, inside its pair or after its end
+		}
+		if rec.Stage != StageFrame {
+			if framed && !inside {
+				return errf("record Seq %d outside a frame", rec.Seq)
+			}
+			continue
+		}
+		n, err := frameNum(rec)
+		if err != nil {
+			return err
+		}
+		switch rec.Kind {
+		case "begin":
+			if inside {
+				return errf("frame %d begin has no end", last)
+			}
+			if framed && n <= last {
+				return errf("frame n went from %d to %d", last, n)
+			}
+			framed, inside, last = true, true, n
+		case "end":
+			if !inside {
+				return errf("end n=%d without begin", n)
+			}
+			if n != last {
+				return errf("frame %d's end carries n=%d", last, n)
+			}
+			inside = false
+		}
+	}
+	if inside {
+		return errf("frame %d begin has no end", last)
+	}
+	return nil
+}
+
+// frameNum reads a frame record's number.
+func frameNum(rec Record) (int, error) {
+	v, ok := rec.Data["n"].(float64)
+	if !ok {
+		return 0, errf("frame record Seq %d carries no n", rec.Seq)
+	}
+	return int(v), nil
+}
+
 // replayRecording plays a recording back through a fresh input path and checks
 // every frame of it: the focus handshake the window's prologue runs, the state
 // after each event, the commands the snippet answers send, the delivery at each
@@ -201,6 +272,9 @@ func replayRecording(t *testing.T, jsonl []byte) {
 	recs, err := decodeRecording(jsonl)
 	if err != nil {
 		t.Fatalf("the recording does not decode: %v", err)
+	}
+	if err := validateTrace(recs); err != nil {
+		t.Fatalf("the recording is not a complete trace: %v", err)
 	}
 	framed := hasFrames(recs)
 	g := new(gioState) // the window's own focus bookkeeping
@@ -377,5 +451,36 @@ func TestTheReplayRejectsWhatItDoesNotKnow(t *testing.T) {
 	unknownKind := `{"Seq":0,"At":"2026-01-01T00:00:00Z","Stage":"in","Kind":"Gesture","Data":{}}`
 	if _, err := decodeRecording([]byte(unknownKind)); err == nil || !strings.Contains(err.Error(), `"Gesture"`) {
 		t.Fatalf("an unknown in-kind passed the decode: %v", err)
+	}
+}
+
+// An incomplete trace must be refused, each break named: a begin without its
+// end, an end without its begin, input outside any frame, a frame number that
+// does not march forward, and records the writer dropped under load — what such
+// a recording holds is not what happened, so it cannot be replayed green.
+func TestABrokenTraceIsRefused(t *testing.T) {
+	for _, tc := range []struct {
+		name string
+		file string
+		want string
+	}{
+		{"missing end", "testdata/broken-missing-end.jsonl", "frame 1 begin has no end"},
+		{"end without begin", "testdata/broken-unmatched-end.jsonl", "end n=2 without begin"},
+		{"input outside a frame", "testdata/broken-outside.jsonl", "record Seq 3 outside a frame"},
+		{"frame number not forward", "testdata/broken-repeat-n.jsonl", "frame n went from 1 to 1"},
+		{"dropped records", "testdata/broken-dropped.jsonl", "recording dropped 3 records under load; re-record (replay needs a complete trace)"},
+	} {
+		data, err := os.ReadFile(tc.file)
+		if err != nil {
+			t.Fatalf("%s: %v", tc.name, err)
+		}
+		recs, err := decodeRecording(data)
+		if err != nil {
+			t.Fatalf("%s: %v", tc.name, err)
+		}
+		err = validateTrace(recs)
+		if err == nil || !strings.Contains(err.Error(), tc.want) {
+			t.Errorf("%s: validateTrace says %q; want it to say %q", tc.name, err, tc.want)
+		}
 	}
 }
