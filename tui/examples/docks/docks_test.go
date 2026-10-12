@@ -61,7 +61,6 @@ func TestEachPanelsDWinsInsideItAndTheWindowsOutside(t *testing.T) {
 	}
 	mu.Unlock()
 	says([]tui.Event{press(tui.KeyEscape), decltest.Rune('d')}, "the Window's")
-	if strings.Contains(s.String(), "ship the docks example") {
-		t.Fatalf("Esc left the notes panel open:\n%s", s)
-	}
+	// Esc was handled before d, but the frame that shows the panel gone is painted after: wait for it
+	s.WaitFor(t, "the notes panel closed", func(sc string) bool { return !strings.Contains(sc, "ship the docks example") })
 }
