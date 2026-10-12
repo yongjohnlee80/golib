@@ -20,6 +20,22 @@ var ErrEventOverflow = errors.New("gui: event queue overflow")
 // reaching this threshold indicates a blocked or unresponsive application event loop.
 const maxQueued = 4096
 
+// Event Pipeline & Decoupled Delivery Architecture:
+//
+//	Gio Window Goroutine           Forwarder Goroutine             TUI Event Loop
+//	====================           ===================             ==============
+//	  q.push(ev)
+//	     |
+//	     v
+//	[Mutex Guarded Batch] ------->  q.ready channel
+//	([]tui.Event up to 4096)               |
+//	                                       v
+//	                                Drains batch
+//	                                       |
+//	                                       v
+//	                                q.events <- ev  =============>  for ev := range b.Events()
+//	                                (Unbuffered Deliver)            (Processes tui.Event)
+//
 // eventQueue provides thread-safe, ordered buffering of [tui.Event] instances across the
 // Gio event loop and the TUI application loop.
 //

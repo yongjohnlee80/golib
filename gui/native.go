@@ -15,12 +15,34 @@ var (
 	_ tui.CellMetrics  = (*Backend)(nil)
 )
 
-// PlaceNatives takes the frame's native views, drawn by the Flush that follows, over the cells.
+// Compositing Order and Layer Stacking Architecture:
+//
+//	+--------------------------------------------------------+
+//	| Layer 0: Background cell grid and standard text glyphs |
+//	+--------------------------------------------------------+
+//	                           |
+//	                           v
+//	+--------------------------------------------------------+
+//	| Layer N: Native vector views and Kitty PNG bitmaps     |
+//	| (Sorted by Layer ID; native views precede image ties)  |
+//	+--------------------------------------------------------+
+//	                           |
+//	                           v
+//	+--------------------------------------------------------+
+//	| Layer N+1: Covered cells pass (modal cards, dialogs,  |
+//	|            popups placed over lower views/images)     |
+//	+--------------------------------------------------------+
+//
+// PlaceNatives records the set of native vector views for the current frame.
+// During the subsequent [Backend.Flush], these views are composited above background
+// terminal cells at their designated cell coordinates.
 func (b *Backend) PlaceNatives(ps []tui.NativePlacement) {
 	b.natives = append(b.natives[:0], ps...)
 }
 
-// NativeFor offers c to the style.
+// NativeFor queries the configured [Style] registry to check whether component c has an
+// associated native vector [Painter]. If found, it executes the painter and returns the
+// [View] interface, visual scope, and an acceptance flag.
 func (b *Backend) NativeFor(c tui.Component) (any, tui.NativeScope, bool) {
 	p := b.cfg.style.painterFor(c)
 	if p == nil {
@@ -33,7 +55,8 @@ func (b *Backend) NativeFor(c tui.Component) (any, tui.NativeScope, bool) {
 	return v, scope, true
 }
 
-// CellPixels is one cell in logical pixels, from the window's latest metrics.
+// CellPixels reports the width and height of a single terminal monospace cell in logical
+// device-independent pixels (dp), calculated from the window's latest metrics snapshot.
 func (b *Backend) CellPixels() tui.CellPixels {
 	m := b.metrics.Load()
 	if m == nil || m.scale <= 0 {

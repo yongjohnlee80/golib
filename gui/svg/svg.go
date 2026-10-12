@@ -6,6 +6,36 @@
 // Anything else (text, gradients, filters, masks, clip paths, use) is skipped, never an error: the
 // drawing shows what it can. A document is bounded as a whole, by its bytes, its elements, its
 // nesting and its path segments, and a number that is not finite refuses it.
+// SVG Vector Parsing and Drawing Pipeline:
+//
+//	+--------------------------------------------+
+//	| Raw XML Stream (<svg ... viewBox="0 0 ...")|
+//	+--------------------------------------------+
+//	                       |
+//	                       v
+//	+--------------------------------------------+
+//	| XML Tokenizer & Bound Enforcers            |
+//	|  - MaxBytes, MaxElements, MaxSegments      |
+//	+--------------------------------------------+
+//	                       |
+//	                       v
+//	+--------------------------------------------+
+//	| CSS & Style Attribute Cascade (Fill/Stroke)|
+//	+--------------------------------------------+
+//	                       |
+//	                       v
+//	+--------------------------------------------+
+//	| Path & Basic Shape Converter (gui.Path)    |
+//	|  - Arc to Cubics (Bézier decomposition)    |
+//	|  - Affine Transform Stacks                 |
+//	+--------------------------------------------+
+//	                       |
+//	                       v
+//	+--------------------------------------------+
+//	| Drawing.Draw(c, rect, currentColor)        |
+//	|  - Aspect ratio preserve (xMidYMid meet)   |
+//	|  - Hardware GPU rasterization              |
+//	+--------------------------------------------+
 package svg
 
 import (

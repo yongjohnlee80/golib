@@ -26,6 +26,31 @@ var ErrNotStarted = errors.New("gui: backend not started")
 // errClosedBeforeOpen is Start's answer when the window is destroyed before its first frame.
 var errClosedBeforeOpen = errors.New("gui: window closed before it opened")
 
+// Backend Concurrency and Thread Handoff Architecture:
+//
+//	+------------------------+                     +------------------------+
+//	|   TUI Event Loop       |                     |  Gio Window Goroutine  |
+//	|   (App / Widgets)      |                     |  (GPU Raster / Input)  |
+//	+------------------------+                     +------------------------+
+//	       |           |                                       |
+//	       | Flush()   | Invalidate()                          | FrameEvent
+//	       v           v                                       v
+//	  +---------------------+   atomic snapshot   +-------------------------+
+//	  | Backend.mu / latest | <================== | Backend.metrics         |
+//	  | (Recorded CallOps)  | ==================> | Backend.font            |
+//	  +---------------------+   atomic snapshot   +-------------------------+
+//	                                                           |
+//	                                                           v
+//	                                              +-------------------------+
+//	                                              |  eventQueue.forward()   |
+//	                                              |  (Key / Mouse / Resize) |
+//	                                              +-------------------------+
+//	                                                           |
+//	                                                           v
+//	                                              +-------------------------+
+//	                                              |  Backend.Events() chan  |
+//	                                              +-------------------------+
+//
 // Backend is an implementation of [tui.Backend] that displays TUI applications in a native
 // operating system window using Gio.
 //
@@ -38,11 +63,16 @@ var errClosedBeforeOpen = errors.New("gui: window closed before it opened")
 //   - [tui.CellMetrics]: Reports logical cell pixel dimensions via [Backend.CellPixels].
 //
 // Concurrency Model:
-// Backend coordinates state between the TUI event loop goroutine and the Gio window event goroutine.
-// All public methods conforming to [tui.Backend] are invoked exclusively on the TUI event loop.
-// Fields mutated during Flush, cursor updates, or image placements are strictly loop-owned,
-// while cross-thread handoffs to Gio (metrics, font generations) use atomic pointers, and completed
-// frames or clipboard requests latch under Backend.mu without waiting for GPU presentation.
+// Backend coordinates state across three primary execution contexts:
+//  1. The TUI event loop goroutine: owns the grid buffer, image map, cursor state, and
+//     invokes Flush/PlaceImage/SetCursor.
+//  2. The Gio event loop goroutine: owns the physical OS window, processes OS frames,
+//     and consumes completed frame macros.
+//  3. The event forwarder goroutine: decouples low-latency input event decoding from
+//     the TUI dispatch pipeline.
+//
+// Cross-thread handoffs use atomic pointers for metrics and font state, and lock-protected
+// latching under Backend.mu for frame macros and clipboard writes without blocking either loop.
 type Backend struct {
 	cfg config
 	win *app.Window

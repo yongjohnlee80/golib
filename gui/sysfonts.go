@@ -7,16 +7,38 @@ import (
 	"sync"
 )
 
-// SYSTEM FONTS — what the cells are drawn in when the app names no font: the system's monospace
-// family, as a terminal emulator uses, and an installed Nerd Font for the icons a shell prompt or
-// a file tree draws. Both are asked of fontconfig (fc-match, fc-list), where the system has it
-// (Linux, the BSDs); without it, nothing is added and the embedded Go Mono stays the cell font.
+// System font discovery and fallback resolution.
 //
-// Every name fontconfig gives a family goes in the list: Gio matches a family by some of its
-// names and not others (it finds "CaskaydiaMono NFM" but not "CaskaydiaMono Nerd Font Mono"), so
-// the list carries both and Gio takes the one it knows.
+// When an application does not explicitly configure a custom font family, the GUI backend
+// discovers and loads the host operating system's configured monospace and icon fonts.
+//
+// # Font Resolution Cascade
+//
+// On systems providing the `fontconfig` subsystem (Linux, BSD), font families are queried
+// dynamically to build an ordered fallback chain for Gio text shaping:
+//
+//	┌─────────────────────────────────────────────────────────────┐
+//	│                   Font Resolution Cascade                   │
+//	└──────────────────────────────┬──────────────────────────────┘
+//	                               │
+//	    1. System Monospace:       ▼ (via `fc-match monospace`)
+//	       e.g., "JetBrains Mono", "Hack", "Fira Code"
+//	                               │
+//	    2. Embedded Base Font:     ▼
+//	       "Go Mono" (bundled statically with the binary)
+//	                               │
+//	    3. Nerd Font Icons:        ▼ (via `fc-list :charset=f101`)
+//	       e.g., "Symbols Nerd Font Mono" for terminal icons & glyphs
+//	                               │
+//	    4. Generic Fallbacks:      ▼
+//	       "monospace, emoji" for international scripts and emoji symbols
+//
+// Multiple Family Aliases:
+// Fontconfig often exposes identical typefaces under multiple aliases (e.g. "CaskaydiaMono NFM"
+// and "CaskaydiaMono Nerd Font Mono"). Both variants are included in the typeface list to ensure
+// Gio's font shaper matches the font regardless of internal naming conventions.
 
-// nerdIcon is a codepoint every Nerd Font carries (a folder): a family covering it has the icons.
+// nerdIcon is a Private Use Area codepoint (U+F101, folder icon) present in Nerd Font distributions.
 const nerdIcon = "f101"
 
 // fontconfig runs a fontconfig tool, its output or "" when it is missing or fails.
@@ -44,20 +66,26 @@ func families(line string) string {
 	return strings.Join(names, ", ")
 }
 
-// systemMonospace is the system's monospace family, every name it has, or "".
+// systemMonospace queries fontconfig for the primary system monospace font family.
+// Returns a comma-separated list of recognized aliases, or an empty string if fontconfig is unavailable.
 func systemMonospace() string {
 	return families(fontconfig("fc-match", "-f", "%{family}", "monospace"))
 }
 
-// nerdFallback is the first installed family carrying Nerd Font icons, every name it has, or "".
+// nerdFallback discovers the first installed typeface containing Nerd Font icons (PUA U+F101).
+// Returns a comma-separated list of family aliases, or an empty string if none are installed.
 func nerdFallback() string {
 	first, _, _ := strings.Cut(fontconfig("fc-list", ":charset="+nerdIcon, "family"), "\n")
 	return families(first)
 }
 
-// cellTypeface is the typeface list the cells are drawn in: the app's font, or the system's
-// monospace before Go Mono when it named none; then a Nerd Font for icons, then the generic
-// monospace and emoji families (fallbackChain).
+// cellTypeface constructs the prioritized font fallback chain used to render character cells.
+//
+// Assembly Order:
+//  1. Custom typeface specified in configuration, or system monospace if none set.
+//  2. Embedded Go Mono baseline font.
+//  3. Nerd Font icon family (if installed and not already present).
+//  4. Generic fallback chains ("monospace, emoji").
 func cellTypeface(c config) string {
 	tf := c.typeface
 	if !c.fontSet {
@@ -73,14 +101,18 @@ func cellTypeface(c config) string {
 
 var monospaceOnce = sync.OnceValue(func() string { return cellTypeface(defaultConfig()) })
 
-// MonospaceFamily is the typeface list monospace text drawn natively uses, as the cells do by
-// default: the system's monospace, Go Mono, a Nerd Font for icons, then the generic families.
-// It asks fontconfig once.
+// MonospaceFamily returns the default monospace typeface fallback chain used for cells and code blocks.
+//
+// The font discovery process queries fontconfig once at process startup and caches the resulting
+// string across all windows and canvases.
 func MonospaceFamily() string { return monospaceOnce() }
 
-// Families lists the installed font families, as fontconfig names them (fc-list), sorted and each
-// once; mono lists only the monospace ones (fc-list :spacing=mono). A family fontconfig gives
-// several names is listed by its first. Nil where fontconfig is missing (macOS, Windows).
+// Families queries and returns all installed font families available on the host system.
+//
+// Parameters:
+//   - mono: when true, restricts the listing to monospace fonts only (`fc-list :spacing=mono`).
+//
+// Returns a sorted slice of unique family names, or nil if fontconfig is unavailable (such as on macOS or Windows).
 func Families(mono bool) []string {
 	args := []string{":", "family"}
 	if mono {
@@ -89,7 +121,7 @@ func Families(mono bool) []string {
 	return familyList(fontconfig("fc-list", args...))
 }
 
-// familyList is fc-list's family lines as a sorted list, each family once, by its first name.
+// familyList parses the output of `fc-list`, returning a sorted slice of unique font family names.
 func familyList(out string) []string {
 	seen := map[string]bool{}
 	var list []string

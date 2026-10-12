@@ -13,52 +13,87 @@ import (
 	"github.com/yongjohnlee80/golib/tui"
 )
 
-// Font is how text is shaped: a typeface list (a CSS font-family list, as WithFont takes), a size
-// in logical pixels, and its weight and style.
+// Proportional and monospace text shaping, measurement, and layout.
+//
+// The text subsystem bridges high-level typographical specifications ([Font]) with the
+// underlying Gio font shaping engine ([text.Shaper]). It resolves font families, scales
+// device metrics, and extracts exact sub-pixel grapheme cluster bounds.
+//
+// # Typographical Layout & Measurement Pipeline
+//
+//	Input Text String & [Font] (Logical Points, Weight, Style)
+//	                 │
+//	                 ▼
+//	┌─────────────────────────────────────────────────────────────┐
+//	│                 TextShaper.LayoutString                     │
+//	│  - Resolves font family against Prose / Mono defaults       │
+//	│  - Scales em dimensions by display scale (PxPerEm)          │
+//	│  - Performs bidirectional text analysis (bidi) & shaping    │
+//	└──────────────────────────────┬──────────────────────────────┘
+//	                               │
+//	         ┌─────────────────────┴─────────────────────┐
+//	         ▼                                           ▼
+//	TextShaper.Measure (Cluster Metrics):       TextShaper.Layout (Renderable):
+//	- Grapheme cluster byte offsets             - Shaped vector glyph outlines
+//	- Fractional X start positions per cluster  - Multi-line wrapping bounds
+//	- Typographical Ascent & Descent bounds     - Pre-recorded bitmap emoji ops
+//
+// # Font Family Resolution: Prose vs. Mono
+//
+// A [Font] specifies a family name using CSS font-family syntax:
+//   - An empty family ("") selects the window's proportional prose typeface ([Fonts.Prose]).
+//   - [CellFamily] ("\x00cell") dynamically binds to the window's cell font ([Fonts.Mono]).
+//   - Explicit family names (e.g. "Helvetica", "Fira Code") are looked up directly.
+
+// Font specifies typographical attributes for text rendering.
 type Font struct {
-	Family string // "" is the UI typeface: the system's sans-serif
-	Size   float32
-	Bold   bool
-	Italic bool
+	Family string  // Typeface name; "" selects prose UI font, CellFamily selects terminal monospace
+	Size   float32 // Point size in logical pixels (dp)
+	Bold   bool    // Bold font weight
+	Italic bool    // Italicized font style
 }
 
-// uiFamily is the typeface a Font with no Family uses, until the window names another (Fonts).
+// uiFamily defines the default fallback typeface for proportional UI text.
 const uiFamily = "sans-serif, emoji"
 
-// CellFamily is a Font's Family meaning the window's cell font: the monospace the terminal grid is
-// drawn in, as it is set now. Code in a Rendered view and HTMLView's pre use it, so a change of the
-// cell font reaches them.
+// CellFamily is a symbolic font family alias that resolves to the window's current monospace cell font.
+// Used by rich text renderers, markdown code spans, and syntax-highlighted editor blocks.
 const CellFamily = "\x00cell"
 
-// Fonts are a window's families now: Prose for a Font with no Family, Mono for CellFamily. Gen
-// changes with every change of either, or of the size: a view keeping shaped text keys it on Gen,
-// so a family-only change shapes it again.
+// Fonts holds the active typeface mappings for a window.
+//
+// Fields:
+//   - Prose: Primary font family used for general text when [Font.Family] is empty.
+//   - Mono: Monospace font family bound to [CellFamily].
+//   - Gen: Monotonically increasing generation counter incremented whenever font configuration changes.
 type Fonts struct {
 	Prose, Mono string
 	Gen         uint64
 }
 
-// defaultFonts are a window's families before it names any: the UI family, and the cells' default
-// monospace.
+// defaultFonts returns the baseline typographical families prior to explicit window configuration.
 func defaultFonts() Fonts { return Fonts{Prose: uiFamily, Mono: MonospaceFamily()} }
 
-// TextShaper shapes text for a View, with the window's fonts and at its scale: proportional
-// fonts, sizes, weights, wrapping, bidi and fallback fonts. Measure with the shaper a Canvas
-// gives, never another, so what is measured is what is drawn.
+// TextShaper performs font resolution, glyph shaping, and layout measurement.
+//
+// Invariants:
+//   - Not safe for concurrent use across goroutines. Canvas code on the UI loop uses
+//     its own shaper, while background worker threads acquire isolated instances via [AcquireMeasurer].
 type TextShaper struct {
 	s     *text.Shaper
 	scale float32 // device pixels per logical pixel
-	fonts Fonts   // what Family "" and CellFamily mean
+	fonts Fonts   // active font family mappings
 }
 
-// Fonts are the families this shaper resolves an empty Family and CellFamily to.
+// Fonts returns the active font family bindings resolved by this shaper.
 func (t *TextShaper) Fonts() Fonts { return t.fonts }
 
-// TextLayout is shaped text, ready to draw. Its sizes are logical pixels.
+// TextLayout holds shaped, ready-to-render text lines.
+// All dimensions and coordinates are expressed in logical pixels (dp).
 type TextLayout struct {
-	Width           float32 // the widest line
-	Height          float32 // every line, top of the first to the bottom of the last
-	Ascent, Descent float32 // the first line's, from its baseline
+	Width           float32 // width of the widest line
+	Height          float32 // total height from top of first line to bottom of last line
+	Ascent, Descent float32 // baseline ascent and descent of the first line
 	lines           []shapedLine
 	scale           float32
 }
@@ -101,12 +136,15 @@ type Measured struct {
 // Scale is the shaper's device pixels per logical pixel: what it measures at.
 func (t *TextShaper) Scale() float32 { return t.scale }
 
-// Measure shapes s in f on one line, as Layout(s, f, 0) shapes it, and reports each grapheme
-// cluster's position. A cluster inside a ligature (one glyph for several clusters, as "->" in a
-// coding font) gets a share of its width by runes. s holds no line break.
+// Measure calculates typographical metrics and horizontal cluster positions for a single line of text.
 //
-// Glyphs are placed left to right as Gio orders them; inside a right-to-left run a cluster's x
-// is its glyph's left edge, not a caret position.
+// Grapheme Cluster Alignment:
+//   - Aligns measurements with [tui.Graphemes] segmentation so that character indexing in widgets
+//     and cursor navigation match visual layout positions exactly.
+//   - Multi-rune ligatures (such as "->" or "==" in programming fonts) divide advance widths
+//     evenly across their constituent runes.
+//   - Returns [Measured] containing cluster byte offsets, horizontal starting boundaries, font ascent,
+//     and font descent. Input string s must not contain newline characters.
 func (t *TextShaper) Measure(s string, f Font) Measured {
 	m := Measured{}
 	ascent, descent, runeX := t.runeEdges(s, f)
@@ -167,7 +205,15 @@ func (t *TextShaper) runeEdges(s string, f Font) (ascent, descent float32, x []f
 	return ascent, descent, x
 }
 
-// Layout shapes s in f. maxWidth > 0 wraps lines at that width; 0 keeps one line.
+// Layout shapes text string s into a renderable multi-line [TextLayout].
+//
+// Parameters:
+//   - s: text content (may contain newlines).
+//   - f: font styling and size.
+//   - maxWidth: maximum width in logical pixels before wrapping. A value <= 0 disables wrapping,
+//     keeping all text on a single continuous line.
+//
+// Returns a [TextLayout] holding vector path outlines, bitmap glyphs, and layout dimensions.
 func (t *TextShaper) Layout(s string, f Font, maxWidth float32) *TextLayout {
 	ft := gioFont(f, t.fonts)
 	maxW := 1 << 20

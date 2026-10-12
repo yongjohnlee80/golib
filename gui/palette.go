@@ -6,8 +6,16 @@ import (
 	"github.com/yongjohnlee80/golib/tui"
 )
 
-// resolve turns a cell's resolved colour into the colour drawn. fg says which default applies to
-// CellColorDefault, the terminal's own colours, which a window takes from its Theme.
+// ANSI 256-Color Palette Resolution:
+//
+//	Indices:
+//	  0  .. 15  : System ANSI Palette (Configured via Theme.ANSI)
+//	 16  .. 231 : 6x6x6 RGB Color Cube (levels: 0, 95, 135, 175, 215, 255)
+//	232  .. 255 : Grayscale Ramp (24 steps from dark gray to near-white)
+//
+// resolve translates a cell's symbolic or indexed [tui.CellColor] into a concrete physical
+// [color.NRGBA] ready for GPU rasterization. When the cell specifies default colors, fg selects
+// between Theme.FG and Theme.BG.
 func (t *Theme) resolve(c tui.CellColor, fg bool) color.NRGBA {
 	switch c.Kind {
 	case tui.CellColorANSI, tui.CellColorANSI256:
@@ -21,7 +29,9 @@ func (t *Theme) resolve(c tui.CellColor, fg bool) color.NRGBA {
 	return t.BG
 }
 
-// indexed is xterm's 256-colour palette: the theme's sixteen, a 6×6×6 cube, a 24-step grey ramp.
+// indexed maps an 8-bit color index to the canonical xterm 256-color palette.
+// Indices 0-15 map to Theme.ANSI; indices 16-231 map to the standard 6x6x6 RGB color cube;
+// indices 232-255 map to a linear 24-step monochrome ramp.
 func (t *Theme) indexed(i uint8) color.NRGBA {
 	switch {
 	case i < 16:

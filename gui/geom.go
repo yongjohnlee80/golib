@@ -6,6 +6,13 @@ import (
 	"gioui.org/f32"
 )
 
+// Coordinate Spaces in GUI Architecture:
+//
+//	Logical Coordinates (dp)          Physical Coordinates (px)
+//	  Size{W, H float32}      * Scale    -> image.Point (Device Pixels)
+//	  Point{X, Y float32}     * Scale    -> f32.Point (GPU Rasterizer)
+//	  Rect{X, Y, W, H float32}* Scale    -> clip.Rect / image.Rectangle
+//
 // Size, Point, and Rect represent 2D geometric quantities expressed in device-independent
 // logical pixels (dp).
 //

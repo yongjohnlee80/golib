@@ -6,15 +6,38 @@ import (
 	"github.com/yongjohnlee80/golib/tui"
 )
 
-// A Painter draws one component natively: it returns the View, and the scope the view draws for
-// (the node alone beneath its children, or its whole subtree as one control). ok=false leaves
-// the component to its cells this frame. A painter reads the component's public state only, and
-// never changes it. It keeps tui's geometry: text and anything the user points at or selects
-// stay at the cells tui gave them, and it draws no caret.
+// Painter Dispatch Hierarchy:
+//
+//	          +------------------------+
+//	          |  Component to Render   |
+//	          +------------------------+
+//	                      |
+//	                      v
+//	          [ Exact Go Type Match? ]
+//	            /                 \
+//	          Yes                  No
+//	          /                     \
+//	         v                       v
+//	+----------------+      [ Role Match in Style? ]
+//	| Execute Type   |        /                  \
+//	| Painter        |      Yes                   No
+//	+----------------+      /                      \
+//	                       v                        v
+//	              +----------------+        +---------------+
+//	              | Execute Role   |        | Render Cell   |
+//	              | Painter        |        | Grid Fallback |
+//	              +----------------+        +---------------+
+//
+// A Painter renders a component natively using vector operations. It returns the [View]
+// to execute, the visual [tui.NativeScope] (whether the view applies only to the individual
+// node beneath children or the entire composite subtree), and whether native rendering was accepted (ok).
+//
+// If ok is false, the engine leaves the component to its default cell grid rendering for the frame.
+// Painters must only read public widget state and never alter component state.
 type Painter func(c tui.Component) (v View, scope tui.NativeScope, ok bool)
 
-// Style chooses a Painter for each component: by its exact Go type first, else by its
-// accessible role. A component with neither keeps its cells.
+// Style configures the registry of vector painters for UI components. Painters can be registered
+// by exact concrete Go type (highest priority) or by accessible role (general fallback).
 type Style struct {
 	byType map[reflect.Type]Painter
 	byRole map[tui.AccessibleRole]Painter

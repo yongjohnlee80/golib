@@ -1,8 +1,28 @@
-// Package decl is gui's decl style: the native look of tui/decl's QML vocabulary. A Program that
-// runs on gui's backend takes it with tuidecl.WithStyle(Native()), and a document writing
-// `Editor { }` gets gui's Editor, which draws in pixels and has a Rendered view. The same document
-// runs with no style on a terminal and gets tui's Editor: the two read a declaration the same way
-// (tuidecl.ReadEditor) and offer the same QML contract (decltest.CheckStyle).
+// Package decl provides the native vector styling adapter for golib/tui's declarative QML vocabulary.
+//
+// Declarative QML Component Binding Pipeline:
+//
+//	    +--------------------------------------------+
+//	    | Declarative Document Specification (QML)   |
+//	    |  Editor { wrap: true, view: Rendered }     |
+//	    +--------------------------------------------+
+//	                           |
+//	                           v
+//	    +--------------------------------------------+
+//	    |  tuidecl.WithStyle(decl.Native(...))       |
+//	    +--------------------------------------------+
+//	               /                      \
+//	              v                        v
+//	+---------------------------+  +---------------------------+
+//	| Editor Type Interceptor   |  | HTMLView Type Interceptor |
+//	| -> gui/widget.Editor      |  | -> widget.BindHTML(v)     |
+//	| -> Pixel rendered view    |  | -> Pixel layout & vectors |
+//	| -> Shared diagram chain   |  | -> Shared diagram chain   |
+//	+---------------------------+  +---------------------------+
+//
+// A Program running on gui's backend adopts this style via tuidecl.WithStyle(decl.Native()).
+// Documents specifying `Editor { }` or `HTMLView { }` receive native vector rendering, sub-cell
+// typography, and smooth diagrams while preserving identical declarative contracts.
 package decl
 
 import (
@@ -12,7 +32,7 @@ import (
 	tuiwidget "github.com/yongjohnlee80/golib/tui/widget"
 )
 
-// NativeOption sets up the native style.
+// NativeOption configures optional renderers, document views, and diagram fallbacks on the native style.
 type NativeOption func(*native)
 
 type native struct {
