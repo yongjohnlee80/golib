@@ -21,14 +21,14 @@ import (
 //	|   +-------+---------------------------------------+         |
 //	|   | pad   | Top Margin (p + spare.Y/2)            |         |
 //	|   +-------+---------------------------------------+         |
-//	|   | Left  | Grid Cell (0, 0)      ...  Grid (W-1) | Right   |
+//	|   | Left  | Grid Cell (0, 0)      ... Grid (W-1, 0)| Right  |
 //	|   | Margin| +-------------+           +---------+ | Margin  |
 //	|   |       | | cell.X      |           |         | |         |
 //	|   |       | |*----*       |           |         | |         |
 //	|   |       | |cell.Y       |           |         | |         |
 //	|   |       | +-------------+           +---------+ |         |
 //	|   |       |                                       |         |
-//	|   |       | Grid (0, H-1)         ...  Grid(W, H) |         |
+//	|   |       | Grid (0, H-1)         ... Grid(W-1,H-1)|        |
 //	|   +-------+---------------------------------------+         |
 //	|   |       | Bottom Margin                         |         |
 //	|   +-------+---------------------------------------+         |
@@ -43,16 +43,16 @@ type fontMetrics struct {
 	descent float32 // Distance below baseline per em unit
 }
 
-// metrics represents an immutable snapshot of all geometric calculations that translate
-// logical terminal cells into physical device pixels.
+// metrics represents ONE immutable snapshot of everything that turns cells into pixels.
 //
 // Whenever the host window size, display scale factor (DPI), or font configuration changes,
-// a new metrics snapshot is constructed and published atomically. The layout, paint, and
-// input dispatch routines borrow a single consistent snapshot per frame to guarantee that
-// rendering artifacts or tearing never occur across frame composition.
+// the Gio goroutine publishes a new snapshot. The layout, paint, and pointer translation routines
+// each read a snapshot and use it consistently throughout, so a frame is never composed from mixed
+// geometric configurations.
 //
-// It is a comparable value: two snapshots are identical if and only if cell geometry,
-// font generation, and scale factors match exactly.
+// It is a comparable struct: two snapshots are identical (==) when every field matches,
+// including window dimensions and origin offsets. When comparing solely cell rendering behavior
+// (sameCells), only window size differences are ignored.
 type metrics struct {
 	window   image.Point // Total window dimension in physical device pixels
 	origin   image.Point // Top-left pixel coordinate of grid cell (0, 0), including margins

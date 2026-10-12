@@ -12,6 +12,28 @@ import (
 // padding: max(1.25rem, calc((100vw - 1040px) / 2)); font-size: clamp(2rem, 5vw, 3.3rem). An
 // expression is kept as written and evaluated where its length is, against the font, the root's
 // font, what % is of, and the view (vw, vh).
+//
+// # CSS Expression AST & Evaluation Hierarchy
+//
+// Below is the recursive evaluation model of a parsed CSS math expression tree:
+//
+//	                   ┌──────────────────────────┐
+//	                   │     cssExpr (clamp)      │
+//	                   └────────────┬─────────────┘
+//	           ┌────────────────────┼────────────────────┐
+//	           ▼                    ▼                    ▼
+//	    ┌─────────────┐      ┌─────────────┐      ┌─────────────┐
+//	    │  Arg 0 (lo) │      │ Arg 1 (val) │      │ Arg 2 (hi)  │
+//	    │   2.0rem    │      │    5.0vw    │      │   3.3rem    │
+//	    └──────┬──────┘      └──────┬──────┘      └──────┬──────┘
+//	           │                    │                    │
+//	           ▼                    ▼                    ▼
+//	    (font * 2.0px)       (view.W * 0.05)      (font * 3.3px)
+//	           │                    │                    │
+//	           └────────────────────┼────────────────────┘
+//	                                │
+//	                                ▼
+//	                      max(lo, min(v, hi))
 
 // maxExprNodes bounds an expression, so a hostile value cannot make one that is costly to evaluate.
 const maxExprNodes = 64

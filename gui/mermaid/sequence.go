@@ -45,9 +45,25 @@ type seqLayout struct {
 	lastMsg float32 // the last message's y: where an activate or deactivate statement acts
 }
 
-// laySequence lays a sequence diagram out: participants left to right, spaced so each message's
-// and note's text fits between them, then its steps top to bottom, and the participants again
-// at the bottom.
+// Sequence Diagram Layout Architecture:
+//
+//	+---------------+                                     +---------------+
+//	| Participant A |                                     | Participant B |
+//	+---------------+                                     +---------------+
+//	        |                                                     |
+//	        |                 1. Request()                        |
+//	        |---------------------------------------------------->|
+//	        |                                                     | [Activation]
+//	        |                                                     | [Bar       ]
+//	        |                 2. Response()                       | [          ]
+//	        |< - - - - - - - - - - - - - - - - - - - - - - - - - -|
+//	        |                                                     |
+//	+---------------+                                     +---------------+
+//	| Participant A |                                     | Participant B |
+//	+---------------+                                     +---------------+
+//
+// laySequence computes temporal sequence diagrams with participants, nested activation bars,
+// loops/alt frames, notes, and synchronous/asynchronous message arrows.
 func laySequence(ctx context.Context, d pm.Diagram, width float32, th Theme, m gui.Measurer) (*Laid, error) {
 	sd := d.(*pm.SequenceDiagram)
 	em := th.Font.Size

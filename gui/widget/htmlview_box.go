@@ -12,12 +12,24 @@ import (
 	phtml "github.com/yongjohnlee80/golib/parse/html"
 )
 
+// HTML Box Tree & Layout Hierarchy:
+//
+//	[ Top-Level Block ] (Border Box: x, y, w, h)
+//	         |
+//	         +---> [ Margin / Border / Padding Insets ]
+//	         |
+//	         +---> Child Content:
+//	                 - kBlock: Nested block containers
+//	                 - kRun:   Anonymous inline flow paragraphs (styled spans)
+//	                 - kTable: Tables decomposed into kRow and kCell boxes
+//	                 - kFlex:  Flexbox container layouts (main/cross axis)
+//	                 - kGrid:  CSS grid containers
+//
 // THE BOX TREE — a page as HTMLView's pixel layout sees it: block boxes stacked down the page,
 // each block's inline content one flow paragraph (an anonymous run), lists with hanging markers,
 // tables in rows and cells, pre on a box of its own that scrolls sideways when wider than the
 // page. Geometry is relative to the top-level block a box belongs to, so a block that keeps its
 // key keeps its layout wherever it moves.
-
 type boxKind uint8
 
 const (

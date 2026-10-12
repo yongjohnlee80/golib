@@ -26,6 +26,31 @@ var shapeForm = [...]form{
 // arrowEnd is each flowchart arrow's end.
 var arrowEnd = [...]end{pm.None: endNone, pm.Head: endArrow, pm.Dot: endDot, pm.Cross: endCross}
 
+// Flowchart Layout Architecture:
+//
+//	+---------------------------------------------+
+//	| Parse Flowchart AST (Nodes, Edges, Subgraphs)|
+//	+---------------------------------------------+
+//	                       |
+//	                       v
+//	+---------------------------------------------+
+//	| Node Sizing & Form Mapping                  |
+//	| (Rectangle, Stadium, Cylinder, Diamond, etc)|
+//	+---------------------------------------------+
+//	                       |
+//	                       v
+//	+---------------------------------------------+
+//	| Layered DAG Graph Layout (graph/layout)     |
+//	| (NodeSep, RankSep, Direction: TB, LR, etc.) |
+//	+---------------------------------------------+
+//	                       |
+//	                       v
+//	+---------------------------------------------+
+//	| Subgraph Boundary Clustering & Orthogonal   |
+//	| Edge Routing with Terminal Arrows           |
+//	+---------------------------------------------+
+//
+// layFlowchart lays out flowchart nodes, subgraphs, and directed edges into a [Laid] vector model.
 func layFlowchart(ctx context.Context, d pm.Diagram, width float32, th Theme, m gui.Measurer) (*Laid, error) {
 	fc := d.(*pm.FlowchartDiagram)
 	f := th.Font

@@ -9,14 +9,24 @@ import (
 	phtml "github.com/yongjohnlee80/golib/parse/html"
 )
 
+// CSS Flexbox & Grid Layout Architecture:
+//
+//	Flex Container (Row Direction):
+//	+-------------------------------------------------------------+
+//	| Main Axis --->                                              |
+//	| +------------+  +------------+  +-------------------------+ |
+//	| | Item 1     |  | Item 2     |  | Item 3 (flex-grow: 2)   | |
+//	| | (basis: w) |  | (basis: w) |  | (absorbs spare width)   | |
+//	| +------------+  +------------+  +-------------------------+ |
+//	+-------------------------------------------------------------+
+//	Cross Axis Alignment (align-items: stretch, center, flex-start)
+//
 // FLEX AND GRID — a flex or grid container's children are items: each element child blockified, and
 // each run of text an anonymous item. A flex container lays them in a row (or a column), wrapping
 // when it may, growing and shrinking them by flex-grow and flex-shrink from their basis, then
 // spreading them by justify-content and aligning them by align-items. A grid container lays them
 // in order, row by row, in the columns grid-template-columns gives (lengths, fr, minmax(),
 // repeat() with a count or auto-fit/auto-fill); named areas and explicit placement are not read.
-
-// items are a flex or grid container's children as items.
 func (b *builder) items(n *phtml.Node, st *computed, src [2]int) []*box {
 	var out []*box
 	for _, c := range n.Children {

@@ -20,8 +20,16 @@ var mindmapForm = [...]form{
 	pm.MindCircle: formCircle, pm.MindBang: formDoubleCircle, pm.MindCloud: formStadium, pm.MindHexagon: formHexagon,
 }
 
-// layMindmap lays a mind map out as a tree growing both ways from its root, at the centre: the
-// root's branches split right and left, each branch in a tint of its own.
+// Mindmap Layout Architecture:
+//
+//	[Branch Left A] <--+                  +--> [Branch Right A]
+//	                   |                  |
+//	[Branch Left B] <--+-- [Central Root] --+--> [Branch Right B]
+//	                   |                  |
+//	[Branch Left C] <--+                  +--> [Branch Right C]
+//
+// layMindmap lays a mind map out as a bidirectional tree growing both ways from its root,
+// splitting branches evenly between left and right with distinct palette tints.
 func layMindmap(ctx context.Context, d pm.Diagram, width float32, th Theme, m gui.Measurer) (*Laid, error) {
 	md := d.(*pm.MindmapDiagram)
 	f := th.Font

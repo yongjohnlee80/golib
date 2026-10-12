@@ -7,6 +7,19 @@ import (
 	"gioui.org/app"
 )
 
+// OS Main Thread Parking Architecture:
+//
+//	Primary OS Thread (Main)           Spawned Background Goroutine
+//	========================           ============================
+//	gui.Main(run)
+//	     |
+//	     +---> beforeGio()
+//	     +---> go func() { run() } ------> Initializes Backend, App,
+//	     |                                 and executes App.Run(ctx)
+//	     v
+//	app.Main() (Gio Platform Loop)
+//	(Drives Cocoa / Wayland / Win32)
+//
 // Main executes a GUI program and gives Gio the main OS thread, satisfying platform constraints
 // on macOS and iOS that require window lifecycle and graphics context management to bind to
 // the primary thread.

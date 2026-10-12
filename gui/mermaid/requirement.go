@@ -37,6 +37,26 @@ func requirementFields(n pm.RequirementNode) []string {
 	return out
 }
 
+// Requirement Diagram Layout Architecture:
+//
+//	+-------------------------------------------------------------+
+//	| Requirement Box                                             |
+//	| +---------------------------------------------------------+ |
+//	| | «requirement» ReqName                                   | |
+//	| +---------------------------------------------------------+ |  <- Divider
+//	| | Id: REQ-001                                             | |
+//	| | Text: System shall enforce zero permissions             | |  <- Fields
+//	| | Risk: High                                              | |
+//	| +---------------------------------------------------------+ |
+//	+-------------------------------------------------------------+
+//	                              :
+//	                              : - - - «satisfies» - - - >
+//	                              v
+//	+-------------------------------------------------------------+
+//	| Element Box                                                 |
+//	|   «element» ComponentA                                      |
+//	+-------------------------------------------------------------+
+//
 // layRequirement lays a requirement diagram out in layers: each requirement and element a box (its
 // «type» and name, then its fields under a divider), each relationship an edge named «kind». A
 // container holds what it contains by a solid line from a dot at the container; every other

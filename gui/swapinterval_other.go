@@ -2,6 +2,6 @@
 
 package gui
 
-// beforeGio has nothing to do outside Linux: only Gio's Wayland window has the swap-interval
-// problem swapinterval_linux.go works around.
+// beforeGio is a no-op on non-Linux platforms (macOS, Windows, iOS, Android),
+// where Wayland-specific swap-interval workarounds are unnecessary.
 func beforeGio() {}

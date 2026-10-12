@@ -52,6 +52,8 @@ type laidBlock struct {
 	text   string        // Raw: the line's text
 }
 
+// newPixelLayout instantiates a new high-resolution pixel layout manager for e,
+// tracking dirty flags, scroll metrics, and cached diagram rendering slots.
 func newPixelLayout(e *Editor) *pixelLayout {
 	return &pixelLayout{e: e, stale: true, diagrams: map[int]*diagramSlot{}}
 }

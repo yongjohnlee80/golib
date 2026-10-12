@@ -15,6 +15,36 @@ import (
 // WithDiagrams), as the editor's Rendered view draws a mermaid fence: Ready is its picture, in
 // the pre's place; Pending keeps the last picture, or the code until there is one; Declined, or
 // no Diagrammer, is the code.
+//
+// # HTML Mermaid Diagram Lifecycle Architecture
+//
+// Below is the lifecycle and task handoff pipeline for HTML page diagrams:
+//
+//	  <pre class="mermaid"> discovered in page DOM
+//	                       │
+//	                       ▼
+//	          htmlDiagrams.answer(src, width)
+//	                       │
+//	        ┌──────────────┴──────────────┐
+//	        │  Cached & !refresh?         │─── Yes ───► Return s.answerOf()
+//	        └──────────────┬──────────────┘
+//	                       │ No (Dirty / Stale)
+//	                       ▼
+//	          Cancel prior context, gen++
+//	          d.Diagram(ctx, req, readyFor)
+//	                       │
+//	          ┌────────────┴────────────┐
+//	          ▼                         ▼
+//	       Ready / Declined          Pending
+//	       (Store result)      (Keep prior pic)
+//	                                    │
+//	                               ready() fires
+//	                                    ▼
+//	                           tc.Go Task Result
+//	                                    ▼
+//	                           htmlDiagrams.done()
+//	                                    ▼
+//	                           s.refresh = true -> rebuild page
 
 // htmlDiagram is one diagram's request: what was asked, under which generation, and its last
 // picture.

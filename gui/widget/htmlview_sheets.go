@@ -16,6 +16,36 @@ import (
 // off the loop, as images are: the page is built at once without a sheet still on its way, and
 // built again when it lands. Sheets keep their place in the cascade among the page's <style>s.
 // A new resolver drops them with the images. @import is not followed.
+//
+// # Stylesheet Resolution & Cascade Pipeline
+//
+// Below is the external stylesheet fetching and CSS cascade integration pipeline:
+//
+//	  <link rel="stylesheet" href="...">
+//	                   │
+//	                   ▼
+//	          htmlSheets.entry(href)
+//	                   │
+//	        ┌──────────┴──────────┐
+//	        │  Cached Entry?      │─── Yes ───► Use existing sheetEntry
+//	        └──────────┬──────────┘
+//	                   │ No
+//	                   ▼
+//	          ctx.Go(loadSheet)
+//	                   │
+//	                   ▼
+//	          Resolver.Resolve(href)
+//	                   │
+//	        ┌──────────┴──────────┐
+//	        │  Within 1MB Cap?    │─── No ───► imgFailed / ErrImageCap
+//	        └──────────┬──────────┘
+//	                   │ Yes
+//	                   ▼
+//	          htmlSheets.done() -> sheetEntry.state = imgReady
+//	                   │
+//	                   ▼
+//	          Re-parse CSS rules & re-evaluate style cascade
+
 const (
 	maxSheetBytes = 1 << 20 // a stylesheet
 	maxSheets     = 32      // linked stylesheets a page loads

@@ -6,6 +6,19 @@ import (
 	"github.com/yongjohnlee80/golib/gui"
 )
 
+// Asynchronous Diagram Rendering Pipeline:
+//
+//	[ Markdown / HTML Parser encounters Mermaid Fence ]
+//	                       |
+//	                       v
+//	[ Diagrammer.Diagram(ctx, req, ready) ]
+//	      /                |               \
+//	     v                 v                v
+//	 [ Ready ]         [ Pending ]     [ Declined ]
+//	 Render Pic        Invoke ready()  Fall back to raw code block
+//	 vector view       when background
+//	                   job finishes
+//
 // Diagrammer draws a diagram block (a Mermaid fence) as a picture for HTMLView and the Editor's
 // Rendered mode. golib's native Mermaid implements it, chained to an application's fallback.
 type Diagrammer interface {

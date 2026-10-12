@@ -11,6 +11,19 @@ import (
 
 func init() { layers[pm.Journey] = layJourney }
 
+// User Journey Layout Architecture:
+//
+//	+---------------+  +---------------------------------------------------+
+//	| Actors Legend |  | Section Header (e.g. "Onboarding")                |
+//	|   (o) Alice   |  |   +---------------+           +---------------+   |
+//	|   (*) Bob     |  |   | Task 1        |           | Task 2        |   |
+//	|               |  |   | (o) (*) Dots  |           | (o) Dot       |   |
+//	|               |  |   +---------------+           +---------------+   |
+//	|               |  |           :                           :           |
+//	|               |  |       [:) Score]                  [:| Score]      |
+//	+---------------+  +---------------------------------------------------+
+//	       ========================> Direction Arrow ======================>
+//
 // layJourney lays a user journey out on one line: the actors' legend at the left, then each
 // section's header over its tasks, every task a box with its actors' dots, and its score a face
 // under it, joined by a dotted line; an arrow under the faces runs the journey's way.

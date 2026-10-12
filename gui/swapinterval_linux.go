@@ -2,6 +2,20 @@ package gui
 
 import "os"
 
+// Wayland Swap Interval VSync Bypass Architecture:
+//
+//	Wayland Compositor (Hidden Workspace)
+//	         |
+//	         | (No frame callbacks dispatched)
+//	         v
+//	[ eglSwapBuffers blocks if swap_interval = 1 ]
+//	         |
+//	         x (Ping response blocked -> Compositor marks app hung)
+//	         |
+//	Solution: Force driver-level interval 0
+//	(__GL_SYNC_TO_VBLANK=0, vblank_mode=0)
+//	-> eglSwapBuffers never stalls on hidden workspaces
+//
 // beforeGio turns off the GL drivers' vsync for a Wayland window, before Gio opens its display.
 //
 // Gio means to: it asks for swap interval 0 so that eglSwapBuffers never waits for a frame callback

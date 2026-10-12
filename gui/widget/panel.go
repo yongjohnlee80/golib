@@ -14,7 +14,7 @@ import (
 // Floating Window & Panel Architecture:
 //
 //	+-------------------------------------------------------------+
-//	| [Leading Widgets]  Window Title             [_]  [^]  [X]   |  <- Title Bar Chrome
+//	| [Leading Widgets]  Window Title     (Optional: [_] [^] [X]) |  <- Title Bar Chrome
 //	+-------------------------------------------------------------+
 //	|                                                             |
 //	|                                                             |
@@ -23,15 +23,16 @@ import (
 //	|                                                             |
 //	|                                                             |
 //	+-------------------------------------------------------------+
-//	|                                                         /// |  <- Resize Grip
+//	|                                           (Optional:  /// ) |  <- Resize Grip
 //	+-------------------------------------------------------------+
 //
-// Panel implements an in-application window container featuring a draggable title bar,
-// window control buttons (minimize, maximize/restore, close), and optional resize handles.
+// Panel is a window inside the app: a title bar over its content.
+// Every capability (moving, resizing, minimizing, maximizing, closing) is off by default until
+// explicitly enabled by options (such as WithWindowMove, WithWindowResize, WithWindowClose).
 //
-// In floating layouts, Panel cooperates with [tuiwidget.Float] to support mouse dragging,
-// window z-ordering, and edge resizing. When hosted under a GUI backend, Panel renders
-// hardware-accelerated vector title bars, anti-aliased control icons, and smooth shadows.
+// A movable or resizable Panel lives in a [tuiwidget.Float] (via InFloat); in an ordinary layout
+// it ignores both. When hosted under a GUI backend, Panel renders hardware-accelerated vector title
+// bars, crisp text, and anti-aliased control icons.
 type Panel struct {
 	tui.MultiChild
 	ctx *tui.Context

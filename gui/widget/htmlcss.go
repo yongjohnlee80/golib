@@ -11,6 +11,17 @@ import (
 	phtml "github.com/yongjohnlee80/golib/parse/html"
 )
 
+// CSS Cascading Style Resolution Architecture:
+//
+//	[ User Agent Stylesheet ] ---> [ Host Stylesheet ] ---> [ Page <style> & Inline style="" ]
+//	                                                                   |
+//	                                                                   v
+//	[ CSS Rule Specificity Sorter ] ------------------------------> Resolved Properties
+//	(ID # > Class . > Tag element, ordered by document position)       |
+//	                                                                   v
+//	[ Unit & Value Resolution (cssLen.px) ] ----------------------> Computed Box & Typography
+//	(px, em, rem, ch, %, vw, vh, calc/min/max/clamp)
+//
 // THE CSS SUBSET — what HTMLView's pixel layout reads of a page's styles: the page's <style>
 // elements, a host's stylesheet, and style="" attributes, over golib's own user-agent sheet.
 //
@@ -22,8 +33,6 @@ import (
 // border (solid, with its sides and its radius), background, width, max-width (margin: auto
 // centres), border-collapse and overflow. Anything else is ignored, as a browser ignores an
 // unknown property: never an error.
-
-// cssLen is a length as written: resolved against a font size, the root's, or a width at layout.
 type cssLen struct {
 	v    float32
 	unit byte     // 'p' px, 'e' em, 'r' rem, 'c' ch, '%', 'w' vw, 'h' vh, 'a' auto, 'x' an expression, 0 unset

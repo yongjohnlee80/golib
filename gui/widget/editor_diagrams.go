@@ -8,6 +8,33 @@ import (
 	"github.com/yongjohnlee80/golib/tui"
 )
 
+// # Editor Diagram Async Lifecycle Architecture
+//
+// Below is the lifecycle and task handoff pipeline for inline editor diagrams:
+//
+//	  pixelLayout.Diagram(req)
+//	            │
+//	    ┌───────┴───────┐
+//	    │ Cache Hit?    │─── Yes ───► Return s.answer() (Ready / Pending)
+//	    └───────┬───────┘
+//	            │ No (New / Dirty)
+//	            ▼
+//	  Create diagramSlot(gen++)
+//	  Launch d.Diagram(ctx, req, readyFor)
+//	            │
+//	            ├───────────────► Pending: keep previous picture during re-render
+//	            │
+//	     (Background Task)
+//	            │
+//	        ready() fires
+//	            ▼
+//	    tc.Go Task Result (diagramReady{line, gen})
+//	            ▼
+//	    pixelLayout.diagramReady(r)
+//	            │
+//	            ▼
+//	    Slot marked refresh=true, block invalidated, body.MarkDirty()
+
 // diagramSlot is one block's diagram request: what was asked, under which generation, and the
 // last picture the block had.
 type diagramSlot struct {

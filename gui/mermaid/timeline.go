@@ -15,6 +15,22 @@ type timelineCol struct {
 	events []laidNode
 }
 
+// Timeline Layout Architecture:
+//
+//	+-------------------------------------------------------------+
+//	| Section Band (Background Group)                             |
+//	|                                                             |
+//	|   [ Period 2024 ]                [ Period 2025 ]            | <- Timeline Axis
+//	|         |                              |                    |
+//	|   +-----------+                  +-----------+              |
+//	|   | Event 1   |                  | Event 3   |              | <- Stacked Event
+//	|   +-----------+                  +-----------+              |    Boxes
+//	|         |                              |                    |
+//	|   +-----------+                  +-----------+              |
+//	|   | Event 2   |                  | Event 4   |              |
+//	|   +-----------+                  +-----------+              |
+//	+-------------------------------------------------------------+
+//
 // layTimeline lays a timeline out in columns: its periods left to right, each a box on the
 // timeline's axis, each period's events stacked under it, joined to it by a line; a titled section
 // is a band behind its periods' columns, its title in the band's head; the title over all.

@@ -7,9 +7,20 @@ import (
 	"github.com/yongjohnlee80/golib/tui/style"
 )
 
-// colorOf is the colour c draws in: a theme token through th, an adaptive colour's leaf for a
-// dark or light page, RGB as it is, an ANSI index from gui's default palette. ok is false for the
-// default colour, which the caller takes from the cells.
+// Widget Color Resolution Cascade:
+//
+//	[ style.Color ]
+//	       |
+//	       +---> 1. Semantic Theme Token (th.Color(tok))
+//	       +---> 2. Adaptive Dark/Light Pair (dark leaf selection)
+//	       +---> 3. Concrete 24-bit TrueColor RGB
+//	       +---> 4. Indexed ANSI 16 / 256 Palette
+//	       |
+//	       v
+//	color.NRGBA (GPU Rasterization Ready)
+//
+// colorOf resolves style.Color specifications into concrete GPU color.NRGBA values.
+// Supports theme semantic tokens, adaptive light/dark pairs, direct 24-bit RGB, and ANSI indices.
 func colorOf(c style.Color, th *style.Theme, dark bool) (color.NRGBA, bool) {
 	if tok, ok := c.Token(); ok {
 		if th == nil {

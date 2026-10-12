@@ -10,8 +10,23 @@ import (
 	pm "github.com/yongjohnlee80/golib/parse/mermaid"
 )
 
-// Paint draws the diagram on c, its top left at c's origin. On the loop: it shapes each label line
-// with c's shaper the first time it is drawn.
+// Mermaid Vector Rasterization Pipeline:
+//
+//	[ *Laid Vector Geometry Model ]
+//	               |
+//	               +---> 1. Scale Affine Transform (Fit scaling if diagram > width)
+//	               +---> 2. Background Group Frames (Filled rounded rects, tabs, dashes)
+//	               +---> 3. Under-Layer Edges & Polylines (Dashed or solid links)
+//	               +---> 4. Shape Nodes (Forms: Rect, Stadium, Diamond, Cylinder, etc.)
+//	               +---> 5. Over-Layer Edges (Connectors routing above nodes)
+//	               +---> 6. Group Titles & Section Dividers
+//	               +---> 7. Free Text Annotations & Notes
+//	               |
+//	               v
+//	[ gui.Canvas GPU Vector Operations ]
+//
+// Paint renders the laid-out diagram geometry onto canvas c with its origin at (0, 0).
+// Text labels are dynamically shaped on the first frame using the canvas text shaper.
 func (l *Laid) Paint(c gui.Canvas) {
 	if l.fit != 1 {
 		c.PushTransform(f32.Affine2D{}.Scale(f32.Pt(0, 0), f32.Pt(l.fit, l.fit)))
