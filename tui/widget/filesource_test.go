@@ -3,12 +3,16 @@ package widget_test
 import (
 	"context"
 	"io"
+	"io/fs"
+	"os"
 	"path"
+	"path/filepath"
 	"strings"
 	"sync"
 	"sync/atomic"
 	"testing"
 	"testing/fstest"
+	"time"
 
 	"github.com/yongjohnlee80/golib/tui"
 	"github.com/yongjohnlee80/golib/tui/widget"
@@ -18,7 +22,7 @@ import (
 
 // filesource_test.go covers a VFS FileSource: listed and previewed off the
 // loop, a superseded read cancelled through its context, and the Open view's
-// `/` filter.
+// `/` filter; and an Async fs.FS one, read off the loop with its links followed.
 
 // gatedFS holds each ReadDir and Open on a path until the test releases it,
 // and counts the reads whose context ended while they were held.
@@ -405,4 +409,100 @@ func TestASaveViewAsksAVFSSourceWhetherANameIsAFolder(t *testing.T) {
 		t.Fatal("a folder's name was confirmed as a file to save")
 	}
 	h.shows("readme.md")
+}
+
+// gatedDirFS is an fs.FS whose ReadDir holds on a folder until the test
+// releases it, as a slow mount does; an fs.FS read takes no context, so a
+// superseded one is never stopped. A read held past a few seconds goes on, so
+// one made on the loop fails the test rather than hanging it.
+type gatedDirFS struct {
+	fstest.MapFS
+	g *gatedFS
+}
+
+func (d gatedDirFS) ReadDir(name string) ([]fs.DirEntry, error) {
+	d.g.started.Add(1)
+	select {
+	case <-d.g.gate("dir:" + name):
+	case <-time.After(5 * time.Second):
+	}
+	return d.MapFS.ReadDir(name)
+}
+
+// TestAnAsyncFSIsListedOffTheLoop: an Async fs.FS is listed as a VFS source
+// is, the list loading while the loop runs; a listing that a newer one
+// superseded cannot be stopped, and when it answers late it is dropped.
+func TestAnAsyncFSIsListedOffTheLoop(t *testing.T) {
+	files := fstest.MapFS{}
+	for p, body := range vfsFiles {
+		files[p] = &fstest.MapFile{Data: []byte(body)}
+	}
+	d := gatedDirFS{MapFS: files, g: &gatedFS{gates: map[string]chan struct{}{}}}
+	v := widget.NewFileOpenView(widget.WithFileViewSource(widget.FileSource{FS: d, Root: "mem://", Async: true}),
+		widget.WithFileViewDir("mem://"), widget.WithFileViewPreview(false))
+	h := startBrowser(t, v)
+	defer h.stop()
+	h.shows("loading")
+	ran := false
+	h.onLoop(func() { ran = true })
+	if !ran || strings.Contains(h.grid(), "top.txt") {
+		t.Fatalf("the loop ran %v; rows shown before the read was released:\n%s", ran, h.grid())
+	}
+	d.g.release("dir:.")
+	h.shows("top.txt")
+	before := d.g.started.Load()
+	h.onLoop(func() { v.SetDir("mem://a") }) // held
+	h.waitFor("a's read held", func() bool { return d.g.started.Load() > before })
+	h.onLoop(func() { v.SetDir("mem://b") })
+	d.g.release("dir:b")
+	h.shows("notes.md")
+	d.g.release("dir:a") // answers late
+	h.settle()
+	var dir string
+	h.onLoop(func() { dir = v.Dir() })
+	if dir != "mem://b" || strings.Contains(h.grid(), "readme.md") {
+		t.Fatalf("Dir %q: the late listing of a replaced b's:\n%s", dir, h.grid())
+	}
+}
+
+// TestAnAsyncLocalSourceFollowsLinksToFolders: through an Async os.DirFS, a
+// link to a folder is a folder, whether the link is absolute or relative;
+// Enter goes into it, and a file there previews. vfs/local cannot stand in:
+// its root refuses an absolute link, and it lists every link as a file.
+func TestAnAsyncLocalSourceFollowsLinksToFolders(t *testing.T) {
+	root := tree(t, map[string]string{"real/n.md": "note body"})
+	if err := os.Symlink(filepath.Join(root, "real"), filepath.Join(root, "abs")); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink("real", filepath.Join(root, "rel")); err != nil {
+		t.Fatal(err)
+	}
+	v := widget.NewFileOpenView(widget.WithFileViewSource(widget.FileSource{FS: os.DirFS("/"), Root: "/", Async: true}),
+		widget.WithFileViewDir(root))
+	h := startBrowser(t, v)
+	defer h.stop()
+	h.shows("rel/")
+	h.shows("abs/")
+	// .., abs/, real/, rel/: the cursor starts on ..
+	for link, downs := range map[string]int{"abs": 1, "rel": 3} {
+		h.onLoop(func() { v.SetDir(root) })
+		// real/ is a row of the root's alone: its rows are in, not the last folder's
+		h.waitFor("the root listed", func() bool {
+			var dir string
+			h.onLoop(func() { dir = v.Dir() })
+			return dir == root && strings.Contains(h.grid(), "real/")
+		})
+		for range downs {
+			h.inject(key(tui.KeyDown))
+		}
+		h.inject(key(tui.KeyEnter))
+		h.waitFor("into "+link, func() bool {
+			var dir string
+			h.onLoop(func() { dir = v.Dir() })
+			return dir == filepath.Join(root, link)
+		})
+		h.shows("n.md")
+		h.inject(key(tui.KeyDown)) // .., n.md
+		h.shows("note body")
+	}
 }

@@ -42,18 +42,24 @@ import (
 // every path the widgets report or accept is in that ROOTED form, so a host
 // hears an ordinary absolute path from a local dialog.
 //
-// An fs.FS is read on the UI loop, as the local disk always has been. A source
-// that may be slow (a daemon's, a remote store) is a [vfs.FS] in VFS instead,
-// which the widgets read OFF the loop, with the reading task's context: a
-// listing or a preview that a newer one supersedes, or that its dialog's
-// closing ends, is stopped rather than only dropped.
+// An fs.FS is read on the UI loop, as the local disk always has been, unless
+// Async says to read it off the loop. A source that may be slow (a daemon's, a
+// remote store) is a [vfs.FS] in VFS instead, which the widgets read OFF the
+// loop, with the reading task's context: a listing or a preview that a newer
+// one supersedes, or that its dialog's closing ends, is stopped rather than
+// only dropped.
 type FileSource struct {
 	FS fs.FS
 	// VFS, when set, is read instead of FS, off the loop: VFS wins when both
 	// are set. Its symlinks are listed as files, since vfs reports a link
 	// without following it.
-	VFS  vfs.FS
-	Root string
+	VFS vfs.FS
+	// Async reads FS off the loop, as a VFS source is read: a slow mount (NFS,
+	// sshfs) no longer holds the loop, and links are followed as on the loop.
+	// An fs.FS read takes no context, so a superseded one cannot be stopped:
+	// it runs to its end on a worker and its answer is dropped.
+	Async bool
+	Root  string
 }
 
 // LocalFiles is the local filesystem, rooted at "/".
@@ -83,16 +89,20 @@ func (s FileSource) fsPath(rooted string) (string, bool) {
 	return p, fs.ValidPath(p)
 }
 
-// or returns the source, or the local filesystem when it has none.
+// or returns the source, or the local filesystem when it has none, read off
+// the loop when the source said Async.
 func (s FileSource) or() FileSource {
 	if s.FS == nil && s.VFS == nil {
-		return LocalFiles()
+		local := LocalFiles()
+		local.Async = s.Async
+		return local
 	}
 	return s
 }
 
-// async reports whether the source is read off the loop: a VFS one.
-func (s FileSource) async() bool { return s.VFS != nil }
+// async reports whether the source is read off the loop: a VFS one, or an
+// Async fs.FS.
+func (s FileSource) async() bool { return s.VFS != nil || s.Async }
 
 // isDir reports whether an fs path is a folder, following a link to one in an
 // fs.FS. A VFS source is asked at once, on the caller's goroutine: it is a
@@ -246,14 +256,14 @@ type FileList struct {
 	all    []fileEntry
 	filter string
 
-	// A VFS source is listed off the loop (async): listTask is the listing in
+	// An async source (VFS, or an Async fs.FS) is listed off the loop: listTask is the listing in
 	// flight, loading the folder it reads, and want the name the cursor goes to
 	// once it arrives ("" for the first row). A newer load supersedes all three.
 	listTask tui.TaskID
 	loading  string
 	want     string
-	// stopList cancels the listing in flight: a newer load, or an fs.FS source
-	// taking over, stops it rather than leaving it to finish
+	// stopList cancels the listing in flight: a newer load, or a source read on
+	// the loop taking over, stops it rather than leaving it to finish
 	stopList context.CancelFunc
 	// width is the pane's width at the last layout, for fitting the title.
 	width int
@@ -278,7 +288,7 @@ func NewFileList(opts ...FileListOption) *FileList {
 	}
 	l.list = NewList(listOpts...)
 	l.box = newFilePane(l.list, l.src.Rooted(l.dir), l.st, l.styled)
-	// A VFS source is listed once the list is mounted, off the loop, so
+	// An async source is listed once the list is mounted, off the loop, so
 	// building a dialog never waits on it.
 	if !l.src.async() {
 		l.load(l.dir)
@@ -362,7 +372,7 @@ func (l *FileList) Layout(c tui.Constraints) tui.Size {
 
 func (l *FileList) Render(tui.Surface) {}
 
-// HandleEvent applies a VFS listing when it arrives, unless a newer load has
+// HandleEvent applies an async listing when it arrives, unless a newer load has
 // superseded it: a superseded task still reports, its ctx cancelled.
 func (l *FileList) HandleEvent(ev tui.Event) bool {
 	r, ok := ev.(tui.TaskResult)
@@ -429,8 +439,8 @@ func (l *FileList) SetSource(src FileSource) {
 	l.loadThen(l.startDir(), "")
 }
 
-// Dir is the folder being listed, as an fs path: the one on its way, while a
-// VFS listing is.
+// Dir is the folder being listed, as an fs path: the one on its way, while an
+// async listing is.
 func (l *FileList) Dir() string {
 	if l.loading != "" {
 		return l.loading
@@ -532,7 +542,7 @@ func (l *FileList) activate(i int) {
 func (l *FileList) load(dir string) { l.loadThen(dir, "") }
 
 // loadThen lists dir with the cursor on the row named want ("" for the first).
-// An fs.FS source is read here, on the loop; a VFS source off it, the old rows
+// A source read on the loop is read here; an async one off it, the old rows
 // kept and the title saying it is loading until the listing arrives.
 func (l *FileList) loadThen(dir, want string) {
 	l.want = want
@@ -620,7 +630,7 @@ func (l *FileList) placeWanted() {
 	}
 }
 
-// Loading reports whether a VFS listing is on its way.
+// Loading reports whether an async listing is on its way.
 func (l *FileList) Loading() bool { return l.loading != "" }
 
 // Filter is the text the rows are narrowed to, "" for none.

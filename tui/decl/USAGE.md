@@ -422,6 +422,18 @@ A newer folder or file supersedes the read in flight, which is cancelled
 through its context, and a dialog taken off the screen cancels its reads too.
 When both are set, `VFS` wins.
 
+**A slow mount on the local disk is an `Async` `fs.FS`.** `Async: true` reads
+`FS` off the loop the same way, so an NFS or sshfs folder can't hold the loop.
+Links are followed as they are on the loop: a link to a folder is a folder,
+absolute or relative. `vfs/local` can't stand in for this. Its root refuses an
+absolute link, and it lists every link as a file. An `fs.FS` read takes no
+context, so a superseded one can't be cancelled; it runs to its end and its
+answer is dropped.
+
+```go
+tuidecl.Files(widget.FileSource{FS: os.DirFS("/"), Root: "/", Async: true}) // a ProgramOption
+```
+
 **Filtering an Open dialog:** `/` in the listing opens a filter field. Typing
 narrows the rows to the names containing it, without regard to case (`..`
 stays). Enter returns to the listing with the filter kept. Esc clears the
