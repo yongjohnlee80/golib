@@ -5,7 +5,9 @@ import (
 	"encoding/json"
 	"reflect"
 	"strings"
+	"sync/atomic"
 	"testing"
+	"time"
 
 	"gioui.org/io/input"
 	"gioui.org/io/key"
@@ -41,43 +43,52 @@ func TestARecordedHangulCompositionShowsTheInputPathInRecords(t *testing.T) {
 	b.rec = ring
 	r.Queue(
 		key.EditEvent{Range: key.Range{Start: 0, End: 0}, Text: "ㅎ"},
+		key.SnippetEvent(key.Range{Start: 0, End: 1}),
 		key.CompositionEvent{Start: 0, End: 1},
 		key.EditEvent{Range: key.Range{Start: 0, End: 1}, Text: "한"},
 		key.CompositionEvent{Start: -1, End: -1},
 	)
 	b.readInput(r.Source(), tag, metrics{})
 	got := ring.records()
-	if len(got) != 11 {
+	if len(got) != 14 {
 		for i, rec := range got {
 			t.Logf("record %d: %+v", i, rec)
 		}
-		t.Fatalf("the composition was recorded as %d records; want 11 (in/ime per event, out, two cmds)", len(got))
+		t.Fatalf("the composition was recorded as %d records; want 14 (in/ime per event, the snippet reply, out, two cmds)", len(got))
 	}
 	recMatches(t, got[0], 0, StageIn, "TextEdit", map[string]any{"start": 0, "end": 0, "text": "ㅎ"})
 	recMatches(t, got[1], 1, StageIME, "imeState", map[string]any{
 		"text": "ㅎ", "comp": map[string]any{"start": 0, "end": 0}, "sel": map[string]any{"start": 0, "end": 0},
 		"pieces": []map[string]any{{"from": 0, "text": "ㅎ", "folded": false}},
 	})
-	recMatches(t, got[2], 2, StageIn, "Composition", map[string]any{"start": 0, "end": 1})
-	recMatches(t, got[3], 3, StageIME, "imeState", map[string]any{
+	recMatches(t, got[2], 2, StageIn, "SnippetAsk", map[string]any{"start": 0, "end": 1})
+	// The answer to the snippet ask is a cmd record: what the toolkit was told the editor
+	// holds, which is the handshake the macOS bug lived in.
+	recMatches(t, got[3], 3, StageCmd, "SnippetReply", map[string]any{"start": 0, "end": 1, "text": "ㅎ"})
+	recMatches(t, got[4], 4, StageIME, "imeState", map[string]any{
+		"text": "ㅎ", "comp": map[string]any{"start": 0, "end": 0}, "sel": map[string]any{"start": 0, "end": 0},
+		"pieces": []map[string]any{{"from": 0, "text": "ㅎ", "folded": false}},
+	})
+	recMatches(t, got[5], 5, StageIn, "Composition", map[string]any{"start": 0, "end": 1})
+	recMatches(t, got[6], 6, StageIME, "imeState", map[string]any{
 		"text": "ㅎ", "comp": map[string]any{"start": 0, "end": 1}, "sel": map[string]any{"start": 0, "end": 0},
 		"pieces": []map[string]any{{"from": 0, "text": "ㅎ", "folded": false}},
 	})
-	recMatches(t, got[4], 4, StageIn, "TextEdit", map[string]any{"start": 0, "end": 1, "text": "한"})
-	recMatches(t, got[5], 5, StageIME, "imeState", map[string]any{
+	recMatches(t, got[7], 7, StageIn, "TextEdit", map[string]any{"start": 0, "end": 1, "text": "한"})
+	recMatches(t, got[8], 8, StageIME, "imeState", map[string]any{
 		"text": "한", "comp": map[string]any{"start": 0, "end": 1}, "sel": map[string]any{"start": 0, "end": 0},
 		"pieces": []map[string]any{{"from": 0, "text": "한", "folded": true}},
 	})
-	recMatches(t, got[6], 6, StageIn, "Composition", map[string]any{"start": -1, "end": -1})
-	recMatches(t, got[7], 7, StageIME, "imeState", map[string]any{
+	recMatches(t, got[9], 9, StageIn, "Composition", map[string]any{"start": -1, "end": -1})
+	recMatches(t, got[10], 10, StageIME, "imeState", map[string]any{
 		"text": "한", "comp": map[string]any{"start": -1, "end": -1}, "sel": map[string]any{"start": 0, "end": 0},
 		"pieces": []map[string]any{{"from": 0, "text": "한", "folded": true}},
 	})
-	recMatches(t, got[8], 8, StageOut, "KeyEvent", map[string]any{
+	recMatches(t, got[11], 11, StageOut, "KeyEvent", map[string]any{
 		"events": []tui.KeyEvent{{Kind: tui.KeyPress, Code: '한', Text: "한"}},
 	})
-	recMatches(t, got[9], 9, StageCmd, "SnippetReply", map[string]any{"start": 0, "end": 0, "text": ""})
-	recMatches(t, got[10], 10, StageCmd, "SelectionTell", map[string]any{
+	recMatches(t, got[12], 12, StageCmd, "SnippetReply", map[string]any{"start": 0, "end": 0, "text": ""})
+	recMatches(t, got[13], 13, StageCmd, "SelectionTell", map[string]any{
 		"start": 0, "end": 0,
 		"caret": map[string]any{"x": float32(0), "y": float32(0), "ascent": float32(0), "descent": float32(0)},
 	})
@@ -178,6 +189,166 @@ func TestTheUnrecordedInputPathAllocatesNothing(t *testing.T) {
 	}); allocs > 6 {
 		t.Fatalf("readInput with no recorder allocated %v per call; the recorder must add nothing to the six it already made before it existed", allocs)
 	}
+}
+
+// The focus handshake is recorded too: the prologue's commands — taking the focus and
+// opening the text input, which on Wayland is what lets an input method attach at all —
+// are cmd records, in the order they were sent.
+func TestTheFocusHandshakeIsRecorded(t *testing.T) {
+	ring := newRingRecorder(8)
+	b := &Backend{q: newEventQueue(), rec: ring}
+	tag := &b.gio
+	src := &recordingSource{}
+	b.readInput(src, tag, metrics{})
+	got := ring.records()
+	if len(got) != 2 {
+		for i, rec := range got {
+			t.Logf("record %d: %+v", i, rec)
+		}
+		t.Fatalf("the focus handshake was recorded as %d records; want the FocusTake and KeyboardShow cmds", len(got))
+	}
+	recMatches(t, got[0], 0, StageCmd, "FocusTake", map[string]any{})
+	recMatches(t, got[1], 1, StageCmd, "KeyboardShow", map[string]any{})
+}
+
+// A recorder that panics if a Record arrives after its Close: if anything but the
+// window goroutine closed the recorder, or closed it early, recording would panic.
+type panicAfterCloseRecorder struct {
+	closed atomic.Bool
+}
+
+func (p *panicAfterCloseRecorder) Record(Record) {
+	if p.closed.Load() {
+		panic("a record arrived after the recorder was closed")
+	}
+}
+
+func (p *panicAfterCloseRecorder) Close() error {
+	p.closed.Store(true)
+	return nil
+}
+
+// Stop must not close the recorder itself, and must not return before the window
+// goroutine has finished recording and closed it: the recorder's only writer
+// closes it, last, in run's tail.
+func TestStopWaitsForTheWindowGoroutineBeforeTheRecorderCloses(t *testing.T) {
+	pr := &panicAfterCloseRecorder{}
+	b := NewBackend(WithRecorder(pr))
+	b.forwarding.Store(true) // as Start leaves it: Stop may wait for the window goroutine
+	go b.q.forward()
+	flowing := make(chan struct{})
+	go func() { // the window goroutine: records flow while the App stops, then run's tail
+		defer close(flowing)
+		for i := range 100000 {
+			b.record(StageIn, "TextEdit", map[string]any{"i": i})
+		}
+		b.finishRun()
+	}()
+	if err := b.Stop(); err != nil {
+		t.Fatalf("Stop: %v", err)
+	}
+	<-flowing
+	if !pr.closed.Load() {
+		t.Fatal("Stop returned before the recorder was closed")
+	}
+}
+
+// A second Stop must not close the recorder again: the close is once, and both Stops
+// report its error.
+type closingCounterRecorder struct {
+	closes atomic.Int32
+}
+
+func (c *closingCounterRecorder) Record(Record) {}
+
+func (c *closingCounterRecorder) Close() error {
+	c.closes.Add(1)
+	return nil
+}
+
+func TestASecondStopClosesTheRecorderOnce(t *testing.T) {
+	pr := &closingCounterRecorder{}
+	b := NewBackend(WithRecorder(pr))
+	b.forwarding.Store(true)
+	go b.q.forward()
+	b.finishRun() // the window goroutine's tail, as run defers it
+	if err := b.Stop(); err != nil {
+		t.Fatalf("first Stop: %v", err)
+	}
+	if err := b.Stop(); err != nil {
+		t.Fatalf("second Stop: %v", err)
+	}
+	if n := pr.closes.Load(); n != 1 {
+		t.Fatalf("the recorder was closed %d times; a second Stop must not close it again", n)
+	}
+}
+
+// A stalled writer must not stall the window goroutine: records that do not fit the
+// handoff channel are dropped, counted, and the writer notes the drop in the file
+// before the next record it writes — a recording never loses events silently.
+func TestABlockedWriterDropsRatherThanBlocks(t *testing.T) {
+	release := make(chan struct{})
+	w := &blockingWriter{release: release}
+	rec := NewJSONLRecorder(w)
+	sent := make(chan struct{})
+	go func() {
+		defer close(sent)
+		for i := range 20000 {
+			rec.Record(Record{Seq: uint64(i), Kind: "r"})
+		}
+	}()
+	select {
+	case <-sent: // recorded everything without the writer ever leaving its first flush
+	case <-time.After(10 * time.Second):
+		t.Fatal("Record blocked on a stalled writer")
+	}
+	if rec.dropped.Load() == 0 {
+		t.Fatal("a stalled writer with a full handoff channel dropped nothing")
+	}
+	close(release)
+	if err := rec.Close(); err != nil {
+		t.Fatalf("Close: %v", err)
+	}
+	// The drop notes are cumulative and never exceed the final total; drops keep
+	// landing while the writer drains, so there can be several — the last carries
+	// the total.
+	var notes []uint64
+	for _, line := range strings.Split(strings.TrimRight(w.buf.String(), "\n"), "\n") {
+		if !strings.Contains(line, `"Kind":"dropped"`) {
+			continue
+		}
+		var rec Record
+		if err := json.Unmarshal([]byte(line), &rec); err != nil {
+			t.Fatalf("a dropped line is not one JSON record: %v\n%s", err, line)
+		}
+		notes = append(notes, uint64(rec.Data["n"].(float64)))
+	}
+	if len(notes) == 0 {
+		t.Fatalf("a stalled writer with a full handoff channel dropped %d records and noted none in the file", rec.dropped.Load())
+	}
+	for i, n := range notes {
+		if i > 0 && n < notes[i-1] {
+			t.Fatalf("drop notes %v are not cumulative", notes)
+		}
+		if n > rec.dropped.Load() {
+			t.Fatalf("a drop note claims %d of %d dropped", n, rec.dropped.Load())
+		}
+	}
+	if notes[len(notes)-1] != rec.dropped.Load() {
+		t.Fatalf("the last drop note carries %d; want the %d dropped", notes[len(notes)-1], rec.dropped.Load())
+	}
+}
+
+// blockingWriter releases nothing until its release channel closes, then keeps
+// everything written to it.
+type blockingWriter struct {
+	release chan struct{}
+	buf     bytes.Buffer
+}
+
+func (w *blockingWriter) Write(p []byte) (int, error) {
+	<-w.release
+	return w.buf.Write(p)
 }
 
 func TestWithRecorderInstallsTheRecorder(t *testing.T) {

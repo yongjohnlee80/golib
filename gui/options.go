@@ -170,6 +170,6 @@ func WithDecorations(on bool) Option {
 // Privacy: a recording contains every typed character — including passwords —
 // so nothing is recorded unless a recorder is given, and a recorder writes only
 // where its installer points it, never anywhere by default. A recorder that is
-// also an io.Closer is closed when the backend stops, which flushes the
-// [JSONLRecorder]'s buffer.
+// also an io.Closer is closed by the window's goroutine when the window finishes,
+// before [Backend.Stop] returns — which flushes the [JSONLRecorder]'s buffer.
 func WithRecorder(r Recorder) Option { return func(c *config) { c.recorder = r } }
