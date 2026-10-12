@@ -44,9 +44,18 @@ func newHotDir(t *testing.T, layout string) *hotDir {
 	return d
 }
 
+// write replaces file whole, by a rename, as an editor saves. os.WriteFile
+// truncates first, and under load the poller can see the empty file for two
+// polls running, reload it, and record a refusal no test edit made. The
+// poller reads only .qml and .xml, so the .tmp beside it is never seen.
 func (d *hotDir) write(file, src string) {
 	d.t.Helper()
-	if err := os.WriteFile(filepath.Join(d.root, file), []byte(src), 0o644); err != nil {
+	path := filepath.Join(d.root, file)
+	tmp := path + ".tmp"
+	if err := os.WriteFile(tmp, []byte(src), 0o644); err != nil {
+		d.t.Fatal(err)
+	}
+	if err := os.Rename(tmp, path); err != nil {
 		d.t.Fatal(err)
 	}
 }
