@@ -22,14 +22,13 @@ import (
 //
 // TRANSPARENT: it holds one content item and is otherwise not there. The content is laid out as the
 // FocusScope's parent lays the FocusScope; nothing is painted; the scope takes neither focus nor the
-// pointer, so the Tab order and what a click lands on are those of the content alone. A FocusScope
-// with no Layout or Dock properties of its own takes its content's, so wrapping an item leaves where
-// it sits unchanged.
+// pointer, so the Tab order and what a click lands on are those of the content alone. Its parent
+// lays out the FocusScope, so Layout and Dock properties are written on it, as in Qt, not on its
+// content: wrapping an item moves them to the scope.
 //
 // A RELOAD edits it in place, as a Window: its children are sorted into content and keys again on
 // each change, so a Shortcut added, removed or replaced is live or gone at once, and content that is
-// still there stays mounted. A FocusScope that took its content's Layout or Dock is rebuilt
-// instead, so its parent reads them again.
+// still there stays mounted.
 
 // focusScopeNode is a FocusScope: its content, and the keys live within it.
 type focusScopeNode struct {

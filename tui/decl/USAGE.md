@@ -854,6 +854,8 @@ What AutoDB's screen settled on, the conventions to copy:
   ```
 
   The focused widget still has the key first, so a field in the panel types `d`.
+  A `FocusScope` is the item its parent lays out, so `Layout.fillHeight` and
+  `Dock.edge` go on it, as in Qt, not on the editor inside.
 
 ## 11. Testing a QML screen
 

@@ -1,6 +1,7 @@
 package decl_test
 
 import (
+	"fmt"
 	"slices"
 	"strings"
 	"testing"
@@ -155,14 +156,15 @@ Window {
 	}
 }
 
-// TestAFocusScopeIsNotThere: wrapping an item in a FocusScope leaves the screen as it was (the
-// wrapped Frame's Layout.fillHeight is the scope's), the Tab order as it was, and a click on a
-// Button in it presses that Button.
+// TestAFocusScopeIsNotThere: wrapping an item in a FocusScope, its Layout.fillHeight moved to the
+// scope, leaves the screen as it was, the Tab order as it was, and a click on a Button in it
+// presses that Button.
 func TestAFocusScopeIsNotThere(t *testing.T) {
 	doc := func(wrap bool) string {
-		middle := `Frame { Layout.fillHeight: true; title: "body"; Button { text: "b2"; onClicked: App.hit("b2") } }`
-		if wrap {
-			middle = "FocusScope {\n Shortcut { sequence: \"z\" }\n " + middle + "\n}"
+		frame := `Frame { %s title: "body"; Button { text: "b2"; onClicked: App.hit("b2") } }`
+		middle := fmt.Sprintf(frame, "Layout.fillHeight: true;")
+		if wrap { // the fill moves to the scope, the item the Flex lays out
+			middle = "FocusScope {\n Layout.fillHeight: true\n Shortcut { sequence: \"z\" }\n " + fmt.Sprintf(frame, "") + "\n}"
 		}
 		return `
     Flex {
@@ -210,18 +212,20 @@ func TestAFocusScopeIsNotThere(t *testing.T) {
 	}
 }
 
-// TestAFocusScopesContentAttachedIsCheckedByItsParent: a Layout property on a FocusScope's content
-// reaches the Flex around the scope; under a Window, which reads no Layout, it is refused.
-func TestAFocusScopesContentAttachedIsCheckedByItsParent(t *testing.T) {
+// TestALayoutOnAFocusScopesContentIsRefused, naming the scope as where it goes: its parent lays out
+// the FocusScope, not what is in it.
+func TestALayoutOnAFocusScopesContentIsRefused(t *testing.T) {
 	_, err := tuidecl.NewProgram(tuidecl.LayoutSource("main.qml", []byte(`import tui 1.0
 Window {
-    FocusScope {
-        Shortcut { sequence: "z" }
-        Frame { Layout.fillHeight: true; Text { text: "x" } }
+    Flex {
+        FocusScope {
+            Shortcut { sequence: "z" }
+            Frame { Layout.fillHeight: true; Text { text: "x" } }
+        }
     }
 }`)))
-	if err == nil || !strings.Contains(err.Error(), "FocusScope's parent Window does not read Layout") {
-		t.Fatalf("err = %v, want Layout.fillHeight refused under the Window", err)
+	if err == nil || !strings.Contains(err.Error(), "put it on the FocusScope") {
+		t.Fatalf("err = %v, want Layout.fillHeight on the content refused, naming the FocusScope", err)
 	}
 }
 
@@ -261,42 +265,47 @@ func TestAReloadEditsAFocusScopesShortcuts(t *testing.T) {
 	}
 }
 
-// TestAReloadOfAFocusScopeThatTookItsContentsLayout: a scope with no Layout of its own, whose
-// content fills the Flex, still fills it after a reload that adds a Shortcut, and the new key is
-// live; a reload that takes the fill off its content leaves the screen as a document written that
-// way from the start, since the parent reads the content's Layout again.
-func TestAReloadOfAFocusScopeThatTookItsContentsLayout(t *testing.T) {
-	doc := func(keys, fill string) string {
+// TestAReloadOfAFocusScopesLayout: a reload that adds a Shortcut keeps the scope's fill and its
+// content (the same component) and the key is live; one that takes the fill off the scope, and one
+// that puts it back, each leave the screen as a document written that way from the start.
+func TestAReloadOfAFocusScopesLayout(t *testing.T) {
+	doc := func(fill, keys string) string {
 		return `
     Flex {
         direction: Tui.Vertical
         FocusScope {
+            ` + fill + `
             ` + keys + `
-            Frame { ` + fill + ` title: "body"; Button { text: "in" } }
+            Frame { id: body; title: "body"; Button { id: in; text: "in" } } // ids: a reload knows them again
         }
         Text { text: "under" }
     }`
 	}
-	const fills = "Layout.fillHeight: true;"
-	s, rec := runScoped(t, 30, 10, doc(`Shortcut { sequence: "z" }`, fills))
-	s.WaitForText(t, "under")
-	before := s.String()
-	added := `Shortcut { sequence: "z" }
+	const fills = "Layout.fillHeight: true"
+	one := `Shortcut { sequence: "z" }`
+	two := `Shortcut { sequence: "z" }
             Shortcut { sequence: "y"; onActivated: App.hit("y") }`
-	reloadScreen(t, s, scopedDoc(doc(added, fills)))
+	freshScreen := func(fill string) string {
+		f, _ := runScoped(t, 30, 10, doc(fill, two))
+		f.WaitForText(t, "under")
+		return f.String()
+	}
+	s, rec := runScoped(t, 30, 10, doc(fills, one))
 	s.WaitForText(t, "under")
-	if after := s.String(); after != before {
-		t.Fatalf("the layout changed on reload:\nbefore:\n%s\nafter:\n%s", before, after)
+	before, inBefore := s.String(), func() tui.Component { c, _ := s.Program.Find("in"); return c }()
+	reloadScreen(t, s, scopedDoc(doc(fills, two)))
+	if after, inAfter := s.String(), func() tui.Component { c, _ := s.Program.Find("in"); return c }(); after != before || inAfter != inBefore {
+		t.Fatalf("a Shortcut added changed the layout or rebuilt the content (same: %v):\nbefore:\n%s\nafter:\n%s", inAfter == inBefore, before, after)
 	}
 	s.Keys(t, press(tui.KeyTab), press('y'))
 	if got := hits(t, rec, 1); got[0] != "y" {
 		t.Fatalf("got %v, want the added y", got)
 	}
-
-	fresh, _ := runScoped(t, 30, 10, doc(added, ""))
-	fresh.WaitForText(t, "under")
-	reloadScreen(t, s, scopedDoc(doc(added, "")))
-	s.WaitFor(t, "the screen as the fresh one", func(sc string) bool { return sc == fresh.String() })
+	for _, fill := range []string{"", fills} { // off, then back on
+		want := freshScreen(fill)
+		reloadScreen(t, s, scopedDoc(doc(fill, two)))
+		s.WaitFor(t, "the screen as the fresh one, fill "+fill, func(sc string) bool { return sc == want })
+	}
 }
 
 // TestAReloadEditsADrawersShortcuts: a Shortcut added to a Drawer by a reload is live in it.
