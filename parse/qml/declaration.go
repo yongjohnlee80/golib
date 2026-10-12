@@ -1,8 +1,6 @@
 package qml
 
 import (
-	"strings"
-
 	"github.com/yongjohnlee80/golib/parse"
 )
 
@@ -12,7 +10,9 @@ import (
 //	    property string label: "Find"
 //	    required property var model
 //	    default property alias columns: list.data
+//	    property alias footer: footerRow.data
 //	    TableView { id: list; model: model }
+//	    Row { id: footerRow }
 //	}
 //
 // The parser records what was declared and how it was spelled; what a
@@ -80,10 +80,7 @@ func (p *qmlParser) declaration(n *SpecNode, word string, at parse.Position) err
 		return err
 	}
 	if typ == "alias" {
-		if word != "default" {
-			return p.refuseAlias(at)
-		}
-		return p.defaultAlias(n, d)
+		return p.alias(n, d, word == "default", at)
 	}
 	if word == "default" {
 		return parse.SyntaxError{Format: "qml", Pos: at,
@@ -175,8 +172,11 @@ func (p *qmlParser) declName() (string, error) {
 	return name, nil
 }
 
-// defaultAlias reads the rest of `default property alias <name>: <id>.data`.
-func (p *qmlParser) defaultAlias(n *SpecNode, d SpecDecl) error {
+// alias reads the rest of `[default] property alias <name>: <id>.data`. The
+// default one takes the use site's children; a named one, a slot, takes the
+// object its use site sets it to. An alias to anything but an object's data is
+// refused, naming the plain property that says the same (refuseAlias).
+func (p *qmlParser) alias(n *SpecNode, d SpecDecl, isDefault bool, at parse.Position) error {
 	d.Type = "alias"
 	if err := p.skipSpace(); err != nil {
 		return err
@@ -188,17 +188,21 @@ func (p *qmlParser) defaultAlias(n *SpecNode, d SpecDecl) error {
 	if err := p.skipSpace(); err != nil {
 		return err
 	}
-	const want = "<id>.data after default property alias "
+	kind := "property alias "
+	if isDefault {
+		kind = "default " + kind
+	}
+	want := "<id>.data after " + kind
 	if !p.sc.Take(":") {
 		return p.wanted(p.sc.Pos(), ": "+want+d.Name)
 	}
 	if err := p.skipSpace(); err != nil {
 		return err
 	}
-	at := p.sc.Pos()
+	targetAt := p.sc.Pos()
 	target, ok := p.ident()
 	if !ok {
-		return p.wanted(at, want+d.Name+":")
+		return p.wanted(targetAt, want+d.Name+":")
 	}
 	if !p.sc.Take(".") {
 		return p.wanted(p.sc.Pos(), want+d.Name+":")
@@ -209,33 +213,38 @@ func (p *qmlParser) defaultAlias(n *SpecNode, d SpecDecl) error {
 		return p.wanted(leafAt, want+d.Name+":")
 	}
 	if leaf != "data" || p.sc.HasPrefix(".") {
-		return parse.SyntaxError{Format: "qml", Pos: at,
+		path := target + "." + leaf
+		for p.sc.Take(".") {
+			seg, ok := p.ident()
+			if !ok {
+				break
+			}
+			path += "." + seg
+		}
+		if !isDefault {
+			return refuseAlias(at, d.Name, path)
+		}
+		return parse.SyntaxError{Format: "qml", Pos: targetAt,
 			Want: want + d.Name + ": the use site's children go to an object's data",
-			Got:  parse.Quoted(target + "." + leaf)}
+			Got:  parse.Quoted(path)}
 	}
-	d.Target = target
+	if d.Required {
+		return parse.SyntaxError{Format: "qml", Pos: at,
+			Want: "property alias " + d.Name + ": " + target + ".data without required: a slot " +
+				"its use site leaves unset is empty",
+			Got: parse.Quoted("required property alias")}
+	}
+	d.Target, d.Slot = target, !isDefault
 	p.takeStatementEnd()
 	n.Decls = append(n.Decls, d)
 	return nil
 }
 
-// refuseAlias refuses `property alias x: a.b`, naming the plain property that
-// says the same thing. The rest of the declaration is read, when it parses, so
-// the message can name x and a.b; when it does not, the message says it
-// generally.
-func (p *qmlParser) refuseAlias(at parse.Position) error {
-	want := "property <type> <name>, set where the aliased property is set, " +
-		"since a component declares no alias but its default one"
-	if err := p.skipSpace(); err == nil {
-		if name, ok := p.ident(); ok {
-			if err := p.skipSpace(); err == nil && p.sc.Take(":") {
-				if v, err := p.value(); err == nil && v.Kind == SpecValueRef {
-					want = "property <type> " + name + ", used where " +
-						strings.Join(v.Path, ".") + " is set, since a component declares " +
-						"no alias but its default one"
-				}
-			}
-		}
-	}
-	return parse.SyntaxError{Format: "qml", Pos: at, Want: want, Got: parse.Quoted("property alias")}
+// refuseAlias refuses `property alias x: a.b` where b is not data, naming the
+// plain property that says the same thing.
+func refuseAlias(at parse.Position, name, path string) error {
+	return parse.SyntaxError{Format: "qml", Pos: at,
+		Want: "property <type> " + name + ", used where " + path + " is set, since a " +
+			"component's alias is to an object's data (a slot) and to nothing else",
+		Got: parse.Quoted("property alias")}
 }
