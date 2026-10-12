@@ -47,6 +47,9 @@ type FilePreview struct {
 	// readTask is a VFS preview in flight; a newer Show supersedes it.
 	readTask tui.TaskID
 	reading  bool
+	// stopRead cancels the read in flight: a folder row or an fs.FS source,
+	// shown at once, stops it rather than leaving it to finish
+	stopRead context.CancelFunc
 }
 
 // NewFilePreview builds an empty preview, dressed like the panes beside it.
@@ -97,6 +100,7 @@ func (p *FilePreview) HandleEvent(ev tui.Event) bool {
 		return ok && r.Owner == p.NodeID()
 	}
 	p.reading = false
+	p.stop()
 	got, _ := r.Value.(preview)
 	p.put(got.path, got.text, got.note, got.arg)
 	return true
@@ -120,6 +124,7 @@ type preview struct {
 func (p *FilePreview) Show(src FileSource, path string, folder bool) {
 	src = src.or()
 	ctx := p.Context()
+	p.stop()
 	if !src.async() || folder || ctx == nil {
 		p.reading = false
 		text, note, arg := previewOf(context.Background(), src, path, folder)
@@ -128,10 +133,18 @@ func (p *FilePreview) Show(src FileSource, path string, folder bool) {
 	}
 	p.reading = true
 	p.put(path, "", tui.Msg("tui.files.loading"), "")
-	p.readTask = ctx.Go(func(c context.Context) (any, error) {
+	p.readTask, p.stopRead = goRead(ctx, "files.preview", func(c context.Context) (any, error) {
 		text, note, arg := previewOf(c, src, path, false)
 		return preview{path: path, text: text, note: note, arg: arg}, nil
-	}, tui.Exclusive("files.preview"))
+	})
+}
+
+// stop cancels the read in flight, if any.
+func (p *FilePreview) stop() {
+	if p.stopRead != nil {
+		p.stopRead()
+		p.stopRead = nil
+	}
 }
 
 // put shows a file's text, or a note in its place.
