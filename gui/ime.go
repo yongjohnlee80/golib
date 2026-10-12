@@ -55,7 +55,7 @@ type imeState struct {
 	// pieces tracks committed text pieces alongside their buffer positions.
 	// Preserves arrival order while tracking positional shifts caused by prior edits.
 	pieces []imePiece
-	// sel mirrors the active selection within the buffer (from key.SelectionEvent),
+	// sel mirrors the active selection within the buffer (from a SelectionSet),
 	// allowing the backend to report consistent state back to the OS.
 	sel key.Range
 }
@@ -67,10 +67,10 @@ type imePiece struct {
 	folded bool
 }
 
-// edit applies an incoming [key.EditEvent] by replacing buffer runes [Range.Start, Range.End)
-// with the replacement text. Out-of-bounds ranges are safely clamped.
-func (s *imeState) edit(e key.EditEvent) {
-	start, end := s.clamp(e.Range)
+// edit applies an incoming [TextEdit] by replacing buffer runes [Start, End) with the
+// replacement text. Out-of-bounds ranges are safely clamped.
+func (s *imeState) edit(e TextEdit) {
+	start, end := s.clamp(e.Start, e.End)
 	repl := []rune(e.Text)
 	next := make([]rune, 0, len(s.text)-(end-start)+len(repl))
 	next = append(next, s.text[:start]...)
@@ -153,12 +153,15 @@ func (s *imeState) revise(start, end int, repl []rune) []imePiece {
 	return out
 }
 
-// compose records the composing range.
-func (s *imeState) compose(e key.CompositionEvent) { s.comp = key.Range(e) }
+// compose records the composing range of a [Composition].
+func (s *imeState) compose(e Composition) { s.comp = key.Range{Start: e.Start, End: e.End} }
+
+// setSelection records the input method's selection of the buffer.
+func (s *imeState) setSelection(e SelectionSet) { s.sel = key.Range{Start: e.Start, End: e.End} }
 
 // composing reports whether there is an active non-empty IME composition range.
 func (s *imeState) composing() bool {
-	start, end := s.clamp(s.comp)
+	start, end := s.clamp(s.comp.Start, s.comp.End)
 	return s.comp.Start >= 0 && end > start
 }
 
@@ -171,7 +174,7 @@ func (s *imeState) held() (text []rune, comp key.Range, ok bool) {
 	if !s.composing() {
 		return nil, key.Range{}, false
 	}
-	start, end := s.clamp(s.comp)
+	start, end := s.clamp(s.comp.Start, s.comp.End)
 	return s.text, key.Range{Start: start, End: end}, true
 }
 
@@ -180,7 +183,7 @@ func (s *imeState) preedit() string {
 	if !s.composing() {
 		return ""
 	}
-	start, end := s.clamp(s.comp)
+	start, end := s.clamp(s.comp.Start, s.comp.End)
 	return string(s.text[start:end])
 }
 
@@ -214,26 +217,25 @@ func (s *imeState) take() ([]string, bool) {
 
 // selection is the input method's selection in the buffer, clamped to it.
 func (s *imeState) selection() key.Range {
-	start, end := s.clamp(s.sel)
+	start, end := s.clamp(s.sel.Start, s.sel.End)
 	if s.sel.Start > s.sel.End {
 		start, end = end, start // keep the direction the input method gave
 	}
 	return key.Range{Start: start, End: end}
 }
 
-// snippet is the buffer's text over r, clamped to the buffer: the answer to Gio's SnippetEvent,
-// so its copy of the text the input method edits matches the input method's.
-func (s *imeState) snippet(r key.Range) key.Snippet {
-	start, end := s.clamp(r)
-	return key.Snippet{Range: key.Range{Start: start, End: end}, Text: string(s.text[start:end])}
+// snippet is the buffer's text over ask, clamped to the buffer: the answer to a [SnippetAsk],
+// so the toolkit's copy of the text the input method edits matches the input method's.
+func (s *imeState) snippet(ask SnippetAsk) SnippetReply {
+	start, end := s.clamp(ask.Start, ask.End)
+	return SnippetReply{Start: start, End: end, Text: string(s.text[start:end])}
 }
 
 // empty reports whether the buffer holds nothing, so Gio's copy should be reset to match.
 func (s *imeState) empty() bool { return len(s.text) == 0 }
 
 // clamp returns normalized start and end rune indices clamped to the buffer length.
-func (s *imeState) clamp(r key.Range) (start, end int) {
-	start, end = r.Start, r.End
+func (s *imeState) clamp(start, end int) (int, int) {
 	if start > end {
 		start, end = end, start
 	}

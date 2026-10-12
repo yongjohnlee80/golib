@@ -18,13 +18,13 @@ import (
 // take holds the committed 하 while the composition runs, so held must show it, before the
 // composition, which alone is the composing range.
 func hangulHeldThenComposing(s *imeState) {
-	s.edit(key.EditEvent{Range: key.Range{Start: 0, End: 0}, Text: "ㅎ"})
-	s.compose(key.CompositionEvent{Start: 0, End: 1})
-	s.edit(key.EditEvent{Range: key.Range{Start: 0, End: 1}, Text: "하"})
-	s.compose(key.CompositionEvent{Start: 0, End: 1})
-	s.edit(key.EditEvent{Range: key.Range{Start: 0, End: 1}, Text: "하"}) // the commit
-	s.edit(key.EditEvent{Range: key.Range{Start: 1, End: 1}, Text: "ㅇ"}) // the next composition
-	s.compose(key.CompositionEvent{Start: 1, End: 2})
+	s.edit(TextEdit{Start: 0, End: 0, Text: "ㅎ"})
+	s.compose(Composition{Start: 0, End: 1})
+	s.edit(TextEdit{Start: 0, End: 1, Text: "하"})
+	s.compose(Composition{Start: 0, End: 1})
+	s.edit(TextEdit{Start: 0, End: 1, Text: "하"}) // the commit
+	s.edit(TextEdit{Start: 1, End: 1, Text: "ㅇ"}) // the next composition
+	s.compose(Composition{Start: 1, End: 2})
 }
 
 func TestHeldShowsTheCommittedTextTheCompositionHolds(t *testing.T) {
@@ -40,7 +40,7 @@ func TestHeldShowsTheCommittedTextTheCompositionHolds(t *testing.T) {
 	if got := s.preedit(); got != "ㅇ" {
 		t.Errorf("preedit %q, want the composition alone", got)
 	}
-	s.compose(key.CompositionEvent{Start: -1, End: -1})
+	s.compose(Composition{Start: -1, End: -1})
 	if _, _, ok := s.held(); ok {
 		t.Error("held reported text with no composition active (take delivers it then)")
 	}
@@ -114,16 +114,16 @@ func TestThePreeditUnderlineSpansRightToLeftAndCombiningText(t *testing.T) {
 	cases := []struct {
 		name string
 		text string
-		comp key.Range
+		comp Composition
 	}{
-		{"right to left", "אב", key.Range{Start: 1, End: 2}},
-		{"a combining mark composed after its base", "á", key.Range{Start: 1, End: 2}},
+		{"right to left", "אב", Composition{Start: 1, End: 2}},
+		{"a combining mark composed after its base", "á", Composition{Start: 1, End: 2}},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
 			b := NewBackend()
-			b.gio.ime.edit(key.EditEvent{Range: key.Range{Start: 0, End: 0}, Text: tc.text})
-			b.gio.ime.compose(key.CompositionEvent(tc.comp))
+			b.gio.ime.edit(TextEdit{Start: 0, End: 0, Text: tc.text})
+			b.gio.ime.compose(tc.comp)
 			fs := b.font.Load()
 			m := measure(fs.fm, fs.size, 0, image.Pt(240, 60), unit.Metric{PxPerDp: 1, PxPerSp: 1})
 			hw, err := headless.NewWindow(m.window.X, m.window.Y)
