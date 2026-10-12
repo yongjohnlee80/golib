@@ -11,7 +11,8 @@ import (
 )
 
 // NativeStyle is golib's painter set: push buttons, check boxes, text fields, progress bars, tab
-// bars, scrollbars on lists and trees, a dialog's shadow, a real dim behind it, and an HTMLView's pixel layout. Each painter takes its colours
+// bars, scrollbars on lists and trees, a dialog's shadow and a floating panel's, a real dim behind a
+// dialog, and an HTMLView's pixel layout. Each painter takes its colours
 // from the cells the widget painted, so the app's theme and the widget's state (focused, armed,
 // disabled) carry over, and it draws text at the cells tui gave it. It returns a new Style each
 // call, for a consumer to change.
@@ -25,6 +26,7 @@ func NativeStyle() *Style {
 	s.ForRole(tui.RoleList, paintScrollbar)
 	s.ForRole(tui.RoleTree, paintScrollbar)
 	s.ForRole(tui.RoleDialog, paintDialog)
+	s.ForRole(tui.RoleWindow, paintWindow)
 	ForType(s, paintScrim)
 	ForType(s, paintHTMLView)
 	return s
@@ -396,18 +398,50 @@ func paintDialog(comp tui.Component) (View, tui.NativeScope, bool) {
 	if !ok {
 		return nil, 0, false
 	}
-	return ViewFunc(func(c Canvas) {
-		cr := m.CardRect()
-		if cr.W <= 0 || cr.H <= 0 {
-			return
-		}
-		cs := c.CellSize()
-		card := Rect{X: float32(cr.X) * cs.W, Y: float32(cr.Y) * cs.H, W: float32(cr.W) * cs.W, H: float32(cr.H) * cs.H}
-		shadow := color.NRGBA{A: 0xff}
-		for i := float32(1); i <= 8; i++ {
-			c.FillRRect(Rect{X: card.X - i, Y: card.Y - i + 3, W: card.W + 2*i, H: card.H + 2*i}, 6+i, Solid(alpha(shadow, 0.05)))
-		}
-	}), tui.ScopeChrome, true
+	return ViewFunc(func(c Canvas) { softShadow(c, m.CardRect(), dialogShadow) }), tui.ScopeChrome, true
+}
+
+// paintWindow draws a softer shadow around a floating panel (a Float placed free of the window's
+// edges: centred, or moved or resized off its edge). Its content is tui's cells, drawn over the
+// shadow, so the shadow shows only outside the border, as a dialog's does. A panel docked at an
+// edge or a corner gets none: it is part of the window's frame, its border already parts it from
+// the page, and a shadow on its inner side alone would make it look lifted off the edge it is
+// attached to. The shadow is what tells a floating panel from a docked one.
+func paintWindow(comp tui.Component) (View, tui.NativeScope, bool) {
+	f, ok := comp.(*widget.Float)
+	if !ok || !f.Floating() {
+		return nil, 0, false
+	}
+	return ViewFunc(func(c Canvas) { softShadow(c, f.ContentRect(), panelShadow) }), tui.ScopeChrome, true
+}
+
+// shadowLook is a soft shadow: rings of a translucent black around a card, each a pixel wider than
+// the one inside it, the whole dropped a few pixels.
+type shadowLook struct {
+	rings int
+	alpha float32 // each ring's opacity; where all of them overlap, about 1-(1-alpha)^rings
+	drop  float32
+}
+
+var (
+	// dialogShadow: a dialog is the highest thing on the screen, over a dimmed page.
+	dialogShadow = shadowLook{rings: 8, alpha: 0.05, drop: 3}
+	// panelShadow: a floating panel sits lower than a dialog, over the page undimmed, where the
+	// dialog's shadow would read heavy.
+	panelShadow = shadowLook{rings: 6, alpha: 0.04, drop: 2}
+)
+
+// softShadow draws look's shadow around the cells of cr, in the canvas's cells.
+func softShadow(c Canvas, cr tui.Rect, look shadowLook) {
+	if cr.W <= 0 || cr.H <= 0 {
+		return
+	}
+	cs := c.CellSize()
+	card := Rect{X: float32(cr.X) * cs.W, Y: float32(cr.Y) * cs.H, W: float32(cr.W) * cs.W, H: float32(cr.H) * cs.H}
+	shadow := color.NRGBA{A: 0xff}
+	for i := float32(1); i <= float32(look.rings); i++ {
+		c.FillRRect(Rect{X: card.X - i, Y: card.Y - i + look.drop, W: card.W + 2*i, H: card.H + 2*i}, 6+i, Solid(alpha(shadow, look.alpha)))
+	}
 }
 
 // scrimDim is how dark the scrim makes what is beneath a dialog.
