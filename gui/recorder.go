@@ -174,7 +174,7 @@ func (r *JSONLRecorder) write(w io.Writer) {
 	if n := r.dropped.Load(); n > noted {
 		r.writeRec(bw, Record{Stage: StageMeta, Kind: "dropped", Data: map[string]any{"n": n}})
 	}
-	r.err = bw.Flush()
+	r.setErr(bw.Flush())
 }
 
 // writeRec buffers one record as a JSON line. The first error ends the recording.
@@ -186,7 +186,13 @@ func (r *JSONLRecorder) writeRec(bw *bufio.Writer, rec Record) {
 	if err == nil {
 		_, err = bw.Write(append(b, '\n'))
 	}
-	if err != nil {
+	r.setErr(err)
+}
+
+// setErr keeps the first error the recording hit; marshal, write and flush errors
+// alike report through Close, and a later success never hides an earlier failure.
+func (r *JSONLRecorder) setErr(err error) {
+	if err != nil && r.err == nil {
 		r.err = err
 	}
 }
