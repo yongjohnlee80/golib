@@ -2,8 +2,8 @@ package widget
 
 import (
 	"bytes"
+	"context"
 	"io"
-	"io/fs"
 	"unicode/utf8"
 
 	"github.com/yongjohnlee80/golib/highlight"
@@ -44,6 +44,9 @@ type FilePreview struct {
 	// note reads in the App's language.
 	note    tui.Message
 	noteArg string
+	// readTask is a VFS preview in flight; a newer Show supersedes it.
+	readTask tui.TaskID
+	reading  bool
 }
 
 // NewFilePreview builds an empty preview, dressed like the panes beside it.
@@ -84,8 +87,26 @@ func (p *FilePreview) Layout(c tui.Constraints) tui.Size {
 	return sz
 }
 
-func (p *FilePreview) Render(tui.Surface)         {}
-func (p *FilePreview) HandleEvent(tui.Event) bool { return false }
+func (p *FilePreview) Render(tui.Surface) {}
+
+// HandleEvent applies a VFS preview when it arrives, unless a newer Show has
+// superseded it.
+func (p *FilePreview) HandleEvent(ev tui.Event) bool {
+	r, ok := ev.(tui.TaskResult)
+	if !ok || r.ID != p.readTask || !p.reading {
+		return ok && r.Owner == p.NodeID()
+	}
+	p.reading = false
+	got, _ := r.Value.(preview)
+	p.put(got.path, got.text, got.note, got.arg)
+	return true
+}
+
+// preview is a VFS file's preview, as its task reads it.
+type preview struct {
+	path, text, arg string
+	note            tui.Message
+}
 
 // NOT FOCUSABLE BY DESIGN — no tui.Focusable: the frame is not a tab stop; the
 // text is. Absence of the capability says so (tutorial ch. 9).
@@ -93,8 +114,28 @@ func (p *FilePreview) HandleEvent(tui.Event) bool { return false }
 // Show previews an fs path of src; folder says it is a folder and has no text
 // to show. Any fs.FS will do — the preview reads a remote file as it reads a
 // local one.
+//
+// A VFS source is read off the loop: the preview says it is loading until the
+// text arrives, and a newer Show stops the read in flight.
 func (p *FilePreview) Show(src FileSource, path string, folder bool) {
-	text, note, arg := previewOf(src.or().FS, path, folder)
+	src = src.or()
+	ctx := p.Context()
+	if !src.async() || folder || ctx == nil {
+		p.reading = false
+		text, note, arg := previewOf(context.Background(), src, path, folder)
+		p.put(path, text, note, arg)
+		return
+	}
+	p.reading = true
+	p.put(path, "", tui.Msg("tui.files.loading"), "")
+	p.readTask = ctx.Go(func(c context.Context) (any, error) {
+		text, note, arg := previewOf(c, src, path, false)
+		return preview{path: path, text: text, note: note, arg: arg}, nil
+	}, tui.Exclusive("files.preview"))
+}
+
+// put shows a file's text, or a note in its place.
+func (p *FilePreview) put(path, text string, note tui.Message, arg string) {
 	p.shown, p.note, p.noteArg = "", note, arg
 	if note == (tui.Message{}) {
 		p.shown = path
@@ -165,11 +206,11 @@ func (p *FilePreview) noteText() string { return withArg(p.translate(p.note), p.
 
 // previewOf is what a preview shows for a path: the file's text, or a note about it (a
 // folder, a binary file) with the note's argument.
-func previewOf(fsys fs.FS, path string, folder bool) (text string, note tui.Message, arg string) {
+func previewOf(ctx context.Context, src FileSource, path string, folder bool) (text string, note tui.Message, arg string) {
 	if folder {
 		return "", tui.Msg("tui.files.isFolder"), ""
 	}
-	f, err := fsys.Open(path)
+	f, err := src.open(ctx, path)
 	if err != nil {
 		return "", tui.Msg("tui.files.cannotRead"), err.Error()
 	}

@@ -83,6 +83,22 @@
         <source>%1 — cannot read</source>
         <translation>%1 — 읽을 수 없음</translation>
     </message>
+    <message id="tui.files.titleLoading">
+        <source>%1 — loading…</source>
+        <translation>%1 — 불러오는 중…</translation>
+    </message>
+    <message id="tui.files.loading">
+        <source>(loading…)</source>
+        <translation>(불러오는 중…)</translation>
+    </message>
+    <message id="tui.files.filter">
+        <source>Filter</source>
+        <translation>필터</translation>
+    </message>
+    <message id="tui.files.hint.filter">
+        <source>type to narrow  Enter:back to the list  Esc:clear</source>
+        <translation>입력하여 좁히기  Enter:목록으로  Esc:지우기</translation>
+    </message>
     <message id="tui.files.hint.list">
         <source>↑↓:move  Enter:open folder</source>
         <translation>↑↓:이동  Enter:폴더 열기</translation>

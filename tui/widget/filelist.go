@@ -1,6 +1,8 @@
 package widget
 
 import (
+	"context"
+	"io"
 	"io/fs"
 	"os"
 	"path"
@@ -10,6 +12,7 @@ import (
 
 	"github.com/yongjohnlee80/golib/tui"
 	"github.com/yongjohnlee80/golib/tui/style"
+	"github.com/yongjohnlee80/golib/vfs"
 )
 
 // FILE LIST — a folder's files, and moving between folders.
@@ -38,8 +41,18 @@ import (
 // what a path is written under — "/" locally, "sftp://host/" remotely — and
 // every path the widgets report or accept is in that ROOTED form, so a host
 // hears an ordinary absolute path from a local dialog.
+//
+// An fs.FS is read on the UI loop, as the local disk always has been. A source
+// that may be slow (a daemon's, a remote store) is a [vfs.FS] in VFS instead,
+// which the widgets read OFF the loop, with the reading task's context: a
+// listing or a preview that a newer one supersedes, or that its dialog's
+// closing ends, is stopped rather than only dropped.
 type FileSource struct {
-	FS   fs.FS
+	FS fs.FS
+	// VFS, when set, is read instead of FS, off the loop: VFS wins when both
+	// are set. Its symlinks are listed as files, since vfs reports a link
+	// without following it.
+	VFS  vfs.FS
 	Root string
 }
 
@@ -72,16 +85,68 @@ func (s FileSource) fsPath(rooted string) (string, bool) {
 
 // or returns the source, or the local filesystem when it has none.
 func (s FileSource) or() FileSource {
-	if s.FS == nil {
+	if s.FS == nil && s.VFS == nil {
 		return LocalFiles()
 	}
 	return s
 }
 
-// isDir reports whether an fs path is a folder, following a link to one.
+// async reports whether the source is read off the loop: a VFS one.
+func (s FileSource) async() bool { return s.VFS != nil }
+
+// isDir reports whether an fs path is a folder, following a link to one in an
+// fs.FS. A VFS source is asked at once, on the caller's goroutine: it is a
+// Save or Folder view's Enter on a typed name, not a listing.
 func (s FileSource) isDir(p string) bool {
+	if s.VFS != nil {
+		fi, err := s.VFS.Stat(context.Background(), p)
+		return err == nil && fi.IsDir()
+	}
 	fi, err := fs.Stat(s.FS, p)
 	return err == nil && fi.IsDir()
+}
+
+// readDir lists a folder, its folders and its files each sorted without regard
+// to case, with ctx bounding a VFS read.
+func (s FileSource) readDir(ctx context.Context, dir string) (dirs, files []fileEntry, err error) {
+	if s.VFS != nil {
+		infos, err := s.VFS.ReadDir(ctx, dir)
+		for _, fi := range infos {
+			if fi.IsDir() {
+				dirs = append(dirs, fileEntry{name: fi.Name, dir: true})
+			} else {
+				files = append(files, fileEntry{name: fi.Name})
+			}
+		}
+		sortEntries(dirs)
+		sortEntries(files)
+		return dirs, files, err
+	}
+	ds, err := fs.ReadDir(s.FS, dir)
+	for _, d := range ds {
+		// A LINK to a folder is a folder to the user; asking the source
+		// follows it, which DirEntry.IsDir does not.
+		if d.IsDir() || (d.Type()&fs.ModeSymlink != 0 && s.isDir(path.Join(dir, d.Name()))) {
+			dirs = append(dirs, fileEntry{name: d.Name(), dir: true})
+		} else {
+			files = append(files, fileEntry{name: d.Name()})
+		}
+	}
+	sortEntries(dirs)
+	sortEntries(files)
+	return dirs, files, err
+}
+
+func sortEntries(s []fileEntry) {
+	sort.Slice(s, func(i, j int) bool { return strings.ToLower(s[i].name) < strings.ToLower(s[j].name) })
+}
+
+// open opens a file to read, with ctx bounding a VFS read.
+func (s FileSource) open(ctx context.Context, p string) (io.ReadCloser, error) {
+	if s.VFS != nil {
+		return s.VFS.Open(ctx, p, 0)
+	}
+	return s.FS.Open(p)
 }
 
 // FilePaneStyles are the looks the file views paint. Surface is every pane's
@@ -165,6 +230,9 @@ type FileList struct {
 	onCursor func(string, bool)
 	onFile   func(string)
 	onDir    func(string)
+	// onShow runs each time a folder's rows are put in: its view's filter
+	// field follows the filter, which a new folder clears
+	onShow func()
 
 	list *List[fileEntry]
 	box  *Box
@@ -172,6 +240,18 @@ type FileList struct {
 	// could not be read, which the pane's title then says too.
 	title      string
 	unreadable bool
+
+	// all is the folder's rows, and entries those the filter leaves (all of
+	// them with none): what the list shows and the cursor indexes.
+	all    []fileEntry
+	filter string
+
+	// A VFS source is listed off the loop (async): listTask is the listing in
+	// flight, loading the folder it reads, and want the name the cursor goes to
+	// once it arrives ("" for the first row). A newer load supersedes all three.
+	listTask tui.TaskID
+	loading  string
+	want     string
 	// width is the pane's width at the last layout, for fitting the title.
 	width int
 }
@@ -195,7 +275,11 @@ func NewFileList(opts ...FileListOption) *FileList {
 	}
 	l.list = NewList(listOpts...)
 	l.box = newFilePane(l.list, l.src.Rooted(l.dir), l.st, l.styled)
-	l.load(l.dir)
+	// A VFS source is listed once the list is mounted, off the loop, so
+	// building a dialog never waits on it.
+	if !l.src.async() {
+		l.load(l.dir)
+	}
 	return l
 }
 
@@ -257,6 +341,9 @@ func (l *FileList) Init(ctx *tui.Context) {
 			l.activate(ev.Index)
 		}
 	})
+	if l.src.async() {
+		l.loadThen(l.dir, l.want)
+	}
 }
 
 // Layout fills what it is given.
@@ -270,8 +357,27 @@ func (l *FileList) Layout(c tui.Constraints) tui.Size {
 	return sz
 }
 
-func (l *FileList) Render(tui.Surface)         {}
-func (l *FileList) HandleEvent(tui.Event) bool { return false }
+func (l *FileList) Render(tui.Surface) {}
+
+// HandleEvent applies a VFS listing when it arrives, unless a newer load has
+// superseded it: a superseded task still reports, its ctx cancelled.
+func (l *FileList) HandleEvent(ev tui.Event) bool {
+	r, ok := ev.(tui.TaskResult)
+	if !ok || r.ID != l.listTask || l.loading == "" {
+		return ok && r.Owner == l.NodeID()
+	}
+	got, _ := r.Value.(listing)
+	l.loading = ""
+	l.show(got.dir, got.dirs, got.files, r.Err)
+	l.place()
+	return true
+}
+
+// listing is a VFS folder's rows, as its task reads them.
+type listing struct {
+	dir         string
+	dirs, files []fileEntry
+}
 
 // NOT FOCUSABLE BY DESIGN — no tui.Focusable: the frame is not a tab stop; its
 // list is. Absence of the capability says so (tutorial ch. 9), which is what
@@ -310,6 +416,15 @@ func (l *FileList) startDir() string {
 
 // Source is the filesystem the list reads.
 func (l *FileList) Source() FileSource { return l.src }
+
+// SetSource lists another filesystem, from the folder the list was asked to
+// open in when the new source has it, else from its root. A listing of the old
+// source still on its way is superseded.
+func (l *FileList) SetSource(src FileSource) {
+	l.src = src.or()
+	l.loading = ""
+	l.loadThen(l.startDir(), "")
+}
 
 // Dir is the folder being listed, as an fs path.
 func (l *FileList) Dir() string { return l.dir }
@@ -394,35 +509,54 @@ func (l *FileList) activate(i int) {
 	}
 }
 
-// load lists dir.
-func (l *FileList) load(dir string) {
+// load lists dir, the cursor on its first row.
+func (l *FileList) load(dir string) { l.loadThen(dir, "") }
+
+// loadThen lists dir with the cursor on the row named want ("" for the first).
+// An fs.FS source is read here, on the loop; a VFS source off it, the old rows
+// kept and the title saying it is loading until the listing arrives.
+func (l *FileList) loadThen(dir, want string) {
+	l.want = want
+	ctx := l.Context()
+	if !l.src.async() {
+		dirs, files, err := l.src.readDir(context.Background(), dir)
+		l.show(dir, dirs, files, err)
+		l.place()
+		return
+	}
+	l.dir = dir
+	if ctx == nil {
+		return // listed at Init
+	}
+	l.loading = dir
+	l.title = l.src.Rooted(dir)
+	l.fitTitle()
+	src := l.src
+	l.listTask = ctx.Go(func(c context.Context) (any, error) {
+		dirs, files, err := src.readDir(c, dir)
+		return listing{dir: dir, dirs: dirs, files: files}, err
+	}, tui.Exclusive("files.list"))
+}
+
+// show puts a folder's rows in the list, the filter cleared and the cursor on
+// the first; err says the folder could not be read.
+func (l *FileList) show(dir string, dirs, files []fileEntry, err error) {
 	l.dir = dir
 	var entries []fileEntry
 	if dir != "." {
 		entries = append(entries, fileEntry{up: true})
 	}
 	l.title = l.src.Rooted(dir)
-	ds, err := fs.ReadDir(l.src.FS, dir)
 	l.unreadable = err != nil
-	var dirs, files []fileEntry
-	for _, d := range ds {
-		// A LINK to a folder is a folder to the user; asking the source
-		// follows it, which DirEntry.IsDir does not.
-		if d.IsDir() || (d.Type()&fs.ModeSymlink != 0 && l.src.isDir(path.Join(dir, d.Name()))) {
-			dirs = append(dirs, fileEntry{name: d.Name(), dir: true})
-		} else {
-			files = append(files, fileEntry{name: d.Name()})
-		}
-	}
-	byName := func(s []fileEntry) {
-		sort.Slice(s, func(i, j int) bool { return strings.ToLower(s[i].name) < strings.ToLower(s[j].name) })
-	}
-	byName(dirs)
-	byName(files)
-	l.entries = append(append(entries, dirs...), files...)
+	l.all = append(append(entries, dirs...), files...)
+	l.filter = ""
+	l.entries = l.all
 	l.list.SetItems(l.entries)
 	l.list.SetCursor(0)
 	l.fitTitle()
+	if l.onShow != nil {
+		l.onShow()
+	}
 	if l.onDir != nil {
 		l.onDir(l.src.Rooted(dir))
 	}
@@ -431,10 +565,50 @@ func (l *FileList) load(dir string) {
 	l.cursorOn(0)
 }
 
+// place puts the cursor on the row a load asked for, once its rows are in.
+func (l *FileList) place() {
+	if want := l.want; want != "" {
+		l.want = ""
+		l.SetCurrent(want)
+	}
+}
+
+// Loading reports whether a VFS listing is on its way.
+func (l *FileList) Loading() bool { return l.loading != "" }
+
+// Filter is the text the rows are narrowed to, "" for none.
+func (l *FileList) Filter() string { return l.filter }
+
+// SetFilter narrows the rows to the names containing text, without regard to
+// case; `..` always stays. "" shows every row. The cursor goes to the first.
+func (l *FileList) SetFilter(text string) {
+	if text == l.filter {
+		return
+	}
+	l.filter = text
+	if text == "" {
+		l.entries = l.all
+	} else {
+		q := strings.ToLower(text)
+		l.entries = nil
+		for _, e := range l.all {
+			if e.up || strings.Contains(strings.ToLower(e.name), q) {
+				l.entries = append(l.entries, e)
+			}
+		}
+	}
+	l.list.SetItems(l.entries)
+	l.list.SetCursor(0)
+	l.cursorOn(0)
+}
+
 // fitTitle elides the folder from the LEFT, at a "/", to fit the pane.
 func (l *FileList) fitTitle() {
 	title := l.title
-	if l.unreadable {
+	switch {
+	case l.loading != "":
+		title = withArg(l.translate(tui.Msg("tui.files.titleLoading")), title)
+	case l.unreadable:
 		title = withArg(l.translate(tui.Msg("tui.files.titleCannotRead")), title)
 	}
 	// The border's two corners, and a space either side of the title.

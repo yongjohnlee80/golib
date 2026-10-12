@@ -72,6 +72,9 @@ type fileViewConfig struct {
 	onChoose   func()
 	onHint     func(string)
 	fields     []tui.Component
+	// filter gives the view a `/` filter over its listing: an Open view's,
+	// not the Save and Folder views' listings
+	filter bool
 }
 
 func fileViewConfigOf(opts []FileViewOption) fileViewConfig {
@@ -132,6 +135,10 @@ func WithOnHint(fn func(string)) FileViewOption {
 
 // FileOpenView chooses an existing file: a FileList, and a FilePreview beside
 // it unless turned off.
+//
+// `/` in the list opens a filter field above it, which narrows the rows as it is
+// typed in; Enter goes back to the list with the filter kept, Esc clears it.
+// The Save and Folder views' listings have no filter.
 type FileOpenView struct {
 	Base
 	cfg     fileViewConfig
@@ -143,6 +150,10 @@ type FileOpenView struct {
 	// Ctrl+h back to the part of the column last in use.
 	column []tui.Component
 	last   tui.Component
+	// filterField narrows the listing as it is typed in; hidden until `/`.
+	// nil when the view has no filter.
+	filterField *TextInput
+	filterPane  *Box
 }
 
 // NewFileOpenView builds an Open view.
@@ -151,6 +162,7 @@ func NewFileOpenView(opts ...FileViewOption) *FileOpenView {
 	if !cfg.previewSet {
 		cfg.preview = true
 	}
+	cfg.filter = true
 	return newFileOpenView(cfg)
 }
 
@@ -173,13 +185,27 @@ func newFileOpenView(cfg fileViewConfig, dirOpts ...FileListOption) *FileOpenVie
 		listOpts = append(listOpts, WithFileListStyles(cfg.st))
 	}
 	v.list = NewFileList(append(listOpts, dirOpts...)...)
-	// The picker's layout: the fields over the list in the left column, the
-	// preview on the right.
+	above := append([]tui.Component(nil), cfg.fields...)
+	if cfg.filter {
+		inputOpts := []TextInputOption{WithOnEdit(func(text string) { v.list.SetFilter(text) })}
+		if cfg.styled {
+			inputOpts = append(inputOpts, WithTextInputStyles(TextInputStyles{Text: cfg.st.Surface}))
+		}
+		v.filterField = NewTextInput(inputOpts...)
+		v.filterPane = newFilePane(v.filterField, "", cfg.st, cfg.styled)
+		v.filterPane.SetTitleMessage(tui.Msg("tui.files.filter"))
+		v.filterPane.SetVisible(false)
+		above = append(above, v.filterPane)
+		// a new folder clears the filter, so the field goes with it
+		v.list.onShow = func() { v.closeFilter() }
+	}
+	// The picker's layout: the fields (and the filter) over the list in the left
+	// column, the preview on the right.
 	v.column = append(append([]tui.Component(nil), cfg.fields...), v.list)
 	var left tui.Component = v.list
-	if len(cfg.fields) > 0 {
+	if len(above) > 0 {
 		col := tui.NewFlex(tui.Vertical)
-		for _, f := range cfg.fields {
+		for _, f := range above {
 			col.Add(f)
 		}
 		col.AddWeighted(v.list, 1)
@@ -298,9 +324,50 @@ func (v *FileOpenView) HandleEvent(ev tui.Event) bool {
 		v.cfg.onHint(v.Hint())
 	}
 	if k, ok := ev.(tui.KeyEvent); ok {
-		return v.movePart(k)
+		return v.filterKey(k) || v.movePart(k)
 	}
 	return false
+}
+
+// filterKey is the filter's keys, heard as they bubble up: `/` in the list
+// opens the field; Enter in the field returns to the list, the filter kept; Esc
+// clears the filter first, and only once it is clear goes on to close the
+// dialog. Reports whether the key was the filter's.
+func (v *FileOpenView) filterKey(k tui.KeyEvent) bool {
+	ctx := v.Context()
+	if v.filterField == nil || ctx == nil || k.Kind == tui.KeyRelease {
+		return false
+	}
+	inField := ctx.FocusWithin(v.filterPane)
+	switch {
+	case k.Code == '/' && k.Mods == 0 && v.list.Focused():
+		v.filterPane.SetVisible(true)
+		v.filterField.SetValue(v.list.Filter())
+		ctx.FocusInto(v.filterField)
+		return true
+	case k.Code == tui.KeyEnter && inField:
+		if v.list.Filter() == "" {
+			v.filterPane.SetVisible(false)
+		}
+		v.list.Focus()
+		return true
+	case k.Code == tui.KeyEscape && (inField || v.list.Filter() != ""):
+		v.closeFilter()
+		v.list.SetFilter("")
+		v.list.Focus()
+		return true
+	}
+	return false
+}
+
+// closeFilter empties and hides the filter's field. The listing's own filter
+// is the caller's: a new folder has cleared it already.
+func (v *FileOpenView) closeFilter() {
+	if v.filterField == nil {
+		return
+	}
+	v.filterField.SetValue("")
+	v.filterPane.SetVisible(false)
 }
 
 // NOT FOCUSABLE BY DESIGN — no tui.Focusable: the view is not a tab stop; its
@@ -324,8 +391,16 @@ func (v *FileOpenView) Select(rooted string) {
 	if !ok {
 		return
 	}
-	v.list.load(path.Dir(p))
-	v.list.SetCurrent(path.Base(p))
+	// the cursor goes to the file once its folder is listed, which for a VFS
+	// source is later; a newer load supersedes it
+	v.list.loadThen(path.Dir(p), path.Base(p))
+}
+
+// SetSource lists another filesystem (FileList.SetSource), the preview reading
+// from it too.
+func (v *FileOpenView) SetSource(src FileSource) {
+	v.cfg.src = src.or()
+	v.list.SetSource(v.cfg.src)
 }
 
 func (v *FileOpenView) Dir() string          { return v.list.Source().Rooted(v.list.Dir()) }
@@ -363,6 +438,8 @@ func (v *FileOpenView) Hint() string { return v.translate(v.HintMessage()) }
 // parts, so every language can order it as it reads.
 func (v *FileOpenView) HintMessage() tui.Message {
 	switch {
+	case v.filterField != nil && v.filterField.Context() != nil && v.filterField.Context().Focused():
+		return tui.Msg("tui.files.hint.filter")
 	case v.list.Focused():
 		return tui.Msg("tui.files.hint.openList")
 	case v.preview != nil && v.preview.Focused():
@@ -493,6 +570,12 @@ func (v *FileSaveView) Select(rooted string) {
 
 func (v *FileSaveView) Dir() string          { return v.listing.Dir() }
 func (v *FileSaveView) SetDir(rooted string) { v.listing.SetDir(rooted) }
+
+// SetSource lists another filesystem (FileOpenView.SetSource).
+func (v *FileSaveView) SetSource(src FileSource) {
+	v.cfg.src = src.or()
+	v.listing.SetSource(v.cfg.src)
+}
 
 // FocusInitial gives the keyboard to the name field: a user saving came to
 // type a name.
@@ -654,6 +737,13 @@ func (v *FileFolderView) Select(rooted string) { v.listing.SetDir(rooted) }
 
 func (v *FileFolderView) Dir() string          { return v.listing.Dir() }
 func (v *FileFolderView) SetDir(rooted string) { v.listing.SetDir(rooted) }
+
+// SetSource lists another filesystem (FileOpenView.SetSource); the path field
+// follows the listing to it.
+func (v *FileFolderView) SetSource(src FileSource) {
+	v.cfg.src = src.or()
+	v.listing.SetSource(v.cfg.src)
+}
 
 // FocusInitial gives the keyboard to the first field: the host's own, when it
 // gave one (a name to type), else the listing. A dialog opening in this very
