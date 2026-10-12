@@ -207,6 +207,10 @@ func TestASlotIsRefusedWhatItCannotTake(t *testing.T) {
 	for name, c := range map[string]struct{ doc, want string }{
 		"a string":    {"Flex {\n Picker { footer: \"x\" }\n}", `"footer" is a slot, which takes one object`},
 		"a reference": {"Flex {\n Picker { footer: App.rows }\n}", `"footer" is a slot, which takes one object`},
+		"a slot set twice": {"Flex {\n Picker {\n  footer: Flex { }\n  footer: Flex { }\n }\n}",
+			`"footer" is set twice by this use (at 4:`},
+		"a slot set twice, invalid first": {"Flex {\n Picker {\n  footer: \"x\"\n  footer: Flex { }\n }\n}",
+			`"footer" is set twice by this use (at 4:`},
 	} {
 		t.Run(name, func(t *testing.T) {
 			_, err := expanded(t, picker, c.doc)
