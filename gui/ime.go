@@ -4,6 +4,8 @@ import (
 	"sort"
 
 	"gioui.org/io/key"
+
+	"github.com/yongjohnlee80/golib/tui"
 )
 
 // Input Method Editor (IME) text buffering and composition pipeline.
@@ -229,6 +231,22 @@ func (s *imeState) selection() key.Range {
 func (s *imeState) snippet(ask SnippetAsk) SnippetReply {
 	start, end := s.clamp(ask.Start, ask.End)
 	return SnippetReply{Start: start, End: end, Text: string(s.text[start:end])}
+}
+
+// commitFrame is what the buffer commits when a frame's input ends: the committed
+// pieces as key events in delivery order, and the resets that tell the toolkit
+// the buffer is empty again. ok is false while a composition holds the buffer or
+// nothing was typed. The window sends these through the adapter; the replay
+// checks them against the recording.
+func (s *imeState) commitFrame() (keys []tui.KeyEvent, resets []TextInputCmd, ok bool) {
+	pieces, ok := s.take()
+	if !ok {
+		return nil, nil, false
+	}
+	for _, p := range pieces {
+		keys = append(keys, textKeys(p)...)
+	}
+	return keys, []TextInputCmd{SnippetReply{}, SelectionTell{}}, true
 }
 
 // empty reports whether the buffer holds nothing, so Gio's copy should be reset to match.

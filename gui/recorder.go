@@ -36,6 +36,10 @@ const (
 	// StageMeta: the recorder's own note about the recording, not the input path —
 	// a writer marking the records it had to drop.
 	StageMeta Stage = "meta"
+	// StageFrame: where a frame's input began and ended. The replay segments on
+	// these: delivery happens at frame ends, so without them a recording cannot
+	// say when the input path delivered.
+	StageFrame Stage = "frame"
 )
 
 // Record is one entry of a recording.
