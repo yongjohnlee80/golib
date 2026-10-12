@@ -5,7 +5,6 @@ import (
 	"errors"
 	"image"
 	"image/color"
-	"io"
 	"sync"
 	"sync/atomic"
 
@@ -113,9 +112,14 @@ type Backend struct {
 
 	// The input path's recorder (nil records nothing), and the next record's
 	// number. Both belong to the Gio goroutine: readInput, deliverIME, placeCaret
-	// and drawPreedit all run there.
-	rec    Recorder
-	recSeq uint64
+	// and drawPreedit all run there. The recorder is closed by that goroutine
+	// alone, when the window finishes, and Stop reports its error once runDone
+	// says the close has happened.
+	rec      Recorder
+	recSeq   uint64
+	runDone  chan struct{}
+	recErr   error
+	closeRec sync.Once
 }
 
 // frame is one finished frame: the recorded drawing and where the caret is, for the IME.
@@ -167,6 +171,7 @@ func NewBackend(opts ...Option) *Backend {
 		zoom:     100,
 		q:        newEventQueue(),
 		started:  make(chan struct{}),
+		runDone:  make(chan struct{}),
 		render:   newRenderer(cells, fallbackChain(cfg.typeface), cfg.theme),
 		images:   map[uint32]placedImage{},
 	}
@@ -290,15 +295,11 @@ func (b *Backend) Stop() error {
 	b.win.Perform(system.ActionClose)
 	if b.forwarding.Load() {
 		<-b.q.exited
+		// The window goroutine closed the recorder on its way out; runDone closes
+		// after that close, so its error can be read here without a race.
+		<-b.runDone
 	}
-	// The window goroutine has finished by now (its last act ends the queue, which
-	// the forwarder waits for), so no more records can arrive: flush the recording.
-	if b.rec != nil {
-		if c, ok := b.rec.(io.Closer); ok {
-			return c.Close()
-		}
-	}
-	return nil
+	return b.recErr
 }
 
 // Size reports the current grid dimensions in whole monospace character cells.

@@ -4,6 +4,8 @@ import (
 	"bufio"
 	"encoding/json"
 	"io"
+	"sync"
+	"sync/atomic"
 	"time"
 )
 
@@ -31,6 +33,9 @@ const (
 	StageCmd Stage = "cmd"
 	// StageDraw: the preedit the frame drew at the caret.
 	StageDraw Stage = "draw"
+	// StageMeta: the recorder's own note about the recording, not the input path —
+	// a writer marking the records it had to drop.
+	StageMeta Stage = "meta"
 )
 
 // Record is one entry of a recording.
@@ -108,41 +113,103 @@ func imeFields(s *imeState) map[string]any {
 	}
 }
 
-// JSONLRecorder writes records as one JSON object per line, buffered, so
-// recording never blocks on the write. The buffer is flushed when the backend
-// stops, or by [JSONLRecorder.Close]. The first write error is sticky and
-// surfaces from Close.
+// JSONLRecorder writes records as one JSON object per line.
+//
+// Record never blocks the window goroutine: records go over a bounded channel to a
+// writer goroutine that owns the buffered writer. Under sustained overload the channel
+// can fill; the record is dropped then, and the writer notes the drop in the file — a
+// {"Stage":"meta","Kind":"dropped"} line before the next record it writes, carrying the
+// total dropped so far — so a recording never loses events silently. Close stops
+// accepting records, waits for the writer to drain and flush, and returns the first
+// error the recording hit.
 type JSONLRecorder struct {
-	w   *bufio.Writer
-	err error
+	rec     chan Record   // to the writer goroutine; never read after Close
+	dropped atomic.Uint64 // records the window goroutine dropped
+	done    chan struct{} // closed once the writer has drained and flushed
+	err     error         // the writer's first error; stable once done is closed
+	closeOn sync.Once     // Close drains once
 }
 
 // NewJSONLRecorder records to w, one JSON object per line.
 func NewJSONLRecorder(w io.Writer) *JSONLRecorder {
-	return &JSONLRecorder{w: bufio.NewWriterSize(w, 1<<16)}
+	r := &JSONLRecorder{rec: make(chan Record, 4096), done: make(chan struct{})}
+	go r.write(w)
+	return r
 }
 
-// Record buffers one record as a JSON line. A past write error makes it a no-op.
+// Record hands one record to the writer goroutine. It never blocks: when the channel
+// is full the record is dropped and counted, and the writer notes the drop in the file
+// before the next record it writes.
 func (r *JSONLRecorder) Record(rec Record) {
+	select {
+	case r.rec <- rec:
+	default:
+		r.dropped.Add(1)
+	}
+}
+
+// Close stops accepting records, waits for the writer to drain and flush, and returns
+// the first error the recording hit. It is safe to call more than once.
+func (r *JSONLRecorder) Close() error {
+	r.closeOn.Do(func() {
+		close(r.rec)
+		<-r.done
+	})
+	return r.err
+}
+
+// write drains the channel into the buffered writer, on its own goroutine.
+func (r *JSONLRecorder) write(w io.Writer) {
+	defer close(r.done)
+	bw := bufio.NewWriterSize(w, 1<<16)
+	var noted uint64
+	for rec := range r.rec {
+		if n := r.dropped.Load(); n > noted {
+			noted = n
+			r.writeRec(bw, Record{Stage: StageMeta, Kind: "dropped", Data: map[string]any{"n": n}})
+		}
+		r.writeRec(bw, rec)
+	}
+	// Drops whose following record never came are noted too.
+	if n := r.dropped.Load(); n > noted {
+		r.writeRec(bw, Record{Stage: StageMeta, Kind: "dropped", Data: map[string]any{"n": n}})
+	}
+	r.err = bw.Flush()
+}
+
+// writeRec buffers one record as a JSON line. The first error ends the recording.
+func (r *JSONLRecorder) writeRec(bw *bufio.Writer, rec Record) {
 	if r.err != nil {
 		return
 	}
 	b, err := json.Marshal(rec)
 	if err == nil {
-		_, err = r.w.Write(append(b, '\n'))
+		_, err = bw.Write(append(b, '\n'))
 	}
 	if err != nil {
 		r.err = err
 	}
 }
 
-// Close flushes the buffer and returns the first error the recording hit.
-func (r *JSONLRecorder) Close() error {
-	err := r.w.Flush()
-	if r.err != nil {
-		return r.err
+// closeRecorder closes the recorder exactly once, from the only goroutine that
+// records into it, and keeps the error for Stop to report.
+func (b *Backend) closeRecorder() {
+	if b.rec == nil {
+		return
 	}
-	return err
+	b.closeRec.Do(func() {
+		if c, ok := b.rec.(io.Closer); ok {
+			b.recErr = c.Close()
+		}
+	})
+}
+
+// finishRun is run's tail: with the window goroutine's recording finished, the
+// recorder is closed by its only writer, and only then is the goroutine's
+// completion signalled for Stop to wait on.
+func (b *Backend) finishRun() {
+	b.closeRecorder()
+	close(b.runDone)
 }
 
 // ringRecorder keeps the last records, overwriting the oldest, for tests.

@@ -85,7 +85,8 @@ func fontOf(typeface string) font.Font { return font.Font{Typeface: font.Typefac
 //   - Measures window metrics and publishes atomic snapshots via [Backend.metrics].
 //   - Renders the latest frame macro submitted by [Backend.Flush] into the GPU display context.
 func (b *Backend) run() {
-	tag := &b.gio // the window's one input handler
+	defer b.finishRun() // the recorder is closed here, by its only writer, before Stop returns
+	tag := &b.gio       // the window's one input handler
 	for {
 		switch e := b.win.Event().(type) {
 		case *app.ClosingEvent:
@@ -131,11 +132,11 @@ func (b *Backend) isStarted() bool {
 // readInput reads this frame's events: keys, text, pointer, clipboard.
 func (b *Backend) readInput(src eventSource, tag event.Tag, m metrics) {
 	if !b.gio.focused {
-		execTextInputCmd(src, tag, FocusTake{})
+		b.execRecorded(src, tag, FocusTake{})
 		// Gio closes text input on every focus change, and an input method attaches only to a
 		// window that opened it: on Wayland, zwp_text_input_v3 is enabled only then, so
 		// without this fcitx5 or IBus never composes Hangul here.
-		execTextInputCmd(src, tag, KeyboardShow{})
+		b.execRecorded(src, tag, KeyboardShow{})
 		b.gio.focused = true
 	}
 	allMods := key.ModCtrl | key.ModCommand | key.ModShift | key.ModAlt | key.ModSuper
@@ -184,7 +185,7 @@ func (b *Backend) readInput(src eventSource, tag event.Tag, m metrics) {
 			case SnippetAsk:
 				// Gio asks for the text around the input method's edits. Unanswered, its copy of
 				// the editor state differs from the input method's and it cancels the composition.
-				execTextInputCmd(src, tag, b.gio.ime.snippet(ev))
+				b.execRecorded(src, tag, b.gio.ime.snippet(ev))
 			case SelectionSet:
 				b.gio.ime.setSelection(ev)
 			case TextEdit:
@@ -248,6 +249,10 @@ func (b *Backend) deliverIME(src eventSource, tag event.Tag) {
 }
 
 // execRecorded sends one TextInputCmd through the adapter, recording it first.
+// Every TextInputCmd the backend emits goes through here — the prologue's focus
+// handshake, the snippet answers, the delivery resets and the caret's selection —
+// so a recording shows everything sent to the toolkit, not only what its next
+// state implies.
 func (b *Backend) execRecorded(src eventSource, tag event.Tag, cmd TextInputCmd) {
 	if b.rec != nil {
 		kind, data := cmdFields(cmd)
