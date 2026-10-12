@@ -115,11 +115,12 @@ type Backend struct {
 	// and drawPreedit all run there. The recorder is closed by that goroutine
 	// alone, when the window finishes, and Stop reports its error once runDone
 	// says the close has happened.
-	rec      Recorder
-	recSeq   uint64
-	runDone  chan struct{}
-	recErr   error
-	closeRec sync.Once
+	rec         Recorder
+	recSeq      uint64
+	runDone     chan struct{}
+	recErr      error
+	closeRec    sync.Once
+	runLaunched atomic.Bool // run was launched: its tail closes the recorder, and Stop waits
 }
 
 // frame is one finished frame: the recorded drawing and where the caret is, for the IME.
@@ -268,6 +269,7 @@ func (b *Backend) Start(ctx context.Context) error {
 	b.win.Option(b.cfg.windowOptions()...)
 	b.forwarding.Store(true)
 	go b.q.forward()
+	b.runLaunched.Store(true)
 	go b.run()
 	select {
 	case <-b.started:
@@ -293,11 +295,15 @@ func (b *Backend) Start(ctx context.Context) error {
 func (b *Backend) Stop() error {
 	b.q.end(nil)
 	b.win.Perform(system.ActionClose)
-	if b.forwarding.Load() {
+	if b.runLaunched.Load() {
 		<-b.q.exited
 		// The window goroutine closed the recorder on its way out; runDone closes
 		// after that close, so its error can be read here without a race.
 		<-b.runDone
+	} else {
+		// run was never launched, so its tail will not close the recorder: Stop is
+		// the recorder's only close. The once keeps it single.
+		b.closeRecorder()
 	}
 	return b.recErr
 }

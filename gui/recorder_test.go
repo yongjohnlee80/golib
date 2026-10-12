@@ -234,7 +234,7 @@ func (p *panicAfterCloseRecorder) Close() error {
 func TestStopWaitsForTheWindowGoroutineBeforeTheRecorderCloses(t *testing.T) {
 	pr := &panicAfterCloseRecorder{}
 	b := NewBackend(WithRecorder(pr))
-	b.forwarding.Store(true) // as Start leaves it: Stop may wait for the window goroutine
+	b.runLaunched.Store(true) // as Start leaves it: run's tail closes the recorder, Stop waits for it
 	go b.q.forward()
 	flowing := make(chan struct{})
 	go func() { // the window goroutine: records flow while the App stops, then run's tail
@@ -269,7 +269,7 @@ func (c *closingCounterRecorder) Close() error {
 func TestASecondStopClosesTheRecorderOnce(t *testing.T) {
 	pr := &closingCounterRecorder{}
 	b := NewBackend(WithRecorder(pr))
-	b.forwarding.Store(true)
+	b.runLaunched.Store(true)
 	go b.q.forward()
 	b.finishRun() // the window goroutine's tail, as run defers it
 	if err := b.Stop(); err != nil {
@@ -349,6 +349,57 @@ type blockingWriter struct {
 func (w *blockingWriter) Write(p []byte) (int, error) {
 	<-w.release
 	return w.buf.Write(p)
+}
+
+// A backend stopped before it ever started must still close its recorder: no run
+// goroutine ever will. The JSONL writer drains and flushes what was recorded, and a
+// second Stop is harmless.
+func TestAStopBeforeStartClosesTheRecorder(t *testing.T) {
+	var buf bytes.Buffer
+	rec := NewJSONLRecorder(&buf)
+	b := NewBackend(WithRecorder(rec))
+	b.record(StageIn, "TextEdit", map[string]any{"text": "a"})
+	if err := b.Stop(); err != nil {
+		t.Fatalf("Stop before Start: %v", err)
+	}
+	// The recorder is closed and flushed by Stop alone — the writer goroutine has
+	// exited, or Close could not have returned.
+	lines := strings.Split(strings.TrimRight(buf.String(), "\n"), "\n")
+	if len(lines) != 1 {
+		t.Fatalf("the stopped-before-start recording holds %d lines; want the one recorded event, flushed", len(lines))
+	}
+	var got Record
+	if err := json.Unmarshal([]byte(lines[0]), &got); err != nil || got.Kind != "TextEdit" || got.Data["text"] != "a" {
+		t.Fatalf("line 1 = %v (%v); want the TextEdit record", got, err)
+	}
+	if err := b.Stop(); err != nil {
+		t.Fatalf("second Stop: %v", err)
+	}
+	if err := rec.Close(); err != nil {
+		t.Fatalf("the recorder's own Close after the backend closed it: %v", err)
+	}
+}
+
+// A record that cannot be marshalled is the recording's first error, and a
+// successful flush does not overwrite it: Close reports the marshal error, and the
+// records before it still land in the file.
+func TestAnUnmarshallableRecordIsTheRecordingsStickyError(t *testing.T) {
+	var buf bytes.Buffer
+	rec := NewJSONLRecorder(&buf)
+	rec.Record(Record{Seq: 0, Kind: "good"})
+	rec.Record(Record{Seq: 1, Kind: "bad", Data: map[string]any{"bad": make(chan int)}})
+	rec.Record(Record{Seq: 2, Kind: "after"})
+	if err := rec.Close(); err == nil {
+		t.Fatal("Close returned nil; want the marshal error of the unmarshallable record")
+	}
+	lines := strings.Split(strings.TrimRight(buf.String(), "\n"), "\n")
+	if len(lines) != 1 {
+		t.Fatalf("the recording holds %d lines; want the one good record before the error", len(lines))
+	}
+	var got Record
+	if err := json.Unmarshal([]byte(lines[0]), &got); err != nil || got.Kind != "good" {
+		t.Fatalf("line 1 = %v (%v); want the record before the error", got, err)
+	}
 }
 
 func TestWithRecorderInstallsTheRecorder(t *testing.T) {
