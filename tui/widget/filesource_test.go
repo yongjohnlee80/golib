@@ -8,6 +8,7 @@ import (
 	"sync"
 	"sync/atomic"
 	"testing"
+	"testing/fstest"
 
 	"github.com/yongjohnlee80/golib/tui"
 	"github.com/yongjohnlee80/golib/tui/widget"
@@ -277,4 +278,72 @@ func TestALateAnswerIsDropped(t *testing.T) {
 	if strings.Contains(h.grid(), "bee notes") {
 		t.Fatalf("a late preview replaced the newer one:\n%s", h.grid())
 	}
+}
+
+// TestTheLastFoldersRowsCannotBeChosenWhileTheNextLoads: while a VFS listing
+// is held, the rows on screen are the last folder's, and none of them can be
+// chosen: no old name is joined to the new folder.
+func TestTheLastFoldersRowsCannotBeChosenWhileTheNextLoads(t *testing.T) {
+	g := newGated(t, vfsFiles)
+	g.release("dir:.")
+	g.release("file:top.txt")
+	var chosen atomic.Int32
+	v := widget.NewFileOpenView(widget.WithFileViewSource(widget.FileSource{VFS: g, Root: "vfs://"}),
+		widget.WithFileViewDir("vfs://"), widget.WithOnChoose(func() { chosen.Add(1) }))
+	h := startBrowser(t, v)
+	defer h.stop()
+	h.shows("top.txt")
+	h.inject(key(tui.KeyDown), key(tui.KeyDown)) // a/, b/, top.txt
+	var sel string
+	h.waitFor("the cursor on top.txt", func() bool {
+		h.onLoop(func() { sel = v.Selected() })
+		return sel == "vfs://top.txt"
+	})
+	h.onLoop(func() { v.SetDir("vfs://b") }) // held
+	var confirmed bool
+	h.onLoop(func() { sel, confirmed = v.Selected(), v.Confirm() })
+	if sel != "" || confirmed {
+		t.Fatalf("while b loads: Selected %q, Confirm %v; want nothing chosen", sel, confirmed)
+	}
+	h.inject(key(tui.KeyEnter))
+	h.settle()
+	if chosen.Load() != 0 {
+		t.Fatalf("Enter on a row of the last folder chose it while b loaded")
+	}
+	g.release("dir:b")
+	h.shows("notes.md")
+	var dir string
+	h.onLoop(func() { dir = v.Dir() })
+	if dir != "vfs://b" {
+		t.Fatalf("Dir %q once b arrived", dir)
+	}
+}
+
+// TestAReadIsStoppedWhenTheLoopTakesOver: a folder row stops the preview's read
+// in flight, and an fs.FS source stops the listing's: cancelled, not left to
+// finish on a worker.
+func TestAReadIsStoppedWhenTheLoopTakesOver(t *testing.T) {
+	g := newGated(t, vfsFiles)
+	g.release("dir:a")
+	v := widget.NewFileOpenView(widget.WithFileViewSource(widget.FileSource{VFS: g, Root: "vfs://"}),
+		widget.WithFileViewDir("vfs://a"))
+	h := startBrowser(t, v)
+	defer h.stop()
+	h.shows("readme.md")
+	h.inject(key(tui.KeyDown)) // readme.md: held
+	h.shows("(loading")
+	before := g.cancelled.Load()
+	h.inject(key(tui.KeyUp)) // ..: a folder, shown at once
+	h.waitFor("the preview's read stopped", func() bool { return g.cancelled.Load() > before })
+
+	before = g.cancelled.Load()
+	started := g.started.Load()
+	h.onLoop(func() { v.SetDir("vfs://b") }) // held
+	h.waitFor("b's read held", func() bool { return g.started.Load() > started })
+	h.onLoop(func() {
+		v.SetSource(widget.FileSource{FS: fstest.MapFS{"local.txt": {Data: []byte("l")}}, Root: "/"})
+		v.SetDir("/")
+	})
+	h.waitFor("the listing's read stopped", func() bool { return g.cancelled.Load() > before })
+	h.shows("local.txt")
 }

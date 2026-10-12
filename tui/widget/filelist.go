@@ -252,6 +252,9 @@ type FileList struct {
 	listTask tui.TaskID
 	loading  string
 	want     string
+	// stopList cancels the listing in flight: a newer load, or an fs.FS source
+	// taking over, stops it rather than leaving it to finish
+	stopList context.CancelFunc
 	// width is the pane's width at the last layout, for fitting the title.
 	width int
 }
@@ -368,8 +371,9 @@ func (l *FileList) HandleEvent(ev tui.Event) bool {
 	}
 	got, _ := r.Value.(listing)
 	l.loading = ""
+	l.stopRead()
 	l.show(got.dir, got.dirs, got.files, r.Err)
-	l.place()
+	l.placeWanted()
 	return true
 }
 
@@ -422,12 +426,17 @@ func (l *FileList) Source() FileSource { return l.src }
 // source still on its way is superseded.
 func (l *FileList) SetSource(src FileSource) {
 	l.src = src.or()
-	l.loading = ""
 	l.loadThen(l.startDir(), "")
 }
 
-// Dir is the folder being listed, as an fs path.
-func (l *FileList) Dir() string { return l.dir }
+// Dir is the folder being listed, as an fs path: the one on its way, while a
+// VFS listing is.
+func (l *FileList) Dir() string {
+	if l.loading != "" {
+		return l.loading
+	}
+	return l.dir
+}
 
 // SetDir lists another folder, given as a rooted path; one outside the source
 // is ignored. Listing the same one again reads it afresh.
@@ -440,6 +449,9 @@ func (l *FileList) SetDir(rooted string) {
 // Current is the row under the cursor: its fs path, and whether it is a
 // folder.
 func (l *FileList) Current() (path string, folder, ok bool) {
+	if l.loading != "" {
+		return "", false, false // the rows are the last folder's
+	}
 	i, ok := l.list.Selected()
 	if !ok || i < 0 || i >= len(l.entries) {
 		return "", false, false
@@ -451,6 +463,10 @@ func (l *FileList) Current() (path string, folder, ok bool) {
 // SetCurrent puts the cursor on the entry named name in the folder listed,
 // and reports whether there is one.
 func (l *FileList) SetCurrent(name string) bool {
+	if l.loading != "" {
+		l.want = name // placed once the folder's rows are in
+		return false
+	}
 	for i, e := range l.entries {
 		if !e.up && e.name == name {
 			l.list.SetCursor(i)
@@ -465,6 +481,9 @@ func (l *FileList) SetCurrent(name string) bool {
 // Enter is Enter on the current row: a folder is gone into and reports false;
 // a file reports true and is left to the caller.
 func (l *FileList) Enter() bool {
+	if l.loading != "" {
+		return false // nothing on screen is the folder being listed
+	}
 	i, ok := l.list.Selected()
 	if !ok || i < 0 || i >= len(l.entries) {
 		return false
@@ -517,25 +536,53 @@ func (l *FileList) load(dir string) { l.loadThen(dir, "") }
 // kept and the title saying it is loading until the listing arrives.
 func (l *FileList) loadThen(dir, want string) {
 	l.want = want
+	l.stopRead()
 	ctx := l.Context()
 	if !l.src.async() {
+		l.loading = ""
 		dirs, files, err := l.src.readDir(context.Background(), dir)
 		l.show(dir, dirs, files, err)
-		l.place()
+		l.placeWanted()
 		return
 	}
-	l.dir = dir
 	if ctx == nil {
-		return // listed at Init
+		l.dir = dir // no rows yet: listed at Init
+		return
 	}
+	// The rows on screen stay those of l.dir, the folder they were read from,
+	// and none of them can be chosen until the new folder's arrive (Current,
+	// Enter), so no old name is ever joined to the new folder.
 	l.loading = dir
 	l.title = l.src.Rooted(dir)
 	l.fitTitle()
 	src := l.src
-	l.listTask = ctx.Go(func(c context.Context) (any, error) {
+	l.listTask, l.stopList = goRead(ctx, "files.list", func(c context.Context) (any, error) {
 		dirs, files, err := src.readDir(c, dir)
 		return listing{dir: dir, dirs: dirs, files: files}, err
-	}, tui.Exclusive("files.list"))
+	})
+}
+
+// stopRead cancels the listing in flight, if any.
+func (l *FileList) stopRead() {
+	if l.stopList != nil {
+		l.stopList()
+		l.stopList = nil
+	}
+}
+
+// goRead runs read off the loop as one of the owner's group's tasks: a newer
+// one in the group cancels it, as does its owner's unmount, and so does the
+// returned stop, which its owner calls when something not run as a task (a
+// folder row, an fs.FS source) takes over.
+func goRead(ctx *tui.Context, group string, read func(context.Context) (any, error)) (tui.TaskID, context.CancelFunc) {
+	own, stop := context.WithCancel(context.Background())
+	id := ctx.Go(func(task context.Context) (any, error) {
+		c, cancel := context.WithCancel(task)
+		defer cancel()
+		defer context.AfterFunc(own, cancel)()
+		return read(c)
+	}, tui.Exclusive(group))
+	return id, stop
 }
 
 // show puts a folder's rows in the list, the filter cleared and the cursor on
@@ -565,8 +612,8 @@ func (l *FileList) show(dir string, dirs, files []fileEntry, err error) {
 	l.cursorOn(0)
 }
 
-// place puts the cursor on the row a load asked for, once its rows are in.
-func (l *FileList) place() {
+// placeWanted puts the cursor on the row a load asked for, once its rows are in.
+func (l *FileList) placeWanted() {
 	if want := l.want; want != "" {
 		l.want = ""
 		l.SetCurrent(want)
