@@ -1,0 +1,14 @@
+{"Seq":0,"At":"2026-10-12T12:52:31.840328179Z","Stage":"in","Kind":"TextEdit","Data":{"end":0,"start":0,"text":"ㅎ"}}
+{"Seq":1,"At":"2026-10-12T12:52:31.840334049Z","Stage":"ime","Kind":"imeState","Data":{"comp":{"end":0,"start":0},"pieces":[{"folded":false,"from":0,"text":"ㅎ"}],"sel":{"end":0,"start":0},"text":"ㅎ"}}
+{"Seq":2,"At":"2026-10-12T12:52:31.840336529Z","Stage":"in","Kind":"SnippetAsk","Data":{"end":1,"start":0}}
+{"Seq":3,"At":"2026-10-12T12:52:31.840337009Z","Stage":"cmd","Kind":"SnippetReply","Data":{"end":1,"start":0,"text":"ㅎ"}}
+{"Seq":4,"At":"2026-10-12T12:52:31.840338729Z","Stage":"ime","Kind":"imeState","Data":{"comp":{"end":0,"start":0},"pieces":[{"folded":false,"from":0,"text":"ㅎ"}],"sel":{"end":0,"start":0},"text":"ㅎ"}}
+{"Seq":5,"At":"2026-10-12T12:52:31.840339579Z","Stage":"in","Kind":"Composition","Data":{"end":1,"start":0}}
+{"Seq":6,"At":"2026-10-12T12:52:31.840340299Z","Stage":"ime","Kind":"imeState","Data":{"comp":{"end":1,"start":0},"pieces":[{"folded":false,"from":0,"text":"ㅎ"}],"sel":{"end":0,"start":0},"text":"ㅎ"}}
+{"Seq":7,"At":"2026-10-12T12:52:31.840344249Z","Stage":"in","Kind":"TextEdit","Data":{"end":1,"start":0,"text":"한"}}
+{"Seq":8,"At":"2026-10-12T12:52:31.840345399Z","Stage":"ime","Kind":"imeState","Data":{"comp":{"end":1,"start":0},"pieces":[{"folded":true,"from":0,"text":"한"}],"sel":{"end":0,"start":0},"text":"한"}}
+{"Seq":9,"At":"2026-10-12T12:52:31.840346289Z","Stage":"in","Kind":"Composition","Data":{"end":-1,"start":-1}}
+{"Seq":10,"At":"2026-10-12T12:52:31.840347119Z","Stage":"ime","Kind":"imeState","Data":{"comp":{"end":-1,"start":-1},"pieces":[{"folded":true,"from":0,"text":"한"}],"sel":{"end":0,"start":0},"text":"한"}}
+{"Seq":11,"At":"2026-10-12T12:52:31.840349799Z","Stage":"out","Kind":"KeyEvent","Data":{"events":[{"Kind":0,"Code":54620,"Base":0,"Shifted":0,"Mods":0,"Text":"한"}]}}
+{"Seq":12,"At":"2026-10-12T12:52:31.840350049Z","Stage":"cmd","Kind":"SnippetReply","Data":{"end":0,"start":0,"text":""}}
+{"Seq":13,"At":"2026-10-12T12:52:31.840356009Z","Stage":"cmd","Kind":"SelectionTell","Data":{"caret":{"ascent":0,"descent":0,"x":0,"y":0},"end":0,"start":0}}
