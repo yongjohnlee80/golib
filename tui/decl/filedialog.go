@@ -131,6 +131,16 @@ func buildFileDialog(b Build) (tui.Component, []string, error) {
 	return d, consumed, nil
 }
 
+// fileSourceOf reads a dialog's source: a widget.FileSource the host binds
+// (tuidecl.Value carries one), which replaces the program's Files for this
+// dialog alone. A VFS one is listed and previewed off the loop.
+func fileSourceOf(v qml.SpecValue) (widget.FileSource, error) {
+	if src, ok := v.Obj.(widget.FileSource); v.Kind == qml.SpecValueObject && ok {
+		return src, nil
+	}
+	return widget.FileSource{}, fmt.Errorf("source takes a widget.FileSource the host binds, not a %s", v.Kind)
+}
+
 // showHint puts the keys the focused part of view answers to in the dialog's footer, as the
 // view's message, so the footer follows App.SetLanguage while the dialog is open.
 func showHint(m *widget.Modal, view hintedChooser) { m.SetFooterMessage(view.HintMessage()) }
@@ -223,8 +233,20 @@ func (d *dialogNode) setSelected(file string) {
 	}
 }
 
+// setSource is source's setter: the files this dialog lists, in place of the
+// program's (tuidecl.Files). A rebinding lists the new source afresh.
+func (d *dialogNode) setSource(src widget.FileSource) {
+	if c, ok := d.chooser.(interface{ SetSource(widget.FileSource) }); ok {
+		c.SetSource(src)
+		if d.folder != "" {
+			d.chooser.SetDir(d.folder)
+		}
+	}
+}
+
 // setFolder is currentFolder's setter.
 func (d *dialogNode) setFolder(dir string) {
+	d.folder = dir
 	if d.chooser != nil && dir != "" {
 		d.chooser.SetDir(dir)
 	}

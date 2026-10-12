@@ -402,6 +402,31 @@ tuidecl.Files(widget.FileSource{FS: sftpFS, Root: "sftp://host/"})   // a NewPro
 chooses; reading and writing the file is the host's, through whatever it has
 for that store.
 
+**One dialog with a source of its own:** `source:` takes a `widget.FileSource`
+the host binds, which replaces the program's `Files` for that dialog alone. A
+rebinding lists the new source at the dialog's `currentFolder`:
+
+```qml
+FileDialog { id: outside; source: App.outsideFiles; currentFolder: "/" }
+```
+
+```go
+p.Set("App.outsideFiles", widget.FileSource{VFS: daemonFS, Root: "/"})
+```
+
+**A slow source is a `vfs.FS`.** An `io/fs.FS` is read on the UI loop, as the
+local disk always has been. A source in `FileSource.VFS` (golib's `vfs`, a
+daemon's or a remote store's) is listed and previewed off the loop. Its folder
+title says it is loading until the rows arrive, and its preview says the same.
+A newer folder or file supersedes the read in flight, which is cancelled
+through its context, and a dialog taken off the screen cancels its reads too.
+When both are set, `VFS` wins.
+
+**Filtering an Open dialog:** `/` in the listing opens a filter field. Typing
+narrows the rows to the names containing it, without regard to case (`..`
+stays). Enter returns to the listing with the filter kept. Esc clears the
+filter, and a second Esc closes the dialog. A new folder clears it as well.
+
 ## 6. Your own Go widgets in QML
 
 A widget type is ONE value, `tuidecl.Type` — the same value the built-in

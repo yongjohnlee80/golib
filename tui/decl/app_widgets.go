@@ -134,6 +134,7 @@ func appTypes() []Type {
 			Ctor:    []string{"title", "helpText", "dim", "fileMode", "preview"},
 			restyle: restyleDialog,
 			Setters: map[string]Setter{
+				"source":        setter("a FileDialog", fileSourceOf, (*dialogNode).setSource),
 				"currentFolder": setter("a FileDialog", stringOf, (*dialogNode).setFolder),
 				"selectedFile":  setter("a FileDialog", stringOf, (*dialogNode).setSelected),
 			},
@@ -144,6 +145,7 @@ func appTypes() []Type {
 			Ctor:    []string{"title", "helpText", "dim", "preview"},
 			restyle: restyleDialog,
 			Setters: map[string]Setter{
+				"source":         setter("a FolderDialog", fileSourceOf, (*dialogNode).setSource),
 				"currentFolder":  setter("a FolderDialog", stringOf, (*dialogNode).setFolder),
 				"selectedFolder": setter("a FolderDialog", stringOf, (*dialogNode).setSelected),
 			},

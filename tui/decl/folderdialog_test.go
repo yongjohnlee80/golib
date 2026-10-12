@@ -211,3 +211,47 @@ func TestASaveDialogsNameStartsEmptyEachOpening(t *testing.T) {
 		t.Fatalf("the name typed and closed away is back:\n%s", s)
 	}
 }
+
+// TestADialogsSourceIsItsOwn: a FileDialog or FolderDialog bound to a host
+// widget.FileSource lists it, not the program's Files; one bound to anything
+// else is refused, naming the property.
+func TestADialogsSourceIsItsOwn(t *testing.T) {
+	own := fstest.MapFS{"mine/only-here.md": {Data: []byte("# mine\n")}}
+	for _, kind := range []string{"FileDialog", "FolderDialog"} {
+		t.Run(kind, func(t *testing.T) {
+			s := decltest.Run(t, 90, 22,
+				tuidecl.LayoutSource("main.qml", []byte("import tui 1.0\nimport demo 1.0\n"+`Window {
+    Text { text: "behind" }
+    `+kind+` { id: fd; title: "own files"; currentFolder: "/mine"; source: App.files }
+}`)),
+				tuidecl.Singleton("demo", "1.0", "App"),
+				tuidecl.Types(controls.Types()...),
+				tuidecl.Files(widget.FileSource{FS: notesFS, Root: "/"}),
+				tuidecl.Sources(map[string]any{"App.files": widget.FileSource{FS: own, Root: "/"}}))
+			s.WaitForText(t, "behind")
+			onScreenLoop(t, s, func() {
+				if err := s.Program.Call("fd", "open"); err != nil {
+					t.Error(err)
+				}
+			})
+			s.WaitForText(t, "only-here.md")
+			if strings.Contains(s.String(), "a.md") {
+				t.Fatalf("the dialog listed the program's files:\n%s", s)
+			}
+			// A rebinding lists the new source, at the dialog's folder.
+			other := fstest.MapFS{"mine/the-other.md": {Data: []byte("# other\n")}}
+			onScreenLoop(t, s, func() {
+				if err := s.Program.Set("App.files", widget.FileSource{FS: other, Root: "/"}); err != nil {
+					t.Error(err)
+				}
+			})
+			s.WaitForText(t, "the-other.md")
+		})
+	}
+	for _, kind := range []string{"FileDialog", "FolderDialog"} {
+		if _, err := mountDoc(t, "import tui 1.0\nWindow { "+kind+` { source: "/somewhere" } }`); err == nil ||
+			!strings.Contains(err.Error(), "source takes a widget.FileSource the host binds, not a string") {
+			t.Errorf("%s with a string source: %v, want it refused, naming source", kind, err)
+		}
+	}
+}

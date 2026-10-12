@@ -675,8 +675,11 @@ func Value(v any) (qml.SpecValue, error) {
 	case Index:
 		// A row, as a view's signal carries it — passed back to the view.
 		return indexValue(x), nil
+	case widget.FileSource:
+		// An OBJECT: the files a FileDialog or FolderDialog lists (filedialog.go).
+		return qml.SpecValue{Kind: qml.SpecValueObject, Obj: x}, nil
 	}
-	return qml.SpecValue{}, fmt.Errorf("a %T is not a value a document can hold: want a string, bool, number, a tui.Message, a model or a row's Index", v)
+	return qml.SpecValue{}, fmt.Errorf("a %T is not a value a document can hold: want a string, bool, number, a tui.Message, a model, a row's Index or a widget.FileSource", v)
 }
 
 // Arg reads a handler's argument i as a string — a path, a name — or says why

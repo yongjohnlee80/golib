@@ -94,6 +94,9 @@ type dialogNode struct {
 	// starts from, as its selectedFile says.
 	chooser  widget.FileChooser
 	selected string
+	// folder is a FileDialog's or FolderDialog's currentFolder as last set, so a
+	// source set after it lists it in the new source too
+	folder string
 	// highlighters are the adapter's definitions: a FileDialog's preview
 	// highlights a file by its name with them.
 	highlighters *highlight.Catalog
