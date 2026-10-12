@@ -411,33 +411,48 @@ func TestASaveViewAsksAVFSSourceWhetherANameIsAFolder(t *testing.T) {
 	h.shows("readme.md")
 }
 
-// gatedDirFS is an fs.FS whose ReadDir holds on a folder until the test
+// gatedDirFS is an fs.FS whose ReadDir and Stat hold on a name until the test
 // releases it, as a slow mount does; an fs.FS read takes no context, so a
 // superseded one is never stopped. A read held past a few seconds goes on, so
 // one made on the loop fails the test rather than hanging it.
 type gatedDirFS struct {
 	fstest.MapFS
-	g *gatedFS
+	g     *gatedFS
+	stats *atomic.Int32
+}
+
+func newGatedDir(files map[string]string) gatedDirFS {
+	m := fstest.MapFS{}
+	for p, body := range files {
+		m[p] = &fstest.MapFile{Data: []byte(body)}
+	}
+	return gatedDirFS{MapFS: m, g: &gatedFS{gates: map[string]chan struct{}{}}, stats: &atomic.Int32{}}
+}
+
+func (d gatedDirFS) hold(name string) {
+	select {
+	case <-d.g.gate(name):
+	case <-time.After(5 * time.Second):
+	}
 }
 
 func (d gatedDirFS) ReadDir(name string) ([]fs.DirEntry, error) {
 	d.g.started.Add(1)
-	select {
-	case <-d.g.gate("dir:" + name):
-	case <-time.After(5 * time.Second):
-	}
+	d.hold("dir:" + name)
 	return d.MapFS.ReadDir(name)
+}
+
+func (d gatedDirFS) Stat(name string) (fs.FileInfo, error) {
+	d.stats.Add(1)
+	d.hold("stat:" + name)
+	return d.MapFS.Stat(name)
 }
 
 // TestAnAsyncFSIsListedOffTheLoop: an Async fs.FS is listed as a VFS source
 // is, the list loading while the loop runs; a listing that a newer one
 // superseded cannot be stopped, and when it answers late it is dropped.
 func TestAnAsyncFSIsListedOffTheLoop(t *testing.T) {
-	files := fstest.MapFS{}
-	for p, body := range vfsFiles {
-		files[p] = &fstest.MapFile{Data: []byte(body)}
-	}
-	d := gatedDirFS{MapFS: files, g: &gatedFS{gates: map[string]chan struct{}{}}}
+	d := newGatedDir(vfsFiles)
 	v := widget.NewFileOpenView(widget.WithFileViewSource(widget.FileSource{FS: d, Root: "mem://", Async: true}),
 		widget.WithFileViewDir("mem://"), widget.WithFileViewPreview(false))
 	h := startBrowser(t, v)
@@ -504,5 +519,71 @@ func TestAnAsyncLocalSourceFollowsLinksToFolders(t *testing.T) {
 		h.shows("n.md")
 		h.inject(key(tui.KeyDown)) // .., n.md
 		h.shows("note body")
+	}
+}
+
+// TestASaveViewChecksATypedNameOffTheLoop: of an Async fs.FS, Enter on a typed
+// name asks off the loop whether it is a folder. The loop answers while the
+// check is held; the answer then chooses the file, or goes into the folder; an
+// edit to the name before the answer drops it, even one back to the same name.
+func TestASaveViewChecksATypedNameOffTheLoop(t *testing.T) {
+	d := newGatedDir(vfsFiles)
+	d.g.release("dir:.")
+	d.g.release("dir:a")
+	var chosen atomic.Int32
+	v := widget.NewFileSaveView(widget.WithFileViewSource(widget.FileSource{FS: d, Root: "mem://", Async: true}),
+		widget.WithFileViewDir("mem://"), widget.WithOnChoose(func() { chosen.Add(1) }))
+	h := startBrowser(t, v) // the name field has the keyboard
+	defer h.stop()
+	h.shows("top.txt")
+
+	h.onLoop(func() { v.SetName("b") })
+	h.inject(key(tui.KeyEnter))
+	h.waitFor("b's check held", func() bool { return d.stats.Load() >= 1 })
+	// edits, back to the name asked about; each seen on the loop before the
+	// answer is let through, since injected keys and a task's answer are not
+	// ordered
+	nameIs := func(want string) func() bool {
+		return func() bool {
+			var n string
+			h.onLoop(func() { n = v.Name() })
+			return n == want
+		}
+	}
+	h.inject(key('x'))
+	h.waitFor("the x typed", nameIs("bx"))
+	h.inject(key(tui.KeyBackspace))
+	h.waitFor("the x deleted", nameIs("b"))
+	d.g.release("stat:b")
+	h.settle()
+	var dir, name string
+	h.onLoop(func() { dir, name = v.Dir(), v.Name() })
+	if dir != "mem://" || name != "b" || chosen.Load() != 0 {
+		t.Fatalf("after an edit, the dropped check applied: Dir %q, name %q, chosen %d", dir, name, chosen.Load())
+	}
+
+	h.onLoop(func() { v.SetName("top.txt") })
+	h.inject(key(tui.KeyEnter))
+	h.waitFor("top.txt's check held", func() bool { return d.stats.Load() >= 2 })
+	ran := false
+	h.onLoop(func() { ran = true })
+	if !ran || chosen.Load() != 0 {
+		t.Fatalf("while the check is held: the loop ran %v, chosen %d", ran, chosen.Load())
+	}
+	d.g.release("stat:top.txt")
+	h.waitFor("the file chosen", func() bool { return chosen.Load() == 1 })
+	var confirmed bool
+	h.onLoop(func() { confirmed = v.Confirm() })
+	if !confirmed {
+		t.Fatal("Confirm after the answer: false, want the file")
+	}
+
+	h.onLoop(func() { v.SetName("a") })
+	h.inject(key(tui.KeyEnter))
+	d.g.release("stat:a")
+	h.shows("readme.md")
+	h.onLoop(func() { dir, name = v.Dir(), v.Name() })
+	if dir != "mem://a" || name != "" || chosen.Load() != 1 {
+		t.Fatalf("a folder's name: Dir %q, name %q, chosen %d; want into a, the name cleared, nothing chosen", dir, name, chosen.Load())
 	}
 }

@@ -1,9 +1,13 @@
 package decl_test
 
 import (
+	"io/fs"
 	"strings"
+	"sync"
+	"sync/atomic"
 	"testing"
 	"testing/fstest"
+	"time"
 
 	"github.com/yongjohnlee80/golib/decl"
 	"github.com/yongjohnlee80/golib/parse/qml"
@@ -34,6 +38,12 @@ func runFolderDialog(t *testing.T, rec *recorder) *decltest.Screen {
 // the dialog's (dialog), each a line of QML.
 func runFolderDialogWith(t *testing.T, rec *recorder, window, dialog string) *decltest.Screen {
 	t.Helper()
+	return runFolderDialogOn(t, rec, widget.FileSource{FS: notesFS, Root: "/"}, window, dialog)
+}
+
+// runFolderDialogOn is runFolderDialogWith over the files src.
+func runFolderDialogOn(t *testing.T, rec *recorder, src widget.FileSource, window, dialog string) *decltest.Screen {
+	t.Helper()
 	s := decltest.Run(t, 90, 22,
 		tuidecl.LayoutSource("main.qml", []byte("import tui 1.0\nimport demo 1.0\n"+`Window {
     `+window+`
@@ -49,7 +59,7 @@ func runFolderDialogWith(t *testing.T, rec *recorder, window, dialog string) *de
 }`)),
 		tuidecl.Singleton("demo", "1.0", "App"),
 		tuidecl.Types(controls.Types()...),
-		tuidecl.Files(widget.FileSource{FS: notesFS, Root: "/"}),
+		tuidecl.Files(src),
 		tuidecl.Handlers(map[string]decl.HandlerFunc{"App.use": rec.handler}))
 	s.WaitForText(t, "behind")
 	onScreenLoop(t, s, func() {
@@ -123,6 +133,78 @@ func TestAFolderDialogRefusesAPathThatIsNotAFolder(t *testing.T) {
 	}
 	s.Keys(t, decltest.Ctrl('j'), decltest.Rune('q'))
 	s.WaitFor(t, "q closed it", func(sc string) bool { return !strings.Contains(sc, "add a workspace") })
+}
+
+// statGated is notesFS with each Stat held on its name until the test releases
+// it, as a slow mount holds one; held past a few seconds it goes on, so a Stat
+// made on the loop fails the test rather than hanging it.
+type statGated struct {
+	fstest.MapFS
+	mu    sync.Mutex
+	gates map[string]chan struct{}
+	asked atomic.Int32
+}
+
+func (g *statGated) gate(name string) chan struct{} {
+	g.mu.Lock()
+	defer g.mu.Unlock()
+	c, ok := g.gates[name]
+	if !ok {
+		c = make(chan struct{})
+		g.gates[name] = c
+	}
+	return c
+}
+
+func (g *statGated) Stat(name string) (fs.FileInfo, error) {
+	g.asked.Add(1)
+	select {
+	case <-g.gate(name):
+	case <-time.After(5 * time.Second):
+	}
+	return g.MapFS.Stat(name)
+}
+
+// TestAFolderDialogChecksATypedPathOffTheLoop: of an Async source, Select on a
+// typed path asks off the loop whether it is a folder; the dialog stays open
+// and the loop answers while the check is held. A folder is then chosen, a
+// file refused.
+func TestAFolderDialogChecksATypedPathOffTheLoop(t *testing.T) {
+	for _, c := range []struct {
+		typed, stat string
+		folder      bool
+	}{{"/elsewhere", "elsewhere", true}, {"/notes/a.md", "notes/a.md", false}} {
+		g := &statGated{MapFS: notesFS, gates: map[string]chan struct{}{}}
+		rec := &recorder{}
+		s := runFolderDialogOn(t, rec, widget.FileSource{FS: g, Root: "/", Async: true}, "", "")
+		s.WaitForText(t, "a.md")
+		s.Keys(t, decltest.Ctrl('j')) // the path field
+		s.Keys(t, decltest.Ctrl('u'))
+		s.Keys(t, decltest.Type(c.typed)...)
+		s.Keys(t, tui.KeyEvent{Kind: tui.KeyPress, Code: tui.KeyTab}, tui.KeyEvent{Kind: tui.KeyPress, Code: tui.KeyTab})
+		s.Keys(t, decltest.Rune('s'))
+		deadline := time.Now().Add(3 * time.Second)
+		for g.asked.Load() < 1 && time.Now().Before(deadline) {
+			time.Sleep(10 * time.Millisecond)
+		}
+		ran := false
+		onScreenLoop(t, s, func() { ran = true })
+		if g.asked.Load() < 1 || !ran || !strings.Contains(s.String(), "add a workspace") || len(rec.args()) != 0 {
+			t.Fatalf("%s, while the check is held: asked %d, the loop ran %v, args %v\n%s", c.typed, g.asked.Load(), ran, rec.args(), s)
+		}
+		close(g.gate(c.stat))
+		if c.folder {
+			s.WaitFor(t, "the dialog closed", func(sc string) bool { return !strings.Contains(sc, "add a workspace") })
+			if got := rec.args(); len(got) != 2 || got[1].Raw != c.typed {
+				t.Fatalf("App.use got %v, want (untitled, %s)", got, c.typed)
+			}
+			continue
+		}
+		s.WaitForText(t, "not a folder")
+		if got := rec.args(); len(got) != 0 {
+			t.Fatalf("a file was chosen as the folder: %v", got)
+		}
+	}
 }
 
 // args is what the handler got, the last call's.

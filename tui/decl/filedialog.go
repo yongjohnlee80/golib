@@ -189,7 +189,10 @@ func buildFolderDialog(b Build) (tui.Component, []string, error) {
 	fixedHelp := !s.help.Empty()
 	var d *dialogNode
 	var chooser *widget.FileFolderView
-	opts := []widget.FileViewOption{widget.WithFileViewSource(b.Files), widget.WithFileViewFields(fields...)}
+	// A path an async source checks off the loop is chosen when the check
+	// answers, through onChoose, past the gate that turned it away.
+	opts := []widget.FileViewOption{widget.WithFileViewSource(b.Files), widget.WithFileViewFields(fields...),
+		widget.WithOnChoose(func() { d.accept() })}
 	for _, name := range consumed {
 		if name == "preview" {
 			opts = append(opts, widget.WithFileViewPreview(preview))
