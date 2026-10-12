@@ -50,48 +50,50 @@ func TestARecordedHangulCompositionShowsTheInputPathInRecords(t *testing.T) {
 	)
 	b.readInput(r.Source(), tag, metrics{})
 	got := ring.records()
-	if len(got) != 14 {
+	if len(got) != 16 {
 		for i, rec := range got {
 			t.Logf("record %d: %+v", i, rec)
 		}
-		t.Fatalf("the composition was recorded as %d records; want 14 (in/ime per event, the snippet reply, out, two cmds)", len(got))
+		t.Fatalf("the composition was recorded as %d records; want 16 (frame begin, in/ime per event, the snippet reply, out, two cmds, frame end)", len(got))
 	}
-	recMatches(t, got[0], 0, StageIn, "TextEdit", map[string]any{"start": 0, "end": 0, "text": "ㅎ"})
-	recMatches(t, got[1], 1, StageIME, "imeState", map[string]any{
+	recMatches(t, got[0], 0, StageFrame, "begin", map[string]any{"n": 3})
+	recMatches(t, got[1], 1, StageIn, "TextEdit", map[string]any{"start": 0, "end": 0, "text": "ㅎ"})
+	recMatches(t, got[2], 2, StageIME, "imeState", map[string]any{
 		"text": "ㅎ", "comp": map[string]any{"start": 0, "end": 0}, "sel": map[string]any{"start": 0, "end": 0},
 		"pieces": []map[string]any{{"from": 0, "text": "ㅎ", "folded": false}},
 	})
-	recMatches(t, got[2], 2, StageIn, "SnippetAsk", map[string]any{"start": 0, "end": 1})
+	recMatches(t, got[3], 3, StageIn, "SnippetAsk", map[string]any{"start": 0, "end": 1})
 	// The answer to the snippet ask is a cmd record: what the toolkit was told the editor
 	// holds, which is the handshake the macOS bug lived in.
-	recMatches(t, got[3], 3, StageCmd, "SnippetReply", map[string]any{"start": 0, "end": 1, "text": "ㅎ"})
-	recMatches(t, got[4], 4, StageIME, "imeState", map[string]any{
+	recMatches(t, got[4], 4, StageCmd, "SnippetReply", map[string]any{"start": 0, "end": 1, "text": "ㅎ"})
+	recMatches(t, got[5], 5, StageIME, "imeState", map[string]any{
 		"text": "ㅎ", "comp": map[string]any{"start": 0, "end": 0}, "sel": map[string]any{"start": 0, "end": 0},
 		"pieces": []map[string]any{{"from": 0, "text": "ㅎ", "folded": false}},
 	})
-	recMatches(t, got[5], 5, StageIn, "Composition", map[string]any{"start": 0, "end": 1})
-	recMatches(t, got[6], 6, StageIME, "imeState", map[string]any{
+	recMatches(t, got[6], 6, StageIn, "Composition", map[string]any{"start": 0, "end": 1})
+	recMatches(t, got[7], 7, StageIME, "imeState", map[string]any{
 		"text": "ㅎ", "comp": map[string]any{"start": 0, "end": 1}, "sel": map[string]any{"start": 0, "end": 0},
 		"pieces": []map[string]any{{"from": 0, "text": "ㅎ", "folded": false}},
 	})
-	recMatches(t, got[7], 7, StageIn, "TextEdit", map[string]any{"start": 0, "end": 1, "text": "한"})
-	recMatches(t, got[8], 8, StageIME, "imeState", map[string]any{
+	recMatches(t, got[8], 8, StageIn, "TextEdit", map[string]any{"start": 0, "end": 1, "text": "한"})
+	recMatches(t, got[9], 9, StageIME, "imeState", map[string]any{
 		"text": "한", "comp": map[string]any{"start": 0, "end": 1}, "sel": map[string]any{"start": 0, "end": 0},
 		"pieces": []map[string]any{{"from": 0, "text": "한", "folded": true}},
 	})
-	recMatches(t, got[9], 9, StageIn, "Composition", map[string]any{"start": -1, "end": -1})
-	recMatches(t, got[10], 10, StageIME, "imeState", map[string]any{
+	recMatches(t, got[10], 10, StageIn, "Composition", map[string]any{"start": -1, "end": -1})
+	recMatches(t, got[11], 11, StageIME, "imeState", map[string]any{
 		"text": "한", "comp": map[string]any{"start": -1, "end": -1}, "sel": map[string]any{"start": 0, "end": 0},
 		"pieces": []map[string]any{{"from": 0, "text": "한", "folded": true}},
 	})
-	recMatches(t, got[11], 11, StageOut, "KeyEvent", map[string]any{
+	recMatches(t, got[12], 12, StageOut, "KeyEvent", map[string]any{
 		"events": []tui.KeyEvent{{Kind: tui.KeyPress, Code: '한', Text: "한"}},
 	})
-	recMatches(t, got[12], 12, StageCmd, "SnippetReply", map[string]any{"start": 0, "end": 0, "text": ""})
-	recMatches(t, got[13], 13, StageCmd, "SelectionTell", map[string]any{
+	recMatches(t, got[13], 13, StageCmd, "SnippetReply", map[string]any{"start": 0, "end": 0, "text": ""})
+	recMatches(t, got[14], 14, StageCmd, "SelectionTell", map[string]any{
 		"start": 0, "end": 0,
 		"caret": map[string]any{"x": float32(0), "y": float32(0), "ascent": float32(0), "descent": float32(0)},
 	})
+	recMatches(t, got[15], 15, StageFrame, "end", map[string]any{"n": 3})
 }
 
 // The recording a JSONL recorder writes parses back line by line into the records that
@@ -111,8 +113,8 @@ func TestTheJSONLRecordingParsesBack(t *testing.T) {
 		t.Fatalf("Close: %v", err)
 	}
 	lines := strings.Split(strings.TrimRight(buf.String(), "\n"), "\n")
-	if len(lines) != 5 {
-		t.Fatalf("the recording holds %d lines; want 5 (in, ime, out, two cmds)", len(lines))
+	if len(lines) != 7 {
+		t.Fatalf("the recording holds %d lines; want 7 (frame begin, in, ime, out, two cmds, frame end)", len(lines))
 	}
 	var recs []Record
 	for _, line := range lines {
@@ -122,24 +124,30 @@ func TestTheJSONLRecordingParsesBack(t *testing.T) {
 		}
 		recs = append(recs, rec)
 	}
-	if recs[0].Stage != StageIn || recs[0].Kind != "TextEdit" || recs[0].Data["text"] != "a" {
-		t.Errorf("line 1 = %s %s %v; want the TextEdit in", recs[0].Stage, recs[0].Kind, recs[0].Data)
+	if recs[0].Stage != StageFrame || recs[0].Kind != "begin" {
+		t.Errorf("line 1 = %s %s; want the frame's begin", recs[0].Stage, recs[0].Kind)
 	}
-	if recs[1].Stage != StageIME || recs[1].Data["text"] != "a" {
-		t.Errorf("line 2 = %s %v; want the imeState after it", recs[1].Stage, recs[1].Data)
+	if recs[1].Stage != StageIn || recs[1].Kind != "TextEdit" || recs[1].Data["text"] != "a" {
+		t.Errorf("line 2 = %s %s %v; want the TextEdit in", recs[1].Stage, recs[1].Kind, recs[1].Data)
 	}
-	if recs[2].Stage != StageOut {
-		t.Errorf("line 3 = %s; want the out", recs[2].Stage)
+	if recs[2].Stage != StageIME || recs[2].Data["text"] != "a" {
+		t.Errorf("line 3 = %s %v; want the imeState after it", recs[2].Stage, recs[2].Data)
 	}
-	events, ok := recs[2].Data["events"].([]any)
+	if recs[3].Stage != StageOut {
+		t.Errorf("line 4 = %s; want the out", recs[3].Stage)
+	}
+	events, ok := recs[3].Data["events"].([]any)
 	if !ok || len(events) != 1 || events[0].(map[string]any)["Text"] != "a" {
-		t.Errorf("line 3's events = %v; want the one key event of \"a\"", recs[2].Data["events"])
+		t.Errorf("line 4's events = %v; want the one key event of \"a\"", recs[3].Data["events"])
 	}
-	if recs[3].Stage != StageCmd || recs[3].Kind != "SnippetReply" {
-		t.Errorf("line 4 = %s %s; want the snippet reset", recs[3].Stage, recs[3].Kind)
+	if recs[4].Stage != StageCmd || recs[4].Kind != "SnippetReply" {
+		t.Errorf("line 5 = %s %s; want the snippet reset", recs[4].Stage, recs[4].Kind)
 	}
-	if recs[4].Stage != StageCmd || recs[4].Kind != "SelectionTell" {
-		t.Errorf("line 5 = %s %s; want the selection reset", recs[4].Stage, recs[4].Kind)
+	if recs[5].Stage != StageCmd || recs[5].Kind != "SelectionTell" {
+		t.Errorf("line 6 = %s %s; want the selection reset", recs[5].Stage, recs[5].Kind)
+	}
+	if recs[6].Stage != StageFrame || recs[6].Kind != "end" {
+		t.Errorf("line 7 = %s %s; want the frame's end", recs[6].Stage, recs[6].Kind)
 	}
 	for i, rec := range recs {
 		if rec.Seq != uint64(i) {
@@ -201,14 +209,16 @@ func TestTheFocusHandshakeIsRecorded(t *testing.T) {
 	src := &recordingSource{}
 	b.readInput(src, tag, metrics{})
 	got := ring.records()
-	if len(got) != 2 {
+	if len(got) != 4 {
 		for i, rec := range got {
 			t.Logf("record %d: %+v", i, rec)
 		}
-		t.Fatalf("the focus handshake was recorded as %d records; want the FocusTake and KeyboardShow cmds", len(got))
+		t.Fatalf("the focus handshake was recorded as %d records; want the frame's begin, the FocusTake and KeyboardShow cmds, and the frame's end", len(got))
 	}
-	recMatches(t, got[0], 0, StageCmd, "FocusTake", map[string]any{})
-	recMatches(t, got[1], 1, StageCmd, "KeyboardShow", map[string]any{})
+	recMatches(t, got[0], 0, StageFrame, "begin", map[string]any{"n": 1})
+	recMatches(t, got[1], 1, StageCmd, "FocusTake", map[string]any{})
+	recMatches(t, got[2], 2, StageCmd, "KeyboardShow", map[string]any{})
+	recMatches(t, got[3], 3, StageFrame, "end", map[string]any{"n": 1})
 }
 
 // A recorder that panics if a Record arrives after its Close: if anything but the

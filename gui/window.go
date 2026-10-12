@@ -57,7 +57,23 @@ type gioState struct {
 	ptr     pointerState    // Pointer position, button transitions, and drag tracker
 	caret   image.Rectangle // Physical pixel bounding box of the active caret
 	focused bool            // Tracks whether OS keyboard focus has been registered for this window
+	frames  int             // Frames whose input readInput has read, for the recorder
 	shown   *frame          // Most recently presented frame macro
+}
+
+// takeFocus is the handshake readInput runs while the window has not taken the
+// keyboard focus: taking it and opening the text input, which is what lets an
+// input method attach at all. Gio closes text input on every focus change, and
+// on Wayland zwp_text_input_v3 is enabled only for a window that opened it, so
+// without this fcitx5 or IBus never composes Hangul here — and the handshake
+// repeats whenever the focus was lost. The window sends the commands; the replay
+// checks them.
+func (g *gioState) takeFocus() []TextInputCmd {
+	if g.focused {
+		return nil
+	}
+	g.focused = true
+	return []TextInputCmd{FocusTake{}, KeyboardShow{}}
 }
 
 // windowOptions builds the slice of Gio app.Option values from the configuration struct.
@@ -131,13 +147,12 @@ func (b *Backend) isStarted() bool {
 
 // readInput reads this frame's events: keys, text, pointer, clipboard.
 func (b *Backend) readInput(src eventSource, tag event.Tag, m metrics) {
-	if !b.gio.focused {
-		b.execRecorded(src, tag, FocusTake{})
-		// Gio closes text input on every focus change, and an input method attaches only to a
-		// window that opened it: on Wayland, zwp_text_input_v3 is enabled only then, so
-		// without this fcitx5 or IBus never composes Hangul here.
-		b.execRecorded(src, tag, KeyboardShow{})
-		b.gio.focused = true
+	b.gio.frames++
+	if b.rec != nil {
+		b.record(StageFrame, "begin", map[string]any{"n": b.gio.frames})
+	}
+	for _, cmd := range b.gio.takeFocus() {
+		b.execRecorded(src, tag, cmd)
 	}
 	allMods := key.ModCtrl | key.ModCommand | key.ModShift | key.ModAlt | key.ModSuper
 	for {
@@ -216,6 +231,9 @@ func (b *Backend) readInput(src eventSource, tag event.Tag, m metrics) {
 		}
 	}
 	b.deliverIME(src, tag)
+	if b.rec != nil {
+		b.record(StageFrame, "end", map[string]any{"n": b.gio.frames})
+	}
 	b.mu.Lock()
 	cp := b.copyText
 	b.copyText = nil
@@ -228,24 +246,19 @@ func (b *Backend) readInput(src eventSource, tag event.Tag, m metrics) {
 // deliverIME sends the text the input method has committed to the App, once no composition
 // holds it, and empties the buffer and Gio's copy of it, so the next edit starts at 0.
 func (b *Backend) deliverIME(src eventSource, tag event.Tag) {
-	pieces, ok := b.gio.ime.take()
+	keys, resets, ok := b.gio.ime.commitFrame()
 	if !ok {
 		return
 	}
-	for _, s := range pieces {
-		for _, k := range textKeys(s) {
-			b.q.push(k)
-		}
+	for _, k := range keys {
+		b.q.push(k)
 	}
 	if b.rec != nil {
-		var out []tui.KeyEvent
-		for _, s := range pieces {
-			out = append(out, textKeys(s)...)
-		}
-		b.record(StageOut, "KeyEvent", map[string]any{"events": out})
+		b.record(StageOut, "KeyEvent", map[string]any{"events": keys})
 	}
-	b.execRecorded(src, tag, SnippetReply{})  // Gio's copy resets to the emptied buffer
-	b.execRecorded(src, tag, SelectionTell{}) // and the selection with it
+	for _, cmd := range resets {
+		b.execRecorded(src, tag, cmd)
+	}
 }
 
 // execRecorded sends one TextInputCmd through the adapter, recording it first.

@@ -89,7 +89,9 @@ type CaretPlace struct {
 }
 
 // SelectionTell reports the selection and where the caret is, for the toolkit
-// to place the input method's candidate window.
+// to place the input method's candidate window. The caret's geometry comes from
+// the frame's layout, not from the input: a replay takes it as environment and
+// checks the selection alone.
 type SelectionTell struct {
 	Start, End int
 	Caret      CaretPlace
