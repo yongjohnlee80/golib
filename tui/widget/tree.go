@@ -422,6 +422,8 @@ type Tree struct {
 	// they do, each arrival moving the rows under it.
 	reopen map[*TreeNode]*reopenPlan
 	anchor *TreeNode
+	// known fills an unloaded node at once when the host already has its children (WithKnownChildren)
+	known func(n *TreeNode, gen uint64) bool
 }
 
 // reopenPlan is what was open under a reloaded node, by child ID — a path from the reloaded
@@ -525,6 +527,14 @@ func WithTreeStyles(st ListStyles) TreeOption {
 			CursorBlurred:  st.CursorBlurred.Inherit(t.styles.CursorBlurred),
 		}
 	}
+}
+
+// WithKnownChildren lets a host fill an unloaded node in the expanding key's own handling, when its
+// children are already known: known calls n.SetChildren(gen, kids) and reports true, and no
+// ExpandRequestEvent is sent. False sends one, as without it. A key queued behind the one that
+// opened the node then finds its children there: l j lands on the first child.
+func WithKnownChildren(known func(n *TreeNode, gen uint64) bool) TreeOption {
+	return func(t *Tree) { t.known = known }
 }
 
 // WithIndent sets the per-depth indent (default 2; non-positive panics).
@@ -844,7 +854,9 @@ func (t *Tree) expandNode(n *TreeNode) {
 	n.loadErr = ""
 	n.expanded = true // renders the spinner badge until the result settles
 	t.MarkDirty()
-	t.publish(ExpandRequestEvent{Owner: t.NodeID(), Node: n, Gen: n.gen})
+	if t.known == nil || !t.known(n, n.gen) || !n.loaded {
+		t.publish(ExpandRequestEvent{Owner: t.NodeID(), Node: n, Gen: n.gen})
+	}
 	t.publish(ExpandEvent{Owner: t.NodeID(), Node: n})
 }
 

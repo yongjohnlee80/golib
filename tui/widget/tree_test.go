@@ -774,3 +774,40 @@ func TestTreeReloadReopensWhatWasOpen(t *testing.T) {
 		t.Fatalf("after the reload the cursor is on %q, want c", got)
 	}
 }
+
+// TestTreeKnownChildrenShowInTheExpandingKeysHandling: with WithKnownChildren, an unloaded node
+// whose children the host has opens with them in the key's own handling, so the next key, handled
+// before anything published is, finds them: l then j land on the first child, with no request
+// sent. A node the host cannot answer for at once still sends its request.
+func TestTreeKnownChildrenShowInTheExpandingKeysHandling(t *testing.T) {
+	db := widget.NewTreeNode("db", "database")
+	lazy := widget.NewTreeNode("lazy", "remote")
+	known := func(n *widget.TreeNode, gen uint64) bool {
+		if n != db {
+			return false
+		}
+		n.SetChildren(gen, []*widget.TreeNode{
+			widget.NewTreeNode("a", "alpha", widget.WithLeaf()),
+			widget.NewTreeNode("b", "beta", widget.WithLeaf()),
+		})
+		return true
+	}
+	h, tr, sh := focusedTree(t, 40, 10, widget.WithRoots(db, lazy), widget.WithKnownChildren(known))
+	reqs := record[widget.ExpandRequestEvent](h)
+	h.onLoop(func() { // one turn: nothing published is handled between the two keys
+		tr.HandleEvent(key('l'))
+		tr.HandleEvent(key('j'))
+	})
+	h.barrier(sh)
+	if id := selectedID(h, tr); id != "a" {
+		t.Fatalf("l j selected %q, want a, the first child", id)
+	}
+	if reqs.count() != 0 {
+		t.Fatalf("expand requests = %d, want none for children the host had", reqs.count())
+	}
+	h.inject(key('G'), key('l')) // the last row, lazy: the host has nothing for it yet
+	h.barrier(sh)
+	if reqs.count() != 1 {
+		t.Fatalf("expand requests for lazy = %d, want 1", reqs.count())
+	}
+}

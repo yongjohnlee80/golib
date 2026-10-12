@@ -317,6 +317,12 @@ item views emit `activated`; `l`/Right opens a branch and `h`/Left closes it.
 A host that decides an activated branch is a folder opens it with
 `tree.ToggleExpanded(node)`.
 
+A host that already has a branch's children gives them at once with
+`WithKnownChildren`: its function fills the node (`SetChildren(gen, kids)`) and
+reports true, and no `ExpandRequestEvent` is sent, so the key after the one that
+opened the branch finds its children there. Reporting false sends the request,
+as without it.
+
 ### Editors & Streaming Viewers
 
 #### `Editor`

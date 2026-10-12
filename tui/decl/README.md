@@ -227,6 +227,10 @@ uses any other row as it means. `currentIndexChanged(index)` names the row that 
 cursor, and `setCurrentIndex(index)` puts the cursor on a row the host chose (a
 search hit, say), opening its closed ancestors first. Those ancestors' children
 must already be loaded in the model: the view does not fetch to reach a row.
+A row whose children the model has opens with them in the key's own handling,
+so `l` then `j` lands on its first child however fast they come; and with a
+model that tells its views of a change as it makes it (`TreeListModel` does),
+`setCurrentIndex` has the cursor on the row before it returns, as Qt's does.
 
 **`Repeater` and `Instantiator`** — Qt's delegate per model row. The one
 child is instantiated once per row of `model:`, in the Repeater's place in its
