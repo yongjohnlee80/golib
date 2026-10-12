@@ -85,8 +85,10 @@ type hotReload struct {
 	interval time.Duration
 	onReload func(decl.Result)
 	onError  func(error)
-	// ticks, when set, are the polls in place of a ticker at interval: a test's own clock
-	ticks <-chan time.Time
+	// ticks, when set, are the polls in place of a ticker at interval: a test's own clock; polled,
+	// when set, hears that a poll has been looked at and acted on
+	ticks  <-chan time.Time
+	polled chan<- struct{}
 }
 
 // watchedDir is a directory whose `.qml` files a Program read.
@@ -176,6 +178,9 @@ func (p *Program) follow(ctx context.Context) {
 		}
 		if f.step(p.snapshot()) {
 			p.schedule(p.hotReload)
+		}
+		if p.cfg.hot.polled != nil {
+			p.cfg.hot.polled <- struct{}{}
 		}
 	}
 }
