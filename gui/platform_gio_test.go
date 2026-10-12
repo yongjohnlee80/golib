@@ -3,7 +3,9 @@ package gui
 import (
 	"testing"
 
+	"gioui.org/f32"
 	"gioui.org/io/event"
+	"gioui.org/io/input"
 	"gioui.org/io/key"
 	"gioui.org/io/pointer"
 	"github.com/yongjohnlee80/golib/tui"
@@ -42,6 +44,39 @@ func TestInputEventOf(t *testing.T) {
 		got, ok := inputEventOf(c.ev)
 		if ok != c.ok || got != c.want {
 			t.Errorf("%s: inputEventOf = %+v, %v; want %+v, %v", c.name, got, ok, c.want, c.ok)
+		}
+	}
+}
+
+// recordingSource is an eventSource that records the commands executed on it.
+type recordingSource struct{ cmds []input.Command }
+
+func (r *recordingSource) Event(...event.Filter) (event.Event, bool) { return nil, false }
+func (r *recordingSource) Execute(c input.Command)                   { r.cmds = append(r.cmds, c) }
+
+func TestExecTextInputCmd(t *testing.T) {
+	tag := new(bool)
+	cases := []struct {
+		name string
+		cmd  TextInputCmd
+		want input.Command
+	}{
+		{"snippet reply", SnippetReply{Start: 2, End: 5, Text: "한"},
+			key.SnippetCmd{Tag: tag, Snippet: key.Snippet{Range: key.Range{Start: 2, End: 5}, Text: "한"}}},
+		// The empty reply is the command deliverIME resets Gio's copy with.
+		{"snippet reset", SnippetReply{}, key.SnippetCmd{Tag: tag}},
+		{"selection tell", SelectionTell{Start: 1, End: 3, Caret: CaretPlace{X: 10, Y: 40, Ascent: 12, Descent: 4}},
+			key.SelectionCmd{Tag: tag, Range: key.Range{Start: 1, End: 3}, Caret: key.Caret{Pos: f32.Pt(10, 40), Ascent: 12, Descent: 4}}},
+		// And the empty tell the selection reset with no caret.
+		{"selection reset", SelectionTell{}, key.SelectionCmd{Tag: tag}},
+		{"keyboard show", KeyboardShow{}, key.SoftKeyboardCmd{Show: true}},
+		{"focus take", FocusTake{}, key.FocusCmd{Tag: tag}},
+	}
+	for _, c := range cases {
+		var src recordingSource
+		execTextInputCmd(&src, tag, c.cmd)
+		if len(src.cmds) != 1 || src.cmds[0] != c.want {
+			t.Errorf("%s: executed %+v; want %+v", c.name, src.cmds, c.want)
 		}
 	}
 }
