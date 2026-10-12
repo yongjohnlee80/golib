@@ -7,7 +7,6 @@ import (
 	"strings"
 
 	"gioui.org/app"
-	"gioui.org/f32"
 	"gioui.org/font"
 	"gioui.org/io/clipboard"
 	"gioui.org/io/event"
@@ -132,11 +131,11 @@ func (b *Backend) isStarted() bool {
 // readInput reads this frame's events: keys, text, pointer, clipboard.
 func (b *Backend) readInput(src eventSource, tag event.Tag, m metrics) {
 	if !b.gio.focused {
-		src.Execute(key.FocusCmd{Tag: tag})
+		execTextInputCmd(src, tag, FocusTake{})
 		// Gio closes text input on every focus change, and an input method attaches only to a
 		// window that opened it: on Wayland, zwp_text_input_v3 is enabled only then, so
 		// without this fcitx5 or IBus never composes Hangul here.
-		src.Execute(key.SoftKeyboardCmd{Show: true})
+		execTextInputCmd(src, tag, KeyboardShow{})
 		b.gio.focused = true
 	}
 	allMods := key.ModCtrl | key.ModCommand | key.ModShift | key.ModAlt | key.ModSuper
@@ -181,8 +180,7 @@ func (b *Backend) readInput(src eventSource, tag event.Tag, m metrics) {
 			case SnippetAsk:
 				// Gio asks for the text around the input method's edits. Unanswered, its copy of
 				// the editor state differs from the input method's and it cancels the composition.
-				r := b.gio.ime.snippet(ev)
-				src.Execute(key.SnippetCmd{Tag: tag, Snippet: key.Snippet{Range: key.Range{Start: r.Start, End: r.End}, Text: r.Text}})
+				execTextInputCmd(src, tag, b.gio.ime.snippet(ev))
 			case SelectionSet:
 				b.gio.ime.setSelection(ev)
 			case TextEdit:
@@ -231,8 +229,8 @@ func (b *Backend) deliverIME(src eventSource, tag event.Tag) {
 			b.q.push(k)
 		}
 	}
-	src.Execute(key.SnippetCmd{Tag: tag})
-	src.Execute(key.SelectionCmd{Tag: tag})
+	execTextInputCmd(src, tag, SnippetReply{})  // Gio's copy resets to the emptied buffer
+	execTextInputCmd(src, tag, SelectionTell{}) // and the selection with it
 }
 
 // eventSource is the part of Gio's input.Source the backend uses, so tests can drive it.
@@ -279,11 +277,13 @@ func (b *Backend) placeCaret(src eventSource, tag event.Tag, f *frame) {
 		return
 	}
 	b.gio.caret = f.caret
-	src.Execute(key.SelectionCmd{
-		Tag:   tag,
-		Range: b.gio.ime.selection(), // the input method's own, so a composition is never cancelled
-		Caret: key.Caret{
-			Pos:     f32.Pt(float32(f.caret.Min.X), float32(f.caret.Min.Y+f.base)),
+	sel := b.gio.ime.selection() // the input method's own, so a composition is never cancelled
+	execTextInputCmd(src, tag, SelectionTell{
+		Start: sel.Start,
+		End:   sel.End,
+		Caret: CaretPlace{
+			X:       float32(f.caret.Min.X),
+			Y:       float32(f.caret.Min.Y + f.base),
 			Ascent:  float32(f.base),
 			Descent: float32(f.caret.Dy() - f.base),
 		},
