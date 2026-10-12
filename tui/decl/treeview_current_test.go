@@ -3,6 +3,7 @@ package decl_test
 import (
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/yongjohnlee80/golib/decl"
 	"github.com/yongjohnlee80/golib/parse/qml"
@@ -199,7 +200,7 @@ func interleaveTree() (*tuidecl.TreeListModel, *[]tuidecl.Index) {
 	return m, &fetches
 }
 
-func runTreeWithSink(t *testing.T, m *tuidecl.TreeListModel, moved, used *recorder, sunk *recorder) *decltest.Screen {
+func runTreeWithSink(t *testing.T, m any, moved, used *recorder, sunk *recorder) *decltest.Screen {
 	t.Helper()
 	return decltest.Run(t, 30, 10,
 		tuidecl.LayoutSource("main.qml", []byte("import tui 1.0\nimport demo 1.0\n"+
@@ -236,8 +237,7 @@ func TestATreeViewsRevealIgnoresUnrelatedBranchesLoading(t *testing.T) {
 	users := tuidecl.Index{Row: 0, Parent: &schema}
 	var err error
 	onScreenLoop(t, s, func() {
-		// The reveal starts, and before its ancestors can open, the three
-		// unrelated loads land.
+		// The reveal starts, and the three unrelated loads land in the same turn.
 		err = s.Program.Call("tree", "setCurrentIndex", users)
 		for _, ix := range *fetches {
 			ix := ix
@@ -260,22 +260,124 @@ func TestATreeViewsRevealIgnoresUnrelatedBranchesLoading(t *testing.T) {
 	}
 }
 
-// A row that disappears from the model while its reveal is opening the
-// ancestors ends the reveal with an error, and the cursor is not put on a
-// row that took its place.
-func TestATreeViewsRevealGivesUpWhenTheRowDisappears(t *testing.T) {
-	m, _ := interleaveTree()
-	moved, used, sunk := &recorder{}, &recorder{}, &recorder{}
-	s := runTreeWithSink(t, m, moved, used, sunk)
-	s.WaitForText(t, "database")
+// TestATreeViewsSetCurrentIndexLandsInTheSameTurn: with a model that tells its views of a change as
+// it makes it, setCurrentIndex opens the row's ancestors and puts the cursor on the row before it
+// returns, as Qt's does. A removal of that row made right after it, in the same turn, leaves the
+// cursor where the same removal does a turn after the cursor arrived, and no reveal gives up.
+func TestATreeViewsSetCurrentIndexLandsInTheSameTurn(t *testing.T) {
 	db := tuidecl.Index{Row: 0}
 	schema := tuidecl.Index{Row: 0, Parent: &db}
 	users := tuidecl.Index{Row: 0, Parent: &schema}
+	ordersOnly := []tuidecl.TreeRow{{Row: tuidecl.Row{"key": "t2", "label": "orders"}}}
+	// end is where the cursor rests after users is revealed and removed, in one turn or two.
+	end := func(oneTurn bool) (tuidecl.Index, string) {
+		m, _ := interleaveTree()
+		moved, used, sunk := &recorder{}, &recorder{}, &recorder{}
+		s := runTreeWithSink(t, m, moved, used, sunk)
+		s.WaitForText(t, "database")
+		var err error
+		onScreenLoop(t, s, func() {
+			err = s.Program.Call("tree", "setCurrentIndex", users)
+			if oneTurn {
+				m.SetChildren(&schema, ordersOnly)
+			}
+		})
+		if err != nil {
+			t.Fatalf("setCurrentIndex: %v", err)
+		}
+		if !oneTurn {
+			s.WaitFor(t, "the cursor on users", func(string) bool {
+				all := moved.all()
+				return len(all) > 0 && sameIndex(lastIndex(t, moved), users)
+			})
+			onScreenLoop(t, s, func() { m.SetChildren(&schema, ordersOnly) })
+		}
+		s.WaitFor(t, "users gone", func(sc string) bool { return !strings.Contains(sc, "users") })
+		time.Sleep(100 * time.Millisecond) // the move the removal makes, reported
+		if got := sunk.all(); len(got) != 0 {
+			t.Fatalf("one turn %v: a reveal gave up: %v", oneTurn, got)
+		}
+		return lastIndex(t, moved), s.String()
+	}
+	twoIx, twoScreen := end(false)
+	oneIx, oneScreen := end(true)
+	if !sameIndex(oneIx, twoIx) || oneScreen != twoScreen {
+		t.Fatalf("in one turn the cursor rests at %+v, in two at %+v:\none turn:\n%s\ntwo turns:\n%s", oneIx, twoIx, oneScreen, twoScreen)
+	}
+}
+
+// lateTree is a TreeListModel that tells its views of a change only when the test releases it, as a
+// model may that delivers its changes on a later turn of the loop. Loop goroutine only.
+type lateTree struct {
+	*tuidecl.TreeListModel
+	hold bool
+	held []tuidecl.Change
+	subs []func(tuidecl.Change)
+}
+
+func newLateTree(m *tuidecl.TreeListModel) *lateTree {
+	l := &lateTree{TreeListModel: m}
+	m.Subscribe(func(c tuidecl.Change) {
+		if l.hold {
+			l.held = append(l.held, c)
+			return
+		}
+		l.deliver(c)
+	})
+	return l
+}
+
+func (l *lateTree) Subscribe(fn func(tuidecl.Change)) func() {
+	l.subs = append(l.subs, fn)
+	return func() {}
+}
+
+func (l *lateTree) deliver(c tuidecl.Change) {
+	for _, fn := range l.subs {
+		fn(c)
+	}
+}
+
+// release tells the views of what was held, in order.
+func (l *lateTree) release() {
+	held := l.held
+	l.hold, l.held = false, nil
+	for _, c := range held {
+		l.deliver(c)
+	}
+}
+
+// TestATreeViewsRevealGivesUpWhenTheRowDisappears: with a model that tells its views late, an
+// ancestor can be loaded in the model while its row is still opening, so the reveal waits for it;
+// if the row is gone when the news arrives, the reveal ends with an error and the cursor is not put
+// on the row that took its place.
+func TestATreeViewsRevealGivesUpWhenTheRowDisappears(t *testing.T) {
+	m := tuidecl.NewTreeListModel("key", "label")
+	m.SetChildren(nil, []tuidecl.TreeRow{
+		{Row: tuidecl.Row{"key": "db", "label": "database"}, HasChildren: true},
+		{Row: tuidecl.Row{"key": "other", "label": "otherdb"}},
+	})
+	fetched := false
+	m.OnFetch = func(tuidecl.Index) { fetched = true } // the host answers when the test says
+	l := newLateTree(m)
+	moved, used, sunk := &recorder{}, &recorder{}, &recorder{}
+	s := runTreeWithSink(t, l, moved, used, sunk)
+	s.WaitForText(t, "database")
+	s.Keys(t, tui.KeyEvent{Kind: tui.KeyPress, Code: tui.KeyTab}, tui.KeyEvent{Kind: tui.KeyPress, Code: 'l'})
+	s.WaitFor(t, "database's children asked for", func(string) bool {
+		var f bool
+		onScreenLoop(t, s, func() { f = fetched })
+		return f
+	})
+	db := tuidecl.Index{Row: 0}
+	users := tuidecl.Index{Row: 0, Parent: &db}
 	var err error
 	onScreenLoop(t, s, func() {
-		err = s.Program.Call("tree", "setCurrentIndex", users)
-		// users goes; orders moves up into row 0, the position users had.
-		m.SetChildren(&schema, []tuidecl.TreeRow{{Row: tuidecl.Row{"key": "t2", "label": "orders"}}})
+		l.hold = true
+		m.SetChildren(&db, []tuidecl.TreeRow{{Row: tuidecl.Row{"key": "t1", "label": "users"}}, {Row: tuidecl.Row{"key": "t2", "label": "orders"}}})
+		err = s.Program.Call("tree", "setCurrentIndex", users) // the model has users; the row is still opening
+		m.SetChildren(&db, []tuidecl.TreeRow{{Row: tuidecl.Row{"key": "t2", "label": "orders"}}})
+		l.release()
 	})
 	if err != nil {
 		t.Fatalf("setCurrentIndex: %v", err)

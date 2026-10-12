@@ -125,7 +125,7 @@ func buildTreeView(b Build) (tui.Component, []string, error) {
 		}
 		consumed = append(consumed, "delegate")
 	}
-	n.tree = widget.NewTree()
+	n.tree = widget.NewTree(widget.WithKnownChildren(n.knownChildren))
 	if err := n.checkTemplate(nil); err != nil {
 		return nil, nil, err
 	}
@@ -353,17 +353,12 @@ func (n *treeViewNode) Init(ctx *tui.Context) {
 			return
 		}
 		ix, ok := n.at[ev.Node]
-		if !ok {
+		if !ok || n.knownChildren(ev.Node, ev.Gen) {
 			return
 		}
-		if n.model.RowCount(&ix) > 0 && !n.model.CanFetchMore(ix) {
-			ev.Node.SetChildren(ev.Gen, n.nodes(&ix))
-			n.continueReveal(n.pathOf(ix))
-		} else {
-			n.pending[n.pathOf(ix)] = ev.Gen
-			if n.model.CanFetchMore(ix) {
-				n.model.FetchMore(ix) // the model ignores a repeat while one is in flight
-			}
+		n.pending[n.pathOf(ix)] = ev.Gen
+		if n.model.CanFetchMore(ix) {
+			n.model.FetchMore(ix) // the model ignores a repeat while one is in flight
 		}
 	})
 	tui.SubscribeScoped(ctx, func(ev widget.ExpandEvent) {
@@ -405,6 +400,22 @@ func (n *treeViewNode) Init(ctx *tui.Context) {
 			n.activated(indexValue(ix))
 		}
 	})
+}
+
+// knownChildren fills a row whose children the model already has, in the key's own handling (the
+// Tree's WithKnownChildren), and reports whether it did; one whose children must load is left to its
+// ExpandRequestEvent.
+func (n *treeViewNode) knownChildren(node *widget.TreeNode, gen uint64) bool {
+	if n.model == nil {
+		return false
+	}
+	ix, ok := n.at[node]
+	if !ok || n.model.RowCount(&ix) == 0 || n.model.CanFetchMore(ix) {
+		return false
+	}
+	node.SetChildren(gen, n.nodes(&ix))
+	n.continueReveal(n.pathOf(ix))
+	return true
 }
 
 func (n *treeViewNode) Layout(c tui.Constraints) tui.Size {
@@ -510,12 +521,13 @@ func (n *treeViewNode) toggleExpanded(ix Index) error {
 // host that wants a deeper row loads it first. A row that is not in the model
 // is refused.
 //
-// Opening an ancestor the view has not shown before settles on a later turn of
-// the loop, so a deep row is reached one level per turn, and the cursor passes
-// through the ancestors on the way (each move emits currentIndexChanged). The
-// reveal gives up, reporting through the error sink, if the rows change so that
-// the row is no longer reachable. A later setCurrentIndex replaces one in
-// flight.
+// With a model that tells its views of a change as it makes it (TreeListModel
+// does), each ancestor opens with its children at once, so the cursor is on the
+// row before setCurrentIndex returns, as Qt's is. A model may tell its views on
+// a later turn of the loop; an ancestor whose news has not arrived is still
+// opening, and the reveal goes on as it does, giving up, through the error
+// sink, if the rows change so that the row is no longer reachable. A later
+// setCurrentIndex replaces one in flight.
 func (n *treeViewNode) setCurrentIndex(ix Index) error {
 	if n.model == nil {
 		return fmt.Errorf("setCurrentIndex: the TreeView has no model")
