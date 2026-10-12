@@ -76,6 +76,7 @@ type config struct {
 	decorated  bool
 	decoration bool // decorated was set explicitly
 	style      *Style
+	recorder   Recorder // where the input path's records go; nil records nothing
 }
 
 // defaultConfig returns the default GUI window and backend configuration.
@@ -161,3 +162,14 @@ func WithTheme(t Theme) Option { return func(c *config) { c.theme = t } }
 func WithDecorations(on bool) Option {
 	return func(c *config) { c.decorated, c.decoration = on, true }
 }
+
+// WithRecorder sets where the backend's input recording goes: one [Record] per
+// platform event, IME state, delivered key, command and preedit draw, in the
+// order they happened.
+//
+// Privacy: a recording contains every typed character — including passwords —
+// so nothing is recorded unless a recorder is given, and a recorder writes only
+// where its installer points it, never anywhere by default. A recorder that is
+// also an io.Closer is closed when the backend stops, which flushes the
+// [JSONLRecorder]'s buffer.
+func WithRecorder(r Recorder) Option { return func(c *config) { c.recorder = r } }

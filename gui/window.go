@@ -176,6 +176,10 @@ func (b *Backend) readInput(src eventSource, tag event.Tag, m metrics) {
 			if !ok {
 				continue
 			}
+			if b.rec != nil {
+				kind, data := eventFields(ev)
+				b.record(StageIn, kind, data)
+			}
 			switch ev := ev.(type) {
 			case SnippetAsk:
 				// Gio asks for the text around the input method's edits. Unanswered, its copy of
@@ -189,6 +193,9 @@ func (b *Backend) readInput(src eventSource, tag event.Tag, m metrics) {
 				b.gio.ime.compose(ev)
 			case FocusChange:
 				b.gio.focused = ev.Focused
+			}
+			if b.rec != nil {
+				b.record(StageIME, "imeState", imeFields(&b.gio.ime))
 			}
 		case pointer.Event:
 			if e.Kind == pointer.Leave {
@@ -229,8 +236,24 @@ func (b *Backend) deliverIME(src eventSource, tag event.Tag) {
 			b.q.push(k)
 		}
 	}
-	execTextInputCmd(src, tag, SnippetReply{})  // Gio's copy resets to the emptied buffer
-	execTextInputCmd(src, tag, SelectionTell{}) // and the selection with it
+	if b.rec != nil {
+		var out []tui.KeyEvent
+		for _, s := range pieces {
+			out = append(out, textKeys(s)...)
+		}
+		b.record(StageOut, "KeyEvent", map[string]any{"events": out})
+	}
+	b.execRecorded(src, tag, SnippetReply{})  // Gio's copy resets to the emptied buffer
+	b.execRecorded(src, tag, SelectionTell{}) // and the selection with it
+}
+
+// execRecorded sends one TextInputCmd through the adapter, recording it first.
+func (b *Backend) execRecorded(src eventSource, tag event.Tag, cmd TextInputCmd) {
+	if b.rec != nil {
+		kind, data := cmdFields(cmd)
+		b.record(StageCmd, kind, data)
+	}
+	execTextInputCmd(src, tag, cmd)
 }
 
 // eventSource is the part of Gio's input.Source the backend uses, so tests can drive it.
@@ -278,7 +301,7 @@ func (b *Backend) placeCaret(src eventSource, tag event.Tag, f *frame) {
 	}
 	b.gio.caret = f.caret
 	sel := b.gio.ime.selection() // the input method's own, so a composition is never cancelled
-	execTextInputCmd(src, tag, SelectionTell{
+	b.execRecorded(src, tag, SelectionTell{
 		Start: sel.Start,
 		End:   sel.End,
 		Caret: CaretPlace{
@@ -296,7 +319,18 @@ func (b *Backend) placeCaret(src eventSource, tag event.Tag, f *frame) {
 // only once delivered. The whole box is underlined, never a part mapped from rune offsets, so
 // right-to-left text and zero-width marks need no visual-order bookkeeping.
 func (b *Backend) drawPreedit(ops *op.Ops, f *frame, m metrics, fs *fontState) {
-	held, _, ok := b.gio.ime.held()
+	held, comp, ok := b.gio.ime.held()
+	if b.rec != nil && ok {
+		// Frames with nothing held record nothing here: there is no preedit to draw, and
+		// the caret's own record is the command placeCaret just sent. "drawn" carries the
+		// anomaly: held text that an empty caret kept off the screen.
+		b.record(StageDraw, "preedit", map[string]any{
+			"held":  string(held),
+			"comp":  map[string]any{"start": comp.Start, "end": comp.End},
+			"caret": map[string]any{"x": f.caret.Min.X, "y": f.caret.Min.Y, "w": f.caret.Dx(), "h": f.caret.Dy(), "base": f.base},
+			"drawn": !f.caret.Empty(),
+		})
+	}
 	if !ok || f.caret.Empty() {
 		return
 	}
