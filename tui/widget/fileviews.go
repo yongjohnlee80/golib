@@ -614,6 +614,7 @@ func (v *FileSaveView) SetDir(rooted string) {
 
 // SetSource lists another filesystem (FileOpenView.SetSource).
 func (v *FileSaveView) SetSource(src FileSource) {
+	v.stat.drop() // a check, or its answer, is the old source's
 	v.cfg.src = src.or()
 	v.listing.SetSource(v.cfg.src)
 }
@@ -906,6 +907,7 @@ func (v *FileFolderView) SetDir(rooted string) {
 // SetSource lists another filesystem (FileOpenView.SetSource); the path field
 // follows the listing to it.
 func (v *FileFolderView) SetSource(src FileSource) {
+	v.stat.drop() // a check, or its answer, is the old source's
 	v.cfg.src = src.or()
 	v.listing.SetSource(v.cfg.src)
 }

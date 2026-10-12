@@ -587,3 +587,53 @@ func TestASaveViewChecksATypedNameOffTheLoop(t *testing.T) {
 		t.Fatalf("a folder's name: Dir %q, name %q, chosen %d; want into a, the name cleared, nothing chosen", dir, name, chosen.Load())
 	}
 }
+
+// TestASourceSwapDropsATypedNamesCheck: two sources under one root, x a file in
+// one and a folder in the other. A check on its way from the first, answering
+// after the swap, is dropped; and the first's answer, kept for the Confirm
+// that follows it, is not taken for the second's.
+func TestASourceSwapDropsATypedNamesCheck(t *testing.T) {
+	file := newGatedDir(map[string]string{"x": "a file"})
+	folder := newGatedDir(map[string]string{"x/inner.md": "inside"})
+	file.g.release("dir:.")
+	folder.g.release("dir:.")
+	folder.g.release("dir:x")
+	srcOf := func(d gatedDirFS) widget.FileSource { return widget.FileSource{FS: d, Root: "mem://", Async: true} }
+	var chosen atomic.Int32
+	v := widget.NewFileSaveView(widget.WithFileViewSource(srcOf(file)), widget.WithFileViewDir("mem://"),
+		widget.WithOnChoose(func() { chosen.Add(1) }))
+	h := startBrowser(t, v)
+	defer h.stop()
+	// the cursor lands on x once the file source's rows are in, and names it
+	named := func() bool {
+		var n string
+		h.onLoop(func() { n = v.Name() })
+		return n == "x"
+	}
+	h.waitFor("the file source listed", named)
+
+	h.onLoop(func() { v.SetName("x") })
+	h.inject(key(tui.KeyEnter))
+	h.waitFor("x's check held", func() bool { return file.stats.Load() >= 1 })
+	h.onLoop(func() { v.SetSource(srcOf(folder)) })
+	h.shows("x/")
+	file.g.release("stat:x") // the first source answers: a file
+	h.settle()
+	if chosen.Load() != 0 {
+		t.Fatal("the old source's answer chose x from the new source")
+	}
+
+	h.onLoop(func() { v.SetSource(srcOf(file)); v.SetName("") })
+	h.waitFor("the file source listed again", named)
+	h.inject(key(tui.KeyEnter))
+	h.waitFor("x chosen, a file here", func() bool { return chosen.Load() == 1 })
+	h.onLoop(func() { v.SetSource(srcOf(folder)) })
+	h.shows("x/")
+	var confirmed bool
+	h.onLoop(func() { confirmed = v.Confirm() })
+	if confirmed {
+		t.Fatal("Confirm took the old source's answer: x confirmed as a file of the new source, where it is a folder")
+	}
+	folder.g.release("stat:x")
+	h.shows("inner.md")
+}
