@@ -85,7 +85,7 @@ A `MenuSeparator` with nothing to separate is not drawn, as Qt's QMenu collapses
 | `SyntaxHighlighter` | `definition` | — | — | — | — |
 | `StatusBar` | palette; its children are its widgets, each at its own width: permanent (Qt's `QStatusBar.addPermanentWidget`) at the right end, or, with `StatusBar.permanent: false` on the child, normal (`addWidget`) at the left end; the segments share the rest | `left`, `center`, `right` | — | — | — |
 | `Text` | `wrapMode`, palette | `text` | — | — | — |
-| `Terminal` (golib's) | `command` (the program; the user's `$SHELL` when empty), `dir`, `scrollback` | `command`, `dir` (both at the next `start()`), `vimKeys` (Esc leaves input mode, except on the alternate screen), `themeColors` (default true: the program's default colours are the theme's) | — | `exited(code)`, `titleChanged(title)`, `modeChanged(mode)` — `"terminal"` or `"normal"` | `start()`, `stop()`, `focus()` |
+| `Terminal` (golib's) | `command` (the program; the user's `$SHELL` when empty), `dir`, `scrollback` | `command`, `dir` (both at the next `start()`), `vimKeys` (Esc leaves input mode, except on the alternate screen), `themeColors` (default true: the program's default colours are the theme's), `cursorColor` (golib's: the cursor's colour, as the Editor's; its shape shows the mode: a block in normal mode, a thin bar while typing unless the program sets its own) | — | `exited(code)`, `titleChanged(title)`, `modeChanged(mode)` — `"terminal"` or `"normal"` | `start()`, `stop()`, `focus()` |
 | `Button` | — | `text`, `enabled` | — | `clicked` | — |
 | `CheckBox` | — | `text` (`&` marks the mnemonic), `checked`, `enabled` | — | `toggled`, `clicked` | — |
 | `Split` | `orientation` | `ratio` | — | — | — |
@@ -149,7 +149,8 @@ It holds one content item and is otherwise not there:
 - it takes neither focus nor the pointer, so the Tab order and what a click lands on are the content's.
 
 Its parent lays out the FocusScope, so `Layout` and `Dock` properties go on it, as in Qt, not on its
-content. Wrapping an item moves them to the scope.
+content: a deliberate narrowing, since a parent reads them only when it takes the item in. Wrapping
+an item moves them to the scope; on the content they are refused, the error naming the scope.
 
     FocusScope {
         Layout.fillHeight: true
