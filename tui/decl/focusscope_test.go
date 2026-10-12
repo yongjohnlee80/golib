@@ -224,3 +224,103 @@ Window {
 		t.Fatalf("err = %v, want Layout.fillHeight refused under the Window", err)
 	}
 }
+
+// scopedDoc is a whole document of runScoped's: body inside the Window.
+func scopedDoc(body string) string {
+	return "import tui 1.0\nimport demo 1.0\nWindow {\n" + body + "\n}"
+}
+
+// TestAReloadEditsAFocusScopesShortcuts: a Shortcut added by a reload is live at once, one removed
+// is gone, one replaced fires as the new one; the field in the scope (an id, so a reload knows it
+// again) stays mounted through all of it, what was typed in it still there.
+func TestAReloadEditsAFocusScopesShortcuts(t *testing.T) {
+	scope := func(keys string) string {
+		return `
+    Shortcut { sequence: "d"; onActivated: App.hit("window") }
+    FocusScope {
+        ` + keys + `
+        TextField { id: field }
+    }`
+	}
+	s, rec := runScoped(t, 40, 4, scope(`Shortcut { sequence: "F5"; onActivated: App.hit("scope d") }`))
+	s.Keys(t, press(tui.KeyTab), press('a'), press('b'))
+	s.WaitForText(t, "ab")
+	before, _ := s.Program.Find("field")
+
+	reloadScreen(t, s, scopedDoc(scope(`Shortcut { sequence: "F5"; onActivated: App.hit("scope d") }
+        Shortcut { sequence: "F6"; onActivated: App.hit("scope x") }`)))
+	s.Keys(t, press(tui.KeyF6))
+	hits(t, rec, 1) // a key and a reload posted after it are not ordered: the key first
+	reloadScreen(t, s, scopedDoc(scope(`Shortcut { sequence: "F7"; onActivated: App.hit("scope e") }`)))
+	s.Keys(t, press(tui.KeyF5), press(tui.KeyF6), press(tui.KeyF7))
+	if got, want := hits(t, rec, 2), []string{"scope x", "scope e"}; !slices.Equal(got, want) {
+		t.Fatalf("got %v, want %v: the added key live, the removed ones gone, the replacement live", got, want)
+	}
+	if after, _ := s.Program.Find("field"); after != before || !strings.Contains(s.String(), "ab") {
+		t.Fatalf("the field was rebuilt by the reloads (the same component: %v):\n%s", after == before, s)
+	}
+}
+
+// TestAReloadOfAFocusScopeThatTookItsContentsLayout: a scope with no Layout of its own, whose
+// content fills the Flex, still fills it after a reload that adds a Shortcut, and the new key is
+// live; a reload that takes the fill off its content leaves the screen as a document written that
+// way from the start, since the parent reads the content's Layout again.
+func TestAReloadOfAFocusScopeThatTookItsContentsLayout(t *testing.T) {
+	doc := func(keys, fill string) string {
+		return `
+    Flex {
+        direction: Tui.Vertical
+        FocusScope {
+            ` + keys + `
+            Frame { ` + fill + ` title: "body"; Button { text: "in" } }
+        }
+        Text { text: "under" }
+    }`
+	}
+	const fills = "Layout.fillHeight: true;"
+	s, rec := runScoped(t, 30, 10, doc(`Shortcut { sequence: "z" }`, fills))
+	s.WaitForText(t, "under")
+	before := s.String()
+	added := `Shortcut { sequence: "z" }
+            Shortcut { sequence: "y"; onActivated: App.hit("y") }`
+	reloadScreen(t, s, scopedDoc(doc(added, fills)))
+	s.WaitForText(t, "under")
+	if after := s.String(); after != before {
+		t.Fatalf("the layout changed on reload:\nbefore:\n%s\nafter:\n%s", before, after)
+	}
+	s.Keys(t, press(tui.KeyTab), press('y'))
+	if got := hits(t, rec, 1); got[0] != "y" {
+		t.Fatalf("got %v, want the added y", got)
+	}
+
+	fresh, _ := runScoped(t, 30, 10, doc(added, ""))
+	fresh.WaitForText(t, "under")
+	reloadScreen(t, s, scopedDoc(doc(added, "")))
+	s.WaitFor(t, "the screen as the fresh one", func(sc string) bool { return sc == fresh.String() })
+}
+
+// TestAReloadEditsADrawersShortcuts: a Shortcut added to a Drawer by a reload is live in it.
+func TestAReloadEditsADrawersShortcuts(t *testing.T) {
+	doc := func(keys string) string {
+		return `
+    Button { text: "page" }
+    Drawer {
+        id: panel
+        ` + keys + `
+        Frame { title: "panel"; Button { id: inDrawer; text: "drw" } }
+    }`
+	}
+	s, rec := runScoped(t, 50, 8, doc(`Shortcut { sequence: "a"; onActivated: App.hit("a") }`))
+	s.WaitForText(t, "page")
+	reloadScreen(t, s, scopedDoc(doc(`Shortcut { sequence: "b"; onActivated: App.hit("b") }`)))
+	onScreenLoop(t, s, func() {
+		if err := s.Program.Call("panel", "open"); err != nil {
+			t.Error(err)
+		}
+	})
+	s.WaitForText(t, "drw")
+	s.Keys(t, press('a'), press('b'))
+	if got := hits(t, rec, 1); !slices.Equal(got, []string{"b"}) {
+		t.Fatalf("got %v, want only the reloaded b", got)
+	}
+}

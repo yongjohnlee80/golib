@@ -3,6 +3,7 @@ package decl
 import (
 	"fmt"
 
+	"github.com/yongjohnlee80/golib/parse/qml"
 	"github.com/yongjohnlee80/golib/tui"
 )
 
@@ -24,6 +25,11 @@ import (
 // pointer, so the Tab order and what a click lands on are those of the content alone. A FocusScope
 // with no Layout or Dock properties of its own takes its content's, so wrapping an item leaves where
 // it sits unchanged.
+//
+// A RELOAD edits it in place, as a Window: its children are sorted into content and keys again on
+// each change, so a Shortcut added, removed or replaced is live or gone at once, and content that is
+// still there stays mounted. A FocusScope that took its content's Layout or Dock is rebuilt
+// instead, so its parent reads them again.
 
 // focusScopeNode is a FocusScope: its content, and the keys live within it.
 type focusScopeNode struct {
@@ -33,24 +39,52 @@ type focusScopeNode struct {
 }
 
 func buildFocusScope(b Build) (tui.Component, []string, error) {
-	var content tui.Component
-	var shortcuts []*shortcutNode
-	n := 0
-	for _, c := range b.Children {
-		if sc, ok := c.(*shortcutNode); ok {
-			shortcuts = append(shortcuts, sc)
-			continue
-		}
-		content = c
-		n++
-	}
-	if n != 1 {
+	if n := len(b.Children) - len(shortcutsIn(b.Children)); n != 1 {
 		return nil, nil, fmt.Errorf("a FocusScope holds exactly one content item besides its Shortcuts, got %d (at %s)", n, b.Pos)
 	}
-	s := &focusScopeNode{shortcuts: shortcuts}
+	s := &focusScopeNode{}
 	s.Label("FocusScope")
-	s.Add(content)
+	if err := s.arrange(b.Children, nil, nil); err != nil {
+		return nil, nil, err
+	}
 	return s, nil, nil
+}
+
+// shortcutsIn is the Shortcuts among children.
+func shortcutsIn(children []tui.Component) []*shortcutNode {
+	var out []*shortcutNode
+	for _, c := range children {
+		if sc, ok := c.(*shortcutNode); ok {
+			out = append(out, sc)
+		}
+	}
+	return out
+}
+
+// arrange sorts the children into the keys and the content, mounting a content item that came and
+// unmounting one that went. A reload removes before it inserts, so a replaced content leaves the
+// scope empty for a moment; two content items are refused.
+func (s *focusScopeNode) arrange(children []tui.Component, _ []map[string]qml.SpecValue, _ tui.Component) error {
+	var content tui.Component
+	for _, c := range children {
+		if _, ok := c.(*shortcutNode); ok {
+			continue
+		}
+		if content != nil {
+			return fmt.Errorf("a FocusScope holds exactly one content item besides its Shortcuts")
+		}
+		content = c
+	}
+	for _, c := range append([]tui.Component(nil), s.Items()...) {
+		if c != content {
+			s.Remove(c)
+		}
+	}
+	if content != nil && len(s.Items()) == 0 {
+		s.Add(content)
+	}
+	s.shortcuts = shortcutsIn(children)
+	return nil
 }
 
 func (s *focusScopeNode) Init(ctx *tui.Context) {
