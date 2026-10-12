@@ -30,12 +30,20 @@ func TestFloatingPanelsGetAShadowAndDockedOnesDoNot(t *testing.T) {
 			host.Attach(panel)
 			app, sb := styledApp(t, host, 30, 10, NativeStyle())
 			onLoop(t, app, panel.Show)
-			waitUntil(t, "the panel", func() bool { return panel.ContentRect().W > 0 && sb.Flushes() > 1 })
+			// the panel's layout is the loop's: read it there, never from the test's goroutine
+			laidOut := func() bool {
+				var w int
+				onLoop(t, app, func() { w = panel.ContentRect().W })
+				return w > 0
+			}
+			waitUntil(t, "the panel", func() bool { return laidOut() && sb.Flushes() > 1 })
 			paint := NativeStyle().painterFor(panel)
 			if paint == nil {
 				t.Fatal("NativeStyle has no painter for a Float")
 			}
-			if _, _, ok := paint(panel); ok != c.shadow {
+			var ok bool
+			onLoop(t, app, func() { _, _, ok = paint(panel) })
+			if ok != c.shadow {
 				t.Fatalf("the painter took the panel: %v; want %v", ok, c.shadow)
 			}
 			var placed *tui.NativePlacement
