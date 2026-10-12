@@ -17,6 +17,7 @@ import (
 //	    property string label: "Find"              // a value, with a default
 //	    required property var model                // a value the use site must give
 //	    default property alias columns: list.data  // the use site's children go to list
+//	    property alias footer: footerRow.data      // a slot: the use site's footer object goes there
 //	    title: label
 //	    TableView { id: list; model: model }
 //	    onAccepted: App.pick(picker.label, list.currentIndex)
@@ -74,6 +75,7 @@ func checkDecls(file string, root *qml.SpecNode) error {
 	})
 	seen := map[string]bool{}
 	alias := ""
+	filled := map[string]string{} // an alias's target, to the alias that fills it
 	for _, d := range root.Decls {
 		switch {
 		case seen[d.Name]:
@@ -81,12 +83,15 @@ func checkDecls(file string, root *qml.SpecNode) error {
 		case ids[d.Name]:
 			return fmt.Errorf("%w: %s: %q is declared and is also an id in the file, so a "+
 				"reference to it could mean either (at %s)", ErrComponent, file, d.Name, d.Pos)
-		case d.Target != "" && alias != "":
+		case d.Target != "" && !d.Slot && alias != "":
 			return fmt.Errorf("%w: %s: %q and %q are both default aliases, and a component's "+
 				"children go to one place (at %s)", ErrComponent, file, alias, d.Name, d.Pos)
 		case d.Target != "" && !ids[d.Target]:
-			return fmt.Errorf("%w: %s: the default alias %q is %s.data, and %q is no id in the "+
-				"file (at %s)", ErrComponent, file, d.Name, d.Target, d.Target, d.Pos)
+			return fmt.Errorf("%w: %s: the %s %q is %s.data, and %q is no id in the "+
+				"file (at %s)", ErrComponent, file, aliasKind(d), d.Name, d.Target, d.Target, d.Pos)
+		case d.Target != "" && filled[d.Target] != "":
+			return fmt.Errorf("%w: %s: %q and %q both fill %s, and an object is filled from one "+
+				"place (at %s)", ErrComponent, file, filled[d.Target], d.Name, d.Target, d.Pos)
 		case d.Target == "" && d.Default == nil && !d.Required:
 			return fmt.Errorf("%w: %s: give %s a default, or make it required: every declared "+
 				"property has a value, so a reference to it never falls through to a name of the "+
@@ -97,6 +102,9 @@ func checkDecls(file string, root *qml.SpecNode) error {
 		}
 		seen[d.Name] = true
 		if d.Target != "" {
+			filled[d.Target] = d.Name
+		}
+		if d.Target != "" && !d.Slot {
 			alias = d.Name
 		}
 	}
@@ -157,6 +165,15 @@ func substitute(def *qml.SpecNode, use *qml.SpecNode, ex expansion) (*qml.SpecNo
 	for _, d := range def.Decls {
 		v, set := given[d.Name]
 		switch {
+		case d.Slot:
+			// a slot is filled with an object where the use is expanded
+			// (slotFills); it binds no value here
+			if set && v.Kind != qml.SpecValueTemplate {
+				return nil, fmt.Errorf("%w: %s's %q is a slot, which takes one object, as in %s: "+
+					"Flex { … }, and this use gives it a %s (at %s)", ErrComponent, use.Type, d.Name,
+					d.Name, v.Kind, v.Pos)
+			}
+			continue
 		case d.Target != "":
 			if set {
 				return nil, fmt.Errorf("%w: %s's %q is its default alias, so the use writes it as "+
@@ -212,15 +229,36 @@ func withoutDeclared(use *qml.SpecNode, def *qml.SpecNode) *qml.SpecNode {
 // component's default alias sends the use site's children to; "" for none.
 func aliasTarget(def *qml.SpecNode, key, rootID string) string {
 	for _, d := range def.Decls {
-		if d.Target == "" {
+		if d.Target == "" || d.Slot {
 			continue
 		}
-		if d.Target == def.ID && rootID != "" {
-			return rootID
-		}
-		return scopedID(d.Target, key)
+		return scopedTarget(def, d.Target, key, rootID)
 	}
 	return ""
+}
+
+// scopedTarget is the id inner, as scopeIDs renamed it for this use: the use
+// site's own id for the root, when it names one.
+func scopedTarget(def *qml.SpecNode, inner, key, rootID string) string {
+	if inner == def.ID && rootID != "" {
+		return rootID
+	}
+	return scopedID(inner, key)
+}
+
+// slotFill is a slot's object, expanded, and the scoped id of the object it goes
+// under.
+type slotFill struct {
+	target string
+	node   *qml.SpecNode
+}
+
+// aliasKind names an alias in a message: the default one, or a slot.
+func aliasKind(d qml.SpecDecl) string {
+	if d.Slot {
+		return "slot"
+	}
+	return "default alias"
 }
 
 // binder replaces references to a component's declared properties. Its

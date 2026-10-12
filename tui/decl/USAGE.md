@@ -282,13 +282,48 @@ An object, a template — a delegate — or a call (`App.title()`) can be a
 property's whole value, not part of an expression or a handler: pass a value,
 or bind the call where it is used.
 
+A component may give its use site's objects **more than one place** with a
+**slot**, a named alias to an inner object's `data`. The default alias takes the
+use's children; a slot takes the one object the use sets it to:
+
+```qml
+// views/SearchPicker.qml
+Dialog {
+    default property alias columns: list.data   // the use's children go to list
+    property alias footer: footerRow.data       // the use's footer object goes to footerRow
+    Flex {
+        direction: Tui.Vertical
+        TableView { id: list }
+        Flex { id: footerRow }
+    }
+}
+```
+
+```qml
+SearchPicker { id: search
+    TableViewColumn { role: "path"; title: "path" }
+    footer: Flex {
+        direction: Tui.Horizontal
+        CheckBox { text: "words" }
+        CheckBox { text: "meaning" }
+    }
+}
+```
+
+A slot takes one object: for several, wrap them in one Flex, since Qt's
+list form `footer: [A { }, B { }]` is refused. An unset slot is empty. The
+object goes under its target, after the target's own children, and a reload
+patches it in place. An object is filled from one alias, default or named, at
+most.
+
 Inside a handler, a **signal's parameter shadows** a declared property of the
 same name, as it shadows any other: in `onTextEdited: App.pickFilter(text)`,
 `text` is the field's. `picker.text`, through the root's id, is the property.
 
 Three Qt spellings are refused, each message naming what to write instead:
 
-- `property alias text: field.text` — declare `property string text` and write
+- `property alias text: field.text` (an alias to anything but an object's `data`,
+  which is a slot, above) — declare `property string text` and write
   `field { text: text }`: the alias's setting direction, with nothing new;
 - `readonly property` — a component's property is set by its use, and nothing
   else writes it;
