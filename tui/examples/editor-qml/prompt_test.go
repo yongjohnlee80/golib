@@ -1,6 +1,7 @@
 package main
 
 import (
+	"io/fs"
 	"os"
 	"path/filepath"
 	"strings"
@@ -165,16 +166,17 @@ func TestWqDoesNotQuitWhenTheSaveIsCancelledOrFails(t *testing.T) {
 	fileHas(t, filepath.Join(dir, "later.txt"), "q")
 	r.notQuit(t)
 
-	// A write that fails: the folder refuses new files.
-	locked := folderWith(t, nil)
-	if err := os.Chmod(locked, 0o500); err != nil {
-		t.Fatal(err)
+	// A write that fails. Injected, not made by a folder's permissions, which
+	// root writes through (a container running the tests as root).
+	folderWith(t, nil)
+	refuse := func(name string, _ []byte, _ os.FileMode) error {
+		return &fs.PathError{Op: "open", Path: name, Err: fs.ErrPermission}
 	}
-	t.Cleanup(func() { _ = os.Chmod(locked, 0o700) })
 	// The failed write returns its error, as every failure does; this test
 	// expects it, so it keeps it rather than let it fail the test.
 	failures := make(chan error, 4)
-	r2 := startOpts(t, Options{Now: fixedNow, Tick: time.Hour, Sink: func(err error) { failures <- err }}, 80, 24)
+	r2 := startOpts(t, Options{Now: fixedNow, Tick: time.Hour, Sink: func(err error) { failures <- err },
+		WriteFile: refuse}, 80, 24)
 	r2.key(t, runeKey('i'), runeKey('x'), escape)
 	r2.command(t, "wq")
 	r2.saveAsName(t, "nope.txt")
