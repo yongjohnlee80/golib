@@ -89,6 +89,13 @@ func (c *EditorCore) HandlePaste(text string) bool {
 		b.ln, b.col = lo, 0
 		b.insertText(text)
 		c.clampNormal()
+	case ModeInsert:
+		if c.replace != nil {
+			c.replaceText(text) // Replace overwrites, a paste too
+		} else {
+			b.insertText(text) // one atomic literal insertion
+		}
+		c.dotPastedText(text)
 	default:
 		b.insertText(text) // one atomic literal insertion
 		if c.keys.mode != ModeInsert {
@@ -167,6 +174,7 @@ func (c *EditorCore) PressAt(line, col int) bool {
 		c.clampNormal()
 	}
 	b.desired = -1
+	c.replaceRestart() // a press moved the cursor: Replace starts a new stack there
 	c.reveal()
 	c.markDirty()
 	if c.canSelect {
@@ -267,6 +275,9 @@ func (c *EditorCore) handleInsertKey(k tui.KeyEvent) bool {
 		return true
 	}
 
+	if c.replace != nil && c.replaceKey(k) {
+		return true
+	}
 	if c.tableKey(k) || c.listKey(k) {
 		c.dotInsertKey(k)
 		return true

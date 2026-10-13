@@ -59,6 +59,7 @@ type EditorCore struct {
 	oneShot        insertOneShot          // Insert's Ctrl-o (editor_vimoneshot.go)
 	blockIns       *blockInsert           // a block's I, A or c waiting for its Insert to end (editor_vimblock.go)
 	findHost       func(FindRequest) bool // * and #'s host, when it keeps its own find (editor_vimstar.go)
+	replace        *replaceState          // R's, while Replace lasts (editor_vimreplace.go)
 	keyDepth       int                    // HandleKey calls in progress: a macro's and .'s keys are nested
 	marks          markSet                // a–z and the previous jump's place (editor_vimmarks.go)
 	macro          macroRecorder          // the macro being recorded, and what plays (editor_vimmacros.go)
@@ -392,7 +393,7 @@ func (c *EditorCore) SetValue(s string) {
 	defer c.cursorMoved(ln, col)
 	c.settlePendingRune()
 	c.keys.count, c.keys.pendingAct = 0, ActUnbound
-	c.oneShot, c.blockIns = insertOneShot{}, nil
+	c.oneShot, c.blockIns, c.replace = insertOneShot{}, nil, nil
 	c.hist.reset()
 	c.buf.setValue(s)
 	c.followEdits()         // a new document: no marks
@@ -413,7 +414,12 @@ func (c *EditorCore) SetValue(s string) {
 }
 
 // Mode reports the current mode.
-func (c *EditorCore) Mode() EditorMode { return c.keys.mode }
+func (c *EditorCore) Mode() EditorMode {
+	if c.replace != nil && c.keys.mode == ModeInsert {
+		return ModeReplace // Insert underneath (editor_vimreplace.go)
+	}
+	return c.keys.mode
+}
 
 // ReadOnly reports whether edits are refused.
 func (c *EditorCore) ReadOnly() bool { return c.readOnly }
@@ -567,7 +573,7 @@ func (c *EditorCore) SetKeyset(ks Keyset) {
 	c.settlePendingRune()
 	c.keys.dropPending()
 	c.dot = dotRecorder{} // a change recorded under another profile is not this one's to repeat
-	c.oneShot, c.blockIns = insertOneShot{}, nil
+	c.oneShot, c.blockIns, c.replace = insertOneShot{}, nil, nil
 	c.hist.close()
 	c.buf.anchor, c.vAnchor = nil, taPos{}
 	c.keys.applyKeyset(ks)
@@ -652,14 +658,16 @@ func (c *EditorCore) setMode(m EditorMode) {
 	c.keys.mode = m
 	if m == ModeInsert {
 		c.oneShot = insertOneShot{} // entering Insert ends Ctrl-o's command
+	} else {
+		c.replace = nil // Replace is Insert's: leaving Insert ends it
 	}
 	c.keys.findArmed, c.keys.findCount = ActUnbound, 0 // an f armed in one mode never completes in another
 	c.keys.dropOp()                                    // nor an operator, nor a text object
 	c.vEOL, c.vPinned = false, false
 	c.markDirty()
-	c.publish(ModeChangedEvent{Owner: c.nodeID(), Mode: m})
+	c.publish(ModeChangedEvent{Owner: c.nodeID(), Mode: c.Mode()})
 	if c.onModeChange != nil {
-		c.onModeChange(m)
+		c.onModeChange(c.Mode())
 	}
 }
 
@@ -687,6 +695,7 @@ func (c *EditorCore) exitInsert() {
 		return
 	}
 	c.blockInsertDone() // a block's I, A or c: the typed text on its other lines, in this step
+	c.replaceDone()     // R with a count: the text again, as many times more
 	c.dotInsertEnded()
 	c.hist.close()
 	c.buf.anchor = nil // a table cell's selection is Insert mode's
@@ -728,6 +737,10 @@ func (c *EditorCore) settlePendingRune() {
 
 // typeText inserts text as typing does: the closing alignment runs when it types a closer.
 func (c *EditorCore) typeText(s string) {
+	if c.replace != nil {
+		c.replaceText(s) // Replace overwrites
+		return
+	}
 	c.beginGroup()
 	c.buf.insertText(s)
 	if strings.ContainsAny(s, "})] \t") {
@@ -786,7 +799,8 @@ func mutatingAction(act Action) bool {
 		ActReplaceChar, ActJoin, ActJoinRaw, ActToggleCase, ActCaseToggleOp, ActLowerOp, ActUpperOp,
 		ActIndentPrefix, ActOutdentPrefix,
 		ActVisualChange, ActVisualReplace, ActVisualToggleCase, ActVisualLower, ActVisualUpper,
-		ActVisualIndent, ActVisualOutdent, ActDeleteWordBack, ActDeleteLineBack, ActVisualInsert, ActVisualAppend:
+		ActVisualIndent, ActVisualOutdent, ActDeleteWordBack, ActDeleteLineBack, ActVisualInsert, ActVisualAppend,
+		ActReplaceMode:
 		return true
 	}
 	return false
@@ -1004,6 +1018,9 @@ func (c *EditorCore) execAction(act Action, count int) bool {
 		return true
 	case ActInsertOneShot:
 		return c.insertOneShotStart()
+	case ActReplaceMode:
+		c.enterReplace(count)
+		return true
 
 	// General actions (Nano / Standard).
 	case ActCut:

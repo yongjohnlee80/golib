@@ -8,9 +8,24 @@ package widget
 // Deleting stops once where this Insert began, as Vim's Insstart does without 'backspace' nostop:
 // the next press goes on past it.
 
-// insertDeleteBack is Ctrl-w (line false) and Ctrl-u (line true).
+// insertDeleteBack is Ctrl-w (line false) and Ctrl-u (line true). In Replace they are Backspace
+// over the same clusters, so what they overwrote comes back (editor_vimreplace.go).
 func (c *EditorCore) insertDeleteBack(line bool) {
 	b := &c.buf
+	if c.replace != nil {
+		if b.col == 0 {
+			c.replaceBackspace() // a break typed is joined; else nothing
+			return
+		}
+		for from := c.deleteBackFrom(line); b.col > from; {
+			was := b.col
+			c.replaceBackspace()
+			if b.col == was {
+				break
+			}
+		}
+		return
+	}
 	if b.col == 0 {
 		if b.ln == 0 {
 			return
@@ -20,6 +35,21 @@ func (c *EditorCore) insertDeleteBack(line bool) {
 		c.edited()
 		return
 	}
+	from := c.deleteBackFrom(line)
+	if from >= b.col {
+		return
+	}
+	c.beginGroup()
+	b.deleteRegion(taPos{b.ln, from}, taPos{b.ln, b.col})
+	c.edited()
+	if s := &c.insStart; s.ln == b.ln && b.col < s.col {
+		s.col = b.col // passed: the next press goes on
+	}
+}
+
+// deleteBackFrom is where Ctrl-w (line false) or Ctrl-u stops, back from the cursor on its line.
+func (c *EditorCore) deleteBackFrom(line bool) int {
+	b := &c.buf
 	cs := b.lineClusters(b.ln)
 	stop := 0
 	if line {
@@ -47,13 +77,5 @@ func (c *EditorCore) insertDeleteBack(line bool) {
 			}
 		}
 	}
-	if from >= b.col {
-		return
-	}
-	c.beginGroup()
-	b.deleteRegion(taPos{b.ln, from}, taPos{b.ln, b.col})
-	c.edited()
-	if s := &c.insStart; s.ln == b.ln && b.col < s.col {
-		s.col = b.col // passed: the next press goes on
-	}
+	return from
 }

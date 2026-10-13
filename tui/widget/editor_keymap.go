@@ -50,6 +50,9 @@ const (
 	// ModeVisualBlock is a block of lines and display columns (Vim's Ctrl-v). It shares Visual's
 	// bindings, as ModeVisualLine does.
 	ModeVisualBlock
+	// ModeReplace is Replace mode (Vim's R): typing overwrites. It is Insert underneath, and shares
+	// Insert's bindings; Mode reports it while it lasts.
+	ModeReplace
 )
 
 // String renders the mode for status bars.
@@ -65,6 +68,8 @@ func (m EditorMode) String() string {
 		return "V-LINE"
 	case ModeVisualBlock:
 		return "V-BLOCK"
+	case ModeReplace:
+		return "REPLACE"
 	}
 	return "?"
 }
@@ -264,6 +269,7 @@ const (
 	ActSentenceBack    // ( (Vim): to this sentence's start, or the previous one's
 	ActStarForward     // * (Vim): the whole word under the cursor, found on
 	ActStarBack        // # (Vim): the whole word under the cursor, found back
+	ActReplaceMode     // R (Vim): Replace mode, typing overwrites
 
 	actMax // sentinel for validation
 )
@@ -483,6 +489,8 @@ func (a Action) String() string {
 		return "StarForward"
 	case ActStarBack:
 		return "StarBack"
+	case ActReplaceMode:
+		return "ReplaceMode"
 	}
 	return fmt.Sprintf("Action(%d)", a)
 }
@@ -702,6 +710,8 @@ func (a Action) Description() string {
 		return "Find the word under the cursor"
 	case ActStarBack:
 		return "Find the word under the cursor, back"
+	case ActReplaceMode:
+		return "Replace mode"
 	}
 	return "Custom action"
 }
@@ -755,6 +765,9 @@ func modeClass(m EditorMode) EditorMode {
 	if m == ModeVisualLine || m == ModeVisualBlock {
 		return ModeVisual
 	}
+	if m == ModeReplace {
+		return ModeInsert
+	}
 	return m
 }
 
@@ -765,7 +778,7 @@ func actionModes(a Action) (normal, visual, insert bool) {
 		ActWordForward, ActWordBack, ActWordEnd, ActParaForward, ActParaBack,
 		ActPageUp, ActPageDown:
 		return true, true, true
-	case ActStarForward, ActStarBack:
+	case ActStarForward, ActStarBack, ActReplaceMode:
 		return true, false, false
 	case ActGoBottom, ActGoPrefix, ActVisual, ActVisualLine, ActVisualBlock, ActFindNext, ActFindPrev, ActCommandLine,
 		ActRegisterPrefix, ActMarkSet, ActMarkLine, ActMarkExact:
@@ -916,6 +929,7 @@ func VimKeymap() Keymap {
 	km[n('q')] = ActMacroRecord
 	km[n('@')] = ActMacroPlay
 	km[n('*')], km[n('#')] = ActStarForward, ActStarBack
+	km[n('R')] = ActReplaceMode
 	km[n('p')] = ActPasteAfter
 	km[n('P')] = ActPasteBefore
 	km[n('u')] = ActUndo
