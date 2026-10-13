@@ -234,6 +234,8 @@ const (
 	ActMarkExact       // `{a-z} (Vim): to the mark's exact place (`` the previous jump)
 	ActMacroRecord     // q{a-z} … q (Vim): record a macro into the register (A-Z append)
 	ActMacroPlay       // @{a-z} (Vim): play the register's macro (@@ the last played)
+	ActJumpBack        // Ctrl-o (Vim): back along the jump list
+	ActJumpForward     // Ctrl-i (Vim): forward along the jump list
 
 	actMax // sentinel for validation
 )
@@ -411,6 +413,10 @@ func (a Action) String() string {
 		return "MacroRecord"
 	case ActMacroPlay:
 		return "MacroPlay"
+	case ActJumpBack:
+		return "JumpBack"
+	case ActJumpForward:
+		return "JumpForward"
 	}
 	return fmt.Sprintf("Action(%d)", a)
 }
@@ -588,6 +594,10 @@ func (a Action) Description() string {
 		return "Record a macro"
 	case ActMacroPlay:
 		return "Play a macro"
+	case ActJumpBack:
+		return "Jump back"
+	case ActJumpForward:
+		return "Jump forward"
 	}
 	return "Custom action"
 }
@@ -660,7 +670,7 @@ func actionModes(a Action) (normal, visual, insert bool) {
 		ActDeleteChar, ActDeleteToEnd, ActPasteAfter, ActPasteBefore,
 		ActChangePrefix, ActChangeToEnd, ActSubstChar, ActSubstLine, ActYankToEnd,
 		ActReplaceChar, ActJoin, ActJoinRaw, ActToggleCase, ActCaseToggleOp, ActLowerOp, ActUpperOp,
-		ActIndentPrefix, ActOutdentPrefix, ActRepeat, ActMacroRecord, ActMacroPlay:
+		ActIndentPrefix, ActOutdentPrefix, ActRepeat, ActMacroRecord, ActMacroPlay, ActJumpBack, ActJumpForward:
 		return true, false, false
 	case ActCut, ActCopy, ActPaste, ActSelectAll, ActEscape, ActToggleRendered:
 		return true, true, true
@@ -797,6 +807,8 @@ func VimKeymap() Keymap {
 	km[n('P')] = ActPasteBefore
 	km[n('u')] = ActUndo
 	km[KeyChord{Mode: ModeNormal, Code: 'r', Ctrl: true}] = ActRedo
+	km[KeyChord{Mode: ModeNormal, Code: 'o', Ctrl: true}] = ActJumpBack
+	km[KeyChord{Mode: ModeNormal, Code: 'i', Ctrl: true}] = ActJumpForward // Tab isn't: in a terminal it is Ctrl-i, and focus's
 	km[n('n')], km[v('n')] = ActFindNext, ActFindNext
 	km[n('N')], km[v('N')] = ActFindPrev, ActFindPrev
 	km[n(':')], km[v(':')] = ActCommandLine, ActCommandLine
