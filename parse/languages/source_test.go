@@ -54,6 +54,9 @@ func TestSourceLanguagesClassifyTheirVocabulary(t *testing.T) {
 		{"lua", "local value = nil", "local", highlight.Keyword},
 		{"bash", "echo $HOME", "$HOME", highlight.Variable},
 		{"yaml", "name: \"Ada\" # note", "name", highlight.Attribute},
+		{"sql", "SELECT id FROM t", "SELECT", highlight.Keyword},
+		{"sqlite", "SELECT [id] FROM t", "SELECT", highlight.Keyword},
+		{"mysql", "SELECT 1 # note", "# note", highlight.Comment},
 	} {
 		t.Run(tc.lang, func(t *testing.T) {
 			s := source(t, tc.lang)
@@ -279,4 +282,25 @@ func FuzzSourceSpanBoundsAndProgress(f *testing.F) {
 			}
 		}
 	})
+}
+
+// SQL is in the shared catalog: every fence label reaches its dialect beside
+// the other languages' aliases, and a *.sql file is still PostgreSQL's.
+func TestTheCatalogNamesSQLsDialects(t *testing.T) {
+	t.Parallel()
+	catalog := highlight.NewRepository(languages.Definitions()...).Snapshot()
+	for label, want := range map[string]string{
+		"sql": "SQL (PostgreSQL)", "postgresql": "SQL (PostgreSQL)", "postgres": "SQL (PostgreSQL)",
+		"psql": "SQL (PostgreSQL)", "pgsql": "SQL (PostgreSQL)", "sqlite": "SQL (SQLite)",
+		"mysql": "SQL (MySQL)", "mariadb": "SQL (MySQL)",
+	} {
+		if d, ok := catalog.DefinitionForLanguage(label); !ok || d.Name != want {
+			t.Errorf("%q: %q %v, want %q", label, d.Name, ok, want)
+		}
+	}
+	for file, want := range map[string]string{"schema.sql": "SQL (PostgreSQL)", "a.sqlite.sql": "SQL (SQLite)", "a.mysql.sql": "SQL (MySQL)"} {
+		if d, ok := catalog.DefinitionForFileName(file); !ok || d.Name != want {
+			t.Errorf("%s: %q %v, want %q", file, d.Name, ok, want)
+		}
+	}
 }

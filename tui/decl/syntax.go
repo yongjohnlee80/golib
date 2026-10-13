@@ -7,7 +7,6 @@ import (
 
 	"github.com/yongjohnlee80/golib/decl"
 	"github.com/yongjohnlee80/golib/highlight"
-	sqlhighlight "github.com/yongjohnlee80/golib/highlight/sql"
 	"github.com/yongjohnlee80/golib/parse/languages"
 	"github.com/yongjohnlee80/golib/parse/qml"
 	"github.com/yongjohnlee80/golib/tui"
@@ -55,8 +54,8 @@ func stdHighlighters() *highlight.Repository {
 		{Name: "QML", Extensions: []string{"*.qml"}, Highlighter: q},
 		markdown.Definition(),
 	}
-	defs = append(defs, languages.Definitions()...)
-	return highlight.NewRepository(append(defs, sqlhighlight.Definitions()...)...)
+	// languages carries SQL's three dialects with the rest
+	return highlight.NewRepository(append(defs, languages.Definitions()...)...)
 }
 
 // WithHighlighters registers syntax definitions by the name a document's

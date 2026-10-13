@@ -56,11 +56,16 @@ const (
 // its dialect, and PostgreSQL's reading is the widest. SQLite and MySQL claim
 // *.sqlite.sql and *.mysql.sql at a higher Priority, so those names reach them
 // rather than the wider pattern.
+//
+// A fenced code block names its dialect by alias. Plain "sql" is PostgreSQL's,
+// for the reason *.sql is, and only PostgreSQL claims it, so the higher
+// Priority of the others cannot take it; "sqlite", "mysql" and "mariadb" name
+// theirs.
 func Definitions() []highlight.Definition {
 	return []highlight.Definition{
-		{Name: "SQL (PostgreSQL)", Extensions: []string{"*.sql", "*.pgsql"}, Highlighter: Highlighter(PostgreSQL)},
-		{Name: "SQL (SQLite)", Extensions: []string{"*.sqlite.sql"}, Priority: 1, Highlighter: Highlighter(SQLite)},
-		{Name: "SQL (MySQL)", Extensions: []string{"*.mysql.sql"}, Priority: 1, Highlighter: Highlighter(MySQL)},
+		{Name: "SQL (PostgreSQL)", Extensions: []string{"*.sql", "*.pgsql"}, Aliases: []string{"sql", "postgresql", "postgres", "psql", "pgsql"}, Highlighter: Highlighter(PostgreSQL)},
+		{Name: "SQL (SQLite)", Extensions: []string{"*.sqlite.sql"}, Aliases: []string{"sqlite"}, Priority: 1, Highlighter: Highlighter(SQLite)},
+		{Name: "SQL (MySQL)", Extensions: []string{"*.mysql.sql"}, Aliases: []string{"mysql", "mariadb"}, Priority: 1, Highlighter: Highlighter(MySQL)},
 	}
 }
 

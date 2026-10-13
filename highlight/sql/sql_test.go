@@ -247,3 +247,30 @@ func TestAFileNameReachesItsDialect(t *testing.T) {
 		}
 	}
 }
+
+// A fenced code block's label reaches its dialect, in any case. Plain "sql"
+// is PostgreSQL's, as *.sql is: the others' higher Priority must not take it.
+func TestAFenceLabelReachesItsDialect(t *testing.T) {
+	c := highlight.NewRepository(sql.Definitions()...).Snapshot()
+	for label, want := range map[string]string{
+		"sql":              "SQL (PostgreSQL)",
+		"SQL":              "SQL (PostgreSQL)",
+		"postgresql":       "SQL (PostgreSQL)",
+		"postgres":         "SQL (PostgreSQL)",
+		"psql":             "SQL (PostgreSQL)",
+		"pgsql":            "SQL (PostgreSQL)",
+		"sqlite":           "SQL (SQLite)",
+		"SQLite":           "SQL (SQLite)",
+		"mysql":            "SQL (MySQL)",
+		"mariadb":          "SQL (MySQL)",
+		"SQL (MySQL)":      "SQL (MySQL)",
+		"SQL (PostgreSQL)": "SQL (PostgreSQL)",
+		"sqlite3":          "",
+		"plsql":            "",
+	} {
+		d, ok := c.DefinitionForLanguage(label)
+		if d.Name != want || ok != (want != "") {
+			t.Errorf("%q: %q %v, want %q", label, d.Name, ok, want)
+		}
+	}
+}
