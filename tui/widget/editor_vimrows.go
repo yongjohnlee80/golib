@@ -3,8 +3,8 @@ package widget
 // VIM gj AND gk — down and up by display row in wrapped text, keeping the x within the row, as
 // Vim's nv_screengo (src/normal.c). The layout knows the rows (EditorRowLayout); one without it has
 // a row per line. As an operator's motion they are charwise and exclusive, not linewise as j and
-// k are, as Vim's are. The x is kept across consecutive gj and gk, as Vim's curswant is: it holds
-// while the cursor stays where the last of them left it.
+// k are, as Vim's are. The x is kept across consecutive gj and gk, as Vim's curswant is: any other
+// move of the cursor ends it (cursorMoved), even one that comes back to the same place.
 
 // EditorRowLayout is an EditorLayout that wraps lines into display rows, for gj and gk. Positions
 // are in the layout's units (cells in the terminal, pixels in the GUI). A break space the wrap
@@ -38,11 +38,13 @@ func (c *EditorCore) rowLayout() EditorRowLayout {
 	return lineRows{c}
 }
 
-// rowSticky is gj and gk's x, held while the cursor stays at at.
+// rowSticky is gj and gk's x: ok until the cursor moves by anything else (kept marks their own
+// move, for cursorMoved), and only where they left it (at), against a move from outside a key.
 type rowSticky struct {
-	x  int
-	at taPos
-	ok bool
+	x    int
+	at   taPos
+	ok   bool
+	kept bool
 }
 
 // rowTarget is count display rows down (gj) or up (gk) from the cursor, at the kept x; moved is
@@ -89,7 +91,7 @@ func (c *EditorCore) rowMove(down bool, count int) {
 	if c.keys.mode == ModeNormal {
 		c.clampNormal()
 	}
-	c.rowSticky.at = taPos{b.ln, b.col}
+	c.rowSticky.at, c.rowSticky.kept = taPos{b.ln, b.col}, true
 	c.reveal()
 	c.markDirty()
 }
