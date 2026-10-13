@@ -97,15 +97,15 @@ func TestMenuActionsSettleHeldTextAndCancelPendingCountAndOperator(t *testing.T)
 	e = NewEditor(WithInitialText("one\ntwo"))
 	pressRune(e, '2')
 	pressRune(e, 'd')
-	if e.core.keys.pendingAct != ActDeletePrefix || e.core.keys.pendingCount != 2 {
-		t.Fatal("fixture did not arm counted delete prefix")
+	if e.core.keys.op != ActDeletePrefix || e.core.keys.opCount != 2 {
+		t.Fatal("fixture did not arm counted delete operator")
 	}
 	e.Copy()
-	if e.core.keys.pendingAct != ActUnbound || e.core.keys.pendingCount != 0 || e.core.keys.pendingChord != (KeyChord{}) || e.core.keys.count != 0 {
+	if e.core.keys.op != ActUnbound || e.core.keys.opCount != 0 || e.core.keys.opChord != (KeyChord{}) || e.core.keys.count != 0 {
 		t.Fatal("a menu action left part of the counted operator armed")
 	}
 	pressRune(e, 'd')
-	if e.Value() != "one\ntwo" || e.core.keys.pendingAct != ActDeletePrefix {
+	if e.Value() != "one\ntwo" || e.core.keys.op != ActDeletePrefix {
 		t.Fatalf("next d completed a stale prefix: %q", e.Value())
 	}
 	pressRune(e, 'd')
