@@ -807,10 +807,12 @@ func (c *EditorCore) execAction(act Action, count int) bool {
 		ActPageUp, ActPageDown,
 		ActLineDownFirst, ActLineUpFirst, ActFirstNonBlank, ActLeftWrap,
 		ActFindCharRepeat, ActFindCharReverse, ActViewTop, ActViewMiddle, ActViewBottom,
-		ActWORDForward, ActWORDBack, ActWORDEnd, ActWordEndBack, ActWORDEndBack:
+		ActWORDForward, ActWORDBack, ActWORDEnd, ActWordEndBack, ActWORDEndBack,
+		ActSentenceForward, ActSentenceBack:
 		switch act {
-		case ActViewTop, ActViewMiddle, ActViewBottom, ActParaForward, ActParaBack:
-			c.setJumpMark() // H M L, { and } are jumps
+		case ActViewTop, ActViewMiddle, ActViewBottom, ActParaForward, ActParaBack,
+			ActSentenceForward, ActSentenceBack:
+			c.setJumpMark() // H M L, { } and ( ) are jumps
 		}
 		c.move(act, count)
 		return true

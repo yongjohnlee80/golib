@@ -260,6 +260,9 @@ const (
 	ActVisualInsert   // I (Vim Visual): Insert before the block, on each line; else at the first line's start
 	ActVisualAppend   // A (Vim Visual): Insert after the block, on each line; else at the last line's end
 
+	ActSentenceForward // ) (Vim): to the next sentence's start
+	ActSentenceBack    // ( (Vim): to this sentence's start, or the previous one's
+
 	actMax // sentinel for validation
 )
 
@@ -470,6 +473,10 @@ func (a Action) String() string {
 		return "JumpBack"
 	case ActJumpForward:
 		return "JumpForward"
+	case ActSentenceForward:
+		return "SentenceForward"
+	case ActSentenceBack:
+		return "SentenceBack"
 	}
 	return fmt.Sprintf("Action(%d)", a)
 }
@@ -681,6 +688,10 @@ func (a Action) Description() string {
 		return "Jump back"
 	case ActJumpForward:
 		return "Jump forward"
+	case ActSentenceForward:
+		return "Next sentence"
+	case ActSentenceBack:
+		return "Previous sentence"
 	}
 	return "Custom action"
 }
@@ -765,7 +776,7 @@ func actionModes(a Action) (normal, visual, insert bool) {
 		ActVisualUpper, ActVisualIndent, ActVisualOutdent, ActVisualOther, ActVisualOtherCol, ActVisualInsert,
 		ActVisualAppend:
 		return false, true, false
-	case ActLineDownFirst, ActLineUpFirst, ActFirstNonBlank, ActLeftWrap,
+	case ActLineDownFirst, ActLineUpFirst, ActFirstNonBlank, ActLeftWrap, ActSentenceForward, ActSentenceBack,
 		ActFindCharForward, ActFindCharBack, ActTillCharForward, ActTillCharBack,
 		ActFindCharRepeat, ActFindCharReverse, ActMatchPair,
 		ActViewTop, ActViewMiddle, ActViewBottom, ActHalfPageDown, ActHalfPageUp,
@@ -842,6 +853,8 @@ func VimKeymap() Keymap {
 		// line and character motions (Space stays the host's: AutoDoc's leader)
 		mv(ch(tui.KeyEnter), ActLineDownFirst)
 		mv(ch('+'), ActLineDownFirst)
+		mv(ch(')'), ActSentenceForward)
+		mv(ch('('), ActSentenceBack)
 		mv(ch('-'), ActLineUpFirst)
 		mv(ch('^'), ActFirstNonBlank)
 		mv(ch(tui.KeyBackspace), ActLeftWrap)
