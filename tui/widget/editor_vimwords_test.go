@@ -47,6 +47,8 @@ func TestVimWordsFollowTheKeywordClasses(t *testing.T) {
 		{"漢字かなカナー end", 0, 0, []string{"e", "e", "e"}, [][2]int{p(0, 1), p(0, 3), p(0, 6)}, "e across scripts"},
 		{"漢字かなカナー end", 0, 8, []string{"b", "b"}, [][2]int{p(0, 4), p(0, 2)}, "b across scripts"},
 		{"한국어 말", 0, 0, []string{"w"}, [][2]int{p(0, 4)}, "w over Hangul"},
+		{"abc한국 x", 0, 0, []string{"w", "w"}, [][2]int{p(0, 3), p(0, 6)}, "w: Hangul is not a Latin word's class"},
+		{"x々y z", 0, 0, []string{"w", "w", "w"}, [][2]int{p(0, 1), p(0, 2), p(0, 4)}, "w: the iteration mark is CJK punctuation"},
 		{"a😀😀b c", 0, 0, []string{"w", "w", "w"}, [][2]int{p(0, 1), p(0, 3), p(0, 5)}, "w over emoji"},
 		{"+∑😀+ ©.", 0, 0, []string{"w", "w", "w", "w"}, [][2]int{p(0, 2), p(0, 3), p(0, 5), p(0, 6)}, "w: ∑ is punctuation with +, an emoji is not, © is Latin-1 punctuation"},
 		{"©. x", 0, 0, []string{"w"}, [][2]int{p(0, 3)}, "w: © (Emoji, but Latin-1) is punctuation with ."},
