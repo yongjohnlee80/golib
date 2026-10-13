@@ -1225,3 +1225,26 @@ func TestAButtonMayDisableItselfFromItsOwnActivation(t *testing.T) {
 		})
 	}
 }
+
+// disableButton is an event whose subscriber disables a button: a list's currentIndexChanged
+// reaching a binding on the button's enabled, as a decl document's do.
+type disableButton struct{}
+
+// TestAButtonDisabledFromABusDeliveryDoesNotPanic: a Bus delivery is no handler phase, so the
+// gesture cancel SetEnabled makes is not legal there; with no gesture held there is nothing to
+// cancel, and disabling must not panic. (Cancelling a gesture the button does hold is the handler
+// phases' alone, as before.)
+func TestAButtonDisabledFromABusDeliveryDoesNotPanic(t *testing.T) {
+	b := widget.NewButton("OK")
+	h := startApp(t, b, 12, 1)
+	defer h.stop()
+	h.settle()
+	unsub := tui.Subscribe(h.app.Bus(), func(disableButton) { b.SetEnabled(false) })
+	defer unsub()
+	h.onLoop(func() { h.app.Bus().Publish(disableButton{}) })
+	h.waitFor("disabled", func() bool {
+		var on bool
+		h.onLoop(func() { on = b.Enabled() })
+		return !on
+	})
+}

@@ -312,7 +312,13 @@ func (b *Button) SetEnabled(v bool) {
 		// Cancel first, so disabling mid-press releases the capture through the
 		// ordinary loss path and the owner is told once, rather than being left
 		// holding a gesture that can no longer produce anything.
-		if ctx := b.Context(); ctx != nil {
+		//
+		// Only a gesture this button holds: with none there is nothing to cancel,
+		// and asking (HasPointerCapture) is legal in every phase, where cancelling
+		// is not. A binding that disables the button from a Bus delivery (a list's
+		// currentIndexChanged) is no handler phase, and must not panic for a
+		// gesture that is not there.
+		if ctx := b.Context(); ctx != nil && ctx.HasPointerCapture() {
 			ctx.CancelGesture()
 		}
 		b.armed = false
