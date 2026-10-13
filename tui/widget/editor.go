@@ -507,11 +507,14 @@ func (e *Editor) Lines() []string { return e.core.Lines() }
 func (e *Editor) AcceptsFocus() bool { return true }
 
 // CursorShape implements tui.CursorShaper: block for Normal and Visual,
-// bar for Insert. Visual mode is already shown in the status line and selection.
+// bar for Insert, underline for Replace (as Vim draws it). Visual mode is
+// already shown in the status line and selection.
 func (e *Editor) CursorShape() tui.CursorShape {
-	switch e.core.keys.mode {
+	switch e.core.Mode() {
 	case ModeInsert:
 		return tui.CursorShapeBar
+	case ModeReplace:
+		return tui.CursorShapeUnderline
 	}
 	return tui.CursorShapeBlock
 }

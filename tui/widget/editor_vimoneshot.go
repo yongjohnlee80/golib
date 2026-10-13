@@ -29,11 +29,24 @@ type insertOneShot struct {
 	end     bool // the command was $: the cursor wants the line's end
 	cmdline bool // the command opened the command line: Insert waits for it to close
 	depth   int  // the key depth Ctrl-o came at: a key nested deeper (a macro's, .'s) is the command's
+	replace bool // Ctrl-o came from Replace: Replace resumes (a new stack, as Vim's restart)
 }
 
 // InsertOneShot reports Insert's Ctrl-o running its one Normal-mode command: the mode is Normal,
 // and Insert resumes when the command is complete.
 func (c *EditorCore) InsertOneShot() bool { return c.oneShot.on }
+
+// OneShotMode is the mode Ctrl-o's command returns to: ModeInsert, or ModeReplace from Replace
+// (a status line's "(insert)" or "(replace)"); ModeNormal when no one-shot runs.
+func (c *EditorCore) OneShotMode() EditorMode {
+	switch {
+	case !c.oneShot.on:
+		return ModeNormal
+	case c.oneShot.replace:
+		return ModeReplace
+	}
+	return ModeInsert
+}
 
 // insertOneShotStart is Ctrl-o, in Insert.
 func (c *EditorCore) insertOneShotStart() bool {
@@ -45,7 +58,7 @@ func (c *EditorCore) insertOneShotStart() bool {
 	c.hist.close()
 	b.anchor = nil   // a table cell's selection is Insert mode's
 	c.blockIns = nil // a block's I or A ends here, its text on the first line only
-	c.oneShot = insertOneShot{on: true, ln: b.ln, depth: c.keyDepth}
+	c.oneShot = insertOneShot{on: true, ln: b.ln, depth: c.keyDepth, replace: c.replace != nil}
 	if n := len(b.lineClusters(b.ln)); n > 0 && b.col >= n {
 		b.col, c.oneShot.eol = n-1, true
 	}
@@ -90,9 +103,14 @@ func (c *EditorCore) oneShotResume() {
 	if n := len(b.lineClusters(b.ln)); n > 0 && b.col == n-1 && ((o.eol && b.ln == o.ln) || o.end) {
 		b.col = n
 	}
+	resume := tui.KeyEvent{Code: 'i', Text: "i"}
+	if o.replace {
+		resume = tui.KeyEvent{Code: 'R', Text: "R"}
+		c.replace = &replaceState{ln: b.ln, col: b.col, count: 1}
+	}
 	if !c.dot.replaying {
 		c.dot = dotRecorder{on: true, inInsert: true, rev: c.rev, last: c.dot.last,
-			atoms: []dotAtom{{kind: dotKey, key: tui.KeyEvent{Code: 'i', Text: "i"}}}}
+			atoms: []dotAtom{{kind: dotKey, key: resume}}}
 	}
 	c.enterInsert()
 	b.desired = -1
