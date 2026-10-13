@@ -69,6 +69,7 @@ func TestVimInsertDeleteBack(t *testing.T) {
 		{what: "Ctrl-w goes on past it", text: "foo bar", seq: "A baz<ctw><ctw><ctw><esc>", want: "foo "},
 		{what: "past it, the stop moves back with it", text: "ab..", seq: "A<ctw>cd<ctw><esc>", want: "ab"},
 		{what: "Ctrl-w at a line's start joins", text: "ab\ncd", ln: 1, seq: "i<ctw><esc>", want: "abcd"},
+		{what: "Ctrl-w at the text's start does nothing", text: "ab", seq: "i<ctw><esc>", want: "ab"},
 		{what: "Ctrl-u keeps the indent", text: "    foo bar", seq: "A<ctu><esc>", want: "    "},
 		{what: "Ctrl-u then the indent", text: "    foo bar", seq: "A<ctu><ctu><esc>", want: ""},
 		{what: "Ctrl-u stops where Insert began", text: "foo", seq: "A bar<ctu><esc>", want: "foo"},

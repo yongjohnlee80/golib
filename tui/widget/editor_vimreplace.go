@@ -34,9 +34,17 @@ type replaceEntry struct {
 
 // replaceState is a Replace session's.
 type replaceState struct {
-	stack   []replaceEntry
-	ln, col int // where it began: the count's text runs from here
-	count   int
+	stack     []replaceEntry
+	ln, col   int // where it began
+	count     int
+	keys      []replaceKeyed // what was typed, for the count to type again
+	replaying bool
+}
+
+// replaceKeyed is one thing typed in Replace: text (a line break as "\n"), or a Backspace.
+type replaceKeyed struct {
+	text string
+	back bool
 }
 
 // enterReplace is R, count times.
@@ -52,6 +60,9 @@ func (c *EditorCore) enterReplace(count int) {
 func (c *EditorCore) replaceText(s string) {
 	b := &c.buf
 	r := c.replace
+	if !r.replaying {
+		r.keys = append(r.keys, replaceKeyed{text: s})
+	}
 	c.beginGroup()
 	for _, cl := range clusters(strings.ReplaceAll(s, "\r\n", "\n")) {
 		if cl == "\n" {
@@ -78,6 +89,9 @@ func (c *EditorCore) replaceText(s string) {
 func (c *EditorCore) replaceBackspace() {
 	b := &c.buf
 	r := c.replace
+	if !r.replaying {
+		r.keys = append(r.keys, replaceKeyed{back: true})
+	}
 	if len(r.stack) == 0 {
 		if b.col > 0 {
 			b.col--
@@ -112,24 +126,26 @@ func (c *EditorCore) replaceBackspace() {
 // longer goes back past here, and the count is spent.
 func (c *EditorCore) replaceRestart() {
 	if r := c.replace; r != nil {
-		r.stack, r.ln, r.col, r.count = nil, c.buf.ln, c.buf.col, 1
+		r.stack, r.keys, r.ln, r.col, r.count = nil, nil, c.buf.ln, c.buf.col, 1
 	}
 }
 
-// replaceDone is Esc out of Replace: the count's further copies of the text typed, overwriting.
-// The text is what this Replace typed on the line it began on.
+// replaceDone is Esc out of Replace: what was typed, typed again count-1 times, as Vim repeats the
+// inserted text: line breaks and Backspaces too (3Ra<CR>b gives a, ba, ba, b).
 func (c *EditorCore) replaceDone() {
 	r := c.replace
 	if r == nil || r.count <= 1 {
 		return
 	}
-	b := &c.buf
-	if b.ln != r.ln || b.col <= r.col {
-		return
-	}
-	text := strings.Join(b.lineClusters(b.ln)[r.col:b.col], "")
+	r.replaying = true
 	for range r.count - 1 {
-		c.replaceText(text)
+		for _, k := range r.keys {
+			if k.back {
+				c.replaceBackspace()
+			} else {
+				c.replaceText(k.text)
+			}
+		}
 	}
 }
 

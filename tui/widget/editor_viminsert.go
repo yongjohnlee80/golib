@@ -9,19 +9,14 @@ package widget
 // the next press goes on past it.
 
 // insertDeleteBack is Ctrl-w (line false) and Ctrl-u (line true). In Replace they are Backspace
-// over the same clusters, so what they overwrote comes back (editor_vimreplace.go).
+// over the same clusters, so what they overwrote comes back (editor_vimreplace.go); at a line's
+// start they do nothing there, as Vim's (Backspace joins a break typed, they don't).
 func (c *EditorCore) insertDeleteBack(line bool) {
 	b := &c.buf
 	if c.replace != nil {
-		if b.col == 0 {
-			c.replaceBackspace() // a break typed is joined; else nothing
-			return
-		}
-		for from := c.deleteBackFrom(line); b.col > from; {
-			was := b.col
-			c.replaceBackspace()
-			if b.col == was {
-				break
+		if b.col > 0 {
+			for n := b.col - c.deleteBackFrom(line); n > 0; n-- {
+				c.replaceBackspace()
 			}
 		}
 		return
@@ -35,10 +30,7 @@ func (c *EditorCore) insertDeleteBack(line bool) {
 		c.edited()
 		return
 	}
-	from := c.deleteBackFrom(line)
-	if from >= b.col {
-		return
-	}
+	from := c.deleteBackFrom(line) // left of the cursor: the stop always is, so a cluster at least goes
 	c.beginGroup()
 	b.deleteRegion(taPos{b.ln, from}, taPos{b.ln, b.col})
 	c.edited()
