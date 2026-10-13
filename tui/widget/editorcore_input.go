@@ -81,6 +81,7 @@ func (c *EditorCore) HandleTick() bool {
 		c.beginGroup()
 		c.buf.insertText(string(r))
 		c.edited()
+		c.dotTypedText(string(r)) // typed: what the tick committed is text, not the chord
 	}
 	return true
 }
