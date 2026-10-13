@@ -60,6 +60,7 @@ type EditorCore struct {
 	blockIns       *blockInsert           // a block's I, A or c waiting for its Insert to end (editor_vimblock.go)
 	findHost       func(FindRequest) bool // * and #'s host, when it keeps its own find (editor_vimstar.go)
 	replace        *replaceState          // R's, while Replace lasts (editor_vimreplace.go)
+	rowSticky      rowSticky              // gj and gk's x (editor_vimrows.go)
 	keyDepth       int                    // HandleKey calls in progress: a macro's and .'s keys are nested
 	marks          markSet                // a–z and the previous jump's place (editor_vimmarks.go)
 	macro          macroRecorder          // the macro being recorded, and what plays (editor_vimmacros.go)

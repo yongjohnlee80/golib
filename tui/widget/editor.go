@@ -241,6 +241,29 @@ func (l *cellLayout) ScrollLines(delta int) {
 // Measure is s's width in cells, under the App's width policy.
 func (l *cellLayout) Measure(s string) int { return l.ed.width(s) }
 
+// RowCount, RowOf and ColAt are the display rows the Editor wraps lines into (EditorRowLayout):
+// gj and gk move by them. RowOf is the wrap's own mapping (wrapPosOf), so a break space the wrap
+// consumed is at the end of the row before it, as drawn.
+func (l *cellLayout) RowCount(line int) int { return l.ed.rowsOfLine(line) }
+
+func (l *cellLayout) RowOf(line, col int) (row, x int) {
+	lines, v := l.ed.core.buf.lines, l.ed.view()
+	if v.wrap == WrapNone {
+		return 0, cellsBefore(clusters(lines[line]), col, v.measure)
+	}
+	return wrapPosOf(lines, line, col, v)
+}
+
+func (l *cellLayout) ColAt(line, row, x int) int {
+	lines, v := l.ed.core.buf.lines, l.ed.view()
+	cs := clusters(lines[line])
+	rows := [][2]int{{0, len(cs)}}
+	if v.wrap != WrapNone {
+		rows = wrapRanges(cs, v.usableWidth(lines), v.measure)
+	}
+	return colInRow(cs, rows, max(0, min(row, len(rows)-1)), x, v.measure)
+}
+
 // Changed repaints, and lays out again when the line count's digits move the gutter's width.
 func (l *cellLayout) Changed(int) {
 	if l.numbers && l.ed.gutterWidth() != l.gutter {
