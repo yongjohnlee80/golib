@@ -240,6 +240,8 @@ func TestVimTextObjects(t *testing.T) {
 		{what: "2di<", text: "a<b<c>>", col: 4, keys: "2di<", want: "a<>"},
 		{what: "di< with an unmatched <", text: "<a", col: 1, keys: "di<", want: "<a"},
 		{what: "di( with none around", text: "abc", col: 1, keys: "di(", want: "abc"},
+		{what: "da( with an unmatched ( on a later line", text: "a\n(b", ln: 1, col: 1, keys: "da(", want: "a\n(b"},
+		{what: `an empty di" leaves the register`, text: `keep a "" b`, keys: `yiwf"di"`, want: `keep a "" b`, reg: "keep"},
 		{what: "yiw", text: "foo bar", col: 5, keys: "yiw", want: "foo bar", reg: "bar"},
 	})
 }
