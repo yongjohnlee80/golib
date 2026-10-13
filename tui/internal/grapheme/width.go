@@ -163,3 +163,7 @@ func runeWidth(r rune, ambiguousWide bool) int {
 		return 1
 	}
 }
+
+// IsEmoji reports whether r has the Emoji property (emoji-data.txt): the table Vim's emoji_all is
+// built from, so its word motions class r as an emoji.
+func IsEmoji(r rune) bool { return inRanges(r, emojiRanges) }

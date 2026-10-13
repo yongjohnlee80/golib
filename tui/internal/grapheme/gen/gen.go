@@ -107,7 +107,7 @@ func main() {
 		fatalf("parse GraphemeBreakProperty.txt: %v", err)
 	}
 	emoji, err := parseUCD(filepath.Join(*dir, "emoji-data.txt"),
-		map[string]bool{"Extended_Pictographic": true, "Emoji_Presentation": true})
+		map[string]bool{"Extended_Pictographic": true, "Emoji_Presentation": true, "Emoji": true})
 	if err != nil {
 		fatalf("parse emoji-data.txt: %v", err)
 	}
@@ -153,6 +153,7 @@ func main() {
 	ambiguous := sortMerge(eaw["A"])
 
 	emojiPres := sortMerge(emoji["Emoji_Presentation"])
+	emojiAll := sortMerge(emoji["Emoji"])
 
 	// --- Zero-width: Default_Ignorable ∪ Mn ∪ Me ---------------------------
 	dcp, err := parseUCD(filepath.Join(*dir, "DerivedCoreProperties.txt"),
@@ -199,6 +200,8 @@ func main() {
 		"ambiguousRanges holds East Asian Ambiguous (A) code points (UAX #11).")
 	emitSpans(&buf, "emojiPresentationRanges", emojiPres,
 		"emojiPresentationRanges holds Emoji_Presentation code points\n// (emoji-data.txt): emoji-by-default, rendered two columns wide.")
+	emitSpans(&buf, "emojiRanges", emojiAll,
+		"emojiRanges holds Emoji code points (emoji-data.txt): the table Vim's\n// emoji_all is built from, which its word motions class as emoji.")
 	emitSpans(&buf, "zeroWidthRanges", zero,
 		"zeroWidthRanges holds zero-display-width code points:\n// Default_Ignorable_Code_Point (DerivedCoreProperties.txt, which includes\n// ZWJ, ZWNJ, and the variation selectors) union the Mn and Me general\n// categories (DerivedGeneralCategory.txt).")
 

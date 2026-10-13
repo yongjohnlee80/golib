@@ -430,7 +430,11 @@ func (c *EditorCore) handleCommandKey(k tui.KeyEvent) bool {
 		}
 		// the g prefix's other second keys: ge and gE, back to the end of the previous word
 		if act == ActGoPrefix && !kc.Ctrl && (kc.Code == 'e' || kc.Code == 'E') {
-			c.move(ActWordEndBack, count)
+			if kc.Code == 'E' {
+				c.move(ActWORDEndBack, count)
+			} else {
+				c.move(ActWordEndBack, count)
+			}
 			return true
 		}
 		// Fall through: reprocess this key from scratch (count consumed).

@@ -258,7 +258,8 @@ func TestVimHalfPages(t *testing.T) {
 	at(t, l, "Ctrl-d with a one-line page", 1, 0)
 }
 
-// W B E are w b e (the Editor's words are WORDs); ge and gE go back to the previous word's end.
+// W B E and gE move by WORDs, which only blanks end; ge and gE go back to the previous end,
+// stopping on an empty line.
 func TestVimWORDsAndWordEndBack(t *testing.T) {
 	c, _ := coreWith(t, "foo.bar baz\n\n  qux")
 	keys(c, "W")
@@ -268,11 +269,15 @@ func TestVimWORDsAndWordEndBack(t *testing.T) {
 	keys(c, "B")
 	at(t, c, "B", 0, 8)
 	keys(c, "G$ge")
-	at(t, c, "ge across a blank line", 0, 10)
+	at(t, c, "ge stops on the empty line", 1, 0)
 	keys(c, "G$gE")
-	at(t, c, "gE", 0, 10)
+	at(t, c, "gE stops on it too", 1, 0)
 	keys(c, "G$2ge")
-	at(t, c, "2ge", 0, 6)
+	at(t, c, "2ge", 0, 10)
+	keys(c, "04lge")
+	at(t, c, "ge from bar: the . is a word", 0, 3)
+	keys(c, "04lgE")
+	at(t, c, "gE from bar: foo.bar is one WORD", 0, 0)
 	keys(c, "0lge")
 	at(t, c, "ge in the first word", 0, 0)
 	keys(c, "gl")
