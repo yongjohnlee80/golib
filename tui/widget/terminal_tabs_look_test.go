@@ -4,7 +4,9 @@ import (
 	"errors"
 	"strings"
 	"testing"
+	"time"
 
+	"github.com/yongjohnlee80/golib/tui"
 	"github.com/yongjohnlee80/golib/tui/pty"
 	"github.com/yongjohnlee80/golib/tui/style"
 )
@@ -85,4 +87,64 @@ func addTestTerminalWith(t *testing.T, tabs *TerminalTabs, label string, p *resu
 		t.Fatal(err)
 	}
 	return id
+}
+
+// TestTerminalTabsOpenTheirOwnMenuForATab: SetMenu's rows open over the strip for the tab a right
+// press is on (and for the active one by Enter); a chosen row runs with that tab, and the menu
+// closes.
+func TestTerminalTabsOpenTheirOwnMenuForATab(t *testing.T) {
+	tabs := NewTerminalTabs()
+	p1, p2 := newResultProc(), newResultProc()
+	defer close(p1.release)
+	defer close(p2.release)
+	a := addTestTerminal(t, tabs, "alpha", p1)
+	b := addTestTerminal(t, tabs, "beta", p2)
+	var ran []TerminalTabID
+	tabs.SetMenu(func(id TerminalTabID) []MenuItemModel {
+		return []MenuItemModel{
+			NewCommand("close", "Close", TerminalTabsMenuAction{ID: "tabs.close", Run: func(id TerminalTabID) { ran = append(ran, id) }}),
+			NewSubmenu("goto", "Go to", []MenuItemModel{
+				NewCommand("goto.a", "alpha", TerminalTabsMenuAction{ID: "tabs.goto", Run: func(TerminalTabID) {}}),
+			}),
+		}
+	})
+	h := startAppInternal(t, NewOverlayHost(tabs), 40, 8)
+	defer h.stopInternal()
+	h.syncInternal()
+	var bx int
+	h.onLoopInternal(func() { bx = tabs.tabX(b) })
+	if err := h.tb.Inject(tui.MouseEvent{Kind: tui.MousePress, Button: tui.MouseRight, X: bx + 1, Y: 0}); err != nil {
+		t.Fatal(err)
+	}
+	var open bool
+	menuOpen := func(want bool) bool { // injected events and the loop's Updates are unordered: poll
+		for range 300 {
+			h.onLoopInternal(func() { open = tabs.MenuOpen() })
+			if open == want {
+				return true
+			}
+			time.Sleep(10 * time.Millisecond)
+		}
+		return false
+	}
+	menuOpen(true)
+	h.syncInternal()
+	if !open || !strings.Contains(h.tb.String(), "Close") || !strings.Contains(h.tb.String(), "Go to") {
+		t.Fatalf("the right press on beta opened no menu:\n%s", h.tb.String())
+	}
+	if err := h.tb.Inject(tui.KeyEvent{Kind: tui.KeyPress, Code: tui.KeyEnter}); err != nil { // the first row, Close
+		t.Fatal(err)
+	}
+	menuOpen(false)
+	if len(ran) != 1 || ran[0] != b || open {
+		t.Fatalf("Close ran for %v (want beta, %s), the menu open %v", ran, b, open)
+	}
+	// Enter on the focused strip opens it for the active tab
+	h.onLoopInternal(func() { tabs.Context().RequestFocus() })
+	if err := h.tb.Inject(tui.KeyEvent{Kind: tui.KeyPress, Code: tui.KeyEnter}); err != nil {
+		t.Fatal(err)
+	}
+	if !menuOpen(true) {
+		t.Fatalf("Enter on the strip opened no menu for %s:\n%s", a, h.tb.String())
+	}
 }
