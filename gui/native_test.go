@@ -224,14 +224,14 @@ func TestAFieldUnderPanelsIsNotItsSelectionsColour(t *testing.T) {
 	p := placementOf(t, sb, in.NodeID())
 	r := newRenderer(nil, "Go Mono", DefaultTheme())
 	var selected, field color.NRGBA
-	onLoop(t, app, func() {
+	// the selection is the field's state at once, but on screen only at the next frame, which the
+	// frame cap may defer: wait for the drawn screen to set the selected cells apart from the field
+	waitUntil(t, "the selection drawn apart from the field", func() bool {
 		snap := sb.Snapshot()
 		_, selected = r.colors(snap[p.Y][p.X+in.Padding()].Attrs)
 		_, field = r.colors(snap[p.Y][p.X+p.Cols/2].Attrs)
+		return selected != field
 	})
-	if selected == field {
-		t.Fatalf("the selection's %v is the field's: the case cannot be told apart", selected)
-	}
 	p.Covered = []tui.Rect{{X: p.X, Y: p.Y, W: 1, H: 1}, {X: p.X + p.Cols - 1, Y: p.Y, W: 1, H: 1}}
 	rc := paintOn(t, app, sb, p)
 	if rc.Calls[0].Op != "FillRect" || rc.Calls[0].Brush.Color != field {
