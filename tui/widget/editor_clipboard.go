@@ -166,9 +166,13 @@ func (c *EditorCore) NamedBlock(name rune) (pieces []string, width int, ok bool)
 
 // SetNamedBlock sets register name to a block, as SetNamedRegister sets text. width is the
 // block's width in display cells (a wide character two, a tab tabCells): 0 is the widest piece's,
-// and a width less than that is raised to it, so no piece is cut. It reports false as
+// and a width less than that is raised to it, so no piece is cut. A block of empty pieces with a
+// width puts that many spaces; one of no pieces holds nothing. It reports false as
 // SetNamedRegister does.
 func (c *EditorCore) SetNamedBlock(name rune, pieces []string, width int) bool {
+	if len(pieces) == 0 {
+		width = 0
+	}
 	for _, p := range pieces {
 		width = max(width, blockCells(p))
 	}

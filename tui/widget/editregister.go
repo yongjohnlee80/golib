@@ -29,8 +29,9 @@ type regEntry struct {
 	atoms    []dotAtom
 }
 
-// holds reports whether a put would insert anything: text, or an empty line-wise yank.
-func (e regEntry) holds() bool { return e.text != "" || e.linewise }
+// holds reports whether a put would insert anything: text, an empty line-wise yank, or a block with
+// a width (its empty pieces put as that many spaces).
+func (e regEntry) holds() bool { return e.text != "" || e.linewise || e.block && e.width > 0 }
 
 // appended is e with more appended, as "A–"Z do (Vim's op_yank): whole lines when either part is;
 // a block keeps its kind, more's lines its next pieces, the width the wider.

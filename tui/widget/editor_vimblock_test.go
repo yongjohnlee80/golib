@@ -153,10 +153,16 @@ func TestVimBlockPut(t *testing.T) {
 		{"a wide character at the column moved after", "abcd\n한글", 0, 1, []string{"P", "Q"}, `"aP`, "aPbcd\n Q한글"},
 		{"lines past the end added", "ab", 0, 0, []string{"P", "Q", "R"}, `"aP`, "Pab\nQ\nR"},
 		{"one undo step", "ab", 0, 0, []string{"P", "Q", "R"}, `"aPu`, "ab"},
+		{"an empty piece puts its width in spaces", "abc", 0, 0, []string{""}, `"aP`, "   abc"},
+		{"an empty piece, twice", "abc", 0, 0, []string{""}, `"a2P`, "      abc"},
 	}
 	for _, e := range cases {
 		c, _ := coreWith(t, e.text)
-		c.SetNamedBlock('a', e.pieces, 0)
+		width := 0
+		if len(e.pieces) == 1 && e.pieces[0] == "" {
+			width = 3
+		}
+		c.SetNamedBlock('a', e.pieces, width)
 		c.SetLine(e.ln, e.col)
 		vimSeq(c, e.seq)
 		if got := c.Value(); got != e.want {
@@ -174,6 +180,18 @@ func TestVimBlockPut(t *testing.T) {
 	vimSeq(y, "l<ctv>jly0P")
 	if got := y.Value(); got != "bcabc\nefdef" {
 		t.Errorf("y over a block, then P: %q", got)
+	}
+	// a block yanked on an empty line is one empty piece a cell wide: a put is one space
+	e, _ := coreWith(t, "\nabc")
+	vimSeq(e, "<ctv>yjP")
+	if got := e.Value(); got != "\n abc" {
+		t.Errorf("a block yanked on an empty line, then P: %q", got)
+	}
+	// none: nothing
+	n, _ := coreWith(t, "abc")
+	n.SetNamedBlock('a', nil, 3)
+	if vimSeq(n, `"aP`); n.Value() != "abc" {
+		t.Errorf("a block of no pieces put: %q", n.Value())
 	}
 }
 
@@ -206,6 +224,11 @@ func TestVimBlockRegisterAPI(t *testing.T) {
 		if _, w, _ := c.NamedBlock('d'); w != e.want {
 			t.Errorf("SetNamedBlock(%q, %d): width %d, want %d", e.pieces, e.width, w, e.want)
 		}
+	}
+	c.SetNamedBlock('f', []string{""}, 3)
+	c.SetNamedRegister('F', "x", false)
+	if pieces, width, ok := c.NamedBlock('f'); !ok || width != 3 || len(pieces) != 2 || pieces[0] != "" || pieces[1] != "x" {
+		t.Fatalf("appending to an empty block: %q %d %v", pieces, width, ok)
 	}
 	c.SetNamedBlock('e', []string{"X"}, 0)
 	c.SetNamedRegister('E', "YZ", false)
