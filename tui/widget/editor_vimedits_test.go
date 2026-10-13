@@ -176,19 +176,30 @@ func TestVimRepeat(t *testing.T) {
 func TestVimRepeatTypedAndPastedClosers(t *testing.T) {
 	d := golang.Definition()
 	src := widget.CoreSourceFactory(func() highlight.Source { return d.NewSource(nil) })
+	// the indenter decides a closer's place from verified highlight state, as the editor's
+	// highlighter leaves it: verify every line before each edit
+	verified := func(c *widget.EditorCore) {
+		f := c.BeginHighlight(0)
+		f.Styles(c.LineCount())
+		f.Close()
+	}
 	doc := "func f() {\n\tx\n\t\nfunc g() {\n\ty\n\t"
 	typed, _ := coreWith(t, doc, widget.CoreAutoIndent(true), src)
+	verified(typed)
 	typed.SetLine(2, 0)
 	vimSeq(typed, "A}<esc>")
 	first := strings.Split(typed.Value(), "\n")[2]
+	verified(typed)
 	typed.SetLine(5, 0)
 	vimSeq(typed, ".")
 	if got := strings.Split(typed.Value(), "\n")[5]; got != first || got != "}" {
 		t.Fatalf("a typed } replayed as %q (the original %q), want } aligned", got, first)
 	}
 	pasted, _ := coreWith(t, doc, widget.CoreAutoIndent(true), src)
+	verified(pasted)
 	pasted.SetLine(2, 0)
 	vimSeq(pasted, "A<paste:}><esc>")
+	verified(pasted)
 	pasted.SetLine(5, 0)
 	vimSeq(pasted, ".")
 	if got := strings.Split(pasted.Value(), "\n")[5]; got != "\t}" {
