@@ -559,6 +559,12 @@ func actionModes(a Action) (normal, visual, insert bool) {
 		return true, false, true
 	case ActVisualYank, ActVisualDelete:
 		return false, true, false
+	case ActLineDownFirst, ActLineUpFirst, ActFirstNonBlank, ActLeftWrap,
+		ActFindCharForward, ActFindCharBack, ActTillCharForward, ActTillCharBack,
+		ActFindCharRepeat, ActFindCharReverse, ActMatchPair,
+		ActViewTop, ActViewMiddle, ActViewBottom, ActHalfPageDown, ActHalfPageUp,
+		ActWORDForward, ActWORDBack, ActWORDEnd, ActWordEndBack, ActWORDEndBack:
+		return true, true, false // the Vim motions Insert has no keys for: Enter and Backspace type there
 	}
 	return false, false, false
 }

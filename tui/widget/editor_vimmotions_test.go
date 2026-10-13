@@ -305,3 +305,24 @@ func TestVimNewMotionsExtendVisualAndWorkReadOnly(t *testing.T) {
 		t.Fatalf("a viewer's text changed: %q", ro.Value())
 	}
 }
+
+// A host may rebind the new motions like any other action: an overlay naming one does not panic,
+// and the chord does the motion.
+func TestVimNewMotionsRebind(t *testing.T) {
+	c, _ := coreWith(t, "a\n  b\nc,d", widget.CoreKeymap(widget.Keymap{
+		{Mode: widget.ModeNormal, Code: 'z'}: widget.ActLineDownFirst,
+		{Mode: widget.ModeVisual, Code: 'z'}: widget.ActLineDownFirst,
+		{Mode: widget.ModeNormal, Code: 'q'}: widget.ActFindCharForward,
+		{Mode: widget.ModeNormal, Code: '+'}: widget.ActUnbound,
+	}))
+	keys(c, "z")
+	at(t, c, "z rebound to LineDownFirst", 1, 2)
+	keys(c, "vz")
+	at(t, c, "z in Visual", 2, 0)
+	special(c, tui.KeyEscape)
+	keys(c, "q,")
+	at(t, c, "q rebound to a find", 2, 1)
+	if c.HandleKey(tui.KeyEvent{Code: '+', Text: "+"}) {
+		t.Fatal("an unbound + was consumed")
+	}
+}
