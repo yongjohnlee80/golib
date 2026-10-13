@@ -5,6 +5,7 @@ package decl_test
 import (
 	"context"
 	"errors"
+	"strings"
 	"testing"
 	"time"
 
@@ -34,7 +35,7 @@ func TestDeclaredTerminalTabsKeepOwnedProcessesThroughHideAndPaletteChanges(t *t
 		if err := s.Program.Call("d", "open"); err != nil {
 			t.Error(err)
 		}
-		a, _ = tabs.Add("first", widget.WithCommand("/bin/sh", "-c", "printf 'first output\\n'; read x; printf 'delivered:%s\\n' \"$x\"; read x"))
+		a, _ = tabs.Add("first", widget.WithCommand("/bin/sh", "-c", "printf 'first output\\n\\033[31mred words\\033[0m\\n'; read x; printf 'delivered:%s\\n' \"$x\"; read x"))
 		b, _ = tabs.Add("second", widget.WithCommand("/bin/sh", "-c", "printf 'second output\\n'; read x"))
 		if err := tabs.Start(a); err != nil {
 			t.Error(err)
@@ -45,6 +46,9 @@ func TestDeclaredTerminalTabsKeepOwnedProcessesThroughHideAndPaletteChanges(t *t
 	})
 	s.WaitForText(t, "first output")
 	waitBG(t, s, "first output", ansi(blue))
+	if cellOf(t, s, "red words").Attrs.FG != ansi(red) {
+		t.Error("explicit ANSI foreground was overridden by parent palette")
+	}
 	onScreenLoop(t, s, func() {
 		if err := s.Program.Call("d", "close"); err != nil {
 			t.Error(err)
@@ -70,6 +74,9 @@ func TestDeclaredTerminalTabsKeepOwnedProcessesThroughHideAndPaletteChanges(t *t
 		}
 	})
 	waitBG(t, s, "first output", ansi(red))
+	if cellOf(t, s, "red words").Attrs.FG != ansi(red) {
+		t.Error("palette update changed explicit ANSI cells")
+	}
 	onScreenLoop(t, s, func() {
 		if err := tabs.Select(b); err != nil {
 			t.Error(err)
@@ -94,7 +101,16 @@ func TestDeclaredTerminalTabsKeepOwnedProcessesThroughHideAndPaletteChanges(t *t
 		if err := tabs.SendText(b, "stale"); !errors.Is(err, widget.ErrTerminalTabUnknown) {
 			t.Errorf("removed ID accepted: %v", err)
 		}
+		if _, err := s.Program.Reload([]byte(strings.Replace(layout, "TerminalTabs { id: terminals }", "Text { id: replacement; text: \"replaced\" }", 1))); err != nil {
+			t.Error(err)
+		}
+		if err := tabs.SendText(a, "destroyed"); !errors.Is(err, widget.ErrTerminalShutdown) {
+			t.Errorf("destroyed owner accepted input: %v", err)
+		}
 	})
+	if err := tabs.ShutdownWithResult().Wait(ctx); err != nil {
+		t.Fatal(err)
+	}
 }
 
 func TestDeclaredTerminalTabsRejectStaticChildren(t *testing.T) {
