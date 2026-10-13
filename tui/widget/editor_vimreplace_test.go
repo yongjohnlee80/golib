@@ -14,6 +14,7 @@ func TestVimReplace(t *testing.T) {
 		{what: "past the end appends", text: "12", seq: "Rabcd<esc>", want: "abcd", cursor: true, wantCol: 3},
 		{what: "Backspace restores, then only moves", text: "1234", seq: "Rab<bs><bs><bs>x<esc>", want: "x234"},
 		{what: "Backspace before the start moves left", text: "1234", seq: "lRab<bs><bs><bs><esc>", want: "1234", cursor: true},
+		{what: "and typing there overwrites there", text: "1234", seq: "lRab<bs><bs><bs>x<esc>", want: "x234"},
 		{what: "Backspace deletes what it appended", text: "12", seq: "Rabc<bs><bs><esc>", want: "a2"},
 		{what: "Enter breaks, overwriting nothing", text: "1234", seq: "Ra<cr>b<esc>", want: "a\nb34", cursor: true, wantLn: 1},
 		{what: "Backspace joins the break", text: "1234", seq: "Ra<cr>b<bs><bs><esc>", want: "a234"},
@@ -68,6 +69,17 @@ func TestVimReplaceMode(t *testing.T) {
 	v, _ := coreWith(t, "1234", widget.CoreReadOnly(true))
 	if v.HandleKey(tui.KeyEvent{Code: 'R', Text: "R"}) || v.Mode() != widget.ModeNormal {
 		t.Fatalf("a viewer's R: mode %v", v.Mode())
+	}
+}
+
+// A press in Replace starts a new stack where it lands: Backspace there only moves.
+func TestVimReplacePress(t *testing.T) {
+	c, _ := coreWith(t, "1234")
+	vimSeq(c, "Rab")
+	c.PressAt(0, 3)
+	vimSeq(c, "<bs><esc>")
+	if c.Value() != "ab34" {
+		t.Fatalf("Backspace after a press in Replace: %q", c.Value())
 	}
 }
 
