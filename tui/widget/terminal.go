@@ -503,6 +503,22 @@ func (t *Terminal) SendText(text string) error {
 	return t.in.offer([]byte(text))
 }
 
+// SendPaste sends text as a paste, as the terminal's own paste does: bracketed when the program
+// asked for bracketed paste (mode 2004, which agent CLIs and shells with line editing set), so a
+// multi-line text arrives whole rather than line by line as Enters; otherwise its newlines go as
+// Enter. A text holding the bracket's end has it removed, so it cannot end the paste early. Like
+// SendText it is queued, not written, and a rejected send queues nothing. On the UI loop.
+func (t *Terminal) SendPaste(text string) error {
+	if !t.Running() {
+		return ErrTerminalNotRunning
+	}
+	b := encodePaste(text, t.scr.Modes())
+	if len(b) > TerminalInputLimit {
+		return ErrTerminalInputFull
+	}
+	return t.in.offer(b)
+}
+
 func (t *Terminal) setMode(m TerminalMode) {
 	if t.mode == m {
 		return

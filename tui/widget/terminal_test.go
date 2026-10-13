@@ -204,6 +204,25 @@ func TestTerminalPastes(t *testing.T) {
 	f.waitSent("\x1b[200~c\nd\x1b[201~")
 }
 
+// SendPaste sends as the terminal's own paste does: newlines as Enter, then bracketed once the
+// program asks for it, a bracket's end in the text removed so it cannot end the paste early.
+func TestTerminalSendsAPaste(t *testing.T) {
+	f := startTerm(t, 20, 4)
+	send := func(text string) {
+		t.Helper()
+		var err error
+		f.h.onLoop(func() { err = f.term.SendPaste(text) })
+		if err != nil {
+			t.Fatal(err)
+		}
+	}
+	send("a\nb")
+	f.waitSent("a\rb")
+	f.output("\x1b[?2004h")
+	send("c\nd\x1b[201~e")
+	f.waitSent("\x1b[200~c\nde\x1b[201~")
+}
+
 func TestTerminalPrefixWaysOut(t *testing.T) {
 	t.Run("Ctrl-\\ Ctrl-n reaches normal mode", func(t *testing.T) {
 		f := startTerm(t, 20, 4)
