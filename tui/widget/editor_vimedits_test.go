@@ -158,12 +158,28 @@ func TestVimRepeat(t *testing.T) {
 		{what: "Neovim's ins-repeat: iab<Left>c<Esc>.", text: "", seq: "iab<left>c<esc>.", want: "aacbcb"},
 		{what: "a jump splits the change", text: "", seq: "iab<pgdn>cd<esc>.", want: "abccdd"},
 		{what: "u is not a change", text: "abc", seq: "xu.", want: "bc"},
+		{what: "a replay that changes nothing is no undo step", text: "a", seq: "x.u", want: "a"},
 	})
 	c, _ := coreWith(t, "a b c")
 	vimSeq(c, "dw.")
 	vimSeq(c, "u")
 	if c.Value() != "b c" {
 		t.Fatalf("one u after a .: %q, want the first dw kept", c.Value())
+	}
+	k, _ := coreWith(t, "abc")
+	vimSeq(k, "x")
+	k.SetKeyset(widget.KeysetStandard)
+	k.SetKeyset(widget.KeysetVim)
+	vimSeq(k, "<esc>.")
+	if k.Value() != "bc" {
+		t.Fatalf("a keyset switch kept the change to repeat: %q", k.Value())
+	}
+	p, _ := coreWith(t, "")
+	vimSeq(p, "iab")
+	p.PressAt(0, 0)
+	vimSeq(p, "c<esc>$.")
+	if p.Value() != "cacb" {
+		t.Fatalf("a press in Insert splits the change: %q, want cacb (. inserts only the c typed after it)", p.Value())
 	}
 	n, _ := coreWith(t, "")
 	vimSeq(n, "iab<left>c<esc>.u")
