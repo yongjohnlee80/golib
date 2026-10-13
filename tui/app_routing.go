@@ -586,7 +586,7 @@ func (a *App) deliverCaptured(e MouseEvent) bool {
 // change focus, or unmount a subtree, any of which can deliver a further event
 // synchronously. Restoring the previous value rather than clearing outright
 // keeps the flag true for the remainder of the outer handler.
-func (a *App) deliverTo(n *node, ev Event) bool {
+func (a *App) deliverTo(n *node, ev Event) (handled bool) {
 	prev, prevAction := a.handlerNode, a.actionHandlerNode
 	a.handlerNode = n.id
 	// Raw delivery is NOT an action delivery, and says so. The runtime reaches
@@ -596,6 +596,7 @@ func (a *App) deliverTo(n *node, ev Event) bool {
 	// provenance — a real origin, belonging to an event the child never saw.
 	a.actionHandlerNode = 0
 	defer func() { a.handlerNode, a.actionHandlerNode = prev, prevAction }()
+	defer a.contain("event", n, &handled)
 	return n.comp.HandleEvent(ev)
 }
 

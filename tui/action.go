@@ -425,7 +425,7 @@ func (a *App) deliverAction(n *node, h ActionHandler, inv ActionInvocation) bool
 
 // inActionPhase runs fn as n's action delivery of inv: n's HandleAction, or the Activate that
 // stands in for it. Both are the same phase, so both mark it the same way.
-func (a *App) inActionPhase(n *node, inv ActionInvocation, fn func() bool) bool {
+func (a *App) inActionPhase(n *node, inv ActionInvocation, fn func() bool) (handled bool) {
 	prev, prevAction := a.handlerNode, a.actionHandlerNode
 	prevOrigin, prevSource := a.handlerOrigin, a.handlerSource
 	a.handlerNode = n.id
@@ -439,6 +439,7 @@ func (a *App) inActionPhase(n *node, inv ActionInvocation, fn func() bool) bool 
 		a.handlerNode, a.actionHandlerNode = prev, prevAction
 		a.handlerOrigin, a.handlerSource = prevOrigin, prevSource
 	}()
+	defer a.contain("action", n, &handled)
 	return fn()
 }
 
