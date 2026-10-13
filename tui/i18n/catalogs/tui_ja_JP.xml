@@ -59,6 +59,38 @@
         <source>Folder — not a folder</source>
         <translation>フォルダー — フォルダーではありません</translation>
     </message>
+    <message id="tui.files.folderNotFound">
+        <source>Folder — not found</source>
+        <translation>フォルダー — 見つかりません</translation>
+    </message>
+    <message id="tui.files.folderNoHome">
+        <source>Folder — ~ is not known here</source>
+        <translation>フォルダー — ここでは ~ を使えません</translation>
+    </message>
+    <message id="tui.files.folderCannotRead">
+        <source>Folder — cannot read</source>
+        <translation>フォルダー — 読み込めません</translation>
+    </message>
+    <message id="tui.files.path">
+        <source>Path</source>
+        <translation>パス</translation>
+    </message>
+    <message id="tui.files.pathNotFound">
+        <source>Path — not found</source>
+        <translation>パス — 見つかりません</translation>
+    </message>
+    <message id="tui.files.pathNoFolder">
+        <source>Path — its folder does not exist</source>
+        <translation>パス — そのフォルダーは存在しません</translation>
+    </message>
+    <message id="tui.files.pathNoHome">
+        <source>Path — ~ is not known here</source>
+        <translation>パス — ここでは ~ を使えません</translation>
+    </message>
+    <message id="tui.files.pathCannotRead">
+        <source>Path — cannot read</source>
+        <translation>パス — 読み込めません</translation>
+    </message>
     <message id="tui.files.empty">
         <source>(empty)</source>
         <translation>(空)</translation>
@@ -112,8 +144,8 @@
         <translation>Enter:決定  Tab:次へ  Esc:キャンセル</translation>
     </message>
     <message id="tui.files.hint.openList">
-        <source>↑↓:move  Enter:open folder, or open file  Tab:next  Esc:cancel</source>
-        <translation>↑↓:移動  Enter:フォルダーまたはファイルを開く  Tab:次へ  Esc:キャンセル</translation>
+        <source>↑↓:move  Enter:open folder, or open file  Ctrl+k ~:path  Tab:next  Esc:cancel</source>
+        <translation>↑↓:移動  Enter:フォルダーまたはファイルを開く  Ctrl+k ~:パス  Tab:次へ  Esc:キャンセル</translation>
     </message>
     <message id="tui.files.hint.previewPart">
         <source>j/k:scroll  gg/G:top/end  Tab:next  Esc:cancel</source>
@@ -124,16 +156,20 @@
         <translation>Enter:保存  Tab:次へ  Esc:キャンセル</translation>
     </message>
     <message id="tui.files.hint.saveList">
-        <source>↑↓:move  Enter:open folder, or save over file  Tab:next  Esc:cancel</source>
-        <translation>↑↓:移動  Enter:フォルダーを開く、またはファイルに上書き  Tab:次へ  Esc:キャンセル</translation>
+        <source>↑↓:move  Enter:open folder, or save over file  Ctrl+k ~:path  Tab:next  Esc:cancel</source>
+        <translation>↑↓:移動  Enter:フォルダーを開く、またはファイルに上書き  Ctrl+k ~:パス  Tab:次へ  Esc:キャンセル</translation>
     </message>
     <message id="tui.files.hint.folderPath">
-        <source>Enter:go to folder  Tab:next  Esc:cancel</source>
-        <translation>Enter:フォルダーへ移動  Tab:次へ  Esc:キャンセル</translation>
+        <source>Enter:go to folder  Esc:back to the list  Tab:next</source>
+        <translation>Enter:フォルダーへ移動  Esc:リストに戻る  Tab:次へ</translation>
     </message>
     <message id="tui.files.hint.listPart">
-        <source>↑↓:move  Enter:open folder  Tab:next  Esc:cancel</source>
-        <translation>↑↓:移動  Enter:フォルダーを開く  Tab:次へ  Esc:キャンセル</translation>
+        <source>↑↓:move  Enter:open folder  Ctrl+k ~:path  Tab:next  Esc:cancel</source>
+        <translation>↑↓:移動  Enter:フォルダーを開く  Ctrl+k ~:パス  Tab:次へ  Esc:キャンセル</translation>
+    </message>
+    <message id="tui.files.hint.path">
+        <source>Enter:go there  Esc:back to the list  Tab:next</source>
+        <translation>Enter:移動  Esc:リストに戻る  Tab:次へ</translation>
     </message>
     <message id="tui.select.error">
         <source>error: %1</source>
