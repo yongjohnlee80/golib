@@ -135,6 +135,10 @@ golib/tui에서 실행됩니다.</translation>
         <source>V-LINE</source>
         <translation>비주얼 줄</translation>
     </message>
+    <message id="editor.mode.visualBlock">
+        <source>V-BLOCK</source>
+        <translation>비주얼 블록</translation>
+    </message>
     <message id="editor.noName">
         <source>[No Name]</source>
         <translation>[이름 없음]</translation>

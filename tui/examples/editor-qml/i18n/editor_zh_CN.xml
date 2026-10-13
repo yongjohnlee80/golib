@@ -135,6 +135,10 @@ running on golib/tui.</source>
         <source>V-LINE</source>
         <translation>可视行</translation>
     </message>
+    <message id="editor.mode.visualBlock">
+        <source>V-BLOCK</source>
+        <translation>可视块</translation>
+    </message>
     <message id="editor.noName">
         <source>[No Name]</source>
         <translation>[未命名]</translation>
