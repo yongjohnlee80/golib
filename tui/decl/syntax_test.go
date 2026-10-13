@@ -93,6 +93,20 @@ func TestASQLBufferWearsTheThemesSyntaxColours(t *testing.T) {
 	}
 }
 
+// A Markdown buffer's ```sql fence is SQL: the vocabulary's catalog, the one a
+// Markdown source borrows its fences from, names each dialect by its label.
+// Unlabelled code is a string, so a fence it cannot read would paint select
+// in the string colour.
+func TestASQLFenceInMarkdownWearsTheKeywordColour(t *testing.T) {
+	for _, label := range []string{"sql", "postgres", "sqlite", "mysql"} {
+		src := "import tui 1.0\nimport demo 1.0\nimport demo.theme.dark 1.0\n" +
+			"Flex { syntax.keyword: Theme.syntax.keyword; syntax.string: Theme.syntax.string\n" +
+			" Editor { text: \"```" + label + "\\nselect id from t\\n```\"\n SyntaxHighlighter { definition: \"Markdown\" } } }"
+		s := runSyntax(t, src)
+		waitFG(t, s, "select", ansi(red))
+	}
+}
+
 // What is refused, by name.
 func TestWhatASyntaxHighlighterRefuses(t *testing.T) {
 	for doc, want := range map[string]string{

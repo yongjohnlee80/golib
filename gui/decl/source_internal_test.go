@@ -75,3 +75,36 @@ MarkdownRenderer {}
 		t.Fatal("renderer did not create the registered provider")
 	}
 }
+
+// The native MarkdownRenderer reads a ```sql fence as SQL with the vocabulary's
+// own catalog, no registration: SELECT wears the keyword colour.
+func TestNativeRenderedSQLFenceWearsTheKeywordColour(t *testing.T) {
+	var renderer guiwidget.Renderer
+	style := Native(func(n *native) {
+		original := n.renderers["markdown"]
+		n.renderers["markdown"] = func(spec tuidecl.RendererSpec) guiwidget.Renderer { renderer = original(spec); return renderer }
+	})
+	if _, err := tuidecl.NewProgram(tuidecl.AppOptions(tui.WithBackend(tui.NewTestBackend(60, 12))), tuidecl.WithStyle(style), tuidecl.LayoutSource("sql.qml", []byte(`import tui 1.0
+Window { Editor { id: ed; text: ""
+SyntaxHighlighter { definition: "Markdown" }
+MarkdownRenderer {}
+} }`))); err != nil {
+		t.Fatal(err)
+	}
+	th := guiwidget.Theme{Text: color.NRGBA{A: 255}, Mono: gui.Font{Size: 14}, Prose: gui.Font{Size: 14}}
+	th.Syntax[highlight.Keyword] = color.NRGBA{R: 255, A: 255}
+	canvas := gui.NewRecordingCanvas(gui.Size{W: 400, H: 200}, gui.Size{W: 8, H: 16})
+	for _, label := range []string{"sql", "sqlite", "mysql"} {
+		lines := []string{"```" + label, "SELECT id FROM t", "```"}
+		layout := renderer.LayOut(guiwidget.Block{From: 0, To: 3}, lines, 400, false, canvas.Text(), th, nil)
+		coloured := false
+		for _, span := range layout.Lines[1].Spans {
+			if strings.HasPrefix(span.Text, "SELECT") && span.Color == th.Syntax[highlight.Keyword] {
+				coloured = true
+			}
+		}
+		if !coloured {
+			t.Errorf("```%s: SELECT not in the keyword colour: %+v", label, layout.Lines[1].Spans)
+		}
+	}
+}

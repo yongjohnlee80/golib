@@ -7,6 +7,7 @@ import (
 
 	"github.com/yongjohnlee80/golib/gui"
 	"github.com/yongjohnlee80/golib/gui/flow"
+	"github.com/yongjohnlee80/golib/highlight"
 )
 
 var (
@@ -348,5 +349,26 @@ func TestWikilinksAndTags(t *testing.T) {
 	}
 	if s, ok := shown("todo"); !ok || s.Color != lookTag {
 		t.Errorf("the tag: %+v", s)
+	}
+}
+
+// A rendered ```sql fence is coloured as SQL by the default catalog: SELECT in
+// the keyword colour, the column name not.
+func TestARenderedSQLFenceIsHighlighted(t *testing.T) {
+	keyword := color.NRGBA{R: 0xff, G: 0x40, B: 0x40, A: 0xff}
+	lines := []string{"```sql", "SELECT id FROM t", "```"}
+	th := Theme{Text: color.NRGBA{R: 0xee, G: 0xee, B: 0xee, A: 0xff}, Background: color.NRGBA{A: 0xff},
+		Prose: gui.Font{Size: 16}, Mono: gui.Font{Family: gui.MonospaceFamily(), Size: 14}}
+	th.Syntax[highlight.Keyword] = keyword
+	r := NewMarkdownRenderer()
+	sh := gui.NewRecordingCanvas(gui.Size{W: 400, H: 400}, gui.Size{W: 8, H: 16}).Text()
+	bl := r.LayOut(Block{From: 0, To: 3}, lines, 400, false, sh, th, nil)
+	if c, ok := colorOfText(bl.Lines[1].Spans, "SELECT"); !ok || c != keyword {
+		t.Errorf("SELECT %v %v, want the keyword colour %v; %+v", c, ok, keyword, bl.Lines[1].Spans)
+	}
+	for _, s := range bl.Lines[1].Spans {
+		if strings.Contains(s.Text, "id") && s.Color == keyword {
+			t.Errorf("a column name took the keyword colour: %+v", bl.Lines[1].Spans)
+		}
 	}
 }

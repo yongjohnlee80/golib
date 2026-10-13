@@ -84,3 +84,35 @@ func TestUnknownAndDocumentAdapterFencesStayPlain(t *testing.T) {
 		s.States.Release(state)
 	}
 }
+
+// A ```sql fence reads as SQL with the default catalog: SELECT is a keyword,
+// at its place in the line, and each dialect's label reaches its own reading
+// (# opens a comment only in MySQL).
+func TestASQLFenceIsHighlightedAsSQL(t *testing.T) {
+	for _, tc := range []struct {
+		label, line, word string
+		want              highlight.Style
+	}{
+		{"sql", "  SELECT id FROM t", "SELECT", highlight.Keyword},
+		{"postgresql", "SELECT now()", "SELECT", highlight.Keyword},
+		{"sqlite", "SELECT [id] FROM t", "SELECT", highlight.Keyword},
+		{"mysql", "SELECT 1 # note", "# note", highlight.Comment},
+		{"mariadb", "SELECT 1 # note", "# note", highlight.Comment},
+	} {
+		s := Definition().NewSource(nil)
+		_, state := advanceSource(s, "```"+tc.label, 0)
+		spans, state := advanceSource(s, tc.line, state)
+		at := strings.Index(tc.line, tc.word)
+		got := highlight.Normal
+		for _, span := range spans {
+			if span.Start <= at && at < span.End {
+				got = span.Style
+			}
+		}
+		if got != tc.want {
+			t.Errorf("```%s: %q is %s, want %s; %+v", tc.label, tc.word, got, tc.want, spans)
+		}
+		_, state = advanceSource(s, "```", state)
+		s.States.Release(state)
+	}
+}
