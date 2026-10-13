@@ -1168,3 +1168,60 @@ func TestLabelWidthFollowsTheActiveWidthPolicy(t *testing.T) {
 			"package-level default", wide-narrow, wide, narrow)
 	}
 }
+
+// TestAButtonMayDisableItselfFromItsOwnActivation: a callback that disables its own button (a
+// wizard's Next onto the last page) runs inside the activation, from every producer. The
+// activation is the node's action phase, so the cancel SetEnabled makes is legal there: no panic,
+// the button disarmed, and the capture a pointer gesture held released, so the sibling is reachable.
+func TestAButtonMayDisableItselfFromItsOwnActivation(t *testing.T) {
+	for _, tc := range []struct {
+		name  string
+		drive func(h *harness, b *widget.Button)
+	}{
+		{"Enter", func(h *harness, b *widget.Button) {
+			h.inject(tui.KeyEvent{Kind: tui.KeyPress, Code: tui.KeyEnter})
+		}},
+		{"Space", func(h *harness, b *widget.Button) {
+			h.inject(tui.KeyEvent{Kind: tui.KeyPress, Code: ' '})
+		}},
+		{"pointer press and release", func(h *harness, b *widget.Button) {
+			h.inject(tui.MouseEvent{Kind: tui.MousePress, Button: tui.MouseLeft, X: 1, Y: 0})
+			h.inject(tui.MouseEvent{Kind: tui.MouseRelease, Button: tui.MouseLeft, X: 1, Y: 0})
+		}},
+		{"DoAction", func(h *harness, b *widget.Button) {
+			h.onLoop(func() { b.Context().DoAction(tui.ActivateAction{}) })
+		}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			var fired, sentinelFired atomic.Int64
+			var b *widget.Button
+			b = widget.NewButton("OK", widget.WithOnActivate(func() {
+				fired.Add(1)
+				b.SetEnabled(false)
+			}))
+			sentinel := widget.NewButton("S", widget.WithOnActivate(func() { sentinelFired.Add(1) }))
+			root := tui.NewFlex(tui.Horizontal)
+			root.Add(b, sentinel)
+			h := startApp(t, root, 20, 1)
+			defer h.stop()
+			h.onLoop(func() { b.Context().RequestFocus() })
+			h.settle()
+
+			tc.drive(h, b)
+			h.waitFor("activated", func() bool { return fired.Load() == 1 })
+			h.sync()
+			var enabled, armed bool
+			h.onLoop(func() { enabled, armed = b.Enabled(), b.Armed() })
+			if enabled || armed {
+				t.Fatalf("after its own activation: enabled %v, armed %v; want disabled and disarmed", enabled, armed)
+			}
+			// a capture still held would take this press: the sibling answering is the release
+			h.inject(tui.MouseEvent{Kind: tui.MousePress, Button: tui.MouseLeft, X: 6, Y: 0})
+			h.inject(tui.MouseEvent{Kind: tui.MouseRelease, Button: tui.MouseLeft, X: 6, Y: 0})
+			h.waitFor("the sibling is reachable", func() bool { return sentinelFired.Load() == 1 })
+			if got := fired.Load(); got != 1 {
+				t.Errorf("the callback ran %d times, want 1", got)
+			}
+		})
+	}
+}

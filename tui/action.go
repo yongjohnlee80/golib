@@ -391,7 +391,11 @@ func (a *App) dispatchAction(n *node, inv ActionInvocation) bool {
 	// need its own nil guard.
 	switch inv.Action.(type) {
 	case ActivateAction, *ActivateAction:
-		if act, ok := n.comp.(Activatable); ok && act.Activate(inv.Origin) {
+		// Activate is this node's default handling of the action, so it runs in the node's action
+		// phase, as HandleAction does: a control that disables itself from its own activation (a
+		// wizard's Next onto its last page) ends its gesture there, legally, rather than panicking
+		// out of a phase no handler marked.
+		if act, ok := n.comp.(Activatable); ok && a.inActionPhase(n, inv, func() bool { return act.Activate(inv.Origin) }) {
 			a.trace(TraceEvent{Kind: TraceAction, Node: n.id,
 				Detail: "activated (" + inv.Origin.String() + ")"})
 			// Published AFTER Activate returns, so the widget's own callback has
@@ -416,6 +420,12 @@ func (a *App) dispatchAction(n *node, inv ActionInvocation) bool {
 // take the pointer in another's name from inside an action handler, which is
 // the hole already closed on the event path.
 func (a *App) deliverAction(n *node, h ActionHandler, inv ActionInvocation) bool {
+	return a.inActionPhase(n, inv, func() bool { return h.HandleAction(inv) })
+}
+
+// inActionPhase runs fn as n's action delivery of inv: n's HandleAction, or the Activate that
+// stands in for it. Both are the same phase, so both mark it the same way.
+func (a *App) inActionPhase(n *node, inv ActionInvocation, fn func() bool) bool {
 	prev, prevAction := a.handlerNode, a.actionHandlerNode
 	prevOrigin, prevSource := a.handlerOrigin, a.handlerSource
 	a.handlerNode = n.id
@@ -429,7 +439,7 @@ func (a *App) deliverAction(n *node, h ActionHandler, inv ActionInvocation) bool
 		a.handlerNode, a.actionHandlerNode = prev, prevAction
 		a.handlerOrigin, a.handlerSource = prevOrigin, prevSource
 	}()
-	return h.HandleAction(inv)
+	return fn()
 }
 
 // resolveFor runs n's resolver chain against ev and returns the first match.

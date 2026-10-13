@@ -281,12 +281,19 @@ func (a *App) runRecognizer(r GestureRecognizer, n *node, local MouseEvent) bool
 		//
 		// The runtime supplies provenance. A recogniser only ever produces the
 		// action itself, so it cannot label a pointer gesture as anything else.
+		held := a.captureOwner == n.id && a.captureKind == CaptureGesture
 		a.dispatchAction(n, ActionInvocation{
 			Action: act,
 			Origin: OriginPointer,
 			Source: local,
 		})
 		consumed = true
+		// The activation may have ended the gesture itself: a control that disables itself
+		// cancels it. The state the recogniser asked for described a gesture that is gone, and
+		// arming on it would show pressed a control nothing holds or will release.
+		if held && a.captureOwner != n.id {
+			next = GestureIdle
+		}
 	}
 	a.setGestureArmed(n, next == GestureArmed)
 
