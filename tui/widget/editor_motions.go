@@ -299,6 +299,10 @@ func (c *EditorCore) move(act Action, count int) {
 	case ActParaBack:
 		c.buf.desired = -1
 		apply(c.paraBack(count), 0)
+	case ActSentenceForward, ActSentenceBack:
+		c.buf.desired = -1
+		p := c.sentenceTarget(act == ActSentenceForward, count)
+		apply(p.ln, p.col)
 	case ActLineDownFirst:
 		c.toLine(c.buf.ln + count)
 	case ActLineUpFirst:

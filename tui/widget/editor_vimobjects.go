@@ -13,6 +13,8 @@ func (c *EditorCore) textObject(inner bool, obj string, count int) (opRange, boo
 		return c.wordObject(inner, obj == "W", count)
 	case "p":
 		return c.paraObject(inner, count)
+	case "s":
+		return c.sentenceObject(inner, count) // in Visual it moves the selection itself
 	case `"`, "'", "`":
 		return c.quoteObject(inner, obj)
 	}

@@ -73,6 +73,9 @@ func (c *EditorCore) opTarget(act Action, count int, hadCount bool) (to taPos, k
 		return taPos{p, 0}, exclusive, p != ln
 	case ActParaBack:
 		return taPos{c.paraBack(count), 0}, exclusive, ln > 0 || col > 0
+	case ActSentenceForward, ActSentenceBack:
+		p := c.sentenceTarget(act == ActSentenceForward, count)
+		return p, exclusive, p != taPos{ln, col}
 	case ActWordForward, ActWORDForward:
 		return c.wordsForwardTarget(act == ActWORDForward, count)
 	case ActWordBack, ActWORDBack:
@@ -277,10 +280,10 @@ func (c *EditorCore) opMotion(op Action, act Action, count int, hadCount bool) b
 }
 
 // regOneMotion reports a motion whose delete Vim keeps in register 1 even within a line (ops.c
-// use_reg_one: %, (, ), `, /, ?, n, N, {, }); of those golib's operators take %, { and }.
+// use_reg_one: %, (, ), `, /, ?, n, N, {, }); of those golib's operators take %, ( ), { and }.
 func regOneMotion(act Action) bool {
 	switch act {
-	case ActMatchPair, ActParaForward, ActParaBack:
+	case ActMatchPair, ActParaForward, ActParaBack, ActSentenceForward, ActSentenceBack:
 		return true
 	}
 	return false
@@ -307,7 +310,8 @@ func opMotion(act Action) bool {
 		ActLineDownFirst, ActLineUpFirst, ActFirstNonBlank, ActLeftWrap,
 		ActFindCharRepeat, ActFindCharReverse, ActMatchPair,
 		ActViewTop, ActViewMiddle, ActViewBottom, ActHalfPageDown, ActHalfPageUp,
-		ActWORDForward, ActWORDBack, ActWORDEnd, ActWordEndBack, ActWORDEndBack:
+		ActWORDForward, ActWORDBack, ActWORDEnd, ActWordEndBack, ActWORDEndBack,
+		ActSentenceForward, ActSentenceBack:
 		return true
 	}
 	return false
