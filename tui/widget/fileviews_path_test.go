@@ -47,15 +47,11 @@ func TestTheOpenViewsPathFieldGoesWhereTyped(t *testing.T) {
 	h.wantContains("┌ Path ")
 
 	h.inject(keyMod('k', tui.ModCtrl))
-	if !hintIs(h, v, "tui.files.hint.path") {
-		t.Fatal("Ctrl+k from the list did not reach the path field")
-	}
+	h.waitFor("Ctrl+k from the list in the path field", func() bool { return hintIs(h, v, "tui.files.hint.path") })
 	typePath(h, filepath.Join(root, "deep", "down"))
 	h.waitFor("deep/down listed", dirIs(h, v, filepath.Join(root, "deep", "down")))
 	h.shows("n.md")
-	if !hintIs(h, v, "tui.files.hint.openList") {
-		t.Error("a folder typed: the keyboard did not go back to the list")
-	}
+	h.waitFor("the keyboard back on the list", func() bool { return hintIs(h, v, "tui.files.hint.openList") })
 
 	h.inject(keyMod('k', tui.ModCtrl))
 	typePath(h, "../../sub")
@@ -93,26 +89,27 @@ func TestTildeOpensThePathFieldAndEscRestoresIt(t *testing.T) {
 	defer h.stop()
 	h.shows("z.md")
 
+	pathIs := func(want string) func() bool {
+		return func() bool {
+			var p string
+			h.onLoop(func() { p = v.Path() })
+			return p == want
+		}
+	}
 	h.inject(key('~'))
-	var p string
-	h.onLoop(func() { p = v.Path() })
-	if p != "~/" || !hintIs(h, v, "tui.files.hint.folderPath") {
-		t.Fatalf("~ in the list: path %q, the field not focused", p)
+	h.waitFor("~/ in the field", pathIs("~/"))
+	if !hintIs(h, v, "tui.files.hint.folderPath") {
+		t.Fatal("~ in the list: the field does not have the keyboard")
 	}
 	h.inject(key('n'), key('o'), key('t'), key('e'), key('s'), key(tui.KeyEnter))
 	h.waitFor("~/notes listed", dirIs(h, v, filepath.Join(root, "notes")))
 	h.shows("a.md")
 
 	h.inject(keyMod('k', tui.ModCtrl), key('x'), key('y'))
-	h.onLoop(func() { p = v.Path() })
-	if p != filepath.Join(root, "notes")+"xy" {
-		t.Fatalf("typed: path %q", p)
-	}
+	h.waitFor("xy typed", pathIs(filepath.Join(root, "notes")+"xy"))
 	h.inject(key(tui.KeyEscape))
-	h.onLoop(func() { p = v.Path() })
-	if p != filepath.Join(root, "notes") || !hintIs(h, v, "tui.files.hint.listPart") {
-		t.Fatalf("Esc: path %q, list focused %v", p, hintIs(h, v, "tui.files.hint.listPart"))
-	}
+	h.waitFor("Esc put back the folder", pathIs(filepath.Join(root, "notes")))
+	h.waitFor("the list has the keyboard", func() bool { return hintIs(h, v, "tui.files.hint.listPart") })
 	var d string
 	h.onLoop(func() { d = v.Dir() })
 	if d != filepath.Join(root, "notes") {
@@ -160,16 +157,18 @@ func TestTheSaveViewsPathFieldNamesTheTarget(t *testing.T) {
 	toPath()
 	typePath(h, "docs")
 	h.waitFor("docs listed", dirIs(h, v, filepath.Join(root, "docs")))
-	if !nameIs("kept.md") || !hintIs(h, v, "tui.files.hint.saveName") {
-		t.Fatal("a folder typed: the name was not kept, or the name lost the keyboard")
+	h.waitFor("the name has the keyboard", func() bool { return hintIs(h, v, "tui.files.hint.saveName") })
+	if !nameIs("kept.md") {
+		t.Fatal("a folder typed: the name was not kept")
 	}
 
 	toPath()
 	typePath(h, filepath.Join(root, "docs", "old.md"))
 	h.waitFor("old.md named", func() bool { return nameIs("old.md") })
 	h.inject(key('x')) // the name has the keyboard: it is typed into, not saved
-	if !nameIs("old.mdx") || chosen.Load() != 0 {
-		t.Fatalf("a typed file: name not focused, or saved (chosen %d)", chosen.Load())
+	h.waitFor("x typed into the name", func() bool { return nameIs("old.mdx") })
+	if chosen.Load() != 0 {
+		t.Fatalf("a typed file was saved (chosen %d)", chosen.Load())
 	}
 
 	toPath()
