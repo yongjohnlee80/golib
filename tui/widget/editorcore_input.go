@@ -531,6 +531,16 @@ func (c *EditorCore) handleCommandKey(k tui.KeyEvent) bool {
 		return true
 	}
 
+	// The doubled form (dd, cc, yy, >>, g~~, guu, gUU) is the arming chord again, whatever that
+	// chord means alone: gU's U is no key of its own, and must still complete gUU.
+	if op := c.keys.op; op != ActUnbound && kc == c.keys.opChord {
+		total := max(c.keys.opCount, 1) * max(c.keys.count, 1)
+		c.keys.count = 0
+		c.keys.dropOp()
+		c.runOp(op, taPos{min(b.ln+total-1, len(b.lines)-1), 0}, linewise)
+		return true
+	}
+
 	act, bound := c.keys.keymap[kc]
 	if !bound {
 		c.keys.count = 0 // an unbound key cancels the pending count and bubbles
