@@ -68,12 +68,13 @@ func TestAWindowTakesChangedChildrenInPlace(t *testing.T) {
 		check(what)
 	}
 
-	// A new docked child, a new shortcut, a new dialog.
+	// A new docked child, a new shortcut, a new dialog. The editor is in Insert, so the shortcut is
+	// a key Vim's Insert leaves to the window (Ctrl+O is Insert's one Normal command).
 	reload("adding", windowDoc(" Text { id: top; Dock.edge: Tui.Top; text: \"banner\" }\n"+
-		" Shortcut { sequence: \"Ctrl+O\"; onActivated: App.one() }\n"+
+		" Shortcut { sequence: \"Ctrl+G\"; onActivated: App.one() }\n"+
 		" Dialog { id: dlg; title: \"Late\"; Text { text: \"arrived\" } }"))
 	s.WaitForText(t, "banner")
-	s.Keys(t, decltest.Ctrl('o'))
+	s.Keys(t, decltest.Ctrl('g'))
 	s.WaitFor(t, "the new shortcut firing", func(string) bool {
 		var n int
 		onScreenLoop(t, s, func() { n = fired["one"] })
@@ -90,8 +91,8 @@ func TestAWindowTakesChangedChildrenInPlace(t *testing.T) {
 
 	// The shortcut replaced: the old one no longer fires, the new one does.
 	reload("replacing", windowDoc(" Text { id: top; Dock.edge: Tui.Top; text: \"banner\" }\n"+
-		" Shortcut { sequence: \"Ctrl+O\"; onActivated: App.two() }"))
-	s.Keys(t, decltest.Ctrl('o'))
+		" Shortcut { sequence: \"Ctrl+G\"; onActivated: App.two() }"))
+	s.Keys(t, decltest.Ctrl('g'))
 	s.WaitFor(t, "the replacing shortcut firing", func(string) bool {
 		var n int
 		onScreenLoop(t, s, func() { n = fired["two"] })
