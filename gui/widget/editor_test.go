@@ -319,15 +319,21 @@ func TestRenderedHidesMarksOffTheCursorAndRevealsThemOnIt(t *testing.T) {
 	if ln, col := h.line(); ln != 1 || col != 3 {
 		t.Errorf("click at the heading's start landed on %d:%d, want 1:3 (x %v)", ln, col, x)
 	}
-	// the cursor's line now shows its source: no hidden spans, monospace
+	// in Normal the cursor's line stays rendered; typing (i) shows its source: no hidden
+	// spans, monospace
+	h.paint()
+	if s := spansOfLine(h, 1); len(s) == 0 || !s[0].Hidden {
+		t.Fatalf("the cursor's line in Normal is not rendered: %+v", s)
+	}
+	h.keys(key('i'))
 	h.paint()
 	for _, s := range spansOfLine(h, 1) {
 		if s.Hidden || s.Font != h.e.layout.th.Mono {
-			t.Fatalf("the cursor's line is not Raw: %+v", s)
+			t.Fatalf("the cursor's line in Insert is not Raw: %+v", s)
 		}
 	}
-	// and the line it left is rendered again
-	h.keys(key('j'))
+	// and the line it left, by j after Esc, is rendered again
+	h.keys(tui.KeyEvent{Code: tui.KeyEscape}, key('j'))
 	h.paint()
 	if s := spansOfLine(h, 1); len(s) < 2 || !s[0].Hidden {
 		t.Errorf("the heading left by the cursor shows its marks: %+v", s)
@@ -549,12 +555,17 @@ func TestFencesHideOffTheCursor(t *testing.T) {
 			t.Errorf("closing fence shows %q", s.Text)
 		}
 	}
-	h.keys(key('g'), key('g')) // the cursor in the block: its source, every mark shown
+	h.keys(key('g'), key('g'), key('i')) // typing in the block: its source, every mark shown
 	h.paint()
 	for _, s := range spansOfLine(h, 0) {
 		if s.Hidden {
-			t.Errorf("the fence under the cursor hides %q", s.Text)
+			t.Errorf("the fence under the cursor in Insert hides %q", s.Text)
 		}
+	}
+	h.keys(tui.KeyEvent{Code: tui.KeyEscape}) // Normal again: the block renders as every other does
+	h.paint()
+	if s := spansOfLine(h, 0); len(s) == 0 || !s[0].Hidden {
+		t.Errorf("the fence under the cursor in Normal shows its marks: %+v", s)
 	}
 }
 
@@ -681,17 +692,16 @@ func (c *layCounter) LayOut(b Block, lines []string, width float32, cursorInside
 }
 
 // A read-only Rendered editor is a viewer: every block renders, the cursor's row
-// included, so no row shows its raw source. An editable one keeps the cursor's
-// block raw, as it always has, and turning read-only re-lays the row the cursor
-// is on.
+// included, so no row shows its raw source. An editable one typing (Insert) keeps
+// the cursor's block raw, and turning read-only re-lays the row the cursor is on.
 func TestAReadonlyRenderedEditorRendersTheCursorsRowToo(t *testing.T) {
 	h := startEditor(t, 60, 14, WithRenderer(NewMarkdownRenderer()), WithMode(Rendered),
 		WithCore(tuiwidget.CoreInitialText("first\n## Title here\nlast")))
-	h.keys(key('j')) // the cursor onto the heading
+	h.keys(key('j'), key('i')) // the cursor onto the heading, typing
 	h.paint()
 	for _, s := range spansOfLine(h, 1) {
 		if s.Hidden {
-			t.Fatalf("an editable editor hides marks on the cursor's row: %+v", s)
+			t.Fatalf("an editable editor in Insert hides marks on the cursor's row: %+v", s)
 		}
 	}
 	h.onLoop(func() { h.e.SetReadOnly(true) })
@@ -706,8 +716,8 @@ func TestAReadonlyRenderedEditorRendersTheCursorsRowToo(t *testing.T) {
 }
 
 // A cursor moving in a viewer re-lays nothing: every block's layout is the same
-// whatever block the cursor is in, so the cache holds. An editable editor re-lays
-// the rows the cursor enters and leaves, as it always has.
+// whatever block the cursor is in, so the cache holds; nor does one moving in
+// Normal. An editable editor typing re-lays the rows the cursor enters and leaves.
 func TestACursorMovingInAViewerReLaysNothing(t *testing.T) {
 	viewer := startEditor(t, 60, 14, WithRenderer(&layCounter{Renderer: NewMarkdownRenderer()}), WithMode(Rendered),
 		WithCore(tuiwidget.CoreInitialText("first\n## Title here\nlast")))
@@ -733,7 +743,12 @@ func TestACursorMovingInAViewerReLaysNothing(t *testing.T) {
 	before := ec.calls
 	editor.keys(key('j'))
 	editor.paint()
+	if ec.calls != before {
+		t.Fatalf("a cursor moving in Normal re-laid a block: %d -> %d calls", before, ec.calls)
+	}
+	editor.keys(key('i'), tui.KeyEvent{Code: tui.KeyDown}) // typing, and moving down
+	editor.paint()
 	if ec.calls <= before {
-		t.Fatalf("an editable editor re-laid nothing when the cursor moved onto a block: %d -> %d calls", before, ec.calls)
+		t.Fatalf("an editable editor typing re-laid nothing when the cursor moved onto a block: %d -> %d calls", before, ec.calls)
 	}
 }

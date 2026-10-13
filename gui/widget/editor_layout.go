@@ -307,6 +307,15 @@ func (l *pixelLayout) topOf(i int) float32 {
 // total is the text's height.
 func (l *pixelLayout) total() float32 { return l.topOf(len(l.blocks)) }
 
+// typing reports text being typed into the core: Insert or Replace, on a core that edits. Only
+// then is the cursor's block laid out raw in the Rendered view; in Vim's Normal and Visual, and on a
+// viewer, it renders as every other block does. A modeless keymap's core is in Insert for good, so
+// its cursor's block stays raw.
+func (l *pixelLayout) typing() bool {
+	m := l.e.core.Mode()
+	return !l.e.core.ReadOnly() && (m == tuiwidget.ModeInsert || m == tuiwidget.ModeReplace)
+}
+
 // cursorLine is the core's cursor line.
 func (l *pixelLayout) cursorLine() int {
 	ln, _ := l.e.core.Line()
@@ -319,10 +328,10 @@ func (l *pixelLayout) lay(i int, frame *tuiwidget.HighlightFrame) *laidBlock {
 	l.ensure()
 	b := l.blocks[i]
 	cl := l.cursorLine()
-	// A viewer renders every block, the cursor's row included: nothing is edited,
-	// so no row needs its source at hand. With inside constant, a cursor moving in
-	// a viewer re-lays nothing either.
-	inside := cl >= b.From && cl < b.To && !l.e.core.ReadOnly()
+	// Only while typing is the cursor's block laid out raw, its source at hand: in Vim's
+	// Normal and Visual, and on a viewer, it renders as every other block does. With inside
+	// false, a cursor moving there re-lays nothing either.
+	inside := cl >= b.From && cl < b.To && l.typing()
 	if l.e.mode == Rendered && l.e.render != nil {
 		if lb := l.laid[i]; lb != nil && lb.width == l.width && lb.inside == inside {
 			return lb
@@ -407,22 +416,41 @@ func sameColors(a, b []color.NRGBA) bool {
 
 // --- positions ------------------------------------------------------------------------------
 
-// posIn is (line, col)'s place in a laid block: the paragraph and its boundary.
+// posIn is where (line, col) is drawn in lb: the block line and the flow position of the caret. A
+// cluster that isn't drawn (a Hidden span: markup the Rendered view hides, a heading's "# ", a
+// bold's "**", a table cell's reserved room) puts the caret on the next cluster drawn from that
+// source line, or after the last one when none follows; a line with nothing drawn, at its first
+// span's end. ok is false when the line has no span in lb.
 func posIn(lb *laidBlock, line, col int) (li int, pos flow.Pos, ok bool) {
+	type at struct {
+		li  int
+		pos flow.Pos
+	}
+	var next, last, any *at
 	for i, ll := range lb.bl.Lines {
-		last := -1
 		for si, sp := range ll.Spans {
 			if sp.Line != line {
 				continue
 			}
 			n := clusters(sp.Text)
+			if any == nil {
+				any = &at{i, flow.Pos{Span: si, Offset: len(sp.Text)}}
+			}
+			if sp.Hidden {
+				continue
+			}
 			if col >= sp.Col && col < sp.Col+n {
 				return i, flow.Pos{Span: si, Offset: byteOfCluster(sp.Text, col-sp.Col)}, true
 			}
-			last = si
+			if next == nil && sp.Col > col && n > 0 {
+				next = &at{i, flow.Pos{Span: si, Offset: 0}}
+			}
+			last = &at{i, flow.Pos{Span: si, Offset: len(sp.Text)}}
 		}
-		if last >= 0 {
-			return i, flow.Pos{Span: last, Offset: len(ll.Spans[last].Text)}, true
+	}
+	for _, a := range []*at{next, last, any} {
+		if a != nil {
+			return a.li, a.pos, true
 		}
 	}
 	return 0, flow.Pos{}, false
