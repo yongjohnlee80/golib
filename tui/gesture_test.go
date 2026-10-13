@@ -1039,3 +1039,49 @@ func TestConstructionTimeTypedNilDisablesRecognition(t *testing.T) {
 			"construction, want 0", got)
 	}
 }
+
+// cancellingControl cancels its own gesture from its activation, as a Button disabling itself does.
+type cancellingControl struct{ *control }
+
+func (c cancellingControl) Activate(origin ActionOrigin) bool {
+	if !c.control.Activate(origin) {
+		return false
+	}
+	c.ctx.CancelGesture()
+	return true
+}
+
+// pressActivates activates on the press and asks to stay armed: a legal recogniser, and the one
+// that would arm a control whose activation just ended the gesture.
+type pressActivates struct{}
+
+func (pressActivates) OnPointer(ev MouseEvent, gc GestureCtx) (Action, bool, GestureState) {
+	if ev.Kind == MousePress && ev.Button == MouseLeft && gc.Inside {
+		return ActivateAction{}, true, GestureArmed
+	}
+	return nil, true, GestureIdle
+}
+
+// TestAnActivationThatEndsItsGestureIsNotArmedAgain: an activation may cancel the gesture that
+// produced it (it runs in the control's action phase), and the state the recogniser asked for
+// then describes a gesture that is gone. The control is left disarmed, holding nothing.
+func TestAnActivationThatEndsItsGestureIsNotArmedAgain(t *testing.T) {
+	root := &counter{size: Size{W: 20, H: 4}}
+	c := cancellingControl{newControl(8, 2)}
+	root.Add(c)
+	h := startApp(t, root, 20, 4, WithGestureRecognizer(pressActivates{}))
+	defer h.wait()
+	h.sync()
+
+	press(h, 2, 1)
+	waitFor(t, "activated on the press", func() bool { return c.activations.Load() == 1 })
+	h.sync()
+	var held NodeID
+	h.onLoop(func() { held = h.app.captureOwner })
+	if held != 0 {
+		t.Errorf("the capture is still held by node %d after the activation cancelled it", held)
+	}
+	if c.armed.Load() {
+		t.Errorf("armed again after the activation ended the gesture: %v", c.sequence())
+	}
+}
