@@ -753,7 +753,10 @@ func mutatingAction(act Action) bool {
 // execAction runs one bound action with the (already consumed) count.
 func (c *EditorCore) execAction(act Action, count int) bool {
 	if c.readOnly && mutatingAction(act) {
-		return true // consumed and refused: a viewer never mutates
+		// Refused, and NOT consumed: a viewer never mutates, and a key it has no use for is the
+		// host's — a dialog's mnemonic (Select's s, from a read-only preview), a window's shortcut.
+		// Swallowing it would leave the host deaf to it while the viewer did nothing.
+		return false
 	}
 	b := &c.buf
 	switch act {
