@@ -191,7 +191,10 @@ type PointerContainer interface {
 //     node outside the active scope is refused, or an outside component could
 //     dissolve the confinement that a dialog exists to have.
 //   - Key, paste and pointer routing are ceilinged at the scope, so an event
-//     never reaches a component behind it.
+//     never reaches a component behind it. A layer mounted beside the scope on
+//     behalf of something inside it — a submenu a trapped menu opened on the
+//     overlay host — counts as inside for the pointer
+//     ([Context.SetChildInputOwner]).
 //
 // TWO WAYS IN, and knowing which one applies is the difference between a dialog
 // that works and a dialog that paints and is inert:

@@ -321,3 +321,71 @@ func TestTerminalTabsDrawTheirTabsInTheirFaceAndTheStripInTheWindows(t *testing.
 	}
 	t.Fatalf("the menu closed, the cell beneath is in face %d, want the tab's %d", face(col, row), bodyFace)
 }
+
+// TestTerminalTabsOpenTheirMenuAnywhereOnTheStripAndAnEmptyBody: with their own menu, the strip
+// shows ≡ with no tab, and a right press on a body no terminal fills opens the menu (for no tab)
+// where it was; with a tab, a right press on the strip's blank opens it for the active tab, and the
+// live terminal's body stays the terminal's.
+func TestTerminalTabsOpenTheirMenuAnywhereOnTheStripAndAnEmptyBody(t *testing.T) {
+	tabs := NewTerminalTabs()
+	var opened []TerminalTabID
+	tabs.SetMenu(func(id TerminalTabID) []MenuItemModel {
+		opened = append(opened, id)
+		return []MenuItemModel{NewCommand("hide", "Hide", nil)}
+	})
+	h := startAppInternal(t, NewOverlayHost(tabs), 40, 8)
+	defer h.stopInternal()
+	var spans []TabSpan
+	h.onLoopInternal(func() { spans = tabs.TabSpans() })
+	if len(spans) != 1 {
+		t.Fatalf("no tab: spans %v, want ≡ alone", spans)
+	}
+	press := func(x, y int) {
+		t.Helper()
+		if err := h.tb.Inject(tui.MouseEvent{Kind: tui.MousePress, Button: tui.MouseRight, X: x, Y: y}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	menuOpen := func(want bool) bool {
+		var open bool
+		for range 300 {
+			h.onLoopInternal(func() { open = tabs.MenuOpen() })
+			if open == want {
+				return true
+			}
+			time.Sleep(10 * time.Millisecond)
+		}
+		return false
+	}
+	press(10, 4) // the empty body
+	if !menuOpen(true) || len(opened) != 1 || opened[0] != "" {
+		t.Fatalf("a right press on the empty body: open %v, for %q", tabs.MenuOpen(), opened)
+	}
+	h.onLoopInternal(tabs.closeMenu)
+	menuOpen(false)
+
+	p := newResultProc()
+	defer close(p.release)
+	var a TerminalTabID
+	h.onLoopInternal(func() {
+		id, err := tabs.Add("alpha", WithStarter(func(pty.Cmd) (TerminalProcess, error) { return p, nil }))
+		if err != nil {
+			t.Error(err)
+		}
+		a = id
+		if err := tabs.Select(a); err != nil {
+			t.Error(err)
+		}
+	})
+	press(30, 0) // the strip's blank
+	if !menuOpen(true) || len(opened) != 2 || opened[1] != a {
+		t.Fatalf("a right press on the strip's blank: open %v, for %q (want %s)", tabs.MenuOpen(), opened, a)
+	}
+	h.onLoopInternal(tabs.closeMenu)
+	menuOpen(false)
+	press(10, 4) // the live terminal's body
+	time.Sleep(100 * time.Millisecond)
+	if tabs.MenuOpen() || len(opened) != 2 {
+		t.Fatalf("a right press on a live terminal opened the strip's menu (for %q)", opened)
+	}
+}

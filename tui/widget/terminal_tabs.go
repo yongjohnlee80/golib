@@ -190,8 +190,10 @@ type TerminalTabsMenuAction struct {
 func (a TerminalTabsMenuAction) ActionID() tui.ActionID { return a.ID }
 
 // SetMenu gives the strip a menu of its own, opened over the strip (it needs an OverlayHost above
-// it) by ≡, by a right press on a tab, and by Enter on the focused strip: build returns its rows
-// for the tab it opens for, each time it opens, so they are that tab's as it stands. A row's action
+// it) by ≡, by a right press on a tab, on the strip's blank or on a body no terminal fills, and by
+// Enter on the focused strip: build returns its rows for the tab it opens for (the active one off
+// a tab; "" with none), each time it opens, so they are that tab's as it stands. ≡ shows with no
+// tab too. A row's action
 // is a TerminalTabsMenuAction; a row with children is a submenu ("Go to ›" every tab, say). Unset,
 // those open SetActions' menu callback instead; nil unsets it.
 func (t *TerminalTabs) SetMenu(build func(id TerminalTabID) []MenuItemModel) { t.menuRows = build }
@@ -203,6 +205,19 @@ func (t *TerminalTabs) SetAddMenu(build func() []MenuItemModel) { t.addRows = bu
 
 // hasMenu is whether the strip has a menu to open, its own or the host's.
 func (t *TerminalTabs) hasMenu() bool { return t.menuRows != nil || t.onMenu != nil }
+
+// menuShown is whether ≡ is on the strip: the strip's own menu (SetMenu) always, with no tab too
+// (its rows for no tab: add one, hide the panel); the host's callback only for a tab.
+func (t *TerminalTabs) menuShown() bool {
+	return t.menuRows != nil || t.onMenu != nil && t.active != ""
+}
+
+// liveBody is whether a tab's terminal fills the body now: not with no tab, nor while the active
+// one closes (the body says so).
+func (t *TerminalTabs) liveBody() bool {
+	e, err := t.find(t.active)
+	return err == nil && e.closing == nil
+}
 
 // hasAdd is whether the strip shows +: SetAddMenu's menu, or the host's add callback.
 func (t *TerminalTabs) hasAdd() bool { return t.addRows != nil || t.onAdd != nil }
@@ -408,7 +423,7 @@ func (t *TerminalTabs) TabSpans() []TabSpan {
 		spans = append(spans, TabSpan{X: x, W: 3})
 		x += 4
 	}
-	if t.hasMenu() && t.active != "" {
+	if t.menuShown() {
 		spans = append(spans, TabSpan{X: x, W: 3})
 	}
 	return spans
@@ -724,7 +739,7 @@ func (t *TerminalTabs) Render(s tui.Surface) {
 	if t.hasAdd() {
 		x += 4
 	}
-	if t.hasMenu() && t.active != "" && x < w {
+	if t.menuShown() && x < w {
 		drawText(s, x, 0, truncate(" ≡ ", w-x, s.StringWidth), t.tab)
 	}
 }
@@ -740,7 +755,7 @@ func (t *TerminalTabs) HandleEvent(ev tui.Event) bool {
 				t.add(tui.Point{X: t.addX(), Y: 1})
 				return true
 			}
-			if e.Code == tui.KeyEnter && t.hasMenu() && t.active != "" {
+			if e.Code == tui.KeyEnter && t.menuShown() {
 				t.openMenu(t.active, tui.Point{X: t.tabX(t.active), Y: 1})
 				return true
 			}
@@ -774,7 +789,17 @@ func (t *TerminalTabs) HandleEvent(ev tui.Event) bool {
 			}
 		}
 	case tui.MouseEvent:
-		if e.Kind != tui.MousePress || e.Y != 0 {
+		if e.Kind != tui.MousePress {
+			return false
+		}
+		if e.Y != 0 {
+			// a right press on the body with no terminal in it (no tab, or one closing) opens the
+			// strip's own menu where it was, as a right press on the strip does; a live terminal's
+			// body is the terminal's
+			if e.Button == tui.MouseRight && t.menuRows != nil && !t.liveBody() {
+				t.openMenu(t.active, tui.Point{X: e.X, Y: e.Y})
+				return true
+			}
 			return false
 		}
 		x := 0
@@ -797,8 +822,14 @@ func (t *TerminalTabs) HandleEvent(ev tui.Event) bool {
 		if t.hasAdd() {
 			x += 4
 		}
-		if e.X >= x && e.X < x+3 && e.Button == tui.MouseLeft && t.hasMenu() && t.active != "" {
+		if e.X >= x && e.X < x+3 && e.Button == tui.MouseLeft && t.menuShown() {
 			t.openMenu(t.active, tui.Point{X: x, Y: 1})
+			return true
+		}
+		// a right press anywhere else on the strip (its blank, +, ≡) opens the strip's own menu for
+		// the active tab (or none), where it was
+		if e.Button == tui.MouseRight && t.menuRows != nil {
+			t.openMenu(t.active, tui.Point{X: e.X, Y: 1})
 			return true
 		}
 	}

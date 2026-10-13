@@ -712,6 +712,9 @@ func (c *EditorCore) handleCommandKey(k tui.KeyEvent) bool {
 	case ActRepeat:
 		c.repeatLast(hadCount, count)
 		return true
+	case ActJumpBack, ActJumpForward:
+		c.jumpStep(act == ActJumpBack, count)
+		return true
 	case ActMacroRecord, ActMacroPlay:
 		if c.readOnly {
 			return false // a viewer's q and @ are the host's: a macro could change nothing there

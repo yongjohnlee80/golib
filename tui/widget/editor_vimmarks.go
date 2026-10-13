@@ -70,13 +70,19 @@ func (m *markSet) restore(was markSet) {
 func (c *EditorCore) followEdits() {
 	for _, e := range c.buf.log.take() {
 		c.marks.apply(e)
+		c.jumpsFollow(e)
 	}
 }
 
 // setJumpMark records the cursor as the previous jump's place, before a jump (the ' and ` marks
 // go back to it): G, gg, %, N%, H M L, n N, a mark's jump, :N.
-func (c *EditorCore) setJumpMark() {
-	c.marks.prev, c.marks.prevSet = taPos{c.buf.ln, c.buf.col}, true
+func (c *EditorCore) setJumpMark() { c.jumpedFrom(taPos{c.buf.ln, c.buf.col}) }
+
+// jumpedFrom records from as the place a jump leaves: the ' and ` marks, and the jump list
+// (editor_jumps.go).
+func (c *EditorCore) jumpedFrom(from taPos) {
+	c.marks.prev, c.marks.prevSet = from, true
+	c.jumpList().Push(c.jumpPos(from))
 }
 
 // markTarget is where mark name sends the cursor: its line's first non-blank for ' (linewise), its
@@ -118,7 +124,7 @@ func (c *EditorCore) markKey(armed Action, name rune) {
 	c.hist.close()
 	c.buf.desired = -1
 	c.buf.moveCursor(to.ln, to.col, false)
-	c.marks.prev, c.marks.prevSet = from, true // '' and `` return here
+	c.jumpedFrom(from) // '' and `` return here, and Ctrl+O
 	c.clampNormal()
 	c.reveal()
 	c.markDirty()

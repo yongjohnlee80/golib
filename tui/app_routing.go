@@ -176,19 +176,19 @@ func (a *App) dispatch(ev Event) {
 		// the dimmed area behind a dialog means "nothing"; synthesising a
 		// delivery to the dialog would invent an interaction the user did not
 		// make.
+		//
+		// A LAYER THE SCOPE OWNS is inside it for this purpose, though the tree
+		// puts it beside the scope: a submenu a trapped menu opened on the
+		// overlay host (SetChildInputOwner). Its ceiling is the layer itself.
 		limit := a.confinement()
-		var target *node
-		if limit != nil {
-			target = hitTestNode(limit, e.X, e.Y)
-		} else {
-			target = a.hitTest(e.X, e.Y)
-		}
+		target := a.pointerTarget(e.X, e.Y, limit)
 		if target == nil && limit != nil {
 			a.trace(TraceEvent{Kind: TraceScope, Node: limit.id,
 				Detail: "pointer dropped: outside the active focus scope"})
 			return
 		}
-		if a.interceptPointerPress(target, limit, e) {
+		ceiling := a.pointerCeiling(target, limit)
+		if a.interceptPointerPress(target, ceiling, e) {
 			return
 		}
 		// A PRIMARY PRESS focuses before it is delivered: one gesture both moves
@@ -244,7 +244,7 @@ func (a *App) dispatch(ev Event) {
 				consumed = true
 				break
 			}
-			if n == limit {
+			if n == ceiling {
 				break // same ceiling as the keyboard path
 			}
 		}

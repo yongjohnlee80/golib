@@ -620,6 +620,19 @@ func (e *Editor) SetRegister(text string, linewise bool) { e.core.SetRegister(te
 // Register returns the unnamed register's content.
 func (e *Editor) Register() (text string, linewise bool) { return e.core.Register() }
 
+// SetJumps makes list the one the editor's Ctrl+O and Ctrl+I walk, and goTo how it reaches a
+// place in another document or view (see EditorCore.SetJumps).
+func (e *Editor) SetJumps(list *JumpList, goTo func(JumpStep)) { e.core.SetJumps(list, goTo) }
+
+// SetJumpDoc names the document the editor shows, as the host's jump list knows it.
+func (e *Editor) SetJumpDoc(doc string) { e.core.SetJumpDoc(doc) }
+
+// SetJumpView is how the editor learns the host's view of its document (see EditorCore.SetJumpView).
+func (e *Editor) SetJumpView(view func() string) { e.core.SetJumpView(view) }
+
+// JumpHere is the cursor's place as a jump list holds it.
+func (e *Editor) JumpHere() JumpPos { return e.core.JumpHere() }
+
 // NamedRegister returns register name's content (see EditorCore.NamedRegister).
 func (e *Editor) NamedRegister(name rune) (text string, linewise, ok bool) {
 	return e.core.NamedRegister(name)

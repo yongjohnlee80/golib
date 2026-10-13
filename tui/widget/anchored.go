@@ -253,6 +253,7 @@ func (h *OverlayHost) OpenAnchored(id LayerID, layer tui.Component, spec AnchorS
 		// disturbing a mounted subtree that is already correct.
 		h.anchored[prev].spec = spec
 		h.anchored[prev].pol = policyOr(pol)
+		h.ctx.SetChildInputOwner(layer, spec.Ref)
 		h.ctx.RequestLayout()
 		return nil
 	}
@@ -271,6 +272,14 @@ func (h *OverlayHost) OpenAnchored(id LayerID, layer tui.Component, spec AnchorS
 	if err := h.mountLayer(layer); err != nil {
 		return err // the old layer, if any, is untouched
 	}
+	// THE LAYER BELONGS TO ITS ANCHOR. It is mounted here, beside the content, so
+	// the tree alone puts it outside any trapping scope the anchor's owner is in:
+	// a submenu opened by a menu inside a dialog, or inside a right-click menu's
+	// own popup layer, took no pointer input at all, every press landing on the
+	// scope behind it. Bound to the owner, it is inside whatever scope the owner
+	// is. The owner was checked above, mounted and inside this host, so the
+	// binding cannot be refused.
+	h.ctx.SetChildInputOwner(layer, spec.Ref)
 	if prev >= 0 {
 		old := h.anchored[prev].comp
 		h.anchored = slices.Delete(h.anchored, prev, prev+1)

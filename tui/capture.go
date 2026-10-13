@@ -154,7 +154,7 @@ func (c *Context) CapturePointer() bool {
 			Detail: "capture refused: already held by another node"})
 		return false
 	}
-	if scope := a.confinement(); scope != nil && !withinScope(c.node, scope) {
+	if scope := a.confinement(); scope != nil && !a.inInputScope(c.node, scope) {
 		a.trace(TraceEvent{Kind: TraceCapture, Node: c.node.id, Prev: scope.id,
 			Detail: "capture refused: caller is outside the active focus scope"})
 		return false
@@ -358,7 +358,7 @@ func (a *App) captureCheckScope() {
 	if owner == nil {
 		return
 	}
-	if scope := a.confinement(); scope != nil && !withinScope(owner, scope) {
+	if scope := a.confinement(); scope != nil && !a.inInputScope(owner, scope) {
 		a.loseCapture(CaptureLostFocusScope)
 	}
 }
