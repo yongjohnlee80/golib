@@ -18,7 +18,8 @@ type appConfig struct {
 	minimumSize Size
 
 	// quit is how the too-small screen's Quit ends the program. Nil: the App ends Run itself.
-	quit func()
+	quit     func()
+	stopping []func() // registration-order callbacks while the loop and owner nodes are still live
 
 	// backend is the required terminal/display driver (e.g. term.New or NewTestBackend)
 	// handling low-level terminal I/O, raw mode, and screen dimensions.
@@ -99,6 +100,21 @@ func defaultAppConfig() appConfig {
 
 // AppOption configures an App under construction.
 type AppOption func(*appConfig)
+
+// WithOnStopping registers fn for normal quit, Run context cancellation and
+// backend EOF. Callbacks run once, synchronously in registration order, in the
+// UI loop's Update phase: after shutdown capture loss and before tree unmount.
+// This lets accepted asynchronous requests finish before their owner disappears.
+// A nil fn is ignored. Callbacks must not block, post and wait for App.Update,
+// or recursively tear down the app. Acquisition failures before mounting and
+// panic paths do not invoke these callbacks.
+func WithOnStopping(fn func()) AppOption {
+	return func(c *appConfig) {
+		if fn != nil {
+			c.stopping = append(c.stopping, fn)
+		}
+	}
+}
 
 // WithBackend sets the driver (REQUIRED). There is no default: the core tui
 // package cannot construct term.Backend (tui/term imports tui, not vice
