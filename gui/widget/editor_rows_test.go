@@ -176,3 +176,32 @@ func TestTheReplaceCaretIsAnUnderline(t *testing.T) {
 		}
 	}
 }
+
+// A block is raw or rendered whole: typing on a fence's opening line shows its closing fence's
+// marks too; and a Visual selection over hidden markup is drawn on the rendered text.
+func TestTheRenderedBlockIsRawWholeAndVisualShows(t *testing.T) {
+	h := startEditor(t, 60, 14, WithRenderer(NewMarkdownRenderer()), WithMode(Rendered),
+		WithCore(tuiwidget.CoreInitialText("```go\nx := 1\n```\n\nbody **bold** text")))
+	h.keys(key('i'))
+	h.paint()
+	for _, s := range spansOfLine(h, 2) {
+		if s.Hidden {
+			t.Errorf("typing on the fence's first line: its closing line hides %q", s.Text)
+		}
+	}
+	h.keys(tui.KeyEvent{Code: tui.KeyEscape}, key('G'), key('0'), key('v'), key('$'))
+	h.paint()
+	var rects int
+	h.onLoop(func() {
+		lb := h.e.layout.lay(h.e.layout.blockOf(4), nil)
+		if lb.inside {
+			t.Error("Visual: the block is raw, want rendered")
+		}
+		for _, ll := range lb.bl.Lines {
+			rects += len(selection(h.e.core, ll, false, h.e.layout.width, true))
+		}
+	})
+	if rects == 0 {
+		t.Error("Visual over a rendered row with hidden markup draws no selection")
+	}
+}
