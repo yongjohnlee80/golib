@@ -721,7 +721,7 @@ func (v *FileSaveView) named() (string, bool) {
 		return "", false
 	}
 	src := v.listing.list.Source()
-	if strings.HasPrefix(name, src.Root) || strings.HasPrefix(name, "/") {
+	if (src.Root != "" && strings.HasPrefix(name, src.Root)) || strings.HasPrefix(name, "/") {
 		return src.fsPath(name)
 	}
 	p := path.Clean(path.Join(v.listing.list.Dir(), name))

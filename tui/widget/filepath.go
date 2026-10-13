@@ -134,7 +134,7 @@ func (f *pathField) resolve(src FileSource, dir, typed string) (p string, bad tu
 		}
 		typed = strings.TrimSuffix(src.Home, "/") + "/" + strings.TrimPrefix(strings.TrimPrefix(typed, "~"), "/")
 	}
-	if strings.HasPrefix(typed, src.Root) || strings.HasPrefix(typed, "/") {
+	if (src.Root != "" && strings.HasPrefix(typed, src.Root)) || strings.HasPrefix(typed, "/") {
 		p, ok = src.fsPath(typed)
 	} else {
 		p = path.Clean(path.Join(dir, typed))

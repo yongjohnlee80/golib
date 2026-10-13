@@ -265,3 +265,64 @@ func TestThePathFieldChecksAnAsyncSourceOffTheLoop(t *testing.T) {
 	h.waitFor("b listed", dirIs(h, v, "mem://b"))
 	h.shows("notes.md")
 }
+
+// A source with no Root (an fs.FS written as is) reads a relative path relative to the folder
+// listed, in the path field and in the Save view's name: an empty Root is not a prefix of all.
+func TestARelativePathOfARootlessSource(t *testing.T) {
+	src := widget.FileSource{FS: fstest.MapFS{"a/b/c.md": {Data: []byte("c")}, "a/x.md": {Data: []byte("x")}}}
+	v := widget.NewFileOpenView(widget.WithFileViewSource(src), widget.WithFileViewDir("a"))
+	h := startBrowser(t, v)
+	defer h.stop()
+	h.shows("x.md")
+	h.inject(keyMod('k', tui.ModCtrl))
+	typePath(h, "b")
+	h.waitFor("a/b listed", dirIs(h, v, "a/b"))
+	h.shows("c.md")
+
+	s := widget.NewFileSaveView(widget.WithFileViewSource(src), widget.WithFileViewDir("a"))
+	hs := startBrowser(t, s)
+	defer hs.stop()
+	hs.shows("x.md")
+	var sel string
+	hs.onLoop(func() { s.SetName("b/new.md"); sel = s.Selected() })
+	if sel != "a/b/new.md" {
+		t.Fatalf("a name under a rootless source: Selected %q, want a/b/new.md", sel)
+	}
+}
+
+// Of an async source, a Save view's typed target in another folder is that folder's from the
+// first: Enter on the name before the folder's listing arrives saves there, not in the folder
+// listed before.
+func TestAnAsyncSaveTargetIsItsFolderWhileItLoads(t *testing.T) {
+	d := newGatedDir(vfsFiles)
+	d.g.release("dir:.")
+	d.g.release("stat:b/new.md") // the typed path: not there (and, on Enter, the name's own check)
+	d.g.release("stat:b")        // its folder: a folder
+	// b's listing (dir:b) is held: the race is Enter on the name while it is on its way
+	var chosen atomic.Int32
+	v := widget.NewFileSaveView(widget.WithFileViewSource(widget.FileSource{FS: d, Root: "mem://", Async: true}),
+		widget.WithFileViewDir("mem://"), widget.WithOnChoose(func() { chosen.Add(1) }))
+	h := startBrowser(t, v)
+	defer h.stop()
+	h.shows("top.txt")
+	h.inject(tab())
+	typePath(h, "b/new.md") // not there: its folder is checked, then listed (held) and the name filled
+	h.waitFor("new.md named", func() bool {
+		var n string
+		h.onLoop(func() { n = v.Name() })
+		return n == "new.md"
+	})
+	var dir string
+	h.onLoop(func() { dir = v.Dir() })
+	if dir != "mem://b" || !strings.Contains(h.grid(), "top.txt") {
+		t.Fatalf("the fixture: b's listing should be on its way with a's rows shown; Dir %q:\n%s", dir, h.grid())
+	}
+	h.inject(key(tui.KeyEnter))
+	h.waitFor("saved", func() bool { return chosen.Load() == 1 })
+	var sel string
+	h.onLoop(func() { sel = v.Selected() })
+	if sel != "mem://b/new.md" {
+		t.Fatalf("saved before b's listing arrived: Selected %q, want mem://b/new.md", sel)
+	}
+	d.g.release("dir:b")
+}
