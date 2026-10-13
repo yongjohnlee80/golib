@@ -94,9 +94,9 @@ func TestAResizableDrawerStopsAtItsBounds(t *testing.T) {
 	if got := rec.all(); got[0].Raw != "20" {
 		t.Fatalf("dragged down past its minimum, size is %s, want 20", got[0].Raw)
 	}
-	if top := panelTop(s); top != 20-4 {
-		t.Fatalf("at its minimum the drawer starts on row %d, want %d:\n%s", top, 20-4, s)
-	}
+	// resized is raised before the frame that shows the new size: wait for that frame, or the read
+	// below (and the grip's place, which the next drag starts from) is the frame before the drag
+	s.WaitFor(t, "the drawer at its minimum, starting on row 16", func(string) bool { return panelTop(s) == 20-4 })
 	x, y, _ = find(s, "□")
 	drag(s, t, x, y, 0, -30) // far above the top
 	s.WaitFor(t, "resized at the maximum", func(string) bool { return len(rec.all()) == 4 })
