@@ -109,8 +109,25 @@ import "github.com/yongjohnlee80/golib/tui"
 //	}
 type Base struct {
 	tui.Visibility
-	ctx *tui.Context // set by Init; carries NodeID, App handles, unmount context
+	ctx     *tui.Context // set by Init; carries NodeID, App handles, unmount context
+	toolTip string       // SetToolTip's text; "" none
 }
+
+// SetToolTip is the text the widget reveals in a card (tui.ToolTipper, tui/tooltip.go): while the
+// pointer rests on it, and when the keyboard brings focus to it — a clipped label's full text, a
+// terse control's meaning. "" shows none, and a change closes a card showing. Qt's ToolTip.text.
+func (b *Base) SetToolTip(text string) {
+	if b.toolTip == text {
+		return
+	}
+	b.toolTip = text
+	if b.ctx != nil {
+		b.ctx.MarkDirty()
+	}
+}
+
+// ToolTip is SetToolTip's text: tui.ToolTipper.
+func (b *Base) ToolTip() string { return b.toolTip }
 
 // SetVisible shows or hides the widget and everything under it — Qt's
 // Item.visible (tui/visibility.go). Legal before mount; a mounted widget is

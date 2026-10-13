@@ -236,7 +236,7 @@ func (a *Adapter) ClassifyProperty(typeName, prop string) decl.PropertyKind {
 		return decl.PropRuntime
 	}
 	// `visible` is every type's, as Qt's Item.visible is — see setVisible.
-	if prop == visibleProp {
+	if prop == visibleProp || prop == toolTipProp {
 		return decl.PropRuntime
 	}
 	if a.ctorProps[typeName][prop] {

@@ -65,6 +65,7 @@ func (a *App) setHovered(n *node) {
 	a.hovered = id
 	a.notifyHover(old, false)
 	a.notifyHover(n, true)
+	a.toolTipHover(n)
 }
 
 func (a *App) notifyHover(n *node, hovered bool) {
