@@ -51,24 +51,25 @@ type EditorLayout interface {
 // EditorCore is an editor's behaviour: text, cursor, modes, keys, undo, register, selection and
 // highlighting. See the package's EDITOR CORE notes.
 type EditorCore struct {
-	buf            textBuffer     // the text and the cursor
-	hist           editHistory    // undo/redo
-	dot            dotRecorder    // the change . repeats, and the one being recorded
-	opRegOne       bool           // the operator's motion is one whose delete Vim keeps in register 1 (regOneMotion)
-	insStart       taPos          // where this Insert began (editor_viminsert.go)
-	oneShot        insertOneShot  // Insert's Ctrl-o (editor_vimoneshot.go)
-	blockIns       *blockInsert   // a block's I, A or c waiting for its Insert to end (editor_vimblock.go)
-	keyDepth       int            // HandleKey calls in progress: a macro's and .'s keys are nested
-	marks          markSet        // a–z and the previous jump's place (editor_vimmarks.go)
-	macro          macroRecorder  // the macro being recorded, and what plays (editor_vimmacros.go)
-	jumps          *JumpList      // Ctrl+O and Ctrl+I's list: the host's, or the editor's own (editor_jumps.go)
-	jumpDoc        string         // the document as jumps knows it (SetJumpDoc)
-	jumpView       func() string  // the host's view of it (SetJumpView); nil: ""
-	jumpGo         func(JumpStep) // how the host goes to a place in another document or view
-	clipPut        *clipPut       // a "+p waiting for the system clipboard (editor_clipboard.go)
-	reg            editRegister   // the registers
-	keys           keyDispatch    // modes and key routing
-	hl             highlightCache // per-line styles
+	buf            textBuffer             // the text and the cursor
+	hist           editHistory            // undo/redo
+	dot            dotRecorder            // the change . repeats, and the one being recorded
+	opRegOne       bool                   // the operator's motion is one whose delete Vim keeps in register 1 (regOneMotion)
+	insStart       taPos                  // where this Insert began (editor_viminsert.go)
+	oneShot        insertOneShot          // Insert's Ctrl-o (editor_vimoneshot.go)
+	blockIns       *blockInsert           // a block's I, A or c waiting for its Insert to end (editor_vimblock.go)
+	findHost       func(FindRequest) bool // * and #'s host, when it keeps its own find (editor_vimstar.go)
+	keyDepth       int                    // HandleKey calls in progress: a macro's and .'s keys are nested
+	marks          markSet                // a–z and the previous jump's place (editor_vimmarks.go)
+	macro          macroRecorder          // the macro being recorded, and what plays (editor_vimmacros.go)
+	jumps          *JumpList              // Ctrl+O and Ctrl+I's list: the host's, or the editor's own (editor_jumps.go)
+	jumpDoc        string                 // the document as jumps knows it (SetJumpDoc)
+	jumpView       func() string          // the host's view of it (SetJumpView); nil: ""
+	jumpGo         func(JumpStep)         // how the host goes to a place in another document or view
+	clipPut        *clipPut               // a "+p waiting for the system clipboard (editor_clipboard.go)
+	reg            editRegister           // the registers
+	keys           keyDispatch            // modes and key routing
+	hl             highlightCache         // per-line styles
 	sourceFactory  func() highlight.Source
 	source         highlight.Source
 	highlightFrame *HighlightFrame

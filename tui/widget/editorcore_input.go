@@ -578,6 +578,9 @@ func (c *EditorCore) handleCommandKey(k tui.KeyEvent) bool {
 				c.keys.opCount = count
 			}
 			return true
+		case !kc.Ctrl && (kc.Code == '*' || kc.Code == '#') && op == ActUnbound: // g* g#
+			c.starSearch(kc.Code == '#', false, count)
+			return true
 		case !kc.Ctrl && kc.Code == 'J' && op == ActUnbound: // gJ
 			if c.readOnly {
 				return false
@@ -714,6 +717,9 @@ func (c *EditorCore) handleCommandKey(k tui.KeyEvent) bool {
 		return true
 	case ActJumpBack, ActJumpForward:
 		c.jumpStep(act == ActJumpBack, count)
+		return true
+	case ActStarForward, ActStarBack:
+		c.starSearch(act == ActStarBack, true, count)
 		return true
 	case ActMacroRecord, ActMacroPlay:
 		if c.readOnly {

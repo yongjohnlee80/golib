@@ -19,7 +19,16 @@ type FindOptions struct {
 	IgnoreCase bool // fold case
 	Backward   bool // towards the start
 	Wrap       bool // continue from the other end
+	// WholeWord is Vim's \< and \> around the term (* and #): where the term begins with a keyword
+	// character (IsKeyword) the match must start a word, and where it ends with one it must end a
+	// word. A word ends where the character class changes, as Vim's regexp has it for multibyte
+	// text, so 漢字abc holds the words 漢字 and abc.
+	WholeWord bool
 }
+
+// IsKeyword reports a keyword cluster, as Vim's \< and \> and its w motions see one: a letter, a
+// digit or _, a CJK script's character, or an emoji (Vim's utf_class of 2 or more).
+func IsKeyword(cluster string) bool { return wordClass(cluster, false) >= 2 }
 
 // findState is the active find.
 type findState struct {
@@ -41,11 +50,12 @@ var plainHighlighter = highlight.HighlighterFunc(func(string, highlight.State) (
 })
 
 // matchesIn is every match of term (its clusters) in line, as cluster columns [start, end).
-func matchesIn(line string, term []string, fold bool) [][2]int {
+func matchesIn(line string, term []string, o FindOptions) [][2]int {
 	if len(term) == 0 {
 		return nil
 	}
 	hay := clusters(line)
+	fold := o.IgnoreCase
 	var out [][2]int
 	for i := 0; i+len(term) <= len(hay); i++ {
 		ok := true
@@ -54,6 +64,9 @@ func matchesIn(line string, term []string, fold bool) [][2]int {
 				ok = false
 				break
 			}
+		}
+		if ok && o.WholeWord {
+			ok = wordStarts(hay, i, term[0]) && wordEnds(hay, i+len(term), term[len(term)-1])
 		}
 		if ok {
 			out = append(out, [2]int{i, i + len(term)})
@@ -68,7 +81,7 @@ func (c *EditorCore) FindAll(term string, o FindOptions) []TextRange {
 	t := clusters(term)
 	var out []TextRange
 	for ln, line := range c.buf.lines {
-		for _, m := range matchesIn(line, t, o.IgnoreCase) {
+		for _, m := range matchesIn(line, t, o) {
 			out = append(out, TextRange{From: TextPos{ln, m[0]}, To: TextPos{ln, m[1]}})
 		}
 	}
@@ -137,7 +150,7 @@ func (c *EditorCore) ReplaceAll(term, with string, o FindOptions) (int, error) {
 // step through them. Backward and Wrap in o are ignored: n always goes forward and N back, both
 // wrapping.
 func (c *EditorCore) SetFind(term string, o FindOptions) {
-	c.find.term, c.find.opts = term, FindOptions{IgnoreCase: o.IgnoreCase}
+	c.find.term, c.find.opts = term, FindOptions{IgnoreCase: o.IgnoreCase, WholeWord: o.WholeWord}
 	c.find.curOn = false // a new find (or none) is on no match until n, N or SetCurrentMatch
 	switch {
 	case term != "" && c.hl.hl == nil:
@@ -197,19 +210,19 @@ func (c *EditorCore) findOverlay() highlight.Overlay {
 	if c.find.term == "" {
 		return host
 	}
-	term, fold := clusters(c.find.term), c.find.opts.IgnoreCase
+	term, opts := clusters(c.find.term), c.find.opts
 	return func(line string, semantic []highlight.Span) []highlight.Span {
 		spans := semantic
 		if host != nil {
 			spans = host(line, spans)
 		}
-		return markMatches(line, spans, term, fold)
+		return markMatches(line, spans, term, opts)
 	}
 }
 
 // markMatches lays an Alert span over every match in line, splitting the spans it covers.
-func markMatches(line string, spans []highlight.Span, term []string, fold bool) []highlight.Span {
-	found := matchesIn(line, term, fold)
+func markMatches(line string, spans []highlight.Span, term []string, o FindOptions) []highlight.Span {
+	found := matchesIn(line, term, o)
 	if len(found) == 0 {
 		return spans
 	}
@@ -271,7 +284,7 @@ func (c *EditorCore) StartReplace(term, with string, o FindOptions) (*ReplaceSes
 func (s *ReplaceSession) seek(at taPos, inclusive bool) {
 	s.ok = false
 	for ln := at.ln; ln < len(s.c.buf.lines); ln++ {
-		for _, m := range matchesIn(s.c.buf.lines[ln], s.term, s.o.IgnoreCase) {
+		for _, m := range matchesIn(s.c.buf.lines[ln], s.term, s.o) {
 			if ln == at.ln && (m[0] < at.col || (!inclusive && m[0] == at.col)) {
 				continue
 			}
@@ -335,4 +348,15 @@ func (c *EditorCore) escapeFind() bool {
 		return true
 	}
 	return c.onEscape != nil && c.onEscape()
+}
+
+// wordStarts reports a whole-word match's start at hay[i]: none needed when the term begins with a
+// non-keyword; else the line's start, or a class change from the cluster before.
+func wordStarts(hay []string, i int, first string) bool {
+	return !IsKeyword(first) || i == 0 || wordClass(hay[i-1], false) != wordClass(hay[i], false)
+}
+
+// wordEnds reports a whole-word match's end before hay[end], as wordStarts does its start.
+func wordEnds(hay []string, end int, last string) bool {
+	return !IsKeyword(last) || end == len(hay) || wordClass(hay[end], false) != wordClass(hay[end-1], false)
 }
