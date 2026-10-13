@@ -97,6 +97,16 @@ func TestClipboardReadAsksOnItsOwnTag(t *testing.T) {
 	if g.r.ClipboardRequested() {
 		t.Fatal("answered reads asked again")
 	}
+
+	// a read after the answer is a generation of its own: it asks, and is answered
+	g.read("3")
+	g.frame()
+	if !g.r.ClipboardRequested() {
+		t.Fatal("a read after an answered generation asked nothing")
+	}
+	g.reply("again")
+	g.frame()
+	g.want("a new read after an answer", "1:hello", "2:hello", "3:again")
 }
 
 // A paste's reply goes to the window's tag: a paste, answering no read.
