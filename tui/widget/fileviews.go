@@ -208,6 +208,13 @@ func newFileOpenView(cfg fileViewConfig, dirOpts ...FileListOption) *FileOpenVie
 	}
 	// a source read on the loop was listed while the list was built, before the field followed it
 	v.path.follow(v.list.Source().Rooted(v.list.Dir()))
+	// any navigation, however started (the list, SetDir, Select, the field), drops a typed path's
+	// check on its way and a typed choice, as it starts: an answer about the folder left behind
+	// must not move the view once it has gone elsewhere
+	v.list.onLoad = func() {
+		v.path.stat.drop()
+		v.chosen = ""
+	}
 	above := append(append([]tui.Component(nil), cfg.fields...), v.path.pane)
 	if cfg.filter {
 		inputOpts := []TextInputOption{WithOnEdit(func(text string) { v.list.SetFilter(text) })}

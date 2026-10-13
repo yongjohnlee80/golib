@@ -366,3 +366,36 @@ func TestAnAsyncSaveTargetIsItsFolderWhileItLoads(t *testing.T) {
 	}
 	d.g.release("dir:b")
 }
+
+// A navigation the host starts (SetDir, Select) drops a typed path's check as it starts, not when
+// its rows arrive: an answer that comes in between, about the folder being left, moves nothing.
+func TestANavigationDropsATypedPathsCheckAsItStarts(t *testing.T) {
+	for _, nav := range []struct {
+		name string
+		do   func(widget.FileChooser)
+	}{
+		{"SetDir", func(v widget.FileChooser) { v.SetDir("mem://a") }},
+		{"Select", func(v widget.FileChooser) { v.Select("mem://a/x.txt") }},
+	} {
+		d := newGatedDir(vfsFiles)
+		d.g.release("dir:.")
+		var chosen atomic.Int32
+		v := widget.NewFileOpenView(widget.WithFileViewSource(widget.FileSource{FS: d, Root: "mem://", Async: true}),
+			widget.WithFileViewDir("mem://"), widget.WithFileViewPreview(false), widget.WithOnChoose(func() { chosen.Add(1) }))
+		h := startBrowser(t, v)
+		h.shows("top.txt")
+		h.inject(keyMod('k', tui.ModCtrl))
+		typePath(h, "top.txt") // a file: would be chosen
+		h.waitFor(nav.name+": top.txt's check held", func() bool { return d.stats.Load() >= 1 })
+		h.onLoop(func() { nav.do(v) }) // a's listing starts, and is held
+		d.g.release("stat:top.txt")    // the old check answers BEFORE the new rows arrive
+		h.settle()
+		var dir, sel string
+		h.onLoop(func() { dir, sel = v.Dir(), v.Selected() })
+		if chosen.Load() != 0 || dir != "mem://a" || sel == "mem://top.txt" {
+			t.Errorf("%s: an answer about the folder left applied: chosen %d, Dir %q, Selected %q", nav.name, chosen.Load(), dir, sel)
+		}
+		d.g.release("dir:a")
+		h.stop()
+	}
+}
