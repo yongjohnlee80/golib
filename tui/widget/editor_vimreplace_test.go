@@ -31,6 +31,11 @@ func TestVimReplace(t *testing.T) {
 		{what: "an arrow splits undo", text: "1234", seq: "Rab<left>c<esc>u", want: "ab34"},
 		{what: "2. replaces twice", text: "1234", seq: "Rab<esc>2.", want: "aabab", cursor: true, wantCol: 4},
 		{what: "3. past the end", text: "1234567", seq: "Rab<esc>l3.", want: "abababab", cursor: true, wantCol: 7},
+		{what: "the count types line breaks again", text: "123456", seq: "3Ra<cr>b<esc>", want: "a\nba\nba\nb", cursor: true, wantLn: 3},
+		{what: "the count types Backspaces again", text: "123456", col: 2, seq: "3Rab<bs><bs><bs><esc>", want: "123456", cursor: true},
+		{what: "Ctrl-w at a line's start does nothing", text: "ab", seq: "Ra<cr><ctw><esc>", want: "a\nb"},
+		{what: "Ctrl-u at a line's start does nothing", text: "ab", seq: "Ra<cr><ctu><esc>", want: "a\nb"},
+		{what: "Ctrl-w with nothing typed does nothing", text: "ab\ncd", ln: 1, seq: "R<ctw><esc>", want: "ab\ncd"},
 	})
 }
 
@@ -65,6 +70,11 @@ func TestVimReplaceMode(t *testing.T) {
 	vimSeq(i, "i<cto>")
 	if i.OneShotMode() != widget.ModeInsert {
 		t.Fatalf("Ctrl-o from Insert: %v", i.OneShotMode())
+	}
+	a, _ := coreWith(t, "1234")
+	vimSeq(a, "R")
+	if a.HandleKey(tui.KeyEvent{Code: 'x', Mods: tui.ModAlt}) || a.Value() != "1234" {
+		t.Fatalf("an Alt key in Replace: consumed, or %q", a.Value())
 	}
 	v, _ := coreWith(t, "1234", widget.CoreReadOnly(true))
 	if v.HandleKey(tui.KeyEvent{Code: 'R', Text: "R"}) || v.Mode() != widget.ModeNormal {
