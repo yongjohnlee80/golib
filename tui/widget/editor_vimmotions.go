@@ -215,30 +215,6 @@ func (c *EditorCore) halfPage(down, hadCount bool, count int) {
 	c.markDirty()
 }
 
-// wordEndBack is ge (and gE: the Editor's words are whitespace-delimited, WORDs): back to the end
-// of the previous word, crossing lines.
-func (c *EditorCore) wordEndBack() (int, int) {
-	ln, i := c.buf.ln, c.buf.col
-	cs := c.buf.lineClusters(ln)
-	for i >= 0 && i < len(cs) && !isWS(cs[i]) {
-		i-- // leave the cursor's own word
-	}
-	for {
-		for i >= 0 && isWS(cs[i]) {
-			i--
-		}
-		if i >= 0 {
-			return ln, i
-		}
-		if ln == 0 {
-			return 0, 0
-		}
-		ln--
-		cs = c.buf.lineClusters(ln)
-		i = len(cs) - 1
-	}
-}
-
 // charFindOf is the find an f, F, t or T arms, for char.
 func charFindOf(act Action, char string) charFind {
 	return charFind{char: char, forward: act == ActFindCharForward || act == ActTillCharForward,

@@ -25,12 +25,12 @@ func TestEditorMotionsWordsAndParagraphs(t *testing.T) {
 		t.Errorf("after 'w': got (%d, %d), want (0, 6)", row, col)
 	}
 
-	// 'w' crosses line ends to start of "second"
+	// 'w' crosses the line end and stops on the empty line, as Vim's does
 	h.inject(key('w'))
 	h.barrier(sh)
 	row, col = ed.Line()
-	if row != 2 || col != 0 {
-		t.Errorf("after second 'w': got (%d, %d), want (2, 0)", row, col)
+	if row != 1 || col != 0 {
+		t.Errorf("after second 'w': got (%d, %d), want (1, 0)", row, col)
 	}
 
 	// 'b' moves back to "word" on line 0
