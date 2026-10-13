@@ -195,6 +195,28 @@ func TestTerminalEncodesKeys(t *testing.T) {
 	f.waitSent("\x1bOA\x1b[1;5C\x1b[15~")
 }
 
+// Host keys: without them F11 reaches the program; with them the Terminal sends none of it and
+// leaves it unconsumed, for the Window's Shortcut; other keys still reach the program.
+func TestTerminalLeavesItsHostKeysToTheHost(t *testing.T) {
+	f := startTerm(t, 20, 4)
+	f.h.inject(key(tui.KeyF11))
+	f.waitSent("\x1b[23~")
+	before := f.proc().sent()
+	var consumed bool
+	f.h.onLoop(func() {
+		f.term.SetHostKeys(func(k tui.KeyEvent) bool { return k.Code == tui.KeyF11 })
+		consumed = f.term.HandleEvent(tui.KeyEvent{Kind: tui.KeyPress, Code: tui.KeyF11})
+	})
+	if consumed {
+		t.Error("the Terminal consumed a host key")
+	}
+	f.h.inject(key(tui.KeyF11), key('z'))
+	f.waitSent(before + "z")
+	if got := f.proc().sent(); got != before+"z" {
+		t.Errorf("sent %q after a host key; want only the z after %q", got, before)
+	}
+}
+
 func TestTerminalPastes(t *testing.T) {
 	f := startTerm(t, 20, 4)
 	f.h.inject(tui.PasteEvent{Text: "a\nb"})

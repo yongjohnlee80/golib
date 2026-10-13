@@ -389,3 +389,20 @@ func TestTerminalTabsOpenTheirMenuAnywhereOnTheStripAndAnEmptyBody(t *testing.T)
 		t.Fatalf("a right press on a live terminal opened the strip's menu (for %q)", opened)
 	}
 }
+
+// SetHostKeys reaches every tab, those added later too.
+func TestTerminalTabsGiveEveryTabTheirHostKeys(t *testing.T) {
+	tabs := NewTerminalTabs()
+	p1, p2 := newResultProc(), newResultProc()
+	defer close(p1.release)
+	defer close(p2.release)
+	a := addTestTerminal(t, tabs, "a", p1)
+	tabs.SetHostKeys(func(k tui.KeyEvent) bool { return k.Code == tui.KeyF11 })
+	b := addTestTerminal(t, tabs, "b", p2)
+	f11 := tui.KeyEvent{Kind: tui.KeyPress, Code: tui.KeyF11}
+	for _, id := range []TerminalTabID{a, b} {
+		if hk := pickTerminal(tabs, id).hostKeys; hk == nil || !hk(f11) {
+			t.Errorf("%s: no host keys", id)
+		}
+	}
+}

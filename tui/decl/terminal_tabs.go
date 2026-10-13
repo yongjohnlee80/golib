@@ -57,6 +57,8 @@ var terminalTabsType = Type{
 		"vimKeys":         setter("a TerminalTabs", boolOf, (*widget.TerminalTabs).SetVimKeys),
 		// golib's: the family the tabs' cells are drawn in, at the window's cell size; "" the window's
 		"cellFont": setter("a TerminalTabs", stringOf, (*widget.TerminalTabs).SetCellFace),
+		// golib's: keys their programs never see, left to the Window's Shortcuts (hostkeys.go)
+		"hostKeys": setter("a TerminalTabs", hostKeysOf, (*widget.TerminalTabs).SetHostKeys),
 	},
 	Signals:   map[string][]string{"addRequested": {}, "menuRequested": {"id"}, "changed": {}},
 	Destroyed: func(c tui.Component) { c.(*widget.TerminalTabs).ShutdownWithResult() },

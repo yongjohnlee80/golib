@@ -82,6 +82,8 @@ type TerminalTabs struct {
 	vimKeysSet    bool
 	cellFace      string
 	faceSet       bool
+	hostKeys      func(tui.KeyEvent) bool
+	hostKeysSet   bool
 	onAdd         func()
 	onMenu        func(TerminalTabID)
 	menuRows      func(TerminalTabID) []MenuItemModel // SetMenu: the strip's own menu
@@ -350,6 +352,13 @@ func (t *TerminalTabs) SetVimKeys(on bool) {
 	t.lookTabs()
 }
 
+// SetHostKeys gives every tab, those added later too, Terminal.SetHostKeys: the keys their programs
+// never see, left to the host.
+func (t *TerminalTabs) SetHostKeys(match func(tui.KeyEvent) bool) {
+	t.hostKeys, t.hostKeysSet = match, true
+	t.lookTabs()
+}
+
 // SetCellFace gives every tab, those added later too, Terminal.SetCellFace: their cells in family,
 // the strip's and its menus' in the window's.
 func (t *TerminalTabs) SetCellFace(family string) {
@@ -376,6 +385,9 @@ func (t *TerminalTabs) lookTab(terminal *Terminal) {
 	}
 	if t.faceSet {
 		terminal.SetCellFace(t.cellFace)
+	}
+	if t.hostKeysSet {
+		terminal.SetHostKeys(t.hostKeys)
 	}
 }
 
