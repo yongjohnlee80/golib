@@ -154,12 +154,8 @@ func TestPixelVisibleLinesInsideATallLine(t *testing.T) {
 	}
 }
 
-// pixelLayout is a tui EditorViewport: H M L and Ctrl-d Ctrl-u find it by its methods. The
-// assertion is spelled out here because gui builds against a released golib that may predate it.
-var _ interface {
-	VisibleLines() (int, int)
-	ScrollLines(int)
-} = (*pixelLayout)(nil)
+// pixelLayout is a tui EditorViewport: H M L and Ctrl-d Ctrl-u find it by its methods.
+var _ tuiwidget.EditorViewport = (*pixelLayout)(nil)
 
 // A ready diagram draws its source lines as a picture, with no caret: their top is the block's.
 // Scrolled just past it, they are out of the range though the picture still shows.
