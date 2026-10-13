@@ -30,6 +30,8 @@ func TestVimInsertOneShot(t *testing.T) {
 		{what: ". inside it", text: "a b c", seq: "dwi<cto>.X<esc>", want: "Xc"},
 		{what: "@a plays whole as the command", text: "ab\ncd\nef", seq: "qaxjqggi<cto>@aX<esc>", want: "\nXcd\nef"},
 		{what: "a macro holding Ctrl-o", text: "abc\ndef", seq: "qaA<cto>0X<esc>qj@a", want: "Xabc\nXdef"},
+		{what: "@a's own Esc is the macro's", text: "ab\ncd\nef", seq: "qax<esc>jqggi<cto>@aX<esc>", want: "\nXcd\nef"},
+		{what: `Esc forgets a register named`, text: "ab", seq: `i<cto>"a<esc><esc>yy"ap`, want: "ab"},
 	})
 }
 
@@ -76,6 +78,16 @@ func TestVimInsertOneShotState(t *testing.T) {
 	vimSeq(c, "<cto>2")
 	if !c.InsertOneShot() || c.Mode() != widget.ModeNormal {
 		t.Fatal("a count alone ended the one-shot")
+	}
+	for _, e := range []struct{ what, text, seq string }{
+		{"a command entering Insert ends it", "a", "A<cto>ob<esc>"},
+		{". replays the Insert before without its Ctrl-o", "ab\ncd", "ifoo<cto>j<esc>."},
+	} {
+		c, _ := coreWith(t, e.text)
+		vimSeq(c, e.seq)
+		if c.InsertOneShot() || c.Mode() != widget.ModeNormal {
+			t.Errorf("%s: %q: one-shot %v, mode %v", e.what, e.seq, c.InsertOneShot(), c.Mode())
+		}
 	}
 }
 
@@ -132,5 +144,37 @@ func TestVimInsertOneShotHostUnbinds(t *testing.T) {
 	keys(c, "i")
 	if c.HandleKey(tui.KeyEvent{Code: 'o', Mods: tui.ModCtrl}) || c.Mode() != widget.ModeInsert {
 		t.Fatalf("an unbound Ctrl-o: mode %v", c.Mode())
+	}
+}
+
+// A press is Ctrl-o's command: Insert resumes where it lands.
+func TestVimInsertOneShotPress(t *testing.T) {
+	c, _ := coreWith(t, "abc")
+	vimSeq(c, "i<cto>")
+	c.PressAt(0, 2)
+	if c.InsertOneShot() || c.Mode() != widget.ModeInsert {
+		t.Fatalf("after a press: one-shot %v, mode %v", c.InsertOneShot(), c.Mode())
+	}
+	vimSeq(c, "X<esc>")
+	if got := c.Value(); got != "abXc" {
+		t.Fatalf("a press then X: %q", got)
+	}
+}
+
+// A new document, or another keyset, ends the one-shot: no Insert resumes into it.
+func TestVimInsertOneShotEndsWithTheDocument(t *testing.T) {
+	c, _ := coreWith(t, "abc")
+	vimSeq(c, "i<cto>")
+	c.SetValue("xyz")
+	vimSeq(c, "x")
+	if c.InsertOneShot() || c.Mode() != widget.ModeNormal || c.Value() != "yz" {
+		t.Fatalf("after SetValue, x: one-shot %v, mode %v, %q", c.InsertOneShot(), c.Mode(), c.Value())
+	}
+	vimSeq(c, "i<cto>")
+	c.SetKeyset(widget.KeysetNano)
+	c.SetKeyset(widget.KeysetVim)
+	vimSeq(c, "x")
+	if c.InsertOneShot() || c.Mode() != widget.ModeNormal || c.Value() != "z" {
+		t.Fatalf("after a keyset round trip, x: one-shot %v, mode %v, %q", c.InsertOneShot(), c.Mode(), c.Value())
 	}
 }
