@@ -17,7 +17,7 @@ func TestVimMacrosRecordAndPlay(t *testing.T) {
 		{what: "@@ before any play: nothing", text: "a", seq: "@@", want: "a"},
 		{what: "u undoes one change of a macro", text: "a\nb\nc", seq: "qaA!<esc>jq2@au", want: "a!\nb!\nc"},
 		{what: "the chord's tick plays back as text", text: "x\ny", seq: "qaAj<tick>k<esc>jq@a", want: "xjk\nyjk"},
-		{what: "the chord itself plays back as Esc", text: "x\ny", seq: "qaA!jkjq@a", want: "x!\ny!"},
+		{what: "the chord itself plays back as Esc: x after @a is Normal's", text: "x\ny\nz", seq: "qaA!jkjq@ax", want: "x!\ny!\n"},
 		{what: "a paste plays back", text: "x\ny", seq: "qaA<paste:p\\nq><esc>jq@a", want: "xp\nq\nyp\nq"},
 		{what: ". inside a macro repeats its last change", text: "a\nb\nc\nd\ne", seq: "qaA!<esc>j.qj@a",
 			want: "a!\nb!\nc!\nd!\ne"},

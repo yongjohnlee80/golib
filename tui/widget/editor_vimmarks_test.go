@@ -42,6 +42,7 @@ func TestVimMarksAsMotions(t *testing.T) {
 func TestVimMarksFollowTheText(t *testing.T) {
 	runEdits(t, []editCase{
 		{what: "a line opened above", text: "a\nb\nc", ln: 2, seq: "mcggOx<esc>'c", want: "x\na\nb\nc", cursor: true, wantLn: 3},
+		{what: "a line opened below, above the mark", text: "a\nb\nc", ln: 2, seq: "mcggox<esc>'c", want: "a\nx\nb\nc", cursor: true, wantLn: 3},
 		{what: "a line deleted above", text: "a\nb\nc", ln: 2, seq: "mcggdd'c", want: "b\nc", cursor: true, wantLn: 1},
 		{what: "lines put above", text: "a\nb", ln: 1, seq: "mbggyyP'b", want: "a\na\nb", cursor: true, wantLn: 2},
 		{what: "the marked line deleted: the mark is gone", text: "a\nb\nc", ln: 1, seq: "mbddgg'b", want: "a\nc", cursor: true},
