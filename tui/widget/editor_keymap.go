@@ -262,6 +262,8 @@ const (
 
 	ActSentenceForward // ) (Vim): to the next sentence's start
 	ActSentenceBack    // ( (Vim): to this sentence's start, or the previous one's
+	ActStarForward     // * (Vim): the whole word under the cursor, found on
+	ActStarBack        // # (Vim): the whole word under the cursor, found back
 
 	actMax // sentinel for validation
 )
@@ -477,6 +479,10 @@ func (a Action) String() string {
 		return "SentenceForward"
 	case ActSentenceBack:
 		return "SentenceBack"
+	case ActStarForward:
+		return "StarForward"
+	case ActStarBack:
+		return "StarBack"
 	}
 	return fmt.Sprintf("Action(%d)", a)
 }
@@ -692,6 +698,10 @@ func (a Action) Description() string {
 		return "Next sentence"
 	case ActSentenceBack:
 		return "Previous sentence"
+	case ActStarForward:
+		return "Find the word under the cursor"
+	case ActStarBack:
+		return "Find the word under the cursor, back"
 	}
 	return "Custom action"
 }
@@ -755,6 +765,8 @@ func actionModes(a Action) (normal, visual, insert bool) {
 		ActWordForward, ActWordBack, ActWordEnd, ActParaForward, ActParaBack,
 		ActPageUp, ActPageDown:
 		return true, true, true
+	case ActStarForward, ActStarBack:
+		return true, false, false
 	case ActGoBottom, ActGoPrefix, ActVisual, ActVisualLine, ActVisualBlock, ActFindNext, ActFindPrev, ActCommandLine,
 		ActRegisterPrefix, ActMarkSet, ActMarkLine, ActMarkExact:
 		return true, true, false
@@ -903,6 +915,7 @@ func VimKeymap() Keymap {
 	km[n('`')], km[v('`')] = ActMarkExact, ActMarkExact
 	km[n('q')] = ActMacroRecord
 	km[n('@')] = ActMacroPlay
+	km[n('*')], km[n('#')] = ActStarForward, ActStarBack
 	km[n('p')] = ActPasteAfter
 	km[n('P')] = ActPasteBefore
 	km[n('u')] = ActUndo
