@@ -630,6 +630,7 @@ func (c *EditorCore) setMode(m EditorMode) {
 	}
 	c.keys.mode = m
 	c.keys.findArmed, c.keys.findCount = ActUnbound, 0 // an f armed in one mode never completes in another
+	c.keys.dropOp()                                    // nor an operator, nor a text object
 	c.vEOL, c.vPinned = false, false
 	c.markDirty()
 	c.publish(ModeChangedEvent{Owner: c.nodeID(), Mode: m})
@@ -742,7 +743,8 @@ func mutatingAction(act Action) bool {
 	case ActInsert, ActAppend, ActInsertLineStart, ActAppendLineEnd,
 		ActOpenBelow, ActOpenAbove, ActDeleteChar, ActDeleteToEnd,
 		ActPasteAfter, ActPasteBefore, ActUndo, ActRedo,
-		ActDeletePrefix, ActVisualDelete, ActCut, ActPaste:
+		ActDeletePrefix, ActVisualDelete, ActCut, ActPaste,
+		ActChangePrefix, ActChangeToEnd, ActSubstChar, ActSubstLine:
 		return true
 	}
 	return false
@@ -826,6 +828,22 @@ func (c *EditorCore) execAction(act Action, count int) bool {
 			c.clampNormal()
 			c.edited()
 		}
+		return true
+	case ActChangeToEnd, ActYankToEnd: // C and Y: c$ and y$
+		op := ActChangePrefix
+		if act == ActYankToEnd {
+			op = ActYankPrefix
+		}
+		if to, kind, ok := c.opTarget(ActLineEnd, count, true); ok {
+			c.runOp(op, to, kind)
+		}
+		return true
+	case ActSubstChar: // s: c over count characters, Insert on an empty line
+		n := len(b.lineClusters(b.ln))
+		c.runOp(ActChangePrefix, taPos{b.ln, min(b.col+count, n)}, exclusive)
+		return true
+	case ActSubstLine: // S: cc
+		c.runOp(ActChangePrefix, taPos{min(b.ln+count-1, len(b.lines)-1), 0}, linewise)
 		return true
 	case ActPasteAfter:
 		c.pasteRegister(true)

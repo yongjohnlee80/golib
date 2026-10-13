@@ -49,8 +49,9 @@ func (c *EditorCore) toLine(ln int) {
 	c.markDirty()
 }
 
-// leftWrap is Backspace: count clusters left, from a line's start onto the previous line's last.
-func (c *EditorCore) leftWrap(count int) {
+// leftWrapPos is where Backspace lands: count clusters left, from a line's start onto the previous
+// line's last.
+func (c *EditorCore) leftWrapPos(count int) (int, int) {
 	ln, col := c.buf.ln, c.buf.col
 	for range count {
 		switch {
@@ -61,6 +62,12 @@ func (c *EditorCore) leftWrap(count int) {
 			col = c.normalMax(ln)
 		}
 	}
+	return ln, col
+}
+
+// leftWrap is Backspace: the cursor to leftWrapPos.
+func (c *EditorCore) leftWrap(count int) {
+	ln, col := c.leftWrapPos(count)
 	c.buf.desired = -1
 	c.buf.moveCursor(ln, col, false)
 	c.clampNormal()
@@ -68,10 +75,23 @@ func (c *EditorCore) leftWrap(count int) {
 	c.markDirty()
 }
 
-// findChar is f F t T and ; ,: the countth cluster f.char on the cursor's line, forward or back,
-// stopping one short for till. A repeat of a till (; after t) starts past the adjacent match, so it
-// moves on rather than standing still. No match: the cursor stays.
+// findChar is f F t T and ; ,: the cursor to findCharPos. No match: the cursor stays.
 func (c *EditorCore) findChar(f charFind, count int, repeat bool) {
+	found, ok := c.findCharPos(f, count, repeat)
+	if !ok {
+		return
+	}
+	c.buf.desired = -1
+	c.buf.moveCursor(c.buf.ln, found, false)
+	c.clampNormal()
+	c.reveal()
+	c.markDirty()
+}
+
+// findCharPos is where f F t T and ; , land: the countth cluster f.char on the cursor's line,
+// forward or back, one short for till. A repeat of a till (; after t) starts past the adjacent
+// match, so it moves on rather than standing still. ok is false with no such match.
+func (c *EditorCore) findCharPos(f charFind, count int, repeat bool) (int, bool) {
 	cs := c.buf.lineClusters(c.buf.ln)
 	col, step := c.buf.col, 1
 	if !f.forward {
@@ -92,16 +112,12 @@ func (c *EditorCore) findChar(f charFind, count int, repeat bool) {
 		}
 	}
 	if found < 0 {
-		return
+		return 0, false
 	}
 	if f.till {
 		found -= step
 	}
-	c.buf.desired = -1
-	c.buf.moveCursor(c.buf.ln, found, false)
-	c.clampNormal()
-	c.reveal()
-	c.markDirty()
+	return found, true
 }
 
 // brackets pairs each bracket % matches with its partner, and says which way the partner lies.
@@ -113,9 +129,23 @@ var brackets = map[string]struct {
 	")": {"(", false}, "]": {"[", false}, "}": {"{", false},
 }
 
-// matchPair is % without a count: from the bracket under the cursor, or the first one after it on
-// the line, to its partner, counting nesting across lines. No bracket, or no partner: no move.
+// matchPair is % without a count: the cursor to matchPairPos. No bracket, or no partner: no move.
 func (c *EditorCore) matchPair() {
+	ln, col, ok := c.matchPairPos()
+	if !ok {
+		return
+	}
+	c.buf.desired = -1
+	c.buf.moveCursor(ln, col, false)
+	c.clampNormal()
+	c.reveal()
+	c.markDirty()
+}
+
+// matchPairPos is where % lands: from the bracket under the cursor, or the first one after it on
+// the line, to its partner, counting nesting across lines. ok is false with no bracket, or no
+// partner.
+func (c *EditorCore) matchPairPos() (int, int, bool) {
 	ln, cs := c.buf.ln, c.buf.lineClusters(c.buf.ln)
 	at := -1
 	for i := c.buf.col; i < len(cs); i++ {
@@ -125,7 +155,7 @@ func (c *EditorCore) matchPair() {
 		}
 	}
 	if at < 0 {
-		return
+		return 0, 0, false
 	}
 	open := cs[at]
 	b := brackets[open]
@@ -140,12 +170,7 @@ func (c *EditorCore) matchPair() {
 			case b.partner:
 				depth--
 				if depth == 0 {
-					c.buf.desired = -1
-					c.buf.moveCursor(l, i, false)
-					c.clampNormal()
-					c.reveal()
-					c.markDirty()
-					return
+					return l, i, true
 				}
 			}
 		}
@@ -153,7 +178,7 @@ func (c *EditorCore) matchPair() {
 			i++
 			for i >= len(c.buf.lineClusters(l)) {
 				if l == len(c.buf.lines)-1 {
-					return
+					return 0, 0, false
 				}
 				l, i = l+1, 0
 			}
@@ -161,7 +186,7 @@ func (c *EditorCore) matchPair() {
 			i--
 			for i < 0 {
 				if l == 0 {
-					return
+					return 0, 0, false
 				}
 				l--
 				i = len(c.buf.lineClusters(l)) - 1
@@ -176,22 +201,29 @@ func (c *EditorCore) percentLine(n int) {
 	c.toLine((n*len(c.buf.lines)+99)/100 - 1)
 }
 
-// viewLine is H M L: the countth line from the view's top (H), its middle (M), or the countth
-// from its bottom (L). Without a viewport the key is consumed and nothing moves.
+// viewLine is H M L: the cursor to viewLinePos. Without a viewport the key is consumed and
+// nothing moves.
 func (c *EditorCore) viewLine(act Action, count int) {
+	if ln, ok := c.viewLinePos(act, count); ok {
+		c.toLine(ln)
+	}
+}
+
+// viewLinePos is the line H M L go to: the countth from the view's top (H), its middle (M), or the
+// countth from its bottom (L). ok is false without a viewport.
+func (c *EditorCore) viewLinePos(act Action, count int) (int, bool) {
 	vp, ok := c.layout.(EditorViewport)
 	if !ok {
-		return
+		return 0, false
 	}
 	first, last := vp.VisibleLines()
 	switch act {
 	case ActViewTop:
-		c.toLine(min(first+count-1, last))
+		return min(first+count-1, last), true
 	case ActViewMiddle:
-		c.toLine((first + last) / 2)
-	case ActViewBottom:
-		c.toLine(max(last-count+1, first))
+		return (first + last) / 2, true
 	}
+	return max(last-count+1, first), true
 }
 
 // halfPage is Ctrl-d and Ctrl-u: the view scrolls half a page down or up (at least a line), or
