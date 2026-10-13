@@ -49,6 +49,7 @@ func TestVimWordsFollowTheKeywordClasses(t *testing.T) {
 		{"한국어 말", 0, 0, []string{"w"}, [][2]int{p(0, 4)}, "w over Hangul"},
 		{"a😀😀b c", 0, 0, []string{"w", "w", "w"}, [][2]int{p(0, 1), p(0, 3), p(0, 5)}, "w over emoji"},
 		{"+∑😀+ ©.", 0, 0, []string{"w", "w", "w", "w"}, [][2]int{p(0, 2), p(0, 3), p(0, 5), p(0, 6)}, "w: ∑ is punctuation with +, an emoji is not, © is Latin-1 punctuation"},
+		{"©. x", 0, 0, []string{"w"}, [][2]int{p(0, 3)}, "w: © (Emoji, but Latin-1) is punctuation with ."},
 		{"x☀✅y", 0, 0, []string{"w", "w"}, [][2]int{p(0, 1), p(0, 3)}, "w: pictographs outside the emoji blocks"},
 		{"foo\n\nbar\n\n\nbaz", 0, 0, []string{"w", "w", "w", "w", "w", "w"}, [][2]int{p(1, 0), p(2, 0), p(3, 0), p(4, 0), p(5, 0), p(5, 2)}, "w stops on each empty line"},
 		{"foo\n\nbar\n\n\nbaz", 5, 0, []string{"b", "b", "b", "b", "b"}, [][2]int{p(4, 0), p(3, 0), p(2, 0), p(1, 0), p(0, 0)}, "b stops on each empty line"},
