@@ -121,6 +121,14 @@ func (r *editRegister) put(name rune, e regEntry) bool {
 	return true
 }
 
+// setClip keeps e as + or *'s content, what was last read from the system clipboard, without
+// touching the unnamed register: a put reads it, it isn't a yank.
+func (r *editRegister) setClip(name rune, e regEntry) {
+	if s, _ := r.slot(name); s != nil {
+		*s = e
+	}
+}
+
 // yanked records a yank into register name (0: none named): that register, else 0; the unnamed
 // register follows. The black hole keeps nothing.
 func (r *editRegister) yanked(name rune, e regEntry) {
