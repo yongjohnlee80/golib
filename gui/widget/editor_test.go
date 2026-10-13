@@ -668,3 +668,72 @@ func TestListEditingSkipsTables(t *testing.T) {
 		t.Errorf("Enter on a table row gave %q", got)
 	}
 }
+
+// layCounter counts a renderer's LayOut calls, for the relayout cells.
+type layCounter struct {
+	Renderer
+	calls int
+}
+
+func (c *layCounter) LayOut(b Block, lines []string, width float32, cursorInside bool, t *gui.TextShaper, th Theme, host DiagramHost) BlockLayout {
+	c.calls++
+	return c.Renderer.LayOut(b, lines, width, cursorInside, t, th, host)
+}
+
+// A read-only Rendered editor is a viewer: every block renders, the cursor's row
+// included, so no row shows its raw source. An editable one keeps the cursor's
+// block raw, as it always has, and turning read-only re-lays the row the cursor
+// is on.
+func TestAReadonlyRenderedEditorRendersTheCursorsRowToo(t *testing.T) {
+	h := startEditor(t, 60, 14, WithRenderer(NewMarkdownRenderer()), WithMode(Rendered),
+		WithCore(tuiwidget.CoreInitialText("first\n## Title here\nlast")))
+	h.keys(key('j')) // the cursor onto the heading
+	h.paint()
+	for _, s := range spansOfLine(h, 1) {
+		if s.Hidden {
+			t.Fatalf("an editable editor hides marks on the cursor's row: %+v", s)
+		}
+	}
+	h.onLoop(func() { h.e.SetReadOnly(true) })
+	h.paint()
+	head := spansOfLine(h, 1)
+	if len(head) < 2 || !head[0].Hidden || head[0].Text != "## " {
+		t.Fatalf("the cursor's row in a viewer is not rendered: %+v", head)
+	}
+	if head[1].Font.Size <= h.e.layout.th.Prose.Size || !head[1].Font.Bold {
+		t.Errorf("the cursor's row in a viewer is not styled as a heading: %+v", head[1])
+	}
+}
+
+// A cursor moving in a viewer re-lays nothing: every block's layout is the same
+// whatever block the cursor is in, so the cache holds. An editable editor re-lays
+// the rows the cursor enters and leaves, as it always has.
+func TestACursorMovingInAViewerReLaysNothing(t *testing.T) {
+	viewer := startEditor(t, 60, 14, WithRenderer(&layCounter{Renderer: NewMarkdownRenderer()}), WithMode(Rendered),
+		WithCore(tuiwidget.CoreInitialText("first\n## Title here\nlast")))
+	vc := viewer.e.render.(*layCounter)
+	viewer.onLoop(func() { viewer.e.SetReadOnly(true) })
+	viewer.paint()
+	first := vc.calls
+	viewer.keys(key('j'))
+	viewer.paint()
+	if vc.calls != first {
+		t.Fatalf("a cursor moving onto a block re-laid it in a viewer: %d -> %d calls", first, vc.calls)
+	}
+	viewer.keys(key('k'))
+	viewer.paint()
+	if vc.calls != first {
+		t.Fatalf("a cursor moving off a block re-laid it in a viewer: %d -> %d calls", first, vc.calls)
+	}
+
+	editor := startEditor(t, 60, 14, WithRenderer(&layCounter{Renderer: NewMarkdownRenderer()}), WithMode(Rendered),
+		WithCore(tuiwidget.CoreInitialText("first\n## Title here\nlast")))
+	ec := editor.e.render.(*layCounter)
+	editor.paint()
+	before := ec.calls
+	editor.keys(key('j'))
+	editor.paint()
+	if ec.calls <= before {
+		t.Fatalf("an editable editor re-laid nothing when the cursor moved onto a block: %d -> %d calls", before, ec.calls)
+	}
+}

@@ -258,7 +258,10 @@ func (l *pixelLayout) lay(i int, frame *tuiwidget.HighlightFrame) *laidBlock {
 	l.ensure()
 	b := l.blocks[i]
 	cl := l.cursorLine()
-	inside := cl >= b.From && cl < b.To
+	// A viewer renders every block, the cursor's row included: nothing is edited,
+	// so no row needs its source at hand. With inside constant, a cursor moving in
+	// a viewer re-lays nothing either.
+	inside := cl >= b.From && cl < b.To && !l.e.core.ReadOnly()
 	if l.e.mode == Rendered && l.e.render != nil {
 		if lb := l.laid[i]; lb != nil && lb.width == l.width && lb.inside == inside {
 			return lb
