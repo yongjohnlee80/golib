@@ -452,3 +452,21 @@ func wrapPosOf(lines []string, ln, col int, v wrapView) (row, x int) {
 	}
 	return 0, 0
 }
+
+// colInRow is the column on rows[row] under x: the cluster whose cells hold x; past the row's end,
+// the break space the wrap consumed after it when there is one, else the row's last cluster.
+func colInRow(cs []string, rows [][2]int, row, x int, measure func(string) int) int {
+	r := rows[row]
+	w := 0
+	for i := r[0]; i < r[1]; i++ {
+		cw := measure(cs[i])
+		if x < w+cw {
+			return i
+		}
+		w += cw
+	}
+	if row+1 < len(rows) && rows[row+1][0] > r[1] {
+		return r[1] // the break space
+	}
+	return max(r[0], r[1]-1)
+}

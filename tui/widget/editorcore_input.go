@@ -589,6 +589,15 @@ func (c *EditorCore) handleCommandKey(k tui.KeyEvent) bool {
 				c.keys.opCount = count
 			}
 			return true
+		case !kc.Ctrl && (kc.Code == 'j' || kc.Code == 'k') && op != ActUnbound: // dgj ygk
+			c.keys.dropOp()
+			if to, moved := c.rowTarget(kc.Code == 'j', count); moved {
+				c.runOp(op, to, exclusive)
+			}
+			return true
+		case !kc.Ctrl && (kc.Code == 'j' || kc.Code == 'k'): // gj gk
+			c.rowMove(kc.Code == 'j', count)
+			return true
 		case !kc.Ctrl && (kc.Code == '*' || kc.Code == '#') && op == ActUnbound: // g* g#
 			c.starSearch(kc.Code == '#', false, count)
 			return true
