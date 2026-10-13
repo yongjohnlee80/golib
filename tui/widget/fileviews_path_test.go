@@ -399,3 +399,17 @@ func TestANavigationDropsATypedPathsCheckAsItStarts(t *testing.T) {
 		h.stop()
 	}
 }
+
+// A source with no filesystem is the local disk, and keeps the Home it was given: ~ goes there.
+func TestALocalSourceKeepsTheHomeItWasGiven(t *testing.T) {
+	root := tree(t, map[string]string{"in-home/h.md": "h", "top.md": "t"})
+	v := widget.NewFileOpenView(widget.WithFileViewSource(widget.FileSource{Home: filepath.Join(root, "in-home")}),
+		widget.WithFileViewDir(root), widget.WithFileViewPreview(false))
+	h := startBrowser(t, v)
+	defer h.stop()
+	h.shows("top.md")
+	h.inject(keyMod('k', tui.ModCtrl))
+	typePath(h, "~")
+	h.waitFor("~ listed", dirIs(h, v, filepath.Join(root, "in-home")))
+	h.shows("h.md")
+}
