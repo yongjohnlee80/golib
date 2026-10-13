@@ -108,6 +108,10 @@ func (r *TerminalShutdownResult) Wait(ctx context.Context) error { return r.comp
 
 func joinTerminalCleanup(generations []*TerminalStopResult) *TerminalShutdownResult {
 	r := &TerminalShutdownResult{completion: terminalCompletion{done: make(chan struct{})}}
+	if len(generations) == 0 {
+		close(r.completion.done)
+		return r
+	}
 	go func() {
 		var failures []error
 		for _, generation := range generations {
