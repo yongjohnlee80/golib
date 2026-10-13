@@ -26,8 +26,21 @@ func (c *EditorCore) HandleKey(k tui.KeyEvent) bool {
 		c.dot.atoms = append(c.dot.atoms, dotAtom{kind: dotKey, key: k})
 	}
 	handled := c.handleCommandKey(k)
+	c.settleRegister()
 	c.dotEnd()
 	return handled
+}
+
+// settleRegister drops the register a command named once the command has completed (Vim's clearop):
+// "aj then yy yanks into the unnamed register. The key that named it completes nothing.
+func (c *EditorCore) settleRegister() {
+	k := &c.keys
+	switch {
+	case k.regFresh:
+		k.regFresh = false
+	case !k.regArmed && !c.opPending():
+		k.reg = 0
+	}
 }
 
 // HandlePaste inserts pasted text as one atomic edit. In Visual it replaces the selection. A
@@ -349,9 +362,9 @@ func (c *EditorCore) handleCommandKey(k tui.KeyEvent) bool {
 	ctrl := k.Mods&tui.ModCtrl != 0
 
 	if k.Code == tui.KeyEscape {
-		hadPending := c.keys.count != 0 || c.keys.pendingAct != ActUnbound || c.keys.findArmed != ActUnbound ||
-			c.keys.op != ActUnbound || c.keys.objArmed != "" || c.keys.replArmed
+		hadPending := c.commandPending()
 		c.keys.count, c.keys.pendingAct, c.keys.findArmed = 0, ActUnbound, ActUnbound
+		c.keys.regArmed, c.keys.reg = false, 0
 		c.keys.dropOp()
 		if c.keys.mode == ModeVisual || c.keys.mode == ModeVisualLine {
 			c.exitVisual()
@@ -416,6 +429,18 @@ func (c *EditorCore) handleCommandKey(k tui.KeyEvent) bool {
 				c.selectObject(r)
 			}
 			return true
+		}
+	}
+
+	// An armed " takes this key's text as the register's name ("a, "A, "0, "+, "_); a key that
+	// names no register cancels it and is processed afresh. A count typed before it is kept (3"ayy).
+	if c.keys.regArmed {
+		c.keys.regArmed = false
+		if k.Text != "" && k.Mods&nonTextMods == 0 {
+			if name := []rune(k.Text)[0]; validRegister(name) {
+				c.keys.reg, c.keys.regFresh = name, true
+				return true
+			}
 		}
 	}
 
@@ -626,6 +651,12 @@ func (c *EditorCore) handleCommandKey(k tui.KeyEvent) bool {
 		return true
 	case ActRepeat:
 		c.repeatLast(hadCount, count)
+		return true
+	case ActRegisterPrefix:
+		c.keys.regArmed = true
+		if hadCount {
+			c.keys.count = count // 3"ayy: the count stays for the command
+		}
 		return true
 	case ActUndo, ActRedo:
 		c.dot.on = false // undoing is not a change . repeats

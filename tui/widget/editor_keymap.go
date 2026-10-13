@@ -228,6 +228,7 @@ const (
 	ActIndentPrefix    // >{motion}, >> (Vim): indent the lines by one unit
 	ActOutdentPrefix   // <{motion}, << (Vim): outdent the lines by one unit
 	ActRepeat          // . (Vim): repeat the last change
+	ActRegisterPrefix  // "{reg} (Vim): name the register the next yank, delete or put uses
 
 	actMax // sentinel for validation
 )
@@ -393,6 +394,8 @@ func (a Action) String() string {
 		return "OutdentPrefix"
 	case ActRepeat:
 		return "Repeat"
+	case ActRegisterPrefix:
+		return "RegisterPrefix"
 	}
 	return fmt.Sprintf("Action(%d)", a)
 }
@@ -558,6 +561,8 @@ func (a Action) Description() string {
 		return "Outdent"
 	case ActRepeat:
 		return "Repeat the last change"
+	case ActRegisterPrefix:
+		return "Name the register"
 	}
 	return "Custom action"
 }
@@ -621,7 +626,8 @@ func actionModes(a Action) (normal, visual, insert bool) {
 		ActWordForward, ActWordBack, ActWordEnd, ActParaForward, ActParaBack,
 		ActPageUp, ActPageDown:
 		return true, true, true
-	case ActGoBottom, ActGoPrefix, ActVisual, ActVisualLine, ActFindNext, ActFindPrev, ActCommandLine:
+	case ActGoBottom, ActGoPrefix, ActVisual, ActVisualLine, ActFindNext, ActFindPrev, ActCommandLine,
+		ActRegisterPrefix:
 		return true, true, false
 	case ActDeletePrefix, ActYankPrefix,
 		ActInsert, ActAppend, ActInsertLineStart, ActAppendLineEnd,
@@ -756,6 +762,7 @@ func VimKeymap() Keymap {
 	km[n('>')] = ActIndentPrefix
 	km[n('<')] = ActOutdentPrefix
 	km[n('.')] = ActRepeat
+	km[n('"')], km[v('"')] = ActRegisterPrefix, ActRegisterPrefix
 	km[n('p')] = ActPasteAfter
 	km[n('P')] = ActPasteBefore
 	km[n('u')] = ActUndo

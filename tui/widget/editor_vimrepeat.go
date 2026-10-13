@@ -43,6 +43,12 @@ type dotRecorder struct {
 
 // commandPending reports a Normal-mode command still being typed.
 func (c *EditorCore) commandPending() bool {
+	return c.opPending() || c.keys.regArmed || c.keys.reg != 0
+}
+
+// opPending reports a command's own state still pending: a count, an operator, a prefix, an armed
+// key. A register named alone completes nothing, so it is not counted here.
+func (c *EditorCore) opPending() bool {
 	k := &c.keys
 	return k.count != 0 || k.op != ActUnbound || k.pendingAct != ActUnbound || k.findArmed != ActUnbound ||
 		k.objArmed != "" || k.replArmed
