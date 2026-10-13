@@ -362,14 +362,26 @@ func paintProgress(comp tui.Component) (View, tui.NativeScope, bool) {
 // content below the bar is the active tab's child and draws over this view, so the scope is
 // the chrome.
 func paintTabs(comp tui.Component) (View, tui.NativeScope, bool) {
-	t, ok := comp.(*widget.Tabs)
-	if !ok {
+	var tabSpans func() []widget.TabSpan
+	var active func() int
+	switch t := comp.(type) {
+	case *widget.Tabs:
+		tabSpans, active = t.TabSpans, t.Active
+	case interface {
+		TabSpans() []widget.TabSpan
+		ActiveTabIndex() int
+	}:
+		// Runtime terminal tabs keep IDs for operations; the painter needs
+		// only the strip's spans and current presentation index. This seam
+		// also builds against the released root module, before its next tag.
+		tabSpans, active = t.TabSpans, t.ActiveTabIndex
+	default:
 		return nil, 0, false
 	}
 	return ViewFunc(func(c Canvas) {
 		cols, _ := cells(c)
 		cs := c.CellSize()
-		spans := t.TabSpans()
+		spans := tabSpans()
 		if cols <= 0 || len(spans) == 0 {
 			return
 		}
@@ -382,7 +394,7 @@ func paintTabs(comp tui.Component) (View, tui.NativeScope, bool) {
 			fg, bg := c.CellColors(s.X, 0)
 			r := Rect{X: float32(s.X)*cs.W - 2, Y: 1, W: float32(s.W)*cs.W + 4, H: cs.H - 1}
 			c.FillRRect(r, 4, Solid(bg))
-			if i == t.Active() {
+			if i == active() {
 				c.FillRect(Rect{X: r.X + 2, Y: cs.H - 2, W: r.W - 4, H: 2}, Solid(fg))
 			}
 		}
