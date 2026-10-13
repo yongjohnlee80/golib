@@ -57,25 +57,35 @@ func TestTerminalTabsGiveEveryTabTheirLookAndATabItsOwn(t *testing.T) {
 	defer close(p1.release)
 	defer close(p2.release)
 	defer close(p3.release)
-	own := addTestTerminalWith(t, tabs, "own", p1, WithMinimumContrast(7), WithCursorColor(blue))
+	own := addTestTerminalWith(t, tabs, "own", p1, WithMinimumContrast(7), WithCursorColor(blue), WithVimKeys(true))
 	if term := pickTerminal(tabs, own); term.minContrast != 7 {
 		t.Errorf("a tab's own contrast: %v", term.minContrast)
 	} else if c, ok := term.CursorColor(); !ok || c != blue {
 		t.Errorf("a tab's own cursor colour: %v %v", c, ok)
+	} else if !term.cfg.vimKeys {
+		t.Error("a tab's own vim keys are off")
 	}
 	plain := addTestTerminal(t, tabs, "plain", p2)
-	if term := pickTerminal(tabs, plain); term.minContrast != 0 {
-		t.Errorf("a tab with no look took one: %v", term.minContrast)
+	if term := pickTerminal(tabs, plain); term.minContrast != 0 || term.cfg.vimKeys {
+		t.Errorf("a tab with no look took one: %v, vim keys %v", term.minContrast, term.cfg.vimKeys)
 	}
 	// the container's look reaches every tab, those already added and those added later
 	tabs.SetMinimumContrast(4.5)
 	tabs.SetCursorColor(red)
-	later := addTestTerminal(t, tabs, "later", p3)
+	tabs.SetVimKeys(false)
+	later := addTestTerminalWith(t, tabs, "later", p3, WithVimKeys(true))
 	for _, id := range []TerminalTabID{own, plain, later} {
 		term := pickTerminal(tabs, id)
 		c, ok := term.CursorColor()
-		if term.minContrast != 4.5 || !ok || c != red {
-			t.Errorf("%s: contrast %v, cursor %v %v; want the container's", id, term.minContrast, c, ok)
+		if term.minContrast != 4.5 || !ok || c != red || term.cfg.vimKeys {
+			t.Errorf("%s: contrast %v, cursor %v %v, vim keys %v; want the container's", id, term.minContrast, c, ok, term.cfg.vimKeys)
+		}
+	}
+	// a keymap changing reaches the shells already running
+	tabs.SetVimKeys(true)
+	for _, id := range []TerminalTabID{own, plain, later} {
+		if !pickTerminal(tabs, id).cfg.vimKeys {
+			t.Errorf("%s: SetVimKeys(true) did not reach it", id)
 		}
 	}
 }
@@ -205,4 +215,35 @@ func TestTerminalTabsPlusOpensTheAddMenu(t *testing.T) {
 	if !menuOpen(true) || added != 0 {
 		t.Fatalf("+ on the strip opened no add menu (the add callback %d times):\n%s", added, h.tb.String())
 	}
+}
+
+// TestTerminalTabsAddMenuAloneShowsPlus: SetAddMenu with no add callback (and no menu) still gives
+// the strip its + span, and + typed on it opens the menu.
+func TestTerminalTabsAddMenuAloneShowsPlus(t *testing.T) {
+	tabs := NewTerminalTabs()
+	p1 := newResultProc()
+	defer close(p1.release)
+	addTestTerminal(t, tabs, "alpha", p1)
+	tabs.SetAddMenu(func() []MenuItemModel { return []MenuItemModel{NewCommand("claude", "Claude", nil)} })
+	h := startAppInternal(t, NewOverlayHost(tabs), 40, 8)
+	defer h.stopInternal()
+	var spans []TabSpan
+	var plus int
+	h.onLoopInternal(func() { spans, plus = tabs.TabSpans(), tabs.addX() })
+	if len(spans) != 2 || spans[1].X != plus {
+		t.Fatalf("spans %v: want the tab and + at %d", spans, plus)
+	}
+	h.onLoopInternal(func() { tabs.Context().RequestFocus() })
+	if err := h.tb.Inject(tui.KeyEvent{Kind: tui.KeyPress, Text: "+"}); err != nil {
+		t.Fatal(err)
+	}
+	for range 300 {
+		var open bool
+		h.onLoopInternal(func() { open = tabs.MenuOpen() })
+		if open {
+			return
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+	t.Fatalf("+ opened no add menu:\n%s", h.tb.String())
 }
