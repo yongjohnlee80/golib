@@ -177,6 +177,10 @@ func (c *EditorCore) bracketObject(inner bool, open, close string, count int) (o
 	if hiEx.ln < lo.ln || (hiEx.ln == lo.ln && hiEx.col < lo.col) {
 		hiEx = lo
 	}
+	// brackets on lines of their own around whole lines: the inside is those lines, as Vim's
+	if lo.ln > o.ln && lo.col == 0 && hiEx.ln < e.ln && hiEx.ln >= lo.ln && hiEx.col == len(b.lineClusters(hiEx.ln)) {
+		return opRange{lo: taPos{lo.ln, 0}, hiEx: taPos{hiEx.ln, 0}, lines: true}, true
+	}
 	return opRange{lo: lo, hiEx: hiEx}, true
 }
 
