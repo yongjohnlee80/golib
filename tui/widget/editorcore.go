@@ -722,7 +722,6 @@ func (c *EditorCore) menuAction(act Action) {
 	c.settlePendingRune()
 	c.hist.close()
 	c.keys.dropPending()
-	c.dotBoundary()
 	c.execAction(act, 1)
 }
 

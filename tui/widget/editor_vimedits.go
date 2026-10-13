@@ -119,9 +119,6 @@ func caseOf(op Action) func(string) string {
 	return toggleCase
 }
 
-// isCaseOp reports a case operator: g~, gu, gU.
-func isCaseOp(op Action) bool { return op == ActCaseToggleOp || op == ActLowerOp || op == ActUpperOp }
-
 // caseOpOf is the case operator the g prefix's second key names, or ActUnbound.
 func caseOpOf(code rune) Action {
 	switch code {
@@ -154,13 +151,11 @@ func (c *EditorCore) applyCase(op Action, r opRange) {
 }
 
 // applyShift is > (dir 1) and < (dir -1) over every line r touches, linewise whatever the motion,
-// the cursor on the first line's first non-blank.
+// the cursor on the first line's first non-blank. (An exclusive range never ends at a later
+// line's start here: rangeOf has already moved such an end back, or made the range whole lines.)
 func (c *EditorCore) applyShift(dir int, r opRange) {
 	b := &c.buf
 	last := r.hiEx.ln
-	if !r.lines && r.hiEx.col == 0 && last > r.lo.ln {
-		last-- // an exclusive range ending at a line's start does not touch that line
-	}
 	unit := c.shiftUnit()
 	c.beginGroup()
 	for i := r.lo.ln; i <= last; i++ {

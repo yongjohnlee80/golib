@@ -95,7 +95,6 @@ func (c *EditorCore) FocusLost() {
 	c.settlePendingRune()
 	c.hist.close()
 	c.keys.dropPending()
-	c.dotBoundary()
 }
 
 // PressAt is a click at buffer position (line, col), the widget's hit-test of the pointer. A press

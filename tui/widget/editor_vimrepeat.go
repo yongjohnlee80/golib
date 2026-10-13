@@ -109,15 +109,9 @@ func (c *EditorCore) dotInsertEnded() {
 	}
 }
 
-// dotDrop forgets a command being recorded (a command boundary), or splits an Insert being
-// recorded (a press is a jump).
-func (c *EditorCore) dotDrop() {
-	if c.dot.inInsert {
-		c.dotJump()
-		return
-	}
-	c.dot.on = false
-}
+// dotDrop splits an Insert being recorded when a press moves the cursor: a press is a jump. (A
+// command half-typed needs nothing: the next key, with nothing pending, records afresh.)
+func (c *EditorCore) dotDrop() { c.dotJump() }
 
 // repeatLast is .: the last change again, its count replaced by count when one was typed, as one
 // undo step.
@@ -159,12 +153,4 @@ func (c *EditorCore) repeatLast(hadCount bool, count int) {
 	}
 	c.hist.release(c.rev != rev)
 	d.replaying = false
-}
-
-// dotBoundary forgets a command half-typed when focus or a menu takes over; an Insert being
-// recorded goes on (focus leaving does not leave Insert).
-func (c *EditorCore) dotBoundary() {
-	if !c.dot.inInsert {
-		c.dot.on = false
-	}
 }
