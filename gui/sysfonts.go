@@ -79,10 +79,71 @@ func nerdFallback() string {
 	return families(first)
 }
 
+// withAliases is a typeface list with each family followed by the other names fontconfig gives
+// the same font ("JetBrainsMono Nerd Font" → "JetBrainsMono Nerd Font, JetBrainsMono NF"). The
+// shaper's font index (go-text's fontscan) knows a Nerd Font only by one of them, the short one
+// fontconfig lists second. A family named by the long one, which Families lists, matched nothing:
+// every character, letters too, came from the fallbacks, and the font's icons drew as boxes. A
+// family fontconfig does not list (Go Mono, which is embedded, or monospace) stays as it is.
+func withAliases(list string) string {
+	listing := fontconfig("fc-list", ":", "family")
+	var out []string
+	for _, f := range strings.Split(list, ",") {
+		if f = strings.TrimSpace(f); f == "" {
+			continue
+		}
+		for _, name := range append([]string{f}, aliasesOf(listing, strings.Trim(f, `"'`))...) {
+			if !namesFamily(strings.Join(out, ","), name) {
+				out = append(out, name)
+			}
+		}
+	}
+	return strings.Join(out, ", ")
+}
+
+// aliasesOf is the names fontconfig gives the font family names, from an fc-list "family"
+// listing: those on every line that names it, so a weight's own name ("CaskaydiaMono NFM Light",
+// on that weight's line only) is left out. None when no line names it.
+func aliasesOf(listing, family string) []string {
+	var common []string
+	seen := false
+	for _, line := range strings.Split(listing, "\n") {
+		names := strings.Split(families(line), ", ")
+		if !slices.ContainsFunc(names, func(n string) bool { return strings.EqualFold(n, family) }) {
+			continue
+		}
+		if !seen {
+			common, seen = names, true
+			continue
+		}
+		common = slices.DeleteFunc(common, func(n string) bool { return !slices.Contains(names, n) })
+	}
+	return common
+}
+
+// withNerd is a typeface list with an installed Nerd Font's family after it, for the icons the
+// fonts it names lack, unless it names that font already (by any of its names).
+func withNerd(tf string) string {
+	n := nerdFallback()
+	if n == "" {
+		return tf
+	}
+	for _, name := range strings.Split(n, ", ") {
+		if namesFamily(tf, name) {
+			return tf
+		}
+	}
+	if tf == "" {
+		return n
+	}
+	return tf + ", " + n
+}
+
 // cellTypeface constructs the prioritized font fallback chain used to render character cells.
 //
 // Assembly Order:
-//  1. Custom typeface specified in configuration, or system monospace if none set.
+//  1. Custom typeface specified in configuration, or system monospace if none set, each family
+//     with its other fontconfig names (withAliases).
 //  2. Embedded Go Mono baseline font.
 //  3. Nerd Font icon family (if installed and not already present).
 //  4. Generic fallback chains ("monospace, emoji").
@@ -93,11 +154,13 @@ func cellTypeface(c config) string {
 			tf = m + ", " + tf
 		}
 	}
-	if n := nerdFallback(); n != "" && !namesFamily(tf, strings.Split(n, ", ")[0]) {
-		tf += ", " + n
-	}
-	return fallbackChain(tf)
+	return fallbackChain(withNerd(withAliases(tf)))
 }
+
+// faceTypeface is the chain one of the cells' own faces (SetCellFaces) is drawn in, falling back as
+// the window's cells do: the family by every name fontconfig gives it, then a Nerd Font's icons,
+// then the system's monospace and emoji. A face font without icons still draws a prompt's.
+func faceTypeface(family string) string { return fallbackChain(withNerd(withAliases(family))) }
 
 var monospaceOnce = sync.OnceValue(func() string { return cellTypeface(defaultConfig()) })
 

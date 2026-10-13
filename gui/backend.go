@@ -219,7 +219,7 @@ func (b *Backend) SetCellFaces(families []string) {
 	faces := make([]font.Typeface, len(families))
 	for i, f := range families {
 		if i > 0 && f != "" {
-			faces[i] = font.Typeface(fallbackChain(f))
+			faces[i] = font.Typeface(faceTypeface(f))
 		}
 	}
 	b.render.faces = faces
@@ -239,7 +239,7 @@ func (b *Backend) SetProseFont(family string) {
 	if family == "" {
 		family = uiFamily
 	}
-	b.render.fonts.Prose = family
+	b.render.fonts.Prose = withAliases(family) // a family by any of its names, as the cells
 	b.refont(false)
 }
 
