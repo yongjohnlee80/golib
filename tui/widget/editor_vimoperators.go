@@ -56,9 +56,9 @@ func (c *EditorCore) opTarget(act Action, count int, hadCount bool) (to taPos, k
 		return taPos{ln, 0}, exclusive, true
 	case ActFirstNonBlank: // ^ ignores a count
 		return taPos{ln, c.firstNonBlank(ln)}, exclusive, true
-	case ActLineEnd: // N$: N-1 lines down, to the end, inclusive
+	case ActLineEnd: // N$: N-1 lines down, to the end, inclusive (an empty line's end is its start)
 		l := min(ln+count-1, last)
-		return taPos{l, lineLen(l) - 1}, inclusive, ln+count-1 <= last
+		return taPos{l, max(lineLen(l)-1, 0)}, inclusive, ln+count-1 <= last
 	case ActGoBottom: // [count]G: line count, else the last
 		if hadCount {
 			return taPos{min(count-1, last), 0}, linewise, true

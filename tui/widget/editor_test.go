@@ -197,12 +197,15 @@ func TestEditorLineDeleteYankPaste(t *testing.T) {
 }
 
 func TestEditorDoubleKeyCancel(t *testing.T) {
-	// `d` followed by anything but `d` cancels the pending
-	// buffer and processes the key normally — `dw` deliberately moves.
+	// `d` is an operator: a motion completes it (`dw` deletes the word); a key that is no motion
+	// cancels it and is processed afresh (`dx` is x).
 	h, ed, sh := focusedEditor(t, 30, 6, widget.WithInitialText("alpha beta"))
 	h.inject(typeString("dw")...)
 	h.barrier(sh)
-	wantState(t, h, ed, "alpha beta", widget.ModeNormal, 0, 6)
+	wantState(t, h, ed, "beta", widget.ModeNormal, 0, 0)
+	h.inject(typeString("dx")...)
+	h.barrier(sh)
+	wantState(t, h, ed, "eta", widget.ModeNormal, 0, 0)
 }
 
 func TestEditorDeleteToEnd(t *testing.T) {
