@@ -337,8 +337,10 @@ func (c *EditorCore) handleCommandKey(k tui.KeyEvent) bool {
 	ctrl := k.Mods&tui.ModCtrl != 0
 
 	if k.Code == tui.KeyEscape {
-		hadPending := c.keys.count != 0 || c.keys.pendingAct != ActUnbound || c.keys.findArmed != ActUnbound
+		hadPending := c.keys.count != 0 || c.keys.pendingAct != ActUnbound || c.keys.findArmed != ActUnbound ||
+			c.keys.op != ActUnbound || c.keys.objArmed != ""
 		c.keys.count, c.keys.pendingAct, c.keys.findArmed = 0, ActUnbound, ActUnbound
+		c.keys.dropOp()
 		if c.keys.mode == ModeVisual || c.keys.mode == ModeVisualLine {
 			c.exitVisual()
 			return true
@@ -358,7 +360,34 @@ func (c *EditorCore) handleCommandKey(k tui.KeyEvent) bool {
 		if k.Text != "" && k.Mods&nonTextMods == 0 {
 			f := charFindOf(armed, firstCluster(k.Text))
 			c.keys.lastFind = &f
+			if op := c.keys.op; op != ActUnbound {
+				c.keys.dropOp()
+				if to, kind, ok := c.findTarget(f, count, false); ok {
+					c.runOp(op, to, kind)
+				}
+				return true
+			}
 			c.findChar(f, count, false)
+			return true
+		}
+		c.keys.dropOp() // a key with no text: no find, and no operator over it
+	}
+
+	// An armed text object (i or a, after an operator or in Visual) takes this key's text as the
+	// object's name. A key with no text cancels it, and the operator, and is processed afresh.
+	if obj := c.keys.objArmed; obj != "" {
+		op, count := c.keys.op, max(c.keys.opCount, 1)*max(c.keys.objCount, 1)
+		c.keys.dropOp()
+		c.keys.count = 0
+		if k.Text != "" && k.Mods&nonTextMods == 0 {
+			r, found := c.textObject(obj == "i", firstCluster(k.Text), count)
+			switch {
+			case !found:
+			case op != ActUnbound:
+				c.runObject(op, r)
+			default:
+				c.selectObject(r)
+			}
 			return true
 		}
 	}
@@ -398,51 +427,60 @@ func (c *EditorCore) handleCommandKey(k tui.KeyEvent) bool {
 	if c.keys.unbound[kc] {
 		c.keys.count = 0
 		c.keys.pendingAct = ActUnbound
+		c.keys.dropOp()
 		return false
 	}
 
-	// Double-key pending buffer, keyed by the ARMING CHORD, so a rebound prefix completes on its
-	// own chord rather than a hard-coded rune: only the same chord again completes; any other key
-	// clears the pending state and is processed normally.
+	// The g prefix, keyed by the ARMING CHORD, so a rebound prefix completes on its own chord
+	// rather than a hard-coded rune: the same chord again is gg, e and E are ge and gE; any other
+	// key clears it and is processed normally. Under a pending operator the completion is the
+	// operator's motion (dgg, dge).
 	if c.keys.pendingAct != ActUnbound {
-		act, chord := c.keys.pendingAct, c.keys.pendingChord
-		hadCount := c.keys.pendingCount > 0
-		count := max(c.keys.pendingCount, 1)
+		chord := c.keys.pendingChord
+		op := c.keys.op
+		hadCount := c.keys.pendingCount > 0 || c.keys.opCount > 0
+		count := max(c.keys.pendingCount, 1) * max(c.keys.opCount, 1)
 		c.keys.pendingAct = ActUnbound
 		c.keys.pendingCount = 0
-		if kc == chord {
-			switch act {
-			case ActDeletePrefix:
-				if c.readOnly {
-					return true // dd on a viewer: consumed, refused
-				}
-				c.deleteLines(b.ln, min(b.ln+count-1, len(b.lines)-1))
-			case ActYankPrefix:
-				if c.reg.yankAllowed() {
-					text := strings.Join(b.lines[b.ln:min(b.ln+count-1, len(b.lines)-1)+1], "\n")
-					c.yankSet(text, true)
-					c.exportYank(text)
-				}
-			case ActGoPrefix:
-				c.goToLine(hadCount, count, false) // [count]gg
-			}
+		back := ActUnbound
+		if !kc.Ctrl && kc.Code == 'e' {
+			back = ActWordEndBack
+		} else if !kc.Ctrl && kc.Code == 'E' {
+			back = ActWORDEndBack
+		}
+		switch {
+		case kc == chord && op != ActUnbound:
+			c.keys.dropOp()
+			c.runOp(op, c.gotoLineTarget(count, hadCount), linewise) // [count]dgg
+			return true
+		case kc == chord:
+			c.goToLine(hadCount, count, false) // [count]gg
+			return true
+		case back != ActUnbound && op != ActUnbound:
+			c.keys.dropOp()
+			c.opMotion(op, back, count, hadCount) // dge
+			return true
+		case back != ActUnbound:
+			c.move(back, count)
 			return true
 		}
-		// the g prefix's other second keys: ge and gE, back to the end of the previous word
-		if act == ActGoPrefix && !kc.Ctrl && (kc.Code == 'e' || kc.Code == 'E') {
-			if kc.Code == 'E' {
-				c.move(ActWORDEndBack, count)
-			} else {
-				c.move(ActWordEndBack, count)
-			}
-			return true
-		}
+		c.keys.dropOp()
 		// Fall through: reprocess this key from scratch (count consumed).
+	}
+
+	// i and a name a text object after an operator (diw), and in Visual (viw): the next key says
+	// which. Neither is Visual's own key, so it is read before the keymap's answer.
+	visual := c.keys.mode == ModeVisual || c.keys.mode == ModeVisualLine
+	if !kc.Ctrl && (kc.Code == 'i' || kc.Code == 'a') && (c.keys.op != ActUnbound || visual) {
+		c.keys.objArmed, c.keys.objCount = string(kc.Code), c.keys.count
+		c.keys.count = 0
+		return true
 	}
 
 	act, bound := c.keys.keymap[kc]
 	if !bound {
 		c.keys.count = 0 // an unbound key cancels the pending count and bubbles
+		c.keys.dropOp()
 		return false
 	}
 
@@ -450,16 +488,50 @@ func (c *EditorCore) handleCommandKey(k tui.KeyEvent) bool {
 	count := max(c.keys.count, 1)
 	c.keys.count = 0
 
-	switch act {
-	case ActDeletePrefix, ActYankPrefix, ActGoPrefix:
-		if act == ActYankPrefix && !c.reg.yankAllowed() {
+	// Under a pending operator: the arming chord again is the doubled, linewise form (dd, cc, yy);
+	// g arms its second key and f t F T their character, keeping the operator; a motion runs it;
+	// any other key cancels it and is processed afresh.
+	if op := c.keys.op; op != ActUnbound {
+		total := max(c.keys.opCount, 1) * count
+		hadAny := hadCount || c.keys.opCount > 0
+		switch {
+		case kc == c.keys.opChord:
+			c.keys.dropOp()
+			c.runOp(op, taPos{min(b.ln+total-1, len(b.lines)-1), 0}, linewise)
+			return true
+		case act == ActGoPrefix:
+			c.keys.pendingAct, c.keys.pendingChord, c.keys.pendingCount = act, kc, 0
+			if hadCount {
+				c.keys.pendingCount = count
+			}
+			return true
+		case act == ActFindCharForward || act == ActFindCharBack || act == ActTillCharForward || act == ActTillCharBack:
+			c.keys.findArmed, c.keys.findCount = act, total
+			return true
+		case opMotion(act):
+			c.keys.dropOp()
+			c.opMotion(op, act, total, hadAny)
 			return true
 		}
+		c.keys.dropOp()
+	}
+
+	switch act {
+	case ActDeletePrefix, ActYankPrefix, ActChangePrefix:
+		if (act == ActYankPrefix && !c.reg.yankAllowed()) || (act != ActYankPrefix && c.readOnly) {
+			return true // consumed, refused: a viewer never changes text, nor a yank-less core copies
+		}
+		c.keys.op, c.keys.opChord, c.keys.opCount = act, kc, 0
+		if hadCount {
+			c.keys.opCount = count // multiplies the motion's (2d3w)
+		}
+		return true
+	case ActGoPrefix:
 		c.keys.pendingAct = act
 		c.keys.pendingChord = kc
 		c.keys.pendingCount = 0
 		if hadCount {
-			c.keys.pendingCount = count // preserved for the completion (2dd, 5gg)
+			c.keys.pendingCount = count // preserved for the completion (5gg)
 		}
 		return true
 	case ActGoBottom:
