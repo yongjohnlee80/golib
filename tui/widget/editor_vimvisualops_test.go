@@ -24,6 +24,9 @@ func TestVimVisualOperators(t *testing.T) {
 		{what: "v o: the other end", text: "abcdef", col: 2, seq: "vllohd", want: "af"},
 		{what: "v r then Esc cancels r", text: "abcd", seq: "vlr<esc>", want: "abcd"},
 		{what: "u after v U", text: "abc", seq: "vlUu", want: "abc"},
+		{what: "v d on an empty line takes its break (Neovim)", text: "a\n\nb", ln: 1, seq: "vd", want: "a\nb"},
+		{what: "v ending on an empty line takes its break (Neovim)", text: "ab\n\ncd", col: 1, seq: "vjd", want: "acd"},
+		{what: "v d on an empty line before an empty last (Neovim)", text: "a\n\n", ln: 1, seq: "vd", want: "a\n"},
 	})
 }
 

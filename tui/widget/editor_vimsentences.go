@@ -142,7 +142,7 @@ func (w *sentWalk) findSent(p taPos, forward bool, count int) (taPos, bool) {
 			start := p.ln
 			for { // find the end of the sentence
 				ch := w.at(p)
-				if ch == "" || (p.col == 0 && w.paraStart(p.ln)) {
+				if ch == "" { // an empty line (a paragraph's boundary), or a line's end
 					if !forward && p.ln != start {
 						p.ln, p.col = p.ln+1, 0
 					}
@@ -195,9 +195,6 @@ func (w *sentWalk) findSent(p taPos, forward bool, count int) (taPos, bool) {
 	return p, true
 }
 
-// paraStart is Vim's startPS for a paragraph: an empty line (as the walk reads it).
-func (w *sentWalk) paraStart(ln int) bool { return w.empty(ln) }
-
 // firstBlank is Vim's find_first_blank: back over the blanks before p, to the first of them.
 func (w *sentWalk) firstBlank(p *taPos) {
 	for w.decl(p) != -1 {
@@ -224,10 +221,15 @@ func (w *sentWalk) sentForward(p taPos, count int, atStart bool) taPos {
 }
 
 // sentenceTarget is ( or ): the count'th sentence start back or on. Past the last sentence ) stops
-// at the text's last character, as findsent's FAIL with no count left does.
+// at the text's last character; a count that runs out of text before its last sentence moves
+// nothing, as Vim's findsent FAIL leaves the cursor (and nv_brace beeps).
 func (c *EditorCore) sentenceTarget(forward bool, count int) taPos {
 	w := c.sentWalk()
-	p, _ := w.findSent(taPos{c.buf.ln, c.buf.col}, forward, max(count, 1))
+	at := taPos{c.buf.ln, c.buf.col}
+	p, ok := w.findSent(at, forward, max(count, 1))
+	if !ok {
+		return at
+	}
 	return c.clampSentPos(p)
 }
 
@@ -370,14 +372,15 @@ func (c *EditorCore) sentenceObject(inner bool, count int) (opRange, bool) {
 		c.setVisualCursor(c.clampSentPos(last))
 		return opRange{}, false
 	}
-	lo, hi := c.clampSentPos(start), c.clampSentPos(end)
-	switch {
-	case incl: // the sentence ends the text: its last character too
-		hi.col = len(c.buf.lineClusters(hi.ln))
-	case hi.col == 0 && hi.ln > lo.ln: // Vim's exclusive rule: not the next line's start, this one's end
-		hi = taPos{hi.ln - 1, len(c.buf.lineClusters(hi.ln - 1))}
+	// exclusive to end, or inclusive of last when the sentence ends the text; rangeOf applies Vim's
+	// exclusive rules (an end at a later line's start ends the line before, and from a line's
+	// first non-blank the range is whole lines)
+	k, to := exclusive, end
+	if incl {
+		k, to = inclusive, last
 	}
-	return opRange{lo: lo, hiEx: hi}, true
+	r, empty := c.rangeOf(c.clampSentPos(start), c.clampSentPos(to), k)
+	return r, !empty
 }
 
 // setVisualCursor puts the Visual cursor at p.

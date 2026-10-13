@@ -14,8 +14,10 @@ func (c *EditorCore) visualRange() (lo, hiEx taPos) {
 		a, b = b, a
 	}
 	n := len(c.buf.lineClusters(b.ln))
-	if c.vEOL && b.col >= n && b.ln+1 < len(c.buf.lines) {
-		return a, taPos{ln: b.ln + 1} // the line's break is selected (Select)
+	if (c.vEOL && b.col >= n || n == 0) && b.ln+1 < len(c.buf.lines) {
+		// the line's break is selected: Select's, or an empty line's, as Vim's inclusive Visual
+		// takes the break of an empty line it ends on
+		return a, taPos{ln: b.ln + 1}
 	}
 	return a, taPos{ln: b.ln, col: min(b.col+1, n)}
 }

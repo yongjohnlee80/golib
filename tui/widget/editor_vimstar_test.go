@@ -23,6 +23,8 @@ func TestVimStar(t *testing.T) {
 		{what: "case is matched", text: "abc ABC abc", seq: "*", want: "abc ABC abc", cursor: true, wantCol: 8},
 		{what: "a word ends at a class change (Hangul)", text: "한국 한국어 한국", seq: "*", want: "한국 한국어 한국", cursor: true, wantCol: 7},
 		{what: "n after *", text: "foo x foo y foo", seq: "*n", want: "foo x foo y foo", cursor: true, wantCol: 12},
+		{what: "N after * stays whole-word", text: "foo foobar foo", seq: "*N", want: "foo foobar foo", cursor: true},
+		{what: "* from inside the word", text: "foo bar foo", col: 1, seq: "*", want: "foo bar foo", cursor: true, wantCol: 8},
 		{what: "N after *", text: "foo x foo y foo", seq: "*N", want: "foo x foo y foo", cursor: true},
 		{what: "3#", text: "foo x foo y foo", col: 12, seq: "3#", want: "foo x foo y foo", cursor: true, wantCol: 12},
 		{what: "* is a jump: Ctrl-o goes back", text: "  foo x foo", seq: "*<cto>", want: "  foo x foo", cursor: true},

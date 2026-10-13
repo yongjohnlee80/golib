@@ -10,6 +10,7 @@ func TestVimSentenceMotions(t *testing.T) {
 		{what: ") past the last: the line's last character", text: "one.  two", seq: "))D", want: "one.  tw"},
 		{what: "an empty line is a sentence", text: "a\n\nb. c", seq: ")))D", want: "a\n\nb. "},
 		{what: "a blank-only line counts as empty (golib's { } rule)", text: "a\n  \nb. c", seq: ")))D", want: "a\n  \nb. "},
+		{what: ") stops on a blank-only line (Vim, for a line of nothing, would pass it)", text: "a\n  \nb", seq: ")", want: "a\n  \nb", cursor: true, wantLn: 1},
 		{what: "! and a closing )", text: "Hi! (Yes.) No", seq: ")", want: "Hi! (Yes.) No", cursor: true, wantCol: 4},
 		{what: "twice", text: "Hi! (Yes.) No", seq: "))", want: "Hi! (Yes.) No", cursor: true, wantCol: 11},
 		{what: "( from inside a sentence", text: "Hi! (Yes.) No", col: 12, seq: "(", want: "Hi! (Yes.) No", cursor: true, wantCol: 11},
@@ -30,6 +31,15 @@ func TestVimSentenceMotions(t *testing.T) {
 		{what: ") is a jump: Ctrl-o goes back", text: "a. b. c.", seq: "2)<cto>", want: "a. b. c.", cursor: true},
 		{what: "( is a jump: two of them, Ctrl-o back one", text: "a. b. c.", col: 6, seq: "((<cto>", want: "a. b. c.", cursor: true, wantCol: 3},
 	})
+}
+
+// d) within a line goes into "1, as Vim's use_reg_one has it for ( and ).
+func TestVimSentenceDeleteRegister(t *testing.T) {
+	c, _ := coreWith(t, "a. b. c.")
+	vimSeq(c, "d)")
+	if one, _, _ := c.NamedRegister('1'); one != "a. " {
+		t.Fatalf(`d) left "1 = %q`, one)
+	}
 }
 
 // is and as, as Vim's current_sent: Neovim's results again.
