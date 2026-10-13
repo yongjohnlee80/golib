@@ -6,6 +6,7 @@ import (
 	"os"
 	"sync"
 
+	"github.com/yongjohnlee80/golib/errs"
 	"github.com/yongjohnlee80/golib/tui"
 	"github.com/yongjohnlee80/golib/tui/pty"
 	"github.com/yongjohnlee80/golib/tui/style"
@@ -458,8 +459,32 @@ func (t *Terminal) ingest(b []byte) {
 // send queues bytes for the program without blocking the loop.
 func (t *Terminal) send(b []byte) {
 	if t.Running() && len(b) > 0 {
-		t.in.push(b)
+		if err := t.in.offer(b); err != nil {
+			t.report(err)
+		}
 	}
+}
+
+// ErrTerminalNotRunning rejects typed input when there is no live process.
+var ErrTerminalNotRunning = errs.Sentinel(errs.ErrPrecondition, "terminal is not running")
+
+// ErrTerminalInputFull means the bounded input queue cannot accept this whole send.
+var ErrTerminalInputFull = errs.Sentinel(errs.ErrPrecondition, "terminal input queue is full")
+
+// TerminalInputLimit bounds queued and in-flight input bytes per process.
+const TerminalInputLimit = 1 << 20
+
+// SendText accepts literal text into the running generation's bounded input queue.
+// On the UI loop. Nil means queued, not written or processed by the child. A
+// rejected send queues no bytes; no PTY writer is exposed to the caller.
+func (t *Terminal) SendText(text string) error {
+	if !t.Running() {
+		return ErrTerminalNotRunning
+	}
+	if len(text) > TerminalInputLimit {
+		return ErrTerminalInputFull
+	}
+	return t.in.offer([]byte(text))
 }
 
 func (t *Terminal) setMode(m TerminalMode) {
@@ -796,6 +821,7 @@ type inputQueue struct {
 	mu        sync.Mutex
 	cond      *sync.Cond
 	q         [][]byte
+	pending   int           // queued and currently being written, bounded by TerminalInputLimit
 	closed    bool          // drop what is queued and stop
 	finishing bool          // write what is queued, then stop
 	done      chan struct{} // closed when the writer has stopped
@@ -816,9 +842,14 @@ func newInputQueue(w io.Writer) *inputQueue {
 				return
 			}
 			b := iq.q[0]
+			iq.q[0] = nil
 			iq.q = iq.q[1:]
 			iq.mu.Unlock()
-			if _, err := w.Write(b); err != nil {
+			n, err := w.Write(b)
+			iq.mu.Lock()
+			iq.pending -= len(b)
+			iq.mu.Unlock()
+			if err != nil || n != len(b) {
 				iq.close()
 				return
 			}
@@ -827,13 +858,21 @@ func newInputQueue(w io.Writer) *inputQueue {
 	return iq
 }
 
-func (iq *inputQueue) push(b []byte) {
+func (iq *inputQueue) offer(b []byte) error {
 	iq.mu.Lock()
-	if !iq.closed && !iq.finishing {
+	defer iq.mu.Unlock()
+	if iq.closed || iq.finishing {
+		return ErrTerminalNotRunning
+	}
+	if len(b) > TerminalInputLimit-iq.pending {
+		return ErrTerminalInputFull
+	}
+	if len(b) > 0 {
 		iq.q = append(iq.q, append([]byte(nil), b...))
+		iq.pending += len(b)
 		iq.cond.Signal()
 	}
-	iq.mu.Unlock()
+	return nil
 }
 
 // finish stops taking keys and returns a channel closed once the queued
@@ -849,6 +888,9 @@ func (iq *inputQueue) finish() <-chan struct{} {
 func (iq *inputQueue) close() {
 	iq.mu.Lock()
 	iq.closed = true
+	for _, b := range iq.q {
+		iq.pending -= len(b)
+	}
 	iq.q = nil
 	iq.cond.Broadcast()
 	iq.mu.Unlock()
