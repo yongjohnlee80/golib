@@ -15,6 +15,9 @@ type buffer struct {
 	stamp    []uint32
 	order    uint32
 	stamping bool
+
+	// face is the face of the node painting now (CellFacer, face.go): every write carries it
+	face uint16
 }
 
 // invalidCell is the last-buffer sentinel after (re)allocation: it compares
@@ -86,9 +89,11 @@ func (b *buffer) setCell(x, y int, c Cell) {
 	b.put(i, c)
 }
 
-// put writes one cell, stamped with the painting node's order while stamping. Every write goes
-// through it, the implicit ones included, so a native view knows each cell painted after it.
+// put writes one cell, stamped with the painting node's order while stamping, and in its face.
+// Every write goes through it, the implicit ones included, so a native view knows each cell
+// painted after it, and a cell written over takes the writer's face.
 func (b *buffer) put(i int, c Cell) {
+	c.Face = b.face
 	b.curr[i] = c
 	if b.stamping {
 		b.stamp[i] = b.order

@@ -247,3 +247,77 @@ func TestTerminalTabsAddMenuAloneShowsPlus(t *testing.T) {
 	}
 	t.Fatalf("+ opened no add menu:\n%s", h.tb.String())
 }
+
+// TestTerminalTabsDrawTheirTabsInTheirFaceAndTheStripInTheWindows: SetCellFace reaches every tab,
+// those added later too; the strip, and a menu opened over a tab, are in the window's face, and
+// the menu closed, the tab's cells beneath come back in its face.
+func TestTerminalTabsDrawTheirTabsInTheirFaceAndTheStripInTheWindows(t *testing.T) {
+	tabs := NewTerminalTabs()
+	p1, p2 := newResultProc(), newResultProc()
+	defer close(p1.release)
+	defer close(p2.release)
+	a := addTestTerminal(t, tabs, "alpha", p1)
+	tabs.SetCellFace("Iosevka Term")
+	b := addTestTerminal(t, tabs, "beta", p2)
+	tabs.SetCellFace("Iosevka Term") // the same again: nothing to change
+	for _, id := range []TerminalTabID{a, b} {
+		if got := pickTerminal(tabs, id).CellFace(); got != "Iosevka Term" {
+			t.Fatalf("%s: face %q", id, got)
+		}
+	}
+	tabs.SetMenu(func(TerminalTabID) []MenuItemModel { return []MenuItemModel{NewCommand("close", "Close tab", nil)} })
+	h := startAppInternal(t, NewOverlayHost(tabs), 40, 8)
+	defer h.stopInternal()
+	face := func(x, y int) uint16 { return h.tb.Snapshot()[y][x].Face }
+	var bodyFace uint16
+	for range 300 {
+		h.syncInternal()
+		if bodyFace = face(20, 3); bodyFace != 0 {
+			break
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+	if bodyFace == 0 {
+		t.Fatal("the tab's body is in the window's face")
+	}
+	if got := face(1, 0); got != 0 {
+		t.Errorf("the strip is in face %d, want the window's", got)
+	}
+	var bx int
+	h.onLoopInternal(func() { bx = tabs.tabX(b) })
+	if err := h.tb.Inject(tui.MouseEvent{Kind: tui.MousePress, Button: tui.MouseRight, X: bx + 1, Y: 0}); err != nil {
+		t.Fatal(err)
+	}
+	var open bool
+	for range 300 {
+		h.onLoopInternal(func() { open = tabs.MenuOpen() })
+		if open {
+			break
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+	h.syncInternal()
+	row, col := -1, -1
+	for y, cells := range h.tb.Snapshot() {
+		for x := range cells {
+			if x+5 <= len(cells) && cells[x].Content == "C" && cells[x+1].Content == "l" && cells[x+2].Content == "o" {
+				row, col = y, x
+			}
+		}
+	}
+	if row < 1 {
+		t.Fatalf("no menu over the tab:\n%s", h.tb.String())
+	}
+	if got := face(col, row); got != 0 {
+		t.Errorf("the menu over the tab is in face %d, want the window's", got)
+	}
+	h.onLoopInternal(tabs.closeMenu)
+	for range 300 {
+		h.syncInternal()
+		if face(col, row) == bodyFace {
+			return
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+	t.Fatalf("the menu closed, the cell beneath is in face %d, want the tab's %d", face(col, row), bodyFace)
+}
