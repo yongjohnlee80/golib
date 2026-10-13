@@ -156,6 +156,11 @@ func TestVimCharacterFindArgument(t *testing.T) {
 	keys(c, "l")
 	at(t, c, "a press drops f", 0, 1)
 	keys(c, "f")
+	c.Select(widget.TextRange{From: widget.TextPos{Line: 0, Col: 0}, To: widget.TextPos{Line: 0, Col: 2}})
+	keys(c, "l")
+	at(t, c, "a mode change (Select, into Visual) drops f", 0, 2)
+	special(c, tui.KeyEscape)
+	keys(c, "0lf")
 	keys(c, "i")
 	at(t, c, "f then i finds no i", 0, 1)
 	if c.Mode() != widget.ModeNormal {

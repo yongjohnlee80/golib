@@ -170,10 +170,9 @@ func (c *EditorCore) matchPair() {
 	}
 }
 
-// percentLine is N%: line N% of the text, as Vim rounds it ((N × lines + 99) / 100), N clamped
-// to 100.
+// percentLine is N%: line N% of the text, as Vim rounds it ((N × lines + 99) / 100). A count past
+// 100 lands past the last line, which toLine clamps to it.
 func (c *EditorCore) percentLine(n int) {
-	n = min(n, 100)
 	c.toLine((n*len(c.buf.lines)+99)/100 - 1)
 }
 
