@@ -139,6 +139,10 @@ executado no golib/tui.</translation>
         <source>V-BLOCK</source>
         <translation>V-BLOCO</translation>
     </message>
+    <message id="editor.mode.replace">
+        <source>REPLACE</source>
+        <translation>SUBSTITUIÇÃO</translation>
+    </message>
     <message id="editor.noName">
         <source>[No Name]</source>
         <translation>[Sem nome]</translation>

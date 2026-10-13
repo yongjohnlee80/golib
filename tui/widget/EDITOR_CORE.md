@@ -113,8 +113,11 @@ n, err := core.ReplaceAll("old", "new", widget.FindOptions{}) // one undo step
 ```
 
 - A term matches whole grapheme clusters within one line.
-- `FindOptions` has three flags: `IgnoreCase`, `Backward` and `Wrap`. The zero value is a literal,
-  case-sensitive, forward search that stops at the end.
+- `FindOptions` has four flags: `IgnoreCase`, `Backward`, `Wrap` and `WholeWord`. The zero value
+  is a literal, case-sensitive, forward search that stops at the end. `WholeWord` is Vim's `\<`
+  and `\>`: where the term begins with a keyword character (`IsKeyword`) the match must start a
+  word, and where it ends with one it must end a word. A word ends where the character class
+  changes, so `漢字abc` holds the words `漢字` and `abc`.
 - Searching forward, `Find` returns the first match that starts *after* `from`, so finding again
   from a match moves on. Searching backward, it returns the last match that starts before `from`.
 
@@ -132,6 +135,10 @@ core.SetFind("", widget.FindOptions{})                     // clear it
   match.
 - With no active find, `n` and `N` are not consumed. An application can therefore keep an `n` of
   its own.
+- In the Vim keyset, `*` and `#` find the whole word under the cursor (`g*` and `g#` without word
+  boundaries) and make it the active find. A host that keeps a find of its own takes them
+  instead: `SetFindHost(func(FindRequest) bool)` receives the word, the options, the direction and
+  the count, and reports whether it took them.
 
 **Replacing one match at a time** is a `ReplaceSession`. It walks the whole document from the
 top, visiting each match once, so a replacement that contains the term is never visited again.
@@ -275,10 +282,21 @@ lines with spaces, as Vim's does. Text read from the system clipboard is never a
 
 ## Modes
 
-`Mode()` is `ModeNormal`, `ModeInsert`, `ModeVisual`, `ModeVisualLine` or `ModeVisualBlock`
-(Ctrl-v). The three Visual modes share one set of bindings. `InsertOneShot()` reports Insert's
-Ctrl-o running its one Normal-mode command: the mode is Normal until the command is complete, so
-a status line can show `-- (insert) --`.
+`Mode()` is `ModeNormal`, `ModeInsert`, `ModeVisual`, `ModeVisualLine`, `ModeVisualBlock`
+(Ctrl-v) or `ModeReplace` (R). The three Visual modes share one set of bindings, and Replace
+shares Insert's. `InsertOneShot()` reports Insert's Ctrl-o running its one Normal-mode command:
+the mode is Normal until the command is complete. `OneShotMode()` says which mode it returns to,
+`ModeInsert` or `ModeReplace`, so a status line can show `-- (insert) --` or `-- (replace) --`.
+
+## Sentences and display rows
+
+- `(` and `)` move by sentence, and `is` and `as` select sentences, by Vim's rules (a sentence ends
+  at `.`, `!` or `?`, any closing `)`, `]`, `"` or `'`, then a blank or the line's end).
+  **One difference from Vim:** a line of only blanks counts as empty, for sentences as for `{ }`,
+  where Vim needs a line with nothing on it.
+- `gj` and `gk` move by display row in wrapped text. A layout that wraps implements
+  `EditorRowLayout`: `RowCount(line)`, `RowOf(line, col) (row, x)` and `ColAt(line, row, x)`, in
+  its own units. The terminal `Editor`'s layout does. Without one, each line is one row.
 
 ## Writing aids
 

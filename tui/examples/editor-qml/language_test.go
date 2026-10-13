@@ -7,6 +7,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/yongjohnlee80/golib/tui"
 	"github.com/yongjohnlee80/golib/tui/decl/decltest"
 	"github.com/yongjohnlee80/golib/tui/widget"
 )
@@ -117,6 +118,11 @@ func TestEveryModeIsNamedInTheLanguageShowing(t *testing.T) {
 	r.key(t, ctrl('v'))
 	r.waitFor(t, "V-BLOCK in Korean", func(s string) bool {
 		return strings.Contains(lastNonEmpty(strings.Split(s, "\n")), "비주얼 블록")
+	})
+	r.key(t, tui.KeyEvent{Kind: tui.KeyPress, Code: tui.KeyEscape})
+	r.key(t, runeKey('R'))
+	r.waitFor(t, "REPLACE in Korean", func(s string) bool {
+		return strings.Contains(lastNonEmpty(strings.Split(s, "\n")), "바꾸기")
 	})
 	unknown := widget.EditorMode(99)
 	if got := modeMessage(unknown); got != unknown.String() {

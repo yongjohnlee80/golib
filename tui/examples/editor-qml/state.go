@@ -70,6 +70,8 @@ func modeMessage(m widget.EditorMode) any {
 		return tui.Msg("editor.mode.visualLine")
 	case widget.ModeVisualBlock:
 		return tui.Msg("editor.mode.visualBlock")
+	case widget.ModeReplace:
+		return tui.Msg("editor.mode.replace")
 	}
 	return m.String()
 }
