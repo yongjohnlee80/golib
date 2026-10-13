@@ -120,7 +120,14 @@ func (c *EditorCore) quoteObject(inner bool, q string) (opRange, bool) {
 	cs := c.buf.lineClusters(ln)
 	var at []int
 	for i, cl := range cs {
-		if cl == q && (i == 0 || cs[i-1] != `\`) {
+		if cl != q {
+			continue
+		}
+		escapes := 0 // the backslashes right before it: an odd run escapes it, an even one escapes itself
+		for j := i - 1; j >= 0 && cs[j] == `\`; j-- {
+			escapes++
+		}
+		if escapes%2 == 0 {
 			at = append(at, i)
 		}
 	}
