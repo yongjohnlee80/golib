@@ -21,6 +21,11 @@ type editHistory struct {
 	enabled    bool // false: nothing is recorded, and there is nothing to undo or redo
 	undo, redo []textSnap
 	open       bool // a group is open: edits join it without a snapshot of their own
+	// held makes everything until release one group, whatever closes it meanwhile (a . replay,
+	// whose Insert moves would close it); heldRedo is the redo the hold cleared, for a replay that
+	// changed nothing.
+	held     bool
+	heldRedo []textSnap
 }
 
 // setEnabled turns the history on or off; off forgets it.
@@ -34,7 +39,7 @@ func (h *editHistory) setEnabled(on bool) {
 // begin starts an edit group with the state before it, unless keepOpen and a group is already
 // open. keepOpen leaves the group open for the edits that follow. A new group clears redo.
 func (h *editHistory) begin(before func() textSnap, keepOpen bool) {
-	if !h.enabled || (keepOpen && h.open) {
+	if !h.enabled || h.held || (keepOpen && h.open) {
 		return
 	}
 	h.undo = append(h.undo, before())
@@ -51,8 +56,40 @@ func (h *editHistory) begin(before func() textSnap, keepOpen bool) {
 // it, and the session's typing joins it.
 func (h *editHistory) keepOpen() { h.open = true }
 
-// close ends the open group, if any: the next edit begins its own.
-func (h *editHistory) close() { h.open = false }
+// close ends the open group, if any: the next edit begins its own. A held group stays open.
+func (h *editHistory) close() {
+	if !h.held {
+		h.open = false
+	}
+}
+
+// hold begins one group for everything until release: one snapshot now, and none, nor any close,
+// until release.
+func (h *editHistory) hold(before func() textSnap) {
+	if !h.enabled || h.held {
+		return
+	}
+	h.undo = append(h.undo, before())
+	if len(h.undo) > editHistoryCap {
+		h.undo = h.undo[1:]
+	}
+	h.heldRedo, h.redo = h.redo, nil
+	h.held, h.open = true, true
+}
+
+// release ends the held group; one that changed nothing is no step at all, and the redo it cleared
+// comes back.
+func (h *editHistory) release(changed bool) {
+	if !h.held {
+		return
+	}
+	h.held, h.open = false, false
+	if !changed && len(h.undo) > 0 {
+		h.undo = h.undo[:len(h.undo)-1]
+		h.redo = h.heldRedo
+	}
+	h.heldRedo = nil
+}
 
 // reset forgets every group, as a new text does.
 func (h *editHistory) reset() { h.undo, h.redo, h.open = nil, nil, false }

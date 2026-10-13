@@ -53,6 +53,7 @@ type EditorLayout interface {
 type EditorCore struct {
 	buf            textBuffer     // the text and the cursor
 	hist           editHistory    // undo/redo
+	dot            dotRecorder    // the change . repeats, and the one being recorded
 	reg            editRegister   // the unnamed register
 	keys           keyDispatch    // modes and key routing
 	hl             highlightCache // per-line styles
@@ -547,6 +548,7 @@ func (c *EditorCore) SetKeyset(ks Keyset) {
 	}
 	c.settlePendingRune()
 	c.keys.dropPending()
+	c.dot = dotRecorder{} // a change recorded under another profile is not this one's to repeat
 	c.hist.close()
 	c.buf.anchor, c.vAnchor = nil, taPos{}
 	c.keys.applyKeyset(ks)
@@ -661,6 +663,7 @@ func (c *EditorCore) exitInsert() {
 	if !c.keys.modal {
 		return
 	}
+	c.dotInsertEnded()
 	c.hist.close()
 	c.buf.anchor = nil // a table cell's selection is Insert mode's
 	c.buf.col = max(0, c.buf.col-1)
@@ -696,6 +699,17 @@ func (c *EditorCore) settlePendingRune() {
 	c.beginGroup()
 	c.buf.insertText(string(r))
 	c.edited()
+	c.dotTypedText(string(r))
+}
+
+// typeText inserts text as typing does: the closing alignment runs when it types a closer.
+func (c *EditorCore) typeText(s string) {
+	c.beginGroup()
+	c.buf.insertText(s)
+	if strings.ContainsAny(s, "})] \t") {
+		c.alignClosing()
+	}
+	c.edited()
 }
 
 // --- semantic commands -------------------------------------------------------
@@ -708,6 +722,7 @@ func (c *EditorCore) menuAction(act Action) {
 	c.settlePendingRune()
 	c.hist.close()
 	c.keys.dropPending()
+	c.dotBoundary()
 	c.execAction(act, 1)
 }
 
@@ -744,7 +759,9 @@ func mutatingAction(act Action) bool {
 		ActOpenBelow, ActOpenAbove, ActDeleteChar, ActDeleteToEnd,
 		ActPasteAfter, ActPasteBefore, ActUndo, ActRedo,
 		ActDeletePrefix, ActVisualDelete, ActCut, ActPaste,
-		ActChangePrefix, ActChangeToEnd, ActSubstChar, ActSubstLine:
+		ActChangePrefix, ActChangeToEnd, ActSubstChar, ActSubstLine,
+		ActReplaceChar, ActJoin, ActJoinRaw, ActToggleCase, ActCaseToggleOp, ActLowerOp, ActUpperOp,
+		ActIndentPrefix, ActOutdentPrefix:
 		return true
 	}
 	return false
@@ -844,6 +861,15 @@ func (c *EditorCore) execAction(act Action, count int) bool {
 	case ActSubstChar: // s: c over count characters, Insert on an empty line
 		n := len(b.lineClusters(b.ln))
 		c.runOp(ActChangePrefix, taPos{b.ln, min(b.col+count, n)}, exclusive)
+		return true
+	case ActJoin:
+		c.joinLines(count, false)
+		return true
+	case ActJoinRaw:
+		c.joinLines(count, true)
+		return true
+	case ActToggleCase:
+		c.toggleCaseChars(count)
 		return true
 	case ActSubstLine: // S: cc
 		c.runOp(ActChangePrefix, taPos{min(b.ln+count-1, len(b.lines)-1), 0}, linewise)
