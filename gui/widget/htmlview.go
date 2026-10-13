@@ -1021,9 +1021,13 @@ func (l *htmlLayout) layAbsTop(b *topBlock) {
 }
 
 // adoptLook takes the window's colours, text size and fonts: the page's text and ground from the cells
-// under the view, the accent and muted text from the tui theme. A change restyles every block.
+// under the view that nothing covers, the accent and muted text from the tui theme. A change restyles
+// every block.
 func (l *htmlLayout) adoptLook(c gui.Canvas) {
-	fg, bg := c.CellColors(0, 0)
+	fg, bg, ok := openColors(c, -1)
+	if !ok {
+		fg, bg = l.fg, l.bg // wholly covered: the look it had
+	}
 	if fg.A == 0 && bg.A == 0 {
 		fg, bg = color.NRGBA{A: 255}, color.NRGBA{R: 255, G: 255, B: 255, A: 255}
 	}

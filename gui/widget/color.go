@@ -2,6 +2,7 @@ package widget
 
 import (
 	"image/color"
+	"math"
 
 	"github.com/yongjohnlee80/golib/gui"
 	"github.com/yongjohnlee80/golib/tui/style"
@@ -67,6 +68,22 @@ func ansi256(n uint8) color.NRGBA {
 		return 55 + v*40
 	}
 	return color.NRGBA{R: level(n / 36), G: level(n / 6 % 6), B: level(n % 6), A: 0xff}
+}
+
+// openColors is the colours of the first cell of the view's rows [0, rows) that nothing covers
+// (rows < 0: all of them), and whether one is open. The cells are the composed screen: a raised
+// panel over a view's corner would lend the view its colours (gui.OpenCellColors).
+func openColors(c gui.Canvas, rows int) (fg, bg color.NRGBA, ok bool) {
+	cols, all := 1, 1
+	if cs := c.CellSize(); cs.W > 0 && cs.H > 0 {
+		sz := c.Size()
+		cols = max(int(math.Round(float64(sz.W/cs.W))), 1)
+		all = max(int(math.Round(float64(sz.H/cs.H))), 1)
+	}
+	if rows < 0 || rows > all {
+		rows = all
+	}
+	return gui.OpenCellColors(c, gui.CellRect{W: cols, H: rows})
 }
 
 // isDark reports whether c is a dark background, by relative luminance.

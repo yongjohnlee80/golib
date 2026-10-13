@@ -44,6 +44,8 @@ type RecordingCanvas struct {
 	Colors func(col, row int) (fg, bg color.NRGBA)
 	// Content answers CellText; nil answers "".
 	Content func(col, row int) string
+	// Covers answers CellCovered: the cells a later layer covers. nil covers none.
+	Covers func(col, row int) bool
 	// Around answers Backdrop.
 	Around color.NRGBA
 	// TextPx answers TextSize; 0: the cell's height over the default font's line height.
@@ -74,7 +76,7 @@ func (c *RecordingCanvas) rec(p PaintCall) {
 
 // Sub records into the same log, offset by r.
 func (c *RecordingCanvas) Sub(r Rect) Canvas {
-	return &RecordingCanvas{root: c.root, off: Pt(c.off.X+r.X, c.off.Y+r.Y), size: r.Size(), cell: c.cell, shaper: c.shaper, Colors: c.Colors, Content: c.Content, Around: c.Around}
+	return &RecordingCanvas{root: c.root, off: Pt(c.off.X+r.X, c.off.Y+r.Y), size: r.Size(), cell: c.cell, shaper: c.shaper, Colors: c.Colors, Content: c.Content, Covers: c.Covers, Around: c.Around}
 }
 
 // Size returns the logical bounds of the recording canvas.
@@ -167,6 +169,11 @@ func (c *RecordingCanvas) CellColors(col, row int) (fg, bg color.NRGBA) {
 	return c.Colors(col, row)
 }
 
+// CellCovered answers Covers.
+func (c *RecordingCanvas) CellCovered(col, row int) bool {
+	return c.Covers != nil && c.Covers(col, row)
+}
+
 // Backdrop returns the simulated backdrop color.
 func (c *RecordingCanvas) Backdrop() color.NRGBA { return c.Around }
 
@@ -192,4 +199,8 @@ func (c *RecordingCanvas) Ops() []string {
 	return out
 }
 
-var _ Canvas = (*RecordingCanvas)(nil)
+var (
+	_ Canvas      = (*RecordingCanvas)(nil)
+	_ CellCoverer = (*RecordingCanvas)(nil)
+	_ CellCoverer = (*gioCanvas)(nil)
+)

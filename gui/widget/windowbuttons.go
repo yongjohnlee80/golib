@@ -67,7 +67,10 @@ func (w *WindowButtons) paint(c gui.Canvas) {
 	if w.ctx == nil {
 		return
 	}
-	_, bg := c.CellColors(0, 0)
+	_, bg, ok := openColors(c, -1)
+	if !ok {
+		return // wholly covered: the host paints the covering cells
+	}
 	c.FillRect(gui.Rect{W: c.Size().W, H: c.Size().H}, gui.Solid(bg))
 	s := w.core.State()
 	var colors []color.NRGBA

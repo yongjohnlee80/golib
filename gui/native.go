@@ -111,7 +111,7 @@ func (r *renderer) composite(ops *op.Ops, g *grid, m metrics, natives []tui.Nati
 			if !ok || p.native.Cols <= 0 || p.native.Rows <= 0 {
 				continue
 			}
-			v.Paint(newGioCanvas(ops, r, g, m, CellRect{X: p.native.X, Y: p.native.Y, W: p.native.Cols, H: p.native.Rows}))
+			v.Paint(newGioCanvas(ops, r, g, m, CellRect{X: p.native.X, Y: p.native.Y, W: p.native.Cols, H: p.native.Rows}, p.covered))
 		case p.image != nil:
 			r.drawImage(ops, *p.image)
 		}

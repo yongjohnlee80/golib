@@ -407,11 +407,15 @@ func (e *Editor) SetPageStyle(st style.Style) {
 }
 
 // pageColors are the page's text and background: the page style's (SetPageStyle, a theme's base
-// and text), else the colours of the body's first cell. The style comes first: a cell is what is
-// composed on screen, and a floating panel over the editor (an explorer's highlighted row) would
-// lend the whole page its colours.
+// and text), else the colours of the body's first cell nothing covers. The style comes first, and
+// no covered cell is read: a cell is what is composed on screen, and a floating panel over the
+// editor (an explorer's highlighted row) would lend the whole page its colours. A body wholly
+// covered keeps the colours it had.
 func (e *Editor) pageColors(c gui.Canvas, th *style.Theme) (fg, bg color.NRGBA) {
-	fg, bg = c.CellColors(0, 0)
+	fg, bg, ok := openColors(c, -1)
+	if !ok {
+		fg, bg = e.layout.th.Text, e.layout.th.Background
+	}
 	dark := isDark(bg)
 	if v, set := e.page.GetBackground(); set {
 		if col, ok := colorOf(v, th, dark); ok {
@@ -534,7 +538,7 @@ func (s *modeSwitch) paint(c gui.Canvas) {
 	text, fill, page := s.e.panel.BarColors()
 	if text == (color.NRGBA{}) { // the bar not painted yet: the page and the cells' text
 		page = c.Backdrop()
-		text, _ = c.CellColors(0, 0)
+		text, _, _ = openColors(c, -1)
 		fill = mix(text, page, 0.06)
 	}
 	accent := s.e.layout.th.Accent

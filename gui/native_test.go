@@ -79,7 +79,8 @@ func onLoop(t *testing.T, app *tui.App, fn func()) {
 	}
 }
 
-// paintOn paints p's view on a recording canvas over the App's cells, on the loop goroutine.
+// paintOn paints p's view on a recording canvas over the App's cells, as the composite does (the
+// cells painted after it covered), on the loop goroutine.
 func paintOn(t *testing.T, app *tui.App, sb *styled, p tui.NativePlacement) *RecordingCanvas {
 	t.Helper()
 	cell := Size{W: 8, H: 16}
@@ -88,6 +89,9 @@ func paintOn(t *testing.T, app *tui.App, sb *styled, p tui.NativePlacement) *Rec
 	rc.Colors = func(col, row int) (fg, bg color.NRGBA) {
 		snap := sb.Snapshot()
 		return r.colors(snap[p.Y+row][p.X+col].Attrs)
+	}
+	rc.Covers = func(col, row int) bool { // as the composite's canvas: the cells painted after p
+		return slices.ContainsFunc(p.Covered, func(c tui.Rect) bool { return c.Contains(p.X+col, p.Y+row) })
 	}
 	onLoop(t, app, func() { p.View.(View).Paint(rc) })
 	return rc
@@ -292,7 +296,7 @@ func TestGioCanvasRecords(t *testing.T) {
 	r := newRenderer(newTestShaper(), "Go Mono", DefaultTheme())
 	r.m = m
 	ops := new(op.Ops)
-	c := newGioCanvas(ops, r, &g, m, CellRect{X: 1, W: 4, H: 1})
+	c := newGioCanvas(ops, r, &g, m, CellRect{X: 1, W: 4, H: 1}, nil)
 	if c.Size() != (Size{W: 4 * float32(m.cell.X) / 2, H: float32(m.cell.Y) / 2}) || c.CellSize().W != float32(m.cell.X)/2 {
 		t.Fatalf("canvas %v, cell %v, for 4 cells at scale 2", c.Size(), c.CellSize())
 	}

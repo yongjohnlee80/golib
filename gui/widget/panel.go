@@ -485,7 +485,10 @@ func (p *Panel) NativeScope() tui.NativeScope { return tui.ScopeChrome }
 func (p *Panel) paintBar(c gui.Canvas) {
 	cell := c.CellSize()
 	page := c.Backdrop()
-	fg, bg := c.CellColors(0, 0)
+	fg, bg, ok := openColors(c, 1)
+	if !ok {
+		return // the bar is wholly covered: the host paints the covering cells, and BarColors keep the last
+	}
 	text := fg
 	if contrast(bg, page) > contrast(fg, page) {
 		text = bg
