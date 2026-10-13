@@ -159,6 +159,8 @@ func TestVimRepeat(t *testing.T) {
 		{what: "a jump splits the change", text: "", seq: "iab<pgdn>cd<esc>.", want: "abccdd"},
 		{what: "u is not a change", text: "abc", seq: "xu.", want: "bc"},
 		{what: "a replay that changes nothing is no undo step", text: "a", seq: "x.u", want: "a"},
+		{what: "i<Esc> changes nothing: x stays the last change", text: "abc", seq: "xi<esc>.", want: "c"},
+		{what: "a jump with nothing after it keeps the segment before", text: "", seq: "iab<pgdn><esc>.", want: "aabb"},
 	})
 	c, _ := coreWith(t, "a b c")
 	vimSeq(c, "dw.")
@@ -235,5 +237,26 @@ func TestVimEditsOnAViewer(t *testing.T) {
 	vimSeq(ro, "gUU")
 	if ro.Value() != "abc\ndef" {
 		t.Fatalf("a viewer changed: %q", ro.Value())
+	}
+}
+
+// A replay that changes nothing at a full history gives back its snapshot, and the oldest step
+// is still there: every one of the 64 can be undone.
+func TestVimRepeatAtAFullHistory(t *testing.T) {
+	full := strings.Repeat("x", 70)
+	c, _ := coreWith(t, full+"\n")
+	for range 64 {
+		vimSeq(c, "x") // 64 steps: the history is full
+	}
+	vimSeq(c, "j.") // x again, on the empty line: no change
+	if c.Value() != strings.Repeat("x", 6)+"\n" {
+		t.Fatalf("the fixture: %q", c.Value())
+	}
+	vimSeq(c, "k")
+	for range 64 {
+		vimSeq(c, "u")
+	}
+	if got := strings.Split(c.Value(), "\n")[0]; got != full {
+		t.Fatalf("after 64 u: %d x, want 70: the replay cost a step", len(got))
 	}
 }

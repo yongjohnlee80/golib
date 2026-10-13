@@ -69,10 +69,9 @@ func (h *editHistory) hold(before func() textSnap) {
 	if !h.enabled || h.held {
 		return
 	}
+	// no trim to the cap yet: a replay that changes nothing gives its snapshot back on release, and
+	// the oldest step must still be there
 	h.undo = append(h.undo, before())
-	if len(h.undo) > editHistoryCap {
-		h.undo = h.undo[1:]
-	}
 	h.heldRedo, h.redo = h.redo, nil
 	h.held, h.open = true, true
 }
@@ -84,9 +83,12 @@ func (h *editHistory) release(changed bool) {
 		return
 	}
 	h.held, h.open = false, false
-	if !changed && len(h.undo) > 0 {
+	switch {
+	case !changed && len(h.undo) > 0:
 		h.undo = h.undo[:len(h.undo)-1]
 		h.redo = h.heldRedo
+	case len(h.undo) > editHistoryCap:
+		h.undo = h.undo[1:]
 	}
 	h.heldRedo = nil
 }

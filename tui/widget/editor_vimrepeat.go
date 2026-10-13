@@ -95,17 +95,29 @@ func (c *EditorCore) dotInsertKey(k tui.KeyEvent) {
 	}
 }
 
-// dotJump splits the Insert being recorded: what follows is an Insert of its own, at the cursor.
+// dotJump splits the Insert being recorded: what came before is the last change when it changed
+// the text, and what follows is an Insert of its own, at the cursor.
 func (c *EditorCore) dotJump() {
 	if c.dotInsert() {
+		c.dotKeepSegment()
 		c.dot.atoms = []dotAtom{{kind: dotKey, key: tui.KeyEvent{Code: 'i', Text: "i"}}}
+		c.dot.rev = c.rev
 	}
 }
 
-// dotInsertEnded closes the Insert being recorded: the change it ends is the last one.
+// dotInsertEnded closes the Insert being recorded: the change it ends is the last one, when it
+// changed the text (i<Esc>, or a jump with nothing after it, leaves the last change as it was).
 func (c *EditorCore) dotInsertEnded() {
 	if c.dotInsert() {
-		c.dot.last, c.dot.on, c.dot.inInsert = c.dot.atoms, false, false
+		c.dotKeepSegment()
+		c.dot.on, c.dot.inInsert = false, false
+	}
+}
+
+// dotKeepSegment makes the segment being recorded the last change, if it moved the text.
+func (c *EditorCore) dotKeepSegment() {
+	if c.rev != c.dot.rev {
+		c.dot.last = c.dot.atoms
 	}
 }
 
