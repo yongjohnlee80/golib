@@ -276,10 +276,27 @@ func TestThePathFieldChecksAnAsyncSourceOffTheLoop(t *testing.T) {
 	h.waitFor("b listed", dirIs(h, v, "mem://b"))
 	h.shows("notes.md")
 
+	// the listing moving elsewhere drops a check on its way, as an edit does
+	h.inject(keyMod('k', tui.ModCtrl))
+	typePath(h, "notes.md")
+	h.waitFor("notes.md's check held", func() bool { return d.stats.Load() >= 3 })
+	h.onLoop(func() { v.SetDir("mem://") })
+	h.waitFor("the field following the root's listing", func() bool {
+		var p string
+		h.onLoop(func() { p = v.Path() })
+		return p == "mem://" // written when the listing shows, not when it is asked for
+	})
+	d.g.release("stat:b/notes.md")
+	h.settle()
+	h.onLoop(func() { dir = v.Dir() })
+	if dir != "mem://" {
+		t.Fatalf("a check the listing moved past applied: Dir %q", dir)
+	}
+
 	// a typed file is chosen once its check answers, before its folder's listing arrives:
 	// Selected is that file meanwhile, not the old rows' cursor
 	h.inject(keyMod('k', tui.ModCtrl))
-	typePath(h, "../a/x.txt")
+	typePath(h, "a/x.txt")
 	d.g.release("stat:a/x.txt")
 	h.waitFor("x.txt chosen while a's listing is held", func() bool {
 		var sel string
