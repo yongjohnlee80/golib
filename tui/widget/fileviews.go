@@ -382,11 +382,7 @@ func (v *FileOpenView) goTyped(typed string) {
 		v.path.say(bad)
 		return
 	}
-	still := func() bool {
-		q, _, ok := v.path.resolve(v.list.Source(), v.list.Dir(), v.path.input.Value())
-		return ok && q == p
-	}
-	v.path.check(v.Context(), src, p, still, func(k pathKind, later bool) { v.enterPath(p, k, later) })
+	v.path.check(v.Context(), src, p, func(k pathKind, later bool) { v.enterPath(p, k, later) })
 }
 
 // openPath is the Open view's Enter on a typed path: a folder is listed; a file is listed in its
@@ -600,11 +596,7 @@ func (v *FileSaveView) savePath(p string, k pathKind, _ bool) {
 			v.target(p) // a new name in the folder listed
 			return
 		}
-		still := func() bool {
-			q, _, ok := f.resolve(list.Source(), list.Dir(), f.input.Value())
-			return ok && q == p
-		}
-		f.check(v.listing.Context(), list.Source(), dir, still, func(k pathKind, _ bool) {
+		f.check(v.listing.Context(), list.Source(), dir, func(k pathKind, _ bool) {
 			if k == pathFolder {
 				v.target(p)
 			} else {
@@ -914,11 +906,7 @@ func (v *FileFolderView) checkThen(typed string, then func(p string, later bool)
 		then(p, false) // the folder listed is one
 		return
 	}
-	still := func() bool {
-		q, _, ok := f.resolve(list.Source(), list.Dir(), f.input.Value())
-		return ok && q == p
-	}
-	f.check(v.listing.Context(), list.Source(), p, still, func(k pathKind, later bool) {
+	f.check(v.listing.Context(), list.Source(), p, func(k pathKind, later bool) {
 		if k == pathFolder {
 			then(p, later)
 		} else {

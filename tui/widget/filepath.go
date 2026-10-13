@@ -148,10 +148,10 @@ func (f *pathField) resolve(src FileSource, dir, typed string) (p string, bad tu
 
 // check finds out what p names and runs then with it: at once for a source read on the loop, and
 // off the loop for an async one, then told it ran later. ctx is the listing's (the FileOpenView's),
-// whose HandleEvent the answer comes back to. still says whether the answer is still wanted when
-// it comes (the field not edited since, the same folder listed); an edit, or the field following
-// the listing elsewhere, drops it anyway.
-func (f *pathField) check(ctx *tui.Context, src FileSource, p string, still func() bool, then func(k pathKind, later bool)) {
+// whose HandleEvent the answer comes back to. An answer no longer wanted never runs then: an edit
+// to the field, or the field following the listing elsewhere, drops the check (even an edit back
+// to the same text, which a comparison of the text could not tell).
+func (f *pathField) check(ctx *tui.Context, src FileSource, p string, then func(k pathKind, later bool)) {
 	if k, ok := f.stat.known(p); ok {
 		then(k, false)
 		return
@@ -160,11 +160,7 @@ func (f *pathField) check(ctx *tui.Context, src FileSource, p string, still func
 		then(src.kind(context.Background(), p), false)
 		return
 	}
-	f.stat.ask(ctx, src, p, func(k pathKind) {
-		if still() {
-			then(k, true)
-		}
-	})
+	f.stat.ask(ctx, src, p, func(k pathKind) { then(k, true) })
 }
 
 // titleFor is the field's title for a path that names k where the view wanted something else.
