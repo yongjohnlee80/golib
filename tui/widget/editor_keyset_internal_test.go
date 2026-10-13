@@ -77,13 +77,13 @@ func TestSetKeysetCountDroppedOnSwitchKeptOnNoOp(t *testing.T) {
 func TestSetKeysetDropsOperatorPrefix(t *testing.T) {
 	e := NewEditor(WithInitialText("one\ntwo"))
 	pressRune(e, 'd')
-	if e.core.keys.pendingAct != ActDeletePrefix {
-		t.Fatalf("pendingAct = %v, want ActDeletePrefix — the fixture never armed a prefix", e.core.keys.pendingAct)
+	if e.core.keys.op != ActDeletePrefix {
+		t.Fatalf("op = %v, want ActDeletePrefix — the fixture never armed an operator", e.core.keys.op)
 	}
 
 	e.SetKeyset(KeysetStandard)
-	if e.core.keys.pendingAct != ActUnbound {
-		t.Fatalf("pendingAct = %v, want ActUnbound", e.core.keys.pendingAct)
+	if e.core.keys.op != ActUnbound {
+		t.Fatalf("op = %v, want ActUnbound", e.core.keys.op)
 	}
 
 	e.SetKeyset(KeysetVim)
