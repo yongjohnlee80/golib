@@ -163,6 +163,16 @@ func TestToolTip_PlacementAndWrap(t *testing.T) {
 	if got := wrapToolTip("abcdefghij xy", 4, width); !slices.Equal(got, []string{"abcd", "efgh", "ij", "xy"}) {
 		t.Errorf("a long word cut: %q", got)
 	}
+	// a word an exact multiple of the width: its last chunk is the last line, with no empty row after
+	if got := wrapToolTip("abcdefgh", 4, width); !slices.Equal(got, []string{"abcd", "efgh"}) {
+		t.Errorf("an exact multiple: %q", got)
+	}
+	if got := wrapToolTip("abcdefghijklmnopqrstuvwx", 4, width); !slices.Equal(got, []string{"abcd", "efgh", "ijkl", "mnop", "qrst", "uvwx"}) {
+		t.Errorf("six full rows take no ellipsis: %q", got)
+	}
+	if got := wrapToolTip("abcdefghijklmnopqrstuvwxy", 4, width); len(got) != toolTipRows || got[toolTipRows-1] != "uvw…" {
+		t.Errorf("a seventh row: %q", got)
+	}
 	if got := wrapToolTip("a\nb\nc\nd\ne\nf\ng\nh", 5, width); len(got) != toolTipRows || got[toolTipRows-1] != "f…" {
 		t.Errorf("past the rows: %q", got)
 	}
