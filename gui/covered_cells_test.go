@@ -211,21 +211,30 @@ func TestButtonFieldAndScrollbarAreNotThePanelsColour(t *testing.T) {
 	})
 }
 
-// A check box's box under a panel is the panel's, whatever its cells read: a box found there would
-// be drawn in the panel's colours, at the panel's cells.
+// A check box whose box is under a panel has no box to draw, whatever its cells read: one found
+// under the panel would be drawn in the panel's colours, and one further on is its text's ("[x] On"
+// beside its own "[x] "). Its cells are shown as they are.
 func TestACheckBoxIsNotFoundUnderAPanel(t *testing.T) {
-	row := []string{"[", " ", "]", " ", "[", "x", "]", " ", "O", "n"}
+	row := []string{"[", "x", "]", " ", "[", "x", "]", " ", "O", "n"}
+	text := func(col, row0 int) string {
+		if row0 == 0 && col < len(row) {
+			return row[col]
+		}
+		return ""
+	}
 	view, _, _ := paintCheckBox(&fakeCheck{checked: true})
-	rc := paintUnder(t, view, overView{cols: 10, rows: 1, covered: at(0, 1, 2),
-		text: func(col, row0 int) string {
-			if row0 == 0 && col < len(row) {
-				return row[col]
-			}
-			return ""
-		}})
+	rc := paintUnder(t, view, overView{cols: 10, rows: 1, covered: at(0, 1, 2), text: text})
+	if want := []PaintCall{{Op: "PaintCells", Cells: CellRect{W: 10, H: 1}}}; !slices.EqualFunc(rc.Calls, want, func(a, b PaintCall) bool {
+		return a.Op == b.Op && a.Cells == b.Cells && a.GlyphsOnly == b.GlyphsOnly
+	}) {
+		t.Fatalf("a check box with its box covered drew %+v; want its cells as they are, the label's brackets text", rc.Calls)
+	}
+
+	// with the panel over the text instead, the box before it is drawn, in its own colours
+	rc = paintUnder(t, view, overView{cols: 10, rows: 1, covered: at(8, 9), text: text})
 	i := slices.IndexFunc(rc.Calls, func(p PaintCall) bool { return p.Op == "FillRect" })
-	if i < 0 || rc.Calls[i].Rect.X != 32 || rc.Calls[i].Brush.Color != sepiaBG {
-		t.Fatalf("the box %+v; want its own at cell 4 (x=32) in %v", rc.Calls, sepiaBG)
+	if i < 0 || rc.Calls[i].Rect.X != 0 || rc.Calls[i].Brush.Color != sepiaBG {
+		t.Fatalf("the box %+v; want its own at cell 0 in %v", rc.Calls, sepiaBG)
 	}
 }
 

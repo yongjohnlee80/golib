@@ -1,6 +1,7 @@
 package gui
 
 import (
+	"cmp"
 	"context"
 	"fmt"
 	"image"
@@ -18,6 +19,7 @@ import (
 	"gioui.org/unit"
 
 	"github.com/yongjohnlee80/golib/tui"
+	tuidecl "github.com/yongjohnlee80/golib/tui/decl"
 	"github.com/yongjohnlee80/golib/tui/widget"
 )
 
@@ -227,6 +229,58 @@ func TestAFieldUnderPanelsIsNotItsSelectionsColour(t *testing.T) {
 	rc := paintOn(t, app, sb, p)
 	if rc.Calls[0].Op != "FillRect" || rc.Calls[0].Brush.Color != field {
 		t.Fatalf("the field filled %+v; want its own %v, not the selection's %v", rc.Calls[0], field, selected)
+	}
+}
+
+// A real declarative CheckBox whose text is bracketed draws "[x] [x] On". With a panel over its own
+// box, the label's "[x]" is not taken for the box: the row is shown as its cells, the text intact.
+func TestACoveredCheckBoxLeavesABracketedLabelText(t *testing.T) {
+	sb := &styled{TestBackend: tui.NewTestBackend(30, 3), b: &Backend{cfg: config{style: NativeStyle()}}}
+	p, err := tuidecl.NewProgram(tuidecl.AppOptions(tui.WithBackend(sb)), tuidecl.LayoutSource("cb.qml", []byte(`import tui 1.0
+Window { CheckBox { id: cb; text: "[x] On"; checked: true } }`)))
+	if err != nil {
+		t.Fatal(err)
+	}
+	ctx, cancel := context.WithCancel(context.Background())
+	t.Cleanup(cancel)
+	go func() { _ = p.Run(ctx) }()
+	c, ok := p.Find("cb")
+	if !ok {
+		t.Fatal("no cb")
+	}
+	id := c.(interface{ NodeID() tui.NodeID }).NodeID()
+	var row string
+	waitUntil(t, "the check box drawn", func() bool {
+		var ok bool
+		for _, q := range sb.placements() {
+			ok = ok || q.Node == id
+		}
+		var b strings.Builder
+		for _, cell := range sb.Snapshot()[0] {
+			b.WriteString(cmp.Or(cell.Content, " "))
+		}
+		row = b.String()
+		return ok && strings.Contains(row, "[x] [x] On")
+	})
+	pl := placementOf(t, sb, id)
+	box := strings.Index(row, "[x] [x] On") - pl.X
+	pl.Covered = []tui.Rect{{X: pl.X + box, Y: pl.Y, W: 3, H: 1}}
+	rc := paintOn(t, p.App(), sb, pl)
+	for _, call := range rc.Calls {
+		if call.Op != "PaintCells" {
+			t.Fatalf("a box was drawn with the real one covered: %+v", rc.Calls)
+		}
+	}
+	if len(rc.Calls) != 1 || rc.Calls[0].Cells != (CellRect{W: pl.Cols, H: pl.Rows}) || rc.Calls[0].GlyphsOnly {
+		t.Fatalf("the row was painted %+v; want its cells whole, the label's brackets text", rc.Calls)
+	}
+
+	// uncovered, the box is drawn at the first brackets, its own, and the label's stay text
+	pl.Covered = nil
+	rc = paintOn(t, p.App(), sb, pl)
+	i := slices.IndexFunc(rc.Calls, func(p PaintCall) bool { return p.Op == "FillRect" })
+	if i < 0 || rc.Calls[i].Rect.X != float32(box)*8 {
+		t.Fatalf("the box %+v; want at the row's first brackets, cell %d", rc.Calls, box)
 	}
 }
 

@@ -329,12 +329,14 @@ func paintCheckBox(comp tui.Component) (View, tui.NativeScope, bool) {
 	}), tui.ScopeSubtree, true
 }
 
-// boxCells is the first column of the "[x]" or "[ ]" on the first row, or -1. A box a later layer
-// covers, even in part, is not the check box's: its cells, colours and text, are the layer's.
+// boxCells is the first column of the "[x]" or "[ ]" on the first row, or -1. The box is the first
+// one: a check box draws it before its text, which may hold brackets of its own ("[x] On"). A later
+// layer over a cell before it is found may hide it, and a box further on would be the text's, so
+// there is none to draw: the cells are shown as they are, and the host paints the layer over them.
 func boxCells(c Canvas, cols int) int {
 	for x := 0; x+2 < cols; x++ {
 		if CellCovered(c, x, 0) || CellCovered(c, x+1, 0) || CellCovered(c, x+2, 0) {
-			continue
+			return -1
 		}
 		if c.CellText(x, 0) == "[" && c.CellText(x+2, 0) == "]" {
 			return x
