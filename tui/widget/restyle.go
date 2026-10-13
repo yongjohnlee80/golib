@@ -98,6 +98,12 @@ func (v *FileOpenView) WithStyles(st FilePaneStyles) *FileOpenView {
 	styled := st != (FilePaneStyles{})
 	v.cfg.st, v.cfg.styled = st, styled
 	v.list.withStyles(st, styled)
+	text := TextInputStyles{}
+	if styled {
+		text.Text = st.Surface
+	}
+	v.path.input.WithStyles(text)
+	stylePane(v.path.pane, st, styled)
 	if v.preview != nil {
 		v.preview.withStyles(st, styled)
 	}
@@ -126,17 +132,10 @@ func (v *FileSaveView) WithStyles(st FilePaneStyles) *FileSaveView {
 	return v
 }
 
-// WithStyles restyles a folder view: its path field and its listing, as a
-// Save view's name field and listing. A host's own fields dress themselves.
+// WithStyles restyles a folder view: its listing, path field included. A
+// host's own fields dress themselves.
 func (v *FileFolderView) WithStyles(st FilePaneStyles) *FileFolderView {
-	styled := st != (FilePaneStyles{})
-	v.cfg.st, v.cfg.styled = st, styled
-	text := TextInputStyles{}
-	if styled {
-		text.Text = st.Surface
-	}
-	v.path.WithStyles(text)
-	stylePane(v.pathPane, st, styled)
+	v.cfg.st, v.cfg.styled = st, st != (FilePaneStyles{})
 	v.listing.WithStyles(st)
 	return v
 }

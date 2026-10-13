@@ -59,6 +59,38 @@
         <source>Folder — not a folder</source>
         <translation>文件夹 — 不是文件夹</translation>
     </message>
+    <message id="tui.files.folderNotFound">
+        <source>Folder — not found</source>
+        <translation>文件夹 — 未找到</translation>
+    </message>
+    <message id="tui.files.folderNoHome">
+        <source>Folder — ~ is not known here</source>
+        <translation>文件夹 — 此处无法识别 ~</translation>
+    </message>
+    <message id="tui.files.folderCannotRead">
+        <source>Folder — cannot read</source>
+        <translation>文件夹 — 无法读取</translation>
+    </message>
+    <message id="tui.files.path">
+        <source>Path</source>
+        <translation>路径</translation>
+    </message>
+    <message id="tui.files.pathNotFound">
+        <source>Path — not found</source>
+        <translation>路径 — 未找到</translation>
+    </message>
+    <message id="tui.files.pathNoFolder">
+        <source>Path — its folder does not exist</source>
+        <translation>路径 — 所在文件夹不存在</translation>
+    </message>
+    <message id="tui.files.pathNoHome">
+        <source>Path — ~ is not known here</source>
+        <translation>路径 — 此处无法识别 ~</translation>
+    </message>
+    <message id="tui.files.pathCannotRead">
+        <source>Path — cannot read</source>
+        <translation>路径 — 无法读取</translation>
+    </message>
     <message id="tui.files.empty">
         <source>(empty)</source>
         <translation>(空)</translation>
@@ -112,8 +144,8 @@
         <translation>Enter:确认  Tab:下一项  Esc:取消</translation>
     </message>
     <message id="tui.files.hint.openList">
-        <source>↑↓:move  Enter:open folder, or open file  Tab:next  Esc:cancel</source>
-        <translation>↑↓:移动  Enter:打开文件夹或文件  Tab:下一项  Esc:取消</translation>
+        <source>↑↓:move  Enter:open folder, or open file  Ctrl+k ~:path  Tab:next  Esc:cancel</source>
+        <translation>↑↓:移动  Enter:打开文件夹或文件  Ctrl+k ~:路径  Tab:下一项  Esc:取消</translation>
     </message>
     <message id="tui.files.hint.previewPart">
         <source>j/k:scroll  gg/G:top/end  Tab:next  Esc:cancel</source>
@@ -124,16 +156,20 @@
         <translation>Enter:保存  Tab:下一项  Esc:取消</translation>
     </message>
     <message id="tui.files.hint.saveList">
-        <source>↑↓:move  Enter:open folder, or save over file  Tab:next  Esc:cancel</source>
-        <translation>↑↓:移动  Enter:打开文件夹或覆盖文件  Tab:下一项  Esc:取消</translation>
+        <source>↑↓:move  Enter:open folder, or save over file  Ctrl+k ~:path  Tab:next  Esc:cancel</source>
+        <translation>↑↓:移动  Enter:打开文件夹或覆盖文件  Ctrl+k ~:路径  Tab:下一项  Esc:取消</translation>
     </message>
     <message id="tui.files.hint.folderPath">
-        <source>Enter:go to folder  Tab:next  Esc:cancel</source>
-        <translation>Enter:转到文件夹  Tab:下一项  Esc:取消</translation>
+        <source>Enter:go to folder  Esc:back to the list  Tab:next</source>
+        <translation>Enter:转到文件夹  Esc:返回列表  Tab:下一项</translation>
     </message>
     <message id="tui.files.hint.listPart">
-        <source>↑↓:move  Enter:open folder  Tab:next  Esc:cancel</source>
-        <translation>↑↓:移动  Enter:打开文件夹  Tab:下一项  Esc:取消</translation>
+        <source>↑↓:move  Enter:open folder  Ctrl+k ~:path  Tab:next  Esc:cancel</source>
+        <translation>↑↓:移动  Enter:打开文件夹  Ctrl+k ~:路径  Tab:下一项  Esc:取消</translation>
+    </message>
+    <message id="tui.files.hint.path">
+        <source>Enter:go there  Esc:back to the list  Tab:next</source>
+        <translation>Enter:前往  Esc:返回列表  Tab:下一项</translation>
     </message>
     <message id="tui.select.error">
         <source>error: %1</source>

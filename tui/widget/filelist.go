@@ -60,10 +60,16 @@ type FileSource struct {
 	// it runs to its end on a worker and its answer is dropped.
 	Async bool
 	Root  string
+	// Home is the rooted folder ~ stands for in a typed path; "" when the source has none, and
+	// then a typed ~ is refused rather than guessed.
+	Home string
 }
 
-// LocalFiles is the local filesystem, rooted at "/".
-func LocalFiles() FileSource { return FileSource{FS: os.DirFS("/"), Root: "/"} }
+// LocalFiles is the local filesystem, rooted at "/", ~ its user's home folder.
+func LocalFiles() FileSource {
+	home, _ := os.UserHomeDir()
+	return FileSource{FS: os.DirFS("/"), Root: "/", Home: home}
+}
 
 // Rooted writes an fs path as a person reads it: "home/me" → "/home/me".
 func (s FileSource) Rooted(p string) string {
@@ -95,6 +101,9 @@ func (s FileSource) or() FileSource {
 	if s.FS == nil && s.VFS == nil {
 		local := LocalFiles()
 		local.Async = s.Async
+		if s.Home != "" {
+			local.Home = s.Home
+		}
 		return local
 	}
 	return s

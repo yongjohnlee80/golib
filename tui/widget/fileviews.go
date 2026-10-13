@@ -157,6 +157,14 @@ type FileOpenView struct {
 	// nil when the view has no filter.
 	filterField *TextInput
 	filterPane  *Box
+	// path is the location bar, just above the list; enterPath is what Enter on a path typed in
+	// it does once it is known what the path names (later: found off the loop). The Save and
+	// Folder views give their own; the Open view's lists a folder and chooses a file.
+	path      *pathField
+	enterPath func(p string, k pathKind, later bool)
+	// chosen is a file chosen by its typed path, rooted, which Selected reports until the
+	// cursor moves: the listing that puts the cursor on it may still be on its way.
+	chosen string
 }
 
 // NewFileOpenView builds an Open view.
@@ -175,20 +183,30 @@ func newFileOpenView(cfg fileViewConfig, dirOpts ...FileListOption) *FileOpenVie
 	// the source.
 	cfg.src = cfg.src.or()
 	v := &FileOpenView{cfg: cfg}
+	v.path = newPathField(cfg, openPathTitles, func(typed string) { v.goTyped(typed) })
+	v.enterPath = v.openPath
 	if cfg.preview {
 		v.preview = NewFilePreview(cfg.st, cfg.styled)
 	}
 	listOpts := []FileListOption{
 		WithFileListSource(cfg.src),
 		WithFileListDir(cfg.dir),
-		WithOnCursor(func(p string, folder bool) { v.show(p, folder) }),
+		WithOnCursor(func(p string, folder bool) { v.chosen = ""; v.show(p, folder) }),
 		WithOnFile(func(string) { v.chose() }),
 	}
 	if cfg.styled {
 		listOpts = append(listOpts, WithFileListStyles(cfg.st))
 	}
 	v.list = NewFileList(append(listOpts, dirOpts...)...)
-	above := append([]tui.Component(nil), cfg.fields...)
+	// the location bar follows the listing, whatever else follows it
+	onDir := v.list.onDir
+	v.list.onDir = func(rooted string) {
+		v.path.follow(rooted)
+		if onDir != nil {
+			onDir(rooted)
+		}
+	}
+	above := append(append([]tui.Component(nil), cfg.fields...), v.path.pane)
 	if cfg.filter {
 		inputOpts := []TextInputOption{WithOnEdit(func(text string) { v.list.SetFilter(text) })}
 		if cfg.styled {
@@ -204,16 +222,13 @@ func newFileOpenView(cfg fileViewConfig, dirOpts ...FileListOption) *FileOpenVie
 	}
 	// The picker's layout: the fields (and the filter) over the list in the left
 	// column, the preview on the right.
-	v.column = append(append([]tui.Component(nil), cfg.fields...), v.list)
-	var left tui.Component = v.list
-	if len(above) > 0 {
-		col := tui.NewFlex(tui.Vertical)
-		for _, f := range above {
-			col.Add(f)
-		}
-		col.AddWeighted(v.list, 1)
-		left = col
+	v.column = append(append([]tui.Component(nil), cfg.fields...), v.path.pane, v.list)
+	col := tui.NewFlex(tui.Vertical)
+	for _, f := range above {
+		col.Add(f)
 	}
+	col.AddWeighted(v.list, 1)
+	var left tui.Component = col
 	v.root = left
 	if v.preview != nil {
 		// A BLANK DIVIDER: the two panes are framed, and a drawn line between
@@ -323,13 +338,69 @@ func (v *FileOpenView) Render(tui.Surface) {}
 // the part that gained or lost it, so the view hears every move among its
 // parts and the move out to the dialog's buttons. Not consumed.
 func (v *FileOpenView) HandleEvent(ev tui.Event) bool {
+	if r, ok := ev.(tui.TaskResult); ok {
+		return v.path.stat.answer(r, v.NodeID())
+	}
 	if _, ok := ev.(tui.FocusEvent); ok && v.cfg.onHint != nil {
 		v.cfg.onHint(v.Hint())
 	}
 	if k, ok := ev.(tui.KeyEvent); ok {
-		return v.filterKey(k) || v.movePart(k)
+		return v.pathKey(k) || v.filterKey(k) || v.movePart(k)
 	}
 	return false
+}
+
+// pathKey is the path field's keys, heard as they bubble up: ~ in the list opens the field with
+// ~/ written, as a file chooser's location bar does; Esc in the field puts back the folder listed
+// and returns to the list. Reports whether the key was the field's.
+func (v *FileOpenView) pathKey(k tui.KeyEvent) bool {
+	ctx := v.Context()
+	if ctx == nil || k.Kind == tui.KeyRelease {
+		return false
+	}
+	switch {
+	case k.Text == "~" && k.Mods&nonTextMods == 0 && v.list.Focused():
+		ctx.FocusInto(v.path.input)
+		v.path.input.SetValue("~/")
+		return true
+	case k.Code == tui.KeyEscape && ctx.FocusWithin(v.path.pane):
+		v.path.restore()
+		v.list.Focus()
+		return true
+	}
+	return false
+}
+
+// goTyped goes to the path typed in the field: once what it names is known, the view's enterPath
+// decides what that means; a path that cannot be read as one of the source's says so.
+func (v *FileOpenView) goTyped(typed string) {
+	src, dir := v.list.Source(), v.list.Dir()
+	p, bad, ok := v.path.resolve(src, dir, typed)
+	if !ok {
+		v.path.say(bad)
+		return
+	}
+	still := func() bool {
+		q, _, ok := v.path.resolve(v.list.Source(), v.list.Dir(), v.path.input.Value())
+		return ok && q == p
+	}
+	v.path.check(v.Context(), src, p, still, func(k pathKind, later bool) { v.enterPath(p, k, later) })
+}
+
+// openPath is the Open view's Enter on a typed path: a folder is listed; a file is listed in its
+// folder, the cursor on it, and chosen, as choosing it in the list would.
+func (v *FileOpenView) openPath(p string, k pathKind, _ bool) {
+	switch k {
+	case pathFolder:
+		v.list.load(p)
+		v.list.Focus()
+	case pathFile:
+		v.list.loadThen(path.Dir(p), path.Base(p))
+		v.chosen = v.list.Source().Rooted(p)
+		v.chose()
+	default:
+		v.path.say(v.path.titleFor(k))
+	}
 }
 
 // filterKey is the filter's keys, heard as they bubble up: `/` in the list
@@ -379,8 +450,12 @@ func (v *FileOpenView) closeFilter() {
 // Confirm chooses the file under the cursor, or goes into the folder there.
 func (v *FileOpenView) Confirm() bool { return v.list.Enter() }
 
-// Selected is the file under the cursor, rooted, or "" when it is a folder.
+// Selected is the file under the cursor, rooted, or "" when it is a folder. A file chosen by its
+// typed path is that file, until the cursor moves.
 func (v *FileOpenView) Selected() string {
+	if v.chosen != "" {
+		return v.chosen
+	}
 	p, folder, ok := v.list.Current()
 	if !ok || folder {
 		return ""
@@ -402,6 +477,8 @@ func (v *FileOpenView) Select(rooted string) {
 // SetSource lists another filesystem (FileList.SetSource), the preview reading
 // from it too.
 func (v *FileOpenView) SetSource(src FileSource) {
+	v.path.stat.drop() // a check, or its answer, is the old source's
+	v.chosen = ""
 	v.cfg.src = src.or()
 	v.list.SetSource(v.cfg.src)
 }
@@ -443,6 +520,8 @@ func (v *FileOpenView) HintMessage() tui.Message {
 	switch {
 	case v.filterField != nil && v.filterField.Context() != nil && v.filterField.Context().Focused():
 		return tui.Msg("tui.files.hint.filter")
+	case v.path.focused():
+		return tui.Msg("tui.files.hint.path")
 	case v.list.Focused():
 		return tui.Msg("tui.files.hint.openList")
 	case v.preview != nil && v.preview.Focused():
@@ -492,8 +571,64 @@ func NewFileSaveView(opts ...FileViewOption) *FileSaveView {
 			v.SetName(path.Base(p))
 		}
 	}
+	v.listing.enterPath = v.savePath
 	v.root = v.listing
 	return v
+}
+
+// savePath is the Save view's Enter on a typed path. A folder is listed, the
+// name kept. A file — or a name not there yet, in a folder that is — is the
+// target: its folder listed and the name filled, the keyboard on the name. A
+// path's Enter never saves; Enter on the name does, as for a typed name. A
+// folder that does not exist is refused, never made.
+func (v *FileSaveView) savePath(p string, k pathKind, _ bool) {
+	f, list := v.listing.path, v.listing.list
+	switch k {
+	case pathFolder:
+		list.load(p)
+		v.focusName()
+	case pathFile:
+		v.target(p)
+	case pathMissing:
+		dir := path.Dir(p)
+		if !list.Loading() && dir == list.Dir() {
+			v.target(p) // a new name in the folder listed
+			return
+		}
+		still := func() bool {
+			q, _, ok := f.resolve(list.Source(), list.Dir(), f.input.Value())
+			return ok && q == p
+		}
+		f.check(v.listing.Context(), list.Source(), dir, still, func(k pathKind, _ bool) {
+			if k == pathFolder {
+				v.target(p)
+			} else {
+				f.say(f.titles.noFolder)
+			}
+		})
+	default:
+		f.say(f.titleFor(k))
+	}
+}
+
+// target names p, in its folder: listed, unless it is already, with the cursor
+// on p when it is there; then the name, and the keyboard on it.
+func (v *FileSaveView) target(p string) {
+	list := v.listing.list
+	if dir := path.Dir(p); list.Loading() || dir != list.Dir() {
+		list.loadThen(dir, path.Base(p))
+	} else {
+		list.SetCurrent(path.Base(p))
+	}
+	v.SetName(path.Base(p))
+	v.focusName()
+}
+
+// focusName gives the keyboard to the name field.
+func (v *FileSaveView) focusName() {
+	if ctx := v.Context(); ctx != nil {
+		ctx.FocusInto(v.name)
+	}
 }
 
 func (v *FileSaveView) confirm() {
@@ -540,14 +675,15 @@ func (v *FileSaveView) Confirm() bool {
 		return false
 	}
 	src := v.listing.list.Source()
-	folder, known := v.stat.known(p)
+	k, known := v.stat.known(p)
+	folder := k == pathFolder
 	ctx := v.Context()
 	if !known && src.async() && ctx != nil {
-		v.stat.ask(ctx, src, p, func(folder bool) {
+		v.stat.ask(ctx, src, p, func(k pathKind) {
 			if q, ok := v.named(); !ok || q != p {
 				return // the name or its folder changed under the check
 			}
-			if folder {
+			if k == pathFolder {
 				v.into(p)
 			} else if v.cfg.onChoose != nil {
 				v.cfg.onChoose()
@@ -661,32 +797,32 @@ func (v *FileSaveView) HintMessage() tui.Message {
 	return v.listing.HintMessage()
 }
 
-// typedStat is a typed name's folder check, for an async source: run off the
-// loop, its answer applied once it is in, unless a drop came first. The last
-// answer is kept, for the Confirm that follows it, until the next drop.
+// typedStat is a typed path's check, for an async source: what it names, found
+// off the loop, its answer applied once it is in, unless a drop came first. The
+// last answer is kept, for the Confirm that follows it, until the next drop.
 type typedStat struct {
 	task    tui.TaskID
 	stop    context.CancelFunc
 	pending bool
 	asked   string
-	then    func(folder bool)
-	// has says last, and whether it is a folder, is a check's answer
-	has    bool
-	last   string
-	folder bool
+	then    func(k pathKind)
+	// has says last, and what it names, is a check's answer
+	has  bool
+	last string
+	kind pathKind
 }
 
 // ask checks p off the loop, in place of any check on its way.
-func (s *typedStat) ask(ctx *tui.Context, src FileSource, p string, then func(folder bool)) {
+func (s *typedStat) ask(ctx *tui.Context, src FileSource, p string, then func(k pathKind)) {
 	s.drop()
 	s.pending, s.asked, s.then = true, p, then
 	s.task, s.stop = goRead(ctx, "files.stat", func(c context.Context) (any, error) {
-		return src.isDir(c, p), nil
+		return src.kind(c, p), nil
 	})
 }
 
 // known is a check's answer for p, when there is one.
-func (s *typedStat) known(p string) (folder, ok bool) { return s.folder, s.has && s.last == p }
+func (s *typedStat) known(p string) (k pathKind, ok bool) { return s.kind, s.has && s.last == p }
 
 // drop stops the check on its way, if any, and forgets the last answer.
 func (s *typedStat) drop() {
@@ -703,28 +839,25 @@ func (s *typedStat) answer(r tui.TaskResult, owner tui.NodeID) bool {
 	if r.ID != s.task || !s.pending {
 		return r.Owner == owner
 	}
-	folder, _ := r.Value.(bool)
+	k, _ := r.Value.(pathKind)
 	then := s.then
 	s.drop()
-	s.has, s.last, s.folder = true, s.asked, folder
-	then(folder)
+	s.has, s.last, s.kind = true, s.asked, k
+	then(k)
 	return true
 }
 
 // ---------------------------------------------------------------- Folder
 
-// FileFolderView chooses a folder: a FileOpenView with a path field at the
-// top of its left column. The field FOLLOWS the listing — moving into a folder
+// FileFolderView chooses a folder: a FileOpenView whose path field, titled
+// Folder, is the answer. The field FOLLOWS the listing — moving into a folder
 // writes it there — and a path typed in it, then Enter, lists that folder. The
 // folder chosen is the field's. Files are listed too, and previewed, so a
 // folder is seen for what is in it.
 type FileFolderView struct {
 	Base
-	cfg      fileViewConfig
-	path     *TextInput
-	pathPane *Box
-	listing  *FileOpenView
-	stat     typedStat
+	cfg     fileViewConfig
+	listing *FileOpenView
 }
 
 // NewFileFolderView builds a folder view. Its listing previews unless asked
@@ -735,22 +868,19 @@ func NewFileFolderView(opts ...FileViewOption) *FileFolderView {
 		cfg.preview = true
 	}
 	v := &FileFolderView{cfg: cfg}
-	inputOpts := []TextInputOption{WithOnSubmit(func(s string) { v.goTo(s) }), WithOnEdit(func(string) { v.stat.drop() })}
-	if cfg.styled {
-		inputOpts = append(inputOpts, WithTextInputStyles(TextInputStyles{Text: cfg.st.Surface}))
-	}
-	v.path = NewTextInput(inputOpts...)
-	v.pathPane = newFilePane(v.path, "", cfg.st, cfg.styled)
-	v.pathPane.SetTitleMessage(folderTitle)
-
 	inner := cfg
 	inner.onHint = nil // the folder view reports the footer for all its parts
 	inner.onChoose = nil
-	inner.fields = append(append([]tui.Component(nil), cfg.fields...), v.pathPane)
-	v.listing = newFileOpenView(inner, WithOnDir(func(dir string) {
-		v.path.SetValue(dir)
-		v.pathPane.SetTitleMessage(folderTitle)
-	}))
+	v.listing = newFileOpenView(inner)
+	v.listing.path.titles = folderPathTitles
+	v.listing.path.pane.SetTitleMessage(folderTitle)
+	v.listing.enterPath = func(p string, k pathKind, _ bool) {
+		if k == pathFolder {
+			v.listing.list.load(p)
+			return
+		}
+		v.listing.path.say(v.listing.path.titleFor(k))
+	}
 	return v
 }
 
@@ -760,86 +890,56 @@ var (
 	notFolderTitle = tui.Msg("tui.files.folderNotAFolder")
 )
 
-// goTo lists the folder typed in the path field; a path that is not one says
-// so in the field's title, and the listing stays. For an async source the path
-// is checked off the loop first.
-func (v *FileFolderView) goTo(typed string) {
-	v.checkThen(typed, func(p string, _ bool) { v.listing.list.load(p) })
-}
+// field is the path field the view's answer is in.
+func (v *FileFolderView) field() *pathField { return v.listing.path }
 
 // checkThen runs then with typed as an fs path when it is a folder, and says
-// so in the field's title when it is not. A path not known to be a folder, of
-// an async source, is checked off the loop, and then told it ran later; an
-// edit to the field, or the field following the listing elsewhere, drops the
-// check.
+// what it is instead in the field's title when it is not. A path not known to
+// be a folder, of an async source, is checked off the loop, and then told it
+// ran later; an edit to the field, or the field following the listing
+// elsewhere, drops the check.
 func (v *FileFolderView) checkThen(typed string, then func(p string, later bool)) {
-	p, ok := v.pathOf(typed)
+	f, list := v.field(), v.listing.list
+	p, bad, ok := f.resolve(list.Source(), list.Dir(), typed)
 	if !ok {
-		v.pathPane.SetTitleMessage(notFolderTitle)
+		f.say(bad)
 		return
 	}
-	src := v.listing.list.Source()
-	if folder, known := v.isFolder(p); known || !src.async() || v.Context() == nil {
-		if !known {
-			folder = src.isDir(context.Background(), p)
-		}
-		if folder {
-			then(p, false)
-		} else {
-			v.pathPane.SetTitleMessage(notFolderTitle)
-		}
+	if !list.Loading() && p == list.Dir() {
+		then(p, false) // the folder listed is one
 		return
 	}
-	v.stat.ask(v.Context(), src, p, func(folder bool) {
-		if q, ok := v.pathOf(v.path.Value()); !ok || q != p {
-			return
-		}
-		if folder {
-			then(p, true)
+	still := func() bool {
+		q, _, ok := f.resolve(list.Source(), list.Dir(), f.input.Value())
+		return ok && q == p
+	}
+	f.check(v.listing.Context(), list.Source(), p, still, func(k pathKind, later bool) {
+		if k == pathFolder {
+			then(p, later)
 		} else {
-			v.pathPane.SetTitleMessage(notFolderTitle)
+			f.say(f.titleFor(k))
 		}
 	})
 }
 
-// pathOf is typed as an fs path of the source, or false when it names nothing
-// inside it.
-func (v *FileFolderView) pathOf(typed string) (string, bool) {
-	typed = strings.TrimSpace(typed)
-	if typed == "" {
-		return "", false
-	}
-	src := v.listing.list.Source()
-	if strings.HasPrefix(typed, src.Root) || strings.HasPrefix(typed, "/") {
-		return src.fsPath(typed)
-	}
-	p := path.Clean(path.Join(v.listing.list.Dir(), typed))
-	return p, fs.ValidPath(p)
-}
-
-// isFolder reports whether p is a folder, when that is known without a read
-// of an async source: the folder listed is one, and so is a path a check found
-// to be. Of a source read on the loop, it asks the source.
-func (v *FileFolderView) isFolder(p string) (folder, known bool) {
-	src := v.listing.list.Source()
-	if !src.async() {
-		return src.isDir(context.Background(), p), true
-	}
-	if !v.listing.list.Loading() && p == v.listing.list.Dir() {
-		return true, true
-	}
-	return v.stat.known(p)
-}
-
 // folder is typed as an fs path of the source, when it is known to be a folder
-// there.
+// there without a read of an async source: the folder listed is one, and so is
+// a path a check found to be. Of a source read on the loop, it asks the source.
 func (v *FileFolderView) folder(typed string) (string, bool) {
-	p, ok := v.pathOf(typed)
+	f, list := v.field(), v.listing.list
+	p, _, ok := f.resolve(list.Source(), list.Dir(), typed)
 	if !ok {
 		return "", false
 	}
-	folder, _ := v.isFolder(p)
-	return p, folder
+	src := list.Source()
+	if !src.async() {
+		return p, src.isDir(context.Background(), p)
+	}
+	if !list.Loading() && p == list.Dir() {
+		return p, true
+	}
+	k, known := f.stat.known(p)
+	return p, known && k == pathFolder
 }
 
 func (v *FileFolderView) Init(ctx *tui.Context) {
@@ -853,12 +953,9 @@ func (v *FileFolderView) Layout(c tui.Constraints) tui.Size {
 
 func (v *FileFolderView) Render(tui.Surface) {}
 
-// HandleEvent applies a typed path's folder check when it arrives, and follows
-// the keyboard for the footer, as FileOpenView's does.
+// HandleEvent follows the keyboard for the footer, as FileOpenView's does; the
+// path field's check is the listing's.
 func (v *FileFolderView) HandleEvent(ev tui.Event) bool {
-	if r, ok := ev.(tui.TaskResult); ok {
-		return v.stat.answer(r, v.NodeID())
-	}
 	if _, ok := ev.(tui.FocusEvent); ok && v.cfg.onHint != nil {
 		v.cfg.onHint(v.Hint())
 	}
@@ -875,7 +972,7 @@ func (v *FileFolderView) HandleEvent(ev tui.Event) bool {
 // whose Confirm reports true.
 func (v *FileFolderView) Confirm() bool {
 	now := false
-	v.checkThen(v.path.Value(), func(_ string, later bool) {
+	v.checkThen(v.field().input.Value(), func(_ string, later bool) {
 		if !later {
 			now = true
 		} else if v.cfg.onChoose != nil {
@@ -888,7 +985,7 @@ func (v *FileFolderView) Confirm() bool {
 // Selected is the folder in the path field, rooted, or "" when it is not one —
 // or, of an async source, not known to be one without a read.
 func (v *FileFolderView) Selected() string {
-	p, ok := v.folder(v.path.Value())
+	p, ok := v.folder(v.field().input.Value())
 	if !ok {
 		return ""
 	}
@@ -900,14 +997,13 @@ func (v *FileFolderView) Select(rooted string) { v.SetDir(rooted) }
 
 func (v *FileFolderView) Dir() string { return v.listing.Dir() }
 func (v *FileFolderView) SetDir(rooted string) {
-	v.stat.drop()
+	v.field().stat.drop()
 	v.listing.SetDir(rooted)
 }
 
 // SetSource lists another filesystem (FileOpenView.SetSource); the path field
 // follows the listing to it.
 func (v *FileFolderView) SetSource(src FileSource) {
-	v.stat.drop() // a check, or its answer, is the old source's
 	v.cfg.src = src.or()
 	v.listing.SetSource(v.cfg.src)
 }
@@ -930,7 +1026,7 @@ func (v *FileFolderView) FocusInitial() {
 }
 
 // Path is what the path field holds.
-func (v *FileFolderView) Path() string { return v.path.Value() }
+func (v *FileFolderView) Path() string { return v.field().input.Value() }
 
 // SetPreviewHighlighting highlights the preview: see [FileOpenView].
 func (v *FileFolderView) SetPreviewHighlighting(forFile func(name string) highlight.Highlighter, styles SyntaxStyles) {
@@ -947,7 +1043,7 @@ func (v *FileFolderView) Hint() string { return v.translate(v.HintMessage()) }
 
 // HintMessage is [FileFolderView.Hint] as a catalog message, as [FileOpenView.HintMessage].
 func (v *FileFolderView) HintMessage() tui.Message {
-	if ctx := v.path.Context(); ctx != nil && ctx.Focused() {
+	if v.field().focused() {
 		return tui.Msg("tui.files.hint.folderPath")
 	}
 	if v.listing.list.Focused() {

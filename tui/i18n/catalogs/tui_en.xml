@@ -59,6 +59,38 @@
         <source>Folder — not a folder</source>
         <translation>Folder — not a folder</translation>
     </message>
+    <message id="tui.files.folderNotFound">
+        <source>Folder — not found</source>
+        <translation>Folder — not found</translation>
+    </message>
+    <message id="tui.files.folderNoHome">
+        <source>Folder — ~ is not known here</source>
+        <translation>Folder — ~ is not known here</translation>
+    </message>
+    <message id="tui.files.folderCannotRead">
+        <source>Folder — cannot read</source>
+        <translation>Folder — cannot read</translation>
+    </message>
+    <message id="tui.files.path">
+        <source>Path</source>
+        <translation>Path</translation>
+    </message>
+    <message id="tui.files.pathNotFound">
+        <source>Path — not found</source>
+        <translation>Path — not found</translation>
+    </message>
+    <message id="tui.files.pathNoFolder">
+        <source>Path — its folder does not exist</source>
+        <translation>Path — its folder does not exist</translation>
+    </message>
+    <message id="tui.files.pathNoHome">
+        <source>Path — ~ is not known here</source>
+        <translation>Path — ~ is not known here</translation>
+    </message>
+    <message id="tui.files.pathCannotRead">
+        <source>Path — cannot read</source>
+        <translation>Path — cannot read</translation>
+    </message>
     <message id="tui.files.empty">
         <source>(empty)</source>
         <translation>(empty)</translation>
@@ -112,8 +144,8 @@
         <translation>Enter:press  Tab:next  Esc:cancel</translation>
     </message>
     <message id="tui.files.hint.openList">
-        <source>↑↓:move  Enter:open folder, or open file  Tab:next  Esc:cancel</source>
-        <translation>↑↓:move  Enter:open folder, or open file  Tab:next  Esc:cancel</translation>
+        <source>↑↓:move  Enter:open folder, or open file  Ctrl+k ~:path  Tab:next  Esc:cancel</source>
+        <translation>↑↓:move  Enter:open folder, or open file  Ctrl+k ~:path  Tab:next  Esc:cancel</translation>
     </message>
     <message id="tui.files.hint.previewPart">
         <source>j/k:scroll  gg/G:top/end  Tab:next  Esc:cancel</source>
@@ -124,16 +156,20 @@
         <translation>Enter:save  Tab:next  Esc:cancel</translation>
     </message>
     <message id="tui.files.hint.saveList">
-        <source>↑↓:move  Enter:open folder, or save over file  Tab:next  Esc:cancel</source>
-        <translation>↑↓:move  Enter:open folder, or save over file  Tab:next  Esc:cancel</translation>
+        <source>↑↓:move  Enter:open folder, or save over file  Ctrl+k ~:path  Tab:next  Esc:cancel</source>
+        <translation>↑↓:move  Enter:open folder, or save over file  Ctrl+k ~:path  Tab:next  Esc:cancel</translation>
     </message>
     <message id="tui.files.hint.folderPath">
-        <source>Enter:go to folder  Tab:next  Esc:cancel</source>
-        <translation>Enter:go to folder  Tab:next  Esc:cancel</translation>
+        <source>Enter:go to folder  Esc:back to the list  Tab:next</source>
+        <translation>Enter:go to folder  Esc:back to the list  Tab:next</translation>
     </message>
     <message id="tui.files.hint.listPart">
-        <source>↑↓:move  Enter:open folder  Tab:next  Esc:cancel</source>
-        <translation>↑↓:move  Enter:open folder  Tab:next  Esc:cancel</translation>
+        <source>↑↓:move  Enter:open folder  Ctrl+k ~:path  Tab:next  Esc:cancel</source>
+        <translation>↑↓:move  Enter:open folder  Ctrl+k ~:path  Tab:next  Esc:cancel</translation>
+    </message>
+    <message id="tui.files.hint.path">
+        <source>Enter:go there  Esc:back to the list  Tab:next</source>
+        <translation>Enter:go there  Esc:back to the list  Tab:next</translation>
     </message>
     <message id="tui.select.error">
         <source>error: %1</source>
