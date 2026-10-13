@@ -871,8 +871,9 @@ func (t *Terminal) isHostKey(e tui.KeyEvent) bool {
 }
 
 // SetHostKeys leaves the keys match accepts to the host: in input mode the Terminal sends none of
-// such a key and does not consume it, so it goes on to its ancestors and the Window's Shortcuts (a
-// host's F11, say) as an unconsumed key does. Normal mode is unchanged. The program then never sees
+// such a key. Its press is not consumed, so it goes on to its ancestors and the Window's Shortcuts
+// (a host's F11, say) as an unconsumed key does; a held key's repeats are consumed and dropped, so
+// the host acts once per press. match judges the press. Normal mode is unchanged. The program then never sees
 // those keys (an F11 that mc or htop would take). nil, the default, gives every key to the program.
 func (t *Terminal) SetHostKeys(match func(tui.KeyEvent) bool) { t.hostKeys = match }
 
