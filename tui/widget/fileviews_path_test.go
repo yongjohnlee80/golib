@@ -80,7 +80,9 @@ func TestTheOpenViewsPathFieldGoesWhereTyped(t *testing.T) {
 		t.Fatalf("a typed file chosen: Selected %q", sel)
 	}
 	h.waitFor("its folder listed", dirIs(h, v, root))
-	h.inject(key(tui.KeyUp)) // onto sub/: the typed choice is forgotten once the cursor moves
+	// down to the list (the field kept the keyboard), then onto sub/: the typed choice is
+	// forgotten once the cursor moves
+	h.inject(keyMod('j', tui.ModCtrl), key(tui.KeyUp))
 	h.waitFor("Selected follows the cursor again", func() bool {
 		var sel string
 		h.onLoop(func() { sel = v.Selected() })
