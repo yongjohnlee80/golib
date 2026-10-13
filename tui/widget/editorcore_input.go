@@ -73,6 +73,12 @@ func (c *EditorCore) HandlePaste(text string) bool {
 		c.setMode(ModeNormal)
 		b.insertText(text)
 		c.clampNormal()
+	case ModeVisualBlock:
+		// the block's parts out, the paste at its top left
+		c.blockDelete(c.visualBlock(), false)
+		c.setMode(ModeNormal)
+		b.insertText(text)
+		c.clampNormal()
 	case ModeVisualLine:
 		lo, hi := c.visualLines()
 		c.setMode(ModeNormal)
@@ -147,7 +153,7 @@ func (c *EditorCore) PressAt(line, col int) bool {
 	c.dotDrop() // a press is a jump: it splits an Insert being recorded
 	// Visual exits and the anchor is cleared: keeping it would make the next motion extend a
 	// selection the user believes they dismissed.
-	if c.keys.mode == ModeVisual || c.keys.mode == ModeVisualLine {
+	if c.visual() {
 		if c.keys.modal {
 			c.setMode(ModeNormal)
 		} else {
@@ -386,7 +392,7 @@ func (c *EditorCore) handleCommandKey(k tui.KeyEvent) bool {
 		c.keys.count, c.keys.pendingAct, c.keys.findArmed = 0, ActUnbound, ActUnbound
 		c.keys.regArmed, c.keys.reg, c.keys.markArmed, c.keys.macroArmed = false, 0, ActUnbound, ActUnbound
 		c.keys.dropOp()
-		if c.keys.mode == ModeVisual || c.keys.mode == ModeVisualLine {
+		if c.visual() {
 			c.exitVisual()
 			return true
 		}
@@ -423,7 +429,7 @@ func (c *EditorCore) handleCommandKey(k tui.KeyEvent) bool {
 	if c.keys.replArmed {
 		count := c.keys.replCount
 		c.keys.replArmed, c.keys.replCount = false, 0
-		visual := c.keys.mode == ModeVisual || c.keys.mode == ModeVisualLine
+		visual := c.visual()
 		switch {
 		case visual && k.Text != "" && k.Mods&nonTextMods == 0:
 			c.visualOp(ActVisualReplace, count, firstCluster(k.Text)) // every character of the selection
@@ -599,7 +605,7 @@ func (c *EditorCore) handleCommandKey(k tui.KeyEvent) bool {
 
 	// i and a name a text object after an operator (diw), and in Visual (viw): the next key says
 	// which. Neither is Visual's own key, so it is read before the keymap's answer.
-	visual := c.keys.mode == ModeVisual || c.keys.mode == ModeVisualLine
+	visual := c.visual()
 	if !kc.Ctrl && (kc.Code == 'i' || kc.Code == 'a') && (c.keys.op != ActUnbound || visual) {
 		c.keys.objArmed, c.keys.objCount = string(kc.Code), c.keys.count
 		c.keys.count = 0

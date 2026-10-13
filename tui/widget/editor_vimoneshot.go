@@ -43,7 +43,8 @@ func (c *EditorCore) insertOneShotStart() bool {
 	b := &c.buf
 	c.dotInsertEnded()
 	c.hist.close()
-	b.anchor = nil // a table cell's selection is Insert mode's
+	b.anchor = nil   // a table cell's selection is Insert mode's
+	c.blockIns = nil // a block's I or A ends here, its text on the first line only
 	c.oneShot = insertOneShot{on: true, ln: b.ln, depth: c.keyDepth}
 	if n := len(b.lineClusters(b.ln)); n > 0 && b.col >= n {
 		b.col, c.oneShot.eol = n-1, true

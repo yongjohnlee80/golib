@@ -57,6 +57,7 @@ type EditorCore struct {
 	opRegOne       bool           // the operator's motion is one whose delete Vim keeps in register 1 (regOneMotion)
 	insStart       taPos          // where this Insert began (editor_viminsert.go)
 	oneShot        insertOneShot  // Insert's Ctrl-o (editor_vimoneshot.go)
+	blockIns       *blockInsert   // a block's I, A or c waiting for its Insert to end (editor_vimblock.go)
 	keyDepth       int            // HandleKey calls in progress: a macro's and .'s keys are nested
 	marks          markSet        // a–z and the previous jump's place (editor_vimmarks.go)
 	macro          macroRecorder  // the macro being recorded, and what plays (editor_vimmacros.go)
@@ -386,7 +387,7 @@ func (c *EditorCore) SetValue(s string) {
 	defer c.cursorMoved(ln, col)
 	c.settlePendingRune()
 	c.keys.count, c.keys.pendingAct = 0, ActUnbound
-	c.oneShot = insertOneShot{}
+	c.oneShot, c.blockIns = insertOneShot{}, nil
 	c.hist.reset()
 	c.buf.setValue(s)
 	c.followEdits()         // a new document: no marks
@@ -561,7 +562,7 @@ func (c *EditorCore) SetKeyset(ks Keyset) {
 	c.settlePendingRune()
 	c.keys.dropPending()
 	c.dot = dotRecorder{} // a change recorded under another profile is not this one's to repeat
-	c.oneShot = insertOneShot{}
+	c.oneShot, c.blockIns = insertOneShot{}, nil
 	c.hist.close()
 	c.buf.anchor, c.vAnchor = nil, taPos{}
 	c.keys.applyKeyset(ks)
@@ -680,6 +681,7 @@ func (c *EditorCore) exitInsert() {
 	if !c.keys.modal {
 		return
 	}
+	c.blockInsertDone() // a block's I, A or c: the typed text on its other lines, in this step
 	c.dotInsertEnded()
 	c.hist.close()
 	c.buf.anchor = nil // a table cell's selection is Insert mode's
@@ -779,7 +781,7 @@ func mutatingAction(act Action) bool {
 		ActReplaceChar, ActJoin, ActJoinRaw, ActToggleCase, ActCaseToggleOp, ActLowerOp, ActUpperOp,
 		ActIndentPrefix, ActOutdentPrefix,
 		ActVisualChange, ActVisualReplace, ActVisualToggleCase, ActVisualLower, ActVisualUpper,
-		ActVisualIndent, ActVisualOutdent, ActDeleteWordBack, ActDeleteLineBack:
+		ActVisualIndent, ActVisualOutdent, ActDeleteWordBack, ActDeleteLineBack, ActVisualInsert, ActVisualAppend:
 		return true
 	}
 	return false
@@ -918,9 +920,25 @@ func (c *EditorCore) execAction(act Action, count int) bool {
 		switch c.keys.mode {
 		case ModeVisual:
 			c.exitVisual()
+		case ModeVisualLine, ModeVisualBlock:
+			c.setMode(ModeVisual)
 		default:
 			c.vAnchor = taPos{ln: b.ln, col: b.col}
 			c.setMode(ModeVisual)
+		}
+		return true
+	case ActVisualBlock:
+		if !c.canSelect {
+			return true
+		}
+		switch c.keys.mode {
+		case ModeVisualBlock:
+			c.exitVisual()
+		case ModeVisual, ModeVisualLine:
+			c.setMode(ModeVisualBlock)
+		default:
+			c.vAnchor = taPos{ln: b.ln, col: b.col}
+			c.setMode(ModeVisualBlock)
 		}
 		return true
 	case ActVisualLine:
@@ -930,7 +948,7 @@ func (c *EditorCore) execAction(act Action, count int) bool {
 		switch c.keys.mode {
 		case ModeVisualLine:
 			c.exitVisual()
-		case ModeVisual:
+		case ModeVisual, ModeVisualBlock:
 			c.setMode(ModeVisualLine)
 		default:
 			c.vAnchor = taPos{ln: b.ln, col: b.col}
@@ -944,11 +962,14 @@ func (c *EditorCore) execAction(act Action, count int) bool {
 			c.exitVisual()
 			return true
 		}
-		if c.keys.mode == ModeVisualLine {
+		switch c.keys.mode {
+		case ModeVisualBlock:
+			c.blockYank(c.visualBlock())
+		case ModeVisualLine:
 			lo, hi := c.visualLines()
 			c.regYank(strings.Join(b.lines[lo:hi+1], "\n"), true)
 			b.ln, b.col = lo, 0
-		} else {
+		default:
 			lo, hiEx := c.visualRange()
 			c.regYank(b.textIn(lo, hiEx), false)
 			b.ln, b.col = lo.ln, lo.col
@@ -957,11 +978,18 @@ func (c *EditorCore) execAction(act Action, count int) bool {
 		c.reveal()
 		return true
 	case ActVisualDelete, ActVisualChange, ActVisualToggleCase, ActVisualLower, ActVisualUpper,
-		ActVisualIndent, ActVisualOutdent:
+		ActVisualIndent, ActVisualOutdent, ActVisualInsert, ActVisualAppend:
 		c.visualOp(act, count, "") // editor_vimvisual.go: . repeats it over a region of its size
 		return true
 	case ActVisualOther:
 		c.visualOther()
+		return true
+	case ActVisualOtherCol:
+		if c.keys.mode == ModeVisualBlock {
+			c.blockOther()
+		} else {
+			c.visualOther() // O is o outside a block
+		}
 		return true
 	case ActDeleteWordBack, ActDeleteLineBack:
 		c.insertDeleteBack(act == ActDeleteLineBack)
@@ -971,7 +999,7 @@ func (c *EditorCore) execAction(act Action, count int) bool {
 
 	// General actions (Nano / Standard).
 	case ActCut:
-		if c.keys.mode == ModeVisual || c.keys.mode == ModeVisualLine {
+		if c.visual() {
 			return c.execAction(ActVisualDelete, count)
 		}
 		c.deleteLines(b.ln, b.ln)
@@ -979,12 +1007,12 @@ func (c *EditorCore) execAction(act Action, count int) bool {
 
 	case ActCopy:
 		if !c.reg.yankAllowed() {
-			if c.keys.mode == ModeVisual || c.keys.mode == ModeVisualLine {
+			if c.visual() {
 				c.exitVisual()
 			}
 			return true
 		}
-		if c.keys.mode == ModeVisual || c.keys.mode == ModeVisualLine {
+		if c.visual() {
 			return c.execAction(ActVisualYank, count)
 		}
 		if b.ln < len(b.lines) {

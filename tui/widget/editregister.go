@@ -1,6 +1,9 @@
 package widget
 
-import "unicode"
+import (
+	"strings"
+	"unicode"
+)
 
 // EDIT REGISTERS — a text widget's registers, as Vim keeps them: the unnamed register (what the
 // last yank or delete left), a–z (A–Z append), 0 (the last yank no register was named for), 1–9
@@ -16,23 +19,33 @@ import "unicode"
 // y_previous points at it.
 
 // regEntry is one register's content. atoms is a recorded macro's (editor_vimmacros.go), kept
-// only while text is their encoding: every other write makes a new entry without them.
+// only while text is their encoding: every other write makes a new entry without them. A block's
+// text is its pieces, one per line, and width its width in cells (Vim's y_width).
 type regEntry struct {
 	text     string
 	linewise bool
+	block    bool
+	width    int
 	atoms    []dotAtom
 }
 
 // holds reports whether a put would insert anything: text, or an empty line-wise yank.
 func (e regEntry) holds() bool { return e.text != "" || e.linewise }
 
-// appended is e with more appended, as "A–"Z do: whole lines when either part is.
+// appended is e with more appended, as "A–"Z do (Vim's op_yank): whole lines when either part is;
+// a block keeps its kind, more's lines its next pieces, the width the wider.
 func (e regEntry) appended(more regEntry) regEntry {
 	switch {
 	case !e.holds():
 		return more
 	case e.linewise || more.linewise:
 		return regEntry{text: e.text + "\n" + more.text, linewise: true}
+	case e.block:
+		w := max(e.width, more.width)
+		for _, p := range strings.Split(more.text, "\n") {
+			w = max(w, blockCells(p))
+		}
+		return regEntry{text: e.text + "\n" + more.text, block: true, width: w}
 	}
 	return regEntry{text: e.text + more.text}
 }

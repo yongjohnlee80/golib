@@ -14,7 +14,7 @@ import (
 var vimToken = regexp.MustCompile(`<[a-z]+(:[^>]*)?>`)
 
 // vimSeq types s into the core: plain text as keys, and <esc> <cr> <left> <pgdn> <bs> as those keys,
-// <redo> as Ctrl-r, <ctw> <ctu> and <cto> as Ctrl-w Ctrl-u and Ctrl-o,
+// <redo> as Ctrl-r, <ctw> <ctu> <cto> and <ctv> as Ctrl-w Ctrl-u Ctrl-o and Ctrl-v,
 // <tick> as the escape chord's timeout, <paste:TEXT> as a paste (\n for a line break).
 func vimSeq(c *widget.EditorCore, s string) {
 	for len(s) > 0 {
@@ -44,6 +44,8 @@ func vimSeq(c *widget.EditorCore, s string) {
 			c.HandleKey(tui.KeyEvent{Code: 'u', Mods: tui.ModCtrl})
 		case tok == "<cto>":
 			c.HandleKey(tui.KeyEvent{Code: 'o', Mods: tui.ModCtrl})
+		case tok == "<ctv>":
+			c.HandleKey(tui.KeyEvent{Code: 'v', Mods: tui.ModCtrl})
 		case tok == "<tick>":
 			c.HandleTick()
 		case strings.HasPrefix(tok, "<paste:"):

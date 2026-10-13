@@ -47,6 +47,9 @@ const (
 	ModeVisual
 	// ModeVisualLine is line-wise selection.
 	ModeVisualLine
+	// ModeVisualBlock is a block of lines and display columns (Vim's Ctrl-v). It shares Visual's
+	// bindings, as ModeVisualLine does.
+	ModeVisualBlock
 )
 
 // String renders the mode for status bars.
@@ -60,6 +63,8 @@ func (m EditorMode) String() string {
 		return "VISUAL"
 	case ModeVisualLine:
 		return "V-LINE"
+	case ModeVisualBlock:
+		return "V-BLOCK"
 	}
 	return "?"
 }
@@ -247,6 +252,11 @@ const (
 	ActDeleteWordBack // Ctrl-w (Vim Insert): delete the word before the cursor
 	ActDeleteLineBack // Ctrl-u (Vim Insert): delete back to the indent, then the line's start
 	ActInsertOneShot  // Ctrl-o (Vim Insert): one Normal-mode command, then Insert again
+
+	ActVisualBlock    // Ctrl-v (Vim Normal: enter Visual block; Visual: switch/exit)
+	ActVisualOtherCol // O (Vim Visual): in a block, the cursor and the anchor swap columns
+	ActVisualInsert   // I (Vim Visual): Insert before the block, on each line; else at the first line's start
+	ActVisualAppend   // A (Vim Visual): Insert after the block, on each line; else at the last line's end
 
 	actMax // sentinel for validation
 )
@@ -446,6 +456,14 @@ func (a Action) String() string {
 		return "DeleteLineBack"
 	case ActInsertOneShot:
 		return "InsertOneShot"
+	case ActVisualBlock:
+		return "VisualBlock"
+	case ActVisualOtherCol:
+		return "VisualOtherCol"
+	case ActVisualInsert:
+		return "VisualInsert"
+	case ActVisualAppend:
+		return "VisualAppend"
 	}
 	return fmt.Sprintf("Action(%d)", a)
 }
@@ -645,6 +663,14 @@ func (a Action) Description() string {
 		return "Delete back to the indent"
 	case ActInsertOneShot:
 		return "Run one Normal-mode command"
+	case ActVisualBlock:
+		return "Select a block"
+	case ActVisualOtherCol:
+		return "Go to the block's other column"
+	case ActVisualInsert:
+		return "Insert before the block"
+	case ActVisualAppend:
+		return "Append after the block"
 	}
 	return "Custom action"
 }
@@ -695,7 +721,7 @@ func (km Keymap) Bindings() []KeyBinding {
 
 // modeClass maps an editor mode onto its binding class.
 func modeClass(m EditorMode) EditorMode {
-	if m == ModeVisualLine {
+	if m == ModeVisualLine || m == ModeVisualBlock {
 		return ModeVisual
 	}
 	return m
@@ -708,7 +734,7 @@ func actionModes(a Action) (normal, visual, insert bool) {
 		ActWordForward, ActWordBack, ActWordEnd, ActParaForward, ActParaBack,
 		ActPageUp, ActPageDown:
 		return true, true, true
-	case ActGoBottom, ActGoPrefix, ActVisual, ActVisualLine, ActFindNext, ActFindPrev, ActCommandLine,
+	case ActGoBottom, ActGoPrefix, ActVisual, ActVisualLine, ActVisualBlock, ActFindNext, ActFindPrev, ActCommandLine,
 		ActRegisterPrefix, ActMarkSet, ActMarkLine, ActMarkExact:
 		return true, true, false
 	case ActDeletePrefix, ActYankPrefix,
@@ -726,7 +752,8 @@ func actionModes(a Action) (normal, visual, insert bool) {
 	case ActDeleteWordBack, ActDeleteLineBack, ActInsertOneShot:
 		return false, false, true
 	case ActVisualYank, ActVisualDelete, ActVisualChange, ActVisualReplace, ActVisualToggleCase, ActVisualLower,
-		ActVisualUpper, ActVisualIndent, ActVisualOutdent, ActVisualOther:
+		ActVisualUpper, ActVisualIndent, ActVisualOutdent, ActVisualOther, ActVisualOtherCol, ActVisualInsert,
+		ActVisualAppend:
 		return false, true, false
 	case ActLineDownFirst, ActLineUpFirst, ActFirstNonBlank, ActLeftWrap,
 		ActFindCharForward, ActFindCharBack, ActTillCharForward, ActTillCharBack,
@@ -876,6 +903,10 @@ func VimKeymap() Keymap {
 	km[v('u')], km[v('U')] = ActVisualLower, ActVisualUpper
 	km[v('>')], km[v('<')] = ActVisualIndent, ActVisualOutdent
 	km[v('o')] = ActVisualOther
+	km[v('O')] = ActVisualOtherCol
+	km[v('I')], km[v('A')] = ActVisualInsert, ActVisualAppend
+	km[KeyChord{Mode: ModeNormal, Code: 'v', Ctrl: true}] = ActVisualBlock
+	km[KeyChord{Mode: ModeVisual, Code: 'v', Ctrl: true}] = ActVisualBlock
 	km[v('v')] = ActVisual
 	km[v('V')] = ActVisualLine
 

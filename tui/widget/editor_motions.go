@@ -271,6 +271,9 @@ func (c *EditorCore) move(act Action, count int) {
 			col = len(c.buf.lineClusters(c.buf.ln))
 		}
 		apply(c.buf.ln, col)
+		if c.keys.mode == ModeVisualBlock {
+			c.buf.desired = blockToEnd // the block runs to every line's end, through j and k
+		}
 	case ActWordForward, ActWORDForward, ActWordBack, ActWORDBack, ActWordEnd, ActWORDEnd,
 		ActWordEndBack, ActWORDEndBack:
 		c.buf.desired = -1
