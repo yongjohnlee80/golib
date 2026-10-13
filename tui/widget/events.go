@@ -80,6 +80,16 @@ type YankEvent struct {
 	ClipboardDelivered bool
 }
 
+// MacroStoppedEvent is emitted by an Editor when a macro (@{reg}) is stopped before its end, as
+// Vim ends a macro on an error: Err says why (ErrMacroTooLong). Register is the one played. The
+// keys still queued are dropped; what the macro changed stays, each change its own undo step. A
+// host shows Err where it shows the editor's messages.
+type MacroStoppedEvent struct {
+	Owner    tui.NodeID
+	Register rune
+	Err      error
+}
+
 // ChangeEvent is emitted by TextInput and TextArea whenever the value
 // changes through user input — coalesced per input event (one event per
 // paste, not per rune).

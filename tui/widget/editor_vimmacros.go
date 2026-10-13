@@ -1,6 +1,7 @@
 package widget
 
 import (
+	"errors"
 	"strings"
 
 	"github.com/yongjohnlee80/golib/tui"
@@ -16,8 +17,16 @@ import (
 // plays it, stops at a depth of 100. On a viewer q and @ bubble: a macro there could change nothing,
 // and the key is the host's, as every key a viewer refuses is.
 
-// macroDepth is how deep macros may play one another.
+// macroDepth is how deep macros may play one another: a cheap stop for a chain.
 const macroDepth = 100
+
+// macroBudget is how many keys and texts one @ may play, its macros inside it and its count
+// included: a thousand-key macro a hundred times over. The depth alone doesn't bound the work: a
+// macro holding 2@ of itself plays twice at every level, some 2^99 times in all.
+const macroBudget = 100_000
+
+// ErrMacroTooLong is why a macro stopped when it played more than one @ may (macroBudget).
+var ErrMacroTooLong = errors.New("widget: the macro played too long, and was stopped")
 
 // macroRecorder is the macro being recorded, and what plays.
 type macroRecorder struct {
@@ -25,6 +34,8 @@ type macroRecorder struct {
 	atoms   []dotAtom
 	playing int  // how many macros are playing, one inside another
 	last    rune // the register last played, for @@
+	budget  int  // what the playing @ may still play
+	stopped bool // the playing @ ran out of budget, for its MacroStoppedEvent
 }
 
 // macroAtom records a into the macro being recorded, unless a macro is playing: its keys are its
@@ -73,10 +84,23 @@ func (c *EditorCore) macroPlay(name rune, count int) {
 	if atoms == nil {
 		atoms = decodeMacro(e.text)
 	}
+	if m.playing == 0 { // a top-level @: its budget, and what it stops, are its own
+		m.budget, m.stopped = macroBudget, false
+	}
 	m.playing++
-	defer func() { m.playing-- }()
+	defer func() {
+		m.playing--
+		if m.playing == 0 && m.stopped {
+			c.publish(MacroStoppedEvent{Owner: c.nodeID(), Register: name, Err: ErrMacroTooLong})
+		}
+	}()
 	for range max(count, 1) {
 		for _, a := range atoms {
+			if m.budget == 0 { // spent, here or in a macro inside: every macro still playing stops
+				m.stopped = true
+				return
+			}
+			m.budget--
 			switch a.kind {
 			case dotKey:
 				c.HandleKey(a.key)
