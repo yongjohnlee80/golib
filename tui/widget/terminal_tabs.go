@@ -245,7 +245,9 @@ func (t *TerminalTabs) openMenu(id TerminalTabID, at tui.Point) {
 	t.popMenu(id, t.menuRows(id), at)
 }
 
-// popMenu shows items over the strip at at, a chosen row's action run with id.
+// popMenu shows items over the strip at at, a chosen row's action run with id once the menu has
+// gone: the menu's layer traps the input scope while it is open, and an action that acts on a
+// window around the strip (a Drawer's toggleMaximize) is refused inside it.
 func (t *TerminalTabs) popMenu(id TerminalTabID, items []MenuItemModel, at tui.Point) {
 	host, ok := hostFor[popupHost](t.ctx)
 	if !ok || len(items) == 0 {
@@ -253,24 +255,27 @@ func (t *TerminalTabs) popMenu(id TerminalTabID, items []MenuItemModel, at tui.P
 	}
 	t.closeMenu()
 	var layer *popupLayer
+	var chosen func(TerminalTabID)
 	menu := NewMenu(WithMenuVimNavigation(true), WithActionExecutor(func(inv tui.ActionInvocation) bool {
 		act, ok := inv.Action.(TerminalTabsMenuAction)
-		if !ok || act.Run == nil {
+		if !ok || act.Run == nil || layer == nil {
 			return false
 		}
-		if layer != nil {
-			layer.requestClose(DismissAccept)
-		}
-		act.Run(id)
+		chosen = act.Run
+		layer.requestClose(DismissAccept)
 		return true
 	}))
 	if err := menu.SetModel(items); err != nil {
 		return
 	}
 	box := NewBox(menu, WithStyle(style.New().Background(style.TokenPanel)))
-	l, err := host.openPopupAt(LayerID(fmt.Sprintf("terminaltabs.menu.%d", t.ctx.ID())), t, box, at, func(DismissReason) {
+	l, err := host.openPopupAt(LayerID(fmt.Sprintf("terminaltabs.menu.%d", t.ctx.ID())), t, box, at, func(reason DismissReason) {
 		if t.menuOpen == layer {
 			t.menuOpen = nil
+		}
+		if run := chosen; run != nil && reason == DismissAccept {
+			chosen = nil
+			t.ctx.Update(func() { run(id) }) // a later turn: the layer, and its trap, gone
 		}
 	})
 	if err != nil {
