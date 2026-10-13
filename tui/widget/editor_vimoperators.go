@@ -206,8 +206,7 @@ func (c *EditorCore) applyOp(op Action, r opRange) {
 		if r.lines {
 			text = strings.Join(b.lines[r.lo.ln:r.hiEx.ln+1], "\n")
 		}
-		c.yankSet(text, r.lines)
-		c.exportYank(text)
+		c.regYank(text, r.lines)
 		if r.lines {
 			b.ln = r.lo.ln // the column stays, as Vim's yj and yk keep it
 		} else {
@@ -222,7 +221,7 @@ func (c *EditorCore) applyOp(op Action, r opRange) {
 			return
 		}
 		c.beginGroup()
-		c.yankSet(b.textIn(r.lo, r.hiEx), false)
+		c.regDelete(b.textIn(r.lo, r.hiEx), false)
 		b.deleteRegion(r.lo, r.hiEx)
 		b.ln, b.col = r.lo.ln, r.lo.col
 		c.clampNormal()
@@ -231,14 +230,14 @@ func (c *EditorCore) applyOp(op Action, r opRange) {
 		c.beginGroup()
 		if r.lines {
 			lines := b.lines[r.lo.ln : r.hiEx.ln+1]
-			c.yankSet(strings.Join(lines, "\n"), true)
+			c.regDelete(strings.Join(lines, "\n"), true)
 			indent := leadingBlanks(lines[0])
 			rest := append(append(append([]string{}, b.lines[:r.lo.ln]...), indent), b.lines[r.hiEx.ln+1:]...)
 			b.lines = rest
 			b.touch(r.lo.ln)
 			b.ln, b.col = r.lo.ln, len(clusters(indent))
 		} else {
-			c.yankSet(b.textIn(r.lo, r.hiEx), false)
+			c.regDelete(b.textIn(r.lo, r.hiEx), false)
 			b.deleteRegion(r.lo, r.hiEx)
 			b.ln, b.col = r.lo.ln, r.lo.col
 		}
@@ -270,8 +269,20 @@ func (c *EditorCore) opMotion(op Action, act Action, count int, hadCount bool) b
 	if !ok {
 		return true // a motion, but it fails: nothing changes
 	}
+	c.opRegOne = regOneMotion(act)
 	c.runOp(op, to, kind)
+	c.opRegOne = false
 	return true
+}
+
+// regOneMotion reports a motion whose delete Vim keeps in register 1 even within a line (ops.c
+// use_reg_one: %, (, ), `, /, ?, n, N, {, }); of those golib's operators take %, { and }.
+func regOneMotion(act Action) bool {
+	switch act {
+	case ActMatchPair, ActParaForward, ActParaBack:
+		return true
+	}
+	return false
 }
 
 // runOp makes the range from the cursor to to and runs op over it, unless it is empty.

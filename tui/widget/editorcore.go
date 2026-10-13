@@ -54,7 +54,8 @@ type EditorCore struct {
 	buf            textBuffer     // the text and the cursor
 	hist           editHistory    // undo/redo
 	dot            dotRecorder    // the change . repeats, and the one being recorded
-	reg            editRegister   // the unnamed register
+	opRegOne       bool           // the operator's motion is one whose delete Vim keeps in register 1 (regOneMotion)
+	reg            editRegister   // the registers
 	keys           keyDispatch    // modes and key routing
 	hl             highlightCache // per-line styles
 	sourceFactory  func() highlight.Source
@@ -833,7 +834,7 @@ func (c *EditorCore) execAction(act Action, count int) bool {
 		}
 		n := min(count, len(cs)-b.col)
 		c.beginGroup()
-		c.yankSet(strings.Join(cs[b.col:b.col+n], ""), false)
+		c.regDelete(strings.Join(cs[b.col:b.col+n], ""), false)
 		b.deleteRegion(taPos{b.ln, b.col}, taPos{b.ln, b.col + n})
 		c.clampNormal()
 		c.edited()
@@ -842,7 +843,7 @@ func (c *EditorCore) execAction(act Action, count int) bool {
 		cs := b.lineClusters(b.ln)
 		if b.col < len(cs) {
 			c.beginGroup()
-			c.yankSet(strings.Join(cs[b.col:], ""), false)
+			c.regDelete(strings.Join(cs[b.col:], ""), false)
 			b.deleteRegion(taPos{b.ln, b.col}, taPos{b.ln, len(cs)})
 			c.clampNormal()
 			c.edited()
@@ -874,10 +875,10 @@ func (c *EditorCore) execAction(act Action, count int) bool {
 		c.runOp(ActChangePrefix, taPos{min(b.ln+count-1, len(b.lines)-1), 0}, linewise)
 		return true
 	case ActPasteAfter:
-		c.pasteRegister(true)
+		c.pasteRegister(true, count)
 		return true
 	case ActPasteBefore:
-		c.pasteRegister(false)
+		c.pasteRegister(false, count)
 		return true
 	case ActUndo:
 		c.doUndo()
@@ -922,15 +923,11 @@ func (c *EditorCore) execAction(act Action, count int) bool {
 		}
 		if c.keys.mode == ModeVisualLine {
 			lo, hi := c.visualLines()
-			text := strings.Join(b.lines[lo:hi+1], "\n")
-			c.yankSet(text, true)
-			c.exportYank(text)
+			c.regYank(strings.Join(b.lines[lo:hi+1], "\n"), true)
 			b.ln, b.col = lo, 0
 		} else {
 			lo, hiEx := c.visualRange()
-			text := b.textIn(lo, hiEx)
-			c.yankSet(text, false)
-			c.exportYank(text)
+			c.regYank(b.textIn(lo, hiEx), false)
 			b.ln, b.col = lo.ln, lo.col
 		}
 		c.exitVisual()
@@ -944,7 +941,7 @@ func (c *EditorCore) execAction(act Action, count int) bool {
 		} else {
 			lo, hiEx := c.visualRange()
 			c.beginGroup()
-			c.yankSet(b.textIn(lo, hiEx), false)
+			c.regDelete(b.textIn(lo, hiEx), false)
 			b.deleteRegion(lo, hiEx)
 			c.exitVisual()
 			c.edited()
@@ -970,14 +967,12 @@ func (c *EditorCore) execAction(act Action, count int) bool {
 			return c.execAction(ActVisualYank, count)
 		}
 		if b.ln < len(b.lines) {
-			text := b.lines[b.ln]
-			c.yankSet(text, true)
-			c.exportYank(text)
+			c.regYank(b.lines[b.ln], true)
 		}
 		return true
 
 	case ActPaste:
-		c.pasteRegister(false)
+		c.pasteRegister(false, 1)
 		return true
 
 	case ActCommandLine:
