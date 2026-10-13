@@ -1,8 +1,10 @@
 package widget_test
 
 import (
+	"errors"
 	"testing"
 
+	"github.com/yongjohnlee80/golib/tui"
 	"github.com/yongjohnlee80/golib/tui/widget"
 )
 
@@ -174,4 +176,100 @@ func TestVimRegistersClipboardExport(t *testing.T) {
 	}
 	h.inject(key('"'), key('+'), key('d'), key('d')) // a delete named into +
 	h.waitFor("the named delete on the clipboard", func() bool { return string(h.tb.Clipboard()) == "keep" })
+}
+
+// clipEditor is a focused Vim editor holding text, its cursor at the start, on an App whose
+// TestBackend holds clipboard reads for the cell to answer; tb, when given, is that backend.
+func clipEditor(t *testing.T, text string, tb *tui.TestBackend) (*harness, *widget.Editor, *shell) {
+	t.Helper()
+	ed := widget.NewEditor()
+	sh := newShell(ed)
+	var opts []tui.AppOption
+	if tb != nil {
+		opts = append(opts, tui.WithBackend(tb))
+	}
+	h := startAppOpts(t, sh, 30, 4, opts...)
+	if tb != nil {
+		h.tb = tb // the keys go to the backend the App reads
+	}
+	h.inject(tab())
+	h.barrier(sh)
+	h.onLoop(func() { ed.SetValue(text); ed.SetLine(0, 0) })
+	h.barrier(sh)
+	return h, ed, sh
+}
+
+func edValue(h *harness, ed *widget.Editor) (v string) {
+	h.onLoop(func() { v = ed.Value() })
+	return v
+}
+
+// "+p and "*p put what the system clipboard answers, when it answers: text after the cursor, and
+// text ending in a line break as whole lines (Vim's MAUTO).
+func TestVimRegistersPutReadsTheClipboard(t *testing.T) {
+	h, ed, sh := clipEditor(t, "ab", nil)
+	h.inject(key('"'), key('+'), key('p'))
+	h.barrier(sh)
+	if v := edValue(h, ed); v != "ab" || h.tb.ClipboardReads() != 1 {
+		t.Fatalf("before the answer: %q, reads held %d", v, h.tb.ClipboardReads())
+	}
+	h.tb.AnswerClipboard("XY", nil)
+	h.waitFor("the clipboard's text put", func() bool { return edValue(h, ed) == "aXYb" })
+
+	h.inject(key('"'), key('*'), key('P'))
+	h.barrier(sh)
+	h.tb.AnswerClipboard("line\n", nil)
+	h.waitFor("whole lines put above", func() bool { return edValue(h, ed) == "line\naXYb" })
+}
+
+// A put waits on its read: typed over before the answer, it is dropped; a later "+p replaces it;
+// a failed read puts what this editor last wrote there.
+func TestVimRegistersClipboardPutGuards(t *testing.T) {
+	h, ed, sh := clipEditor(t, "ab", nil)
+	h.inject(key('"'), key('+'), key('p'), key('x')) // x changes the text before the answer
+	h.barrier(sh)
+	h.tb.AnswerClipboard("late", nil)
+	h.barrier(sh)
+	h.sync()
+	if v := edValue(h, ed); v != "b" {
+		t.Fatalf("an answer after the text changed was put: %q", v)
+	}
+
+	h.inject(key('"'), key('+'), key('p'), key('"'), key('+'), key('p'))
+	h.barrier(sh)
+	h.tb.AnswerClipboard("first", nil) // the replaced read's answer
+	h.tb.AnswerClipboard("second", nil)
+	h.waitFor("only the second put", func() bool { return edValue(h, ed) == "bsecond" })
+
+	h.onLoop(func() { ed.SetValue("cd"); ed.SetLine(0, 0) })
+	h.inject(key('"'), key('+'), key('y'), key('l')) // + last written: "c"
+	h.inject(key('"'), key('+'), key('p'))
+	h.barrier(sh)
+	h.tb.AnswerClipboard("", errors.New("the platform said no"))
+	h.waitFor("the last write put", func() bool { return edValue(h, ed) == "ccd" })
+}
+
+// Inside a replay "+p puts what was last read or written, without a read: . stays one step.
+func TestVimRegistersClipboardPutInAReplay(t *testing.T) {
+	h, ed, sh := clipEditor(t, "ab", nil)
+	h.inject(key('"'), key('+'), key('p'))
+	h.barrier(sh)
+	h.tb.AnswerClipboard("Z", nil)
+	h.waitFor("the read put", func() bool { return edValue(h, ed) == "aZb" })
+	h.inject(key('.'))
+	h.barrier(sh)
+	if v := edValue(h, ed); v != "aZZb" || h.tb.ClipboardReads() != 0 {
+		t.Fatalf(". after \"+p: %q, reads held %d", v, h.tb.ClipboardReads())
+	}
+}
+
+// A backend that can't read the clipboard: "+p puts what this editor last wrote there, at once.
+func TestVimRegistersClipboardPutUnsupported(t *testing.T) {
+	tb := tui.NewTestBackend(30, 4, tui.WithTestClipboardUnsupported())
+	h, ed, sh := clipEditor(t, "ab", tb)
+	h.inject(key('"'), key('+'), key('y'), key('l'), key('"'), key('+'), key('p'))
+	h.barrier(sh)
+	if v := edValue(h, ed); v != "aab" {
+		t.Fatalf("unsupported: %q", v)
+	}
 }

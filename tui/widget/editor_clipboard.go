@@ -1,6 +1,10 @@
 package widget
 
-import "strings"
+import (
+	"strings"
+
+	"github.com/yongjohnlee80/golib/tui"
+)
 
 // visualRange returns the INCLUSIVE charwise selection as an exclusive
 // [lo, hiEx) buffer region.
@@ -173,7 +177,16 @@ func (c *EditorCore) deleteLines(lo, hi int) {
 // times. Whole lines go below (or above) the cursor's line, the cursor on the first; text goes after
 // (or before) the cursor, the cursor on its last cluster.
 func (c *EditorCore) pasteRegister(after bool, count int) {
-	e, _ := c.reg.get(c.keys.reg)
+	name := c.keys.reg
+	if (name == '+' || name == '*') && c.readClipboardPut(name, after, count) {
+		return // put when the clipboard answers
+	}
+	e, _ := c.reg.get(name)
+	c.putEntry(e, after, count)
+}
+
+// putEntry puts e as p (after) or P does, count times.
+func (c *EditorCore) putEntry(e regEntry, after bool, count int) {
 	if !e.holds() {
 		return
 	}
@@ -209,3 +222,72 @@ func WithSelection(enabled bool) EditorOption { return WithCore(CoreSelection(en
 
 // WithYank configures whether yanking to system clipboard and registers is enabled.
 func WithYank(enabled bool) EditorOption { return WithCore(CoreYank(enabled)) }
+
+// clipPut is a "+p or "*p waiting for the system clipboard: the read it waits on, and the put as
+// it was asked for, at the text's revision and the cursor it was asked at.
+type clipPut struct {
+	read    tui.ClipboardRead
+	reg     rune
+	after   bool
+	count   int
+	rev     uint64
+	ln, col int
+	// keys is the command as . recorded it ("+p): the last change once the put lands, since the
+	// command itself ended before it changed anything.
+	keys []dotAtom
+}
+
+// readClipboardPut starts "+p or "*p as a read of the system clipboard, and reports whether it
+// did: the put runs when the read answers. It doesn't when there is no clipboard to read (no
+// Context, or a backend that can't: the register's last write is put now), or inside a replay (.
+// or a macro), which puts what was last read or written there without waiting, so the replay stays
+// one synchronous step.
+func (c *EditorCore) readClipboardPut(reg rune, after bool, count int) bool {
+	if c.ctx == nil || c.dot.replaying || c.macro.playing > 0 {
+		return false
+	}
+	p := clipPut{reg: reg, after: after, count: count, rev: c.rev, ln: c.buf.ln, col: c.buf.col}
+	if c.dot.on && !c.dot.inInsert {
+		p.keys = append([]dotAtom(nil), c.dot.atoms...)
+	}
+	read, err := c.ctx.ReadClipboard(0, func(read tui.ClipboardRead, text string, err error) {
+		c.clipboardAnswered(read, text, err)
+	})
+	if err != nil {
+		return false
+	}
+	p.read = read
+	c.clipPut = &p // a later "+p replaces it: this read's answer is then dropped
+	return true
+}
+
+// clipboardAnswered puts what the clipboard answered, if the put still waits on that read and the
+// text and cursor are as they were (a put landing where the user has since typed or moved would be
+// a surprise). Text ending in a line break is whole lines, else characters (Vim's MAUTO). A failed
+// read puts what this editor last wrote there. What was read is kept as the register's, for a
+// replay to put.
+func (c *EditorCore) clipboardAnswered(read tui.ClipboardRead, text string, err error) {
+	p := c.clipPut
+	if p == nil || p.read != read {
+		return
+	}
+	c.clipPut = nil
+	if c.rev != p.rev || c.buf.ln != p.ln || c.buf.col != p.col || c.readOnly {
+		return
+	}
+	ln, col := c.buf.ln, c.buf.col
+	defer c.cursorMoved(ln, col)
+	e, _ := c.reg.get(p.reg)
+	if err == nil {
+		e = regEntry{text: text}
+		if strings.HasSuffix(text, "\n") {
+			e = regEntry{text: strings.TrimSuffix(text, "\n"), linewise: true}
+		}
+		c.reg.setClip(p.reg, e)
+	}
+	rev := c.rev
+	c.putEntry(e, p.after, p.count)
+	if c.rev != rev && p.keys != nil {
+		c.dot.last = p.keys // . repeats the "+p
+	}
+}
