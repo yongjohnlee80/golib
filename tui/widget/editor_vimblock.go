@@ -61,9 +61,7 @@ type blockLine struct {
 	startIn, startOut  int // a cluster straddling the left edge: its cells inside the block, outside
 	endIn, endOut      int // one straddling the right edge, the same
 	width              int // the line's cells
-	short              bool
-	shortEnd           bool // the line ends before the block's right edge
-	leftCell, rightCel int  // the block's edges on this line (the right one, its end with $)
+	leftCell, rightCel int // the block's edges on this line (the right one, its end with $)
 }
 
 // line is cs's part of v.
@@ -78,9 +76,7 @@ func (v vblock) line(cs []string) blockLine {
 		right = max(l.width, v.left)
 	}
 	l.rightCel = right
-	l.shortEnd = l.width < right
-	if l.width <= v.left {
-		l.short = true
+	if l.width <= v.left { // too short to reach the block: nothing in it
 		l.from, l.to, l.inFrom, l.inTo = len(cs), len(cs), len(cs), len(cs)
 		return l
 	}
@@ -175,14 +171,19 @@ func (c *EditorCore) blockYank(v vblock) {
 	c.blockTopLeft(v)
 }
 
-// blockDelete takes each line's part out, into the register (blockwise) when reg is set.
-func (c *EditorCore) blockDelete(v vblock, reg bool) {
-	b := &c.buf
-	if reg {
-		pieces, width := c.blockPieces(v)
-		c.deleteEntry(regEntry{text: strings.Join(pieces, "\n"), block: true, width: width}, v.hi > v.lo)
-	}
+// blockDelete takes each line's part out, into the register, blockwise.
+func (c *EditorCore) blockDelete(v vblock) {
+	pieces, width := c.blockPieces(v)
+	c.deleteEntry(regEntry{text: strings.Join(pieces, "\n"), block: true, width: width}, v.hi > v.lo)
 	c.beginGroup()
+	c.blockRemove(v)
+	c.edited()
+}
+
+// blockRemove takes each line's part of v out, the cursor to its top left: an edit inside a step
+// its caller began.
+func (c *EditorCore) blockRemove(v vblock) {
+	b := &c.buf
 	for ln := v.lo; ln <= v.hi; ln++ {
 		if l := v.line(b.lineClusters(ln)); l.from < l.to {
 			b.lines[ln] = l.deleted()
@@ -190,7 +191,6 @@ func (c *EditorCore) blockDelete(v vblock, reg bool) {
 	}
 	b.touch(v.lo)
 	c.blockTopLeftAfterDelete(v)
-	c.edited()
 }
 
 // blockTopLeftAfterDelete is the cursor at the left edge once the block is out: past the spaces a
@@ -246,17 +246,14 @@ func (c *EditorCore) blockCase(v vblock, op Action) {
 }
 
 // blockShift is > and < over the block (Vim's v_b_>): on each line reaching the left edge, the
-// text from there moves n units right, or left by as much of the blank run at the edge as there is.
+// text from there moves n units right, or left by as much of the blank run at the edge as there is
+// (a line ending before it has no text there, which shiftLine leaves).
 func (c *EditorCore) blockShift(v vblock, dir, n int) {
 	b := &c.buf
 	unit := strings.Repeat(c.shiftUnit(), max(n, 1))
 	c.beginGroup()
 	for ln := v.lo; ln <= v.hi; ln++ {
-		cs := b.lineClusters(ln)
-		if v.line(cs).short {
-			continue
-		}
-		before, after := splitAt(cs, v.left, false)
+		before, after := splitAt(b.lineClusters(ln), v.left, false)
 		b.lines[ln] = before + shiftLine(after, unit, dir)
 	}
 	b.touch(v.lo)
@@ -343,20 +340,21 @@ func putSplit(cs []string, x int) (before, after string, short bool) {
 }
 
 // blockInsert is I, A or c over a block, waiting for its Insert to end: what was typed on the first
-// line then goes in on the others.
+// line then goes in on the others, through last. Which of them take it is decided then, as Vim's
+// block_prep does at Esc: I's and c's, a line reaching at; A's, every line, a short one padded.
 type blockInsert struct {
-	ln, col int   // where the Insert began
-	n       int   // the first line's clusters then
-	lines   []int // the other lines that take the text
-	at      int   // the cell they take it at; -1 each line's end
-	pad     bool  // a line too short is padded with spaces to at (A)
+	ln, col int  // where the Insert began
+	n       int  // the first line's clusters then
+	last    int  // the block's last line
+	at      int  // the cell the others take the text at; -1 each line's end
+	pad     bool // a line too short is padded with spaces to at (A)
 }
 
 // blockStartInsert is I (append false) or A over the block: Insert before its left edge, or after
 // its right edge, on the first line.
 func (c *EditorCore) blockStartInsert(v vblock, appending bool) {
 	b := &c.buf
-	bi := &blockInsert{at: v.left}
+	bi := &blockInsert{at: v.left, last: v.hi}
 	first := v.line(b.lineClusters(v.lo))
 	b.ln = v.lo
 	padded := false
@@ -378,26 +376,14 @@ func (c *EditorCore) blockStartInsert(v vblock, appending bool) {
 	default:
 		b.col = first.from
 	}
-	for ln := v.lo + 1; ln <= v.hi; ln++ {
-		if appending || blockCells(b.lines[ln]) >= v.left { // a line ending at the edge takes it too
-			bi.lines = append(bi.lines, ln)
-		}
-	}
 	c.enterBlockInsert(bi, padded)
 }
 
 // blockChange is c over the block: its parts out, then Insert at the left edge of the first line;
 // the text typed goes in at the left edge of every other line that reaches it.
 func (c *EditorCore) blockChange(v vblock) {
-	b := &c.buf
-	c.blockDelete(v, true)
-	bi := &blockInsert{at: v.left}
-	for ln := v.lo + 1; ln <= v.hi; ln++ {
-		if blockCells(b.lines[ln]) >= v.left {
-			bi.lines = append(bi.lines, ln)
-		}
-	}
-	c.enterBlockInsert(bi, true)
+	c.blockDelete(v)
+	c.enterBlockInsert(&blockInsert{at: v.left, last: v.hi}, true)
 }
 
 // enterBlockInsert enters Insert at the cursor with bi waiting on its end; began is an edit that
@@ -417,7 +403,8 @@ func (c *EditorCore) enterBlockInsert(bi *blockInsert, began bool) {
 }
 
 // blockInsertDone is the Insert's end: when the cursor is still on the first line and the line
-// grew, the text from where Insert began, as long as the growth, goes in on the other lines.
+// grew, the text from where Insert began, as long as the growth, goes in on the other lines (a line
+// ending exactly at the edge takes it at its end). The copies join the step the typing is in.
 func (c *EditorCore) blockInsertDone() {
 	bi := c.blockIns
 	c.blockIns = nil
@@ -431,11 +418,7 @@ func (c *EditorCore) blockInsertDone() {
 		return
 	}
 	text := strings.Join(cs[bi.col:bi.col+grown], "")
-	c.beginGroup() // in Insert: the typing's step when it is still open
-	for _, ln := range bi.lines {
-		if ln >= len(b.lines) {
-			continue
-		}
+	for ln := bi.ln + 1; ln <= min(bi.last, len(b.lines)-1); ln++ {
 		lcs := b.lineClusters(ln)
 		if bi.at < 0 {
 			b.lines[ln] += text

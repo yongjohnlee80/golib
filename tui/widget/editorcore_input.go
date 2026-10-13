@@ -75,7 +75,7 @@ func (c *EditorCore) HandlePaste(text string) bool {
 		c.clampNormal()
 	case ModeVisualBlock:
 		// the block's parts out, the paste at its top left
-		c.blockDelete(c.visualBlock(), false)
+		c.blockRemove(c.visualBlock())
 		c.setMode(ModeNormal)
 		b.insertText(text)
 		c.clampNormal()

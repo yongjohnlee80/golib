@@ -20,6 +20,7 @@ func TestVimVisualBlockOperators(t *testing.T) {
 		{what: "a straddling wide character leaves spaces", text: "abcd\nx한y\nabcd", col: 2, seq: "<ctv>jjd", want: "abd\nx y\nabd"},
 		{what: "a straddling tab leaves spaces", text: "abcdef\n\tx\nabcdef", col: 2, seq: "<ctv>jjd", want: "abdef\n   x\nabdef"},
 		{what: "r", text: "abc\ndef", seq: "l<ctv>jr-", want: "a-c\nd-f"},
+		{what: "r with a wide character: a cell left over is a space", text: "abc\nabc", seq: "<ctv>jllr한", want: "한 \n한 "},
 		{what: "~", text: "abc\ndef", seq: "<ctv>jl~", want: "ABc\nDEf"},
 		{what: "U", text: "abc\ndef", seq: "<ctv>jU", want: "Abc\nDef"},
 		{what: "u", text: "ABC\nDEF", seq: "l<ctv>ju", want: "AbC\nDeF"},
@@ -28,6 +29,7 @@ func TestVimVisualBlockOperators(t *testing.T) {
 		{what: "O swaps the columns", text: "abcd\nefgh", seq: "l<ctv>jlOhd", want: "d\nh"},
 		{what: "o swaps the corners", text: "abcd\nefgh", seq: "l<ctv>jlohd", want: "d\nh"},
 		{what: "v then Ctrl-v", text: "abc\ndef", seq: "vj<ctv>d", want: "bc\nef"},
+		{what: "O outside a block is o", text: "abcd", seq: "lvlOhd", want: "d"},
 	})
 }
 
@@ -44,6 +46,8 @@ func TestVimVisualBlockInsert(t *testing.T) {
 		{what: "c", text: "abc\ndef", seq: "l<ctv>jcX<esc>", want: "aXc\ndXf"},
 		{what: "c on a line reaching the edge", text: "abc\nd\nabc", seq: "l<ctv>jjcX<esc>", want: "aXc\ndX\naXc"},
 		{what: "a line break typed: the first line only", text: "abc\ndef", seq: "l<ctv>jIX<cr>Y<esc>", want: "aX\nYbc\ndef"},
+		{what: "Insert ended on another line: the first line only", text: "abc\ndef", seq: "l<ctv>jIX<down>Y<esc>", want: "aXbc\ndeYf"},
+		{what: "u after I with arrows in it: still one step", text: "abc\ndef", seq: "l<ctv>jIX<left><right><esc>u", want: "abc\ndef"},
 		{what: "Ctrl-o ends it: the first line only", text: "abc\ndef", seq: "l<ctv>jIX<cto>lY<esc>", want: "aXbYc\ndef"},
 		{what: "u after I", text: "abc\ndef", seq: "l<ctv>jIX<esc>u", want: "abc\ndef"},
 		{what: "u after c", text: "abc\ndef", seq: "l<ctv>jcX<esc>u", want: "abc\ndef"},
@@ -59,7 +63,7 @@ func TestVimVisualBlockInsert(t *testing.T) {
 // The block's modes and its view: Ctrl-v enters, and again leaves; v and V switch; the cells it
 // covers are selected; y takes its pieces, blockwise.
 func TestVimVisualBlockMode(t *testing.T) {
-	c, _ := coreWith(t, "abc\ndef")
+	c, _ := coreWith(t, "abcd\nefgh")
 	vimSeq(c, "l<ctv>jl")
 	if c.Mode() != widget.ModeVisualBlock || c.Mode().String() != "V-BLOCK" {
 		t.Fatalf("Ctrl-v: mode %v", c.Mode())
@@ -67,12 +71,12 @@ func TestVimVisualBlockMode(t *testing.T) {
 	for _, p := range []struct {
 		ln, col int
 		in      bool
-	}{{0, 0, false}, {0, 1, true}, {0, 2, true}, {1, 0, false}, {1, 2, true}} {
+	}{{0, 0, false}, {0, 1, true}, {0, 2, true}, {0, 3, false}, {1, 0, false}, {1, 2, true}, {1, 3, false}} {
 		if got := c.Selected(p.ln, p.col); got != p.in {
 			t.Errorf("Selected(%d, %d) = %v, want %v", p.ln, p.col, got, p.in)
 		}
 	}
-	if got := c.SelectedText(); got != "bc\nef" {
+	if got := c.SelectedText(); got != "bc\nfg" {
 		t.Errorf("SelectedText = %q", got)
 	}
 	if r, col, er, ec, ok := c.SelectionRange(); !ok || r != 0 || col != 1 || er != 1 || ec != 3 {
@@ -95,7 +99,7 @@ func TestVimVisualBlockMode(t *testing.T) {
 		t.Fatalf("Esc from a block: mode %v", c.Mode())
 	}
 	vimSeq(c, "gg0l<ctv>jly")
-	if text, linewise, ok := c.NamedRegister('"'); !ok || linewise || text != "bc\nef" {
+	if text, linewise, ok := c.NamedRegister('"'); !ok || linewise || text != "bc\nfg" {
 		t.Fatalf("y over a block: %q linewise %v", text, linewise)
 	}
 	if row, col := c.Line(); row != 0 || col != 1 {
@@ -210,5 +214,38 @@ func TestVimBlockRegisterAPI(t *testing.T) {
 	}
 	if text, linewise, _ := c.NamedRegister('c'); text != "ab\nde" || linewise {
 		t.Fatalf("NamedRegister of a block: %q linewise %v", text, linewise)
+	}
+	// a block over lines deletes into 1, as Vim's op_delete; one line's into -
+	d, _ := coreWith(t, "abc\ndef\nghi")
+	vimSeq(d, "<ctv>jdG<ctv>d")
+	if one, _, _ := d.NamedRegister('1'); one != "a\nd" {
+		t.Errorf(`a block over two lines: "1 = %q`, one)
+	}
+	if small, _, _ := d.NamedRegister('-'); small != "g" {
+		t.Errorf(`a block on one line: "- = %q`, small)
+	}
+	// a yank takes a straddling cluster's cells inside the block as spaces, at either edge
+	for _, e := range []struct{ what, seq, want string }{
+		{"the left edge", "ll<ctv>jjy", "c\n \nc"},
+		{"the right edge", "l<ctv>jjy", "b\n \nb"},
+	} {
+		y, _ := coreWith(t, "abcd\nx한y\nabcd")
+		vimSeq(y, e.seq)
+		if got, _, _ := y.NamedRegister('"'); got != e.want {
+			t.Errorf("a yank with a wide character straddling %s: %q, want %q", e.what, got, e.want)
+		}
+	}
+}
+
+// A paste over a block replaces it: the parts out, the text at its top left.
+func TestVimBlockPaste(t *testing.T) {
+	c, _ := coreWith(t, "abc\ndef")
+	vimSeq(c, "l<ctv>j")
+	c.HandlePaste("X")
+	if got := c.Value(); got != "aXc\ndf" || c.Mode() != widget.ModeNormal {
+		t.Fatalf("a paste over a block: %q, mode %v", got, c.Mode())
+	}
+	if vimSeq(c, "u"); c.Value() != "abc\ndef" {
+		t.Fatalf("u after a paste over a block: %q, want it whole in one step", c.Value())
 	}
 }

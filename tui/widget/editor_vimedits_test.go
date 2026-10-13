@@ -13,7 +13,8 @@ import (
 
 var vimToken = regexp.MustCompile(`<[a-z]+(:[^>]*)?>`)
 
-// vimSeq types s into the core: plain text as keys, and <esc> <cr> <left> <pgdn> <bs> as those keys,
+// vimSeq types s into the core: plain text as keys, and <esc> <cr> <left> <right> <down> <pgdn> <bs> as
+// those keys,
 // <redo> as Ctrl-r, <ctw> <ctu> <cto> and <ctv> as Ctrl-w Ctrl-u Ctrl-o and Ctrl-v,
 // <tick> as the escape chord's timeout, <paste:TEXT> as a paste (\n for a line break).
 func vimSeq(c *widget.EditorCore, s string) {
@@ -32,6 +33,10 @@ func vimSeq(c *widget.EditorCore, s string) {
 			c.HandleKey(tui.KeyEvent{Code: tui.KeyEnter})
 		case tok == "<left>":
 			c.HandleKey(tui.KeyEvent{Code: tui.KeyLeft})
+		case tok == "<right>":
+			c.HandleKey(tui.KeyEvent{Code: tui.KeyRight})
+		case tok == "<down>":
+			c.HandleKey(tui.KeyEvent{Code: tui.KeyDown})
 		case tok == "<pgdn>":
 			c.HandleKey(tui.KeyEvent{Code: tui.KeyPageDown})
 		case tok == "<bs>":

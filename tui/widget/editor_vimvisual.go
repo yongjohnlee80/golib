@@ -119,7 +119,7 @@ func (c *EditorCore) visualApply(op Action, r opRange, count int, char string) {
 func (c *EditorCore) blockApply(op Action, v vblock, count int, char string) {
 	switch op {
 	case ActVisualDelete:
-		c.blockDelete(v, true)
+		c.blockDelete(v)
 	case ActVisualChange:
 		c.blockChange(v)
 	case ActVisualToggleCase:
