@@ -46,6 +46,7 @@ type JumpStep struct {
 	gen     uint64
 	entries []JumpPos // the list once the step is committed
 	idx     int
+	trimmed int // how many of the oldest the place recorded now pushed out of entries
 }
 
 // Push records from as the place a jump leaves (Vim's setpcmark).
@@ -72,10 +73,12 @@ func (l *JumpList) step(at JumpPos, count int) (JumpStep, bool) {
 	if len(entries) == 0 || idx+count < 0 || idx+count >= len(entries) {
 		return JumpStep{}, false
 	}
+	trimmed := 0
 	if idx == len(entries) {
 		entries = append(entries, at) // the place now, so Forward can come back to it
 		if len(entries) > l.limit {
-			entries = entries[len(entries)-l.limit:]
+			trimmed = len(entries) - l.limit
+			entries = entries[trimmed:]
 		}
 		idx = len(entries) - 1 // stepped over
 		if idx+count < 0 {
@@ -83,7 +86,7 @@ func (l *JumpList) step(at JumpPos, count int) (JumpStep, bool) {
 		}
 	}
 	idx += count
-	return JumpStep{To: entries[idx], list: l, gen: l.gen, entries: entries, idx: idx}, true
+	return JumpStep{To: entries[idx], list: l, gen: l.gen, entries: entries, idx: idx, trimmed: trimmed}, true
 }
 
 // cleanJumps is Vim's cleanup_jumplist on a copy: an entry that a later one repeats (the same
@@ -130,11 +133,13 @@ func (l *JumpList) Drop(step JumpStep) bool {
 	if step.list != l || step.gen != l.gen {
 		return false
 	}
-	// the list is as it was proposed from, so the step's index is its entry's in the cleaned list
-	// (an entry the step would have recorded at the end comes after it)
+	// the list is as it was proposed from, so the step's entry is in the cleaned list at its index
+	// there plus what the place it would have recorded pushed out of the full list; that place, at
+	// the end, is not recorded
 	entries, idx := cleanJumps(l.entries, l.idx)
-	entries = append(entries[:step.idx:step.idx], entries[step.idx+1:]...)
-	if idx > step.idx {
+	at := step.idx + step.trimmed
+	entries = append(entries[:at:at], entries[at+1:]...)
+	if idx > at {
 		idx--
 	}
 	l.entries, l.idx = entries, idx
