@@ -44,6 +44,19 @@ type keyDispatch struct {
 	// replArmed is an r waiting for its character, replCount its count.
 	replArmed bool
 	replCount int
+	// regArmed is a " waiting for the register's name; reg is the register the command names (0:
+	// none), kept until the command completes, as Vim's clearop drops it. regFresh marks the key
+	// that just named it, which completes no command.
+	regArmed bool
+	reg      rune
+	regFresh bool
+	// markArmed is an m, ' or ` waiting for the mark's name (ActUnbound: none); a pending operator
+	// stays, for d'a.
+	markArmed Action
+	// macroArmed is a q or @ waiting for the register's name (ActUnbound: none); macroCount is
+	// @'s count.
+	macroArmed Action
+	macroCount int
 
 	// Escape chord (Insert mode).
 	chord        []rune // exactly two runes, or nil = disabled

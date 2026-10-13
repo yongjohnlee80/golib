@@ -50,18 +50,24 @@ func (c *EditorCore) joinLines(count int, raw bool) {
 	at := 0
 	for i := 1; i <= n; i++ {
 		next := b.lines[b.ln+i]
+		cut := 0
 		sep := ""
 		if !raw {
-			next = strings.TrimLeft(next, " \t")
+			trimmed := strings.TrimLeft(next, " \t")
+			cut = len(clusters(next)) - len(clusters(trimmed))
+			next = trimmed
 			if cur != "" && !strings.HasSuffix(cur, " ") && !strings.HasSuffix(cur, "\t") && next != "" && !strings.HasPrefix(next, ")") {
 				sep = " "
 			}
 		}
 		at = len(clusters(cur))
+		// the joined line's marks move onto this one, where its text now starts (Vim's do_join)
+		b.log.move(b.ln+i, cut, b.ln, len(clusters(cur+sep)), true)
 		cur += sep + next
 	}
 	b.lines = append(append(b.lines[:b.ln:b.ln], cur), b.lines[b.ln+n+1:]...)
 	b.touch(b.ln)
+	b.log.splice(b.ln+1, n, 0)
 	b.col = at
 	b.anchor = nil
 	c.clampNormal()

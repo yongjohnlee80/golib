@@ -11,6 +11,7 @@ import (
 
 var (
 	_ tui.NativeHost   = (*Backend)(nil)
+	_ tui.FaceHost     = (*Backend)(nil)
 	_ tui.NativeStyler = (*Backend)(nil)
 	_ tui.CellMetrics  = (*Backend)(nil)
 )

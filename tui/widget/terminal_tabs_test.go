@@ -102,6 +102,9 @@ func TestTerminalTabsRemovalRetainsErrorsAndRejectsClosingAndStaleTargets(t *tes
 		if err := tabs.SendText(a, "do not send"); !errors.Is(err, ErrTerminalTabClosing) {
 			t.Errorf("closing send: %v", err)
 		}
+		if err := tabs.SendPaste(a, "do not paste"); !errors.Is(err, ErrTerminalTabClosing) {
+			t.Errorf("closing paste: %v", err)
+		}
 		if err := tabs.Start(a); !errors.Is(err, ErrTerminalTabClosing) {
 			t.Errorf("closing start: %v", err)
 		}
@@ -385,5 +388,20 @@ func TestTerminalInputBudgetIncludesInflightAndRejectsWholeSend(t *testing.T) {
 	awaitResultEvent(t, iq.done)
 	if err := iq.offer([]byte("closed")); !errors.Is(err, ErrTerminalNotRunning) {
 		t.Fatalf("closed queue accepted input: %v", err)
+	}
+}
+
+// SendPaste reaches a running tab by its identity, and is refused as SendText is: an unknown tab, a
+// stopped one.
+func TestTerminalTabsSendAPasteByIdentity(t *testing.T) {
+	tabs := NewTerminalTabs()
+	p := newResultProc()
+	defer close(p.release)
+	a := addTestTerminal(t, tabs, "a", p)
+	if err := tabs.SendPaste("nope", "x"); !errors.Is(err, ErrTerminalTabUnknown) {
+		t.Errorf("an unknown tab: %v", err)
+	}
+	if err := tabs.SendPaste(a, "x"); !errors.Is(err, ErrTerminalNotRunning) {
+		t.Errorf("a tab not started: %v", err)
 	}
 }

@@ -171,6 +171,7 @@ type Terminal struct {
 	// cursorColor is the hardware cursor's colour while cursorColored (tui.CursorColorer)
 	cursorColor   style.Color
 	cursorColored bool
+	cellFace      string // SetCellFace: the family its cells are drawn in; "" the window's
 	// minContrast is the ratio a foreground is raised to against its background; 0: off
 	// (terminal_contrast.go). contrastCache holds the colours it gave.
 	minContrast   float64
@@ -502,6 +503,22 @@ func (t *Terminal) SendText(text string) error {
 	return t.in.offer([]byte(text))
 }
 
+// SendPaste sends text as a paste, as the terminal's own paste does: bracketed when the program
+// asked for bracketed paste (mode 2004, which agent CLIs and shells with line editing set), so a
+// multi-line text arrives whole rather than line by line as Enters; otherwise its newlines go as
+// Enter. A text holding the bracket's end has it removed, so it cannot end the paste early. Like
+// SendText it is queued, not written, and a rejected send queues nothing. On the UI loop.
+func (t *Terminal) SendPaste(text string) error {
+	if !t.Running() {
+		return ErrTerminalNotRunning
+	}
+	b := encodePaste(text, t.scr.Modes())
+	if len(b) > TerminalInputLimit {
+		return ErrTerminalInputFull
+	}
+	return t.in.offer(b)
+}
+
 func (t *Terminal) setMode(m TerminalMode) {
 	if t.mode == m {
 		return
@@ -819,6 +836,20 @@ func (t *Terminal) CursorShape() tui.CursorShape {
 	}
 	return tui.CursorShapeBar
 }
+
+// SetCellFace draws the Terminal's cells in family, a monospace font of its own, at the window's
+// cell size (tui.CellFacer); "" is the window's own. A backend that draws no fonts — a terminal —
+// ignores it, its terminal owning the font. A menu or tooltip over it keeps the window's.
+func (t *Terminal) SetCellFace(family string) {
+	if t.cellFace == family {
+		return
+	}
+	t.cellFace = family
+	t.MarkDirty()
+}
+
+// CellFace is SetCellFace's family: tui.CellFacer.
+func (t *Terminal) CellFace() string { return t.cellFace }
 
 // SetCursorColor gives the hardware cursor a colour of its own, as the Editor's SetCursorColor
 // does, so the two carets look alike; the terminal's own colour otherwise.

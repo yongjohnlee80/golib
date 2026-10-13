@@ -211,6 +211,20 @@ func (b *Backend) SetFont(typeface string, size float32) {
 	b.refont(typeface != "")
 }
 
+// SetCellFaces is tui.FaceHost: the families cells are drawn in by their Cell.Face, each falling
+// back as the window's own family does when it is not installed. It is called on the tui loop, as
+// Flush is, which is where the renderer runs: nothing else reads the table. An index never changes
+// family (tui interns them), so the glyphs cached for it stay right.
+func (b *Backend) SetCellFaces(families []string) {
+	faces := make([]font.Typeface, len(families))
+	for i, f := range families {
+		if i > 0 && f != "" {
+			faces[i] = font.Typeface(fallbackChain(f))
+		}
+	}
+	b.render.faces = faces
+}
+
 // SetZoom scales the cell font, and with it everything sized by the window's text (Canvas.TextSize),
 // to pct percent of SetFont's size: 50 to 300, 100 the size itself. On the tui loop.
 func (b *Backend) SetZoom(pct int) {

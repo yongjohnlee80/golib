@@ -320,6 +320,7 @@ func (c *EditorCore) move(act Action, count int) {
 // "line count" (1-based, clamped); without one, gg goes to the top and G
 // to the bottom.
 func (c *EditorCore) goToLine(hadCount bool, count int, bottom bool) {
+	c.setJumpMark()
 	c.buf.desired = -1
 	ln := 0
 	switch {

@@ -54,7 +54,11 @@ type EditorCore struct {
 	buf            textBuffer     // the text and the cursor
 	hist           editHistory    // undo/redo
 	dot            dotRecorder    // the change . repeats, and the one being recorded
-	reg            editRegister   // the unnamed register
+	opRegOne       bool           // the operator's motion is one whose delete Vim keeps in register 1 (regOneMotion)
+	marks          markSet        // a–z and the previous jump's place (editor_vimmarks.go)
+	macro          macroRecorder  // the macro being recorded, and what plays (editor_vimmacros.go)
+	clipPut        *clipPut       // a "+p waiting for the system clipboard (editor_clipboard.go)
+	reg            editRegister   // the registers
 	keys           keyDispatch    // modes and key routing
 	hl             highlightCache // per-line styles
 	sourceFactory  func() highlight.Source
@@ -125,8 +129,10 @@ type CoreOption func(*EditorCore)
 // newEditorCore is the default core: an empty line, the Vim keymap, modal, the "jk" escape chord,
 // selection, yank and undo on. The options have not run yet.
 func newEditorCore() *EditorCore {
+	buf := newTextBuffer()
+	buf.log.on = true // the marks follow the line structure's changes
 	return &EditorCore{
-		buf:       newTextBuffer(),
+		buf:       buf,
 		hlFrom:    noChange,
 		keys:      newKeyDispatch(),
 		canSelect: true,
@@ -187,6 +193,7 @@ func CoreSyntaxStyles(st SyntaxStyles) CoreOption { return func(c *EditorCore) {
 func CoreInitialText(s string) CoreOption {
 	return func(c *EditorCore) {
 		c.buf.setValue(s)
+		c.followEdits() // its reset now, or the first edit would take it for a later one
 		c.buf.ln, c.buf.col = 0, 0
 	}
 }
@@ -378,6 +385,7 @@ func (c *EditorCore) SetValue(s string) {
 	c.keys.count, c.keys.pendingAct = 0, ActUnbound
 	c.hist.reset()
 	c.buf.setValue(s)
+	c.followEdits()         // a new document: no marks
 	c.rev = c.newRevision() // a new document, unmodified: the text it was given is its saved state
 	c.savedRev = c.rev
 	if c.sourceFactory != nil {
@@ -783,6 +791,9 @@ func (c *EditorCore) execAction(act Action, count int) bool {
 		ActLineDownFirst, ActLineUpFirst, ActFirstNonBlank, ActLeftWrap,
 		ActFindCharRepeat, ActFindCharReverse, ActViewTop, ActViewMiddle, ActViewBottom,
 		ActWORDForward, ActWORDBack, ActWORDEnd, ActWordEndBack, ActWORDEndBack:
+		if act == ActViewTop || act == ActViewMiddle || act == ActViewBottom {
+			c.setJumpMark() // H M L are jumps
+		}
 		c.move(act, count)
 		return true
 
@@ -809,6 +820,7 @@ func (c *EditorCore) execAction(act Action, count int) bool {
 		prefix := c.indentDecision(indent.OpenBelow, len(b.lines[b.ln])).Prefix
 		b.lines = append(b.lines[:b.ln+1], append([]string{prefix}, b.lines[b.ln+1:]...)...)
 		b.touch(b.ln + 1)
+		b.log.splice(b.ln+1, 0, 1)
 		b.ln, b.col = b.ln+1, len(clusters(prefix))
 		c.enterInsert()
 		c.hist.keepOpen() // the open-line already began this group
@@ -819,6 +831,7 @@ func (c *EditorCore) execAction(act Action, count int) bool {
 		prefix := c.indentDecision(indent.OpenAbove, 0).Prefix
 		b.lines = append(b.lines[:b.ln], append([]string{prefix}, b.lines[b.ln:]...)...)
 		b.touch(b.ln)
+		b.log.splice(b.ln, 0, 1)
 		b.col = len(clusters(prefix))
 		c.enterInsert()
 		c.hist.keepOpen()
@@ -833,7 +846,7 @@ func (c *EditorCore) execAction(act Action, count int) bool {
 		}
 		n := min(count, len(cs)-b.col)
 		c.beginGroup()
-		c.yankSet(strings.Join(cs[b.col:b.col+n], ""), false)
+		c.regDelete(strings.Join(cs[b.col:b.col+n], ""), false)
 		b.deleteRegion(taPos{b.ln, b.col}, taPos{b.ln, b.col + n})
 		c.clampNormal()
 		c.edited()
@@ -842,7 +855,7 @@ func (c *EditorCore) execAction(act Action, count int) bool {
 		cs := b.lineClusters(b.ln)
 		if b.col < len(cs) {
 			c.beginGroup()
-			c.yankSet(strings.Join(cs[b.col:], ""), false)
+			c.regDelete(strings.Join(cs[b.col:], ""), false)
 			b.deleteRegion(taPos{b.ln, b.col}, taPos{b.ln, len(cs)})
 			c.clampNormal()
 			c.edited()
@@ -874,10 +887,10 @@ func (c *EditorCore) execAction(act Action, count int) bool {
 		c.runOp(ActChangePrefix, taPos{min(b.ln+count-1, len(b.lines)-1), 0}, linewise)
 		return true
 	case ActPasteAfter:
-		c.pasteRegister(true)
+		c.pasteRegister(true, count)
 		return true
 	case ActPasteBefore:
-		c.pasteRegister(false)
+		c.pasteRegister(false, count)
 		return true
 	case ActUndo:
 		c.doUndo()
@@ -922,15 +935,11 @@ func (c *EditorCore) execAction(act Action, count int) bool {
 		}
 		if c.keys.mode == ModeVisualLine {
 			lo, hi := c.visualLines()
-			text := strings.Join(b.lines[lo:hi+1], "\n")
-			c.yankSet(text, true)
-			c.exportYank(text)
+			c.regYank(strings.Join(b.lines[lo:hi+1], "\n"), true)
 			b.ln, b.col = lo, 0
 		} else {
 			lo, hiEx := c.visualRange()
-			text := b.textIn(lo, hiEx)
-			c.yankSet(text, false)
-			c.exportYank(text)
+			c.regYank(b.textIn(lo, hiEx), false)
 			b.ln, b.col = lo.ln, lo.col
 		}
 		c.exitVisual()
@@ -944,7 +953,7 @@ func (c *EditorCore) execAction(act Action, count int) bool {
 		} else {
 			lo, hiEx := c.visualRange()
 			c.beginGroup()
-			c.yankSet(b.textIn(lo, hiEx), false)
+			c.regDelete(b.textIn(lo, hiEx), false)
 			b.deleteRegion(lo, hiEx)
 			c.exitVisual()
 			c.edited()
@@ -970,14 +979,12 @@ func (c *EditorCore) execAction(act Action, count int) bool {
 			return c.execAction(ActVisualYank, count)
 		}
 		if b.ln < len(b.lines) {
-			text := b.lines[b.ln]
-			c.yankSet(text, true)
-			c.exportYank(text)
+			c.regYank(b.lines[b.ln], true)
 		}
 		return true
 
 	case ActPaste:
-		c.pasteRegister(false)
+		c.pasteRegister(false, 1)
 		return true
 
 	case ActCommandLine:
@@ -989,7 +996,12 @@ func (c *EditorCore) execAction(act Action, count int) bool {
 
 	case ActFindNext, ActFindPrev:
 		// with no active find the key bubbles: an application may have its own n
-		return c.FindNext(act == ActFindPrev)
+		from := taPos{b.ln, b.col}
+		found := c.FindNext(act == ActFindPrev)
+		if found {
+			c.marks.prev, c.marks.prevSet = from, true // n and N are jumps
+		}
+		return found
 
 	case ActToggleRendered:
 		// A view's concern: the widget that has a Rendered view answers it (SetToggleRendered).

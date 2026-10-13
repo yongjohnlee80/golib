@@ -620,6 +620,16 @@ func (e *Editor) SetRegister(text string, linewise bool) { e.core.SetRegister(te
 // Register returns the unnamed register's content.
 func (e *Editor) Register() (text string, linewise bool) { return e.core.Register() }
 
+// NamedRegister returns register name's content (see EditorCore.NamedRegister).
+func (e *Editor) NamedRegister(name rune) (text string, linewise, ok bool) {
+	return e.core.NamedRegister(name)
+}
+
+// SetNamedRegister sets register name as a yank into it would (see EditorCore.SetNamedRegister).
+func (e *Editor) SetNamedRegister(name rune, text string, linewise bool) bool {
+	return e.core.SetNamedRegister(name, text, linewise)
+}
+
 // --- event handling -----------------------------------------------------------
 
 // HandleEvent handles mouse, bracketed paste, focus, chord timer ticks, and keyboard events

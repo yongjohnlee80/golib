@@ -93,6 +93,8 @@ func appTypes() []Type {
 				// background, so a program's colours read on a light theme; 0 is off
 				"minimumContrast": setter("a Terminal", numberOf, (*widget.Terminal).SetMinimumContrast),
 				"cursorColor":     setter("a Terminal", colorOf, (*widget.Terminal).SetCursorColor),
+				// golib's: the family its cells are drawn in, at the window's cell size; "" the window's
+				"cellFont": setter("a Terminal", stringOf, (*widget.Terminal).SetCellFace),
 			},
 			Methods: map[string]Method{
 				"start": NoArgMethod((*widget.Terminal).Start),

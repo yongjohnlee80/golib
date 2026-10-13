@@ -11,7 +11,8 @@ package widget
 type textSnap struct {
 	lines   []string
 	ln, col int
-	rev     uint64 // the text's revision: undoing to the saved text reads as unmodified
+	rev     uint64  // the text's revision: undoing to the saved text reads as unmodified
+	marks   markSet // the marks when the group began: undo and redo bring them back
 }
 
 // editHistoryCap is how many groups can be undone; older ones are dropped.
