@@ -2,6 +2,7 @@ package widget
 
 import (
 	"image/color"
+	"slices"
 	"testing"
 
 	"github.com/yongjohnlee80/golib/gui"
@@ -85,5 +86,26 @@ func TestTheEditorPageIsNotThePanelOverItsColour(t *testing.T) {
 	}
 	if fg, bg := paint(everyCell); fg != ownFG || bg != ownBG {
 		t.Fatalf("wholly covered, the page became %v on %v; want the colours it had", fg, bg)
+	}
+}
+
+// Before its panel's bar has painted, the editor's mode switch takes its text from a cell of its
+// own nothing covers: it draws as it would with nothing over it.
+func TestTheModeSwitchIsNotThePanelOverItsColour(t *testing.T) {
+	e := NewEditor(WithPanel(WithTitle("Notes")))
+	colours := func(rc *gui.RecordingCanvas) []color.NRGBA {
+		var out []color.NRGBA
+		for _, c := range rc.Calls {
+			out = append(out, c.Brush.Color)
+		}
+		return out
+	}
+	open := gui.NewRecordingCanvas(gui.Size{W: 120, H: 16}, gui.Size{W: 8, H: 16})
+	open.Colors = func(int, int) (color.NRGBA, color.NRGBA) { return ownFG, ownBG }
+	e.sw.paint(open)
+	under := underPanel(gui.NewRecordingCanvas(gui.Size{W: 120, H: 16}, gui.Size{W: 8, H: 16}), firstCell)
+	e.sw.paint(under)
+	if a, b := colours(open), colours(under); len(a) == 0 || !slices.Equal(a, b) {
+		t.Fatalf("under a panel the switch drew %v; want as with nothing over it, %v", b, a)
 	}
 }
