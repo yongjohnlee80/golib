@@ -2,6 +2,7 @@ package widget_test
 
 import (
 	"context"
+	"image/color"
 	"testing"
 	"time"
 
@@ -109,6 +110,20 @@ func TestGuiWindowButtonsPaintRealControlGeometry(t *testing.T) {
 		}
 		if dots != 3 {
 			t.Errorf("painted %d circles, want 3 enabled real controls", dots)
+		}
+		// a panel raised over the row's first cell lends the row nothing: the fill is the row's own
+		own, dark := color.NRGBA{R: 0xf4, G: 0xec, B: 0xd8, A: 0xff}, color.NRGBA{R: 0x1c, G: 0x1c, B: 0x1c, A: 0xff}
+		under := gui.NewRecordingCanvas(gui.Size{W: 160, H: 16}, gui.Size{W: 8, H: 16})
+		under.Covers = func(col, row int) bool { return col == 0 && row == 0 }
+		under.Colors = func(col, row int) (color.NRGBA, color.NRGBA) {
+			if under.Covers(col, row) {
+				return dark, dark
+			}
+			return own, own
+		}
+		v.(gui.View).Paint(under)
+		if len(under.Calls) == 0 || under.Calls[0].Op != "FillRect" || under.Calls[0].Brush.Color != own {
+			t.Errorf("the row under a panel was filled %+v; want its own %v", under.Calls, own)
 		}
 	})
 }

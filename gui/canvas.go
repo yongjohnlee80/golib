@@ -10,6 +10,8 @@ import (
 	"gioui.org/op"
 	"gioui.org/op/clip"
 	"gioui.org/op/paint"
+
+	"github.com/yongjohnlee80/golib/tui"
 )
 
 // Vector painting and native widget rendering surface.
@@ -118,8 +120,11 @@ type Canvas interface {
 	// Fonts are the window's families now, and their generation: a view keeping shaped text keys
 	// it on Fonts().Gen, so a change of family shapes it again.
 	Fonts() Fonts
-	CellColors(col, row int) (fg, bg color.NRGBA) // a cell's colours as drawn; zero outside the grid
-	CellText(col, row int) string                 // a cell's grapheme cluster; "" outside the grid or for a wide cell's second half
+	// CellColors is a cell's colours as composed on screen; zero outside the grid. A cell another
+	// layer covers (a raised panel, a dialog) answers that layer's colours: a view taking its own
+	// colours from the cells reads one nothing covers ([CellCovered], [OpenCellColors]).
+	CellColors(col, row int) (fg, bg color.NRGBA)
+	CellText(col, row int) string // a cell's grapheme cluster; "" outside the grid or for a wide cell's second half
 	// Backdrop is the colour around the view: the most common background of the cells bordering
 	// it, or the page's where it meets the grid's edge. A rounded shape fills its rect with it
 	// first, so its corners show what surrounds the widget, not the widget's own square cells.
@@ -127,6 +132,38 @@ type Canvas interface {
 	// PaintCells draws the cells in r as the grid draws them, over what the view has drawn.
 	// glyphsOnly leaves out their backgrounds, so the view's own fill shows behind the text.
 	PaintCells(r CellRect, glyphsOnly bool)
+}
+
+// CellCoverer is a [Canvas] that knows which of its view's cells something painted after the view
+// covers: a dialog, or a floating panel raised over it. The host draws those cells over the view
+// afterwards, so their colours are the covering layer's, not the view's. A Canvas need not
+// implement it; [CellCovered] asks.
+type CellCoverer interface {
+	// CellCovered reports whether the view's cell at (col, row) is covered by a later layer.
+	CellCovered(col, row int) bool
+}
+
+// CellCovered reports whether c's cell at (col, row) is covered by something painted after the
+// view; false where c cannot tell (it is not a [CellCoverer]).
+func CellCovered(c Canvas, col, row int) bool {
+	cc, ok := c.(CellCoverer)
+	return ok && cc.CellCovered(col, row)
+}
+
+// OpenCellColors is the colours of the first cell of r, row by row, that nothing covers, and
+// whether r has one. A view takes its colours from it rather than from a fixed cell, which a
+// raised panel may cover: the panel's colours would become the view's. With none open the view is
+// wholly covered where r lies, and the host paints the covering cells over whatever it draws.
+func OpenCellColors(c Canvas, r CellRect) (fg, bg color.NRGBA, ok bool) {
+	for row := r.Y; row < r.Y+r.H; row++ {
+		for col := r.X; col < r.X+r.W; col++ {
+			if !CellCovered(c, col, row) {
+				fg, bg = c.CellColors(col, row)
+				return fg, bg, true
+			}
+		}
+	}
+	return color.NRGBA{}, color.NRGBA{}, false
 }
 
 // Image is a decoded image a Canvas can draw.
@@ -158,6 +195,8 @@ type gioCanvas struct {
 	cellY  int
 	view   CellRect // the view's cells, for Backdrop
 
+	covered []tui.Rect // grid cells inside the view painted after it (NativePlacement.Covered)
+
 	xform Affine
 	alpha float32
 	stack []canvasState
@@ -168,8 +207,9 @@ type canvasState struct {
 	alpha float32
 }
 
-// newGioCanvas is the canvas over the cells of rect r, origin at its top-left cell.
-func newGioCanvas(ops *op.Ops, r *renderer, g *grid, m metrics, cells CellRect) *gioCanvas {
+// newGioCanvas is the canvas over the cells of rect r, origin at its top-left cell; covered are the
+// grid cells inside it that are painted after it.
+func newGioCanvas(ops *op.Ops, r *renderer, g *grid, m metrics, cells CellRect, covered []tui.Rect) *gioCanvas {
 	dev := m.cellRect(cells.X, cells.Y, cells.W, cells.H)
 	return &gioCanvas{
 		ops: ops, r: r, g: g, m: m,
@@ -177,7 +217,8 @@ func newGioCanvas(ops *op.Ops, r *renderer, g *grid, m metrics, cells CellRect) 
 		size:   Size{W: float32(dev.Dx()) / m.scale, H: float32(dev.Dy()) / m.scale},
 		clip:   dev,
 		cellX:  cells.X, cellY: cells.Y, view: cells,
-		alpha: 1,
+		covered: covered,
+		alpha:   1,
 	}
 }
 
@@ -192,7 +233,8 @@ func (c *gioCanvas) Sub(r Rect) Canvas {
 		ops: c.ops, r: c.r, g: c.g, m: c.m,
 		origin: o, size: Size{W: r.W, H: r.H}, clip: dev,
 		cellX: c.cellX, cellY: c.cellY, view: c.view,
-		alpha: c.alpha,
+		covered: c.covered,
+		alpha:   c.alpha,
 	}
 }
 
@@ -361,6 +403,17 @@ func (c *gioCanvas) CellColors(col, row int) (fg, bg color.NRGBA) {
 		return color.NRGBA{}, color.NRGBA{}
 	}
 	return c.r.colors(c.g.at(x, y).Attrs)
+}
+
+// CellCovered reports whether the cell at grid (col, row) is one painted after the view.
+func (c *gioCanvas) CellCovered(col, row int) bool {
+	x, y := c.cellX+col, c.cellY+row
+	for _, r := range c.covered {
+		if r.Contains(x, y) {
+			return true
+		}
+	}
+	return false
 }
 
 // Backdrop returns the default background color of the canvas's host view.

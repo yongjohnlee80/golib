@@ -3,6 +3,7 @@ package gui
 import (
 	"image/color"
 	"math"
+	"slices"
 	"strings"
 
 	"github.com/yongjohnlee80/golib/tui"
@@ -105,6 +106,46 @@ func hovered(c tui.Component) bool {
 	return false
 }
 
+// openColors is the colours of the first of the cells xs on row that nothing covers, and whether
+// one is open. A painter reads its widget's colours from the cells, which are the composed screen:
+// a raised panel over one lends it the panel's colours, so a covered cell is never read. With none
+// open the painter skips what it would have filled, as the host paints the covering cells over it.
+func openColors(c Canvas, row int, xs ...int) (fg, bg color.NRGBA, ok bool) {
+	for _, x := range xs {
+		if !CellCovered(c, x, row) {
+			fg, bg = c.CellColors(x, row)
+			return fg, bg, true
+		}
+	}
+	return color.NRGBA{}, color.NRGBA{}, false
+}
+
+// span is the columns [from, to) ascending, or descending when from > to: to excluded either way.
+func span(from, to int) []int {
+	var xs []int
+	for x := from; x != to; {
+		xs = append(xs, x)
+		if from < to {
+			x++
+		} else {
+			x--
+		}
+	}
+	return xs
+}
+
+// endsFirst is the columns [0, cols) with the two end cells first: a widget's frame or padding,
+// in its own colours where the cells between may wear others (a mnemonic, a selection).
+func endsFirst(cols int) []int {
+	if cols <= 0 {
+		return nil
+	}
+	if cols == 1 {
+		return []int{0}
+	}
+	return append([]int{0, cols - 1}, span(1, cols-1)...)
+}
+
 // labelFont is the UI font at about the cell text's size.
 func labelFont(c Canvas) Font { return Font{Size: c.CellSize().H * 0.78} }
 
@@ -117,7 +158,14 @@ func paintButton(comp tui.Component) (View, tui.NativeScope, bool) {
 		return nil, 0, false
 	}
 	return ViewFunc(func(c Canvas) {
-		fg, bg := c.CellColors(0, 0)
+		i, ok := b.MnemonicIndex()
+		if !ok {
+			i = -1
+		}
+		fg, bg, open := buttonColors(c, b.Label(), i)
+		if !open {
+			return // wholly covered: the host paints the covering cells
+		}
 		r := Rect{W: c.Size().W, H: c.Size().H}
 		radius := min(r.H/2, 6)
 		fill := bg
@@ -135,33 +183,50 @@ func paintButton(comp tui.Component) (View, tui.NativeScope, bool) {
 			border, width = alpha(fg, 0.9), 1.5
 		}
 		c.StrokeRRect(r.Inset(width/2), radius, width, Solid(border))
-		i, ok := b.MnemonicIndex()
-		if !ok {
-			i = -1
-		}
 		drawLabel(c, b.Label(), i, labelFont(c), fg, readableOn(keyColor(c, b.Label(), i, fg), fill, fg))
 	}), tui.ScopeSubtree, true
+}
+
+// buttonColors are the button's own colours: its first open cell, the ends first, never the
+// mnemonic's (a theme's accent there would become the whole label's).
+func buttonColors(c Canvas, label string, key int) (fg, bg color.NRGBA, ok bool) {
+	cluster := keyCluster(label, key)
+	cols, _ := cells(c)
+	var xs []int
+	for _, x := range endsFirst(max(cols, 1)) {
+		if cluster == "" || c.CellText(x, 0) != cluster {
+			xs = append(xs, x)
+		}
+	}
+	return openColors(c, 0, xs...)
+}
+
+// keyCluster is the label's cluster at index key, or "" for none.
+func keyCluster(label string, key int) string {
+	if key < 0 {
+		return ""
+	}
+	i := 0
+	for cl := range tui.Graphemes(label) {
+		if i == key {
+			return cl
+		}
+		i++
+	}
+	return ""
 }
 
 // keyColor is the colour of the mnemonic's cell, as the button's cells paint it: a theme's accent
 // when it sets one (ButtonStyle.Hotkey), else fg. The cell is the key's cluster wearing a colour
 // other than the label's.
 func keyColor(c Canvas, label string, key int, fg color.NRGBA) color.NRGBA {
-	if key < 0 {
+	cluster := keyCluster(label, key)
+	if cluster == "" {
 		return fg
-	}
-	var cluster string
-	i := 0
-	for cl := range tui.Graphemes(label) {
-		if i == key {
-			cluster = cl
-			break
-		}
-		i++
 	}
 	cols, _ := cells(c)
 	for x := range cols {
-		if c.CellText(x, 0) != cluster {
+		if CellCovered(c, x, 0) || c.CellText(x, 0) != cluster {
 			continue
 		}
 		if kfg, _ := c.CellColors(x, 0); kfg != fg {
@@ -264,9 +329,13 @@ func paintCheckBox(comp tui.Component) (View, tui.NativeScope, bool) {
 	}), tui.ScopeSubtree, true
 }
 
-// boxCells is the first column of the "[x]" or "[ ]" on the first row, or -1.
+// boxCells is the first column of the "[x]" or "[ ]" on the first row, or -1. A box a later layer
+// covers, even in part, is not the check box's: its cells, colours and text, are the layer's.
 func boxCells(c Canvas, cols int) int {
 	for x := 0; x+2 < cols; x++ {
+		if CellCovered(c, x, 0) || CellCovered(c, x+1, 0) || CellCovered(c, x+2, 0) {
+			continue
+		}
 		if c.CellText(x, 0) == "[" && c.CellText(x+2, 0) == "]" {
 			return x
 		}
@@ -285,7 +354,10 @@ func paintTextField(comp tui.Component) (View, tui.NativeScope, bool) {
 	}
 	return ViewFunc(func(c Canvas) {
 		cols, rows := cells(c)
-		fg, bg := c.CellColors(0, 0)
+		fg, bg, open := fieldColors(c, ti, cols)
+		if !open {
+			return // wholly covered: the host paints the covering cells
+		}
 		r := Rect{W: c.Size().W, H: c.Size().H}
 		border, width := alpha(fg, 0.3), float32(1)
 		if focusedNode(ti) {
@@ -302,6 +374,22 @@ func paintTextField(comp tui.Component) (View, tui.NativeScope, bool) {
 			}
 		}
 	}), tui.ScopeSubtree, true
+}
+
+// fieldColors are the field's own colours: its first open cell, the frame's end cells first, and
+// never a selected cell, which wears the selection's.
+func fieldColors(c Canvas, ti *widget.TextInput, cols int) (fg, bg color.NRGBA, ok bool) {
+	x0, x1 := -1, -1
+	if lo, hi, sel := ti.Selection(); sel && focusedNode(ti) {
+		x0, x1 = selectionCells(ti, lo, hi)
+	}
+	var xs []int
+	for _, x := range endsFirst(max(cols, 1)) {
+		if x < x0 || x >= x1 {
+			xs = append(xs, x)
+		}
+	}
+	return openColors(c, 0, xs...)
 }
 
 // selectionCells is the cell span of clusters [lo, hi) on screen: the columns TextInput.Render
@@ -343,19 +431,34 @@ func paintProgress(comp tui.Component) (View, tui.NativeScope, bool) {
 	return ViewFunc(func(c Canvas) {
 		f, _ := p.Progress()
 		cols, _ := cells(c)
-		filled, _ := c.CellColors(0, 0)
-		emptyFG, emptyBG := c.CellColors(max(cols-1, 0), 0)
+		n := filledCells(f, cols)
+		filled, _, fillOpen := openColors(c, 0, span(0, max(n, 1))...) // none filled yet: the first cell, as before
+		last := max(cols, 1) - 1
+		emptyFG, emptyBG, emptyOpen := openColors(c, 0, span(last, min(n, last)-1)...)
 		sz := c.Size()
 		c.FillRect(Rect{W: sz.W, H: sz.H}, Solid(c.Backdrop()))
 		h := max(sz.H*0.4, 3)
 		track := Rect{Y: (sz.H - h) / 2, W: sz.W, H: h}
-		c.FillRRect(track, h/2, Solid(mix(emptyBG, emptyFG, 0.25)))
-		if f > 0 {
+		if emptyOpen {
+			c.FillRRect(track, h/2, Solid(mix(emptyBG, emptyFG, 0.25)))
+		}
+		if f > 0 && fillOpen {
 			fill := track
 			fill.W = max(float32(f)*track.W, h)
 			c.FillRRect(fill, h/2, Solid(filled))
 		}
 	}), tui.ScopeSubtree, true
+}
+
+// filledCells is how many cells of a determinate bar of cols cells ProgressBar.Render fills at
+// fraction f: the full ones and the partial one.
+func filledCells(f float64, cols int) int {
+	exact := f * float64(cols)
+	full := int(exact)
+	if full < cols && int((exact-float64(full))*8) > 0 {
+		full++
+	}
+	return min(full, cols)
 }
 
 // paintTabs draws the bar with the active tab raised, its labels kept in their cells. The
@@ -385,13 +488,17 @@ func paintTabs(comp tui.Component) (View, tui.NativeScope, bool) {
 		if cols <= 0 || len(spans) == 0 {
 			return
 		}
-		_, barBG := c.CellColors(cols-1, 0)
-		c.FillRect(Rect{W: c.Size().W, H: cs.H}, Solid(barBG))
+		if _, barBG, ok := openColors(c, 0, barCells(spans, cols)...); ok {
+			c.FillRect(Rect{W: c.Size().W, H: cs.H}, Solid(barBG))
+		}
 		for i, s := range spans {
 			if s.X >= cols {
 				break
 			}
-			fg, bg := c.CellColors(s.X, 0)
+			fg, bg, ok := openColors(c, 0, span(s.X, min(s.X+s.W, cols))...)
+			if !ok {
+				continue // the tab is wholly covered
+			}
 			r := Rect{X: float32(s.X)*cs.W - 2, Y: 1, W: float32(s.W)*cs.W + 4, H: cs.H - 1}
 			c.FillRRect(r, 4, Solid(bg))
 			if i == active() {
@@ -400,6 +507,21 @@ func paintTabs(comp tui.Component) (View, tui.NativeScope, bool) {
 		}
 		c.PaintCells(CellRect{W: cols, H: 1}, true)
 	}), tui.ScopeChrome, true
+}
+
+// barCells are the cells the bar's colour is read from: its last, then the others in no tab's
+// span, from the right. The last is the bar's own unless the tabs overflow it.
+func barCells(spans []widget.TabSpan, cols int) []int {
+	if cols <= 0 {
+		return nil
+	}
+	xs := []int{cols - 1}
+	for x := cols - 2; x >= 0; x-- {
+		if !slices.ContainsFunc(spans, func(s widget.TabSpan) bool { return x >= s.X && x < s.X+s.W }) {
+			xs = append(xs, x)
+		}
+	}
+	return xs
 }
 
 // paintScrollbar draws a thin rounded thumb along the right edge of a list or tree whose
@@ -415,7 +537,11 @@ func paintScrollbar(comp tui.Component) (View, tui.NativeScope, bool) {
 	return ViewFunc(func(c Canvas) {
 		off, view, content := s.ScrollState()
 		sz := c.Size()
-		fg, _ := c.CellColors(0, 0)
+		cols, rows := cells(c)
+		fg, _, ok := OpenCellColors(c, CellRect{W: max(cols, 1), H: max(rows, 1)})
+		if !ok {
+			return // wholly covered
+		}
 		w := float32(4)
 		h := max(sz.H*float32(view)/float32(content), 12)
 		y := (sz.H - h) * float32(off) / float32(max(content-view, 1))
