@@ -52,3 +52,23 @@ func TestVimVisualOperatorsOnAViewer(t *testing.T) {
 		t.Fatalf("a viewer's Visual operators changed it: %q", c.Value())
 	}
 }
+
+// Insert's Ctrl-w and Ctrl-u, as Vim's ins_bs: blanks then one class; to the indent, then the
+// line's start; a join at a line's start; a stop once where this Insert began.
+func TestVimInsertDeleteBack(t *testing.T) {
+	runEdits(t, []editCase{
+		{what: "Ctrl-w a word", text: "foo bar", seq: "A<ctw><esc>", want: "foo "},
+		{what: "Ctrl-w blanks, then a word", text: "foo bar  ", seq: "A<ctw><esc>", want: "foo "},
+		{what: "Ctrl-w one class", text: "foo.bar", seq: "A<ctw><esc>", want: "foo."},
+		{what: "Ctrl-w twice", text: "foo bar", seq: "A<ctw><ctw><esc>", want: ""},
+		{what: "Ctrl-w stops where Insert began", text: "foo bar", seq: "A baz<ctw><ctw><esc>", want: "foo bar"},
+		{what: "Ctrl-w goes on past it", text: "foo bar", seq: "A baz<ctw><ctw><ctw><esc>", want: "foo "},
+		{what: "Ctrl-w at a line's start joins", text: "ab\ncd", ln: 1, seq: "i<ctw><esc>", want: "abcd"},
+		{what: "Ctrl-u keeps the indent", text: "    foo bar", seq: "A<ctu><esc>", want: "    "},
+		{what: "Ctrl-u then the indent", text: "    foo bar", seq: "A<ctu><ctu><esc>", want: ""},
+		{what: "Ctrl-u stops where Insert began", text: "foo", seq: "A bar<ctu><esc>", want: "foo"},
+		{what: "Ctrl-u at a line's start joins", text: "ab\ncd", ln: 1, seq: "i<ctu><esc>", want: "abcd"},
+		{what: ". replays Ctrl-w", text: "x\ny", seq: "Afoo bar<ctw><esc>j.", want: "xfoo \nyfoo "},
+		{what: "u undoes the Insert with its Ctrl-w", text: "foo bar", seq: "Abaz<ctw><esc>u", want: "foo bar"},
+	})
+}

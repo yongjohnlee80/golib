@@ -244,6 +244,9 @@ const (
 	ActVisualOutdent    // < (Vim Visual): outdent the selected lines
 	ActVisualOther      // o (Vim Visual): to the selection's other end
 
+	ActDeleteWordBack // Ctrl-w (Vim Insert): delete the word before the cursor
+	ActDeleteLineBack // Ctrl-u (Vim Insert): delete back to the indent, then the line's start
+
 	actMax // sentinel for validation
 )
 
@@ -436,6 +439,10 @@ func (a Action) String() string {
 		return "VisualOutdent"
 	case ActVisualOther:
 		return "VisualOther"
+	case ActDeleteWordBack:
+		return "DeleteWordBack"
+	case ActDeleteLineBack:
+		return "DeleteLineBack"
 	}
 	return fmt.Sprintf("Action(%d)", a)
 }
@@ -629,6 +636,10 @@ func (a Action) Description() string {
 		return "Outdent the selection"
 	case ActVisualOther:
 		return "Go to the selection's other end"
+	case ActDeleteWordBack:
+		return "Delete the word before the cursor"
+	case ActDeleteLineBack:
+		return "Delete back to the indent"
 	}
 	return "Custom action"
 }
@@ -707,6 +718,8 @@ func actionModes(a Action) (normal, visual, insert bool) {
 		return true, true, true
 	case ActUndo, ActRedo:
 		return true, false, true
+	case ActDeleteWordBack, ActDeleteLineBack:
+		return false, false, true
 	case ActVisualYank, ActVisualDelete, ActVisualChange, ActVisualReplace, ActVisualToggleCase, ActVisualLower,
 		ActVisualUpper, ActVisualIndent, ActVisualOutdent, ActVisualOther:
 		return false, true, false
@@ -839,6 +852,8 @@ func VimKeymap() Keymap {
 	km[n('P')] = ActPasteBefore
 	km[n('u')] = ActUndo
 	km[KeyChord{Mode: ModeNormal, Code: 'r', Ctrl: true}] = ActRedo
+	km[KeyChord{Mode: ModeInsert, Code: 'w', Ctrl: true}] = ActDeleteWordBack
+	km[KeyChord{Mode: ModeInsert, Code: 'u', Ctrl: true}] = ActDeleteLineBack
 	km[n('n')], km[v('n')] = ActFindNext, ActFindNext
 	km[n('N')], km[v('N')] = ActFindPrev, ActFindPrev
 	km[n(':')], km[v(':')] = ActCommandLine, ActCommandLine

@@ -55,6 +55,7 @@ type EditorCore struct {
 	hist           editHistory    // undo/redo
 	dot            dotRecorder    // the change . repeats, and the one being recorded
 	opRegOne       bool           // the operator's motion is one whose delete Vim keeps in register 1 (regOneMotion)
+	insStart       taPos          // where this Insert began (editor_viminsert.go)
 	marks          markSet        // a–z and the previous jump's place (editor_vimmarks.go)
 	macro          macroRecorder  // the macro being recorded, and what plays (editor_vimmacros.go)
 	clipPut        *clipPut       // a "+p waiting for the system clipboard (editor_clipboard.go)
@@ -663,6 +664,7 @@ func (c *EditorCore) enterInsert() {
 	c.keys.count, c.keys.pendingAct = 0, ActUnbound
 	c.hist.close() // group opens lazily on the first mutation
 	c.setMode(ModeInsert)
+	c.insStart = taPos{c.buf.ln, c.buf.col} // where Ctrl-w and Ctrl-u stop once (editor_viminsert.go)
 }
 
 // exitInsert implements Insert→Normal in modal mode: cursor one cluster left, clamped. In
@@ -770,7 +772,7 @@ func mutatingAction(act Action) bool {
 		ActReplaceChar, ActJoin, ActJoinRaw, ActToggleCase, ActCaseToggleOp, ActLowerOp, ActUpperOp,
 		ActIndentPrefix, ActOutdentPrefix,
 		ActVisualChange, ActVisualReplace, ActVisualToggleCase, ActVisualLower, ActVisualUpper,
-		ActVisualIndent, ActVisualOutdent:
+		ActVisualIndent, ActVisualOutdent, ActDeleteWordBack, ActDeleteLineBack:
 		return true
 	}
 	return false
@@ -953,6 +955,9 @@ func (c *EditorCore) execAction(act Action, count int) bool {
 		return true
 	case ActVisualOther:
 		c.visualOther()
+		return true
+	case ActDeleteWordBack, ActDeleteLineBack:
+		c.insertDeleteBack(act == ActDeleteLineBack)
 		return true
 
 	// General actions (Nano / Standard).
