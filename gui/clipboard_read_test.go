@@ -138,7 +138,7 @@ func TestClipboardReadJoinsTheGenerationInFlight(t *testing.T) {
 	g.want("one reply for both", "1:x", "2:x")
 }
 
-// Lector's cell: a read the platform never answers is cancelled (the App's timeout); the next read
+// A read the platform never answers is cancelled (the App's timeout); the next read
 // asks again on a new tag, so nothing is stranded; a late reply then answers the new read once, and
 // the cancelled read nothing.
 func TestClipboardReadAfterATimeoutAsksAgain(t *testing.T) {
