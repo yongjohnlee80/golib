@@ -33,6 +33,14 @@ type keyDispatch struct {
 	findArmed Action
 	findCount int
 	lastFind  *charFind
+	// op is a pending operator (d, c, y; ActUnbound for none), opChord the chord that armed it
+	// (dd completes on it again) and opCount its count. objArmed is "i" or "a" after an operator,
+	// or in Visual: the next key names a text object, objCount the count typed before it.
+	op       Action
+	opChord  KeyChord
+	opCount  int
+	objArmed string
+	objCount int
 
 	// Escape chord (Insert mode).
 	chord        []rune // exactly two runes, or nil = disabled
@@ -120,6 +128,13 @@ func (k *keyDispatch) dropPending() {
 	k.count, k.pendingCount = 0, 0
 	k.pendingAct, k.pendingChord = ActUnbound, KeyChord{}
 	k.findArmed, k.findCount = ActUnbound, 0
+	k.dropOp()
+}
+
+// dropOp forgets a pending operator and a pending text object.
+func (k *keyDispatch) dropOp() {
+	k.op, k.opChord, k.opCount = ActUnbound, KeyChord{}, 0
+	k.objArmed, k.objCount = "", 0
 }
 
 // takeRune is the escape chord's held first rune, cleared with its timer; ok is false with none.

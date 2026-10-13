@@ -213,6 +213,11 @@ const (
 	ActWORDEnd         // E (Vim): the WORD's end
 	ActWordEndBack     // ge (Vim): back to the previous word's end
 	ActWORDEndBack     // gE (Vim): back to the previous WORD's end
+	ActChangePrefix    // c{motion}, cc (Vim): change — delete, then type in its place
+	ActChangeToEnd     // C (Vim): change to the line's end (c$)
+	ActSubstChar       // s (Vim): change count characters (cl)
+	ActSubstLine       // S (Vim): change the line (cc)
+	ActYankToEnd       // Y (Vim, as Neovim maps it): yank to the line's end (y$)
 
 	actMax // sentinel for validation
 )
@@ -348,6 +353,16 @@ func (a Action) String() string {
 		return "WordEndBack"
 	case ActWORDEndBack:
 		return "WORDEndBack"
+	case ActChangePrefix:
+		return "ChangePrefix"
+	case ActChangeToEnd:
+		return "ChangeToEnd"
+	case ActSubstChar:
+		return "SubstChar"
+	case ActSubstLine:
+		return "SubstLine"
+	case ActYankToEnd:
+		return "YankToEnd"
 	}
 	return fmt.Sprintf("Action(%d)", a)
 }
@@ -483,6 +498,16 @@ func (a Action) Description() string {
 		return "End of the previous word"
 	case ActWORDEndBack:
 		return "End of the previous WORD"
+	case ActChangePrefix:
+		return "Change"
+	case ActChangeToEnd:
+		return "Change to end of line"
+	case ActSubstChar:
+		return "Change the character"
+	case ActSubstLine:
+		return "Change the line"
+	case ActYankToEnd:
+		return "Copy to end of line"
 	}
 	return "Custom action"
 }
@@ -551,7 +576,8 @@ func actionModes(a Action) (normal, visual, insert bool) {
 	case ActDeletePrefix, ActYankPrefix,
 		ActInsert, ActAppend, ActInsertLineStart, ActAppendLineEnd,
 		ActOpenBelow, ActOpenAbove,
-		ActDeleteChar, ActDeleteToEnd, ActPasteAfter, ActPasteBefore:
+		ActDeleteChar, ActDeleteToEnd, ActPasteAfter, ActPasteBefore,
+		ActChangePrefix, ActChangeToEnd, ActSubstChar, ActSubstLine, ActYankToEnd:
 		return true, false, false
 	case ActCut, ActCopy, ActPaste, ActSelectAll, ActEscape, ActToggleRendered:
 		return true, true, true
@@ -667,6 +693,11 @@ func VimKeymap() Keymap {
 	km[n('D')] = ActDeleteToEnd
 	km[n('d')] = ActDeletePrefix
 	km[n('y')] = ActYankPrefix
+	km[n('c')] = ActChangePrefix
+	km[n('C')] = ActChangeToEnd
+	km[n('s')] = ActSubstChar
+	km[n('S')] = ActSubstLine
+	km[n('Y')] = ActYankToEnd
 	km[n('p')] = ActPasteAfter
 	km[n('P')] = ActPasteBefore
 	km[n('u')] = ActUndo
