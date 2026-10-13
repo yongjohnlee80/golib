@@ -165,6 +165,33 @@ func TestButtonFieldAndScrollbarAreNotThePanelsColour(t *testing.T) {
 			t.Fatalf("the button's fill %+v; want its own %v", rc.Calls, sepiaBG)
 		}
 	})
+	t.Run("button's key under the panel", func(t *testing.T) {
+		// the panel's cell reads as the mnemonic: its colour must not become the key's. The button is
+		// a dark one, so the panel's light text would read on it and not fall back to the label's.
+		row := []string{"S", " ", "S", "a", "v", "e", " ", " "}
+		navy := color.NRGBA{R: 0x10, G: 0x18, B: 0x40, A: 0xff}
+		white := color.NRGBA{R: 0xff, G: 0xff, B: 0xff, A: 0xff}
+		view, _, _ := paintButton(widget.NewButton("Save", widget.WithMnemonic('S')))
+		paintUnder(t, view, overView{cols: 8, rows: 1, covered: at(0), text: func(col, _ int) string { return row[col] },
+			own: func(int, int) (color.NRGBA, color.NRGBA) { return white, navy }})
+	})
+	t.Run("button between two panels", func(t *testing.T) {
+		// both ends covered, the first open cell is the mnemonic's, in a theme's accent
+		accent := color.NRGBA{R: 0xc0, G: 0x30, B: 0x20, A: 0xff}
+		row := []string{" ", "S", "a", "v", "e", " ", " ", " "}
+		view, _, _ := paintButton(widget.NewButton("Save", widget.WithMnemonic('S')))
+		rc := paintUnder(t, view, overView{cols: 8, rows: 1, covered: at(0, 7), text: func(col, _ int) string { return row[col] },
+			own: func(col, _ int) (color.NRGBA, color.NRGBA) {
+				if col == 1 {
+					return accent, sepiaBG
+				}
+				return sepiaFG, sepiaBG
+			}})
+		i := slices.IndexFunc(rc.Calls, func(p PaintCall) bool { return p.Op == "StrokeRRect" })
+		if i < 0 || rc.Calls[i].Brush.Color != alpha(sepiaFG, 0.35) {
+			t.Fatalf("the button's border %+v; want in its label's %v, not the key's accent", rc.Calls, sepiaFG)
+		}
+	})
 	t.Run("text field", func(t *testing.T) {
 		view, _, _ := paintTextField(widget.NewTextInput(widget.WithInitialValue("hello")))
 		rc := paintUnder(t, view, overView{cols: 10, rows: 1, covered: at(0)})
