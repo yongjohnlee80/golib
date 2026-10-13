@@ -171,7 +171,8 @@ type Terminal struct {
 	// cursorColor is the hardware cursor's colour while cursorColored (tui.CursorColorer)
 	cursorColor   style.Color
 	cursorColored bool
-	cellFace      string // SetCellFace: the family its cells are drawn in; "" the window's
+	hostKeys      func(tui.KeyEvent) bool // SetHostKeys: the keys left to the host, never the program's
+	cellFace      string                  // SetCellFace: the family its cells are drawn in; "" the window's
 	// minContrast is the ratio a foreground is raised to against its background; 0: off
 	// (terminal_contrast.go). contrastCache holds the colours it gave.
 	minContrast   float64
@@ -603,6 +604,9 @@ func (t *Terminal) HandleEvent(ev tui.Event) bool {
 		if t.mode == TerminalNormal {
 			return t.normal.key(t, e)
 		}
+		if t.hostKeys != nil && t.hostKeys(e) {
+			return false // the host's: none of it is sent; it goes on to the Window's keys
+		}
 		return t.inputKey(e)
 	}
 	return false
@@ -850,6 +854,12 @@ func (t *Terminal) SetCellFace(family string) {
 
 // CellFace is SetCellFace's family: tui.CellFacer.
 func (t *Terminal) CellFace() string { return t.cellFace }
+
+// SetHostKeys leaves the keys match accepts to the host: in input mode the Terminal sends none of
+// such a key and does not consume it, so it goes on to its ancestors and the Window's Shortcuts (a
+// host's F11, say) as an unconsumed key does. Normal mode is unchanged. The program then never sees
+// those keys (an F11 that mc or htop would take). nil, the default, gives every key to the program.
+func (t *Terminal) SetHostKeys(match func(tui.KeyEvent) bool) { t.hostKeys = match }
 
 // SetCursorColor gives the hardware cursor a colour of its own, as the Editor's SetCursorColor
 // does, so the two carets look alike; the terminal's own colour otherwise.

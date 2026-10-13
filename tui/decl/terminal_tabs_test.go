@@ -9,6 +9,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/yongjohnlee80/golib/tui"
 	tuidecl "github.com/yongjohnlee80/golib/tui/decl"
 	"github.com/yongjohnlee80/golib/tui/decl/decltest"
 	"github.com/yongjohnlee80/golib/tui/widget"
@@ -135,5 +136,23 @@ func TestDeclaredTerminalTabsEmptyTextAndLook(t *testing.T) {
 	s.WaitForText(t, "Start one with +")
 	if strings.Contains(s.String(), "No terminals") {
 		t.Errorf("the default empty text showed:\n%s", s.String())
+	}
+}
+
+// hostKeys is a comma-separated list of Shortcut sequences: each matches its key; "" is none; a
+// sequence a Shortcut would refuse is refused.
+func TestDeclaredHostKeys(t *testing.T) {
+	match, err := tuidecl.HostKeysOfForTest(`"F11, Ctrl+Shift+M"`)
+	if err != nil || match == nil {
+		t.Fatalf("F11, Ctrl+Shift+M: %v", err)
+	}
+	if !match(tui.KeyEvent{Kind: tui.KeyPress, Code: tui.KeyF11}) || match(tui.KeyEvent{Kind: tui.KeyPress, Code: tui.KeyF10}) {
+		t.Error("F11 matched wrongly")
+	}
+	if match, err := tuidecl.HostKeysOfForTest(`""`); err != nil || match != nil {
+		t.Errorf(`"": %v %v`, match != nil, err)
+	}
+	if _, err := tuidecl.HostKeysOfForTest(`"Ctrl+Nope"`); err == nil {
+		t.Error("a bad sequence was taken")
 	}
 }

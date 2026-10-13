@@ -95,6 +95,8 @@ func appTypes() []Type {
 				"cursorColor":     setter("a Terminal", colorOf, (*widget.Terminal).SetCursorColor),
 				// golib's: the family its cells are drawn in, at the window's cell size; "" the window's
 				"cellFont": setter("a Terminal", stringOf, (*widget.Terminal).SetCellFace),
+				// golib's: keys its program never sees, left to the Window's Shortcuts (hostkeys.go)
+				"hostKeys": setter("a Terminal", hostKeysOf, (*widget.Terminal).SetHostKeys),
 			},
 			Methods: map[string]Method{
 				"start": NoArgMethod((*widget.Terminal).Start),
