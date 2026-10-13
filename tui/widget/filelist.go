@@ -249,6 +249,9 @@ type FileList struct {
 	onCursor func(string, bool)
 	onFile   func(string)
 	onDir    func(string)
+	// onLoad runs as a listing STARTS, before its rows are in: what was asked of the folder being
+	// left (a typed path's check) is to be dropped then, not once the new rows arrive.
+	onLoad func()
 	// onShow runs each time a folder's rows are put in: its view's filter
 	// field follows the filter, which a new folder clears
 	onShow func()
@@ -554,6 +557,9 @@ func (l *FileList) load(dir string) { l.loadThen(dir, "") }
 // A source read on the loop is read here; an async one off it, the old rows
 // kept and the title saying it is loading until the listing arrives.
 func (l *FileList) loadThen(dir, want string) {
+	if l.onLoad != nil {
+		l.onLoad()
+	}
 	l.want = want
 	l.stopRead()
 	ctx := l.Context()
