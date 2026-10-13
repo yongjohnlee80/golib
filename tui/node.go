@@ -41,6 +41,10 @@ type node struct {
 	anchorGen uint64
 	regions   map[RegionID]Rect
 
+	// inputOwner is the node this one takes pointer input on behalf of, 0 for none: a layer
+	// opened beside the tree it belongs to (SetChildInputOwner). Only a layer carries one.
+	inputOwner NodeID
+
 	// Layout state. measured/placed reset each pass; a node is visible this
 	// frame only when both are set with a non-empty rect.
 	rect     Rect // parent-relative, set by PlaceChild

@@ -5,7 +5,7 @@ package tui
 // The App tracks it, because only the App knows the node under the pointer: a component hears
 // motion only while the pointer is over it, so it never sees the pointer leave. The node is the
 // one routing would hit-test for an uncaptured event (z-order, PointerContainer, ceilinged at the
-// active trapping scope, so nothing behind a dialog is hovered). During a pointer capture only the
+// active trapping scope and the layers it owns, so nothing behind a dialog is hovered). During a pointer capture only the
 // owner can be hovered, and only while the pointer is inside it. Hover clears when the pointer
 // leaves the screen (PointerLeaveEvent), when the terminal or window loses focus, and when the
 // hovered node unmounts.
@@ -46,10 +46,7 @@ func (a *App) nodeUnderPointer() *node {
 		}
 		return nil
 	}
-	if limit := a.confinement(); limit != nil {
-		return hitTestNode(limit, x, y)
-	}
-	return a.hitTest(x, y)
+	return a.pointerTarget(x, y, a.confinement())
 }
 
 // setHovered makes n the hovered node (nil: none), telling both observers.
