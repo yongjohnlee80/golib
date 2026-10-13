@@ -518,8 +518,11 @@ func (c *EditorCore) handleCommandKey(k tui.KeyEvent) bool {
 
 	switch act {
 	case ActDeletePrefix, ActYankPrefix, ActChangePrefix:
-		if (act == ActYankPrefix && !c.reg.yankAllowed()) || (act != ActYankPrefix && c.readOnly) {
-			return true // consumed, refused: a viewer never changes text, nor a yank-less core copies
+		if act != ActYankPrefix && c.readOnly {
+			return false // refused, and the host's: a viewer never changes text (execAction's rule)
+		}
+		if act == ActYankPrefix && !c.reg.yankAllowed() {
+			return true // consumed, refused: a yank-less core copies nothing
 		}
 		c.keys.op, c.keys.opChord, c.keys.opCount = act, kc, 0
 		if hadCount {
