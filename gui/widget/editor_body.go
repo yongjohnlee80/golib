@@ -511,14 +511,19 @@ func selection(core *tuiwidget.EditorCore, ll LineLayout, wholeLine bool, width 
 	return out
 }
 
-// paintCaret draws the caret: a bar in Insert mode, a block over the cluster otherwise.
+// paintCaret draws the caret: a bar in Insert mode, an underline in Replace (as Vim draws it), a
+// block over the cluster otherwise.
 func paintCaret(c gui.Canvas, r gui.Rect, m tuiwidget.EditorMode, th Theme) {
 	col := th.Text
 	if th.Caret.A > 0 {
 		col = th.Caret
 	}
-	if m == tuiwidget.ModeInsert {
+	switch m {
+	case tuiwidget.ModeInsert:
 		c.FillRect(gui.Rect{X: r.X, Y: r.Y, W: 2, H: r.H}, gui.Solid(col))
+		return
+	case tuiwidget.ModeReplace:
+		c.FillRect(gui.Rect{X: r.X, Y: r.Y + r.H - 2, W: max(th.Mono.Size*0.6, 2), H: 2}, gui.Solid(col))
 		return
 	}
 	col.A = 0x80
