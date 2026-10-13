@@ -81,10 +81,10 @@ type clipRead struct {
 func (a *App) ReadClipboard(timeout time.Duration, done func(read ClipboardRead, text string, err error)) (ClipboardRead, error) {
 	cr, ok := a.backend.(ClipboardReader)
 	switch {
-	case !ok:
-		return ClipboardRead{}, ErrClipboardUnsupported
 	case a.stoppingCalled: // teardown has answered the reads waiting; none after would be answered
 		return ClipboardRead{}, ErrClipboardClosed
+	case !ok:
+		return ClipboardRead{}, ErrClipboardUnsupported
 	}
 	if timeout <= 0 {
 		timeout = DefaultClipboardTimeout

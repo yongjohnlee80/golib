@@ -217,6 +217,18 @@ func TestReadClipboardClosedByStop(t *testing.T) {
 	if n := tb.ClipboardReads(); n != 0 {
 		t.Fatalf("%d reads still held by the backend after stop", n)
 	}
+
+	// a backend with no reader says Closed while stopping too, as the contract promises
+	var plainRefused error
+	var plainApp *App
+	plain := NewTestBackend(10, 2)
+	plainApp = NewApp(NewFlex(Vertical), WithBackend(struct{ Backend }{plain}), WithMinFrameInterval(0), WithOnStopping(func() {
+		_, plainRefused = plainApp.ReadClipboard(time.Minute, ans.done)
+	}))
+	runApp(t, plainApp, plain).wait()
+	if !errors.Is(plainRefused, ErrClipboardClosed) {
+		t.Fatalf("no reader, while stopping: %v, want ErrClipboardClosed", plainRefused)
+	}
 }
 
 // TestBackend: a cancelled read is dropped from the held ones, and answering finds the next.
