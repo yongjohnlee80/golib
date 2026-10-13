@@ -108,6 +108,7 @@ func appTypes() []Type {
 			Destroyed: func(c tui.Component) { c.(*widget.Terminal).Stop() },
 		},
 		editorType,
+		terminalTabsType,
 		{Name: "StatusBar", Build: buildStatusBar, restyle: restyleStatusBar, adopt: adoptStatusBarChild, Setters: map[string]Setter{
 			"left": textSetter("a StatusBar", statusSegment((*widget.StatusBar).SetLeft),
 				statusMessage((*widget.StatusBar).SetLeftMessage)),
