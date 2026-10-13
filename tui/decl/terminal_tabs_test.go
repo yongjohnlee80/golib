@@ -36,7 +36,9 @@ func TestDeclaredTerminalTabsKeepOwnedProcessesThroughHideAndPaletteChanges(t *t
 		if err := s.Program.Call("d", "open"); err != nil {
 			t.Error(err)
 		}
-		a, _ = tabs.Add("first", widget.WithCommand("/bin/sh", "-c", "printf 'first output\\n\\033[31mred words\\033[0m\\n'; read x; printf 'delivered:%s\\n' \"$x\"; read x"))
+		// the red line comes in a later write than the first, as a program's output may: the cell
+		// is read once it is on screen, not once the first line is
+		a, _ = tabs.Add("first", widget.WithCommand("/bin/sh", "-c", "printf 'first output\\n'; sleep 0.2; printf '\\033[31mred words\\033[0m\\n'; read x; printf 'delivered:%s\\n' \"$x\"; read x"))
 		b, _ = tabs.Add("second", widget.WithCommand("/bin/sh", "-c", "printf 'second output\\n'; read x"))
 		if err := tabs.Start(a); err != nil {
 			t.Error(err)
@@ -47,6 +49,7 @@ func TestDeclaredTerminalTabsKeepOwnedProcessesThroughHideAndPaletteChanges(t *t
 	})
 	s.WaitForText(t, "first output")
 	waitBG(t, s, "first output", ansi(blue))
+	s.WaitForText(t, "red words")
 	if cellOf(t, s, "red words").Attrs.FG != ansi(red) {
 		t.Error("explicit ANSI foreground was overridden by parent palette")
 	}
