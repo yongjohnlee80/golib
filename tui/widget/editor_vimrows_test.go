@@ -74,6 +74,12 @@ func TestVimDisplayRowsSticky(t *testing.T) {
 	atCol(t, ed, "gj keeps the x", 2, 6)
 	vimSeq(c, "hgk")
 	atCol(t, ed, "another motion resets it", 1, 1)
+
+	// h then l back to the same place still ends the x (Lector's case; Neovim lands at (2,1))
+	r := wrappedEditor(t, "abcdefgh\nab\nabcdefgh", 20)
+	r.Core().SetLine(0, 6)
+	vimSeq(r.Core(), "gjhlgj")
+	atCol(t, r, "a round trip back to the same place", 2, 1)
 }
 
 // A core whose layout has no rows: a row per line, still charwise as an operator's motion.

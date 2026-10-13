@@ -376,7 +376,12 @@ func (c *EditorCore) pageLines() int {
 
 // cursorMoved tells onCursorMove when the cursor is no longer at (ln, col).
 func (c *EditorCore) cursorMoved(ln, col int) {
-	if c.onCursorMove != nil && (c.buf.ln != ln || c.buf.col != col) {
+	moved := c.buf.ln != ln || c.buf.col != col
+	if moved && !c.rowSticky.kept {
+		c.rowSticky.ok = false // any move but gj and gk ends their x, as Vim's curswant
+	}
+	c.rowSticky.kept = false
+	if c.onCursorMove != nil && moved {
 		c.onCursorMove()
 	}
 }
