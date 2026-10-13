@@ -113,6 +113,19 @@ func TestJumpListProposeCommitDrop(t *testing.T) {
 		t.Fatalf("back after a drop: %+v, want line 1", step.To)
 	}
 
+	// a full list: recording the place now trims the oldest, and Drop still removes the step's entry
+	full := widget.NewJumpList(3)
+	for _, ln := range []int{1, 2, 3} {
+		full.Push(jp(ln))
+	}
+	last, _ := full.Back(jp(9), 1)
+	if last.To != jp(3) || !full.Drop(last) {
+		t.Fatalf("back on a full list: %+v", last.To)
+	}
+	if got, idx := lines(full); !slices.Equal(got, []int{1, 2}) || idx != 2 {
+		t.Fatalf("Drop on a full list: %v at %d, want [1 2] past the end", got, idx)
+	}
+
 	// a counted step over an entry that is gone: dropped, the same count lands on the next one back
 	c := widget.NewJumpList(0)
 	for _, ln := range []int{1, 2, 3} {
