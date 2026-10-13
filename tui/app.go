@@ -221,6 +221,10 @@ type App struct {
 	timerArms   int              // instrumentation
 	nextTimerID uint64
 
+	// clipReads are the clipboard reads waiting for an answer, by ClipboardRead.ID (clipboard.go).
+	clipReads  map[uint64]*clipRead
+	nextClipID uint64
+
 	bus *Bus
 
 	// Task pool: sem bounds how many tasks run at once. Each submission still
@@ -590,6 +594,9 @@ func (a *App) teardown() error {
 			a.runUpdate(fn)
 		}
 	}
+	// Clipboard reads still waiting are answered now: queued Updates are not drained after this,
+	// so a backend's late answer would never reach them.
+	a.closeClipboardReads()
 
 	// T1 — unmount the tree, children first: every node context cancels,
 	// which signals every in-flight task.
