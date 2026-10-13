@@ -22,13 +22,15 @@ const (
 	dotKey    dotKind = iota // a key, replayed through HandleKey
 	dotTyped                 // text Insert committed as typed, replayed through the typed path
 	dotPasted                // text a paste inserted, replayed literally
+	dotVisual                // a Visual operation, replayed over a region of its size (editor_vimvisual.go)
 )
 
 type dotAtom struct {
 	kind  dotKind
 	key   tui.KeyEvent
 	text  string
-	count bool // a key taken as a count digit
+	count bool        // a key taken as a count digit
+	vis   *visualRedo // dotVisual's
 }
 
 // dotRecorder is the change being recorded and the last one.
@@ -164,6 +166,8 @@ func (c *EditorCore) repeatLast(hadCount bool, count int) {
 			c.HandleKey(a.key)
 		case dotTyped:
 			c.typeText(a.text)
+		case dotVisual:
+			c.visualReplay(*a.vis)
 		case dotPasted:
 			c.HandlePaste(a.text)
 		}

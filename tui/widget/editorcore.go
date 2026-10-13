@@ -768,7 +768,9 @@ func mutatingAction(act Action) bool {
 		ActDeletePrefix, ActVisualDelete, ActCut, ActPaste,
 		ActChangePrefix, ActChangeToEnd, ActSubstChar, ActSubstLine,
 		ActReplaceChar, ActJoin, ActJoinRaw, ActToggleCase, ActCaseToggleOp, ActLowerOp, ActUpperOp,
-		ActIndentPrefix, ActOutdentPrefix:
+		ActIndentPrefix, ActOutdentPrefix,
+		ActVisualChange, ActVisualReplace, ActVisualToggleCase, ActVisualLower, ActVisualUpper,
+		ActVisualIndent, ActVisualOutdent:
 		return true
 	}
 	return false
@@ -945,19 +947,12 @@ func (c *EditorCore) execAction(act Action, count int) bool {
 		c.exitVisual()
 		c.reveal()
 		return true
-	case ActVisualDelete:
-		if c.keys.mode == ModeVisualLine {
-			lo, hi := c.visualLines()
-			c.exitVisual()
-			c.deleteLines(lo, hi)
-		} else {
-			lo, hiEx := c.visualRange()
-			c.beginGroup()
-			c.regDelete(b.textIn(lo, hiEx), false)
-			b.deleteRegion(lo, hiEx)
-			c.exitVisual()
-			c.edited()
-		}
+	case ActVisualDelete, ActVisualChange, ActVisualToggleCase, ActVisualLower, ActVisualUpper,
+		ActVisualIndent, ActVisualOutdent:
+		c.visualOp(act, count, "") // editor_vimvisual.go: . repeats it over a region of its size
+		return true
+	case ActVisualOther:
+		c.visualOther()
 		return true
 
 	// General actions (Nano / Standard).

@@ -409,7 +409,13 @@ func (c *EditorCore) handleCommandKey(k tui.KeyEvent) bool {
 	if c.keys.replArmed {
 		count := c.keys.replCount
 		c.keys.replArmed, c.keys.replCount = false, 0
+		visual := c.keys.mode == ModeVisual || c.keys.mode == ModeVisualLine
 		switch {
+		case visual && k.Text != "" && k.Mods&nonTextMods == 0:
+			c.visualOp(ActVisualReplace, count, firstCluster(k.Text)) // every character of the selection
+			return true
+		case visual:
+			// Enter, or a key with no text: r is cancelled, Visual stays
 		case k.Code == tui.KeyEnter && k.Mods&nonTextMods == 0:
 			c.replaceChars("\n", count)
 			return true
@@ -665,7 +671,7 @@ func (c *EditorCore) handleCommandKey(k tui.KeyEvent) bool {
 	case ActFindCharForward, ActFindCharBack, ActTillCharForward, ActTillCharBack:
 		c.keys.findArmed, c.keys.findCount = act, count // the next key's text completes it
 		return true
-	case ActReplaceChar:
+	case ActReplaceChar, ActVisualReplace:
 		if c.readOnly {
 			return false // refused, and the host's
 		}

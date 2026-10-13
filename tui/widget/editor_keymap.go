@@ -235,6 +235,15 @@ const (
 	ActMacroRecord     // q{a-z} … q (Vim): record a macro into the register (A-Z append)
 	ActMacroPlay       // @{a-z} (Vim): play the register's macro (@@ the last played)
 
+	ActVisualChange     // c, s (Vim Visual): change the selection
+	ActVisualReplace    // r{c} (Vim Visual): every character of the selection becomes c
+	ActVisualToggleCase // ~ (Vim Visual): toggle the selection's case
+	ActVisualLower      // u (Vim Visual): lowercase the selection
+	ActVisualUpper      // U (Vim Visual): uppercase the selection
+	ActVisualIndent     // > (Vim Visual): indent the selected lines
+	ActVisualOutdent    // < (Vim Visual): outdent the selected lines
+	ActVisualOther      // o (Vim Visual): to the selection's other end
+
 	actMax // sentinel for validation
 )
 
@@ -411,6 +420,22 @@ func (a Action) String() string {
 		return "MacroRecord"
 	case ActMacroPlay:
 		return "MacroPlay"
+	case ActVisualChange:
+		return "VisualChange"
+	case ActVisualReplace:
+		return "VisualReplace"
+	case ActVisualToggleCase:
+		return "VisualToggleCase"
+	case ActVisualLower:
+		return "VisualLower"
+	case ActVisualUpper:
+		return "VisualUpper"
+	case ActVisualIndent:
+		return "VisualIndent"
+	case ActVisualOutdent:
+		return "VisualOutdent"
+	case ActVisualOther:
+		return "VisualOther"
 	}
 	return fmt.Sprintf("Action(%d)", a)
 }
@@ -588,6 +613,22 @@ func (a Action) Description() string {
 		return "Record a macro"
 	case ActMacroPlay:
 		return "Play a macro"
+	case ActVisualChange:
+		return "Change the selection"
+	case ActVisualReplace:
+		return "Replace the selection's characters"
+	case ActVisualToggleCase:
+		return "Toggle the selection's case"
+	case ActVisualLower:
+		return "Lowercase the selection"
+	case ActVisualUpper:
+		return "Uppercase the selection"
+	case ActVisualIndent:
+		return "Indent the selection"
+	case ActVisualOutdent:
+		return "Outdent the selection"
+	case ActVisualOther:
+		return "Go to the selection's other end"
 	}
 	return "Custom action"
 }
@@ -666,7 +707,8 @@ func actionModes(a Action) (normal, visual, insert bool) {
 		return true, true, true
 	case ActUndo, ActRedo:
 		return true, false, true
-	case ActVisualYank, ActVisualDelete:
+	case ActVisualYank, ActVisualDelete, ActVisualChange, ActVisualReplace, ActVisualToggleCase, ActVisualLower,
+		ActVisualUpper, ActVisualIndent, ActVisualOutdent, ActVisualOther:
 		return false, true, false
 	case ActLineDownFirst, ActLineUpFirst, ActFirstNonBlank, ActLeftWrap,
 		ActFindCharForward, ActFindCharBack, ActTillCharForward, ActTillCharBack,
@@ -807,6 +849,12 @@ func VimKeymap() Keymap {
 	km[v('y')] = ActVisualYank
 	km[v('d')] = ActVisualDelete
 	km[v('x')] = ActVisualDelete
+	km[v('c')], km[v('s')] = ActVisualChange, ActVisualChange
+	km[v('r')] = ActVisualReplace
+	km[v('~')] = ActVisualToggleCase
+	km[v('u')], km[v('U')] = ActVisualLower, ActVisualUpper
+	km[v('>')], km[v('<')] = ActVisualIndent, ActVisualOutdent
+	km[v('o')] = ActVisualOther
 	km[v('v')] = ActVisual
 	km[v('V')] = ActVisualLine
 
