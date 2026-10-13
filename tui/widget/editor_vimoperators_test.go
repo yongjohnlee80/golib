@@ -157,6 +157,14 @@ func TestVimOperatorPending(t *testing.T) {
 		t.Fatalf("d, focus lost, l: %q at (%d,%d); want l to move", c.Value(), ln, col)
 	}
 
+	m, _ := coreWith(t, "foo bar baz")
+	vimType(m, "d")
+	m.Select(widget.TextRange{From: widget.TextPos{Line: 0, Col: 0}, To: widget.TextPos{Line: 0, Col: 2}})
+	vimType(m, "w") // a mode change (into Visual) dropped d: w extends the selection
+	if m.Value() != "foo bar baz" || m.Mode() != widget.ModeVisual {
+		t.Fatalf("d, a mode change, w: %q in %v; want the operator dropped", m.Value(), m.Mode())
+	}
+
 	ro := widget.NewEditorCore(widget.CoreInitialText("foo bar"), widget.CoreReadOnly(true))
 	ro.Bind(nil, &fakeLayout{per: 1, page: 5})
 	vimType(ro, "dwcwX<esc>CSs")
