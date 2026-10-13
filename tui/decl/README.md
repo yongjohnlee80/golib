@@ -319,6 +319,13 @@ content).
 or a tab stop, and hides what is under it; removed by a reload, it is shown
 again.
 
+**Every widget has `toolTipText`** — Qt's `ToolTip.text`, a runtime property: the text it
+reveals in a card while the pointer rests on it for half a second, and at once when the keyboard
+brings focus to it (a `ComboBox`'s, when its field is focused). The card never takes focus or the
+pointer: a dialog's keys still reach the dialog, and the pointer over the card is still over the
+control. It closes when the pointer or focus leaves, on any key or mouse press, and when the text
+changes; `""` shows none, and removed by a reload, the item has none.
+
 **Every element except `Window`, `Frame`, `Split`, `Flex`, `Dialog` and the
 engine's `Repeater`, `Instantiator`, `DelegateChooser` and `DelegateChoice` is
 childless or holds only its own kind** — `MenuBar` holds `Menu`s, a `Menu`

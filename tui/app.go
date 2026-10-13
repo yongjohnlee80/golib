@@ -67,6 +67,10 @@ type App struct {
 	// cell, for re-checking when a capture ends (hover.go).
 	hovered NodeID
 	pointer Point
+	// tip is the tooltip card (tooltip.go); keyFocus is set while a key press is routed, so focus
+	// it moves is focus the keyboard brought
+	tip      toolTipState
+	keyFocus bool
 
 	done   chan struct{} // closed once Run has returned, its teardown finished (Done)
 	runCtx context.Context
@@ -697,6 +701,7 @@ func (a *App) renderFrame() {
 	}
 	a.beginNatives()
 	a.renderTree()
+	a.renderToolTip()
 	a.renderDirty = false
 
 	a.applyNatives()

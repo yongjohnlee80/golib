@@ -83,6 +83,11 @@ func (a *App) dispatch(ev Event) {
 	}
 	switch e := ev.(type) {
 	case KeyEvent:
+		if e.Kind != KeyRelease {
+			a.toolTipPress(false)
+			a.keyFocus = true
+			defer func() { a.keyFocus = false }()
+		}
 		if a.interceptCaptureEscape(e) {
 			return
 		}
@@ -135,6 +140,9 @@ func (a *App) dispatch(ev Event) {
 			ev = e
 		}
 		a.trackHover(e)
+		if e.Kind == MousePress || e.Kind == MouseWheel {
+			a.toolTipPress(true)
+		}
 		if e.Kind == MouseRelease {
 			defer a.refreshHover() // a capture this release ends: hover follows the pointer again
 		}

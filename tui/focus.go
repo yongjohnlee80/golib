@@ -109,6 +109,7 @@ func (a *App) setFocus(id NodeID) {
 	if nn := a.nodes[id]; nn != nil {
 		a.bubble(nn, FocusEvent{Gained: true})
 	}
+	a.toolTipFocus(a.nodes[a.focused], a.keyFocus)
 	// A capture survives focus moving around inside the owner's own subtree and
 	// ends when focus leaves it. Checked after the FocusEvents are delivered so
 	// that a handler which moves focus onward is accounted for by the check
