@@ -192,6 +192,12 @@ func (c *EditorCore) rangeOf(from, to taPos, k motionKind) (r opRange, empty boo
 func (c *EditorCore) applyOp(op Action, r opRange) {
 	b := &c.buf
 	switch op {
+	case ActCaseToggleOp, ActLowerOp, ActUpperOp:
+		c.applyCase(op, r)
+	case ActIndentPrefix:
+		c.applyShift(1, r)
+	case ActOutdentPrefix:
+		c.applyShift(-1, r)
 	case ActYankPrefix:
 		if !c.reg.yankAllowed() {
 			return

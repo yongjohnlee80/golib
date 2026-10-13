@@ -218,6 +218,16 @@ const (
 	ActSubstChar       // s (Vim): change count characters (cl)
 	ActSubstLine       // S (Vim): change the line (cc)
 	ActYankToEnd       // Y (Vim, as Neovim maps it): yank to the line's end (y$)
+	ActReplaceChar     // r{char} (Vim): replace count clusters with {char}
+	ActJoin            // J (Vim): join count lines, a blank between
+	ActJoinRaw         // gJ (Vim): join count lines as they are
+	ActToggleCase      // ~ (Vim): toggle the case of count clusters, and move past them
+	ActCaseToggleOp    // g~{motion} (Vim): toggle the case of the text
+	ActLowerOp         // gu{motion} (Vim): lowercase the text
+	ActUpperOp         // gU{motion} (Vim): uppercase the text
+	ActIndentPrefix    // >{motion}, >> (Vim): indent the lines by one unit
+	ActOutdentPrefix   // <{motion}, << (Vim): outdent the lines by one unit
+	ActRepeat          // . (Vim): repeat the last change
 
 	actMax // sentinel for validation
 )
@@ -363,6 +373,26 @@ func (a Action) String() string {
 		return "SubstLine"
 	case ActYankToEnd:
 		return "YankToEnd"
+	case ActReplaceChar:
+		return "ReplaceChar"
+	case ActJoin:
+		return "Join"
+	case ActJoinRaw:
+		return "JoinRaw"
+	case ActToggleCase:
+		return "ToggleCase"
+	case ActCaseToggleOp:
+		return "CaseToggleOp"
+	case ActLowerOp:
+		return "LowerOp"
+	case ActUpperOp:
+		return "UpperOp"
+	case ActIndentPrefix:
+		return "IndentPrefix"
+	case ActOutdentPrefix:
+		return "OutdentPrefix"
+	case ActRepeat:
+		return "Repeat"
 	}
 	return fmt.Sprintf("Action(%d)", a)
 }
@@ -508,6 +538,26 @@ func (a Action) Description() string {
 		return "Change the line"
 	case ActYankToEnd:
 		return "Copy to end of line"
+	case ActReplaceChar:
+		return "Replace the character"
+	case ActJoin:
+		return "Join lines"
+	case ActJoinRaw:
+		return "Join lines as they are"
+	case ActToggleCase:
+		return "Toggle case"
+	case ActCaseToggleOp:
+		return "Toggle case of the text"
+	case ActLowerOp:
+		return "Lowercase the text"
+	case ActUpperOp:
+		return "Uppercase the text"
+	case ActIndentPrefix:
+		return "Indent"
+	case ActOutdentPrefix:
+		return "Outdent"
+	case ActRepeat:
+		return "Repeat the last change"
 	}
 	return "Custom action"
 }
@@ -577,7 +627,9 @@ func actionModes(a Action) (normal, visual, insert bool) {
 		ActInsert, ActAppend, ActInsertLineStart, ActAppendLineEnd,
 		ActOpenBelow, ActOpenAbove,
 		ActDeleteChar, ActDeleteToEnd, ActPasteAfter, ActPasteBefore,
-		ActChangePrefix, ActChangeToEnd, ActSubstChar, ActSubstLine, ActYankToEnd:
+		ActChangePrefix, ActChangeToEnd, ActSubstChar, ActSubstLine, ActYankToEnd,
+		ActReplaceChar, ActJoin, ActJoinRaw, ActToggleCase, ActCaseToggleOp, ActLowerOp, ActUpperOp,
+		ActIndentPrefix, ActOutdentPrefix, ActRepeat:
 		return true, false, false
 	case ActCut, ActCopy, ActPaste, ActSelectAll, ActEscape, ActToggleRendered:
 		return true, true, true
@@ -698,6 +750,12 @@ func VimKeymap() Keymap {
 	km[n('s')] = ActSubstChar
 	km[n('S')] = ActSubstLine
 	km[n('Y')] = ActYankToEnd
+	km[n('r')] = ActReplaceChar
+	km[n('J')] = ActJoin
+	km[n('~')] = ActToggleCase
+	km[n('>')] = ActIndentPrefix
+	km[n('<')] = ActOutdentPrefix
+	km[n('.')] = ActRepeat
 	km[n('p')] = ActPasteAfter
 	km[n('P')] = ActPasteBefore
 	km[n('u')] = ActUndo

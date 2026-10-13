@@ -41,6 +41,9 @@ type keyDispatch struct {
 	opCount  int
 	objArmed string
 	objCount int
+	// replArmed is an r waiting for its character, replCount its count.
+	replArmed bool
+	replCount int
 
 	// Escape chord (Insert mode).
 	chord        []rune // exactly two runes, or nil = disabled
@@ -135,6 +138,7 @@ func (k *keyDispatch) dropPending() {
 func (k *keyDispatch) dropOp() {
 	k.op, k.opChord, k.opCount = ActUnbound, KeyChord{}, 0
 	k.objArmed, k.objCount = "", 0
+	k.replArmed, k.replCount = false, 0
 }
 
 // takeRune is the escape chord's held first rune, cleared with its timer; ok is false with none.

@@ -1,8 +1,6 @@
 package widget
 
 import (
-	"strings"
-
 	"github.com/yongjohnlee80/golib/tui"
 )
 
@@ -23,7 +21,13 @@ func (c *EditorCore) HandleKey(k tui.KeyEvent) bool {
 	if c.keys.mode == ModeInsert {
 		return c.handleInsertKey(k)
 	}
-	return c.handleCommandKey(k)
+	c.dotStart()
+	if c.dot.on && !c.dot.inInsert && !c.dot.replaying {
+		c.dot.atoms = append(c.dot.atoms, dotAtom{kind: dotKey, key: k})
+	}
+	handled := c.handleCommandKey(k)
+	c.dotEnd()
+	return handled
 }
 
 // HandlePaste inserts pasted text as one atomic edit. In Visual it replaces the selection. A
@@ -59,6 +63,7 @@ func (c *EditorCore) HandlePaste(text string) bool {
 		if c.keys.mode != ModeInsert {
 			c.clampNormal()
 		}
+		c.dotPastedText(text)
 	}
 	c.edited()
 	return true
@@ -89,6 +94,7 @@ func (c *EditorCore) FocusLost() {
 	c.settlePendingRune()
 	c.hist.close()
 	c.keys.dropPending()
+	c.dotBoundary()
 }
 
 // PressAt is a click at buffer position (line, col), the widget's hit-test of the pointer. A press
@@ -113,6 +119,7 @@ func (c *EditorCore) PressAt(line, col int) bool {
 	// Pending COMMAND state is discarded, never completed: completing `2d` against a clicked
 	// place would turn a mis-click into a destructive edit.
 	c.keys.dropPending()
+	c.dotDrop() // a press is a jump: it splits an Insert being recorded
 	// Visual exits and the anchor is cleared: keeping it would make the next motion extend a
 	// selection the user believes they dismissed.
 	if c.keys.mode == ModeVisual || c.keys.mode == ModeVisualLine {
@@ -192,6 +199,7 @@ func (c *EditorCore) handleInsertKey(k tui.KeyEvent) bool {
 	// 2. Configured keymap actions (custom bindings, Nano/Standard profiles, etc.).
 	if act, bound := c.keys.keymap[kc]; bound {
 		c.settlePendingRune()
+		c.dotInsertKey(k)
 		return c.execAction(act, 1)
 	}
 
@@ -223,7 +231,15 @@ func (c *EditorCore) handleInsertKey(k tui.KeyEvent) bool {
 	}
 
 	if c.tableKey(k) || c.listKey(k) {
+		c.dotInsertKey(k)
 		return true
+	}
+	switch k.Code {
+	case tui.KeyTab, tui.KeyEnter, tui.KeyBackspace, tui.KeyDelete,
+		tui.KeyLeft, tui.KeyRight, tui.KeyUp, tui.KeyDown, tui.KeyHome, tui.KeyEnd:
+		c.dotInsertKey(k) // replayed through this same handler: Enter re-runs auto-indent
+	case tui.KeyPageUp, tui.KeyPageDown:
+		c.dotJump() // a jump splits the change
 	}
 	switch k.Code {
 	case tui.KeyTab:
@@ -319,12 +335,8 @@ func (c *EditorCore) handleInsertKey(k tui.KeyEvent) bool {
 	}
 
 	if isText {
-		c.beginGroup()
-		b.insertText(k.Text)
-		if strings.ContainsAny(k.Text, "})] \t") {
-			c.alignClosing()
-		}
-		c.edited()
+		c.typeText(k.Text)
+		c.dotTypedText(k.Text)
 		return true
 	}
 	return false
@@ -338,7 +350,7 @@ func (c *EditorCore) handleCommandKey(k tui.KeyEvent) bool {
 
 	if k.Code == tui.KeyEscape {
 		hadPending := c.keys.count != 0 || c.keys.pendingAct != ActUnbound || c.keys.findArmed != ActUnbound ||
-			c.keys.op != ActUnbound || c.keys.objArmed != ""
+			c.keys.op != ActUnbound || c.keys.objArmed != "" || c.keys.replArmed
 		c.keys.count, c.keys.pendingAct, c.keys.findArmed = 0, ActUnbound, ActUnbound
 		c.keys.dropOp()
 		if c.keys.mode == ModeVisual || c.keys.mode == ModeVisualLine {
@@ -373,6 +385,21 @@ func (c *EditorCore) handleCommandKey(k tui.KeyEvent) bool {
 		c.keys.dropOp() // a key with no text: no find, and no operator over it
 	}
 
+	// An armed r takes this key's text as its character, a digit or a space included, and Enter as a
+	// line break; a key with neither cancels it and is processed afresh.
+	if c.keys.replArmed {
+		count := c.keys.replCount
+		c.keys.replArmed, c.keys.replCount = false, 0
+		switch {
+		case k.Code == tui.KeyEnter && k.Mods&nonTextMods == 0:
+			c.replaceChars("\n", count)
+			return true
+		case k.Text != "" && k.Mods&nonTextMods == 0:
+			c.replaceChars(firstCluster(k.Text), count)
+			return true
+		}
+	}
+
 	// An armed text object (i or a, after an operator or in Visual) takes this key's text as the
 	// object's name. A key with no text cancels it, and the operator, and is processed afresh.
 	if obj := c.keys.objArmed; obj != "" {
@@ -399,6 +426,9 @@ func (c *EditorCore) handleCommandKey(k tui.KeyEvent) bool {
 		if r >= '1' && r <= '9' || (r == '0' && c.keys.count > 0) {
 			c.keys.pendingAct = ActUnbound
 			c.keys.count = min(c.keys.count*10+int(r-'0'), 1_000_000)
+			if n := len(c.dot.atoms); c.dot.on && n > 0 {
+				c.dot.atoms[n-1].count = true // N. replaces it
+			}
 			return true
 		}
 	}
@@ -448,7 +478,30 @@ func (c *EditorCore) handleCommandKey(k tui.KeyEvent) bool {
 		} else if !kc.Ctrl && kc.Code == 'E' {
 			back = ActWORDEndBack
 		}
+		caseOp := ActUnbound
+		if !kc.Ctrl {
+			caseOp = caseOpOf(kc.Code)
+		}
 		switch {
+		case caseOp != ActUnbound && op == caseOp: // g~g~, gugu, gUgU: the doubled form
+			c.keys.dropOp()
+			c.runOp(op, taPos{min(b.ln+count-1, len(b.lines)-1), 0}, linewise)
+			return true
+		case caseOp != ActUnbound && op == ActUnbound: // g~ gu gU: an operator, armed
+			if c.readOnly {
+				return false // refused, and the host's (#285's rule)
+			}
+			c.keys.op, c.keys.opChord, c.keys.opCount = caseOp, kc, 0
+			if hadCount {
+				c.keys.opCount = count
+			}
+			return true
+		case !kc.Ctrl && kc.Code == 'J' && op == ActUnbound: // gJ
+			if c.readOnly {
+				return false
+			}
+			c.joinLines(count, true)
+			return true
 		case kc == chord && op != ActUnbound:
 			c.keys.dropOp()
 			c.runOp(op, c.gotoLineTarget(count, hadCount), linewise) // [count]dgg
@@ -517,7 +570,7 @@ func (c *EditorCore) handleCommandKey(k tui.KeyEvent) bool {
 	}
 
 	switch act {
-	case ActDeletePrefix, ActYankPrefix, ActChangePrefix:
+	case ActDeletePrefix, ActYankPrefix, ActChangePrefix, ActIndentPrefix, ActOutdentPrefix:
 		if act != ActYankPrefix && c.readOnly {
 			return false // refused, and the host's: a viewer never changes text (execAction's rule)
 		}
@@ -543,6 +596,12 @@ func (c *EditorCore) handleCommandKey(k tui.KeyEvent) bool {
 	case ActFindCharForward, ActFindCharBack, ActTillCharForward, ActTillCharBack:
 		c.keys.findArmed, c.keys.findCount = act, count // the next key's text completes it
 		return true
+	case ActReplaceChar:
+		if c.readOnly {
+			return false // refused, and the host's
+		}
+		c.keys.replArmed, c.keys.replCount = true, count // the next key's text completes it
+		return true
 	case ActMatchPair:
 		c.hist.close()
 		if hadCount {
@@ -555,6 +614,11 @@ func (c *EditorCore) handleCommandKey(k tui.KeyEvent) bool {
 		c.hist.close()
 		c.halfPage(act == ActHalfPageDown, hadCount, count)
 		return true
+	case ActRepeat:
+		c.repeatLast(hadCount, count)
+		return true
+	case ActUndo, ActRedo:
+		c.dot.on = false // undoing is not a change . repeats
 	}
 	return c.execAction(act, count)
 }
