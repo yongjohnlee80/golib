@@ -188,8 +188,12 @@ func TestAVFSPreviewIsReadOffTheLoop(t *testing.T) {
 	h := startBrowser(t, v)
 	defer h.stop()
 	h.shows("readme.md")
+	before := g.started.Load()
 	h.inject(key(tui.KeyDown)) // .., readme.md: held
 	h.shows("(loading")
+	// the preview says loading as its task is made, before the task reads: wait for the read
+	// itself, or x.txt can supersede a task that never started, and there is nothing to cancel
+	h.waitFor("the readme's read held", func() bool { return g.started.Load() > before })
 	h.inject(key(tui.KeyDown)) // x.txt supersedes it
 	h.waitFor("the readme's read cancelled", func() bool { return g.cancelled.Load() >= 1 })
 	g.release("file:a/x.txt")
