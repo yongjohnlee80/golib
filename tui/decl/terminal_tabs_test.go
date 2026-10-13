@@ -156,3 +156,48 @@ func TestDeclaredHostKeys(t *testing.T) {
 		t.Error("a bad sequence was taken")
 	}
 }
+
+// TestADrawersTerminalTabsMenuMaximizesTheDrawer: a TerminalTabs in a maximizable Drawer, its strip
+// menu's row calling the Drawer's toggleMaximize, as a host's Maximize does: a click on the row
+// maximizes the Drawer over the page. The menu's layer traps the input scope while it is open, and
+// the Drawer refuses a window operation from outside it, so the row runs once the menu has gone.
+func TestADrawersTerminalTabsMenuMaximizesTheDrawer(t *testing.T) {
+	layout := "import tui 1.0\nWindow {\n Text { text: \"page\" }\n" +
+		" Drawer { id: d; modal: false; maximizable: true; edge: Tui.Bottom; size: 50; length: 100\n TerminalTabs { id: terminals } } }"
+	s := decltest.Run(t, 60, 16, tuidecl.LayoutSource("main.qml", []byte(layout)))
+	var errs []error // on the loop only
+	onScreenLoop(t, s, func() {
+		c, _ := s.Program.Find("terminals")
+		tabs, ok := tuidecl.TerminalTabsOf(c)
+		if !ok {
+			t.Error("no TerminalTabs")
+			return
+		}
+		tabs.SetMenu(func(widget.TerminalTabID) []widget.MenuItemModel {
+			return []widget.MenuItemModel{widget.NewCommand("max", "Maximize", widget.TerminalTabsMenuAction{ID: "max",
+				Run: func(widget.TerminalTabID) { errs = append(errs, s.Program.Call("d", "toggleMaximize")) }})}
+		})
+		if err := s.Program.Call("d", "open"); err != nil {
+			t.Error(err)
+		}
+	})
+	s.WaitForText(t, "No terminals")
+	x, y := textAt(t, s, "No terminals")
+	s.Keys(t, tui.MouseEvent{Kind: tui.MousePress, Button: tui.MouseRight, X: x + 1, Y: y},
+		tui.MouseEvent{Kind: tui.MouseRelease, Button: tui.MouseRight, X: x + 1, Y: y})
+	s.WaitForText(t, "Maximize")
+	mx, my := textAt(t, s, "Maximize")
+	s.Keys(t, tui.MouseEvent{Kind: tui.MousePress, Button: tui.MouseLeft, X: mx + 1, Y: my},
+		tui.MouseEvent{Kind: tui.MouseRelease, Button: tui.MouseLeft, X: mx + 1, Y: my})
+	s.WaitFor(t, "the row ran", func(string) bool {
+		n := 0
+		onScreenLoop(t, s, func() { n = len(errs) })
+		return n > 0
+	})
+	onScreenLoop(t, s, func() {
+		if len(errs) != 1 || errs[0] != nil {
+			t.Errorf("the menu's toggleMaximize: %v", errs)
+		}
+	})
+	s.WaitFor(t, "the Drawer over the page", func(sc string) bool { return !strings.Contains(sc, "page") })
+}

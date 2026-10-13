@@ -69,15 +69,18 @@ func (m *EditorMenu) OpenAt(at tui.Point) bool {
 	m.Close()
 
 	var layer *popupLayer
+	var chosen func()
 	// h j k l move as the arrows do: an editor's menu is opened from an editor, often a Vim one,
-	// and a row's own mnemonic still wins over them (WithMenuVimNavigation)
+	// and a row's own mnemonic still wins over them (WithMenuVimNavigation). A chosen row runs
+	// once the menu has gone: its layer traps the input scope while it is open, and an action on
+	// a window around the editor would be refused inside it.
 	menu := NewMenu(WithMenuVimNavigation(true), WithActionExecutor(func(inv tui.ActionInvocation) bool {
-		if !m.run(inv.Action) {
+		run := m.action(inv.Action)
+		if run == nil || layer == nil {
 			return false
 		}
-		if layer != nil {
-			layer.requestClose(DismissAccept)
-		}
+		chosen = run
+		layer.requestClose(DismissAccept)
 		return true
 	}))
 	if err := menu.SetModel(items); err != nil {
@@ -87,9 +90,14 @@ func (m *EditorMenu) OpenAt(at tui.Point) bool {
 	// the box on the menu's own surface: a bare one's border cells kept the terminal's default
 	// background, a band of it around the menu in a window
 	box := NewBox(menu, WithStyle(style.New().Background(style.TokenPanel)))
-	l, err := host.openPopupAt(id, m.owner, box, at, func(DismissReason) {
+	ctx := ider.Context()
+	l, err := host.openPopupAt(id, m.owner, box, at, func(reason DismissReason) {
 		if m.open == layer {
 			m.open = nil
+		}
+		if run := chosen; run != nil && reason == DismissAccept {
+			chosen = nil
+			ctx.Update(run) // a later turn: the layer, and its trap, gone
 		}
 	})
 	if err != nil {
@@ -100,25 +108,23 @@ func (m *EditorMenu) OpenAt(at tui.Point) bool {
 	return true
 }
 
-// run performs a chosen row's action: a CoreMenuAction on the core, an EditorMenuAction on a tui
-// Editor owner. Any other action does nothing.
-func (m *EditorMenu) run(a tui.Action) bool {
+// action is what a chosen row does: a CoreMenuAction on the core, an EditorMenuAction on a tui
+// Editor owner. nil for any other action, which the menu does not run.
+func (m *EditorMenu) action(a tui.Action) func() {
 	switch act := a.(type) {
 	case CoreMenuAction:
 		if act.Run == nil {
-			return false
+			return nil
 		}
-		act.Run(m.core)
-		return true
+		return func() { act.Run(m.core) }
 	case EditorMenuAction:
 		e, ok := m.owner.(*Editor)
 		if !ok || act.Run == nil {
-			return false
+			return nil
 		}
-		act.Run(e)
-		return true
+		return func() { act.Run(e) }
 	}
-	return false
+	return nil
 }
 
 // Close closes the menu if it is open.
