@@ -477,6 +477,21 @@ func (t *TerminalTabs) SendText(id TerminalTabID, text string) error {
 	return e.terminal.SendText(text)
 }
 
+// SendPaste is Terminal.SendPaste for this exact runtime identity, refused as SendText is.
+func (t *TerminalTabs) SendPaste(id TerminalTabID, text string) error {
+	if t.shuttingDown() {
+		return ErrTerminalShutdown
+	}
+	e, err := t.find(id)
+	if err != nil {
+		return err
+	}
+	if e.closing != nil {
+		return ErrTerminalTabClosing
+	}
+	return e.terminal.SendPaste(text)
+}
+
 // Remove requests cleanup and returns its generation handle immediately.
 // Repeated calls re-await the same cleanup, never retry PTY.Close. A successful
 // result removes the tab on the UI loop, even if its drawer is hidden. Cleanup
