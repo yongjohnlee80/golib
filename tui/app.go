@@ -71,6 +71,11 @@ type App struct {
 	// it moves is focus the keyboard brought
 	tip      toolTipState
 	keyFocus bool
+	// the face table (face.go): faceNames[i] is Cell.Face i, faceIDs its index by family; faceFull
+	// is the table refusing a family, said once
+	faceNames []string
+	faceIDs   map[string]uint16
+	faceFull  bool
 
 	done   chan struct{} // closed once Run has returned, its teardown finished (Done)
 	runCtx context.Context
@@ -459,6 +464,7 @@ func (a *App) Run(ctx context.Context) (err error) {
 	if err := a.backend.Start(ctx); err != nil { // synchronous acquisition
 		return err
 	}
+	a.sendFaces() // a face table interned before the backend started is its from the first frame
 	// Restore-before-repanic: this defer is registered first so it runs
 	// LAST — after the quit close and run-context cancel below — and
 	// backend.Stop ALWAYS executes before the panic propagates.

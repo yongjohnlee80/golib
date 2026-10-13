@@ -55,6 +55,8 @@ var terminalTabsType = Type{
 		"minimumContrast": setter("a TerminalTabs", numberOf, (*widget.TerminalTabs).SetMinimumContrast),
 		"cursorColor":     setter("a TerminalTabs", colorOf, (*widget.TerminalTabs).SetCursorColor),
 		"vimKeys":         setter("a TerminalTabs", boolOf, (*widget.TerminalTabs).SetVimKeys),
+		// golib's: the family the tabs' cells are drawn in, at the window's cell size; "" the window's
+		"cellFont": setter("a TerminalTabs", stringOf, (*widget.TerminalTabs).SetCellFace),
 	},
 	Signals:   map[string][]string{"addRequested": {}, "menuRequested": {"id"}, "changed": {}},
 	Destroyed: func(c tui.Component) { c.(*widget.TerminalTabs).ShutdownWithResult() },

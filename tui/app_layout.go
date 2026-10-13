@@ -183,6 +183,13 @@ func (a *App) renderNode(n *node, s Surface) {
 		native = a.noteNative(n)
 	}
 	n.drawnNatively = native >= 0
+	if f, ok := n.comp.(CellFacer); ok {
+		if family := f.CellFace(); family != "" {
+			// its subtree is painted in its face; the node painted next, in the one before
+			defer func(face uint16) { a.buf.face = face }(a.buf.face)
+			a.buf.face = a.faceIndex(family)
+		}
+	}
 	n.comp.Render(s)
 	a.noteImage(n)
 	subtree := native >= 0 && a.natives[native].Scope == ScopeSubtree

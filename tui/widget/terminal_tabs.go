@@ -80,6 +80,8 @@ type TerminalTabs struct {
 	cursorColored bool
 	vimKeys       bool
 	vimKeysSet    bool
+	cellFace      string
+	faceSet       bool
 	onAdd         func()
 	onMenu        func(TerminalTabID)
 	menuRows      func(TerminalTabID) []MenuItemModel // SetMenu: the strip's own menu
@@ -333,6 +335,13 @@ func (t *TerminalTabs) SetVimKeys(on bool) {
 	t.lookTabs()
 }
 
+// SetCellFace gives every tab, those added later too, Terminal.SetCellFace: their cells in family,
+// the strip's and its menus' in the window's.
+func (t *TerminalTabs) SetCellFace(family string) {
+	t.cellFace, t.faceSet = family, true
+	t.lookTabs()
+}
+
 func (t *TerminalTabs) lookTabs() {
 	for _, e := range t.entries {
 		t.lookTab(e.terminal)
@@ -349,6 +358,9 @@ func (t *TerminalTabs) lookTab(terminal *Terminal) {
 	}
 	if t.vimKeysSet {
 		terminal.SetVimKeys(t.vimKeys)
+	}
+	if t.faceSet {
+		terminal.SetCellFace(t.cellFace)
 	}
 }
 

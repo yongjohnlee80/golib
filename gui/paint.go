@@ -60,13 +60,18 @@ type renderer struct {
 	pageBG    color.NRGBA // the grid's most common background: the frame around it (drawMargins)
 	pageBGSet bool
 	rows      []op.CallOp
-	glyphs    map[glyphKey]glyphShape // cleared with the row cache when the font size or face changes
-	fonts     Fonts                   // the window's families, for the native views (Canvas.Fonts)
+	// glyphs is cleared with the row cache when the font size or the window's face changes. It
+	// holds one entry per (cluster, bold, italic, face) drawn since: bounded by the faces in the
+	// table (at most tui's maxCellFaces) times the clusters actually on screen, not by frames.
+	glyphs map[glyphKey]glyphShape
+	faces  []font.Typeface // the cell faces (tui.FaceHost), index 0 unused: the window's typeface
+	fonts  Fonts           // the window's families, for the native views (Canvas.Fonts)
 }
 
 type glyphKey struct {
 	content      string
 	bold, italic bool
+	face         uint16 // tui.Cell.Face: 0 the window's
 }
 
 type glyphShape struct {
@@ -285,7 +290,7 @@ func (r *renderer) batchable(c tui.Cell, x, y int) ([]text.Glyph, bool) {
 	if ru, size := utf8.DecodeRuneInString(c.Content); size == len(c.Content) && drawable(ru) {
 		return nil, false
 	}
-	gs := r.shape(c.Content, c.Attrs.Mask&tui.AttrBold != 0, c.Attrs.Mask&tui.AttrItalic != 0)
+	gs := r.shape(c.Content, c.Attrs.Mask&tui.AttrBold != 0, c.Attrs.Mask&tui.AttrItalic != 0, c.Face)
 	rect := r.m.cellRect(x, y, max(int(c.Width), 1), 1)
 	if gs.empty || gs.colour || gs.advance > rect.Dx() {
 		return nil, false
@@ -319,7 +324,7 @@ func (r *renderer) drawCell(ops *op.Ops, c tui.Cell, x, y int, fg color.NRGBA) {
 	if ru, size := utf8.DecodeRuneInString(c.Content); size == len(c.Content) && drawable(ru) {
 		drawBox(ops, ru, m.cellRect(x, y, 1, 1), fg, m.scale)
 	} else if c.Content != "" && c.Content != " " {
-		gs := r.shape(c.Content, c.Attrs.Mask&tui.AttrBold != 0, c.Attrs.Mask&tui.AttrItalic != 0)
+		gs := r.shape(c.Content, c.Attrs.Mask&tui.AttrBold != 0, c.Attrs.Mask&tui.AttrItalic != 0, c.Face)
 		if !gs.empty {
 			cl := clip.Rect(rect).Push(ops)
 			tr := op.Affine(glyphPlacement(rect, m, gs.advance)).Push(ops)
@@ -405,12 +410,12 @@ func glyphPlacement(rect image.Rectangle, m metrics, advance int) f32.Affine2D {
 }
 
 // shape is the outline and advance of one grapheme cluster in the cell font, cached.
-func (r *renderer) shape(content string, bold, italic bool) glyphShape {
-	k := glyphKey{content, bold, italic}
+func (r *renderer) shape(content string, bold, italic bool, face uint16) glyphShape {
+	k := glyphKey{content, bold, italic, face}
 	if gs, ok := r.glyphs[k]; ok {
 		return gs
 	}
-	f := font.Font{Typeface: r.typeface}
+	f := font.Font{Typeface: r.typefaceOf(face)}
 	if bold {
 		f.Weight = font.Bold
 	}
@@ -440,6 +445,15 @@ func (r *renderer) shape(content string, bold, italic bool) glyphShape {
 	}
 	r.glyphs[k] = gs
 	return gs
+}
+
+// typefaceOf is the typeface cells of face are drawn in: the table's, or the window's for 0 and
+// for an index the table does not have.
+func (r *renderer) typefaceOf(face uint16) font.Typeface {
+	if face != 0 && int(face) < len(r.faces) {
+		return r.faces[face]
+	}
+	return r.typeface
 }
 
 // drawImage draws an image over its cells, its Clip (in image pixels) scaled to fill them.

@@ -21,6 +21,9 @@ type Cell struct {
 	Content string    // one complete grapheme cluster; "" on wide continuation cells
 	Width   uint8     // display column width: 1 or 2; 0 indicates a continuation cell
 	Attrs   CellAttrs // resolved style payload (colors and SGR attribute bits)
+	// Face is the font family the cell is drawn in: 0 the window's, else an index into the App's
+	// face table (CellFacer, face.go). A terminal backend has no font to change and ignores it.
+	Face uint16
 }
 
 // Continuation reports whether c is the right half of a wide cell.
