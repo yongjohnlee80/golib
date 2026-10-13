@@ -265,6 +265,7 @@ func (c *EditorCore) move(act Action, count int) {
 		apply(c.buf.ln, 0)
 	case ActLineEnd:
 		c.buf.desired = -1
+		c.oneShot.end = c.oneShot.on // Ctrl-o $: Insert resumes past the end
 		col := c.normalMax(c.buf.ln)
 		if c.keys.mode == ModeInsert {
 			col = len(c.buf.lineClusters(c.buf.ln))

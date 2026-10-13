@@ -18,8 +18,14 @@ func (c *EditorCore) HandleKey(k tui.KeyEvent) bool {
 	if k.Kind == tui.KeyRelease {
 		return false
 	}
+	c.keyDepth++ // a macro and . hand their keys back in
+	defer func() { c.keyDepth-- }()
 	if c.keys.mode == ModeInsert {
 		return c.handleInsertKey(k)
+	}
+	if c.oneShotKey(k) {
+		c.macroKey(k)
+		return true
 	}
 	c.dotStart()
 	if c.dot.on && !c.dot.inInsert && !c.dot.replaying {
@@ -29,6 +35,9 @@ func (c *EditorCore) HandleKey(k tui.KeyEvent) bool {
 	handled := c.handleCommandKey(k)
 	c.settleRegister()
 	c.dotEnd()
+	if c.keyDepth <= c.oneShot.depth {
+		c.oneShotSettle() // Insert's Ctrl-o: the command complete, Insert resumes
+	}
 	return handled
 }
 
@@ -158,6 +167,7 @@ func (c *EditorCore) PressAt(line, col int) bool {
 		c.dragging = true
 		c.dragFrom = taPos{ln: b.ln, col: min(b.col, c.normalMax(b.ln))}
 	}
+	c.oneShotSettle() // a press is Ctrl-o's command
 	return true
 }
 
@@ -215,7 +225,11 @@ func (c *EditorCore) handleInsertKey(k tui.KeyEvent) bool {
 	// 2. Configured keymap actions (custom bindings, Nano/Standard profiles, etc.).
 	if act, bound := c.keys.keymap[kc]; bound {
 		c.settlePendingRune()
-		c.dotInsertKey(k)
+		if act == ActInsertOneShot {
+			c.macroKey(k) // a macro keeps it; . does not: the Insert before it ends there
+		} else {
+			c.dotInsertKey(k)
+		}
 		return c.execAction(act, 1)
 	}
 

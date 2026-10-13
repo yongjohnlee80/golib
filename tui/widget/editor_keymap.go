@@ -246,6 +246,7 @@ const (
 
 	ActDeleteWordBack // Ctrl-w (Vim Insert): delete the word before the cursor
 	ActDeleteLineBack // Ctrl-u (Vim Insert): delete back to the indent, then the line's start
+	ActInsertOneShot  // Ctrl-o (Vim Insert): one Normal-mode command, then Insert again
 
 	actMax // sentinel for validation
 )
@@ -443,6 +444,8 @@ func (a Action) String() string {
 		return "DeleteWordBack"
 	case ActDeleteLineBack:
 		return "DeleteLineBack"
+	case ActInsertOneShot:
+		return "InsertOneShot"
 	}
 	return fmt.Sprintf("Action(%d)", a)
 }
@@ -640,6 +643,8 @@ func (a Action) Description() string {
 		return "Delete the word before the cursor"
 	case ActDeleteLineBack:
 		return "Delete back to the indent"
+	case ActInsertOneShot:
+		return "Run one Normal-mode command"
 	}
 	return "Custom action"
 }
@@ -718,7 +723,7 @@ func actionModes(a Action) (normal, visual, insert bool) {
 		return true, true, true
 	case ActUndo, ActRedo:
 		return true, false, true
-	case ActDeleteWordBack, ActDeleteLineBack:
+	case ActDeleteWordBack, ActDeleteLineBack, ActInsertOneShot:
 		return false, false, true
 	case ActVisualYank, ActVisualDelete, ActVisualChange, ActVisualReplace, ActVisualToggleCase, ActVisualLower,
 		ActVisualUpper, ActVisualIndent, ActVisualOutdent, ActVisualOther:
@@ -854,6 +859,7 @@ func VimKeymap() Keymap {
 	km[KeyChord{Mode: ModeNormal, Code: 'r', Ctrl: true}] = ActRedo
 	km[KeyChord{Mode: ModeInsert, Code: 'w', Ctrl: true}] = ActDeleteWordBack
 	km[KeyChord{Mode: ModeInsert, Code: 'u', Ctrl: true}] = ActDeleteLineBack
+	km[KeyChord{Mode: ModeInsert, Code: 'o', Ctrl: true}] = ActInsertOneShot
 	km[n('n')], km[v('n')] = ActFindNext, ActFindNext
 	km[n('N')], km[v('N')] = ActFindPrev, ActFindPrev
 	km[n(':')], km[v(':')] = ActCommandLine, ActCommandLine

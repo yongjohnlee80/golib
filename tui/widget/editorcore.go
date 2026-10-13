@@ -56,6 +56,8 @@ type EditorCore struct {
 	dot            dotRecorder    // the change . repeats, and the one being recorded
 	opRegOne       bool           // the operator's motion is one whose delete Vim keeps in register 1 (regOneMotion)
 	insStart       taPos          // where this Insert began (editor_viminsert.go)
+	oneShot        insertOneShot  // Insert's Ctrl-o (editor_vimoneshot.go)
+	keyDepth       int            // HandleKey calls in progress: a macro's and .'s keys are nested
 	marks          markSet        // a–z and the previous jump's place (editor_vimmarks.go)
 	macro          macroRecorder  // the macro being recorded, and what plays (editor_vimmacros.go)
 	clipPut        *clipPut       // a "+p waiting for the system clipboard (editor_clipboard.go)
@@ -384,6 +386,7 @@ func (c *EditorCore) SetValue(s string) {
 	defer c.cursorMoved(ln, col)
 	c.settlePendingRune()
 	c.keys.count, c.keys.pendingAct = 0, ActUnbound
+	c.oneShot = insertOneShot{}
 	c.hist.reset()
 	c.buf.setValue(s)
 	c.followEdits()         // a new document: no marks
@@ -558,6 +561,7 @@ func (c *EditorCore) SetKeyset(ks Keyset) {
 	c.settlePendingRune()
 	c.keys.dropPending()
 	c.dot = dotRecorder{} // a change recorded under another profile is not this one's to repeat
+	c.oneShot = insertOneShot{}
 	c.hist.close()
 	c.buf.anchor, c.vAnchor = nil, taPos{}
 	c.keys.applyKeyset(ks)
@@ -640,6 +644,9 @@ func (c *EditorCore) setMode(m EditorMode) {
 		return
 	}
 	c.keys.mode = m
+	if m == ModeInsert {
+		c.oneShot = insertOneShot{} // entering Insert ends Ctrl-o's command
+	}
 	c.keys.findArmed, c.keys.findCount = ActUnbound, 0 // an f armed in one mode never completes in another
 	c.keys.dropOp()                                    // nor an operator, nor a text object
 	c.vEOL, c.vPinned = false, false
@@ -959,6 +966,8 @@ func (c *EditorCore) execAction(act Action, count int) bool {
 	case ActDeleteWordBack, ActDeleteLineBack:
 		c.insertDeleteBack(act == ActDeleteLineBack)
 		return true
+	case ActInsertOneShot:
+		return c.insertOneShotStart()
 
 	// General actions (Nano / Standard).
 	case ActCut:
@@ -992,7 +1001,9 @@ func (c *EditorCore) execAction(act Action, count int) bool {
 		if c.commandLine == nil || c.commands == nil {
 			return false
 		}
-		return c.commandLine()
+		opened := c.commandLine()
+		c.oneShot.cmdline = c.oneShot.on && opened // Ctrl-o's Insert waits for the line
+		return opened
 
 	case ActFindNext, ActFindPrev:
 		// with no active find the key bubbles: an application may have its own n
