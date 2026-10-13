@@ -97,6 +97,9 @@ func (t *TerminalTabs) SetActions(add func(), menu func(TerminalTabID)) {
 func (t *TerminalTabs) SetOnChanged(fn func()) { t.onChanged = fn }
 
 func (t *TerminalTabs) changed() {
+	if t.shuttingDown() {
+		return
+	}
 	t.RequestLayout()
 	t.MarkDirty()
 	if t.onChanged != nil {
@@ -124,16 +127,26 @@ func (t *TerminalTabs) Add(label string, options ...TerminalOption) (TerminalTab
 	terminal.SetDefaultLook(t.look)
 	onExit, onTitle := terminal.cfg.onExit, terminal.cfg.onTitle
 	terminal.cfg.onExit = func(code int) {
+		if t.shuttingDown() {
+			return
+		}
 		if onExit != nil {
 			onExit(code)
 		}
-		t.changed()
+		if !t.shuttingDown() {
+			t.changed()
+		}
 	}
 	terminal.cfg.onTitle = func(title string) {
+		if t.shuttingDown() {
+			return
+		}
 		if onTitle != nil {
 			onTitle(title)
 		}
-		t.changed()
+		if !t.shuttingDown() {
+			t.changed()
+		}
 	}
 	t.owned = append(t.owned, terminal)
 	t.mu.Unlock()
