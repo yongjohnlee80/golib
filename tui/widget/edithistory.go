@@ -56,12 +56,9 @@ func (h *editHistory) begin(before func() textSnap, keepOpen bool) {
 // it, and the session's typing joins it.
 func (h *editHistory) keepOpen() { h.open = true }
 
-// close ends the open group, if any: the next edit begins its own. A held group stays open.
-func (h *editHistory) close() {
-	if !h.held {
-		h.open = false
-	}
-}
+// close ends the open group, if any: the next edit begins its own. (A held group needs no guard
+// here: begin takes no snapshot while held, so nothing can split it.)
+func (h *editHistory) close() { h.open = false }
 
 // hold begins one group for everything until release: one snapshot now, and none, nor any close,
 // until release.
