@@ -1,6 +1,7 @@
 package decl_test
 
 import (
+	"slices"
 	"strings"
 	"sync"
 	"testing"
@@ -767,4 +768,90 @@ func TestTableViewColumnElideMode(t *testing.T) {
 		!strings.Contains(err.Error(), "Tui.ElideLeft") {
 		t.Fatalf("elideMode: Tui.Horizontal = %v, want refused naming the modes", err)
 	}
+}
+
+// TestATableViewRaisesContextMenuRequestedOnTheRowPressed: a TableView declaring
+// onContextMenuRequested raises it for a right press on a row, the cursor moved to that row first
+// (currentIndexChanged before it), with x and y in the view's cells, its header row 0; below the
+// rows with index -1; and for Shift+F10 on the cursor row. One that does not declare it leaves a
+// right press alone: its cursor stays.
+func TestATableViewRaisesContextMenuRequestedOnTheRowPressed(t *testing.T) {
+	newRows := func() *tuidecl.ListModel {
+		m := tuidecl.NewListModel("id", "name")
+		m.SetColumns(tuidecl.Column{Role: "name", Title: "NAME"})
+		m.Reset([]tuidecl.Row{{"id": 1, "name": "prod"}, {"id": 2, "name": "stage"}, {"id": 3, "name": "dev"}})
+		return m
+	}
+	var mu sync.Mutex
+	var log []string
+	note := func(tag string) decl.HandlerFunc {
+		return func(args []qml.SpecValue) error {
+			mu.Lock()
+			defer mu.Unlock()
+			parts := []string{tag}
+			for _, a := range args {
+				parts = append(parts, a.Raw)
+			}
+			log = append(log, strings.Join(parts, " "))
+			return nil
+		}
+	}
+	logged := func() []string {
+		mu.Lock()
+		defer mu.Unlock()
+		return append([]string(nil), log...)
+	}
+	run := func(doc string) *decltest.Screen {
+		mu.Lock()
+		log = nil
+		mu.Unlock()
+		return decltest.Run(t, 30, 6,
+			tuidecl.LayoutSource("main.qml", []byte("import tui 1.0\nimport demo 1.0\n"+doc)),
+			tuidecl.Singleton("demo", "1.0", "App"),
+			tuidecl.Sources(map[string]any{"App.rows": newRows()}),
+			tuidecl.Handlers(map[string]decl.HandlerFunc{"App.moved": note("moved"), "App.menu": note("menu")}))
+	}
+	right := func(x, y int) tui.Event {
+		return tui.MouseEvent{Kind: tui.MousePress, Button: tui.MouseRight, X: x, Y: y}
+	}
+
+	s := run(`TableView { model: App.rows; onCurrentIndexChanged: App.moved(index); onContextMenuRequested: App.menu(index, x, y) }`)
+	s.WaitForText(t, "stage")
+	s.Keys(t, right(3, 2)) // the second row: header at 0
+	s.WaitFor(t, "the menu asked", func(string) bool { return len(logged()) > 0 && strings.HasPrefix(logged()[len(logged())-1], "menu") })
+	got := logged()
+	if got[len(got)-1] != "menu 1 3 2" || !containsBefore(got, "moved 1", "menu 1 3 2") {
+		t.Fatalf("a right press on the second row: %q", got)
+	}
+	s.Keys(t, right(4, 5)) // below the three rows
+	s.WaitFor(t, "no row's menu", func(string) bool { g := logged(); return g[len(g)-1] == "menu -1 4 5" })
+	s.Keys(t, tui.KeyEvent{Kind: tui.KeyPress, Code: tui.KeyTab}, tui.KeyEvent{Kind: tui.KeyPress, Code: tui.KeyF10, Mods: tui.ModShift})
+	s.WaitFor(t, "the cursor row's menu by its key", func(string) bool { g := logged(); return g[len(g)-1] == "menu 1 0 2" })
+
+	plain := run(`TableView { model: App.rows; onCurrentIndexChanged: App.moved(index) }`)
+	plain.WaitForText(t, "stage")
+	plain.Keys(t, right(3, 3)) // the third row
+	// then a key that moves the cursor one down: from the first row to the second, unless the press
+	// had taken it to the third, the last, where it stays
+	plain.Keys(t, tui.KeyEvent{Kind: tui.KeyPress, Code: tui.KeyTab}, tui.KeyEvent{Kind: tui.KeyPress, Code: tui.KeyDown})
+	plain.WaitFor(t, "the key's move", func(string) bool { return slices.Contains(logged(), "moved 1") })
+	if g := logged(); slices.Contains(g, "moved 2") {
+		t.Fatalf("a right press moved the cursor of a view that does not declare the signal: %q", g)
+	}
+}
+
+// containsBefore reports whether a occurs in log before b's last occurrence.
+func containsBefore(log []string, a, b string) bool {
+	ib := -1
+	for i, l := range log {
+		if l == b {
+			ib = i
+		}
+	}
+	for i := 0; i < ib; i++ {
+		if log[i] == a {
+			return true
+		}
+	}
+	return false
 }

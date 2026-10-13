@@ -153,6 +153,9 @@ type List[T any] struct {
 	emptyMsg tui.Message
 
 	styles ListStyles
+
+	// contextMenu: a right press, and the context-menu key, request the row's menu (SetContextMenu)
+	contextMenu bool
 }
 
 var _ tui.Focusable = (*List[any])(nil)
@@ -262,6 +265,19 @@ func (l *List[T]) ResetStyles(st ListStyles) {
 		CursorBlurred:  st.CursorBlurred,
 	}
 	l.MarkDirty()
+}
+
+// SetContextMenu turns the row context-menu request on or off. On, a right press on a row moves
+// the cursor there, as a left press does, and then emits ContextMenuEvent for that row, at the
+// pointer; a right press below the rows emits it for no row (-1), the cursor left where it is; and
+// Shift+F10 or the Menu key, while the list holds the keyboard, emits it for the cursor row, at the
+// row's first cell. The press and the key are consumed. The list opens no menu itself: its owner
+// does, at the point it is given. Off (the default), a right press is not handled, as before.
+func (l *List[T]) SetContextMenu(on bool) { l.contextMenu = on }
+
+// requestMenu emits ContextMenuEvent for row i (-1: none) at at, in the list's own cells.
+func (l *List[T]) requestMenu(i int, at tui.Point) {
+	l.publish(ContextMenuEvent{Owner: l.NodeID(), Index: i, At: at})
 }
 
 // SetCursor moves the cursor to i (clamped), scrolling it into view.
@@ -426,6 +442,14 @@ func (l *List[T]) HandleEvent(ev tui.Event) bool {
 		if e.Kind == tui.KeyRelease {
 			return false
 		}
+		if l.contextMenu && IsContextMenuKey(e) {
+			if l.count == 0 {
+				l.requestMenu(-1, tui.Point{})
+			} else {
+				l.requestMenu(l.cursor, tui.Point{Y: max(l.cursor-l.top, 0)})
+			}
+			return true
+		}
 		// Ctrl/Alt/Super chords belong to the application (pane motion,
 		// quit, …) — a list must never eat them as plain letters.
 		if e.Mods&nonTextMods != 0 {
@@ -504,6 +528,16 @@ func (l *List[T]) HandleEvent(ev tui.Event) bool {
 				l.activate()
 			}
 			l.lastPressIdx = idx
+			return true
+		case e.Kind == tui.MousePress && e.Button == tui.MouseRight && l.contextMenu:
+			// the cursor moves to the row first, so the menu acts on what was pressed
+			idx := l.top + e.Y
+			if idx < 0 || idx >= l.count {
+				l.requestMenu(-1, tui.Point{X: e.X, Y: e.Y})
+				return true
+			}
+			l.moveCursor(idx)
+			l.requestMenu(idx, tui.Point{X: e.X, Y: e.Y})
 			return true
 		case e.Kind == tui.MouseWheel && e.Button == tui.WheelUp:
 			l.top = max(l.top-1, 0)

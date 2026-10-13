@@ -97,7 +97,7 @@ A `MenuSeparator` with nothing to separate is not drawn, as Qt's QMenu collapses
 | `DialogButtonBox` | — (its Buttons carry `DialogButtonBox.buttonRole`) | — | — | — | — |
 | `ListView` | `textRole` | `model`, `currentIndex` | `currentIndex` | `activated(index)`, `currentIndexChanged(index)` | — |
 | `ComboBox` | `textRole`, `valueRole`, `placeholderText`, `maxWidth` (default 40 cells) | `model`, `currentIndex` | `currentIndex`, `currentValue` | `activated(index)` | — |
-| `TableView` | — | `model`, `currentIndex` | `currentIndex` | `activated(index)`, `currentIndexChanged(index)` | — |
+| `TableView` | — | `model`, `currentIndex` | `currentIndex` | `activated(index)`, `currentIndexChanged(index)`, golib's `contextMenuRequested(index, x, y)` (see below) | — |
 | `TableViewColumn` | `role`, `title`, `width`, `elideMode` | — | — | — | — |
 | `TabView` | palette (the bar: `window`/`windowText` behind the titles, `button`/`buttonText` for each, `highlight`/`highlightedText` for the current one) | `currentIndex` | `currentIndex`, `count` | `currentIndexChanged(index)` | — |
 | `Tab` | `title`; one child, its content | — | — | — | — |
@@ -108,6 +108,14 @@ A `MenuSeparator` with nothing to separate is not drawn, as Qt's QMenu collapses
 | `Repeater`, `Instantiator` | `model` | — | — | — | — |
 | `DelegateChooser` | `role` | — | — | — | — |
 | `DelegateChoice` | `roleValue` | — | — | — | — |
+
+**A row's context menu.** A `TableView` that declares `onContextMenuRequested` raises it for a
+right press on a row, the cursor moved to that row first so the menu acts on what was pressed;
+for a right press below the rows, with `index` -1, the cursor left where it is; and for Shift+F10
+or the Menu key while it holds the keyboard, on the cursor row. `x` and `y` are where to open a
+menu, in the view's own cells (the header row is row 0). It opens no menu itself: the program
+opens one there, `widget.NewEditorMenu(view, nil)` with its own rows, say. A `TableView` that does
+not declare the handler leaves a right press unhandled, as before.
 
 **UI text takes `qsTrId("id")`** — Qt's id-based translation, from the program's
 catalogs (`Translations`). These properties take a string or a message: `Text.text`,

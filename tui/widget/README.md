@@ -277,6 +277,13 @@ of the list WITHOUT the keyboard takes it, so one bar is bright and the other
 dim. Unset, the cursor looks the same either way — which a list whose focus
 rests on a delegating wrapper needs, since it cannot see that focus.
 
+A row's context menu is opt-in: `SetContextMenu(true)`. A right press on a row
+then moves the cursor there and emits `ContextMenuEvent` for it, at the pointer
+in the list's cells; below the rows it emits it for no row (`Index` -1); and
+Shift+F10 or the Menu key emits it for the cursor row. The list opens nothing:
+its owner does, `NewEditorMenu(owner, nil)` with rows of its own, say. Off, a
+right press is not handled, as before.
+
 #### `Table[T]`
 
 Column-structured list with fixed and flex column widths, automatic remainder distribution, and header rendering:
