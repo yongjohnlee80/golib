@@ -90,6 +90,13 @@ func coreTypes() []Type {
 			"ratio": setter("a Split", numberOf, (*widget.Split).SetRatio),
 		}},
 		{Name: "Flex", Build: buildFlex, Ctor: []string{"direction"}, adopt: adoptFlexChild},
+		// Qt's Flow: a row that wraps. spacing is the gap on a line and, unless rowSpacing sets its
+		// own, between lines.
+		{Name: "Flow", Build: buildFlow,
+			Setters: map[string]Setter{
+				"spacing":    setter("a Flow", cellsOf, (*tui.Flow).SetSpacing),
+				"rowSpacing": setter("a Flow", cellsOf, (*tui.Flow).SetRowSpacing),
+			}},
 		{Name: "Button", Build: buildButton, restyle: restyleButton, Setters: map[string]Setter{
 			"enabled": setter("a Button", boolOf, (*widget.Button).SetEnabled),
 			// Qt's AbstractButton.text: `&` marks the mnemonic, "&Save".
@@ -140,6 +147,13 @@ func buildFlex(b Build) (tui.Component, []string, error) {
 		}
 	}
 	return f, consumed, nil
+}
+
+// buildFlow takes its children in order, each at its own size: a Flow reads no attached property.
+func buildFlow(b Build) (tui.Component, []string, error) {
+	f := tui.NewFlow()
+	f.Add(b.Children...)
+	return f, nil, nil
 }
 
 // adoptFlexChild adds one child to a Flex. A child that fills along the Flex's
