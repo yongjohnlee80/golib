@@ -217,6 +217,36 @@ func TestTerminalLeavesItsHostKeysToTheHost(t *testing.T) {
 	}
 }
 
+// A host key's repeats are swallowed, not sent and not handed on (the host acts once per press),
+// and its release is nobody's; a Ctrl+\ waiting for its second key is sent as itself at a host
+// key, so the key after cannot complete it: Ctrl+\ F11 Ctrl+n sends ^\ and ^N and stays in input.
+func TestTerminalHostKeyRepeatsAndAPendingPrefix(t *testing.T) {
+	f := startTerm(t, 20, 4)
+	// press-only, as decl's hostKeys (a Shortcut sequence) matches: the Terminal judges a repeat by its press
+	f.h.onLoop(func() {
+		f.term.SetHostKeys(func(k tui.KeyEvent) bool { return k.Kind == tui.KeyPress && k.Code == tui.KeyF11 })
+	})
+	var press, repeat, release bool
+	f.h.onLoop(func() {
+		press = f.term.HandleEvent(tui.KeyEvent{Kind: tui.KeyPress, Code: tui.KeyF11})
+		repeat = f.term.HandleEvent(tui.KeyEvent{Kind: tui.KeyRepeat, Code: tui.KeyF11})
+		release = f.term.HandleEvent(tui.KeyEvent{Kind: tui.KeyRelease, Code: tui.KeyF11})
+	})
+	if press || !repeat || release {
+		t.Errorf("press consumed %v (want handed on), repeat %v (want swallowed), release %v", press, repeat, release)
+	}
+	f.h.inject(key('a'))
+	f.waitSent("a")
+	if got := f.proc().sent(); got != "a" {
+		t.Fatalf("sent %q: a host key's press, repeat or release reached the program", got)
+	}
+	f.h.inject(ctrl('\\'), key(tui.KeyF11), ctrl('n'))
+	f.waitSent("a\x1c\x0e")
+	if m := f.mode(); m != widget.TerminalInput {
+		t.Errorf("Ctrl+\\ F11 Ctrl+n left input mode: %v", m)
+	}
+}
+
 func TestTerminalPastes(t *testing.T) {
 	f := startTerm(t, 20, 4)
 	f.h.inject(tui.PasteEvent{Text: "a\nb"})

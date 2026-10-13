@@ -604,8 +604,13 @@ func (t *Terminal) HandleEvent(ev tui.Event) bool {
 		if t.mode == TerminalNormal {
 			return t.normal.key(t, e)
 		}
-		if t.hostKeys != nil && t.hostKeys(e) {
-			return false // the host's: none of it is sent; it goes on to the Window's keys
+		if t.isHostKey(e) {
+			// the host's: none of it is sent. A Ctrl+\ waiting for its second key is sent as
+			// itself, so it cannot complete with the key after (Ctrl+\ F11 Ctrl+n is no Normal
+			// mode). The press goes on to the Window's keys; a held key's repeats are swallowed, so
+			// the host acts once per press.
+			t.flushPrefix()
+			return e.Kind == tui.KeyRepeat
 		}
 		return t.inputKey(e)
 	}
@@ -854,6 +859,16 @@ func (t *Terminal) SetCellFace(family string) {
 
 // CellFace is SetCellFace's family: tui.CellFacer.
 func (t *Terminal) CellFace() string { return t.cellFace }
+
+// isHostKey reports a host key (SetHostKeys), its press or a repeat of it: match judges the press.
+func (t *Terminal) isHostKey(e tui.KeyEvent) bool {
+	if t.hostKeys == nil {
+		return false
+	}
+	press := e
+	press.Kind = tui.KeyPress
+	return t.hostKeys(press)
+}
 
 // SetHostKeys leaves the keys match accepts to the host: in input mode the Terminal sends none of
 // such a key and does not consume it, so it goes on to its ancestors and the Window's Shortcuts (a
