@@ -91,6 +91,7 @@ A `MenuSeparator` with nothing to separate is not drawn, as Qt's QMenu collapses
 | `CheckBox` | — | `text` (`&` marks the mnemonic), `checked`, `enabled` | — | `toggled`, `clicked` | — |
 | `Split` | `orientation` | `ratio` | — | — | — |
 | `Flex` | `direction` | — | — | — | — |
+| `Flow` | — | `spacing` (the gap between two children on a line, and between lines unless `rowSpacing` says otherwise), `rowSpacing` (golib's, from Qt's GridLayout: the gap between lines) | — | — | — |
 | `Dialog` | `dim`, `width`, `standardButtons`, `defaultButton`, palette | `title`, `helpText` | — | `opened`, `accepted`, `rejected`, `closed` | `open()`, `close()` |
 | `DialogButtonBox` | — (its Buttons carry `DialogButtonBox.buttonRole`) | — | — | — | — |
 | `ListView` | `textRole` | `model`, `currentIndex` | `currentIndex` | `activated(index)`, `currentIndexChanged(index)` | — |
@@ -211,6 +212,24 @@ Flex { direction: Tui.Vertical
 
 A row or column is as wide across as its widest child unless its parent fixes
 that extent, when it stretches its children across it.
+
+**`Flow`** — Qt's `Flow`: its children left to right, each at its own size, and
+a new line when the next one would pass the right edge. A row of buttons that
+must fit a narrow panel is a `Flow`, not a horizontal `Flex`, which would clip
+it. `spacing` is the gap between two children on a line and, unless
+`rowSpacing` sets its own, between lines; in a terminal a row of buttons wants a
+column between them and no row between its lines:
+
+```qml
+Flow { spacing: 1; rowSpacing: 0
+    Button { text: "Preview (&i)" }
+    Button { text: "&Add" }
+    Button { text: "Remove (&d)" } }
+```
+
+A child wider than the `Flow` gets the whole width, on a line of its own. A
+`Flow` is as tall as its lines; in a column it is laid out at the column's
+width, so it takes as many rows as that width needs.
 
 **Models** — Qt's model/view. A host sets a `tuidecl.ListModel` (or its own
 `tuidecl.ItemModel`) as a source; `model: App.people` binds a view to it, and

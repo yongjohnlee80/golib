@@ -179,6 +179,7 @@ Layout in `golib/tui` is single-pass, Flutter-inspired **constraints down, sizes
 | Container | Role                                                   | Sizing Strategy                                                                                                                                                     |
 | --------- | ------------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `Flex`    | Linear multi-child layout (`Horizontal` or `Vertical`) | Fixed children measured first; remaining space distributed to weighted children via integer largest-remainder (zero gaps). Cross axis stretches tight.              |
+| `Flow`    | A row that wraps (Qt's `Flow`)                         | Children at their own size, left to right; a new line when the next would pass the right edge. `Spacing` between children (and lines, unless `RowSpacing`). Sizes to its lines. |
 | `Dock`    | Window chrome framing                                  | Pinned children hug edges (`DockTop`, `DockBottom`, `DockLeft`, `DockRight`) in declaration order; `DockCenter` children fill remaining area.                       |
 | `Stack`   | Z-ordered layering & popups                            | Children receive loose constraints; placed via alignment (`AlignCenter`, `AlignTopRight`) or explicit offsets. Later children paint on top and win mouse hit-tests. |
 
