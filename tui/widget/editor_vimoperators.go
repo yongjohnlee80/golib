@@ -235,7 +235,7 @@ func (c *EditorCore) applyOp(op Action, r opRange) {
 			rest := append(append(append([]string{}, b.lines[:r.lo.ln]...), indent), b.lines[r.hiEx.ln+1:]...)
 			b.lines = rest
 			b.touch(r.lo.ln)
-			b.logSplice(r.lo.ln+1, r.hiEx.ln-r.lo.ln, 0) // the first line stays, emptied (Vim's cc)
+			b.log.splice(r.lo.ln+1, r.hiEx.ln-r.lo.ln, 0) // the first line stays, emptied (Vim's cc)
 			b.ln, b.col = r.lo.ln, len(clusters(indent))
 		} else {
 			c.regDelete(b.textIn(r.lo, r.hiEx), false)

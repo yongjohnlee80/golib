@@ -68,7 +68,7 @@ func (m *markSet) restore(was markSet) {
 
 // followEdits replays the buffer's logged edits on the marks: edited runs it after every change.
 func (c *EditorCore) followEdits() {
-	for _, e := range c.buf.takeEdits() {
+	for _, e := range c.buf.log.take() {
 		c.marks.apply(e)
 	}
 }

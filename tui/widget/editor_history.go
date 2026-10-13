@@ -32,7 +32,7 @@ func (c *EditorCore) restore(s textSnap) {
 	c.marks.apply(changedBlock(b.lines, s.lines))
 	b.lines = s.lines
 	b.touch(0)
-	b.takeEdits() // the snapshot is the text whole: what was logged since describes no edit of it
+	b.log.take() // the snapshot is the text whole: what was logged since describes no edit of it
 	c.marks.restore(s.marks)
 	b.ln = max(0, min(s.ln, len(b.lines)-1))
 	b.col = s.col

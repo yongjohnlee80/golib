@@ -62,12 +62,12 @@ func (c *EditorCore) joinLines(count int, raw bool) {
 		}
 		at = len(clusters(cur))
 		// the joined line's marks move onto this one, where its text now starts (Vim's do_join)
-		b.logMove(b.ln+i, cut, b.ln, len(clusters(cur+sep)), true)
+		b.log.move(b.ln+i, cut, b.ln, len(clusters(cur+sep)), true)
 		cur += sep + next
 	}
 	b.lines = append(append(b.lines[:b.ln:b.ln], cur), b.lines[b.ln+n+1:]...)
 	b.touch(b.ln)
-	b.logSplice(b.ln+1, n, 0)
+	b.log.splice(b.ln+1, n, 0)
 	b.col = at
 	b.anchor = nil
 	c.clampNormal()
