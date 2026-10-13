@@ -160,3 +160,25 @@ var _ interface {
 	VisibleLines() (int, int)
 	ScrollLines(int)
 } = (*pixelLayout)(nil)
+
+// A ready diagram draws its source lines as a picture, with no caret: their top is the block's.
+// Scrolled just past it, they are out of the range though the picture still shows.
+func TestPixelVisibleLinesOfACaretlessBlock(t *testing.T) {
+	h, f := startDiagrams(t)
+	f.finish("A-->B")
+	h.until("the ready picture", func() bool { h.paint(); return h.picture(1) != nil })
+	var caretless bool
+	h.onLoop(func() {
+		l := h.e.layout
+		_, ok := l.caretAt(2, 0)
+		caretless = !ok
+		l.scroll = l.topOf(l.blockOf(2)) + 0.5
+	})
+	if !caretless {
+		t.Fatal("the fixture's diagram line has a caret")
+	}
+	h.paint()
+	if first, _ := checkVisible(t, h, "just past the diagram's top"); first != 4 {
+		t.Fatalf("just past the diagram's top: first %d, want 4 (the lines after it)", first)
+	}
+}
