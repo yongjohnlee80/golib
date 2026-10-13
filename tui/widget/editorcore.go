@@ -57,6 +57,10 @@ type EditorCore struct {
 	opRegOne       bool           // the operator's motion is one whose delete Vim keeps in register 1 (regOneMotion)
 	marks          markSet        // a–z and the previous jump's place (editor_vimmarks.go)
 	macro          macroRecorder  // the macro being recorded, and what plays (editor_vimmacros.go)
+	jumps          *JumpList      // Ctrl+O and Ctrl+I's list: the host's, or the editor's own (editor_jumps.go)
+	jumpDoc        string         // the document as jumps knows it (SetJumpDoc)
+	jumpView       func() string  // the host's view of it (SetJumpView); nil: ""
+	jumpGo         func(JumpStep) // how the host goes to a place in another document or view
 	clipPut        *clipPut       // a "+p waiting for the system clipboard (editor_clipboard.go)
 	reg            editRegister   // the registers
 	keys           keyDispatch    // modes and key routing
@@ -791,8 +795,9 @@ func (c *EditorCore) execAction(act Action, count int) bool {
 		ActLineDownFirst, ActLineUpFirst, ActFirstNonBlank, ActLeftWrap,
 		ActFindCharRepeat, ActFindCharReverse, ActViewTop, ActViewMiddle, ActViewBottom,
 		ActWORDForward, ActWORDBack, ActWORDEnd, ActWordEndBack, ActWORDEndBack:
-		if act == ActViewTop || act == ActViewMiddle || act == ActViewBottom {
-			c.setJumpMark() // H M L are jumps
+		switch act {
+		case ActViewTop, ActViewMiddle, ActViewBottom, ActParaForward, ActParaBack:
+			c.setJumpMark() // H M L, { and } are jumps
 		}
 		c.move(act, count)
 		return true
@@ -999,7 +1004,7 @@ func (c *EditorCore) execAction(act Action, count int) bool {
 		from := taPos{b.ln, b.col}
 		found := c.FindNext(act == ActFindPrev)
 		if found {
-			c.marks.prev, c.marks.prevSet = from, true // n and N are jumps
+			c.jumpedFrom(from) // n and N are jumps
 		}
 		return found
 
