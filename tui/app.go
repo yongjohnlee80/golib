@@ -139,7 +139,8 @@ type App struct {
 	// or an Update — because the forbidden list was incomplete twice over:
 	// Init and any callback reached outside an Update both slipped through a
 	// Layout/Render-only check.
-	updateDepth int
+	updateDepth    int
+	stoppingCalled bool // loop-owned; retirement callbacks run at most once
 
 	layingOut *node // the node whose Layout is executing (LayoutChild legality)
 
@@ -566,6 +567,16 @@ func (a *App) teardown() error {
 	// gesture died, and "the application is stopping" is the reason that
 	// distinguishes an orderly exit from a widget being torn out of a live UI.
 	a.loseCapture(CaptureLostShutdown)
+
+	// Retire pending work while its owners still exist, but only after capture
+	// loss has kept its shutdown reason. The named phase permits synchronous
+	// Context mutations; queued Updates are not drained after this point.
+	if !a.stoppingCalled {
+		a.stoppingCalled = true
+		for _, fn := range a.cfg.stopping {
+			a.runUpdate(fn)
+		}
+	}
 
 	// T1 — unmount the tree, children first: every node context cancels,
 	// which signals every in-flight task.
