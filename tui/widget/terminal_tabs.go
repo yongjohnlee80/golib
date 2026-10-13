@@ -78,6 +78,8 @@ type TerminalTabs struct {
 	contrastSet   bool
 	cursorColor   style.Color
 	cursorColored bool
+	vimKeys       bool
+	vimKeysSet    bool
 	onAdd         func()
 	onMenu        func(TerminalTabID)
 	menuRows      func(TerminalTabID) []MenuItemModel // SetMenu: the strip's own menu
@@ -324,6 +326,13 @@ func (t *TerminalTabs) SetCursorColor(c style.Color) {
 	t.lookTabs()
 }
 
+// SetVimKeys gives every tab, those added later too, Terminal.SetVimKeys: an editor's keymap
+// changing reaches the shells already running.
+func (t *TerminalTabs) SetVimKeys(on bool) {
+	t.vimKeys, t.vimKeysSet = on, true
+	t.lookTabs()
+}
+
 func (t *TerminalTabs) lookTabs() {
 	for _, e := range t.entries {
 		t.lookTab(e.terminal)
@@ -337,6 +346,9 @@ func (t *TerminalTabs) lookTab(terminal *Terminal) {
 	}
 	if t.cursorColored {
 		terminal.SetCursorColor(t.cursorColor)
+	}
+	if t.vimKeysSet {
+		terminal.SetVimKeys(t.vimKeys)
 	}
 }
 

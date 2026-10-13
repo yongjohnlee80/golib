@@ -120,10 +120,10 @@ func TestDeclaredTerminalTabsRejectStaticChildren(t *testing.T) {
 }
 
 // A document's TerminalTabs says what its body is with no tab (emptyText, bound and live), and
-// takes the look every tab gets (minimumContrast, cursorColor).
+// takes the look every tab gets (minimumContrast, cursorColor, vimKeys).
 func TestDeclaredTerminalTabsEmptyTextAndLook(t *testing.T) {
 	layout := "import tui 1.0\nimport demo 1.0\nWindow {\n" +
-		" TerminalTabs { id: agents; emptyText: App.empty; minimumContrast: 4.5; cursorColor: \"red\" } }"
+		" TerminalTabs { id: agents; emptyText: App.empty; minimumContrast: 4.5; cursorColor: \"red\"; vimKeys: true } }"
 	s := decltest.Run(t, 60, 6, tuidecl.LayoutSource("main.qml", []byte(layout)), tuidecl.Singleton("demo", "1.0", "App"),
 		tuidecl.Sources(map[string]any{"App.empty": "No agent running"}))
 	s.WaitForText(t, "No agent running")
