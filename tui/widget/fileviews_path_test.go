@@ -216,7 +216,11 @@ func TestTheSaveViewsPathFieldNamesTheTarget(t *testing.T) {
 		t.Fatalf("a new name typed: Selected %q, chosen %d", sel, chosen.Load())
 	}
 
-	toPath()
+	// Ctrl+k from the list reaches the path field, past no other: the field sits right above it
+	h.inject(tab(), tab()) // the name, the path field, the list
+	h.waitFor("the list has the keyboard", func() bool { return hintIs(h, v, "tui.files.hint.saveList") })
+	h.inject(keyMod('k', tui.ModCtrl))
+	h.waitFor("Ctrl+k reached the path field", func() bool { return hintIs(h, v, "tui.files.hint.path") })
 	typePath(h, filepath.Join(root, "nowhere", "x.md"))
 	h.shows("Path — its folder does not exist")
 	if !nameIs("new.md") {
@@ -232,8 +236,7 @@ func TestTheSaveViewsPathFieldNamesTheTarget(t *testing.T) {
 func TestThePathFieldChecksAnAsyncSourceOffTheLoop(t *testing.T) {
 	d := newGatedDir(vfsFiles)
 	d.g.release("dir:.")
-	d.g.release("dir:a")
-	d.g.release("dir:b")
+	d.g.release("dir:b") // a's listing stays held: the typed file below is chosen before it
 	v := widget.NewFileOpenView(widget.WithFileViewSource(widget.FileSource{FS: d, Root: "mem://", Async: true}),
 		widget.WithFileViewDir("mem://"), widget.WithFileViewPreview(false))
 	h := startBrowser(t, v)
@@ -248,6 +251,12 @@ func TestThePathFieldChecksAnAsyncSourceOffTheLoop(t *testing.T) {
 		var p string
 		h.onLoop(func() { p = v.Path() })
 		return p == "ax"
+	})
+	h.inject(key(tui.KeyBackspace)) // back to the very path asked about: still an edit
+	h.waitFor("the x deleted", func() bool {
+		var p string
+		h.onLoop(func() { p = v.Path() })
+		return p == "a"
 	})
 	d.g.release("stat:a")
 	h.settle()
@@ -266,6 +275,18 @@ func TestThePathFieldChecksAnAsyncSourceOffTheLoop(t *testing.T) {
 	d.g.release("stat:b")
 	h.waitFor("b listed", dirIs(h, v, "mem://b"))
 	h.shows("notes.md")
+
+	// a typed file is chosen once its check answers, before its folder's listing arrives:
+	// Selected is that file meanwhile, not the old rows' cursor
+	h.inject(keyMod('k', tui.ModCtrl))
+	typePath(h, "../a/x.txt")
+	d.g.release("stat:a/x.txt")
+	h.waitFor("x.txt chosen while a's listing is held", func() bool {
+		var sel string
+		h.onLoop(func() { sel = v.Selected() })
+		return sel == "mem://a/x.txt"
+	})
+	d.g.release("dir:a")
 }
 
 // A source with no Root (an fs.FS written as is) reads a relative path relative to the folder
