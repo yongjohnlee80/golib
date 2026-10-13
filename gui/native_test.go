@@ -192,6 +192,44 @@ func TestTextFieldSelectionKeepsTuisColumns(t *testing.T) {
 	}
 }
 
+// A field covered at both ends takes its colours from an open cell outside its selection: the
+// selection's colours are not the field's.
+func TestAFieldUnderPanelsIsNotItsSelectionsColour(t *testing.T) {
+	in := widget.NewTextInput()
+	root := tui.NewFlex(tui.Vertical)
+	root.Add(in)
+	app, sb := styledApp(t, root, 20, 1, NativeStyle())
+	sb.Inject(tui.KeyEvent{Kind: tui.KeyPress, Code: tui.KeyTab})
+	for _, r := range "abc" {
+		sb.Inject(tui.KeyEvent{Kind: tui.KeyPress, Code: r, Text: string(r)})
+	}
+	for range 3 {
+		sb.Inject(tui.KeyEvent{Kind: tui.KeyPress, Code: tui.KeyLeft, Mods: tui.ModShift})
+	}
+	waitUntil(t, "the whole value selected", func() bool {
+		var lo, hi int
+		var ok bool
+		onLoop(t, app, func() { lo, hi, ok = in.Selection() })
+		return ok && lo == 0 && hi == 3
+	})
+	p := placementOf(t, sb, in.NodeID())
+	r := newRenderer(nil, "Go Mono", DefaultTheme())
+	var selected, field color.NRGBA
+	onLoop(t, app, func() {
+		snap := sb.Snapshot()
+		_, selected = r.colors(snap[p.Y][p.X+in.Padding()].Attrs)
+		_, field = r.colors(snap[p.Y][p.X+p.Cols/2].Attrs)
+	})
+	if selected == field {
+		t.Fatalf("the selection's %v is the field's: the case cannot be told apart", selected)
+	}
+	p.Covered = []tui.Rect{{X: p.X, Y: p.Y, W: 1, H: 1}, {X: p.X + p.Cols - 1, Y: p.Y, W: 1, H: 1}}
+	rc := paintOn(t, app, sb, p)
+	if rc.Calls[0].Op != "FillRect" || rc.Calls[0].Brush.Color != field {
+		t.Fatalf("the field filled %+v; want its own %v, not the selection's %v", rc.Calls[0], field, selected)
+	}
+}
+
 type fakeCheck struct {
 	tui.MultiChild
 	checked bool
