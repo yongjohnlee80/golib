@@ -92,6 +92,13 @@ func paintOn(t *testing.T, app *tui.App, sb *styled, p tui.NativePlacement) *Rec
 		snap := sb.Snapshot()
 		return r.colors(snap[p.Y+row][p.X+col].Attrs)
 	}
+	rc.Content = func(col, row int) string {
+		snap := sb.Snapshot()
+		if y, x := p.Y+row, p.X+col; y >= 0 && y < len(snap) && x >= 0 && x < len(snap[y]) {
+			return snap[y][x].Content
+		}
+		return ""
+	}
 	rc.Covers = func(col, row int) bool { // as the composite's canvas: the cells painted after p
 		return slices.ContainsFunc(p.Covered, func(c tui.Rect) bool { return c.Contains(p.X+col, p.Y+row) })
 	}
@@ -244,28 +251,39 @@ Window { CheckBox { id: cb; text: "[x] On"; checked: true } }`)))
 	ctx, cancel := context.WithCancel(context.Background())
 	t.Cleanup(cancel)
 	go func() { _ = p.Run(ctx) }()
-	c, ok := p.Find("cb")
-	if !ok {
+	if _, ok := p.Find("cb"); !ok {
 		t.Fatal("no cb")
 	}
-	id := c.(interface{ NodeID() tui.NodeID }).NodeID()
+	// a decl node has no public id: its placement is the innermost (latest painted) over the box
 	var row string
+	var pl tui.NativePlacement
 	waitUntil(t, "the check box drawn", func() bool {
-		var ok bool
-		for _, q := range sb.placements() {
-			ok = ok || q.Node == id
-		}
 		var b strings.Builder
 		for _, cell := range sb.Snapshot()[0] {
 			b.WriteString(cmp.Or(cell.Content, " "))
 		}
 		row = b.String()
-		return ok && strings.Contains(row, "[x] [x] On")
+		at := strings.Index(row, "[x] [x] On")
+		found := false
+		for _, q := range sb.placements() {
+			if at >= 0 && q.Y == 0 && q.X <= at && at < q.X+q.Cols && (!found || q.Layer > pl.Layer) {
+				pl, found = q, true
+			}
+		}
+		return found
 	})
-	pl := placementOf(t, sb, id)
 	box := strings.Index(row, "[x] [x] On") - pl.X
-	pl.Covered = []tui.Rect{{X: pl.X + box, Y: pl.Y, W: 3, H: 1}}
+	// uncovered, the check box's painter draws its box at the row's first brackets, its own: this is
+	// the check box's placement, and the label's brackets stay text
+	pl.Covered = nil
 	rc := paintOn(t, p.App(), sb, pl)
+	i := slices.IndexFunc(rc.Calls, func(p PaintCall) bool { return p.Op == "FillRect" })
+	if i < 0 || rc.Calls[i].Rect.X != float32(box)*8 {
+		t.Fatalf("the box %+v; want at the row's first brackets, cell %d", rc.Calls, box)
+	}
+
+	pl.Covered = []tui.Rect{{X: pl.X + box, Y: pl.Y, W: 3, H: 1}}
+	rc = paintOn(t, p.App(), sb, pl)
 	for _, call := range rc.Calls {
 		if call.Op != "PaintCells" {
 			t.Fatalf("a box was drawn with the real one covered: %+v", rc.Calls)
@@ -273,14 +291,6 @@ Window { CheckBox { id: cb; text: "[x] On"; checked: true } }`)))
 	}
 	if len(rc.Calls) != 1 || rc.Calls[0].Cells != (CellRect{W: pl.Cols, H: pl.Rows}) || rc.Calls[0].GlyphsOnly {
 		t.Fatalf("the row was painted %+v; want its cells whole, the label's brackets text", rc.Calls)
-	}
-
-	// uncovered, the box is drawn at the first brackets, its own, and the label's stay text
-	pl.Covered = nil
-	rc = paintOn(t, p.App(), sb, pl)
-	i := slices.IndexFunc(rc.Calls, func(p PaintCall) bool { return p.Op == "FillRect" })
-	if i < 0 || rc.Calls[i].Rect.X != float32(box)*8 {
-		t.Fatalf("the box %+v; want at the row's first brackets, cell %d", rc.Calls, box)
 	}
 }
 
