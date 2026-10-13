@@ -54,6 +54,7 @@ type terminalConfig struct {
 	env         []string
 	scrollback  int
 	vimKeys     bool
+	modeKey     func(tui.KeyEvent) bool // WithModeKey: the key that toggles input and normal mode
 	themeColors bool
 	onExit      func(int)
 	onTitle     func(string)
@@ -86,6 +87,16 @@ func WithScrollback(n int) TerminalOption { return func(c *terminalConfig) { c.s
 // insert mode does, except while the program shows the alternate screen
 // (a full-screen program such as vim or less needs Esc itself).
 func WithVimKeys(on bool) TerminalOption { return func(c *terminalConfig) { c.vimKeys = on } }
+
+// WithModeKey makes the keys match accepts toggle input and normal mode: from input mode into
+// normal mode, and from normal mode back to input (as i and a do). It works while a full-screen
+// program runs too, since such a program keeps Esc; it never reaches the program. A held key's
+// repeats are consumed and dropped, so one press toggles once. nil, the default, has no such key:
+// Ctrl+\ Ctrl+n (and Esc with WithVimKeys) enter normal mode, as before. A host giving Esc to its
+// programs (agents interrupt on it) pairs WithVimKeys(false) with a mode key.
+func WithModeKey(match func(tui.KeyEvent) bool) TerminalOption {
+	return func(c *terminalConfig) { c.modeKey = match }
+}
 
 // WithThemeColors paints the program's default foreground and background in
 // the theme's (the default). The 16 ANSI colours are painted as ANSI, in
@@ -251,6 +262,34 @@ func (t *Terminal) SetDir(dir string) { t.cfg.dir = dir }
 
 // SetVimKeys turns WithVimKeys' Esc on or off while the Terminal runs.
 func (t *Terminal) SetVimKeys(on bool) { t.cfg.vimKeys = on }
+
+// SetModeKey sets WithModeKey's key while the Terminal runs; nil removes it.
+func (t *Terminal) SetModeKey(match func(tui.KeyEvent) bool) { t.cfg.modeKey = match }
+
+// isModeKey reports the mode key (WithModeKey), its press or a repeat of it: match judges the press.
+func (t *Terminal) isModeKey(e tui.KeyEvent) bool {
+	if t.cfg.modeKey == nil {
+		return false
+	}
+	press := e
+	press.Kind = tui.KeyPress
+	return t.cfg.modeKey(press)
+}
+
+// toggleMode is the mode key: normal mode back to input, input mode into normal mode while a
+// program runs (Ctrl+\ Ctrl+n's condition). A Ctrl+\ waiting for its second key is sent as itself.
+func (t *Terminal) toggleMode() bool {
+	if t.mode == TerminalNormal {
+		t.setMode(TerminalInput)
+		return true
+	}
+	if !t.running {
+		return false
+	}
+	t.flushPrefix()
+	t.setMode(TerminalNormal)
+	return true
+}
 
 // SetDefaultLook sets what the program's default foreground and background are painted in, with
 // theme colours on: st's foreground and background, each where it sets one, else the theme's.
@@ -600,6 +639,12 @@ func (t *Terminal) HandleEvent(ev tui.Event) bool {
 	case tui.KeyEvent:
 		if e.Kind == tui.KeyRelease {
 			return false
+		}
+		if t.isModeKey(e) {
+			if e.Kind == tui.KeyRepeat {
+				return true // held: one press toggles once
+			}
+			return t.toggleMode()
 		}
 		if t.mode == TerminalNormal {
 			return t.normal.key(t, e)

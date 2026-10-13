@@ -158,14 +158,27 @@ func buildFlow(b Build) (tui.Component, []string, error) {
 
 // adoptFlexChild adds one child to a Flex. A child that fills along the Flex's
 // axis — Layout.fillHeight in a column, Layout.fillWidth in a row — shares what
-// the others leave, as in Qt's layouts; every other child takes its own size,
+// the others leave, as in Qt's layouts; one with Layout.preferredWidth in a row
+// (Layout.preferredHeight in a column) takes that many cells whatever its content,
+// so a label column lines up its controls; every other child takes its own size,
 // in order. Construction and a reload's insertion both come through here, so an
 // inserted child is weighted exactly as a built one.
 func adoptFlexChild(parent, child tui.Component, attached map[string]qml.SpecValue) error {
 	f := parent.(*tui.Flex)
-	fill := "Layout.fillHeight"
+	fill, preferred := "Layout.fillHeight", "Layout.preferredHeight"
 	if f.Direction() == tui.Horizontal {
-		fill = "Layout.fillWidth"
+		fill, preferred = "Layout.fillWidth", "Layout.preferredWidth"
+	}
+	if v, ok := attached[preferred]; ok {
+		n, err := numberOf(v)
+		if err != nil {
+			return fmt.Errorf("%s: %w", preferred, err)
+		}
+		if n < 0 {
+			return fmt.Errorf("%s: %v is negative", preferred, n)
+		}
+		f.AddSized(child, int(n))
+		return nil
 	}
 	fills := false
 	if v, ok := attached[fill]; ok {

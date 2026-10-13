@@ -59,6 +59,8 @@ var terminalTabsType = Type{
 		"cellFont": setter("a TerminalTabs", stringOf, (*widget.TerminalTabs).SetCellFace),
 		// golib's: keys their programs never see, left to the Window's Shortcuts (hostkeys.go)
 		"hostKeys": setter("a TerminalTabs", hostKeysOf, (*widget.TerminalTabs).SetHostKeys),
+		// golib's: the key that toggles their input and normal mode (hostkeys.go)
+		"modeKey": setter("a TerminalTabs", modeKeyOf, (*widget.TerminalTabs).SetModeKey),
 	},
 	Signals:   map[string][]string{"addRequested": {}, "menuRequested": {"id"}, "changed": {}},
 	Destroyed: func(c tui.Component) { c.(*widget.TerminalTabs).ShutdownWithResult() },

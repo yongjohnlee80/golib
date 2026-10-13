@@ -145,6 +145,39 @@ func TestFlexFixedThenWeighted(t *testing.T) {
 	FailOnViolations(t, h.tb)
 }
 
+// TestFlexAddSized: a sized child takes its n cells whatever its content (narrower content, wider
+// content), so the next child starts at n; with less room left it gets what is left; in a column
+// it is n rows high.
+func TestFlexAddSized(t *testing.T) {
+	t.Parallel()
+	label := &probe{name: "label", pref: Size{W: 2, H: 1}, fill: "a"}
+	wide := &probe{name: "wide", pref: Size{W: 9, H: 1}, fill: "w"}
+	next := &probe{name: "next", pref: Size{W: 2, H: 1}, fill: "b"}
+	row := NewFlex(Horizontal)
+	row.AddSized(label, 5)
+	row.Add(next)
+	col := NewFlex(Vertical)
+	col.Add(row)
+	wrow := NewFlex(Horizontal)
+	wrow.AddSized(wide, 5)
+	wrow.Add(&probe{name: "after", pref: Size{W: 2, H: 1}, fill: "c"})
+	col.Add(wrow)
+	tall := &probe{name: "tall", pref: Size{W: 1, H: 1}, fill: "t"}
+	col.AddSized(tall, 2)
+	h := startApp(t, col, 10, 5)
+	if got := childRects(h, label, next, wide, tall); got[0].W != 5 || got[1].X != 5 || got[2].W != 5 || got[3].H != 2 {
+		t.Fatalf("label %v, next %v, wide %v, tall %v: want widths 5, next at 5, tall 2 high", got[0], got[1], got[2], got[3])
+	}
+	squeezed := &probe{name: "squeezed", pref: Size{W: 1, H: 1}, fill: "s"}
+	short := NewFlex(Horizontal)
+	short.AddSized(squeezed, 8)
+	h2 := startApp(t, short, 4, 1)
+	if got := childRects(h2, squeezed); got[0].W != 4 {
+		t.Fatalf("a sized child with less room: %v, want 4 wide", got[0])
+	}
+	FailOnViolations(t, h.tb)
+}
+
 // TestDockLayout: pinned edges consume in declaration
 // order; center fills the rest.
 func TestDockLayout(t *testing.T) {

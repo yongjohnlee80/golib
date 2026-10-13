@@ -405,3 +405,20 @@ func TestTerminalTabsSendAPasteByIdentity(t *testing.T) {
 		t.Errorf("a tab not started: %v", err)
 	}
 }
+
+// SetModeKey reaches every tab, those already there and those added later.
+func TestTerminalTabsModeKeyReachesEveryTab(t *testing.T) {
+	tabs := NewTerminalTabs()
+	before := newResultProc()
+	defer close(before.release)
+	addTestTerminal(t, tabs, "before", before)
+	tabs.SetModeKey(func(e tui.KeyEvent) bool { return e.Code == 't' && e.Mods.Chord() == tui.ModCtrl })
+	after := newResultProc()
+	defer close(after.release)
+	addTestTerminal(t, tabs, "after", after)
+	for _, e := range tabs.entries {
+		if e.terminal.cfg.modeKey == nil || !e.terminal.isModeKey(tui.KeyEvent{Code: 't', Mods: tui.ModCtrl}) {
+			t.Errorf("tab %q has no mode key", e.label)
+		}
+	}
+}

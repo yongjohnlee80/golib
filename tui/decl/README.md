@@ -86,8 +86,8 @@ A `MenuSeparator` with nothing to separate is not drawn, as Qt's QMenu collapses
 | `SyntaxHighlighter` | `definition` | — | — | — | — |
 | `StatusBar` | palette; its children are its widgets, each at its own width: permanent (Qt's `QStatusBar.addPermanentWidget`) at the right end, or, with `StatusBar.permanent: false` on the child, normal (`addWidget`) at the left end; the segments share the rest | `left`, `center`, `right` | — | — | — |
 | `Text` | `wrapMode`, palette | `text` | — | — | — |
-| `Terminal` (golib's) | `command` (the program; the user's `$SHELL` when empty), `dir`, `scrollback` | `command`, `dir` (both at the next `start()`), `vimKeys` (Esc leaves input mode, except on the alternate screen), `themeColors` (default true: the program's default colours are the theme's), `cellFont` (golib's: the family its cells are drawn in, at the window's cell size, where the backend draws fonts — a window, not a terminal; "" the window's), `hostKeys` (golib's: keys its program never sees, a comma-separated list of Shortcut sequences, `"F11"`, left to the Window's Shortcuts; none by default, and a program in it then never gets those keys), `cursorColor` (golib's: the cursor's colour, as the Editor's; its shape shows the mode: a block in normal mode, a thin bar while typing unless the program sets its own) | — | `exited(code)`, `titleChanged(title)`, `modeChanged(mode)` — `"terminal"` or `"normal"` | `start()`, `stop()`, `focus()` |
-| `TerminalTabs` (golib's) | — (no declared children: its terminals are the host's, through `TerminalTabsOf`) | `emptyText` (what the body says with no tab), `minimumContrast`, `cursorColor`, `vimKeys`, `cellFont`, `hostKeys` (each as the Terminal's, for every tab, those added later too; the strip and its menus stay in the window's font) | `count`, `currentId` | `addRequested` (the strip's +), `menuRequested(id)` (≡, or a right-click on a tab; not when the host gave the strip its own menu, `SetMenu`), `changed` | — (the host adds, starts, selects, renames and removes tabs, and sets their menu, from Go) |
+| `Terminal` (golib's) | `command` (the program; the user's `$SHELL` when empty), `dir`, `scrollback` | `command`, `dir` (both at the next `start()`), `vimKeys` (Esc leaves input mode, except on the alternate screen), `themeColors` (default true: the program's default colours are the theme's), `cellFont` (golib's: the family its cells are drawn in, at the window's cell size, where the backend draws fonts — a window, not a terminal; "" the window's), `hostKeys` (golib's: keys its program never sees, a comma-separated list of Shortcut sequences, `"F11"`, left to the Window's Shortcuts; none by default, and a program in it then never gets those keys), `modeKey` (golib's: Shortcut sequences, `"Ctrl+T"`, that toggle input and normal mode, also under a full-screen program; none by default; with `vimKeys` off, Esc is then always the program's), `cursorColor` (golib's: the cursor's colour, as the Editor's; its shape shows the mode: a block in normal mode, a thin bar while typing unless the program sets its own) | — | `exited(code)`, `titleChanged(title)`, `modeChanged(mode)` — `"terminal"` or `"normal"` | `start()`, `stop()`, `focus()` |
+| `TerminalTabs` (golib's) | — (no declared children: its terminals are the host's, through `TerminalTabsOf`) | `emptyText` (what the body says with no tab), `minimumContrast`, `cursorColor`, `vimKeys`, `cellFont`, `hostKeys`, `modeKey` (each as the Terminal's, for every tab, those added later too; the strip and its menus stay in the window's font) | `count`, `currentId` | `addRequested` (the strip's +), `menuRequested(id)` (≡, or a right-click on a tab; not when the host gave the strip its own menu, `SetMenu`), `changed` | — (the host adds, starts, selects, renames and removes tabs, and sets their menu, from Go) |
 | `Button` | — | `text`, `enabled` | — | `clicked` | — |
 | `CheckBox` | — | `text` (`&` marks the mnemonic), `checked`, `enabled` | — | `toggled`, `clicked` | — |
 | `Split` | `orientation` | `ratio` | — | — | — |
@@ -208,8 +208,18 @@ TabView { id: settings
 
 **`Flex`** — Qt's `ColumnLayout` / `RowLayout`. Each child takes its own size,
 in order; a child marked `Layout.fillHeight: true` (in a column) or
-`Layout.fillWidth: true` (in a row) shares what the others leave. A view — a
-`ListView`, `TableView` or `TreeView` — is as tall as its content where nothing
+`Layout.fillWidth: true` (in a row) shares what the others leave, and one with
+`Layout.preferredWidth: n` (in a row) or `Layout.preferredHeight: n` (in a
+column) takes n cells whatever its content (what is left, when less is), so a
+column of labels lines up the controls beside them:
+
+```qml
+Flex { direction: Tui.Horizontal
+    Text { text: "theme"; Layout.preferredWidth: 20 }
+    ComboBox { model: App.themes } }
+```
+
+A view — a `ListView`, `TableView` or `TreeView` — is as tall as its content where nothing
 bounds it, and fills what it is given otherwise, so a table followed by a row of
 buttons is written:
 

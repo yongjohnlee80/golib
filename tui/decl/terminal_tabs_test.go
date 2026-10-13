@@ -160,6 +160,18 @@ func TestDeclaredHostKeys(t *testing.T) {
 	}
 }
 
+// modeKey takes hostKeys' list: Ctrl+T matches its press, and a bad sequence is refused, named as
+// modeKey's.
+func TestDeclaredModeKey(t *testing.T) {
+	match, err := tuidecl.ModeKeyOfForTest(`"Ctrl+T"`)
+	if err != nil || match == nil || !match(tui.KeyEvent{Kind: tui.KeyPress, Code: 't', Mods: tui.ModCtrl}) {
+		t.Fatalf("Ctrl+T: %v", err)
+	}
+	if _, err := tuidecl.ModeKeyOfForTest(`"Ctrl+Nope"`); err == nil || !strings.Contains(err.Error(), "modeKey") {
+		t.Errorf("a bad sequence: %v", err)
+	}
+}
+
 // TestADrawersTerminalTabsMenuMaximizesTheDrawer: a TerminalTabs in a maximizable Drawer, its strip
 // menu's row calling the Drawer's toggleMaximize, as a host's Maximize does: a click on the row
 // maximizes the Drawer over the page. The menu's layer traps the input scope while it is open, and

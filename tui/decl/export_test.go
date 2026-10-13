@@ -23,3 +23,12 @@ func HostKeysOfForTest(lit string) (func(tui.KeyEvent) bool, error) {
 	}
 	return hostKeysOf(qml.SpecValue{Kind: qml.SpecValueString, Raw: raw})
 }
+
+// ModeKeyOfForTest is modeKeyOf over a QML string literal ("Ctrl+T").
+func ModeKeyOfForTest(lit string) (func(tui.KeyEvent) bool, error) {
+	raw, err := strconv.Unquote(lit)
+	if err != nil {
+		return nil, err
+	}
+	return modeKeyOf(qml.SpecValue{Kind: qml.SpecValueString, Raw: raw})
+}
