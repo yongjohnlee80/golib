@@ -114,16 +114,9 @@ func (s FileSource) or() FileSource {
 func (s FileSource) async() bool { return s.VFS != nil || s.Async }
 
 // isDir reports whether an fs path is a folder, following a link to one in an
-// fs.FS, with ctx bounding a VFS read. A Save or Folder view asks it of a typed
-// name off the loop for an async source (typedStat).
-func (s FileSource) isDir(ctx context.Context, p string) bool {
-	if s.VFS != nil {
-		fi, err := s.VFS.Stat(ctx, p)
-		return err == nil && fi.IsDir()
-	}
-	fi, err := fs.Stat(s.FS, p)
-	return err == nil && fi.IsDir()
-}
+// fs.FS, with ctx bounding a VFS read: what [FileSource.kind] says, the one
+// place a path is asked about.
+func (s FileSource) isDir(ctx context.Context, p string) bool { return s.kind(ctx, p) == pathFolder }
 
 // readDir lists a folder, its folders and its files each sorted without regard
 // to case, with ctx bounding a VFS read.
