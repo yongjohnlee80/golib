@@ -133,6 +133,48 @@ func (c *EditorCore) SetNamedRegister(name rune, text string, linewise bool) boo
 	return c.reg.put(name, regEntry{text: text, linewise: linewise})
 }
 
+// RegisterKind is what a register holds: characters, whole lines, or a block (Visual block's).
+type RegisterKind uint8
+
+const (
+	RegisterChars RegisterKind = iota
+	RegisterLines
+	RegisterBlock
+)
+
+// RegisterKind reports what register name holds, for the names NamedRegister reads.
+func (c *EditorCore) RegisterKind(name rune) (kind RegisterKind, ok bool) {
+	e, ok := c.reg.get(name)
+	switch {
+	case e.block:
+		kind = RegisterBlock
+	case e.linewise:
+		kind = RegisterLines
+	}
+	return kind, ok
+}
+
+// NamedBlock returns register name's block: its pieces, one per line, and its width in display
+// cells. ok is false when the register holds no block.
+func (c *EditorCore) NamedBlock(name rune) (pieces []string, width int, ok bool) {
+	e, ok := c.reg.get(name)
+	if !ok || !e.block {
+		return nil, 0, false
+	}
+	return strings.Split(e.text, "\n"), e.width, true
+}
+
+// SetNamedBlock sets register name to a block, as SetNamedRegister sets text. width is the
+// block's width in display cells (a wide character two, a tab tabCells): 0 is the widest piece's,
+// and a width less than that is raised to it, so no piece is cut. It reports false as
+// SetNamedRegister does.
+func (c *EditorCore) SetNamedBlock(name rune, pieces []string, width int) bool {
+	for _, p := range pieces {
+		width = max(width, blockCells(p))
+	}
+	return c.reg.put(name, regEntry{text: strings.Join(pieces, "\n"), block: true, width: width})
+}
+
 // exportYank puts a yanked selection on the SYSTEM clipboard and reports the
 // outcome, and it is called only from the explicit yank actions.
 //
@@ -224,6 +266,10 @@ func (c *EditorCore) pasteRegister(after bool, count int) {
 // putEntry puts e as p (after) or P does, count times.
 func (c *EditorCore) putEntry(e regEntry, after bool, count int) {
 	if !e.holds() {
+		return
+	}
+	if e.block {
+		c.blockPut(e, after, count) // editor_vimblock.go
 		return
 	}
 	text, linewise := e.text, e.linewise

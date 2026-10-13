@@ -129,3 +129,86 @@ func TestVimVisualInsertAppendOutsideABlock(t *testing.T) {
 		{what: "V A", text: "abc\ndef", seq: "VAX<esc>", want: "abcX\ndef"},
 	})
 }
+
+// A block put (Vim's do_put for a block): its pieces on successive lines at the cursor's display
+// column, short lines padded, a tab there split, another character moved after the piece; copies
+// padded to the width, but no trailing blanks after a short line's last copy.
+func TestVimBlockPut(t *testing.T) {
+	cases := []struct {
+		what, text string
+		ln, col    int
+		pieces     []string
+		seq, want  string
+	}{
+		{"P", "abc\ndef", 0, 1, []string{"XY", "Z"}, `"aP`, "aXYbc\ndZ ef"},
+		{"p", "abc\ndef", 0, 1, []string{"XY", "Z"}, `"ap`, "abXYc\ndeZ f"},
+		{"a short line padded, no trailing blanks", "abcd\nx\nabcd", 0, 2, []string{"XY", "Z"}, `"aP`, "abXYcd\nx Z\nabcd"},
+		{"a copy padded before the text after it", "ab\nab", 0, 1, []string{"X", "YZ"}, `"a3P`, "aX X X b\naYZYZYZb"},
+		{"a short line: the last copy unpadded", "a\na", 0, 0, []string{"X", "YZ"}, `"a2p`, "aX X\naYZYZ"},
+		{"a tab at the column split", "abcd\n\tx", 0, 2, []string{"P", "Q"}, `"aP`, "abPcd\n  Q  x"},
+		{"a wide character at the column moved after", "abcd\n한글", 0, 1, []string{"P", "Q"}, `"aP`, "aPbcd\n Q한글"},
+		{"lines past the end added", "ab", 0, 0, []string{"P", "Q", "R"}, `"aP`, "Pab\nQ\nR"},
+		{"one undo step", "ab", 0, 0, []string{"P", "Q", "R"}, `"aPu`, "ab"},
+	}
+	for _, e := range cases {
+		c, _ := coreWith(t, e.text)
+		c.SetNamedBlock('a', e.pieces, 0)
+		c.SetLine(e.ln, e.col)
+		vimSeq(c, e.seq)
+		if got := c.Value(); got != e.want {
+			t.Errorf("%s: %q by %q: %q, want %q", e.what, e.text, e.seq, got, e.want)
+		}
+	}
+	c, _ := coreWith(t, "abcd\nx\nabcd")
+	c.SetNamedBlock('a', []string{"XY", "Z"}, 0)
+	c.SetLine(0, 2)
+	vimSeq(c, `"aP`)
+	if row, col := c.Line(); row != 0 || col != 2 {
+		t.Errorf("after a block put the cursor is at %d, %d, want its top left", row, col)
+	}
+	y, _ := coreWith(t, "abc\ndef")
+	vimSeq(y, "l<ctv>jly0P")
+	if got := y.Value(); got != "bcabc\nefdef" {
+		t.Errorf("y over a block, then P: %q", got)
+	}
+}
+
+// The registers' kinds, and a block's pieces and width, through the API.
+func TestVimBlockRegisterAPI(t *testing.T) {
+	c, _ := coreWith(t, "abc\ndef")
+	kind := func(name rune) widget.RegisterKind {
+		k, ok := c.RegisterKind(name)
+		if !ok {
+			t.Fatalf("RegisterKind(%q): not ok", name)
+		}
+		return k
+	}
+	vimSeq(c, `"ayy"byw<ctv>jl"cy`)
+	if kind('a') != widget.RegisterLines || kind('b') != widget.RegisterChars || kind('c') != widget.RegisterBlock {
+		t.Fatalf("kinds: a %v b %v c %v", kind('a'), kind('b'), kind('c'))
+	}
+	if pieces, width, ok := c.NamedBlock('c'); !ok || width != 2 || len(pieces) != 2 || pieces[0] != "ab" || pieces[1] != "de" {
+		t.Fatalf("NamedBlock('c') = %q %d %v", pieces, width, ok)
+	}
+	if _, _, ok := c.NamedBlock('a'); ok {
+		t.Fatal("NamedBlock of a linewise register: ok")
+	}
+	for _, e := range []struct {
+		pieces []string
+		width  int
+		want   int
+	}{{[]string{"a", "한"}, 0, 2}, {[]string{"abc"}, 1, 3}, {[]string{"ab"}, 5, 5}, {[]string{"\tx"}, 0, 5}} {
+		c.SetNamedBlock('d', e.pieces, e.width)
+		if _, w, _ := c.NamedBlock('d'); w != e.want {
+			t.Errorf("SetNamedBlock(%q, %d): width %d, want %d", e.pieces, e.width, w, e.want)
+		}
+	}
+	c.SetNamedBlock('e', []string{"X"}, 0)
+	c.SetNamedRegister('E', "YZ", false)
+	if pieces, width, ok := c.NamedBlock('e'); !ok || width != 2 || len(pieces) != 2 || pieces[1] != "YZ" {
+		t.Fatalf("appending to a block: %q %d %v", pieces, width, ok)
+	}
+	if text, linewise, _ := c.NamedRegister('c'); text != "ab\nde" || linewise {
+		t.Fatalf("NamedRegister of a block: %q linewise %v", text, linewise)
+	}
+}

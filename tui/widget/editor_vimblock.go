@@ -276,6 +276,72 @@ func (c *EditorCore) blockOther() {
 	c.markDirty()
 }
 
+// blockPut is p (after) or P with a block, count times (Vim's do_put for MBLOCK): its pieces go in
+// on successive lines at the cursor's display column (p: after the cursor's cluster), lines past
+// the end added. A line too short is padded with spaces to the column; a tab there is split into
+// spaces; another character there moves after the piece, as Vim misaligns it. Each copy is padded
+// with spaces to the block's width, but a short line takes no trailing blanks after its last copy.
+// The cursor ends at the put's top left.
+func (c *EditorCore) blockPut(e regEntry, after bool, count int) {
+	b := &c.buf
+	pieces := strings.Split(e.text, "\n")
+	count = max(count, 1)
+	cs := b.lineClusters(b.ln)
+	at := min(b.col, len(cs))
+	col := cellsBefore(cs, at, blockCells)
+	if after && at < len(cs) {
+		col += blockCells(cs[at])
+	}
+	top := b.ln
+	c.beginGroup()
+	topCol := 0
+	for i, p := range pieces {
+		ln := top + i
+		if ln >= len(b.lines) {
+			b.lines = append(b.lines, "")
+			b.log.splice(ln, 0, 1)
+		}
+		before, rest, short := putSplit(b.lineClusters(ln), col)
+		pad := spaces(e.width - blockCells(p))
+		var mid strings.Builder
+		for j := range count {
+			mid.WriteString(p)
+			if j < count-1 || !short {
+				mid.WriteString(pad)
+			}
+		}
+		b.lines[ln] = before + mid.String() + rest
+		if i == 0 {
+			topCol = len(clusters(before))
+		}
+	}
+	b.touch(top)
+	b.ln, b.col = top, topCol
+	b.desired = -1
+	c.clampNormal()
+	c.edited()
+}
+
+// putSplit cuts cs at cell x for a block put: a line too short is padded to x (short: no text
+// follows), a tab straddling x is split into spaces, and another character straddling it stays
+// whole after the cut, spaces filling to x.
+func putSplit(cs []string, x int) (before, after string, short bool) {
+	w := 0
+	for i, cl := range cs {
+		cw := blockCells(cl)
+		switch {
+		case w == x:
+			return strings.Join(cs[:i], ""), strings.Join(cs[i:], ""), false
+		case w+cw > x && cl == "\t":
+			return strings.Join(cs[:i], "") + spaces(x-w), spaces(w+cw-x) + strings.Join(cs[i+1:], ""), false
+		case w+cw > x:
+			return strings.Join(cs[:i], "") + spaces(x-w), strings.Join(cs[i:], ""), false
+		}
+		w += cw
+	}
+	return strings.Join(cs, "") + spaces(x-w), "", true
+}
+
 // blockInsert is I, A or c over a block, waiting for its Insert to end: what was typed on the first
 // line then goes in on the others.
 type blockInsert struct {
