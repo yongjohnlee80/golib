@@ -1,10 +1,13 @@
 package widget_test
 
 import (
+	"io/fs"
 	"os"
 	"path/filepath"
+	"strings"
 	"sync/atomic"
 	"testing"
+	"testing/fstest"
 
 	"github.com/yongjohnlee80/golib/tui"
 	"github.com/yongjohnlee80/golib/tui/widget"
@@ -77,6 +80,37 @@ func TestTheOpenViewsPathFieldGoesWhereTyped(t *testing.T) {
 		t.Fatalf("a typed file chosen: Selected %q", sel)
 	}
 	h.waitFor("its folder listed", dirIs(h, v, root))
+	h.waitFor("the cursor on it", func() bool { return strings.Contains(h.grid(), "top") })
+	h.inject(key(tui.KeyUp)) // onto sub/: the typed choice is forgotten once the cursor moves
+	h.waitFor("Selected follows the cursor again", func() bool {
+		var sel string
+		h.onLoop(func() { sel = v.Selected() })
+		return sel == ""
+	})
+}
+
+// permFS refuses to say anything of "locked", as a folder without read permission does.
+type permFS struct{ fstest.MapFS }
+
+func (f permFS) Stat(name string) (fs.FileInfo, error) {
+	if name == "locked" || strings.HasPrefix(name, "locked/") {
+		return nil, &fs.PathError{Op: "stat", Path: name, Err: fs.ErrPermission}
+	}
+	return f.MapFS.Stat(name)
+}
+
+// A path the source will not say anything of is "cannot read", not "not found".
+func TestAPathTheSourceRefusesCannotBeRead(t *testing.T) {
+	v := widget.NewFileOpenView(widget.WithFileViewSource(widget.FileSource{FS: permFS{fstest.MapFS{"a.md": {Data: []byte("a")}}}, Root: "/"}),
+		widget.WithFileViewDir("/"))
+	h := startBrowser(t, v)
+	defer h.stop()
+	h.shows("a.md")
+	h.inject(keyMod('k', tui.ModCtrl))
+	typePath(h, "locked")
+	h.shows("Path — cannot read")
+	typePath(h, "gone")
+	h.shows("Path — not found")
 }
 
 // ~ typed in the list opens the path field with ~/ written; ~ is the source's Home. Esc in the
