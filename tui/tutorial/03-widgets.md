@@ -308,7 +308,7 @@ The editor exposes its runtime keymap structure, allowing parent controllers
 and status bars to dynamically display active bindings:
 
 ```go
-// Query editor mode for status bars (NORMAL, INSERT, VISUAL, V-LINE, V-BLOCK)
+// Query editor mode for status bars (NORMAL, INSERT, VISUAL, V-LINE, V-BLOCK, REPLACE)
 mode := ed.Mode().String()
 
 // Inspect configured bindings and escape chord
