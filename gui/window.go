@@ -222,14 +222,13 @@ func (b *Backend) readInput(src eventSource, tag event.Tag, m metrics) {
 				b.q.push(me)
 			}
 		case transfer.DataEvent:
-			if r := e.Open(); r != nil {
-				data, _ := io.ReadAll(r)
-				r.Close()
-				text := strings.ReplaceAll(strings.ReplaceAll(string(data), "\r\n", "\n"), "\r", "\n")
+			if data, ok := transferText(e); ok {
+				text := strings.ReplaceAll(strings.ReplaceAll(data, "\r\n", "\n"), "\r", "\n")
 				b.q.push(tui.PasteEvent{Text: text})
 			}
 		}
 	}
+	b.readClipboardReplies(src)
 	b.deliverIME(src, tag)
 	if b.rec != nil {
 		b.record(StageFrame, "end", map[string]any{"n": b.gio.frames})

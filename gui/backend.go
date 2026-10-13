@@ -106,6 +106,10 @@ type Backend struct {
 	mu       sync.Mutex
 	latest   *frame  // the newest finished frame; Flush replaces it and never waits
 	copyText *string // a clipboard write for the Gio goroutine to perform
+	// Clipboard reads (clipboard_read.go): reads waiting for the next generation, and the generation
+	// in flight (nil for none), whose pointer is its Gio tag.
+	reads []*clipRead
+	gen   *readGen
 
 	// The Gio goroutine owns these.
 	gio gioState
@@ -151,6 +155,7 @@ var (
 	_ tui.Backend           = (*Backend)(nil)
 	_ tui.GraphicsBackend   = (*Backend)(nil)
 	_ tui.ClipboardWriter   = (*Backend)(nil)
+	_ tui.ClipboardReader   = (*Backend)(nil)
 	_ tui.CursorColorSetter = (*Backend)(nil)
 )
 
