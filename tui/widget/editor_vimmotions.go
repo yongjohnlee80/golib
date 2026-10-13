@@ -208,11 +208,9 @@ func (c *EditorCore) halfPage(down, hadCount bool, count int) {
 	if vp, ok := c.layout.(EditorViewport); ok {
 		vp.ScrollLines(n)
 	}
-	ln, col := c.buf.verticalTarget(n, c.measure)
-	d := c.buf.desired
+	ln, col := c.buf.verticalTarget(n, c.measure) // keeps the sticky column in desired
 	c.buf.moveCursor(ln, col, false)
 	c.clampNormal()
-	c.buf.desired = d
 	c.reveal()
 	c.markDirty()
 }
