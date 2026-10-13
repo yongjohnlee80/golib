@@ -265,3 +265,30 @@ func TestTestBackendCancelWaitsForAnAnswerInProgress(t *testing.T) {
 	close(release)
 	<-returned
 }
+
+// ctxProbe keeps its Context, for a widget's view of the App.
+type ctxProbe struct {
+	Flex
+	ctx *Context
+}
+
+func (p *ctxProbe) Init(ctx *Context) {
+	p.ctx = ctx
+	p.Flex.Init(ctx)
+}
+
+// A widget reads through its Context as the App reads.
+func TestContextReadClipboard(t *testing.T) {
+	p := &ctxProbe{Flex: *NewFlex(Vertical)}
+	h := startApp(t, p, 10, 2)
+	ans := newClipAnswers()
+	var err error
+	h.onLoop(func() { _, err = p.ctx.ReadClipboard(time.Minute, ans.done) })
+	if err != nil {
+		t.Fatal(err)
+	}
+	h.tb.AnswerClipboard("via the context", nil)
+	if got := ans.await(t, 1); got[0].text != "via the context" {
+		t.Fatalf("answers %+v", got)
+	}
+}
