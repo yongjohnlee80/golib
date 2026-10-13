@@ -81,6 +81,7 @@ func TestVimDisplayRowsWithoutARowLayout(t *testing.T) {
 	runEdits(t, []editCase{
 		{what: "gj as j by x", text: "abcd\nab", col: 3, seq: "gj", want: "abcd\nab", cursor: true, wantLn: 1, wantCol: 1},
 		{what: "dgj charwise exclusive", text: "abcd\nefgh", col: 1, seq: "dgj", want: "afgh"},
+		{what: "dgj onto a shorter line: to its last character (Neovim)", text: "abcd\nef", col: 3, seq: "dgj", want: "abcf"},
 		{what: "gk on the first line", text: "abcd\nab", col: 2, seq: "gk", want: "abcd\nab", cursor: true, wantCol: 2},
 	})
 }
