@@ -232,6 +232,8 @@ const (
 	ActMarkSet         // m{a-z} (Vim): set a mark at the cursor
 	ActMarkLine        // '{a-z} (Vim): to the mark's line, first non-blank ('' the previous jump)
 	ActMarkExact       // `{a-z} (Vim): to the mark's exact place (`` the previous jump)
+	ActMacroRecord     // q{a-z} … q (Vim): record a macro into the register (A-Z append)
+	ActMacroPlay       // @{a-z} (Vim): play the register's macro (@@ the last played)
 
 	actMax // sentinel for validation
 )
@@ -405,6 +407,10 @@ func (a Action) String() string {
 		return "MarkLine"
 	case ActMarkExact:
 		return "MarkExact"
+	case ActMacroRecord:
+		return "MacroRecord"
+	case ActMacroPlay:
+		return "MacroPlay"
 	}
 	return fmt.Sprintf("Action(%d)", a)
 }
@@ -578,6 +584,10 @@ func (a Action) Description() string {
 		return "Go to a mark's line"
 	case ActMarkExact:
 		return "Go to a mark"
+	case ActMacroRecord:
+		return "Record a macro"
+	case ActMacroPlay:
+		return "Play a macro"
 	}
 	return "Custom action"
 }
@@ -650,7 +660,7 @@ func actionModes(a Action) (normal, visual, insert bool) {
 		ActDeleteChar, ActDeleteToEnd, ActPasteAfter, ActPasteBefore,
 		ActChangePrefix, ActChangeToEnd, ActSubstChar, ActSubstLine, ActYankToEnd,
 		ActReplaceChar, ActJoin, ActJoinRaw, ActToggleCase, ActCaseToggleOp, ActLowerOp, ActUpperOp,
-		ActIndentPrefix, ActOutdentPrefix, ActRepeat:
+		ActIndentPrefix, ActOutdentPrefix, ActRepeat, ActMacroRecord, ActMacroPlay:
 		return true, false, false
 	case ActCut, ActCopy, ActPaste, ActSelectAll, ActEscape, ActToggleRendered:
 		return true, true, true
@@ -781,6 +791,8 @@ func VimKeymap() Keymap {
 	km[n('m')], km[v('m')] = ActMarkSet, ActMarkSet
 	km[n('\'')], km[v('\'')] = ActMarkLine, ActMarkLine
 	km[n('`')], km[v('`')] = ActMarkExact, ActMarkExact
+	km[n('q')] = ActMacroRecord
+	km[n('@')] = ActMacroPlay
 	km[n('p')] = ActPasteAfter
 	km[n('P')] = ActPasteBefore
 	km[n('u')] = ActUndo

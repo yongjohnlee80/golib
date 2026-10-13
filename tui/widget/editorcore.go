@@ -56,6 +56,7 @@ type EditorCore struct {
 	dot            dotRecorder    // the change . repeats, and the one being recorded
 	opRegOne       bool           // the operator's motion is one whose delete Vim keeps in register 1 (regOneMotion)
 	marks          markSet        // a–z and the previous jump's place (editor_vimmarks.go)
+	macro          macroRecorder  // the macro being recorded, and what plays (editor_vimmacros.go)
 	reg            editRegister   // the registers
 	keys           keyDispatch    // modes and key routing
 	hl             highlightCache // per-line styles

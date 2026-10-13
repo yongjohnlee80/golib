@@ -53,6 +53,10 @@ type keyDispatch struct {
 	// markArmed is an m, ' or ` waiting for the mark's name (ActUnbound: none); a pending operator
 	// stays, for d'a.
 	markArmed Action
+	// macroArmed is a q or @ waiting for the register's name (ActUnbound: none); macroCount is
+	// @'s count.
+	macroArmed Action
+	macroCount int
 
 	// Escape chord (Insert mode).
 	chord        []rune // exactly two runes, or nil = disabled
