@@ -31,6 +31,7 @@ func TestVimVisualOperators(t *testing.T) {
 func TestVimVisualRepeat(t *testing.T) {
 	runEdits(t, []editCase{
 		{what: "v d then .", text: "abcdef", seq: "vld.", want: "ef"},
+		{what: "v d from a column, then .: the same count of characters", text: "abcdef", col: 1, seq: "vld.", want: "af"},
 		{what: "V d then .", text: "a\nb\nc\nd", seq: "Vjd.", want: ""},
 		{what: "v c then .", text: "abcd", seq: "vlcX<esc>l.", want: "XX"},
 		{what: "v r then .", text: "abcd", seq: "vlr-ll.", want: "----"},
@@ -63,6 +64,7 @@ func TestVimInsertDeleteBack(t *testing.T) {
 		{what: "Ctrl-w twice", text: "foo bar", seq: "A<ctw><ctw><esc>", want: ""},
 		{what: "Ctrl-w stops where Insert began", text: "foo bar", seq: "A baz<ctw><ctw><esc>", want: "foo bar"},
 		{what: "Ctrl-w goes on past it", text: "foo bar", seq: "A baz<ctw><ctw><ctw><esc>", want: "foo "},
+		{what: "past it, the stop moves back with it", text: "ab..", seq: "A<ctw>cd<ctw><esc>", want: "ab"},
 		{what: "Ctrl-w at a line's start joins", text: "ab\ncd", ln: 1, seq: "i<ctw><esc>", want: "abcd"},
 		{what: "Ctrl-u keeps the indent", text: "    foo bar", seq: "A<ctu><esc>", want: "    "},
 		{what: "Ctrl-u then the indent", text: "    foo bar", seq: "A<ctu><ctu><esc>", want: ""},
