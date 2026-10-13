@@ -3,6 +3,7 @@ package tui
 import (
 	"context"
 	"fmt"
+	"slices"
 	"strings"
 	"sync"
 	"testing"
@@ -65,6 +66,10 @@ type TestBackend struct {
 	flushes int
 
 	clipboard []byte // last WriteClipboard payload (tui.ClipboardWriter)
+	// clipReads are the ReadClipboard reads held for the test to answer, oldest first;
+	// clipUnsupported refuses every read at once, as a terminal does.
+	clipReads       []*heldClipRead
+	clipUnsupported bool
 
 	violations        []ConstraintViolation
 	violationsDropped int
@@ -89,12 +94,64 @@ func (b *TestBackend) Clipboard() []byte {
 	return append([]byte(nil), b.clipboard...)
 }
 
-var _ Backend = (*TestBackend)(nil)
+// heldClipRead is one read the test has yet to answer.
+type heldClipRead struct{ answer func(string, error) }
+
+// ReadClipboard implements ClipboardReader: the read is held until the test answers it
+// (AnswerClipboard), or refused at once under WithTestClipboardUnsupported.
+func (b *TestBackend) ReadClipboard(answer func(text string, err error)) (cancel func(), err error) {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	if b.clipUnsupported {
+		return nil, ErrClipboardUnsupported
+	}
+	r := &heldClipRead{answer: answer}
+	b.clipReads = append(b.clipReads, r)
+	return func() {
+		b.mu.Lock()
+		defer b.mu.Unlock()
+		b.clipReads = slices.DeleteFunc(b.clipReads, func(x *heldClipRead) bool { return x == r })
+	}, nil
+}
+
+// ClipboardReads is how many reads are held, not yet answered or cancelled.
+func (b *TestBackend) ClipboardReads() int {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	return len(b.clipReads)
+}
+
+// AnswerClipboard answers the oldest held read with text, or with err, from the caller's goroutine,
+// as a platform answers from its own. It reports false when no read is held. The answer runs under
+// the backend's lock, so a cancel never returns while it runs: no answer after cancel (an App's
+// answer only enqueues an Update, and calls nothing back here).
+func (b *TestBackend) AnswerClipboard(text string, err error) bool {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	if len(b.clipReads) == 0 {
+		return false
+	}
+	r := b.clipReads[0]
+	b.clipReads = b.clipReads[1:]
+	r.answer(text, err)
+	return true
+}
+
+var (
+	_ Backend         = (*TestBackend)(nil)
+	_ ClipboardReader = (*TestBackend)(nil)
+)
 
 // testBackendConfig collects the option-set state for NewTestBackend.
 type testBackendConfig struct {
-	caps     Capabilities
-	eventBuf int
+	caps            Capabilities
+	eventBuf        int
+	clipUnsupported bool
+}
+
+// WithTestClipboardUnsupported makes ReadClipboard refuse every read at once, as a terminal does.
+func WithTestClipboardUnsupported() TestBackendOption {
+	return func(c *testBackendConfig) { c.clipUnsupported = true }
 }
 
 // TestBackendOption customizes a TestBackend under construction.
@@ -142,8 +199,9 @@ func NewTestBackend(w, h int, opts ...TestBackendOption) *TestBackend {
 		cfg.eventBuf = 0
 	}
 	b := &TestBackend{
-		caps:   cfg.caps,
-		events: make(chan Event, cfg.eventBuf),
+		caps:            cfg.caps,
+		events:          make(chan Event, cfg.eventBuf),
+		clipUnsupported: cfg.clipUnsupported,
 	}
 	b.setGridLocked(w, h)
 	return b

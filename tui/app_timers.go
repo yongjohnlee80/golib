@@ -99,6 +99,7 @@ type timerEntry struct {
 	owner NodeID
 	every time.Duration // 0 = one-shot
 	frame bool          // a pending-frame deadline, not a component timer
+	fn    func()        // the App's own deadline (a clipboard read's timeout): run, not delivered
 
 	cancelled bool
 	index     int // heap index; -1 once popped
@@ -149,13 +150,13 @@ func (h *timerHeap) Pop() any {
 // the loop goroutine. It is automatically registered in Context.OnUnmount so
 // that unmounting a component cleanly purges all its pending timers.
 func (a *App) addTimer(owner NodeID, d, every time.Duration) (cancel func()) {
+	return a.pushTimer(&timerEntry{at: time.Now().Add(d), owner: owner, every: every})
+}
+
+// pushTimer numbers e, puts it on the heap and re-arms; its cancel is idempotent, loop only.
+func (a *App) pushTimer(e *timerEntry) (cancel func()) {
 	a.nextTimerID++
-	e := &timerEntry{
-		at:    time.Now().Add(d),
-		seq:   a.nextTimerID,
-		owner: owner,
-		every: every,
-	}
+	e.seq = a.nextTimerID
 	heap.Push(&a.timers, e)
 	a.rearmTimer()
 	return func() {
@@ -168,6 +169,13 @@ func (a *App) addTimer(owner NodeID, d, every time.Duration) (cancel func()) {
 			a.rearmTimer()
 		}
 	}
+}
+
+// addDeadline runs fn on the loop goroutine once d has passed, unless cancelled first: the App's
+// own one-shot deadlines (a clipboard read's timeout) ride the one timer heap, owned by no node.
+// cancel is idempotent, loop goroutine only.
+func (a *App) addDeadline(d time.Duration, fn func()) (cancel func()) {
+	return a.pushTimer(&timerEntry{at: time.Now().Add(d), fn: fn})
 }
 
 // scheduleFrame pushes a pending-frame deadline for the min-frame-interval
@@ -240,6 +248,10 @@ func (a *App) fireDueTimers() {
 		if e.frame {
 			a.framePending = false
 			a.maybeFrame()
+			continue
+		}
+		if e.fn != nil {
+			e.fn()
 			continue
 		}
 		a.deliverAddressed(e.owner, TickEvent{Owner: e.owner, Timer: TimerID(e.seq), At: now})
