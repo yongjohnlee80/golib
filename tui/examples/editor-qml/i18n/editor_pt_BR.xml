@@ -135,6 +135,10 @@ executado no golib/tui.</translation>
         <source>V-LINE</source>
         <translation>V-LINHA</translation>
     </message>
+    <message id="editor.mode.visualBlock">
+        <source>V-BLOCK</source>
+        <translation>V-BLOCO</translation>
+    </message>
     <message id="editor.noName">
         <source>[No Name]</source>
         <translation>[Sem nome]</translation>

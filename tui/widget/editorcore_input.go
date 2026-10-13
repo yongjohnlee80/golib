@@ -18,8 +18,14 @@ func (c *EditorCore) HandleKey(k tui.KeyEvent) bool {
 	if k.Kind == tui.KeyRelease {
 		return false
 	}
+	c.keyDepth++ // a macro and . hand their keys back in
+	defer func() { c.keyDepth-- }()
 	if c.keys.mode == ModeInsert {
 		return c.handleInsertKey(k)
+	}
+	if c.oneShotKey(k) {
+		c.macroKey(k)
+		return true
 	}
 	c.dotStart()
 	if c.dot.on && !c.dot.inInsert && !c.dot.replaying {
@@ -29,6 +35,9 @@ func (c *EditorCore) HandleKey(k tui.KeyEvent) bool {
 	handled := c.handleCommandKey(k)
 	c.settleRegister()
 	c.dotEnd()
+	if c.keyDepth <= c.oneShot.depth {
+		c.oneShotSettle() // Insert's Ctrl-o: the command complete, Insert resumes
+	}
 	return handled
 }
 
@@ -61,6 +70,12 @@ func (c *EditorCore) HandlePaste(text string) bool {
 		// Visual paste replaces the selection (never silently discard the selection boundary).
 		lo, hiEx := c.visualRange()
 		b.deleteRegion(lo, hiEx)
+		c.setMode(ModeNormal)
+		b.insertText(text)
+		c.clampNormal()
+	case ModeVisualBlock:
+		// the block's parts out, the paste at its top left
+		c.blockRemove(c.visualBlock())
 		c.setMode(ModeNormal)
 		b.insertText(text)
 		c.clampNormal()
@@ -138,7 +153,7 @@ func (c *EditorCore) PressAt(line, col int) bool {
 	c.dotDrop() // a press is a jump: it splits an Insert being recorded
 	// Visual exits and the anchor is cleared: keeping it would make the next motion extend a
 	// selection the user believes they dismissed.
-	if c.keys.mode == ModeVisual || c.keys.mode == ModeVisualLine {
+	if c.visual() {
 		if c.keys.modal {
 			c.setMode(ModeNormal)
 		} else {
@@ -158,6 +173,7 @@ func (c *EditorCore) PressAt(line, col int) bool {
 		c.dragging = true
 		c.dragFrom = taPos{ln: b.ln, col: min(b.col, c.normalMax(b.ln))}
 	}
+	c.oneShotSettle() // a press is Ctrl-o's command
 	return true
 }
 
@@ -215,7 +231,11 @@ func (c *EditorCore) handleInsertKey(k tui.KeyEvent) bool {
 	// 2. Configured keymap actions (custom bindings, Nano/Standard profiles, etc.).
 	if act, bound := c.keys.keymap[kc]; bound {
 		c.settlePendingRune()
-		c.dotInsertKey(k)
+		if act == ActInsertOneShot {
+			c.macroKey(k) // a macro keeps it; . does not: the Insert before it ends there
+		} else {
+			c.dotInsertKey(k)
+		}
 		return c.execAction(act, 1)
 	}
 
@@ -372,7 +392,7 @@ func (c *EditorCore) handleCommandKey(k tui.KeyEvent) bool {
 		c.keys.count, c.keys.pendingAct, c.keys.findArmed = 0, ActUnbound, ActUnbound
 		c.keys.regArmed, c.keys.reg, c.keys.markArmed, c.keys.macroArmed = false, 0, ActUnbound, ActUnbound
 		c.keys.dropOp()
-		if c.keys.mode == ModeVisual || c.keys.mode == ModeVisualLine {
+		if c.visual() {
 			c.exitVisual()
 			return true
 		}
@@ -409,7 +429,13 @@ func (c *EditorCore) handleCommandKey(k tui.KeyEvent) bool {
 	if c.keys.replArmed {
 		count := c.keys.replCount
 		c.keys.replArmed, c.keys.replCount = false, 0
+		visual := c.visual()
 		switch {
+		case visual && k.Text != "" && k.Mods&nonTextMods == 0:
+			c.visualOp(ActVisualReplace, count, firstCluster(k.Text)) // every character of the selection
+			return true
+		case visual:
+			// Enter, or a key with no text: r is cancelled, Visual stays
 		case k.Code == tui.KeyEnter && k.Mods&nonTextMods == 0:
 			c.replaceChars("\n", count)
 			return true
@@ -579,7 +605,7 @@ func (c *EditorCore) handleCommandKey(k tui.KeyEvent) bool {
 
 	// i and a name a text object after an operator (diw), and in Visual (viw): the next key says
 	// which. Neither is Visual's own key, so it is read before the keymap's answer.
-	visual := c.keys.mode == ModeVisual || c.keys.mode == ModeVisualLine
+	visual := c.visual()
 	if !kc.Ctrl && (kc.Code == 'i' || kc.Code == 'a') && (c.keys.op != ActUnbound || visual) {
 		c.keys.objArmed, c.keys.objCount = string(kc.Code), c.keys.count
 		c.keys.count = 0
@@ -665,7 +691,7 @@ func (c *EditorCore) handleCommandKey(k tui.KeyEvent) bool {
 	case ActFindCharForward, ActFindCharBack, ActTillCharForward, ActTillCharBack:
 		c.keys.findArmed, c.keys.findCount = act, count // the next key's text completes it
 		return true
-	case ActReplaceChar:
+	case ActReplaceChar, ActVisualReplace:
 		if c.readOnly {
 			return false // refused, and the host's
 		}

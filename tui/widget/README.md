@@ -327,7 +327,7 @@ as without it.
 
 #### `Editor`
 
-Embedded modal Vim-like editor featuring Normal, Insert, and Visual modes, a data-driven keymap, single unnamed register, bounded undo ring (64 snapshots), and escape chord support ("jk"):
+Embedded modal Vim-like editor featuring Normal, Insert, and Visual modes (characters, lines and blocks), a data-driven keymap, Vim's registers (named, numbered, small-delete and clipboard; blockwise from a Visual block), bounded undo ring (64 snapshots), and escape chord support ("jk"):
 
 ```go
 editor := widget.NewEditor(

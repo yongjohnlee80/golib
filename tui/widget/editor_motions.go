@@ -265,11 +265,15 @@ func (c *EditorCore) move(act Action, count int) {
 		apply(c.buf.ln, 0)
 	case ActLineEnd:
 		c.buf.desired = -1
+		c.oneShot.end = c.oneShot.on // Ctrl-o $: Insert resumes past the end
 		col := c.normalMax(c.buf.ln)
 		if c.keys.mode == ModeInsert {
 			col = len(c.buf.lineClusters(c.buf.ln))
 		}
 		apply(c.buf.ln, col)
+		if c.keys.mode == ModeVisualBlock {
+			c.buf.desired = blockToEnd // the block runs to every line's end, through j and k
+		}
 	case ActWordForward, ActWORDForward, ActWordBack, ActWORDBack, ActWordEnd, ActWORDEnd,
 		ActWordEndBack, ActWORDEndBack:
 		c.buf.desired = -1

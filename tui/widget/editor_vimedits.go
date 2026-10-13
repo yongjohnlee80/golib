@@ -159,10 +159,13 @@ func (c *EditorCore) applyCase(op Action, r opRange) {
 // applyShift is > (dir 1) and < (dir -1) over every line r touches, linewise whatever the motion,
 // the cursor on the first line's first non-blank. (An exclusive range never ends at a later
 // line's start here: rangeOf has already moved such an end back, or made the range whole lines.)
-func (c *EditorCore) applyShift(dir int, r opRange) {
+func (c *EditorCore) applyShift(dir int, r opRange) { c.applyShiftN(dir, r, 1) }
+
+// applyShiftN is applyShift by n units (Visual's 3>).
+func (c *EditorCore) applyShiftN(dir int, r opRange, n int) {
 	b := &c.buf
 	last := r.hiEx.ln
-	unit := c.shiftUnit()
+	unit := strings.Repeat(c.shiftUnit(), max(n, 1))
 	c.beginGroup()
 	for i := r.lo.ln; i <= last; i++ {
 		b.lines[i] = shiftLine(b.lines[i], unit, dir)

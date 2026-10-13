@@ -129,9 +129,12 @@ func (l *CommandLine) open(initial string, failed error) bool {
 		WithModalWidth(commandLineWidth),
 		WithModalRule(true),
 		WithModalKeys(l.keys),
-		WithOnDismiss(func(DismissReason) {
+		WithOnDismiss(func(r DismissReason) {
 			if l.modal == m {
 				l.modal, l.field, l.list = nil, nil, nil
+			}
+			if r != DismissAccept {
+				l.core.CommandLineClosed() // cancelled; an accepted line closes once it has run
 			}
 		}))
 	m.SetFooterMessage(tui.Msg("tui.cmdline.help"))
@@ -147,9 +150,10 @@ func (l *CommandLine) submit(line string) {
 	if l.modal != nil {
 		l.modal.Dismiss(DismissAccept)
 	}
-	if err := l.core.RunCommand(line); err != nil {
-		l.open(line, err)
+	if err := l.core.RunCommand(line); err != nil && l.open(line, err) {
+		return // reopened on the failure: still open
 	}
+	l.core.CommandLineClosed()
 }
 
 // keys are the prompt's own: Tab and Shift+Tab complete; with the dropdown open, Down and Up move

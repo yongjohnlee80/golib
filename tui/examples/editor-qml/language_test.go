@@ -106,13 +106,17 @@ func TestAComposedStatusLineIsInTheLanguageShowing(t *testing.T) {
 	})
 }
 
-// TestEveryModeIsNamedInTheLanguageShowing: the status bar names line-wise visual mode in the
-// language showing, and a mode the catalogs have no word for by its own name.
+// TestEveryModeIsNamedInTheLanguageShowing: the status bar names line-wise and block visual mode
+// in the language showing, and a mode the catalogs have no word for by its own name.
 func TestEveryModeIsNamedInTheLanguageShowing(t *testing.T) {
 	r := startOpts(t, Options{Language: "ko_KR", Now: fixedNow, Tick: time.Hour}, 80, 14)
 	r.key(t, runeKey('V'))
 	r.waitFor(t, "V-LINE in Korean", func(s string) bool {
 		return strings.Contains(lastNonEmpty(strings.Split(s, "\n")), "비주얼 줄")
+	})
+	r.key(t, ctrl('v'))
+	r.waitFor(t, "V-BLOCK in Korean", func(s string) bool {
+		return strings.Contains(lastNonEmpty(strings.Split(s, "\n")), "비주얼 블록")
 	})
 	unknown := widget.EditorMode(99)
 	if got := modeMessage(unknown); got != unknown.String() {

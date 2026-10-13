@@ -42,13 +42,21 @@ func (c *EditorCore) inVisual(ln, col int) bool {
 	case ModeVisualLine:
 		lo, hi := c.visualLines()
 		return ln >= lo && ln <= hi
+	case ModeVisualBlock:
+		v := c.visualBlock()
+		if ln < v.lo || ln > v.hi {
+			return false
+		}
+		l := v.line(c.buf.lineClusters(ln))
+		return col >= l.from && col < l.to
 	case ModeInsert:
 		return c.inCellSelection(ln, col) // a table cell Tab selected, which typing replaces
 	}
 	return false
 }
 
-// SelectedText returns the visual selection ("" outside visual modes or when selection is disabled).
+// SelectedText returns the visual selection ("" outside visual modes or when selection is disabled):
+// a block's pieces, one per line, joined with line breaks.
 func (c *EditorCore) SelectedText() string {
 	if !c.canSelect {
 		return ""
@@ -60,15 +68,28 @@ func (c *EditorCore) SelectedText() string {
 	case ModeVisualLine:
 		lo, hi := c.visualLines()
 		return strings.Join(c.buf.lines[lo:hi+1], "\n")
+	case ModeVisualBlock:
+		pieces, _ := c.blockPieces(c.visualBlock())
+		return strings.Join(pieces, "\n")
 	}
 	return ""
+}
+
+// visual reports one of the Visual modes.
+func (c *EditorCore) visual() bool {
+	switch c.keys.mode {
+	case ModeVisual, ModeVisualLine, ModeVisualBlock:
+		return true
+	}
+	return false
 }
 
 // SelectionRange returns the visual selection as a region from (row, col) up to, not including,
 // (endRow, endCol): rows and columns from 0, a column counting grapheme clusters, as Line reports
 // the cursor. A line-wise selection runs from the start of its first line to the end of its last.
 // ok is false outside the visual modes, or when selection is disabled. It is the region
-// SelectedText returns the text of.
+// SelectedText returns the text of, except for a block, which is no single region: then it runs
+// from the block's top left to its bottom right.
 func (c *EditorCore) SelectionRange() (row, col, endRow, endCol int, ok bool) {
 	if !c.canSelect {
 		return 0, 0, 0, 0, false
@@ -80,6 +101,11 @@ func (c *EditorCore) SelectionRange() (row, col, endRow, endCol int, ok bool) {
 	case ModeVisualLine:
 		lo, hi := c.visualLines()
 		return lo, 0, hi, len(c.buf.lineClusters(hi)), true
+	case ModeVisualBlock:
+		// a block is no single region: the one from its top left to its bottom right
+		v := c.visualBlock()
+		top, bot := v.line(c.buf.lineClusters(v.lo)), v.line(c.buf.lineClusters(v.hi))
+		return v.lo, top.from, v.hi, bot.to, true
 	}
 	return 0, 0, 0, 0, false
 }
@@ -105,6 +131,52 @@ func (c *EditorCore) NamedRegister(name rune) (text string, linewise, ok bool) {
 // '"' (SetRegister sets that one), _ and a name that is no register.
 func (c *EditorCore) SetNamedRegister(name rune, text string, linewise bool) bool {
 	return c.reg.put(name, regEntry{text: text, linewise: linewise})
+}
+
+// RegisterKind is what a register holds: characters, whole lines, or a block (Visual block's).
+type RegisterKind uint8
+
+const (
+	RegisterChars RegisterKind = iota
+	RegisterLines
+	RegisterBlock
+)
+
+// RegisterKind reports what register name holds, for the names NamedRegister reads.
+func (c *EditorCore) RegisterKind(name rune) (kind RegisterKind, ok bool) {
+	e, ok := c.reg.get(name)
+	switch {
+	case e.block:
+		kind = RegisterBlock
+	case e.linewise:
+		kind = RegisterLines
+	}
+	return kind, ok
+}
+
+// NamedBlock returns register name's block: its pieces, one per line, and its width in display
+// cells. ok is false when the register holds no block.
+func (c *EditorCore) NamedBlock(name rune) (pieces []string, width int, ok bool) {
+	e, ok := c.reg.get(name)
+	if !ok || !e.block {
+		return nil, 0, false
+	}
+	return strings.Split(e.text, "\n"), e.width, true
+}
+
+// SetNamedBlock sets register name to a block, as SetNamedRegister sets text. width is the
+// block's width in display cells (a wide character two, a tab tabCells): 0 is the widest piece's,
+// and a width less than that is raised to it, so no piece is cut. A block of empty pieces with a
+// width puts that many spaces; one of no pieces holds nothing. It reports false as
+// SetNamedRegister does.
+func (c *EditorCore) SetNamedBlock(name rune, pieces []string, width int) bool {
+	if len(pieces) == 0 {
+		width = 0
+	}
+	for _, p := range pieces {
+		width = max(width, blockCells(p))
+	}
+	return c.reg.put(name, regEntry{text: strings.Join(pieces, "\n"), block: true, width: width})
 }
 
 // exportYank puts a yanked selection on the SYSTEM clipboard and reports the
@@ -135,9 +207,14 @@ func (c *EditorCore) exportYank(text string) {
 // and exports it to the system clipboard, as every explicit yank is. A yank into the black hole
 // keeps nothing and exports nothing.
 func (c *EditorCore) regYank(text string, linewise bool) {
-	c.reg.yanked(c.keys.reg, regEntry{text: text, linewise: linewise})
+	c.yankEntry(regEntry{text: text, linewise: linewise})
+}
+
+// yankEntry is regYank of an entry of any kind; a block exports its pieces joined with line breaks.
+func (c *EditorCore) yankEntry(e regEntry) {
+	c.reg.yanked(c.keys.reg, e)
 	if c.keys.reg != '_' {
-		c.exportYank(text)
+		c.exportYank(e.text)
 	}
 }
 
@@ -145,10 +222,15 @@ func (c *EditorCore) regYank(text string, linewise bool) {
 // or more, or a motion Vim keeps in 1 (opRegOne), shifts the numbered registers. A delete named
 // into + or * is exported, since the clipboard was asked for by name; an unnamed delete never is.
 func (c *EditorCore) regDelete(text string, linewise bool) {
+	c.deleteEntry(regEntry{text: text, linewise: linewise}, linewise || strings.Contains(text, "\n"))
+}
+
+// deleteEntry is regDelete of an entry of any kind; lines is a delete over more than one line.
+func (c *EditorCore) deleteEntry(e regEntry, lines bool) {
 	name := c.keys.reg
-	c.reg.deleted(name, regEntry{text: text, linewise: linewise}, linewise || strings.Contains(text, "\n") || c.opRegOne)
+	c.reg.deleted(name, e, lines || c.opRegOne)
 	if name == '+' || name == '*' {
-		c.exportYank(text)
+		c.exportYank(e.text)
 	}
 }
 
@@ -188,6 +270,10 @@ func (c *EditorCore) pasteRegister(after bool, count int) {
 // putEntry puts e as p (after) or P does, count times.
 func (c *EditorCore) putEntry(e regEntry, after bool, count int) {
 	if !e.holds() {
+		return
+	}
+	if e.block {
+		c.blockPut(e, after, count) // editor_vimblock.go
 		return
 	}
 	text, linewise := e.text, e.linewise

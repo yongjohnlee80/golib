@@ -13,8 +13,9 @@ import (
 
 var vimToken = regexp.MustCompile(`<[a-z]+(:[^>]*)?>`)
 
-// vimSeq types s into the core: plain text as keys, and <esc> <cr> <left> <pgdn> <bs> as those keys,
-// <redo> as Ctrl-r, <cto> and <cti> as Ctrl-o and Ctrl-i,
+// vimSeq types s into the core: plain text as keys, and <esc> <cr> <left> <right> <down> <pgdn> <bs> as
+// those keys,
+// <redo> as Ctrl-r, <ctw> <ctu> <cto> <cti> and <ctv> as Ctrl-w Ctrl-u Ctrl-o Ctrl-i and Ctrl-v,
 // <tick> as the escape chord's timeout, <paste:TEXT> as a paste (\n for a line break).
 func vimSeq(c *widget.EditorCore, s string) {
 	for len(s) > 0 {
@@ -32,14 +33,24 @@ func vimSeq(c *widget.EditorCore, s string) {
 			c.HandleKey(tui.KeyEvent{Code: tui.KeyEnter})
 		case tok == "<left>":
 			c.HandleKey(tui.KeyEvent{Code: tui.KeyLeft})
+		case tok == "<right>":
+			c.HandleKey(tui.KeyEvent{Code: tui.KeyRight})
+		case tok == "<down>":
+			c.HandleKey(tui.KeyEvent{Code: tui.KeyDown})
 		case tok == "<pgdn>":
 			c.HandleKey(tui.KeyEvent{Code: tui.KeyPageDown})
 		case tok == "<bs>":
 			c.HandleKey(tui.KeyEvent{Code: tui.KeyBackspace})
 		case tok == "<redo>":
 			c.HandleKey(tui.KeyEvent{Code: 'r', Mods: tui.ModCtrl})
+		case tok == "<ctw>":
+			c.HandleKey(tui.KeyEvent{Code: 'w', Mods: tui.ModCtrl})
+		case tok == "<ctu>":
+			c.HandleKey(tui.KeyEvent{Code: 'u', Mods: tui.ModCtrl})
 		case tok == "<cto>":
 			c.HandleKey(tui.KeyEvent{Code: 'o', Mods: tui.ModCtrl})
+		case tok == "<ctv>":
+			c.HandleKey(tui.KeyEvent{Code: 'v', Mods: tui.ModCtrl})
 		case tok == "<cti>":
 			c.HandleKey(tui.KeyEvent{Code: 'i', Mods: tui.ModCtrl})
 		case tok == "<tick>":

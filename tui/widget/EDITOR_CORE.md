@@ -237,7 +237,9 @@ Both editors hold a prompt, on by default:
 | `Commands()`, `RunCommand(line)` | the core's |
 
 Another editor widget can hold the same module: `NewCommandLine(owner, core)` and then
-`SetEnabled(true)`.
+`SetEnabled(true)`. A widget with a prompt of its own answers `:` through `SetCommandLine(open)`,
+and calls `CommandLineClosed()` once its line has run or been cancelled: Insert's Ctrl-o waits for
+that before Insert resumes.
 
 ### In QML
 
@@ -253,6 +255,30 @@ Shortcut { sequence: "Ctrl+P"; onActivated: editor.openCommandLine() }
 
 The two signals are wired only when the document handles them. Without a handler, `w` answers in
 the prompt that the editor cannot save.
+
+## Registers
+
+The Vim keyset keeps Vim's registers: the unnamed one, `a`–`z` (`A`–`Z` append), `0`–`9`, `-`,
+and `+` and `*` (the system clipboard). Each holds characters, whole lines, or a block (a Visual
+block's yank: its pieces, one per line, and its width in display cells, a wide character two and a
+tab four).
+
+| Function | Does |
+|---|---|
+| `Register()` / `SetRegister(text, linewise)` | the unnamed register |
+| `NamedRegister(name)` / `SetNamedRegister(name, text, linewise)` | any register, as text (a block's pieces joined by `\n`) |
+| `RegisterKind(name) (RegisterKind, bool)` | `RegisterChars`, `RegisterLines` or `RegisterBlock` |
+| `NamedBlock(name) (pieces, width, ok)` / `SetNamedBlock(name, pieces, width)` | a block; width 0 is the widest piece's, and a smaller width is raised to it |
+
+A block put (`p`, `P`) goes in on successive lines at the cursor's display column, padding short
+lines with spaces, as Vim's does. Text read from the system clipboard is never a block.
+
+## Modes
+
+`Mode()` is `ModeNormal`, `ModeInsert`, `ModeVisual`, `ModeVisualLine` or `ModeVisualBlock`
+(Ctrl-v). The three Visual modes share one set of bindings. `InsertOneShot()` reports Insert's
+Ctrl-o running its one Normal-mode command: the mode is Normal until the command is complete, so
+a status line can show `-- (insert) --`.
 
 ## Writing aids
 

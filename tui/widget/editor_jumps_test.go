@@ -3,7 +3,6 @@ package widget_test
 import (
 	"testing"
 
-	"github.com/yongjohnlee80/golib/tui"
 	"github.com/yongjohnlee80/golib/tui/widget"
 )
 
@@ -68,16 +67,21 @@ func TestVimJumpsWithAHostList(t *testing.T) {
 	}
 }
 
-// A viewer jumps (jumping isn't editing); in Insert, Ctrl-o is not this change's (it bubbles).
+// A viewer jumps (jumping isn't editing). In Insert, Ctrl-o is Insert's one Normal-mode command,
+// not a jump; a second Ctrl-o is that command, a jump back, and Insert resumes there.
 func TestVimJumpsOnAViewerAndInInsert(t *testing.T) {
 	c, _ := coreWith(t, "a\nb\nc", widget.CoreReadOnly(true))
 	vimSeq(c, "G<cto>")
 	if ln, _ := c.Line(); ln != 0 {
 		t.Fatalf("a viewer's G Ctrl-o: line %d", ln)
 	}
-	ins, _ := coreWith(t, "a")
-	vimSeq(ins, "i")
-	if ins.HandleKey(tui.KeyEvent{Code: 'o', Mods: tui.ModCtrl}) {
-		t.Fatal("Insert consumed Ctrl-o")
+	ins, _ := coreWith(t, "a\nb\nc")
+	vimSeq(ins, "Gi<cto>")
+	if ln, _ := ins.Line(); ln != 2 || !ins.InsertOneShot() {
+		t.Fatalf("Insert's Ctrl-o: line %d, one-shot %v; want no jump, the one-shot", ln, ins.InsertOneShot())
+	}
+	vimSeq(ins, "<cto>")
+	if ln, _ := ins.Line(); ln != 0 || ins.Mode() != widget.ModeInsert {
+		t.Fatalf("Ctrl-o's command Ctrl-o: line %d, mode %v; want back at line 0, in Insert", ln, ins.Mode())
 	}
 }

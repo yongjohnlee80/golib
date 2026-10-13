@@ -96,7 +96,7 @@ func (c *EditorCore) Select(r TextRange) {
 
 // Unselect leaves the Visual modes, keeping the cursor where it is.
 func (c *EditorCore) Unselect() {
-	if c.keys.mode == ModeVisual || c.keys.mode == ModeVisualLine {
+	if c.visual() {
 		c.exitVisual()
 	}
 }
