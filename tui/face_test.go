@@ -115,3 +115,41 @@ func TestCellFace_TheTableIsBounded(t *testing.T) {
 		}
 	}
 }
+
+// tipFaceBox is a faced control with a tooltip: a terminal whose card shows over its own cells.
+type tipFaceBox struct {
+	faceBox
+	tip string
+}
+
+func (b *tipFaceBox) ToolTip() string { return b.tip }
+
+// The tooltip card is painted after the tree in the window's face, over a faced subtree's cells;
+// closed, the cells beneath come back in the subtree's face through the diff.
+func TestCellFace_TheToolTipCardOverAFacedSubtreeIsTheWindows(t *testing.T) {
+	label := &tipFaceBox{faceBox: faceBox{box: box{fill: "l"}, family: "Iosevka"}, tip: "the card"}
+	term := &faceBox{box: box{fill: "t"}, family: "Iosevka"}
+	root := &box{rects: []Rect{{X: 0, Y: 0, W: 6, H: 1}, {X: 0, Y: 1, W: 20, H: 3}}}
+	root.Add(label, term)
+	h, _ := startFaced(t, root, 24, 5)
+	waitFor(t, "the terminal in its face", func() bool { return faceAt(h, 2, 1) == 1 })
+	h.inject(motion(1, 0))
+	waitFor(t, "the card", func() bool {
+		var id NodeID
+		h.onLoop(func() { id = h.app.tip.node })
+		return id != 0
+	})
+	h.sync()
+	var card Rect
+	h.onLoop(func() { card = h.app.tip.rect })
+	if card.Y != 1 || card.W < 3 {
+		t.Fatalf("the card is at %+v, want over the terminal's first row", card)
+	}
+	for x := card.X; x < card.X+card.W; x++ {
+		if got := faceAt(h, x, card.Y); got != 0 {
+			t.Fatalf("the card's cell (%d,%d) is in face %d, want the window's", x, card.Y, got)
+		}
+	}
+	h.inject(motion(22, 4)) // off the label: the card closes
+	waitFor(t, "the terminal's cells back in its face", func() bool { return faceAt(h, card.X+1, card.Y) == 1 })
+}
