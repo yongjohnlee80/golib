@@ -166,3 +166,18 @@ func TestAnInsertedChildsLayoutFillIsABool(t *testing.T) {
 		t.Errorf("reload with Layout.fillHeight: \"yes\": err = %v, want it refused by name", err)
 	}
 }
+
+// Layout.preferredWidth gives a row's child that many cells whatever its text, so labels of
+// different lengths line up what follows them in one column, as Qt's RowLayout does.
+func TestPreferredWidthLinesUpALabelColumn(t *testing.T) {
+	s := decltest.Run(t, 40, 6,
+		tuidecl.LayoutSource("main.qml", []byte("import tui 1.0\n"+
+			"Flex { direction: Tui.Vertical\n"+
+			" Flex { direction: Tui.Horizontal\n  Text { text: \"theme\"; Layout.preferredWidth: 12 }\n  Text { text: \"AAA\" } }\n"+
+			" Flex { direction: Tui.Horizontal\n  Text { text: \"line numbers\"; Layout.preferredWidth: 12 }\n  Text { text: \"BBB\" } } }")))
+	s.WaitFor(t, "both rows", func(sc string) bool { return strings.Contains(sc, "AAA") && strings.Contains(sc, "BBB") })
+	lines := strings.Split(s.String(), "\n")
+	if a, b := strings.Index(lines[0], "AAA"), strings.Index(lines[1], "BBB"); a != 12 || b != 12 {
+		t.Errorf("the values start at %d and %d, want both at 12:\n%s", a, b, s.String())
+	}
+}

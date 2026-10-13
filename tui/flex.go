@@ -50,6 +50,7 @@ type Flex struct {
 	MultiChild // order, mount mirror, Move/Children/Init
 	dir        Direction
 	weights    map[Component]int
+	sized      map[Component]int // AddSized: a fixed main-axis extent
 	// stretch is that the cross axis of the layout in progress is fixed, so
 	// children are stretched across it (Layout).
 	stretch bool
@@ -82,9 +83,27 @@ func (f *Flex) AddWeighted(child Component, weight int) {
 	f.weights[child] = weight
 }
 
+// AddSized appends a child of a fixed main-axis extent: n cells wide in a row, n high in a column,
+// whatever its content measures (Qt's Layout.preferredWidth), so the next child starts at the same
+// place in every row (a label column). With less room left it gets what is left.
+func (f *Flex) AddSized(child Component, n int) {
+	if n < 0 {
+		panic(fmt.Sprintf("tui: Flex.AddSized: size must be >= 0 (got %d)", n))
+	}
+	if child == nil {
+		panic("tui: Flex.AddSized: nil child")
+	}
+	f.MultiChild.Add(child)
+	if f.sized == nil {
+		f.sized = make(map[Component]int)
+	}
+	f.sized[child] = n
+}
+
 // Remove unmounts child (cascade) and forgets it, weight entry included.
 func (f *Flex) Remove(child Component) {
 	delete(f.weights, child)
+	delete(f.sized, child)
 	f.MultiChild.remove(child)
 }
 
@@ -123,6 +142,11 @@ func (f *Flex) Layout(c Constraints) Size {
 		avail := Unbounded
 		if mainMax != Unbounded {
 			avail = max(mainMax-used, 0)
+		}
+		if n, ok := f.sized[it]; ok { // a fixed extent, or what is left of it
+			sizes[i] = f.Ctx().LayoutChild(it, f.childConstraints(min(n, avail), true, crossMax))
+			used += f.main(sizes[i])
+			continue
 		}
 		sizes[i] = f.Ctx().LayoutChild(it, f.childConstraints(avail, false, crossMax))
 		used += f.main(sizes[i])

@@ -759,3 +759,78 @@ func TestATerminalsCursorShowsItsMode(t *testing.T) {
 		return ok && c.Kind == tui.CellColorRGB && c.R == 0xFF && c.G == 0x88 && c.B == 0
 	})
 }
+
+// ctrlT is a mode key, as a host sets one (WithModeKey).
+func ctrlT(e tui.KeyEvent) bool { return e.Code == 't' && e.Mods.Chord() == tui.ModCtrl }
+
+// The mode key toggles input and normal mode, both ways, also under a full-screen program, and
+// never reaches the program; with vim keys off Esc is then always the program's; a held key
+// toggles once; a Ctrl+\ waiting for its second key is sent as itself.
+func TestTerminalModeKey(t *testing.T) {
+	t.Run("into normal mode and back", func(t *testing.T) {
+		f := startTerm(t, 20, 4, widget.WithModeKey(ctrlT))
+		f.h.inject(ctrl('t'))
+		f.h.waitFor("normal mode", func() bool { return f.mode() == widget.TerminalNormal })
+		f.h.inject(ctrl('t'))
+		f.h.waitFor("input mode again", func() bool { return f.mode() == widget.TerminalInput })
+		if strings.Contains(f.proc().sent(), "\x14") {
+			t.Error("the mode key reached the program")
+		}
+	})
+	t.Run("under a full-screen program", func(t *testing.T) {
+		f := startTerm(t, 20, 4, widget.WithModeKey(ctrlT))
+		f.output("\x1b[?1049h")
+		f.h.inject(ctrl('t'))
+		f.h.waitFor("normal mode on the alternate screen", func() bool { return f.mode() == widget.TerminalNormal })
+	})
+	t.Run("Esc is the program's", func(t *testing.T) {
+		f := startTerm(t, 20, 4, widget.WithModeKey(ctrlT), widget.WithVimKeys(false))
+		f.h.inject(key(tui.KeyEscape))
+		f.waitSent("\x1b")
+		if f.mode() != widget.TerminalInput {
+			t.Error("Esc left input mode")
+		}
+	})
+	t.Run("a held key toggles once", func(t *testing.T) {
+		f := startTerm(t, 20, 4, widget.WithModeKey(ctrlT))
+		held := ctrl('t')
+		held.Kind = tui.KeyRepeat
+		f.h.inject(ctrl('t'), held) // one repeat: toggling on it would end in input mode
+		f.h.settle()
+		if f.mode() != widget.TerminalNormal {
+			t.Error("a held mode key toggled more than once")
+		}
+		if strings.Contains(f.proc().sent(), "\x14") {
+			t.Error("a held mode key's repeat reached the program")
+		}
+	})
+	t.Run("a pending Ctrl+\\ is sent as itself", func(t *testing.T) {
+		f := startTerm(t, 20, 4, widget.WithModeKey(ctrlT))
+		f.h.inject(ctrl('\\'), ctrl('t'))
+		f.waitSent("\x1c")
+		f.h.waitFor("normal mode", func() bool { return f.mode() == widget.TerminalNormal })
+	})
+	t.Run("without a mode key Ctrl+T is the program's", func(t *testing.T) {
+		f := startTerm(t, 20, 4)
+		f.h.inject(ctrl('t'))
+		f.waitSent("\x14")
+		if f.mode() != widget.TerminalInput {
+			t.Error("Ctrl+T left input mode with no mode key")
+		}
+	})
+	t.Run("set later, and not with nothing running", func(t *testing.T) {
+		f := startTerm(t, 20, 4)
+		f.h.onLoop(func() { f.term.SetModeKey(ctrlT) })
+		f.proc().exit(0)
+		f.h.waitFor("the program gone", func() bool {
+			var running bool
+			f.h.onLoop(func() { running = f.term.Running() })
+			return !running
+		})
+		f.h.inject(ctrl('t'))
+		f.h.settle()
+		if f.mode() != widget.TerminalInput {
+			t.Error("the mode key entered normal mode with nothing running")
+		}
+	})
+}

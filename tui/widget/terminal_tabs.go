@@ -80,6 +80,8 @@ type TerminalTabs struct {
 	cursorColored bool
 	vimKeys       bool
 	vimKeysSet    bool
+	modeKey       func(tui.KeyEvent) bool
+	modeKeySet    bool
 	cellFace      string
 	faceSet       bool
 	hostKeys      func(tui.KeyEvent) bool
@@ -357,6 +359,13 @@ func (t *TerminalTabs) SetVimKeys(on bool) {
 	t.lookTabs()
 }
 
+// SetModeKey gives every tab, those added later too, Terminal.SetModeKey: the key that toggles
+// their input and normal mode.
+func (t *TerminalTabs) SetModeKey(match func(tui.KeyEvent) bool) {
+	t.modeKey, t.modeKeySet = match, true
+	t.lookTabs()
+}
+
 // SetHostKeys gives every tab, those added later too, Terminal.SetHostKeys: the keys their programs
 // never see, left to the host.
 func (t *TerminalTabs) SetHostKeys(match func(tui.KeyEvent) bool) {
@@ -387,6 +396,9 @@ func (t *TerminalTabs) lookTab(terminal *Terminal) {
 	}
 	if t.vimKeysSet {
 		terminal.SetVimKeys(t.vimKeys)
+	}
+	if t.modeKeySet {
+		terminal.SetModeKey(t.modeKey)
 	}
 	if t.faceSet {
 		terminal.SetCellFace(t.cellFace)

@@ -97,6 +97,8 @@ func appTypes() []Type {
 				"cellFont": setter("a Terminal", stringOf, (*widget.Terminal).SetCellFace),
 				// golib's: keys its program never sees, left to the Window's Shortcuts (hostkeys.go)
 				"hostKeys": setter("a Terminal", hostKeysOf, (*widget.Terminal).SetHostKeys),
+				// golib's: the key that toggles input and normal mode, Esc then the program's (hostkeys.go)
+				"modeKey": setter("a Terminal", modeKeyOf, (*widget.Terminal).SetModeKey),
 			},
 			Methods: map[string]Method{
 				"start": NoArgMethod((*widget.Terminal).Start),
@@ -179,9 +181,10 @@ func registerStdAttached(r *Registry) {
 	// `DialogButtonBox.buttonRole` is written on a Button and read by its box.
 	RegisterAttached(r, "DialogButtonBox", "buttonRole")
 	Honour(r, "DialogButtonBox", "DialogButtonBox")
-	// `Layout.fillHeight` / `Layout.fillWidth` are written on a Flex's child —
-	// Qt's ColumnLayout / RowLayout — and read by the Flex.
-	RegisterAttached(r, "Layout", "fillHeight", "fillWidth")
+	// `Layout.fillHeight` / `Layout.fillWidth` (and `Layout.preferredHeight` /
+	// `Layout.preferredWidth`, a fixed size) are written on a Flex's child — Qt's
+	// ColumnLayout / RowLayout — and read by the Flex.
+	RegisterAttached(r, "Layout", "fillHeight", "fillWidth", "preferredHeight", "preferredWidth")
 	Honour(r, "Flex", "Layout")
 	// `StatusBar.permanent` is written on a StatusBar's child and read by the bar: false puts it
 	// at the left end (Qt's addWidget), true (the default) at the right (addPermanentWidget).
