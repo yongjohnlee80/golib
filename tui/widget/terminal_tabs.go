@@ -1,6 +1,7 @@
 package widget
 
 import (
+	"cmp"
 	"context"
 	"errors"
 	"fmt"
@@ -71,13 +72,24 @@ type TerminalTabs struct {
 	active             TerminalTabID
 	bar, tab, selected style.Style
 	look               style.Style
-	onAdd              func()
-	onMenu             func(TerminalTabID)
-	onChanged          func()
-	mu                 sync.Mutex // lifetime registry and shutdown only; never loop-owned entries
-	owned              []*Terminal
-	shutdown           *TerminalShutdownResult
-	watching           bool
+	empty              string // the body with no tab; "" is the default message
+	// the look every tab takes (SetMinimumContrast, SetCursorColor): set, it overrides a tab's own
+	minContrast   float64
+	contrastSet   bool
+	cursorColor   style.Color
+	cursorColored bool
+	vimKeys       bool
+	vimKeysSet    bool
+	onAdd         func()
+	onMenu        func(TerminalTabID)
+	menuRows      func(TerminalTabID) []MenuItemModel // SetMenu: the strip's own menu
+	addRows       func() []MenuItemModel              // SetAddMenu: what + offers
+	menuOpen      *popupLayer
+	onChanged     func()
+	mu            sync.Mutex // lifetime registry and shutdown only; never loop-owned entries
+	owned         []*Terminal
+	shutdown      *TerminalShutdownResult
+	watching      bool
 }
 
 // NewTerminalTabs creates a valid empty terminal container.
@@ -125,6 +137,7 @@ func (t *TerminalTabs) Add(label string, options ...TerminalOption) (TerminalTab
 	terminal.cfg.args = append([]string(nil), terminal.cfg.args...)
 	terminal.cfg.env = append([]string(nil), terminal.cfg.env...)
 	terminal.SetDefaultLook(t.look)
+	t.lookTab(terminal)
 	onExit, onTitle := terminal.cfg.onExit, terminal.cfg.onTitle
 	terminal.cfg.onExit = func(code int) {
 		if t.shuttingDown() {
@@ -162,6 +175,181 @@ func (t *TerminalTabs) Add(label string, options ...TerminalOption) (TerminalTab
 	}
 	t.changed()
 	return id, nil
+}
+
+// TerminalTabsMenuAction is a row of the strip's menus: when the row is chosen, Run runs with the
+// tab the menu was opened for (SetMenu), or with no tab (SetAddMenu's +).
+type TerminalTabsMenuAction struct {
+	ID  tui.ActionID
+	Run func(id TerminalTabID)
+}
+
+// ActionID implements tui.Action.
+func (a TerminalTabsMenuAction) ActionID() tui.ActionID { return a.ID }
+
+// SetMenu gives the strip a menu of its own, opened over the strip (it needs an OverlayHost above
+// it) by ≡, by a right press on a tab, and by Enter on the focused strip: build returns its rows
+// for the tab it opens for, each time it opens, so they are that tab's as it stands. A row's action
+// is a TerminalTabsMenuAction; a row with children is a submenu ("Go to ›" every tab, say). Unset,
+// those open SetActions' menu callback instead; nil unsets it.
+func (t *TerminalTabs) SetMenu(build func(id TerminalTabID) []MenuItemModel) { t.menuRows = build }
+
+// SetAddMenu makes the strip's + open a menu, under it, instead of calling SetActions' add
+// callback: build returns its rows each time it opens (the profiles to start, say). A row's action
+// is a TerminalTabsMenuAction, run with no tab (the zero TerminalTabID); nil unsets it.
+func (t *TerminalTabs) SetAddMenu(build func() []MenuItemModel) { t.addRows = build }
+
+// hasMenu is whether the strip has a menu to open, its own or the host's.
+func (t *TerminalTabs) hasMenu() bool { return t.menuRows != nil || t.onMenu != nil }
+
+// hasAdd is whether the strip shows +: SetAddMenu's menu, or the host's add callback.
+func (t *TerminalTabs) hasAdd() bool { return t.addRows != nil || t.onAdd != nil }
+
+// add is + chosen at at, in the strip's own frame: SetAddMenu's menu, else the host's callback.
+func (t *TerminalTabs) add(at tui.Point) {
+	if t.addRows != nil {
+		t.popMenu("", t.addRows(), at)
+	} else if t.onAdd != nil {
+		t.onAdd()
+	}
+}
+
+// openMenu opens the menu for tab id at at, in the strip's own frame: SetMenu's, else the host's
+// callback.
+func (t *TerminalTabs) openMenu(id TerminalTabID, at tui.Point) {
+	if t.menuRows == nil {
+		if t.onMenu != nil {
+			t.onMenu(id)
+		}
+		return
+	}
+	t.popMenu(id, t.menuRows(id), at)
+}
+
+// popMenu shows items over the strip at at, a chosen row's action run with id.
+func (t *TerminalTabs) popMenu(id TerminalTabID, items []MenuItemModel, at tui.Point) {
+	host, ok := hostFor[popupHost](t.ctx)
+	if !ok || len(items) == 0 {
+		return
+	}
+	t.closeMenu()
+	var layer *popupLayer
+	menu := NewMenu(WithMenuVimNavigation(true), WithActionExecutor(func(inv tui.ActionInvocation) bool {
+		act, ok := inv.Action.(TerminalTabsMenuAction)
+		if !ok || act.Run == nil {
+			return false
+		}
+		if layer != nil {
+			layer.requestClose(DismissAccept)
+		}
+		act.Run(id)
+		return true
+	}))
+	if err := menu.SetModel(items); err != nil {
+		return
+	}
+	box := NewBox(menu, WithStyle(style.New().Background(style.TokenPanel)))
+	l, err := host.openPopupAt(LayerID(fmt.Sprintf("terminaltabs.menu.%d", t.ctx.ID())), t, box, at, func(DismissReason) {
+		if t.menuOpen == layer {
+			t.menuOpen = nil
+		}
+	})
+	if err != nil {
+		return
+	}
+	layer, t.menuOpen = l, l
+}
+
+// closeMenu closes the strip's menu if it is open.
+func (t *TerminalTabs) closeMenu() {
+	if l := t.menuOpen; l != nil {
+		t.menuOpen = nil
+		l.close(DismissProgrammatic)
+	}
+}
+
+// MenuOpen reports whether the strip's own menu (SetMenu, SetAddMenu) is showing.
+func (t *TerminalTabs) MenuOpen() bool { return t.menuOpen != nil }
+
+// addX is where the strip's + starts: after the last tab.
+func (t *TerminalTabs) addX() int {
+	x := 0
+	for _, e := range t.entries {
+		x += t.measure(terminalTabLabel(e)) + 1
+	}
+	return x
+}
+
+// tabX is where tab id's label starts on the strip.
+func (t *TerminalTabs) tabX(id TerminalTabID) int {
+	x := 0
+	for _, e := range t.entries {
+		if e.id == id {
+			return x
+		}
+		x += t.measure(terminalTabLabel(e)) + 1
+	}
+	return 0
+}
+
+// SetLabel renames tab id: the strip shows label (an agent's codename, a shell's host).
+func (t *TerminalTabs) SetLabel(id TerminalTabID, label string) error {
+	e, err := t.find(id)
+	if err != nil {
+		return err
+	}
+	if e.label != label {
+		e.label = label
+		t.changed()
+	}
+	return nil
+}
+
+// SetEmptyText is what the body says with no tab ("" is "No terminals. Use + to add one."): an
+// agents panel's "No agent running", say.
+func (t *TerminalTabs) SetEmptyText(s string) {
+	if t.empty != s {
+		t.empty = s
+		t.MarkDirty()
+	}
+}
+
+// SetMinimumContrast gives every tab, those added later too, Terminal.SetMinimumContrast's ratio.
+func (t *TerminalTabs) SetMinimumContrast(ratio float64) {
+	t.minContrast, t.contrastSet = ratio, true
+	t.lookTabs()
+}
+
+// SetCursorColor gives every tab, those added later too, Terminal.SetCursorColor's colour.
+func (t *TerminalTabs) SetCursorColor(c style.Color) {
+	t.cursorColor, t.cursorColored = c, true
+	t.lookTabs()
+}
+
+// SetVimKeys gives every tab, those added later too, Terminal.SetVimKeys: an editor's keymap
+// changing reaches the shells already running.
+func (t *TerminalTabs) SetVimKeys(on bool) {
+	t.vimKeys, t.vimKeysSet = on, true
+	t.lookTabs()
+}
+
+func (t *TerminalTabs) lookTabs() {
+	for _, e := range t.entries {
+		t.lookTab(e.terminal)
+	}
+}
+
+// lookTab gives terminal the container's look, where one is set.
+func (t *TerminalTabs) lookTab(terminal *Terminal) {
+	if t.contrastSet {
+		terminal.SetMinimumContrast(t.minContrast)
+	}
+	if t.cursorColored {
+		terminal.SetCursorColor(t.cursorColor)
+	}
+	if t.vimKeysSet {
+		terminal.SetVimKeys(t.vimKeys)
+	}
 }
 
 func (t *TerminalTabs) find(id TerminalTabID) (*terminalTab, error) {
@@ -204,11 +392,11 @@ func (t *TerminalTabs) TabSpans() []TabSpan {
 		spans = append(spans, TabSpan{X: x, W: w})
 		x += w + 1
 	}
-	if t.onAdd != nil {
+	if t.hasAdd() {
 		spans = append(spans, TabSpan{X: x, W: 3})
 		x += 4
 	}
-	if t.onMenu != nil && t.active != "" {
+	if t.hasMenu() && t.active != "" {
 		spans = append(spans, TabSpan{X: x, W: 3})
 	}
 	return spans
@@ -481,7 +669,7 @@ func (t *TerminalTabs) Render(s tui.Surface) {
 	if s.Size().H > 1 {
 		message := ""
 		if e, err := t.find(t.active); err != nil {
-			message = "No terminals. Use + to add one."
+			message = cmp.Or(t.empty, "No terminals. Use + to add one.")
 		} else if e.err != nil {
 			message = "Cleanup failed: " + e.err.Error()
 		} else if e.closing != nil {
@@ -503,13 +691,13 @@ func (t *TerminalTabs) Render(s tui.Surface) {
 		drawText(s, x, 0, truncate(label, w-x, s.StringWidth), st)
 		x += s.StringWidth(label) + 1
 	}
-	if t.onAdd != nil && x < w {
+	if t.hasAdd() && x < w {
 		drawText(s, x, 0, truncate(" + ", w-x, s.StringWidth), t.tab)
 	}
-	if t.onAdd != nil {
+	if t.hasAdd() {
 		x += 4
 	}
-	if t.onMenu != nil && t.active != "" && x < w {
+	if t.hasMenu() && t.active != "" && x < w {
 		drawText(s, x, 0, truncate(" ≡ ", w-x, s.StringWidth), t.tab)
 	}
 }
@@ -521,12 +709,12 @@ func (t *TerminalTabs) HandleEvent(ev tui.Event) bool {
 			return false
 		}
 		if t.focused() && e.Mods.Chord() == 0 {
-			if e.Text == "+" && t.onAdd != nil {
-				t.onAdd()
+			if e.Text == "+" && t.hasAdd() {
+				t.add(tui.Point{X: t.addX(), Y: 1})
 				return true
 			}
-			if e.Code == tui.KeyEnter && t.onMenu != nil && t.active != "" {
-				t.onMenu(t.active)
+			if e.Code == tui.KeyEnter && t.hasMenu() && t.active != "" {
+				t.openMenu(t.active, tui.Point{X: t.tabX(t.active), Y: 1})
 				return true
 			}
 		}
@@ -568,22 +756,22 @@ func (t *TerminalTabs) HandleEvent(ev tui.Event) bool {
 			if e.X >= x && e.X < x+w {
 				if e.Button == tui.MouseLeft {
 					_ = t.Select(page.id)
-				} else if e.Button == tui.MouseRight && t.onMenu != nil {
-					t.onMenu(page.id)
+				} else if e.Button == tui.MouseRight && t.hasMenu() {
+					t.openMenu(page.id, tui.Point{X: e.X, Y: 1})
 				}
 				return true
 			}
 			x += w + 1
 		}
-		if e.X >= x && e.X < x+3 && e.Button == tui.MouseLeft && t.onAdd != nil {
-			t.onAdd()
+		if e.X >= x && e.X < x+3 && e.Button == tui.MouseLeft && t.hasAdd() {
+			t.add(tui.Point{X: x, Y: 1})
 			return true
 		}
-		if t.onAdd != nil {
+		if t.hasAdd() {
 			x += 4
 		}
-		if e.X >= x && e.X < x+3 && e.Button == tui.MouseLeft && t.onMenu != nil && t.active != "" {
-			t.onMenu(t.active)
+		if e.X >= x && e.X < x+3 && e.Button == tui.MouseLeft && t.hasMenu() && t.active != "" {
+			t.openMenu(t.active, tui.Point{X: x, Y: 1})
 			return true
 		}
 	}
