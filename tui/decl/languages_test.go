@@ -244,9 +244,12 @@ func TestHotReloadFollowsTheCatalogs(t *testing.T) {
 	}
 	d.mu.Unlock()
 
-	d.write("i18n/app_en.xml", string(tsCatalog("en", "demo.greeting", "greeting v3")))
+	// the layout broken first, its refusal seen, and only then the good catalog: written the other
+	// way round, a poll between the two writes applied the catalog alone, and v3 showed
 	d.write("main.qml", hotLayout(`Text { txt: qsTrId("demo.greeting") }`))
 	s.WaitFor(t, "the broken layout refused", func(string) bool { _, n := d.counts(); return n == before+2 })
+	d.write("i18n/app_en.xml", string(tsCatalog("en", "demo.greeting", "greeting v3")))
+	s.WaitFor(t, "the catalog under the broken layout refused", func(string) bool { _, n := d.counts(); return n == before+3 })
 	settle()
 	if sc := s.String(); !strings.Contains(sc, "greeting v2") || strings.Contains(sc, "greeting v3") {
 		t.Errorf("a refused reload relabelled the screen:\n%s", sc)
