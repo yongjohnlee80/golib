@@ -175,6 +175,11 @@ func TestVimOperatorPending(t *testing.T) {
 		t.Fatalf("a viewer changed: %q", ro.Value())
 	}
 	vimType(ro, "0yw") // the refused operators' w keys moved the cursor
+	for _, r := range "dcsSCxio" {
+		if ro.HandleKey(tui.KeyEvent{Code: r, Text: string(r)}) {
+			t.Errorf("a viewer consumed %c, which it refuses: the host never hears it", r)
+		}
+	}
 	if reg, _ := ro.Register(); reg != "foo " {
 		t.Fatalf("a viewer's yw: register %q", reg)
 	}
