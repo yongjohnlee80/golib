@@ -41,11 +41,12 @@ type textBuffer struct {
 	// Editor's highlighter cache — must look at again. Every change to
 	// lines calls touch.
 	changedFrom int
-	// edits, while logEdits is on (an EditorCore's buffer), is each change to the line structure
-	// since the owner last took them, in order: what follows the text (marks) replays them. A
-	// change within one line is not logged; marks keep their columns then, as Vim's do.
-	logEdits bool
-	edits    []lineEdit
+	// log, when on (an EditorCore's buffer), is each change to the line structure since the owner
+	// last took them, in order: what follows the text (marks) replays them. A change within one
+	// line is not logged; marks keep their columns then, as Vim's do. A field with methods of its
+	// own, as touchFrom is a function: the buffer's changes record themselves without a call on the
+	// receiver that an embedder's override would not see.
+	log editLog
 }
 
 // lineEdit is one change to the buffer's line structure, as Vim's mark_adjust and mark_col_adjust
@@ -57,7 +58,7 @@ type textBuffer struct {
 //   - a reset (a new document): every mark is gone.
 //
 // A producer logs a split's or a join's column move in the order the lines are then: a join moves
-// the joined lines' marks before the splice that removes those lines (Lector, M4 design r1).
+// the joined lines' marks before the splice that removes those lines.
 type lineEdit struct {
 	move, reset  bool
 	ln, del, ins int
@@ -66,25 +67,38 @@ type lineEdit struct {
 	all          bool
 }
 
-// logSplice records lines [ln, ln+del) replaced by ins lines.
-func (b *textBuffer) logSplice(ln, del, ins int) {
-	if b.logEdits && (del != 0 || ins != 0) {
-		b.edits = append(b.edits, lineEdit{ln: ln, del: del, ins: ins})
+// editLog is the buffer's log of changes to its line structure; it logs nothing until on.
+type editLog struct {
+	on    bool
+	edits []lineEdit
+}
+
+// splice records lines [ln, ln+del) replaced by ins lines.
+func (l *editLog) splice(ln, del, ins int) {
+	if l.on && (del != 0 || ins != 0) {
+		l.edits = append(l.edits, lineEdit{ln: ln, del: del, ins: ins})
 	}
 }
 
-// logMove records line from's marks at column cut or later (every one, with all) moving to line
-// to, at column at+(col-cut).
-func (b *textBuffer) logMove(from, cut, to, at int, all bool) {
-	if b.logEdits {
-		b.edits = append(b.edits, lineEdit{move: true, from: from, cut: cut, to: to, at: at, all: all})
+// move records line from's marks at column cut or later (every one, with all) moving to line to,
+// at column at+(col-cut).
+func (l *editLog) move(from, cut, to, at int, all bool) {
+	if l.on {
+		l.edits = append(l.edits, lineEdit{move: true, from: from, cut: cut, to: to, at: at, all: all})
 	}
 }
 
-// takeEdits returns the edits logged since the last call, and forgets them.
-func (b *textBuffer) takeEdits() []lineEdit {
-	e := b.edits
-	b.edits = nil
+// reset records a new document: every mark is gone, whatever was logged before.
+func (l *editLog) reset() {
+	if l.on {
+		l.edits = append(l.edits[:0], lineEdit{reset: true})
+	}
+}
+
+// take returns the edits logged since the last call, and forgets them.
+func (l *editLog) take() []lineEdit {
+	e := l.edits
+	l.edits = nil
 	return e
 }
 
@@ -120,9 +134,7 @@ func (b *textBuffer) setValue(s string) {
 	s = strings.ReplaceAll(strings.ReplaceAll(s, "\r\n", "\n"), "\r", "\n")
 	b.lines = strings.Split(s, "\n")
 	touchFrom(&b.changedFrom, 0)
-	if b.logEdits {
-		b.edits = append(b.edits[:0], lineEdit{reset: true})
-	}
+	b.log.reset()
 	b.ln = len(b.lines) - 1
 	b.col = len(clusters(b.lines[b.ln]))
 	b.anchor = nil
@@ -176,8 +188,8 @@ func (b *textBuffer) deleteRegion(lo, hi taPos) {
 	joined := strings.Join(first, "") + strings.Join(last, "")
 	touchFrom(&b.changedFrom, lo.ln)
 	if hi.ln > lo.ln { // the last line joins the first: its marks move onto it, then the rest go
-		b.logMove(hi.ln, hi.col, lo.ln, lo.col, true)
-		b.logSplice(lo.ln+1, hi.ln-lo.ln, 0)
+		b.log.move(hi.ln, hi.col, lo.ln, lo.col, true)
+		b.log.splice(lo.ln+1, hi.ln-lo.ln, 0)
 	}
 	b.lines = append(b.lines[:lo.ln], append([]string{joined}, b.lines[hi.ln+1:]...)...)
 	b.ln, b.col = lo.ln, min(lo.col, len(clusters(joined)))
@@ -229,8 +241,8 @@ func (b *textBuffer) insertText(text string) {
 		newLines = append(newLines, lastPart+tail)
 		b.lines = append(b.lines[:b.ln], append(newLines, b.lines[b.ln+1:]...)...)
 		// the lines below move down, then the split line's marks after the cursor follow its tail
-		b.logSplice(b.ln+1, 0, len(parts)-1)
-		b.logMove(b.ln, b.col, b.ln+len(parts)-1, len(clusters(lastPart)), false)
+		b.log.splice(b.ln+1, 0, len(parts)-1)
+		b.log.move(b.ln, b.col, b.ln+len(parts)-1, len(clusters(lastPart)), false)
 		b.ln += len(parts) - 1
 		b.col = min(len(clusters(lastPart)), len(clusters(b.lines[b.ln])))
 	}

@@ -129,7 +129,7 @@ type CoreOption func(*EditorCore)
 // selection, yank and undo on. The options have not run yet.
 func newEditorCore() *EditorCore {
 	buf := newTextBuffer()
-	buf.logEdits = true // the marks follow the line structure's changes
+	buf.log.on = true // the marks follow the line structure's changes
 	return &EditorCore{
 		buf:       buf,
 		hlFrom:    noChange,
@@ -819,7 +819,7 @@ func (c *EditorCore) execAction(act Action, count int) bool {
 		prefix := c.indentDecision(indent.OpenBelow, len(b.lines[b.ln])).Prefix
 		b.lines = append(b.lines[:b.ln+1], append([]string{prefix}, b.lines[b.ln+1:]...)...)
 		b.touch(b.ln + 1)
-		b.logSplice(b.ln+1, 0, 1)
+		b.log.splice(b.ln+1, 0, 1)
 		b.ln, b.col = b.ln+1, len(clusters(prefix))
 		c.enterInsert()
 		c.hist.keepOpen() // the open-line already began this group
@@ -830,7 +830,7 @@ func (c *EditorCore) execAction(act Action, count int) bool {
 		prefix := c.indentDecision(indent.OpenAbove, 0).Prefix
 		b.lines = append(b.lines[:b.ln], append([]string{prefix}, b.lines[b.ln:]...)...)
 		b.touch(b.ln)
-		b.logSplice(b.ln, 0, 1)
+		b.log.splice(b.ln, 0, 1)
 		b.col = len(clusters(prefix))
 		c.enterInsert()
 		c.hist.keepOpen()

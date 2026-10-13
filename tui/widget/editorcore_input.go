@@ -70,7 +70,7 @@ func (c *EditorCore) HandlePaste(text string) bool {
 		b.anchor = nil
 		b.lines = append(b.lines[:lo], append([]string{""}, b.lines[hi+1:]...)...)
 		b.touch(lo)
-		b.logSplice(lo+1, hi-lo, 0) // the first line stays, emptied, for the paste
+		b.log.splice(lo+1, hi-lo, 0) // the first line stays, emptied, for the paste
 		b.ln, b.col = lo, 0
 		b.insertText(text)
 		c.clampNormal()

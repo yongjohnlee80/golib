@@ -156,9 +156,9 @@ func (c *EditorCore) deleteLines(lo, hi int) {
 	rest = append(rest, c.buf.lines[hi+1:]...)
 	if len(rest) == 0 {
 		rest = []string{""}
-		c.buf.logSplice(0, hi+1, 1) // every line went: one empty line is left
+		c.buf.log.splice(0, hi+1, 1) // every line went: one empty line is left
 	} else {
-		c.buf.logSplice(lo, hi-lo+1, 0)
+		c.buf.log.splice(lo, hi-lo+1, 0)
 	}
 	c.buf.lines = rest
 	c.buf.touch(lo)
@@ -188,7 +188,7 @@ func (c *EditorCore) pasteRegister(after bool, count int) {
 		newLines := strings.Split(strings.Repeat(text+"\n", count-1)+text, "\n")
 		c.buf.lines = append(c.buf.lines[:at], append(append([]string{}, newLines...), c.buf.lines[at:]...)...)
 		c.buf.touch(at)
-		c.buf.logSplice(at, 0, len(newLines))
+		c.buf.log.splice(at, 0, len(newLines))
 		c.buf.ln, c.buf.col = at, 0
 	} else {
 		col := c.buf.col

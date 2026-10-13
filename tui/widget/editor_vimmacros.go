@@ -14,7 +14,7 @@ import (
 // write to the register drops them, so @a then plays the text as keys, as Vim plays a register.
 // Each change a macro makes is its own undo step, as in Vim. A macro playing itself, or one that
 // plays it, stops at a depth of 100. On a viewer q and @ bubble: a macro there could change nothing,
-// and the key is the host's (#285's rule).
+// and the key is the host's, as every key a viewer refuses is.
 
 // macroDepth is how deep macros may play one another.
 const macroDepth = 100
