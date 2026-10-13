@@ -75,7 +75,7 @@ func TestVimDisplayRowsSticky(t *testing.T) {
 	vimSeq(c, "hgk")
 	atCol(t, ed, "another motion resets it", 1, 1)
 
-	// h then l back to the same place still ends the x (Lector's case; Neovim lands at (2,1))
+	// h then l back to the same place still ends the x (Neovim lands at (2,1))
 	r := wrappedEditor(t, "abcdefgh\nab\nabcdefgh", 20)
 	r.Core().SetLine(0, 6)
 	vimSeq(r.Core(), "gjhlgj")
