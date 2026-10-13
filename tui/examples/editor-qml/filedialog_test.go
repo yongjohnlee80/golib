@@ -4,10 +4,10 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
-	"unicode/utf8"
 	"sync"
 	"testing"
 	"time"
+	"unicode/utf8"
 
 	"github.com/yongjohnlee80/golib/tui"
 )
