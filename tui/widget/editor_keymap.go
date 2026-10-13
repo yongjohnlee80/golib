@@ -229,6 +229,9 @@ const (
 	ActOutdentPrefix   // <{motion}, << (Vim): outdent the lines by one unit
 	ActRepeat          // . (Vim): repeat the last change
 	ActRegisterPrefix  // "{reg} (Vim): name the register the next yank, delete or put uses
+	ActMarkSet         // m{a-z} (Vim): set a mark at the cursor
+	ActMarkLine        // '{a-z} (Vim): to the mark's line, first non-blank ('' the previous jump)
+	ActMarkExact       // `{a-z} (Vim): to the mark's exact place (`` the previous jump)
 
 	actMax // sentinel for validation
 )
@@ -396,6 +399,12 @@ func (a Action) String() string {
 		return "Repeat"
 	case ActRegisterPrefix:
 		return "RegisterPrefix"
+	case ActMarkSet:
+		return "MarkSet"
+	case ActMarkLine:
+		return "MarkLine"
+	case ActMarkExact:
+		return "MarkExact"
 	}
 	return fmt.Sprintf("Action(%d)", a)
 }
@@ -563,6 +572,12 @@ func (a Action) Description() string {
 		return "Repeat the last change"
 	case ActRegisterPrefix:
 		return "Name the register"
+	case ActMarkSet:
+		return "Set a mark"
+	case ActMarkLine:
+		return "Go to a mark's line"
+	case ActMarkExact:
+		return "Go to a mark"
 	}
 	return "Custom action"
 }
@@ -627,7 +642,7 @@ func actionModes(a Action) (normal, visual, insert bool) {
 		ActPageUp, ActPageDown:
 		return true, true, true
 	case ActGoBottom, ActGoPrefix, ActVisual, ActVisualLine, ActFindNext, ActFindPrev, ActCommandLine,
-		ActRegisterPrefix:
+		ActRegisterPrefix, ActMarkSet, ActMarkLine, ActMarkExact:
 		return true, true, false
 	case ActDeletePrefix, ActYankPrefix,
 		ActInsert, ActAppend, ActInsertLineStart, ActAppendLineEnd,
@@ -763,6 +778,9 @@ func VimKeymap() Keymap {
 	km[n('<')] = ActOutdentPrefix
 	km[n('.')] = ActRepeat
 	km[n('"')], km[v('"')] = ActRegisterPrefix, ActRegisterPrefix
+	km[n('m')], km[v('m')] = ActMarkSet, ActMarkSet
+	km[n('\'')], km[v('\'')] = ActMarkLine, ActMarkLine
+	km[n('`')], km[v('`')] = ActMarkExact, ActMarkExact
 	km[n('p')] = ActPasteAfter
 	km[n('P')] = ActPasteBefore
 	km[n('u')] = ActUndo

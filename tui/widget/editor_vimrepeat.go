@@ -51,7 +51,7 @@ func (c *EditorCore) commandPending() bool {
 func (c *EditorCore) opPending() bool {
 	k := &c.keys
 	return k.count != 0 || k.op != ActUnbound || k.pendingAct != ActUnbound || k.findArmed != ActUnbound ||
-		k.objArmed != "" || k.replArmed
+		k.objArmed != "" || k.replArmed || k.markArmed != ActUnbound
 }
 
 // dotStart begins recording a Normal-mode command when nothing is pending, before its first key.

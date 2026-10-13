@@ -50,6 +50,9 @@ type keyDispatch struct {
 	regArmed bool
 	reg      rune
 	regFresh bool
+	// markArmed is an m, ' or ` waiting for the mark's name (ActUnbound: none); a pending operator
+	// stays, for d'a.
+	markArmed Action
 
 	// Escape chord (Insert mode).
 	chord        []rune // exactly two runes, or nil = disabled

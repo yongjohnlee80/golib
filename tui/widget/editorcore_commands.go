@@ -254,6 +254,7 @@ func (c *EditorCore) goToLineNumber(n int) error {
 	if n < 0 || n > total {
 		return fmt.Errorf("line %d: the document has %d line%s", n, total, plural(total))
 	}
+	c.setJumpMark()
 	ln := max(n-1, 0)
 	col := 0
 	for _, cl := range c.buf.lineClusters(ln) {

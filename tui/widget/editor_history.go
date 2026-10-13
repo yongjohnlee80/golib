@@ -4,7 +4,7 @@ package widget
 func (c *EditorCore) snapshot() textSnap {
 	lines := make([]string, len(c.buf.lines))
 	copy(lines, c.buf.lines)
-	return textSnap{lines: lines, ln: c.buf.ln, col: c.buf.col, rev: c.rev}
+	return textSnap{lines: lines, ln: c.buf.ln, col: c.buf.col, rev: c.rev, marks: c.marks}
 }
 
 // beginGroup starts an undo group before an edit: every Normal-mode edit is one group; an
@@ -29,8 +29,11 @@ func (c *EditorCore) doRedo() {
 // restore resets the buffer content and cursor coordinates from a snapshot.
 func (c *EditorCore) restore(s textSnap) {
 	b := &c.buf
+	c.marks.apply(changedBlock(b.lines, s.lines))
 	b.lines = s.lines
 	b.touch(0)
+	b.takeEdits() // the snapshot is the text whole: what was logged since describes no edit of it
+	c.marks.restore(s.marks)
 	b.ln = max(0, min(s.ln, len(b.lines)-1))
 	b.col = s.col
 	b.anchor = nil
@@ -45,6 +48,7 @@ func (c *EditorCore) restore(s textSnap) {
 // lines changed, the cursor is revealed, and the change is published. Inside a Batch the
 // notification waits for the batch's end.
 func (c *EditorCore) edited() {
+	c.followEdits()
 	c.rev = c.newRevision()
 	if c.batch > 0 {
 		c.batchEdited = true
@@ -67,3 +71,23 @@ func (c *EditorCore) notifyEdited() {
 
 // WithUndo configures whether the editor maintains undo/redo history.
 func WithUndo(enabled bool) EditorOption { return WithCore(CoreUndo(enabled)) }
+
+// changedBlock is the splice an undo or a redo makes, as Vim's u_undoredo adjusts marks for it:
+// the lines between the texts' common first and last lines, replaced. Vim moves marks only when the
+// block's size changes, erasing those in it; a block of the same size keeps them, so then the
+// splice is empty.
+func changedBlock(from, to []string) lineEdit {
+	pre := 0
+	for pre < len(from) && pre < len(to) && from[pre] == to[pre] {
+		pre++
+	}
+	suf := 0
+	for suf < len(from)-pre && suf < len(to)-pre && from[len(from)-1-suf] == to[len(to)-1-suf] {
+		suf++
+	}
+	del, ins := len(from)-pre-suf, len(to)-pre-suf
+	if del == ins {
+		return lineEdit{}
+	}
+	return lineEdit{ln: pre, del: del, ins: ins}
+}

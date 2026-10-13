@@ -68,6 +68,7 @@ func (c *EditorCore) HandlePaste(text string) bool {
 		b.anchor = nil
 		b.lines = append(b.lines[:lo], append([]string{""}, b.lines[hi+1:]...)...)
 		b.touch(lo)
+		b.logSplice(lo+1, hi-lo, 0) // the first line stays, emptied, for the paste
 		b.ln, b.col = lo, 0
 		b.insertText(text)
 		c.clampNormal()
@@ -364,7 +365,7 @@ func (c *EditorCore) handleCommandKey(k tui.KeyEvent) bool {
 	if k.Code == tui.KeyEscape {
 		hadPending := c.commandPending()
 		c.keys.count, c.keys.pendingAct, c.keys.findArmed = 0, ActUnbound, ActUnbound
-		c.keys.regArmed, c.keys.reg = false, 0
+		c.keys.regArmed, c.keys.reg, c.keys.markArmed = false, 0, ActUnbound
 		c.keys.dropOp()
 		if c.keys.mode == ModeVisual || c.keys.mode == ModeVisualLine {
 			c.exitVisual()
@@ -430,6 +431,17 @@ func (c *EditorCore) handleCommandKey(k tui.KeyEvent) bool {
 			}
 			return true
 		}
+	}
+
+	// An armed m, ' or ` takes this key's text as the mark's name (' and ` too, for the previous
+	// jump); a key with no text cancels it, and an operator waiting on it, and is processed afresh.
+	if armed := c.keys.markArmed; armed != ActUnbound {
+		c.keys.markArmed = ActUnbound
+		if k.Text != "" && k.Mods&nonTextMods == 0 {
+			c.markKey(armed, []rune(k.Text)[0])
+			return true
+		}
+		c.keys.dropOp()
 	}
 
 	// An armed " takes this key's text as the register's name ("a, "A, "0, "+, "_); a key that
@@ -596,6 +608,9 @@ func (c *EditorCore) handleCommandKey(k tui.KeyEvent) bool {
 		case act == ActFindCharForward || act == ActFindCharBack || act == ActTillCharForward || act == ActTillCharBack:
 			c.keys.findArmed, c.keys.findCount = act, total
 			return true
+		case act == ActMarkLine || act == ActMarkExact: // d'a, y`a: the mark's name completes it
+			c.keys.markArmed = act
+			return true
 		case opMotion(act):
 			c.keys.dropOp()
 			c.opMotion(op, act, total, hadAny)
@@ -651,6 +666,9 @@ func (c *EditorCore) handleCommandKey(k tui.KeyEvent) bool {
 		return true
 	case ActRepeat:
 		c.repeatLast(hadCount, count)
+		return true
+	case ActMarkSet, ActMarkLine, ActMarkExact:
+		c.keys.markArmed = act // the next key's text names the mark
 		return true
 	case ActRegisterPrefix:
 		c.keys.regArmed = true
