@@ -148,3 +148,61 @@ func TestTerminalTabsOpenTheirOwnMenuForATab(t *testing.T) {
 		t.Fatalf("Enter on the strip opened no menu for %s:\n%s", a, h.tb.String())
 	}
 }
+
+// TestTerminalTabsPlusOpensTheAddMenu: SetAddMenu's rows open under + (a click on it, or + typed on
+// the focused strip), instead of the host's add callback; a chosen row runs with no tab. The strip's
+// spans name + and ≡ for its own menus, as for the host's callbacks.
+func TestTerminalTabsPlusOpensTheAddMenu(t *testing.T) {
+	tabs := NewTerminalTabs()
+	p1 := newResultProc()
+	defer close(p1.release)
+	addTestTerminal(t, tabs, "alpha", p1)
+	added, picked := 0, []TerminalTabID{"unset"}
+	tabs.SetActions(func() { added++ }, nil)
+	tabs.SetMenu(func(TerminalTabID) []MenuItemModel { return []MenuItemModel{NewCommand("x", "Tab row", nil)} })
+	tabs.SetAddMenu(func() []MenuItemModel {
+		return []MenuItemModel{NewCommand("claude", "Claude", TerminalTabsMenuAction{ID: "add.claude", Run: func(id TerminalTabID) { picked = []TerminalTabID{id} }})}
+	})
+	h := startAppInternal(t, NewOverlayHost(tabs), 40, 8)
+	defer h.stopInternal()
+	var spans []TabSpan
+	var plus int
+	h.onLoopInternal(func() { spans, plus = tabs.TabSpans(), tabs.addX() })
+	if len(spans) != 3 || spans[1].X != plus {
+		t.Fatalf("spans %v: want the tab, + at %d and ≡", spans, plus)
+	}
+	var open bool
+	menuOpen := func(want bool) bool {
+		for range 300 {
+			h.onLoopInternal(func() { open = tabs.MenuOpen() })
+			if open == want {
+				return true
+			}
+			time.Sleep(10 * time.Millisecond)
+		}
+		return false
+	}
+	if err := h.tb.Inject(tui.MouseEvent{Kind: tui.MousePress, Button: tui.MouseLeft, X: plus + 1, Y: 0}); err != nil {
+		t.Fatal(err)
+	}
+	if !menuOpen(true) {
+		t.Fatalf("a click on + opened no menu:\n%s", h.tb.String())
+	}
+	h.syncInternal()
+	if !strings.Contains(h.tb.String(), "Claude") {
+		t.Fatalf("the add menu shows no Claude:\n%s", h.tb.String())
+	}
+	if err := h.tb.Inject(tui.KeyEvent{Kind: tui.KeyPress, Code: tui.KeyEnter}); err != nil {
+		t.Fatal(err)
+	}
+	if !menuOpen(false) || len(picked) != 1 || picked[0] != "" || added != 0 {
+		t.Fatalf("Claude ran with %v (want no tab), the add callback %d times, the menu open %v", picked, added, open)
+	}
+	h.onLoopInternal(func() { tabs.Context().RequestFocus() })
+	if err := h.tb.Inject(tui.KeyEvent{Kind: tui.KeyPress, Text: "+"}); err != nil {
+		t.Fatal(err)
+	}
+	if !menuOpen(true) || added != 0 {
+		t.Fatalf("+ on the strip opened no add menu (the add callback %d times):\n%s", added, h.tb.String())
+	}
+}
