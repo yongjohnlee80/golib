@@ -501,11 +501,15 @@ func TestAnAsyncLocalSourceFollowsLinksToFolders(t *testing.T) {
 	// .., abs/, real/, rel/: the cursor starts on ..
 	for link, downs := range map[string]int{"abs": 1, "rel": 3} {
 		h.onLoop(func() { v.SetDir(root) })
-		// real/ is a row of the root's alone: its rows are in, not the last folder's
+		// real/ is a row of the root's alone: its rows are in, not the last folder's. Dir is the
+		// folder asked for while its listing is still on its way, and the first time round the
+		// rows on screen are already the root's: wait for the listing itself, or the keys below
+		// land on the old rows and the new ones put the cursor back on .. under them.
 		h.waitFor("the root listed", func() bool {
 			var dir string
 			h.onLoop(func() { dir = v.Dir() })
-			return dir == root && strings.Contains(h.grid(), "real/")
+			g := h.grid()
+			return dir == root && strings.Contains(g, "real/") && !strings.Contains(g, "loading…")
 		})
 		for range downs {
 			h.inject(key(tui.KeyDown))
