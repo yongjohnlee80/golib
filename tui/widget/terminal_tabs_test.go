@@ -321,6 +321,43 @@ func TestTerminalTabsKeyboardSelectionAndFailedStartAreExplicit(t *testing.T) {
 	})
 }
 
+func TestTerminalTabsDestroyedOwnerSuppressesLateExitAndChangeCallbacks(t *testing.T) {
+	tabs := NewTerminalTabs()
+	p := newResultProc()
+	exits, changes, beforeShutdown := 0, 0, 0
+	tabs.SetOnChanged(func() { changes++ })
+	id, _ := tabs.Add("owner", WithStarter(func(pty.Cmd) (TerminalProcess, error) { return p, nil }), WithOnExit(func(int) { exits++ }))
+	h := startAppInternal(t, tabs, 40, 8)
+	defer h.stopInternal()
+	var terminal *Terminal
+	var shutdown *TerminalShutdownResult
+	h.onLoopInternal(func() {
+		if err := tabs.Start(id); err != nil {
+			t.Error(err)
+		}
+		terminal = pickTerminal(tabs, id)
+		beforeShutdown = changes
+		// Exit is queued while this loop turn still runs. Destruction must
+		// invalidate the owner callbacks before that queued exit is delivered.
+		p.end()
+		shutdown = tabs.ShutdownWithResult()
+	})
+	awaitResultEvent(t, p.entered)
+	close(p.release)
+	pumpsGone(t, terminal) // the output reader has posted its exit to the loop
+	h.syncInternal()
+	h.onLoopInternal(func() {
+		if exits != 0 || changes != beforeShutdown {
+			t.Errorf("destroyed owner received callbacks: exits=%d changes=%d want=%d", exits, changes, beforeShutdown)
+		}
+	})
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	if err := shutdown.Wait(ctx); err != nil {
+		t.Fatal(err)
+	}
+}
+
 func (w *heldInputWriter) Write(b []byte) (int, error) {
 	w.once.Do(func() { close(w.entered) })
 	<-w.release
