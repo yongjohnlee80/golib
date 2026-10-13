@@ -433,7 +433,8 @@ func TestDialectNames_EngineDialectsIsDerived(t *testing.T) {
 // argument is the THIRD-PARTY DRIVER's database/sql registration name, owned
 // by go-sql-driver/mysql and modernc.org/sqlite. Its equality with two of our
 // dialect names is a coincidence, not a contract, so it must NOT be replaced
-// by a dao constant.
+// by a dao constant. A second, likewise named: highlight/sql's Markdown fence
+// labels, which are Markdown's vocabulary and not dao's.
 func TestDialectNames_NoStrayLiterals(t *testing.T) {
 	files := parseRepo(t, repoRootT(t))
 	consts := declaredDialectConsts(t, files)
@@ -557,6 +558,24 @@ func TestDialectNames_NoStrayLiterals(t *testing.T) {
 			"not exist:\n  %s", len(notLiteral), strings.Join(notLiteral, "\n  "))
 	}
 
+	// A second named exception: Markdown fence labels. highlight/sql names its
+	// dialects by the labels a fenced code block carries (```postgres,
+	// ```sqlite, ```mysql — the names GitHub Linguist gives them). Those are
+	// Markdown's vocabulary, not dao's: their equality with dialect names is
+	// a coincidence, and a dao constant there would tie a highlighter to a
+	// database layer it never uses. Named by file, function and value, and
+	// each must still be there exactly once, so the entry cannot go stale or
+	// cover anything else.
+	type labelKey struct {
+		site  siteKey
+		value string
+	}
+	fenceLabels := map[labelKey]int{
+		{siteKey{"highlight/sql/sql.go", "Definitions"}, "postgres"}: 0,
+		{siteKey{"highlight/sql/sql.go", "Definitions"}, "sqlite"}:   0,
+		{siteKey{"highlight/sql/sql.go", "Definitions"}, "mysql"}:    0,
+	}
+
 	var stray []string
 	for _, pf := range files {
 		if pf.rel == "dao/dialects.go" {
@@ -571,6 +590,11 @@ func TestDialectNames_NoStrayLiterals(t *testing.T) {
 			if err != nil || !isName[v] {
 				return true
 			}
+			key := labelKey{siteKey{pf.rel, enclosingFunc(pf.file, lit.Pos())}, v}
+			if _, exempt := fenceLabels[key]; exempt {
+				fenceLabels[key]++
+				return true
+			}
 			stray = append(stray, pf.rel+":"+strconv.Itoa(pf.fset.Position(lit.Pos()).Line)+
 				" "+lit.Value)
 			return true
@@ -582,6 +606,18 @@ func TestDialectNames_NoStrayLiterals(t *testing.T) {
 			"this is a third-party driver registration name, add it to the named exception "+
 			"in this test with the reason:\n  %s", len(stray), strings.Join(stray, "\n  "))
 	}
-	t.Logf("no stray engine-name literals; %d named driver-registration site(s) exempted, "+
-		"each verified to still pass a string literal", len(allowed))
+	var badLabels []string
+	for key, n := range fenceLabels {
+		if n != 1 {
+			badLabels = append(badLabels, key.site.file+" "+key.site.fn+"() "+strconv.Quote(key.value)+
+				" — fence-label exemption matched "+strconv.Itoa(n)+" times, want exactly 1")
+		}
+	}
+	sort.Strings(badLabels)
+	if len(badLabels) > 0 {
+		t.Errorf("%d fence-label exemption(s) are not exactly one literal:\n  %s",
+			len(badLabels), strings.Join(badLabels, "\n  "))
+	}
+	t.Logf("no stray engine-name literals; %d named driver-registration site(s) and %d fence "+
+		"label(s) exempted, each verified to still be there", len(allowed), len(fenceLabels))
 }
