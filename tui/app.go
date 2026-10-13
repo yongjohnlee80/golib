@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"runtime/debug"
 	"sync/atomic"
 	"time"
 
@@ -139,7 +140,13 @@ type App struct {
 	// or an Update — because the forbidden list was incomplete twice over:
 	// Init and any callback reached outside an Update both slipped through a
 	// Layout/Render-only check.
-	updateDepth    int
+	updateDepth int
+
+	// structural counts the tree changes in progress (mount, unmount); poisoned is that a panic
+	// left one part made. A handler boundary contains no panic while either holds
+	// (WithHandlerRecover): the tree may be half mounted.
+	structural     int
+	poisoned       bool
 	stoppingCalled bool // loop-owned; retirement callbacks run at most once
 
 	layingOut *node // the node whose Layout is executing (LayoutChild legality)
@@ -449,6 +456,10 @@ func (a *App) Run(ctx context.Context) (err error) {
 	// backend.Stop ALWAYS executes before the panic propagates.
 	defer func() {
 		rec := recover()
+		var stack []byte
+		if rec != nil {
+			stack = debug.Stack() // the panic's frames are still below this one
+		}
 		err = errors.Join(err, a.backend.Stop()) // restore ALWAYS
 		if rec != nil {
 			if a.cfg.panicPolicy == PanicRepanic {
@@ -459,7 +470,8 @@ func (a *App) Run(ctx context.Context) (err error) {
 			// rendering it into text. Written out by hand, the mistake is
 			// invisible: ErrPanic keeps answering errors.Is, so the error
 			// looks healthy while the payload is gone.
-			err = errors.Join(err, errs.Recovered(ErrPanic, rec, "tui: App.Run"))
+			// PanicError carries the stack for a crash report, and unwraps to a panicked error.
+			err = errors.Join(err, errs.Recovered(ErrPanic, &PanicError{Value: rec, Stack: stack}, "tui: App.Run"))
 		}
 	}()
 
@@ -556,6 +568,7 @@ func (a *App) drainProgramLane() {
 func (a *App) runUpdate(fn func()) {
 	a.updateDepth++
 	defer func() { a.updateDepth-- }()
+	defer a.contain("update", nil, nil)
 	fn()
 }
 

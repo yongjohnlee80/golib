@@ -187,6 +187,15 @@ func (b *Bus) deliver(v any) {
 		if s.cancelled.Load() {
 			continue
 		}
-		s.fn(v)
+		b.call(s, v)
 	}
+}
+
+// call delivers v to one subscriber, inside the bus's handler boundary (WithHandlerRecover): a
+// subscriber's panic is contained there, and the batch goes on to the next.
+func (b *Bus) call(s *subscription, v any) {
+	if b.app != nil {
+		defer b.app.contain("bus", nil, nil)
+	}
+	s.fn(v)
 }

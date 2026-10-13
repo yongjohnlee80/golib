@@ -39,6 +39,8 @@ type appConfig struct {
 	// panicPolicy determines how loop/handler panics are handled after restoring the terminal:
 	// PanicRepanic re-raises the panic, while PanicReturn converts it to an error wrapping ErrPanic.
 	panicPolicy PanicPolicy
+	// handlerRecover contains a handler's panic at its boundary (WithHandlerRecover); nil: off
+	handlerRecover func(HandlerPanic)
 
 	// inputQueueSize sets the channel buffer capacity for Lane-A hardware input events
 	// (keys, mouse, resize) pumped from the backend before dropping overflown events.

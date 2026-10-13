@@ -30,6 +30,9 @@ func (a *App) mount(parent *node, comp Component) *node {
 	if _, dup := a.byComp[comp]; dup {
 		panic(errs.Fatal{Op: "tui", Rule: fmt.Sprintf("component %T is already mounted; a component value mounts at most once", comp)})
 	}
+	// Checked; from here the tree changes, and a panic would leave it part made.
+	a.structural++
+	defer a.leaveStructural()
 
 	a.nextNodeID++ // monotonic, starts at 1; 0 reserved as "no node"; never reused
 	id := NodeID(a.nextNodeID)
@@ -116,6 +119,8 @@ func (a *App) unmountTree(n *node) {
 	if a.inLayout || a.inRender {
 		panic(errs.Fatal{Op: "tui", Rule: "tree mutation (Unmount) inside Layout/Render is illegal"})
 	}
+	a.structural++
+	defer a.leaveStructural()
 	focusedBefore := a.focused
 	parent := n.parent
 
