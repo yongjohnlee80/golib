@@ -25,6 +25,7 @@ func (c *EditorCore) HandleKey(k tui.KeyEvent) bool {
 	if c.dot.on && !c.dot.inInsert && !c.dot.replaying {
 		c.dot.atoms = append(c.dot.atoms, dotAtom{kind: dotKey, key: k})
 	}
+	c.macroKey(k)
 	handled := c.handleCommandKey(k)
 	c.settleRegister()
 	c.dotEnd()
@@ -51,6 +52,7 @@ func (c *EditorCore) HandlePaste(text string) bool {
 	if c.readOnly {
 		return true // a viewer never mutates (bracketed paste included)
 	}
+	c.macroAtom(dotAtom{kind: dotPasted, text: text})
 	b := &c.buf
 	c.settlePendingRune()
 	c.beginGroup()
@@ -228,6 +230,7 @@ func (c *EditorCore) handleInsertKey(k tui.KeyEvent) bool {
 				c.keys.chordCancel()
 				c.keys.chordCancel = nil
 			}
+			c.macroKey(tui.KeyEvent{Code: tui.KeyEscape}) // the chord is an Esc, to a macro
 			c.exitInsert()
 			return true
 		}
@@ -253,6 +256,7 @@ func (c *EditorCore) handleInsertKey(k tui.KeyEvent) bool {
 		tui.KeyLeft, tui.KeyRight, tui.KeyUp, tui.KeyDown, tui.KeyHome, tui.KeyEnd:
 		c.dotInsertKey(k) // replayed through this same handler: Enter re-runs auto-indent
 	case tui.KeyPageUp, tui.KeyPageDown:
+		c.macroKey(k)
 		c.dotJump() // a jump splits the change
 	}
 	switch k.Code {
@@ -264,6 +268,7 @@ func (c *EditorCore) handleInsertKey(k tui.KeyEvent) bool {
 		return true
 	case tui.KeyEscape:
 		if c.keys.modal {
+			c.macroKey(k)
 			c.exitInsert()
 			return true
 		}
@@ -365,7 +370,7 @@ func (c *EditorCore) handleCommandKey(k tui.KeyEvent) bool {
 	if k.Code == tui.KeyEscape {
 		hadPending := c.commandPending()
 		c.keys.count, c.keys.pendingAct, c.keys.findArmed = 0, ActUnbound, ActUnbound
-		c.keys.regArmed, c.keys.reg, c.keys.markArmed = false, 0, ActUnbound
+		c.keys.regArmed, c.keys.reg, c.keys.markArmed, c.keys.macroArmed = false, 0, ActUnbound, ActUnbound
 		c.keys.dropOp()
 		if c.keys.mode == ModeVisual || c.keys.mode == ModeVisualLine {
 			c.exitVisual()
@@ -442,6 +447,20 @@ func (c *EditorCore) handleCommandKey(k tui.KeyEvent) bool {
 			return true
 		}
 		c.keys.dropOp()
+	}
+
+	// An armed q or @ takes this key's text as the register's name; a key with none cancels it.
+	if armed := c.keys.macroArmed; armed != ActUnbound {
+		count := c.keys.macroCount
+		c.keys.macroArmed, c.keys.macroCount = ActUnbound, 0
+		if k.Text != "" && k.Mods&nonTextMods == 0 {
+			if name := []rune(k.Text)[0]; armed == ActMacroRecord {
+				c.macroRecordKey(name)
+			} else {
+				c.macroPlay(name, count)
+			}
+			return true
+		}
 	}
 
 	// An armed " takes this key's text as the register's name ("a, "A, "0, "+, "_); a key that
@@ -666,6 +685,16 @@ func (c *EditorCore) handleCommandKey(k tui.KeyEvent) bool {
 		return true
 	case ActRepeat:
 		c.repeatLast(hadCount, count)
+		return true
+	case ActMacroRecord, ActMacroPlay:
+		if c.readOnly {
+			return false // a viewer's q and @ are the host's: a macro could change nothing there
+		}
+		if act == ActMacroRecord && c.macro.reg != 0 {
+			c.macroStop()
+			return true
+		}
+		c.keys.macroArmed, c.keys.macroCount = act, count
 		return true
 	case ActMarkSet, ActMarkLine, ActMarkExact:
 		c.keys.markArmed = act // the next key's text names the mark

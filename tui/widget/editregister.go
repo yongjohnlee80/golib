@@ -15,10 +15,12 @@ import "unicode"
 // when no register was named. The unnamed register is whichever was written last, as Vim's
 // y_previous points at it.
 
-// regEntry is one register's content.
+// regEntry is one register's content. atoms is a recorded macro's (editor_vimmacros.go), kept
+// only while text is their encoding: every other write makes a new entry without them.
 type regEntry struct {
 	text     string
 	linewise bool
+	atoms    []dotAtom
 }
 
 // holds reports whether a put would insert anything: text, or an empty line-wise yank.
