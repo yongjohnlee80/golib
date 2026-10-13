@@ -4,6 +4,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"unicode/utf8"
 	"sync"
 	"testing"
 	"time"
@@ -155,15 +156,23 @@ func TestRetroLightsThePaneInUse(t *testing.T) {
 	folderWith(t, map[string]string{"a.txt": "A"})
 	r := startSized(t, "", 80, 24)
 	r.openOpen(t)
-	y := rowOf(r.rows(), "../")
-	x := r.labelAt(t, y, "../")
-	r.waitFor(t, "the focused cursor", func(string) bool { return r.cell(t, x, y).BG == cgaGreen })
+	// where ../ is, read on each try: the dialog's first frame can be drawn before it is centred
+	var x, y int
+	at := func(s string) bool {
+		rows := strings.Split(s, "\n")
+		if y = rowOf(rows, "../"); y < 0 {
+			return false
+		}
+		x = utf8.RuneCountInString(rows[y][:strings.Index(rows[y], "../")])
+		return true
+	}
+	r.waitFor(t, "the focused cursor", func(s string) bool { return at(s) && r.cell(t, x, y).BG == cgaGreen })
 	if c := r.cell(t, x+10, y); c.BG != cgaGreen {
 		t.Errorf("the cursor bar stops at the name: %+v", c)
 	}
 	r.key(t, tui.KeyEvent{Kind: tui.KeyPress, Code: tui.KeyTab})
 	grey := rgb(0x55, 0x55, 0x55)
-	r.waitFor(t, "the cursor to dim", func(string) bool { return r.cell(t, x, y).BG == grey })
+	r.waitFor(t, "the cursor to dim", func(s string) bool { return at(s) && r.cell(t, x, y).BG == grey })
 	if c := r.cell(t, x, y); c.FG != rgb(0x55, 0xff, 0xff) || c.Mask&tui.AttrReverse != 0 {
 		t.Errorf("the dimmed cursor is %+v, want cyan on grey", c)
 	}
