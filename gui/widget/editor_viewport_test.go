@@ -101,6 +101,18 @@ func TestPixelScrollLines(t *testing.T) {
 	if got != 0 || want != 0 {
 		t.Fatalf("up 1000, then 1: scroll %.1f, %.1f", got, want)
 	}
+	// a view scrolled past the text's end (the text shrank under it) is not pulled back up by a
+	// scroll down, nor pushed further down by a scroll up past its first line
+	h.onLoop(func() {
+		l := h.e.layout
+		l.scroll = l.total()
+		got = l.scroll
+		l.ScrollLines(1)
+		want = l.scroll
+	})
+	if got != want {
+		t.Fatalf("down from past the end: scroll %.1f, want it left at %.1f", want, got)
+	}
 }
 
 // In the Rendered view blocks are not a line a row: the range still follows the painted tops.
