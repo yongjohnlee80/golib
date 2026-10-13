@@ -629,6 +629,7 @@ func (c *EditorCore) setMode(m EditorMode) {
 		return
 	}
 	c.keys.mode = m
+	c.keys.findArmed, c.keys.findCount = ActUnbound, 0 // an f armed in one mode never completes in another
 	c.vEOL, c.vPinned = false, false
 	c.markDirty()
 	c.publish(ModeChangedEvent{Owner: c.nodeID(), Mode: m})
@@ -757,7 +758,10 @@ func (c *EditorCore) execAction(act Action, count int) bool {
 	// Motions.
 	case ActLeft, ActDown, ActUp, ActRight, ActLineStart, ActLineEnd,
 		ActWordForward, ActWordBack, ActWordEnd, ActParaForward, ActParaBack,
-		ActPageUp, ActPageDown:
+		ActPageUp, ActPageDown,
+		ActLineDownFirst, ActLineUpFirst, ActFirstNonBlank, ActLeftWrap,
+		ActFindCharRepeat, ActFindCharReverse, ActViewTop, ActViewMiddle, ActViewBottom,
+		ActWORDForward, ActWORDBack, ActWORDEnd, ActWordEndBack, ActWORDEndBack:
 		c.move(act, count)
 		return true
 

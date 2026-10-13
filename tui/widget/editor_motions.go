@@ -188,6 +188,39 @@ func (c *EditorCore) move(act Action, count int) {
 	case ActParaBack:
 		c.buf.desired = -1
 		apply(c.paraBack(count), 0)
+	case ActLineDownFirst:
+		c.toLine(c.buf.ln + count)
+	case ActLineUpFirst:
+		c.toLine(c.buf.ln - count)
+	case ActFirstNonBlank:
+		c.toLine(c.buf.ln)
+	case ActLeftWrap:
+		c.leftWrap(count)
+	case ActFindCharRepeat, ActFindCharReverse:
+		if f := c.keys.lastFind; f != nil {
+			g := *f
+			if act == ActFindCharReverse {
+				g.forward = !g.forward
+			}
+			c.findChar(g, count, true)
+		}
+	case ActViewTop, ActViewMiddle, ActViewBottom:
+		c.viewLine(act, count)
+	case ActWORDForward:
+		c.move(ActWordForward, count) // the Editor's words are whitespace-delimited: WORDs
+	case ActWORDBack:
+		c.move(ActWordBack, count)
+	case ActWORDEnd:
+		c.move(ActWordEnd, count)
+	case ActWordEndBack, ActWORDEndBack:
+		c.buf.desired = -1
+		for range count {
+			ln, col := c.wordEndBack()
+			c.buf.moveCursor(ln, col, false)
+		}
+		c.clampNormal()
+		c.reveal()
+		c.markDirty()
 	}
 }
 

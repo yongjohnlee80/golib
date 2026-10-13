@@ -190,6 +190,30 @@ const (
 	// one (SetCommandLine). Without one the key is not consumed.
 	ActCommandLine
 
+	// Vim line and character motions (Normal + Visual, count-prefixable): appended, so no
+	// earlier action's value moves.
+	ActLineDownFirst   // Enter and + (Vim): count lines down, to the first non-blank
+	ActLineUpFirst     // - (Vim): count lines up, to the first non-blank
+	ActFirstNonBlank   // ^ (Vim): the line's first non-blank
+	ActLeftWrap        // Backspace (Vim): left, onto the previous line's end
+	ActFindCharForward // f{char} (Vim): the countth {char} after the cursor on the line
+	ActFindCharBack    // F{char} (Vim): the countth {char} before the cursor on the line
+	ActTillCharForward // t{char} (Vim): just before the countth {char} after the cursor
+	ActTillCharBack    // T{char} (Vim): just after the countth {char} before the cursor
+	ActFindCharRepeat  // ; (Vim): the last f, F, t or T again
+	ActFindCharReverse // , (Vim): the last f, F, t or T, the other way
+	ActMatchPair       // % (Vim): the bracket matching the one at or after the cursor; N% goes to N% of the text
+	ActViewTop         // H (Vim): the countth line from the view's top
+	ActViewMiddle      // M (Vim): the view's middle line
+	ActViewBottom      // L (Vim): the countth line from the view's bottom
+	ActHalfPageDown    // Ctrl-d (Vim): half a page down, or count lines
+	ActHalfPageUp      // Ctrl-u (Vim): half a page up, or count lines
+	ActWORDForward     // W (Vim): the next whitespace-delimited WORD
+	ActWORDBack        // B (Vim): the previous WORD's start
+	ActWORDEnd         // E (Vim): the WORD's end
+	ActWordEndBack     // ge (Vim): back to the previous word's end
+	ActWORDEndBack     // gE (Vim): back to the previous WORD's end
+
 	actMax // sentinel for validation
 )
 
@@ -282,6 +306,48 @@ func (a Action) String() string {
 		return "FindPrev"
 	case ActCommandLine:
 		return "CommandLine"
+	case ActLineDownFirst:
+		return "LineDownFirst"
+	case ActLineUpFirst:
+		return "LineUpFirst"
+	case ActFirstNonBlank:
+		return "FirstNonBlank"
+	case ActLeftWrap:
+		return "LeftWrap"
+	case ActFindCharForward:
+		return "FindCharForward"
+	case ActFindCharBack:
+		return "FindCharBack"
+	case ActTillCharForward:
+		return "TillCharForward"
+	case ActTillCharBack:
+		return "TillCharBack"
+	case ActFindCharRepeat:
+		return "FindCharRepeat"
+	case ActFindCharReverse:
+		return "FindCharReverse"
+	case ActMatchPair:
+		return "MatchPair"
+	case ActViewTop:
+		return "ViewTop"
+	case ActViewMiddle:
+		return "ViewMiddle"
+	case ActViewBottom:
+		return "ViewBottom"
+	case ActHalfPageDown:
+		return "HalfPageDown"
+	case ActHalfPageUp:
+		return "HalfPageUp"
+	case ActWORDForward:
+		return "WORDForward"
+	case ActWORDBack:
+		return "WORDBack"
+	case ActWORDEnd:
+		return "WORDEnd"
+	case ActWordEndBack:
+		return "WordEndBack"
+	case ActWORDEndBack:
+		return "WORDEndBack"
 	}
 	return fmt.Sprintf("Action(%d)", a)
 }
@@ -375,6 +441,48 @@ func (a Action) Description() string {
 		return "Go to the find's previous match"
 	case ActCommandLine:
 		return "Open the command line"
+	case ActLineDownFirst:
+		return "Next line, first non-blank"
+	case ActLineUpFirst:
+		return "Previous line, first non-blank"
+	case ActFirstNonBlank:
+		return "First non-blank"
+	case ActLeftWrap:
+		return "Left, across lines"
+	case ActFindCharForward:
+		return "Find a character forward"
+	case ActFindCharBack:
+		return "Find a character back"
+	case ActTillCharForward:
+		return "Till a character forward"
+	case ActTillCharBack:
+		return "Till a character back"
+	case ActFindCharRepeat:
+		return "Repeat the character find"
+	case ActFindCharReverse:
+		return "Repeat the character find, reversed"
+	case ActMatchPair:
+		return "Matching bracket"
+	case ActViewTop:
+		return "Top of the view"
+	case ActViewMiddle:
+		return "Middle of the view"
+	case ActViewBottom:
+		return "Bottom of the view"
+	case ActHalfPageDown:
+		return "Half a page down"
+	case ActHalfPageUp:
+		return "Half a page up"
+	case ActWORDForward:
+		return "Next WORD"
+	case ActWORDBack:
+		return "Previous WORD"
+	case ActWORDEnd:
+		return "End of WORD"
+	case ActWordEndBack:
+		return "End of the previous word"
+	case ActWORDEndBack:
+		return "End of the previous WORD"
 	}
 	return "Custom action"
 }
@@ -519,6 +627,27 @@ func VimKeymap() Keymap {
 		mv(ch(tui.KeyPageUp), ActPageUp)
 		mv(ctrl('f'), ActPageDown)
 		mv(ch(tui.KeyPageDown), ActPageDown)
+		// line and character motions (Space stays the host's: AutoDoc's leader)
+		mv(ch(tui.KeyEnter), ActLineDownFirst)
+		mv(ch('+'), ActLineDownFirst)
+		mv(ch('-'), ActLineUpFirst)
+		mv(ch('^'), ActFirstNonBlank)
+		mv(ch(tui.KeyBackspace), ActLeftWrap)
+		mv(ch('f'), ActFindCharForward)
+		mv(ch('F'), ActFindCharBack)
+		mv(ch('t'), ActTillCharForward)
+		mv(ch('T'), ActTillCharBack)
+		mv(ch(';'), ActFindCharRepeat)
+		mv(ch(','), ActFindCharReverse)
+		mv(ch('%'), ActMatchPair)
+		mv(ch('H'), ActViewTop)
+		mv(ch('M'), ActViewMiddle)
+		mv(ch('L'), ActViewBottom)
+		mv(ctrl('d'), ActHalfPageDown)
+		mv(ctrl('u'), ActHalfPageUp)
+		mv(ch('W'), ActWORDForward)
+		mv(ch('B'), ActWORDBack)
+		mv(ch('E'), ActWORDEnd)
 	}
 
 	// Normal-only commands.

@@ -200,6 +200,7 @@ var (
 	_ tui.CursorReporter = (*Editor)(nil)
 	_ tui.CursorShaper   = (*Editor)(nil)
 	_ EditorLayout       = (*cellLayout)(nil)
+	_ EditorViewport     = (*cellLayout)(nil)
 )
 
 // Reveal scrolls (line, col) into the viewport.
@@ -207,6 +208,35 @@ func (l *cellLayout) Reveal(line, col int) { l.ed.reveal(line, col) }
 
 // PageLines is the viewport's height: a page.
 func (l *cellLayout) PageLines() int { return max(l.h, 1) }
+
+// VisibleLines is the lines from the top one to the last whose first row is in the view: the top
+// line always starts at the view's first row, so it is never partly off.
+func (l *cellLayout) VisibleLines() (first, last int) {
+	lines := l.ed.core.buf.lines
+	if l.h <= 0 {
+		return l.ed.core.buf.ln, l.ed.core.buf.ln
+	}
+	v := l.ed.view().settled(lines)
+	first = max(0, min(l.top, len(lines)-1))
+	last, rows := first, 0
+	for i := first; i < len(lines) && rows < l.h; i++ {
+		last = i
+		rows += wrapRowsOfLine(lines, i, v)
+	}
+	return first, last
+}
+
+// ScrollLines moves the top line by delta, down no further than the top that shows the last
+// line at the view's bottom.
+func (l *cellLayout) ScrollLines(delta int) {
+	lines := l.ed.core.buf.lines
+	if l.h <= 0 {
+		return
+	}
+	bottom := lowestTop(lines, 0, len(lines)-1, l.h, l.ed.view())
+	l.top = max(0, min(l.top+delta, max(bottom, l.top)))
+	l.ed.MarkDirty()
+}
 
 // Measure is s's width in cells, under the App's width policy.
 func (l *cellLayout) Measure(s string) int { return l.ed.width(s) }

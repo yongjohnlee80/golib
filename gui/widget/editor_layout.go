@@ -128,6 +128,67 @@ func (l *pixelLayout) scrollX(dx float32) bool {
 	return l.left != was
 }
 
+// VisibleLines is the lines whose top edge is in the view: a line's top is its caret's at column
+// 0, or its block's top when the block draws it no caret (a rendered block's hidden line).
+func (l *pixelLayout) VisibleLines() (first, last int) {
+	l.ensure()
+	cur := l.cursorLine()
+	if l.height <= 0 || len(l.blocks) == 0 {
+		return cur, cur
+	}
+	bottom := l.scroll + l.height - 2*padY
+	first, last, under := -1, -1, cur
+	var y float32
+	for i, b := range l.blocks {
+		if y >= bottom {
+			break
+		}
+		if y+l.heightOf(i) > l.scroll {
+			l.lay(i, nil) // its lines' tops, as painted
+			for line := b.From; line < b.To; line++ {
+				top := y
+				if r, ok := l.caretAt(line, 0); ok {
+					top = r.Y
+				}
+				if top <= l.scroll {
+					under = line // the line the view's top is in, so far
+				}
+				if top >= l.scroll && top < bottom {
+					if first < 0 {
+						first = line
+					}
+					last = line
+				}
+			}
+		}
+		y += l.heightOf(i)
+	}
+	if first < 0 {
+		return under, under
+	}
+	return first, last
+}
+
+// ScrollLines scrolls the view so the line delta lines from its first visible one is at its top,
+// within the text, and never against delta's direction.
+func (l *pixelLayout) ScrollLines(delta int) {
+	if l.height <= 0 {
+		return
+	}
+	first, _ := l.VisibleLines()
+	target := max(0, min(first+delta, l.e.core.LineCount()-1))
+	y := l.topOf(l.blockOf(target))
+	if r, ok := l.caretAt(target, 0); ok {
+		y = r.Y
+	}
+	was := l.scroll
+	l.scroll = max(min(y, l.total()-(l.height-2*padY)), 0)
+	if delta > 0 && l.scroll < was || delta < 0 && l.scroll > was {
+		l.scroll = was
+	}
+	l.e.body.MarkDirty()
+}
+
 // PageLines is how many lines of the text font fit the view.
 func (l *pixelLayout) PageLines() int {
 	return max(int(l.height/l.lineHeight(l.monoFont())), 1)

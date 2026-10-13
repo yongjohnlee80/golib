@@ -28,6 +28,11 @@ type keyDispatch struct {
 	pendingAct   Action   // pending double-key prefix action; ActUnbound = none
 	pendingChord KeyChord // the chord that armed it (completion = same chord)
 	pendingCount int      // count captured when the prefix was armed
+	// findArmed is an f, F, t or T waiting for its character; findCount its count. lastFind is the
+	// last one completed, which ; and , repeat (a mode change keeps it, as in Vim).
+	findArmed Action
+	findCount int
+	lastFind  *charFind
 
 	// Escape chord (Insert mode).
 	chord        []rune // exactly two runes, or nil = disabled
@@ -114,6 +119,7 @@ func (k *keyDispatch) chordsFor(act Action) []KeyChord {
 func (k *keyDispatch) dropPending() {
 	k.count, k.pendingCount = 0, 0
 	k.pendingAct, k.pendingChord = ActUnbound, KeyChord{}
+	k.findArmed, k.findCount = ActUnbound, 0
 }
 
 // takeRune is the escape chord's held first rune, cleared with its timer; ok is false with none.

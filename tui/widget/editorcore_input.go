@@ -337,8 +337,8 @@ func (c *EditorCore) handleCommandKey(k tui.KeyEvent) bool {
 	ctrl := k.Mods&tui.ModCtrl != 0
 
 	if k.Code == tui.KeyEscape {
-		hadPending := c.keys.count != 0 || c.keys.pendingAct != ActUnbound
-		c.keys.count, c.keys.pendingAct = 0, ActUnbound
+		hadPending := c.keys.count != 0 || c.keys.pendingAct != ActUnbound || c.keys.findArmed != ActUnbound
+		c.keys.count, c.keys.pendingAct, c.keys.findArmed = 0, ActUnbound, ActUnbound
 		if c.keys.mode == ModeVisual || c.keys.mode == ModeVisualLine {
 			c.exitVisual()
 			return true
@@ -347,6 +347,20 @@ func (c *EditorCore) handleCommandKey(k tui.KeyEvent) bool {
 		// there is one. Otherwise it is a vim no-op, so it BUBBLES: consuming it made an Editor
 		// inside a modal float undismissable, since the host never saw the key.
 		return hadPending || c.escapeFind()
+	}
+
+	// An armed f, F, t or T takes this key's text as its character, whatever it is (a digit or a
+	// space included): the typed cluster, never the code. A key with no text, or one with a command
+	// modifier, cancels the find and is processed afresh.
+	if armed := c.keys.findArmed; armed != ActUnbound {
+		count := c.keys.findCount
+		c.keys.findArmed, c.keys.findCount = ActUnbound, 0
+		if k.Text != "" && k.Mods&nonTextMods == 0 {
+			f := charFindOf(armed, firstCluster(k.Text))
+			c.keys.lastFind = &f
+			c.findChar(f, count, false)
+			return true
+		}
 	}
 
 	// Count accumulation: 1-9 always; 0 only extends an existing count. Clamp BEFORE assignment
@@ -414,6 +428,11 @@ func (c *EditorCore) handleCommandKey(k tui.KeyEvent) bool {
 			}
 			return true
 		}
+		// the g prefix's other second keys: ge and gE, back to the end of the previous word
+		if act == ActGoPrefix && !kc.Ctrl && (kc.Code == 'e' || kc.Code == 'E') {
+			c.move(ActWordEndBack, count)
+			return true
+		}
 		// Fall through: reprocess this key from scratch (count consumed).
 	}
 
@@ -441,6 +460,21 @@ func (c *EditorCore) handleCommandKey(k tui.KeyEvent) bool {
 		return true
 	case ActGoBottom:
 		c.goToLine(hadCount, count, true) // [count]G
+		return true
+	case ActFindCharForward, ActFindCharBack, ActTillCharForward, ActTillCharBack:
+		c.keys.findArmed, c.keys.findCount = act, count // the next key's text completes it
+		return true
+	case ActMatchPair:
+		c.hist.close()
+		if hadCount {
+			c.percentLine(count) // N%
+		} else {
+			c.matchPair()
+		}
+		return true
+	case ActHalfPageDown, ActHalfPageUp:
+		c.hist.close()
+		c.halfPage(act == ActHalfPageDown, hadCount, count)
 		return true
 	}
 	return c.execAction(act, count)
