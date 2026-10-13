@@ -206,6 +206,8 @@ func newFileOpenView(cfg fileViewConfig, dirOpts ...FileListOption) *FileOpenVie
 			onDir(rooted)
 		}
 	}
+	// a source read on the loop was listed while the list was built, before the field followed it
+	v.path.follow(v.list.Source().Rooted(v.list.Dir()))
 	above := append(append([]tui.Component(nil), cfg.fields...), v.path.pane)
 	if cfg.filter {
 		inputOpts := []TextInputOption{WithOnEdit(func(text string) { v.list.SetFilter(text) })}
@@ -483,7 +485,10 @@ func (v *FileOpenView) SetSource(src FileSource) {
 	v.list.SetSource(v.cfg.src)
 }
 
-func (v *FileOpenView) Dir() string          { return v.list.Source().Rooted(v.list.Dir()) }
+func (v *FileOpenView) Dir() string { return v.list.Source().Rooted(v.list.Dir()) }
+
+// Path is what the path field holds: the folder listed, or what was typed there since.
+func (v *FileOpenView) Path() string         { return v.path.input.Value() }
 func (v *FileOpenView) SetDir(rooted string) { v.list.SetDir(rooted) }
 func (v *FileOpenView) FocusInitial()        { v.list.Focus() }
 
@@ -1026,7 +1031,7 @@ func (v *FileFolderView) FocusInitial() {
 }
 
 // Path is what the path field holds.
-func (v *FileFolderView) Path() string { return v.field().input.Value() }
+func (v *FileFolderView) Path() string { return v.listing.Path() }
 
 // SetPreviewHighlighting highlights the preview: see [FileOpenView].
 func (v *FileFolderView) SetPreviewHighlighting(forFile func(name string) highlight.Highlighter, styles SyntaxStyles) {

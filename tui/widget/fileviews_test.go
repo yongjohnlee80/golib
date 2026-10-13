@@ -202,8 +202,9 @@ func TestASaveBrowserNamesTheFile(t *testing.T) {
 	if chosen.Load() != 1 || sel != filepath.Join(root, "new.md") {
 		t.Fatalf("chosen %d, Selected %q", chosen.Load(), sel)
 	}
-	// Moving onto a file in the list names it.
-	h.inject(tab(), key(tui.KeyDown), key(tui.KeyDown))
+	// Moving onto a file in the list names it. Tab goes from the name to the path field above
+	// the list, then to the list.
+	h.inject(tab(), tab(), key(tui.KeyDown), key(tui.KeyDown))
 	h.settle()
 	h.onLoop(func() { sel = b.Selected() })
 	if sel != filepath.Join(root, "old.txt") {
@@ -265,7 +266,10 @@ func TestThePreviewIsOptional(t *testing.T) {
 		{"save, preview on", widget.NewFileSaveView(widget.WithFileViewDir(root), widget.WithFileViewPreview(true)), true},
 	} {
 		h := startBrowser(t, c.view)
-		h.inject(tab(), key(tui.KeyDown), key(tui.KeyDown)) // a.txt, from the name field or the list
+		if _, save := c.view.(*widget.FileSaveView); save {
+			h.inject(tab(), tab()) // from the name field, past the path field, to the list
+		}
+		h.inject(key(tui.KeyDown), key(tui.KeyDown)) // a.txt
 		h.settle()
 		if c.want {
 			h.shows("alpha body")

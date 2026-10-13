@@ -1,0 +1,235 @@
+package widget_test
+
+import (
+	"os"
+	"path/filepath"
+	"sync/atomic"
+	"testing"
+
+	"github.com/yongjohnlee80/golib/tui"
+	"github.com/yongjohnlee80/golib/tui/widget"
+)
+
+// typePath clears the path field, which has the keyboard, types s and presses Enter.
+func typePath(h *harness, s string) {
+	h.inject(keyMod('u', tui.ModCtrl))
+	for _, r := range s {
+		h.inject(key(r))
+	}
+	h.inject(key(tui.KeyEnter))
+}
+
+func dirIs(h *harness, v widget.FileChooser, want string) func() bool {
+	return func() bool {
+		var d string
+		h.onLoop(func() { d = v.Dir() })
+		return d == want
+	}
+}
+
+func hintIs(h *harness, v interface{ HintMessage() tui.Message }, want string) bool {
+	var m tui.Message
+	h.onLoop(func() { m = v.HintMessage() })
+	return m == tui.Msg(want)
+}
+
+// In the Open view, Ctrl+k from the list reaches the path field, which holds the folder listed.
+// A folder typed there is listed, absolute or relative; a file is chosen; a path that is not
+// there, or a ~ the source has no Home for, says so in the field's title and the listing stays.
+func TestTheOpenViewsPathFieldGoesWhereTyped(t *testing.T) {
+	root := tree(t, map[string]string{"deep/down/n.md": "deep note", "sub/s.md": "sub note", "top.md": "top"})
+	var chosen atomic.Int32
+	v := widget.NewFileOpenView(widget.WithFileViewSource(widget.FileSource{FS: os.DirFS("/"), Root: "/"}),
+		widget.WithFileViewDir(root), widget.WithOnChoose(func() { chosen.Add(1) }))
+	h := startBrowser(t, v)
+	defer h.stop()
+	h.shows("top.md")
+	h.wantContains("┌ Path ")
+
+	h.inject(keyMod('k', tui.ModCtrl))
+	if !hintIs(h, v, "tui.files.hint.path") {
+		t.Fatal("Ctrl+k from the list did not reach the path field")
+	}
+	typePath(h, filepath.Join(root, "deep", "down"))
+	h.waitFor("deep/down listed", dirIs(h, v, filepath.Join(root, "deep", "down")))
+	h.shows("n.md")
+	if !hintIs(h, v, "tui.files.hint.openList") {
+		t.Error("a folder typed: the keyboard did not go back to the list")
+	}
+
+	h.inject(keyMod('k', tui.ModCtrl))
+	typePath(h, "../../sub")
+	h.waitFor("a relative path listed", dirIs(h, v, filepath.Join(root, "sub")))
+
+	h.inject(keyMod('k', tui.ModCtrl))
+	typePath(h, "nothing-here")
+	h.shows("Path — not found")
+	h.inject(keyMod('k', tui.ModCtrl)) // already there
+	typePath(h, "~/x")
+	h.shows("Path — ~ is not known here")
+	var dir string
+	h.onLoop(func() { dir = v.Dir() })
+	if dir != filepath.Join(root, "sub") || chosen.Load() != 0 {
+		t.Fatalf("after two refusals: Dir %q, chosen %d", dir, chosen.Load())
+	}
+
+	typePath(h, filepath.Join(root, "top.md"))
+	h.waitFor("the file chosen", func() bool { return chosen.Load() == 1 })
+	var sel string
+	h.onLoop(func() { sel = v.Selected() })
+	if sel != filepath.Join(root, "top.md") {
+		t.Fatalf("a typed file chosen: Selected %q", sel)
+	}
+	h.waitFor("its folder listed", dirIs(h, v, root))
+}
+
+// ~ typed in the list opens the path field with ~/ written; ~ is the source's Home. Esc in the
+// field puts back the folder listed and gives the keyboard back to the list.
+func TestTildeOpensThePathFieldAndEscRestoresIt(t *testing.T) {
+	root := tree(t, map[string]string{"notes/a.md": "a", "z.md": "z"})
+	v := widget.NewFileFolderView(widget.WithFileViewSource(widget.FileSource{FS: os.DirFS("/"), Root: "/", Home: root}),
+		widget.WithFileViewDir(root))
+	h := startBrowser(t, v)
+	defer h.stop()
+	h.shows("z.md")
+
+	h.inject(key('~'))
+	var p string
+	h.onLoop(func() { p = v.Path() })
+	if p != "~/" || !hintIs(h, v, "tui.files.hint.folderPath") {
+		t.Fatalf("~ in the list: path %q, the field not focused", p)
+	}
+	h.inject(key('n'), key('o'), key('t'), key('e'), key('s'), key(tui.KeyEnter))
+	h.waitFor("~/notes listed", dirIs(h, v, filepath.Join(root, "notes")))
+	h.shows("a.md")
+
+	h.inject(keyMod('k', tui.ModCtrl), key('x'), key('y'))
+	h.onLoop(func() { p = v.Path() })
+	if p != filepath.Join(root, "notes")+"xy" {
+		t.Fatalf("typed: path %q", p)
+	}
+	h.inject(key(tui.KeyEscape))
+	h.onLoop(func() { p = v.Path() })
+	if p != filepath.Join(root, "notes") || !hintIs(h, v, "tui.files.hint.listPart") {
+		t.Fatalf("Esc: path %q, list focused %v", p, hintIs(h, v, "tui.files.hint.listPart"))
+	}
+	var d string
+	h.onLoop(func() { d = v.Dir() })
+	if d != filepath.Join(root, "notes") {
+		t.Fatalf("Esc went somewhere: Dir %q", d)
+	}
+}
+
+// In the Folder view, a file typed is not a folder and a path that is not there is not found; a
+// folder is listed (as before).
+func TestTheFolderViewsFieldSaysWhatATypedPathIs(t *testing.T) {
+	root := tree(t, map[string]string{"in/f.md": "f"})
+	v := widget.NewFileFolderView(widget.WithFileViewDir(root))
+	h := startBrowser(t, v)
+	defer h.stop()
+	h.shows("in/")
+	h.inject(keyMod('k', tui.ModCtrl))
+	typePath(h, "in/f.md")
+	h.shows("Folder — not a folder")
+	typePath(h, "missing")
+	h.shows("Folder — not found")
+	typePath(h, "in")
+	h.waitFor("in listed", dirIs(h, v, filepath.Join(root, "in")))
+	h.wantNotContains("not found")
+}
+
+// In the Save view, a typed path never saves: a file, or a new name in a folder that is there,
+// lists its folder, fills the name and gives the name the keyboard; a folder is listed with the
+// name kept; a path whose folder is not there is refused.
+func TestTheSaveViewsPathFieldNamesTheTarget(t *testing.T) {
+	root := tree(t, map[string]string{"docs/old.md": "old", "here.md": "here"})
+	var chosen atomic.Int32
+	v := widget.NewFileSaveView(widget.WithFileViewSource(widget.FileSource{FS: os.DirFS("/"), Root: "/"}),
+		widget.WithFileViewDir(root), widget.WithOnChoose(func() { chosen.Add(1) }))
+	h := startBrowser(t, v) // the name field has the keyboard
+	defer h.stop()
+	h.shows("here.md")
+	nameIs := func(want string) bool {
+		var n string
+		h.onLoop(func() { n = v.Name() })
+		return n == want
+	}
+	toPath := func() { h.inject(tab()) } // the name, then the path field
+
+	h.onLoop(func() { v.SetName("kept.md") })
+	toPath()
+	typePath(h, "docs")
+	h.waitFor("docs listed", dirIs(h, v, filepath.Join(root, "docs")))
+	if !nameIs("kept.md") || !hintIs(h, v, "tui.files.hint.saveName") {
+		t.Fatal("a folder typed: the name was not kept, or the name lost the keyboard")
+	}
+
+	toPath()
+	typePath(h, filepath.Join(root, "docs", "old.md"))
+	h.waitFor("old.md named", func() bool { return nameIs("old.md") })
+	h.inject(key('x')) // the name has the keyboard: it is typed into, not saved
+	if !nameIs("old.mdx") || chosen.Load() != 0 {
+		t.Fatalf("a typed file: name not focused, or saved (chosen %d)", chosen.Load())
+	}
+
+	toPath()
+	typePath(h, filepath.Join(root, "new.md"))
+	h.waitFor("the root listed", dirIs(h, v, root))
+	h.waitFor("new.md named", func() bool { return nameIs("new.md") })
+	var sel string
+	h.onLoop(func() { sel = v.Selected() })
+	if sel != filepath.Join(root, "new.md") || chosen.Load() != 0 {
+		t.Fatalf("a new name typed: Selected %q, chosen %d", sel, chosen.Load())
+	}
+
+	toPath()
+	typePath(h, filepath.Join(root, "nowhere", "x.md"))
+	h.shows("Path — its folder does not exist")
+	if !nameIs("new.md") {
+		t.Fatal("a refused path changed the name")
+	}
+	if _, err := os.Stat(filepath.Join(root, "nowhere")); err == nil {
+		t.Fatal("the missing folder was made")
+	}
+}
+
+// Of an async source, what a typed path names is found off the loop: nothing moves while the
+// check is held, and an edit to the field before its answer drops it.
+func TestThePathFieldChecksAnAsyncSourceOffTheLoop(t *testing.T) {
+	d := newGatedDir(vfsFiles)
+	d.g.release("dir:.")
+	d.g.release("dir:a")
+	d.g.release("dir:b")
+	v := widget.NewFileOpenView(widget.WithFileViewSource(widget.FileSource{FS: d, Root: "mem://", Async: true}),
+		widget.WithFileViewDir("mem://"), widget.WithFileViewPreview(false))
+	h := startBrowser(t, v)
+	defer h.stop()
+	h.shows("top.txt")
+
+	h.inject(keyMod('k', tui.ModCtrl))
+	typePath(h, "a")
+	h.waitFor("a's check held", func() bool { return d.stats.Load() >= 1 })
+	h.inject(key('x'))
+	h.waitFor("the x typed", func() bool {
+		var p string
+		h.onLoop(func() { p = v.Path() })
+		return p == "ax"
+	})
+	d.g.release("stat:a")
+	h.settle()
+	var dir string
+	h.onLoop(func() { dir = v.Dir() })
+	if dir != "mem://" {
+		t.Fatalf("an edit did not drop the check: Dir %q", dir)
+	}
+
+	typePath(h, "b")
+	h.waitFor("b's check held", func() bool { return d.stats.Load() >= 2 })
+	h.onLoop(func() { dir = v.Dir() })
+	if dir != "mem://" {
+		t.Fatalf("moved before the check's answer: Dir %q", dir)
+	}
+	d.g.release("stat:b")
+	h.waitFor("b listed", dirIs(h, v, "mem://b"))
+	h.shows("notes.md")
+}

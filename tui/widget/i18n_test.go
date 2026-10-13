@@ -254,14 +254,14 @@ func TestFileViews_HintsAndNotesFollowTheLanguage(t *testing.T) {
 	defer h.stop()
 	var hint string
 	h.onLoop(func() { hint = v.Hint() })
-	if hint != "↑↓:move  Enter:open folder, or open file  Tab:next  Esc:cancel" {
+	if hint != "↑↓:move  Enter:open folder, or open file  Ctrl+k ~:path  Tab:next  Esc:cancel" {
 		t.Errorf("English hint = %q, unchanged from the literal it replaces", hint)
 	}
 	h.shows("Preview")
 	h.app.SetLanguage("ko_KR")
 	h.shows("미리 보기")
 	h.onLoop(func() { hint = v.Hint() })
-	if hint != "↑↓:이동  Enter:폴더 또는 파일 열기  Tab:다음  Esc:취소" {
+	if hint != "↑↓:이동  Enter:폴더 또는 파일 열기  Ctrl+k ~:경로  Tab:다음  Esc:취소" {
 		t.Errorf("Korean hint = %q", hint)
 	}
 	var msg tui.Message
