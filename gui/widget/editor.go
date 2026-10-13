@@ -312,7 +312,9 @@ func (e *Editor) SetContextMenuRows(build func(c *tuiwidget.EditorCore) []tuiwid
 // SetKeyset changes the editing profile (Vim, Nano, Standard).
 func (e *Editor) SetKeyset(ks tuiwidget.Keyset) { e.core.SetKeyset(ks); e.body.MarkDirty() }
 
-// SetReadOnly makes the editor a viewer: motions and yank only.
+// SetReadOnly makes the editor a viewer: motions and yank only. In Rendered mode a
+// viewer renders every block, the cursor's row included — nothing is edited, so no
+// row needs its source at hand.
 func (e *Editor) SetReadOnly(v bool) { e.core.SetReadOnly(v); e.body.MarkDirty() }
 
 // SetValue replaces the text, as a load does, and scrolls to its top.
