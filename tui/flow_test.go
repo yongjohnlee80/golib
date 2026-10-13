@@ -150,12 +150,13 @@ func TestAFlowsSpacingChangesLive(t *testing.T) {
 	FailOnViolations(t, h.tb)
 }
 
-func TestANegativeFlowSpacingPanics(t *testing.T) {
+// A negative spacing is none: a Flow's gap is never less than touching.
+func TestANegativeFlowSpacingIsNone(t *testing.T) {
 	t.Parallel()
-	defer func() {
-		if recover() == nil {
-			t.Error("SetSpacing(-1) did not panic")
-		}
-	}()
-	NewFlow().SetSpacing(-1)
+	f := NewFlow()
+	f.SetSpacing(2)
+	f.SetSpacing(-3)
+	if f.Spacing() != 0 || f.RowSpacing() != 0 {
+		t.Errorf("spacing %d, row spacing %d after SetSpacing(-3); want 0 and 0", f.Spacing(), f.RowSpacing())
+	}
 }

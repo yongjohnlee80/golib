@@ -1,7 +1,5 @@
 package tui
 
-import "fmt"
-
 // Flow is Qt's Flow: children laid left to right, each at its own size, wrapping to a new line
 // when the next one would pass the right edge. A row of buttons in a narrow panel stays whole
 // instead of being clipped: one line when there is room, as many as it needs when there is not.
@@ -36,11 +34,9 @@ func NewFlow() *Flow {
 func (f *Flow) Spacing() int { return f.spacing }
 
 // SetSpacing sets the gap between two children on a line, and between lines while RowSpacing
-// follows it. A negative gap panics.
+// follows it. A negative gap is none.
 func (f *Flow) SetSpacing(n int) {
-	if n < 0 {
-		panic(fmt.Sprintf("tui: Flow.SetSpacing: spacing must be >= 0 (got %d)", n))
-	}
+	n = max(n, 0)
 	if f.spacing != n {
 		f.spacing = n
 		f.relayout()
