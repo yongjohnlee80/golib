@@ -59,6 +59,10 @@ type terminalConfig struct {
 	onTitle     func(string)
 	onMode      func(TerminalMode)
 	start       func(pty.Cmd) (TerminalProcess, error)
+	// look set at construction (WithMinimumContrast, WithCursorColor); the setters change it later
+	minContrast   float64
+	cursorColor   style.Color
+	cursorColored bool
 }
 
 // WithCommand is the program to run; the default is $SHELL, else /bin/sh.
@@ -101,6 +105,16 @@ func WithOnTitle(fn func(string)) TerminalOption { return func(c *terminalConfig
 // WithOnMode is called on the UI loop when the mode changes.
 func WithOnMode(fn func(TerminalMode)) TerminalOption {
 	return func(c *terminalConfig) { c.onMode = fn }
+}
+
+// WithMinimumContrast is SetMinimumContrast at construction: a TerminalTabs tab's own look.
+func WithMinimumContrast(ratio float64) TerminalOption {
+	return func(c *terminalConfig) { c.minContrast = ratio }
+}
+
+// WithCursorColor is SetCursorColor at construction: a TerminalTabs tab's own look.
+func WithCursorColor(col style.Color) TerminalOption {
+	return func(c *terminalConfig) { c.cursorColor, c.cursorColored = col, true }
 }
 
 // WithStarter replaces how the program is started: a host can run it
@@ -173,7 +187,8 @@ func NewTerminal(opts ...TerminalOption) *Terminal {
 	if cfg.start == nil {
 		cfg.start = func(c pty.Cmd) (TerminalProcess, error) { return pty.Start(c) }
 	}
-	t := &Terminal{cfg: cfg, rows: 24, cols: 80}
+	t := &Terminal{cfg: cfg, rows: 24, cols: 80, minContrast: cfg.minContrast,
+		cursorColor: cfg.cursorColor, cursorColored: cfg.cursorColored}
 	t.scr = t.newScreen()
 	return t
 }

@@ -50,6 +50,11 @@ var terminalTabsType = Type{
 			return strValue(string(c.(*widget.TerminalTabs).Active())), nil
 		},
 	},
+	Setters: map[string]Setter{
+		"emptyText":       setter("a TerminalTabs", stringOf, (*widget.TerminalTabs).SetEmptyText),
+		"minimumContrast": setter("a TerminalTabs", numberOf, (*widget.TerminalTabs).SetMinimumContrast),
+		"cursorColor":     setter("a TerminalTabs", colorOf, (*widget.TerminalTabs).SetCursorColor),
+	},
 	Signals:   map[string][]string{"addRequested": {}, "menuRequested": {"id"}, "changed": {}},
 	Destroyed: func(c tui.Component) { c.(*widget.TerminalTabs).ShutdownWithResult() },
 }

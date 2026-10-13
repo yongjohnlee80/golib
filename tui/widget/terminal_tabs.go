@@ -1,6 +1,7 @@
 package widget
 
 import (
+	"cmp"
 	"context"
 	"errors"
 	"fmt"
@@ -71,13 +72,19 @@ type TerminalTabs struct {
 	active             TerminalTabID
 	bar, tab, selected style.Style
 	look               style.Style
-	onAdd              func()
-	onMenu             func(TerminalTabID)
-	onChanged          func()
-	mu                 sync.Mutex // lifetime registry and shutdown only; never loop-owned entries
-	owned              []*Terminal
-	shutdown           *TerminalShutdownResult
-	watching           bool
+	empty              string // the body with no tab; "" is the default message
+	// the look every tab takes (SetMinimumContrast, SetCursorColor): set, it overrides a tab's own
+	minContrast   float64
+	contrastSet   bool
+	cursorColor   style.Color
+	cursorColored bool
+	onAdd         func()
+	onMenu        func(TerminalTabID)
+	onChanged     func()
+	mu            sync.Mutex // lifetime registry and shutdown only; never loop-owned entries
+	owned         []*Terminal
+	shutdown      *TerminalShutdownResult
+	watching      bool
 }
 
 // NewTerminalTabs creates a valid empty terminal container.
@@ -125,6 +132,7 @@ func (t *TerminalTabs) Add(label string, options ...TerminalOption) (TerminalTab
 	terminal.cfg.args = append([]string(nil), terminal.cfg.args...)
 	terminal.cfg.env = append([]string(nil), terminal.cfg.env...)
 	terminal.SetDefaultLook(t.look)
+	t.lookTab(terminal)
 	onExit, onTitle := terminal.cfg.onExit, terminal.cfg.onTitle
 	terminal.cfg.onExit = func(code int) {
 		if t.shuttingDown() {
@@ -162,6 +170,56 @@ func (t *TerminalTabs) Add(label string, options ...TerminalOption) (TerminalTab
 	}
 	t.changed()
 	return id, nil
+}
+
+// SetLabel renames tab id: the strip shows label (an agent's codename, a shell's host).
+func (t *TerminalTabs) SetLabel(id TerminalTabID, label string) error {
+	e, err := t.find(id)
+	if err != nil {
+		return err
+	}
+	if e.label != label {
+		e.label = label
+		t.changed()
+	}
+	return nil
+}
+
+// SetEmptyText is what the body says with no tab ("" is "No terminals. Use + to add one."): an
+// agents panel's "No agent running", say.
+func (t *TerminalTabs) SetEmptyText(s string) {
+	if t.empty != s {
+		t.empty = s
+		t.MarkDirty()
+	}
+}
+
+// SetMinimumContrast gives every tab, those added later too, Terminal.SetMinimumContrast's ratio.
+func (t *TerminalTabs) SetMinimumContrast(ratio float64) {
+	t.minContrast, t.contrastSet = ratio, true
+	t.lookTabs()
+}
+
+// SetCursorColor gives every tab, those added later too, Terminal.SetCursorColor's colour.
+func (t *TerminalTabs) SetCursorColor(c style.Color) {
+	t.cursorColor, t.cursorColored = c, true
+	t.lookTabs()
+}
+
+func (t *TerminalTabs) lookTabs() {
+	for _, e := range t.entries {
+		t.lookTab(e.terminal)
+	}
+}
+
+// lookTab gives terminal the container's look, where one is set.
+func (t *TerminalTabs) lookTab(terminal *Terminal) {
+	if t.contrastSet {
+		terminal.SetMinimumContrast(t.minContrast)
+	}
+	if t.cursorColored {
+		terminal.SetCursorColor(t.cursorColor)
+	}
 }
 
 func (t *TerminalTabs) find(id TerminalTabID) (*terminalTab, error) {
@@ -481,7 +539,7 @@ func (t *TerminalTabs) Render(s tui.Surface) {
 	if s.Size().H > 1 {
 		message := ""
 		if e, err := t.find(t.active); err != nil {
-			message = "No terminals. Use + to add one."
+			message = cmp.Or(t.empty, "No terminals. Use + to add one.")
 		} else if e.err != nil {
 			message = "Cleanup failed: " + e.err.Error()
 		} else if e.closing != nil {
