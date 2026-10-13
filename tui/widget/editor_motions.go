@@ -151,23 +151,19 @@ func (c *EditorCore) wordBack(big bool) (int, int) {
 	return w.at()
 }
 
-// wordEnd is e (E with big), as Vim's end_word: to the end of the cursor's run when it goes on,
-// else past blanks (empty lines too) to the end of the next run.
+// wordEnd is e (E with big), as Vim's end_word: one step, then past blanks (empty lines too), then
+// to the end of the run there, which is the cursor's own when it goes on.
 func (c *EditorCore) wordEnd(big bool) (int, int) {
 	w := c.walker(big)
-	start := w.cls()
 	if !w.inc() {
 		return w.at()
 	}
-	if w.cls() != start || start == 0 {
-		for w.cls() == 0 {
-			if !w.inc() {
-				return w.at()
-			}
+	for w.cls() == 0 {
+		if !w.inc() {
+			return w.at()
 		}
-		start = w.cls()
 	}
-	for w.cls() == start {
+	for cl := w.cls(); w.cls() == cl; {
 		if !w.inc() {
 			return w.at()
 		}
