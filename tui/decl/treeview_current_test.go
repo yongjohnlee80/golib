@@ -428,3 +428,33 @@ func TestNewChildrenUnderAnOpenRowKeepItOpen(t *testing.T) {
 		t.Fatalf("Enter activated %+v, want email (%+v): the cursor left its row", got, want)
 	}
 }
+
+// A section the host reads again and finds empty is open and empty: the row stops waiting on a
+// load (its ◌ … marker gone), since the model has nothing more to fetch, rather than waiting on a
+// load no one will make.
+func TestATreeViewRowReadAgainEmptyStopsLoading(t *testing.T) {
+	m := tuidecl.NewTreeListModel("key", "label")
+	m.SetChildren(nil, []tuidecl.TreeRow{
+		{Row: tuidecl.Row{"key": "sec", "label": "section"}, HasChildren: true},
+		{Row: tuidecl.Row{"key": "next", "label": "below"}},
+	})
+	sec := tuidecl.Index{Row: 0}
+	var s *decltest.Screen
+	m.OnFetch = func(tuidecl.Index) {
+		m.SetChildren(&sec, []tuidecl.TreeRow{{Row: tuidecl.Row{"key": "t", "label": "a task"}}})
+	}
+	moved, used, sunk := &recorder{}, &recorder{}, &recorder{}
+	s = runTreeWithSink(t, m, moved, used, sunk)
+	s.WaitForText(t, "section")
+	s.Keys(t, tui.KeyEvent{Kind: tui.KeyPress, Code: tui.KeyTab}, tui.KeyEvent{Kind: tui.KeyPress, Code: 'l'})
+	s.WaitForText(t, "a task")
+	onScreenLoop(t, s, func() { m.SetChildren(&sec, nil) }) // read again: the task moved away
+	s.WaitFor(t, "the section open and empty, not loading", func(sc string) bool {
+		for _, line := range strings.Split(sc, "\n") {
+			if strings.Contains(line, "section") {
+				return !strings.Contains(line, "◌") && !strings.Contains(line, "…") && !strings.Contains(sc, "a task")
+			}
+		}
+		return false
+	})
+}

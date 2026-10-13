@@ -404,13 +404,14 @@ func (n *treeViewNode) Init(ctx *tui.Context) {
 
 // knownChildren fills a row whose children the model already has, in the key's own handling (the
 // Tree's WithKnownChildren), and reports whether it did; one whose children must load is left to its
-// ExpandRequestEvent.
+// ExpandRequestEvent. None, with nothing more to fetch, is known too: a section a host read again
+// and found empty is open and empty, not waiting forever on a load no one will make.
 func (n *treeViewNode) knownChildren(node *widget.TreeNode, gen uint64) bool {
 	if n.model == nil {
 		return false
 	}
 	ix, ok := n.at[node]
-	if !ok || n.model.RowCount(&ix) == 0 || n.model.CanFetchMore(ix) {
+	if !ok || n.model.CanFetchMore(ix) {
 		return false
 	}
 	node.SetChildren(gen, n.nodes(&ix))
