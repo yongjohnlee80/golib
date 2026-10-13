@@ -120,6 +120,15 @@ type ActivateEvent struct {
 	Index int
 }
 
+// ContextMenuEvent is emitted by List, when its context menu is on (List.SetContextMenu), for a
+// right press or the context-menu key (Shift+F10, Menu): the row it is for, the cursor already
+// moved there (-1 for a press below the rows), and where to open the menu, in the list's own cells.
+type ContextMenuEvent struct {
+	Owner tui.NodeID
+	Index int
+	At    tui.Point
+}
+
 // FollowTailChangedEvent is emitted by BufferView when follow-tail
 // disengages (manual scroll-up) or re-engages (End / scroll to bottom).
 type FollowTailChangedEvent struct {

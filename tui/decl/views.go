@@ -333,10 +333,12 @@ type tableViewNode struct {
 	table     *widget.Table[int]
 	activated func(args ...qml.SpecValue)
 	moved     func(args ...qml.SpecValue)
-	template  *qml.SpecNode
-	eval      func(qml.SpecValue, map[string]qml.SpecValue) (qml.SpecValue, error)
-	normal    style.Color
-	sink      func(error)
+	// menu is contextMenuRequested(index, x, y), raised only when the document declares it
+	menu     func(args ...qml.SpecValue)
+	template *qml.SpecNode
+	eval     func(qml.SpecValue, map[string]qml.SpecValue) (qml.SpecValue, error)
+	normal   style.Color
+	sink     func(error)
 }
 
 // tableColumnNode is a declared TableViewColumn: what the column shows.
@@ -385,6 +387,12 @@ func buildTableViewColumn(b Build) (tui.Component, []string, error) {
 
 func buildTableView(b Build) (tui.Component, []string, error) {
 	n := &tableViewNode{activated: b.EmitterWith("activated"), moved: b.EmitterWith("currentIndexChanged")}
+	// contextMenuRequested is opt-in by its declaration: a TableView with no handler for it leaves
+	// a right press unhandled, as before, for whatever is above it. A reload that adds the handler
+	// rebuilds the node (a new signal), so the declaration is read here once.
+	if b.Emitters["contextMenuRequested"] != nil {
+		n.menu = b.EmitterWith("contextMenuRequested")
+	}
 	var consumed []string
 	for _, prop := range b.Props {
 		if prop.Name != "delegate" {
@@ -418,6 +426,7 @@ func buildTableView(b Build) (tui.Component, []string, error) {
 		n.declared = append(n.declared, col)
 	}
 	n.table = widget.NewTable(n.columns(), widget.WithSource[int](modelSource{&n.mv}, func(int) string { return "" }))
+	n.table.List().SetContextMenu(n.menu != nil)
 	n.mv.changed = n.follow
 	if n.template != nil {
 		if err := n.checkTemplate(nil); err != nil {
@@ -600,6 +609,26 @@ func (n *tableViewNode) Init(ctx *tui.Context) {
 			n.moved(numberValue(ev.Index))
 		}
 	})
+	tui.SubscribeScoped(ctx, func(ev widget.ContextMenuEvent) {
+		if ev.Owner == list.NodeID() && n.menu != nil {
+			at := n.inView(list, ev.At)
+			n.menu(numberValue(ev.Index), numberValue(at.X), numberValue(at.Y))
+		}
+	})
+}
+
+// inView is a point in the row list's cells in the TableView's own: under its header, wherever the
+// table placed the list. A list not laid out yet is at the view's origin.
+func (n *tableViewNode) inView(list tui.Component, at tui.Point) tui.Point {
+	lc, ok := list.(interface{ Context() *tui.Context })
+	if !ok || lc.Context() == nil {
+		return at
+	}
+	r, ok := n.Context().ResolveAnchor(lc.Context().NodeAnchor())
+	if !ok {
+		return at
+	}
+	return tui.Point{X: at.X + r.X, Y: at.Y + r.Y}
 }
 
 func (n *tableViewNode) Layout(c tui.Constraints) tui.Size {
@@ -655,7 +684,10 @@ var tableViewType = Type{
 			return numberValue(c.(*tableViewNode).currentIndex()), nil
 		},
 	},
-	Signals:   map[string][]string{"activated": {"index"}, "currentIndexChanged": {"index"}},
+	Signals: map[string][]string{"activated": {"index"}, "currentIndexChanged": {"index"},
+		// a right press on a row (the cursor moved to it first), or Shift+F10 or the Menu key on
+		// the cursor row; index -1 below the rows; x, y in the view's own cells, where a menu opens
+		"contextMenuRequested": {"index", "x", "y"}},
 	Destroyed: func(c tui.Component) { c.(*tableViewNode).mv.release() },
 }
 
