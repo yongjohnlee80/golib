@@ -180,6 +180,14 @@ func TestVimOperatorPending(t *testing.T) {
 			t.Errorf("a viewer consumed %c, which it refuses: the host never hears it", r)
 		}
 	}
+	// only what it refuses bubbles: what a viewer does (a motion, a yank, an operator it allows)
+	// is its own key
+	for _, r := range "wjky" {
+		if !ro.HandleKey(tui.KeyEvent{Code: r, Text: string(r)}) {
+			t.Errorf("a viewer let %c bubble, which it acts on", r)
+		}
+	}
+	ro.HandleKey(tui.KeyEvent{Code: tui.KeyEscape}) // the y armed above
 	if reg, _ := ro.Register(); reg != "foo " {
 		t.Fatalf("a viewer's yw: register %q", reg)
 	}
