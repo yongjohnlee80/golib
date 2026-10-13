@@ -41,6 +41,51 @@ type textBuffer struct {
 	// Editor's highlighter cache — must look at again. Every change to
 	// lines calls touch.
 	changedFrom int
+	// edits, while logEdits is on (an EditorCore's buffer), is each change to the line structure
+	// since the owner last took them, in order: what follows the text (marks) replays them. A
+	// change within one line is not logged; marks keep their columns then, as Vim's do.
+	logEdits bool
+	edits    []lineEdit
+}
+
+// lineEdit is one change to the buffer's line structure, as Vim's mark_adjust and mark_col_adjust
+// see it:
+//   - a splice: lines [ln, ln+del) were removed and ins lines put in their place, so a mark on a
+//     removed line is gone and one after them moves by ins-del;
+//   - a column move (move): a mark on line from at column cut or later (every column, with all)
+//     goes to line to, at column at+(col-cut), at itself for a column before cut;
+//   - a reset (a new document): every mark is gone.
+//
+// A producer logs a split's or a join's column move in the order the lines are then: a join moves
+// the joined lines' marks before the splice that removes those lines (Lector, M4 design r1).
+type lineEdit struct {
+	move, reset  bool
+	ln, del, ins int
+	from, to     int
+	cut, at      int
+	all          bool
+}
+
+// logSplice records lines [ln, ln+del) replaced by ins lines.
+func (b *textBuffer) logSplice(ln, del, ins int) {
+	if b.logEdits && (del != 0 || ins != 0) {
+		b.edits = append(b.edits, lineEdit{ln: ln, del: del, ins: ins})
+	}
+}
+
+// logMove records line from's marks at column cut or later (every one, with all) moving to line
+// to, at column at+(col-cut).
+func (b *textBuffer) logMove(from, cut, to, at int, all bool) {
+	if b.logEdits {
+		b.edits = append(b.edits, lineEdit{move: true, from: from, cut: cut, to: to, at: at, all: all})
+	}
+}
+
+// takeEdits returns the edits logged since the last call, and forgets them.
+func (b *textBuffer) takeEdits() []lineEdit {
+	e := b.edits
+	b.edits = nil
+	return e
 }
 
 // noChange is changedFrom when nothing has changed.
@@ -75,6 +120,9 @@ func (b *textBuffer) setValue(s string) {
 	s = strings.ReplaceAll(strings.ReplaceAll(s, "\r\n", "\n"), "\r", "\n")
 	b.lines = strings.Split(s, "\n")
 	touchFrom(&b.changedFrom, 0)
+	if b.logEdits {
+		b.edits = append(b.edits[:0], lineEdit{reset: true})
+	}
 	b.ln = len(b.lines) - 1
 	b.col = len(clusters(b.lines[b.ln]))
 	b.anchor = nil
@@ -127,6 +175,10 @@ func (b *textBuffer) deleteRegion(lo, hi taPos) {
 	last := b.lineClusters(hi.ln)[hi.col:]
 	joined := strings.Join(first, "") + strings.Join(last, "")
 	touchFrom(&b.changedFrom, lo.ln)
+	if hi.ln > lo.ln { // the last line joins the first: its marks move onto it, then the rest go
+		b.logMove(hi.ln, hi.col, lo.ln, lo.col, true)
+		b.logSplice(lo.ln+1, hi.ln-lo.ln, 0)
+	}
 	b.lines = append(b.lines[:lo.ln], append([]string{joined}, b.lines[hi.ln+1:]...)...)
 	b.ln, b.col = lo.ln, min(lo.col, len(clusters(joined)))
 	b.anchor = nil
@@ -176,6 +228,9 @@ func (b *textBuffer) insertText(text string) {
 		lastPart := parts[len(parts)-1]
 		newLines = append(newLines, lastPart+tail)
 		b.lines = append(b.lines[:b.ln], append(newLines, b.lines[b.ln+1:]...)...)
+		// the lines below move down, then the split line's marks after the cursor follow its tail
+		b.logSplice(b.ln+1, 0, len(parts)-1)
+		b.logMove(b.ln, b.col, b.ln+len(parts)-1, len(clusters(lastPart)), false)
 		b.ln += len(parts) - 1
 		b.col = min(len(clusters(lastPart)), len(clusters(b.lines[b.ln])))
 	}

@@ -135,6 +135,7 @@ func (c *EditorCore) matchPair() {
 	if !ok {
 		return
 	}
+	c.setJumpMark()
 	c.buf.desired = -1
 	c.buf.moveCursor(ln, col, false)
 	c.clampNormal()
@@ -198,6 +199,7 @@ func (c *EditorCore) matchPairPos() (int, int, bool) {
 // percentLine is N%: line N% of the text, as Vim rounds it ((N × lines + 99) / 100). A count past
 // 100 lands past the last line, which toLine clamps to it.
 func (c *EditorCore) percentLine(n int) {
+	c.setJumpMark()
 	c.toLine((n*len(c.buf.lines)+99)/100 - 1)
 }
 

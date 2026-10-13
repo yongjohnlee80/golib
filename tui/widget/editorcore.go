@@ -55,6 +55,7 @@ type EditorCore struct {
 	hist           editHistory    // undo/redo
 	dot            dotRecorder    // the change . repeats, and the one being recorded
 	opRegOne       bool           // the operator's motion is one whose delete Vim keeps in register 1 (regOneMotion)
+	marks          markSet        // a–z and the previous jump's place (editor_vimmarks.go)
 	reg            editRegister   // the registers
 	keys           keyDispatch    // modes and key routing
 	hl             highlightCache // per-line styles
@@ -126,8 +127,10 @@ type CoreOption func(*EditorCore)
 // newEditorCore is the default core: an empty line, the Vim keymap, modal, the "jk" escape chord,
 // selection, yank and undo on. The options have not run yet.
 func newEditorCore() *EditorCore {
+	buf := newTextBuffer()
+	buf.logEdits = true // the marks follow the line structure's changes
 	return &EditorCore{
-		buf:       newTextBuffer(),
+		buf:       buf,
 		hlFrom:    noChange,
 		keys:      newKeyDispatch(),
 		canSelect: true,
@@ -188,6 +191,7 @@ func CoreSyntaxStyles(st SyntaxStyles) CoreOption { return func(c *EditorCore) {
 func CoreInitialText(s string) CoreOption {
 	return func(c *EditorCore) {
 		c.buf.setValue(s)
+		c.followEdits() // its reset now, or the first edit would take it for a later one
 		c.buf.ln, c.buf.col = 0, 0
 	}
 }
@@ -379,6 +383,7 @@ func (c *EditorCore) SetValue(s string) {
 	c.keys.count, c.keys.pendingAct = 0, ActUnbound
 	c.hist.reset()
 	c.buf.setValue(s)
+	c.followEdits()         // a new document: no marks
 	c.rev = c.newRevision() // a new document, unmodified: the text it was given is its saved state
 	c.savedRev = c.rev
 	if c.sourceFactory != nil {
@@ -784,6 +789,9 @@ func (c *EditorCore) execAction(act Action, count int) bool {
 		ActLineDownFirst, ActLineUpFirst, ActFirstNonBlank, ActLeftWrap,
 		ActFindCharRepeat, ActFindCharReverse, ActViewTop, ActViewMiddle, ActViewBottom,
 		ActWORDForward, ActWORDBack, ActWORDEnd, ActWordEndBack, ActWORDEndBack:
+		if act == ActViewTop || act == ActViewMiddle || act == ActViewBottom {
+			c.setJumpMark() // H M L are jumps
+		}
 		c.move(act, count)
 		return true
 
@@ -810,6 +818,7 @@ func (c *EditorCore) execAction(act Action, count int) bool {
 		prefix := c.indentDecision(indent.OpenBelow, len(b.lines[b.ln])).Prefix
 		b.lines = append(b.lines[:b.ln+1], append([]string{prefix}, b.lines[b.ln+1:]...)...)
 		b.touch(b.ln + 1)
+		b.logSplice(b.ln+1, 0, 1)
 		b.ln, b.col = b.ln+1, len(clusters(prefix))
 		c.enterInsert()
 		c.hist.keepOpen() // the open-line already began this group
@@ -820,6 +829,7 @@ func (c *EditorCore) execAction(act Action, count int) bool {
 		prefix := c.indentDecision(indent.OpenAbove, 0).Prefix
 		b.lines = append(b.lines[:b.ln], append([]string{prefix}, b.lines[b.ln:]...)...)
 		b.touch(b.ln)
+		b.logSplice(b.ln, 0, 1)
 		b.col = len(clusters(prefix))
 		c.enterInsert()
 		c.hist.keepOpen()
@@ -984,7 +994,12 @@ func (c *EditorCore) execAction(act Action, count int) bool {
 
 	case ActFindNext, ActFindPrev:
 		// with no active find the key bubbles: an application may have its own n
-		return c.FindNext(act == ActFindPrev)
+		from := taPos{b.ln, b.col}
+		found := c.FindNext(act == ActFindPrev)
+		if found {
+			c.marks.prev, c.marks.prevSet = from, true // n and N are jumps
+		}
+		return found
 
 	case ActToggleRendered:
 		// A view's concern: the widget that has a Rendered view answers it (SetToggleRendered).
