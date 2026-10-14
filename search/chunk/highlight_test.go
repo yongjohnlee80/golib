@@ -22,7 +22,7 @@ func TestHighlight(t *testing.T) {
 		want   string
 	}{
 		{"a window around the first match", []search.Term{{Text: "alpha"}}, 4, "four five [alpha] seven"},
-		{"every word", []search.Term{{Text: "alpha"}}, 0, "one two three four five [alpha] seven eight nine ten [Alpha,] twelve"},
+		{"every word", []search.Term{{Text: "alpha"}}, 0, "one two three four five [alpha] seven eight nine ten [Alpha], twelve"},
 		{"a window at the end", []search.Term{{Text: "twelve"}}, 3, "ten Alpha, [twelve]"},
 		{"a window at the start", []search.Term{{Text: "one"}}, 3, "[one] two three"},
 		{"a prefix term", []search.Term{{Text: "thr", Prefix: true}}, 2, "two [three]"},
@@ -39,5 +39,29 @@ func TestHighlight(t *testing.T) {
 	}
 	if got := h(Highlight("--- a", []search.Term{{Text: ""}}, 0)); got != "--- a" {
 		t.Errorf("punctuation alone or an empty term matched: %s", got)
+	}
+}
+
+func TestHighlightWordEdges(t *testing.T) {
+	t.Parallel()
+	for _, c := range []struct {
+		body, term, want string
+		prefix           bool
+	}{
+		{"a word.", "word", "a [word].", false},
+		{"“fox!” and (grapes).", "fox", "“[fox]!” and (grapes).", false},
+		{"“fox!” and (grapes).", "grapes", "“fox!” and ([grapes]).", false},
+		{"don't!", "don't", "[don't]!", false},
+		{"你好。", "你好", "[你好]。", false},
+		{"(42),", "42", "([42]),", false},
+		{"(grapes).", "gra", "([grapes]).", true},
+		{"plain text.", "missing", "plain text.", false},
+		{"!!!", "", "!!!", false},
+		{"cafe\u0301!", "cafe\u0301", "[cafe\u0301]!", false},
+		{"cafe\u0301!", "caf", "[cafe\u0301]!", true},
+	} {
+		if got := h(Highlight(c.body, []search.Term{{Text: c.term, Prefix: c.prefix}}, 0)); got != c.want {
+			t.Errorf("%q, term %q: got %q, want %q", c.body, c.term, got, c.want)
+		}
 	}
 }
