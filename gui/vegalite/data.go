@@ -437,7 +437,7 @@ func (p *plan) continuous() error {
 				if isX {
 					vs[0] = d.x.num
 				}
-				if isValue {
+				if isValue && p.stacked { // a pile's base; unstacked, the base is the scale's zero, if any
 					vs = []float64{d.v0, d.v1}
 				}
 				for _, v := range vs {

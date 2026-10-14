@@ -117,22 +117,53 @@ type chart struct {
 	rows          []map[string]any
 }
 
-// passed are the keys read and passed over: they change only how a chart looks or behaves in a
-// browser. Keys here are never unsupported, at any level they are listed for.
+// passed are the keys read and passed over, by exact name: they change only how a chart looks or
+// behaves in a browser. A key that changes what a label says (labelExpr, format, an axis's
+// values) or what is drawn (invalid, a config's scale) is on no list: unsupported.
 var (
-	passedTop     = names("$schema", "description", "name", "config", "autosize", "padding", "background", "usermeta")
-	passedMark    = names("tooltip", "clip", "cursor", "href", "invalid", "cornerRadius", "cornerRadiusEnd", "stroke", "strokeOpacity", "fillOpacity", "strokeCap", "strokeJoin")
-	passedChannel = names("tooltip", "description")
-	passedAxis    = names("labelAngle", "labelFont", "labelFontSize", "labelColor", "labelLimit", "labelOverlap", "labelPadding", "labelExpr",
-		"titleFont", "titleFontSize", "titleColor", "titlePadding", "tickCount", "ticks", "tickSize", "domain", "orient", "format", "formatType", "values", "zindex", "offset")
-	passedScale    = names("scheme", "padding", "paddingInner", "paddingOuter", "round")
+	passedTop      = names("$schema", "description", "name", "autosize", "padding", "background", "usermeta")
+	passedMark     = names("tooltip", "clip", "cursor", "href", "cornerRadius", "cornerRadiusEnd", "stroke", "strokeOpacity", "fillOpacity", "strokeCap", "strokeJoin", "aria", "description", "style")
+	passedChannel  = names("tooltip", "description")
 	passedEncoding = names("tooltip")
+	passedScale    = names("scheme", "padding", "paddingInner", "paddingOuter", "round")
+	// a guide's (an axis's, a legend's) look: its labels', title's, ticks', domain's and grid's
+	// fonts, colours and sizes, and where it is
+	passedGuide = names("aria", "description", "style", "zindex", "offset", "orient", "translate", "minExtent", "maxExtent",
+		"labelAngle", "labelAlign", "labelBaseline", "labelBound", "labelColor", "labelFlush", "labelFlushOffset", "labelFont",
+		"labelFontSize", "labelFontStyle", "labelFontWeight", "labelLimit", "labelLineHeight", "labelOffset", "labelOpacity",
+		"labelOverlap", "labelPadding", "labelSeparation", "labels",
+		"titleAlign", "titleAnchor", "titleAngle", "titleBaseline", "titleColor", "titleFont", "titleFontSize", "titleFontStyle",
+		"titleFontWeight", "titleLimit", "titleLineHeight", "titleOpacity", "titlePadding", "titleX", "titleY")
+	passedAxis = union(passedGuide, names("tickCount", "ticks", "tickSize", "tickColor", "tickWidth", "tickOpacity", "tickDash",
+		"tickCap", "tickBand", "tickOffset", "tickRound", "tickExtra", "domain", "domainColor", "domainWidth", "domainOpacity",
+		"domainDash", "domainCap", "gridColor", "gridWidth", "gridOpacity", "gridDash", "gridCap", "bandPosition"))
+	passedLegend = union(passedGuide, names("direction", "columns", "columnPadding", "rowPadding", "padding", "cornerRadius",
+		"fillColor", "strokeColor", "symbolType", "symbolSize", "symbolStrokeWidth", "symbolFillColor", "symbolStrokeColor",
+		"symbolOpacity", "symbolDash", "symbolOffset", "symbolLimit", "gradientLength", "gradientThickness", "type", "legendX", "legendY"))
+	passedTitle = names("text", "anchor", "align", "baseline", "color", "dx", "dy", "font", "fontSize", "fontStyle", "fontWeight",
+		"frame", "limit", "lineHeight", "offset", "orient", "style", "zindex", "aria")
+	// a config's keys whose values only style: the view's frame, fonts, the palette, guides' looks
+	passedConfig = names("view", "background", "padding", "font", "autosize", "range", "style", "title", "aria", "lineBreak")
+	// a config's mark defaults: the mark's look
+	passedMarkConfig = union(passedMark, names("color", "fill", "opacity", "strokeWidth", "size", "filled", "point", "line",
+		"interpolate", "tension", "shape", "binSpacing", "continuousBandSize", "discreteBandSize", "thickness", "width", "height"))
 )
 
 func names(s ...string) map[string]bool {
 	m := make(map[string]bool, len(s))
 	for _, n := range s {
 		m[n] = true
+	}
+	return m
+}
+
+func union(a, b map[string]bool) map[string]bool {
+	m := make(map[string]bool, len(a)+len(b))
+	for k := range a {
+		m[k] = true
+	}
+	for k := range b {
+		m[k] = true
 	}
 	return m
 }
@@ -172,6 +203,8 @@ func parse(src string) (*chart, error) {
 		case passedTop[k]:
 		case k == "title":
 			err = c.readTitle(raw)
+		case k == "config":
+			err = readConfig(raw)
 		case k == "width":
 			c.width, c.containerW, err = readSize(raw, "width")
 		case k == "height":
@@ -198,10 +231,56 @@ func parse(src string) (*chart, error) {
 	return c, nil
 }
 
-// readTitle reads a title: a string, or an object with its text (the rest passed over).
+// readConfig reads a config: its styling keys passed over, its guides' too; anything else (a
+// scale's defaults, a label format) is unsupported.
+func readConfig(raw json.RawMessage) error {
+	m, err := object(raw, "the config")
+	if err != nil {
+		return err
+	}
+	for k, v := range m {
+		switch {
+		case passedConfig[k]:
+		case k == "mark" || k == "bar" || k == "line" || k == "point" || k == "area" || k == "circle":
+			if err := passedOnly(v, passedMarkConfig, "config's "+k); err != nil {
+				return err
+			}
+		case strings.HasPrefix(k, "axis"): // axis, axisX, axisY, axisBand, axisQuantitative…
+			if err := passedOnly(v, passedAxis, "config's "+k); err != nil {
+				return err
+			}
+		case k == "legend":
+			if err := passedOnly(v, passedLegend, "config's legend"); err != nil {
+				return err
+			}
+		default:
+			return unsupported("config's %q", k)
+		}
+	}
+	return nil
+}
+
+// passedOnly checks an object holds only keys passed over.
+func passedOnly(raw json.RawMessage, passed map[string]bool, what string) error {
+	m, err := object(raw, what)
+	if err != nil {
+		return err
+	}
+	for k := range m {
+		if !passed[k] {
+			return unsupported("%s's %q", what, k)
+		}
+	}
+	return nil
+}
+
+// readTitle reads a title: a string, or an object with its text (its look passed over).
 func (c *chart) readTitle(raw json.RawMessage) error {
 	if json.Unmarshal(raw, &c.title) == nil {
 		return nil
+	}
+	if err := passedOnly(raw, passedTitle, "the title"); err != nil {
+		return err
 	}
 	var t struct {
 		Text json.RawMessage `json:"text"`
@@ -495,8 +574,8 @@ func readChannel(raw json.RawMessage, name string) (*channel, error) {
 	return ch, nil
 }
 
-// readGuide reads an axis or a legend: null hides it; its title and grid are read, the rest of
-// how it looks passed over.
+// readGuide reads an axis or a legend: null hides it; its title and grid are read, and the keys
+// of how it looks (passedAxis, passedLegend) passed over.
 func (ch *channel) readGuide(raw json.RawMessage, name, guide string) error {
 	if isNull(raw) {
 		ch.noAxis = true
@@ -524,10 +603,9 @@ func (ch *channel) readGuide(raw json.RawMessage, name, guide string) error {
 				return unsupported("%s's grid", name)
 			}
 			ch.grid = &g
-		case guide == "axis" && (passedAxis[k] || strings.HasPrefix(k, "grid") || strings.HasPrefix(k, "label") || strings.HasPrefix(k, "tick") || strings.HasPrefix(k, "title") || strings.HasPrefix(k, "domain")):
-		case guide == "legend": // a legend's look and place
+		case guide == "axis" && passedAxis[k], guide == "legend" && passedLegend[k]:
 		default:
-			return unsupported("%s's axis %q", name, k)
+			return unsupported("%s's %s %q", name, guide, k)
 		}
 	}
 	return nil

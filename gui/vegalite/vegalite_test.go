@@ -466,6 +466,17 @@ func TestSpecsOutsideTheSubsetDecline(t *testing.T) {
 		"a params":        `{` + ok + `,"mark":"bar","params":[{"name":"p","select":"interval"}]}`,
 		"a mark's orient": `{` + ok + `,"mark":{"type":"bar","orient":"horizontal"}}`,
 		"a step width":    `{` + ok + `,"mark":"bar","width":{"step":30}}`,
+		// what a label says, or which values are drawn, is not passed over
+		"a label expr":     `{` + strings.Replace(ok, `"type":"quantitative"}`, `"type":"quantitative","axis":{"labelExpr":"datum.value * 100 + '%'"}}`, 1) + `,"mark":"bar"}`,
+		"a label format":   `{` + strings.Replace(ok, `"type":"quantitative"}`, `"type":"quantitative","axis":{"format":"%"}}`, 1) + `,"mark":"bar"}`,
+		"tick values":      `{` + strings.Replace(ok, `"type":"quantitative"}`, `"type":"quantitative","axis":{"values":[0,5]}}`, 1) + `,"mark":"bar"}`,
+		"a legend format":  `{` + strings.Replace(ok, `"encoding":{`, `"encoding":{"color":{"field":"a","type":"nominal","legend":{"labelExpr":"'x'"}},`, 1) + `,"mark":"bar"}`,
+		"a config scale":   `{` + ok + `,"mark":"bar","config":{"scale":{"zero":false}}}`,
+		"a config format":  `{` + ok + `,"mark":"bar","config":{"numberFormat":".0%"}}`,
+		"a config axis":    `{` + ok + `,"mark":"bar","config":{"axisY":{"labelExpr":"'x'"}}}`,
+		"a config invalid": `{` + ok + `,"mark":"bar","config":{"mark":{"invalid":null}}}`,
+		"a mark invalid":   `{` + ok + `,"mark":{"type":"bar","invalid":null}}`,
+		"a subtitle":       `{` + ok + `,"mark":"bar","title":{"text":"t","subtitle":"s"}}`,
 	} {
 		if _, err := lay(t, spec, 600); !errors.Is(err, ErrUnsupported) {
 			t.Errorf("%s: %v, want ErrUnsupported", name, err)
@@ -490,11 +501,11 @@ func TestSpecsOutsideTheSubsetDecline(t *testing.T) {
 
 // Keys that change only a chart's look, or its behaviour in a browser, are passed over.
 func TestCosmeticKeysArePassedOver(t *testing.T) {
-	spec := `{"$schema":"x","config":{"view":{"stroke":null}},"background":"white","padding":5,"autosize":"fit",
+	spec := `{"$schema":"x","config":{"view":{"stroke":null},"axis":{"labelFont":"serif","gridColor":"#eee"},"bar":{"color":"teal"},"legend":{"orient":"bottom"}},"background":"white","padding":5,"autosize":"fit",
 		"title":{"text":"Sales","anchor":"start"},
 		"data":{"values":[{"a":"x","b":1}]},"mark":{"type":"bar","tooltip":true,"cornerRadiusEnd":4},
 		"encoding":{"x":{"field":"a","type":"nominal","axis":{"labelAngle":-45,"title":"Kind"},"scale":{"paddingInner":0.2}},
-		"y":{"field":"b","type":"quantitative","axis":{"grid":false,"format":"d"}},"tooltip":[{"field":"b"}]}}`
+		"y":{"field":"b","type":"quantitative","axis":{"grid":false,"labelFontSize":12}},"tooltip":[{"field":"b"}]}}`
 	l := mustLay(t, spec, 600)
 	if !slices.Contains(l.texts(), "Sales") || !slices.Contains(l.texts(), "Kind") {
 		t.Errorf("labels %v: want the title and the axis's", l.texts())
@@ -643,5 +654,28 @@ func TestTimeTicks(t *testing.T) {
 	}
 	if v, ok := timeOf(float64(1700)); !ok || v != 1700 {
 		t.Errorf("a number is milliseconds: %v %v", v, ok)
+	}
+}
+
+// A line or point chart's scale with zero: false is its data's extent, niced: no zero baseline
+// creeps in from an unstacked mark's base; a bar's measure keeps zero by default.
+func TestZeroFalseIsTheDatasExtent(t *testing.T) {
+	for _, mark := range []string{"line", "point"} {
+		c, err := parse(`{"data":{"values":[{"x":1,"y":99},{"x":2,"y":100}]},"mark":"` + mark + `",
+			"encoding":{"x":{"field":"x","type":"quantitative"},"y":{"field":"y","type":"quantitative","scale":{"zero":false}}}}`)
+		if err != nil {
+			t.Fatal(err)
+		}
+		p, err := newPlan(c)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if p.ys.lo != 99 || p.ys.hi != 100 {
+			t.Errorf("%s: y domain [%v, %v], want [99, 100]", mark, p.ys.lo, p.ys.hi)
+		}
+	}
+	c, _ := parse(`{"data":{"values":[{"x":"a","y":99}]},"mark":"bar","encoding":{"x":{"field":"x","type":"nominal"},"y":{"field":"y","type":"quantitative"}}}`)
+	if p, _ := newPlan(c); p.ys.lo != 0 {
+		t.Errorf("a bar's measure from %v, want zero", p.ys.lo)
 	}
 }
