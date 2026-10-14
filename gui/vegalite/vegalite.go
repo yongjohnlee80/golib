@@ -4,18 +4,26 @@
 //
 // The subset:
 //
-//   - marks: bar, line, point (and circle), area;
+//   - marks: bar, line, point (and circle), area, and rule (a line across the plot at each value of
+//     its one position channel);
 //   - data: inline values, an array of objects;
 //   - encodings: x and y (quantitative, nominal, ordinal or temporal fields, a measure aggregated
-//     by count, sum, mean, median, min or max) and color (a nominal field, or one colour);
+//     by count, sum, mean, median, min or max, or a rule's datum or aggregate), color (a nominal field, or one
+//     colour) and opacity (one value);
+//   - layers: each a mark of its own over the spec's data and encoding, on shared scales;
 //   - drawing: linear, time, band and point scales with their axes and grid, a legend for the
 //     colour, the title, and a bar's or an area's series stacked as Vega-Lite stacks them.
 //
-// Anything else that changes what a chart says (a transform, a layer, a log scale, a binned or
-// time-unit field, another channel) is [ErrUnsupported], so the caller can fall back, as it does
-// for a Mermaid diagram type golib does not draw. A chart is drawn at Vega-Lite's proportions,
-// scaled by the theme's font to Vega-Lite's 11-pixel labels, and a chart wider than the width
-// asked is scaled down to it.
+// A chart is drawn as the page first shows it, a still: a variable param is its initial value (a
+// slider bound to it is the page's, not drawn), a selection is empty, and a condition on it is
+// resolved so ("empty": false resolves the other way). A datum may name a variable param
+// ({"expr": "budget"}); any other expression is unsupported.
+//
+// Anything else that changes what a chart says (a transform, a log scale, a binned or time-unit
+// field, another channel, a test, a selection with an initial value) is [ErrUnsupported], so the
+// caller can fall back, as it does for a Mermaid diagram type golib does not draw. A chart is
+// drawn at Vega-Lite's proportions, scaled by the theme's font to Vega-Lite's 11-pixel labels, and
+// a chart wider than the width asked is scaled down to it.
 package vegalite
 
 import (
@@ -48,11 +56,11 @@ var tableau10 = []color.NRGBA{
 // measuring with m. A spec outside the subset is ErrUnsupported and one over a limit ErrTooLarge
 // (both for a fallback); malformed JSON is the decoder's error.
 func Lay(ctx context.Context, src string, width float32, th Theme, m gui.Measurer) (*Laid, error) {
-	c, err := parse(src)
+	sp, err := parse(src)
 	if err != nil {
 		return nil, err
 	}
-	p, err := newPlan(c)
+	lp, err := newLayered(sp)
 	if err != nil {
 		return nil, err
 	}
@@ -65,7 +73,7 @@ func Lay(ctx context.Context, src string, width float32, th Theme, m gui.Measure
 	if len(th.Palette) == 0 {
 		th.Palette = tableau10
 	}
-	l := build(p, width, th, m)
+	l := build(lp, width, th, m)
 	l.fitTo(width)
 	return l, nil
 }

@@ -41,6 +41,7 @@ const (
 	markLine
 	markPoint
 	markArea
+	markRule // a line across the plot at each value of its one position channel
 )
 
 // fieldType is a field's measurement type, which picks its scale.
@@ -94,6 +95,8 @@ type channel struct {
 	nice      *bool
 	stack     stackMode
 	value     *color.NRGBA // color: {"value": "#hex"}: one colour for every mark
+	datum     any          // a position channel's constant (isDatum): a number, a string
+	isDatum   bool
 }
 
 // mark is the mark's definition.
@@ -105,16 +108,32 @@ type mark struct {
 	opacity     float32      // 0: the default for the mark
 	strokeWidth float32      // 0: the default
 	size        float32      // a point's area in square pixels; 0: the default
+	dash        []float32    // a line's or a rule's strokeDash: on and off lengths; nil: solid
 }
 
-// chart is a spec as read: what to draw, before any layout.
-type chart struct {
+// spec is a whole spec as read: its title and size, and its layers in the order they paint. A
+// spec with no layer is one layer.
+type spec struct {
 	title         string
 	width, height float32 // in Vega-Lite's pixels; 0: the default
 	containerW    bool    // width: "container": the width asked
-	mark          mark
-	x, y, color   *channel
-	rows          []map[string]any
+	layers        []*chart
+}
+
+// chart is one layer as read: one mark, its encoding and its data, before any layout.
+type chart struct {
+	mark        mark
+	x, y, color *channel
+	opacity     *float32 // the opacity channel's value; nil: the mark's
+	rows        []map[string]any
+}
+
+// param is a param as it stands before anyone touches the page: a variable at its initial value
+// (its bind, a slider or an input, is the page's control, not what is drawn), or a selection with
+// nothing selected yet.
+type param struct {
+	selection bool
+	value     any
 }
 
 // passed are the keys read and passed over, by exact name: they change only how a chart looks or
@@ -187,7 +206,11 @@ func isNull(raw json.RawMessage) bool { return bytes.Equal(bytes.TrimSpace(raw),
 
 // parse reads src as a Vega-Lite spec in the subset drawn. Malformed JSON is the decoder's error;
 // a spec outside the subset is ErrUnsupported, one over a limit ErrTooLarge.
-func parse(src string) (*chart, error) {
+//
+// A layered spec's layers inherit its data and its encoding, a layer's own channels over the
+// spec's, as Vega-Lite merges them. The params are read first, every layer's: a datum's expr and a
+// condition name them.
+func parse(src string) (*spec, error) {
 	var top map[string]json.RawMessage
 	d := json.NewDecoder(strings.NewReader(src))
 	d.UseNumber()
@@ -197,25 +220,57 @@ func parse(src string) (*chart, error) {
 	if top == nil {
 		return nil, unsupported("the spec is not an object")
 	}
-	c := &chart{}
+	sp := &spec{}
+	params := map[string]param{}
+	if err := readParams(top["params"], params); err != nil {
+		return nil, err
+	}
+	var units []map[string]json.RawMessage
+	var parentEnc json.RawMessage
+	if raw, ok := top["layer"]; ok {
+		if _, ok := top["mark"]; ok {
+			return nil, unsupported("a mark beside a layer")
+		}
+		var items []json.RawMessage
+		if json.Unmarshal(raw, &items) != nil || len(items) == 0 {
+			return nil, unsupported("the layer is not a list of layers")
+		}
+		for _, it := range items {
+			m, err := object(it, "a layer")
+			if err != nil {
+				return nil, err
+			}
+			for k := range m {
+				switch k {
+				case "mark", "encoding", "data", "params", "name", "description":
+				default:
+					return nil, unsupported("a layer's %q", k)
+				}
+			}
+			if err := readParams(m["params"], params); err != nil {
+				return nil, err
+			}
+			units = append(units, m)
+		}
+		parentEnc = top["encoding"]
+	} else {
+		units = []map[string]json.RawMessage{{"mark": top["mark"], "encoding": top["encoding"]}}
+	}
+	var rows []map[string]any
 	for k, raw := range top {
 		var err error
 		switch {
-		case passedTop[k]:
+		case passedTop[k], k == "mark", k == "encoding", k == "layer", k == "params":
 		case k == "title":
-			err = c.readTitle(raw)
+			err = sp.readTitle(raw)
 		case k == "config":
 			err = readConfig(raw)
 		case k == "width":
-			c.width, c.containerW, err = readSize(raw, "width")
+			sp.width, sp.containerW, err = readSize(raw, "width")
 		case k == "height":
-			c.height, _, err = readSize(raw, "height") // "container": a note has no height to fill; the default
+			sp.height, _, err = readSize(raw, "height") // "container": a note has no height to fill; the default
 		case k == "data":
-			err = c.readData(raw)
-		case k == "mark":
-			err = c.readMark(raw)
-		case k == "encoding":
-			err = c.readEncoding(raw)
+			rows, err = readData(raw)
 		default:
 			err = unsupported("%q", k)
 		}
@@ -223,13 +278,140 @@ func parse(src string) (*chart, error) {
 			return nil, err
 		}
 	}
-	if _, ok := top["mark"]; !ok {
-		return nil, unsupported("no mark")
+	for _, u := range units {
+		c := &chart{rows: rows}
+		if raw, ok := u["data"]; ok {
+			var err error
+			if c.rows, err = readData(raw); err != nil {
+				return nil, err
+			}
+		}
+		if c.rows == nil {
+			return nil, unsupported("no data")
+		}
+		if u["mark"] == nil {
+			return nil, unsupported("no mark")
+		}
+		if err := c.readMark(u["mark"]); err != nil {
+			return nil, err
+		}
+		enc, err := mergeEncoding(parentEnc, u["encoding"])
+		if err != nil {
+			return nil, err
+		}
+		if err := c.readEncoding(enc, params); err != nil {
+			return nil, err
+		}
+		sp.layers = append(sp.layers, c)
 	}
-	if _, ok := top["data"]; !ok {
-		return nil, unsupported("no data")
+	return sp, nil
+}
+
+// mergeEncoding is a layer's encoding over its parent's, channel by channel.
+func mergeEncoding(parent, own json.RawMessage) (map[string]json.RawMessage, error) {
+	out := map[string]json.RawMessage{}
+	for _, raw := range []json.RawMessage{parent, own} {
+		if raw == nil {
+			continue
+		}
+		m, err := object(raw, "the encoding")
+		if err != nil {
+			return nil, err
+		}
+		for k, v := range m {
+			out[k] = v
+		}
 	}
-	return c, nil
+	return out, nil
+}
+
+// readParams reads a list of params into params: a variable with its value, or a selection. A
+// param computed by an expr, a selection with an initial value and a variable with none are
+// unsupported: their starting state is not what the spec says alone.
+func readParams(raw json.RawMessage, params map[string]param) error {
+	if raw == nil {
+		return nil
+	}
+	var items []json.RawMessage
+	if json.Unmarshal(raw, &items) != nil {
+		return unsupported("the params are not a list")
+	}
+	for _, it := range items {
+		m, err := object(it, "a param")
+		if err != nil {
+			return err
+		}
+		var name string
+		if json.Unmarshal(m["name"], &name) != nil || name == "" {
+			return unsupported("a param without a name")
+		}
+		if _, dup := params[name]; dup {
+			return unsupported("the param %q twice", name)
+		}
+		var p param
+		hasValue := false
+		for k, v := range m {
+			switch k {
+			case "name", "bind", "description", "react", "views":
+			case "value":
+				d := json.NewDecoder(bytes.NewReader(v))
+				d.UseNumber()
+				if d.Decode(&p.value) != nil {
+					return unsupported("param %q's value", name)
+				}
+				hasValue = true
+			case "select":
+				if err := readSelect(v, name); err != nil {
+					return err
+				}
+				p.selection = true
+			default:
+				return unsupported("param %q's %q", name, k)
+			}
+		}
+		switch {
+		case p.selection && hasValue:
+			return unsupported("the selection %q with an initial value", name)
+		case !p.selection && !hasValue:
+			return unsupported("the param %q without a value", name)
+		}
+		if !p.selection {
+			switch p.value.(type) {
+			case json.Number, string, bool:
+			default:
+				return unsupported("param %q's value %v", name, p.value)
+			}
+		}
+		params[name] = p
+	}
+	return nil
+}
+
+// passedSelect are a selection's keys that only say how the page picks: which events, which
+// fields, how it clears.
+var passedSelect = names("type", "fields", "encodings", "on", "clear", "nearest", "toggle", "resolve", "mark", "translate", "zoom")
+
+// readSelect reads a selection's select: point or interval.
+func readSelect(raw json.RawMessage, name string) error {
+	var t string
+	if json.Unmarshal(raw, &t) != nil {
+		m, err := object(raw, "selection "+name)
+		if err != nil {
+			return err
+		}
+		if json.Unmarshal(m["type"], &t) != nil {
+			return unsupported("selection %q without a type", name)
+		}
+		for k := range m {
+			if !passedSelect[k] {
+				return unsupported("selection %q's %q", name, k)
+			}
+		}
+	}
+	if t != "point" && t != "interval" {
+		return unsupported("selection %q of type %q", name, t)
+	}
+	return nil
 }
 
 // readConfig reads a config: its styling keys passed over, its guides' too; anything else (a
@@ -288,7 +470,7 @@ func passedOnly(raw json.RawMessage, passed map[string]bool, what string) error 
 }
 
 // readTitle reads a title: a string, or an object with its text (its look passed over).
-func (c *chart) readTitle(raw json.RawMessage) error {
+func (c *spec) readTitle(raw json.RawMessage) error {
 	if json.Unmarshal(raw, &c.title) == nil {
 		return nil
 	}
@@ -335,38 +517,38 @@ func readSize(raw json.RawMessage, what string) (float32, bool, error) {
 }
 
 // readData reads data: inline values, an array of objects.
-func (c *chart) readData(raw json.RawMessage) error {
+func readData(raw json.RawMessage) ([]map[string]any, error) {
 	m, err := object(raw, "data")
 	if err != nil {
-		return err
+		return nil, err
 	}
 	for k := range m {
 		if k != "values" && k != "name" {
-			return unsupported("data's %q", k)
+			return nil, unsupported("data's %q", k)
 		}
 	}
 	values, ok := m["values"]
 	if !ok {
-		return unsupported("data without values")
+		return nil, unsupported("data without values")
 	}
 	var items []json.RawMessage
 	if json.Unmarshal(values, &items) != nil {
-		return unsupported("data values that are not an array")
+		return nil, unsupported("data values that are not an array")
 	}
 	if len(items) > maxRows {
-		return fmt.Errorf("%w: %d rows (at most %d)", ErrTooLarge, len(items), maxRows)
+		return nil, fmt.Errorf("%w: %d rows (at most %d)", ErrTooLarge, len(items), maxRows)
 	}
-	c.rows = make([]map[string]any, 0, len(items))
+	rows := make([]map[string]any, 0, len(items))
 	for _, it := range items {
 		d := json.NewDecoder(bytes.NewReader(it))
 		d.UseNumber()
 		var row map[string]any
 		if d.Decode(&row) != nil || row == nil {
-			return unsupported("a data value that is not an object")
+			return nil, unsupported("a data value that is not an object")
 		}
-		c.rows = append(c.rows, row)
+		rows = append(rows, row)
 	}
-	return nil
+	return rows, nil
 }
 
 // readMark reads the mark: its type, or an object of its type and properties.
@@ -415,6 +597,18 @@ func (c *chart) readMark(raw json.RawMessage) error {
 			err = number(v, &c.mark.size, 0, 1e5)
 		case k == "interpolate":
 			err = linear(v)
+		case k == "strokeDash":
+			err = json.Unmarshal(v, &c.mark.dash)
+			total := float32(0)
+			for _, d := range c.mark.dash {
+				if d < 0 {
+					err = fmt.Errorf("a negative dash")
+				}
+				total += d
+			}
+			if total == 0 {
+				c.mark.dash = nil // [] or all zeros: solid, as SVG draws it
+			}
 		default:
 			return unsupported("the mark's %q", k)
 		}
@@ -460,31 +654,41 @@ func (c *chart) markType(t string) error {
 		c.mark.kind, c.mark.filled = markPoint, true
 	case "area":
 		c.mark.kind = markArea
+	case "rule":
+		c.mark.kind = markRule
 	default:
 		return unsupported("the mark %q", t)
 	}
 	return nil
 }
 
-// readEncoding reads the encoding: x, y and color.
-func (c *chart) readEncoding(raw json.RawMessage) error {
-	m, err := object(raw, "the encoding")
-	if err != nil {
-		return err
-	}
+// readEncoding reads the encoding: x, y, color and opacity, each with any condition resolved
+// for the page's starting state.
+func (c *chart) readEncoding(m map[string]json.RawMessage, params map[string]param) error {
 	for k, v := range m {
-		var err error
-		switch {
-		case passedEncoding[k]:
-		case k == "x":
-			c.x, err = readChannel(v, "x")
-		case k == "y":
-			c.y, err = readChannel(v, "y")
-		case k == "color", k == "fill":
+		if passedEncoding[k] {
+			continue
+		}
+		def, err := resolve(v, k, params)
+		if err != nil {
+			return err
+		}
+		switch k {
+		case "x":
+			c.x, err = readChannel(def, "x", params)
+		case "y":
+			c.y, err = readChannel(def, "y", params)
+		case "color", "fill":
 			if c.color != nil {
 				return unsupported("both color and fill")
 			}
-			c.color, err = readChannel(v, k)
+			c.color, err = readChannel(def, k, params)
+		case "opacity":
+			var o float32
+			if len(def) != 1 || def["value"] == nil || number(def["value"], &o, 0, 1) != nil {
+				return unsupported("opacity other than one value")
+			}
+			c.opacity = &o
 		default:
 			return unsupported("the %q channel", k)
 		}
@@ -495,12 +699,85 @@ func (c *chart) readEncoding(raw json.RawMessage) error {
 	return nil
 }
 
-// readChannel reads a channel's definition.
-func readChannel(raw json.RawMessage, name string) (*channel, error) {
+// resolve is a channel's definition as the page first draws it. A condition on a selection holds
+// while the selection is empty, unless it says "empty": false: the condition's branch is drawn, or
+// else the channel's own. A condition on a test, on a variable or on an unknown param is
+// unsupported.
+func resolve(raw json.RawMessage, name string, params map[string]param) (map[string]json.RawMessage, error) {
 	m, err := object(raw, "the "+name+" channel")
 	if err != nil {
 		return nil, err
 	}
+	cond, ok := m["condition"]
+	if !ok {
+		return m, nil
+	}
+	cm, err := object(cond, name+"'s condition")
+	if err != nil {
+		return nil, err
+	}
+	var pn string
+	if json.Unmarshal(cm["param"], &pn) != nil {
+		return nil, unsupported("%s's condition without a param", name)
+	}
+	p, ok := params[pn]
+	switch {
+	case !ok:
+		return nil, unsupported("%s's condition on the unknown param %q", name, pn)
+	case !p.selection:
+		return nil, unsupported("%s's condition on the variable %q", name, pn)
+	}
+	holds := true
+	if e, ok := cm["empty"]; ok && json.Unmarshal(e, &holds) != nil {
+		return nil, unsupported("%s's condition's empty %s", name, e)
+	}
+	out := map[string]json.RawMessage{}
+	branch, skip := m, "condition"
+	if holds {
+		branch = cm
+	}
+	for k, v := range branch {
+		if k != skip && k != "param" && k != "empty" {
+			out[k] = v
+		}
+	}
+	if len(out) == 0 {
+		return nil, unsupported("%s's condition leaves nothing to draw", name)
+	}
+	return out, nil
+}
+
+// readDatum reads a datum: a number or a string, or {"expr": name} of a variable param, which is
+// its value.
+func readDatum(raw json.RawMessage, name string, params map[string]param) (any, error) {
+	var e struct {
+		Expr *string `json:"expr"`
+	}
+	if m, err := object(raw, name+"'s datum"); err == nil {
+		if len(m) != 1 || json.Unmarshal(raw, &e) != nil || e.Expr == nil {
+			return nil, unsupported("%s's datum %s", name, raw)
+		}
+		p, ok := params[strings.TrimSpace(*e.Expr)]
+		if !ok || p.selection {
+			return nil, unsupported("%s's datum expr %q: only a variable param's name is read", name, *e.Expr)
+		}
+		return p.value, nil
+	}
+	d := json.NewDecoder(bytes.NewReader(raw))
+	d.UseNumber()
+	var v any
+	if d.Decode(&v) != nil {
+		return nil, unsupported("%s's datum %s", name, raw)
+	}
+	switch v.(type) {
+	case json.Number, string:
+		return v, nil
+	}
+	return nil, unsupported("%s's datum %s", name, raw)
+}
+
+// readChannel reads a channel's definition, its condition resolved.
+func readChannel(m map[string]json.RawMessage, name string, params map[string]param) (*channel, error) {
 	ch := &channel{}
 	if v, ok := m["value"]; ok {
 		var s string
@@ -519,6 +796,9 @@ func readChannel(raw json.RawMessage, name string) (*channel, error) {
 		var err error
 		switch {
 		case passedChannel[k]:
+		case k == "datum" && (name == "x" || name == "y"):
+			ch.isDatum = true
+			ch.datum, err = readDatum(v, name, params)
 		case k == "field":
 			if json.Unmarshal(v, &ch.field) != nil || ch.field == "" {
 				return nil, unsupported("%s's field %s", name, v)
@@ -577,6 +857,18 @@ func readChannel(raw json.RawMessage, name string) (*channel, error) {
 		if err != nil {
 			return nil, err
 		}
+	}
+	if ch.isDatum {
+		if ch.field != "" || ch.aggregate != "" {
+			return nil, unsupported("%s with a datum and a field", name)
+		}
+		if !typed { // Vega-Lite's default for a datum: by its value
+			ch.typ = typeNominal
+			if _, num := ch.datum.(json.Number); num {
+				ch.typ = typeQuantitative
+			}
+		}
+		return ch, nil
 	}
 	if ch.field == "" && ch.aggregate != "count" {
 		return nil, unsupported("%s without a field", name)

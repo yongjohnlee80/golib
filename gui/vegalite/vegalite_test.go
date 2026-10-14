@@ -127,7 +127,7 @@ func TestTheValueAxisIsNiced(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	p, err := newPlan(c)
+	p, err := newPlan(c.layers[0])
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -147,7 +147,7 @@ func TestAnAggregateGroupsByCategory(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		p, err := newPlan(c)
+		p, err := newPlan(c.layers[0])
 		if err != nil {
 			t.Fatalf("%s: %v", op, err)
 		}
@@ -281,7 +281,7 @@ func TestCategoriesSort(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		p, err := newPlan(c)
+		p, err := newPlan(c.layers[0])
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -290,7 +290,7 @@ func TestCategoriesSort(t *testing.T) {
 		}
 	}
 	c, _ := parse(`{"data":{"values":[{"a":"10","b":1},{"a":"9","b":1},{"a":"x","b":1}]},"mark":"bar","encoding":{"x":{"field":"a","type":"ordinal"},"y":{"field":"b","type":"quantitative"}}}`)
-	p, _ := newPlan(c)
+	p, _ := newPlan(c.layers[0])
 	if !slices.Equal(p.xs.domain, []string{"9", "10", "x"}) {
 		t.Errorf("ascending %v, want numbers as numbers, then text", p.xs.domain)
 	}
@@ -463,7 +463,7 @@ func TestSpecsOutsideTheSubsetDecline(t *testing.T) {
 		"a bar of 2 Qs":   `{"data":{"values":[]},"mark":"bar","encoding":{"x":{"field":"a","type":"quantitative"},"y":{"field":"b","type":"quantitative"}}}`,
 		"one position":    `{"data":{"values":[]},"mark":"line","encoding":{"x":{"field":"a","type":"temporal"}}}`,
 		"values of nums":  `{"data":{"values":[1,2,3]},"mark":"bar"}`,
-		"a params":        `{` + ok + `,"mark":"bar","params":[{"name":"p","select":"interval"}]}`,
+		"a set selection": `{` + ok + `,"mark":"bar","params":[{"name":"p","select":"interval","value":{"x":[1,2]}}]}`,
 		"a mark's orient": `{` + ok + `,"mark":{"type":"bar","orient":"horizontal"}}`,
 		"a step width":    `{` + ok + `,"mark":"bar","width":{"step":30}}`,
 		// what a label says, or which values are drawn, is not passed over
@@ -670,7 +670,7 @@ func TestZeroFalseIsTheDatasExtent(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		p, err := newPlan(c)
+		p, err := newPlan(c.layers[0])
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -679,7 +679,275 @@ func TestZeroFalseIsTheDatasExtent(t *testing.T) {
 		}
 	}
 	c, _ := parse(`{"data":{"values":[{"x":"a","y":99}]},"mark":"bar","encoding":{"x":{"field":"x","type":"nominal"},"y":{"field":"y","type":"quantitative"}}}`)
-	if p, _ := newPlan(c); p.ys.lo != 0 {
+	if p, _ := newPlan(c.layers[0]); p.ys.lo != 0 {
 		t.Errorf("a bar's measure from %v, want zero", p.ys.lo)
+	}
+}
+
+// bundleSpec is xmd's bundle-size chart (its design document's): bars by part, coloured by when they
+// load, faded by a legend selection, and a budget line a slider moves.
+const bundleSpec = `{
+  "$schema": "https://vega.github.io/schema/vega-lite/v6.json",
+  "description": "Uncompressed size of each part of the web bundle, and when it loads.",
+  "width": "container",
+  "height": 220,
+  "params": [{"name": "budget", "value": 500,
+    "bind": {"input": "range", "min": 0, "max": 5500, "step": 50, "name": "Budget line (KB) "}}],
+  "data": {"values": [
+    {"part": "main.js", "kb": 62, "loads": "Always"},
+    {"part": "main.css", "kb": 9, "loads": "Always"},
+    {"part": "Fonts", "kb": 344, "loads": "Always"},
+    {"part": "Vega + Vega-Lite", "kb": 662, "loads": "First chart"},
+    {"part": "Mermaid + diagram types", "kb": 5165, "loads": "First diagram"}
+  ]},
+  "layer": [
+    {"mark": {"type": "bar", "cornerRadiusEnd": 3},
+     "encoding": {
+       "y": {"field": "part", "type": "nominal", "sort": "-x", "title": null},
+       "x": {"field": "kb", "type": "quantitative", "title": "KB (uncompressed)"},
+       "color": {"field": "loads", "type": "nominal", "title": "Loads"},
+       "opacity": {"condition": {"param": "pick", "value": 1}, "value": 0.25},
+       "tooltip": [{"field": "part", "title": "Part"}, {"field": "kb", "title": "KB"}]},
+     "params": [{"name": "pick", "select": {"type": "point", "fields": ["loads"]}, "bind": "legend"}]},
+    {"mark": {"type": "rule", "strokeDash": [4, 3]},
+     "encoding": {"x": {"datum": {"expr": "budget"}, "type": "quantitative"}}}
+  ]
+}`
+
+// The chart is drawn as the page first shows it: five bars, largest on top, at full opacity (the
+// legend selection starts empty, so its condition holds), three series in the legend, and the
+// budget rule at the slider's initial 500 KB, dashed, across the plot.
+func TestALayeredChartIsDrawnAsItsFirstState(t *testing.T) {
+	l := mustLay(t, bundleSpec, 900)
+	bars := l.bars()
+	if len(bars) != 5 {
+		t.Fatalf("%d bars, want 5", len(bars))
+	}
+	for _, b := range bars {
+		if b.color.A != 0xff {
+			t.Errorf("a bar at alpha %d: the selection's condition should hold, opacity 1", b.color.A)
+		}
+	}
+	top := bars[0]
+	for _, b := range bars {
+		if b.rect.Y < top.rect.Y {
+			top = b
+		}
+	}
+	if top.rect.W < bars[0].rect.W || top.rect.W < bars[4].rect.W {
+		t.Errorf("the top bar is not the widest (sort -x): %+v", top.rect)
+	}
+	for _, want := range []string{"Loads", "Always", "First chart", "First diagram", "KB (uncompressed)"} {
+		if !slices.Contains(l.texts(), want) {
+			t.Errorf("%q not drawn: %v", want, l.texts())
+		}
+	}
+	// the rule: dashes along one x, from the plot's top to its bottom
+	var dashes []item
+	for _, it := range l.of(itemLine) {
+		if it.color == tableau10[0] && len(it.pts) >= 2 && it.pts[0].X == it.pts[len(it.pts)-1].X {
+			dashes = append(dashes, it)
+		}
+	}
+	if len(dashes) < 10 {
+		t.Fatalf("%d rule dashes, want a dashed line", len(dashes))
+	}
+	x := dashes[0].pts[0].X
+	sp, _ := parse(bundleSpec)
+	lp, err := newLayered(sp)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if lp.xs.lo != 0 || lp.xs.hi < 5165 {
+		t.Errorf("x domain [%v, %v], want 0 to past 5165", lp.xs.lo, lp.xs.hi)
+	}
+	var widest item // the 5165 KB bar spans 0 to 5165 on x: 500 is at about a tenth of it
+	for _, b := range bars {
+		if b.rect.W > widest.rect.W {
+			widest = b
+		}
+	}
+	at := widest.rect.X + widest.rect.W*500/5165
+	if math.Abs(float64(x-at)) > 1 {
+		t.Errorf("the budget rule at x %v, want about %v (500 KB)", x, at)
+	}
+	for _, d := range dashes {
+		if d.pts[0].X != x {
+			t.Errorf("a dash at x %v, the rule at %v", d.pts[0].X, x)
+		}
+	}
+}
+
+// A condition with "empty": false does not hold while the selection is empty: the channel's own
+// value is drawn.
+func TestAConditionThatNeedsASelectionStartsUnmet(t *testing.T) {
+	spec := strings.Replace(bundleSpec, `{"param": "pick", "value": 1}`, `{"param": "pick", "value": 1, "empty": false}`, 1)
+	for _, b := range mustLay(t, spec, 900).bars() {
+		if b.color.A != 64 { // 255 × 0.25, rounded
+			t.Fatalf("a bar at alpha %d, want 0.25's", b.color.A)
+		}
+	}
+}
+
+// Layers share their scales: a line over bars of the same categories is drawn at the bands'
+// centres, and the y domain covers both layers' values.
+func TestLayersShareTheirScales(t *testing.T) {
+	spec := `{"data":{"values":[{"m":"a","n":2,"t":9},{"m":"b","n":4,"t":12}]},
+		"encoding":{"x":{"field":"m","type":"nominal"}},
+		"layer":[
+			{"mark":"bar","encoding":{"y":{"field":"n","type":"quantitative"}}},
+			{"mark":"line","encoding":{"y":{"field":"t","type":"quantitative"}}}]}`
+	sp, err := parse(spec)
+	if err != nil {
+		t.Fatal(err)
+	}
+	lp, err := newLayered(sp)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if lp.ys.hi < 12 || !slices.Equal(lp.xs.domain, []string{"a", "b"}) {
+		t.Fatalf("y up to %v, x %v: want both layers' values", lp.ys.hi, lp.xs.domain)
+	}
+	l := mustLay(t, spec, 900)
+	if !slices.Contains(l.texts(), "n, t") {
+		t.Errorf("the shared y axis's title: %v, want both layers' fields, \"n, t\"", l.texts())
+	}
+	bars := l.bars()
+	var line item
+	for _, it := range l.of(itemLine) {
+		if it.color == tableau10[0] && len(it.pts) == 2 && it.pts[0].X != it.pts[1].X {
+			line = it
+		}
+	}
+	if len(bars) != 2 || len(line.pts) != 2 {
+		t.Fatalf("%d bars and a line of %d points", len(bars), len(line.pts))
+	}
+	for i, b := range bars {
+		if c := b.rect.X + b.rect.W/2; math.Abs(float64(c-line.pts[i].X)) > 0.01 {
+			t.Errorf("the line's point %d at x %v, its band's centre %v", i, line.pts[i].X, c)
+		}
+		if line.pts[i].Y >= b.rect.Y { // t is above n: higher on screen
+			t.Errorf("the line's point %d is not above its bar", i)
+		}
+	}
+}
+
+// A rule by a field is a line at each distinct value; a rule's datum on y is one line across.
+func TestRulesByFieldAndByDatum(t *testing.T) {
+	spec := `{"data":{"values":[{"x":1,"y":1,"at":2},{"x":3,"y":2,"at":2},{"x":5,"y":3,"at":4}]},
+		"layer":[{"mark":"point","encoding":{"x":{"field":"x","type":"quantitative"},"y":{"field":"y","type":"quantitative"}}},
+		{"mark":{"type":"rule","color":"red"},"encoding":{"x":{"field":"at","type":"quantitative"}}},
+		{"mark":{"type":"rule","color":"green"},"encoding":{"y":{"datum":2.5}}}]}`
+	l := mustLay(t, spec, 900)
+	red, green := 0, 0
+	for _, it := range l.of(itemLine) {
+		switch it.color {
+		case color.NRGBA{R: 255, A: 255}:
+			red++
+			if it.pts[0].X != it.pts[1].X {
+				t.Errorf("an x rule is not vertical: %v", it.pts)
+			}
+		case color.NRGBA{G: 128, A: 255}:
+			green++
+			if it.pts[0].Y != it.pts[1].Y {
+				t.Errorf("a y rule is not horizontal: %v", it.pts)
+			}
+		}
+	}
+	if red != 2 || green != 1 {
+		t.Errorf("%d x rules (want 2: at 2 and 4) and %d y rules (want 1)", red, green)
+	}
+	// a rule beyond the data widens the shared domain to reach it
+	sp, err := parse(strings.Replace(spec, `"datum":2.5`, `"datum":20`, 1))
+	if err != nil {
+		t.Fatal(err)
+	}
+	lp, err := newLayered(sp)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if lp.ys.hi < 20 {
+		t.Errorf("y domain up to %v, want the rule at 20 within it", lp.ys.hi)
+	}
+}
+
+// A rule of an aggregate is one line at it over every row: the mean line over bars.
+func TestAMeanRule(t *testing.T) {
+	spec := `{"data":{"values":[{"m":"a","n":2},{"m":"b","n":4},{"m":"c","n":9}]},
+		"layer":[{"mark":"bar","encoding":{"x":{"field":"m","type":"nominal"},"y":{"field":"n","type":"quantitative"}}},
+		{"mark":{"type":"rule","color":"red"},"encoding":{"y":{"aggregate":"mean","field":"n"}}}]}`
+	sp, err := parse(spec)
+	if err != nil {
+		t.Fatal(err)
+	}
+	lp, err := newLayered(sp)
+	if err != nil {
+		t.Fatal(err)
+	}
+	r := lp.order[1].(*rulePlan)
+	if len(r.vals) != 1 || r.vals[0].num != 5 {
+		t.Fatalf("the mean rule's values %v, want one at 5", r.vals)
+	}
+	l := mustLay(t, spec, 900)
+	var rule []item
+	for _, it := range l.of(itemLine) {
+		if it.color == (color.NRGBA{R: 255, A: 255}) {
+			rule = append(rule, it)
+		}
+	}
+	if len(rule) != 1 || rule[0].pts[0].Y != rule[0].pts[1].Y {
+		t.Errorf("the mean rule: %v, want one horizontal line", rule)
+	}
+}
+
+// Dashes follow their pattern along a polyline, round its corners, and an odd pattern repeats.
+func TestDashes(t *testing.T) {
+	runs := dashed([]gui.Point{{X: 0, Y: 0}, {X: 10, Y: 0}}, []float32{2, 3}, 1)
+	if len(runs) != 2 || runs[0][0].X != 0 || runs[0][1].X != 2 || runs[1][0].X != 5 || runs[1][1].X != 7 {
+		t.Errorf("2 on 3 off over 10: %v", runs)
+	}
+	runs = dashed([]gui.Point{{X: 0, Y: 0}, {X: 2, Y: 0}, {X: 2, Y: 4}}, []float32{3, 1}, 1)
+	if len(runs) == 0 || len(runs[0]) != 3 || runs[0][1] != (gui.Point{X: 2, Y: 0}) || runs[0][2] != (gui.Point{X: 2, Y: 1}) {
+		t.Errorf("a dash round a corner: %v", runs)
+	}
+	if runs = dashed([]gui.Point{{X: 0, Y: 0}, {X: 6, Y: 0}}, []float32{1}, 2); len(runs) != 2 {
+		t.Errorf("an odd pattern [1] at unit 2: %v, want 2 on 2 off twice", runs)
+	}
+}
+
+// The still's limits: what the page's first state does not settle is declined.
+func TestParamsOutsideTheStillDecline(t *testing.T) {
+	base := strings.Replace(bundleSpec, "\n", "", -1)
+	for name, c := range map[string][2]string{
+		"a variable without a value": {`"name": "budget", "value": 500,`, `"name": "budget",`},
+		"a computed param":           {`"name": "budget", "value": 500,`, `"name": "budget", "expr": "250 * 2",`},
+		"an expression datum":        {`{"expr": "budget"}`, `{"expr": "budget * 2"}`},
+		"a selection as a datum":     {`{"expr": "budget"}`, `{"expr": "pick"}`},
+		"a condition test":           {`{"param": "pick", "value": 1}`, `{"test": "datum.kb > 100", "value": 1}`},
+		"a condition on a variable":  {`{"param": "pick", "value": 1}`, `{"param": "budget", "value": 1}`},
+		"a condition on nothing":     {`{"param": "pick", "value": 1}`, `{"param": "nobody", "value": 1}`},
+		"conditions as a list":       {`{"param": "pick", "value": 1}`, `[{"param": "pick", "value": 1}]`},
+		"a field opacity":            {`"opacity": {"condition": {"param": "pick", "value": 1}, "value": 0.25}`, `"opacity": {"field": "kb", "type": "quantitative"}`},
+		"a rule of x and y":          {`{"x": {"datum": {"expr": "budget"}, "type": "quantitative"}}`, `{"x": {"datum": 500}, "y": {"datum": 1}}`},
+		"a rule on a nominal x":      {`{"x": {"datum": {"expr": "budget"}, "type": "quantitative"}}`, `{"x": {"datum": "main.js"}}`},
+		"a mark beside the layer":    {`"width": "container",`, `"width": "container", "mark": "bar",`},
+		"a nested layer":             {`{"mark": {"type": "rule", "strokeDash": [4, 3]},`, `{"layer": [], "mark": {"type": "rule", "strokeDash": [4, 3]},`},
+		"a selection set at first":   {`"select": {"type": "point", "fields": ["loads"]}`, `"select": {"type": "point", "fields": ["loads"]}, "value": [{"loads": "Always"}]`},
+		"a third selection type":     {`"type": "point", "fields"`, `"type": "region", "fields"`},
+	} {
+		spec := strings.Replace(base, c[0], c[1], 1)
+		if spec == base {
+			t.Fatalf("%s: the replacement found nothing", name)
+		}
+		if _, err := lay(t, spec, 900); !errors.Is(err, ErrUnsupported) {
+			t.Errorf("%s: %v, want ErrUnsupported", name, err)
+		}
+	}
+	rules := `{"data":{"values":[{"a":1}]},"mark":"rule","encoding":{"x":{"field":"a","type":"quantitative"}}}`
+	if _, err := lay(t, rules, 900); !errors.Is(err, ErrUnsupported) {
+		t.Errorf("a chart of rules alone: %v, want ErrUnsupported", err)
+	}
+	if _, err := lay(t, bundleSpec, 900); err != nil {
+		t.Fatalf("the base spec: %v", err)
 	}
 }

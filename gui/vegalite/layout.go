@@ -5,6 +5,7 @@ import (
 	"math"
 	"slices"
 	"sort"
+	"strings"
 
 	"github.com/yongjohnlee80/golib/gui"
 )
@@ -15,8 +16,10 @@ import (
 // "container" fills the width asked. Every length is Vega-Lite's times the unit, the theme's font
 // over Vega-Lite's 11-pixel labels.
 
-// builder lays a plan out.
+// builder lays a layered plan out. p is the mark layer being drawn: the base layer's for the axes,
+// each layer's in turn for the marks.
 type builder struct {
+	l     *layered
 	p     *plan
 	th    Theme
 	m     gui.Measurer
@@ -150,30 +153,39 @@ func axisTitle(ch *channel) string {
 	return ch.field
 }
 
-// build lays p out for width.
-func build(p *plan, width float32, th Theme, m gui.Measurer) *Laid {
-	b := &builder{p: p, th: th, m: m, unit: th.Font.Size / 11, lh: th.Font.Size * 1.2}
+// build lays l out for width: the base layer's axes and the first colour layer's legend, over the
+// shared scales, and every layer's marks in order.
+func build(l *layered, width float32, th Theme, m gui.Measurer) *Laid {
+	p := l.base
+	b := &builder{l: l, p: p, th: th, m: m, unit: th.Font.Size / 11, lh: th.Font.Size * 1.2}
 	b.bold = th.Font
 	b.bold.Bold = true
 	u, lh := b.unit, b.lh
-	c := p.c
+	c, sp := p.c, l.sp
 	tick, pad := 5*u, 4*u
 
-	xs, ys := &scale{a: &p.xs}, &scale{a: &p.ys}
+	xs, ys := &scale{a: &l.xs}, &scale{a: &l.ys}
 	xs.percent = p.normalize && p.dimY
 	ys.percent = p.normalize && !p.dimY
 
 	// the legend: its title and entries, to the right of the plot
 	var legendW, legendH float32
-	legend := c.color != nil && c.color.value == nil && !c.color.noAxis && len(p.series) > 0
+	var lp *plan // the layer the legend is of: the first coloured by a field
+	for _, o := range l.order {
+		if q, ok := o.(*plan); ok && q.c.color != nil && q.c.color.value == nil {
+			lp = q
+			break
+		}
+	}
+	legend := lp != nil && !lp.c.color.noAxis && len(l.series) > 0
 	legendTitle := ""
 	if legend {
-		legendTitle = axisTitle(c.color)
+		legendTitle = axisTitle(lp.c.color)
 		legendW = b.textW(legendTitle, b.bold)
-		for _, s := range p.series {
+		for _, s := range l.series {
 			legendW = max(legendW, lh+pad+b.textW(s, th.Font))
 		}
-		legendH = float32(len(p.series)) * lh
+		legendH = float32(len(l.series)) * lh
 		if legendTitle != "" {
 			legendH += lh + pad
 		}
@@ -182,12 +194,12 @@ func build(p *plan, width float32, th Theme, m gui.Measurer) *Laid {
 	// the plot's height, then the y axis's labels and their width
 	plotH := 200 * u
 	switch {
-	case c.height > 0:
-		plotH = c.height * u
-	case p.ys.discrete:
-		plotH = 20 * u * float32(max(len(p.ys.domain), 1))
+	case sp.height > 0:
+		plotH = sp.height * u
+	case l.ys.discrete:
+		plotH = 20 * u * float32(max(len(l.ys.domain), 1))
 	}
-	if p.ys.discrete {
+	if l.ys.discrete {
 		ys.setCategories(plotH)
 	} else {
 		ys.setTicks(plotH, u)
@@ -202,7 +214,7 @@ func build(p *plan, width float32, th Theme, m gui.Measurer) *Laid {
 	}
 	yTitle := ""
 	if yAxis {
-		yTitle = axisTitle(c.y)
+		yTitle = b.sharedTitle(func(c *chart) *channel { return c.y })
 	}
 	left := pad
 	if yAxis {
@@ -215,18 +227,18 @@ func build(p *plan, width float32, th Theme, m gui.Measurer) *Laid {
 	// the plot's width: Vega-Lite's, the spec's, or what is left of the width asked
 	plotW := 200 * u
 	switch {
-	case c.containerW && width > 0:
+	case sp.containerW && width > 0:
 		gap := float32(0)
 		if legend {
 			gap = 4*pad + legendW
 		}
 		plotW = max(width-left-gap-2*pad, 20*u)
-	case c.width > 0:
-		plotW = c.width * u
-	case p.xs.discrete:
-		plotW = 20 * u * float32(max(len(p.xs.domain), 1))
+	case sp.width > 0:
+		plotW = sp.width * u
+	case l.xs.discrete:
+		plotW = 20 * u * float32(max(len(l.xs.domain), 1))
 	}
-	if p.xs.discrete {
+	if l.xs.discrete {
 		xs.setCategories(plotW)
 	} else {
 		xs.setTicks(plotW, u)
@@ -239,7 +251,7 @@ func build(p *plan, width float32, th Theme, m gui.Measurer) *Laid {
 		xLabelH = lh
 		for _, s := range xLabels {
 			w := b.textW(s, th.Font)
-			if p.xs.discrete && w > xs.stepPx-2*u {
+			if l.xs.discrete && w > xs.stepPx-2*u {
 				up = true
 			}
 			xLabelH = max(xLabelH, w)
@@ -247,20 +259,20 @@ func build(p *plan, width float32, th Theme, m gui.Measurer) *Laid {
 		if !up {
 			xLabelH = lh
 		}
-		if len(xLabels) > 0 && !p.xs.discrete {
+		if len(xLabels) > 0 && !l.xs.discrete {
 			lastHalf = b.textW(xLabels[len(xLabels)-1], th.Font) / 2
 		}
 	}
 	xTitle := ""
 	if xAxis {
-		xTitle = axisTitle(c.x)
+		xTitle = b.sharedTitle(func(c *chart) *channel { return c.x })
 	}
 
 	// the title over it all
 	top := lh / 2 // room for the top y label's upper half
 	titleFont := b.bold
 	titleFont.Size *= 13.0 / 11
-	if c.title != "" {
+	if sp.title != "" {
 		top += titleFont.Size*1.2 + 2*pad
 	}
 	plot := gui.Rect{X: left, Y: top, W: plotW, H: plotH}
@@ -280,11 +292,20 @@ func build(p *plan, width float32, th Theme, m gui.Measurer) *Laid {
 	}
 	size := gui.Size{W: right, H: max(bottom, plot.Y+legendH) + pad}
 
-	if c.title != "" {
-		b.text(c.title, titleFont, gui.Rect{X: 0, Y: pad, W: size.W, H: titleFont.Size * 1.2}, 0, false, th.Text)
+	if sp.title != "" {
+		b.text(sp.title, titleFont, gui.Rect{X: 0, Y: pad, W: size.W, H: titleFont.Size * 1.2}, 0, false, th.Text)
 	}
 	b.grid(xs, ys, plot)
-	b.marks(xs, ys)
+	for _, o := range l.order {
+		switch v := o.(type) {
+		case *plan:
+			b.p = v
+			b.marks(xs, ys)
+		case *rulePlan:
+			b.rule(v, xs, ys, plot)
+		}
+	}
+	b.p = p
 	if yAxis {
 		b.yAxis(ys, yLabels, yLabelW, yTitle, plot)
 	}
@@ -292,9 +313,29 @@ func build(p *plan, width float32, th Theme, m gui.Measurer) *Laid {
 		b.xAxis(xs, xLabels, up, xLabelH, xTitle, plot)
 	}
 	if legend {
+		b.p = lp
 		b.legend(legendTitle, gui.Pt(plot.X+plot.W+4*pad, plot.Y))
+		b.p = p
 	}
 	return &Laid{size: size, items: b.items, ops: batch(b.items)}
+}
+
+// sharedTitle is a shared axis's title: the base layer's own, or, as Vega-Lite merges them, every
+// mark layer's default title on it, each once, joined ("n, t").
+func (b *builder) sharedTitle(of func(*chart) *channel) string {
+	base := of(b.l.base.c)
+	if base.title != nil || base.noTitle {
+		return axisTitle(base)
+	}
+	var titles []string
+	for _, o := range b.l.order {
+		if q, ok := o.(*plan); ok {
+			if t := axisTitle(of(q.c)); t != "" && !slices.Contains(titles, t) {
+				titles = append(titles, t)
+			}
+		}
+	}
+	return strings.Join(titles, ", ")
 }
 
 // labels are a scale's tick labels: its categories, or its ticks' text.
@@ -455,14 +496,17 @@ func (b *builder) colorOf(series string) color.NRGBA {
 	case c.color != nil && c.color.value != nil:
 		return *c.color.value
 	}
-	i := max(slices.Index(b.p.series, series), 0)
+	i := max(slices.Index(b.l.series, series), 0) // the shared colour domain: a series is one colour in every layer
 	return b.th.Palette[i%len(b.th.Palette)]
 }
 
-// opacity is a mark's: the spec's, or Vega-Lite's default (0.7 for points, and for bars or areas
-// overlaid by series).
+// opacity is a mark's: the opacity channel's, the mark's, or Vega-Lite's default (0.7 for points,
+// and for bars or areas overlaid by series).
 func (b *builder) opacity() float32 {
 	p := b.p
+	if p.c.opacity != nil {
+		return *p.c.opacity
+	}
 	if p.c.mark.opacity > 0 {
 		return p.c.mark.opacity
 	}
@@ -534,7 +578,7 @@ func (b *builder) marks(xs, ys *scale) {
 				width = p.c.mark.strokeWidth * b.unit
 			}
 			if len(top) > 1 {
-				b.line(col, width, top...)
+				b.stroke(col, width, p.c.mark.dash, top...)
 			}
 			if p.c.mark.point || len(top) == 1 {
 				for _, pt := range top {
@@ -613,7 +657,7 @@ func (b *builder) legend(title string, at gui.Point) {
 		y += lh + pad
 	}
 	sw := th.Font.Size * 0.8
-	for _, s := range b.p.series {
+	for _, s := range b.l.series {
 		col := b.colorOf(s)
 		cy := y + lh/2
 		switch b.p.c.mark.kind {
@@ -627,4 +671,91 @@ func (b *builder) legend(title string, at gui.Point) {
 		b.text(s, th.Font, gui.Rect{X: at.X + lh + pad, Y: y, W: b.textW(s, th.Font), H: lh}, -1, false, th.Text)
 		y += lh
 	}
+}
+
+// rule draws a rule layer: a line across the plot at each of its values, in its colour (the
+// mark's, the colour channel's value, or Vega-Lite's default, the palette's first), width
+// (Vega-Lite's 1 by default) and dashes.
+func (b *builder) rule(r *rulePlan, xs, ys *scale, plot gui.Rect) {
+	c := r.c
+	col := b.th.Palette[0]
+	switch {
+	case c.mark.color != nil:
+		col = *c.mark.color
+	case c.color != nil && c.color.value != nil:
+		col = *c.color.value
+	}
+	alpha := float32(1)
+	switch {
+	case c.opacity != nil:
+		alpha = *c.opacity
+	case c.mark.opacity > 0:
+		alpha = c.mark.opacity
+	}
+	width := b.unit
+	if c.mark.strokeWidth > 0 {
+		width = c.mark.strokeWidth * b.unit
+	}
+	for _, v := range r.vals {
+		if r.onX {
+			x := xs.centre(v)
+			b.stroke(fade(col, alpha), width, c.mark.dash, gui.Pt(x, plot.Y), gui.Pt(x, plot.Y+plot.H))
+		} else {
+			y := ys.centre(v)
+			b.stroke(fade(col, alpha), width, c.mark.dash, gui.Pt(plot.X, y), gui.Pt(plot.X+plot.W, y))
+		}
+	}
+}
+
+// stroke adds a polyline, dashed by dash (Vega-Lite's strokeDash, on and off lengths in its
+// pixels) when it is set.
+func (b *builder) stroke(c color.NRGBA, width float32, dash []float32, pts ...gui.Point) {
+	if len(dash) == 0 {
+		b.line(c, width, pts...)
+		return
+	}
+	for _, run := range dashed(pts, dash, b.unit) {
+		b.line(c, width, run...)
+	}
+}
+
+// dashed cuts the polyline through pts into its dashes: runs of pattern's on lengths, skipping its
+// off lengths, each times unit. An odd pattern repeats, as SVG's does. pattern sums above zero.
+func dashed(pts []gui.Point, pattern []float32, unit float32) [][]gui.Point {
+	pat := make([]float32, 0, 2*len(pattern))
+	for _, d := range pattern {
+		pat = append(pat, d*unit)
+	}
+	if len(pat)%2 == 1 {
+		pat = append(pat, pat...)
+	}
+	var out [][]gui.Point
+	i, left, on := 0, pat[0], true
+	run := []gui.Point{pts[0]}
+	for k := 1; k < len(pts); k++ {
+		a, z := pts[k-1], pts[k]
+		seg := float32(math.Hypot(float64(z.X-a.X), float64(z.Y-a.Y)))
+		for at := float32(0); at < seg; {
+			step := min(left, seg-at)
+			at += step
+			left -= step
+			t := at / seg
+			p := gui.Pt(a.X+(z.X-a.X)*t, a.Y+(z.Y-a.Y)*t)
+			if on {
+				run = append(run, p)
+			}
+			if left <= 0 {
+				if on && len(run) > 1 {
+					out = append(out, run)
+				}
+				run = []gui.Point{p}
+				on, i = !on, (i+1)%len(pat)
+				left = pat[i]
+			}
+		}
+	}
+	if on && len(run) > 1 {
+		out = append(out, run)
+	}
+	return out
 }
