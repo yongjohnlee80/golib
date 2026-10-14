@@ -144,9 +144,10 @@ var (
 		"frame", "limit", "lineHeight", "offset", "orient", "style", "zindex", "aria")
 	// a config's keys whose values only style: the view's frame, fonts, the palette, guides' looks
 	passedConfig = names("view", "background", "padding", "font", "autosize", "range", "style", "title", "aria", "lineBreak")
-	// a config's mark defaults: the mark's look
+	// a config's mark defaults: the mark's look. Its interpolate is read, as a mark's is: a step or
+	// a curve draws something else than the lines between the points
 	passedMarkConfig = union(passedMark, names("color", "fill", "opacity", "strokeWidth", "size", "filled", "point", "line",
-		"interpolate", "tension", "shape", "binSpacing", "continuousBandSize", "discreteBandSize", "thickness", "width", "height"))
+		"shape", "binSpacing", "continuousBandSize", "discreteBandSize", "thickness", "width", "height"))
 )
 
 func names(s ...string) map[string]bool {
@@ -242,8 +243,20 @@ func readConfig(raw json.RawMessage) error {
 		switch {
 		case passedConfig[k]:
 		case k == "mark" || k == "bar" || k == "line" || k == "point" || k == "area" || k == "circle":
-			if err := passedOnly(v, passedMarkConfig, "config's "+k); err != nil {
+			mc, err := object(v, "config's "+k)
+			if err != nil {
 				return err
+			}
+			for mk, mv := range mc {
+				switch {
+				case passedMarkConfig[mk]:
+				case mk == "interpolate":
+					if err := linear(mv); err != nil {
+						return err
+					}
+				default:
+					return unsupported("config's %s's %q", k, mk)
+				}
 			}
 		case strings.HasPrefix(k, "axis"): // axis, axisX, axisY, axisBand, axisQuantitative…
 			if err := passedOnly(v, passedAxis, "config's "+k); err != nil {
@@ -401,16 +414,22 @@ func (c *chart) readMark(raw json.RawMessage) error {
 		case k == "size":
 			err = number(v, &c.mark.size, 0, 1e5)
 		case k == "interpolate":
-			var s string
-			if json.Unmarshal(v, &s) != nil || s != "linear" {
-				return unsupported("interpolate %s", v)
-			}
+			err = linear(v)
 		default:
 			return unsupported("the mark's %q", k)
 		}
 		if err != nil {
 			return unsupported("the mark's %q", k)
 		}
+	}
+	return nil
+}
+
+// linear checks an interpolate is "linear", the lines between the points that are drawn.
+func linear(raw json.RawMessage) error {
+	var s string
+	if json.Unmarshal(raw, &s) != nil || s != "linear" {
+		return unsupported("interpolate %s", raw)
 	}
 	return nil
 }
