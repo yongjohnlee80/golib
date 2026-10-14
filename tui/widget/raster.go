@@ -13,6 +13,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"slices"
 	"strconv"
 	"time"
 )
@@ -43,8 +44,10 @@ var (
 // SVGRasterizer is the tool RasterizeSVG would run, and whether one is installed.
 func SVGRasterizer() (string, bool) { return find(svgTools) }
 
-// HTMLRasterizer is the tool RasterizeHTML would run, and whether one is installed.
-func HTMLRasterizer() (string, bool) { return find(htmlTools) }
+// HTMLRasterizer is the tool RasterizeHTML would run, and whether one is installed: a browser on
+// the PATH, else one installed as an application where the platform keeps them (macOS's
+// /Applications, where Chrome is not on the PATH).
+func HTMLRasterizer() (string, bool) { return find(append(slices.Clone(htmlTools), htmlApps()...)) }
 
 func find(tools []string) (string, bool) {
 	for _, t := range tools {
