@@ -50,7 +50,12 @@ func TestAMissingRasterizerSaysSo(t *testing.T) {
 // when the PATH has none.
 func TestAnInstalledBrowserIsFoundOffThePath(t *testing.T) {
 	defer func(h []string, a func() []string) { htmlTools, htmlApps = h, a }(htmlTools, htmlApps)
-	app := filepath.Join(t.TempDir(), "Google Chrome.app", "Contents", "MacOS", "Google Chrome")
+	// never run, only found: on Windows LookPath finds an executable by its extension
+	name := "Google Chrome"
+	if runtime.GOOS == "windows" {
+		name += ".exe"
+	}
+	app := filepath.Join(t.TempDir(), "Google Chrome.app", "Contents", "MacOS", name)
 	if err := os.MkdirAll(filepath.Dir(app), 0o755); err != nil {
 		t.Fatal(err)
 	}

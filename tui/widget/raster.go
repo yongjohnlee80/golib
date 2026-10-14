@@ -25,10 +25,10 @@ import (
 
 // The rasterizers' bounds.
 const (
-	RasterTimeout   = 15 * time.Second
-	MaxRasterInput  = 8 << 20  // the SVG or HTML handed to a tool
-	MaxRasterOutput = 32 << 20 // the PNG read back
-	maxRasterPixels = 4096     // the widest or tallest image asked for
+	RasterTimeout   = 30 * time.Second // a headless Chrome on macOS can take 8–15 s for a page
+	MaxRasterInput  = 8 << 20          // the SVG or HTML handed to a tool
+	MaxRasterOutput = 32 << 20         // the PNG read back
+	maxRasterPixels = 4096             // the widest or tallest image asked for
 )
 
 // ErrNoRasterizer is a rasterizer whose tool is not installed.
