@@ -1,6 +1,7 @@
 package vegalite
 
 import (
+	"context"
 	"image/color"
 	"math"
 	"slices"
@@ -19,6 +20,7 @@ import (
 // builder lays a layered plan out. p is the mark layer being drawn: the base layer's for the axes,
 // each layer's in turn for the marks.
 type builder struct {
+	ctx   context.Context // cancelled: stroke adds nothing more, and Lay answers the error
 	l     *layered
 	p     *plan
 	th    Theme
@@ -155,9 +157,9 @@ func axisTitle(ch *channel) string {
 
 // build lays l out for width: the base layer's axes and the first colour layer's legend, over the
 // shared scales, and every layer's marks in order.
-func build(l *layered, width float32, th Theme, m gui.Measurer) *Laid {
+func build(ctx context.Context, l *layered, width float32, th Theme, m gui.Measurer) *Laid {
 	p := l.base
-	b := &builder{l: l, p: p, th: th, m: m, unit: th.Font.Size / 11, lh: th.Font.Size * 1.2}
+	b := &builder{ctx: ctx, l: l, p: p, th: th, m: m, unit: th.Font.Size / 11, lh: th.Font.Size * 1.2}
 	b.bold = th.Font
 	b.bold.Bold = true
 	u, lh := b.unit, b.lh
@@ -710,6 +712,9 @@ func (b *builder) rule(r *rulePlan, xs, ys *scale, plot gui.Rect) {
 // stroke adds a polyline, dashed by dash (Vega-Lite's strokeDash, on and off lengths in its
 // pixels) when it is set.
 func (b *builder) stroke(c color.NRGBA, width float32, dash []float32, pts ...gui.Point) {
+	if b.ctx.Err() != nil { // abandoned: no more cutting
+		return
+	}
 	if len(dash) == 0 {
 		b.line(c, width, pts...)
 		return
@@ -719,34 +724,55 @@ func (b *builder) stroke(c color.NRGBA, width float32, dash []float32, pts ...gu
 	}
 }
 
+// maxDashes bounds a polyline's dashes: a pattern that would cut it finer is drawn solid.
+const maxDashes = 4096
+
 // dashed cuts the polyline through pts into its dashes: runs of pattern's on lengths, skipping its
-// off lengths, each times unit. An odd pattern repeats, as SVG's does. pattern sums above zero.
+// off lengths, each times unit. An odd pattern repeats, as SVG's does. A pattern whose period is
+// under a pixel, or that would cut the polyline into more than maxDashes, is drawn solid: at that
+// density a dash is not seen, and the walk stays bounded. A zero-length dash draws nothing, as
+// SVG's does. The walk is in float64, so a short dash still advances along a long line.
 func dashed(pts []gui.Point, pattern []float32, unit float32) [][]gui.Point {
-	pat := make([]float32, 0, 2*len(pattern))
+	pat := make([]float64, 0, 2*len(pattern))
+	period := 0.0
 	for _, d := range pattern {
-		pat = append(pat, d*unit)
+		pat = append(pat, float64(d*unit))
+		period += float64(d * unit)
 	}
 	if len(pat)%2 == 1 {
 		pat = append(pat, pat...)
+		period *= 2
+	}
+	length := 0.0
+	for k := 1; k < len(pts); k++ {
+		length += math.Hypot(float64(pts[k].X-pts[k-1].X), float64(pts[k].Y-pts[k-1].Y))
+	}
+	if period < 1 || length/period*float64(len(pat)/2) > maxDashes {
+		return [][]gui.Point{pts}
 	}
 	var out [][]gui.Point
+	keep := func(run []gui.Point) {
+		if len(run) > 1 && run[0] != run[len(run)-1] {
+			out = append(out, run)
+		}
+	}
 	i, left, on := 0, pat[0], true
 	run := []gui.Point{pts[0]}
 	for k := 1; k < len(pts); k++ {
 		a, z := pts[k-1], pts[k]
-		seg := float32(math.Hypot(float64(z.X-a.X), float64(z.Y-a.Y)))
-		for at := float32(0); at < seg; {
+		seg := math.Hypot(float64(z.X-a.X), float64(z.Y-a.Y))
+		for at := 0.0; at < seg; {
 			step := min(left, seg-at)
 			at += step
 			left -= step
-			t := at / seg
+			t := float32(at / seg)
 			p := gui.Pt(a.X+(z.X-a.X)*t, a.Y+(z.Y-a.Y)*t)
 			if on {
 				run = append(run, p)
 			}
 			if left <= 0 {
-				if on && len(run) > 1 {
-					out = append(out, run)
+				if on {
+					keep(run)
 				}
 				run = []gui.Point{p}
 				on, i = !on, (i+1)%len(pat)
@@ -754,8 +780,8 @@ func dashed(pts []gui.Point, pattern []float32, unit float32) [][]gui.Point {
 			}
 		}
 	}
-	if on && len(run) > 1 {
-		out = append(out, run)
+	if on {
+		keep(run)
 	}
 	return out
 }

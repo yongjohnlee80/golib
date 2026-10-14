@@ -73,7 +73,10 @@ func Lay(ctx context.Context, src string, width float32, th Theme, m gui.Measure
 	if len(th.Palette) == 0 {
 		th.Palette = tableau10
 	}
-	l := build(lp, width, th, m)
+	l := build(ctx, lp, width, th, m)
+	if err := ctx.Err(); err != nil { // abandoned mid-layout: what was laid is not the chart
+		return nil, err
+	}
 	l.fitTo(width)
 	return l, nil
 }
