@@ -488,6 +488,8 @@ func TestSpecsOutsideTheSubsetDecline(t *testing.T) {
 		"a path shape":     `{` + strings.Replace(ok, `"encoding":{`, `"encoding":{"shape":{"value":"M0,0L1,1"}},`, 1) + `,"mark":"point"}`,
 		"a range's shape":  `{` + strings.Replace(ok, `"encoding":{`, `"encoding":{"shape":{"field":"a","type":"nominal","scale":{"range":["circle","star"]}},`, 1) + `,"mark":"point"}`,
 		"a range's colour": `{` + strings.Replace(ok, `"encoding":{`, `"encoding":{"color":{"field":"a","type":"nominal","scale":{"range":["#2e9e6a","nocolour"]}},`, 1) + `,"mark":"bar"}`,
+		"a named range":    `{` + strings.Replace(ok, `"encoding":{`, `"encoding":{"color":{"field":"a","type":"nominal","scale":{"range":"diverging"}},`, 1) + `,"mark":"bar"}`,
+		"a shape's ramp":   `{` + strings.Replace(ok, `"encoding":{`, `"encoding":{"shape":{"field":"a","type":"nominal","scale":{"range":"category"}},`, 1) + `,"mark":"point"}`,
 		"a position range": `{` + strings.Replace(ok, `"type":"quantitative"}`, `"type":"quantitative","scale":{"range":[0,100]}}`, 1) + `,"mark":"bar"}`,
 		"a sort op":        `{` + strings.Replace(ok, `"type":"nominal"}`, `"type":"nominal","sort":{"field":"b","op":"distinct"}}`, 1) + `,"mark":"bar"}`,
 		"a sort no field":  `{` + strings.Replace(ok, `"type":"nominal"}`, `"type":"nominal","sort":{"op":"sum"}}`, 1) + `,"mark":"bar"}`,
@@ -1168,6 +1170,18 @@ func TestAColourRangeColoursTheSeries(t *testing.T) {
 	l = mustLay(t, strings.Replace(spec, `"range":["#2e9e6a","#d64545"]`, `"range":"category"`, 1), 2000)
 	if c := l.bars()[1].color; c != tableau10[0] {
 		t.Errorf("a named range drew passed in %v, want the palette's first", c)
+	}
+	// a shape's default range by name is Vega's symbols; any other name declines, through Lay
+	shapes := `{"data":{"values":[{"x":1,"y":1,"k":"a"}]},"mark":"point","encoding":{"x":{"field":"x","type":"quantitative"},
+		"y":{"field":"y","type":"quantitative"},"shape":{"field":"k","type":"nominal","scale":{"range":%q}}}}`
+	mustLay(t, fmt.Sprintf(shapes, "symbol"), 2000)
+	for _, named := range []string{"category", "diverging"} {
+		if _, err := lay(t, fmt.Sprintf(shapes, named), 2000); !errors.Is(err, ErrUnsupported) {
+			t.Errorf("a shape's range %q: %v, want ErrUnsupported", named, err)
+		}
+	}
+	if _, err := lay(t, strings.Replace(spec, `"range":["#2e9e6a","#d64545"]`, `"range":"diverging"`, 1), 2000); !errors.Is(err, ErrUnsupported) {
+		t.Errorf("a colour's range %q: %v, want ErrUnsupported", "diverging", err)
 	}
 }
 

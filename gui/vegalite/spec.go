@@ -999,12 +999,16 @@ func (ch *channel) readScale(raw json.RawMessage, name string) error {
 }
 
 // readRange reads a scale's range: a colour scale's list of colours, or a shape scale's list of
-// symbols, each in domain order and cycling. A named range ("category") is the default's look,
-// passed over. Any other range (a position's, a list of what is not drawn) is unsupported.
+// symbols, each in domain order and cycling. The named range a channel draws by default (a
+// nominal colour's "category", a shape's "symbol") is passed over. Any other range (another named
+// one, a position's, a list of what is not drawn) is unsupported.
 func (ch *channel) readRange(raw json.RawMessage, name string) error {
 	var named string
-	if json.Unmarshal(raw, &named) == nil && (name == "color" || name == "fill" || name == "shape") {
-		return nil
+	if json.Unmarshal(raw, &named) == nil {
+		if (named == "category" && (name == "color" || name == "fill")) || (named == "symbol" && name == "shape") {
+			return nil
+		}
+		return unsupported("%s's scale range %q", name, named)
 	}
 	var list []string
 	if json.Unmarshal(raw, &list) != nil || len(list) == 0 {
