@@ -97,12 +97,17 @@ _, err = core.WriteTo(&buf) // io.WriterTo: the text, lines joined by "\n"
 ```go
 core.Modified() // the text differs from the last saved one
 core.MarkSaved() // record the text as saved: call it after a successful write
+core.Revision()  // names the text as it is now
 ```
 
 Every edit gives the text a new revision, and `Modified` compares it with the revision `MarkSaved`
 recorded. An undo restores the revision the text had, so undoing back to the saved text reads as
 unmodified. A new edit after that never reuses an old revision. `SetValue` and `ReadFrom` start a
 new document, which is unmodified.
+
+`Revision` is that revision. Equal revisions mean the same text of the same document: a caller
+that read the text before waiting on something (a server's answer) compares the revision it read
+with `Revision()` to know whether the text has changed since.
 
 ## Find and replace
 

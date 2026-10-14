@@ -15,7 +15,7 @@ import (
 //	Positions   Cursor, SetCursor, TextIn, Select, Selection
 //	Edits       Insert, Delete, Replace, Batch
 //	I/O         ReadFrom (io.ReaderFrom), WriteTo (io.WriterTo)
-//	State       Modified, MarkSaved
+//	State       Modified, MarkSaved, Revision
 
 // ErrReadOnly is what an edit returns on a read-only core.
 var ErrReadOnly = errors.New("widget: the editor is read-only")
@@ -220,3 +220,10 @@ func (c *EditorCore) Modified() bool { return c.rev != c.savedRev }
 
 // MarkSaved records the text as saved: the host calls it once its write succeeded.
 func (c *EditorCore) MarkSaved() { c.savedRev = c.rev }
+
+// Revision names the text as it is: every edit and every new document (SetValue, ReadFrom) gives
+// it a revision no text has had, and an undo or redo gives back the revision the text it restores
+// had. Two equal revisions are therefore the same text of the same document, so a caller that
+// read the text, waited (a call to a server, say) and reads the revision again can tell whether
+// what it read still holds.
+func (c *EditorCore) Revision() uint64 { return c.rev }
