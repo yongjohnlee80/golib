@@ -1,7 +1,9 @@
 package vegalite
 
 import (
+	"cmp"
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"image/color"
@@ -480,7 +482,19 @@ func TestSpecsOutsideTheSubsetDecline(t *testing.T) {
 		"a mark curve":     `{` + ok + `,"mark":"line","config":{"mark":{"interpolate":"basis"}}}`,
 		"a config tension": `{` + ok + `,"mark":"line","config":{"line":{"tension":0.5}}}`,
 		"a mark invalid":   `{` + ok + `,"mark":{"type":"bar","invalid":null}}`,
-		"a subtitle":       `{` + ok + `,"mark":"bar","title":{"text":"t","subtitle":"s"}}`,
+		"a shape on a bar": `{` + strings.Replace(ok, `"encoding":{`, `"encoding":{"shape":{"field":"a","type":"nominal"},`, 1) + `,"mark":"bar"}`,
+		"a scale shape":    `{` + strings.Replace(ok, `"encoding":{`, `"encoding":{"shape":{"field":"b","type":"quantitative"},`, 1) + `,"mark":"point"}`,
+		"a summed shape":   `{` + strings.Replace(ok, `"encoding":{`, `"encoding":{"shape":{"field":"a","type":"nominal","aggregate":"count"},`, 1) + `,"mark":"point"}`,
+		"a path shape":     `{` + strings.Replace(ok, `"encoding":{`, `"encoding":{"shape":{"value":"M0,0L1,1"}},`, 1) + `,"mark":"point"}`,
+		"a range's shape":  `{` + strings.Replace(ok, `"encoding":{`, `"encoding":{"shape":{"field":"a","type":"nominal","scale":{"range":["circle","star"]}},`, 1) + `,"mark":"point"}`,
+		"a range's colour": `{` + strings.Replace(ok, `"encoding":{`, `"encoding":{"color":{"field":"a","type":"nominal","scale":{"range":["#2e9e6a","nocolour"]}},`, 1) + `,"mark":"bar"}`,
+		"a position range": `{` + strings.Replace(ok, `"type":"quantitative"}`, `"type":"quantitative","scale":{"range":[0,100]}}`, 1) + `,"mark":"bar"}`,
+		"a sort op":        `{` + strings.Replace(ok, `"type":"nominal"}`, `"type":"nominal","sort":{"field":"b","op":"distinct"}}`, 1) + `,"mark":"bar"}`,
+		"a sort no field":  `{` + strings.Replace(ok, `"type":"nominal"}`, `"type":"nominal","sort":{"op":"sum"}}`, 1) + `,"mark":"bar"}`,
+		"a sort encoding":  `{` + strings.Replace(ok, `"type":"nominal"}`, `"type":"nominal","sort":{"encoding":"y"}}`, 1) + `,"mark":"bar"}`,
+		"a sort order":     `{` + strings.Replace(ok, `"type":"nominal"}`, `"type":"nominal","sort":{"field":"b","order":"up"}}`, 1) + `,"mark":"bar"}`,
+		"a legend sorted":  `{` + strings.Replace(ok, `"encoding":{`, `"encoding":{"color":{"field":"a","type":"nominal","sort":{"field":"b"}},`, 1) + `,"mark":"bar"}`,
+		"a subtitle list":  `{` + ok + `,"mark":"bar","title":{"text":"t","subtitle":[1,2]}}`,
 	} {
 		if _, err := lay(t, spec, 600); !errors.Is(err, ErrUnsupported) {
 			t.Errorf("%s: %v, want ErrUnsupported", name, err)
@@ -1010,4 +1024,358 @@ func TestATinyDashThroughLayEnds(t *testing.T) {
 	if len(b.items) != 0 {
 		t.Errorf("a cancelled layout cut %d dashes", len(b.items))
 	}
+}
+
+// a subtitled chart's text items: the title's and the subtitle's
+func titled(t *testing.T, l *Laid, title, subtitle string) (ti, su item) {
+	t.Helper()
+	for _, it := range l.of(itemText) {
+		switch it.text {
+		case title:
+			ti = it
+		case subtitle:
+			su = it
+		}
+	}
+	if su.text == "" || (title != "" && ti.text == "") {
+		t.Fatalf("labels %v: want %q and %q", l.texts(), title, subtitle)
+	}
+	return ti, su
+}
+
+// A subtitle is drawn under the title in the axes' quieter colour, a list of lines as one, and
+// the plot moves down to make room for it, with or without a title.
+func TestASubtitleIsDrawnUnderItsTitle(t *testing.T) {
+	spec := `{"title":%s,"data":{"values":[{"a":"x","b":4}]},"mark":"bar",
+		"encoding":{"x":{"field":"a","type":"nominal"},"y":{"field":"b","type":"quantitative"}}}`
+	plain := mustLay(t, fmt.Sprintf(spec, `"Commits"`), 2000)
+	l := mustLay(t, fmt.Sprintf(spec, `{"text":"Commits","subtitle":["lines added","and removed"]}`), 2000)
+	ti, su := titled(t, l, "Commits", "lines added and removed")
+	if su.rect.Y < ti.rect.Y+ti.rect.H {
+		t.Errorf("the subtitle at %v overlaps the title at %v", su.rect, ti.rect)
+	}
+	if su.color != testTheme.Axis || ti.color != testTheme.Text {
+		t.Errorf("the subtitle in %v, the title in %v: want the axes' colour under the text's", su.color, ti.color)
+	}
+	bar, plainBar := l.of(itemRect)[0], plain.of(itemRect)[0] // the one bar; the title is drawn before it
+	if bar.rect.H != plainBar.rect.H || bar.rect.Y <= plainBar.rect.Y || bar.rect.Y < su.rect.Y+su.rect.H {
+		t.Errorf("the bar at %v (%v without the subtitle): want the plot moved under the subtitle at %v", bar.rect, plainBar.rect, su.rect)
+	}
+	if l.Size().H <= plain.Size().H {
+		t.Errorf("height %v, %v without the subtitle: want room for it", l.Size().H, plain.Size().H)
+	}
+	l = mustLay(t, fmt.Sprintf(spec, `{"subtitle":"alone"}`), 2000)
+	_, su = titled(t, l, "", "alone")
+	if bar := l.of(itemRect)[0]; bar.rect.Y < su.rect.Y+su.rect.H {
+		t.Errorf("a subtitle alone at %v over the bar at %v", su.rect, bar.rect)
+	}
+}
+
+// A discrete axis sorted by another field orders its categories by that field's aggregate: the
+// op asked, or Vega-Lite's default (min, or sum when the bars stack), ascending or descending; a
+// category whose aggregate has no value (a min of nothing; a sum of nothing is 0) goes last, and
+// an order of null keeps the data's.
+func TestCategoriesSortByAField(t *testing.T) {
+	// A's orders are 1 and 10 (min 1, sum 11), B's 5, C has none
+	rows := `{"values":[{"a":"C","b":1,"s":"p"},{"a":"A","b":2,"o":1,"s":"p"},{"a":"B","b":3,"o":5,"s":"q"},{"a":"A","b":4,"o":10,"s":"q"}]}`
+	for _, c := range []struct {
+		sort, color string
+		want        []string
+	}{
+		{`{"field":"o"}`, "", []string{"A", "B", "C"}}, // min: A 1, B 5
+		{`{"field":"o","order":"descending"}`, "", []string{"B", "A", "C"}},
+		{`{"field":"o","op":"sum"}`, "", []string{"C", "B", "A"}},                             // a sum of nothing is 0: C first; A 11
+		{`{"field":"o","op":"average","order":"ascending"}`, "", []string{"B", "A", "C"}},     // A 5.5
+		{`{"field":"o","op":"count"}`, "", []string{"C", "B", "A"}},                           // rows: C 1, B 1, A 2
+		{`{"field":"o"}`, `,"color":{"field":"s","type":"nominal"}`, []string{"C", "B", "A"}}, // stacked: sum
+		{`{"field":"o","order":null}`, "", []string{"C", "A", "B"}},
+	} {
+		sp, err := parse(`{"data":` + rows + `,"mark":"bar","encoding":{"x":{"field":"a","type":"ordinal","sort":` + c.sort + `},"y":{"field":"b","type":"quantitative"}` + c.color + `}}`)
+		if err != nil {
+			t.Fatal(err)
+		}
+		p, err := newPlan(sp.layers[0])
+		if err != nil {
+			t.Fatal(err)
+		}
+		if !slices.Equal(p.xs.domain, c.want) {
+			t.Errorf("sort %s%s: %v, want %v", c.sort, c.color, p.xs.domain, c.want)
+		}
+	}
+}
+
+// commitsSpec is a chart like a pull request's, commit by commit: lines added up and removed down,
+// the commits in the order a field gives, not their names', the layers coloured from a domain.
+const commitsSpec = `{
+  "title": {"text": "A PR, commit by commit", "subtitle": "lines added (up) and removed (down)"},
+  "width": 300, "height": 120,
+  "data": {"values": [
+    {"sha": "f00", "order": 3, "layer": "Tests", "lines": 40},
+    {"sha": "f00", "order": 3, "layer": "Tests", "lines": -5},
+    {"sha": "b12", "order": 1, "layer": "ADR", "lines": 120},
+    {"sha": "b12", "order": 1, "layer": "ADR", "lines": -10},
+    {"sha": "a9e", "order": 2, "layer": "DAO", "lines": 80},
+    {"sha": "a9e", "order": 2, "layer": "DAO", "lines": -30}
+  ]},
+  "params": [{"name": "layer", "select": {"type": "point", "fields": ["layer"]}, "bind": "legend"}],
+  "mark": {"type": "bar"},
+  "encoding": {
+    "x": {"field": "sha", "type": "ordinal", "sort": {"field": "order"}, "title": "commit", "axis": {"labelAngle": -40}},
+    "y": {"field": "lines", "type": "quantitative"},
+    "color": {"field": "layer", "type": "nominal", "scale": {"domain": ["ADR", "DAO", "Tests"]}},
+    "opacity": {"condition": {"param": "layer", "value": 1}, "value": 0.2}
+  }
+}`
+
+// The commits chart draws its commits in the field's order, under its subtitle.
+func TestACommitChartSortsByItsOrderField(t *testing.T) {
+	l := mustLay(t, commitsSpec, 2000)
+	var shas []string
+	for _, s := range l.texts() {
+		if s == "b12" || s == "a9e" || s == "f00" {
+			shas = append(shas, s)
+		}
+	}
+	if !slices.Equal(shas, []string{"b12", "a9e", "f00"}) {
+		t.Errorf("commits labelled %v, want b12 a9e f00 (by order)", shas)
+	}
+	titled(t, l, "A PR, commit by commit", "lines added (up) and removed (down)")
+}
+
+// A colour scale's range colours its series in the domain's order, the legend's swatches too,
+// cycling when the series outnumber it.
+func TestAColourRangeColoursTheSeries(t *testing.T) {
+	green, red := color.NRGBA{0x2e, 0x9e, 0x6a, 0xff}, color.NRGBA{0xd6, 0x45, 0x45, 0xff}
+	spec := `{"data":{"values":[{"s":"failed","n":1},{"s":"passed","n":5},{"s":"skipped","n":2}]},"mark":"bar",
+		"encoding":{"x":{"field":"s","type":"nominal"},"y":{"field":"n","type":"quantitative"},
+		"color":{"field":"s","type":"nominal","scale":{"domain":["passed","failed","skipped"],"range":["#2e9e6a","#d64545"]}}}}`
+	l := mustLay(t, spec, 2000)
+	got := map[string]color.NRGBA{}
+	bars := l.bars()
+	for i, s := range []string{"failed", "passed", "skipped"} { // the x axis's ascending order
+		got[s] = bars[i].color
+	}
+	if got["passed"] != green || got["failed"] != red || got["skipped"] != green {
+		t.Errorf("bars %v: want passed green, failed red, skipped green (the range cycling)", got)
+	}
+	var swatches []color.NRGBA
+	for _, it := range l.of(itemRect)[len(bars):] { // the legend's, after the bars
+		swatches = append(swatches, it.color)
+	}
+	if !slices.Equal(swatches, []color.NRGBA{green, red, green}) {
+		t.Errorf("legend swatches %v, want the range in the domain's order", swatches)
+	}
+	l = mustLay(t, strings.Replace(spec, `"range":["#2e9e6a","#d64545"]`, `"range":"category"`, 1), 2000)
+	if c := l.bars()[1].color; c != tableau10[0] {
+		t.Errorf("a named range drew passed in %v, want the palette's first", c)
+	}
+}
+
+// symbolsOf are a chart's symbols, in paint order, named by their shape: a dot or ring is a
+// circle, and a polygon is named by its corners.
+func symbolsOf(l *Laid, c color.NRGBA) []string {
+	var out []string
+	for _, it := range l.items {
+		if it.color != c {
+			continue
+		}
+		switch {
+		case it.kind == itemDot || it.kind == itemRing:
+			out = append(out, "circle")
+		case it.kind == itemFill || (it.kind == itemLine && len(it.pts) > 1 && it.pts[0] == it.pts[len(it.pts)-1]):
+			n := len(it.pts)
+			if it.kind == itemLine {
+				n--
+			}
+			out = append(out, map[int]string{3: "triangle", 4: "quad", 12: "cross"}[n])
+		}
+	}
+	return out
+}
+
+// A point's shape field gives each value one of Vega's symbols, in the domain's order (Vega's
+// range, or the scale's, cycling); a shape value gives every point one; an unfilled point is its
+// outline.
+func TestPointsTakeVegasSymbols(t *testing.T) {
+	spec := `{"data":{"values":[{"x":1,"y":1,"k":"c"},{"x":2,"y":2,"k":"a"},{"x":3,"y":3,"k":"b"},{"x":4,"y":4,"k":"d"}]},
+		"mark":{"type":"point","filled":true},
+		"encoding":{"x":{"field":"x","type":"quantitative"},"y":{"field":"y","type":"quantitative"},%s}}`
+	ink := color.NRGBA{0x4c, 0x78, 0xa8, uint8(255*0.7 + 0.5)} // the palette's first at a point's opacity
+	for enc, want := range map[string][]string{
+		`"shape":{"field":"k","type":"nominal","legend":null}`:                                       {"triangle", "circle", "quad", "cross"},
+		`"shape":{"field":"k","type":"nominal","legend":null,"scale":{"range":["diamond","cross"]}}`: {"quad", "quad", "cross", "cross"},
+		`"shape":{"value":"triangle-down"}`:                                                          {"triangle", "triangle", "triangle", "triangle"},
+	} {
+		l := mustLay(t, fmt.Sprintf(spec, enc), 2000)
+		if got := symbolsOf(l, ink)[:4]; !slices.Equal(got, want) {
+			t.Errorf("%s: %v, want %v", enc, got, want)
+		}
+	}
+	// the default range's third is triangle-up: one corner, its apex, on top
+	l := mustLay(t, fmt.Sprintf(spec, `"shape":{"field":"k","type":"nominal","legend":null}`), 2000)
+	tri := l.of(itemFill)[0].pts
+	top := slices.MinFunc(tri, func(a, b gui.Point) int { return cmp.Compare(a.Y, b.Y) })
+	if n := len(slices.DeleteFunc(slices.Clone(tri), func(p gui.Point) bool { return p.Y != top.Y })); n != 1 {
+		t.Errorf("triangle-up %v: %d corners on top, want its apex alone", tri, n)
+	}
+	l = mustLay(t, strings.Replace(fmt.Sprintf(spec, `"shape":{"value":"square"}`), `"filled":true`, `"filled":false`, 1), 2000)
+	if got := symbolsOf(l, ink)[:4]; !slices.Equal(got, []string{"quad", "quad", "quad", "quad"}) || len(l.of(itemFill)) != 0 {
+		t.Errorf("unfilled squares: %v and %d fills, want four outlines", got, len(l.of(itemFill)))
+	}
+}
+
+// A symbol is Vega's: its size the area of its bounding box (a square's side the size's root, a
+// circle's diameter too), every polygon wound one way, so overlapping symbols of one colour in
+// one path fill rather than cancel.
+func TestSymbolsAreVegasGeometry(t *testing.T) {
+	spec := `{"data":{"values":[{"x":1,"y":1}]},"mark":{"type":"point","filled":true,"size":100%s},
+		"encoding":{"x":{"field":"x","type":"quantitative"},"y":{"field":"y","type":"quantitative"}%s}}`
+	if d := mustLay(t, fmt.Sprintf(spec, "", ""), 2000).of(itemDot)[0]; math.Abs(float64(d.rect.W-10)) > 1e-4 {
+		t.Errorf("a size-100 circle %v wide, want 10", d.rect.W)
+	}
+	sq := mustLay(t, fmt.Sprintf(spec, "", `,"shape":{"value":"square"}`), 2000).of(itemFill)[0]
+	if w := sq.pts[1].X - sq.pts[0].X; math.Abs(math.Abs(float64(w))-10) > 1e-4 {
+		t.Errorf("a size-100 square %v wide, want 10", w)
+	}
+	const r = 5
+	h := float32(math.Sqrt(3) / 2 * r)
+	for name, box := range map[string][2]float32{
+		"square": {2 * r, 2 * r}, "diamond": {2 * r, 2 * r}, "cross": {2 * r, 2 * r},
+		"triangle-up": {2 * r, 2 * h}, "triangle-down": {2 * r, 2 * h},
+		"triangle-left": {2 * h, 2 * r}, "triangle-right": {2 * h, 2 * r},
+	} {
+		pts := symbolPoints(name, r)
+		var area, minX, maxX, minY, maxY float32
+		for i, p := range pts {
+			q := pts[(i+1)%len(pts)]
+			area += p.X*q.Y - q.X*p.Y
+			minX, maxX, minY, maxY = min(minX, p.X), max(maxX, p.X), min(minY, p.Y), max(maxY, p.Y)
+		}
+		if area <= 0 {
+			t.Errorf("%s wound anticlockwise", name)
+		}
+		if math.Abs(float64(maxX-minX-box[0])) > 1e-4 || math.Abs(float64(maxY-minY-box[1])) > 1e-4 {
+			t.Errorf("%s %vx%v, want %vx%v", name, maxX-minX, maxY-minY, box[0], box[1])
+		}
+	}
+	if symbolPoints("circle", r) != nil {
+		t.Error("a circle as a polygon, want the dot's")
+	}
+}
+
+// boundarySpec is a chart like a filter's window: two dashed rules at its edges and a point for
+// each case, coloured in or out with no colour legend, shaped by its case with a shape legend.
+const boundarySpec = `{
+  "title": {"text": "The 2019 window is half-open", "subtitle": "min in, before out"},
+  "width": 400, "height": 60,
+  "layer": [
+    {"data": {"values": [{"t": "2019-01-01T00:00:00Z"}, {"t": "2020-01-01T00:00:00Z"}]},
+     "mark": {"type": "rule", "strokeDash": [4, 3], "strokeWidth": 2},
+     "encoding": {"x": {"field": "t", "type": "temporal"}, "color": {"value": "#7a7a7a"}}},
+    {"data": {"values": [
+       {"case": "just before", "d": "2018-12-31T23:59:59Z", "in": "no"},
+       {"case": "first instant", "d": "2019-01-01T00:00:00Z", "in": "yes"},
+       {"case": "mid-year", "d": "2019-07-01T12:00:00Z", "in": "yes"},
+       {"case": "after", "d": "2020-01-01T00:00:00Z", "in": "no"}]},
+     "mark": {"type": "point", "filled": true, "size": 220},
+     "encoding": {
+       "x": {"field": "d", "type": "temporal", "scale": {"domain": ["2018-11-01", "2020-03-01"]}},
+       "y": {"field": "in", "type": "nominal", "sort": ["yes", "no"]},
+       "color": {"field": "in", "type": "nominal", "scale": {"domain": ["yes", "no"], "range": ["#2e9e6a", "#d64545"]}, "legend": null},
+       "shape": {"field": "case", "type": "nominal", "title": "case"}}}
+  ]
+}`
+
+// The window chart draws its rules, its points coloured by the range and shaped by their case,
+// and a shape legend, in the axes' colour, that fits in the chart however short the plot.
+func TestAShapeLegendNamesEachShape(t *testing.T) {
+	l := mustLay(t, boundarySpec, 2000)
+	green, red := color.NRGBA{0x2e, 0x9e, 0x6a, 0xff}, color.NRGBA{0xd6, 0x45, 0x45, 0xff}
+	fade := func(c color.NRGBA) color.NRGBA { c.A = uint8(255*0.7 + 0.5); return c }
+	if got := append(symbolsOf(l, fade(red)), symbolsOf(l, fade(green))...); !slices.Equal(got, []string{"triangle", "circle", "quad", "cross"}) {
+		t.Errorf("points %v, want out: triangle-up, circle; in: square, cross (the cases ascending: after, first instant, just before, mid-year)", got)
+	}
+	if got := symbolsOf(l, testTheme.Axis); !slices.Equal(got, []string{"circle", "quad", "triangle", "cross"}) {
+		t.Errorf("legend symbols %v, want circle, square, triangle-up, cross", got)
+	}
+	var legend []item
+	for _, it := range l.of(itemText) {
+		if slices.Contains([]string{"case", "just before", "first instant", "mid-year", "after"}, it.text) {
+			legend = append(legend, it)
+		}
+	}
+	if want := []string{"case", "after", "first instant", "just before", "mid-year"}; len(legend) != 5 || !slices.EqualFunc(legend, want, func(it item, s string) bool { return it.text == s }) {
+		t.Fatalf("legend labels %v, want the title, then each case", legend)
+	}
+	titled(t, l, "The 2019 window is half-open", "min in, before out")
+	// a plot shorter than its legend: the chart grows to hold the legend
+	l = mustLay(t, strings.Replace(boundarySpec, `"height": 60`, `"height": 10`, 1), 2000)
+	for _, it := range l.of(itemText) {
+		if it.text == "mid-year" && it.rect.Y+it.rect.H > l.Size().H {
+			t.Errorf("the legend's last label at %v, below the chart's %v", it.rect, l.Size().H)
+		}
+	}
+}
+
+// A shape by a field of its own has a legend of its own, under the colour's.
+func TestTwoLegendsStack(t *testing.T) {
+	spec := `{"data":{"values":[{"x":1,"y":1,"g":"g1","k":"k1"},{"x":2,"y":2,"g":"g2","k":"k2"}]},"mark":"point",
+		"encoding":{"x":{"field":"x","type":"quantitative"},"y":{"field":"y","type":"quantitative"},
+		"color":{"field":"g","type":"nominal"},"shape":{"field":"k","type":"nominal"}}}`
+	at := map[string]gui.Rect{}
+	for _, it := range mustLay(t, spec, 2000).of(itemText) {
+		at[it.text] = it.rect
+	}
+	if g, k := at["g2"], at["k"]; k.H == 0 || k.Y < g.Y+g.H {
+		t.Errorf("the shape legend's title at %v, the colour legend's last entry at %v: want it below", k, g)
+	}
+}
+
+// A shape by the colour's field shares the colour's legend, as Vega-Lite merges them: one entry a
+// value, its swatch the value's symbol in its colour.
+func TestAShapeByTheColoursFieldSharesItsLegend(t *testing.T) {
+	spec := `{"data":{"values":[{"x":1,"y":1,"k":"a"},{"x":2,"y":2,"k":"b"}]},"mark":{"type":"point","filled":true},
+		"encoding":{"x":{"field":"x","type":"quantitative"},"y":{"field":"y","type":"quantitative"},
+		"color":{"field":"k","type":"nominal"},"shape":{"field":"k","type":"nominal"}}}`
+	l := mustLay(t, spec, 2000)
+	n := 0
+	for _, s := range l.texts() {
+		if s == "b" {
+			n++
+		}
+	}
+	if n != 1 {
+		t.Errorf("%q labelled %d times, want one legend", "b", n)
+	}
+	if got := symbolsOf(l, testTheme.Axis); len(got) != 0 {
+		t.Errorf("a second legend's symbols %v", got)
+	}
+	if got := symbolsOf(l, tableau10[1]); !slices.Equal(got, []string{"quad"}) {
+		t.Errorf("b's swatch %v, want its square", got)
+	}
+}
+
+// vm43Spec is a chart like a test gate's: stacked outcome bars, and a text layer filtered to the
+// failures. The text mark and the transform stay outside the subset, so it declines whole.
+const vm43Spec = `{
+  "title": {"text": "The gate", "subtitle": "one failure"},
+  "data": {"values": [{"suite": "dao", "outcome": "passed", "tests": 9}, {"suite": "root", "outcome": "failed", "tests": 1}]},
+  "layer": [
+    {"mark": "bar", "encoding": {"y": {"field": "suite", "type": "nominal"}, "x": {"field": "tests", "type": "quantitative", "stack": "zero"},
+      "color": {"field": "outcome", "type": "nominal", "scale": {"domain": ["passed", "failed"], "range": ["#2e9e6a", "#d64545"]}}}},
+    {"transform": [{"filter": "datum.outcome == 'failed'"}], "mark": {"type": "text", "dx": 6},
+      "encoding": {"y": {"field": "suite", "type": "nominal"}, "x": {"field": "tests", "type": "quantitative", "aggregate": "sum"}, "text": {"value": "1 failure"}}}
+  ]
+}`
+
+func TestAFilteredTextLayerStillDeclines(t *testing.T) {
+	if _, err := lay(t, vm43Spec, 600); !errors.Is(err, ErrUnsupported) {
+		t.Errorf("%v, want ErrUnsupported", err)
+	}
+	// its bars alone draw: the subtitle and the range are in the subset
+	var sp map[string]any
+	_ = json.Unmarshal([]byte(vm43Spec), &sp)
+	sp["layer"] = sp["layer"].([]any)[:1]
+	src, _ := json.Marshal(sp)
+	mustLay(t, string(src), 600)
 }

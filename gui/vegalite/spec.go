@@ -76,6 +76,7 @@ const (
 	sortNone    // the data's order
 	sortList    // the values listed, then the rest in the data's order
 	sortByOther // by the other position channel's value, summed per category
+	sortByField // by another field's aggregate per category (sortField, sortOp)
 )
 
 // channel is an encoding channel's definition: x, y or color.
@@ -88,8 +89,10 @@ type channel struct {
 	noAxis    bool // axis: null, or legend: null for colour
 	grid      *bool
 	sort      sortKind
-	sortDesc  bool  // sortByOther: descending
-	sortList  []any // sortList's values
+	sortDesc  bool   // sortByOther: descending
+	sortList  []any  // sortList's values
+	sortField string // sortByField: the field whose aggregate orders the categories
+	sortOp    string // sortByField: its aggregate; "": Vega-Lite's default (sum stacked, else min)
 	zero      *bool
 	domain    []any // an explicit scale domain
 	nice      *bool
@@ -97,6 +100,9 @@ type channel struct {
 	value     *color.NRGBA // color: {"value": "#hex"}: one colour for every mark
 	datum     any          // a position channel's constant (isDatum): a number, a string
 	isDatum   bool
+	colors    []color.NRGBA // a colour scale's range: the series' colours in domain order, cycling
+	shape     string        // shape: {"value": name}: one symbol for every point
+	shapes    []string      // a shape scale's range: the symbols in domain order, cycling
 }
 
 // mark is the mark's definition.
@@ -111,10 +117,11 @@ type mark struct {
 	dash        []float32    // a line's or a rule's strokeDash: on and off lengths; nil: solid
 }
 
-// spec is a whole spec as read: its title and size, and its layers in the order they paint. A
-// spec with no layer is one layer.
+// spec is a whole spec as read: its title and subtitle, its size, and its layers in the order they
+// paint. A spec with no layer is one layer.
 type spec struct {
 	title         string
+	subtitle      string
 	width, height float32 // in Vega-Lite's pixels; 0: the default
 	containerW    bool    // width: "container": the width asked
 	layers        []*chart
@@ -124,6 +131,7 @@ type spec struct {
 type chart struct {
 	mark        mark
 	x, y, color *channel
+	shape       *channel // a point's symbol by a field, or one; nil: circles
 	opacity     *float32 // the opacity channel's value; nil: the mark's
 	rows        []map[string]any
 }
@@ -159,8 +167,9 @@ var (
 	passedLegend = union(passedGuide, names("direction", "columns", "columnPadding", "rowPadding", "padding", "cornerRadius",
 		"fillColor", "strokeColor", "symbolType", "symbolSize", "symbolStrokeWidth", "symbolFillColor", "symbolStrokeColor",
 		"symbolOpacity", "symbolDash", "symbolOffset", "symbolLimit", "gradientLength", "gradientThickness", "type", "legendX", "legendY"))
-	passedTitle = names("text", "anchor", "align", "baseline", "color", "dx", "dy", "font", "fontSize", "fontStyle", "fontWeight",
-		"frame", "limit", "lineHeight", "offset", "orient", "style", "zindex", "aria")
+	passedTitle = names("text", "subtitle", "anchor", "align", "baseline", "color", "dx", "dy", "font", "fontSize", "fontStyle",
+		"fontWeight", "frame", "limit", "lineHeight", "offset", "orient", "style", "zindex", "aria", "subtitleColor",
+		"subtitleFont", "subtitleFontSize", "subtitleFontStyle", "subtitleFontWeight", "subtitleLineHeight", "subtitlePadding")
 	// a config's keys whose values only style: the view's frame, fonts, the palette, guides' looks
 	passedConfig = names("view", "background", "padding", "font", "autosize", "range", "style", "title", "aria", "lineBreak")
 	// a config's mark defaults: the mark's look. Its interpolate is read, as a mark's is: a step or
@@ -478,19 +487,28 @@ func (c *spec) readTitle(raw json.RawMessage) error {
 		return err
 	}
 	var t struct {
-		Text json.RawMessage `json:"text"`
+		Text     json.RawMessage `json:"text"`
+		Subtitle json.RawMessage `json:"subtitle"`
 	}
 	if json.Unmarshal(raw, &t) != nil {
 		return unsupported("the title")
 	}
-	if len(t.Text) > 0 && json.Unmarshal(t.Text, &c.title) != nil {
-		var lines []string
-		if json.Unmarshal(t.Text, &lines) != nil {
-			return unsupported("the title's text")
+	// text reads a string, or a list of lines (joined: one line is drawn)
+	text := func(raw json.RawMessage, into *string, what string) error {
+		if len(raw) == 0 || json.Unmarshal(raw, into) == nil {
+			return nil
 		}
-		c.title = strings.Join(lines, " ")
+		var lines []string
+		if json.Unmarshal(raw, &lines) != nil {
+			return unsupported("the title's %s", what)
+		}
+		*into = strings.Join(lines, " ")
+		return nil
 	}
-	return nil
+	if err := text(t.Text, &c.title, "text"); err != nil {
+		return err
+	}
+	return text(t.Subtitle, &c.subtitle, "subtitle")
 }
 
 // readSize reads a width or height: a number, or "container" (container true, size 0).
@@ -683,6 +701,8 @@ func (c *chart) readEncoding(m map[string]json.RawMessage, params map[string]par
 				return unsupported("both color and fill")
 			}
 			c.color, err = readChannel(def, k, params)
+		case "shape":
+			c.shape, err = readChannel(def, "shape", params)
 		case "opacity":
 			var o float32
 			if len(def) != 1 || def["value"] == nil || number(def["value"], &o, 0, 1) != nil {
@@ -779,6 +799,12 @@ func readDatum(raw json.RawMessage, name string, params map[string]param) (any, 
 // readChannel reads a channel's definition, its condition resolved.
 func readChannel(m map[string]json.RawMessage, name string, params map[string]param) (*channel, error) {
 	ch := &channel{}
+	if v, ok := m["value"]; ok && name == "shape" {
+		if len(m) != 1 || json.Unmarshal(v, &ch.shape) != nil || !symbols[ch.shape] {
+			return nil, unsupported("shape %s", v)
+		}
+		return ch, nil
+	}
 	if v, ok := m["value"]; ok {
 		var s string
 		col, ok := color.NRGBA{}, false
@@ -953,6 +979,10 @@ func (ch *channel) readScale(raw json.RawMessage, name string) error {
 			if d.Decode(&ch.domain) != nil || len(ch.domain) == 0 {
 				return unsupported("%s's scale domain %s", name, v)
 			}
+		case k == "range":
+			if err := ch.readRange(v, name); err != nil {
+				return err
+			}
 		case k == "type":
 			var t string
 			_ = json.Unmarshal(v, &t)
@@ -968,8 +998,42 @@ func (ch *channel) readScale(raw json.RawMessage, name string) error {
 	return nil
 }
 
-// readSort reads a sort: null, "ascending", "descending", a list of values, or an encoding's name
-// ("y", "-y").
+// readRange reads a scale's range: a colour scale's list of colours, or a shape scale's list of
+// symbols, each in domain order and cycling. A named range ("category") is the default's look,
+// passed over. Any other range (a position's, a list of what is not drawn) is unsupported.
+func (ch *channel) readRange(raw json.RawMessage, name string) error {
+	var named string
+	if json.Unmarshal(raw, &named) == nil && (name == "color" || name == "fill" || name == "shape") {
+		return nil
+	}
+	var list []string
+	if json.Unmarshal(raw, &list) != nil || len(list) == 0 {
+		return unsupported("%s's scale range %s", name, raw)
+	}
+	switch name {
+	case "color", "fill":
+		for _, s := range list {
+			c, ok := cssColor(s)
+			if !ok {
+				return unsupported("%s's range colour %q", name, s)
+			}
+			ch.colors = append(ch.colors, c)
+		}
+	case "shape":
+		for _, s := range list {
+			if !symbols[s] {
+				return unsupported("the shape %q", s)
+			}
+		}
+		ch.shapes = list
+	default:
+		return unsupported("%s's scale range", name)
+	}
+	return nil
+}
+
+// readSort reads a sort: null, "ascending", "descending", a list of values, an encoding's name
+// ("y", "-y"), or another field's aggregate ({"field", "op", "order"}).
 func (ch *channel) readSort(raw json.RawMessage, name string) error {
 	if isNull(raw) {
 		ch.sort = sortNone
@@ -992,6 +1056,12 @@ func (ch *channel) readSort(raw json.RawMessage, name string) error {
 		}
 		return nil
 	}
+	if m, err := object(raw, name+"'s sort"); err == nil {
+		if name != "x" && name != "y" { // a legend's order by a field is not drawn
+			return unsupported("%s sorted by a field", name)
+		}
+		return ch.readSortField(m, name)
+	}
 	d := json.NewDecoder(bytes.NewReader(raw))
 	d.UseNumber()
 	if d.Decode(&ch.sortList) == nil {
@@ -1000,6 +1070,59 @@ func (ch *channel) readSort(raw json.RawMessage, name string) error {
 	}
 	return unsupported("%s's sort %s", name, raw)
 }
+
+// readSortField reads a sort by another field: its field, its aggregate (op) and its order
+// (ascending, descending, or null: the data's order).
+func (ch *channel) readSortField(m map[string]json.RawMessage, name string) error {
+	ch.sort = sortByField
+	for k, v := range m {
+		switch k {
+		case "field":
+			if json.Unmarshal(v, &ch.sortField) != nil || ch.sortField == "" || strings.ContainsAny(ch.sortField, `.[]\`) {
+				return unsupported("%s's sort field %s", name, v)
+			}
+		case "op":
+			var op string
+			_ = json.Unmarshal(v, &op)
+			switch op {
+			case "count", "sum", "mean", "median", "min", "max":
+				ch.sortOp = op
+			case "average":
+				ch.sortOp = "mean"
+			default:
+				return unsupported("%s's sort op %s", name, v)
+			}
+		case "order":
+			if isNull(v) {
+				continue
+			}
+			var o string
+			_ = json.Unmarshal(v, &o)
+			switch o {
+			case "ascending":
+			case "descending":
+				ch.sortDesc = true
+			default:
+				return unsupported("%s's sort order %s", name, v)
+			}
+		default:
+			return unsupported("%s's sort %q", name, k)
+		}
+	}
+	if ch.sortField == "" {
+		return unsupported("%s's sort without a field", name)
+	}
+	if o, ok := m["order"]; ok && isNull(o) {
+		ch.sort = sortNone // order null: the data's order, whatever the field
+	}
+	return nil
+}
+
+// symbols are the point shapes drawn: Vega's built-in symbols.
+var symbols = names("circle", "square", "cross", "diamond", "triangle-up", "triangle-down", "triangle-right", "triangle-left")
+
+// defaultShapes is Vega's symbol range: a nominal shape's symbols, in domain order.
+var defaultShapes = []string{"circle", "square", "triangle-up", "cross", "diamond", "triangle-right", "triangle-down", "triangle-left"}
 
 // readStack reads a stack: null or false overlays, true or "zero" piles, "normalize" piles to 1.
 func (ch *channel) readStack(raw json.RawMessage, name string) error {

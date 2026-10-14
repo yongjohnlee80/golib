@@ -9,10 +9,13 @@
 //   - data: inline values, an array of objects;
 //   - encodings: x and y (quantitative, nominal, ordinal or temporal fields, a measure aggregated
 //     by count, sum, mean, median, min or max, or a rule's datum or aggregate), color (a nominal field, or one
-//     colour) and opacity (one value);
+//     colour, its scale's range a list of colours), shape (a point's nominal field, or one of Vega's
+//     symbols, its range a list of them) and opacity (one value);
+//   - sorting: a discrete axis by its values, a list, the other axis, or another field's aggregate;
 //   - layers: each a mark of its own over the spec's data and encoding, on shared scales;
 //   - drawing: linear, time, band and point scales with their axes and grid, a legend for the
-//     colour, the title, and a bar's or an area's series stacked as Vega-Lite stacks them.
+//     colour and one for the shape, the title and its subtitle, and a bar's or an area's series
+//     stacked as Vega-Lite stacks them.
 //
 // A chart is drawn as the page first shows it, a still: a variable param is its initial value (a
 // slider bound to it is the page's, not drawn), a selection is empty, and a condition on it is

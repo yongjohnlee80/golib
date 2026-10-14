@@ -2,6 +2,7 @@ package vegalite
 
 import (
 	"fmt"
+	"image/color"
 	"math"
 	"slices"
 	"sort"
@@ -22,6 +23,7 @@ type pos struct {
 type datum struct {
 	x, y   pos
 	series string
+	shape  string  // the shape field's value; "" without one
 	v0, v1 float64 // the measure from v0 to v1: stacked, or from the baseline (v0 0) to the value
 }
 
@@ -31,6 +33,7 @@ type plan struct {
 	dimY      bool // the dimension is y: a horizontal bar
 	data      []datum
 	series    []string // the colour's domain, in order; nil: one series
+	shapes    []string // the shape field's domain, in order; nil: none
 	stacked   bool
 	normalize bool
 	xs, ys    axisPlan
@@ -88,6 +91,12 @@ func newPlan(c *chart) (*plan, error) {
 			return nil, unsupported("a %s with x aggregated", c.mark.kind)
 		}
 	}
+	if c.shape != nil && c.mark.kind != markPoint {
+		return nil, unsupported("a shape on a %s mark", c.mark.kind)
+	}
+	if sh := c.shape; sh != nil && sh.shape == "" && (!sh.typ.discrete() || sh.aggregate != "") {
+		return nil, unsupported("a %v shape", sh.typ)
+	}
 	if p.value().aggregate == "" && p.dim().aggregate != "" {
 		return nil, unsupported("the dimension aggregated")
 	}
@@ -126,6 +135,14 @@ func posOfValue(ch *channel, v any) (pos, bool) {
 	return pos{str: textOf(v)}, true
 }
 
+// shapeOf is a row's shape: its shape field's value, or "".
+func (p *plan) shapeOf(row map[string]any) string {
+	if sh := p.c.shape; sh != nil && sh.shape == "" {
+		return textOf(row[sh.field])
+	}
+	return ""
+}
+
 // seriesOf is a row's series: its colour field's value, or "".
 func (p *plan) seriesOf(row map[string]any) string {
 	if col := p.c.color; col != nil && col.value == nil {
@@ -152,13 +169,13 @@ func (p *plan) read() error {
 			if !okx || !oky {
 				continue // Vega-Lite's invalid values: left out
 			}
-			p.data = append(p.data, datum{x: xv, y: yv, series: p.seriesOf(row)})
+			p.data = append(p.data, datum{x: xv, y: yv, series: p.seriesOf(row), shape: p.shapeOf(row)})
 		}
 		return nil
 	}
 	type key struct {
-		dim    pos
-		series string
+		dim           pos
+		series, shape string
 	}
 	var order []key
 	groups := map[key][]float64{}
@@ -168,7 +185,7 @@ func (p *plan) read() error {
 		if !ok {
 			continue
 		}
-		k := key{dv, p.seriesOf(row)}
+		k := key{dv, p.seriesOf(row), p.shapeOf(row)}
 		if _, seen := counts[k]; !seen {
 			order = append(order, k)
 		}
@@ -186,7 +203,7 @@ func (p *plan) read() error {
 		}
 		var d datum
 		set(&d, pos{num: v}, k.dim)
-		d.series = k.series
+		d.series, d.shape = k.series, k.shape
 		p.data = append(p.data, d)
 	}
 	return nil
@@ -248,6 +265,17 @@ func (p *plan) domains() error {
 		}
 		p.data = slices.DeleteFunc(p.data, func(d datum) bool { return !slices.Contains(p.series, d.series) })
 	}
+	if sh := c.shape; sh != nil && sh.shape == "" {
+		var vals []string
+		for _, d := range p.data {
+			vals = append(vals, d.shape)
+		}
+		p.shapes = order(vals, sh, nil)
+		if len(p.shapes) > maxSeries {
+			return fmt.Errorf("%w: %d shapes (at most %d)", ErrTooLarge, len(p.shapes), maxSeries)
+		}
+		p.data = slices.DeleteFunc(p.data, func(d datum) bool { return !slices.Contains(p.shapes, d.shape) })
+	}
 	for _, a := range []*axisPlan{&p.xs, &p.ys} {
 		if !a.discrete {
 			continue
@@ -262,6 +290,9 @@ func (p *plan) domains() error {
 			}
 			vals = append(vals, v.str)
 			by[v.str] += other.num
+		}
+		if a.ch.sort == sortByField {
+			by = p.sortKeys(a.ch)
 		}
 		a.domain = order(vals, a.ch, by)
 		if len(a.domain) > maxBands {
@@ -315,12 +346,18 @@ func order(vals []string, ch *channel, by map[string]float64) []string {
 			}
 		}
 		return out
-	case sortByOther:
+	case sortByOther, sortByField:
+		// a category with no key (its sort field has no value it can be aggregated from) goes last
 		sort.SliceStable(seen, func(i, j int) bool {
-			if ch.sortDesc {
-				return by[seen[i]] > by[seen[j]]
+			a, okA := by[seen[i]]
+			b, okB := by[seen[j]]
+			switch {
+			case okA != okB:
+				return okA
+			case ch.sortDesc:
+				return a > b
 			}
-			return by[seen[i]] < by[seen[j]]
+			return a < b
 		})
 	default:
 		sort.SliceStable(seen, func(i, j int) bool {
@@ -344,21 +381,58 @@ func naturalLess(a, b string) bool {
 	return a < b
 }
 
+// sortKeys are ch's categories' keys for a sort by another field: that field's aggregate over each
+// category's rows, by the sort's op or Vega-Lite's default, sum in a stacked plot and min otherwise.
+func (p *plan) sortKeys(ch *channel) map[string]float64 {
+	op := ch.sortOp
+	if op == "" {
+		op = "min"
+		if p.stacking() != stackNone {
+			op = "sum"
+		}
+	}
+	vs := map[string][]float64{}
+	n := map[string]int{}
+	for _, row := range p.c.rows {
+		v, ok := posOf(ch, row)
+		if !ok {
+			continue
+		}
+		n[v.str]++
+		if f, ok := numberOf(row[ch.sortField]); ok {
+			vs[v.str] = append(vs[v.str], f)
+		}
+	}
+	out := map[string]float64{}
+	for cat, count := range n {
+		if k, ok := aggregate(op, vs[cat], count); ok {
+			out[cat] = k
+		}
+	}
+	return out
+}
+
+// stacking is how the measure piles: the value channel's stack, or Vega-Lite's default (a bar or
+// an area split into series piles from zero); other marks never pile.
+func (p *plan) stacking() stackMode {
+	if p.c.mark.kind != markBar && p.c.mark.kind != markArea {
+		return stackNone
+	}
+	mode := p.value().stack
+	if mode == stackAuto {
+		mode = stackNone
+		if p.c.color != nil && p.c.color.value == nil {
+			mode = stackZero
+		}
+	}
+	return mode
+}
+
 // stack sets each datum's v0 and v1: piled per category in the series' order (negative values
 // down from zero), or from zero alone. A bar or an area piles, by default, when a colour splits
 // it into series.
 func (p *plan) stack() {
-	val := p.value()
-	mode := val.stack
-	if mode == stackAuto {
-		mode = stackNone
-		if (p.c.mark.kind == markBar || p.c.mark.kind == markArea) && p.series != nil {
-			mode = stackZero
-		}
-	}
-	if p.c.mark.kind != markBar && p.c.mark.kind != markArea {
-		mode = stackNone
-	}
+	mode := p.stacking()
 	measure := func(d *datum) float64 {
 		if p.dimY {
 			return d.x.num
@@ -542,6 +616,9 @@ type layered struct {
 	base   *plan // the first mark layer: the axes' titles and guides
 	xs, ys axisPlan
 	series []string
+	shapes []string
+	colors []color.NRGBA // the colour scale's range, the first layer's that has one; nil: the theme's
+	symbs  []string      // the shape scale's range; nil: Vega's
 }
 
 // newLayered reads every layer and merges their scales. Layers whose axes differ in type, and a
@@ -584,6 +661,17 @@ func newLayered(sp *spec) (*layered, error) {
 			if !slices.Contains(l.series, s) {
 				l.series = append(l.series, s)
 			}
+		}
+		for _, s := range p.shapes {
+			if !slices.Contains(l.shapes, s) {
+				l.shapes = append(l.shapes, s)
+			}
+		}
+		if col := p.c.color; col != nil && len(col.colors) > 0 && l.colors == nil {
+			l.colors = col.colors
+		}
+		if sh := p.c.shape; sh != nil && len(sh.shapes) > 0 && l.symbs == nil {
+			l.symbs = sh.shapes
 		}
 	}
 	for _, r := range rules {

@@ -179,9 +179,9 @@ func build(ctx context.Context, l *layered, width float32, th Theme, m gui.Measu
 			break
 		}
 	}
-	legend := lp != nil && !lp.c.color.noAxis && len(l.series) > 0
+	colorLegend := lp != nil && !lp.c.color.noAxis && len(l.series) > 0
 	legendTitle := ""
-	if legend {
+	if colorLegend {
 		legendTitle = axisTitle(lp.c.color)
 		legendW = b.textW(legendTitle, b.bold)
 		for _, s := range l.series {
@@ -192,6 +192,34 @@ func build(ctx context.Context, l *layered, width float32, th Theme, m gui.Measu
 			legendH += lh + pad
 		}
 	}
+	// the shape's legend, under the colour's
+	var sp2 *plan // the layer the shape legend is of: the first shaped by a field
+	for _, o := range l.order {
+		if q, ok := o.(*plan); ok && q.c.shape != nil && q.c.shape.shape == "" {
+			sp2 = q
+			break
+		}
+	}
+	// a shape by the colour's field shares its legend, as Vega-Lite merges them
+	shapeLegend := sp2 != nil && !sp2.c.shape.noAxis && len(l.shapes) > 0 &&
+		!(colorLegend && sp2 == lp && sp2.c.shape.field == lp.c.color.field)
+	shapeTitle := ""
+	var shapeTop float32 // the shape legend's top, below the colour legend's
+	if shapeLegend {
+		if colorLegend {
+			shapeTop = legendH + 2*pad
+		}
+		shapeTitle = axisTitle(sp2.c.shape)
+		legendW = max(legendW, b.textW(shapeTitle, b.bold))
+		for _, s := range l.shapes {
+			legendW = max(legendW, lh+pad+b.textW(s, th.Font))
+		}
+		legendH = shapeTop + float32(len(l.shapes))*lh
+		if shapeTitle != "" {
+			legendH += lh + pad
+		}
+	}
+	legend := colorLegend || shapeLegend
 
 	// the plot's height, then the y axis's labels and their width
 	plotH := 200 * u
@@ -277,6 +305,12 @@ func build(ctx context.Context, l *layered, width float32, th Theme, m gui.Measu
 	if sp.title != "" {
 		top += titleFont.Size*1.2 + 2*pad
 	}
+	if sp.subtitle != "" {
+		top += lh + pad
+		if sp.title == "" {
+			top += pad
+		}
+	}
 	plot := gui.Rect{X: left, Y: top, W: plotW, H: plotH}
 	xs.from, xs.to = plot.X, plot.X+plot.W
 	ys.from, ys.to = plot.Y+plot.H, plot.Y // y grows upward
@@ -294,8 +328,13 @@ func build(ctx context.Context, l *layered, width float32, th Theme, m gui.Measu
 	}
 	size := gui.Size{W: right, H: max(bottom, plot.Y+legendH) + pad}
 
+	subY := pad
 	if sp.title != "" {
 		b.text(sp.title, titleFont, gui.Rect{X: 0, Y: pad, W: size.W, H: titleFont.Size * 1.2}, 0, false, th.Text)
+		subY += titleFont.Size*1.2 + pad/2
+	}
+	if sp.subtitle != "" { // under the title, quieter: Vega-Lite's subtitle
+		b.text(sp.subtitle, th.Font, gui.Rect{X: 0, Y: subY, W: size.W, H: lh}, 0, false, th.Axis)
 	}
 	b.grid(xs, ys, plot)
 	for _, o := range l.order {
@@ -314,9 +353,14 @@ func build(ctx context.Context, l *layered, width float32, th Theme, m gui.Measu
 	if xAxis {
 		b.xAxis(xs, xLabels, up, xLabelH, xTitle, plot)
 	}
-	if legend {
+	if colorLegend {
 		b.p = lp
 		b.legend(legendTitle, gui.Pt(plot.X+plot.W+4*pad, plot.Y))
+		b.p = p
+	}
+	if shapeLegend {
+		b.p = sp2
+		b.shapeLegend(shapeTitle, gui.Pt(plot.X+plot.W+4*pad, plot.Y+shapeTop))
 		b.p = p
 	}
 	return &Laid{size: size, items: b.items, ops: batch(b.items)}
@@ -499,7 +543,11 @@ func (b *builder) colorOf(series string) color.NRGBA {
 		return *c.color.value
 	}
 	i := max(slices.Index(b.l.series, series), 0) // the shared colour domain: a series is one colour in every layer
-	return b.th.Palette[i%len(b.th.Palette)]
+	palette := b.th.Palette
+	if b.l.colors != nil { // the scale's range, cycling as Vega's ordinal scale does
+		palette = b.l.colors
+	}
+	return palette[i%len(palette)]
 }
 
 // opacity is a mark's: the opacity channel's, the mark's, or Vega-Lite's default (0.7 for points,
@@ -591,18 +639,114 @@ func (b *builder) marks(xs, ys *scale) {
 	case markPoint:
 		filled := p.c.mark.filled
 		for _, d := range p.data {
-			b.dot(gui.Pt(xs.centre(d.x), ys.centre(d.y)), b.radius(), fade(b.colorOf(d.series), alpha), filled)
+			b.symbol(gui.Pt(xs.centre(d.x), ys.centre(d.y)), b.symbolOf(d.shape), b.radius(), fade(b.colorOf(d.series), alpha), filled)
 		}
 	}
 }
 
-// radius is a point's: from its area (Vega-Lite's default 30 square pixels).
+// radius is a point's: half the side of its bounding box, whose area is its size (Vega-Lite's
+// default 30 square pixels), as Vega sizes its symbols.
 func (b *builder) radius() float32 {
 	area := float32(30)
 	if b.p.c.mark.size > 0 {
 		area = b.p.c.mark.size
 	}
-	return float32(math.Sqrt(float64(area/math.Pi))) * b.unit
+	return float32(math.Sqrt(float64(area))) / 2 * b.unit
+}
+
+// symbolOf is a point's symbol: the shape channel's one, or its field's value's (the scale's range,
+// or Vega's symbols, in the shared domain's order, cycling), or a circle.
+func (b *builder) symbolOf(shape string) string {
+	sh := b.p.c.shape
+	switch {
+	case sh == nil:
+		return "circle"
+	case sh.shape != "":
+		return sh.shape
+	}
+	syms := defaultShapes
+	if b.l.symbs != nil {
+		syms = b.l.symbs
+	}
+	return syms[max(slices.Index(b.l.shapes, shape), 0)%len(syms)]
+}
+
+// symbol adds a point drawn as one of Vega's symbols, r half its bounding box's side, filled or
+// outlined. A circle is the dot's.
+func (b *builder) symbol(at gui.Point, name string, r float32, c color.NRGBA, filled bool) {
+	pts := symbolPoints(name, r)
+	if pts == nil {
+		b.dot(at, r, c, filled)
+		return
+	}
+	for i := range pts {
+		pts[i].X += at.X
+		pts[i].Y += at.Y
+	}
+	if filled {
+		b.add(item{kind: itemFill, pts: pts, color: c})
+		return
+	}
+	b.add(item{kind: itemLine, pts: append(pts, pts[0]), color: c, width: 2 * b.unit})
+}
+
+// symbolPoints is a Vega symbol's outline about the origin, r half its bounding box's side, as
+// vega-scenegraph draws it; nil for a circle.
+func symbolPoints(name string, r float32) []gui.Point {
+	h := float32(math.Sqrt(3)/2) * r // a triangle's half height
+	s := r / 2.5                     // a cross's half arm width
+	var pts []gui.Point
+	switch name {
+	case "square":
+		pts = []gui.Point{{X: -r, Y: -r}, {X: r, Y: -r}, {X: r, Y: r}, {X: -r, Y: r}}
+	case "diamond":
+		pts = []gui.Point{{X: -r, Y: 0}, {X: 0, Y: -r}, {X: r, Y: 0}, {X: 0, Y: r}}
+	case "triangle-up":
+		pts = []gui.Point{{X: 0, Y: -h}, {X: -r, Y: h}, {X: r, Y: h}}
+	case "triangle-down":
+		pts = []gui.Point{{X: 0, Y: h}, {X: -r, Y: -h}, {X: r, Y: -h}}
+	case "triangle-right":
+		pts = []gui.Point{{X: h, Y: 0}, {X: -h, Y: -r}, {X: -h, Y: r}}
+	case "triangle-left":
+		pts = []gui.Point{{X: -h, Y: 0}, {X: h, Y: -r}, {X: h, Y: r}}
+	case "cross":
+		pts = []gui.Point{{X: -r, Y: -s}, {X: -r, Y: s}, {X: -s, Y: s}, {X: -s, Y: r}, {X: s, Y: r}, {X: s, Y: s},
+			{X: r, Y: s}, {X: r, Y: -s}, {X: s, Y: -s}, {X: s, Y: -r}, {X: -s, Y: -r}, {X: -s, Y: -s}}
+	}
+	return clockwise(pts)
+}
+
+// clockwise is pts wound clockwise on the screen, reversed if need be: a run of one colour is one
+// path, filled by the non-zero rule, so where two symbols wound opposite ways overlapped, they
+// would cancel to a hole.
+func clockwise(pts []gui.Point) []gui.Point {
+	var area float32
+	for i, p := range pts {
+		q := pts[(i+1)%len(pts)]
+		area += p.X*q.Y - q.X*p.Y
+	}
+	if area < 0 {
+		slices.Reverse(pts)
+	}
+	return pts
+}
+
+// shapeLegend draws the shape's legend with its top left at at: its title, then each shape's
+// symbol, in the axes' colour, and its label.
+func (b *builder) shapeLegend(title string, at gui.Point) {
+	th, lh := b.th, b.lh
+	pad := 4 * b.unit
+	y := at.Y
+	if title != "" {
+		b.text(title, b.bold, gui.Rect{X: at.X, Y: y, W: b.textW(title, b.bold), H: lh}, -1, false, th.Text)
+		y += lh + pad
+	}
+	sw := th.Font.Size * 0.8
+	for _, s := range b.l.shapes {
+		b.symbol(gui.Pt(at.X+sw/2, y+lh/2), b.symbolOf(s), sw/2.5, th.Axis, b.p.c.mark.filled)
+		b.text(s, th.Font, gui.Rect{X: at.X + lh + pad, Y: y, W: b.textW(s, th.Font), H: lh}, -1, false, th.Text)
+		y += lh
+	}
 }
 
 // dot adds a point: a filled circle, or a ring.
@@ -666,7 +810,11 @@ func (b *builder) legend(title string, at gui.Point) {
 		case markLine:
 			b.line(col, 2*b.unit, gui.Pt(at.X, cy), gui.Pt(at.X+sw, cy))
 		case markPoint:
-			b.dot(gui.Pt(at.X+sw/2, cy), sw/2.5, col, b.p.c.mark.filled)
+			sym := "circle"
+			if sh := b.p.c.shape; sh != nil && (sh.shape != "" || sh.field == b.p.c.color.field) {
+				sym = b.symbolOf(s) // the layer's constant shape, or the shape it shares the field of
+			}
+			b.symbol(gui.Pt(at.X+sw/2, cy), sym, sw/2.5, col, b.p.c.mark.filled)
 		default:
 			b.add(item{kind: itemRect, rect: gui.Rect{X: at.X, Y: cy - sw/2, W: sw, H: sw}, color: col})
 		}
