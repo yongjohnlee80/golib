@@ -66,6 +66,12 @@ type Recorder interface {
 // total dropped so far — so a recording never loses events silently. Close stops
 // accepting records, waits for the writer to drain and flush, and returns the first
 // error the recording hit.
+//
+// The writer also flushes whenever it has caught up with the channel: under load it
+// batches, and once input pauses the file holds every record written so far, whole.
+// A process that ends without Close (macOS's Quit ends it from the toolkit, never
+// returning to the code that would close the recorder; a crash; a kill) loses only the
+// records still in flight, not a buffer's worth cut mid-record.
 type JSONLRecorder struct {
 	rec     chan Record   // to the writer goroutine; never read after Close
 	dropped atomic.Uint64 // records the window goroutine dropped
@@ -117,6 +123,9 @@ func (r *JSONLRecorder) write(w io.Writer) {
 			r.writeRec(bw, Record{Stage: StageMeta, Kind: "dropped", Data: map[string]any{"n": n}})
 		}
 		r.writeRec(bw, rec)
+		if len(r.rec) == 0 && r.err == nil {
+			r.setErr(bw.Flush()) // caught up: what is written so far reaches the file
+		}
 	}
 	// Drops whose following record never came are noted too.
 	if n := r.dropped.Load(); n > noted {
