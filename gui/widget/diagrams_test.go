@@ -9,6 +9,7 @@ import (
 
 	"github.com/yongjohnlee80/golib/gui"
 	"github.com/yongjohnlee80/golib/gui/mermaid"
+	"github.com/yongjohnlee80/golib/gui/vegalite"
 	tuiwidget "github.com/yongjohnlee80/golib/tui/widget"
 )
 
@@ -210,5 +211,37 @@ func TestTheEditorLaysOutAgainAtANewScale(t *testing.T) {
 		if s := host(); s == nil || s.key.scale != scale {
 			t.Fatalf("at scale %g the fence's diagram slot is %+v, want one asked at %g", scale, s, scale)
 		}
+	}
+}
+
+// A vega-lite block is laid out by gui/vegalite: Pending, then Ready with the chart. One outside
+// its subset is the fallback's, and one that is not JSON is Declined: its source drawn as code.
+func TestDiagramsLayAChart(t *testing.T) {
+	_, release := gui.AcquireMeasurer(1)
+	release()
+	fb := &fakeFallback{}
+	d := Diagrams(fb)
+	chart := func(src string) DiagramRequest {
+		return DiagramRequest{Lang: "vega-lite", Src: src, Width: 600, Scale: 1, Theme: diagramTheme}
+	}
+	ask := func(req DiagramRequest) DiagramAnswer {
+		ready := make(chan struct{}, 1)
+		if a := d.Diagram(context.Background(), req, func() { ready <- struct{}{} }); a.State != Pending {
+			t.Fatalf("first answer %v, want Pending", a.State)
+		}
+		<-ready
+		return d.Diagram(context.Background(), req, func() {})
+	}
+	ok := chart(`{"data":{"values":[{"a":"x","b":1}]},"mark":"bar","encoding":{"x":{"field":"a","type":"nominal"},"y":{"field":"b","type":"quantitative"}}}`)
+	if a := ask(ok); a.State != Ready || a.Size.W <= 0 {
+		t.Errorf("a bar chart: %+v, want Ready", a)
+	} else if _, isChart := a.Pic.(*vegalite.Laid); !isChart {
+		t.Errorf("the picture is a %T, want a laid chart", a.Pic)
+	}
+	if a := ask(chart(`{"data":{"values":[]},"mark":"bar","transform":[]}`)); a.State != Pending || fb.asked.Load() != 1 {
+		t.Errorf("a transform: %v, fallback asked %d times; want the fallback's answer", a.State, fb.asked.Load())
+	}
+	if a := ask(chart(`{"mark":`)); a.State != Declined || fb.asked.Load() != 1 {
+		t.Errorf("malformed JSON: %v (fallback asked %d times), want Declined", a.State, fb.asked.Load())
 	}
 }

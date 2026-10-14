@@ -11,19 +11,19 @@ import (
 	"github.com/yongjohnlee80/golib/tui"
 )
 
-// DIAGRAMS — a page's <pre class="mermaid">, drawn by the view's Diagrammer (tui/widget's
-// WithDiagrams), as the editor's Rendered view draws a mermaid fence: Ready is its picture, in
-// the pre's place; Pending keeps the last picture, or the code until there is one; Declined, or
-// no Diagrammer, is the code.
+// DIAGRAMS — a page's <pre class="mermaid"> and <pre class="vega-lite">, drawn by the view's
+// Diagrammer (tui/widget's WithDiagrams), as the editor's Rendered view draws a mermaid or
+// vega-lite fence: Ready is its picture, in the pre's place; Pending keeps the last picture, or
+// the code until there is one; Declined, or no Diagrammer, is the code.
 //
 // # HTML Mermaid Diagram Lifecycle Architecture
 //
 // Below is the lifecycle and task handoff pipeline for HTML page diagrams:
 //
-//	  <pre class="mermaid"> discovered in page DOM
+//	  <pre class="mermaid|vega-lite"> discovered in page DOM
 //	                       │
 //	                       ▼
-//	          htmlDiagrams.answer(src, width)
+//	          htmlDiagrams.answer(dg, width)
 //	                       │
 //	        ┌──────────────┴──────────────┐
 //	        │  Cached & !refresh?         │─── Yes ───► Return s.answerOf()
@@ -60,35 +60,48 @@ type htmlDiagram struct {
 
 // htmlDiagramReady is a request's ready, brought to the loop as a task result.
 type htmlDiagramReady struct {
-	src string
+	dg  pageDiagram
 	gen uint64
 }
+
+// pageDiagram is a pre drawn as a picture: its language (mermaid, vega-lite) and its source.
+type pageDiagram struct{ lang, src string }
+
+// diagramClasses are the pre classes drawn as pictures, with the language each asks for.
+var diagramClasses = map[string]string{"mermaid": "mermaid", "vega-lite": "vega-lite"}
 
 // maxHTMLDiagrams bounds the slots a view keeps: each holds a picture.
 const maxHTMLDiagrams = 64
 
 type htmlDiagrams struct {
 	l     *htmlLayout
-	slots map[string]*htmlDiagram // by the diagram's source
-	set   uint64                  // the view's DiagramsSet the slots were asked under
+	slots map[pageDiagram]*htmlDiagram
+	set   uint64 // the view's DiagramsSet the slots were asked under
 	gen   uint64
 	tasks map[tui.TaskID]struct{} // ready waits started for this layout: their results are ours
 }
 
 // newHTMLDiagrams constructs the diagram manager for an HTML layout instance.
 func newHTMLDiagrams(l *htmlLayout) *htmlDiagrams {
-	return &htmlDiagrams{l: l, slots: map[string]*htmlDiagram{}, tasks: map[tui.TaskID]struct{}{}}
+	return &htmlDiagrams{l: l, slots: map[pageDiagram]*htmlDiagram{}, tasks: map[tui.TaskID]struct{}{}}
 }
 
-// mermaidSource is a pre's diagram source when it is a <pre class="mermaid">: its text, as the
-// page holds it.
-func mermaidSource(n *phtml.Node) (string, bool) {
+// diagramSource is a pre's diagram when it is a <pre class="mermaid"> or a <pre
+// class="vega-lite">: its language, and its text as the page holds it.
+func diagramSource(n *phtml.Node) (pageDiagram, bool) {
 	if n.Name != "pre" {
-		return "", false
+		return pageDiagram{}, false
 	}
 	class, _ := n.Attr("class")
-	if !strings.Contains(" "+strings.Join(strings.Fields(class), " ")+" ", " mermaid ") {
-		return "", false
+	lang := ""
+	for _, c := range strings.Fields(class) {
+		if l, ok := diagramClasses[c]; ok {
+			lang = l
+			break
+		}
+	}
+	if lang == "" {
+		return pageDiagram{}, false
 	}
 	var b strings.Builder
 	walkNodes(n, nil, func(c, _ *phtml.Node) {
@@ -96,7 +109,7 @@ func mermaidSource(n *phtml.Node) (string, bool) {
 			b.WriteString(c.Data)
 		}
 	})
-	return strings.TrimSpace(b.String()), true
+	return pageDiagram{lang: lang, src: strings.TrimSpace(b.String())}, true
 }
 
 // theme is the diagrams' theme from the page's colours.
@@ -106,9 +119,9 @@ func (m *htmlDiagrams) theme() Theme {
 		Prose: gui.Font{Size: l.textPx}, Mono: gui.Font{Size: l.textPx, Family: gui.CellFamily}}
 }
 
-// answer is src's diagram at width: asked of the view's Diagrammer on first sight, and again once
+// answer is dg's picture at width: asked of the view's Diagrammer on first sight, and again once
 // its ready fires or its width, scale or theme changes.
-func (m *htmlDiagrams) answer(src string, width float32) DiagramAnswer {
+func (m *htmlDiagrams) answer(dg pageDiagram, width float32) DiagramAnswer {
 	d, _ := m.l.v.Diagrams().(Diagrammer)
 	if d == nil || m.l.shaper == nil {
 		return DiagramAnswer{State: Declined}
@@ -117,9 +130,9 @@ func (m *htmlDiagrams) answer(src string, width float32) DiagramAnswer {
 		m.reset()
 		m.set = set
 	}
-	req := DiagramRequest{Lang: "mermaid", Src: src, Width: width, Scale: m.l.shaper.Scale(), Theme: m.theme()}
+	req := DiagramRequest{Lang: dg.lang, Src: dg.src, Width: width, Scale: m.l.shaper.Scale(), Theme: m.theme()}
 	key := diagramKey{req.Lang, req.Src, req.Width, req.Scale, req.Theme}
-	s := m.slots[src]
+	s := m.slots[dg]
 	if s != nil && s.key == key && !s.refresh {
 		return s.answerOf()
 	}
@@ -135,8 +148,8 @@ func (m *htmlDiagrams) answer(src string, width float32) DiagramAnswer {
 	m.gen++
 	ctx, cancel := context.WithCancel(context.Background())
 	s = &htmlDiagram{key: key, gen: m.gen, cancel: cancel, state: Pending, pic: pic, size: size}
-	m.slots[src] = s
-	a := d.Diagram(ctx, req, m.readyFor(ctx, src, s.gen))
+	m.slots[dg] = s
+	a := d.Diagram(ctx, req, m.readyFor(ctx, dg, s.gen))
 	switch a.State {
 	case Ready:
 		s.state, s.pic, s.size = Ready, a.Pic, a.Size
@@ -162,8 +175,8 @@ func (s *htmlDiagram) answerOf() DiagramAnswer {
 
 // genOf is a diagram's state as a number, for its block's key: a ready that fires, or a picture
 // that lands, changes it, so the block is laid out again.
-func (m *htmlDiagrams) genOf(src string) uint64 {
-	s, ok := m.slots[src]
+func (m *htmlDiagrams) genOf(dg pageDiagram) uint64 {
+	s, ok := m.slots[dg]
 	if !ok {
 		return 0
 	}
@@ -177,7 +190,7 @@ func (m *htmlDiagrams) genOf(src string) uint64 {
 // readyFor is a request's ready: called at most once, from any goroutine, it wakes a task on the
 // view's Context that brings htmlDiagramReady to the loop. A cancelled request (a newer one, a
 // reset) or an unmounted view ends the task with no result.
-func (m *htmlDiagrams) readyFor(ctx context.Context, src string, gen uint64) func() {
+func (m *htmlDiagrams) readyFor(ctx context.Context, dg pageDiagram, gen uint64) func() {
 	tc := m.l.v.Context()
 	if tc == nil {
 		return func() {}
@@ -187,7 +200,7 @@ func (m *htmlDiagrams) readyFor(ctx context.Context, src string, gen uint64) fun
 	id := tc.Go(func(task context.Context) (any, error) {
 		select {
 		case <-fired:
-			return htmlDiagramReady{src: src, gen: gen}, nil
+			return htmlDiagramReady{dg: dg, gen: gen}, nil
 		case <-ctx.Done():
 			return nil, ctx.Err()
 		case <-task.Done():
@@ -206,7 +219,7 @@ func (m *htmlDiagrams) done(r tui.TaskResult) bool {
 	}
 	delete(m.tasks, r.ID)
 	if v, ok := r.Value.(htmlDiagramReady); ok && r.Err == nil {
-		if s := m.slots[v.src]; s != nil && s.gen == v.gen {
+		if s := m.slots[v.dg]; s != nil && s.gen == v.gen {
 			s.refresh = true
 		}
 	}
@@ -218,17 +231,17 @@ func (m *htmlDiagrams) reset() {
 	for _, s := range m.slots {
 		s.cancel()
 	}
-	m.slots = map[string]*htmlDiagram{}
+	m.slots = map[pageDiagram]*htmlDiagram{}
 }
 
-// diagramBox is a <pre class="mermaid">'s box when its picture is drawn: one run holding the
-// picture as an inline box, fitted to width. False keeps the code.
+// diagramBox is a diagram pre's box when its picture is drawn: one run holding the picture as an
+// inline box, fitted to width. False keeps the code.
 func (b *builder) diagramBox(bx *box, n *phtml.Node, st *computed, src [2]int) bool {
-	text, ok := mermaidSource(n)
-	if !ok || text == "" {
+	dg, ok := diagramSource(n)
+	if !ok || dg.src == "" {
 		return false
 	}
-	a := b.l.diagrams.answer(text, b.l.contentWidth())
+	a := b.l.diagrams.answer(dg, b.l.contentWidth())
 	if a.State == Declined || a.Pic == nil {
 		return false
 	}

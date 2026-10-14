@@ -280,7 +280,7 @@ func (b *builder) box(n *phtml.Node, st *computed, src [2]int) *box {
 		return bx
 	}
 	if n.Name == "pre" && b.diagramBox(bx, n, st, src) {
-		return bx // a <pre class="mermaid"> drawn as its diagram
+		return bx // a <pre class="mermaid"> or "vega-lite" drawn as its picture
 	}
 	if n.Name == "pre" {
 		trimPre(n)

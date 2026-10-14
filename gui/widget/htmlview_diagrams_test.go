@@ -93,22 +93,41 @@ func TestAMermaidPreDrawsOnceReady(t *testing.T) {
 	if preDrawn(l) {
 		t.Fatal("a pending diagram drew a picture")
 	}
-	s := l.diagrams.slots["flowchart LR\n  A --> B"]
+	dg := pageDiagram{lang: "mermaid", src: "flowchart LR\n  A --> B"}
+	s := l.diagrams.slots[dg]
 	if s == nil {
 		t.Fatal("no request for the diagram")
 	}
 	l.diagrams.tasks[41] = struct{}{}
-	if !l.HandleTask(tui.TaskResult{ID: 41, Value: htmlDiagramReady{src: "flowchart LR\n  A --> B", gen: s.gen - 1}}) || s.refresh {
+	if !l.HandleTask(tui.TaskResult{ID: 41, Value: htmlDiagramReady{dg: dg, gen: s.gen - 1}}) || s.refresh {
 		t.Error("an older request's ready was not swallowed")
 	}
 	f.state = Ready
 	l.diagrams.tasks[42] = struct{}{}
-	if !l.HandleTask(tui.TaskResult{ID: 42, Value: htmlDiagramReady{src: "flowchart LR\n  A --> B", gen: s.gen}}) {
+	if !l.HandleTask(tui.TaskResult{ID: 42, Value: htmlDiagramReady{dg: dg, gen: s.gen}}) {
 		t.Fatal("the ready was not the layout's")
 	}
 	paint()
 	if !preDrawn(l) || f.paints == 0 {
 		t.Errorf("after its ready the pre is drawn %v, painted %d times", preDrawn(l), f.paints)
+	}
+}
+
+// A <pre class="vega-lite"> asks for a chart, Lang vega-lite, and its picture takes the pre's
+// place; a mermaid pre and a vega-lite pre of the same text are two requests, not one slot.
+func TestAVegaLitePreDrawsItsChart(t *testing.T) {
+	f := &htmlFakeDiagrams{state: Ready}
+	l, _ := diagramView(t, `<pre class="vega-lite">{"mark": "bar"}</pre>`, f)
+	if len(f.asked) == 0 || f.asked[0].Lang != "vega-lite" || f.asked[0].Src != `{"mark": "bar"}` {
+		t.Fatalf("asked %+v, want the pre's text as a vega-lite request", f.asked)
+	}
+	if !preDrawn(l) {
+		t.Error("the chart is not in the pre's place")
+	}
+	f = &htmlFakeDiagrams{state: Ready}
+	l, _ = diagramView(t, `<pre class="mermaid">same</pre><pre class="vega-lite">same</pre>`, f)
+	if len(l.diagrams.slots) != 2 {
+		t.Errorf("%d slots for a mermaid and a vega-lite pre of the same text, want 2", len(l.diagrams.slots))
 	}
 }
 

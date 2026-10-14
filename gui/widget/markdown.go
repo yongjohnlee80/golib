@@ -64,8 +64,8 @@ func HeadingScale(h1 float32) MarkdownOption {
 	return func(r *MarkdownRenderer) { r.h1 = max(h1, 1) }
 }
 
-// WithDiagrams draws a fenced block a Diagrammer answers Ready for (a mermaid fence) as its
-// picture. Without one, or until it answers, the block is drawn as code.
+// WithDiagrams draws a fenced block a Diagrammer answers Ready for (a mermaid or vega-lite fence)
+// as its picture. Without one, or until it answers, the block is drawn as code.
 func WithDiagrams(d Diagrammer) MarkdownOption { return func(r *MarkdownRenderer) { r.diagrams = d } }
 
 // WithCodeLanguages uses the same immutable provider catalog as source/Raw editors.

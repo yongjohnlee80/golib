@@ -12,6 +12,7 @@ import (
 
 	"github.com/yongjohnlee80/golib/gui"
 	"github.com/yongjohnlee80/golib/gui/mermaid"
+	"github.com/yongjohnlee80/golib/gui/vegalite"
 	pm "github.com/yongjohnlee80/golib/parse/mermaid"
 )
 
@@ -23,17 +24,19 @@ import (
 //	                       [ LRU Cache Check ]
 //	                       /                 \
 //	                 [ Hit ]                 [ Miss ]
-//	           Return *mermaid.Laid     [ Check Active Jobs ]
+//	           Return the laid picture  [ Check Active Jobs ]
 //	                                    /                   \
 //	                            [ In Progress ]         [ New Job ]
 //	                            Register waiter         Spawn worker goroutine
-//	                            to existing job         Execute mermaid.Lay()
+//	                            to existing job         mermaid.Lay / vegalite.Lay
 //	                                                    Populate LRU cache
 //	                                                    Signal waiters via ready()
 //
-// Diagrams chains golib's native Mermaid, then fallback (nil: none) for what native declines: a
-// diagram type it does not draw (mermaid.ErrUnsupported) or one over a limit (ErrTooLarge). A
-// malformed diagram is Ready: a picture of the error and its line, in place.
+// Diagrams chains golib's native Mermaid and Vega-Lite (a "vega-lite" block: gui/vegalite's
+// subset), then fallback (nil: none) for what native declines: a diagram type or chart it does
+// not draw (ErrUnsupported) or one over a limit (ErrTooLarge). A malformed Mermaid diagram is
+// Ready: a picture of the error and its line, in place; a chart that is not JSON is Declined, its
+// source drawn as code.
 //
 // One Diagrams serves a window: its cache of laid diagrams (an LRU of 64) is shared by every block
 // that asks, and each diagram is laid out once, by one job on a worker, whoever else waits for it.
@@ -66,13 +69,22 @@ type diagramWaiter struct {
 
 // laidResult is a diagram's layout, or why there is none.
 type laidResult struct {
-	laid *mermaid.Laid
+	laid laidPicture
 	err  error
 }
 
+// laidPicture is a diagram or chart laid out: what it paints, and its size.
+type laidPicture interface {
+	gui.View
+	Size() gui.Size
+}
+
+// isChart reports whether a block's language is Vega-Lite's.
+func isChart(lang string) bool { return lang == "vega-lite" || lang == "vegalite" }
+
 // Diagram answers the diagram request from cache, kicks off background layout, or falls back.
 func (d *diagrams) Diagram(ctx context.Context, req DiagramRequest, ready func()) DiagramAnswer {
-	if req.Lang != "mermaid" {
+	if req.Lang != "mermaid" && !isChart(req.Lang) {
 		return d.fall(ctx, req, ready)
 	}
 	k := hashOf(req)
@@ -100,11 +112,19 @@ func (d *diagrams) start(k diagramHash, req DiagramRequest) *diagramJob {
 	ctx, cancel := context.WithCancel(context.Background())
 	j := &diagramJob{cancel: cancel, waiters: map[int]*diagramWaiter{}}
 	d.jobs[k] = j
-	th := mermaidTheme(req.Theme)
+	lay := func(m gui.Measurer) (laidPicture, error) {
+		if isChart(req.Lang) {
+			return vegalite.Lay(ctx, req.Src, req.Width, chartTheme(req.Theme), m)
+		}
+		return mermaid.Lay(ctx, req.Src, req.Width, mermaidTheme(req.Theme), m)
+	}
 	go func() {
 		m, release := gui.AcquireMeasurer(req.Scale)
-		laid, err := mermaid.Lay(ctx, req.Src, req.Width, th, m)
+		laid, err := lay(m)
 		release()
+		if err != nil { // a typed nil *Laid in the interface is not a picture
+			laid = nil
+		}
 		d.finish(k, j, ctx, laidResult{laid, err})
 	}()
 	return j
@@ -157,7 +177,8 @@ func (d *diagrams) answer(ctx context.Context, req DiagramRequest, ready func(),
 	case errors.As(r.err, &se):
 		pic, size := syntaxPicture(se, req)
 		return DiagramAnswer{State: Ready, Pic: pic, Size: size}
-	case errors.Is(r.err, pm.ErrUnsupported), errors.Is(r.err, pm.ErrTooLarge):
+	case errors.Is(r.err, pm.ErrUnsupported), errors.Is(r.err, pm.ErrTooLarge),
+		errors.Is(r.err, vegalite.ErrUnsupported), errors.Is(r.err, vegalite.ErrTooLarge):
 		return d.fall(ctx, req, ready)
 	}
 	return DiagramAnswer{State: Declined}
@@ -199,6 +220,20 @@ func mermaidTheme(th Theme) mermaid.Theme {
 		ClusterFill:   mix(th.Text, th.Background, 0.04),
 		ClusterStroke: mix(th.Text, th.Background, 0.3),
 		Font:          f,
+	}
+}
+
+// chartTheme is a chart's theme from the editor's: its page and text, the axes in the text's
+// colour toned down, a faint grid, and its prose font a little smaller.
+func chartTheme(th Theme) vegalite.Theme {
+	f := th.Prose
+	f.Size = max(f.Size*0.9, 10)
+	return vegalite.Theme{
+		Background: th.Background,
+		Text:       th.Text,
+		Axis:       mix(th.Text, th.Background, 0.55),
+		Grid:       mix(th.Text, th.Background, 0.12),
+		Font:       f,
 	}
 }
 
