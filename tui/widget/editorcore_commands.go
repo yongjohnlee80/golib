@@ -35,6 +35,20 @@ type Command struct {
 	Help    string   // what it does, in one line
 	// Run does it. A returned error is the prompt's to show; the line can then be corrected.
 	Run func(CommandContext) error
+	// Complete is what Tab offers for an argument: the candidates for the word being typed. The
+	// prompt keeps those that start with it, in Complete's order, so Complete may return them all.
+	// nil leaves Tab listing Args and Help, as for a command without it.
+	Complete func(CompleteContext) []string
+}
+
+// CompleteContext is what a command's Complete gets: the line typed so far, up to the word Tab
+// completes.
+type CompleteContext struct {
+	Core *EditorCore // the editor
+	Name string      // the verb as typed (an alias, say), without the bang
+	Bang bool        // the verb ended in '!'
+	Args []string    // the words before the one being completed
+	Word string      // the word being completed, as typed so far: "" after a space
 }
 
 // CommandContext is what a command runs with.

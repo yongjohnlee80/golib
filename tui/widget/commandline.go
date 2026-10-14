@@ -2,6 +2,7 @@ package widget
 
 import (
 	"strings"
+	"unicode/utf8"
 
 	"github.com/yongjohnlee80/golib/tui"
 	"github.com/yongjohnlee80/golib/tui/style"
@@ -12,7 +13,7 @@ import (
 // CommandLine is the prompt an editor widget opens on ':': a dialog titled "VIM Commands" holding
 // one field. Enter runs the line through the core's RunCommand; Esc closes it; Tab completes the
 // verb from the core's Commands and lists the candidates, each with its arguments and help, under
-// the field. It belongs to the widget it opens over (its owner, which must sit under an
+// the field; after the verb, it completes an argument from the command's Complete. It belongs to the widget it opens over (its owner, which must sit under an
 // OverlayHost, as an EditorMenu's owner does), so the tui Editor and a graphical one share it.
 //
 // The prompt closes BEFORE the command runs: a command may open a dialog of its own (the host's
@@ -34,11 +35,15 @@ type CommandLine struct {
 	ask *Modal // replace's open question, nil when none
 }
 
-// completion is Tab's walk through the candidates: what was typed when it began, and which
-// candidate the last Tab chose (-1: only the common prefix so far).
+// completion is Tab's walk through the candidates: what was typed when it began, what precedes
+// every candidate in the field (the verb and the words before an argument; "" for a verb), each
+// candidate and its row in the dropdown, and which one the last Tab chose (-1: only the common
+// prefix so far).
 type completion struct {
 	typed string
-	cands []Command
+	head  string
+	cands []string
+	rows  []string
 	at    int
 }
 
@@ -173,35 +178,29 @@ func (l *CommandLine) keys(k tui.KeyEvent) bool {
 	return false
 }
 
-// complete completes the verb being typed. The first Tab fills in what every candidate shares
-// (and a space when there is one candidate) and lists them; each Tab after that takes the next
-// candidate in turn, Shift+Tab the previous. Only the verb completes: once the line has a space,
-// Tab lists the verb's arguments.
+// complete completes the word being typed: the verb, from the core's Commands, or after it an
+// argument, from the command's Complete. The first Tab fills in what every candidate shares (and a
+// space when there is one candidate) and lists them; each Tab after that takes the next candidate
+// in turn, Shift+Tab the previous. After the verb of a command without Complete, Tab lists its
+// arguments and help.
 func (l *CommandLine) complete(back bool) {
 	line := l.field.Value()
 	if l.comp.cands == nil {
-		verb, _, spaced := strings.Cut(line, " ")
+		verb, rest, spaced := strings.Cut(line, " ")
 		if spaced {
-			if cmd, ok := l.core.Commands().Lookup(strings.TrimSuffix(verb, "!")); ok {
-				l.list.say(describe(cmd))
-			}
+			l.completeArg(line, verb, rest, back)
 			return
 		}
-		cands := l.core.Commands().Complete(line)
-		if len(cands) == 0 {
+		cmds := l.core.Commands().Complete(line)
+		if len(cmds) == 0 {
 			l.list.say("no command starts with " + quoteOrNothing(line))
 			return
 		}
-		l.comp = completion{typed: line, cands: cands, at: -1}
-		if len(cands) == 1 {
-			l.list.say(describe(cands[0]))
-			l.setField(cands[0].Name + " ")
-			l.comp.cands = nil // done: the next Tab lists its arguments
-			return
+		names := make([]string, len(cmds))
+		for i, c := range cmds {
+			names[i] = c.Name
 		}
-		l.list.set(describeEach(cands), -1)
-		if p := commonPrefix(cands, line); p != line {
-			l.setField(p)
+		if !l.offer(completion{typed: line, cands: names, rows: describeEach(cmds)}, describe(cmds[0])) {
 			return
 		}
 	}
@@ -217,7 +216,65 @@ func (l *CommandLine) complete(back bool) {
 		l.comp.at = (l.comp.at + 1) % n
 	}
 	l.list.choose(l.comp.at)
-	l.setField(l.comp.cands[l.comp.at].Name)
+	l.setField(l.comp.head + l.comp.cands[l.comp.at])
+}
+
+// offer starts Tab's walk through c's candidates, typed being c.typed's word. One candidate is
+// filled in whole, with a space, and once is said: done, offer says false. Several are listed,
+// and what they share is filled in: offer says false when that moved the field, true when the walk
+// takes the first Tab on to the first candidate.
+func (l *CommandLine) offer(c completion, once string) bool {
+	c.at = -1
+	l.comp = c
+	if len(c.cands) == 1 {
+		l.list.say(once)
+		l.setField(c.head + c.cands[0] + " ")
+		l.comp.cands = nil // done: the next Tab completes the next word
+		return false
+	}
+	l.list.set(c.rows, -1)
+	typed := strings.TrimPrefix(c.typed, c.head)
+	if p := commonPrefix(c.cands, typed); p != typed {
+		l.setField(c.head + p)
+		return false
+	}
+	return true
+}
+
+// completeArg completes the argument being typed after verb: rest is the line after the verb's
+// space. A command without Complete, or whose candidates none starts with the word, has Tab say
+// its arguments and help instead.
+func (l *CommandLine) completeArg(line, verb, rest string, back bool) {
+	name := strings.TrimSuffix(verb, "!")
+	cmd, ok := l.core.Commands().Lookup(name)
+	if !ok {
+		return
+	}
+	if cmd.Complete == nil {
+		l.list.say(describe(cmd))
+		return
+	}
+	words := strings.Fields(rest)
+	word := ""
+	if len(words) > 0 && !strings.HasSuffix(rest, " ") {
+		word, words = words[len(words)-1], words[:len(words)-1]
+	}
+	seen := map[string]bool{}
+	var cands []string
+	for _, c := range cmd.Complete(CompleteContext{Core: l.core, Name: name, Bang: name != verb, Args: words, Word: word}) {
+		if c != "" && strings.HasPrefix(c, word) && !seen[c] {
+			seen[c] = true
+			cands = append(cands, c)
+		}
+	}
+	if len(cands) == 0 {
+		l.list.say(describe(cmd))
+		return
+	}
+	head := line[:len(line)-len(word)]
+	if l.offer(completion{typed: line, head: head, cands: cands, rows: cands}, describe(cmd)) {
+		l.complete(back) // several that share nothing more: this Tab takes the first (or the last)
+	}
 }
 
 // setField puts s in the field. SetValue is not typing (WithOnEdit does not run), so the
@@ -363,11 +420,12 @@ func (c *completionList) Render(s tui.Surface) {
 }
 
 // commonPrefix is the longest prefix every candidate's name shares, at least typed.
-func commonPrefix(cs []Command, typed string) string {
-	p := cs[0].Name
+func commonPrefix(cs []string, typed string) string {
+	p := cs[0]
 	for _, c := range cs[1:] {
-		for !strings.HasPrefix(c.Name, p) {
-			p = p[:len(p)-1]
+		for !strings.HasPrefix(c, p) {
+			_, size := utf8.DecodeLastRuneInString(p) // a script's arguments need not be ASCII
+			p = p[:len(p)-size]
 		}
 	}
 	if len(p) < len(typed) {
