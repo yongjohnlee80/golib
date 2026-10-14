@@ -153,6 +153,42 @@ func TestModifiedFollowsEditsUndoAndSave(t *testing.T) {
 	}
 }
 
+// Revision names the text: an edit or a new document gives a fresh one, an undo or a redo the one
+// the text it restores had, and a read, a move or a save none.
+func TestRevisionNamesTheText(t *testing.T) {
+	c, _ := coreWith(t, "one")
+	r0 := c.Revision()
+	_ = c.TextIn(rng(0, 0, 0, 3))
+	c.SetCursor(pos(0, 2))
+	c.MarkSaved()
+	if c.Revision() != r0 {
+		t.Fatal("a read, a move or a save changed the revision")
+	}
+	_, _ = c.Insert(pos(0, 3), "!")
+	r1 := c.Revision()
+	if r1 == r0 {
+		t.Fatal("an edit kept the revision")
+	}
+	undo(c)
+	if c.Revision() != r0 {
+		t.Fatalf("undo gave %d, not the restored text's %d", c.Revision(), r0)
+	}
+	c.Redo()
+	if c.Revision() != r1 {
+		t.Fatalf("redo gave %d, not the restored text's %d", c.Revision(), r1)
+	}
+	undo(c)
+	_, _ = c.Insert(pos(0, 3), "!") // the same text as r1, by a new edit: a new revision
+	if r := c.Revision(); r == r1 || r == r0 {
+		t.Fatalf("a new edit reused revision %d", r)
+	}
+	before := c.Revision()
+	c.SetValue("one!") // a new document, whatever its text
+	if r := c.Revision(); r == before || r == r0 || r == r1 {
+		t.Fatalf("a new document reused revision %d", r)
+	}
+}
+
 func TestSelectShowsTheRangeAsVisual(t *testing.T) {
 	c, _ := coreWith(t, "hello world\nnext")
 	c.Select(rng(0, 6, 0, 11)) // "world"
