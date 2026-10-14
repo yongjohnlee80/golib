@@ -574,6 +574,17 @@ func (r *MarkdownRenderer) lineSpans(ln int, line string, th Theme) ([]flow.Span
 			for i := n.Span.Start; i < n.Span.End; i++ {
 				attrs[i].tag = true
 			}
+		case markdown.KindText:
+			// a backslash escape draws the character it escapes, as CommonMark renders it: its
+			// backslash is a mark, hidden off the cursor (a code span's backslashes are its text)
+			if n.Literal != nil {
+				for i := n.Span.Start; i+1 < n.Span.End; i++ {
+					if src[i] == '\\' && isASCIIPunct(src[i+1]) {
+						hide(attrs, i, i+1)
+						i++
+					}
+				}
+			}
 		case markdown.KindCodeSpan:
 			s, e := n.Span.Start, n.Span.End
 			open := 0
@@ -656,6 +667,11 @@ func markRange(attrs []mdAttr, start, end int, n *markdown.Node, set func(*mdAtt
 			attrs[i].hidden = true
 		}
 	}
+}
+
+// isASCIIPunct reports whether c is ASCII punctuation: what a backslash escapes.
+func isASCIIPunct(c byte) bool {
+	return strings.IndexByte("!\"#$%&'()*+,-./:;<=>?@[\\]^_`{|}~", c) >= 0
 }
 
 // hide marks a range of byte attributes as hidden in Rendered mode.

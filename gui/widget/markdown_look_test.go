@@ -372,3 +372,36 @@ func TestARenderedSQLFenceIsHighlighted(t *testing.T) {
 		}
 	}
 }
+
+// shownText is a layout's drawn text: its spans that are not hidden, in order.
+func shownText(bl BlockLayout) string {
+	var b strings.Builder
+	for _, ll := range bl.Lines {
+		for _, s := range ll.Spans {
+			if !s.Hidden {
+				b.WriteString(s.Text)
+			}
+		}
+	}
+	return b.String()
+}
+
+// A backslash escape draws the character it escapes, as CommonMark renders it: its backslash is
+// hidden, in a paragraph and in a table's cell, and the character is not Markdown. A code span's
+// backslashes are its text, and a backslash before anything but punctuation is itself.
+func TestABackslashEscapeDrawsItsCharacter(t *testing.T) {
+	for _, c := range []struct{ doc, want string }{
+		{`\*not emphasis\* \[x\]\(y\) a\|b c\\d`, `*not emphasis* [x](y) a|b c\d`},
+		{"`\\*code\\*` and \\`tick\\`", "\\*code\\* and `tick`"},
+		{`a\b \1`, `a\b \1`},
+	} {
+		if bl, _ := lookLay(t, c.doc, 0); shownText(bl) != c.want {
+			t.Errorf("%q drew %q, want %q", c.doc, shownText(bl), c.want)
+		}
+	}
+	table := "| value |\n| --- |\n| \\*\\*strong\\*\\* \\`code\\` a\\|b \\&amp\\; |"
+	bl, _ := lookLay(t, table, 0)
+	if got, want := shownText(bl), "**strong** `code` a|b &amp;"; !strings.Contains(got, want) {
+		t.Errorf("the cell drew %q, want it to hold %q", got, want)
+	}
+}
