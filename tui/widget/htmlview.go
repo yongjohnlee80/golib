@@ -39,6 +39,7 @@ type HTMLView struct {
 	refused   map[string]bool  // what onRefused was told, until the resolver changes
 	css       string
 	diagrams  any
+	diagramsN uint64 // how many times WithDiagrams set diagrams: a new one's answers are its own
 
 	pressing bool
 	pressAt  [2]float32 // where the left button went down, in the layout's units
@@ -161,7 +162,9 @@ func WithStylesheet(css string) HTMLOption { return func(v *HTMLView) { v.css = 
 
 // WithDiagrams gives a pixel layout what draws a page's diagrams (pre class="mermaid"), held
 // opaque here; the cell layout shows a diagram's source.
-func WithDiagrams(d any) HTMLOption { return func(v *HTMLView) { v.diagrams = d } }
+func WithDiagrams(d any) HTMLOption {
+	return func(v *HTMLView) { v.diagrams, v.diagramsN = d, v.diagramsN+1 }
+}
 
 // NewHTMLView builds an empty view, laid out in cells until a backend binds another layout.
 func NewHTMLView(opts ...HTMLOption) *HTMLView {
@@ -225,6 +228,10 @@ func (v *HTMLView) SetImageResolver(r ImageResolver) {
 
 // Diagrams is what WithDiagrams gave, for a pixel layout; nil for none.
 func (v *HTMLView) Diagrams() any { return v.diagrams }
+
+// DiagramsSet counts the times WithDiagrams set the view's diagrams: a pixel layout asks again,
+// once, when it changes, whatever the Diagrammer is (any value, comparable or not).
+func (v *HTMLView) DiagramsSet() uint64 { return v.diagramsN }
 
 // SetHTML shows src, keeping the reader's place: the block that was at the top, found again by
 // its source bytes, keeps its offset from the top; without source bytes the scroll keeps its y.
