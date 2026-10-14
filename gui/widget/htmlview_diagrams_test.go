@@ -111,3 +111,23 @@ func TestAMermaidPreDrawsOnceReady(t *testing.T) {
 		t.Errorf("after its ready the pre is drawn %v, painted %d times", preDrawn(l), f.paints)
 	}
 }
+
+// A view given another Diagrammer asks it, not the first one's answers kept: the engine that draws
+// a page's diagrams can be changed while the page shows.
+func TestAnotherDiagrammerDrawsThePagesDiagramsAgain(t *testing.T) {
+	first := &htmlFakeDiagrams{state: Ready}
+	l, paint := diagramView(t, mermaidPage, first)
+	if !preDrawn(l) {
+		t.Fatal("the first Diagrammer's picture is not drawn")
+	}
+	second := &htmlFakeDiagrams{state: Declined}
+	tuiwidget.WithDiagrams(second)(l.v)
+	l.v.SetHTML([]byte(mermaidPage))
+	paint()
+	if len(second.asked) == 0 {
+		t.Fatal("the new Diagrammer was never asked")
+	}
+	if preDrawn(l) {
+		t.Error("the first Diagrammer's picture stayed; the new one declined it")
+	}
+}
