@@ -915,6 +915,34 @@ func TestDashes(t *testing.T) {
 	}
 }
 
+// A pattern too fine to see, or one that would cut a line into too many dashes, is drawn solid,
+// and the walk ends: a sub-pixel dash once stalled it (float32 stopped advancing) and a thousandth
+// of a pixel made 300,000 dashes. A zero-length dash draws nothing.
+func TestDashesStayBounded(t *testing.T) {
+	line := []gui.Point{{X: 0, Y: 0}, {X: 0, Y: 600}}
+	for _, pat := range [][]float32{{1e-6, 1e-6}, {1e-3, 1e-3}, {0.4, 0.4}} {
+		done := make(chan [][]gui.Point, 1)
+		go func() { done <- dashed(line, pat, 1) }()
+		select {
+		case runs := <-done:
+			if len(runs) != 1 || len(runs[0]) != 2 {
+				t.Errorf("%v over 600 px: %d runs, want the line solid", pat, len(runs))
+			}
+		case <-time.After(5 * time.Second):
+			t.Fatalf("%v over 600 px: still cutting after 5 s", pat)
+		}
+	}
+	if runs := dashed(line, []float32{1e-6, 2}, 1); len(runs) > 301 {
+		t.Errorf("dashes of a millionth of a pixel, 2 px apart: %d runs, want at most one a period", len(runs))
+	}
+	if runs := dashed(line, []float32{0, 3}, 1); len(runs) != 0 {
+		t.Errorf("zero-length dashes: %d runs drawn, want none", len(runs))
+	}
+	if runs := dashed([]gui.Point{{X: 0, Y: 0}, {X: 0, Y: 1e5}}, []float32{0.5, 0.5}, 2); len(runs) != 1 {
+		t.Errorf("a 2-pixel period over 100,000 px (50,000 dashes): %d runs, want solid", len(runs))
+	}
+}
+
 // The still's limits: what the page's first state does not settle is declined.
 func TestParamsOutsideTheStillDecline(t *testing.T) {
 	base := strings.Replace(bundleSpec, "\n", "", -1)
@@ -949,5 +977,37 @@ func TestParamsOutsideTheStillDecline(t *testing.T) {
 	}
 	if _, err := lay(t, bundleSpec, 900); err != nil {
 		t.Fatalf("the base spec: %v", err)
+	}
+}
+
+// Through Lay, a chart whose line is dashed a hundred-millionth of a pixel at a time lays out
+// promptly (the line drawn solid); it once never returned, whatever its context said. A cancelled
+// layout stops cutting dashes, and Lay answers the context's error.
+func TestATinyDashThroughLayEnds(t *testing.T) {
+	spec := `{"data":{"values":[{"x":0,"y":0},{"x":1,"y":1}]},"mark":{"type":"line","strokeDash":[1e-8,1e-8]},
+		"encoding":{"x":{"field":"x","type":"quantitative"},"y":{"field":"y","type":"quantitative"}}}`
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+	defer cancel()
+	done := make(chan error, 1)
+	go func() {
+		m, release := gui.AcquireMeasurer(1)
+		defer release()
+		_, err := Lay(ctx, spec, 600, testTheme, m)
+		done <- err
+	}()
+	select {
+	case err := <-done:
+		if err != nil {
+			t.Fatalf("Lay: %v", err)
+		}
+	case <-time.After(5 * time.Second):
+		t.Fatal("Lay still laying out a [1e-8, 1e-8] dash after 5 s")
+	}
+	cancelled, stop := context.WithCancel(context.Background())
+	stop()
+	b := &builder{ctx: cancelled, unit: 1}
+	b.stroke(testTheme.Text, 1, []float32{4, 3}, gui.Pt(0, 0), gui.Pt(0, 600))
+	if len(b.items) != 0 {
+		t.Errorf("a cancelled layout cut %d dashes", len(b.items))
 	}
 }
