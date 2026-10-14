@@ -408,8 +408,8 @@ func (l *htmlLayout) keyOf(b *topBlock, width float32) uint64 {
 		nodes = []*phtml.Node{b.node}
 	}
 	diagram := func(n *phtml.Node) {
-		if text, ok := mermaidSource(n); ok {
-			g := l.diagrams.genOf(text)
+		if dg, ok := diagramSource(n); ok {
+			g := l.diagrams.genOf(dg)
 			for i := range 8 {
 				buf[i] = byte(g >> (8 * i))
 			}
@@ -420,7 +420,7 @@ func (l *htmlLayout) keyOf(b *topBlock, width float32) uint64 {
 		if n.Kind == phtml.StartTag && n.Name == "details" && l.detailsOpen(n) {
 			_, _ = h.Write([]byte{'o'}) // the block itself is a <details>: walkNodes visits below it
 		}
-		diagram(n) // the block itself may be the <pre class="mermaid">
+		diagram(n) // the block itself may be the diagram's pre
 		walkNodes(n, nil, func(c, _ *phtml.Node) {
 			if c.Kind == phtml.StartTag || c.Kind == phtml.SelfClosing {
 				if c.Name == "img" {
