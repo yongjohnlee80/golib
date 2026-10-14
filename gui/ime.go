@@ -43,7 +43,18 @@ import (
 //	While Composing (Active Preedit):           Composition Finishes:
 //	- Drawn inline at the pixel caret           - take() drains committed pieces
 //	- Candidate window anchored to caret        - Dispatched to TUI loop as KeyEvent
-//	- Suppressed from tui.Backend.Events        - Buffer reset to empty
+//	- Suppressed from tui.Backend.Events        - Buffer emptied where the text ended
+//
+// # Coordinates
+//
+// The toolkit and the input method address the buffer in their own coordinates, which keep
+// counting across deliveries: after 군 is delivered, the next syllable is composed at 1, not
+// 0. The buffer's first rune sits at base in those coordinates. Delivering advances base past
+// the delivered text and leaves the selection where the input method put it, so the toolkit's
+// copy of the editor state does not move. Moving it back to 0 looked to the toolkit like the
+// app moving the selection, and on macOS that discards the input method's marked text, while
+// the input method, running in its own process, may still be about to send the consonant that
+// begins the next syllable: 군요 came out as 군ㅛ.
 //
 // # Concurrency & Ownership
 //
@@ -53,12 +64,16 @@ import (
 // imeState coordinates the text editing buffer between the OS input method and the backend.
 type imeState struct {
 	text []rune
-	comp key.Range // the composing range; empty when nothing is being composed
+	// base is where text[0] sits in the toolkit's coordinates. An empty buffer sits wherever
+	// the input method's next edit or selection lands, so it follows the toolkit when its
+	// coordinates start again (a focus change).
+	base int
+	comp key.Range // the composing range, in the toolkit's coordinates; empty when nothing is being composed
 	// pieces tracks committed text pieces alongside their buffer positions.
 	// Preserves arrival order while tracking positional shifts caused by prior edits.
 	pieces []imePiece
-	// sel mirrors the active selection within the buffer (from a SelectionSet),
-	// allowing the backend to report consistent state back to the OS.
+	// sel mirrors the input method's selection (from a SelectionSet), in the toolkit's
+	// coordinates, so the backend reports back exactly the one the input method holds.
 	sel key.Range
 }
 
@@ -72,7 +87,10 @@ type imePiece struct {
 // edit applies an incoming [TextEdit] by replacing buffer runes [Start, End) with the
 // replacement text. Out-of-bounds ranges are safely clamped.
 func (s *imeState) edit(e TextEdit) {
-	start, end := s.clamp(e.Start, e.End)
+	if len(s.text) == 0 {
+		s.base = max(min(e.Start, e.End), 0)
+	}
+	start, end := s.clamp(e.Start-s.base, e.End-s.base)
 	repl := []rune(e.Text)
 	next := make([]rune, 0, len(s.text)-(end-start)+len(repl))
 	next = append(next, s.text[:start]...)
@@ -159,11 +177,20 @@ func (s *imeState) revise(start, end int, repl []rune) []imePiece {
 func (s *imeState) compose(e Composition) { s.comp = key.Range{Start: e.Start, End: e.End} }
 
 // setSelection records the input method's selection of the buffer.
-func (s *imeState) setSelection(e SelectionSet) { s.sel = key.Range{Start: e.Start, End: e.End} }
+func (s *imeState) setSelection(e SelectionSet) {
+	s.sel = key.Range{Start: e.Start, End: e.End}
+	if len(s.text) == 0 {
+		s.base = max(min(e.Start, e.End), 0)
+	}
+}
+
+// local converts a range in the toolkit's coordinates to buffer rune indices, clamped to the
+// buffer.
+func (s *imeState) local(start, end int) (int, int) { return s.clamp(start-s.base, end-s.base) }
 
 // composing reports whether there is an active non-empty IME composition range.
 func (s *imeState) composing() bool {
-	start, end := s.clamp(s.comp.Start, s.comp.End)
+	start, end := s.local(s.comp.Start, s.comp.End)
 	return s.comp.Start >= 0 && end > start
 }
 
@@ -176,7 +203,7 @@ func (s *imeState) held() (text []rune, comp key.Range, ok bool) {
 	if !s.composing() {
 		return nil, key.Range{}, false
 	}
-	start, end := s.clamp(s.comp.Start, s.comp.End)
+	start, end := s.local(s.comp.Start, s.comp.End)
 	return s.text, key.Range{Start: start, End: end}, true
 }
 
@@ -185,12 +212,13 @@ func (s *imeState) preedit() string {
 	if !s.composing() {
 		return ""
 	}
-	start, end := s.clamp(s.comp.Start, s.comp.End)
+	start, end := s.local(s.comp.Start, s.comp.End)
 	return string(s.text[start:end])
 }
 
-// take returns the text ready to commit and empties the buffer: everything, once no composition
-// is active; nothing while one is (the committed part waits with it, keeping its order). The
+// take returns the text ready to commit and empties the buffer where the text ended, keeping the
+// input method's selection: everything, once no composition is active; nothing while one is
+// (the committed part waits with it, keeping its order). The
 // pieces are delivered in buffer order, so their sequential insertion reproduces the buffer
 // exactly — an input method that inserts before or rewrites across an earlier piece's bytes
 // makes arrival order diverge from the buffer, and arrival order there would deliver the wrong
@@ -210,32 +238,28 @@ func (s *imeState) take() ([]string, bool) {
 	if len(out) == 0 {
 		out = []string{string(s.text)} // pieces that predate the order bookkeeping
 	}
+	s.base += len(s.text)
 	s.text = s.text[:0]
 	s.comp = key.Range{}
 	s.pieces = s.pieces[:0]
-	s.sel = key.Range{}
 	return out, true
 }
 
-// selection is the input method's selection in the buffer, clamped to it.
-func (s *imeState) selection() key.Range {
-	start, end := s.clamp(s.sel.Start, s.sel.End)
-	if s.sel.Start > s.sel.End {
-		start, end = end, start // keep the direction the input method gave
-	}
-	return key.Range{Start: start, End: end}
-}
+// selection is the input method's selection, exactly as it set it: reporting any other one makes
+// the toolkit cancel the composition.
+func (s *imeState) selection() key.Range { return s.sel }
 
 // snippet is the buffer's text over ask, clamped to the buffer: the answer to a [SnippetAsk],
 // so the toolkit's copy of the text the input method edits matches the input method's.
 func (s *imeState) snippet(ask SnippetAsk) SnippetReply {
-	start, end := s.clamp(ask.Start, ask.End)
-	return SnippetReply{Start: start, End: end, Text: string(s.text[start:end])}
+	start, end := s.local(ask.Start, ask.End)
+	return SnippetReply{Start: s.base + start, End: s.base + end, Text: string(s.text[start:end])}
 }
 
 // commitFrame is what the buffer commits when a frame's input ends: the committed
-// pieces as key events in delivery order, and the resets that tell the toolkit
-// the buffer is empty again. ok is false while a composition holds the buffer or
+// pieces as key events in delivery order, and the commands that tell the toolkit
+// the buffer is now empty where the delivered text ended, with the input method's
+// selection unchanged. ok is false while a composition holds the buffer or
 // nothing was typed. The window sends these through the adapter; the replay
 // checks them against the recording.
 func (s *imeState) commitFrame() (keys []tui.KeyEvent, resets []TextInputCmd, ok bool) {
@@ -246,7 +270,8 @@ func (s *imeState) commitFrame() (keys []tui.KeyEvent, resets []TextInputCmd, ok
 	for _, p := range pieces {
 		keys = append(keys, textKeys(p)...)
 	}
-	return keys, []TextInputCmd{SnippetReply{}, SelectionTell{}}, true
+	sel := s.selection()
+	return keys, []TextInputCmd{SnippetReply{Start: s.base, End: s.base}, SelectionTell{Start: sel.Start, End: sel.End}}, true
 }
 
 // empty reports whether the buffer holds nothing, so Gio's copy should be reset to match.

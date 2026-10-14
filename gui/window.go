@@ -243,7 +243,8 @@ func (b *Backend) readInput(src eventSource, tag event.Tag, m metrics) {
 }
 
 // deliverIME sends the text the input method has committed to the App, once no composition
-// holds it, and empties the buffer and Gio's copy of it, so the next edit starts at 0.
+// holds it, and empties the buffer and Gio's copy of it where the text ended, so Gio's
+// selection does not move and nothing the input method is still composing is cancelled.
 func (b *Backend) deliverIME(src eventSource, tag event.Tag) {
 	keys, resets, ok := b.gio.ime.commitFrame()
 	if !ok {

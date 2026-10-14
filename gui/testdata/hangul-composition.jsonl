@@ -10,5 +10,5 @@
 {"Seq":9,"At":"2026-10-12T12:52:31.840346289Z","Stage":"in","Kind":"Composition","Data":{"end":-1,"start":-1}}
 {"Seq":10,"At":"2026-10-12T12:52:31.840347119Z","Stage":"ime","Kind":"imeState","Data":{"comp":{"end":-1,"start":-1},"pieces":[{"folded":true,"from":0,"text":"한"}],"sel":{"end":0,"start":0},"text":"한"}}
 {"Seq":11,"At":"2026-10-12T12:52:31.840349799Z","Stage":"out","Kind":"KeyEvent","Data":{"events":[{"Kind":0,"Code":54620,"Base":0,"Shifted":0,"Mods":0,"Text":"한"}]}}
-{"Seq":12,"At":"2026-10-12T12:52:31.840350049Z","Stage":"cmd","Kind":"SnippetReply","Data":{"end":0,"start":0,"text":""}}
+{"Seq":12,"At":"2026-10-12T12:52:31.840350049Z","Stage":"cmd","Kind":"SnippetReply","Data":{"end":1,"start":1,"text":""}}
 {"Seq":13,"At":"2026-10-12T12:52:31.840356009Z","Stage":"cmd","Kind":"SelectionTell","Data":{"caret":{"ascent":0,"descent":0,"x":0,"y":0},"end":0,"start":0}}
