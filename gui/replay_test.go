@@ -446,8 +446,9 @@ func TestTheRecordedMultiFrameSessionReplays(t *testing.T) {
 // kind of syllable boundary (with two typos and a correction left in). macOS's input method
 // commits a syllable and marks the next one's first consonant in separate calls, from its own
 // process, and the recording holds that pattern at every boundary: delivering a syllable must
-// leave Gio's copy of the editor where the input method has it. The app was quit with the
-// recorder's last record half written; that line, after the last frame, was dropped.
+// leave Gio's copy of the editor where the input method has it. The app ended without closing
+// the recorder, so the file stops where its buffer last flushed, mid-record and after the
+// typing; the half record was dropped, and the recording ends at its last whole frame.
 func TestTheRecordedMacOSHangulSessionReplays(t *testing.T) {
 	data, err := os.ReadFile("testdata/hangul-macos-boundary.jsonl")
 	if err != nil {
