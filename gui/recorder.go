@@ -111,7 +111,7 @@ func cmdFields(cmd TextInputCmd) (string, map[string]any) {
 func imeFields(s *imeState) map[string]any {
 	pieces := make([]map[string]any, len(s.pieces))
 	for i, p := range s.pieces {
-		pieces[i] = map[string]any{"from": p.from, "text": string(p.runs), "folded": p.folded}
+		pieces[i] = map[string]any{"from": s.base + p.from, "text": string(p.runs), "folded": p.folded}
 	}
 	return map[string]any{
 		"text":   string(s.text),

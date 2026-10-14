@@ -11,7 +11,7 @@
 {"Seq":10,"At":"2026-10-12T14:06:02.88605313Z","Stage":"in","Kind":"TextEdit","Data":{"end":0,"start":0,"text":"a"}}
 {"Seq":11,"At":"2026-10-12T14:06:02.88605492Z","Stage":"ime","Kind":"imeState","Data":{"comp":{"end":0,"start":0},"pieces":[{"folded":false,"from":0,"text":"a"}],"sel":{"end":0,"start":0},"text":"a"}}
 {"Seq":12,"At":"2026-10-12T14:06:02.88605806Z","Stage":"out","Kind":"KeyEvent","Data":{"events":[{"Kind":0,"Code":97,"Base":0,"Shifted":0,"Mods":0,"Text":"a"}]}}
-{"Seq":13,"At":"2026-10-12T14:06:02.88605836Z","Stage":"cmd","Kind":"SnippetReply","Data":{"end":0,"start":0,"text":""}}
+{"Seq":13,"At":"2026-10-12T14:06:02.88605836Z","Stage":"cmd","Kind":"SnippetReply","Data":{"end":1,"start":1,"text":""}}
 {"Seq":14,"At":"2026-10-12T14:06:02.88605904Z","Stage":"cmd","Kind":"SelectionTell","Data":{"caret":{"ascent":0,"descent":0,"x":0,"y":0},"end":0,"start":0}}
 {"Seq":15,"At":"2026-10-12T14:06:02.88605936Z","Stage":"frame","Kind":"end","Data":{"n":2}}
 {"Seq":16,"At":"2026-10-12T14:06:02.88605987Z","Stage":"cmd","Kind":"SelectionTell","Data":{"caret":{"ascent":14,"descent":4,"x":10,"y":24},"end":0,"start":0}}
@@ -31,7 +31,7 @@
 {"Seq":30,"At":"2026-10-12T14:06:02.88608451Z","Stage":"in","Kind":"Composition","Data":{"end":-1,"start":-1}}
 {"Seq":31,"At":"2026-10-12T14:06:02.88608529Z","Stage":"ime","Kind":"imeState","Data":{"comp":{"end":-1,"start":-1},"pieces":[{"folded":true,"from":0,"text":"한"}],"sel":{"end":0,"start":0},"text":"한"}}
 {"Seq":32,"At":"2026-10-12T14:06:02.88609002Z","Stage":"out","Kind":"KeyEvent","Data":{"events":[{"Kind":0,"Code":54620,"Base":0,"Shifted":0,"Mods":0,"Text":"한"}]}}
-{"Seq":33,"At":"2026-10-12T14:06:02.88609032Z","Stage":"cmd","Kind":"SnippetReply","Data":{"end":0,"start":0,"text":""}}
+{"Seq":33,"At":"2026-10-12T14:06:02.88609032Z","Stage":"cmd","Kind":"SnippetReply","Data":{"end":1,"start":1,"text":""}}
 {"Seq":34,"At":"2026-10-12T14:06:02.88609088Z","Stage":"cmd","Kind":"SelectionTell","Data":{"caret":{"ascent":0,"descent":0,"x":0,"y":0},"end":0,"start":0}}
 {"Seq":35,"At":"2026-10-12T14:06:02.88609118Z","Stage":"frame","Kind":"end","Data":{"n":4}}
 {"Seq":36,"At":"2026-10-12T14:06:02.88609166Z","Stage":"cmd","Kind":"SelectionTell","Data":{"caret":{"ascent":14,"descent":4,"x":10,"y":24},"end":0,"start":0}}

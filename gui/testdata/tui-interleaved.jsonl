@@ -6,7 +6,7 @@
 {"Seq":5,"At":"2026-10-12T00:00:00Z","Stage":"tui","Kind":"key","Data":{"comp":"*widget.Editor","detail":"a"}}
 {"Seq":6,"At":"2026-10-12T00:00:00Z","Stage":"ime","Kind":"imeState","Data":{"text":"a","comp":{"start":0,"end":0},"sel":{"start":0,"end":0},"pieces":[{"from":0,"text":"a","folded":false}]}}
 {"Seq":7,"At":"2026-10-12T00:00:00Z","Stage":"out","Kind":"KeyEvent","Data":{"events":[{"Kind":0,"Code":97,"Base":0,"Shifted":0,"Mods":0,"Text":"a"}]}}
-{"Seq":8,"At":"2026-10-12T00:00:00Z","Stage":"cmd","Kind":"SnippetReply","Data":{"start":0,"end":0,"text":""}}
+{"Seq":8,"At":"2026-10-12T00:00:00Z","Stage":"cmd","Kind":"SnippetReply","Data":{"start":1,"end":1,"text":""}}
 {"Seq":9,"At":"2026-10-12T00:00:00Z","Stage":"cmd","Kind":"SelectionTell","Data":{"start":0,"end":0,"caret":{"x":0,"y":0,"ascent":0,"descent":0}}}
 {"Seq":10,"At":"2026-10-12T00:00:00Z","Stage":"frame","Kind":"end","Data":{"n":1}}
 {"Seq":11,"At":"2026-10-12T00:00:00Z","Stage":"tui","Kind":"focus","Data":{"comp":"*widget.List"}}

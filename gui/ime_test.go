@@ -45,12 +45,17 @@ func TestIMEComposition(t *testing.T) {
 	}
 }
 
+// Ranges are clamped to the buffer where it sits in the toolkit's coordinates: an empty buffer
+// sits where the first edit lands, a reversed range is normalized, and a range past either end
+// of the buffer lands at that end.
 func TestIMEClampsRanges(t *testing.T) {
 	var s imeState
-	s.edit(TextEdit{Start: 7, End: 9, Text: "x"}) // past the end
-	s.edit(TextEdit{Start: 1, End: 0, Text: "y"}) // reversed
-	if got, ok := s.take(); !ok || len(got) != 1 || got[0] != "y" {
-		t.Fatalf("take = %q, %v; want [\"y\"] (x replaced by y)", got, ok)
+	s.edit(TextEdit{Start: 7, End: 7, Text: "x"})   // the empty buffer sits at 7
+	s.edit(TextEdit{Start: 8, End: 7, Text: "y"})   // reversed: replaces x
+	s.edit(TextEdit{Start: 20, End: 30, Text: "z"}) // past the end: appended
+	s.edit(TextEdit{Start: 0, End: 1, Text: "w"})   // before the start: inserted first
+	if got, ok := s.take(); !ok || strings.Join(got, "") != "wyz" {
+		t.Fatalf("take = %q, %v; want the pieces of \"wyz\"", got, ok)
 	}
 }
 

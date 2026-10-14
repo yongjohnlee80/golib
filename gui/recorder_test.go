@@ -88,7 +88,9 @@ func TestARecordedHangulCompositionShowsTheInputPathInRecords(t *testing.T) {
 	recMatches(t, got[12], 12, StageOut, "KeyEvent", map[string]any{
 		"events": []tui.KeyEvent{{Kind: tui.KeyPress, Code: '한', Text: "한"}},
 	})
-	recMatches(t, got[13], 13, StageCmd, "SnippetReply", map[string]any{"start": 0, "end": 0, "text": ""})
+	// The buffer is empty again where 한 ended, not at 0: Gio's copy of the editor keeps its
+	// coordinates, so a composition the input method is about to begin is not cancelled.
+	recMatches(t, got[13], 13, StageCmd, "SnippetReply", map[string]any{"start": 1, "end": 1, "text": ""})
 	recMatches(t, got[14], 14, StageCmd, "SelectionTell", map[string]any{
 		"start": 0, "end": 0,
 		"caret": map[string]any{"x": float32(0), "y": float32(0), "ascent": float32(0), "descent": float32(0)},
