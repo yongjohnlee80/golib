@@ -442,6 +442,20 @@ func TestTheRecordedMultiFrameSessionReplays(t *testing.T) {
 	replayRecording(t, data)
 }
 
+// A real macOS session with the 2-Set Korean input method, two sentences typed through every
+// kind of syllable boundary (with two typos and a correction left in). macOS's input method
+// commits a syllable and marks the next one's first consonant in separate calls, from its own
+// process, and the recording holds that pattern at every boundary: delivering a syllable must
+// leave Gio's copy of the editor where the input method has it. The app was quit with the
+// recorder's last record half written; that line, after the last frame, was dropped.
+func TestTheRecordedMacOSHangulSessionReplays(t *testing.T) {
+	data, err := os.ReadFile("testdata/hangul-macos-boundary.jsonl")
+	if err != nil {
+		t.Fatal(err)
+	}
+	replayRecording(t, data)
+}
+
 // A recording with the tui's own trace mapped in — the one file a --debug run
 // holds — replays clean: the tui records are validated and skipped, wherever
 // they sit, inside a frame or between them.
