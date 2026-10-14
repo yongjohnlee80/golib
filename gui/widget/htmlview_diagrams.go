@@ -2,7 +2,6 @@ package widget
 
 import (
 	"context"
-	"reflect"
 	"strings"
 	"sync"
 
@@ -71,7 +70,7 @@ const maxHTMLDiagrams = 64
 type htmlDiagrams struct {
 	l     *htmlLayout
 	slots map[string]*htmlDiagram // by the diagram's source
-	by    Diagrammer              // the Diagrammer the slots were asked of
+	set   uint64                  // the view's DiagramsSet the slots were asked under
 	gen   uint64
 	tasks map[tui.TaskID]struct{} // ready waits started for this layout: their results are ours
 }
@@ -114,9 +113,9 @@ func (m *htmlDiagrams) answer(src string, width float32) DiagramAnswer {
 	if d == nil || m.l.shaper == nil {
 		return DiagramAnswer{State: Declined}
 	}
-	if !sameDiagrammer(m.by, d) { // another Diagrammer (WithDiagrams again): its own answers
+	if set := m.l.v.DiagramsSet(); set != m.set { // WithDiagrams again: the new Diagrammer's answers
 		m.reset()
-		m.by = d
+		m.set = set
 	}
 	req := DiagramRequest{Lang: "mermaid", Src: src, Width: width, Scale: m.l.shaper.Scale(), Theme: m.theme()}
 	key := diagramKey{req.Lang, req.Src, req.Width, req.Scale, req.Theme}
@@ -151,15 +150,6 @@ func (m *htmlDiagrams) answer(src string, width float32) DiagramAnswer {
 		}
 	}
 	return s.answerOf()
-}
-
-// sameDiagrammer reports whether a and b are the same Diagrammer. One whose type cannot be compared
-// is taken as the same: only a pointer, or another comparable value, can say it was replaced.
-func sameDiagrammer(a, b Diagrammer) bool {
-	if a == nil || b == nil || reflect.TypeOf(a) != reflect.TypeOf(b) {
-		return a == nil && b == nil
-	}
-	return !reflect.TypeOf(a).Comparable() || a == b
 }
 
 // answerOf returns the current DiagramAnswer from the HTML diagram slot.
