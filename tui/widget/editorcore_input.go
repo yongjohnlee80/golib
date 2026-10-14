@@ -30,6 +30,9 @@ func (c *EditorCore) HandleKey(k tui.KeyEvent) bool {
 	// a host's chord: before . and a macro record it, so neither replays what the host did
 	if c.chordHook != nil && k.Code != tui.KeyEscape && !c.commandPending() {
 		if kc, ok := c.chordOf(k); ok && c.chordHook(kc) {
+			if c.keyDepth <= c.oneShot.depth {
+				c.oneShotSettle() // Insert's Ctrl-o: the host's chord is its one command, and Insert resumes
+			}
 			return true
 		}
 	}

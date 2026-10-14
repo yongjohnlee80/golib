@@ -84,3 +84,29 @@ func TestAChordHookSeesVisualChords(t *testing.T) {
 		t.Fatalf("visual: %+v, mode %v", got, c.Mode())
 	}
 }
+
+// A chord the hook takes after Insert's Ctrl-o is that one command: Insert resumes after it.
+func TestAChordHookAfterCtrlOResumesInsert(t *testing.T) {
+	c, _ := coreWith(t, "abc")
+	taken := 0
+	c.SetChordHook(func(kc widget.KeyChord) bool {
+		if kc.Code == 'Q' {
+			taken++
+			return true
+		}
+		return false
+	})
+	keys(c, "i")
+	c.HandleKey(tui.KeyEvent{Code: 'o', Mods: tui.ModCtrl})
+	if c.Mode() != widget.ModeNormal {
+		t.Fatalf("Ctrl-o left %v, not Normal for one command", c.Mode())
+	}
+	keys(c, "Q")
+	if taken != 1 || c.Mode() != widget.ModeInsert {
+		t.Fatalf("after the hook's chord: taken %d, mode %v; want Insert again", taken, c.Mode())
+	}
+	keys(c, "z")
+	if c.Value() != "zabc" {
+		t.Fatalf("typing after it: %q", c.Value())
+	}
+}
