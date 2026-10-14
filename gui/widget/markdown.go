@@ -576,8 +576,10 @@ func (r *MarkdownRenderer) lineSpans(ln int, line string, th Theme) ([]flow.Span
 			}
 		case markdown.KindText:
 			// a backslash escape draws the character it escapes, as CommonMark renders it: its
-			// backslash is a mark, hidden off the cursor (a code span's backslashes are its text)
-			if n.Literal != nil {
+			// backslash is a mark, hidden off the cursor. Where the parser takes no escapes, the
+			// backslashes are text: a code span's, and an autolink's, whose Literal is only its
+			// decoded entities
+			if n.Literal != nil && (n.Parent == nil || n.Parent.Kind != markdown.KindAutolink) {
 				for i := n.Span.Start; i+1 < n.Span.End; i++ {
 					if src[i] == '\\' && isASCIIPunct(src[i+1]) {
 						hide(attrs, i, i+1)
