@@ -25,11 +25,29 @@ import (
 
 // The rasterizers' bounds.
 const (
-	RasterTimeout   = 30 * time.Second // a headless Chrome on macOS can take 8–15 s for a page
-	MaxRasterInput  = 8 << 20          // the SVG or HTML handed to a tool
-	MaxRasterOutput = 32 << 20         // the PNG read back
-	maxRasterPixels = 4096             // the widest or tallest image asked for
+	RasterTimeout = 30 * time.Second // a headless Chrome sharing a busy machine can take 8–15 s for a page
+	// maxBrowsers is how many headless browsers render at once: browsers started together share
+	// the machine and all finish late (on an 8-core Mac one page takes 1.1 s alone, 1.7 s two at
+	// a time, 3.2 s four at a time, 5.9 s eight at a time), so a page of many diagrams kept the first
+	// waiting as long as the last. The rest wait their turn, their RasterTimeout not yet running.
+	maxBrowsers     = 2
+	MaxRasterInput  = 8 << 20  // the SVG or HTML handed to a tool
+	MaxRasterOutput = 32 << 20 // the PNG read back
+	maxRasterPixels = 4096     // the widest or tallest image asked for
 )
+
+// browsers holds a slot for each headless browser running (maxBrowsers).
+var browsers = make(chan struct{}, maxBrowsers)
+
+// browserSlot waits for a browser's slot and returns its release; ctx done first is its error.
+func browserSlot(ctx context.Context) (func(), error) {
+	select {
+	case browsers <- struct{}{}:
+		return func() { <-browsers }, nil
+	case <-ctx.Done():
+		return nil, ctx.Err()
+	}
+}
 
 // ErrNoRasterizer is a rasterizer whose tool is not installed.
 var ErrNoRasterizer = errors.New("widget: no rasterizer installed")
@@ -297,6 +315,11 @@ func rasterizeHTML(ctx context.Context, html []byte, width, height int, scale fl
 	if err := os.WriteFile(page, html, 0o600); err != nil {
 		return nil, err
 	}
+	release, err := browserSlot(ctx)
+	if err != nil {
+		return nil, err
+	}
+	defer release()
 	ctx, cancel := context.WithTimeout(ctx, RasterTimeout)
 	defer cancel()
 	cmd := exec.CommandContext(ctx, tool,
