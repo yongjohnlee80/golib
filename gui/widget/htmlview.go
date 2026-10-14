@@ -409,11 +409,13 @@ func (l *htmlLayout) keyOf(b *topBlock, width float32) uint64 {
 	}
 	diagram := func(n *phtml.Node) {
 		if text, ok := mermaidSource(n); ok {
-			g := l.diagrams.genOf(text)
-			for i := range 8 {
-				buf[i] = byte(g >> (8 * i))
+			// its answer's state, and which Diagrammer gives it: another one is asked again
+			for _, g := range []uint64{l.diagrams.genOf(text), l.v.DiagramsSet()} {
+				for i := range 8 {
+					buf[i] = byte(g >> (8 * i))
+				}
+				_, _ = h.Write(buf[:])
 			}
-			_, _ = h.Write(buf[:])
 		}
 	}
 	for _, n := range nodes {
