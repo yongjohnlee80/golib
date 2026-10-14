@@ -394,6 +394,10 @@ func TestABackslashEscapeDrawsItsCharacter(t *testing.T) {
 		{`\*not emphasis\* \[x\]\(y\) a\|b c\\d`, `*not emphasis* [x](y) a|b c\d`},
 		{"`\\*code\\*` and \\`tick\\`", "\\*code\\* and `tick`"},
 		{`a\b \1`, `a\b \1`},
+		// an autolink takes no escapes: its backslashes are text, an entity in it or not
+		// (Lector's #309 review, G1)
+		{`<https://example.com/\*?x=y>`, `<https://example.com/\*?x=y>`},
+		{`<https://example.com/\*?x=&amp;>`, `<https://example.com/\*?x=&amp;>`},
 	} {
 		if bl, _ := lookLay(t, c.doc, 0); shownText(bl) != c.want {
 			t.Errorf("%q drew %q, want %q", c.doc, shownText(bl), c.want)
