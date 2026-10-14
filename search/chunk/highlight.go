@@ -14,7 +14,8 @@ import (
 // term's text, or starts with it for a prefix term: the literal terms
 // search/query parses, where an engine's own snippet would apply its parser.
 // With no match the window is body's first words, unmarked; tokens of zero or
-// less keeps every word.
+// less keeps every word. Punctuation at a matched word's edges stays outside
+// the markers; combining marks stay with their letter.
 func Highlight(body string, terms []search.Term, tokens int) string {
 	words := strings.Fields(body)
 	if len(words) == 0 {
@@ -42,7 +43,9 @@ func Highlight(body string, terms []search.Term, tokens int) string {
 	for i := start; i < end; i++ {
 		w := words[i]
 		if matched[i] {
-			w = search.HighlightStart + w + search.HighlightEnd
+			left := strings.TrimLeftFunc(w, wordEdge)
+			core := strings.TrimRightFunc(left, wordEdge)
+			w = w[:len(w)-len(left)] + search.HighlightStart + core + search.HighlightEnd + left[len(core):]
 		}
 		out = append(out, w)
 	}
@@ -50,7 +53,7 @@ func Highlight(body string, terms []search.Term, tokens int) string {
 }
 
 func matches(word string, terms []search.Term) bool {
-	w := strings.ToLower(strings.TrimFunc(word, func(r rune) bool { return !unicode.IsLetter(r) && !unicode.IsDigit(r) }))
+	w := strings.ToLower(strings.TrimFunc(word, wordEdge))
 	if w == "" {
 		return false
 	}
@@ -61,4 +64,10 @@ func matches(word string, terms []search.Term) bool {
 		}
 	}
 	return false
+}
+
+// wordEdge is what matching and marking both leave outside a word. A combining
+// mark is part of its grapheme, including when the text is decomposed Unicode.
+func wordEdge(r rune) bool {
+	return !unicode.IsLetter(r) && !unicode.IsDigit(r) && !unicode.IsMark(r)
 }
