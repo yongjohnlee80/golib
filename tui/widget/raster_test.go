@@ -32,8 +32,9 @@ func pngWidth(b []byte) int {
 }
 
 func TestAMissingRasterizerSaysSo(t *testing.T) {
-	defer func(s, h []string) { svgTools, htmlTools = s, h }(svgTools, htmlTools)
+	defer func(s, h []string, a func() []string) { svgTools, htmlTools, htmlApps = s, h, a }(svgTools, htmlTools, htmlApps)
 	svgTools, htmlTools = []string{"golib-no-such-tool"}, []string{"golib-no-such-tool"}
+	htmlApps = func() []string { return []string{"/golib/no/such/browser"} }
 	if _, ok := SVGRasterizer(); ok {
 		t.Fatal("a missing tool was found")
 	}
@@ -42,6 +43,24 @@ func TestAMissingRasterizerSaysSo(t *testing.T) {
 	}
 	if _, err := RasterizeHTML(context.Background(), []byte("<p>x</p>"), 10, 10); !errors.Is(err, ErrNoRasterizer) {
 		t.Fatalf("RasterizeHTML without a tool: %v", err)
+	}
+}
+
+// A browser installed as an application, not on the PATH (macOS's Chrome), is the HTML rasterizer
+// when the PATH has none.
+func TestAnInstalledBrowserIsFoundOffThePath(t *testing.T) {
+	defer func(h []string, a func() []string) { htmlTools, htmlApps = h, a }(htmlTools, htmlApps)
+	app := filepath.Join(t.TempDir(), "Google Chrome.app", "Contents", "MacOS", "Google Chrome")
+	if err := os.MkdirAll(filepath.Dir(app), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(app, []byte("#!/bin/sh\n"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	htmlTools = []string{"golib-no-such-tool"}
+	htmlApps = func() []string { return []string{"/golib/no/such/browser", app} }
+	if got, ok := HTMLRasterizer(); !ok || got != app {
+		t.Fatalf("HTMLRasterizer = %q, %v; want the installed application %q", got, ok, app)
 	}
 }
 
