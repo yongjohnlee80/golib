@@ -208,6 +208,11 @@ err := core.Commands().Add(widget.Command{
 		// x.Core: the editor; x.Args: the words; x.Line: the rest of the line; x.Bang: "table!"
 		return x.Core.Batch(func() error { ... })
 	},
+	// optional: what Tab offers for an argument; the prompt keeps those starting with x.Word
+	Complete: func(x widget.CompleteContext) []string {
+		// x.Args: the words before the one being completed; x.Word: that one, as typed so far
+		return []string{"1", "2", "3"}
+	},
 })
 ```
 
@@ -231,7 +236,10 @@ It opens over the editor, under the nearest `OverlayHost`:
   - with one candidate, Tab completes it, adds a space, and shows its arguments and help;
   - with several, it fills in their common prefix and lists every candidate, each as `name args —
     help`; further presses of Tab and Shift+Tab cycle through them;
-  - once the line has a space, Tab shows the typed verb's arguments.
+  - once the line has a space, Tab completes the argument being typed from the command's
+    `Complete`, in the same way: one candidate is filled in with a space, several are listed and
+    cycled. A command without `Complete`, or with no candidate starting with the word, has Tab show
+    its arguments and help instead.
 - `replace` asks at each match on a small card in the corner, with the match selected behind it.
   **y** replaces, **n** skips, and **q** or **Esc** stops.
 

@@ -134,6 +134,82 @@ func TestTabCompletesAndListsTheCandidates(t *testing.T) {
 	}
 }
 
+// TestTabCompletesAnArgument: after the verb, Tab offers the command's Complete: the candidates
+// starting with the word typed, cycled as verbs are, one filled in with a space; a word none
+// starts with, like a command without Complete, says the arguments. Complete gets the verb, the
+// bang, the words before and the word. A shared prefix is cut on a character, not a byte.
+func TestTabCompletesAnArgument(t *testing.T) {
+	h, ed, _ := cmdFixture(t, "text")
+	defer h.stop()
+	var got []widget.CompleteContext
+	h.onLoop(func() {
+		_ = ed.Commands().Add(widget.Command{Name: "mermaid", Args: "<type>", Help: "a diagram",
+			Run: func(widget.CommandContext) error { return nil },
+			Complete: func(x widget.CompleteContext) []string {
+				got = append(got, x)
+				return []string{"flowchart", "sequence", "state", "sequence", ""}
+			}})
+		_ = ed.Commands().Add(widget.Command{Name: "acc", Run: func(widget.CommandContext) error { return nil },
+			Complete: func(widget.CompleteContext) []string { return []string{"éa", "èb"} }})
+	})
+	tab := func(line string) {
+		h.inject(tui.KeyEvent{Code: tui.KeyEscape})
+		h.settle()
+		typeIn(h, ":")
+		h.waitFor("the prompt", func() bool { return promptOpen(h, ed) })
+		typeIn(h, line)
+		h.inject(tui.KeyEvent{Code: tui.KeyTab})
+		h.settle()
+	}
+	field := func(want string) {
+		t.Helper()
+		if !strings.Contains(h.grid(), "│ "+want+" ") {
+			t.Fatalf("the field is not %q:\n%s", want, h.grid())
+		}
+	}
+
+	tab("mermaid ") // all three, listed; the first Tab takes the first
+	h.wantContains("flowchart")
+	h.wantContains("state")
+	field("mermaid flowchart")
+	h.inject(tui.KeyEvent{Code: tui.KeyTab})
+	h.settle()
+	field("mermaid sequence")
+	h.inject(tui.KeyEvent{Code: tui.KeyTab})
+	h.settle()
+	field("mermaid state")
+
+	tab("mermaid! fl") // one: filled in with a space, and the arguments said
+	field("mermaid! flowchart")
+	h.wantContains("mermaid <type> — a diagram")
+
+	tab("mermaid a b st")
+	field("mermaid a b state")
+
+	tab("mermaid z") // none starts with z: the arguments
+	h.wantContains("mermaid <type> — a diagram")
+	field("mermaid z")
+
+	tab("acc ") // é and è share a first byte, not a character
+	field("acc éa")
+
+	want := []widget.CompleteContext{
+		{Name: "mermaid", Args: nil, Word: ""},
+		{Name: "mermaid", Bang: true, Args: nil, Word: "fl"},
+		{Name: "mermaid", Args: []string{"a", "b"}, Word: "st"},
+		{Name: "mermaid", Args: nil, Word: "z"},
+	}
+	if len(got) != len(want) {
+		t.Fatalf("Complete ran %d times: %+v", len(got), got)
+	}
+	for i, w := range want {
+		g := got[i]
+		if g.Core == nil || g.Name != w.Name || g.Bang != w.Bang || g.Word != w.Word || strings.Join(g.Args, " ") != strings.Join(w.Args, " ") {
+			t.Errorf("Complete's context %d = %+v; want %+v", i, g, w)
+		}
+	}
+}
+
 func TestWriteAndQuitFromThePromptReachTheHost(t *testing.T) {
 	var got []string
 	h, _, _ := cmdFixture(t, "text",
