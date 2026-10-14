@@ -105,7 +105,8 @@ type EditorCore struct {
 	// before it is mounted has no Context to subscribe with.
 	onModeChange func(EditorMode)
 	onChange     func()
-	onCursorMove func() // the cursor moved to another line or column
+	chordHook    func(KeyChord) bool // SetChordHook's: a host's chords before the keymap
+	onCursorMove func()              // the cursor moved to another line or column
 	// toggleRendered answers ActToggleRendered for a widget with a Rendered view; nil: none
 	toggleRendered func() bool
 
@@ -642,15 +643,32 @@ func (c *EditorCore) ActionForChord(kc KeyChord) (Action, bool) { return c.keys.
 // on it. A release, or a key with a command modifier other than Ctrl, is bound to nothing. For a
 // widget that shows the document another way and still answers the editor's keys.
 func (c *EditorCore) ActionOf(k tui.KeyEvent) (Action, bool) {
-	if k.Kind == tui.KeyRelease || k.Mods&(tui.ModAlt|tui.ModSuper|tui.ModMeta|tui.ModHyper) != 0 {
+	kc, ok := c.chordOf(k)
+	if !ok {
 		return ActUnbound, false
+	}
+	return c.keys.lookup(kc)
+}
+
+// chordOf is k as the keymap reads it in the mode the core is in: false for a release, or a key
+// with a modifier the keymap has no chords for.
+func (c *EditorCore) chordOf(k tui.KeyEvent) (KeyChord, bool) {
+	if k.Kind == tui.KeyRelease || k.Mods&(tui.ModAlt|tui.ModSuper|tui.ModMeta|tui.ModHyper) != 0 {
+		return KeyChord{}, false
 	}
 	code := k.Code
 	if k.Text != "" && k.Mods&nonTextMods == 0 {
 		code = []rune(k.Text)[0]
 	}
-	return c.keys.lookup(KeyChord{Mode: modeClass(c.keys.mode), Code: code, Ctrl: k.Mods&tui.ModCtrl != 0})
+	return KeyChord{Mode: modeClass(c.keys.mode), Code: code, Ctrl: k.Mods&tui.ModCtrl != 0}, true
 }
+
+// SetChordHook gives a host the chords of its own: in Normal or Visual mode with nothing pending
+// (no count, operator, armed f/t/m/q/" key, register), every chord but Esc goes to hook before the
+// keymap, and one hook reports taken is the host's alone: not run by the keymap, not recorded for
+// . or a macro. golib keeps no policy of what a host does with it (a command line, a script's
+// function). nil removes it.
+func (c *EditorCore) SetChordHook(hook func(KeyChord) bool) { c.chordHook = hook }
 
 // ChordsForAction returns every chord bound to act.
 func (c *EditorCore) ChordsForAction(act Action) []KeyChord { return c.keys.chordsFor(act) }

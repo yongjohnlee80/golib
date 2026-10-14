@@ -27,6 +27,12 @@ func (c *EditorCore) HandleKey(k tui.KeyEvent) bool {
 		c.macroKey(k)
 		return true
 	}
+	// a host's chord: before . and a macro record it, so neither replays what the host did
+	if c.chordHook != nil && k.Code != tui.KeyEscape && !c.commandPending() {
+		if kc, ok := c.chordOf(k); ok && c.chordHook(kc) {
+			return true
+		}
+	}
 	c.dotStart()
 	if c.dot.on && !c.dot.inInsert && !c.dot.replaying {
 		c.dot.atoms = append(c.dot.atoms, dotAtom{kind: dotKey, key: k})
