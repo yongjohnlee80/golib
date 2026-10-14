@@ -136,14 +136,17 @@ func TestTheCellsDrawABrailleDotFromAnInstalledFont(t *testing.T) {
 func TestADroppedShaperIsCollectedWithItsAnswers(t *testing.T) {
 	withInstalled(t, map[string]string{"braillefont": "⠋"})
 	var gone []weak.Pointer[text.Shaper]
+	var shapers []*TextShaper // alive until counted: making the next one may collect the last
 	for range 5 {
 		s := NewTextShaper(1)
 		s.Measure("café ⠋", Font{Size: 12, Family: CellFamily})
+		shapers = append(shapers, s)
 		gone = append(gone, weak.Make(s.s))
 	}
 	coverage.Lock()
 	asked := len(coverage.lacks)
 	coverage.Unlock()
+	runtime.KeepAlive(shapers)
 	if asked < len(gone) {
 		t.Fatalf("%d shapers asked of, %d kept: the test asks nothing", len(gone), asked)
 	}
