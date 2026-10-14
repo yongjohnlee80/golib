@@ -4,9 +4,11 @@ import (
 	"io"
 	"log"
 	"os"
+	"runtime"
 	"strings"
 	"sync"
 	"unicode"
+	"weak"
 
 	"gioui.org/font"
 	"gioui.org/text"
@@ -39,15 +41,34 @@ var installedFonts = sync.OnceValue(func() []fontscan.Footprint {
 // coverage is the cache of covered's answers.
 var coverage = struct {
 	sync.Mutex
-	family map[rune]string     // the installed family that has a rune, "" for none
-	lacks  map[shaperRune]bool // whether a typeface draws a rune as .notdef, by shaper
-}{family: map[rune]string{}, lacks: map[shaperRune]bool{}}
+	family map[rune]string // the installed family that has a rune, "" for none
+	// lacks is whether a typeface draws a rune as .notdef, by shaper: the answer depends on its
+	// fonts. A shaper is held weakly, and its answers are dropped once it is collected.
+	lacks map[weak.Pointer[text.Shaper]]map[typefaceRune]bool
+}{family: map[rune]string{}, lacks: map[weak.Pointer[text.Shaper]]map[typefaceRune]bool{}}
 
-// shaperRune keys whether a typeface lacks a rune: the answer depends on the shaper's fonts.
-type shaperRune struct {
-	s  *text.Shaper
+type typefaceRune struct {
 	tf font.Typeface
 	r  rune
+}
+
+// shaperLacks is s's answers, made the first time it is asked of; the lock is held.
+func shaperLacks(s *text.Shaper) map[typefaceRune]bool {
+	w := weak.Make(s)
+	m, ok := coverage.lacks[w]
+	if !ok {
+		m = map[typefaceRune]bool{}
+		coverage.lacks[w] = m
+		runtime.AddCleanup(s, forgetShaper, w)
+	}
+	return m
+}
+
+// forgetShaper drops a collected shaper's answers.
+func forgetShaper(w weak.Pointer[text.Shaper]) {
+	coverage.Lock()
+	defer coverage.Unlock()
+	delete(coverage.lacks, w)
 }
 
 // covered is tf with, after it, an installed family for each rune of str that tf draws as .notdef.
@@ -76,14 +97,14 @@ func mayLack(r rune) bool {
 
 // familyFor is the installed family that draws r when tf draws it as .notdef, "" otherwise.
 func familyFor(s *text.Shaper, tf font.Typeface, r rune) string {
-	k := shaperRune{s, tf, r}
+	k := typefaceRune{tf, r}
 	coverage.Lock()
-	lacks, known := coverage.lacks[k]
+	lacks, known := shaperLacks(s)[k]
 	coverage.Unlock()
 	if !known {
 		lacks = notdef(s, tf, r)
 		coverage.Lock()
-		coverage.lacks[k] = lacks
+		shaperLacks(s)[k] = lacks
 		coverage.Unlock()
 	}
 	if !lacks {

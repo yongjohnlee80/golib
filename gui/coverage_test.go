@@ -1,8 +1,11 @@
 package gui
 
 import (
+	"runtime"
 	"strings"
 	"testing"
+	"time"
+	"weak"
 
 	"gioui.org/font/gofont"
 	"gioui.org/text"
@@ -33,7 +36,7 @@ func resetCoverage() {
 	coverage.Lock()
 	defer coverage.Unlock()
 	coverage.family = map[rune]string{}
-	coverage.lacks = map[shaperRune]bool{}
+	coverage.lacks = map[weak.Pointer[text.Shaper]]map[typefaceRune]bool{}
 }
 
 func TestARuneTheTypefaceLacksNamesAnInstalledFamilyThatHasIt(t *testing.T) {
@@ -126,5 +129,42 @@ func TestTheCellsDrawABrailleDotFromAnInstalledFont(t *testing.T) {
 	ts := &TextShaper{s: s, scale: 1, fonts: Fonts{Mono: "Go Mono"}}
 	if tf := ts.font("⠋ loading", Font{Family: CellFamily}).Typeface; tf == "Go Mono" {
 		t.Errorf("prose text names no family for ⠋: %q", tf)
+	}
+}
+
+// A shaper's answers do not keep it: one dropped is collected, and its answers with it.
+func TestADroppedShaperIsCollectedWithItsAnswers(t *testing.T) {
+	withInstalled(t, map[string]string{"braillefont": "⠋"})
+	var gone []weak.Pointer[text.Shaper]
+	for range 5 {
+		s := NewTextShaper(1)
+		s.Measure("café ⠋", Font{Size: 12, Family: CellFamily})
+		gone = append(gone, weak.Make(s.s))
+	}
+	coverage.Lock()
+	asked := len(coverage.lacks)
+	coverage.Unlock()
+	if asked < len(gone) {
+		t.Fatalf("%d shapers asked of, %d kept: the test asks nothing", len(gone), asked)
+	}
+	deadline := time.Now().Add(5 * time.Second)
+	for {
+		runtime.GC()
+		live := 0
+		for _, w := range gone {
+			if w.Value() != nil {
+				live++
+			}
+		}
+		coverage.Lock()
+		kept := len(coverage.lacks)
+		coverage.Unlock()
+		if live == 0 && kept == 0 {
+			return
+		}
+		if time.Now().After(deadline) {
+			t.Fatalf("after the shapers were dropped: %d still alive, %d shapers' answers kept", live, kept)
+		}
+		time.Sleep(10 * time.Millisecond)
 	}
 }
