@@ -62,6 +62,9 @@ func newPlan(c *chart) (*plan, error) {
 	if x == nil || y == nil || x.value != nil || y.value != nil {
 		return nil, unsupported("a %s mark without both x and y fields", c.mark.kind)
 	}
+	if x.isDatum || y.isDatum {
+		return nil, unsupported("a datum in a %s mark", c.mark.kind)
+	}
 	if x.aggregate != "" && y.aggregate != "" {
 		return nil, unsupported("x and y both aggregated")
 	}
@@ -107,7 +110,11 @@ func (p *plan) dim() *channel {
 
 // posOf reads a row's value on ch: false when a continuous channel's value is not one.
 func posOf(ch *channel, row map[string]any) (pos, bool) {
-	v := row[ch.field]
+	return posOfValue(ch, row[ch.field])
+}
+
+// posOfValue reads v as a value on ch.
+func posOfValue(ch *channel, v any) (pos, bool) {
 	switch ch.typ {
 	case typeQuantitative:
 		f, ok := numberOf(v)
@@ -468,5 +475,163 @@ func (p *plan) continuous() error {
 }
 
 func (k markKind) String() string {
-	return [...]string{"bar", "line", "point", "area"}[k]
+	return [...]string{"bar", "line", "point", "area", "rule"}[k]
+}
+
+// rulePlan is a rule layer: a line across the plot at each of its values on one axis, a datum's
+// one value or its field's distinct ones.
+type rulePlan struct {
+	c    *chart
+	onX  bool // lines at x values, top to bottom; else at y values, left to right
+	ch   *channel
+	vals []pos
+}
+
+// newRule checks a rule layer's channels and reads its values: an aggregated channel is one value,
+// over every row (a mean line). A rule of x and y both (a segment per row, x2 or y2's, or one per
+// band) and one coloured by a field are unsupported.
+func newRule(c *chart) (*rulePlan, error) {
+	if (c.x == nil) == (c.y == nil) {
+		return nil, unsupported("a rule with both or neither of x and y")
+	}
+	r := &rulePlan{c: c, onX: c.x != nil, ch: c.y}
+	if r.onX {
+		r.ch = c.x
+	}
+	switch {
+	case r.ch.value != nil:
+		return nil, unsupported("a rule at a value")
+	case c.color != nil && c.color.value == nil:
+		return nil, unsupported("a rule coloured by a field")
+	}
+	if r.ch.isDatum {
+		v, ok := posOfValue(r.ch, r.ch.datum)
+		if !ok {
+			return nil, unsupported("the datum %v as %v", r.ch.datum, r.ch.typ)
+		}
+		r.vals = []pos{v}
+		return r, nil
+	}
+	if r.ch.aggregate != "" {
+		var vs []float64
+		for _, row := range c.rows {
+			if f, ok := numberOf(row[r.ch.field]); ok {
+				vs = append(vs, f)
+			}
+		}
+		if v, ok := aggregate(r.ch.aggregate, vs, len(c.rows)); ok {
+			r.vals = []pos{{num: v}}
+		}
+		return r, nil
+	}
+	seen := map[pos]bool{}
+	for _, row := range c.rows {
+		if v, ok := posOf(r.ch, row); ok && !seen[v] {
+			seen[v] = true
+			r.vals = append(r.vals, v)
+		}
+	}
+	return r, nil
+}
+
+// layered is a spec's layers on shared scales: one x domain and one y domain over every layer, and
+// one colour domain, as Vega-Lite resolves a layer's scales by default.
+type layered struct {
+	sp     *spec
+	order  []any // each layer's *plan or *rulePlan, in paint order
+	base   *plan // the first mark layer: the axes' titles and guides
+	xs, ys axisPlan
+	series []string
+}
+
+// newLayered reads every layer and merges their scales. Layers whose axes differ in type, and a
+// spec of rules alone, are unsupported.
+func newLayered(sp *spec) (*layered, error) {
+	l := &layered{sp: sp}
+	var plans []*plan
+	var rules []*rulePlan
+	for _, c := range sp.layers {
+		if c.mark.kind == markRule {
+			r, err := newRule(c)
+			if err != nil {
+				return nil, err
+			}
+			rules = append(rules, r)
+			l.order = append(l.order, r)
+			continue
+		}
+		p, err := newPlan(c)
+		if err != nil {
+			return nil, err
+		}
+		plans = append(plans, p)
+		l.order = append(l.order, p)
+	}
+	if len(plans) == 0 {
+		return nil, unsupported("a chart of rules alone")
+	}
+	l.base = plans[0]
+	l.xs, l.ys = l.base.xs, l.base.ys
+	l.xs.domain, l.ys.domain = slices.Clone(l.xs.domain), slices.Clone(l.ys.domain)
+	for _, p := range plans {
+		if err := mergeAxis(&l.xs, &p.xs, "x"); err != nil {
+			return nil, err
+		}
+		if err := mergeAxis(&l.ys, &p.ys, "y"); err != nil {
+			return nil, err
+		}
+		for _, s := range p.series {
+			if !slices.Contains(l.series, s) {
+				l.series = append(l.series, s)
+			}
+		}
+	}
+	for _, r := range rules {
+		a, name := &l.ys, "y"
+		if r.onX {
+			a, name = &l.xs, "x"
+		}
+		if r.ch.typ.discrete() != a.discrete || (r.ch.typ == typeTemporal) != a.temporal {
+			return nil, unsupported("a rule of %v on a %s axis of another type", r.ch.typ, name)
+		}
+		for _, v := range r.vals {
+			switch {
+			case a.discrete:
+				if !slices.Contains(a.domain, v.str) {
+					a.domain = append(a.domain, v.str)
+				}
+			case len(a.ch.domain) == 0: // an explicit domain stays as the spec says
+				a.lo, a.hi = math.Min(a.lo, v.num), math.Max(a.hi, v.num)
+			}
+		}
+	}
+	if len(l.xs.domain) > maxBands || len(l.ys.domain) > maxBands {
+		return nil, fmt.Errorf("%w: more than %d categories", ErrTooLarge, maxBands)
+	}
+	if len(l.series) > maxSeries {
+		return nil, fmt.Errorf("%w: %d series (at most %d)", ErrTooLarge, len(l.series), maxSeries)
+	}
+	return l, nil
+}
+
+// mergeAxis widens dst, a shared scale, by src, a layer's: its categories after dst's, or its
+// extent.
+func mergeAxis(dst, src *axisPlan, name string) error {
+	if dst.discrete != src.discrete || dst.temporal != src.temporal {
+		return unsupported("layers with %s axes of different types", name)
+	}
+	dst.band = dst.band || src.band
+	if dst.discrete {
+		for _, v := range src.domain {
+			if !slices.Contains(dst.domain, v) {
+				dst.domain = append(dst.domain, v)
+			}
+		}
+		return nil
+	}
+	if len(dst.ch.domain) == 0 {
+		dst.lo, dst.hi = math.Min(dst.lo, src.lo), math.Max(dst.hi, src.hi)
+	}
+	dst.nice = dst.nice || src.nice
+	return nil
 }
