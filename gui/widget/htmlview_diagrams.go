@@ -76,6 +76,7 @@ const maxHTMLDiagrams = 64
 type htmlDiagrams struct {
 	l     *htmlLayout
 	slots map[pageDiagram]*htmlDiagram
+	set   uint64 // the view's DiagramsSet the slots were asked under
 	gen   uint64
 	tasks map[tui.TaskID]struct{} // ready waits started for this layout: their results are ours
 }
@@ -124,6 +125,10 @@ func (m *htmlDiagrams) answer(dg pageDiagram, width float32) DiagramAnswer {
 	d, _ := m.l.v.Diagrams().(Diagrammer)
 	if d == nil || m.l.shaper == nil {
 		return DiagramAnswer{State: Declined}
+	}
+	if set := m.l.v.DiagramsSet(); set != m.set { // WithDiagrams again: the new Diagrammer's answers
+		m.reset()
+		m.set = set
 	}
 	req := DiagramRequest{Lang: dg.lang, Src: dg.src, Width: width, Scale: m.l.shaper.Scale(), Theme: m.theme()}
 	key := diagramKey{req.Lang, req.Src, req.Width, req.Scale, req.Theme}

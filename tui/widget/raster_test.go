@@ -15,7 +15,9 @@ import (
 	"os"
 	"path/filepath"
 	"runtime"
+	"strconv"
 	"strings"
+	"sync"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -624,5 +626,56 @@ func TestAScrollableImageCornerAndOtherEvents(t *testing.T) {
 	m.SetPNG(nil)
 	if _, ok := m.Image(); ok || m.HasImage() {
 		t.Error("a cleared PNG still shows")
+	}
+}
+
+// At most maxBrowsers browsers render at once: the others wait their turn, and one whose context
+// ends while it waits is that error, its browser never started.
+func TestBrowsersRenderAFewAtATime(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("shell scripts as tools")
+	}
+	runs := t.TempDir()
+	fakeTool(t, &htmlTools, `mkdir "`+runs+`/run.$$"; ls "`+runs+`" | grep -c '^run\.' >> "`+runs+`/counts"; sleep 0.3
+rmdir "`+runs+`/run.$$"
+for a in "$@"; do case "$a" in --screenshot=*) printf 'html-png' > "${a#--screenshot=}";; esac; done`)
+	var wg sync.WaitGroup
+	for range 2*maxBrowsers + 1 {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			if _, err := RasterizeHTML(context.Background(), []byte("<p>x</p>"), 10, 10); err != nil {
+				t.Error(err)
+			}
+		}()
+	}
+	wg.Wait()
+	counts, err := os.ReadFile(filepath.Join(runs, "counts"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, c := range strings.Fields(string(counts)) {
+		if n, _ := strconv.Atoi(c); n > maxBrowsers {
+			t.Fatalf("%s browsers ran at once; at most %d", c, maxBrowsers)
+		}
+	}
+
+	var held []func()
+	for range maxBrowsers {
+		release, err := browserSlot(context.Background())
+		if err != nil {
+			t.Fatal(err)
+		}
+		held = append(held, release)
+	}
+	defer func() {
+		for _, release := range held {
+			release()
+		}
+	}()
+	ctx, cancel := context.WithTimeout(context.Background(), 50*time.Millisecond)
+	defer cancel()
+	if _, err := RasterizeHTML(ctx, []byte("<p>x</p>"), 10, 10); !errors.Is(err, context.DeadlineExceeded) {
+		t.Fatalf("a render whose context ended while it waited: %v", err)
 	}
 }

@@ -125,6 +125,14 @@ func gioFont(f Font, fonts Fonts) font.Font {
 	return ft
 }
 
+// font is f as Gio selects it to shape s: with an installed family after it for each rune of s
+// it lacks (covered), the same for a measure and a layout.
+func (t *TextShaper) font(s string, f Font) font.Font {
+	ft := gioFont(f, t.fonts)
+	ft.Typeface = covered(t.s, ft.Typeface, s)
+	return ft
+}
+
 // Measured is a line of text as measured: where each grapheme cluster starts, as tui segments
 // them (tui.Graphemes), so a widget's cluster indices and these positions agree.
 type Measured struct {
@@ -167,7 +175,7 @@ func (t *TextShaper) Measure(s string, f Font) Measured {
 // each rune starts, then the line's width: len(runes)+1 positions, in logical pixels.
 func (t *TextShaper) runeEdges(s string, f Font) (ascent, descent float32, x []float32) {
 	t.s.LayoutString(text.Parameters{
-		Font:     gioFont(f, t.fonts),
+		Font:     t.font(s, f),
 		PxPerEm:  fixed.Int26_6(f.Size * t.scale * 64),
 		MaxWidth: 1 << 20,
 	}, s)
@@ -215,7 +223,7 @@ func (t *TextShaper) runeEdges(s string, f Font) (ascent, descent float32, x []f
 //
 // Returns a [TextLayout] holding vector path outlines, bitmap glyphs, and layout dimensions.
 func (t *TextShaper) Layout(s string, f Font, maxWidth float32) *TextLayout {
-	ft := gioFont(f, t.fonts)
+	ft := t.font(s, f)
 	maxW := 1 << 20
 	if maxWidth > 0 {
 		maxW = max(int(maxWidth*t.scale), 1)

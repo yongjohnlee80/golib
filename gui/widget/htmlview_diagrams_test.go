@@ -130,3 +130,87 @@ func TestAVegaLitePreDrawsItsChart(t *testing.T) {
 		t.Errorf("%d slots for a mermaid and a vega-lite pre of the same text, want 2", len(l.diagrams.slots))
 	}
 }
+
+// A view given another Diagrammer asks it, not the first one's answers kept: the engine that draws
+// a page's diagrams can be changed while the page shows.
+func TestAnotherDiagrammerDrawsThePagesDiagramsAgain(t *testing.T) {
+	first := &htmlFakeDiagrams{state: Ready}
+	l, paint := diagramView(t, mermaidPage, first)
+	if !preDrawn(l) {
+		t.Fatal("the first Diagrammer's picture is not drawn")
+	}
+	second := &htmlFakeDiagrams{state: Declined}
+	tuiwidget.WithDiagrams(second)(l.v)
+	l.v.SetHTML([]byte(mermaidPage))
+	paint()
+	if len(second.asked) == 0 {
+		t.Fatal("the new Diagrammer was never asked")
+	}
+	if preDrawn(l) {
+		t.Error("the first Diagrammer's picture stayed; the new one declined it")
+	}
+}
+
+// funcDiagrams is a Diagrammer that is a function: not comparable.
+type funcDiagrams func(DiagramRequest) DiagramAnswer
+
+func (f funcDiagrams) Diagram(_ context.Context, req DiagramRequest, _ func()) DiagramAnswer {
+	return f(req)
+}
+
+// valueDiagrams is a Diagrammer by value whose field holds a slice: its type is comparable, its
+// values are not.
+type valueDiagrams struct {
+	state DiagramState
+	data  any
+	asked *int
+}
+
+func (v valueDiagrams) Diagram(context.Context, DiagramRequest, func()) DiagramAnswer {
+	*v.asked++
+	if v.state != Ready {
+		return DiagramAnswer{State: v.state}
+	}
+	return DiagramAnswer{State: Ready, Size: gui.Size{W: 120, H: 60}, Pic: gui.ViewFunc(func(gui.Canvas) {})}
+}
+
+// A Diagrammer that cannot be compared, a function or a value holding a slice, is replaced as a
+// pointer is: the new one is asked, the old one's picture goes, nothing panics; and a view not
+// given another one keeps its answers, asked once.
+func TestAnyDiagrammerReplacedDrawsAgain(t *testing.T) {
+	firstAsked, secondAsked := 0, 0
+	first := funcDiagrams(func(DiagramRequest) DiagramAnswer {
+		firstAsked++
+		return DiagramAnswer{State: Ready, Size: gui.Size{W: 120, H: 60}, Pic: gui.ViewFunc(func(gui.Canvas) {})}
+	})
+	l, paint := diagramView(t, mermaidPage, first)
+	if !preDrawn(l) {
+		t.Fatal("the function Diagrammer's picture is not drawn")
+	}
+	asked := firstAsked
+	l.v.SetHTML([]byte(mermaidPage))
+	paint()
+	if firstAsked != asked {
+		t.Errorf("the same Diagrammer was asked again (%d times, then %d): its answer is kept", asked, firstAsked)
+	}
+	tuiwidget.WithDiagrams(funcDiagrams(func(DiagramRequest) DiagramAnswer {
+		secondAsked++
+		return DiagramAnswer{State: Declined}
+	}))(l.v)
+	l.v.SetHTML([]byte(mermaidPage))
+	paint()
+	if secondAsked == 0 || preDrawn(l) {
+		t.Errorf("another function Diagrammer: asked %d times, the first's picture kept %v", secondAsked, preDrawn(l))
+	}
+
+	n := 0
+	tuiwidget.WithDiagrams(valueDiagrams{state: Ready, data: []int{1}, asked: &n})(l.v)
+	l.v.SetHTML([]byte(mermaidPage))
+	paint()
+	tuiwidget.WithDiagrams(valueDiagrams{state: Declined, data: []int{2}, asked: &n})(l.v)
+	l.v.SetHTML([]byte(mermaidPage))
+	paint() // two values of one type holding slices: comparing them panics
+	if n < 2 || preDrawn(l) {
+		t.Errorf("a value Diagrammer replaced by another: asked %d times, the first's picture kept %v", n, preDrawn(l))
+	}
+}

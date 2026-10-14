@@ -415,7 +415,7 @@ func (r *renderer) shape(content string, bold, italic bool, face uint16) glyphSh
 	if gs, ok := r.glyphs[k]; ok {
 		return gs
 	}
-	f := font.Font{Typeface: r.typefaceOf(face)}
+	f := font.Font{Typeface: covered(r.shaper, r.typefaceOf(face), content)}
 	if bold {
 		f.Weight = font.Bold
 	}

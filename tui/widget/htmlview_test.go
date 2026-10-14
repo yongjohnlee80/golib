@@ -297,3 +297,21 @@ func TestHTMLViewShowDocumentAndSetOnLink(t *testing.T) {
 		t.Errorf("the click reached %v and %v, want only the replaced handler with b.html", first, second)
 	}
 }
+
+// DiagramsSet counts each WithDiagrams, whatever it gives: a function, which cannot be compared,
+// or the same value again. A pixel layout asks the diagrams again when it changes.
+func TestHTMLViewCountsTheDiagramsItIsGiven(t *testing.T) {
+	v := widget.NewHTMLView()
+	if v.DiagramsSet() != 0 || v.Diagrams() != nil {
+		t.Fatalf("a new view: set %d, diagrams %v", v.DiagramsSet(), v.Diagrams())
+	}
+	f := func() {}
+	widget.WithDiagrams(f)(v)
+	widget.WithDiagrams(f)(v)
+	if v.DiagramsSet() != 2 || v.Diagrams() == nil {
+		t.Errorf("after two WithDiagrams: set %d, diagrams %v", v.DiagramsSet(), v.Diagrams())
+	}
+	if widget.NewHTMLView(widget.WithDiagrams(f)).DiagramsSet() != 1 {
+		t.Error("a view built with its diagrams counts them once")
+	}
+}
