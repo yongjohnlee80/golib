@@ -475,6 +475,10 @@ func TestSpecsOutsideTheSubsetDecline(t *testing.T) {
 		"a config format":  `{` + ok + `,"mark":"bar","config":{"numberFormat":".0%"}}`,
 		"a config axis":    `{` + ok + `,"mark":"bar","config":{"axisY":{"labelExpr":"'x'"}}}`,
 		"a config invalid": `{` + ok + `,"mark":"bar","config":{"mark":{"invalid":null}}}`,
+		"a config step":    `{` + strings.Replace(ok, `"type":"nominal"`, `"type":"ordinal"`, 1) + `,"mark":"line","config":{"line":{"interpolate":"step-after"}}}`,
+		"a config curve":   `{` + ok + `,"mark":"area","config":{"area":{"interpolate":"monotone"}}}`,
+		"a mark curve":     `{` + ok + `,"mark":"line","config":{"mark":{"interpolate":"basis"}}}`,
+		"a config tension": `{` + ok + `,"mark":"line","config":{"line":{"tension":0.5}}}`,
 		"a mark invalid":   `{` + ok + `,"mark":{"type":"bar","invalid":null}}`,
 		"a subtitle":       `{` + ok + `,"mark":"bar","title":{"text":"t","subtitle":"s"}}`,
 	} {
@@ -501,7 +505,7 @@ func TestSpecsOutsideTheSubsetDecline(t *testing.T) {
 
 // Keys that change only a chart's look, or its behaviour in a browser, are passed over.
 func TestCosmeticKeysArePassedOver(t *testing.T) {
-	spec := `{"$schema":"x","config":{"view":{"stroke":null},"axis":{"labelFont":"serif","gridColor":"#eee"},"bar":{"color":"teal"},"legend":{"orient":"bottom"}},"background":"white","padding":5,"autosize":"fit",
+	spec := `{"$schema":"x","config":{"view":{"stroke":null},"axis":{"labelFont":"serif","gridColor":"#eee"},"bar":{"color":"teal"},"line":{"interpolate":"linear"},"legend":{"orient":"bottom"}},"background":"white","padding":5,"autosize":"fit",
 		"title":{"text":"Sales","anchor":"start"},
 		"data":{"values":[{"a":"x","b":1}]},"mark":{"type":"bar","tooltip":true,"cornerRadiusEnd":4},
 		"encoding":{"x":{"field":"a","type":"nominal","axis":{"labelAngle":-45,"title":"Kind"},"scale":{"paddingInner":0.2}},
