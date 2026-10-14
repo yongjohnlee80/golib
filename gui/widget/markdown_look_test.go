@@ -395,7 +395,6 @@ func TestABackslashEscapeDrawsItsCharacter(t *testing.T) {
 		{"`\\*code\\*` and \\`tick\\`", "\\*code\\* and `tick`"},
 		{`a\b \1`, `a\b \1`},
 		// an autolink takes no escapes: its backslashes are text, an entity in it or not
-		// (Lector's #309 review, G1)
 		{`<https://example.com/\*?x=y>`, `<https://example.com/\*?x=y>`},
 		{`<https://example.com/\*?x=&amp;>`, `<https://example.com/\*?x=&amp;>`},
 	} {
