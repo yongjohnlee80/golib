@@ -287,17 +287,22 @@ func TestTheSecondEditorPaintsTheNewSpans(t *testing.T) {
 	}
 }
 
-// An Insert's undo group ends at a switch: back in the buffer, the next edit is a step of its own,
-// so u undoes it alone and leaves the Insert's text.
+// An Insert's undo group ends at a switch. It shows in a modeless editor, which stays in Insert
+// across the switch: back in the buffer, what is typed next is a step of its own, so one undo takes
+// it alone and leaves what was typed before the switch. (A modal editor returns to Normal, whose
+// edits always begin a step.)
 func TestAnInsertsUndoGroupEndsAtASwitch(t *testing.T) {
-	c, _ := coreWith(t, "abc")
+	c, _ := coreWith(t, "", widget.CoreModal(false))
 	a := c.Buffer()
-	keys(c, "iQ") // an Insert, interrupted by a switch
+	keys(c, "Q")
 	c.SetBuffer(widget.NewBuffer(widget.BufferText("other")))
 	c.SetBuffer(a)
-	keys(c, "$x") // "Qab"
-	keys(c, "u")
-	if c.Value() != "Qabc" {
-		t.Fatalf("u after the switch back: %q, want Qabc (only x undone)", c.Value())
+	keys(c, "Z")
+	if c.Value() != "QZ" {
+		t.Fatalf("typed before and after the switch: %q, want QZ", c.Value())
+	}
+	c.Undo()
+	if c.Value() != "Q" {
+		t.Fatalf("one undo after the switch back: %q, want Q (only what was typed after it)", c.Value())
 	}
 }
