@@ -122,7 +122,8 @@ func TestACellCursorTableViewRefusesWhatItCannotShow(t *testing.T) {
 		err := tuidecl.Check(
 			tuidecl.LayoutSource("main.qml", []byte("import tui 1.0\nimport demo 1.0\n"+doc)),
 			tuidecl.Singleton("demo", "1.0", "App"),
-			tuidecl.Sources(map[string]any{"App.rows": scores()}))
+			tuidecl.Sources(map[string]any{"App.rows": scores()}),
+			tuidecl.Handlers(map[string]decl.HandlerFunc{"App.use": (&recorder{}).handler}))
 		if err == nil || !strings.Contains(err.Error(), want) {
 			t.Errorf("%s: err %v, want %q", doc, err, want)
 		}
