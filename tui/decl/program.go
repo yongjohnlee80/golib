@@ -57,6 +57,9 @@ type Program struct {
 	// mounted is the followed files as the mount read them: what hot reload
 	// compares each poll against first. See snapshotOf.
 	mounted snapshot
+	// liveLayout is the last successfully applied source, used by HotReload for LayoutSource.
+	// It belongs to the UI loop; the poller reads only the immutable cfg and followed files.
+	liveLayout []byte
 
 	mu      sync.Mutex
 	cancel  context.CancelFunc
@@ -152,7 +155,7 @@ func Layout(fsys fs.FS, file string) ProgramOption {
 // LayoutSource is Layout for a document already in memory; name is what its
 // diagnostics are placed in.
 func LayoutSource(name string, src []byte) ProgramOption {
-	return func(c *programConfig) { c.layout, c.layoutFile = src, name }
+	return func(c *programConfig) { c.layout, c.layoutFile, c.layoutFS = src, name, nil }
 }
 
 // Singleton declares a module the document always imports, and the singletons
@@ -314,7 +317,7 @@ func NewProgram(opts ...ProgramOption) (*Program, error) {
 	if err != nil {
 		return nil, err
 	}
-	if c.hot != nil && c.layoutFS == nil {
+	if c.hot != nil && c.layoutFS == nil && len(c.watched) == 0 && len(c.translations) == 0 {
 		return nil, errors.New("tui/decl.HotReload follows files: give the layout with Layout(fs, file), " +
 			"not LayoutSource")
 	}
@@ -324,13 +327,16 @@ func NewProgram(opts ...ProgramOption) (*Program, error) {
 	var mounted snapshot
 	if c.hot != nil {
 		mounted = snapshotOf(c)
-		mounted["layout:"+c.layoutFile] = sha256.Sum256(c.layout)
+		if c.layoutFS != nil {
+			mounted["layout:"+c.layoutFile] = sha256.Sum256(c.layout)
+		}
 	}
 	p, err := mount(c, spec)
 	if err != nil {
 		return nil, err
 	}
 	p.cfg, p.mounted = c, mounted
+	p.liveLayout = append([]byte(nil), c.layout...)
 	var appOpts []tui.AppOption
 	if c.catalogs != nil {
 		appOpts = append(appOpts, tui.WithTranslations(c.catalogs))
@@ -605,6 +611,9 @@ func (p *Program) Reload(src []byte) (decl.Result, error) {
 	res, err := p.tree.Reconcile(spec)
 	if err == nil && res.RootReplaced {
 		p.showRoot()
+	}
+	if err == nil {
+		p.liveLayout = append([]byte(nil), src...)
 	}
 	return res, err
 }
