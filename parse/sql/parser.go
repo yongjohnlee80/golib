@@ -311,7 +311,7 @@ func (s SQL) split(src []byte) ([]span, error) {
 		case r == '`' && s.Backticks:
 			begin(at, pos)
 			feed(trigOther)
-			if err := s.skipQuoted(sc, '`', true, false); err != nil {
+			if err := s.skipQuoted(sc, '`', false, false); err != nil {
 				return nil, err
 			}
 			continue
