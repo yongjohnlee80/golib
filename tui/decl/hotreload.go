@@ -266,7 +266,6 @@ func (p *Program) hotReload() {
 		refuse(err)
 		return
 	}
-	p.liveLayout = append([]byte(nil), src...)
 	// The catalogs land in the same frame as the layout, and OnReload sees both. They go to
 	// the App alone: the poller reads the config from its own goroutine.
 	finish := func() {

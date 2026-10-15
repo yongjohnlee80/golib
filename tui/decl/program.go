@@ -57,7 +57,7 @@ type Program struct {
 	// mounted is the followed files as the mount read them: what hot reload
 	// compares each poll against first. See snapshotOf.
 	mounted snapshot
-	// liveLayout is the last successfully applied source, used by HotReload for LayoutSource.
+	// liveLayout is the last successfully applied in-memory source, used by HotReload for LayoutSource.
 	// It belongs to the UI loop; the poller reads only the immutable cfg and followed files.
 	liveLayout []byte
 

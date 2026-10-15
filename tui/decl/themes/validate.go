@@ -13,7 +13,8 @@ import (
 // Role is a required colour in a complete toolkit Theme, and the surface it colours.
 type Role struct{ Key, Description string }
 
-// Schema describes complete themes. Every role requires a string accepted by style.ParseColor.
+// Schema describes the vocabulary of the bundled themes, not every optional palette/syntax
+// property the toolkit supports. Every role requires a string accepted by style.ParseColor.
 // The returned slice is a copy; editing it never changes validation's vocabulary.
 func Schema() []Role { return slices.Clone(roles) }
 
@@ -88,8 +89,11 @@ func Validate(file string, src []byte) (map[string]string, []Diagnostic) {
 		return nil, []Diagnostic{{pos, "Theme", err.Error()}}
 	}
 	n := tree.Root
-	if n == nil || n.Type != "Theme" {
+	if n == nil {
 		return nil, []Diagnostic{{parse.Position{File: file, Line: 1, Column: 1}, "Theme", "root must be Theme"}}
+	}
+	if n.Type != "Theme" {
+		return nil, []Diagnostic{{n.Pos, "Theme", "root must be Theme"}}
 	}
 	var ds []Diagnostic
 	add := func(pos parse.Position, key, message string) { ds = append(ds, Diagnostic{pos, key, message}) }
