@@ -3,7 +3,7 @@ module github.com/yongjohnlee80/golib/gui
 go 1.25.3
 
 require (
-	github.com/yongjohnlee80/golib v0.6.104
+	github.com/yongjohnlee80/golib v0.6.111-0.20261015230933-833289cc4297
 	golang.org/x/image v0.26.0
 )
 

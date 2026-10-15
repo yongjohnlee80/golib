@@ -4,6 +4,7 @@ import (
 	"image"
 	"testing"
 
+	"github.com/yongjohnlee80/gio/app"
 	"github.com/yongjohnlee80/gio/io/event"
 	"github.com/yongjohnlee80/gio/io/input"
 	"github.com/yongjohnlee80/gio/io/key"
@@ -57,6 +58,45 @@ func TestTheRouterKeepsTheInputMethodsEditorState(t *testing.T) {
 				t.Errorf("the composition is %q, want ㅇ", pre)
 			}
 		})
+	}
+}
+
+func TestDesktopDropCommitsPendingIMEBeforePasteWithoutCancellingTheNextComposition(t *testing.T) {
+	b, r, tag := focusedBackend(t)
+	b.gio.source = r.Source() // the last frame's Source, as the live window retains it
+	b.started = make(chan struct{})
+	close(b.started)
+	// Stage the decoded callbacks for a composed syllable whose commit is pending.
+	b.gio.ime.edit(TextEdit{Start: 0, End: 0, Text: "ㅎ"})
+	b.gio.ime.compose(Composition{Start: 0, End: 1})
+	b.gio.ime.edit(TextEdit{Start: 0, End: 1, Text: "하"})
+	b.gio.ime.compose(Composition{Start: -1, End: -1})
+	b.desktopDrop(app.DropEvent{Type: "text/uri-list", Data: []byte("file:///tmp/a.png\r\n")})
+	if len(b.q.queue) != 2 {
+		t.Fatalf("events %v, want committed syllable then paste", b.q.queue)
+	}
+	commit, ok := b.q.queue[0].(tui.KeyEvent)
+	if !ok || commit.Text != "하" {
+		t.Fatalf("commit before paste: %v", b.q.queue)
+	}
+	paste, ok := b.q.queue[1].(tui.PasteEvent)
+	if !ok || paste.Text != "/tmp/a.png" {
+		t.Fatalf("paste after commit: %v", b.q.queue)
+	}
+	if st := r.EditorState(); cancelsComposition(key.Snippet{Range: key.Range{Start: 0, End: 1}, Text: "하"}, key.Range{Start: 1, End: 1}, st) {
+		t.Fatalf("drop reset Gio behind the input method: %+v", st)
+	}
+	imeFrameOf(b, r, tag,
+		key.EditEvent{Range: key.Range{Start: 1, End: 1}, Text: "ㅇ"},
+		key.SnippetEvent(key.Range{Start: 1, End: 2}),
+		key.CompositionEvent{Start: 1, End: 2},
+		key.SelectionEvent(key.Range{Start: 2, End: 2}),
+	)
+	if pre := b.gio.ime.preedit(); pre != "ㅇ" {
+		t.Fatalf("next composition %q", pre)
+	}
+	if st := r.EditorState(); cancelsComposition(key.Snippet{Range: key.Range{Start: 1, End: 2}, Text: "ㅇ"}, key.Range{Start: 2, End: 2}, st) {
+		t.Fatalf("next composition cancelled after drop: %+v", st)
 	}
 }
 
