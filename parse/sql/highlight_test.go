@@ -218,8 +218,27 @@ func TestTheDefinitionsNameTheDialects(t *testing.T) {
 	names := map[string]bool{}
 	for _, d := range defs {
 		names[d.Name] = true
-		if d.Highlighter == nil {
-			t.Errorf("%s has no highlighter", d.Name)
+		if d.SourceFactory == nil || d.Highlighter != nil {
+			t.Errorf("%s: want a SourceFactory and no shared Highlighter", d.Name)
+			continue
+		}
+		a, b := d.NewSource(nil).Highlighter, d.NewSource(nil).Highlighter
+		if a == nil || b == nil {
+			t.Errorf("%s: a source without a highlighter", d.Name)
+			continue
+		}
+		if spans, _ := a.HighlightBlock("SELECT 1", 0); len(spans) == 0 {
+			t.Errorf("%s: its highlighter colours nothing", d.Name)
+		}
+		if d.Name != "SQL (PostgreSQL)" {
+			continue
+		}
+		// Each document's highlighter is its own: the first tag it sees opens its first state, so
+		// two documents' first tags carry the same state. Shared, the second would be numbered on.
+		_, sa := a.HighlightBlock("SELECT $x$ open", 0)
+		_, sb := b.HighlightBlock("SELECT $y$ open", 0)
+		if sa == 0 || sa != sb {
+			t.Errorf("%s: open tags carry %d and %d; two documents share one highlighter", d.Name, sa, sb)
 		}
 	}
 	for _, want := range []string{"SQL (PostgreSQL)", "SQL (SQLite)", "SQL (MySQL)"} {
