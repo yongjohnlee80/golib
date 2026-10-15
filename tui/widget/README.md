@@ -362,7 +362,7 @@ has the functions a host, a script or an agent edits a document through: positio
 `io.Writer`); `Modified` / `MarkSaved`; `Find`, `ReplaceAll` and the active find that `n` / `N`
 step through. It also has the command line: `:` opens a **VIM Commands** prompt (Tab completes) that runs `<n>`,
 `w`, `q`, `q!`, `wq`, `x`, `find`, `replace` and the host's own commands, also callable as
-`RunCommand(line)`. See [EDITOR_CORE.md](EDITOR_CORE.md).
+`RunCommand(line)`. A core shows one `Buffer` at a time (`SetBuffer`), and keeps its cursor in each buffer it has shown. See [EDITOR_CORE.md](EDITOR_CORE.md).
 
 #### `BufferView`
 
