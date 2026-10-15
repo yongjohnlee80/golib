@@ -66,10 +66,14 @@ func TestDesktopDropCommitsPendingIMEBeforePasteWithoutCancellingTheNextComposit
 	b.gio.source = r.Source() // the last frame's Source, as the live window retains it
 	b.started = make(chan struct{})
 	close(b.started)
-	// Stage the decoded callbacks for a composed syllable whose commit is pending.
-	b.gio.ime.edit(TextEdit{Start: 0, End: 0, Text: "ㅎ"})
-	b.gio.ime.compose(Composition{Start: 0, End: 1})
-	b.gio.ime.edit(TextEdit{Start: 0, End: 1, Text: "하"})
+	// First give both the real router and the backend the native composition and
+	// selection. Then stage its decoded commit at the between-frame drop boundary.
+	imeFrameOf(b, r, tag,
+		key.EditEvent{Range: key.Range{Start: 0, End: 0}, Text: "하"},
+		key.SnippetEvent(key.Range{Start: 0, End: 1}),
+		key.CompositionEvent{Start: 0, End: 1},
+		key.SelectionEvent(key.Range{Start: 1, End: 1}),
+	)
 	b.gio.ime.compose(Composition{Start: -1, End: -1})
 	b.desktopDrop(app.DropEvent{Type: "text/uri-list", Data: []byte("file:///tmp/a.png\r\n")})
 	if len(b.q.queue) != 2 {
