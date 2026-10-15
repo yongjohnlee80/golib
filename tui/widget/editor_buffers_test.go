@@ -69,7 +69,8 @@ func TestSetBufferIsNotAnEdit(t *testing.T) {
 
 // An editor's place in a buffer it left follows edits made there through another editor (a
 // headless one, as a host edits a buffer no widget shows): lines inserted above keep it on its text,
-// and its line deleted puts it on the line that took its place.
+// and its line deleted leaves it on that line number, which the next line's text joins (a deleted
+// line is logged as the next one joining it).
 func TestAPlaceFollowsEditsMadeElsewhere(t *testing.T) {
 	c, _ := coreWith(t, "one\ntwo\nthree\nfour")
 	b := c.Buffer()
@@ -91,12 +92,15 @@ func TestAPlaceFollowsEditsMadeElsewhere(t *testing.T) {
 		t.Fatal(err)
 	}
 	c.SetBuffer(b)
-	cursorAt(t, c, 4, 0, "after its line was deleted")
+	cursorAt(t, c, 4, 1, "after its line was deleted")
+	if line := strings.Split(c.Value(), "\n")[4]; line != "four" {
+		t.Fatalf("after the delete, line 4 is %q, want four", line)
+	}
 	h.Detach()
 }
 
-// Two editors showing one buffer: an edit through one moves the other's cursor with its text, and
-// undo through either moves both.
+// Two editors showing one buffer: an edit through one moves the other's cursor with its text. Undo
+// through either puts that editor at the change, as Vim's u does, and moves the other with the text.
 func TestTwoEditorsShowOneBuffer(t *testing.T) {
 	e1, l1 := coreWith(t, "a\nb\nc")
 	b := e1.Buffer()
@@ -106,6 +110,7 @@ func TestTwoEditorsShowOneBuffer(t *testing.T) {
 	l2.changed = nil
 	keys(e1, "Onew") // e1 opens a line above "a"
 	esc(e1)
+	keys(e1, "j") // e1 on "a", line 1
 	cursorAt(t, e2, 3, 0, "e2 after e1 added a line above")
 	if len(l2.changed) == 0 {
 		t.Fatal("e2's layout was not told of e1's edit")
@@ -115,10 +120,9 @@ func TestTwoEditorsShowOneBuffer(t *testing.T) {
 	if b.Value() != "a\nb\nc" {
 		t.Fatalf("u through e2: %q", b.Value())
 	}
-	cursorAt(t, e2, 2, 0, "e2 after its own u")
-	l, _ := e1.Line()
-	if l != 0 {
-		t.Fatalf("e1 after e2's u: line %d, want 0 (its line came back)", l)
+	cursorAt(t, e2, 0, 0, "e2 after its own u (at the change)")
+	if l, _ := e1.Line(); l != 0 {
+		t.Fatalf("e1 after e2's u: line %d, want 0 (\"a\" moved up with the undo)", l)
 	}
 }
 
@@ -280,5 +284,20 @@ func TestTheSecondEditorPaintsTheNewSpans(t *testing.T) {
 	render(e1)     // e1 walks first and re-highlights the line
 	if s := render(e2); len(s) != 2 || s[0] != highlight.Normal {
 		t.Fatalf("e2 painted the old line's styles: %v", s)
+	}
+}
+
+// An Insert's undo group ends at a switch: back in the buffer, the next edit is a step of its own,
+// so u undoes it alone and leaves the Insert's text.
+func TestAnInsertsUndoGroupEndsAtASwitch(t *testing.T) {
+	c, _ := coreWith(t, "abc")
+	a := c.Buffer()
+	keys(c, "iQ") // an Insert, interrupted by a switch
+	c.SetBuffer(widget.NewBuffer(widget.BufferText("other")))
+	c.SetBuffer(a)
+	keys(c, "$x") // "Qab"
+	keys(c, "u")
+	if c.Value() != "Qabc" {
+		t.Fatalf("u after the switch back: %q, want Qabc (only x undone)", c.Value())
 	}
 }
