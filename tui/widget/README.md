@@ -23,6 +23,7 @@ Dependency footprint: standard library + `golib/tui` + `golib/tui/style` only.
 | `Select[T]`   | Form Input      | yes            | `SelectionChangedEvent`, `OpenedEvent`, `ClosedEvent`  |
 | `List[T]`     | Collection      | yes            | `SelectionChangedEvent`, `ActivateEvent`               |
 | `Table[T]`    | Collection      | yes (via List) | `SelectionChangedEvent`, `ActivateEvent`               |
+| `DataTable`   | Collection      | yes            | — (a `TableCore`'s `TableOnActivate`, `TableOnCursor`) |
 | `Tree`        | Navigation      | yes            | `ExpandRequestEvent`, `CollapseEvent`, `ActivateEvent` |
 | `Editor`      | Modal Text      | yes            | `ModeChangedEvent`, `YankEvent`                        |
 | `BufferView`  | Stream / Pager  | yes (scroll)   | `FollowTailChangedEvent`                               |
@@ -329,6 +330,27 @@ A host that already has a branch's children gives them at once with
 reports true, and no `ExpandRequestEvent` is sent, so the key after the one that
 opened the branch finds its children there. Reporting false sends the request,
 as without it.
+
+#### `TableCore` and `DataTable`
+
+A table's behaviour apart from any view, as `EditorCore` is an editor's: `TableCore` shows a
+`TableSource`'s rows (`Fields`, `Len`, `Cell`) with a cell cursor, a range selection (`v`),
+copying as TSV (`y`), the loaded rows sorted by a field (`TableSortable`, `s`: up, down, off;
+numbers as numbers), and Enter (`TableOnActivate`, given the source row). A source that is a
+`TablePager` (`More`, `FetchMore`) is asked for rows while the cursor is within `TableFetchAhead`
+rows of the end of those loaded, once until they arrive; a `TableEditor` source can change its
+cells and shape. `DataTable` is its terminal view; a view reaches the core through `TableLayout`.
+
+```go
+core := widget.NewTableCore(result, widget.TableSortable(true),
+    widget.TableOnActivate(func(row int) { open(row) }))
+view := widget.NewDataTable(core)
+```
+
+`TableAt(core, line)` is the Markdown table holding a line of an `EditorCore`'s buffer as a
+`TableText`, a source and an editor: `SetCell`, `InsertRow`, `DeleteRow`, `InsertField`,
+`DeleteField`, `SetAlign`, `SortBy` and `Format` each rewrite the table, padded and aligned, as one
+undo step. `MarkdownTableCells` and `MarkdownDelimiterAligns` are its parser, for a renderer.
 
 ### Editors & Streaming Viewers
 
