@@ -198,8 +198,13 @@ func (r *MarkdownRenderer) layTable(b Block, lines []string, width float32, insi
 					if i == 0 {
 						spans[k].Font.Bold = true
 					}
-					if !spans[k].Hidden {
-						w += spanWidth(spans[k], t)
+				}
+				if r.hideMetadata {
+					spans = r.metadata.mask(spans, ln)
+				}
+				for _, sp := range spans {
+					if !sp.Hidden {
+						w += spanWidth(sp, t)
 					}
 				}
 			}

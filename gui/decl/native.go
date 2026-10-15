@@ -40,6 +40,13 @@ type native struct {
 	documents map[string]func(tuidecl.DocumentSpec) widget.DocumentView
 	fallback  widget.Diagrammer // what native Mermaid declines; nil: drawn as code
 	diagrams  widget.Diagrammer // the style's one chain and cache, made on first use
+	markdown  []widget.MarkdownOption
+}
+
+// WithMarkdownOptions adds construction options to the style's built-in Markdown renderers,
+// after each declaration's settings. Custom WithRendererFor factories own their own options.
+func WithMarkdownOptions(opts ...widget.MarkdownOption) NativeOption {
+	return func(n *native) { n.markdown = append(n.markdown, opts...) }
 }
 
 // WithDiagramFallback draws what golib's native Mermaid declines (a diagram type it does not
@@ -122,7 +129,7 @@ func (n *native) markdownRenderer(s tuidecl.RendererSpec) widget.Renderer {
 			opts = append(opts, widget.WithDiagrams(n.diagramChain()))
 		}
 	}
-	return widget.NewMarkdownRenderer(opts...)
+	return widget.NewMarkdownRenderer(append(opts, n.markdown...)...)
 }
 
 // buildEditor builds gui's Editor from the declaration tui's Editor reads: the same text, the
