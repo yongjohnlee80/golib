@@ -3,6 +3,7 @@ package decl
 import (
 	"errors"
 	"fmt"
+	"github.com/yongjohnlee80/golib/tui"
 	"maps"
 	"slices"
 )
@@ -13,10 +14,14 @@ import (
 // not define stays standard; a NEW type is still added with [Types], where a duplicate name is
 // refused.
 
-// Style replaces standard vocabulary types by name.
+// Style replaces standard vocabulary types by name, and wraps them.
 type Style struct {
 	Name  string // for diagnostics: "native"
 	Types []Type // each Name must be a standard type's, and that type Replaceable
+	// Wrap runs after a standard type's Build, on the component it built: a style that keeps the
+	// type's node and its contract and dresses it, as a GUI attaching a native view does. A type
+	// read privately may be wrapped, since its node stays the one its reader knows.
+	Wrap map[string]func(tui.Component)
 }
 
 var (
@@ -96,6 +101,23 @@ func styledTypes(s Style) ([]Type, error) {
 		}
 		seen[t.Name] = true
 		types[i] = t
+	}
+	for name, wrap := range s.Wrap {
+		i, ok := at[name]
+		switch {
+		case !ok:
+			return nil, fmt.Errorf("%w: style %q, wrapped type %q", ErrUnknownStyleType, s.Name, name)
+		case wrap == nil:
+			return nil, fmt.Errorf("tui/decl: style %q wraps %q with nothing", s.Name, name)
+		}
+		build := types[i].Build
+		types[i].Build = func(b Build) (tui.Component, []string, error) {
+			c, consumed, err := build(b)
+			if err == nil && c != nil {
+				wrap(c)
+			}
+			return c, consumed, err
+		}
 	}
 	return types, nil
 }

@@ -31,7 +31,13 @@ import (
 //     [TreeListModel.SetChildren] to populate the branch and notify the view.
 type TreeModel interface {
 	ItemModel
+	Fetcher
+}
 
+// Fetcher is a model with rows still to load, Qt's canFetchMore and fetchMore. A TreeView asks it
+// for a node's children; a TableView with a cellCursor asks it at the root, Index{}, for more rows
+// as the cursor nears the end of those loaded.
+type Fetcher interface {
 	// CanFetchMore reports whether the item at ix has unloaded children pending retrieval.
 	// Must remain true until children are delivered or confirmed non-existent.
 	CanFetchMore(ix Index) bool
