@@ -20,12 +20,13 @@ import (
 const verifiedGio = "v0.10.3"
 
 // The drop fork preserves that input contract's source at its v0.10.3-based upstream
-// base, apart from the seven upstream fixes documented in NATIVE_DROP.md. Keep the
+// base, apart from the six upstream fixes documented in the fork's NATIVE_DROP.md. Keep the
 // fork exact; native Wayland/macOS IME re-verification is a release gate, not something
 // a module-version assertion can prove.
-const pinnedDropGio = "v0.0.0-20261015220854-dd427cd9d52e"
+const pinnedDropGio = "v0.0.0-20261015223359-d2512beba836"
 
-// The module requires exactly the Gio release the input-method handling was verified against.
+// Fail closed until the native IME matrix has been performed for this fork.
+// verifiedGio deliberately remains the last verified upstream release meanwhile.
 func TestGioIsTheVersionTheIMEContractWasVerifiedAgainst(t *testing.T) {
 	mod, err := os.ReadFile("go.mod")
 	if err != nil {
@@ -38,8 +39,8 @@ func TestGioIsTheVersionTheIMEContractWasVerifiedAgainst(t *testing.T) {
 			if f[0] == "require" {
 				v = f[2]
 			}
-			if v != pinnedDropGio {
-				t.Fatalf("go.mod requires Gio fork %s, want exact drop producer %s (upstream input baseline %s). Re-verify the IME contract before moving the pin.", v, pinnedDropGio, verifiedGio)
+			if v != pinnedDropGio || v != verifiedGio {
+				t.Fatalf("go.mod requires Gio fork %s (expected producer %s), but native IME was last verified against %s. Complete the Wayland/macOS manual matrix before moving verifiedGio and releasing.", v, pinnedDropGio, verifiedGio)
 			}
 			return
 		}
