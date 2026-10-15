@@ -67,8 +67,8 @@ func TestCommentsPreserveAdjacentTextAndUnicodeSourcePositions(t *testing.T) {
 		want   string
 	}{
 		{"前<!-- hidden -->後", 0, "前後"},
-		{"before <!-- multi\n# hidden\n--> after", 0, "before "},
-		{"before <!-- multi\n# hidden\n--> after", 2, " after"},
+		{"before <!-- multi\nhidden continuation\n--> after", 0, "before "},
+		{"before <!-- multi\nhidden continuation\n--> after", 2, " after"},
 		{"<!-- hidden -->after", 0, "after"},
 		{"**left** <!-- hidden --> *right*", 0, "left  right"},
 		{"| left | right |\n|---|---|\n| before<!-- hidden -->after | x |", 2, "beforeafter"},
@@ -109,6 +109,9 @@ func TestCommentLookingCodeAndEscapesStayVisible(t *testing.T) {
 		{"`<!-- inline literal -->`", 0},
 		{`\<!-- escaped literal -->`, 0},
 		{`<div title="<!-- attribute literal -->">text</div>`, 0},
+		// A block opener interrupts a paragraph before its inline comment can close, so the
+		// Markdown parser treats this as literal text rather than one cross-block comment.
+		{"before <!-- literal\n# heading\n--> after", 0},
 	} {
 		if text := visibleMetadataText(metadataLayout(t, c.source, c.line, false)); !strings.Contains(text, "literal") {
 			t.Errorf("code/escape hidden: %q -> %q", c.source, text)
