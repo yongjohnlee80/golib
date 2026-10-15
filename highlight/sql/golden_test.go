@@ -2,7 +2,6 @@ package sql_test
 
 import (
 	"encoding/json"
-	"flag"
 	"os"
 	"path/filepath"
 	"reflect"
@@ -13,10 +12,9 @@ import (
 	"github.com/yongjohnlee80/golib/highlight/sql"
 )
 
-var updateGolden = flag.Bool("update", false, "rewrite the highlighting golden from this package's highlighter")
-
 // goldenDir holds the corpus and the golden: the colours this package gave each line before its
-// highlighter moved, which the moved highlighter must reproduce.
+// highlighter moved to parse/sql, captured once from the code as it was. Nothing regenerates it:
+// the forwarding package and parse/sql must both reproduce it.
 const goldenDir = "../../parse/sql/testdata/highlight"
 
 type goldenLine struct {
@@ -57,16 +55,6 @@ func highlightCorpus(t *testing.T) map[string][]goldenLine {
 func TestHighlightingMatchesTheGolden(t *testing.T) {
 	got := highlightCorpus(t)
 	path := filepath.Join(goldenDir, "golden.json")
-	if *updateGolden {
-		b, err := json.MarshalIndent(got, "", " ")
-		if err != nil {
-			t.Fatal(err)
-		}
-		if err := os.WriteFile(path, append(b, '\n'), 0o644); err != nil {
-			t.Fatal(err)
-		}
-		return
-	}
 	b, err := os.ReadFile(path)
 	if err != nil {
 		t.Fatal(err)
