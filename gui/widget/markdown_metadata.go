@@ -1,6 +1,7 @@
 package widget
 
 import (
+	"slices"
 	"sort"
 	"strings"
 
@@ -12,20 +13,54 @@ import (
 
 // markdownMetadata caches parser-identified comments in source-cluster coordinates. It never
 // strips the buffer: a span after a comment still addresses the same source line and cluster.
+// It belongs to one renderer/editor: LayOut reads the mask its Blocks call prepared.
 type markdownMetadata struct {
 	source    string
 	ready     bool
+	lines     []string
+	changed   int
 	clusters  map[int][]bool
 	hidden    map[int]bool
 	continued map[int]bool
 }
 
 func (m *markdownMetadata) prepare(lines []string) {
-	source := strings.Join(lines, "\n")
-	if m.ready && m.source == source {
-		return
+	first, last := 0, len(lines)-1
+	if m.ready {
+		for first < min(len(m.lines), len(lines)) && m.lines[first] == lines[first] {
+			first++
+		}
+		if first == len(lines) && len(m.lines) == len(lines) {
+			return
+		}
+		if len(m.lines) == len(lines) {
+			for last >= first && m.lines[last] == lines[last] {
+				last--
+			}
+			if m.plainEdit(lines, first, last) {
+				// Ordinary text edits cannot change the comment delimiters or block context.
+				// A line wholly inside a comment only needs its cluster mask resized.
+				m.changed = -1
+				for ln := first; ln <= last; ln++ {
+					if m.hidden[ln] {
+						mask := make([]bool, clusters(lines[ln]))
+						for i := range mask {
+							mask[i] = true
+						}
+						if !slices.Equal(mask, m.clusters[ln]) && m.changed < 0 {
+							m.changed = ln
+						}
+						m.clusters[ln] = mask
+					}
+				}
+				m.lines = slices.Clone(lines)
+				return
+			}
+		}
 	}
-	*m = markdownMetadata{source: source, ready: true, clusters: map[int][]bool{}, hidden: map[int]bool{}, continued: map[int]bool{}}
+	old := *m
+	source := strings.Join(lines, "\n")
+	*m = markdownMetadata{source: source, ready: true, lines: slices.Clone(lines), changed: -1, clusters: map[int][]bool{}, hidden: map[int]bool{}, continued: map[int]bool{}}
 	starts := make([]int, len(lines))
 	for i := 1; i < len(lines); i++ {
 		starts[i] = starts[i-1] + len(lines[i-1]) + 1
@@ -86,6 +121,55 @@ func (m *markdownMetadata) prepare(lines []string) {
 		}
 		m.clusters[ln], m.hidden[ln] = mask, whole
 	}
+	if old.ready {
+		for ln := 0; ln < max(len(old.lines), len(lines)); ln++ {
+			if old.hidden[ln] != m.hidden[ln] || old.continued[ln] != m.continued[ln] || !slices.Equal(old.clusters[ln], m.clusters[ln]) {
+				m.changed = ln
+				break
+			}
+		}
+	}
+}
+
+// plainEdit is deliberately conservative: changes to block starts, indentation, HTML, escaping
+// or delimiter punctuation need the parser. Unchanged inline markup need not reparse the note
+// when only its surrounding words changed. Line insertions/deletions take the parser path.
+func (m *markdownMetadata) plainEdit(lines []string, first, last int) bool {
+	for ln := first; ln <= last; ln++ {
+		a, b := m.lines[ln], lines[ln]
+		if a == b {
+			continue
+		}
+		if isBlank(a) != isBlank(b) || startsBlock(a) || startsBlock(b) || indentedCode(a) || indentedCode(b) {
+			return false
+		}
+		if strings.ContainsAny(a+b, "<>\"'") {
+			return false
+		}
+		if strings.Trim(a, "= \t") == "" || strings.Trim(b, "= \t") == "" {
+			return false
+		}
+		if a[:len(a)-len(strings.TrimLeft(a, " \t"))] != b[:len(b)-len(strings.TrimLeft(b, " \t"))] {
+			return false
+		}
+		from := 0
+		for from < min(len(a), len(b)) && a[from] == b[from] {
+			from++
+		}
+		endA, endB := len(a), len(b)
+		for endA > from && endB > from && a[endA-1] == b[endB-1] {
+			endA--
+			endB--
+		}
+		if strings.ContainsAny(a[from:endA]+b[from:endB], "`~\\[]()\n\r") {
+			return false
+		}
+		// Removing/inserting the gap between punctuation can join or split a delimiter run.
+		if from > 0 && endA < len(a) && strings.ContainsRune("`~\\[]()", rune(a[from-1])) && strings.ContainsRune("`~\\[]()", rune(a[endA])) {
+			return false
+		}
+	}
+	return true
 }
 
 func (m *markdownMetadata) mask(spans []flow.Span, ln int) []flow.Span {

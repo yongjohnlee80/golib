@@ -60,6 +60,13 @@ type Renderer interface {
 	LayOut(b Block, lines []string, width float32, cursorInside bool, t *gui.TextShaper, th Theme, host DiagramHost) BlockLayout
 }
 
+// ReflowRenderer is a Renderer whose later source can change earlier blocks' presentation.
+// After Blocks, ReflowFrom returns the first source line whose cached layout must be dropped,
+// given the editor's first edited line. The result is clamped to [0, changedLine].
+type ReflowRenderer interface {
+	ReflowFrom(changedLine int) int
+}
+
 // Block is lines [From, To) of the buffer.
 type Block struct{ From, To int }
 

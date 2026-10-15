@@ -241,6 +241,13 @@ func (l *pixelLayout) ensure() {
 	var blocks []Block
 	if l.e.mode == Rendered && l.e.render != nil {
 		blocks = l.e.render.Blocks(l.lines, 0, n)
+		if r, ok := l.e.render.(ReflowRenderer); ok {
+			keep := max(0, min(l.keep, r.ReflowFrom(l.keep)))
+			if keep < l.keep {
+				l.dropDiagrams(keep)
+				l.keep = keep
+			}
+		}
 	} else {
 		blocks = make([]Block, n)
 		for i := range n {

@@ -71,6 +71,15 @@ func HeadingScale(h1 float32) MarkdownOption {
 // blocks do; Raw mode always shows the original buffer. Incomplete frontmatter stays visible.
 func HideMetadata() MarkdownOption { return func(r *MarkdownRenderer) { r.hideMetadata = true } }
 
+// ReflowFrom includes earlier lines whose metadata presentation changed in the last source
+// update. Repeated Blocks calls for that same source keep the answer (InCode also calls Blocks).
+func (r *MarkdownRenderer) ReflowFrom(changedLine int) int {
+	if r.hideMetadata && r.metadata.changed >= 0 {
+		return min(changedLine, r.metadata.changed)
+	}
+	return changedLine
+}
+
 // WithDiagrams draws a fenced block a Diagrammer answers Ready for (a mermaid or vega-lite fence)
 // as its picture. Without one, or until it answers, the block is drawn as code.
 func WithDiagrams(d Diagrammer) MarkdownOption { return func(r *MarkdownRenderer) { r.diagrams = d } }
