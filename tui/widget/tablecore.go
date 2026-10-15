@@ -173,7 +173,7 @@ func (c *TableCore) Changed() {
 	} else {
 		c.order, c.sortBy = nil, -1
 	}
-	if c.order != nil && keep >= 0 && keep < c.Len() {
+	if keep >= 0 && keep < c.Len() { // with the sort gone, too: its field may have been removed
 		c.cur.Row = c.displayRow(keep)
 	}
 	c.clamp()

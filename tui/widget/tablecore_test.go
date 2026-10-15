@@ -263,3 +263,28 @@ func TestTableCore_RowsArrivingUnderASortKeepTheCursorsRow(t *testing.T) {
 		t.Errorf("TableOnCursor was told %v; the cursor never left its row", told)
 	}
 }
+
+// A source change that removes the sorted field ends the sort, and the cursor stays on its source
+// row: under the sort it sat at another display row than it does unsorted.
+func TestTableCore_RemovingTheSortedFieldKeepsTheCursorsRow(t *testing.T) {
+	src := people()
+	var told []int
+	c := NewTableCore(src, TableOnCursor(func(r int) { told = append(told, r) }))
+	c.SortBy(2, false)   // by city: Busan (alice), Incheon (bob), Seoul (carol, source row 0)
+	c.SelectSourceRow(0) // display row 2
+	told = nil
+	src.fields = src.fields[:2]
+	for i := range src.rows {
+		src.rows[i] = src.rows[i][:2]
+	}
+	c.Changed()
+	if col, _, _ := c.Sorted(); col != -1 {
+		t.Fatalf("still sorted by %d after its field was removed", col)
+	}
+	if got := c.SourceRow(c.Cursor().Row); got != 0 {
+		t.Errorf("the cursor is on source row %d, want 0, where it was", got)
+	}
+	if len(told) != 0 {
+		t.Errorf("TableOnCursor was told %v; the cursor never left its row", told)
+	}
+}
