@@ -98,3 +98,35 @@ func cellSelection(t *testing.T, c *widget.EditorCore) widget.TextRange {
 	}
 	return widget.TextRange{From: widget.TextPos{Line: ln, Col: from}, To: widget.TextPos{Line: ln, Col: to}}
 }
+
+// Table editing turned on at run time walks the cells; turned off, it drops a cell's selection.
+// Shift+Tab on the first cell has nowhere back to go and stays.
+func TestTableEditingSwitchesAtRunTimeAndStopsAtTheFirstCell(t *testing.T) {
+	c, _ := coreWith(t, sampleTable)
+	if c.TableEditing() {
+		t.Fatal("table editing on without being asked")
+	}
+	c.SetTableEditing(true)
+	if !c.TableEditing() {
+		t.Fatal("SetTableEditing(true) did not turn it on")
+	}
+	keys(c, "i")
+	cellShiftTab(c)
+	if got := c.Cursor(); got.Line != 0 {
+		t.Fatalf("Shift+Tab on the first cell moved to %v", got)
+	}
+	if c.Value() != sampleTable {
+		t.Fatalf("Shift+Tab on the first cell changed the text: %q", c.Value())
+	}
+	cellTab(c)
+	if got := c.TextIn(cellSelection(t, c)); got != "Column2" {
+		t.Fatalf("Tab selected %q, want Column2", got)
+	}
+	c.SetTableEditing(false)
+	if c.TableEditing() {
+		t.Error("SetTableEditing(false) left it on")
+	}
+	if _, ok := c.Selection(); ok {
+		t.Error("turning table editing off kept the cell's selection")
+	}
+}
