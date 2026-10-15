@@ -48,7 +48,7 @@ type HighlightFrame struct {
 // BeginHighlight starts a render's walk with top the first line on screen.
 func (c *EditorCore) BeginHighlight(top int) *HighlightFrame {
 	c.retireHighlightFrame()
-	f, behind := c.hl.beginFrame(c.buf.lines, top, c.takeHighlightChanged)
+	f, behind := c.hl.text.beginFrame(c.buf.lines, top, c.takeHighlightChanged)
 	c.highlightFrame = &HighlightFrame{c: c, f: f, top: top, Behind: behind}
 	return c.highlightFrame
 }
@@ -77,7 +77,7 @@ func (h *HighlightFrame) Styles(ln int) []highlight.Style {
 }
 
 // Highlighting reports whether a highlighter is set.
-func (c *EditorCore) Highlighting() bool { return c.hl.hl != nil }
+func (c *EditorCore) Highlighting() bool { return c.hl.text.hl != nil }
 
 // SyntaxStyle is the look a highlight style adds over the text, if it has one.
 func (c *EditorCore) SyntaxStyle(k highlight.Style) (style.Style, bool) { return c.hl.syntaxStyle(k) }

@@ -31,11 +31,24 @@ import "strings"
 //
 //   - Ownership: loop-goroutine-owned through its embedding container ([TextArea] or [Editor]).
 //   - Zero Background Mutation: Concurrent mutation from other goroutines is not supported.
+//
+// # The Text and the Cursor
+//
+// A textBuffer is a cursor over a text. The text (bufferText) is embedded by pointer, so every
+// cursor over one document shares its lines: an EditorCore's text is its shown Buffer's, and a
+// TextArea's is its own. bufferText is data only, with no methods, so embedding it promotes fields
+// and never a method; b.lines, b.changedFrom and b.log read as they always have.
 type textBuffer struct {
-	lines   []string
+	*bufferText
 	ln, col int // cursor line + cluster column
 	desired int // sticky column (cells) for vertical moves; -1 unset
 	anchor  *taPos
+}
+
+// bufferText is a document's lines and what follows their changes: the part of a textBuffer every
+// cursor over the same document shares.
+type bufferText struct {
+	lines []string
 	// changedFrom is the first line any change has touched since the owner
 	// last took it (takeChanged): what a line-by-line consumer — the
 	// Editor's highlighter cache — must look at again. Every change to
@@ -121,9 +134,13 @@ func (b *textBuffer) takeChanged() int {
 	return ln
 }
 
+// newTextBuffer is a cursor over a text of its own: one empty line.
 func newTextBuffer() textBuffer {
-	return textBuffer{lines: []string{""}, desired: -1}
+	return textBuffer{bufferText: newBufferText(), desired: -1}
 }
+
+// newBufferText is an empty document: one empty line.
+func newBufferText() *bufferText { return &bufferText{lines: []string{""}} }
 
 // value returns the buffer joined with newlines.
 func (b *textBuffer) value() string { return strings.Join(b.lines, "\n") }

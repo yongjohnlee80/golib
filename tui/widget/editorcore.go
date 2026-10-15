@@ -21,14 +21,16 @@ import (
 //
 // Each part is a module of its own, held as a field and never embedded (embedding a module would
 // let one of its methods call another on its own receiver, past an override; internal/audit
-// counts every such call):
+// counts every such call). The shown document is the one exception, and it embeds data only: the
+// shown Buffer's bufferState, whose fields (hist, marks, rev, …) read as the core's own, and which
+// has no methods to promote (buffer.go).
 //
 //	EditorCore
-//	├── buf  textBuffer     the lines, the cursor, the sticky column (textbuffer.go)
-//	├── hist editHistory    undo and redo (edithistory.go)
+//	├── *bufferState        the shown buffer: its text, undo, marks, revision, highlighting (buffer.go)
+//	├── buf  textBuffer     the cursor over the shown buffer's text, the sticky column (textbuffer.go)
 //	├── reg  editRegister   the unnamed register and the yank policy (editregister.go)
 //	├── keys keyDispatch    the mode, the keymap, the input pending between keys (editorkeys.go)
-//	├── hl   highlightCache each line's syntax styles (editor_highlight.go)
+//	├── hl   highlightCache the shown buffer's lines painted in this editor's looks (editor_highlight.go)
 //	└── layout EditorLayout the widget's geometry, in its units
 //
 // # Concurrency Model
@@ -51,8 +53,9 @@ type EditorLayout interface {
 // EditorCore is an editor's behaviour: text, cursor, modes, keys, undo, register, selection and
 // highlighting. See the package's EDITOR CORE notes.
 type EditorCore struct {
-	buf            textBuffer             // the text and the cursor
-	hist           editHistory            // undo/redo
+	*bufferState                          // the shown buffer's, data only (buffer.go)
+	placed         map[*bufferState]bool  // the buffers holding a place of this editor's (SetBuffer, Detach)
+	buf            textBuffer             // the cursor over the shown buffer's text
 	dot            dotRecorder            // the change . repeats, and the one being recorded
 	opRegOne       bool                   // the operator's motion is one whose delete Vim keeps in register 1 (regOneMotion)
 	insStart       taPos                  // where this Insert began (editor_viminsert.go)
@@ -62,27 +65,20 @@ type EditorCore struct {
 	replace        *replaceState          // R's, while Replace lasts (editor_vimreplace.go)
 	rowSticky      rowSticky              // gj and gk's x (editor_vimrows.go)
 	keyDepth       int                    // HandleKey calls in progress: a macro's and .'s keys are nested
-	marks          markSet                // a–z and the previous jump's place (editor_vimmarks.go)
 	macro          macroRecorder          // the macro being recorded, and what plays (editor_vimmacros.go)
 	jumps          *JumpList              // Ctrl+O and Ctrl+I's list: the host's, or the editor's own (editor_jumps.go)
-	jumpDoc        string                 // the document as jumps knows it (SetJumpDoc)
 	jumpView       func() string          // the host's view of it (SetJumpView); nil: ""
 	jumpGo         func(JumpStep)         // how the host goes to a place in another document or view
 	clipPut        *clipPut               // a "+p waiting for the system clipboard (editor_clipboard.go)
 	reg            editRegister           // the registers
 	keys           keyDispatch            // modes and key routing
 	hl             highlightCache         // per-line styles
-	sourceFactory  func() highlight.Source
-	source         highlight.Source
 	highlightFrame *HighlightFrame
 	autoIndent     bool
 	indentUnit     string
 	indentMarks    IndentMarks
-	// hlFrom is the first line changed that the highlighter has not looked at yet: an edit takes
-	// the buffer's change mark for the layout and leaves it here (takeHighlightChanged).
-	hlFrom int
-	layout EditorLayout // the widget's geometry; set by Bind
-	ctx    *tui.Context // the widget's: publish, clipboard, timers; set by Bind
+	layout         EditorLayout // the widget's geometry; set by Bind
+	ctx            *tui.Context // the widget's: publish, clipboard, timers; set by Bind
 
 	vAnchor taPos // the Visual anchor (where the selection started)
 	// vEOL says the Visual selection Select made ends with its last line's break: the cursor sits
@@ -114,9 +110,8 @@ type EditorCore struct {
 	dragging bool
 	dragFrom taPos
 
-	// rev is the text's revision, a fresh value at every edit (revs counts them out), and savedRev
-	// the revision MarkSaved recorded: Modified compares the two.
-	rev, savedRev, revs uint64
+	// following is ReplaceFollowing's, while its edit runs: the cursor it keeps with the text
+	following *selfFollow
 	// batch counts the open Batch calls; batchEdited says an edit inside them is waiting to be
 	// announced when the outermost one returns.
 	batch       int
@@ -141,17 +136,19 @@ type CoreOption func(*EditorCore)
 // newEditorCore is the default core: an empty line, the Vim keymap, modal, the "jk" escape chord,
 // selection, yank and undo on. The options have not run yet.
 func newEditorCore() *EditorCore {
-	buf := newTextBuffer()
-	buf.log.on = true // the marks follow the line structure's changes
-	return &EditorCore{
-		buf:       buf,
-		hlFrom:    noChange,
-		keys:      newKeyDispatch(),
-		canSelect: true,
-		reg:       editRegister{yank: true},
-		hist:      editHistory{enabled: true},
-		commands:  defaultCommands(),
+	s := newBuffer().s
+	c := &EditorCore{
+		bufferState: s,
+		placed:      map[*bufferState]bool{},
+		buf:         textBuffer{bufferText: s.text, desired: -1},
+		hl:          highlightCache{text: &s.hlText},
+		keys:        newKeyDispatch(),
+		canSelect:   true,
+		reg:         editRegister{yank: true},
+		commands:    defaultCommands(),
 	}
+	s.editors = append(s.editors, c)
+	return c
 }
 
 // settleOptions is the end of construction: a modeless profile starts in Insert.
@@ -195,7 +192,9 @@ func CoreYank(enabled bool) CoreOption { return func(c *EditorCore) { c.reg.yank
 func CoreUndo(enabled bool) CoreOption { return func(c *EditorCore) { c.hist.setEnabled(enabled) } }
 
 // CoreHighlighter sets the highlighter; nil is none.
-func CoreHighlighter(h highlight.Highlighter) CoreOption { return func(c *EditorCore) { c.hl.hl = h } }
+func CoreHighlighter(h highlight.Highlighter) CoreOption {
+	return func(c *EditorCore) { c.hl.text.hl = h }
+}
 
 // CoreSyntaxStyles sets what each highlight style looks like.
 func CoreSyntaxStyles(st SyntaxStyles) CoreOption { return func(c *EditorCore) { c.hl.syntax = st } }
@@ -341,6 +340,11 @@ func (c *EditorCore) changed() {
 	c.hlFrom = min(c.hlFrom, from)
 	if c.layout != nil {
 		c.layout.Changed(min(from, max(len(c.buf.lines)-1, 0)))
+	}
+	for _, o := range c.editors {
+		if o != c {
+			o.otherEdited(from)
+		}
 	}
 }
 
@@ -488,7 +492,7 @@ func (c *EditorCore) Lines() []string { return append([]string(nil), c.buf.lines
 func (c *EditorCore) SetHighlighter(h highlight.Highlighter) {
 	c.retireHighlightFrame()
 	c.sourceFactory, c.source = nil, highlight.Source{Highlighter: h}
-	c.hl.setHighlighter(h)
+	c.hl.text.setHighlighter(h)
 	c.find.plain = false // the host's highlighter replaced the find's own
 	c.markDirty()
 }
@@ -511,7 +515,7 @@ func (c *EditorCore) renewSource() {
 	if c.sourceFactory != nil {
 		source = c.sourceFactory()
 	}
-	c.hl.setSource(source)
+	c.hl.text.setSource(source)
 	c.source = source
 	c.find.plain = false
 }

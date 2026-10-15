@@ -30,24 +30,22 @@ import (
 // and a zero Normal as the text.
 type SyntaxStyles [highlight.Styles]style.Style
 
-// hlLine is one line's highlighting, and what it was computed from.
+// hlLine is what the highlighter made of one line, and what it was computed from. gen numbers it
+// among its text's entries: an editor's painted styles for the line are good while gen is.
 type hlLine struct {
-	text          string
-	in            highlight.State
-	out           highlight.State
-	styles        []highlight.Style // per grapheme cluster
-	semantic      []highlight.Span
-	paintRevision uint64
+	text     string
+	in       highlight.State
+	out      highlight.State
+	semantic []highlight.Span
+	gen      uint64
 }
 
-// highlightCache is a text's highlighting: the highlighter, what each style looks like, and each
-// line's styles remembered with what they were computed from (editor_highlight.go's walk). It
-// reads the text it is given and keeps nothing of the widget, so any highlighted text view can
-// hold one.
-type highlightCache struct {
-	hl     highlight.Highlighter
-	syntax SyntaxStyles
-	lines  []hlLine
+// hlText is a text's highlighting: the highlighter, and what it made of each line, remembered
+// with what it was computed from (the walk below). A Buffer holds one; every editor showing the
+// buffer walks and reads it, and paints from it in its own looks (highlightCache).
+type hlText struct {
+	hl    highlight.Highlighter
+	lines []hlLine
 	// valid is how many leading lines of the cache are VERIFIED: each entry's text is its line's,
 	// and its starting state the one before it hands down. The walk starts there, not at line 0,
 	// so a frame's work is what changed and what is on screen, never the file's length. A change
@@ -56,36 +54,56 @@ type highlightCache struct {
 	valid int
 	// examined counts the lines the walk has looked at, for a test to hold a frame's work to what
 	// it promises.
-	examined      int
-	states        highlight.StateStore
+	examined int
+	states   highlight.StateStore
+	gen      uint64 // the last entry's gen: store numbers every line it keeps
+}
+
+// highlightCache is an editor's highlighting: the shown buffer's text half (text), what each style
+// looks like, the overlay (the host's marks and the find's), and the styles painted from the text's
+// spans with them, by line. It reads the text it is given and keeps nothing of the widget, so any
+// highlighted text view can hold one.
+type highlightCache struct {
+	text          *hlText
+	syntax        SyntaxStyles
+	paint         []hlPainted // by line: the styles painted from text.lines[i]
 	overlay       highlight.Overlay
 	paintRevision uint64
 }
 
-// setHighlighter replaces the highlighter: every line is highlighted afresh.
-func (c *highlightCache) setHighlighter(h highlight.Highlighter) {
-	c.setSource(highlight.Source{Highlighter: h})
+// hlPainted is one line's painted styles: per grapheme cluster, from the text entry numbered gen,
+// under the cache's paintRevision rev.
+type hlPainted struct {
+	styles []highlight.Style
+	gen    uint64
+	rev    uint64
 }
 
-func (c *highlightCache) lease(entry hlLine, retain bool) {
-	if c.states == nil {
+// setHighlighter replaces the highlighter: every line is highlighted afresh.
+func (t *hlText) setHighlighter(h highlight.Highlighter) {
+	t.setSource(highlight.Source{Highlighter: h})
+}
+
+func (t *hlText) lease(entry hlLine, retain bool) {
+	if t.states == nil {
 		return
 	}
 	if retain {
-		c.states.Retain(entry.in)
-		c.states.Retain(entry.out)
+		t.states.Retain(entry.in)
+		t.states.Retain(entry.out)
 	} else {
-		c.states.Release(entry.in)
-		c.states.Release(entry.out)
+		t.states.Release(entry.in)
+		t.states.Release(entry.out)
 	}
 }
 
-func (c *highlightCache) setSource(source highlight.Source) {
-	for _, entry := range c.lines {
-		c.lease(entry, false)
+// setSource replaces the source: every line is highlighted afresh, and so painted afresh (each new
+// entry has a new gen).
+func (t *hlText) setSource(source highlight.Source) {
+	for _, entry := range t.lines {
+		t.lease(entry, false)
 	}
-	c.hl, c.states, c.lines, c.valid = source.Highlighter, source.States, nil, 0
-	c.paintRevision++
+	t.hl, t.states, t.lines, t.valid = source.Highlighter, source.States, nil, 0
 }
 
 // WithHighlighter sets the Editor's highlighter; nil is none.
@@ -155,88 +173,99 @@ func (f *hlFrame) close() {
 
 // verifiedFrom is where the walk starts: the verified prefix, pulled back to the first line
 // changed since the last frame (takeChanged), and cut to the text's length.
-func (c *highlightCache) verifiedFrom(text []string, takeChanged func() int) int {
-	if ch := takeChanged(); ch < c.valid {
-		c.valid = ch
+func (t *hlText) verifiedFrom(text []string, takeChanged func() int) int {
+	if ch := takeChanged(); ch < t.valid {
+		t.valid = ch
 	}
-	if len(c.lines) > len(text) {
-		for _, entry := range c.lines[len(text):] {
-			c.lease(entry, false)
+	if len(t.lines) > len(text) {
+		for _, entry := range t.lines[len(text):] {
+			t.lease(entry, false)
 		}
-		c.lines = c.lines[:len(text)]
+		t.lines = t.lines[:len(text)]
 	}
-	c.valid = min(c.valid, len(c.lines))
-	return c.valid
+	t.valid = min(t.valid, len(t.lines))
+	return t.valid
 }
 
 // confirm makes line i's cache entry right — kept, when its text and starting
 // state are unchanged, or highlighted afresh — and advances the verified
 // prefix over it when it is next.
-func (c *highlightCache) confirm(text []string, i int) {
-	c.examined++
+func (t *hlText) confirm(text []string, i int) {
+	t.examined++
 	in := highlight.State(0)
 	if i > 0 {
-		in = c.lines[i-1].out
+		in = t.lines[i-1].out
 	}
-	if !(i < len(c.lines) && c.lines[i].text == text[i] && c.lines[i].in == in) {
-		c.store(i, c.highlightLine(text[i], in))
+	if !(i < len(t.lines) && t.lines[i].text == text[i] && t.lines[i].in == in) {
+		t.store(i, t.highlightLine(text[i], in))
 	}
-	if i == c.valid {
-		c.valid++
+	if i == t.valid {
+		t.valid++
 	}
 }
 
 // catchUp confirms the cache for the lines above the screen (top), examining at
 // most hlFrameBudget of them, and reports whether it reached the screen.
-func (c *highlightCache) catchUp(f *hlFrame, text []string, top int, takeChanged func() int) bool {
-	from, to := c.verifiedFrom(text, takeChanged), min(top, len(text))
+func (t *hlText) catchUp(f *hlFrame, text []string, top int, takeChanged func() int) bool {
+	from, to := t.verifiedFrom(text, takeChanged), min(top, len(text))
 	for i := from; i < to; i++ {
 		if i-from == hlFrameBudget {
 			return false
 		}
-		c.confirm(text, i)
+		t.confirm(text, i)
 	}
 	f.checked = max(to, from)
 	return true
 }
 
-func (c *highlightCache) store(i int, entry hlLine) {
-	c.lease(entry, true)
-	if i < len(c.lines) {
-		c.lease(c.lines[i], false)
-		c.lines[i] = entry
+// store keeps entry as line i, numbered afresh: every editor's painted styles for the line it
+// replaces are stale from here.
+func (t *hlText) store(i int, entry hlLine) {
+	t.gen++
+	entry.gen = t.gen
+	t.lease(entry, true)
+	if i < len(t.lines) {
+		t.lease(t.lines[i], false)
+		t.lines[i] = entry
 	} else {
-		c.lines = append(c.lines, entry)
+		t.lines = append(t.lines, entry)
 	}
 }
 
 // beginFrame starts a walk over text with the screen from line top. behind is true when the
 // catch-up did not reach the screen: the frame is provisional, and the widget asks for another.
-func (c *highlightCache) beginFrame(text []string, top int, takeChanged func() int) (f *hlFrame, behind bool) {
-	f = &hlFrame{states: c.states}
-	if c.hl == nil {
+func (t *hlText) beginFrame(text []string, top int, takeChanged func() int) (f *hlFrame, behind bool) {
+	f = &hlFrame{states: t.states}
+	if t.hl == nil {
 		return f, false
 	}
-	if c.states != nil && c.states.Collect(hlFrameBudget) {
+	if t.states != nil && t.states.Collect(hlFrameBudget) {
 		f.collecting = true
 		return f, true
 	}
-	if !c.catchUp(f, text, top, takeChanged) {
+	if !t.catchUp(f, text, top, takeChanged) {
 		f.provisional = true
 		return f, true
 	}
 	return f, false
 }
 
+// highlightLine runs the highlighter over one line: its spans, and the state it hands down.
+func (t *hlText) highlightLine(text string, in highlight.State) hlLine {
+	spans, out := t.hl.HighlightBlock(text, in)
+	return hlLine{text: text, in: in, out: out, semantic: append([]highlight.Span(nil), spans...)}
+}
+
 // highlighted returns the style of every cluster of line ln, a line on screen from top, asked
 // for in order.
 func (c *highlightCache) highlighted(text []string, top, ln int, f *hlFrame) []highlight.Style {
-	if c.hl == nil || f.closed {
+	t := c.text
+	if t.hl == nil || f.closed {
 		return nil
 	}
 	if f.collecting {
-		if ln < len(c.lines) && ln < len(text) && c.lines[ln].text == text[ln] {
-			return c.painted(&c.lines[ln])
+		if ln < len(t.lines) && ln < len(text) && t.lines[ln].text == text[ln] {
+			return c.painted(ln)
 		}
 		return nil
 	}
@@ -245,38 +274,44 @@ func (c *highlightCache) highlighted(text []string, top, ln int, f *hlFrame) []h
 			f.local, f.localNext = map[int][]highlight.Style{}, top
 		}
 		for ; f.localNext <= ln && f.localNext < len(text); f.localNext++ {
-			entry := c.highlightLine(text[f.localNext], f.localOut)
+			entry := t.highlightLine(text[f.localNext], f.localOut)
 			if f.states != nil {
 				f.states.Retain(entry.out)
 				f.states.Release(f.localOut)
 			}
-			f.local[f.localNext], f.localOut = entry.styles, entry.out
+			f.local[f.localNext], f.localOut = c.paintEntry(entry), entry.out
 		}
 		return f.local[ln]
 	}
 	for i := f.checked; i <= ln && i < len(text); i++ {
-		c.confirm(text, i)
+		t.confirm(text, i)
 	}
 	f.checked = max(f.checked, ln+1)
-	if ln < len(c.lines) {
-		return c.painted(&c.lines[ln])
+	if ln < len(t.lines) {
+		return c.painted(ln)
 	}
 	return nil
 }
 
-// highlightLine runs the highlighter over one line and maps its byte spans
-// onto the line's clusters.
-func (c *highlightCache) highlightLine(text string, in highlight.State) hlLine {
-	spans, out := c.hl.HighlightBlock(text, in)
-	entry := hlLine{text: text, in: in, out: out, semantic: append([]highlight.Span(nil), spans...)}
-	c.painted(&entry)
-	return entry
+// painted is line i's styles, painted from the text's entry: kept while the entry (gen) and the
+// looks (paintRevision) are the ones they were painted from.
+func (c *highlightCache) painted(i int) []highlight.Style {
+	entry := c.text.lines[i]
+	if i < len(c.paint) {
+		if p := c.paint[i]; p.styles != nil && p.gen == entry.gen && p.rev == c.paintRevision {
+			return p.styles
+		}
+	}
+	styles := c.paintEntry(entry)
+	if i >= len(c.paint) {
+		c.paint = append(c.paint, make([]hlPainted, i+1-len(c.paint))...)
+	}
+	c.paint[i] = hlPainted{styles: styles, gen: entry.gen, rev: c.paintRevision}
+	return styles
 }
 
-func (c *highlightCache) painted(entry *hlLine) []highlight.Style {
-	if entry.styles != nil && entry.paintRevision == c.paintRevision {
-		return entry.styles
-	}
+// paintEntry maps an entry's spans, with the overlay over them, onto the line's clusters.
+func (c *highlightCache) paintEntry(entry hlLine) []highlight.Style {
 	spans := entry.semantic
 	if c.overlay != nil {
 		spans = c.overlay(entry.text, append([]highlight.Span(nil), spans...))
@@ -298,8 +333,7 @@ func (c *highlightCache) painted(entry *hlLine) []highlight.Style {
 		end = s.End
 	}
 	spans = valid
-	text := entry.text
-	cs := clusters(text)
+	cs := clusters(entry.text)
 	styles := make([]highlight.Style, len(cs))
 	byteAt := 0
 	si := 0
@@ -312,7 +346,6 @@ func (c *highlightCache) painted(entry *hlLine) []highlight.Style {
 		}
 		byteAt += len(cl)
 	}
-	entry.styles, entry.paintRevision = styles, c.paintRevision
 	return styles
 }
 

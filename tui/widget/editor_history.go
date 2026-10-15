@@ -29,7 +29,16 @@ func (c *EditorCore) doRedo() {
 // restore resets the buffer content and cursor coordinates from a snapshot.
 func (c *EditorCore) restore(s textSnap) {
 	b := &c.buf
-	c.marks.apply(changedBlock(b.lines, s.lines))
+	blk := changedBlock(b.lines, s.lines)
+	c.marks.apply(blk)
+	for _, o := range c.editors { // the other editors showing the buffer, and the places left in it, move as the marks
+		if o != c {
+			followEditor(o, blk)
+		}
+	}
+	for ed, p := range c.places {
+		c.places[ed] = followPlace(p, blk)
+	}
 	b.lines = s.lines
 	b.touch(0)
 	b.log.take() // the snapshot is the text whole: what was logged since describes no edit of it
