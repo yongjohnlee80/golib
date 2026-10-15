@@ -161,7 +161,7 @@ func (m *markdownMetadata) plainEdit(lines []string, first, last int) bool {
 			endA--
 			endB--
 		}
-		if strings.ContainsAny(a[from:endA]+b[from:endB], "`~\\[]()\n\r") {
+		if strings.ContainsAny(a[from:endA]+b[from:endB], "`~\\[]()|:\n\r") {
 			return false
 		}
 		// Removing/inserting the gap between punctuation can join or split a delimiter run.
