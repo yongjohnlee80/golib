@@ -3,8 +3,8 @@ package gui
 import (
 	"testing"
 
-	"gioui.org/io/input"
-	"gioui.org/io/key"
+	"github.com/yongjohnlee80/gio/io/input"
+	"github.com/yongjohnlee80/gio/io/key"
 )
 
 // An input method attaches only to a window that has opened text input: on Wayland, Gio

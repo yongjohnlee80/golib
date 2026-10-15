@@ -35,7 +35,7 @@ import (
 	"math"
 	"sync"
 
-	"gioui.org/f32"
+	"github.com/yongjohnlee80/gio/f32"
 
 	"github.com/yongjohnlee80/golib/gui"
 )

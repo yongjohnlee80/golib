@@ -4,10 +4,10 @@ import (
 	"cmp"
 	"unicode/utf8"
 
-	"gioui.org/font"
-	"gioui.org/op"
-	"gioui.org/op/clip"
-	"gioui.org/text"
+	"github.com/yongjohnlee80/gio/font"
+	"github.com/yongjohnlee80/gio/op"
+	"github.com/yongjohnlee80/gio/op/clip"
+	"github.com/yongjohnlee80/gio/text"
 	"golang.org/x/image/math/fixed"
 
 	"github.com/yongjohnlee80/golib/tui"

@@ -12,11 +12,11 @@ import (
 	"testing"
 	"time"
 
-	"gioui.org/f32"
-	"gioui.org/font/gofont"
-	"gioui.org/op"
-	"gioui.org/text"
-	"gioui.org/unit"
+	"github.com/yongjohnlee80/gio/f32"
+	"github.com/yongjohnlee80/gio/font/gofont"
+	"github.com/yongjohnlee80/gio/op"
+	"github.com/yongjohnlee80/gio/text"
+	"github.com/yongjohnlee80/gio/unit"
 
 	"github.com/yongjohnlee80/golib/tui"
 	tuidecl "github.com/yongjohnlee80/golib/tui/decl"

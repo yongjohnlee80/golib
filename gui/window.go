@@ -6,18 +6,18 @@ import (
 	"io"
 	"strings"
 
-	"gioui.org/app"
-	"gioui.org/font"
-	"gioui.org/io/clipboard"
-	"gioui.org/io/event"
-	"gioui.org/io/input"
-	"gioui.org/io/key"
-	"gioui.org/io/pointer"
-	"gioui.org/io/transfer"
-	"gioui.org/op"
-	"gioui.org/op/clip"
-	"gioui.org/op/paint"
-	"gioui.org/text"
+	"github.com/yongjohnlee80/gio/app"
+	"github.com/yongjohnlee80/gio/font"
+	"github.com/yongjohnlee80/gio/io/clipboard"
+	"github.com/yongjohnlee80/gio/io/event"
+	"github.com/yongjohnlee80/gio/io/input"
+	"github.com/yongjohnlee80/gio/io/key"
+	"github.com/yongjohnlee80/gio/io/pointer"
+	"github.com/yongjohnlee80/gio/io/transfer"
+	"github.com/yongjohnlee80/gio/op"
+	"github.com/yongjohnlee80/gio/op/clip"
+	"github.com/yongjohnlee80/gio/op/paint"
+	"github.com/yongjohnlee80/gio/text"
 	"golang.org/x/image/math/fixed"
 
 	"github.com/yongjohnlee80/golib/tui"
@@ -59,6 +59,7 @@ type gioState struct {
 	focused bool            // Tracks whether OS keyboard focus has been registered for this window
 	frames  int             // Frames whose input readInput has read, for the recorder
 	shown   *frame          // Most recently presented frame macro
+	source  input.Source    // Last frame's router, for committing IME before an external paste
 }
 
 // takeFocus is the handshake readInput runs while the window has not taken the
@@ -105,6 +106,11 @@ func (b *Backend) run() {
 	tag := &b.gio       // the window's one input handler
 	for {
 		switch e := b.win.Event().(type) {
+		case app.DropEvent:
+			if b.isStarted() {
+				b.deliverIME(b.gio.source, tag)
+			}
+			b.desktopDrop(e)
 		case *app.ClosingEvent:
 			if b.askToClose() {
 				e.Abort()
@@ -120,6 +126,7 @@ func (b *Backend) run() {
 			}
 
 		case app.FrameEvent:
+			b.gio.source = e.Source
 			fs := b.font.Load()
 			m := measure(fs.fm, fs.size, b.cfg.padding, e.Size, e.Metric)
 			m.fontGen = fs.gen

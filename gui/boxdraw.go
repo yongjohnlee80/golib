@@ -4,10 +4,10 @@ import (
 	"image"
 	"image/color"
 
-	"gioui.org/f32"
-	"gioui.org/op"
-	"gioui.org/op/clip"
-	"gioui.org/op/paint"
+	"github.com/yongjohnlee80/gio/f32"
+	"github.com/yongjohnlee80/gio/op"
+	"github.com/yongjohnlee80/gio/op/clip"
+	"github.com/yongjohnlee80/gio/op/paint"
 )
 
 // Box-drawing and block characters (Unicode ranges U+2500–U+257F and U+2580–U+259F)

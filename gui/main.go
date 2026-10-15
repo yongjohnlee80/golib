@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"os"
 
-	"gioui.org/app"
+	"github.com/yongjohnlee80/gio/app"
 )
 
 // OS Main Thread Parking Architecture:

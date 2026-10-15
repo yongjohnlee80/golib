@@ -7,9 +7,9 @@ import (
 	"testing"
 	"time"
 
-	"gioui.org/io/clipboard"
-	"gioui.org/io/input"
-	"gioui.org/io/transfer"
+	"github.com/yongjohnlee80/gio/io/clipboard"
+	"github.com/yongjohnlee80/gio/io/input"
+	"github.com/yongjohnlee80/gio/io/transfer"
 	"github.com/yongjohnlee80/golib/tui"
 )
 

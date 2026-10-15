@@ -5,9 +5,9 @@ import (
 	"image/color"
 	"testing"
 
-	"gioui.org/gpu/headless"
-	"gioui.org/op"
-	"gioui.org/unit"
+	"github.com/yongjohnlee80/gio/gpu/headless"
+	"github.com/yongjohnlee80/gio/op"
+	"github.com/yongjohnlee80/gio/unit"
 )
 
 // The text being composed is drawn on the text's own page, not the window theme's: with a light

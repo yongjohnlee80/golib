@@ -1,7 +1,7 @@
 package gui
 
 import (
-	"gioui.org/io/pointer"
+	"github.com/yongjohnlee80/gio/io/pointer"
 	"github.com/yongjohnlee80/golib/tui"
 )
 

@@ -5,11 +5,11 @@ import (
 	"image/color"
 	"testing"
 
-	"gioui.org/font/gofont"
-	"gioui.org/gpu/headless"
-	"gioui.org/op"
-	"gioui.org/op/paint"
-	"gioui.org/text"
+	"github.com/yongjohnlee80/gio/font/gofont"
+	"github.com/yongjohnlee80/gio/gpu/headless"
+	"github.com/yongjohnlee80/gio/op"
+	"github.com/yongjohnlee80/gio/op/paint"
+	"github.com/yongjohnlee80/gio/text"
 
 	"github.com/yongjohnlee80/golib/tui"
 )

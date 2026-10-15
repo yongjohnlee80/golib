@@ -3,7 +3,7 @@ package gui
 import (
 	"image/color"
 
-	"gioui.org/f32"
+	"github.com/yongjohnlee80/gio/f32"
 )
 
 // Coordinate Spaces in GUI Architecture:

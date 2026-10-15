@@ -7,9 +7,9 @@ import (
 	"time"
 	"weak"
 
-	"gioui.org/font/gofont"
-	"gioui.org/text"
 	"github.com/go-text/typesetting/fontscan"
+	"github.com/yongjohnlee80/gio/font/gofont"
+	"github.com/yongjohnlee80/gio/text"
 )
 
 // withInstalled replaces the index of installed fonts with families, each having its runes, and

@@ -4,8 +4,8 @@ import (
 	"image"
 	"testing"
 
-	"gioui.org/io/input"
-	"gioui.org/io/key"
+	"github.com/yongjohnlee80/gio/io/input"
+	"github.com/yongjohnlee80/gio/io/key"
 	"github.com/yongjohnlee80/golib/tui"
 )
 

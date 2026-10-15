@@ -1,9 +1,9 @@
 package gui
 
 import (
-	"gioui.org/f32"
-	"gioui.org/op"
-	"gioui.org/op/clip"
+	"github.com/yongjohnlee80/gio/f32"
+	"github.com/yongjohnlee80/gio/op"
+	"github.com/yongjohnlee80/gio/op/clip"
 )
 
 // Vector Path Geometry and Bézier Curves:
