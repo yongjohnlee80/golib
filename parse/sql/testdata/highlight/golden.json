@@ -1,0 +1,1223 @@
+{
+ "mysql.sql": [
+  {
+   "spans": [
+    {
+     "Start": 0,
+     "End": 34,
+     "Style": 21,
+     "Name": ""
+    }
+   ],
+   "state": 0
+  },
+  {
+   "spans": [
+    {
+     "Start": 0,
+     "End": 6,
+     "Style": 1,
+     "Name": ""
+    },
+    {
+     "Start": 27,
+     "End": 29,
+     "Style": 12,
+     "Name": ""
+    },
+    {
+     "Start": 29,
+     "End": 31,
+     "Style": 11,
+     "Name": ""
+    },
+    {
+     "Start": 31,
+     "End": 33,
+     "Style": 12,
+     "Name": ""
+    },
+    {
+     "Start": 35,
+     "End": 38,
+     "Style": 12,
+     "Name": ""
+    },
+    {
+     "Start": 38,
+     "End": 40,
+     "Style": 11,
+     "Name": ""
+    },
+    {
+     "Start": 40,
+     "End": 42,
+     "Style": 12,
+     "Name": ""
+    },
+    {
+     "Start": 43,
+     "End": 47,
+     "Style": 1,
+     "Name": ""
+    },
+    {
+     "Start": 50,
+     "End": 55,
+     "Style": 1,
+     "Name": ""
+    },
+    {
+     "Start": 59,
+     "End": 60,
+     "Style": 5,
+     "Name": ""
+    },
+    {
+     "Start": 61,
+     "End": 62,
+     "Style": 3,
+     "Name": ""
+    },
+    {
+     "Start": 63,
+     "End": 66,
+     "Style": 1,
+     "Name": ""
+    },
+    {
+     "Start": 74,
+     "End": 75,
+     "Style": 5,
+     "Name": ""
+    },
+    {
+     "Start": 75,
+     "End": 76,
+     "Style": 5,
+     "Name": ""
+    },
+    {
+     "Start": 76,
+     "End": 77,
+     "Style": 17,
+     "Name": ""
+    },
+    {
+     "Start": 78,
+     "End": 79,
+     "Style": 5,
+     "Name": ""
+    },
+    {
+     "Start": 80,
+     "End": 81,
+     "Style": 17,
+     "Name": ""
+    }
+   ],
+   "state": 0
+  },
+  {
+   "spans": [
+    {
+     "Start": 0,
+     "End": 32,
+     "Style": 21,
+     "Name": ""
+    }
+   ],
+   "state": 0
+  },
+  {
+   "spans": [
+    {
+     "Start": 0,
+     "End": 6,
+     "Style": 1,
+     "Name": ""
+    },
+    {
+     "Start": 7,
+     "End": 11,
+     "Style": 1,
+     "Name": ""
+    },
+    {
+     "Start": 14,
+     "End": 20,
+     "Style": 1,
+     "Name": ""
+    },
+    {
+     "Start": 22,
+     "End": 23,
+     "Style": 17,
+     "Name": ""
+    },
+    {
+     "Start": 25,
+     "End": 27,
+     "Style": 1,
+     "Name": ""
+    },
+    {
+     "Start": 28,
+     "End": 37,
+     "Style": 1,
+     "Name": ""
+    },
+    {
+     "Start": 38,
+     "End": 41,
+     "Style": 1,
+     "Name": ""
+    },
+    {
+     "Start": 42,
+     "End": 48,
+     "Style": 1,
+     "Name": ""
+    },
+    {
+     "Start": 51,
+     "End": 52,
+     "Style": 5,
+     "Name": ""
+    },
+    {
+     "Start": 53,
+     "End": 54,
+     "Style": 17,
+     "Name": ""
+    }
+   ],
+   "state": 0
+  },
+  {
+   "spans": [
+    {
+     "Start": 0,
+     "End": 6,
+     "Style": 1,
+     "Name": ""
+    },
+    {
+     "Start": 7,
+     "End": 27,
+     "Style": 21,
+     "Name": ""
+    },
+    {
+     "Start": 30,
+     "End": 34,
+     "Style": 1,
+     "Name": ""
+    },
+    {
+     "Start": 37,
+     "End": 50,
+     "Style": 21,
+     "Name": ""
+    }
+   ],
+   "state": 0
+  },
+  {
+   "spans": [
+    {
+     "Start": 0,
+     "End": 6,
+     "Style": 1,
+     "Name": ""
+    },
+    {
+     "Start": 7,
+     "End": 12,
+     "Style": 1,
+     "Name": ""
+    },
+    {
+     "Start": 13,
+     "End": 14,
+     "Style": 2,
+     "Name": ""
+    },
+    {
+     "Start": 19,
+     "End": 22,
+     "Style": 16,
+     "Name": ""
+    },
+    {
+     "Start": 23,
+     "End": 37,
+     "Style": 1,
+     "Name": ""
+    },
+    {
+     "Start": 44,
+     "End": 51,
+     "Style": 16,
+     "Name": ""
+    },
+    {
+     "Start": 52,
+     "End": 54,
+     "Style": 17,
+     "Name": ""
+    },
+    {
+     "Start": 62,
+     "End": 70,
+     "Style": 16,
+     "Name": ""
+    },
+    {
+     "Start": 72,
+     "End": 78,
+     "Style": 1,
+     "Name": ""
+    },
+    {
+     "Start": 78,
+     "End": 79,
+     "Style": 5,
+     "Name": ""
+    }
+   ],
+   "state": 0
+  },
+  {
+   "spans": [
+    {
+     "Start": 0,
+     "End": 6,
+     "Style": 1,
+     "Name": ""
+    },
+    {
+     "Start": 7,
+     "End": 11,
+     "Style": 3,
+     "Name": ""
+    },
+    {
+     "Start": 13,
+     "End": 14,
+     "Style": 5,
+     "Name": ""
+    },
+    {
+     "Start": 14,
+     "End": 22,
+     "Style": 3,
+     "Name": ""
+    },
+    {
+     "Start": 26,
+     "End": 30,
+     "Style": 18,
+     "Name": ""
+    },
+    {
+     "Start": 32,
+     "End": 35,
+     "Style": 19,
+     "Name": ""
+    },
+    {
+     "Start": 37,
+     "End": 40,
+     "Style": 19,
+     "Name": ""
+    }
+   ],
+   "state": 0
+  },
+  {
+   "spans": [
+    {
+     "Start": 0,
+     "End": 19,
+     "Style": 21,
+     "Name": ""
+    },
+    {
+     "Start": 20,
+     "End": 26,
+     "Style": 1,
+     "Name": ""
+    },
+    {
+     "Start": 27,
+     "End": 28,
+     "Style": 17,
+     "Name": ""
+    }
+   ],
+   "state": 0
+  },
+  {
+   "spans": [
+    {
+     "Start": 0,
+     "End": 6,
+     "Style": 1,
+     "Name": ""
+    },
+    {
+     "Start": 7,
+     "End": 12,
+     "Style": 12,
+     "Name": ""
+    }
+   ],
+   "state": 0
+  }
+ ],
+ "postgresql.sql": [
+  {
+   "spans": [
+    {
+     "Start": 0,
+     "End": 3,
+     "Style": 21,
+     "Name": ""
+    },
+    {
+     "Start": 3,
+     "End": 7,
+     "Style": 28,
+     "Name": ""
+    },
+    {
+     "Start": 7,
+     "End": 21,
+     "Style": 21,
+     "Name": ""
+    },
+    {
+     "Start": 21,
+     "End": 26,
+     "Style": 28,
+     "Name": ""
+    },
+    {
+     "Start": 26,
+     "End": 32,
+     "Style": 21,
+     "Name": ""
+    }
+   ],
+   "state": 0
+  },
+  {
+   "spans": [
+    {
+     "Start": 0,
+     "End": 6,
+     "Style": 1,
+     "Name": ""
+    },
+    {
+     "Start": 11,
+     "End": 16,
+     "Style": 2,
+     "Name": ""
+    },
+    {
+     "Start": 17,
+     "End": 18,
+     "Style": 5,
+     "Name": ""
+    },
+    {
+     "Start": 21,
+     "End": 24,
+     "Style": 2,
+     "Name": ""
+    },
+    {
+     "Start": 28,
+     "End": 32,
+     "Style": 1,
+     "Name": ""
+    },
+    {
+     "Start": 41,
+     "End": 46,
+     "Style": 1,
+     "Name": ""
+    },
+    {
+     "Start": 52,
+     "End": 53,
+     "Style": 5,
+     "Name": ""
+    },
+    {
+     "Start": 54,
+     "End": 56,
+     "Style": 3,
+     "Name": ""
+    },
+    {
+     "Start": 57,
+     "End": 60,
+     "Style": 1,
+     "Name": ""
+    },
+    {
+     "Start": 66,
+     "End": 68,
+     "Style": 5,
+     "Name": ""
+    },
+    {
+     "Start": 69,
+     "End": 76,
+     "Style": 12,
+     "Name": ""
+    }
+   ],
+   "state": 0
+  },
+  {
+   "spans": [
+    {
+     "Start": 0,
+     "End": 6,
+     "Style": 1,
+     "Name": ""
+    },
+    {
+     "Start": 8,
+     "End": 10,
+     "Style": 5,
+     "Name": ""
+    },
+    {
+     "Start": 10,
+     "End": 13,
+     "Style": 16,
+     "Name": ""
+    },
+    {
+     "Start": 15,
+     "End": 18,
+     "Style": 19,
+     "Name": ""
+    },
+    {
+     "Start": 20,
+     "End": 23,
+     "Style": 19,
+     "Name": ""
+    },
+    {
+     "Start": 25,
+     "End": 29,
+     "Style": 18,
+     "Name": ""
+    },
+    {
+     "Start": 31,
+     "End": 33,
+     "Style": 17,
+     "Name": ""
+    },
+    {
+     "Start": 34,
+     "End": 38,
+     "Style": 1,
+     "Name": ""
+    },
+    {
+     "Start": 41,
+     "End": 46,
+     "Style": 1,
+     "Name": ""
+    },
+    {
+     "Start": 47,
+     "End": 49,
+     "Style": 17,
+     "Name": ""
+    }
+   ],
+   "state": 0
+  },
+  {
+   "spans": [
+    {
+     "Start": 0,
+     "End": 6,
+     "Style": 1,
+     "Name": ""
+    },
+    {
+     "Start": 7,
+     "End": 10,
+     "Style": 12,
+     "Name": ""
+    },
+    {
+     "Start": 10,
+     "End": 12,
+     "Style": 11,
+     "Name": ""
+    },
+    {
+     "Start": 12,
+     "End": 13,
+     "Style": 12,
+     "Name": ""
+    },
+    {
+     "Start": 13,
+     "End": 15,
+     "Style": 11,
+     "Name": ""
+    },
+    {
+     "Start": 15,
+     "End": 17,
+     "Style": 12,
+     "Name": ""
+    },
+    {
+     "Start": 19,
+     "End": 25,
+     "Style": 12,
+     "Name": ""
+    },
+    {
+     "Start": 27,
+     "End": 34,
+     "Style": 18,
+     "Name": ""
+    },
+    {
+     "Start": 36,
+     "End": 41,
+     "Style": 18,
+     "Name": ""
+    }
+   ],
+   "state": 0
+  },
+  {
+   "spans": [
+    {
+     "Start": 0,
+     "End": 18,
+     "Style": 21,
+     "Name": ""
+    }
+   ],
+   "state": 1
+  },
+  {
+   "spans": [
+    {
+     "Start": 0,
+     "End": 35,
+     "Style": 21,
+     "Name": ""
+    },
+    {
+     "Start": 36,
+     "End": 42,
+     "Style": 1,
+     "Name": ""
+    },
+    {
+     "Start": 43,
+     "End": 44,
+     "Style": 17,
+     "Name": ""
+    }
+   ],
+   "state": 0
+  },
+  {
+   "spans": [
+    {
+     "Start": 0,
+     "End": 6,
+     "Style": 1,
+     "Name": ""
+    },
+    {
+     "Start": 7,
+     "End": 15,
+     "Style": 1,
+     "Name": ""
+    },
+    {
+     "Start": 16,
+     "End": 17,
+     "Style": 2,
+     "Name": ""
+    },
+    {
+     "Start": 20,
+     "End": 27,
+     "Style": 4,
+     "Name": ""
+    },
+    {
+     "Start": 28,
+     "End": 31,
+     "Style": 16,
+     "Name": ""
+    },
+    {
+     "Start": 32,
+     "End": 34,
+     "Style": 1,
+     "Name": ""
+    },
+    {
+     "Start": 35,
+     "End": 41,
+     "Style": 12,
+     "Name": ""
+    }
+   ],
+   "state": 65536
+  },
+  {
+   "spans": [
+    {
+     "Start": 0,
+     "End": 5,
+     "Style": 12,
+     "Name": ""
+    }
+   ],
+   "state": 65536
+  },
+  {
+   "spans": [
+    {
+     "Start": 0,
+     "End": 30,
+     "Style": 12,
+     "Name": ""
+    }
+   ],
+   "state": 65536
+  },
+  {
+   "spans": [
+    {
+     "Start": 0,
+     "End": 4,
+     "Style": 12,
+     "Name": ""
+    }
+   ],
+   "state": 65536
+  },
+  {
+   "spans": [
+    {
+     "Start": 0,
+     "End": 6,
+     "Style": 12,
+     "Name": ""
+    },
+    {
+     "Start": 7,
+     "End": 15,
+     "Style": 1,
+     "Name": ""
+    }
+   ],
+   "state": 0
+  },
+  {
+   "spans": [
+    {
+     "Start": 0,
+     "End": 6,
+     "Style": 1,
+     "Name": ""
+    },
+    {
+     "Start": 7,
+     "End": 19,
+     "Style": 12,
+     "Name": ""
+    },
+    {
+     "Start": 21,
+     "End": 32,
+     "Style": 12,
+     "Name": ""
+    },
+    {
+     "Start": 54,
+     "End": 59,
+     "Style": 3,
+     "Name": ""
+    },
+    {
+     "Start": 61,
+     "End": 66,
+     "Style": 3,
+     "Name": ""
+    }
+   ],
+   "state": 0
+  },
+  {
+   "spans": [
+    {
+     "Start": 0,
+     "End": 4,
+     "Style": 4,
+     "Name": ""
+    },
+    {
+     "Start": 5,
+     "End": 9,
+     "Style": 4,
+     "Name": ""
+    },
+    {
+     "Start": 12,
+     "End": 16,
+     "Style": 4,
+     "Name": ""
+    },
+    {
+     "Start": 17,
+     "End": 18,
+     "Style": 17,
+     "Name": ""
+    },
+    {
+     "Start": 19,
+     "End": 23,
+     "Style": 4,
+     "Name": ""
+    },
+    {
+     "Start": 24,
+     "End": 25,
+     "Style": 17,
+     "Name": ""
+    },
+    {
+     "Start": 26,
+     "End": 29,
+     "Style": 4,
+     "Name": ""
+    }
+   ],
+   "state": 0
+  },
+  {
+   "spans": [
+    {
+     "Start": 0,
+     "End": 6,
+     "Style": 1,
+     "Name": ""
+    },
+    {
+     "Start": 7,
+     "End": 12,
+     "Style": 1,
+     "Name": ""
+    },
+    {
+     "Start": 13,
+     "End": 14,
+     "Style": 2,
+     "Name": ""
+    },
+    {
+     "Start": 19,
+     "End": 25,
+     "Style": 16,
+     "Name": ""
+    },
+    {
+     "Start": 26,
+     "End": 33,
+     "Style": 1,
+     "Name": ""
+    },
+    {
+     "Start": 34,
+     "End": 37,
+     "Style": 1,
+     "Name": ""
+    },
+    {
+     "Start": 43,
+     "End": 48,
+     "Style": 16,
+     "Name": ""
+    },
+    {
+     "Start": 53,
+     "End": 64,
+     "Style": 16,
+     "Name": ""
+    },
+    {
+     "Start": 65,
+     "End": 72,
+     "Style": 1,
+     "Name": ""
+    },
+    {
+     "Start": 73,
+     "End": 90,
+     "Style": 20,
+     "Name": ""
+    }
+   ],
+   "state": 0
+  },
+  {
+   "spans": [
+    {
+     "Start": 0,
+     "End": 6,
+     "Style": 1,
+     "Name": ""
+    },
+    {
+     "Start": 7,
+     "End": 11,
+     "Style": 1,
+     "Name": ""
+    },
+    {
+     "Start": 14,
+     "End": 20,
+     "Style": 1,
+     "Name": ""
+    },
+    {
+     "Start": 22,
+     "End": 23,
+     "Style": 17,
+     "Name": ""
+    },
+    {
+     "Start": 25,
+     "End": 35,
+     "Style": 12,
+     "Name": ""
+    },
+    {
+     "Start": 37,
+     "End": 41,
+     "Style": 20,
+     "Name": ""
+    },
+    {
+     "Start": 43,
+     "End": 45,
+     "Style": 1,
+     "Name": ""
+    },
+    {
+     "Start": 46,
+     "End": 54,
+     "Style": 1,
+     "Name": ""
+    },
+    {
+     "Start": 55,
+     "End": 57,
+     "Style": 1,
+     "Name": ""
+    },
+    {
+     "Start": 58,
+     "End": 65,
+     "Style": 1,
+     "Name": ""
+    },
+    {
+     "Start": 66,
+     "End": 75,
+     "Style": 1,
+     "Name": ""
+    },
+    {
+     "Start": 76,
+     "End": 77,
+     "Style": 5,
+     "Name": ""
+    }
+   ],
+   "state": 0
+  },
+  {
+   "spans": [
+    {
+     "Start": 0,
+     "End": 6,
+     "Style": 1,
+     "Name": ""
+    },
+    {
+     "Start": 7,
+     "End": 20,
+     "Style": 12,
+     "Name": ""
+    }
+   ],
+   "state": 0
+  }
+ ],
+ "sqlite.sql": [
+  {
+   "spans": [
+    {
+     "Start": 0,
+     "End": 9,
+     "Style": 21,
+     "Name": ""
+    }
+   ],
+   "state": 0
+  },
+  {
+   "spans": [
+    {
+     "Start": 0,
+     "End": 6,
+     "Style": 1,
+     "Name": ""
+    },
+    {
+     "Start": 37,
+     "End": 44,
+     "Style": 18,
+     "Name": ""
+    },
+    {
+     "Start": 46,
+     "End": 47,
+     "Style": 3,
+     "Name": ""
+    },
+    {
+     "Start": 49,
+     "End": 51,
+     "Style": 3,
+     "Name": ""
+    },
+    {
+     "Start": 53,
+     "End": 58,
+     "Style": 3,
+     "Name": ""
+    },
+    {
+     "Start": 60,
+     "End": 65,
+     "Style": 3,
+     "Name": ""
+    },
+    {
+     "Start": 67,
+     "End": 72,
+     "Style": 3,
+     "Name": ""
+    },
+    {
+     "Start": 73,
+     "End": 77,
+     "Style": 1,
+     "Name": ""
+    }
+   ],
+   "state": 0
+  },
+  {
+   "spans": [
+    {
+     "Start": 0,
+     "End": 6,
+     "Style": 1,
+     "Name": ""
+    },
+    {
+     "Start": 7,
+     "End": 14,
+     "Style": 1,
+     "Name": ""
+    },
+    {
+     "Start": 18,
+     "End": 23,
+     "Style": 1,
+     "Name": ""
+    },
+    {
+     "Start": 24,
+     "End": 30,
+     "Style": 1,
+     "Name": ""
+    },
+    {
+     "Start": 31,
+     "End": 33,
+     "Style": 1,
+     "Name": ""
+    },
+    {
+     "Start": 36,
+     "End": 41,
+     "Style": 1,
+     "Name": ""
+    }
+   ],
+   "state": 0
+  },
+  {
+   "spans": [
+    {
+     "Start": 2,
+     "End": 8,
+     "Style": 1,
+     "Name": ""
+    },
+    {
+     "Start": 11,
+     "End": 14,
+     "Style": 1,
+     "Name": ""
+    },
+    {
+     "Start": 17,
+     "End": 18,
+     "Style": 5,
+     "Name": ""
+    },
+    {
+     "Start": 21,
+     "End": 22,
+     "Style": 5,
+     "Name": ""
+    },
+    {
+     "Start": 23,
+     "End": 24,
+     "Style": 17,
+     "Name": ""
+    }
+   ],
+   "state": 0
+  },
+  {
+   "spans": [
+    {
+     "Start": 0,
+     "End": 3,
+     "Style": 4,
+     "Name": ""
+    }
+   ],
+   "state": 0
+  },
+  {
+   "spans": [
+    {
+     "Start": 0,
+     "End": 6,
+     "Style": 1,
+     "Name": ""
+    },
+    {
+     "Start": 20,
+     "End": 21,
+     "Style": 5,
+     "Name": ""
+    }
+   ],
+   "state": 0
+  },
+  {
+   "spans": [
+    {
+     "Start": 0,
+     "End": 6,
+     "Style": 1,
+     "Name": ""
+    },
+    {
+     "Start": 7,
+     "End": 8,
+     "Style": 5,
+     "Name": ""
+    },
+    {
+     "Start": 9,
+     "End": 13,
+     "Style": 1,
+     "Name": ""
+    },
+    {
+     "Start": 16,
+     "End": 21,
+     "Style": 1,
+     "Name": ""
+    },
+    {
+     "Start": 24,
+     "End": 28,
+     "Style": 1,
+     "Name": ""
+    },
+    {
+     "Start": 29,
+     "End": 33,
+     "Style": 12,
+     "Name": ""
+    },
+    {
+     "Start": 34,
+     "End": 37,
+     "Style": 1,
+     "Name": ""
+    },
+    {
+     "Start": 40,
+     "End": 46,
+     "Style": 1,
+     "Name": ""
+    },
+    {
+     "Start": 47,
+     "End": 50,
+     "Style": 12,
+     "Name": ""
+    }
+   ],
+   "state": 0
+  },
+  {
+   "spans": [
+    {
+     "Start": 0,
+     "End": 13,
+     "Style": 21,
+     "Name": ""
+    }
+   ],
+   "state": 1
+  }
+ ]
+}
