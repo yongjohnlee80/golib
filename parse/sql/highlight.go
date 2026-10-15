@@ -34,7 +34,7 @@ import (
 //	'…'  E'…'  $$…$$                        String (escapes SpecialChar)
 //	42  3.5  1e9  0x1f                      DecVal, Float, BaseN
 //	-- …  /* … */  (# … in MySQL)           Comment (TODO, FIXME: Alert)
-//	$1  ?  :name  @name                     Variable
+//	$1  ?  :name  @name  (#name in SQLite)  Variable
 //	= <> || :: …                            Operator
 
 // Dialect is which SQL a highlighter reads. The constants carry the suffix because PostgreSQL
@@ -46,7 +46,7 @@ const (
 	// :: casts, $1 parameters.
 	PostgreSQLDialect Dialect = iota
 	// SQLite: [bracketed] and `backticked` names, x'' blobs, ?, ?1, :name,
-	// @name and $name parameters.
+	// @name, $name and #name parameters, a name taking :: and a (…) suffix.
 	SQLiteDialect
 	// MySQL: `backticked` names, # comments, -- only before a space,
 	// backslash escapes and double-quoted strings.
@@ -236,6 +236,8 @@ func (h *highlighter) line(text string, previous highlight.State) ([]highlight.S
 			l.sc.Next()
 			l.quoted(start, '\'', false)
 			l.restyle(start, highlight.BaseN)
+		case h.dialect == SQLiteDialect && strings.ContainsRune("$@:#", r) && l.sqliteNameNext():
+			l.sqliteParameter(start)
 		case r == '$' && h.dialect == PostgreSQLDialect:
 			if tag, ok := l.dollarOpen(start); ok {
 				if !l.dollarBody(start, tag) {
@@ -419,6 +421,39 @@ func (l *line) parameter(start int) {
 			break
 		}
 		l.sc.Next()
+	}
+	l.span(start, l.at(), highlight.Variable)
+}
+
+// sqliteNameNext reports whether a SQLite parameter name follows: what makes `$$x` and `#x`
+// parameters, and the `::` of a cast or a lone `#` an operator.
+func (l *line) sqliteNameNext() bool {
+	r, ok := l.sc.Peek()
+	return ok && isSQLiteIDRune(r)
+}
+
+// sqliteParameter colours a SQLite parameter that began at start: its name, which may hold :: and
+// $, and a (…) suffix that closes on this line before any whitespace, so the quote in $a(x'y) is
+// part of the name and opens no string. A suffix that does not close is left uncoloured.
+func (l *line) sqliteParameter(start int) {
+	for !l.sc.Done() {
+		r, _ := l.sc.Peek()
+		switch {
+		case isSQLiteIDRune(r):
+			l.sc.Next()
+			continue
+		case l.sc.HasPrefix("::"):
+			l.sc.Take("::")
+			continue
+		case r == '(':
+			end := strings.IndexFunc(l.text[l.at():], func(r rune) bool { return r == ')' || isSpace(r) })
+			if end > 0 && l.text[l.at()+end] == ')' {
+				for to := l.at() + end; l.at() <= to; {
+					l.sc.Next()
+				}
+			}
+		}
+		break
 	}
 	l.span(start, l.at(), highlight.Variable)
 }
