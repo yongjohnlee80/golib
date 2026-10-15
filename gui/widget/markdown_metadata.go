@@ -143,7 +143,9 @@ func (m *markdownMetadata) plainEdit(lines []string, first, last int) bool {
 		if isBlank(a) != isBlank(b) || startsBlock(a) || startsBlock(b) || indentedCode(a) || indentedCode(b) {
 			return false
 		}
-		if strings.ContainsAny(a+b, "<>\"'") {
+		// Existing pipes matter too: typing only dashes between them can turn this
+		// line into a table delimiter and change comment parsing on earlier lines.
+		if strings.ContainsAny(a+b, "<>\"'|") {
 			return false
 		}
 		if strings.Trim(a, "= \t") == "" || strings.Trim(b, "= \t") == "" {
