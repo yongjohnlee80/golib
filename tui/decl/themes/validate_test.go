@@ -97,11 +97,14 @@ func TestValidateReportsTheParsersSyntaxPosition(t *testing.T) {
 	}
 	base := string(src)
 	v, ds := Validate("unfinished.qml", []byte(base[:strings.LastIndex(base, "}")]))
-	line := strings.Count(base[:strings.Index(base, "Theme {")], "\n") + 1
+	// An unterminated node is reported at its opening brace, not at the type's first rune.
+	before := base[:strings.Index(base, "Theme {")+len("Theme ")]
+	line := strings.Count(before, "\n") + 1
+	column := utf8.RuneCountInString(before[strings.LastIndex(before, "\n")+1:]) + 1
 	if v != nil || len(ds) != 1 {
 		t.Fatalf("syntax failure: %v %v", v, ds)
 	}
-	if d := ds[0]; d.Key != "Theme" || d.Pos.File != "unfinished.qml" || d.Pos.Line != line || d.Pos.Column != 1 || d.Message == "" {
+	if d := ds[0]; d.Key != "Theme" || d.Pos.File != "unfinished.qml" || d.Pos.Line != line || d.Pos.Column != column || d.Message == "" {
 		t.Errorf("unpositioned syntax failure: %+v", d)
 	}
 }
