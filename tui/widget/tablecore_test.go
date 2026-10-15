@@ -241,3 +241,25 @@ func TestTableCore_ANilSourceIsEmpty(t *testing.T) {
 		t.Error("an empty core answered with content")
 	}
 }
+
+// Rows arriving under a sort keep the cursor on the source row it was on: the merge moves the row
+// to its new place, and nothing announces a row the user never moved to.
+func TestTableCore_RowsArrivingUnderASortKeepTheCursorsRow(t *testing.T) {
+	p := &pagedSource{rowsSource: rowsSource{fields: []TableField{{Title: "n"}, {Title: "r"}}}, total: 4}
+	var told []int
+	c := NewTableCore(p, TableFetchAhead(2), TableOnCursor(func(r int) { told = append(told, r) }))
+	p.arrive(c) // 0, 1
+	c.SortBy(0, true)
+	c.SelectSourceRow(0) // display row 1 of [1 0]
+	told = nil
+	p.arrive(c) // 2, 3: the order becomes [3 2 1 0]
+	if got := c.SourceRow(c.Cursor().Row); got != 0 {
+		t.Errorf("the cursor is on source row %d after rows arrived, want 0, where it was", got)
+	}
+	if c.Cursor().Row != 3 {
+		t.Errorf("display row %d, want 3: row 0 sorts last", c.Cursor().Row)
+	}
+	if len(told) != 0 {
+		t.Errorf("TableOnCursor was told %v; the cursor never left its row", told)
+	}
+}

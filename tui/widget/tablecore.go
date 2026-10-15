@@ -163,13 +163,18 @@ func (c *TableCore) Fields() []TableField {
 }
 
 // Changed is the source changed: the sort is applied to the rows now loaded, the cursor kept on
-// the cells that still exist, and the view repainted. A pager's new rows are merged into a sort.
+// the source row it was on (or clamped, when that row is gone), and the view repainted. A pager's
+// new rows are merged into a sort without moving the cursor off its row.
 func (c *TableCore) Changed() {
 	c.measured = nil
+	keep := c.SourceRow(c.cur.Row) // read through the order the cursor was placed in
 	if c.sortBy >= 0 && c.sortBy < len(c.Fields()) {
 		c.order = c.sorted(c.sortBy, c.desc)
 	} else {
 		c.order, c.sortBy = nil, -1
+	}
+	if c.order != nil && keep >= 0 && keep < c.Len() {
+		c.cur.Row = c.displayRow(keep)
 	}
 	c.clamp()
 	c.wantMore()
