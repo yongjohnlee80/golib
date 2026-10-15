@@ -1,9 +1,11 @@
 package sql_test
 
 import (
+	"errors"
 	"reflect"
 	"testing"
 
+	"github.com/yongjohnlee80/golib/parse"
 	"github.com/yongjohnlee80/golib/parse/sql"
 )
 
@@ -120,5 +122,28 @@ func TestPresets_AreTheirEnginesOptions(t *testing.T) {
 		if tc.got != tc.want {
 			t.Errorf("%s: %+v, want %+v", name, tc.got, tc.want)
 		}
+	}
+}
+
+// An executable comment left open is malformed, as an unclosed block comment is: Parse, Validate
+// and StatementAt all refuse it, where the server would.
+func TestMySQLSplitter_RefusesAnUnclosedExecutableComment(t *testing.T) {
+	t.Parallel()
+	sp := sql.MySQLSplitter()
+	open := []byte("/*!50000 SELECT 1")
+	_, perr := sp.Parse(open)
+	verr := sp.Validate(open)
+	_, ok, aerr := sp.StatementAt(open, 10)
+	for name, err := range map[string]error{"Parse": perr, "Validate": verr, "StatementAt": aerr} {
+		var se parse.SyntaxError
+		if !errors.As(err, &se) || !se.Incomplete || se.Pos.Offset != 0 {
+			t.Errorf("%s: %v, want an incomplete syntax error at the opener", name, err)
+		}
+	}
+	if ok {
+		t.Error("StatementAt offered a statement in a malformed script")
+	}
+	if _, err := sp.Parse([]byte("/*!50000 SELECT 1 */")); err != nil {
+		t.Errorf("a closed executable comment: %v", err)
 	}
 }

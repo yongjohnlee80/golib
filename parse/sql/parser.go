@@ -244,7 +244,8 @@ func (s SQL) split(src []byte) ([]span, error) {
 	// TriggerBodies; inBody says a semicolon inside a trigger's body was seen,
 	// so the statement is open until its END;.
 	trig, inBody := trigStart, false
-	inExec := false // inside a MySQL /*! … */ whose body is live
+	inExec := false           // inside a MySQL /*! … */ whose body is live
+	var execAt parse.Position // where that comment opened
 	feed := func(tok trigToken) {
 		if s.TriggerBodies {
 			trig = trigNext[trig][tok]
@@ -271,6 +272,7 @@ func (s SQL) split(src []byte) ([]span, error) {
 		case s.executable && sc.HasPrefix("/*!"):
 			// MySQL runs the body, so its text is the statement's: only the opener and its
 			// version digits are passed over, and the closing */ is passed over when met.
+			execAt = sc.Pos()
 			sc.Take("/*!")
 			for r, ok := sc.Peek(); ok && '0' <= r && r <= '9'; r, ok = sc.Peek() {
 				sc.Next()
@@ -369,6 +371,13 @@ func (s SQL) split(src []byte) ([]span, error) {
 		sc.Next()
 	}
 
+	if inExec {
+		return nil, parse.SyntaxError{
+			Format: "sql", Pos: execAt,
+			Want: "*/ to close the executable comment started here",
+			Got:  "end of input", Incomplete: true,
+		}
+	}
 	if s.TriggerBodies && inBody && trig != trigEnd {
 		return nil, parse.SyntaxError{
 			Format: "sql", Pos: startPos,
