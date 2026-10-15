@@ -80,7 +80,7 @@ func (p *pagedRows) FetchMore(tuidecl.Index) {
 // A model that is a Fetcher is asked for rows as the cursor nears the end, and the rows that
 // arrive are shown below the ones loaded.
 func TestACellCursorTableViewAsksAFetcherForMoreRows(t *testing.T) {
-	m := &pagedRows{ListModel: tuidecl.NewListModel("name", "n"), total: 300, page: 100}
+	m, rec := &pagedRows{ListModel: tuidecl.NewListModel("name", "n"), total: 300, page: 100}, &recorder{}
 	m.SetColumns(tuidecl.Column{Role: "name", Title: "NAME"}, tuidecl.Column{Role: "n", Title: "N"})
 	var s *decltest.Screen
 	s = decltest.RunWith(t, 40, 8, func(p *tuidecl.Program) error {
@@ -90,9 +90,11 @@ func TestACellCursorTableViewAsksAFetcherForMoreRows(t *testing.T) {
 		}
 		return nil
 	},
-		tuidecl.LayoutSource("main.qml", []byte("import tui 1.0\nimport demo 1.0\nTableView { model: App.rows; cellCursor: true }")),
+		tuidecl.LayoutSource("main.qml", []byte("import tui 1.0\nimport demo 1.0\n"+
+			"TableView { model: App.rows; cellCursor: true; onCurrentIndexChanged: App.use(index) }")),
 		tuidecl.Singleton("demo", "1.0", "App"),
-		tuidecl.Sources(map[string]any{"App.rows": tuidecl.ItemModel(m)}))
+		tuidecl.Sources(map[string]any{"App.rows": tuidecl.ItemModel(m)}),
+		tuidecl.Handlers(map[string]decl.HandlerFunc{"App.use": rec.handler}))
 	s.WaitFor(t, "the first page", func(sc string) bool { return strings.Contains(sc, "row0") })
 	s.Keys(t, key(tui.KeyTab), decltest.Rune('G')) // to the last row loaded: within a page of the end
 	s.WaitFor(t, "the last page", func(string) bool {
@@ -102,6 +104,11 @@ func TestACellCursorTableViewAsksAFetcherForMoreRows(t *testing.T) {
 	})
 	if m.asked < 2 {
 		t.Errorf("asked %d times for 300 rows in pages of 100", m.asked)
+	}
+	// rows arriving are not a new result: the cursor stays on the row it was on
+	got := rec.all()
+	if len(got) == 0 || got[len(got)-1].Raw != "199" {
+		t.Errorf("currentIndexChanged went %v; want it to end on 199, where G put the cursor", got)
 	}
 }
 
