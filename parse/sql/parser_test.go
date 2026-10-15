@@ -313,8 +313,9 @@ func TestSQL_UnterminatedIsNotTheSameConditionAsBadSyntax(t *testing.T) {
 }
 
 // The reverse direction, driven from the core type rather than from SQL,
-// because SQL's splitter currently produces only the unfinished kind. Without
-// this the sibling isolation is proven in one direction only.
+// because SQL's splitter produces the wrong kind only under TclParameters
+// (sqlite_test.go reads it there). Without this the sibling isolation is
+// proven in one direction only.
 func TestSyntaxError_TheOtherDirectionOfSiblingIsolation(t *testing.T) {
 	err := error(parse.SyntaxError{Format: "sql", Want: "FROM", Got: `"WERE"`})
 	if !errors.Is(err, parse.ErrSyntax) {

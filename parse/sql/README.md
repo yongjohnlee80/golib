@@ -87,7 +87,7 @@ engines share; each field adds one engine's construct:
 
 | field | engine | a `;` inside it does not end the statement |
 |---|---|---|
-| `Backticks` | MySQL | `` `a;b` `` |
+| `Backticks` | MySQL, SQLite | `` `a;b` `` |
 | `DollarQuotes` | PostgreSQL | `$$ … $$`, `$tag$ … $tag$` |
 | `NestedBlockComments` | PostgreSQL | `/* … /* … */ … */` |
 | `EStringEscapes` | PostgreSQL | `E'a\';b'` |
@@ -96,10 +96,20 @@ engines share; each field adds one engine's construct:
 | `MySQLDashComments` (option) | MySQL | `-- a; b`, but `--` before anything but a space is two minus signs |
 | `BackslashEscapes` (option) | MySQL | `'a\';b'`, `"a\";b"` |
 | `ExecutableComments` (option) | MySQL | none: a `/*! … */` body is statement text and its `;` ends one; a `/*+ … */` hint stays a comment |
+| `BracketIdentifiers` (option) | SQLite | `[a;b]`, to the first `]`: nothing inside escapes, so `[a'b]` holds a quote |
+| `TclParameters` (option) | SQLite | `$a(x;y)`: a `$name`, `@name`, `:name` or `#name` parameter's `(…)` suffix runs to the first `)` |
 
 One preset per engine is the way to build a splitter for a known engine:
 `PostgreSQLSplitter()`, `MySQLSplitter()` and `SQLiteSplitter()` are `New` with that engine's
-options.
+options. `SQLiteSplitter()` is `TriggerBodies`, `Backticks`, `BracketIdentifiers` and
+`TclParameters`.
+
+`TclParameters` reads a parameter as SQLite's tokenizer does. Its name is letters, digits, `_`, `$`
+and bytes past ASCII, with `::` allowed inside, so `$$x; SELECT 2 $$` is the parameter `$$x`, a
+`;`, and a second statement, never a dollar-quoted string. A `(…)` suffix may follow a name and may
+not hold whitespace. SQLite refuses a prefix with no name (`# a comment`, `x::text`, `@>`, `$ `)
+and a suffix cut off by whitespace or the end of the text, and so does the splitter: under this
+option `#` is never a comment. An unclosed `[` is unterminated, as an unclosed quote is.
 
 `TriggerBodies` is the one place the splitter reads words, because SQLite does:
 it decides whether a `CREATE TRIGGER` is complete by `CREATE`, `TEMP`/`TEMPORARY`,
