@@ -19,7 +19,16 @@
 // A kind says what a run of bytes IS, never what it means. `SELECT` comes back
 // as a Word here; that it is a verb in one statement and a column name in another
 // is a judgement for the layer above, made with the verbatim bytes still in front
-// of it. There are no keywords in this package for that reason.
+// of it. The forms carry no keywords for that reason.
 //
 // Every list ends with a one-byte fallback, so no byte is ever left unclaimed.
+//
+// # SQL's language package
+//
+// The package is SQL's in golib, as parse/<lang> is every language's (parse/LANGUAGES.md):
+//
+//   - the forms above: what a run of bytes is, for golib/parse's lexer;
+//   - [SQL], the statement splitter: where a statement ends, with options and a preset per engine
+//     ([PostgreSQLSplitter], [MySQLSplitter], [SQLiteSplitter]), and [SQL.StatementAt];
+//   - [Definitions] and [Highlighter]: what the bytes mean to a reader, in a file of their own.
 package sql

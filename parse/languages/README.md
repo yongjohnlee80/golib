@@ -4,7 +4,7 @@ Install: `go get github.com/yongjohnlee80/golib/parse/languages`.
 
 `Definitions()` composes the shipped Go, Rust, JavaScript, TypeScript, Python,
 Lua, POSIX/Bash and YAML source providers, and SQL's three dialects from
-[highlight/sql](../../highlight/sql/sql.go): a Markdown fence labelled `sql`,
+[parse/sql](../sql/README.md): a Markdown fence labelled `sql`,
 `postgresql`, `postgres`, `psql` or `pgsql` reads as `SQL (PostgreSQL)`,
 `sqlite` as `SQL (SQLite)`, and `mysql` or `mariadb` as `SQL (MySQL)`. Each language owns its behavior;
 this package owns only composition and imports no Markdown/UI package.
