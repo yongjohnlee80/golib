@@ -46,7 +46,8 @@ is ever left unclaimed.
 A kind says what a run of bytes **is**, never what it means. `SELECT` comes back
 as a `Word`; that it is a verb in one statement and a column name in another is a
 judgement for the layer above, made with the verbatim bytes still in front of it.
-There are no keywords in this package for that reason.
+The forms carry no keywords for that reason; the highlighter, in its own file
+(below), is where meaning is judged.
 
 ## Three constructs that are not what they look like
 
@@ -91,6 +92,14 @@ engines share; each field adds one engine's construct:
 | `NestedBlockComments` | PostgreSQL | `/* … /* … */ … */` |
 | `EStringEscapes` | PostgreSQL | `E'a\';b'` |
 | `TriggerBodies` | SQLite | `CREATE [TEMP] TRIGGER … BEGIN a; b; END` |
+| `HashComments` (option) | MySQL | `# a; b` to the end of the line |
+| `MySQLDashComments` (option) | MySQL | `-- a; b`, but `--` before anything but a space is two minus signs |
+| `BackslashEscapes` (option) | MySQL | `'a\';b'`, `"a\";b"` |
+| `ExecutableComments` (option) | MySQL | none: a `/*! … */` body is statement text and its `;` ends one; a `/*+ … */` hint stays a comment |
+
+One preset per engine is the way to build a splitter for a known engine:
+`PostgreSQLSplitter()`, `MySQLSplitter()` and `SQLiteSplitter()` are `New` with that engine's
+options.
 
 `TriggerBodies` is the one place the splitter reads words, because SQLite does:
 it decides whether a `CREATE TRIGGER` is complete by `CREATE`, `TEMP`/`TEMPORARY`,
@@ -101,6 +110,23 @@ unterminated, like an unclosed string.
 ```go
 stmts, err := sql.New(sql.TriggerBodies()).Parse(script) // each with its line
 ```
+
+Each `Statement` carries `Pos` and `End`: `Text` is the source between them, before the
+semicolon. `StatementAt(src, offset)` is the statement holding a byte offset, as an editor's cursor
+asks: a statement owns its source from its first character up to the next statement's first, so
+its semicolon and a comment after it are its own; before the first statement is the first's, past
+the last is the last's.
+
+## Highlighting
+
+`Definitions()` are the three dialects as source-language definitions — `SQL (PostgreSQL)` on
+`*.sql` and `*.pgsql`, `SQL (SQLite)` on `*.sqlite.sql`, `SQL (MySQL)` on `*.mysql.sql`, with the
+fence aliases `sql`, `postgresql`, `postgres`, `psql`, `pgsql`, `sqlite`, `mysql` and `mariadb` —
+and `parse/languages` composes them. Each document gets a highlighter of its own
+(`SourceFactory`). `Highlighter(dialect)` is one on its own.
+
+The highlighter moved here from `highlight/sql`, which forwards to this package, deprecated, and
+returns what it always did. A golden captured from `highlight/sql` before the move holds both.
 
 ## Numbers are a Form, not a Run
 

@@ -138,6 +138,12 @@ No single rule is right for both, so the core cannot own this one. Under
 `MoreInput` both defer with `ErrNeedMore`; input that already decides itself
 gives the same answer under either boundary.
 
+## Languages
+
+A language golib understands is one package under `parse/`, registered in
+[`parse/languages`](languages/README.md). [LANGUAGES.md](LANGUAGES.md) is the rule for writing
+one and for moving one.
+
 ## A cursor for hand-written grammars
 
 Beside the streaming lexer, `parse` has the small pieces golib's hand-written

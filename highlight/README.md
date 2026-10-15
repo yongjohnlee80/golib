@@ -33,9 +33,10 @@ patterns it claims (`*.qml`) — KSyntaxHighlighting's Definition — and a
 for a view that shows whatever file it is given, a file dialog's preview.
 
 Implementations: `parse/qml.Highlighter()` (QML and its JavaScript) and
-`highlight/sql.Highlighter(dialect)` (PostgreSQL, SQLite, MySQL; its
+`parse/sql.Highlighter(dialect)` (PostgreSQL, SQLite, MySQL; its
 `Definitions()` names them as KSyntaxHighlighting does, with the fence aliases
-`sql`, `sqlite`, `mysql` and the like, and `parse/languages` includes them). Painters:
+`sql`, `sqlite`, `mysql` and the like, and `parse/languages` includes them;
+`highlight/sql` forwards to it, deprecated). Painters:
 `tui/widget.Editor` (`WithHighlighter`), and `SyntaxHighlighter` in
 [tui/decl](../tui/decl/README.md).
 
