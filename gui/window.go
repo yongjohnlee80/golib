@@ -107,9 +107,6 @@ func (b *Backend) run() {
 	for {
 		switch e := b.win.Event().(type) {
 		case app.DropEvent:
-			if b.isStarted() {
-				b.deliverIME(b.gio.source, tag)
-			}
 			b.desktopDrop(e)
 		case *app.ClosingEvent:
 			if b.askToClose() {

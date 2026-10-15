@@ -25,6 +25,10 @@ func TestDesktopDropRefusesAnEntireInvalidURIList(t *testing.T) {
 		"https://example.com/image.png", "file://remote/tmp/a.png", "file:///tmp/%00.png",
 		"file:///tmp/%ff.png", "file:///tmp/a?query", "file:///tmp/a#fragment", "file:relative",
 		"file:///tmp/%ZZ.png", "file://user@localhost/tmp/a.png",
+		"file:///tmp/%1B.png", "file:///tmp/%0A.png", "file:///tmp/%07.png",
+		"file:///tmp/%09.png", "file:///tmp/%0D.png", "file:///tmp/%1F.png",
+		"file:///tmp/%7F.png", "file:///tmp/%C2%80.png", "file:///tmp/%C2%9F.png",
+		"file:///tmp/a%1B%5B20%1B%5B201~1~%3B%20text",
 	} {
 		b := &Backend{q: newEventQueue()}
 		b.desktopDrop(app.DropEvent{Type: "text/uri-list", Data: []byte("file:///tmp/valid.png\n" + invalid)})

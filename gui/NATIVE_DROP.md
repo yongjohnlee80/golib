@@ -14,7 +14,7 @@ handling, just as it does when hosted by a terminal emulator.
   Decode percent escapes, skip URI-list comments and empty lines, shell-quote
   each decoded path when needed, then join paths with a single space.
 - Reject the whole list if any entry is malformed, remote, not a file URI,
-  contains a query/fragment, or decodes to invalid UTF-8 or NUL. Do not paste a
+  contains a query/fragment, or decodes to invalid UTF-8, C0, DEL or C1 controls. Do not paste a
   partial list. No shell command or file read is performed by this conversion.
 - Plain UTF-8 text is pasted as text with CRLF/CR normalized to LF. Unsupported
   MIME types and charsets are refused. The native driver limits transfer size;
