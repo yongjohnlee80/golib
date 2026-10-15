@@ -80,7 +80,13 @@ func TestParseRef(t *testing.T) {
 		want Ref
 	}{
 		{"adrs/0075-front-door.md", Ref{Form: RefPath, Target: "adrs/0075-front-door.md"}},
-		{"$KB_ROOT/adrs/0084-x.md", Ref{Form: RefPath, Target: "adrs/0084-x.md"}},
+		{"$KB_ROOT/adrs/0084-x.md", Ref{Form: RefPath, Target: "adrs/0084-x.md", Var: "KB_ROOT"}},
+		{"$PROJECT_ROOT/lm/docs/x.md §2", Ref{Form: RefPath, Target: "lm/docs/x.md", Anchor: "2", Var: "PROJECT_ROOT"}},
+		{"$HOME_2/notes.md", Ref{Form: RefPath, Target: "notes.md", Var: "HOME_2"}},
+		// the form is the rest's, as without the root, and the root is kept
+		{"$KB_ROOT/0021", Ref{Form: RefNumber, Target: "0021", Var: "KB_ROOT"}},
+		{"$KB_ROOT/golib-vfs-0001", Ref{Form: RefSlug, Target: "golib-vfs-0001", Var: "KB_ROOT"}},
+		{"$KB_ROOT/a.md and some prose", Ref{Form: RefProse, Target: "$KB_ROOT/a.md and some prose"}},
 		{"adrs/0064-wire.md §2.3", Ref{Form: RefPath, Target: "adrs/0064-wire.md", Anchor: "2.3"}},
 		{"conventions/vocabulary.md rev 3", Ref{Form: RefPath, Target: "conventions/vocabulary.md", Note: "rev 3"}},
 		{"adrs/golib-vfs-0002.md (+ rationale)", Ref{Form: RefPath, Target: "adrs/golib-vfs-0002.md", Note: "+ rationale"}},

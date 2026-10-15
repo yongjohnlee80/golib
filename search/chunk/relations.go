@@ -112,6 +112,10 @@ type Ref struct {
 	Anchor string
 	// Note is the annotation after the target that is not an anchor: "rev N", "+ rationale".
 	Note string
+	// Var is the root variable the value started with, without its "$": "KB_ROOT" for
+	// "$KB_ROOT/a.md". "" for a value with none; a URL, a wikilink and prose never have one. The
+	// Form is the rest's, as without a root: "$KB_ROOT/0021" is a number.
+	Var string
 }
 
 var (
@@ -127,7 +131,8 @@ var (
 )
 
 // ParseRef reads a relation value. A path loses a leading "$NAME/" root prefix ("$KB_ROOT/a.md"
-// is "a.md", root-relative). A target may be followed by annotations, which come off: a section
+// is "a.md", root-relative), and the prefix's NAME is its Var, for a caller that resolves the
+// variable itself. A target may be followed by annotations, which come off: a section
 // sign and number ("§N.N") becomes the Anchor, and "(rev N)", "rev N" or "(+ rationale)" the Note. Text after a target
 // that is not such an annotation makes the whole value prose: "Johno 2026-10-05 (chat): …" names
 // no document.
@@ -159,8 +164,11 @@ func ParseRef(raw string) Ref {
 		}
 		anchor, note = annotations(rest)
 	}
-	target = refRoot.ReplaceAllString(target, "")
-	ref := Ref{Target: target, Anchor: anchor, Note: note}
+	var root string
+	if m := refRoot.FindString(target); m != "" {
+		root, target = m[1:len(m)-1], target[len(m):]
+	}
+	ref := Ref{Target: target, Anchor: anchor, Note: note, Var: root}
 	switch {
 	case refNumber.MatchString(target):
 		ref.Form = RefNumber
