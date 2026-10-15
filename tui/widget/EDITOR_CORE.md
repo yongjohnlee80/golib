@@ -109,6 +109,33 @@ new document, which is unmodified.
 that read the text before waiting on something (a server's answer) compares the revision it read
 with `Revision()` to know whether the text has changed since.
 
+## Buffers
+
+A `Buffer` is an open document: its text, undo and redo, the marks, its revision and saved
+revision, and what its highlighter made of each line. An `EditorCore` shows one buffer at a time.
+Every core starts on an empty buffer of its own.
+
+```go
+notes := widget.NewBuffer(widget.BufferText(text), widget.BufferName("notes.md"))
+core.SetBuffer(notes)   // show it; the buffer left keeps this editor's cursor as a place
+back := core.Buffer()   // the buffer shown now
+notes.Modified()        // per buffer, as Modified/MarkSaved/Revision on the core are for the shown one
+```
+
+- **A switch is not an edit.** `SetBuffer` sends no `ChangeEvent` and calls no `onChange`.
+  - Input pending between keys settles, and Insert ends in Normal.
+  - A `.` recording ends in its own buffer, so `.` repeats in the next.
+  - The registers, the macro and `.` stay the editor's.
+- **Each editor keeps a place in each buffer it has shown:** its cursor, its sticky column and its first shown line. Switching back restores them.
+- **Edits follow everywhere.** An edit through any editor moves, by one rule, the marks, the jump list, the cursors of other editors showing the buffer, and the places in it.
+  - A cursor on a removed line moves to the line that took its place.
+  - Undo and redo move them too.
+- **A buffer no widget shows** is edited through a headless core:
+  - `NewEditorCore(CoreBuffer(b), CoreCommands(shown.Commands()))` runs the same commands, by the same code, as the shown editor;
+  - `Detach` it when done.
+- **`ReplaceFollowing(r, text)`** is `Replace` for an edit the user did not make, such as a reload from disk. It is one undo step, and the editor's own cursor and view stay with their text.
+- **Revisions are a buffer's own;** two buffers may share a value.
+
 ## Find and replace
 
 ```go
