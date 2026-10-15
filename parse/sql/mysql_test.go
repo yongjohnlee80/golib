@@ -117,7 +117,8 @@ func TestPresets_AreTheirEnginesOptions(t *testing.T) {
 		"postgresql": {sql.PostgreSQLSplitter(), sql.New(sql.DollarQuotes(), sql.NestedBlockComments(), sql.EStringEscapes())},
 		"mysql": {sql.MySQLSplitter(), sql.New(sql.Backticks(), sql.HashComments(), sql.MySQLDashComments(),
 			sql.BackslashEscapes(), sql.ExecutableComments())},
-		"sqlite": {sql.SQLiteSplitter(), sql.New(sql.TriggerBodies())},
+		"sqlite": {sql.SQLiteSplitter(), sql.New(sql.TriggerBodies(), sql.Backticks(), sql.BracketIdentifiers(),
+			sql.TclParameters())},
 	} {
 		if tc.got != tc.want {
 			t.Errorf("%s: %+v, want %+v", name, tc.got, tc.want)

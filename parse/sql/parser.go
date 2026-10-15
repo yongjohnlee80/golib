@@ -6,6 +6,7 @@ import (
 	"bytes"
 	"io"
 	"sort"
+	"strconv"
 	"strings"
 	"unicode"
 	"unicode/utf8"
@@ -78,8 +79,10 @@ type SQL struct {
 	TriggerBodies bool
 
 	// The options without a field of their own: MySQL's lexical rules (see [HashComments],
-	// [MySQLDashComments], [BackslashEscapes] and [ExecutableComments]).
+	// [MySQLDashComments], [BackslashEscapes] and [ExecutableComments]) and SQLite's (see
+	// [BracketIdentifiers] and [TclParameters]).
 	hashComments, mysqlDash, backslash, executable bool
+	brackets, tclParams                            bool
 }
 
 // Statement is one statement from a script, with its source position.
@@ -317,6 +320,14 @@ func (s SQL) split(src []byte) ([]span, error) {
 				return nil, err
 			}
 			continue
+		case r == '[' && s.brackets:
+			// SQLite: the name runs to the first ], and nothing inside it escapes.
+			begin(at, pos)
+			feed(trigOther)
+			if err := s.skipQuoted(sc, ']', false, false); err != nil {
+				return nil, err
+			}
+			continue
 		case (r == 'E' || r == 'e') && s.EStringEscapes && s.startsEString(src, at):
 			begin(at, pos)
 			feed(trigOther)
@@ -334,6 +345,14 @@ func (s SQL) split(src []byte) ([]span, error) {
 				}
 				continue
 			}
+			// With DollarQuotes, a $ that opens no quote is a byte of its own, never a parameter.
+		case s.tclParams && (r == '$' || r == '@' || r == ':' || r == '#'):
+			begin(at, pos)
+			feed(trigOther)
+			if err := skipTclParameter(sc); err != nil {
+				return nil, err
+			}
+			continue
 		case r == ';':
 			sc.Next()
 			if s.TriggerBodies && trigNext[trig][trigSemi] == trigBodySemi {
@@ -349,18 +368,14 @@ func (s SQL) split(src []byte) ([]span, error) {
 			started = false
 			trig, inBody = trigStart, false
 			continue
-		case s.TriggerBodies && isSQLiteIDRune(r):
+		case s.wordStart(r):
 			begin(at, pos)
-			var w strings.Builder
-			for !sc.Done() {
-				c, _ := sc.Peek()
-				if !isSQLiteIDRune(c) {
-					break
-				}
-				w.WriteRune(c)
+			for c, ok := sc.Peek(); ok && isSQLiteIDRune(c); c, ok = sc.Peek() {
 				sc.Next()
 			}
-			feed(trigWord(w.String()))
+			if s.TriggerBodies {
+				feed(trigWord(string(src[at:sc.Pos().Offset])))
+			}
 			continue
 		}
 
@@ -461,6 +476,65 @@ func asciiUpper(w string) string {
 		}
 	}
 	return string(b)
+}
+
+// wordStart reports whether r begins a word the splitter reads whole. TriggerBodies reads words for
+// the keywords sqlite3_complete knows. TclParameters reads them so that a $ inside one (a$b) is a
+// byte of the word rather than a parameter, and under it a word begins as a SQLite identifier
+// does: a letter, _ or a rune past ASCII, never a digit, and never the $ that opens a parameter.
+func (s SQL) wordStart(r rune) bool {
+	if s.tclParams {
+		return r == '_' || r >= 0x80 || ('a' <= r && r <= 'z') || ('A' <= r && r <= 'Z')
+	}
+	return s.TriggerBodies && isSQLiteIDRune(r)
+}
+
+// skipTclParameter consumes a parameter opened by $, @, : or #, read as SQLite's tokenizer reads
+// one: name characters (isSQLiteIDRune) and :: separators, then, after at least one name
+// character, an optional (…) suffix that ends at the first ) and may not hold whitespace. A prefix
+// with no name after it, and a suffix cut off by whitespace or the end of the text, are tokens
+// SQLite refuses, and so does this.
+func skipTclParameter(sc *parse.Scanner) error {
+	openedAt := sc.Pos()
+	prefix, _ := sc.Next()
+	named := false
+	for {
+		r, ok := sc.Peek()
+		switch {
+		case ok && isSQLiteIDRune(r):
+			named = true
+			sc.Next()
+			continue
+		case ok && sc.HasPrefix("::"):
+			sc.Take("::")
+			continue
+		case ok && r == '(' && named:
+			sc.Next()
+			for {
+				r, ok := sc.Peek()
+				if !ok || isSpace(r) {
+					return refusedToken(openedAt, "a ) to close the parameter's (…) suffix", r, ok)
+				}
+				sc.Next()
+				if r == ')' {
+					return nil
+				}
+			}
+		}
+		if !named {
+			return refusedToken(openedAt, "a parameter name after "+string(prefix), r, ok)
+		}
+		return nil
+	}
+}
+
+// refusedToken is the error for a token SQLite refuses, opened at pos: unterminated when the text
+// ran out before the token was whole, a syntax error when r cannot continue it.
+func refusedToken(pos parse.Position, want string, r rune, ok bool) error {
+	if !ok {
+		return parse.SyntaxError{Format: "sql", Pos: pos, Want: want, Got: "end of input", Incomplete: true}
+	}
+	return parse.SyntaxError{Format: "sql", Pos: pos, Want: want, Got: strconv.QuoteRune(r)}
 }
 
 // isSQLiteIDRune is SQLite's IdChar: a letter, a digit, '_', '$', or any

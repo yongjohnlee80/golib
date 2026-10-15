@@ -52,6 +52,24 @@ func BackslashEscapes() Option { return func(s *SQL) { s.backslash = true } }
 // digits and the closing */ are passed over. A /*+ … */ optimizer hint stays a comment.
 func ExecutableComments() Option { return func(s *SQL) { s.executable = true } }
 
+// BracketIdentifiers reads [like this] as a quoted identifier, as SQLite does: the name runs to the
+// FIRST ], with no escape inside it, so a quote, a comment opener or a ; between the brackets is a
+// byte of the name. Read as a lone [, SELECT 1 AS [a'b]; DROP TABLE t; --' is one statement whose
+// quote opens a string to the end of the text, where SQLite runs two. An unclosed [ is unterminated.
+func BracketIdentifiers() Option { return func(s *SQL) { s.brackets = true } }
+
+// TclParameters reads $name, @name, :name and #name as named parameters, as SQLite's tokenizer
+// does. A name is letters, digits, _, $ and bytes past ASCII, with :: allowed inside it, so $$x is
+// the parameter $$x, never a dollar quote. After at least one name character an optional (…) suffix
+// runs to the FIRST ), and anything but whitespace inside it is a byte of the parameter: the quote in
+// SELECT $a(x'y); DROP TABLE t; --' opens no string, and SQLite runs two statements there.
+//
+// A prefix with no name after it (# a comment, x::text, @>) and a suffix cut off by whitespace or
+// the end of the text are tokens SQLite refuses, and so is the script: # is never a comment here. A
+// word is read whole, so the $ in a$b is a byte of the word; a digit is a byte of its own, so the $
+// in 1$a opens a parameter.
+func TclParameters() Option { return func(s *SQL) { s.tclParams = true } }
+
 // PostgreSQLSplitter splits as PostgreSQL reads a script: dollar-quoted bodies, nested block
 // comments and E'…' escapes.
 func PostgreSQLSplitter() SQL { return New(DollarQuotes(), NestedBlockComments(), EStringEscapes()) }
@@ -62,5 +80,8 @@ func MySQLSplitter() SQL {
 	return New(Backticks(), HashComments(), MySQLDashComments(), BackslashEscapes(), ExecutableComments())
 }
 
-// SQLiteSplitter splits as SQLite reads a script: a CREATE TRIGGER … BEGIN … END is one statement.
-func SQLiteSplitter() SQL { return New(TriggerBodies()) }
+// SQLiteSplitter splits as SQLite reads a script: a CREATE TRIGGER … BEGIN … END is one statement,
+// `…` and […] are quoted names, and $name, @name, :name and #name are parameters.
+func SQLiteSplitter() SQL {
+	return New(TriggerBodies(), Backticks(), BracketIdentifiers(), TclParameters())
+}
