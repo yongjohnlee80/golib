@@ -53,8 +53,9 @@ func TestDataTable_HeaderAndAlignedCells(t *testing.T) {
 	if strings.Index(head, "name") != strings.Index(row, "row1") {
 		t.Errorf("name misaligned:\n%q\n%q", head, row)
 	}
-	if !strings.Contains(row, "   10") {
-		t.Errorf("a right-aligned number is not right-aligned: %q", row)
+	at := strings.Index(head, " n") + 1 // the n column: 5 wide, right-aligned
+	if got := row[at : at+5]; got != "   10" {
+		t.Errorf("the n column holds %q, want 10 right-aligned in 5", got)
 	}
 }
 
@@ -108,14 +109,14 @@ func TestDataTable_PressesAndPassThrough(t *testing.T) {
 	}
 }
 
-// The wheel scrolls the rows and leaves the cursor where it is, and a repaint keeps the scroll.
+// The wheel scrolls the rows and leaves the cursor where it is, and a layout keeps the scroll.
 func TestDataTable_WheelScrollsWithoutTheCursor(t *testing.T) {
 	h, sh, dt := dataTable(t, numbered(30), 30, 6)
 	for range 2 {
 		h.inject(tui.MouseEvent{Kind: tui.MouseWheel, Button: tui.WheelDown, X: 2, Y: 3})
 	}
 	h.settle()
-	h.onLoop(func() { dt.MarkDirty() })
+	h.onLoop(func() { dt.RequestLayout() }) // a layout pass at the same size keeps the scroll
 	h.barrier(sh)
 	if got := tableCursor(h, dt); got.Row != 0 {
 		t.Errorf("the wheel moved the cursor to %+v", got)
