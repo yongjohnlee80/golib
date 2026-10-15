@@ -81,6 +81,10 @@ func TestMetadataFastEditsMatchFreshParserMasks(t *testing.T) {
 		{[]string{"head", "`a` <!-- note -->", "tail"}, []string{"head", "`` <!-- note -->", "tail"}},
 		{[]string{"x <!-- note", "abc", "-->"}, []string{"x <!-- note", "|---|", "-->"}},
 		{[]string{"x <!-- note", "abc", "-->"}, []string{"x <!-- note", "|:---:|", "-->"}},
+		{[]string{"x <!-- note", "| |", "-->"}, []string{"x <!-- note", "|---|", "-->"}},
+		{[]string{"x <!-- note", "|  |", "-->"}, []string{"x <!-- note", "|---|", "-->"}},
+		{[]string{"x <!-- note", "|---|", "-->"}, []string{"x <!-- note", "| |", "-->"}},
+		{[]string{"x <!-- note", "|---|", "-->"}, []string{"x <!-- note", "|  |", "-->"}},
 	} {
 		var incremental, fresh markdownMetadata
 		incremental.prepare(c.old)
