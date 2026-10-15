@@ -53,13 +53,17 @@ func TestACellCursorTableViewSortsAndReportsTheModelsRow(t *testing.T) {
 type pagedRows struct {
 	*tuidecl.ListModel
 	total, page, asked int
-	loading            bool
+	loading, pending   bool // pending: asked before the host could answer
 	post               func(func())
 }
 
 func (p *pagedRows) CanFetchMore(tuidecl.Index) bool { return p.Len() < p.total }
 func (p *pagedRows) FetchMore(tuidecl.Index) {
-	if p.loading || p.post == nil {
+	if p.post == nil {
+		p.pending = true // the view asks while the document is built; the host answers once it can
+		return
+	}
+	if p.loading {
 		return
 	}
 	p.loading, p.asked = true, p.asked+1
@@ -81,6 +85,9 @@ func TestACellCursorTableViewAsksAFetcherForMoreRows(t *testing.T) {
 	var s *decltest.Screen
 	s = decltest.RunWith(t, 40, 8, func(p *tuidecl.Program) error {
 		m.post = func(fn func()) { p.Post(fn) }
+		if m.pending {
+			p.Post(func() { m.FetchMore(tuidecl.Index{}) })
+		}
 		return nil
 	},
 		tuidecl.LayoutSource("main.qml", []byte("import tui 1.0\nimport demo 1.0\nTableView { model: App.rows; cellCursor: true }")),
