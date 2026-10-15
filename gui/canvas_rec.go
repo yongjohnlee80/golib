@@ -3,8 +3,8 @@ package gui
 import (
 	"image/color"
 
-	"gioui.org/font/gofont"
-	"gioui.org/text"
+	"github.com/yongjohnlee80/gio/font/gofont"
+	"github.com/yongjohnlee80/gio/text"
 )
 
 // Test Recording Architecture for Canvas:

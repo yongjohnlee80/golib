@@ -5,7 +5,7 @@ import (
 	"unicode"
 	"unicode/utf8"
 
-	"gioui.org/io/key"
+	"github.com/yongjohnlee80/gio/io/key"
 	"github.com/yongjohnlee80/golib/tui"
 )
 

@@ -47,7 +47,7 @@ import (
 	"strconv"
 	"strings"
 
-	"gioui.org/f32"
+	"github.com/yongjohnlee80/gio/f32"
 
 	"github.com/yongjohnlee80/golib/gui"
 	"github.com/yongjohnlee80/golib/gui/internal/csscolor"

@@ -10,9 +10,9 @@ import (
 	"unicode"
 	"weak"
 
-	"gioui.org/font"
-	"gioui.org/text"
 	"github.com/go-text/typesetting/fontscan"
+	"github.com/yongjohnlee80/gio/font"
+	"github.com/yongjohnlee80/gio/text"
 	"golang.org/x/image/math/fixed"
 )
 

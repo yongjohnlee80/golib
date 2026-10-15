@@ -4,9 +4,9 @@ import (
 	"io"
 	"slices"
 
-	"gioui.org/io/clipboard"
-	"gioui.org/io/event"
-	"gioui.org/io/transfer"
+	"github.com/yongjohnlee80/gio/io/clipboard"
+	"github.com/yongjohnlee80/gio/io/event"
+	"github.com/yongjohnlee80/gio/io/transfer"
 )
 
 // CLIPBOARD READS — tui.ClipboardReader for the window. A read is answered by a generation: one

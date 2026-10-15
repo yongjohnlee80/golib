@@ -1,9 +1,9 @@
 package gui
 
 import (
-	"gioui.org/f32"
-	"gioui.org/io/event"
-	"gioui.org/io/key"
+	"github.com/yongjohnlee80/gio/f32"
+	"github.com/yongjohnlee80/gio/io/event"
+	"github.com/yongjohnlee80/gio/io/key"
 )
 
 // The Gio side of the platform contract: the only file in the input path that

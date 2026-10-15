@@ -4,8 +4,8 @@ import (
 	"strings"
 	"sync"
 
-	"gioui.org/font/gofont"
-	"gioui.org/text"
+	"github.com/yongjohnlee80/gio/font/gofont"
+	"github.com/yongjohnlee80/gio/text"
 )
 
 // Thread-isolated typographical measurement and line wrapping for background workers.

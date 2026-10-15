@@ -5,12 +5,12 @@ import (
 	"image/color"
 	"testing"
 
-	"gioui.org/gpu/headless"
-	"gioui.org/io/key"
-	"gioui.org/op"
-	"gioui.org/op/paint"
-	"gioui.org/text"
-	"gioui.org/unit"
+	"github.com/yongjohnlee80/gio/gpu/headless"
+	"github.com/yongjohnlee80/gio/io/key"
+	"github.com/yongjohnlee80/gio/op"
+	"github.com/yongjohnlee80/gio/op/paint"
+	"github.com/yongjohnlee80/gio/text"
+	"github.com/yongjohnlee80/gio/unit"
 	"golang.org/x/image/math/fixed"
 )
 

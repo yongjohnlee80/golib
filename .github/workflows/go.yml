@@ -44,7 +44,7 @@ jobs:
       - name: root module stays cgo-free and Gio-free
         run: |
           CGO_ENABLED=0 go build ./...
-          if go list -deps ./... | grep -E '^(gioui\.org|github\.com/yongjohnlee80/golib/gui)(/|$)'; then
+          if go list -deps ./... | grep -E '^(gioui\.org|github\.com/yongjohnlee80/gio|github\.com/yongjohnlee80/golib/gui)(/|$)'; then
             echo "::error::a root-module package depends on golib/gui or Gio"
             exit 1
           fi
