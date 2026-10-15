@@ -184,6 +184,23 @@ func TestEncodePaste(t *testing.T) {
 	}
 }
 
+func TestEncodePasteCannotReconstructAnEndMarker(t *testing.T) {
+	const end = "\x1b[201~"
+	for split := 0; split <= len(end); split++ {
+		payload := "before" + end[:split] + end + end[split:] + "after"
+		if got := string(encodePaste(payload, vt.Modes{BracketedPaste: true})); got != "\x1b[200~beforeafter"+end {
+			t.Errorf("split %d reconstructed an end marker: %q", split, got)
+		}
+	}
+	nested := end
+	for range 32 {
+		nested = end[:3] + nested + end[3:]
+	}
+	if got := string(encodePaste("가\n"+nested+"b\x1b[31m", vt.Modes{BracketedPaste: true})); got != "\x1b[200~가\nb\x1b[31m"+end {
+		t.Errorf("nested marker escaped the paste or changed other text: %q", got)
+	}
+}
+
 func TestEncodeMouse(t *testing.T) {
 	press := tui.MouseEvent{Kind: tui.MousePress, Button: tui.MouseLeft, X: 4, Y: 2}
 	release := tui.MouseEvent{Kind: tui.MouseRelease, Button: tui.MouseLeft, X: 4, Y: 2}
