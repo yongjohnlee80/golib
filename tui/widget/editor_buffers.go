@@ -37,6 +37,12 @@ func (c *EditorCore) SetBuffer(b *Buffer) {
 	c.dotInsertEnded() // an Insert being recorded ends in its own buffer: its change, if any, is the last
 	c.dot.on = false   // a command half-recorded is dropped, as a half-typed command is
 	c.hist.close()     // an Insert's undo group never spans two buffers
+	// a Batch's edits to this buffer are announced now, as this buffer's, and the batch's next edit,
+	// in the next buffer, begins an undo step of its own there
+	if c.batchEdited {
+		c.batchEdited = false
+		c.notifyEdited()
+	}
 	c.show(b.s, true)
 }
 
@@ -68,9 +74,8 @@ func (c *EditorCore) show(s *bufferState, keep bool) {
 	c.hl.text, c.hl.paint = &s.hlText, nil
 	c.hl.paintRevision++
 	c.find.cur, c.find.curOn = TextRange{}, false
-	if c.find.term != "" && s.hlText.hl == nil {
-		s.hlText.setHighlighter(plainHighlighter) // the find's marks need a walk to paint on
-		c.find.plain = true
+	if c.find.term != "" {
+		needPlain(s, c) // the find's marks need a walk to paint on
 	}
 	c.hl.overlay = c.findOverlay()
 	if c.keys.modal {
@@ -91,8 +96,8 @@ func (c *EditorCore) show(s *bufferState, keep bool) {
 	c.markDirty()
 }
 
-// leave stops c showing its buffer: its place is kept there when keep, the find's own plain
-// highlighter is taken back when no other editor's find needs it, and the highlight frame retires.
+// leave stops c showing its buffer: its place is kept there when keep, its find stops needing the
+// finds' plain highlighter (dropPlain), and the highlight frame retires.
 func (c *EditorCore) leave(keep bool) {
 	s := c.bufferState
 	if s == nil {
@@ -108,12 +113,7 @@ func (c *EditorCore) leave(keep bool) {
 		s.places[c] = place{at: taPos{c.buf.ln, c.buf.col}, desired: c.buf.desired, top: top}
 		c.placed[s] = true
 	}
-	if c.find.plain {
-		c.find.plain = false
-		if !slices.ContainsFunc(s.editors, func(e *EditorCore) bool { return e.find.plain }) {
-			s.hlText.setHighlighter(nil)
-		}
-	}
+	dropPlain(s, c)
 }
 
 // otherEdited is an edit to the shown buffer made through another editor, from line from on: this

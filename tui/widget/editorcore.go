@@ -493,7 +493,7 @@ func (c *EditorCore) SetHighlighter(h highlight.Highlighter) {
 	c.retireHighlightFrame()
 	c.sourceFactory, c.source = nil, highlight.Source{Highlighter: h}
 	c.hl.text.setHighlighter(h)
-	c.find.plain = false // the host's highlighter replaced the find's own
+	hostSource(c.bufferState) // the host's highlighter replaced the finds' own
 	c.markDirty()
 }
 
@@ -517,7 +517,7 @@ func (c *EditorCore) renewSource() {
 	}
 	c.hl.text.setSource(source)
 	c.source = source
-	c.find.plain = false
+	hostSource(c.bufferState)
 }
 
 // CoreAutoIndent opts an editor into source-language indentation.
