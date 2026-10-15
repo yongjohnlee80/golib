@@ -1,11 +1,14 @@
 package widget
 
 import (
+	"fmt"
+	"reflect"
 	"strings"
 	"testing"
 
 	"github.com/yongjohnlee80/golib/gui"
 	"github.com/yongjohnlee80/golib/tui"
+	tuiwidget "github.com/yongjohnlee80/golib/tui/widget"
 )
 
 func metadataLayout(t *testing.T, source string, line int, editing bool) BlockLayout {
@@ -21,6 +24,93 @@ func metadataLayout(t *testing.T, source string, line int, editing bool) BlockLa
 	}
 	t.Fatalf("no block for line %d", line)
 	return BlockLayout{}
+}
+
+func TestLaterCommentCloseAndRemovalReflowEarlierEditorBlocks(t *testing.T) {
+	source := "before <!-- note\nstill note\nend\n\nlast"
+	h := startEditor(t, 60, 20, WithRenderer(NewMarkdownRenderer(HideMetadata())), WithCore(tuiwidget.CoreInitialText(source)))
+	h.onLoop(func() { h.e.SetMode(Rendered); h.e.core.SetLine(4, 0) })
+	firstText := func() string {
+		var text strings.Builder
+		h.onLoop(func() {
+			h.e.layout.ensure()
+			lb := h.e.layout.lay(h.e.layout.blockOf(0), nil)
+			for _, ll := range lb.bl.Lines {
+				for _, sp := range ll.Spans {
+					if !sp.Hidden {
+						text.WriteString(sp.Text)
+					}
+				}
+			}
+		})
+		return text.String()
+	}
+	h.paint()
+	if text := firstText(); text != "before <!-- note" {
+		t.Fatalf("initial text %q", text)
+	}
+	h.onLoop(func() {
+		if _, err := h.e.core.Insert(tuiwidget.TextPos{Line: 2, Col: 3}, " -->"); err != nil {
+			t.Error(err)
+		}
+		h.e.core.SetLine(4, 0)
+	})
+	h.paint()
+	if text := firstText(); text != "before " {
+		t.Fatalf("later close kept earlier layout: %q", text)
+	}
+	h.onLoop(func() {
+		if err := h.e.core.Delete(tuiwidget.TextRange{From: tuiwidget.TextPos{Line: 2, Col: 3}, To: tuiwidget.TextPos{Line: 2, Col: 7}}); err != nil {
+			t.Error(err)
+		}
+		h.e.core.SetLine(4, 0)
+	})
+	h.paint()
+	if text := firstText(); text != "before <!-- note" {
+		t.Fatalf("removing close kept earlier mask: %q", text)
+	}
+}
+
+func TestMetadataFastEditsMatchFreshParserMasks(t *testing.T) {
+	for _, c := range []struct{ old, new []string }{
+		{[]string{"head", "ordinary [[link]] and `code` words", "<!-- note -->"}, []string{"head", "ordinary [[link]] and `code` new words", "<!-- note -->"}},
+		{[]string{"<!-- note", "body", "-->", "tail"}, []string{"<!-- note", "longer body", "-->", "tail"}},
+		{[]string{"before <!-- note", "end", ""}, []string{"before <!-- note", "end -->", ""}},
+		{[]string{"text", "```", "<!-- literal -->", "```"}, []string{"text", "ordinary", "<!-- literal -->", "```"}},
+		{[]string{"before <!-- note", "===", "end -->"}, []string{"before <!-- note", "words", "end -->"}},
+		{[]string{"head", "`a` <!-- note -->", "tail"}, []string{"head", "`` <!-- note -->", "tail"}},
+	} {
+		var incremental, fresh markdownMetadata
+		incremental.prepare(c.old)
+		incremental.prepare(c.new)
+		fresh.prepare(c.new)
+		if !reflect.DeepEqual(incremental.clusters, fresh.clusters) || !reflect.DeepEqual(incremental.hidden, fresh.hidden) || !reflect.DeepEqual(incremental.continued, fresh.continued) {
+			t.Errorf("incremental masks differ from fresh parse: %v -> %v", c.old, c.new)
+		}
+	}
+}
+
+func BenchmarkMetadataBlocksAfterOrdinaryEdit(b *testing.B) {
+	var sb strings.Builder
+	for i := 0; sb.Len() < 1<<20; i++ {
+		fmt.Fprintf(&sb, "## Section %d\n\nSome prose %d with a [[link]] and `code`.\n<!-- note %d -->\n\n", i, i, i)
+	}
+	base := strings.Split(sb.String(), "\n")
+	for _, hide := range []bool{false, true} {
+		b.Run(fmt.Sprint(hide), func(b *testing.B) {
+			lines := append([]string(nil), base...)
+			r := NewMarkdownRenderer()
+			if hide {
+				r = NewMarkdownRenderer(HideMetadata())
+			}
+			r.Blocks(lines, 0, len(lines))
+			b.ResetTimer()
+			for i := 0; i < b.N; i++ {
+				lines[2] = fmt.Sprintf("Some prose %d with a [[link]] and `code`.", i)
+				r.Blocks(lines, 0, len(lines))
+			}
+		})
+	}
 }
 
 func visibleMetadataText(bl BlockLayout) string {
