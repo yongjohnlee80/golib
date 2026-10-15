@@ -50,6 +50,10 @@ type bufferState struct {
 	sourceFactory func() highlight.Source
 	source        highlight.Source
 	jumpDoc       string // the document as the jump list knows it (SetJumpDoc, Buffer.SetName)
+	// plainOn says the highlighter is the finds' own plain one, installed so a find's marks have a
+	// walk to paint on; findPlain, the editors whose active find needs it (needPlain, dropPlain)
+	plainOn   bool
+	findPlain map[*EditorCore]bool
 	// editors are the editors that show the buffer now; places, where each editor that has shown
 	// it left its cursor when it switched away
 	editors []*EditorCore
@@ -70,6 +74,8 @@ func newBufferState() *bufferState {
 		hist:   editHistory{enabled: true},
 		hlFrom: noChange,
 		places: map[*EditorCore]place{},
+
+		findPlain: map[*EditorCore]bool{},
 	}
 	s.text.log.on = true // the marks and the other editors' cursors follow the line structure's changes
 	return s
@@ -120,6 +126,7 @@ func BufferSourceFactory(factory func() highlight.Source) BufferOption {
 		}
 		b.s.hlText.setSource(source)
 		b.s.source = source
+		hostSource(b.s)
 	}
 }
 
@@ -207,4 +214,37 @@ func followPlace(p place, e lineEdit) place {
 	followCursorPos(&top, e)
 	p.top = top.ln
 	return p
+}
+
+// --- the finds' plain highlighter ----------------------------------------------------
+
+// needPlain records that c's active find marks the buffer's lines. A find paints on the highlight
+// walk, so a buffer with no highlighter gets the finds' plain one (it styles nothing); one with a
+// host's highlighter needs nothing.
+func needPlain(s *bufferState, c *EditorCore) {
+	if s.hlText.hl != nil && !s.plainOn {
+		return
+	}
+	s.findPlain[c] = true
+	if !s.plainOn {
+		s.hlText.setHighlighter(plainHighlighter)
+		s.plainOn = true
+	}
+}
+
+// dropPlain records that c's find no longer needs the walk: the plain highlighter goes when no
+// other editor's find needs it, and only while it is still the one installed.
+func dropPlain(s *bufferState, c *EditorCore) {
+	delete(s.findPlain, c)
+	if s.plainOn && len(s.findPlain) == 0 {
+		s.hlText.setHighlighter(nil)
+		s.plainOn = false
+	}
+}
+
+// hostSource records that the host installed the buffer's highlighting source: the finds' plain
+// one is gone, and no find may take the host's away.
+func hostSource(s *bufferState) {
+	s.plainOn = false
+	clear(s.findPlain)
 }

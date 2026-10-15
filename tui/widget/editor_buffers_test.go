@@ -306,3 +306,70 @@ func TestAnInsertsUndoGroupEndsAtASwitch(t *testing.T) {
 		t.Fatalf("one undo after the switch back: %q, want Q (only what was typed after it)", c.Value())
 	}
 }
+
+// A Batch that switches buffers announces each buffer's edits as that buffer's: A's when the switch
+// comes (to A's other editors too), B's at the batch's end, and B's edit is an undo step of its own.
+func TestABatchAcrossASwitchKeepsEachBuffersEdits(t *testing.T) {
+	var c *widget.EditorCore
+	var told []string
+	c, _ = coreWith(t, "a", widget.CoreOnChange(func() { told = append(told, c.Value()) }))
+	a := c.Buffer()
+	other, ol := coreWith(t, "")
+	other.SetBuffer(a)
+	ol.changed = nil
+	b := widget.NewBuffer(widget.BufferText("b"))
+	err := c.Batch(func() error {
+		if _, err := c.Insert(widget.TextPos{}, "A"); err != nil {
+			return err
+		}
+		c.SetBuffer(b)
+		_, err := c.Insert(widget.TextPos{}, "B")
+		return err
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(told) != 2 || told[0] != "Aa" || told[1] != "Bb" {
+		t.Fatalf("onChange saw %q, want [Aa Bb]: each buffer's edits announced as its own", told)
+	}
+	if len(ol.changed) == 0 {
+		t.Fatal("A's other editor was not told of A's edit")
+	}
+	c.Undo()
+	if b.Value() != "b" || a.Value() != "Aa" {
+		t.Fatalf("one undo in B: B %q, A %q; want b and Aa", b.Value(), a.Value())
+	}
+}
+
+// The finds' plain highlighter is the buffer's, shared by the editors whose find needs it: one
+// editor clearing its find, or leaving, keeps another's walk; and no find removes a highlighter the
+// host installed.
+func TestTheFindsPlainHighlighterIsShared(t *testing.T) {
+	e1, _ := coreWith(t, "a b a")
+	e2, _ := coreWith(t, "")
+	e2.SetBuffer(e1.Buffer())
+	e1.SetFind("a", widget.FindOptions{})
+	e2.SetFind("a", widget.FindOptions{})
+	e1.SetFind("", widget.FindOptions{})
+	if !e2.Highlighting() {
+		t.Fatal("e1 clearing its find took the walk e2's find paints on")
+	}
+	e1.SetFind("a", widget.FindOptions{})
+	e1.SetBuffer(widget.NewBuffer())
+	if !e2.Highlighting() {
+		t.Fatal("e1 leaving took the walk e2's find paints on")
+	}
+	e2.SetFind("", widget.FindOptions{})
+	if e2.Highlighting() {
+		t.Fatal("the plain highlighter stayed with no find needing it")
+	}
+
+	kw := highlight.HighlighterFunc(func(string, highlight.State) ([]highlight.Span, highlight.State) { return nil, 0 })
+	e1.SetBuffer(e2.Buffer())
+	e1.SetFind("a", widget.FindOptions{}) // the plain one again
+	e2.SetHighlighter(kw)                 // the host's replaces it
+	e1.SetFind("", widget.FindOptions{})
+	if !e2.Highlighting() {
+		t.Fatal("clearing a find removed the host's highlighter")
+	}
+}

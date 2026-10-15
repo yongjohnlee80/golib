@@ -34,9 +34,6 @@ func IsKeyword(cluster string) bool { return wordClass(cluster, false) >= 2 }
 type findState struct {
 	term string
 	opts FindOptions
-	// plain says the core installed a highlighter of its own so the marks paint on a core that had
-	// none; clearing the find, or the host setting one, removes it.
-	plain bool
 	// host is the host's own overlay (SetHighlightOverlay): the marks go over it.
 	host highlight.Overlay
 	// cur is the current match, drawn as a selection (SetCurrentMatch); curOn says there is one
@@ -152,13 +149,10 @@ func (c *EditorCore) ReplaceAll(term, with string, o FindOptions) (int, error) {
 func (c *EditorCore) SetFind(term string, o FindOptions) {
 	c.find.term, c.find.opts = term, FindOptions{IgnoreCase: o.IgnoreCase, WholeWord: o.WholeWord}
 	c.find.curOn = false // a new find (or none) is on no match until n, N or SetCurrentMatch
-	switch {
-	case term != "" && c.hl.text.hl == nil:
-		c.hl.text.setHighlighter(plainHighlighter)
-		c.find.plain = true
-	case term == "" && c.find.plain:
-		c.hl.text.setHighlighter(nil)
-		c.find.plain = false
+	if term != "" {
+		needPlain(c.bufferState, c)
+	} else {
+		dropPlain(c.bufferState, c)
 	}
 	c.hl.overlay = c.findOverlay()
 	c.InvalidateHighlightPaint()
