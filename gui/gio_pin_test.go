@@ -23,7 +23,7 @@ const verifiedGio = "v0.10.3"
 // base, apart from the six upstream fixes documented in the fork's NATIVE_DROP.md. Keep the
 // fork exact; native Wayland/macOS IME re-verification is a release gate, not something
 // a module-version assertion can prove.
-const pinnedDropGio = "v0.0.0-20261015223359-d2512beba836"
+const pinnedDropGio = "v0.0.0-20261015224045-f4e4e7bb0f24"
 
 // Fail closed until the native IME matrix has been performed for this fork.
 // verifiedGio deliberately remains the last verified upstream release meanwhile.
@@ -39,8 +39,11 @@ func TestGioIsTheVersionTheIMEContractWasVerifiedAgainst(t *testing.T) {
 			if f[0] == "require" {
 				v = f[2]
 			}
-			if v != pinnedDropGio || v != verifiedGio {
-				t.Fatalf("go.mod requires Gio fork %s (expected producer %s), but native IME was last verified against %s. Complete the Wayland/macOS manual matrix before moving verifiedGio and releasing.", v, pinnedDropGio, verifiedGio)
+			if v != pinnedDropGio {
+				t.Fatalf("go.mod requires Gio fork %s, expected exact producer %s", v, pinnedDropGio)
+			}
+			if v != verifiedGio {
+				t.Fatalf("go.mod requires Gio fork %s, but native IME was last verified against %s. Complete the Wayland/macOS manual matrix before moving verifiedGio and releasing.", v, verifiedGio)
 			}
 			return
 		}
