@@ -117,6 +117,7 @@ func TestACellCursorTableViewRefusesWhatItCannotShow(t *testing.T) {
 		`TableView { model: App.rows; sortable: true }`:                                           "sortable needs cellCursor",
 		`TableView { model: App.rows; cellCursor: true; delegate: Text { text: model.display } }`: "takes no delegate",
 		`TableView { model: App.rows; cellCursor: "yes" }`:                                        "TableView.cellCursor",
+		`TableView { model: App.rows; cellCursor: true; onContextMenuRequested: App.use(index) }`: "has no contextMenuRequested",
 	} {
 		err := tuidecl.Check(
 			tuidecl.LayoutSource("main.qml", []byte("import tui 1.0\nimport demo 1.0\n"+doc)),
@@ -148,5 +149,30 @@ func TestAStyleWrapsATableViewItCannotReplace(t *testing.T) {
 		tuidecl.WithStyle(tuidecl.Style{Name: "bad", Wrap: map[string]func(tui.Component){"NoSuchType": func(tui.Component) {}}}))
 	if err == nil || !strings.Contains(err.Error(), "NoSuchType") {
 		t.Errorf("a wrap of an unknown type: err %v", err)
+	}
+}
+
+// A cell-cursor TableView wears the document's palette, shows its declared columns, takes its
+// currentIndex from the document, and reads it back as the model's row.
+func TestACellCursorTableViewWearsThePaletteAndKeepsCurrentIndex(t *testing.T) {
+	rec := &recorder{}
+	s := runCells(t, `Window {
+    palette.base: "#0000aa"; palette.text: "#ffff55"
+    TableView {
+        id: v; model: App.rows; cellCursor: true; currentIndex: 2
+        TableViewColumn { role: "name"; title: "WHO"; width: 8 }
+    }
+    Shortcut { sequence: "Ctrl+G"; onActivated: App.use(v.currentIndex) }
+}`, scores(), rec)
+	s.WaitFor(t, "the declared column", func(sc string) bool {
+		return strings.Contains(sc, "WHO") && strings.Contains(sc, "bob") && !strings.Contains(sc, "100")
+	})
+	if got := viewCell(t, s, "WHO").BG; got != (tui.CellColor{Kind: tui.CellColorRGB, B: 0xaa}) {
+		t.Errorf("header background %+v, want the document base", got)
+	}
+	s.Keys(t, decltest.Ctrl('g'))
+	s.WaitFor(t, "currentIndex read", func(string) bool { return len(rec.all()) == 1 })
+	if got := rec.all()[0].Raw; got != "2" {
+		t.Errorf("currentIndex = %s, want 2 as the document set it", got)
 	}
 }
