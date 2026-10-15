@@ -44,7 +44,9 @@ import (
 // Without HotReload nothing is polled, and an embedded document is simply the
 // program.
 
-// HotReload makes a running Program follow its QML files. The layout must be
+// HotReload makes a running Program follow its QML files. A LayoutSource may
+// follow Themes, Components or Translations without a layout file; reloads keep
+// its last successfully applied source. A file-backed layout must be
 // given with [Layout], so there is a file to follow.
 func HotReload(opts ...HotReloadOption) ProgramOption {
 	h := &hotReload{interval: 250 * time.Millisecond}
@@ -118,8 +120,10 @@ func (p *Program) snapshot() snapshot { return snapshotOf(p.cfg) }
 
 func snapshotOf(c programConfig) snapshot {
 	out := snapshot{}
-	if src, err := fs.ReadFile(c.layoutFS, c.layoutFile); err == nil {
-		out["layout:"+c.layoutFile] = sha256.Sum256(src)
+	if c.layoutFS != nil {
+		if src, err := fs.ReadFile(c.layoutFS, c.layoutFile); err == nil {
+			out["layout:"+c.layoutFile] = sha256.Sum256(src)
+		}
 	}
 	for i, w := range c.watched {
 		entries, err := fs.ReadDir(w.fsys, w.dir)
@@ -230,10 +234,14 @@ func (p *Program) hotReload() {
 		}
 		catalogs = s
 	}
-	src, err := fs.ReadFile(p.cfg.layoutFS, p.cfg.layoutFile)
-	if err != nil {
-		refuse(fmt.Errorf("hot reload: %w", err))
-		return
+	src := p.liveLayout
+	if p.cfg.layoutFS != nil {
+		var err error
+		src, err = fs.ReadFile(p.cfg.layoutFS, p.cfg.layoutFile)
+		if err != nil {
+			refuse(fmt.Errorf("hot reload: %w", err))
+			return
+		}
 	}
 	spec, err := parseReload(p.cfg.layoutFile, src)
 	if err != nil {
@@ -258,6 +266,7 @@ func (p *Program) hotReload() {
 		refuse(err)
 		return
 	}
+	p.liveLayout = append([]byte(nil), src...)
 	// The catalogs land in the same frame as the layout, and OnReload sees both. They go to
 	// the App alone: the poller reads the config from its own goroutine.
 	finish := func() {

@@ -133,6 +133,25 @@ func TestR2AnEditedThemeOrComponentReachesTheScreen(t *testing.T) {
 	s.WaitForText(t, "card v2")
 }
 
+// An in-memory document follows its modules, keeping the last successful Reload's source.
+func TestHotReloadLayoutSourceKeepsTheSwitchedLayout(t *testing.T) {
+	d := newHotDir(t, hotLayout(`Text { text: "disk layout" }`))
+	s := d.runWith(func(p *tuidecl.Program) error {
+		p.Post(func() {
+			if _, err := p.Reload([]byte(hotLayout(`Text { text: "selected layout"; palette.window: Theme.bg }`))); err != nil {
+				t.Error(err)
+			}
+		})
+		return nil
+	}, tuidecl.LayoutSource("main.qml", []byte(hotLayout(`Text { text: "initial layout" }`))))
+	waitBG(t, s, "selected layout", ansi(blue))
+	d.write("themes/dark.qml", `Theme { bg: "green" }`)
+	waitBG(t, s, "selected layout", ansi(green))
+	if strings.Contains(s.String(), "disk layout") || strings.Contains(s.String(), "initial layout") {
+		t.Errorf("layout reverted: %s", s)
+	}
+}
+
 // R3 — two writes inside one interval are one reload, of the second. The polls are the test's
 // own (ReloadTicks), so the writes are quick by construction: both land before any poll, or one
 // poll sees the first and the next sees it changed again; either way the files hold still only
