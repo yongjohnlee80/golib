@@ -53,7 +53,7 @@ func TestDataTable_HeaderAndAlignedCells(t *testing.T) {
 	if strings.Index(head, "name") != strings.Index(row, "row1") {
 		t.Errorf("name misaligned:\n%q\n%q", head, row)
 	}
-	at := strings.Index(head, " n") + 1 // the n column: 5 wide, right-aligned
+	at := strings.Index(head, " n ") + 1 // the n column: 5 wide, right-aligned
 	if got := row[at : at+5]; got != "   10" {
 		t.Errorf("the n column holds %q, want 10 right-aligned in 5", got)
 	}
