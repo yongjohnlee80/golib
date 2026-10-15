@@ -35,39 +35,6 @@ func (c *EditorCore) SetTableEditing(on bool) {
 // TableEditing reports whether table editing is on.
 func (c *EditorCore) TableEditing() bool { return c.tableEditing }
 
-// tableCells is a table row's cells: each the cluster columns of the text between two pipes,
-// [start, end), spaces at either end left out. ok is false for a line that is not a table row.
-func tableCells(line string) (cells [][2]int, ok bool) {
-	t := strings.TrimSpace(line)
-	if len(t) < 2 || t[0] != '|' || t[len(t)-1] != '|' {
-		return nil, false
-	}
-	cs := clusters(line)
-	var pipes []int
-	for i, cl := range cs {
-		if cl == "|" && (i == 0 || cs[i-1] != "\\") {
-			pipes = append(pipes, i)
-		}
-	}
-	for i := 0; i+1 < len(pipes); i++ {
-		lo, hi := pipes[i]+1, pipes[i+1]
-		for lo < hi && cs[lo] == " " {
-			lo++
-		}
-		for hi > lo && cs[hi-1] == " " {
-			hi--
-		}
-		cells = append(cells, [2]int{lo, hi})
-	}
-	return cells, len(cells) > 0
-}
-
-// isDelimiterRow is a table's |---|:--:| row.
-func isDelimiterRow(line string) bool {
-	t := strings.Trim(strings.TrimSpace(line), "|")
-	return t != "" && strings.Trim(t, "-:| ") == "" && strings.Contains(t, "-")
-}
-
 // tableRow reports whether line ln is a table row table editing applies on.
 func (c *EditorCore) tableRow(ln int) ([][2]int, bool) {
 	if ln < 0 || ln >= len(c.buf.lines) || (c.listWhere != nil && !c.listWhere(ln)) {
