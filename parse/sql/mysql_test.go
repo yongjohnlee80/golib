@@ -64,10 +64,10 @@ func TestMySQLSplitter_ReadsMySQLsComments(t *testing.T) {
 			mysql: []string{`SELECT "a\";b"`, `SELECT 2 -- "`},
 			bare:  []string{`SELECT "a\"`, `b"; SELECT 2 -- "`},
 		},
-		"a doubled backtick is one": {
-			src:   "SELECT `a``;b`; SELECT 2",
-			mysql: []string{"SELECT `a``;b`", "SELECT 2"},
-			bare:  []string{"SELECT `a``", "b`", "SELECT 2"},
+		"a backticked name hides its semicolons": {
+			src:   "SELECT `a;b`; SELECT 2",
+			mysql: []string{"SELECT `a;b`", "SELECT 2"},
+			bare:  []string{"SELECT `a", "b`", "SELECT 2"},
 		},
 		"a hint is a comment": {
 			src:   "SELECT 1 /*+ ; DROP TABLE t; */; SELECT 2",
