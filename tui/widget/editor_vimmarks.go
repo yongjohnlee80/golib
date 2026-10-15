@@ -8,7 +8,7 @@ package widget
 // split or join carries the marks on the moving text along (Vim's mark_adjust, mark_col_adjust).
 // Undo and redo bring back the marks a change moved or erased (Vim's u_undoredo).
 
-// markSet is the editor's marks: a–z, and the previous jump's place.
+// markSet is a buffer's marks: a–z, and the previous jump's place.
 type markSet struct {
 	pos     [26]taPos
 	set     [26]bool
@@ -38,16 +38,8 @@ func (m *markSet) apply(e lineEdit) {
 		return
 	}
 	adjust := func(p *taPos, set *bool) {
-		switch {
-		case !*set:
-		case e.move:
-			if p.ln == e.from && (e.all || p.col >= e.cut) {
-				p.ln, p.col = e.to, e.at+max(p.col-e.cut, 0)
-			}
-		case p.ln >= e.ln && p.ln < e.ln+e.del:
+		if *set && followPos(p, e) {
 			*set = false // its line was removed
-		case p.ln >= e.ln+e.del:
-			p.ln += e.ins - e.del
 		}
 	}
 	for i := range m.pos {
@@ -66,11 +58,25 @@ func (m *markSet) restore(was markSet) {
 	}
 }
 
-// followEdits replays the buffer's logged edits on the marks: edited runs it after every change.
+// followEdits replays the shown buffer's logged edits, once: on its marks, on the jump list, on the
+// cursors of the other editors showing it and the places of the editors that have left it, and on
+// a ReplaceFollowing's saved cursor. edited runs it after every change.
 func (c *EditorCore) followEdits() {
+	s := c.bufferState
 	for _, e := range c.buf.log.take() {
 		c.marks.apply(e)
 		c.jumpsFollow(e)
+		for _, o := range s.editors {
+			if o != c {
+				followEditor(o, e)
+			}
+		}
+		for ed, p := range s.places {
+			s.places[ed] = followPlace(p, e)
+		}
+		if c.following != nil {
+			c.following.follow(e)
+		}
 	}
 }
 

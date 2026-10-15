@@ -11,13 +11,13 @@ import (
 // the state before it changed, and a screen past the frame budget is drawn provisionally.
 func TestHighlightCacheStandsAlone(t *testing.T) {
 	calls := 0
-	c := highlightCache{hl: highlight.HighlighterFunc(func(line string, in highlight.State) ([]highlight.Span, highlight.State) {
+	c := highlightCache{text: &hlText{hl: highlight.HighlighterFunc(func(line string, in highlight.State) ([]highlight.Span, highlight.State) {
 		calls++
 		return []highlight.Span{{Start: 0, End: len(line), Style: highlight.Keyword}}, in
-	})}
+	})}}
 	text := []string{"a", "b", "c"}
 	unchanged := func() int { return noChange }
-	f, behind := c.beginFrame(text, 0, unchanged)
+	f, behind := c.text.beginFrame(text, 0, unchanged)
 	for ln := range text {
 		c.highlighted(text, 0, ln, f)
 	}
@@ -25,7 +25,7 @@ func TestHighlightCacheStandsAlone(t *testing.T) {
 		t.Fatalf("first frame: behind %v, %d highlights; want 3", behind, calls)
 	}
 	text[1] = "B" // an edit to line 1, reported as the first line changed
-	f, _ = c.beginFrame(text, 0, func() int { return 1 })
+	f, _ = c.text.beginFrame(text, 0, func() int { return 1 })
 	for ln := range text {
 		c.highlighted(text, 0, ln, f)
 	}
@@ -34,9 +34,8 @@ func TestHighlightCacheStandsAlone(t *testing.T) {
 	}
 
 	long := strings.Split(strings.Repeat("x\n", hlFrameBudget+10), "\n")
-	var d highlightCache
-	d.hl = c.hl
-	if _, behind := d.beginFrame(long, hlFrameBudget+5, unchanged); !behind {
+	d := highlightCache{text: &hlText{hl: c.text.hl}}
+	if _, behind := d.text.beginFrame(long, hlFrameBudget+5, unchanged); !behind {
 		t.Fatal("a screen past the frame budget was not provisional")
 	}
 }

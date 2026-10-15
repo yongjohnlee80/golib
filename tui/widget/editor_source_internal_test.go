@@ -94,7 +94,7 @@ func TestFindPaintDoesNotChangeDeepImmediateIndent(t *testing.T) {
 		return []highlight.Span{{Start: 0, End: len(line), Style: highlight.Alert}}
 	})
 	c.InvalidateHighlightPaint()
-	if created != beforeCreated || trace.calls != beforeCalls || c.hl.valid < 2500 {
+	if created != beforeCreated || trace.calls != beforeCalls || c.hl.text.valid < 2500 {
 		t.Fatal("paint invalidation reset semantic context")
 	}
 	c.insertIndentedNewline()
@@ -115,8 +115,8 @@ func TestPaintOverlayCannotMutateSemanticSpansOrEscapeByteBounds(t *testing.T) {
 	f := c.BeginHighlight(0)
 	got := f.Styles(0)
 	f.Close()
-	if got[0] != highlight.Alert || c.hl.lines[0].semantic[0].Style != highlight.Keyword {
-		t.Fatal(got, c.hl.lines[0])
+	if got[0] != highlight.Alert || c.hl.text.lines[0].semantic[0].Style != highlight.Keyword {
+		t.Fatal(got, c.hl.text.lines[0])
 	}
 	c.SetHighlightOverlay(nil)
 	f = c.BeginHighlight(0)

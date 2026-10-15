@@ -153,11 +153,11 @@ func (c *EditorCore) SetFind(term string, o FindOptions) {
 	c.find.term, c.find.opts = term, FindOptions{IgnoreCase: o.IgnoreCase, WholeWord: o.WholeWord}
 	c.find.curOn = false // a new find (or none) is on no match until n, N or SetCurrentMatch
 	switch {
-	case term != "" && c.hl.hl == nil:
-		c.hl.setHighlighter(plainHighlighter)
+	case term != "" && c.hl.text.hl == nil:
+		c.hl.text.setHighlighter(plainHighlighter)
 		c.find.plain = true
 	case term == "" && c.find.plain:
-		c.hl.setHighlighter(nil)
+		c.hl.text.setHighlighter(nil)
 		c.find.plain = false
 	}
 	c.hl.overlay = c.findOverlay()

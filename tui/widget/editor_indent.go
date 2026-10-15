@@ -17,9 +17,9 @@ func (c *EditorCore) indentDecision(op indent.Operation, column int) indent.Deci
 		return d
 	}
 	known, incoming := c.buf.ln == 0, highlight.State(0)
-	valid := c.hl.verifiedFrom(c.buf.lines, c.takeHighlightChanged)
-	if c.buf.ln > 0 && valid >= c.buf.ln && len(c.hl.lines) >= c.buf.ln {
-		known, incoming = true, c.hl.lines[c.buf.ln-1].out
+	valid := c.hl.text.verifiedFrom(c.buf.lines, c.takeHighlightChanged)
+	if c.buf.ln > 0 && valid >= c.buf.ln && len(c.hl.text.lines) >= c.buf.ln {
+		known, incoming = true, c.hl.text.lines[c.buf.ln-1].out
 	}
 	if c.source.States != nil {
 		c.source.States.Retain(incoming)
