@@ -42,9 +42,11 @@ import (
 // and embedded vector diagrams. When the user positions the caret within a block, that block
 // seamlessly reveals its raw markdown syntax for editing.
 type MarkdownRenderer struct {
-	h1        float32
-	diagrams  Diagrammer
-	languages *highlight.Catalog
+	h1           float32
+	diagrams     Diagrammer
+	languages    *highlight.Catalog
+	hideMetadata bool
+	metadata     markdownMetadata
 }
 
 // MarkdownOption sets up a MarkdownRenderer.
@@ -63,6 +65,11 @@ func NewMarkdownRenderer(opts ...MarkdownOption) *MarkdownRenderer {
 func HeadingScale(h1 float32) MarkdownOption {
 	return func(r *MarkdownRenderer) { r.h1 = max(h1, 1) }
 }
+
+// HideMetadata omits closed frontmatter and HTML comments from the reading view, without
+// changing source positions. A block being edited still reveals its source, as other Markdown
+// blocks do; Raw mode always shows the original buffer. Incomplete frontmatter stays visible.
+func HideMetadata() MarkdownOption { return func(r *MarkdownRenderer) { r.hideMetadata = true } }
 
 // WithDiagrams draws a fenced block a Diagrammer answers Ready for (a mermaid or vega-lite fence)
 // as its picture. Without one, or until it answers, the block is drawn as code.
@@ -131,12 +138,21 @@ func (f fence) closes(line string) bool {
 // Blocks are the fenced code blocks, each a block of its lines (an unclosed one runs to the end),
 // and every other line alone.
 func (r *MarkdownRenderer) Blocks(lines []string, from, to int) []Block {
+	if r.hideMetadata {
+		r.metadata.prepare(lines)
+	}
 	var out []Block
 	front, _ := frontmatterEnd(lines)
 	for i := 0; i < len(lines); {
 		end := i + 1
 		if i == 0 && front > 0 {
 			end = front
+		} else if r.hideMetadata && r.metadata.hidden[i] {
+			for end < len(lines) && r.metadata.hidden[end] {
+				end++
+			}
+		} else if r.hideMetadata && r.metadata.continued[i] {
+			// The prefix is a comment begun on an earlier line, not a Markdown block opener.
 		} else if f, ok := openFence(lines[i]); ok {
 			for end < len(lines) && !f.closes(lines[end]) {
 				end++
@@ -167,7 +183,26 @@ func (r *MarkdownRenderer) Blocks(lines []string, from, to int) []Block {
 func (r *MarkdownRenderer) LayOut(b Block, lines []string, width float32, cursorInside bool, t *gui.TextShaper, th Theme, host DiagramHost) BlockLayout {
 	code := flow.Options{Width: width, WhiteSpace: flow.PreWrap, Color: th.Text, LineHeight: codeLineHeight}
 	if front, closed := frontmatterEnd(lines); b.From == 0 && front > 0 {
+		if r.hideMetadata && closed && !cursorInside {
+			return BlockLayout{}
+		}
 		return r.layFrontmatter(b, lines, closed, code, cursorInside, t, th)
+	}
+	if r.hideMetadata && r.metadata.hidden[b.From] {
+		if !cursorInside {
+			return BlockLayout{}
+		}
+		return r.layIndented(b, lines, code, t, th)
+	}
+	if r.hideMetadata && r.metadata.continued[b.From] {
+		if cursorInside {
+			spans := rawSpans(b.From, lines[b.From], th.Mono, nil)
+			p := flow.Lay(spans, code, t)
+			return BlockLayout{Lines: []LineLayout{{Para: p, Spans: spans}}, Height: p.Height}
+		}
+		ll, extra := r.layLine(lines, b.From, width, t, th)
+		ll.Y = extra
+		return BlockLayout{Lines: []LineLayout{ll}, Height: extra + ll.Para.Height}
 	}
 	if f, ok := openFence(lines[b.From]); ok {
 		return r.layFence(b, f, lines, code, cursorInside, t, th, host)
@@ -215,6 +250,9 @@ func (r *MarkdownRenderer) layLine(lines []string, ln int, width float32, t *gui
 		body[i].Col += clusters(line[:off])
 	}
 	spans = append(spans, body...)
+	if r.hideMetadata {
+		spans = r.metadata.mask(spans, ln)
+	}
 	if hang > 0 {
 		opts.Left += em * 0.3
 		opts.Hang = hang
