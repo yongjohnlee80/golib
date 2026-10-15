@@ -339,6 +339,8 @@ type tableViewNode struct {
 	eval     func(qml.SpecValue, map[string]qml.SpecValue) (qml.SpecValue, error)
 	normal   style.Color
 	sink     func(error)
+	// grid is the cell-cursor view (cellCursor: true), in place of table
+	grid *widget.DataTable
 }
 
 // tableColumnNode is a declared TableViewColumn: what the column shows.
@@ -394,7 +396,22 @@ func buildTableView(b Build) (tui.Component, []string, error) {
 		n.menu = b.EmitterWith("contextMenuRequested")
 	}
 	var consumed []string
+	var cells, sortable bool
 	for _, prop := range b.Props {
+		switch prop.Name {
+		case "cellCursor", "sortable":
+			v, err := boolOf(prop.Value)
+			if err != nil {
+				return nil, nil, fmt.Errorf("TableView.%s: %w (at %s)", prop.Name, err, prop.Pos)
+			}
+			if prop.Name == "cellCursor" {
+				cells = v
+			} else {
+				sortable = v
+			}
+			consumed = append(consumed, prop.Name)
+			continue
+		}
 		if prop.Name != "delegate" {
 			continue
 		}
@@ -424,6 +441,19 @@ func buildTableView(b Build) (tui.Component, []string, error) {
 			return nil, nil, fmt.Errorf("a TableView holds TableViewColumns only; its rows are its model's (at %s)", b.Pos)
 		}
 		n.declared = append(n.declared, col)
+	}
+	if cells {
+		switch {
+		case n.template != nil:
+			return nil, nil, fmt.Errorf("a TableView with a cellCursor takes no delegate (at %s)", b.Pos)
+		case n.menu != nil:
+			return nil, nil, fmt.Errorf("a TableView with a cellCursor has no contextMenuRequested (at %s)", b.Pos)
+		}
+		n.buildCells(sortable)
+		return n, consumed, nil
+	}
+	if sortable {
+		return nil, nil, fmt.Errorf("TableView.sortable needs cellCursor: true (at %s)", b.Pos)
 	}
 	n.table = widget.NewTable(n.columns(), widget.WithSource[int](modelSource{&n.mv}, func(int) string { return "" }))
 	n.table.List().SetContextMenu(n.menu != nil)
@@ -597,6 +627,10 @@ func (n *tableViewNode) follow(c Change) {
 
 func (n *tableViewNode) Init(ctx *tui.Context) {
 	n.Base.Init(ctx)
+	if n.grid != nil {
+		ctx.Mount(n.grid)
+		return
+	}
 	ctx.Mount(n.table)
 	list := n.table.List()
 	tui.SubscribeScoped(ctx, func(ev widget.ActivateEvent) {
@@ -632,8 +666,12 @@ func (n *tableViewNode) inView(list tui.Component, at tui.Point) tui.Point {
 }
 
 func (n *tableViewNode) Layout(c tui.Constraints) tui.Size {
-	sz := n.Context().LayoutChild(n.table, c)
-	n.Context().PlaceChild(n.table, tui.Rect{W: sz.W, H: sz.H})
+	var child tui.Component = n.table
+	if n.grid != nil {
+		child = n.grid
+	}
+	sz := n.Context().LayoutChild(child, c)
+	n.Context().PlaceChild(child, tui.Rect{W: sz.W, H: sz.H})
 	return sz
 }
 
@@ -641,6 +679,13 @@ func (*tableViewNode) Render(tui.Surface)         {}
 func (*tableViewNode) HandleEvent(tui.Event) bool { return false }
 
 func (n *tableViewNode) currentIndex() int {
+	if n.grid != nil {
+		core := n.grid.Core()
+		if core.Len() == 0 {
+			return -1
+		}
+		return core.SourceRow(core.Cursor().Row)
+	}
 	if i, ok := n.table.Selected(); ok {
 		return i
 	}
@@ -650,12 +695,21 @@ func (n *tableViewNode) currentIndex() int {
 var tableViewType = Type{
 	Name:  "TableView",
 	Build: buildTableView,
-	Ctor:  []string{"delegate"},
+	Ctor:  []string{"delegate", "cellCursor", "sortable"},
 	restyle: func(c tui.Component, p palette) {
 		n := c.(*tableViewNode)
 		n.normal = style.Default()
 		if text, ok := p[roleText]; ok {
 			n.normal = text
+		}
+		if n.grid != nil {
+			vs := p.viewStyles()
+			st := widget.DataTableStyles{Cell: vs.Row, Cursor: vs.CursorRow, Selected: vs.SelectedRow}
+			if p.has(roleBase, roleText) {
+				st.Header = p.look(roleBase, roleText).Bold(true).Underline(true)
+			}
+			n.grid.SetStyles(st)
+			return
 		}
 		n.table.List().ResetStyles(p.viewStyles())
 		if p.has(roleBase, roleText) {
@@ -677,7 +731,13 @@ var tableViewType = Type{
 			n.mv.setModel(m)
 			return nil
 		},
-		"currentIndex": setter("a TableView", numberOf, func(n *tableViewNode, v float64) { n.table.List().SetCursor(int(v)) }),
+		"currentIndex": setter("a TableView", numberOf, func(n *tableViewNode, v float64) {
+			if n.grid != nil {
+				n.grid.Core().SelectSourceRow(int(v))
+				return
+			}
+			n.table.List().SetCursor(int(v))
+		}),
 	},
 	Getters: map[string]Getter{
 		"currentIndex": func(c tui.Component) (qml.SpecValue, error) {

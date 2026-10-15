@@ -86,6 +86,10 @@ func TableFetchAhead(rows int) TableOption {
 // TableOnActivate is called with the source row under the cursor when Enter is pressed.
 func TableOnActivate(fn func(row int)) TableOption { return func(c *TableCore) { c.onActivate = fn } }
 
+// TableOnCursor is called with the source row under the cursor whenever that row changes: a move,
+// a new source, rows arriving under a sort. A sort that keeps the cursor on its row calls nothing.
+func TableOnCursor(fn func(row int)) TableOption { return func(c *TableCore) { c.onCursor = fn } }
+
 const (
 	tableAheadDefault = 100
 	tableMeasureRows  = 1000 // a measured column reads at most this many loaded rows
@@ -107,12 +111,14 @@ type TableCore struct {
 	sortable   bool
 	ahead      int
 	onActivate func(row int)
+	onCursor   func(row int)
+	announced  int   // the source row onCursor was last told, -1 for none
 	measured   []int // measured widths, nil until asked for after a change
 }
 
 // NewTableCore is a core over src, which may be nil until SetSource.
 func NewTableCore(src TableSource, opts ...TableOption) *TableCore {
-	c := &TableCore{sortBy: -1, ahead: tableAheadDefault}
+	c := &TableCore{sortBy: -1, ahead: tableAheadDefault, announced: -1}
 	for _, o := range opts {
 		if o != nil {
 			o(c)
@@ -167,6 +173,7 @@ func (c *TableCore) Changed() {
 	}
 	c.clamp()
 	c.wantMore()
+	c.announce()
 	c.repaint()
 }
 
@@ -179,6 +186,9 @@ func (c *TableCore) SetCursor(p TablePos) {
 	c.clamp()
 	c.reach()
 }
+
+// SelectSourceRow moves the cursor to the display row showing source row r, in its field.
+func (c *TableCore) SelectSourceRow(r int) { c.SetCursor(TablePos{c.displayRow(r), c.cur.Col}) }
 
 // Move moves the cursor by rows and fields.
 func (c *TableCore) Move(dRow, dCol int) { c.SetCursor(TablePos{c.cur.Row + dRow, c.cur.Col + dCol}) }
@@ -459,7 +469,23 @@ func (c *TableCore) reach() {
 		c.layout.Reveal(c.cur.Row, c.cur.Col)
 	}
 	c.wantMore()
+	c.announce()
 	c.repaint()
+}
+
+// announce tells onCursor the cursor's source row when it changed.
+func (c *TableCore) announce() {
+	r := -1
+	if c.Len() > 0 {
+		r = c.SourceRow(c.cur.Row)
+	}
+	if r == c.announced {
+		return
+	}
+	c.announced = r
+	if c.onCursor != nil && r >= 0 {
+		c.onCursor(r)
+	}
 }
 
 // wantMore asks a pager for rows while the cursor is within ahead rows of the end of those loaded:
