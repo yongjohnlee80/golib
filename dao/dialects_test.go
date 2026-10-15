@@ -433,7 +433,7 @@ func TestDialectNames_EngineDialectsIsDerived(t *testing.T) {
 // argument is the THIRD-PARTY DRIVER's database/sql registration name, owned
 // by go-sql-driver/mysql and modernc.org/sqlite. Its equality with two of our
 // dialect names is a coincidence, not a contract, so it must NOT be replaced
-// by a dao constant. A second, likewise named: highlight/sql's Markdown fence
+// by a dao constant. A second, likewise named: parse/sql's Markdown fence
 // labels, which are Markdown's vocabulary and not dao's.
 func TestDialectNames_NoStrayLiterals(t *testing.T) {
 	files := parseRepo(t, repoRootT(t))
@@ -558,7 +558,7 @@ func TestDialectNames_NoStrayLiterals(t *testing.T) {
 			"not exist:\n  %s", len(notLiteral), strings.Join(notLiteral, "\n  "))
 	}
 
-	// A second named exception: Markdown fence labels. highlight/sql names its
+	// A second named exception: Markdown fence labels. parse/sql names its
 	// dialects by the labels a fenced code block carries (```postgres,
 	// ```sqlite, ```mysql — the names GitHub Linguist gives them). Those are
 	// Markdown's vocabulary, not dao's: their equality with dialect names is
@@ -571,9 +571,9 @@ func TestDialectNames_NoStrayLiterals(t *testing.T) {
 		value string
 	}
 	fenceLabels := map[labelKey]int{
-		{siteKey{"highlight/sql/sql.go", "Definitions"}, "postgres"}: 0,
-		{siteKey{"highlight/sql/sql.go", "Definitions"}, "sqlite"}:   0,
-		{siteKey{"highlight/sql/sql.go", "Definitions"}, "mysql"}:    0,
+		{siteKey{"parse/sql/highlight.go", "Definitions"}, "postgres"}: 0,
+		{siteKey{"parse/sql/highlight.go", "Definitions"}, "sqlite"}:   0,
+		{siteKey{"parse/sql/highlight.go", "Definitions"}, "mysql"}:    0,
 	}
 
 	var stray []string
