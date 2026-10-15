@@ -5,7 +5,10 @@ import (
 
 	"bytes"
 	"io"
+	"sort"
 	"strings"
+	"unicode"
+	"unicode/utf8"
 )
 
 // SQL splits and inspects SQL text.
@@ -73,6 +76,10 @@ type SQL struct {
 	// Deprecated: configure with [TriggerBodies] and [New]. The field remains for existing
 	// callers, which are moving to the options.
 	TriggerBodies bool
+
+	// The options without a field of their own: MySQL's lexical rules (see [HashComments],
+	// [MySQLDashComments], [BackslashEscapes] and [ExecutableComments]).
+	hashComments, mysqlDash, backslash, executable bool
 }
 
 // Statement is one statement from a script, with its source position.
@@ -83,6 +90,9 @@ type Statement struct {
 	// Pos is where the statement's first character sits in the original
 	// source, so a caller can report a line number that matches the file.
 	Pos parse.Position
+	// End is just past the statement's last character, before its semicolon: Text is the
+	// source from Pos.Offset to End.Offset.
+	End parse.Position
 	// Verb is the leading keyword, uppercased — "SELECT", "INSERT", "WITH".
 	// It is empty when the statement does not begin with a word.
 	//
@@ -105,15 +115,60 @@ func (s SQL) Parse(src []byte) ([]Statement, error) {
 	if err != nil {
 		return nil, err
 	}
+	return statements(src, spans), nil
+}
+
+// statements are the non-empty spans as Statements, in source order.
+func statements(src []byte, spans []span) []Statement {
 	out := make([]Statement, 0, len(spans))
 	for _, sp := range spans {
-		text := strings.TrimSpace(string(src[sp.from:sp.to]))
+		raw := string(src[sp.from:sp.to])
+		text := strings.TrimSpace(raw)
 		if text == "" {
 			continue
 		}
-		out = append(out, Statement{Text: text, Pos: sp.pos, Verb: leadingVerb(text)})
+		lead := len(raw) - len(strings.TrimLeftFunc(raw, unicode.IsSpace))
+		end := positionAfter(src, sp.pos, sp.from+lead+len(text))
+		out = append(out, Statement{Text: text, Pos: sp.pos, End: end, Verb: leadingVerb(text)})
 	}
-	return out, nil
+	return out
+}
+
+// positionAfter is the position at byte offset to, counted on from pos (to >= pos.Offset).
+func positionAfter(src []byte, pos parse.Position, to int) parse.Position {
+	for i := pos.Offset; i < to; {
+		r, n := utf8.DecodeRune(src[i:])
+		if r == '\n' {
+			pos.Line, pos.Column = pos.Line+1, 1
+		} else {
+			pos.Column++
+		}
+		i += n
+	}
+	pos.Offset = to
+	return pos
+}
+
+// StatementAt is the statement holding byte offset at: the one whose source runs from its first
+// character up to where the next statement's first character begins, so an offset on its
+// semicolon, in the space or a comment after it, is its own; an offset before the first statement
+// is the first's, and one past the last is the last's. ok is false when src holds no statement.
+//
+// It reads src with the same walk as Parse, so it answers with the boundaries Parse draws.
+func (s SQL) StatementAt(src []byte, at int) (stmt Statement, ok bool, err error) {
+	spans, err := s.split(src)
+	if err != nil {
+		return Statement{}, false, err
+	}
+	all := statements(src, spans)
+	if len(all) == 0 {
+		return Statement{}, false, nil
+	}
+	i := sort.Search(len(all), func(i int) bool { return all[i].Pos.Offset > at }) - 1
+	if i < 0 {
+		i = 0
+	}
+	return all[i], true, nil
 }
 
 // Split implements [Splitter], returning the raw text of each statement.
@@ -189,6 +244,7 @@ func (s SQL) split(src []byte) ([]span, error) {
 	// TriggerBodies; inBody says a semicolon inside a trigger's body was seen,
 	// so the statement is open until its END;.
 	trig, inBody := trigStart, false
+	inExec := false // inside a MySQL /*! … */ whose body is live
 	feed := func(tok trigToken) {
 		if s.TriggerBodies {
 			trig = trigNext[trig][tok]
@@ -200,8 +256,30 @@ func (s SQL) split(src []byte) ([]span, error) {
 		pos := sc.Pos()
 
 		switch {
+		case sc.HasPrefix("--") && s.mysqlDash && !dashComment(src, at):
+			// MySQL: -- before anything but a space is two minus signs (balance--1)
+			begin(at, pos)
+			feed(trigOther)
+			sc.Next()
+			continue
 		case sc.HasPrefix("--"):
 			s.skipLineComment(sc)
+			continue
+		case s.hashComments && sc.HasPrefix("#"):
+			s.skipLineComment(sc)
+			continue
+		case s.executable && sc.HasPrefix("/*!"):
+			// MySQL runs the body, so its text is the statement's: only the opener and its
+			// version digits are passed over, and the closing */ is passed over when met.
+			sc.Take("/*!")
+			for r, ok := sc.Peek(); ok && '0' <= r && r <= '9'; r, ok = sc.Peek() {
+				sc.Next()
+			}
+			inExec = true
+			continue
+		case inExec && sc.HasPrefix("*/"):
+			sc.Take("*/")
+			inExec = false
 			continue
 		case sc.HasPrefix("/*"):
 			if err := s.skipBlockComment(sc); err != nil {
@@ -219,21 +297,21 @@ func (s SQL) split(src []byte) ([]span, error) {
 		case r == '\'':
 			begin(at, pos)
 			feed(trigOther)
-			if err := s.skipQuoted(sc, '\'', true, false); err != nil {
+			if err := s.skipQuoted(sc, '\'', true, s.backslash); err != nil {
 				return nil, err
 			}
 			continue
 		case r == '"':
 			begin(at, pos)
 			feed(trigOther)
-			if err := s.skipQuoted(sc, '"', true, false); err != nil {
+			if err := s.skipQuoted(sc, '"', true, s.backslash); err != nil {
 				return nil, err
 			}
 			continue
 		case r == '`' && s.Backticks:
 			begin(at, pos)
 			feed(trigOther)
-			if err := s.skipQuoted(sc, '`', false, false); err != nil {
+			if err := s.skipQuoted(sc, '`', true, false); err != nil {
 				return nil, err
 			}
 			continue
@@ -554,6 +632,12 @@ func (s SQL) startsEString(src []byte, at int) bool {
 		return false
 	}
 	return true
+}
+
+// dashComment reports whether the -- at offset at begins a MySQL comment: it does when a space,
+// a tab, a line break, a vertical tab or a form feed follows, or nothing does.
+func dashComment(src []byte, at int) bool {
+	return at+2 >= len(src) || isSpace(rune(src[at+2]))
 }
 
 func isSpace(r rune) bool {
