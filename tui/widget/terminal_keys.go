@@ -147,10 +147,28 @@ func functionKey(code rune, mods tui.Mods, m vt.Modes) []byte {
 func encodePaste(text string, m vt.Modes) []byte {
 	if m.BracketedPaste {
 		// A paste must not be able to end the bracket early.
-		text = strings.ReplaceAll(text, "\x1b[201~", "")
+		text = stripPasteEndMarkers(text)
 		return []byte("\x1b[200~" + text + "\x1b[201~")
 	}
 	return []byte(strings.ReplaceAll(text, "\n", "\r"))
+}
+
+// Removing a marker can join its surrounding bytes into another marker. A
+// streaming stack removes those nested/split forms too, in linear time, while
+// preserving other escape sequences and the paste's ordinary text.
+func stripPasteEndMarkers(text string) string {
+	const end = "\x1b[201~"
+	if !strings.Contains(text, end) {
+		return text
+	}
+	buf := make([]byte, 0, len(text))
+	for i := range len(text) {
+		buf = append(buf, text[i])
+		if len(buf) >= len(end) && string(buf[len(buf)-len(end):]) == end {
+			buf = buf[:len(buf)-len(end)]
+		}
+	}
+	return string(buf)
 }
 
 // mouseTracker remembers the held button, which drag reporting needs.

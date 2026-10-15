@@ -273,6 +273,8 @@ func TestTerminalSendsAPaste(t *testing.T) {
 	f.output("\x1b[?2004h")
 	send("c\nd\x1b[201~e")
 	f.waitSent("\x1b[200~c\nde\x1b[201~")
+	send("x\x1b[20\x1b[201~1~y")
+	f.waitSent("\x1b[200~xy\x1b[201~")
 }
 
 func TestTerminalPrefixWaysOut(t *testing.T) {
