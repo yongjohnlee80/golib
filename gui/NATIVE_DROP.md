@@ -29,3 +29,8 @@ Synthetic drop tests cover URI decoding, quoting, atomic refusal and ordinary
 PasteEvent delivery. A native Wayland file-manager drop into the agent terminal,
 X11 source interoperability, Finder drops, and Hangul input-method regression
 checks remain release gates; headless tests do not stand in for those gestures.
+`TestGioIsTheVersionTheIMEContractWasVerifiedAgainst` intentionally fails while
+`verifiedGio` still names the last manually verified upstream release. Keep this
+draft unmerged until the native matrix is recorded and that verification pin can
+be advanced truthfully. Automated checks can report the remaining suite separately
+with only that known release guard excluded; such a run is not a full green gate.
