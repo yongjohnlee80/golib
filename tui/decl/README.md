@@ -97,7 +97,7 @@ A `MenuSeparator` with nothing to separate is not drawn, as Qt's QMenu collapses
 | `DialogButtonBox` | — (its Buttons carry `DialogButtonBox.buttonRole`) | — | — | — | — |
 | `ListView` | `textRole` | `model`, `currentIndex` | `currentIndex` | `activated(index)`, `currentIndexChanged(index)` | — |
 | `ComboBox` | `textRole`, `valueRole`, `placeholderText`, `maxWidth` (default 40 cells) | `model`, `currentIndex` | `currentIndex`, `currentValue` | `activated(index)` | — |
-| `TableView` | — | `model`, `currentIndex` | `currentIndex` | `activated(index)`, `currentIndexChanged(index)`, golib's `contextMenuRequested(index, x, y)` (see below) | — |
+| `TableView` | golib's `cellCursor`, `sortable` (see below) | `model`, `currentIndex` | `currentIndex` | `activated(index)`, `currentIndexChanged(index)`, golib's `contextMenuRequested(index, x, y)` (see below) | — |
 | `TableViewColumn` | `role`, `title`, `width`, `elideMode` | — | — | — | — |
 | `TabView` | palette (the bar: `window`/`windowText` behind the titles, `button`/`buttonText` for each, `highlight`/`highlightedText` for the current one) | `currentIndex` | `currentIndex`, `count` | `currentIndexChanged(index)` | — |
 | `Tab` | `title`; one child, its content | — | — | — | — |
@@ -260,7 +260,19 @@ is replaced and when the view is destroyed.
 
 A `TableView` shows the model's own columns — a query's result, whatever
 columns it has, redrawn on the same view when they change — unless it declares
-`TableViewColumn`s. A `TreeView` shows a tree model (`tuidecl.TreeListModel`,
+`TableViewColumn`s.
+
+golib's `cellCursor: true` (set at construction) shows the rows through a `widget.TableCore` and
+a `widget.DataTable`: a cursor on cells (h/j/k/l, g/G, 0/$, `v` a range, `y` copies it as TSV),
+scrolled both ways. `sortable: true` lets `s` sort the loaded rows by the cursor's column, up,
+down and off; the header marks it, and says "(loaded rows)" while the model has more. A model that
+is a `tuidecl.Fetcher` (Qt's `canFetchMore`/`fetchMore`, asked at the root `Index{}`) is asked
+for more rows as the cursor nears the end of those loaded; the host inserts them when they come.
+`index` in its signals and `currentIndex` are the model's row whatever the sort shows. A
+cell-cursor `TableView` takes no `delegate` and has no `contextMenuRequested`, and `sortable`
+needs it.
+
+    TableView { model: App.result; cellCursor: true; sortable: true; onActivated: App.open(index) } A `TreeView` shows a tree model (`tuidecl.TreeListModel`,
 or a `TreeModel` of the host's): a row opens and, the first time, the view asks
 the model to load its children (`OnFetch`), which the host sets with
 `SetChildren`. Its signals carry the row's `tuidecl.Index`, which the handler
