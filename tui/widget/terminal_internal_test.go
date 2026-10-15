@@ -2,6 +2,8 @@ package widget
 
 import (
 	"io"
+	"math/rand/v2"
+	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -178,9 +180,44 @@ func TestEncodePaste(t *testing.T) {
 	if got := string(encodePaste("a\nb", vt.Modes{})); got != "a\rb" {
 		t.Errorf("plain paste %q", got)
 	}
-	got := string(encodePaste("x\x1b[201~y", vt.Modes{BracketedPaste: true}))
-	if got != "\x1b[200~xy\x1b[201~" {
-		t.Errorf("bracketed paste %q: the end marker inside must not survive", got)
+	for _, c := range []struct{ name, text, want string }{
+		{"a marker", "x\x1b[201~y", "xy"},
+		{"a marker split around another", "x\x1b[20\x1b[201~1~y", "xy"},
+		{"nested twice", "\x1b[20\x1b[20\x1b[201~1~1~; touch pwned", "; touch pwned"},
+		{"a marker at each end", "\x1b[201~a\x1b[201~", "a"},
+		{"other escapes stay", "\x1b[200~a\x1b[31m", "\x1b[200~a\x1b[31m"},
+	} {
+		got := string(encodePaste(c.text, vt.Modes{BracketedPaste: true}))
+		if got != "\x1b[200~"+c.want+"\x1b[201~" {
+			t.Errorf("%s: bracketed paste %q, want the body %q", c.name, got, c.want)
+		}
+	}
+}
+
+// A marker nested two hundred thousand deep, 2.2 MB, is removed whole in one pass over the text.
+func TestADeeplyNestedEndMarkerIsRemovedWhole(t *testing.T) {
+	const depth = 200000
+	text := strings.Repeat("\x1b[20", depth) + "\x1b[201~" + strings.Repeat("1~", depth) + "z"
+	if got := string(encodePaste(text, vt.Modes{BracketedPaste: true})); got != "\x1b[200~z\x1b[201~" {
+		t.Errorf("a nested marker left %d bytes before z", len(got)-len("\x1b[200~z\x1b[201~"))
+	}
+}
+
+// No text, however its pieces of the end marker are arranged, ends a bracketed paste before its
+// own end: the body between the brackets never holds the marker.
+func TestABracketedPasteBodyNeverHoldsTheEndMarker(t *testing.T) {
+	pieces := []string{"\x1b", "[", "2", "0", "1", "~", "\x1b[201~", "\x1b[20", "1~", "a"}
+	rng := rand.New(rand.NewPCG(1, 2))
+	for i := 0; i < 20000; i++ {
+		var b strings.Builder
+		for n := rng.IntN(12); n >= 0; n-- {
+			b.WriteString(pieces[rng.IntN(len(pieces))])
+		}
+		out := string(encodePaste(b.String(), vt.Modes{BracketedPaste: true}))
+		body := strings.TrimSuffix(strings.TrimPrefix(out, "\x1b[200~"), "\x1b[201~")
+		if strings.Contains(body, "\x1b[201~") {
+			t.Fatalf("%q: the body %q ends the paste early", b.String(), body)
+		}
 	}
 }
 

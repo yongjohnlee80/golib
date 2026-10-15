@@ -142,33 +142,34 @@ func functionKey(code rune, mods tui.Mods, m vt.Modes) []byte {
 	return nil
 }
 
+// pasteEndMarker ends a bracketed paste (mode 2004).
+const pasteEndMarker = "\x1b[201~"
+
 // encodePaste brackets a paste when the program asked for it (2004), and
 // otherwise sends it as typed, with newlines as Enter.
 func encodePaste(text string, m vt.Modes) []byte {
 	if m.BracketedPaste {
-		// A paste must not be able to end the bracket early.
-		text = stripPasteEndMarkers(text)
-		return []byte("\x1b[200~" + text + "\x1b[201~")
+		return []byte("\x1b[200~" + withoutPasteEnd(text) + pasteEndMarker)
 	}
 	return []byte(strings.ReplaceAll(text, "\n", "\r"))
 }
 
-// Removing a marker can join its surrounding bytes into another marker. A
-// streaming stack removes those nested/split forms too, in linear time, while
-// preserving other escape sequences and the paste's ordinary text.
-func stripPasteEndMarkers(text string) string {
-	const end = "\x1b[201~"
-	if !strings.Contains(text, end) {
+// withoutPasteEnd is text with every end marker removed, including one that removing another
+// forms: a single strings.ReplaceAll leaves "\x1b[20" + marker + "1~" as a new marker, which would
+// end the paste early and send the rest as typed keys. The marker has no prefix that is also its
+// suffix, so dropping it whenever the output ends with it leaves none, in one pass.
+func withoutPasteEnd(text string) string {
+	if !strings.Contains(text, pasteEndMarker) {
 		return text
 	}
-	buf := make([]byte, 0, len(text))
-	for i := range len(text) {
-		buf = append(buf, text[i])
-		if len(buf) >= len(end) && string(buf[len(buf)-len(end):]) == end {
-			buf = buf[:len(buf)-len(end)]
+	out := make([]byte, 0, len(text))
+	for i := 0; i < len(text); i++ {
+		out = append(out, text[i])
+		if n := len(out) - len(pasteEndMarker); n >= 0 && string(out[n:]) == pasteEndMarker {
+			out = out[:n]
 		}
 	}
-	return string(buf)
+	return string(out)
 }
 
 // mouseTracker remembers the held button, which drag reporting needs.
