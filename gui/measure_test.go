@@ -44,3 +44,31 @@ func abs32(v float32) float32 {
 	}
 	return v
 }
+
+// Runs shaped together are one line, each run at its X: the layout reaches the last run's end, its
+// first glyph is at the first run's X, the runs share the tallest ascent, an empty run takes no
+// room and a line break is a space.
+func TestLayoutRunsPlacesEachRunOnOneLine(t *testing.T) {
+	sh := NewRecordingCanvas(Size{W: 100, H: 20}, Size{W: 8, H: 16}).Text()
+	f := Font{Size: 16}
+	ab, cd := sh.Layout("ab", f, 0), sh.Layout("cd", f, 0)
+	l := sh.LayoutRuns([]TextRun{{Text: "ab", X: 20}, {Text: ""}, {Text: "cd", X: 100}}, f)
+	if len(l.lines) != 1 {
+		t.Fatalf("%d lines, want the runs on one", len(l.lines))
+	}
+	if l.lines[0].x != 20 {
+		t.Errorf("the first glyph at %v, want the first run's 20", l.lines[0].x)
+	}
+	if want := 100 + cd.Width; abs32(l.Width-want) > 0.5 {
+		t.Errorf("width %v, want the last run's end %v", l.Width, want)
+	}
+	if l.Ascent != ab.Ascent || abs32(l.Height-(l.Ascent+l.Descent)) > 0.01 {
+		t.Errorf("ascent %v height %v, want the runs' ascent %v and one line's height", l.Ascent, l.Height, ab.Ascent)
+	}
+	if got, want := sh.LayoutRuns([]TextRun{{Text: "a\nb"}}, f).Width, sh.Layout("a b", f, 0).Width; abs32(got-want) > 0.5 {
+		t.Errorf("a line break laid %v wide, want a space's %v", got, want)
+	}
+	if e := sh.LayoutRuns([]TextRun{{Text: ""}}, f); e.Width != 0 || len(e.lines) != 0 {
+		t.Errorf("empty runs laid %+v", e)
+	}
+}

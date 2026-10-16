@@ -30,7 +30,7 @@ import (
 // NativeStyle returns golib's standard vector painter configuration.
 // It maps higher-level widget roles (push buttons, check boxes, text fields,
 // progress bars, tab bars, scrollbars, a dialog's shadow and a floating panel's,
-// a real dim behind a dialog, and HTML views) to hardware-accelerated vector rendering routines.
+// a real dim behind a dialog, HTML views and data tables) to hardware-accelerated vector rendering routines.
 //
 // Each painter inspects the cell colors, text content, and theme attributes chosen by
 // the underlying terminal widget, preserving active theme styling, focused/armed states,
@@ -50,6 +50,7 @@ func NativeStyle() *Style {
 	s.ForRole(tui.RoleWindow, paintWindow)
 	ForType(s, paintScrim)
 	ForType(s, paintHTMLView)
+	ForType(s, paintDataTable)
 	return s
 }
 
@@ -58,6 +59,17 @@ func NativeStyle() *Style {
 // to its cells.
 func paintHTMLView(v *widget.HTMLView) (View, tui.NativeScope, bool) {
 	view, ok := v.BoundLayout().(View)
+	if !ok {
+		return nil, 0, false
+	}
+	return view, tui.ScopeSubtree, true
+}
+
+// paintDataTable draws a DataTable whose bound layout is a native view (gui/widget.BindTable binds
+// one): that layout, over the widget's whole subtree. A DataTable still laid out in cells is left
+// to its cells.
+func paintDataTable(t *widget.DataTable) (View, tui.NativeScope, bool) {
+	view, ok := t.BoundLayout().(View)
 	if !ok {
 		return nil, 0, false
 	}

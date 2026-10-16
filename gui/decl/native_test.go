@@ -5,6 +5,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/yongjohnlee80/golib/gui"
 	guidecl "github.com/yongjohnlee80/golib/gui/decl"
 	"github.com/yongjohnlee80/golib/gui/widget"
 	"github.com/yongjohnlee80/golib/tui"
@@ -316,4 +317,56 @@ Window {
 		b, okB := bgOf("beta")
 		return okA && okB && a == red && b == blue
 	})
+}
+
+// A TableView with a cellCursor under the native style shows tui's DataTable bound to gui's pixel
+// layout, over the same core; with no style, or with a row cursor, the table stays in cells.
+func TestNativeBindsACellCursorTableViewsPixelLayout(t *testing.T) {
+	rows := func() *tuidecl.ListModel {
+		m := tuidecl.NewListModel("name")
+		m.SetColumns(tuidecl.Column{Role: "name", Title: "NAME"})
+		m.Reset([]tuidecl.Row{{"name": "carol"}, {"name": "alice"}})
+		return m
+	}
+	for _, tc := range []struct {
+		doc            string
+		native, pixels bool
+	}{
+		{"TableView { id: v; model: App.rows; cellCursor: true }", true, true},
+		{"TableView { id: v; model: App.rows; cellCursor: true }", false, false},
+		{"TableView { id: v; model: App.rows }", true, false},
+	} {
+		opts := []tuidecl.ProgramOption{
+			tuidecl.LayoutSource("main.qml", []byte("import tui 1.0\nimport demo 1.0\n"+tc.doc)),
+			tuidecl.Singleton("demo", "1.0", "App"),
+			tuidecl.Sources(map[string]any{"App.rows": rows()}),
+		}
+		if tc.native {
+			opts = append(opts, tuidecl.WithStyle(guidecl.Native()))
+		}
+		s := decltest.Run(t, 40, 8, opts...)
+		s.WaitFor(t, "the table mounted", func(string) bool {
+			found := false
+			onLoop(t, s, func() { _, found = s.Program.Find("v") })
+			return found
+		})
+		var cellCursor bool
+		onLoop(t, s, func() {
+			c, _ := s.Program.Find("v")
+			dt := tuidecl.TableOf(c)
+			cellCursor = dt != nil
+			pixels := false
+			if dt != nil {
+				_, pixels = dt.BoundLayout().(interface{ Paint(gui.Canvas) })
+			}
+			if pixels != tc.pixels {
+				t.Errorf("%q native=%v: bound to a pixel layout = %v", tc.doc, tc.native, pixels)
+			}
+		})
+		if !tc.pixels {
+			s.WaitForText(t, "carol") // in cells, as tui draws it
+		} else if !cellCursor {
+			t.Errorf("%q: no DataTable", tc.doc)
+		}
+	}
 }

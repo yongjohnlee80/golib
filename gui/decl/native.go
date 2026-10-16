@@ -22,7 +22,9 @@
 //
 // A Program running on gui's backend adopts this style via tuidecl.WithStyle(decl.Native()).
 // Documents specifying `Editor { }` or `HTMLView { }` receive native vector rendering, sub-cell
-// typography, and smooth diagrams while preserving identical declarative contracts.
+// typography, and smooth diagrams while preserving identical declarative contracts; a
+// `TableView { cellCursor: true }` keeps tui's DataTable and its core, laid out and drawn in pixels
+// (widget.BindTable).
 package decl
 
 import (
@@ -88,8 +90,9 @@ func (n *native) htmlDocument(tuidecl.DocumentSpec) widget.DocumentView {
 	return v
 }
 
-// Native is gui's style. It replaces Editor, and lays HTMLView out in pixels (the same tui
-// widget, so a host reaches it by id either way); every other type stays tui's.
+// Native is gui's style. It replaces Editor, lays HTMLView out in pixels (the same tui widget, so
+// a host reaches it by id either way), and wraps a TableView with a cellCursor so its DataTable is
+// laid out in pixels over the same core; every other type stays tui's.
 func Native(opts ...NativeOption) tuidecl.Style {
 	n := &native{renderers: map[string]func(tuidecl.RendererSpec) widget.Renderer{},
 		documents: map[string]func(tuidecl.DocumentSpec) widget.DocumentView{}}
@@ -112,7 +115,15 @@ func Native(opts ...NativeOption) tuidecl.Style {
 		}
 		return c, consumed, err
 	}
-	return tuidecl.Style{Name: "native", Types: []tuidecl.Type{ed, hv}}
+	return tuidecl.Style{Name: "native", Types: []tuidecl.Type{ed, hv}, Wrap: map[string]func(tui.Component){
+		// a cell-cursor TableView's DataTable, laid out in pixels and drawn natively over the same
+		// core; a row-cursor TableView has none, and keeps tui's rendering
+		"TableView": func(c tui.Component) {
+			if d := tuidecl.TableOf(c); d != nil {
+				widget.BindTable(d)
+			}
+		},
+	}}
 }
 
 // markdownRenderer is golib's renderer for a MarkdownRenderer declaration. It reads the spec's

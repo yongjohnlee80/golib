@@ -716,3 +716,30 @@ func (viewLayout) Text(widget.DocPos, widget.DocPos) string           { return "
 func (viewLayout) LinkAt(float32, float32) string                     { return "" }
 func (viewLayout) BlockAt(float32) (int, float32)                     { return -1, 0 }
 func (viewLayout) BlockTop(int) (float32, bool)                       { return 0, false }
+
+// The native style draws a DataTable bound to a pixel layout with that layout, over its whole
+// subtree, and leaves one laid out in cells to its cells.
+func TestNativeStyleDrawsABoundDataTable(t *testing.T) {
+	s := NativeStyle()
+	dt := widget.NewDataTable(widget.NewTableCore(nil))
+	if p := s.painterFor(dt); p == nil {
+		t.Fatal("no painter for DataTable")
+	} else if _, _, ok := p(dt); ok {
+		t.Error("a DataTable laid out in cells was drawn natively")
+	}
+	l := &tableViewLayout{}
+	dt.BindLayout(l)
+	view, scope, ok := s.painterFor(dt)(dt)
+	if !ok || view != View(l) || scope != tui.ScopeSubtree {
+		t.Errorf("a bound DataTable drew %v %v %v, want its layout over the subtree", view, scope, ok)
+	}
+}
+
+// tableViewLayout is a TableLayout that is a View: what gui/widget's pixel table is.
+type tableViewLayout struct{}
+
+func (tableViewLayout) Paint(Canvas)       {}
+func (tableViewLayout) Reveal(int, int)    {}
+func (tableViewLayout) PageRows() int      { return 1 }
+func (tableViewLayout) Measure(string) int { return 0 }
+func (tableViewLayout) Changed()           {}

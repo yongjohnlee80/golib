@@ -2,6 +2,7 @@ package gui
 
 import (
 	"cmp"
+	"strings"
 	"unicode/utf8"
 
 	"github.com/yongjohnlee80/gio/font"
@@ -269,4 +270,57 @@ func (t *TextShaper) Layout(s string, f Font, maxWidth float32) *TextLayout {
 		tl.Height = tl.Ascent + (float32(lastY-firstY)+float32(lastDescent)/64)/t.scale
 	}
 	return tl
+}
+
+// TextRun is a piece of one line of text placed at X, in logical pixels from the line's start.
+type TextRun struct {
+	Text string
+	X    float32
+}
+
+// LayoutRuns shapes runs of text in one font on one line, each at its own X, as one layout: a
+// table row's cells drawn with one DrawText rather than one each. The runs share a baseline, the
+// tallest run's ascent below the layout's top; a newline in a run is drawn as a space.
+func (t *TextShaper) LayoutRuns(runs []TextRun, f Font) *TextLayout {
+	tl := &TextLayout{scale: t.scale}
+	var glyphs []text.Glyph
+	var right fixed.Int26_6
+	for _, r := range runs {
+		if r.Text == "" {
+			continue
+		}
+		s := strings.Map(oneLine, r.Text)
+		t.s.LayoutString(text.Parameters{
+			Font:     t.font(s, f),
+			PxPerEm:  fixed.Int26_6(f.Size * t.scale * 64),
+			MaxWidth: 1 << 20,
+		}, s)
+		at := fixed.Int26_6(r.X * t.scale * 64)
+		first, origin := true, fixed.Int26_6(0)
+		for g, ok := t.s.NextGlyph(); ok; g, ok = t.s.NextGlyph() {
+			if first {
+				first, origin = false, g.X
+			}
+			g.X += at - origin
+			tl.Ascent = max(tl.Ascent, float32(g.Ascent)/64/t.scale)
+			tl.Descent = max(tl.Descent, float32(g.Descent)/64/t.scale)
+			right = max(right, g.X+g.Advance)
+			glyphs = append(glyphs, g)
+		}
+	}
+	if len(glyphs) == 0 {
+		return tl
+	}
+	tl.lines = []shapedLine{{path: t.s.Shape(glyphs), bitmaps: t.s.Bitmaps(glyphs), x: float32(glyphs[0].X) / 64}}
+	tl.Width = float32(right) / 64 / t.scale
+	tl.Height = tl.Ascent + tl.Descent
+	return tl
+}
+
+// oneLine is s with its line breaks as spaces.
+func oneLine(r rune) rune {
+	if r == '\n' || r == '\r' {
+		return ' '
+	}
+	return r
 }
