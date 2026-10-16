@@ -23,6 +23,7 @@ package controls
 
 import (
 	"errors"
+	"fmt"
 
 	"github.com/yongjohnlee80/golib/parse/qml"
 	"github.com/yongjohnlee80/golib/tui"
@@ -49,6 +50,8 @@ var EchoMode = tuidecl.Enum{Scope: "TextInput", Values: []string{"Normal", "Pass
 //	clear()          empty it
 //	accepted(text)   Enter
 //	textEdited(text) every edit the user makes
+//	completions      a model whose rows (their first role) Tab completes the
+//	                 word before the cursor from (widget.WordCompleter)
 //
 // A handler reads `text` as it would in Qt, where a handler runs in its
 // object's scope: `onAccepted: App.run(text)`.
@@ -60,7 +63,8 @@ var TextField = tuidecl.Type{
 	Build: buildTextField,
 	Ctor:  []string{"placeholderText", "echoMode"},
 	Setters: map[string]tuidecl.Setter{
-		"text": tuidecl.StringSetter((*widget.TextInput).SetValue),
+		"text":        tuidecl.StringSetter((*widget.TextInput).SetValue),
+		"completions": setCompletions,
 	},
 	Methods: map[string]tuidecl.Method{
 		// Qt's TextField.clear(): empty the field — a prompt starting over.
@@ -85,6 +89,34 @@ var TextField = tuidecl.Type{
 		}
 		c.(*widget.TextInput).WithStyles(st)
 	},
+}
+
+// setCompletions is the completions setter: the word before the cursor is completed from the
+// model's rows, read at each Tab and paint so they follow the model. A host wanting other rules
+// (a table's field names, quoted as a bar reads them) sets the field's completer from Go:
+// tuidecl.FindAs[*widget.TextInput](p, id) and SetCompleter(widget.TableFieldCompleter(…)).
+func setCompletions(c tui.Component, v qml.SpecValue) error {
+	ti, ok := c.(*widget.TextInput)
+	if !ok {
+		return errors.New("not a TextField")
+	}
+	m, ok := v.Obj.(tuidecl.ItemModel)
+	if v.Kind != qml.SpecValueObject || !ok {
+		return fmt.Errorf("TextField.completions wants a model, got %s (at %s)", v.Kind, v.Pos)
+	}
+	ti.SetCompleter(widget.WordCompleter(func() []string {
+		role := ""
+		if roles := m.Roles(); len(roles) > 0 {
+			role = roles[0]
+		}
+		n := m.RowCount(nil)
+		out := make([]string, 0, n)
+		for i := range n {
+			out = append(out, m.Data(tuidecl.Index{Row: i}, role).Raw)
+		}
+		return out
+	}))
+	return nil
 }
 
 func buildTextField(b tuidecl.Build) (tui.Component, []string, error) {
