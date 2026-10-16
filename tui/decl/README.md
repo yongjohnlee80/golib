@@ -97,7 +97,7 @@ A `MenuSeparator` with nothing to separate is not drawn, as Qt's QMenu collapses
 | `DialogButtonBox` | — (its Buttons carry `DialogButtonBox.buttonRole`) | — | — | — | — |
 | `ListView` | `textRole` | `model`, `currentIndex` | `currentIndex` | `activated(index)`, `currentIndexChanged(index)` | — |
 | `ComboBox` | `textRole`, `valueRole`, `placeholderText`, `maxWidth` (default 40 cells) | `model`, `currentIndex` | `currentIndex`, `currentValue` | `activated(index)` | — |
-| `TableView` | golib's `cellCursor`, `sortable` (see below) | `model`, `currentIndex`; with a `cellCursor`, golib's `rowNumbers` (each row's number in a gutter), `orderBy` (the sort as ORDER BY text) and `contextMenu` (a right-click menu of the host's rows) (see below) | `currentIndex`; with a `cellCursor`, golib's `orderBy` and `orderByError` | `activated(index)`, `currentIndexChanged(index)`, golib's `contextMenuRequested(index, x, y)`, golib's `orderByChanged(orderBy)` (see below) | — |
+| `TableView` | golib's `cellCursor`, `sortable` (see below) | `model`, `currentIndex`; with a `cellCursor`, golib's `rowNumbers` (each row's number in a gutter), `orderBy` (the sort as ORDER BY text), `filter` (the rows shown, as WHERE text) and `contextMenu` (a right-click menu of the host's rows) (see below) | `currentIndex`; with a `cellCursor`, golib's `orderBy`, `orderByError`, `filter` and `filterError` | `activated(index)`, `currentIndexChanged(index)`, golib's `contextMenuRequested(index, x, y)`, golib's `orderByChanged(orderBy)` (see below) | — |
 | `TableViewColumn` | `role`, `title`, `width`, `elideMode` | — | — | — | — |
 | `TabView` | palette (the bar: `window`/`windowText` behind the titles, `button`/`buttonText` for each, `highlight`/`highlightedText` for the current one) | `currentIndex` | `currentIndex`, `count` | `currentIndexChanged(index)` | — |
 | `Tab` | `title`; one child, its content | — | — | — | — |
@@ -277,8 +277,27 @@ number. golib's `orderBy` is the sort as ORDER BY text over the loaded rows, `na
 where a field is its title, a `"quoted title"` or a 1-based position, and "" is no sort. Setting
 it sorts; text that does not parse leaves the sort as it was, and `orderByError` (read in a
 handler) says why, "" when it parsed. The view keeps it: a new result is sorted by it too. `s`
-writes its sort back to `orderBy`, as `"name ASC"`, and raises `orderByChanged(orderBy)`. golib's
-`contextMenu: true` opens a menu at a right press, the selection left as it is; its rows are the
+writes its sort back to `orderBy`, as `"name ASC"`, and raises `orderByChanged(orderBy)`.
+
+golib's `filter` shows only the loaded rows a WHERE clause keeps, then sorts those: comparisons
+(`= != <> < <= > >=`) of a field with a number, a `'string'` or `TRUE`/`FALSE`, `IS [NOT] NULL`,
+`[NOT] LIKE 'pattern'` (`%` any run, `_` one character, case-sensitive), joined by `NOT`, `AND` and
+`OR` (in that precedence) and parentheses; a field is a name, a `"quoted name"` or `#n`, and ""
+shows every row. It filters what is loaded and asks for nothing: no query runs, and a `Fetcher` is
+asked for more rows only as the cursor's row nears the end of the loaded rows, as without it. With the model's
+kinds, values compare as SQL's do — a NULL cell is unknown to every comparison and only `IS NULL`
+keeps it, numbers compare exactly, booleans as booleans, anything with a string as text, and a
+pairing of kinds that do not compare (a boolean with a number) is unknown, so `NOT` of it does not
+keep the row either. Without kinds every cell is text: a number compares with a cell whose text is
+one, and no cell is NULL, so `IS NULL` keeps none. Setting `filter` applies it; text that does not
+parse leaves the filter as it was, and `filterError` says why, "" when it parsed. The view keeps
+it, and a new result is filtered by it too; when it does not parse against the new fields, every
+row shows and `filterError` says why. Only the document sets it, so it has no changed
+signal. The cursor stays on its row while that row is shown, else goes to the first; a selection
+ends; the row numbers, selections and copies count the rows shown. A filter keeping no row shows
+the empty table, with no cursor row and nothing to copy.
+
+golib's `contextMenu: true` opens a menu at a right press, the selection left as it is; its rows are the
 host's, `tuidecl.TableOf(c).Menu().SetRows(…)`, as an `Editor`'s are, and with none the press goes
 on. A model that knows each cell's kind (`widget.TableKinds`) sorts by kind — NULLs last, numbers
 as exact decimals — when the TableView declares no `TableViewColumn`s. A model that
@@ -286,7 +305,7 @@ is a `tuidecl.Fetcher` (Qt's `canFetchMore`/`fetchMore`, asked at the root `Inde
 for more rows as the cursor nears the end of those loaded; the host inserts them when they come.
 `index` in its signals and `currentIndex` are the model's row whatever the sort shows. A
 cell-cursor `TableView` takes no `delegate` and has no `contextMenuRequested` (its menu is
-`contextMenu`), and `sortable`, `rowNumbers`, `orderBy` and `contextMenu` need it. A native backend binds its own pixel layout to the `DataTable`
+`contextMenu`), and `sortable`, `rowNumbers`, `orderBy`, `filter` and `contextMenu` need it. A native backend binds its own pixel layout to the `DataTable`
 (`widget.DataTable.BindLayout`; gui's `Native()` style does so for every cell-cursor `TableView`)
 and draws the same core: the same keys, cursor, sort, paging and signals. A row-cursor
 `TableView` is drawn in cells on either.

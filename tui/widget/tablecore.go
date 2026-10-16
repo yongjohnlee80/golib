@@ -11,8 +11,9 @@ import (
 
 // TABLE CORE — a table's behaviour apart from any view, as EditorCore is an editor's and
 // WindowCore a window's: the rows it shows through a source, a cell cursor, a selection of cells,
-// rows or a block, the loaded rows sorted by one or more fields, copying, and asking a paged
-// source for more rows as the cursor nears the end of those loaded. A view paints what the core says and reports its own
+// rows or a block, the loaded rows sorted by one or more fields and filtered by a predicate,
+// copying, and asking a paged source for more rows as the cursor nears the end of those loaded.
+// A view paints what the core says and reports its own
 // geometry through TableLayout; one core serves a terminal view, a pixel view, and a Markdown table
 // in an editor's buffer (TableText). Every method runs on the loop.
 
@@ -118,8 +119,10 @@ type TableCore struct {
 	cur        TablePos
 	anchor     *TablePos
 	kind       TableSelectKind // what the selection between anchor and cur covers
-	order      []int           // display row → source row; nil: source order
+	order      []int           // display row → source row; nil: source order, every row
 	keys       []TableSortKey  // the sort, nil: unsorted
+	filter     TablePredicate  // the rows shown, nil: every row
+	place      []int           // with a filter, display row → its place among the loaded rows in the sort's order
 	sortable   bool
 	rowNumbers bool
 	ahead      int
@@ -157,7 +160,7 @@ func NewTableCore(src TableSource, opts ...TableOption) *TableCore {
 // repaint beyond layout.Changed.
 func (c *TableCore) Bind(ctx *tui.Context, l TableLayout) { c.ctx, c.layout = ctx, l }
 
-// SetSource replaces the rows; the cursor, selection and sort start again.
+// SetSource replaces the rows; the cursor, selection, sort and filter start again.
 func (c *TableCore) SetSource(src TableSource) {
 	c.src = src
 	c.pager, _ = src.(TablePager)
@@ -165,6 +168,7 @@ func (c *TableCore) SetSource(src TableSource) {
 	c.kinds, _ = src.(TableKinds)
 	had := c.keys != nil
 	c.cur, c.anchor, c.kind, c.order, c.keys = TablePos{}, nil, TableSelectCells, nil, nil
+	c.filter, c.place = nil, nil
 	c.dropPending()
 	c.dragging = false
 	c.Changed()
@@ -207,8 +211,17 @@ func (c *TableCore) Source() TableSource { return c.src }
 // Editable reports whether the source's cells and shape can change.
 func (c *TableCore) Editable() bool { return c.edit != nil }
 
-// Len is the rows loaded; Fields the columns.
+// Len is the display rows: the rows loaded, or with a filter those it keeps (Filtered). Fields
+// is the columns.
 func (c *TableCore) Len() int {
+	if c.filter != nil {
+		return len(c.order)
+	}
+	return c.loaded()
+}
+
+// loaded is the rows the source has loaded, shown or not.
+func (c *TableCore) loaded() int {
 	if c.src == nil {
 		return 0
 	}
@@ -222,23 +235,27 @@ func (c *TableCore) Fields() []TableField {
 	return c.src.Fields()
 }
 
-// Changed is the source changed: the sort is applied to the rows now loaded, the cursor kept on
-// the source row it was on (or clamped, when that row is gone), and the view repainted. A pager's
-// new rows are merged into a sort without moving the cursor off its row.
+// Changed is the source changed: the sort and the filter are applied to the rows now loaded, the
+// cursor kept on the source row it was on (clamped when that row is gone, and on the first row
+// when the filter no longer shows it), and the view repainted. A pager's new rows are filtered
+// and merged into a sort without moving the cursor off its row.
 func (c *TableCore) Changed() {
 	c.measured = nil
-	keep := c.SourceRow(c.cur.Row) // read through the order the cursor was placed in
+	keep := -1
+	if c.Len() > 0 {
+		keep = c.SourceRow(c.cur.Row) // read through the order the cursor was placed in
+	}
 	before := len(c.keys)
 	c.keys = c.validKeys(c.keys)
-	if c.keys != nil {
-		c.order = c.sorted()
-	} else {
-		c.order = nil
-	}
-	if keep >= 0 && keep < c.Len() { // with the sort gone, too: its field may have been removed
+	c.filter = c.validFilter(c.filter)
+	c.arrange()
+	if keep >= 0 && keep < c.loaded() { // with the sort gone, too: its field may have been removed
 		c.cur.Row = c.displayRow(keep)
 	}
 	c.clamp()
+	if c.Len() == 0 {
+		c.anchor, c.kind = nil, TableSelectCells
+	}
 	c.wantMore()
 	c.announce()
 	c.repaint()
@@ -257,7 +274,8 @@ func (c *TableCore) SetCursor(p TablePos) {
 	c.reach()
 }
 
-// SelectSourceRow moves the cursor to the display row showing source row r, in its field.
+// SelectSourceRow moves the cursor to the display row showing source row r, in its field; to the
+// first row when the filter hides r.
 func (c *TableCore) SelectSourceRow(r int) { c.SetCursor(TablePos{c.displayRow(r), c.cur.Col}) }
 
 // Move moves the cursor by rows and fields.
@@ -279,8 +297,8 @@ func (c *TableCore) Cell(r, col int) string {
 	return c.src.Cell(c.SourceRow(r), col)
 }
 
-// Rows are the LOADED display rows [from, to) as text, in display order: what a view paints and
-// what a copy or a Markdown export takes.
+// Rows are the display rows [from, to) as text, in display order, the filter's kept rows only:
+// what a view paints and what a copy or a Markdown export takes.
 func (c *TableCore) Rows(from, to int) [][]string {
 	from, to = max(from, 0), min(to, c.Len())
 	n := len(c.Fields())
@@ -422,9 +440,11 @@ func (c *TableCore) announce() {
 }
 
 // wantMore asks a pager for rows while the cursor is within ahead rows of the end of those loaded:
-// on a new source with none, after the cursor moves, and after a page arrives.
+// on a new source with none, after the cursor moves, and after a page arrives. Under a filter the
+// cursor's place is that of its row among all the loaded rows (loadedPlace), not among the rows
+// shown, so a filter hiding rows asks for none the unfiltered view would not.
 func (c *TableCore) wantMore() {
-	if c.pager != nil && c.pager.More() && c.cur.Row >= c.Len()-c.ahead {
+	if c.pager != nil && c.pager.More() && c.loadedPlace() >= c.loaded()-c.ahead {
 		c.pager.FetchMore(c.ahead)
 	}
 }

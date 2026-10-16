@@ -16,8 +16,9 @@ import (
 //
 // index in its signals and currentIndex are the MODEL's row, whatever the sort shows. orderBy is
 // the sort as ORDER BY text: setting it parses it and sorts (an error leaves the sort as it was
-// and says why in orderByError), and the s key writes its sort back to it. A model that knows
-// each cell's kind (widget.TableKinds) sorts by kind, when no TableViewColumns are declared.
+// and says why in orderByError), and the s key writes its sort back to it. filter is the rows shown
+// as WHERE text, set and kept the same way, its error in filterError. A model that knows each
+// cell's kind (widget.TableKinds) sorts and filters by kind, when no TableViewColumns are declared.
 
 // modelTable is a TableView's model as a TableCore's source.
 type modelTable struct{ n *tableViewNode }
@@ -111,7 +112,8 @@ func (n *tableViewNode) buildCells(sortable bool) {
 }
 
 // followCells applies a model change: a reset is a new source (the cursor starts again, and
-// orderBy is applied to its fields); anything else, rows arriving among them, keeps them.
+// orderBy and filter are applied to its fields); anything else, rows arriving among them, keeps
+// them.
 func (n *tableViewNode) followCells(c Change) {
 	core := n.grid.Core()
 	if c.Kind == Reset || c.Kind == ColumnsReset {
@@ -119,6 +121,7 @@ func (n *tableViewNode) followCells(c Change) {
 		core.SetSource(n.cellSource())
 		n.ordering = false
 		n.applyOrder()
+		n.applyFilter()
 		return
 	}
 	core.Changed()
@@ -143,6 +146,25 @@ func (n *tableViewNode) applyOrder() {
 	n.ordering = true
 	core.SortKeys(keys)
 	n.ordering = false
+}
+
+// setFilter is the filter setter: the text is kept as written, and filters the rows when it parses.
+func (n *tableViewNode) setFilter(text string) {
+	n.filter = text
+	n.applyFilter()
+}
+
+// applyFilter filters by filter. Text that does not parse leaves the filter as it was, and
+// filterErr says why.
+func (n *tableViewNode) applyFilter() {
+	core := n.grid.Core()
+	p, err := widget.ParseTableWhere(n.filter, core.Fields())
+	if err != nil {
+		n.filterErr = err.Error()
+		return
+	}
+	n.filterErr = ""
+	core.SetFilter(p)
 }
 
 // sortChanged writes a sort the view made itself (the s key, a field removed) back to orderBy,

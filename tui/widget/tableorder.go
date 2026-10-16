@@ -142,18 +142,29 @@ func (p *orderParser) resolve(name string, quoted bool, at int) (int, error) {
 		}
 		return n - 1, nil
 	}
-	exact, folded := titled(p.fields, name, false), titled(p.fields, name, true)
+	col, msg := fieldNamed(p.fields, name, "")
+	if msg != "" {
+		return 0, p.fail(at, "%s", msg)
+	}
+	return col, nil
+}
+
+// fieldNamed is the field a name names: the one titled name exactly, else the one titled name
+// case-insensitively. When none or several are, msg says so, a shared name with the fields'
+// positions, each written after mark ("#" for a WHERE bar's).
+func fieldNamed(fields []TableField, name, mark string) (col int, msg string) {
+	exact, folded := titled(fields, name, false), titled(fields, name, true)
 	switch {
 	case len(exact) == 1:
-		return exact[0], nil
+		return exact[0], ""
 	case len(exact) > 1:
-		return 0, p.fail(at, "%q names fields %s: write its position", name, positions(exact))
+		return 0, fmt.Sprintf("%q names fields %s: write its position", name, positions(exact, mark))
 	case len(folded) == 1:
-		return folded[0], nil
+		return folded[0], ""
 	case len(folded) > 1:
-		return 0, p.fail(at, "%q names fields %s: write its position", name, positions(folded))
+		return 0, fmt.Sprintf("%q names fields %s: write its position", name, positions(folded, mark))
 	}
-	return 0, p.fail(at, "no field %q", name)
+	return 0, fmt.Sprintf("no field %q", name)
 }
 
 // titled is the fields whose title is name, compared exactly or case-insensitively.
@@ -167,11 +178,11 @@ func titled(fields []TableField, name string, fold bool) []int {
 	return out
 }
 
-// positions is fields as 1-based positions: "1 and 3", "1, 2 and 4".
-func positions(cols []int) string {
+// positions is fields as 1-based positions, each after mark: "1 and 3", "#1, #2 and #4".
+func positions(cols []int, mark string) string {
 	s := make([]string, len(cols))
 	for i, c := range cols {
-		s[i] = strconv.Itoa(c + 1)
+		s[i] = mark + strconv.Itoa(c+1)
 	}
 	if len(s) == 1 {
 		return s[0]

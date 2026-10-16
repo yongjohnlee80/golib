@@ -52,11 +52,7 @@ func (c *TableCore) SortKeys(keys []TableSortKey) {
 	keep := c.SourceRow(c.cur.Row)
 	was := c.keys
 	c.keys = c.validKeys(keys)
-	if c.keys != nil {
-		c.order = c.sorted()
-	} else {
-		c.order = nil
-	}
+	c.arrange()
 	c.cur.Row = c.displayRow(keep)
 	c.reach()
 	if !slices.Equal(was, c.keys) {
@@ -91,9 +87,9 @@ func (c *TableCore) sortChanged() {
 	}
 }
 
-// sorted is the display order of the loaded rows under the keys.
+// sorted is the order of every loaded row under the keys, before the filter.
 func (c *TableCore) sorted() []int {
-	order := make([]int, c.Len())
+	order := make([]int, c.loaded())
 	for i := range order {
 		order[i] = i
 	}

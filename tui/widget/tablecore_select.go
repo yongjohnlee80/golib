@@ -52,8 +52,11 @@ func (c *TableCore) SetAnchor(p *TablePos) {
 }
 
 // Select starts a selection of kind at anchor, running to the cursor; a selection already made is
-// replaced.
+// replaced. An empty table (no rows, or a filter keeping none) has nothing to select.
 func (c *TableCore) Select(kind TableSelectKind, anchor TablePos) {
+	if c.Len() == 0 {
+		return
+	}
 	a := c.clampPos(anchor)
 	c.anchor, c.kind = &a, kind
 	c.repaint()
@@ -122,8 +125,12 @@ func (c *TableCore) readingOrder() (start, end TablePos) {
 }
 
 // CopyText is the selection, or the cursor's cell, as tab-separated lines, one per row: a block's
-// rectangle, whole rows for Rows, and for Cells each row's selected fields in reading order.
+// rectangle, whole rows for Rows, and for Cells each row's selected fields in reading order. An
+// empty table copies "".
 func (c *TableCore) CopyText() string {
+	if c.Len() == 0 {
+		return ""
+	}
 	if c.anchor == nil {
 		return c.Cell(c.cur.Row, c.cur.Col)
 	}

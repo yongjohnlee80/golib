@@ -346,6 +346,9 @@ type tableViewNode struct {
 	orderBy, orderErr string
 	orderChanged      func(args ...qml.SpecValue)
 	ordering          bool // the node is applying orderBy: the core's news of it is not written back
+	// filter is the grid's filter as WHERE text, as the document set it; filterErr why it did not
+	// parse, "" when it did. Only the document changes it, so it has no Changed signal.
+	filter, filterErr string
 }
 
 // tableColumnNode is a declared TableViewColumn: what the column shows.
@@ -743,6 +746,8 @@ var tableViewType = Type{
 		}),
 		// golib's: the sort of the loaded rows as ORDER BY text, `name [ASC|DESC], …`; "" none
 		"orderBy": cellsSetter("orderBy", stringOf, (*tableViewNode).setOrderBy),
+		// golib's: the loaded rows shown, as WHERE text over the fields; "" every row
+		"filter": cellsSetter("filter", stringOf, (*tableViewNode).setFilter),
 		// golib's: a right press opens the menu whose rows the host gives (TableOf(c).Menu().SetRows)
 		"contextMenu": cellsSetter("contextMenu", boolOf, func(n *tableViewNode, on bool) {
 			if n.grid.Menu() == nil {
@@ -767,6 +772,12 @@ var tableViewType = Type{
 		},
 		"orderByError": func(c tui.Component) (qml.SpecValue, error) {
 			return qml.SpecValue{Kind: qml.SpecValueString, Raw: c.(*tableViewNode).orderErr}, nil
+		},
+		"filter": func(c tui.Component) (qml.SpecValue, error) {
+			return qml.SpecValue{Kind: qml.SpecValueString, Raw: c.(*tableViewNode).filter}, nil
+		},
+		"filterError": func(c tui.Component) (qml.SpecValue, error) {
+			return qml.SpecValue{Kind: qml.SpecValueString, Raw: c.(*tableViewNode).filterErr}, nil
 		},
 	},
 	Signals: map[string][]string{"activated": {"index"}, "currentIndexChanged": {"index"},
