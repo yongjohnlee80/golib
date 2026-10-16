@@ -18,7 +18,11 @@
 //     bracketed paste (2004), mouse reporting (1000, 1002, 1003, SGR 1006),
 //     focus events (1004), DECTCEM, DECOM, DECAWM, IRM, LNM and synchronized
 //     output (2026);
-//   - replies, through WithReply: DA1, DA2, DSR/CPR and DECRQM;
+//   - the kitty keyboard protocol's disambiguate level: CSI > u pushes, CSI < u
+//     pops and CSI = u sets the flags, a stack per screen, other flags masked
+//     off; Modes.KeyboardFlags tells a host's key encoding what is in force;
+//   - replies, through WithReply: DA1, DA2, DSR/CPR, DECRQM and the kitty
+//     keyboard query (CSI ? u);
 //   - OSC 0 and 2 set the title. OSC 52 is dropped (a program does not write
 //     the host's clipboard), and every other OSC is ignored.
 //
