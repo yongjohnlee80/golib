@@ -26,11 +26,9 @@ by gui's low-level drawing APIs must migrate those imports too. High-level tui/
 widget users need no application-side replacement directive.
 
 Synthetic drop tests cover URI decoding, quoting, atomic refusal and ordinary
-PasteEvent delivery. A native Wayland file-manager drop into the agent terminal,
-X11 source interoperability, Finder drops, and Hangul input-method regression
-checks remain release gates; headless tests do not stand in for those gestures.
-`TestGioIsTheVersionTheIMEContractWasVerifiedAgainst` intentionally fails while
-`verifiedGio` still names the last manually verified upstream release. Keep this
-draft unmerged until the native matrix is recorded and that verification pin can
-be advanced truthfully. Automated checks can report the remaining suite separately
-with only that known release guard excluded; such a run is not a full green gate.
+PasteEvent delivery; headless tests do not stand in for native gestures. The native
+checks were done by hand on 2026-10-16: Finder drops and Hangul on macOS, Nautilus drops
+(after gio v0.1.3's fix for Hyprland's stale move action) and the Hangul L1–L9 matrix on
+Wayland. X11 drops are covered by the fork's Xvfb XDND cells, not yet by a native drag.
+`TestGioIsTheVersionTheIMEContractWasVerifiedAgainst` requires the Gio version those
+checks verified (`verifiedGio`); moving Gio means repeating them.

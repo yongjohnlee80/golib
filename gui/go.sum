@@ -9,8 +9,8 @@ github.com/go-text/typesetting-utils v0.0.0-20260419141703-4ffe8874dabc h1:8FGo2
 github.com/go-text/typesetting-utils v0.0.0-20260419141703-4ffe8874dabc/go.mod h1:3/62I4La/HBRX9TcTpBj4eipLiwzf+vhI+7whTc9V7o=
 github.com/godbus/dbus/v5 v5.2.2 h1:TUR3TgtSVDmjiXOgAAyaZbYmIeP3DPkld3jgKGV8mXQ=
 github.com/godbus/dbus/v5 v5.2.2/go.mod h1:3AAv2+hPq5rdnr5txxxRwiGjPXamgoIHgz9FPBfOp3c=
-github.com/yongjohnlee80/gio v0.1.1 h1:k6VWfukH79a+p9mCy1yb/HQHI24/eu6Khjx2lfBzvnc=
-github.com/yongjohnlee80/gio v0.1.1/go.mod h1:xdK1KMXzzmXQ6tTVMgCe0o5BVm003fo/u9yJ7OK6iko=
+github.com/yongjohnlee80/gio v0.1.3 h1:SS1eK/mvEagINNIzAe09tjDIN3d2FdU9LjvR2pRNkNo=
+github.com/yongjohnlee80/gio v0.1.3/go.mod h1:xdK1KMXzzmXQ6tTVMgCe0o5BVm003fo/u9yJ7OK6iko=
 github.com/yongjohnlee80/golib v0.6.112 h1:M88dtR+OIv3+dPCTMUN/KhoPciuO5wVYx+ocatQVJq8=
 github.com/yongjohnlee80/golib v0.6.112/go.mod h1:RAvsFuXFRS4qjOGL7Af9SRHVixI6cy0o4jsvPxRlTlc=
 golang.org/x/exp v0.0.0-20250408133849-7e4ce0ab07d0 h1:R84qjqJb5nVJMxqWYb3np9L5ZsaDtB+a39EqjV0JSUM=

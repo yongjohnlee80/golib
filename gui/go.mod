@@ -9,7 +9,7 @@ require (
 
 require (
 	github.com/go-text/typesetting v0.3.5
-	github.com/yongjohnlee80/gio v0.1.1
+	github.com/yongjohnlee80/gio v0.1.3
 )
 
 require (
