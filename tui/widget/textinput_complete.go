@@ -7,7 +7,7 @@ import (
 // COMPLETION — a TextInput that offers what the word before its cursor may become. Tab takes it
 // up as the command line's Tab does: one choice is put in whole; several put in what they all
 // begin with when that is more than was typed, and otherwise each Tab puts in the next (Shift+Tab
-// the previous), until any other key. While the field has the keys and its cursor is at the end,
+// the previous), until an edit or a move of the cursor. While the field has the keys and its cursor is at the end,
 // the choices are drawn after the text, muted: the rest of the first one, then the others. With
 // nothing to offer, Tab is not taken and moves the focus as before.
 

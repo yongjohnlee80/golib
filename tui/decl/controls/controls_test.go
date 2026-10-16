@@ -330,7 +330,7 @@ func TestATextFieldCompletesFromItsModel(t *testing.T) {
 	rec := &recorder{}
 	s := decltest.Run(t, 40, 8,
 		tuidecl.LayoutSource("main.qml", []byte("import tui 1.0\nimport demo 1.0\n"+
-			"TextField { focus: true; completions: App.names; onAccepted: App.run(text) }")),
+			"TextField { id: f; focus: true; completions: App.names; onAccepted: App.run(text) }")),
 		tuidecl.Types(controls.Types()...),
 		tuidecl.Singleton("demo", "1.0", "App"),
 		tuidecl.Sources(map[string]any{"App.names": names}),
@@ -338,6 +338,18 @@ func TestATextFieldCompletesFromItsModel(t *testing.T) {
 	enter := tui.KeyEvent{Kind: tui.KeyPress, Code: tui.KeyEnter}
 	tab := tui.KeyEvent{Kind: tui.KeyPress, Code: tui.KeyTab}
 	s.Keys(t, decltest.Type("na")...)
+	waitFor(t, "the choices offered", func() bool {
+		var items []string
+		done := make(chan struct{})
+		s.Program.Post(func() {
+			if f, ok := tuidecl.FindAs[*widget.TextInput](s.Program, "f"); ok && f.Value() == "na" {
+				items, _ = f.Completions()
+			}
+			close(done)
+		})
+		<-done
+		return len(items) == 1 && items[0] == "NAME"
+	})
 	s.WaitFor(t, "the choice shown", func(sc string) bool { return strings.Contains(firstRow(sc), "na  NAME") })
 	s.Keys(t, tab, decltest.Rune(' '))
 	s.Keys(t, decltest.Type("tot")...)

@@ -364,7 +364,7 @@ func (t *TextInput) moveTo(i int, extend bool) {
 	} else {
 		t.anchor = -1
 	}
-	t.cur = i
+	t.cur, t.walk = i, nil
 	t.ensureVisible()
 	t.MarkDirty()
 }
@@ -416,7 +416,6 @@ func (t *TextInput) handleKey(e tui.KeyEvent) bool {
 	if e.Code == tui.KeyTab && e.Mods&^tui.ModShift == 0 && t.completer != nil {
 		return t.complete(shift)
 	}
-	t.walk = nil // any other key ends Tab's walk
 
 	switch e.Code {
 	case tui.KeyEnter:
