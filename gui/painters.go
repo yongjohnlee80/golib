@@ -475,7 +475,8 @@ func filledCells(f float64, cols int) int {
 	return min(full, cols)
 }
 
-// paintTabs draws the bar with the active tab raised, its labels kept in their cells. The
+// paintTabs draws the bar with the active tab raised, a divider between neighbours, its labels kept
+// in their cells. The
 // content below the bar is the active tab's child and draws over this view, so the scope is
 // the chrome.
 func paintTabs(comp tui.Component) (View, tui.NativeScope, bool) {
@@ -518,6 +519,21 @@ func paintTabs(comp tui.Component) (View, tui.NativeScope, bool) {
 			if i == active() {
 				c.FillRect(Rect{X: r.X + 2, Y: cs.H - 2, W: r.W - 4, H: 2}, Solid(fg))
 			}
+		}
+		// a divider in the cell between two neighbours, so a tab's × reads as its own and not the one
+		// before's: a thin line, the bar's ground toward its text, darker on a light bar and lighter
+		// on a dark one; none in a cell a panel covers
+		for i := 1; i < len(spans); i++ {
+			gap := spans[i-1].X + spans[i-1].W
+			if spans[i].X != gap+1 || gap >= cols {
+				continue
+			}
+			fg, bg, ok := openColors(c, 0, gap)
+			if !ok {
+				continue
+			}
+			x := (float32(gap) + 0.5) * cs.W
+			c.FillRect(Rect{X: x - 0.5, Y: cs.H * 0.2, W: 1, H: cs.H * 0.6}, Solid(mix(bg, fg, 0.45)))
 		}
 		c.PaintCells(CellRect{W: cols, H: 1}, true)
 	}), tui.ScopeChrome, true
