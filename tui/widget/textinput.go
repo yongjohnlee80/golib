@@ -48,8 +48,10 @@ import (
 // # Architectural Invariants
 //
 //  1. Tab Traversal Non-Consumption:
-//     TextInput explicitly does NOT consume Tab or Shift+Tab. Focus navigation remains
-//     strictly framework-owned and orchestratable across sibling components.
+//     TextInput does NOT consume Tab or Shift+Tab, so focus navigation stays framework-owned
+//     across sibling components. The one exception is a completer ([WithCompleter]) with
+//     something to offer at the cursor: then Tab completes, and Shift+Tab steps back through
+//     the choices Tab is walking. With nothing to offer, Tab moves the focus as before.
 //  2. Atomic Paste Events:
 //     Paste operations generate exactly one [ChangeEvent] and never trigger a [SubmitEvent].
 //  3. Validation Preflight on Enter:
@@ -104,6 +106,9 @@ type TextInput struct {
 	onSubmit       func(string)
 	onEdit         func(string)
 	verr           error
+
+	completer TextCompleter
+	walk      *textWalk // Tab's way through the choices; nil once another key is pressed
 
 	styles TextInputStyles
 }
@@ -242,6 +247,7 @@ func (t *TextInput) SetValue(s string) {
 	t.cur = len(t.cs)
 	t.anchor = -1
 	t.verr = nil
+	t.walk = nil
 	t.ensureVisible()
 	t.MarkDirty()
 }
@@ -338,7 +344,7 @@ func (t *TextInput) insert(text string) {
 // edited finalizes a value mutation: error cleared, scroll fixed, repaint,
 // ChangeEvent.
 func (t *TextInput) edited() {
-	t.verr = nil
+	t.verr, t.walk = nil, nil
 	t.ensureVisible()
 	t.MarkDirty()
 	t.publish(ChangeEvent{Owner: t.NodeID(), Value: t.Value()})
@@ -407,6 +413,10 @@ func (t *TextInput) handleKey(e tui.KeyEvent) bool {
 	}
 	shift := e.Mods&tui.ModShift != 0
 	word := e.Mods&(tui.ModCtrl|tui.ModAlt) != 0
+	if e.Code == tui.KeyTab && e.Mods&^tui.ModShift == 0 && t.completer != nil {
+		return t.complete(shift)
+	}
+	t.walk = nil // any other key ends Tab's walk
 
 	switch e.Code {
 	case tui.KeyEnter:
@@ -580,5 +590,8 @@ func (t *TextInput) Render(s tui.Surface) {
 			s.SetCell(pad+x, 0, cl, st)
 		}
 		x += cw
+	}
+	if h := t.hint(); h != "" && x >= 0 && x < inner {
+		drawText(s, pad+x, 0, truncate(h, inner-x, s.StringWidth), t.styles.Placeholder)
 	}
 }

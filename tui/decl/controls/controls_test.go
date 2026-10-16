@@ -321,3 +321,29 @@ func TestARefusedPopupLeavesNoLayerOnTheOverlay(t *testing.T) {
 		t.Fatalf("the overlay has %d layers after a refused Popup, want %d", got, before)
 	}
 }
+
+// completions: Tab completes the word before the cursor from the model's rows, a quoted row
+// offered for the word it quotes; with nothing to offer Tab moves on.
+func TestATextFieldCompletesFromItsModel(t *testing.T) {
+	names := tuidecl.NewListModel("name")
+	names.Reset([]tuidecl.Row{{"name": "NAME"}, {"name": `"total sum"`}, {"name": "total"}})
+	rec := &recorder{}
+	s := decltest.Run(t, 40, 8,
+		tuidecl.LayoutSource("main.qml", []byte("import tui 1.0\nimport demo 1.0\n"+
+			"TextField { focus: true; completions: App.names; onAccepted: App.run(text) }")),
+		tuidecl.Types(controls.Types()...),
+		tuidecl.Singleton("demo", "1.0", "App"),
+		tuidecl.Sources(map[string]any{"App.names": names}),
+		tuidecl.Handlers(map[string]decl.HandlerFunc{"App.run": rec.handler("run")}))
+	enter := tui.KeyEvent{Kind: tui.KeyPress, Code: tui.KeyEnter}
+	tab := tui.KeyEvent{Kind: tui.KeyPress, Code: tui.KeyTab}
+	s.Keys(t, decltest.Type("na")...)
+	s.WaitFor(t, "the choice shown", func(sc string) bool { return strings.Contains(firstRow(sc), "na  NAME") })
+	s.Keys(t, tab, decltest.Rune(' '))
+	s.Keys(t, decltest.Type("tot")...)
+	s.Keys(t, tab, enter) // "total sum" first, "total" the next Tab
+	waitFor(t, "accepted", func() bool { return len(rec.got("run")) == 1 })
+	if got := rec.got("run")[0]; got != `NAME "total sum"` {
+		t.Errorf("accepted %q, want NAME \"total sum\"", got)
+	}
+}
