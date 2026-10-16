@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"image/color"
 	"strconv"
+	"weak"
 
 	"github.com/yongjohnlee80/golib/gui"
 	"github.com/yongjohnlee80/golib/highlight"
@@ -154,10 +155,19 @@ func NewEditor(opts ...EditorOption) *Editor {
 	e.cmdline.SetEnabled(!cfg.noCmd)
 	e.stack = newEditorStack(e)
 	e.tabs = tuiwidget.NewTabStrip()
-	// the strip's bar is the title bar's own colour, the panel's as it painted it last
-	gui.OnPanelBar(e.tabs, func() (color.NRGBA, bool) { return e.panel.barFill, e.panel.barFill.A != 0 })
 	// the host's tabs at the bar's left, in all its room up to Raw | Rendered at its right
 	e.panel = NewPanel(e.stack, append([]PanelOption{TitleLeading(e.tabs), TitleTrailing(e.sw)}, cfg.panel...)...)
+	// the strip's bar is the title bar's own colour, the panel's as it painted it last. The callback
+	// holds the panel weakly: the registry is global, and a callback holding the editor (or anything
+	// that holds its strip) would keep the strip, its weak key, alive, and every editor with it
+	panel := weak.Make(e.panel)
+	gui.OnPanelBar(e.tabs, func() (color.NRGBA, bool) {
+		p := panel.Value()
+		if p == nil {
+			return color.NRGBA{}, false
+		}
+		return p.barFill, p.barFill.A != 0
+	})
 	// Ctrl+T, or whatever the keymap binds ActToggleRendered to: with no renderer there is no
 	// Rendered view, so the key bubbles.
 	e.core.SetToggleRendered(func() bool {
