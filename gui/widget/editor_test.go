@@ -681,6 +681,45 @@ func TestListEditingSkipsTables(t *testing.T) {
 	}
 }
 
+// Table editing runs in the Markdown editor too, the table keys on (CoreTableEditing): Tab on a row
+// goes to the next cell with its text selected, Shift+Tab back, and Tab past the table's last cell
+// adds a row.
+func TestTableEditingRunsInTheMarkdownEditor(t *testing.T) {
+	doc := "| a | b |\n|---|---|\n| c | d |"
+	h := startEditor(t, 60, 20, WithRenderer(NewMarkdownRenderer()), WithMode(Rendered),
+		WithCore(tuiwidget.CoreInitialText(doc), tuiwidget.CoreKeyset(tuiwidget.KeysetStandard), tuiwidget.CoreTableEditing(true)))
+	tab, back := tui.KeyEvent{Code: tui.KeyTab}, tui.KeyEvent{Code: tui.KeyTab, Mods: tui.ModShift}
+	var walk []string
+	var added string
+	var line int
+	h.onLoop(func() {
+		c := h.e.Core()
+		selected := func() string { // the cell's selection on the cursor's line
+			var b strings.Builder
+			ln := c.Cursor().Line
+			for col, r := range []rune(c.LineAt(ln)) {
+				if c.Selected(ln, col) {
+					b.WriteRune(r)
+				}
+			}
+			return b.String()
+		}
+		c.SetLine(0, 2)
+		for _, k := range []tui.KeyEvent{tab, back, tab, tab, tab} {
+			c.HandleKey(k)
+			walk = append(walk, selected())
+		}
+		c.HandleKey(tab)
+		added, line = c.Value(), c.Cursor().Line
+	})
+	if strings.Join(walk, " ") != "b a b c d" {
+		t.Errorf("Tab, Shift+Tab, Tab, Tab, Tab selected %q, want b a b c d", walk)
+	}
+	if added != doc+"\n|   |   |" || line != 3 {
+		t.Errorf("Tab past the last cell gave %q, the cursor on line %d; want a new row, on it", added, line)
+	}
+}
+
 // layCounter counts a renderer's LayOut calls, for the relayout cells.
 type layCounter struct {
 	Renderer
