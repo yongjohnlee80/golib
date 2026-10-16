@@ -212,6 +212,9 @@ func (s *tabStrip) width() int {
 // row is the strip as drawn in avail cells. When every tab fits, the tabs, then + and ≡. When they
 // do not, < and > hold a window of the tabs between them, from first, and + and ≡ keep their place
 // after: the window scrolls to show the active tab when it changes, and < and > scroll it freely.
+// A window that shows the last tab is packed against >: it starts no later than the first tab from
+// which every tab to the last fits (fitFrom), and the cells left over show the tab before it, cut
+// from its start, as the window's far end cuts the tab there.
 func (s *tabStrip) row() []stripCell {
 	tabs := s.tabs()
 	labels, widths := make([]string, len(tabs)), make([]int, len(tabs))
@@ -232,9 +235,24 @@ func (s *tabStrip) row() []stripCell {
 	} else {
 		room := max(s.avail-s.tail()-8, 1) // the window: the row less < and > and their cells
 		s.reveal(tabs, widths, room)
+		// first is kept from layout to layout, so a row grown wider, or tabs closed at the end, would
+		// leave it later than it need be, and the cells it frees empty before >
+		fit := fitFrom(widths, room)
+		s.first = min(s.first, fit)
 		out = append(out, stripCell{kind: cellPrev, label: prevLabel, w: s.base.measure(prevLabel)})
 		x = 4
 		end := x + room
+		if s.first == fit && fit > 0 {
+			used := -1
+			for _, w := range widths[fit:] {
+				used += w + 1
+			}
+			if w := room - used - 1; w >= 2 { // the tab before, cut from its start, then a cell
+				label := elide(labels[fit-1], w, ElideLeft, s.base.measure)
+				out = append(out, stripCell{kind: cellTab, id: tabs[fit-1].id, label: label, x: x, w: w, close: s.closeShown(label)})
+				x += w + 1
+			}
+		}
 		for i := s.first; i < len(tabs) && x < end; i++ {
 			label, w := labels[i], widths[i]
 			if x+w > end { // the last one shown, cut at the window's edge
@@ -256,6 +274,18 @@ func (s *tabStrip) row() []stripCell {
 		out = append(out, stripCell{kind: cellMenu, label: " ≡ ", x: x, w: 3})
 	}
 	return out
+}
+
+// fitFrom is the first tab from which every tab to the last fits room cells, each after the first
+// following a cell.
+func fitFrom(widths []int, room int) int {
+	used := -1
+	for i := len(widths) - 1; i >= 0; i-- {
+		if used += widths[i] + 1; used > room {
+			return i + 1
+		}
+	}
+	return 0
 }
 
 // reveal scrolls the window, room cells wide, to show the active tab when it changed since the
