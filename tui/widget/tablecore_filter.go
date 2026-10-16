@@ -9,7 +9,7 @@ package widget
 // SetFilter shows only the loaded rows p keeps (TableTrue), in the sort's order; nil shows every
 // row. The cursor stays on its source row while that row is shown, and otherwise goes to the first
 // row; a selection ends. When no row is kept the table is empty: Len is 0, there is no cursor row,
-// and nothing can be selected or copied.
+// and nothing can be selected or copied. The cursor is revealed, and a pager is asked for nothing.
 //
 // A predicate from ParseTableWhere names fields by position; one naming a field the source does
 // not have is dropped, here and when the source changes, as a sort key on a missing field is.
@@ -29,7 +29,7 @@ func (c *TableCore) SetFilter(p TablePredicate) {
 		c.cur.Row = c.displayRow(keep) // 0 when the filter hides it
 	}
 	c.clamp()
-	c.reach()
+	c.show()
 }
 
 // Filtered is the rows shown and the rows loaded: "shown of loaded rows" while a filter is on. They

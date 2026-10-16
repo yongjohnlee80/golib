@@ -35,18 +35,21 @@ const (
 )
 
 // SortKeys orders the loaded rows by keys, the first deciding first; nil ends the sort, and keys on
-// fields the source does not have are dropped. The cursor stays on its source row.
+// fields the source does not have are dropped. The cursor stays on its source row, revealed, and
+// a pager is asked for nothing: a sort rearranges the rows loaded, wherever the cursor lands.
 //
 // With a source's kinds (TableKinds), a field orders as SQL's ORDER BY does with NULLS LAST:
 //   - NULLs last in both directions; DESC reverses only the other cells;
 //   - numbers as exact decimals, from their literal text (never through float64), so
-//     12345678901234567890.123 sorts before 12345678901234567890.124;
+//     12345678901234567890.123 sorts before 12345678901234567890.124; a decimal is what the WHERE
+//     filter reads as one, and one whose exponent is out of its range (1e999999999) is unparsed;
 //   - false before true; text and JSON by their bytes (strings.Compare);
 //   - kinds mixed in one field by kind: numbers, then booleans, text, JSON;
 //   - a number or boolean whose text does not parse (NaN, Infinity) above the ones that do, by
 //     its text, as PostgreSQL orders NaN above every number.
 //
-// Without kinds each field orders by compareCells. Either way the sort is stable: rows equal on
+// Without kinds each field orders by compareCells: two cells that are both decimals as numbers,
+// any others as text. Either way the sort is stable: rows equal on
 // every key keep the source's order.
 func (c *TableCore) SortKeys(keys []TableSortKey) {
 	keep := c.SourceRow(c.cur.Row)
@@ -54,7 +57,7 @@ func (c *TableCore) SortKeys(keys []TableSortKey) {
 	c.keys = c.validKeys(keys)
 	c.arrange()
 	c.cur.Row = c.displayRow(keep)
-	c.reach()
+	c.show()
 	if !slices.Equal(was, c.keys) {
 		c.sortChanged()
 	}
@@ -93,10 +96,19 @@ func (c *TableCore) sorted() []int {
 	for i := range order {
 		order[i] = i
 	}
+	// Each key's cells are read and parsed once, not once per comparison: a decimal's parse
+	// allocates, and a sort compares each row many times.
 	if c.kinds == nil {
+		cols := make([][]plainCell, len(c.keys))
+		for i, k := range c.keys {
+			cols[i] = make([]plainCell, len(order))
+			for r := range order {
+				cols[i][r] = readPlainCell(c.src.Cell(r, k.Col))
+			}
+		}
 		slices.SortStableFunc(order, func(a, b int) int {
-			for _, k := range c.keys {
-				r := compareCells(c.src.Cell(a, k.Col), c.src.Cell(b, k.Col))
+			for i, k := range c.keys {
+				r := comparePlain(cols[i][a], cols[i][b])
 				if k.Desc {
 					r = -r
 				}
@@ -108,8 +120,6 @@ func (c *TableCore) sorted() []int {
 		})
 		return order
 	}
-	// Each key's cells are read and parsed once, not once per comparison: a decimal's parse
-	// allocates, and a sort compares each row many times.
 	cols := make([][]sortCell, len(c.keys))
 	for i, k := range c.keys {
 		cols[i] = make([]sortCell, len(order))
@@ -150,7 +160,7 @@ func readSortCell(k TableCellKind, text string) sortCell {
 	case TableCellNull:
 		return sortCell{null: true}
 	case TableCellNumber:
-		n, ok := new(big.Rat).SetString(strings.TrimSpace(text))
+		n, ok := parseDecimal(strings.TrimSpace(text))
 		return sortCell{rank: rankNumber, ok: ok, num: n, text: text}
 	case TableCellBool:
 		b, err := strconv.ParseBool(strings.TrimSpace(text))

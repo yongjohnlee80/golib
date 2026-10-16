@@ -1,6 +1,7 @@
 package widget
 
 import (
+	"math/big"
 	"slices"
 	"strconv"
 	"strings"
@@ -89,6 +90,16 @@ func TableOnSort(fn func(keys []TableSortKey)) TableOption {
 	return func(c *TableCore) { c.onSort = fn }
 }
 
+// TableCopyLimit bounds what Copy and the y keys put on the clipboard, in bytes: a copy longer
+// than that copies nothing, and TableOnCopyRefused hears of it, so the host can say why. 0, the
+// default, is no limit.
+func TableCopyLimit(bytes int) TableOption { return func(c *TableCore) { c.copyLimit = max(bytes, 0) } }
+
+// TableOnCopyRefused is called with the limit when a copy past TableCopyLimit copied nothing.
+func TableOnCopyRefused(fn func(limit int)) TableOption {
+	return func(c *TableCore) { c.onCopyRefused = fn }
+}
+
 // TableFetchAhead is how near the end of the loaded rows, in rows, the cursor asks a pager for
 // more, and how many it asks for; at least 1.
 func TableFetchAhead(rows int) TableOption {
@@ -110,27 +121,29 @@ const (
 
 // TableCore holds a table's behaviour apart from any view.
 type TableCore struct {
-	src        TableSource
-	pager      TablePager
-	edit       TableEditor
-	layout     TableLayout
-	ctx        *tui.Context
-	kinds      TableKinds // the source's cell kinds, nil when it has none
-	cur        TablePos
-	anchor     *TablePos
-	kind       TableSelectKind // what the selection between anchor and cur covers
-	order      []int           // display row → source row; nil: source order, every row
-	keys       []TableSortKey  // the sort, nil: unsorted
-	filter     TablePredicate  // the rows shown, nil: every row
-	place      []int           // with a filter, display row → its place among the loaded rows in the sort's order
-	sortable   bool
-	rowNumbers bool
-	ahead      int
-	onActivate func(row int)
-	onCursor   func(row int)
-	onSort     func(keys []TableSortKey)
-	announced  int   // the source row onCursor was last told, -1 for none
-	measured   []int // measured widths, nil until asked for after a change
+	src           TableSource
+	pager         TablePager
+	edit          TableEditor
+	layout        TableLayout
+	ctx           *tui.Context
+	kinds         TableKinds // the source's cell kinds, nil when it has none
+	cur           TablePos
+	anchor        *TablePos
+	kind          TableSelectKind // what the selection between anchor and cur covers
+	order         []int           // display row → source row; nil: source order, every row
+	keys          []TableSortKey  // the sort, nil: unsorted
+	filter        TablePredicate  // the rows shown, nil: every row
+	place         []int           // with a filter, display row → its place among the loaded rows in the sort's order
+	sortable      bool
+	rowNumbers    bool
+	ahead         int
+	onActivate    func(row int)
+	onCursor      func(row int)
+	onSort        func(keys []TableSortKey)
+	copyLimit     int // bytes; 0: none
+	onCopyRefused func(limit int)
+	announced     int   // the source row onCursor was last told, -1 for none
+	measured      []int // measured widths, nil until asked for after a change
 
 	// The keys typed so far of a command not yet complete: a count, and a g waiting for its
 	// second g. yanked is a y that copied the cursor's cell, which a second y turns into yy.
@@ -375,20 +388,27 @@ func (c *TableCore) Sorted() (col int, desc, partial bool) {
 	return keys[0].Col, keys[0].Desc, partial
 }
 
-// compareCells orders two cells: as numbers when both are, else as text.
-func compareCells(a, b string) int {
-	x, errA := strconv.ParseFloat(strings.TrimSpace(a), 64)
-	y, errB := strconv.ParseFloat(strings.TrimSpace(b), 64)
-	if errA == nil && errB == nil {
-		switch {
-		case x < y:
-			return -1
-		case x > y:
-			return 1
-		}
-		return 0
+// compareCells orders two cells: as exact decimals when both are (parseDecimal, as the WHERE
+// filter reads numbers), else as text.
+func compareCells(a, b string) int { return comparePlain(readPlainCell(a), readPlainCell(b)) }
+
+// plainCell is a cell without a kind as the sort reads it: its text, and its number when the text
+// is a decimal.
+type plainCell struct {
+	text string
+	num  *big.Rat // nil: not a decimal
+}
+
+func readPlainCell(text string) plainCell {
+	n, _ := parseDecimal(strings.TrimSpace(text))
+	return plainCell{text: text, num: n}
+}
+
+func comparePlain(a, b plainCell) int {
+	if a.num != nil && b.num != nil {
+		return a.num.Cmp(b.num)
 	}
-	return strings.Compare(a, b)
+	return strings.Compare(a.text, b.text)
 }
 
 func (c *TableCore) displayRow(src int) int {
@@ -414,12 +434,22 @@ func (c *TableCore) clamp() {
 }
 
 // reach reveals the cursor and asks a pager for more rows when the cursor is near the end of
-// those loaded.
+// those loaded: what a move of the cursor does.
 func (c *TableCore) reach() {
 	if c.layout != nil {
 		c.layout.Reveal(c.cur.Row, c.cur.Col)
 	}
 	c.wantMore()
+	c.announce()
+	c.repaint()
+}
+
+// show reveals the cursor without asking a pager for anything: what a sort and a filter do. They
+// rearrange the rows loaded, and only the cursor's moving (or rows arriving) may fetch ahead.
+func (c *TableCore) show() {
+	if c.layout != nil {
+		c.layout.Reveal(c.cur.Row, c.cur.Col)
+	}
 	c.announce()
 	c.repaint()
 }
@@ -442,7 +472,8 @@ func (c *TableCore) announce() {
 // wantMore asks a pager for rows while the cursor is within ahead rows of the end of those loaded:
 // on a new source with none, after the cursor moves, and after a page arrives. Under a filter the
 // cursor's place is that of its row among all the loaded rows (loadedPlace), not among the rows
-// shown, so a filter hiding rows asks for none the unfiltered view would not.
+// shown, so a filter hiding rows asks for none the unfiltered view would not. A sort and a filter
+// change never call it (show): only the cursor's moving and rows arriving do.
 func (c *TableCore) wantMore() {
 	if c.pager != nil && c.pager.More() && c.loadedPlace() >= c.loaded()-c.ahead {
 		c.pager.FetchMore(c.ahead)

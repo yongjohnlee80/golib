@@ -4,6 +4,7 @@ import (
 	"reflect"
 	"slices"
 	"testing"
+	"time"
 )
 
 // kindedSource is a TableSource that knows its cells' kinds: kinds[row][col] is the byte.
@@ -81,6 +82,69 @@ func TestTableSort_MixedKindsAndStable(t *testing.T) {
 	c.SortKeys([]TableSortKey{{Col: 1}})
 	if got := ids(c); !slices.Equal(got, []string{"n", "false", "true", "t2", "t1", "t3", "t4", "j", "z"}) {
 		t.Errorf("mixed: %v; want the number, false, true, the text (pears in source order), JSON, NULL", got)
+	}
+}
+
+// A sort asks a pager for nothing, though it lands the cursor near the end of the loaded rows: SortKeys,
+// SortBy and the s key alike. Moving the cursor there afterwards does ask.
+func TestTableSort_FetchesNothing(t *testing.T) {
+	p := &pagedSource{rowsSource: rowsSource{fields: []TableField{{Title: "n"}, {Title: "r"}}}, total: 1000}
+	c := NewTableCore(p, TableFetchAhead(10), TableSortable(true))
+	p.arrive(c) // 0..9; asked again
+	p.arrive(c) // 10..19
+	if p.asked != 2 {
+		t.Fatalf("asked %d, want 2", p.asked)
+	}
+	c.SortKeys([]TableSortKey{{Col: 0, Desc: true}}) // row 0, the cursor's, sorts last: display row 19
+	if c.Cursor().Row != 19 || p.asked != 2 {
+		t.Errorf("SortKeys: cursor row %d, asked %d; want 19 and no ask", c.Cursor().Row, p.asked)
+	}
+	c.SortBy(-1, false)
+	c.SortBy(0, true)
+	if c.Cursor().Row != 19 || p.asked != 2 {
+		t.Errorf("SortBy: cursor row %d, asked %d", c.Cursor().Row, p.asked)
+	}
+	c.SortKeys(nil)
+	keys(c, text("s"), text("s")) // up, then down: the cursor's row 0 lands on display row 19
+	if c.Cursor().Row != 19 || p.asked != 2 {
+		t.Errorf("the s key: cursor row %d, asked %d", c.Cursor().Row, p.asked)
+	}
+	keys(c, text("k"))
+	if p.asked != 3 {
+		t.Errorf("a move near the end did not ask: %d", p.asked)
+	}
+}
+
+// The sort reads numbers as the WHERE filter does: a decimal whose exponent is out of range is
+// not a number, and is read at once rather than expanded; a fraction or a base prefix, which
+// big.Rat would read, is not a decimal either. Valid decimals still sort exactly, with kinds and
+// without.
+func TestTableSort_NumbersAreTheFiltersDecimals(t *testing.T) {
+	start := time.Now()
+	src := kinded(
+		[3]string{"huge", "1e999999999", "n"}, [3]string{"hi", "12345678901234567890.124", "n"},
+		[3]string{"half", "1/2", "n"}, [3]string{"lo", "12345678901234567890.123", "n"},
+		[3]string{"hex", "0x10", "n"}, [3]string{"one", "1", "n"})
+	c := NewTableCore(src)
+	c.SortKeys([]TableSortKey{{Col: 1}})
+	if got := ids(c); !slices.Equal(got, []string{"one", "lo", "hi", "hex", "half", "huge"}) {
+		t.Errorf("kinded: %v; want 1, …123, …124, then the unparsed by their text", got)
+	}
+	plain := &rowsSource{fields: []TableField{{Title: "id"}, {Title: "v"}}, rows: [][]string{
+		{"huge", "1e999999999"}, {"5", "5"}, {"4", "4"},
+	}}
+	c.SetSource(plain)
+	c.SortKeys([]TableSortKey{{Col: 1}})
+	if got := ids(c); !slices.Equal(got, []string{"huge", "4", "5"}) {
+		t.Errorf("without kinds: %v; want 1e999999999 as text, before the digits it outsorts", got)
+	}
+	plain.rows = [][]string{{"hi", "12345678901234567890.124"}, {"lo", "12345678901234567890.123"}, {"two", " 2 "}}
+	c.Changed()
+	if got := ids(c); !slices.Equal(got, []string{"two", "lo", "hi"}) {
+		t.Errorf("without kinds: %v; want 2, …123, …124, exactly", got)
+	}
+	if d := time.Since(start); d > 2*time.Second {
+		t.Errorf("sorting took %v", d)
 	}
 }
 
