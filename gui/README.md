@@ -38,6 +38,12 @@ TUI-only golib user never resolves Gio or cgo. `tui` cannot import it.
   copy to the system clipboard, the cursor's shape and colour.
   `SyncOutput`, `InBandResize`, `UnicodeCore` and `Undercurl` are reported
   false: they name terminal protocol features.
+- **tui widgets in pixels.** `gui/decl.Native()` gives a tui/decl program gui's
+  `Editor`, lays an `HTMLView` out in pixels (`gui/widget.BindHTML`), and draws a
+  cell-cursor `TableView`'s `DataTable` natively over the same `TableCore`
+  (`gui/widget.BindTable`): its header, rows, cell cursor, selection and sort mark
+  in the window's prose font, the keys and the paging the core's, as in a
+  terminal. A row-cursor `TableView` stays cells.
 - **Paste and IME.** Ctrl+Shift+V (Cmd+V on macOS) pastes, as in a terminal
   emulator, so Ctrl+V stays the app's. An input method's composition is drawn
   at the caret, and its candidate window opens there.
@@ -89,7 +95,9 @@ special care.
 and the markdown view. Each `Canvas` call is replayed on every frame:
 
 1. Merge adjacent same-colour fills; lay out text per line or block, never per
-   character.
+   character. A line of texts each at its own x, such as a table row's cells, is
+   one layout: `TextShaper.LayoutRuns`, drawn by one `DrawText`. `BindTable`
+   draws each row band so, and shapes a band again only when it changes.
 2. Never call the Canvas per cell: use `PaintCells`.
 3. Prefer cells where a widget can be cells.
 4. Paths and rounded rectangles are stencils: keep them out of loops over many

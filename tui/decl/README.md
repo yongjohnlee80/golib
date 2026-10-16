@@ -270,9 +270,14 @@ is a `tuidecl.Fetcher` (Qt's `canFetchMore`/`fetchMore`, asked at the root `Inde
 for more rows as the cursor nears the end of those loaded; the host inserts them when they come.
 `index` in its signals and `currentIndex` are the model's row whatever the sort shows. A
 cell-cursor `TableView` takes no `delegate` and has no `contextMenuRequested`, and `sortable`
-needs it.
+needs it. A native backend binds its own pixel layout to the `DataTable`
+(`widget.DataTable.BindLayout`; gui's `Native()` style does so for every cell-cursor `TableView`)
+and draws the same core: the same keys, cursor, sort, paging and signals. A row-cursor
+`TableView` is drawn in cells on either.
 
-    TableView { model: App.result; cellCursor: true; sortable: true; onActivated: App.open(index) } A `TreeView` shows a tree model (`tuidecl.TreeListModel`,
+    TableView { model: App.result; cellCursor: true; sortable: true; onActivated: App.open(index) }
+
+A `TreeView` shows a tree model (`tuidecl.TreeListModel`,
 or a `TreeModel` of the host's): a row opens and, the first time, the view asks
 the model to load its children (`OnFetch`), which the host sets with
 `SetChildren`. Its signals carry the row's `tuidecl.Index`, which the handler
