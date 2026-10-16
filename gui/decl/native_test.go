@@ -1,6 +1,7 @@
 package decl_test
 
 import (
+	"strings"
 	"testing"
 	"time"
 
@@ -273,5 +274,46 @@ Window { Editor { id: ed; text: "<p>hello</p>"; MarkdownRenderer { } HTMLDocumen
 		if c.(*widget.Editor).DocumentView() != widget.DocumentView(mine) || mine == nil {
 			t.Error("WithDocumentViewFor's maker did not make the view")
 		}
+	})
+}
+
+// TestTheEditorsTabsWearThePalette: the native Editor's title-bar tabs take the palette's looks, as
+// TerminalTabs's do: the active tab the highlight, another the button.
+func TestTheEditorsTabsWearThePalette(t *testing.T) {
+	src := `import tui 1.0
+Window {
+    palette.highlight: "red"
+    palette.button: "blue"
+    Editor { id: ed; text: "hello" }
+}`
+	s := run(t, src, tuidecl.WithStyle(guidecl.Native()))
+	onLoop(t, s, func() {
+		c, _ := s.Program.Find("ed")
+		tabs := c.(*widget.Editor).Tabs()
+		tabs.SetTabs([]tuiwidget.StripTab{{ID: "1", Label: "alpha"}, {ID: "2", Label: "beta"}})
+		tabs.SetActive("1")
+	})
+	// bgOf is the background of the first cell of text on the screen, and whether it is there
+	bgOf := func(text string) (tui.CellColor, bool) {
+		for _, row := range s.Backend.Snapshot() {
+			var line strings.Builder
+			var cols []int
+			for x, c := range row {
+				line.WriteString(c.Content)
+				for range len(c.Content) {
+					cols = append(cols, x)
+				}
+			}
+			if i := strings.Index(line.String(), text); i >= 0 {
+				return row[cols[i]].Attrs.BG, true
+			}
+		}
+		return tui.CellColor{}, false
+	}
+	red, blue := tui.CellColor{Kind: tui.CellColorANSI, Index: 1}, tui.CellColor{Kind: tui.CellColorANSI, Index: 4}
+	s.WaitFor(t, "the tabs in the palette's looks", func(string) bool {
+		a, okA := bgOf("alpha")
+		b, okB := bgOf("beta")
+		return okA && okB && a == red && b == blue
 	})
 }

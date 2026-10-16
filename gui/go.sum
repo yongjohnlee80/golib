@@ -13,6 +13,8 @@ github.com/yongjohnlee80/gio v0.0.0-20261015224045-f4e4e7bb0f24 h1:gLYD0bJETJnTG
 github.com/yongjohnlee80/gio v0.0.0-20261015224045-f4e4e7bb0f24/go.mod h1:MsY9btTPg5olz9jztt6/GPX+IpvN+g6aai/nggObGlc=
 github.com/yongjohnlee80/golib v0.6.111-0.20261015230933-833289cc4297 h1:qcFnNfWNdEk6zF4LA+rfSd101wHRu4WS/I7TfeYGhu8=
 github.com/yongjohnlee80/golib v0.6.111-0.20261015230933-833289cc4297/go.mod h1:RAvsFuXFRS4qjOGL7Af9SRHVixI6cy0o4jsvPxRlTlc=
+github.com/yongjohnlee80/golib v0.6.112-0.20261015234943-b1947e09de10 h1:RY3MiRkydNqV6TFp7+ZN86WWIZbuEBimC+fb9XpHyMw=
+github.com/yongjohnlee80/golib v0.6.112-0.20261015234943-b1947e09de10/go.mod h1:RAvsFuXFRS4qjOGL7Af9SRHVixI6cy0o4jsvPxRlTlc=
 golang.org/x/exp v0.0.0-20250408133849-7e4ce0ab07d0 h1:R84qjqJb5nVJMxqWYb3np9L5ZsaDtB+a39EqjV0JSUM=
 golang.org/x/exp v0.0.0-20250408133849-7e4ce0ab07d0/go.mod h1:S9Xr4PYopiDyqSyp5NjCrhFrqg6A5zA2E/iPHPhqnS8=
 golang.org/x/exp/shiny v0.0.0-20250408133849-7e4ce0ab07d0 h1:tMSqXTK+AQdW3LpCbfatHSRPHeW6+2WuxaVQuHftn80=
