@@ -272,3 +272,30 @@ func TestATabStripsCloseMark(t *testing.T) {
 		t.Fatalf("SetOnClose(nil) left a ×:\n%s", got)
 	}
 }
+
+// TestACutTabsHiddenCloseMarkDoesNotClose: a tab cut at the window's edge to less than its × does
+// not close on a press where the × would be; one whose × shows does.
+func TestACutTabsHiddenCloseMarkDoesNotClose(t *testing.T) {
+	strip := NewTabStrip()
+	strip.SetTabs([]StripTab{{"a", "alpha"}, {"b", "beta"}, {"c", "gamma"}})
+	strip.SetActive("a")
+	var closed []string
+	strip.SetOnClose(func(id string) { closed = append(closed, id) })
+	h := startAppInternal(t, strip, 10, 1) // room for ← and → and two cells: a cut to " …"
+	defer h.stopInternal()
+	h.syncInternal()
+	var spans []TabSpan
+	h.onLoopInternal(func() { spans = strip.TabSpans() })
+	if len(spans) < 3 {
+		t.Fatalf("spans %v: want ←, a cut tab and →", spans)
+	}
+	if err := h.tb.Inject(tui.MouseEvent{Kind: tui.MousePress, Button: tui.MouseLeft, X: spans[1].X, Y: 0}); err != nil {
+		t.Fatal(err)
+	}
+	h.syncInternal()
+	time.Sleep(50 * time.Millisecond)
+	h.syncInternal()
+	if len(closed) != 0 {
+		t.Fatalf("a press on a tab cut to %q closed %v", h.tb.String(), closed)
+	}
+}

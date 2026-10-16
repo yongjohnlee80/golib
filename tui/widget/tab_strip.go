@@ -64,6 +64,7 @@ type stripCell struct {
 	id    string
 	label string
 	x, w  int
+	close bool // a tab whose × is drawn whole: a press on it closes the tab
 }
 
 // stripAction is a strip menu row's action: what runs, with the tab the menu opened for; nil for a
@@ -173,6 +174,12 @@ func (s *tabStrip) label(tb stripTab) string {
 	return l
 }
 
+// closeShown is whether label, as drawn (cut at the window's edge or not), shows its × whole: a
+// tab cut to " …" has no × to press.
+func (s *tabStrip) closeShown(label string) bool {
+	return s.onClose != nil && strings.HasPrefix(label, closeMark) && s.base.measure(label) > s.base.measure(closeMark)
+}
+
 // the strip's own glyphs: a tab's close mark, before its padded label (" × name "), the cells a
 // press on it takes; and the arrows either side of the window while the tabs overflow
 const (
@@ -219,7 +226,7 @@ func (s *tabStrip) row() []stripCell {
 	if s.avail <= 0 || natural-1 <= s.avail || len(tabs) == 0 {
 		s.first, s.revealed = 0, "" // overflowing again, the window starts at the active tab
 		for i, tb := range tabs {
-			out = append(out, stripCell{kind: cellTab, id: tb.id, label: labels[i], x: x, w: widths[i]})
+			out = append(out, stripCell{kind: cellTab, id: tb.id, label: labels[i], x: x, w: widths[i], close: s.closeShown(labels[i])})
 			x += widths[i] + 1
 		}
 	} else {
@@ -234,7 +241,7 @@ func (s *tabStrip) row() []stripCell {
 				w = end - x
 				label = truncate(label, w, s.base.measure)
 			}
-			out = append(out, stripCell{kind: cellTab, id: tabs[i].id, label: label, x: x, w: w})
+			out = append(out, stripCell{kind: cellTab, id: tabs[i].id, label: label, x: x, w: w, close: s.closeShown(label)})
 			x += w + 1
 		}
 		x = end + 1 // > keeps its place, however full the window
@@ -413,7 +420,7 @@ func (s *tabStrip) press(e tui.MouseEvent) bool {
 			continue
 		}
 		switch {
-		case c.kind == cellTab && e.Button == tui.MouseLeft && s.onClose != nil && e.X < c.x+s.base.measure(closeMark):
+		case c.kind == cellTab && e.Button == tui.MouseLeft && c.close && e.X < c.x+s.base.measure(closeMark):
 			s.onClose(c.id) // the tab's ×: closed, not chosen
 		case c.kind == cellTab && e.Button == tui.MouseLeft:
 			s.choose(c.id)
