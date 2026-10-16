@@ -116,6 +116,7 @@ func (l *tableLayout) Reveal(row, col int) {
 	if l.size.W <= 0 || l.size.H <= 0 {
 		return
 	}
+	l.top = min(l.top, max(l.core().Len()-l.bodyRows(), 0)) // rows gone (a filter) leave no blank below the last
 	l.top = max(min(max(l.top, row-l.bodyRows()+1), row), 0)
 	if col < l.left {
 		l.left = col
