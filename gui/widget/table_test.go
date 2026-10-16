@@ -373,6 +373,21 @@ func TestATableHitsTheGutterTheHeadersAndTheCells(t *testing.T) {
 			t.Errorf("at %v: %+v %v, want nothing", pt, p, h)
 		}
 	}
+	// past the painted view: nothing, and no field beyond the ones painted
+	_, ln := pixelTable(t, cities(5), tuiwidget.TableRowNumbers(true))
+	paintTable(ln, 100, 100)
+	shown := ln.columns(100)
+	for _, pt := range [][2]float32{{120, ln.rowH / 2}, {120, 2.5 * ln.rowH}, {50, 120}, {120, 120}, {100, ln.rowH / 2}} {
+		if p, h := ln.HitAt(pt[0], pt[1]); h != tuiwidget.TableHitNone {
+			t.Errorf("a 100x100 view at %v: %+v %v, want nothing past what is painted", pt, p, h)
+		}
+	}
+	if last := shown[len(shown)-1]; last.col >= 3 {
+		t.Fatalf("a 100-pixel view paints field %d: the case below proves nothing", last.col)
+	}
+	if p, h := ln.HitAt(99, ln.rowH/2); h == tuiwidget.TableHitHeader && p.Col > shown[len(shown)-1].col {
+		t.Errorf("at x 99: field %d, which the view does not paint (last painted %d)", p.Col, shown[len(shown)-1].col)
+	}
 	if _, header, ok := l.CellAt(cols[2].x, l.rowH/2); !header || !ok {
 		t.Error("CellAt over the header is not the header")
 	}
@@ -510,6 +525,16 @@ func TestATableMarksEverySortKey(t *testing.T) {
 	paintTable(l, 600, 200)
 	if got := runTexts(l.header); strings.Join(got, "|") != "id|name|city|n|▲¹|▼²" {
 		t.Errorf("a field keyed twice: header %q, want its first key's mark alone", got)
+	}
+	dt.Core().SortKeys([]tuiwidget.TableSortKey{{Col: 1}, {Col: 3}})
+	paintTable(l, 600, 200)
+	dt.Core().SortKeys([]tuiwidget.TableSortKey{{Col: 3}, {Col: 1}}) // the same marks' texts, the places swapped
+	paintTable(l, 600, 200)
+	for i, col := range []int{3, 1} {
+		c, m := cols[col], l.header.runs[4+i]
+		if m.X < c.x+c.w || m.X > c.x+c.w+2*l.pad {
+			t.Errorf("places swapped: key %d's mark at %v, want after field %d (%v to %v): the old marks reused", i+1, m.X, col, c.x+c.w, c.x+c.w+2*l.pad)
+		}
 	}
 	dt.Core().SortKeys([]tuiwidget.TableSortKey{{Col: 0}})
 	paintTable(l, 600, 200)

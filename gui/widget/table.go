@@ -168,7 +168,7 @@ func (l *tableLayout) CellAt(x, y float32) (tuiwidget.TablePos, bool, bool) {
 // corner is nothing), a row's number over the gutter, a cell over a row band's field, and nothing
 // past the last field, below the last row or above and left of the view.
 func (l *tableLayout) HitAt(x, y float32) (tuiwidget.TablePos, tuiwidget.TableHit) {
-	if x < 0 || y < 0 {
+	if x < 0 || y < 0 || x >= l.size.W || y >= l.size.H {
 		return tuiwidget.TablePos{}, tuiwidget.TableHitNone
 	}
 	if y < l.rowH {
@@ -190,13 +190,13 @@ func (l *tableLayout) HitAt(x, y float32) (tuiwidget.TablePos, tuiwidget.TableHi
 	return tuiwidget.TablePos{}, tuiwidget.TableHitNone
 }
 
-// fieldAt is the field shown at x: its text and the padding either side of it. The gutter and
-// past the last field are none.
+// fieldAt is the field shown at x: its text and the padding either side of it, among the fields
+// painted in the view's width. The gutter and past the last field shown are none.
 func (l *tableLayout) fieldAt(x float32) (int, bool) {
 	if x < l.gutter() {
 		return 0, false
 	}
-	for _, c := range l.columns(math.MaxFloat32) {
+	for _, c := range l.columns(l.size.W) {
 		if x < c.x+c.w+l.pad {
 			return c.col, true
 		}
@@ -417,7 +417,7 @@ func (l *tableLayout) shapeHeader(old *tableBand, cols []tableColumn) *tableBand
 	}
 	slices.SortFunc(marks, func(a, b mark) int { return a.of - b.of }) // in key order
 	for _, m := range marks {
-		texts = append(texts, m.text)
+		texts = append(texts, strconv.Itoa(m.at)+":"+m.text) // the column too: swapped places mark other fields
 	}
 	key := l.key(texts, cols, nil)
 	if old != nil && old.key == key {
