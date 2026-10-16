@@ -183,6 +183,7 @@ func (t *DataTable) AcceptsFocus() bool { return true }
 // Reveal implements TableLayout: scroll so the cell is in sight.
 func (t *DataTable) Reveal(row, col int) {
 	body := max(t.h-1, 1)
+	t.top = min(t.top, max(t.core.Len()-body, 0)) // rows gone (a filter) leave no blank below the last
 	t.top = min(max(t.top, row-body+1), row)
 	t.top = max(t.top, 0)
 	if col < t.left {

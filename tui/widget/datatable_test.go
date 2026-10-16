@@ -79,6 +79,30 @@ func TestDataTable_ScrollsToTheCursor(t *testing.T) {
 	}
 }
 
+// A filter that shrinks the rows under a scrolled view shows as many of them as fit: the cursor's
+// row is not left alone at the top with the rows before it scrolled off.
+func TestDataTable_AFilterScrollsBackToFitTheRows(t *testing.T) {
+	h, sh, dt := dataTable(t, numbered(40), 30, 6)
+	h.onLoop(func() { dt.HandleEvent(tui.KeyEvent{Kind: tui.KeyPress, Text: "G"}) })
+	h.barrier(sh)
+	h.onLoop(func() {
+		p, err := widget.ParseTableWhere("id >= 37", dt.Core().Fields())
+		if err != nil {
+			t.Error(err)
+		}
+		dt.Core().SetFilter(p)
+	})
+	h.barrier(sh)
+	if got := tableCursor(h, dt); got.Row != 2 {
+		t.Fatalf("cursor %+v, want row 2, still on row39", got)
+	}
+	for _, s := range []string{"row37", "row38", "row39"} {
+		if !strings.Contains(h.grid(), s) {
+			t.Errorf("%s is not shown:\n%s", s, h.grid())
+		}
+	}
+}
+
 // A press puts the cursor on the cell under it; a second press activates the row; a press on the
 // header is consumed and selects that field, the cursor on its first row; motion goes on to the
 // ancestors.
