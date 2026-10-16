@@ -129,7 +129,5 @@ func (c *EditorCore) CommandLineClosed() {
 
 // cancelCommand forgets a command half-typed: its count, operator, prefix, armed key, register.
 func (c *EditorCore) cancelCommand() {
-	k := &c.keys
-	k.dropPending()
-	k.regArmed, k.reg, k.markArmed, k.macroArmed = false, 0, ActUnbound, ActUnbound
+	c.keys.dropPending()
 }
