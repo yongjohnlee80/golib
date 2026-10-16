@@ -522,7 +522,11 @@ func paintTabs(comp tui.Component) (View, tui.NativeScope, bool) {
 		}
 		// a divider in the cell between two neighbours, so a tab's × reads as its own and not the one
 		// before's: a thin line, the bar's ground toward its text, darker on a light bar and lighter
-		// on a dark one; none in a cell a panel covers
+		// on a dark one; none in a cell a panel covers. It sits on whole device pixels, its width a
+		// whole number of them: a cell's width is rarely whole, and a line across two pixels is drawn
+		// at half strength in each, so it came and went from one gap to the next
+		px := max(c.Scale(), 1)
+		lineW := float32(math.Max(1, math.Round(float64(px)))) / px
 		for i := 1; i < len(spans); i++ {
 			gap := spans[i-1].X + spans[i-1].W
 			if spans[i].X != gap+1 || gap >= cols {
@@ -532,8 +536,8 @@ func paintTabs(comp tui.Component) (View, tui.NativeScope, bool) {
 			if !ok {
 				continue
 			}
-			x := (float32(gap) + 0.5) * cs.W
-			c.FillRect(Rect{X: x - 0.5, Y: cs.H * 0.2, W: 1, H: cs.H * 0.6}, Solid(mix(bg, fg, 0.45)))
+			x := float32(math.Floor(float64((float32(gap)+0.5)*cs.W*px))) / px
+			c.FillRect(Rect{X: x, Y: cs.H * 0.2, W: lineW, H: cs.H * 0.6}, Solid(mix(bg, fg, 0.55)))
 		}
 		c.PaintCells(CellRect{W: cols, H: 1}, true)
 	}), tui.ScopeChrome, true
