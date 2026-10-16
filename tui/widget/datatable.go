@@ -64,7 +64,8 @@ type TableLayoutPointer interface {
 // TableLayoutHitter is a TableLayoutPointer that tells every part of the table apart, the row
 // numbers' gutter included. DataTable asks HitAt first; a layout without it is placed by CellAt,
 // which has no gutter: its header row is TableHitHeader, a cell TableHitCell, anything else
-// TableHitNone.
+// TableHitNone. CellAt names no header field a press can trust, so a header press there selects
+// nothing and leaves the selection as it is.
 type TableLayoutHitter interface {
 	TableLayoutPointer
 	// HitAt is what is at (x, y): a cell (p), a field's title (p.Col), a row's number (p.Row), or
@@ -342,6 +343,9 @@ func (t *DataTable) HandleEvent(ev tui.Event) bool {
 			return true
 		case e.Kind == tui.MousePress && e.Button == tui.MouseLeft:
 			pos, hit := t.hitAt(e)
+			if t.unplacedHeader(hit) {
+				return true // which field is unknown: the selection is left as it is
+			}
 			t.core.PressAt(pos, hit)
 			if t.core.Dragging() {
 				if ctx := t.Context(); ctx != nil {
@@ -355,6 +359,9 @@ func (t *DataTable) HandleEvent(ev tui.Event) bool {
 		case e.Kind == tui.MousePress && e.Button == tui.MouseRight && t.menu != nil && t.menu.Enabled():
 			// The selection is left as it is: the menu's rows act on it.
 			t.menuPos, t.menuHit = t.hitAt(e)
+			if t.unplacedHeader(t.menuHit) {
+				t.menuPos, t.menuHit = TablePos{}, TableHitNone
+			}
 			return t.menu.OpenAt(tui.Point{X: e.X, Y: e.Y})
 		case e.Kind == tui.MouseMotion && e.Button == tui.MouseLeft && t.core.Dragging():
 			if pos, ok := t.dragAt(e); ok {
@@ -392,13 +399,24 @@ func (t *DataTable) hitAt(e tui.MouseEvent) (TablePos, TableHit) {
 	return pos, TableHitNone
 }
 
+// unplacedHeader reports a header hit from a bound layout without HitAt. Its CellAt says a press
+// is on the header row but not on which field (a layout may answer TablePos{} for the whole row),
+// so selecting a column from it would select the wrong one.
+func (t *DataTable) unplacedHeader(hit TableHit) bool {
+	if hit != TableHitHeader || !t.bound() {
+		return false
+	}
+	_, placed := t.layout.(TableLayoutHitter)
+	return !placed
+}
+
 // dragAt is the cell a drag is over. The cell layout reckons one wherever the pointer is, past the
 // edges included, so a drag below the rows reaches the next and the view scrolls to it; a bound
 // layout's is its hit, and nothing off the table.
 func (t *DataTable) dragAt(e tui.MouseEvent) (TablePos, bool) {
 	if t.bound() {
 		pos, hit := t.hitAt(e)
-		return pos, hit != TableHitNone
+		return pos, hit != TableHitNone && !t.unplacedHeader(hit)
 	}
 	col := t.left
 	if x := e.X - t.gutter(); x >= 0 {

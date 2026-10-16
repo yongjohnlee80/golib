@@ -366,7 +366,8 @@ set) once it has not, and `SetMenu(m)` gives it a right-click `EditorMenu`, open
 with the selection left as it is; `NewEditorMenu(table, nil)` with `SetRows` is a menu with no
 editor core, and `MenuAt` is where it was opened. A pixel layout that tells the gutter apart
 implements `TableLayoutHitter` (`HitAt`); one that implements only `TableLayoutPointer` is placed
-by `CellAt`, with no gutter.
+by `CellAt`, with no gutter, and a press or drag on its header leaves the selection as it is (`CellAt`
+names no field it can trust).
 
 ```go
 core := widget.NewTableCore(result, widget.TableSortable(true), widget.TableRowNumbers(true),

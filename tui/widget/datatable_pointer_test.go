@@ -176,16 +176,26 @@ func TestDataTable_ATableLayoutHitterPlacesTheGutter(t *testing.T) {
 	})
 }
 
-// A plain TableLayoutPointer is placed by CellAt: its header and its cells select, and nothing is
-// a gutter, so no press or drag selects rows.
+// A plain TableLayoutPointer is placed by CellAt: its cells select; its header, whose field CellAt
+// does not name, selects nothing and leaves a selection as it is; and nothing is a gutter, so no
+// press or drag selects rows.
 func TestDataTable_APlainTableLayoutPointerHasNoGutter(t *testing.T) {
 	p := &placingTable{}
 	h, dt := boundTableApp(t, p)
 	gesture(h, [2]int{1, 0})
 	var from, to widget.TablePos
 	h.onLoop(func() { from, to, _ = dt.Core().Selection() })
-	if kind, _, ok := tableSelected(h, dt); !ok || kind != widget.TableSelectBlock || from != (widget.TablePos{}) || to != (widget.TablePos{Row: 19}) {
-		t.Errorf("a header press: kind %v (%v), %+v to %+v; want field 0, every row", kind, ok, from, to)
+	if _, _, ok := tableSelected(h, dt); ok {
+		t.Errorf("a header press without HitAt selected %+v to %+v; CellAt names no field, so it must select nothing", from, to)
+	}
+	gesture(h, [2]int{1, 2}, [2]int{12, 3}) // cells selected first, then the header pressed
+	_, before, selected := tableSelected(h, dt)
+	if !selected {
+		t.Fatal("the drag over cells selected nothing: the header press below would prove nothing")
+	}
+	gesture(h, [2]int{1, 0})
+	if _, after, _ := tableSelected(h, dt); after != before {
+		t.Errorf("a header press without HitAt changed the selection: %q, then %q", before, after)
 	}
 	gesture(h, [2]int{1, 2}) // where a gutter would be: a cell here
 	if _, _, ok := tableSelected(h, dt); ok {
