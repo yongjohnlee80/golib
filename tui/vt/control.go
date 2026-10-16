@@ -85,7 +85,20 @@ func (s *Screen) csi(a *vtparse.Action) {
 		if a.Final == 'c' && a.Inter == "" && a.Param(0, 0) == 0 {
 			s.reply1([]byte("\x1b[>1;10;0c")) // DA2: a VT220, firmware 10
 		}
-		return // XTMODKEYS, kitty pushes and the like: not supported
+		if a.Final == 'u' && a.Inter == "" {
+			s.pushKeyboard(a.Param(0, 0))
+		}
+		return // XTMODKEYS and the like: not supported
+	case '<':
+		if a.Final == 'u' && a.Inter == "" {
+			s.popKeyboard(a.Param(0, 1))
+		}
+		return
+	case '=':
+		if a.Final == 'u' && a.Inter == "" {
+			s.setKeyboard(a.Param(0, 0), a.Param(1, 1))
+		}
+		return
 	default:
 		return
 	}
@@ -204,8 +217,50 @@ func (s *Screen) csiPrivate(a *vtparse.Action) {
 		s.eraseDisplay(a.Param(0, 0)) // DECSED: no protected cells here
 	case a.Inter == "" && a.Final == 'K':
 		s.eraseLine(a.Param(0, 0)) // DECSEL
+	case a.Inter == "" && a.Final == 'u':
+		// The kitty keyboard query: the flags in force, which a program reads
+		// to learn the protocol is understood and what of its push was kept.
+		s.reply1([]byte(fmt.Sprintf("\x1b[?%du", s.buf.keyboardFlags())))
 	}
-	// ?u (the kitty keyboard query) and the rest go unanswered.
+}
+
+// pushKeyboard is CSI > flags u: flags, those this screen supports, become
+// the current set on the shown screen's stack.
+func (s *Screen) pushKeyboard(flags int) {
+	b := s.buf
+	if len(b.kbd) == kittyStackMax {
+		b.kbd = append(b.kbd[:0], b.kbd[1:]...)
+	}
+	b.kbd = append(b.kbd, flags&KittyDisambiguate)
+	s.modes.KeyboardFlags = b.keyboardFlags()
+}
+
+// popKeyboard is CSI < n u: the last n sets go, and an emptied stack is the
+// legacy encoding.
+func (s *Screen) popKeyboard(n int) {
+	b := s.buf
+	b.kbd = b.kbd[:len(b.kbd)-min(max(n, 1), len(b.kbd))]
+	s.modes.KeyboardFlags = b.keyboardFlags()
+}
+
+// setKeyboard is CSI = flags ; mode u, changing the current set in place:
+// mode 1 replaces it, 2 sets the given bits, 3 clears them.
+func (s *Screen) setKeyboard(flags, mode int) {
+	b := s.buf
+	if len(b.kbd) == 0 {
+		b.kbd = append(b.kbd, 0)
+	}
+	cur := &b.kbd[len(b.kbd)-1]
+	flags &= KittyDisambiguate
+	switch mode {
+	case 1:
+		*cur = flags
+	case 2:
+		*cur |= flags
+	case 3:
+		*cur &^= flags
+	}
+	s.modes.KeyboardFlags = b.keyboardFlags()
 }
 
 func (s *Screen) statusReport(private bool, n int) {
@@ -367,6 +422,7 @@ func (s *Screen) switchScreen(on, clear bool) {
 		s.buf = &s.pri
 	}
 	s.modes.AltScreen = on
+	s.modes.KeyboardFlags = s.buf.keyboardFlags() // each screen has its own stack
 	s.cur.wrapNext = false
 }
 

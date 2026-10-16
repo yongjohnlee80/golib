@@ -3,6 +3,7 @@ package widget
 import (
 	"strconv"
 	"strings"
+	"unicode"
 
 	"github.com/yongjohnlee80/golib/tui"
 	"github.com/yongjohnlee80/golib/tui/vt"
@@ -22,6 +23,11 @@ func encodeKey(k tui.KeyEvent, m vt.Modes) []byte {
 
 	if seq := functionKey(k.Code, mods, m); seq != nil {
 		return seq
+	}
+	if m.KeyboardFlags&vt.KittyDisambiguate != 0 {
+		if seq := kittyKey(k, mods); seq != nil {
+			return seq
+		}
 	}
 
 	var b []byte
@@ -60,6 +66,34 @@ func encodeKey(k tui.KeyEvent, m vt.Modes) []byte {
 		return append([]byte{0x1b}, b...)
 	}
 	return b
+}
+
+// kittyKey is the kitty keyboard protocol's CSI code;mods u for a key whose
+// legacy bytes are ambiguous, once the program has asked to disambiguate:
+// Escape, Enter, Tab and Backspace with a modifier (Shift+Enter is not Enter),
+// and a text key with Ctrl or Alt (Ctrl+i is not Tab, Alt+x is not Escape
+// then x). It returns nil for every other key, which keeps its legacy bytes.
+func kittyKey(k tui.KeyEvent, mods tui.Mods) []byte {
+	var code rune
+	switch k.Code {
+	case tui.KeyEscape:
+		code = 27
+	case tui.KeyEnter, tui.KeyTab, tui.KeyBackspace:
+		if mods == 0 {
+			return nil
+		}
+		code = map[rune]rune{tui.KeyEnter: 13, tui.KeyTab: 9, tui.KeyBackspace: 127}[k.Code]
+	default:
+		if mods&(tui.ModCtrl|tui.ModAlt|tui.ModMeta) == 0 || k.Code < 0x20 || k.Code >= 0xE000 {
+			return nil
+		}
+		// The key's own code, unshifted: Ctrl+Shift+A is a with Ctrl and Shift.
+		code = unicode.ToLower(k.Code)
+	}
+	if mod := xtermMod(mods); mod > 1 {
+		return []byte("\x1b[" + strconv.Itoa(int(code)) + ";" + strconv.Itoa(mod) + "u")
+	}
+	return []byte("\x1b[" + strconv.Itoa(int(code)) + "u")
 }
 
 // ctrlByte is the C0 byte Ctrl+key sends.

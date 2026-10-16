@@ -77,4 +77,19 @@ type Modes struct {
 	Synchronized   bool // 2026: the program is mid-frame; a host may hold painting
 	Mouse          MouseMode
 	MouseSGR       bool // 1006: SGR mouse encoding
+	// KeyboardFlags are the kitty keyboard protocol's enhancement flags the
+	// program asked for and this screen supports (KittyDisambiguate): 0 is
+	// the legacy encoding every terminal sends.
+	KeyboardFlags int
 }
+
+// KittyDisambiguate is the kitty keyboard protocol's first enhancement:
+// keys whose legacy bytes are ambiguous (Escape, Enter, Tab and Backspace
+// with a modifier, a text key with Ctrl or Alt) are sent as CSI … u, so a
+// program can tell Shift+Enter from Enter. The other flags are not
+// supported and are masked off what a program pushes.
+const KittyDisambiguate = 1
+
+// kittyStackMax is how many flag sets a screen's stack holds; a push past
+// it evicts the oldest, as the protocol says.
+const kittyStackMax = 32
