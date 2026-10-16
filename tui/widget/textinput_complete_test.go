@@ -73,8 +73,8 @@ func TestTextInput_TabCompletesAFieldName(t *testing.T) {
 	}
 }
 
-// Several choices: Tab puts in what they all begin with, then each in turn, Shift+Tab back; any
-// other key ends the walk.
+// Several choices: Tab puts in what they all begin with, then each in turn, Shift+Tab back; an
+// edit ends the walk, and a key the field does not take (the harness's barrier) does not.
 func TestTextInput_TabWalksSeveralChoices(t *testing.T) {
 	h, in, sh := completingInput(t)
 	h.inject(typeString("cre")...)
