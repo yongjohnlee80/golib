@@ -5,6 +5,8 @@ import (
 
 	"github.com/yongjohnlee80/golib/gui"
 	"github.com/yongjohnlee80/golib/gui/flow"
+	"github.com/yongjohnlee80/golib/tui/style"
+	tuiwidget "github.com/yongjohnlee80/golib/tui/widget"
 )
 
 // GFM Markdown Table Layout Architecture:
@@ -27,77 +29,49 @@ import (
 // the header. A row is one source line, as every line is: its pipes and the spaces around a
 // cell's text are Hidden spans with Room, the room that puts the next cell's text at its column,
 // so every source cluster keeps a place for the caret. The cursor in the table shows its source.
-type align uint8
-
-const (
-	alignLeft align = iota
-	alignCenter
-	alignRight
-)
+//
+// The rows and the delimiter row are read by golib's one Markdown table parser, tui/widget's
+// MarkdownTableCells and MarkdownDelimiterAligns, which the editor's table keys and TableText read
+// too; GFM's optional outer pipes are the renderer's to supply (gfmRow).
 
 // cell is a row's cell: its text's bytes [from, to) of the line, trimmed; from == to for an empty
 // cell, at where its text would be.
 type cell struct{ from, to int }
 
+// gfmRow is line with the outer pipes GFM lets a row leave out put back, and the bytes put before
+// it: the line as the parser reads a row.
+func gfmRow(line string) (row string, shift int) {
+	t := strings.TrimRight(line, " \t")
+	if !strings.HasPrefix(strings.TrimLeft(t, " \t"), "|") {
+		line, shift = "|"+line, 1
+	}
+	if !strings.HasSuffix(t, "|") || strings.HasSuffix(t, "\\|") {
+		line += "|" // no closing pipe, or an escaped one: the row's text runs to its end
+	}
+	return line, shift
+}
+
 // tableCells splits a row into its cells at its unescaped pipes, the outer ones optional.
 func tableCells(line string) []cell {
-	s, e := len(line)-len(strings.TrimLeft(line, " \t")), len(strings.TrimRight(line, " \t"))
-	if s < e && line[s] == '|' {
-		s++
+	row, shift := gfmRow(line)
+	spans, ok := tuiwidget.MarkdownTableCells(row)
+	if !ok {
+		return nil
 	}
-	if e > s && line[e-1] == '|' && (e < 2 || line[e-2] != '\\') {
-		e--
+	out := make([]cell, len(spans))
+	for i, sp := range spans {
+		from := min(max(byteOfCluster(row, sp[0])-shift, 0), len(line))
+		to := min(max(byteOfCluster(row, sp[1])-shift, from), len(line))
+		out[i] = cell{from, to}
 	}
-	var out []cell
-	add := func(from, to int) {
-		for from < to && (line[from] == ' ' || line[from] == '\t') {
-			from++
-		}
-		for to > from && (line[to-1] == ' ' || line[to-1] == '\t') {
-			to--
-		}
-		out = append(out, cell{from, to})
-	}
-	start := s
-	for i := s; i < e; i++ {
-		switch line[i] {
-		case '\\':
-			i++ // an escaped character, a pipe included, is the cell's
-		case '|':
-			add(start, i)
-			start = i + 1
-		}
-	}
-	add(start, e)
 	return out
 }
 
 // delimiterAligns reads a delimiter row ("| --- | :-: | --: |"): a column's alignment each, ok
-// when every cell is dashes with optional colons.
-func delimiterAligns(line string) ([]align, bool) {
-	if !strings.Contains(line, "-") {
-		return nil, false
-	}
-	cells := tableCells(line)
-	if len(cells) == 0 {
-		return nil, false
-	}
-	out := make([]align, len(cells))
-	for i, c := range cells {
-		s := line[c.from:c.to]
-		left, right := strings.HasPrefix(s, ":"), strings.HasSuffix(s, ":")
-		body := strings.Trim(s, ":")
-		if body == "" || strings.Trim(body, "-") != "" {
-			return nil, false
-		}
-		switch {
-		case left && right:
-			out[i] = alignCenter
-		case right:
-			out[i] = alignRight
-		}
-	}
-	return out, true
+// when it is one.
+func delimiterAligns(line string) ([]style.Align, bool) {
+	row, _ := gfmRow(line)
+	return tuiwidget.MarkdownDelimiterAligns(row)
 }
 
 // tableEnd is where a table starting at line i ends, past its last row, as GFM reads one: a
@@ -311,9 +285,9 @@ func (r *MarkdownRenderer) layTable(b Block, lines []string, width float32, insi
 			if k < len(aligns) && cells[k] != nil {
 				content := cells[k].Width
 				switch aligns[k] {
-				case alignCenter:
+				case style.AlignCenter:
 					at += (colW[k] - content) / 2
-				case alignRight:
+				case style.AlignRight:
 					at += colW[k] - content
 				}
 			}

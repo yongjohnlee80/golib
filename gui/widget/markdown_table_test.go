@@ -6,6 +6,7 @@ import (
 	"testing"
 
 	"github.com/yongjohnlee80/golib/gui"
+	tuiwidget "github.com/yongjohnlee80/golib/tui/widget"
 )
 
 // tableTheme is the theme the table tests lay out with.
@@ -232,5 +233,96 @@ func TestAFittingTableKeepsItsColumns(t *testing.T) {
 				t.Error("a fitting table wrapped a line")
 			}
 		}
+	}
+}
+
+// One parser: the GUI renderer reads a table's cells where TableText (the editor's table keys and a
+// TableCore's source) reads them, an escaped pipe, an escaped backslash before a pipe, a column's
+// alignment, wide text and an empty cell included; and each rendered row shows its cells' text in
+// those cells, none of it elsewhere.
+func TestTheRendererReadsTheCellsTableTextReads(t *testing.T) {
+	doc := "| name | note | n |\n| :-- | :-: | --: |\n| a \\| b | c | 1 |\n| x \\\\| y | z | 22 |\n| 한국 |  | 3 |"
+	lines := strings.Split(doc, "\n")
+	tt, ok := tuiwidget.TableAt(tuiwidget.NewEditorCore(tuiwidget.CoreInitialText(doc)), 0)
+	if !ok || tt.Len() != 3 {
+		t.Fatalf("TableText read no table of 3 rows: %v", ok)
+	}
+	texts := func(line string) []string {
+		var out []string
+		for _, c := range tableCells(line) {
+			out = append(out, line[c.from:c.to])
+		}
+		return out
+	}
+	fields := tt.Fields()
+	aligns, ok := delimiterAligns(lines[1])
+	if !ok || len(aligns) != len(fields) {
+		t.Fatalf("the delimiter row read %v %v, want %d aligns", aligns, ok, len(fields))
+	}
+	for i, title := range texts(lines[0]) {
+		if i >= len(fields) || title != fields[i].Title || aligns[i] != fields[i].Align {
+			t.Errorf("header cell %d: %q aligned %v, TableText's %+v", i, title, aligns[i], fields)
+		}
+	}
+	for row := range tt.Len() {
+		got := texts(lines[row+2])
+		if len(got) != len(fields) {
+			t.Errorf("row %d: the renderer read %d cells %q, want %d", row, len(got), got, len(fields))
+			continue
+		}
+		for col := range fields {
+			if want := tt.Cell(row, col); got[col] != want {
+				t.Errorf("row %d cell %d: the renderer read %q, TableText %q", row, col, got[col], want)
+			}
+		}
+	}
+
+	bl := layTableAt(t, doc, 800)
+	for row := range tt.Len() {
+		ln := row + 2
+		spans, _ := tuiwidget.MarkdownTableCells(lines[ln])
+		shown := make([]bool, len(spans))
+		for _, s := range bl.Lines[ln].Spans {
+			if s.Hidden || strings.TrimSpace(s.Text) == "" {
+				continue
+			}
+			in := false
+			for i, c := range spans {
+				if s.Col >= c[0] && s.Col < c[1] {
+					shown[i], in = true, true
+				}
+			}
+			if !in {
+				t.Errorf("row %d: %q drawn at column %d, outside every cell %v", row, s.Text, s.Col, spans)
+			}
+		}
+		for i, c := range spans {
+			if c[1] > c[0] && !shown[i] {
+				t.Errorf("row %d: cell %d (%q) is not drawn", row, i, tt.Cell(row, i))
+			}
+		}
+	}
+}
+
+// A row GFM reads without its outer pipes is read by the same parser, the pipes supplied: its
+// cells are its text between pipes, a trailing escaped pipe kept as text.
+func TestARowWithoutOuterPipesReadsItsCells(t *testing.T) {
+	for line, want := range map[string]string{
+		"a | b":       "a|b",
+		"  a | b |  ": "a|b",
+		"| a | b":     "a|b",
+		"bar":         "bar",
+		"a | b \\|":   "a|b \\|",
+	} {
+		var got []string
+		for _, c := range tableCells(line) {
+			got = append(got, line[c.from:c.to])
+		}
+		if strings.Join(got, "|") != want {
+			t.Errorf("%q: cells %q, want %q", line, got, want)
+		}
+	}
+	if a, ok := delimiterAligns("--- | :-: | --:"); !ok || len(a) != 3 {
+		t.Errorf("a delimiter row without outer pipes: %v %v", a, ok)
 	}
 }
