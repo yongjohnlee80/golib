@@ -68,3 +68,37 @@ func TestEditorOverlayKeymap(t *testing.T) {
 		t.Errorf("the Editor's keymap still binds q to %v", e.Keymap()[normalQ])
 	}
 }
+
+// A q waiting for its register when the overlay unbinds q is dropped with the rest: the next q goes
+// to the host, not to the register it was waiting for.
+func TestOverlayKeymapDropsAnArmedQ(t *testing.T) {
+	c, _ := coreWith(t, "abc")
+	if !c.HandleKey(tui.KeyEvent{Code: 'q'}) {
+		t.Fatal("q is not bound before the overlay: the cell would prove nothing")
+	}
+	c.OverlayKeymap(widget.Keymap{normalQ: widget.ActUnbound})
+	if c.HandleKey(tui.KeyEvent{Code: 'q'}) {
+		t.Error("q, the overlay, q: the second q was taken as the register's name")
+	}
+}
+
+// Every command boundary forgets a key waiting for a name — q or @ for a register, m for a mark,
+// " for a register — so the next key is a command again: a, here, appends.
+func TestABoundaryForgetsAKeyWaitingForAName(t *testing.T) {
+	boundaries := map[string]func(c *widget.EditorCore){
+		"focus lost": func(c *widget.EditorCore) { c.FocusLost() },
+		"a press":    func(c *widget.EditorCore) { c.PressAt(0, 0) },
+		"a keyset":   func(c *widget.EditorCore) { c.SetKeyset(widget.KeysetNano); c.SetKeyset(widget.KeysetVim) },
+	}
+	for name, cross := range boundaries {
+		for _, armer := range []string{"q", "@", "m", `"`} {
+			c, _ := coreWith(t, "abc")
+			keys(c, armer)
+			cross(c)
+			keys(c, "a")
+			if c.Mode() != widget.ModeInsert {
+				t.Errorf("%s after %s: a was taken as a name (mode %v); want it to append", name, armer, c.Mode())
+			}
+		}
+	}
+}

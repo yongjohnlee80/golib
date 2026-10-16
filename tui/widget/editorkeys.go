@@ -144,6 +144,11 @@ func (k *keyDispatch) dropPending() {
 	k.count, k.pendingCount = 0, 0
 	k.pendingAct, k.pendingChord = ActUnbound, KeyChord{}
 	k.findArmed, k.findCount = ActUnbound, 0
+	// A key waiting for a name — a register's, a mark's, a macro's — is pending too: left armed,
+	// it would take the next key as that name, whatever ended the command around it.
+	k.regArmed, k.reg = false, 0
+	k.markArmed = ActUnbound
+	k.macroArmed, k.macroCount = ActUnbound, 0
 	k.dropOp()
 }
 
