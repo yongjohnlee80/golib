@@ -385,8 +385,12 @@ func TestATableHitsTheGutterTheHeadersAndTheCells(t *testing.T) {
 	if last := shown[len(shown)-1]; last.col >= 3 {
 		t.Fatalf("a 100-pixel view paints field %d: the case below proves nothing", last.col)
 	}
-	if p, h := ln.HitAt(99, ln.rowH/2); h == tuiwidget.TableHitHeader && p.Col > shown[len(shown)-1].col {
-		t.Errorf("at x 99: field %d, which the view does not paint (last painted %d)", p.Col, shown[len(shown)-1].col)
+	// CellAt, which is not bounded by the view, still names only a painted field: just past the last
+	// painted field's end is where the first unpainted field would begin
+	last := shown[len(shown)-1]
+	past := last.x + last.w + ln.pad + 1
+	if p, header, ok := ln.CellAt(past, 2.5*ln.rowH); ok || header {
+		t.Errorf("CellAt at x %v, past field %d (the last painted) in a 100-pixel view: %+v %v %v, want no field", past, last.col, p, header, ok)
 	}
 	if _, header, ok := l.CellAt(cols[2].x, l.rowH/2); !header || !ok {
 		t.Error("CellAt over the header is not the header")
