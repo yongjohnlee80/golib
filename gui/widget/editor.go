@@ -54,6 +54,7 @@ type Editor struct {
 	menu    *tuiwidget.EditorMenu
 	cmdline *tuiwidget.CommandLine // the ':' prompt, shared with the terminal's Editor
 	sw      *modeSwitch
+	tabs    *tuiwidget.TabStrip // the host's tabs on the title bar (Tabs)
 
 	mode   EditorMode
 	render Renderer
@@ -152,7 +153,9 @@ func NewEditor(opts ...EditorOption) *Editor {
 	e.cmdline = tuiwidget.NewCommandLine(e.body, e.core)
 	e.cmdline.SetEnabled(!cfg.noCmd)
 	e.stack = newEditorStack(e)
-	e.panel = NewPanel(e.stack, append([]PanelOption{TitleLeading(e.sw)}, cfg.panel...)...)
+	e.tabs = tuiwidget.NewTabStrip()
+	// the host's tabs at the bar's left, up to two thirds of it; Raw | Rendered at its right
+	e.panel = NewPanel(e.stack, append([]PanelOption{TitleLeading(e.tabs), TitleTrailing(e.sw), TitleLeadingShare(2.0 / 3)}, cfg.panel...)...)
 	// Ctrl+T, or whatever the keymap binds ActToggleRendered to: with no renderer there is no
 	// Rendered view, so the key bubbles.
 	e.core.SetToggleRendered(func() bool {
@@ -219,6 +222,10 @@ func (e *Editor) Visible() bool                         { return e.panel.Visible
 
 // Core is the editor's behaviour: its text, cursor, modes and keymap.
 func (e *Editor) Core() *tuiwidget.EditorCore { return e.core }
+
+// Tabs is the strip at the title bar's left, up to two thirds of it: the host's tabs (its open
+// buffers, say), which the host sets and hears chosen. With none set it takes no room.
+func (e *Editor) Tabs() *tuiwidget.TabStrip { return e.tabs }
 
 // Mode is how the text is drawn.
 func (e *Editor) Mode() EditorMode { return e.mode }

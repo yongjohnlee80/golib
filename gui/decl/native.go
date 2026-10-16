@@ -193,9 +193,12 @@ func editorSetters() map[string]tuidecl.Setter {
 }
 
 // restyleEditor puts the palette's text on base under the Editor: the cells its view takes its
-// colours from. An empty palette is the terminal theme's default, golib's own look.
+// colours from; and its title bar's tabs in TerminalTabs's looks. An empty palette is the terminal
+// theme's default, golib's own look.
 func restyleEditor(c tui.Component, p tuidecl.Palette) {
 	if e, ok := c.(*widget.Editor); ok {
 		e.SetPageStyle(p.Look(tuidecl.RoleBase, tuidecl.RoleText))
+		e.Tabs().SetStyles(p.Look(tuidecl.RoleWindow, tuidecl.RoleWindowText), p.Look(tuidecl.RoleButton, tuidecl.RoleButtonText),
+			p.Look(tuidecl.RoleHighlight, tuidecl.RoleHighlightedText))
 	}
 }

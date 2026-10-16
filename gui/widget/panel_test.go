@@ -244,3 +244,20 @@ func TestPanelBarIsAPageSurface(t *testing.T) {
 		t.Errorf("BarColors %v %v %v: want the text white, the page %v, a fill off the page", text, fill, pg, page)
 	}
 }
+
+// TestPanelTitleTrailingSitsAtTheRight: a trailing widget sits at the bar's right, before the
+// controls; the title keeps to the room left of it, cut where it would run under it.
+func TestPanelTitleTrailingSitsAtTheRight(t *testing.T) {
+	h := startPanel(t, tui.Rect{X: 2, Y: 2, W: 40, H: 6}, gw.TitleTrailing(widget.NewText("TRAIL")))
+	h.until("the trailing widget", func() bool { return strings.Contains(h.row(2), "TRAIL") })
+	if r := h.row(2); r[2+40-len("TRAIL"):2+40] != "TRAIL" || !strings.Contains(r, "Notes") {
+		t.Fatalf("the bar: %q; want Notes, and TRAIL at its right edge", r)
+	}
+
+	long := startPanel(t, tui.Rect{X: 2, Y: 2, W: 24, H: 6}, gw.WithTitle("Notes with a title far too long"), gw.TitleTrailing(widget.NewText("TRAIL")))
+	long.until("the trailing widget", func() bool { return strings.Contains(long.row(2), "TRAIL") })
+	// cut a cell short of TRAIL, as the leading widgets keep a cell between them
+	if r := long.row(2); r[2+24-len("TRAIL"):2+24] != "TRAIL" || r[2+24-len("TRAIL")-1] != ' ' || strings.Contains(r, "too long") || !strings.Contains(r, "Notes") {
+		t.Fatalf("a long title: %q; want it cut a cell before TRAIL", r)
+	}
+}

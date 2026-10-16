@@ -37,9 +37,13 @@ type Panel struct {
 	tui.MultiChild
 	ctx *tui.Context
 
-	title   string
-	content tui.Component
-	leading []tui.Component
+	title    string
+	content  tui.Component
+	leading  []tui.Component
+	trailing []tui.Component
+	// leadingShare caps the leading widgets at this share of the bar's width; 0 leaves them the
+	// whole bar (TitleLeadingShare)
+	leadingShare float64
 
 	movable, resizable, minimizable, maximizable bool
 	onClose                                      func()
@@ -54,8 +58,10 @@ type Panel struct {
 
 	w, h   int
 	titleX int // where the title starts: after the leading widgets, set by Layout
-	hover  control
-	barSt  style.Style
+	// titleEnd is where the title's room ends: before the trailing widgets and the controls
+	titleEnd int
+	hover    control
+	barSt    style.Style
 	// the native bar's colours, from its last paint: what a leading widget draws in, so it sits
 	// on the bar rather than on the cells' reversed row
 	barText, barFill, barPage color.NRGBA
@@ -123,6 +129,7 @@ func NewPanel(content tui.Component, opts ...PanelOption) *Panel {
 	p.behavior = tuiwidget.NewWindowCore(behavior...)
 	p.behavior.Observe(p.rebaseCollapsePosition)
 	p.Add(p.leading...)
+	p.Add(p.trailing...)
 	p.Add(content)
 	return p
 }
@@ -133,6 +140,19 @@ func WithTitle(s string) PanelOption { return func(p *Panel) { p.title = s } }
 // TitleLeading puts ws at the title bar's left: tui children, with their own focus and keys.
 func TitleLeading(ws ...tui.Component) PanelOption {
 	return func(p *Panel) { p.leading = append(p.leading, ws...) }
+}
+
+// TitleTrailing puts ws at the title bar's right, before the window controls: tui children, with
+// their own focus and keys, as TitleLeading's. The first given is the leftmost.
+func TitleTrailing(ws ...tui.Component) PanelOption {
+	return func(p *Panel) { p.trailing = append(p.trailing, ws...) }
+}
+
+// TitleLeadingShare caps the leading widgets at share of the bar's width (two thirds: 2.0/3), so
+// the title and the trailing widgets keep the rest; 0, the default, caps them only by the room
+// left.
+func TitleLeadingShare(share float64) PanelOption {
+	return func(p *Panel) { p.leadingShare = share }
 }
 
 // Movable lets a drag of the title bar move the panel.
@@ -223,21 +243,31 @@ func (p *Panel) controls() []control {
 	return cs
 }
 
-// Layout puts the leading widgets on the title row, after one cell, and the content under it.
-// Minimized, the content gets no rows.
+// Layout puts the trailing widgets on the title row before the controls, the leading ones after
+// one cell, within their share, and the content under it. Minimized, the content gets no rows.
 func (p *Panel) Layout(c tui.Constraints) tui.Size {
 	w := c.MaxW
 	if w == tui.Unbounded {
 		w = max(c.MinW, len(p.title)+4+controlCells*len(p.controls()))
 	}
-	x := 1
 	right := w - controlCells*len(p.controls())
+	for i := len(p.trailing) - 1; i >= 0; i-- {
+		l := p.trailing[i]
+		sz := p.ctx.LayoutChild(l, tui.Constraints{MaxW: max(right-1, 0), MaxH: 1})
+		right -= sz.W
+		p.ctx.PlaceChild(l, tui.Rect{X: right, Y: 0, W: sz.W, H: 1})
+		right--
+	}
+	x, end := 1, right
+	if p.leadingShare > 0 {
+		end = min(end, 1+int(p.leadingShare*float64(w)))
+	}
 	for _, l := range p.leading {
-		sz := p.ctx.LayoutChild(l, tui.Constraints{MaxW: max(right-x, 0), MaxH: 1})
+		sz := p.ctx.LayoutChild(l, tui.Constraints{MaxW: max(end-x, 0), MaxH: 1})
 		p.ctx.PlaceChild(l, tui.Rect{X: x, Y: 0, W: sz.W, H: 1})
 		x += sz.W + 1
 	}
-	p.titleX = x
+	p.titleX, p.titleEnd = x, right
 	h := 1
 	if p.state == minimized {
 		p.ctx.LayoutChild(p.content, tui.Constraints{})
@@ -277,7 +307,9 @@ func (p *Panel) Render(s tui.Surface) {
 	// A window is opaque: what lies under it never shows where its content paints nothing.
 	s.Fill(tui.Rect{W: sz.W, H: sz.H}, " ", style.New())
 	s.Fill(tui.Rect{W: sz.W, H: 1}, " ", p.barSt)
-	putString(s, p.titleX, 0, p.title, p.barSt.Bold(true))
+	if p.titleX < p.titleEnd {
+		putString(s.Sub(tui.Rect{W: p.titleEnd, H: 1}), p.titleX, 0, p.title, p.barSt.Bold(true))
+	}
 	for i, c := range p.controls() {
 		x := sz.W - (i+1)*controlCells
 		putString(s, x, 0, [...]string{"[x]", "[□]", "[_]"}[c], p.barSt)
@@ -499,8 +531,11 @@ func (p *Panel) paintBar(c gui.Canvas) {
 	c.FillRect(gui.Rect{W: w, H: cell.H}, gui.Solid(fill))
 	c.FillRect(gui.Rect{Y: cell.H - 1, W: w, H: 1}, gui.Solid(mix(text, page, 0.16)))
 	if p.title != "" {
+		// with trailing widgets, the title keeps to its room left of them: none if it does not fit
 		t := c.Text().Layout(p.title, gui.Font{Size: c.TextSize() * 0.92}, 0)
-		c.DrawText(t, gui.Pt(float32(p.titleX)*cell.W, (cell.H-t.Height)/2), gui.Solid(mix(text, page, 0.72)))
+		if len(p.trailing) == 0 || t.Width <= float32(p.titleEnd-p.titleX)*cell.W {
+			c.DrawText(t, gui.Pt(float32(p.titleX)*cell.W, (cell.H-t.Height)/2), gui.Solid(mix(text, page, 0.72)))
+		}
 	}
 	r := min(cell.H*0.32, cell.W*1.2)
 	for i, ctl := range p.controls() {
