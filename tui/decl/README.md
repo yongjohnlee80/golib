@@ -97,7 +97,7 @@ A `MenuSeparator` with nothing to separate is not drawn, as Qt's QMenu collapses
 | `DialogButtonBox` | — (its Buttons carry `DialogButtonBox.buttonRole`) | — | — | — | — |
 | `ListView` | `textRole` | `model`, `currentIndex` | `currentIndex` | `activated(index)`, `currentIndexChanged(index)` | — |
 | `ComboBox` | `textRole`, `valueRole`, `placeholderText`, `maxWidth` (default 40 cells) | `model`, `currentIndex` | `currentIndex`, `currentValue` | `activated(index)` | — |
-| `TableView` | golib's `cellCursor`, `sortable` (see below) | `model`, `currentIndex` | `currentIndex` | `activated(index)`, `currentIndexChanged(index)`, golib's `contextMenuRequested(index, x, y)` (see below) | — |
+| `TableView` | golib's `cellCursor`, `sortable` (see below) | `model`, `currentIndex`; with a `cellCursor`, golib's `rowNumbers` (each row's number in a gutter), `orderBy` (the sort as ORDER BY text) and `contextMenu` (a right-click menu of the host's rows) (see below) | `currentIndex`; with a `cellCursor`, golib's `orderBy` and `orderByError` | `activated(index)`, `currentIndexChanged(index)`, golib's `contextMenuRequested(index, x, y)`, golib's `orderByChanged(orderBy)` (see below) | — |
 | `TableViewColumn` | `role`, `title`, `width`, `elideMode` | — | — | — | — |
 | `TabView` | palette (the bar: `window`/`windowText` behind the titles, `button`/`buttonText` for each, `highlight`/`highlightedText` for the current one) | `currentIndex` | `currentIndex`, `count` | `currentIndexChanged(index)` | — |
 | `Tab` | `title`; one child, its content | — | — | — | — |
@@ -263,19 +263,36 @@ columns it has, redrawn on the same view when they change — unless it declares
 `TableViewColumn`s.
 
 golib's `cellCursor: true` (set at construction) shows the rows through a `widget.TableCore` and
-a `widget.DataTable`: a cursor on cells (h/j/k/l, g/G, 0/$, `v` a range, `y` copies it as TSV),
-scrolled both ways. `sortable: true` lets `s` sort the loaded rows by the cursor's column, up,
-down and off; the header marks it, and says "(loaded rows)" while the model has more. A model that
+a `widget.DataTable`: a cursor on cells, scrolled both ways, with vim's keys — counts, h/j/k/l,
+`w`/`b` by field, `gg`/`G` (`[n]G` to row n), 0/$, `v` cells in reading order, `V` whole rows,
+Ctrl+V a block, `y` copies the selection (or the cell) as TSV and `yy` the cursor's row, Esc ends a
+selection. The mouse selects too: a drag over cells, over the row numbers (whole rows), or over the
+titles (whole fields). The cursor is in the palette's `highlight`/`highlightedText` while the table
+has the keys, and in `inactive.highlight`/`inactive.highlightedText` once it has not.
+`sortable: true` lets `s` sort the loaded rows by the cursor's column, up, down and off; the header
+marks it, and says "(loaded rows)" while the model has more.
+
+golib's `rowNumbers: true` numbers the rows, counted from 1, in a gutter as wide as the last row's
+number. golib's `orderBy` is the sort as ORDER BY text over the loaded rows, `name [ASC|DESC], …`,
+where a field is its title, a `"quoted title"` or a 1-based position, and "" is no sort. Setting
+it sorts; text that does not parse leaves the sort as it was, and `orderByError` (read in a
+handler) says why, "" when it parsed. The view keeps it: a new result is sorted by it too. `s`
+writes its sort back to `orderBy`, as `"name ASC"`, and raises `orderByChanged(orderBy)`. golib's
+`contextMenu: true` opens a menu at a right press, the selection left as it is; its rows are the
+host's, `tuidecl.TableOf(c).Menu().SetRows(…)`, as an `Editor`'s are, and with none the press goes
+on. A model that knows each cell's kind (`widget.TableKinds`) sorts by kind — NULLs last, numbers
+as exact decimals — when the TableView declares no `TableViewColumn`s. A model that
 is a `tuidecl.Fetcher` (Qt's `canFetchMore`/`fetchMore`, asked at the root `Index{}`) is asked
 for more rows as the cursor nears the end of those loaded; the host inserts them when they come.
 `index` in its signals and `currentIndex` are the model's row whatever the sort shows. A
-cell-cursor `TableView` takes no `delegate` and has no `contextMenuRequested`, and `sortable`
-needs it. A native backend binds its own pixel layout to the `DataTable`
+cell-cursor `TableView` takes no `delegate` and has no `contextMenuRequested` (its menu is
+`contextMenu`), and `sortable`, `rowNumbers`, `orderBy` and `contextMenu` need it. A native backend binds its own pixel layout to the `DataTable`
 (`widget.DataTable.BindLayout`; gui's `Native()` style does so for every cell-cursor `TableView`)
 and draws the same core: the same keys, cursor, sort, paging and signals. A row-cursor
 `TableView` is drawn in cells on either.
 
-    TableView { model: App.result; cellCursor: true; sortable: true; onActivated: App.open(index) }
+    TableView { model: App.result; cellCursor: true; sortable: true; rowNumbers: true
+                orderBy: "name DESC"; onActivated: App.open(index) }
 
 A `TreeView` shows a tree model (`tuidecl.TreeListModel`,
 or a `TreeModel` of the host's): a row opens and, the first time, the view asks

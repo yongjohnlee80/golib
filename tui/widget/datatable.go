@@ -1,6 +1,7 @@
 package widget
 
 import (
+	"strconv"
 	"strings"
 
 	"github.com/yongjohnlee80/golib/tui"
@@ -8,8 +9,10 @@ import (
 )
 
 // DATA TABLE — the terminal view of a TableCore: a header row, then the rows with a cell cursor,
-// scrolled both ways to keep the cursor in sight. The core owns the rows, the cursor, the
-// selection, the sort and the paging; DataTable paints them and turns presses into cursor moves.
+// scrolled both ways to keep the cursor in sight, and each row's number in a gutter when the core
+// says so. The core owns the rows, the cursor, the selection, the sort and the paging; DataTable
+// paints them and turns the pointer into the core's presses and drags. A right press opens its
+// menu (SetMenu), the selection left as it is.
 //
 // Its layout is the backend's. In a terminal it lays the rows out in cells. A native backend binds
 // a pixel layout with BindLayout before the first paint, which then scrolls, measures and paints
@@ -17,11 +20,15 @@ import (
 
 // DataTableStyles are DataTable's looks. Zero fields keep the defaults.
 type DataTableStyles struct {
-	Header   style.Style // default: muted, bold, underlined
-	Cell     style.Style // default: the theme's
-	Cursor   style.Style // default: reversed
-	Selected style.Style // default: bold
-	Empty    style.Style // default: muted
+	Header style.Style // default: muted, bold, underlined; the row numbers too
+	Cell   style.Style // default: the theme's
+	Cursor style.Style // default: reversed
+	// CursorBlurred is the cursor's cell while the table does not have the keys, so a screen with
+	// two panes shows which one the keyboard is in, and still where this one's cursor waits.
+	// default: Cursor, faint
+	CursorBlurred style.Style
+	Selected      style.Style // default: bold
+	Empty         style.Style // default: muted
 }
 
 // DataTable is the terminal view of a TableCore.
@@ -29,6 +36,9 @@ type DataTable struct {
 	Base
 	core      *TableCore
 	layout    TableLayout // the table itself (the cell layout) until a backend binds another
+	menu      *EditorMenu // opened by a right press; nil: the press goes on
+	menuPos   TablePos    // where the right press that opened the menu was
+	menuHit   TableHit
 	styles    DataTableStyles
 	emptyText string
 	theme     *style.Theme // the surface's at the last paint, for a pixel layout's colours
@@ -49,6 +59,17 @@ type TableLayoutPointer interface {
 	CellAt(x, y float32) (p TablePos, header, ok bool)
 	// ScrollRows scrolls the rows shown by n, leaving the cursor where it is.
 	ScrollRows(n int)
+}
+
+// TableLayoutHitter is a TableLayoutPointer that tells every part of the table apart, the row
+// numbers' gutter included. DataTable asks HitAt first; a layout without it is placed by CellAt,
+// which has no gutter: its header row is TableHitHeader, a cell TableHitCell, anything else
+// TableHitNone.
+type TableLayoutHitter interface {
+	TableLayoutPointer
+	// HitAt is what is at (x, y): a cell (p), a field's title (p.Col), a row's number (p.Row), or
+	// nothing.
+	HitAt(x, y float32) (p TablePos, hit TableHit)
 }
 
 // NewDataTable is a view of core, laid out in cells until a backend binds another layout.
@@ -107,12 +128,41 @@ func (t *DataTable) SetStyles(st DataTableStyles) {
 		}
 		return a
 	}
+	cursor := pick(st.Cursor, def.Cursor)
 	t.styles = DataTableStyles{
-		Header: pick(st.Header, def.Header), Cell: st.Cell, Cursor: pick(st.Cursor, def.Cursor),
-		Selected: pick(st.Selected, def.Selected), Empty: pick(st.Empty, def.Empty),
+		Header: pick(st.Header, def.Header), Cell: st.Cell, Cursor: cursor,
+		CursorBlurred: pick(st.CursorBlurred, cursor.Faint(true)),
+		Selected:      pick(st.Selected, def.Selected), Empty: pick(st.Empty, def.Empty),
 	}
 	t.MarkDirty()
 }
+
+// CursorStyle is the cursor's look now: Cursor while the table has the keys, CursorBlurred while
+// it has not. A bound layout paints its cursor with it.
+func (t *DataTable) CursorStyle() style.Style {
+	if ctx := t.Context(); ctx != nil && ctx.Focused() {
+		return t.styles.Cursor
+	}
+	return t.styles.CursorBlurred
+}
+
+// SetMenu gives the table m, the menu a right press opens at the pointer; nil takes it away, and a
+// right press then goes on to the ancestors. Its rows are the caller's (EditorMenu.SetRows), and it
+// opens only while enabled. NewEditorMenu(table, nil) is a menu with no editor core.
+func (t *DataTable) SetMenu(m *EditorMenu) {
+	if t.menu != nil && t.menu != m {
+		t.menu.Close()
+	}
+	t.menu = m
+}
+
+// Menu is the table's right-click menu, nil when it has none.
+func (t *DataTable) Menu() *EditorMenu { return t.menu }
+
+// MenuAt is where the right press that last opened the menu was, and on what: what a row acting on
+// "the field under the pointer" reads. Its rows are built as it opens, so they read the press
+// they open for.
+func (t *DataTable) MenuAt() (TablePos, TableHit) { return t.menuPos, t.menuHit }
 
 // SetEmptyText is what an empty table shows.
 func (t *DataTable) SetEmptyText(s string) {
@@ -151,9 +201,17 @@ func (t *DataTable) Measure(s string) int { return t.measure(s) }
 // Changed implements TableLayout.
 func (t *DataTable) Changed() { t.MarkDirty() }
 
+// gutter is the cells the row numbers take, their gap included; 0 without them.
+func (t *DataTable) gutter() int {
+	if d := t.core.RowNumberDigits(); d > 0 {
+		return d + tableGap
+	}
+	return 0
+}
+
 // fits reports whether fields from..to fit the width when from is the first shown.
 func (t *DataTable) fits(from, to int) bool {
-	x := 0
+	x := t.gutter()
 	for col := from; col <= to; col++ {
 		if col > from {
 			x += tableGap
@@ -193,18 +251,23 @@ func (t *DataTable) Render(s tui.Surface) {
 		return
 	}
 	fields := t.core.Fields()
-	sortCol, desc, partial := t.core.Sorted()
-	x := 0
+	keys, partial := t.core.SortedKeys()
+	gutter, digits := t.gutter(), t.core.RowNumberDigits()
+	x := gutter
 	for col := t.left; col < len(fields) && x < sz.W; col++ {
 		if col > t.left {
 			x += tableGap
 		}
 		title := fields[col].Title
-		if col == sortCol {
-			title += map[bool]string{false: " ▲", true: " ▼"}[desc]
-			if partial {
+		for i, k := range keys {
+			if k.Col != col {
+				continue
+			}
+			title += map[bool]string{false: " ▲", true: " ▼"}[k.Desc]
+			if i == 0 && partial {
 				title += " (loaded rows)"
 			}
+			break
 		}
 		w := min(t.core.Width(col), sz.W-x)
 		drawText(s, x, 0, truncate(padAligned(title, w, style.AlignLeft), w, s.StringWidth), t.styles.Header)
@@ -216,13 +279,17 @@ func (t *DataTable) Render(s tui.Surface) {
 		}
 		return
 	}
-	cur := t.core.Cursor()
+	cur, cursor := t.core.Cursor(), t.CursorStyle()
 	for y := 1; y < sz.H; y++ {
 		row := t.top + y - 1
 		if row >= t.core.Len() {
 			break
 		}
-		x := 0
+		if digits > 0 {
+			n := strconv.Itoa(row + 1)
+			drawText(s, 0, y, truncate(strings.Repeat(" ", max(digits-len(n), 0))+n, sz.W, s.StringWidth), t.styles.Header)
+		}
+		x := gutter
 		for col := t.left; col < len(fields) && x < sz.W; col++ {
 			if col > t.left {
 				x += tableGap
@@ -231,7 +298,7 @@ func (t *DataTable) Render(s tui.Surface) {
 			st := t.styles.Cell
 			switch {
 			case row == cur.Row && col == cur.Col:
-				st = t.styles.Cursor.Inherit(st)
+				st = cursor.Inherit(st)
 			case t.core.InSelection(row, col):
 				st = t.styles.Selected.Inherit(st)
 			}
@@ -242,12 +309,17 @@ func (t *DataTable) Render(s tui.Surface) {
 	}
 }
 
-// HandleEvent moves through the core's keys; a press puts the cursor on the cell under it (a
-// second press activates), the wheel scrolls. A press on the header is consumed and does nothing;
-// any other pointer event goes on to the ancestors. Under a bound layout the pointer is the
-// layout's to place (TableLayoutPointer); one that does not place it lets the pointer go on.
+// HandleEvent moves through the core's keys and drives its pointer: a left press is the core's
+// PressAt on what is under it (a second press on a cell activates its row), a drag with the button
+// held is its DragTo, with the pointer kept until the release, and the wheel scrolls. A right
+// press opens the menu, if the table has one enabled. Motion with no drag goes on to the
+// ancestors. Under a bound layout the pointer is the layout's to place (TableLayoutPointer); one
+// that does not place it lets the pointer go on.
 func (t *DataTable) HandleEvent(ev tui.Event) bool {
 	switch e := ev.(type) {
+	case tui.FocusEvent:
+		t.MarkDirty() // the cursor's look follows the focus; the news is everyone's
+		return false
 	case tui.KeyEvent:
 		return t.core.HandleKey(e)
 	case tui.MouseEvent:
@@ -269,26 +341,95 @@ func (t *DataTable) HandleEvent(ev tui.Event) bool {
 			t.MarkDirty()
 			return true
 		case e.Kind == tui.MousePress && e.Button == tui.MouseLeft:
-			var pos TablePos
-			var header, ok bool
-			if t.bound() {
-				x, y := t.pixels(e)
-				pos, header, ok = p.CellAt(x, y)
-			} else {
-				pos.Row, header = t.top+e.Y-1, e.Y == 0
-				pos.Col, ok = t.fieldAt(e.X)
+			pos, hit := t.hitAt(e)
+			t.core.PressAt(pos, hit)
+			if t.core.Dragging() {
+				if ctx := t.Context(); ctx != nil {
+					ctx.CapturePointer()
+				}
 			}
-			if header || !ok {
-				return true
-			}
-			t.core.SetCursor(pos)
-			if e.Count >= 2 {
+			if hit == TableHitCell && e.Count >= 2 {
 				t.core.HandleKey(tui.KeyEvent{Kind: tui.KeyPress, Code: tui.KeyEnter})
+			}
+			return true
+		case e.Kind == tui.MousePress && e.Button == tui.MouseRight && t.menu != nil && t.menu.Enabled():
+			// The selection is left as it is: the menu's rows act on it.
+			t.menuPos, t.menuHit = t.hitAt(e)
+			return t.menu.OpenAt(tui.Point{X: e.X, Y: e.Y})
+		case e.Kind == tui.MouseMotion && e.Button == tui.MouseLeft && t.core.Dragging():
+			if pos, ok := t.dragAt(e); ok {
+				t.core.DragTo(pos)
+			}
+			return true
+		case e.Kind == tui.MouseRelease && t.core.Dragging():
+			t.core.EndDrag()
+			if ctx := t.Context(); ctx != nil && ctx.HasPointerCapture() {
+				ctx.ReleasePointer()
 			}
 			return true
 		}
 	}
 	return false
+}
+
+// hitAt is what the pointer is over: a bound layout's HitAt, else its CellAt (with no gutter); the
+// cell layout's own reckoning when nothing is bound.
+func (t *DataTable) hitAt(e tui.MouseEvent) (TablePos, TableHit) {
+	if !t.bound() {
+		return t.cellHit(e.X, e.Y)
+	}
+	x, y := t.pixels(e)
+	if h, ok := t.layout.(TableLayoutHitter); ok {
+		return h.HitAt(x, y)
+	}
+	pos, header, ok := t.layout.(TableLayoutPointer).CellAt(x, y)
+	switch {
+	case header:
+		return pos, TableHitHeader
+	case ok:
+		return pos, TableHitCell
+	}
+	return pos, TableHitNone
+}
+
+// dragAt is the cell a drag is over. The cell layout reckons one wherever the pointer is, past the
+// edges included, so a drag below the rows reaches the next and the view scrolls to it; a bound
+// layout's is its hit, and nothing off the table.
+func (t *DataTable) dragAt(e tui.MouseEvent) (TablePos, bool) {
+	if t.bound() {
+		pos, hit := t.hitAt(e)
+		return pos, hit != TableHitNone
+	}
+	col := t.left
+	if x := e.X - t.gutter(); x >= 0 {
+		var ok bool
+		if col, ok = t.fieldAt(x); !ok {
+			col = len(t.core.Fields()) - 1
+		}
+	}
+	return TablePos{Row: t.top + e.Y - 1, Col: col}, true
+}
+
+// cellHit is what is at cell (x, y) of the cell layout.
+func (t *DataTable) cellHit(x, y int) (TablePos, TableHit) {
+	g := t.gutter()
+	if y == 0 {
+		if col, ok := t.fieldAt(x - g); ok && x >= g {
+			return TablePos{Col: col}, TableHitHeader
+		}
+		return TablePos{}, TableHitNone
+	}
+	row := t.top + y - 1
+	switch {
+	case y < 0 || row >= t.core.Len():
+		return TablePos{}, TableHitNone
+	case x < g:
+		return TablePos{Row: row}, TableHitGutter
+	}
+	if col, ok := t.fieldAt(x - g); ok {
+		return TablePos{Row: row, Col: col}, TableHitCell
+	}
+	return TablePos{}, TableHitNone
 }
 
 // pixels is the pointer's point in the view, in pixels: the cell it is over and where inside it,
@@ -303,7 +444,7 @@ func (t *DataTable) pixels(e tui.MouseEvent) (float32, float32) {
 	return x, y
 }
 
-// fieldAt is the field shown at column x.
+// fieldAt is the field shown at column x, counted from the end of the gutter.
 func (t *DataTable) fieldAt(x int) (int, bool) {
 	at := 0
 	for col := t.left; col < len(t.core.Fields()); col++ {

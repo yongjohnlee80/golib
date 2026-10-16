@@ -68,6 +68,10 @@ func people() *rowsSource {
 }
 
 func key(code rune) tui.KeyEvent { return tui.KeyEvent{Kind: tui.KeyPress, Code: code} }
+
+// ctrlV is Ctrl+V, the block selection's key.
+var ctrlV = tui.KeyEvent{Kind: tui.KeyPress, Code: 'v', Mods: tui.ModCtrl}
+
 func text(s string) tui.KeyEvent { return tui.KeyEvent{Kind: tui.KeyPress, Text: s} }
 
 func TestTableCore_MovesAndClamps(t *testing.T) {
@@ -84,9 +88,10 @@ func TestTableCore_MovesAndClamps(t *testing.T) {
 		t.Errorf("revealed %+v, want the cursor's cell", l.revealed)
 	}
 	c.HandleKey(text("g"))
+	c.HandleKey(text("g"))
 	c.HandleKey(text("0"))
 	if got := c.Cursor(); got != (TablePos{0, 0}) {
-		t.Errorf("g 0: cursor %+v, want {0 0}", got)
+		t.Errorf("gg 0: cursor %+v, want {0 0}", got)
 	}
 	c.HandleKey(key(tui.KeyPageDown))
 	c.HandleKey(text("$"))
@@ -188,11 +193,11 @@ func TestTableCore_CopiesTheSelectionAsTSV(t *testing.T) {
 	if got := c.CopyText(); got != "carol" {
 		t.Errorf("no selection: %q, want the cursor's cell", got)
 	}
-	c.HandleKey(text("v"))
+	c.HandleKey(ctrlV)
 	c.HandleKey(text("j"))
 	c.HandleKey(text("l"))
 	if got := c.CopyText(); got != "carol\t41\nalice\t9" {
-		t.Errorf("a 2x2 range: %q", got)
+		t.Errorf("a 2x2 block: %q", got)
 	}
 	if !c.InSelection(1, 1) || c.InSelection(2, 0) {
 		t.Error("InSelection disagrees with the range")

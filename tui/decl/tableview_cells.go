@@ -1,6 +1,9 @@
 package decl
 
 import (
+	"fmt"
+
+	"github.com/yongjohnlee80/golib/parse/qml"
 	"github.com/yongjohnlee80/golib/tui"
 	"github.com/yongjohnlee80/golib/tui/widget"
 )
@@ -11,7 +14,10 @@ import (
 //
 //	TableView { model: App.result; cellCursor: true; sortable: true; onActivated: App.open(index) }
 //
-// index in its signals and currentIndex are the MODEL's row, whatever the sort shows.
+// index in its signals and currentIndex are the MODEL's row, whatever the sort shows. orderBy is
+// the sort as ORDER BY text: setting it parses it and sorts (an error leaves the sort as it was
+// and says why in orderByError), and the s key writes its sort back to it. A model that knows
+// each cell's kind (widget.TableKinds) sorts by kind, when no TableViewColumns are declared.
 
 // modelTable is a TableView's model as a TableCore's source.
 type modelTable struct{ n *tableViewNode }
@@ -60,10 +66,35 @@ type pagedModelTable struct {
 func (p pagedModelTable) More() bool    { return p.f.CanFetchMore(Index{}) }
 func (p pagedModelTable) FetchMore(int) { p.f.FetchMore(Index{}) }
 
-// cellSource is the node's model as a source: a pager when the model is a Fetcher.
+// kindedModelTable and kindedPagedModelTable add the model's cell kinds.
+type kindedModelTable struct {
+	modelTable
+	k widget.TableKinds
+}
+
+func (s kindedModelTable) Kind(row, col int) widget.TableCellKind { return s.k.Kind(row, col) }
+
+type kindedPagedModelTable struct {
+	pagedModelTable
+	k widget.TableKinds
+}
+
+func (s kindedPagedModelTable) Kind(row, col int) widget.TableCellKind { return s.k.Kind(row, col) }
+
+// cellSource is the node's model as a source: a pager when the model is a Fetcher, and with its
+// kinds when it has them and the columns are its own (a declared column names a role, not one of
+// the model's columns, so its kinds are not the model's).
 func (n *tableViewNode) cellSource() widget.TableSource {
-	if f, ok := n.mv.model.(Fetcher); ok {
+	f, paged := n.mv.model.(Fetcher)
+	k, kinded := n.mv.model.(widget.TableKinds)
+	kinded = kinded && len(n.declared) == 0
+	switch {
+	case paged && kinded:
+		return kindedPagedModelTable{pagedModelTable{modelTable{n}, f}, k}
+	case paged:
 		return pagedModelTable{modelTable{n}, f}
+	case kinded:
+		return kindedModelTable{modelTable{n}, k}
 	}
 	return modelTable{n}
 }
@@ -73,20 +104,79 @@ func (n *tableViewNode) buildCells(sortable bool) {
 	core := widget.NewTableCore(nil,
 		widget.TableSortable(sortable),
 		widget.TableOnActivate(func(row int) { n.activated(numberValue(row)) }),
-		widget.TableOnCursor(func(row int) { n.moved(numberValue(row)) }))
+		widget.TableOnCursor(func(row int) { n.moved(numberValue(row)) }),
+		widget.TableOnSort(n.sortChanged))
 	n.grid = widget.NewDataTable(core)
 	n.mv.changed = n.followCells
 }
 
-// followCells applies a model change: a reset is a new source (the cursor and sort start again);
-// anything else, rows arriving among them, keeps them.
+// followCells applies a model change: a reset is a new source (the cursor starts again, and
+// orderBy is applied to its fields); anything else, rows arriving among them, keeps them.
 func (n *tableViewNode) followCells(c Change) {
 	core := n.grid.Core()
 	if c.Kind == Reset || c.Kind == ColumnsReset {
+		n.ordering = true
 		core.SetSource(n.cellSource())
+		n.ordering = false
+		n.applyOrder()
 		return
 	}
 	core.Changed()
+}
+
+// setOrderBy is the orderBy setter: the text is kept as written, and sorts the rows when it parses.
+func (n *tableViewNode) setOrderBy(text string) {
+	n.orderBy = text
+	n.applyOrder()
+}
+
+// applyOrder sorts by orderBy. Text that does not parse leaves the sort as it was, and orderErr
+// says why.
+func (n *tableViewNode) applyOrder() {
+	core := n.grid.Core()
+	keys, err := widget.ParseTableOrder(n.orderBy, core.Fields())
+	if err != nil {
+		n.orderErr = err.Error()
+		return
+	}
+	n.orderErr = ""
+	n.ordering = true
+	core.SortKeys(keys)
+	n.ordering = false
+}
+
+// sortChanged writes a sort the view made itself (the s key, a field removed) back to orderBy,
+// and raises orderByChanged.
+func (n *tableViewNode) sortChanged(keys []widget.TableSortKey) {
+	if n.ordering {
+		return
+	}
+	text := widget.FormatTableOrder(keys, n.grid.Core().Fields())
+	n.orderErr = ""
+	if text == n.orderBy {
+		return
+	}
+	n.orderBy = text
+	n.orderChanged(qml.SpecValue{Kind: qml.SpecValueString, Raw: text})
+}
+
+// cellsSetter is a setter for a property only a TableView with a cellCursor has.
+func cellsSetter[V any](name string, read func(qml.SpecValue) (V, error), apply func(*tableViewNode, V)) Setter {
+	return func(c tui.Component, v qml.SpecValue) error {
+		n, ok := c.(*tableViewNode)
+		if !ok {
+			return fmt.Errorf("not a TableView")
+		}
+		if n.grid == nil {
+			return fmt.Errorf("TableView.%s needs cellCursor: true", name)
+		}
+		val, err := read(v)
+		if err != nil {
+			return err
+		}
+		apply(n, val)
+		return nil
+	}
 }
 
 // TableOf is the DataTable a TableView with a cellCursor shows, nil for any other component: what
