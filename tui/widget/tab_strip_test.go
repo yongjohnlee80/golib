@@ -274,6 +274,64 @@ func TestAScrolledTabStripLeavesNoGapBeforeItsArrow(t *testing.T) {
 	})
 }
 
+// TestATabStripFitsItsLabelsToItsRoom: with SetLabelFit the tabs take the strip's room. Wide, each
+// shows its whole label and the host's fit is never asked; narrower, every label is cut by fit to
+// the widest width at which they all fit, with no arrows; narrower than min cells a tab, they are
+// cut to min and scroll between ← and →. The strip fits again as its width changes.
+func TestATabStripFitsItsLabelsToItsRoom(t *testing.T) {
+	strip := NewTabStrip()
+	var tabs []StripTab
+	for i := range 3 {
+		tabs = append(tabs, StripTab{ID: fmt.Sprint(i), Label: fmt.Sprintf("a-rather-long-name-%02d.md", i)}) // 25 cells, 27 padded
+	}
+	strip.SetTabs(tabs)
+	strip.SetActive("0")
+	var asked []int // the widths fit was asked for
+	strip.SetLabelFit(12, func(id string, w int) string {
+		asked = append(asked, w)
+		return "<" + strings.Repeat("=", w-2) + ">" // fills w cells: what the strip draws is the host's
+	})
+	h := startAppInternal(t, strip, 120, 1)
+	defer h.stopInternal()
+	h.syncInternal()
+	look := func() (string, []TabSpan, []int) {
+		var spans []TabSpan
+		var got []int
+		h.onLoopInternal(func() { spans, got = strip.TabSpans(), append([]int(nil), asked...); asked = asked[:0] })
+		return h.tb.String(), spans, got
+	}
+
+	row, spans, got := look()
+	if !strings.Contains(row, "a-rather-long-name-02.md") || strings.Contains(row, "←") || len(got) != 0 {
+		t.Fatalf("wide: want every label whole, no arrows, fit never asked; fit asked %v:\n%s", got, row)
+	}
+	h.tb.InjectResize(60, 1) // 3 tabs of 19 cells and 2 between: 59
+	if !waitInternal(h, func() bool { return !strings.Contains(h.tb.String(), "a-rather") }) {
+		t.Fatalf("narrower: the labels were not cut:\n%s", h.tb.String())
+	}
+	row, spans, got = look()
+	if strings.Contains(row, "←") || len(spans) != 3 || !slices.Contains(got, 17) || slices.ContainsFunc(got, func(w int) bool { return w != 17 }) {
+		t.Fatalf("narrower: want 3 tabs cut by fit to 19 cells (17 and their padding), no arrows; spans %v, fit asked %v:\n%s", spans, got, row)
+	}
+	for _, sp := range spans {
+		if sp.W != 19 {
+			t.Fatalf("narrower: a tab %d cells wide, want 19 (the widest that fits); spans %v", sp.W, spans)
+		}
+	}
+	h.tb.InjectResize(30, 1) // even 12 cells a tab overflows: cut to 12, and the strip scrolls
+	if !waitInternal(h, func() bool { return strings.Contains(h.tb.String(), "←") }) {
+		t.Fatalf("narrowest: no arrows:\n%s", h.tb.String())
+	}
+	row, _, got = look()
+	if !slices.Contains(got, 10) || slices.ContainsFunc(got, func(w int) bool { return w != 10 }) {
+		t.Fatalf("narrowest: fit asked %v, want 10 (12 less padding):\n%s", got, row)
+	}
+	h.tb.InjectResize(120, 1) // wide again: the strip asks for its tabs whole, not as last cut
+	if !waitInternal(h, func() bool { return strings.Contains(h.tb.String(), "a-rather-long-name-02.md") }) {
+		t.Fatalf("wide again: the labels stayed cut:\n%s", h.tb.String())
+	}
+}
+
 // TestATabStripCapsATabsWidth: SetMaxTabWidth cuts a long label to the cap, its end an ellipsis; a
 // short one is as it was.
 func TestATabStripCapsATabsWidth(t *testing.T) {
