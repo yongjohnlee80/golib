@@ -9,8 +9,8 @@ import (
 	tuiwidget "github.com/yongjohnlee80/golib/tui/widget"
 )
 
-// TestTheEditorsTitleBarHoldsTheHostsTabs: the title bar's left holds the host's tabs (Tabs), up to
-// two thirds of the bar, and Raw | Rendered sits at its right; a press on a tab tells the host.
+// TestTheEditorsTitleBarHoldsTheHostsTabs: the title bar's left holds the host's tabs (Tabs), in all
+// its room up to Raw | Rendered at its right; a press on a tab tells the host.
 func TestTheEditorsTitleBarHoldsTheHostsTabs(t *testing.T) {
 	h := startEditor(t, 120, 6, WithRenderer(NewMarkdownRenderer()))
 	row := func() string { return strings.Split(h.tb.String(), "\n")[0] }
@@ -36,8 +36,8 @@ func TestTheEditorsTitleBarHoldsTheHostsTabs(t *testing.T) {
 		return active == "2" && len(chosen) == 1 && chosen[0] == "2"
 	})
 
-	// more tabs than fit: they stop at two thirds of the bar (column 81 of 120), short of the
-	// switch, which keeps its place
+	// more tabs than fit: they take the bar's room up to the switch (column 102 of 120), a blank
+	// cell before it, and the switch keeps its place (was: two thirds of the bar, to column 81)
 	h.onLoop(func() {
 		var tabs []tuiwidget.StripTab
 		for i := range 12 {
@@ -45,9 +45,10 @@ func TestTheEditorsTitleBarHoldsTheHostsTabs(t *testing.T) {
 		}
 		h.e.Tabs().SetTabs(tabs)
 	})
-	h.until("the tabs filling their share", func() bool { return strings.Contains(row(), "a-long-file-name-02") })
+	h.until("the tabs filling their room", func() bool { return strings.Contains(row(), "a-long-file-name-02") })
 	r := []rune(row()) // by cell: the cut tab ends in a one-cell …
-	if !strings.HasSuffix(row(), sw) || strings.TrimSpace(string(r[81:120-len(sw)])) != "" || strings.TrimSpace(string(r[1:81])) == "" {
-		t.Fatalf("the bar with more tabs than fit:\n%q\nwant the tabs within columns 1-80, blank to the switch", row())
+	swAt := 120 - len(sw)
+	if !strings.HasSuffix(row(), sw) || r[swAt-1] != ' ' || strings.TrimSpace(string(r[82:swAt-1])) == "" {
+		t.Fatalf("the bar with more tabs than fit:\n%q\nwant the tabs past column 81, up to a blank cell before the switch", row())
 	}
 }

@@ -40,7 +40,12 @@ type tabStrip struct {
 	active func() string     // the owner's active tab; "" for none
 	choose func(id string)   // a tab chosen by a click or a key
 
-	maxLabel int    // a tab's widest, in cells, its padding included; 0 for no cap (TabStrip.SetMaxTabWidth)
+	maxLabel int // a tab's widest, in cells, its padding included; 0 for no cap (TabStrip.SetMaxTabWidth)
+	// SetLabelFit's: the narrowest a tab is cut to, padding included, the host's cut, and the width
+	// row last cut the tabs to (0: whole)
+	fitMin   int
+	fit      func(id string, w int) string
+	fitCap   int
 	avail    int    // the row's width as laid out; 0 before the first layout: room for every tab
 	first    int    // the first tab shown while the tabs overflow the row (< and > scroll it)
 	revealed string // the active tab the window last scrolled to show
@@ -161,17 +166,76 @@ func (s *tabStrip) closeMenu() {
 	}
 }
 
-// label is tb's label as drawn: capped at maxLabel cells, its end cut to an ellipsis, and after
-// a × when the tabs close (onClose), outside the cap.
-func (s *tabStrip) label(tb stripTab) string {
+// label is tb's label as drawn now: cut to the tabs' cap (capNow), after a × when the tabs close.
+func (s *tabStrip) label(tb stripTab) string { return s.labelAt(tb, s.capNow()) }
+
+// capNow is a tab's widest now, its padding included: SetLabelFit's, as row last fitted the tabs,
+// or SetMaxTabWidth's; 0 for none.
+func (s *tabStrip) capNow() int {
+	if s.fit != nil {
+		return s.fitCap
+	}
+	return s.maxLabel
+}
+
+// labelAt is tb's label cut to limit cells: by the host's fit (SetLabelFit), else its end cut to an
+// ellipsis; then after a × when the tabs close (onClose), outside the limit.
+func (s *tabStrip) labelAt(tb stripTab, limit int) string {
 	l := tb.label
-	if s.maxLabel > 0 && s.base.measure(l) > s.maxLabel {
-		l = truncate(strings.TrimRight(l, " "), s.maxLabel-1, s.base.measure) + " "
+	if limit > 0 && s.base.measure(l) > limit {
+		if s.fit != nil {
+			l = cellLabel(s.fit(tb.id, limit-2)) // 2: the padding
+		}
+		if s.base.measure(l) > limit { // no fit, or one wider than asked
+			l = truncate(strings.TrimRight(l, " "), limit-1, s.base.measure) + " "
+		}
 	}
 	if s.onClose != nil {
 		l = closeMark + l
 	}
 	return l
+}
+
+// fitTabs is the cap SetLabelFit's tabs take in avail cells: none while they all fit whole, else the
+// widest at which they do, never under fitMin; fitMin when even that does not, and they scroll.
+func (s *tabStrip) fitTabs(tabs []stripTab) int {
+	if s.avail <= 0 || len(tabs) == 0 {
+		return 0
+	}
+	mark := 0
+	if s.onClose != nil {
+		mark = s.base.measure(closeMark)
+	}
+	full, widest := make([]int, len(tabs)), 0
+	for i, tb := range tabs {
+		full[i] = s.base.measure(tb.label)
+		widest = max(widest, full[i])
+	}
+	fits := func(limit int) bool {
+		w := s.tail() - 1
+		for _, f := range full {
+			if limit > 0 {
+				f = min(f, limit)
+			}
+			w += f + mark + 1
+		}
+		return w <= s.avail
+	}
+	if fits(0) {
+		return 0
+	}
+	if s.fitMin >= widest || !fits(s.fitMin) {
+		return s.fitMin
+	}
+	lo, hi := s.fitMin, widest-1 // fits(lo); the widest limit in [lo, hi] that fits
+	for lo < hi {
+		if mid := (lo + hi + 1) / 2; fits(mid) {
+			lo = mid
+		} else {
+			hi = mid - 1
+		}
+	}
+	return lo
 }
 
 // closeShown is whether label, as drawn (cut at the window's edge or not), shows its × whole: a
@@ -200,11 +264,16 @@ func (s *tabStrip) tail() int {
 	return w
 }
 
-// width is the strip's natural width: every tab, + and ≡, each followed by a cell.
+// width is the strip's natural width: every tab, + and ≡, each followed by a cell. A strip that
+// fits its tabs to its room (SetLabelFit) asks for them whole.
 func (s *tabStrip) width() int {
+	limit := s.maxLabel
+	if s.fit != nil {
+		limit = 0
+	}
 	w := s.tail()
 	for _, tb := range s.tabs() {
-		w += s.base.measure(s.label(tb)) + 1
+		w += s.base.measure(s.labelAt(tb, limit)) + 1
 	}
 	return max(w-1, 0)
 }
@@ -217,6 +286,9 @@ func (s *tabStrip) width() int {
 // from its start, as the window's far end cuts the tab there.
 func (s *tabStrip) row() []stripCell {
 	tabs := s.tabs()
+	if s.fit != nil {
+		s.fitCap = s.fitTabs(tabs)
+	}
 	labels, widths := make([]string, len(tabs)), make([]int, len(tabs))
 	natural := s.tail()
 	for i, tb := range tabs {
@@ -556,6 +628,16 @@ func (t *TabStrip) ActiveTabIndex() int { return t.core.activeIndex() }
 // 0 for no cap. A strip narrower than its tabs scrolls them between < and >, whatever the cap.
 func (t *TabStrip) SetMaxTabWidth(cells int) {
 	t.core.maxLabel = max(cells, 0)
+	t.changed()
+}
+
+// SetLabelFit lets the tabs take the strip's room. Each shows its whole label while they all fit;
+// when they do not, every label too wide is cut, by fit, to the widest width at which they all fit,
+// never under min cells (its padding included, as SetMaxTabWidth's); under that the strip scrolls
+// them between ← and →. fit is the host's cut, its middle, say, to keep an extension: tab id's label
+// within w cells. With a fit, SetMaxTabWidth's cap is not used; nil leaves it.
+func (t *TabStrip) SetLabelFit(min int, fit func(id string, w int) string) {
+	t.core.fitMin, t.core.fit = max(min, 3), fit
 	t.changed()
 }
 
