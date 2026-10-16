@@ -41,9 +41,41 @@ TUI-only golib user never resolves Gio or cgo. `tui` cannot import it.
 - **tui widgets in pixels.** `gui/decl.Native()` gives a tui/decl program gui's
   `Editor`, lays an `HTMLView` out in pixels (`gui/widget.BindHTML`), and draws a
   cell-cursor `TableView`'s `DataTable` natively over the same `TableCore`
-  (`gui/widget.BindTable`): its header, rows, cell cursor, selection and sort mark
-  in the window's prose font, the keys and the paging the core's, as in a
-  terminal. A row-cursor `TableView` stays cells.
+  (`gui/widget.BindTable`): its header, rows, cell cursor, selection and sort
+  marks in the window's prose font, the keys and the paging the core's, as in a
+  terminal. A row-cursor `TableView` stays cells. The native table:
+  - **Row numbers.** With `TableRowNumbers` (decl's `rowNumbers`) each row's
+    number, from 1, is drawn right-aligned in a gutter before the first field, in
+    the header's bold, muted text on the header's tint. The gutter is as wide as
+    the last row's number (`TableCore.RowNumberDigits`), so it widens as rows
+    arrive, 9 rows to 10, and every field moves right with it. The header's
+    corner of the gutter is blank.
+  - **The pointer.** Its layout implements `TableLayoutHitter`: `HitAt` answers
+    `TableHitGutter` over a row's number, `TableHitHeader` with the field under
+    the pointer over the titles, `TableHitCell` over a cell, and `TableHitNone`
+    at the gutter's corner, past the last field and below the last row. So a
+    press on a title selects that field, every loaded row, a drag over the
+    gutter selects whole rows, and a drag over cells selects them in reading
+    order. The window reports a drag as `MouseMotion` with `MouseLeft`, and the
+    table holds the pointer (`Context.CapturePointer`) until the release.
+    `CellAt` still answers as before, and a row's number is no cell to it.
+  - **The blurred cursor.** The cursor's cell is filled in
+    `DataTable.CursorStyle()`: `Cursor` while the table has the keys,
+    `CursorBlurred` while it has not, repainted when the focus moves. A style's
+    ground is its background (its foreground when it reverses), as decl's
+    palette gives `highlight` and `inactive.highlight`; the default styles have
+    none, and fill the accent's band, or a faint grey one while blurred.
+  - **The selection kinds.** Each cell is filled as `TableCore.InSelection`
+    decides, not as the `Selection()` box: `v` (Cells) runs in reading order,
+    the anchor's row from its field and the cursor's up to its field; `V` (Rows)
+    fills whole rows; Ctrl+V (Block) the rectangle. Adjacent selected fields in
+    a row are one fill, and a run the row above has too is the same fill, grown:
+    a selection is one to three fills.
+  - **Sort marks.** Every key in `SortedKeys` marks its field, ▲ or ▼ in the
+    gap after it, as the terminal's DataTable marks them (a field keyed twice
+    shows its first key's mark). With more than one key each mark carries the
+    key's place, small (▲¹ ▼²). The first key's title says "(loaded rows)" while
+    rows remain to load, when it fits.
 - **Paste and IME.** Ctrl+Shift+V (Cmd+V on macOS) pastes, as in a terminal
   emulator, so Ctrl+V stays the app's. An input method's composition is drawn
   at the caret, and its candidate window opens there.
@@ -97,7 +129,9 @@ and the markdown view. Each `Canvas` call is replayed on every frame:
 1. Merge adjacent same-colour fills; lay out text per line or block, never per
    character. A line of texts each at its own x, such as a table row's cells, is
    one layout: `TextShaper.LayoutRuns`, drawn by one `DrawText`. `BindTable`
-   draws each row band so, and shapes a band again only when it changes.
+   draws each row band so, and shapes a band again only when it changes. A
+   band's row number, in another font and colour, is its second layout; the
+   header is one.
 2. Never call the Canvas per cell: use `PaintCells`.
 3. Prefer cells where a widget can be cells.
 4. Paths and rounded rectangles are stencils: keep them out of loops over many

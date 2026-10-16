@@ -2,6 +2,7 @@ package widget
 
 import (
 	"image/color"
+	"slices"
 	"strconv"
 	"strings"
 	"testing"
@@ -66,6 +67,17 @@ func calls(c *gui.RecordingCanvas, op string) []gui.PaintCall {
 	for _, call := range c.Calls {
 		if call.Op == op {
 			out = append(out, call)
+		}
+	}
+	return out
+}
+
+// fillsIn are the recording's fills in col, in order.
+func fillsIn(c *gui.RecordingCanvas, col color.NRGBA) []gui.Rect {
+	var out []gui.Rect
+	for _, f := range calls(c, "FillRect") {
+		if f.Brush.Color == col {
+			out = append(out, f.Rect)
 		}
 	}
 	return out
@@ -149,7 +161,7 @@ func TestATableDrawsTheCursorTheSelectionAndTheSortMark(t *testing.T) {
 	want := gui.Rect{X: cols[1].x - l.pad, Y: 3 * l.rowH, W: cols[1].w + 2*l.pad, H: l.rowH}
 	var cursor bool
 	for _, f := range calls(c, "FillRect") {
-		if f.Brush.Color == l.cursor {
+		if f.Brush.Color == l.blurred { // no App gives the table the keys
 			cursor = true
 			if f.Rect != want {
 				t.Errorf("the cursor filled %+v, want row 2 field 1's %+v", f.Rect, want)
@@ -159,17 +171,11 @@ func TestATableDrawsTheCursorTheSelectionAndTheSortMark(t *testing.T) {
 	if !cursor {
 		t.Error("no fill in the cursor's colour")
 	}
-	core.SetAnchor(&tuiwidget.TablePos{Row: 1, Col: 0})
+	core.Select(tuiwidget.TableSelectBlock, tuiwidget.TablePos{Row: 1, Col: 0})
 	c = paintTable(l, 600, 200)
 	sel := gui.Rect{Y: 2 * l.rowH, W: cols[1].x + cols[1].w + l.pad, H: 2 * l.rowH}
-	var selected bool
-	for _, f := range calls(c, "FillRect") {
-		if f.Brush.Color == l.selection {
-			selected = f.Rect == sel
-		}
-	}
-	if !selected {
-		t.Errorf("the selection of rows 1-2, fields 0-1 was not filled at %+v", sel)
+	if got := fillsIn(c, l.selection); len(got) != 1 || got[0] != sel {
+		t.Errorf("the block of rows 1-2, fields 0-1 filled %+v, want one fill at %+v", got, sel)
 	}
 	core.SetAnchor(nil)
 
@@ -332,5 +338,224 @@ func TestAnEmptyTableSaysSo(t *testing.T) {
 	paintTable(l, 400, 100)
 	if got := strings.Join(runTexts(l.empty), ""); got != "Nothing here" {
 		t.Errorf("empty text %q", got)
+	}
+}
+
+// HitAt tells every part of the table apart: the gutter's numbers, each field's title, a cell,
+// and nothing at the gutter's corner of the header, past the last field, below the last row or
+// off the view. CellAt keeps its answers, and a row's number is no cell to it.
+func TestATableHitsTheGutterTheHeadersAndTheCells(t *testing.T) {
+	_, l := pixelTable(t, cities(5), tuiwidget.TableRowNumbers(true))
+	paintTable(l, 600, 200)
+	g := l.gutter()
+	cols := l.columns(600)
+	if g <= 0 || cols[0].x != g+l.pad {
+		t.Fatalf("a gutter %v wide, the first field at %v: want a gutter, and the field after it", g, cols[0].x)
+	}
+	hit := func(x, y float32) (tuiwidget.TablePos, tuiwidget.TableHit) { return l.HitAt(x, y) }
+	if p, h := hit(g/2, 3.5*l.rowH); h != tuiwidget.TableHitGutter || p.Row != 2 {
+		t.Errorf("over row 2's number: %+v %v, want the gutter's row 2", p, h)
+	}
+	for _, c := range cols {
+		for _, x := range []float32{c.x - l.pad + 1, c.x + c.w/2, c.x + c.w + l.pad - 1} {
+			if p, h := hit(x, l.rowH/2); h != tuiwidget.TableHitHeader || p.Col != c.col {
+				t.Errorf("over field %d's title at x %v: %+v %v, want its header", c.col, x, p, h)
+			}
+		}
+	}
+	if p, h := hit(cols[2].x+2, 3.5*l.rowH); h != tuiwidget.TableHitCell || p != (tuiwidget.TablePos{Row: 2, Col: 2}) {
+		t.Errorf("over row 2 field 2: %+v %v, want that cell", p, h)
+	}
+	end := cols[3].x + cols[3].w + l.pad
+	for _, pt := range [][2]float32{{g / 2, l.rowH / 2}, {end + 1, 2.5 * l.rowH}, {end + 1, l.rowH / 2},
+		{cols[1].x, 6.5 * l.rowH}, {-1, 2.5 * l.rowH}, {cols[1].x, -1}} {
+		if p, h := hit(pt[0], pt[1]); h != tuiwidget.TableHitNone {
+			t.Errorf("at %v: %+v %v, want nothing", pt, p, h)
+		}
+	}
+	if _, header, ok := l.CellAt(cols[2].x, l.rowH/2); !header || !ok {
+		t.Error("CellAt over the header is not the header")
+	}
+	if p, header, ok := l.CellAt(cols[1].x, 2.5*l.rowH); header || !ok || p != (tuiwidget.TablePos{Row: 1, Col: 1}) {
+		t.Errorf("CellAt over row 1 field 1: %+v %v %v", p, header, ok)
+	}
+	if _, _, ok := l.CellAt(g/2, 2.5*l.rowH); ok {
+		t.Error("CellAt answers a cell over a row's number")
+	}
+}
+
+// The gutter draws each row's number from 1 in the header's font and colour, right-aligned, on its
+// own tint, the header's corner blank; every field moves right by it; and it widens as the rows
+// reach a digit more, 9 to 10, moving the fields with it.
+func TestATableGutterNumbersTheRowsAndWidens(t *testing.T) {
+	src := cities(9)
+	dt, l := pixelTable(t, src, tuiwidget.TableRowNumbers(true))
+	c := paintTable(l, 600, 400)
+	g9 := l.gutter()
+	if want := float32(l.Measure("0")) + 2*l.pad; g9 != want {
+		t.Fatalf("9 rows: a gutter %v wide, want one digit and its padding, %v", g9, want)
+	}
+	numbers := func(c *gui.RecordingCanvas, g float32) {
+		t.Helper()
+		for r := range dt.Core().Len() {
+			b := l.nums[r]
+			if b == nil || strings.Join(runTexts(b), "") != strconv.Itoa(r+1) {
+				t.Fatalf("row %d's number band %v, want %d", r, b, r+1)
+			}
+			if end := b.runs[0].X + l.width(b.runs[0].Text, l.head); abs32(end-(g-l.pad)) > 0.5 {
+				t.Errorf("row %d's number ends at %v, want a pad before the gutter's edge %v", r, end, g-l.pad)
+			}
+			drawn := false
+			for _, d := range calls(c, "DrawText") {
+				if d.Text == b.text {
+					drawn = true
+					if d.Brush.Color != l.muted || int(d.Rect.Y/l.rowH) != r+1 {
+						t.Errorf("row %d's number drawn in %v in band %d, want the header's %v in band %d", r, d.Brush.Color, int(d.Rect.Y/l.rowH), l.muted, r+1)
+					}
+				}
+			}
+			if !drawn {
+				t.Errorf("row %d's number was not drawn", r)
+			}
+		}
+		if x := l.header.runs[0].X; x < g {
+			t.Errorf("the header's first run at %v, inside the gutter %v: its corner is blank", x, g)
+		}
+		if cols := l.columns(600); cols[0].x != g+l.pad || l.bands[0].runs[0].X != cols[0].x {
+			t.Errorf("the first field at %v, its text at %v; want both after the gutter, %v", cols[0].x, l.bands[0].runs[0].X, g+l.pad)
+		}
+		if f := fillsIn(c, l.tint); len(f) != 2 || f[1] != (gui.Rect{Y: l.rowH, W: g, H: l.rowH * float32(dt.Core().Len())}) {
+			t.Errorf("the tints %+v, want the header's and the gutter's under its rows", f)
+		}
+	}
+	numbers(c, g9)
+
+	src.rows = append(src.rows, []string{"9", "row9", "Seoul", "90"})
+	dt.Core().Changed()
+	c = paintTable(l, 600, 400)
+	g10 := l.gutter()
+	if want := float32(l.Measure("00")) + 2*l.pad; g10 != want || g10 <= g9 {
+		t.Fatalf("10 rows: a gutter %v wide, want two digits' %v, wider than 9 rows' %v", g10, want, g9)
+	}
+	numbers(c, g10)
+
+	dt.Core().SetRowNumbers(false)
+	c = paintTable(l, 600, 400)
+	if l.gutter() != 0 || l.nums != nil || l.columns(600)[0].x != l.pad || len(fillsIn(c, l.tint)) != 1 {
+		t.Errorf("numbers off: a gutter %v, numbers %v; want none", l.gutter(), l.nums)
+	}
+}
+
+// The selection is painted cell by cell, as InSelection decides: a Cells selection over two rows
+// is the anchor's row from its field and the cursor's row up to its field, not the rectangle
+// between them; Rows is the whole rows; a Block the rectangle. Each is a fill per run, a run the
+// row above has too grown into one fill.
+func TestATablePaintsEachSelectionKind(t *testing.T) {
+	dt, l := pixelTable(t, cities(30))
+	core := dt.Core()
+	paintTable(l, 600, 200)
+	cols := l.columns(600)
+	left, right := func(i int) float32 { return cols[i].x - l.pad }, func(i int) float32 { return cols[i].x + cols[i].w + l.pad }
+	band := func(row, rows int, from, to int) gui.Rect {
+		return gui.Rect{X: left(from), Y: l.rowH * float32(row+1), W: right(to) - left(from), H: l.rowH * float32(rows)}
+	}
+	cases := []struct {
+		name   string
+		kind   tuiwidget.TableSelectKind
+		anchor tuiwidget.TablePos
+		cursor tuiwidget.TablePos
+		want   []gui.Rect
+	}{
+		{"Cells over two rows", tuiwidget.TableSelectCells, tuiwidget.TablePos{Row: 1, Col: 2}, tuiwidget.TablePos{Row: 2, Col: 1},
+			[]gui.Rect{band(1, 1, 2, 3), band(2, 1, 0, 1)}},
+		{"Cells over four rows", tuiwidget.TableSelectCells, tuiwidget.TablePos{Row: 1, Col: 2}, tuiwidget.TablePos{Row: 4, Col: 1},
+			[]gui.Rect{band(1, 1, 2, 3), band(2, 2, 0, 3), band(4, 1, 0, 1)}},
+		{"Cells in one row", tuiwidget.TableSelectCells, tuiwidget.TablePos{Row: 3, Col: 2}, tuiwidget.TablePos{Row: 3, Col: 1},
+			[]gui.Rect{band(3, 1, 1, 2)}},
+		{"Rows", tuiwidget.TableSelectRows, tuiwidget.TablePos{Row: 3, Col: 2}, tuiwidget.TablePos{Row: 1, Col: 2},
+			[]gui.Rect{band(1, 3, 0, 3)}},
+		{"Block", tuiwidget.TableSelectBlock, tuiwidget.TablePos{Row: 1, Col: 2}, tuiwidget.TablePos{Row: 4, Col: 1},
+			[]gui.Rect{band(1, 4, 1, 2)}},
+	}
+	for _, tc := range cases {
+		core.SetAnchor(nil)
+		core.SetCursor(tc.cursor)
+		core.Select(tc.kind, tc.anchor)
+		c := paintTable(l, 600, 200)
+		got := fillsIn(c, l.selection)
+		slices.SortFunc(got, func(a, b gui.Rect) int { return int(a.Y - b.Y) })
+		if !slices.Equal(got, tc.want) {
+			t.Errorf("%s: the selection filled %+v, want %+v", tc.name, got, tc.want)
+		}
+	}
+}
+
+// Every sort key marks its field, in key order, as the terminal's DataTable does; with more than
+// one key each mark carries its key's place, and only the first key's title takes the note.
+func TestATableMarksEverySortKey(t *testing.T) {
+	dt, l := pixelTable(t, cities(30))
+	dt.Core().SortKeys([]tuiwidget.TableSortKey{{Col: 3, Desc: true}, {Col: 1}})
+	paintTable(l, 600, 200)
+	cols := l.columns(600)
+	if got := runTexts(l.header); strings.Join(got, "|") != "id|name|city|n|▼¹|▲²" {
+		t.Fatalf("two keys: header %q, want each key's field marked, in key order", got)
+	}
+	for i, col := range []int{3, 1} {
+		c, m := cols[col], l.header.runs[4+i]
+		if m.X < c.x+c.w || m.X > c.x+c.w+2*l.pad {
+			t.Errorf("key %d's mark at %v, want in the gap after field %d (%v to %v)", i+1, m.X, col, c.x+c.w, c.x+c.w+2*l.pad)
+		}
+	}
+	dt.Core().SortKeys([]tuiwidget.TableSortKey{{Col: 2}, {Col: 0, Desc: true}, {Col: 2, Desc: true}})
+	paintTable(l, 600, 200)
+	if got := runTexts(l.header); strings.Join(got, "|") != "id|name|city|n|▲¹|▼²" {
+		t.Errorf("a field keyed twice: header %q, want its first key's mark alone", got)
+	}
+	dt.Core().SortKeys([]tuiwidget.TableSortKey{{Col: 0}})
+	paintTable(l, 600, 200)
+	if got := runTexts(l.header); strings.Join(got, "|") != "id|name|city|n|▲" {
+		t.Errorf("one key: header %q, want its mark with no place", got)
+	}
+
+	wide := cities(3)
+	wide.fields[1].Width, wide.fields[3].Width = 40, 40
+	dt, l = pixelTable(t, moreRows{wide})
+	dt.Core().SortKeys([]tuiwidget.TableSortKey{{Col: 3}, {Col: 1}})
+	paintTable(l, 1200, 200)
+	if got := runTexts(l.header); strings.Join(got, "|") != "id|name|city|n (loaded rows)|▲¹|▲²" {
+		t.Errorf("two keys over a partial result: header %q, want the note on the first key's title", got)
+	}
+}
+
+// A row band stays one layout per text style: the cells' line, and its number's when the gutter
+// is on; the header one. The fills are the page, the header's tint and rule, the gutter's tint,
+// a fill per selected run and the cursor's: none per cell.
+func TestATableRowBandStaysBatchedWithTheGutterAndASelection(t *testing.T) {
+	dt, l := pixelTable(t, cities(30), tuiwidget.TableRowNumbers(true))
+	core := dt.Core()
+	core.SetCursor(tuiwidget.TablePos{Row: 4, Col: 1})
+	core.Select(tuiwidget.TableSelectCells, tuiwidget.TablePos{Row: 1, Col: 2})
+	c := paintTable(l, 600, 200)
+	body := l.bodyRows()
+	perBand := map[int]int{}
+	for _, call := range calls(c, "DrawText") {
+		perBand[int(call.Rect.Y/l.rowH)]++
+	}
+	for band := 0; band <= body+1; band++ {
+		want := 2 // the cells and the number
+		if band == 0 {
+			want = 1 // the titles; the gutter's corner is blank
+		}
+		if perBand[band] != want {
+			t.Errorf("row band %d drew %d times, want %d (bands %v)", band, perBand[band], want, perBand)
+		}
+	}
+	// the page, the header's tint and rule, the gutter, three runs (row 1 from field 2, rows 2-3
+	// whole, row 4 to field 1) and the cursor
+	if n := len(calls(c, "FillRect")); n != 8 {
+		t.Errorf("%d fills, want 8: %+v", n, calls(c, "FillRect"))
+	}
+	if n := len(c.Calls) - len(calls(c, "DrawText")) - len(calls(c, "FillRect")); n != 0 {
+		t.Errorf("%d other calls: %+v", n, c.Calls)
 	}
 }
