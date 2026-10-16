@@ -154,6 +154,43 @@ func TestTheTabBarIsNotTheColourOfAPanelOverItsEnd(t *testing.T) {
 	}
 }
 
+// A divider stands in the cell between two neighbouring tabs, a thin line darker than the bar
+// (Johno: which tab a × belongs to), and none where a panel covers that cell or the tabs do not
+// meet across one cell.
+func TestTabsHaveADividerBetweenThem(t *testing.T) {
+	tabs := &fakeTabs{spans: []widget.TabSpan{{X: 0, W: 5}, {X: 6, W: 4}, {X: 11, W: 3}, {X: 17, W: 3}}}
+	view, _, ok := paintTabs(tabs)
+	if !ok {
+		t.Fatal("no view")
+	}
+	dividers := func(rc *RecordingCanvas) []PaintCall {
+		var out []PaintCall
+		for _, p := range rc.Calls {
+			if p.Op == "FillRect" && p.Rect.W == 1 {
+				out = append(out, p)
+			}
+		}
+		return out
+	}
+	rc := paintUnder(t, view, overView{cols: 20, rows: 1})
+	got := dividers(rc)
+	if len(got) != 2 { // after the cells 5 and 10; 14..16 is no single cell
+		t.Fatalf("%d dividers; want 2, in cells 5 and 10: %+v", len(got), rc.Calls)
+	}
+	for i, cell := range []float32{5, 10} {
+		if want := (cell+0.5)*8 - 0.5; got[i].Rect.X != want {
+			t.Fatalf("divider %d at x %v; want %v, the middle of cell %v", i, got[i].Rect.X, want, cell)
+		}
+		if got[i].Brush.Color == sepiaBG {
+			t.Fatalf("divider %d is the bar's own %v: it shows nothing", i, sepiaBG)
+		}
+	}
+	rc = paintUnder(t, view, overView{cols: 20, rows: 1, covered: at(5)})
+	if got := dividers(rc); len(got) != 1 || got[0].Rect.X != (10+0.5)*8-0.5 {
+		t.Fatalf("with cell 5 covered: dividers %+v; want the one in cell 10 alone", got)
+	}
+}
+
 // A button, a text field and a scroll bar under a panel over one of their cells take their colours
 // from their own cells.
 func TestButtonFieldAndScrollbarAreNotThePanelsColour(t *testing.T) {
