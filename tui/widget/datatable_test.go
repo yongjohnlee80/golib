@@ -80,7 +80,8 @@ func TestDataTable_ScrollsToTheCursor(t *testing.T) {
 }
 
 // A press puts the cursor on the cell under it; a second press activates the row; a press on the
-// header is consumed and moves nothing; motion goes on to the ancestors.
+// header is consumed and selects that field, the cursor on its first row; motion goes on to the
+// ancestors.
 func TestDataTable_PressesAndPassThrough(t *testing.T) {
 	activated := -1
 	h, sh, dt := dataTable(t, numbered(5), 30, 6, widget.TableOnActivate(func(r int) { activated = r }))
@@ -98,9 +99,11 @@ func TestDataTable_PressesAndPassThrough(t *testing.T) {
 	}
 	h.inject(tui.MouseEvent{Kind: tui.MousePress, Button: tui.MouseLeft, X: 1, Y: 0})
 	h.settle()
-	if got := tableCursor(h, dt); got.Row != 1 {
-		t.Errorf("a header press moved the cursor to %+v", got)
+	if got := tableCursor(h, dt); got != (widget.TablePos{Row: 0, Col: 0}) {
+		t.Errorf("a header press on the id field put the cursor on %+v, want its first row", got)
 	}
+	h.inject(tui.MouseEvent{Kind: tui.MouseRelease, Button: tui.MouseLeft, X: 1, Y: 0})
+	h.settle()
 	before := len(sh.bubbledMice())
 	h.inject(tui.MouseEvent{Kind: tui.MouseMotion, X: 3, Y: 3})
 	h.settle()
@@ -239,7 +242,7 @@ func TestDataTable_ABoundLayoutReplacesTheCells(t *testing.T) {
 }
 
 // A bound layout that places the pointer is given it in pixels: a press puts the cursor on its
-// cell, a second activates, the header and past the fields do nothing, and the wheel scrolls it.
+// cell, a second activates, past the fields does nothing, and the wheel scrolls it.
 func TestDataTable_ABoundLayoutPlacesThePointer(t *testing.T) {
 	activated := -1
 	dt := widget.NewDataTable(widget.NewTableCore(numbered(20), widget.TableOnActivate(func(r int) { activated = r })))
@@ -267,11 +270,10 @@ func TestDataTable_ABoundLayoutPlacesThePointer(t *testing.T) {
 	if activated != 3 {
 		t.Errorf("a double press on row 3 activated %d", activated)
 	}
-	h.inject(tui.MouseEvent{Kind: tui.MousePress, Button: tui.MouseLeft, X: 1, Y: 0},
-		tui.MouseEvent{Kind: tui.MousePress, Button: tui.MouseLeft, X: 29, Y: 2})
+	h.inject(tui.MouseEvent{Kind: tui.MousePress, Button: tui.MouseLeft, X: 29, Y: 2})
 	h.settle()
 	if got := tableCursor(h, dt); got.Row != 3 {
-		t.Errorf("a press on the header or past the fields moved the cursor to %+v", got)
+		t.Errorf("a press past the fields moved the cursor to %+v", got)
 	}
 	h.inject(tui.MouseEvent{Kind: tui.MouseWheel, Button: tui.WheelDown, X: 2, Y: 3},
 		tui.MouseEvent{Kind: tui.MouseWheel, Button: tui.WheelDown, X: 2, Y: 3},

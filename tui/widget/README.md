@@ -334,17 +334,48 @@ as without it.
 #### `TableCore` and `DataTable`
 
 A table's behaviour apart from any view, as `EditorCore` is an editor's: `TableCore` shows a
-`TableSource`'s rows (`Fields`, `Len`, `Cell`) with a cell cursor, a range selection (`v`),
-copying as TSV (`y`), the loaded rows sorted by a field (`TableSortable`, `s`: up, down, off;
-numbers as numbers), and Enter (`TableOnActivate`, given the source row). A source that is a
-`TablePager` (`More`, `FetchMore`) is asked for rows while the cursor is within `TableFetchAhead`
-rows of the end of those loaded, once until they arrive; a `TableEditor` source can change its
-cells and shape. `DataTable` is its terminal view; a view reaches the core through `TableLayout`.
+`TableSource`'s rows (`Fields`, `Len`, `Cell`) with a cell cursor, a selection, copying as TSV
+(`y`; `yy` the cursor's row), the loaded rows sorted by one or more fields, and Enter
+(`TableOnActivate`, given the source row). A source that is a `TablePager` (`More`, `FetchMore`)
+is asked for rows while the cursor is within `TableFetchAhead` rows of the end of those loaded,
+once until they arrive; a `TableEditor` source can change its cells and shape. `DataTable` is its
+terminal view; a view reaches the core through `TableLayout`.
+
+The keys are vim's over a grid (`HandleKey`): counts, h/j/k/l and the arrows, `w`/`b` by field
+across rows, `gg`/`G` and `[n]G`, 0/$. A selection runs from an anchor to the cursor, and its kind
+(`TableSelectKind`, `Select`, `SelectionKind`, `SelectAll`) says which cells between them it
+covers: `v` cells in reading order, `V` whole rows, Ctrl+V a block — the one Ctrl chord the core
+takes. A column is a block from the first row to the last. The pointer drives the same selection,
+as it drives `EditorCore`'s: `PressAt(p, hit)`, `DragTo`, `EndDrag`, `Dragging`. A press is a
+command boundary (a count and a pending `g` drop, a selection ends); a drag over cells selects
+them once it leaves the pressed cell, over the row numbers (`TableHitGutter`) whole rows, over the
+titles (`TableHitHeader`) whole fields.
+
+The sort (`SortKeys`, `SortedKeys`; `SortBy` is one key, `s` one key up, down, off) orders the
+loaded rows as a view, merging rows that arrive later. A source that is `TableKinds` (each cell's
+`TableCellKind`: text, NULL, number, bool, JSON) sorts as SQL's ORDER BY with NULLS LAST: numbers
+as exact decimals from their literal, never through float64; false before true; mixed kinds by
+kind. Without kinds, numbers sort as numbers when both cells are, else as text.
+`ParseTableOrder(text, fields)` reads an ORDER BY bar's `field [ASC|DESC], …` (a title, a
+`"quoted title"` or a 1-based position) into keys, its `*TableOrderError` carrying the byte at
+fault; `FormatTableOrder` writes keys back as text it reads.
+
+`TableRowNumbers(true)` numbers the rows in a gutter as wide as the last row's number. `DataTable`
+draws the cursor in `Cursor` while it has the keys and `CursorBlurred` (a faint `Cursor` unless
+set) once it has not, and `SetMenu(m)` gives it a right-click `EditorMenu`, opened at the pointer
+with the selection left as it is; `NewEditorMenu(table, nil)` with `SetRows` is a menu with no
+editor core, and `MenuAt` is where it was opened. A pixel layout that tells the gutter apart
+implements `TableLayoutHitter` (`HitAt`); one that implements only `TableLayoutPointer` is placed
+by `CellAt`, with no gutter.
 
 ```go
-core := widget.NewTableCore(result, widget.TableSortable(true),
+core := widget.NewTableCore(result, widget.TableSortable(true), widget.TableRowNumbers(true),
     widget.TableOnActivate(func(row int) { open(row) }))
 view := widget.NewDataTable(core)
+keys, err := widget.ParseTableOrder(`name, "created at" DESC`, core.Fields())
+if err == nil {
+    core.SortKeys(keys)
+}
 ```
 
 `TableAt(core, line)` is the Markdown table holding a line of an `EditorCore`'s buffer as a

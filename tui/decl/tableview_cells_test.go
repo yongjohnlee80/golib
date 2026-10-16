@@ -41,7 +41,7 @@ func TestACellCursorTableViewSortsAndReportsTheModelsRow(t *testing.T) {
 	s.WaitFor(t, "sorted by N", func(string) bool {
 		return rowOfText(s, "alice") < rowOfText(s, "carol") && rowOfText(s, "carol") < rowOfText(s, "bob")
 	})
-	s.Keys(t, decltest.Rune('g'), key(tui.KeyEnter)) // the first row shown: alice, the model's row 1
+	s.Keys(t, decltest.Rune('g'), decltest.Rune('g'), key(tui.KeyEnter)) // the first row shown: alice, the model's row 1
 	s.WaitFor(t, "activated", func(string) bool { return len(rec.all()) == 1 })
 	if got := rec.all()[0].Raw; got != "1" {
 		t.Errorf("activated(index) = %s, want 1, alice's row in the model", got)

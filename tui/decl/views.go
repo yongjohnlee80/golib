@@ -341,6 +341,11 @@ type tableViewNode struct {
 	sink     func(error)
 	// grid is the cell-cursor view (cellCursor: true), in place of table
 	grid *widget.DataTable
+	// orderBy is the grid's sort as text, as the document set it or the view wrote it back;
+	// orderErr why it did not parse, "" when it did. orderChanged raises orderByChanged.
+	orderBy, orderErr string
+	orderChanged      func(args ...qml.SpecValue)
+	ordering          bool // the node is applying orderBy: the core's news of it is not written back
 }
 
 // tableColumnNode is a declared TableViewColumn: what the column shows.
@@ -388,7 +393,8 @@ func buildTableViewColumn(b Build) (tui.Component, []string, error) {
 }
 
 func buildTableView(b Build) (tui.Component, []string, error) {
-	n := &tableViewNode{activated: b.EmitterWith("activated"), moved: b.EmitterWith("currentIndexChanged")}
+	n := &tableViewNode{activated: b.EmitterWith("activated"), moved: b.EmitterWith("currentIndexChanged"),
+		orderChanged: b.EmitterWith("orderByChanged")}
 	// contextMenuRequested is opt-in by its declaration: a TableView with no handler for it leaves
 	// a right press unhandled, as before, for whatever is above it. A reload that adds the handler
 	// rebuilds the node (a new signal), so the declaration is read here once.
@@ -704,7 +710,7 @@ var tableViewType = Type{
 		}
 		if n.grid != nil {
 			vs := p.viewStyles()
-			st := widget.DataTableStyles{Cell: vs.Row, Cursor: vs.CursorRow, Selected: vs.SelectedRow}
+			st := widget.DataTableStyles{Cell: vs.Row, Cursor: vs.CursorRow, CursorBlurred: vs.CursorBlurred, Selected: vs.SelectedRow}
 			if p.has(roleBase, roleText) {
 				st.Header = p.look(roleBase, roleText).Bold(true).Underline(true)
 			}
@@ -731,6 +737,19 @@ var tableViewType = Type{
 			n.mv.setModel(m)
 			return nil
 		},
+		// golib's: each row's number in a gutter before the first field
+		"rowNumbers": cellsSetter("rowNumbers", boolOf, func(n *tableViewNode, on bool) {
+			n.grid.Core().SetRowNumbers(on)
+		}),
+		// golib's: the sort of the loaded rows as ORDER BY text, `name [ASC|DESC], …`; "" none
+		"orderBy": cellsSetter("orderBy", stringOf, (*tableViewNode).setOrderBy),
+		// golib's: a right press opens the menu whose rows the host gives (TableOf(c).Menu().SetRows)
+		"contextMenu": cellsSetter("contextMenu", boolOf, func(n *tableViewNode, on bool) {
+			if n.grid.Menu() == nil {
+				n.grid.SetMenu(widget.NewEditorMenu(n.grid, nil))
+			}
+			n.grid.Menu().SetEnabled(on)
+		}),
 		"currentIndex": setter("a TableView", numberOf, func(n *tableViewNode, v float64) {
 			if n.grid != nil {
 				n.grid.Core().SelectSourceRow(int(v))
@@ -743,11 +762,19 @@ var tableViewType = Type{
 		"currentIndex": func(c tui.Component) (qml.SpecValue, error) {
 			return numberValue(c.(*tableViewNode).currentIndex()), nil
 		},
+		"orderBy": func(c tui.Component) (qml.SpecValue, error) {
+			return qml.SpecValue{Kind: qml.SpecValueString, Raw: c.(*tableViewNode).orderBy}, nil
+		},
+		"orderByError": func(c tui.Component) (qml.SpecValue, error) {
+			return qml.SpecValue{Kind: qml.SpecValueString, Raw: c.(*tableViewNode).orderErr}, nil
+		},
 	},
 	Signals: map[string][]string{"activated": {"index"}, "currentIndexChanged": {"index"},
 		// a right press on a row (the cursor moved to it first), or Shift+F10 or the Menu key on
 		// the cursor row; index -1 below the rows; x, y in the view's own cells, where a menu opens
-		"contextMenuRequested": {"index", "x", "y"}},
+		"contextMenuRequested": {"index", "x", "y"},
+		// golib's: the view changed its sort (the s key), and wrote it to orderBy
+		"orderByChanged": {"orderBy"}},
 	Destroyed: func(c tui.Component) { c.(*tableViewNode).mv.release() },
 }
 

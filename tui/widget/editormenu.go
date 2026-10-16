@@ -22,7 +22,8 @@ type EditorMenu struct {
 }
 
 // NewEditorMenu is a menu over owner whose stock rows act on core. It is off until
-// SetEnabled(true). owner must have a Context (a mounted widget) when the menu opens.
+// SetEnabled(true). owner must have a Context (a mounted widget) when the menu opens. With a nil
+// core there are no stock rows: the menu shows SetRows's, and a CoreMenuAction's Run is given nil.
 func NewEditorMenu(owner tui.Component, core *EditorCore) *EditorMenu {
 	return &EditorMenu{owner: owner, core: core}
 }
@@ -39,7 +40,7 @@ func (m *EditorMenu) SetEnabled(on bool) {
 func (m *EditorMenu) Enabled() bool { return m.on }
 
 // SetRows sets what builds the rows, each time the menu opens, so their enabled state is the
-// editor's at that moment; nil is the stock rows (CoreContextItems).
+// editor's at that moment; nil is the stock rows (CoreContextItems), none without a core.
 func (m *EditorMenu) SetRows(build func() []MenuItemModel) { m.build = build }
 
 // OpenAt opens the menu at at, in the owner's own frame. It reports false — and the press bubbles
@@ -58,9 +59,10 @@ func (m *EditorMenu) OpenAt(at tui.Point) bool {
 		return false
 	}
 	var items []MenuItemModel
-	if m.build != nil {
+	switch {
+	case m.build != nil:
 		items = m.build()
-	} else {
+	case m.core != nil:
 		items = CoreContextItems(m.core)
 	}
 	if len(items) == 0 {

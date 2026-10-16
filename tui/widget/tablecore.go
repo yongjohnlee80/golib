@@ -10,9 +10,9 @@ import (
 )
 
 // TABLE CORE — a table's behaviour apart from any view, as EditorCore is an editor's and
-// WindowCore a window's: the rows it shows through a source, a cell cursor, a range of cells
-// selected, the loaded rows sorted by a field, copying, and asking a paged source for more rows as
-// the cursor nears the end of those loaded. A view paints what the core says and reports its own
+// WindowCore a window's: the rows it shows through a source, a cell cursor, a selection of cells,
+// rows or a block, the loaded rows sorted by one or more fields, copying, and asking a paged
+// source for more rows as the cursor nears the end of those loaded. A view paints what the core says and reports its own
 // geometry through TableLayout; one core serves a terminal view, a pixel view, and a Markdown table
 // in an editor's buffer (TableText). Every method runs on the loop.
 
@@ -77,6 +77,17 @@ type TableOption func(*TableCore)
 // TableSortable lets the s key sort the loaded rows by the cursor's field.
 func TableSortable(on bool) TableOption { return func(c *TableCore) { c.sortable = on } }
 
+// TableRowNumbers shows each display row's number, counted from 1, in a gutter before the first
+// field. A view draws it; the core only says whether it is on (RowNumbers) and how many digits the
+// widest number has (RowNumberDigits).
+func TableRowNumbers(on bool) TableOption { return func(c *TableCore) { c.rowNumbers = on } }
+
+// TableOnSort is called with the sort keys whenever the sort changes: SortKeys, SortBy, the s key,
+// or a new source or a removed field ending it. Rows merged into an unchanged sort call nothing.
+func TableOnSort(fn func(keys []TableSortKey)) TableOption {
+	return func(c *TableCore) { c.onSort = fn }
+}
+
 // TableFetchAhead is how near the end of the loaded rows, in rows, the cursor asks a pager for
 // more, and how many it asks for; at least 1.
 func TableFetchAhead(rows int) TableOption {
@@ -103,22 +114,36 @@ type TableCore struct {
 	edit       TableEditor
 	layout     TableLayout
 	ctx        *tui.Context
+	kinds      TableKinds // the source's cell kinds, nil when it has none
 	cur        TablePos
 	anchor     *TablePos
-	order      []int // display row → source row; nil: source order
-	sortBy     int   // -1: unsorted
-	desc       bool
+	kind       TableSelectKind // what the selection between anchor and cur covers
+	order      []int           // display row → source row; nil: source order
+	keys       []TableSortKey  // the sort, nil: unsorted
 	sortable   bool
+	rowNumbers bool
 	ahead      int
 	onActivate func(row int)
 	onCursor   func(row int)
+	onSort     func(keys []TableSortKey)
 	announced  int   // the source row onCursor was last told, -1 for none
 	measured   []int // measured widths, nil until asked for after a change
+
+	// The keys typed so far of a command not yet complete: a count, and a g waiting for its
+	// second g. yanked is a y that copied the cursor's cell, which a second y turns into yy.
+	count    int
+	pendingG bool
+	yanked   bool
+
+	// The pointer's drag: where it was pressed, and on what.
+	dragging bool
+	dragFrom TablePos
+	dragHit  TableHit
 }
 
 // NewTableCore is a core over src, which may be nil until SetSource.
 func NewTableCore(src TableSource, opts ...TableOption) *TableCore {
-	c := &TableCore{sortBy: -1, ahead: tableAheadDefault, announced: -1}
+	c := &TableCore{ahead: tableAheadDefault, announced: -1}
 	for _, o := range opts {
 		if o != nil {
 			o(c)
@@ -137,8 +162,43 @@ func (c *TableCore) SetSource(src TableSource) {
 	c.src = src
 	c.pager, _ = src.(TablePager)
 	c.edit, _ = src.(TableEditor)
-	c.cur, c.anchor, c.order, c.sortBy, c.desc = TablePos{}, nil, nil, -1, false
+	c.kinds, _ = src.(TableKinds)
+	had := c.keys != nil
+	c.cur, c.anchor, c.kind, c.order, c.keys = TablePos{}, nil, TableSelectCells, nil, nil
+	c.dropPending()
+	c.dragging = false
 	c.Changed()
+	if had {
+		c.sortChanged()
+	}
+}
+
+// RowNumbers reports whether a view shows each row's number (TableRowNumbers).
+func (c *TableCore) RowNumbers() bool { return c.rowNumbers }
+
+// SetRowNumbers turns the row numbers on or off.
+func (c *TableCore) SetRowNumbers(on bool) {
+	if c.rowNumbers == on {
+		return
+	}
+	c.rowNumbers = on
+	if c.layout != nil {
+		c.layout.Changed()
+	}
+	if c.ctx != nil {
+		c.ctx.MarkDirty()
+		c.ctx.RequestLayout()
+	}
+}
+
+// RowNumberDigits is the width of the row-number gutter in digits: those of Len(), the last row's
+// number, so it grows as rows arrive (1 to 9 rows take one, 10 to 99 two). 0 while the numbers are
+// off.
+func (c *TableCore) RowNumberDigits() int {
+	if !c.rowNumbers {
+		return 0
+	}
+	return len(strconv.Itoa(max(c.Len(), 1)))
 }
 
 // Source is the rows the core shows.
@@ -168,10 +228,12 @@ func (c *TableCore) Fields() []TableField {
 func (c *TableCore) Changed() {
 	c.measured = nil
 	keep := c.SourceRow(c.cur.Row) // read through the order the cursor was placed in
-	if c.sortBy >= 0 && c.sortBy < len(c.Fields()) {
-		c.order = c.sorted(c.sortBy, c.desc)
+	before := len(c.keys)
+	c.keys = c.validKeys(c.keys)
+	if c.keys != nil {
+		c.order = c.sorted()
 	} else {
-		c.order, c.sortBy = nil, -1
+		c.order = nil
 	}
 	if keep >= 0 && keep < c.Len() { // with the sort gone, too: its field may have been removed
 		c.cur.Row = c.displayRow(keep)
@@ -180,6 +242,9 @@ func (c *TableCore) Changed() {
 	c.wantMore()
 	c.announce()
 	c.repaint()
+	if len(c.keys) != before {
+		c.sortChanged()
+	}
 }
 
 // Cursor is the cell under the cursor.
@@ -273,39 +338,23 @@ func (c *TableCore) measure(s string) int {
 
 // SortBy orders the LOADED rows by field col, ascending or descending, as a view of the source:
 // the source keeps its order, and rows that arrive later are merged in by Changed. col < 0 ends
-// the sort. Numbers sort as numbers when both cells are numbers.
+// the sort. It is SortKeys with one key; the order of two cells is SortKeys's.
 func (c *TableCore) SortBy(col int, desc bool) {
-	keep := c.SourceRow(c.cur.Row)
 	if col < 0 || col >= len(c.Fields()) {
-		c.order, c.sortBy, c.desc = nil, -1, false
-	} else {
-		c.sortBy, c.desc = col, desc
-		c.order = c.sorted(col, desc)
+		c.SortKeys(nil)
+		return
 	}
-	c.cur.Row = c.displayRow(keep)
-	c.reach()
-	c.repaint()
+	c.SortKeys([]TableSortKey{{Col: col, Desc: desc}})
 }
 
-// Sorted is the sort: the field (-1 when none), its direction, and whether rows remain to load,
-// so a view can say "sorted: loaded rows".
+// Sorted is the sort's first key: the field (-1 when none), its direction, and whether rows remain
+// to load, so a view can say "sorted: loaded rows". SortedKeys has every key.
 func (c *TableCore) Sorted() (col int, desc, partial bool) {
-	return c.sortBy, c.desc, c.sortBy >= 0 && c.pager != nil && c.pager.More()
-}
-
-func (c *TableCore) sorted(col int, desc bool) []int {
-	order := make([]int, c.Len())
-	for i := range order {
-		order[i] = i
+	keys, partial := c.SortedKeys()
+	if len(keys) == 0 {
+		return -1, false, false
 	}
-	slices.SortStableFunc(order, func(a, b int) int {
-		r := compareCells(c.src.Cell(a, col), c.src.Cell(b, col))
-		if desc {
-			r = -r
-		}
-		return r
-	})
-	return order
+	return keys[0].Col, keys[0].Desc, partial
 }
 
 // compareCells orders two cells: as numbers when both are, else as text.
@@ -332,131 +381,6 @@ func (c *TableCore) displayRow(src int) int {
 		return i
 	}
 	return 0
-}
-
-// SetAnchor starts (or with nil ends) a range selection at a cell; the range runs to the cursor.
-func (c *TableCore) SetAnchor(p *TablePos) {
-	c.anchor = p
-	c.repaint()
-}
-
-// Selection is the selected range, top-left and bottom-right inclusive; ok is false without one.
-func (c *TableCore) Selection() (from, to TablePos, ok bool) {
-	if c.anchor == nil {
-		return TablePos{}, TablePos{}, false
-	}
-	a, b := *c.anchor, c.cur
-	return TablePos{min(a.Row, b.Row), min(a.Col, b.Col)}, TablePos{max(a.Row, b.Row), max(a.Col, b.Col)}, true
-}
-
-// InSelection reports whether the cell is in the selected range.
-func (c *TableCore) InSelection(r, col int) bool {
-	from, to, ok := c.Selection()
-	return ok && r >= from.Row && r <= to.Row && col >= from.Col && col <= to.Col
-}
-
-// CopyText is the selection, or the cursor's cell, as tab-separated lines.
-func (c *TableCore) CopyText() string {
-	from, to, ok := c.Selection()
-	if !ok {
-		from, to = c.cur, c.cur
-	}
-	var b strings.Builder
-	for r := from.Row; r <= to.Row; r++ {
-		if r > from.Row {
-			b.WriteByte('\n')
-		}
-		for col := from.Col; col <= to.Col; col++ {
-			if col > from.Col {
-				b.WriteByte('\t')
-			}
-			b.WriteString(c.Cell(r, col))
-		}
-	}
-	return b.String()
-}
-
-// Copy puts CopyText on the clipboard.
-func (c *TableCore) Copy() bool {
-	if c.ctx == nil || c.Len() == 0 {
-		return false
-	}
-	return c.ctx.CopyToClipboard(c.CopyText())
-}
-
-// HandleKey moves, selects, sorts, copies and activates:
-//
-//	↑ ↓ ← → / k j h l   one cell        PgUp PgDn   a page
-//	g G                 first, last row  0 $ Home End   first, last field
-//	v                   start or end a range selection  Esc   end it
-//	y                   copy             s   sort by this field (if sortable): up, down, off
-//	Enter               activate the cursor's row
-//
-// Ctrl, Alt and Super chords are the application's.
-func (c *TableCore) HandleKey(k tui.KeyEvent) bool {
-	if k.Kind == tui.KeyRelease || k.Mods&nonTextMods != 0 {
-		return false
-	}
-	code := k.Code
-	if k.Text != "" {
-		code = []rune(k.Text)[0]
-	}
-	switch code {
-	case 'k', tui.KeyUp:
-		c.Move(-1, 0)
-	case 'j', tui.KeyDown:
-		c.Move(1, 0)
-	case 'h', tui.KeyLeft:
-		c.Move(0, -1)
-	case 'l', tui.KeyRight:
-		c.Move(0, 1)
-	case tui.KeyPageUp:
-		c.Move(-c.page(), 0)
-	case tui.KeyPageDown:
-		c.Move(c.page(), 0)
-	case 'g':
-		c.SetCursor(TablePos{0, c.cur.Col})
-	case 'G':
-		c.SetCursor(TablePos{c.Len() - 1, c.cur.Col})
-	case '0', tui.KeyHome:
-		c.SetCursor(TablePos{c.cur.Row, 0})
-	case '$', tui.KeyEnd:
-		c.SetCursor(TablePos{c.cur.Row, len(c.Fields()) - 1})
-	case 'v':
-		if c.anchor != nil {
-			c.SetAnchor(nil)
-		} else {
-			p := c.cur
-			c.SetAnchor(&p)
-		}
-	case tui.KeyEscape:
-		if c.anchor == nil {
-			return false
-		}
-		c.SetAnchor(nil)
-	case 'y':
-		c.Copy()
-	case 's':
-		if !c.sortable {
-			return false
-		}
-		switch {
-		case c.sortBy != c.cur.Col:
-			c.SortBy(c.cur.Col, false)
-		case !c.desc:
-			c.SortBy(c.cur.Col, true)
-		default:
-			c.SortBy(-1, false)
-		}
-	case tui.KeyEnter:
-		if c.onActivate == nil || c.Len() == 0 {
-			return false
-		}
-		c.onActivate(c.SourceRow(c.cur.Row))
-	default:
-		return false
-	}
-	return true
 }
 
 func (c *TableCore) page() int {
