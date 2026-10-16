@@ -197,7 +197,9 @@ func TestTabsHaveADividerBetweenThem(t *testing.T) {
 // A cell 9.6 pixels wide drifted the boxes a pixel from one gap to the next, and put the middle of a
 // gap on a half pixel, where the line came and went (Johno: consistent gaps, a thin divider).
 func TestEveryDividerIsDrawnAlike(t *testing.T) {
-	tabs := &fakeTabs{spans: []widget.TabSpan{{X: 0, W: 5}, {X: 6, W: 4}, {X: 11, W: 3}, {X: 15, W: 4}}}
+	// gaps after the cells 2, 6 and 13: placed by their cells, at 9.6 pixels a cell, they come out
+	// 6, 5 and 5 pixels wide
+	tabs := &fakeTabs{spans: []widget.TabSpan{{X: 0, W: 2}, {X: 3, W: 3}, {X: 7, W: 6}, {X: 14, W: 4}}}
 	view, _, _ := paintTabs(tabs)
 	rc := NewRecordingCanvas(Size{W: 20 * 9.6, H: 16}, Size{W: 9.6, H: 16})
 	rc.Covers = func(int, int) bool { return false }
