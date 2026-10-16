@@ -360,14 +360,7 @@ func (t *TerminalTabs) Active() TerminalTabID { return t.active }
 
 // ActiveTabIndex and TabSpans describe only strip chrome for native renderers.
 // Runtime operations continue to use opaque IDs, never presentation indexes.
-func (t *TerminalTabs) ActiveTabIndex() int {
-	for i, e := range t.entries {
-		if e.id == t.active {
-			return i
-		}
-	}
-	return -1
-}
+func (t *TerminalTabs) ActiveTabIndex() int { return t.strip.activeIndex() }
 func (t *TerminalTabs) TabSpans() []TabSpan { return t.strip.spans() }
 
 func (*TerminalTabs) AccessibleRole() tui.AccessibleRole { return tui.RolePageTabList }
@@ -627,6 +620,7 @@ func (t *TerminalTabs) SetDefaultLook(look style.Style) {
 
 func (t *TerminalTabs) Layout(c tui.Constraints) tui.Size {
 	w, h := boundedMax(c.MaxW, max(c.MinW, 1)), boundedMax(c.MaxH, max(c.MinH, 1))
+	t.strip.avail = w // narrower than its tabs, the strip scrolls them between < and >
 	if e, err := t.find(t.active); err == nil && e.closing == nil && h > 1 {
 		t.ctx.LayoutChild(e.terminal, tui.Tight(tui.Size{W: w, H: h - 1}))
 		t.ctx.PlaceChild(e.terminal, tui.Rect{Y: 1, W: w, H: h - 1})

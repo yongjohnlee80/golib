@@ -1,6 +1,7 @@
 package widget
 
 import (
+	"fmt"
 	"strings"
 	"testing"
 	"time"
@@ -159,5 +160,72 @@ func TestATabStripIsAsWideAsItsTabs(t *testing.T) {
 	}
 	if sz := strip.Layout(tui.Constraints{MaxW: 10, MaxH: 1}); sz.W != 10 {
 		t.Fatalf("in 10 cells: %v", sz)
+	}
+}
+
+// TestATabStripNarrowerThanItsTabsScrollsThem: tabs wider than the strip scroll between < and >,
+// + and ≡ keeping their place within it; > and < move the window, the active tab out of it then;
+// a tab made active is scrolled into view.
+func TestATabStripNarrowerThanItsTabsScrollsThem(t *testing.T) {
+	strip := NewTabStrip()
+	var tabs []StripTab
+	for i := range 6 {
+		tabs = append(tabs, StripTab{ID: fmt.Sprint(i), Label: fmt.Sprintf("tab-%d", i)})
+	}
+	strip.SetTabs(tabs)
+	strip.SetActive("0")
+	strip.SetActions(func() {}, nil)
+	strip.SetMenu(func(string) []MenuItemModel { return nil })
+	h := startAppInternal(t, strip, 30, 1)
+	defer h.stopInternal()
+	h.syncInternal()
+	var spans []TabSpan
+	var active int
+	look := func() { h.onLoopInternal(func() { spans, active = strip.TabSpans(), strip.ActiveTabIndex() }) }
+	look()
+	n := len(spans)
+	if n < 5 || spans[0].X != 0 || spans[n-1].X+spans[n-1].W > 30 || active != 1 {
+		t.Fatalf("spans %v, active at %d: want <, the window from tab-0 (active), >, + and ≡ within 30 cells", spans, active)
+	}
+	if got := h.tb.String(); !strings.Contains(got, " < ") || !strings.Contains(got, " > ") || !strings.Contains(got, " + ") || !strings.Contains(got, " ≡ ") {
+		t.Fatalf("the strip:\n%s", got)
+	}
+	press := func(x int) {
+		t.Helper()
+		if err := h.tb.Inject(tui.MouseEvent{Kind: tui.MousePress, Button: tui.MouseLeft, X: x, Y: 0}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	next := spans[n-3] // >, before + and ≡
+	press(next.X + 1)
+	if !waitInternal(h, func() bool { return strip.ActiveTabIndex() == -1 }) {
+		t.Fatalf("> did not scroll tab-0 out of the window:\n%s", h.tb.String())
+	}
+	press(1) // <
+	if !waitInternal(h, func() bool { return strip.ActiveTabIndex() == 1 }) {
+		t.Fatalf("< did not scroll back to tab-0:\n%s", h.tb.String())
+	}
+	h.onLoopInternal(func() { strip.SetActive("5") })
+	if !waitInternal(h, func() bool { i := strip.ActiveTabIndex(); return i > 0 }) || !strings.Contains(h.tb.String(), "tab-5") {
+		t.Fatalf("tab-5 made active is not shown:\n%s", h.tb.String())
+	}
+}
+
+// TestATabStripCapsATabsWidth: SetMaxTabWidth cuts a long label to the cap, its end an ellipsis; a
+// short one is as it was.
+func TestATabStripCapsATabsWidth(t *testing.T) {
+	strip := NewTabStrip()
+	strip.SetTabs([]StripTab{{"a", "a-very-long-file-name.md"}, {"b", "b.md"}})
+	strip.SetMaxTabWidth(10)
+	h := startAppInternal(t, strip, 60, 1)
+	defer h.stopInternal()
+	h.syncInternal()
+	var spans []TabSpan
+	h.onLoopInternal(func() { spans = strip.TabSpans() })
+	if len(spans) != 2 || spans[0].W != 10 || spans[1].W != len(" b.md ") {
+		t.Fatalf("spans %v: want the long tab capped at 10 cells, the short one whole", spans)
+	}
+	if got := h.tb.String(); !strings.Contains(got, "…") || strings.Contains(got, "file-name") || !strings.Contains(got, " b.md ") {
+		t.Fatalf("the strip:\n%s", got)
 	}
 }
