@@ -574,6 +574,11 @@ func (e *Editor) SetKeyset(ks Keyset) { e.core.SetKeyset(ks) }
 // Keymap returns a defensive copy of the editor's active keymap.
 func (e *Editor) Keymap() Keymap { return e.core.Keymap() }
 
+// OverlayKeymap folds overlay into the keymap of an editor already built: see
+// [EditorCore.OverlayKeymap]. A declarative host, whose Editor is built from markup, uses it where
+// a Go host would pass [WithKeymap].
+func (e *Editor) OverlayKeymap(overlay Keymap) { e.core.OverlayKeymap(overlay) }
+
 // EscapeChord returns the configured two-rune escape chord (e.g. "jk"), or "" if disabled.
 func (e *Editor) EscapeChord() string { return e.core.EscapeChord() }
 

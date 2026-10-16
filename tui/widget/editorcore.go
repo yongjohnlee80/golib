@@ -599,6 +599,18 @@ func (c *EditorCore) SetKeyset(ks Keyset) {
 	c.markDirty()
 }
 
+// OverlayKeymap folds overlay into the keymap of a core already built, as CoreKeymap does at
+// construction: an entry rebinds its chord, and ActUnbound removes one, so that key goes unhandled
+// to the host (a host whose own Shortcut owns a letter the profile binds). The overlay is kept and
+// replayed onto another keyset as CoreKeymap's is. Every entry is validated before any applies
+// (panics on an unknown action or an unsupported mode and action), so a bad overlay changes nothing.
+// A key sequence pending under the old bindings is dropped.
+func (c *EditorCore) OverlayKeymap(overlay Keymap) {
+	CoreKeymap(overlay)(c)
+	c.keys.dropPending()
+	c.markDirty()
+}
+
 // Keymap returns a defensive copy of the active keymap.
 func (c *EditorCore) Keymap() Keymap {
 	cp := make(Keymap, len(c.keys.keymap))
