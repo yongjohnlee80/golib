@@ -17,16 +17,14 @@ import (
 // io/input/key.go and app/{ime,window,os_wayland,os_macos}.go, then type Korean with a Hangul
 // input method on Wayland and on macOS: every composing stage stays visible, a syllable is
 // never hidden under the next, and Enter after Hangul lands after the last syllable.
-const verifiedGio = "v0.10.3"
+//
+// Verified for the native-drop fork github.com/yongjohnlee80/gio by Johno, 2026-10-16: Hangul on
+// macOS (AutoDoc f47adea, gio v0.1.1) and on Wayland, the L1–L9 matrix on Hyprland 0.56.2
+// (AutoDoc 3764c71, gio v0.1.1). v0.1.3 differs from v0.1.1 only in the Wayland drop path
+// (app/drop.go and os_wayland.go's drop handling), which no input-method path reaches.
+const verifiedGio = "v0.1.3"
 
-// The drop fork preserves that input contract's source at its v0.10.3-based upstream
-// base, apart from the six upstream fixes documented in the fork's NATIVE_DROP.md. Keep the
-// fork exact; native Wayland/macOS IME re-verification is a release gate, not something
-// a module-version assertion can prove.
-const pinnedDropGio = "v0.1.1"
-
-// Fail closed until the native IME matrix has been performed for this fork.
-// verifiedGio deliberately remains the last verified upstream release meanwhile.
+// The module requires exactly the Gio release the input-method handling was verified against.
 func TestGioIsTheVersionTheIMEContractWasVerifiedAgainst(t *testing.T) {
 	mod, err := os.ReadFile("go.mod")
 	if err != nil {
@@ -39,11 +37,9 @@ func TestGioIsTheVersionTheIMEContractWasVerifiedAgainst(t *testing.T) {
 			if f[0] == "require" {
 				v = f[2]
 			}
-			if v != pinnedDropGio {
-				t.Fatalf("go.mod requires Gio fork %s, expected exact producer %s", v, pinnedDropGio)
-			}
 			if v != verifiedGio {
-				t.Fatalf("go.mod requires Gio fork %s, but native IME was last verified against %s. Complete the Wayland/macOS manual matrix before moving verifiedGio and releasing.", v, verifiedGio)
+				t.Fatalf("go.mod requires Gio fork %s, but the input-method handling was verified against %s. "+
+					"Re-verify it as verifiedGio's comment says, then move verifiedGio.", v, verifiedGio)
 			}
 			return
 		}
