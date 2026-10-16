@@ -187,7 +187,7 @@ func TestATabStripNarrowerThanItsTabsScrollsThem(t *testing.T) {
 	if n < 5 || spans[0].X != 0 || spans[n-1].X+spans[n-1].W > 30 || active != 1 {
 		t.Fatalf("spans %v, active at %d: want <, the window from tab-0 (active), >, + and ≡ within 30 cells", spans, active)
 	}
-	if got := h.tb.String(); !strings.Contains(got, " < ") || !strings.Contains(got, " > ") || !strings.Contains(got, " + ") || !strings.Contains(got, " ≡ ") {
+	if got := h.tb.String(); !strings.Contains(got, " ← ") || !strings.Contains(got, " → ") || !strings.Contains(got, " + ") || !strings.Contains(got, " ≡ ") {
 		t.Fatalf("the strip:\n%s", got)
 	}
 	press := func(x int) {
@@ -196,12 +196,12 @@ func TestATabStripNarrowerThanItsTabsScrollsThem(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	next := spans[n-3] // >, before + and ≡
+	next := spans[n-3] // →, before + and ≡
 	press(next.X + 1)
 	if !waitInternal(h, func() bool { return strip.ActiveTabIndex() == -1 }) {
 		t.Fatalf("> did not scroll tab-0 out of the window:\n%s", h.tb.String())
 	}
-	press(1) // <
+	press(1) // ←
 	if !waitInternal(h, func() bool { return strip.ActiveTabIndex() == 1 }) {
 		t.Fatalf("< did not scroll back to tab-0:\n%s", h.tb.String())
 	}
@@ -227,5 +227,48 @@ func TestATabStripCapsATabsWidth(t *testing.T) {
 	}
 	if got := h.tb.String(); !strings.Contains(got, "…") || strings.Contains(got, "file-name") || !strings.Contains(got, " b.md ") {
 		t.Fatalf("the strip:\n%s", got)
+	}
+}
+
+// TestATabStripsCloseMark: with SetOnClose, each tab starts with a ×; a press on it closes that tab
+// (the host's callback) and chooses nothing; a press on the rest of the tab chooses it. The × is
+// outside the width cap. Without SetOnClose, no ×.
+func TestATabStripsCloseMark(t *testing.T) {
+	strip := NewTabStrip()
+	strip.SetTabs([]StripTab{{"a", "alpha"}, {"b", "a-name-longer-than-the-cap"}})
+	strip.SetActive("a")
+	strip.SetMaxTabWidth(10)
+	var closed, chosen []string
+	strip.SetOnClose(func(id string) { closed = append(closed, id) })
+	strip.SetOnSelect(func(id string) { chosen = append(chosen, id) })
+	h := startAppInternal(t, strip, 60, 1)
+	defer h.stopInternal()
+	h.syncInternal()
+	if got := h.tb.String(); !strings.Contains(got, " × alpha ") || !strings.Contains(got, " × a-name-") {
+		t.Fatalf("the strip:\n%s", got)
+	}
+	var spans []TabSpan
+	h.onLoopInternal(func() { spans = strip.TabSpans() })
+	if len(spans) != 2 || spans[1].W != 2+10 {
+		t.Fatalf("spans %v: want the capped tab 10 cells, its × 2 more", spans)
+	}
+	press := func(x int) {
+		t.Helper()
+		if err := h.tb.Inject(tui.MouseEvent{Kind: tui.MousePress, Button: tui.MouseLeft, X: x, Y: 0}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	press(spans[1].X + 1) // b's ×
+	if !waitInternal(h, func() bool { return len(closed) == 1 }) || closed[0] != "b" || len(chosen) != 0 {
+		t.Fatalf("a press on b's ×: closed %v, chosen %v", closed, chosen)
+	}
+	press(spans[1].X + 4) // b's name
+	if !waitInternal(h, func() bool { return len(chosen) == 1 }) || chosen[0] != "b" || len(closed) != 1 {
+		t.Fatalf("a press on b's name: closed %v, chosen %v", closed, chosen)
+	}
+	h.onLoopInternal(func() { strip.SetOnClose(nil) })
+	h.syncInternal()
+	if got := h.tb.String(); strings.Contains(got, "×") {
+		t.Fatalf("SetOnClose(nil) left a ×:\n%s", got)
 	}
 }

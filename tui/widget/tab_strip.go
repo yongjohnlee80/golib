@@ -31,6 +31,7 @@ type tabStrip struct {
 
 	onAdd    func()
 	onMenu   func(id string)
+	onClose  func(id string)                 // a tab's ×: nil draws none (TabStrip.SetOnClose)
 	menuRows func(id string) []MenuItemModel // the strip's own menu (SetMenu)
 	addRows  func() []MenuItemModel          // what + offers (SetAddMenu)
 	menuOpen *popupLayer
@@ -50,8 +51,8 @@ type stripKind uint8
 
 const (
 	cellTab  stripKind = iota // a tab
-	cellPrev                  // <, the tabs before the window
-	cellNext                  // >, the tabs after it
+	cellPrev                  // ←, the tabs before the window
+	cellNext                  // →, the tabs after it
 	cellAdd                   // +
 	cellMenu                  // ≡
 )
@@ -159,13 +160,26 @@ func (s *tabStrip) closeMenu() {
 	}
 }
 
-// label is tb's label as drawn: capped at maxLabel cells, its end cut to an ellipsis.
+// label is tb's label as drawn: capped at maxLabel cells, its end cut to an ellipsis, and after
+// a × when the tabs close (onClose), outside the cap.
 func (s *tabStrip) label(tb stripTab) string {
-	if s.maxLabel > 0 && s.base.measure(tb.label) > s.maxLabel {
-		return truncate(strings.TrimRight(tb.label, " "), s.maxLabel-1, s.base.measure) + " "
+	l := tb.label
+	if s.maxLabel > 0 && s.base.measure(l) > s.maxLabel {
+		l = truncate(strings.TrimRight(l, " "), s.maxLabel-1, s.base.measure) + " "
 	}
-	return tb.label
+	if s.onClose != nil {
+		l = closeMark + l
+	}
+	return l
 }
+
+// the strip's own glyphs: a tab's close mark, before its padded label (" × name "), the cells a
+// press on it takes; and the arrows either side of the window while the tabs overflow
+const (
+	closeMark = " ×"
+	prevLabel = " ← "
+	nextLabel = " → "
+)
 
 // tail is the cells + and ≡ take at the row's end, each followed by a cell.
 func (s *tabStrip) tail() int {
@@ -211,7 +225,7 @@ func (s *tabStrip) row() []stripCell {
 	} else {
 		room := max(s.avail-s.tail()-8, 1) // the window: the row less < and > and their cells
 		s.reveal(tabs, widths, room)
-		out = append(out, stripCell{kind: cellPrev, label: " < ", w: 3})
+		out = append(out, stripCell{kind: cellPrev, label: prevLabel, w: s.base.measure(prevLabel)})
 		x = 4
 		end := x + room
 		for i := s.first; i < len(tabs) && x < end; i++ {
@@ -224,7 +238,7 @@ func (s *tabStrip) row() []stripCell {
 			x += w + 1
 		}
 		x = end + 1 // > keeps its place, however full the window
-		out = append(out, stripCell{kind: cellNext, label: " > ", x: x, w: 3})
+		out = append(out, stripCell{kind: cellNext, label: nextLabel, x: x, w: s.base.measure(nextLabel)})
 		x += 4
 	}
 	if s.hasAdd() {
@@ -389,9 +403,9 @@ func (s *tabStrip) key(e tui.KeyEvent) bool {
 	return false
 }
 
-// press is a press on row 0 at x: a left press on a tab chooses it, a right one opens its menu;
-// < and > scroll the window; + and ≡ open theirs; a right press elsewhere on the row opens the
-// strip's menu for the active tab, where it was.
+// press is a press on row 0 at x: a left press on a tab's × closes it (onClose), elsewhere on the
+// tab chooses it, and a right one opens its menu; ← and → scroll the window; + and ≡ open theirs;
+// a right press elsewhere on the row opens the strip's menu for the active tab, where it was.
 func (s *tabStrip) press(e tui.MouseEvent) bool {
 	row := s.row()
 	for _, c := range row {
@@ -399,6 +413,8 @@ func (s *tabStrip) press(e tui.MouseEvent) bool {
 			continue
 		}
 		switch {
+		case c.kind == cellTab && e.Button == tui.MouseLeft && s.onClose != nil && e.X < c.x+s.base.measure(closeMark):
+			s.onClose(c.id) // the tab's ×: closed, not chosen
 		case c.kind == cellTab && e.Button == tui.MouseLeft:
 			s.choose(c.id)
 		case c.kind == cellTab && e.Button == tui.MouseRight && s.hasMenu():
@@ -512,6 +528,14 @@ func (t *TabStrip) SetOnSelect(fn func(id string)) { t.onSelect = fn }
 // SetActions sets + and the right-press menu to the host's callbacks, as TerminalTabs's do.
 func (t *TabStrip) SetActions(add func(), menu func(id string)) {
 	t.core.onAdd, t.core.onMenu = add, menu
+	t.changed()
+}
+
+// SetOnClose puts a × at the start of every tab: a press on it calls fn with the tab's id (the host
+// closes what the tab stands for, asking first if it must, and sets the tabs again); a press on the
+// rest of the tab still chooses it. nil takes the × away.
+func (t *TabStrip) SetOnClose(fn func(id string)) {
+	t.core.onClose = fn
 	t.changed()
 }
 
