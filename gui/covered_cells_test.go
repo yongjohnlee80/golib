@@ -192,9 +192,10 @@ func TestTabsHaveADividerBetweenThem(t *testing.T) {
 	}
 }
 
-// Every divider is drawn alike, whatever a cell's width: on a whole pixel, the same width, height and
-// colour. A cell 9.6 pixels wide put the middle of a gap on a half pixel, and the line, drawn at half
-// strength across two, came and went from one gap to the next (Johno: a consistent divider).
+// Every gap and every divider is drawn alike, whatever a cell's width: the gaps between neighbouring
+// boxes all one width, and each divider on a whole pixel, one pixel wide, the same height and colour.
+// A cell 9.6 pixels wide drifted the boxes a pixel from one gap to the next, and put the middle of a
+// gap on a half pixel, where the line came and went (Johno: consistent gaps, a thin divider).
 func TestEveryDividerIsDrawnAlike(t *testing.T) {
 	tabs := &fakeTabs{spans: []widget.TabSpan{{X: 0, W: 5}, {X: 6, W: 4}, {X: 11, W: 3}, {X: 15, W: 4}}}
 	view, _, _ := paintTabs(tabs)
@@ -212,9 +213,24 @@ func TestEveryDividerIsDrawnAlike(t *testing.T) {
 	if len(lines) != 3 {
 		t.Fatalf("%d dividers; want 3: %+v", len(lines), rc.Calls)
 	}
+	var boxes []Rect
+	for _, p := range rc.Calls {
+		if p.Op == "FillRRect" {
+			boxes = append(boxes, p.Rect)
+		}
+	}
+	if len(boxes) != 4 {
+		t.Fatalf("%d boxes; want 4", len(boxes))
+	}
+	for i := 1; i < len(boxes); i++ {
+		gap, first := boxes[i].X-(boxes[i-1].X+boxes[i-1].W), boxes[1].X-(boxes[0].X+boxes[0].W)
+		if gap != first || boxes[i].X != float32(math.Round(float64(boxes[i].X))) {
+			t.Errorf("gap %d is %v, the first %v; box at x %v: want every gap alike, on whole pixels", i, gap, first, boxes[i].X)
+		}
+	}
 	for i, l := range lines {
-		if l.Rect.X != float32(math.Floor(float64(l.Rect.X))) {
-			t.Errorf("divider %d at x %v: not on a whole pixel", i, l.Rect.X)
+		if l.Rect.X != float32(math.Floor(float64(l.Rect.X))) || l.Rect.W != 1 {
+			t.Errorf("divider %d at x %v, %v wide: want a whole pixel, one wide", i, l.Rect.X, l.Rect.W)
 		}
 		if l.Rect.W != lines[0].Rect.W || l.Rect.H != lines[0].Rect.H || l.Brush.Color != lines[0].Brush.Color {
 			t.Errorf("divider %d %+v is drawn unlike the first %+v", i, l, lines[0])
