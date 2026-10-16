@@ -5,6 +5,8 @@ import (
 	"hash/fnv"
 	"image/color"
 	"math"
+	"slices"
+	"strconv"
 	"strings"
 
 	"github.com/yongjohnlee80/golib/gui"
@@ -16,17 +18,20 @@ import (
 // sort and paging), laid out and painted by a pixel TableLayout. The keys and the core are the
 // DataTable's; only the view differs.
 //
-//	+--------------------------------------------------+
-//	| NAME ▲          N        CITY                    |  header band: one shaped line, on a tint
-//	+==================================================+
-//	| alice           9        Seoul                   |  one row band: one shaped line
-//	| [bob]         100        Busan                   |  the cursor's cell filled in the accent
-//	| carol          41        Daegu                   |
-//	+--------------------------------------------------+
+//	+-----+--------------------------------------------------+
+//	|     | NAME ▲¹         N ▼²     CITY                    |  header band: one shaped line, on a tint
+//	+=====+==================================================+
+//	|   1 | alice           9        Seoul                   |  one row band: its cells' line, and
+//	|   2 | [bob]         100        Busan                   |  its number's in the gutter
+//	|   3 | carol          41        Daegu                   |  the cursor's cell filled in its style
+//	+-----+--------------------------------------------------+
 //
 // Each row band's cells are shaped together into one TextLayout (TextShaper.LayoutRuns), drawn by
-// one DrawText, and shaped again only when the band's text, widths or look change. The fills are
-// one each: the page, the header's tint and rule, the selection, the cursor's cell.
+// one DrawText, and shaped again only when the band's text, widths or look change. With row
+// numbers (TableCore.RowNumberDigits) the band's number is a second layout, in the header's font
+// and colour, in a gutter as wide as the last row's number. The fills are the page, the header's
+// tint and rule, the gutter's tint, one per run of selected cells (InSelection decides each cell;
+// a run the row above has too is the same fill, grown), and the cursor's cell.
 
 // BindTable lays a DataTable out in pixels and draws it natively, the same widget to the host.
 // A native style calls it once, before the first paint.
@@ -62,7 +67,8 @@ type tableLayout struct {
 	muted     color.NRGBA
 	tint      color.NRGBA // the header's ground
 	rule      color.NRGBA // under the header
-	cursor    color.NRGBA
+	cursor    color.NRGBA // the cursor's cell while the table has the keys, when its style gives no ground
+	blurred   color.NRGBA // and while it has not
 	selection color.NRGBA
 
 	size      gui.Size // the view's, at the last paint
@@ -71,12 +77,14 @@ type tableLayout struct {
 
 	header *tableBand
 	bands  map[int]*tableBand // by display row: the last paint's
+	nums   map[int]*tableBand // the row numbers, by display row: the last paint's
 	empty  *tableBand
 }
 
 var (
 	_ tuiwidget.TableLayout        = (*tableLayout)(nil)
 	_ tuiwidget.TableLayoutPointer = (*tableLayout)(nil)
+	_ tuiwidget.TableLayoutHitter  = (*tableLayout)(nil)
 	_ gui.View                     = (*tableLayout)(nil)
 )
 
@@ -119,7 +127,7 @@ func (l *tableLayout) Reveal(row, col int) {
 
 // fits reports whether fields from..to fit the view's width when from is the first shown.
 func (l *tableLayout) fits(from, to int) bool {
-	var w float32
+	w := l.gutter()
 	for col := from; col <= to; col++ {
 		w += float32(l.core().Width(col)) + 2*l.pad
 	}
@@ -143,18 +151,67 @@ func (l *tableLayout) Measure(s string) int {
 // Changed implements tuiwidget.TableLayout.
 func (l *tableLayout) Changed() { l.t.MarkDirty() }
 
-// CellAt implements tuiwidget.TableLayoutPointer.
+// CellAt implements tuiwidget.TableLayoutPointer: the header row is TablePos{}, a row number is
+// no cell. DataTable asks HitAt.
 func (l *tableLayout) CellAt(x, y float32) (tuiwidget.TablePos, bool, bool) {
 	if y < l.rowH {
 		return tuiwidget.TablePos{}, true, true
 	}
 	row := l.top + int((y-l.rowH)/l.rowH)
-	for _, c := range l.columns(math.MaxFloat32) {
-		if x < c.x+c.w+l.pad {
-			return tuiwidget.TablePos{Row: row, Col: c.col}, false, true
-		}
+	if col, ok := l.fieldAt(x); ok {
+		return tuiwidget.TablePos{Row: row, Col: col}, false, true
 	}
 	return tuiwidget.TablePos{}, false, false
+}
+
+// HitAt implements tuiwidget.TableLayoutHitter: a field's title over the header row (the gutter's
+// corner is nothing), a row's number over the gutter, a cell over a row band's field, and nothing
+// past the last field, below the last row or above and left of the view.
+func (l *tableLayout) HitAt(x, y float32) (tuiwidget.TablePos, tuiwidget.TableHit) {
+	if x < 0 || y < 0 {
+		return tuiwidget.TablePos{}, tuiwidget.TableHitNone
+	}
+	if y < l.rowH {
+		if col, ok := l.fieldAt(x); ok {
+			return tuiwidget.TablePos{Col: col}, tuiwidget.TableHitHeader
+		}
+		return tuiwidget.TablePos{}, tuiwidget.TableHitNone
+	}
+	row := l.top + int((y-l.rowH)/l.rowH)
+	switch {
+	case row >= l.core().Len():
+		return tuiwidget.TablePos{}, tuiwidget.TableHitNone
+	case x < l.gutter():
+		return tuiwidget.TablePos{Row: row}, tuiwidget.TableHitGutter
+	}
+	if col, ok := l.fieldAt(x); ok {
+		return tuiwidget.TablePos{Row: row, Col: col}, tuiwidget.TableHitCell
+	}
+	return tuiwidget.TablePos{}, tuiwidget.TableHitNone
+}
+
+// fieldAt is the field shown at x: its text and the padding either side of it. The gutter and
+// past the last field are none.
+func (l *tableLayout) fieldAt(x float32) (int, bool) {
+	if x < l.gutter() {
+		return 0, false
+	}
+	for _, c := range l.columns(math.MaxFloat32) {
+		if x < c.x+c.w+l.pad {
+			return c.col, true
+		}
+	}
+	return 0, false
+}
+
+// gutter is the row numbers' width, their padding included: the last row's number of digits in
+// the header's font, so it widens as rows arrive (9 rows to 10). 0 while the numbers are off.
+func (l *tableLayout) gutter() float32 {
+	d := l.core().RowNumberDigits()
+	if d == 0 {
+		return 0
+	}
+	return float32(l.Measure(strings.Repeat("0", d))) + 2*l.pad
 }
 
 // ScrollRows implements tuiwidget.TableLayoutPointer.
@@ -162,10 +219,10 @@ func (l *tableLayout) ScrollRows(n int) {
 	l.top = min(max(l.top+n, 0), max(l.core().Len()-l.bodyRows(), 0))
 }
 
-// columns are the fields shown from the first, up to the width.
+// columns are the fields shown from the first, after the gutter, up to the width.
 func (l *tableLayout) columns(width float32) []tableColumn {
 	var out []tableColumn
-	var x float32
+	x := l.gutter()
 	for col := l.left; col < len(l.core().Fields()) && x < width; col++ {
 		w := float32(l.core().Width(col))
 		out = append(out, tableColumn{col: col, x: x + l.pad, w: w})
@@ -174,7 +231,8 @@ func (l *tableLayout) columns(width float32) []tableColumn {
 	return out
 }
 
-// Paint draws the header, the rows from the first shown, the selection and the cursor's cell.
+// Paint draws the header, the rows from the first shown and their numbers, the selection and the
+// cursor's cell.
 func (l *tableLayout) Paint(c gui.Canvas) {
 	l.shaper = c.Text()
 	l.adoptLook(c)
@@ -194,32 +252,106 @@ func (l *tableLayout) Paint(c gui.Canvas) {
 	if core.Len() == 0 {
 		l.empty = l.shapeRuns(l.empty, []string{l.t.EmptyText()}, []tableColumn{{x: l.pad, w: size.W - 2*l.pad}}, nil, l.body)
 		l.drawBand(c, l.empty, l.rowH, l.muted)
-		l.bands = nil
+		l.bands, l.nums = nil, nil
 		return
 	}
 	last := min(l.top+l.bodyRows()+1, core.Len()) // and the row cut by the bottom edge
-	if from, to, ok := core.Selection(); ok {
-		if r, ok := l.cellsRect(cols, from, to, last); ok {
-			c.FillRect(r, gui.Solid(l.selection))
-		}
+	gutter := l.gutter()
+	if gutter > 0 {
+		c.FillRect(gui.Rect{Y: l.rowH, W: gutter, H: l.rowH * float32(last-l.top)}, gui.Solid(l.tint))
 	}
+	l.paintSelection(c, cols, last)
 	if r, ok := l.cellsRect(cols, core.Cursor(), core.Cursor(), last); ok {
-		c.FillRect(r, gui.Solid(l.cursor))
+		c.FillRect(r, gui.Solid(l.cursorFill()))
 	}
 	aligns := make([]style.Align, len(cols))
 	for i, col := range cols {
 		aligns[i] = core.Fields()[col.col].Align
 	}
 	bands := make(map[int]*tableBand, last-l.top)
+	var nums map[int]*tableBand
+	if gutter > 0 {
+		nums = make(map[int]*tableBand, last-l.top)
+	}
+	// a number ends a pad before the gutter's edge, and may take the pad before it: a digit wider
+	// than the 0 it is measured by is not cut
+	numCol := []tableColumn{{w: gutter - l.pad}}
+	numAlign := []style.Align{style.AlignRight}
 	texts := make([]string, len(cols))
 	for row := l.top; row < last; row++ {
+		y := l.rowH * float32(row-l.top+1)
 		for i, col := range cols {
 			texts[i] = core.Cell(row, col.col)
 		}
 		bands[row] = l.shapeRuns(l.bands[row], texts, cols, aligns, l.body)
-		l.drawBand(c, bands[row], l.rowH*float32(row-l.top+1), l.fg)
+		l.drawBand(c, bands[row], y, l.fg)
+		if nums != nil {
+			nums[row] = l.shapeRuns(l.nums[row], []string{strconv.Itoa(row + 1)}, numCol, numAlign, l.head)
+			l.drawBand(c, nums[row], y, l.muted)
+		}
 	}
-	l.bands = bands
+	l.bands, l.nums = bands, nums
+}
+
+// paintSelection fills the selected cells shown, each as InSelection decides: a Cells selection
+// in reading order, whole rows for Rows, the rectangle for a Block. A row's adjacent selected
+// fields are one run, and a run the row above has too is the same fill, grown, so a selection is
+// a fill or three, never one per cell.
+func (l *tableLayout) paintSelection(c gui.Canvas, cols []tableColumn, last int) {
+	core := l.core()
+	if _, _, ok := core.Selection(); !ok {
+		return
+	}
+	var open, next []gui.Rect // the runs the row above ended with; this row's
+	for row := l.top; row < last; row++ {
+		y := l.rowH * float32(row-l.top+1)
+		next = next[:0]
+		for _, col := range cols {
+			if !core.InSelection(row, col.col) {
+				continue
+			}
+			x0, x1 := col.x-l.pad, col.x+col.w+l.pad
+			if n := len(next); n > 0 && math.Abs(float64(next[n-1].X+next[n-1].W-x0)) < 0.01 {
+				next[n-1].W = x1 - next[n-1].X
+				continue
+			}
+			next = append(next, gui.Rect{X: x0, Y: y, W: x1 - x0, H: l.rowH})
+		}
+		for i, r := range next {
+			if k := slices.IndexFunc(open, func(o gui.Rect) bool { return o.X == r.X && o.W == r.W }); k >= 0 {
+				next[i].Y, next[i].H = open[k].Y, open[k].H+l.rowH
+				open = slices.Delete(open, k, k+1)
+			}
+		}
+		for _, r := range open {
+			c.FillRect(r, gui.Solid(l.selection))
+		}
+		open, next = next, open
+	}
+	for _, r := range open {
+		c.FillRect(r, gui.Solid(l.selection))
+	}
+}
+
+// cursorFill is the cursor's ground in the DataTable's CursorStyle, which follows the focus
+// (Cursor while the table has the keys, CursorBlurred while it has not): the style's background,
+// or its foreground when it reverses; with neither, the accent's band, or a faint one when the
+// style is faint, as the default CursorBlurred is.
+func (l *tableLayout) cursorFill() color.NRGBA {
+	st := l.t.CursorStyle()
+	ground, set := st.GetBackground()
+	if rev, _ := st.GetReverse(); rev {
+		ground, set = st.GetForeground()
+	}
+	if set {
+		if col, ok := colorOf(ground, l.t.Theme(), isDark(l.bg)); ok {
+			return col
+		}
+	}
+	if faint, _ := st.GetFaint(); faint {
+		return l.blurred
+	}
+	return l.cursor
 }
 
 // cellsRect is the rectangle of the cells from..to that are shown, rows before last.
@@ -249,41 +381,61 @@ func (l *tableLayout) drawBand(c gui.Canvas, b *tableBand, y float32, col color.
 	c.DrawText(b.text, gui.Pt(0, y+(l.rowH-b.text.Height)/2), gui.Solid(col))
 }
 
-// shapeHeader is the header band: each title, and the sorted field's mark, ▲ or ▼, in the gap
-// after its column; its title says "(loaded rows)" while rows remain to load, when that fits.
+// shapeHeader is the header band: each title, and each sort key's mark in the gap after its
+// field, as the terminal's DataTable marks them: ▲ or ▼ on every key's field, the first key a field
+// has. With more than one key each mark carries the key's place, small (▲¹ ▼²). The first key's
+// title says "(loaded rows)" while rows remain to load, when that fits.
 func (l *tableLayout) shapeHeader(old *tableBand, cols []tableColumn) *tableBand {
 	fields := l.core().Fields()
-	sortCol, desc, partial := l.core().Sorted()
-	texts := make([]string, 0, len(cols)+1)
+	keys, partial := l.core().SortedKeys()
+	texts := make([]string, 0, 2*len(cols))
 	for _, c := range cols {
 		texts = append(texts, fields[c.col].Title)
 	}
-	arrow, at := "", -1
+	type mark struct {
+		text   string
+		at, of int // the column shown; the key's place
+	}
+	var marks []mark
+	noted := -1
 	for i, c := range cols {
-		if c.col == sortCol {
-			arrow, at = map[bool]string{false: "▲", true: "▼"}[desc], i
-			if partial {
-				texts[i] += " (loaded rows)"
+		for k, key := range keys {
+			if key.Col != c.col {
+				continue
 			}
+			m := mark{text: map[bool]string{false: "▲", true: "▼"}[key.Desc], at: i, of: k}
+			if len(keys) > 1 {
+				m.text += superscript(k + 1)
+			}
+			marks = append(marks, m)
+			if k == 0 && partial {
+				texts[i] += " (loaded rows)"
+				noted = i
+			}
+			break
 		}
 	}
-	key := l.key(append(texts, arrow), cols, nil)
+	slices.SortFunc(marks, func(a, b mark) int { return a.of - b.of }) // in key order
+	for _, m := range marks {
+		texts = append(texts, m.text)
+	}
+	key := l.key(texts, cols, nil)
 	if old != nil && old.key == key {
 		return old
 	}
-	runs := make([]gui.TextRun, 0, len(cols)+1)
+	runs := make([]gui.TextRun, 0, len(cols)+len(marks))
 	for i, c := range cols {
 		title := texts[i]
-		if i == at && partial && l.width(title, l.head) > c.w {
+		if i == noted && l.width(title, l.head) > c.w {
 			title = fields[c.col].Title // no room for the note
 		}
 		if s := l.elide(title, c.w, l.head); s != "" {
 			runs = append(runs, gui.TextRun{Text: s, X: c.x})
 		}
 	}
-	if at >= 0 {
-		c := cols[at]
-		runs = append(runs, gui.TextRun{Text: arrow, X: c.x + c.w + max(2*l.pad-l.width(arrow, l.head), 0)/2})
+	for _, m := range marks {
+		c := cols[m.at]
+		runs = append(runs, gui.TextRun{Text: m.text, X: c.x + c.w + max(2*l.pad-l.width(m.text, l.head), 0)/2})
 	}
 	return &tableBand{key: key, runs: runs, text: l.shaper.LayoutRuns(runs, l.head)}
 }
@@ -398,10 +550,21 @@ func (l *tableLayout) adoptLook(c gui.Canvas) {
 	l.tint = mix(fg, bg, 0.06)
 	l.rule = mix(muted, bg, 0.45)
 	l.cursor = mix(accent, bg, 0.35)
+	l.blurred = mix(fg, bg, 0.16) // grey: the selection's accent tint stays its own
 	l.selection = mix(accent, bg, 0.18)
 	l.sizeText(px)
-	l.header, l.bands, l.empty = nil, nil, nil
+	l.header, l.bands, l.nums, l.empty = nil, nil, nil, nil
 	l.core().Remeasure()
+}
+
+// superscript is n in superscript digits: a sort key's place beside its mark.
+func superscript(n int) string {
+	const digits = "⁰¹²³⁴⁵⁶⁷⁸⁹"
+	var b strings.Builder
+	for _, d := range strconv.Itoa(n) {
+		b.WriteString(string([]rune(digits)[d-'0']))
+	}
+	return b.String()
 }
 
 // oneLine is r with a line break as a space: a cell is drawn on one line.
