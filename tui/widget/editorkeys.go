@@ -138,8 +138,9 @@ func (k *keyDispatch) chordsFor(act Action) []KeyChord {
 	return chords
 }
 
-// dropPending forgets a count and a double-key prefix being typed: input addressed to a moment
-// that has passed (a menu action, a keyset switch, the focus leaving).
+// dropPending forgets a command being typed — a count, a double-key prefix, an armed f or r, an
+// operator, and a key waiting for a name: input addressed to a moment that has passed (a menu
+// action, a keyset switch, an overlay, a press, the focus leaving).
 func (k *keyDispatch) dropPending() {
 	k.count, k.pendingCount = 0, 0
 	k.pendingAct, k.pendingChord = ActUnbound, KeyChord{}
