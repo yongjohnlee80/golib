@@ -84,16 +84,25 @@ func kittyKey(k tui.KeyEvent, mods tui.Mods) []byte {
 		}
 		code = map[rune]rune{tui.KeyEnter: 13, tui.KeyTab: 9, tui.KeyBackspace: 127}[k.Code]
 	default:
-		if mods&(tui.ModCtrl|tui.ModAlt|tui.ModMeta) == 0 || k.Code < 0x20 || k.Code >= 0xE000 {
+		// Shift alone types the shifted text; any other modifier makes the key ambiguous.
+		if mods&^tui.ModShift == 0 || k.Code < 0x20 || k.Code >= 0xE000 {
 			return nil
 		}
 		// The key's own code, unshifted: Ctrl+Shift+A is a with Ctrl and Shift.
 		code = unicode.ToLower(k.Code)
 	}
-	if mod := xtermMod(mods); mod > 1 {
+	if mod := kittyMod(mods); mod > 1 {
 		return []byte("\x1b[" + strconv.Itoa(int(code)) + ";" + strconv.Itoa(mod) + "u")
 	}
 	return []byte("\x1b[" + strconv.Itoa(int(code)) + "u")
+}
+
+// kittyMod is the kitty protocol's modifier parameter: 1 + shift(1) + alt(2) + ctrl(4) +
+// super(8) + hyper(16) + meta(32), which are tui.Mods's own bits in the same order. It is
+// not xtermMod: xterm counts meta as 8, where kitty puts super.
+func kittyMod(m tui.Mods) int {
+	const kitty = tui.ModShift | tui.ModAlt | tui.ModCtrl | tui.ModSuper | tui.ModHyper | tui.ModMeta
+	return 1 + int(m&kitty)
 }
 
 // ctrlByte is the C0 byte Ctrl+key sends.

@@ -188,6 +188,13 @@ func TestEncodeKey(t *testing.T) {
 		{tui.KeyEvent{Code: 'A', Text: "A", Mods: tui.ModShift}, kitty, "A"},
 		{tui.KeyEvent{Code: tui.KeyUp, Mods: tui.ModCtrl}, kitty, "\x1b[1;5A"},
 		{tui.KeyEvent{Code: tui.KeyF5}, kitty, "\x1b[15~"},
+		// Every modifier the protocol names, in its own bits: super 8, hyper 16, meta 32.
+		{tui.KeyEvent{Code: 'c', Text: "c", Mods: tui.ModSuper}, kitty, "\x1b[99;9u"},
+		{tui.KeyEvent{Code: 'c', Text: "c", Mods: tui.ModHyper}, kitty, "\x1b[99;17u"},
+		{tui.KeyEvent{Code: 'c', Text: "c", Mods: tui.ModMeta}, kitty, "\x1b[99;33u"},
+		{tui.KeyEvent{Code: 'c', Mods: tui.ModCtrl | tui.ModSuper}, kitty, "\x1b[99;13u"},
+		{tui.KeyEvent{Code: tui.KeyEnter, Mods: tui.ModMeta}, kitty, "\x1b[13;33u"},
+		{tui.KeyEvent{Code: tui.KeyEnter, Mods: tui.ModShift | tui.ModCapsLock}, kitty, "\x1b[13;2u"},
 	} {
 		if got := string(encodeKey(c.k, c.m)); got != c.want {
 			t.Errorf("encodeKey(%+v) = %q, want %q", c.k, got, c.want)
