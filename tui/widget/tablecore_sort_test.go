@@ -115,36 +115,47 @@ func TestTableSort_FetchesNothing(t *testing.T) {
 	}
 }
 
-// The sort reads numbers as the WHERE filter does: a decimal whose exponent is out of range is
-// not a number, and is read at once rather than expanded; a fraction or a base prefix, which
-// big.Rat would read, is not a decimal either. Valid decimals still sort exactly, with kinds and
-// without.
-func TestTableSort_NumbersAreTheFiltersDecimals(t *testing.T) {
+// A decimal whose exponent is out of the filter's range (1e999999999) is not a number to the sort:
+// it is read at once, never expanded, and sorts as text does, with kinds (after the numbers) and
+// without (by its text).
+func TestTableSort_AnOutOfRangeExponentIsText(t *testing.T) {
 	start := time.Now()
-	src := kinded(
-		[3]string{"huge", "1e999999999", "n"}, [3]string{"hi", "12345678901234567890.124", "n"},
-		[3]string{"half", "1/2", "n"}, [3]string{"lo", "12345678901234567890.123", "n"},
-		[3]string{"hex", "0x10", "n"}, [3]string{"one", "1", "n"})
+	src := kinded([3]string{"huge", "1e999999999", "n"}, [3]string{"two", "2", "n"}, [3]string{"one", "1", "n"})
 	c := NewTableCore(src)
 	c.SortKeys([]TableSortKey{{Col: 1}})
-	if got := ids(c); !slices.Equal(got, []string{"one", "lo", "hi", "hex", "half", "huge"}) {
-		t.Errorf("kinded: %v; want 1, …123, …124, then the unparsed by their text", got)
+	if got := ids(c); !slices.Equal(got, []string{"one", "two", "huge"}) {
+		t.Errorf("kinded: %v; want 1, 2, then the unparsed", got)
 	}
-	plain := &rowsSource{fields: []TableField{{Title: "id"}, {Title: "v"}}, rows: [][]string{
-		{"huge", "1e999999999"}, {"5", "5"}, {"4", "4"},
-	}}
-	c.SetSource(plain)
+	c.SetSource(&rowsSource{fields: []TableField{{Title: "id"}, {Title: "v"}}, rows: [][]string{
+		{"5", "5"}, {"huge", "1e999999999"}, {"4", "4"},
+	}})
 	c.SortKeys([]TableSortKey{{Col: 1}})
 	if got := ids(c); !slices.Equal(got, []string{"huge", "4", "5"}) {
-		t.Errorf("without kinds: %v; want 1e999999999 as text, before the digits it outsorts", got)
-	}
-	plain.rows = [][]string{{"hi", "12345678901234567890.124"}, {"lo", "12345678901234567890.123"}, {"two", " 2 "}}
-	c.Changed()
-	if got := ids(c); !slices.Equal(got, []string{"two", "lo", "hi"}) {
-		t.Errorf("without kinds: %v; want 2, …123, …124, exactly", got)
+		t.Errorf("without kinds: %v; want 1e999999999 by its text, before the digits it outsorts", got)
 	}
 	if d := time.Since(start); d > 2*time.Second {
 		t.Errorf("sorting took %v", d)
+	}
+}
+
+// The sort reads numbers as the WHERE filter does: a fraction or a base prefix, which big.Rat
+// would read, is not a decimal; valid decimals still sort exactly, with kinds and without.
+func TestTableSort_NumbersAreTheFiltersDecimals(t *testing.T) {
+	src := kinded(
+		[3]string{"hi", "12345678901234567890.124", "n"}, [3]string{"half", "1/2", "n"},
+		[3]string{"lo", "12345678901234567890.123", "n"}, [3]string{"hex", "0x10", "n"},
+		[3]string{"one", "1", "n"})
+	c := NewTableCore(src)
+	c.SortKeys([]TableSortKey{{Col: 1}})
+	if got := ids(c); !slices.Equal(got, []string{"one", "lo", "hi", "hex", "half"}) {
+		t.Errorf("kinded: %v; want 1, …123, …124, then the unparsed by their text", got)
+	}
+	c.SetSource(&rowsSource{fields: []TableField{{Title: "id"}, {Title: "v"}}, rows: [][]string{
+		{"hi", "12345678901234567890.124"}, {"lo", "12345678901234567890.123"}, {"two", " 2 "},
+	}})
+	c.SortKeys([]TableSortKey{{Col: 1}})
+	if got := ids(c); !slices.Equal(got, []string{"two", "lo", "hi"}) {
+		t.Errorf("without kinds: %v; want 2, …123, …124, exactly", got)
 	}
 }
 
