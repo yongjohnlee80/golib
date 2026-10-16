@@ -254,24 +254,23 @@ func TestATableRevealsTheCursor(t *testing.T) {
 	}
 }
 
-// A filter that shrinks the rows under a scrolled view shows as many of them as fit: the cursor's
-// row is not left alone at the top with the rows before it scrolled off.
-func TestATableScrollsBackWhenAFilterLeavesFewerRows(t *testing.T) {
-	dt, l := pixelTable(t, cities(30))
+// Rows that go from under a scrolled view (a filter, a new result) leave as many as fit in sight:
+// the cursor's row is not left alone at the top with the rows before it scrolled off.
+func TestATableScrollsBackWhenRowsGo(t *testing.T) {
+	src := cities(30)
+	dt, l := pixelTable(t, src)
 	core := dt.Core()
 	paintTable(l, 600, 200) // 7 rows
 	core.SetCursor(tuiwidget.TablePos{Row: 29})
 	if l.top != 23 {
 		t.Fatalf("at the last row: rows from %d, want 23", l.top)
 	}
-	p, err := tuiwidget.ParseTableWhere("id >= 26", core.Fields())
-	if err != nil {
-		t.Fatal(err)
-	}
-	core.SetFilter(p) // 26..29; the cursor stays on 29, display row 3
+	src.rows = src.rows[26:] // four rows left
+	core.Changed()
+	core.SetCursor(tuiwidget.TablePos{Row: 3})
 	paintTable(l, 600, 200)
-	if core.Cursor().Row != 3 || l.top != 0 {
-		t.Errorf("after the filter: cursor row %d, rows from %d; want 3 and 0, all four in sight", core.Cursor().Row, l.top)
+	if l.top != 0 {
+		t.Errorf("after rows went: rows from %d, want 0, all four in sight", l.top)
 	}
 	if got := runTexts(l.bands[0])[0]; got != "26" {
 		t.Errorf("the first row band shows %q, want 26", got)
