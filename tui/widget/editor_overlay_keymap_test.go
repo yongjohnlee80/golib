@@ -9,23 +9,26 @@ import (
 
 var normalQ = widget.KeyChord{Mode: widget.ModeNormal, Code: 'q'}
 
+// qKey is q as a terminal delivers it: its code and its text, which a key waiting for a name reads.
+var qKey = tui.KeyEvent{Code: 'q', Text: "q"}
+
 // A host unbinds a letter of an editor already built: the key goes unhandled to the host, under
 // this keyset and after another one and back.
 func TestOverlayKeymapUnbindsAKeyOfABuiltEditor(t *testing.T) {
 	c, _ := coreWith(t, "abc")
-	if !c.HandleKey(tui.KeyEvent{Code: 'q'}) {
+	if !c.HandleKey(qKey) {
 		t.Fatal("q is not bound before the overlay: the cell would prove nothing")
 	}
 	keys(c, "a") // the register q waits for: the macro starts recording
-	c.HandleKey(tui.KeyEvent{Code: 'q'})
+	c.HandleKey(qKey)
 
 	c.OverlayKeymap(widget.Keymap{normalQ: widget.ActUnbound})
-	if c.HandleKey(tui.KeyEvent{Code: 'q'}) {
+	if c.HandleKey(qKey) {
 		t.Error("an unbound q was handled by the editor")
 	}
 	c.SetKeyset(widget.KeysetNano)
 	c.SetKeyset(widget.KeysetVim)
-	if c.HandleKey(tui.KeyEvent{Code: 'q'}) {
+	if c.HandleKey(qKey) {
 		t.Error("q came back after another keyset and back: the overlay was not replayed")
 	}
 	if got := c.Keymap()[normalQ]; got == widget.ActMacroRecord {
@@ -55,7 +58,7 @@ func TestOverlayKeymapValidatesTheWholeOverlayFirst(t *testing.T) {
 		}()
 		c.OverlayKeymap(widget.Keymap{normalQ: widget.ActUnbound, {Mode: widget.ModeNormal, Code: 'Z'}: widget.Action(255)})
 	}()
-	if !c.HandleKey(tui.KeyEvent{Code: 'q'}) {
+	if !c.HandleKey(qKey) {
 		t.Error("half of a refused overlay applied: q was unbound")
 	}
 }
@@ -73,11 +76,11 @@ func TestEditorOverlayKeymap(t *testing.T) {
 // to the host, not to the register it was waiting for.
 func TestOverlayKeymapDropsAnArmedQ(t *testing.T) {
 	c, _ := coreWith(t, "abc")
-	if !c.HandleKey(tui.KeyEvent{Code: 'q'}) {
+	if !c.HandleKey(qKey) {
 		t.Fatal("q is not bound before the overlay: the cell would prove nothing")
 	}
 	c.OverlayKeymap(widget.Keymap{normalQ: widget.ActUnbound})
-	if c.HandleKey(tui.KeyEvent{Code: 'q'}) {
+	if c.HandleKey(qKey) {
 		t.Error("q, the overlay, q: the second q was taken as the register's name")
 	}
 }
