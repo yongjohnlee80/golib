@@ -23,7 +23,7 @@ const verifiedGio = "v0.10.3"
 // base, apart from the six upstream fixes documented in the fork's NATIVE_DROP.md. Keep the
 // fork exact; native Wayland/macOS IME re-verification is a release gate, not something
 // a module-version assertion can prove.
-const pinnedDropGio = "v0.0.0-20261015224045-f4e4e7bb0f24"
+const pinnedDropGio = "v0.1.1"
 
 // Fail closed until the native IME matrix has been performed for this fork.
 // verifiedGio deliberately remains the last verified upstream release meanwhile.
