@@ -10,7 +10,10 @@ import (
 // DATA TABLE — the terminal view of a TableCore: a header row, then the rows with a cell cursor,
 // scrolled both ways to keep the cursor in sight. The core owns the rows, the cursor, the
 // selection, the sort and the paging; DataTable paints them and turns presses into cursor moves.
-// A GUI view of the same core paints in pixels instead.
+//
+// Its layout is the backend's. In a terminal it lays the rows out in cells. A native backend binds
+// a pixel layout with BindLayout before the first paint, which then scrolls, measures and paints
+// the same core; the keys, the cursor and the sort are the same code on both.
 
 // DataTableStyles are DataTable's looks. Zero fields keep the defaults.
 type DataTableStyles struct {
@@ -25,9 +28,11 @@ type DataTableStyles struct {
 type DataTable struct {
 	Base
 	core      *TableCore
+	layout    TableLayout // the table itself (the cell layout) until a backend binds another
 	styles    DataTableStyles
 	emptyText string
-	top, left int // first row shown, first field shown
+	theme     *style.Theme // the surface's at the last paint, for a pixel layout's colours
+	top, left int          // the cell layout's first row shown, first field shown
 	w, h      int
 }
 
@@ -36,12 +41,54 @@ var (
 	_ TableLayout   = (*DataTable)(nil)
 )
 
-// NewDataTable is a view of core.
+// TableLayoutPointer is a bound layout that places the pointer itself: a pixel layout's rows and
+// fields do not fall on cells. Its points are pixels from the view's top-left.
+type TableLayoutPointer interface {
+	// CellAt is the cell at (x, y); header reports the header row; ok is false off the rows and
+	// the fields.
+	CellAt(x, y float32) (p TablePos, header, ok bool)
+	// ScrollRows scrolls the rows shown by n, leaving the cursor where it is.
+	ScrollRows(n int)
+}
+
+// NewDataTable is a view of core, laid out in cells until a backend binds another layout.
 func NewDataTable(core *TableCore) *DataTable {
 	t := &DataTable{core: core, emptyText: "No rows"}
+	t.layout = t
 	t.SetStyles(DataTableStyles{})
 	return t
 }
+
+// BindLayout replaces the cell layout with l, a native backend's pixel layout, which from then on
+// scrolls the rows, measures the widths and paints the table; the core and its keys stay the same.
+// A native style calls it once, before the first paint. nil keeps the layout the table has.
+func (t *DataTable) BindLayout(l TableLayout) {
+	if l == nil {
+		return
+	}
+	t.layout = l
+	t.core.Bind(t.Context(), l)
+	t.core.Remeasure() // widths in the cells' units are not the new layout's
+	t.RequestLayout()
+	t.MarkDirty()
+}
+
+// BoundLayout is the layout the table draws with: the table itself (the cell layout), or the one
+// BindLayout gave.
+func (t *DataTable) BoundLayout() TableLayout { return t.layout }
+
+// bound reports whether a backend's layout took over from the cells.
+func (t *DataTable) bound() bool { return t.layout != TableLayout(t) }
+
+// Styles are the table's looks, the defaults filled in.
+func (t *DataTable) Styles() DataTableStyles { return t.styles }
+
+// EmptyText is what an empty table shows.
+func (t *DataTable) EmptyText() string { return t.emptyText }
+
+// Theme is the tui theme of the surface the table last painted on: what a pixel layout takes its
+// accent and muted colours from. nil before the first paint.
+func (t *DataTable) Theme() *style.Theme { return t.theme }
 
 // Core is the table's behaviour.
 func (t *DataTable) Core() *TableCore { return t.core }
@@ -73,10 +120,10 @@ func (t *DataTable) SetEmptyText(s string) {
 	t.MarkDirty()
 }
 
-// Init binds the core to this view.
+// Init binds the core to the table's layout.
 func (t *DataTable) Init(ctx *tui.Context) {
 	t.Base.Init(ctx)
-	t.core.Bind(ctx, t)
+	t.core.Bind(ctx, t.layout)
 }
 
 // AcceptsFocus implements tui.Focusable.
@@ -121,17 +168,28 @@ func (t *DataTable) Layout(c tui.Constraints) tui.Size {
 	w := boundedMax(c.MaxW, max(c.MinW, 1))
 	h := boundedMax(c.MaxH, max(c.MinH, 1+max(t.core.Len(), 1)))
 	if w != t.w || h != t.h {
-		// a new size keeps the cursor in sight; the same size keeps the wheel's scroll
+		// a new size keeps the cursor in sight; the same size keeps the wheel's scroll. A bound
+		// layout keeps it in sight at its own size, which is in its units.
 		t.w, t.h = w, h
-		t.Reveal(t.core.Cursor().Row, t.core.Cursor().Col)
+		if !t.bound() {
+			t.Reveal(t.core.Cursor().Row, t.core.Cursor().Col)
+		}
 	}
 	return c.Constrain(tui.Size{W: w, H: h})
 }
 
-// Render paints the header, then the rows from the first shown.
+// Render paints the header, then the rows from the first shown. A bound layout is drawn by its
+// backend: the cells under it are filled with the rows' colours, which the native view reads as
+// its own.
 func (t *DataTable) Render(s tui.Surface) {
+	t.theme = s.Theme()
 	sz := s.Size()
 	if sz.W <= 0 || sz.H <= 0 {
+		return
+	}
+	if t.bound() {
+		base := style.New().Foreground(style.TokenForeground).Background(style.TokenBackground)
+		s.Fill(tui.Rect{W: sz.W, H: sz.H}, " ", t.styles.Cell.Inherit(base))
 		return
 	}
 	fields := t.core.Fields()
@@ -186,29 +244,44 @@ func (t *DataTable) Render(s tui.Surface) {
 
 // HandleEvent moves through the core's keys; a press puts the cursor on the cell under it (a
 // second press activates), the wheel scrolls. A press on the header is consumed and does nothing;
-// any other pointer event goes on to the ancestors.
+// any other pointer event goes on to the ancestors. Under a bound layout the pointer is the
+// layout's to place (TableLayoutPointer); one that does not place it lets the pointer go on.
 func (t *DataTable) HandleEvent(ev tui.Event) bool {
 	switch e := ev.(type) {
 	case tui.KeyEvent:
 		return t.core.HandleKey(e)
 	case tui.MouseEvent:
+		p, placed := t.layout.(TableLayoutPointer)
+		if t.bound() && !placed {
+			return false
+		}
 		switch {
 		case e.Kind == tui.MouseWheel && (e.Button == tui.WheelUp || e.Button == tui.WheelDown):
 			step := 3
 			if e.Button == tui.WheelUp {
 				step = -3
 			}
-			t.top = min(max(t.top+step, 0), max(t.core.Len()-max(t.h-1, 1), 0))
+			if t.bound() {
+				p.ScrollRows(step)
+			} else {
+				t.top = min(max(t.top+step, 0), max(t.core.Len()-max(t.h-1, 1), 0))
+			}
 			t.MarkDirty()
 			return true
-		case e.Kind == tui.MousePress && e.Button == tui.MouseLeft && e.Y == 0:
-			return true
 		case e.Kind == tui.MousePress && e.Button == tui.MouseLeft:
-			col, ok := t.fieldAt(e.X)
-			if !ok {
+			var pos TablePos
+			var header, ok bool
+			if t.bound() {
+				x, y := t.pixels(e)
+				pos, header, ok = p.CellAt(x, y)
+			} else {
+				pos.Row, header = t.top+e.Y-1, e.Y == 0
+				pos.Col, ok = t.fieldAt(e.X)
+			}
+			if header || !ok {
 				return true
 			}
-			t.core.SetCursor(TablePos{Row: t.top + e.Y - 1, Col: col})
+			t.core.SetCursor(pos)
 			if e.Count >= 2 {
 				t.core.HandleKey(tui.KeyEvent{Kind: tui.KeyPress, Code: tui.KeyEnter})
 			}
@@ -216,6 +289,18 @@ func (t *DataTable) HandleEvent(ev tui.Event) bool {
 		}
 	}
 	return false
+}
+
+// pixels is the pointer's point in the view, in pixels: the cell it is over and where inside it,
+// times a cell's pixels. A backend without pixels answers the cell.
+func (t *DataTable) pixels(e tui.MouseEvent) (float32, float32) {
+	x, y := float32(e.X)+e.SubX, float32(e.Y)+e.SubY
+	if ctx := t.Context(); ctx != nil {
+		if cp := ctx.CellPixels(); cp.W > 0 && cp.H > 0 {
+			return x * cp.W, y * cp.H
+		}
+	}
+	return x, y
 }
 
 // fieldAt is the field shown at column x.

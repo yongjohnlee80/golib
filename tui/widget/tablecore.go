@@ -257,6 +257,10 @@ func (c *TableCore) Width(col int) int {
 	return c.measured[col]
 }
 
+// Remeasure drops the measured widths: the view's units changed (a new font, another layout), so
+// the next Width measures again.
+func (c *TableCore) Remeasure() { c.measured = nil }
+
 // cells is n cells in the layout's units.
 func (c *TableCore) cells(n int) int { return c.measure(strings.Repeat("0", n)) }
 
