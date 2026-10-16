@@ -1,10 +1,14 @@
 // nord.qml — Nord: an arctic, north-bluish palette, its Polar Night surfaces with Snow Storm
 // text and Frost and Aurora accents. Palette from https://www.nordtheme.com/docs/colors-and-palettes.
 //
-//   Polar Night  nord0 #2e3440  nord1 #3b4252  nord2 #434c5e  nord3 #4c566a  (comments #616e88)
+//   Polar Night  nord0 #2e3440  nord1 #3b4252  nord2 #434c5e  nord3 #4c566a
 //   Snow Storm   nord4 #d8dee9  nord5 #e5e9f0  nord6 #eceff4
 //   Frost        nord7 #8fbcbb  nord8 #88c0d0  nord9 #81a1c1  nord10 #5e81ac
 //   Aurora       nord11 #bf616a  nord12 #d08770  nord13 #ebcb8b  nord14 #a3be8c  nord15 #b48ead
+//
+// Two colours are not among the sixteen, on purpose: the backdrop #242933, a shade below nord0
+// so the screen around the page stays apart from it, and comments #616e88, the brightened
+// nord3 Nord's own editor ports use, since nord3 itself is too faint on nord0.
 //
 // Written as #rrggbb so it looks the same in every terminal.
 
