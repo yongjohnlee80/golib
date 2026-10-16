@@ -171,7 +171,8 @@ tuidecl.Offer("editor.extras", "1.0", myLoader)                  // any decl.Mod
 ```
 
 **Start from the toolkit's themes.** `themes.Offer()` (package
-`tui/decl/themes`) offers `tui.theme.dark`, `light`, `mono`, `retro` and `sepia` — each a
+`tui/decl/themes`) offers `tui.theme.dark`, `light`, `mono`, `retro`, `sepia`, `catppuccin_frappe`,
+`kanagawa`, `nord`, `shades_of_purple` and `tokyo_night` — each a
 `Theme` in five groups, `app`, `menu`, `document`, `status`, `syntax`, every key
 in every theme — so a program with no colours of its own needs no theme files:
 
