@@ -27,8 +27,10 @@ var vocabulary = map[string][]string{
 		"decVal", "float", "baseN", "constant", "comment", "alert", "import", "operator"},
 }
 
-func TestTheFiveThemesAreOffered(t *testing.T) {
-	if got, want := themes.Names(), []string{"dark", "light", "mono", "retro", "sepia"}; !slices.Equal(got, want) {
+func TestTheTenThemesAreOffered(t *testing.T) {
+	want := []string{"catppuccin_frappe", "dark", "kanagawa", "light", "mono", "nord", "retro", "sepia",
+		"shades_of_purple", "tokyo_night"}
+	if got := themes.Names(); !slices.Equal(got, want) {
 		t.Errorf("Names() = %v, want %v", got, want)
 	}
 }
@@ -135,7 +137,7 @@ func TestValuesAreEveryThemesColoursByName(t *testing.T) {
 	if got := mono["app.inactive.highlight"]; got != "brightblack" {
 		t.Errorf(`mono app.inactive.highlight = %q, want "brightblack"`, got)
 	}
-	if _, err := themes.Values("solarized"); err == nil || !strings.Contains(err.Error(), "dark, light, mono, retro, sepia") {
+	if _, err := themes.Values("solarized"); err == nil || !strings.Contains(err.Error(), "catppuccin_frappe, dark, kanagawa, light, mono, nord, retro, sepia, shades_of_purple, tokyo_night") {
 		t.Errorf(`Values("solarized") error = %v, want the themes named`, err)
 	}
 }

@@ -1,7 +1,8 @@
-// Package themes is the toolkit's five themes, as QML modules a layout
+// Package themes is the toolkit's ten themes, as QML modules a layout
 // imports:
 //
-//	import tui.theme.dark 1.0     // or light, mono, retro, sepia
+//	import tui.theme.dark 1.0     // or light, mono, retro, sepia, catppuccin_frappe,
+//	                              // kanagawa, nord, shades_of_purple, tokyo_night
 //
 //	Window {
 //	    palette.window: Theme.app.window
@@ -69,7 +70,8 @@ func Offer() tuidecl.ProgramOption {
 }
 
 // FS is the themes' QML files, one per theme: dark.qml, light.qml, mono.qml,
-// retro.qml, sepia.qml — to copy from, or to offer under another module name.
+// retro.qml, sepia.qml, catppuccin_frappe.qml, kanagawa.qml, nord.qml,
+// shades_of_purple.qml, tokyo_night.qml — to copy from, or to offer under another module name.
 func FS() fs.FS { return files }
 
 // Values are a theme's colours by their dotted names, as its file writes them:
