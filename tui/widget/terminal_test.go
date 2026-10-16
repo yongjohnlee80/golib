@@ -195,6 +195,22 @@ func TestTerminalEncodesKeys(t *testing.T) {
 	f.waitSent("\x1bOA\x1b[1;5C\x1b[15~")
 }
 
+// A program that asks for the kitty keyboard protocol, as Claude Code and Codex do (CSI > 5 u),
+// is told what was kept and then reads Shift+Enter apart from Enter: a newline in its prompt, not
+// a send. A shell, which never asks, reads the same \r it always has; and a pop restores it.
+func TestTerminalSpeaksTheKittyKeyboardProtocolWhenAsked(t *testing.T) {
+	f := startTerm(t, 20, 4)
+	f.h.inject(keyMod(tui.KeyEnter, tui.ModShift), typeString("a")[0])
+	f.waitSent("\ra")
+	f.output("\x1b[>5u\x1b[?u")
+	f.waitSent("\ra\x1b[?1u")
+	f.h.inject(keyMod(tui.KeyEnter, tui.ModShift), key(tui.KeyEnter), key(tui.KeyEscape), ctrl('c'))
+	f.waitSent("\x1b[?1u\x1b[13;2u\r\x1b[27u\x1b[99;5u")
+	f.output("\x1b[<u")
+	f.h.inject(keyMod(tui.KeyEnter, tui.ModShift), typeString("z")[0])
+	f.waitSent("\x1b[99;5u\rz")
+}
+
 // Host keys: without them F11 reaches the program; with them the Terminal sends none of it and
 // leaves it unconsumed, for the Window's Shortcut; other keys still reach the program.
 func TestTerminalLeavesItsHostKeysToTheHost(t *testing.T) {

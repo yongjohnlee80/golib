@@ -64,6 +64,17 @@ type buffer struct {
 	lines    []line
 	saved    cursor
 	hasSaved bool
+	// kbd is the kitty keyboard protocol's stack of flag sets, the last one
+	// current. The main and the alternate screen keep stacks of their own.
+	kbd []int
+}
+
+// keyboardFlags is the buffer's current kitty keyboard flags.
+func (b *buffer) keyboardFlags() int {
+	if len(b.kbd) == 0 {
+		return 0
+	}
+	return b.kbd[len(b.kbd)-1]
 }
 
 // Screen is the emulator's state. Write feeds it a program's output; the

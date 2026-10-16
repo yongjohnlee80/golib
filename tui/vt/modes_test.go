@@ -1,6 +1,7 @@
 package vt
 
 import (
+	"fmt"
 	"strings"
 	"testing"
 )
@@ -163,7 +164,7 @@ func TestReplies(t *testing.T) {
 		{"\x1b[4h\x1b[4$p", "\x1b[4;1$y", "DECRQM ANSI IRM"},
 		{"\x1b[20$p", "\x1b[20;2$y", "DECRQM ANSI LNM"},
 		{"\x1b[3$p", "\x1b[3;0$y", "DECRQM ANSI unknown"},
-		{"\x1b[?5n\x1b[>4;1m\x1b[?u\x1b[1c", "", "unanswered queries"},
+		{"\x1b[?5n\x1b[>4;1m\x1b[1c", "", "unanswered queries"},
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
@@ -274,5 +275,55 @@ func TestLineWrappedAndDropped(t *testing.T) {
 	s.Resize(1, 4) // only two of the four rows above the cursor fit the scrollback
 	if s.Dropped() != before+2 {
 		t.Errorf("Dropped %d -> %d, want +2", before, s.Dropped())
+	}
+}
+
+// The kitty keyboard protocol: a program pushes, pops and sets enhancement flags, and the query
+// answers the flags in force. Only disambiguate (1) is supported; what else a push asks for is
+// masked off, so the reply says what was kept. The main and the alternate screen keep stacks of
+// their own, and RIS empties both.
+func TestKittyKeyboardFlags(t *testing.T) {
+	for _, c := range []struct{ in, want, name string }{
+		{"\x1b[?u", "\x1b[?0u", "nothing pushed"},
+		{"\x1b[>5u\x1b[?u", "\x1b[?1u", "a push keeps only disambiguate"},
+		{"\x1b[>1u\x1b[>0u\x1b[?u\x1b[<u\x1b[?u", "\x1b[?0u\x1b[?1u", "a pop returns to the set below"},
+		{"\x1b[>1u\x1b[<5u\x1b[?u", "\x1b[?0u", "a pop past the bottom is the legacy encoding"},
+		{"\x1b[=1;1u\x1b[?u\x1b[=1;3u\x1b[?u\x1b[=1;2u\x1b[?u", "\x1b[?1u\x1b[?0u\x1b[?1u", "set replaces, clears and sets bits"},
+		{"\x1b[>1u\x1b[?1049h\x1b[?u\x1b[>1u\x1b[?1049l\x1b[<u\x1b[?u", "\x1b[?0u\x1b[?0u", "each screen has its own stack"},
+		{"\x1b[>1u\x1bc\x1b[?u", "\x1b[?0u", "RIS empties the stacks"},
+	} {
+		t.Run(c.name, func(t *testing.T) {
+			var got []byte
+			s := New(5, 10, WithReply(func(b []byte) { got = append(got, b...) }))
+			feed(s, c.in)
+			if string(got) != c.want {
+				t.Errorf("replies %q, want %q", got, c.want)
+			}
+		})
+	}
+}
+
+// Modes carries the flags in force, on the screen shown, for the host's key encoding.
+func TestKittyKeyboardFlagsAreAMode(t *testing.T) {
+	s := feed(New(5, 10), "\x1b[>1u")
+	if got := s.Modes().KeyboardFlags; got != KittyDisambiguate {
+		t.Fatalf("after a push, KeyboardFlags = %d", got)
+	}
+	feed(s, "\x1b[?1049h")
+	if got := s.Modes().KeyboardFlags; got != 0 {
+		t.Errorf("on the alternate screen, KeyboardFlags = %d; want its own empty stack", got)
+	}
+	feed(s, "\x1b[?1049l")
+	if got := s.Modes().KeyboardFlags; got != KittyDisambiguate {
+		t.Errorf("back on the main screen, KeyboardFlags = %d; want its push", got)
+	}
+	// A full stack evicts the oldest: the 1 at the bottom goes, so popping every set pushed after
+	// it empties the stack, where a stack that kept growing would show the 1 again.
+	for range kittyStackMax {
+		feed(s, "\x1b[>0u")
+	}
+	feed(s, "\x1b[<"+fmt.Sprint(kittyStackMax)+"u")
+	if got := s.Modes().KeyboardFlags; got != 0 {
+		t.Errorf("after the oldest was evicted, KeyboardFlags = %d; want 0", got)
 	}
 }

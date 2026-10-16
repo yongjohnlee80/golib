@@ -125,6 +125,7 @@ func TestTerminalStopNeverBlocksTheLoop(t *testing.T) {
 
 func TestEncodeKey(t *testing.T) {
 	plain, app := vt.Modes{}, vt.Modes{AppCursor: true}
+	kitty := vt.Modes{KeyboardFlags: vt.KittyDisambiguate}
 	for _, c := range []struct {
 		k    tui.KeyEvent
 		m    vt.Modes
@@ -169,6 +170,24 @@ func TestEncodeKey(t *testing.T) {
 		{tui.KeyEvent{Code: tui.KeyPageDown, Mods: tui.ModCtrl}, plain, "\x1b[6;5~"},
 		{tui.KeyEvent{Code: 'a', Text: "a", Kind: tui.KeyRelease}, plain, ""},
 		{tui.KeyEvent{Code: 0xE100}, plain, ""}, // a private-use key with no text
+		// The kitty keyboard protocol, once a program asks to disambiguate: a key whose legacy
+		// bytes are ambiguous is CSI code;mods u, and every other key keeps its legacy bytes.
+		{tui.KeyEvent{Code: tui.KeyEnter, Mods: tui.ModShift}, plain, "\r"},
+		{tui.KeyEvent{Code: tui.KeyEnter, Mods: tui.ModShift}, kitty, "\x1b[13;2u"},
+		{tui.KeyEvent{Code: tui.KeyEnter}, kitty, "\r"},
+		{tui.KeyEvent{Code: tui.KeyEnter, Mods: tui.ModAlt}, kitty, "\x1b[13;3u"},
+		{tui.KeyEvent{Code: tui.KeyTab}, kitty, "\t"},
+		{tui.KeyEvent{Code: tui.KeyTab, Mods: tui.ModShift}, kitty, "\x1b[9;2u"},
+		{tui.KeyEvent{Code: tui.KeyBackspace}, kitty, "\x7f"},
+		{tui.KeyEvent{Code: tui.KeyBackspace, Mods: tui.ModCtrl}, kitty, "\x1b[127;5u"},
+		{tui.KeyEvent{Code: tui.KeyEscape}, kitty, "\x1b[27u"},
+		{tui.KeyEvent{Code: 'c', Mods: tui.ModCtrl}, kitty, "\x1b[99;5u"},
+		{tui.KeyEvent{Code: 'A', Mods: tui.ModCtrl | tui.ModShift}, kitty, "\x1b[97;6u"},
+		{tui.KeyEvent{Code: 'x', Text: "x", Mods: tui.ModAlt}, kitty, "\x1b[120;3u"},
+		{tui.KeyEvent{Code: 'a', Text: "a"}, kitty, "a"},
+		{tui.KeyEvent{Code: 'A', Text: "A", Mods: tui.ModShift}, kitty, "A"},
+		{tui.KeyEvent{Code: tui.KeyUp, Mods: tui.ModCtrl}, kitty, "\x1b[1;5A"},
+		{tui.KeyEvent{Code: tui.KeyF5}, kitty, "\x1b[15~"},
 	} {
 		if got := string(encodeKey(c.k, c.m)); got != c.want {
 			t.Errorf("encodeKey(%+v) = %q, want %q", c.k, got, c.want)
