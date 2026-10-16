@@ -282,7 +282,7 @@ func TestATabStripFitsItsLabelsToItsRoom(t *testing.T) {
 	strip := NewTabStrip()
 	var tabs []StripTab
 	for i := range 3 {
-		tabs = append(tabs, StripTab{ID: fmt.Sprint(i), Label: fmt.Sprintf("a-rather-long-name-%02d.md", i)}) // 25 cells, 27 padded
+		tabs = append(tabs, StripTab{ID: fmt.Sprint(i), Label: fmt.Sprintf("a-rather-long-name-%02d.md", i)}) // 24 cells, 26 padded
 	}
 	strip.SetTabs(tabs)
 	strip.SetActive("0")
@@ -306,8 +306,9 @@ func TestATabStripFitsItsLabelsToItsRoom(t *testing.T) {
 		t.Fatalf("wide: want every label whole, no arrows, fit never asked; fit asked %v:\n%s", got, row)
 	}
 	h.tb.InjectResize(60, 1) // 3 tabs of 19 cells and 2 between: 59
-	if !waitInternal(h, func() bool { return !strings.Contains(h.tb.String(), "a-rather") }) {
-		t.Fatalf("narrower: the labels were not cut:\n%s", h.tb.String())
+	// the fitted labels drawn: a resize first blanks the grid, so an absent label proves nothing
+	if !waitInternal(h, func() bool { return strings.Contains(h.tb.String(), "<===") }) {
+		t.Fatalf("narrower: the labels were not cut by fit:\n%s", h.tb.String())
 	}
 	row, spans, got = look()
 	if strings.Contains(row, "←") || len(spans) != 3 || !slices.Contains(got, 17) || slices.ContainsFunc(got, func(w int) bool { return w != 17 }) {
