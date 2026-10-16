@@ -240,6 +240,41 @@ func TestEveryDividerIsDrawnAlike(t *testing.T) {
 	}
 }
 
+// A strip on a panel's title bar (OnPanelBar, as the Editor's) fills its bar in the panel's own
+// colour, so the title bar is one shade from end to end, the strip's cells under it whatever colour
+// they are; before the panel has painted, in its cells' as any strip. Another strip keeps its cells'.
+func TestAStripOnAPanelBarIsThePanelsColour(t *testing.T) {
+	open := func(int, int) bool { return false }
+	tint := color.NRGBA{R: 0xe9, G: 0xdf, B: 0xc8, A: 0xff}
+	barOf := func(rc *RecordingCanvas) (color.NRGBA, bool) {
+		for _, p := range rc.Calls {
+			if p.Op == "FillRect" && p.Rect.W == 160 {
+				return p.Brush.Color, true
+			}
+		}
+		return color.NRGBA{}, false
+	}
+	strip := widget.NewTabStrip()
+	strip.SetTabs([]widget.StripTab{{ID: "a", Label: "aa"}, {ID: "b", Label: "bb"}})
+	painted := false
+	OnPanelBar(strip, func() (color.NRGBA, bool) { return tint, painted })
+	view, _, ok := paintTabs(strip)
+	if !ok {
+		t.Fatal("no view")
+	}
+	if got, ok := barOf(paintUnder(t, view, overView{cols: 20, rows: 1, covered: open})); !ok || got != sepiaBG {
+		t.Fatalf("before the panel painted, the bar %v (%v); want its cells' %v", got, ok, sepiaBG)
+	}
+	painted = true
+	if got, ok := barOf(paintUnder(t, view, overView{cols: 20, rows: 1, covered: open})); !ok || got != tint {
+		t.Fatalf("on the panel's bar, the bar %v (%v); want the panel's %v", got, ok, tint)
+	}
+	view, _, _ = paintTabs(&fakeTabs{spans: []widget.TabSpan{{X: 0, W: 4}, {X: 5, W: 4}}})
+	if got, ok := barOf(paintUnder(t, view, overView{cols: 20, rows: 1, covered: open})); !ok || got != sepiaBG {
+		t.Fatalf("another strip's bar %v (%v); want its cells' %v", got, ok, sepiaBG)
+	}
+}
+
 // A button, a text field and a scroll bar under a panel over one of their cells take their colours
 // from their own cells.
 func TestButtonFieldAndScrollbarAreNotThePanelsColour(t *testing.T) {
