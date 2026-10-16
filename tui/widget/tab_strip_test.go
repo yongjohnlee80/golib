@@ -2,6 +2,7 @@ package widget
 
 import (
 	"fmt"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -209,6 +210,68 @@ func TestATabStripNarrowerThanItsTabsScrollsThem(t *testing.T) {
 	if !waitInternal(h, func() bool { i := strip.ActiveTabIndex(); return i > 0 }) || !strings.Contains(h.tb.String(), "tab-5") {
 		t.Fatalf("tab-5 made active is not shown:\n%s", h.tb.String())
 	}
+}
+
+// TestAScrolledTabStripLeavesNoGapBeforeItsArrow: a window that shows the last tab ends against →,
+// the tab before its first cut from its start into the cells left over, however it came to show the
+// last tab: the row grown wider (the window resized), or tabs closed at the end. Its first was kept
+// from before, later than it need be, and the cells it freed were left empty before →.
+func TestAScrolledTabStripLeavesNoGapBeforeItsArrow(t *testing.T) {
+	tabsOf := func(n int) []StripTab {
+		var tabs []StripTab
+		for i := range n {
+			tabs = append(tabs, StripTab{ID: fmt.Sprint(i), Label: fmt.Sprintf("untitled %d", i)})
+		}
+		return tabs
+	}
+	// packed: the last tab ends one cell before →, and every span is within the row
+	packed := func(t *testing.T, strip *TabStrip, w int, last string, h *internalHarness) {
+		t.Helper()
+		var spans []TabSpan
+		var row []stripCell
+		h.onLoopInternal(func() { spans, row = strip.TabSpans(), strip.core.row() })
+		next := slices.IndexFunc(row, func(c stripCell) bool { return c.kind == cellNext })
+		if next < 1 || row[next-1].kind != cellTab || row[next-1].id != last {
+			t.Fatalf("the cell before → is %+v, want the last tab %s:\n%s", row[max(next-1, 0)], last, h.tb.String())
+		}
+		if end := spans[next-1].X + spans[next-1].W; end+1 != spans[next].X {
+			t.Fatalf("the last tab ends at %d and → starts at %d: a gap of %d cells:\n%s", end, spans[next].X, spans[next].X-end-1, h.tb.String())
+		}
+		if spans[len(spans)-1].X+spans[len(spans)-1].W > w {
+			t.Fatalf("spans %v pass the row's %d cells", spans, w)
+		}
+	}
+	start := func(t *testing.T, n, w int) (*TabStrip, *internalHarness) {
+		strip := NewTabStrip()
+		strip.SetTabs(tabsOf(n))
+		strip.SetActive(fmt.Sprint(n - 1)) // the last: the window scrolls to show it
+		strip.SetActions(func() {}, nil)
+		strip.SetMenu(func(string) []MenuItemModel { return nil })
+		h := startAppInternal(t, strip, w, 1)
+		h.syncInternal()
+		return strip, h
+	}
+
+	t.Run("the row grown wider", func(t *testing.T) {
+		strip, h := start(t, 9, 64)
+		defer h.stopInternal()
+		packed(t, strip, 64, "8", h)
+		h.tb.InjectResize(90, 1)
+		if !waitInternal(h, func() bool { return strings.Contains(h.tb.String(), "untitled 4") }) {
+			t.Fatalf("the window did not take more tabs once wider:\n%s", h.tb.String())
+		}
+		packed(t, strip, 90, "8", h)
+	})
+	t.Run("tabs closed at the end", func(t *testing.T) {
+		strip, h := start(t, 9, 64)
+		defer h.stopInternal()
+		h.onLoopInternal(func() { strip.SetTabs(tabsOf(7)); strip.SetActive("6") })
+		h.syncInternal()
+		packed(t, strip, 64, "6", h)
+		if got := h.tb.String(); !strings.Contains(got, "…") {
+			t.Fatalf("no tab cut from its start into the cells left over:\n%s", got)
+		}
+	})
 }
 
 // TestATabStripCapsATabsWidth: SetMaxTabWidth cuts a long label to the cap, its end an ellipsis; a
