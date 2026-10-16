@@ -172,7 +172,7 @@ func TestTabsHaveADividerBetweenThem(t *testing.T) {
 		}
 		return out
 	}
-	rc := paintUnder(t, view, overView{cols: 20, rows: 1})
+	rc := paintUnder(t, view, overView{cols: 20, rows: 1, covered: func(int, int) bool { return false }})
 	got := dividers(rc)
 	if len(got) != 2 { // after the cells 5 and 10; 14..16 is no single cell
 		t.Fatalf("%d dividers; want 2, in cells 5 and 10: %+v", len(got), rc.Calls)
