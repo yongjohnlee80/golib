@@ -288,3 +288,29 @@ func TestTableCore_RemovingTheSortedFieldKeepsTheCursorsRow(t *testing.T) {
 		t.Errorf("TableOnCursor was told %v; the cursor never left its row", told)
 	}
 }
+
+// countingLayout counts the strings a core measures.
+type countingLayout struct {
+	fakeTableLayout
+	measured int
+}
+
+func (l *countingLayout) Measure(s string) int { l.measured++; return len([]rune(s)) }
+
+// Widths are measured once per change; Remeasure drops them, so a view whose units changed (a
+// new font) is measured again, the source unchanged.
+func TestTableCore_RemeasureMeasuresAgain(t *testing.T) {
+	c := NewTableCore(people())
+	l := &countingLayout{}
+	c.Bind(nil, l)
+	c.Width(0)
+	n := l.measured
+	c.Width(0)
+	if l.measured != n {
+		t.Fatalf("a second Width measured %d more strings, want none", l.measured-n)
+	}
+	c.Remeasure()
+	if c.Width(0); l.measured == n {
+		t.Error("after Remeasure, Width did not measure again")
+	}
+}
