@@ -3,6 +3,7 @@ package gui
 import (
 	"image"
 	"image/color"
+	"math"
 	"slices"
 	"testing"
 
@@ -178,7 +179,7 @@ func TestTabsHaveADividerBetweenThem(t *testing.T) {
 		t.Fatalf("%d dividers; want 2, in cells 5 and 10: %+v", len(got), rc.Calls)
 	}
 	for i, cell := range []float32{5, 10} {
-		if want := (cell+0.5)*8 - 0.5; got[i].Rect.X != want {
+		if want := (cell + 0.5) * 8; got[i].Rect.X != want {
 			t.Fatalf("divider %d at x %v; want %v, the middle of cell %v", i, got[i].Rect.X, want, cell)
 		}
 		if got[i].Brush.Color == sepiaBG {
@@ -186,8 +187,38 @@ func TestTabsHaveADividerBetweenThem(t *testing.T) {
 		}
 	}
 	rc = paintUnder(t, view, overView{cols: 20, rows: 1, covered: at(5)})
-	if got := dividers(rc); len(got) != 1 || got[0].Rect.X != (10+0.5)*8-0.5 {
+	if got := dividers(rc); len(got) != 1 || got[0].Rect.X != (10+0.5)*8 {
 		t.Fatalf("with cell 5 covered: dividers %+v; want the one in cell 10 alone", got)
+	}
+}
+
+// Every divider is drawn alike, whatever a cell's width: on a whole pixel, the same width, height and
+// colour. A cell 9.6 pixels wide put the middle of a gap on a half pixel, and the line, drawn at half
+// strength across two, came and went from one gap to the next (Johno: a consistent divider).
+func TestEveryDividerIsDrawnAlike(t *testing.T) {
+	tabs := &fakeTabs{spans: []widget.TabSpan{{X: 0, W: 5}, {X: 6, W: 4}, {X: 11, W: 3}, {X: 15, W: 4}}}
+	view, _, _ := paintTabs(tabs)
+	rc := NewRecordingCanvas(Size{W: 20 * 9.6, H: 16}, Size{W: 9.6, H: 16})
+	rc.Covers = func(int, int) bool { return false }
+	rc.Colors = func(int, int) (color.NRGBA, color.NRGBA) { return sepiaFG, sepiaBG }
+	rc.Content = func(int, int) string { return "" }
+	view.Paint(rc)
+	var lines []PaintCall
+	for _, p := range rc.Calls {
+		if p.Op == "FillRect" && p.Rect.W < 2 {
+			lines = append(lines, p)
+		}
+	}
+	if len(lines) != 3 {
+		t.Fatalf("%d dividers; want 3: %+v", len(lines), rc.Calls)
+	}
+	for i, l := range lines {
+		if l.Rect.X != float32(math.Floor(float64(l.Rect.X))) {
+			t.Errorf("divider %d at x %v: not on a whole pixel", i, l.Rect.X)
+		}
+		if l.Rect.W != lines[0].Rect.W || l.Rect.H != lines[0].Rect.H || l.Brush.Color != lines[0].Brush.Color {
+			t.Errorf("divider %d %+v is drawn unlike the first %+v", i, l, lines[0])
+		}
 	}
 }
 
