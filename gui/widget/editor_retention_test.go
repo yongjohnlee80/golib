@@ -9,7 +9,7 @@ import (
 // A dropped editor is collected, its tab strip with it: the panel-bar registry (gui.OnPanelBar) keys
 // the strip weakly, and its colour callback holds the panel weakly too. A callback holding the editor
 // kept the strip, its own weak key, reachable from the global registry, so no editor was ever
-// collected (Lector, golib #347 post-merge).
+// collected.
 func TestADroppedEditorIsCollected(t *testing.T) {
 	e := NewEditor()
 	ed, strip := weak.Make(e), weak.Make(e.Tabs())
