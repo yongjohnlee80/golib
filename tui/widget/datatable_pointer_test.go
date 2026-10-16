@@ -1,6 +1,7 @@
 package widget_test
 
 import (
+	"slices"
 	"strings"
 	"testing"
 
@@ -351,4 +352,40 @@ func TestDataTable_YCopiesTheCellAndYYTheRow(t *testing.T) {
 		dt.HandleEvent(key('y'))
 	})
 	h.waitFor("a y after a move copies the cell again", func() bool { return string(h.tb.Clipboard()) == "row2" })
+}
+
+// A copy longer than TableCopyLimit copies nothing, by y, yy or Copy, and TableOnCopyRefused hears
+// the limit; within it, and with the limit lifted, the copies go on.
+func TestDataTable_ACopyPastTheLimitCopiesNothing(t *testing.T) {
+	var refused []int
+	h, sh, dt := dataTable(t, numbered(3), 30, 6,
+		widget.TableCopyLimit(8), widget.TableOnCopyRefused(func(limit int) { refused = append(refused, limit) }))
+	h.onLoop(func() {
+		dt.HandleEvent(key('j'))
+		dt.HandleEvent(key('l'))
+		dt.HandleEvent(key('y')) // row1: 4 bytes
+	})
+	h.waitFor("the cell on the clipboard", func() bool { return string(h.tb.Clipboard()) == "row1" })
+	var copied bool
+	h.onLoop(func() {
+		dt.HandleEvent(key('y')) // yy: "1\trow1\t10", 9 bytes
+		dt.HandleEvent(key('V'))
+		dt.HandleEvent(key('j'))
+		dt.HandleEvent(key('y')) // two rows
+		copied = dt.Core().Copy()
+	})
+	h.barrier(sh)
+	var got []int
+	h.onLoop(func() { got = append(got, refused...) })
+	if !slices.Equal(got, []int{8, 8, 8}) || copied {
+		t.Errorf("refused %v, Copy %v; want yy, y and Copy each refused at 8", got, copied)
+	}
+	if s := string(h.tb.Clipboard()); s != "row1" {
+		t.Errorf("the clipboard holds %q after refused copies, want row1 still", s)
+	}
+	h.onLoop(func() {
+		dt.Core().SetCopyLimit(0, nil)
+		dt.HandleEvent(key('y'))
+	})
+	h.waitFor("the rows on the clipboard", func() bool { return string(h.tb.Clipboard()) == "1\trow1\t10\n2\trow2\t20" })
 }

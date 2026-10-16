@@ -128,11 +128,19 @@ func (c *TableCore) readingOrder() (start, end TablePos) {
 // rectangle, whole rows for Rows, and for Cells each row's selected fields in reading order. An
 // empty table copies "".
 func (c *TableCore) CopyText() string {
+	s, _ := c.copyText(0)
+	return s
+}
+
+// copyText is CopyText, given up as soon as it grows past limit bytes (0: no limit): ok false, and
+// the text so far is dropped, so a selection far past the limit is not built whole to be refused.
+func (c *TableCore) copyText(limit int) (text string, ok bool) {
 	if c.Len() == 0 {
-		return ""
+		return "", true
 	}
 	if c.anchor == nil {
-		return c.Cell(c.cur.Row, c.cur.Col)
+		s := c.Cell(c.cur.Row, c.cur.Col)
+		return s, limit <= 0 || len(s) <= limit
 	}
 	from, to, _ := c.Selection()
 	last := len(c.Fields()) - 1
@@ -156,8 +164,11 @@ func (c *TableCore) CopyText() string {
 			}
 		}
 		c.writeRow(&b, r, lo, hi)
+		if limit > 0 && b.Len() > limit {
+			return "", false
+		}
 	}
-	return b.String()
+	return b.String(), true
 }
 
 // writeRow writes display row r's fields lo..hi, tab-separated.
@@ -170,10 +181,35 @@ func (c *TableCore) writeRow(b *strings.Builder, r, lo, hi int) {
 	}
 }
 
-// Copy puts CopyText on the clipboard.
-func (c *TableCore) Copy() bool { return c.copyString(c.CopyText()) }
+// Copy puts CopyText on the clipboard. Past the copy limit (TableCopyLimit) it copies nothing,
+// tells TableOnCopyRefused, and reports false.
+func (c *TableCore) Copy() bool {
+	s, ok := c.copyText(c.copyLimit)
+	if !ok {
+		c.refuseCopy()
+		return false
+	}
+	return c.copyString(s)
+}
 
+// SetCopyLimit is TableCopyLimit and TableOnCopyRefused on a core already built: a copy longer
+// than bytes (0: no limit) copies nothing and calls refused, if it is not nil, with the limit.
+func (c *TableCore) SetCopyLimit(bytes int, refused func(limit int)) {
+	c.copyLimit, c.onCopyRefused = max(bytes, 0), refused
+}
+
+func (c *TableCore) refuseCopy() {
+	if c.onCopyRefused != nil {
+		c.onCopyRefused(c.copyLimit)
+	}
+}
+
+// copyString puts s on the clipboard, unless it is past the copy limit.
 func (c *TableCore) copyString(s string) bool {
+	if c.copyLimit > 0 && len(s) > c.copyLimit {
+		c.refuseCopy()
+		return false
+	}
 	if c.ctx == nil || c.Len() == 0 {
 		return false
 	}

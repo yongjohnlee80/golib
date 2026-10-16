@@ -205,9 +205,13 @@ func TestTableFilter_FetchesNothing(t *testing.T) {
 	if p.asked != 2 {
 		t.Errorf("a filter hiding most rows asked the pager: %d", p.asked)
 	}
-	c.SetFilter(where(t, c, "n > 15")) // 16..19: the cursor's row is within 10 of the end
+	c.SetFilter(where(t, c, "n > 15")) // 16..19: the cursor lands within 10 of the end
+	if p.asked != 2 {
+		t.Errorf("a filter change asked the pager: %d", p.asked)
+	}
+	keys(c, text("j")) // a move does: the cursor's row, 17, is within 10 of the end
 	if p.asked != 3 {
-		t.Errorf("a shown row near the end of the loaded rows did not ask: %d", p.asked)
+		t.Errorf("a move to a shown row near the end of the loaded rows did not ask: %d", p.asked)
 	}
 }
 
