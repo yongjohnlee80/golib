@@ -91,16 +91,18 @@ func TestWhetherATypefaceLacksARuneIsAskedOfItsShaper(t *testing.T) {
 	if got := covered(bare, "Go Mono", "⠋"); got != "Go Mono, braillefont" {
 		t.Fatalf("covered(⠋) = %q; Go Mono lacks braille", got)
 	}
-	coverage.Lock()
-	n := len(coverage.lacks)
-	coverage.Unlock()
 	other := text.NewShaper(text.WithCollection(gofont.Collection()), text.NoSystemFonts())
 	covered(other, "Go Mono", "⠋")
+	// The second shaper's own answer, by its own key: counting the whole cache would also count
+	// the GC dropping a collected shaper's answers, which is the cache working, not a reuse.
 	coverage.Lock()
-	defer coverage.Unlock()
-	if len(coverage.lacks) != n+1 {
+	_, asked := coverage.lacks[weak.Make(other)][typefaceRune{tf: "Go Mono", r: '⠋'}]
+	coverage.Unlock()
+	if !asked {
 		t.Errorf("another shaper reused the first one's answer; its fonts may differ")
 	}
+	runtime.KeepAlive(bare)
+	runtime.KeepAlive(other)
 }
 
 // The real fonts: a braille dot, which the macOS spinner drew as LastResort's box, draws from
