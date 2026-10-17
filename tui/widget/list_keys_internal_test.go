@@ -73,7 +73,7 @@ var listOp = map[string]string{
 func TestListKeysMatchTheOldHandlerWithNoMap(t *testing.T) {
 	for _, contextMenu := range []bool{false, true} {
 		for _, multi := range []bool{false, true} {
-			l := NewList[string]()
+			l := NewList(WithItems([]string{"a", "b"}, func(s string) string { return s }))
 			l.contextMenu, l.multi = contextMenu, multi
 			keyGridDiff(t, "List",
 				func(e tui.KeyEvent) string { return oldListKey(e, contextMenu, multi) },
