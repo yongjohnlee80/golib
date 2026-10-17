@@ -424,20 +424,18 @@ func (b *Button) Init(ctx *tui.Context) {
 // before the dialog's default resolver; controls that leave Enter unclaimed
 // still allow the dialog to answer with its explicit default.
 func (b *Button) keys(ev tui.Event) (tui.Action, bool) {
-	return activateKeys(ev)
+	return activateKeys(b.Context(), ev)
 }
 
-// activateKeys turns the two conventional activation keys into the runtime's
-// activation action.
-func activateKeys(ev tui.Event) (tui.Action, bool) {
+// activateKeys turns the activation command's keys (ButtonActivate: Enter and Space by default) into
+// the runtime's activation action. Ctrl-Enter and friends are somebody else's binding unless a key
+// map makes them this one.
+func activateKeys(ctx *tui.Context, ev tui.Event) (tui.Action, bool) {
 	k, ok := ev.(tui.KeyEvent)
-	if !ok || k.Kind == tui.KeyRelease {
+	if !ok {
 		return nil, false
 	}
-	if k.Mods.Chord() != 0 {
-		return nil, false // Ctrl-Enter and friends are somebody else's binding
-	}
-	if k.Code == tui.KeyEnter || k.Code == ' ' {
+	if _, ok := ctx.KeyCommand(k, ButtonActivate); ok {
 		return tui.ActivateAction{}, true
 	}
 	return nil, false

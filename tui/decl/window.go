@@ -261,8 +261,8 @@ func (w *windowNode) HandleEvent(ev tui.Event) bool {
 		return true
 	}
 	for _, m := range w.menus {
-		switch {
-		case k.Code == tui.KeyF10 && k.Mods&shortcutMods == 0:
+		switch windowMenuKey(w.ctx, k, m.focused(), m.openHotkey) {
+		case "toggle":
 			if m.focused() {
 				m.close()
 				w.restoreFocus()
@@ -271,11 +271,9 @@ func (w *windowNode) HandleEvent(ev tui.Event) bool {
 				m.activate()
 			}
 			return true
-		case k.Mods&shortcutMods == tui.ModAlt:
-			if m.openHotkey(k.Code) {
-				return true
-			}
-		case k.Code == tui.KeyEscape && m.focused():
+		case "hotkey":
+			return true
+		case "leave":
 			// Escape that the menu did not consume leaves the menu entirely.
 			m.close()
 			w.restoreFocus()
@@ -284,6 +282,24 @@ func (w *windowNode) HandleEvent(ev tui.Event) bool {
 		}
 	}
 	return false
+}
+
+// windowMenuKey is what k does to one menu bar: "toggle" (widget.WindowMenu: F10 opens it, or leaves
+// it when focused), "hotkey" (Alt and a category's mnemonic, which openHotkey has opened), "leave"
+// (widget.MenuClose while it is focused), or "".
+func windowMenuKey(ctx *tui.Context, k tui.KeyEvent, focused bool, openHotkey func(rune) bool) string {
+	cmd, ok := ctx.KeyCommand(k, widget.WindowMenu, widget.MenuClose)
+	switch {
+	case ok && cmd.ID == widget.WindowMenu.ID:
+		return "toggle"
+	case k.Mods&shortcutMods == tui.ModAlt:
+		if openHotkey(k.Code) {
+			return "hotkey"
+		}
+	case ok && cmd.ID == widget.MenuClose.ID && focused:
+		return "leave"
+	}
+	return ""
 }
 
 // menuBarNode is the component a `MenuBar` declaration builds: golib's MenuBar,

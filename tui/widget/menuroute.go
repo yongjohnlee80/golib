@@ -79,23 +79,33 @@ func (m *Menu) resolveMouse(e tui.MouseEvent, rects map[ItemID]tui.Rect) (tui.Ac
 // alternative — one fixed mapping — makes a menu bar behave like a list rotated
 // ninety degrees, which every user notices immediately.
 func (m *Menu) resolveKey(e tui.KeyEvent) (tui.Action, bool) {
-	if e.Kind == tui.KeyRelease || e.Mods.Chord() != 0 {
+	if e.Kind == tui.KeyRelease {
 		return nil, false
 	}
 	// A MNEMONIC IS CHECKED BEFORE A VIM ALIAS, and that ordering is the whole
 	// reason the aliases are safe to offer: a row whose hotkey is 'k' must stay
 	// reachable with 'k'. Only a key no visible row answers to becomes a
 	// direction. The arrow keys themselves are unaffected — no row's mnemonic
-	// is an arrow — so this costs nothing when the aliases are off.
-	code := e.Code
-	if m.vimKeys {
-		if _, isMnemonic := m.mnemonic(code); !isMnemonic {
-			if dir, ok := vimDirection(code); ok {
-				code = dir
+	// is an arrow — so this costs nothing when the aliases are off. A mnemonic
+	// is an unmodified key, the label's letter; it is not a command.
+	_, isMnemonic := m.mnemonic(e.Code)
+	isMnemonic = isMnemonic && e.Mods.Chord() == 0
+	cmd, ok := m.Context().KeyCommand(e, menuCommands...)
+	if ok && isMenuVimAlias(cmd) && (!m.vimKeys || isMnemonic) {
+		ok = false
+	}
+	if !ok {
+		// A mnemonic activates its row directly, from wherever the selection is.
+		// Code carries the printable rune for an ordinary key, so there is no
+		// separate "is this text" flag to consult.
+		if isMnemonic {
+			if id, ok := m.mnemonic(e.Code); ok {
+				return MenuActivateAction{ItemID: id}, true
 			}
 		}
+		return nil, false
 	}
-	e.Code = code
+	e.Code, e.Mods = menuKey[cmd.ID], 0 // the key the command stands for, in the layout's terms
 
 	if m.horizontal {
 		if a, ok := m.resolveBarKey(e); ok {
@@ -122,35 +132,13 @@ func (m *Menu) resolveKey(e tui.KeyEvent) (tui.Action, bool) {
 			return MenuCloseAction{All: false}, true
 		}
 		return nil, false
-	case tui.KeyEnter, ' ':
+	case tui.KeyEnter:
 		if id, ok := m.Selected(); ok {
 			return MenuActivateAction{ItemID: id}, true
 		}
 		return nil, false
 	}
-	// A mnemonic activates its row directly, from wherever the selection is.
-	// Code carries the printable rune for an ordinary key, so there is no
-	// separate "is this text" flag to consult.
-	if id, ok := m.mnemonic(e.Code); ok {
-		return MenuActivateAction{ItemID: id}, true
-	}
 	return nil, false
-}
-
-// vimDirection maps an hjkl key onto the arrow it stands for. Reported rather
-// than applied, so the caller decides whether a mnemonic has first claim.
-func vimDirection(r rune) (rune, bool) {
-	switch r {
-	case 'h':
-		return tui.KeyLeft, true
-	case 'j':
-		return tui.KeyDown, true
-	case 'k':
-		return tui.KeyUp, true
-	case 'l':
-		return tui.KeyRight, true
-	}
-	return 0, false
 }
 
 // resolveBarKey is the arrow vocabulary of a horizontal MENU BAR.
