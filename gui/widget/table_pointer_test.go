@@ -215,7 +215,7 @@ func TestATableBlursItsCursorWithTheFocus(t *testing.T) {
 			cur := h.dt.Core().Cursor()
 			rect, _ := h.l.cellsRect(h.l.columns(600), cur, cur, h.l.top+h.l.bodyRows())
 			for _, call := range calls(c, "DrawText") {
-				if call.Rect.Y == rect.Y {
+				if call.Rect.Y >= rect.Y && call.Rect.Y < rect.Y+rect.H {
 					textColor, textSeen = call.Brush.Color, true // the last is the clipped overlay
 				}
 			}
