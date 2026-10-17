@@ -870,7 +870,9 @@ judged for messages English lacks, markers on another letter than English's, and
 of one level sharing a key. `CheckKeymap(opts…)` (`decltest.CheckKeymap(t, opts…)`) is the key-map
 check: what `keymap.Build` refuses, a `keyId` in the wrong holder, a fixed sequence on a command's key
 in its scope, and a global key taking a menu's Alt+letter; a key an inner scope shares with an outer
-one is a warning, logged (`decltest.CheckKeymapStrict` fails on it). See
+one is a warning, logged (`decltest.CheckKeymapStrict` fails on it), when one of the two is the
+program's command or a key its Keymap moved: golib's own defaults sharing a key (Tab completes in a
+`TextField` and moves focus) are golib's design, not the program's warning. See
 [USAGE.md §11](USAGE.md#11-testing-a-qml-screen).
 
 ## Adapter options
