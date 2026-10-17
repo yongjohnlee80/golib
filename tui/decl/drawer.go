@@ -548,11 +548,28 @@ func (f *drawerFrame) HandleEvent(ev tui.Event) bool {
 		return true
 	}
 	k, ok := ev.(tui.KeyEvent)
-	if ok && k.Kind == tui.KeyPress && k.Mods.Chord() == 0 && (k.Code == tui.KeyEscape || f.owner.closeOnQ && k.Code == 'q') {
+	if !ok || k.Kind != tui.KeyPress {
+		return false // a held Esc closes once
+	}
+	if f.closes(k) {
 		_ = f.owner.close()
 		return true
 	}
 	return false
+}
+
+// closes reports whether k is one of the Drawer's own closing keys.
+func (f *drawerFrame) closes(k tui.KeyEvent) bool {
+	cmd, ok := f.ctx.KeyCommand(k, f.closeCommands()...)
+	return ok && (cmd.ID == widget.DrawerClose.ID || cmd.ID == widget.DrawerCloseOnQ.ID)
+}
+
+// closeCommands are the Drawer's own closing commands: Esc, and q with closeOnQ.
+func (f *drawerFrame) closeCommands() []keymap.Command {
+	if f.owner.closeOnQ {
+		return []keymap.Command{widget.DrawerClose, widget.DrawerCloseOnQ}
+	}
+	return []keymap.Command{widget.DrawerClose}
 }
 
 // drawerType is the Drawer's entry in the standard vocabulary.
@@ -619,8 +636,7 @@ func fracNumber(p float64) qml.SpecValue {
 // KeyScope is the Drawer's keyScope: the frame is where its Shortcuts fire (tui.KeyScoped).
 func (f *drawerFrame) KeyScope() keymap.Scope { return f.owner.keyScope }
 
-// KeyBindings is the Drawer's Shortcuts as m binds them (tui.KeyBinder). Its own Esc and q closing are
-// not commands yet.
+// KeyBindings is the Drawer's Shortcuts as m binds them, then its own closing keys (tui.KeyBinder).
 func (f *drawerFrame) KeyBindings(m *keymap.Map) []keymap.Binding {
-	return shortcutBindings(m, f.owner.keyScope, f.owner.shortcuts)
+	return append(shortcutBindings(m, f.owner.keyScope, f.owner.shortcuts), tui.BindingsOf(m, f.closeCommands()...)...)
 }
