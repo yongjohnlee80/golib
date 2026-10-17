@@ -4,6 +4,7 @@ import (
 	"time"
 
 	"github.com/yongjohnlee80/golib/logger"
+	"github.com/yongjohnlee80/golib/tui/keymap"
 )
 
 // Event Routing Pipeline
@@ -335,24 +336,21 @@ func (a *App) dispatch(ev Event) {
 }
 
 // globalKey is the App-level fallback for keys no component consumed:
-// framework-owned Tab / Shift-Tab focus traversal.
+// framework-owned focus traversal, the FocusNext and FocusPrev commands (Tab and
+// Shift+Tab by default; a key map may move them).
 //
-// Key releases and modified tabs (other than Shift) are ignored. If Shift is
-// held, focus steps backward (-1); otherwise forward (+1). Components that
-// consume Tab (e.g. text editors inserting \t) return true from HandleEvent,
-// naturally opting out of global focus stepping.
+// Key releases never step. Components that consume the key (e.g. text editors
+// inserting \t) return true from HandleEvent, naturally opting out of global
+// focus stepping.
 func (a *App) globalKey(e KeyEvent) {
-	if e.Kind == KeyRelease {
-		return
-	}
-	if e.Code != KeyTab || e.Mods&^ModShift != 0 {
-		return
-	}
-	if e.Mods&ModShift != 0 {
+	cmd, ok := keyCommand(a.cfg.keymap, e, []keymap.Command{FocusNext, FocusPrev})
+	switch {
+	case !ok:
+	case cmd.ID == FocusPrev.ID:
 		a.focusStep(-1)
-		return
+	default:
+		a.focusStep(1)
 	}
-	a.focusStep(1)
 }
 
 // bubble walks n's ancestor chain delivering ev until a handler consumes
