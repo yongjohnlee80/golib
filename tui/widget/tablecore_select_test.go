@@ -25,6 +25,25 @@ func keys(c *TableCore, ks ...tui.KeyEvent) {
 	}
 }
 
+func TestTableCopyTargetTakesYAndYYWithoutAClipboard(t *testing.T) {
+	var copied []string
+	c := NewTableCore(grid4(), TableOnCopy(func(s string) { copied = append(copied, s) }))
+	keys(c, text("y"), text("y"))
+	if len(copied) != 2 || copied[0] != "r0c0" || copied[1] != "r0c0\tr0c1\tr0c2" {
+		t.Fatalf("y then yy copied %q, want the cell then the row", copied)
+	}
+	c.SetCopyLimit(2, nil)
+	keys(c, text("y"))
+	if len(copied) != 2 {
+		t.Fatalf("over-limit y changed the copy target: %q", copied)
+	}
+	c.SetCopyLimit(0, nil)
+	c.SetOnCopy(func(s string) { copied = append(copied, "new:"+s) })
+	if !c.Copy() || copied[len(copied)-1] != "new:r0c0" {
+		t.Fatalf("the later copy target did not receive Copy(): %q", copied)
+	}
+}
+
 // v selects cells in reading order, V whole rows, Ctrl+V the rectangle, each from the anchor at
 // row 0 field 1 to the cursor at row 2 field 0; the copy follows the kind.
 func TestTableSelect_KindsCopyTheirCells(t *testing.T) {

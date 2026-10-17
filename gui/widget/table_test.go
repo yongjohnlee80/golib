@@ -92,7 +92,8 @@ func runTexts(b *tableBand) []string {
 	return out
 }
 
-// Each row band is one draw: its cells shaped together into one layout, drawn by one DrawText,
+// Each row band is shaped once: its cells share one layout. The cursor's cell is drawn a second
+// time, clipped to the cursor fill, so it can have a readable foreground without reshaping.
 // with a fill each for the page, the header's tint and rule and the cursor; nothing per cell. A
 // second paint shapes nothing, and a changed cell shapes its row's band alone.
 func TestATableRowBandIsOneDraw(t *testing.T) {
@@ -108,12 +109,16 @@ func TestATableRowBandIsOneDraw(t *testing.T) {
 		perBand[int(call.Rect.Y/l.rowH)]++
 	}
 	for band := 0; band <= body+1; band++ {
-		if perBand[band] != 1 {
-			t.Errorf("row band %d drew %d times, want once (bands %v)", band, perBand[band], perBand)
+		want := 1
+		if band == 1 {
+			want++ // the cursor overlays the first row's cell
+		}
+		if perBand[band] != want {
+			t.Errorf("row band %d drew %d times, want %d (bands %v)", band, perBand[band], want, perBand)
 		}
 	}
-	if n := len(calls(c, "DrawText")); n != body+2 {
-		t.Errorf("%d DrawText calls, want %d: the header, %d rows and the one cut by the edge", n, body+2, body)
+	if n := len(calls(c, "DrawText")); n != body+3 {
+		t.Errorf("%d DrawText calls, want %d: the header, %d rows, the cursor overlay and the one cut by the edge", n, body+3, body)
 	}
 	if n := len(calls(c, "FillRect")); n != 4 {
 		t.Errorf("%d fills, want 4: the page, the header's tint and rule, the cursor", n)
@@ -205,6 +210,37 @@ func TestATableDrawsTheCursorTheSelectionAndTheSortMark(t *testing.T) {
 	paintTable(l, 900, 200)
 	if got := runTexts(l.header); strings.Join(got, "|") != "id|name|city|n|▲" {
 		t.Errorf("a narrow field's header %q, want its title and the mark", got)
+	}
+}
+
+// The selected cell's glyphs must remain readable on the actual fill in both focus states.
+// This catches a renderer that paints the ordinary row foreground over a light highlight.
+func TestATableCursorTextContrastsWithItsFill(t *testing.T) {
+	_, l := pixelTable(t, cities(3))
+	for _, focused := range []bool{false, true} {
+		fg, bg := style.RGB(238, 238, 238), style.RGB(17, 17, 17)
+		if focused {
+			fg, bg = style.RGB(25, 25, 25), style.RGB(195, 185, 245)
+		}
+		l.t.SetStyles(tuiwidget.DataTableStyles{CursorBlurred: style.New().Foreground(fg).Background(bg)})
+		c := paintTable(l, 600, 120)
+		fill := l.cursorFill()
+		var overlay *gui.PaintCall
+		for _, call := range calls(c, "DrawText") {
+			if call.Rect.Y >= l.rowH && call.Rect.Y < 2*l.rowH {
+				copy := call
+				overlay = &copy
+			}
+		}
+		if overlay == nil {
+			t.Errorf("focused %v: no clipped cursor text", focused)
+			continue
+		}
+		fg := overlay.Brush.Color
+		ratio, ok := style.ContrastRatio(style.RGB(fg.R, fg.G, fg.B), style.RGB(fill.R, fill.G, fill.B))
+		if !ok || ratio < 4.5 {
+			t.Errorf("focused %v: cursor text %v on %v has contrast %.2f", focused, fg, fill, ratio)
+		}
 	}
 }
 

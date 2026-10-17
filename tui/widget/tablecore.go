@@ -100,6 +100,13 @@ func TableOnCopyRefused(fn func(limit int)) TableOption {
 	return func(c *TableCore) { c.onCopyRefused = fn }
 }
 
+// TableOnCopy receives text copied with y, yy or Copy, after the copy limit has accepted it.
+// A host can keep its editor register in step with the system clipboard. The callback is also
+// a copy target when a backend has no clipboard.
+func TableOnCopy(fn func(text string)) TableOption {
+	return func(c *TableCore) { c.onCopy = fn }
+}
+
 // TableFetchAhead is how near the end of the loaded rows, in rows, the cursor asks a pager for
 // more, and how many it asks for; at least 1.
 func TableFetchAhead(rows int) TableOption {
@@ -142,6 +149,7 @@ type TableCore struct {
 	onSort        func(keys []TableSortKey)
 	copyLimit     int // bytes; 0: none
 	onCopyRefused func(limit int)
+	onCopy        func(text string)
 	announced     int   // the source row onCursor was last told, -1 for none
 	measured      []int // measured widths, nil until asked for after a change
 
