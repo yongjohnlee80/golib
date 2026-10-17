@@ -4,6 +4,8 @@ import (
 	"strings"
 
 	"github.com/yongjohnlee80/golib/tui"
+	tuikey "github.com/yongjohnlee80/golib/tui/key"
+	"github.com/yongjohnlee80/golib/tui/keymap"
 )
 
 // THE SELECTION, THE KEYS AND THE POINTER — vim's visual modes over a grid. The selection runs from
@@ -237,83 +239,79 @@ func (c *TableCore) copyString(s string) bool {
 //	s                         sort by this field (if sortable): up, down, off; one key, replacing a sort of several
 //	Enter                     activate the cursor's row
 //
-// A g waits for its second g; any other key drops it and runs. Ctrl+V is the one Ctrl chord it
-// takes, vim's block key: a read-only table has nothing to paste. Other Ctrl, Alt and Super
-// chords are the application's.
+// Each key is a command of scope tui.table (widget.TableUp …), so a key map can move it; the digits
+// are the count. A g waits for its second g; any other key drops it and runs. Ctrl+V is the one Ctrl
+// chord it takes by default, vim's block key: a read-only table has nothing to paste. Other Ctrl, Alt
+// and Super chords are the application's.
 func (c *TableCore) HandleKey(k tui.KeyEvent) bool {
 	if k.Kind == tui.KeyRelease {
 		return false
 	}
-	if mods := k.Mods & nonTextMods; mods != 0 {
-		c.dropPending()
-		if mods == tui.ModCtrl && (k.Code == 'v' || k.Code == 'V') {
-			c.toggleSelect(TableSelectBlock)
-			return true
-		}
-		return false
-	}
-	code := k.Code
-	if k.Text != "" {
-		code = []rune(k.Text)[0]
-	}
-	if code >= '1' && code <= '9' || code == '0' && c.count > 0 {
+	if d, ok := countDigit(k); ok && (d != 0 || c.count > 0) {
 		c.pendingG, c.yanked = false, false
-		c.count = min(c.count*10+int(code-'0'), tableCountMax)
+		c.count = min(c.count*10+d, tableCountMax)
 		return true
 	}
-	if code == 'g' && !c.pendingG {
+	cmd, ok := c.ctx.KeyCommand(k, tableCommands...)
+	if !ok {
+		c.dropPending() // any other key drops a count or a g, and is the application's
+		return false
+	}
+	if cmd.ID == TableGoPrefix.ID && !c.pendingG {
 		c.pendingG, c.yanked = true, false // the count waits with it, for [count]gg
 		return true
 	}
 	n, counted := max(c.count, 1), c.count > 0
 	wasG, yanked := c.pendingG, c.yanked
 	c.dropPending()
-	if wasG && code != 'g' {
+	if wasG && cmd.ID != TableGoPrefix.ID {
 		n, counted = 1, false // the count went with the g it was typed for
 	}
-	switch code {
-	case 'g': // the second g
+	switch cmd.ID {
+	case TableGoPrefix.ID: // the second g
 		row := 0
 		if counted {
 			row = n - 1
 		}
 		c.SetCursor(TablePos{row, c.cur.Col})
-	case 'k', tui.KeyUp:
+	case TableUp.ID:
 		c.Move(-n, 0)
-	case 'j', tui.KeyDown:
+	case TableDown.ID:
 		c.Move(n, 0)
-	case 'h', tui.KeyLeft:
+	case TableLeft.ID:
 		c.Move(0, -n)
-	case 'l', tui.KeyRight:
+	case TableRight.ID:
 		c.Move(0, n)
-	case 'w':
+	case TableFieldNext.ID:
 		c.moveFields(n)
-	case 'b':
+	case TableFieldPrev.ID:
 		c.moveFields(-n)
-	case tui.KeyPageUp:
+	case TablePageUp.ID:
 		c.Move(-c.page(), 0)
-	case tui.KeyPageDown:
+	case TablePageDown.ID:
 		c.Move(c.page(), 0)
-	case 'G':
+	case TableLast.ID:
 		row := c.Len() - 1
 		if counted {
 			row = n - 1
 		}
 		c.SetCursor(TablePos{row, c.cur.Col})
-	case '0', tui.KeyHome:
+	case TableFieldFirst.ID:
 		c.SetCursor(TablePos{c.cur.Row, 0})
-	case '$', tui.KeyEnd:
+	case TableFieldLast.ID:
 		c.SetCursor(TablePos{c.cur.Row, len(c.Fields()) - 1})
-	case 'v':
+	case TableVisual.ID:
 		c.toggleSelect(TableSelectCells)
-	case 'V':
+	case TableVisualRows.ID:
 		c.toggleSelect(TableSelectRows)
-	case tui.KeyEscape:
+	case TableVisualBlock.ID:
+		c.toggleSelect(TableSelectBlock)
+	case TableEscape.ID:
 		if c.anchor == nil {
 			return wasG || counted // a pending command dropped is the key's work; otherwise it is the application's
 		}
 		c.SetAnchor(nil)
-	case 'y':
+	case TableYank.ID:
 		switch {
 		case c.anchor != nil:
 			c.Copy()
@@ -325,21 +323,31 @@ func (c *TableCore) HandleKey(k tui.KeyEvent) bool {
 			c.Copy()
 			c.yanked = true
 		}
-	case 's':
+	case TableSort.ID:
 		if !c.sortable {
 			return false
 		}
 		c.sortKey(c.cur.Col)
-	case tui.KeyEnter:
+	case TableActivate.ID:
 		if c.onActivate == nil || c.Len() == 0 {
 			return false
 		}
 		c.onActivate(c.SourceRow(c.cur.Row))
-	default:
-		return false
 	}
 	return true
 }
+
+// countDigit is the digit a count is typed with: a digit key with no modifier held.
+func countDigit(k tui.KeyEvent) (int, bool) {
+	s, ok := tuikey.Of(k.Code, k.Mods, k.Text)
+	if !ok || s.Mods != 0 || s.Code < '0' || s.Code > '9' {
+		return 0, false
+	}
+	return int(s.Code - '0'), true
+}
+
+// KeyScope is a table's key-map scope.
+func (c *TableCore) KeyScope() keymap.Scope { return TableScope }
 
 // sortKey is the s key on field col: a sort by it alone, ascending, then descending, then none.
 // A sort of several keys is replaced by one.
