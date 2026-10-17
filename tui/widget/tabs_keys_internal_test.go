@@ -1,6 +1,7 @@
 package widget
 
 import (
+	"cmp"
 	"testing"
 
 	"github.com/yongjohnlee80/golib/tui"
@@ -40,8 +41,14 @@ func TestTabsKeysMatchTheOldHandlerWithNoMap(t *testing.T) {
 		keyGridDiff(t, map[bool]string{false: "Tabs, content focused", true: "Tabs, bar focused"}[focused],
 			func(e tui.KeyEvent) string { return oldTabsKey(e, focused) },
 			func(e tui.KeyEvent) string { return deltaName[tb.keyDelta(e, focused)] },
-			hyperOrMeta)
+			tabsDeviation)
 	}
+}
+
+// tabsDeviation names what the key map changes on purpose for Tabs: Hyper or Meta held, and Shift
+// spent on the bracket it typed.
+func tabsDeviation(e tui.KeyEvent) string {
+	return cmp.Or(shiftSpentOnPrintable(e), hyperOrMeta(e))
 }
 
 // oldStripKey is tabStrip.key's decision before commands, verbatim but for its effects and for the
@@ -80,14 +87,15 @@ func oldStripKey(e tui.KeyEvent, baseFocused, hasAdd, menuShown bool) string {
 
 var stripKeyName = map[stripKey]string{stripNone: "", stripAdd: "add", stripMenu: "menu", stripPrev: "prev", stripNext: "next"}
 
-// stripDeviation names what the key map changes on purpose for the strip: Hyper or Meta held, and
-// Shift spent on the + it typed (a kitty terminal's Shift+= sends "+" with Shift), which the old
-// test of the unshifted chord refused.
+// stripDeviation names what the key map changes on purpose for the strip: Hyper or Meta held; Shift
+// spent on the character it typed (a kitty terminal's Shift+= sends "+" with Shift), which the old
+// test of the unshifted chord refused; and a + with no text, which the old strip, reading only the
+// text, refused, and the key map reads by its code.
 func stripDeviation(e tui.KeyEvent) string {
-	if e.Mods&tui.ModShift != 0 && e.Text == "+" {
-		return "Shift typing + is +"
+	if e.Code == '+' && e.Text == "" && e.Mods.Chord() == 0 {
+		return "a + with no text reads its code"
 	}
-	return hyperOrMeta(e)
+	return cmp.Or(shiftSpentOnPrintable(e), hyperOrMeta(e))
 }
 
 func TestTabStripKeysMatchTheOldHandlerWithNoMap(t *testing.T) {

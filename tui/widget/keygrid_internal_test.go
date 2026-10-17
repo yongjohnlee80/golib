@@ -92,6 +92,17 @@ func describeKey(e tui.KeyEvent) string {
 	return fmt.Sprintf("{kind %d code %q mods %v text %q}", e.Kind, e.Code, e.Mods, e.Text)
 }
 
+// shiftSpentOnPrintable is shiftSpentOnText for any character: Shift held on a key whose text is one
+// printable rune is spent on that text, so a "[" typed with Shift is [, which a handler testing for
+// no modifier refused.
+func shiftSpentOnPrintable(e tui.KeyEvent) string {
+	if r := []rune(e.Text); e.Mods&tui.ModShift != 0 && len(r) == 1 && unicode.IsPrint(r[0]) &&
+		e.Mods&(tui.ModCtrl|tui.ModAlt|tui.ModSuper|tui.ModHyper|tui.ModMeta) == 0 {
+		return "Shift spent on the character it typed"
+	}
+	return ""
+}
+
 // shiftSpentOnText adds the deviation key.Of makes on purpose: Shift held on a key
 // whose text is one printable rune is spent on that text, so Shift+Space typed as " " is Space. A
 // control that refused every modifier (a Button, a menu) now activates on it, as it does on Space.
