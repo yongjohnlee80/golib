@@ -92,17 +92,29 @@ func TestAHostOverlayWinsOverAScheme(t *testing.T) {
 	}
 }
 
-// A map installed while d is pending clears it, as Esc does: the next key is processed afresh.
+// A map installed while d is pending clears it, as Esc does: the next key is processed afresh. The
+// keys and the install run in one turn on the loop, straight into the Editor: the harness's barrier key
+// reaches the focused editor and would itself cancel d, hiding whether the rebuild did.
 func TestAReloadedMapClearsPendingGrammar(t *testing.T) {
 	h, e, sh := mountedEditor(t, mustKeymap(t, `<mapping/>`))
-	h.inject(ch('d'))
-	h.barrier(sh)
 	other := mustKeymap(t, `<mapping><shortcut id="tui.list.down"><key value="Ctrl+N"/></shortcut></mapping>`)
-	h.onLoop(func() { sh.ctx.App().ApplyKeymap(other) })
-	h.inject(ch('w'))
-	h.barrier(sh)
-	if got := editorValue(h, e); got != "one two three" {
-		t.Fatalf("d survived the reload and w completed it: %q", got)
+	for _, reload := range []bool{false, true} {
+		var got string
+		h.onLoop(func() {
+			e.SetValue("one two three")
+			e.HandleEvent(ch('d'))
+			if reload {
+				sh.ctx.App().ApplyKeymap(other)
+			}
+			e.HandleEvent(ch('w'))
+			got = e.Value()
+		})
+		switch {
+		case !reload && got != "two three":
+			t.Fatalf("without a reload, dw should delete a word: %q", got) // the cell can see d pending
+		case reload && got != "one two three":
+			t.Fatalf("d survived the reload and w completed it: %q", got)
+		}
 	}
 }
 
