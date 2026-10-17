@@ -362,3 +362,19 @@ func TestATextFieldCompletesFromItsModel(t *testing.T) {
 		t.Errorf("accepted %q, want NAME \"total sum\"", got)
 	}
 }
+
+// The completions setter refuses what it is not given: a component that is not a TextField, and a
+// value that is not a model.
+func TestTheCompletionsSetterRefusesWhatItIsNotGiven(t *testing.T) {
+	set := controls.TextField.Setters["completions"]
+	if err := set(widget.NewButton("no"), qml.SpecValue{}); err == nil || err.Error() != "not a TextField" {
+		t.Errorf("a component that is not a TextField: %v", err)
+	}
+	in := widget.NewTextInput()
+	if err := set(in, qml.SpecValue{Kind: qml.SpecValueString, Raw: "no"}); err == nil || !strings.Contains(err.Error(), "wants a model") {
+		t.Errorf("a value that is not a model: %v", err)
+	}
+	if err := set(in, qml.SpecValue{Kind: qml.SpecValueObject}); err == nil || !strings.Contains(err.Error(), "wants a model") {
+		t.Errorf("an object that is not a model: %v", err)
+	}
+}

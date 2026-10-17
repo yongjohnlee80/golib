@@ -18,10 +18,11 @@ func resultFields() []widget.TableField {
 	}
 }
 
-// completingInput is a focused TextInput, 50 cells wide, completing resultFields' names.
+// completingInput is a focused TextInput, 50 cells wide, completing resultFields' names as a
+// WHERE bar takes them.
 func completingInput(t *testing.T) (*harness, *widget.TextInput, *shell) {
 	t.Helper()
-	in := widget.NewTextInput(widget.WithCompleter(widget.TableFieldCompleter(resultFields)))
+	in := widget.NewTextInput(widget.WithCompleter(widget.TableFieldCompleter(widget.TableWhereBar, resultFields)))
 	sh := newShell(in)
 	h := startApp(t, sh, 50, 1)
 	h.inject(tab())
@@ -135,7 +136,7 @@ func TestTableFieldName_ReadsBack(t *testing.T) {
 // The completer: case-insensitive, a word opened with a quote matching past it, nothing inside a
 // string, after an operator or LIKE, or for an empty word.
 func TestTableFieldCompleter_Offers(t *testing.T) {
-	complete := widget.TableFieldCompleter(resultFields)
+	complete := widget.TableFieldCompleter(widget.TableWhereBar, resultFields)
 	for text, want := range map[string][]string{
 		"na":            {"Name"},
 		"NA":            {"Name"},
@@ -165,5 +166,87 @@ func TestTableFieldCompleter_Offers(t *testing.T) {
 	}
 	if start, got := complete(`x = 1 AND "to`, 13); start != 10 || len(got) != 1 {
 		t.Errorf("a quoted word starts at its quote: %d %v", start, got)
+	}
+}
+
+// A title two fields share completes as the position its bar takes — WHERE #n, ORDER BY its bare
+// number — and a word matches the field's title or what its bar writes for it; everything the
+// completer offers parses in the bar it was offered for.
+func TestTableFieldCompleter_SharedTitlesCompleteAsPositions(t *testing.T) {
+	fields := func() []widget.TableField {
+		return []widget.TableField{{Title: "id"}, {Title: "name"}, {Title: "id"}, {Title: "note"}}
+	}
+	for _, c := range []struct {
+		bar  widget.TableBar
+		word string
+		want []string
+	}{
+		{widget.TableWhereBar, "id", []string{"#1", "#3"}},
+		{widget.TableWhereBar, "ID", []string{"#1", "#3"}},
+		{widget.TableWhereBar, "#", []string{"#1", "#3"}},
+		{widget.TableWhereBar, "#3", []string{"#3"}},
+		{widget.TableWhereBar, "na", []string{"name"}},
+		{widget.TableOrderBar, "id", []string{"1", "3"}},
+		{widget.TableOrderBar, "1", []string{"1"}},
+		{widget.TableOrderBar, "no", []string{"note"}},
+		{widget.TableOrderBar, "id DESC, na", []string{"name"}},
+	} {
+		complete := widget.TableFieldCompleter(c.bar, fields)
+		start, got := complete(c.word, len(c.word))
+		if start < 0 || start > len(c.word) || !slices.Equal(got, c.want) {
+			t.Errorf("bar %d word %q: %d %v, want %v", c.bar, c.word, start, got, c.want)
+			continue
+		}
+		for _, it := range c.want {
+			var err error
+			if c.bar == widget.TableWhereBar {
+				_, err = widget.ParseTableWhere(it+" IS NULL", fields())
+			} else {
+				_, err = widget.ParseTableOrder(it, fields())
+			}
+			if err != nil {
+				t.Errorf("bar %d word %q: %q does not parse: %v", c.bar, c.word, it, err)
+			}
+		}
+	}
+}
+
+// Tab puts the position in for a shared name, in each bar's syntax, and the result parses in
+// that bar.
+func TestTextInput_TabInsertsThePositionItsBarParses(t *testing.T) {
+	fields := func() []widget.TableField {
+		return []widget.TableField{{Title: "id"}, {Title: "name"}, {Title: "id"}}
+	}
+	for _, c := range []struct {
+		bar  widget.TableBar
+		name string
+		want string
+	}{
+		{widget.TableWhereBar, "WHERE", "#1"},
+		{widget.TableOrderBar, "ORDER BY", "1"},
+	} {
+		t.Run(c.name, func(t *testing.T) {
+			in := widget.NewTextInput(widget.WithCompleter(widget.TableFieldCompleter(c.bar, fields)))
+			sh := newShell(in)
+			h := startApp(t, sh, 50, 1)
+			h.inject(tab())
+			h.barrier(sh)
+			h.inject(typeString("id")...)
+			h.inject(tab())
+			h.barrier(sh)
+			got := valueOf(h, in)
+			if got != c.want {
+				t.Fatalf("Tab put in %q, want %q", got, c.want)
+			}
+			var err error
+			if c.bar == widget.TableWhereBar {
+				_, err = widget.ParseTableWhere(got+" IS NULL", fields())
+			} else {
+				_, err = widget.ParseTableOrder(got, fields())
+			}
+			if err != nil {
+				t.Errorf("%s does not read the token Tab put in: %v", c.name, err)
+			}
+		})
 	}
 }
