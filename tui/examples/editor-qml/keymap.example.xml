@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE KeyboardMappingScheme>
+<!--
+  A key-mapping scheme for editor-qml, in Qt Creator's keyboard-mapping-scheme shape.
+  In dev mode (-dev <dir>) the editor follows <dir>/keymap.xml: copy this file there and edit it.
+  Each <shortcut> replaces its command's keys; <key value=""/> unbinds it. The ids are listed in
+  golib's tui/keymap/README.md.
+-->
+<mapping>
+  <!-- Vim Normal: keep u for undo and add Ctrl+Z ("U" is the key u; "Shift+U" the capital) -->
+  <shortcut id="tui.editor.vim.normal.undo"><key value="U"/><key value="Ctrl+Z"/></shortcut>
+  <!-- the menu bar on F9 instead of F10 -->
+  <shortcut id="tui.window.menu"><key value="F9"/></shortcut>
+</mapping>

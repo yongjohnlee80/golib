@@ -14,3 +14,10 @@ func TestEveryQMLFileIsSound(t *testing.T) {
 	h := &Host{}
 	decltest.Check(t, h.options(Options{Now: fixedNow, Tick: time.Hour})...)
 }
+
+// TestTheKeysAreSound checks the program's keys as a user's scheme would meet them: golib's commands,
+// the layout's Shortcuts, and the menus' Alt+letters (decltest.CheckKeymap).
+func TestTheKeysAreSound(t *testing.T) {
+	h := &Host{}
+	decltest.CheckKeymap(t, h.options(Options{Now: fixedNow, Tick: time.Hour})...)
+}
