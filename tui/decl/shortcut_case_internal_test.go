@@ -37,4 +37,12 @@ func TestAShortcutLettersCaseIsItsShift(t *testing.T) {
 			t.Errorf("%q matches %q (mods %v): %v, want %v", c.seq, string(c.ev.Code), c.ev.Mods, got, c.want)
 		}
 	}
+	// A release is never the key: its press already fired the shortcut.
+	seq, err := key.Parse("C")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if seqMatches(seq, tui.KeyEvent{Kind: tui.KeyRelease, Code: 'c'}) {
+		t.Error("the release of C matches C")
+	}
 }

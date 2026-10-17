@@ -14,6 +14,8 @@ import (
 	"github.com/yongjohnlee80/golib/parse/qml"
 	tuidecl "github.com/yongjohnlee80/golib/tui/decl"
 	"github.com/yongjohnlee80/golib/tui/decl/decltest"
+	tuikey "github.com/yongjohnlee80/golib/tui/key"
+	"github.com/yongjohnlee80/golib/tui/keymap"
 )
 
 // recorder is a testing.TB that keeps what it is told instead of failing, so a
@@ -28,6 +30,12 @@ func (r *recorder) Errorf(format string, args ...any) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	r.errors = append(r.errors, fmt.Sprintf(format, args...))
+}
+
+func (r *recorder) Error(args ...any) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	r.errors = append(r.errors, fmt.Sprint(args...))
 }
 
 func (r *recorder) got() []string {
@@ -231,5 +239,29 @@ func TestRunWithReleasesTheProgramWhenSetupFails(t *testing.T) {
 	<-done
 	if p.subs.Load() != 1 || p.cancels.Load() != 1 {
 		t.Fatalf("subscribed %d, cancelled %d: want the one subscription released", p.subs.Load(), p.cancels.Load())
+	}
+}
+
+// A Global command on Enter shares the key with inner widgets' Enter: legal, so CheckKeymap only logs
+// it, and CheckKeymapStrict, for a program that wants nothing shadowed, fails on it.
+func TestCheckKeymapStrictFailsOnAWarning(t *testing.T) {
+	enter := keymap.Command{ID: "demo.go", Scope: keymap.Global, Keys: tuikey.MustParse("Enter")}
+	opts := append(options(files, nil), tuidecl.KeyCommands(enter))
+
+	r := &recorder{T: t}
+	decltest.CheckKeymap(r, opts...)
+	if got := r.got(); len(got) > 0 {
+		t.Errorf("CheckKeymap failed on a legal shadow: %v", got)
+	}
+	r = &recorder{T: t}
+	decltest.CheckKeymapStrict(r, opts...)
+	got := r.got()
+	if len(got) == 0 || !strings.Contains(got[0], "keymap warning: ") {
+		t.Errorf("CheckKeymapStrict on a shadowed Enter: %v", got)
+	}
+	r = &recorder{T: t}
+	decltest.CheckKeymapStrict(r, options(files, nil)...)
+	if got := r.got(); len(got) > 0 {
+		t.Errorf("CheckKeymapStrict with no key command: %v", got)
 	}
 }
