@@ -5,6 +5,7 @@ import (
 
 	"github.com/yongjohnlee80/golib/parse/qml"
 	"github.com/yongjohnlee80/golib/tui"
+	"github.com/yongjohnlee80/golib/tui/keymap"
 )
 
 // FOCUS SCOPES — QtQuick's FocusScope, as golib uses it: the element whose Shortcuts are live while
@@ -35,6 +36,8 @@ type focusScopeNode struct {
 	tui.MultiChild
 	ctx       *tui.Context
 	shortcuts []*shortcutNode
+	// keyScope is the key-map scope of its keyId Shortcuts (keymap.Scope): "editor.todos".
+	keyScope keymap.Scope
 }
 
 func buildFocusScope(b Build) (tui.Component, []string, error) {
@@ -104,26 +107,28 @@ func (s *focusScopeNode) Layout(c tui.Constraints) tui.Size {
 func (s *focusScopeNode) Render(tui.Surface) {}
 
 // HandleEvent fires the scope's Shortcut for a key its content left.
-func (s *focusScopeNode) HandleEvent(ev tui.Event) bool { return fireShortcut(s.shortcuts, ev) }
-
-// fireShortcut fires the first of shortcuts that ev is, and reports whether one was.
-func fireShortcut(shortcuts []*shortcutNode, ev tui.Event) bool {
-	k, ok := ev.(tui.KeyEvent)
-	if !ok || k.Kind != tui.KeyPress {
-		return false
-	}
-	for _, s := range shortcuts {
-		if s.seq.matches(k) {
-			s.trigger()
-			return true
-		}
-	}
-	return false
+func (s *focusScopeNode) HandleEvent(ev tui.Event) bool {
+	return fireShortcut(s.ctx, s.keyScope, s.shortcuts, ev)
 }
+
+// KeyScope is the scope its keyId Shortcuts belong to (tui.KeyScoped).
+func (s *focusScopeNode) KeyScope() keymap.Scope { return s.keyScope }
+
+// KeyBindings is its Shortcuts as m binds them (tui.KeyBinder).
+func (s *focusScopeNode) KeyBindings(m *keymap.Map) []keymap.Binding {
+	return shortcutBindings(m, s.keyScope, s.shortcuts)
+}
+
+func (s *focusScopeNode) setKeyScope(v string) { s.keyScope = keymap.Scope(v) }
 
 // shortcutHolders are the types a Shortcut may be declared in: each makes the keys live while
 // focus is within it.
 var shortcutHolders = map[string]bool{"Window": true, "Dialog": true, "FolderDialog": true, "Drawer": true, "FocusScope": true}
 
 // focusScopeType is the FocusScope's entry in the standard vocabulary.
-var focusScopeType = Type{Name: "FocusScope", Build: buildFocusScope}
+var focusScopeType = Type{
+	Name:    "FocusScope",
+	Build:   buildFocusScope,
+	Setters: map[string]Setter{"keyScope": setter("a FocusScope", stringOf, (*focusScopeNode).setKeyScope)},
+	Getters: map[string]Getter{"keyScope": StringGetter(func(s *focusScopeNode) string { return string(s.keyScope) })},
+}

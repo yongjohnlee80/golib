@@ -18,6 +18,7 @@ below is a trimmed piece of it.
 7. [A QML screen inside a Go program](#7-a-qml-screen-inside-a-go-program)
    - [7b. Syntax highlighting](#7b-syntax-highlighting)
    - [7c. Languages](#7c-languages)
+   - [7d. Key maps](#7d-key-maps)
 8. [Reloading](#8-reloading)
 9. [Using both safely — the rules](#9-using-both-safely--the-rules)
 10. [Best practice](#10-best-practice)
@@ -743,6 +744,70 @@ p.App().ApplyLanguage("ko_KR")                          // in a handler that cha
   screen; one that does not parse is refused like a broken layout. A reload is applied
   whole or not at all: a good catalog saved beside a broken layout waits for the layout.
 - **Test every language** with `decltest.CheckLanguages(t, programOptions()...)` (§11).
+
+## 7d. Key maps
+
+**Declare your keys as commands, and let users move them in a file.** A key command is an id, a
+scope and its default keys; a Shortcut names it with `keyId`, and a user's key-mapping scheme
+changes its keys without touching the layout:
+
+```go
+var (
+    saveCmd = keymap.Command{ID: "editor.file.save", Scope: keymap.Global, Keys: key.MustParse("Ctrl+S")}
+    addCmd  = keymap.Command{ID: "editor.todos.add", Scope: "editor.todos", Keys: key.MustParse("A")}
+)
+
+dir, _ := os.UserConfigDir()                                    // the host decides where the file lives
+p, err := tuidecl.NewProgram(
+    tuidecl.Layout(ui, "editor.qml"),
+    tuidecl.KeyCommands(saveCmd, addCmd),
+    tuidecl.Keymap(os.DirFS(filepath.Join(dir, "editor")), "keymap.xml"), // may not exist yet
+    …)
+```
+
+```qml
+Window {
+    Shortcut { sequence: keyId("editor.file.save"); onActivated: App.save() }
+    FocusScope { keyScope: "editor.todos"
+        Shortcut { sequence: keyId("editor.todos.add"); onActivated: App.addTask() }
+        TodoList { }
+    }
+    MenuBar { Menu { title: qsTrId("editor.menu.file")
+        MenuItem { text: qsTrId("editor.file.save"); shortcut: keyId("editor.file.save"); onTriggered: App.save() } } }
+}
+```
+
+```xml
+<!-- ~/.config/editor/keymap.xml: Qt Creator's keyboard-mapping scheme -->
+<mapping>
+  <shortcut id="editor.file.save"><key value="Ctrl+W"/></shortcut>
+  <shortcut id="tui.list.top"><key value=""/></shortcut>      <!-- unbound -->
+  <!-- "U" is the key u, as Qt spells it ("Shift+U" is the capital): undo keeps u and gains Ctrl+Z -->
+  <shortcut id="tui.editor.vim.normal.undo"><key value="U"/><key value="Ctrl+Z"/></shortcut>
+</mapping>
+```
+
+- **golib's own keys are commands too**: every widget's (`tui.list.down`, `tui.table.goPrefix`,
+  `tui.input.wordLeft`), the Editor's per keyset and mode (`tui.editor.vim.normal.undo`,
+  `tui.editor.standard.insert.undo`), Tab traversal (`tui.app.focusNext`) and F10
+  (`tui.window.menu`). A scheme moves them as it moves yours; `tui/keymap`'s README lists them.
+- **A scope is where keys must be unique.** Two commands of one scope on one key refuse the scheme,
+  naming file and line. The same key in two scopes is fine: the focused widget's scope is asked
+  first, then each enclosing holder's, then the Window's (`global`), then traversal. A key an inner
+  scope shares with the Window's is a warning only: the inner one wins while focus is there.
+- **A Shortcut's holder gives its scope**: a Window's is `global`; a `FocusScope`'s, `Dialog`'s,
+  `FolderDialog`'s or `Drawer`'s is its `keyScope`. A `keyId` in the wrong holder is refused.
+- **What stays fixed**: a label's mnemonic (`&File`, a button's letter) is the label's, on English's
+  letter in every language. A host's Go `WithKeymap` overlay on an Editor is code, and wins over a
+  scheme; declare a binding as a command if users should move it. The Editor's grammar after a
+  prefix (`d`'s motion, `f`'s character, a count) is not a command; its first key is.
+- **Ask what a key does** with `p.KeyBindings("id")` on the loop goroutine: the bindings that reach
+  the component, in routing order, each with the keys it really receives (`Reaches`) and what
+  shadows the rest. `field.keyScope` reads a scope in a handler.
+- **Under `HotReload` the scheme is followed too.** A saved scheme rebinds keys on the next frame; a
+  broken one, or a layout whose `keyId` the new map refuses, is refused whole and the old keys stay.
+  Creating or deleting the file is a change.
+- **Test your keys** with `decltest.CheckKeymap(t, programOptions()...)` (§11).
 
 ## 8. Reloading
 

@@ -3,6 +3,9 @@ package widget
 import (
 	"sort"
 	"time"
+
+	tuikey "github.com/yongjohnlee80/golib/tui/key"
+	"github.com/yongjohnlee80/golib/tui/keymap"
 )
 
 // KEY DISPATCH — which key means which action, and what is pending between keys: the mode, the
@@ -58,6 +61,10 @@ type keyDispatch struct {
 	macroArmed Action
 	macroCount int
 
+	// builtFrom is the key map the table was built from (nil: every default), so the core notices
+	// the App installing another one and rebuilds.
+	builtFrom *keymap.Map
+
 	// Escape chord (Insert mode).
 	chord        []rune // exactly two runes, or nil = disabled
 	pendingRune  rune   // held first chord rune; 0 = none
@@ -70,25 +77,27 @@ func newKeyDispatch() keyDispatch {
 	return keyDispatch{
 		keyset:       KeysetVim,
 		modal:        true,
-		keymap:       DefaultKeymap(),
+		keymap:       keymapFrom(nil, KeysetVim),
 		unbound:      make(map[KeyChord]bool),
 		chord:        []rune{'j', 'k'},
 		chordTimeout: 300 * time.Millisecond,
 	}
 }
 
-// applyKeyset installs a profile's base tables and replays the host's keymap
-// overlay on top. Mode is NOT decided here: construction and a live switch
-// want different transitions, so each caller sets it.
-func (k *keyDispatch) applyKeyset(ks Keyset) {
+// applyKeyset installs a profile's table as m binds it (keymapFrom; nil m: every default) and replays
+// the host's keymap overlay on top, so a host's Go overlay still wins over a key-mapping scheme. Mode
+// is NOT decided here: construction and a live switch want different transitions, so each caller
+// sets it.
+func (k *keyDispatch) applyKeyset(ks Keyset, m *keymap.Map) {
 	switch normalizeKeyset(ks) {
 	case KeysetNano:
-		k.keyset, k.modal, k.keymap = KeysetNano, false, NanoKeymap()
+		k.keyset, k.modal = KeysetNano, false
 	case KeysetStandard:
-		k.keyset, k.modal, k.keymap = KeysetStandard, false, StandardKeymap()
+		k.keyset, k.modal = KeysetStandard, false
 	default:
-		k.keyset, k.modal, k.keymap = KeysetVim, true, VimKeymap()
+		k.keyset, k.modal = KeysetVim, true
 	}
+	k.keymap, k.builtFrom = keymapFrom(m, k.keyset), m
 	k.unbound = make(map[KeyChord]bool)
 	k.applyOverlay(k.overlay)
 }
@@ -97,19 +106,48 @@ func (k *keyDispatch) applyKeyset(ks Keyset) {
 // by the caller that first accepted them, so a profile switch cannot panic on
 // an overlay the editor already took: validateKeymapEntry checks the chord's
 // mode and the action, neither of which depends on the keyset.
+//
+// An overlay chord on a functional key without Shift ({Code: KeyDown}) is replayed onto its Shift
+// twin as well, unless the overlay names the twin itself: before chords had Shift, the editor read
+// Shift+Down as Down, so the old literal meant both, and still does.
 func (k *keyDispatch) applyOverlay(ov Keymap) {
-	for kc, act := range ov {
+	set := func(kc KeyChord, act Action) {
 		if act == ActUnbound {
 			delete(k.keymap, kc)
 			if k.unbound == nil {
 				k.unbound = make(map[KeyChord]bool)
 			}
 			k.unbound[kc] = true
-			continue
+			return
 		}
 		k.keymap[kc] = act
 		delete(k.unbound, kc)
 	}
+	for kc, act := range ov {
+		set(kc, act)
+		if twin := kc; functionalCode(kc.Code) && !kc.Shift {
+			twin.Shift = true
+			if _, named := ov[twin]; !named {
+				set(twin, act)
+			}
+		}
+	}
+}
+
+// lookupSeq is the chord s is in class and what it is bound to, trying key.Candidates in order (a
+// legacy terminal's Ctrl+Shift+R is Ctrl+R): the first candidate the table binds or explicitly
+// unbinds wins. With neither, kc is s's own chord.
+func (k *keyDispatch) lookupSeq(class EditorMode, s tuikey.Seq) (kc KeyChord, act Action, bound, unbound bool) {
+	for _, cand := range tuikey.Candidates(s) {
+		c := chordOfSeq(class, cand)
+		if k.unbound[c] {
+			return c, ActUnbound, false, true
+		}
+		if a, ok := k.keymap[c]; ok {
+			return c, a, true, false
+		}
+	}
+	return chordOfSeq(class, s), ActUnbound, false, false
 }
 
 // lookup is the action bound to kc; an explicitly unbound chord is none.

@@ -4,6 +4,7 @@ import (
 	"errors"
 	"fmt"
 	"github.com/yongjohnlee80/golib/parse/qml"
+	"maps"
 
 	"github.com/yongjohnlee80/golib/parse"
 )
@@ -179,6 +180,9 @@ func (t *Tree) Source(name string) (qml.SpecValue, bool) {
 	v, ok := t.sources[name]
 	return v, ok
 }
+
+// Sources is every declared source's current value, a copy: a host's and every provider's.
+func (t *Tree) Sources() map[string]qml.SpecValue { return maps.Clone(t.sources) }
 
 // checkBindable validates a node's declared properties before anything is built.
 //

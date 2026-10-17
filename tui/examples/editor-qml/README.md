@@ -40,6 +40,11 @@ bin/editor-qml -lang ko_KR notes.md   # start in Korean (en, ko_KR, pt_BR, zh_CN
 - Keys: `Ctrl+S` save, `Ctrl+Shift+S` save as (where the terminal can report
   it), `Ctrl+P` the prompt, `Ctrl+Q` quit, `F10` or `Alt`+underlined letter
   for the menu.
+- **Keys a user can move** — every key golib's widgets act on is a key command with an id
+  (`tui.window.menu` for F10, `tui.editor.vim.normal.undo`). Under `-dev` the editor follows a
+  `keymap.xml` beside its layout, in Qt Creator's keyboard-mapping-scheme shape: copy
+  `keymap.example.xml` there and a saved change moves the keys a moment later. A broken file is
+  refused and reported, and the old keys stay. The ids are in golib's `tui/keymap/README.md`.
 
 ## The files
 
@@ -48,6 +53,7 @@ bin/editor-qml -lang ko_KR notes.md   # start in Korean (en, ko_KR, pt_BR, zh_CN
 | `editor.qml` | the screen: menus, the editor, the status line, the prompt, the dialogs — no colours |
 | `dialogs/*.qml` | one component file per dialog: Quit, About, Open, Save |
 | `i18n/editor_*.xml` | the editor's words in each language: Qt's TS XML schema, one catalog per language |
+| `keymap.example.xml` | a user's key-mapping scheme to start from: copy it to `keymap.xml` under `-dev` |
 | `app.go` | the Host: `options` (everything the program is), and `New` — `NewProgram(options…)` then `attach` |
 | `modules.go` | the QML the program embeds, and the modules it offers |
 | `state.go` | what the document reads: `App.mode`, `App.status`, `App.path`… |

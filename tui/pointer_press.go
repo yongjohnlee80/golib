@@ -1,8 +1,10 @@
 package tui
 
 import (
-	"github.com/yongjohnlee80/golib/errs"
 	"time"
+
+	"github.com/yongjohnlee80/golib/errs"
+	"github.com/yongjohnlee80/golib/tui/keymap"
 )
 
 // PointerPressResolver opts a container into resolving a press before its content
@@ -14,9 +16,11 @@ type PointerPressResolver interface {
 	ResolvePointerPress(MouseEvent) (Action, bool)
 }
 
-// CaptureEscapeResolver resolves bare Escape on the pointer-capture owner before
-// focused content sees it. It is consulted only while capture is held. No other
-// keyboard event is redirected, and resolution must not mutate component state.
+// CaptureEscapeResolver resolves the cancel key (the tui.CancelCapture command, Esc by default) on
+// the pointer-capture owner before focused content sees it. It is consulted only while capture is
+// held, and only for an event the runtime matched as that command, so a resolver does not test the
+// key itself: a rebound cancel key reaches it too. No other keyboard event is redirected, and
+// resolution must not mutate component state.
 type CaptureEscapeResolver interface {
 	ResolveCaptureEscape(KeyEvent) (Action, bool)
 }
@@ -77,7 +81,10 @@ func (a *App) interceptPointerPress(target, limit *node, e MouseEvent) bool {
 }
 
 func (a *App) interceptCaptureEscape(e KeyEvent) bool {
-	if a.captureOwner == 0 || e.Kind == KeyRelease || e.Code != KeyEscape || e.Mods.Chord() != 0 {
+	if a.captureOwner == 0 {
+		return false
+	}
+	if _, ok := keyCommand(a.cfg.keymap, e, []keymap.Command{CancelCapture}); !ok {
 		return false
 	}
 	n := a.nodes[a.captureOwner]

@@ -5,6 +5,7 @@ import (
 	"strings"
 
 	"github.com/yongjohnlee80/golib/tui"
+	"github.com/yongjohnlee80/golib/tui/keymap"
 	"github.com/yongjohnlee80/golib/tui/style"
 )
 
@@ -354,7 +355,8 @@ func (t *DataTable) HandleEvent(ev tui.Event) bool {
 				}
 			}
 			if hit == TableHitCell && e.Count >= 2 {
-				t.core.HandleKey(tui.KeyEvent{Kind: tui.KeyPress, Code: tui.KeyEnter})
+				t.core.dropPending()
+				t.core.activateCursor()
 			}
 			return true
 		case e.Kind == tui.MousePress && e.Button == tui.MouseRight && t.menu != nil && t.menu.Enabled():
@@ -477,4 +479,13 @@ func (t *DataTable) fieldAt(x int) (int, bool) {
 		at = end
 	}
 	return 0, false
+}
+
+// KeyScope is the table's key-map scope.
+func (t *DataTable) KeyScope() keymap.Scope { return TableScope }
+
+// KeyBindings is the table's commands as m binds them (tui.KeyBinder). The digits of a count are its
+// grammar, not commands.
+func (t *DataTable) KeyBindings(m *keymap.Map) []keymap.Binding {
+	return tui.BindingsOf(m, tableCommands...)
 }

@@ -85,8 +85,10 @@ func (e *Editor) OpenContextMenu() bool {
 	return e.menu.OpenAt(tui.Point{X: x, Y: y})
 }
 
-// IsContextMenuKey reports whether k is a key that opens a context menu: Shift+F10, the desktop
-// convention, or the Menu key where the backend delivers it.
+// IsContextMenuKey reports whether k is one of the DEFAULT keys that open a context menu: Shift+F10,
+// the desktop convention, or the Menu key where the backend delivers it. A golib widget matches its own
+// context-menu command instead (EditorContextMenu, ListMenu), which a key map may move; this stays for
+// a host that has no command of its own.
 func IsContextMenuKey(k tui.KeyEvent) bool {
 	if k.Kind != tui.KeyPress {
 		return false

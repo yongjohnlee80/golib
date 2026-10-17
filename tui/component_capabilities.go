@@ -1,8 +1,11 @@
 package tui
 
-import "github.com/yongjohnlee80/golib/tui/style"
+import (
+	"iter"
 
-import "iter"
+	"github.com/yongjohnlee80/golib/tui/keymap"
+	"github.com/yongjohnlee80/golib/tui/style"
+)
 
 // This file holds the structural component capabilities. Input interpretation
 // is optional too, but lives with its contracts: ActionHandler, Activatable and
@@ -259,4 +262,12 @@ type FocusLayerHost interface {
 	// HostsFocusLayers reports whether this component's immediate children are
 	// stacked layers, later in front of earlier.
 	HostsFocusLayers() bool
+}
+
+// KeyScoped is the optional capability of a component whose keys are a key-map scope of its own
+// (keymap.Scope): a List's "tui.list", an Editor's "tui.editor.vim.normal". A query asking which keys
+// reach a component starts from the scope of the nearest KeyScoped one. The scope may change with
+// the component's state, as an Editor's does with its mode, so it is read each time it is asked.
+type KeyScoped interface {
+	KeyScope() keymap.Scope
 }

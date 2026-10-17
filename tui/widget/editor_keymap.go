@@ -80,11 +80,17 @@ type ModeChangedEvent struct {
 	Mode  EditorMode
 }
 
-// KeyChord addresses one binding: a mode class and a normalized key.
+// KeyChord addresses one binding: a mode class and a normalized key. A chord has one spelling: a
+// letter's Shift is its case (Code 'G'), and Shift is set only on a key that is not a letter
+// (Shift+Tab, Shift+Down). A keyed literal written before Alt, Super and Shift existed means the same
+// chord it did; see applyOverlay for a functional key's Shift.
 type KeyChord struct {
-	Mode EditorMode // ModeNormal, ModeVisual, or ModeInsert
-	Code rune       // Unicode codepoint or a tui.Key* constant
-	Ctrl bool
+	Mode  EditorMode // ModeNormal, ModeVisual, or ModeInsert
+	Code  rune       // Unicode codepoint or a tui.Key* constant
+	Ctrl  bool
+	Alt   bool
+	Super bool
+	Shift bool // a key that is not a letter; a letter's Shift is its Code
 }
 
 // String returns a human-readable display label for the key chord (e.g. "Ctrl+K", "Home", "w").
@@ -124,10 +130,20 @@ func (kc KeyChord) String() string {
 			s = fmt.Sprintf("Key(0x%x)", kc.Code)
 		}
 	}
+	prefix := ""
 	if kc.Ctrl {
-		return "Ctrl+" + s
+		prefix += "Ctrl+"
 	}
-	return s
+	if kc.Alt {
+		prefix += "Alt+"
+	}
+	if kc.Super {
+		prefix += "Super+"
+	}
+	if kc.Shift {
+		prefix += "Shift+"
+	}
+	return prefix + s
 }
 
 // Action is one enumerated Editor operation a chord can bind.

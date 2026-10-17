@@ -5,6 +5,7 @@ import (
 	"slices"
 
 	"github.com/yongjohnlee80/golib/tui"
+	"github.com/yongjohnlee80/golib/tui/keymap"
 )
 
 // MENU.
@@ -323,8 +324,26 @@ func (m *Menu) resolveLabelsIn(items []MenuItemModel) {
 			label, key, idx := tui.ParseMnemonic(m.translate(it.LabelMsg))
 			it.Label, it.Hotkey, it.HotkeyIdx = label, key, max(idx, 0)
 		}
+		if it.AccelCommand != "" {
+			it.Accel = m.accelOf(it.AccelCommand)
+		}
 		m.resolveLabelsIn(it.Children)
 	}
+}
+
+// accelOf is the first key of the command named id in the App's key map, as an accelerator shows it.
+func (m *Menu) accelOf(id string) string {
+	ctx := m.Context()
+	if ctx == nil || ctx.App() == nil {
+		return ""
+	}
+	km := ctx.App().Keymap()
+	if cmd, ok := km.Command(id); ok {
+		if keys := km.KeysOf(cmd); len(keys) > 0 {
+			return keys[0].String()
+		}
+	}
+	return ""
 }
 
 // Model returns a deep copy, so a caller cannot reach inside a mounted Menu by
@@ -637,4 +656,13 @@ func (m *Menu) Init(ctx *tui.Context) {
 	ctx.OnUnmount(m.closeAllOnUnmount)
 
 	m.repairSelection()
+}
+
+// KeyScope is a menu's key-map scope.
+func (m *Menu) KeyScope() keymap.Scope { return MenuScope }
+
+// KeyBindings is the menu's commands as km binds them (tui.KeyBinder). Its rows' mnemonics are their
+// labels', not commands, and are not listed.
+func (m *Menu) KeyBindings(km *keymap.Map) []keymap.Binding {
+	return tui.BindingsOf(km, menuCommands...)
 }

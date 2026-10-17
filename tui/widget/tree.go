@@ -6,6 +6,7 @@ import (
 
 	"github.com/yongjohnlee80/golib/errs"
 	"github.com/yongjohnlee80/golib/tui"
+	"github.com/yongjohnlee80/golib/tui/keymap"
 	"github.com/yongjohnlee80/golib/tui/style"
 )
 
@@ -919,50 +920,44 @@ func (t *Tree) noteSelection() {
 	t.publish(SelectionChangedEvent{Owner: t.NodeID(), Index: t.cursor, Label: node.label})
 }
 
+// KeyScope is the Tree's key-map scope.
+func (t *Tree) KeyScope() keymap.Scope { return TreeScope }
+
+// keyCommand is which of the Tree's commands e is. A Ctrl, Alt or Super chord no command binds is the
+// application's (without that, Ctrl-h/Ctrl-l would collapse and expand instead of moving focus).
+func (t *Tree) keyCommand(e tui.KeyEvent) (keymap.Command, bool) {
+	return t.Context().KeyCommand(e, treeCommands...)
+}
+
 func (t *Tree) handleKey(e tui.KeyEvent) bool {
-	if e.Kind == tui.KeyRelease {
+	cmd, ok := t.keyCommand(e)
+	if !ok {
 		return false
 	}
 	rows := t.flatten()
 	if len(rows) == 0 {
 		return false
 	}
-	// Ctrl/Alt/Super chords belong to the application (pane motion, quit,
-	// …): without this guard Ctrl-h/Ctrl-l arrive as bare 'h'/'l' and the
-	// tree collapses/expands instead of letting the app move focus.
-	if e.Mods&nonTextMods != 0 {
-		return false
-	}
-	code := e.Code
-	if e.Text != "" {
-		code = []rune(e.Text)[0]
-	}
 	t.cursor = max(0, min(t.cursor, len(rows)-1)) // never index a stale cursor
 	cur := rows[t.cursor]
-	switch code {
-	case 'j', tui.KeyDown:
+	switch cmd.ID {
+	case TreeDown.ID:
 		t.moveCursor(1, len(rows))
-		return true
-	case 'k', tui.KeyUp:
+	case TreeUp.ID:
 		t.moveCursor(-1, len(rows))
-		return true
-	case tui.KeyPageDown:
+	case TreePageDown.ID:
 		t.moveCursor(max(t.h, 1), len(rows))
-		return true
-	case tui.KeyPageUp:
+	case TreePageUp.ID:
 		t.moveCursor(-max(t.h, 1), len(rows))
-		return true
-	case 'g', tui.KeyHome:
+	case TreeFirst.ID:
 		t.cursor = 0
 		t.ensureVisible()
 		t.MarkDirty()
-		return true
-	case 'G', tui.KeyEnd:
+	case TreeLast.ID:
 		t.cursor = len(rows) - 1
 		t.ensureVisible()
 		t.MarkDirty()
-		return true
-	case 'l', tui.KeyRight:
+	case TreeExpand.ID:
 		if cur.node.leaf {
 			t.publish(ActivateEvent{Owner: t.NodeID(), Index: t.cursor})
 			return true
@@ -972,16 +967,14 @@ func (t *Tree) handleKey(e tui.KeyEvent) bool {
 			return true
 		}
 		t.expandNode(cur.node)
-		return true
-	case tui.KeyEnter:
+	case TreeActivate.ID:
 		// ANY row, branch or leaf, as Qt's item views emit activated on Enter
 		// and a double-click here already does: the Tree cannot know whether
 		// a branch is activatable (a table whose children are its columns
 		// is), so it reports and the host decides. Expansion is l/Right and
 		// h/Left.
 		t.publish(ActivateEvent{Owner: t.NodeID(), Index: t.cursor})
-		return true
-	case 'h', tui.KeyLeft:
+	case TreeCollapse.ID:
 		if cur.node.expanded || cur.node.loading {
 			t.collapseNode(cur.node)
 			return true
@@ -996,9 +989,8 @@ func (t *Tree) handleKey(e tui.KeyEvent) bool {
 			t.ensureVisible()
 			t.MarkDirty()
 		}
-		return true
 	}
-	return false
+	return true
 }
 
 func (t *Tree) handleMouse(e tui.MouseEvent) bool {
@@ -1188,3 +1180,6 @@ func (t *Tree) rowText(r treeRow) string {
 	}
 	return strings.Repeat(" ", r.depth*t.indent) + expander + r.node.label + badge
 }
+
+// KeyBindings is the Tree's commands as m binds them (tui.KeyBinder).
+func (t *Tree) KeyBindings(m *keymap.Map) []keymap.Binding { return tui.BindingsOf(m, treeCommands...) }

@@ -6,13 +6,16 @@ import (
 	"errors"
 	"fmt"
 	"io/fs"
+	"maps"
 	"path"
+	"slices"
 	"strings"
 	"time"
 
 	"github.com/yongjohnlee80/golib/decl"
 	"github.com/yongjohnlee80/golib/parse/qml"
 	"github.com/yongjohnlee80/golib/tui/i18n"
+	"github.com/yongjohnlee80/golib/tui/keymap"
 )
 
 // HOT RELOAD — the running program follows its QML files, for development.
@@ -140,6 +143,18 @@ func snapshotOf(c programConfig) snapshot {
 			}
 		}
 	}
+	// Key-mapping schemes are followed file by file. A missing file has no entry, so creating or
+	// deleting it is a change; an unreadable one is recorded by its error, so the reload that
+	// follows refuses it rather than reading it as absent.
+	for i, f := range c.keymapFiles {
+		k := fmt.Sprintf("keymap%d:%s", i, f.file)
+		switch src, err := fs.ReadFile(f.fsys, f.file); {
+		case err == nil:
+			out[k] = sha256.Sum256(src)
+		case !errors.Is(err, fs.ErrNotExist):
+			out[k] = sha256.Sum256([]byte("unreadable: " + err.Error()))
+		}
+	}
 	// Catalogs are followed as the layout's folders are: a saved translation is a change.
 	for i, t := range c.translations {
 		entries, err := fs.ReadDir(t.fsys, t.dir)
@@ -234,6 +249,12 @@ func (p *Program) hotReload() {
 		}
 		catalogs = s
 	}
+	// The key map is built first too, and installed last, with the catalogs.
+	keys, err := loadKeymap(p.cfg)
+	if err != nil {
+		refuse(fmt.Errorf("hot reload: %w", err))
+		return
+	}
 	src := p.liveLayout
 	if p.cfg.layoutFS != nil {
 		var err error
@@ -249,6 +270,12 @@ func (p *Program) hotReload() {
 			return // a save caught half-written; the finished one follows
 		}
 		refuse(err)
+		return
+	}
+	// Every keyId Shortcut of the NEW layout is checked against the CANDIDATE map before the live
+	// tree is touched, so a refusal leaves the screen, the map and the catalogs as they were.
+	if err := p.checkReloadKeys(spec, keys); err != nil {
+		refuse(fmt.Errorf("hot reload: %w", err))
 		return
 	}
 	var res decl.Result
@@ -272,6 +299,7 @@ func (p *Program) hotReload() {
 		if catalogs != nil {
 			p.app.ApplyTranslations(catalogs)
 		}
+		p.app.ApplyKeymap(keys)
 		if h.onReload != nil {
 			h.onReload(res)
 		}
@@ -330,4 +358,28 @@ func (p *Program) redirect(to *Program) {
 		to.app.Update(fn)
 	}
 	p.pending, p.app = nil, to.app
+}
+
+// checkReloadKeys mounts spec apart from the live tree, with no App, checks its keyId Shortcuts against
+// keys, and destroys it. Its sources are the live tree's, frozen: one provider delivers their current
+// values once and never runs, so no host provider is subscribed twice. A layout that does not mount is
+// the real reconcile's to report, so it passes here. Loop goroutine only: it reads the live tree.
+func (p *Program) checkReloadKeys(spec qml.SpecTree, keys *keymap.Map) error {
+	c := p.cfg
+	c.sources, c.providers, c.keys = nil, []decl.Provider{frozenSources(p.tree.Sources())}, keys
+	q, err := mount(c, spec)
+	if err != nil {
+		return nil
+	}
+	defer func() { _ = q.tree.Destroy() }()
+	return q.adapter.checkShortcuts(keys)
+}
+
+// frozenSources is a provider of fixed values: delivered once, synchronously, and never again.
+type frozenSources map[string]qml.SpecValue
+
+func (f frozenSources) Subscribe(fn func(decl.Update)) ([]string, func() error, error) {
+	names := slices.Sorted(maps.Keys(f))
+	fn(decl.Update{Version: 1, Values: maps.Clone(f)})
+	return names, func() error { return nil }, nil
 }

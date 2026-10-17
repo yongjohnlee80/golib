@@ -9,6 +9,8 @@ import (
 	"github.com/yongjohnlee80/golib/highlight"
 	"github.com/yongjohnlee80/golib/indent"
 	"github.com/yongjohnlee80/golib/tui"
+	tuikey "github.com/yongjohnlee80/golib/tui/key"
+	"github.com/yongjohnlee80/golib/tui/keymap"
 )
 
 // EDITOR CORE — the Editor's behaviour, apart from any view of it (ADR 1791385086).
@@ -100,9 +102,12 @@ type EditorCore struct {
 	// The constructor-time listeners for what the core also publishes on the bus: a widget built
 	// before it is mounted has no Context to subscribe with.
 	onModeChange func(EditorMode)
-	onChange     func()
-	chordHook    func(KeyChord) bool // SetChordHook's: a host's chords before the keymap
-	onCursorMove func()              // the cursor moved to another line or column
+	// onKeyScopeChange and lastScope report KeyScope moving (CoreOnKeyScopeChange).
+	onKeyScopeChange func(keymap.Scope)
+	lastScope        keymap.Scope
+	onChange         func()
+	chordHook        func(KeyChord) bool // SetChordHook's: a host's chords before the keymap
+	onCursorMove     func()              // the cursor moved to another line or column
 	// toggleRendered answers ActToggleRendered for a widget with a Rendered view; nil: none
 	toggleRendered func() bool
 
@@ -168,6 +173,7 @@ func NewEditorCore(opts ...CoreOption) *EditorCore {
 		}
 	}
 	c.settleOptions()
+	c.lastScope = c.KeyScope() // after every option: CoreKeyset may follow CoreOnKeyScopeChange
 	return c
 }
 
@@ -270,17 +276,17 @@ func CoreKeyset(ks Keyset) CoreOption {
 	switch normalizeKeyset(ks) {
 	case KeysetNano:
 		return func(c *EditorCore) {
-			c.keys.applyKeyset(KeysetNano)
+			c.keys.applyKeyset(KeysetNano, nil)
 			c.setMode(ModeInsert)
 		}
 	case KeysetStandard:
 		return func(c *EditorCore) {
-			c.keys.applyKeyset(KeysetStandard)
+			c.keys.applyKeyset(KeysetStandard, nil)
 			c.setMode(ModeInsert)
 		}
 	default:
 		return func(c *EditorCore) {
-			c.keys.applyKeyset(KeysetVim)
+			c.keys.applyKeyset(KeysetVim, nil)
 			if len(c.keys.chord) == 0 {
 				c.keys.chord = []rune{'j', 'k'}
 				c.keys.chordTimeout = 300 * time.Millisecond
@@ -293,6 +299,22 @@ func CoreKeyset(ks Keyset) CoreOption {
 // the mode it already has. It is the constructor-time twin of ModeChangedEvent.
 func CoreOnModeChange(fn func(EditorMode)) CoreOption {
 	return func(c *EditorCore) { c.onModeChange = fn }
+}
+
+// CoreOnKeyScopeChange calls fn with KeyScope each time it moves: a mode change into another binding
+// class, or a keyset switch (Standard to Nano moves it with the mode unchanged).
+func CoreOnKeyScopeChange(fn func(keymap.Scope)) CoreOption {
+	return func(c *EditorCore) { c.onKeyScopeChange = fn }
+}
+
+// noteKeyScope reports KeyScope to CoreOnKeyScopeChange when it moved.
+func (c *EditorCore) noteKeyScope() {
+	if s := c.KeyScope(); s != c.lastScope {
+		c.lastScope = s
+		if c.onKeyScopeChange != nil {
+			c.onKeyScopeChange(s)
+		}
+	}
 }
 
 // CoreOnChange calls fn after every EDIT, the moment ChangeEvent is published. SetValue is not an
@@ -587,7 +609,7 @@ func (c *EditorCore) SetKeyset(ks Keyset) {
 	c.oneShot, c.blockIns, c.replace = insertOneShot{}, nil, nil
 	c.hist.close()
 	c.buf.anchor, c.vAnchor = nil, taPos{}
-	c.keys.applyKeyset(ks)
+	c.keys.applyKeyset(ks, c.liveKeymap())
 	if c.keys.modal {
 		c.setMode(ModeNormal)
 		c.clampNormal()
@@ -597,6 +619,7 @@ func (c *EditorCore) SetKeyset(ks Keyset) {
 	c.buf.desired = -1
 	c.reveal()
 	c.markDirty()
+	c.noteKeyScope()
 }
 
 // OverlayKeymap folds overlay into the keymap of a core already built, as CoreKeymap does at
@@ -654,30 +677,61 @@ func (c *EditorCore) SnapshotKeymap() KeymapSnapshot {
 // ActionForChord looks up the action bound to a chord.
 func (c *EditorCore) ActionForChord(kc KeyChord) (Action, bool) { return c.keys.lookup(kc) }
 
-// ActionOf is the action key k is bound to in the current mode, read as HandleKey reads it (a
-// shifted letter by its text, Ctrl part of the chord, an explicit unbind honoured), without acting
-// on it. A release, or a key with a command modifier other than Ctrl, is bound to nothing. For a
-// widget that shows the document another way and still answers the editor's keys.
+// ActionOf is the action key k is bound to in the current mode, read as HandleKey reads it (key.Of,
+// then key.Candidates; an explicit unbind honoured), without acting on it. A release, or a key with
+// Hyper or Meta held, is bound to nothing. For a widget that shows the document another way and still
+// answers the editor's keys.
 func (c *EditorCore) ActionOf(k tui.KeyEvent) (Action, bool) {
-	kc, ok := c.chordOf(k)
+	c.syncKeymap()
+	s, ok := c.seqOf(k)
 	if !ok {
 		return ActUnbound, false
 	}
-	return c.keys.lookup(kc)
+	_, act, bound, _ := c.keys.lookupSeq(modeClass(c.keys.mode), s)
+	return act, bound
+}
+
+// seqOf is k as a key (key.Of): false for a release, and for a key with Hyper or Meta held.
+func (c *EditorCore) seqOf(k tui.KeyEvent) (tuikey.Seq, bool) {
+	if k.Kind == tui.KeyRelease {
+		return tuikey.Seq{}, false
+	}
+	return tuikey.Of(k.Code, k.Mods, k.Text)
 }
 
 // chordOf is k as the keymap reads it in the mode the core is in: false for a release, or a key
-// with a modifier the keymap has no chords for.
+// with Hyper or Meta held. An Alt or Super chord is a chord: a key map may bind one; unbound, it
+// misses the table and the core hands it to the host.
 func (c *EditorCore) chordOf(k tui.KeyEvent) (KeyChord, bool) {
-	if k.Kind == tui.KeyRelease || k.Mods&(tui.ModAlt|tui.ModSuper|tui.ModMeta|tui.ModHyper) != 0 {
+	s, ok := c.seqOf(k)
+	if !ok {
 		return KeyChord{}, false
 	}
-	code := k.Code
-	if k.Text != "" && k.Mods&nonTextMods == 0 {
-		code = []rune(k.Text)[0]
-	}
-	return KeyChord{Mode: modeClass(c.keys.mode), Code: code, Ctrl: k.Mods&tui.ModCtrl != 0}, true
+	return chordOfSeq(modeClass(c.keys.mode), s), true
 }
+
+// liveKeymap is the key map the App holds, nil without a mounted Context.
+func (c *EditorCore) liveKeymap() *keymap.Map {
+	if c.ctx == nil || c.ctx.App() == nil {
+		return nil
+	}
+	return c.ctx.App().Keymap()
+}
+
+// syncKeymap rebuilds the table when the App holds a key map other than the one it was built from (a
+// reloaded scheme). The keyset, the mode and the document stay; pending grammar (a count, an
+// operator, a g prefix, an armed f, r, ", m or q) is dropped, as Esc drops it, because the chord that
+// armed it may have moved.
+func (c *EditorCore) syncKeymap() {
+	if m := c.liveKeymap(); m != c.keys.builtFrom {
+		c.settlePendingRune()
+		c.keys.dropPending()
+		c.keys.applyKeyset(c.keys.keyset, m)
+	}
+}
+
+// KeyScope is the scope of the keyset and mode class the core is in: "tui.editor.vim.normal".
+func (c *EditorCore) KeyScope() keymap.Scope { return editorScope(c.keys.keyset, c.keys.mode) }
 
 // SetChordHook gives a host the chords of its own: in Normal or Visual mode with nothing pending
 // (no count, operator, armed f/t/m/q/" key, register), every chord but Esc goes to hook before the
@@ -709,6 +763,7 @@ func (c *EditorCore) setMode(m EditorMode) {
 	if c.onModeChange != nil {
 		c.onModeChange(c.Mode())
 	}
+	c.noteKeyScope()
 }
 
 // normalMax is the max Normal-mode column of line ln (cursor ON a grapheme).

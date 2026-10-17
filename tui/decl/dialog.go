@@ -7,6 +7,7 @@ import (
 	"github.com/yongjohnlee80/golib/highlight"
 	"github.com/yongjohnlee80/golib/parse/qml"
 	"github.com/yongjohnlee80/golib/tui"
+	"github.com/yongjohnlee80/golib/tui/keymap"
 	"github.com/yongjohnlee80/golib/tui/widget"
 )
 
@@ -103,6 +104,11 @@ type dialogNode struct {
 
 	accepted                 func(args ...qml.SpecValue)
 	opened, rejected, closed func()
+
+	// shortcuts and keyScope are the dialog's keys, as its spec gave them: for the scope check and
+	// App.KeyBindings.
+	shortcuts []*shortcutNode
+	keyScope  keymap.Scope
 }
 
 // dialogHooks are what a KIND of dialog adds to the one lifecycle every dialog
@@ -234,6 +240,8 @@ type dialogSpec struct {
 	defaultAt int
 	// shortcuts are the dialog's own keys, live while it is open.
 	shortcuts []*shortcutNode
+	// keyScope is the key-map scope of its keyId Shortcuts.
+	keyScope keymap.Scope
 	// box is its DialogButtonBox, nil for standardButtons.
 	box   *buttonBoxNode
 	hooks dialogHooks
@@ -294,16 +302,13 @@ func newDialog(b Build, s dialogSpec) *dialogNode {
 	if s.hooks.gate != nil {
 		opts = append(opts, widget.WithAcceptGate(s.hooks.gate))
 	}
+	d.shortcuts, d.keyScope = s.shortcuts, s.keyScope
 	if len(s.shortcuts) > 0 {
-		shortcuts := s.shortcuts
+		shortcuts, scope := s.shortcuts, s.keyScope
 		opts = append(opts, widget.WithModalKeys(func(k tui.KeyEvent) bool {
-			for _, sc := range shortcuts {
-				if sc.seq.matches(k) {
-					sc.trigger()
-					return true
-				}
-			}
-			return false
+			return fireShortcut(d.modal.Context(), scope, shortcuts, k)
+		}), widget.WithModalKeyBinder(func(m *keymap.Map) []keymap.Binding {
+			return shortcutBindings(m, scope, shortcuts)
 		}))
 	}
 	d.modal = widget.NewModal(s.body, opts...)
@@ -330,6 +335,7 @@ func buildDialog(b Build) (tui.Component, []string, error) {
 		"maxHeightPercent": into(&s.maxHeightPercent, cellsOf),
 		"standardButtons":  into(&flags, dialogButtons.read),
 		"defaultButton":    into(&defaultFlag, dialogButtons.read),
+		"keyScope":         into(&s.keyScope, scopeOf),
 	})
 	if err != nil {
 		return nil, nil, err

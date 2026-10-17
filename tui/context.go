@@ -6,6 +6,8 @@ import (
 	"time"
 
 	"github.com/yongjohnlee80/golib/errs"
+	"github.com/yongjohnlee80/golib/tui/key"
+	"github.com/yongjohnlee80/golib/tui/keymap"
 )
 
 // Context is a mounted component's identity and its ONLY sanctioned channel
@@ -342,6 +344,43 @@ func (c *Context) App() *App { return c.app }
 // A widget calls it as it is laid out, never as it renders: a language change always lays
 // the tree out again, so text resolved in Layout is current when it is painted.
 func (c *Context) Translate(m Message) string { return c.app.Translate(m) }
+
+// KeyCommand reports which of cmds ev is: the event's chord (key.Of), then each of its candidates in
+// order (key.Candidates), the first candidate any of cmds holds winning — by the App's key map, or a
+// command's declared keys where the map has none. Within one candidate the first of cmds wins, so a
+// widget lists its own commands in the order it wants ties broken.
+//
+// A release never matches; a repeat does, so a held arrow keeps moving. An event holding Hyper or
+// Meta matches nothing. This is the one question a widget asks instead of switching on raw keys.
+//
+// A nil Context (a widget not mounted, as a unit test may drive one) matches each command's declared
+// keys.
+func (c *Context) KeyCommand(ev KeyEvent, cmds ...keymap.Command) (keymap.Command, bool) {
+	var m *keymap.Map
+	if c != nil && c.app != nil {
+		m = c.app.cfg.keymap
+	}
+	return keyCommand(m, ev, cmds)
+}
+
+// keyCommand is KeyCommand against m, for the App's own keys (globalKey) as well as a widget's.
+func keyCommand(m *keymap.Map, ev KeyEvent, cmds []keymap.Command) (keymap.Command, bool) {
+	if ev.Kind == KeyRelease {
+		return keymap.Command{}, false
+	}
+	chord, ok := key.Of(ev.Code, ev.Mods, ev.Text)
+	if !ok {
+		return keymap.Command{}, false
+	}
+	for _, cand := range key.Candidates(chord) {
+		for _, cmd := range cmds {
+			if m.Has(cmd, cand) {
+				return cmd, true
+			}
+		}
+	}
+	return keymap.Command{}, false
+}
 
 // StringWidth measures s under the App's active width policy — the SAME
 // policy Surface.StringWidth applies (WithWidthPolicy). It is the

@@ -4,6 +4,7 @@ import (
 	"errors"
 
 	"github.com/yongjohnlee80/golib/tui"
+	"github.com/yongjohnlee80/golib/tui/keymap"
 )
 
 // MODAL.
@@ -62,6 +63,8 @@ type Modal struct {
 	// letter to dismissal, and only the host knows which of its dialogs are
 	// read-only or navigational.
 	dismissKeys []rune
+	// keyBinder reports what a WithModalKeys handler binds (WithModalKeyBinder), for KeyBindings.
+	keyBinder func(*keymap.Map) []keymap.Binding
 	// selected is the index of the focused button, or -1 when focus is on the
 	// Modal node itself — which happens when it owns no enabled button.
 	selected int
@@ -672,50 +675,49 @@ func (m *Modal) Init(ctx *tui.Context) {
 // focused control, so a focused button claims Enter before it reaches here.
 func (m *Modal) keys(ev tui.Event) (tui.Action, bool) {
 	k, ok := ev.(tui.KeyEvent)
-	if !ok || k.Kind == tui.KeyRelease || k.Mods.Chord() != 0 {
+	if !ok || k.Kind == tui.KeyRelease {
 		return nil, false
 	}
-	if k.Code == tui.KeyEscape {
+	cmd, isCmd := m.Context().KeyCommand(k, modalCommands...)
+	switch {
+	case isCmd && cmd.ID == ModalDismiss.ID:
 		return dismissAction{}, true
-	}
-	// ENTER, unclaimed by the control that has focus: the default button's,
-	// through the runtime as a mnemonic is. None declared, no answer.
-	if k.Code == tui.KeyEnter {
+	case isCmd && cmd.ID == ModalAccept.ID:
+		// ENTER, unclaimed by the control that has focus: the default button's,
+		// through the runtime as a mnemonic is. None declared, no answer.
 		if b := m.defaultButton(); b != nil {
 			return modalActivateAction{target: b}, true
 		}
 		return nil, false
 	}
-	// MNEMONIC FIRST, ALWAYS. A declared key is specific intent; a direction is
-	// a convenience. Resolving the alias first would make a button whose
-	// mnemonic happens to be 'l' unreachable the moment Vim keys were enabled,
-	// and the author who declared it would have no way to know why.
-	if b := m.mnemonicButton(k.Code); b != nil {
-		return modalActivateAction{target: b}, true
-	}
-	// A HOST DISMISS KEY, after the mnemonics. See WithModalDismissKeys for why the
-	// order is load-bearing in both directions.
-	for _, r := range m.dismissKeys {
-		if k.Code == r {
-			return dismissAction{}, true
+	if k.Mods.Chord() == 0 {
+		// MNEMONIC FIRST, ALWAYS. A declared key is specific intent; a direction is
+		// a convenience. Resolving the alias first would make a button whose
+		// mnemonic happens to be 'l' unreachable the moment Vim keys were enabled,
+		// and the author who declared it would have no way to know why.
+		if b := m.mnemonicButton(k.Code); b != nil {
+			return modalActivateAction{target: b}, true
+		}
+		// A HOST DISMISS KEY, after the mnemonics. See WithModalDismissKeys for why the
+		// order is load-bearing in both directions.
+		for _, r := range m.dismissKeys {
+			if k.Code == r {
+				return dismissAction{}, true
+			}
 		}
 	}
-	switch k.Code {
-	case tui.KeyLeft, tui.KeyUp:
+	switch {
+	case !isCmd:
+	case cmd.ID == ModalPrev.ID, cmd.ID == ModalVimPrev.ID && m.vimKeys:
 		return modalStepAction{delta: -1}, true
-	case tui.KeyRight, tui.KeyDown:
+	case cmd.ID == ModalNext.ID, cmd.ID == ModalVimNext.ID && m.vimKeys:
 		return modalStepAction{delta: +1}, true
-	}
-	if m.vimKeys {
-		switch k.Code {
-		case 'h', 'k':
-			return modalStepAction{delta: -1}, true
-		case 'l', 'j':
-			return modalStepAction{delta: +1}, true
-		}
 	}
 	return nil, false
 }
+
+// KeyScope is a Modal's key-map scope.
+func (m *Modal) KeyScope() keymap.Scope { return ModalScope }
 
 // modalStepAction moves the focus between a dialog's buttons.
 type modalStepAction struct{ delta int }
@@ -923,4 +925,21 @@ func (m *Modal) refreshSelection() {
 // tuiFatal builds the package's standard construction panic.
 func tuiFatal(op, rule string, got int) error {
 	return fatalOf(op, rule, "got "+itoa(got))
+}
+
+// KeyBindings is the Modal's commands as m binds them, then what the host's WithModalKeys consults if
+// it said so with WithModalKeyBinder (tui.KeyBinder). Its buttons' mnemonics and a host's
+// WithModalDismissKeys are not commands, and are not listed.
+func (m *Modal) KeyBindings(km *keymap.Map) []keymap.Binding {
+	out := tui.BindingsOf(km, modalCommands...)
+	if m.keyBinder != nil {
+		out = append(out, m.keyBinder(km)...)
+	}
+	return out
+}
+
+// WithModalKeyBinder says what a WithModalKeys handler binds, so App.KeyBindings lists it after the
+// Modal's own commands, in the order the Modal consults them.
+func WithModalKeyBinder(fn func(*keymap.Map) []keymap.Binding) ModalOption {
+	return func(m *Modal) { m.keyBinder = fn }
 }

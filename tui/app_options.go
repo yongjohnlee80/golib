@@ -7,6 +7,7 @@ import (
 	"github.com/yongjohnlee80/golib/errs"
 	"github.com/yongjohnlee80/golib/logger"
 	"github.com/yongjohnlee80/golib/tui/i18n"
+	"github.com/yongjohnlee80/golib/tui/keymap"
 	"github.com/yongjohnlee80/golib/tui/style"
 )
 
@@ -64,6 +65,10 @@ type appConfig struct {
 	// translations are the catalogs a Message is looked up in: golib's own, plus whatever the
 	// application layered over them.
 	translations *i18n.Set
+
+	// keymap is the key bindings widgets match keys against (Context.KeyCommand), changed at run
+	// time by App.SetKeymap. nil: every command keeps its declared defaults.
+	keymap *keymap.Map
 
 	// taskDrainTimeout sets the grace period for in-flight background tasks to terminate upon shutdown
 	// before App.Run returns, preventing stalled tasks from holding the process indefinitely.
@@ -235,6 +240,14 @@ func WithTranslations(s *i18n.Set) AppOption {
 		panic(errs.Fatal{Op: "tui: WithTranslations", Rule: "the catalogs must not be nil"})
 	}
 	return func(c *appConfig) { c.translations = s }
+}
+
+// WithKeymap sets the key bindings every widget matches keys against: golib's commands and the
+// application's, with its key-mapping schemes layered over their defaults (keymap.Build).
+//
+// Default: none, and every command keeps its declared keys. A nil Map is that default.
+func WithKeymap(m *keymap.Map) AppOption {
+	return func(c *appConfig) { c.keymap = m }
 }
 
 // WithTaskDrainTimeout bounds how long Run waits for in-flight tasks after

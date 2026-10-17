@@ -72,15 +72,15 @@ change at runtime, which is what makes it bindable to a source.
 | `Window` | — | `color` (Qt's: the background under everything, where no widget paints — a theme's `app.backdrop` around a page) | — | — | — |
 | `MenuBar` | `vimNavigation`, palette | `autoHide` (golib's: no row until F10 or an Alt+letter brings it up; it goes once the visit ends) | — | — | — |
 | `Menu` | `title`, `align` | — | — | — | — |
-| `MenuItem` | `text`, `checkable`, `group`, `shortcut` | `checked`, `enabled`, `visible` | `checked` | `triggered`, `toggled` | — |
+| `MenuItem` | `text`, `checkable`, `group`, `shortcut` (accelerator text, or `keyId("id")`: the command's current key, as the key map binds it) | `checked`, `enabled`, `visible` | `checked` | `triggered`, `toggled` | — |
 | `MenuSeparator` | — | — | — | — | — |
 
 A `MenuSeparator` with nothing to separate is not drawn, as Qt's QMenu collapses them: one first or last among the rows shown, or right after another. So a group whose `MenuItem`s all hide (`visible: false`) takes its rule with it.
 
-| `Shortcut` | `sequence` | — | — | `activated` | — |
-| `FocusScope` | Shortcuts; one child, its content | — | — | — | — |
+| `Shortcut` | `sequence` (a fixed key, `"Ctrl+Q"`, or a key command, `keyId("id")`) | — | — | `activated` | — |
+| `FocusScope` | Shortcuts; one child, its content | `keyScope` (golib's: the key-map scope of its `keyId` Shortcuts) | `keyScope` | — | — |
 | `Frame` | palette | `title`, `maximumWidth` (golib's: at most that many columns, centred: a page) | — | — | — |
-| `Editor` | `wrap`, palette | `text`, `keyset`, `readOnly`, `cursorPosition`, `wrap` (live: soft-wrap long lines, or scroll them), `lineNumbers` (golib's: each line's number in a gutter at the left), `lineNumberColor` (golib's: the numbers' colour), `cursorColor` (golib's: the text cursor's colour, sent to the terminal), `ruler` (golib's: a guide at that column, where text wraps), `contextMenu` (golib's: a right-click menu with Undo, Redo, Copy, Cut and Paste, opened at the pointer), `view` (golib's: `Editor.Raw` or `Editor.Rendered`; see [Raw and Rendered](#raw-and-rendered-view-not-mode)) | — | `modeChanged` (the **Vim** mode: Normal, Insert, Visual; not the view), `textChanged`, `cursorPositionChanged` (Qt's TextEdit signal: the cursor moved to another line or column, by a key, a click, an edit or the program) | — |
+| `Editor` | `wrap`, palette | `text`, `keyset`, `readOnly`, `cursorPosition`, `wrap` (live: soft-wrap long lines, or scroll them), `lineNumbers` (golib's: each line's number in a gutter at the left), `lineNumberColor` (golib's: the numbers' colour), `cursorColor` (golib's: the text cursor's colour, sent to the terminal), `ruler` (golib's: a guide at that column, where text wraps), `contextMenu` (golib's: a right-click menu with Undo, Redo, Copy, Cut and Paste, opened at the pointer), `view` (golib's: `Editor.Raw` or `Editor.Rendered`; see [Raw and Rendered](#raw-and-rendered-view-not-mode)) | — | `modeChanged` (the **Vim** mode: Normal, Insert, Visual; not the view), `keyScopeChanged` (golib's: its key-map scope moved, by a mode class or a keyset; read it as `keyScope`), `textChanged`, `cursorPositionChanged` (Qt's TextEdit signal: the cursor moved to another line or column, by a key, a click, an edit or the program) | — |
 | `Image` | — | `scrollable` (golib's: the PNG at the cells' width, scrolled by ↑↓ j k h l, Page Up/Down, `[` `]`, Home/End and the wheel; only the part shown is placed) | — | — | — |
 | `HTMLView` | — | `html` (golib's: the page it shows), `stylesheet` (golib's: a stylesheet a pixel layout applies after the page's own) | — | `linkActivated(href)` (a link clicked), `scrolledTo(sourceByte)` (the source byte of the block now at the top) | `scrollToSource(byte)` |
 | `SyntaxHighlighter` | `definition` | — | — | — | — |
@@ -93,7 +93,7 @@ A `MenuSeparator` with nothing to separate is not drawn, as Qt's QMenu collapses
 | `Split` | `orientation` | `ratio` | — | — | — |
 | `Flex` | `direction` | — | — | — | — |
 | `Flow` | — | `spacing` (the gap between two children on a line, and between lines unless `rowSpacing` says otherwise), `rowSpacing` (golib's, from Qt's GridLayout: the gap between lines) | — | — | — |
-| `Dialog` | `dim`, `width`, `standardButtons`, `defaultButton`, palette | `title`, `helpText` | — | `opened`, `accepted`, `rejected`, `closed` | `open()`, `close()` |
+| `Dialog` | `dim`, `width`, `standardButtons`, `defaultButton`, `keyScope` (golib's: the scope of its `keyId` Shortcuts), palette | `title`, `helpText` | — | `opened`, `accepted`, `rejected`, `closed` | `open()`, `close()` |
 | `DialogButtonBox` | — (its Buttons carry `DialogButtonBox.buttonRole`) | — | — | — | — |
 | `ListView` | `textRole` | `model`, `currentIndex` | `currentIndex` | `activated(index)`, `currentIndexChanged(index)` | — |
 | `ComboBox` | `textRole`, `valueRole`, `placeholderText`, `maxWidth` (default 40 cells) | `model`, `currentIndex` | `currentIndex`, `currentValue` | `activated(index)` | — |
@@ -103,8 +103,8 @@ A `MenuSeparator` with nothing to separate is not drawn, as Qt's QMenu collapses
 | `Tab` | `title`; one child, its content | — | — | — | — |
 | `TreeView` | `textRole`, `badgeRole` | `model` (a tree model) | — | `activated(index)`, `expanded(index)`, `currentIndexChanged(index)` — an `Index` | `toggleExpanded(index)`, `setCurrentIndex(index)` |
 | `FileDialog` | `title`, `helpText`, `dim`, `fileMode`, `preview`, palette | `currentFolder`, `selectedFile` | — | `accepted(selectedFile)`, `rejected`, `closed` | `open()`, `close()` |
-| `Drawer` | `modal` (default true), golib's `resizable` (default false), `windowResize`, `movable` and `moveButton` (see Window controls); one child, its content, and any number of Shortcuts | `edge` (`Tui.Left`, `Right`, `Top`, `Bottom`, or golib's `Center`: floating in the middle, `length` wide and `size` high), `size` (a percentage across the edge), `length` (golib's: a percentage along it, centred; default 100), golib's `minimumSize` (default 10) and `minimumLength` (default 20); a movable Drawer's `floating`, `floatX`, `floatY`, `floatWidth` and `floatHeight` (percentages of the Window) | — | `opened`, `closed`, golib's `resized(size, length)`, a movable Drawer's `placed(x, y, width, height)` | `open()`, `close()`, `toggle()`, `resizeBy`, `moveBy` |
-| `FolderDialog` | `title`, `helpText`, `dim`, `preview`, palette; its children are fields | `currentFolder`, `selectedFolder` | — | `accepted(selectedFolder)`, `rejected`, `closed` | `open()`, `close()` |
+| `Drawer` | `modal` (default true), golib's `resizable` (default false), `windowResize`, `movable` and `moveButton` (see Window controls); one child, its content, and any number of Shortcuts; `keyScope` (as the Dialog's) | `edge` (`Tui.Left`, `Right`, `Top`, `Bottom`, or golib's `Center`: floating in the middle, `length` wide and `size` high), `size` (a percentage across the edge), `length` (golib's: a percentage along it, centred; default 100), golib's `minimumSize` (default 10) and `minimumLength` (default 20); a movable Drawer's `floating`, `floatX`, `floatY`, `floatWidth` and `floatHeight` (percentages of the Window) | — | `opened`, `closed`, golib's `resized(size, length)`, a movable Drawer's `placed(x, y, width, height)` | `open()`, `close()`, `toggle()`, `resizeBy`, `moveBy` |
+| `FolderDialog` | `title`, `helpText`, `dim`, `preview`, `keyScope` (as the Dialog's), palette; its children are fields | `currentFolder`, `selectedFolder` | — | `accepted(selectedFolder)`, `rejected`, `closed` | `open()`, `close()` |
 | `Repeater`, `Instantiator` | `model` | — | — | — | — |
 | `DelegateChooser` | `role` | — | — | — | — |
 | `DelegateChoice` | `roleValue` | — | — | — | — |
@@ -138,10 +138,22 @@ from); setter and readable `text`; `accepted(text)`, `textEdited(text)`;
 cleared by its group included, before its `triggered`.
 
 **`Shortcut`** — Qt's key sequence: modifiers joined by `+` (`Ctrl`, `Alt`,
-`Shift`) and a key name (`Esc`, `F10`, `Space`…) or one character. A letter's
-case is its Shift, as in Qt: `"c"` or `"C"` is the key c, and `"Shift+C"` is the
-capital, whether a terminal delivers it as `C` or as Shift and c. With Ctrl or
-Alt, case is not relied on (`Ctrl+Q` matches however it arrives).
+`Shift`, `Super`) and a key name (`Esc`, `F10`, `Space`, `Menu`…) or one character (`+` and `,`
+included: `Ctrl++`, `Ctrl+,`). A letter's case is its Shift, as in Qt: `"c"` or `"C"` is the key c,
+and `"Shift+C"` is the capital, whether a terminal delivers it as `C` or as Shift and c. With Ctrl or
+Alt, a Ctrl+Shift letter also matches a Shortcut written without Shift, since a terminal may not
+report it (`Ctrl+Q` matches however it arrives); one written with Shift wins its own key. A key held
+with Hyper or Meta matches nothing. `meta` reads as Alt (golib's; Qt's Meta is `Super` here). A
+sequence of several chords, `"Ctrl+K, Ctrl+C"`, is refused by name.
+
+**Overridable keys: `keyId`.** `sequence: keyId("id")` names a key command the host declared with
+`KeyCommands`: its keys are the App's key map's, so a user's key-mapping scheme (`Keymap`) moves it,
+live. Every golib widget's keys are commands too (`tui.list.down`, `tui.editor.vim.normal.undo`,
+`tui.window.menu` for F10): see [`tui/keymap`](../keymap/README.md). A `keyId` Shortcut belongs to its
+command's scope: a `Window`'s is `global`; a `FocusScope`'s, `Dialog`'s, `FolderDialog`'s or
+`Drawer`'s is its `keyScope`. One naming no declared command, in a holder with no `keyScope`, or in a
+holder of another scope is refused with its position. A label's mnemonic (`&File`) is not a command:
+it is the label's, and stays on English's letter.
 
 A Shortcut is live while focus is inside the element that declares it:
 - a `Window`'s everywhere;
@@ -440,6 +452,10 @@ not decode is placed as given.
 | function | yields | takes |
 | --- | --- | --- |
 | `qsTrId(id)` | the catalog message `id`, shown in the App's language by the widget it reaches | one non-empty string; anything else is refused at its position |
+| `keyId(id)` | the key command `id`, its keys the App's key map's: for `Shortcut.sequence` and `MenuItem.shortcut` | one non-empty string; anything else is refused at its position |
+
+Every item's `keyScope` is readable in a handler (`field.keyScope`): its own key-map scope, or the
+nearest enclosing one's, read live (an Editor's follows its mode).
 
 ### Attached properties
 
@@ -820,6 +836,8 @@ with this contract alone. See [USAGE.md §6](USAGE.md#6-your-own-go-widgets-in-q
 | `Types(t…)` / `Files(src)` | your widgets; the file dialogs' filesystem |
 | `ErrorSink(fn)` | handler errors as they happen (default: kept, returned by Run) |
 | `Translations(fs, dir, prefix)` | the program's catalogs, `dir/<prefix>_<language>.xml` in Qt's TS XML, layered over golib's; the language is the App's (`AppOptions(tui.WithLanguage(tag))`, then `App().SetLanguage(tag)`) — see [USAGE.md §7c](USAGE.md#7c-languages) |
+| `KeyCommands(cmd…)` | the program's key commands (`keymap.Command`: an id, a scope, default keys), beside golib's — what `keyId` names and a scheme may rebind |
+| `Keymap(fs, file)` | a key-mapping scheme layer: `file`, Qt Creator's keyboard-mapping-scheme XML; layers apply in order; a missing file is an empty layer — see [USAGE.md §7d](USAGE.md#7d-key-maps) |
 | `HotReload(opts…)` | follow the files while running: `ReloadInterval`, `OnReload`, `OnReloadError` — see [USAGE.md §8](USAGE.md#8-reloading) |
 | `AppOptions`, `AdapterOptions`, `TreeOptions`, `WithRegistry` | pass-throughs |
 
@@ -835,7 +853,8 @@ colours by dotted name (`"app.inactive.highlight"` → `"brightblack"`), for a
 program handing the theme to something outside its layout.
 
 Methods: `Run`, `Quit`, `Post` (any goroutine), `Set`, `SetMany`, `Find`,
-`FindAs[W]`, `Call`, `Reload`, and `Tree`, `Adapter`, `App`, `Root`. `Value(v)`
+`FindAs[W]`, `Call`, `Reload`, `KeyScope(id)` and `KeyBindings(id)` (the key-map scope and the
+bindings that reach a component, on the loop goroutine), and `Tree`, `Adapter`, `App`, `Root`. `Value(v)`
 converts a Go value, a `tui.Message` included; `Arg(args, i)` reads a handler argument.
 
 ## Testing
@@ -848,7 +867,13 @@ and reports every problem. Package [`decltest`](decltest/) wraps it for `go test
 `decltest.Run(t, w, h, opts…)`. `CheckLanguages(opts…)` (`decltest.CheckLanguages(t,
 opts…)`) is the language walk: every language the catalogs hold, golib's and the program's,
 judged for messages English lacks, markers on another letter than English's, and menu rows
-of one level sharing a key. See [USAGE.md §11](USAGE.md#11-testing-a-qml-screen).
+of one level sharing a key. `CheckKeymap(opts…)` (`decltest.CheckKeymap(t, opts…)`) is the key-map
+check: what `keymap.Build` refuses, a `keyId` in the wrong holder, a fixed sequence on a command's key
+in its scope, and a global key taking a menu's Alt+letter; a key an inner scope shares with an outer
+one is a warning, logged (`decltest.CheckKeymapStrict` fails on it), when one of the two is the
+program's command or a key its Keymap moved: golib's own defaults sharing a key (Tab completes in a
+`TextField` and moves focus) are golib's design, not the program's warning. See
+[USAGE.md §11](USAGE.md#11-testing-a-qml-screen).
 
 ## Adapter options
 

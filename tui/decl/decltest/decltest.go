@@ -44,6 +44,28 @@ func CheckLanguages(t testing.TB, opts ...tuidecl.ProgramOption) {
 	report(t, tuidecl.CheckLanguages(opts...))
 }
 
+// CheckKeymap is tuidecl.CheckKeymap as a test: each problem is a t.Error, and each warning (an inner
+// key shared with Global or App, legal by decision) a t.Log.
+func CheckKeymap(t testing.TB, opts ...tuidecl.ProgramOption) {
+	t.Helper()
+	warnings, err := tuidecl.CheckKeymap(opts...)
+	for _, w := range warnings {
+		t.Log("keymap warning: " + w.String())
+	}
+	report(t, err)
+}
+
+// CheckKeymapStrict is CheckKeymap with every warning a t.Error too: for a program that wants no key
+// shadowed at all.
+func CheckKeymapStrict(t testing.TB, opts ...tuidecl.ProgramOption) {
+	t.Helper()
+	warnings, err := tuidecl.CheckKeymap(opts...)
+	for _, w := range warnings {
+		t.Error("keymap warning: " + w.String())
+	}
+	report(t, err)
+}
+
 func report(t testing.TB, err error) {
 	t.Helper()
 	if err == nil {

@@ -150,7 +150,7 @@ func appTypes() []Type {
 			Signals:   map[string][]string{"accepted": {"selectedFile"}},
 			Destroyed: releaseDialog},
 		{Name: "FolderDialog", Build: buildFolderDialog,
-			Ctor:    []string{"title", "helpText", "dim", "preview"},
+			Ctor:    []string{"title", "helpText", "dim", "preview", "keyScope"},
 			restyle: restyleDialog,
 			Setters: map[string]Setter{
 				"source":         setter("a FolderDialog", fileSourceOf, (*dialogNode).setSource),
@@ -161,7 +161,7 @@ func appTypes() []Type {
 			Signals:   map[string][]string{"accepted": {"selectedFolder"}},
 			Destroyed: releaseDialog},
 		{Name: "Dialog", Build: buildDialog,
-			Ctor:    []string{"title", "helpText", "dim", "width", "standardButtons", "defaultButton"},
+			Ctor:    []string{"title", "helpText", "dim", "width", "standardButtons", "defaultButton", "keyScope"},
 			restyle: restyleDialog,
 			Setters: map[string]Setter{
 				"title":    textSetter("a Dialog", (*dialogNode).setTitle, (*dialogNode).setTitleMessage),
