@@ -10,6 +10,7 @@ import (
 
 	"github.com/yongjohnlee80/golib/errs"
 	"github.com/yongjohnlee80/golib/tui"
+	"github.com/yongjohnlee80/golib/tui/keymap"
 	"github.com/yongjohnlee80/golib/tui/style"
 )
 
@@ -657,6 +658,14 @@ func (t *TerminalTabs) Render(s tui.Surface) {
 			drawText(s, 0, 1, truncate(message, w, s.StringWidth), t.strip.tab)
 		}
 	}
+}
+
+// KeyScope is the key-map scope of a TerminalTabs' strip.
+func (t *TerminalTabs) KeyScope() keymap.Scope { return TabStripScope }
+
+// KeyBindings is the strip's commands as m binds them (tui.KeyBinder).
+func (t *TerminalTabs) KeyBindings(m *keymap.Map) []keymap.Binding {
+	return tui.BindingsOf(m, tabStripCommands...)
 }
 
 func (t *TerminalTabs) HandleEvent(ev tui.Event) bool {

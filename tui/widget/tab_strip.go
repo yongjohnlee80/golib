@@ -6,6 +6,7 @@ import (
 	"strings"
 
 	"github.com/yongjohnlee80/golib/tui"
+	"github.com/yongjohnlee80/golib/tui/keymap"
 	"github.com/yongjohnlee80/golib/tui/style"
 )
 
@@ -465,45 +466,62 @@ func (s *tabStrip) render(sur tui.Surface, w int) {
 	}
 }
 
-// key is the strip's keys: + and Enter on the focused strip; Ctrl+PgUp/PgDn, and ←/→ and [/] on the
-// focused strip, choose the tab before or after the active one, round.
-func (s *tabStrip) key(e tui.KeyEvent) bool {
-	if e.Kind == tui.KeyRelease {
-		return false
+// stripKey is what a key does to a strip.
+type stripKey int
+
+const (
+	stripNone stripKey = iota
+	stripAdd           // + : what the strip offers to add
+	stripMenu          // Enter: the active tab's menu
+	stripPrev          // the tab before the active one, round
+	stripNext          // the tab after it
+)
+
+// keyOf is what e does to the strip (TabStripScope): + and Enter on the focused strip, when it has
+// something to add and a menu; Ctrl+PgUp/PgDn, and ←/→ and [/] on the focused strip, a step.
+func (s *tabStrip) keyOf(e tui.KeyEvent, focused, hasAdd, menuShown bool) stripKey {
+	cmd, ok := s.base.Context().KeyCommand(e, tabStripCommands...)
+	switch {
+	case !ok:
+		return stripNone
+	case cmd.ID == TabStripPrev.ID:
+		return stripPrev
+	case cmd.ID == TabStripNext.ID:
+		return stripNext
+	case !focused:
+		return stripNone
+	case cmd.ID == TabStripLeft.ID:
+		return stripPrev
+	case cmd.ID == TabStripRight.ID:
+		return stripNext
+	case cmd.ID == TabStripAdd.ID && hasAdd:
+		return stripAdd
+	case cmd.ID == TabStripMenu.ID && menuShown:
+		return stripMenu
 	}
-	focused := s.base.focused() && e.Mods.Chord() == 0
-	if focused {
-		if e.Text == "+" && s.hasAdd() {
-			s.add(tui.Point{X: s.addX(), Y: 1})
-			return true
-		}
-		if e.Code == tui.KeyEnter && s.menuShown() {
-			s.openMenu(s.active(), tui.Point{X: s.tabX(s.active()), Y: 1})
-			return true
-		}
+	return stripNone
+}
+
+// key acts on the strip's keys.
+func (s *tabStrip) key(e tui.KeyEvent) bool {
+	k := s.keyOf(e, s.base.focused(), s.hasAdd(), s.menuShown())
+	switch k {
+	case stripNone:
+		return false
+	case stripAdd:
+		s.add(tui.Point{X: s.addX(), Y: 1})
+		return true
+	case stripMenu:
+		s.openMenu(s.active(), tui.Point{X: s.tabX(s.active()), Y: 1})
+		return true
 	}
 	tabs := s.tabs()
 	if len(tabs) == 0 {
 		return false
 	}
-	delta := 0
-	if e.Mods.Chord() == tui.ModCtrl {
-		if e.Code == tui.KeyPageUp {
-			delta = -1
-		}
-		if e.Code == tui.KeyPageDown {
-			delta = 1
-		}
-	} else if focused {
-		if e.Code == tui.KeyLeft || e.Code == '[' {
-			delta = -1
-		}
-		if e.Code == tui.KeyRight || e.Code == ']' {
-			delta = 1
-		}
-	}
-	if delta == 0 {
-		return false
+	delta := 1
+	if k == stripPrev {
+		delta = -1
 	}
 	if i := s.tabIndex(); i >= 0 {
 		s.choose(tabs[(i+delta+len(tabs))%len(tabs)].id)
@@ -729,6 +747,14 @@ func (t *TabStrip) Render(s tui.Surface) {
 	if w := s.Size().W; w > 0 && s.Size().H > 0 {
 		t.core.render(s, w)
 	}
+}
+
+// KeyScope is a TabStrip's key-map scope.
+func (t *TabStrip) KeyScope() keymap.Scope { return TabStripScope }
+
+// KeyBindings is the strip's commands as m binds them (tui.KeyBinder).
+func (t *TabStrip) KeyBindings(m *keymap.Map) []keymap.Binding {
+	return tui.BindingsOf(m, tabStripCommands...)
 }
 
 func (t *TabStrip) HandleEvent(ev tui.Event) bool {

@@ -13,9 +13,10 @@ import (
 // keyGridDiff drives the oracle and the converted decision over one grid of events and reports every
 // disagreement that is not a listed, reasoned deviation.
 
-// gridCodes are the keys the grid presses: every key a phase-1 widget binds, and some no widget does.
+// gridCodes are the keys the grid presses: every key a converted widget binds, and some no widget does.
 var gridCodes = []rune{
 	'a', 'g', 'j', 'k', 'h', 'l', 'x', 'q', 'G', 'J', 'K', 'H', 'L', ' ', '?', '/', '0', '$',
+	'[', ']', '+', '=',
 	tui.KeyUp, tui.KeyDown, tui.KeyLeft, tui.KeyRight, tui.KeyHome, tui.KeyEnd,
 	tui.KeyPageUp, tui.KeyPageDown, tui.KeyEnter, tui.KeyTab, tui.KeyEscape, tui.KeyBackspace,
 	tui.KeyDelete, tui.KeyInsert, tui.KeyF1, tui.KeyF2, tui.KeyF10, tui.KeyMenu,

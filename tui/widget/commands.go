@@ -228,6 +228,49 @@ var (
 	modalCommands = []keymap.Command{ModalDismiss, ModalAccept, ModalPrev, ModalNext, ModalVimPrev, ModalVimNext}
 )
 
+// ctrlAny is key under Ctrl with every set of Shift, Alt and Super, as a handler that tested only
+// for Ctrl took it.
+func ctrlAny(key string) []string {
+	var out []string
+	for _, alt := range []string{"", "Alt+"} {
+		for _, super := range []string{"", "Super+"} {
+			for _, shift := range []string{"", "Shift+"} {
+				out = append(out, "Ctrl+"+alt+super+shift+key)
+			}
+		}
+	}
+	return out
+}
+
+// TabsScope is a Tabs container's keys. The arrows and brackets choose a tab while the bar itself has
+// focus; Ctrl+PgUp and Ctrl+PgDn while focus is anywhere in it.
+const TabsScope keymap.Scope = "tui.tabs"
+
+var (
+	TabsPrev  = cmd("tui.tabs.prev", TabsScope, ctrlAny("PgUp")...)
+	TabsNext  = cmd("tui.tabs.next", TabsScope, ctrlAny("PgDown")...)
+	TabsLeft  = cmd("tui.tabs.left", TabsScope, "Left", "[") // the bar focused
+	TabsRight = cmd("tui.tabs.right", TabsScope, "Right", "]")
+
+	tabsCommands = []keymap.Command{TabsPrev, TabsNext, TabsLeft, TabsRight}
+)
+
+// TabStripScope is a TabStrip's and a TerminalTabs' strip keys. Ctrl+PgUp and Ctrl+PgDn choose a tab
+// while focus is anywhere in the owner; the rest while the strip itself has focus.
+const TabStripScope keymap.Scope = "tui.tabStrip"
+
+var (
+	TabStripPrev  = cmd("tui.tabStrip.prev", TabStripScope, "Ctrl+PgUp")
+	TabStripNext  = cmd("tui.tabStrip.next", TabStripScope, "Ctrl+PgDown")
+	TabStripLeft  = cmd("tui.tabStrip.left", TabStripScope, "Left", "[")
+	TabStripRight = cmd("tui.tabStrip.right", TabStripScope, "Right", "]")
+	TabStripAdd   = cmd("tui.tabStrip.add", TabStripScope, "+")      // with something to add
+	TabStripMenu  = cmd("tui.tabStrip.menu", TabStripScope, "Enter") // with a menu: the active tab's
+
+	tabStripCommands = []keymap.Command{TabStripAdd, TabStripMenu, TabStripPrev, TabStripNext,
+		TabStripLeft, TabStripRight}
+)
+
 // WindowMenu opens and leaves the window's menu bar (a declarative Window's): F10, as a desktop's
 // toolkit binds it. It is not a mnemonic; a category's Alt+letter is.
 var WindowMenu = cmd("tui.window.menu", keymap.Global, "F10", "Super+F10")
@@ -243,6 +286,8 @@ func KeyCommands() []keymap.Command {
 	out = append(out, menuCommands...)
 	out = append(out, ButtonActivate, WindowMenu)
 	out = append(out, modalCommands...)
+	out = append(out, tabsCommands...)
+	out = append(out, tabStripCommands...)
 	out = append(out, EditorCommands()...)
 	return out
 }

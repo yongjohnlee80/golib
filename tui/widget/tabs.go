@@ -3,6 +3,7 @@ package widget
 import (
 	"github.com/yongjohnlee80/golib/errs"
 	"github.com/yongjohnlee80/golib/tui"
+	"github.com/yongjohnlee80/golib/tui/keymap"
 	"github.com/yongjohnlee80/golib/tui/style"
 )
 
@@ -240,31 +241,12 @@ func cellLabel(label string) string { return " " + label + " " }
 func (t *Tabs) HandleEvent(ev tui.Event) bool {
 	switch e := ev.(type) {
 	case tui.KeyEvent:
-		if e.Kind == tui.KeyRelease {
+		d := t.keyDelta(e, t.focused())
+		if d == 0 {
 			return false
 		}
-		if e.Mods&tui.ModCtrl != 0 {
-			switch e.Code {
-			case tui.KeyPageUp:
-				t.cycle(-1)
-				return true
-			case tui.KeyPageDown:
-				t.cycle(1)
-				return true
-			}
-			return false
-		}
-		if t.focused() && e.Mods.Chord() == 0 {
-			switch e.Code {
-			case '[', tui.KeyLeft:
-				t.cycle(-1)
-				return true
-			case ']', tui.KeyRight:
-				t.cycle(1)
-				return true
-			}
-		}
-		return false
+		t.cycle(d)
+		return true
 
 	case tui.MouseEvent:
 		if e.Kind != tui.MousePress || e.Button != tui.MouseLeft || e.Y != 0 {
@@ -283,6 +265,31 @@ func (t *Tabs) HandleEvent(ev tui.Event) bool {
 	}
 	return false
 }
+
+// keyDelta is the step a key takes from the active tab: -1, 1, or 0 for a key that is not the
+// container's. The arrows and brackets are the content's unless the bar itself has focus.
+func (t *Tabs) keyDelta(e tui.KeyEvent, focused bool) int {
+	cmd, ok := t.Context().KeyCommand(e, tabsCommands...)
+	switch {
+	case !ok:
+		return 0
+	case cmd.ID == TabsPrev.ID:
+		return -1
+	case cmd.ID == TabsNext.ID:
+		return 1
+	case !focused:
+		return 0
+	case cmd.ID == TabsLeft.ID:
+		return -1
+	}
+	return 1
+}
+
+// KeyScope is a Tabs container's key-map scope.
+func (t *Tabs) KeyScope() keymap.Scope { return TabsScope }
+
+// KeyBindings is the Tabs container's commands as m binds them (tui.KeyBinder).
+func (t *Tabs) KeyBindings(m *keymap.Map) []keymap.Binding { return tui.BindingsOf(m, tabsCommands...) }
 
 // Layout gives the bar one row and the active content the rest.
 func (t *Tabs) Layout(c tui.Constraints) tui.Size {
