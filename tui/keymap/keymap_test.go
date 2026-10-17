@@ -199,7 +199,8 @@ func TestParseSchemeRefuses(t *testing.T) {
 		name, xml, want string
 	}{
 		{"empty file", ``, "no <mapping>"},
-		{"not xml", `<mapping>`, "not well-formed"},
+		{"not xml", `<mapping>`, "XML syntax error"},
+		{"not xml before the root", `<mapping`, "not well-formed"},
 		{"wrong root", `<keymap/>`, "<keymap> where <mapping>"},
 		{"two roots", `<mapping/><mapping/>`, "<mapping> where <mapping> is the root"},
 		{"unknown element", `<mapping><shortcuts id="a"/></mapping>`, "only <shortcut> belongs"},
