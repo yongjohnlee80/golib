@@ -300,9 +300,293 @@ var (
 	resizableCommands = []keymap.Command{ResizableCancel, ResizableLeft, ResizableRight, ResizableUp, ResizableDown}
 )
 
+// SelectScope is a closed Select's keys.
+const SelectScope keymap.Scope = "tui.select"
+
+// SelectOpen opens a Select's options.
+var SelectOpen = cmd("tui.select.open", SelectScope, "Enter", "Shift+Enter", "Space", "Down", "Shift+Down")
+
+// SelectPopupScope is an open Select's options. Its keys take any modifier, as its handler did. j and
+// k move only where the select does not filter: a filter spends every letter on its query.
+const SelectPopupScope keymap.Scope = "tui.select.popup"
+
+var (
+	SelectClose     = cmd("tui.select.popup.close", SelectPopupScope, chords("Esc", always)...)
+	SelectCommit    = cmd("tui.select.popup.commit", SelectPopupScope, chords("Enter", always)...)
+	SelectUp        = cmd("tui.select.popup.up", SelectPopupScope, chords("Up", always)...)
+	SelectDown      = cmd("tui.select.popup.down", SelectPopupScope, chords("Down", always)...)
+	SelectVimUp     = cmd("tui.select.popup.vimUp", SelectPopupScope, chords("K", unshifted)...)
+	SelectVimDown   = cmd("tui.select.popup.vimDown", SelectPopupScope, chords("J", unshifted)...)
+	SelectPageUp    = cmd("tui.select.popup.pageUp", SelectPopupScope, chords("PgUp", always)...)
+	SelectPageDown  = cmd("tui.select.popup.pageDown", SelectPopupScope, chords("PgDown", always)...)
+	SelectFirst     = cmd("tui.select.popup.first", SelectPopupScope, chords("Home", always)...)
+	SelectLast      = cmd("tui.select.popup.last", SelectPopupScope, chords("End", always)...)
+	SelectBackspace = cmd("tui.select.popup.backspace", SelectPopupScope, chords("Backspace", always)...) // the filter's last character
+
+	selectPopupCommands = []keymap.Command{SelectClose, SelectCommit, SelectUp, SelectDown, SelectVimUp,
+		SelectVimDown, SelectPageUp, SelectPageDown, SelectFirst, SelectLast, SelectBackspace}
+)
+
+// mods is key under every set of Shift, Ctrl, Alt and Super that keep accepts, Super always free: a
+// handler that tested one modifier and ignored the rest took the key under all of them.
+func mods(key string, keep func(shift, ctrl, alt bool) bool) []string {
+	var out []string
+	for _, shift := range []bool{false, true} {
+		for _, ctrl := range []bool{false, true} {
+			for _, alt := range []bool{false, true} {
+				if !keep(shift, ctrl, alt) {
+					continue
+				}
+				m := map[bool]string{true: "Ctrl+"}[ctrl] + map[bool]string{true: "Alt+"}[alt]
+				for _, super := range []string{"", "Super+"} {
+					out = append(out, m+super+map[bool]string{true: "Shift+"}[shift]+key)
+				}
+			}
+		}
+	}
+	return out
+}
+
+// TextAreaScope is a TextArea's keys. Shift extends the selection, Ctrl or Alt moves by word, and Ctrl
+// on Home and End goes to the text's start and end; typed text is not a command.
+const TextAreaScope keymap.Scope = "tui.textarea"
+
+var (
+	lineKey  = func(shift, ctrl, _ bool) bool { return !shift && !ctrl }
+	lineSel  = func(shift, ctrl, _ bool) bool { return shift && !ctrl }
+	textKey  = func(shift, ctrl, _ bool) bool { return !shift && ctrl }
+	textSel  = func(shift, ctrl, _ bool) bool { return shift && ctrl }
+	anyCombo = func(bool, bool, bool) bool { return true }
+
+	TextAreaNewline         = cmd("tui.textarea.newline", TextAreaScope, mods("Enter", anyCombo)...)
+	TextAreaBackspace       = cmd("tui.textarea.backspace", TextAreaScope, mods("Backspace", anyCombo)...)
+	TextAreaDelete          = cmd("tui.textarea.delete", TextAreaScope, mods("Del", anyCombo)...)
+	TextAreaLeft            = cmd("tui.textarea.left", TextAreaScope, chords("Left", plain)...)
+	TextAreaSelectLeft      = cmd("tui.textarea.selectLeft", TextAreaScope, chords("Left", shifted)...)
+	TextAreaWordLeft        = cmd("tui.textarea.wordLeft", TextAreaScope, chords("Left", worded)...)
+	TextAreaSelectWordLeft  = cmd("tui.textarea.selectWordLeft", TextAreaScope, chords("Left", both)...)
+	TextAreaRight           = cmd("tui.textarea.right", TextAreaScope, chords("Right", plain)...)
+	TextAreaSelectRight     = cmd("tui.textarea.selectRight", TextAreaScope, chords("Right", shifted)...)
+	TextAreaWordRight       = cmd("tui.textarea.wordRight", TextAreaScope, chords("Right", worded)...)
+	TextAreaSelectWordRight = cmd("tui.textarea.selectWordRight", TextAreaScope, chords("Right", both)...)
+	TextAreaUp              = cmd("tui.textarea.up", TextAreaScope, chords("Up", unshifted)...)
+	TextAreaSelectUp        = cmd("tui.textarea.selectUp", TextAreaScope, chords("Up", anyShift)...)
+	TextAreaDown            = cmd("tui.textarea.down", TextAreaScope, chords("Down", unshifted)...)
+	TextAreaSelectDown      = cmd("tui.textarea.selectDown", TextAreaScope, chords("Down", anyShift)...)
+	TextAreaPageUp          = cmd("tui.textarea.pageUp", TextAreaScope, chords("PgUp", unshifted)...)
+	TextAreaSelectPageUp    = cmd("tui.textarea.selectPageUp", TextAreaScope, chords("PgUp", anyShift)...)
+	TextAreaPageDown        = cmd("tui.textarea.pageDown", TextAreaScope, chords("PgDown", unshifted)...)
+	TextAreaSelectPageDown  = cmd("tui.textarea.selectPageDown", TextAreaScope, chords("PgDown", anyShift)...)
+	TextAreaHome            = cmd("tui.textarea.home", TextAreaScope, mods("Home", lineKey)...)
+	TextAreaSelectHome      = cmd("tui.textarea.selectHome", TextAreaScope, mods("Home", lineSel)...)
+	TextAreaStart           = cmd("tui.textarea.start", TextAreaScope, mods("Home", textKey)...)
+	TextAreaSelectStart     = cmd("tui.textarea.selectStart", TextAreaScope, mods("Home", textSel)...)
+	TextAreaEnd             = cmd("tui.textarea.end", TextAreaScope, mods("End", lineKey)...)
+	TextAreaSelectEnd       = cmd("tui.textarea.selectEnd", TextAreaScope, mods("End", lineSel)...)
+	TextAreaFinish          = cmd("tui.textarea.finish", TextAreaScope, mods("End", textKey)...)
+	TextAreaSelectFinish    = cmd("tui.textarea.selectFinish", TextAreaScope, mods("End", textSel)...)
+	TextAreaLineStart       = cmd("tui.textarea.lineStart", TextAreaScope, readline("A")...)
+	TextAreaLineEnd         = cmd("tui.textarea.lineEnd", TextAreaScope, readline("E")...)
+	TextAreaKillLine        = cmd("tui.textarea.killLine", TextAreaScope, readline("U")...)
+	TextAreaKillWord        = cmd("tui.textarea.killWord", TextAreaScope, readline("W")...)
+
+	textAreaCommands = []keymap.Command{TextAreaNewline, TextAreaBackspace, TextAreaDelete,
+		TextAreaLeft, TextAreaSelectLeft, TextAreaWordLeft, TextAreaSelectWordLeft,
+		TextAreaRight, TextAreaSelectRight, TextAreaWordRight, TextAreaSelectWordRight,
+		TextAreaUp, TextAreaSelectUp, TextAreaDown, TextAreaSelectDown,
+		TextAreaPageUp, TextAreaSelectPageUp, TextAreaPageDown, TextAreaSelectPageDown,
+		TextAreaHome, TextAreaSelectHome, TextAreaStart, TextAreaSelectStart,
+		TextAreaEnd, TextAreaSelectEnd, TextAreaFinish, TextAreaSelectFinish,
+		TextAreaLineStart, TextAreaLineEnd, TextAreaKillLine, TextAreaKillWord}
+)
+
+// HTMLViewScope is an HTMLView's keys. The arrows, PgUp, PgDn, Home, End and Esc take any modifier, as
+// its handler did; the letters and Space take none.
+const HTMLViewScope keymap.Scope = "tui.htmlview"
+
+var (
+	HTMLViewUp       = cmd("tui.htmlview.up", HTMLViewScope, append(mods("Up", anyCombo), "K")...)
+	HTMLViewDown     = cmd("tui.htmlview.down", HTMLViewScope, append(mods("Down", anyCombo), "J")...)
+	HTMLViewPageUp   = cmd("tui.htmlview.pageUp", HTMLViewScope, mods("PgUp", anyCombo)...)
+	HTMLViewPageDown = cmd("tui.htmlview.pageDown", HTMLViewScope, append(mods("PgDown", anyCombo), "Space")...)
+	HTMLViewHalfUp   = cmd("tui.htmlview.halfUp", HTMLViewScope, "Ctrl+U")
+	HTMLViewHalfDown = cmd("tui.htmlview.halfDown", HTMLViewScope, "Ctrl+D")
+	HTMLViewTop      = cmd("tui.htmlview.top", HTMLViewScope, append(mods("Home", anyCombo), "G")...)
+	HTMLViewBottom   = cmd("tui.htmlview.bottom", HTMLViewScope, append(mods("End", anyCombo), "Shift+G")...)
+	HTMLViewCopy     = cmd("tui.htmlview.copy", HTMLViewScope, "Ctrl+C", "Y")
+	HTMLViewClear    = cmd("tui.htmlview.clearSelection", HTMLViewScope, mods("Esc", anyCombo)...) // with a selection
+
+	htmlViewCommands = []keymap.Command{HTMLViewUp, HTMLViewDown, HTMLViewPageUp, HTMLViewPageDown,
+		HTMLViewHalfUp, HTMLViewHalfDown, HTMLViewTop, HTMLViewBottom, HTMLViewCopy, HTMLViewClear}
+)
+
+// BufferViewScope is a BufferView's keys. The arrows, PgUp, PgDn, Home and End take any modifier, as
+// its handler did; Y takes none.
+const BufferViewScope keymap.Scope = "tui.bufferview"
+
+var (
+	BufferViewUp       = cmd("tui.bufferview.up", BufferViewScope, mods("Up", anyCombo)...)
+	BufferViewDown     = cmd("tui.bufferview.down", BufferViewScope, mods("Down", anyCombo)...)
+	BufferViewPageUp   = cmd("tui.bufferview.pageUp", BufferViewScope, mods("PgUp", anyCombo)...)
+	BufferViewPageDown = cmd("tui.bufferview.pageDown", BufferViewScope, mods("PgDown", anyCombo)...)
+	BufferViewTop      = cmd("tui.bufferview.top", BufferViewScope, mods("Home", anyCombo)...)
+	BufferViewBottom   = cmd("tui.bufferview.bottom", BufferViewScope, mods("End", anyCombo)...) // and follows the tail
+	BufferViewCopy     = cmd("tui.bufferview.copy", BufferViewScope, "Y")                        // the whole buffer
+
+	bufferViewCommands = []keymap.Command{BufferViewUp, BufferViewDown, BufferViewPageUp,
+		BufferViewPageDown, BufferViewTop, BufferViewBottom, BufferViewCopy}
+)
+
+// FileViewScope is a file chooser's own keys, heard as they bubble up from its parts. Each acts only
+// where it belongs: ~ and / in the listing, Enter in the filter field, Esc in the path field or with a
+// filter to clear, and Ctrl and h, j, k or l among the parts.
+const FileViewScope keymap.Scope = "tui.fileview"
+
+var (
+	FileViewHome       = cmd("tui.fileview.home", FileViewScope, "~")                              // the path field, ~/ written
+	FileViewFilter     = cmd("tui.fileview.filter", FileViewScope, "/")                            // the filter field
+	FileViewFilterDone = cmd("tui.fileview.filterDone", FileViewScope, mods("Enter", anyCombo)...) // back to the listing, the filter kept
+	FileViewCancel     = cmd("tui.fileview.cancel", FileViewScope, mods("Esc", anyCombo)...)       // the path field's folder put back, else the filter cleared
+	FileViewPartDown   = cmd("tui.fileview.partDown", FileViewScope, "Ctrl+J")
+	FileViewPartUp     = cmd("tui.fileview.partUp", FileViewScope, "Ctrl+K")
+	FileViewPreview    = cmd("tui.fileview.preview", FileViewScope, "Ctrl+L")
+	FileViewBack       = cmd("tui.fileview.back", FileViewScope, "Ctrl+H") // from the preview
+
+	fileViewCommands = []keymap.Command{FileViewHome, FileViewFilter, FileViewFilterDone, FileViewCancel,
+		FileViewPartDown, FileViewPartUp, FileViewPreview, FileViewBack}
+)
+
+// CommandLineScope is the command-line prompt's own keys: Tab and Shift+Tab complete, and with the
+// candidates' dropdown open, Down and Up move through it as they do. Each with any other modifier too.
+const CommandLineScope keymap.Scope = "tui.cmdline"
+
+var (
+	noShift   = func(shift, _, _ bool) bool { return !shift }
+	withShift = func(shift, _, _ bool) bool { return shift }
+
+	CmdlineComplete     = cmd("tui.cmdline.complete", CommandLineScope, mods("Tab", noShift)...)
+	CmdlineCompletePrev = cmd("tui.cmdline.completePrev", CommandLineScope, mods("Tab", withShift)...)
+	CmdlineNext         = cmd("tui.cmdline.next", CommandLineScope, mods("Down", anyCombo)...) // the dropdown open
+	CmdlinePrev         = cmd("tui.cmdline.prev", CommandLineScope, mods("Up", anyCombo)...)
+
+	cmdlineCommands = []keymap.Command{CmdlineComplete, CmdlineCompletePrev, CmdlineNext, CmdlinePrev}
+)
+
+// CommandLineReplaceScope is the keys of a command's replace question (:s with c): Y, N and Q, either
+// case, with any modifier, as its handler took them.
+const CommandLineReplaceScope keymap.Scope = "tui.cmdline.replace"
+
+var (
+	CmdlineReplaceYes  = cmd("tui.cmdline.replace.yes", CommandLineReplaceScope, mods("Y", anyCombo)...)
+	CmdlineReplaceNo   = cmd("tui.cmdline.replace.no", CommandLineReplaceScope, mods("N", anyCombo)...)
+	CmdlineReplaceQuit = cmd("tui.cmdline.replace.quit", CommandLineReplaceScope, mods("Q", anyCombo)...)
+
+	cmdlineReplaceCommands = []keymap.Command{CmdlineReplaceYes, CmdlineReplaceNo, CmdlineReplaceQuit}
+)
+
+// TerminalScope is a Terminal's own keys in input mode, where every other key is the program's: the
+// escape prefix (Ctrl+\, then Ctrl+n for normal mode or Ctrl+\ to send it; the key after it is its
+// grammar, not a command), Esc into normal mode with WithVimKeys outside a full-screen program, and,
+// once the program has exited, Enter or i to start one again.
+const TerminalScope keymap.Scope = "tui.terminal"
+
+var (
+	TerminalPrefix   = cmd("tui.terminal.prefix", TerminalScope, "Ctrl+\\", "Ctrl+Shift+\\")
+	TerminalToNormal = cmd("tui.terminal.normalMode", TerminalScope, "Esc")
+	TerminalRestart  = cmd("tui.terminal.restart", TerminalScope, append(mods("Enter", anyCombo), "I")...)
+
+	terminalCommands = []keymap.Command{TerminalPrefix, TerminalToNormal, TerminalRestart}
+)
+
+// TerminalNormalScope is a Terminal's normal mode: moving through its scrollback, selecting and
+// searching, as Vim reads the keys. The key after g is its grammar (g again: the first line).
+const TerminalNormalScope keymap.Scope = "tui.terminal.normal"
+
+var (
+	TermHalfUp     = cmd("tui.terminal.normal.halfUp", TerminalNormalScope, "Ctrl+U")
+	TermHalfDown   = cmd("tui.terminal.normal.halfDown", TerminalNormalScope, "Ctrl+D")
+	TermPageUp     = cmd("tui.terminal.normal.pageUp", TerminalNormalScope, "Ctrl+B", "PgUp", "Shift+PgUp")
+	TermPageDown   = cmd("tui.terminal.normal.pageDown", TerminalNormalScope, "Ctrl+F", "PgDown", "Shift+PgDown")
+	TermCancel     = cmd("tui.terminal.normal.cancel", TerminalNormalScope, "Esc", "Shift+Esc") // a selection or g; else the host's
+	TermInput      = cmd("tui.terminal.normal.input", TerminalNormalScope, "I", "A", "Enter", "Shift+Enter")
+	TermLeft       = cmd("tui.terminal.normal.left", TerminalNormalScope, "H", "Left", "Shift+Left")
+	TermRight      = cmd("tui.terminal.normal.right", TerminalNormalScope, "L", "Right", "Shift+Right")
+	TermDown       = cmd("tui.terminal.normal.down", TerminalNormalScope, "J", "Down", "Shift+Down")
+	TermUp         = cmd("tui.terminal.normal.up", TerminalNormalScope, "K", "Up", "Shift+Up")
+	TermLineStart  = cmd("tui.terminal.normal.lineStart", TerminalNormalScope, "0", "Home", "Shift+Home")
+	TermLineEnd    = cmd("tui.terminal.normal.lineEnd", TerminalNormalScope, "$", "End", "Shift+End")
+	TermWord       = cmd("tui.terminal.normal.wordForward", TerminalNormalScope, "W")
+	TermWordBack   = cmd("tui.terminal.normal.wordBackward", TerminalNormalScope, "B")
+	TermWordEnd    = cmd("tui.terminal.normal.wordEnd", TerminalNormalScope, "E")
+	TermGoPrefix   = cmd("tui.terminal.normal.goPrefix", TerminalNormalScope, "G") // then G: the first line
+	TermBottom     = cmd("tui.terminal.normal.bottom", TerminalNormalScope, "Shift+G")
+	TermVisual     = cmd("tui.terminal.normal.visual", TerminalNormalScope, "V")
+	TermVisualLine = cmd("tui.terminal.normal.visualLine", TerminalNormalScope, "Shift+V")
+	TermYank       = cmd("tui.terminal.normal.yank", TerminalNormalScope, "Y") // the selection
+	TermSearch     = cmd("tui.terminal.normal.search", TerminalNormalScope, "/")
+	TermSearchBack = cmd("tui.terminal.normal.searchBackward", TerminalNormalScope, "?")
+	TermNext       = cmd("tui.terminal.normal.next", TerminalNormalScope, "N")
+	TermPrev       = cmd("tui.terminal.normal.prev", TerminalNormalScope, "Shift+N")
+
+	terminalNormalCommands = []keymap.Command{TermHalfUp, TermHalfDown, TermPageUp, TermPageDown,
+		TermCancel, TermInput, TermLeft, TermRight, TermDown, TermUp, TermLineStart, TermLineEnd, TermWord,
+		TermWordBack, TermWordEnd, TermGoPrefix, TermBottom, TermVisual, TermVisualLine, TermYank,
+		TermSearch, TermSearchBack, TermNext, TermPrev}
+)
+
+// TerminalSearchScope is a Terminal's search line in normal mode: it takes every key while open; typed
+// text is not a command.
+const TerminalSearchScope keymap.Scope = "tui.terminal.search"
+
+var (
+	TermSearchClose     = cmd("tui.terminal.search.close", TerminalSearchScope, mods("Esc", anyCombo)...)
+	TermSearchRun       = cmd("tui.terminal.search.run", TerminalSearchScope, mods("Enter", anyCombo)...)
+	TermSearchBackspace = cmd("tui.terminal.search.backspace", TerminalSearchScope, mods("Backspace", anyCombo)...)
+
+	terminalSearchCommands = []keymap.Command{TermSearchClose, TermSearchRun, TermSearchBackspace}
+)
+
+// FloatScope is a modal Float's keys: Esc hides it.
+const FloatScope keymap.Scope = "tui.float"
+
+// FloatClose hides a modal Float.
+var FloatClose = cmd("tui.float.close", FloatScope, "Esc")
+
+// PopupScope is an anchored popup's keys (a menu's, a select's, a strip's): Esc dismisses it.
+const PopupScope keymap.Scope = "tui.popup"
+
+// PopupClose dismisses an anchored popup.
+var PopupClose = cmd("tui.popup.close", PopupScope, "Esc")
+
+// ImageScope is a scrollable Image's keys.
+const ImageScope keymap.Scope = "tui.image"
+
+var (
+	ImageDown     = cmd("tui.image.down", ImageScope, "Down", "J")
+	ImageUp       = cmd("tui.image.up", ImageScope, "Up", "K")
+	ImageRight    = cmd("tui.image.right", ImageScope, "Right", "L")
+	ImageLeft     = cmd("tui.image.left", ImageScope, "Left", "H")
+	ImagePageDown = cmd("tui.image.pageDown", ImageScope, "PgDown", "]", "Space")
+	ImagePageUp   = cmd("tui.image.pageUp", ImageScope, "PgUp", "[")
+	ImageBottom   = cmd("tui.image.bottom", ImageScope, "End", "Shift+G")
+	ImageTop      = cmd("tui.image.top", ImageScope, "Home", "G")
+
+	imageCommands = []keymap.Command{ImageDown, ImageUp, ImageRight, ImageLeft, ImagePageDown, ImagePageUp,
+		ImageBottom, ImageTop}
+)
+
 // WindowMenu opens and leaves the window's menu bar (a declarative Window's): F10, as a desktop's
 // toolkit binds it. It is not a mnemonic; a category's Alt+letter is.
 var WindowMenu = cmd("tui.window.menu", keymap.Global, "F10", "Super+F10")
+
+// DrawerScope is a declarative Drawer's own keys, after its Shortcuts: Esc closes it, and q too where
+// it says closeOnQ.
+const DrawerScope keymap.Scope = "tui.drawer"
+
+var (
+	DrawerClose    = cmd("tui.drawer.close", DrawerScope, "Esc")
+	DrawerCloseOnQ = cmd("tui.drawer.closeOnQ", DrawerScope, "Q") // with closeOnQ
+)
 
 // KeyCommands is every key command golib declares: the runtime's and every widget's, for keymap.Build.
 // (Commands is the Editor command line's registry; these are keys.)
@@ -313,12 +597,25 @@ func KeyCommands() []keymap.Command {
 	out = append(out, tableCommands...)
 	out = append(out, inputCommands...)
 	out = append(out, menuCommands...)
-	out = append(out, ButtonActivate, WindowMenu)
+	out = append(out, ButtonActivate, WindowMenu, DrawerClose, DrawerCloseOnQ)
 	out = append(out, modalCommands...)
 	out = append(out, tabsCommands...)
 	out = append(out, tabStripCommands...)
 	out = append(out, SplitCancel, SplitLeft, SplitRight, SplitUp, SplitDown)
 	out = append(out, resizableCommands...)
+	out = append(out, SelectOpen)
+	out = append(out, selectPopupCommands...)
+	out = append(out, textAreaCommands...)
+	out = append(out, htmlViewCommands...)
+	out = append(out, bufferViewCommands...)
+	out = append(out, fileViewCommands...)
+	out = append(out, cmdlineCommands...)
+	out = append(out, cmdlineReplaceCommands...)
+	out = append(out, terminalCommands...)
+	out = append(out, terminalNormalCommands...)
+	out = append(out, terminalSearchCommands...)
+	out = append(out, FloatClose, PopupClose)
+	out = append(out, imageCommands...)
 	out = append(out, EditorCommands()...)
 	return out
 }

@@ -91,27 +91,28 @@ func (n *normalState) key(t *Terminal, k tui.KeyEvent) bool {
 	if n.searching {
 		return n.searchKey(t, k)
 	}
-	mods := k.Mods.Chord()
-	if mods&(tui.ModAlt|tui.ModSuper|tui.ModHyper|tui.ModMeta) != 0 {
+	cmd, ok := t.Context().KeyCommand(k, terminalNormalCommands...)
+	if !ok {
+		if k.Mods.Chord()&(tui.ModCtrl|tui.ModAlt|tui.ModSuper|tui.ModHyper|tui.ModMeta) == 0 {
+			n.pendingG = false // g's grammar: an unbound key ends it, and is the host's
+		}
 		return false
 	}
 	h := max(t.h, 1)
-	if mods&tui.ModCtrl != 0 {
-		switch {
-		case isCtrl(k, 'u'):
-			n.scroll(t, -h/2)
-		case isCtrl(k, 'd'):
-			n.scroll(t, h/2)
-		case isCtrl(k, 'b'):
-			n.scroll(t, -h)
-		case isCtrl(k, 'f'):
-			n.scroll(t, h)
-		default:
-			return false
-		}
+	switch cmd.ID {
+	case TermHalfUp.ID:
+		n.scroll(t, -h/2)
 		return true
-	}
-	if k.Code == tui.KeyEscape {
+	case TermHalfDown.ID:
+		n.scroll(t, h/2)
+		return true
+	case TermPageUp.ID:
+		n.scroll(t, -h)
+		return true
+	case TermPageDown.ID:
+		n.scroll(t, h)
+		return true
+	case TermCancel.ID:
 		if n.visual != visualNone || n.pendingG {
 			n.visual, n.pendingG = visualNone, false
 			t.MarkDirty()
@@ -119,66 +120,44 @@ func (n *normalState) key(t *Terminal, k tui.KeyEvent) bool {
 		}
 		return false // nothing to cancel: the host's Esc (a drawer closes)
 	}
-	key := k.Text
-	switch k.Code {
-	case tui.KeyLeft:
-		key = "h"
-	case tui.KeyRight:
-		key = "l"
-	case tui.KeyUp:
-		key = "k"
-	case tui.KeyDown:
-		key = "j"
-	case tui.KeyHome:
-		key = "0"
-	case tui.KeyEnd:
-		key = "$"
-	case tui.KeyPageUp:
-		n.scroll(t, -h)
-		return true
-	case tui.KeyPageDown:
-		n.scroll(t, h)
-		return true
-	case tui.KeyEnter:
-		key = "\r"
-	}
 	if n.pendingG {
+		// g's grammar: g again is the first line; any other key is itself
 		n.pendingG = false
-		if key == "g" {
+		if cmd.ID == TermGoPrefix.ID {
 			n.line, n.col = 0, 0
 			n.moved(t)
 			return true
 		}
 	}
-	switch key {
-	case "i", "a", "\r":
+	switch cmd.ID {
+	case TermInput.ID:
 		t.setMode(TerminalInput)
-	case "h":
+	case TermLeft.ID:
 		n.col--
-	case "l":
+	case TermRight.ID:
 		n.col++
-	case "j":
+	case TermDown.ID:
 		n.line++
-	case "k":
+	case TermUp.ID:
 		n.line--
-	case "0":
+	case TermLineStart.ID:
 		n.col = 0
-	case "$":
+	case TermLineEnd.ID:
 		n.col = max(len(lineRunes(t.lineCells(n.line)))-1, 0)
-	case "w":
+	case TermWord.ID:
 		n.line, n.col = wordForward(t, n.line, n.col)
-	case "b":
+	case TermWordBack.ID:
 		n.line, n.col = wordBackward(t, n.line, n.col)
-	case "e":
+	case TermWordEnd.ID:
 		n.line, n.col = wordEnd(t, n.line, n.col)
-	case "g":
+	case TermGoPrefix.ID:
 		n.pendingG = true
 		return true
-	case "G":
+	case TermBottom.ID:
 		n.line, n.col = t.lineCount()-1, 0
-	case "v", "V":
+	case TermVisual.ID, TermVisualLine.ID:
 		mode := visualChar
-		if key == "V" {
+		if cmd.ID == TermVisualLine.ID {
 			mode = visualLine
 		}
 		if n.visual == mode {
@@ -189,7 +168,7 @@ func (n *normalState) key(t *Terminal, k tui.KeyEvent) bool {
 			}
 			n.visual = mode
 		}
-	case "y":
+	case TermYank.ID:
 		if n.visual == visualNone {
 			return true
 		}
@@ -197,14 +176,12 @@ func (n *normalState) key(t *Terminal, k tui.KeyEvent) bool {
 			ctx.CopyToClipboard(n.selection(t))
 		}
 		n.visual = visualNone
-	case "/", "?":
-		n.searching, n.backward, n.query = true, key == "?", ""
-	case "n", "N":
+	case TermSearch.ID, TermSearchBack.ID:
+		n.searching, n.backward, n.query = true, cmd.ID == TermSearchBack.ID, ""
+	case TermNext.ID, TermPrev.ID:
 		if n.last != "" {
-			n.search(t, n.last, n.backward != (key == "N"))
+			n.search(t, n.last, n.backward != (cmd.ID == TermPrev.ID))
 		}
-	default:
-		return false
 	}
 	n.moved(t)
 	return true
@@ -217,16 +194,17 @@ func (n *normalState) moved(t *Terminal) {
 
 // searchKey edits the search being typed on the bottom row.
 func (n *normalState) searchKey(t *Terminal, k tui.KeyEvent) bool {
+	cmd, isCmd := t.Context().KeyCommand(k, terminalSearchCommands...)
 	switch {
-	case k.Code == tui.KeyEscape:
+	case isCmd && cmd.ID == TermSearchClose.ID:
 		n.searching = false
-	case k.Code == tui.KeyEnter:
+	case isCmd && cmd.ID == TermSearchRun.ID:
 		n.searching = false
 		if n.query != "" {
 			n.last = n.query
 			n.search(t, n.query, n.backward)
 		}
-	case k.Code == tui.KeyBackspace:
+	case isCmd && cmd.ID == TermSearchBackspace.ID:
 		if r := []rune(n.query); len(r) > 0 {
 			n.query = string(r[:len(r)-1])
 		} else {

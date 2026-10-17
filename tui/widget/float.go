@@ -5,6 +5,7 @@ import (
 
 	"github.com/yongjohnlee80/golib/errs"
 	"github.com/yongjohnlee80/golib/tui"
+	"github.com/yongjohnlee80/golib/tui/keymap"
 	"github.com/yongjohnlee80/golib/tui/style"
 )
 
@@ -516,7 +517,7 @@ func (l *floatLayer) HandleEvent(ev tui.Event) bool {
 	}
 	switch e := ev.(type) {
 	case tui.KeyEvent:
-		if e.Kind != tui.KeyRelease && e.Code == tui.KeyEscape && e.Mods.Chord() == 0 {
+		if _, ok := l.Context().KeyCommand(e, FloatClose); ok {
 			l.owner.Hide()
 			return true
 		}
@@ -524,4 +525,15 @@ func (l *floatLayer) HandleEvent(ev tui.Event) bool {
 		return true // the modal backdrop swallows the mouse
 	}
 	return false
+}
+
+// KeyScope is a Float's key-map scope.
+func (l *floatLayer) KeyScope() keymap.Scope { return FloatScope }
+
+// KeyBindings is a modal Float's Esc as m binds it; a modeless Float has none (tui.KeyBinder).
+func (l *floatLayer) KeyBindings(m *keymap.Map) []keymap.Binding {
+	if !l.owner.modal {
+		return nil
+	}
+	return tui.BindingsOf(m, FloatClose)
 }

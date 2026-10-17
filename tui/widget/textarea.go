@@ -4,6 +4,7 @@ import (
 	"fmt"
 
 	"github.com/yongjohnlee80/golib/tui"
+	"github.com/yongjohnlee80/golib/tui/keymap"
 	"github.com/yongjohnlee80/golib/tui/style"
 )
 
@@ -198,19 +199,48 @@ func (t *TextArea) HandleEvent(ev tui.Event) bool {
 	return false
 }
 
+// keyCommand is the TextArea command e is, if any.
+func (t *TextArea) keyCommand(e tui.KeyEvent) (keymap.Command, bool) {
+	return t.Context().KeyCommand(e, textAreaCommands...)
+}
+
+// KeyScope is a TextArea's key-map scope.
+func (t *TextArea) KeyScope() keymap.Scope { return TextAreaScope }
+
+// KeyBindings is the TextArea's commands as m binds them (tui.KeyBinder). Typed text is not a command.
+func (t *TextArea) KeyBindings(m *keymap.Map) []keymap.Binding {
+	return tui.BindingsOf(m, textAreaCommands...)
+}
+
 func (t *TextArea) handleKey(e tui.KeyEvent) bool {
 	if e.Kind == tui.KeyRelease {
 		return false
 	}
-	shift := e.Mods&tui.ModShift != 0
-	ctrl := e.Mods&tui.ModCtrl != 0
-	word := e.Mods&(tui.ModCtrl|tui.ModAlt) != 0
-
-	switch e.Code {
-	case tui.KeyEnter:
-		t.insert("\n") // newline — no submit event (Q5)
+	cmd, ok := t.keyCommand(e)
+	if !ok {
+		if e.Text != "" && e.Mods&nonTextMods == 0 && e.Code != tui.KeyTab {
+			t.insert(e.Text)
+			return true
+		}
+		return false
+	}
+	id := cmd.ID
+	switch id {
+	case TextAreaSelectLeft.ID, TextAreaSelectWordLeft.ID, TextAreaSelectRight.ID, TextAreaSelectWordRight.ID,
+		TextAreaSelectUp.ID, TextAreaSelectDown.ID, TextAreaSelectPageUp.ID, TextAreaSelectPageDown.ID,
+		TextAreaSelectHome.ID, TextAreaSelectStart.ID, TextAreaSelectEnd.ID, TextAreaSelectFinish.ID:
+		t.handleMove(id, true)
 		return true
-	case tui.KeyBackspace:
+	case TextAreaLeft.ID, TextAreaWordLeft.ID, TextAreaRight.ID, TextAreaWordRight.ID, TextAreaUp.ID,
+		TextAreaDown.ID, TextAreaPageUp.ID, TextAreaPageDown.ID, TextAreaHome.ID, TextAreaStart.ID,
+		TextAreaEnd.ID, TextAreaFinish.ID:
+		t.handleMove(id, false)
+		return true
+	}
+	switch id {
+	case TextAreaNewline.ID:
+		t.insert("\n") // newline — no submit event (Q5)
+	case TextAreaBackspace.ID:
 		switch lo, hi, ok := t.selection(); {
 		case ok:
 			t.deleteRegion(lo, hi)
@@ -222,8 +252,7 @@ func (t *TextArea) handleKey(e tui.KeyEvent) bool {
 			return true
 		}
 		t.edited()
-		return true
-	case tui.KeyDelete:
+	case TextAreaDelete.ID:
 		switch lo, hi, ok := t.selection(); {
 		case ok:
 			t.deleteRegion(lo, hi)
@@ -235,11 +264,33 @@ func (t *TextArea) handleKey(e tui.KeyEvent) bool {
 			return true
 		}
 		t.edited()
-		return true
-	case tui.KeyLeft:
+	case TextAreaLineStart.ID:
+		t.desired = -1
+		t.moveTo(t.ln, 0, false)
+	case TextAreaLineEnd.ID:
+		t.desired = -1
+		t.moveTo(t.ln, len(t.lineClusters(t.ln)), false)
+	case TextAreaKillLine.ID:
+		if t.col > 0 {
+			t.deleteRegion(taPos{t.ln, 0}, taPos{t.ln, t.col})
+			t.edited()
+		}
+	case TextAreaKillWord.ID:
+		if ln, col := t.wordLeft(); ln == t.ln && col < t.col {
+			t.deleteRegion(taPos{ln, col}, taPos{t.ln, t.col})
+			t.edited()
+		}
+	}
+	return true
+}
+
+// handleMove moves the cursor by a movement command, extending the selection with shift.
+func (t *TextArea) handleMove(id string, shift bool) {
+	switch id {
+	case TextAreaLeft.ID, TextAreaSelectLeft.ID, TextAreaWordLeft.ID, TextAreaSelectWordLeft.ID:
 		t.desired = -1
 		switch {
-		case word:
+		case id == TextAreaWordLeft.ID || id == TextAreaSelectWordLeft.ID:
 			ln, col := t.wordLeft()
 			t.moveTo(ln, col, shift)
 		case t.col > 0:
@@ -249,11 +300,10 @@ func (t *TextArea) handleKey(e tui.KeyEvent) bool {
 		default:
 			t.moveTo(0, 0, shift)
 		}
-		return true
-	case tui.KeyRight:
+	case TextAreaRight.ID, TextAreaSelectRight.ID, TextAreaWordRight.ID, TextAreaSelectWordRight.ID:
 		t.desired = -1
 		switch {
-		case word:
+		case id == TextAreaWordRight.ID || id == TextAreaSelectWordRight.ID:
 			ln, col := t.wordRight()
 			t.moveTo(ln, col, shift)
 		case t.col < len(t.lineClusters(t.ln)):
@@ -263,68 +313,27 @@ func (t *TextArea) handleKey(e tui.KeyEvent) bool {
 		default:
 			t.moveTo(t.ln, t.col, shift)
 		}
-		return true
-	case tui.KeyUp:
+	case TextAreaUp.ID, TextAreaSelectUp.ID:
 		t.vertical(-1, shift)
-		return true
-	case tui.KeyDown:
+	case TextAreaDown.ID, TextAreaSelectDown.ID:
 		t.vertical(1, shift)
-		return true
-	case tui.KeyPageUp:
+	case TextAreaPageUp.ID, TextAreaSelectPageUp.ID:
 		t.vertical(-max(t.h, 1), shift)
-		return true
-	case tui.KeyPageDown:
+	case TextAreaPageDown.ID, TextAreaSelectPageDown.ID:
 		t.vertical(max(t.h, 1), shift)
-		return true
-	case tui.KeyHome:
+	case TextAreaHome.ID, TextAreaSelectHome.ID:
 		t.desired = -1
-		if ctrl {
-			t.moveTo(0, 0, shift)
-		} else {
-			t.moveTo(t.ln, 0, shift)
-		}
-		return true
-	case tui.KeyEnd:
+		t.moveTo(t.ln, 0, shift)
+	case TextAreaStart.ID, TextAreaSelectStart.ID:
 		t.desired = -1
-		if ctrl {
-			t.moveTo(len(t.lines)-1, len(t.lineClusters(len(t.lines)-1)), shift)
-		} else {
-			t.moveTo(t.ln, len(t.lineClusters(t.ln)), shift)
-		}
-		return true
+		t.moveTo(0, 0, shift)
+	case TextAreaEnd.ID, TextAreaSelectEnd.ID:
+		t.desired = -1
+		t.moveTo(t.ln, len(t.lineClusters(t.ln)), shift)
+	case TextAreaFinish.ID, TextAreaSelectFinish.ID:
+		t.desired = -1
+		t.moveTo(len(t.lines)-1, len(t.lineClusters(len(t.lines)-1)), shift)
 	}
-
-	if ctrl {
-		switch e.Code {
-		case 'a':
-			t.desired = -1
-			t.moveTo(t.ln, 0, false)
-			return true
-		case 'e':
-			t.desired = -1
-			t.moveTo(t.ln, len(t.lineClusters(t.ln)), false)
-			return true
-		case 'u':
-			if t.col > 0 {
-				t.deleteRegion(taPos{t.ln, 0}, taPos{t.ln, t.col})
-				t.edited()
-			}
-			return true
-		case 'w':
-			if ln, col := t.wordLeft(); ln == t.ln && col < t.col {
-				t.deleteRegion(taPos{ln, col}, taPos{t.ln, t.col})
-				t.edited()
-			}
-			return true
-		}
-		return false
-	}
-
-	if e.Text != "" && e.Mods&nonTextMods == 0 && e.Code != tui.KeyTab {
-		t.insert(e.Text)
-		return true
-	}
-	return false
 }
 
 // wrapWidth is the content width available for text (minus the scroll

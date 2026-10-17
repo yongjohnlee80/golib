@@ -8,6 +8,7 @@ import (
 
 	"github.com/yongjohnlee80/golib/errs"
 	"github.com/yongjohnlee80/golib/tui"
+	"github.com/yongjohnlee80/golib/tui/keymap"
 	"github.com/yongjohnlee80/golib/tui/pty"
 	"github.com/yongjohnlee80/golib/tui/style"
 	"github.com/yongjohnlee80/golib/tui/vt"
@@ -666,43 +667,98 @@ func isCtrl(k tui.KeyEvent, r rune) bool {
 	return k.Mods.Chord()&^tui.ModShift == tui.ModCtrl && (k.Code == r || k.Code == r-'a'+'A')
 }
 
-// inputKey handles a key in input mode.
-func (t *Terminal) inputKey(k tui.KeyEvent) bool {
-	if !t.running {
-		// After an exit or a failed start, Enter or i starts a program.
-		if t.exited && (k.Code == tui.KeyEnter || (k.Text == "i" && k.Mods.Chord() == 0)) {
-			_ = t.Start() // a failure shows on the screen again
-			return true
-		}
-		return false
-	}
-	if t.prefix {
-		t.prefix = false
+// termInput is what a key does in input mode.
+type termInput int
+
+const (
+	termNone       termInput = iota // not the Terminal's: it goes on to the host
+	termSend                        // the program's: encoded and sent
+	termRestart                     // a program started again, after an exit
+	termPrefix                      // the escape prefix armed
+	termToNormal                    // normal mode
+	termSendPrefix                  // the prefix's own byte sent (the prefix twice)
+	termSendBoth                    // the prefix's byte, then the key, sent (an unknown key after it)
+)
+
+// inputAct is what k does in input mode. Every key that is not one of the Terminal's commands, or is
+// one whose condition does not hold, is the program's.
+func inputAct(ctx *tui.Context, k tui.KeyEvent, running, exited, prefix, vimKeys, altScreen bool) termInput {
+	cmd, isCmd := ctx.KeyCommand(k, terminalCommands...)
+	switch {
+	case !running && exited && isCmd && cmd.ID == TerminalRestart.ID:
+		return termRestart // after an exit or a failed start, Enter or i starts a program
+	case !running:
+		return termNone
+	case prefix:
+		// the key after the prefix is its grammar: Ctrl+n for normal mode, the prefix again to send it
 		switch {
 		case isCtrl(k, 'n'):
-			t.setMode(TerminalNormal)
-			return true
-		case isCtrl(k, '\\'):
-			t.send([]byte{0x1c})
-			return true
+			return termToNormal
+		case isCmd && cmd.ID == TerminalPrefix.ID:
+			return termSendPrefix
 		}
+		return termSendBoth
+	case isCmd && cmd.ID == TerminalPrefix.ID:
+		return termPrefix
+	case isCmd && cmd.ID == TerminalToNormal.ID && vimKeys && !altScreen:
+		return termToNormal
+	}
+	return termSend
+}
+
+// inputKey handles a key in input mode.
+func (t *Terminal) inputKey(k tui.KeyEvent) bool {
+	act := inputAct(t.Context(), k, t.running, t.exited, t.prefix, t.cfg.vimKeys, t.running && t.scr.Modes().AltScreen)
+	if t.prefix && t.running {
+		t.prefix = false
+	}
+	switch act {
+	case termNone:
+		return false
+	case termRestart:
+		_ = t.Start() // a failure shows on the screen again
+	case termPrefix:
+		t.prefix = true
+	case termToNormal:
+		t.setMode(TerminalNormal)
+	case termSendPrefix:
+		t.send([]byte{0x1c})
+	case termSendBoth:
 		t.send([]byte{0x1c})
 		t.send(encodeKey(k, t.scr.Modes()))
-		return true
-	}
-	if isCtrl(k, '\\') {
-		t.prefix = true
-		return true
-	}
-	if k.Code == tui.KeyEscape && k.Mods.Chord() == 0 && t.cfg.vimKeys && !t.scr.Modes().AltScreen {
-		t.setMode(TerminalNormal)
-		return true
-	}
-	if b := encodeKey(k, t.scr.Modes()); b != nil {
+	case termSend:
+		b := encodeKey(k, t.scr.Modes())
+		if b == nil {
+			return false
+		}
 		t.send(b)
-		return true
 	}
-	return false
+	return true
+}
+
+// KeyScope is the scope of the Terminal's mode: its own keys in input mode, normal mode's, or the
+// search line's while one is open.
+func (t *Terminal) KeyScope() keymap.Scope {
+	switch {
+	case t.mode != TerminalNormal:
+		return TerminalScope
+	case t.normal.searching:
+		return TerminalSearchScope
+	}
+	return TerminalNormalScope
+}
+
+// KeyBindings is the commands of the Terminal's mode as m binds them (tui.KeyBinder). In input mode
+// every other key is the program's; the host's mode key and host keys (WithModeKey, SetHostKeys) are
+// its code, not commands.
+func (t *Terminal) KeyBindings(m *keymap.Map) []keymap.Binding {
+	switch t.KeyScope() {
+	case TerminalSearchScope:
+		return tui.BindingsOf(m, terminalSearchCommands...)
+	case TerminalNormalScope:
+		return tui.BindingsOf(m, terminalNormalCommands...)
+	}
+	return tui.BindingsOf(m, terminalCommands...)
 }
 
 func (t *Terminal) handleMouse(e tui.MouseEvent) bool {

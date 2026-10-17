@@ -8,6 +8,7 @@ import (
 
 	"github.com/yongjohnlee80/golib/highlight"
 	"github.com/yongjohnlee80/golib/tui"
+	"github.com/yongjohnlee80/golib/tui/keymap"
 )
 
 // FILE VIEWS — the bodies of an Open and a Save dialog, composed from the
@@ -253,10 +254,7 @@ func newFileOpenView(cfg fileViewConfig, dirOpts ...FileListOption) *FileOpenVie
 
 // movePart is Ctrl+h/j/k/l among the view's parts: down and up the left
 // column, across to the preview and back. Reports whether it moved.
-func (v *FileOpenView) movePart(k tui.KeyEvent) bool {
-	if k.Mods != tui.ModCtrl {
-		return false
-	}
+func (v *FileOpenView) movePart(id string) bool {
 	ctx := v.Context()
 	if ctx == nil {
 		return false
@@ -267,26 +265,26 @@ func (v *FileOpenView) movePart(k tui.KeyEvent) bool {
 			at = i
 		}
 	}
-	switch k.Code {
-	case 'j', 'k':
+	switch id {
+	case FileViewPartDown.ID, FileViewPartUp.ID:
 		if at < 0 {
 			return false
 		}
 		next := at + 1
-		if k.Code == 'k' {
+		if id == FileViewPartUp.ID {
 			next = at - 1
 		}
 		if next < 0 || next >= len(v.column) {
 			return true // the column's end: nothing below, or above
 		}
 		return ctx.FocusInto(v.column[next]) || true
-	case 'l':
+	case FileViewPreview.ID:
 		if at < 0 || v.preview == nil {
 			return false
 		}
 		v.last = v.column[at]
 		return ctx.FocusInto(v.preview) || true
-	case 'h':
+	case FileViewBack.ID:
 		if at >= 0 || v.preview == nil || !ctx.FocusWithin(v.preview) {
 			return false
 		}
@@ -354,25 +352,37 @@ func (v *FileOpenView) HandleEvent(ev tui.Event) bool {
 		v.cfg.onHint(v.Hint())
 	}
 	if k, ok := ev.(tui.KeyEvent); ok {
-		return v.pathKey(k) || v.filterKey(k) || v.movePart(k)
+		cmd, ok := v.Context().KeyCommand(k, fileViewCommands...)
+		if !ok {
+			return false
+		}
+		return v.pathKey(cmd.ID) || v.filterKey(cmd.ID) || v.movePart(cmd.ID)
 	}
 	return false
+}
+
+// KeyScope is a file chooser's key-map scope.
+func (v *FileOpenView) KeyScope() keymap.Scope { return FileViewScope }
+
+// KeyBindings is the chooser's commands as m binds them (tui.KeyBinder).
+func (v *FileOpenView) KeyBindings(m *keymap.Map) []keymap.Binding {
+	return tui.BindingsOf(m, fileViewCommands...)
 }
 
 // pathKey is the path field's keys, heard as they bubble up: ~ in the list opens the field with
 // ~/ written, as a file chooser's location bar does; Esc in the field puts back the folder listed
 // and returns to the list. Reports whether the key was the field's.
-func (v *FileOpenView) pathKey(k tui.KeyEvent) bool {
+func (v *FileOpenView) pathKey(id string) bool {
 	ctx := v.Context()
-	if ctx == nil || k.Kind == tui.KeyRelease {
+	if ctx == nil {
 		return false
 	}
 	switch {
-	case k.Text == "~" && k.Mods&nonTextMods == 0 && v.list.Focused():
+	case id == FileViewHome.ID && v.list.Focused():
 		ctx.FocusInto(v.path.input)
 		v.path.input.SetValue("~/")
 		return true
-	case k.Code == tui.KeyEscape && ctx.FocusWithin(v.path.pane):
+	case id == FileViewCancel.ID && ctx.FocusWithin(v.path.pane):
 		v.path.restore()
 		v.list.Focus()
 		return true
@@ -412,25 +422,25 @@ func (v *FileOpenView) openPath(p string, k pathKind, _ bool) {
 // opens the field; Enter in the field returns to the list, the filter kept; Esc
 // clears the filter first, and only once it is clear goes on to close the
 // dialog. Reports whether the key was the filter's.
-func (v *FileOpenView) filterKey(k tui.KeyEvent) bool {
+func (v *FileOpenView) filterKey(id string) bool {
 	ctx := v.Context()
-	if v.filterField == nil || ctx == nil || k.Kind == tui.KeyRelease {
+	if v.filterField == nil || ctx == nil {
 		return false
 	}
 	inField := ctx.FocusWithin(v.filterPane)
 	switch {
-	case k.Code == '/' && k.Mods == 0 && v.list.Focused():
+	case id == FileViewFilter.ID && v.list.Focused():
 		v.filterPane.SetVisible(true)
 		v.filterField.SetValue(v.list.Filter())
 		ctx.FocusInto(v.filterField)
 		return true
-	case k.Code == tui.KeyEnter && inField:
+	case id == FileViewFilterDone.ID && inField:
 		if v.list.Filter() == "" {
 			v.filterPane.SetVisible(false)
 		}
 		v.list.Focus()
 		return true
-	case k.Code == tui.KeyEscape && (inField || v.list.Filter() != ""):
+	case id == FileViewCancel.ID && (inField || v.list.Filter() != ""):
 		v.closeFilter()
 		v.list.SetFilter("")
 		v.list.Focus()

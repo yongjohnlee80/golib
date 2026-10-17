@@ -5,6 +5,7 @@ import (
 	"time"
 
 	"github.com/yongjohnlee80/golib/tui"
+	"github.com/yongjohnlee80/golib/tui/keymap"
 	"github.com/yongjohnlee80/golib/tui/style"
 )
 
@@ -374,41 +375,56 @@ func (v *HTMLView) HandleEvent(ev tui.Event) bool {
 	return false
 }
 
+// keyOf is the HTMLView command e is, if any; Esc is one only with a selection to clear, else it is
+// the parent's.
+func (v *HTMLView) keyOf(e tui.KeyEvent, hasSelection bool) (keymap.Command, bool) {
+	cmd, ok := v.Context().KeyCommand(e, htmlViewCommands...)
+	if ok && cmd.ID == HTMLViewClear.ID && !hasSelection {
+		return keymap.Command{}, false
+	}
+	return cmd, ok
+}
+
 func (v *HTMLView) key(e tui.KeyEvent) bool {
-	if e.Kind == tui.KeyRelease {
+	cmd, ok := v.keyOf(e, v.sel[0] != v.sel[1])
+	if !ok {
 		return false
 	}
 	_, uy := v.units()
 	page := max(v.viewHeight()-uy, uy)
 	half := max(v.viewHeight()/2, uy)
-	plain, ctrl := e.Mods.Chord() == 0, e.Mods.Chord() == tui.ModCtrl
-	switch {
-	case e.Code == tui.KeyUp, e.Code == 'k' && plain:
+	switch cmd.ID {
+	case HTMLViewUp.ID:
 		v.scrollBy(-uy)
-	case e.Code == tui.KeyDown, e.Code == 'j' && plain:
+	case HTMLViewDown.ID:
 		v.scrollBy(uy)
-	case e.Code == tui.KeyPageUp:
+	case HTMLViewPageUp.ID:
 		v.scrollBy(-page)
-	case e.Code == tui.KeyPageDown || e.Code == ' ' && plain:
+	case HTMLViewPageDown.ID:
 		v.scrollBy(page)
-	case e.Code == 'u' && ctrl:
+	case HTMLViewHalfUp.ID:
 		v.scrollBy(-half)
-	case e.Code == 'd' && ctrl:
+	case HTMLViewHalfDown.ID:
 		v.scrollBy(half)
-	case e.Code == tui.KeyHome, e.Code == 'g' && plain:
+	case HTMLViewTop.ID:
 		v.scrollTo(0)
-	case e.Code == tui.KeyEnd, e.Code == 'G' && (plain || e.Mods.Chord() == tui.ModShift),
-		e.Code == 'g' && e.Mods.Chord() == tui.ModShift:
+	case HTMLViewBottom.ID:
 		v.scrollTo(v.maxScroll())
-	case e.Code == 'c' && e.Mods.Chord() == tui.ModCtrl, e.Code == 'y' && e.Mods.Chord() == 0:
+	case HTMLViewCopy.ID:
 		return v.Copy()
-	case e.Code == tui.KeyEscape && v.sel[0] != v.sel[1]:
+	case HTMLViewClear.ID:
 		v.sel = [2]DocPos{}
 		v.MarkDirty()
-	default:
-		return false
 	}
 	return true
+}
+
+// KeyScope is an HTMLView's key-map scope.
+func (v *HTMLView) KeyScope() keymap.Scope { return HTMLViewScope }
+
+// KeyBindings is the HTMLView's commands as m binds them (tui.KeyBinder).
+func (v *HTMLView) KeyBindings(m *keymap.Map) []keymap.Binding {
+	return tui.BindingsOf(m, htmlViewCommands...)
 }
 
 func (v *HTMLView) mouse(m tui.MouseEvent) bool {

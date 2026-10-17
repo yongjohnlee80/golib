@@ -16,7 +16,8 @@ import (
 // gridCodes are the keys the grid presses: every key a converted widget binds, and some no widget does.
 var gridCodes = []rune{
 	'a', 'g', 'j', 'k', 'h', 'l', 'x', 'q', 'G', 'J', 'K', 'H', 'L', ' ', '?', '/', '0', '$',
-	'[', ']', '+', '=',
+	'[', ']', '+', '=', 'e', 'u', 'w', 'd', 'c', 'y', '~', 'n', 'Y', 'N', 'Q', '\\', '<', 'i', 'b', 'f',
+	'v', 'V',
 	tui.KeyUp, tui.KeyDown, tui.KeyLeft, tui.KeyRight, tui.KeyHome, tui.KeyEnd,
 	tui.KeyPageUp, tui.KeyPageDown, tui.KeyEnter, tui.KeyTab, tui.KeyEscape, tui.KeyBackspace,
 	tui.KeyDelete, tui.KeyInsert, tui.KeyF1, tui.KeyF2, tui.KeyF10, tui.KeyMenu,
@@ -99,6 +100,25 @@ func shiftSpentOnPrintable(e tui.KeyEvent) string {
 	if r := []rune(e.Text); e.Mods&tui.ModShift != 0 && len(r) == 1 && unicode.IsPrint(r[0]) &&
 		e.Mods&(tui.ModCtrl|tui.ModAlt|tui.ModSuper|tui.ModHyper|tui.ModMeta) == 0 {
 		return "Shift spent on the character it typed"
+	}
+	return ""
+}
+
+// capitalWithModifier is the deviation key.Of makes on purpose for a capital letter with Ctrl, Alt or
+// Super and no text: its case is its Shift, so it reaches the letter's chord (Ctrl+K) by the Shift-less
+// fallback, where an old test compared the code to the lower-case letter.
+func capitalWithModifier(e tui.KeyEvent) string {
+	if e.Code >= 'A' && e.Code <= 'Z' && e.Text == "" && e.Mods&(tui.ModCtrl|tui.ModAlt|tui.ModSuper) != 0 {
+		return "a capital with a modifier and no text is its letter's chord"
+	}
+	return ""
+}
+
+// textlessCharacter is the deviation key.Of makes on purpose for a printable key with no text: it
+// reads the code, where an old test read only the text.
+func textlessCharacter(e tui.KeyEvent) string {
+	if e.Text == "" && e.Code > ' ' && e.Code < 127 && e.Mods.Chord()&^tui.ModShift == 0 {
+		return "a character with no text reads its code"
 	}
 	return ""
 }
