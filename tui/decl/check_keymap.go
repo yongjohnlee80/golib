@@ -34,7 +34,6 @@ func CheckKeymap(opts ...ProgramOption) (warnings []keymap.Problem, err error) {
 	if err != nil {
 		return c.keys.Warnings(), err
 	}
-	c.providers = nil
 	p, err := mount(c, spec)
 	if err != nil {
 		return c.keys.Warnings(), err
