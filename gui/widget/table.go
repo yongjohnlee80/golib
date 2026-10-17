@@ -262,9 +262,6 @@ func (l *tableLayout) Paint(c gui.Canvas) {
 		c.FillRect(gui.Rect{Y: l.rowH, W: gutter, H: l.rowH * float32(last-l.top)}, gui.Solid(l.tint))
 	}
 	l.paintSelection(c, cols, last)
-	if r, ok := l.cellsRect(cols, core.Cursor(), core.Cursor(), last); ok {
-		c.FillRect(r, gui.Solid(l.cursorFill()))
-	}
 	aligns := make([]style.Align, len(cols))
 	for i, col := range cols {
 		aligns[i] = core.Fields()[col.col].Align
@@ -286,6 +283,18 @@ func (l *tableLayout) Paint(c gui.Canvas) {
 		}
 		bands[row] = l.shapeRuns(l.bands[row], texts, cols, aligns, l.body)
 		l.drawBand(c, bands[row], y, l.fg)
+		if row == core.Cursor().Row && bands[row] != nil && bands[row].text != nil {
+			// The row is shaped once, but its cursor cell needs a different text colour.
+			// Repaint just that clipped cell after the ordinary band; otherwise the
+			// ordinary foreground disappears on a light cursor fill.
+			if r, ok := l.cellsRect(cols, core.Cursor(), core.Cursor(), last); ok {
+				fill := l.cursorFill()
+				c.FillRect(r, gui.Solid(fill))
+				cell := c.Sub(r)
+				cell.DrawText(bands[row].text, gui.Pt(-r.X, (l.rowH-bands[row].text.Height)/2),
+					gui.Solid(l.cursorText(fill)))
+			}
+		}
 		if nums != nil {
 			nums[row] = l.shapeRuns(l.nums[row], []string{strconv.Itoa(row + 1)}, numCol, numAlign, l.head)
 			l.drawBand(c, nums[row], y, l.muted)
@@ -353,6 +362,28 @@ func (l *tableLayout) cursorFill() color.NRGBA {
 		return l.blurred
 	}
 	return l.cursor
+}
+
+// cursorText reads the cursor style's foreground, falling back to the row's text, then makes
+// either one legible on the fill actually painted. A blurred cursor may dim its fill, not its text.
+func (l *tableLayout) cursorText(fill color.NRGBA) color.NRGBA {
+	st := l.t.CursorStyle()
+	fg, ok := st.GetForeground()
+	if rev, _ := st.GetReverse(); rev {
+		fg, ok = st.GetBackground()
+	}
+	text := l.fg
+	if ok {
+		if col, resolved := colorOf(fg, l.t.Theme(), isDark(l.bg)); resolved {
+			text = col
+		}
+	}
+	legible := style.Legible(style.RGB(text.R, text.G, text.B),
+		style.RGB(fill.R, fill.G, fill.B), 4.5)
+	if r, g, b, ok := legible.RGBValues(); ok {
+		return color.NRGBA{R: r, G: g, B: b, A: 0xff}
+	}
+	return text
 }
 
 // cellsRect is the rectangle of the cells from..to that are shown, rows before last.

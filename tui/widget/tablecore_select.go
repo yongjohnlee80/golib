@@ -198,6 +198,9 @@ func (c *TableCore) SetCopyLimit(bytes int, refused func(limit int)) {
 	c.copyLimit, c.onCopyRefused = max(bytes, 0), refused
 }
 
+// SetOnCopy changes the host's copy target after the table has been built.
+func (c *TableCore) SetOnCopy(fn func(text string)) { c.onCopy = fn }
+
 func (c *TableCore) refuseCopy() {
 	if c.onCopyRefused != nil {
 		c.onCopyRefused(c.copyLimit)
@@ -210,10 +213,18 @@ func (c *TableCore) copyString(s string) bool {
 		c.refuseCopy()
 		return false
 	}
-	if c.ctx == nil || c.Len() == 0 {
+	if c.Len() == 0 {
 		return false
 	}
-	return c.ctx.CopyToClipboard(s)
+	delivered := false
+	if c.ctx != nil {
+		delivered = c.ctx.CopyToClipboard(s)
+	}
+	if c.onCopy != nil {
+		c.onCopy(s)
+		return true
+	}
+	return delivered
 }
 
 // HandleKey moves, selects, sorts, copies and activates:

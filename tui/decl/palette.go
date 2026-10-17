@@ -199,11 +199,26 @@ func (p palette) viewStyles() widget.ListStyles {
 		st.Row = p.look(roleBase, roleText)
 	}
 	if p.has(roleHighlight, roleHighlightedText) {
-		st.CursorRow = p.look(roleHighlight, roleHighlightedText).Reverse(false)
+		st.CursorRow = p.viewCursor(roleHighlight, roleHighlightedText)
 		st.CursorSelected = st.CursorRow
 	}
 	if p.has(roleInactiveHighlight, roleInactiveHighlightText) {
-		st.CursorBlurred = p.look(roleInactiveHighlight, roleInactiveHighlightText).Reverse(false)
+		st.CursorBlurred = p.viewCursor(roleInactiveHighlight, roleInactiveHighlightText)
+	}
+	return st
+}
+
+// viewCursor preserves the theme's highlight background while raising its text to a readable
+// contrast. A partially specified palette inherits the ordinary row's text before doing so.
+func (p palette) viewCursor(bgRole, fgRole Role) style.Style {
+	st := p.look(bgRole, fgRole).Reverse(false)
+	bg, hasBG := p[bgRole]
+	fg, hasFG := p[fgRole]
+	if !hasFG {
+		fg, hasFG = p[roleText]
+	}
+	if hasBG && hasFG {
+		st = st.Foreground(style.Legible(fg, bg, 4.5))
 	}
 	return st
 }
