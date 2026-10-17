@@ -6,6 +6,7 @@ import (
 
 	"github.com/yongjohnlee80/golib/parse/qml"
 	"github.com/yongjohnlee80/golib/tui"
+	"github.com/yongjohnlee80/golib/tui/key"
 )
 
 // HOST KEYS — a Terminal's (or TerminalTabs') keys its program never sees:
@@ -32,12 +33,12 @@ func keysOf(name string, v qml.SpecValue) (func(tui.KeyEvent) bool, error) {
 	if err != nil {
 		return nil, fmt.Errorf("%s: %w", name, err)
 	}
-	var seqs []keySequence
+	var seqs []key.Seq
 	for _, part := range strings.Split(s, ",") {
 		if part = strings.TrimSpace(part); part == "" {
 			continue
 		}
-		seq, err := parseSequence(part)
+		seq, err := key.Parse(part)
 		if err != nil {
 			return nil, fmt.Errorf("%s: %w (at %s)", name, err, v.Pos)
 		}
@@ -48,7 +49,7 @@ func keysOf(name string, v qml.SpecValue) (func(tui.KeyEvent) bool, error) {
 	}
 	return func(ev tui.KeyEvent) bool {
 		for _, seq := range seqs {
-			if seq.matches(ev) {
+			if seqMatches(seq, ev) {
 				return true
 			}
 		}

@@ -1,6 +1,6 @@
 package tui
 
-import "strings"
+import "github.com/yongjohnlee80/golib/tui/key"
 
 // KeyEvent represents one keyboard action.
 //
@@ -43,110 +43,61 @@ const (
 	KeyRelease         // kitty flag 2 terminals only; never synthesized elsewhere
 )
 
-// Mods is the modifier bitmask, in kitty modifier order.
-type Mods uint8
+// Mods is the modifier bitmask, in kitty modifier order. It is key.Mods: the type, its bits and its
+// methods (Chord, String) live in the leaf package tui/key, so tui/keymap can name keys without
+// importing tui (ADR 1792255248 §4.2).
+type Mods = key.Mods
 
 const (
-	ModShift Mods = 1 << iota
-	ModAlt
-	ModCtrl
-	ModSuper
-	ModHyper
-	ModMeta
-	ModCapsLock
-	ModNumLock
+	ModShift    = key.Shift
+	ModAlt      = key.Alt
+	ModCtrl     = key.Ctrl
+	ModSuper    = key.Super
+	ModHyper    = key.Hyper
+	ModMeta     = key.Meta
+	ModCapsLock = key.CapsLock
+	ModNumLock  = key.NumLock
 )
 
-// LockMods are the modifiers that report a LOCK STATE rather than a key the
-// user is holding down. They are on for every keystroke while the lock is
-// engaged, including keystrokes the user thinks are unmodified.
-const LockMods = ModCapsLock | ModNumLock
+// LockMods are the modifiers that report a LOCK STATE rather than a key the user is holding down
+// (key.LockMods). Compare bindings with Mods.Chord(), which removes them.
+const LockMods = key.LockMods
 
-// Chord is the modifiers a key BINDING should match on: everything the user is
-// actually holding, with the lock state removed.
-//
-// COMPARE WITH THIS, NEVER WITH THE RAW FIELD. `Mods != 0` looks like "the key
-// was pressed on its own" and is not: under the kitty keyboard protocol the
-// terminal reports Caps Lock and Num Lock as modifier bits, so with Num Lock on
-// — which is its normal state on most keyboards — every arrow key, Enter and
-// Escape carries a modifier and a bare inequality rejects all of them. The bug
-// hides completely under tmux and under any terminal still speaking the legacy
-// sequences, because those cannot express a lock bit at all; it appears only on
-// a terminal that negotiated the modern protocol, which is where it looks like
-// the widget has simply stopped responding to the keyboard.
-//
-// Shift is deliberately KEPT: shift is a key the user is holding, and Shift-Tab
-// is a different binding from Tab.
-func (m Mods) Chord() Mods { return m &^ LockMods }
-
-// String names the modifiers that are set, for traces and test failures.
-//
-// Worth having for this type in particular: a failure reporting "mods 128" is
-// unreadable, and 128 is Num Lock — the bit most likely to be the reason a
-// binding did not fire.
-func (m Mods) String() string {
-	if m == 0 {
-		return "none"
-	}
-	var out []string
-	for _, p := range []struct {
-		bit  Mods
-		name string
-	}{
-		{ModShift, "shift"}, {ModAlt, "alt"}, {ModCtrl, "ctrl"},
-		{ModSuper, "super"}, {ModHyper, "hyper"}, {ModMeta, "meta"},
-		{ModCapsLock, "capslock"}, {ModNumLock, "numlock"},
-	} {
-		if m&p.bit != 0 {
-			out = append(out, p.name)
-		}
-	}
-	return strings.Join(out, "+")
-}
-
-// Functional key codes for KeyEvent.Code. The terminal decoder in tui/term
-// maps escape sequences onto exactly these constants.
+// Functional key codes for KeyEvent.Code: the kitty keyboard protocol's assignments, defined in
+// tui/key and re-exported here. The terminal decoder in tui/term maps escape sequences onto exactly
+// these constants.
 // REFERENCE: tui/term
-//
-// Printable keys carry their Unicode code point in Code. Functional keys
-// use the kitty keyboard protocol's Unicode Private Use Area assignments
-// (https://sw.kovidgoyal.net/kitty/keyboard-protocol/#functional-key-definitions)
-// so a kitty-mode decode is identity and the legacy CSI/SS3 decoder maps
-// onto the same constants. The C0-derived keys keep their traditional
-// code points, exactly as kitty specifies them.
 const (
-	// C0-derived (legacy byte values, kitty-compatible).
-	KeyEnter     rune = 13  // CR
-	KeyTab       rune = 9   // HT
-	KeyBackspace rune = 127 // DEL
-	KeyEscape    rune = 27  // ESC
+	KeyEnter     = key.Enter
+	KeyTab       = key.Tab
+	KeyBackspace = key.Backspace
+	KeyEscape    = key.Escape
 
-	// Functional keys (kitty PUA assignments).
-	KeyUp       rune = 57352
-	KeyDown     rune = 57353
-	KeyLeft     rune = 57350
-	KeyRight    rune = 57351
-	KeyHome     rune = 57356
-	KeyEnd      rune = 57357
-	KeyPageUp   rune = 57354
-	KeyPageDown rune = 57355
-	KeyInsert   rune = 57348
-	KeyDelete   rune = 57349
+	KeyUp       = key.Up
+	KeyDown     = key.Down
+	KeyLeft     = key.Left
+	KeyRight    = key.Right
+	KeyHome     = key.Home
+	KeyEnd      = key.End
+	KeyPageUp   = key.PageUp
+	KeyPageDown = key.PageDown
+	KeyInsert   = key.Insert
+	KeyDelete   = key.Delete
 
-	KeyF1  rune = 57364
-	KeyF2  rune = 57365
-	KeyF3  rune = 57366
-	KeyF4  rune = 57367
-	KeyF5  rune = 57368
-	KeyF6  rune = 57369
-	KeyF7  rune = 57370
-	KeyF8  rune = 57371
-	KeyF9  rune = 57372
-	KeyF10 rune = 57373
-	KeyF11 rune = 57374
-	KeyF12 rune = 57375
+	KeyF1  = key.F1
+	KeyF2  = key.F2
+	KeyF3  = key.F3
+	KeyF4  = key.F4
+	KeyF5  = key.F5
+	KeyF6  = key.F6
+	KeyF7  = key.F7
+	KeyF8  = key.F8
+	KeyF9  = key.F9
+	KeyF10 = key.F10
+	KeyF11 = key.F11
+	KeyF12 = key.F12
 
-	// KeyMenu is the Menu (application) key, the kitty keyboard protocol's code for it: a terminal
-	// speaking the protocol sends it; others, and Gio's native window, never do.
-	KeyMenu rune = 57363
+	// KeyMenu is the Menu (application) key: a terminal speaking the kitty protocol sends it; others,
+	// and Gio's native window, never do.
+	KeyMenu = key.Menu
 )
