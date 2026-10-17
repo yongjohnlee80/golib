@@ -924,3 +924,9 @@ func (m *Modal) refreshSelection() {
 func tuiFatal(op, rule string, got int) error {
 	return fatalOf(op, rule, "got "+itoa(got))
 }
+
+// KeyBindings is the Modal's commands as m binds them (tui.KeyBinder). Its buttons' mnemonics and a
+// host's WithModalDismissKeys are not commands, and are not listed.
+func (m *Modal) KeyBindings(km *keymap.Map) []keymap.Binding {
+	return tui.BindingsOf(km, modalCommands...)
+}

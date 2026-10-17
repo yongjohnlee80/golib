@@ -587,3 +587,9 @@ func (t *TextInput) Render(s tui.Surface) {
 		drawText(s, pad+x, 0, truncate(h, inner-x, s.StringWidth), t.styles.Placeholder)
 	}
 }
+
+// KeyBindings is the TextInput's commands as m binds them (tui.KeyBinder). Typed text is not a
+// command.
+func (t *TextInput) KeyBindings(m *keymap.Map) []keymap.Binding {
+	return tui.BindingsOf(m, inputCommands...)
+}

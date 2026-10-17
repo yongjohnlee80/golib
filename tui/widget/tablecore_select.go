@@ -5,7 +5,6 @@ import (
 
 	"github.com/yongjohnlee80/golib/tui"
 	tuikey "github.com/yongjohnlee80/golib/tui/key"
-	"github.com/yongjohnlee80/golib/tui/keymap"
 )
 
 // THE SELECTION, THE KEYS AND THE POINTER — vim's visual modes over a grid. The selection runs from
@@ -329,11 +328,19 @@ func (c *TableCore) HandleKey(k tui.KeyEvent) bool {
 		}
 		c.sortKey(c.cur.Col)
 	case TableActivate.ID:
-		if c.onActivate == nil || c.Len() == 0 {
-			return false
-		}
-		c.onActivate(c.SourceRow(c.cur.Row))
+		return c.activateCursor()
 	}
+	return true
+}
+
+// activateCursor activates the cursor's row (TableOnActivate), reporting whether there was one to
+// activate. The activate command and a double-click both come here: a double-click is not a key, so it
+// does not follow the command's keys.
+func (c *TableCore) activateCursor() bool {
+	if c.onActivate == nil || c.Len() == 0 {
+		return false
+	}
+	c.onActivate(c.SourceRow(c.cur.Row))
 	return true
 }
 
@@ -345,9 +352,6 @@ func countDigit(k tui.KeyEvent) (int, bool) {
 	}
 	return int(s.Code - '0'), true
 }
-
-// KeyScope is a table's key-map scope.
-func (c *TableCore) KeyScope() keymap.Scope { return TableScope }
 
 // sortKey is the s key on field col: a sort by it alone, ascending, then descending, then none.
 // A sort of several keys is replaced by one.

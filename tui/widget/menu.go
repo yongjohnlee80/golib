@@ -5,6 +5,7 @@ import (
 	"slices"
 
 	"github.com/yongjohnlee80/golib/tui"
+	"github.com/yongjohnlee80/golib/tui/keymap"
 )
 
 // MENU.
@@ -637,4 +638,13 @@ func (m *Menu) Init(ctx *tui.Context) {
 	ctx.OnUnmount(m.closeAllOnUnmount)
 
 	m.repairSelection()
+}
+
+// KeyScope is a menu's key-map scope.
+func (m *Menu) KeyScope() keymap.Scope { return MenuScope }
+
+// KeyBindings is the menu's commands as km binds them (tui.KeyBinder). Its rows' mnemonics are their
+// labels', not commands, and are not listed.
+func (m *Menu) KeyBindings(km *keymap.Map) []keymap.Binding {
+	return tui.BindingsOf(km, menuCommands...)
 }

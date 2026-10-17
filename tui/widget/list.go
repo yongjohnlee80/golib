@@ -631,3 +631,8 @@ func (l *List[T]) Render(s tui.Surface) {
 		paintScrollIndicator(s, sz.W-1, sz.H, l.top, l.count-sz.H)
 	}
 }
+
+// KeyBindings is the List's commands as m binds them (tui.KeyBinder).
+func (l *List[T]) KeyBindings(m *keymap.Map) []keymap.Binding {
+	return tui.BindingsOf(m, listCommands...)
+}

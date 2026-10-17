@@ -1159,3 +1159,13 @@ func (e *Editor) view() wrapView {
 
 // KeyScope is the scope of the keyset and mode class the editor is in: "tui.editor.vim.normal".
 func (e *Editor) KeyScope() keymap.Scope { return e.core.KeyScope() }
+
+// KeyBindings is what the editor binds in the mode it is in (tui.KeyBinder): its context menu, and
+// its live table after the host overlay.
+func (e *Editor) KeyBindings(m *keymap.Map) []keymap.Binding {
+	var out []keymap.Binding
+	if e.menu.Enabled() {
+		out = append(out, tui.BindingsOf(m, EditorContextMenu)...)
+	}
+	return append(out, e.core.keyBindings(m)...)
+}

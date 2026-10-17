@@ -1180,3 +1180,6 @@ func (t *Tree) rowText(r treeRow) string {
 	}
 	return strings.Repeat(" ", r.depth*t.indent) + expander + r.node.label + badge
 }
+
+// KeyBindings is the Tree's commands as m binds them (tui.KeyBinder).
+func (t *Tree) KeyBindings(m *keymap.Map) []keymap.Binding { return tui.BindingsOf(m, treeCommands...) }

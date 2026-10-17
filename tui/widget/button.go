@@ -3,6 +3,7 @@ package widget
 import (
 	"github.com/yongjohnlee80/golib/errs"
 	"github.com/yongjohnlee80/golib/tui"
+	"github.com/yongjohnlee80/golib/tui/keymap"
 )
 
 // BUTTON.
@@ -571,4 +572,12 @@ func itoa(i int) string {
 		i /= 10
 	}
 	return string(b[p:])
+}
+
+// KeyScope is a Button's key-map scope.
+func (b *Button) KeyScope() keymap.Scope { return ButtonScope }
+
+// KeyBindings is the Button's activation as m binds it (tui.KeyBinder).
+func (b *Button) KeyBindings(m *keymap.Map) []keymap.Binding {
+	return tui.BindingsOf(m, ButtonActivate)
 }

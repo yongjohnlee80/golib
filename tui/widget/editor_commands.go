@@ -189,3 +189,42 @@ func seqOfChord(kc KeyChord) tuikey.Seq {
 func functionalCode(code rune) bool {
 	return code < 0x20 || code == tui.KeyBackspace || (code >= 0xE000 && code <= 0xF8FF)
 }
+
+// keyBindings is the live table of the class the core is in, as a help card reads it: after the host
+// overlay, so an overlay's replacement is listed (Source FromOverlay) and a chord it unbinds is not.
+// The grammar after a prefix is not a binding and is not listed.
+func (c *EditorCore) keyBindings(m *keymap.Map) []keymap.Binding {
+	class := modeClass(c.keys.mode)
+	byAct := map[Action][]KeyChord{}
+	for kc, act := range c.keys.keymap {
+		if modeClass(kc.Mode) == class {
+			byAct[act] = append(byAct[act], kc)
+		}
+	}
+	cmds := map[Action]keymap.Command{}
+	for _, ec := range editorCommandsOf(c.keys.keyset) {
+		if ec.class == class {
+			cmds[ec.act] = ec.Command
+		}
+	}
+	scope := editorScope(c.keys.keyset, class)
+	out := make([]keymap.Binding, 0, len(byAct))
+	for act, chords := range byAct {
+		cmd, ok := cmds[act]
+		if !ok { // an overlay bound an action the keyset's table does not have here
+			cmd = keymap.Command{ID: string(scope) + "." + lowerFirst(act.String()), Scope: scope}
+		}
+		src := m.SourceOf(cmd.ID)
+		keys := make([]tuikey.Seq, 0, len(chords))
+		for _, kc := range chords {
+			keys = append(keys, seqOfChord(kc))
+			if ov, in := c.keys.overlay[kc]; in && ov == act {
+				src = keymap.Source{Kind: keymap.FromOverlay}
+			}
+		}
+		slices.SortFunc(keys, func(a, b tuikey.Seq) int { return cmpString(a.String(), b.String()) })
+		out = append(out, keymap.Binding{Command: cmd, Keys: keys, Scope: scope, Source: src})
+	}
+	slices.SortFunc(out, func(a, b keymap.Binding) int { return cmpString(a.Command.ID, b.Command.ID) })
+	return out
+}
