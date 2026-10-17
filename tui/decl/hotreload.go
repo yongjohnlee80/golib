@@ -6,7 +6,9 @@ import (
 	"errors"
 	"fmt"
 	"io/fs"
+	"maps"
 	"path"
+	"slices"
 	"strings"
 	"time"
 
@@ -358,16 +360,26 @@ func (p *Program) redirect(to *Program) {
 	p.pending, p.app = nil, to.app
 }
 
-// checkReloadKeys mounts spec apart from the live tree, with no App and no providers (nothing runs,
-// nothing is subscribed), checks its keyId Shortcuts against keys, and destroys it. A layout that does
-// not mount is the real reconcile's to report, so it passes here.
+// checkReloadKeys mounts spec apart from the live tree, with no App, checks its keyId Shortcuts against
+// keys, and destroys it. Its sources are the live tree's, frozen: one provider delivers their current
+// values once and never runs, so no host provider is subscribed twice. A layout that does not mount is
+// the real reconcile's to report, so it passes here. Loop goroutine only: it reads the live tree.
 func (p *Program) checkReloadKeys(spec qml.SpecTree, keys *keymap.Map) error {
 	c := p.cfg
-	c.providers, c.keys = nil, keys
+	c.sources, c.providers, c.keys = nil, []decl.Provider{frozenSources(p.tree.Sources())}, keys
 	q, err := mount(c, spec)
 	if err != nil {
 		return nil
 	}
 	defer func() { _ = q.tree.Destroy() }()
 	return q.adapter.checkShortcuts(keys)
+}
+
+// frozenSources is a provider of fixed values: delivered once, synchronously, and never again.
+type frozenSources map[string]qml.SpecValue
+
+func (f frozenSources) Subscribe(fn func(decl.Update)) ([]string, func() error, error) {
+	names := slices.Sorted(maps.Keys(f))
+	fn(decl.Update{Version: 1, Values: maps.Clone(f)})
+	return names, func() error { return nil }, nil
 }
