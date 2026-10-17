@@ -256,6 +256,24 @@ text passed as a plain string is never translated.
   on English's letter: English `&File` shown as German `&Datei` reads `Datei(&f)`, still on
   `f`.
 
+The key map is App-owned as well. Every key a golib widget acts on is a key command
+([`tui/keymap`](keymap/README.md)): an id, a scope and its default keys. A widget asks its Context
+which of its commands a key is, instead of switching on raw keys.
+
+- `WithKeymap(m)` sets the bindings: `keymap.Build(widget.KeyCommands() + yours, schemes…)`,
+  each scheme a user's file in Qt Creator's keyboard-mapping-scheme XML. With none, every command
+  keeps its default keys.
+- `app.SetKeymap(m)` may be called from any goroutine; `ApplyKeymap(m)` takes effect in the calling
+  turn, on the loop goroutine. Both relay out, because accelerators print keys.
+- `Context.KeyCommand(ev, cmds…)` is the one question a widget asks: the event's chord
+  ([`tui/key`](key/)'s `Of`), then each of its `Candidates` in order, against the map.
+- `app.KeyBindings(comp)` is what reaches a component, in routing order (its own scope, each
+  enclosing one up to a modal trap's ceiling, then traversal), each with the keys it really
+  receives. `app.KeyScopeOf(comp)` is its scope. A component reports its bindings through the
+  optional `KeyBinder` capability, and its scope through `KeyScoped`.
+- Tab traversal (`FocusNext`, `FocusPrev`) and the pointer-capture cancel (`CancelCapture`) are the
+  runtime's own commands (`tui.Commands()`).
+
 ---
 
 ## Quick Start Example
