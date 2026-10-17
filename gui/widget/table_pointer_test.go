@@ -208,6 +208,23 @@ func TestATableBlursItsCursorWithTheFocus(t *testing.T) {
 		if got := cursorFill(); len(got) != 1 || got[0] != want {
 			t.Errorf("%s: the cursor's cell filled %v, want %v", when, got, want)
 		}
+		var textColor color.NRGBA
+		var textSeen bool
+		h.onLoop(func() {
+			c := paintTable(h.l, 600, 200)
+			cur := h.dt.Core().Cursor()
+			rect, _ := h.l.cellsRect(h.l.columns(600), cur, cur, h.l.top+h.l.bodyRows())
+			for _, call := range calls(c, "DrawText") {
+				if call.Rect.Y == rect.Y {
+					textColor, textSeen = call.Brush.Color, true // the last is the clipped overlay
+				}
+			}
+		})
+		if !textSeen {
+			t.Errorf("%s: the cursor has no text overlay", when)
+		} else if ratio, ok := style.ContrastRatio(style.RGB(textColor.R, textColor.G, textColor.B), style.RGB(want.R, want.G, want.B)); !ok || ratio < 4.5 {
+			t.Errorf("%s: the cursor text %v on %v has contrast %.2f", when, textColor, want, ratio)
+		}
 	}
 	var cursor, blurred color.NRGBA
 	h.onLoop(func() { cursor, blurred = h.l.cursor, h.l.blurred })
