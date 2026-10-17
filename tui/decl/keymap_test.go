@@ -9,6 +9,8 @@ import (
 	"testing"
 	"testing/fstest"
 
+	"github.com/yongjohnlee80/golib/decl"
+	"github.com/yongjohnlee80/golib/parse/qml"
 	"github.com/yongjohnlee80/golib/tui"
 	tuidecl "github.com/yongjohnlee80/golib/tui/decl"
 	"github.com/yongjohnlee80/golib/tui/decl/controls"
@@ -223,7 +225,9 @@ func settleKeys() { settle() }
 func TestHotReloadFollowsTheKeymap(t *testing.T) {
 	layout := func(id string) string {
 		return hotHead + `Window { Shortcut { sequence: keyId("` + id + `"); onActivated: App.saved() }
-    Text { text: App.status } }`
+    Flex { direction: Tui.Vertical
+        Text { text: App.status }
+        Text { text: App.tick } } }` // a provider's source: the reload's check must still mount
 	}
 	d := newHotDir(t, layout("demo.save"))
 	var p *tuidecl.Program
@@ -231,6 +235,7 @@ func TestHotReloadFollowsTheKeymap(t *testing.T) {
 	s := d.runWith(func(prog *tuidecl.Program) error { p = prog; return nil },
 		tuidecl.KeyCommands(demoSave),
 		tuidecl.Keymap(os.DirFS(d.root), "keymap.xml"),
+		tuidecl.Providers(tickProvider{}),
 		tuidecl.Commands(map[string]func() error{"App.saved": func() error { n++; return p.Set("App.status", fmt.Sprintf("saved %d", n)) }}))
 	s.WaitForText(t, "initial")
 	s.Keys(t, ctrl('s'))
@@ -279,4 +284,12 @@ func TestHotReloadFollowsTheKeymap(t *testing.T) {
 	s.WaitFor(t, "the deleted scheme followed", func(string) bool { r, _ := d.counts(); return r > reloads })
 	s.Keys(t, ctrl('s'))
 	s.WaitForText(t, "saved 5")
+}
+
+// tickProvider provides App.tick once, as a host's clock would.
+type tickProvider struct{}
+
+func (tickProvider) Subscribe(fn func(decl.Update)) ([]string, func() error, error) {
+	fn(decl.Update{Version: 1, Values: map[string]qml.SpecValue{"App.tick": {Kind: qml.SpecValueString, Raw: "tick 0"}}})
+	return []string{"App.tick"}, func() error { return nil }, nil
 }
