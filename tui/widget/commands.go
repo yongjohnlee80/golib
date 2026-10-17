@@ -243,5 +243,6 @@ func KeyCommands() []keymap.Command {
 	out = append(out, menuCommands...)
 	out = append(out, ButtonActivate, WindowMenu)
 	out = append(out, modalCommands...)
+	out = append(out, EditorCommands()...)
 	return out
 }

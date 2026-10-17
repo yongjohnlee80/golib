@@ -11,13 +11,15 @@ import (
 
 // HandleKey handles a key in every mode, across modal and modeless profiles. It reports false for
 // a key the core does not consume, which bubbles: an unbound key in Normal mode (Space, for a
-// host's leader menu), Esc in Normal mode with nothing pending, a key with Alt or Super.
+// host's leader menu), Esc in Normal mode with nothing pending, an Alt or Super chord no key map
+// binds. Its keys are the editor's commands (EditorCommands), as the App's key map binds them.
 func (c *EditorCore) HandleKey(k tui.KeyEvent) bool {
 	ln, col := c.buf.ln, c.buf.col
 	defer c.cursorMoved(ln, col)
 	if k.Kind == tui.KeyRelease {
 		return false
 	}
+	c.syncKeymap()
 	c.keyDepth++ // a macro and . hand their keys back in
 	defer func() { c.keyDepth-- }()
 	if c.keys.mode == ModeInsert {
@@ -29,7 +31,9 @@ func (c *EditorCore) HandleKey(k tui.KeyEvent) bool {
 	}
 	// a host's chord: before . and a macro record it, so neither replays what the host did
 	if c.chordHook != nil && k.Code != tui.KeyEscape && !c.commandPending() {
-		if kc, ok := c.chordOf(k); ok && c.chordHook(kc) {
+		// The hook keeps the eligibility it had before chords carried Alt and Super: it never sees
+		// one (ADR 1792255248 §4.7). A host that wants them asks when one needs them.
+		if kc, ok := c.chordOf(k); ok && !kc.Alt && !kc.Super && c.chordHook(kc) {
 			if c.keyDepth <= c.oneShot.depth {
 				c.oneShotSettle() // Insert's Ctrl-o: the host's chord is its one command, and Insert resumes
 			}
@@ -232,21 +236,20 @@ func (c *EditorCore) handleInsertKey(k tui.KeyEvent) bool {
 		}
 	}
 	b := &c.buf
-	ctrl := k.Mods&tui.ModCtrl != 0
-	code := k.Code
-	if k.Text != "" && k.Mods&nonTextMods == 0 {
-		code = []rune(k.Text)[0]
+	var act Action
+	var bound, unbound bool
+	if s, ok := c.seqOf(k); ok {
+		_, act, bound, unbound = c.keys.lookupSeq(ModeInsert, s)
 	}
-	kc := KeyChord{Mode: ModeInsert, Code: code, Ctrl: ctrl}
 
 	// 1. Explicit unbind sentinel: unhandled keystroke bubbles up to application.
-	if c.keys.unbound[kc] {
+	if unbound {
 		c.settlePendingRune()
 		return false
 	}
 
 	// 2. Configured keymap actions (custom bindings, Nano/Standard profiles, etc.).
-	if act, bound := c.keys.keymap[kc]; bound {
+	if bound {
 		c.settlePendingRune()
 		if act == ActInsertOneShot {
 			c.macroKey(k) // a macro keeps it; . does not: the Insert before it ends there
@@ -535,28 +538,26 @@ func (c *EditorCore) handleCommandKey(k tui.KeyEvent) bool {
 		}
 	}
 
-	// A key carrying a COMMAND modifier other than Ctrl is not this core's to consume, and must
-	// bubble to the host.
+	// A key with Hyper or Meta held matches nothing, and bubbles.
+	s, ok := c.seqOf(k)
+	if !ok {
+		return false
+	}
+	kc, act, bound, unbound := c.keys.lookupSeq(modeClass(c.keys.mode), s)
+
+	// An ALT OR SUPER CHORD NO KEY MAP BINDS is not this core's to consume, and must bubble to the
+	// host, untouched by whatever is pending.
 	//
-	// KeyChord identity is (Mode, Code, Ctrl) — Alt is not part of it. So without this check
-	// Alt+h built the SAME chord as plain h and was swallowed as a motion, which silently denied
-	// the host every Alt binding while looking like the key had simply done nothing. Found from
-	// autodb, which needs Alt+h/j/k/l for pane motion precisely because a browser keeps Ctrl-L for
-	// its address bar and will not surrender it.
-	//
-	// Ctrl is excluded from this rule because Ctrl IS part of a chord (Ctrl-r is redo), so a Ctrl
-	// key the keymap does not bind already falls through below.
-	if k.Mods&(tui.ModAlt|tui.ModSuper|tui.ModMeta|tui.ModHyper) != 0 {
+	// Before chords carried Alt, Alt+h built the SAME chord as plain h and was swallowed as a
+	// motion, which silently denied the host every Alt binding while looking like the key had
+	// simply done nothing. Found from autodb, which needs Alt+h/j/k/l for pane motion precisely
+	// because a browser keeps Ctrl-L for its address bar and will not surrender it. A chord now
+	// carries Alt and Super, so a key map may bind one; one it does not bind still bubbles here.
+	if (kc.Alt || kc.Super) && !bound {
 		return false
 	}
 
-	code := k.Code
-	if k.Text != "" && k.Mods&nonTextMods == 0 {
-		code = []rune(k.Text)[0] // shifted letters arrive via Text ("G")
-	}
-	kc := KeyChord{Mode: modeClass(c.keys.mode), Code: code, Ctrl: ctrl}
-
-	if c.keys.unbound[kc] {
+	if unbound {
 		c.keys.count = 0
 		c.keys.pendingAct = ActUnbound
 		c.keys.dropOp()
@@ -654,7 +655,6 @@ func (c *EditorCore) handleCommandKey(k tui.KeyEvent) bool {
 		return true
 	}
 
-	act, bound := c.keys.keymap[kc]
 	if !bound {
 		c.keys.count = 0 // an unbound key cancels the pending count and bubbles
 		c.keys.dropOp()
