@@ -11,6 +11,7 @@ import (
 	"github.com/yongjohnlee80/golib/errs"
 	"github.com/yongjohnlee80/golib/logger"
 	"github.com/yongjohnlee80/golib/tui/i18n"
+	"github.com/yongjohnlee80/golib/tui/keymap"
 	"github.com/yongjohnlee80/golib/tui/style"
 )
 
@@ -385,6 +386,28 @@ func (a *App) ApplyTranslations(s *i18n.Set) {
 	a.cfg.translations = s
 	a.layoutDirty, a.renderDirty = true, true
 }
+
+// SetKeymap schedules replacing the key bindings every widget matches keys against, on the loop
+// goroutine: how an edited key-mapping scheme takes effect. A nil Map returns every command to its
+// declared keys. Nothing is rebuilt; focus, typed text and open dialogs are untouched.
+//
+// Safe from any goroutine; like Update it always enqueues and returns. On the loop goroutine,
+// [App.ApplyKeymap] installs it in the same turn.
+func (a *App) SetKeymap(m *keymap.Map) {
+	a.Update(func() { a.ApplyKeymap(m) })
+}
+
+// ApplyKeymap is [App.SetKeymap] taking effect at once, for code already on the loop goroutine
+// that changes the tree in the same turn — a reload that installs a new layout and its key map
+// together. A key's meaning changes, and so does the width of every accelerator and help line
+// that prints one, so it dirties layout and render, as ApplyLanguage does. Loop goroutine only.
+func (a *App) ApplyKeymap(m *keymap.Map) {
+	a.cfg.keymap = m
+	a.layoutDirty, a.renderDirty = true, true
+}
+
+// Keymap is the key bindings in force; nil when none was given. Call it on the loop goroutine.
+func (a *App) Keymap() *keymap.Map { return a.cfg.keymap }
 
 // Language is the language widgets currently show a [Message] in. Call it on the loop
 // goroutine, from a handler or inside Update.

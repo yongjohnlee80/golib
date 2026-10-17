@@ -42,7 +42,7 @@ func (c *WindowCore) ResolvePointerPress(e tui.MouseEvent) (tui.Action, bool) {
 
 // ResolveCaptureEscape cancels the held gesture without a content key binding.
 func (c *WindowCore) ResolveCaptureEscape(e tui.KeyEvent) (tui.Action, bool) {
-	if c.drag != nil && e.Kind != tui.KeyRelease && e.Code == tui.KeyEscape && e.Mods.Chord() == 0 {
+	if c.drag != nil { // the runtime matched tui.CancelCapture before asking
 		return WindowDragCancelAction{}, true
 	}
 	return nil, false
