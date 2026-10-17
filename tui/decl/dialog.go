@@ -298,7 +298,7 @@ func newDialog(b Build, s dialogSpec) *dialogNode {
 		shortcuts := s.shortcuts
 		opts = append(opts, widget.WithModalKeys(func(k tui.KeyEvent) bool {
 			for _, sc := range shortcuts {
-				if sc.seq.matches(k) {
+				if seqMatches(sc.seq, k) {
 					sc.trigger()
 					return true
 				}

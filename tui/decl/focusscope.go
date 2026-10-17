@@ -113,7 +113,7 @@ func fireShortcut(shortcuts []*shortcutNode, ev tui.Event) bool {
 		return false
 	}
 	for _, s := range shortcuts {
-		if s.seq.matches(k) {
+		if seqMatches(s.seq, k) {
 			s.trigger()
 			return true
 		}
