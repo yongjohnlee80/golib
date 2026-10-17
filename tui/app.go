@@ -713,11 +713,24 @@ func (a *App) renderFrame() {
 	a.applyNatives()
 	a.applyImages()
 	a.applyCursor()
-	if err := a.backend.Flush(a.buf.diff()); err != nil {
-		logger.Error(a.cfg.logger, err, map[string]any{"tui": "backend flush failed"})
-	}
+	a.flush()
 	a.lastFrame = time.Now()
 	a.frames++
+}
+
+// flush hands the frame's diff to the backend: with the buffer's size to one that asks for it
+// (SizedFlusher), else through Flush.
+func (a *App) flush() {
+	diff := a.buf.diff()
+	var err error
+	if f, ok := a.backend.(SizedFlusher); ok {
+		err = f.FlushSized(a.buf.size(), diff)
+	} else {
+		err = a.backend.Flush(diff)
+	}
+	if err != nil {
+		logger.Error(a.cfg.logger, err, map[string]any{"tui": "backend flush failed"})
+	}
 }
 
 // repairInvisibleFocus enforces the no-invisible-focus invariant: when a layout

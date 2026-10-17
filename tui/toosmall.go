@@ -5,7 +5,6 @@ import (
 	"strings"
 	"time"
 
-	"github.com/yongjohnlee80/golib/logger"
 	"github.com/yongjohnlee80/golib/tui/internal/grapheme"
 	"github.com/yongjohnlee80/golib/tui/style"
 )
@@ -133,9 +132,7 @@ func (a *App) renderTooSmall() {
 	a.frameImages = a.frameImages[:0]
 	a.applyImages() // nothing reported: every placed image is deleted
 	a.backend.HideCursor()
-	if err := a.backend.Flush(a.buf.diff()); err != nil {
-		logger.Error(a.cfg.logger, err, map[string]any{"tui": "backend flush failed"})
-	}
+	a.flush()
 	a.lastFrame = time.Now()
 	a.frames++
 }
