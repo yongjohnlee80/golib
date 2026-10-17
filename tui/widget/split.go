@@ -6,6 +6,7 @@ import (
 
 	"github.com/yongjohnlee80/golib/errs"
 	"github.com/yongjohnlee80/golib/tui"
+	"github.com/yongjohnlee80/golib/tui/keymap"
 	"github.com/yongjohnlee80/golib/tui/style"
 )
 
@@ -599,41 +600,41 @@ func (s *Split) resolve(ev tui.Event) (tui.Action, bool) {
 // a different gesture entirely, and consuming it would swallow a binding the
 // application may want.
 func (s *Split) resolveKey(e tui.KeyEvent) (tui.Action, bool) {
-	if e.Kind == tui.KeyRelease {
+	cmd, ok := s.Context().KeyCommand(e, s.axisCommands()...)
+	if !ok {
 		return nil, false
 	}
-	if e.Code == tui.KeyEscape && e.Mods.Chord() == 0 {
+	switch cmd.ID {
+	case SplitCancel.ID:
 		return ResizeCancelAction{}, true
+	case SplitLeft.ID:
+		return ResizeStepAction{DX: -1, Unit: s.stepUnit}, true
+	case SplitRight.ID:
+		return ResizeStepAction{DX: 1, Unit: s.stepUnit}, true
+	case SplitUp.ID:
+		return ResizeStepAction{DY: -1, Unit: s.stepUnit}, true
 	}
-	if e.Mods&tui.ModAlt == 0 || e.Mods&^tui.ModAlt != 0 {
-		return nil, false
+	return ResizeStepAction{DY: 1, Unit: s.stepUnit}, true
+}
+
+// axisCommands is the commands of the split's axis.
+func (s *Split) axisCommands() []keymap.Command {
+	if s.o == Horizontal {
+		return splitHorizontal
 	}
-	horiz := s.o == Horizontal
-	step := func(d int) (tui.Action, bool) {
-		if horiz {
-			return ResizeStepAction{DX: d, Unit: s.stepUnit}, true
-		}
-		return ResizeStepAction{DY: d, Unit: s.stepUnit}, true
+	return splitVertical
+}
+
+// KeyScope is a Split's key-map scope.
+func (s *Split) KeyScope() keymap.Scope { return SplitScope }
+
+// KeyBindings is the divider's commands along its axis as m binds them, none while a pane is zoomed
+// (tui.KeyBinder).
+func (s *Split) KeyBindings(m *keymap.Map) []keymap.Binding {
+	if s.zoomed != PaneNone {
+		return nil
 	}
-	switch e.Code {
-	case tui.KeyLeft:
-		if horiz {
-			return step(-1)
-		}
-	case tui.KeyRight:
-		if horiz {
-			return step(1)
-		}
-	case tui.KeyUp:
-		if !horiz {
-			return step(-1)
-		}
-	case tui.KeyDown:
-		if !horiz {
-			return step(1)
-		}
-	}
-	return nil, false
+	return tui.BindingsOf(m, s.axisCommands()...)
 }
 
 // resolveMouse maps a press on the divider, and everything after it, onto the

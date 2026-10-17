@@ -271,6 +271,35 @@ var (
 		TabStripLeft, TabStripRight}
 )
 
+// SplitScope is a Split's divider keys: Alt and an arrow along the split's axis step the divider, and
+// Esc cancels a drag. Off its axis an arrow is not the split's.
+const SplitScope keymap.Scope = "tui.split"
+
+var (
+	SplitCancel = cmd("tui.split.cancel", SplitScope, "Esc")
+	SplitLeft   = cmd("tui.split.left", SplitScope, "Alt+Left") // a horizontal split's divider
+	SplitRight  = cmd("tui.split.right", SplitScope, "Alt+Right")
+	SplitUp     = cmd("tui.split.up", SplitScope, "Alt+Up") // a vertical split's
+	SplitDown   = cmd("tui.split.down", SplitScope, "Alt+Down")
+
+	splitHorizontal = []keymap.Command{SplitCancel, SplitLeft, SplitRight}
+	splitVertical   = []keymap.Command{SplitCancel, SplitUp, SplitDown}
+)
+
+// ResizableScope is a Resizable's keys: Shift and an arrow step its box, leaving the bare arrows to
+// its content, and Esc cancels a drag.
+const ResizableScope keymap.Scope = "tui.resizable"
+
+var (
+	ResizableCancel = cmd("tui.resizable.cancel", ResizableScope, "Esc")
+	ResizableLeft   = cmd("tui.resizable.left", ResizableScope, "Shift+Left")
+	ResizableRight  = cmd("tui.resizable.right", ResizableScope, "Shift+Right")
+	ResizableUp     = cmd("tui.resizable.up", ResizableScope, "Shift+Up")
+	ResizableDown   = cmd("tui.resizable.down", ResizableScope, "Shift+Down")
+
+	resizableCommands = []keymap.Command{ResizableCancel, ResizableLeft, ResizableRight, ResizableUp, ResizableDown}
+)
+
 // WindowMenu opens and leaves the window's menu bar (a declarative Window's): F10, as a desktop's
 // toolkit binds it. It is not a mnemonic; a category's Alt+letter is.
 var WindowMenu = cmd("tui.window.menu", keymap.Global, "F10", "Super+F10")
@@ -288,6 +317,8 @@ func KeyCommands() []keymap.Command {
 	out = append(out, modalCommands...)
 	out = append(out, tabsCommands...)
 	out = append(out, tabStripCommands...)
+	out = append(out, SplitCancel, SplitLeft, SplitRight, SplitUp, SplitDown)
+	out = append(out, resizableCommands...)
 	out = append(out, EditorCommands()...)
 	return out
 }

@@ -2,6 +2,7 @@ package widget
 
 import (
 	"github.com/yongjohnlee80/golib/tui"
+	"github.com/yongjohnlee80/golib/tui/keymap"
 )
 
 // RESIZE ACTIONS AND THE GRIP.
@@ -72,30 +73,36 @@ func (ResizeCancelAction) ActionID() tui.ActionID { return "resize.cancel" }
 // make every scrollable child unusable.
 func (r *Resizable) resizeKeys(ev tui.Event) (tui.Action, bool) {
 	k, ok := ev.(tui.KeyEvent)
-	if !ok || k.Kind == tui.KeyRelease {
+	if !ok {
 		return nil, false
 	}
-	if k.Code == tui.KeyEscape && k.Mods.Chord() == 0 {
-		return ResizeCancelAction{}, true
-	}
-	if k.Mods != tui.ModShift {
+	cmd, ok := r.Context().KeyCommand(k, resizableCommands...)
+	if !ok {
 		return nil, false
 	}
 	// The widget's CONFIGURED unit, not a hardcoded one. Unit travels in the
 	// action so a consumer's own binding can ask for something else — but the
 	// built-in keys have to honour WithResizeStep, or its unit argument is dead
 	// for every application that does not write its own resolver.
-	switch k.Code {
-	case tui.KeyRight:
+	switch cmd.ID {
+	case ResizableCancel.ID:
+		return ResizeCancelAction{}, true
+	case ResizableRight.ID:
 		return ResizeStepAction{DX: 1, Unit: r.stepUnit}, true
-	case tui.KeyLeft:
+	case ResizableLeft.ID:
 		return ResizeStepAction{DX: -1, Unit: r.stepUnit}, true
-	case tui.KeyDown:
+	case ResizableDown.ID:
 		return ResizeStepAction{DY: 1, Unit: r.stepUnit}, true
-	case tui.KeyUp:
-		return ResizeStepAction{DY: -1, Unit: r.stepUnit}, true
 	}
-	return nil, false
+	return ResizeStepAction{DY: -1, Unit: r.stepUnit}, true
+}
+
+// KeyScope is a Resizable's key-map scope.
+func (r *Resizable) KeyScope() keymap.Scope { return ResizableScope }
+
+// KeyBindings is the Resizable's commands as m binds them (tui.KeyBinder).
+func (r *Resizable) KeyBindings(m *keymap.Map) []keymap.Binding {
+	return tui.BindingsOf(m, resizableCommands...)
 }
 
 // HandleAction interprets the shared resize vocabulary.
