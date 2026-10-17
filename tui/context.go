@@ -353,8 +353,15 @@ func (c *Context) Translate(m Message) string { return c.app.Translate(m) }
 // A release never matches; a repeat does, so a held arrow keeps moving. An event holding Hyper or
 // Meta matches nothing. This is the one question a widget asks instead of switching on raw keys
 // (ADR 1792255248 §4.4).
+//
+// A nil Context (a widget not mounted, as a unit test may drive one) matches each command's declared
+// keys.
 func (c *Context) KeyCommand(ev KeyEvent, cmds ...keymap.Command) (keymap.Command, bool) {
-	return keyCommand(c.app.cfg.keymap, ev, cmds)
+	var m *keymap.Map
+	if c != nil && c.app != nil {
+		m = c.app.cfg.keymap
+	}
+	return keyCommand(m, ev, cmds)
 }
 
 // keyCommand is KeyCommand against m, for the App's own keys (globalKey) as well as a widget's.

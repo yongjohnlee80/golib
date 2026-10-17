@@ -4,6 +4,7 @@ import (
 	"sort"
 
 	"github.com/yongjohnlee80/golib/tui"
+	"github.com/yongjohnlee80/golib/tui/keymap"
 	"github.com/yongjohnlee80/golib/tui/style"
 )
 
@@ -430,6 +431,23 @@ func (l *List[T]) hasFocus() bool {
 	return ctx != nil && ctx.Focused()
 }
 
+// keyCommand is which of the List's commands e is, declined where the List has nothing to do with
+// it: the context-menu key without a context menu, Space without multi-select. A Ctrl, Alt or Super
+// chord no command binds is the application's (pane motion, quit, …), so it bubbles.
+func (l *List[T]) keyCommand(e tui.KeyEvent) (keymap.Command, bool) {
+	cmd, ok := l.Context().KeyCommand(e, listCommands...)
+	switch {
+	case !ok:
+		return keymap.Command{}, false
+	case cmd.ID == ListMenu.ID && !l.contextMenu, cmd.ID == ListToggle.ID && !l.multi:
+		return keymap.Command{}, false
+	}
+	return cmd, true
+}
+
+// KeyScope is the List's key-map scope.
+func (l *List[T]) KeyScope() keymap.Scope { return ListScope }
+
 // HandleEvent implements the key/mouse contract.
 func (l *List[T]) HandleEvent(ev tui.Event) bool {
 	switch e := ev.(type) {
@@ -439,61 +457,32 @@ func (l *List[T]) HandleEvent(ev tui.Event) bool {
 		l.MarkDirty()
 		return false
 	case tui.KeyEvent:
-		if e.Kind == tui.KeyRelease {
+		cmd, ok := l.keyCommand(e)
+		if !ok {
 			return false
 		}
-		if l.contextMenu && IsContextMenuKey(e) {
+		switch cmd.ID {
+		case ListMenu.ID:
 			if l.count == 0 {
 				l.requestMenu(-1, tui.Point{})
 			} else {
 				l.requestMenu(l.cursor, tui.Point{Y: max(l.cursor-l.top, 0)})
 			}
-			return true
-		}
-		// Ctrl/Alt/Super chords belong to the application (pane motion,
-		// quit, …) — a list must never eat them as plain letters.
-		if e.Mods&nonTextMods != 0 {
-			return false
-		}
-		// Vim motions alongside the arrows: the widget set is used in
-		// vim-keyed applications, and j/k/g/G are the house vocabulary
-		// (widget.Tree has honored them since).
-		code := e.Code
-		if e.Text != "" {
-			code = []rune(e.Text)[0]
-		}
-		switch code {
-		case 'k', tui.KeyUp:
+		case ListUp.ID:
 			l.moveCursor(l.cursor - 1)
-			return true
-		case 'j', tui.KeyDown:
+		case ListDown.ID:
 			l.moveCursor(l.cursor + 1)
-			return true
-		case 'g':
+		case ListTop.ID, ListHome.ID:
 			l.moveCursor(0)
-			return true
-		case 'G':
+		case ListBottom.ID, ListEnd.ID:
 			l.moveCursor(l.count - 1)
-			return true
-		case tui.KeyPageUp:
+		case ListPageUp.ID:
 			l.moveCursor(l.cursor - max(l.viewRows(), 1))
-			return true
-		case tui.KeyPageDown:
+		case ListPageDown.ID:
 			l.moveCursor(l.cursor + max(l.viewRows(), 1))
-			return true
-		case tui.KeyHome:
-			l.moveCursor(0)
-			return true
-		case tui.KeyEnd:
-			l.moveCursor(l.count - 1)
-			return true
-		case tui.KeyEnter:
+		case ListActivate.ID:
 			l.activate()
-			return true
-		case ' ':
-			if !l.multi {
-				return false
-			}
+		case ListToggle.ID:
 			if l.count > 0 {
 				if _, on := l.sel[l.cursor]; on {
 					delete(l.sel, l.cursor)
@@ -502,9 +491,8 @@ func (l *List[T]) HandleEvent(ev tui.Event) bool {
 				}
 				l.MarkDirty()
 			}
-			return true
 		}
-		return false
+		return true
 
 	case tui.MouseEvent:
 		switch {
