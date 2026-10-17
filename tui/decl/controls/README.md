@@ -32,7 +32,8 @@ Popup {                                   // a command prompt
   to offer, Tab moves the focus as before. A host wanting other rules, such as a
   table's field names written as an ORDER BY or WHERE bar reads them, sets the
   completer from Go: `tuidecl.FindAs[*widget.TextInput](p, id)`, then
-  `SetCompleter(widget.TableFieldCompleter(fields))`.
+  `SetCompleter(widget.TableFieldCompleter(widget.TableWhereBar, fields))` —
+  WHERE takes a shared field's position as `#n`, ORDER BY as its bare number.
 - A TextField wears `base`/`text` and `highlight`/`highlightedText`; inside a
   coloured card it wears the card's colours.
 - A Popup opens over its Window, or on the adapter's `WithOverlay` host. Escape

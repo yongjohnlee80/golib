@@ -93,8 +93,8 @@ var TextField = tuidecl.Type{
 
 // setCompletions is the completions setter: the word before the cursor is completed from the
 // model's rows, read at each Tab and paint so they follow the model. A host wanting other rules
-// (a table's field names, quoted as a bar reads them) sets the field's completer from Go:
-// tuidecl.FindAs[*widget.TextInput](p, id) and SetCompleter(widget.TableFieldCompleter(…)).
+// (a table's field names, as its bar reads them) sets the field's completer from Go:
+// tuidecl.FindAs[*widget.TextInput](p, id) and SetCompleter(widget.TableFieldCompleter(widget.TableWhereBar, …)).
 func setCompletions(c tui.Component, v qml.SpecValue) error {
 	ti, ok := c.(*widget.TextInput)
 	if !ok {
