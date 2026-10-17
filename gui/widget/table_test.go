@@ -213,13 +213,14 @@ func TestATableDrawsTheCursorTheSelectionAndTheSortMark(t *testing.T) {
 	}
 }
 
-// The selected cell's glyphs must remain readable on the actual fill in both focus states.
-// This catches a renderer that paints the ordinary row foreground over a light highlight.
-func TestATableCursorTextContrastsWithItsFill(t *testing.T) {
+// The selected cell's glyphs must remain readable on both dark and light cursor fills.
+// The focus transition has a separate pixel test; this one catches ordinary row text painted
+// over a light highlight even when that highlight was supplied through CursorBlurred.
+func TestATableCursorTextContrastsWithTwoFillColors(t *testing.T) {
 	_, l := pixelTable(t, cities(3))
-	for _, focused := range []bool{false, true} {
+	for _, lightFill := range []bool{false, true} {
 		fg, bg := style.RGB(238, 238, 238), style.RGB(17, 17, 17)
-		if focused {
+		if lightFill {
 			fg, bg = style.RGB(25, 25, 25), style.RGB(195, 185, 245)
 		}
 		l.t.SetStyles(tuiwidget.DataTableStyles{CursorBlurred: style.New().Foreground(fg).Background(bg)})
@@ -233,13 +234,13 @@ func TestATableCursorTextContrastsWithItsFill(t *testing.T) {
 			}
 		}
 		if overlay == nil {
-			t.Errorf("focused %v: no clipped cursor text", focused)
+			t.Errorf("light fill %v: no clipped cursor text", lightFill)
 			continue
 		}
 		painted := overlay.Brush.Color
 		ratio, ok := style.ContrastRatio(style.RGB(painted.R, painted.G, painted.B), style.RGB(fill.R, fill.G, fill.B))
 		if !ok || ratio < 4.5 {
-			t.Errorf("focused %v: cursor text %v on %v has contrast %.2f", focused, painted, fill, ratio)
+			t.Errorf("light fill %v: cursor text %v on %v has contrast %.2f", lightFill, painted, fill, ratio)
 		}
 	}
 }
