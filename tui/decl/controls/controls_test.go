@@ -337,6 +337,9 @@ func TestATextFieldCompletesFromItsModel(t *testing.T) {
 		tuidecl.Handlers(map[string]decl.HandlerFunc{"App.run": rec.handler("run")}))
 	enter := tui.KeyEvent{Kind: tui.KeyPress, Code: tui.KeyEnter}
 	tab := tui.KeyEvent{Kind: tui.KeyPress, Code: tui.KeyTab}
+	// Tab with nothing to offer moves the focus, here onto the field, which draws its choices only
+	// while it has the keys.
+	s.Keys(t, tab)
 	s.Keys(t, decltest.Type("na")...)
 	waitFor(t, "the choices offered", func() bool {
 		var items []string
