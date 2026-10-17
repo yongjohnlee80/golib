@@ -200,7 +200,7 @@ func (m *MenuItem) Armed() bool { return m.armed }
 // tomorrow.
 func (m *MenuItem) Init(ctx *tui.Context) {
 	m.Base.Init(ctx)
-	ctx.SetDefaultActionResolvers(tui.ActionResolverFunc(activateKeys))
+	ctx.SetDefaultActionResolvers(tui.ActionResolverFunc(func(ev tui.Event) (tui.Action, bool) { return activateKeys(ctx, ev) }))
 	ctx.SetPointerPolicy(m.pointerPolicy)
 }
 

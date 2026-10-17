@@ -169,6 +169,69 @@ func readline(letter string) []string {
 	return out
 }
 
+// MenuScope is a menu's keys: a menu bar's and a popup menu's. Arrows follow the layout: a bar walks
+// with Left/Right, a column with Up/Down. A row's mnemonic is not a command: it is its label's.
+const MenuScope keymap.Scope = "tui.menu"
+
+var (
+	MenuLeft     = cmd("tui.menu.left", MenuScope, "Left")
+	MenuRight    = cmd("tui.menu.right", MenuScope, "Right")
+	MenuUp       = cmd("tui.menu.up", MenuScope, "Up")
+	MenuDown     = cmd("tui.menu.down", MenuScope, "Down")
+	MenuVimLeft  = cmd("tui.menu.vimLeft", MenuScope, "H") // with vim navigation, after any row's mnemonic
+	MenuVimDown  = cmd("tui.menu.vimDown", MenuScope, "J")
+	MenuVimUp    = cmd("tui.menu.vimUp", MenuScope, "K")
+	MenuVimRight = cmd("tui.menu.vimRight", MenuScope, "L")
+	MenuActivate = cmd("tui.menu.activate", MenuScope, "Enter", "Space")
+	MenuClose    = cmd("tui.menu.close", MenuScope, "Esc") // one level per press; from the bar, leave the menu
+
+	menuCommands = []keymap.Command{MenuLeft, MenuRight, MenuUp, MenuDown, MenuVimLeft, MenuVimDown,
+		MenuVimUp, MenuVimRight, MenuActivate, MenuClose}
+
+	// menuKey is the key each menu command stands for in the bar and column logic.
+	menuKey = map[string]rune{
+		MenuLeft.ID: tui.KeyLeft, MenuVimLeft.ID: tui.KeyLeft, MenuRight.ID: tui.KeyRight,
+		MenuVimRight.ID: tui.KeyRight, MenuUp.ID: tui.KeyUp, MenuVimUp.ID: tui.KeyUp,
+		MenuDown.ID: tui.KeyDown, MenuVimDown.ID: tui.KeyDown, MenuActivate.ID: tui.KeyEnter,
+		MenuClose.ID: tui.KeyEscape,
+	}
+)
+
+// isMenuVimAlias reports whether c is one of the menu's vim aliases, which yield to a row's mnemonic.
+func isMenuVimAlias(c keymap.Command) bool {
+	switch c.ID {
+	case MenuVimLeft.ID, MenuVimDown.ID, MenuVimUp.ID, MenuVimRight.ID:
+		return true
+	}
+	return false
+}
+
+// ButtonScope is a leaf control's activation (a Button, a standalone MenuItem).
+const ButtonScope keymap.Scope = "tui.button"
+
+// ButtonActivate is the activation key of a Button and a standalone MenuItem: the same
+// tui.ActivateAction the pointer gesture produces.
+var ButtonActivate = cmd("tui.button.activate", ButtonScope, "Enter", "Space")
+
+// ModalScope is a Modal's keys. A button's mnemonic is not a command, and neither are a host's
+// WithModalDismissKeys, which are its code.
+const ModalScope keymap.Scope = "tui.modal"
+
+var (
+	ModalDismiss = cmd("tui.modal.dismiss", ModalScope, "Esc")
+	ModalAccept  = cmd("tui.modal.accept", ModalScope, "Enter") // the default button, when the focused control leaves Enter
+	ModalPrev    = cmd("tui.modal.prev", ModalScope, "Left", "Up")
+	ModalNext    = cmd("tui.modal.next", ModalScope, "Right", "Down")
+	ModalVimPrev = cmd("tui.modal.vimPrev", ModalScope, "H", "K") // with vim navigation, after the mnemonics
+	ModalVimNext = cmd("tui.modal.vimNext", ModalScope, "L", "J")
+
+	modalCommands = []keymap.Command{ModalDismiss, ModalAccept, ModalPrev, ModalNext, ModalVimPrev, ModalVimNext}
+)
+
+// WindowMenu opens and leaves the window's menu bar (a declarative Window's): F10, as a desktop's
+// toolkit binds it. It is not a mnemonic; a category's Alt+letter is.
+var WindowMenu = cmd("tui.window.menu", keymap.Global, "F10", "Super+F10")
+
 // KeyCommands is every key command golib declares: the runtime's and every widget's, for keymap.Build.
 // (Commands is the Editor command line's registry; these are keys.)
 func KeyCommands() []keymap.Command {
@@ -177,5 +240,8 @@ func KeyCommands() []keymap.Command {
 	out = append(out, treeCommands...)
 	out = append(out, tableCommands...)
 	out = append(out, inputCommands...)
+	out = append(out, menuCommands...)
+	out = append(out, ButtonActivate, WindowMenu)
+	out = append(out, modalCommands...)
 	return out
 }
