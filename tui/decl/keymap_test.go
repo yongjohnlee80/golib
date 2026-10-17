@@ -8,6 +8,7 @@ import (
 
 	"github.com/yongjohnlee80/golib/tui"
 	tuidecl "github.com/yongjohnlee80/golib/tui/decl"
+	"github.com/yongjohnlee80/golib/tui/decl/controls"
 	"github.com/yongjohnlee80/golib/tui/decl/decltest"
 	tuikey "github.com/yongjohnlee80/golib/tui/key"
 	"github.com/yongjohnlee80/golib/tui/keymap"
@@ -39,6 +40,7 @@ func runKeys(t *testing.T, layout, scheme string, extra ...tuidecl.ProgramOption
 		tuidecl.Commands(map[string]func() error{"App.saved": set("saved"), "App.added": set("added"), "App.fixed": set("fixed")}),
 		tuidecl.KeyCommands(demoSave, demoAdd),
 		tuidecl.Keymap(demoFiles(scheme), "keymap.xml"),
+		tuidecl.Types(controls.Types()...),
 	}, extra...)
 	s := decltest.RunWith(t, 50, 6, func(prog *tuidecl.Program) error { p = prog; return nil }, opts...)
 	return s, &p
@@ -120,7 +122,7 @@ func TestAMenuItemShowsItsCommandsKey(t *testing.T) {
 }`
 	s, _ := runKeys(t, layout, `<mapping><shortcut id="demo.save"><key value="Ctrl+P"/></shortcut></mapping>`)
 	s.WaitForText(t, "ready")
-	s.Keys(t, tui.KeyEvent{Kind: tui.KeyPress, Code: tui.KeyF10})
+	s.Keys(t, tui.KeyEvent{Kind: tui.KeyPress, Code: tui.KeyF10}, tui.KeyEvent{Kind: tui.KeyPress, Code: tui.KeyEnter})
 	s.WaitForText(t, "Ctrl+P")
 }
 
