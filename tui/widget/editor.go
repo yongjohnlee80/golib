@@ -7,6 +7,7 @@ import (
 
 	"github.com/yongjohnlee80/golib/highlight"
 	"github.com/yongjohnlee80/golib/tui"
+	"github.com/yongjohnlee80/golib/tui/keymap"
 	"github.com/yongjohnlee80/golib/tui/style"
 )
 
@@ -701,8 +702,10 @@ func (e *Editor) HandleEvent(ev tui.Event) bool {
 		}
 		return e.core.HandleTick() // the chord timeout
 	case tui.KeyEvent:
-		if e.menu.Enabled() && IsContextMenuKey(t) {
-			return e.OpenContextMenu()
+		if e.menu.Enabled() && t.Kind == tui.KeyPress { // a repeat opens no second menu
+			if _, ok := e.Context().KeyCommand(t, EditorContextMenu); ok {
+				return e.OpenContextMenu()
+			}
 		}
 		return e.core.HandleKey(t)
 	}
@@ -1153,3 +1156,6 @@ func (e *Editor) width(s string) int { return tabAware(e.measure)(s) }
 func (e *Editor) view() wrapView {
 	return wrapView{w: e.cells.w, h: e.cells.h, wrap: e.cells.wrap, measure: e.width}
 }
+
+// KeyScope is the scope of the keyset and mode class the editor is in: "tui.editor.vim.normal".
+func (e *Editor) KeyScope() keymap.Scope { return e.core.KeyScope() }

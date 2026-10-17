@@ -11,7 +11,7 @@ func TestKeyDispatchKeysetReplaysTheOverlay(t *testing.T) {
 	k.overlay = Keymap{undo: ActUndo, gone: ActUnbound}
 	k.applyOverlay(k.overlay)
 	for _, ks := range []Keyset{KeysetNano, KeysetStandard, KeysetVim} {
-		k.applyKeyset(ks)
+		k.applyKeyset(ks, nil)
 		if k.keyset != ks || k.modal != (ks == KeysetVim) {
 			t.Fatalf("%v: keyset %v, modal %v", ks, k.keyset, k.modal)
 		}
