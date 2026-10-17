@@ -293,3 +293,55 @@ func (tickProvider) Subscribe(fn func(decl.Update)) ([]string, func() error, err
 	fn(decl.Update{Version: 1, Values: map[string]qml.SpecValue{"App.tick": {Kind: qml.SpecValueString, Raw: "tick 0"}}})
 	return []string{"App.tick"}, func() error { return nil }, nil
 }
+
+// Every item's keyScope reads by id in a handler: a widget's own scope, a FocusScope's declared one,
+// and for an item with none of its own the nearest enclosing scope (the Window's, Global).
+func TestKeyScopeReadsByIDInAHandler(t *testing.T) {
+	var prog **tuidecl.Program
+	show := func(args []qml.SpecValue) error {
+		parts := make([]string, len(args))
+		for i := range args {
+			s, err := tuidecl.Arg(args, i)
+			if err != nil {
+				return err
+			}
+			parts[i] = s
+		}
+		return (*prog).Set("App.status", strings.Join(parts, "|"))
+	}
+	s, pp := runKeys(t, `Window {
+    Shortcut { sequence: "F5"; onActivated: App.show(field.keyScope, todos.keyScope, status.keyScope) }
+    Flex { direction: Tui.Vertical
+        Text { id: status; text: App.status }
+        FocusScope { id: todos; keyScope: "demo.todos"
+            TextField { id: field }
+        }
+    }
+}`, "", tuidecl.Handlers(map[string]decl.HandlerFunc{"App.show": show}))
+	prog = pp
+	s.WaitForText(t, "ready")
+	s.Keys(t, tui.KeyEvent{Kind: tui.KeyPress, Code: tui.KeyF5})
+	s.WaitForText(t, "tui.input|demo.todos|global")
+}
+
+// A key declaration the parser cannot read is refused with its position, before anything runs.
+func TestMalformedKeyDeclarationsAreRefused(t *testing.T) {
+	for _, c := range []struct {
+		name, layout, want string
+	}{
+		{"an unknown key name", `Window { Shortcut { sequence: "Ctrl+Bogus"; onActivated: App.saved() }
+            Text { text: "x" } }`, `(at main.qml:3`},
+		{"a FocusScope with two contents", `Window { FocusScope { keyScope: "demo.todos"
+            Text { text: "a" }
+            Text { text: "b" } } }`, `a FocusScope holds exactly one content item besides its Shortcuts, got 2`},
+	} {
+		_, err := tuidecl.NewProgram(
+			tuidecl.LayoutSource("main.qml", []byte(keysHead+c.layout)),
+			tuidecl.Singleton("demo", "1.0", "App"),
+			tuidecl.Commands(map[string]func() error{"App.saved": func() error { return nil }}),
+			tuidecl.KeyCommands(demoSave, demoAdd))
+		if err == nil || !strings.Contains(err.Error(), c.want) {
+			t.Errorf("%s: %v, want %q", c.name, err, c.want)
+		}
+	}
+}
