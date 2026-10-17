@@ -132,6 +132,9 @@ func (h *Host) options(opt Options) []tuidecl.ProgramOption {
 			tuidecl.Layout(files, "editor.qml"),
 			// Followed like the layout: a saved translation is on screen a moment later.
 			tuidecl.Translations(files, "i18n", "editor"),
+			// A user's key-mapping scheme, followed too: copy keymap.example.xml to keymap.xml and
+			// edit it, and the keys move a moment later. Absent, every key keeps its default.
+			tuidecl.Keymap(files, "keymap.xml"),
 			// A refused edit is reported where the user is looking; the
 			// screen stays as it was until the next good save.
 			tuidecl.HotReload(tuidecl.OnReloadError(func(err error) { _ = h.message(err.Error()) })))
