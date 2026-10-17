@@ -75,15 +75,15 @@ func TestEditorScopesRefuseOnlyTheirOwnConflicts(t *testing.T) {
 // A host's Go overlay is replayed over the scheme, so it wins: its ActUnbound frees a key the scheme
 // bound, and its rebinding takes a key the scheme moved away.
 func TestAHostOverlayWinsOverAScheme(t *testing.T) {
-	m := mustKeymap(t, `<mapping><shortcut id="tui.editor.vim.normal.deleteChar"><key value="Q"/></shortcut></mapping>`)
+	m := mustKeymap(t, `<mapping><shortcut id="tui.editor.vim.normal.deleteChar"><key value="Ctrl+Q"/></shortcut></mapping>`)
 	h, e, sh := mountedEditor(t, m, widget.WithKeymap(widget.Keymap{
-		{Mode: widget.ModeNormal, Code: 'q'}: widget.ActUnbound,  // the host owns q
-		{Mode: widget.ModeNormal, Code: 'x'}: widget.ActLineEnd, // and gives x another meaning
+		{Mode: widget.ModeNormal, Code: 'q', Ctrl: true}: widget.ActUnbound, // the host owns Ctrl+Q
+		{Mode: widget.ModeNormal, Code: 'x'}:             widget.ActLineEnd, // and gives x another meaning
 	}))
-	h.inject(ch('q'))
+	h.inject(tui.KeyEvent{Kind: tui.KeyPress, Code: 'q', Mods: tui.ModCtrl})
 	h.barrier(sh)
 	if got := editorValue(h, e); got != "one two three" {
-		t.Fatalf("q deleted though the host unbound it: %q", got)
+		t.Fatalf("Ctrl+Q deleted though the host unbound it: %q", got)
 	}
 	h.inject(ch('x'), ch('i'), ch('!'))
 	h.barrier(sh)
