@@ -236,10 +236,10 @@ func TestATableCursorTextContrastsWithItsFill(t *testing.T) {
 			t.Errorf("focused %v: no clipped cursor text", focused)
 			continue
 		}
-		fg := overlay.Brush.Color
-		ratio, ok := style.ContrastRatio(style.RGB(fg.R, fg.G, fg.B), style.RGB(fill.R, fill.G, fill.B))
+		painted := overlay.Brush.Color
+		ratio, ok := style.ContrastRatio(style.RGB(painted.R, painted.G, painted.B), style.RGB(fill.R, fill.G, fill.B))
 		if !ok || ratio < 4.5 {
-			t.Errorf("focused %v: cursor text %v on %v has contrast %.2f", focused, fg, fill, ratio)
+			t.Errorf("focused %v: cursor text %v on %v has contrast %.2f", focused, painted, fill, ratio)
 		}
 	}
 }
