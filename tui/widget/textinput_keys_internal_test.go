@@ -125,9 +125,16 @@ func oldInputKey(t *TextInput, e tui.KeyEvent) bool {
 
 // hyperOrMeta is the deviation ADR 1792255248 §4.2 makes on purpose: a key with Hyper or Meta held
 // matches no command (the old TextInput moved the cursor under them, as though they were not held).
+//
+// And one the old field got wrong: its completion compared the raw Mods (e.Mods&^ModShift == 0), so
+// a lock bit a kitty terminal reports (Num Lock, Caps Lock) stopped Tab completing. Every binding now
+// drops lock bits, as Mods.Chord's contract says it must.
 func hyperOrMeta(e tui.KeyEvent) string {
-	if e.Mods&(tui.ModHyper|tui.ModMeta) != 0 {
+	switch {
+	case e.Mods&(tui.ModHyper|tui.ModMeta) != 0:
 		return "Hyper or Meta held matches no command"
+	case e.Code == tui.KeyTab && e.Mods&tui.LockMods != 0:
+		return "a lock bit no longer disables Tab completion"
 	}
 	return noTextShiftedPrintable(e)
 }
