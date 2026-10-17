@@ -2,6 +2,8 @@ module github.com/yongjohnlee80/golib
 
 go 1.25.3
 
+toolchain go1.26.9
+
 require (
 	github.com/coder/websocket v1.8.15
 	github.com/go-sql-driver/mysql v1.10.0

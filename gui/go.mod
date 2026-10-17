@@ -2,6 +2,8 @@ module github.com/yongjohnlee80/golib/gui
 
 go 1.25.3
 
+toolchain go1.26.9
+
 require (
 	github.com/yongjohnlee80/golib v0.6.119
 	golang.org/x/image v0.45.0
