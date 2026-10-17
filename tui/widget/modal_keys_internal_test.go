@@ -96,5 +96,5 @@ func TestButtonActivationMatchesTheOldResolverWithNoMap(t *testing.T) {
 	keyGridDiff(t, "Button",
 		func(e tui.KeyEvent) string { return show(oldActivateKeys(e)) },
 		func(e tui.KeyEvent) string { return show(activateKeys(nil, e)) },
-		noTextShiftedPrintable)
+		shiftSpentOnText)
 }

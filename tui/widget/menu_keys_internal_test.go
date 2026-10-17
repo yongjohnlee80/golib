@@ -91,16 +91,18 @@ func TestMenuKeysMatchTheOldResolverWithNoMap(t *testing.T) {
 	}
 	for _, horizontal := range []bool{false, true} {
 		for _, vim := range []bool{false, true} {
-			m := NewMenu(WithMenuVimNavigation(vim))
-			if err := m.SetModel(model); err != nil {
-				t.Fatal(err)
+			for _, selected := range []ItemID{"", "file"} { // with no selection Enter resolves to nothing, either way
+				m := NewMenu(WithMenuVimNavigation(vim))
+				if err := m.SetModel(model); err != nil {
+					t.Fatal(err)
+				}
+				m.horizontal, m.selected = horizontal, selected
+				show := func(a tui.Action, ok bool) string { return fmt.Sprintf("%v %#v", ok, a) }
+				keyGridDiff(t, fmt.Sprintf("Menu (horizontal %v, vim %v, selected %q)", horizontal, vim, selected),
+					func(e tui.KeyEvent) string { return show(oldMenuKey(m, e)) },
+					func(e tui.KeyEvent) string { return show(m.resolveKey(e)) },
+					shiftSpentOnText)
 			}
-			m.horizontal = horizontal
-			show := func(a tui.Action, ok bool) string { return fmt.Sprintf("%v %#v", ok, a) }
-			keyGridDiff(t, fmt.Sprintf("Menu (horizontal %v, vim %v)", horizontal, vim),
-				func(e tui.KeyEvent) string { return show(oldMenuKey(m, e)) },
-				func(e tui.KeyEvent) string { return show(m.resolveKey(e)) },
-				noTextShiftedPrintable)
 		}
 	}
 }
