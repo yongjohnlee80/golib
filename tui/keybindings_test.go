@@ -75,7 +75,7 @@ func reachOf(bs []keymap.Binding, id string) (keymap.Binding, bool) {
 	return keymap.Binding{}, false
 }
 
-// The two directional arrangements of ADR 1792255248 §4.8, each advertised event driven through the
+// The two directional arrangements of a shared key, each advertised event driven through the
 // mounted route: a query that suppressed by symmetric overlap would drop the outer Ctrl+S in the
 // first, which a plain Ctrl+S still reaches.
 func TestKeyBindingsAreDirectionalAndAgreeWithRouting(t *testing.T) {

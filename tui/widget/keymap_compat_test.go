@@ -8,8 +8,8 @@ import (
 	"github.com/yongjohnlee80/golib/tui/widget"
 )
 
-// The names ADR 1792255248 moved into tui/key or extended still compile from outside golib and mean
-// what they did (§5.2): tui's modifier type, its methods and values, the key codes, decl's handler
+// The names the key map moved into tui/key or extended still compile from outside golib and mean
+// what they did: tui's modifier type, its methods and values, the key codes, decl's handler
 // option, and a keyed KeyChord literal.
 func TestTheOldKeyAPICompilesAndMeansTheSame(t *testing.T) {
 	var m tui.Mods = tui.ModCtrl | tui.ModShift | tui.ModNumLock

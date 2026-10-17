@@ -14,7 +14,6 @@
 // It imports nothing from tui (only tui/key), so tui can hold a *Map.
 //
 // REFERENCE: https://doc.qt.io/qtcreator/creator-how-to-change-keyboard-shortcuts.html
-// REFERENCE: ADR 1792255248 §4.3 (KB adrs/1792255248-golib-tui-overridable-key-maps.md)
 package keymap
 
 import (

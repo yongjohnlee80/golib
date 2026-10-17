@@ -123,7 +123,7 @@ func oldInputKey(t *TextInput, e tui.KeyEvent) bool {
 	return false
 }
 
-// hyperOrMeta is the deviation ADR 1792255248 §4.2 makes on purpose: a key with Hyper or Meta held
+// hyperOrMeta is the deviation key.Of makes on purpose: a key with Hyper or Meta held
 // matches no command (the old TextInput moved the cursor under them, as though they were not held).
 //
 // And one the old field got wrong: its completion compared the raw Mods (e.Mods&^ModShift == 0), so

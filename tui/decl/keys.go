@@ -15,7 +15,7 @@ import (
 	"github.com/yongjohnlee80/golib/tui/widget"
 )
 
-// KEY MAPS — overridable keys (ADR 1792255248 §4.8).
+// KEY MAPS — overridable keys.
 //
 //	Window {
 //	    Shortcut { sequence: keyId("editor.file.save"); onActivated: App.save() }
