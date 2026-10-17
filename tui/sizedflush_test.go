@@ -228,3 +228,34 @@ func TestSizedFlusherSameSizeRoundTripKeepsTheBuffer(t *testing.T) {
 		}
 	}
 }
+
+// The size handed to FlushSized is the App's buffer's, never the backend's own Size: here the
+// backend already reports 7×3 (as after a resize the App has not yet taken) while the buffer is
+// still 20×5, and flush is called directly on the loop, so no scheduling can hide the difference.
+func TestSizedFlusherIsHandedTheBufferSizeNotTheBackends(t *testing.T) {
+	t.Parallel()
+	root := &probe{name: "root", pref: Size{W: 20, H: 5}, fill: "w"}
+	h, sb := startSized(t, root, 20, 5)
+	waitFor(t, "the first frame", func() bool { f, _ := sb.recorded(); return len(f) > 0 })
+	var before []sizedFrame
+	h.onLoop(func() {
+		before, _ = sb.recorded() // on the loop: no other flush can come between this and the one below
+		h.tb.mu.Lock()
+		h.tb.setGridLocked(7, 3) // the backend's Size moves on; no ResizeEvent, so the App's buffer does not
+		h.tb.mu.Unlock()
+		if got, _ := h.tb.Size(); got != (Size{W: 7, H: 3}) {
+			t.Errorf("the backend reports %v, want 7×3", got)
+		}
+		if h.app.buf.size() != (Size{W: 20, H: 5}) {
+			t.Errorf("the buffer is %v, want 20×5", h.app.buf.size())
+		}
+		h.app.flush()
+	})
+	frames, _ := sb.recorded()
+	if len(frames) != len(before)+1 {
+		t.Fatalf("flush made %d FlushSized calls, want 1", len(frames)-len(before))
+	}
+	if got := frames[len(frames)-1].size; got != (Size{W: 20, H: 5}) {
+		t.Fatalf("FlushSized was handed %v, the backend's size; want the buffer's 20×5", got)
+	}
+}
