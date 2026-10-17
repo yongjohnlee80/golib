@@ -83,6 +83,21 @@ type CursorColorSetter interface {
 	SetCursorColor(c CellColor, set bool)
 }
 
+// SizedFlusher is a Backend that is handed each frame's size with its diff: one whose screen is
+// not a terminal's (a plugin sending its frames to a host, say), and so must know the geometry a
+// diff was drawn at. A resize can reach such a backend before the App has drawn at the new size; the
+// size given here, not the backend's own Size, is the one the diff indexes. The App probes for it
+// at every flush (renderFrame and the too-small screen alike); a backend without it gets Flush, once,
+// with the same diff and the same latched cursor.
+//
+// size is the App's cell buffer for this frame. After a size change the buffer keeps no previous
+// frame, so the first diff at a new size covers every cell (a wide cell's continuation covered by
+// its head, as in Flush). diff is valid only during the call: it is the App's reused scratch, never
+// to be kept.
+type SizedFlusher interface {
+	FlushSized(size Size, diff []CellUpdate) error
+}
+
 // CursorShape selects the hardware cursor glyph (DECSCUSR).
 type CursorShape uint8
 
