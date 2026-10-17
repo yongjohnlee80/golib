@@ -31,9 +31,9 @@ func (c *EditorCore) HandleKey(k tui.KeyEvent) bool {
 	}
 	// a host's chord: before . and a macro record it, so neither replays what the host did
 	if c.chordHook != nil && k.Code != tui.KeyEscape && !c.commandPending() {
-		// The hook keeps the eligibility it had before chords carried Alt and Super: it never sees
-		// one (ADR 1792255248 §4.7). A host that wants them asks when one needs them.
-		if kc, ok := c.chordOf(k); ok && !kc.Alt && !kc.Super && c.chordHook(kc) {
+		// The hook is shown what it always was (hookChord), never an Alt or Super chord
+		// (ADR 1792255248 §4.7). A host that wants them asks when one needs them.
+		if kc, ok := c.hookChord(k); ok && c.chordHook(kc) {
 			if c.keyDepth <= c.oneShot.depth {
 				c.oneShotSettle() // Insert's Ctrl-o: the host's chord is its one command, and Insert resumes
 			}
@@ -773,4 +773,18 @@ func (c *EditorCore) handleCommandKey(k tui.KeyEvent) bool {
 		c.dot.on = false // undoing is not a change . repeats
 	}
 	return c.execAction(act, count)
+}
+
+// hookChord is k as SetChordHook has always been shown it, so a host's hook written against it keeps
+// matching: the key's code (a shifted letter by its text, a Ctrl letter as the event spells it), Ctrl,
+// and nothing else. A key with Alt, Super, Hyper or Meta held is never shown.
+func (c *EditorCore) hookChord(k tui.KeyEvent) (KeyChord, bool) {
+	if k.Kind == tui.KeyRelease || k.Mods&(tui.ModAlt|tui.ModSuper|tui.ModMeta|tui.ModHyper) != 0 {
+		return KeyChord{}, false
+	}
+	code := k.Code
+	if k.Text != "" && k.Mods&nonTextMods == 0 {
+		code = []rune(k.Text)[0]
+	}
+	return KeyChord{Mode: modeClass(c.keys.mode), Code: code, Ctrl: k.Mods&tui.ModCtrl != 0}, true
 }

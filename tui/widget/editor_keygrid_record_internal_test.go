@@ -93,3 +93,60 @@ func TestEditorKeyGridRecord(t *testing.T) {
 		t.Fatal(err)
 	}
 }
+
+// editorGridDeviation names the differences between 6a0b271's recording and the branch's that
+// ADR 1792255248 makes on purpose, given the key column of a line:
+//   - a printable key with Shift and no text, which no backend sends, reads Shift (key.Of);
+//   - a capital letter with Ctrl and no text, which no backend sends (Gio and the terminal decoder
+//     both lower-case a Ctrl letter), is that letter's Ctrl chord: Nano's Ctrl+K cuts on it.
+func editorGridDeviation(e tui.KeyEvent) string {
+	switch {
+	case noTextShiftedPrintable(e) != "":
+		return noTextShiftedPrintable(e)
+	case e.Text == "" && e.Mods&tui.ModCtrl != 0 && e.Code >= 'A' && e.Code <= 'Z':
+		return "a capital letter with Ctrl and no text, which no backend sends, is its Ctrl chord"
+	}
+	return ""
+}
+
+// TestEditorKeyGridCompare compares two recordings ($EDITOR_GRID_OLD from 6a0b271, $EDITOR_GRID_NEW
+// from the branch), line by line: every difference must be a documented deviation. The gate sets both.
+func TestEditorKeyGridCompare(t *testing.T) {
+	oldPath, newPath := os.Getenv("EDITOR_GRID_OLD"), os.Getenv("EDITOR_GRID_NEW")
+	if oldPath == "" || newPath == "" {
+		t.Skip("EDITOR_GRID_OLD and EDITOR_GRID_NEW name the two recordings; the gate sets them")
+	}
+	read := func(p string) []string {
+		b, err := os.ReadFile(p)
+		if err != nil {
+			t.Fatal(err)
+		}
+		return strings.Split(strings.TrimRight(string(b), "\n"), "\n")
+	}
+	oldLines, newLines := read(oldPath), read(newPath)
+	if len(oldLines) != len(newLines) || len(oldLines) < 1000 {
+		t.Fatalf("recordings of %d and %d lines", len(oldLines), len(newLines))
+	}
+	events := map[string]tui.KeyEvent{}
+	for _, e := range keyGrid() {
+		events[describeKey(e)] = e
+	}
+	same, deviated := 0, 0
+	for i := range oldLines {
+		o, n := strings.Split(oldLines[i], "\t"), strings.Split(newLines[i], "\t")
+		if len(o) != 3 || len(n) != 3 || o[0] != n[0] || o[1] != n[1] {
+			t.Fatalf("line %d: the recordings walk different grids: %q, %q", i+1, oldLines[i], newLines[i])
+		}
+		if o[2] == n[2] {
+			same++
+			continue
+		}
+		e, ok := events[o[1]]
+		if ok && editorGridDeviation(e) != "" {
+			deviated++
+			continue
+		}
+		t.Errorf("%s, %s:\n  old %s\n  new %s", o[0], o[1], o[2], n[2])
+	}
+	t.Logf("%d keys agree, %d deviate as documented", same, deviated)
+}
