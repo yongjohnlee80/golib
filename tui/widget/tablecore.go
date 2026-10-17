@@ -102,7 +102,7 @@ func TableOnCopyRefused(fn func(limit int)) TableOption {
 
 // TableOnCopy receives text copied with y, yy or Copy, after the copy limit has accepted it.
 // A host can keep its editor register in step with the system clipboard. The callback is also
-// a copy target when a backend has no clipboard.
+// a copy target when a backend has no clipboard; invoking it counts as delivery to the host.
 func TableOnCopy(fn func(text string)) TableOption {
 	return func(c *TableCore) { c.onCopy = fn }
 }
