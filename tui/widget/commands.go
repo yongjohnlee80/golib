@@ -99,6 +99,76 @@ var (
 		TableSort, TableActivate}
 )
 
+// InputScope is a TextInput's keys.
+const InputScope keymap.Scope = "tui.input"
+
+// chords is key under every combination of Shift, Ctrl or Alt (the word modifier), and Super, kept
+// where keep says so: a TextInput reads Shift as "extend the selection" and Ctrl or Alt as "by
+// word", and its old handler ignored Super.
+func chords(key string, keep func(shift, word bool) bool) []string {
+	var out []string
+	for _, shift := range []string{"", "Shift+"} {
+		for _, w := range []string{"", "Ctrl+", "Alt+", "Ctrl+Alt+"} {
+			if !keep(shift != "", w != "") {
+				continue
+			}
+			for _, super := range []string{"", "Super+"} {
+				out = append(out, w+super+shift+key)
+			}
+		}
+	}
+	return out
+}
+
+var (
+	plain     = func(shift, word bool) bool { return !shift && !word }
+	shifted   = func(shift, word bool) bool { return shift && !word }
+	worded    = func(shift, word bool) bool { return !shift && word }
+	both      = func(shift, word bool) bool { return shift && word }
+	unshifted = func(shift, _ bool) bool { return !shift }
+	anyShift  = func(shift, _ bool) bool { return shift }
+	unworded  = func(_, word bool) bool { return !word }
+	anyWord   = func(_, word bool) bool { return word }
+	always    = func(bool, bool) bool { return true }
+
+	InputLeft            = cmd("tui.input.left", InputScope, chords("Left", plain)...)
+	InputSelectLeft      = cmd("tui.input.selectLeft", InputScope, chords("Left", shifted)...)
+	InputWordLeft        = cmd("tui.input.wordLeft", InputScope, chords("Left", worded)...)
+	InputSelectWordLeft  = cmd("tui.input.selectWordLeft", InputScope, chords("Left", both)...)
+	InputRight           = cmd("tui.input.right", InputScope, chords("Right", plain)...)
+	InputSelectRight     = cmd("tui.input.selectRight", InputScope, chords("Right", shifted)...)
+	InputWordRight       = cmd("tui.input.wordRight", InputScope, chords("Right", worded)...)
+	InputSelectWordRight = cmd("tui.input.selectWordRight", InputScope, chords("Right", both)...)
+	InputHome            = cmd("tui.input.home", InputScope, chords("Home", unshifted)...)
+	InputSelectHome      = cmd("tui.input.selectHome", InputScope, chords("Home", anyShift)...)
+	InputEnd             = cmd("tui.input.end", InputScope, chords("End", unshifted)...)
+	InputSelectEnd       = cmd("tui.input.selectEnd", InputScope, chords("End", anyShift)...)
+	InputBackspace       = cmd("tui.input.backspace", InputScope, chords("Backspace", unworded)...)
+	InputWordBackspace   = cmd("tui.input.wordBackspace", InputScope, chords("Backspace", anyWord)...)
+	InputDelete          = cmd("tui.input.delete", InputScope, chords("Del", always)...)
+	InputSubmit          = cmd("tui.input.submit", InputScope, chords("Enter", always)...)
+	InputComplete        = cmd("tui.input.complete", InputScope, "Tab")           // with a completer
+	InputCompletePrev    = cmd("tui.input.completePrev", InputScope, "Shift+Tab") // with a completer
+	InputLineStart       = cmd("tui.input.lineStart", InputScope, readline("A")...)
+	InputLineEnd         = cmd("tui.input.lineEnd", InputScope, readline("E")...)
+	InputKillLine        = cmd("tui.input.killLine", InputScope, readline("U")...)
+	InputKillWord        = cmd("tui.input.killWord", InputScope, readline("W")...)
+
+	inputCommands = []keymap.Command{InputLeft, InputSelectLeft, InputWordLeft, InputSelectWordLeft,
+		InputRight, InputSelectRight, InputWordRight, InputSelectWordRight, InputHome, InputSelectHome,
+		InputEnd, InputSelectEnd, InputBackspace, InputWordBackspace, InputDelete, InputSubmit,
+		InputComplete, InputCompletePrev, InputLineStart, InputLineEnd, InputKillLine, InputKillWord}
+)
+
+// readline is a readline Ctrl key under every other modifier the old handler let through with Ctrl.
+func readline(letter string) []string {
+	var out []string
+	for _, m := range []string{"Ctrl+", "Ctrl+Alt+", "Ctrl+Super+", "Ctrl+Alt+Super+"} {
+		out = append(out, m+letter)
+	}
+	return out
+}
+
 // KeyCommands is every key command golib declares: the runtime's and every widget's, for keymap.Build.
 // (Commands is the Editor command line's registry; these are keys.)
 func KeyCommands() []keymap.Command {
@@ -106,5 +176,6 @@ func KeyCommands() []keymap.Command {
 	out = append(out, listCommands...)
 	out = append(out, treeCommands...)
 	out = append(out, tableCommands...)
+	out = append(out, inputCommands...)
 	return out
 }
