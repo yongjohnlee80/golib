@@ -90,3 +90,13 @@ func keyGridDiff(t *testing.T, name string, old, new func(tui.KeyEvent) string, 
 func describeKey(e tui.KeyEvent) string {
 	return fmt.Sprintf("{kind %d code %q mods %v text %q}", e.Kind, e.Code, e.Mods, e.Text)
 }
+
+// shiftSpentOnText adds the deviation ADR 1792255248 §4.2 rule 2 makes on purpose: Shift held on a key
+// whose text is one printable rune is spent on that text, so Shift+Space typed as " " is Space. A
+// control that refused every modifier (a Button, a menu) now activates on it, as it does on Space.
+func shiftSpentOnText(e tui.KeyEvent) string {
+	if e.Mods&tui.ModShift != 0 && e.Text == " " {
+		return "Shift+Space typed as a space is Space"
+	}
+	return noTextShiftedPrintable(e)
+}
