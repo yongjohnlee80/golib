@@ -5,6 +5,7 @@ import (
 	"github.com/yongjohnlee80/golib/indent"
 	"github.com/yongjohnlee80/golib/parse/qml"
 	"github.com/yongjohnlee80/golib/tui"
+	"github.com/yongjohnlee80/golib/tui/keymap"
 	"github.com/yongjohnlee80/golib/tui/widget"
 )
 
@@ -28,8 +29,10 @@ type EditorDecl struct {
 
 	highlighters []*syntaxNode
 	modeChanged  func()
-	textChanged  func()
-	cursorMoved  func()
+	// keyScopeChanged is raised when the editor's key-map scope moves (keyScope, read by id).
+	keyScopeChanged func()
+	textChanged     func()
+	cursorMoved     func()
 	// writeRequested and quitRequested raise the document's handlers for the command line's w / q;
 	// nil when the document declares none, so w and q answer that the editor cannot save or quit
 	writeRequested func(args ...qml.SpecValue)
@@ -57,6 +60,7 @@ func ReadEditor(b Build) (EditorDecl, error) {
 		return d, err
 	}
 	d.modeChanged = b.Emitter("modeChanged")
+	d.keyScopeChanged = b.Emitter("keyScopeChanged")
 	d.textChanged = b.Emitter("textChanged")
 	d.cursorMoved = b.Emitter("cursorPositionChanged")
 	if emit := b.EmitterWith("writeRequested"); b.Emitters["writeRequested"] != nil {
@@ -82,6 +86,7 @@ func (d EditorDecl) CoreOptions() []widget.CoreOption {
 	}
 	return append(hooks,
 		widget.CoreOnModeChange(func(widget.EditorMode) { modeChanged() }),
+		widget.CoreOnKeyScopeChange(func(keymap.Scope) { d.keyScopeChanged() }),
 		widget.CoreOnChange(d.textChanged),
 		widget.CoreOnCursorPositionChange(d.cursorMoved),
 		widget.CoreInitialText(d.Text),

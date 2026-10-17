@@ -16,6 +16,7 @@ import (
 	"github.com/yongjohnlee80/golib/parse/qml"
 	"github.com/yongjohnlee80/golib/tui"
 	"github.com/yongjohnlee80/golib/tui/i18n"
+	"github.com/yongjohnlee80/golib/tui/keymap"
 	"github.com/yongjohnlee80/golib/tui/widget"
 )
 
@@ -97,9 +98,14 @@ type programConfig struct {
 	// own; catalogs is them loaded, handed to the App.
 	translations []translationDir
 	catalogs     *i18n.Set
-	sources      map[string]any
-	handlers     map[string]decl.HandlerFunc
-	providers    []decl.Provider
+	// keyCommands are the host's key commands (KeyCommands), keymapFiles the scheme layers (Keymap),
+	// and keys them built over golib's commands, handed to the App.
+	keyCommands []keymap.Command
+	keymapFiles []keymapFile
+	keys        *keymap.Map
+	sources     map[string]any
+	handlers    map[string]decl.HandlerFunc
+	providers   []decl.Provider
 }
 
 type offered struct {
@@ -337,7 +343,10 @@ func NewProgram(opts ...ProgramOption) (*Program, error) {
 	}
 	p.cfg, p.mounted = c, mounted
 	p.liveLayout = append([]byte(nil), c.layout...)
-	var appOpts []tui.AppOption
+	if err := p.adapter.checkShortcuts(c.keys); err != nil {
+		return nil, err
+	}
+	appOpts := []tui.AppOption{tui.WithKeymap(c.keys)}
 	if c.catalogs != nil {
 		appOpts = append(appOpts, tui.WithTranslations(c.catalogs))
 	}
@@ -391,6 +400,11 @@ func configure(opts []ProgramOption) (programConfig, error) {
 		}
 		c.catalogs = s
 	}
+	keys, err := loadKeymap(c)
+	if err != nil {
+		return c, err
+	}
+	c.keys = keys
 	return c, nil
 }
 
@@ -466,6 +480,11 @@ func (p *Program) register(c programConfig) error {
 		if err := p.tree.Inject(name, decl.Handle(fn)); err != nil {
 			return err
 		}
+	}
+	// A key command by id (keys.go), for every document: whoever holds it resolves it in the App's
+	// key map.
+	if err := p.tree.Inject("keyId", decl.Pure(keyId)); err != nil {
+		return err
 	}
 	// Qt's id-based translation, for every document: the widget resolves the message it yields.
 	if err := p.tree.Inject("qsTrId", decl.Pure(qsTrId)); err != nil {
@@ -570,6 +589,29 @@ func (p *Program) Find(id string) (tui.Component, bool) {
 		return nil, false
 	}
 	return p.adapter.Component(node)
+}
+
+// KeyScope is the key-map scope keys reaching the component with id are read in: its own, or the
+// nearest enclosing component's that has one (tui.App.KeyScopeOf); an Editor's follows its keyset and
+// mode. Call it on the loop goroutine (a handler, or inside Update), as App's getters.
+func (p *Program) KeyScope(id string) (keymap.Scope, error) {
+	c, ok := p.Find(id)
+	if !ok {
+		return "", fmt.Errorf("tui/decl: KeyScope: no component with id %q", id)
+	}
+	return p.App().KeyScopeOf(c), nil
+}
+
+// KeyBindings is the bindings that would reach the component with id if it had focus now, in routing
+// order, each with its scope, source, the event chords it wins and what shadows the rest
+// (tui.App.KeyBindings, which says what it does not predict). A component outside the active modal
+// trap gets tui.ErrConfined. Call it on the loop goroutine.
+func (p *Program) KeyBindings(id string) ([]keymap.Binding, error) {
+	c, ok := p.Find(id)
+	if !ok {
+		return nil, fmt.Errorf("tui/decl: KeyBindings: no component with id %q", id)
+	}
+	return p.App().KeyBindings(c)
 }
 
 // FindAs is Find for a widget of a known Go type.

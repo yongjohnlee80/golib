@@ -35,7 +35,8 @@ func seqMatches(s key.Seq, ev tui.KeyEvent) bool {
 
 // shortcutNode is a declared Shortcut, before a Window adopts it.
 type shortcutNode struct {
-	seq     key.Seq
+	key     shortcutKey // a fixed key, or a key command's (keyId)
+	pos     string      // where it was written, for a refusal
 	trigger func()
 }
 
@@ -46,17 +47,13 @@ func (*shortcutNode) Render(tui.Surface)              {}
 func (*shortcutNode) HandleEvent(tui.Event) bool      { return false }
 
 func buildShortcut(b Build) (tui.Component, []string, error) {
-	var text string
-	consumed, err := readProps(b.Props, map[string]field{"sequence": into(&text, stringOf)})
+	var k shortcutKey
+	consumed, err := readProps(b.Props, map[string]field{"sequence": into(&k, shortcutKeyOf)})
 	if err != nil {
 		return nil, nil, err
 	}
-	if text == "" {
+	if k.command == "" && k.seq == (key.Seq{}) {
 		return nil, nil, fmt.Errorf("Shortcut needs a sequence (at %s)", b.Pos)
 	}
-	seq, err := key.Parse(text)
-	if err != nil {
-		return nil, nil, fmt.Errorf("%w (at %s)", err, b.Pos)
-	}
-	return &shortcutNode{seq: seq, trigger: b.Emitter("activated")}, consumed, nil
+	return &shortcutNode{key: k, pos: fmt.Sprint(b.Pos), trigger: b.Emitter("activated")}, consumed, nil
 }

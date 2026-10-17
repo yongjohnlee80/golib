@@ -102,9 +102,12 @@ type EditorCore struct {
 	// The constructor-time listeners for what the core also publishes on the bus: a widget built
 	// before it is mounted has no Context to subscribe with.
 	onModeChange func(EditorMode)
-	onChange     func()
-	chordHook    func(KeyChord) bool // SetChordHook's: a host's chords before the keymap
-	onCursorMove func()              // the cursor moved to another line or column
+	// onKeyScopeChange and lastScope report KeyScope moving (CoreOnKeyScopeChange).
+	onKeyScopeChange func(keymap.Scope)
+	lastScope        keymap.Scope
+	onChange         func()
+	chordHook        func(KeyChord) bool // SetChordHook's: a host's chords before the keymap
+	onCursorMove     func()              // the cursor moved to another line or column
 	// toggleRendered answers ActToggleRendered for a widget with a Rendered view; nil: none
 	toggleRendered func() bool
 
@@ -170,6 +173,7 @@ func NewEditorCore(opts ...CoreOption) *EditorCore {
 		}
 	}
 	c.settleOptions()
+	c.lastScope = c.KeyScope() // after every option: CoreKeyset may follow CoreOnKeyScopeChange
 	return c
 }
 
@@ -295,6 +299,22 @@ func CoreKeyset(ks Keyset) CoreOption {
 // the mode it already has. It is the constructor-time twin of ModeChangedEvent.
 func CoreOnModeChange(fn func(EditorMode)) CoreOption {
 	return func(c *EditorCore) { c.onModeChange = fn }
+}
+
+// CoreOnKeyScopeChange calls fn with KeyScope each time it moves: a mode change into another binding
+// class, or a keyset switch (Standard to Nano moves it with the mode unchanged).
+func CoreOnKeyScopeChange(fn func(keymap.Scope)) CoreOption {
+	return func(c *EditorCore) { c.onKeyScopeChange = fn }
+}
+
+// noteKeyScope reports KeyScope to CoreOnKeyScopeChange when it moved.
+func (c *EditorCore) noteKeyScope() {
+	if s := c.KeyScope(); s != c.lastScope {
+		c.lastScope = s
+		if c.onKeyScopeChange != nil {
+			c.onKeyScopeChange(s)
+		}
+	}
 }
 
 // CoreOnChange calls fn after every EDIT, the moment ChangeEvent is published. SetValue is not an
@@ -599,6 +619,7 @@ func (c *EditorCore) SetKeyset(ks Keyset) {
 	c.buf.desired = -1
 	c.reveal()
 	c.markDirty()
+	c.noteKeyScope()
 }
 
 // OverlayKeymap folds overlay into the keymap of a core already built, as CoreKeymap does at
@@ -742,6 +763,7 @@ func (c *EditorCore) setMode(m EditorMode) {
 	if c.onModeChange != nil {
 		c.onModeChange(c.Mode())
 	}
+	c.noteKeyScope()
 }
 
 // normalMax is the max Normal-mode column of line ln (cursor ON a grapheme).

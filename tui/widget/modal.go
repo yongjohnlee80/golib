@@ -63,6 +63,8 @@ type Modal struct {
 	// letter to dismissal, and only the host knows which of its dialogs are
 	// read-only or navigational.
 	dismissKeys []rune
+	// keyBinder reports what a WithModalKeys handler binds (WithModalKeyBinder), for KeyBindings.
+	keyBinder func(*keymap.Map) []keymap.Binding
 	// selected is the index of the focused button, or -1 when focus is on the
 	// Modal node itself — which happens when it owns no enabled button.
 	selected int
@@ -925,8 +927,19 @@ func tuiFatal(op, rule string, got int) error {
 	return fatalOf(op, rule, "got "+itoa(got))
 }
 
-// KeyBindings is the Modal's commands as m binds them (tui.KeyBinder). Its buttons' mnemonics and a
-// host's WithModalDismissKeys are not commands, and are not listed.
+// KeyBindings is the Modal's commands as m binds them, then what the host's WithModalKeys consults if
+// it said so with WithModalKeyBinder (tui.KeyBinder). Its buttons' mnemonics and a host's
+// WithModalDismissKeys are not commands, and are not listed.
 func (m *Modal) KeyBindings(km *keymap.Map) []keymap.Binding {
-	return tui.BindingsOf(km, modalCommands...)
+	out := tui.BindingsOf(km, modalCommands...)
+	if m.keyBinder != nil {
+		out = append(out, m.keyBinder(km)...)
+	}
+	return out
+}
+
+// WithModalKeyBinder says what a WithModalKeys handler binds, so App.KeyBindings lists it after the
+// Modal's own commands, in the order the Modal consults them.
+func WithModalKeyBinder(fn func(*keymap.Map) []keymap.Binding) ModalOption {
+	return func(m *Modal) { m.keyBinder = fn }
 }
