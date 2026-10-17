@@ -7,6 +7,7 @@ import (
 
 	"github.com/yongjohnlee80/golib/parse/qml"
 	"github.com/yongjohnlee80/golib/tui"
+	"github.com/yongjohnlee80/golib/tui/keymap"
 	"github.com/yongjohnlee80/golib/tui/widget"
 )
 
@@ -55,6 +56,8 @@ type drawerNode struct {
 	content tui.Component
 	// shortcuts are the Drawer's own keys, live while focus is inside it
 	shortcuts []*shortcutNode
+	// keyScope is the key-map scope of its keyId Shortcuts.
+	keyScope keymap.Scope
 	// resizable: the content is in grip, and the frame sizes it from size and length
 	resizable          bool
 	grip               *widget.Resizable
@@ -98,6 +101,7 @@ func buildDrawer(b Build) (tui.Component, []string, error) {
 		return nil, nil, errors.New("a Drawer holds exactly one child, its content, besides its Shortcuts")
 	}
 	modal, resizable := true, false
+	var keyScope keymap.Scope
 	closeOnQ := false
 	windowResize, movable := false, false
 	wc := windowModConfig{modifier: tui.ModAlt, moveButton: tui.MouseLeft, resizeButton: tui.MouseRight}
@@ -105,7 +109,7 @@ func buildDrawer(b Build) (tui.Component, []string, error) {
 		"modal": into(&modal, boolOf), "closeOnQ": into(&closeOnQ, boolOf), "resizable": into(&resizable, boolOf), "windowResize": into(&windowResize, boolOf),
 		"movable": into(&movable, boolOf), "moveButton": into(&wc.moveButton, windowMouseButtons.read),
 		"maximizable": into(&wc.maximize, boolOf), "minimizable": into(&wc.minimize, boolOf), "closable": into(&wc.close, boolOf),
-		"label": into(&wc.label, stringOf), "key": into(&wc.key, stringOf),
+		"label": into(&wc.label, stringOf), "key": into(&wc.key, stringOf), "keyScope": into(&keyScope, scopeOf),
 		"dragModifier": into(&wc.modifier, windowModifierOf), "resizeButton": into(&wc.resizeButton, windowMouseButtons.read),
 	})
 	if err != nil {
@@ -119,7 +123,7 @@ func buildDrawer(b Build) (tui.Component, []string, error) {
 	}
 	wc.resize, wc.move = windowResize, movable
 	n := &drawerNode{edge: tui.DockLeft, size: defaultDrawerSize, length: 100, opened: b.Emitter("opened"), closed: b.Emitter("closed"),
-		content: content, shortcuts: shortcuts, resizable: resizable || windowResize, minSize: 10, minLength: 10, resized: b.EmitterWith("resized"),
+		content: content, shortcuts: shortcuts, keyScope: keyScope, resizable: resizable || windowResize, minSize: 10, minLength: 10, resized: b.EmitterWith("resized"),
 		windowResize: windowResize, windowConfig: wc, windowCollector: b.WindowCollector, modal: modal, closeOnQ: closeOnQ, windowEmit: b.EmitterWith("changed"),
 		movable: movable, frac: [4]float64{25, 25, 50, 50}, placed: b.EmitterWith("placed")}
 	if n.resizable { // a drag stops a resizable panel short of a sliver along its edge
@@ -540,7 +544,7 @@ func (f *drawerFrame) Layout(c tui.Constraints) tui.Size {
 func (f *drawerFrame) Render(tui.Surface) {}
 
 func (f *drawerFrame) HandleEvent(ev tui.Event) bool {
-	if fireShortcut(f.owner.shortcuts, ev) {
+	if fireShortcut(f.ctx, f.owner.keyScope, f.owner.shortcuts, ev) {
 		return true
 	}
 	k, ok := ev.(tui.KeyEvent)
@@ -556,7 +560,7 @@ var drawerType = Type{
 	Name:  "Drawer",
 	Build: buildDrawer,
 	Ctor: []string{"modal", "closeOnQ", "resizable", "windowResize", "movable", "maximizable", "minimizable", "closable", "label", "key",
-		"dragModifier", "moveButton", "resizeButton"},
+		"dragModifier", "moveButton", "resizeButton", "keyScope"},
 	Signals: map[string][]string{"resized": {"size", "length"}, "placed": {"x", "y", "width", "height"},
 		"changed": {"operation", "key", "x", "y", "width", "height", "maximized", "minimized"}},
 	Setters: map[string]Setter{
@@ -610,4 +614,13 @@ func drawerFracSetter(i int) Setter {
 // fracNumber is a percentage as placed reports it: as short as it reads, 50 or 33.33.
 func fracNumber(p float64) qml.SpecValue {
 	return qml.SpecValue{Kind: qml.SpecValueNumber, Raw: strconv.FormatFloat(p, 'f', -1, 64)}
+}
+
+// KeyScope is the Drawer's keyScope: the frame is where its Shortcuts fire (tui.KeyScoped).
+func (f *drawerFrame) KeyScope() keymap.Scope { return f.owner.keyScope }
+
+// KeyBindings is the Drawer's Shortcuts as m binds them (tui.KeyBinder). Its own Esc and q closing are
+// not commands yet.
+func (f *drawerFrame) KeyBindings(m *keymap.Map) []keymap.Binding {
+	return shortcutBindings(m, f.owner.keyScope, f.owner.shortcuts)
 }

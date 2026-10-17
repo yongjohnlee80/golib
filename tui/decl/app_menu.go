@@ -137,12 +137,13 @@ func buildMenuItem(b Build) (tui.Component, []string, error) {
 		return nil, nil, fmt.Errorf("MenuItem takes no children; use a Menu for a submenu (at %s)", b.Pos)
 	}
 	var text UIText
-	var group, shortcut string
+	var group string
+	var shortcut menuShortcut
 	var checkable bool
 	consumed, err := readProps(b.Props, map[string]field{
 		"text":      into(&text, textOf),
 		"group":     into(&group, stringOf),
-		"shortcut":  into(&shortcut, stringOf),
+		"shortcut":  into(&shortcut, menuShortcutOf),
 		"checkable": into(&checkable, boolOf),
 	})
 	if err != nil {
@@ -164,7 +165,7 @@ func buildMenuItem(b Build) (tui.Component, []string, error) {
 		m = widget.NewCommand("", "", nil)
 	}
 	m = withMnemonic(m, text)
-	m.Accel = shortcut
+	m.Accel, m.AccelCommand = shortcut.text, shortcut.command
 	n := &menuNode{kind: "MenuItem", id: b.ID, model: m}
 	// Only a row the document BOUND gets a trigger. Build.Emitter hands back a
 	// no-op for an unbound signal, which is right for a widget callback and

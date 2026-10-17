@@ -170,6 +170,7 @@ func buildFolderDialog(b Build) (tui.Component, []string, error) {
 		"title":    into(&s.title, textOf),
 		"helpText": into(&s.help, textOf),
 		"dim":      into(&s.dim, boolOf),
+		"keyScope": into(&s.keyScope, scopeOf),
 		"preview":  into(&preview, boolOf),
 	})
 	if err != nil {

@@ -100,6 +100,10 @@ type MenuItemModel struct {
 	// Accel is the accelerator text shown at the row's right edge, such as
 	// "Ctrl+S". Display only: this widget never binds it.
 	Accel string
+	// AccelCommand, when set, names the key command whose key the row shows: the Menu fills Accel
+	// with that command's first key in the App's key map each time it is laid out (keymap.Map), so a
+	// rebound key shows where it is bound. "" when the command has no key or the App declares none.
+	AccelCommand string
 	// Enabled rows can be selected and activated.
 	Enabled bool
 	// Visible rows are laid out and painted. An invisible row keeps its state —

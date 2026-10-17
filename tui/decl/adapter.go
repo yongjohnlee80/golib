@@ -178,15 +178,22 @@ func WithGetters(typeName string, getters map[string]Getter) Option {
 	}
 }
 
-// ReadablesOf implements [decl.PropertyReader].
+// ReadablesOf implements [decl.PropertyReader]. Every item's keyScope is readable (keyScopeProp).
 func (a *Adapter) ReadablesOf(typeName string) []string {
-	names := make([]string, 0, len(a.getters[typeName]))
+	names := make([]string, 0, len(a.getters[typeName])+1)
 	for n := range a.getters[typeName] {
 		names = append(names, n)
+	}
+	if _, own := a.getters[typeName][keyScopeProp]; !own {
+		names = append(names, keyScopeProp)
 	}
 	sort.Strings(names)
 	return names
 }
+
+// keyScopeProp is every item's readable key-map scope: its own, or the nearest enclosing one's, read
+// live from the App (tui.App.KeyScopeOf), so an Editor's follows its mode. "" before the App runs.
+const keyScopeProp = "keyScope"
 
 // ReadProperty implements [decl.PropertyReader].
 func (a *Adapter) ReadProperty(node decl.NodeID, prop string) (qml.SpecValue, error) {
@@ -195,6 +202,13 @@ func (a *Adapter) ReadProperty(node decl.NodeID, prop string) (qml.SpecValue, er
 		return qml.SpecValue{}, fmt.Errorf("%s: node %d was not built by this adapter", prop, node)
 	}
 	fn, ok := a.getters[b.typ][prop]
+	if !ok && prop == keyScopeProp {
+		scope := ""
+		if a.app != nil {
+			scope = string(a.app.KeyScopeOf(b.comp))
+		}
+		return qml.SpecValue{Kind: qml.SpecValueString, Raw: scope}, nil
+	}
 	if !ok {
 		return qml.SpecValue{}, fmt.Errorf("a %s has no readable property %s", b.typ, prop)
 	}

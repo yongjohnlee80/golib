@@ -6,6 +6,7 @@ import (
 
 	"github.com/yongjohnlee80/golib/parse/qml"
 	"github.com/yongjohnlee80/golib/tui"
+	"github.com/yongjohnlee80/golib/tui/keymap"
 	"github.com/yongjohnlee80/golib/tui/style"
 	"github.com/yongjohnlee80/golib/tui/widget"
 )
@@ -257,7 +258,7 @@ func (w *windowNode) HandleEvent(ev tui.Event) bool {
 	if !ok || k.Kind != tui.KeyPress {
 		return false
 	}
-	if fireShortcut(w.shortcuts, k) {
+	if fireShortcut(w.ctx, keymap.Global, w.shortcuts, k) {
 		return true
 	}
 	for _, m := range w.menus {
@@ -472,4 +473,17 @@ func (m *menuBarNode) close() {
 func wholeNumber(v qml.SpecValue) (int, error) {
 	n, err := numberOf(v)
 	return int(n), err
+}
+
+// KeyScope is a Window's: keymap.Global (tui.KeyScoped).
+func (w *windowNode) KeyScope() keymap.Scope { return keymap.Global }
+
+// KeyBindings is the Window's Shortcuts, then the menu bar's key (tui.KeyBinder). A category's
+// Alt+letter is its label's mnemonic, not a command, and is not listed.
+func (w *windowNode) KeyBindings(m *keymap.Map) []keymap.Binding {
+	out := shortcutBindings(m, keymap.Global, w.shortcuts)
+	if len(w.menus) > 0 {
+		out = append(out, tui.BindingsOf(m, widget.WindowMenu)...)
+	}
+	return out
 }
