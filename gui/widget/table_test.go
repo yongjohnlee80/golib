@@ -615,8 +615,8 @@ func TestATableMarksEverySortKey(t *testing.T) {
 	}
 }
 
-// A row band stays one layout per text style: the cells' line, and its number's when the gutter
-// is on; the header one. The fills are the page, the header's tint and rule, the gutter's tint,
+// A row band stays one layout per text style: the cells' line, its clipped cursor overlay, and
+// its number's when the gutter is on; the header one. The fills are the page, the header's tint and rule, the gutter's tint,
 // a fill per selected run and the cursor's: none per cell.
 func TestATableRowBandStaysBatchedWithTheGutterAndASelection(t *testing.T) {
 	dt, l := pixelTable(t, cities(30), tuiwidget.TableRowNumbers(true))
@@ -633,6 +633,8 @@ func TestATableRowBandStaysBatchedWithTheGutterAndASelection(t *testing.T) {
 		want := 2 // the cells and the number
 		if band == 0 {
 			want = 1 // the titles; the gutter's corner is blank
+		} else if band == 5 {
+			want++ // row 4's cell is redrawn over its cursor fill
 		}
 		if perBand[band] != want {
 			t.Errorf("row band %d drew %d times, want %d (bands %v)", band, perBand[band], want, perBand)
