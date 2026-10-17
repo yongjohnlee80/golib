@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 	"testing/fstest"
@@ -205,6 +206,22 @@ func TestCheckKeymap(t *testing.T) {
 	}
 	if len(warnings) == 0 {
 		t.Error("Enter on Global shares a key with the List's activate, and no warning says so")
+	}
+	// golib's own defaults contest keys by design (Tab completes in a TextField and moves focus): not
+	// the program's warning
+	warnings, err = check(`Window { Text { text: "x" } }`)
+	if err != nil || len(warnings) != 0 {
+		t.Errorf("a program with no keys of its own: warnings %v, err %v", warnings, err)
+	}
+	// a scheme that moves a golib key onto another's is the program's doing, and warned of
+	warnings, err = tuidecl.CheckKeymap(
+		tuidecl.LayoutSource("main.qml", []byte(keysHead+`Window { Text { text: "x" } }`)),
+		tuidecl.Singleton("demo", "1.0", "App"),
+		tuidecl.Keymap(demoFiles(`<mapping><shortcut id="tui.list.down"><key value="Tab"/></shortcut></mapping>`), "keymap.xml"))
+	if err != nil || !slices.ContainsFunc(warnings, func(p keymap.Problem) bool {
+		return p.ID == "tui.list.down" || p.With == "tui.list.down"
+	}) {
+		t.Errorf("a scheme moving tui.list.down onto Tab: warnings %v, err %v", warnings, err)
 	}
 	// a scheme Build refuses is an error
 	_, err = tuidecl.CheckKeymap(

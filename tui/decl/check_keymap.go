@@ -10,6 +10,7 @@ import (
 	"github.com/yongjohnlee80/golib/parse/qml"
 	"github.com/yongjohnlee80/golib/tui/key"
 	"github.com/yongjohnlee80/golib/tui/keymap"
+	"github.com/yongjohnlee80/golib/tui/widget"
 )
 
 // CheckKeymap checks a program's keys without running it, as Check checks its layout: it builds the
@@ -23,8 +24,11 @@ import (
 //   - a Global command key that overlaps a top-level menu's Alt+letter, which the Window would fire
 //     before the menu could open.
 //
-// warnings are what keymap.Build warns of: an inner key shared with Global or App, which the inner
-// stop wins while focus is there. Johno's decision makes that legal, so it is never in err.
+// warnings are what keymap.Build warns of that the program can act on: an inner key shared with Global
+// or App, which the inner stop wins while focus is there, where one of the two is the program's own
+// command or a key a Keymap layer moved. Johno's decision makes that legal, so it is never in err. A
+// pair of golib's own commands at their default keys (Tab both completes in a TextField and moves
+// focus) is golib's design, so it is not the program's warning; keymap.Map.Warnings still lists it.
 func CheckKeymap(opts ...ProgramOption) (warnings []keymap.Problem, err error) {
 	c, err := configure(opts)
 	if err != nil {
@@ -32,11 +36,11 @@ func CheckKeymap(opts ...ProgramOption) (warnings []keymap.Problem, err error) {
 	}
 	spec, err := qml.QML{File: c.layoutFile}.Parse(c.layout)
 	if err != nil {
-		return c.keys.Warnings(), err
+		return programWarnings(c.keys), err
 	}
 	p, err := mount(c, spec)
 	if err != nil {
-		return c.keys.Warnings(), err
+		return programWarnings(c.keys), err
 	}
 	defer func() { _ = p.tree.Destroy() }()
 	var problems []string
@@ -46,10 +50,28 @@ func CheckKeymap(opts ...ProgramOption) (warnings []keymap.Problem, err error) {
 	problems = append(problems, fixedKeyProblems(p.adapter, c.keys)...)
 	problems = append(problems, mnemonicProblems(p.adapter, c.keys)...)
 	if len(problems) == 0 {
-		return c.keys.Warnings(), nil
+		return programWarnings(c.keys), nil
 	}
 	slices.Sort(problems)
-	return c.keys.Warnings(), errors.New("keymap: " + strings.Join(problems, "; "))
+	return programWarnings(c.keys), errors.New("keymap: " + strings.Join(problems, "; "))
+}
+
+// programWarnings is m's warnings less a Shadow between two golib commands that both hold their
+// default keys.
+func programWarnings(m *keymap.Map) []keymap.Problem {
+	golib := map[string]bool{}
+	for _, c := range widget.KeyCommands() {
+		golib[c.ID] = true
+	}
+	golibDefault := func(id string) bool { return golib[id] && m.SourceOf(id).Kind == keymap.FromDefault }
+	var out []keymap.Problem
+	for _, w := range m.Warnings() {
+		if w.Kind == keymap.Shadow && golibDefault(w.ID) && golibDefault(w.With) {
+			continue
+		}
+		out = append(out, w)
+	}
+	return out
 }
 
 // fixedKeyProblems is each fixed Shortcut sequence that overlaps a command key of its holder's scope:
