@@ -4,6 +4,7 @@ import (
 	"strings"
 
 	"github.com/yongjohnlee80/golib/tui"
+	"github.com/yongjohnlee80/golib/tui/keymap"
 	"github.com/yongjohnlee80/golib/tui/style"
 )
 
@@ -407,18 +408,35 @@ func (t *TextInput) HandleEvent(ev tui.Event) bool {
 	return false
 }
 
+// KeyScope is a TextInput's key-map scope.
+func (t *TextInput) KeyScope() keymap.Scope { return InputScope }
+
+// keyCommand is which of the TextInput's commands e is; completion declines without a completer.
+func (t *TextInput) keyCommand(e tui.KeyEvent) (keymap.Command, bool) {
+	cmd, ok := t.Context().KeyCommand(e, inputCommands...)
+	if ok && (cmd.ID == InputComplete.ID || cmd.ID == InputCompletePrev.ID) && t.completer == nil {
+		return keymap.Command{}, false
+	}
+	return cmd, ok
+}
+
 func (t *TextInput) handleKey(e tui.KeyEvent) bool {
 	if e.Kind == tui.KeyRelease {
 		return false
 	}
-	shift := e.Mods&tui.ModShift != 0
-	word := e.Mods&(tui.ModCtrl|tui.ModAlt) != 0
-	if e.Code == tui.KeyTab && e.Mods&^tui.ModShift == 0 && t.completer != nil {
-		return t.complete(shift)
+	cmd, ok := t.keyCommand(e)
+	if !ok {
+		// Printable text (never Tab — focus traversal is framework-owned).
+		if e.Text != "" && e.Mods&nonTextMods == 0 && e.Code != tui.KeyTab {
+			t.insert(e.Text)
+			return true
+		}
+		return false
 	}
-
-	switch e.Code {
-	case tui.KeyEnter:
+	switch cmd.ID {
+	case InputComplete.ID, InputCompletePrev.ID:
+		return t.complete(cmd.ID == InputCompletePrev.ID)
+	case InputSubmit.ID:
 		if t.validate != nil {
 			if err := t.validate(t.Value()); err != nil {
 				t.verr = err
@@ -441,7 +459,8 @@ func (t *TextInput) handleKey(e tui.KeyEvent) bool {
 		// does hold Enter — a dialog must not close over a field showing its
 		// error.
 		return false
-	case tui.KeyBackspace:
+	case InputBackspace.ID, InputWordBackspace.ID:
+		word := cmd.ID == InputWordBackspace.ID
 		switch lo, hi, ok := t.selection(); {
 		case ok:
 			t.deleteRange(lo, hi)
@@ -453,8 +472,7 @@ func (t *TextInput) handleKey(e tui.KeyEvent) bool {
 			return true // consumed; nothing to delete
 		}
 		t.edited()
-		return true
-	case tui.KeyDelete:
+	case InputDelete.ID:
 		switch lo, hi, ok := t.selection(); {
 		case ok:
 			t.deleteRange(lo, hi)
@@ -464,60 +482,35 @@ func (t *TextInput) handleKey(e tui.KeyEvent) bool {
 			return true
 		}
 		t.edited()
-		return true
-	case tui.KeyLeft:
-		if word {
-			t.moveTo(t.wordLeft(), shift)
-		} else {
-			t.moveTo(t.cur-1, shift)
-		}
-		return true
-	case tui.KeyRight:
-		if word {
-			t.moveTo(t.wordRight(), shift)
-		} else {
-			t.moveTo(t.cur+1, shift)
-		}
-		return true
-	case tui.KeyHome:
-		t.moveTo(0, shift)
-		return true
-	case tui.KeyEnd:
-		t.moveTo(len(t.cs), shift)
-		return true
-	}
-
+	case InputLeft.ID, InputSelectLeft.ID:
+		t.moveTo(t.cur-1, cmd.ID == InputSelectLeft.ID)
+	case InputWordLeft.ID, InputSelectWordLeft.ID:
+		t.moveTo(t.wordLeft(), cmd.ID == InputSelectWordLeft.ID)
+	case InputRight.ID, InputSelectRight.ID:
+		t.moveTo(t.cur+1, cmd.ID == InputSelectRight.ID)
+	case InputWordRight.ID, InputSelectWordRight.ID:
+		t.moveTo(t.wordRight(), cmd.ID == InputSelectWordRight.ID)
+	case InputHome.ID, InputSelectHome.ID:
+		t.moveTo(0, cmd.ID == InputSelectHome.ID)
+	case InputEnd.ID, InputSelectEnd.ID:
+		t.moveTo(len(t.cs), cmd.ID == InputSelectEnd.ID)
 	// Readline subset (Ctrl+A/E/U/W).
-	if e.Mods&tui.ModCtrl != 0 {
-		switch e.Code {
-		case 'a':
-			t.moveTo(0, false)
-			return true
-		case 'e':
-			t.moveTo(len(t.cs), false)
-			return true
-		case 'u':
-			if t.cur > 0 {
-				t.deleteRange(0, t.cur)
-				t.edited()
-			}
-			return true
-		case 'w':
-			if w := t.wordLeft(); w < t.cur {
-				t.deleteRange(w, t.cur)
-				t.edited()
-			}
-			return true
+	case InputLineStart.ID:
+		t.moveTo(0, false)
+	case InputLineEnd.ID:
+		t.moveTo(len(t.cs), false)
+	case InputKillLine.ID:
+		if t.cur > 0 {
+			t.deleteRange(0, t.cur)
+			t.edited()
 		}
-		return false
+	case InputKillWord.ID:
+		if w := t.wordLeft(); w < t.cur {
+			t.deleteRange(w, t.cur)
+			t.edited()
+		}
 	}
-
-	// Printable text (never Tab — focus traversal is framework-owned).
-	if e.Text != "" && e.Mods&nonTextMods == 0 && e.Code != tui.KeyTab {
-		t.insert(e.Text)
-		return true
-	}
-	return false
+	return true
 }
 
 // Layout: height 1, width greedy; the viewport width feeds cursor-visible
