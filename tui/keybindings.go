@@ -8,7 +8,7 @@ import (
 	"github.com/yongjohnlee80/golib/tui/keymap"
 )
 
-// KEY BINDINGS BY COMPONENT (ADR 1792255248 §4.8): what a help card asks — which keys reach this
+// KEY BINDINGS BY COMPONENT: what a help card asks — which keys reach this
 // component, and what does each do? The runtime answers because it owns routing: the focused node,
 // its ancestors up to the active trap's ceiling, then the App's own traversal keys. Each stop says
 // what it binds through KeyBinder; the answer runs the dispatch decision itself over the finite set of

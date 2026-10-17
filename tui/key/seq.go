@@ -31,7 +31,8 @@ var ErrMultiChord = errs.Sentinel(errs.ErrUnsupported, "key: a sequence of sever
 
 // modifierNames maps a modifier name, lower-cased, onto its bit. "meta" reads as Alt, the Emacs
 // meaning golib's Shortcut has always given it; Qt's Meta is the platform's Meta key (the Windows key
-// on Linux), which is Super here. A recorded deviation (ADR 1792255248 rationale §R12).
+// on Linux), which is Super here. A deliberate deviation from Qt: no layout in golib's products
+// writes Meta, and Alt keeps any that did meaning what it meant.
 var modifierNames = map[string]Mods{
 	"ctrl": Ctrl, "control": Ctrl,
 	"alt": Alt, "meta": Alt,

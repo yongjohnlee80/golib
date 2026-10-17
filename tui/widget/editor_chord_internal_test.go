@@ -7,7 +7,7 @@ import (
 	tuikey "github.com/yongjohnlee80/golib/tui/key"
 )
 
-// Every key a scheme can spell has an Editor chord, and the chord is the key (ADR 1792255248 §5.10): a
+// Every key a scheme can spell has an Editor chord, and the chord is the key: a
 // conversion that dropped a modifier would bind the unmodified key instead. And an event's chord is the
 // same chord the scheme's key converts to, so a binding meets the press it names.
 func TestEditorChordsRoundTripEveryModifier(t *testing.T) {

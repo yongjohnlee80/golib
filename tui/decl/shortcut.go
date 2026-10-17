@@ -24,7 +24,7 @@ const shortcutMods = tui.ModShift | tui.ModAlt | tui.ModCtrl
 
 // seqMatches reports whether a key press is s, by the one matching model every binding uses: the
 // event's chord (key.Of), then each of its candidates in order (key.Candidates). A release never
-// matches, and an event holding Hyper or Meta matches nothing (ADR 1792255248 §4.2).
+// matches, and an event holding Hyper or Meta matches nothing.
 func seqMatches(s key.Seq, ev tui.KeyEvent) bool {
 	if ev.Kind != tui.KeyPress {
 		return false

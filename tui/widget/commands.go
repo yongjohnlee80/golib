@@ -6,7 +6,7 @@ import (
 	"github.com/yongjohnlee80/golib/tui/keymap"
 )
 
-// KEY COMMANDS — every key a golib widget acts on, declared as data (ADR 1792255248 §4.6). A widget
+// KEY COMMANDS — every key a golib widget acts on, declared as data. A widget
 // asks its Context which of its own commands a key is (tui.Context.KeyCommand); a key-mapping scheme
 // changes their keys by id. Each widget's defaults reproduce the keys its handler took before
 // commands existed, written out key by key: where the old handler let Shift through to a functional

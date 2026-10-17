@@ -9,7 +9,7 @@ import (
 	"github.com/yongjohnlee80/golib/tui"
 )
 
-// THE EDITOR'S CROSS-VERSION DIFFERENTIAL (ADR 1792255248 §5.1). The Editor's input code is too large
+// THE EDITOR'S CROSS-VERSION DIFFERENTIAL. The Editor's input code is too large
 // to keep a verbatim copy of as an oracle, so this cell RECORDS: it drives the grid through EditorCore
 // from a dozen starting states using only API that golib 6a0b271 already had, and writes one line per
 // (state, key) to $EDITOR_GRID_OUT. The gate runs it in a 6a0b271 tree and in the branch's, and
@@ -95,7 +95,7 @@ func TestEditorKeyGridRecord(t *testing.T) {
 }
 
 // editorGridDeviation names the differences between 6a0b271's recording and the branch's that
-// ADR 1792255248 makes on purpose, given the key column of a line:
+// the key map makes on purpose, given the key column of a line:
 //   - a printable key with Shift and no text, which no backend sends, reads Shift (key.Of);
 //   - a capital letter with Ctrl and no text, which no backend sends (Gio and the terminal decoder
 //     both lower-case a Ctrl letter), is that letter's Ctrl chord: Nano's Ctrl+K cuts on it.

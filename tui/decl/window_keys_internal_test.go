@@ -24,8 +24,8 @@ func oldWindowMenuKey(k tui.KeyEvent, focused bool, openHotkey func(rune) bool) 
 	return ""
 }
 
-// windowDeviation names the differences ADR 1792255248 makes on purpose:
-//   - F10 or Esc with Hyper or Meta held matches no command (§4.2); the old switch ignored them;
+// windowDeviation names the differences the key map makes on purpose:
+//   - F10 or Esc with Hyper or Meta held matches no command; the old switch ignored them;
 //   - a modified Esc (Shift, Ctrl, Alt, Super) no longer leaves a focused menu bar: leaving is
 //     tui.menu.close, Esc, the menu's own key. A Global "any Esc" command would shadow every widget's Esc.
 func windowDeviation(k tui.KeyEvent) string {

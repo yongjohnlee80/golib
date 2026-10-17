@@ -10,7 +10,7 @@ import (
 	"github.com/yongjohnlee80/golib/tui/keymap"
 )
 
-// THE EDITOR'S KEY COMMANDS (ADR 1792255248 §4.7). Each keyset's binding class is a scope of its own,
+// THE EDITOR'S KEY COMMANDS. Each keyset's binding class is a scope of its own,
 // so Vim's and TextEdit's keys never conflict: "tui.editor.vim.normal", "tui.editor.vim.visual",
 // "tui.editor.vim.insert", "tui.editor.standard.insert", "tui.editor.nano.insert". Every chord of the
 // three base tables (VimKeymap, StandardKeymap, NanoKeymap) is a command's default, so a key map moves
@@ -50,7 +50,7 @@ func classID(class EditorMode) string {
 
 // editorCommand is one command and the table entry it stands for.
 type editorCommand struct {
-	keymap.Command
+	cmd   keymap.Command // a named field, not embedded: an embedded Command would make every type of that name look embeddable
 	class EditorMode
 	act   Action
 }
@@ -96,12 +96,12 @@ func deriveEditorCommands(ks Keyset, table Keymap) []editorCommand {
 		ks2 = slices.Compact(ks2)
 		id := "tui.editor." + keysetID(ks) + "." + classID(sl.class) + "." + lowerFirst(sl.act.String())
 		out = append(out, editorCommand{
-			Command: keymap.Command{ID: id, Scope: editorScope(ks, sl.class), Keys: ks2},
-			class:   sl.class,
-			act:     sl.act,
+			cmd:   keymap.Command{ID: id, Scope: editorScope(ks, sl.class), Keys: ks2},
+			class: sl.class,
+			act:   sl.act,
 		})
 	}
-	slices.SortFunc(out, func(a, b editorCommand) int { return cmpString(a.ID, b.ID) })
+	slices.SortFunc(out, func(a, b editorCommand) int { return cmpString(a.cmd.ID, b.cmd.ID) })
 	return out
 }
 
@@ -128,7 +128,7 @@ func EditorCommands() []keymap.Command {
 	out := []keymap.Command{EditorContextMenu}
 	for _, ks := range []Keyset{KeysetVim, KeysetStandard, KeysetNano} {
 		for _, c := range editorCommandsOf(ks) {
-			out = append(out, c.Command)
+			out = append(out, c.cmd)
 		}
 	}
 	return out
@@ -139,7 +139,7 @@ func EditorCommands() []keymap.Command {
 func keymapFrom(m *keymap.Map, ks Keyset) Keymap {
 	out := Keymap{}
 	for _, c := range editorCommandsOf(ks) {
-		for _, s := range m.KeysOf(c.Command) {
+		for _, s := range m.KeysOf(c.cmd) {
 			out[chordOfSeq(c.class, s)] = c.act
 		}
 	}
@@ -204,7 +204,7 @@ func (c *EditorCore) keyBindings(m *keymap.Map) []keymap.Binding {
 	cmds := map[Action]keymap.Command{}
 	for _, ec := range editorCommandsOf(c.keys.keyset) {
 		if ec.class == class {
-			cmds[ec.act] = ec.Command
+			cmds[ec.act] = ec.cmd
 		}
 	}
 	scope := editorScope(c.keys.keyset, class)

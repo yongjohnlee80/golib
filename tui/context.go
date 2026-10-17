@@ -351,8 +351,7 @@ func (c *Context) Translate(m Message) string { return c.app.Translate(m) }
 // widget lists its own commands in the order it wants ties broken.
 //
 // A release never matches; a repeat does, so a held arrow keeps moving. An event holding Hyper or
-// Meta matches nothing. This is the one question a widget asks instead of switching on raw keys
-// (ADR 1792255248 §4.4).
+// Meta matches nothing. This is the one question a widget asks instead of switching on raw keys.
 //
 // A nil Context (a widget not mounted, as a unit test may drive one) matches each command's declared
 // keys.

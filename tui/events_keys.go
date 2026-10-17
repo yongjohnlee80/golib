@@ -45,7 +45,7 @@ const (
 
 // Mods is the modifier bitmask, in kitty modifier order. It is key.Mods: the type, its bits and its
 // methods (Chord, String) live in the leaf package tui/key, so tui/keymap can name keys without
-// importing tui (ADR 1792255248 §4.2).
+// importing tui.
 type Mods = key.Mods
 
 const (

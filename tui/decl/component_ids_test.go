@@ -118,7 +118,7 @@ func TestReadingAPropertyTheTypeDoesNotOfferIsRefused(t *testing.T) {
 		tuidecl.Singleton("demo", "1.0", "App"),
 		tuidecl.Types(controls.Types()...),
 		tuidecl.Handlers(map[string]decl.HandlerFunc{"App.go": func([]qml.SpecValue) error { return nil }}))
-	// every item's keyScope (ADR 1792255248) is readable beside the type's own
+	// every item's keyScope is readable beside the type's own
 	if err == nil || !strings.Contains(err.Error(), "readable properties keyScope, text") {
 		t.Fatalf("err = %v, want the unreadable property refused, naming keyScope and text", err)
 	}

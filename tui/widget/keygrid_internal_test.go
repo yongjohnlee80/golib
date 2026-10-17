@@ -8,7 +8,7 @@ import (
 	"github.com/yongjohnlee80/golib/tui"
 )
 
-// THE NO-MAP DIFFERENTIAL (ADR 1792255248 §5.1). Each converted widget keeps its old key handler in
+// THE NO-MAP DIFFERENTIAL. Each converted widget keeps its old key handler in
 // its test file as the oracle, verbatim but for its effects, which become the name of what it did.
 // keyGridDiff drives the oracle and the converted decision over one grid of events and reports every
 // disagreement that is not a listed, reasoned deviation.
@@ -91,7 +91,7 @@ func describeKey(e tui.KeyEvent) string {
 	return fmt.Sprintf("{kind %d code %q mods %v text %q}", e.Kind, e.Code, e.Mods, e.Text)
 }
 
-// shiftSpentOnText adds the deviation ADR 1792255248 §4.2 rule 2 makes on purpose: Shift held on a key
+// shiftSpentOnText adds the deviation key.Of makes on purpose: Shift held on a key
 // whose text is one printable rune is spent on that text, so Shift+Space typed as " " is Space. A
 // control that refused every modifier (a Button, a menu) now activates on it, as it does on Space.
 func shiftSpentOnText(e tui.KeyEvent) string {

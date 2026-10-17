@@ -8,7 +8,6 @@
 // a contested event uses [Overlaps].
 //
 // REFERENCE: https://doc.qt.io/qt-6/qkeysequence.html (portable text)
-// REFERENCE: ADR 1792255248 §4.2 (KB adrs/1792255248-golib-tui-overridable-key-maps.md)
 package key
 
 import "strings"

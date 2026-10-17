@@ -6,8 +6,7 @@ import (
 )
 
 // The runtime's own commands: keys the App acts on itself, before or after routing a key to the
-// widgets. They are overridable like any widget's (ADR 1792255248 §4.6); only a label's mnemonic is
-// fixed.
+// widgets. They are overridable like any widget's; only a label's mnemonic is fixed.
 var (
 	// FocusNext and FocusPrev step focus through the current scope's ring (App.globalKey). They run
 	// after every widget has declined the key, inside a modal trap too, so a widget that consumes Tab

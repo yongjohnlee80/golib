@@ -31,8 +31,8 @@ func (c *EditorCore) HandleKey(k tui.KeyEvent) bool {
 	}
 	// a host's chord: before . and a macro record it, so neither replays what the host did
 	if c.chordHook != nil && k.Code != tui.KeyEscape && !c.commandPending() {
-		// The hook is shown what it always was (hookChord), never an Alt or Super chord
-		// (ADR 1792255248 §4.7). A host that wants them asks when one needs them.
+		// The hook is shown what it always was (hookChord), never an Alt or Super chord. A host
+		// that wants them asks when one needs them.
 		if kc, ok := c.hookChord(k); ok && c.chordHook(kc) {
 			if c.keyDepth <= c.oneShot.depth {
 				c.oneShotSettle() // Insert's Ctrl-o: the host's chord is its one command, and Insert resumes
