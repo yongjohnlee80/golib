@@ -5,6 +5,7 @@ import (
 	"unicode/utf8"
 
 	"github.com/yongjohnlee80/golib/tui"
+	"github.com/yongjohnlee80/golib/tui/keymap"
 	"github.com/yongjohnlee80/golib/tui/style"
 )
 
@@ -134,6 +135,7 @@ func (l *CommandLine) open(initial string, failed error) bool {
 		WithModalWidth(commandLineWidth),
 		WithModalRule(true),
 		WithModalKeys(l.keys),
+		WithModalKeyBinder(func(km *keymap.Map) []keymap.Binding { return tui.BindingsOf(km, cmdlineCommands...) }),
 		WithOnDismiss(func(r DismissReason) {
 			if l.modal == m {
 				l.modal, l.field, l.list = nil, nil, nil
@@ -164,18 +166,34 @@ func (l *CommandLine) submit(line string) {
 // keys are the prompt's own: Tab and Shift+Tab complete; with the dropdown open, Down and Up move
 // through it as Tab and Shift+Tab do.
 func (l *CommandLine) keys(k tui.KeyEvent) bool {
-	if l.field == nil {
+	if l.field == nil || l.modal == nil {
 		return false
 	}
-	switch {
-	case k.Code == tui.KeyTab:
-		l.complete(k.Mods&tui.ModShift != 0)
-		return true
-	case (k.Code == tui.KeyDown || k.Code == tui.KeyUp) && len(l.comp.cands) > 1:
-		l.complete(k.Code == tui.KeyUp)
-		return true
+	back, ok := cmdlineStep(l.modal.Context(), k, len(l.comp.cands) > 1)
+	if !ok {
+		return false
 	}
-	return false
+	l.complete(back)
+	return true
+}
+
+// cmdlineStep is the completion step k is, back for the previous candidate. Down and Up step only with
+// the dropdown open.
+func cmdlineStep(ctx *tui.Context, k tui.KeyEvent, dropdown bool) (back, ok bool) {
+	cmd, ok := ctx.KeyCommand(k, cmdlineCommands...)
+	if !ok || !dropdown && (cmd.ID == CmdlineNext.ID || cmd.ID == CmdlinePrev.ID) {
+		return false, false
+	}
+	return cmd.ID == CmdlineCompletePrev.ID || cmd.ID == CmdlinePrev.ID, true
+}
+
+// replaceAnswer is the replace question's answer k is: "yes", "no", "quit", or "" for none.
+func replaceAnswer(ctx *tui.Context, k tui.KeyEvent) string {
+	cmd, ok := ctx.KeyCommand(k, cmdlineReplaceCommands...)
+	if !ok {
+		return ""
+	}
+	return strings.TrimPrefix(cmd.ID, "tui.cmdline.replace.")
 }
 
 // complete completes the word being typed: the verb, from the core's Commands, or after it an
@@ -462,18 +480,21 @@ func (l *CommandLine) askReplace(s *ReplaceSession) error {
 		WithPlacement(PlacementTopRight), // clear of the notifications at the bottom
 		WithScrim(false),
 		WithModalKeys(func(k tui.KeyEvent) bool {
-			switch k.Code {
-			case 'y', 'Y', 'n', 'N':
-				more, err := s.Answer(k.Code == 'y' || k.Code == 'Y')
+			switch a := replaceAnswer(m.Context(), k); a {
+			case "yes", "no":
+				more, err := s.Answer(a == "yes")
 				if err != nil || !more {
 					m.Dismiss(DismissAccept)
 				}
 				return true
-			case 'q', 'Q':
+			case "quit":
 				m.Dismiss(DismissCancel)
 				return true
 			}
 			return false
+		}),
+		WithModalKeyBinder(func(km *keymap.Map) []keymap.Binding {
+			return tui.BindingsOf(km, cmdlineReplaceCommands...)
 		}),
 		WithOnDismiss(func(DismissReason) {
 			s.Stop()

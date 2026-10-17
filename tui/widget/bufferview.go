@@ -5,6 +5,7 @@ import (
 	"strings"
 
 	"github.com/yongjohnlee80/golib/tui"
+	"github.com/yongjohnlee80/golib/tui/keymap"
 	"github.com/yongjohnlee80/golib/tui/style"
 )
 
@@ -309,46 +310,49 @@ func (v *BufferView) scrollBy(delta int) {
 	v.MarkDirty()
 }
 
+// KeyScope is a BufferView's key-map scope.
+func (v *BufferView) KeyScope() keymap.Scope { return BufferViewScope }
+
+// KeyBindings is the BufferView's commands as m binds them (tui.KeyBinder).
+func (v *BufferView) KeyBindings(m *keymap.Map) []keymap.Binding {
+	return tui.BindingsOf(m, bufferViewCommands...)
+}
+
 // HandleEvent implements the viewer key/mouse contract.
 func (v *BufferView) HandleEvent(ev tui.Event) bool {
 	switch e := ev.(type) {
 	case tui.KeyEvent:
-		if e.Kind == tui.KeyRelease {
+		cmd, ok := v.Context().KeyCommand(e, bufferViewCommands...)
+		if !ok {
 			return false
 		}
-		switch e.Code {
-		case tui.KeyUp:
+		switch cmd.ID {
+		case BufferViewUp.ID:
 			v.scrollBy(-1)
-			return true
-		case tui.KeyDown:
+		case BufferViewDown.ID:
 			v.scrollBy(1)
-			return true
-		case tui.KeyPageUp:
+		case BufferViewPageUp.ID:
 			v.scrollBy(-max(v.h, 1))
-			return true
-		case tui.KeyPageDown:
+		case BufferViewPageDown.ID:
 			v.scrollBy(max(v.h, 1))
-			return true
-		case tui.KeyHome:
+		case BufferViewTop.ID:
 			v.scrollRow = 0
 			v.setFollow(v.maxScroll() == 0)
 			v.MarkDirty()
-			return true
-		case tui.KeyEnd:
+		case BufferViewBottom.ID:
 			v.scrollRow = v.maxScroll()
 			v.setFollow(true) // End resumes follow (less +F)
 			v.MarkDirty()
-			return true
-		case 'y':
+		case BufferViewCopy.ID:
 			// Copy the whole buffer to the system clipboard (OSC 52); a
 			// raw-mode TUI blocks terminal-native selection, so the viewer
 			// owns copy. No-op when the backend lacks clipboard support.
-			if e.Mods.Chord() == 0 && v.Context() != nil {
-				v.Context().CopyToClipboard(v.PlainText())
-				return true
+			if v.Context() == nil {
+				return false
 			}
+			v.Context().CopyToClipboard(v.PlainText())
 		}
-		return false
+		return true
 	case tui.MouseEvent:
 		if e.Kind != tui.MouseWheel {
 			return false

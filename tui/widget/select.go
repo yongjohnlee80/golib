@@ -4,6 +4,7 @@ import (
 	"strings"
 
 	"github.com/yongjohnlee80/golib/tui"
+	"github.com/yongjohnlee80/golib/tui/keymap"
 	"github.com/yongjohnlee80/golib/tui/style"
 )
 
@@ -395,17 +396,25 @@ func (s *Select[T]) HandleEvent(ev tui.Event) bool {
 		}
 		return false
 	case tui.KeyEvent:
-		if e.Kind == tui.KeyRelease || e.Mods&nonTextMods != 0 {
-			return false
-		}
-		switch e.Code {
-		case tui.KeyEnter, ' ', tui.KeyDown:
+		if s.opens(e) {
 			s.openPopup()
 			return true
 		}
 	}
 	return false
 }
+
+// opens reports whether e opens the options.
+func (s *Select[T]) opens(e tui.KeyEvent) bool {
+	_, ok := s.Context().KeyCommand(e, SelectOpen)
+	return ok
+}
+
+// KeyScope is a closed Select's key-map scope.
+func (s *Select[T]) KeyScope() keymap.Scope { return SelectScope }
+
+// KeyBindings is the Select's command as m binds it (tui.KeyBinder).
+func (s *Select[T]) KeyBindings(m *keymap.Map) []keymap.Binding { return tui.BindingsOf(m, SelectOpen) }
 
 // Layout: closed = height 1, capped content width or WithWidth.
 func (s *Select[T]) Layout(c tui.Constraints) tui.Size {
@@ -604,74 +613,96 @@ func (p *selectPopup[T]) fieldRect() (tui.Rect, bool) {
 	return pc.ResolveAnchor(oc.NodeAnchor())
 }
 
+// popupKey is what a key does to the open options.
+type popupKey int
+
+const (
+	popupNone popupKey = iota
+	popupClose
+	popupCommit
+	popupUp
+	popupDown
+	popupPageUp
+	popupPageDown
+	popupFirst
+	popupLast
+	popupBackspace
+	popupType // the key's text, onto the filter
+)
+
+var popupKeyOf = map[string]popupKey{
+	SelectClose.ID: popupClose, SelectCommit.ID: popupCommit, SelectUp.ID: popupUp, SelectDown.ID: popupDown,
+	SelectVimUp.ID: popupUp, SelectVimDown.ID: popupDown, SelectPageUp.ID: popupPageUp,
+	SelectPageDown.ID: popupPageDown, SelectFirst.ID: popupFirst, SelectLast.ID: popupLast,
+	SelectBackspace.ID: popupBackspace,
+}
+
+// keyOf is what e does to the open options: a command first; then, where the select filters, a key's
+// text is typed onto the query. VIM MOTION, BUT ONLY WHERE THE LETTER IS FREE: a filtering select
+// spends every printable character on the query, so j and k there are the two letters the operator
+// most needs to TYPE -- "jetbrains", "sqlite". The arrows work in both modes and are what the footer
+// names; this is the convenience on top.
+func (p *selectPopup[T]) keyOf(e tui.KeyEvent, filterOn bool) popupKey {
+	if cmd, ok := p.Context().KeyCommand(e, selectPopupCommands...); ok {
+		vim := cmd.ID == SelectVimUp.ID || cmd.ID == SelectVimDown.ID
+		if !vim || !filterOn {
+			return popupKeyOf[cmd.ID]
+		}
+	}
+	if filterOn && e.Kind != tui.KeyRelease && e.Text != "" && e.Mods&nonTextMods == 0 && e.Code != tui.KeyTab {
+		return popupType
+	}
+	return popupNone
+}
+
+// KeyScope is the open options' key-map scope.
+func (p *selectPopup[T]) KeyScope() keymap.Scope { return SelectPopupScope }
+
+// KeyBindings is the open options' commands as m binds them (tui.KeyBinder). Typed filter text is not
+// a command.
+func (p *selectPopup[T]) KeyBindings(m *keymap.Map) []keymap.Binding {
+	return tui.BindingsOf(m, selectPopupCommands...)
+}
+
 // HandleEvent implements the open-state contract: filter typing, cursor
 // movement, Enter commit, Esc close, outside-click close, wheel scroll.
 func (p *selectPopup[T]) HandleEvent(ev tui.Event) bool {
 	switch e := ev.(type) {
 	case tui.KeyEvent:
-		if e.Kind == tui.KeyRelease {
+		switch p.keyOf(e, p.owner.filterOn) {
+		case popupNone:
 			return false
-		}
-		switch e.Code {
-		case tui.KeyEscape:
+		case popupClose:
 			p.owner.closePopup()
-			return true
-		case tui.KeyEnter:
+		case popupCommit:
 			if len(p.matches) > 0 {
 				p.owner.commit(p.matches[p.hi])
 			} else {
 				p.owner.closePopup()
 			}
-			return true
-		case tui.KeyUp:
+		case popupUp:
 			p.moveHi(-1)
-			return true
-		case tui.KeyDown:
+		case popupDown:
 			p.moveHi(1)
-			return true
-		case 'k':
-			// VIM MOTION, BUT ONLY WHERE THE LETTER IS FREE. A filtering
-			// select spends every printable character on the query, so j and k
-			// there are the two letters the operator most needs to TYPE --
-			// "jetbrains", "sqlite". The arrows work in both modes and are
-			// what the footer names; this is the convenience on top.
-			if p.owner.filterOn {
-				break
-			}
-			p.moveHi(-1)
-			return true
-		case 'j':
-			if p.owner.filterOn {
-				break
-			}
-			p.moveHi(1)
-			return true
-		case tui.KeyPageUp:
+		case popupPageUp:
 			p.moveHi(-p.rows())
-			return true
-		case tui.KeyPageDown:
+		case popupPageDown:
 			p.moveHi(p.rows())
-			return true
-		case tui.KeyHome:
+		case popupFirst:
 			p.moveHi(-len(p.matches))
-			return true
-		case tui.KeyEnd:
+		case popupLast:
 			p.moveHi(len(p.matches))
-			return true
-		case tui.KeyBackspace:
+		case popupBackspace:
 			if p.owner.filterOn && p.filter != "" {
 				cs := clusters(p.filter)
 				p.filter = strings.Join(cs[:len(cs)-1], "")
 				p.refilter()
 			}
-			return true
-		}
-		if p.owner.filterOn && e.Text != "" && e.Mods&nonTextMods == 0 && e.Code != tui.KeyTab {
+		case popupType:
 			p.filter += sanitizeLine(e.Text)
 			p.refilter()
-			return true
 		}
-		return false
+		return true
 
 	case tui.MouseEvent:
 		switch e.Kind {

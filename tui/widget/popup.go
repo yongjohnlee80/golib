@@ -2,6 +2,7 @@ package widget
 
 import (
 	"github.com/yongjohnlee80/golib/tui"
+	"github.com/yongjohnlee80/golib/tui/keymap"
 )
 
 // A PANEL OPENED AT A POINT, DISMISSED LIGHTLY: a context menu's shape.
@@ -143,13 +144,21 @@ func (p *popupLayer) close(reason DismissReason) {
 	p.host.CloseAnchored(p.id, reason)
 }
 
+// KeyScope is an anchored popup's key-map scope.
+func (p *popupLayer) KeyScope() keymap.Scope { return PopupScope }
+
+// KeyBindings is the popup's Esc as m binds it (tui.KeyBinder).
+func (p *popupLayer) KeyBindings(m *keymap.Map) []keymap.Binding {
+	return tui.BindingsOf(m, PopupClose)
+}
+
 // HandleEvent is the light dismissal: Escape, or a press outside the panel.
 // Everything the panel does not consume stops here, so nothing underneath
 // reacts to the input that was meant for the menu.
 func (p *popupLayer) HandleEvent(ev tui.Event) bool {
 	switch e := ev.(type) {
 	case tui.KeyEvent:
-		if e.Kind != tui.KeyRelease && e.Code == tui.KeyEscape && e.Mods.Chord() == 0 {
+		if _, ok := p.Context().KeyCommand(e, PopupClose); ok {
 			p.close(DismissEscape)
 			return true
 		}

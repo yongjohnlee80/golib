@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/yongjohnlee80/golib/tui"
+	"github.com/yongjohnlee80/golib/tui/keymap"
 	"github.com/yongjohnlee80/golib/tui/style"
 )
 
@@ -356,33 +357,33 @@ func (v *imageView) to(x, y int) bool {
 }
 
 // scrollStep is how far ev moves a scrollable Image of rows cells, in its PNG's pixels; ok is
-// whether ev is one of its keys or the wheel.
-func scrollStep(ev tui.Event, rows, height int) (dx, dy int, ok bool) {
+// whether ev is one of its keys (on ctx's map) or the wheel.
+func scrollStep(ctx *tui.Context, ev tui.Event, rows, height int) (dx, dy int, ok bool) {
 	const col = 4 * CellPixelsW
 	switch e := ev.(type) {
 	case tui.KeyEvent:
-		if e.Kind == tui.KeyRelease || e.Mods.Chord() != 0 {
+		cmd, isCmd := ctx.KeyCommand(e, imageCommands...)
+		if !isCmd {
 			return 0, 0, false
 		}
 		page := max(rows-1, 1) * CellPixelsH
-		switch e.Code {
-		case tui.KeyDown, 'j':
+		switch cmd.ID {
+		case ImageDown.ID:
 			return 0, CellPixelsH, true
-		case tui.KeyUp, 'k':
+		case ImageUp.ID:
 			return 0, -CellPixelsH, true
-		case tui.KeyRight, 'l':
+		case ImageRight.ID:
 			return col, 0, true
-		case tui.KeyLeft, 'h':
+		case ImageLeft.ID:
 			return -col, 0, true
-		case tui.KeyPageDown, ']', ' ':
+		case ImagePageDown.ID:
 			return 0, page, true
-		case tui.KeyPageUp, '[':
+		case ImagePageUp.ID:
 			return 0, -page, true
-		case tui.KeyEnd, 'G':
+		case ImageBottom.ID:
 			return 0, height, true
-		case tui.KeyHome, 'g':
-			return 0, -height, true
 		}
+		return 0, -height, true
 	case tui.MouseEvent:
 		if e.Kind != tui.MouseWheel {
 			return 0, 0, false
@@ -456,6 +457,18 @@ func (m *Image) AcceptsFocus() bool { return m.st.scrollable }
 //
 // A scrollable Image also pans by the left button held down and dragged, as a viewer's hand does:
 // the part shown follows the pointer, cell by cell.
+// KeyScope is an Image's key-map scope.
+func (m *Image) KeyScope() keymap.Scope { return ImageScope }
+
+// KeyBindings is a scrollable Image's commands as km binds them; one that does not scroll has none
+// (tui.KeyBinder).
+func (m *Image) KeyBindings(km *keymap.Map) []keymap.Binding {
+	if !m.st.scrollable {
+		return nil
+	}
+	return tui.BindingsOf(km, imageCommands...)
+}
+
 func (m *Image) HandleEvent(ev tui.Event) bool {
 	if _, ok := ev.(tui.TickEvent); ok && m.load.on {
 		m.load.frame = (m.load.frame + 1) % len(spinner)
@@ -484,7 +497,7 @@ func (m *Image) HandleEvent(ev tui.Event) bool {
 			return true
 		}
 	}
-	dx, dy, ok := scrollStep(ev, v.rows, v.height)
+	dx, dy, ok := scrollStep(m.Context(), ev, v.rows, v.height)
 	if ok && v.to(v.left+dx, v.top+dy) {
 		m.st.moved()
 		m.MarkDirty()
