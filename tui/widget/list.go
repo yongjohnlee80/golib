@@ -432,14 +432,15 @@ func (l *List[T]) hasFocus() bool {
 }
 
 // keyCommand is which of the List's commands e is, declined where the List has nothing to do with
-// it: the context-menu key without a context menu, Space without multi-select. A Ctrl, Alt or Super
-// chord no command binds is the application's (pane motion, quit, …), so it bubbles.
+// it: the context-menu key without a context menu, or held (a repeat opens no second menu), and Space
+// without multi-select. A Ctrl, Alt or Super chord no command binds is the application's (pane motion,
+// quit, …), so it bubbles.
 func (l *List[T]) keyCommand(e tui.KeyEvent) (keymap.Command, bool) {
 	cmd, ok := l.Context().KeyCommand(e, listCommands...)
 	switch {
 	case !ok:
 		return keymap.Command{}, false
-	case cmd.ID == ListMenu.ID && !l.contextMenu, cmd.ID == ListToggle.ID && !l.multi:
+	case cmd.ID == ListMenu.ID && (!l.contextMenu || e.Kind != tui.KeyPress), cmd.ID == ListToggle.ID && !l.multi:
 		return keymap.Command{}, false
 	}
 	return cmd, true
