@@ -205,14 +205,14 @@ func TestAnchoredClipsANativeToItsAnchorPane(t *testing.T) {
 	// A dialog from the sidebar across the view: drawn from its top-left band, cut at the sidebar.
 	dev, clip, ok = m.anchored(tui.Rect{X: 5, Y: 2, W: 10, H: 3})
 	if !ok || clip != side.clip {
-		t.Fatalf("a placement across bands clips to %v; want its anchor pane %v (ADR 1792306654 §4.3c)", clip, side.clip)
+		t.Fatalf("a placement across bands clips to %v; want its anchor pane %v", clip, side.clip)
 	}
 	if dev != image.Rect(80, 64, 240, 160) || dev.Intersect(clip) != image.Rect(80, 64, 150, 160) {
 		t.Fatalf("crossing native at %v, visible %v; want from its anchor band, cut at x=150", dev, dev.Intersect(clip))
 	}
 }
 
-// Lector #359 R3: a Panes window's CellPixels is the admitted snapshot's cell, the one its
+// A Panes window's CellPixels is the admitted snapshot's cell, the one its
 // layout and paint use, not a newer published one.
 func TestCellPixelsIsTheAdmittedSnapshots(t *testing.T) {
 	p := sidebarAndView()
@@ -252,7 +252,7 @@ func TestADragMapsThroughThePaneItsPressLandedIn(t *testing.T) {
 	}
 }
 
-// Lector r0 R1: two layouts of the same grid are told apart by generation, and a frame is drawn
+// Two layouts of the same grid are told apart by generation, and a frame is drawn
 // only with the snapshot its layout was admitted with.
 func TestALayoutIsPairedWithItsPaintByGenerationNotSize(t *testing.T) {
 	p := sidebarAndView()
@@ -429,7 +429,7 @@ func TestEachBandIsDrawnAtItsPanesOrigin(t *testing.T) {
 	}
 }
 
-// Lector #359: a font change that leaves every band where it was is a new snapshot, admitted and
+// A font change that leaves every band where it was is a new snapshot, admitted and
 // painted with, not deduplicated by its pane shape.
 func TestAFontChangeWithTheSameBandsIsANewSnapshot(t *testing.T) {
 	p := sidebarAndView()
@@ -458,7 +458,7 @@ func TestAFontChangeWithTheSameBandsIsANewSnapshot(t *testing.T) {
 	}
 }
 
-// Lector #359: a Panes tree is fixed once built. Replacing an item in the caller's slice afterwards
+// A Panes tree is fixed once built. Replacing an item in the caller's slice afterwards
 // changes neither the panes Layout places nor the tree fit resolves.
 func TestATreeIsFixedAgainstItsCallersSlice(t *testing.T) {
 	for _, c := range []struct {
@@ -483,5 +483,34 @@ func TestATreeIsFixedAgainstItsCallersSlice(t *testing.T) {
 				t.Fatal("pane 0 became a Pixels pane after construction")
 			}
 		})
+	}
+}
+
+// A native whose top-left cell is a hole is anchored by the first band it overlaps and cut at that
+// pane. Its canvas keeps the native's own origin, so the local position a pointer reconstructs
+// from its cells is where the canvas draws, and its caret sits at that same origin.
+func TestAHoleAnchoredNativeKeepsItsOwnOrigin(t *testing.T) {
+	m := stagedMetrics(t)
+	view := m.layout.panes[1]
+	r := newRenderer(newTestShaper(), "Go Mono", DefaultTheme())
+	g := &grid{}
+	g.resize(m.grid.W, m.grid.H)
+	cells := CellRect{X: 7, Y: 7, W: 4, H: 1} // (7, 7) and (8, 7) are holes; (9, 7) is the view's
+	c := newGioCanvas(new(op.Ops), r, g, m, cells, nil)
+	if c.clip != image.Rect(150, 224, 182, 241).Intersect(view.clip) {
+		t.Fatalf("clip %v; want the native cut at the view pane", c.clip)
+	}
+	// The pointer at device (158, 232): the view's cell (9, 7), 0.5 into it; local to the native
+	// that is column 2.5, in dp 2.5 * 16 / 1.5.
+	x, y := m.cellAt(158, 232)
+	sx, _ := m.subCell(158, 232, x, y)
+	local := (float32(x-cells.X) + sx) * float32(m.cell.X) / m.scale
+	canvas := (158 - c.origin.X) / m.scale
+	if x != 9 || y != 7 || local != canvas {
+		t.Fatalf("pointer local %v dp at cell %d,%d; canvas local %v dp (origin %v): they must agree", local, x, y, canvas, c.origin)
+	}
+	caret, ok := viewCaret(m, []tui.NativePlacement{{View: caretView{r: Rect{X: 4, Y: 2, W: 1, H: 10}, base: 8, ok: true}, X: 7, Y: 7, Cols: 4, Rows: 1}})
+	if !ok || caret.rect.Min != image.Pt(int(c.origin.X)+6, int(c.origin.Y)+3) {
+		t.Fatalf("caret at %v; want at the canvas origin %v plus (4, 2) dp", caret.rect.Min, c.origin)
 	}
 }

@@ -62,7 +62,7 @@ func (b *Backend) NativeFor(c tui.Component) (any, tui.NativeScope, bool) {
 //
 // A Panes window reports the admitted snapshot's cell: the one the tree is laid out, painted and
 // (with pointer resolution at dispatch) routed with, so a component reconstructing pixels from an
-// event's cells uses the same cell size they were counted in (ADR 1792306654 §4.3a). It is read on
+// event's cells uses the same cell size they were counted in. It is read on
 // the App goroutine, which owns the admitted snapshot.
 func (b *Backend) CellPixels() tui.CellPixels {
 	m := b.metrics.Load()
