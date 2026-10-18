@@ -209,12 +209,14 @@ func (b *Backend) ResolvePointer(ev tui.MouseEvent) tui.MouseEvent {
 	}
 	shown := f.m
 	at := shown.paneIndexAt(ev.Source.X, ev.Source.Y)
+	// held: a button was already down, so this event belongs to that press's pane and may count
+	// past its edge. The press itself lands in the pane under it, like any click.
 	latch := &b.stage.latch
 	bit := uint32(1) << (uint32(ev.Button) & 31)
-	if ev.Kind == tui.MousePress && latch.held == 0 {
+	held := latch.held != 0
+	if ev.Kind == tui.MousePress && !held {
 		latch.pane = at
 	}
-	held := latch.held != 0 || ev.Kind == tui.MousePress
 	switch ev.Kind {
 	case tui.MousePress:
 		latch.held |= bit
