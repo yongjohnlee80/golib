@@ -546,4 +546,14 @@ func TestACutCaretKeepsItsBaseline(t *testing.T) {
 	if c, ok := viewCaret(m, []tui.NativePlacement{at}); ok {
 		t.Fatalf("a caret whose baseline is cut away was told at %v base %d", c.rect, c.base)
 	}
+	// Bottom: a native in the view's last row (origin y 224); the pane ends at y 241.
+	low := tui.NativePlacement{View: caretView{r: Rect{X: 4, Y: 8, W: 1, H: 10}, base: 2, ok: true}, X: 9, Y: 7, Cols: 2, Rows: 1}
+	c, ok = viewCaret(m, []tui.NativePlacement{low}) // y 236..251, baseline 239: cut at the bottom
+	if place := caretPlace(c.rect, c.base); !ok || c.rect.Max.Y != 241 || place.Y != 239 || place.Ascent < 0 || place.Descent < 0 {
+		t.Fatalf("bottom-cut caret %v base %d tells %+v; want bottom 241, baseline 239, ascent and descent >= 0", c.rect, c.base, place)
+	}
+	low.View = caretView{r: Rect{X: 4, Y: 8, W: 1, H: 10}, base: 5, ok: true} // baseline 243, below the pane
+	if c, ok := viewCaret(m, []tui.NativePlacement{low}); ok {
+		t.Fatalf("a caret whose baseline is below its pane was told at %v base %d", c.rect, c.base)
+	}
 }
