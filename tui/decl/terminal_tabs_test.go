@@ -12,6 +12,7 @@ import (
 	"github.com/yongjohnlee80/golib/tui"
 	tuidecl "github.com/yongjohnlee80/golib/tui/decl"
 	"github.com/yongjohnlee80/golib/tui/decl/decltest"
+	tuikey "github.com/yongjohnlee80/golib/tui/key"
 	"github.com/yongjohnlee80/golib/tui/widget"
 )
 
@@ -158,6 +159,55 @@ func TestDeclaredHostKeys(t *testing.T) {
 	if _, err := tuidecl.HostKeysOfForTest(`"Ctrl+Nope"`); err == nil {
 		t.Error("a bad sequence was taken")
 	}
+}
+
+// A Keys value holds each key whole, the comma's too, where a list written as text cannot: "," and
+// "Ctrl+," match their presses, Shift+F11 beside them; empty Keys is none.
+func TestAKeysValueHoldsTheCommaKey(t *testing.T) {
+	match, err := tuidecl.HostKeysOfValueForTest(tuidecl.Keys(tuikey.MustParse(",", "Ctrl+,", "Shift+F11")))
+	if err != nil || match == nil {
+		t.Fatalf("Keys: %v", err)
+	}
+	for _, c := range []struct {
+		ev   tui.KeyEvent
+		want bool
+	}{
+		{tui.KeyEvent{Kind: tui.KeyPress, Code: ',', Text: ","}, true},
+		{tui.KeyEvent{Kind: tui.KeyPress, Code: ',', Mods: tui.ModCtrl}, true},
+		{tui.KeyEvent{Kind: tui.KeyPress, Code: tui.KeyF11, Mods: tui.ModShift}, true},
+		{tui.KeyEvent{Kind: tui.KeyPress, Code: tui.KeyF11}, false},
+		{tui.KeyEvent{Kind: tui.KeyPress, Code: '.', Text: "."}, false},
+	} {
+		if got := match(c.ev); got != c.want {
+			t.Errorf("%+v: %v, want %v", c.ev, got, c.want)
+		}
+	}
+	if match, err := tuidecl.HostKeysOfValueForTest(tuidecl.Keys(nil)); err != nil || match != nil {
+		t.Errorf("empty Keys: %v %v", match != nil, err)
+	}
+	// written as text, the comma is the separator: "Ctrl+," cannot be said, and says so
+	if _, err := tuidecl.HostKeysOfForTest(`"Ctrl+,"`); err == nil {
+		t.Error(`the text "Ctrl+," was taken`)
+	}
+}
+
+// A TerminalTabs' modeKey and hostKeys bound to Keys sources mount, and take a new value, empty too.
+func TestTerminalKeysBoundToKeysSources(t *testing.T) {
+	layout := "import tui 1.0\nimport demo 1.0\nWindow {\n TerminalTabs { id: terminals; modeKey: App.mode; hostKeys: App.host } }"
+	s := decltest.Run(t, 60, 10, tuidecl.LayoutSource("main.qml", []byte(layout)),
+		tuidecl.Singleton("demo", "1.0", "App"),
+		tuidecl.Sources(map[string]any{
+			"App.mode": tuidecl.Keys(tuikey.MustParse("Ctrl+,")),
+			"App.host": tuidecl.Keys(tuikey.MustParse("F11", ",")),
+		}))
+	onScreenLoop(t, s, func() {
+		if err := s.Program.Set("App.mode", tuidecl.Keys(nil)); err != nil {
+			t.Error(err)
+		}
+		if err := s.Program.Set("App.host", tuidecl.Keys(tuikey.MustParse("F9"))); err != nil {
+			t.Error(err)
+		}
+	})
 }
 
 // modeKey takes hostKeys' list: Ctrl+T matches its press, and a bad sequence is refused, named as
