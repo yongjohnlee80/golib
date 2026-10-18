@@ -136,11 +136,12 @@ type Backend struct {
 
 // frame is one finished frame: the recorded drawing and where the caret is, for the IME.
 type frame struct {
-	m     metrics // the snapshot it was drawn with: a Panes window's input maps through it
-	draw  op.CallOp
-	parts []framePart     // stream slots, each with the drawing after it
-	caret image.Rectangle // device pixels; empty when the cursor is hidden
-	base  int             // the caret cell's baseline, from its top
+	m        metrics // the snapshot it was drawn with: a Panes window's input maps through it
+	draw     op.CallOp
+	drawCost int             // draw's ops (gui_opcount; zero otherwise)
+	parts    []framePart     // stream slots, each with the drawing after it
+	caret    image.Rectangle // device pixels; empty when the cursor is hidden
+	base     int             // the caret cell's baseline, from its top
 	// fg and bg are the colours of the text at the caret, for the preedit drawn there; tinted
 	// false: unknown, and the window theme's are used.
 	fg, bg color.NRGBA
@@ -428,7 +429,7 @@ func (b *Backend) Flush(diff []tui.CellUpdate) error {
 // publishFrame draws the grid with m and hands the frame to the Gio goroutine.
 func (b *Backend) publishFrame(m metrics) {
 	draw, parts := b.render.frameParts(&b.grid, m, b.cursor, b.natives, b.imageList(), b.focused.Load())
-	f := &frame{draw: draw, parts: parts, m: m}
+	f := &frame{draw: draw, parts: parts, m: m, drawCost: b.render.firstCost}
 	b.frameCaret(f, m)
 	b.mu.Lock()
 	b.latest = f

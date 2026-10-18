@@ -61,17 +61,20 @@ type renderer struct {
 	pageBG    color.NRGBA // the grid's most common background: the frame around it (drawMargins)
 	pageBGSet bool
 	rows      []op.CallOp
+	rowCost   []int // each row macro's ops (gui_opcount; zero otherwise)
+	firstCost int   // the last frameParts' first segment's ops (gui_opcount)
 	// glyphs is cleared with the row cache when the font size or the window's face changes. It
 	// holds one entry per (cluster, bold, italic, face) drawn since: bounded by the faces in the
 	// table (at most tui's maxCellFaces) times the clusters actually on screen, not by frames.
 	// The frame being recorded, cut at stream slots (frameParts).
-	cutOps  *op.Ops
-	cutRec  op.MacroOp
-	cuts    []framePart
-	cutting bool
-	glyphs  map[glyphKey]glyphShape
-	faces   []font.Typeface // the cell faces (tui.FaceHost), index 0 unused: the window's typeface
-	fonts   Fonts           // the window's families, for the native views (Canvas.Fonts)
+	cutOps   *op.Ops
+	cutRec   op.MacroOp
+	cuts     []framePart
+	cutting  bool
+	segStart int // the walk when the segment being recorded began (gui_opcount)
+	glyphs   map[glyphKey]glyphShape
+	faces    []font.Typeface // the cell faces (tui.FaceHost), index 0 unused: the window's typeface
+	fonts    Fonts           // the window's families, for the native views (Canvas.Fonts)
 }
 
 type glyphKey struct {
@@ -130,6 +133,7 @@ func (r *renderer) frame(g *grid, m metrics, cur cursorState, natives []tui.Nati
 type framePart struct {
 	slot streamSlot
 	seg  op.CallOp
+	cost int // seg's ops (gui_opcount; zero otherwise)
 }
 
 // frameParts records the frame: every row, then the native views and images over their cells in
@@ -148,12 +152,15 @@ func (r *renderer) frameParts(g *grid, m metrics, cur cursorState, natives []tui
 		}
 		r.m = m
 		r.rows = make([]op.CallOp, g.h)
+		r.rowCost = make([]int, g.h)
 		g.touchAll()
 	}
 	changed := false
 	for y := range g.h {
 		if g.dirty[y] {
+			start := walkNow()
 			r.rows[y] = r.recordRow(g, y)
+			r.rowCost[y] = walkNow() - start
 			g.dirty[y] = false
 			changed = true
 		}
@@ -164,9 +171,11 @@ func (r *renderer) frameParts(g *grid, m metrics, cur cursorState, natives []tui
 
 	ops := new(op.Ops) // owned by the frame from here on
 	r.cutOps, r.cutRec, r.cuts, r.cutting = ops, op.Record(ops), r.cuts[:0], true
+	r.segStart = walkNow()
 	r.drawMargins(ops, g, m)
-	for _, row := range r.rows {
+	for i, row := range r.rows {
 		row.Add(ops)
+		countReplay(r.rowCost[i])
 	}
 	r.composite(ops, g, m, natives, images)
 	if cur.visible {
@@ -174,19 +183,21 @@ func (r *renderer) frameParts(g *grid, m metrics, cur cursorState, natives []tui
 	}
 	r.cutting = false
 	last := r.cutRec.Stop()
+	lastCost := walkNow() - r.segStart
 	r.paths.endFrame()
 	if len(r.cuts) == 0 {
 		return last, nil
 	}
 	// cuts[0].seg is the drawing before the first slot; each later seg follows the slot before.
 	first := r.cuts[0].seg
+	r.firstCost = r.cuts[0].cost
 	parts := make([]framePart, len(r.cuts))
 	for i := range r.cuts {
 		parts[i].slot = r.cuts[i].slot
 		if i+1 < len(r.cuts) {
-			parts[i].seg = r.cuts[i+1].seg
+			parts[i].seg, parts[i].cost = r.cuts[i+1].seg, r.cuts[i+1].cost
 		} else {
-			parts[i].seg = last
+			parts[i].seg, parts[i].cost = last, lastCost
 		}
 	}
 	return first, parts
@@ -194,7 +205,8 @@ func (r *renderer) frameParts(g *grid, m metrics, cur cursorState, natives []tui
 
 // cut ends the drawing so far at a stream slot and starts the next segment.
 func (r *renderer) cut(slot streamSlot) {
-	r.cuts = append(r.cuts, framePart{slot: slot, seg: r.cutRec.Stop()})
+	r.cuts = append(r.cuts, framePart{slot: slot, seg: r.cutRec.Stop(), cost: walkNow() - r.segStart})
+	r.segStart = walkNow()
 	r.cutRec = op.Record(r.cutOps)
 }
 
@@ -276,6 +288,7 @@ func (r *renderer) recordRow(g *grid, y int) op.CallOp {
 			continue
 		}
 		cl := clip.Rect(p.clip).Push(ops)
+		countClip()
 		r.drawSpan(ops, g, y, x0, x1, bgOffTheme)
 		cl.Pop()
 	}
@@ -363,6 +376,8 @@ func (r *renderer) drawSpan(ops *op.Ops, g *grid, y, x0, x1 int, bgs bgMode) {
 		gs := batch[fg]
 		tr := op.Affine(f32.Affine2D{}.Offset(f32.Pt(float32(gs[0].X)/64, base))).Push(ops)
 		countBatch()
+		countTransform()
+		countGlyphPath()
 		outline := clip.Outline{Path: r.paths.Shape(gs)}.Op().Push(ops)
 		paint.ColorOp{Color: fg}.Add(ops)
 		paint.PaintOp{}.Add(ops)
@@ -432,6 +447,12 @@ func (r *renderer) drawCell(ops *op.Ops, c tui.Cell, x, y int, fg color.NRGBA) {
 		gs := r.shape(c.Content, c.Attrs.Mask&tui.AttrBold != 0, c.Attrs.Mask&tui.AttrItalic != 0, c.Face)
 		if !gs.empty {
 			countCell()
+			countClip()
+			countTransform()
+			countGlyphPath()
+			if gs.colour {
+				countColourGlyph()
+			}
 			cl := clip.Rect(rect).Push(ops)
 			tr := op.Affine(glyphPlacement(rect, m, gs.advance)).Push(ops)
 			outline := clip.Outline{Path: gs.path}.Op().Push(ops)
@@ -577,6 +598,9 @@ func (r *renderer) drawImage(ops *op.Ops, img placedImage) {
 	}
 	sx := float32(dst.Dx()) / float32(src.Dx())
 	sy := float32(dst.Dy()) / float32(src.Dy())
+	countClip()
+	countTransform()
+	countImage()
 	cl := clip.Rect(dst.Intersect(within)).Push(ops)
 	tr := op.Affine(f32.Affine2D{}.
 		Offset(f32.Pt(-float32(src.Min.X), -float32(src.Min.Y))).
@@ -611,6 +635,7 @@ func (r *renderer) drawCursor(ops *op.Ops, g *grid, cur cursorState, focused boo
 		return // a hole: no pixels
 	}
 	if m.layout != nil {
+		countClip()
 		defer clip.Rect(p.clip).Push(ops).Pop()
 	}
 	rect := m.cellRect(cur.x, cur.y, max(int(c.Width), 1), 1)
@@ -658,6 +683,7 @@ func (r *renderer) paintCells(ops *op.Ops, g *grid, cr CellRect, glyphsOnly bool
 	}
 	if r.m.layout == nil {
 		area := clip.Rect(r.m.cellRect(x0, y0, x1-x0, y1-y0)).Push(ops)
+		countClip()
 		defer area.Pop()
 		for y := y0; y < y1; y++ {
 			r.drawSpan(ops, g, y, x0, x1, bgs)
@@ -667,6 +693,7 @@ func (r *renderer) paintCells(ops *op.Ops, g *grid, cr CellRect, glyphsOnly bool
 	// Each band's part is drawn by that band, under its own clip.
 	for _, f := range r.m.fragments(tui.Rect{X: x0, Y: y0, W: x1 - x0, H: y1 - y0}) {
 		area := clip.Rect(f.dev.Intersect(f.clip)).Push(ops)
+		countClip()
 		for y := f.cells.Y; y < f.cells.Y+f.cells.H; y++ {
 			r.drawSpan(ops, g, y, f.cells.X, f.cells.X+f.cells.W, bgs)
 		}

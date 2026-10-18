@@ -297,11 +297,14 @@ func (c *gioCanvas) Pop() {
 // begin pushes the clip, the opacity and the logical-to-device transform; end pops them.
 func (c *gioCanvas) begin() (end func()) {
 	cl := clip.Rect(c.clip).Push(c.ops)
+	countClip()
 	var opacity paint.OpacityStack
 	faded := c.alpha < 1
 	if faded {
+		countTransform()
 		opacity = paint.PushOpacity(c.ops, c.alpha)
 	}
+	countTransform()
 	s := c.m.scale
 	base := f32.Affine2D{}.Scale(f32.Point{}, f32.Pt(s, s)).Offset(c.origin)
 	tr := op.Affine(base.Mul(c.xform)).Push(c.ops)
@@ -328,6 +331,8 @@ func (c *gioCanvas) fill(b Brush) {
 func (c *gioCanvas) FillPath(p *Path, b Brush) {
 	end := c.begin()
 	st := clip.Outline{Path: p.spec(c.ops)}.Op().Push(c.ops)
+	countClip()
+	countFill()
 	c.fill(b)
 	st.Pop()
 	end()
@@ -337,6 +342,8 @@ func (c *gioCanvas) FillPath(p *Path, b Brush) {
 func (c *gioCanvas) StrokePath(p *Path, width float32, b Brush) {
 	end := c.begin()
 	st := clip.Stroke{Path: p.spec(c.ops), Width: width}.Op().Push(c.ops)
+	countClip()
+	countFill()
 	c.fill(b)
 	st.Pop()
 	end()
@@ -365,7 +372,10 @@ func (c *gioCanvas) DrawText(t *TextLayout, at Point, b Brush) {
 	// The glyphs are shaped in device pixels: undo the scale, from the first line's dot.
 	inv := 1 / t.scale
 	dot := op.Affine(f32.Affine2D{}.Scale(f32.Point{}, f32.Pt(inv, inv)).Offset(f32.Pt(at.X, at.Y+t.Ascent))).Push(c.ops)
+	countTransform()
 	for _, ln := range t.lines {
+		countTransform()
+		countGlyphPath()
 		off := op.Affine(f32.Affine2D{}.Offset(f32.Pt(ln.x, ln.y))).Push(c.ops)
 		st := clip.Outline{Path: ln.path}.Op().Push(c.ops)
 		c.fill(b)
@@ -386,6 +396,9 @@ func (c *gioCanvas) DrawImage(img *Image, dst, src Rect) {
 		src = Rect{W: float32(img.size.X), H: float32(img.size.Y)}
 	}
 	end := c.begin()
+	countClip()
+	countTransform()
+	countImage()
 	st := clip.Outline{Path: rrectPath(dst, 0).spec(c.ops)}.Op().Push(c.ops)
 	tr := op.Affine(f32.Affine2D{}.
 		Offset(f32.Pt(-src.X, -src.Y)).
@@ -417,6 +430,7 @@ func (c *gioCanvas) WindowMoveArea(r Rect) {
 		int(c.origin.X+(r.X+r.W)*s), int(c.origin.Y+(r.Y+r.H)*s),
 	).Intersect(c.clip)
 	st := clip.Rect(dev).Push(c.ops)
+	countClip()
 	system.ActionInputOp(system.ActionMove).Add(c.ops)
 	st.Pop()
 }
@@ -464,9 +478,11 @@ func (c *gioCanvas) PaintCells(r CellRect, glyphsOnly bool) {
 		return // a canvas stream's: no cells to paint
 	}
 	cl := clip.Rect(c.clip).Push(c.ops)
+	countClip()
 	var opacity paint.OpacityStack
 	faded := c.alpha < 1
 	if faded {
+		countTransform()
 		opacity = paint.PushOpacity(c.ops, c.alpha)
 	}
 	c.r.paintCells(c.ops, c.g, CellRect{X: c.cellX + r.X, Y: c.cellY + r.Y, W: r.W, H: r.H}, glyphsOnly)

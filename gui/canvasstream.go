@@ -54,8 +54,9 @@ func (cs *CanvasStream) Push(size Size, draw func(c Canvas)) *Receipt {
 	dev := image.Rect(0, 0, int(size.W*m.scale+0.5), int(size.H*m.scale+0.5))
 	ops := new(op.Ops)
 	rec := op.Record(ops)
+	start := walkNow()
 	draw(&gioCanvas{ops: ops, r: cs.r, m: m, size: size, clip: dev, alpha: 1})
-	return cs.s.push(&canvasPayload{call: rec.Stop(), size: size, scale: m.scale}, nil)
+	return cs.s.push(&canvasPayload{call: rec.Stop(), size: size, scale: m.scale, cost: walkNow() - start}, nil)
 }
 
 // snapshot is the window's scale and font for one recording, and the stream's shaper, rebuilt on
@@ -93,6 +94,7 @@ type canvasPayload struct {
 	call  op.CallOp
 	size  Size
 	scale float32
+	cost  int // call's ops (gui_opcount; zero otherwise)
 }
 
 func (p *canvasPayload) add(ops *op.Ops, dst Rect, _ func(error)) {
@@ -104,7 +106,9 @@ func (p *canvasPayload) add(ops *op.Ops, dst Rect, _ func(error)) {
 	sx := dst.W / (p.size.W * p.scale)
 	sy := dst.H / (p.size.H * p.scale)
 	tr := op.Affine(f32.Affine2D{}.Scale(f32.Point{}, f32.Pt(sx, sy)).Offset(f32.Pt(dst.X, dst.Y))).Push(ops)
+	countTransform()
 	p.call.Add(ops)
+	countReplay(p.cost)
 	tr.Pop()
 }
 

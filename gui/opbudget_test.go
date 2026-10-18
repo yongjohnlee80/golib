@@ -10,7 +10,9 @@ import (
 	"testing"
 	"time"
 
+	"github.com/yongjohnlee80/gio/app"
 	"github.com/yongjohnlee80/gio/font/gofont"
+	"github.com/yongjohnlee80/gio/io/input"
 	"github.com/yongjohnlee80/gio/op"
 	"github.com/yongjohnlee80/gio/text"
 	"github.com/yongjohnlee80/golib/tui"
@@ -86,47 +88,103 @@ func TestAFlushedFrameStaysWithinTheBatchedBudget(t *testing.T) {
 	r := newRenderer(text.NewShaper(text.WithCollection(gofont.Collection()), text.NoSystemFonts()), "Go Mono", DefaultTheme())
 	g := fullGrid(240, 67)
 	m := metrics{window: image.Pt(1920, 1080), cell: image.Pt(8, 16), ppem: 14, baseline: 12, scale: 1, grid: tui.Size{W: 240, H: 67}}
-	ops = opCounts{}
+	resetOps()
 	r.frame(g, m, cursorState{}, nil, nil, true)
 	want := budget(r, g)
-	if got := ops.fills + ops.batches; got > want || ops.cells != 0 {
-		t.Fatalf("recorded %d fills + %d batches = %d and %d lone glyphs (%s); the batched budget is %d and 0", ops.fills, ops.batches, got, ops.cells, lone(r, g), want)
+	fills, batches, cells := int(ops.fills.Load()), int(ops.batches.Load()), ops.cells.Load()
+	if got := fills + batches; got > want || cells != 0 {
+		t.Fatalf("recorded %d fills + %d batches = %d and %d lone glyphs (%s); the batched budget is %d and 0", fills, batches, got, cells, lone(r, g), want)
 	}
-	if ops.rows != 67 {
-		t.Fatalf("recorded %d rows; want 67 (the counter must observe)", ops.rows)
+	if n := ops.rows.Load(); n != 67 {
+		t.Fatalf("recorded %d rows; want 67 (the counter must observe)", n)
 	}
-	t.Logf("%d fills + %d batches within a budget of %d (%d cells)", ops.fills, ops.batches, want, 240*67)
+	t.Logf("%d fills + %d batches within a budget of %d (%d cells)", fills, batches, want, 240*67)
 }
 
-// A stream's frames redraw at the display's pace without the cell pipeline: 100 pushed and
-// presented frames record no row and paint no view. A tui flush, the positive control, does both.
-func TestStreamFramesRecordNoRowAndPaintNoView(t *testing.T) {
+// streamWindow is a Backend whose grid is a 1920×1080 Panes window: a full cell pane of mixed text
+// beside a 480dp pane whose view draws one stream filling it, and an overlay after it (as a frame
+// rate badge is). The flushed frame is published.
+func streamWindow(t *testing.T) (*Backend, *Stream, metrics) {
+	t.Helper()
 	b := NewBackend()
 	b.render = newRenderer(text.NewShaper(text.WithCollection(gofont.Collection()), text.NoSystemFonts()), "Go Mono", DefaultTheme())
+	p := NewPanes(Row(Sized(Flex(1), Cells(&stubPane{"cells"})), Sized(Fixed(480), Pixels(&stubPane{"stream"}))))
+	m := placePanes(p, metrics{window: image.Pt(1920, 1080), scale: 1, ppem: 14, cell: image.Pt(8, 16), baseline: 12}, 0)
+	if m.layout == nil || len(m.layout.panes) != 2 {
+		t.Fatal("fixture: no two-pane layout")
+	}
+	b.grid = *fullGrid(m.grid.W, m.grid.H)
 	st := b.NewStream()
-	view := ViewFunc(func(c Canvas) { DrawStream(c, st, Rect{W: 64, H: 64}) })
-	g := fullGrid(40, 10)
-	m := metrics{window: image.Pt(320, 160), cell: image.Pt(8, 16), ppem: 14, baseline: 12, scale: 1, grid: tui.Size{W: 40, H: 10}}
-	natives := []tui.NativePlacement{{View: view, Cols: 8, Rows: 4}}
-	draw, parts := b.render.frameParts(g, m, cursorState{}, natives, nil, true)
-	ops = opCounts{}
+	band := m.layout.panes[1].band
+	b.natives = []tui.NativePlacement{{View: ViewFunc(func(c Canvas) {
+		DrawStream(c, st, Rect{W: c.Size().W, H: c.Size().H})
+		c.FillRRect(Rect{X: 8, Y: 8, W: 96, H: 24}, 4, Brush{Color: color.NRGBA{A: 0xb0}})
+	}), X: band.X, Y: band.Y, Cols: band.W, Rows: band.H}}
+	b.publishFrame(m)
+	return b, st, m
+}
+
+// presentAt runs the real present for b's frame at now, the toolkit taking the ops as they are.
+func presentAt(b *Backend, m metrics, now time.Time) {
+	router := new(input.Router)
+	b.present(app.FrameEvent{Now: now, Size: m.window, Source: router.Source(), Frame: func(*op.Ops) {}}, &b.gio, m, b.font.Load())
+}
+
+// One stream frame makes Gio walk at most the flushed frame's ops plus 4 per slot, through the
+// real present: the flushed frame's present walks its recorded ops plus the window's own three
+// (the background's clip and fill, the input area's clip), and a pushed picture adds its slot's
+// clip, transforms and image. It records no row and paints no view.
+func TestAStreamFrameWalksTheFlushedFramePlusFourPerSlot(t *testing.T) {
+	b, st, m := streamWindow(t)
+	defer st.Close()
+	b.mu.Lock()
+	f := b.latest
+	b.mu.Unlock()
+	flushed := f.drawCost
+	for _, p := range f.parts {
+		flushed += p.cost
+	}
+	if len(f.parts) != 1 || f.parts[0].cost == 0 || flushed < 67 {
+		t.Fatalf("fixture: %d slots, %d recorded ops; want 1 slot with drawing after it, and a counted frame", len(f.parts), flushed)
+	}
+	const window = 3
+	resetOps()
+	presentAt(b, m, time.Unix(1, 0))
+	w0 := walkNow()
+	if w0 != flushed+window {
+		t.Fatalf("the flushed frame's present walks %d ops; want its recorded %d + the window's %d", w0, flushed, window)
+	}
 	var rel int
-	for range 100 {
+	st.Push(memFrame(t, 64, 64, [4]byte{1, 2, 3, 255}, &rel))
+	resetOps()
+	presentAt(b, m, time.Unix(2, 0))
+	w1 := walkNow()
+	if budget := w0 + 4*len(f.parts); w1 > budget || w1 == w0 {
+		t.Fatalf("a stream frame walks %d ops; want more than the flushed frame's %d (it drew the picture) and at most %d", w1, w0, budget)
+	}
+	if rows, paints := ops.rows.Load(), ops.paints.Load(); rows != 0 || paints != 0 {
+		t.Fatalf("a stream frame recorded %d rows and painted %d views; want 0 and 0", rows, paints)
+	}
+	t.Logf("flushed frame: %d recorded ops, %d walked; a stream frame walks %d", flushed, w0, w1)
+}
+
+// A stream's frames redraw at the display's pace without the cell pipeline: 100 pushed pictures,
+// each presented, record no row and paint no view. A tui flush, the positive control, does both.
+func TestStreamFramesRecordNoRowAndPaintNoView(t *testing.T) {
+	b, st, m := streamWindow(t)
+	defer st.Close()
+	resetOps()
+	var rel int
+	for i := range 100 {
 		st.Push(memFrame(t, 4, 4, [4]byte{1, 2, 3, 255}, &rel))
-		frameOps := new(op.Ops)
-		draw.Add(frameOps)
-		for _, p := range parts {
-			p.slot.add(frameOps)
-			p.seg.Add(frameOps)
-		}
-		b.streamsPresented(time.Now())
+		presentAt(b, m, time.Unix(int64(i), 0))
 	}
-	if ops.rows != 0 || ops.paints != 0 {
-		t.Fatalf("100 stream frames recorded %d rows and painted %d views; want 0 and 0", ops.rows, ops.paints)
+	if rows, paints := ops.rows.Load(), ops.paints.Load(); rows != 0 || paints != 0 {
+		t.Fatalf("100 stream frames recorded %d rows and painted %d views; want 0 and 0", rows, paints)
 	}
-	g.touchAll()
-	b.render.frameParts(g, m, cursorState{}, natives, nil, true)
-	if ops.rows == 0 || ops.paints == 0 {
-		t.Fatalf("a tui flush recorded %d rows and painted %d views; the counters do not observe", ops.rows, ops.paints)
+	b.grid.touchAll()
+	b.publishFrame(m)
+	if rows, paints := ops.rows.Load(), ops.paints.Load(); rows == 0 || paints == 0 {
+		t.Fatalf("a tui flush recorded %d rows and painted %d views; the counters do not observe", rows, paints)
 	}
 }
