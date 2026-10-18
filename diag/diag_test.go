@@ -484,6 +484,20 @@ func TestTheLoggerGetsSamplesAndSnapshots(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	// the sampler's own lines, before Close's: Close logs a last sample too
+	sampled := func() bool {
+		l.mu.Lock()
+		defer l.mu.Unlock()
+		for _, line := range l.lines {
+			if strings.HasPrefix(line, "diag: heap live ") {
+				return true
+			}
+		}
+		return false
+	}
+	if !sampled() {
+		t.Fatal("Start's first sample was not logged")
+	}
 	m.Close()
 	l.mu.Lock()
 	defer l.mu.Unlock()
