@@ -136,6 +136,7 @@ type TableCore struct {
 	editing       *TableEdit     // the open field, nil for none
 	srcGen        uint64         // SetSource's count: an open edit's source, by number
 	onEditDropped func()
+	keysFirst     func(tui.KeyEvent) bool
 	layout        TableLayout
 	ctx           *tui.Context
 	kinds         TableKinds // the source's cell kinds, nil when it has none

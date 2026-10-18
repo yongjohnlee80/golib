@@ -47,6 +47,13 @@ func TableAppendEdges() TableOption { return func(c *TableCore) { c.edges = true
 // so ("the table changed; the edit was dropped").
 func TableOnEditDropped(fn func()) TableOption { return func(c *TableCore) { c.onEditDropped = fn } }
 
+// TableKeysFirst is asked for each key the table's own commands leave, while no field is open,
+// before typing opens a cell with it: the host's actions on that key win (a document view's undo
+// and redo). True takes the key.
+func TableKeysFirst(fn func(k tui.KeyEvent) bool) TableOption {
+	return func(c *TableCore) { c.keysFirst = fn }
+}
+
 // Editable reports whether the cells and shape can change now: an editor source not saying it is
 // read only.
 func (c *TableCore) Editable() bool {

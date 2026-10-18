@@ -14,6 +14,7 @@ type TableDocument struct {
 	Base
 	table *DataTable
 	src   *TableCSV
+	ed    *EditorCore
 }
 
 var _ DocumentView = (*TableDocument)(nil)
@@ -21,9 +22,26 @@ var _ DocumentView = (*TableDocument)(nil)
 // NewTableDocument is a table view of ed's text, read as CSV (comma ',') or TSV ('\t'). opts are
 // the TableCore's, after TableAppendEdges.
 func NewTableDocument(ed *EditorCore, comma rune, opts ...TableOption) *TableDocument {
-	src := NewTableCSV(ed, comma)
-	core := NewTableCore(src, append([]TableOption{TableAppendEdges()}, opts...)...)
-	return &TableDocument{table: NewDataTable(core), src: src}
+	d := &TableDocument{src: NewTableCSV(ed, comma), ed: ed}
+	first := []TableOption{TableAppendEdges(), TableKeysFirst(d.historyKey)}
+	d.table = NewDataTable(NewTableCore(d.src, append(first, opts...)...))
+	return d
+}
+
+// historyKey runs the editor's undo or redo for a key its own key map gives them, before the
+// table's typing could take it: a table edit is the core's, undone and redone as a text edit is.
+func (d *TableDocument) historyKey(k tui.KeyEvent) bool {
+	act, ok := d.ed.ActionOf(k)
+	switch {
+	case ok && act == ActUndo:
+		d.ed.Undo()
+	case ok && act == ActRedo:
+		d.ed.Redo()
+	default:
+		return false
+	}
+	d.reread()
+	return true
 }
 
 // Source is the CSV document the table edits.

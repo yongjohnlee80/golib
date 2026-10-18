@@ -264,6 +264,9 @@ func (c *TableCore) HandleKey(k tui.KeyEvent) bool {
 	cmd, ok := c.ctx.KeyCommand(k, tableCommands...)
 	if !ok {
 		c.dropPending() // any other key drops a count or a g, and is the application's
+		if c.keysFirst != nil && c.keysFirst(k) {
+			return true
+		}
 		// on an editable table a printable key opens the cell's field with it typed; Space and : stay
 		// the application's, as vim's leader and command line are
 		if k.Text != "" && k.Text != " " && k.Text != ":" && k.Mods&^tui.ModShift == 0 && k.Code != tui.KeyTab && c.Editable() {

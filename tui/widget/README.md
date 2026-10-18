@@ -397,8 +397,9 @@ refusal), and only such a source offers `TableAppendEdges` (an empty row and fie
 to type into) and `o` (a new row below, inserted when its value is kept). An open edit
 (`Editing`) is fenced to its source, the source's revision (`TableRevisioner`) and its source row:
 a change under it (an edit elsewhere, an undo, a sort, a filter, a new source, `CancelEdit`) drops
-it and tells `TableOnEditDropped`. Shift+wheel and a horizontal wheel scroll the fields
-(`ScrollFields`).
+it and tells `TableOnEditDropped`. `TableKeysFirst` is asked for a key the table's commands leave,
+while no field is open, before typing opens a cell with it: the host's own action on that key
+wins. Shift+wheel and a horizontal wheel scroll the fields (`ScrollFields`).
 
 `NewTableCSV(core, comma)` is a CSV (`,`) or TSV (`\t`) document in an `EditorCore` as such a
 source: the first record is the fields, and an edit writes over the bytes of the records it
@@ -406,7 +407,8 @@ changes alone, so every gap of blank lines and every other record stays byte for
 error (strict quoting: a bare or unterminated quote), a line over 1 MiB or more than 100,000
 records makes it read only (`ReadOnly`). `NewTableDocument(core, comma)` is the table as a
 `DocumentView`: an `Editor`'s Rendered view (`SetDocumentView`, `SetRenderedDocument`), reading
-the core again at each layout.
+the core again at each layout. The editor's undo and redo keys (`u`, Ctrl+R, or what its key map
+binds them to) undo and redo in the table as in the text.
 
 ### Editors & Streaming Viewers
 

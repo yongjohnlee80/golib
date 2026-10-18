@@ -132,3 +132,53 @@ func TestTheTableKeepsTheChosenView(t *testing.T) {
 }
 
 func ctrlEv(r rune) tui.KeyEvent { return tui.KeyEvent{Kind: tui.KeyPress, Code: r, Mods: tui.ModCtrl} }
+
+// A kept table edit is undone by the editor's own u while the table is shown, and redone by its
+// Ctrl+R, as the same edit is in Raw: the keys reach the core's history before the table's typing
+// can open a cell with them. In an open field, u is typed.
+func TestTheTableUndoesAndRedoesItsKeptEditByKey(t *testing.T) {
+	const original, edited = "name,n\nann,1\nbob,2\n", "name,n\nann9,1\nbob,2\n"
+	for _, raw := range []bool{false, true} {
+		name := "table"
+		if raw {
+			name = "raw"
+		}
+		t.Run(name, func(t *testing.T) {
+			h, sh, ed, doc := csvEditor(t, original)
+			h.inject(ctrlEv('t'))
+			h.barrier(sh)
+			h.inject(dtEnter, keyText("9"), dtEnter)
+			h.barrier(sh)
+			if got := ed.Core().Value(); got != edited {
+				t.Fatalf("the kept edit: %q, want %q", got, edited)
+			}
+			if raw {
+				h.inject(ctrlEv('t'))
+				h.barrier(sh)
+			}
+			h.inject(keyText("u"))
+			h.barrier(sh)
+			var editing bool
+			h.onLoop(func() { editing = doc.Core().Editing() != nil })
+			if got := ed.Core().Value(); got != original || editing {
+				t.Fatalf("u: the text %q and a field open %v; want %q and none", got, editing, original)
+			}
+			h.inject(ctrlEv('r'))
+			h.barrier(sh)
+			if got := ed.Core().Value(); got != edited {
+				t.Fatalf("Ctrl+R: the text %q, want %q", got, edited)
+			}
+		})
+	}
+
+	h, sh, ed, doc := csvEditor(t, original)
+	h.inject(ctrlEv('t'))
+	h.barrier(sh) // the table shown and focused before the keys for it
+	h.inject(dtEnter, keyText("u"), dtEnter)
+	h.barrier(sh)
+	var editing bool
+	h.onLoop(func() { editing = doc.Core().Editing() != nil })
+	if got := ed.Core().Value(); got != "name,n\nannu,1\nbob,2\n" || editing {
+		t.Fatalf("u in an open field: the text %q, a field open %v; want it typed and kept", got, editing)
+	}
+}
