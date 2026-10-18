@@ -125,11 +125,16 @@ var (
 	TableOpenRow   = cmd("tui.table.openRow", TableScope, "O")
 	TableDeleteRow = cmd("tui.table.deleteRow", TableScope, "D") // d, then d
 	TableClearCell = cmd("tui.table.clearCell", TableScope, "X", "Delete")
+	// p and P paste the register after and before; O opens a row above, as o below.
+	TablePasteAfter   = cmd("tui.table.pasteAfter", TableScope, "P")
+	TablePasteBefore  = cmd("tui.table.pasteBefore", TableScope, "Shift+P")
+	TableOpenRowAbove = cmd("tui.table.openRowAbove", TableScope, "Shift+O")
 
 	tableCommands = []keymap.Command{TableUp, TableDown, TableLeft, TableRight, TableFieldNext,
 		TableFieldPrev, TablePageUp, TablePageDown, TableGoPrefix, TableLast, TableFieldFirst,
 		TableFieldLast, TableVisual, TableVisualRows, TableVisualBlock, TableEscape, TableYank,
-		TableSort, TableActivate, TableEditCell, TableOpenRow, TableDeleteRow, TableClearCell}
+		TableSort, TableActivate, TableEditCell, TableOpenRow, TableDeleteRow, TableClearCell,
+		TablePasteAfter, TablePasteBefore, TableOpenRowAbove}
 )
 
 // TableFieldScope is the keys of a table cell's open field (TableEdit), before its TextArea's.

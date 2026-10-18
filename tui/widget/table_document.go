@@ -1,6 +1,9 @@
 package widget
 
-import "github.com/yongjohnlee80/golib/tui"
+import (
+	"github.com/yongjohnlee80/golib/tui"
+	"github.com/yongjohnlee80/golib/tui/keymap"
+)
 
 // TableDocument is a document view of a CSV or TSV EditorCore: a DataTable over a TableCore over a
 // TableCSV, with the edges. It reads the core, not the text it is shown, and reads it again
@@ -15,6 +18,7 @@ type TableDocument struct {
 	table *DataTable
 	src   *TableCSV
 	ed    *EditorCore
+	extra func() []MenuItemModel // the host's menu rows (SetMenuRows)
 }
 
 var _ DocumentView = (*TableDocument)(nil)
@@ -23,9 +27,56 @@ var _ DocumentView = (*TableDocument)(nil)
 // the TableCore's, after TableAppendEdges.
 func NewTableDocument(ed *EditorCore, comma rune, opts ...TableOption) *TableDocument {
 	d := &TableDocument{src: NewTableCSV(ed, comma), ed: ed}
-	first := []TableOption{TableAppendEdges(), TableKeysFirst(d.historyKey)}
+	// the editor's register: a yank in the table pastes in Raw, in another buffer, and back
+	first := []TableOption{TableAppendEdges(), TableKeysFirst(d.historyKey), TableRegister(ed)}
 	d.table = NewDataTable(NewTableCore(d.src, append(first, opts...)...))
+	m := NewEditorMenu(d.table, nil)
+	m.SetEnabled(true) // a new EditorMenu is off
+	m.SetRows(d.menuRows)
+	d.table.SetMenu(m)
 	return d
+}
+
+// SetMenuRows adds the host's rows after the table's own; nil takes them away.
+func (d *TableDocument) SetMenuRows(extra func() []MenuItemModel) { d.extra = extra }
+
+// menuRows is the right-click menu: the table's commands, each showing its key from the key map
+// (AccelCommand), disabled where it cannot run; then the host's.
+func (d *TableDocument) menuRows() []MenuItemModel {
+	c := d.Core()
+	edit := c.cellsCommitter() != nil
+	text, _ := c.register().Register()
+	selected := c.anchor != nil
+	row := func(id ItemID, label string, cmd keymap.Command, on bool, run func()) MenuItemModel {
+		r := NewCommand(id, label, CoreMenuAction{ID: tui.ActionID(id), Run: func(*EditorCore) { run() }})
+		r.AccelCommand, r.Enabled = cmd.ID, on
+		return r
+	}
+	rows := []MenuItemModel{
+		row("table.yank", "Yank", TableYank, c.Len() > 0, func() { c.Copy() }),
+		row("table.cut", "Cut", TableDeleteRow, edit && c.Len() > 0, func() { c.Cut(selected && c.kind == TableSelectRows) }),
+		row("table.paste", "Paste", TablePasteAfter, edit && text != "", func() { c.PasteRegister(false) }),
+		NewSeparator("table.sep.insert"),
+		row("table.rowAbove", "Insert row above", TableOpenRowAbove, edit && c.whole(), func() { c.InsertRows(true) }),
+		row("table.rowBelow", "Insert row below", TableOpenRow, edit && c.whole(), func() { c.InsertRows(false) }),
+		row("table.fieldLeft", "Insert field left", keymap.Command{}, edit, func() { c.InsertFields(true) }),
+		row("table.fieldRight", "Insert field right", keymap.Command{}, edit, func() { c.InsertFields(false) }),
+		NewSeparator("table.sep.delete"),
+		row("table.deleteRows", "Delete rows", keymap.Command{}, edit && c.Len() > 0, func() { c.DeleteRows() }),
+		row("table.deleteFields", "Delete fields", keymap.Command{}, edit && len(c.Fields()) > 1, func() { c.DeleteFields() }),
+		NewSeparator("table.sep.view"),
+		row("table.selectAll", "Select all", keymap.Command{}, c.Len() > 0, func() { c.SelectAll() }),
+	}
+	numbers := NewCheck("table.rowNumbers", "Row numbers", CoreMenuAction{ID: "table.rowNumbers",
+		Run: func(*EditorCore) { c.SetRowNumbers(!c.RowNumbers()) }})
+	numbers.Checked = c.RowNumbers()
+	rows = append(rows, numbers)
+	if d.extra != nil {
+		if more := d.extra(); len(more) > 0 {
+			rows = append(append(rows, NewSeparator("table.sep.host")), more...)
+		}
+	}
+	return rows
 }
 
 // historyKey runs the editor's undo or redo for a key its own key map gives them, before the

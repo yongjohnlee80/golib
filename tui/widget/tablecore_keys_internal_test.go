@@ -165,7 +165,8 @@ func TestTableKeysMatchTheOldHandlerWithNoMap(t *testing.T) {
 }
 
 // editCommands are the table commands of an editable source (tablecore_edit.go).
-var editCommands = []string{TableEditCell.ID, TableOpenRow.ID, TableDeleteRow.ID, TableClearCell.ID}
+var editCommands = []string{TableEditCell.ID, TableOpenRow.ID, TableDeleteRow.ID, TableClearCell.ID,
+	TablePasteAfter.ID, TablePasteBefore.ID, TableOpenRowAbove.ID}
 
 // Every table command reaches HandleKey: none is declared and then dropped by the switch. An editing
 // command, on an editable source, opens a field or changes the text.
@@ -178,6 +179,11 @@ func TestEveryTableCommandDoesSomething(t *testing.T) {
 		if slices.Contains(editCommands, cmd.ID) {
 			c, _, core, _ := csvTable("name,age,city\ncarol,41,Seoul\nalice,9,Busan\nbob,100,Incheon\n")
 			c.cur = TablePos{1, 1}
+			if cmd.ID == TablePasteAfter.ID || cmd.ID == TablePasteBefore.ID {
+				c.cur = TablePos{1, 0} // a name yanked, pasted over an age
+				c.Copy()
+				c.cur = TablePos{1, 1}
+			}
 			before := core.Value()
 			e := tui.KeyEvent{Code: keys[0].Code, Mods: keys[0].Mods}
 			ret := c.HandleKey(e)

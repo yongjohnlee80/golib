@@ -189,15 +189,19 @@ func (t *TableCSV) Cell(row, col int) string {
 }
 
 // encode is a record's text, quoted as encoding/csv's Writer quotes it, with no line ending.
-func (t *TableCSV) encode(cells []string) string {
-	if len(cells) == 1 && cells[0] == "" {
+func (t *TableCSV) encode(cells []string) string { return encodeRecord(t.comma, cells) }
+
+// encodeRecord is a record's text with comma as the delimiter, quoted as encoding/csv's Writer
+// quotes it, with no line ending.
+func encodeRecord(comma rune, cells []string) string {
+	if len(cells) == 0 || len(cells) == 1 && cells[0] == "" {
 		// a record of one empty field: the Writer writes an empty line, which a reader skips as a
 		// blank one, and the record would be gone
 		return `""`
 	}
 	var b strings.Builder
 	w := csv.NewWriter(&b)
-	w.Comma = t.comma
+	w.Comma = comma
 	_ = w.Write(cells)
 	w.Flush()
 	return strings.TrimSuffix(b.String(), "\n")
@@ -209,86 +213,224 @@ func (t *TableCSV) writable() bool {
 	return t.why == "" && !t.core.ReadOnly()
 }
 
-// Commit applies op as one write: the inserts and the cell computed first, then one Replace of the
-// bytes from the first record changed to the last, the gaps between them copied as they are.
+// TableCellsCommitter is a source that applies a compound edit as one operation: the whole plan
+// validated first, then the text written once (one undo step); false writes nothing.
+type TableCellsCommitter interface {
+	CommitCells(op TableCellsOp) bool
+}
+
+// TableCellsOp is one compound edit over ONE snapshot of the source.
+//
+// Structure is in the snapshot's coordinates: DeleteRows and DeleteFields name rows and fields as
+// read; InsertRows and InsertFields insert before a row or field as read (Len() and the fields'
+// count append). Several inserts at one position go in list order; an insert before a deleted row
+// or field goes where it was.
+//
+// Cells are in the RESULT's coordinates, after every structural change: Row -1 is a title. A cell
+// may be in an inserted row or field.
+//
+// Refused whole, nothing written: a duplicate or out-of-range index, no field left, a cell outside
+// the result.
+type TableCellsOp struct {
+	DeleteRows   []int
+	DeleteFields []int
+	InsertRows   []int
+	InsertFields []TableFieldAt
+	Cells        []TableCell
+}
+
+// TableFieldAt is a field inserted before the field At as read.
+type TableFieldAt struct {
+	At    int
+	Field TableField
+}
+
+// TableCell is a cell's new value, in the result's coordinates; Row -1 is a title.
+type TableCell struct {
+	Row, Col int
+	Text     string
+}
+
+// Commit applies op as one write: TableOp's row and field inserts and its cell, as a TableCellsOp
+// (its cell is in the result's coordinates already).
 func (t *TableCSV) Commit(op TableOp) bool {
+	c := TableCellsOp{Cells: []TableCell{{Row: op.Row, Col: op.Col, Text: op.Text}}}
+	if op.InsertRow >= 0 {
+		c.InsertRows = []int{op.InsertRow}
+	}
+	if op.InsertField >= 0 {
+		c.InsertFields = []TableFieldAt{{At: op.InsertField, Field: op.Field}}
+	}
+	return t.CommitCells(c)
+}
+
+// CommitCells applies op as one write: the plan built and checked whole, then one Replace of the
+// bytes from the first record changed to the last, the gaps between them copied as they are.
+func (t *TableCSV) CommitCells(op TableCellsOp) bool {
 	if !t.writable() {
 		return false
 	}
-	width := t.width
-	if op.InsertField >= 0 {
-		if op.InsertField > width {
-			return false
+	all, ok := t.plan(op)
+	return ok && t.writeRecords(all)
+}
+
+// recordWrite is one record of the result, in text order: an existing record (rec != nil) kept,
+// rewritten (dirty) or deleted; or a new one (rec == nil).
+type recordWrite struct {
+	rec     *csvRecord
+	cells   []string
+	dirty   bool
+	deleted bool // its bytes are written as nothing; the gaps around it stay
+}
+
+// planCell is a cell while the fields move: absent past a short record's end, until something
+// after it is present.
+type planCell struct {
+	v      string
+	absent bool
+}
+
+// plan is op over the records as read, in text order, and whether op is valid: rows deleted in
+// place and inserted before the row they precede; then each record's fields deleted and inserted;
+// then the cells set. A record is dirty when its cells differ from what was read.
+func (t *TableCSV) plan(op TableCellsOp) ([]recordWrite, bool) {
+	n := len(t.records)
+	delRow, ok := indexSet(op.DeleteRows, n)
+	if !ok {
+		return nil, false
+	}
+	delField, ok := indexSet(op.DeleteFields, t.width)
+	if !ok {
+		return nil, false
+	}
+	width := t.width - len(delField) + len(op.InsertFields)
+	if width < 1 && (len(op.DeleteFields) > 0 || len(op.InsertFields) > 0) {
+		return nil, false // no field left
+	}
+	for _, at := range op.InsertRows {
+		if at < 0 || at > n {
+			return nil, false
 		}
-		width++
 	}
-	if op.InsertRow >= 0 && op.InsertRow > len(t.records) {
-		return false
-	}
-	rows := len(t.records)
-	if op.InsertRow >= 0 {
-		rows++
-	}
-	if op.Col < 0 || op.Col >= width || op.Row < -1 || op.Row >= rows {
-		return false
+	for _, f := range op.InsertFields {
+		if f.At < 0 || f.At > t.width {
+			return nil, false
+		}
 	}
 
-	// every record as it will be: a copy of its cells, and whether its text changes
-	all := make([]recordWrite, 0, len(t.records)+1)
-	recs := make([]*csvRecord, 0, len(t.records)+1)
+	// the rows, in text order: the header (one made for an empty file), then each record with the
+	// inserts before it, then the inserts at the end
+	all := make([]recordWrite, 0, n+1+len(op.InsertRows))
 	if t.header != nil {
-		all = append(all, recordWrite{cells: slices.Clone(t.header.cells)})
-		recs = append(recs, t.header)
+		all = append(all, recordWrite{rec: t.header, cells: slices.Clone(t.header.cells)})
+	} else {
+		all = append(all, recordWrite{cells: make([]string, t.width), dirty: true})
+	}
+	inserted := func(before int) {
+		for _, at := range op.InsertRows {
+			if at == before {
+				all = append(all, recordWrite{cells: make([]string, t.width), dirty: true})
+			}
+		}
 	}
 	for i := range t.records {
-		all = append(all, recordWrite{cells: slices.Clone(t.records[i].cells)})
-		recs = append(recs, &t.records[i])
+		inserted(i)
+		all = append(all, recordWrite{rec: &t.records[i], cells: slices.Clone(t.records[i].cells),
+			deleted: delRow[i], dirty: delRow[i]})
 	}
-	if t.header == nil { // an empty file: the edit makes its header
-		all = append([]recordWrite{{cells: make([]string, t.width), dirty: true}}, all...)
-		recs = append([]*csvRecord{nil}, recs...)
-	}
-	if op.InsertField >= 0 {
+	inserted(n)
+
+	// the fields, over every record kept: walked by the field as read, the inserts before it
+	if len(delField) > 0 || len(op.InsertFields) > 0 {
 		for i := range all {
-			c := all[i].cells
-			if len(c) < op.InsertField {
-				c = append(c, make([]string, op.InsertField-len(c))...)
+			if all[i].deleted {
+				continue
 			}
-			title := ""
-			if i == 0 {
-				title = op.Field.Title
-			}
-			all[i].cells, all[i].dirty = slices.Insert(c, op.InsertField, title), true
+			all[i].cells = moveFields(all[i].cells, t.width, delField, op.InsertFields, i == 0)
 		}
 	}
-	inserted := -1 // the index in all of the inserted record
-	if op.InsertRow >= 0 {
-		inserted = op.InsertRow + 1
-		all = slices.Insert(all, inserted, recordWrite{cells: make([]string, width), dirty: true})
-		recs = slices.Insert(recs, inserted, nil)
+
+	// the cells, in the result's rows: the header, then each record kept
+	rows := make([]int, 0, len(all))
+	for i := 1; i < len(all); i++ {
+		if !all[i].deleted {
+			rows = append(rows, i)
+		}
 	}
-	at := op.Row + 1
-	c := all[at].cells
-	if len(c) <= op.Col { // a short record is padded up to the cell edited, no further
-		c = append(c, make([]string, op.Col+1-len(c))...)
+	for _, c := range op.Cells {
+		if c.Row < -1 || c.Row >= len(rows) || c.Col < 0 || c.Col >= width {
+			return nil, false
+		}
+		at := 0
+		if c.Row >= 0 {
+			at = rows[c.Row]
+		}
+		cells := all[at].cells
+		if len(cells) <= c.Col { // a short record is padded up to the cell set, no further
+			cells = append(cells, make([]string, c.Col+1-len(cells))...)
+		}
+		cells[c.Col] = c.Text
+		all[at].cells = cells
 	}
-	if c[op.Col] != op.Text || all[at].dirty {
-		c[op.Col] = op.Text
-		all[at].cells, all[at].dirty = c, true
+	for i := range all {
+		if all[i].rec != nil && !all[i].deleted && !slices.Equal(all[i].cells, all[i].rec.cells) {
+			all[i].dirty = true
+		}
 	}
-	return t.writeRecords(all, recs)
+	return all, true
 }
 
-// recordWrite is a record's cells after an edit, and whether its text changes.
-type recordWrite struct {
-	cells []string
-	dirty bool
+// indexSet is idx as a set, and whether every index is in [0, n) and none repeats.
+func indexSet(idx []int, n int) (map[int]bool, bool) {
+	set := make(map[int]bool, len(idx))
+	for _, i := range idx {
+		if i < 0 || i >= n || set[i] {
+			return nil, false
+		}
+		set[i] = true
+	}
+	return set, true
 }
 
-// writeRecords writes the records that changed: recs[i] is all[i]'s record in the text, nil for one
-// inserted. The span replaced runs from the first changed record's start to the last's end; between
-// them every record and gap is copied or rewritten in order. Nothing changed writes nothing.
-func (t *TableCSV) writeRecords(all []recordWrite, recs []*csvRecord) bool {
+// moveFields is a record's cells with fields deleted and inserted, both named as read (width
+// fields); an inserted field's cell is its title in the header, "" elsewhere. A short record stays
+// short: a field past its end is filled only when a present cell comes after it.
+func moveFields(cells []string, width int, del map[int]bool, ins []TableFieldAt, header bool) []string {
+	out := make([]planCell, 0, width+len(ins))
+	for j := 0; j <= width; j++ {
+		for _, f := range ins {
+			if f.At == j {
+				v := ""
+				if header {
+					v = f.Field.Title
+				}
+				out = append(out, planCell{v: v})
+			}
+		}
+		if j == width || del[j] {
+			continue
+		}
+		if j < len(cells) {
+			out = append(out, planCell{v: cells[j]})
+		} else {
+			out = append(out, planCell{absent: true})
+		}
+	}
+	for len(out) > 0 && out[len(out)-1].absent {
+		out = out[:len(out)-1]
+	}
+	res := make([]string, len(out))
+	for i, c := range out {
+		res[i] = c.v
+	}
+	return res
+}
+
+// writeRecords writes the records that changed. The span replaced runs from the first changed
+// record's start (or, for one inserted, the end of the record before it) to the last's end; between
+// them every record and gap is copied, rewritten or, for one deleted, left out with its line ending.
+// Nothing changed writes nothing.
+func (t *TableCSV) writeRecords(all []recordWrite) bool {
 	first, last := -1, -1
 	for i, w := range all {
 		if w.dirty {
@@ -301,47 +443,58 @@ func (t *TableCSV) writeRecords(all []recordWrite, recs []*csvRecord) bool {
 	if first < 0 {
 		return true
 	}
-	// the bytes replaced: from the first changed record's start (or, for one inserted, the end of the
-	// record before it) to the last's end
 	from, to := len(t.text), 0
 	for i := first; i <= last; i++ {
-		if recs[i] != nil {
-			from, to = min(from, recs[i].from), max(to, recs[i].to)
+		if r := all[i].rec; r != nil {
+			from, to = min(from, r.from), max(to, r.to)
 			continue
 		}
 		at := 0
-		if prev := t.prevRecord(recs, i); prev != nil {
+		if prev := prevRecord(all, i); prev != nil {
 			at = prev.to
 		}
 		from, to = min(from, at), max(to, at)
 	}
 	var b strings.Builder
+	// ended is whether what comes before the next write ends a line: the text before the span,
+	// then what was written. A record left out does not count, so an insert after a deleted last
+	// record with no line ending follows the line ending before it.
+	ended := from == 0 || t.text[from-1] == '\n'
+	wrote := func(s string) {
+		if s != "" {
+			b.WriteString(s)
+			ended = s[len(s)-1] == '\n'
+		}
+	}
 	pos := from
 	for i := first; i <= last; i++ {
-		r := recs[i]
-		if r == nil { // inserted at pos: after the record before it, or at the top
+		r := all[i].rec
+		if r == nil { // inserted here: after the record before it, or at the top
 			// it takes the line ending of the record before it; after a last record with none, the
 			// line break goes before it, so the file still ends as it did
-			lead := pos > 0 && t.text[pos-1] != '\n'
+			lead, before := !ended, from > 0 || b.Len() > 0
 			if lead {
-				b.WriteByte('\n')
+				wrote("\n")
 			}
-			b.WriteString(t.encode(all[i].cells))
-			if !lead && (pos > 0 || pos < len(t.text) || i < last) {
-				b.WriteByte('\n')
+			wrote(t.encode(all[i].cells))
+			// a line ending after it unless it is the whole text: nothing before it, nothing after
+			if !lead && (before || pos < len(t.text) || i < last) {
+				wrote("\n")
 			}
 			continue
 		}
-		b.WriteString(t.text[pos:r.from]) // the gap before it, as it is
+		wrote(t.text[pos:r.from]) // the gap before it, as it is
 		body := t.text[r.from:r.to]
-		ending := ""
-		if strings.HasSuffix(body, "\n") {
-			ending = "\n"
-		}
-		if all[i].dirty {
-			b.WriteString(t.encode(all[i].cells) + ending)
-		} else {
-			b.WriteString(body)
+		switch {
+		case all[i].deleted:
+		case all[i].dirty:
+			ending := ""
+			if strings.HasSuffix(body, "\n") {
+				ending = "\n"
+			}
+			wrote(t.encode(all[i].cells) + ending)
+		default:
+			wrote(body)
 		}
 		pos = r.to
 	}
@@ -354,11 +507,11 @@ func (t *TableCSV) writeRecords(all []recordWrite, recs []*csvRecord) bool {
 	return err == nil
 }
 
-// prevRecord is the record in the text before all[i]: the nearest earlier one that is not inserted.
-func (t *TableCSV) prevRecord(recs []*csvRecord, i int) *csvRecord {
+// prevRecord is the record in the text before all[i]: the nearest earlier one read, deleted or not.
+func prevRecord(all []recordWrite, i int) *csvRecord {
 	for j := i - 1; j >= 0; j-- {
-		if recs[j] != nil {
-			return recs[j]
+		if all[j].rec != nil {
+			return all[j].rec
 		}
 	}
 	return nil
@@ -390,14 +543,7 @@ func (t *TableCSV) DeleteRow(at int) bool {
 	if !t.writable() || at < 0 || at >= len(t.records) {
 		return false
 	}
-	r := t.records[at]
-	rng := TextRange{From: t.posOf(r.from), To: t.posOf(r.to)}
-	err := t.core.Batch(func() error {
-		_, err := t.core.Replace(rng, "")
-		return err
-	})
-	t.Sync()
-	return err == nil
+	return t.CommitCells(TableCellsOp{DeleteRows: []int{at}})
 }
 
 // InsertField adds a field at index at (0 to the fields' count): every record rewritten, one step.
@@ -414,16 +560,7 @@ func (t *TableCSV) DeleteField(at int) bool {
 	if !t.writable() || at < 0 || at >= t.width || t.width == 1 {
 		return false
 	}
-	all := make([]recordWrite, 0, len(t.records)+1)
-	recs := make([]*csvRecord, 0, len(t.records)+1)
-	for _, r := range append([]*csvRecord{t.header}, t.recordPtrs()...) {
-		w := recordWrite{cells: r.cells}
-		if at < len(r.cells) {
-			w.cells, w.dirty = slices.Delete(slices.Clone(r.cells), at, at+1), true
-		}
-		all, recs = append(all, w), append(recs, r)
-	}
-	return t.writeRecords(all, recs)
+	return t.CommitCells(TableCellsOp{DeleteFields: []int{at}})
 }
 
 func (t *TableCSV) recordPtrs() []*csvRecord {
@@ -438,8 +575,9 @@ func (t *TableCSV) recordPtrs() []*csvRecord {
 func (t *TableCSV) SetAlign(int, style.Align) bool { return false }
 
 var (
-	_ TableSource     = (*TableCSV)(nil)
-	_ TableEditor     = (*TableCSV)(nil)
-	_ TableCommitter  = (*TableCSV)(nil)
-	_ TableRevisioner = (*TableCSV)(nil)
+	_ TableSource         = (*TableCSV)(nil)
+	_ TableEditor         = (*TableCSV)(nil)
+	_ TableCommitter      = (*TableCSV)(nil)
+	_ TableCellsCommitter = (*TableCSV)(nil)
+	_ TableRevisioner     = (*TableCSV)(nil)
 )

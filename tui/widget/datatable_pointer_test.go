@@ -252,8 +252,8 @@ func TestDataTable_TheCursorBlursWithoutTheKeys(t *testing.T) {
 	}
 }
 
-// A right press opens the menu at the pointer and leaves the selection as it was; MenuAt is where
-// it was pressed, and a row chosen runs, on a menu with no editor core.
+// A right press inside the selection opens the menu at the pointer and leaves the selection as it
+// was; MenuAt is where it was pressed, and a row chosen runs, on a menu with no editor core.
 func TestDataTable_ARightPressOpensTheMenuOverTheSelection(t *testing.T) {
 	dt := widget.NewDataTable(widget.NewTableCore(numbered(5)))
 	sh := newShell(widget.NewOverlayHost(dt))
@@ -275,7 +275,7 @@ func TestDataTable_ARightPressOpensTheMenuOverTheSelection(t *testing.T) {
 		dt.HandleEvent(key('V'))
 		dt.HandleEvent(key('j'))
 	})
-	h.inject(tui.MouseEvent{Kind: tui.MousePress, Button: tui.MouseRight, X: 7, Y: 4})
+	h.inject(tui.MouseEvent{Kind: tui.MousePress, Button: tui.MouseRight, X: 7, Y: 2})
 	h.waitFor("the menu opened", func() bool {
 		var open bool
 		h.onLoop(func() { open = menu.IsOpen() })
@@ -287,8 +287,8 @@ func TestDataTable_ARightPressOpensTheMenuOverTheSelection(t *testing.T) {
 		t.Errorf("after the right press: kind %v (%v), %q; want rows 0-1 still selected", kind, ok, text)
 	}
 	h.onLoop(func() {
-		if at != (widget.TablePos{Row: 3, Col: 1}) || hit != widget.TableHitCell {
-			t.Errorf("MenuAt %+v %v, want row 3 field 1, a cell", at, hit)
+		if at != (widget.TablePos{Row: 1, Col: 1}) || hit != widget.TableHitCell {
+			t.Errorf("MenuAt %+v %v, want row 1 field 1, a cell", at, hit)
 		}
 	})
 	h.inject(key(tui.KeyEnter))
@@ -299,6 +299,39 @@ func TestDataTable_ARightPressOpensTheMenuOverTheSelection(t *testing.T) {
 	if _, _, ok := tableSelected(h, dt); !ok {
 		t.Error("choosing a row ended the selection")
 	}
+}
+
+// A right press outside the selection on a cell moves the cursor there and ends the selection
+// before the menu opens: the menu acts on what was pressed. No drag starts.
+func TestDataTable_ARightPressOutsideTheSelectionTakesTheCell(t *testing.T) {
+	dt := widget.NewDataTable(widget.NewTableCore(numbered(5)))
+	sh := newShell(widget.NewOverlayHost(dt))
+	h := startApp(t, sh, 40, 12)
+	h.barrier(sh)
+	menu := widget.NewEditorMenu(dt, nil)
+	menu.SetRows(func() []widget.MenuItemModel {
+		return []widget.MenuItemModel{widget.NewCommand("table.copy", "Copy rows", widget.CoreMenuAction{ID: "table.copy"})}
+	})
+	h.onLoop(func() {
+		dt.SetMenu(menu)
+		menu.SetEnabled(true)
+		dt.Context().RequestFocus()
+		dt.HandleEvent(key('V'))
+		dt.HandleEvent(key('j'))
+	})
+	h.inject(tui.MouseEvent{Kind: tui.MousePress, Button: tui.MouseRight, X: 7, Y: 4})
+	h.waitFor("the menu opened", func() bool {
+		var open bool
+		h.onLoop(func() { open = menu.IsOpen() })
+		return open
+	})
+	h.onLoop(func() {
+		c := dt.Core()
+		if _, _, ok := c.Selection(); ok || c.Cursor() != (widget.TablePos{Row: 3, Col: 1}) || c.Dragging() {
+			t.Errorf("after a right press on row 3: selection %v, cursor %+v, dragging %v; want none, row 3 field 1, no drag",
+				ok, c.Cursor(), c.Dragging())
+		}
+	})
 }
 
 // A menu with no core and no rows has nothing to show: the right press goes on, and nothing breaks.
