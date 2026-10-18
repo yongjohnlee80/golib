@@ -61,9 +61,12 @@ func (c *TableCore) whole() bool {
 }
 
 // setRegister puts a yank in the register, then tries the clipboard; the yank holds whether the
-// clipboard took it or not. Past the copy limit nothing is taken, TableOnCopyRefused hears of it,
-// and it reports false.
+// clipboard took it or not. An empty table takes nothing; past the copy limit nothing is taken,
+// TableOnCopyRefused hears of it; both report false.
 func (c *TableCore) setRegister(text string, rows bool) bool {
+	if c.Len() == 0 { // an empty table yanks nothing
+		return false
+	}
 	if c.copyLimit > 0 && len(text) > c.copyLimit {
 		c.refuseCopy()
 		return false
