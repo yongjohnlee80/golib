@@ -259,3 +259,52 @@ func TestToastsStayAboveTheDialogs(t *testing.T) {
 		t.Fatalf("after the top dialog closed the layers are %v, want …, scrim, first, toasts", order)
 	}
 }
+
+// TestAFinishedToastPostedOngoingAgainStartsAgain: an id ended and posted ongoing again before its
+// linger is out stays past the old deadline, aged from the new post, and lingers from its next end;
+// the same while it waits in the queue. Ending twice changes nothing; another id is its own.
+func TestAFinishedToastPostedOngoingAgainStartsAgain(t *testing.T) {
+	h, toasts, clock := toastScreen(t)
+	h.onLoop(func() {
+		toasts.Post(widget.Toast{ID: "sync", Text: "syncing", Ongoing: true})
+		toasts.Post(widget.Toast{ID: "sync", Text: "synced"})
+		toasts.Post(widget.Toast{ID: "sync", Text: "synced"}) // ended twice: nothing more
+	})
+	h.waitFor("ended", func() bool { return strings.Contains(h.row(9), "synced") })
+	clock.add(time.Second)
+	tick(h, toasts)
+	h.onLoop(func() { toasts.Post(widget.Toast{ID: "sync", Text: "syncing again", Ongoing: true}) })
+	clock.add(10 * time.Second) // well past the first end's linger
+	tick(h, toasts)
+	if !strings.Contains(h.row(9), "syncing again") || !strings.Contains(h.row(8), " 10s ago ") {
+		t.Fatalf("the second cycle: %q under %q; want it showing, aged from its own post", h.row(9), h.row(8))
+	}
+	h.onLoop(func() { toasts.Post(widget.Toast{ID: "sync", Text: "synced again"}) })
+	clock.add(2 * time.Second)
+	tick(h, toasts)
+	if !strings.Contains(h.row(9), "synced again") {
+		t.Fatal("the second end went before its own linger")
+	}
+	clock.add(time.Second)
+	tick(h, toasts)
+	h.waitFor("gone after its own linger", func() bool { return !strings.Contains(h.screen(), "sync") })
+
+	// waiting in the queue: three show, the fourth is ended and started again while it waits
+	h.onLoop(func() {
+		for _, s := range []string{"one", "two", "three"} {
+			toasts.Post(widget.Toast{ID: s, Text: s, Ongoing: true})
+		}
+		toasts.Post(widget.Toast{ID: "late", Text: "late started", Ongoing: true})
+		toasts.Post(widget.Toast{ID: "late", Text: "late ended"})
+		toasts.Post(widget.Toast{ID: "late", Text: "late again", Ongoing: true})
+		toasts.Done("one")
+	})
+	clock.add(10 * time.Second) // one's linger is out: late shows in its place
+	tick(h, toasts)
+	h.waitFor("late shows", func() bool { return strings.Contains(h.screen(), "late again") })
+	clock.add(10 * time.Second)
+	tick(h, toasts)
+	if !strings.Contains(h.screen(), "late again") || !strings.Contains(h.screen(), "two") {
+		t.Fatalf("the restarted queued toast or another id went:\n%s", h.screen())
+	}
+}
