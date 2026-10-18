@@ -140,7 +140,7 @@ func (c *TableCore) copyText(limit int) (text string, ok bool) {
 		return "", true
 	}
 	if c.anchor == nil {
-		s := encodeRecord('\t', []string{c.Cell(c.cur.Row, c.cur.Col)}) // an empty cell is "", so it pastes as one
+		s := c.copyRecord([]string{c.Cell(c.cur.Row, c.cur.Col)})
 		return s, limit <= 0 || len(s) <= limit
 	}
 	from, to, _ := c.Selection()
@@ -178,7 +178,7 @@ func (c *TableCore) writeRow(b *strings.Builder, r, lo, hi int) {
 	for col := lo; col <= hi; col++ {
 		cells = append(cells, c.Cell(r, col))
 	}
-	b.WriteString(encodeRecord('\t', cells))
+	b.WriteString(c.copyRecord(cells))
 }
 
 // Copy is y: CopyText into the register (whole rows for a V selection), then onto the clipboard
@@ -512,7 +512,7 @@ func (c *TableCore) EndDrag() { c.dragging = false }
 // and ends the selection; a row's number selects that row; a field's title selects that field.
 // None of them starts a drag or keeps the pointer.
 func (c *TableCore) selectForMenu(p TablePos, hit TableHit) {
-	if c.Len() == 0 && hit != TableHitHeader {
+	if !c.menuSelects || c.Len() == 0 && hit != TableHitHeader {
 		return
 	}
 	c.dropPending()
@@ -551,4 +551,15 @@ func (c *TableCore) rowSelected(r int) bool {
 func (c *TableCore) fieldSelected(col int) bool {
 	from, to, ok := c.Selection()
 	return ok && from.Row == 0 && to.Row == c.Len()-1 && c.InSelection(0, col) && c.InSelection(c.Len()-1, col)
+}
+
+// copyRecord is one row of a copy. An editable table's copies paste back (p, a PasteEvent), so
+// they are quoted TSV (EncodeTableText's: an empty cell is "", a value with a tab, a newline or a
+// quote is quoted). A read-only table's are its values joined by tabs, as they always were: what a
+// reader copies out of a result, a JSON value as it is.
+func (c *TableCore) copyRecord(cells []string) string {
+	if c.Editable() {
+		return encodeRecord('\t', cells)
+	}
+	return strings.Join(cells, "\t")
 }

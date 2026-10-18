@@ -304,7 +304,7 @@ func TestDataTable_ARightPressOpensTheMenuOverTheSelection(t *testing.T) {
 // A right press outside the selection on a cell moves the cursor there and ends the selection
 // before the menu opens: the menu acts on what was pressed. No drag starts.
 func TestDataTable_ARightPressOutsideTheSelectionTakesTheCell(t *testing.T) {
-	dt := widget.NewDataTable(widget.NewTableCore(numbered(5)))
+	dt := widget.NewDataTable(widget.NewTableCore(numbered(5), widget.TableMenuSelects(true)))
 	sh := newShell(widget.NewOverlayHost(dt))
 	h := startApp(t, sh, 40, 12)
 	h.barrier(sh)

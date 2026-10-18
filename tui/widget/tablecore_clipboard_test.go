@@ -412,7 +412,7 @@ func TestEveryMenuRowRuns(t *testing.T) {
 // TestARightPressSelectsWhatItWasOn: on a row number outside the selection, that row; on a title
 // outside it, that field; inside the selection, nothing changes; on an empty table, nothing.
 func TestARightPressSelectsWhatItWasOn(t *testing.T) {
-	c := NewTableCore(people())
+	c := NewTableCore(people(), TableMenuSelects(true))
 	c.Bind(nil, &fakeTableLayout{})
 	c.selectForMenu(TablePos{Row: 2}, TableHitGutter)
 	if from, to, ok := c.Selection(); !ok || c.SelectionKind() != TableSelectRows || from.Row != 2 || to.Row != 2 {
@@ -437,7 +437,7 @@ func TestARightPressSelectsWhatItWasOn(t *testing.T) {
 	if c.Dragging() {
 		t.Fatal("a right press started a drag")
 	}
-	empty, _, _, _ := csvTable("a,b\n")
+	empty, _, _, _ := csvTable("a,b\n", TableMenuSelects(true))
 	empty.selectForMenu(TablePos{}, TableHitGutter)
 	if _, _, ok := empty.Selection(); ok {
 		t.Fatal("an empty table selected a row")
@@ -449,5 +449,38 @@ func TestARightPressSelectsWhatItWasOn(t *testing.T) {
 	press(empty, 'y', 'y')
 	if text, _ := empty.register().Register(); text != "" {
 		t.Fatalf("yy on an empty table yanked %q", text)
+	}
+}
+
+// TestByDefaultARightPressKeepsTheSelection: without TableMenuSelects, a right press anywhere
+// leaves the selection and the cursor as they were (a results table's menu acts on them).
+func TestByDefaultARightPressKeepsTheSelection(t *testing.T) {
+	c := NewTableCore(people())
+	c.Bind(nil, &fakeTableLayout{})
+	c.Select(TableSelectRows, TablePos{})
+	c.SetCursor(TablePos{Row: 1})
+	for _, hit := range []TableHit{TableHitCell, TableHitGutter, TableHitHeader} {
+		c.selectForMenu(TablePos{Row: 3, Col: 2}, hit)
+		if from, to, ok := c.Selection(); !ok || from.Row != 0 || to.Row != 1 || c.Cursor() != (TablePos{Row: 1}) {
+			t.Fatalf("hit %v: selection %v %+v-%+v, cursor %+v; want rows 0-1 kept", hit, ok, from, to, c.Cursor())
+		}
+	}
+}
+
+// TestAReadOnlyTableCopiesItsValuesAsTheyAre: a read-only table's copy is its values joined by
+// tabs, a quote or an empty cell as it is; an editable table's is quoted TSV, to paste back.
+func TestAReadOnlyTableCopiesItsValuesAsTheyAre(t *testing.T) {
+	ro := NewTableCore(&rowsSource{fields: []TableField{{Title: "j"}, {Title: "e"}}, rows: [][]string{{`{"a": 1}`, ""}}})
+	ro.Bind(nil, &fakeTableLayout{})
+	press(ro, 'y', 'y')
+	if got := ro.CopyText(); got != `{"a": 1}` {
+		t.Fatalf("a read-only cell copied %q", got)
+	}
+	if text, _ := ro.register().Register(); text != "{\"a\": 1}\t" {
+		t.Fatalf("a read-only row copied %q", text)
+	}
+	ed, _, _, _ := csvTable("j,e\n\"{\"\"a\"\": 1}\",\n")
+	if got := ed.CopyText(); got != `"{""a"": 1}"` {
+		t.Fatalf("an editable cell copied %q", got)
 	}
 }
