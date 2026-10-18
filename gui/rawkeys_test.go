@@ -2,6 +2,7 @@ package gui
 
 import (
 	"image"
+	"runtime"
 	"testing"
 
 	"github.com/yongjohnlee80/gio/io/event"
@@ -135,15 +136,26 @@ func TestHeldRawKeysAreReleasedOnFocusLossAndOnLeavingRawMode(t *testing.T) {
 	}
 }
 
-// In raw mode the paste chord is a key, not a paste.
+// In raw mode the platform's paste chord (Ctrl+Shift+V; Cmd+V on macOS) is a key, not a paste.
 func TestRawModeSendsThePasteChordAsKeys(t *testing.T) {
+	chord := key.ModCtrl | key.ModShift
+	if runtime.GOOS == "darwin" {
+		chord = key.ModCommand
+	}
+	if !isPasteChord(key.Event{Name: "V", Modifiers: chord, State: key.Press}) {
+		t.Fatal("fixture: not this platform's paste chord")
+	}
 	g := newKeyRig(t)
+	g.press("V", chord) // positive control: text mode takes it as a paste, not a key
+	if got := g.keys(); len(got) != 0 {
+		t.Fatalf("text mode pushed %+v for the paste chord; want it intercepted", got)
+	}
 	g.b.SetRawKeys(true)
 	g.frame()
-	g.press("V", key.ModCtrl)
+	g.press("V", chord)
 	got := g.keys()
-	if len(got) != 1 || got[0].Code != 'v' || got[0].Mods&tui.ModCtrl == 0 {
-		t.Fatalf("raw Ctrl+V pushed %+v; want the key", got)
+	if len(got) != 1 || got[0].Code != 'v' || got[0].Kind != tui.KeyPress {
+		t.Fatalf("raw paste chord pushed %+v; want the V key", got)
 	}
 }
 
