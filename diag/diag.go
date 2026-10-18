@@ -12,6 +12,8 @@ import (
 	"strings"
 	"sync"
 	"time"
+
+	"github.com/yongjohnlee80/golib/logger"
 )
 
 // Option configures a Monitor under Start.
@@ -22,6 +24,8 @@ type config struct {
 	step   uint64
 	top    int
 	socket bool
+	log    logger.Logger // nil: no log lines
+	groups []string      // function-name prefixes a snapshot groups its sites by
 }
 
 const (
@@ -45,6 +49,19 @@ func WithTop(n int) Option { return func(c *config) { c.top = n } }
 
 // WithSocket serves the profiles on the directory's pprof.sock, for Fetch.
 func WithSocket() Option { return func(c *config) { c.socket = true } }
+
+// WithLogger also writes each sample and snapshot to l, at debug severity, as one readable line:
+// a program's own log shows its memory beside what it was doing.
+func WithLogger(l logger.Logger) Option { return func(c *config) { c.log = l } }
+
+// WithGroups makes each snapshot sum every allocation site by the first frame of its full stack
+// whose function starts with one of prefixes ("github.com/yongjohnlee80/golib/gui/widget."): the
+// group is that frame's package and receiver type, or its function without one. A site no frame
+// matches is "other". With golib's widget packages as prefixes, a snapshot says which kind of
+// widget's code allocated the memory still in use.
+func WithGroups(prefixes ...string) Option {
+	return func(c *config) { c.groups = append(c.groups, prefixes...) }
+}
 
 // Monitor is a running memory monitor: Start makes one, Close ends it.
 type Monitor struct {
@@ -185,6 +202,7 @@ func (m *Monitor) tick() {
 		return // closed
 	}
 	m.write(s)
+	m.logSample(s)
 	if s.HeapLive >= m.last+m.c.step {
 		m.snapshot(s)
 	}
@@ -210,6 +228,7 @@ func (m *Monitor) Close() error {
 		s := Read()
 		m.mu.Lock()
 		m.write(s)
+		m.logSample(s)
 		m.snapshot(s)
 		if err := m.f.Close(); err != nil && m.err == nil {
 			m.err = fmt.Errorf("diag: %w", err)
@@ -227,4 +246,28 @@ func (m *Monitor) Close() error {
 func FromEnv(name string) (dir string, ok bool) {
 	dir = strings.TrimSpace(os.Getenv(name))
 	return dir, dir != ""
+}
+
+// logSample writes s to the logger, if any.
+func (m *Monitor) logSample(s Sample) {
+	if m.c.log == nil {
+		return
+	}
+	logger.Debug(m.c.log, fmt.Sprintf("diag: heap live %s, free %s, unused %s, released %s; go %s, rss %s; %d goroutines, %d GCs",
+		size(s.HeapLive), size(s.HeapFree), size(s.HeapUnused), size(s.HeapRel), size(s.GoTotal), size(s.RSS), s.Goroutines, s.GCCycles))
+}
+
+// size is n bytes as a person reads them.
+func size(n uint64) string {
+	const unit = 1024
+	if n < unit {
+		return fmt.Sprintf("%d B", n)
+	}
+	v, units := float64(n)/unit, "KMGT"
+	i := 0
+	for v >= unit && i < len(units)-1 {
+		v /= unit
+		i++
+	}
+	return fmt.Sprintf("%.1f %ciB", v, units[i])
 }
