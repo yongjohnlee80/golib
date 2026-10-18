@@ -101,10 +101,9 @@ func TestAFlushedFrameStaysWithinTheBatchedBudget(t *testing.T) {
 	t.Logf("%d fills + %d batches within a budget of %d (%d cells)", fills, batches, want, 240*67)
 }
 
-// streamWindow is a Backend whose grid is a 1920×1080 Panes window: a full cell pane of mixed text
-// beside a 480dp pane whose view draws one stream filling it, and an overlay after it (as a frame
-// rate badge is). The flushed frame is published.
-func streamWindow(t *testing.T) (*Backend, *Stream, metrics) {
+// paneWindow is a Backend whose grid is a 1920×1080 Panes window: a full cell pane of mixed text
+// beside a 480dp pixel pane, given as its band. Nothing is published yet.
+func paneWindow(t *testing.T) (*Backend, metrics, tui.Rect) {
 	t.Helper()
 	b := NewBackend()
 	b.render = newRenderer(text.NewShaper(text.WithCollection(gofont.Collection()), text.NoSystemFonts()), "Go Mono", DefaultTheme())
@@ -114,8 +113,15 @@ func streamWindow(t *testing.T) (*Backend, *Stream, metrics) {
 		t.Fatal("fixture: no two-pane layout")
 	}
 	b.grid = *fullGrid(m.grid.W, m.grid.H)
+	return b, m, m.layout.panes[1].band
+}
+
+// streamWindow is paneWindow with a view in the pixel pane that draws one stream filling it, and
+// an overlay after it (as a frame rate badge is). The flushed frame is published.
+func streamWindow(t *testing.T) (*Backend, *Stream, metrics) {
+	t.Helper()
+	b, m, band := paneWindow(t)
 	st := b.NewStream()
-	band := m.layout.panes[1].band
 	b.natives = []tui.NativePlacement{{View: ViewFunc(func(c Canvas) {
 		DrawStream(c, st, Rect{W: c.Size().W, H: c.Size().H})
 		c.FillRRect(Rect{X: 8, Y: 8, W: 96, H: 24}, 4, Brush{Color: color.NRGBA{A: 0xb0}})
@@ -186,5 +192,35 @@ func TestStreamFramesRecordNoRowAndPaintNoView(t *testing.T) {
 	b.publishFrame(m)
 	if rows, paints := ops.rows.Load(), ops.paints.Load(); rows == 0 || paints == 0 {
 		t.Fatalf("a tui flush recorded %d rows and painted %d views; the counters do not observe", rows, paints)
+	}
+}
+
+// A frame with no stream slot is one segment, and present credits all of it: the first frame a
+// renderer publishes, and one published after a split frame (whose first segment's count must not
+// carry over), each walk their own recorded ops plus the window's three.
+func TestAnUnsplitFrameIsCreditedWhenPresented(t *testing.T) {
+	latest := func(b *Backend) *frame {
+		b.mu.Lock()
+		defer b.mu.Unlock()
+		return b.latest
+	}
+	fresh, m, _ := paneWindow(t)
+	fresh.publishFrame(m) // its renderer's first frame, unsplit
+	want := latest(fresh).drawCost
+	if want == 0 {
+		t.Fatal("a renderer's first frame, unsplit, is credited 0 ops")
+	}
+	b, st, _ := streamWindow(t) // its first frame is split at a slot
+	defer st.Close()
+	b.natives = nil
+	b.grid.touchAll()
+	b.publishFrame(m)
+	if got := latest(b).drawCost; got != want {
+		t.Fatalf("an unsplit frame after a split one is credited %d ops; want its own %d", got, want)
+	}
+	resetOps()
+	presentAt(b, m, time.Unix(1, 0))
+	if w := walkNow(); w != want+3 {
+		t.Fatalf("presenting it walks %d ops; want its %d + the window's 3", w, want)
 	}
 }
