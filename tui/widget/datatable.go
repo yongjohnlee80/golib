@@ -45,6 +45,71 @@ type DataTable struct {
 	theme     *style.Theme // the surface's at the last paint, for a pixel layout's colours
 	top, left int          // the cell layout's first row shown, first field shown
 	w, h      int
+	caret     *tui.Point // the open field's caret, view-local, as last painted; nil for none
+}
+
+// tableEdgeWidth is the cells the edge field (TableAppendEdges) takes.
+const tableEdgeWidth = 3
+
+// tableCellLine is a cell's value on one line, as a table shows it: a newline is ⏎, a tab →. The
+// value itself is unchanged (an open field holds it whole).
+var tableCellLine = strings.NewReplacer("\r\n", "⏎", "\n", "⏎", "\r", "⏎", "\t", "→").Replace
+
+// TableCellLine is a cell's value as a table's one-line cell shows it: a newline as ⏎, a tab as →.
+func TableCellLine(value string) string { return tableCellLine(value) }
+
+// tableRowKind is what a drawn row is: one of the core's display rows, o's new row not yet in the
+// source, or the empty row after the last (TableAppendEdges).
+type tableRowKind uint8
+
+const (
+	tableRowData tableRowKind = iota
+	tableRowPending
+	tableRowEdge
+)
+
+// pending is the drawn row of o's new row, -1 for none: an open edit inserting a row that is not the
+// edge row.
+func (t *DataTable) pending() int {
+	e := t.core.Editing()
+	if e == nil || !e.Inserting() || (e.Pos.Row >= t.core.Len() && t.core.EdgeRow()) {
+		return -1
+	}
+	return e.Pos.Row
+}
+
+// drawnRows is the rows drawn: the display rows, o's new row and the edge row.
+func (t *DataTable) drawnRows() int {
+	n := t.core.Len() + t.core.edgeRows()
+	if t.pending() >= 0 {
+		n++
+	}
+	return n
+}
+
+// rowAt is drawn row v: what it is, and the display row it shows for a data row.
+func (t *DataTable) rowAt(v int) (tableRowKind, int) {
+	r := v
+	if p := t.pending(); p >= 0 {
+		switch {
+		case v == p:
+			return tableRowPending, -1
+		case v > p:
+			r--
+		}
+	}
+	if r >= t.core.Len() {
+		return tableRowEdge, r
+	}
+	return tableRowData, r
+}
+
+// drawnOf is the drawn row of display row r (the edge row for Len()).
+func (t *DataTable) drawnOf(r int) int {
+	if p := t.pending(); p >= 0 && r >= p {
+		return r + 1
+	}
+	return r
 }
 
 var (
@@ -195,6 +260,23 @@ func (t *DataTable) Reveal(row, col int) {
 	}
 }
 
+// ScrollFields implements TableLayoutFields: the first field shown moves by n, clamped so the last
+// field still shows. A bound layout that scrolls its fields is asked instead.
+func (t *DataTable) ScrollFields(n int) {
+	if t.bound() {
+		if l, ok := t.layout.(TableLayoutFields); ok {
+			l.ScrollFields(n)
+		}
+		return
+	}
+	last := len(t.core.Fields()) - 1
+	if t.core.EdgeField() {
+		last++
+	}
+	t.left = min(max(t.left+n, 0), max(last, 0))
+	t.MarkDirty()
+}
+
 // PageRows implements TableLayout.
 func (t *DataTable) PageRows() int { return max(t.h-2, 1) }
 
@@ -227,7 +309,7 @@ func (t *DataTable) fits(from, to int) bool {
 // Layout fills the space it is given; offered unbounded height it asks for a header and its rows.
 func (t *DataTable) Layout(c tui.Constraints) tui.Size {
 	w := boundedMax(c.MaxW, max(c.MinW, 1))
-	h := boundedMax(c.MaxH, max(c.MinH, 1+max(t.core.Len(), 1)))
+	h := boundedMax(c.MaxH, max(c.MinH, 1+max(t.drawnRows(), 1)))
 	if w != t.w || h != t.h {
 		// a new size keeps the cursor in sight; the same size keeps the wheel's scroll. A bound
 		// layout keeps it in sight at its own size, which is in its units.
@@ -276,7 +358,11 @@ func (t *DataTable) Render(s tui.Surface) {
 		drawText(s, x, 0, truncate(padAligned(title, w, style.AlignLeft), w, s.StringWidth), t.styles.Header)
 		x += t.core.Width(col)
 	}
-	if t.core.Len() == 0 {
+	if t.core.EdgeField() && x+tableGap < sz.W {
+		drawText(s, x+tableGap, 0, truncate(" + ", sz.W-x-tableGap, s.StringWidth), t.styles.Empty)
+	}
+	t.caret = nil
+	if t.drawnRows() == 0 {
 		if sz.H > 1 {
 			drawText(s, 0, 1, truncate(t.emptyText, sz.W, s.StringWidth), t.styles.Empty)
 		}
@@ -284,9 +370,14 @@ func (t *DataTable) Render(s tui.Surface) {
 	}
 	cur, cursor := t.core.Cursor(), t.CursorStyle()
 	for y := 1; y < sz.H; y++ {
-		row := t.top + y - 1
-		if row >= t.core.Len() {
+		v := t.top + y - 1
+		if v >= t.drawnRows() {
 			break
+		}
+		kind, row := t.rowAt(v)
+		if kind != tableRowData {
+			t.drawBlankRow(s, y, kind, row, gutter, fields, cur, cursor)
+			continue
 		}
 		if digits > 0 {
 			n := strconv.Itoa(row + 1)
@@ -305,11 +396,95 @@ func (t *DataTable) Render(s tui.Surface) {
 			case t.core.InSelection(row, col):
 				st = t.styles.Selected.Inherit(st)
 			}
-			text := strings.ReplaceAll(t.core.Cell(row, col), "\n", " ")
+			text := tableCellLine(t.core.Cell(row, col))
 			drawText(s, x, y, padAligned(elide(text, w, ElideRight, s.StringWidth), w, fields[col].Align), st)
 			x += t.core.Width(col)
 		}
+		if t.core.EdgeField() && x+tableGap < sz.W && row == cur.Row && cur.Col == len(fields) {
+			drawText(s, x+tableGap, y, strings.Repeat(" ", min(tableEdgeWidth, sz.W-x-tableGap)), cursor.Inherit(t.styles.Cell))
+		}
 	}
+	t.drawField(s, gutter, fields)
+}
+
+// drawBlankRow draws o's new row or the edge row: empty cells, the cursor's among them; the edge
+// row's gutter says +.
+func (t *DataTable) drawBlankRow(s tui.Surface, y int, kind tableRowKind, row, gutter int, fields []TableField,
+	cur TablePos, cursor style.Style) {
+	sz := s.Size()
+	if kind == tableRowEdge && gutter > 0 {
+		drawText(s, 0, y, truncate(padAligned("+", gutter-tableGap, style.AlignRight), sz.W, s.StringWidth), t.styles.Empty)
+	}
+	onCursorRow := kind == tableRowEdge && row == cur.Row
+	x := gutter
+	for col := t.left; col <= len(fields) && x < sz.W; col++ {
+		if col > t.left {
+			x += tableGap
+		}
+		w := tableEdgeWidth
+		if col < len(fields) {
+			w = t.core.Width(col)
+		} else if !t.core.EdgeField() {
+			break
+		}
+		w = min(w, sz.W-x)
+		if onCursorRow && col == cur.Col {
+			drawText(s, x, y, strings.Repeat(" ", w), cursor.Inherit(t.styles.Cell))
+		}
+		x += w
+	}
+}
+
+// fieldX is where field col starts in the view, from the gutter; ok false when it is scrolled out.
+func (t *DataTable) fieldX(col, gutter int) (int, bool) {
+	if col < t.left {
+		return 0, false
+	}
+	x := gutter
+	for c := t.left; c < col; c++ {
+		x += t.core.Width(c) + tableGap
+	}
+	return x, true
+}
+
+// drawField draws the open field over its cell, as wide as its field (at least 12 cells) and as tall
+// as its value's lines, growing downward, and keeps its caret for Cursor.
+func (t *DataTable) drawField(s tui.Surface, gutter int, fields []TableField) {
+	e := t.core.Editing()
+	if e == nil {
+		return
+	}
+	sz := s.Size()
+	x, ok := t.fieldX(e.Pos.Col, gutter)
+	y := 1 + t.drawnOf(e.Pos.Row) - t.top
+	if e.Inserting() {
+		y = 1 + e.Pos.Row - t.top
+	}
+	if !ok || x >= sz.W || y < 1 || y >= sz.H {
+		return
+	}
+	w := tableEdgeWidth
+	if e.Pos.Col < len(fields) {
+		w = t.core.Width(e.Pos.Col)
+	}
+	w = min(max(w, 12), sz.W-x)
+	h := min(strings.Count(e.Field.Value(), "\n")+1, sz.H-y)
+	r := tui.Rect{X: x, Y: y, W: w, H: h}
+	s.Fill(r, " ", t.CursorStyle().Inherit(t.styles.Cell))
+	e.Field.Layout(tui.Constraints{MinW: w, MaxW: w, MinH: h, MaxH: h})
+	e.Field.Render(s.Sub(r))
+	if cx, cy, ok := e.Field.Cursor(); ok {
+		t.caret = &tui.Point{X: x + cx, Y: y + cy}
+	}
+}
+
+// Cursor is the open field's caret (tui.CursorReporter), so a terminal shows it where the text is
+// typed; none while no field is open.
+func (t *DataTable) Cursor() (int, int, bool) {
+	if t.caret == nil || t.core.Editing() == nil {
+		return 0, 0, false
+	}
+	return t.caret.X, t.caret.Y, true
 }
 
 // HandleEvent moves through the core's keys and drives its pointer: a left press is the core's
@@ -325,12 +500,22 @@ func (t *DataTable) HandleEvent(ev tui.Event) bool {
 		return false
 	case tui.KeyEvent:
 		return t.core.HandleKey(e)
+	case tui.PasteEvent:
+		return t.core.Paste(e.Text)
 	case tui.MouseEvent:
 		p, placed := t.layout.(TableLayoutPointer)
 		if t.bound() && !placed {
 			return false
 		}
 		switch {
+		case e.Kind == tui.MouseWheel && (e.Button == tui.WheelLeft || e.Button == tui.WheelRight ||
+			e.Mods&tui.ModShift != 0 && (e.Button == tui.WheelUp || e.Button == tui.WheelDown)):
+			n := 1 // Shift+wheel and a horizontal wheel move the fields, a field a step
+			if e.Button == tui.WheelLeft || e.Button == tui.WheelUp {
+				n = -1
+			}
+			t.core.ScrollFields(n)
+			return true
 		case e.Kind == tui.MouseWheel && (e.Button == tui.WheelUp || e.Button == tui.WheelDown):
 			step := 3
 			if e.Button == tui.WheelUp {
@@ -356,7 +541,11 @@ func (t *DataTable) HandleEvent(ev tui.Event) bool {
 			}
 			if hit == TableHitCell && e.Count >= 2 {
 				t.core.dropPending()
-				t.core.activateCursor()
+				if t.core.Editable() { // an editable table's double click edits the cell
+					t.core.EditCell("")
+				} else {
+					t.core.activateCursor()
+				}
 			}
 			return true
 		case e.Kind == tui.MousePress && e.Button == tui.MouseRight && t.menu != nil && t.menu.Enabled():
@@ -440,15 +629,24 @@ func (t *DataTable) cellHit(x, y int) (TablePos, TableHit) {
 		}
 		return TablePos{}, TableHitNone
 	}
-	row := t.top + y - 1
+	if y < 0 || t.top+y-1 >= t.drawnRows() {
+		return TablePos{}, TableHitNone
+	}
+	kind, row := t.rowAt(t.top + y - 1)
 	switch {
-	case y < 0 || row >= t.core.Len():
+	case kind == tableRowPending:
 		return TablePos{}, TableHitNone
 	case x < g:
+		if kind == tableRowEdge {
+			return TablePos{}, TableHitNone
+		}
 		return TablePos{Row: row}, TableHitGutter
 	}
 	if col, ok := t.fieldAt(x - g); ok {
 		return TablePos{Row: row, Col: col}, TableHitCell
+	}
+	if at, ok := t.fieldX(len(t.core.Fields()), g); ok && t.core.EdgeField() && x >= at && x < at+tableEdgeWidth {
+		return TablePos{Row: row, Col: len(t.core.Fields())}, TableHitCell
 	}
 	return TablePos{}, TableHitNone
 }

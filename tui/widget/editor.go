@@ -152,6 +152,7 @@ import (
 type Editor struct {
 	Base
 	core      *EditorCore // the behaviour; a field, never embedded
+	doc       docSlot     // a Rendered view drawn in place of the text (editor_document.go)
 	cells     cellLayout  // the geometry, in cells: implements EditorLayout
 	keepPlace bool        // a text set keeps the reader's place (SetKeepPlace, ReplaceValue)
 	// shown is the cursor and viewport Layout last kept the cursor in view for: a layout pass
@@ -295,6 +296,9 @@ func (e *Editor) Core() *EditorCore { return e.core }
 func (e *Editor) Init(ctx *tui.Context) {
 	e.Base.Init(ctx)
 	e.core.Bind(ctx, &e.cells)
+	if e.doc.view != nil { // given before the mount
+		ctx.Mount(e.doc.view)
+	}
 }
 
 // defaultEditorStyles are an Editor's looks before any option.
@@ -698,6 +702,12 @@ func (e *Editor) SetNamedRegister(name rune, text string, linewise bool) bool {
 // across modal and modeless editing profiles. The pointer is the view's: it becomes a buffer
 // position here; everything else is the core's.
 func (e *Editor) HandleEvent(ev tui.Event) bool {
+	if e.doc.shown { // a key the document view left; the hidden text takes nothing
+		if k, ok := ev.(tui.KeyEvent); ok {
+			return e.documentKey(k)
+		}
+		return false
+	}
 	switch t := ev.(type) {
 	case tui.MouseEvent:
 		return e.handleMouse(t)
@@ -769,6 +779,9 @@ func (e *Editor) reveal(ln, col int) {
 // Layout is greedy on both axes. The gutter, when the numbers show, takes its columns from the
 // text's area, never all of it.
 func (e *Editor) Layout(c tui.Constraints) tui.Size {
+	if e.doc.shown {
+		return e.layoutDocument(c)
+	}
 	total := boundedMax(c.MaxW, max(c.MinW, 1))
 	e.cells.gutter = min(e.gutterWidth(), total-1)
 	e.cells.w = total - e.cells.gutter
@@ -997,7 +1010,7 @@ func (e *Editor) wrapPos(ln, col int) (row, x int) {
 // Render paints the viewport with the visual-selection fill.
 func (e *Editor) Render(s tui.Surface) {
 	sz := s.Size()
-	if sz.W <= 0 || sz.H <= 0 {
+	if sz.W <= 0 || sz.H <= 0 || e.doc.shown { // the document view paints itself
 		return
 	}
 	if g := e.cells.gutter; g > 0 {

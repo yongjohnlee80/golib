@@ -243,6 +243,9 @@ func (c *TableCore) copyString(s string) bool {
 // chord it takes by default, vim's block key: a read-only table has nothing to paste. Other Ctrl, Alt
 // and Super chords are the application's.
 func (c *TableCore) HandleKey(k tui.KeyEvent) bool {
+	if c.editing != nil {
+		return c.fieldKey(k)
+	}
 	if k.Kind == tui.KeyRelease {
 		return false
 	}
@@ -261,6 +264,11 @@ func (c *TableCore) HandleKey(k tui.KeyEvent) bool {
 	cmd, ok := c.ctx.KeyCommand(k, tableCommands...)
 	if !ok {
 		c.dropPending() // any other key drops a count or a g, and is the application's
+		// on an editable table a printable key opens the cell's field with it typed; Space and : stay
+		// the application's, as vim's leader and command line are
+		if k.Text != "" && k.Text != " " && k.Text != ":" && k.Mods&^tui.ModShift == 0 && k.Code != tui.KeyTab && c.Editable() {
+			return c.EditCell(k.Text)
+		}
 		return false
 	}
 	if cmd.ID == TableGoPrefix.ID {
@@ -268,7 +276,7 @@ func (c *TableCore) HandleKey(k tui.KeyEvent) bool {
 		return true
 	}
 	n, counted := max(c.count, 1), c.count > 0
-	wasG, yanked := c.pendingG, c.yanked
+	wasG, yanked, deleting := c.pendingG, c.yanked, c.deleting
 	c.dropPending()
 	if wasG {
 		n, counted = 1, false // the count went with the g it was typed for
@@ -329,7 +337,24 @@ func (c *TableCore) HandleKey(k tui.KeyEvent) bool {
 		}
 		c.sortKey(c.cur.Col)
 	case TableActivate.ID:
+		if c.Editable() { // an editable table's Enter edits the cell
+			return c.EditCell("")
+		}
 		return c.activateCursor()
+	case TableEditCell.ID:
+		return c.EditCell("")
+	case TableOpenRow.ID:
+		return c.OpenRow()
+	case TableClearCell.ID:
+		return c.clearCell()
+	case TableDeleteRow.ID:
+		if !c.Editable() {
+			return false
+		}
+		if deleting {
+			return c.deleteRow()
+		}
+		c.deleting = true
 	}
 	return true
 }
@@ -393,7 +418,7 @@ func (c *TableCore) moveFields(n int) {
 }
 
 // dropPending forgets a command not yet complete: a count, a g waiting, a y to double.
-func (c *TableCore) dropPending() { c.count, c.pendingG, c.yanked = 0, false, false }
+func (c *TableCore) dropPending() { c.count, c.pendingG, c.yanked, c.deleting = 0, false, false, false }
 
 // clampPos is p inside the table.
 func (c *TableCore) clampPos(p TablePos) TablePos {
