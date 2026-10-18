@@ -16,6 +16,8 @@ type producer interface {
 	// render draws the scene at time t (seconds) into a complete frame of size pixels, holding
 	// the caller's reference.
 	render(t float64, size image.Point) (*gui.Frame, error)
+	// close gives the device up once every frame it made is released: frames the window still
+	// holds keep their memory until then. Call it once, after the last render.
 	close()
 }
 
