@@ -400,7 +400,9 @@ func TestEveryMenuRowRuns(t *testing.T) {
 	if kind := d.Core().SelectionKind(); kind != TableSelectRows {
 		t.Fatalf("Select all: %v, want every row", kind)
 	}
-	d.SetMenuRows(func() []MenuItemModel { return []MenuItemModel{NewCommand("host.row", "Host", CoreMenuAction{ID: "host.row"})} })
+	d.SetMenuRows(func() []MenuItemModel {
+		return []MenuItemModel{NewCommand("host.row", "Host", CoreMenuAction{ID: "host.row"})}
+	})
 	rows := d.menuRows()
 	if last := rows[len(rows)-1]; last.ID != "host.row" || rows[len(rows)-2].Kind != ItemKindSeparator {
 		t.Fatalf("the host's rows: last %q after %v", last.ID, rows[len(rows)-2].Kind)
