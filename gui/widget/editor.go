@@ -58,7 +58,8 @@ type Editor struct {
 	sw        *modeSwitch
 	tabs      *tuiwidget.TabStrip // the host's tabs on the title bar (Tabs)
 
-	mode   EditorMode
+	mode   EditorMode // the view the user chose (Mode); Shown is the one drawn
+	drawn  EditorMode // the view the layout was last made for (applyShown)
 	render Renderer
 	// renderOff withholds the Rendered view while a renderer is set: the document in the editor
 	// is not one the renderer reads (SetRenderedEnabled).
@@ -251,25 +252,41 @@ func (e *Editor) Core() *tuiwidget.EditorCore { return e.core }
 // SetLabelFit lets its tabs widen into the room it has.
 func (e *Editor) Tabs() *tuiwidget.TabStrip { return e.tabs }
 
-// Mode is how the text is drawn.
+// Mode is the view the user chose: Rendered stays the choice while a document that cannot render
+// is drawn Raw (Shown), so the next one that can is drawn Rendered again.
 func (e *Editor) Mode() EditorMode { return e.mode }
 
-// SetMode draws the text Raw or Rendered; Rendered without a renderer, or with the Rendered view
-// turned off (SetRenderedEnabled), stays Raw. Rendered Markdown edits lists as a writer's editor
-// does (EditorCore.SetListEditing): Enter continues an item, Tab nests it. Raw is the source as
-// typed.
-func (e *Editor) SetMode(m EditorMode) {
-	if m == Rendered && !e.canRender() {
-		m = Raw
+// Shown is the view drawn now: Rendered only when the mode is Rendered and the document can render.
+func (e *Editor) Shown() EditorMode {
+	if e.mode == Rendered && e.canRender() {
+		return Rendered
 	}
+	return Raw
+}
+
+// SetMode chooses Raw or Rendered. Rendered is drawn when the document can render (a renderer or a
+// document view, and the Rendered view not turned off, SetRenderedEnabled); otherwise Raw is drawn
+// and Rendered kept as the choice. Rendered Markdown edits lists as a writer's editor does
+// (EditorCore.SetListEditing): Enter continues an item, Tab nests it. Raw is the source as typed.
+func (e *Editor) SetMode(m EditorMode) {
+	e.mode = m
+	e.applyShown()
+}
+
+// applyShown makes the editor draw Shown, after the choice or the document's renderability changed:
+// list editing, the document view, and the layout, which is made again (scrolled to the cursor)
+// only when the view drawn changed.
+func (e *Editor) applyShown() {
+	shown := e.Shown()
 	_, md := e.render.(*MarkdownRenderer)
-	e.core.SetListEditing(m == Rendered && md && !e.docActive())
-	// before the early return: the view follows docOn even when the mode does not change
-	e.showDocument(m == Rendered && e.docActive())
-	if m == e.mode && e.layout.blocks != nil {
+	e.core.SetListEditing(shown == Rendered && md && !e.docActive())
+	// before the early return: the view follows docOn even when the view drawn does not change
+	e.showDocument(shown == Rendered && e.docActive())
+	if shown == e.drawn && e.layout.blocks != nil {
+		e.sw.MarkDirty() // the switch shows the choice, which may have changed
 		return
 	}
-	e.mode = m
+	e.drawn = shown
 	e.layout.invalidate()
 	e.layout.scroll, e.layout.left = 0, 0
 	if ln, col := e.core.Line(); e.layout.sh != nil {
@@ -283,18 +300,17 @@ func (e *Editor) SetMode(m EditorMode) {
 // on, and not turned off.
 func (e *Editor) canRender() bool { return (e.render != nil || e.docActive()) && !e.renderOff }
 
-// SetRenderedEnabled makes the Rendered view available or not, keeping the renderer: a host turns
+// SetRenderedEnabled says whether this document can be Rendered, keeping the renderer: a host turns
 // it off for a document its renderer does not read (Markdown's renderer and a Go file, say), and
-// on again for one it does. Off, the view is Raw, the keymap's toggle is not consumed, and the
-// title bar's Rendered segment is faint.
+// on again for one it does. Off, Raw is drawn but the choice kept (Mode); on again, the choice is
+// drawn. While off the keymap's toggle is not consumed, and the title bar's Rendered segment is
+// faint.
 func (e *Editor) SetRenderedEnabled(on bool) {
 	if e.renderOff == !on {
 		return
 	}
 	e.renderOff = !on
-	if !on && e.mode == Rendered {
-		e.SetMode(Raw)
-	}
+	e.applyShown()
 	e.sw.MarkDirty()
 }
 

@@ -52,7 +52,7 @@ var _ DocumentView = (*tuiwidget.HTMLView)(nil)
 // WithDocumentView gives the Editor a document view, off until SetRenderedDocument turns it on.
 func WithDocumentView(v DocumentView) EditorOption { return func(c *editorConfig) { c.doc = v } }
 
-// DocumentView is the Editor's document view; nil for none.
+// DocumentView is the Editor's document view; nil for none (SetDocumentView).
 func (e *Editor) DocumentView() DocumentView { return e.doc }
 
 // DocumentComponent is the document view as a component, nil for none: for a host that names no
@@ -72,14 +72,28 @@ func (e *Editor) SetRenderedDocument(on bool) {
 		return
 	}
 	e.docOn = on
-	// The mode is applied again even when it stays Rendered, which SetMode does not redo: the view
-	// is shown or hidden here, and Rendered falls back to Raw without a renderer to draw it.
-	m := e.mode
-	if m == Rendered && !e.canRender() {
-		m = Raw
+	e.applyShown() // the view shown or hidden, and Raw drawn when nothing can render
+	e.sw.MarkDirty()
+}
+
+// SetDocumentView swaps the Editor's document view at run time, nil removing it: the old view
+// leaves the stack (its focus, when it had it, moved to the body first) and the new one joins it
+// hidden, shown when Rendered is drawn and SetRenderedDocument has turned it on. A host with one
+// editor and several kinds of document (an HTML page, a table) gives each buffer its view.
+func (e *Editor) SetDocumentView(v DocumentView) {
+	if v == e.doc {
+		return
 	}
-	e.showDocument(m == Rendered && e.docOn)
-	e.SetMode(m)
+	e.showDocument(false)
+	if e.doc != nil {
+		e.stack.Remove(e.doc)
+	}
+	e.doc = v
+	if v != nil {
+		v.SetVisible(false)
+		e.stack.Add(v)
+	}
+	e.applyShown()
 	e.sw.MarkDirty()
 }
 

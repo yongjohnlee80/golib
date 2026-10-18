@@ -477,36 +477,46 @@ func TestToggleRenderedIsTheKeymapsAndRebindable(t *testing.T) {
 	}
 }
 
-// A host turns the Rendered view off for a document its renderer does not read, and on again: off,
-// the view is Raw, SetMode(Rendered) stays Raw and Ctrl+T is not consumed; the renderer is kept.
+// A host turns the Rendered view off for a document its renderer does not read, and on again
+// (ADR 1792303119 §4.1): off, Raw is drawn but Rendered stays the choice, SetMode(Rendered) records
+// the choice and Ctrl+T is not consumed; on again, Rendered is drawn with no key; the renderer is
+// kept. Raw chosen while off stays Raw when it comes back on.
 func TestRenderedEnabledSwitch(t *testing.T) {
 	h := startEditor(t, 60, 12, WithRenderer(NewMarkdownRenderer()), WithMode(Rendered),
 		WithCore(tuiwidget.CoreInitialText("# Title\nbody")))
-	mode := func() EditorMode {
-		var m EditorMode
-		h.onLoop(func() { m = h.e.Mode() })
-		return m
+	views := func() (EditorMode, EditorMode) {
+		var m, sh EditorMode
+		h.onLoop(func() { m, sh = h.e.Mode(), h.e.Shown() })
+		return m, sh
 	}
-	if mode() != Rendered {
-		t.Fatal("did not start Rendered")
+	if m, sh := views(); m != Rendered || sh != Rendered {
+		t.Fatalf("did not start Rendered: chosen %v, drawn %v", m, sh)
 	}
 	h.onLoop(func() { h.e.SetRenderedEnabled(false) })
-	if mode() != Raw {
-		t.Fatal("turning the Rendered view off left it Rendered")
-	}
-	h.onLoop(func() { h.e.SetMode(Rendered) })
-	if mode() != Raw {
-		t.Fatal("SetMode(Rendered) with the view off is not Raw")
+	if m, sh := views(); m != Rendered || sh != Raw {
+		t.Fatalf("turned off: chosen %v, drawn %v; want Rendered kept, Raw drawn", m, sh)
 	}
 	h.keys(ctrl('t'))
-	if mode() != Raw {
-		t.Fatal("Ctrl+T toggled to Rendered with the view off")
+	if m, sh := views(); m != Rendered || sh != Raw {
+		t.Fatalf("Ctrl+T with the view off: chosen %v, drawn %v; want it not consumed", m, sh)
 	}
 	var on bool
 	h.onLoop(func() { h.e.SetRenderedEnabled(true); on = h.e.RenderedEnabled() })
+	if m, sh := views(); !on || m != Rendered || sh != Rendered {
+		t.Fatalf("turned back on (enabled %v): chosen %v, drawn %v; want Rendered with no key", on, m, sh)
+	}
+
+	h.onLoop(func() { h.e.SetRenderedEnabled(false); h.e.SetMode(Raw); h.e.SetMode(Rendered) })
+	if m, sh := views(); m != Rendered || sh != Raw {
+		t.Fatalf("SetMode(Rendered) with the view off: chosen %v, drawn %v", m, sh)
+	}
+	h.onLoop(func() { h.e.SetMode(Raw); h.e.SetRenderedEnabled(true) })
+	if m, sh := views(); m != Raw || sh != Raw {
+		t.Fatalf("Raw chosen while off, then on: chosen %v, drawn %v; want Raw", m, sh)
+	}
 	h.keys(ctrl('t'))
-	if !on || mode() != Rendered {
-		t.Fatalf("turned back on (enabled %v): Ctrl+T gives %v, want Rendered", on, mode())
+	if m, _ := views(); m != Rendered {
+		t.Fatalf("Ctrl+T turned back on: %v, want Rendered", m)
 	}
 }
 
