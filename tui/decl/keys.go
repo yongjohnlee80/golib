@@ -79,8 +79,9 @@ func parseSequence(s string) (key.Seq, error) {
 	if err == nil {
 		return seq, nil
 	}
-	if len(s) > len("shift+") && strings.EqualFold(s[:len("shift+")], "shift+") {
-		if typed, err2 := key.Parse(s[len("shift+"):]); err2 == nil && typed.Mods == 0 &&
+	// the parts as key.Parse splits them, each trimmed: " Shift + *" is Shift and *
+	if head, rest, ok := strings.Cut(strings.TrimSpace(s), "+"); ok && strings.EqualFold(strings.TrimSpace(head), "shift") {
+		if typed, err2 := key.Parse(rest); err2 == nil && typed.Mods == 0 &&
 			unicode.IsPrint(typed.Code) && !unicode.IsLetter(typed.Code) {
 			return typed, nil
 		}

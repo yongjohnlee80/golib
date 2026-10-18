@@ -92,8 +92,20 @@ func (d *hotDir) counts() (int, int) {
 	return len(d.reloads), len(d.refusals)
 }
 
-// settle waits long enough for the poller to have acted on anything written.
+// settle waits long enough for the poller to have acted on anything written. It proves an absence
+// (nothing reloaded, nothing refused); a reload that must have happened is waited for (waitRefused).
 func settle() { time.Sleep(6 * tick) }
+
+// waitRefused waits until the poller has refused n saves, or a deadline passes: a refused reload
+// runs on the poller's clock, which a fixed settle can outrun on a slow run (coverage
+// instrumentation, a loaded machine). The caller asserts the count.
+func (d *hotDir) waitRefused(n int) {
+	for deadline := time.Now().Add(5 * time.Second); time.Now().Before(deadline); time.Sleep(tick) {
+		if _, refused := d.counts(); refused >= n {
+			return
+		}
+	}
+}
 
 const hotHead = "import tui 1.0\nimport demo 1.0\nimport demo.theme.dark 1.0\nimport demo.ui 1.0\n"
 
@@ -195,7 +207,7 @@ func TestR4ABrokenSaveKeepsTheScreen(t *testing.T) {
 		t.Errorf("a half-written save was reported: %v", d.refusals)
 	}
 	d.write("main.qml", hotLayout(`Text { txt: "typo" }`))
-	settle()
+	d.waitRefused(1)
 	if _, refused := d.counts(); refused != 1 || !strings.Contains(d.refusals[0].Error(), "txt") {
 		t.Errorf("a broken save: %d refusals %v, want 1 naming txt", refused, d.refusals)
 	}
@@ -273,7 +285,7 @@ func TestR7APartWayFailureIsRecoveredByARemount(t *testing.T) {
 	s.WaitForText(t, "moved")
 
 	d.write("main.qml", hotLayout("Text { text: App.status }\nText { text: \"x\"; palette.window: \"bleu\" }"))
-	settle()
+	d.waitRefused(1)
 	if _, refused := d.counts(); refused != 1 {
 		t.Fatalf("the bad colour: %d refusals, want 1", refused)
 	}
