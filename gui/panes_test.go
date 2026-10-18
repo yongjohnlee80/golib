@@ -641,6 +641,48 @@ func TestResolvePointerAllocatesNothing(t *testing.T) {
 	}
 }
 
+// The pointer path from a Gio event to the resolved MouseEvent allocates nothing: translate into
+// its reused buffer, the Source the window attaches, and ResolvePointer, for every kind of event.
+// (The App's queue then holds each as a tui.Event, past this path.)
+func TestThePointerPathAllocatesNothing(t *testing.T) {
+	b, shown, _, _ := resolveFixture(t)
+	var ptr pointerState
+	var resolved tui.MouseEvent
+	through := func(pe pointer.Event) {
+		for _, me := range ptr.translate(pe, shown.m) {
+			me.Source = tui.PointerSource{X: pe.Position.X, Y: pe.Position.Y, Ref: shown}
+			resolved = b.ResolvePointer(me)
+		}
+	}
+	at := f32.Pt(166, 52)
+	step := float32(shown.m.cell.Y) / 2 // one wheel step
+	kinds := []struct {
+		name string
+		do   func()
+	}{
+		{"move", func() { through(pointer.Event{Kind: pointer.Move, Position: at}) }},
+		{"click", func() {
+			through(pointer.Event{Kind: pointer.Press, Buttons: pointer.ButtonPrimary, Position: at})
+			through(pointer.Event{Kind: pointer.Release, Position: at})
+		}},
+		{"drag", func() {
+			through(pointer.Event{Kind: pointer.Press, Buttons: pointer.ButtonPrimary, Position: at})
+			through(pointer.Event{Kind: pointer.Drag, Buttons: pointer.ButtonPrimary, Position: f32.Pt(300, 60)})
+			through(pointer.Event{Kind: pointer.Release, Position: f32.Pt(300, 60)})
+		}},
+		{"scroll", func() { through(pointer.Event{Kind: pointer.Scroll, Scroll: f32.Pt(0, step), Position: at}) }},
+	}
+	for _, k := range kinds {
+		k.do() // the buffer grows to its size once
+		if n := testing.AllocsPerRun(100, k.do); n != 0 {
+			t.Errorf("a %s through the pointer path allocates %v times", k.name, n)
+		}
+	}
+	if resolved.Kind != tui.MouseWheel {
+		t.Fatalf("the last event resolved to %+v; want the wheel step (the path ran)", resolved)
+	}
+}
+
 // queuedMouse is the MouseEvents b has pushed for the App.
 func queuedMouse(b *Backend) []tui.MouseEvent {
 	b.q.mu.Lock()
