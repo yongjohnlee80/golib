@@ -131,6 +131,10 @@ type TableCore struct {
 	src           TableSource
 	pager         TablePager
 	edit          TableEditor
+	commit        TableCommitter // the source's compound edits, nil when it has none (tablecore_edit.go)
+	edges         bool           // TableAppendEdges
+	editing       *TableEdit     // the open field, nil for none
+	onEditDropped func()
 	layout        TableLayout
 	ctx           *tui.Context
 	kinds         TableKinds // the source's cell kinds, nil when it has none
@@ -158,6 +162,8 @@ type TableCore struct {
 	count    int
 	pendingG bool
 	yanked   bool
+	deleting bool // a d waiting for its second d (dd)
+	literal  bool // Ctrl+V in the open field: a Tab next is typed
 
 	// The pointer's drag: where it was pressed, and on what.
 	dragging bool
@@ -186,6 +192,11 @@ func (c *TableCore) SetSource(src TableSource) {
 	c.src = src
 	c.pager, _ = src.(TablePager)
 	c.edit, _ = src.(TableEditor)
+	c.commit, _ = src.(TableCommitter)
+	if c.editing != nil { // the cell it was opened on is not this source's
+		c.editing = nil
+		c.dropped()
+	}
 	c.kinds, _ = src.(TableKinds)
 	had := c.keys != nil
 	c.cur, c.anchor, c.kind, c.order, c.keys = TablePos{}, nil, TableSelectCells, nil, nil
@@ -229,9 +240,6 @@ func (c *TableCore) RowNumberDigits() int {
 // Source is the rows the core shows.
 func (c *TableCore) Source() TableSource { return c.src }
 
-// Editable reports whether the source's cells and shape can change.
-func (c *TableCore) Editable() bool { return c.edit != nil }
-
 // Len is the display rows: the rows loaded, or with a filter those it keeps (Filtered). Fields
 // is the columns.
 func (c *TableCore) Len() int {
@@ -262,6 +270,10 @@ func (c *TableCore) Fields() []TableField {
 // and merged into a sort without moving the cursor off its row.
 func (c *TableCore) Changed() {
 	c.measured = nil
+	if c.editing != nil && !c.current(c.editing) { // a Raw edit, an undo, a reload: the cell is gone
+		c.editing = nil
+		c.dropped()
+	}
 	keep := -1
 	if c.Len() > 0 {
 		keep = c.SourceRow(c.cur.Row) // read through the order the cursor was placed in
@@ -283,6 +295,21 @@ func (c *TableCore) Changed() {
 	if len(c.keys) != before {
 		c.sortChanged()
 	}
+}
+
+// ScrollFields asks the view to move its first field shown by n (ADR 1792303119 §4.4): the view
+// clamps it and keeps its own scroll; the cursor stays where it is.
+func (c *TableCore) ScrollFields(n int) {
+	if h, ok := c.layout.(TableLayoutFields); ok && n != 0 {
+		h.ScrollFields(n)
+		c.repaint()
+	}
+}
+
+// TableLayoutFields is a layout that scrolls its fields sideways: Shift+wheel and a horizontal
+// wheel.
+type TableLayoutFields interface {
+	ScrollFields(n int)
 }
 
 // Cursor is the cell under the cursor.
@@ -353,7 +380,7 @@ func (c *TableCore) Width(col int) int {
 			}
 			w := c.measure(f.Title)
 			for r := range min(c.Len(), tableMeasureRows) {
-				w = max(w, c.measure(c.Cell(r, i)))
+				w = max(w, c.measure(tableCellLine(c.Cell(r, i)))) // as drawn: a newline is ⏎
 			}
 			c.measured[i] = min(max(w, c.cells(1)), limit)
 		}
@@ -436,9 +463,11 @@ func (c *TableCore) page() int {
 	return 10
 }
 
+// clamp keeps the cursor in the table, the edges (TableAppendEdges) included.
 func (c *TableCore) clamp() {
-	c.cur.Row = min(max(c.cur.Row, 0), max(c.Len()-1, 0))
-	c.cur.Col = min(max(c.cur.Col, 0), max(len(c.Fields())-1, 0))
+	edge := c.edgeRows()
+	c.cur.Row = min(max(c.cur.Row, 0), max(c.Len()-1+edge, 0))
+	c.cur.Col = min(max(c.cur.Col, 0), max(len(c.Fields())-1+edge, 0))
 }
 
 // reach reveals the cursor and asks a pager for more rows when the cursor is near the end of
@@ -465,7 +494,7 @@ func (c *TableCore) show() {
 // announce tells onCursor the cursor's source row when it changed.
 func (c *TableCore) announce() {
 	r := -1
-	if c.Len() > 0 {
+	if c.Len() > 0 && c.cur.Row < c.Len() { // the edge row is no source row
 		r = c.SourceRow(c.cur.Row)
 	}
 	if r == c.announced {

@@ -384,6 +384,30 @@ if err == nil {
 `DeleteField`, `SetAlign`, `SortBy` and `Format` each rewrite the table, padded and aligned, as one
 undo step. `MarkdownTableCells` and `MarkdownDelimiterAligns` are its parser, for a renderer.
 
+**Editing in the table** (ADR 1792303119). On a `TableEditor` source not saying it is read only
+(`TableReadOnlySource`), Enter, `i` or F2 opens a field on the cursor's cell (`EditCell`; a
+printable key that is no command opens it with that key typed, Space and `:` excepted). The field
+is a `TextArea` holding the cell's exact value, newlines and tabs included; a table's one-line cell
+shows them as ⏎ and → (`TableCellLine`). In the field Enter keeps and moves down, Tab and
+Shift+Tab keep and move across, Alt+Enter types a newline, Ctrl+V then Tab a tab, and Esc drops
+(the `tui.tableField` scope); a value kept unchanged writes nothing. `dd` deletes the row and `x`
+or Delete empties the cell. A source that is a `TableCommitter` applies a whole edit as one write
+(`Commit(TableOp)`: a new row and/or field, then a value: one undo step, nothing written on a
+refusal), and only such a source offers `TableAppendEdges` (an empty row and field after the last,
+to type into) and `o` (a new row below, inserted when its value is kept). An open edit
+(`Editing`) is fenced to its source, the source's revision (`TableRevisioner`) and its source row:
+a change under it (an edit elsewhere, an undo, a sort, a filter, a new source, `CancelEdit`) drops
+it and tells `TableOnEditDropped`. Shift+wheel and a horizontal wheel scroll the fields
+(`ScrollFields`).
+
+`NewTableCSV(core, comma)` is a CSV (`,`) or TSV (`\t`) document in an `EditorCore` as such a
+source: the first record is the fields, and an edit writes over the bytes of the records it
+changes alone, so every gap of blank lines and every other record stays byte for byte. A parse
+error (strict quoting: a bare or unterminated quote), a line over 1 MiB or more than 100,000
+records makes it read only (`ReadOnly`). `NewTableDocument(core, comma)` is the table as a
+`DocumentView`: an `Editor`'s Rendered view (`SetDocumentView`, `SetRenderedDocument`), reading
+the core again at each layout.
+
 ### Editors & Streaming Viewers
 
 #### `Editor`
@@ -409,6 +433,14 @@ editor := widget.NewEditor(widget.WithContextMenu(func(e *widget.Editor) []widge
         }}))
 }))
 ```
+
+A Rendered view of a whole document is a `DocumentView` the host gives the editor
+(`SetDocumentView`, a `TableDocument` for a CSV file) and turns on for a document
+(`SetRenderedDocument`). `SetView(ViewRendered)` shows it in place of the text, the focus moving
+into it; `ActToggleRendered` (Ctrl+T unless the keymap moves it) switches the view, from the text
+or from the view, which leaves the key. `SetRenderedEnabled(false)` draws the text for a document
+that cannot render and keeps the choice (`View`), so the next one that can is drawn Rendered with
+no key; `ShownView` is the view drawn. `Mode` is the Vim mode, never the view.
 
 The editor's behaviour is its `EditorCore` (`editor.Core()`), shared with the GUI's `Editor`. It
 has the functions a host, a script or an agent edits a document through: positions and ranges;

@@ -164,12 +164,30 @@ func TestTableKeysMatchTheOldHandlerWithNoMap(t *testing.T) {
 	}
 }
 
-// Every table command reaches HandleKey: none is declared and then dropped by the switch.
+// editCommands are the table commands of an editable source (tablecore_edit.go).
+var editCommands = []string{TableEditCell.ID, TableOpenRow.ID, TableDeleteRow.ID, TableClearCell.ID}
+
+// Every table command reaches HandleKey: none is declared and then dropped by the switch. An editing
+// command, on an editable source, opens a field or changes the text.
 func TestEveryTableCommandDoesSomething(t *testing.T) {
 	for _, cmd := range tableCommands {
 		keys := cmd.Keys
 		if len(keys) == 0 {
 			t.Fatalf("%s has no default key", cmd.ID)
+		}
+		if slices.Contains(editCommands, cmd.ID) {
+			c, _, core, _ := csvTable("name,age,city\ncarol,41,Seoul\nalice,9,Busan\nbob,100,Incheon\n")
+			c.cur = TablePos{1, 1}
+			before := core.Value()
+			e := tui.KeyEvent{Code: keys[0].Code, Mods: keys[0].Mods}
+			ret := c.HandleKey(e)
+			if cmd.ID == TableDeleteRow.ID {
+				ret = c.HandleKey(e) // dd
+			}
+			if !ret || (c.Editing() == nil && core.Value() == before) {
+				t.Errorf("%s (%v): handled %v, did nothing", cmd.ID, keys[0], ret)
+			}
+			continue
 		}
 		c := NewTableCore(people(), TableSortable(true), TableOnActivate(func(int) {}))
 		c.Bind(nil, &fakeTableLayout{})

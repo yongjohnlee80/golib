@@ -52,6 +52,7 @@ const (
 // any others as text. Either way the sort is stable: rows equal on
 // every key keep the source's order.
 func (c *TableCore) SortKeys(keys []TableSortKey) {
+	c.CancelEdit() // the display rows it was opened among are rearranged
 	keep := c.SourceRow(c.cur.Row)
 	was := c.keys
 	c.keys = c.validKeys(keys)

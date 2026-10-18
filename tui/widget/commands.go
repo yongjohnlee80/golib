@@ -118,12 +118,33 @@ var (
 	TableEscape      = cmd("tui.table.escape", TableScope, with("Esc")...)
 	TableYank        = cmd("tui.table.yank", TableScope, "Y") // y copies; y again copies the row
 	TableSort        = cmd("tui.table.sort", TableScope, "S")
-	TableActivate    = cmd("tui.table.activate", TableScope, with("Enter")...)
+	TableActivate    = cmd("tui.table.activate", TableScope, with("Enter")...) // on an editable source: edit the cell
+	// An editable source's (ADR 1792303119 §4.3): open the cell's field, a new row below, delete the
+	// row (d, then d), empty the cell.
+	TableEditCell  = cmd("tui.table.edit", TableScope, "I", "F2")
+	TableOpenRow   = cmd("tui.table.openRow", TableScope, "O")
+	TableDeleteRow = cmd("tui.table.deleteRow", TableScope, "D") // d, then d
+	TableClearCell = cmd("tui.table.clearCell", TableScope, "X", "Delete")
 
 	tableCommands = []keymap.Command{TableUp, TableDown, TableLeft, TableRight, TableFieldNext,
 		TableFieldPrev, TablePageUp, TablePageDown, TableGoPrefix, TableLast, TableFieldFirst,
 		TableFieldLast, TableVisual, TableVisualRows, TableVisualBlock, TableEscape, TableYank,
-		TableSort, TableActivate}
+		TableSort, TableActivate, TableEditCell, TableOpenRow, TableDeleteRow, TableClearCell}
+)
+
+// TableFieldScope is the keys of a table cell's open field (TableEdit), before its TextArea's.
+const TableFieldScope keymap.Scope = "tui.tableField"
+
+var (
+	TableFieldKeep     = cmd("tui.tableField.keep", TableFieldScope, "Enter") // keep, and move down
+	TableFieldNewline  = cmd("tui.tableField.newline", TableFieldScope, "Alt+Enter", "Shift+Enter")
+	TableFieldNextCell = cmd("tui.tableField.next", TableFieldScope, "Tab")           // keep, and move right
+	TableFieldPrevCell = cmd("tui.tableField.previous", TableFieldScope, "Shift+Tab") // keep, and move left
+	TableFieldDrop     = cmd("tui.tableField.drop", TableFieldScope, "Esc")
+	TableFieldLiteral  = cmd("tui.tableField.literal", TableFieldScope, "Ctrl+V") // then Tab: a tab in the value
+
+	tableFieldCommands = []keymap.Command{TableFieldKeep, TableFieldNewline, TableFieldNextCell,
+		TableFieldPrevCell, TableFieldDrop, TableFieldLiteral}
 )
 
 // InputScope is a TextInput's keys.
@@ -622,6 +643,7 @@ func KeyCommands() []keymap.Command {
 	out = append(out, listCommands...)
 	out = append(out, treeCommands...)
 	out = append(out, tableCommands...)
+	out = append(out, tableFieldCommands...)
 	out = append(out, inputCommands...)
 	out = append(out, menuCommands...)
 	out = append(out, ButtonActivate, WindowMenu, DrawerClose, DrawerCloseOnQ)
