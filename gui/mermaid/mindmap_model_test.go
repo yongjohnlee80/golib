@@ -93,6 +93,45 @@ func TestNodeAtAnswersTheTopNode(t *testing.T) {
 	}
 }
 
+// LayDiagram refuses, without laying anything out, every model but a mind map, and a mind map
+// with a shape mind maps do not define; past the node or label limit is ErrTooLarge.
+func TestLayDiagramRefusesWhatItCannotLay(t *testing.T) {
+	invalid := map[string]pm.Diagram{
+		"nil":                     nil,
+		"a nil mind map":          (*pm.MindmapDiagram)(nil),
+		"a flowchart":             &pm.FlowchartDiagram{Nodes: []pm.Node{{ID: "a", Label: "A"}}},
+		"a flowchart's bad shape": &pm.FlowchartDiagram{Nodes: []pm.Node{{ID: "a", Label: "A", Shape: pm.Shape(255)}}},
+		"an undefined shape":      &pm.MindmapDiagram{Nodes: []pm.MindNode{{ID: "a", Label: "A", Parent: -1, Shape: pm.MindShape(255)}}},
+		"a shape just past":       &pm.MindmapDiagram{Nodes: []pm.MindNode{{ID: "a", Parent: -1}, {ID: "b", Parent: 0, Shape: pm.MindHexagon + 1}}},
+	}
+	for name, d := range invalid {
+		if _, err := layModel(t, d, 400); !errors.Is(err, ErrInvalidModel) {
+			t.Errorf("%s: %v; want ErrInvalidModel", name, err)
+		}
+	}
+	many := &pm.MindmapDiagram{Nodes: []pm.MindNode{{ID: "r", Parent: -1}}}
+	for range maxModelNodes {
+		many.Nodes = append(many.Nodes, pm.MindNode{ID: "c", Parent: 0})
+	}
+	long := &pm.MindmapDiagram{Nodes: []pm.MindNode{{ID: "r", Label: strings.Repeat("x", pm.MaxLabel+1), Parent: -1}}}
+	for name, d := range map[string]pm.Diagram{"too many nodes": many, "a label too long": long} {
+		m, release := gui.AcquireMeasurer(1)
+		counted := &countingMeasurer{Measurer: m}
+		_, err := LayDiagram(context.Background(), d, 400, testTheme, counted)
+		release()
+		if !errors.Is(err, pm.ErrTooLarge) || counted.n != 0 {
+			t.Errorf("%s: %v after %d labels measured; want mermaid.ErrTooLarge before any", name, err, counted.n)
+		}
+	}
+	every := &pm.MindmapDiagram{Nodes: []pm.MindNode{{ID: "r", Parent: -1}}}
+	for s := pm.MindDefault; s <= pm.MindHexagon; s++ {
+		every.Nodes = append(every.Nodes, pm.MindNode{ID: "s", Label: "s", Parent: 0, Shape: s})
+	}
+	if _, err := layModel(t, every, 400); err != nil {
+		t.Errorf("every defined shape: %v", err)
+	}
+}
+
 // LayDiagram refuses a mind map model that breaks the parser's invariants, keeps an empty one
 // valid (as Lay("mindmap") is), and lays a parsed model as Lay lays its source.
 func TestLayDiagramKeepsTheParsersInvariants(t *testing.T) {
@@ -129,4 +168,20 @@ func TestLayDiagramKeepsTheParsersInvariants(t *testing.T) {
 	if viaModel.Size() != viaSource.Size() || len(viaModel.nodes) != len(viaSource.nodes) {
 		t.Fatalf("the model laid %v with %d nodes, the source %v with %d", viaModel.Size(), len(viaModel.nodes), viaSource.Size(), len(viaSource.nodes))
 	}
+}
+
+// countingMeasurer counts the labels measured.
+type countingMeasurer struct {
+	gui.Measurer
+	n int
+}
+
+func (c *countingMeasurer) Measure(s string, f gui.Font) gui.Measured {
+	c.n++
+	return c.Measurer.Measure(s, f)
+}
+
+func (c *countingMeasurer) Wrap(s string, f gui.Font, width float32) ([]string, gui.Size) {
+	c.n++
+	return c.Measurer.Wrap(s, f, width)
 }
