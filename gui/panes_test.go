@@ -7,8 +7,11 @@ import (
 	"github.com/yongjohnlee80/gio/f32"
 	"github.com/yongjohnlee80/gio/font/gofont"
 	"github.com/yongjohnlee80/gio/gpu/headless"
+	"github.com/yongjohnlee80/gio/io/event"
+	"github.com/yongjohnlee80/gio/io/input"
 	"github.com/yongjohnlee80/gio/io/pointer"
 	"github.com/yongjohnlee80/gio/op"
+	"github.com/yongjohnlee80/gio/op/clip"
 	"github.com/yongjohnlee80/gio/text"
 	"github.com/yongjohnlee80/golib/tui"
 )
@@ -608,9 +611,11 @@ func TestResolvePointerLatchesThePressPane(t *testing.T) {
 	if press.X < side2.band.X || press.X >= side2.band.X+side2.band.W {
 		t.Fatalf("press resolved to column %d, outside the sidebar %v", press.X, side2.band)
 	}
+	// Device x 200 in E is 200 px into the sidebar's mapping: 133.3 dp, 10 of E''s 20 px cells
+	// (through the view's mapping it would be 50 px in: column 7+2 = 9).
 	drag := b.ResolvePointer(tui.MouseEvent{Kind: tui.MouseMotion, Button: tui.MouseLeft, Source: src(200, 10)})
-	if drag.X < side2.band.X+side2.band.W-1 || drag.X >= view2.band.X+view2.band.W {
-		t.Fatalf("drag over the view resolved to column %d; want counted on past the sidebar's edge %v", drag.X, side2.band)
+	if drag.X != side2.band.X+10 {
+		t.Fatalf("drag over the view resolved to column %d; want %d, counted on in the sidebar's mapping", drag.X, side2.band.X+10)
 	}
 	b.ResolvePointer(tui.MouseEvent{Kind: tui.MouseRelease, Button: tui.MouseLeft, Source: src(200, 10)})
 	move := b.ResolvePointer(tui.MouseEvent{Kind: tui.MouseMotion, Source: src(200, 10)})
@@ -633,5 +638,52 @@ func TestResolvePointerAllocatesNothing(t *testing.T) {
 	ev := tui.MouseEvent{Kind: tui.MouseMotion, Source: tui.PointerSource{X: 166, Y: 52, Ref: shown}}
 	if n := testing.AllocsPerRun(100, func() { _ = b.ResolvePointer(ev) }); n != 0 {
 		t.Fatalf("ResolvePointer allocates %v times per event", n)
+	}
+}
+
+// queuedMouse is the MouseEvents b has pushed for the App.
+func queuedMouse(b *Backend) []tui.MouseEvent {
+	b.q.mu.Lock()
+	defer b.q.mu.Unlock()
+	var out []tui.MouseEvent
+	for _, ev := range b.q.queue {
+		if m, ok := ev.(tui.MouseEvent); ok {
+			out = append(out, m)
+		}
+	}
+	return out
+}
+
+// pressThrough feeds one press at (x, y) through Gio's router into b.readInput.
+func pressThrough(t *testing.T, b *Backend, m metrics, x, y float32) []tui.MouseEvent {
+	t.Helper()
+	r := new(input.Router)
+	tag := &b.gio
+	b.readInput(r.Source(), tag, m) // registers the filters
+	ops := new(op.Ops)
+	area := clip.Rect(image.Rectangle{Max: m.window}).Push(ops)
+	event.Op(ops, tag)
+	area.Pop()
+	r.Frame(ops)
+	r.Queue(pointer.Event{Kind: pointer.Press, Source: pointer.Mouse, Buttons: pointer.ButtonPrimary, Position: f32.Pt(x, y)})
+	b.readInput(r.Source(), tag, m)
+	return queuedMouse(b)
+}
+
+// A Panes window hands the App each pointer event with its device position and the frame on
+// screen, for resolution at dispatch; a cell-root window sends none.
+func TestAPanesWindowSendsThePointerWithTheShownFrame(t *testing.T) {
+	m := stagedMetrics(t)
+	b := NewBackend(WithPanes(sidebarAndView()))
+	shown := &frame{m: m}
+	b.gio.shown = shown
+	got := pressThrough(t, b, m, 166, 52)
+	if len(got) != 1 || got[0].Source.Ref != shown || got[0].Source.X != 166 || got[0].Source.Y != 52 {
+		t.Fatalf("pushed %+v; want one press carrying (166, 52) and the shown frame", got)
+	}
+	plain := NewBackend()
+	plain.gio.shown = &frame{m: metrics{window: m.window, cell: m.cell, scale: 1, grid: tui.Size{W: 31, H: 9}}}
+	if got := pressThrough(t, plain, plain.gio.shown.m, 166, 52); len(got) != 1 || got[0].Source != (tui.PointerSource{}) {
+		t.Fatalf("a cell-root window pushed %+v; want one press with no Source", got)
 	}
 }
