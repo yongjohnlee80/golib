@@ -76,7 +76,9 @@ func (l *pixelLayout) Diagram(d Diagrammer, b Block, req DiagramRequest) Diagram
 	var size gui.Size
 	if s != nil {
 		s.cancel()
-		pic, size = s.pic, s.size
+		if s.key.lang == key.lang { // a mermaid picture never stands in for a chart
+			pic, size = s.pic, s.size
+		}
 	}
 	l.gen++
 	ctx, cancel := context.WithCancel(context.Background())
@@ -149,10 +151,30 @@ func (l *pixelLayout) diagramReady(r diagramReady) bool {
 }
 
 // dropDiagrams cancels the requests of blocks that end after line: a change there is inside
-// them or above them, so their source or their place has changed. Their next lay asks afresh.
+// them or above them, so their source or their place has changed. Their next lay asks afresh,
+// and each keeps its last picture for its block to show meanwhile, so a change, a whole text set
+// each second included, never flashes a drawn diagram back to its source. ensure forgets the
+// slot of a line no block starts at any more.
 func (l *pixelLayout) dropDiagrams(fromLine int) {
-	for line, s := range l.diagrams {
+	for _, s := range l.diagrams {
 		if s.to > fromLine {
+			s.cancel()
+			s.refresh = true
+		}
+	}
+}
+
+// forgetDiagrams cancels and forgets the slots no block starts at: the lines were reflowed.
+func (l *pixelLayout) forgetDiagrams(blocks []Block) {
+	if len(l.diagrams) == 0 {
+		return
+	}
+	starts := make(map[int]bool, len(blocks))
+	for _, b := range blocks {
+		starts[b.From] = true
+	}
+	for line, s := range l.diagrams {
+		if !starts[line] {
 			s.cancel()
 			delete(l.diagrams, line)
 		}
@@ -160,7 +182,12 @@ func (l *pixelLayout) dropDiagrams(fromLine int) {
 }
 
 // cancelDiagrams withdraws every request: the body unmounted.
-func (l *pixelLayout) cancelDiagrams() { l.dropDiagrams(0) }
+func (l *pixelLayout) cancelDiagrams() {
+	for line, s := range l.diagrams {
+		s.cancel()
+		delete(l.diagrams, line)
+	}
+}
 
 var _ DiagramHost = (*pixelLayout)(nil)
 

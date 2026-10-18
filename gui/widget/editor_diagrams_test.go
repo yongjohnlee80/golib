@@ -20,6 +20,7 @@ type fakeDiagrams struct {
 	ctxs    []context.Context
 	readies []func()
 	done    map[string]bool
+	bad     map[string]bool // sources it declines: not a diagram it can draw
 }
 
 func (f *fakeDiagrams) Diagram(ctx context.Context, req DiagramRequest, ready func()) DiagramAnswer {
@@ -28,6 +29,9 @@ func (f *fakeDiagrams) Diagram(ctx context.Context, req DiagramRequest, ready fu
 	f.calls++
 	f.ctxs = append(f.ctxs, ctx)
 	f.readies = append(f.readies, ready)
+	if f.bad[req.Src] {
+		return DiagramAnswer{State: Declined}
+	}
 	if f.done[req.Src] {
 		return DiagramAnswer{State: Ready, Pic: gui.ViewFunc(func(gui.Canvas) {}), Size: gui.Size{W: 50, H: 30}}
 	}
@@ -160,5 +164,70 @@ func TestDiagramThemeChangeAsksAgain(t *testing.T) {
 	h.onLoop(func() { a = h.e.layout.Diagram(f, b, req(light)) })
 	if c, _, _ := f.state(); c != before+1 {
 		t.Errorf("a theme change on a Ready picture asked %d times, want %d", c, before+1)
+	}
+}
+
+// A drawn diagram keeps its picture through a whole text set, as a card ticking each second sets
+// its text: the block shows the last picture while the new source is Pending, then the new one.
+// Content the renderer declines is its text, as a block with no picture yet is (TestDiagramPendingThenReady).
+// A block that moved to another line has no picture until its own is drawn, and the slot of a line
+// no block starts at is forgotten; a picture never stands in for a diagram of another language.
+func TestDiagramKeepsItsPictureThroughATextSet(t *testing.T) {
+	h, f := startDiagrams(t)
+	f.finish("A-->B")
+	h.until("the first picture", func() bool { h.paint(); return h.picture(1) != nil })
+
+	h.onLoop(func() { h.e.SetValue("top\n```mermaid\nA-->C\n```\nend") })
+	h.paint()
+	if got := h.picture(1); got == nil {
+		t.Fatal("the set text flashed the drawn diagram back to its source while the new one was pending")
+	}
+	f.finish("A-->C")
+	h.until("the new picture", func() bool {
+		h.paint()
+		var drawn bool
+		h.onLoop(func() { s := h.e.layout.diagrams[1]; drawn = s != nil && s.key.src == "A-->C" && s.state == Ready })
+		return drawn && h.picture(1) != nil
+	})
+
+	// content the renderer cannot draw is its text, never the last picture
+	f.mu.Lock()
+	f.bad = map[string]bool{"not a diagram": true}
+	f.mu.Unlock()
+	h.onLoop(func() { h.e.SetValue("top\n```mermaid\nnot a diagram\n```\nend") })
+	h.paint()
+	if got := h.picture(1); got != nil {
+		t.Error("a declined source showed the last picture instead of its text")
+	}
+
+	// the fence moves up to line 0, so line 1 is inside it: its slot is forgotten, and the moved
+	// block, with no picture of its own yet, is its text
+	f.mu.Lock()
+	f.bad = nil
+	f.mu.Unlock()
+	h.onLoop(func() { h.e.SetValue("top\n```mermaid\nA-->C\n```\nend") })
+	h.until("the picture again", func() bool { h.paint(); return h.picture(1) != nil })
+	h.onLoop(func() { h.e.SetValue("```mermaid\nA-->D\n```\nend") })
+	h.paint()
+	if got := h.picture(0); got != nil {
+		t.Error("a moved block showed the picture of the line it left")
+	}
+	h.onLoop(func() {
+		if h.e.layout.diagrams[1] != nil {
+			t.Error("the slot of a line no block starts at was kept")
+		}
+	})
+
+	b := Block{From: 0, To: 3}
+	var a DiagramAnswer
+	f.mu.Lock()
+	f.done["A-->D"] = true
+	f.mu.Unlock()
+	h.onLoop(func() {
+		h.e.layout.Diagram(f, b, DiagramRequest{Lang: "mermaid", Src: "A-->D", Width: 100, Scale: 1})
+		a = h.e.layout.Diagram(f, b, DiagramRequest{Lang: "vega-lite", Src: "{}", Width: 100, Scale: 1})
+	})
+	if a.Pic != nil {
+		t.Error("a mermaid picture stood in for a pending vega-lite chart")
 	}
 }

@@ -261,6 +261,7 @@ func (l *pixelLayout) ensure() {
 		}
 		laid[i] = l.laid[i]
 	}
+	l.forgetDiagrams(blocks)
 	l.blocks, l.laid, l.stale, l.keep = blocks, laid, false, n
 }
 
