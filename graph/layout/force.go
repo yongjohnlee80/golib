@@ -136,10 +136,15 @@ func NewSimulation(in ForceInput, lim Limits) (*Simulation, error) {
 // Done reports whether every step has run.
 func (s *Simulation) Done() bool { return s.step >= s.steps }
 
-// Step runs up to n more steps, and reports whether every step has now run. It counts its work
-// against the limits' MaxWork, across every Step, and checks ctx as Force does; after an error the
-// simulation stays where it stopped.
+// Step runs up to n more steps, and reports whether every step has now run. It checks ctx first, so
+// a cancelled call moves nothing, then as Force does while it runs; it counts its work against the
+// limits' MaxWork across every Step. After an error the simulation stays where it stopped.
 func (s *Simulation) Step(ctx context.Context, n int) (done bool, err error) {
+	// a cancelled call moves nothing: the meter checks ctx only as its work adds up, and its count
+	// runs on across calls
+	if err := ctx.Err(); err != nil {
+		return s.Done(), err
+	}
 	s.m.ctx = ctx
 	const gravity = 0.02
 	for ; n > 0 && s.step < s.steps; n-- {
@@ -203,7 +208,11 @@ func (s *Simulation) Frame(dst []Point) ([]Point, Rect, error) {
 		return dst, Rect{}, fmt.Errorf("%w: a layout %g by %g, past float32", ErrTooLarge, maxX-minX, maxY-minY)
 	}
 	for _, p := range s.pos {
-		dst = append(dst, Point{X: float32(p.x), Y: float32(p.y)})
+		pt := Point{X: float32(p.x), Y: float32(p.y)}
+		if !finite32(pt.X) || !finite32(pt.Y) { // a finite origin and span may still end past float32
+			return dst[:0], Rect{}, fmt.Errorf("%w: a node at %g, %g, past float32", ErrTooLarge, p.x, p.y)
+		}
+		dst = append(dst, pt)
 	}
 	return dst, bounds, nil
 }
