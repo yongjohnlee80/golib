@@ -2,6 +2,7 @@ package widget
 
 import (
 	"context"
+	"slices"
 	"testing"
 
 	"github.com/yongjohnlee80/golib/gui"
@@ -22,7 +23,7 @@ func docEditor(t *testing.T, text string, opts ...EditorOption) (*edHarness, *tu
 
 // state is what the cells read on the loop: the mode, which child shows, and where the focus is.
 type docState struct {
-	mode            EditorMode
+	mode, shown     EditorMode
 	docShown        bool
 	bodyVis, docVis bool
 	focusDoc, focus bool // focus in the view; focus in the body
@@ -32,7 +33,7 @@ type docState struct {
 
 func (h *edHarness) docState(v *tuiwidget.HTMLView) (s docState) {
 	h.onLoop(func() {
-		s = docState{mode: h.e.Mode(), docShown: h.e.stack.docShown, bodyVis: h.e.body.Visible(), docVis: v.Visible(),
+		s = docState{mode: h.e.Mode(), shown: h.e.Shown(), docShown: h.e.stack.docShown, bodyVis: h.e.body.Visible(), docVis: v.Visible(),
 			focusDoc: h.app.FocusWithin(v), focus: h.app.FocusWithin(h.e.body), source: string(v.Source()),
 			listEditing: h.e.core.ListEditing()}
 	})
@@ -73,7 +74,7 @@ func TestTheDocumentViewIsRenderedForADocumentItReads(t *testing.T) {
 
 // TestTheDocumentViewTurnedOffWhileRendered: SetRenderedDocument(false) while Rendered shows the
 // body again, the focus moving with it, and stays Rendered through the renderer (list editing on),
-// though SetMode's mode is unchanged; with no renderer, Rendered falls back to Raw.
+// though SetMode's mode is unchanged; with no renderer, Raw is drawn and Rendered stays the choice.
 func TestTheDocumentViewTurnedOffWhileRendered(t *testing.T) {
 	h, v := docEditor(t, "- item")
 	h.onLoop(func() { h.e.SetRenderedDocument(true); h.e.SetMode(Rendered) })
@@ -96,8 +97,8 @@ func TestTheDocumentViewTurnedOffWhileRendered(t *testing.T) {
 		t.Fatalf("a document view alone gives Rendered: %+v", s)
 	}
 	h2.onLoop(func() { h2.e.SetRenderedDocument(false) })
-	if s := h2.docState(v2); s.mode != Raw || s.docShown || !s.bodyVis {
-		t.Errorf("turned off with no renderer: %+v, want Raw", s)
+	if s := h2.docState(v2); s.mode != Rendered || s.shown != Raw || s.docShown || !s.bodyVis {
+		t.Errorf("turned off with no renderer: %+v, want Raw drawn, Rendered chosen", s)
 	}
 }
 
@@ -213,5 +214,84 @@ func TestAConsumersDocumentView(t *testing.T) {
 	h.onLoop(func() { after = d.layouts })
 	if after != before {
 		t.Errorf("hidden, the view was laid out %d more times", after-before)
+	}
+}
+
+// keyDoc is a consumer's document view that writes down the keys it takes.
+type keyDoc struct {
+	plainDoc
+	keys string
+}
+
+func (d *keyDoc) HandleEvent(ev tui.Event) bool {
+	k, ok := ev.(tui.KeyEvent)
+	if !ok || k.Kind == tui.KeyRelease || k.Text == "" || k.Mods != 0 {
+		return false
+	}
+	d.keys += k.Text
+	return true
+}
+
+// TestADocumentViewSwappedInAtRunTime (ADR 1792303119 §4.5, its verify-first): an editor built
+// with no document view is given one by SetDocumentView: shown Rendered, it takes the focus and the
+// keys, as one given at construction does, and Ctrl+T, which it leaves, returns to Raw. Swapped for
+// another while shown, the new one is shown, focused and typed into, the old one unmounted; removed
+// while shown, the body is drawn again and focused, by the renderer.
+func TestADocumentViewSwappedInAtRunTime(t *testing.T) {
+	h := startEditor(t, 60, 20, WithRenderer(NewMarkdownRenderer()), WithCore(tuiwidget.CoreInitialText("a,b\n1,2\n")))
+	h.onLoop(func() { h.app.FocusInto(h.e) })
+	focused := func(c tui.Component) func() bool {
+		return func() bool {
+			var ok bool
+			h.onLoop(func() { ok = h.app.FocusWithin(c) })
+			return ok
+		}
+	}
+	typed := func(d *keyDoc) string {
+		var k string
+		h.onLoop(func() { k = d.keys })
+		return k
+	}
+	first := &keyDoc{}
+	h.onLoop(func() { h.e.SetDocumentView(first); h.e.SetRenderedDocument(true); h.e.SetMode(Rendered) })
+	h.until("the focus in the swapped-in view", focused(first))
+	h.keys(tui.KeyEvent{Code: 'x', Text: "x"}, tui.KeyEvent{Code: 'y', Text: "y"})
+	if got := typed(first); got != "xy" {
+		t.Fatalf("the swapped-in view took %q, want xy", got)
+	}
+	var text string
+	h.onLoop(func() { text = first.text })
+	if text != "a,b\n1,2\n" {
+		t.Fatalf("the swapped-in view was shown %q", text)
+	}
+	h.keys(ctrl('t'))
+	h.until("the focus in the body", focused(h.e.body))
+	h.keys(ctrl('t'))
+	h.until("the focus back in the view", focused(first))
+
+	second := &keyDoc{}
+	h.onLoop(func() { h.e.SetDocumentView(second) })
+	h.until("the focus in the second view", focused(second))
+	h.keys(tui.KeyEvent{Code: 'z', Text: "z"})
+	if a, b := typed(first), typed(second); a != "xy" || b != "z" {
+		t.Fatalf("after the swap: the first took %q, the second %q; want xy and z", a, b)
+	}
+	var mounted, inStack bool
+	h.onLoop(func() {
+		mounted = first.Context() != nil && first.Context().Mounted()
+		inStack = slices.Contains(h.e.stack.Items(), tui.Component(first))
+	})
+	if mounted || inStack {
+		t.Fatalf("the replaced view: mounted %v, in the stack %v", mounted, inStack)
+	}
+
+	h.onLoop(func() { h.e.SetDocumentView(nil) })
+	h.until("the focus in the body", focused(h.e.body))
+	var s docState
+	h.onLoop(func() {
+		s = docState{mode: h.e.Mode(), shown: h.e.Shown(), docShown: h.e.stack.docShown, bodyVis: h.e.body.Visible()}
+	})
+	if s.mode != Rendered || s.shown != Rendered || s.docShown || !s.bodyVis {
+		t.Fatalf("the view removed while shown: %+v, want Rendered by the renderer on the body", s)
 	}
 }
