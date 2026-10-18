@@ -319,6 +319,24 @@ func TestSimulationKeepsForcesLimits(t *testing.T) {
 	if at, b, err := far.Frame(nil); !errors.Is(err, ErrTooLarge) {
 		t.Errorf("a frame with a point past float32: %v %v, %v; want ErrTooLarge", at, b, err)
 	}
+	// every point finite, their span past float32: the bounds are checked too
+	wide, err := NewSimulation(ForceInput{Nodes: 2, Seed: 49, Spacing: 1.5e38}, Limits{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if at, b, err := wide.Frame(nil); !errors.Is(err, ErrTooLarge) {
+		t.Errorf("a frame whose span is past float32: %v %v, %v; want ErrTooLarge", at, b, err)
+	}
+	// a context that ends while a step runs: the meter sees it as the work adds up
+	long, err := NewSimulation(workspaceGraph(3000, 6000), Limits{MaxNodes: 20000, MaxEdges: 100000, MaxWork: math.MaxInt})
+	if err != nil {
+		t.Fatal(err)
+	}
+	soon, stopSoon := context.WithTimeout(context.Background(), 20*time.Millisecond)
+	defer stopSoon()
+	if _, err := long.Step(soon, 300); !errors.Is(err, context.DeadlineExceeded) {
+		t.Errorf("a step outliving its context: %v; want context.DeadlineExceeded", err)
+	}
 	// a cancelled continuation: the meter has counted work already, so only an entry check sees it
 	cont, err := NewSimulation(ForceInput{Nodes: 1, Steps: 3}, Limits{})
 	if err != nil {
