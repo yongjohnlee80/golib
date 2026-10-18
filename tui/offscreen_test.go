@@ -79,5 +79,8 @@ func TestRenderOffscreenIsTheFrameBuffersCells(t *testing.T) {
 		if len(inner) != 2 || inner[0].Content != "n" {
 			t.Errorf("the nested grid: %+v", inner)
 		}
+		if inner[0].Face != got[0].Face { // a nested call with no face inherits the enclosing call's
+			t.Errorf("face %q: the nested grid's face %d, want the enclosing grid's %d", own, inner[0].Face, got[0].Face)
+		}
 	}
 }
