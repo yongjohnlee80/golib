@@ -46,24 +46,29 @@ type pointerState struct {
 	// its edge, so a captured drag's cells stay continuous across panes (a Panes window).
 	press    paneMap
 	pressing bool
+	// out is translate's result, reused: its caller hands each event on before the next one,
+	// so the pointer path allocates nothing.
+	out []tui.MouseEvent
+}
+
+// buttonOrder is the order eachButton reports buttons in.
+var buttonOrder = [...]struct {
+	gio pointer.Buttons
+	tui tui.MouseButton
+}{{pointer.ButtonPrimary, tui.MouseLeft}, {pointer.ButtonTertiary, tui.MouseMiddle}, {pointer.ButtonSecondary, tui.MouseRight}}
+
+// eachButton appends to dst mk's event for every button in bs, primary, middle, then secondary:
+// one per button that changed.
+func eachButton(dst []tui.MouseEvent, bs pointer.Buttons, mk func(tui.MouseButton) tui.MouseEvent) []tui.MouseEvent {
+	for _, b := range buttonOrder {
+		if bs.Contain(b.gio) {
+			dst = append(dst, mk(b.tui))
+		}
+	}
+	return dst
 }
 
 // buttonOf maps a Gio pointer button bitflag to the corresponding [tui.MouseButton] identifier.
-// eachButton is mk's event for every button in bs, primary, middle, then secondary: one per
-// button that changed.
-func eachButton(bs pointer.Buttons, mk func(tui.MouseButton) tui.MouseEvent) []tui.MouseEvent {
-	var out []tui.MouseEvent
-	for _, b := range []struct {
-		gio pointer.Buttons
-		tui tui.MouseButton
-	}{{pointer.ButtonPrimary, tui.MouseLeft}, {pointer.ButtonTertiary, tui.MouseMiddle}, {pointer.ButtonSecondary, tui.MouseRight}} {
-		if bs.Contain(b.gio) {
-			out = append(out, mk(b.tui))
-		}
-	}
-	return out
-}
-
 func buttonOf(b pointer.Buttons) tui.MouseButton {
 	switch {
 	case b.Contain(pointer.ButtonPrimary):
@@ -77,6 +82,7 @@ func buttonOf(b pointer.Buttons) tui.MouseButton {
 }
 
 // translate converts a Gio [pointer.Event] into corresponding [tui.MouseEvent] instances.
+// The slice is p's, valid until the next call: the caller hands each event on first.
 //
 // Translates pointer types:
 //   - Press / Release: Resolves changed buttons via bitwise diff against held state.
@@ -104,11 +110,12 @@ func (p *pointerState) translate(e pointer.Event, m metrics) []tui.MouseEvent {
 	ev := func(kind tui.MouseKind, b tui.MouseButton) tui.MouseEvent {
 		return tui.MouseEvent{Kind: kind, Button: b, X: x, Y: y, SubX: sx, SubY: sy, Mods: mods}
 	}
+	out := p.out[:0]
 	switch e.Kind {
 	case pointer.Press:
 		pressed := e.Buttons &^ p.held
 		p.held = e.Buttons
-		return eachButton(pressed, func(b tui.MouseButton) tui.MouseEvent { return ev(tui.MousePress, b) })
+		out = eachButton(out, pressed, func(b tui.MouseButton) tui.MouseEvent { return ev(tui.MousePress, b) })
 	case pointer.Release, pointer.Cancel:
 		// One release for every button let go: a cancel ends a chord whole, and the App (its
 		// capture, a press latch) must hear each button up, or it keeps one held.
@@ -117,15 +124,16 @@ func (p *pointerState) translate(e pointer.Event, m metrics) []tui.MouseEvent {
 			released = p.held
 		}
 		p.held &^= released
-		return eachButton(released, func(b tui.MouseButton) tui.MouseEvent { return ev(tui.MouseRelease, b) })
+		out = eachButton(out, released, func(b tui.MouseButton) tui.MouseEvent { return ev(tui.MouseRelease, b) })
 	case pointer.Move:
-		return []tui.MouseEvent{ev(tui.MouseMotion, tui.MouseNone)}
+		out = append(out, ev(tui.MouseMotion, tui.MouseNone))
 	case pointer.Drag:
-		return []tui.MouseEvent{ev(tui.MouseMotion, buttonOf(p.held))}
+		out = append(out, ev(tui.MouseMotion, buttonOf(p.held)))
 	case pointer.Scroll:
-		return p.wheel(e, m, ev)
+		out = p.wheel(out, e, m, ev)
 	}
-	return nil
+	p.out = out
+	return out
 }
 
 // wheel converts raw floating-point scroll deltas into discrete [tui.MouseWheel] steps.
@@ -134,9 +142,8 @@ func (p *pointerState) translate(e pointer.Event, m metrics) []tui.MouseEvent {
 // are accumulated in scrollX and scrollY until crossing a step threshold (half a character
 // cell height). This ensures both high-resolution trackpad gestures and traditional notched
 // mouse wheels feel natural and responsive.
-func (p *pointerState) wheel(e pointer.Event, m metrics, ev func(tui.MouseKind, tui.MouseButton) tui.MouseEvent) []tui.MouseEvent {
+func (p *pointerState) wheel(out []tui.MouseEvent, e pointer.Event, m metrics, ev func(tui.MouseKind, tui.MouseButton) tui.MouseEvent) []tui.MouseEvent {
 	step := max(float32(m.cell.Y)/2, 1)
-	var out []tui.MouseEvent
 	p.scrollY += e.Scroll.Y
 	p.scrollX += e.Scroll.X
 	for ; p.scrollY >= step; p.scrollY -= step {
