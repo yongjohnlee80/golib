@@ -259,6 +259,7 @@ func (r *renderer) pageBackground(g *grid) color.NRGBA {
 // In a Panes window the row is one segment per band it crosses, each under its pane's clip;
 // cells in a hole are not drawn.
 func (r *renderer) recordRow(g *grid, y int) op.CallOp {
+	countRow()
 	ops := new(op.Ops)
 	rec := op.Record(ops)
 	if r.m.layout == nil {
@@ -361,6 +362,7 @@ func (r *renderer) drawSpan(ops *op.Ops, g *grid, y, x0, x1 int, bgs bgMode) {
 	for _, fg := range order {
 		gs := batch[fg]
 		tr := op.Affine(f32.Affine2D{}.Offset(f32.Pt(float32(gs[0].X)/64, base))).Push(ops)
+		countBatch()
 		outline := clip.Outline{Path: r.paths.Shape(gs)}.Op().Push(ops)
 		paint.ColorOp{Color: fg}.Add(ops)
 		paint.PaintOp{}.Add(ops)
@@ -424,10 +426,12 @@ func (r *renderer) drawCell(ops *op.Ops, c tui.Cell, x, y int, fg color.NRGBA) {
 	span := max(int(c.Width), 1)
 	rect := m.cellRect(x, y, span, 1)
 	if ru, size := utf8.DecodeRuneInString(c.Content); size == len(c.Content) && drawable(ru) {
+		countCell()
 		drawBox(ops, ru, m.cellRect(x, y, 1, 1), fg, m.scale)
 	} else if c.Content != "" && c.Content != " " {
 		gs := r.shape(c.Content, c.Attrs.Mask&tui.AttrBold != 0, c.Attrs.Mask&tui.AttrItalic != 0, c.Face)
 		if !gs.empty {
+			countCell()
 			cl := clip.Rect(rect).Push(ops)
 			tr := op.Affine(glyphPlacement(rect, m, gs.advance)).Push(ops)
 			outline := clip.Outline{Path: gs.path}.Op().Push(ops)

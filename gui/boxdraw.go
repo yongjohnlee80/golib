@@ -268,6 +268,7 @@ func drawBlock(ops *op.Ops, r rune, rect image.Rectangle, c color.NRGBA) bool {
 
 // fillRect renders a solid rectangular fill in color c clipped to rect.
 func fillRect(ops *op.Ops, rect image.Rectangle, c color.NRGBA) {
+	countFill()
 	st := clip.Rect(rect).Push(ops)
 	paint.ColorOp{Color: c}.Add(ops)
 	paint.PaintOp{}.Add(ops)
