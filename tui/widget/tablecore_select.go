@@ -201,15 +201,8 @@ func (c *TableCore) refuseCopy() {
 	}
 }
 
-// copyString puts s on the clipboard, unless it is past the copy limit.
+// copyString puts s on the clipboard and gives it to TableOnCopy; setRegister has checked it.
 func (c *TableCore) copyString(s string) bool {
-	if c.copyLimit > 0 && len(s) > c.copyLimit {
-		c.refuseCopy()
-		return false
-	}
-	if c.Len() == 0 {
-		return false
-	}
 	delivered := false
 	if c.ctx != nil {
 		delivered = c.ctx.CopyToClipboard(s)

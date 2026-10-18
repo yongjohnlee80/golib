@@ -355,3 +355,97 @@ func TestTheMenuDisablesWhatCannotRun(t *testing.T) {
 		t.Fatalf("paste %v, delete fields %v: want both disabled", enabled["table.paste"], enabled["table.deleteFields"])
 	}
 }
+
+// TestEveryMenuRowRuns: each of the document's rows runs its command on the table, and the host's
+// rows follow the table's own.
+func TestEveryMenuRowRuns(t *testing.T) {
+	const text = "a,b\n1,2\n3,4\n"
+	for _, tc := range []struct {
+		id   ItemID
+		prep func(c *TableCore)
+		want string
+	}{
+		{"table.cut", nil, "a,b\n,2\n3,4\n"},
+		{"table.paste", func(c *TableCore) { c.register().SetRegister("x", false) }, "a,b\nx,2\n3,4\n"},
+		{"table.rowAbove", nil, "a,b\n,\n1,2\n3,4\n"},
+		{"table.rowBelow", nil, "a,b\n1,2\n,\n3,4\n"},
+		{"table.fieldLeft", nil, ",a,b\n,1,2\n,3,4\n"},
+		{"table.fieldRight", nil, "a,,b\n1,,2\n3,,4\n"},
+		{"table.deleteRows", nil, "a,b\n3,4\n"},
+		{"table.deleteFields", nil, "b\n2\n4\n"},
+	} {
+		ed := NewEditorCore(CoreInitialText(text))
+		d := NewTableDocument(ed, ',')
+		if tc.prep != nil {
+			tc.prep(d.Core())
+		}
+		ran := false
+		for _, r := range d.menuRows() {
+			if r.ID == tc.id {
+				r.Action.(CoreMenuAction).Run(nil)
+				ran = true
+			}
+		}
+		if !ran || ed.Value() != tc.want {
+			t.Fatalf("%s: ran %v, %q; want %q", tc.id, ran, ed.Value(), tc.want)
+		}
+	}
+	ed := NewEditorCore(CoreInitialText(text))
+	d := NewTableDocument(ed, ',')
+	for _, r := range d.menuRows() {
+		if r.ID == "table.selectAll" {
+			r.Action.(CoreMenuAction).Run(nil)
+		}
+	}
+	if kind := d.Core().SelectionKind(); kind != TableSelectRows {
+		t.Fatalf("Select all: %v, want every row", kind)
+	}
+	d.SetMenuRows(func() []MenuItemModel { return []MenuItemModel{NewCommand("host.row", "Host", CoreMenuAction{ID: "host.row"})} })
+	rows := d.menuRows()
+	if last := rows[len(rows)-1]; last.ID != "host.row" || rows[len(rows)-2].Kind != ItemKindSeparator {
+		t.Fatalf("the host's rows: last %q after %v", last.ID, rows[len(rows)-2].Kind)
+	}
+}
+
+// TestARightPressSelectsWhatItWasOn: on a row number outside the selection, that row; on a title
+// outside it, that field; inside the selection, nothing changes; on an empty table, nothing.
+func TestARightPressSelectsWhatItWasOn(t *testing.T) {
+	c := NewTableCore(people())
+	c.Bind(nil, &fakeTableLayout{})
+	c.selectForMenu(TablePos{Row: 2}, TableHitGutter)
+	if from, to, ok := c.Selection(); !ok || c.SelectionKind() != TableSelectRows || from.Row != 2 || to.Row != 2 {
+		t.Fatalf("a row number: %+v-%+v %v %v", from, to, ok, c.SelectionKind())
+	}
+	c.selectForMenu(TablePos{Row: 2}, TableHitGutter) // inside: kept
+	if !c.rowSelected(2) {
+		t.Fatal("a second press on the row's number dropped it")
+	}
+	c.selectForMenu(TablePos{Col: 1}, TableHitHeader)
+	if !c.fieldSelected(1) || c.fieldSelected(0) {
+		t.Fatal("a title did not select its field alone")
+	}
+	c.selectForMenu(TablePos{Row: 1, Col: 1}, TableHitCell) // inside the field: kept
+	if !c.fieldSelected(1) {
+		t.Fatal("a press inside the field's selection dropped it")
+	}
+	c.selectForMenu(TablePos{Row: 0, Col: 0}, TableHitCell)
+	if _, _, ok := c.Selection(); ok || c.Cursor() != (TablePos{0, 0}) {
+		t.Fatalf("a cell outside: selection %v, cursor %+v", ok, c.Cursor())
+	}
+	if c.Dragging() {
+		t.Fatal("a right press started a drag")
+	}
+	empty, _, _, _ := csvTable("a,b\n")
+	empty.selectForMenu(TablePos{}, TableHitGutter)
+	if _, _, ok := empty.Selection(); ok {
+		t.Fatal("an empty table selected a row")
+	}
+	empty.selectForMenu(TablePos{Col: 1}, TableHitHeader)
+	if _, _, ok := empty.Selection(); ok || empty.Cursor().Col != 1 {
+		t.Fatalf("a title on an empty table: selection %v, cursor %+v; want none, on the field", ok, empty.Cursor())
+	}
+	press(empty, 'y', 'y')
+	if text, _ := empty.register().Register(); text != "" {
+		t.Fatalf("yy on an empty table yanked %q", text)
+	}
+}
