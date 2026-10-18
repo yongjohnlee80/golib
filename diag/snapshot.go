@@ -60,6 +60,9 @@ func (m *Monitor) snapshot(s Sample) {
 	name := fmt.Sprintf("heap-%d.pb.gz", m.n)
 	if err := writeHeapProfile(filepath.Join(m.dir, name)); err != nil {
 		snap.Error = err.Error()
+		if m.err == nil { // Close's first failure, as a samples write's is
+			m.err = fmt.Errorf("diag: writing %s: %w", name, err)
+		}
 	} else {
 		snap.File = name
 	}
@@ -161,21 +164,34 @@ func sites(top int, prefixes []string) ([]Site, []Group) {
 }
 
 // groupOf is a stack's group: its first frame, innermost first, whose function starts with one of
-// prefixes, named by its package and receiver type ("pkg/path.Type" for "pkg/path.(*Type).Method"),
-// or its function without one; "other" when no frame matches.
+// prefixes, named by that function's own identity (identityOf), not by the prefix that selected
+// it; "other" when no frame matches.
 func groupOf(pcs []uintptr, prefixes []string) string {
 	fs := runtime.CallersFrames(pcs)
 	for {
 		f, more := fs.Next()
 		for _, p := range prefixes {
-			if rest, ok := strings.CutPrefix(f.Function, p); ok {
-				return strings.TrimSuffix(p, ".") + "." + receiverOf(rest)
+			if strings.HasPrefix(f.Function, p) {
+				return identityOf(f.Function)
 			}
 		}
 		if !more {
 			return "other"
 		}
 	}
+}
+
+// identityOf is a function's group name from its own full name, whatever prefix selected it:
+// its package path and receiver type ("pkg/path.Type" for "pkg/path.(*Type).Method"), or its
+// function ("pkg/path.Func" for "pkg/path.Func.func1").
+func identityOf(function string) string {
+	slash := strings.LastIndex(function, "/")
+	dot := strings.Index(function[slash+1:], ".")
+	if dot < 0 {
+		return function
+	}
+	pkg, rest := function[:slash+1+dot], function[slash+1+dot+1:]
+	return pkg + "." + receiverOf(rest)
 }
 
 // receiverOf is a function name's type ("(*Type).Method", "Type.Method" -> "Type"), or the

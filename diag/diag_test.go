@@ -15,6 +15,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"runtime"
+	"runtime/debug"
 	"runtime/pprof"
 	"strings"
 	"sync"
@@ -407,8 +408,12 @@ func childSites() {
 	runtime.MemProfileRate = 1
 	held = make([][]byte, 0, 512) // here, so holdSites allocates only what it holds
 	kept.b = make([][]byte, 0, 64)
+	// no collection may start inside the holders: the runtime allocates on the goroutine that
+	// starts one, and those allocations would be charged to the holder's group
+	gcPercent := debug.SetGCPercent(-1)
 	holdSites(512) // 256 of 4096 bytes and 256 of 8192: 3 MiB
 	kept.fill(64)  // 64 of 16384: 1 MiB
+	debug.SetGCPercent(gcPercent)
 	for range 3 {
 		runtime.GC()
 	}
@@ -617,4 +622,97 @@ func TestCloseEndsACPUProfile(t *testing.T) {
 		t.Fatalf("a CPU profile is still running: %v", err)
 	}
 	pprof.StopCPUProfile()
+}
+
+// A heap profile that could not be written is Close's failure, the same on a second Close.
+func TestASnapshotThatFailsFailsClose(t *testing.T) {
+	dir := shortDir(t)
+	m, err := Start(context.Background(), dir, WithStep(1<<40)) // no snapshot until Close's
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, "heap-1.pb.gz"), []byte("taken"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	err = m.Close()
+	if err == nil || !strings.Contains(err.Error(), "heap-1.pb.gz") {
+		t.Fatalf("Close after a failed snapshot: %v", err)
+	}
+	if again := m.Close(); again == nil || again.Error() != err.Error() {
+		t.Errorf("a second Close: %v, want %v", again, err)
+	}
+	if b, _ := os.ReadFile(filepath.Join(dir, "heap-1.pb.gz")); string(b) != "taken" {
+		t.Error("the taken name was overwritten")
+	}
+}
+
+// Fetch keeps no connection: each one it opens is closed when it returns.
+func TestFetchKeepsNoConnection(t *testing.T) {
+	sock := filepath.Join(shortDir(t), "f.sock")
+	ln, err := net.Listen("unix", sock)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var mu sync.Mutex
+	opened, closed := 0, 0
+	srv := &http.Server{Handler: profileMux(make(chan struct{})), ConnState: func(_ net.Conn, s http.ConnState) {
+		mu.Lock()
+		defer mu.Unlock()
+		switch s {
+		case http.StateNew:
+			opened++
+		case http.StateClosed, http.StateHijacked:
+			closed++
+		}
+	}}
+	go srv.Serve(ln)
+	defer srv.Close()
+	counts := func() (int, int) { mu.Lock(); defer mu.Unlock(); return opened, closed }
+	for i := 1; i <= 4; i++ {
+		if err := Fetch(context.Background(), sock, "heap", io.Discard); err != nil {
+			t.Fatal(err)
+		}
+		deadline := time.Now().Add(5 * time.Second)
+		for o, c := counts(); c < o && time.Now().Before(deadline); o, c = counts() {
+			time.Sleep(5 * time.Millisecond)
+		}
+		if o, c := counts(); o != i || c != i {
+			t.Fatalf("after Fetch %d: %d connections opened, %d closed; want %d and %d", i, o, c, i, i)
+		}
+	}
+}
+
+//go:noinline
+func funcCallers() []uintptr {
+	pcs := make([]uintptr, 32)
+	return pcs[:runtime.Callers(1, pcs)]
+}
+
+//go:noinline
+func (k *keeper) callers() []uintptr {
+	pcs := make([]uintptr, 32)
+	return pcs[:runtime.Callers(1, pcs)]
+}
+
+// A group is the matched frame's own identity, whichever prefix admitted it.
+func TestAGroupIsItsFramesOwnIdentity(t *testing.T) {
+	const pkg = "github.com/yongjohnlee80/golib/diag"
+	fn, method := funcCallers(), (&keeper{}).callers()
+	for _, prefix := range []string{pkg + ".", pkg, "github.com/yongjohnlee80/golib/", "github.com/"} {
+		if got := groupOf(fn, []string{prefix}); got != pkg+".funcCallers" {
+			t.Errorf("prefix %q, a function: %q", prefix, got)
+		}
+		if got := groupOf(method, []string{prefix}); got != pkg+".keeper" {
+			t.Errorf("prefix %q, a method: %q", prefix, got)
+		}
+	}
+	if got := groupOf(fn, []string{pkg + ".funcCall"}); got != pkg+".funcCallers" {
+		t.Errorf("a function's own prefix: %q", got)
+	}
+	if got := groupOf(method, []string{pkg + ".(*keep"}); got != pkg+".keeper" {
+		t.Errorf("a method's own prefix: %q", got)
+	}
+	if got := groupOf(fn, []string{"example.com/nothing."}); got != "other" {
+		t.Errorf("no frame matched: %q", got)
+	}
 }
