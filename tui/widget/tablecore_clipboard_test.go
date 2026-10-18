@@ -35,8 +35,8 @@ func TestYankedRowsPasteAsNewRecords(t *testing.T) {
 	c.SetCursor(TablePos{2, 0})
 	press(c, 'y', 'y')
 	pressShift(c, 'P')
-	if want := "h\nA\nB\nC\nC\n"; core.Value() != want {
-		t.Fatalf("yy P on the last row: %q, want %q", core.Value(), want)
+	if want := "h\nA\nB\nC\nC\n"; core.Value() != want || c.Cursor().Row != 2 {
+		t.Fatalf("yy P on the last row: %q, cursor %d; want %q, the cursor on row 2 (the copy)", core.Value(), c.Cursor().Row, want)
 	}
 
 	c, _, core, _ = csvTable(abc)
@@ -44,8 +44,8 @@ func TestYankedRowsPasteAsNewRecords(t *testing.T) {
 	press(c, 'j', 'j', 'y')
 	c.SetCursor(TablePos{2, 0})
 	press(c, 'p')
-	if want := "h\nA\nB\nC\nA\nB\nC\n"; core.Value() != want {
-		t.Fatalf("three rows pasted after the last: %q, want %q", core.Value(), want)
+	if want := "h\nA\nB\nC\nA\nB\nC\n"; core.Value() != want || c.Cursor().Row != 3 {
+		t.Fatalf("three rows pasted after the last: %q, cursor %d; want %q, the cursor on row 3", core.Value(), c.Cursor().Row, want)
 	}
 }
 
@@ -263,8 +263,8 @@ func TestRowsPastedOnTheEdgeRowAppend(t *testing.T) {
 		if !c.PasteRegister(before) {
 			t.Fatalf("P=%v on the edge row refused", before)
 		}
-		if want := "h\nA\nB\nC\nA\n"; core.Value() != want {
-			t.Fatalf("P=%v: %q, want %q", before, core.Value(), want)
+		if want := "h\nA\nB\nC\nA\n"; core.Value() != want || c.Cursor().Row != 3 {
+			t.Fatalf("P=%v: %q, cursor %d; want %q, the cursor on row 3 (the row pasted)", before, core.Value(), c.Cursor().Row, want)
 		}
 	}
 }
@@ -299,13 +299,19 @@ func TestAnEmptyCellThroughTheMenu(t *testing.T) {
 func TestRowsGoInOnTheEdgeRowAndAHeaderOnlyTable(t *testing.T) {
 	c, _, core, _ := csvTable("h\nA\n", TableAppendEdges())
 	c.SetCursor(TablePos{c.Len(), 0})
-	if !c.InsertRows(false) || core.Value() != "h\nA\n\"\"\n" {
-		t.Fatalf("Insert row below on the edge row: %q", core.Value())
+	if !c.InsertRows(false) || core.Value() != "h\nA\n\"\"\n" || c.Cursor().Row != 1 {
+		t.Fatalf("Insert row below on the edge row: %q, cursor %d; want the cursor on row 1", core.Value(), c.Cursor().Row)
 	}
-	shared := &ownRegister{text: "B", linewise: true}
-	c, _, core, _ = csvTable("h\n", TableRegister(shared))
-	if !c.PasteRegister(false) || core.Value() != "h\nB\n" {
-		t.Fatalf("p on a header-only table: %q", core.Value())
+	for _, edges := range []bool{false, true} {
+		opts := []TableOption{TableRegister(&ownRegister{text: "B\nC", linewise: true})}
+		if edges {
+			opts = append(opts, TableAppendEdges())
+		}
+		c, _, core, _ = csvTable("h\n", opts...)
+		if !c.PasteRegister(false) || core.Value() != "h\nB\nC\n" || c.Cursor().Row != 0 {
+			t.Fatalf("p on a header-only table (edges %v): %q, cursor %d; want the cursor on row 0", edges, core.Value(), c.Cursor().Row)
+		}
+		undoes(t, core, "h\n")
 	}
 }
 
