@@ -156,10 +156,14 @@ func Fetch(ctx context.Context, socket, profile string, w io.Writer) error {
 	if err := checkProfile(profile); err != nil {
 		return err
 	}
-	c := &http.Client{Transport: &http.Transport{DialContext: func(ctx context.Context, _, _ string) (net.Conn, error) {
+	// a transport of this call's own, its one connection closed when the call ends, whatever the
+	// path: no connection is kept for a next Fetch
+	tr := &http.Transport{DisableKeepAlives: true, DialContext: func(ctx context.Context, _, _ string) (net.Conn, error) {
 		var d net.Dialer
 		return d.DialContext(ctx, "unix", socket)
-	}}}
+	}}
+	defer tr.CloseIdleConnections()
+	c := &http.Client{Transport: tr}
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, "http://diag/debug/pprof/"+profile, nil)
 	if err != nil {
 		return fmt.Errorf("diag: %w", err)
