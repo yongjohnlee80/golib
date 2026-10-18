@@ -48,14 +48,15 @@ import (
 type Editor struct {
 	panel *Panel // a field, not embedded: Panel's methods call each other on their receiver
 
-	core    *tuiwidget.EditorCore
-	body    *editorBody
-	stack   *editorStack // the Panel's content: the body, and the document view
-	layout  *pixelLayout
-	menu    *tuiwidget.EditorMenu
-	cmdline *tuiwidget.CommandLine // the ':' prompt, shared with the terminal's Editor
-	sw      *modeSwitch
-	tabs    *tuiwidget.TabStrip // the host's tabs on the title bar (Tabs)
+	core      *tuiwidget.EditorCore
+	body      *editorBody
+	stack     *editorStack // the Panel's content: the body, and the document view
+	layout    *pixelLayout
+	keepPlace bool // a text set keeps the reader's place (SetKeepPlace, ReplaceValue)
+	menu      *tuiwidget.EditorMenu
+	cmdline   *tuiwidget.CommandLine // the ':' prompt, shared with the terminal's Editor
+	sw        *modeSwitch
+	tabs      *tuiwidget.TabStrip // the host's tabs on the title bar (Tabs)
 
 	mode   EditorMode
 	render Renderer
@@ -355,6 +356,22 @@ func (e *Editor) SetValue(s string) {
 	if e.stack.docShown {
 		e.doc.ShowDocument([]byte(s))
 	}
+}
+
+// SetKeepPlace makes a text set keep the reader's place, as ReplaceValue does: decl's keepPlace.
+func (e *Editor) SetKeepPlace(v bool) { e.keepPlace = v }
+
+// KeepsPlace reports whether a text set keeps the reader's place (SetKeepPlace).
+func (e *Editor) KeepsPlace() bool { return e.keepPlace }
+
+// ReplaceValue replaces the text as SetValue does, but keeps the reader's place: the cursor on
+// its line and column as far as the new text has them, and the scroll. It is for a viewer a
+// program refreshes (decl's keepPlace), which scrolling must not lose each time.
+func (e *Editor) ReplaceValue(s string) {
+	at, scroll := e.core.Cursor(), e.layout.scroll
+	e.SetValue(s)
+	e.core.SetCursor(at)
+	e.layout.scroll = scroll // after SetCursor's reveal: the wheel moves the view, not the cursor
 }
 
 // SetCursorPosition puts the cursor pos characters from the start, a line break one.

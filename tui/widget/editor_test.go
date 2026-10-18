@@ -1364,3 +1364,32 @@ func TestEditorMousePressModelessVisualExit(t *testing.T) {
 		t.Errorf("expected cursor at (1, 1), got (%d, %d)", row, col)
 	}
 }
+
+// ReplaceValue keeps the reader's place where SetValue, a load, starts at the top: the wheel's
+// scroll and the cursor it left behind both stay through a new text (a viewer a program
+// refreshes, decl's keepPlace).
+func TestEditorReplaceValueKeepsTheReadersPlace(t *testing.T) {
+	h, ed, sh := focusedEditor(t, 20, 3)
+	h.onLoop(func() { ed.SetValue("l0\nl1\nl2\nl3\nl4\nl5") })
+	h.barrier(sh)
+	wheel := tui.MouseEvent{Kind: tui.MouseWheel, Button: tui.WheelDown, X: 1, Y: 1}
+	h.inject(wheel, wheel)
+	h.barrier(sh)
+	h.onLoop(func() { ed.ReplaceValue("m0\nm1\nm2\nm3\nm4\nm5") })
+	h.barrier(sh)
+	if val, _, ln, _ := edState(h, ed); val != "m0\nm1\nm2\nm3\nm4\nm5" || ln != 0 {
+		t.Fatalf("after ReplaceValue: text %q, cursor line %d; want the new text, the cursor on line 0", val, ln)
+	}
+	h.inject(click(0, 0))
+	h.barrier(sh)
+	if _, _, ln, _ := edState(h, ed); ln != 2 {
+		t.Errorf("after ReplaceValue the top row is line %d, want 2: the wheel's place", ln)
+	}
+	h.onLoop(func() { ed.SetValue("n0\nn1\nn2\nn3\nn4\nn5") })
+	h.barrier(sh)
+	h.inject(click(0, 0))
+	h.barrier(sh)
+	if _, _, ln, _ := edState(h, ed); ln != 0 {
+		t.Errorf("after SetValue the top row is line %d, want 0: a load starts at the top", ln)
+	}
+}

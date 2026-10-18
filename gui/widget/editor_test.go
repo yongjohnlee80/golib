@@ -2,6 +2,7 @@ package widget
 
 import (
 	"context"
+	"strconv"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -790,5 +791,35 @@ func TestACursorMovingInAViewerReLaysNothing(t *testing.T) {
 	editor.paint()
 	if ec.calls <= before {
 		t.Fatalf("an editable editor typing re-laid nothing when the cursor moved onto a block: %d -> %d calls", before, ec.calls)
+	}
+}
+
+// ReplaceValue keeps the reader's place where SetValue, a load, starts at the top: the wheel's
+// scroll and the cursor it left behind stay through a new text (decl's keepPlace).
+func TestEditorReplaceValueKeepsTheReadersPlace(t *testing.T) {
+	var lines []string
+	for i := range 40 {
+		lines = append(lines, "line "+strconv.Itoa(i))
+	}
+	h := startEditor(t, 50, 6, WithCore(tuiwidget.CoreInitialText(strings.Join(lines, "\n"))))
+	h.paint()
+	var scrolled float32
+	h.onLoop(func() { h.e.layout.scrollBy(80); scrolled = h.e.layout.scroll })
+	if scrolled <= 0 {
+		t.Fatal("the editor did not scroll")
+	}
+	var scroll float32
+	var at tuiwidget.TextPos
+	h.onLoop(func() {
+		h.e.ReplaceValue(strings.ReplaceAll(strings.Join(lines, "\n"), "line", "row"))
+		scroll, at = h.e.layout.scroll, h.e.core.Cursor()
+	})
+	h.paint()
+	if scroll != scrolled || at != (tuiwidget.TextPos{}) {
+		t.Errorf("after ReplaceValue: scroll %v, cursor %v; want %v and the cursor where it was", scroll, at, scrolled)
+	}
+	h.onLoop(func() { h.e.SetValue("fresh"); scroll = h.e.layout.scroll })
+	if scroll != 0 {
+		t.Errorf("after SetValue the scroll is %v, want 0: a load starts at the top", scroll)
 	}
 }

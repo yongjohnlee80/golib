@@ -104,9 +104,14 @@ func (d EditorDecl) Attach(core *widget.EditorCore) {
 
 // The behaviour an Editor's runtime properties set, as any editor widget offers it.
 type (
-	keysetter    interface{ SetKeyset(widget.Keyset) }
-	readOnlyer   interface{ SetReadOnly(bool) }
-	valueSetter  interface{ SetValue(string) }
+	keysetter   interface{ SetKeyset(widget.Keyset) }
+	readOnlyer  interface{ SetReadOnly(bool) }
+	valueSetter interface{ SetValue(string) }
+	placeKeeper interface {
+		SetKeepPlace(bool)
+		KeepsPlace() bool
+		ReplaceValue(string)
+	}
 	cursorPlacer interface{ SetCursorPosition(int) }
 	coreEditor   interface{ Core() *widget.EditorCore }
 	commandLiner interface {
@@ -117,13 +122,30 @@ type (
 
 // EditorSetters are the Editor's behaviour properties, for any editor widget with the methods
 // they call: `keyset` (SetKeyset), `readOnly` (SetReadOnly), `text` (SetValue, replacing the
-// buffer as a load does) and `cursorPosition` (SetCursorPosition: characters from the start, a
-// line break one). Each widget adds its own view properties beside them.
+// buffer as a load does; with `keepPlace`, ReplaceValue, keeping the reader's cursor and scroll, for
+// a viewer a program refreshes) and `cursorPosition` (SetCursorPosition: characters from the
+// start, a line break one). Each widget adds its own view properties beside them.
 func EditorSetters() map[string]Setter {
 	return map[string]Setter{
-		"keyset":     setter("an Editor", keysets.read, keysetter.SetKeyset),
-		"readOnly":   setter("an Editor", boolOf, readOnlyer.SetReadOnly),
-		"text":       setter("an Editor", stringOf, valueSetter.SetValue),
+		"keyset":   setter("an Editor", keysets.read, keysetter.SetKeyset),
+		"readOnly": setter("an Editor", boolOf, readOnlyer.SetReadOnly),
+		"text": func(c tui.Component, v qml.SpecValue) error {
+			s, err := stringOf(v)
+			if err != nil {
+				return err
+			}
+			if k, ok := c.(placeKeeper); ok && k.KeepsPlace() {
+				k.ReplaceValue(s)
+				return nil
+			}
+			e, ok := c.(valueSetter)
+			if !ok {
+				return fmt.Errorf("not an Editor")
+			}
+			e.SetValue(s)
+			return nil
+		},
+		"keepPlace":  setter("an Editor", boolOf, placeKeeper.SetKeepPlace),
 		"autoIndent": setter("an Editor", boolOf, func(e coreEditor, v bool) { e.Core().SetAutoIndent(v) }),
 		// the ':' prompt, on by default
 		"commandLine": setter("an Editor", boolOf, commandLiner.SetCommandLineEnabled),
