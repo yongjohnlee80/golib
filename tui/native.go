@@ -63,8 +63,7 @@ type NativePlacement struct {
 	// Full is the node's whole rect (absolute cells; it may start above or left of the screen)
 	// when that differs from the part that shows (a ScrollView's child half scrolled out); zero
 	// otherwise. A backend that draws views lays the view out at Full's size from Full's origin and
-	// clips it to X, Y, Cols, Rows (ADR 1792358868 §4.3); one that reads only the bounded fields is
-	// as it was.
+	// clips it to X, Y, Cols, Rows; one that reads only the bounded fields is as it was.
 	Full    Rect
 	Covered []Rect // cells inside it painted after it (after its subtree, for ScopeSubtree)
 }
