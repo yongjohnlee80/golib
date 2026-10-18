@@ -90,7 +90,10 @@ go run ./examples/scene3d  # a 3D scene on its own GPU device, in a pixel pane b
 
 `scene3d` renders on Vulkan (Linux) or Metal (macOS) when the window draws its
 frames without a copy, and on the CPU otherwise; `-producer=cpu` forces the
-CPU. Its sidebar says which, and the frame rate is in the pane's corner.
+CPU. Its sidebar says which, and the frame rate is in the pane's corner. It
+renders at the display's pace, so it shows the refresh rate; `-unpaced` renders
+as fast as the producer can and shows the frames rendered beside the frames
+shown (the window still draws at most one a refresh).
 
 Linux needs cgo and the Wayland/X11 development libraries:
 

@@ -3,6 +3,12 @@
 //
 //	go run ./examples/scene3d                  # Vulkan (Linux) or Metal (macOS) when zero-copy, else the CPU
 //	go run ./examples/scene3d -producer=cpu    # the CPU producer, copied into the window
+//	go run ./examples/scene3d -unpaced         # render as fast as the producer can; show both rates
+//
+// Paced (the default), it renders the next frame once the window drew the last, so it shows the
+// display's refresh rate. -unpaced renders without waiting: the window still draws at most one
+// frame a refresh, and the frames rendered between refreshes are superseded, so the overlay shows
+// the frames shown and the frames rendered, the producer's throughput.
 //
 // It is golib/gui v0.2.0's pieces together: a pixel root of panes (WithPanes), a Stream of
 // frames from another device (FrameCaps, Push, Receipt), a CanvasStream for the overlay, and the
@@ -30,15 +36,19 @@ import (
 
 func main() {
 	want := flag.String("producer", "auto", "the scene's producer: auto, cpu or "+gpuProducerName)
+	unpaced := flag.Bool("unpaced", false, "render without waiting for the window to draw each frame; show the frames rendered as well as shown")
 	flag.Parse()
-	gui.Main(func() error { return run(*want) })
+	gui.Main(func() error { return run(*want, *unpaced) })
 }
 
-func run(want string) error {
+func run(want string, unpaced bool) error {
 	ctx, quit := context.WithCancel(context.Background())
 	defer quit()
-	st := &stats{}
-	vp := &viewport{}
+	st := &stats{unpaced: unpaced}
+	vp := &viewport{badgeW: fpsW}
+	if unpaced {
+		vp.badgeW = fpsWideW
+	}
 	side := &sidebar{stats: st, quit: quit}
 	panes := gui.NewPanes(gui.Row(
 		gui.Sized(gui.Fixed(260), gui.Cells(side)),
@@ -51,7 +61,7 @@ func run(want string) error {
 	wg.Add(1)
 	go func() {
 		defer wg.Done()
-		if err := loop(ctx, b, vp, st, want); err != nil {
+		if err := loop(ctx, b, vp, st, want, unpaced); err != nil {
 			st.setErr(err)
 		}
 	}()
@@ -63,9 +73,11 @@ func run(want string) error {
 	return err
 }
 
-// loop renders the scene at the display's pace: it renders a frame, pushes it, and renders the
-// next when the window has drawn it (or superseded it). Its producer follows the window's caps.
-func loop(ctx context.Context, b *gui.Backend, vp *viewport, st *stats, want string) error {
+// loop renders the scene. Paced, it renders a frame, pushes it, and renders the next when the
+// window has drawn it (or superseded it). Unpaced, it renders the next at once and reads the
+// receipts as they complete: Drawn frames were shown, Superseded ones only rendered. Its producer
+// follows the window's caps.
+func loop(ctx context.Context, b *gui.Backend, vp *viewport, st *stats, want string, unpaced bool) error {
 	caps, err := waitCaps(ctx, b)
 	if err != nil {
 		return err
@@ -84,7 +96,29 @@ func loop(ctx context.Context, b *gui.Backend, vp *viewport, st *stats, want str
 	var paused time.Duration // time spent paused, taken out of the scene's clock
 	var pausedAt time.Time
 	window := time.Now()
-	drawn := 0
+	drawn, rendered := 0, 0
+	var inflight []*gui.Receipt // unpaced: receipts not yet complete
+	// settle reads one completed receipt; false: the loop ends (the stream closed).
+	settle := func(r *gui.Receipt) (bool, error) {
+		switch r.Outcome() {
+		case gui.Drawn:
+			drawn++
+		case gui.Unsupported: // the window's device changed: choose again
+			prod.close()
+			prod = nil
+			var err error
+			if caps, err = waitCaps(ctx, b); err != nil {
+				return false, err
+			}
+			if prod, err = choose(want, caps); err != nil {
+				return false, err
+			}
+			st.setProducer(prod, caps)
+		case gui.Closed:
+			return false, nil
+		}
+		return true, nil
+	}
 	for ctx.Err() == nil {
 		size := vp.pixels()
 		if size.X <= 0 || size.Y <= 0 || st.paused.Load() {
@@ -108,34 +142,38 @@ func loop(ctx context.Context, b *gui.Backend, vp *viewport, st *stats, want str
 			return err
 		}
 		st.renderTime.Store(int64(time.Since(t0)))
+		rendered++
 		r := vp.frames.Push(f)
-		select {
-		case <-r.Done():
-		case <-ctx.Done():
-			return nil
-		}
-		switch r.Outcome() {
-		case gui.Drawn:
-			drawn++
-		case gui.Unsupported: // the window's device changed: choose again
-			prod.close()
-			prod = nil
-			if caps, err = waitCaps(ctx, b); err != nil {
+		if unpaced {
+			inflight = append(inflight, r)
+			kept := inflight[:0]
+			for _, r := range inflight {
+				if r.Outcome() == 0 {
+					kept = append(kept, r)
+					continue
+				}
+				if ok, err := settle(r); !ok {
+					return err
+				}
+			}
+			inflight = kept
+		} else {
+			select {
+			case <-r.Done():
+			case <-ctx.Done():
+				return nil
+			}
+			if ok, err := settle(r); !ok {
 				return err
 			}
-			if prod, err = choose(want, caps); err != nil {
-				return err
-			}
-			st.setProducer(prod, caps)
-		case gui.Closed:
-			return nil
 		}
 		if el := time.Since(window); el >= 500*time.Millisecond {
-			fps := float64(drawn) / el.Seconds()
+			fps, rfps := float64(drawn)/el.Seconds(), float64(rendered)/el.Seconds()
 			st.fps.Store(math.Float64bits(fps))
+			st.renderedFPS.Store(math.Float64bits(rfps))
 			st.size.Store(&size)
-			vp.pushFPS(fps)
-			window, drawn = time.Now(), 0
+			vp.pushFPS(fps, rfps, unpaced)
+			window, drawn, rendered = time.Now(), 0, 0
 		}
 	}
 	return nil
@@ -159,15 +197,17 @@ func waitCaps(ctx context.Context, b *gui.Backend) (caps extimage.Caps, err erro
 
 // stats is what the sidebar shows; the loop writes it.
 type stats struct {
-	mu         sync.Mutex
-	producer   string
-	path       string
-	driver     string
-	err        error
-	fps        atomic.Uint64 // float64 bits
-	renderTime atomic.Int64  // time.Duration of the last render
-	size       atomic.Pointer[image.Point]
-	paused     atomic.Bool
+	mu          sync.Mutex
+	producer    string
+	path        string
+	driver      string
+	err         error
+	unpaced     bool
+	fps         atomic.Uint64 // frames shown a second, float64 bits
+	renderedFPS atomic.Uint64 // frames rendered a second, float64 bits
+	renderTime  atomic.Int64  // time.Duration of the last render
+	size        atomic.Pointer[image.Point]
+	paused      atomic.Bool
 }
 
 func (s *stats) setProducer(p producer, caps extimage.Caps) {
@@ -186,6 +226,7 @@ func (s *stats) setErr(err error) {
 type viewport struct {
 	frames *gui.Stream
 	fps    *gui.CanvasStream
+	badgeW float32                     // the overlay's width, dp: wider when it shows both rates
 	size   atomic.Pointer[image.Point] // the pane in device pixels, from its last paint
 }
 
@@ -201,7 +242,7 @@ func (v *viewport) NativeView() (any, bool) {
 		px := image.Pt(int(math.Round(float64(sz.W*scale))), int(math.Round(float64(sz.H*scale))))
 		v.size.Store(&px)
 		gui.DrawStream(c, v.frames, gui.Rect{W: sz.W, H: sz.H})
-		gui.DrawCanvasStream(c, v.fps, gui.Rect{X: sz.W - fpsW - 12, Y: 12, W: fpsW, H: fpsH})
+		gui.DrawCanvasStream(c, v.fps, gui.Rect{X: sz.W - v.badgeW - 12, Y: 12, W: v.badgeW, H: fpsH})
 	}), true
 }
 
@@ -212,15 +253,20 @@ func (v *viewport) pixels() image.Point {
 	return image.Point{}
 }
 
-const fpsW, fpsH = 112, 30 // the overlay, in dp
+// The overlay, in dp: the frame rate shown, or (unpaced) the rates shown and rendered.
+const fpsW, fpsWideW, fpsH = 112, 250, 30
 
-// pushFPS draws the overlay with the rate.
-func (v *viewport) pushFPS(fps float64) {
+// pushFPS draws the overlay with the rate shown, and unpaced the rate rendered.
+func (v *viewport) pushFPS(fps, rendered float64, unpaced bool) {
 	label := fmt.Sprintf("%.0f fps", fps)
-	v.fps.Push(gui.Size{W: fpsW, H: fpsH}, func(c gui.Canvas) {
-		c.FillRRect(gui.Rect{W: fpsW, H: fpsH}, 6, gui.Brush{Color: color.NRGBA{A: 0xb0}})
-		t := c.Text().Layout(label, gui.Font{Family: gui.CellFamily, Size: 15, Bold: true}, fpsW)
-		c.DrawText(t, gui.Pt(fpsW-10-t.Width, (fpsH-t.Height)/2), gui.Brush{Color: color.NRGBA{R: 0x9e, G: 0xe0, B: 0x7a, A: 0xff}})
+	if unpaced {
+		label = fmt.Sprintf("%.0f shown · %.0f rendered", fps, rendered)
+	}
+	w := v.badgeW
+	v.fps.Push(gui.Size{W: w, H: fpsH}, func(c gui.Canvas) {
+		c.FillRRect(gui.Rect{W: w, H: fpsH}, 6, gui.Brush{Color: color.NRGBA{A: 0xb0}})
+		t := c.Text().Layout(label, gui.Font{Family: gui.CellFamily, Size: 15, Bold: true}, w)
+		c.DrawText(t, gui.Pt(w-10-t.Width, (fpsH-t.Height)/2), gui.Brush{Color: color.NRGBA{R: 0x9e, G: 0xe0, B: 0x7a, A: 0xff}})
 	})
 }
 
@@ -299,7 +345,12 @@ func (s *sidebar) Render(sf tui.Surface) {
 	if p := st.size.Load(); p != nil {
 		field("frame size", fmt.Sprintf("%d × %d px", p.X, p.Y))
 	}
-	field("frame rate", fmt.Sprintf("%.1f fps", math.Float64frombits(st.fps.Load())))
+	if st.unpaced {
+		field("frames shown", fmt.Sprintf("%.1f a second", math.Float64frombits(st.fps.Load())))
+		field("frames rendered", fmt.Sprintf("%.1f a second (unpaced)", math.Float64frombits(st.renderedFPS.Load())))
+	} else {
+		field("frame rate", fmt.Sprintf("%.1f fps", math.Float64frombits(st.fps.Load())))
+	}
 	field("render time", fmt.Sprintf("%.2f ms", float64(st.renderTime.Load())/1e6))
 	if st.paused.Load() {
 		line(title, "paused")
