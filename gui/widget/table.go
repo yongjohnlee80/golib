@@ -80,6 +80,17 @@ type tableLayout struct {
 	nums   map[int]*tableBand // the row numbers, by display row: the last paint's
 	empty  *tableBand
 	plus   *tableBand // the edge's "+": over the edge field, and in the edge row's gutter
+
+	// shownEdit is the open field as the last paint revealed it: a new edit, text or caret is
+	// revealed again; the wheel's scroll stays while none changes
+	shownEdit editMark
+}
+
+// editMark is an open field's edit, text and caret.
+type editMark struct {
+	e       *tuiwidget.TableEdit
+	text    string
+	ln, col int
 }
 
 var (
@@ -118,10 +129,18 @@ func (l *tableLayout) Reveal(row, col int) {
 	if l.size.W <= 0 || l.size.H <= 0 {
 		return
 	}
-	// the row as drawn: after o's new row, one further down
-	v := l.core().DrawnOf(row)
+	l.revealDrawn(l.core().DrawnOf(row)) // the row as drawn: after o's new row, one further down
+	l.revealField(col)
+}
+
+// revealDrawn scrolls so drawn row v shows.
+func (l *tableLayout) revealDrawn(v int) {
 	l.top = min(l.top, max(l.core().DrawnRows()-l.bodyRows(), 0)) // rows gone (a filter, a new result) leave no blank below the last
 	l.top = max(min(max(l.top, v-l.bodyRows()+1), v), 0)
+}
+
+// revealField scrolls sideways so field col shows whole, the edge field after the last among them.
+func (l *tableLayout) revealField(col int) {
 	if col < l.left {
 		l.left = col
 	}
@@ -130,14 +149,49 @@ func (l *tableLayout) Reveal(row, col int) {
 	}
 }
 
+// revealEdit scrolls the open field into sight when it is new or its text or caret moved: its
+// first row, its caret's line under it as far as the view allows, and its field.
+func (l *tableLayout) revealEdit() {
+	core := l.core()
+	e := core.Editing()
+	if e == nil {
+		l.shownEdit = editMark{}
+		return
+	}
+	ln, col := e.Field.Caret()
+	mark := editMark{e: e, text: e.Field.Value(), ln: ln, col: col}
+	if mark == l.shownEdit {
+		return
+	}
+	l.shownEdit = mark
+	v := core.DrawnOf(e.Pos.Row)
+	if e.Inserting() {
+		v = e.Pos.Row
+	}
+	l.revealDrawn(v + max(ln, 0))
+	l.top = min(l.top, v) // the field is drawn from its first row: that row stays shown
+	l.revealField(e.Pos.Col)
+}
+
 // fits reports whether fields from..to fit the view's width when from is the first shown.
 func (l *tableLayout) fits(from, to int) bool {
 	w := l.gutter()
 	for col := from; col <= to; col++ {
-		w += float32(l.core().Width(col)) + 2*l.pad
+		w += l.fieldWidth(col) + 2*l.pad
 	}
 	return w <= l.size.W
 }
+
+// fieldWidth is field col's text width as it is drawn: the edge field's for the one after the last.
+func (l *tableLayout) fieldWidth(col int) float32 {
+	if col == len(l.core().Fields()) {
+		return l.edgeWidth()
+	}
+	return float32(l.core().Width(col))
+}
+
+// edgeWidth is the edge field's text width: a square cell's room for a first value.
+func (l *tableLayout) edgeWidth() float32 { return l.rowH }
 
 // PageRows implements tuiwidget.TableLayout.
 func (l *tableLayout) PageRows() int { return max(l.bodyRows()-1, 1) }
@@ -238,7 +292,7 @@ func (l *tableLayout) edgeColumn(cols []tableColumn) (tableColumn, bool) {
 	case l.left < n:
 		return tableColumn{}, false
 	}
-	w := l.rowH // a square cell's room for a first value
+	w := l.edgeWidth()
 	if x+w > l.size.W {
 		return tableColumn{}, false
 	}
@@ -308,6 +362,7 @@ func (l *tableLayout) Paint(c gui.Canvas) {
 		l.size = size // a new size keeps the cursor in sight; the same size keeps the wheel's scroll
 		l.Reveal(core.Cursor().Row, core.Cursor().Col)
 	}
+	l.revealEdit()
 	drawn := core.DrawnRows()
 	l.top = min(l.top, max(drawn-1, 0))
 	size := l.size
