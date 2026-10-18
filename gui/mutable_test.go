@@ -14,13 +14,10 @@ func solid(c color.RGBA) *image.Uniform { return image.NewUniform(c) }
 // pendingFrame is the frame m's stream would draw now.
 func pendingFrame(t *testing.T, m *MutableImage) *Frame {
 	t.Helper()
-	p, ok := m.st.s.current().(*framePayload)
+	p, ok := pendingOf(&m.st.s).(*framePayload)
 	if !ok {
 		t.Fatal("nothing pending")
 	}
-	m.st.s.mu.Lock()
-	m.st.s.drawn = false // a peek, not a draw
-	m.st.s.mu.Unlock()
 	return p.f
 }
 

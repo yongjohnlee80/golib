@@ -98,6 +98,8 @@ func (p *canvasPayload) add(ops *op.Ops, dst Rect, _ func(error)) {
 	tr.Pop()
 }
 
+func (p *canvasPayload) retain() {}
+
 func (p *canvasPayload) drop() {}
 
 // DrawCanvasStream records a slot in c where the window draws cs's newest picture, scaled into

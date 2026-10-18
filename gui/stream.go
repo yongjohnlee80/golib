@@ -127,7 +127,9 @@ func (r *Receipt) When() time.Time {
 type payload interface {
 	// add draws it scaled into dst (the slot's coordinates, after the slot's transform).
 	add(ops *op.Ops, dst Rect, report func(error))
-	// drop gives up the stream's hold on it, outside every lock.
+	// retain takes another hold on it: a window frame's lease while the toolkit draws it.
+	retain()
+	// drop gives up one hold on it, outside every lock.
 	drop()
 }
 
@@ -141,8 +143,15 @@ type stream struct {
 	shown   payload
 	closed  bool
 	err     error
-	drawn   bool        // a slot drew it in the frame being presented
 	report  func(error) // setErr, made once: a method value per slot drawn would allocate
+
+	// The picture the window frame being presented draws in this stream's slots, chosen by its
+	// first slot and leased until the frame was handed to the toolkit. selR is its receipt when
+	// it was the pending picture, nil when it was the shown one. A push meanwhile waits for the
+	// next frame; a Close meanwhile leaves the selection to the presentation to settle.
+	selected bool
+	sel      payload
+	selR     *Receipt
 }
 
 func (s *stream) init(b *Backend) {
@@ -174,47 +183,75 @@ func (s *stream) push(p payload, then func(Outcome)) *Receipt {
 	return r
 }
 
-// current is the picture a slot draws now: the pending one if any (it is about to be shown),
-// else the shown one. Gio goroutine, during present.
-func (s *stream) current() payload {
+// selection is the picture this window frame draws in the stream's slots. The frame's first slot
+// chooses it, the pending picture if any (it is about to be shown) else the shown one, leases it
+// and lists the stream for presentation; later slots of the frame draw the same picture. Gio
+// goroutine, during present.
+func (s *stream) selection() payload {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	s.drawn = true
-	if s.pending != nil {
-		return s.pending
+	if !s.selected {
+		s.selected = true
+		if s.pending != nil {
+			s.sel, s.selR = s.pending, s.waiting
+			s.pending, s.waiting = nil, nil
+		} else {
+			s.sel = s.shown
+		}
+		if s.sel != nil {
+			s.sel.retain()
+		}
+		s.b.presenting = append(s.b.presenting, s)
 	}
-	return s.shown
+	return s.sel
 }
 
-// presented settles the stream after the window frame that drew (or did not draw) it was handed
-// to the toolkit: a pending picture a slot drew becomes the shown one, and its receipt Drawn; one
-// no slot drew is NotShown, and stays pending. Gio goroutine, after the toolkit's Frame.
+// presented settles the stream's selection after the window frame that drew it was handed to the
+// toolkit: a pending picture it drew is the shown one now (unless the stream was closed
+// meanwhile) and its receipt Drawn at now; the frame's lease is dropped. Gio goroutine, after the
+// toolkit's Frame, for every stream the frame selected, whether or not it is still live.
 func (s *stream) presented(now time.Time) {
 	s.mu.Lock()
-	drawn := s.drawn
-	s.drawn = false
-	if s.pending == nil {
-		s.mu.Unlock()
-		return
+	sel, selR := s.sel, s.selR
+	s.sel, s.selR, s.selected = nil, nil, false
+	var drop payload // the stream's own hold it gives up
+	if selR != nil {
+		if s.closed {
+			drop = sel
+		} else {
+			drop, s.shown = s.shown, sel
+		}
 	}
-	if !drawn {
-		r := s.waiting
-		s.mu.Unlock()
-		r.complete(NotShown, time.Time{})
-		return
-	}
-	old := s.shown
-	s.shown, s.pending = s.pending, nil
-	r := s.waiting
-	s.waiting = nil
 	s.mu.Unlock()
-	if old != nil {
-		old.drop()
+	if drop != nil {
+		drop.drop()
 	}
-	r.complete(Drawn, now)
+	if sel != nil {
+		sel.drop() // the frame's lease
+	}
+	if selR != nil {
+		selR.complete(Drawn, now)
+	}
 }
 
-// close drops both pictures and completes a pending receipt Closed. A push after it is Closed.
+// notShown completes a pending picture NotShown when the window frame just presented had no slot
+// for the stream; the picture stays pending, to be drawn if the view comes back. A stream the
+// frame selected is not asked: a picture pushed during that frame waits for the next. Gio
+// goroutine, after the toolkit's Frame, before the selections are settled.
+func (s *stream) notShown() {
+	s.mu.Lock()
+	var r *Receipt
+	if !s.selected && s.pending != nil {
+		r = s.waiting
+	}
+	s.mu.Unlock()
+	if r != nil {
+		r.complete(NotShown, time.Time{})
+	}
+}
+
+// close drops both pictures and completes a pending receipt Closed. A push after it is Closed. A
+// picture a window frame has selected stays leased until that frame is presented.
 func (s *stream) close() {
 	s.mu.Lock()
 	if s.closed {
@@ -335,6 +372,8 @@ func (p *framePayload) add(ops *op.Ops, dst Rect, report func(error)) {
 	tr.Pop()
 }
 
+func (p *framePayload) retain() { p.f.Retain() }
+
 func (p *framePayload) drop() { p.f.Drop() }
 
 // FrameCaps is what this window draws through streams, and how; false before the window has a
@@ -365,7 +404,7 @@ type streamSlot struct {
 
 // add draws the stream's current picture into the slot. Gio goroutine, during present.
 func (sl streamSlot) add(ops *op.Ops) {
-	p := sl.s.current()
+	p := sl.s.selection()
 	if p == nil {
 		return
 	}
@@ -391,9 +430,16 @@ func DrawStream(c Canvas, st *Stream, dst Rect) bool {
 	return ok && st != nil && d.drawStream(&st.s, dst)
 }
 
-// streamsPresented settles every stream after a window frame was handed to the toolkit.
+// streamsPresented settles the streams after a window frame was handed to the toolkit: pending
+// pictures of streams the frame had no slot for are NotShown, then every stream the frame selected
+// settles its selection, including one closed meanwhile.
 func (b *Backend) streamsPresented(now time.Time) {
-	b.presentList = b.streams.each(b.presentList, func(s *stream) { s.presented(now) })
+	b.presentList = b.streams.each(b.presentList, (*stream).notShown)
+	for _, s := range b.presenting {
+		s.presented(now)
+	}
+	clear(b.presenting)
+	b.presenting = b.presenting[:0]
 }
 
 // closeStreams closes every stream of a stopping window.
