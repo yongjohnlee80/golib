@@ -94,13 +94,65 @@ func TestAnImagePartlyCutOffIsCropped(t *testing.T) {
 	}})
 }
 
+// The crop is rounded outward: an image scaled up over more cells than it has pixels keeps the
+// pixels under the cells that show, odd ratios included, and an explicit source offset is kept.
 func TestCropTo(t *testing.T) {
-	src := Rect{X: 10, Y: 20, W: 100, H: 50}
-	whole := Rect{X: 0, Y: -5, W: 10, H: 10}
-	if got, want := cropTo(src, whole, Rect{X: 2, Y: 0, W: 6, H: 5}), (Rect{X: 30, Y: 45, W: 60, H: 25}); got != want {
-		t.Fatalf("cropTo = %+v; want %+v", got, want)
+	for _, c := range []struct {
+		name            string
+		src, whole, vis Rect
+		want            Rect
+	}{
+		{"one pixel over 4x6, its middle rows shown", Rect{W: 1, H: 1}, Rect{W: 4, H: 6}, Rect{Y: 2, W: 4, H: 3}, Rect{W: 1, H: 1}},
+		{"an odd ratio, cut on every side", Rect{W: 7, H: 5}, Rect{W: 3, H: 3}, Rect{X: 1, Y: 2, W: 1, H: 1}, Rect{X: 2, Y: 3, W: 3, H: 2}},
+		{"a source offset, divisible", Rect{X: 10, Y: 20, W: 100, H: 50}, Rect{Y: -5, W: 10, H: 10}, Rect{X: 2, W: 6, H: 5}, Rect{X: 30, Y: 45, W: 60, H: 25}},
+		{"a source offset, the top cut", Rect{X: 1, Y: 1, W: 3, H: 5}, Rect{W: 4, H: 6}, Rect{Y: 2, W: 4, H: 4}, Rect{X: 1, Y: 2, W: 3, H: 4}},
+		{"a source offset, the bottom cut", Rect{X: 1, Y: 1, W: 3, H: 5}, Rect{W: 4, H: 6}, Rect{W: 4, H: 3}, Rect{X: 1, Y: 1, W: 3, H: 3}},
+	} {
+		if got := cropTo(c.src, c.whole, c.vis); got != c.want {
+			t.Errorf("%s: cropTo = %+v; want %+v", c.name, got, c.want)
+		}
 	}
-	if got := cropTo(src, Rect{}, Rect{}); got != (Rect{}) {
+	if got := cropTo(Rect{W: 4, H: 4}, Rect{}, Rect{}); got != (Rect{}) {
 		t.Fatalf("an empty whole crops to %+v; want nothing", got)
 	}
+}
+
+// A one-pixel PNG over 4x6 cells is placed uncut; cut at its top, then its bottom, it is still
+// placed, over the rows that show, with its one pixel; scrolled wholly out it is deleted; back, it is
+// placed whole again.
+func TestAnUpscaledImageSurvivesItsCrop(t *testing.T) {
+	var buf bytes.Buffer
+	if err := png.Encode(&buf, image.NewGray(image.Rect(0, 0, 1, 1))); err != nil {
+		t.Fatal(err)
+	}
+	pix := buf.Bytes()
+	c := &imaged{probe: &probe{name: "img"}, img: Image{ID: 92, PNG: pix, Version: 1}, show: true}
+	clip := &box{rects: []Rect{{W: 4, H: 6}}}
+	clip.Add(c)
+	root := &box{rects: []Rect{{W: 4, H: 6}}}
+	root.Add(clip)
+	h := startApp(t, root, 4, 8)
+	at := func(clipAt, childAt Rect) {
+		h.onLoop(func() {
+			root.rects[0], clip.rects[0] = clipAt, childAt
+			root.ctx.RequestLayout()
+			clip.ctx.RequestLayout() // its own constraints may not change: lay it out anyway
+		})
+	}
+	placed := func(crop Rect, y, rows int) map[uint32]ImagePlacement {
+		return map[uint32]ImagePlacement{92: {Image: Image{ID: 92, PNG: pix, Version: 1, Clip: crop}, Y: y, Cols: 4, Rows: rows}}
+	}
+	h.waitImages(placed(Rect{}, 0, 6)) // uncut: no crop at all
+
+	at(Rect{Y: 2, W: 4, H: 3}, Rect{Y: -2, W: 4, H: 6}) // rows 2..4 of 0..5: the top cut
+	h.waitImages(placed(Rect{W: 1, H: 1}, 2, 3))
+
+	at(Rect{Y: 2, W: 4, H: 3}, Rect{W: 4, H: 6}) // rows 0..2 of 2..7: the bottom cut
+	h.waitImages(placed(Rect{W: 1, H: 1}, 2, 3))
+
+	at(Rect{Y: 2, W: 4, H: 3}, Rect{Y: -8, W: 4, H: 6}) // wholly above the clip
+	h.waitImages(map[uint32]ImagePlacement{})
+
+	at(Rect{W: 4, H: 6}, Rect{W: 4, H: 6})
+	h.waitImages(placed(Rect{}, 0, 6))
 }

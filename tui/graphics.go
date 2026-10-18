@@ -138,14 +138,21 @@ func (a *App) applyImages() {
 }
 
 // cropTo is the part of src (pixels) that shows when whole, a node's cells, is cut to vis: the same
-// fractions of its width and height come off each side.
+// fractions of its width and height come off each side, rounded outward to whole pixels. A visible
+// cell always keeps the pixels under it, so an image scaled up over many cells (one pixel over a
+// whole pane) is never cropped to nothing; a pixel a cut runs through is shown whole, a little
+// stretched, rather than dropped.
 func cropTo(src, whole, vis Rect) Rect {
-	if whole.W <= 0 || whole.H <= 0 {
+	if whole.W <= 0 || whole.H <= 0 || src.Empty() || vis.Empty() {
 		return Rect{}
 	}
-	x0 := src.X + src.W*(vis.X-whole.X)/whole.W
-	x1 := src.X + src.W*(vis.X+vis.W-whole.X)/whole.W
-	y0 := src.Y + src.H*(vis.Y-whole.Y)/whole.H
-	y1 := src.Y + src.H*(vis.Y+vis.H-whole.Y)/whole.H
+	x0, x1 := cropSpan(src.X, src.W, vis.X-whole.X, vis.X+vis.W-whole.X, whole.W)
+	y0, y1 := cropSpan(src.Y, src.H, vis.Y-whole.Y, vis.Y+vis.H-whole.Y, whole.H)
 	return Rect{X: x0, Y: y0, W: x1 - x0, H: y1 - y0}
+}
+
+// cropSpan is the source pixels, from off, of size pixels laid over n cells, under the cells a to b:
+// the first one cell a touches, through the last one cell b-1 does. Non-empty whenever a < b.
+func cropSpan(off, size, a, b, n int) (lo, hi int) {
+	return off + size*a/n, off + (size*b+n-1)/n
 }
