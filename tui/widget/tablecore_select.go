@@ -127,7 +127,7 @@ func (c *TableCore) readingOrder() (start, end TablePos) {
 
 // CopyText is the selection, or the cursor's cell, as quoted TSV (EncodeTableText), a record per
 // row: a block's rectangle, whole rows for Rows, and for Cells each row's selected fields in
-// reading order. An empty table, and an empty cell, copy "".
+// reading order. An empty table copies no text; an empty cell copies "", a cell holding nothing.
 func (c *TableCore) CopyText() string {
 	s, _ := c.copyText(0)
 	return s
@@ -140,10 +140,7 @@ func (c *TableCore) copyText(limit int) (text string, ok bool) {
 		return "", true
 	}
 	if c.anchor == nil {
-		s := c.Cell(c.cur.Row, c.cur.Col)
-		if s != "" { // an empty cell copies as no text, not as ""
-			s = encodeRecord('\t', []string{s})
-		}
+		s := encodeRecord('\t', []string{c.Cell(c.cur.Row, c.cur.Col)}) // an empty cell is "", so it pastes as one
 		return s, limit <= 0 || len(s) <= limit
 	}
 	from, to, _ := c.Selection()

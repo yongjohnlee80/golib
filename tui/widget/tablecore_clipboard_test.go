@@ -238,3 +238,114 @@ func TestTheDocumentsMenu(t *testing.T) {
 		t.Fatalf("the editor's register holds %q after the table's yank", text)
 	}
 }
+
+// TestAnEmptyCellYankedPastesAsEmpty: y on an empty cell, p over another, empties it.
+func TestAnEmptyCellYankedPastesAsEmpty(t *testing.T) {
+	c, _, core, _ := csvTable("a,b\n,x\n")
+	press(c, 'y')
+	c.SetCursor(TablePos{0, 1})
+	press(c, 'p')
+	if want := "a,b\n,\n"; core.Value() != want {
+		t.Fatalf("%q, want %q", core.Value(), want)
+	}
+}
+
+// TestRowsPastedOnTheEdgeRowAppend: on the empty row after the last (TableAppendEdges), p and P
+// append the register's rows.
+func TestRowsPastedOnTheEdgeRowAppend(t *testing.T) {
+	for _, before := range []bool{false, true} {
+		c, _, core, _ := csvTable(abc, TableAppendEdges())
+		press(c, 'y', 'y')
+		c.SetCursor(TablePos{c.Len(), 0})
+		if c.Cursor().Row != c.Len() {
+			t.Fatalf("the cursor did not reach the edge row: %+v", c.Cursor())
+		}
+		if !c.PasteRegister(before) {
+			t.Fatalf("P=%v on the edge row refused", before)
+		}
+		if want := "h\nA\nB\nC\nA\n"; core.Value() != want {
+			t.Fatalf("P=%v: %q, want %q", before, core.Value(), want)
+		}
+	}
+}
+
+// TestAnEmptyCellThroughTheMenu: the menu's Yank on an empty cell, then its Paste over a full one,
+// empties it, and Paste is enabled for that register.
+func TestAnEmptyCellThroughTheMenu(t *testing.T) {
+	ed := NewEditorCore(CoreInitialText("h\n\"\"\nvalue\n"))
+	d := NewTableDocument(ed, ',')
+	run := func(id ItemID) {
+		for _, r := range d.menuRows() {
+			if r.ID == id {
+				if !r.Enabled {
+					t.Fatalf("%s disabled", id)
+				}
+				r.Action.(CoreMenuAction).Run(nil)
+				return
+			}
+		}
+		t.Fatalf("no %s row", id)
+	}
+	run("table.yank")
+	d.Core().SetCursor(TablePos{1, 0})
+	run("table.paste")
+	if want := "h\n\"\"\n\"\"\n"; ed.Value() != want {
+		t.Fatalf("%q, want %q", ed.Value(), want)
+	}
+}
+
+// TestRowsGoInOnTheEdgeRowAndAHeaderOnlyTable: Insert row below on the edge row appends; p on a
+// table with no records yet appends; the cursor lands on the new row.
+func TestRowsGoInOnTheEdgeRowAndAHeaderOnlyTable(t *testing.T) {
+	c, _, core, _ := csvTable("h\nA\n", TableAppendEdges())
+	c.SetCursor(TablePos{c.Len(), 0})
+	if !c.InsertRows(false) || core.Value() != "h\nA\n\"\"\n" {
+		t.Fatalf("Insert row below on the edge row: %q", core.Value())
+	}
+	shared := &ownRegister{text: "B", linewise: true}
+	c, _, core, _ = csvTable("h\n", TableRegister(shared))
+	if !c.PasteRegister(false) || core.Value() != "h\nB\n" {
+		t.Fatalf("p on a header-only table: %q", core.Value())
+	}
+}
+
+// TestACellNamedTwiceRefusesTheOp: nothing written, the revision and the undo history as they
+// were; repeated insert positions stay allowed.
+func TestACellNamedTwiceRefusesTheOp(t *testing.T) {
+	const text = "h\nA\n"
+	src, c := csvOn(text, ',')
+	rev := c.Revision()
+	if src.CommitCells(TableCellsOp{Cells: []TableCell{{0, 0, "B"}, {0, 0, "C"}}}) ||
+		src.CommitCells(TableCellsOp{Cells: []TableCell{{-1, 0, "x"}, {-1, 0, "y"}}}) {
+		t.Fatal("a cell named twice was accepted")
+	}
+	if c.Value() != text || c.Revision() != rev {
+		t.Fatalf("wrote %q", c.Value())
+	}
+	c.Undo()
+	if c.Value() != text {
+		t.Fatalf("an undo step was left: %q", c.Value())
+	}
+	if !src.CommitCells(TableCellsOp{InsertRows: []int{1, 1}, Cells: []TableCell{{1, 0, "x"}, {2, 0, "y"}}}) ||
+		c.Value() != "h\nA\nx\ny\n" {
+		t.Fatalf("repeated insert positions: %q", c.Value())
+	}
+}
+
+// TestTheMenuDisablesWhatCannotRun: a linewise register in a sorted view, and a selection of every
+// field, disable Paste and Delete fields.
+func TestTheMenuDisablesWhatCannotRun(t *testing.T) {
+	ed := NewEditorCore(CoreInitialText("a,b\n1,2\n3,4\n"))
+	d := NewTableDocument(ed, ',', TableSortable(true))
+	c := d.Core()
+	press(c, 'y', 'y')
+	c.SortKeys([]TableSortKey{{Col: 0, Desc: true}})
+	press(c, 'v', '$') // every field selected (a V selection is rows: Delete fields acts on the cursor's)
+	enabled := map[ItemID]bool{}
+	for _, r := range d.menuRows() {
+		enabled[r.ID] = r.Enabled
+	}
+	if enabled["table.paste"] || enabled["table.deleteFields"] {
+		t.Fatalf("paste %v, delete fields %v: want both disabled", enabled["table.paste"], enabled["table.deleteFields"])
+	}
+}
