@@ -150,6 +150,10 @@ func (r *renderer) frame(g *grid, m metrics, cur cursorState, natives []tui.Nati
 // padding does. A bar on the top or bottom row stays exactly one cell tall, its text centred, and
 // stops at the frame instead of running into the window's border.
 func (r *renderer) drawMargins(ops *op.Ops, g *grid, m metrics) {
+	if m.layout != nil {
+		r.drawStageMargins(ops, m)
+		return
+	}
 	grid := m.cellRect(0, 0, g.w, g.h)
 	win := image.Rectangle{Max: m.window}
 	bg := r.pageBG
@@ -157,6 +161,30 @@ func (r *renderer) drawMargins(ops *op.Ops, g *grid, m metrics) {
 	fillRect(ops, image.Rect(win.Min.X, grid.Max.Y, win.Max.X, win.Max.Y), bg)   // bottom
 	fillRect(ops, image.Rect(win.Min.X, grid.Min.Y, grid.Min.X, grid.Max.Y), bg) // left
 	fillRect(ops, image.Rect(grid.Max.X, grid.Min.Y, win.Max.X, grid.Max.Y), bg) // right
+}
+
+// drawStageMargins fills what no pane's cells cover with the page colour: the padding around
+// the panes, and each cell pane's leftover (the pixels under one cell, right and bottom). A
+// pixel pane's cells cover it (its band is rounded up).
+func (r *renderer) drawStageMargins(ops *op.Ops, m metrics) {
+	bg := r.pageBG
+	win, in := image.Rectangle{Max: m.window}, m.layout.inner
+	fillRect(ops, image.Rect(win.Min.X, win.Min.Y, win.Max.X, in.Min.Y), bg)
+	fillRect(ops, image.Rect(win.Min.X, in.Max.Y, win.Max.X, win.Max.Y), bg)
+	fillRect(ops, image.Rect(win.Min.X, in.Min.Y, in.Min.X, in.Max.Y), bg)
+	fillRect(ops, image.Rect(in.Max.X, in.Min.Y, win.Max.X, in.Max.Y), bg)
+	for _, gap := range m.layout.gaps {
+		fillRect(ops, gap, bg)
+	}
+	for _, p := range m.layout.panes {
+		cells := m.cellRect(p.band.X, p.band.Y, p.band.W, p.band.H).Intersect(p.clip)
+		if cells.Empty() {
+			fillRect(ops, p.clip, bg)
+			continue
+		}
+		fillRect(ops, image.Rect(cells.Max.X, p.clip.Min.Y, p.clip.Max.X, p.clip.Max.Y), bg) // right
+		fillRect(ops, image.Rect(p.clip.Min.X, cells.Max.Y, cells.Max.X, p.clip.Max.Y), bg)  // bottom
+	}
 }
 
 // pageBackground is the background most cells of the grid have: the app's page or backdrop, not a
@@ -175,10 +203,28 @@ func (r *renderer) pageBackground(g *grid) color.NRGBA {
 }
 
 // recordRow records row y: backgrounds first, merged into runs, then glyphs and decorations.
+// In a Panes window the row is one segment per band it crosses, each under its pane's clip;
+// cells in a hole are not drawn.
 func (r *renderer) recordRow(g *grid, y int) op.CallOp {
 	ops := new(op.Ops)
 	rec := op.Record(ops)
-	r.drawSpan(ops, g, y, 0, g.w, bgOffTheme)
+	if r.m.layout == nil {
+		r.drawSpan(ops, g, y, 0, g.w, bgOffTheme)
+		return rec.Stop()
+	}
+	for _, p := range r.m.layout.panes {
+		b := p.band
+		if y < b.Y || y >= b.Y+b.H || b.W <= 0 {
+			continue
+		}
+		x0, x1 := max(b.X, 0), min(b.X+b.W, g.w)
+		if x0 >= x1 {
+			continue
+		}
+		cl := clip.Rect(p.clip).Push(ops)
+		r.drawSpan(ops, g, y, x0, x1, bgOffTheme)
+		cl.Pop()
+	}
 	return rec.Stop()
 }
 
@@ -258,7 +304,7 @@ func (r *renderer) drawSpan(ops *op.Ops, g *grid, y, x0, x1 int, bgs bgMode) {
 	}
 	// Shape places each glyph by its X from the first one's, on one baseline at the path's origin:
 	// the path is moved there, to the row's baseline
-	base := float32(m.cellRect(0, y, 1, 1).Min.Y + m.baseline)
+	base := float32(m.cellRect(x0, y, 1, 1).Min.Y + m.baseline) // the segment's own band
 	for _, fg := range order {
 		gs := batch[fg]
 		tr := op.Affine(f32.Affine2D{}.Offset(f32.Pt(float32(gs[0].X)/64, base))).Push(ops)
@@ -461,7 +507,10 @@ func (r *renderer) typefaceOf(face uint16) font.Typeface {
 
 // drawImage draws an image over its cells, its Clip (in image pixels) scaled to fill them.
 func (r *renderer) drawImage(ops *op.Ops, img placedImage) {
-	dst := r.m.cellRect(img.X, img.Y, img.Cols, img.Rows)
+	dst, within, ok := r.m.anchored(tui.Rect{X: img.X, Y: img.Y, W: img.Cols, H: img.Rows})
+	if !ok {
+		return
+	}
 	src := image.Rect(img.Clip.X, img.Clip.Y, img.Clip.X+img.Clip.W, img.Clip.Y+img.Clip.H)
 	if src.Empty() {
 		src = image.Rectangle{Max: img.op.Size()}
@@ -471,7 +520,7 @@ func (r *renderer) drawImage(ops *op.Ops, img placedImage) {
 	}
 	sx := float32(dst.Dx()) / float32(src.Dx())
 	sy := float32(dst.Dy()) / float32(src.Dy())
-	cl := clip.Rect(dst).Push(ops)
+	cl := clip.Rect(dst.Intersect(within)).Push(ops)
 	tr := op.Affine(f32.Affine2D{}.
 		Offset(f32.Pt(-float32(src.Min.X), -float32(src.Min.Y))).
 		Scale(f32.Point{}, f32.Pt(sx, sy)).
@@ -499,6 +548,13 @@ func (r *renderer) drawCursor(ops *op.Ops, g *grid, cur cursorState, focused boo
 	}
 	if cur.colored {
 		cc = cur.color
+	}
+	p, in := m.pane(cur.x, cur.y)
+	if !in {
+		return // a hole: no pixels
+	}
+	if m.layout != nil {
+		defer clip.Rect(p.clip).Push(ops).Pop()
 	}
 	rect := m.cellRect(cur.x, cur.y, max(int(c.Width), 1), 1)
 	lw := max(1, int(m.scale+0.5))
@@ -539,14 +595,25 @@ func (r *renderer) paintCells(ops *op.Ops, g *grid, cr CellRect, glyphsOnly bool
 	if x0 >= x1 || y0 >= y1 {
 		return
 	}
-	area := clip.Rect(r.m.cellRect(x0, y0, x1-x0, y1-y0)).Push(ops)
-	defer area.Pop()
 	bgs := bgAll
 	if glyphsOnly {
 		bgs = bgNone
 	}
-	for y := y0; y < y1; y++ {
-		r.drawSpan(ops, g, y, x0, x1, bgs)
+	if r.m.layout == nil {
+		area := clip.Rect(r.m.cellRect(x0, y0, x1-x0, y1-y0)).Push(ops)
+		defer area.Pop()
+		for y := y0; y < y1; y++ {
+			r.drawSpan(ops, g, y, x0, x1, bgs)
+		}
+		return
+	}
+	// Each band's part is drawn by that band, under its own clip.
+	for _, f := range r.m.fragments(tui.Rect{X: x0, Y: y0, W: x1 - x0, H: y1 - y0}) {
+		area := clip.Rect(f.dev.Intersect(f.clip)).Push(ops)
+		for y := f.cells.Y; y < f.cells.Y+f.cells.H; y++ {
+			r.drawSpan(ops, g, y, f.cells.X, f.cells.X+f.cells.W, bgs)
+		}
+		area.Pop()
 	}
 }
 

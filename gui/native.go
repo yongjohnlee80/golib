@@ -14,6 +14,7 @@ var (
 	_ tui.FaceHost     = (*Backend)(nil)
 	_ tui.NativeStyler = (*Backend)(nil)
 	_ tui.CellMetrics  = (*Backend)(nil)
+	_ tui.SizedFlusher = (*Backend)(nil)
 )
 
 // Compositing Order and Layer Stacking Architecture:

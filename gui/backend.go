@@ -102,6 +102,8 @@ type Backend struct {
 	imgList []uint32              // placement order
 	natives []tui.NativePlacement // this frame's, from PlaceNatives
 
+	stage stageLayouts // a Panes window's layout snapshots (panes.go)
+
 	// The hand-over to the Gio goroutine, guarded by mu.
 	mu       sync.Mutex
 	latest   *frame  // the newest finished frame; Flush replaces it and never waits
@@ -129,6 +131,7 @@ type Backend struct {
 
 // frame is one finished frame: the recorded drawing and where the caret is, for the IME.
 type frame struct {
+	m     metrics // the snapshot it was drawn with: a Panes window's input maps through it
 	draw  op.CallOp
 	caret image.Rectangle // device pixels; empty when the cursor is hidden
 	base  int             // the caret cell's baseline, from its top
@@ -141,7 +144,7 @@ type frame struct {
 // frameCaret puts the frame's caret, for the input method and the preedit: the cell cursor
 // when it shows, with its cell's colours, else a native view's own caret, read after it painted.
 func (b *Backend) frameCaret(f *frame, m metrics) {
-	if b.cursor.visible {
+	if _, in := m.pane(b.cursor.x, b.cursor.y); b.cursor.visible && (in || m.layout == nil) {
 		f.caret = m.cellRect(b.cursor.x, b.cursor.y, 1, 1)
 		f.base = m.baseline
 		f.fg, f.bg = b.render.colors(b.grid.at(b.cursor.x, b.cursor.y).Attrs)
@@ -180,6 +183,9 @@ func NewBackend(opts ...Option) *Backend {
 		runDone:  make(chan struct{}),
 		render:   newRenderer(cells, fallbackChain(cfg.typeface), cfg.theme),
 		images:   map[uint32]placedImage{},
+	}
+	if cfg.stage != nil {
+		cfg.stage.b = b
 	}
 	b.gio.shaper = text.NewShaper(text.WithCollection(gofont.Collection()))
 	b.rec = cfg.recorder
@@ -401,16 +407,24 @@ func (b *Backend) Flush(diff []tui.CellUpdate) error {
 		return nil // no window to draw on
 	default:
 	}
+	if b.cfg.stage != nil {
+		return b.FlushSized(tui.Size{W: b.grid.w, H: b.grid.h}, diff)
+	}
 	m := b.paintMetrics(diff)
 	b.grid.apply(diff)
+	b.publishFrame(m)
+	return nil
+}
+
+// publishFrame draws the grid with m and hands the frame to the Gio goroutine.
+func (b *Backend) publishFrame(m metrics) {
 	draw := b.render.frame(&b.grid, m, b.cursor, b.natives, b.imageList(), b.focused.Load())
-	f := &frame{draw: draw}
+	f := &frame{draw: draw, m: m}
 	b.frameCaret(f, m)
 	b.mu.Lock()
 	b.latest = f
 	b.mu.Unlock()
 	b.win.Invalidate()
-	return nil
 }
 
 // paintMetrics chooses the metrics a frame is drawn with, so the App's layout and the paint

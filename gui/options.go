@@ -77,6 +77,7 @@ type config struct {
 	decoration bool // decorated was set explicitly
 	style      *Style
 	recorder   Recorder // where the input path's records go; nil records nothing
+	stage      *Panes   // WithPanes: a pixel root; nil is one cell grid
 }
 
 // defaultConfig returns the default GUI window and backend configuration.

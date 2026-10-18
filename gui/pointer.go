@@ -42,6 +42,10 @@ import (
 type pointerState struct {
 	held             pointer.Buttons
 	scrollX, scrollY float32 // device pixels scrolled and not yet a wheel step
+	// press is the pane a press landed in, while a button is held: a drag maps through it, past
+	// its edge, so a captured drag's cells stay continuous across panes (a Panes window).
+	press    paneMap
+	pressing bool
 }
 
 // buttonOf maps a Gio pointer button bitflag to the corresponding [tui.MouseButton] identifier.
@@ -65,8 +69,22 @@ func buttonOf(b pointer.Buttons) tui.MouseButton {
 //   - Scroll: Accumulates fractional deltas and converts them into discrete wheel step events.
 //   - Cancel: Clears all held buttons and issues release events.
 func (p *pointerState) translate(e pointer.Event, m metrics) []tui.MouseEvent {
-	x, y := m.cellAt(e.Position.X, e.Position.Y)
-	sx, sy := m.subCell(e.Position.X, e.Position.Y, x, y)
+	if e.Kind == pointer.Press && !p.pressing {
+		p.press, p.pressing = m.paneAt(e.Position.X, e.Position.Y), true
+	}
+	pane, x, y := m.paneAt(e.Position.X, e.Position.Y), 0, 0
+	if p.pressing && m.layout != nil {
+		pane = p.press
+		x, y = m.cellIn(pane, e.Position.X, e.Position.Y, true)
+	} else {
+		x, y = m.cellIn(pane, e.Position.X, e.Position.Y, false)
+	}
+	sx, sy := m.subCellIn(pane, e.Position.X, e.Position.Y, x, y)
+	defer func() {
+		if p.held == 0 {
+			p.pressing = false
+		}
+	}()
 	mods := modsOf(e.Modifiers)
 	ev := func(kind tui.MouseKind, b tui.MouseButton) tui.MouseEvent {
 		return tui.MouseEvent{Kind: kind, Button: b, X: x, Y: y, SubX: sx, SubY: sy, Mods: mods}

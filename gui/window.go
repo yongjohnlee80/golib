@@ -127,13 +127,17 @@ func (b *Backend) run() {
 			fs := b.font.Load()
 			m := measure(fs.fm, fs.size, b.cfg.padding, e.Size, e.Metric)
 			m.fontGen = fs.gen
+			old := b.metrics.Load()
+			if b.cfg.stage != nil {
+				m = b.publishLayout(old, placePanes(b.cfg.stage, m, max(e.Metric.Dp(b.cfg.padding), 0)))
+			}
 			if old := b.metrics.Swap(&m); old == nil {
 				b.startOnce.Do(func() { close(b.started) }) // Start returns; nothing is sent
 			} else if !old.sameCells(m) {
 				// The grid, the scale or the cell size changed: the App relays out and repaints.
 				b.q.push(tui.ResizeEvent{W: m.grid.W, H: m.grid.H})
 			}
-			b.readInput(e.Source, tag, m)
+			b.readInput(e.Source, tag, b.inputMetrics(m))
 			b.present(e, tag, m, fs)
 		}
 	}
