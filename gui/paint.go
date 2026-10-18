@@ -53,6 +53,7 @@ import (
 //     the Gio display thread are never mutated in place.
 type renderer struct {
 	shaper   *text.Shaper
+	paths    *shapeCache // the shaper's outline paths, kept while on screen, for the cells and the native views
 	typeface font.Typeface
 	theme    Theme
 
@@ -85,7 +86,7 @@ type glyphShape struct {
 
 // newRenderer initializes a text and cell renderer with glyph cache and fonts.
 func newRenderer(shaper *text.Shaper, typeface string, theme Theme) *renderer {
-	return &renderer{shaper: shaper, typeface: font.Typeface(typeface), theme: theme, glyphs: map[glyphKey]glyphShape{},
+	return &renderer{shaper: shaper, paths: newShapeCache(shaper), typeface: font.Typeface(typeface), theme: theme, glyphs: map[glyphKey]glyphShape{},
 		fonts: Fonts{Prose: uiFamily, Mono: typeface}}
 }
 
@@ -112,6 +113,7 @@ func (r *renderer) frame(g *grid, m metrics, cur cursorState, natives []tui.Nati
 	if !r.m.sameCells(m) || len(r.rows) != g.h {
 		if r.m.ppem != m.ppem || r.m.fontGen != m.fontGen { // another size, or another face
 			clear(r.glyphs)
+			r.paths.clear()
 		}
 		r.m = m
 		r.rows = make([]op.CallOp, g.h)
@@ -139,6 +141,7 @@ func (r *renderer) frame(g *grid, m metrics, cur cursorState, natives []tui.Nati
 	if cur.visible {
 		r.drawCursor(ops, g, cur, focused)
 	}
+	r.paths.endFrame()
 	return rec.Stop()
 }
 
@@ -259,7 +262,7 @@ func (r *renderer) drawSpan(ops *op.Ops, g *grid, y, x0, x1 int, bgs bgMode) {
 	for _, fg := range order {
 		gs := batch[fg]
 		tr := op.Affine(f32.Affine2D{}.Offset(f32.Pt(float32(gs[0].X)/64, base))).Push(ops)
-		outline := clip.Outline{Path: r.shaper.Shape(gs)}.Op().Push(ops)
+		outline := clip.Outline{Path: r.paths.Shape(gs)}.Op().Push(ops)
 		paint.ColorOp{Color: fg}.Add(ops)
 		paint.PaintOp{}.Add(ops)
 		outline.Pop()
