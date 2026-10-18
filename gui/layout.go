@@ -40,11 +40,12 @@ type Item struct {
 // Sized pairs a child with its track.
 func Sized(t Track, n Node) Item { return Item{track: t, node: n} }
 
-// Row lays its children out left to right.
-func Row(items ...Item) Node { return &split{items: items} }
+// Row lays its children out left to right. It keeps its own copy of items: the tree is fixed once
+// built, whatever the caller does with its slice afterwards.
+func Row(items ...Item) Node { return &split{items: slices.Clone(items)} }
 
-// Column lays its children out top to bottom.
-func Column(items ...Item) Node { return &split{vertical: true, items: items} }
+// Column lays its children out top to bottom. Like Row, it keeps its own copy of items.
+func Column(items ...Item) Node { return &split{vertical: true, items: slices.Clone(items)} }
 
 // Cells is a cell pane: c lays out in whole cells and is drawn as tui draws. Its band is the
 // whole cells that fit its pane; the pixels left under a cell are the page background.
