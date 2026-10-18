@@ -47,8 +47,12 @@ type node struct {
 
 	// Layout state. measured/placed reset each pass; a node is visible this
 	// frame only when both are set with a non-empty rect.
-	rect     Rect // parent-relative, set by PlaceChild
-	absRect  Rect // absolute, derived after the pass
+	rect    Rect // parent-relative, set by PlaceChild
+	absRect Rect // absolute, derived after the pass
+	// visRect is absRect cut by every ancestor's visible rect and the screen: the part of the node
+	// that can show. A child a container places partly outside it (a ScrollView's) has less here
+	// than its absRect; the cursor, native views and images show only inside it.
+	visRect  Rect
 	size     Size // clamped Layout return
 	measured bool // Layout ran this pass
 	placed   bool // PlaceChild ran this pass

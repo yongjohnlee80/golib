@@ -1,6 +1,9 @@
 package tui
 
 import (
+	"bytes"
+	"image"
+	_ "image/png" // DecodeConfig reads a PNG's size, to crop an image partly hidden
 	"slices"
 	"sync/atomic"
 )
@@ -74,9 +77,25 @@ func (a *App) noteImage(n *node) {
 	if !ok || img.ID == 0 || len(img.PNG) == 0 {
 		return
 	}
-	r := n.absRect.Intersect(Rect{W: a.size.W, H: a.size.H})
+	r := n.visRect // the part that shows: the screen and every ancestor cut it
 	if r.Empty() {
-		return
+		return // not placed: applyImages deletes it, and places it again when it shows again
+	}
+	if r != n.absRect {
+		// partly hidden (scrolled out of a ScrollView, or past the screen's edge): show the same
+		// part of the picture, cropped through its source rect (ADR 1792358868 §4.3b)
+		src := img.Clip
+		if src.Empty() {
+			cfg, _, err := image.DecodeConfig(bytes.NewReader(img.PNG))
+			if err != nil {
+				return
+			}
+			src = Rect{W: cfg.Width, H: cfg.Height}
+		}
+		img.Clip = cropTo(src, n.absRect, r)
+		if img.Clip.Empty() {
+			return
+		}
 	}
 	p := ImagePlacement{Image: img, X: r.X, Y: r.Y, Cols: r.W, Rows: r.H}
 	if a.buf.stamping {
@@ -116,4 +135,17 @@ func (a *App) applyImages() {
 			delete(a.placed, id)
 		}
 	}
+}
+
+// cropTo is the part of src (pixels) that shows when whole, a node's cells, is cut to vis: the same
+// fractions of its width and height come off each side.
+func cropTo(src, whole, vis Rect) Rect {
+	if whole.W <= 0 || whole.H <= 0 {
+		return Rect{}
+	}
+	x0 := src.X + src.W*(vis.X-whole.X)/whole.W
+	x1 := src.X + src.W*(vis.X+vis.W-whole.X)/whole.W
+	y0 := src.Y + src.H*(vis.Y-whole.Y)/whole.H
+	y1 := src.Y + src.H*(vis.Y+vis.H-whole.Y)/whole.H
+	return Rect{X: x0, Y: y0, W: x1 - x0, H: y1 - y0}
 }

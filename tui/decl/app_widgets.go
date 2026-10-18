@@ -45,6 +45,9 @@ func appTypes() []Type {
 				return int(n), err
 			}, (*widget.Box).SetMaximumWidth),
 		}},
+		// golib's: a vertical window onto one child taller than itself (ADR 1792358868); the wheel and
+		// the page keys scroll it, and a field taking focus is brought into view
+		{Name: "ScrollView", Build: buildScrollView},
 		{Name: "SyntaxHighlighter", Build: buildSyntaxHighlighter, restyle: restyleSyntax, Setters: syntaxSetters()},
 		// Qt Quick's Image, without its source: the host gives it a PNG (widget.Image.SetPNG), and
 		// it shows on a terminal that draws images (tui.Capabilities.KittyGraphics)
@@ -235,6 +238,13 @@ func buildFrame(b Build) (tui.Component, []string, error) {
 		box.SetTitleMessage(title.Message)
 	}
 	return box, consumed, nil
+}
+
+func buildScrollView(b Build) (tui.Component, []string, error) {
+	if len(b.Children) != 1 {
+		return nil, nil, fmt.Errorf("ScrollView needs exactly 1 child, got %d (at %s)", len(b.Children), b.Pos)
+	}
+	return widget.NewScrollView(b.Children[0]), nil, nil
 }
 
 // ---------------------------------------------------------------- Editor
