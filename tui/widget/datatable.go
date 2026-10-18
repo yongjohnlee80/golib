@@ -468,14 +468,35 @@ func (t *DataTable) drawField(s tui.Surface, gutter int, fields []TableField) {
 		w = t.core.Width(e.Pos.Col)
 	}
 	w = min(max(w, 12), sz.W-x)
-	h := min(strings.Count(e.Field.Value(), "\n")+1, sz.H-y)
+	// drawn here, line by line, not through the TextArea's own Layout and Render: a Render that lays
+	// out or paints a component it does not own the placement of runs a second layout in the paint
+	lines := strings.Split(e.Field.Value(), "\n")
+	ln, col := min(e.Field.ln, len(lines)-1), e.Field.col
+	h := min(len(lines), sz.H-y)
+	top := max(ln-h+1, 0)
+	cs := clusters(lines[ln])
+	caretX := s.StringWidth(strings.Join(cs[:min(col, len(cs))], ""))
+	left := max(caretX-w+1, 0) // the caret kept in sight
 	r := tui.Rect{X: x, Y: y, W: w, H: h}
-	s.Fill(r, " ", t.CursorStyle().Inherit(t.styles.Cell))
-	e.Field.Layout(tui.Constraints{MinW: w, MaxW: w, MinH: h, MaxH: h})
-	e.Field.Render(s.Sub(r))
-	if cx, cy, ok := e.Field.Cursor(); ok {
-		t.caret = &tui.Point{X: x + cx, Y: y + cy}
+	st := t.CursorStyle().Inherit(t.styles.Cell)
+	s.Fill(r, " ", st)
+	sub := s.Sub(r)
+	for i := range h {
+		drawText(sub, 0, i, fromCell(lines[top+i], left, s.StringWidth), st)
 	}
+	t.caret = &tui.Point{X: x + caretX - left, Y: y + ln - top}
+}
+
+// fromCell is line from cell off on: the clusters before it dropped.
+func fromCell(line string, off int, width func(string) int) string {
+	at := 0
+	for i, cl := range clusters(line) {
+		if at >= off {
+			return strings.Join(clusters(line)[i:], "")
+		}
+		at += width(cl)
+	}
+	return ""
 }
 
 // Cursor is the open field's caret (tui.CursorReporter), so a terminal shows it where the text is

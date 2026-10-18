@@ -606,7 +606,7 @@ Editor {
 `Editor.Rendered` is drawn by the Editor's renderer: Markdown with its headings at their sizes and
 its marks hidden off the cursor's line. Ctrl+T (`ActToggleRendered`, rebindable) switches the two.
 The terminal's Editor draws Rendered through a document view its host gives it (`Editor.SetDocumentView`:
-a `TableDocument` for a CSV file, ADR 1792303119); with none it accepts `view` and the renderer, so
+a `TableDocument` for a CSV file); with none it accepts `view` and the renderer, so
 one document runs everywhere, and draws Raw, keeping Rendered as the choice. The GUI's native style
 gives the Rendered view. `renderedEnabled: false` draws Raw for the document shown, in either, and
 keeps the choice: the next document that can render is drawn Rendered with no key.

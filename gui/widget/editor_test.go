@@ -478,7 +478,7 @@ func TestToggleRenderedIsTheKeymapsAndRebindable(t *testing.T) {
 }
 
 // A host turns the Rendered view off for a document its renderer does not read, and on again
-// (ADR 1792303119 §4.1): off, Raw is drawn but Rendered stays the choice, SetMode(Rendered) records
+// : off, Raw is drawn but Rendered stays the choice, SetMode(Rendered) records
 // the choice and Ctrl+T is not consumed; on again, Rendered is drawn with no key; the renderer is
 // kept. Raw chosen while off stays Raw when it comes back on.
 func TestRenderedEnabledSwitch(t *testing.T) {

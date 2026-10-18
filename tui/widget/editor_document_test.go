@@ -29,7 +29,7 @@ func views(h *harness, ed *widget.Editor, doc *widget.TableDocument) (chosen, sh
 	return
 }
 
-// TestTheTerminalEditorsDocumentView (ADR 1792303119 §4.6): Ctrl+T shows the table in place of the
+// TestTheTerminalEditorsDocumentView: Ctrl+T shows the table in place of the
 // text and moves the focus into it; keys reach the table and its open field, and a kept value is
 // the editor's text; Ctrl+T, which the table leaves, returns to the text with the focus.
 func TestTheTerminalEditorsDocumentView(t *testing.T) {
@@ -104,7 +104,7 @@ func TestTheTableToggleIsTheKeymaps(t *testing.T) {
 	}
 }
 
-// TestTheTableKeepsTheChosenView (§4.1 for the terminal): withheld for a document, the text is drawn
+// TestTheTableKeepsTheChosenView: withheld for a document, the text is drawn
 // and Rendered kept; given back, the table shows with no key. Hidden, an open field is dropped and
 // nothing written.
 func TestTheTableKeepsTheChosenView(t *testing.T) {

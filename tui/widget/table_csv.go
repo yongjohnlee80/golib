@@ -12,7 +12,7 @@ import (
 	"github.com/yongjohnlee80/golib/tui/style"
 )
 
-// TABLE CSV (ADR 1792303119 §4.2) — a CSV or TSV document in an EditorCore as a TableSource, a
+// TABLE CSV — a CSV or TSV document in an EditorCore as a TableSource, a
 // TableEditor and a TableCommitter, so a TableCore edits the file the user has open. The first record
 // is the fields. An edit writes back over the bytes of the records it changes and nothing else, as
 // one undo step: a record keeps its own line ending, a gap of blank lines between records is never
@@ -29,7 +29,7 @@ const (
 )
 
 // TableRevisioner is a source whose content has a revision: two equal revisions are the same
-// content. A TableCore fences an open edit to it (§4.3c).
+// content. A TableCore fences an open edit to it.
 type TableRevisioner interface {
 	Revision() uint64
 }
@@ -84,13 +84,13 @@ func (t *TableCSV) Sync() bool {
 	if t.read && t.rev == t.core.Revision() {
 		return false
 	}
-	t.load(t.core.Value())
+	t.readText(t.core.Value())
 	t.rev, t.read = t.core.Revision(), true
 	return true
 }
 
-// load reads text: the records with their spans, or why it cannot be edited.
-func (t *TableCSV) load(text string) {
+// readText reads text: the records with their spans, or why it cannot be edited.
+func (t *TableCSV) readText(text string) {
 	t.text, t.header, t.records, t.width, t.why = text, nil, nil, 0, ""
 	t.starts = t.starts[:0]
 	t.starts = append(t.starts, 0)
@@ -190,6 +190,11 @@ func (t *TableCSV) Cell(row, col int) string {
 
 // encode is a record's text, quoted as encoding/csv's Writer quotes it, with no line ending.
 func (t *TableCSV) encode(cells []string) string {
+	if len(cells) == 1 && cells[0] == "" {
+		// a record of one empty field: the Writer writes an empty line, which a reader skips as a
+		// blank one, and the record would be gone
+		return `""`
+	}
 	var b strings.Builder
 	w := csv.NewWriter(&b)
 	w.Comma = t.comma
