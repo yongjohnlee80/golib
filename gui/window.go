@@ -227,6 +227,12 @@ func (b *Backend) readInput(src eventSource, tag event.Tag, m metrics) {
 				continue
 			}
 			for _, me := range b.gio.ptr.translate(e, m) {
+				// A Panes window hands the App the device position and the frame on screen, and
+				// the App resolves the cells when it dispatches the event (ResolvePointer). X and
+				// Y stay this goroutine's mapping, for a host that does not resolve.
+				if f := b.gio.shown; b.cfg.stage != nil && f != nil && f.m.layout != nil {
+					me.Source = tui.PointerSource{X: e.Position.X, Y: e.Position.Y, Ref: f}
+				}
 				b.q.push(me)
 			}
 		case transfer.DataEvent:

@@ -139,15 +139,27 @@ func (m metrics) paneAt(x, y float32) paneMap {
 	if m.layout == nil {
 		return m.wholePane()
 	}
-	best, bestD := paneMap{}, float32(math.Inf(1))
-	for _, p := range m.layout.panes {
+	if i := m.paneIndexAt(x, y); i >= 0 {
+		return m.layout.panes[i]
+	}
+	return paneMap{}
+}
+
+// paneIndexAt is paneAt's pane as its index in the layout (stable across snapshots: the tree is
+// fixed); -1 without a layout or a nonempty pane.
+func (m metrics) paneIndexAt(x, y float32) int {
+	if m.layout == nil {
+		return -1
+	}
+	best, bestD := -1, float32(math.Inf(1))
+	for i, p := range m.layout.panes {
 		if p.band.Empty() || p.clip.Empty() {
 			continue
 		}
 		dx := max(float32(p.clip.Min.X)-x, 0, x-float32(p.clip.Max.X-1))
 		dy := max(float32(p.clip.Min.Y)-y, 0, y-float32(p.clip.Max.Y-1))
 		if d := dx*dx + dy*dy; d < bestD {
-			best, bestD = p, d
+			best, bestD = i, d
 		}
 	}
 	return best

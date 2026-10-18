@@ -557,3 +557,81 @@ func TestACutCaretKeepsItsBaseline(t *testing.T) {
 		t.Fatalf("a caret whose baseline is below its pane was told at %v base %d", c.rect, c.base)
 	}
 }
+
+// resolveFixture is a Panes backend whose shown frame is snapshot E (503×301 at 1.5, 16×32 cells)
+// and whose admitted snapshot is E' (a zoom to 20×40 cells in a 700×400 window: every band and
+// origin moved).
+func resolveFixture(t *testing.T) (*Backend, *frame, metrics, metrics) {
+	t.Helper()
+	p := sidebarAndView()
+	b := NewBackend(WithPanes(p))
+	e := b.publishLayout(nil, placePanes(p, metrics{window: image.Pt(503, 301), scale: 1.5, ppem: 24, cell: image.Pt(16, 32), baseline: 24}, 0))
+	b.admitLayout(e.grid)
+	shown := &frame{m: e}
+	e2 := b.publishLayout(&e, placePanes(p, metrics{window: image.Pt(700, 400), scale: 1.5, ppem: 30, cell: image.Pt(20, 40), baseline: 30}, 0))
+	b.admitLayout(e2.grid)
+	if b.stage.admitted.layout != e2.layout {
+		t.Fatal("fixture: E' not admitted")
+	}
+	return b, shown, e, e2
+}
+
+// A click read while frame E was shown, resolved after the App admitted E', lands in the same
+// pane at the same distance into it in dp, on both axes, and CellPixels reconstructs that dp.
+func TestAClickResolvesFromTheShownFrameIntoTheAdmittedLayout(t *testing.T) {
+	b, shown, e, e2 := resolveFixture(t)
+	view, view2 := e.layout.panes[1], e2.layout.panes[1]
+	// Device (166, 52) in E: 16 px right, 52 px down into the view pane: (10.667, 34.667) dp.
+	ev := b.ResolvePointer(tui.MouseEvent{Kind: tui.MousePress, Button: tui.MouseLeft, Source: tui.PointerSource{X: 166, Y: 52, Ref: shown}})
+	cp := b.CellPixels()
+	gotX := (float32(ev.X-view2.band.X) + ev.SubX) * cp.W
+	gotY := (float32(ev.Y-view2.band.Y) + ev.SubY) * cp.H
+	wantX, wantY := float32(166-view.origin.X)/1.5, float32(52-view.origin.Y)/1.5
+	if d := gotX - wantX; d > 0.01 || d < -0.01 {
+		t.Fatalf("x: %v dp into the view in E', want %v (event %+v, CellPixels %v)", gotX, wantX, ev, cp)
+	}
+	if d := gotY - wantY; d > 0.01 || d < -0.01 {
+		t.Fatalf("y: %v dp into the view in E', want %v (event %+v)", gotY, wantY, ev)
+	}
+	if ev.X < view2.band.X || ev.X >= view2.band.X+view2.band.W {
+		t.Fatalf("resolved to column %d, outside the view's band %v in E'", ev.X, view2.band)
+	}
+}
+
+// A press latches its pane: a drag past the pane's edge keeps counting in that pane, and after the
+// release a move maps through the pane under the pointer again.
+func TestResolvePointerLatchesThePressPane(t *testing.T) {
+	b, shown, _, e2 := resolveFixture(t)
+	src := func(x, y float32) tui.PointerSource { return tui.PointerSource{X: x, Y: y, Ref: shown} }
+	side2, view2 := e2.layout.panes[0], e2.layout.panes[1]
+	press := b.ResolvePointer(tui.MouseEvent{Kind: tui.MousePress, Button: tui.MouseLeft, Source: src(140, 10)})
+	if press.X < side2.band.X || press.X >= side2.band.X+side2.band.W {
+		t.Fatalf("press resolved to column %d, outside the sidebar %v", press.X, side2.band)
+	}
+	drag := b.ResolvePointer(tui.MouseEvent{Kind: tui.MouseMotion, Button: tui.MouseLeft, Source: src(200, 10)})
+	if drag.X < side2.band.X+side2.band.W-1 || drag.X >= view2.band.X+view2.band.W {
+		t.Fatalf("drag over the view resolved to column %d; want counted on past the sidebar's edge %v", drag.X, side2.band)
+	}
+	b.ResolvePointer(tui.MouseEvent{Kind: tui.MouseRelease, Button: tui.MouseLeft, Source: src(200, 10)})
+	move := b.ResolvePointer(tui.MouseEvent{Kind: tui.MouseMotion, Source: src(200, 10)})
+	if move.X < view2.band.X {
+		t.Fatalf("after the release a move resolved to column %d; want in the view %v", move.X, view2.band)
+	}
+}
+
+// An event with no frame is the producer's: resolution leaves it alone.
+func TestResolvePointerLeavesAnUnmarkedEvent(t *testing.T) {
+	b, _, _, _ := resolveFixture(t)
+	in := tui.MouseEvent{Kind: tui.MousePress, X: 3, Y: 2, SubX: 0.5}
+	if out := b.ResolvePointer(in); out != in {
+		t.Fatalf("resolved an unmarked event: %+v", out)
+	}
+}
+
+func TestResolvePointerAllocatesNothing(t *testing.T) {
+	b, shown, _, _ := resolveFixture(t)
+	ev := tui.MouseEvent{Kind: tui.MouseMotion, Source: tui.PointerSource{X: 166, Y: 52, Ref: shown}}
+	if n := testing.AllocsPerRun(100, func() { _ = b.ResolvePointer(ev) }); n != 0 {
+		t.Fatalf("ResolvePointer allocates %v times per event", n)
+	}
+}
