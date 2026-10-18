@@ -149,7 +149,9 @@ func (t *Toasts) SetMargin(rows int) {
 // SetLinger changes how long a finished toast stays, from the next one finished on.
 func (t *Toasts) SetLinger(d time.Duration) { t.linger = max(d, time.Second) }
 
-// Post shows a toast, or queues it, or replaces the message of the one posted with its ID.
+// Post shows a toast, or queues it, or replaces the message of the one posted with its ID. Posted
+// Ongoing to one that has finished and still lingers or waits, it starts that toast again: ongoing,
+// aged from now, going only after its next end. An update to an ongoing one keeps its age.
 func (t *Toasts) Post(n Toast) {
 	now := t.now()
 	if n.At.IsZero() {
@@ -157,7 +159,12 @@ func (t *Toasts) Post(n Toast) {
 	}
 	if it := t.find(n.ID); it != nil {
 		it.Text, it.Ongoing, it.OnClick = n.Text, n.Ongoing, n.OnClick
-		if !n.Ongoing && !it.finishedT {
+		switch {
+		case n.Ongoing && it.finishedT:
+			// a new cycle of a finished toast still lingering or waiting: ongoing again, aged from
+			// this post, lingering from its next end, not its last
+			it.finishedT, it.finished, it.At = false, time.Time{}, n.At
+		case !n.Ongoing && !it.finishedT:
 			t.finish(it, now)
 		}
 		t.changed()
