@@ -56,7 +56,12 @@ func (cs *CanvasStream) Push(size Size, draw func(c Canvas)) *Receipt {
 	rec := op.Record(ops)
 	start := walkNow()
 	draw(&gioCanvas{ops: ops, r: cs.r, m: m, size: size, clip: dev, alpha: 1})
-	return cs.s.push(&canvasPayload{call: rec.Stop(), size: size, scale: m.scale, cost: walkNow() - start}, nil)
+	cost := walkNow() - start
+	// A recording is the stream's frame for its own outline cache: runs no recording has used
+	// lately go, so a picture of changing text does not grow the cache. The recording flag makes
+	// this goroutine the cache's only user now.
+	cs.r.paths.endFrame()
+	return cs.s.push(&canvasPayload{call: rec.Stop(), size: size, scale: m.scale, cost: cost}, nil)
 }
 
 // snapshot is the window's scale and font for one recording, and the stream's shaper, rebuilt on
