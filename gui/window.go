@@ -91,6 +91,9 @@ func (c config) windowOptions() []app.Option {
 	if c.decoration {
 		opts = append(opts, app.Decorated(c.decorated))
 	}
+	if c.zeroCopy {
+		opts = append(opts, app.PreferVulkan())
+	}
 	return opts
 }
 
@@ -330,6 +333,10 @@ func (b *Backend) present(e app.FrameEvent, tag event.Tag, m metrics, fs *fontSt
 	fillRect(ops, image.Rectangle{Max: e.Size}, b.cfg.theme.BG)
 	if f != nil {
 		f.draw.Add(ops)
+		for _, p := range f.parts {
+			p.slot.add(ops) // the stream's newest picture, in paint order
+			p.seg.Add(ops)
+		}
 		b.placeCaret(e.Source, tag, f)
 		b.drawPreedit(ops, f, m, fs)
 	}
@@ -338,6 +345,7 @@ func (b *Backend) present(e app.FrameEvent, tag event.Tag, m metrics, fs *fontSt
 	event.Op(ops, tag)
 	area.Pop()
 	e.Frame(ops)
+	b.streamsPresented(e.Now)
 }
 
 // placeCaret tells the input method where the caret is, so its candidate window opens there.

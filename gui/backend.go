@@ -105,6 +105,9 @@ type Backend struct {
 
 	stage stageLayouts // a Panes window's layout snapshots (panes.go)
 
+	streams     streamSet // its live streams (stream.go)
+	presentList []*stream // streamsPresented's list, reused; Gio goroutine
+
 	// The hand-over to the Gio goroutine, guarded by mu.
 	mu       sync.Mutex
 	latest   *frame  // the newest finished frame; Flush replaces it and never waits
@@ -134,6 +137,7 @@ type Backend struct {
 type frame struct {
 	m     metrics // the snapshot it was drawn with: a Panes window's input maps through it
 	draw  op.CallOp
+	parts []framePart     // stream slots, each with the drawing after it
 	caret image.Rectangle // device pixels; empty when the cursor is hidden
 	base  int             // the caret cell's baseline, from its top
 	// fg and bg are the colours of the text at the caret, for the preedit drawn there; tinted
@@ -191,7 +195,7 @@ func NewBackend(opts ...Option) *Backend {
 	b.gio.shaper = text.NewShaper(text.WithCollection(gofont.Collection()))
 	b.rec = cfg.recorder
 	b.font.Store(&fontState{fm: measureFont(cells, fallbackChain(cfg.typeface)), typeface: fallbackChain(cfg.typeface),
-		size: cfg.fontSize})
+		size: cfg.fontSize, fonts: b.render.fonts})
 	return b
 }
 
@@ -201,6 +205,7 @@ type fontState struct {
 	typeface string  // the cell typeface list, fallbackChain's
 	size     unit.Sp // the size the cells are drawn at: SetFont's, times SetZoom's percent
 	gen      uint64  // bumped by every change of font, family or size
+	fonts    Fonts   // the native views' families, as the renderer has them
 }
 
 // SetFont changes the cell font while the window runs: typeface a CSS-style family list as
@@ -263,6 +268,7 @@ func (b *Backend) refont(face bool) {
 		b.render.fonts.Mono = tf
 	}
 	b.render.fonts.Gen = fs.gen
+	fs.fonts = b.render.fonts // for other goroutines (a CanvasStream's producer)
 	b.font.Store(fs)
 	b.win.Invalidate()
 }
@@ -320,6 +326,7 @@ func (b *Backend) Start(ctx context.Context) error {
 // goroutine to exit and guarantees that the channel returned by [Backend.Events] is closed upon return.
 func (b *Backend) Stop() error {
 	b.q.end(nil)
+	b.closeStreams() // pending pushes complete Closed; the frames are released
 	b.win.Perform(system.ActionClose)
 	if b.runLaunched.Load() {
 		<-b.q.exited
@@ -419,8 +426,8 @@ func (b *Backend) Flush(diff []tui.CellUpdate) error {
 
 // publishFrame draws the grid with m and hands the frame to the Gio goroutine.
 func (b *Backend) publishFrame(m metrics) {
-	draw := b.render.frame(&b.grid, m, b.cursor, b.natives, b.imageList(), b.focused.Load())
-	f := &frame{draw: draw, m: m}
+	draw, parts := b.render.frameParts(&b.grid, m, b.cursor, b.natives, b.imageList(), b.focused.Load())
+	f := &frame{draw: draw, parts: parts, m: m}
 	b.frameCaret(f, m)
 	b.mu.Lock()
 	b.latest = f

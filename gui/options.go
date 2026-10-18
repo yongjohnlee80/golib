@@ -78,7 +78,13 @@ type config struct {
 	style      *Style
 	recorder   Recorder // where the input path's records go; nil records nothing
 	stage      *Panes   // WithPanes: a pixel root; nil is one cell grid
+	zeroCopy   bool     // WithZeroCopyFrames
 }
+
+// WithZeroCopyFrames asks for the renderer that draws frames (Stream) without a copy: on
+// Linux, Vulkan before EGL on Wayland; on macOS, Metal, the default already. If that renderer is
+// unavailable the window falls back as before; FrameCaps then says which frames copy.
+func WithZeroCopyFrames() Option { return func(c *config) { c.zeroCopy = true } }
 
 // defaultConfig returns the default GUI window and backend configuration.
 func defaultConfig() config {

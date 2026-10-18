@@ -21,8 +21,10 @@ import (
 // Verified for the native-drop fork github.com/yongjohnlee80/gio by Johno, 2026-10-16: Hangul on
 // macOS (AutoDoc f47adea, gio v0.1.1) and on Wayland, the L1–L9 matrix on Hyprland 0.56.2
 // (AutoDoc 3764c71, gio v0.1.1). v0.1.3 differs from v0.1.1 only in the Wayland drop path
-// (app/drop.go and os_wayland.go's drop handling), which no input-method path reaches.
-const verifiedGio = "v0.1.3"
+// (app/drop.go and os_wayland.go's drop handling), which no input-method path reaches. v0.1.4
+// leaves io/input/key.go, app/ime.go and the macOS sources unchanged; in app/window.go and
+// os_wayland.go it adds only PreferVulkan, ExternalCaps and the Vulkan-first context choice.
+const verifiedGio = "v0.1.4"
 
 // The module requires exactly the Gio release the input-method handling was verified against.
 func TestGioIsTheVersionTheIMEContractWasVerifiedAgainst(t *testing.T) {

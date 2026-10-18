@@ -398,6 +398,17 @@ func (c *gioCanvas) DrawImage(img *Image, dst, src Rect) {
 	end()
 }
 
+// drawStream records a slot for s, if this canvas is drawing its window's frame.
+func (c *gioCanvas) drawStream(s *stream, dst Rect) bool {
+	if s.b == nil || s.b.render != c.r || !c.r.cutting || c.r.cutOps != c.ops {
+		return false
+	}
+	scale := c.m.scale
+	base := f32.Affine2D{}.Scale(f32.Point{}, f32.Pt(scale, scale)).Offset(c.origin)
+	c.r.cut(streamSlot{s: s, clip: c.clip, alpha: c.alpha, xform: base.Mul(c.xform), dst: dst})
+	return true
+}
+
 // WindowMoveArea registers an OS window drag-move interactive hit area.
 func (c *gioCanvas) WindowMoveArea(r Rect) {
 	s := c.m.scale
@@ -413,7 +424,7 @@ func (c *gioCanvas) WindowMoveArea(r Rect) {
 // CellColors returns the foreground and background colors of the cell at grid (col, row).
 func (c *gioCanvas) CellColors(col, row int) (fg, bg color.NRGBA) {
 	x, y := c.cellX+col, c.cellY+row
-	if x < 0 || y < 0 || x >= c.g.w || y >= c.g.h {
+	if c.g == nil || x < 0 || y < 0 || x >= c.g.w || y >= c.g.h {
 		return color.NRGBA{}, color.NRGBA{}
 	}
 	return c.r.colors(c.g.at(x, y).Attrs)
@@ -432,13 +443,16 @@ func (c *gioCanvas) CellCovered(col, row int) bool {
 
 // Backdrop returns the default background color of the canvas's host view.
 func (c *gioCanvas) Backdrop() color.NRGBA {
+	if c.g == nil {
+		return color.NRGBA{} // a canvas stream's: no cells behind it
+	}
 	return c.r.backdrop(c.g, c.view)
 }
 
 // CellText returns the character content of the cell at grid (col, row).
 func (c *gioCanvas) CellText(col, row int) string {
 	x, y := c.cellX+col, c.cellY+row
-	if x < 0 || y < 0 || x >= c.g.w || y >= c.g.h {
+	if c.g == nil || x < 0 || y < 0 || x >= c.g.w || y >= c.g.h {
 		return ""
 	}
 	return c.g.at(x, y).Content
@@ -446,6 +460,9 @@ func (c *gioCanvas) CellText(col, row int) string {
 
 // PaintCells rasterizes a rectangle of character cells onto the canvas.
 func (c *gioCanvas) PaintCells(r CellRect, glyphsOnly bool) {
+	if c.g == nil {
+		return // a canvas stream's: no cells to paint
+	}
 	cl := clip.Rect(c.clip).Push(c.ops)
 	var opacity paint.OpacityStack
 	faded := c.alpha < 1

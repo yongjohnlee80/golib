@@ -64,9 +64,14 @@ type renderer struct {
 	// glyphs is cleared with the row cache when the font size or the window's face changes. It
 	// holds one entry per (cluster, bold, italic, face) drawn since: bounded by the faces in the
 	// table (at most tui's maxCellFaces) times the clusters actually on screen, not by frames.
-	glyphs map[glyphKey]glyphShape
-	faces  []font.Typeface // the cell faces (tui.FaceHost), index 0 unused: the window's typeface
-	fonts  Fonts           // the window's families, for the native views (Canvas.Fonts)
+	// The frame being recorded, cut at stream slots (frameParts).
+	cutOps  *op.Ops
+	cutRec  op.MacroOp
+	cuts    []framePart
+	cutting bool
+	glyphs  map[glyphKey]glyphShape
+	faces   []font.Typeface // the cell faces (tui.FaceHost), index 0 unused: the window's typeface
+	fonts   Fonts           // the window's families, for the native views (Canvas.Fonts)
 }
 
 type glyphKey struct {
@@ -105,11 +110,37 @@ type placedImage struct {
 	op paint.ImageOp
 }
 
-// frame records one complete frame as a macro: every row, then the native views and images over
-// their cells in paint order, then the cursor. g's dirty rows are recorded afresh and marked clean. Rows are cached apart from the
-// window's size, so a window resized within the same grid re-records nothing; only the margins
-// past the last whole cell are drawn for every frame.
+// frame records one complete frame as a single macro: frameParts with its segments joined.
 func (r *renderer) frame(g *grid, m metrics, cur cursorState, natives []tui.NativePlacement, images []placedImage, focused bool) op.CallOp {
+	draw, parts := r.frameParts(g, m, cur, natives, images, focused)
+	if len(parts) == 0 {
+		return draw
+	}
+	// Stream slots draw nothing here: a caller wanting one macro gets the segments joined.
+	ops := new(op.Ops)
+	rec := op.Record(ops)
+	draw.Add(ops)
+	for _, p := range parts {
+		p.seg.Add(ops)
+	}
+	return rec.Stop()
+}
+
+// framePart is a stream slot and the drawing that follows it, up to the next slot.
+type framePart struct {
+	slot streamSlot
+	seg  op.CallOp
+}
+
+// frameParts records the frame: every row, then the native views and images over their cells in
+// paint order, then the cursor. g's dirty rows are recorded afresh and marked clean. Rows are
+// cached apart from the window's size, so a window resized within the same grid re-records
+// nothing; only the margins past the last whole cell are drawn for every frame.
+//
+// It returns a first segment and, for each stream slot a view's DrawStream recorded, the slot and
+// the drawing after it. present puts each stream's newest picture in its slot, in paint order, at
+// every vsync, with no tui flush and no row recorded again.
+func (r *renderer) frameParts(g *grid, m metrics, cur cursorState, natives []tui.NativePlacement, images []placedImage, focused bool) (op.CallOp, []framePart) {
 	if !r.m.sameCells(m) || len(r.rows) != g.h {
 		if r.m.ppem != m.ppem || r.m.fontGen != m.fontGen { // another size, or another face
 			clear(r.glyphs)
@@ -132,7 +163,7 @@ func (r *renderer) frame(g *grid, m metrics, cur cursorState, natives []tui.Nati
 	}
 
 	ops := new(op.Ops) // owned by the frame from here on
-	rec := op.Record(ops)
+	r.cutOps, r.cutRec, r.cuts, r.cutting = ops, op.Record(ops), r.cuts[:0], true
 	r.drawMargins(ops, g, m)
 	for _, row := range r.rows {
 		row.Add(ops)
@@ -141,8 +172,30 @@ func (r *renderer) frame(g *grid, m metrics, cur cursorState, natives []tui.Nati
 	if cur.visible {
 		r.drawCursor(ops, g, cur, focused)
 	}
+	r.cutting = false
+	last := r.cutRec.Stop()
 	r.paths.endFrame()
-	return rec.Stop()
+	if len(r.cuts) == 0 {
+		return last, nil
+	}
+	// cuts[0].seg is the drawing before the first slot; each later seg follows the slot before.
+	first := r.cuts[0].seg
+	parts := make([]framePart, len(r.cuts))
+	for i := range r.cuts {
+		parts[i].slot = r.cuts[i].slot
+		if i+1 < len(r.cuts) {
+			parts[i].seg = r.cuts[i+1].seg
+		} else {
+			parts[i].seg = last
+		}
+	}
+	return first, parts
+}
+
+// cut ends the drawing so far at a stream slot and starts the next segment.
+func (r *renderer) cut(slot streamSlot) {
+	r.cuts = append(r.cuts, framePart{slot: slot, seg: r.cutRec.Stop()})
+	r.cutRec = op.Record(r.cutOps)
 }
 
 // drawMargins fills everything around the grid (the window's padding, and the half-cells of
