@@ -87,6 +87,7 @@ type Backend struct {
 	// metrics is the Gio goroutine's latest snapshot. Readers Load it once and use that value.
 	metrics atomic.Pointer[metrics]
 	focused atomic.Bool // the window has keyboard focus
+	raw     atomic.Bool // SetRawKeys's request; the Gio goroutine applies it (rawkeys.go)
 
 	q          *eventQueue
 	started    chan struct{} // closed by the first FrameEvent

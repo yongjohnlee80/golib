@@ -101,6 +101,8 @@ func cmdFields(cmd TextInputCmd) (string, map[string]any) {
 		}
 	case KeyboardShow:
 		return "KeyboardShow", map[string]any{}
+	case KeyboardHide:
+		return "KeyboardHide", map[string]any{}
 	case FocusTake:
 		return "FocusTake", map[string]any{}
 	}
