@@ -132,6 +132,7 @@ func (l *CommandLine) open(initial string, failed error) bool {
 	var m *Modal
 	m = NewModal(body,
 		WithModalTitleMessage(tui.Msg("tui.cmdline.title")),
+		WithScrim(false), // a prompt over the page it edits: the page stays as it is, not dimmed
 		WithModalWidth(commandLineWidth),
 		WithModalRule(true),
 		WithModalKeys(l.keys),
