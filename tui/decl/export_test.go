@@ -32,3 +32,12 @@ func ModeKeyOfForTest(lit string) (func(tui.KeyEvent) bool, error) {
 	}
 	return modeKeyOf(qml.SpecValue{Kind: qml.SpecValueString, Raw: raw})
 }
+
+// HostKeysOfValueForTest is hostKeysOf over a Go value, as a source delivers it (Value).
+func HostKeysOfValueForTest(v any) (func(tui.KeyEvent) bool, error) {
+	sv, err := Value(v)
+	if err != nil {
+		return nil, err
+	}
+	return hostKeysOf(sv)
+}
