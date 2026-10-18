@@ -2,6 +2,7 @@ package gui
 
 import (
 	"context"
+	"fmt"
 	"image"
 	"image/color"
 	"sync"
@@ -583,5 +584,48 @@ func TestStreamsRacingStopAllEndClosed(t *testing.T) {
 				t.Fatalf("receipt %d of %d: %v; want Closed", i, len(receipts), o)
 			}
 		}
+	}
+}
+
+// runsHeld is how many outline runs c keeps.
+func runsHeld(c *shapeCache) int {
+	n := 0
+	for _, rs := range c.runs {
+		n += len(rs)
+	}
+	return n
+}
+
+// A CanvasStream's own outline cache ages with its recordings: a picture of changing text (a frame
+// rate, a score) keeps only the runs recent recordings used, not every label it ever drew.
+func TestACanvasStreamsOutlineCacheAgesWithItsRecordings(t *testing.T) {
+	b := NewBackend()
+	cs := b.NewCanvasStream()
+	defer cs.Close()
+	for i := range 50 {
+		label := fmt.Sprintf("%d fps", 100+i)
+		cs.Push(Size{W: 120, H: 30}, func(c Canvas) {
+			c.DrawText(c.Text().Layout(label, Font{Size: 15}, 120), Pt(0, 0), Brush{Color: color.NRGBA{A: 255}})
+		})
+	}
+	if n := runsHeld(cs.r.paths); n == 0 || n > keepFrames {
+		t.Fatalf("after 50 labels the stream's cache holds %d runs; want 1 to %d (the recent ones)", n, keepFrames)
+	}
+}
+
+// The window's frames age the renderer's outline cache through the path production takes
+// (publishFrame and frameParts), not only frame.
+func TestPublishedFramesAgeTheRenderersOutlineCache(t *testing.T) {
+	b := NewBackend()
+	b.render = newRenderer(text.NewShaper(text.WithCollection(gofont.Collection()), text.NoSystemFonts()), "Go Mono", DefaultTheme())
+	m := metrics{window: image.Pt(160, 32), cell: image.Pt(8, 16), ppem: 14, baseline: 12, scale: 1, grid: tui.Size{W: 20, H: 2}}
+	b.grid.resize(20, 2)
+	before := b.render.paths.frame
+	for range 3 {
+		b.grid.touchAll()
+		b.publishFrame(m)
+	}
+	if got := b.render.paths.frame - before; got != 3 {
+		t.Fatalf("three published frames advanced the cache %d frames; want 3", got)
 	}
 }
