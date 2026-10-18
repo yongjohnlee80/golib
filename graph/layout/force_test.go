@@ -5,6 +5,7 @@ import (
 	"errors"
 	"math"
 	"math/rand/v2"
+	"slices"
 	"testing"
 	"time"
 )
@@ -188,3 +189,134 @@ func TestForcePlacesAWorkspaceSizedGraph(t *testing.T) {
 	}
 	t.Logf("2200 nodes, 5000 edges placed in %v; extent %.0f×%.0f", took, r.Size.W, r.Size.H)
 }
+
+// A simulation stepped in any chunks reaches the same frames as one stepped all at once, and its
+// last frame, moved to start at (0, 0), is Force's layout.
+func TestSimulationStepsToForcesLayout(t *testing.T) {
+	in := clusters(9)
+	in.Steps = 120
+	whole, err := NewSimulation(in, Limits{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if done, err := whole.Step(context.Background(), in.Steps); err != nil || !done || !whole.Done() {
+		t.Fatalf("stepped to the end: done %v, %v", done, err)
+	}
+	chunked, _ := NewSimulation(in, Limits{})
+	steps := 0
+	for _, n := range []int{1, 7, 0, 33, 50, 1000} {
+		done, err := chunked.Step(context.Background(), n)
+		if err != nil {
+			t.Fatal(err)
+		}
+		steps = min(steps+n, in.Steps)
+		if done != (steps == in.Steps) {
+			t.Fatalf("after %d steps done is %v", steps, done)
+		}
+	}
+	a, ab, err := whole.Frame(nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	b, bb, _ := chunked.Frame(make([]Point, 3))
+	if ab != bb || !slices.Equal(a, b) {
+		t.Fatal("chunked steps reached another layout")
+	}
+	f, err := Force(context.Background(), in, Limits{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	for i, p := range a {
+		want := Point{X: f.Nodes[i].X + ab.X, Y: f.Nodes[i].Y + ab.Y}
+		if math.Abs(float64(p.X-want.X)) > 1e-2 || math.Abs(float64(p.Y-want.Y)) > 1e-2 {
+			t.Fatalf("node %d at %v in the frame, %v from Force", i, p, want)
+		}
+	}
+	if math.Abs(float64(f.Size.W-ab.W)) > 1e-2 || math.Abs(float64(f.Size.H-ab.H)) > 1e-2 {
+		t.Fatalf("Force's extent %v, the frame's %v", f.Size, ab)
+	}
+	if done, err := whole.Step(context.Background(), 5); !done || err != nil {
+		t.Fatalf("a step past the end: %v, %v", done, err)
+	}
+	if c, _, _ := whole.Frame(nil); !slices.Equal(c, a) {
+		t.Fatal("a step past the end moved a node")
+	}
+}
+
+// Each frame on the way is finite and holds every node within its bounds; the settled frame is not
+// the seeded start.
+func TestSimulationFramesAreFinite(t *testing.T) {
+	s, err := NewSimulation(workspaceGraph(300, 600), Limits{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	start, _, _ := s.Frame(nil)
+	var at []Point
+	for !s.Done() {
+		var b Rect
+		at, b, err = s.Frame(at)
+		if err != nil {
+			t.Fatal(err)
+		}
+		// the bounds are in float32 too: X+W rounds, so a node at the edge may sit past it by a few ulps
+		eps := 1e-5 * max(abs32(b.X)+b.W, abs32(b.Y)+b.H, 1)
+		for i, p := range at {
+			if !finite32(p.X) || !finite32(p.Y) || p.X < b.X-eps || p.Y < b.Y-eps || p.X > b.X+b.W+eps || p.Y > b.Y+b.H+eps {
+				t.Fatalf("node %d at %v, the frame's bounds %v", i, p, b)
+			}
+		}
+		if _, err := s.Step(context.Background(), 20); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if end, _, _ := s.Frame(at); slices.Equal(end, start) {
+		t.Error("the settled frame is the seeded start: no step moved a node")
+	}
+	empty, err := NewSimulation(ForceInput{}, Limits{})
+	if err != nil || !empty.Done() {
+		t.Fatalf("no nodes: %v, done %v", err, empty.Done())
+	}
+	if at, b, err := empty.Frame(nil); len(at) != 0 || b != (Rect{}) || err != nil {
+		t.Fatalf("no nodes' frame: %v %v %v", at, b, err)
+	}
+}
+
+// A simulation refuses what Force refuses, counts its work across every Step against MaxWork, and
+// stops at a cancelled context.
+func TestSimulationKeepsForcesLimits(t *testing.T) {
+	if _, err := NewSimulation(ForceInput{Nodes: 2, Edges: []Edge{{From: 0, To: 5}}}, Limits{}); !errors.Is(err, ErrInvalid) {
+		t.Errorf("an edge past the nodes: %v", err)
+	}
+	if _, err := NewSimulation(ForceInput{Nodes: 4, Spacing: float32(math.NaN())}, Limits{}); !errors.Is(err, ErrInvalid) {
+		t.Errorf("NaN spacing: %v", err)
+	}
+	s, err := NewSimulation(clusters(8), Limits{MaxWork: 3000})
+	if err != nil {
+		t.Fatal(err)
+	}
+	var stepErr error
+	for i := 0; i < 1000 && stepErr == nil && !s.Done(); i++ {
+		_, stepErr = s.Step(context.Background(), 1) // one step at a time: the work still adds up
+	}
+	if !errors.Is(stepErr, ErrTooLarge) {
+		t.Errorf("stepping one at a time past MaxWork: %v", stepErr)
+	}
+	big, err := NewSimulation(ForceInput{Nodes: 8, Steps: 1, Seed: 7, Spacing: math.MaxFloat32}, Limits{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := big.Step(context.Background(), 1); err != nil {
+		t.Fatal(err)
+	}
+	if at, _, err := big.Frame(nil); !errors.Is(err, ErrTooLarge) {
+		t.Errorf("a frame past float32: %v, %v; want ErrTooLarge", at, err)
+	}
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	c, _ := NewSimulation(clusters(4), Limits{})
+	if _, err := c.Step(ctx, 10); !errors.Is(err, context.Canceled) {
+		t.Errorf("a cancelled step: %v", err)
+	}
+}
+
+func abs32(v float32) float32 { return float32(math.Abs(float64(v))) }
