@@ -59,8 +59,16 @@ func (b *Backend) NativeFor(c tui.Component) (any, tui.NativeScope, bool) {
 
 // CellPixels reports the width and height of a single terminal monospace cell in logical
 // device-independent pixels (dp), calculated from the window's latest metrics snapshot.
+//
+// A Panes window reports the admitted snapshot's cell: the one the tree is laid out, painted and
+// (with pointer resolution at dispatch) routed with, so a component reconstructing pixels from an
+// event's cells uses the same cell size they were counted in (ADR 1792306654 §4.3a). It is read on
+// the App goroutine, which owns the admitted snapshot.
 func (b *Backend) CellPixels() tui.CellPixels {
 	m := b.metrics.Load()
+	if b.cfg.stage != nil && b.stage.admitted.layout != nil {
+		m = &b.stage.admitted
+	}
 	if m == nil || m.scale <= 0 {
 		return tui.CellPixels{}
 	}
