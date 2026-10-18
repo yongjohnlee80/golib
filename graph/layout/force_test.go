@@ -311,6 +311,31 @@ func TestSimulationKeepsForcesLimits(t *testing.T) {
 	if at, _, err := big.Frame(nil); !errors.Is(err, ErrTooLarge) {
 		t.Errorf("a frame past float32: %v, %v; want ErrTooLarge", at, err)
 	}
+	// a finite origin and a finite span whose far end is past float32: each point is checked
+	far, err := NewSimulation(ForceInput{Nodes: 2, Seed: 23, Spacing: math.MaxFloat32}, Limits{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if at, b, err := far.Frame(nil); !errors.Is(err, ErrTooLarge) {
+		t.Errorf("a frame with a point past float32: %v %v, %v; want ErrTooLarge", at, b, err)
+	}
+	// a cancelled continuation: the meter has counted work already, so only an entry check sees it
+	cont, err := NewSimulation(ForceInput{Nodes: 1, Steps: 3}, Limits{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := cont.Step(context.Background(), 1); err != nil {
+		t.Fatal(err)
+	}
+	before, _, _ := cont.Frame(nil)
+	cancelled, stopIt := context.WithCancel(context.Background())
+	stopIt()
+	if done, err := cont.Step(cancelled, 1); !errors.Is(err, context.Canceled) || done {
+		t.Errorf("a cancelled continuation: done %v, %v; want context.Canceled", done, err)
+	}
+	if after, _, _ := cont.Frame(nil); !slices.Equal(after, before) || cont.step != 1 {
+		t.Errorf("a cancelled continuation moved the simulation: %v → %v, step %d", before, after, cont.step)
+	}
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()
 	c, _ := NewSimulation(clusters(4), Limits{})
