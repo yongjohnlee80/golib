@@ -35,10 +35,12 @@ type metalProducer struct {
 	device string
 	how    string
 
-	mu    sync.Mutex
-	free  []*mtlTarget
-	stale []*mtlTarget
-	size  image.Point
+	mu     sync.Mutex
+	free   []*mtlTarget // targets no frame holds
+	stale  []*mtlTarget // released targets of another size, freed by render
+	size   image.Point
+	live   int  // targets made and not yet freed
+	closed bool // close ran: a target released after it is freed, and the last frees the device
 }
 
 type mtlTarget struct {
@@ -117,9 +119,7 @@ func (p *metalProducer) target(size image.Point) (*mtlTarget, error) {
 		p.free = p.free[:n-1]
 	}
 	p.mu.Unlock()
-	for _, s := range stale {
-		C.m3d_target_free(s.t)
-	}
+	p.freeTargets(stale)
 	if tg != nil {
 		return tg, nil
 	}
@@ -129,11 +129,36 @@ func (p *metalProducer) target(size image.Point) (*mtlTarget, error) {
 		C.m3d_target_free(tg.t)
 		return nil, fmt.Errorf("scene3d: metal target: %s", C.GoString(&errBuf[0]))
 	}
+	p.mu.Lock()
+	p.live++
+	p.mu.Unlock()
 	return tg, nil
 }
 
+// freeTargets frees ts, then counts them gone; the count reaching zero after close frees the
+// device, after every other party's frees.
+func (p *metalProducer) freeTargets(ts []*mtlTarget) {
+	for _, tg := range ts {
+		C.m3d_target_free(tg.t)
+	}
+	p.mu.Lock()
+	p.live -= len(ts)
+	last := p.closed && p.live == 0
+	p.mu.Unlock()
+	if last {
+		C.m3d_free(p.m)
+	}
+}
+
+// put is a frame's release: the target is free again, or stale if the size moved on, or freed
+// once the producer is closed.
 func (p *metalProducer) put(tg *mtlTarget) {
 	p.mu.Lock()
+	if p.closed {
+		p.mu.Unlock()
+		p.freeTargets([]*mtlTarget{tg})
+		return
+	}
 	if tg.size == p.size {
 		p.free = append(p.free, tg)
 	} else {
@@ -142,13 +167,13 @@ func (p *metalProducer) put(tg *mtlTarget) {
 	p.mu.Unlock()
 }
 
+// close frees every target no frame holds; a target the window still holds is freed as its
+// frame is released, and the last one frees the device. Call it once, after the last render.
 func (p *metalProducer) close() {
 	p.mu.Lock()
+	p.closed = true
 	all := append(p.free, p.stale...)
 	p.free, p.stale = nil, nil
 	p.mu.Unlock()
-	for _, tg := range all {
-		C.m3d_target_free(tg.t)
-	}
-	C.m3d_free(p.m)
+	p.freeTargets(all)
 }

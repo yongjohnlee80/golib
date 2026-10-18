@@ -74,7 +74,11 @@ func loop(ctx context.Context, b *gui.Backend, vp *viewport, st *stats, want str
 	if err != nil {
 		return err
 	}
-	defer func() { prod.close() }()
+	defer func() {
+		if prod != nil {
+			prod.close()
+		}
+	}()
 	st.setProducer(prod, caps)
 	start := time.Now()
 	var paused time.Duration // time spent paused, taken out of the scene's clock
@@ -115,6 +119,7 @@ func loop(ctx context.Context, b *gui.Backend, vp *viewport, st *stats, want str
 			drawn++
 		case gui.Unsupported: // the window's device changed: choose again
 			prod.close()
+			prod = nil
 			if caps, err = waitCaps(ctx, b); err != nil {
 				return err
 			}

@@ -47,10 +47,12 @@ type vulkanProducer struct {
 	mods   []uint64 // the modifiers its targets may take, all of which the window draws
 	how    string   // the window's path for them
 
-	mu    sync.Mutex
-	free  []*vkTarget // targets no frame holds
-	stale []*vkTarget // released targets of another size, freed by render
-	size  image.Point
+	mu     sync.Mutex
+	free   []*vkTarget // targets no frame holds
+	stale  []*vkTarget // released targets of another size, freed by render
+	size   image.Point
+	live   int  // targets made and not yet freed
+	closed bool // close ran: a target released after it is freed, and the last frees the device
 }
 
 // vkTarget is one exported image.
@@ -207,9 +209,7 @@ func (p *vulkanProducer) target(size image.Point) (*vkTarget, error) {
 		p.free = p.free[:n-1]
 	}
 	p.mu.Unlock()
-	for _, s := range stale {
-		C.s3d_target_free(p.s, s.t)
-	}
+	p.freeTargets(stale)
 	if tg != nil {
 		return tg, nil
 	}
@@ -220,7 +220,26 @@ func (p *vulkanProducer) target(size image.Point) (*vkTarget, error) {
 		C.s3d_target_free(p.s, tg.t)
 		return nil, fmt.Errorf("scene3d: vulkan target: %s", C.GoString(&errBuf[0]))
 	}
+	p.mu.Lock()
+	p.live++
+	p.mu.Unlock()
 	return tg, nil
+}
+
+// freeTargets frees ts, then counts them gone; the count reaching zero after close frees the
+// device. Counting after freeing means whoever frees the device does so after every other
+// party's frees.
+func (p *vulkanProducer) freeTargets(ts []*vkTarget) {
+	for _, tg := range ts {
+		C.s3d_target_free(p.s, tg.t)
+	}
+	p.mu.Lock()
+	p.live -= len(ts)
+	last := p.closed && p.live == 0
+	p.mu.Unlock()
+	if last {
+		C.s3d_free(p.s)
+	}
 }
 
 func (p *vulkanProducer) formatC() C.int {
@@ -230,9 +249,15 @@ func (p *vulkanProducer) formatC() C.int {
 	return C.S3D_RGBA8
 }
 
-// put is a frame's release: the target is free again, or stale if the size moved on.
+// put is a frame's release: the target is free again, or stale if the size moved on, or freed
+// once the producer is closed.
 func (p *vulkanProducer) put(tg *vkTarget) {
 	p.mu.Lock()
+	if p.closed {
+		p.mu.Unlock()
+		p.freeTargets([]*vkTarget{tg})
+		return
+	}
 	if tg.size == p.size {
 		p.free = append(p.free, tg)
 	} else {
@@ -241,14 +266,13 @@ func (p *vulkanProducer) put(tg *vkTarget) {
 	p.mu.Unlock()
 }
 
-// close frees the device and every target no frame holds; call it after the window stopped.
+// close frees every target no frame holds; a target the window still holds is freed as its
+// frame is released, and the last one frees the device. Call it once, after the last render.
 func (p *vulkanProducer) close() {
 	p.mu.Lock()
+	p.closed = true
 	all := append(p.free, p.stale...)
 	p.free, p.stale = nil, nil
 	p.mu.Unlock()
-	for _, tg := range all {
-		C.s3d_target_free(p.s, tg.t)
-	}
-	C.s3d_free(p.s)
+	p.freeTargets(all)
 }
