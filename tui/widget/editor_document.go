@@ -13,11 +13,11 @@ import "github.com/yongjohnlee80/golib/tui"
 
 // DocumentView is a Rendered view that draws the whole document as one widget. The editor shows and
 // hides it through SetVisible, and the framework reads Visible: a hidden view is not laid out,
-// painted or focused. It takes the keyboard itself while shown (AcceptsFocus).
+// painted or focused. While shown it takes the keyboard: the editor moves the focus into it
+// (tui.Context.FocusInto), to the view itself or to the focusable part inside it.
 type DocumentView interface {
 	tui.Component
 	tui.Hideable
-	tui.Focusable
 	// ShowDocument shows text: called as the view is shown.
 	ShowDocument(text []byte)
 	SetVisible(bool)
