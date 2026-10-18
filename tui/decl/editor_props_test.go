@@ -1,6 +1,7 @@
 package decl_test
 
 import (
+	"fmt"
 	"strings"
 	"sync/atomic"
 	"testing"
@@ -148,5 +149,51 @@ func TestAnEditorsContextMenuFromTheDocument(t *testing.T) {
 		if strings.Contains(s.String(), "Paste") {
 			t.Errorf("an Editor without contextMenu opened a menu:\n%s", s.String())
 		}
+	}
+}
+
+// TestAnEditorThatKeepsItsPlace: with `keepPlace`, a bound `text` set again keeps the reader's
+// cursor and first shown line, as a viewer a program refreshes each second must; without it, a set
+// text is a load, at the top.
+func TestAnEditorThatKeepsItsPlace(t *testing.T) {
+	text := func(p string) string {
+		var b strings.Builder
+		for i := range 20 {
+			fmt.Fprintf(&b, "%s%d\n", p, i)
+		}
+		return strings.TrimSuffix(b.String(), "\n")
+	}
+	for _, c := range []struct {
+		keep     bool
+		wantTop  string
+		wantLine int
+	}{{true, "m8", 12}, {false, "m0", 0}} {
+		t.Run(fmt.Sprint("keepPlace ", c.keep), func(t *testing.T) {
+			s := decltest.Run(t, 20, 5,
+				tuidecl.LayoutSource("main.qml", []byte("import tui 1.0\nimport demo 1.0\nWindow {\n"+
+					fmt.Sprintf(" Editor { id: ed; readOnly: true; keepPlace: %v; text: App.text } }", c.keep))),
+				tuidecl.Singleton("demo", "1.0", "App"),
+				tuidecl.Sources(map[string]any{"App.text": text("l")}))
+			s.WaitForText(t, "l0")
+			onScreenLoop(t, s, func() {
+				e, _ := tuidecl.FindAs[*widget.Editor](s.Program, "ed")
+				e.SetLine(12, 0) // shown from line 8: the cursor on the last of five rows
+			})
+			s.WaitFor(t, "line 8 at the top", func(string) bool { return strings.HasPrefix(row(s, 0), "l8") })
+			onScreenLoop(t, s, func() {
+				if err := s.Program.Set("App.text", text("m")); err != nil {
+					t.Error(err)
+				}
+			})
+			s.WaitFor(t, c.wantTop+" at the top", func(string) bool { return strings.HasPrefix(row(s, 0), c.wantTop) })
+			var line int
+			onScreenLoop(t, s, func() {
+				e, _ := tuidecl.FindAs[*widget.Editor](s.Program, "ed")
+				line, _ = e.Line()
+			})
+			if line != c.wantLine {
+				t.Errorf("the cursor is on line %d, want %d", line, c.wantLine)
+			}
+		})
 	}
 }

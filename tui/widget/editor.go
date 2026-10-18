@@ -151,8 +151,9 @@ import (
 // paints. [Editor.Core] hands the core to code that drives it apart from this view.
 type Editor struct {
 	Base
-	core  *EditorCore // the behaviour; a field, never embedded
-	cells cellLayout  // the geometry, in cells: implements EditorLayout
+	core      *EditorCore // the behaviour; a field, never embedded
+	cells     cellLayout  // the geometry, in cells: implements EditorLayout
+	keepPlace bool        // a text set keeps the reader's place (SetKeepPlace, ReplaceValue)
 	// shown is the cursor and viewport Layout last kept the cursor in view for: a layout pass
 	// reveals it only when either changed, so the wheel's scroll stays
 	shown viewMark
@@ -493,6 +494,22 @@ func (e *Editor) Value() string { return e.core.Value() }
 func (e *Editor) SetValue(s string) {
 	e.cells.top, e.cells.left = 0, 0 // a new document starts at its top
 	e.core.SetValue(s)
+}
+
+// SetKeepPlace makes a text set keep the reader's place, as ReplaceValue does: decl's keepPlace.
+func (e *Editor) SetKeepPlace(v bool) { e.keepPlace = v }
+
+// KeepsPlace reports whether a text set keeps the reader's place (SetKeepPlace).
+func (e *Editor) KeepsPlace() bool { return e.keepPlace }
+
+// ReplaceValue replaces the text as SetValue does, but keeps the reader's place: the cursor on
+// its line and column as far as the new text has them, and the first shown line. It is for a
+// viewer a program refreshes (decl's keepPlace), which scrolling must not lose each time.
+func (e *Editor) ReplaceValue(s string) {
+	at, top, left := e.core.Cursor(), e.cells.top, e.cells.left
+	e.core.SetValue(s)
+	e.core.SetCursor(at)
+	e.cells.top, e.cells.left = min(top, max(e.core.LineCount()-1, 0)), left
 }
 
 // Mode reports the current mode.
