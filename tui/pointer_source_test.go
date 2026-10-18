@@ -134,7 +134,7 @@ func TestAMarkedEventWithoutAResolverRoutesAsSent(t *testing.T) {
 	}
 }
 
-// Lector r2: with the App stalled, a Press, a thousand motions (coalesced by intake) and a Release
+// With the App stalled, a Press, a thousand motions (coalesced by intake) and a Release
 // each resolve from their own Source, however long they waited and however many came between.
 func TestEventsQueuedThroughAStallResolveFromTheirOwnSources(t *testing.T) {
 	h, rb, child := pointerApp(t)
