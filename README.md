@@ -36,6 +36,7 @@ go get github.com/yongjohnlee80/golib
 | [`threadsafe`](threadsafe/README.md) | Generic thread-safe value containers (mutex, RWMutex, lock-free) behind one `Value[T]` interface | [README](threadsafe/README.md) |
 | [`graph`](graph/README.md) | A directed multigraph whose edges carry a kind: add nodes and edges, filter by kind, walk a neighbourhood in either direction, in insertion order | [README](graph/README.md) |
 | [`collections`](collections/README.md) | Generic `Set[T]` and stdlib-shaped `Map`/`Filter`/`Reduce` slice ops | [README](collections/README.md) |
+| [`diag`](diag/README.md) | An attachable memory monitor, off by default: runtime memory samples, heap snapshots ranking the allocation sites, and profiles on a private socket | [README](diag/README.md) |
 | [`logger`](logger/README.md) | Small level-based logging seam; `Fields`/`Entry`, `Adapt`, and both `slog` bridges | [README](logger/README.md) |
 | [`request`](request/README.md) | HTTP client: typed error decoding, functional options, multipart, history | [README](request/README.md) |
 | [`exporter`](exporter/README.md) | Thread-safe buffer-and-flush pipelines to CSV/JSON with bounded background writes | [README](exporter/README.md) |
