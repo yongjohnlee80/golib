@@ -84,3 +84,47 @@ func TestRenderOffscreenIsTheFrameBuffersCells(t *testing.T) {
 		}
 	}
 }
+
+// restoreProbe renders off the window three times in one Render: a call with a face of its own whose
+// draw panics (recovered), then one with no face: that one is in the node's face again, the
+// panicked call's face undone; the App's offscreen state is back to none.
+type restoreProbe struct {
+	MultiChild
+	a, b      Offscreen
+	after     []Cell
+	depth     int
+	recovered bool
+}
+
+func (p *restoreProbe) Layout(c Constraints) Size { return c.Constrain(Size{W: c.MaxW, H: c.MaxH}) }
+func (p *restoreProbe) Render(s Surface) {
+	s.SetCell(0, 0, "w", style.New())
+	func() {
+		defer func() { p.recovered = recover() != nil }()
+		p.ctx.RenderOffscreen(&p.a, Size{W: 2, H: 1}, "Other Mono", func(Surface) { panic("a draw that fails") })
+	}()
+	p.after = slices.Clone(p.ctx.RenderOffscreen(&p.b, Size{W: 2, H: 1}, "", func(o Surface) { o.SetCell(0, 0, "x", style.New()) }))
+	p.depth = p.ctx.app.offDepth
+}
+func (p *restoreProbe) HandleEvent(Event) bool { return false }
+
+func TestRenderOffscreenRestoresTheFaceInEffect(t *testing.T) {
+	p := &restoreProbe{}
+	term := &faceBox{box: box{rects: []Rect{{X: 0, Y: 0, W: 4, H: 1}}}, family: "Iosevka"}
+	term.Add(p)
+	root := &box{rects: []Rect{{X: 0, Y: 0, W: 6, H: 2}}}
+	root.Add(term)
+	h, _ := startFaced(t, root, 8, 3)
+	h.sync()
+	var after []Cell
+	var depth int
+	var recovered bool
+	var window uint16
+	h.onLoop(func() { after, depth, recovered, window = p.after, p.depth, p.recovered, p.ctx.app.buf.curr[0].Face })
+	if !recovered {
+		t.Fatal("the draw did not panic")
+	}
+	if depth != 0 || len(after) != 2 || after[0].Face != window {
+		t.Fatalf("after a panicked call: depth %d, face %v; want 0 and the node's face %d", depth, after, window)
+	}
+}
