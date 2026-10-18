@@ -109,10 +109,12 @@ type stageLayouts struct {
 // one has its own ResizeEvent queued, so another Layout follows and admits it.
 const maxPublished = 16
 
-// publishLayout numbers m's layout and offers it for admission, when it differs from old's;
-// otherwise m keeps old's layout and generation. Gio goroutine.
+// publishLayout numbers m's snapshot and offers it for admission when it draws differently from
+// old's: another layout, or the same panes with another cell, scale, font size or face (a zoom
+// that leaves every band where it was must still be admitted, or the cells keep the old glyphs).
+// Otherwise m keeps old's layout and generation. Gio goroutine.
 func (b *Backend) publishLayout(old *metrics, m metrics) metrics {
-	if old != nil && old.layout != nil && old.layout.sameShape(m.layout) {
+	if old != nil && old.layout != nil && old.sameCells(m) {
 		m.layout = old.layout
 		return m
 	}

@@ -406,3 +406,32 @@ func TestEachBandIsDrawnAtItsPanesOrigin(t *testing.T) {
 		}
 	}
 }
+
+// Lector #359: a font change that leaves every band where it was is a new snapshot, admitted and
+// painted with, not deduplicated by its pane shape.
+func TestAFontChangeWithTheSameBandsIsANewSnapshot(t *testing.T) {
+	p := sidebarAndView()
+	b := NewBackend(WithPanes(p))
+	m := metrics{window: image.Pt(503, 301), scale: 1.5, ppem: 24, cell: image.Pt(16, 32), baseline: 24, fontGen: 1}
+	a := b.publishLayout(nil, placePanes(p, m, 0))
+	b.admitLayout(a.grid)
+	m.ppem, m.fontGen, m.baseline = 23, 2, 23 // another face at the same cell size
+	f := b.publishLayout(&a, placePanes(p, m, 0))
+	if !f.layout.sameShape(a.layout) {
+		t.Fatal("fixture: the bands must not move")
+	}
+	if f.layout.gen == a.layout.gen {
+		t.Fatal("the font change kept A's generation: it is never admitted")
+	}
+	b.admitLayout(f.grid)
+	if err := b.FlushSized(f.grid, nil); err != nil {
+		t.Fatal(err)
+	}
+	if b.latest.m.fontGen != 2 || b.latest.m.ppem != 23 {
+		t.Fatalf("painted with font gen %d ppem %v; want the new face's 2, 23", b.latest.m.fontGen, b.latest.m.ppem)
+	}
+	// Positive control: the same snapshot again keeps its generation.
+	if g := b.publishLayout(&f, placePanes(p, m, 0)); g.layout != f.layout {
+		t.Fatal("an unchanged snapshot was given a new generation")
+	}
+}
