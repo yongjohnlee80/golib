@@ -214,14 +214,22 @@ type canvasState struct {
 // its pane, so a Pixels pane's canvas is exactly the pane; one crossing bands is an overlay.
 func newGioCanvas(ops *op.Ops, r *renderer, g *grid, m metrics, cells CellRect, covered []tui.Rect) *gioCanvas {
 	dev, within, _ := m.anchored(tui.Rect{X: cells.X, Y: cells.Y, W: cells.W, H: cells.H})
+	clip := dev
 	if m.layout != nil {
-		dev = dev.Intersect(within)
+		clip = dev.Intersect(within)
+	}
+	// The origin stays the placement's own top-left even when its pane cuts it: a pointer at a
+	// device point reconstructs the same local position the canvas draws at. The size runs from
+	// that origin to the visible edge, so a Pixels pane's canvas is exactly its pane.
+	size := image.Pt(max(clip.Max.X-dev.Min.X, 0), max(clip.Max.Y-dev.Min.Y, 0))
+	if clip.Empty() {
+		size = image.Point{}
 	}
 	return &gioCanvas{
 		ops: ops, r: r, g: g, m: m,
 		origin: f32.Pt(float32(dev.Min.X), float32(dev.Min.Y)),
-		size:   Size{W: float32(dev.Dx()) / m.scale, H: float32(dev.Dy()) / m.scale},
-		clip:   dev,
+		size:   Size{W: float32(size.X) / m.scale, H: float32(size.Y) / m.scale},
+		clip:   clip,
 		cellX:  cells.X, cellY: cells.Y, view: cells,
 		covered: covered,
 		alpha:   1,

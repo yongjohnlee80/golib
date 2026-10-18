@@ -235,7 +235,7 @@ func (m metrics) fragments(r tui.Rect) []fragment {
 
 // anchored maps a whole placement (a native view, an image) through the band of its top-left
 // cell (in a hole: the first band it overlaps, in tree order) and clips it to that pane: a native
-// lives in one pane (ADR 1792306654 §4.3c), so one crossing bands is cut at its pane's edge, and
+// lives in one pane, so one crossing bands is cut at its pane's edge, and
 // the pane under the pointer, which painted it, also takes its clicks. false: it overlaps no band.
 func (m metrics) anchored(r tui.Rect) (dev, clip image.Rectangle, ok bool) {
 	if m.layout == nil {
