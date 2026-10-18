@@ -116,13 +116,15 @@ func paneWindow(t *testing.T) (*Backend, metrics, tui.Rect) {
 	return b, m, m.layout.panes[1].band
 }
 
-// streamWindow is paneWindow with a view in the pixel pane that draws one stream filling it, and
-// an overlay after it (as a frame rate badge is). The flushed frame is published.
+// streamWindow is paneWindow with a view in the pixel pane that draws a backdrop (a letterbox),
+// one stream filling the pane, and an overlay after it (as a frame rate badge is): drawing before
+// and after the slot. The flushed frame is published.
 func streamWindow(t *testing.T) (*Backend, *Stream, metrics) {
 	t.Helper()
 	b, m, band := paneWindow(t)
 	st := b.NewStream()
 	b.natives = []tui.NativePlacement{{View: ViewFunc(func(c Canvas) {
+		c.FillRect(Rect{W: c.Size().W, H: c.Size().H}, Brush{Color: color.NRGBA{A: 0xff}})
 		DrawStream(c, st, Rect{W: c.Size().W, H: c.Size().H})
 		c.FillRRect(Rect{X: 8, Y: 8, W: 96, H: 24}, 4, Brush{Color: color.NRGBA{A: 0xb0}})
 	}), X: band.X, Y: band.Y, Cols: band.W, Rows: band.H}}
