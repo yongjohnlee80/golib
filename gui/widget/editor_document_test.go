@@ -295,3 +295,58 @@ func TestADocumentViewSwappedInAtRunTime(t *testing.T) {
 		t.Fatalf("the view removed while shown: %+v, want Rendered by the renderer on the body", s)
 	}
 }
+
+// The gui's table document, given at run time, takes the keys a terminal's does: a kept edit is
+// undone and redone by the editor's own keys while the table is shown, in each keyset (Vim's u and
+// Ctrl+R, Standard's Ctrl+Z and Ctrl+Y), through the same history as the text.
+func TestTheGuiTableUndoesAndRedoesItsKeptEditByKey(t *testing.T) {
+	const original, edited = "name,n\nann,1\nbob,2\n", "name,n\nann9,1\nbob,2\n"
+	for _, c := range []struct {
+		name       string
+		ks         tuiwidget.Keyset
+		undo, redo tui.KeyEvent
+	}{
+		{"vim", tuiwidget.KeysetVim, tui.KeyEvent{Code: 'u', Text: "u"}, ctrl('r')},
+		{"standard", tuiwidget.KeysetStandard, ctrl('z'), ctrl('y')},
+	} {
+		t.Run(c.name, func(t *testing.T) {
+			h := startEditor(t, 60, 20, WithRenderer(NewMarkdownRenderer()), WithCore(tuiwidget.CoreInitialText(original)))
+			var doc *tuiwidget.TableDocument
+			h.onLoop(func() {
+				h.e.SetKeyset(c.ks)
+				h.app.FocusInto(h.e)
+				doc = NewTableDocument(h.e.Core(), ',')
+				h.e.SetDocumentView(doc)
+				h.e.SetRenderedDocument(true)
+				h.e.SetMode(Rendered)
+			})
+			h.until("the focus in the table", func() bool {
+				var ok bool
+				h.onLoop(func() { ok = h.app.FocusWithin(doc) })
+				return ok
+			})
+			value := func() string {
+				var v string
+				h.onLoop(func() { v = h.e.Core().Value() })
+				return v
+			}
+			h.keys(tui.KeyEvent{Code: tui.KeyEnter}, tui.KeyEvent{Code: '9', Text: "9"}, tui.KeyEvent{Code: tui.KeyEnter})
+			h.barrier()
+			if got := value(); got != edited {
+				t.Fatalf("the kept edit: %q, want %q", got, edited)
+			}
+			h.keys(c.undo)
+			h.barrier()
+			var editing bool
+			h.onLoop(func() { editing = doc.Core().Editing() != nil })
+			if got := value(); got != original || editing {
+				t.Fatalf("undo: %q, a field open %v; want %q and none", got, editing, original)
+			}
+			h.keys(c.redo)
+			h.barrier()
+			if got := value(); got != edited {
+				t.Fatalf("redo: %q, want %q", got, edited)
+			}
+		})
+	}
+}
