@@ -399,7 +399,10 @@ to type into) and `o` (a new row below, inserted when its value is kept). An ope
 a change under it (an edit elsewhere, an undo, a sort, a filter, a new source, `CancelEdit`) drops
 it and tells `TableOnEditDropped`. `TableKeysFirst` is asked for a key the table's commands leave,
 while no field is open, before typing opens a cell with it: the host's own action on that key
-wins. Shift+wheel and a horizontal wheel scroll the fields (`ScrollFields`).
+wins. Shift+wheel and a horizontal wheel scroll the fields (`ScrollFields`). A view draws the
+rows the core says (`DrawnRows`, `DrawnRow`: a display row, o's new row not yet inserted, or the
+edge row; `DrawnOf` maps a display row to its drawn one), and the open field's text and caret
+(`Editing().Field`, `TextArea.Caret`): DataTable in cells, the gui table in pixels.
 
 `NewTableCSV(core, comma)` is a CSV (`,`) or TSV (`\t`) document in an `EditorCore` as such a
 source: the first record is the fields, and an edit writes over the bytes of the records it
