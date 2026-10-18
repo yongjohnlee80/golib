@@ -114,13 +114,7 @@ func (c *TableCore) PasteCells(rows [][]string, kind TablePasteKind, before bool
 		if !c.whole() {
 			return false
 		}
-		at := c.loaded()
-		if c.Len() > 0 {
-			at = c.SourceRow(c.cur.Row)
-			if !before {
-				at++
-			}
-		}
+		at := c.rowAt(before)
 		for k, r := range rows {
 			op.InsertRows = append(op.InsertRows, at)
 			for j, v := range r {
@@ -224,13 +218,7 @@ func (c *TableCore) InsertRows(before bool) bool {
 	if cc == nil || !c.whole() || len(c.Fields()) == 0 {
 		return false
 	}
-	at := c.loaded()
-	if c.Len() > 0 {
-		at = c.SourceRow(c.cur.Row)
-		if !before {
-			at++
-		}
-	}
+	at := c.rowAt(before)
 	if !cc.CommitCells(TableCellsOp{InsertRows: []int{at}}) {
 		return false
 	}
@@ -306,7 +294,9 @@ func (c *TableCore) DeleteFields() bool {
 }
 
 // OpenRowAbove is O: a new row above the cursor's with its field open, inserted only when kept,
-// as o's below.
+// as o's below. Like o, it opens in a sorted or filtered view too: the row is inserted in source
+// order, before the cursor's source row (rows pasted and InsertRows refuse such a view instead).
+// The policy is o's, kept as it was.
 func (c *TableCore) OpenRowAbove() bool {
 	if !c.Editable() || c.editing != nil || c.commit == nil || c.cur.Col >= len(c.Fields()) {
 		return false
@@ -317,4 +307,17 @@ func (c *TableCore) OpenRowAbove() bool {
 	}
 	c.open(&TableEdit{Pos: TablePos{c.cur.Row, c.cur.Col}, gen: c.srcGen, srcRow: at, col: c.cur.Col, insertRow: true}, "")
 	return true
+}
+
+// rowAt is the source row a record goes in at, after (before: before) the cursor's row: past the
+// last on an empty table and on the edge row (TableAppendEdges), whose display row is Len().
+func (c *TableCore) rowAt(before bool) int {
+	if c.cur.Row >= c.Len() {
+		return c.loaded()
+	}
+	at := c.SourceRow(c.cur.Row)
+	if !before {
+		at++
+	}
+	return at
 }

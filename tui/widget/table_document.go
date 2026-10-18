@@ -45,8 +45,15 @@ func (d *TableDocument) SetMenuRows(extra func() []MenuItemModel) { d.extra = ex
 func (d *TableDocument) menuRows() []MenuItemModel {
 	c := d.Core()
 	edit := c.cellsCommitter() != nil
-	text, _ := c.register().Register()
+	text, linewise := c.register().Register()
 	selected := c.anchor != nil
+	// a register's rows paste only into a whole view; fields go only while one would be left
+	canPaste := edit && text != "" && (!linewise || c.whole())
+	from, to := c.cur.Col, c.cur.Col
+	if f, t, ok := c.Selection(); ok && c.kind != TableSelectRows {
+		from, to = f.Col, t.Col
+	}
+	canDeleteFields := edit && to-from+1 < len(c.Fields())
 	row := func(id ItemID, label string, cmd keymap.Command, on bool, run func()) MenuItemModel {
 		r := NewCommand(id, label, CoreMenuAction{ID: tui.ActionID(id), Run: func(*EditorCore) { run() }})
 		r.AccelCommand, r.Enabled = cmd.ID, on
@@ -55,7 +62,7 @@ func (d *TableDocument) menuRows() []MenuItemModel {
 	rows := []MenuItemModel{
 		row("table.yank", "Yank", TableYank, c.Len() > 0, func() { c.Copy() }),
 		row("table.cut", "Cut", TableDeleteRow, edit && c.Len() > 0, func() { c.Cut(selected && c.kind == TableSelectRows) }),
-		row("table.paste", "Paste", TablePasteAfter, edit && text != "", func() { c.PasteRegister(false) }),
+		row("table.paste", "Paste", TablePasteAfter, canPaste, func() { c.PasteRegister(false) }),
 		NewSeparator("table.sep.insert"),
 		row("table.rowAbove", "Insert row above", TableOpenRowAbove, edit && c.whole(), func() { c.InsertRows(true) }),
 		row("table.rowBelow", "Insert row below", TableOpenRow, edit && c.whole(), func() { c.InsertRows(false) }),
@@ -63,7 +70,7 @@ func (d *TableDocument) menuRows() []MenuItemModel {
 		row("table.fieldRight", "Insert field right", keymap.Command{}, edit, func() { c.InsertFields(false) }),
 		NewSeparator("table.sep.delete"),
 		row("table.deleteRows", "Delete rows", keymap.Command{}, edit && c.Len() > 0, func() { c.DeleteRows() }),
-		row("table.deleteFields", "Delete fields", keymap.Command{}, edit && len(c.Fields()) > 1, func() { c.DeleteFields() }),
+		row("table.deleteFields", "Delete fields", keymap.Command{}, canDeleteFields, func() { c.DeleteFields() }),
 		NewSeparator("table.sep.view"),
 		row("table.selectAll", "Select all", keymap.Command{}, c.Len() > 0, func() { c.SelectAll() }),
 	}

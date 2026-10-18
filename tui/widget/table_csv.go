@@ -230,7 +230,7 @@ type TableCellsCommitter interface {
 // may be in an inserted row or field.
 //
 // Refused whole, nothing written: a duplicate or out-of-range index, no field left, a cell outside
-// the result.
+// the result, a cell named twice. Repeated insert positions are allowed: they go in list order.
 type TableCellsOp struct {
 	DeleteRows   []int
 	DeleteFields []int
@@ -326,11 +326,13 @@ func (t *TableCSV) plan(op TableCellsOp) ([]recordWrite, bool) {
 	} else {
 		all = append(all, recordWrite{cells: make([]string, t.width), dirty: true})
 	}
+	inserts := make(map[int]int, len(op.InsertRows)) // records inserted before each row as read
+	for _, at := range op.InsertRows {
+		inserts[at]++
+	}
 	inserted := func(before int) {
-		for _, at := range op.InsertRows {
-			if at == before {
-				all = append(all, recordWrite{cells: make([]string, t.width), dirty: true})
-			}
+		for range inserts[before] {
+			all = append(all, recordWrite{cells: make([]string, t.width), dirty: true})
 		}
 	}
 	for i := range t.records {
@@ -342,11 +344,15 @@ func (t *TableCSV) plan(op TableCellsOp) ([]recordWrite, bool) {
 
 	// the fields, over every record kept: walked by the field as read, the inserts before it
 	if len(delField) > 0 || len(op.InsertFields) > 0 {
+		ins := make(map[int][]TableField, len(op.InsertFields)) // fields inserted before each, in order
+		for _, f := range op.InsertFields {
+			ins[f.At] = append(ins[f.At], f.Field)
+		}
 		for i := range all {
 			if all[i].deleted {
 				continue
 			}
-			all[i].cells = moveFields(all[i].cells, t.width, delField, op.InsertFields, i == 0)
+			all[i].cells = moveFields(all[i].cells, t.width, delField, ins, i == 0)
 		}
 	}
 
@@ -357,10 +363,16 @@ func (t *TableCSV) plan(op TableCellsOp) ([]recordWrite, bool) {
 			rows = append(rows, i)
 		}
 	}
+	named := make(map[TableCell]bool, len(op.Cells)) // by Row and Col alone: a cell named twice refuses
 	for _, c := range op.Cells {
 		if c.Row < -1 || c.Row >= len(rows) || c.Col < 0 || c.Col >= width {
 			return nil, false
 		}
+		k := TableCell{Row: c.Row, Col: c.Col}
+		if named[k] {
+			return nil, false
+		}
+		named[k] = true
 		at := 0
 		if c.Row >= 0 {
 			at = rows[c.Row]
@@ -395,17 +407,15 @@ func indexSet(idx []int, n int) (map[int]bool, bool) {
 // moveFields is a record's cells with fields deleted and inserted, both named as read (width
 // fields); an inserted field's cell is its title in the header, "" elsewhere. A short record stays
 // short: a field past its end is filled only when a present cell comes after it.
-func moveFields(cells []string, width int, del map[int]bool, ins []TableFieldAt, header bool) []string {
+func moveFields(cells []string, width int, del map[int]bool, ins map[int][]TableField, header bool) []string {
 	out := make([]planCell, 0, width+len(ins))
 	for j := 0; j <= width; j++ {
-		for _, f := range ins {
-			if f.At == j {
-				v := ""
-				if header {
-					v = f.Field.Title
-				}
-				out = append(out, planCell{v: v})
+		for _, f := range ins[j] {
+			v := ""
+			if header {
+				v = f.Title
 			}
+			out = append(out, planCell{v: v})
 		}
 		if j == width || del[j] {
 			continue
