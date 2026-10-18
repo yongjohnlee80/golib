@@ -28,7 +28,7 @@ var _ DocumentView = (*TableDocument)(nil)
 func NewTableDocument(ed *EditorCore, comma rune, opts ...TableOption) *TableDocument {
 	d := &TableDocument{src: NewTableCSV(ed, comma), ed: ed}
 	// the editor's register: a yank in the table pastes in Raw, in another buffer, and back
-	first := []TableOption{TableAppendEdges(), TableKeysFirst(d.historyKey), TableRegister(ed)}
+	first := []TableOption{TableAppendEdges(), TableKeysFirst(d.historyKey), TableRegister(ed), TableMenuSelects(true)}
 	d.table = NewDataTable(NewTableCore(d.src, append(first, opts...)...))
 	m := NewEditorMenu(d.table, nil)
 	m.SetEnabled(true) // a new EditorMenu is off

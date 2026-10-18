@@ -108,6 +108,12 @@ func TableOnCopy(fn func(text string)) TableOption {
 	return func(c *TableCore) { c.onCopy = fn }
 }
 
+// TableMenuSelects makes a right press outside the selection select what it was on before the menu
+// opens: a cell (the cursor moves there), a row's number (its row), a title (its field). Off, the
+// default, the selection stays wherever the press was, for the menu's rows to act on (the results
+// tables of AutoDoc rely on it). TableDocument turns it on.
+func TableMenuSelects(on bool) TableOption { return func(c *TableCore) { c.menuSelects = on } }
+
 // TableFetchAhead is how near the end of the loaded rows, in rows, the cursor asks a pager for
 // more, and how many it asks for; at least 1.
 func TableFetchAhead(rows int) TableOption {
@@ -159,6 +165,7 @@ type TableCore struct {
 	onCopy        func(text string)
 	reg           TableRegisterStore // the register, the host's or the core's own (tablecore_clipboard.go)
 	onClipped     func()
+	menuSelects   bool  // TableMenuSelects: a right press outside the selection selects what it was on
 	announced     int   // the source row onCursor was last told, -1 for none
 	measured      []int // measured widths, nil until asked for after a change
 
