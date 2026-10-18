@@ -477,3 +477,111 @@ func TestASelectedPictureOutlivesACloseUntilItsFrameSettles(t *testing.T) {
 		}
 	}
 }
+
+// recorded is the text size and scale a CanvasStream recording sees.
+func recorded(t *testing.T, cs *CanvasStream) (size, scale float32) {
+	t.Helper()
+	r := cs.Push(Size{W: 8, H: 8}, func(c Canvas) { size, scale = c.TextSize(), c.Scale() })
+	if o := r.Outcome(); o == Busy || o == Closed {
+		t.Fatalf("push %v", o)
+	}
+	return size, scale
+}
+
+// A recording before the window's first frame has the configured font's size, at scale 1; after
+// a frame, the frame's; after a font change the window has not drawn, the new size at the
+// window's scale.
+func TestACanvasStreamRecordsAtTheFontsSize(t *testing.T) {
+	b := NewBackend(WithFont("", 17))
+	cs := b.NewCanvasStream()
+	defer cs.Close()
+	want := float32(b.font.Load().size)
+	if size, scale := recorded(t, cs); size != want || scale != 1 || want != 17 {
+		t.Fatalf("before the first frame: text %v at scale %v; want the configured %v (17) at 1", size, scale, want)
+	}
+	// A frame was drawn with this font at scale 2: its metrics are the recording's.
+	fs := b.font.Load()
+	b.metrics.Store(&metrics{scale: 2, ppem: 40, cell: image.Pt(20, 44), baseline: 34, fontGen: fs.gen})
+	if size, scale := recorded(t, cs); size != 20 || scale != 2 {
+		t.Fatalf("after a frame: text %v at scale %v; want the frame's 40/2 = 20 at 2", size, scale)
+	}
+	// The font changed and no frame has drawn it yet: the new size, at the window's scale.
+	b.SetZoom(200)
+	want = float32(b.font.Load().size)
+	if size, scale := recorded(t, cs); size != want || scale != 2 || want != 34 {
+		t.Fatalf("after SetZoom(200): text %v at scale %v; want %v (34) at 2", size, scale, want)
+	}
+}
+
+// A stopped backend admits no stream: one made by a frame's release while Stop closes the streams
+// (a Stream, a CanvasStream and a MutableImage) is born closed, its pushes complete Closed and
+// their frames are released.
+func TestAStreamMadeDuringStopIsBornClosed(t *testing.T) {
+	b := NewBackend()
+	parent := b.NewStream()
+	var children []*Receipt
+	var childReleased int
+	f, err := extimage.NewFrame(extimage.Desc{Kind: extimage.KindMemory, Format: extimage.FormatRGBA8, Size: image.Pt(1, 1),
+		Planes: []extimage.Plane{{Data: make([]byte, 4), Pitch: 4}}}, func() {
+		// the parent's frame goes as Stop closes it: make and push into new streams now
+		children = append(children, b.NewStream().Push(memFrame(t, 1, 1, [4]byte{}, &childReleased)))
+		children = append(children, b.NewCanvasStream().Push(Size{W: 1, H: 1}, func(Canvas) {}))
+		children = append(children, b.NewMutableImage(image.Pt(1, 1)).Update(image.Rect(0, 0, 1, 1), solid(color.RGBA{A: 255})))
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	r := parent.Push(f)
+	if err := b.Stop(); err != nil {
+		t.Fatal(err)
+	}
+	if r.Outcome() != Closed {
+		t.Fatalf("parent %v; want Closed", r.Outcome())
+	}
+	if len(children) != 3 {
+		t.Fatalf("%d children pushed; the release did not run during Stop", len(children))
+	}
+	for i, c := range children {
+		if o := c.Outcome(); o != Closed {
+			t.Errorf("child %d: %v; want Closed (a stopped window draws nothing)", i, o)
+		}
+	}
+	if childReleased != 1 {
+		t.Fatalf("the child stream's frame released %d times; want once", childReleased)
+	}
+}
+
+// Streams made and pushed while Stop runs end Closed, every one: none is left pending.
+func TestStreamsRacingStopAllEndClosed(t *testing.T) {
+	for range 20 {
+		b := NewBackend()
+		var mu sync.Mutex
+		var receipts []*Receipt
+		var wg sync.WaitGroup
+		start := make(chan struct{})
+		for range 4 {
+			wg.Add(1)
+			go func() {
+				defer wg.Done()
+				<-start
+				for range 50 {
+					var rel int
+					r := b.NewStream().Push(memFrame(t, 1, 1, [4]byte{}, &rel))
+					mu.Lock()
+					receipts = append(receipts, r)
+					mu.Unlock()
+				}
+			}()
+		}
+		close(start)
+		if err := b.Stop(); err != nil {
+			t.Fatal(err)
+		}
+		wg.Wait()
+		for i, r := range receipts {
+			if o := r.Outcome(); o != Closed {
+				t.Fatalf("receipt %d of %d: %v; want Closed", i, len(receipts), o)
+			}
+		}
+	}
+}

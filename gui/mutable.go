@@ -95,16 +95,21 @@ func (m *MutableImage) Update(r image.Rectangle, src image.Image) *Receipt {
 	m.prune()
 	rev := m.rev
 	buf.leases.Add(1)
-	m.mu.Unlock()
-
+	// Publication is inside the lock, so revisions reach the stream in the order they were
+	// assigned. Nothing push calls back takes m.mu: a lease drop and the Drawn follow-up are
+	// atomic.
+	defer m.mu.Unlock()
 	f, err := extimage.NewFrame(extimage.Desc{
 		Kind: extimage.KindMemory, Format: extimage.FormatRGBA8, Size: m.size,
 		Planes: []extimage.Plane{{Data: buf.pix, Pitch: uint32(m.size.X * 4)}},
 		Source: m.src, Rev: rev, Base: base, Dirty: dirty,
-	}, func() { buf.leases.Add(-1) }) // a lease drop never takes m.mu
+	}, func() { buf.leases.Add(-1) })
 	if err != nil {
 		buf.leases.Add(-1)
 		return receiptOf(Unsupported)
+	}
+	if testHookPublish != nil {
+		testHookPublish(m)
 	}
 	return m.st.push(f, func(o Outcome) {
 		if o != Drawn {
@@ -118,6 +123,9 @@ func (m *MutableImage) Update(r image.Rectangle, src image.Image) *Receipt {
 		}
 	})
 }
+
+// testHookPublish, set only by tests, runs as Update publishes, with m.mu held.
+var testHookPublish func(*MutableImage)
 
 // current is the buffer at the newest revision. m.mu held.
 func (m *MutableImage) current() *imageBuf {
@@ -172,11 +180,13 @@ func (m *MutableImage) prune() {
 	}
 }
 
-// Close ends the image: a pending update completes Closed; buffers go once their frames do.
-// An Update after Close completes Closed and writes nothing.
+// Close ends the image: a pending update completes Closed. The image lets its buffers go: one a
+// frame still leases lives as long as that frame, untouched, and the rest at once, though the
+// closed handle is kept. An Update after Close completes Closed and writes nothing.
 func (m *MutableImage) Close() {
 	m.mu.Lock()
 	m.closed = true
+	m.bufs, m.damage = nil, nil
 	m.mu.Unlock()
 	m.st.Close()
 }
