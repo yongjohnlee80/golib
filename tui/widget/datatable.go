@@ -517,11 +517,13 @@ func (t *DataTable) HandleEvent(ev tui.Event) bool {
 			}
 			return true
 		case e.Kind == tui.MousePress && e.Button == tui.MouseRight && t.menu != nil && t.menu.Enabled():
-			// The selection is left as it is: the menu's rows act on it.
+			// Inside the selection it is left as it is, for the menu's rows to act on; outside, what
+			// was pressed is selected first (selectForMenu).
 			t.menuPos, t.menuHit = t.hitAt(e)
 			if t.unplacedHeader(t.menuHit) {
 				t.menuPos, t.menuHit = TablePos{}, TableHitNone
 			}
+			t.core.selectForMenu(t.menuPos, t.menuHit)
 			return t.menu.OpenAt(tui.Point{X: e.X, Y: e.Y})
 		case e.Kind == tui.MouseMotion && e.Button == tui.MouseLeft && t.core.Dragging():
 			if pos, ok := t.dragAt(e); ok {

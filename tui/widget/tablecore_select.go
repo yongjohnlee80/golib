@@ -125,9 +125,9 @@ func (c *TableCore) readingOrder() (start, end TablePos) {
 	return a, b
 }
 
-// CopyText is the selection, or the cursor's cell, as tab-separated lines, one per row: a block's
-// rectangle, whole rows for Rows, and for Cells each row's selected fields in reading order. An
-// empty table copies "".
+// CopyText is the selection, or the cursor's cell, as quoted TSV (EncodeTableText), a record per
+// row: a block's rectangle, whole rows for Rows, and for Cells each row's selected fields in
+// reading order. An empty table, and an empty cell, copy "".
 func (c *TableCore) CopyText() string {
 	s, _ := c.copyText(0)
 	return s
@@ -141,6 +141,9 @@ func (c *TableCore) copyText(limit int) (text string, ok bool) {
 	}
 	if c.anchor == nil {
 		s := c.Cell(c.cur.Row, c.cur.Col)
+		if s != "" { // an empty cell copies as no text, not as ""
+			s = encodeRecord('\t', []string{s})
+		}
 		return s, limit <= 0 || len(s) <= limit
 	}
 	from, to, _ := c.Selection()
@@ -172,26 +175,19 @@ func (c *TableCore) copyText(limit int) (text string, ok bool) {
 	return b.String(), true
 }
 
-// writeRow writes display row r's fields lo..hi, tab-separated.
+// writeRow writes display row r's fields lo..hi as one quoted TSV record (EncodeTableText's).
 func (c *TableCore) writeRow(b *strings.Builder, r, lo, hi int) {
+	cells := make([]string, 0, hi-lo+1)
 	for col := lo; col <= hi; col++ {
-		if col > lo {
-			b.WriteByte('\t')
-		}
-		b.WriteString(c.Cell(r, col))
+		cells = append(cells, c.Cell(r, col))
 	}
+	b.WriteString(encodeRecord('\t', cells))
 }
 
-// Copy puts CopyText on the clipboard. Past the copy limit (TableCopyLimit) it copies nothing,
-// tells TableOnCopyRefused, and reports false.
-func (c *TableCore) Copy() bool {
-	s, ok := c.copyText(c.copyLimit)
-	if !ok {
-		c.refuseCopy()
-		return false
-	}
-	return c.copyString(s)
-}
+// Copy is y: CopyText into the register (whole rows for a V selection), then onto the clipboard
+// (tablecore_clipboard.go). Past the copy limit (TableCopyLimit) it takes nothing, tells
+// TableOnCopyRefused, and reports false; otherwise true, whether the clipboard took it or not.
+func (c *TableCore) Copy() bool { return c.yank() }
 
 // SetCopyLimit is TableCopyLimit and TableOnCopyRefused on a core already built: a copy longer
 // than bytes (0: no limit) copies nothing and calls refused, if it is not nil, with the limit.
@@ -234,6 +230,8 @@ func (c *TableCore) copyString(s string) bool {
 //	PgUp PgDn                 a page               gg G          first / last row ([count]G, [count]gg: row count)
 //	0 $ Home End              first / last field   v V Ctrl+V    start, switch or end a selection
 //	y                         copy the selection (or the cursor's cell); yy the cursor's row
+//	p P                       paste the register after / before (an editable source)
+//	d x                       on a selection, cut it: d deletes a V selection's rows, x empties
 //	Esc                       end a selection
 //	s                         sort by this field (if sortable): up, down, off; one key, replacing a sort of several
 //	Enter                     activate the cursor's row
@@ -329,7 +327,7 @@ func (c *TableCore) HandleKey(k tui.KeyEvent) bool {
 		case yanked:
 			var b strings.Builder
 			c.writeRow(&b, c.cur.Row, 0, len(c.Fields())-1)
-			c.copyString(b.String())
+			c.setRegister(b.String(), true)
 		default:
 			c.Copy()
 			c.yanked = true
@@ -349,15 +347,27 @@ func (c *TableCore) HandleKey(k tui.KeyEvent) bool {
 	case TableOpenRow.ID:
 		return c.OpenRow()
 	case TableClearCell.ID:
+		if c.anchor != nil { // x on a selection cuts it, its cells emptied
+			return c.Cut(false)
+		}
 		return c.clearCell()
 	case TableDeleteRow.ID:
 		if !c.Editable() {
 			return false
 		}
+		if c.anchor != nil { // d on a selection cuts it at once: a V selection's rows go
+			return c.Cut(c.kind == TableSelectRows)
+		}
 		if deleting {
 			return c.deleteRow()
 		}
 		c.deleting = true
+	case TablePasteAfter.ID:
+		return c.PasteRegister(false)
+	case TablePasteBefore.ID:
+		return c.PasteRegister(true)
+	case TableOpenRowAbove.ID:
+		return c.OpenRowAbove()
 	}
 	return true
 }
@@ -506,3 +516,49 @@ func (c *TableCore) DragTo(p TablePos) {
 
 // EndDrag ends the drag; the selection, if any, stays for the keys to copy.
 func (c *TableCore) EndDrag() { c.dragging = false }
+
+// selectForMenu is a right press at p, on what hit says, before the menu opens. Inside the
+// selection nothing changes: the menu's rows act on it. Outside, a cell moves the cursor there
+// and ends the selection; a row's number selects that row; a field's title selects that field.
+// None of them starts a drag or keeps the pointer.
+func (c *TableCore) selectForMenu(p TablePos, hit TableHit) {
+	if c.Len() == 0 && hit != TableHitHeader {
+		return
+	}
+	c.dropPending()
+	switch hit {
+	case TableHitCell:
+		if !c.InSelection(p.Row, p.Col) {
+			c.SetAnchor(nil)
+			c.SetCursor(p)
+		}
+	case TableHitGutter:
+		if !c.rowSelected(p.Row) {
+			c.SetAnchor(nil)
+			c.SetCursor(TablePos{p.Row, c.cur.Col})
+			c.Select(TableSelectRows, c.cur)
+		}
+	case TableHitHeader:
+		if !c.fieldSelected(p.Col) {
+			c.SetAnchor(nil)
+			c.dragFrom = c.clampPos(TablePos{Col: p.Col})
+			c.selectFields(c.dragFrom.Col)
+		}
+	}
+}
+
+// rowSelected reports whether every field of display row r is selected.
+func (c *TableCore) rowSelected(r int) bool {
+	for col := range c.Fields() {
+		if !c.InSelection(r, col) {
+			return false
+		}
+	}
+	return c.anchor != nil
+}
+
+// fieldSelected reports whether field col is selected on every loaded row.
+func (c *TableCore) fieldSelected(col int) bool {
+	from, to, ok := c.Selection()
+	return ok && from.Row == 0 && to.Row == c.Len()-1 && c.InSelection(0, col) && c.InSelection(c.Len()-1, col)
+}

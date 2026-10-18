@@ -157,6 +157,8 @@ type TableCore struct {
 	copyLimit     int // bytes; 0: none
 	onCopyRefused func(limit int)
 	onCopy        func(text string)
+	reg           TableRegisterStore // the register, the host's or the core's own (tablecore_clipboard.go)
+	onClipped     func()
 	announced     int   // the source row onCursor was last told, -1 for none
 	measured      []int // measured widths, nil until asked for after a change
 

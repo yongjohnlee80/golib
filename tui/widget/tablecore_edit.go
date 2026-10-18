@@ -280,10 +280,12 @@ func (c *TableCore) fieldKey(k tui.KeyEvent) bool {
 	return true
 }
 
-// Paste puts text in the open field; false with none open.
+// Paste is a PasteEvent: into the open field; with none open, the text read as rows (pastedRows)
+// and pasted as a block from the cursor's cell. A text that does not read pastes nothing.
 func (c *TableCore) Paste(text string) bool {
 	if c.editing == nil {
-		return false
+		rows, err := pastedRows(text)
+		return err == nil && len(rows) > 0 && c.PasteCells(rows, TablePasteBlock, false)
 	}
 	c.editing.Field.insert(text)
 	c.repaint()

@@ -404,6 +404,23 @@ rows the core says (`DrawnRows`, `DrawnRow`: a display row, o's new row not yet 
 edge row; `DrawnOf` maps a display row to its drawn one), and the open field's text and caret
 (`Editing().Field`, `TextArea.Caret`): DataTable in cells, the gui table in pixels.
 
+**Yank, paste, cut, rows and fields.** `y` (and `Copy`) puts the selection, or the cursor's cell,
+in a register, then on the clipboard; `yy` the cursor's row. The text is quoted TSV
+(`EncodeTableText`; `DecodeTableText` reads it back exactly, its line breaks LF), so a spreadsheet
+reads it too. The register is the host's (`TableRegister`: an `EditorCore` is one, and a
+`TableDocument` gives its own, so a yank pastes in Raw and in another buffer) or the core's own.
+On a `TableCellsCommitter` source (`CommitCells`: many cells, rows and fields in one write, one
+undo step, nothing written on a refusal; `TableCSV` is one), `p` and `P` paste the register:
+rows yanked with `V` or `yy` as new records after or before the cursor's row, anything else over
+the cells from the cursor's (`PasteRegister`, `PasteCells`). A system paste (`PasteEvent`) with no
+field open is such a block. A block runs past the last row only in a view of every source row
+unsorted and unfiltered; otherwise it is cut off, as fields past the last are, and
+`TableOnPasteClipped` hears once. `d` on a selection cuts it at once (a `V` selection's rows
+deleted, other cells emptied), `x` on a selection empties it (`Cut`), and `O` opens a row above as
+`o` below. `InsertRows`, `InsertFields`, `DeleteRows` and `DeleteFields` act on the cursor or the
+selection. A `TableDocument`'s right-click menu has them all, each row showing its key
+(`SetMenuRows` adds the host's); a right press outside the selection selects what it was on first.
+
 `NewTableCSV(core, comma)` is a CSV (`,`) or TSV (`\t`) document in an `EditorCore` as such a
 source: the first record is the fields, and an edit writes over the bytes of the records it
 changes alone, so every gap of blank lines and every other record stays byte for byte. A parse
