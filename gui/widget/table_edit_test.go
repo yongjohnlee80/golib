@@ -5,6 +5,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/yongjohnlee80/golib/gui"
 	"github.com/yongjohnlee80/golib/tui"
 	tuiwidget "github.com/yongjohnlee80/golib/tui/widget"
 )
@@ -149,4 +150,125 @@ func TestTheGuiTableDocumentIsTheSharedOneInPixels(t *testing.T) {
 		t.Fatalf("its table is laid out by %T, want the pixel layout", d.Table().BoundLayout())
 	}
 	var _ DocumentView = d
+}
+
+// fieldShown reports whether the open field's fill, at least fieldMinChars wide (or the room the
+// width leaves), lies within the view's rows.
+func fieldShown(c *gui.RecordingCanvas, l *tableLayout) bool {
+	minW := min(float32(l.Measure(strings.Repeat("0", fieldMinChars))), l.size.W/2)
+	for _, r := range fillsIn(c, l.cursorFill()) {
+		if r.W >= minW && r.Y >= l.rowH && r.Y+r.H <= l.size.H+0.01 {
+			return true
+		}
+	}
+	return false
+}
+
+// o's field is scrolled into sight as it opens, even on the last row shown, and so is the caret's
+// line of a value taller than the view; the field's first row stays shown. With room below, nothing
+// scrolls.
+func TestTheOpenFieldIsRevealedAsItOpens(t *testing.T) {
+	for _, c := range []struct {
+		name    string
+		bottom  bool
+		wantTop int
+	}{{"room below", false, 0}, {"the last row shown", true, 1}} {
+		t.Run(c.name, func(t *testing.T) {
+			dt, l, _ := csvPixelTable(t, "h,v\na,1\nb,2\nc,3\nd,4\ne,5\n")
+			height := l.rowH * 4 // the header and three rows
+			paintTable(l, 600, height)
+			row := 0
+			if c.bottom {
+				row = l.bodyRows() - 1
+			}
+			dt.Core().SetCursor(tuiwidget.TablePos{Row: row})
+			paintTable(l, 600, height)
+			if !dt.HandleEvent(keyRune('o')) || dt.Core().Editing() == nil {
+				t.Fatal("o opened no row")
+			}
+			rec := paintTable(l, 600, height)
+			if !fieldShown(rec, l) || l.top != c.wantTop {
+				t.Fatalf("o's field: shown %v, top %d (want %d)", fieldShown(rec, l), l.top, c.wantTop)
+			}
+		})
+	}
+
+	dt, l, _ := csvPixelTable(t, "h,v\na,1\nb,2\nc,3\nd,4\ne,5\n")
+	height := l.rowH * 4
+	paintTable(l, 600, height)
+	dt.Core().SetCursor(tuiwidget.TablePos{Row: 1})
+	paintTable(l, 600, height)
+	dt.HandleEvent(tui.KeyEvent{Kind: tui.KeyPress, Code: tui.KeyEnter})
+	for _, line := range []string{"x", "y", "z"} {
+		for _, r := range line {
+			dt.HandleEvent(keyRune(r))
+		}
+		dt.HandleEvent(tui.KeyEvent{Kind: tui.KeyPress, Code: tui.KeyEnter, Mods: tui.ModAlt}) // a newline in the value
+	}
+	ln, _ := dt.Core().Editing().Field.Caret()
+	paintTable(l, 600, height)
+	v := dt.Core().DrawnOf(1)
+	if ln != 3 || l.top > v || v+ln < l.top || v+ln > l.top+l.bodyRows()-1 && l.top != v {
+		t.Fatalf("a field of 4 lines from drawn row %d: top %d, caret line %d", v, l.top, ln)
+	}
+
+	// the wheel's scroll stays while the field is unchanged; a key typed reveals it again
+	l.ScrollRows(-10)
+	paintTable(l, 600, height)
+	if l.top != 0 {
+		t.Fatalf("the wheel's scroll was undone with nothing typed: top %d", l.top)
+	}
+	dt.HandleEvent(keyRune('w'))
+	paintTable(l, 600, height)
+	if l.top == 0 {
+		t.Fatal("a key typed did not reveal the field again")
+	}
+}
+
+// Reaching the edge field scrolls the fields so it shows, the edge's own width counted: at the
+// width where the fields fit but the edge does not, at a roomy width, and at one where the edge
+// shows alone; its cursor and its open field are drawn.
+func TestTheEdgeFieldIsRevealedWhereItIsReached(t *testing.T) {
+	for _, c := range []struct {
+		name  string
+		width func(l *tableLayout, dt *tuiwidget.DataTable) float32
+		left  func(n int) int
+	}{
+		{"roomy", func(*tableLayout, *tuiwidget.DataTable) float32 { return 600 }, func(int) int { return 0 }},
+		{"the fields fit, the edge not", func(l *tableLayout, dt *tuiwidget.DataTable) float32 {
+			w := l.gutter() + l.pad + l.edgeWidth()/2
+			for col := range len(dt.Core().Fields()) {
+				w += float32(dt.Core().Width(col)) + 2*l.pad
+			}
+			return w
+		}, func(int) int { return 1 }},
+		{"the edge alone", func(l *tableLayout, _ *tuiwidget.DataTable) float32 {
+			return l.gutter() + 2*l.pad + l.edgeWidth() + 1
+		}, func(n int) int { return n }},
+	} {
+		t.Run(c.name, func(t *testing.T) {
+			dt, l, _ := csvPixelTable(t, "h,v\na,1\nb,2\n")
+			paintTable(l, 600, 300)
+			n := len(dt.Core().Fields())
+			width := c.width(l, dt)
+			paintTable(l, width, 300)
+			dt.Core().SetCursor(tuiwidget.TablePos{Row: 0, Col: n - 1})
+			dt.HandleEvent(keyRune('l'))
+			if dt.Core().Cursor().Col != n {
+				t.Fatal("l did not reach the edge field")
+			}
+			rec := paintTable(l, width, 300)
+			if _, shown := l.edgeColumn(l.columns(l.size.W)); !shown || l.left < c.left(n) || len(fillsIn(rec, l.cursorFill())) == 0 {
+				t.Fatalf("the edge field's cursor at %v px: shown %v, left %d (want ≥ %d)", width, shown, l.left, c.left(n))
+			}
+			dt.HandleEvent(tui.KeyEvent{Kind: tui.KeyPress, Code: tui.KeyEnter})
+			for _, r := range "abc" {
+				dt.HandleEvent(keyRune(r))
+			}
+			rec = paintTable(l, width, 300)
+			if len(fillsIn(rec, l.cursorText(l.cursorFill()))) == 0 { // the caret: an open field's alone
+				t.Fatalf("the edge field's open field at %v px is not drawn", width)
+			}
+		})
+	}
 }
