@@ -12,7 +12,6 @@ import (
 	"encoding/binary"
 	"fmt"
 	"image"
-	"sync"
 	"unsafe"
 
 	"github.com/yongjohnlee80/gio/op/extimage"
@@ -35,12 +34,7 @@ type metalProducer struct {
 	device string
 	how    string
 
-	mu     sync.Mutex
-	free   []*mtlTarget // targets no frame holds
-	stale  []*mtlTarget // released targets of another size, freed by render
-	size   image.Point
-	live   int  // targets made and not yet freed
-	closed bool // close ran: a target released after it is freed, and the last frees the device
+	pool targetPool[*mtlTarget]
 }
 
 type mtlTarget struct {
@@ -77,7 +71,13 @@ func newMetalProducer(caps extimage.Caps, zeroCopy bool) (*metalProducer, error)
 		C.m3d_free(m)
 		return nil, fmt.Errorf("scene3d: metal scene: %s", C.GoString(&errBuf[0]))
 	}
-	return &metalProducer{m: m, device: C.GoString(C.m3d_device_name(m)), how: how}, nil
+	p := &metalProducer{m: m, device: C.GoString(C.m3d_device_name(m)), how: how}
+	p.pool = targetPool[*mtlTarget]{
+		sizeOf:     func(tg *mtlTarget) image.Point { return tg.size },
+		freeTarget: func(tg *mtlTarget) { C.m3d_target_free(tg.t) },
+		freeDevice: func() { C.m3d_free(m) },
+	}
+	return p, nil
 }
 
 func (p *metalProducer) name() string { return "metal" }
@@ -103,77 +103,23 @@ func (p *metalProducer) render(t float64, size image.Point) (*gui.Frame, error) 
 	}, func() { p.put(tg) })
 }
 
-// target is a free target of size, or a new one; released targets of another size are freed
-// here, on the render goroutine.
+// target is a free target of size, or a new one.
 func (p *metalProducer) target(size image.Point) (*mtlTarget, error) {
-	p.mu.Lock()
-	if size != p.size {
-		p.stale = append(p.stale, p.free...)
-		p.free, p.size = nil, size
-	}
-	stale := p.stale
-	p.stale = nil
-	var tg *mtlTarget
-	if n := len(p.free); n > 0 {
-		tg = p.free[n-1]
-		p.free = p.free[:n-1]
-	}
-	p.mu.Unlock()
-	p.freeTargets(stale)
-	if tg != nil {
+	if tg, ok := p.pool.take(size); ok {
 		return tg, nil
 	}
-	tg = &mtlTarget{size: size}
+	tg := &mtlTarget{size: size}
 	var errBuf [256]C.char
 	if C.m3d_target_new(p.m, C.int(size.X), C.int(size.Y), &tg.t, &tg.surface, &errBuf[0], C.int(len(errBuf))) != 0 {
 		C.m3d_target_free(tg.t)
 		return nil, fmt.Errorf("scene3d: metal target: %s", C.GoString(&errBuf[0]))
 	}
-	p.mu.Lock()
-	p.live++
-	p.mu.Unlock()
+	p.pool.add()
 	return tg, nil
 }
 
-// freeTargets frees ts, then counts them gone; the count reaching zero after close frees the
-// device, after every other party's frees.
-func (p *metalProducer) freeTargets(ts []*mtlTarget) {
-	for _, tg := range ts {
-		C.m3d_target_free(tg.t)
-	}
-	p.mu.Lock()
-	p.live -= len(ts)
-	last := p.closed && p.live == 0
-	p.mu.Unlock()
-	if last {
-		C.m3d_free(p.m)
-	}
-}
+// put is a frame's release.
+func (p *metalProducer) put(tg *mtlTarget) { p.pool.put(tg) }
 
-// put is a frame's release: the target is free again, or stale if the size moved on, or freed
-// once the producer is closed.
-func (p *metalProducer) put(tg *mtlTarget) {
-	p.mu.Lock()
-	if p.closed {
-		p.mu.Unlock()
-		p.freeTargets([]*mtlTarget{tg})
-		return
-	}
-	if tg.size == p.size {
-		p.free = append(p.free, tg)
-	} else {
-		p.stale = append(p.stale, tg)
-	}
-	p.mu.Unlock()
-}
-
-// close frees every target no frame holds; a target the window still holds is freed as its
-// frame is released, and the last one frees the device. Call it once, after the last render.
-func (p *metalProducer) close() {
-	p.mu.Lock()
-	p.closed = true
-	all := append(p.free, p.stale...)
-	p.free, p.stale = nil, nil
-	p.mu.Unlock()
-	p.freeTargets(all)
-}
+// close frees the targets no frame holds; the device goes with the last target (targetPool).
+func (p *metalProducer) close() { p.pool.close() }
