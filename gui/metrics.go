@@ -234,9 +234,9 @@ func (m metrics) fragments(r tui.Rect) []fragment {
 }
 
 // anchored maps a whole placement (a native view, an image) through the band of its top-left
-// cell (in a hole: the first band it overlaps, in tree order). Inside one band it is clipped to
-// that pane; crossing bands it is an overlay, clipped to the window inside its padding. false:
-// it overlaps no band.
+// cell (in a hole: the first band it overlaps, in tree order) and clips it to that pane: a native
+// lives in one pane (ADR 1792306654 §4.3c), so one crossing bands is cut at its pane's edge, and
+// the pane under the pointer, which painted it, also takes its clicks. false: it overlaps no band.
 func (m metrics) anchored(r tui.Rect) (dev, clip image.Rectangle, ok bool) {
 	if m.layout == nil {
 		return m.cellRect(r.X, r.Y, r.W, r.H), image.Rectangle{Max: m.window}, true
@@ -257,10 +257,7 @@ func (m metrics) anchored(r tui.Rect) (dev, clip image.Rectangle, ok bool) {
 	}
 	x0, y0 := (r.X-anchor.band.X)*m.cell.X, (r.Y-anchor.band.Y)*m.cell.Y
 	dev = image.Rect(x0, y0, x0+r.W*m.cell.X, y0+r.H*m.cell.Y).Add(anchor.origin)
-	if intersect(r, anchor.band) == r {
-		return dev, anchor.clip, true
-	}
-	return dev, m.layout.inner, true
+	return dev, anchor.clip, true
 }
 
 func intersect(a, b tui.Rect) tui.Rect {

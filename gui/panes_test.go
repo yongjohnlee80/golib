@@ -195,19 +195,41 @@ func TestFragmentsSplitARectByBandAndSkipHoles(t *testing.T) {
 	}
 }
 
-func TestAnchoredClipsToItsPaneOrIsAnOverlay(t *testing.T) {
+func TestAnchoredClipsANativeToItsAnchorPane(t *testing.T) {
 	m := stagedMetrics(t)
-	view := m.layout.panes[1]
+	side, view := m.layout.panes[0], m.layout.panes[1]
 	dev, clip, ok := m.anchored(view.band)
 	if !ok || clip != view.clip || dev.Intersect(clip) != view.clip {
 		t.Fatalf("the view's own band: dev %v clip %v; want exactly its pane %v", dev, clip, view.clip)
 	}
-	dev, clip, ok = m.anchored(tui.Rect{X: 5, Y: 2, W: 10, H: 3}) // a dialog over the sidebar and the view
-	if !ok || clip != m.layout.inner {
-		t.Fatalf("a placement across bands clips to %v; want the inner window %v", clip, m.layout.inner)
+	// A dialog from the sidebar across the view: drawn from its top-left band, cut at the sidebar.
+	dev, clip, ok = m.anchored(tui.Rect{X: 5, Y: 2, W: 10, H: 3})
+	if !ok || clip != side.clip {
+		t.Fatalf("a placement across bands clips to %v; want its anchor pane %v (ADR 1792306654 §4.3c)", clip, side.clip)
 	}
-	if dev != image.Rect(80, 64, 240, 160) {
-		t.Fatalf("overlay at %v; want it whole from its top-left band", dev)
+	if dev != image.Rect(80, 64, 240, 160) || dev.Intersect(clip) != image.Rect(80, 64, 150, 160) {
+		t.Fatalf("crossing native at %v, visible %v; want from its anchor band, cut at x=150", dev, dev.Intersect(clip))
+	}
+}
+
+// Lector #359 R3: a Panes window's CellPixels is the admitted snapshot's cell, the one its
+// layout and paint use, not a newer published one.
+func TestCellPixelsIsTheAdmittedSnapshots(t *testing.T) {
+	p := sidebarAndView()
+	b := NewBackend(WithPanes(p))
+	small := metrics{window: image.Pt(503, 301), scale: 1.5, ppem: 24, cell: image.Pt(16, 32), baseline: 24}
+	a := b.publishLayout(nil, placePanes(p, small, 0))
+	b.admitLayout(a.grid)
+	big := small
+	big.cell, big.ppem = image.Pt(20, 40), 30 // a zoom, published but not yet admitted
+	nb := b.publishLayout(&a, placePanes(p, big, 0))
+	b.metrics.Store(&nb)
+	if got, want := b.CellPixels(), (tui.CellPixels{W: 16 / 1.5, H: 32 / 1.5}); got != want {
+		t.Fatalf("CellPixels %v; want the admitted %v, not the newest", got, want)
+	}
+	b.admitLayout(nb.grid) // positive control: once admitted, the zoom is what it reports
+	if got, want := b.CellPixels(), (tui.CellPixels{W: 20 / 1.5, H: 40 / 1.5}); got != want {
+		t.Fatalf("after admission CellPixels %v; want %v", got, want)
 	}
 }
 
