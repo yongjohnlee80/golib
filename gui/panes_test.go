@@ -523,3 +523,27 @@ func TestAHoleAnchoredNativeKeepsItsOwnOrigin(t *testing.T) {
 		t.Fatalf("caret at %v; want at the canvas origin %v plus (30, 2) dp, inside the clip %v", caret.rect, c.origin, c.clip)
 	}
 }
+
+// A native caret whose top its pane cuts keeps its baseline where it is on screen: the input
+// method is told that baseline, with a non-negative ascent and descent. A caret whose baseline is
+// cut away is not told at all.
+func TestACutCaretKeepsItsBaseline(t *testing.T) {
+	m := stagedMetrics(t)
+	// Top-left (7, 7) is a hole; the status bar's band is the first it overlaps, at origin (112, 209).
+	at := tui.NativePlacement{View: caretView{r: Rect{X: 4, Y: 16, W: 1, H: 10}, base: 8, ok: true}, X: 7, Y: 7, Cols: 1, Rows: 2}
+	// Unclipped: y 233..248, baseline 233 + 8*1.5 = 245. The status pane starts at y 241.
+	c, ok := viewCaret(m, []tui.NativePlacement{at})
+	if !ok {
+		t.Fatal("a caret whose baseline is visible was not told")
+	}
+	place := caretPlace(c.rect, c.base)
+	if c.rect.Min.Y != 241 || place.Y != 245 || place.Ascent < 0 || place.Descent < 0 {
+		t.Fatalf("cut caret %v base %d tells %+v; want top 241, baseline 245, ascent and descent >= 0", c.rect, c.base, place)
+	}
+	// A taller caret 6 dp higher: y 224..254 is partly visible, but its baseline (y 236) is above
+	// the pane, so it is not told.
+	at.View = caretView{r: Rect{X: 4, Y: 10, W: 1, H: 20}, base: 8, ok: true}
+	if c, ok := viewCaret(m, []tui.NativePlacement{at}); ok {
+		t.Fatalf("a caret whose baseline is cut away was told at %v base %d", c.rect, c.base)
+	}
+}

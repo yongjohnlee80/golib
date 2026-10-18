@@ -89,14 +89,18 @@ func viewCaret(m metrics, natives []tui.NativePlacement) (caretAt, bool) {
 		o := dev.Min // the view's own origin, as its canvas has it
 		s := m.scale
 		rect := image.Rect(o.X+int(r.X*s), o.Y+int(r.Y*s), o.X+int((r.X+max(r.W, 1))*s), o.Y+int((r.Y+r.H)*s))
+		base := int(b * s)
 		if m.layout != nil {
 			// Only the part the view painted: a caret its pane cuts away is not shown, so the
-			// input method is not told about it either.
-			if rect = rect.Intersect(dev.Intersect(within)); rect.Empty() {
+			// input method is not told about it either. A cut top keeps the baseline where it
+			// was on screen; a caret whose baseline is cut away cannot be told truthfully.
+			line := rect.Min.Y + base
+			if rect = rect.Intersect(dev.Intersect(within)); rect.Empty() || line < rect.Min.Y || line > rect.Max.Y {
 				continue
 			}
+			base = line - rect.Min.Y
 		}
-		out = caretAt{rect: rect, base: int(b * s)}
+		out = caretAt{rect: rect, base: base}
 		if ccv, ok := p.View.(CaretColorsView); ok {
 			out.fg, out.bg = ccv.CaretColors()
 			out.tinted = true

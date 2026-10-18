@@ -327,16 +327,18 @@ func (b *Backend) placeCaret(src eventSource, tag event.Tag, f *frame) {
 	}
 	b.gio.caret = f.caret
 	sel := b.gio.ime.selection() // the input method's own, so a composition is never cancelled
-	b.execRecorded(src, tag, SelectionTell{
-		Start: sel.Start,
-		End:   sel.End,
-		Caret: CaretPlace{
-			X:       float32(f.caret.Min.X),
-			Y:       float32(f.caret.Min.Y + f.base),
-			Ascent:  float32(f.base),
-			Descent: float32(f.caret.Dy() - f.base),
-		},
-	})
+	b.execRecorded(src, tag, SelectionTell{Start: sel.Start, End: sel.End, Caret: caretPlace(f.caret, f.base)})
+}
+
+// caretPlace is a caret rectangle and its baseline (from the rectangle's top) as the input
+// method takes them: the baseline's point, with the ascent above and the descent below it.
+func caretPlace(caret image.Rectangle, base int) CaretPlace {
+	return CaretPlace{
+		X:       float32(caret.Min.X),
+		Y:       float32(caret.Min.Y + base),
+		Ascent:  float32(base),
+		Descent: float32(caret.Dy() - base),
+	}
 }
 
 // drawPreedit draws what the input method holds at the caret: committed text that waits for the
