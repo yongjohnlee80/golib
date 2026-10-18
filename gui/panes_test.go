@@ -5,7 +5,11 @@ import (
 	"testing"
 
 	"github.com/yongjohnlee80/gio/f32"
+	"github.com/yongjohnlee80/gio/font/gofont"
+	"github.com/yongjohnlee80/gio/gpu/headless"
 	"github.com/yongjohnlee80/gio/io/pointer"
+	"github.com/yongjohnlee80/gio/op"
+	"github.com/yongjohnlee80/gio/text"
 	"github.com/yongjohnlee80/golib/tui"
 )
 
@@ -326,5 +330,79 @@ func TestAFlushForAnUnadmittedSizeIsNotPresented(t *testing.T) {
 	// Positive control: the admitted size presents.
 	if err := b.FlushSized(a.grid, nil); err != nil || b.latest == nil {
 		t.Fatalf("the admitted size was not presented (err %v)", err)
+	}
+}
+
+func TestAPixelsPanesCanvasIsExactlyItsPane(t *testing.T) {
+	m := stagedMetrics(t)
+	view := m.layout.panes[1]
+	r := newRenderer(newTestShaper(), "Go Mono", DefaultTheme())
+	g := &grid{}
+	g.resize(m.grid.W, m.grid.H)
+	c := newGioCanvas(new(op.Ops), r, g, m, CellRect{X: view.band.X, Y: view.band.Y, W: view.band.W, H: view.band.H}, nil)
+	want := Size{W: float32(view.clip.Dx()) / m.scale, H: float32(view.clip.Dy()) / m.scale}
+	if c.Size() != want || c.origin != f32.Pt(float32(view.origin.X), float32(view.origin.Y)) {
+		t.Fatalf("canvas %v at %v; want its pane, %v at %v (its band is rounded up past it)", c.Size(), c.origin, want, view.origin)
+	}
+}
+
+func TestACursorInAHoleTellsNoCaret(t *testing.T) {
+	m := stagedMetrics(t)
+	b := NewBackend()
+	b.grid.resize(m.grid.W, m.grid.H)
+	b.cursor = cursorState{visible: true, x: 8, y: 7} // the hole beside the view
+	var f frame
+	b.frameCaret(&f, m)
+	if !f.caret.Empty() {
+		t.Fatalf("a cursor in a hole told the IME %v", f.caret)
+	}
+	b.cursor = cursorState{visible: true, x: 9, y: 0} // positive control: the view's first cell
+	b.frameCaret(&f, m)
+	if f.caret != image.Rect(150, 0, 166, 32) {
+		t.Fatalf("the caret in the view's first cell is %v; want at the view's origin", f.caret)
+	}
+}
+
+// Each pane's cells are drawn at its own origin: a cell coloured red in the view's first column
+// lands at the view's left edge, not one cell after the sidebar's last, and the sidebar's leftover
+// pixels between them are the page colour. Needs a headless GPU (skips without one).
+func TestEachBandIsDrawnAtItsPanesOrigin(t *testing.T) {
+	m := stagedMetrics(t)
+	hw, err := headless.NewWindow(m.window.X, m.window.Y)
+	if err != nil {
+		t.Skipf("no headless GPU here: %v", err)
+	}
+	defer hw.Release()
+	m.ppem = 24
+	r := newRenderer(text.NewShaper(text.WithCollection(gofont.Collection()), text.NoSystemFonts()), "Go Mono", DefaultTheme())
+	g := &grid{}
+	g.resize(m.grid.W, m.grid.H)
+	red := tui.CellColor{Kind: tui.CellColorRGB, R: 0xff}
+	g.cells[0*g.w+9] = tui.Cell{Content: " ", Width: 1, Attrs: tui.CellAttrs{BG: red}} // the view's (0, 0)
+	g.cells[0*g.w+8] = tui.Cell{Content: " ", Width: 1, Attrs: tui.CellAttrs{BG: red}} // the sidebar's last
+	ops := new(op.Ops)
+	r.frame(g, m, cursorState{}, nil, nil, true).Add(ops)
+	if err := hw.Frame(ops); err != nil {
+		t.Fatal(err)
+	}
+	img := image.NewRGBA(image.Rectangle{Max: m.window})
+	if err := hw.Screenshot(img); err != nil {
+		t.Fatal(err)
+	}
+	isRed := func(x, y int) bool { c := img.RGBAAt(x, y); return c.R > 0xe0 && c.G < 0x20 && c.B < 0x20 }
+	for _, c := range []struct {
+		x, y int
+		red  bool
+		what string
+	}{
+		{150, 10, true, "the view's first cell, at its pane's left edge"},
+		{165, 10, true, "the view's first cell, its right side"},
+		{166, 10, false, "the view's second cell"},
+		{130, 10, true, "the sidebar's last cell"},
+		{147, 10, false, "the sidebar's leftover pixels (144..150)"},
+	} {
+		if isRed(c.x, c.y) != c.red {
+			t.Errorf("(%d, %d), %s: red %v, want %v", c.x, c.y, c.what, !c.red, c.red)
+		}
 	}
 }
