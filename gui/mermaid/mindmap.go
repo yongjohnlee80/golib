@@ -57,7 +57,7 @@ func layMindmap(ctx context.Context, d pm.Diagram, width float32, th Theme, m gu
 		w, h := mindmapSize(fm, lb.box.W, lb.box.H, em)
 		in.Nodes = append(in.Nodes, layout.Size{W: w, H: h})
 		in.Parent = append(in.Parent, n.Parent)
-		l.nodes = append(l.nodes, laidNode{form: fm, box: gui.Rect{W: w, H: h}, fill: fill, stroke: stroke, width: 1.2, label: lb})
+		l.nodes = append(l.nodes, laidNode{id: n.ID, form: fm, box: gui.Rect{W: w, H: h}, fill: fill, stroke: stroke, width: 1.2, label: lb})
 	}
 	res, err := layout.Tree(ctx, in, layout.Limits{})
 	if err != nil {

@@ -23,6 +23,7 @@ package mermaid
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"image/color"
 	"sync"
@@ -54,6 +55,23 @@ func Lay(ctx context.Context, src string, width float32, th Theme, m gui.Measure
 	if err != nil {
 		return nil, err
 	}
+	return LayDiagram(ctx, d, width, th, m)
+}
+
+// ErrInvalidModel is a diagram model that breaks an invariant its parser keeps, so its layer can't
+// lay it out.
+var ErrInvalidModel = errors.New("mermaid: the diagram model breaks its parser's invariants")
+
+// LayDiagram lays out d, a diagram already modelled in parse/mermaid's own types, for width: Lay
+// without the parse. A caller that builds the model sets each node's ID, label and shape itself,
+// so it needs no Mermaid escaping, and a mind map node keeps its own ID whatever its shape. A
+// model breaking its parser's invariants is ErrInvalidModel: for a mind map with nodes, exactly
+// one root, at index 0, and each parent before its children. An empty mind map lays out empty,
+// as Lay("mindmap") does. A diagram golib does not draw is mermaid.ErrUnsupported.
+func LayDiagram(ctx context.Context, d pm.Diagram, width float32, th Theme, m gui.Measurer) (*Laid, error) {
+	if err := validModel(d); err != nil {
+		return nil, err
+	}
 	lay := layers[d.Kind()]
 	if lay == nil {
 		return nil, fmt.Errorf("%w: %v diagrams", pm.ErrUnsupported, d.Kind())
@@ -64,6 +82,21 @@ func Lay(ctx context.Context, src string, width float32, th Theme, m gui.Measure
 	}
 	l.fitTo(width)
 	return l, nil
+}
+
+// validModel checks the invariants a layer relies on that the parser keeps by construction.
+func validModel(d pm.Diagram) error {
+	if md, ok := d.(*pm.MindmapDiagram); ok {
+		for i, n := range md.Nodes {
+			switch {
+			case i == 0 && n.Parent != -1:
+				return fmt.Errorf("%w: a mind map's node 0 has parent %d; the root comes first", ErrInvalidModel, n.Parent)
+			case i > 0 && (n.Parent < 0 || n.Parent >= i):
+				return fmt.Errorf("%w: a mind map's node %d has parent %d; each node's parent comes before it, and only node 0 is a root", ErrInvalidModel, i, n.Parent)
+			}
+		}
+	}
+	return nil
 }
 
 // Laid is a diagram laid out: boxes, polylines and labels, all plain values. It is safe to share
@@ -86,6 +119,20 @@ type Laid struct {
 
 // Size is the diagram as Paint draws it.
 func (l *Laid) Size() gui.Size { return l.size }
+
+// NodeAt is the id of the node whose box holds p, in Paint's coordinates (the fit applied), and
+// true; false over no node, or over a node its layer kept no id for. Where boxes overlap, the one
+// drawn last (on top) answers.
+func (l *Laid) NodeAt(p gui.Point) (string, bool) {
+	q := gui.Pt(p.X/l.fit, p.Y/l.fit) // Paint scales the unscaled boxes by fit
+	for i := len(l.nodes) - 1; i >= 0; i-- {
+		n := l.nodes[i]
+		if n.id != "" && q.X >= n.box.X && q.X < n.box.X+n.box.W && q.Y >= n.box.Y && q.Y < n.box.Y+n.box.H {
+			return n.id, true
+		}
+	}
+	return "", false
+}
 
 // fitTo sets the fit that scales a diagram wider than width down to it. A layer sets size, its
 // extent unscaled.
@@ -158,6 +205,7 @@ const (
 // laidNode is a box: its form, filled and outlined, its label centred in it, and compartments
 // under a divider each (a class's members, an entity's attributes).
 type laidNode struct {
+	id           string // the model's node id, where its layer keeps one (mindmap); "" for none
 	form         form
 	box          gui.Rect
 	fill, stroke color.NRGBA
