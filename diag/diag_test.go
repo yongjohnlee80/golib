@@ -518,8 +518,9 @@ func TestCloseEndsACPUProfile(t *testing.T) {
 	case <-time.After(10 * time.Second):
 		t.Fatal("the CPU profile outlived Close")
 	}
-	if d := time.Since(start); d > 5*time.Second {
-		t.Errorf("Close took %v with a CPU profile running", d)
+	// without the stop, only Shutdown's deadline would end it, two seconds on
+	if d := time.Since(start); d > time.Second {
+		t.Errorf("Close took %v with a CPU profile running: it waited for Shutdown's deadline", d)
 	}
 	// the process may profile again: the profile was stopped, not abandoned
 	if err := pprof.StartCPUProfile(io.Discard); err != nil {
