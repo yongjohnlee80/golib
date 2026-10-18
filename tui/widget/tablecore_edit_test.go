@@ -4,6 +4,7 @@ import (
 	"testing"
 
 	"github.com/yongjohnlee80/golib/tui"
+	"github.com/yongjohnlee80/golib/tui/style"
 )
 
 // csvTable is a TableCore editing a CSV document, with a fake layout, and how many edits it was
@@ -29,7 +30,7 @@ var (
 	enterKey = tui.KeyEvent{Kind: tui.KeyPress, Code: tui.KeyEnter}
 )
 
-// TestATableCellIsEditedInItsField (§4.3a): Enter opens the field on the cell's exact value; Enter
+// TestATableCellIsEditedInItsField: Enter opens the field on the cell's exact value; Enter
 // kept untouched writes nothing and moves down; an edit is written as one undo step; Alt+Enter and
 // Ctrl+V Tab put a newline and a tab in the value; Esc drops; i, F2 and a typed key open it too.
 func TestATableCellIsEditedInItsField(t *testing.T) {
@@ -86,7 +87,7 @@ func TestATableCellIsEditedInItsField(t *testing.T) {
 	}
 }
 
-// TestTheEdgesInsertOnKeep (§4.3b, result 3): the edge row, the edge field and their corner are
+// TestTheEdgesInsertOnKeep: the edge row, the edge field and their corner are
 // each one Commit and one undo step; Esc on an edge, or an edge kept empty, writes nothing; a
 // source with no Commit, or a read-only one, offers no edges.
 func TestTheEdgesInsertOnKeep(t *testing.T) {
@@ -196,7 +197,7 @@ func TestDdAndXEdit(t *testing.T) {
 	}
 }
 
-// TestAnOpenEditIsFenced (§4.3c, result 3b): a Raw edit, an undo, a sort, a filter and a new source
+// TestAnOpenEditIsFenced: a Raw edit, an undo, a sort, a filter and a new source
 // each drop the open field, saying so, and nothing is written; a keep after the source's revision
 // moved, unseen, is refused; a refusal by the source drops the edit. A control with no change keeps.
 func TestAnOpenEditIsFenced(t *testing.T) {
@@ -266,5 +267,44 @@ func TestAnOpenEditIsFenced(t *testing.T) {
 	open(c)
 	if !c.KeepEdit(1, 0) || core.Value() != "h,v\na,19\nb,2\n" {
 		t.Fatalf("the control: %q", core.Value())
+	}
+}
+
+// sliceRows is a slice-backed editable source with no revision: an uncomparable type, as a
+// consumer's may be.
+type sliceRows [][]string
+
+func (s sliceRows) Fields() []TableField             { return []TableField{{Title: "a"}, {Title: "b"}} }
+func (s sliceRows) Len() int                         { return len(s) }
+func (s sliceRows) Cell(r, c int) string             { return s[r][c] }
+func (s sliceRows) SetCell(r, c int, v string) bool  { s[r][c] = v; return true }
+func (s sliceRows) InsertRow(int) bool               { return false }
+func (s sliceRows) DeleteRow(int) bool               { return false }
+func (s sliceRows) InsertField(int, TableField) bool { return false }
+func (s sliceRows) DeleteField(int) bool             { return false }
+func (s sliceRows) SetAlign(int, style.Align) bool   { return false }
+
+// TestAnEditOnAnUncomparableSourceWithNoRevision: the fence never compares a source
+// itself, so a slice-backed one edits without a panic; with no revision to tell a change apart, a
+// Changed drops its open edit rather than let it overwrite whatever the cell now holds.
+func TestAnEditOnAnUncomparableSourceWithNoRevision(t *testing.T) {
+	rows := sliceRows{{"1", "2"}, {"3", "4"}}
+	dropped := 0
+	c := NewTableCore(rows, TableOnEditDropped(func() { dropped++ }))
+	c.Bind(nil, &fakeTableLayout{})
+	c.EditCell("x")
+	if !c.KeepEdit(0, 0) || rows[0][0] != "x" {
+		t.Fatalf("an edit on a slice source: %v", rows)
+	}
+	c.EditCell("y")
+	rows[0][0] = "changed elsewhere"
+	c.Changed()
+	if c.Editing() != nil || dropped != 1 {
+		t.Fatalf("a Changed under a revisionless edit: editing %v, dropped %d", c.Editing(), dropped)
+	}
+	c.HandleKey(enterKey) // opens a new field now; nothing of the old one is written
+	c.HandleKey(escKey)
+	if rows[0][0] != "changed elsewhere" {
+		t.Fatalf("the dropped edit was written: %q", rows[0][0])
 	}
 }

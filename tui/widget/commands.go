@@ -119,7 +119,7 @@ var (
 	TableYank        = cmd("tui.table.yank", TableScope, "Y") // y copies; y again copies the row
 	TableSort        = cmd("tui.table.sort", TableScope, "S")
 	TableActivate    = cmd("tui.table.activate", TableScope, with("Enter")...) // on an editable source: edit the cell
-	// An editable source's (ADR 1792303119 §4.3): open the cell's field, a new row below, delete the
+	// An editable source's: open the cell's field, a new row below, delete the
 	// row (d, then d), empty the cell.
 	TableEditCell  = cmd("tui.table.edit", TableScope, "I", "F2")
 	TableOpenRow   = cmd("tui.table.openRow", TableScope, "O")

@@ -384,7 +384,7 @@ if err == nil {
 `DeleteField`, `SetAlign`, `SortBy` and `Format` each rewrite the table, padded and aligned, as one
 undo step. `MarkdownTableCells` and `MarkdownDelimiterAligns` are its parser, for a renderer.
 
-**Editing in the table** (ADR 1792303119). On a `TableEditor` source not saying it is read only
+**Editing in the table**. On a `TableEditor` source not saying it is read only
 (`TableReadOnlySource`), Enter, `i` or F2 opens a field on the cursor's cell (`EditCell`; a
 printable key that is no command opens it with that key typed, Space and `:` excepted). The field
 is a `TextArea` holding the cell's exact value, newlines and tabs included; a table's one-line cell

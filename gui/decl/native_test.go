@@ -141,8 +141,9 @@ Window { Editor { id: ed; text: "hello"; view: Editor.Rendered; FooRenderer { } 
 	none := run(t, src, tuidecl.Types(fooType), tuidecl.WithStyle(guidecl.Native()))
 	onLoop(t, none, func() {
 		c, _ := none.Program.Find("ed")
-		if e := c.(*widget.Editor); e.Mode() != widget.Raw {
-			t.Errorf("a spec with no renderer: mode %v, want Raw", e.Mode())
+		// no renderer: Raw is drawn, Rendered kept as the choice
+		if e := c.(*widget.Editor); e.Shown() != widget.Raw || e.Mode() != widget.Rendered {
+			t.Errorf("a spec with no renderer: drawn %v, chosen %v; want Raw drawn, Rendered chosen", e.Shown(), e.Mode())
 		}
 	})
 }

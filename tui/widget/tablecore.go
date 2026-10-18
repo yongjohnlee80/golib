@@ -134,6 +134,7 @@ type TableCore struct {
 	commit        TableCommitter // the source's compound edits, nil when it has none (tablecore_edit.go)
 	edges         bool           // TableAppendEdges
 	editing       *TableEdit     // the open field, nil for none
+	srcGen        uint64         // SetSource's count: an open edit's source, by number
 	onEditDropped func()
 	layout        TableLayout
 	ctx           *tui.Context
@@ -190,6 +191,7 @@ func (c *TableCore) Bind(ctx *tui.Context, l TableLayout) { c.ctx, c.layout = ct
 // SetSource replaces the rows; the cursor, selection, sort and filter start again.
 func (c *TableCore) SetSource(src TableSource) {
 	c.src = src
+	c.srcGen++
 	c.pager, _ = src.(TablePager)
 	c.edit, _ = src.(TableEditor)
 	c.commit, _ = src.(TableCommitter)
@@ -270,9 +272,14 @@ func (c *TableCore) Fields() []TableField {
 // and merged into a sort without moving the cursor off its row.
 func (c *TableCore) Changed() {
 	c.measured = nil
-	if c.editing != nil && !c.current(c.editing) { // a Raw edit, an undo, a reload: the cell is gone
-		c.editing = nil
-		c.dropped()
+	if c.editing != nil {
+		// a Raw edit, an undo, a reload: the cell may be another's now. A source with a revision
+		// says whether it changed; one without cannot, so its edit is dropped
+		_, revd := c.src.(TableRevisioner)
+		if !revd || !c.current(c.editing) {
+			c.editing = nil
+			c.dropped()
+		}
 	}
 	keep := -1
 	if c.Len() > 0 {
@@ -297,7 +304,7 @@ func (c *TableCore) Changed() {
 	}
 }
 
-// ScrollFields asks the view to move its first field shown by n (ADR 1792303119 §4.4): the view
+// ScrollFields asks the view to move its first field shown by n: the view
 // clamps it and keeps its own scroll; the cursor stays where it is.
 func (c *TableCore) ScrollFields(n int) {
 	if h, ok := c.layout.(TableLayoutFields); ok && n != 0 {

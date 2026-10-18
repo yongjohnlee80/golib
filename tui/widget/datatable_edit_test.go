@@ -34,7 +34,7 @@ var (
 	dtEsc   = tui.KeyEvent{Kind: tui.KeyPress, Code: tui.KeyEscape}
 )
 
-// TestDataTableDrawsAnEditableTable (ADR 1792303119 §4.3): a value's newline and tab show as ⏎ and
+// TestDataTableDrawsAnEditableTable: a value's newline and tab show as ⏎ and
 // →; the edge field is titled +, and the edge row is drawn after the last. Enter opens the field
 // over the cell, its lines growing downward, the terminal's caret in it; a kept value is drawn in
 // its cell.
@@ -116,7 +116,7 @@ func TestADoubleClickEditsAnEditableCell(t *testing.T) {
 	}
 }
 
-// TestTheWheelScrollsTheFieldsSideways (§4.4): Shift+wheel and a horizontal wheel move the first
+// TestTheWheelScrollsTheFieldsSideways: Shift+wheel and a horizontal wheel move the first
 // field shown, a field a step, clamped; the cursor stays; the plain wheel still scrolls rows.
 func TestTheWheelScrollsTheFieldsSideways(t *testing.T) {
 	h, sh, dt := dataTable(t, numbered(20), 12, 6)

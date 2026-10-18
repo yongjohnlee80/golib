@@ -2,7 +2,7 @@ package widget
 
 import "github.com/yongjohnlee80/golib/tui"
 
-// TABLE EDITING (ADR 1792303119 §4.3) — a cell of an editable source edited in place. The field is
+// TABLE EDITING — a cell of an editable source edited in place. The field is
 // a TextArea holding the cell's exact value, newlines and tabs included; the table's one-line cell
 // is only its display. A value kept unchanged writes nothing. A source that commits compounds
 // (TableCommitter) applies each edit as one write, so a new row or field and its first value are
@@ -23,13 +23,15 @@ type TableEdit struct {
 	Pos   TablePos
 	Field *TextArea // the value as it is being typed
 
-	src         TableSource // the source it was opened on
-	rev         uint64      // the source's revision then (TableRevisioner)
-	revd        bool        // the source has a revision
-	srcRow, col int         // the source row (the one inserted, for a new row) and the field
-	insertRow   bool        // a new row: the edge row, or o's
-	insertField bool        // the edge field
-	original    string      // the cell's exact value when opened; "" for a new cell
+	// gen is the core's source generation it was opened on (SetSource's count): the source itself
+	// is not compared, since comparing one of an uncomparable type (a slice) panics
+	gen         uint64
+	rev         uint64 // the source's revision then (TableRevisioner)
+	revd        bool   // the source has a revision
+	srcRow, col int    // the source row (the one inserted, for a new row) and the field
+	insertRow   bool   // a new row: the edge row, or o's
+	insertField bool   // the edge field
+	original    string // the cell's exact value when opened; "" for a new cell
 }
 
 // Inserting reports whether the edit is on a row not yet in the source: the edge row, or o's. A
@@ -83,7 +85,7 @@ func (c *TableCore) EditCell(typed string) bool {
 	if (onRow || onField) && !c.EdgeRow() {
 		return false
 	}
-	e := &TableEdit{Pos: p, src: c.src, col: p.Col, insertRow: onRow, insertField: onField}
+	e := &TableEdit{Pos: p, gen: c.srcGen, col: p.Col, insertRow: onRow, insertField: onField}
 	if onRow {
 		e.srcRow = c.loaded()
 	} else {
@@ -109,7 +111,7 @@ func (c *TableCore) OpenRow() bool {
 		at = c.loaded()
 	}
 	row := min(c.cur.Row+1, c.Len())
-	c.open(&TableEdit{Pos: TablePos{row, c.cur.Col}, src: c.src, srcRow: at, col: c.cur.Col, insertRow: true}, "")
+	c.open(&TableEdit{Pos: TablePos{row, c.cur.Col}, gen: c.srcGen, srcRow: at, col: c.cur.Col, insertRow: true}, "")
 	return true
 }
 
@@ -129,9 +131,10 @@ func (c *TableCore) open(e *TableEdit, typed string) {
 }
 
 // current reports whether e still names the cell it was opened on: the same source, at the same
-// revision, the row and field still there.
+// revision, the row and field still there. A source with no revision cannot say it is unchanged:
+// a Changed drops its edit (TableCore.Changed).
 func (c *TableCore) current(e *TableEdit) bool {
-	if c.src != e.src || e.srcRow > c.loaded() || e.col > len(c.Fields()) {
+	if c.srcGen != e.gen || e.srcRow > c.loaded() || e.col > len(c.Fields()) {
 		return false
 	}
 	if r, ok := c.src.(TableRevisioner); ok && e.revd && r.Revision() != e.rev {

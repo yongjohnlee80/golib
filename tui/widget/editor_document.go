@@ -2,7 +2,7 @@ package widget
 
 import "github.com/yongjohnlee80/golib/tui"
 
-// THE TERMINAL EDITOR'S DOCUMENT VIEW (ADR 1792303119 §4.6) — the slot gui.Editor has: a Rendered
+// THE TERMINAL EDITOR'S DOCUMENT VIEW — the slot gui.Editor has: a Rendered
 // view that draws the whole document as one widget (a TableDocument), shown in place of the text
 // while Rendered is the view drawn and the host has turned it on for the document. Raw is always
 // the text. The view is the editor's child, mounted through its context and laid out in its place;

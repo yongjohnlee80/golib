@@ -41,7 +41,7 @@ func TestTableCSVReadsRecordsAndFields(t *testing.T) {
 	}
 }
 
-// TestTableCSVWritesOnlyTheRecordEdited (ADR 1792303119 result 2): a cell set rewrites its record's
+// TestTableCSVWritesOnlyTheRecordEdited: a cell set rewrites its record's
 // bytes and nothing else, one undo step; an unchanged value writes nothing.
 func TestTableCSVWritesOnlyTheRecordEdited(t *testing.T) {
 	const text = "h1,h2\n\"q\"\"uoted\",x\n\"multi\nline\",y\nlast,z"
@@ -64,7 +64,7 @@ func TestTableCSVWritesOnlyTheRecordEdited(t *testing.T) {
 	}
 }
 
-// TestTableCSVKeepsTheGaps (r1 R4, result 2a): blank lines before the header and between records
+// TestTableCSVKeepsTheGaps: blank lines before the header and between records
 // belong to no record. Editing or deleting the first, a middle and the last record leaves every
 // gap and every neighbouring record byte-identical, and one undo restores the whole text; a
 // blank-looking line inside a quoted field is its record's; a CRLF file is the core's LF text; a
@@ -109,7 +109,7 @@ func TestTableCSVKeepsTheGaps(t *testing.T) {
 	}
 }
 
-// TestTableCSVCommitsACompoundAsOneStep (R2): a new row and a new field with a cell set are one
+// TestTableCSVCommitsACompoundAsOneStep: a new row and a new field with a cell set are one
 // write and one undo step; the row takes the line ending before it; a field added rewrites every
 // record but keeps the gaps; a refusal writes nothing.
 func TestTableCSVCommitsACompoundAsOneStep(t *testing.T) {
@@ -157,7 +157,7 @@ func TestTableCSVCommitsACompoundAsOneStep(t *testing.T) {
 	}
 }
 
-// TestTableCSVIsLossless (R1): values with newlines, tabs, quotes, delimiters and non-ASCII text
+// TestTableCSVIsLossless: values with newlines, tabs, quotes, delimiters and non-ASCII text
 // are read exactly, written exactly, and a cell set to what it holds writes nothing.
 func TestTableCSVIsLossless(t *testing.T) {
 	values := []string{"line\nbreak", "tab\there", "say \"hi\"", "a, b", "ünï 字", " lead", ""}
@@ -205,6 +205,13 @@ func TestTableCSVReadOnly(t *testing.T) {
 	c.SetValue("h\nb\nc\n")
 	if !src.Sync() || src.Len() != 2 || src.Cell(1, 0) != "c" {
 		t.Fatalf("Sync after a Raw change: %d records", src.Len())
+	}
+	one, oc := csvOn("v\na\nb\n", ',') // a record of one field, emptied, is still a record
+	if !one.SetCell(0, 0, "") || oc.Value() != "v\n\"\"\nb\n" || one.Len() != 2 {
+		t.Fatalf("one field emptied: %q, %d records", oc.Value(), one.Len())
+	}
+	if !one.InsertRow(2) || one.Len() != 3 || one.Cell(2, 0) != "" {
+		t.Fatalf("an empty one-field row inserted: %q, %d records", oc.Value(), one.Len())
 	}
 	long, _ := csvOn("h\n"+strings.Repeat("x", maxCSVLine+1)+"\n", ',')
 	if long.ReadOnly() == "" || long.SetCell(0, 0, "y") {

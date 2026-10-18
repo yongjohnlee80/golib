@@ -232,7 +232,7 @@ func (d *keyDoc) HandleEvent(ev tui.Event) bool {
 	return true
 }
 
-// TestADocumentViewSwappedInAtRunTime (ADR 1792303119 §4.5, its verify-first): an editor built
+// TestADocumentViewSwappedInAtRunTime: an editor built
 // with no document view is given one by SetDocumentView: shown Rendered, it takes the focus and the
 // keys, as one given at construction does, and Ctrl+T, which it leaves, returns to Raw. Swapped for
 // another while shown, the new one is shown, focused and typed into, the old one unmounted; removed
