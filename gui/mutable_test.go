@@ -4,9 +4,11 @@ import (
 	"bytes"
 	"image"
 	"image/color"
+	"runtime"
 	"sync"
 	"testing"
 	"time"
+	"weak"
 )
 
 func solid(c color.RGBA) *image.Uniform { return image.NewUniform(c) }
@@ -110,5 +112,86 @@ func TestAReusedBufferCatchesUpOnTheDamageItMissed(t *testing.T) {
 	px := func(x, y int) []byte { i := (y*16 + x) * 4; return d.Planes[0].Data[i : i+4] }
 	if d.Rev != 3 || px(1, 1)[0] != 255 || px(11, 11)[1] != 255 {
 		t.Fatalf("rev %d: (1,1) %v, (11,11) %v; want rev 2's red kept and rev 3's green", d.Rev, px(1, 1), px(11, 11))
+	}
+}
+
+// A closed image keeps no pixels a frame does not hold: with the closed handle kept, its buffer
+// is collected. A frame still leased keeps its own pixels, unchanged, after the Close.
+func TestAClosedImageLetsItsBuffersGo(t *testing.T) {
+	b := NewBackend()
+	m := b.NewMutableImage(image.Pt(32, 32))
+	m.Update(image.Rect(0, 0, 32, 32), solid(color.RGBA{R: 255, A: 255}))
+	pix := weak.Make(&m.bufs[0].pix[0])
+	control := weak.Make(&make([]byte, 32*32*4)[0]) // nothing holds it: the instrument must see it go
+	m.Close()
+	for range 3 {
+		runtime.GC()
+	}
+	if control.Value() != nil {
+		t.Fatal("instrument: an unheld buffer survived the collections")
+	}
+	if pix.Value() != nil {
+		t.Fatal("the closed image still holds its buffer's pixels")
+	}
+	runtime.KeepAlive(m)
+
+	m2 := b.NewMutableImage(image.Pt(4, 4))
+	m2.Update(image.Rect(0, 0, 4, 4), solid(color.RGBA{G: 255, A: 255}))
+	held := pendingFrame(t, m2).Retain()
+	m2.Close()
+	for range 3 {
+		runtime.GC()
+	}
+	m2.Update(image.Rect(0, 0, 4, 4), solid(color.RGBA{B: 255, A: 255})) // refused: Closed
+	if px := held.Desc().Planes[0].Data[:4]; px[0] != 0 || px[1] != 255 || px[2] != 0 {
+		t.Fatalf("a held frame's pixels changed after Close: %v", px)
+	}
+	held.Drop()
+	runtime.KeepAlive(m2)
+}
+
+// Updates publish in revision order: Update publishes with its lock held, so a writer that took a
+// newer revision cannot publish before an older one. Writer A pauses as it publishes revision 1
+// while writer B updates; the stream ends on B's revision 2, and A's is superseded.
+func TestUpdatesPublishInRevisionOrder(t *testing.T) {
+	b := NewBackend()
+	m := b.NewMutableImage(image.Pt(4, 4))
+	defer m.Close()
+	paused, resume := make(chan struct{}), make(chan struct{})
+	var outside bool
+	first := true
+	testHookPublish = func(m *MutableImage) {
+		if m.mu.TryLock() { // Update holds it while it publishes
+			m.mu.Unlock()
+			outside = true
+		}
+		if first {
+			first = false
+			close(paused)
+			<-resume
+		}
+	}
+	defer func() { testHookPublish = nil }()
+	var rA, rB *Receipt
+	doneA := make(chan struct{})
+	go func() { defer close(doneA); rA = m.Update(image.Rect(0, 0, 4, 4), solid(color.RGBA{R: 255, A: 255})) }()
+	<-paused
+	doneB := make(chan struct{})
+	go func() { defer close(doneB); rB = m.Update(image.Rect(0, 0, 4, 4), solid(color.RGBA{G: 255, A: 255})) }()
+	select { // B cannot publish while A holds the lock; give it the chance it would take if it could
+	case <-doneB:
+	case <-time.After(200 * time.Millisecond):
+	}
+	close(resume)
+	<-doneA
+	<-doneB
+	if outside {
+		t.Fatal("Update published without holding its lock")
+	}
+	if rev := pendingFrame(t, m).Desc().Rev; rev != 2 {
+		t.Fatalf("the stream ends on revision %d; want 2, the newer (published after 1)", rev)
+	}
+	if rA.Outcome() != Superseded || rB.Outcome() != 0 {
+		t.Fatalf("A %v, B %v; want A Superseded, B pending", rA.Outcome(), rB.Outcome())
 	}
 }

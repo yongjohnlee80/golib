@@ -8,6 +8,7 @@ import (
 	"github.com/yongjohnlee80/gio/font/gofont"
 	"github.com/yongjohnlee80/gio/op"
 	"github.com/yongjohnlee80/gio/text"
+	"github.com/yongjohnlee80/gio/unit"
 )
 
 // CanvasStream feeds a view with pictures drawn by a Canvas on the producer's goroutine: a game
@@ -57,15 +58,24 @@ func (cs *CanvasStream) Push(size Size, draw func(c Canvas)) *Receipt {
 	return cs.s.push(&canvasPayload{call: rec.Stop(), size: size, scale: m.scale}, nil)
 }
 
-// snapshot is the window's scale and font for one recording (1 and the default font before the
-// window has drawn), and the stream's shaper, rebuilt on a font change.
+// snapshot is the window's scale and font for one recording, and the stream's shaper, rebuilt on
+// a font change. The metrics are the window's last frame's when that frame was drawn with the
+// current font; before the window's first frame, or after a font change it has not drawn yet,
+// they are measured from the font state's size, at the window's scale (1 before its first frame).
 func (cs *CanvasStream) snapshot() metrics {
 	b := cs.s.b
-	m := metrics{scale: 1}
-	if cur := b.metrics.Load(); cur != nil && cur.scale > 0 {
-		m.scale, m.ppem, m.cell, m.baseline = cur.scale, cur.ppem, cur.cell, cur.baseline
-	}
 	fs := b.font.Load()
+	m := metrics{scale: 1}
+	cur := b.metrics.Load()
+	if cur != nil && cur.scale > 0 {
+		m.scale = cur.scale
+	}
+	if cur != nil && cur.scale > 0 && cur.fontGen == fs.gen {
+		m.ppem, m.cell, m.baseline = cur.ppem, cur.cell, cur.baseline
+	} else {
+		mm := measure(fs.fm, fs.size, 0, image.Point{}, unit.Metric{PxPerDp: m.scale, PxPerSp: m.scale})
+		m.ppem, m.cell, m.baseline = mm.ppem, mm.cell, mm.baseline
+	}
 	if cs.r == nil || fs.gen != cs.fontGen {
 		cs.r = newRenderer(text.NewShaper(text.WithCollection(gofont.Collection())), fs.typeface, b.cfg.theme)
 		cs.r.fonts = fs.fonts

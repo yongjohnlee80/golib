@@ -154,10 +154,14 @@ type stream struct {
 	selR     *Receipt
 }
 
+// init registers the stream with its backend. A stream made after the backend stopped is born
+// closed: its pushes complete Closed and release their pictures.
 func (s *stream) init(b *Backend) {
 	s.b = b
 	s.report = s.setErr
-	b.streams.add(s)
+	if !b.streams.add(s) {
+		s.closed = true
+	}
 }
 
 // push admits p and returns its receipt; a pending picture it replaces is superseded. then, if
@@ -284,19 +288,40 @@ func (s *stream) lastErr() error {
 	return s.err
 }
 
-// streamSet is a backend's live streams.
+// streamSet is a backend's live streams. Closing it is terminal: it admits no stream after.
 type streamSet struct {
-	mu  sync.Mutex
-	all map[*stream]struct{}
+	mu     sync.Mutex
+	all    map[*stream]struct{}
+	closed bool
 }
 
-func (ss *streamSet) add(s *stream) {
+// add registers s; false once the set is closed (the backend stopped).
+func (ss *streamSet) add(s *stream) bool {
 	ss.mu.Lock()
+	defer ss.mu.Unlock()
+	if ss.closed {
+		return false
+	}
 	if ss.all == nil {
 		ss.all = map[*stream]struct{}{}
 	}
 	ss.all[s] = struct{}{}
+	return true
+}
+
+// closeAll closes the set, then every stream it held. A stream made meanwhile, by a release one
+// of these closes runs included, is refused at add and born closed.
+func (ss *streamSet) closeAll() {
+	ss.mu.Lock()
+	ss.closed = true
+	list := make([]*stream, 0, len(ss.all))
+	for s := range ss.all {
+		list = append(list, s)
+	}
 	ss.mu.Unlock()
+	for _, s := range list {
+		s.close()
+	}
 }
 
 func (ss *streamSet) remove(s *stream) {
@@ -442,7 +467,5 @@ func (b *Backend) streamsPresented(now time.Time) {
 	b.presenting = b.presenting[:0]
 }
 
-// closeStreams closes every stream of a stopping window.
-func (b *Backend) closeStreams() {
-	b.streams.each(nil, (*stream).close)
-}
+// closeStreams closes every stream of a stopping window, and every one made after.
+func (b *Backend) closeStreams() { b.streams.closeAll() }
