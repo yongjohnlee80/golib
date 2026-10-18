@@ -82,13 +82,21 @@ func viewCaret(m metrics, natives []tui.NativePlacement) (caretAt, bool) {
 		if !ok {
 			continue
 		}
-		dev, _, in := m.anchored(tui.Rect{X: p.X, Y: p.Y, W: p.Cols, H: p.Rows})
+		dev, within, in := m.anchored(tui.Rect{X: p.X, Y: p.Y, W: p.Cols, H: p.Rows})
 		if !in {
 			continue // over no pane: nothing to anchor the caret to
 		}
 		o := dev.Min // the view's own origin, as its canvas has it
 		s := m.scale
-		out = caretAt{rect: image.Rect(o.X+int(r.X*s), o.Y+int(r.Y*s), o.X+int((r.X+max(r.W, 1))*s), o.Y+int((r.Y+r.H)*s)), base: int(b * s)}
+		rect := image.Rect(o.X+int(r.X*s), o.Y+int(r.Y*s), o.X+int((r.X+max(r.W, 1))*s), o.Y+int((r.Y+r.H)*s))
+		if m.layout != nil {
+			// Only the part the view painted: a caret its pane cuts away is not shown, so the
+			// input method is not told about it either.
+			if rect = rect.Intersect(dev.Intersect(within)); rect.Empty() {
+				continue
+			}
+		}
+		out = caretAt{rect: rect, base: int(b * s)}
 		if ccv, ok := p.View.(CaretColorsView); ok {
 			out.fg, out.bg = ccv.CaretColors()
 			out.tinted = true
