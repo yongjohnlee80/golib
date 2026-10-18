@@ -37,6 +37,23 @@ type MouseEvent struct {
 	// only whole cells. Routing translates X and Y to each node; these need no translation, so
 	// with App.CellPixels a component recovers its own pixels: (X + SubX) * CellPixels().W.
 	SubX, SubY float32
+
+	// Source is a PointerResolver backend's own record of where the event happened. With
+	// Source.Ref set, X, Y, SubX and SubY are filled in when the App dispatches the event (see
+	// PointerResolver), and Source is cleared then. Every other producer leaves it zero.
+	Source PointerSource
+}
+
+// PointerSource is a backend's record of a pointer event's position, carried inside the event so
+// it lives exactly as long as the event does: coalesced, dropped or dispatched, nothing else
+// holds it. tui never reads it; it hands it back to the backend's ResolvePointer.
+type PointerSource struct {
+	// X and Y are the position in the backend's own units (a native window's device pixels).
+	X, Y float32
+	// Ref is the backend's own value for the picture the user saw (a native window's frame). It
+	// must be comparable, a pointer, since events are compared as interface values. Non-nil
+	// marks the event for resolution.
+	Ref any
 }
 
 func (MouseEvent) isEvent() {}

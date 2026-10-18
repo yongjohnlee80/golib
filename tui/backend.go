@@ -98,6 +98,18 @@ type SizedFlusher interface {
 	FlushSized(size Size, diff []CellUpdate) error
 }
 
+// PointerResolver is a Backend whose pointer events are finished when the App dispatches them:
+// a native window that lays its cells out in regions of its own (golib/gui's panes) can only map
+// a position to cells against the layout the App routes with, and the App may lay out again
+// between the backend reading an event and dispatching it (a resize is delivered ahead of queued
+// input). The App calls ResolvePointer on the loop goroutine for every MouseEvent whose
+// Source.Ref is set, before anything else looks at it: the too-small screen, click counting,
+// capture and routing. It returns the event with X, Y, SubX and SubY set; the App then clears
+// Source. A backend without it leaves such events as they were sent.
+type PointerResolver interface {
+	ResolvePointer(ev MouseEvent) MouseEvent
+}
+
 // CursorShape selects the hardware cursor glyph (DECSCUSR).
 type CursorShape uint8
 

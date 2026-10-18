@@ -79,6 +79,9 @@ import (
 // it, so input and program events are ordered against each other by the order
 // they are drained rather than by which produced them.
 func (a *App) dispatch(ev Event) {
+	if e, ok := ev.(MouseEvent); ok && e.Source.Ref != nil {
+		ev = a.resolvePointer(e)
+	}
 	if a.tooSmall() && a.dispatchTooSmall(ev) {
 		return // the too-small screen took it: only its Quit is live
 	}
@@ -691,4 +694,15 @@ func (a *App) previewPressOrdinal(e MouseEvent, target *node, now time.Time) int
 		count = a.lastPressCount + 1
 	}
 	return count
+}
+
+// resolvePointer finishes a pointer event its backend marked for resolution (PointerResolver),
+// against the layout this dispatch routes with, and clears its Source: a component that keeps
+// the event (a gesture's press) must not keep the backend's frame alive with it.
+func (a *App) resolvePointer(e MouseEvent) MouseEvent {
+	if r, ok := a.backend.(PointerResolver); ok {
+		e = r.ResolvePointer(e)
+	}
+	e.Source = PointerSource{}
+	return e
 }

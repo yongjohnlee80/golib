@@ -100,4 +100,14 @@ const (
 	// KeyMenu is the Menu (application) key: a terminal speaking the kitty protocol sends it; others,
 	// and Gio's native window, never do.
 	KeyMenu = key.Menu
+
+	// Lone modifier keys (kitty codes): see key.LeftShift.
+	KeyLeftShift    = key.LeftShift
+	KeyLeftControl  = key.LeftControl
+	KeyLeftAlt      = key.LeftAlt
+	KeyLeftSuper    = key.LeftSuper
+	KeyRightShift   = key.RightShift
+	KeyRightControl = key.RightControl
+	KeyRightAlt     = key.RightAlt
+	KeyRightSuper   = key.RightSuper
 )
