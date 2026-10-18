@@ -251,28 +251,29 @@ func (c *TableCore) HandleKey(k tui.KeyEvent) bool {
 		c.count = min(c.count*10+d, tableCountMax)
 		return true
 	}
+	if c.pendingG && isKey(k, literalG...) {
+		// g's grammar: the literal g after it is [count]gg, wherever a map moved the prefix
+		row := max(c.count, 1) - 1
+		c.dropPending()
+		c.SetCursor(TablePos{row, c.cur.Col})
+		return true
+	}
 	cmd, ok := c.ctx.KeyCommand(k, tableCommands...)
 	if !ok {
 		c.dropPending() // any other key drops a count or a g, and is the application's
 		return false
 	}
-	if cmd.ID == TableGoPrefix.ID && !c.pendingG {
+	if cmd.ID == TableGoPrefix.ID {
 		c.pendingG, c.yanked = true, false // the count waits with it, for [count]gg
 		return true
 	}
 	n, counted := max(c.count, 1), c.count > 0
 	wasG, yanked := c.pendingG, c.yanked
 	c.dropPending()
-	if wasG && cmd.ID != TableGoPrefix.ID {
+	if wasG {
 		n, counted = 1, false // the count went with the g it was typed for
 	}
 	switch cmd.ID {
-	case TableGoPrefix.ID: // the second g
-		row := 0
-		if counted {
-			row = n - 1
-		}
-		c.SetCursor(TablePos{row, c.cur.Col})
 	case TableUp.ID:
 		c.Move(-n, 0)
 	case TableDown.ID:

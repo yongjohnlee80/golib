@@ -690,11 +690,12 @@ func inputAct(ctx *tui.Context, k tui.KeyEvent, running, exited, prefix, vimKeys
 	case !running:
 		return termNone
 	case prefix:
-		// the key after the prefix is its grammar: Ctrl+n for normal mode, the prefix again to send it
+		// the key after the prefix is its grammar, the literal keys: Ctrl+n for normal mode, Ctrl+\ to
+		// send Ctrl+\
 		switch {
 		case isCtrl(k, 'n'):
 			return termToNormal
-		case isCmd && cmd.ID == TerminalPrefix.ID:
+		case isKey(k, literalCtrlSlash...):
 			return termSendPrefix
 		}
 		return termSendBoth
