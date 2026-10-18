@@ -1,6 +1,8 @@
 package widget
 
 import (
+	"slices"
+
 	"github.com/yongjohnlee80/golib/tui"
 	tuikey "github.com/yongjohnlee80/golib/tui/key"
 	"github.com/yongjohnlee80/golib/tui/keymap"
@@ -18,6 +20,31 @@ import (
 func cmd(id string, scope keymap.Scope, keys ...string) keymap.Command {
 	return keymap.Command{ID: id, Scope: scope, Keys: tuikey.MustParse(keys...)}
 }
+
+// isKey reports whether e is one of keys, by the one matching model (key.Of, then its candidates). A
+// grammar's continuation is read with it: the second g, the key after the Terminal's prefix. They are
+// the keys the grammar names, so a map moving the prefix moves the prefix alone.
+func isKey(e tui.KeyEvent, keys ...tuikey.Seq) bool {
+	if e.Kind == tui.KeyRelease {
+		return false
+	}
+	chord, ok := tuikey.Of(e.Code, e.Mods, e.Text)
+	if !ok {
+		return false
+	}
+	for _, c := range tuikey.Candidates(chord) {
+		if slices.Contains(keys, c) {
+			return true
+		}
+	}
+	return false
+}
+
+// The literal continuations: g after g, and Ctrl+\ after the Terminal's prefix, which sends it.
+var (
+	literalG         = tuikey.MustParse("G")
+	literalCtrlSlash = tuikey.MustParse("Ctrl+\\", "Ctrl+Shift+\\")
+)
 
 // with is each text and its Shift form, for a functional key the old handlers took either way.
 func with(texts ...string) []string {

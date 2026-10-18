@@ -91,6 +91,13 @@ func (n *normalState) key(t *Terminal, k tui.KeyEvent) bool {
 	if n.searching {
 		return n.searchKey(t, k)
 	}
+	if n.pendingG && isKey(k, literalG...) {
+		// g's grammar: the literal g after it is the first line, wherever a map moved the prefix
+		n.pendingG = false
+		n.line, n.col = 0, 0
+		n.moved(t)
+		return true
+	}
 	cmd, ok := t.Context().KeyCommand(k, terminalNormalCommands...)
 	if !ok {
 		if k.Mods.Chord()&(tui.ModCtrl|tui.ModAlt|tui.ModSuper|tui.ModHyper|tui.ModMeta) == 0 {
@@ -120,15 +127,7 @@ func (n *normalState) key(t *Terminal, k tui.KeyEvent) bool {
 		}
 		return false // nothing to cancel: the host's Esc (a drawer closes)
 	}
-	if n.pendingG {
-		// g's grammar: g again is the first line; any other key is itself
-		n.pendingG = false
-		if cmd.ID == TermGoPrefix.ID {
-			n.line, n.col = 0, 0
-			n.moved(t)
-			return true
-		}
-	}
+	n.pendingG = false // any other key ends g's grammar, and is itself
 	switch cmd.ID {
 	case TermInput.ID:
 		t.setMode(TerminalInput)
