@@ -390,6 +390,8 @@ func (p *framePayload) add(ops *op.Ops, dst Rect, report func(error)) {
 	if size.X <= 0 || size.Y <= 0 {
 		return
 	}
+	countTransform()
+	countImage()
 	tr := op.Affine(f32.Affine2D{}.Scale(f32.Point{}, f32.Pt(dst.W/float32(size.X), dst.H/float32(size.Y))).
 		Offset(f32.Pt(dst.X, dst.Y))).Push(ops)
 	extimage.NewImageOp(p.f, report).Add(ops)
@@ -435,9 +437,12 @@ func (sl streamSlot) add(ops *op.Ops) {
 	}
 	cl := clip.Rect(sl.clip).Push(ops)
 	defer cl.Pop()
+	countClip()
 	if sl.alpha < 1 {
+		countTransform()
 		defer paint.PushOpacity(ops, sl.alpha).Pop()
 	}
+	countTransform()
 	defer op.Affine(sl.xform).Push(ops).Pop()
 	p.add(ops, sl.dst, sl.s.report)
 }

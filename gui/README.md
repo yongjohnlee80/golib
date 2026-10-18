@@ -207,9 +207,15 @@ rectangle where the transform allows is planned.
 
 Check a change by counting ops per frame, full screen on a large monitor. A
 small window hides a cost that grows with area. `go test -tags gui_opcount`
-counts them. `opbudget_test.go` holds a full-window frame to the batched
-budget (fills plus one glyph batch per colour per row, no glyph drawn alone),
-and checks that a hundred stream frames record no row and paint no view.
+counts them: fills, glyph paths, colour glyphs, images, clips and transforms.
+Each recorded macro (a row, a frame segment, a canvas picture) is credited
+with its own ops wherever it is replayed. `opbudget_test.go` holds:
+
+- a full-window frame to the batched budget: fills plus one glyph batch per
+  colour per row, and no glyph drawn alone;
+- a 1920×1080 window's stream frame, through the real `present`, to at most
+  the flushed frame's ops plus 4 per slot;
+- a hundred stream frames to no row recorded and no view painted.
 
 **Streams cost per slot, not per cell.** A push re-records nothing: the frame
 replays its recorded rows and views, and draws the newest picture into each
