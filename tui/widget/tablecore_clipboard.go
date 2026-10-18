@@ -102,6 +102,7 @@ func (c *TableCore) PasteCells(rows [][]string, kind TablePasteKind, before bool
 	}
 	var op TableCellsOp
 	clipped := false
+	first := -1 // rows: the source row the first one goes in at, which a whole view shows there too
 	put := func(row, col int, text string) {
 		if col >= fields {
 			clipped = true
@@ -115,6 +116,7 @@ func (c *TableCore) PasteCells(rows [][]string, kind TablePasteKind, before bool
 			return false
 		}
 		at := c.rowAt(before)
+		first = at
 		for k, r := range rows {
 			op.InsertRows = append(op.InsertRows, at)
 			for j, v := range r {
@@ -153,8 +155,8 @@ func (c *TableCore) PasteCells(rows [][]string, kind TablePasteKind, before bool
 		return false
 	}
 	c.Changed()
-	if kind == TablePasteRows && !before && c.Len() > 0 {
-		c.SetCursor(TablePos{c.cur.Row + 1, c.cur.Col}) // on the first row pasted, as vim's p
+	if first >= 0 {
+		c.SetCursor(TablePos{first, c.cur.Col}) // on the first row pasted, as vim's p and P
 	}
 	return true
 }
@@ -223,9 +225,7 @@ func (c *TableCore) InsertRows(before bool) bool {
 		return false
 	}
 	c.Changed()
-	if !before && c.Len() > 1 {
-		c.SetCursor(TablePos{c.cur.Row + 1, c.cur.Col})
-	}
+	c.SetCursor(TablePos{at, c.cur.Col}) // on the row inserted: a whole view shows source row at there
 	return true
 }
 
