@@ -509,8 +509,17 @@ func TestAHoleAnchoredNativeKeepsItsOwnOrigin(t *testing.T) {
 	if x != 9 || y != 7 || local != canvas {
 		t.Fatalf("pointer local %v dp at cell %d,%d; canvas local %v dp (origin %v): they must agree", local, x, y, canvas, c.origin)
 	}
-	caret, ok := viewCaret(m, []tui.NativePlacement{{View: caretView{r: Rect{X: 4, Y: 2, W: 1, H: 10}, base: 8, ok: true}, X: 7, Y: 7, Cols: 4, Rows: 1}})
-	if !ok || caret.rect.Min != image.Pt(int(c.origin.X)+6, int(c.origin.Y)+3) {
-		t.Fatalf("caret at %v; want at the canvas origin %v plus (4, 2) dp", caret.rect.Min, c.origin)
+	// A caret where the pane cuts the view away (x 124 < 150) is hidden, so it is not told.
+	hidden := tui.NativePlacement{View: caretView{r: Rect{X: 4, Y: 2, W: 1, H: 10}, base: 8, ok: true}, X: 7, Y: 7, Cols: 4, Rows: 1}
+	if caret, ok := viewCaret(m, []tui.NativePlacement{hidden}); ok {
+		t.Fatalf("a caret outside the painted clip was told at %v", caret.rect)
+	}
+	// Positive control: at x 30 dp the caret is inside the visible part, at the canvas origin
+	// plus its dp offset.
+	shown := hidden
+	shown.View = caretView{r: Rect{X: 30, Y: 2, W: 1, H: 10}, base: 8, ok: true}
+	caret, ok := viewCaret(m, []tui.NativePlacement{shown})
+	if !ok || caret.rect.Min != image.Pt(int(c.origin.X)+45, int(c.origin.Y)+3) || !caret.rect.In(c.clip) {
+		t.Fatalf("caret at %v; want at the canvas origin %v plus (30, 2) dp, inside the clip %v", caret.rect, c.origin, c.clip)
 	}
 }
