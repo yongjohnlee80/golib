@@ -186,6 +186,7 @@ func (r *renderer) frameParts(g *grid, m metrics, cur cursorState, natives []tui
 	lastCost := walkNow() - r.segStart
 	r.paths.endFrame()
 	if len(r.cuts) == 0 {
+		r.firstCost = lastCost // the whole frame is one segment
 		return last, nil
 	}
 	// cuts[0].seg is the drawing before the first slot; each later seg follows the slot before.
