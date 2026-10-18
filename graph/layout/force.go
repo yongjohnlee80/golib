@@ -41,98 +41,28 @@ type ForceResult struct {
 // work, and checks ctx, after each node's repulsion and after each step's edges: building a
 // step's quadtree is not charged, so one charge may follow more than 1024 tree operations.
 func Force(ctx context.Context, in ForceInput, lim Limits) (ForceResult, error) {
-	lim = lim.withDefaults()
-	if err := forceValidate(in, lim); err != nil {
+	s, err := NewSimulation(in, lim)
+	if err != nil {
 		return ForceResult{}, err
 	}
 	if err := ctx.Err(); err != nil {
 		return ForceResult{}, err
 	}
-	n := in.Nodes
-	if n == 0 {
-		return ForceResult{}, nil
-	}
-	steps, theta, spacing := in.Steps, float64(in.Theta), float64(in.Spacing)
-	if steps <= 0 {
-		steps = 300
-	}
-	if theta <= 0 {
-		theta = 0.9
-	}
-	if spacing <= 0 {
-		spacing = 30
-	}
-
-	// Edges in a canonical order, self-loops and duplicates dropped: their order in the input does
-	// not change the sums, so it does not change the layout.
-	edges := make([][2]int, 0, len(in.Edges))
-	for _, e := range in.Edges {
-		a, b := min(e.From, e.To), max(e.From, e.To)
-		if a != b {
-			edges = append(edges, [2]int{a, b})
-		}
-	}
-	slices.SortFunc(edges, func(x, y [2]int) int { return cmp.Or(cmp.Compare(x[0], y[0]), cmp.Compare(x[1], y[1])) })
-	edges = slices.Compact(edges)
-
-	m := &meter{ctx: ctx, max: lim.MaxWork}
-	rng := rand.New(rand.NewPCG(uint64(in.Seed), 0x9e3779b97f4a7c15))
-	radius := spacing * math.Sqrt(float64(n))
-	pos := make([]vec, n)
-	for i := range pos {
-		// Uniform in a disc as wide as the graph will roughly settle to.
-		r, a := radius*math.Sqrt(rng.Float64()), 2*math.Pi*rng.Float64()
-		pos[i] = vec{r * math.Cos(a), r * math.Sin(a)}
-	}
-
-	k2 := spacing * spacing
-	gravity := 0.02
-	disp := make([]vec, n)
-	var tree quadTree
-	for step := range steps {
-		// The most a node moves this step: a tenth of the starting radius, cooling to nothing.
-		heat := radius * 0.1 * (1 - float64(step)/float64(steps))
-		clear(disp)
-		tree.build(pos)
-		for i, p := range pos {
-			f, work := tree.repulse(i, p, theta, k2)
-			if err := m.add(work); err != nil {
-				return ForceResult{}, err
-			}
-			disp[i] = disp[i].add(f).add(p.scale(-gravity))
-		}
-		for _, e := range edges {
-			d := pos[e[1]].sub(pos[e[0]])
-			l := d.len()
-			if l == 0 {
-				continue
-			}
-			pull := d.scale(l / spacing) // |F| = d²/k, along d
-			disp[e[0]] = disp[e[0]].add(pull)
-			disp[e[1]] = disp[e[1]].sub(pull)
-		}
-		if err := m.add(len(edges)); err != nil {
+	for done := false; !done; {
+		if done, err = s.Step(ctx, s.steps); err != nil {
 			return ForceResult{}, err
 		}
-		for i, d := range disp {
-			if l := d.len(); l > heat && l > 0 {
-				d = d.scale(heat / l)
-			}
-			pos[i] = pos[i].add(d)
-		}
 	}
-
-	minX, minY := math.Inf(1), math.Inf(1)
-	maxX, maxY := math.Inf(-1), math.Inf(-1)
-	for _, p := range pos {
-		minX, minY = min(minX, p.x), min(minY, p.y)
-		maxX, maxY = max(maxX, p.x), max(maxY, p.y)
+	if len(s.pos) == 0 {
+		return ForceResult{}, nil
 	}
-	out := ForceResult{Nodes: make([]Point, n), Size: Size{W: float32(maxX - minX), H: float32(maxY - minY)}}
+	// moved to start at (0, 0) in float64, then narrowed: each coordinate rounds once
+	minX, minY, maxX, maxY := s.extent()
+	out := ForceResult{Nodes: make([]Point, len(s.pos)), Size: Size{W: float32(maxX - minX), H: float32(maxY - minY)}}
 	if !finite32(out.Size.W) || !finite32(out.Size.H) {
 		return ForceResult{}, fmt.Errorf("%w: a layout %g by %g, past float32", ErrTooLarge, maxX-minX, maxY-minY)
 	}
-	for i, p := range pos {
+	for i, p := range s.pos {
 		out.Nodes[i] = Point{X: float32(p.x - minX), Y: float32(p.y - minY)}
 	}
 	return out, nil
@@ -140,6 +70,143 @@ func Force(ctx context.Context, in ForceInput, lim Limits) (ForceResult, error) 
 
 // finite32 reports whether v is a number, and not an infinity.
 func finite32(v float32) bool { return !math.IsNaN(float64(v)) && !math.IsInf(float64(v), 0) }
+
+// Simulation is Force a step at a time, for a caller that shows the layout as it settles: the same
+// seeded start, forces, cooling, validation and limits. Stepped to the end, its Frame is Force's
+// layout before Force moves it to start at (0, 0). Not safe for concurrent use.
+type Simulation struct {
+	edges       [][2]int
+	pos, disp   []vec
+	tree        quadTree
+	m           meter
+	step, steps int
+	radius      float64
+	theta, k2   float64
+	spacing     float64
+}
+
+// NewSimulation validates in as Force does (ErrInvalid, ErrTooLarge) and places its seeded start:
+// every node at random in a disc about the origin, as wide as the graph will roughly settle to.
+func NewSimulation(in ForceInput, lim Limits) (*Simulation, error) {
+	lim = lim.withDefaults()
+	if err := forceValidate(in, lim); err != nil {
+		return nil, err
+	}
+	n := in.Nodes
+	s := &Simulation{steps: in.Steps, theta: float64(in.Theta), spacing: float64(in.Spacing), m: meter{max: lim.MaxWork}}
+	if s.steps <= 0 {
+		s.steps = 300
+	}
+	if s.theta <= 0 {
+		s.theta = 0.9
+	}
+	if s.spacing <= 0 {
+		s.spacing = 30
+	}
+	if n == 0 {
+		s.step = s.steps // nothing to place: done before it starts
+		return s, nil
+	}
+
+	// Edges in a canonical order, self-loops and duplicates dropped: their order in the input does
+	// not change the sums, so it does not change the layout.
+	s.edges = make([][2]int, 0, len(in.Edges))
+	for _, e := range in.Edges {
+		a, b := min(e.From, e.To), max(e.From, e.To)
+		if a != b {
+			s.edges = append(s.edges, [2]int{a, b})
+		}
+	}
+	slices.SortFunc(s.edges, func(x, y [2]int) int { return cmp.Or(cmp.Compare(x[0], y[0]), cmp.Compare(x[1], y[1])) })
+	s.edges = slices.Compact(s.edges)
+
+	rng := rand.New(rand.NewPCG(uint64(in.Seed), 0x9e3779b97f4a7c15))
+	s.radius = s.spacing * math.Sqrt(float64(n))
+	s.pos = make([]vec, n)
+	for i := range s.pos {
+		// Uniform in a disc as wide as the graph will roughly settle to.
+		r, a := s.radius*math.Sqrt(rng.Float64()), 2*math.Pi*rng.Float64()
+		s.pos[i] = vec{r * math.Cos(a), r * math.Sin(a)}
+	}
+	s.k2 = s.spacing * s.spacing
+	s.disp = make([]vec, n)
+	return s, nil
+}
+
+// Done reports whether every step has run.
+func (s *Simulation) Done() bool { return s.step >= s.steps }
+
+// Step runs up to n more steps, and reports whether every step has now run. It counts its work
+// against the limits' MaxWork, across every Step, and checks ctx as Force does; after an error the
+// simulation stays where it stopped.
+func (s *Simulation) Step(ctx context.Context, n int) (done bool, err error) {
+	s.m.ctx = ctx
+	const gravity = 0.02
+	for ; n > 0 && s.step < s.steps; n-- {
+		// The most a node moves this step: a tenth of the starting radius, cooling to nothing.
+		heat := s.radius * 0.1 * (1 - float64(s.step)/float64(s.steps))
+		clear(s.disp)
+		s.tree.build(s.pos)
+		for i, p := range s.pos {
+			f, work := s.tree.repulse(i, p, s.theta, s.k2)
+			if err := s.m.add(work); err != nil {
+				return false, err
+			}
+			s.disp[i] = s.disp[i].add(f).add(p.scale(-gravity))
+		}
+		for _, e := range s.edges {
+			d := s.pos[e[1]].sub(s.pos[e[0]])
+			l := d.len()
+			if l == 0 {
+				continue
+			}
+			pull := d.scale(l / s.spacing) // |F| = d²/k, along d
+			s.disp[e[0]] = s.disp[e[0]].add(pull)
+			s.disp[e[1]] = s.disp[e[1]].sub(pull)
+		}
+		if err := s.m.add(len(s.edges)); err != nil {
+			return false, err
+		}
+		for i, d := range s.disp {
+			if l := d.len(); l > heat && l > 0 {
+				d = d.scale(heat / l)
+			}
+			s.pos[i] = s.pos[i].add(d)
+		}
+		s.step++
+	}
+	return s.Done(), nil
+}
+
+// extent is the smallest and largest coordinates of the nodes' positions now.
+func (s *Simulation) extent() (minX, minY, maxX, maxY float64) {
+	minX, minY = math.Inf(1), math.Inf(1)
+	maxX, maxY = math.Inf(-1), math.Inf(-1)
+	for _, p := range s.pos {
+		minX, minY = min(minX, p.x), min(minY, p.y)
+		maxX, maxY = max(maxX, p.x), max(maxY, p.y)
+	}
+	return minX, minY, maxX, maxY
+}
+
+// Frame is every node's position now, appended to dst[:0], and the rectangle holding them all; gravity
+// keeps them about the origin, so a caller can show successive frames in one view. A position
+// float32 cannot hold is ErrTooLarge. No nodes is an empty frame.
+func (s *Simulation) Frame(dst []Point) ([]Point, Rect, error) {
+	dst = dst[:0]
+	if len(s.pos) == 0 {
+		return dst, Rect{}, nil
+	}
+	minX, minY, maxX, maxY := s.extent()
+	bounds := Rect{X: float32(minX), Y: float32(minY), W: float32(maxX - minX), H: float32(maxY - minY)}
+	if !finite32(bounds.X) || !finite32(bounds.Y) || !finite32(bounds.W) || !finite32(bounds.H) {
+		return dst, Rect{}, fmt.Errorf("%w: a layout %g by %g, past float32", ErrTooLarge, maxX-minX, maxY-minY)
+	}
+	for _, p := range s.pos {
+		dst = append(dst, Point{X: float32(p.x), Y: float32(p.y)})
+	}
+	return dst, bounds, nil
+}
 
 // forceValidate refuses an input Force cannot place: a negative count, an edge to a node that does
 // not exist, or more nodes or edges than lim allows.
