@@ -1,6 +1,7 @@
 package widget
 
 import (
+	"slices"
 	"testing"
 
 	"github.com/yongjohnlee80/golib/tui"
@@ -306,5 +307,41 @@ func TestAnEditOnAnUncomparableSourceWithNoRevision(t *testing.T) {
 	c.HandleKey(escKey)
 	if rows[0][0] != "changed elsewhere" {
 		t.Fatalf("the dropped edit was written: %q", rows[0][0])
+	}
+}
+
+// The drawn rows a view paints follow the core: the display rows and the edge row; with o open, its
+// new row is drawn where it will be inserted and the rows after it move down one. The open field's
+// caret is its line and column.
+func TestTheDrawnRowsFollowTheCore(t *testing.T) {
+	c, _, _, _ := csvTable("h,v\na,1\nb,2\n", TableAppendEdges())
+	type drawn struct {
+		kind TableRowKind
+		row  int
+	}
+	rows := func() []drawn {
+		var out []drawn
+		for v := range c.DrawnRows() {
+			k, r := c.DrawnRow(v)
+			out = append(out, drawn{k, r})
+		}
+		return out
+	}
+	if got, want := rows(), []drawn{{TableRowData, 0}, {TableRowData, 1}, {TableRowEdge, 2}}; !slices.Equal(got, want) {
+		t.Fatalf("the drawn rows: %v, want %v", got, want)
+	}
+	c.HandleKey(key('o'))
+	if p := c.PendingRow(); p != 1 {
+		t.Fatalf("o's row is drawn at %d, want 1", p)
+	}
+	if got, want := rows(), []drawn{{TableRowData, 0}, {TableRowPending, -1}, {TableRowData, 1}, {TableRowEdge, 2}}; !slices.Equal(got, want) {
+		t.Fatalf("with o open: %v, want %v", got, want)
+	}
+	if c.DrawnOf(1) != 2 || c.DrawnOf(2) != 3 || c.DrawnOf(0) != 0 {
+		t.Fatalf("DrawnOf: %d %d %d", c.DrawnOf(0), c.DrawnOf(1), c.DrawnOf(2))
+	}
+	typeInto(c, "mid")
+	if ln, col := c.Editing().Field.Caret(); ln != 0 || col != 3 {
+		t.Fatalf("the field's caret: %d,%d, want 0,3", ln, col)
 	}
 }

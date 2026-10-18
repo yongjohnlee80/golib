@@ -34,7 +34,8 @@ type TableSource interface {
 	Fields() []TableField
 	// Len is the rows loaded.
 	Len() int
-	// Cell is the display text of one cell, one line.
+	// Cell is one cell's exact value, newlines and tabs included: a view draws it on one line
+	// through TableCellLine, and an open field edits it as it is.
 	Cell(row, col int) string
 }
 

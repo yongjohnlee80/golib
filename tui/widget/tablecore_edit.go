@@ -289,3 +289,58 @@ func (c *TableCore) Paste(text string) bool {
 	c.repaint()
 	return true
 }
+
+// TableRowKind is what a drawn row is: one of the core's display rows, o's new row not yet in the
+// source, or the empty row after the last (TableAppendEdges).
+type TableRowKind uint8
+
+const (
+	TableRowData    TableRowKind = iota // a display row
+	TableRowPending                     // o's new row, inserted only when its cell is kept
+	TableRowEdge                        // the empty row after the last
+)
+
+// PendingRow is the drawn row of o's new row, -1 for none: an open edit inserting a row that is not
+// the edge row.
+func (c *TableCore) PendingRow() int {
+	e := c.editing
+	if e == nil || !e.Inserting() || (e.Pos.Row >= c.Len() && c.EdgeRow()) {
+		return -1
+	}
+	return e.Pos.Row
+}
+
+// DrawnRows is the rows a view draws: the display rows, o's new row and the edge row.
+func (c *TableCore) DrawnRows() int {
+	n := c.Len() + c.edgeRows()
+	if c.PendingRow() >= 0 {
+		n++
+	}
+	return n
+}
+
+// DrawnRow is drawn row v: what it is, and the display row it shows (Len() for the edge row, -1
+// for o's new row).
+func (c *TableCore) DrawnRow(v int) (TableRowKind, int) {
+	r := v
+	if p := c.PendingRow(); p >= 0 {
+		switch {
+		case v == p:
+			return TableRowPending, -1
+		case v > p:
+			r--
+		}
+	}
+	if r >= c.Len() {
+		return TableRowEdge, r
+	}
+	return TableRowData, r
+}
+
+// DrawnOf is the drawn row of display row r (the edge row for Len()).
+func (c *TableCore) DrawnOf(r int) int {
+	if p := c.PendingRow(); p >= 0 && r >= p {
+		return r + 1
+	}
+	return r
+}

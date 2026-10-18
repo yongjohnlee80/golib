@@ -146,6 +146,10 @@ func (t *TextArea) SetValue(s string) {
 // AcceptsFocus implements tui.Focusable.
 func (t *TextArea) AcceptsFocus() bool { return true }
 
+// Caret is the caret's logical line and its column in grapheme clusters, for a view that draws the
+// field itself (a table's open cell, in cells or in pixels).
+func (t *TextArea) Caret() (line, col int) { return t.ln, t.col }
+
 // cellsAt is the display offset (cells) of (ln, col).
 func (t *TextArea) cellsAt(ln, col int) int {
 	return t.textBuffer.cellsAt(ln, col, t.measure)

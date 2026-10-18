@@ -58,60 +58,6 @@ var tableCellLine = strings.NewReplacer("\r\n", "⏎", "\n", "⏎", "\r", "⏎",
 // TableCellLine is a cell's value as a table's one-line cell shows it: a newline as ⏎, a tab as →.
 func TableCellLine(value string) string { return tableCellLine(value) }
 
-// tableRowKind is what a drawn row is: one of the core's display rows, o's new row not yet in the
-// source, or the empty row after the last (TableAppendEdges).
-type tableRowKind uint8
-
-const (
-	tableRowData tableRowKind = iota
-	tableRowPending
-	tableRowEdge
-)
-
-// pending is the drawn row of o's new row, -1 for none: an open edit inserting a row that is not the
-// edge row.
-func (t *DataTable) pending() int {
-	e := t.core.Editing()
-	if e == nil || !e.Inserting() || (e.Pos.Row >= t.core.Len() && t.core.EdgeRow()) {
-		return -1
-	}
-	return e.Pos.Row
-}
-
-// drawnRows is the rows drawn: the display rows, o's new row and the edge row.
-func (t *DataTable) drawnRows() int {
-	n := t.core.Len() + t.core.edgeRows()
-	if t.pending() >= 0 {
-		n++
-	}
-	return n
-}
-
-// rowAt is drawn row v: what it is, and the display row it shows for a data row.
-func (t *DataTable) rowAt(v int) (tableRowKind, int) {
-	r := v
-	if p := t.pending(); p >= 0 {
-		switch {
-		case v == p:
-			return tableRowPending, -1
-		case v > p:
-			r--
-		}
-	}
-	if r >= t.core.Len() {
-		return tableRowEdge, r
-	}
-	return tableRowData, r
-}
-
-// drawnOf is the drawn row of display row r (the edge row for Len()).
-func (t *DataTable) drawnOf(r int) int {
-	if p := t.pending(); p >= 0 && r >= p {
-		return r + 1
-	}
-	return r
-}
-
 var (
 	_ tui.Focusable = (*DataTable)(nil)
 	_ TableLayout   = (*DataTable)(nil)
@@ -309,7 +255,7 @@ func (t *DataTable) fits(from, to int) bool {
 // Layout fills the space it is given; offered unbounded height it asks for a header and its rows.
 func (t *DataTable) Layout(c tui.Constraints) tui.Size {
 	w := boundedMax(c.MaxW, max(c.MinW, 1))
-	h := boundedMax(c.MaxH, max(c.MinH, 1+max(t.drawnRows(), 1)))
+	h := boundedMax(c.MaxH, max(c.MinH, 1+max(t.core.DrawnRows(), 1)))
 	if w != t.w || h != t.h {
 		// a new size keeps the cursor in sight; the same size keeps the wheel's scroll. A bound
 		// layout keeps it in sight at its own size, which is in its units.
@@ -362,7 +308,7 @@ func (t *DataTable) Render(s tui.Surface) {
 		drawText(s, x+tableGap, 0, truncate(" + ", sz.W-x-tableGap, s.StringWidth), t.styles.Empty)
 	}
 	t.caret = nil
-	if t.drawnRows() == 0 {
+	if t.core.DrawnRows() == 0 {
 		if sz.H > 1 {
 			drawText(s, 0, 1, truncate(t.emptyText, sz.W, s.StringWidth), t.styles.Empty)
 		}
@@ -371,11 +317,11 @@ func (t *DataTable) Render(s tui.Surface) {
 	cur, cursor := t.core.Cursor(), t.CursorStyle()
 	for y := 1; y < sz.H; y++ {
 		v := t.top + y - 1
-		if v >= t.drawnRows() {
+		if v >= t.core.DrawnRows() {
 			break
 		}
-		kind, row := t.rowAt(v)
-		if kind != tableRowData {
+		kind, row := t.core.DrawnRow(v)
+		if kind != TableRowData {
 			t.drawBlankRow(s, y, kind, row, gutter, fields, cur, cursor)
 			continue
 		}
@@ -409,13 +355,13 @@ func (t *DataTable) Render(s tui.Surface) {
 
 // drawBlankRow draws o's new row or the edge row: empty cells, the cursor's among them; the edge
 // row's gutter says +.
-func (t *DataTable) drawBlankRow(s tui.Surface, y int, kind tableRowKind, row, gutter int, fields []TableField,
+func (t *DataTable) drawBlankRow(s tui.Surface, y int, kind TableRowKind, row, gutter int, fields []TableField,
 	cur TablePos, cursor style.Style) {
 	sz := s.Size()
-	if kind == tableRowEdge && gutter > 0 {
+	if kind == TableRowEdge && gutter > 0 {
 		drawText(s, 0, y, truncate(padAligned("+", gutter-tableGap, style.AlignRight), sz.W, s.StringWidth), t.styles.Empty)
 	}
-	onCursorRow := kind == tableRowEdge && row == cur.Row
+	onCursorRow := kind == TableRowEdge && row == cur.Row
 	x := gutter
 	for col := t.left; col <= len(fields) && x < sz.W; col++ {
 		if col > t.left {
@@ -456,7 +402,7 @@ func (t *DataTable) drawField(s tui.Surface, gutter int, fields []TableField) {
 	}
 	sz := s.Size()
 	x, ok := t.fieldX(e.Pos.Col, gutter)
-	y := 1 + t.drawnOf(e.Pos.Row) - t.top
+	y := 1 + t.core.DrawnOf(e.Pos.Row) - t.top
 	if e.Inserting() {
 		y = 1 + e.Pos.Row - t.top
 	}
@@ -471,7 +417,8 @@ func (t *DataTable) drawField(s tui.Surface, gutter int, fields []TableField) {
 	// drawn here, line by line, not through the TextArea's own Layout and Render: a Render that lays
 	// out or paints a component it does not own the placement of runs a second layout in the paint
 	lines := strings.Split(e.Field.Value(), "\n")
-	ln, col := min(e.Field.ln, len(lines)-1), e.Field.col
+	ln, col := e.Field.Caret()
+	ln = min(ln, len(lines)-1)
 	h := min(len(lines), sz.H-y)
 	top := max(ln-h+1, 0)
 	cs := clusters(lines[ln])
@@ -650,15 +597,15 @@ func (t *DataTable) cellHit(x, y int) (TablePos, TableHit) {
 		}
 		return TablePos{}, TableHitNone
 	}
-	if y < 0 || t.top+y-1 >= t.drawnRows() {
+	if y < 0 || t.top+y-1 >= t.core.DrawnRows() {
 		return TablePos{}, TableHitNone
 	}
-	kind, row := t.rowAt(t.top + y - 1)
+	kind, row := t.core.DrawnRow(t.top + y - 1)
 	switch {
-	case kind == tableRowPending:
+	case kind == TableRowPending:
 		return TablePos{}, TableHitNone
 	case x < g:
-		if kind == tableRowEdge {
+		if kind == TableRowEdge {
 			return TablePos{}, TableHitNone
 		}
 		return TablePos{Row: row}, TableHitGutter
