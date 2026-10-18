@@ -85,7 +85,12 @@ TUI-only golib user never resolves Gio or cgo. `tui` cannot import it.
 ```sh
 cd gui
 go run ./examples/demo     # tui/examples/demoapp in a window
+go run ./examples/scene3d  # a 3D scene on its own GPU device, in a pixel pane beside cells
 ```
+
+`scene3d` renders on Vulkan (Linux) or Metal (macOS) when the window draws its
+frames without a copy, and on the CPU otherwise; `-producer=cpu` forces the
+CPU. Its sidebar says which, and the frame rate is in the pane's corner.
 
 Linux needs cgo and the Wayland/X11 development libraries:
 
@@ -99,11 +104,69 @@ apt install libwayland-dev libx11-dev libx11-xcb-dev libxkbcommon-x11-dev \
 
 ## Status
 
-M0 of ADR 1791330692 (golib/gui): the backend, on Linux. Next: native GUI
-widgets drawn in pixels over a tui node's cells (`NativeReporter`), with a mock
-TUI or "not supported in TUI" fallback on a terminal; window chrome; macOS.
+Linux (Wayland, X11) and macOS. v0.2.0 adds pixel-root panes, raw keys, and
+streams of frames, canvases and mutable images (ADR 1792306654, which amends
+ADR 1791330692). Not yet: a native view spanning panes, and layer caching.
 Accessibility: Gio's semantic operations have no desktop consumer yet, so the
 window has no screen-reader support.
+
+## Panes, pixel views and frames
+
+A window can be more than one cell grid. `WithPanes` makes its root a tree of
+rows and columns in dp, whose leaves are **cell panes** and **pixel panes**:
+
+```go
+panes := gui.NewPanes(gui.Row(
+	gui.Sized(gui.Fixed(280), gui.Cells(sidebar)),   // a tui component, in cells
+	gui.Sized(gui.Flex(1), gui.Pixels(viewport)),    // draws itself natively
+))
+app := tui.NewApp(panes, tui.WithBackend(gui.NewBackend(gui.WithPanes(panes))))
+```
+
+- **tui stays cell-only.** Each pane gets its own band of one virtual cell
+  grid. tui lays out, diffs and routes in cells as ever; the backend maps each
+  band to its pane's pixels, and the pointer back to the pane's cells.
+- **A native view stays in its pane.** It is clipped to the pane it is anchored
+  in, and so is its input. A dialog over a game is drawn in the game's pane.
+- **Raw keys.** `Backend.SetRawKeys(true)` gives a game its keyboard. Every key,
+  letters, space and lone modifiers included, arrives as a press and a release.
+  The input method is off. Text mode, the default, delivers printable keys as
+  text. A game view typically turns it on as it gains focus and off as it
+  loses it. Stopping the window ends input: held keys get no releases.
+
+### Streams: pictures at the display's pace
+
+A view that changes every frame (video, a game's world, a 3D scene) does not
+go through a tui flush. It records a **slot** once, and the window draws the
+stream's newest picture there at every vsync after a push:
+
+| Stream | What it carries | Draw it with |
+|---|---|---|
+| `Backend.NewStream` | `Frame`s: decoded video, another GPU device's renders, pixels in memory | `DrawStream` |
+| `Backend.NewCanvasStream` | pictures a `Canvas` records on the producer's goroutine | `DrawCanvasStream` |
+| `Backend.NewMutableImage` | an RGBA image edited in place; each `Update` uploads only the rectangle it changed | `DrawMutableImage` |
+
+Every push returns a `Receipt`, which completes exactly once:
+
+- `Drawn`: it was in a presented frame. `When` is that frame's time; pace by it.
+- `Superseded`: a newer push replaced it before it was drawn.
+- `NotShown`: a frame was presented without its slot (the view is hidden). The
+  picture stays pending.
+- `Unsupported`: the window draws no frame like it. Ask `FrameCaps` again.
+- `Closed`: the stream was closed, or the window stopped.
+- `Busy`: a `CanvasStream` was already recording, so `draw` was not called.
+
+A `Frame` is `op/extimage`'s, from the Gio fork. Its contract (descriptor,
+lease, release exactly once, caps) is the one every driver implements; read
+[EXTIMAGE.md](https://github.com/yongjohnlee80/gio/blob/main/EXTIMAGE.md)
+before writing a producer. `Backend.FrameCaps` says which frames this window
+draws, and whether each draws with or without a copy:
+
+- **Zero-copy:** Vulkan imports Linux DMA-BUFs, Metal imports macOS IOSurfaces.
+  Vulkan on Linux is opt-in per window (`WithZeroCopyFrames`); without it, or
+  where Vulkan is unavailable, the window keeps EGL. macOS uses Metal already.
+- **Copy:** every other renderer draws the same frames through the CPU driver,
+  which maps the buffer and uploads it. Same contract, same code in the app.
 
 ## Drawing performance: count the draw calls
 
@@ -143,7 +206,15 @@ and the markdown view. Each `Canvas` call is replayed on every frame:
 rectangle where the transform allows is planned.
 
 Check a change by counting ops per frame, full screen on a large monitor. A
-small window hides a cost that grows with area. `batch_pixels_test.go` checks
+small window hides a cost that grows with area. `go test -tags gui_opcount`
+counts them. `opbudget_test.go` holds a full-window frame to the batched
+budget (fills plus one glyph batch per colour per row, no glyph drawn alone),
+and checks that a hundred stream frames record no row and paint no view.
+
+**Streams cost per slot, not per cell.** A push re-records nothing: the frame
+replays its recorded rows and views, and draws the newest picture into each
+slot. A slot is one texture draw. The pixel copy, when the frame needs one, is
+the frame's own size. `batch_pixels_test.go` checks
 that batched drawing matches per-cell drawing, within a small tolerance.
 
 ## Development

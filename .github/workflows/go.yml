@@ -108,6 +108,36 @@ jobs:
       - name: test
         run: go test -race -count=2 -timeout 10m ./...
 
+  # golib/gui on macOS: the Metal paths only compile on a Mac. examples/scene3d's Metal producer
+  # renders into IOSurfaces that a headless Metal window draws without a copy, checked against the
+  # CPU's picture.
+  gui-macos:
+    name: gui (macOS, Metal)
+    runs-on: macos-latest
+    defaults:
+      run:
+        working-directory: gui
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: gui/go.mod
+          cache: true
+          cache-dependency-path: gui/go.sum
+
+      - name: use this commit's golib
+        run: go work init . ..
+
+      - name: build
+        run: go build ./...
+
+      - name: vet
+        run: go vet ./...
+
+      - name: test scene3d (Metal producer, IOSurface frames)
+        run: go test -race -count=1 -timeout 10m -v ./examples/scene3d/
+
   # vfs/local watches with FSEvents on macOS, through cgo (ADR golib-vfs-0002): the Linux runner above
   # can only vet the cgo-less darwin build, so the watch itself is built and tested here, on a Mac.
   macos:
