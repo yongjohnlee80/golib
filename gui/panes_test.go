@@ -439,16 +439,27 @@ func TestAFontChangeWithTheSameBandsIsANewSnapshot(t *testing.T) {
 // Lector #359: a Panes tree is fixed once built. Replacing an item in the caller's slice afterwards
 // changes neither the panes Layout places nor the tree fit resolves.
 func TestATreeIsFixedAgainstItsCallersSlice(t *testing.T) {
-	side, view := &stubPane{"side"}, &stubPane{"view"}
-	items := []Item{Sized(Fixed(100), Cells(side)), Sized(Flex(1), Pixels(view))}
-	p := NewPanes(Row(items...))
-	items[0] = Sized(Fixed(300), Pixels(&stubPane{"intruder"}))
-	rects := fit(p.root, image.Rect(0, 0, 500, 100), 1, nil, new([]image.Rectangle))
-	if len(p.leaves) != 2 || p.leaves[0].c != side || rects[0].Dx() != 100 {
-		t.Fatalf("the tree followed its caller's slice: leaf 0 %v, pane 0 %v", p.leaves[0].c, rects[0])
-	}
-	_, panes := bands(p.root, rects, image.Pt(10, 20))
-	if panes[0].pixels {
-		t.Fatal("pane 0 became a Pixels pane after construction")
+	for _, c := range []struct {
+		name  string
+		build func(...Item) Node
+		len   func(image.Rectangle) int
+	}{
+		{"Row", Row, func(r image.Rectangle) int { return r.Dx() }},
+		{"Column", Column, func(r image.Rectangle) int { return r.Dy() }},
+	} {
+		t.Run(c.name, func(t *testing.T) {
+			side, view := &stubPane{"side"}, &stubPane{"view"}
+			items := []Item{Sized(Fixed(100), Cells(side)), Sized(Flex(1), Pixels(view))}
+			p := NewPanes(c.build(items...))
+			items[0] = Sized(Fixed(300), Pixels(&stubPane{"intruder"}))
+			rects := fit(p.root, image.Rect(0, 0, 500, 500), 1, nil, new([]image.Rectangle))
+			if len(p.leaves) != 2 || p.leaves[0].c != side || c.len(rects[0]) != 100 {
+				t.Fatalf("the tree followed its caller's slice: leaf 0 %v, pane 0 %v", p.leaves[0].c, rects[0])
+			}
+			_, panes := bands(p.root, rects, image.Pt(10, 20))
+			if panes[0].pixels {
+				t.Fatal("pane 0 became a Pixels pane after construction")
+			}
+		})
 	}
 }
