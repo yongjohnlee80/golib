@@ -2,6 +2,7 @@ package gui
 
 import (
 	"image"
+	"math"
 	"sync"
 
 	"github.com/yongjohnlee80/golib/tui"
@@ -103,6 +104,8 @@ type stageLayouts struct {
 	published []metrics // published since the last admission, oldest first
 
 	admitted metrics // App goroutine: what the tree was last laid out with; layout nil before
+
+	latch pointerLatch // App goroutine: ResolvePointer's press state
 }
 
 // maxPublished bounds the snapshots waiting for admission. Dropping the oldest is safe: a newer
@@ -180,4 +183,77 @@ func (b *Backend) inputMetrics(newest metrics) metrics {
 		return b.gio.shown.m
 	}
 	return newest
+}
+
+// pointerLatch is the App goroutine's press state for ResolvePointer: the buttons held and the
+// pane their first press landed in, which every event maps through until none is held.
+type pointerLatch struct {
+	held uint32 // a set: the buttons held, one bit each (1 << button)
+	pane int
+}
+
+var _ tui.PointerResolver = (*Backend)(nil)
+
+// ResolvePointer finishes a pointer event of a Panes window when the App dispatches it, against
+// the layout the App routes with (tui.PointerResolver). The hit comes from the frame the user saw
+// (Source.Ref): the pane under the point, by index, and the point's distance into it in dp. That
+// is re-expressed in the admitted snapshot, the same pane's band at its current cell size, so a
+// click lands on what was under the pointer even when the layout changed in between. While a
+// button is held, events map through the pane the first press landed in, counted past its edge
+// and clamped to the grid. App goroutine.
+func (b *Backend) ResolvePointer(ev tui.MouseEvent) tui.MouseEvent {
+	f, ok := ev.Source.Ref.(*frame)
+	adm := b.stage.admitted
+	if !ok || f.m.layout == nil || adm.layout == nil {
+		return ev
+	}
+	shown := f.m
+	at := shown.paneIndexAt(ev.Source.X, ev.Source.Y)
+	latch := &b.stage.latch
+	bit := uint32(1) << (uint32(ev.Button) & 31)
+	if ev.Kind == tui.MousePress && latch.held == 0 {
+		latch.pane = at
+	}
+	held := latch.held != 0 || ev.Kind == tui.MousePress
+	switch ev.Kind {
+	case tui.MousePress:
+		latch.held |= bit
+	case tui.MouseRelease:
+		latch.held &^= bit
+	}
+	k := at
+	if held {
+		k = latch.pane
+	}
+	if k < 0 || k >= len(shown.layout.panes) || k >= len(adm.layout.panes) {
+		return ev
+	}
+	sp, ap := shown.layout.panes[k], adm.layout.panes[k]
+	if ap.band.Empty() {
+		return ev
+	}
+	// The point's distance into the pane in dp, then in the admitted pane's cells.
+	lx := (ev.Source.X - float32(sp.origin.X)) / shown.scale * adm.scale / float32(adm.cell.X)
+	ly := (ev.Source.Y - float32(sp.origin.Y)) / shown.scale * adm.scale / float32(adm.cell.Y)
+	fx, fy := math.Floor(float64(lx)), math.Floor(float64(ly))
+	cx, cy := ap.band.X+int(fx), ap.band.Y+int(fy)
+	sx, sy := lx-float32(fx), ly-float32(fy)
+	lo, hi := tui.Point{X: ap.band.X, Y: ap.band.Y}, tui.Point{X: ap.band.X + ap.band.W - 1, Y: ap.band.Y + ap.band.H - 1}
+	if held {
+		lo, hi = tui.Point{}, tui.Point{X: adm.grid.W - 1, Y: adm.grid.H - 1}
+	}
+	// Past an edge: the edge cell, at its near or far side, as cellAt and subCell clamp.
+	in := func(v float32) float32 { return min(max(v, 0), math.Nextafter32(1, 0)) }
+	if cx < lo.X {
+		cx, sx = lo.X, 0
+	} else if cx > hi.X {
+		cx, sx = hi.X, 1
+	}
+	if cy < lo.Y {
+		cy, sy = lo.Y, 0
+	} else if cy > hi.Y {
+		cy, sy = hi.Y, 1
+	}
+	ev.X, ev.Y, ev.SubX, ev.SubY = cx, cy, in(sx), in(sy)
+	return ev
 }
