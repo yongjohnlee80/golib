@@ -272,3 +272,21 @@ func TestTheEdgeFieldIsRevealedWhereItIsReached(t *testing.T) {
 		})
 	}
 }
+
+// A view resized with a field open shows the field, not only the cursor's row: o's new row below
+// the last one shown at the smaller size is revealed again, with nothing typed.
+func TestAResizeKeepsTheOpenFieldShown(t *testing.T) {
+	dt, l, _ := csvPixelTable(t, "h,v\na,1\nb,2\nc,3\nd,4\ne,5\n")
+	tall := l.rowH * 5 // the header and four rows
+	paintTable(l, 600, tall)
+	dt.Core().SetCursor(tuiwidget.TablePos{Row: 1})
+	paintTable(l, 600, tall)
+	dt.HandleEvent(keyRune('o')) // o's row is drawn row 2, shown
+	if rec := paintTable(l, 600, tall); !fieldShown(rec, l) {
+		t.Fatal("o's field is not shown at the tall size")
+	}
+	short := l.rowH * 2 // the header and one row
+	if rec := paintTable(l, 600, short); !fieldShown(rec, l) {
+		t.Fatalf("after the resize o's field is not shown: top %d", l.top)
+	}
+}

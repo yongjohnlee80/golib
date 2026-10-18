@@ -81,8 +81,8 @@ type tableLayout struct {
 	empty  *tableBand
 	plus   *tableBand // the edge's "+": over the edge field, and in the edge row's gutter
 
-	// shownEdit is the open field as the last paint revealed it: a new edit, text or caret is
-	// revealed again; the wheel's scroll stays while none changes
+	// shownEdit is the open field as the last paint revealed it: a new edit, text or caret, or a
+	// new size, reveals it again; the wheel's scroll stays while none changes
 	shownEdit editMark
 }
 
@@ -361,6 +361,7 @@ func (l *tableLayout) Paint(c gui.Canvas) {
 	if size := c.Size(); size != l.size {
 		l.size = size // a new size keeps the cursor in sight; the same size keeps the wheel's scroll
 		l.Reveal(core.Cursor().Row, core.Cursor().Col)
+		l.shownEdit = editMark{} // and the open field, revealed again at the new size, over the cursor
 	}
 	l.revealEdit()
 	drawn := core.DrawnRows()
