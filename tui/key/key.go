@@ -114,4 +114,16 @@ const (
 	// Menu is the Menu (application) key, the kitty keyboard protocol's code for it: a terminal
 	// speaking the protocol sends it; others, and Gio's native window, never do.
 	Menu rune = 57363
+
+	// Lone modifier keys, the kitty keyboard protocol's codes for them: a key event for the
+	// modifier itself, pressed or released on its own (a game's Shift to run), as distinct from
+	// the Mods held with another key. A window that cannot tell the sides apart reports Left.
+	LeftShift    rune = 57441
+	LeftControl  rune = 57442
+	LeftAlt      rune = 57443
+	LeftSuper    rune = 57444
+	RightShift   rune = 57447
+	RightControl rune = 57448
+	RightAlt     rune = 57449
+	RightSuper   rune = 57450
 )

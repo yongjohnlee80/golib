@@ -54,7 +54,11 @@ var keyNames = map[string]rune{
 	"f1": F1, "f2": F2, "f3": F3, "f4": F4,
 	"f5": F5, "f6": F6, "f7": F7, "f8": F8,
 	"f9": F9, "f10": F10, "f11": F11, "f12": F12,
-	"menu": Menu,
+	"menu":      Menu,
+	"leftshift": LeftShift, "rightshift": RightShift,
+	"leftctrl": LeftControl, "leftcontrol": LeftControl, "rightctrl": RightControl, "rightcontrol": RightControl,
+	"leftalt": LeftAlt, "rightalt": RightAlt,
+	"leftsuper": LeftSuper, "rightsuper": RightSuper,
 }
 
 // names is the canonical spelling of each named key, what String writes.
@@ -64,7 +68,9 @@ var names = map[rune]string{
 	PageUp: "PgUp", PageDown: "PgDown", Insert: "Ins", Delete: "Del",
 	F1: "F1", F2: "F2", F3: "F3", F4: "F4", F5: "F5", F6: "F6",
 	F7: "F7", F8: "F8", F9: "F9", F10: "F10", F11: "F11", F12: "F12",
-	Menu: "Menu",
+	Menu:      "Menu",
+	LeftShift: "LeftShift", RightShift: "RightShift", LeftControl: "LeftCtrl", RightControl: "RightCtrl",
+	LeftAlt: "LeftAlt", RightAlt: "RightAlt", LeftSuper: "LeftSuper", RightSuper: "RightSuper",
 }
 
 // Parse reads one chord in Qt's portable text, its names case-insensitive as Qt's are:

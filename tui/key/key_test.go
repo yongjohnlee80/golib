@@ -62,7 +62,8 @@ func TestParseRefuses(t *testing.T) {
 
 func TestStringRoundTrips(t *testing.T) {
 	codes := []rune{'a', 'z', '?', '+', ',', '/', '1', ' ', Escape, Enter, Tab, Backspace, Up, Down, Left, Right,
-		Home, End, PageUp, PageDown, Insert, Delete, F1, F10, F12, Menu}
+		Home, End, PageUp, PageDown, Insert, Delete, F1, F10, F12, Menu,
+		LeftShift, LeftControl, LeftAlt, LeftSuper, RightShift, RightControl, RightAlt, RightSuper}
 	for _, code := range codes {
 		for m := Mods(0); m <= bindable; m++ {
 			if m&^bindable != 0 {
