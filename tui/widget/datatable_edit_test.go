@@ -146,3 +146,30 @@ func TestTheWheelScrollsTheFieldsSideways(t *testing.T) {
 		t.Fatalf("the wheel moved the cursor to %+v", got)
 	}
 }
+
+// TestTheFieldKeepsItsCaretInSight: a value wider than its field shows its end, the caret after it;
+// with row numbers the edge row's gutter says +, and a press there places nothing.
+func TestTheFieldKeepsItsCaretInSight(t *testing.T) {
+	core := widget.NewEditorCore(widget.CoreInitialText("k,v\na," + strings.Repeat("x", 30) + "END\n"))
+	h, sh, dt := dataTable(t, widget.NewTableCSV(core, ','), 30, 6, widget.TableAppendEdges(), widget.TableRowNumbers(true))
+	if !strings.Contains(h.row(2), "+") {
+		t.Fatalf("the edge row's gutter: %q", h.row(2))
+	}
+	dtPress(h, sh, dt, keyText("l"), dtEnter)
+	if !strings.Contains(h.row(1), "END") {
+		t.Fatalf("the field does not show the value's end:\n%q", h.row(1))
+	}
+	var x, y int
+	var ok bool
+	h.onLoop(func() { x, y, ok = dt.Cursor() })
+	if !ok || y != 1 || x != strings.Index(h.row(1), "END")+3 {
+		t.Fatalf("the caret at %d,%d (%v), want after END:\n%q", x, y, ok, h.row(1))
+	}
+	dtPress(h, sh, dt, dtEsc)
+	before := tableCursor(h, dt)
+	h.inject(tui.MouseEvent{Kind: tui.MousePress, Button: tui.MouseLeft, X: 0, Y: 2})
+	h.barrier(sh)
+	if got := tableCursor(h, dt); got != before {
+		t.Fatalf("a press on the edge row's gutter moved the cursor to %+v", got)
+	}
+}
