@@ -360,6 +360,28 @@ func TestScrollbarOnlyWhenContentOverflows(t *testing.T) {
 	}
 }
 
+// A ScrollView whose child overflows has a list's thumb, inside its own last column; one whose
+// child fits has none.
+func TestAScrollViewHasAThumbWhenItsChildOverflows(t *testing.T) {
+	col := tui.NewFlex(tui.Vertical)
+	for i := range 6 {
+		col.AddSized(widget.NewText(fmt.Sprintf("row %d", i)), 1)
+	}
+	v := widget.NewScrollView(col)
+	app, sb := styledApp(t, v, 10, 3, NativeStyle())
+	p := placementOf(t, sb, v.NodeID())
+	rc := paintOn(t, app, sb, p)
+	if len(rc.Calls) != 1 || rc.Calls[0].Op != "FillRRect" {
+		t.Fatalf("thumb painted %+v", rc.Calls)
+	}
+	if r := rc.Calls[0].Rect; r.X < 9*8 || r.X+r.W > 80 {
+		t.Fatalf("the thumb at %+v is outside the last column", r)
+	}
+	if _, _, ok := paintScrollView(widget.NewScrollView(widget.NewText("one"))); ok {
+		t.Fatal("a ScrollView that fits has a thumb")
+	}
+}
+
 // A dialog over a native button puts it under the dialog: the scrim, drawn natively, is a later
 // placement over the button's cells, so it is composited over the button.
 func TestModalCoversANativeButton(t *testing.T) {
@@ -389,6 +411,31 @@ func TestModalCoversANativeButton(t *testing.T) {
 	})
 }
 
+// A canvas for a view only part of which shows lays it out at Full: Full's origin and size, its
+// cells counted from Full's corner, and clipped to the part that shows.
+func TestGioCanvasOfAViewPartlyShown(t *testing.T) {
+	m := measure(testFont, 14, 0, image.Pt(200, 100), unit.Metric{PxPerDp: 2, PxPerSp: 2})
+	var g grid
+	g.resize(m.grid.W, m.grid.H)
+	r := newRenderer(newTestShaper(), "Go Mono", DefaultTheme())
+	r.m = m
+	cells := CellRect{X: 1, Y: 1, W: 4, H: 1}
+	whole := newGioCanvas(new(op.Ops), r, &g, m, cells, tui.Rect{}, nil)
+	part := newGioCanvas(new(op.Ops), r, &g, m, cells, tui.Rect{X: 1, Y: -1, W: 4, H: 3}, nil)
+	if part.clip != whole.clip {
+		t.Fatalf("clip %v, want the shown part's %v", part.clip, whole.clip)
+	}
+	if want := whole.origin.Sub(f32pt(0, float32(2*m.cell.Y))); part.origin != want {
+		t.Fatalf("origin %v, want two rows above the shown part's: %v", part.origin, want)
+	}
+	if want := (Size{W: 4 * float32(m.cell.X) / 2, H: 3 * float32(m.cell.Y) / 2}); part.Size() != want {
+		t.Fatalf("size %v, want Full's %v", part.Size(), want)
+	}
+	if part.cellX != 1 || part.cellY != -1 {
+		t.Fatalf("cells counted from (%d, %d), want Full's corner (1, -1)", part.cellX, part.cellY)
+	}
+}
+
 // The Gio canvas records every primitive into ops without a window.
 func TestGioCanvasRecords(t *testing.T) {
 	m := measure(testFont, 14, 0, image.Pt(200, 100), unit.Metric{PxPerDp: 2, PxPerSp: 2})
@@ -398,7 +445,7 @@ func TestGioCanvasRecords(t *testing.T) {
 	r := newRenderer(newTestShaper(), "Go Mono", DefaultTheme())
 	r.m = m
 	ops := new(op.Ops)
-	c := newGioCanvas(ops, r, &g, m, CellRect{X: 1, W: 4, H: 1}, nil)
+	c := newGioCanvas(ops, r, &g, m, CellRect{X: 1, W: 4, H: 1}, tui.Rect{}, nil)
 	if c.Size() != (Size{W: 4 * float32(m.cell.X) / 2, H: float32(m.cell.Y) / 2}) || c.CellSize().W != float32(m.cell.X)/2 {
 		t.Fatalf("canvas %v, cell %v, for 4 cells at scale 2", c.Size(), c.CellSize())
 	}

@@ -364,7 +364,7 @@ func TestAPixelsPanesCanvasIsExactlyItsPane(t *testing.T) {
 	r := newRenderer(newTestShaper(), "Go Mono", DefaultTheme())
 	g := &grid{}
 	g.resize(m.grid.W, m.grid.H)
-	c := newGioCanvas(new(op.Ops), r, g, m, CellRect{X: view.band.X, Y: view.band.Y, W: view.band.W, H: view.band.H}, nil)
+	c := newGioCanvas(new(op.Ops), r, g, m, CellRect{X: view.band.X, Y: view.band.Y, W: view.band.W, H: view.band.H}, tui.Rect{}, nil)
 	want := Size{W: float32(view.clip.Dx()) / m.scale, H: float32(view.clip.Dy()) / m.scale}
 	if c.Size() != want || c.origin != f32.Pt(float32(view.origin.X), float32(view.origin.Y)) {
 		t.Fatalf("canvas %v at %v; want its pane, %v at %v (its band is rounded up past it)", c.Size(), c.origin, want, view.origin)
@@ -499,7 +499,7 @@ func TestAHoleAnchoredNativeKeepsItsOwnOrigin(t *testing.T) {
 	g := &grid{}
 	g.resize(m.grid.W, m.grid.H)
 	cells := CellRect{X: 7, Y: 7, W: 4, H: 1} // (7, 7) and (8, 7) are holes; (9, 7) is the view's
-	c := newGioCanvas(new(op.Ops), r, g, m, cells, nil)
+	c := newGioCanvas(new(op.Ops), r, g, m, cells, tui.Rect{}, nil)
 	if c.clip != image.Rect(150, 224, 182, 241).Intersect(view.clip) {
 		t.Fatalf("clip %v; want the native cut at the view pane", c.clip)
 	}

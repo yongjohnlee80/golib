@@ -212,7 +212,12 @@ type canvasState struct {
 //
 // In a Panes window the rect is anchored (metrics.anchored): a view inside one band is clipped to
 // its pane, so a Pixels pane's canvas is exactly the pane; one crossing bands is an overlay.
-func newGioCanvas(ops *op.Ops, r *renderer, g *grid, m metrics, cells CellRect, covered []tui.Rect) *gioCanvas {
+//
+// full is the view's whole rect when only part of it shows (NativePlacement.Full: a ScrollView's
+// child half scrolled out), zero otherwise. Then the origin and the logical size are full's, so the
+// view lays out as it would unclipped, and the clip is the part that shows, cells: three things kept
+// apart. full is anchored through the same pane as cells.
+func newGioCanvas(ops *op.Ops, r *renderer, g *grid, m metrics, cells CellRect, full tui.Rect, covered []tui.Rect) *gioCanvas {
 	dev, within, _ := m.anchored(tui.Rect{X: cells.X, Y: cells.Y, W: cells.W, H: cells.H})
 	clip := dev
 	if m.layout != nil {
@@ -221,16 +226,23 @@ func newGioCanvas(ops *op.Ops, r *renderer, g *grid, m metrics, cells CellRect, 
 	// The origin stays the placement's own top-left even when its pane cuts it: a pointer at a
 	// device point reconstructs the same local position the canvas draws at. The size runs from
 	// that origin to the visible edge, so a Pixels pane's canvas is exactly its pane.
+	origin := dev.Min
 	size := image.Pt(max(clip.Max.X-dev.Min.X, 0), max(clip.Max.Y-dev.Min.Y, 0))
+	cellX, cellY := cells.X, cells.Y
+	if !full.Empty() {
+		origin = dev.Min.Add(image.Pt((full.X-cells.X)*m.cell.X, (full.Y-cells.Y)*m.cell.Y))
+		size = image.Pt(full.W*m.cell.X, full.H*m.cell.Y)
+		cellX, cellY = full.X, full.Y
+	}
 	if clip.Empty() {
 		size = image.Point{}
 	}
 	return &gioCanvas{
 		ops: ops, r: r, g: g, m: m,
-		origin: f32.Pt(float32(dev.Min.X), float32(dev.Min.Y)),
+		origin: f32.Pt(float32(origin.X), float32(origin.Y)),
 		size:   Size{W: float32(size.X) / m.scale, H: float32(size.Y) / m.scale},
 		clip:   clip,
-		cellX:  cells.X, cellY: cells.Y, view: cells,
+		cellX:  cellX, cellY: cellY, view: cells,
 		covered: covered,
 		alpha:   1,
 	}
