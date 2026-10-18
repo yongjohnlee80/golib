@@ -122,7 +122,7 @@ func resetLayoutFlags(n *node) {
 // computeAbs derives every visible node's absolute Rect from the placed
 // parent-relative rects — the table mouse hit-testing and the cursor rule
 // look up — and its visRect: that rect cut by parentVis, the part its ancestors
-// and the screen let show (ADR 1792358868 §4.2).
+// and the screen let show.
 func computeAbs(n *node, ox, oy int, parentVis Rect) {
 	n.absRect = Rect{X: ox + n.rect.X, Y: oy + n.rect.Y, W: n.rect.W, H: n.rect.H}
 	n.visRect = n.absRect.Intersect(parentVis)

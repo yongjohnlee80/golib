@@ -83,7 +83,7 @@ func (a *App) noteImage(n *node) {
 	}
 	if r != n.absRect {
 		// partly hidden (scrolled out of a ScrollView, or past the screen's edge): show the same
-		// part of the picture, cropped through its source rect (ADR 1792358868 §4.3b)
+		// part of the picture, cropped through its source rect
 		src := img.Clip
 		if src.Empty() {
 			cfg, _, err := image.DecodeConfig(bytes.NewReader(img.PNG))

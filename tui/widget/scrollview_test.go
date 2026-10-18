@@ -37,7 +37,7 @@ func scrollState(h *harness, v *widget.ScrollView) (off, view, content int) {
 	return
 }
 
-// Zen's case (ADR 1792358868 r1): two 10-row viewports, the inner one at row 20 of the outer's
+// Two 10-row viewports, the inner one at row 20 of the outer's
 // child, the focused leaf at row 50 of the inner's. Tab to the leaf scrolls the inner one first
 // (41: the leaf on its last row), then the outer from where that left it (20), so the leaf shows
 // on the screen's last row; neither moved on the other's old geometry.

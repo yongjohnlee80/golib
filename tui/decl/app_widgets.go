@@ -45,7 +45,7 @@ func appTypes() []Type {
 				return int(n), err
 			}, (*widget.Box).SetMaximumWidth),
 		}},
-		// golib's: a vertical window onto one child taller than itself (ADR 1792358868); the wheel and
+		// golib's: a vertical window onto one child taller than itself; the wheel and
 		// the page keys scroll it, and a field taking focus is brought into view
 		{Name: "ScrollView", Build: buildScrollView},
 		{Name: "SyntaxHighlighter", Build: buildSyntaxHighlighter, restyle: restyleSyntax, Setters: syntaxSetters()},

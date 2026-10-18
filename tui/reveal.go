@@ -1,8 +1,7 @@
 package tui
 
-// REVEAL — bringing the focused node into view inside the scrolling containers around it
-// (ADR 1792358868 §4.2). The runtime owns it, not each container: a focus change records one
-// request, and after each settled layout the runtime asks the innermost Revealer around the focused
+// REVEAL — bringing the focused node into view inside the scrolling containers around it.
+// The runtime owns it, not each container: a focus change records one request, and after each settled layout the runtime asks the innermost Revealer around the focused
 // node to show it, measured from that layout. A Revealer that moves causes another pass, which
 // serves the next one out from the new placements, so nested scrolling views converge instead of
 // each moving on the others' old geometry. When none moves, the request is cleared: a wheel

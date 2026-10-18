@@ -8,8 +8,7 @@ import (
 )
 
 // A clip is a box at screen rows 2..4 holding a child placed two rows above it and six rows tall,
-// as a ScrollView places its scrolled child: rows 0..5 on the screen, of which 2..4 show
-// (ADR 1792358868 §4.2).
+// as a ScrollView places its scrolled child: rows 0..5 on the screen, of which 2..4 show.
 func clipped(child Component, w int) *box {
 	clip := &box{rects: []Rect{{Y: -2, W: w, H: 6}}}
 	clip.Add(child)
@@ -24,7 +23,7 @@ func TestACursorOutsideWhatShowsIsHidden(t *testing.T) {
 	input := &cursorProbe{}
 	input.name = "input"
 	input.accepts.Store(true)
-	input.cx, input.cy = 2, 3 // screen row 3: shows
+	input.cx, input.cy = 2, 3 // on screen row 3, which shows
 	input.report.Store(true)
 	h := startApp(t, clipped(input, 10), 10, 8)
 	h.onLoop(func() { input.ctx.RequestFocus() })
@@ -34,7 +33,7 @@ func TestACursorOutsideWhatShowsIsHidden(t *testing.T) {
 	})
 
 	h.onLoop(func() {
-		input.cy = 1 // screen row 1: above the clip
+		input.cy = 1 // on screen row 1, above the clip
 		input.ctx.MarkDirty()
 	})
 	waitFor(t, "the cursor hidden", func() bool {

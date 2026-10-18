@@ -7,7 +7,7 @@ import (
 	"github.com/yongjohnlee80/golib/tui/keymap"
 )
 
-// ScrollView shows a vertical window onto one child taller than itself (ADR 1792358868). The child
+// ScrollView shows a vertical window onto one child taller than itself. The child
 // is laid out at the ScrollView's width less the indicator's column and at its own height, then
 // placed offset rows up; tui's clip shows the window, and hit-testing, the cursor, native views and
 // images all keep to it. The wheel scrolls it, and PageUp/PageDown/Home/End do when the focused
