@@ -77,6 +77,10 @@ type App struct {
 	faceNames []string
 	faceIDs   map[string]uint16
 	faceFull  bool
+	// offFace is the face in effect inside a RenderOffscreen's draw (offDepth > 0), for a nested call
+	// with no face of its own (offscreen.go)
+	offFace  uint16
+	offDepth int
 
 	done   chan struct{} // closed once Run has returned, its teardown finished (Done)
 	runCtx context.Context

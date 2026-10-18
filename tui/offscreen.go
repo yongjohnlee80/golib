@@ -14,7 +14,8 @@ type Offscreen struct{ buf *buffer }
 // (interned in the App's face table, so a cell's Face is the window's own index; "" is the face in
 // effect now, as a node with no face of its own inherits it). It returns o's cells, row-major, valid
 // until o is rendered again. Loop goroutine, render phase. Calls nest: each has its own Offscreen,
-// and nothing of the App's frame is touched.
+// a nested call with face "" inherits the enclosing call's face, and nothing of the App's frame is
+// touched.
 func (c *Context) RenderOffscreen(o *Offscreen, size Size, face string, draw func(Surface)) []Cell {
 	a := c.app
 	if o == nil || draw == nil || a.rctx == nil {
@@ -27,13 +28,20 @@ func (c *Context) RenderOffscreen(o *Offscreen, size Size, face string, draw fun
 	for i := range o.buf.curr {
 		o.buf.curr[i] = blankCell
 	}
-	o.buf.face = 0
-	if a.buf != nil {
-		o.buf.face = a.buf.face
+	// the face in effect: the node rendering now, or an outer RenderOffscreen's; while draw runs it
+	// is this grid's, so a nested call with no face of its own inherits it, and it is restored on
+	// return, a panic included
+	in := a.offFace
+	if a.offDepth == 0 && a.buf != nil {
+		in = a.buf.face
 	}
+	o.buf.face = in
 	if face != "" {
 		o.buf.face = a.faceIndex(face)
 	}
+	prevFace, prevDepth := a.offFace, a.offDepth
+	a.offFace, a.offDepth = o.buf.face, a.offDepth+1
+	defer func() { a.offFace, a.offDepth = prevFace, prevDepth }()
 	draw(newRootSurface(o.buf, a.rctx))
 	return o.buf.curr
 }
