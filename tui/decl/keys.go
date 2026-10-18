@@ -7,6 +7,7 @@ import (
 	"io/fs"
 	"slices"
 	"strings"
+	"unicode"
 
 	"github.com/yongjohnlee80/golib/parse/qml"
 	"github.com/yongjohnlee80/golib/tui"
@@ -62,11 +63,29 @@ func shortcutKeyOf(v qml.SpecValue) (shortcutKey, error) {
 	if v.Raw == "" {
 		return shortcutKey{}, nil
 	}
-	s, err := key.Parse(v.Raw)
+	s, err := parseSequence(v.Raw)
 	if err != nil {
 		return shortcutKey{}, fmt.Errorf("%w (at %s)", err, v.Pos)
 	}
 	return shortcutKey{seq: s}, nil
+}
+
+// parseSequence reads a fixed sequence written in QML (Shortcut.sequence, hostKeys, modeKey) as
+// key.Parse does, but for one spelling QML has always taken: Shift and a character it types that is
+// no letter ("Shift+*"). That is the character, with the Shift spent on it, as key.Of reads the key
+// press, so it reads as "*". A key-mapping scheme names keys with key.Parse alone, which refuses it.
+func parseSequence(s string) (key.Seq, error) {
+	seq, err := key.Parse(s)
+	if err == nil {
+		return seq, nil
+	}
+	if len(s) > len("shift+") && strings.EqualFold(s[:len("shift+")], "shift+") {
+		if typed, err2 := key.Parse(s[len("shift+"):]); err2 == nil && typed.Mods == 0 &&
+			unicode.IsPrint(typed.Code) && !unicode.IsLetter(typed.Code) {
+			return typed, nil
+		}
+	}
+	return key.Seq{}, err
 }
 
 // menuShortcut is a MenuItem's shortcut: accelerator text shown as written, or a key command whose

@@ -362,3 +362,20 @@ func TestMalformedKeyDeclarationsAreRefused(t *testing.T) {
 		}
 	}
 }
+
+// A fixed sequence QML has always taken, Shift and a character it types that is no letter
+// ("Shift+*"), still mounts and is that character: * typed bare, or with the Shift that typed it.
+func TestAShiftedSymbolSequenceIsTheSymbol(t *testing.T) {
+	for _, ev := range []tui.KeyEvent{
+		{Kind: tui.KeyPress, Code: '*', Text: "*"},
+		{Kind: tui.KeyPress, Code: '8', Mods: tui.ModShift, Text: "*"},
+	} {
+		s, _ := runKeys(t, `Window {
+    Shortcut { sequence: "Shift+*"; onActivated: App.fixed() }
+    Text { text: App.status }
+}`, "")
+		s.WaitForText(t, "ready")
+		s.Keys(t, ev)
+		s.WaitForText(t, "fixed")
+	}
+}
