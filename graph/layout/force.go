@@ -22,7 +22,7 @@ type ForceInput struct {
 	// Theta is the Barnes–Hut opening angle: a cell farther than its width over Theta acts as one
 	// body. 0 means 0.9. Smaller is more exact and slower.
 	Theta float32
-	// Spacing is the length an edge settles near; 0 means 30.
+	// Spacing is the length an edge settles near; 0 means 30. Theta and Spacing must be finite.
 	Spacing float32
 }
 
@@ -35,9 +35,11 @@ type ForceResult struct {
 // Force places in by a seeded force simulation: every edge pulls its ends together, every pair of
 // nodes pushes apart (by a Barnes–Hut quadtree, O(n log n) a step), a weak gravity keeps
 // unconnected parts near the centre, and the most a node may move shrinks step by step. It refuses
-// an edge to a node that does not exist with ErrInvalid, and with ErrTooLarge more nodes or edges
-// than lim allows (MaxNodes, MaxEdges) or more work than lim.MaxWork. It checks ctx every 1024
-// steps of work.
+// an edge to a node that does not exist, or a Theta or Spacing that is NaN or infinite, with
+// ErrInvalid; with ErrTooLarge more nodes or edges than lim allows (MaxNodes, MaxEdges), more work
+// than lim.MaxWork, or a layout float32 cannot hold (a Spacing near its largest). It charges its
+// work, and checks ctx, after each node's repulsion and after each step's edges: building a
+// step's quadtree is not charged, so one charge may follow more than 1024 tree operations.
 func Force(ctx context.Context, in ForceInput, lim Limits) (ForceResult, error) {
 	lim = lim.withDefaults()
 	if err := forceValidate(in, lim); err != nil {
@@ -127,11 +129,17 @@ func Force(ctx context.Context, in ForceInput, lim Limits) (ForceResult, error) 
 		maxX, maxY = max(maxX, p.x), max(maxY, p.y)
 	}
 	out := ForceResult{Nodes: make([]Point, n), Size: Size{W: float32(maxX - minX), H: float32(maxY - minY)}}
+	if !finite32(out.Size.W) || !finite32(out.Size.H) {
+		return ForceResult{}, fmt.Errorf("%w: a layout %g by %g, past float32", ErrTooLarge, maxX-minX, maxY-minY)
+	}
 	for i, p := range pos {
 		out.Nodes[i] = Point{X: float32(p.x - minX), Y: float32(p.y - minY)}
 	}
 	return out, nil
 }
+
+// finite32 reports whether v is a number, and not an infinity.
+func finite32(v float32) bool { return !math.IsNaN(float64(v)) && !math.IsInf(float64(v), 0) }
 
 // forceValidate refuses an input Force cannot place: a negative count, an edge to a node that does
 // not exist, or more nodes or edges than lim allows.
@@ -143,6 +151,8 @@ func forceValidate(in ForceInput, lim Limits) error {
 		return fmt.Errorf("%w: %d nodes, more than %d", ErrTooLarge, in.Nodes, lim.MaxNodes)
 	case len(in.Edges) > lim.MaxEdges:
 		return fmt.Errorf("%w: %d edges, more than %d", ErrTooLarge, len(in.Edges), lim.MaxEdges)
+	case !finite32(in.Theta) || !finite32(in.Spacing):
+		return fmt.Errorf("%w: theta %v, spacing %v", ErrInvalid, in.Theta, in.Spacing)
 	}
 	for i, e := range in.Edges {
 		if e.From < 0 || e.From >= in.Nodes || e.To < 0 || e.To >= in.Nodes {

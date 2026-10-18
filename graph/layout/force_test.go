@@ -119,6 +119,11 @@ func TestForceRefusesWhatItCannotPlace(t *testing.T) {
 		{"too many nodes", ForceInput{Nodes: 11}, Limits{MaxNodes: 10}, ErrTooLarge},
 		{"too many edges", ForceInput{Nodes: 3, Edges: []Edge{{From: 0, To: 1}, {From: 1, To: 2}}}, Limits{MaxEdges: 1}, ErrTooLarge},
 		{"too much work", clusters(8), Limits{MaxWork: 100}, ErrTooLarge},
+		{"NaN spacing", ForceInput{Nodes: 8, Steps: 1, Spacing: float32(math.NaN())}, Limits{}, ErrInvalid},
+		{"infinite spacing", ForceInput{Nodes: 8, Steps: 1, Spacing: float32(math.Inf(1))}, Limits{}, ErrInvalid},
+		{"NaN theta", ForceInput{Nodes: 8, Steps: 1, Theta: float32(math.NaN())}, Limits{}, ErrInvalid},
+		{"infinite theta", ForceInput{Nodes: 8, Steps: 1, Theta: float32(math.Inf(-1))}, Limits{}, ErrInvalid},
+		{"a layout past float32", ForceInput{Nodes: 8, Steps: 1, Seed: 7, Spacing: math.MaxFloat32}, Limits{}, ErrTooLarge},
 	}
 	for _, c := range cases {
 		if _, err := Force(bg, c.in, c.lim); !errors.Is(err, c.want) {

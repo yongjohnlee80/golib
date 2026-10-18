@@ -55,23 +55,36 @@ func Lay(ctx context.Context, src string, width float32, th Theme, m gui.Measure
 	if err != nil {
 		return nil, err
 	}
-	return LayDiagram(ctx, d, width, th, m)
+	return layParsed(ctx, d, width, th, m)
 }
 
 // ErrInvalidModel is a diagram model that breaks an invariant its parser keeps, so its layer can't
 // lay it out.
 var ErrInvalidModel = errors.New("mermaid: the diagram model breaks its parser's invariants")
 
-// LayDiagram lays out d, a diagram already modelled in parse/mermaid's own types, for width: Lay
+// maxModelNodes is the most nodes a modelled mind map may have: the tree layout's own bound, checked
+// before any label is measured.
+const maxModelNodes = 1000
+
+// LayDiagram lays out d, a mind map already modelled in parse/mermaid's own types, for width: Lay
 // without the parse. A caller that builds the model sets each node's ID, label and shape itself,
-// so it needs no Mermaid escaping, and a mind map node keeps its own ID whatever its shape. A
-// model breaking its parser's invariants is ErrInvalidModel: for a mind map with nodes, exactly
-// one root, at index 0, and each parent before its children. An empty mind map lays out empty,
-// as Lay("mindmap") does. A diagram golib does not draw is mermaid.ErrUnsupported.
+// so it needs no Mermaid escaping, and every node keeps its own ID whatever its shape.
+//
+// The model is checked whole before anything is laid out, as the parser checks a source: any
+// other model (nil, a nil *MindmapDiagram, another diagram type), a shape it does not define, or
+// a broken tree (a root other than node 0, a parent at or after its child) is ErrInvalidModel; more
+// than 1000 nodes, or a label longer than mermaid.MaxLabel, is mermaid.ErrTooLarge. An empty mind
+// map lays out empty, as Lay("mindmap") does. Other diagrams are laid out from their source, by
+// Lay.
 func LayDiagram(ctx context.Context, d pm.Diagram, width float32, th Theme, m gui.Measurer) (*Laid, error) {
 	if err := validModel(d); err != nil {
 		return nil, err
 	}
+	return layParsed(ctx, d, width, th, m)
+}
+
+// layParsed lays out d, a model its parser built or validModel accepted.
+func layParsed(ctx context.Context, d pm.Diagram, width float32, th Theme, m gui.Measurer) (*Laid, error) {
 	lay := layers[d.Kind()]
 	if lay == nil {
 		return nil, fmt.Errorf("%w: %v diagrams", pm.ErrUnsupported, d.Kind())
@@ -84,16 +97,28 @@ func LayDiagram(ctx context.Context, d pm.Diagram, width float32, th Theme, m gu
 	return l, nil
 }
 
-// validModel checks the invariants a layer relies on that the parser keeps by construction.
+// validModel checks a caller's mind map for everything the mind map layer relies on that the
+// parser keeps by construction: its type, its shapes, its tree, and its size.
 func validModel(d pm.Diagram) error {
-	if md, ok := d.(*pm.MindmapDiagram); ok {
-		for i, n := range md.Nodes {
-			switch {
-			case i == 0 && n.Parent != -1:
-				return fmt.Errorf("%w: a mind map's node 0 has parent %d; the root comes first", ErrInvalidModel, n.Parent)
-			case i > 0 && (n.Parent < 0 || n.Parent >= i):
-				return fmt.Errorf("%w: a mind map's node %d has parent %d; each node's parent comes before it, and only node 0 is a root", ErrInvalidModel, i, n.Parent)
-			}
+	md, ok := d.(*pm.MindmapDiagram)
+	switch {
+	case !ok:
+		return fmt.Errorf("%w: %T; LayDiagram takes a *mermaid.MindmapDiagram, and Lay the other diagrams' source", ErrInvalidModel, d)
+	case md == nil:
+		return fmt.Errorf("%w: a nil mind map", ErrInvalidModel)
+	case len(md.Nodes) > maxModelNodes:
+		return fmt.Errorf("%w: a mind map of %d nodes, more than %d", pm.ErrTooLarge, len(md.Nodes), maxModelNodes)
+	}
+	for i, n := range md.Nodes {
+		switch {
+		case int(n.Shape) >= len(mindmapForm):
+			return fmt.Errorf("%w: a mind map's node %d has shape %d, which mind maps do not define", ErrInvalidModel, i, n.Shape)
+		case len(n.Label) > pm.MaxLabel:
+			return fmt.Errorf("%w: a mind map's node %d has a label of %d bytes, more than %d", pm.ErrTooLarge, i, len(n.Label), pm.MaxLabel)
+		case i == 0 && n.Parent != -1:
+			return fmt.Errorf("%w: a mind map's node 0 has parent %d; the root comes first", ErrInvalidModel, n.Parent)
+		case i > 0 && (n.Parent < 0 || n.Parent >= i):
+			return fmt.Errorf("%w: a mind map's node %d has parent %d; each node's parent comes before it, and only node 0 is a root", ErrInvalidModel, i, n.Parent)
 		}
 	}
 	return nil
