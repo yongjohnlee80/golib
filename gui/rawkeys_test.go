@@ -52,15 +52,15 @@ func newKeyRig(t *testing.T) *keyRig {
 	return g
 }
 
-// frame is one window frame: the router frames the window's input area, as a real window's
-// does (focus changes take effect there), then the backend reads its input.
+// frame is one window frame in a window's order: the backend reads its input (registering its
+// filters), then the router frames the window's input area, where focus changes take effect.
 func (g *keyRig) frame() {
+	g.b.readInput(g.r.Source(), &g.b.gio, metrics{})
 	ops := new(op.Ops)
 	area := clip.Rect(image.Rect(0, 0, 100, 100)).Push(ops)
 	event.Op(ops, &g.b.gio)
 	area.Pop()
 	g.r.Frame(ops)
-	g.b.readInput(g.r.Source(), &g.b.gio, metrics{})
 }
 
 // keys is the key events pushed since the last call.
@@ -80,6 +80,7 @@ func (g *keyRig) keys() []tui.KeyEvent {
 func (g *keyRig) press(name key.Name, mods key.Modifiers) {
 	g.r.Queue(key.Event{Name: name, Modifiers: mods, State: key.Press})
 	g.frame()
+	g.frame() // focus and text-input changes from the last frame are read on the next
 }
 
 func TestRawModeReportsLettersAsKeysAndTextModeDoesNot(t *testing.T) {
