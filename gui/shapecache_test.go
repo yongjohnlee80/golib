@@ -3,6 +3,7 @@ package gui
 import (
 	"fmt"
 	"image"
+	"runtime"
 	"testing"
 
 	"github.com/yongjohnlee80/gio/font/gofont"
@@ -66,6 +67,10 @@ func TestARunIsKeyedByItsGlyphsAndTheirSpacing(t *testing.T) {
 	if c.shaped != 2 {
 		t.Fatalf("the same glyphs spaced otherwise were taken for the run: %d shapes", c.shaped)
 	}
+	// the hash tells them apart here; on a collision the comparison must
+	if !sameRun(runOf(gs), moved) || sameRun(runOf(gs), spaced) {
+		t.Fatalf("sameRun: the moved run is the run %v, the spaced one is not %v", sameRun(runOf(gs), moved), !sameRun(runOf(gs), spaced))
+	}
 }
 
 // A run no frame has used for keepFrames is dropped, and shaped again when it returns; one used
@@ -125,5 +130,73 @@ func TestARepaintedGridShapesNothingTwice(t *testing.T) {
 	r.frame(g, m, cursorState{}, nil, nil, true)
 	if r.paths.shaped != first {
 		t.Fatalf("the repainted grid shaped %d runs again", r.paths.shaped-first)
+	}
+	// other text on every row: the frames sweep the old screen's runs
+	old := map[*shapedRun]bool{}
+	for _, rs := range r.paths.runs {
+		for _, run := range rs {
+			old[run] = true
+		}
+	}
+	for y := range h {
+		for x := range w {
+			g.cells[y*w+x].Content = string(rune('a' + (x+y)%26))
+		}
+	}
+	for range keepFrames + 1 {
+		g.touchAll()
+		r.frame(g, m, cursorState{}, nil, nil, true)
+	}
+	kept := 0
+	for _, rs := range r.paths.runs {
+		for _, run := range rs {
+			if old[run] {
+				kept++
+			}
+		}
+	}
+	if kept > 0 {
+		t.Fatalf("after the screen's text changed, %d of the old screen's %d runs are still held: they were not swept", kept, len(old))
+	}
+}
+
+// mallocs is how many heap objects fn allocates.
+func mallocs(fn func()) uint64 {
+	var before, after runtime.MemStats
+	runtime.ReadMemStats(&before)
+	fn()
+	runtime.ReadMemStats(&after)
+	return after.Mallocs - before.Mallocs
+}
+
+// The cause, measured: past its fixed size, Gio's own path cache misses every run of a frame that
+// repeats the last one, and outlines them all again; the shape cache outlines none.
+func TestGiosOwnCacheThrashesWhereThisOneDoesNot(t *testing.T) {
+	s := testShaper()
+	runs := make([][]text.Glyph, 1500)
+	for i := range runs {
+		runs[i] = glyphsOf(s, fmt.Sprintf("run %d of the screen", i))
+	}
+	frame := func(shape func([]text.Glyph)) func() {
+		return func() {
+			for _, gs := range runs {
+				shape(gs)
+			}
+		}
+	}
+	gio := frame(func(gs []text.Glyph) { s.Shape(gs) })
+	gio() // warm
+	gioRepeat := mallocs(gio)
+	c := newShapeCache(s)
+	cached := frame(func(gs []text.Glyph) { c.Shape(gs) })
+	cached()
+	c.endFrame()
+	cacheRepeat := mallocs(cached)
+	t.Logf("a repeated frame of %d runs: Gio's cache %d allocations, the shape cache %d", len(runs), gioRepeat, cacheRepeat)
+	if gioRepeat < uint64(len(runs)) {
+		t.Fatalf("Gio's cache allocated %d on a repeated frame of %d runs: it did not thrash, so it is not the cause", gioRepeat, len(runs))
+	}
+	if cacheRepeat > 64 {
+		t.Fatalf("the shape cache allocated %d on a repeated frame", cacheRepeat)
 	}
 }
