@@ -20,6 +20,8 @@ import (
 	"sync"
 	"testing"
 	"time"
+
+	"github.com/yongjohnlee80/golib/logger"
 )
 
 // TestMain runs a child's part when the test binary is started as one: a cell that needs a fresh
@@ -387,18 +389,36 @@ func holdSites(n int) {
 	}
 }
 
-// childSites samples every allocation, holds a known amount from one call site, completes the
-// profile's cycles, and prints the top site.
+// keeper holds what its method allocates: a group named by its receiver type.
+type keeper struct{ b [][]byte }
+
+//go:noinline
+func (k *keeper) fill(n int) {
+	for range n {
+		k.b = append(k.b, make([]byte, 16384))
+	}
+}
+
+var kept = &keeper{}
+
+// childSites samples every allocation, holds a known amount from one call site and from one
+// method, completes the profile's cycles, and prints the top site and the groups.
 func childSites() {
 	runtime.MemProfileRate = 1
 	held = make([][]byte, 0, 512) // here, so holdSites allocates only what it holds
-	holdSites(512)                // 256 of 4096 bytes and 256 of 8192: 3 MiB
+	kept.b = make([][]byte, 0, 64)
+	holdSites(512) // 256 of 4096 bytes and 256 of 8192: 3 MiB
+	kept.fill(64)  // 64 of 16384: 1 MiB
 	for range 3 {
 		runtime.GC()
 	}
-	top := sites(3)
+	top, groups := sites(3, []string{"github.com/yongjohnlee80/golib/diag."})
+	for _, g := range groups {
+		fmt.Printf("group %s in_use=%d objects=%d\n", g.Group, g.InUse, g.Objects)
+	}
 	n := 0
-	for _, s := range sites(1 << 20) {
+	all, _ := sites(1<<20, nil)
+	for _, s := range all {
 		if len(s.Stack) > 0 && strings.Contains(s.Stack[0], "diag.holdSites") {
 			n++
 		}
@@ -409,15 +429,71 @@ func childSites() {
 	}
 	fmt.Printf("top=%s in_use=%d objects=%d holdSites_sites=%d\n", top[0].Stack[0], top[0].InUse, top[0].Objects, n)
 	runtime.KeepAlive(held)
+	runtime.KeepAlive(kept)
 }
 
 // The site holding the most is the allocation stack that holds it, with its exact bytes when every
-// allocation is sampled, its two object sizes summed into one site.
+// allocation is sampled, its two object sizes summed into one site; grouped, a function's sites
+// are its own group and a method's are its receiver type's.
 func TestTheTopSiteIsTheOneHolding(t *testing.T) {
 	out := child(t, "sites")
-	if !strings.Contains(out, "top=github.com/yongjohnlee80/golib/diag.holdSites ") ||
-		!strings.Contains(out, fmt.Sprintf("in_use=%d objects=512 holdSites_sites=1", 256*4096+256*8192)) {
-		t.Fatalf("the top site:\n%s", out)
+	for _, want := range []string{
+		"top=github.com/yongjohnlee80/golib/diag.holdSites ",
+		fmt.Sprintf("in_use=%d objects=512 holdSites_sites=1", 256*4096+256*8192),
+		fmt.Sprintf("group github.com/yongjohnlee80/golib/diag.holdSites in_use=%d objects=512\n", 256*4096+256*8192),
+		fmt.Sprintf("group github.com/yongjohnlee80/golib/diag.keeper in_use=%d objects=64\n", 64*16384),
+		"group other ",
+	} {
+		if !strings.Contains(out, want) {
+			t.Errorf("want %q in:\n%s", want, out)
+		}
+	}
+}
+
+// receiverOf names a method's group by its type, and a function's by itself.
+func TestReceiverOf(t *testing.T) {
+	for in, want := range map[string]string{
+		"(*pixelLayout).lay":  "pixelLayout",
+		"Editor.SetValue":     "Editor",
+		"holdSites":           "holdSites",
+		"holdSites.func1":     "holdSites",
+		"(*Monitor).snapshot": "Monitor",
+	} {
+		if got := receiverOf(in); got != want {
+			t.Errorf("receiverOf(%q) = %q, want %q", in, got, want)
+		}
+	}
+}
+
+// lines is what a logger was given, in order.
+type linesLogger struct {
+	mu    sync.Mutex
+	lines []string
+}
+
+func (l *linesLogger) Log(_ logger.Severity, payload any) {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	l.lines = append(l.lines, fmt.Sprint(payload))
+}
+
+// With a logger, each sample and snapshot is also one debug line, readable as it stands.
+func TestTheLoggerGetsSamplesAndSnapshots(t *testing.T) {
+	l := &linesLogger{}
+	m, err := Start(context.Background(), shortDir(t), WithLogger(l), WithStep(1), WithGroups("github.com/yongjohnlee80/golib/diag."))
+	if err != nil {
+		t.Fatal(err)
+	}
+	m.Close()
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	var sample, snap bool
+	for _, line := range l.lines {
+		sample = sample || strings.HasPrefix(line, "diag: heap live ") && strings.Contains(line, "goroutines")
+		snap = snap || strings.HasPrefix(line, "diag: snapshot ") && strings.Contains(line, "heap-") && strings.Contains(line, "by group: ")
+	}
+	if !sample || !snap {
+		t.Fatalf("the logger's lines lack a sample (%v) or a grouped snapshot (%v):\n%s", sample, snap, strings.Join(l.lines, "\n"))
 	}
 }
 
