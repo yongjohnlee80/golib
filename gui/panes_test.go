@@ -687,3 +687,40 @@ func TestAPanesWindowSendsThePointerWithTheShownFrame(t *testing.T) {
 		t.Fatalf("a cell-root window pushed %+v; want one press with no Source", got)
 	}
 }
+
+// A cancel that ends a chord releases every button, so the dispatch latch empties and the next
+// free motion resolves through the pane under it; a new press after it latches afresh.
+func TestACancelledChordReleasesEveryButtonAndTheLatch(t *testing.T) {
+	b, shown, _, e2 := resolveFixture(t)
+	view2 := e2.layout.panes[1]
+	var ptr pointerState
+	m := shown.m
+	resolve := func(pe pointer.Event) []tui.MouseEvent {
+		var out []tui.MouseEvent
+		for _, me := range ptr.translate(pe, m) {
+			me.Source = tui.PointerSource{X: pe.Position.X, Y: pe.Position.Y, Ref: shown}
+			out = append(out, b.ResolvePointer(me))
+		}
+		return out
+	}
+	at := f32.Pt(140, 10) // the sidebar
+	resolve(pointer.Event{Kind: pointer.Press, Buttons: pointer.ButtonPrimary, Position: at})
+	resolve(pointer.Event{Kind: pointer.Press, Buttons: pointer.ButtonPrimary | pointer.ButtonSecondary, Position: at})
+	rel := resolve(pointer.Event{Kind: pointer.Cancel, Position: at})
+	if len(rel) != 2 || rel[0].Kind != tui.MouseRelease || rel[1].Kind != tui.MouseRelease || rel[0].Button == rel[1].Button {
+		t.Fatalf("the cancel released %+v; want one release for each of the two buttons", rel)
+	}
+	if b.stage.latch.held != 0 {
+		t.Fatalf("latch still holds %#b after the cancel", b.stage.latch.held)
+	}
+	// Free motion over the view resolves through the view: column 9, half into it.
+	move := resolve(pointer.Event{Kind: pointer.Move, Position: f32.Pt(200, 10)})
+	if len(move) != 1 || move[0].X < view2.band.X {
+		t.Fatalf("free motion after the cancel resolved to %+v; want the view's own band %v", move, view2.band)
+	}
+	// A new press there latches the view, not the old sidebar.
+	press := resolve(pointer.Event{Kind: pointer.Press, Buttons: pointer.ButtonPrimary, Position: f32.Pt(200, 10)})
+	if len(press) != 1 || press[0].X < view2.band.X || b.stage.latch.pane != 1 {
+		t.Fatalf("a new press resolved to %+v with the latch on pane %d; want the view", press, b.stage.latch.pane)
+	}
+}

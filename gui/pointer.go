@@ -49,6 +49,21 @@ type pointerState struct {
 }
 
 // buttonOf maps a Gio pointer button bitflag to the corresponding [tui.MouseButton] identifier.
+// eachButton is mk's event for every button in bs, primary, middle, then secondary: one per
+// button that changed.
+func eachButton(bs pointer.Buttons, mk func(tui.MouseButton) tui.MouseEvent) []tui.MouseEvent {
+	var out []tui.MouseEvent
+	for _, b := range []struct {
+		gio pointer.Buttons
+		tui tui.MouseButton
+	}{{pointer.ButtonPrimary, tui.MouseLeft}, {pointer.ButtonTertiary, tui.MouseMiddle}, {pointer.ButtonSecondary, tui.MouseRight}} {
+		if bs.Contain(b.gio) {
+			out = append(out, mk(b.tui))
+		}
+	}
+	return out
+}
+
 func buttonOf(b pointer.Buttons) tui.MouseButton {
 	switch {
 	case b.Contain(pointer.ButtonPrimary):
@@ -93,18 +108,16 @@ func (p *pointerState) translate(e pointer.Event, m metrics) []tui.MouseEvent {
 	case pointer.Press:
 		pressed := e.Buttons &^ p.held
 		p.held = e.Buttons
-		if b := buttonOf(pressed); b != tui.MouseNone {
-			return []tui.MouseEvent{ev(tui.MousePress, b)}
-		}
+		return eachButton(pressed, func(b tui.MouseButton) tui.MouseEvent { return ev(tui.MousePress, b) })
 	case pointer.Release, pointer.Cancel:
+		// One release for every button let go: a cancel ends a chord whole, and the App (its
+		// capture, a press latch) must hear each button up, or it keeps one held.
 		released := p.held &^ e.Buttons
 		if e.Kind == pointer.Cancel {
 			released = p.held
 		}
 		p.held &^= released
-		if b := buttonOf(released); b != tui.MouseNone {
-			return []tui.MouseEvent{ev(tui.MouseRelease, b)}
-		}
+		return eachButton(released, func(b tui.MouseButton) tui.MouseEvent { return ev(tui.MouseRelease, b) })
 	case pointer.Move:
 		return []tui.MouseEvent{ev(tui.MouseMotion, tui.MouseNone)}
 	case pointer.Drag:
