@@ -104,6 +104,12 @@ type KeyboardShow struct{}
 // FocusTake asks the toolkit to give the window the keyboard focus.
 type FocusTake struct{}
 
+// KeyboardHide asks the toolkit to close text input: the software keyboard and the input method
+// (on Wayland, text-input disabled). Raw keys use it, so the input method stops taking keys.
+type KeyboardHide struct{}
+
+func (KeyboardHide) textInputCmd() {}
+
 func (SnippetReply) textInputCmd()  {}
 func (SelectionTell) textInputCmd() {}
 func (KeyboardShow) textInputCmd()  {}

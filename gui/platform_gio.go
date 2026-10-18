@@ -52,6 +52,8 @@ func execTextInputCmd(src eventSource, tag event.Tag, cmd TextInputCmd) {
 		})
 	case KeyboardShow:
 		src.Execute(key.SoftKeyboardCmd{Show: true})
+	case KeyboardHide:
+		src.Execute(key.SoftKeyboardCmd{Show: false})
 	case FocusTake:
 		src.Execute(key.FocusCmd{Tag: tag})
 	}

@@ -51,15 +51,17 @@ const textType = "application/text"
 //
 // gioState encapsulates state owned exclusively by the Gio window goroutine.
 type gioState struct {
-	shaper  *text.Shaper    // Preedit IME text shaper (independent of TUI loop text shaper)
-	ops     op.Ops          // Reusable Gio GPU operation buffer
-	ime     imeState        // Virtual IME input buffer and composition tracking
-	ptr     pointerState    // Pointer position, button transitions, and drag tracker
-	caret   image.Rectangle // Physical pixel bounding box of the active caret
-	focused bool            // Tracks whether OS keyboard focus has been registered for this window
-	frames  int             // Frames whose input readInput has read, for the recorder
-	shown   *frame          // Most recently presented frame macro
-	source  input.Source    // Last frame's router, for committing IME before an external paste
+	shaper  *text.Shaper          // Preedit IME text shaper (independent of TUI loop text shaper)
+	ops     op.Ops                // Reusable Gio GPU operation buffer
+	ime     imeState              // Virtual IME input buffer and composition tracking
+	rawOn   bool                  // raw keys are applied (rawkeys.go)
+	held    map[rune]tui.KeyEvent // raw keys reported pressed and not yet released
+	ptr     pointerState          // Pointer position, button transitions, and drag tracker
+	caret   image.Rectangle       // Physical pixel bounding box of the active caret
+	focused bool                  // Tracks whether OS keyboard focus has been registered for this window
+	frames  int                   // Frames whose input readInput has read, for the recorder
+	shown   *frame                // Most recently presented frame macro
+	source  input.Source          // Last frame's router, for committing IME before an external paste
 }
 
 // takeFocus is the handshake readInput runs while the window has not taken the
@@ -74,6 +76,9 @@ func (g *gioState) takeFocus() []TextInputCmd {
 		return nil
 	}
 	g.focused = true
+	if g.rawOn {
+		return []TextInputCmd{FocusTake{}, KeyboardHide{}} // raw keys: the input method stays off
+	}
 	return []TextInputCmd{FocusTake{}, KeyboardShow{}}
 }
 
@@ -119,6 +124,9 @@ func (b *Backend) run() {
 
 		case app.ConfigEvent:
 			if was := b.focused.Swap(e.Config.Focused); was != e.Config.Focused && b.isStarted() {
+				if !e.Config.Focused {
+					b.releaseHeld() // the window lost focus: no key stays down
+				}
 				b.q.push(tui.FocusEvent{Terminal: true, Gained: e.Config.Focused})
 			}
 
@@ -159,6 +167,7 @@ func (b *Backend) readInput(src eventSource, tag event.Tag, m metrics) {
 	if b.rec != nil {
 		b.record(StageFrame, "begin", map[string]any{"n": b.gio.frames})
 	}
+	b.applyRawMode(src, tag)
 	for _, cmd := range b.gio.takeFocus() {
 		b.execRecorded(src, tag, cmd)
 	}
@@ -183,6 +192,10 @@ func (b *Backend) readInput(src eventSource, tag event.Tag, m metrics) {
 		}
 		switch e := ev.(type) {
 		case key.Event:
+			if b.gio.rawOn {
+				b.rawKey(e) // a game's key: no paste, no text
+				continue
+			}
 			if isPasteChord(e) {
 				src.Execute(clipboard.ReadCmd{Tag: tag})
 				continue
@@ -196,6 +209,12 @@ func (b *Backend) readInput(src eventSource, tag event.Tag, m metrics) {
 		case key.SnippetEvent, key.SelectionEvent, key.EditEvent, key.CompositionEvent, key.FocusEvent:
 			// The input-method events cross the platform contract; the window's other input
 			// keeps its Gio types for now.
+			if fe, ok := e.(key.FocusEvent); ok && !fe.Focus {
+				b.releaseHeld()
+			}
+			if b.gio.rawOn {
+				continue // raw keys: no input-method edits, even late ones
+			}
 			ev, ok := inputEventOf(e)
 			if !ok {
 				continue
