@@ -39,9 +39,6 @@ func (d *TableDocument) Init(ctx *tui.Context) {
 	ctx.Mount(d.table)
 }
 
-// AcceptsFocus is false: the focus goes into the table (tui.Context.FocusInto).
-func (d *TableDocument) AcceptsFocus() bool { return false }
-
 // ShowDocument reads the core again; the text argument is not read: the core is.
 func (d *TableDocument) ShowDocument([]byte) { d.reread() }
 
