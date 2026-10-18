@@ -64,7 +64,7 @@ func (n *normalState) follow(t *Terminal) {
 func (n *normalState) clamp(t *Terminal) {
 	count := t.lineCount()
 	_, cols := t.scr.Size()
-	h := max(t.h, 1)
+	h := max(t.shownRows(), 1)
 	n.line = min(max(n.line, 0), count-1)
 	n.aLine = min(max(n.aLine, 0), count-1)
 	n.col = min(max(n.col, 0), cols-1)
@@ -79,7 +79,7 @@ func (n *normalState) clamp(t *Terminal) {
 
 // scroll moves the view by d lines, carrying the cursor when it would leave.
 func (n *normalState) scroll(t *Terminal, d int) {
-	h := max(t.h, 1)
+	h := max(t.shownRows(), 1)
 	n.top = min(max(n.top+d, 0), max(t.lineCount()-h, 0))
 	n.line = min(max(n.line, n.top), n.top+h-1)
 	n.clamp(t)
@@ -105,7 +105,7 @@ func (n *normalState) key(t *Terminal, k tui.KeyEvent) bool {
 		}
 		return false
 	}
-	h := max(t.h, 1)
+	h := max(t.shownRows(), 1)
 	switch cmd.ID {
 	case TermHalfUp.ID:
 		n.scroll(t, -h/2)
@@ -438,10 +438,10 @@ func (n *normalState) render(t *Terminal, s tui.Surface) {
 
 func (n *normalState) cursor(t *Terminal) (x, y int, ok bool) {
 	if n.searching {
-		return len([]rune(n.query)) + 1, max(t.h, 1) - 1, true
+		return len([]rune(n.query)) + 1, max(t.shownRows(), 1) - 1, true
 	}
 	y = n.line - n.top
-	return n.col, y, y >= 0 && y < max(t.h, 1)
+	return n.col, y, y >= 0 && y < max(t.shownRows(), 1)
 }
 
 // wrapped reports whether absolute line i continues on the next.

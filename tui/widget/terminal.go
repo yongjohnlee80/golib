@@ -157,6 +157,9 @@ type Terminal struct {
 	rows, cols int // the size applied to the screen and the program
 	w, h       int // the size layout gave
 
+	view TerminalView  // draws the terminal at a cell size of its own; nil: the window's cells
+	off  tui.Offscreen // where Render draws for the view
+
 	proc      TerminalProcess
 	procMu    sync.Mutex // guards the lifecycle records and shutdown handle
 	lifecycle *TerminalStopResult
@@ -585,15 +588,28 @@ func (t *Terminal) flushPrefix() {
 }
 
 // Layout takes all the space offered; a new size reaches the screen and
-// the program after layout.
+// the program after layout. With a view, that size is the view's cells for
+// the area placed (TerminalView.Cells), so the one resize registered is it.
 func (t *Terminal) Layout(c tui.Constraints) tui.Size {
 	t.w = boundedMax(c.MaxW, max(c.MinW, 1))
 	t.h = boundedMax(c.MaxH, max(c.MinH, 1))
-	if ctx := t.Context(); ctx != nil && (t.w != t.cols || t.h != t.rows) {
-		w, h := t.w, t.h
+	w, h := t.w, t.h
+	if t.view != nil {
+		w, h = t.view.Cells(t.w, t.h)
+		w, h = max(w, 1), max(h, 1)
+	}
+	if ctx := t.Context(); ctx != nil && (w != t.cols || h != t.rows) {
 		ctx.AfterLayout("terminal.resize", func() { t.resize(h, w) })
 	}
 	return c.Constrain(tui.Size{W: t.w, H: t.h})
+}
+
+// shownRows is the rows the terminal shows: the view's, or the area layout gave.
+func (t *Terminal) shownRows() int {
+	if t.view != nil {
+		return t.rows
+	}
+	return t.h
 }
 
 func (t *Terminal) resize(rows, cols int) {
@@ -636,6 +652,9 @@ func (t *Terminal) HandleEvent(ev tui.Event) bool {
 		t.send(encodePaste(e.Text, t.scr.Modes()))
 		return true
 	case tui.MouseEvent:
+		if t.view != nil {
+			e = t.view.Pointer(e) // in the terminal's own cells
+		}
 		return t.handleMouse(e)
 	case tui.KeyEvent:
 		if e.Kind == tui.KeyRelease {
@@ -800,8 +819,22 @@ func (t *Terminal) handleMouse(e tui.MouseEvent) bool {
 }
 
 // Render paints the visible lines: the live screen in input mode, and the
-// normal-mode view over the scrollback in normal mode.
+// normal-mode view over the scrollback in normal mode. With a view it draws
+// them off the window, at the terminal's own size, and hands the view that
+// frame and the caret; nothing is drawn in s.
 func (t *Terminal) Render(s tui.Surface) {
+	ctx := t.Context()
+	if t.view == nil || ctx == nil {
+		t.draw(s)
+		return
+	}
+	cells := ctx.RenderOffscreen(&t.off, tui.Size{W: t.cols, H: t.rows}, t.CellFace(), t.draw)
+	x, y, ok := t.cursor()
+	t.view.Frame(cells, t.cols, t.rows, tui.Point{X: x, Y: y}, t.CursorShape(), ok && ctx.Focused())
+}
+
+// draw is the terminal's drawing on s: Render's, on the window or off it.
+func (t *Terminal) draw(s tui.Surface) {
 	size := s.Size()
 	top := t.scr.Scrollback()
 	if t.mode == TerminalNormal {
@@ -922,8 +955,17 @@ func (t *Terminal) cellStyle(c vt.Cell) style.Style {
 }
 
 // Cursor is the program's cursor in input mode (hidden when the program
-// hides it), and the normal-mode cursor in normal mode.
+// hides it), and the normal-mode cursor in normal mode. With a view there is
+// none in the window's cells: the view draws the caret (Frame).
 func (t *Terminal) Cursor() (x, y int, ok bool) {
+	if t.view != nil {
+		return 0, 0, false
+	}
+	return t.cursor()
+}
+
+// cursor is the terminal's own cursor in its cells, as Cursor reports it with no view.
+func (t *Terminal) cursor() (x, y int, ok bool) {
 	if t.mode == TerminalNormal {
 		return t.normal.cursor(t)
 	}
@@ -1069,3 +1111,41 @@ func (iq *inputQueue) close() {
 	iq.cond.Broadcast()
 	iq.mu.Unlock()
 }
+
+// TerminalView is a host that draws a Terminal itself, at a cell size of its own (a GUI's native
+// painter). With none, a Terminal is drawn in the window's cells, as before.
+type TerminalView interface {
+	// Cells is the terminal's size for a placed area of w×h window cells: its screen's and its
+	// program's columns and rows (at least 1×1).
+	Cells(w, h int) (cols, rows int)
+	// Pointer maps a pointer event in the terminal's window cells (with SubX, SubY) to its own.
+	Pointer(e tui.MouseEvent) tui.MouseEvent
+	// Frame is the terminal's frame, drawn off the window at cols×rows (row-major), and its caret:
+	// its cursor in its own cells, its shape, and show, true when the terminal has the focus and its
+	// cursor shows. cells are the terminal's own, reused at its next frame: the view copies what it
+	// keeps.
+	Frame(cells []tui.Cell, cols, rows int, cursor tui.Point, shape tui.CursorShape, show bool)
+	// Detached is the view taken off its terminal (SetTerminalView, or its tab closed): it drops
+	// its frame and its caret, and posts nothing more.
+	Detached()
+}
+
+// SetTerminalView gives the terminal its view; nil is the window's cells again. A view replaced is
+// told Detached.
+func (t *Terminal) SetTerminalView(v TerminalView) {
+	if t.view == v {
+		return
+	}
+	if t.view != nil {
+		t.view.Detached()
+	}
+	t.view = v
+	t.MarkDirty()
+	if ctx := t.Context(); ctx != nil && ctx.Mounted() {
+		ctx.RequestLayout()
+	}
+}
+
+// TerminalView is the view installed, nil for none: what a native style reads back to paint the
+// terminal.
+func (t *Terminal) TerminalView() TerminalView { return t.view }

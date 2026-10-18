@@ -85,6 +85,7 @@ type TerminalTabs struct {
 	modeKeySet    bool
 	cellFace      string
 	faceSet       bool
+	makeView      func(*Terminal) TerminalView // SetTerminalViews: each tab's own view; nil for none
 	hostKeys      func(tui.KeyEvent) bool
 	hostKeysSet   bool
 	onChanged     func()
@@ -309,6 +310,19 @@ func (t *TerminalTabs) SetCellFace(family string) {
 	t.lookTabs()
 }
 
+// SetTerminalViews gives each tab, those added later too, a view of its own, made for it by newView
+// (Terminal.SetTerminalView): its text drawn at a cell size of its own. nil takes the views off,
+// each told Detached. Views already set are replaced.
+func (t *TerminalTabs) SetTerminalViews(newView func(*Terminal) TerminalView) {
+	t.makeView = newView
+	for _, e := range t.entries {
+		e.terminal.SetTerminalView(nil)
+		if newView != nil {
+			e.terminal.SetTerminalView(newView(e.terminal))
+		}
+	}
+}
+
 func (t *TerminalTabs) lookTabs() {
 	for _, e := range t.entries {
 		t.lookTab(e.terminal)
@@ -334,6 +348,9 @@ func (t *TerminalTabs) lookTab(terminal *Terminal) {
 	}
 	if t.hostKeysSet {
 		terminal.SetHostKeys(t.hostKeys)
+	}
+	if t.makeView != nil && terminal.TerminalView() == nil { // a tab's view is made once, here or by SetTerminalViews
+		terminal.SetTerminalView(t.makeView(terminal))
 	}
 }
 
@@ -514,6 +531,7 @@ func (t *TerminalTabs) ForceRemove(id TerminalTabID) error {
 
 func (t *TerminalTabs) detach(e *terminalTab) {
 	hadFocus := t.ctx != nil && t.ctx.Mounted() && t.ctx.FocusWithin(e.terminal)
+	e.terminal.SetTerminalView(nil) // its view told Detached: a closed tab's view posts nothing more
 	if t.ctx != nil && t.ctx.Mounted() {
 		t.ctx.Unmount(e.terminal)
 	}

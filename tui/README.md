@@ -169,6 +169,7 @@ Portability is achieved through two clean interfaces:
 
 - **`Backend`**: Abstracts the terminal device. It handles raw mode, alternate screen setup, live capability probing (Kitty keyboard, TrueColor, synchronized output), un-coalesced event streams, and atomic diff flushing.
 - **`Surface`**: Abstracts the drawing canvas. Components receive a local, pre-clipped `Surface` with bounds checking, grapheme cluster writes, box filling, and style resolution.
+  `Context.RenderOffscreen` draws onto an off-window grid of any size through the same code (styles resolved and faces stamped as the App's), for a host that paints a component elsewhere: the Terminal's `TerminalView` uses it to be drawn natively at a cell size of its own.
 
 ---
 
