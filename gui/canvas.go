@@ -209,8 +209,14 @@ type canvasState struct {
 
 // newGioCanvas is the canvas over the cells of rect r, origin at its top-left cell; covered are the
 // grid cells inside it that are painted after it.
+//
+// In a Panes window the rect is anchored (metrics.anchored): a view inside one band is clipped to
+// its pane, so a Pixels pane's canvas is exactly the pane; one crossing bands is an overlay.
 func newGioCanvas(ops *op.Ops, r *renderer, g *grid, m metrics, cells CellRect, covered []tui.Rect) *gioCanvas {
-	dev := m.cellRect(cells.X, cells.Y, cells.W, cells.H)
+	dev, within, _ := m.anchored(tui.Rect{X: cells.X, Y: cells.Y, W: cells.W, H: cells.H})
+	if m.layout != nil {
+		dev = dev.Intersect(within)
+	}
 	return &gioCanvas{
 		ops: ops, r: r, g: g, m: m,
 		origin: f32.Pt(float32(dev.Min.X), float32(dev.Min.Y)),

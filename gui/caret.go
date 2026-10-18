@@ -82,7 +82,10 @@ func viewCaret(m metrics, natives []tui.NativePlacement) (caretAt, bool) {
 		if !ok {
 			continue
 		}
-		o := m.cellRect(p.X, p.Y, 0, 0).Min
+		o, in := m.cellPoint(p.X, p.Y)
+		if !in {
+			continue // a hole: no pixels to anchor the caret to
+		}
 		s := m.scale
 		out = caretAt{rect: image.Rect(o.X+int(r.X*s), o.Y+int(r.Y*s), o.X+int((r.X+max(r.W, 1))*s), o.Y+int((r.Y+r.H)*s)), base: int(b * s)}
 		if ccv, ok := p.View.(CaretColorsView); ok {
