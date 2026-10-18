@@ -292,6 +292,19 @@ func TestCoalescedResizesAdmitTheNewestOfTheAppsSize(t *testing.T) {
 	if len(b.stage.published) != 0 {
 		t.Fatalf("%d snapshots left after admitting the newest", len(b.stage.published))
 	}
+	// A then C published, the App still at A's size (C's ResizeEvent not yet drained): A is
+	// admitted, not the newer C of another size, and C waits for its own Layout.
+	a3 := b.publishLayout(&a2, snap(520, 301))
+	c := b.publishLayout(&a3, snap(800, 301))
+	if c.grid == a3.grid {
+		t.Fatal("fixture: C must have another grid")
+	}
+	if l := b.admitLayout(a3.grid); l != a3.layout {
+		t.Fatalf("admitted gen %d at A's size; want A's %d, not the newer C's %d", l.gen, a3.layout.gen, c.layout.gen)
+	}
+	if l := b.admitLayout(c.grid); l != c.layout {
+		t.Fatal("C was not kept for its own Layout")
+	}
 }
 
 func TestAFlushForAnUnadmittedSizeIsNotPresented(t *testing.T) {
