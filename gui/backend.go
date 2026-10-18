@@ -107,6 +107,7 @@ type Backend struct {
 
 	streams     streamSet // its live streams (stream.go)
 	presentList []*stream // streamsPresented's list, reused; Gio goroutine
+	presenting  []*stream // the streams the frame being presented selected; Gio goroutine
 
 	// The hand-over to the Gio goroutine, guarded by mu.
 	mu       sync.Mutex
