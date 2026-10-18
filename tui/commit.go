@@ -139,8 +139,22 @@ func (a *App) layoutAndCommit() {
 		a.layoutTree()
 		a.layoutDirty = false
 		a.runCommitPhase()
-		if !a.layoutDirty {
-			return
+		if a.layoutDirty {
+			continue // a commit callback changed geometry: lay out again before anything else
 		}
+		// the geometry is settled: one reveal step, if one is pending (reveal.go)
+		if a.reveal {
+			if pass+1 >= maxRevealPasses {
+				// the rest of a deep nesting is served on the next frame, the request kept
+				a.layoutDirty = true
+				a.queue.wakeUp()
+				return
+			}
+			if a.revealStep() {
+				a.layoutDirty = true // an ancestor scrolled: lay out again, then serve the next one out
+				continue
+			}
+		}
+		return
 	}
 }

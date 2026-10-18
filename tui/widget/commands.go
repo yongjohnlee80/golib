@@ -658,6 +658,7 @@ func KeyCommands() []keymap.Command {
 	out = append(out, SplitCancel, SplitLeft, SplitRight, SplitUp, SplitDown)
 	out = append(out, resizableCommands...)
 	out = append(out, SelectOpen)
+	out = append(out, scrollCommands...)
 	out = append(out, selectPopupCommands...)
 	out = append(out, textAreaCommands...)
 	out = append(out, htmlViewCommands...)

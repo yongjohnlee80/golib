@@ -216,6 +216,7 @@ type App struct {
 	rctx         *renderContext
 	renderDirty  bool
 	layoutDirty  bool
+	reveal       bool // a focused node waits to be brought into view by the Revealers around it (reveal.go)
 	framePending bool // a frame deadline sits in the timer heap
 	lastFrame    time.Time
 
@@ -850,7 +851,9 @@ func (a *App) applyCursorColor(comp Component) {
 func (a *App) applyCursor() {
 	if n := a.nodes[a.focused]; n != nil && n.visible() {
 		if cr, ok := n.comp.(CursorReporter); ok {
-			if x, y, ok := cr.Cursor(); ok {
+			// a cursor outside what the node can show (scrolled out of a ScrollView) is hidden, not
+			// drawn over whatever is there
+			if x, y, ok := cr.Cursor(); ok && n.visRect.Contains(n.absRect.X+x, n.absRect.Y+y) {
 				a.backend.SetCursor(n.absRect.X+x, n.absRect.Y+y)
 				if cs, ok := n.comp.(CursorShaper); ok {
 					a.backend.SetCursorShape(cs.CursorShape())

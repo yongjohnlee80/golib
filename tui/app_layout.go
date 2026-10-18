@@ -58,7 +58,7 @@ func (a *App) layoutTree() {
 	sz := a.layoutComponent(root, Tight(a.size))
 	root.rect = Rect{X: 0, Y: 0, W: sz.W, H: sz.H}
 	root.placed = true
-	computeAbs(root, 0, 0)
+	computeAbs(root, 0, 0, Rect{W: a.size.W, H: a.size.H})
 }
 
 // layoutComponent invokes one component's Layout under cc, clamps the returned
@@ -121,12 +121,14 @@ func resetLayoutFlags(n *node) {
 
 // computeAbs derives every visible node's absolute Rect from the placed
 // parent-relative rects — the table mouse hit-testing and the cursor rule
-// look up.
-func computeAbs(n *node, ox, oy int) {
+// look up — and its visRect: that rect cut by parentVis, the part its ancestors
+// and the screen let show (ADR 1792358868 §4.2).
+func computeAbs(n *node, ox, oy int, parentVis Rect) {
 	n.absRect = Rect{X: ox + n.rect.X, Y: oy + n.rect.Y, W: n.rect.W, H: n.rect.H}
+	n.visRect = n.absRect.Intersect(parentVis)
 	for _, ch := range n.children {
 		if ch.visible() {
-			computeAbs(ch, n.absRect.X, n.absRect.Y)
+			computeAbs(ch, n.absRect.X, n.absRect.Y, n.visRect)
 		}
 	}
 }

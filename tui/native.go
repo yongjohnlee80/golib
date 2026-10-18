@@ -52,13 +52,21 @@ type NativeStyler interface {
 
 // NativePlacement is one native view this frame, over the screen cells X, Y to X+Cols, Y+Rows.
 type NativePlacement struct {
-	View             any
-	Node             NodeID
-	Scope            NativeScope
-	Layer            uint32 // the node's paint order
-	End              uint32 // the last paint order inside its subtree
+	View  any
+	Node  NodeID
+	Scope NativeScope
+	Layer uint32 // the node's paint order
+	End   uint32 // the last paint order inside its subtree
+	// X, Y, Cols, Rows are the part of the node that shows: bounded by the screen and every
+	// ancestor, so a backend may index the grid with them.
 	X, Y, Cols, Rows int
-	Covered          []Rect // cells inside it painted after it (after its subtree, for ScopeSubtree)
+	// Full is the node's whole rect (absolute cells; it may start above or left of the screen)
+	// when that differs from the part that shows (a ScrollView's child half scrolled out); zero
+	// otherwise. A backend that draws views lays the view out at Full's size from Full's origin and
+	// clips it to X, Y, Cols, Rows (ADR 1792358868 §4.3); one that reads only the bounded fields is
+	// as it was.
+	Full    Rect
+	Covered []Rect // cells inside it painted after it (after its subtree, for ScopeSubtree)
 }
 
 // NativeHost is a Backend that draws native views. PlaceNatives is called once per frame, before
@@ -103,13 +111,17 @@ func (a *App) noteNative(n *node) int {
 	if !ok {
 		return -1
 	}
-	r := n.absRect.Intersect(Rect{W: a.size.W, H: a.size.H})
+	r := n.visRect // already cut by the screen and every ancestor: bounded, as coverage scans assume
 	if r.Empty() {
 		return -1
 	}
+	var full Rect
+	if r != n.absRect {
+		full = n.absRect // the view lays out at its whole size, shown only inside r
+	}
 	a.natives = append(a.natives, NativePlacement{
 		View: view, Node: n.id, Scope: scope, Layer: a.buf.order,
-		X: r.X, Y: r.Y, Cols: r.W, Rows: r.H,
+		X: r.X, Y: r.Y, Cols: r.W, Rows: r.H, Full: full,
 	})
 	return len(a.natives) - 1
 }
