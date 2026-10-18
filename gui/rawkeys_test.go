@@ -173,3 +173,25 @@ func TestEnteringRawModeDropsTheComposition(t *testing.T) {
 		t.Fatalf("raw mode kept the composition: %+v", g.b.gio.ime)
 	}
 }
+
+// After the toolkit takes the keyboard away, the window asks for it back on its own, in raw mode
+// as in text mode: the next key arrives without the test restoring focus by hand.
+func TestTheWindowRetakesTheKeyboardInBothModes(t *testing.T) {
+	for _, raw := range []bool{false, true} {
+		g := newKeyRig(t)
+		if raw {
+			g.b.SetRawKeys(true)
+			g.frame()
+		}
+		g.r.Source().Execute(key.FocusCmd{Tag: nil}) // the toolkit moves the focus away
+		for range 4 {
+			g.frame()
+		}
+		g.keys()
+		g.press("W", key.ModCtrl) // a chord: delivered as a key in text mode as well
+		got := g.keys()
+		if len(got) == 0 || got[0].Code != 'w' {
+			t.Errorf("raw %v: after losing the keyboard the window pushed %+v; want Ctrl+W", raw, got)
+		}
+	}
+}

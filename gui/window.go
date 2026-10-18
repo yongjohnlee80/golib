@@ -209,14 +209,16 @@ func (b *Backend) readInput(src eventSource, tag event.Tag, m metrics) {
 		case key.SnippetEvent, key.SelectionEvent, key.EditEvent, key.CompositionEvent, key.FocusEvent:
 			// The input-method events cross the platform contract; the window's other input
 			// keeps its Gio types for now.
-			if fe, ok := e.(key.FocusEvent); ok && !fe.Focus {
-				b.releaseHeld()
-			}
-			if b.gio.rawOn {
-				continue // raw keys: no input-method edits, even late ones
-			}
 			ev, ok := inputEventOf(e)
 			if !ok {
+				continue
+			}
+			if fc, ok := ev.(FocusChange); ok && !fc.Focused {
+				b.releaseHeld() // the handler lost the keyboard: no key stays down
+			}
+			if _, focus := ev.(FocusChange); b.gio.rawOn && !focus {
+				// Raw keys: no input-method edits, even late ones. A focus change still runs as in
+				// text mode, so a window that lost the keyboard asks for it back.
 				continue
 			}
 			if b.rec != nil {
