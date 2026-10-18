@@ -1,10 +1,14 @@
 package gui
 
 import (
+	"image"
 	"testing"
 
+	"github.com/yongjohnlee80/gio/io/event"
 	"github.com/yongjohnlee80/gio/io/input"
 	"github.com/yongjohnlee80/gio/io/key"
+	"github.com/yongjohnlee80/gio/op"
+	"github.com/yongjohnlee80/gio/op/clip"
 	"github.com/yongjohnlee80/golib/tui"
 	tuikey "github.com/yongjohnlee80/golib/tui/key"
 )
@@ -48,7 +52,16 @@ func newKeyRig(t *testing.T) *keyRig {
 	return g
 }
 
-func (g *keyRig) frame() { g.b.readInput(g.r.Source(), &g.b.gio, metrics{}) }
+// frame is one window frame: the router frames the window's input area, as a real window's
+// does (focus changes take effect there), then the backend reads its input.
+func (g *keyRig) frame() {
+	ops := new(op.Ops)
+	area := clip.Rect(image.Rect(0, 0, 100, 100)).Push(ops)
+	event.Op(ops, &g.b.gio)
+	area.Pop()
+	g.r.Frame(ops)
+	g.b.readInput(g.r.Source(), &g.b.gio, metrics{})
+}
 
 // keys is the key events pushed since the last call.
 func (g *keyRig) keys() []tui.KeyEvent {
