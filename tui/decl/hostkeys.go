@@ -38,7 +38,7 @@ func keysOf(name string, v qml.SpecValue) (func(tui.KeyEvent) bool, error) {
 		if part = strings.TrimSpace(part); part == "" {
 			continue
 		}
-		seq, err := key.Parse(part)
+		seq, err := parseSequence(part)
 		if err != nil {
 			return nil, fmt.Errorf("%s: %w (at %s)", name, err, v.Pos)
 		}
