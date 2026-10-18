@@ -200,3 +200,42 @@ func TestGiosOwnCacheThrashesWhereThisOneDoesNot(t *testing.T) {
 		t.Fatalf("the shape cache allocated %d on a repeated frame", cacheRepeat)
 	}
 }
+
+// A native view's text, through its canvas's shaper, goes through the window's cache: the first
+// paint shapes it, the paints after reuse it, by Layout and by LayoutRuns.
+func TestANativeViewsTextUsesTheWindowsCache(t *testing.T) {
+	for _, method := range []string{"Layout", "LayoutRuns"} {
+		t.Run(method, func(t *testing.T) {
+			m := metrics{window: image.Pt(800, 200), cell: image.Pt(10, 20), ppem: 16, baseline: 16, scale: 1, grid: tui.Size{W: 80, H: 10}}
+			r := newRenderer(testShaper(), "Go Mono", DefaultTheme())
+			g := &grid{}
+			g.resize(80, 10)
+			painted := 0
+			view := ViewFunc(func(c Canvas) {
+				painted++
+				ts := c.Text()
+				var tl *TextLayout
+				if method == "Layout" {
+					tl = ts.Layout("a native view's words", Font{Size: 16}, 0)
+				} else {
+					tl = ts.LayoutRuns([]TextRun{{Text: "a native view's words"}}, Font{Size: 16})
+				}
+				if len(tl.lines) == 0 {
+					t.Error("the native view's text was not laid out")
+				}
+			})
+			natives := []tui.NativePlacement{{View: view, Cols: 80, Rows: 10}}
+			r.frame(g, m, cursorState{}, natives, nil, true)
+			first := r.paths.shaped
+			if first == 0 {
+				t.Fatal("the native view's text went past the window's cache")
+			}
+			for range keepFrames + 2 {
+				r.frame(g, m, cursorState{}, natives, nil, true)
+			}
+			if painted != keepFrames+3 || r.paths.shaped != first {
+				t.Fatalf("%d paints shaped %d runs after the first paint's %d; want none", painted, r.paths.shaped-first, first)
+			}
+		})
+	}
+}
