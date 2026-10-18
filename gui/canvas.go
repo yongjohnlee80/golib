@@ -246,7 +246,7 @@ func (c *gioCanvas) Scale() float32 { return c.m.scale }
 
 // Text returns a text shaper configured for the canvas's scale and font registry.
 func (c *gioCanvas) Text() *TextShaper {
-	return &TextShaper{s: c.r.shaper, scale: c.m.scale, fonts: c.r.fonts}
+	return &TextShaper{s: c.r.shaper, paths: c.r.paths, scale: c.m.scale, fonts: c.r.fonts}
 }
 
 // Fonts returns the canvas font family registry.

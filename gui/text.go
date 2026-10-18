@@ -82,8 +82,17 @@ func defaultFonts() Fonts { return Fonts{Prose: uiFamily, Mono: MonospaceFamily(
 //     its own shaper, while background worker threads acquire isolated instances via [AcquireMeasurer].
 type TextShaper struct {
 	s     *text.Shaper
-	scale float32 // device pixels per logical pixel
-	fonts Fonts   // active font family mappings
+	paths *shapeCache // the window's outline paths, for a canvas's shaper; nil: shaped each time
+	scale float32     // device pixels per logical pixel
+	fonts Fonts       // active font family mappings
+}
+
+// shape is gs's outline path: from the window's cache when the shaper is a canvas's.
+func (t *TextShaper) shape(gs []text.Glyph) clip.PathSpec {
+	if t.paths != nil {
+		return t.paths.Shape(gs)
+	}
+	return t.s.Shape(gs)
 }
 
 // Fonts returns the active font family bindings resolved by this shaper.
@@ -244,7 +253,7 @@ func (t *TextShaper) Layout(s string, f Font, maxWidth float32) *TextLayout {
 			return
 		}
 		tl.lines = append(tl.lines, shapedLine{
-			path:    t.s.Shape(line),
+			path:    t.shape(line),
 			bitmaps: t.s.Bitmaps(line),
 			x:       float32(line[0].X) / 64,
 			y:       float32(line[0].Y - firstY),
@@ -311,7 +320,7 @@ func (t *TextShaper) LayoutRuns(runs []TextRun, f Font) *TextLayout {
 	if len(glyphs) == 0 {
 		return tl
 	}
-	tl.lines = []shapedLine{{path: t.s.Shape(glyphs), bitmaps: t.s.Bitmaps(glyphs), x: float32(glyphs[0].X) / 64}}
+	tl.lines = []shapedLine{{path: t.shape(glyphs), bitmaps: t.s.Bitmaps(glyphs), x: float32(glyphs[0].X) / 64}}
 	tl.Width = float32(right) / 64 / t.scale
 	tl.Height = tl.Ascent + tl.Descent
 	return tl
