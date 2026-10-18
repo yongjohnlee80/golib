@@ -104,3 +104,21 @@ func TestTheCellCursorsCaretCarriesItsCellsColours(t *testing.T) {
 		t.Fatal("the cell's background must differ from the theme's for this cell to observe anything")
 	}
 }
+
+// A view only part of which shows (NativePlacement.Full: a ScrollView's child half scrolled out)
+// has its caret measured from Full's origin, as its canvas draws, and kept to the part that shows.
+func TestViewCaretOfAViewPartlyShown(t *testing.T) {
+	m := metrics{origin: image.Pt(4, 6), scale: 2, cell: image.Pt(16, 32)}
+	full := tui.Rect{X: 2, Y: -1, W: 10, H: 4} // two rows above the part shown
+	shown := func(r Rect) []tui.NativePlacement {
+		return []tui.NativePlacement{{View: caretView{r: r, base: 9, ok: true}, X: 2, Y: 1, Cols: 10, Rows: 2, Full: full}}
+	}
+	// the view's origin is cell (2, -1): 4+2*16, 6-32 = (36, -26); its (10, 40) is (56, 54)
+	c, ok := viewCaret(m, shown(Rect{X: 10, Y: 40, W: 1, H: 12}))
+	if want := image.Rect(56, 54, 58, 78); !ok || c.rect != want || c.base != 18 {
+		t.Fatalf("caret %v base %d ok %v, want %v base 18", c.rect, c.base, ok, want)
+	}
+	if c, ok := viewCaret(m, shown(Rect{X: 10, Y: 3, W: 1, H: 12})); ok {
+		t.Fatalf("a caret in the part scrolled out was reported at %v", c.rect)
+	}
+}

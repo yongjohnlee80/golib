@@ -53,6 +53,7 @@ func NativeStyle() *Style {
 	ForType(s, paintScrim)
 	ForType(s, paintHTMLView)
 	ForType(s, paintDataTable)
+	ForType(s, paintScrollView)
 	return s
 }
 
@@ -640,6 +641,10 @@ func paintScrollbar(comp tui.Component) (View, tui.NativeScope, bool) {
 		c.FillRRect(Rect{X: sz.W - w - 2, Y: y, W: w, H: h}, w/2, Solid(alpha(fg, 0.4)))
 	}), tui.ScopeChrome, true
 }
+
+// paintScrollView draws a ScrollView's thumb as a list's: in the column it reserves for it, which
+// its child, laid out a column narrower, never covers.
+func paintScrollView(v *widget.ScrollView) (View, tui.NativeScope, bool) { return paintScrollbar(v) }
 
 // paintDialog draws a soft shadow around the dialog's card. The card and the scrim are tui's
 // cells, over and under it.
