@@ -113,11 +113,14 @@ func rrectPath(r Rect, radius float32) *Path {
 }
 
 // ellipsePath is the ellipse inscribed in r.
-func ellipsePath(r Rect) *Path {
+func ellipsePath(r Rect) *Path { return new(Path).Ellipse(r) }
+
+// Ellipse adds the ellipse inscribed in r to p, a closed subpath of four cubic arcs, and is p: many
+// circles in one path fill or stroke in one operation.
+func (p *Path) Ellipse(r Rect) *Path {
 	rx, ry := r.W/2, r.H/2
 	cx, cy := r.X+rx, r.Y+ry
 	kx, ky := rx*kappa, ry*kappa
-	p := new(Path)
 	p.MoveTo(Pt(cx+rx, cy))
 	p.CubeTo(Pt(cx+rx, cy+ky), Pt(cx+kx, cy+ry), Pt(cx, cy+ry))
 	p.CubeTo(Pt(cx-kx, cy+ry), Pt(cx-rx, cy+ky), Pt(cx-rx, cy))

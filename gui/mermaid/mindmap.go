@@ -14,6 +14,18 @@ import (
 // init registers the mindmap diagram layout builder with the mermaid layout engine.
 func init() { layers[pm.Mindmap] = layMindmap }
 
+// PaintMindShape draws the outline of a mind map node of shape s in box, as a laid-out mind map
+// draws one: filled with fill, stroked with stroke at width, a double circle's inner ring em in
+// (the font size it is laid out in). A key or a legend draws the very outlines its map does.
+func PaintMindShape(c gui.Canvas, s pm.MindShape, box gui.Rect, fill, stroke color.NRGBA, width, em float32) {
+	fm := formRound
+	if int(s) < len(mindmapForm) {
+		fm = mindmapForm[s]
+	}
+	l := &Laid{th: Theme{Font: gui.Font{Size: em}}}
+	l.outline(c, laidNode{form: fm, box: box, fill: fill, stroke: stroke, width: width})
+}
+
 // mindmapForm is each mind map shape's form. golib has no starburst or cloud outline: a bang takes
 // the double circle (an emphasis, as the burst is) and a cloud the stadium (the softest outline).
 var mindmapForm = [...]form{
