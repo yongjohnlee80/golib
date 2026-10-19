@@ -22,8 +22,16 @@ type ForceInput struct {
 	// Theta is the Barnes–Hut opening angle: a cell farther than its width over Theta acts as one
 	// body. 0 means 0.9. Smaller is more exact and slower.
 	Theta float32
-	// Spacing is the length an edge settles near; 0 means 30. Theta and Spacing must be finite.
+	// Spacing is the length an edge settles near; 0 means 30.
 	Spacing float32
+	// Reach is how far a node pushes others, in Spacings; 0 or less means without limit. A finite
+	// reach keeps a graph of many parts compact: a node no edge holds settles near the rest, where
+	// unlimited, every node pushes it out against the gravity alone.
+	Reach float32
+	// LinkPull makes each edge a linear spring of that strength (|F| = LinkPull·d); 0 or less means
+	// the pull grows with the square of the length (|F| = d²/Spacing). A linear pull spreads a dense
+	// part out rather than drawing it tight. Theta, Spacing, Reach and LinkPull must be finite.
+	LinkPull float32
 }
 
 // ForceResult is each node's centre and the extent of all of them. Coordinates start at (0, 0).
@@ -33,9 +41,10 @@ type ForceResult struct {
 }
 
 // Force places in by a seeded force simulation: every edge pulls its ends together, every pair of
-// nodes pushes apart (by a Barnes–Hut quadtree, O(n log n) a step), a weak gravity keeps
-// unconnected parts near the centre, and the most a node may move shrinks step by step. It refuses
-// an edge to a node that does not exist, or a Theta or Spacing that is NaN or infinite, with
+// nodes pushes apart (by a Barnes–Hut quadtree, O(n log n) a step; within Reach when it is set), a
+// weak gravity keeps unconnected parts near the centre, and the most a node may move shrinks step by
+// step. It refuses an edge to a node that does not exist, or a Theta, Spacing, Reach or LinkPull
+// that is NaN or infinite, with
 // ErrInvalid; with ErrTooLarge more nodes or edges than lim allows (MaxNodes, MaxEdges), more work
 // than lim.MaxWork, or a layout float32 cannot hold (a Spacing near its largest). It charges its
 // work, and checks ctx, after each node's repulsion and after each step's edges: building a
@@ -83,6 +92,8 @@ type Simulation struct {
 	radius      float64
 	theta, k2   float64
 	spacing     float64
+	reach       float64 // how far a node pushes, in layout units; 0 without limit
+	pull        float64 // a linear spring's strength; 0 the d²/spacing pull
 }
 
 // NewSimulation validates in as Force does (ErrInvalid, ErrTooLarge) and places its seeded start:
@@ -103,6 +114,8 @@ func NewSimulation(in ForceInput, lim Limits) (*Simulation, error) {
 	if s.spacing <= 0 {
 		s.spacing = 30
 	}
+	s.reach = max(float64(in.Reach), 0) * s.spacing
+	s.pull = max(float64(in.LinkPull), 0)
 	if n == 0 {
 		s.step = s.steps // nothing to place: done before it starts
 		return s, nil
@@ -153,7 +166,7 @@ func (s *Simulation) Step(ctx context.Context, n int) (done bool, err error) {
 		clear(s.disp)
 		s.tree.build(s.pos)
 		for i, p := range s.pos {
-			f, work := s.tree.repulse(i, p, s.theta, s.k2)
+			f, work := s.tree.repulse(i, p, s.theta, s.k2, s.reach)
 			if err := s.m.add(work); err != nil {
 				return false, err
 			}
@@ -166,6 +179,9 @@ func (s *Simulation) Step(ctx context.Context, n int) (done bool, err error) {
 				continue
 			}
 			pull := d.scale(l / s.spacing) // |F| = d²/k, along d
+			if s.pull > 0 {
+				pull = d.scale(s.pull) // a linear spring: |F| = pull·d
+			}
 			s.disp[e[0]] = s.disp[e[0]].add(pull)
 			s.disp[e[1]] = s.disp[e[1]].sub(pull)
 		}
@@ -227,8 +243,8 @@ func forceValidate(in ForceInput, lim Limits) error {
 		return fmt.Errorf("%w: %d nodes, more than %d", ErrTooLarge, in.Nodes, lim.MaxNodes)
 	case len(in.Edges) > lim.MaxEdges:
 		return fmt.Errorf("%w: %d edges, more than %d", ErrTooLarge, len(in.Edges), lim.MaxEdges)
-	case !finite32(in.Theta) || !finite32(in.Spacing):
-		return fmt.Errorf("%w: theta %v, spacing %v", ErrInvalid, in.Theta, in.Spacing)
+	case !finite32(in.Theta) || !finite32(in.Spacing) || !finite32(in.Reach) || !finite32(in.LinkPull):
+		return fmt.Errorf("%w: theta %v, spacing %v, reach %v, link pull %v", ErrInvalid, in.Theta, in.Spacing, in.Reach, in.LinkPull)
 	}
 	for i, e := range in.Edges {
 		if e.From < 0 || e.From >= in.Nodes || e.To < 0 || e.To >= in.Nodes {
@@ -276,6 +292,13 @@ type qcell struct {
 	centre vec    // their mean position
 	node   int    // the one node of a leaf; -1 for an inner cell or an empty one
 	kids   [4]int // child cells by quadrant; 0 for none (cell 0 is the root, never a child)
+}
+
+// gap is how far p is from the cell's square: 0 inside it.
+func (c qcell) gap(p vec) float64 {
+	dx := max(c.lo.x-p.x, 0, p.x-c.hi.x)
+	dy := max(c.lo.y-p.y, 0, p.y-c.hi.y)
+	return math.Hypot(dx, dy)
 }
 
 // maxDepth bounds the tree: nodes closer than the root's width over 2^maxDepth share a leaf cell's
@@ -360,19 +383,22 @@ func (t *quadTree) mass(c int) (sum vec, n int) {
 
 // repulse is the push on node i at p from every other node, k2/d along their separation, a far
 // cell acting as one body of its mass. work is the cells visited.
-func (t *quadTree) repulse(i int, p vec, theta, k2 float64) (f vec, work int) {
+func (t *quadTree) repulse(i int, p vec, theta, k2, reach float64) (f vec, work int) {
 	stack := append(t.stack[:0], 0)
 	defer func() { t.stack = stack }()
 	for len(stack) > 0 {
 		c := t.cells[stack[len(stack)-1]]
 		stack = stack[:len(stack)-1]
 		work++
-		if c.mass == 0 || c.node == i {
-			continue
+		if c.mass == 0 || c.node == i || reach > 0 && c.gap(p) > reach {
+			continue // empty, p itself, or wholly out of reach
 		}
 		d, l := p.near(c.centre)
 		leaf := c.kids == [4]int{}
 		if leaf || (c.hi.x-c.lo.x)/max(l, 1e-9) < theta {
+			if reach > 0 && l > reach {
+				continue // a body out of reach: its nodes' mean is, so they push not
+			}
 			if l < 1e-9 {
 				// Two nodes on one point: a fixed nudge by index, so they part the same way each run.
 				d, l = vec{float64(i%7) - 3, float64(i%5) - 2}, 1
