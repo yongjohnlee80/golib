@@ -87,15 +87,12 @@ func (a *App) noteImage(n *node) {
 		src := img.Clip
 		if src.Empty() {
 			cfg, _, err := image.DecodeConfig(bytes.NewReader(img.PNG))
-			if err != nil {
-				return
+			if err != nil || cfg.Width <= 0 || cfg.Height <= 0 {
+				return // no size, so no crop: not placed while it is cut
 			}
 			src = Rect{W: cfg.Width, H: cfg.Height}
 		}
-		img.Clip = cropTo(src, n.absRect, r)
-		if img.Clip.Empty() {
-			return
-		}
+		img.Clip = cropTo(src, n.absRect, r) // never empty: r and src are not, and it rounds outward
 	}
 	p := ImagePlacement{Image: img, X: r.X, Y: r.Y, Cols: r.W, Rows: r.H}
 	if a.buf.stamping {
