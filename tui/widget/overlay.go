@@ -136,6 +136,17 @@ func (h *OverlayHost) Attach(f *Float) {
 	h.raiseTopmost()
 }
 
+// AttachBeneath attaches a Float beneath every other layer, directly above the base: an
+// application's main window, which the panels attached before it cover until it is raised
+// (Raisable). A Float attached already stays where it is.
+func (h *OverlayHost) AttachBeneath(f *Float) {
+	fresh := f != nil && !h.hasLayer(f)
+	h.Attach(f)
+	if fresh {
+		h.Stack.Move(f, 1)
+	}
+}
+
 // AttachTopmost attaches a Float that stays above every other layer, the dialogs opened after it
 // included: a notification over whatever is open (Qt's WindowStaysOnTopHint). It never takes the
 // keyboard from a dialog under it, since only a modal Float traps focus.

@@ -57,6 +57,58 @@ func TestTheKeyboardRaisesARaisable(t *testing.T) {
 	}
 }
 
+// TestARaisableStartsBeneathAndAPanelShownRises: a page mounted while a panel is open arrives
+// beneath it (a main window under its panels), without raising itself. Once the page has the
+// keyboard, AttachBeneath again leaves it where it stands, and the panel shown again comes above it,
+// as a shown window does, keyboard or not. A dialog open then stays above that panel.
+func TestARaisableStartsBeneathAndAPanelShownRises(t *testing.T) {
+	page, pageBtn := pageOf(20)
+	root := tui.NewFlex(tui.Vertical)
+	host := widget.NewOverlayHost(root)
+	panel, panelBtn := panelFloat("P", tui.Rect{X: 24, Y: 2, W: 16, H: 6})
+	host.Attach(panel)
+	h := startApp(t, host, 40, 12)
+	defer h.stop()
+	h.onLoop(func() { panel.Show() })
+	h.settle()
+	h.onLoop(func() { root.AddWeighted(page, 1) })
+	h.settle()
+	h.wantContains("P-btn")
+	if o := layerOrder(h, host, page.Float(), panel); o[0] < 1 || o[1] < o[0] {
+		t.Fatalf("layers %v (page, panel); want the page above the base, beneath the panel open before it", o)
+	}
+	if shown := func() (on bool) { h.onLoop(func() { on = page.Float().Shown() }); return on }(); !shown {
+		t.Fatal("the page mounted late is not shown")
+	}
+
+	h.onLoop(func() { pageBtn.Context().RequestFocus() })
+	h.settle()
+	if o := layerOrder(h, host, page.Float(), panel); o[0] < o[1] {
+		t.Fatalf("layers %v (page, panel); the focused page is beneath the panel", o)
+	}
+	h.onLoop(func() { host.AttachBeneath(page.Float()) })
+	if o := layerOrder(h, host, page.Float(), panel); o[0] < o[1] {
+		t.Fatalf("layers %v (page, panel); AttachBeneath again moved the raised page", o)
+	}
+	h.onLoop(func() { panel.Hide(); panel.Show() })
+	h.settle()
+	if o := layerOrder(h, host, page.Float(), panel); o[1] < o[0] {
+		t.Fatalf("layers %v (page, panel); the panel shown again is beneath the page", o)
+	}
+	if focusedOn(t, h, panelBtn) || !focusedOn(t, h, pageBtn) {
+		t.Fatal("showing the panel moved the keyboard")
+	}
+
+	m := widget.NewModal(widget.NewText("dialog"), widget.WithModalTitle("D"))
+	openOn(t, h, m, host)
+	h.onLoop(func() { panel.Hide(); panel.Show() })
+	h.settle()
+	if o := layerOrder(h, host, panel, m); o[1] < o[0] {
+		t.Fatalf("layers %v (panel, dialog); the panel shown went above the open dialog", o)
+	}
+	h.onLoop(func() { m.Dismiss(widget.DismissProgrammatic) })
+}
+
 // TestARaisableFollowsItsPlace: inside a centred, capped box, the Raisable's place moves when the
 // window widens, and its layer moves with it in the same frame (a node's rect is the previous
 // frame's while the tree is laid out; the commit lays out again).

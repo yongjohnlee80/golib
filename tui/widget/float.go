@@ -312,7 +312,11 @@ func (f *Float) SetSizeFraction(wPct, hPct int) {
 	f.RequestLayout()
 }
 
-// Show mounts the float's layer onto its Stack position (loop goroutine).
+// Show mounts the float's layer onto its Stack position (loop goroutine) and brings it to the top
+// of its OverlayHost's ordinary layers, as a window shown comes to the front: a panel shown
+// without the keyboard is not left beneath one raised before it. An open dialog goes above the
+// panels and the dialogs open before it, as a Modal's Open puts it, whenever this Float was
+// attached; a panel never goes above an open dialog (OverlayHost.Raise).
 // A modal Show seeds focus into the first focusable widget of the child
 // subtree; hiding restores the previous focus via the runtime's scope
 // stack.
@@ -320,18 +324,11 @@ func (f *Float) Show() {
 	if f.ctx == nil {
 		panic(errs.Fatal{Op: "widget", Rule: "Float.Show before mount — attach the Float to an OverlayHost (host.Attach) or a Stack layer first"})
 	}
-	if f.shown {
+	if !f.show() {
 		return
 	}
-	f.layer = &floatLayer{owner: f}
-	f.ctx.Mount(f.layer)
-	f.shown = true
-	f.RequestLayout()
+	f.raise()
 	if f.modal {
-		// An open dialog: above the panels and the dialogs open before it, as a Modal's Open
-		// puts it, whenever this Float was attached. A panel raised since it was attached would
-		// otherwise cover the dialog that holds the keyboard.
-		f.raise()
 		if focusFirst(f.layer.Context(), f.child) {
 			f.layer.fallback = false
 		} else {
@@ -341,6 +338,20 @@ func (f *Float) Show() {
 			f.layer.focusSelf()
 		}
 	}
+}
+
+// show mounts the float's layer where it stands among the host's layers, raising nothing; false
+// when it was shown already. The Float is mounted. A Raisable's page shows this way, beneath the
+// panels until focused.
+func (f *Float) show() bool {
+	if f.shown {
+		return false
+	}
+	f.layer = &floatLayer{owner: f}
+	f.ctx.Mount(f.layer)
+	f.shown = true
+	f.RequestLayout()
+	return true
 }
 
 // Hide unmounts the layer (focus restores to the pre-Show node when the

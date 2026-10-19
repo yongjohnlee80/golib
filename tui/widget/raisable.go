@@ -9,7 +9,9 @@ import "github.com/yongjohnlee80/golib/tui"
 // own, so where its Float is not shown the place is the parent's background.
 //
 // It finds the OverlayHost enclosing it, as a Select or a Menu finds where its popup goes, and its
-// Float is one of that host's layers while the Raisable is mounted.
+// Float is one of that host's layers while the Raisable is mounted: the lowest (AttachBeneath), as
+// an application's main window is, so a panel open when it arrives, or shown later without the
+// keyboard (Float.Show raises it), is drawn above it until the keyboard enters it.
 //
 // SetMaximumWidth caps the child's width and centres it in the place, as a Box's does: the margins
 // either side are no part of the Float, so a panel there is drawn and clicked as if the Raisable
@@ -53,7 +55,7 @@ func (r *Raisable) Init(ctx *tui.Context) {
 	}
 	ctx.Update(func() {
 		if ctx.Mounted() {
-			host.Attach(r.float)
+			host.AttachBeneath(r.float)
 			r.attached = true
 			ctx.RequestLayout()
 		}
@@ -86,7 +88,7 @@ func (r *Raisable) Layout(c tui.Constraints) tui.Size {
 	if r.attached && !r.float.Shown() { // the first layout, or laid out again after being hidden
 		ctx.AfterLayout("raisable-show", func() {
 			if r.attached && ctx.Mounted() && !r.float.Shown() {
-				r.float.Show()
+				r.float.show() // where it stands: beneath the panels until the keyboard raises it
 			}
 		})
 	}
