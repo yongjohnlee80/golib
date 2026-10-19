@@ -439,7 +439,7 @@ func (p *parser) shapePath(name string, t xml.StartElement) (*gui.Path, error) {
 		if err := p.count(10); err != nil {
 			return nil, err
 		}
-		roundRect(path, x, y, w, h, rx, ry)
+		path.RoundRect(gui.Rect{X: x, Y: y, W: w, H: h}, rx, ry)
 	case "circle":
 		if vals[2] <= 0 {
 			return nil, nil
@@ -447,7 +447,7 @@ func (p *parser) shapePath(name string, t xml.StartElement) (*gui.Path, error) {
 		if err := p.count(5); err != nil {
 			return nil, err
 		}
-		ellipse(path, vals[0], vals[1], vals[2], vals[2])
+		path.Ellipse(gui.Rect{X: vals[0] - vals[2], Y: vals[1] - vals[2], W: 2 * vals[2], H: 2 * vals[2]})
 	case "ellipse":
 		if vals[2] <= 0 || vals[3] <= 0 {
 			return nil, nil
@@ -455,7 +455,7 @@ func (p *parser) shapePath(name string, t xml.StartElement) (*gui.Path, error) {
 		if err := p.count(5); err != nil {
 			return nil, err
 		}
-		ellipse(path, vals[0], vals[1], vals[2], vals[3])
+		path.Ellipse(gui.Rect{X: vals[0] - vals[2], Y: vals[1] - vals[3], W: 2 * vals[2], H: 2 * vals[3]})
 	case "line":
 		if err := p.count(2); err != nil {
 			return nil, err
@@ -490,40 +490,6 @@ func (p *parser) count(n int) error {
 		return ErrTooLarge
 	}
 	return nil
-}
-
-// kappa is a quarter circle's cubic control distance, as a fraction of the radius.
-const kappa = 0.5522847498
-
-// ellipse appends a 4-spline cubic Bézier ellipse approximation to path p.
-func ellipse(p *gui.Path, cx, cy, rx, ry float32) {
-	kx, ky := rx*kappa, ry*kappa
-	p.MoveTo(gui.Point{X: cx + rx, Y: cy})
-	p.CubeTo(gui.Point{X: cx + rx, Y: cy + ky}, gui.Point{X: cx + kx, Y: cy + ry}, gui.Point{X: cx, Y: cy + ry})
-	p.CubeTo(gui.Point{X: cx - kx, Y: cy + ry}, gui.Point{X: cx - rx, Y: cy + ky}, gui.Point{X: cx - rx, Y: cy})
-	p.CubeTo(gui.Point{X: cx - rx, Y: cy - ky}, gui.Point{X: cx - kx, Y: cy - ry}, gui.Point{X: cx, Y: cy - ry})
-	p.CubeTo(gui.Point{X: cx + kx, Y: cy - ry}, gui.Point{X: cx + rx, Y: cy - ky}, gui.Point{X: cx + rx, Y: cy})
-	p.Close()
-}
-
-// roundRect appends a rounded rectangle with corner radii (rx, ry) to path p.
-func roundRect(p *gui.Path, x, y, w, h, rx, ry float32) {
-	if rx == 0 || ry == 0 {
-		p.MoveTo(gui.Point{X: x, Y: y}).LineTo(gui.Point{X: x + w, Y: y}).LineTo(gui.Point{X: x + w, Y: y + h}).
-			LineTo(gui.Point{X: x, Y: y + h}).Close()
-		return
-	}
-	kx, ky := rx*kappa, ry*kappa
-	p.MoveTo(gui.Point{X: x + rx, Y: y})
-	p.LineTo(gui.Point{X: x + w - rx, Y: y})
-	p.CubeTo(gui.Point{X: x + w - rx + kx, Y: y}, gui.Point{X: x + w, Y: y + ry - ky}, gui.Point{X: x + w, Y: y + ry})
-	p.LineTo(gui.Point{X: x + w, Y: y + h - ry})
-	p.CubeTo(gui.Point{X: x + w, Y: y + h - ry + ky}, gui.Point{X: x + w - rx + kx, Y: y + h}, gui.Point{X: x + w - rx, Y: y + h})
-	p.LineTo(gui.Point{X: x + rx, Y: y + h})
-	p.CubeTo(gui.Point{X: x + rx - kx, Y: y + h}, gui.Point{X: x, Y: y + h - ry + ky}, gui.Point{X: x, Y: y + h - ry})
-	p.LineTo(gui.Point{X: x, Y: y + ry})
-	p.CubeTo(gui.Point{X: x, Y: y + ry - ky}, gui.Point{X: x + rx - kx, Y: y}, gui.Point{X: x + rx, Y: y})
-	p.Close()
 }
 
 // attr returns the case-insensitive value of the named attribute in element t.

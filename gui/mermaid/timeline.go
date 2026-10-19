@@ -60,7 +60,7 @@ func layTimeline(ctx context.Context, d pm.Diagram, width float32, th Theme, m g
 				label: newLabel(m, p.Label, bold, wrap, th.Text)}}
 			colW = max(colW, c.period.label.box.W+2*padX)
 			for _, e := range p.Events {
-				ev := laidNode{form: formRound, fill: mix(th.NodeFill, th.Background, 0.55), stroke: mix(th.NodeStroke, th.Background, 0.45),
+				ev := laidNode{form: formRound, fill: gui.Mix(th.NodeFill, th.Background, 0.55), stroke: gui.Mix(th.NodeStroke, th.Background, 0.45),
 					width: 1, label: newLabel(m, e.Text, small, wrap, th.Text)}
 				colW = max(colW, ev.label.box.W+2*padX)
 				c.events = append(c.events, ev)
@@ -122,7 +122,7 @@ func layTimeline(ctx context.Context, d pm.Diagram, width float32, th Theme, m g
 			// the period's line down through its events, under their boxes
 			cx := x(i) + colW/2
 			l.edges = append(l.edges, laidEdge{pts: []gui.Point{{X: cx, Y: periodY + periodH}, {X: cx, Y: c.events[len(c.events)-1].box.Y}},
-				line: pm.Dotted, color: mix(th.Line, th.Background, 0.3)})
+				line: pm.Dotted, color: gui.Mix(th.Line, th.Background, 0.3)})
 		}
 	}
 	right := margin
@@ -159,7 +159,7 @@ func layTimeline(ctx context.Context, d pm.Diagram, width float32, th Theme, m g
 		}
 		fill := th.ClusterFill
 		if si%2 == 1 {
-			fill = mix(th.ClusterFill, th.NodeFill, 0.5)
+			fill = gui.Mix(th.ClusterFill, th.NodeFill, 0.5)
 		}
 		box := gui.Rect{X: bx, Y: bandTop, W: bw, H: bandBottom - bandTop}
 		head := gui.Rect{X: bx, Y: bandTop, W: bw, H: headH}

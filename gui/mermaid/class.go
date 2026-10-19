@@ -153,7 +153,7 @@ func layClass(ctx context.Context, d pm.Diagram, _ float32, th Theme, m gui.Meas
 		size := gui.Size{W: lb.box.W + 2*padX + em*0.6, H: lb.box.H + 2*padY}
 		boxes = append(boxes, classBox{size: size, name: lb.at((size.W-lb.box.W)/2, padY)})
 		in.Nodes = append(in.Nodes, layout.Size{W: size.W, H: size.H})
-		l.nodes = append(l.nodes, laidNode{form: formNote, fill: mix(th.NodeFill, th.Background, 0.5), stroke: th.NodeStroke, width: 1})
+		l.nodes = append(l.nodes, laidNode{form: formNote, fill: gui.Mix(th.NodeFill, th.Background, 0.5), stroke: th.NodeStroke, width: 1})
 		if i, ok := index[n.For]; ok {
 			in.Edges = append(in.Edges, layout.Edge{From: len(in.Nodes) - 1, To: i, MinLen: 1})
 			l.edges = append(l.edges, laidEdge{line: pm.Dotted, color: th.Line})

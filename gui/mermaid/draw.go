@@ -116,7 +116,7 @@ func (l *Laid) frame(c gui.Canvas, g laidGroup) {
 		cut := (y1 - y0) / 3
 		p := new(gui.Path).MoveTo(gui.Pt(x0, y0)).LineTo(gui.Pt(x1+cut, y0)).LineTo(gui.Pt(x1+cut, y1-cut)).
 			LineTo(gui.Pt(x1, y1)).LineTo(gui.Pt(x0, y1)).Close()
-		c.FillPath(p, gui.Solid(mix(stroke, th.Background, 0.75)))
+		c.FillPath(p, gui.Solid(gui.Mix(stroke, th.Background, 0.75)))
 		c.StrokePath(p, 1, gui.Solid(stroke))
 	}
 	l.dividers(c, g.box, g.parts, stroke)
@@ -152,12 +152,6 @@ func or(c, d color.NRGBA) color.NRGBA {
 		return d
 	}
 	return c
-}
-
-// mix is a weighted between a (t = 0) and b (t = 1).
-func mix(a, b color.NRGBA, t float32) color.NRGBA {
-	m := func(x, y uint8) uint8 { return uint8(float32(x) + (float32(y)-float32(x))*t + 0.5) }
-	return color.NRGBA{R: m(a.R, b.R), G: m(a.G, b.G), B: m(a.B, b.B), A: m(a.A, b.A)}
 }
 
 // text draws a label's lines, each centred in its box or from its left.
@@ -330,7 +324,7 @@ func ellipse(r gui.Rect) *gui.Path { return new(gui.Path).Ellipse(r) }
 
 // halfEllipse is the lower half of the ellipse in r: a cylinder's base.
 func halfEllipse(r gui.Rect) *gui.Path {
-	const k = 0.5523
+	const k = gui.Kappa
 	cx, cy, rx, ry := r.X+r.W/2, r.Y+r.H/2, r.W/2, r.H/2
 	return new(gui.Path).MoveTo(gui.Pt(cx+rx, cy)).
 		CubeTo(gui.Pt(cx+rx, cy+ry*k), gui.Pt(cx+rx*k, cy+ry), gui.Pt(cx, cy+ry)).

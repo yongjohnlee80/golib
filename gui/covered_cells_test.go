@@ -382,7 +382,7 @@ func TestAProgressBarIsNotThePanelsColour(t *testing.T) {
 			fills = append(fills, c.Brush.Color)
 		}
 	}
-	if want := []color.NRGBA{mix(sepiaBG, sepiaFG, 0.25), green}; !slices.Equal(fills, want) {
+	if want := []color.NRGBA{Mix(sepiaBG, sepiaFG, 0.25), green}; !slices.Equal(fills, want) {
 		t.Fatalf("track and fill %v; want %v", fills, want)
 	}
 }

@@ -278,7 +278,7 @@ func (s *seqLayout) step(st pm.Step, y float32) float32 {
 			x = (lo+hi)/2 - w/2
 		}
 		box := gui.Rect{X: x, Y: y, W: w, H: h}
-		s.top = append(s.top, laidNode{form: formNote, box: box, fill: mix(th.NodeFill, th.ClusterFill, 0.5),
+		s.top = append(s.top, laidNode{form: formNote, box: box, fill: gui.Mix(th.NodeFill, th.ClusterFill, 0.5),
 			stroke: th.NodeStroke, width: 1, label: lb.centredIn(box)})
 		return y + h + em*0.8
 	case pm.StepActivate:
@@ -428,7 +428,7 @@ func (s *seqLayout) place(top, bottom float32) {
 			boxes = append(boxes, n)
 		}
 		life := laidEdge{pts: []gui.Point{{X: s.centre[i], Y: top + s.boxH}, {X: s.centre[i], Y: bottom}}, line: pm.Dotted,
-			color: mix(th.Line, th.Background, 0.35)}
+			color: gui.Mix(th.Line, th.Background, 0.35)}
 		l.edges = append([]laidEdge{life}, l.edges...)
 	}
 	l.nodes = append(append(boxes, l.nodes...), s.top...)

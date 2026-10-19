@@ -63,16 +63,16 @@ func layMindmap(ctx context.Context, d pm.Diagram, width float32, th Theme, m gu
 		}
 		switch {
 		case tinted: // its own colour, stronger than a branch's: it says what the node is
-			fill, stroke = mix(th.NodeFill, own, 0.35), mix(th.NodeStroke, own, 0.75)
+			fill, stroke = gui.Mix(th.NodeFill, own, 0.35), gui.Mix(th.NodeStroke, own, 0.75)
 			if n.Parent < 0 {
 				nf.Size, nf.Bold = em*1.15, true
 			}
 		case n.Parent < 0: // the root: larger, bold, in the strongest fill
 			nf.Size, nf.Bold = em*1.15, true
-			fill = mix(th.NodeFill, th.NodeStroke, 0.3)
+			fill = gui.Mix(th.NodeFill, th.NodeStroke, 0.3)
 		default:
 			tint := tints[branch[i]%len(tints)]
-			fill, stroke = mix(th.NodeFill, tint, 0.22), mix(th.NodeStroke, tint, 0.35)
+			fill, stroke = gui.Mix(th.NodeFill, tint, 0.22), gui.Mix(th.NodeStroke, tint, 0.35)
 		}
 		lb := newLabel(m, n.Label, nf, wrapAt, th.Text)
 		fm := mindmapForm[n.Shape]
@@ -132,7 +132,7 @@ func mindmapBranches(md *pm.MindmapDiagram) []int {
 
 // mindmapTints are the colours branches take in turn, the theme's own.
 func mindmapTints(th Theme) []color.NRGBA {
-	return []color.NRGBA{th.NodeStroke, th.Line, th.ClusterStroke, th.Text, mix(th.NodeStroke, th.Background, 0.4)}
+	return []color.NRGBA{th.NodeStroke, th.Line, th.ClusterStroke, th.Text, gui.Mix(th.NodeStroke, th.Background, 0.4)}
 }
 
 // mindmapSize is a node's box for its label's size, by its form: room round the text, a circle as

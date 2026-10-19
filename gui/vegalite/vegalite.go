@@ -178,7 +178,7 @@ func batch(items []item) []paintOp {
 		case itemLine:
 			addPoly(op.path, it.pts, false)
 		case itemDot, itemRing:
-			addEllipse(op.path, it.rect)
+			op.path.Ellipse(it.rect)
 		}
 	}
 	return ops
@@ -251,15 +251,4 @@ func addPoly(p *gui.Path, pts []gui.Point, close bool) {
 	if close && len(pts) > 0 {
 		p.Close()
 	}
-}
-
-// addEllipse adds the ellipse inscribed in r to p, as four cubic arcs.
-func addEllipse(p *gui.Path, r gui.Rect) {
-	const k = 0.5523 // a quarter circle's control distance, over its radius
-	cx, cy, rx, ry := r.X+r.W/2, r.Y+r.H/2, r.W/2, r.H/2
-	p.MoveTo(gui.Pt(cx+rx, cy)).
-		CubeTo(gui.Pt(cx+rx, cy+ry*k), gui.Pt(cx+rx*k, cy+ry), gui.Pt(cx, cy+ry)).
-		CubeTo(gui.Pt(cx-rx*k, cy+ry), gui.Pt(cx-rx, cy+ry*k), gui.Pt(cx-rx, cy)).
-		CubeTo(gui.Pt(cx-rx, cy-ry*k), gui.Pt(cx-rx*k, cy-ry), gui.Pt(cx, cy-ry)).
-		CubeTo(gui.Pt(cx+rx*k, cy-ry), gui.Pt(cx+rx, cy-ry*k), gui.Pt(cx+rx, cy)).Close()
 }
