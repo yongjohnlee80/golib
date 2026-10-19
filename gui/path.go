@@ -95,20 +95,30 @@ func (p *Path) spec(ops *op.Ops) clip.PathSpec {
 	return cp.End()
 }
 
-// kappa places a cubic's control points so it approximates a quarter circle.
-const kappa = 0.5522847498
+// Kappa is a quarter circle's cubic control distance, as a fraction of its radius: four cubics with
+// their handles at it approximate a circle (Path.Ellipse, Path.RoundRect's corners).
+const Kappa = 0.5522847498
 
 // rrectPath is r with corners of the given radius, clamped to half the shorter side.
 func rrectPath(r Rect, radius float32) *Path {
 	rad := min(max(radius, 0), r.W/2, r.H/2)
-	k := rad * (1 - kappa)
+	return new(Path).RoundRect(r, rad, rad)
+}
+
+// RoundRect adds r with elliptical corners of radii rx and ry to p, a closed subpath clockwise from
+// the top edge, and is p. A radius of 0 either way is a plain rectangle. The radii are used as given:
+// a caller clamps them (an SVG rect to half its sides, FillRRect to half the shorter side).
+func (p *Path) RoundRect(r Rect, rx, ry float32) *Path {
 	x0, y0, x1, y1 := r.X, r.Y, r.X+r.W, r.Y+r.H
-	p := new(Path)
-	p.MoveTo(Pt(x0+rad, y0)).LineTo(Pt(x1-rad, y0))
-	p.CubeTo(Pt(x1-k, y0), Pt(x1, y0+k), Pt(x1, y0+rad)).LineTo(Pt(x1, y1-rad))
-	p.CubeTo(Pt(x1, y1-k), Pt(x1-k, y1), Pt(x1-rad, y1)).LineTo(Pt(x0+rad, y1))
-	p.CubeTo(Pt(x0+k, y1), Pt(x0, y1-k), Pt(x0, y1-rad)).LineTo(Pt(x0, y0+rad))
-	p.CubeTo(Pt(x0, y0+k), Pt(x0+k, y0), Pt(x0+rad, y0))
+	if rx <= 0 || ry <= 0 {
+		return p.MoveTo(Pt(x0, y0)).LineTo(Pt(x1, y0)).LineTo(Pt(x1, y1)).LineTo(Pt(x0, y1)).Close()
+	}
+	kx, ky := rx*(1-Kappa), ry*(1-Kappa)
+	p.MoveTo(Pt(x0+rx, y0)).LineTo(Pt(x1-rx, y0))
+	p.CubeTo(Pt(x1-kx, y0), Pt(x1, y0+ky), Pt(x1, y0+ry)).LineTo(Pt(x1, y1-ry))
+	p.CubeTo(Pt(x1, y1-ky), Pt(x1-kx, y1), Pt(x1-rx, y1)).LineTo(Pt(x0+rx, y1))
+	p.CubeTo(Pt(x0+kx, y1), Pt(x0, y1-ky), Pt(x0, y1-ry)).LineTo(Pt(x0, y0+ry))
+	p.CubeTo(Pt(x0, y0+ky), Pt(x0+kx, y0), Pt(x0+rx, y0))
 	return p.Close()
 }
 
@@ -120,7 +130,7 @@ func ellipsePath(r Rect) *Path { return new(Path).Ellipse(r) }
 func (p *Path) Ellipse(r Rect) *Path {
 	rx, ry := r.W/2, r.H/2
 	cx, cy := r.X+rx, r.Y+ry
-	kx, ky := rx*kappa, ry*kappa
+	kx, ky := rx*Kappa, ry*Kappa
 	p.MoveTo(Pt(cx+rx, cy))
 	p.CubeTo(Pt(cx+rx, cy+ky), Pt(cx+kx, cy+ry), Pt(cx, cy+ry))
 	p.CubeTo(Pt(cx-kx, cy+ry), Pt(cx-rx, cy+ky), Pt(cx-rx, cy))

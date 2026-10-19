@@ -99,11 +99,11 @@ func layJourney(ctx context.Context, d pm.Diagram, width float32, th Theme, m gu
 	left, right := x, x
 	for i, s := range jd.Sections {
 		hue := journeyHue(th.NodeStroke, float64(i)*0.13)
-		stroke := mix(hue, th.Text, 0.25)
+		stroke := gui.Mix(hue, th.Text, 0.25)
 		w := float32(len(s.Tasks))*(taskW+gap) - gap
 		w = max(w, heads[i].box.W+em*1.6, taskW)
 		head := gui.Rect{X: x, Y: y, W: w, H: headH}
-		l.nodes = append(l.nodes, laidNode{form: formRect, box: head, fill: mix(hue, th.Background, 0.55), stroke: stroke, width: 1,
+		l.nodes = append(l.nodes, laidNode{form: formRect, box: head, fill: gui.Mix(hue, th.Background, 0.55), stroke: stroke, width: 1,
 			label: heads[i].centredIn(head)})
 		if s.Name == "" { // tasks before any section: no header to show
 			l.nodes = l.nodes[:len(l.nodes)-1]
@@ -111,7 +111,7 @@ func layJourney(ctx context.Context, d pm.Diagram, width float32, th Theme, m gu
 		tx := x
 		for _, lt := range tasks[i] {
 			box := gui.Rect{X: tx, Y: taskY, W: taskW, H: taskH}
-			n := laidNode{form: formRound, box: box, fill: mix(hue, th.Background, 0.8), stroke: stroke, width: 1.2}
+			n := laidNode{form: formRound, box: box, fill: gui.Mix(hue, th.Background, 0.8), stroke: stroke, width: 1.2}
 			n.label = lt.lb.at(tx+(taskW-lt.lb.box.W)/2, taskY+em*0.6)
 			l.nodes = append(l.nodes, n)
 			// the actors' dots, a row centred along the box's bottom
@@ -127,7 +127,7 @@ func layJourney(ctx context.Context, d pm.Diagram, width float32, th Theme, m gu
 			face := gui.Rect{X: cx - faceD/2, Y: faceY, W: faceD, H: faceD}
 			l.nodes = append(l.nodes, laidNode{form: formFace, box: face, fill: th.NodeFill, stroke: th.Text, width: 1.2, mood: lt.task.Score})
 			l.edges = append(l.edges, laidEdge{pts: []gui.Point{{X: cx, Y: taskY + taskH}, {X: cx, Y: faceY}}, line: pm.Dotted,
-				color: mix(th.Line, th.Background, 0.3)})
+				color: gui.Mix(th.Line, th.Background, 0.3)})
 			tx += taskW + gap
 		}
 		x += w + gap

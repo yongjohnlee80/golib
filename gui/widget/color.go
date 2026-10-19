@@ -91,10 +91,12 @@ func isDark(c color.NRGBA) bool {
 	return 0.2126*float64(c.R)+0.7152*float64(c.G)+0.0722*float64(c.B) < 0.5*255
 }
 
-// mix is a over b by t in [0, 1]: a tint of b toward a.
+// mix is a tint of b toward a by t in [0, 1], always opaque: gui.Mix (the one blend) with its alpha
+// made whole, since a theme's colours may be unset (zero) and a tint is always drawn.
 func mix(a, b color.NRGBA, t float32) color.NRGBA {
-	f := func(x, y uint8) uint8 { return uint8(float32(x)*t + float32(y)*(1-t)) }
-	return color.NRGBA{R: f(a.R, b.R), G: f(a.G, b.G), B: f(a.B, b.B), A: 0xff}
+	c := gui.Mix(b, a, t)
+	c.A = 0xff
+	return c
 }
 
 // contrast is how far apart two colours read: the difference of their luminance.

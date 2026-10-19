@@ -113,7 +113,9 @@ func TestAMindmapsNodesTakeTheirOwnTint(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	want := func() (color.NRGBA, color.NRGBA) { return mix(th.NodeFill, red, 0.35), mix(th.NodeStroke, red, 0.75) }
+	want := func() (color.NRGBA, color.NRGBA) {
+		return gui.Mix(th.NodeFill, red, 0.35), gui.Mix(th.NodeStroke, red, 0.75)
+	}
 	for _, i := range []int{0, 2} { // r, a1
 		if f, s := want(); tinted.nodes[i].fill != f || tinted.nodes[i].stroke != s {
 			t.Errorf("node %d, tinted: fill %v stroke %v; want %v %v", i, tinted.nodes[i].fill, tinted.nodes[i].stroke, f, s)

@@ -91,12 +91,6 @@ func paintTerminal(t *widget.Terminal) (View, tui.NativeScope, bool) {
 	return view, tui.ScopeSubtree, true
 }
 
-// mix is a blended toward b by t in [0, 1].
-func mix(a, b color.NRGBA, t float32) color.NRGBA {
-	l := func(x, y uint8) uint8 { return uint8(float32(x) + (float32(y)-float32(x))*t + 0.5) }
-	return color.NRGBA{R: l(a.R, b.R), G: l(a.G, b.G), B: l(a.B, b.B), A: l(a.A, b.A)}
-}
-
 // alpha is c at opacity a.
 func alpha(c color.NRGBA, a float32) color.NRGBA {
 	c.A = uint8(float32(c.A)*a + 0.5)
@@ -198,9 +192,9 @@ func paintButton(comp tui.Component) (View, tui.NativeScope, bool) {
 		fill := bg
 		switch {
 		case b.State() == widget.WidgetStateArmed:
-			fill = mix(bg, fg, 0.22)
+			fill = Mix(bg, fg, 0.22)
 		case b.Hovered():
-			fill = mix(bg, fg, 0.1)
+			fill = Mix(bg, fg, 0.1)
 		}
 		c.FillRect(r, Solid(c.Backdrop())) // the corners show what is around the button
 		c.FillRRect(r, radius, Solid(fill))
@@ -469,7 +463,7 @@ func paintProgress(comp tui.Component) (View, tui.NativeScope, bool) {
 		h := max(sz.H*0.4, 3)
 		track := Rect{Y: (sz.H - h) / 2, W: sz.W, H: h}
 		if emptyOpen {
-			c.FillRRect(track, h/2, Solid(mix(emptyBG, emptyFG, 0.25)))
+			c.FillRRect(track, h/2, Solid(Mix(emptyBG, emptyFG, 0.25)))
 		}
 		if f > 0 && fillOpen {
 			fill := track
@@ -608,7 +602,7 @@ func paintTabs(comp tui.Component) (View, tui.NativeScope, bool) {
 			}
 			prev := boxes[i-1]
 			x := prev.X + prev.W + float32(math.Floor(float64(gapW*px/2)))/px
-			c.FillRect(Rect{X: x, Y: cs.H * 0.2, W: 1 / px, H: cs.H * 0.6}, Solid(mix(bg, fg, 0.55)))
+			c.FillRect(Rect{X: x, Y: cs.H * 0.2, W: 1 / px, H: cs.H * 0.6}, Solid(Mix(bg, fg, 0.55)))
 		}
 		c.PaintCells(CellRect{W: cols, H: 1}, true)
 	}), tui.ScopeChrome, true
