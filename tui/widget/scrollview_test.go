@@ -63,8 +63,8 @@ func TestNestedScrollViewsRevealTheFocusedLeafInnermostFirst(t *testing.T) {
 	}
 }
 
-// Nine nested views each have to move to show the leaf: more than one frame's reveal passes, and
-// more than the commit loop's own eight, whose guard is a fatal. The rest is served on the next frame.
+// Nine nested views each have to move to show the leaf: more than one frame's reveal steps. The
+// rest is served on the frames after it, and every view ends up moved.
 func TestADeepNestingIsRevealedOverMoreThanOneFrame(t *testing.T) {
 	const depth = 9
 	first := widget.NewButton("first")
