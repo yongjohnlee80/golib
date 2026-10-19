@@ -182,3 +182,48 @@ func TestTheTableUndoesAndRedoesItsKeptEditByKey(t *testing.T) {
 		t.Fatalf("u in an open field: the text %q, a field open %v; want it typed and kept", got, editing)
 	}
 }
+
+// TestATableDocumentsRightPressActsOnWhatItWasOn: NewTableDocument's table takes a right press
+// outside its selection as the menu's target (TableMenuSelects): the selection ends, the cursor
+// goes to the cell pressed, and the menu's Yank yanks that cell, not the rows selected before.
+func TestATableDocumentsRightPressActsOnWhatItWasOn(t *testing.T) {
+	ed := widget.NewEditor(widget.WithCore(widget.CoreInitialText("name,n\nann,1\nbob,2\ncid,3\n")))
+	doc := widget.NewTableDocument(ed.Core(), ',')
+	ed.SetDocumentView(doc)
+	ed.SetRenderedDocument(true)
+	sh := newShell(widget.NewOverlayHost(ed))
+	h := startApp(t, sh, 40, 10)
+	h.onLoop(func() { h.app.FocusInto(ed) })
+	h.barrier(sh)
+	h.inject(ctrlEv('t'))
+	h.waitFor("the table focused", func() bool { _, _, in := views(h, ed, doc); return in })
+	h.inject(keyText("V"), keyText("j")) // rows ann and bob selected
+	h.waitFor("V j's selection", func() bool {
+		var ok bool
+		h.onLoop(func() { _, _, ok = doc.Core().Selection() })
+		return ok
+	})
+	y := h.rowWith("cid")
+	h.inject(tui.MouseEvent{Kind: tui.MousePress, Button: tui.MouseRight, X: strings.Index(h.row(y), "cid"), Y: y})
+	h.shows("Insert row above")
+	h.onLoop(func() {
+		c := doc.Core()
+		if _, _, ok := c.Selection(); ok || c.Cursor() != (widget.TablePos{Row: 2, Col: 0}) {
+			t.Errorf("after the right press on cid: selected %v, cursor %+v; want none, row 2 field 0", ok, c.Cursor())
+		}
+	})
+	y = h.rowWith("Yank")
+	x := strings.Index(h.row(y), "Yank")
+	h.inject(tui.MouseEvent{Kind: tui.MousePress, Button: tui.MouseLeft, X: x, Y: y},
+		tui.MouseEvent{Kind: tui.MouseRelease, Button: tui.MouseLeft, X: x, Y: y})
+	h.waitFor("the menu's Yank", func() bool {
+		var text string
+		h.onLoop(func() { text, _ = ed.Register() })
+		return text != ""
+	})
+	h.onLoop(func() {
+		if text, linewise := ed.Register(); text != "cid" || linewise {
+			t.Errorf("the menu's Yank yanked %q (linewise %v), want the cell pressed, cid", text, linewise)
+		}
+	})
+}
