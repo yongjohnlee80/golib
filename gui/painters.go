@@ -54,6 +54,7 @@ func NativeStyle() *Style {
 	ForType(s, paintHTMLView)
 	ForType(s, paintDataTable)
 	ForType(s, paintScrollView)
+	ForType(s, paintTerminal)
 	return s
 }
 
@@ -73,6 +74,17 @@ func paintHTMLView(v *widget.HTMLView) (View, tui.NativeScope, bool) {
 // to its cells.
 func paintDataTable(t *widget.DataTable) (View, tui.NativeScope, bool) {
 	view, ok := t.BoundLayout().(View)
+	if !ok {
+		return nil, 0, false
+	}
+	return view, tui.ScopeSubtree, true
+}
+
+// paintTerminal draws a Terminal whose view is a native view (gui/widget.TerminalViews makes them):
+// that view, over the terminal. A Terminal with no view, or one that is not a View, is left to its
+// cells.
+func paintTerminal(t *widget.Terminal) (View, tui.NativeScope, bool) {
+	view, ok := t.TerminalView().(View)
 	if !ok {
 		return nil, 0, false
 	}
