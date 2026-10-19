@@ -101,9 +101,13 @@ const Kappa = 0.5522847498
 
 // rrectPath is r with corners of the given radius, clamped to half the shorter side.
 func rrectPath(r Rect, radius float32) *Path {
-	rad := min(max(radius, 0), r.W/2, r.H/2)
+	rad := cornerRadius(r, radius)
 	return new(Path).RoundRect(r, rad, rad)
 }
+
+// cornerRadius is a rounded rectangle's corner radius as every canvas draws it: radius clamped to
+// [0, half r's shorter side].
+func cornerRadius(r Rect, radius float32) float32 { return min(max(radius, 0), r.W/2, r.H/2) }
 
 // RoundRect adds r with elliptical corners of radii rx and ry to p, a closed subpath clockwise from
 // the top edge, and is p. A radius of 0 either way is a plain rectangle. The radii are used as given:
