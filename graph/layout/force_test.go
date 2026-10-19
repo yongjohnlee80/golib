@@ -442,8 +442,9 @@ func TestRepulsionStopsAtTheReach(t *testing.T) {
 		if want := (vec{-k2 / 50, 0}); math.Abs(got.x-want.x) > 1e-9 || math.Abs(got.y) > 1e-9 {
 			t.Errorf("theta %v, reach 100: %v; want the neighbour's push alone, %v", theta, got, want)
 		}
-		all, _ := tr.repulse(0, pos[0], theta, k2, 0)
-		if all.y >= 0 || all.x >= got.x {
+		// unlimited, the far group pushes too: down and left, where the neighbour pushes along x
+		// alone (at theta 0.9 the walk may take the neighbour into one body with the rest)
+		if all, _ := tr.repulse(0, pos[0], theta, k2, 0); all.y >= 0 {
 			t.Errorf("theta %v, unlimited: %v; want the far group's push too", theta, all)
 		}
 		if none, _ := tr.repulse(1, pos[1], theta, k2, 40); none != (vec{}) {
