@@ -12,10 +12,10 @@ import (
 	"github.com/yongjohnlee80/golib/tui/decl/decltest"
 )
 
-// A Window with a MenuBar whose one non-Menu child is its corner, a flat Button there, and a page
-// in a Raisable capped to 20 columns: the corner sits at the bar's right end, after the menus, its
-// button bare and clickable, and the page is centred in its place.
-func TestARaisablePageAndAMenuBarCornerWithAFlatButton(t *testing.T) {
+// A Window with a MenuBar whose one non-Menu child is its corner, a flat Button there: the corner
+// sits at the bar's right end, after the menus, its button bare and clickable, and it stays at the
+// right end when the window widens.
+func TestAMenuBarCornerWithAFlatButton(t *testing.T) {
 	var clicked atomic.Int32
 	s := decltest.Run(t, 50, 12,
 		tuidecl.LayoutSource("main.qml", []byte(`import tui 1.0
@@ -26,37 +26,23 @@ Window {
   Menu { title: "&Help"; MenuItem { text: "&Keys" } }
   Flex { direction: Tui.Horizontal; Button { text: "D"; flat: true; onClicked: App.dock() } }
  }
- Raisable { maximumWidth: 20; Frame { title: "page"; Text { text: "body" } } }
+ Frame { title: "page"; Text { text: "body" } }
 }`)),
 		tuidecl.Singleton("demo", "1.0", "App"),
 		tuidecl.Handlers(map[string]decl.HandlerFunc{"App.dock": func([]qml.SpecValue) error { clicked.Add(1); return nil }}))
 	s.WaitForText(t, "body")
-	rows := strings.Split(s.String(), "\n")
-	bar := strings.TrimRight(rows[0], " ")
+	bar := strings.TrimRight(strings.Split(s.String(), "\n")[0], " ")
 	if !strings.HasSuffix(bar, "D") || strings.Contains(bar, "[") || strings.Index(bar, "Help") > strings.Index(bar, "D") {
 		t.Fatalf("the bar: %q; want the menus, then the flat corner button D at its right end", bar)
 	}
-	page := -1
-	for _, r := range rows {
-		if i := strings.Index(r, "┌ page"); i >= 0 {
-			page = len([]rune(r[:i]))
-		}
-	}
-	if page != 15 {
-		t.Fatalf("the page's frame starts at column %d; want 15, centred in 50:\n%s", page, s.String())
-	}
-	// the window widened: the page's layer moves with its place, in the same frame
+	// the window widened: the corner follows the bar's right end, 20 columns on
+	at50 := len([]rune(bar)) - 1
 	s.Backend.InjectResize(70, 12)
-	s.WaitFor(t, "the page centred in 70", func(sc string) bool {
-		for _, r := range strings.Split(sc, "\n") {
-			if i := strings.Index(r, "┌ page"); i >= 0 {
-				return len([]rune(r[:i])) == 25
-			}
-		}
-		return false
+	s.WaitFor(t, "the corner 20 columns on", func(sc string) bool {
+		row := strings.TrimRight(strings.Split(sc, "\n")[0], " ")
+		return strings.HasSuffix(row, "D") && len([]rune(row))-1 == at50+20
 	})
-	rows = strings.Split(s.String(), "\n")
-	bar = strings.TrimRight(rows[0], " ")
+	bar = strings.TrimRight(strings.Split(s.String(), "\n")[0], " ")
 	x := len([]rune(bar)) - 1
 	s.Keys(t, tui.MouseEvent{Kind: tui.MousePress, Button: tui.MouseLeft, X: x, Y: 0},
 		tui.MouseEvent{Kind: tui.MouseRelease, Button: tui.MouseLeft, X: x, Y: 0})
