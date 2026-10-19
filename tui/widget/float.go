@@ -16,6 +16,8 @@ type Anchor struct {
 	rect       tui.Rect
 	atFraction bool
 	frac       [4]float64 // x, y, w, h: percent of the overlay area
+	atNode     bool
+	node       tui.AnchorRef // OverNode's: the node whose rect the content covers
 }
 
 // The alignment anchors. Center is the Float default.
@@ -41,6 +43,12 @@ func AtRect(r tui.Rect) Anchor { return Anchor{atRect: true, rect: r} }
 func AtFraction(x, y, w, h float64) Anchor {
 	return Anchor{atFraction: true, frac: [4]float64{clampFrac(x), clampFrac(y), clampFrac(w), clampFrac(h)}}
 }
+
+// OverNode anchors the float over the node ref names (its Context.NodeAnchor, or a region it
+// declares): the content covers that rect and follows it through every layout, as Raisable's does
+// over its own place. When the node is not mounted or not laid out (hidden), the float hides itself
+// after that layout, so nothing of it is drawn or clicked; its owner shows it again (Raisable does).
+func OverNode(ref tui.AnchorRef) Anchor { return Anchor{atNode: true, node: ref} }
 
 // clampFrac is a percentage within 0 to 100; NaN is 0.
 func clampFrac(p float64) float64 {
@@ -271,7 +279,7 @@ func (f *Float) ContentRect() tui.Rect {
 // edge or a corner is docked there, and a window maximised to its work area (WindowMod) is not
 // floating either, reserved rows or not: it fills where a window may go.
 func (f *Float) Floating() bool {
-	if f.windowTarget != nil && f.windowTarget.Maximized() {
+	if f.windowTarget != nil && f.windowTarget.Maximized() || f.anchor.atNode {
 		return false
 	}
 	a := f.anchor
@@ -437,7 +445,11 @@ func (l *floatLayer) Layout(c tui.Constraints) tui.Size {
 	a := l.owner.anchor
 	var sz tui.Size
 	var x, y int
-	if a.atRect || a.atFraction {
+	if a.atNode {
+		r := l.overNode(a.node)
+		sz = l.ctx.LayoutChild(l.owner.child, tui.Tight(tui.Size{W: r.W, H: r.H}))
+		x, y = r.X, r.Y
+	} else if a.atRect || a.atFraction {
 		r := a.rect
 		if a.atFraction {
 			r = fractionRect(a.frac, tui.Rect{W: w, H: h})
@@ -490,6 +502,27 @@ func alignOffset(a tui.Align, avail, sz tui.Size) (x, y int) {
 		y = avail.H - sz.H
 	}
 	return max(x, 0), max(y, 0)
+}
+
+// overNode is where ref's node is, in the layer's cells, for an OverNode float. A node's absolute
+// rect is computed once the whole tree is laid out, so in the pass it is the previous frame's: the
+// commit after the pass compares the rect laid out with the one now current and lays out again
+// when they differ, so a page that moved is never painted where it was. The second pass resolves
+// the rect the first one settled, and the cycle ends. A node that no longer resolves hides the
+// float in that commit.
+func (l *floatLayer) overNode(ref tui.AnchorRef) tui.Rect {
+	r, _ := l.ctx.ResolveAnchor(ref)
+	ctx, f := l.ctx, l.owner
+	ctx.AfterLayout("float-over-node", func() {
+		now, ok := ctx.ResolveAnchor(ref)
+		switch {
+		case !ok:
+			f.Hide()
+		case now != r:
+			ctx.RequestLayout()
+		}
+	})
+	return r
 }
 
 // Render paints the scrim when dimming.

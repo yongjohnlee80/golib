@@ -17,6 +17,7 @@ type MenuBar struct {
 	Base
 	menu      *Menu
 	placement BarPlacement
+	corner    tui.Component // at the bar's end (WithCornerWidget); nil for none
 }
 
 // BarPlacement is the edge a MenuBar occupies.
@@ -107,6 +108,34 @@ func WithBarPlacement(p BarPlacement) MenuBarOption {
 	}
 }
 
+// WithCornerWidget puts c at the bar's end, its right on a horizontal bar and its foot on a vertical
+// one (Qt's QMenuBar::setCornerWidget, TopRightCorner). The menus lay out in what is left, so
+// PegRight menus sit beside it. A bar too short for both keeps its menus whole and cuts the corner.
+func WithCornerWidget(c tui.Component) MenuBarOption {
+	return func(b *MenuBar) { b.corner = c }
+}
+
+// Corner is the bar's corner widget; nil for none.
+func (b *MenuBar) Corner() tui.Component { return b.corner }
+
+// SetCorner replaces the corner widget (nil removes it), unmounting the one it replaces and
+// mounting c while the bar is mounted.
+func (b *MenuBar) SetCorner(c tui.Component) {
+	if c == b.corner {
+		return
+	}
+	if ctx := b.Context(); ctx != nil {
+		if b.corner != nil {
+			ctx.Unmount(b.corner)
+		}
+		if c != nil {
+			ctx.Mount(c)
+		}
+	}
+	b.corner = c
+	b.RequestLayout()
+}
+
 // Menu returns the menu this bar places. The model, the selection and the
 // open/close lifecycle all live there — this is the handle for all of it, rather
 // than a parallel API on the bar that could drift.
@@ -139,6 +168,9 @@ func (b *MenuBar) Init(ctx *tui.Context) {
 		b.menu.horizontal, b.menu.dropSide = prevH, prevSide
 	})
 	ctx.Mount(b.menu)
+	if b.corner != nil {
+		ctx.Mount(b.corner)
+	}
 }
 
 // NOT FOCUSABLE BY DESIGN — no tui.Focusable: the bar is not a tab stop; the
@@ -161,14 +193,53 @@ func (b *MenuBar) Layout(cs tui.Constraints) tui.Size {
 		return cs.Constrain(tui.Size{})
 	}
 	full := tui.Size{W: cs.MaxW, H: cs.MaxH}
-	got := ctx.LayoutChild(b.menu, tui.Loose(full))
+	horizontal := b.placement.horizontal()
+	along := func(s tui.Size) int { // a size's length along the bar
+		if horizontal {
+			return s.W
+		}
+		return s.H
+	}
+	cornerLen := 0
+	if b.corner != nil {
+		// the menus' own length first, unpegged (unbounded along the bar), then the corner in what
+		// they leave: the menus are never cut for it
+		free := full
+		if horizontal {
+			free.W = tui.Unbounded
+		} else {
+			free.H = tui.Unbounded
+		}
+		need := along(ctx.LayoutChild(b.menu, tui.Loose(free)))
+		want := along(ctx.LayoutChild(b.corner, tui.Loose(full)))
+		cornerLen = max(min(want, along(full)-need), 0)
+	}
+	menuArea := full
+	if horizontal {
+		menuArea.W -= cornerLen
+	} else {
+		menuArea.H -= cornerLen
+	}
+	got := ctx.LayoutChild(b.menu, tui.Loose(menuArea))
 
 	size := tui.Size{W: full.W, H: got.H} // a line across
-	if !b.placement.horizontal() {
+	if !horizontal {
 		size = tui.Size{W: got.W, H: full.H} // a column down
 	}
 	size = cs.Constrain(size)
-	ctx.PlaceChild(b.menu, tui.Rect{X: 0, Y: 0, W: size.W, H: size.H})
+	if horizontal {
+		ctx.PlaceChild(b.menu, tui.Rect{W: size.W - cornerLen, H: size.H})
+	} else {
+		ctx.PlaceChild(b.menu, tui.Rect{W: size.W, H: size.H - cornerLen})
+	}
+	if b.corner != nil {
+		r := tui.Rect{X: size.W - cornerLen, W: cornerLen, H: size.H}
+		if !horizontal {
+			r = tui.Rect{Y: size.H - cornerLen, W: size.W, H: cornerLen}
+		}
+		ctx.LayoutChild(b.corner, tui.Tight(tui.Size{W: r.W, H: r.H}))
+		ctx.PlaceChild(b.corner, r)
+	}
 	return size
 }
 
