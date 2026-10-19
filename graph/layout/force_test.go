@@ -124,6 +124,10 @@ func TestForceRefusesWhatItCannotPlace(t *testing.T) {
 		{"infinite spacing", ForceInput{Nodes: 8, Steps: 1, Spacing: float32(math.Inf(1))}, Limits{}, ErrInvalid},
 		{"NaN theta", ForceInput{Nodes: 8, Steps: 1, Theta: float32(math.NaN())}, Limits{}, ErrInvalid},
 		{"infinite theta", ForceInput{Nodes: 8, Steps: 1, Theta: float32(math.Inf(-1))}, Limits{}, ErrInvalid},
+		{"NaN reach", ForceInput{Nodes: 8, Steps: 1, Reach: float32(math.NaN())}, Limits{}, ErrInvalid},
+		{"infinite reach", ForceInput{Nodes: 8, Steps: 1, Reach: float32(math.Inf(1))}, Limits{}, ErrInvalid},
+		{"NaN link pull", ForceInput{Nodes: 8, Steps: 1, LinkPull: float32(math.NaN())}, Limits{}, ErrInvalid},
+		{"infinite link pull", ForceInput{Nodes: 8, Steps: 1, LinkPull: float32(math.Inf(1))}, Limits{}, ErrInvalid},
 		{"a layout past float32", ForceInput{Nodes: 8, Steps: 1, Seed: 7, Spacing: math.MaxFloat32}, Limits{}, ErrTooLarge},
 	}
 	for _, c := range cases {
@@ -363,3 +367,113 @@ func TestSimulationKeepsForcesLimits(t *testing.T) {
 }
 
 func abs32(v float32) float32 { return float32(math.Abs(float64(v))) }
+
+// looseAndCore is a linked core of n nodes (each joined to two earlier ones) and loose more nodes
+// no edge holds, after them.
+func looseAndCore(n, loose int) ForceInput {
+	in := ForceInput{Nodes: n + loose, Seed: 3}
+	rng := rand.New(rand.NewPCG(8, 1))
+	for i := 1; i < n; i++ {
+		in.Edges = append(in.Edges, Edge{From: i, To: rng.IntN(i)})
+		if i > 2 {
+			in.Edges = append(in.Edges, Edge{From: i, To: rng.IntN(i)})
+		}
+	}
+	return in
+}
+
+// spread is how far the loose nodes sit from the core, against the core's own size: the loose
+// nodes' median distance from the core's centre over the core's 90th-percentile radius.
+func spread(r ForceResult, core int) float64 {
+	var cx, cy float64
+	for _, p := range r.Nodes[:core] {
+		cx, cy = cx+float64(p.X), cy+float64(p.Y)
+	}
+	cx, cy = cx/float64(core), cy/float64(core)
+	radii := func(ps []Point) []float64 {
+		out := make([]float64, len(ps))
+		for i, p := range ps {
+			out[i] = math.Hypot(float64(p.X)-cx, float64(p.Y)-cy)
+		}
+		slices.Sort(out)
+		return out
+	}
+	in, out := radii(r.Nodes[:core]), radii(r.Nodes[core:])
+	return out[len(out)/2] / in[len(in)*9/10]
+}
+
+// Within a reach, and with linear links, the nodes no edge holds settle close round the linked
+// core, where without them every node pushes them out to a far ring the gravity alone holds.
+func TestForceReachKeepsLooseNodesNear(t *testing.T) {
+	const core, loose = 600, 200
+	lim := Limits{MaxNodes: 20000, MaxEdges: 100000, MaxWork: math.MaxInt}
+	place := func(reach, pull float32) float64 {
+		in := looseAndCore(core, loose)
+		in.Reach, in.LinkPull = reach, pull
+		r, err := Force(context.Background(), in, lim)
+		if err != nil {
+			t.Fatal(err)
+		}
+		return spread(r, core)
+	}
+	far, near := place(0, 0), place(8, 0.5)
+	t.Logf("loose nodes' median distance over the core's r90: %.2f unlimited, %.2f within reach 8, link pull 0.5", far, near)
+	if near > 2 || near > far/2 {
+		t.Errorf("within reach: %.2f; unlimited %.2f; want under 2 and under half", near, far)
+	}
+	if reachOnly := place(8, 0); reachOnly > far/2 {
+		t.Errorf("reach alone: %.2f; unlimited %.2f; want under half", reachOnly, far)
+	}
+}
+
+// A node pushes only what is within its reach: a neighbour inside it as without one, and a far
+// group not at all, whether the walk meets it as one body or opens its cell; a cell wholly out of
+// reach is not opened.
+func TestRepulsionStopsAtTheReach(t *testing.T) {
+	pos := []vec{{0, 0}, {50, 0}}
+	for i := range 20 {
+		pos = append(pos, vec{1000 + float64(i%5), 1000 + float64(i/5)})
+	}
+	var tr quadTree
+	tr.build(pos)
+	const k2 = 900
+	for _, theta := range []float64{0.9, 0} { // 0: every cell opened, to its leaves
+		got, _ := tr.repulse(0, pos[0], theta, k2, 100)
+		if want := (vec{-k2 / 50, 0}); math.Abs(got.x-want.x) > 1e-9 || math.Abs(got.y) > 1e-9 {
+			t.Errorf("theta %v, reach 100: %v; want the neighbour's push alone, %v", theta, got, want)
+		}
+		all, _ := tr.repulse(0, pos[0], theta, k2, 0)
+		if all.y >= 0 || all.x >= got.x {
+			t.Errorf("theta %v, unlimited: %v; want the far group's push too", theta, all)
+		}
+		if none, _ := tr.repulse(1, pos[1], theta, k2, 40); none != (vec{}) {
+			t.Errorf("theta %v, reach 40, neighbour 50 away: %v; want no push", theta, none)
+		}
+	}
+	// a cell wholly out of reach is not walked into: the far group costs nothing
+	_, near := tr.repulse(0, pos[0], 0, k2, 100)
+	_, every := tr.repulse(0, pos[0], 0, k2, 0)
+	if near*2 > every {
+		t.Errorf("every cell opened: %d cells walked within reach 100, %d without; want the far group skipped", near, every)
+	}
+}
+
+// A linear link settles where its spring meets the push and the gravity: two nodes, one edge, at
+// Spacing over the square root of the pull (and the gravity's share); the d² pull, near Spacing.
+func TestForceLinkPullIsASpring(t *testing.T) {
+	length := func(pull float32) float64 {
+		r, err := Force(context.Background(), ForceInput{Nodes: 2, Edges: []Edge{{From: 0, To: 1}}, Seed: 1, LinkPull: pull}, Limits{})
+		if err != nil {
+			t.Fatal(err)
+		}
+		return dist(r.Nodes[0], r.Nodes[1])
+	}
+	// on each node: k²/l out, pull·l in, gravity 0.02·l/2 in: l = k/sqrt(pull+0.01)
+	want := 30 / math.Sqrt(0.25+0.01)
+	if l := length(0.25); math.Abs(l-want) > want*0.05 {
+		t.Errorf("link pull 0.25: length %.2f; want %.2f", l, want)
+	}
+	if l := length(0); l > 45 {
+		t.Errorf("the d² pull: length %.2f; want near the spacing, 30", l)
+	}
+}
