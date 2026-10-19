@@ -71,3 +71,11 @@ func TestAMenuBarRefusesASecondCorner(t *testing.T) {
 		t.Fatalf("two corners: %v", err)
 	}
 }
+
+// A Button's flat is a boolean: anything else is refused, naming it.
+func TestAButtonsFlatIsABoolean(t *testing.T) {
+	_, err := mountDoc(t, "import tui 1.0\nWindow {\n Button { text: \"x\"; flat: \"yes\" } }")
+	if err == nil || !strings.Contains(err.Error(), "flat") {
+		t.Fatalf("flat: \"yes\": %v", err)
+	}
+}
