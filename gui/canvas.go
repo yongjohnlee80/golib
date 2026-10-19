@@ -170,11 +170,12 @@ func OpenCellColors(c Canvas, r CellRect) (fg, bg color.NRGBA, ok bool) {
 type Image struct {
 	op   paint.ImageOp
 	size image.Point
+	src  image.Image // as given: what an SVGCanvas writes as a data: URI
 }
 
 // NewImage prepares img for drawing. Make it once and keep it: preparing uploads it again.
 func NewImage(img image.Image) *Image {
-	return &Image{op: paint.NewImageOp(img), size: img.Bounds().Size()}
+	return &Image{op: paint.NewImageOp(img), size: img.Bounds().Size(), src: img}
 }
 
 // Size is the image's size in pixels.

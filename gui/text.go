@@ -106,6 +106,8 @@ type TextLayout struct {
 	Ascent, Descent float32 // baseline ascent and descent of the first line
 	lines           []shapedLine
 	scale           float32
+	font            Font   // what it was shaped in, and its family as resolved: for a canvas
+	family          string // that writes words rather than outlines (SVGCanvas)
 }
 
 // shapedLine is one line's outlines and colour glyphs, drawn with its dot at (x, y): device
@@ -114,6 +116,13 @@ type shapedLine struct {
 	path    clip.PathSpec
 	bitmaps op.CallOp
 	x, y    float32
+	runs    []textRun // the words it says, where: what an SVGCanvas writes
+}
+
+// textRun is a line's text from x, in device pixels as the line's own x is.
+type textRun struct {
+	text string
+	x    float32
 }
 
 // gioFont is f as Gio selects it.
@@ -243,21 +252,30 @@ func (t *TextShaper) Layout(s string, f Font, maxWidth float32) *TextLayout {
 		PxPerEm:  fixed.Int26_6(f.Size * t.scale * 64),
 		MaxWidth: maxW,
 	}, s)
-	tl := &TextLayout{scale: t.scale}
+	tl := &TextLayout{scale: t.scale, font: f, family: string(ft.Typeface)}
 	var line []text.Glyph
 	var firstY int32
 	var right fixed.Int26_6
 	var lastDescent fixed.Int26_6
+	rs, used := []rune(s), 0 // the runes the lines so far said: a glyph's cluster counts its own
 	flush := func() {
 		if len(line) == 0 {
 			return
 		}
+		n := 0
+		for _, g := range line {
+			n += int(g.Runes)
+		}
+		end := min(used+n, len(rs))
+		x := float32(line[0].X) / 64
 		tl.lines = append(tl.lines, shapedLine{
 			path:    t.shape(line),
 			bitmaps: t.s.Bitmaps(line),
-			x:       float32(line[0].X) / 64,
+			x:       x,
 			y:       float32(line[0].Y - firstY),
+			runs:    []textRun{{text: string(rs[used:end]), x: x}},
 		})
+		used = end
 		line = line[:0:0]
 	}
 	for g, ok := t.s.NextGlyph(); ok; g, ok = t.s.NextGlyph() {
@@ -291,9 +309,10 @@ type TextRun struct {
 // table row's cells drawn with one DrawText rather than one each. The runs share a baseline, the
 // tallest run's ascent below the layout's top; a newline in a run is drawn as a space.
 func (t *TextShaper) LayoutRuns(runs []TextRun, f Font) *TextLayout {
-	tl := &TextLayout{scale: t.scale}
+	tl := &TextLayout{scale: t.scale, font: f, family: string(gioFont(f, t.fonts).Typeface)}
 	var glyphs []text.Glyph
 	var right fixed.Int26_6
+	var said []textRun
 	for _, r := range runs {
 		if r.Text == "" {
 			continue
@@ -305,6 +324,7 @@ func (t *TextShaper) LayoutRuns(runs []TextRun, f Font) *TextLayout {
 			MaxWidth: 1 << 20,
 		}, s)
 		at := fixed.Int26_6(r.X * t.scale * 64)
+		said = append(said, textRun{text: s, x: float32(at) / 64})
 		first, origin := true, fixed.Int26_6(0)
 		for g, ok := t.s.NextGlyph(); ok; g, ok = t.s.NextGlyph() {
 			if first {
@@ -320,7 +340,7 @@ func (t *TextShaper) LayoutRuns(runs []TextRun, f Font) *TextLayout {
 	if len(glyphs) == 0 {
 		return tl
 	}
-	tl.lines = []shapedLine{{path: t.shape(glyphs), bitmaps: t.s.Bitmaps(glyphs), x: float32(glyphs[0].X) / 64}}
+	tl.lines = []shapedLine{{path: t.shape(glyphs), bitmaps: t.s.Bitmaps(glyphs), x: float32(glyphs[0].X) / 64, runs: said}}
 	tl.Width = float32(right) / 64 / t.scale
 	tl.Height = tl.Ascent + tl.Descent
 	return tl
