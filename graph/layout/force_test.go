@@ -451,6 +451,16 @@ func TestRepulsionStopsAtTheReach(t *testing.T) {
 			t.Errorf("theta %v, reach 40, neighbour 50 away: %v; want no push", theta, none)
 		}
 	}
+	// a node inside a wide cell, away from its edges, is in reach of it: its neighbour pushes, the
+	// corners, out of reach, do not
+	mid := []vec{{500, 500}, {550, 500}, {0, 0}, {1000, 0}, {0, 1000}, {1000, 1000}}
+	var mt quadTree
+	mt.build(mid)
+	for _, theta := range []float64{0.9, 0} {
+		if got, _ := mt.repulse(0, mid[0], theta, k2, 100); math.Abs(got.x+k2/50) > 1e-9 || math.Abs(got.y) > 1e-9 {
+			t.Errorf("theta %v, inside a wide cell, reach 100: %v; want the neighbour's push alone, {%v 0}", theta, got, -k2/50.0)
+		}
+	}
 	// a cell wholly out of reach is not walked into: the far group costs nothing
 	_, near := tr.repulse(0, pos[0], 0, k2, 100)
 	_, every := tr.repulse(0, pos[0], 0, k2, 0)
