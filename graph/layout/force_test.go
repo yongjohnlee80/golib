@@ -458,6 +458,25 @@ func TestRepulsionStopsAtTheReach(t *testing.T) {
 	}
 }
 
+// Reach is in Spacings: two nodes no edge joins push apart only within it, so the gravity draws
+// them in to its edge, where unlimited they rest far out.
+func TestForceReachIsInSpacings(t *testing.T) {
+	apart := func(reach float32) float64 {
+		r, err := Force(context.Background(), ForceInput{Nodes: 2, Seed: 1, Reach: reach}, Limits{})
+		if err != nil {
+			t.Fatal(err)
+		}
+		return dist(r.Nodes[0], r.Nodes[1])
+	}
+	// within reach 2 (60 at Spacing 30) the push wins; past it only the gravity acts
+	if d := apart(2); d < 45 || d > 75 {
+		t.Errorf("reach 2: %.1f apart; want near the reach, 60", d)
+	}
+	if d := apart(0); d < 150 {
+		t.Errorf("unlimited: %.1f apart; want far out, where the push meets the gravity", d)
+	}
+}
+
 // A linear link settles where its spring meets the push and the gravity: two nodes, one edge, at
 // Spacing over the square root of the pull (and the gravity's share); the d² pull, near Spacing.
 func TestForceLinkPullIsASpring(t *testing.T) {
