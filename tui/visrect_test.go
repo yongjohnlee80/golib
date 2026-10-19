@@ -96,6 +96,24 @@ func TestAnImagePartlyCutOffIsCropped(t *testing.T) {
 
 // The crop is rounded outward: an image scaled up over more cells than it has pixels keeps the
 // pixels under the cells that show, odd ratios included, and an explicit source offset is kept.
+// An image whose PNG does not decode is placed when it shows whole, which needs no crop, and not
+// when it is partly cut: its size, and so its crop, cannot be known.
+func TestAnUndecodableImageIsNotCropped(t *testing.T) {
+	c := &imaged{probe: &probe{name: "img"}, img: Image{ID: 93, PNG: []byte("not a png"), Version: 1}, show: true}
+	clip := &box{rects: []Rect{{W: 4, H: 6}}}
+	clip.Add(c)
+	root := &box{rects: []Rect{{W: 4, H: 6}}}
+	root.Add(clip)
+	h := startApp(t, root, 4, 8)
+	h.waitImages(map[uint32]ImagePlacement{93: {Image: c.img, Cols: 4, Rows: 6}})
+	h.onLoop(func() {
+		root.rects[0], clip.rects[0] = Rect{Y: 2, W: 4, H: 3}, Rect{Y: -2, W: 4, H: 6}
+		root.ctx.RequestLayout()
+		clip.ctx.RequestLayout()
+	})
+	h.waitImages(map[uint32]ImagePlacement{})
+}
+
 func TestCropTo(t *testing.T) {
 	for _, c := range []struct {
 		name            string
