@@ -57,7 +57,7 @@ func StdProperties() []Option { return typeOptions(stdTypes()) }
 
 // stdTypes is every standard widget type, in one table.
 func stdTypes() []Type {
-	return append(append(coreTypes(), appTypes()...), listViewType, comboBoxType, tableViewType, tableViewColumnType, treeViewType, buttonBoxType, drawerType, focusScopeType, tabViewType, tabType, checkBoxType, markdownRendererType, htmlDocumentViewType, windowModType, windowButtonsType, windowTaskbarType)
+	return append(append(coreTypes(), appTypes()...), listViewType, comboBoxType, tableViewType, tableViewColumnType, treeViewType, buttonBoxType, drawerType, focusScopeType, tabViewType, tabType, checkBoxType, markdownRendererType, htmlDocumentViewType, windowModType, windowButtonsType, windowTaskbarType, raisableType)
 }
 
 // tuiEnums is every enum the standard vocabulary accepts. The Tui singleton's
@@ -97,7 +97,7 @@ func coreTypes() []Type {
 				"spacing":    setter("a Flow", cellsOf, (*tui.Flow).SetSpacing),
 				"rowSpacing": setter("a Flow", cellsOf, (*tui.Flow).SetRowSpacing),
 			}},
-		{Name: "Button", Build: buildButton, restyle: restyleButton, Setters: map[string]Setter{
+		{Name: "Button", Build: buildButton, Ctor: []string{"flat"}, restyle: restyleButton, Setters: map[string]Setter{
 			"enabled": setter("a Button", boolOf, (*widget.Button).SetEnabled),
 			// Qt's AbstractButton.text: `&` marks the mnemonic, "&Save".
 			"text": textSetter("a Button", setButtonText, (*widget.Button).SetLabelMessage),
@@ -208,8 +208,18 @@ func adoptFlexChild(parent, child tui.Component, attached map[string]qml.SpecVal
 // declaration. Two declarations of the same property exposed it — construction
 // took the LAST while the replay ran in DOCUMENT order — which is the general
 // shape of consuming a property without saying so.
+// buildButton reads Qt's Button.flat: no brackets, the label alone (a toolbar's, a dock's icon).
 func buildButton(b Build) (tui.Component, []string, error) {
-	return widget.NewButton("", widget.WithOnActivate(b.Emitter("clicked"))), nil, nil
+	var flat bool
+	consumed, err := readProps(b.Props, map[string]field{"flat": into(&flat, boolOf)})
+	if err != nil {
+		return nil, nil, err
+	}
+	opts := []widget.ButtonOption{widget.WithOnActivate(b.Emitter("clicked"))}
+	if flat {
+		opts = append(opts, widget.WithButtonDecoration("", ""))
+	}
+	return widget.NewButton("", opts...), consumed, nil
 }
 
 // wrapModes are Qt's Text.wrapMode values this toolkit has.

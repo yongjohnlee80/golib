@@ -237,7 +237,7 @@ func buildMenuBar(b Build) (tui.Component, []string, error) {
 	}
 	menuOpts := []widget.MenuOption{widget.WithMenuVimNavigation(vim)}
 
-	top, err := barRows(b.Children)
+	top, corner, err := barRows(b.Children)
 	if err != nil {
 		return nil, nil, fmt.Errorf("%w (at %s)", err, b.Pos)
 	}
@@ -285,6 +285,9 @@ func buildMenuBar(b Build) (tui.Component, []string, error) {
 			return nil, nil, fmt.Errorf("Dock.edge: %w", err)
 		}
 		barOpts = append(barOpts, widget.WithBarPlacement(barPlacements[edge]))
+	}
+	if corner != nil {
+		barOpts = append(barOpts, widget.WithCornerWidget(corner))
 	}
 	bar.bar = widget.NewMenuBar(bar.menu, barOpts...)
 	return bar, consumed, nil
@@ -356,27 +359,41 @@ func rowID(parent widget.ItemID, n *menuNode, anon *int) widget.ItemID {
 
 // arrange takes the bar's Menus as they now are and projects them.
 func (m *menuBarNode) arrange(children []tui.Component, _ []map[string]qml.SpecValue, _ tui.Component) error {
-	rows, err := barRows(children)
+	rows, corner, err := barRows(children)
 	if err != nil {
 		return err
 	}
 	m.rows = rows
+	m.bar.SetCorner(corner)
 	return m.project()
 }
 
-// barRows reads a MenuBar's children: Menus, and nothing else.
-func barRows(children []tui.Component) ([]*menuNode, error) {
-	const refusal = "a MenuBar holds Menu rows only"
-	rows, err := menuRows(children, refusal)
+// barRows reads a MenuBar's children: its Menus, and at most one other child, its corner widget
+// (Qt's QMenuBar::setCornerWidget): at the bar's end, after the menus.
+func barRows(children []tui.Component) ([]*menuNode, tui.Component, error) {
+	const refusal = "a MenuBar holds Menus, and at most one other child: its corner widget"
+	var menus []tui.Component
+	var corner tui.Component
+	for _, c := range children {
+		if _, ok := c.(*menuNode); ok {
+			menus = append(menus, c)
+			continue
+		}
+		if corner != nil {
+			return nil, nil, errors.New(refusal)
+		}
+		corner = c
+	}
+	rows, err := menuRows(menus, refusal)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 	for _, n := range rows {
 		if n.kind != "Menu" {
-			return nil, errors.New(refusal)
+			return nil, nil, errors.New(refusal)
 		}
 	}
-	return rows, nil
+	return rows, corner, nil
 }
 
 // barPlacements orients a bar to the edge it is docked on, so dropdowns open
