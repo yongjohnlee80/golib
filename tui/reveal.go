@@ -15,9 +15,10 @@ type Revealer interface {
 	Reveal(r Rect) (moved bool)
 }
 
-// maxRevealPasses bounds the commit loop's passes a frame gives the reveal, below the loop's own
-// maxCommitPasses, so a deep nesting can never trip that guard: what is left is served next frame.
-const maxRevealPasses = 6
+// maxRevealSteps bounds the reveal steps one frame serves, each a Revealer that moved and the
+// layout that follows it: a deep nesting is served over several frames, never in one frame's work
+// without end.
+const maxRevealSteps = 6
 
 // requestReveal records a reveal for n, newly focused, when a Revealer is around it, and asks for
 // the layout that serves it. Focus that no Revealer contains costs nothing.

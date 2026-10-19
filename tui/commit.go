@@ -127,7 +127,15 @@ func (a *App) runCommitPhase() {
 // invalidated. Bounded, and exhaustion is a fatal rather than a dropped frame:
 // a component that cannot settle in eight passes has a feedback loop, and
 // silently rendering the eighth attempt would hide it forever.
+//
+// Once geometry settles, a pending reveal (reveal.go) is served one step at a time. A step that
+// scrolls an ancestor lays the tree out again, and that geometry settles on a budget of its own:
+// the guard counts the passes of one settling, so ordinary commits, however many passes they
+// legally take, never use up the reveal's turn. At most maxRevealSteps are served a frame; the
+// rest of a deep nesting is served on the next, which starts with a step of its own, so a reveal
+// always progresses.
 func (a *App) layoutAndCommit() {
+	steps := 0 // reveal steps served this frame
 	for pass := 0; ; pass++ {
 		if pass >= maxCommitPasses {
 			panic(errs.Fatal{
@@ -142,19 +150,20 @@ func (a *App) layoutAndCommit() {
 		if a.layoutDirty {
 			continue // a commit callback changed geometry: lay out again before anything else
 		}
-		// the geometry is settled: one reveal step, if one is pending (reveal.go)
-		if a.reveal {
-			if pass+1 >= maxRevealPasses {
-				// the rest of a deep nesting is served on the next frame, the request kept
-				a.layoutDirty = true
-				a.queue.wakeUp()
-				return
-			}
-			if a.revealStep() {
-				a.layoutDirty = true // an ancestor scrolled: lay out again, then serve the next one out
-				continue
-			}
+		if !a.reveal {
+			return
 		}
-		return
+		if steps == maxRevealSteps {
+			// the rest is served on the next frame, the request kept
+			a.layoutDirty = true
+			a.queue.wakeUp()
+			return
+		}
+		if !a.revealStep() {
+			return // nothing moved: the request is cleared
+		}
+		steps++
+		a.layoutDirty = true // an ancestor scrolled: lay out again, then serve the next one out
+		pass = -1            // that layout settles on its own budget
 	}
 }
