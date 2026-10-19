@@ -36,6 +36,10 @@ import (
 type Theme struct {
 	Background, Text, Line, NodeFill, NodeStroke, ClusterFill, ClusterStroke color.NRGBA
 	Font                                                                     gui.Font
+	// Tint is a mind map node's own colour, by its ID, in place of its branch's: a caller that
+	// colours nodes by what they are (a document's type). nil, or false for a node, keeps the
+	// branch's tint. Other diagrams ignore it.
+	Tint func(id string) (color.NRGBA, bool)
 }
 
 // wrapAt is the width a label wraps at, in logical pixels, as Mermaid's does.

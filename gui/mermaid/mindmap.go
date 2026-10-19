@@ -45,10 +45,20 @@ func layMindmap(ctx context.Context, d pm.Diagram, width float32, th Theme, m gu
 		}
 		nf := f
 		fill, stroke := th.NodeFill, th.NodeStroke
-		if n.Parent < 0 { // the root: larger, bold, in the strongest fill
+		own, tinted := color.NRGBA{}, false
+		if th.Tint != nil {
+			own, tinted = th.Tint(n.ID)
+		}
+		switch {
+		case tinted: // its own colour, stronger than a branch's: it says what the node is
+			fill, stroke = mix(th.NodeFill, own, 0.35), mix(th.NodeStroke, own, 0.75)
+			if n.Parent < 0 {
+				nf.Size, nf.Bold = em*1.15, true
+			}
+		case n.Parent < 0: // the root: larger, bold, in the strongest fill
 			nf.Size, nf.Bold = em*1.15, true
 			fill = mix(th.NodeFill, th.NodeStroke, 0.3)
-		} else {
+		default:
 			tint := tints[branch[i]%len(tints)]
 			fill, stroke = mix(th.NodeFill, tint, 0.22), mix(th.NodeStroke, tint, 0.35)
 		}
