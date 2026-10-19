@@ -1,7 +1,9 @@
 package mermaid
 
 import (
+	"context"
 	"errors"
+	"image/color"
 	"testing"
 
 	"github.com/yongjohnlee80/golib/gui"
@@ -89,6 +91,39 @@ func TestAMindmapsShapesAndBranches(t *testing.T) {
 	}
 	if l.nodes[1].fill != l.nodes[2].fill || l.nodes[3].fill != l.nodes[4].fill || l.nodes[1].fill == l.nodes[3].fill {
 		t.Error("a branch's nodes do not share their tint, or two branches share one")
+	}
+}
+
+// A node the theme tints takes its own colour, root included, in place of its branch's; a node it
+// does not tint keeps its branch's, and a theme with no Tint lays out as before.
+func TestAMindmapsNodesTakeTheirOwnTint(t *testing.T) {
+	src := "mindmap\n  r\n    a[sq]\n      a1(ro)\n    b((ci))\n      b1))ba(("
+	m, release := gui.AcquireMeasurer(1)
+	defer release()
+	plain, err := Lay(context.Background(), src, 4000, testTheme, m)
+	if err != nil {
+		t.Fatal(err)
+	}
+	red := color.NRGBA{R: 0xff, A: 0xff}
+	th := testTheme
+	th.Tint = func(id string) (color.NRGBA, bool) { return red, id == "r" || id == "a1" }
+	tinted, err := Lay(context.Background(), src, 4000, th, m)
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := func() (color.NRGBA, color.NRGBA) { return mix(th.NodeFill, red, 0.35), mix(th.NodeStroke, red, 0.75) }
+	for _, i := range []int{0, 2} { // r, a1
+		if f, s := want(); tinted.nodes[i].fill != f || tinted.nodes[i].stroke != s {
+			t.Errorf("node %d, tinted: fill %v stroke %v; want %v %v", i, tinted.nodes[i].fill, tinted.nodes[i].stroke, f, s)
+		}
+	}
+	if !tinted.nodes[0].label.font.Bold {
+		t.Error("the tinted root lost its bold")
+	}
+	for _, i := range []int{1, 3, 4} { // a, b, b1: their branches' tints
+		if tinted.nodes[i].fill != plain.nodes[i].fill || tinted.nodes[i].stroke != plain.nodes[i].stroke {
+			t.Errorf("node %d, not tinted: %v; want its branch's %v", i, tinted.nodes[i].fill, plain.nodes[i].fill)
+		}
 	}
 }
 
