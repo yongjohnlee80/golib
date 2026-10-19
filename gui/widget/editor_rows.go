@@ -15,8 +15,12 @@ var _ tuiwidget.EditorRowLayout = (*pixelLayout)(nil)
 // row's end is its last cluster, not the next row's first.
 
 // rowsOf is line's display rows in its laid block: a block line and one of its paragraph's lines
-// each, in reading order.
+// each, in reading order. Before the first paint there is no shaper to lay out with: none, so a
+// line is one row.
 func (l *pixelLayout) rowsOf(line int) (*laidBlock, [][2]int) {
+	if l.sh == nil {
+		return nil, nil
+	}
 	i := l.blockOf(line)
 	if i >= len(l.blocks) {
 		return nil, nil

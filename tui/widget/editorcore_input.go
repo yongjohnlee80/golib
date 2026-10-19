@@ -369,7 +369,7 @@ func (c *EditorCore) handleInsertKey(k tui.KeyEvent) bool {
 		if k.Code == tui.KeyUp {
 			delta = -1
 		}
-		ln, col := b.verticalTarget(delta, c.measure)
+		ln, col := c.lineTarget(delta)
 		d := b.desired
 		b.moveCursor(ln, col, false)
 		b.desired = d

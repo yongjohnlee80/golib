@@ -247,7 +247,7 @@ func (c *EditorCore) move(act Action, count int) {
 		if act == ActUp {
 			delta = -count
 		}
-		ln, col := c.buf.verticalTarget(delta, c.measure)
+		ln, col := c.lineTarget(delta)
 		d := c.buf.desired
 		apply(ln, col)
 		c.buf.desired = d
@@ -256,7 +256,7 @@ func (c *EditorCore) move(act Action, count int) {
 		if act == ActPageUp {
 			delta = -delta
 		}
-		ln, col := c.buf.verticalTarget(delta, c.measure)
+		ln, col := c.lineTarget(delta)
 		d := c.buf.desired
 		apply(ln, col)
 		c.buf.desired = d

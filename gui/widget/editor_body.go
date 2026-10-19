@@ -355,6 +355,7 @@ func (v bodyView) Paint(c gui.Canvas) {
 	b.caretOn = false
 	cl, ccol := e.core.Line()
 	visualLine := e.core.Mode() == tuiwidget.ModeVisualLine
+	visual := visualLine || e.core.Mode() == tuiwidget.ModeVisual || e.core.Mode() == tuiwidget.ModeVisualBlock
 	sel := selColor(th)
 	for i := top; i < len(l.blocks) && y-l.scroll < h; i++ {
 		lb := l.lay(i, frame)
@@ -387,6 +388,17 @@ func (v bodyView) Paint(c gui.Canvas) {
 				ph = last.Y + last.Para.Height
 			}
 			lb.bl.Picture.Paint(c.Sub(gui.Rect{X: textLeft, Y: oy + ph, W: lb.bl.PictureSize.W, H: lb.bl.PictureSize.H}))
+			if len(lb.bl.Lines) == 0 {
+				first := l.blocks[i].From
+				if e.numbers { // a picture has no line of its own to number: its first
+					b.paintNumber(c, first, oy+l.lineHeight(l.monoFont())*0.8, cl >= first && cl < l.blocks[i].To, th)
+				}
+				if visual && e.core.Highlighted(first, 0, b.focused) { // selected: tinted over
+					tint := sel
+					tint.A = 96
+					c.FillRect(gui.Rect{X: textLeft - padX/2, Y: oy, W: l.width + padX, H: lb.bl.Height}, gui.Solid(tint))
+				}
+			}
 		}
 		if cl >= l.blocks[i].From && cl < l.blocks[i].To {
 			if li, pos, ok := posIn(lb, cl, ccol); ok {
@@ -408,6 +420,14 @@ func (v bodyView) Paint(c gui.Canvas) {
 	}
 	if b.caretOn {
 		paintCaret(c, b.caret, e.core.Mode(), th)
+	}
+	if !b.caretOn && b.focused { // no caret: the cursor's line is in a fold, drawn on the fold
+		// after the blocks, not with its own: a hidden fold has no height, and no block is painted for it
+		if r, hidden, ok := l.foldRect(cl); ok {
+			r.X += textLeft
+			r.Y += padY - l.scroll
+			paintFold(c, r, hidden, th)
+		}
 	}
 }
 

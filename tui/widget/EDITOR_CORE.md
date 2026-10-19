@@ -337,6 +337,16 @@ the mode is Normal until the command is complete. `OneShotMode()` says which mod
 - `gj` and `gk` move by display row in wrapped text. A layout that wraps implements
   `EditorRowLayout`: `RowCount(line)`, `RowOf(line, col) (row, x)` and `ColAt(line, row, x)`, in
   its own units. The terminal `Editor`'s layout does. Without one, each line is one row.
+- **Folds** (ADR 1792414684): a layout that draws some runs of lines as one implements
+  `EditorFoldLayout`: `FoldOf(line) (from, to, hidden, ok)`. The GUI's Rendered view does: a
+  diagram's picture, or hidden metadata, while nothing is typed. As Vim's closed folds:
+  - j, k, gj, gk, the arrows and the page moves count a fold as one row, and land on its first line
+    at column 0;
+  - a hidden fold is no row, and a move passes it;
+  - an operator over a fold takes it whole, linewise (`x` and `D` too), and a linewise put goes below
+    or above it.
+
+  Without the interface, nothing folds.
 
 ## Writing aids
 

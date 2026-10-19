@@ -61,20 +61,23 @@ func newPixelLayout(e *Editor) *pixelLayout {
 // --- tuiwidget.EditorLayout ---------------------------------------------------------------
 
 // Reveal scrolls the caret at (line, col) into view: down or up, and sideways when long lines
-// are not wrapped.
+// are not wrapped. A line in a fold has no caret: its fold comes into view, its top first when it
+// is taller than the view.
 func (l *pixelLayout) Reveal(line, col int) {
 	if l.height <= 0 {
 		return
 	}
 	r, ok := l.caretAt(line, col)
 	if !ok {
-		return
+		if r, _, ok = l.foldRect(line); !ok {
+			return
+		}
 	}
 	switch {
 	case r.Y < l.scroll:
 		l.scroll = r.Y
 	case r.Y+r.H > l.scroll+l.height-2*padY:
-		l.scroll = r.Y + r.H - (l.height - 2*padY)
+		l.scroll = min(r.Y, r.Y+r.H-(l.height-2*padY))
 	}
 	l.scroll = max(l.scroll, 0)
 	if l.sideways() {

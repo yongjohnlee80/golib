@@ -61,19 +61,24 @@ func (c *EditorCore) rowTarget(down bool, count int) (to taPos, moved bool) {
 		switch {
 		case down && row+1 < rl.RowCount(ln):
 			row++
-		case down && ln+1 < len(b.lines):
-			ln, row = ln+1, 0
 		case !down && row > 0:
 			row--
-		case !down && ln > 0:
-			ln--
-			row = rl.RowCount(ln) - 1
-		default:
-			continue // the text's end: as far as it goes
+		default: // the next line's row, a fold one row (lineStep), as far as the text goes
+			next, ok := c.lineStep(ln, down)
+			if !ok {
+				continue
+			}
+			ln, row = next, 0
+			if !down {
+				row = rl.RowCount(ln) - 1
+			}
 		}
 		moved = true
 	}
 	to = taPos{ln, rl.ColAt(ln, row, x)}
+	if c.inFold(ln) {
+		to.col = 0 // a fold's cursor is in its first column, as j's (lineTarget)
+	}
 	c.rowSticky = rowSticky{x: x, at: to, ok: true}
 	return to, moved
 }
