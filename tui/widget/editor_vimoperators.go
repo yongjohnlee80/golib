@@ -36,10 +36,9 @@ func (c *EditorCore) opTarget(act Action, count int, hadCount bool) (to taPos, k
 	case ActLeftWrap:
 		l, cc := c.leftWrapPos(count)
 		return taPos{l, cc}, exclusive, l != ln || cc != col
-	case ActDown, ActLineDownFirst:
-		return taPos{min(ln+count, last), 0}, linewise, ln < last
-	case ActUp, ActLineUpFirst:
-		return taPos{max(ln-count, 0), 0}, linewise, ln > 0
+	case ActDown, ActLineDownFirst, ActUp, ActLineUpFirst: // rows: a fold is one
+		to, moved := c.rowsFrom(ln, count, act == ActDown || act == ActLineDownFirst)
+		return taPos{to, 0}, linewise, moved
 	case ActPageDown, ActPageUp, ActHalfPageDown, ActHalfPageUp:
 		n := c.pageLines() * count
 		if act == ActHalfPageDown || act == ActHalfPageUp {
@@ -48,10 +47,8 @@ func (c *EditorCore) opTarget(act Action, count int, hadCount bool) (to taPos, k
 				n = count
 			}
 		}
-		if act == ActPageUp || act == ActHalfPageUp {
-			return taPos{max(ln-n, 0), 0}, linewise, ln > 0
-		}
-		return taPos{min(ln+n, last), 0}, linewise, ln < last
+		to, moved := c.rowsFrom(ln, n, act == ActPageDown || act == ActHalfPageDown)
+		return taPos{to, 0}, linewise, moved
 	case ActLineStart:
 		return taPos{ln, 0}, exclusive, true
 	case ActFirstNonBlank: // ^ ignores a count
@@ -298,7 +295,7 @@ func (c *EditorCore) runOp(op Action, to taPos, kind motionKind) {
 		}
 		return
 	}
-	c.applyOp(op, r)
+	c.applyOp(op, c.wholeFolds(r))
 }
 
 // opMotions are the actions an operator takes as its motion.

@@ -970,6 +970,10 @@ func (c *EditorCore) execAction(act Action, count int) bool {
 
 	// Normal-mode edits.
 	case ActDeleteChar:
+		if c.inFold(b.ln) { // x is dl, which takes a fold whole (Vim's fold-behavior)
+			c.runOp(ActDeletePrefix, taPos{b.ln, b.col + 1}, exclusive)
+			return true
+		}
 		cs := b.lineClusters(b.ln)
 		if len(cs) == 0 {
 			return true
@@ -982,6 +986,10 @@ func (c *EditorCore) execAction(act Action, count int) bool {
 		c.edited()
 		return true
 	case ActDeleteToEnd:
+		if c.inFold(b.ln) { // D is d$, which takes a fold whole
+			c.runOp(ActDeletePrefix, taPos{b.ln, b.col + 1}, exclusive)
+			return true
+		}
 		cs := b.lineClusters(b.ln)
 		if b.col < len(cs) {
 			c.beginGroup()

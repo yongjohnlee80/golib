@@ -283,7 +283,12 @@ func (c *EditorCore) putEntry(e regEntry, after bool, count int) {
 	c.beginGroup()
 	if linewise {
 		at := c.buf.ln
-		if after {
+		if from, to, _, ok := c.foldLayout().FoldOf(at); ok { // around a fold, as Vim puts
+			at = from
+			if after {
+				at = to
+			}
+		} else if after {
 			at++
 		}
 		newLines := strings.Split(strings.Repeat(text+"\n", count-1)+text, "\n")

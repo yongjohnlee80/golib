@@ -242,7 +242,7 @@ func (c *EditorCore) halfPage(down, hadCount bool, count int) {
 	if vp, ok := c.layout.(EditorViewport); ok {
 		vp.ScrollLines(n)
 	}
-	ln, col := c.buf.verticalTarget(n, c.measure) // keeps the sticky column in desired
+	ln, col := c.lineTarget(n) // keeps the sticky column in desired; a fold is a row
 	c.buf.moveCursor(ln, col, false)
 	c.clampNormal()
 	c.reveal()

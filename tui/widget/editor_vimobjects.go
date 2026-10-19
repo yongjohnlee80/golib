@@ -283,7 +283,7 @@ func (c *EditorCore) runObject(op Action, r opRange) {
 		}
 		return
 	}
-	c.applyOp(op, r)
+	c.applyOp(op, c.wholeFolds(r))
 }
 
 // selectObject makes a text object the Visual selection: whole lines for ip and ap, else from its

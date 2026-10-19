@@ -45,7 +45,7 @@ func (c *EditorCore) visualOp(op Action, count int, char string) {
 		c.recordVisual(redo, func() { c.blockApply(op, v, count, char) })
 		return
 	}
-	r := c.visualOpRange()
+	r := c.wholeFolds(c.visualOpRange())
 	redo := visualRedo{op: op, lines: r.lines, nLine: r.hiEx.ln - r.lo.ln + 1, count: count, char: char}
 	switch {
 	case r.lines:
