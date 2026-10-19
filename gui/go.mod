@@ -5,7 +5,7 @@ go 1.25.3
 toolchain go1.26.9
 
 require (
-	github.com/yongjohnlee80/golib v0.7.6
+	github.com/yongjohnlee80/golib v0.7.12
 	golang.org/x/image v0.45.0
 )
 
