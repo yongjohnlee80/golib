@@ -294,6 +294,11 @@ type qcell struct {
 	kids   [4]int // child cells by quadrant; 0 for none (cell 0 is the root, never a child)
 }
 
+// farthest is how far p is from the cell's square's farthest corner.
+func (c qcell) farthest(p vec) float64 {
+	return math.Hypot(max(p.x-c.lo.x, c.hi.x-p.x), max(p.y-c.lo.y, c.hi.y-p.y))
+}
+
 // gap is how far p is from the cell's square: 0 inside it.
 func (c qcell) gap(p vec) float64 {
 	dx := max(c.lo.x-p.x, 0, p.x-c.hi.x)
@@ -395,9 +400,12 @@ func (t *quadTree) repulse(i int, p vec, theta, k2, reach float64) (f vec, work 
 		}
 		d, l := p.near(c.centre)
 		leaf := c.kids == [4]int{}
-		if leaf || (c.hi.x-c.lo.x)/max(l, 1e-9) < theta {
+		// Within a reach, a cell is one body only when it is wholly in reach: one that straddles
+		// the reach is opened, so its nodes in reach push and the rest do not.
+		far := (c.hi.x-c.lo.x)/max(l, 1e-9) < theta && (reach == 0 || c.farthest(p) <= reach)
+		if leaf || far {
 			if reach > 0 && l > reach {
-				continue // a body out of reach: its nodes' mean is, so they push not
+				continue // a leaf out of reach (a bucket's nodes, at their mean)
 			}
 			if l < 1e-9 {
 				// Two nodes on one point: a fixed nudge by index, so they part the same way each run.
