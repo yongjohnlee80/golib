@@ -325,16 +325,8 @@ func (l *Laid) outline(c gui.Canvas, n laidNode) {
 	}
 }
 
-// ellipse is the outline of the ellipse in r, as four cubic arcs.
-func ellipse(r gui.Rect) *gui.Path {
-	const k = 0.5523 // the cubic's handle for a quarter circle
-	cx, cy, rx, ry := r.X+r.W/2, r.Y+r.H/2, r.W/2, r.H/2
-	return new(gui.Path).MoveTo(gui.Pt(cx+rx, cy)).
-		CubeTo(gui.Pt(cx+rx, cy+ry*k), gui.Pt(cx+rx*k, cy+ry), gui.Pt(cx, cy+ry)).
-		CubeTo(gui.Pt(cx-rx*k, cy+ry), gui.Pt(cx-rx, cy+ry*k), gui.Pt(cx-rx, cy)).
-		CubeTo(gui.Pt(cx-rx, cy-ry*k), gui.Pt(cx-rx*k, cy-ry), gui.Pt(cx, cy-ry)).
-		CubeTo(gui.Pt(cx+rx*k, cy-ry), gui.Pt(cx+rx, cy-ry*k), gui.Pt(cx+rx, cy)).Close()
-}
+// ellipse is the outline of the ellipse in r (gui.Path.Ellipse).
+func ellipse(r gui.Rect) *gui.Path { return new(gui.Path).Ellipse(r) }
 
 // halfEllipse is the lower half of the ellipse in r: a cylinder's base.
 func halfEllipse(r gui.Rect) *gui.Path {

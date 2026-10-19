@@ -4,6 +4,8 @@ import (
 	"context"
 	"errors"
 	"image/color"
+	"reflect"
+	"slices"
 	"testing"
 
 	"github.com/yongjohnlee80/golib/gui"
@@ -139,5 +141,53 @@ func TestAMindmapEmptyNarrowAndDeclined(t *testing.T) {
 	}
 	if _, err := lay(t, "mindmap\n  a\n    b\n    ::icon(fa fa-book)", 400); !errors.Is(err, pm.ErrUnsupported) {
 		t.Errorf("an icon: %v, want ErrUnsupported", err)
+	}
+}
+
+// A legend's outline is the map's: PaintMindShape draws each shape as a laid-out node of it is
+// drawn, and a shape it does not know as the default's rounded box.
+func TestPaintMindShapeIsTheMapsOutline(t *testing.T) {
+	box := gui.Rect{X: 2, Y: 3, W: 40, H: 16}
+	fill, stroke := color.NRGBA{R: 1, A: 0xff}, color.NRGBA{G: 2, A: 0xff}
+	ops := func(s pm.MindShape) []gui.PaintCall {
+		rc := gui.NewRecordingCanvas(gui.Size{W: 64, H: 32}, gui.Size{W: 8, H: 16})
+		PaintMindShape(rc, s, box, fill, stroke, 1.2, 14)
+		return rc.Calls
+	}
+	kinds := func(cs []gui.PaintCall) (out []string) {
+		for _, c := range cs {
+			out = append(out, c.Op)
+		}
+		return out
+	}
+	for _, c := range []struct {
+		s      pm.MindShape
+		want   []string
+		radius float32 // a rounded box's corner; -1 for none
+	}{
+		{pm.MindSquare, []string{"FillRRect", "StrokeRRect"}, 0},
+		{pm.MindDefault, []string{"FillRRect", "StrokeRRect"}, 4}, // min(H/4, 8)
+		{pm.MindRounded, []string{"FillRRect", "StrokeRRect"}, 8}, // a stadium: H/2
+		{pm.MindCloud, []string{"FillRRect", "StrokeRRect"}, 8},
+		{pm.MindCircle, []string{"FillEllipse", "StrokePath"}, -1},
+		{pm.MindBang, []string{"FillEllipse", "StrokePath", "StrokePath"}, -1},
+		{pm.MindHexagon, []string{"FillPath", "StrokePath"}, -1},
+		{pm.MindShape(200), []string{"FillRRect", "StrokeRRect"}, 4},
+	} {
+		got := ops(c.s)
+		if k := kinds(got); !slices.Equal(k, c.want) {
+			t.Errorf("shape %v: %v; want %v", c.s, k, c.want)
+			continue
+		}
+		if c.radius >= 0 && (got[0].Radius != c.radius || got[0].Rect != box) {
+			t.Errorf("shape %v: a box %v radius %v; want %v radius %v", c.s, got[0].Rect, got[0].Radius, box, c.radius)
+		}
+	}
+	// the very outline a laid-out node of a shape gets
+	l := &Laid{th: Theme{Font: gui.Font{Size: 14}}}
+	rc := gui.NewRecordingCanvas(gui.Size{W: 64, H: 32}, gui.Size{W: 8, H: 16})
+	l.outline(rc, laidNode{form: formHexagon, box: box, fill: fill, stroke: stroke, width: 1.2})
+	if got := ops(pm.MindHexagon); !reflect.DeepEqual(got, rc.Calls) {
+		t.Error("PaintMindShape's hexagon is not a laid node's")
 	}
 }
