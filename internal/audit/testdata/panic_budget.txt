@@ -158,6 +158,7 @@ tui/decl/registry.go	Register	265834da747e1893	1	construction	Register: duplicat
 tui/decl/windowmod.go	windowButtonsNode.Init	0476736ce225cd41	1	construction	A declared controls view needs a named or enclosing window target; validated during initial binding before it receives input.
 tui/dock.go	Dock.Pin	a12683e0ef5695d7	1	construction	tui.Dock.Pin: nil child while the dock is being built
 tui/dock.go	Dock.Pin	fb15f5b2d280ef64	1	construction	tui.Dock.Pin: an edge outside the four constants, while the dock is being built
+tui/dock.go	Dock.SetEdge	0ceebe830facead9	1	invariant	tui.Dock.SetEdge: an edge outside the DockEdge constants, a programmer error no data can cause (the decl Window passes a Drawer's parsed edge)
 tui/flex.go	Flex.AddWeighted	1d7a641b179dccda	1	construction	tui.Flex.AddWeighted: weight must be at least 1 — a literal at the call site while the container is built
 tui/flex.go	Flex.AddWeighted	d10c93e0d24b4b3f	1	construction	tui.Flex.AddWeighted: nil child while the flex container is being built
 tui/flex.go	Flex.AddSized	f5a6162964b15f79	1	construction	tui.Flex.AddSized: a size must be at least 0 — a literal at the call site while the container is built
