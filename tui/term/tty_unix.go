@@ -12,53 +12,63 @@ import (
 	xterm "golang.org/x/term"
 
 	"github.com/yongjohnlee80/golib/tui"
+	"github.com/yongjohnlee80/golib/tui/internal/fdctl"
 )
 
 // Unix terminal plumbing: x/term's MakeRaw/Restore/GetSize
 // replace per-GOOS ioctl code with the canonical implementation.
 // MakeRaw clears OPOST (irrelevant: the emitter cursor-addresses everything)
 // and ISIG — Ctrl+C arrives as byte 0x03 and is a KeyEvent, not a signal.
+//
+// Every descriptor is reached through fdctl.Control, never os.File.Fd: Fd
+// would revert a poller-registered tty (one the caller opened with
+// os.OpenFile) to blocking mode, and Stop could no longer unblock its reader.
 
-func isTerminal(f *os.File) bool { return xterm.IsTerminal(int(f.Fd())) }
+func isTerminal(f *os.File) bool {
+	is := false
+	_ = fdctl.Control(f, func(fd int) error { is = xterm.IsTerminal(fd); return nil })
+	return is
+}
 
 func makeRaw(f *os.File) (func() error, error) {
-	fd := int(f.Fd())
-	st, err := xterm.MakeRaw(fd)
-	if err != nil {
+	var st *xterm.State
+	if err := fdctl.Control(f, func(fd int) (err error) { st, err = xterm.MakeRaw(fd); return err }); err != nil {
 		return nil, err
 	}
-	return func() error { return xterm.Restore(fd, st) }, nil
+	return func() error { return fdctl.Control(f, func(fd int) error { return xterm.Restore(fd, st) }) }, nil
 }
 
 // enableOutputVT is a no-op on unix: VT processing is unconditional.
 func enableOutputVT(*os.File) (func() error, error) { return nil, nil }
 
 func fdSize(f *os.File) (tui.Size, error) {
-	w, h, err := xterm.GetSize(int(f.Fd()))
-	if err != nil {
+	var w, h int
+	if err := fdctl.Control(f, func(fd int) (err error) { w, h, err = xterm.GetSize(fd); return err }); err != nil {
 		return tui.Size{}, err
 	}
 	return tui.Size{W: w, H: h}, nil
 }
 
-// waitWritable blocks until fd is writable, so writeAll can resume after an
+// waitWritable blocks until f is writable, so writeAll can resume after an
 // EAGAIN on a non-blocking output description instead of dropping the frame's
 // tail. EINTR retries; the 1s poll timeout just re-arms (a
 // paused terminal is not an error).
-func waitWritable(fd int) error {
-	pfd := []unix.PollFd{{Fd: int32(fd), Events: unix.POLLOUT}}
-	for {
-		n, err := unix.Poll(pfd, 1000)
-		if err != nil {
-			if errors.Is(err, syscall.EINTR) {
-				continue
+func waitWritable(f *os.File) error {
+	return fdctl.Control(f, func(fd int) error {
+		pfd := []unix.PollFd{{Fd: int32(fd), Events: unix.POLLOUT}}
+		for {
+			n, err := unix.Poll(pfd, 1000)
+			if err != nil {
+				if errors.Is(err, syscall.EINTR) {
+					continue
+				}
+				return err
 			}
-			return err
+			if n > 0 {
+				return nil
+			}
 		}
-		if n > 0 {
-			return nil
-		}
-	}
+	})
 }
 
 // unblockFile unblocks a pending read during Stop: a read deadline in the

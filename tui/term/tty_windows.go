@@ -17,7 +17,7 @@ import (
 // waitWritable is a no-op on Windows: console handles write synchronously
 // (blocking) so os.File.Write never returns EAGAIN and writeAll's loop only
 // ever handles ordinary short writes.
-func waitWritable(int) error { return nil }
+func waitWritable(*os.File) error { return nil }
 
 // Windows terminal plumbing. x/term's MakeRaw sets
 // ENABLE_VIRTUAL_TERMINAL_INPUT on stdin — the console then encodes keys (and

@@ -420,7 +420,7 @@ func (b *Backend) writeAll(p []byte) error {
 		// A non-blocking fd with bytes still pending: wait for writability
 		// (not a busy spin) and resume. Any other error is real.
 		if len(p) > 0 && (errors.Is(err, syscall.EAGAIN) || errors.Is(err, syscall.EWOULDBLOCK)) && b.outFile != nil {
-			if werr := waitWritable(int(b.outFile.Fd())); werr != nil {
+			if werr := waitWritable(b.outFile); werr != nil {
 				return werr
 			}
 			continue
