@@ -21,10 +21,11 @@ func (t *floatWindowTarget) RequestedBounds() tui.Rect {
 	if t.maximized {
 		return t.area
 	}
+	if r, ok := t.float.anchor.resolve(t.area); ok {
+		return r // a live rectangle, when there is one, wins over its fallback
+	}
 	if a := t.float.anchor; a.atRect {
 		return a.rect
-	} else if r, ok := a.resolve(t.area); ok {
-		return r
 	} else if a.atFraction {
 		return fractionRect(a.frac, t.area)
 	}

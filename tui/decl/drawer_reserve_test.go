@@ -75,8 +75,9 @@ func at(screen, text string) (x, y int, ok bool) {
 	return 0, 0, false
 }
 
-// layoutIs waits for the page at pageX, and the left and bottom panels where want says; both in
-// one frame, so a panel that lags its strip by a pass fails.
+// layoutIs waits for a screen with the page at pageX and the panels where want says, both read from
+// one snapshot: a panel that stayed away from its strip never matches. It waits for the state to be
+// reached, so it does not show that no earlier painted frame had them apart.
 func layoutIs(t *testing.T, s *decltest.Screen, what string, pageX int, want func(sc string) bool) {
 	t.Helper()
 	s.WaitFor(t, what, func(sc string) bool {
@@ -195,4 +196,50 @@ func TestADrawerWithoutReserveStillLiesOverThePage(t *testing.T) {
 	if got := page.width.Load(); got != width || width != 60 {
 		t.Fatalf("an ordinary Drawer opened, the page is %d wide (was %d); want the Window's 60", got, width)
 	}
+}
+
+// glyphAt is the cell at (x, y) of a screen dump, "" off it.
+func glyphAt(screen string, x, y int) string {
+	lines := strings.Split(screen, "\n")
+	if y < 0 || y >= len(lines) {
+		return ""
+	}
+	row := []rune(lines[y])
+	if x < 0 || x >= len(row) {
+		return ""
+	}
+	return string(row[x])
+}
+
+// A keyboard move of a reserving Drawer starts from its strip, between the bars and beside the other
+// strip: one column right keeps its rows and its height (its frame from row 1 to row 18), where the
+// Window's edge rectangle would put it over the menu bar and the status line.
+func TestAKeyboardMoveOfAReservingDrawerStartsFromItsStrip(t *testing.T) {
+	s, _ := runReserving(t, 60, 20)
+	layoutIs(t, s, "docked", 15, func(sc string) bool { _, y, ok := at(sc, "LEFT"); return ok && y == 1 })
+	onScreenLoop(t, s, func() {
+		if err := s.Program.Call("l", "moveBy", 1, 0); err != nil {
+			t.Error(err)
+		}
+	})
+	s.WaitFor(t, "one column right of the strip", func(sc string) bool {
+		x, y, ok := at(sc, "LEFT")
+		return ok && x == 3 && y == 1 && glyphAt(sc, 1, 18) == "└"
+	})
+}
+
+// A keyboard resize of a reserving Drawer starts from its strip too: two columns wider keeps its
+// corner at the strip's (column 0, row 1), its frame now reaching column 16.
+func TestAKeyboardResizeOfAReservingDrawerStartsFromItsStrip(t *testing.T) {
+	s, _ := runReserving(t, 60, 20)
+	layoutIs(t, s, "docked", 15, func(sc string) bool { _, y, ok := at(sc, "LEFT"); return ok && y == 1 })
+	onScreenLoop(t, s, func() {
+		if err := s.Program.Call("l", "resizeBy", 2, 0); err != nil {
+			t.Error(err)
+		}
+	})
+	s.WaitFor(t, "two columns wider, at the strip's corner", func(sc string) bool {
+		x, y, ok := at(sc, "LEFT")
+		return ok && x == 2 && y == 1 && glyphAt(sc, 0, 1) == "┌" && glyphAt(sc, 16, 1) == "┐"
+	})
 }

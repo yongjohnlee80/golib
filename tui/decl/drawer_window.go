@@ -27,6 +27,14 @@ func (g *drawerWindowTarget) RequestedBounds() tui.Rect {
 			return n.floatRect()
 		}
 	}
+	if slot, ok := n.liveSlot(); ok {
+		// over its strip: a keyboard move or resize starts from where it is seen, the strip, and a
+		// resize in progress keeps the strip's corner
+		if g.preview != nil {
+			slot.W, slot.H = g.preview.W, g.preview.H
+		}
+		return slot
+	}
 	sz := n.cells(n.size, n.length, n.win)
 	if g.maximized {
 		sz = n.win

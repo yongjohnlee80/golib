@@ -21,7 +21,9 @@ import (
 //
 // Reserving Drawers take their strips in declaration order: the left one above has the height
 // between the bars, and the bottom one the width beside it. length does not apply while a Drawer
-// reserves (its strip is the whole edge); it is kept, for when the Drawer floats.
+// reserves (its strip is the whole edge); it is kept, for when the Drawer floats. reserve is a
+// construction property: a document changes it by declaring the Drawer again (a reload rebuilds
+// it), not by a binding. A keyboard move or resize (moveBy, resizeBy) starts from the strip.
 
 // reserveSlot is a reserving Drawer's strip of its Window: pinned to the Drawer's edge in the
 // Window's Dock, after the Window's own docked children, the Drawer's docked extent while it
