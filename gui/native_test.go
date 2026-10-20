@@ -790,3 +790,73 @@ func (tableViewLayout) Reveal(int, int)    {}
 func (tableViewLayout) PageRows() int      { return 1 }
 func (tableViewLayout) Measure(string) int { return 0 }
 func (tableViewLayout) Changed()           {}
+
+type fakeCombo struct {
+	tui.MultiChild
+	label            string
+	open, affordance bool
+}
+
+func (f *fakeCombo) Layout(cs tui.Constraints) tui.Size { return cs.Constrain(tui.Size{W: 10, H: 1}) }
+func (f *fakeCombo) Render(tui.Surface)                 {}
+func (f *fakeCombo) HandleEvent(tui.Event) bool         { return false }
+func (f *fakeCombo) AccessibleRole() tui.AccessibleRole { return tui.RoleComboBox }
+func (f *fakeCombo) Label() string                      { return f.label }
+func (f *fakeCombo) Open() bool                         { return f.open }
+func (f *fakeCombo) Affordance() bool                   { return f.affordance }
+
+// A select field is drawn as a bordered box: its label keeps its cells, and the triangle cell is a
+// drawn chevron instead. With no triangle, every cell is the label's and nothing is drawn over it.
+func TestAComboBoxIsABorderedBoxWithAChevron(t *testing.T) {
+	row := []string{"S", "q", "l", "i", "t", "e", " ", " ", " ", "▾"}
+	paint := func(f *fakeCombo) *RecordingCanvas {
+		v, scope, ok := paintComboBox(f)
+		if !ok || scope != tui.ScopeSubtree {
+			t.Fatalf("ok=%v scope=%v", ok, scope)
+		}
+		rc := NewRecordingCanvas(Size{W: 80, H: 16}, Size{W: 8, H: 16})
+		rc.Content = func(col, r int) string {
+			if r == 0 && col >= 0 && col < len(row) {
+				return row[col]
+			}
+			return ""
+		}
+		v.Paint(rc)
+		return rc
+	}
+	kept := func(rc *RecordingCanvas) []CellRect {
+		var out []CellRect
+		for _, p := range rc.Calls {
+			if p.Op == "PaintCells" {
+				out = append(out, p.Cells)
+			}
+		}
+		return out
+	}
+	rc := paint(&fakeCombo{label: "Sqlite", affordance: true})
+	ops := rc.Ops()
+	if !slices.Contains(ops, "StrokeRRect") || !slices.Contains(ops, "StrokePath") {
+		t.Fatalf("no border or chevron: %v", ops)
+	}
+	if got := kept(rc); !slices.Equal(got, []CellRect{{W: 9, H: 1}}) {
+		t.Fatalf("kept cells %+v; want the label's nine, not the triangle's", got)
+	}
+	bare := paint(&fakeCombo{label: "Sqlite"})
+	if slices.Contains(bare.Ops(), "StrokePath") {
+		t.Fatal("a field without its triangle has a chevron")
+	}
+	if got := kept(bare); !slices.Equal(got, []CellRect{{W: 10, H: 1}}) {
+		t.Fatalf("kept cells %+v; want all ten", got)
+	}
+}
+
+// NativeStyle draws golib's Select through this painter.
+func TestNativeStyleDrawsASelect(t *testing.T) {
+	sel := widget.NewSelect[string]()
+	if NativeStyle().painterFor(sel) == nil {
+		t.Fatal("NativeStyle has no painter for a Select")
+	}
+	if _, _, ok := paintComboBox(sel); !ok {
+		t.Fatal("the combo-box painter does not read a Select")
+	}
+}

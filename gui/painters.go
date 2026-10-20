@@ -42,6 +42,7 @@ import (
 func NativeStyle() *Style {
 	s := NewStyle()
 	s.ForRole(tui.RolePushButton, paintButton)
+	s.ForRole(tui.RoleComboBox, paintComboBox)
 	s.ForRole(tui.RoleCheckBox, paintCheckBox)
 	s.ForRole(tui.RoleEditableText, paintTextField)
 	s.ForRole(tui.RoleProgressBar, paintProgress)
@@ -205,6 +206,64 @@ func paintButton(comp tui.Component) (View, tui.NativeScope, bool) {
 		}
 		c.StrokeRRect(r.Inset(width/2), radius, width, Solid(border))
 		drawLabel(c, b.Label(), i, labelFont(c), fg, readableOn(keyColor(c, b.Label(), i, fg), fill, fg))
+	}), tui.ScopeSubtree, true
+}
+
+// comboField is a select field of any item type, as the painter reads it: what it shows, whether
+// its options are up, and whether it draws the ▾/▴ triangle (widget.Select).
+type comboField interface {
+	tui.Component
+	Label() string
+	Open() bool
+	Affordance() bool
+}
+
+// paintComboBox draws a select field as a rounded, bordered box, as a button is drawn: the label keeps
+// its cells, and the triangle is drawn as a chevron in the last cell, pointing down, or up while the
+// options are open. The focus look stays while the options are up, as the cells' does.
+func paintComboBox(comp tui.Component) (View, tui.NativeScope, bool) {
+	f, ok := comp.(comboField)
+	if !ok {
+		return nil, 0, false
+	}
+	return ViewFunc(func(c Canvas) {
+		cols, rows := cells(c)
+		fg, bg, open := openColors(c, 0, endsFirst(max(cols, 1))...)
+		if !open {
+			return // wholly covered: the host paints the covering cells
+		}
+		r := Rect{W: c.Size().W, H: c.Size().H}
+		radius := min(r.H/2, 6)
+		fill := bg
+		if hovered(comp) {
+			fill = Mix(bg, fg, 0.1)
+		}
+		c.FillRect(r, Solid(c.Backdrop())) // the corners show what is around the field
+		c.FillRRect(r, radius, Solid(fill))
+		border, width := alpha(fg, 0.35), float32(1)
+		if focusedNode(comp) || f.Open() {
+			border, width = alpha(fg, 0.9), 1.5
+		}
+		c.StrokeRRect(r.Inset(width/2), radius, width, Solid(border))
+		chevron := f.Affordance() && cols > 2
+		text := cols
+		if chevron {
+			text = cols - 1
+		}
+		c.PaintCells(CellRect{W: text, H: rows}, true)
+		if !chevron {
+			return
+		}
+		cw := c.CellSize().W
+		cx, cy := (float32(cols-1)+0.5)*cw, r.H/2
+		h := min(c.CellSize().H*0.18, cw*0.3)
+		p := new(Path)
+		if f.Open() {
+			p.MoveTo(Point{X: cx - h, Y: cy + h/2}).LineTo(Point{X: cx, Y: cy - h/2}).LineTo(Point{X: cx + h, Y: cy + h/2})
+		} else {
+			p.MoveTo(Point{X: cx - h, Y: cy - h/2}).LineTo(Point{X: cx, Y: cy + h/2}).LineTo(Point{X: cx + h, Y: cy - h/2})
+		}
+		c.StrokePath(p, 1.5, Solid(alpha(fg, 0.85)))
 	}), tui.ScopeSubtree, true
 }
 

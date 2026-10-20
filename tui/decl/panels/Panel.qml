@@ -7,7 +7,7 @@
 // It is non-modal, so it never traps focus or the pointer (a Dialog does), and minimizable, so a
 // program's dock can hide it without closing it: the program needs WithWindowCollector.
 Drawer {
-    property string heading: ""
+    property var heading: "" // a string, or a qsTrId message: Frame.title takes either
     // the frame's colour: the page's, as the lists in it are (a frame's own window tone would show
     // as a band beside its border, which the GUI draws as a thin line through the cell)
     property var surface: Theme.document.base
