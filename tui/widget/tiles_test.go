@@ -476,3 +476,29 @@ func TestTilesARefusedKeyboardMoveKeepsTheDrag(t *testing.T) {
 		t.Fatalf("events: %+v", ev)
 	}
 }
+
+// A minimum set while a drag is held is a live constraint, not part of the drag: Escape undoes the
+// drag and keeps the minimum, whether the pointer had moved or not.
+func TestTilesAMinimumSetDuringADragSurvivesItsCancellation(t *testing.T) {
+	for _, moved := range []bool{false, true} {
+		f := newTiles(t, 120, 30, defaultTiles())
+		f.press(tui.MouseRight, 25, 10)
+		if moved {
+			f.motion(tui.MouseRight, 35, 10)
+		}
+		f.h.onLoop(func() { f.m.SetMin("explorer", 50) })
+		f.h.settle()
+		f.wantRects("the minimum applied", map[string]tui.Rect{"explorer": {X: 0, Y: 0, W: 50, H: 30}})
+		f.h.inject(key(tui.KeyEscape))
+		f.h.barrier(nil)
+		var min int
+		f.h.onLoop(func() { min = f.m.Tile("explorer").Place().Min })
+		if min != 50 {
+			t.Fatalf("moved=%v: Escape rolled the minimum back to %d", moved, min)
+		}
+		f.wantRects("the drag cancelled, the minimum kept", map[string]tui.Rect{"explorer": {X: 0, Y: 0, W: 50, H: 30}})
+		if ev := f.changes(); len(ev) != 0 {
+			t.Fatalf("moved=%v: a cancelled drag reported: %+v", moved, ev)
+		}
+	}
+}

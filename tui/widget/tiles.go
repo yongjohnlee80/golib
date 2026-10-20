@@ -724,17 +724,23 @@ func (g *tileTarget) SetBounds(r tui.Rect) bool {
 	return true
 }
 
-// Checkpoint restores every tile's place and order and the zoom, and drops the staged gesture.
+// Checkpoint restores what a gesture changes, every tile's edge and requested size, the order and
+// the zoom, and drops the staged gesture. A tile's Min is a live constraint, not a placement: one
+// set while a drag is held (SetMin, a minimumSize binding) survives the drag's cancellation.
 func (g *tileTarget) Checkpoint() func() {
 	m := g.owner()
-	places := make(map[*Tile]TilePlace, len(m.tiles))
+	type placed struct {
+		edge tui.DockEdge
+		size float64
+	}
+	places := make(map[*Tile]placed, len(m.tiles))
 	for _, tile := range m.tiles {
-		places[tile] = tile.place
+		places[tile] = placed{tile.place.Edge, tile.place.Size}
 	}
 	order, zoomed := slices.Clone(m.tiles), m.zoomed
 	return func() {
 		for tile, p := range places {
-			tile.place = p
+			tile.place.Edge, tile.place.Size = p.edge, p.size
 		}
 		m.tiles, m.zoomed, m.pending = order, zoomed, nil
 		m.sync()
