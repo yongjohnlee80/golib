@@ -181,3 +181,47 @@ func TestStopPreservesOriginallyNonblockingFd(t *testing.T) {
 		t.Error("teardown cleared O_NONBLOCK that the caller had set on purpose")
 	}
 }
+
+// TestStopUnblocksAnOpenFileTTYReader: a tty the caller opened with os.OpenFile is poller-registered
+// and takes deadlines, so makePollable keeps it as it is (its first case). Nothing on the way may call
+// its Fd(): os.File.Fd reverts the file to blocking, its read then ignores the deadline, and Stop
+// hangs on the pump (tui-support-D2).
+func TestStopUnblocksAnOpenFileTTYReader(t *testing.T) {
+	master, raw := openBlockingPTY(t)
+	slave, err := os.OpenFile(fmt.Sprintf("/proc/self/fd/%d", raw.Fd()), os.O_RDWR|syscall.O_NOCTTY, 0)
+	if err != nil {
+		t.Fatalf("reopen the slave: %v", err)
+	}
+	t.Cleanup(func() { slave.Close() })
+	go func() {
+		buf := make([]byte, 4096)
+		for {
+			if _, err := master.Read(buf); err != nil {
+				return
+			}
+		}
+	}()
+
+	b, err := Open(WithTTY(slave, slave), WithProbeTimeout(50*time.Millisecond), WithoutAltScreen())
+	if err != nil {
+		t.Fatalf("Open: %v", err)
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	if err := b.Start(ctx); err != nil {
+		t.Fatalf("Start: %v", err)
+	}
+	if _, err := b.Size(); err != nil {
+		t.Fatalf("Size: %v", err) // a size query reads the fd too
+	}
+	done := make(chan error, 1)
+	go func() { done <- b.Stop() }()
+	select {
+	case err := <-done:
+		if err != nil {
+			t.Fatalf("Stop: %v", err)
+		}
+	case <-time.After(5 * time.Second):
+		t.Fatal("Stop hung: the os.OpenFile tty was made blocking under the reader")
+	}
+}

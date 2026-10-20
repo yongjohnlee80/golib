@@ -12,6 +12,7 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/yongjohnlee80/golib/tui/internal/fdctl"
 	"golang.org/x/sys/unix"
 )
 
@@ -202,19 +203,9 @@ func (p *PTY) Close() error {
 // descriptor without taking it out of the runtime poller (File.Fd would make it blocking, and a blocked Read
 // would then outlive Close).
 func setSize(f *os.File, rows, cols int) error {
-	rc, err := f.SyscallConn()
-	if err != nil {
-		return fmt.Errorf("pty: resize: %w", err)
-	}
 	ws := &unix.Winsize{Row: uint16(rows), Col: uint16(cols)}
-	var ioErr error
-	if err := rc.Control(func(fd uintptr) {
-		ioErr = unix.IoctlSetWinsize(int(fd), unix.TIOCSWINSZ, ws)
-	}); err != nil {
+	if err := fdctl.Control(f, func(fd int) error { return unix.IoctlSetWinsize(fd, unix.TIOCSWINSZ, ws) }); err != nil {
 		return fmt.Errorf("pty: resize: %w", err)
-	}
-	if ioErr != nil {
-		return fmt.Errorf("pty: resize: %w", ioErr)
 	}
 	return nil
 }
