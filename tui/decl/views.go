@@ -619,6 +619,14 @@ func (n *tableViewNode) columns() []widget.TableColumn[int] {
 
 // follow applies a model change: new columns when the model's changed and
 // none are declared, and the rows every time.
+// sourcesChanged repaints the visible cells when a delegate may read a source (sourceFollower): the
+// engine resolves them at paint time, while the List keeps the viewport and focus.
+func (n *tableViewNode) sourcesChanged() {
+	if n.template != nil {
+		n.table.List().MarkDirty()
+	}
+}
+
 func (n *tableViewNode) follow(c Change) {
 	key, had := n.mv.keyAt(n.currentIndex())
 	defer func() {

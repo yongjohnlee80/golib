@@ -123,13 +123,18 @@ func (a *Adapter) declaredProps(typeName string) map[string]bool {
 	return declared
 }
 
-// refreshTemplates invalidates visible cell paint on a source change. The
-// engine resolves template sources at paint time, while the native List still
-// owns viewport and focus. No model subscription is added by this path.
+// sourceFollower is a view whose template reads sources: it shows their new values when they
+// change, without a model change.
+type sourceFollower interface {
+	sourcesChanged()
+}
+
+// refreshTemplates tells every template view that sources changed. No model subscription is added
+// by this path.
 func (a *Adapter) refreshTemplates() {
 	for _, built := range a.nodes {
-		if n, ok := built.comp.(*tableViewNode); ok && n.template != nil {
-			n.table.List().MarkDirty()
+		if f, ok := built.comp.(sourceFollower); ok {
+			f.sourcesChanged()
 		}
 	}
 }

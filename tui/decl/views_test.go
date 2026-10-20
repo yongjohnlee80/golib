@@ -380,6 +380,28 @@ TableView { model: App.people
 	})
 }
 
+// A TreeView delegate reading a source shows its new value without a model change, as a TableView
+// delegate does (decl-I3).
+func TestATreeViewDelegateFollowsASourceChange(t *testing.T) {
+	m := tuidecl.NewTreeListModel("key", "label")
+	m.SetChildren(nil, []tuidecl.TreeRow{{Row: tuidecl.Row{"key": "keyed", "label": "labelled"}}})
+	s := decltest.Run(t, 30, 6,
+		tuidecl.LayoutSource("main.qml", []byte(`import tui 1.0
+import demo 1.0
+TreeView { model: App.tree; textRole: "label"
+    delegate: Text { text: App.byKey === "yes" ? model.key : model.label }
+}`)),
+		tuidecl.Singleton("demo", "1.0", "App"),
+		tuidecl.Sources(map[string]any{"App.tree": m, "App.byKey": "no"}))
+	s.WaitForText(t, "labelled")
+	onScreenLoop(t, s, func() {
+		if err := s.Program.Set("App.byKey", "yes"); err != nil {
+			t.Error(err)
+		}
+	})
+	s.WaitForText(t, "keyed")
+}
+
 type cellColorProvider struct {
 	push      func(decl.Update)
 	cancelled int
