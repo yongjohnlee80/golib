@@ -373,3 +373,27 @@ func TestTheFindsPlainHighlighterIsShared(t *testing.T) {
 		t.Fatal("clearing a find removed the host's highlighter")
 	}
 }
+
+// A command half-typed before a document boundary does not complete against the new document:
+// after `d` (an operator), `"a` (a register), `f` (a find) or `m` (a mark), a SetValue or a
+// buffer switch drops it, and the next `w` only moves (tui-widget-editor-D6).
+func TestADocumentBoundaryDropsAPendingCommand(t *testing.T) {
+	for _, pending := range []string{"d", "c", `"a`, "f", "m", "2d"} {
+		c, _ := coreWith(t, "one two")
+		keys(c, pending)
+		c.SetValue("alpha beta")
+		keys(c, "w")
+		if got := c.Value(); got != "alpha beta" || c.Mode() != widget.ModeNormal {
+			t.Errorf("%s, SetValue, w: value %q in %v, want alpha beta in Normal", pending, got, c.Mode())
+		}
+
+		c, _ = coreWith(t, "one two")
+		b := widget.NewBuffer(widget.BufferText("alpha beta"))
+		keys(c, pending)
+		c.SetBuffer(b)
+		keys(c, "w")
+		if got := c.Value(); got != "alpha beta" || c.Mode() != widget.ModeNormal {
+			t.Errorf("%s, SetBuffer, w: value %q in %v, want alpha beta in Normal", pending, got, c.Mode())
+		}
+	}
+}

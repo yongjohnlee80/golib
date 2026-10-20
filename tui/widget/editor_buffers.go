@@ -30,9 +30,7 @@ func (c *EditorCore) SetBuffer(b *Buffer) {
 	}
 	ln, col := c.buf.ln, c.buf.col
 	defer c.cursorMoved(ln, col)
-	c.settlePendingRune()
-	c.keys.count, c.keys.pendingAct = 0, ActUnbound
-	c.oneShot, c.blockIns, c.replace = insertOneShot{}, nil, nil
+	c.resetInput()
 	// a recording never spans two buffers, so . never compares one buffer's revision with another's
 	c.dotInsertEnded() // an Insert being recorded ends in its own buffer: its change, if any, is the last
 	c.dot.on = false   // a command half-recorded is dropped, as a half-typed command is
