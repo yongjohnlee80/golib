@@ -161,6 +161,10 @@ purpose": a difference in behaviour is a parameter of the shared code, named and
   format-less `fmt.Errorf` for an error a caller may test.
 - **Enums** are `uint8` iota types with `String()` (returns `"unknown"` for out-of-range) and
   `Valid()` where they cross an API. Never hand-number values that must be unique.
+- **Enum values are referenced through named constants, never string literals.** A closed set of
+  values (a mode, kind, role, state, scope, wrap mode, provider kind, event kind) is a typed constant
+  set; call sites, switch cases and tables name the constants. A literal of an enum value appears
+  only where the constant is declared, and where outside text (QML, a config file) is parsed into it.
 - **Styles** are an `XStyles` struct whose zero fields keep defaults, merged with `Inherit`, with
   `SetStyles`/`ResetStyles` at runtime. Style objects are nil-safe and immutable (`With*` returns a
   clone). Every drawn part is styleable; nothing paints a fixed colour or glyph.
