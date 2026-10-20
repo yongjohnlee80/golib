@@ -17,6 +17,14 @@
 //	tuidecl.NewProgram(panels.Offer(), themes.Offer(),
 //	    tuidecl.AdapterOptions(tuidecl.WithWindowCollector(widget.NewMinimizedWindows())), …)
 //
+// TilePanel is the same frame over a Tile of a TileManager: the tiled panel, which shares the screen
+// and its borders with the other tiles instead of floating (tui/decl's Tiles):
+//
+//	TileManager {
+//	    TilePanel { id: explorer; heading: "Files"; edge: Tui.Left; edges: "left right"; size: 25; TreeView { … } }
+//	    TilePanel { id: query; heading: "Query"; edge: Tui.Center; Editor { … } }
+//	}
+//
 // Where a panel sits and how big it is are preferences the program keeps; tui/panelgeometry is their
 // keys, their shape and their check.
 package panels
@@ -28,17 +36,17 @@ import (
 	tuidecl "github.com/yongjohnlee80/golib/tui/decl"
 )
 
-//go:embed Panel.qml
+//go:embed Panel.qml TilePanel.qml
 var files embed.FS
 
-// Module is the module a layout imports Panel from.
+// Module is the module a layout imports Panel and TilePanel from.
 const Module = "tui.panels"
 
 // Version is the version an import of Module asks for.
 const Version = "1.0"
 
-// Offer offers Panel as the module Module, version Version.
+// Offer offers Panel and TilePanel as the module Module, version Version.
 func Offer() tuidecl.ProgramOption { return tuidecl.Components(files, ".", Module, Version) }
 
-// FS is the module's QML: Panel.qml, to copy from or to offer under another module name.
+// FS is the module's QML: Panel.qml and TilePanel.qml, to copy from or to offer under another module name.
 func FS() fs.FS { return files }

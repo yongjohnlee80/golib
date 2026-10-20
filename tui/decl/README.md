@@ -105,6 +105,8 @@ A `MenuSeparator` with nothing to separate is not drawn, as Qt's QMenu collapses
 | `TreeView` | `textRole`, `badgeRole` | `model` (a tree model) | — | `activated(index)`, `expanded(index)`, `currentIndexChanged(index)` — an `Index` | `toggleExpanded(index)`, `setCurrentIndex(index)` |
 | `FileDialog` | `title`, `helpText`, `dim`, `fileMode`, `preview`, palette | `currentFolder`, `selectedFile` | — | `accepted(selectedFile)`, `rejected`, `closed` | `open()`, `close()` |
 | `Drawer` | `modal` (default true), `closeOnQ` (q closes it too; Esc always does: the key commands `tui.drawer.closeOnQ` and `tui.drawer.close`, after its Shortcuts), golib's `resizable` (default false), `windowResize`, `movable` and `moveButton` (see Window controls); golib's `reserve` (default false: docked and shown, it takes its strip of the Window from the page, between the bars, instead of lying over it; see Reserving Drawers); one child, its content, and any number of Shortcuts; `keyScope` (as the Dialog's) | `edge` (`Tui.Left`, `Right`, `Top`, `Bottom`, or golib's `Center`: floating in the middle, `length` wide and `size` high), `size` (a percentage across the edge), `length` (golib's: a percentage along it, centred; default 100), golib's `minimumSize` (default 10) and `minimumLength` (default 20); a movable Drawer's `floating`, `floatX`, `floatY`, `floatWidth` and `floatHeight` (percentages of the Window) | — | `opened`, `closed`, golib's `resized(size, length)`, a movable Drawer's `placed(x, y, width, height)` | `open()`, `close()`, `toggle()`, `resizeBy`, `moveBy` |
+| `TileManager` | golib's: Tiles only, exactly one at `Tui.Center` (see Tiles) | — | — | — | — |
+| `Tile` | golib's, a TileManager's child: one child, its content; `edges` (the edges a re-dock may take, spelt as `panelgeometry`'s and apart by spaces: `"left right"`; `"center"` lets it swap into the centre), `minimizable` (hidden by a dock: WithWindowCollector; never while it is the centre), `key` (default its id) | `edge` (`Tui.Left`, `Right`, `Top`, `Bottom`, or `Center`: the one centre tile), `size` (a percentage across the edge, two decimals kept), `minimumSize` (cells; fixed once the manager is built) | — | `resized(size)` (a border it owns moved, from whichever tile the drag began in), `docked(edge)` (re-docked or swapped), `changed(operation, maximized, hidden)` | `show()`, `hide()`, `toggle()`, `toggleMaximize()`, `resizeBy` |
 | `FolderDialog` | `title`, `helpText`, `dim`, `preview`, `keyScope` (as the Dialog's), palette; its children are fields | `currentFolder`, `selectedFolder` | — | `accepted(selectedFolder)`, `rejected`, `closed` | `open()`, `close()` |
 | `Repeater`, `Instantiator` | `model` | — | — | — | — |
 | `DelegateChooser` | `role` | — | — | — | — |
@@ -785,6 +787,28 @@ Drawers expose `resizeBy(widthDelta,heightDelta)` as a pointer-independent path;
 it uses the configured inner-corner handle, so right/bottom-pinned panels can grow.
 Applications removing grips should bind resize keys/commands for terminals that
 reserve modifier-click.
+
+**Tiles.** A TileManager is a parent whose Tiles share its whole rect, as a tiling window
+manager's windows do; it owns their sizes. Edge tiles take their strips in declaration order, each
+its `size` percent of the manager across its edge, and the centre tile takes the rest. A hidden tile
+gives its strip to the tiles beside it; growing one shrinks the tiles across the moved border.
+Alt/Option-right drag anywhere in a tile moves the shared border nearest the press, and the Tile
+that owns that border raises `resized`. Alt/Option-left drag drops the tile on another one it may
+trade places with (a swap), or near a side of the manager it may take (a re-dock); the landing rect
+is outlined until the release, and Escape restores the layout. When the minimums don't fit, the
+strips give back their cells above `minimumSize` first, then the centre its own, then the strips
+theirs; the asked sizes come back with the room. Nothing floats; a floating panel is a Drawer.
+
+```qml
+TileManager {
+    Tile { id: explorer; edge: Tui.Left; edges: "left right"; size: 25; minimumSize: 20; minimizable: true
+           onResized: App.keepSize(size); TreeView { … } }
+    Tile { id: query; edge: Tui.Center; Editor { … } }
+    Tile { id: results; edge: Tui.Bottom; edges: "bottom top"; size: 40; minimizable: true; TableView { … } }
+}
+```
+
+`tui.panels`' `TilePanel` is a Tile framed under a `heading`, as its `Panel` frames a Drawer.
 
 **Reserving Drawers.** An ordinary Drawer lies over the Window, its bars and its page included.
 `reserve: true` makes a docked, shown one take its strip from the page instead, as a split pane
