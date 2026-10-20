@@ -426,3 +426,17 @@ func TestCorrelationHeader_ValidatedAtConstruction(t *testing.T) {
 		t.Error(`CorrelationHeader("") must be accepted as "disabled"`)
 	}
 }
+
+// TestThePeerIsUnmapped: an IPv4 client on a dual-stack listener arrives as ::ffff:a.b.c.d. The peer
+// is the IPv4 address, as auth's own connection peer is, so an address-keyed factor (ipallow, a
+// throttle) sees one address however the listener was bound.
+func TestThePeerIsUnmapped(t *testing.T) {
+	r := httptest.NewRequest(http.MethodGet, "/", nil)
+	r.RemoteAddr = "[::ffff:203.0.113.7]:443"
+	if got := FromRequest(r).Peer; got.Addr().String() != "203.0.113.7" || got.Port() != 443 {
+		t.Errorf("peer %v, want 203.0.113.7:443", got)
+	}
+	if got := Peer(r); got.Addr().String() != "203.0.113.7" {
+		t.Errorf("Peer %v, want 203.0.113.7", got)
+	}
+}

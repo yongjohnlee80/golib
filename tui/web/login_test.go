@@ -2,6 +2,7 @@ package web
 
 import (
 	"context"
+	"crypto/tls"
 	"encoding/json"
 	"errors"
 	"net/http"
@@ -371,4 +372,61 @@ func TestLogin_IssuerFailureIsNotARejection(t *testing.T) {
 		t.Logf("code = %d (store may have accepted the ticket)", rec.Code)
 	}
 	_ = errors.New
+}
+
+// seenFactor is a contextual factor that keeps the request it was asked to verify.
+type seenFactor struct{ seen **auth.Request }
+
+func (seenFactor) Kind() auth.FactorKind { return auth.FactorContextual }
+func (f seenFactor) Verify(_ context.Context, r *auth.Request) (auth.Contribution, error) {
+	*f.seen = r
+	return auth.Contribution{Method: "ipallow"}, nil
+}
+
+// TestLogin_ProjectsTheRequestAsAttachDoes: the login route hands its policy the request authhttp
+// projects, as the attach does: the peer unmapped from IPv4-in-IPv6, the allowlisted headers
+// (User-Agent among them), and the TLS state, without which an mtls factor can never succeed at
+// login (tui-support-D6).
+func TestLogin_ProjectsTheRequestAsAttachDoes(t *testing.T) {
+	t.Parallel()
+	var seen *auth.Request
+	tracker, err := auth.NewMemTracker(64, auth.Backoff{Threshold: 2, Base: time.Hour, Max: time.Hour, Forget: 2 * time.Hour})
+	if err != nil {
+		t.Fatal(err)
+	}
+	loginPolicy, err := PasswordPolicyExample(claimingFactor{subject: "alice", password: "pw"}, tracker, seenFactor{&seen})
+	if err != nil {
+		t.Fatal(err)
+	}
+	store := token.NewMemStore(8)
+	attach, err := auth.NewPolicy(auth.Leaf(token.NewFactor(store)))
+	if err != nil {
+		t.Fatal(err)
+	}
+	m, err := NewManager(func(*Backend, *SessionInfo) Runner { return newFakeApp() })
+	if err != nil {
+		t.Fatal(err)
+	}
+	h, err := NewHandler(Config{Addr: "127.0.0.1:8080", Policy: attach, LoginPolicy: loginPolicy,
+		Issuer: token.NewIssuer(store), AllowedOrigins: []string{"https://tui.example.test"}, ExpectedHost: "tui.example.test"}, m)
+	if err != nil {
+		t.Fatal(err)
+	}
+	r := loginPost(`{"subject":"alice","password":"pw"}`)
+	r.RemoteAddr = "[::ffff:203.0.113.7]:1"
+	r.Header.Set("User-Agent", "probe/1")
+	r.TLS = &tls.ConnectionState{}
+	h.ServeLogin(httptest.NewRecorder(), r)
+	if seen == nil {
+		t.Fatal("the login policy's factor never saw the request")
+	}
+	if got := seen.Peer.Addr().String(); got != "203.0.113.7" {
+		t.Errorf("peer %s, want 203.0.113.7", got)
+	}
+	if got := seen.Metadata["User-Agent"]; len(got) != 1 || got[0] != "probe/1" {
+		t.Errorf("User-Agent %v, want [probe/1]", got)
+	}
+	if seen.TLS == nil {
+		t.Error("the login request lost its TLS state")
+	}
 }

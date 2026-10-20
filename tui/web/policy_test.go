@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/yongjohnlee80/golib/auth"
+	"github.com/yongjohnlee80/golib/auth/authhttp"
 	"github.com/yongjohnlee80/golib/auth/token"
 )
 
@@ -247,7 +248,8 @@ func TestAuthRequest_OmitsEmptyCredentials(t *testing.T) {
 	}
 }
 
-func TestPeerFromRequest(t *testing.T) {
+// The attach and login peer is authhttp.Peer: the transport's view, or nothing.
+func TestThePeerIsTheTransportsViewOrNothing(t *testing.T) {
 	t.Parallel()
 	cases := map[string]string{
 		"203.0.113.7:44321":  "203.0.113.7:44321",
@@ -259,7 +261,7 @@ func TestPeerFromRequest(t *testing.T) {
 	for in, want := range cases {
 		r := httptest.NewRequest(http.MethodGet, "/", nil)
 		r.RemoteAddr = in
-		got := peerFromRequest(r)
+		got := authhttp.Peer(r)
 		if want == "" {
 			if got.IsValid() {
 				t.Errorf("%q produced %v, want the zero AddrPort — a plausible fallback is an allowlist bypass", in, got)
@@ -270,7 +272,7 @@ func TestPeerFromRequest(t *testing.T) {
 			t.Errorf("%q -> %v, want %v", in, got, want)
 		}
 	}
-	if peerFromRequest(nil).IsValid() {
+	if authhttp.Peer(nil).IsValid() {
 		t.Error("a nil request must produce no peer")
 	}
 }

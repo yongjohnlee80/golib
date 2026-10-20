@@ -10,6 +10,7 @@ import (
 	"net/http"
 
 	"github.com/yongjohnlee80/golib/auth"
+	"github.com/yongjohnlee80/golib/auth/authhttp"
 	"github.com/yongjohnlee80/golib/errs"
 	"github.com/yongjohnlee80/golib/logger"
 	"github.com/yongjohnlee80/golib/server/ws"
@@ -162,9 +163,9 @@ func (l *sessionLoop) serve(ctx context.Context, c conn, req requestInfo) error 
 	// what OnLogin gave the consumer for the login that minted it. An attach
 	// carrying no ticket (mTLS, SSH challenge) parked nothing and derives "".
 	handoff := HandoffID(first.Ticket)
-	peer := peerFromRequest(req.http).Addr().String()
-	if !peerFromRequest(req.http).IsValid() {
-		peer = ""
+	peer := ""
+	if ap := authhttp.Peer(req.http); ap.IsValid() {
+		peer = ap.Addr().String()
 	}
 
 	sess, err := l.bind(ctx, first, identity, h, handoff, peer)
