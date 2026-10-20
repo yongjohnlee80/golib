@@ -53,10 +53,13 @@ func AtRect(r tui.Rect) Anchor { return Anchor{atRect: true, rect: r} }
 // AtLive anchors the float at the overlay-relative rectangle rect reports each time the float is
 // placed, so it follows something another layout places in the same pass: a reserved strip of a
 // Window (a reserving Drawer). rect runs inside Layout and must only read. While it reports false,
-// or an empty rectangle, the float is placed as otherwise would place it. A live-anchored float is
-// docked, not floating: it is where the layout put its rectangle.
+// or an empty rectangle, the float is placed as otherwise places it, whatever kind of anchor that is
+// (an edge, AtRect, AtFraction). A rectangle rect reports wins over otherwise wherever the float is
+// placed or asked where it is. A live-anchored float is docked, not floating: it is where the layout
+// put its rectangle, or where otherwise does.
 func AtLive(rect func() (tui.Rect, bool), otherwise Anchor) Anchor {
-	return Anchor{align: otherwise.align, live: &liveRect{rect: rect}}
+	otherwise.live = &liveRect{rect: rect}
+	return otherwise
 }
 
 // AtFraction anchors the float at a rectangle given in percent of the overlay area: x and y its
@@ -300,6 +303,9 @@ func (f *Float) Floating() bool {
 		return false
 	}
 	a := f.anchor
+	if a.live != nil {
+		return false
+	}
 	return a.atRect || a.atFraction || a.align == tui.AlignCenter
 }
 

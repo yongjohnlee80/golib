@@ -89,3 +89,51 @@ func TestAWindowInALiveAnchoredFloatMovesFromItsRectangle(t *testing.T) {
 		t.Fatal("moved off its live rectangle, the window should float")
 	}
 }
+
+// placedAt is where the box titled title starts on the harness' screen: its frame's top-left corner.
+func placedAt(h *harness, title string) (x, y int, ok bool) {
+	for row, line := range strings.Split(h.tb.String(), "\n") {
+		if strings.Contains(line, title) && strings.Contains(line, "┌") {
+			return len([]rune(line[:strings.Index(line, "┌")])), row, true
+		}
+	}
+	return 0, 0, false
+}
+
+// While its live rectangle reports none, a live-anchored float is placed by its fallback whole: an
+// AtRect fallback at its rectangle, an AtFraction one at its fraction of the area, whether the float
+// is a plain one or holds a window (the managed path).
+func TestALiveAnchorWithoutARectangleKeepsItsWholeFallback(t *testing.T) {
+	none := func() (tui.Rect, bool) { return tui.Rect{}, false }
+	for _, c := range []struct {
+		name     string
+		fallback widget.Anchor
+		window   bool
+		x, y     int
+	}{
+		{"AtRect", widget.AtRect(tui.Rect{X: 7, Y: 2, W: 10, H: 4}), false, 7, 2},
+		{"AtFraction", widget.AtFraction(50, 50, 30, 40), false, 15, 5},
+		{"AtRect, a window", widget.AtRect(tui.Rect{X: 7, Y: 2, W: 10, H: 4}), true, 7, 2},
+		{"AtFraction, a window", widget.AtFraction(50, 50, 30, 40), true, 15, 5},
+	} {
+		t.Run(c.name, func(t *testing.T) {
+			var content tui.Component = widget.NewBox(widget.NewButton("inside"), widget.WithTitle("FB"))
+			if c.window {
+				content = widget.NewWindowMod(content, widget.WithWindowMove())
+			}
+			f := widget.NewFloat(content, widget.WithAnchor(widget.AtLive(none, c.fallback)))
+			host := widget.NewOverlayHost(widget.NewButton("base"))
+			host.Attach(f)
+			h := startApp(t, host, 30, 10)
+			defer h.stop()
+			h.onLoop(f.Show)
+			h.settle()
+			if x, y, ok := placedAt(h, "FB"); !ok || x != c.x || y != c.y {
+				t.Fatalf("placed at (%d,%d) %v; want the fallback's (%d,%d):\n%s", x, y, ok, c.x, c.y, h.tb.String())
+			}
+			if f.Floating() {
+				t.Fatal("a live-anchored float reports floating")
+			}
+		})
+	}
+}
