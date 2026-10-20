@@ -128,9 +128,11 @@ func (*dialogNode) Init(*tui.Context)               {}
 func (*dialogNode) Layout(tui.Constraints) tui.Size { return tui.Size{} }
 
 // onScreen is the dialog as it is on screen: its modal, while it is open.
-func (d *dialogNode) onScreen() tui.Component  { return d.modal }
-func (*dialogNode) Render(tui.Surface)         {}
-func (*dialogNode) HandleEvent(tui.Event) bool { return false }
+func (d *dialogNode) onScreen() tui.Component { return d.modal }
+func (*dialogNode) Render(tui.Surface)        {}
+
+func (d *dialogNode) heldShortcuts() (keymap.Scope, []*shortcutNode) { return d.keyScope, d.shortcuts }
+func (*dialogNode) HandleEvent(tui.Event) bool                       { return false }
 
 var errDialogOutsideWindow = errors.New("a Dialog opens over a Window, and this one is not in one; " +
 	"inside a Go program, give the adapter WithOverlay(host)")

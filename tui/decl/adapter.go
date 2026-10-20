@@ -359,9 +359,8 @@ func (a *Adapter) Create(c decl.Construction) ([]string, error) {
 					c.Type, c.Pos)
 			}
 			if _, ok := a.nodes[id].comp.(*shortcutNode); ok && !shortcutHolders[c.Type] {
-				return nil, fmt.Errorf("a Shortcut is live while focus is in the element that declares it, a Window, "+
-					"Dialog, FolderDialog, Drawer or FocusScope, and %s is none of them: put it in a FocusScope (at %s)",
-					c.Type, a.nodes[id].pos)
+				return nil, fmt.Errorf("a Shortcut is live while focus is in the element that declares it, a %s, "+
+					"and %s is none of them: put it in a FocusScope (at %s)", shortcutHolderNames(), c.Type, a.nodes[id].pos)
 			}
 			_, spec := a.nodes[id].comp.(*rendererNode)
 			_, doc := a.nodes[id].comp.(*documentNode)

@@ -22,6 +22,10 @@ func NewWindowMod(content tui.Component, opts ...WindowModOption) *WindowMod {
 // Core returns the behavior shared with custom controls and GUI presentations.
 func (w *WindowMod) Core() *WindowCore { return w.core }
 
+// WindowBehavior is [WindowMod.Core], as the capability every window-like widget shares: a
+// WindowButtons finds its window through it, whatever widget carries the window.
+func (w *WindowMod) WindowBehavior() *WindowCore { return w.core }
+
 // Init binds behavior to this mount and mounts the unchanged content.
 func (w *WindowMod) Init(ctx *tui.Context) {
 	w.Base.Init(ctx)

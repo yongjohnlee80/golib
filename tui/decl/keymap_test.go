@@ -94,6 +94,10 @@ func TestKeyIdShortcutsAreRefusedOutsideTheirScope(t *testing.T) {
             Text { text: "x" } }`, `is a demo.todos command, in a Window whose scope is global`},
 		{"no keyScope", `Window { FocusScope { Shortcut { sequence: keyId("demo.todos.add"); onActivated: App.added() }
             Text { text: "x" } } }`, `in a FocusScope with no keyScope: give it keyScope: "demo.todos"`},
+		{"undeclared in a Drawer", `Window { Drawer { Shortcut { sequence: keyId("demo.nothing"); onActivated: App.saved() }
+            Text { text: "x" } } Text { text: "y" } }`, `keyId("demo.nothing") names no declared key command`},
+		{"undeclared in a Dialog", `Window { Dialog { Shortcut { sequence: keyId("demo.nothing"); onActivated: App.saved() }
+            Text { text: "x" } } Text { text: "y" } }`, `keyId("demo.nothing") names no declared key command`},
 	} {
 		_, err := tuidecl.NewProgram(
 			tuidecl.LayoutSource("main.qml", []byte(keysHead+c.layout)),

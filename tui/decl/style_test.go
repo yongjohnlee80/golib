@@ -98,13 +98,15 @@ func TestAStylesEditorIsTheDocumentsEditor(t *testing.T) {
 	s.WaitForText(t, "the styled editor")
 }
 
-// A type another part of the vocabulary reads by its private node type cannot be replaced, even
-// by a contract-equal copy: the copy would pass CheckStyle, and then an Editor would refuse its
+// A type another part of the vocabulary reads by its concrete type cannot be replaced, even by a
+// contract-equal copy: the copy would pass CheckStyle, and then an Editor would refuse its
 // SyntaxHighlighter child, a TabView its Tab, a Dialog its shortcuts and button box, a Menu its
-// rows, a TableView its columns.
+// rows, a TableView its columns, a DialogButtonBox its Buttons, a FocusScope or a Drawer would hold
+// keys no check sees, and TerminalTabsOf would not find its tabs.
 func TestATypeReadPrivatelyIsNotReplaceable(t *testing.T) {
 	src := tuidecl.LayoutSource("main.qml", []byte("import tui 1.0\nWindow { Editor { SyntaxHighlighter { definition: \"QML\" } } }"))
-	for _, name := range []string{"SyntaxHighlighter", "Tab", "Shortcut", "DialogButtonBox", "Dialog", "FileDialog", "FolderDialog", "TableView", "Window", "Menu", "MenuItem", "MenuSeparator", "MenuBar", "TableViewColumn"} {
+	for _, name := range []string{"SyntaxHighlighter", "Tab", "Shortcut", "DialogButtonBox", "Dialog", "FileDialog", "FolderDialog", "TableView", "Window", "Menu", "MenuItem", "MenuSeparator", "MenuBar", "TableViewColumn",
+		"Button", "FocusScope", "Drawer", "TerminalTabs"} {
 		copied, ok := tuidecl.StandardType(name)
 		if !ok {
 			t.Errorf("%s is not a standard type", name)
@@ -123,5 +125,21 @@ func TestATypeReadPrivatelyIsNotReplaceable(t *testing.T) {
 	if _, err := tuidecl.NewProgram(src, tuidecl.WithStyle(tuidecl.Style{Name: "copy", Types: []tuidecl.Type{editor}}),
 		tuidecl.AppOptions(tui.WithBackend(tui.NewTestBackend(40, 10)))); err != nil {
 		t.Errorf("a style replacing Editor with a copy: %v", err)
+	}
+}
+
+// WindowMod stays replaceable: what reads it, a WindowButtons inside it, finds its window through the
+// WindowBehavior capability, which the standard WindowMod has and a style's widget can.
+func TestAWindowModIsReachedThroughItsBehavior(t *testing.T) {
+	if !tuidecl.Replaceable("WindowMod") {
+		t.Error(`Replaceable("WindowMod") = false`)
+	}
+	var mod tui.Component = widget.NewWindowMod(widget.NewText("x"))
+	b, ok := mod.(interface{ WindowBehavior() *widget.WindowCore })
+	if !ok {
+		t.Fatal("a WindowMod has no WindowBehavior")
+	}
+	if b.WindowBehavior() != mod.(*widget.WindowMod).Core() {
+		t.Error("a WindowMod's WindowBehavior is not its Core")
 	}
 }

@@ -513,6 +513,10 @@ func wholeNumber(v qml.SpecValue) (int, error) {
 // KeyScope is a Window's: keymap.Global (tui.KeyScoped).
 func (w *windowNode) KeyScope() keymap.Scope { return keymap.Global }
 
+func (w *windowNode) heldShortcuts() (keymap.Scope, []*shortcutNode) {
+	return keymap.Global, w.shortcuts
+}
+
 // KeyBindings is the Window's Shortcuts, then the menu bar's key (tui.KeyBinder). A category's
 // Alt+letter is its label's mnemonic, not a command, and is not listed.
 func (w *windowNode) KeyBindings(m *keymap.Map) []keymap.Binding {
