@@ -335,17 +335,8 @@ func (m *Menu) mnemonic(r rune) (ItemID, bool) {
 	return "", false
 }
 
-// eqFold compares two mnemonic runes case-insensitively for ASCII, which is the
-// range a keyboard mnemonic is drawn from.
-func eqFold(a, b rune) bool {
-	lower := func(r rune) rune {
-		if r >= 'A' && r <= 'Z' {
-			return r + ('a' - 'A')
-		}
-		return r
-	}
-	return lower(a) == lower(b)
-}
+// eqFold reports whether two mnemonic runes are one key (foldMnemonic).
+func eqFold(a, b rune) bool { return foldMnemonic(a) == foldMnemonic(b) }
 
 // rowAt maps owner-local coordinates to a SELECTABLE row. A separator, a
 // disabled row or a hidden one is not a hit: they cannot be armed, so reporting

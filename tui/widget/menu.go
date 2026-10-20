@@ -3,6 +3,7 @@ package widget
 import (
 	"fmt"
 	"slices"
+	"strconv"
 
 	"github.com/yongjohnlee80/golib/tui"
 	"github.com/yongjohnlee80/golib/tui/keymap"
@@ -164,7 +165,7 @@ func WithLevelMinWidth(cols int) MenuOption {
 		if cols < 0 {
 			panic(fatalOf("widget: WithLevelMinWidth",
 				"a negative width is not a narrower box; zero removes the floor",
-				itoa(cols)))
+				strconv.Itoa(cols)))
 		}
 		m.levelMinWidth = cols
 	}

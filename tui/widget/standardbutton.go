@@ -1,6 +1,8 @@
 package widget
 
 import (
+	"strconv"
+
 	"github.com/yongjohnlee80/golib/errs"
 	"github.com/yongjohnlee80/golib/tui"
 )
@@ -49,7 +51,7 @@ func (b StandardButton) Role() ButtonRole { return standardButtons[b.index()].ro
 func (b StandardButton) index() int {
 	if b < 0 || int(b) >= len(standardButtons) {
 		panic(errs.Fatal{Op: "widget: StandardButton", Rule: "not one of the declared standard buttons",
-			Detail: itoa(max(int(b), 0))})
+			Detail: strconv.Itoa(int(b))})
 	}
 	return int(b)
 }
