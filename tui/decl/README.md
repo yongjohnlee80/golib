@@ -834,7 +834,7 @@ with this contract alone. See [USAGE.md §6](USAGE.md#6-your-own-go-widgets-in-q
 | `Commands(map)` / `Handlers(map)` | handlers without / with arguments |
 | `Providers(p…)` | values on their own clock |
 | `Themes(fs, dir, prefix, version)` | each `dir/*.qml` offered as `prefix.<name>` |
-| `themes.Offer()` (package `tui/decl/themes`) | the toolkit's ten themes — `dark`, `light`, `mono`, `retro`, `sepia`, `catppuccin_frappe`, `kanagawa`, `nord`, `shades_of_purple`, `tokyo_night` — as `tui.theme.<name>` |
+| `themes.Offer()` (package `tui/decl/themes`) | the toolkit's ten themes — `dark`, `light`, `mono`, `retro`, `sepia`, `catppuccin_frappe`, `kanagawa`, `nord`, `shades_of_purple`, `tokyo_night` — as `tui.theme.<name>`; their files and names, without the toolkit, are package `tui/decl/themes/qmlfiles` |
 | `Components(fs, dir, module, version)` | `dir/*.qml` offered as component types |
 | `Offer(module, version, loader)` | any offered module |
 | `Types(t…)` / `Files(src)` | your widgets; the file dialogs' filesystem |

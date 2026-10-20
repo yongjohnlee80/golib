@@ -45,7 +45,6 @@
 package themes
 
 import (
-	"embed"
 	"fmt"
 	"io/fs"
 	"slices"
@@ -53,10 +52,11 @@ import (
 
 	"github.com/yongjohnlee80/golib/parse/qml"
 	tuidecl "github.com/yongjohnlee80/golib/tui/decl"
+	"github.com/yongjohnlee80/golib/tui/decl/themes/qmlfiles"
 )
 
-//go:embed *.qml
-var files embed.FS
+// files are the theme files, kept in qmlfiles so a program can read the names without the toolkit.
+var files = qmlfiles.FS()
 
 // Module is the prefix each theme is offered under: tui.theme.dark.
 const Module = "tui.theme"
@@ -104,17 +104,9 @@ func values(fsys fs.FS, name string) (map[string]string, error) {
 	return out, nil
 }
 
-// Names are the themes, in the order a menu lists them.
-func Names() []string {
-	entries, _ := fs.ReadDir(files, ".")
-	var out []string
-	for _, e := range entries {
-		if name, ok := strings.CutSuffix(e.Name(), ".qml"); ok {
-			out = append(out, name)
-		}
-	}
-	return out
-}
+// Names are the themes, in the order a menu lists them: [qmlfiles.Names], for a program that reads
+// them without the toolkit.
+func Names() []string { return qmlfiles.Names() }
 
 // Label is a theme's row in a program's theme menu: its name, and the words the menu shows, with
 // its access key marked by an ampersand ("&Dark").
