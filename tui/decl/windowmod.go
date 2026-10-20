@@ -175,11 +175,14 @@ var windowModType = Type{
 	},
 }
 
+// windowBehaver is a component that carries a window: a WindowMod, a Drawer with window
+// controls, a tile, a style's own window widget.
+type windowBehaver interface {
+	WindowBehavior() *widget.WindowCore
+}
+
 func windowCoreOf(c tui.Component) (*widget.WindowCore, bool) {
-	if w, ok := c.(*widget.WindowMod); ok {
-		return w.Core(), true
-	}
-	if w, ok := c.(interface{ WindowBehavior() *widget.WindowCore }); ok {
+	if w, ok := c.(windowBehaver); ok {
 		return w.WindowBehavior(), true
 	}
 	return nil, false

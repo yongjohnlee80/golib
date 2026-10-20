@@ -205,6 +205,8 @@ func (n *drawerNode) windowControls() bool {
 	return n.windowResize || n.movable || n.windowConfig.maximize || n.windowConfig.minimize || n.windowConfig.close
 }
 
+func (n *drawerNode) heldShortcuts() (keymap.Scope, []*shortcutNode) { return n.keyScope, n.shortcuts }
+
 // WindowBehavior exposes capabilities to a separate declarative presentation.
 func (n *drawerNode) WindowBehavior() *widget.WindowCore {
 	if n.windowMods == nil {

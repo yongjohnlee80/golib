@@ -2,6 +2,9 @@ package decl
 
 import (
 	"fmt"
+	"maps"
+	"slices"
+	"strings"
 
 	"github.com/yongjohnlee80/golib/parse/qml"
 	"github.com/yongjohnlee80/golib/tui"
@@ -119,11 +122,21 @@ func (s *focusScopeNode) KeyBindings(m *keymap.Map) []keymap.Binding {
 	return shortcutBindings(m, s.keyScope, s.shortcuts)
 }
 
+func (s *focusScopeNode) heldShortcuts() (keymap.Scope, []*shortcutNode) {
+	return s.keyScope, s.shortcuts
+}
+
 func (s *focusScopeNode) setKeyScope(v string) { s.keyScope = keymap.Scope(v) }
 
 // shortcutHolders are the types a Shortcut may be declared in: each makes the keys live while
-// focus is within it.
+// focus is within it, and builds a shortcutHolder.
 var shortcutHolders = map[string]bool{"Window": true, "Dialog": true, "FolderDialog": true, "Drawer": true, "FocusScope": true}
+
+// shortcutHolderNames is shortcutHolders as a refusal lists them: "Dialog, Drawer, … or Window".
+func shortcutHolderNames() string {
+	names := slices.Sorted(maps.Keys(shortcutHolders))
+	return strings.Join(names[:len(names)-1], ", ") + " or " + names[len(names)-1]
+}
 
 // focusScopeType is the FocusScope's entry in the standard vocabulary.
 var focusScopeType = Type{

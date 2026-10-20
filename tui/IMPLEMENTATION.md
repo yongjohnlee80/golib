@@ -178,8 +178,10 @@ purpose": a difference in behaviour is a parameter of the shared code, named and
 - Properties every item has (`visible`, `toolTipText`, palette roles, `focus`, `keyScope`, …) are
   one table, applied in one place.
 - decl reaches widgets through capability interfaces only; a styled replacement of any type must
-  work everywhere the original does. Hooks that cast to private node types are never copied into a
-  derived type.
+  work everywhere the original does. A type still read by its concrete type is listed in
+  `readPrivately`, with its reader, and cannot be replaced; a style decorates it through
+  `Style.Wrap`. Hooks check their widget (`getter`, `method`, `destroyer`, …) and refuse a foreign
+  one rather than panic.
 - Signals are fetched at construction through `b.Emitter`; handler errors go to the sink, never
   dropped.
 - The `controls` package is written only against the exported API; a gap it needs is an exported-API

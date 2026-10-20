@@ -79,8 +79,12 @@ func programWarnings(m *keymap.Map) []keymap.Problem {
 func fixedKeyProblems(a *Adapter, m *keymap.Map) []string {
 	var out []string
 	for _, b := range a.nodes {
-		scope, shortcuts, ok := holderOf(b.comp)
-		if !ok || scope == "" {
+		h, ok := b.comp.(shortcutHolder)
+		if !ok {
+			continue
+		}
+		scope, shortcuts := h.heldShortcuts()
+		if scope == "" {
 			continue
 		}
 		for _, sc := range shortcuts {

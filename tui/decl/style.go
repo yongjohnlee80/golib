@@ -43,7 +43,7 @@ func WithStyle(s Style) ProgramOption {
 //   - a container whose children are placed by their attached properties (Flex's
 //     Layout.fillHeight, say): the hook that reads them is the vocabulary's own, and a public
 //     Type has no way to carry it;
-//   - a type whose instances another part of the vocabulary reads by its private node type
+//   - a type whose instances another part of the vocabulary reads by its concrete type
 //     (readPrivately): a replacement with an equal contract would pass CheckStyle and then
 //     break a valid document, since the reader would not recognize it.
 func Replaceable(name string) bool {
@@ -58,8 +58,10 @@ func Replaceable(name string) bool {
 	return false
 }
 
-// readPrivately are the standard types whose instances another type, or the runtime, reads by
-// their private node type, and who reads them. A new reader of that kind adds its type here.
+// readPrivately are the standard types whose instances another type, the runtime or a host
+// accessor reads by their concrete type, and who reads them. A new reader of that kind adds its
+// type here; a reader through a capability a style's widget can have (WindowMod's WindowBehavior)
+// does not. A style decorates one of these through [Style.Wrap], never by replacing it.
 var readPrivately = map[string]string{
 	"SyntaxHighlighter": "an Editor takes it as its child (editorChildren)",
 	"Tab":               "a TabView takes its pages",
@@ -75,6 +77,10 @@ var readPrivately = map[string]string{
 	"MenuSeparator":     "a Menu takes its rows (menuRows)",
 	"MenuBar":           "the Window arranges it, and the language check reads its mnemonics",
 	"TableViewColumn":   "a TableView takes its columns (buildTableView)",
+	"Button":            "a DialogButtonBox hands its Buttons to the Dialog's card, which takes *widget.Button",
+	"FocusScope":        "it holds Shortcuts (shortcutHolder)",
+	"Drawer":            "it holds Shortcuts (shortcutHolder), and the Window reserves its strip",
+	"TerminalTabs":      "a host reaches it through TerminalTabsOf",
 }
 
 // styledTypes is the standard vocabulary with s's types substituted by name, or why s cannot

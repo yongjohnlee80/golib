@@ -156,19 +156,11 @@ func loadKeymap(c programConfig) (*keymap.Map, error) {
 	return keymap.Build(cmds, schemes...)
 }
 
-// holderOf is a component that holds Shortcuts: its scope and its Shortcuts.
-func holderOf(c tui.Component) (scope keymap.Scope, shortcuts []*shortcutNode, ok bool) {
-	switch n := c.(type) {
-	case *windowNode:
-		return keymap.Global, n.shortcuts, true
-	case *focusScopeNode:
-		return n.keyScope, n.shortcuts, true
-	case *dialogNode:
-		return n.keyScope, n.shortcuts, true
-	case *drawerNode:
-		return n.keyScope, n.shortcuts, true
-	}
-	return "", nil, false
+// shortcutHolder is a component that holds Shortcuts (a type in shortcutHolders): the scope of
+// its keyId Shortcuts, and the Shortcuts. It is not tui.KeyScoped: a Dialog's or a Drawer's scope
+// is its Shortcuts', not one the runtime routes keys by.
+type shortcutHolder interface {
+	heldShortcuts() (keymap.Scope, []*shortcutNode)
 }
 
 // checkShortcuts refuses, each with its position, a keyId Shortcut whose command m does not declare,
@@ -177,10 +169,11 @@ func holderOf(c tui.Component) (scope keymap.Scope, shortcuts []*shortcutNode, o
 func (a *Adapter) checkShortcuts(m *keymap.Map) error {
 	var problems []string
 	for _, b := range a.nodes {
-		scope, shortcuts, ok := holderOf(b.comp)
+		h, ok := b.comp.(shortcutHolder)
 		if !ok {
 			continue
 		}
+		scope, shortcuts := h.heldShortcuts()
 		for _, sc := range shortcuts {
 			if sc.key.command == "" {
 				continue
