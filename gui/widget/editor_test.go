@@ -742,6 +742,51 @@ func (c *layCounter) LayOut(b Block, lines []string, width float32, cursorInside
 	return c.Renderer.LayOut(b, lines, width, cursorInside, t, th, host)
 }
 
+// besideRenderer draws each block taller by extra: a renderer drawing from more than the text.
+type besideRenderer struct {
+	Renderer
+	extra float32
+}
+
+func (r *besideRenderer) LayOut(b Block, lines []string, width float32, cursorInside bool, t *gui.TextShaper, th Theme, host DiagramHost) BlockLayout {
+	out := r.Renderer.LayOut(b, lines, width, cursorInside, t, th, host)
+	out.Height += r.extra
+	return out
+}
+
+// Relayout lays every block out again, the text unchanged: what the renderer draws from beside the
+// text changed, which no edit says. Until it is called the layouts kept stand. The cursor and the
+// text stay as they were.
+func TestRelayoutLaysTheBlocksOutAgain(t *testing.T) {
+	h := startEditor(t, 60, 14, WithRenderer(&besideRenderer{Renderer: NewMarkdownRenderer()}), WithMode(Rendered),
+		WithCore(tuiwidget.CoreInitialText("first\n## Title here\nlast")))
+	r := h.e.render.(*besideRenderer)
+	h.keys(key('j'))
+	h.paint()
+	height := func() float32 {
+		var got float32
+		h.onLoop(func() { got = h.e.layout.lay(1, nil).bl.Height })
+		return got
+	}
+	before := height()
+	h.onLoop(func() { r.extra = 40 })
+	h.paint()
+	if got := height(); got != before {
+		t.Fatalf("the block was laid out again with nothing said: %v -> %v", before, got)
+	}
+	h.onLoop(func() { h.e.Relayout() })
+	h.paint()
+	if got := height(); got != before+40 {
+		t.Fatalf("after Relayout the block is %v high; want %v", got, before+40)
+	}
+	var line int
+	var text string
+	h.onLoop(func() { line, text = h.e.Core().Cursor().Line, h.e.Core().Value() })
+	if line != 1 || text != "first\n## Title here\nlast" {
+		t.Errorf("Relayout moved the cursor to line %d or changed the text to %q", line, text)
+	}
+}
+
 // A read-only Rendered editor is a viewer: every block renders, the cursor's row
 // included, so no row shows its raw source. An editable one typing (Insert) keeps
 // the cursor's block raw, and turning read-only re-lays the row the cursor is on.

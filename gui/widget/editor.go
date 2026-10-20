@@ -317,6 +317,14 @@ func (e *Editor) SetRenderedEnabled(on bool) {
 // RenderedEnabled reports whether the Rendered view is turned on (it also needs a renderer).
 func (e *Editor) RenderedEnabled() bool { return !e.renderOff }
 
+// Relayout lays every block out again on the next paint, its text unchanged: a host's renderer
+// drawing from more than the text (a file beside the document, say) calls it once that changed.
+// The cursor, the scroll and the mode stay as they are.
+func (e *Editor) Relayout() {
+	e.layout.invalidate()
+	e.body.MarkDirty()
+}
+
 // toggleMode toggles the editor mode between Raw and Rendered.
 func (e *Editor) toggleMode() {
 	if e.mode == Raw {
