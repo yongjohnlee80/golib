@@ -828,9 +828,9 @@ func (e *Editor) Cursor() (int, int, bool) {
 func (e *Editor) handleMouse(m tui.MouseEvent) bool {
 	switch {
 	case m.Kind == tui.MouseWheel && m.Button == tui.WheelUp:
-		return e.scrollLines(-1)
+		return e.wheel(-1)
 	case m.Kind == tui.MouseWheel && m.Button == tui.WheelDown:
-		return e.scrollLines(1)
+		return e.wheel(1)
 	case m.Kind == tui.MousePress && m.Button == tui.MouseLeft:
 		x := max(m.X-e.cells.gutter, 0) // a press in the gutter is at the line's start
 		return e.pressAt(x, m.Y)
@@ -873,10 +873,10 @@ func (e *Editor) dragTo(x, y int) bool {
 	switch {
 	case y < 0:
 		e.setDragEdge(-1)
-		e.scrollLines(-1)
+		e.cells.ScrollLines(-1)
 	case e.cells.h > 0 && y >= e.cells.h:
 		e.setDragEdge(1)
-		e.scrollLines(1)
+		e.cells.ScrollLines(1)
 	default:
 		e.setDragEdge(0)
 	}
@@ -886,7 +886,7 @@ func (e *Editor) dragTo(x, y int) bool {
 
 // dragTick is the auto-scroll's step while the pointer is held past an edge.
 func (e *Editor) dragTick() {
-	e.scrollLines(e.cells.dragEdge)
+	e.cells.ScrollLines(e.cells.dragEdge)
 	row := 0
 	if e.cells.dragEdge > 0 {
 		row = max(e.cells.h-1, 0)
@@ -927,7 +927,8 @@ func (e *Editor) endDrag() {
 	}
 }
 
-// scrollLines scrolls by whole LOGICAL lines in both wrap modes.
+// wheel scrolls by whole LOGICAL lines in both wrap modes, as the keys scroll (cellLayout.ScrollLines),
+// and consumes the event.
 //
 // One MouseEvent is one step: the event carries a wheel direction and no
 // magnitude, so N notches arrive as N events and this never multiplies. Visual
@@ -935,12 +936,8 @@ func (e *Editor) endDrag() {
 // only (top/left), so an intra-line offset is not representable without new
 // state and new invariants across render, Cursor, ensureVisible, click inversion
 // and clamping. That is deferred to its own ADR.
-func (e *Editor) scrollLines(delta int) bool {
-	before := e.cells.top
-	e.cells.top = min(max(e.cells.top+delta, 0), max(len(e.core.buf.lines)-1, 0))
-	if e.cells.top != before {
-		e.MarkDirty()
-	}
+func (e *Editor) wheel(delta int) bool {
+	e.cells.ScrollLines(delta)
 	return true
 }
 

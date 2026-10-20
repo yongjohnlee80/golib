@@ -1121,6 +1121,15 @@ func TestEditorWheelStepsAndClamps(t *testing.T) {
 			if got := topLine(); got != 0 {
 				t.Errorf("wheel up did not clamp at the first line: top = %d", got)
 			}
+
+			// the wheel stops where Ctrl-d's scroll does, with the last screenful full (tui-widget-editor-D14)
+			for i := 0; i < 20; i++ {
+				h.inject(tui.KeyEvent{Kind: tui.KeyPress, Code: 'd', Mods: tui.ModCtrl})
+			}
+			h.barrier(sh)
+			if keys := topLine(); keys != bottom {
+				t.Errorf("the wheel's bottom top line is %d, Ctrl-d's %d", bottom, keys)
+			}
 		})
 	}
 }
