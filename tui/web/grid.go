@@ -117,10 +117,14 @@ func (g *grid) snapshot() []tui.CellUpdate {
 	return out
 }
 
-// apply writes a set of updates into the grid.
+// apply writes a set of updates into the grid. A wide cell's update covers its continuation, which
+// a diff never carries, so apply writes it (tui.ContinuationOf).
 func (g *grid) apply(updates []tui.CellUpdate) {
 	for _, u := range updates {
 		g.set(u.X, u.Y, u.Cell)
+		if u.Cell.Width == 2 {
+			g.set(u.X+1, u.Y, tui.ContinuationOf(u.Cell))
+		}
 	}
 }
 

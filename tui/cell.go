@@ -29,6 +29,10 @@ type Cell struct {
 // Continuation reports whether c is the right half of a wide cell.
 func (c Cell) Continuation() bool { return c.Width == 0 }
 
+// ContinuationOf is the cell a wide cell's head covers to its right: no content, width 0, the head's
+// attributes. A frame diff carries the head only, so every mirror of the frame writes it itself.
+func ContinuationOf(head Cell) Cell { return Cell{Content: "", Width: 0, Attrs: head.Attrs} }
+
 // CellAttrs is the resolved, output-form style payload of a Cell: packed
 // fg/bg colors already downsampled to the terminal's ColorProfile, plus the
 // SGR attribute bits. It is produced by the package's style resolver
