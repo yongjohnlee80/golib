@@ -287,6 +287,8 @@ func NewFileList(opts ...FileListOption) *FileList {
 	listOpts := []ListOption[fileEntry]{
 		WithItems([]fileEntry(nil), fileEntry.label),
 		WithEmptyTextMessage[fileEntry](tui.Msg("tui.files.empty")),
+		WithListOnCursor[fileEntry](l.cursorOn),
+		WithListOnActivate[fileEntry](l.activate),
 	}
 	if l.styled {
 		listOpts = append(listOpts, WithListStyles[fileEntry](fileListStyles(l.st)))
@@ -344,21 +346,10 @@ func stylePane(b *Box, st FilePaneStyles, styled bool) {
 	b.WithFocusedStyle(focused)
 }
 
-// Init mounts the list and follows its cursor.
+// Init mounts the list; the list reports its cursor and activation itself (WithListOnCursor).
 func (l *FileList) Init(ctx *tui.Context) {
 	l.Base.Init(ctx)
 	ctx.Mount(l.box)
-	mine := func(owner tui.NodeID) bool { return owner == l.list.NodeID() }
-	tui.SubscribeScoped(ctx, func(ev SelectionChangedEvent) {
-		if mine(ev.Owner) {
-			l.cursorOn(ev.Index)
-		}
-	})
-	tui.SubscribeScoped(ctx, func(ev ActivateEvent) {
-		if mine(ev.Owner) {
-			l.activate(ev.Index)
-		}
-	})
 	if l.src.async() {
 		l.loadThen(l.dir, l.want)
 	}
@@ -484,9 +475,10 @@ func (l *FileList) SetCurrent(name string) bool {
 	}
 	for i, e := range l.entries {
 		if !e.up && e.name == name {
+			if l.list.cursor == i {
+				l.cursorOn(i) // SetCursor reports no move when the cursor is already there
+			}
 			l.list.SetCursor(i)
-			// SetCursor publishes nothing when the cursor is already there.
-			l.cursorOn(i)
 			return true
 		}
 	}

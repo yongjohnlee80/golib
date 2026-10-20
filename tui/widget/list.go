@@ -128,6 +128,9 @@ type List[T any] struct {
 	Base
 	src    ListSource[T]
 	render func(T) string
+	// onCursor and onActivate tell the List's owner at once, before the bus's
+	// SelectionChangedEvent and ActivateEvent (WithListOnCursor, WithListOnActivate).
+	onCursor, onActivate func(i int)
 	// paint is an optional styled-row renderer. Navigation, clipping bounds,
 	// viewport selection and focus still belong to List.
 	paint func(tui.Surface, int, int, T, style.Style, bool)
@@ -214,6 +217,19 @@ func WithEmptyText[T any](s string) ListOption[T] {
 // language.
 func WithEmptyTextMessage[T any](m tui.Message) ListOption[T] {
 	return func(l *List[T]) { l.emptyText, l.emptyMsg = englishText(m), m }
+}
+
+// WithListOnCursor sets what runs, at once, when the cursor moves to row i: before the bus's
+// SelectionChangedEvent, which other subscribers hear a loop turn later. An owner composing a List
+// uses it rather than subscribing app-wide and filtering by Owner.
+func WithListOnCursor[T any](fn func(i int)) ListOption[T] {
+	return func(l *List[T]) { l.onCursor = fn }
+}
+
+// WithListOnActivate sets what runs, at once, when row i is activated (Enter, a double click):
+// before the bus's ActivateEvent.
+func WithListOnActivate[T any](fn func(i int)) ListOption[T] {
+	return func(l *List[T]) { l.onActivate = fn }
 }
 
 // WithListStyles overrides the style hooks; zero fields keep defaults.
@@ -394,8 +410,8 @@ func (l *List[T]) ensureVisible() {
 	l.top = max(l.top, 0)
 }
 
-// moveCursor moves the cursor to i (clamped) and emits
-// SelectionChangedEvent in single-select mode.
+// moveCursor moves the cursor to i (clamped), tells the owner (WithListOnCursor),
+// and emits SelectionChangedEvent in single-select mode.
 func (l *List[T]) moveCursor(i int) {
 	if l.count == 0 {
 		return
@@ -407,15 +423,21 @@ func (l *List[T]) moveCursor(i int) {
 	l.cursor = i
 	l.ensureVisible()
 	l.MarkDirty()
+	if l.onCursor != nil {
+		l.onCursor(i)
+	}
 	if !l.multi {
 		l.publish(SelectionChangedEvent{Owner: l.NodeID(), Index: i, Label: l.render(l.src.Item(i))})
 	}
 }
 
-// activate emits ActivateEvent for the cursor row.
+// activate tells the owner (WithListOnActivate) and emits ActivateEvent for the cursor row.
 func (l *List[T]) activate() {
 	if l.count == 0 {
 		return
+	}
+	if l.onActivate != nil {
+		l.onActivate(l.cursor)
 	}
 	l.publish(ActivateEvent{Owner: l.NodeID(), Index: l.cursor})
 }
