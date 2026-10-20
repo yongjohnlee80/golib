@@ -28,6 +28,36 @@ type WindowVisibility interface {
 // WindowDismissal supplies a target's explicitly chosen close policy.
 type WindowDismissal interface{ CloseWindow() bool }
 
+// WindowHandles lets a target choose, per gesture, which handle a resize drags. A target without it
+// resizes from the configured handle (WithWindowResizeHandle), as before. A tile has up to four
+// sides it shares with its neighbours, and the one a resize moves depends on where it starts.
+type WindowHandles interface {
+	// HandleAt is the handle a resize press at p, in the geometry's frame, drags; false refuses it.
+	HandleAt(p tui.Point) (Handle, bool)
+	// StepHandle is the handle a keyboard resize step (ResizeBy) moves; false refuses the step.
+	StepHandle(dw, dh int) (Handle, bool)
+}
+
+// WindowGesture lets a target own a gesture's start and completion. A target without it keeps the
+// core's rules: a release completes when RequestedBounds changed, and a lost capture keeps the
+// reached geometry and publishes nothing.
+//
+// A target needs it when an operation can change its policy without changing a cell: a tile
+// re-docked in a manager too small for its minimum lands in the rect it started in.
+type WindowGesture interface {
+	// GestureBegan is told the operation and handle before a drag captures (pointer, with at the
+	// press in the geometry's frame) or before a keyboard step (MoveBy, ResizeBy) applies; false
+	// refuses it.
+	GestureBegan(op WindowOperation, h Handle, at tui.Point, pointer bool) bool
+	// GestureChanged reports, at release, whether the drag changed the target's policy: true
+	// publishes WindowChangedEvent, false restores the checkpoint. It replaces the core's
+	// RequestedBounds comparison for this target.
+	GestureChanged() bool
+	// GestureLost is called once after a lost capture, the core's drag already cleared and no event
+	// published.
+	GestureLost(op WindowOperation)
+}
+
 // WindowState is a value snapshot of configuration and live state, not config.
 type WindowState struct {
 	Move, Resize, Maximize, Minimize, Close bool
@@ -44,6 +74,8 @@ type WindowCore struct {
 	zoom                                    WindowZoom
 	visibility                              WindowVisibility
 	dismissal                               WindowDismissal
+	handles                                 WindowHandles
+	gesture                                 WindowGesture
 	collector                               WindowCollector
 	moveBinding, resizeBinding              windowBinding
 	handle                                  Handle
@@ -148,6 +180,8 @@ func (c *WindowCore) bind(ctx *tui.Context, content tui.Component, target any, e
 	c.zoom, _ = target.(WindowZoom)
 	c.visibility, _ = target.(WindowVisibility)
 	c.dismissal, _ = target.(WindowDismissal)
+	c.handles, _ = target.(WindowHandles)
+	c.gesture, _ = target.(WindowGesture)
 	if reason := c.bindError(explicit); reason != "" {
 		panic(fatalOf("widget: WindowCore.Bind", reason, "supply the target facets required by enabled capabilities"))
 	}
@@ -280,6 +314,9 @@ func (c *WindowCore) MoveBy(dx, dy int) bool {
 		return false
 	}
 	return c.transition(WindowMove, func() bool {
+		if c.gesture != nil && !c.gesture.GestureBegan(WindowMove, c.handle, tui.Point{}, false) {
+			return false
+		}
 		r := c.stepBounds()
 		r.X = windowCellAdd(r.X, dx)
 		r.Y = windowCellAdd(r.Y, dy)
@@ -294,7 +331,17 @@ func (c *WindowCore) ResizeBy(dw, dh int) bool {
 	}
 	return c.transition(WindowResize, func() bool {
 		r := c.stepBounds()
-		r = c.resizedBounds(r, dw, dh, c.handle)
+		h := c.handle
+		if c.handles != nil {
+			var ok bool
+			if h, ok = c.handles.StepHandle(dw, dh); !ok {
+				return false
+			}
+		}
+		if c.gesture != nil && !c.gesture.GestureBegan(WindowResize, h, tui.Point{}, false) {
+			return false
+		}
+		r = c.resizedBounds(r, dw, dh, h)
 		return c.geometry.SetBounds(r)
 	})
 }
@@ -385,10 +432,10 @@ func (c *WindowCore) HandleAction(inv tui.ActionInvocation) bool {
 		if source, ok := inv.Source.(tui.MouseEvent); ok && source.Kind == tui.MousePress {
 			switch a := inv.Action.(type) {
 			case WindowDragBeginAction:
-				return c.beginDrag(a, source.Button, c.handle)
+				return c.beginDrag(a, source.Button, a.handleOr(c.handle))
 			case *WindowDragBeginAction:
 				if a != nil {
-					return c.beginDrag(*a, source.Button, c.handle)
+					return c.beginDrag(*a, source.Button, a.handleOr(c.handle))
 				}
 			}
 		}

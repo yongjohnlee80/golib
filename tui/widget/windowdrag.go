@@ -34,6 +34,13 @@ func (c *WindowCore) ResolvePointerPress(e tui.MouseEvent) (tui.Action, bool) {
 	case c.move && b == c.moveBinding:
 	case c.resize && b == c.resizeBinding:
 		op = WindowResize
+		if c.handles != nil {
+			h, ok := c.handles.HandleAt(c.pointerPosition(tui.Point{X: e.X, Y: e.Y}))
+			if !ok {
+				return nil, false
+			}
+			return WindowDragBeginAction{Operation: op, At: tui.Point{X: e.X, Y: e.Y}, Handle: h, HasHandle: true}, true
+		}
 	default:
 		return nil, false
 	}
@@ -76,6 +83,9 @@ func (c *WindowCore) beginDrag(a WindowDragBeginAction, button tui.MouseButton, 
 	}
 	start := c.geometry.Bounds()
 	if start.Empty() {
+		return false
+	}
+	if c.gesture != nil && !c.gesture.GestureBegan(a.Operation, handle, c.pointerPosition(a.At), true) {
 		return false
 	}
 	ctx, owner := c.ctx, c.owner
@@ -132,7 +142,11 @@ func (c *WindowCore) cancelDrag() bool {
 // HandleEvent updates only the captured pointer gesture; loss keeps reached geometry.
 func (c *WindowCore) HandleEvent(ev tui.Event) bool {
 	if _, ok := ev.(tui.PointerCaptureLostEvent); ok {
+		d := c.drag
 		c.drag = nil
+		if c.gesture != nil && d != nil {
+			c.gesture.GestureLost(d.operation)
+		}
 		return false
 	}
 	e, ok := ev.(tui.MouseEvent)
@@ -176,7 +190,11 @@ func (c *WindowCore) HandleEvent(ev tui.Event) bool {
 		c.drag = nil
 		ctx, owner := c.ctx, c.owner
 		ctx.ReleasePointer()
-		if c.geometry.RequestedBounds() == d.requested {
+		changed := c.geometry.RequestedBounds() != d.requested
+		if c.gesture != nil {
+			changed = c.gesture.GestureChanged()
+		}
+		if !changed {
 			d.restore()
 		} else {
 			c.publishWindowChanged(d.operation, ctx, owner)

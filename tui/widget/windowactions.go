@@ -49,10 +49,21 @@ type WindowChangedEvent struct {
 	Maximized, Minimized bool
 }
 
-// WindowDragBeginAction starts a gesture at At in the receiver's local cells.
+// WindowDragBeginAction starts a gesture at At in the receiver's local cells. Handle, when
+// HasHandle, is the handle the resize drags (a WindowHandles target chose it at the press); without
+// it the core's configured handle is used.
 type WindowDragBeginAction struct {
 	Operation WindowOperation
 	At        tui.Point
+	Handle    Handle
+	HasHandle bool
+}
+
+func (a WindowDragBeginAction) handleOr(configured Handle) Handle {
+	if a.HasHandle {
+		return a.Handle
+	}
+	return configured
 }
 
 // ActionID names a window drag acquisition.
