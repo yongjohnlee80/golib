@@ -578,7 +578,7 @@ func (t *DataTable) HandleEvent(ev tui.Event) bool {
 					ctx.CapturePointer()
 				}
 			}
-			if hit == TableHitCell && e.Count >= 2 {
+			if hit == TableHitCell && t.core.pairPress(e.Count, pos) {
 				t.core.dropPending()
 				if t.core.Editable() { // an editable table's double click edits the cell
 					t.core.EditCell("")

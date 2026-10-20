@@ -398,17 +398,17 @@ type CollapseEvent struct {
 type Tree struct {
 	Base
 	roots []*TreeNode
-	// lastPressNode is the node of the previous press. Pointer identity, not the
-	// id string: a host may render the same id under two parents (autodb does,
-	// for a connection attached to two workspaces).
-	lastPressNode *TreeNode
-	cursor        int
-	top           int
-	shown         viewMark // as List's: Layout reveals the cursor only when it or the height changed
-	w, h          int
-	indent        int
-	styles        ListStyles
-	genSeq        uint64
+	// presses pairs a double-click by node. Pointer identity, not the id
+	// string: a host may render the same id under two parents (autodb does, for
+	// a connection attached to two workspaces).
+	presses pressPairer[*TreeNode]
+	cursor  int
+	top     int
+	shown   viewMark // as List's: Layout reveals the cursor only when it or the height changed
+	w, h    int
+	indent  int
+	styles  ListStyles
+	genSeq  uint64
 	// selected is the node the last SelectionChangedEvent named: the event
 	// fires when the node under the cursor changes, not when its row number
 	// does (an expand above it moves the row, not the choice).
@@ -586,10 +586,10 @@ func (t *Tree) SetRoots(roots ...*TreeNode) {
 	preflightForest(roots, nil)
 	t.reopen, t.anchor = nil, nil // what a Reload was reopening is gone with the old roots
 	// AFTER preflight, so a rejected call leaves the Tree untouched.
-	// Not a correctness fix in itself — lastPressNode keeps its node alive, so Go
+	// Not a correctness fix in itself — the pairer keeps its node alive, so Go
 	// cannot allocate a different node at that address and a replacement pointer
-	// already refuses to pair. Cleared so a discarded tree is not retained.
-	t.lastPressNode = nil
+	// already refuses to pair. Reset so a discarded tree is not retained.
+	t.presses.Reset()
 	committed := append([]*TreeNode(nil), roots...)
 	for _, old := range t.roots {
 		old.release()
@@ -1015,8 +1015,7 @@ func (t *Tree) handleMouse(e tui.MouseEvent) bool {
 	r := rows[idx]
 	t.cursor = idx
 	onExpander := e.X >= r.depth*t.indent && e.X < r.depth*t.indent+2 && !r.node.leaf
-	prev := t.lastPressNode
-	t.lastPressNode = r.node
+	paired := t.presses.Pair(e.Count, r.node)
 
 	// A SECOND press on the same NODE is activation, on the same channel ENTER
 	// already uses — so a host that handles ActivateEvent gets double-click for
@@ -1029,14 +1028,11 @@ func (t *Tree) handleMouse(e tui.MouseEvent) bool {
 	// expand. Hosts wanting folder-opens-on-double-click do it in their own
 	// handler, where the node grammar is known.
 	//
-	// Three constraints beyond the App's count, each from:
-	//   - EXACTLY 2, so a triple-click activates once rather than on 2 and 3;
-	//   - the same NODE, because the App's continuity is an absolute cell while
-	//     the rows under it move whenever the tree expands or scrolls;
-	//   - never on the EXPANDER, whose press already toggles — activating there
-	//     too would make one gesture both change expansion and activate. A
-	//     double-click on the expander now simply toggles twice.
-	if e.Count == 2 && !onExpander && r.node == prev {
+	// A pair is on the same NODE (pressPairer), and never on the EXPANDER,
+	// whose press already toggles — activating there too would make one gesture
+	// both change expansion and activate. A double-click on the expander simply
+	// toggles twice.
+	if paired && !onExpander {
 		t.ensureVisible()
 		t.MarkDirty()
 		t.publish(ActivateEvent{Owner: t.NodeID(), Index: idx})

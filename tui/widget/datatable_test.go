@@ -109,6 +109,32 @@ func TestDataTable_AFilterScrollsBackToFitTheRows(t *testing.T) {
 	}
 }
 
+// A double press activates once, on the row pressed twice: a third press does not activate again,
+// and a press on the same screen cell after the wheel moved another row under it does not pair
+// (tui-widget-data-D4), as in List and Tree.
+func TestDataTable_ADoublePressPairsOnTheSameRowOnce(t *testing.T) {
+	var acts []int
+	h, _, _ := dataTable(t, numbered(20), 30, 6, widget.TableOnActivate(func(r int) { acts = append(acts, r) }))
+	press := tui.MouseEvent{Kind: tui.MousePress, Button: tui.MouseLeft, X: 1, Y: 2}
+	h.inject(press, press, press)
+	h.settle()
+	h.onLoop(func() {})
+	if len(acts) != 1 || acts[0] != 1 {
+		t.Errorf("a triple press on row 1 activated %v, want [1]", acts)
+	}
+
+	acts = nil
+	// a press elsewhere starts the App's count afresh, so the second press on the cell counts 2
+	h.inject(tui.MouseEvent{Kind: tui.MousePress, Button: tui.MouseLeft, X: 1, Y: 4})
+	h.settle()
+	h.inject(press, tui.MouseEvent{Kind: tui.MouseWheel, Button: tui.WheelDown, X: 1, Y: 2}, press)
+	h.settle()
+	h.onLoop(func() {})
+	if len(acts) != 0 {
+		t.Errorf("presses on one cell with the wheel between them, on two rows, activated %v", acts)
+	}
+}
+
 // A press puts the cursor on the cell under it; a second press activates the row; a press on the
 // header is consumed and selects that field, the cursor on its first row; motion goes on to the
 // ancestors.

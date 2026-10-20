@@ -180,13 +180,15 @@ const (
 
 // TableCore holds a table's behaviour apart from any view.
 type TableCore struct {
-	src           TableSource
-	pager         TablePager
-	edit          TableEditor
-	commit        TableCommitter // the source's compound edits, nil when it has none (tablecore_edit.go)
-	edges         bool           // TableAppendEdges
-	editing       *TableEdit     // the open field, nil for none
-	srcGen        uint64         // SetSource's count: an open edit's source, by number
+	src     TableSource
+	pager   TablePager
+	edit    TableEditor
+	commit  TableCommitter // the source's compound edits, nil when it has none (tablecore_edit.go)
+	edges   bool           // TableAppendEdges
+	editing *TableEdit     // the open field, nil for none
+	// presses pairs a view's double-click by source row and field (pairPress), reset with the source
+	presses       pressPairer[TablePos]
+	srcGen        uint64 // SetSource's count: an open edit's source, by number
 	onEditDropped func()
 	keysFirst     func(tui.KeyEvent) bool
 	layout        TableLayout
@@ -261,6 +263,7 @@ func (c *TableCore) SetSource(src TableSource) {
 	had := c.keys != nil
 	c.cur, c.anchor, c.kind, c.order, c.keys = TablePos{}, nil, TableSelectCells, nil, nil
 	c.filter, c.place = nil, nil
+	c.presses.Reset() // a source row index means another row now
 	c.dropPending()
 	c.dragging = false
 	c.Changed()
