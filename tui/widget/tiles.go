@@ -196,11 +196,16 @@ func (t *Tiles) sync() {
 	t.MarkDirty()
 }
 
-// Layout places every tile where plan puts it, from the staged gesture when there is one.
+// Layout places every tile where plan puts it. A staged resize is laid out live, so the border
+// follows the pointer; a staged drop is only outlined, and moves nothing until it completes.
 func (t *Tiles) Layout(c tui.Constraints) tui.Size {
 	w, h := boundedMax(c.MaxW, c.MinW), boundedMax(c.MaxH, c.MinH)
 	t.size = tui.Size{W: w, H: h}
-	rects := t.plan(t.size, t.pending)
+	live := t.pending
+	if live != nil && live.resize == nil {
+		live = nil
+	}
+	rects := t.plan(t.size, live)
 	for _, tile := range t.tiles {
 		r := rects[tile]
 		t.ctx.LayoutChild(tile.mod, tui.Tight(tui.Size{W: r.W, H: r.H}))
