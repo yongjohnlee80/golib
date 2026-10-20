@@ -413,7 +413,7 @@ func TestTilesADropOnACompatibleTileSwaps(t *testing.T) {
 	specs[0].place.Edges = append(specs[0].place.Edges, tui.DockCenter)
 	specs[1].place.Edges = []tui.DockEdge{tui.DockLeft}
 	f := newTiles(t, 120, 30, specs)
-	f.drag(tui.MouseLeft, 10, 10, 35, 5) // over the query, inside the left band
+	f.drag(tui.MouseLeft, 10, 10, 115, 5) // over the query, inside the right band the explorer may re-dock to: the swap wins
 	f.wantRects("swapped", map[string]tui.Rect{
 		"query": {X: 0, Y: 0, W: 30, H: 30}, "explorer": {X: 30, Y: 0, W: 90, H: 18}, "results": {X: 30, Y: 18, W: 90, H: 12}})
 	ev := f.changes()
