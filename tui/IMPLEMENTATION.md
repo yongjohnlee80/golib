@@ -141,7 +141,10 @@ purpose": a difference in behaviour is a parameter of the shared code, named and
 - **The bus is for app-wide listeners only:** an `XEvent` with `Owner tui.NodeID` first, published
   through `Base.publish`. Never both a callback and a bus event for the same fact to the same
   listener; never subscribe app-wide to hear your own child.
-- **Change events report user edits only**, never programmatic `SetValue`.
+- **An edit notification reports user edits only** (`ChangeEvent`, `WithOnEdit`): a programmatic
+  `SetValue` never fires it. Every other notification — an operation's result, a state change, a
+  layout change — reports whatever caused it, a programmatic call included, exactly as its API
+  documents (`Split.SetRatio` publishes `SplitResizedEvent` once its layout commits).
 - **Programmatic state changes reset dependent state through one function** (a pending operator, a
   selection anchor, a press pair), called from every entry point that changes the document.
 
