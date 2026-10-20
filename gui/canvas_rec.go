@@ -130,9 +130,13 @@ func (c *RecordingCanvas) FillEllipse(r Rect, b Brush) {
 // FillPath records a filled vector path operation.
 func (c *RecordingCanvas) FillPath(_ *Path, b Brush) { c.rec(PaintCall{Op: "FillPath", Brush: b}) }
 
-// StrokePath records a stroked vector path operation.
-func (c *RecordingCanvas) StrokePath(_ *Path, width float32, b Brush) {
-	c.rec(PaintCall{Op: "StrokePath", Width: width, Brush: b})
+// StrokePath records a stroked vector path operation, its Rect the path's bounds.
+func (c *RecordingCanvas) StrokePath(p *Path, width float32, b Brush) {
+	var r Rect
+	if p != nil {
+		r = p.Bounds()
+	}
+	c.rec(PaintCall{Op: "StrokePath", Rect: r, Width: width, Brush: b})
 }
 
 // DrawText records a text draw operation.

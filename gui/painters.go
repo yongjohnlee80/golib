@@ -210,17 +210,20 @@ func paintButton(comp tui.Component) (View, tui.NativeScope, bool) {
 }
 
 // comboField is a select field of any item type, as the painter reads it: what it shows, whether
-// its options are up, and whether it draws the ▾/▴ triangle (widget.Select).
+// its options are up, whether it draws the ▾/▴ triangle, and how wide the field is within its slot
+// (widget.Select).
 type comboField interface {
 	tui.Component
 	Label() string
 	Open() bool
 	Affordance() bool
+	FieldWidth() int
 }
 
 // paintComboBox draws a select field as a rounded, bordered box, as a button is drawn: the label keeps
 // its cells, and the triangle is drawn as a chevron in the last cell, pointing down, or up while the
-// options are open. The focus look stays while the options are up, as the cells' does.
+// options are open. The focus look stays while the options are up, as the cells' does. A slot wider
+// than the field shows the field only: the box, its cells and the chevron keep to the field's width.
 func paintComboBox(comp tui.Component) (View, tui.NativeScope, bool) {
 	f, ok := comp.(comboField)
 	if !ok {
@@ -228,17 +231,20 @@ func paintComboBox(comp tui.Component) (View, tui.NativeScope, bool) {
 	}
 	return ViewFunc(func(c Canvas) {
 		cols, rows := cells(c)
+		r := Rect{W: c.Size().W, H: c.Size().H}
+		if fw := f.FieldWidth(); fw > 0 && fw < cols {
+			cols, r.W = fw, float32(fw)*c.CellSize().W
+		}
 		fg, bg, open := openColors(c, 0, endsFirst(max(cols, 1))...)
 		if !open {
 			return // wholly covered: the host paints the covering cells
 		}
-		r := Rect{W: c.Size().W, H: c.Size().H}
 		radius := min(r.H/2, 6)
 		fill := bg
 		if hovered(comp) {
 			fill = Mix(bg, fg, 0.1)
 		}
-		c.FillRect(r, Solid(c.Backdrop())) // the corners show what is around the field
+		c.FillRect(Rect{W: c.Size().W, H: c.Size().H}, Solid(c.Backdrop())) // the corners, and the slot past the field
 		c.FillRRect(r, radius, Solid(fill))
 		border, width := alpha(fg, 0.35), float32(1)
 		if focusedNode(comp) || f.Open() {

@@ -795,6 +795,7 @@ type fakeCombo struct {
 	tui.MultiChild
 	label            string
 	open, affordance bool
+	fieldW           int
 }
 
 func (f *fakeCombo) Layout(cs tui.Constraints) tui.Size { return cs.Constrain(tui.Size{W: 10, H: 1}) }
@@ -804,17 +805,18 @@ func (f *fakeCombo) AccessibleRole() tui.AccessibleRole { return tui.RoleComboBo
 func (f *fakeCombo) Label() string                      { return f.label }
 func (f *fakeCombo) Open() bool                         { return f.open }
 func (f *fakeCombo) Affordance() bool                   { return f.affordance }
+func (f *fakeCombo) FieldWidth() int                    { return f.fieldW }
 
 // A select field is drawn as a bordered box: its label keeps its cells, and the triangle cell is a
 // drawn chevron instead. With no triangle, every cell is the label's and nothing is drawn over it.
 func TestAComboBoxIsABorderedBoxWithAChevron(t *testing.T) {
 	row := []string{"S", "q", "l", "i", "t", "e", " ", " ", " ", "▾"}
-	paint := func(f *fakeCombo) *RecordingCanvas {
+	paint := func(f *fakeCombo, slot int) *RecordingCanvas {
 		v, scope, ok := paintComboBox(f)
 		if !ok || scope != tui.ScopeSubtree {
 			t.Fatalf("ok=%v scope=%v", ok, scope)
 		}
-		rc := NewRecordingCanvas(Size{W: 80, H: 16}, Size{W: 8, H: 16})
+		rc := NewRecordingCanvas(Size{W: float32(slot) * 8, H: 16}, Size{W: 8, H: 16})
 		rc.Content = func(col, r int) string {
 			if r == 0 && col >= 0 && col < len(row) {
 				return row[col]
@@ -833,7 +835,7 @@ func TestAComboBoxIsABorderedBoxWithAChevron(t *testing.T) {
 		}
 		return out
 	}
-	rc := paint(&fakeCombo{label: "Sqlite", affordance: true})
+	rc := paint(&fakeCombo{label: "Sqlite", affordance: true, fieldW: 10}, 10)
 	ops := rc.Ops()
 	if !slices.Contains(ops, "StrokeRRect") || !slices.Contains(ops, "StrokePath") {
 		t.Fatalf("no border or chevron: %v", ops)
@@ -841,12 +843,29 @@ func TestAComboBoxIsABorderedBoxWithAChevron(t *testing.T) {
 	if got := kept(rc); !slices.Equal(got, []CellRect{{W: 9, H: 1}}) {
 		t.Fatalf("kept cells %+v; want the label's nine, not the triangle's", got)
 	}
-	bare := paint(&fakeCombo{label: "Sqlite"})
+	bare := paint(&fakeCombo{label: "Sqlite", fieldW: 10}, 10)
 	if slices.Contains(bare.Ops(), "StrokePath") {
 		t.Fatal("a field without its triangle has a chevron")
 	}
 	if got := kept(bare); !slices.Equal(got, []CellRect{{W: 10, H: 1}}) {
 		t.Fatalf("kept cells %+v; want all ten", got)
+	}
+	// a field not yet laid out reports no width, and keeps the whole slot rather than none of it
+	if got := kept(paint(&fakeCombo{label: "Sqlite", affordance: true}, 10)); !slices.Equal(got, []CellRect{{W: 9, H: 1}}) {
+		t.Fatalf("kept cells %+v before the field's first layout; want nine", got)
+	}
+	// laid out tight in a 30-cell slot, the field is still its own ten cells
+	wide := paint(&fakeCombo{label: "Sqlite", affordance: true, fieldW: 10}, 30)
+	if got := kept(wide); !slices.Equal(got, []CellRect{{W: 9, H: 1}}) {
+		t.Fatalf("kept cells %+v in a wider slot; want the field's nine", got)
+	}
+	for _, p := range wide.Calls {
+		switch {
+		case p.Op == "StrokeRRect" && p.Rect.X+p.Rect.W > 80:
+			t.Fatalf("the border reaches %v px; want it within the field's 80", p.Rect.X+p.Rect.W)
+		case p.Op == "StrokePath" && (p.Rect.X < 72 || p.Rect.X+p.Rect.W > 80):
+			t.Fatalf("the chevron spans %v..%v px; want it in the field's last cell, 72..80", p.Rect.X, p.Rect.X+p.Rect.W)
+		}
 	}
 }
 
