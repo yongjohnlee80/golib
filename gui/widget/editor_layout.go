@@ -36,7 +36,7 @@ type pixelLayout struct {
 	blocks []Block
 	laid   []*laidBlock // parallel to blocks: nil until laid out
 	stale  bool         // lines and blocks are to be read again
-	relaid bool         // Relayout: the scroll is kept within the text once the blocks drawn are laid out again
+	relaid bool         // a block Relayout left stale was laid out again: the paint keeps the scroll within the text
 	fonts  uint64       // the window's font generation they were shaped in (Canvas.Fonts)
 	keep   int          // after a change, blocks wholly before this line keep their layout
 
@@ -234,7 +234,6 @@ func (l *pixelLayout) relayout() {
 			lb.stale = true
 		}
 	}
-	l.relaid = true
 }
 
 // invalidate drops every layout: the width, the mode or the fonts changed.
@@ -360,6 +359,9 @@ func (l *pixelLayout) lay(i int, frame *tuiwidget.HighlightFrame) *laidBlock {
 	if l.e.Shown() == Rendered && l.e.render != nil {
 		if lb := l.laid[i]; lb != nil && !lb.stale && lb.width == l.width && lb.inside == inside {
 			return lb
+		}
+		if was := l.laid[i]; was != nil && was.stale {
+			l.relaid = true // its height may change, whenever it is drawn: then, not only on Relayout's next paint
 		}
 		lb := &laidBlock{inside: inside, width: l.width}
 		lb.bl = l.e.render.LayOut(b, l.lines, l.width, inside, l.sh, l.th, l)
