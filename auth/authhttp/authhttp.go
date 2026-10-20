@@ -131,7 +131,7 @@ func FromRequest(r *http.Request, opts ...Option) *auth.Request {
 
 func fromRequest(r *http.Request, c config) *auth.Request {
 	out := &auth.Request{
-		Peer:        peerOf(r),
+		Peer:        Peer(r),
 		Credentials: c.credentials(r),
 		Metadata:    make(map[string][]string, len(c.headers)),
 	}
@@ -146,10 +146,17 @@ func fromRequest(r *http.Request, c config) *auth.Request {
 	return out
 }
 
-// peerOf parses RemoteAddr. An unparsable value yields the zero AddrPort, which
+// Peer is r's peer as [FromRequest] projects it: RemoteAddr, the transport's own view, with an
+// IPv4-in-IPv6 address unmapped, as auth's connection peer is, so an address-keyed factor sees one
+// address however the listener was bound. An unparsable value yields the zero AddrPort, which
 // every address-keyed factor must treat as "no address" rather than as a match.
+func Peer(r *http.Request) netip.AddrPort {
+	ap := peerOf(r)
+	return netip.AddrPortFrom(ap.Addr().Unmap(), ap.Port())
+}
+
 func peerOf(r *http.Request) netip.AddrPort {
-	if r.RemoteAddr == "" {
+	if r == nil || r.RemoteAddr == "" {
 		return netip.AddrPort{}
 	}
 	if ap, err := netip.ParseAddrPort(r.RemoteAddr); err == nil {

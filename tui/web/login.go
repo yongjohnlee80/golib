@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/yongjohnlee80/golib/auth"
+	"github.com/yongjohnlee80/golib/auth/authhttp"
 	"github.com/yongjohnlee80/golib/auth/token"
 	"github.com/yongjohnlee80/golib/logger"
 )
@@ -183,17 +184,10 @@ func (h *Handler) ServeLogin(w http.ResponseWriter, r *http.Request) {
 	// in two steps within one request rather than through a shared key.
 	stash := &Stash{}
 	ctx = withStash(ctx, stash)
-	authReq := &auth.Request{
-		Peer: peerFromRequest(r),
-		Credentials: map[string]auth.Secret{
-			"subject":  auth.NewSecret(req.Subject),
-			"password": auth.NewSecret(req.Password),
-		},
-		Metadata: map[string][]string{},
-	}
-	if v := r.Header.Values("Origin"); len(v) > 0 {
-		authReq.Metadata["Origin"] = v
-	}
+	// the request as authhttp projects it, as the attach's is, with the login's credentials
+	authReq := authhttp.FromRequest(r, authhttp.Credentials(func(*http.Request) map[string]auth.Secret {
+		return map[string]auth.Secret{"subject": auth.NewSecret(req.Subject), "password": auth.NewSecret(req.Password)}
+	}))
 
 	// Anything the credential check allocated is released unless it is parked.
 	//
