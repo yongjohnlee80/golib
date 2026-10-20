@@ -43,12 +43,12 @@ var terminalTabsType = Type{
 	Build:   buildTerminalTabs,
 	restyle: restyleTerminalTabs,
 	Getters: map[string]Getter{
-		"count": func(c tui.Component) (qml.SpecValue, error) {
-			return numberValue(len(c.(*widget.TerminalTabs).Tabs())), nil
-		},
-		"currentId": func(c tui.Component) (qml.SpecValue, error) {
-			return strValue(string(c.(*widget.TerminalTabs).Active())), nil
-		},
+		"count": getter(func(t *widget.TerminalTabs) (qml.SpecValue, error) {
+			return numberValue(len(t.Tabs())), nil
+		}),
+		"currentId": getter(func(t *widget.TerminalTabs) (qml.SpecValue, error) {
+			return strValue(string(t.Active())), nil
+		}),
 	},
 	Setters: map[string]Setter{
 		"emptyText":       setter("a TerminalTabs", stringOf, (*widget.TerminalTabs).SetEmptyText),
@@ -63,5 +63,5 @@ var terminalTabsType = Type{
 		"modeKey": setter("a TerminalTabs", modeKeyOf, (*widget.TerminalTabs).SetModeKey),
 	},
 	Signals:   map[string][]string{"addRequested": {}, "menuRequested": {"id"}, "changed": {}},
-	Destroyed: func(c tui.Component) { c.(*widget.TerminalTabs).ShutdownWithResult() },
+	Destroyed: destroyer(func(t *widget.TerminalTabs) { t.ShutdownWithResult() }),
 }

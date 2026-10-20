@@ -166,12 +166,12 @@ var windowModType = Type{
 		"restore": windowInvoke(widget.WindowRestoreAction{}), "close": windowInvoke(widget.WindowCloseAction{}),
 	},
 	Getters: map[string]Getter{
-		"maximized": func(c tui.Component) (qml.SpecValue, error) {
-			return windowBool(c.(*widget.WindowMod).Core().State().Maximized), nil
-		},
-		"minimized": func(c tui.Component) (qml.SpecValue, error) {
-			return windowBool(c.(*widget.WindowMod).Core().State().Minimized), nil
-		},
+		"maximized": getter(func(w *widget.WindowMod) (qml.SpecValue, error) {
+			return windowBool(w.Core().State().Maximized), nil
+		}),
+		"minimized": getter(func(w *widget.WindowMod) (qml.SpecValue, error) {
+			return windowBool(w.Core().State().Minimized), nil
+		}),
 	},
 }
 

@@ -1,9 +1,10 @@
 package decl_test
 
 import (
-	"github.com/yongjohnlee80/golib/parse/qml"
 	"strings"
 	"testing"
+
+	"github.com/yongjohnlee80/golib/parse/qml"
 
 	"github.com/yongjohnlee80/golib/tui"
 	"github.com/yongjohnlee80/golib/tui/widget"

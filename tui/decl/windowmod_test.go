@@ -1,13 +1,14 @@
 package decl_test
 
 import (
+	"strings"
+	"testing"
+
 	"github.com/yongjohnlee80/golib/decl"
 	"github.com/yongjohnlee80/golib/tui"
 	tuidecl "github.com/yongjohnlee80/golib/tui/decl"
 	"github.com/yongjohnlee80/golib/tui/decl/decltest"
 	"github.com/yongjohnlee80/golib/tui/widget"
-	"strings"
-	"testing"
 )
 
 func TestWindowModDeclarationHousesAnExistingZoomPolicy(t *testing.T) {

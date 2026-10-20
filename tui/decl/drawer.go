@@ -687,7 +687,7 @@ var drawerType = Type{
 		"resizeBy":       drawerWindowStep(false),
 		"moveBy":         drawerWindowStep(true),
 	},
-	Destroyed: func(c tui.Component) { c.(*drawerNode).detach() },
+	Destroyed: destroyer((*drawerNode).detach),
 }
 
 // drawerFracSetter is the setter of the floating rectangle's i-th percentage.

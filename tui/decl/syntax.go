@@ -2,8 +2,9 @@ package decl
 
 import (
 	"fmt"
-	"github.com/yongjohnlee80/golib/parse/markdown"
 	"strings"
+
+	"github.com/yongjohnlee80/golib/parse/markdown"
 
 	"github.com/yongjohnlee80/golib/decl"
 	"github.com/yongjohnlee80/golib/highlight"
@@ -134,13 +135,7 @@ func restyleSyntax(c tui.Component, p palette) {
 
 func syntaxSetters() map[string]Setter {
 	return map[string]Setter{
-		"definition": func(c tui.Component, v qml.SpecValue) error {
-			n, ok := c.(*syntaxNode)
-			if !ok {
-				return fmt.Errorf("definition is a SyntaxHighlighter's")
-			}
-			return n.setDefinition(v)
-		},
+		"definition": rawSetter((*syntaxNode).setDefinition),
 	}
 }
 

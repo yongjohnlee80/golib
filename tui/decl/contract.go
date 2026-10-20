@@ -189,6 +189,52 @@ func method[W any](what string, run func(W) error) Method {
 	}
 }
 
+// argMethod is a method of a W that reads its own arguments. Any other component is refused with an
+// error before the arguments are read.
+func argMethod[W any](run func(W, []qml.SpecValue) error) Method {
+	return func(c tui.Component, args []qml.SpecValue) error {
+		w, ok := any(c).(W)
+		if !ok {
+			return fmt.Errorf("not %s", widgetName[W]())
+		}
+		return run(w, args)
+	}
+}
+
+// getter is a readable property of a W. Any other component is refused with an error, never a panic:
+// StandardType hands a type's getters to a style whose Build may make a different widget.
+func getter[W any](read func(W) (qml.SpecValue, error)) Getter {
+	return func(c tui.Component) (qml.SpecValue, error) {
+		w, ok := any(c).(W)
+		if !ok {
+			return qml.SpecValue{}, fmt.Errorf("not %s", widgetName[W]())
+		}
+		return read(w)
+	}
+}
+
+// rawSetter is a runtime property of a W whose value it reads itself. Any other component is refused
+// with an error before the value is read.
+func rawSetter[W any](apply func(W, qml.SpecValue) error) Setter {
+	return func(c tui.Component, v qml.SpecValue) error {
+		w, ok := any(c).(W)
+		if !ok {
+			return fmt.Errorf("not %s", widgetName[W]())
+		}
+		return apply(w, v)
+	}
+}
+
+// destroyer releases what a W holds when its node is destroyed; any other component holds nothing of
+// a W's, so nothing is released.
+func destroyer[W any](release func(W)) func(tui.Component) {
+	return func(c tui.Component) {
+		if w, ok := any(c).(W); ok {
+			release(w)
+		}
+	}
+}
+
 // ---------------------------------------------------------------- builders
 
 // Field reads one constructor property into a builder's local. [ReadProps]

@@ -428,6 +428,20 @@ func (n *treeViewNode) Layout(c tui.Constraints) tui.Size {
 func (*treeViewNode) Render(tui.Surface)         {}
 func (*treeViewNode) HandleEvent(tui.Event) bool { return false }
 
+// treeIndexMethod is a TreeView method taking one row's index, as a signal hands it: `index`.
+func treeIndexMethod(name string, run func(*treeViewNode, Index) error) Method {
+	return argMethod(func(n *treeViewNode, args []qml.SpecValue) error {
+		if len(args) != 1 {
+			return fmt.Errorf("%s takes a row's index, and was given %d arguments", name, len(args))
+		}
+		ix, ok := args[0].Obj.(Index)
+		if !ok {
+			return fmt.Errorf("%s takes a row's index (a signal's index), not %s", name, args[0].Raw)
+		}
+		return run(n, ix)
+	})
+}
+
 var treeViewType = Type{
 	Name:  "TreeView",
 	Build: buildTreeView,
@@ -446,51 +460,24 @@ var treeViewType = Type{
 	},
 	Ctor: []string{"textRole", "badgeRole", "delegate"},
 	Setters: map[string]Setter{
-		"model": func(c tui.Component, v qml.SpecValue) error {
+		"model": rawSetter(func(n *treeViewNode, v qml.SpecValue) error {
 			m, err := treeModelOf(v)
 			if err != nil {
 				return err
 			}
-			n := c.(*treeViewNode)
 			if err := n.checkTemplate(m); err != nil {
 				return err
 			}
 			n.setModel(m)
 			return nil
-		},
+		}),
 	},
 	Methods: map[string]Method{
-		"toggleExpanded": func(c tui.Component, args []qml.SpecValue) error {
-			n, ok := c.(*treeViewNode)
-			if !ok {
-				return fmt.Errorf("not a TreeView")
-			}
-			if len(args) != 1 {
-				return fmt.Errorf("toggleExpanded takes a row's index, and was given %d arguments", len(args))
-			}
-			ix, ok := args[0].Obj.(Index)
-			if !ok {
-				return fmt.Errorf("toggleExpanded takes a row's index (a signal's index), not %s", args[0].Raw)
-			}
-			return n.toggleExpanded(ix)
-		},
-		"setCurrentIndex": func(c tui.Component, args []qml.SpecValue) error {
-			n, ok := c.(*treeViewNode)
-			if !ok {
-				return fmt.Errorf("not a TreeView")
-			}
-			if len(args) != 1 {
-				return fmt.Errorf("setCurrentIndex takes a row's index, and was given %d arguments", len(args))
-			}
-			ix, ok := args[0].Obj.(Index)
-			if !ok {
-				return fmt.Errorf("setCurrentIndex takes a row's index, not %s", args[0].Raw)
-			}
-			return n.setCurrentIndex(ix)
-		},
+		"toggleExpanded":  treeIndexMethod("toggleExpanded", (*treeViewNode).toggleExpanded),
+		"setCurrentIndex": treeIndexMethod("setCurrentIndex", (*treeViewNode).setCurrentIndex),
 	},
 	Signals:   map[string][]string{"activated": {"index"}, "expanded": {"index"}, "currentIndexChanged": {"index"}},
-	Destroyed: func(c tui.Component) { c.(*treeViewNode).release() },
+	Destroyed: destroyer((*treeViewNode).release),
 }
 
 // toggleExpanded opens or closes the row at ix — Qt's TreeView.toggleExpanded,
