@@ -72,6 +72,10 @@ func (s *Select[T]) Open() bool { return s.open }
 // Affordance reports whether the field draws its ▾/▴ triangle (WithAffordance).
 func (s *Select[T]) Affordance() bool { return s.affordance }
 
+// FieldWidth is the closed field's width in cells, as last laid out: its slot may be wider, and
+// the field, its triangle in its last cell, keeps to these.
+func (s *Select[T]) FieldWidth() int { return s.fieldW }
+
 // Label is what the field shows: the selected option's label, the placeholder, or the load error.
 func (s *Select[T]) Label() string {
 	switch {
