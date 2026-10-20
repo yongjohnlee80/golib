@@ -155,6 +155,31 @@ func TestALabelReadsOnTheFillItsStyleChose(t *testing.T) {
 	}
 }
 
+// A translucent fill keeps the theme's text: the reader sees the page (or a subgraph) through it, not
+// its RGB, so raising the text against that RGB would darken text that already reads (light text on
+// a dark page, under a transparent white fill).
+func TestATranslucentFillKeepsTheThemesText(t *testing.T) {
+	dark := testTheme
+	dark.Background, dark.Text = color.NRGBA{R: 0x1e, G: 0x23, B: 0x2b, A: 0xff}, color.NRGBA{R: 0xd8, G: 0xde, B: 0xe9, A: 0xff}
+	if r, _ := style.ContrastRatio(style.RGB(dark.Text.R, dark.Text.G, dark.Text.B), style.RGB(dark.Background.R, dark.Background.G, dark.Background.B)); r < labelContrast {
+		t.Fatalf("the control: the theme's text reads at %.2f on its page, want %g or more", r, labelContrast)
+	}
+	m, release := gui.AcquireMeasurer(1)
+	l, err := Lay(context.Background(), "flowchart LR\n  A[clear] --> B[half]\n  style A fill:#ffffff00\n  style B fill:#ffffff80", 2000, dark, m)
+	release()
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, n := range l.nodes {
+		if n.fill.A == 0xff {
+			t.Fatalf("%q's fill %v came out opaque: the test no longer has a translucent fill", n.label.lines[0], n.fill)
+		}
+		if n.label.color != dark.Text {
+			t.Errorf("%q under a translucent fill %v: text %v, want the theme's %v", n.label.lines[0], n.fill, n.label.color, dark.Text)
+		}
+	}
+}
+
 // Laid at a scale, every label fits its node as a shaper at that scale measures it: the window
 // draws at its own scale, so a diagram measured at another overflows its boxes.
 func TestLabelsFitTheirNodesAtTheirScale(t *testing.T) {

@@ -198,9 +198,11 @@ func nodeSize(s pm.Shape, text gui.Size, em float32) (w, h float32) {
 }
 
 // styled is a node's colours: the theme's, with its style's fill, stroke, color and stroke-width
-// where they are colours and lengths it can read. A style that fills the node and names no text
-// colour gets the theme's text raised to read on that fill: a diagram written for a light page (a
-// pale fill) keeps its labels legible in a dark theme, whose text is light.
+// where they are colours and lengths it can read. A style that fills the node opaquely and names no
+// text colour gets the theme's text raised to read on that fill: a diagram written for a light page
+// (a pale fill) keeps its labels legible in a dark theme, whose text is light. A translucent fill
+// keeps the theme's text: what shows through it (the page, a subgraph's fill) is not known here, and
+// its RGB alone is not what the reader sees.
 func styled(st pm.Style, th Theme) (fill, stroke, text color.NRGBA, width float32) {
 	fill, stroke, text, width = th.NodeFill, th.NodeStroke, th.Text, 1.2
 	filled, colored := false, false
@@ -224,7 +226,7 @@ func styled(st pm.Style, th Theme) (fill, stroke, text color.NRGBA, width float3
 			}
 		}
 	}
-	if filled && !colored {
+	if filled && !colored && fill.A == 0xff {
 		text = readableOn(text, fill)
 	}
 	return fill, stroke, text, width
