@@ -506,6 +506,18 @@ func TestSelectOpensUnderAFieldThatIsNotAtTheLeftEdge(t *testing.T) {
 	}
 }
 
+// FieldWidth is the field's own width, not its slot's: laid out tight and wider, the field keeps its
+// eight cells, as its pointer target does.
+func TestSelectFieldWidthIsTheFieldsNotItsSlots(t *testing.T) {
+	sel := widget.NewSelect(widget.WithOptions(selectItems("alpha", "beta")))
+	if size := sel.Layout(tui.Constraints{MinW: 80, MaxW: 80, MinH: 1, MaxH: 1}); size.W != 80 || sel.FieldWidth() != 8 {
+		t.Fatalf("laid out %d wide, the field %d; want 80 and 8", size.W, sel.FieldWidth())
+	}
+	if sel.Layout(tui.Constraints{MaxW: 5, MaxH: 1}); sel.FieldWidth() != 5 {
+		t.Fatalf("squeezed to 5, the field is %d", sel.FieldWidth())
+	}
+}
+
 // Affordance says whether the field draws its triangle: on by default, off with WithAffordance(false).
 func TestSelectAffordanceIsReported(t *testing.T) {
 	if !widget.NewSelect[string]().Affordance() {

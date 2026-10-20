@@ -32,8 +32,9 @@ func TestAPanelBuilds(t *testing.T) {
 	}
 }
 
-// A Panel's heading takes a catalog message as well as a string: a host's translated panels share
-// the one Panel.
+// A Panel's heading takes a catalog message as well as a string: the message reaches the Frame's
+// title, so a host's translated panels share the one Panel. A declared type judges literals only, so
+// this pins the substitution, not the var.
 func TestAPanelsHeadingTakesAMessage(t *testing.T) {
 	src := strings.Replace(layout, `heading: "Files"`, `heading: qsTrId("demo.panel.files")`, 1)
 	if err := tuidecl.Check(tuidecl.LayoutSource("main.qml", []byte(src)), panels.Offer(), themes.Offer(), collector()); err != nil {
