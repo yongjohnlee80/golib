@@ -69,6 +69,9 @@ func (t *TextArea) Scroll() (top, left int) { return t.top, t.left }
 // Open reports whether the options popup is up.
 func (s *Select[T]) Open() bool { return s.open }
 
+// Affordance reports whether the field draws its ▾/▴ triangle (WithAffordance).
+func (s *Select[T]) Affordance() bool { return s.affordance }
+
 // Label is what the field shows: the selected option's label, the placeholder, or the load error.
 func (s *Select[T]) Label() string {
 	switch {

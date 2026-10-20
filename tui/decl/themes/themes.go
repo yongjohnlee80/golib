@@ -48,6 +48,7 @@ import (
 	"embed"
 	"fmt"
 	"io/fs"
+	"slices"
 	"strings"
 
 	"github.com/yongjohnlee80/golib/parse/qml"
@@ -111,6 +112,50 @@ func Names() []string {
 		if name, ok := strings.CutSuffix(e.Name(), ".qml"); ok {
 			out = append(out, name)
 		}
+	}
+	return out
+}
+
+// Label is a theme's row in a program's theme menu: its name, and the words the menu shows, with
+// its access key marked by an ampersand ("&Dark").
+type Label struct {
+	Name string
+	Text string
+}
+
+// menuText is each theme's words in a menu, with an access key unique across the ten.
+var menuText = map[string]string{
+	"dark": "&Dark", "light": "&Light", "mono": "&Mono", "retro": "&Retro", "sepia": "&Sepia",
+	"catppuccin_frappe": "&Catppuccin Frappé", "kanagawa": "&Kanagawa", "nord": "&Nord",
+	"shades_of_purple": "Shades of &Purple", "tokyo_night": "&Tokyo Night",
+}
+
+// menuFirst are the themes a menu lists first, in this order; the others follow in Names' order.
+var menuFirst = []string{"dark", "light", "mono", "retro", "sepia"}
+
+// MenuLabels are the themes as a menu lists them: dark, light, mono, retro and sepia first, then the
+// others in Names' order, each with its words and access key. A theme without words shows as its
+// name, with none.
+func MenuLabels() []Label {
+	names := Names()
+	order := make([]string, 0, len(names))
+	for _, n := range menuFirst {
+		if slices.Contains(names, n) {
+			order = append(order, n)
+		}
+	}
+	for _, n := range names {
+		if !slices.Contains(order, n) {
+			order = append(order, n)
+		}
+	}
+	out := make([]Label, 0, len(order))
+	for _, n := range order {
+		text, ok := menuText[n]
+		if !ok {
+			text = n
+		}
+		out = append(out, Label{Name: n, Text: text})
 	}
 	return out
 }

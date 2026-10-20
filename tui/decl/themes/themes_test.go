@@ -141,3 +141,31 @@ func TestValuesAreEveryThemesColoursByName(t *testing.T) {
 		t.Errorf(`Values("solarized") error = %v, want the themes named`, err)
 	}
 }
+
+// MenuLabels lists every theme once, the first five in their order, each access key unique: two
+// themes sharing one would make the second unreachable by its letter.
+func TestMenuLabelsListEveryThemeWithAUniqueKey(t *testing.T) {
+	labels := themes.MenuLabels()
+	var names []string
+	keys := map[rune]string{}
+	for _, l := range labels {
+		names = append(names, l.Name)
+		i := strings.Index(l.Text, "&")
+		if i < 0 || i+1 >= len(l.Text) {
+			t.Errorf("%s: %q has no access key", l.Name, l.Text)
+			continue
+		}
+		k := []rune(strings.ToLower(l.Text[i+1:]))[0]
+		if prev, dup := keys[k]; dup {
+			t.Errorf("%s and %s share the access key %q", prev, l.Name, k)
+		}
+		keys[k] = l.Name
+	}
+	if !slices.Equal(names[:5], []string{"dark", "light", "mono", "retro", "sepia"}) {
+		t.Errorf("first five = %v", names[:5])
+	}
+	sorted := slices.Sorted(slices.Values(names))
+	if !slices.Equal(sorted, themes.Names()) {
+		t.Errorf("MenuLabels names %v, want each of %v once", names, themes.Names())
+	}
+}
