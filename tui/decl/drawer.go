@@ -13,7 +13,8 @@ import (
 
 // DRAWERS — Qt Quick Controls' Drawer: a panel that opens over the Window from one of its edges,
 // and closes back into it. It takes no place in the layout, so opening one moves nothing beneath:
-// an editor under it stays where it is.
+// an editor under it stays where it is. reserve: true (golib's) makes a docked one take its strip
+// from the page instead (drawer_reserve.go).
 //
 //	Drawer {
 //	    id: explorer
@@ -78,6 +79,11 @@ type drawerNode struct {
 	floating bool
 	frac     [4]float64
 	placed   func(args ...qml.SpecValue)
+	// reserve: docked and shown, it takes its strip of the Window from the page (reserving), its
+	// Float over the strip its Window's Dock placed for it (slot, from reserveSlot)
+	reserve bool
+	slot    tui.Rect
+	onEdge  func(tui.DockEdge) // the Window's: the strip follows a new edge
 }
 
 var _ Overlaid = (*drawerNode)(nil)
@@ -100,7 +106,7 @@ func buildDrawer(b Build) (tui.Component, []string, error) {
 	if content == nil {
 		return nil, nil, errors.New("a Drawer holds exactly one child, its content, besides its Shortcuts")
 	}
-	modal, resizable := true, false
+	modal, resizable, reserve := true, false, false
 	var keyScope keymap.Scope
 	closeOnQ := false
 	windowResize, movable := false, false
@@ -111,6 +117,7 @@ func buildDrawer(b Build) (tui.Component, []string, error) {
 		"maximizable": into(&wc.maximize, boolOf), "minimizable": into(&wc.minimize, boolOf), "closable": into(&wc.close, boolOf),
 		"label": into(&wc.label, stringOf), "key": into(&wc.key, stringOf), "keyScope": into(&keyScope, scopeOf),
 		"dragModifier": into(&wc.modifier, windowModifierOf), "resizeButton": into(&wc.resizeButton, windowMouseButtons.read),
+		"reserve": into(&reserve, boolOf),
 	})
 	if err != nil {
 		return nil, nil, err
@@ -125,7 +132,7 @@ func buildDrawer(b Build) (tui.Component, []string, error) {
 	n := &drawerNode{edge: tui.DockLeft, size: defaultDrawerSize, length: 100, opened: b.Emitter("opened"), closed: b.Emitter("closed"),
 		content: content, shortcuts: shortcuts, keyScope: keyScope, resizable: resizable || windowResize, minSize: 10, minLength: 10, resized: b.EmitterWith("resized"),
 		windowResize: windowResize, windowConfig: wc, windowCollector: b.WindowCollector, modal: modal, closeOnQ: closeOnQ, windowEmit: b.EmitterWith("changed"),
-		movable: movable, frac: [4]float64{25, 25, 50, 50}, placed: b.EmitterWith("placed")}
+		movable: movable, frac: [4]float64{25, 25, 50, 50}, placed: b.EmitterWith("placed"), reserve: reserve}
 	if n.resizable { // a drag stops a resizable panel short of a sliver along its edge
 		n.minLength = 20
 	}
@@ -299,6 +306,13 @@ func (n *drawerNode) place() {
 			return
 		}
 	}
+	if n.reserve && n.edge != tui.DockCenter {
+		// over its strip, wherever the Window's Dock placed it this pass; maximized, it fills the
+		// Window as any window does, the strip kept beneath
+		n.float.SetAnchor(widget.AtLive(n.liveSlot, n.edgeAnchor()))
+		n.float.SetSizeFraction(0, 0)
+		return
+	}
 	if n.resizable || n.windowControls() {
 		n.placeAnchor()
 		n.float.SetSizeFraction(0, 0)
@@ -324,26 +338,64 @@ func (n *drawerNode) place() {
 }
 
 // placeAnchor anchors a resizable Drawer's Float at its edge.
-func (n *drawerNode) placeAnchor() {
+func (n *drawerNode) placeAnchor() { n.float.SetAnchor(n.edgeAnchor()) }
+
+// edgeAnchor is the Float's anchor at the Drawer's edge.
+func (n *drawerNode) edgeAnchor() widget.Anchor {
 	switch n.edge {
 	case tui.DockRight:
-		n.float.SetAnchor(widget.Right)
+		return widget.Right
 	case tui.DockTop:
-		n.float.SetAnchor(widget.Top)
+		return widget.Top
 	case tui.DockBottom:
-		n.float.SetAnchor(widget.Bottom)
+		return widget.Bottom
 	case tui.DockCenter:
-		n.float.SetAnchor(widget.Center)
+		return widget.Center
 	default:
-		n.float.SetAnchor(widget.Left)
+		return widget.Left
 	}
 }
 
-// setEdge is Drawer.edge's setter. A resizable Drawer's grip moves to the new edge's inner corner.
+// reserving reports whether the Drawer takes its strip of the Window from the page now: reserve set,
+// at an edge, open, docked, and not minimized. Maximized it keeps the strip, so the page beneath
+// never reflows; closed, minimized or floating it has none.
+func (n *drawerNode) reserving() bool {
+	if !n.reserve || n.edge == tui.DockCenter || !n.float.Shown() || n.floating {
+		return false
+	}
+	return n.windowMods == nil || !n.windowMods.Core().State().Minimized
+}
+
+// liveSlot is the strip the Window's Dock placed for the Drawer this pass (AtLive's rectangle).
+func (n *drawerNode) liveSlot() (tui.Rect, bool) {
+	return n.slot, n.reserving() && n.slot.W > 0 && n.slot.H > 0
+}
+
+// dockedCells is the panel docked in a Window of win: size across its edge, the whole edge along
+// it, from the drag in progress when there is one (a grip's, or a window resize's preview).
+func (n *drawerNode) dockedCells(win tui.Size) tui.Size {
+	size := n.size
+	if n.grip != nil && n.grip.Dragging() {
+		if want, ok := n.grip.RequestedSize(); ok {
+			size, _ = n.percentOf(want, win)
+		}
+	}
+	sz := n.cells(size, 100, win)
+	if p := n.windowTarget.preview; p != nil {
+		sz = *p
+	}
+	return sz
+}
+
+// setEdge is Drawer.edge's setter. A resizable Drawer's grip moves to the new edge's inner corner,
+// and a reserving one's strip to the new edge.
 func (n *drawerNode) setEdge(e tui.DockEdge) {
 	n.stopWindowDrag()
 	moved := e != n.edge
 	n.edge = e
+	if moved && n.onEdge != nil {
+		n.onEdge(e)
+	}
 	if moved && n.resizable {
 		if n.windowMods != nil {
 			n.frame.Remove(n.windowMods)
@@ -487,6 +539,25 @@ func (f *drawerFrame) Init(ctx *tui.Context) {
 // progress when there is one, within the Drawer's bounds, else from size and length.
 func (f *drawerFrame) Layout(c tui.Constraints) tui.Size {
 	sz := c.Constrain(tui.Size{W: c.MaxW, H: c.MaxH})
+	if n := f.owner; !n.windowTarget.maximized && n.windowTarget.moving == nil {
+		if _, over := n.liveSlot(); over {
+			// over its strip: the Window's Dock sized it (the drag in progress included), and the
+			// frame fills that; the Window is the Float's area
+			f.ctx.AfterLayout("drawer-window-placement", func() {
+				if a := n.float.Area(); a.W > 0 && a.H > 0 {
+					n.win = a
+				}
+				if r, ok := n.float.Context().ResolveAnchor(f.ctx.NodeAnchor()); ok {
+					n.windowTarget.bounds = r
+				}
+			})
+			for _, child := range f.Items() {
+				f.ctx.LayoutChild(child, tui.Tight(sz))
+				f.ctx.PlaceChild(child, tui.Rect{W: sz.W, H: sz.H})
+			}
+			return sz
+		}
+	}
 	if n := f.owner; n.movable && !n.windowTarget.maximized && (n.floating || n.windowTarget.moving != nil) {
 		// the Float's AtFraction or AtRect sized it: the frame fills that
 		f.ctx.AfterLayout("drawer-window-placement", func() {
@@ -577,7 +648,7 @@ var drawerType = Type{
 	Name:  "Drawer",
 	Build: buildDrawer,
 	Ctor: []string{"modal", "closeOnQ", "resizable", "windowResize", "movable", "maximizable", "minimizable", "closable", "label", "key",
-		"dragModifier", "moveButton", "resizeButton", "keyScope"},
+		"dragModifier", "moveButton", "resizeButton", "keyScope", "reserve"},
 	Signals: map[string][]string{"resized": {"size", "length"}, "placed": {"x", "y", "width", "height"},
 		"changed": {"operation", "key", "x", "y", "width", "height", "maximized", "minimized"}},
 	Setters: map[string]Setter{

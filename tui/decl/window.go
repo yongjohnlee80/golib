@@ -42,6 +42,9 @@ type windowNode struct {
 	shortcuts    []*shortcutNode
 	menus        []*menuBarNode
 	overlaid     []Overlaid
+	// slots are the reserving Drawers' strips (drawer_reserve.go), pinned after the Window's own
+	// docked children
+	slots map[*drawerNode]*reserveSlot
 
 	// color is Qt's Window.color, painted under everything; unset leaves the
 	// terminal's own background wherever no widget paints.
@@ -105,9 +108,37 @@ func (w *windowNode) arrange(children []tui.Component, attached []map[string]qml
 		}
 		items = append(items, docked{child, edge})
 	}
+	// each reserving Drawer's strip, after the document's own children: the Dock consumes its pinned
+	// children in order, so the strips are between the bars
+	slots := map[*drawerNode]*reserveSlot{}
+	for _, o := range overlaid {
+		d, ok := o.(*drawerNode)
+		if !ok || !d.reserve {
+			continue
+		}
+		s := w.slots[d]
+		if s == nil {
+			s = newReserveSlot(d)
+		}
+		slots[d] = s
+		d.onEdge = func(tui.DockEdge) {
+			if w.dock != nil {
+				w.dock.SetEdge(s, slotEdge(d))
+			}
+		}
+		items = append(items, docked{s, slotEdge(d)})
+	}
+	w.slots = slots
 
 	if w.dock == nil {
 		w.dock = tui.NewDock()
+		// layout-safe: the slot's rectangle is recorded for its Drawer's Float, placed after the Dock
+		// in the same pass
+		w.dock.OnPlaced(func(c tui.Component, r tui.Rect) {
+			if s, ok := c.(*reserveSlot); ok {
+				s.d.slot = r
+			}
+		})
 		for _, it := range items {
 			w.dock.Pin(it.edge, it.comp)
 		}
@@ -194,6 +225,10 @@ func (w *windowNode) restoreFocus() {
 }
 
 func (w *windowNode) Layout(c tui.Constraints) tui.Size {
+	win := c.Constrain(tui.Size{W: c.MaxW, H: c.MaxH}) // the Window a reserving Drawer's size is a percentage of
+	for _, s := range w.slots {
+		s.win = win
+	}
 	sz := w.ctx.LayoutChild(w.host, c)
 	w.ctx.PlaceChild(w.host, tui.Rect{W: sz.W, H: sz.H})
 	if w.focusPending {

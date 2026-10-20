@@ -16,6 +16,22 @@ type Anchor struct {
 	rect       tui.Rect
 	atFraction bool
 	frac       [4]float64 // x, y, w, h: percent of the overlay area
+	live       *liveRect  // AtLive's; a pointer, so Anchors still compare
+}
+
+// liveRect is AtLive's rectangle, asked for at each placement.
+type liveRect struct{ rect func() (tui.Rect, bool) }
+
+// resolve is the rectangle a live anchor names now, inside area; ok false when it names none.
+func (a Anchor) resolve(area tui.Rect) (tui.Rect, bool) {
+	if a.live == nil {
+		return tui.Rect{}, false
+	}
+	r, ok := a.live.rect()
+	if !ok || r.W <= 0 || r.H <= 0 {
+		return tui.Rect{}, false
+	}
+	return windowBoundsInArea(r, area), true
 }
 
 // The alignment anchors. Center is the Float default.
@@ -33,6 +49,15 @@ var (
 
 // AtRect anchors the float at an explicit overlay-relative rectangle.
 func AtRect(r tui.Rect) Anchor { return Anchor{atRect: true, rect: r} }
+
+// AtLive anchors the float at the overlay-relative rectangle rect reports each time the float is
+// placed, so it follows something another layout places in the same pass: a reserved strip of a
+// Window (a reserving Drawer). rect runs inside Layout and must only read. While it reports false,
+// or an empty rectangle, the float is placed as otherwise would place it. A live-anchored float is
+// docked, not floating: it is where the layout put its rectangle.
+func AtLive(rect func() (tui.Rect, bool), otherwise Anchor) Anchor {
+	return Anchor{align: otherwise.align, live: &liveRect{rect: rect}}
+}
 
 // AtFraction anchors the float at a rectangle given in percent of the overlay area: x and y its
 // top-left corner, w and h its size, each 0 to 100, fractions of a percent included. Unlike AtRect
@@ -437,7 +462,10 @@ func (l *floatLayer) Layout(c tui.Constraints) tui.Size {
 	a := l.owner.anchor
 	var sz tui.Size
 	var x, y int
-	if a.atRect || a.atFraction {
+	if r, ok := a.resolve(tui.Rect{W: w, H: h}); ok {
+		sz = l.ctx.LayoutChild(l.owner.child, tui.Tight(tui.Size{W: r.W, H: r.H}))
+		x, y = r.X, r.Y
+	} else if a.atRect || a.atFraction {
 		r := a.rect
 		if a.atFraction {
 			r = fractionRect(a.frac, tui.Rect{W: w, H: h})

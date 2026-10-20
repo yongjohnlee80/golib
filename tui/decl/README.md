@@ -104,7 +104,7 @@ A `MenuSeparator` with nothing to separate is not drawn, as Qt's QMenu collapses
 | `Tab` | `title`; one child, its content | — | — | — | — |
 | `TreeView` | `textRole`, `badgeRole` | `model` (a tree model) | — | `activated(index)`, `expanded(index)`, `currentIndexChanged(index)` — an `Index` | `toggleExpanded(index)`, `setCurrentIndex(index)` |
 | `FileDialog` | `title`, `helpText`, `dim`, `fileMode`, `preview`, palette | `currentFolder`, `selectedFile` | — | `accepted(selectedFile)`, `rejected`, `closed` | `open()`, `close()` |
-| `Drawer` | `modal` (default true), `closeOnQ` (q closes it too; Esc always does: the key commands `tui.drawer.closeOnQ` and `tui.drawer.close`, after its Shortcuts), golib's `resizable` (default false), `windowResize`, `movable` and `moveButton` (see Window controls); one child, its content, and any number of Shortcuts; `keyScope` (as the Dialog's) | `edge` (`Tui.Left`, `Right`, `Top`, `Bottom`, or golib's `Center`: floating in the middle, `length` wide and `size` high), `size` (a percentage across the edge), `length` (golib's: a percentage along it, centred; default 100), golib's `minimumSize` (default 10) and `minimumLength` (default 20); a movable Drawer's `floating`, `floatX`, `floatY`, `floatWidth` and `floatHeight` (percentages of the Window) | — | `opened`, `closed`, golib's `resized(size, length)`, a movable Drawer's `placed(x, y, width, height)` | `open()`, `close()`, `toggle()`, `resizeBy`, `moveBy` |
+| `Drawer` | `modal` (default true), `closeOnQ` (q closes it too; Esc always does: the key commands `tui.drawer.closeOnQ` and `tui.drawer.close`, after its Shortcuts), golib's `resizable` (default false), `windowResize`, `movable` and `moveButton` (see Window controls); golib's `reserve` (default false: docked and shown, it takes its strip of the Window from the page, between the bars, instead of lying over it; see Reserving Drawers); one child, its content, and any number of Shortcuts; `keyScope` (as the Dialog's) | `edge` (`Tui.Left`, `Right`, `Top`, `Bottom`, or golib's `Center`: floating in the middle, `length` wide and `size` high), `size` (a percentage across the edge), `length` (golib's: a percentage along it, centred; default 100), golib's `minimumSize` (default 10) and `minimumLength` (default 20); a movable Drawer's `floating`, `floatX`, `floatY`, `floatWidth` and `floatHeight` (percentages of the Window) | — | `opened`, `closed`, golib's `resized(size, length)`, a movable Drawer's `placed(x, y, width, height)` | `open()`, `close()`, `toggle()`, `resizeBy`, `moveBy` |
 | `FolderDialog` | `title`, `helpText`, `dim`, `preview`, `keyScope` (as the Dialog's), palette; its children are fields | `currentFolder`, `selectedFolder` | — | `accepted(selectedFolder)`, `rejected`, `closed` | `open()`, `close()` |
 | `Repeater`, `Instantiator` | `model` | — | — | — | — |
 | `DelegateChooser` | `role` | — | — | — | — |
@@ -785,6 +785,23 @@ Drawers expose `resizeBy(widthDelta,heightDelta)` as a pointer-independent path;
 it uses the configured inner-corner handle, so right/bottom-pinned panels can grow.
 Applications removing grips should bind resize keys/commands for terminals that
 reserve modifier-click.
+
+**Reserving Drawers.** An ordinary Drawer lies over the Window, its bars and its page included.
+`reserve: true` makes a docked, shown one take its strip from the page instead, as a split pane
+would. The strip sits between the Window's own docked children (a MenuBar, a StatusBar), and the
+page lays out beside it. Reserving Drawers take their strips in declaration order, so a left one has
+the height between the bars and a bottom one the width beside it. Floating, minimized or closed, a
+Drawer gives its strip back; maximized, it keeps it, so the page beneath never reflows. `length`
+doesn't apply while it reserves: the strip is the whole edge.
+
+```qml
+Window {
+    MenuBar { Dock.edge: Tui.Top; … }
+    Frame { Editor { id: query } }
+    StatusBar { Dock.edge: Tui.Bottom; … }
+    Drawer { edge: Tui.Left; size: 25; reserve: true; modal: false; Frame { TreeView { … } } }
+}
+```
 
 `movable: true` lets a Drawer leave its edge: Alt/Option-left drag (`moveButton`,
 which must differ from `resizeButton`) and `moveBy(dx,dy)` move it. While a move or
