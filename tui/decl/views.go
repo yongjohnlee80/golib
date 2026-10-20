@@ -3,6 +3,7 @@ package decl
 import (
 	"fmt"
 	"strconv"
+	"strings"
 
 	"github.com/yongjohnlee80/golib/parse/js"
 	"github.com/yongjohnlee80/golib/parse/qml"
@@ -202,20 +203,23 @@ func buildComboBox(b Build) (tui.Component, []string, error) {
 		return nil, nil, fmt.Errorf("a ComboBox takes no children; its choices are its model's (at %s)", b.Pos)
 	}
 	n := &comboBoxNode{activated: b.EmitterWith("activated")}
-	var placeholder string
+	var placeholder UIText
 	var maxWidth int
 	consumed, err := readProps(b.Props, map[string]field{
 		"textRole":        into(&n.mv.textRole, stringOf),
 		"valueRole":       into(&n.valueRole, stringOf),
-		"placeholderText": into(&placeholder, stringOf),
+		"placeholderText": UITextField(&placeholder),
 		"maxWidth":        into(&maxWidth, cellsOf),
 	})
 	if err != nil {
 		return nil, nil, err
 	}
 	var opts []widget.SelectOption[int]
-	if placeholder != "" {
-		opts = append(opts, widget.WithSelectPlaceholder[int](placeholder))
+	switch {
+	case placeholder.IsMessage():
+		opts = append(opts, widget.WithSelectPlaceholderMessage[int](placeholder.Message))
+	case placeholder.Plain != "":
+		opts = append(opts, widget.WithSelectPlaceholder[int](placeholder.Plain))
 	}
 	if maxWidth != 0 {
 		if maxWidth < 3 {
@@ -330,6 +334,7 @@ type tableViewNode struct {
 	widget.Base
 	mv        modelView // composed, not embedded: its methods call each other
 	declared  []*tableColumnNode
+	titles    string // the cell grid's declared titles as last measured: a language change remeasures
 	table     *widget.Table[int]
 	activated func(args ...qml.SpecValue)
 	moved     func(args ...qml.SpecValue)
@@ -354,9 +359,10 @@ type tableViewNode struct {
 // tableColumnNode is a declared TableViewColumn: what the column shows.
 type tableColumnNode struct {
 	widget.Base
-	role, title string
-	width       int
-	elide       widget.Elide
+	role  string
+	title UIText
+	width int
+	elide widget.Elide
 }
 
 // elideModes are Qt's TableViewColumn.elideMode values (Qt::TextElideMode):
@@ -382,7 +388,7 @@ func buildTableViewColumn(b Build) (tui.Component, []string, error) {
 	n := &tableColumnNode{}
 	consumed, err := readProps(b.Props, map[string]field{
 		"role":      into(&n.role, stringOf),
-		"title":     into(&n.title, stringOf),
+		"title":     UITextField(&n.title),
 		"width":     into(&n.width, cellsOf),
 		"elideMode": into(&n.elide, elideModes.read),
 	})
@@ -604,7 +610,8 @@ func (n *tableViewNode) columns() []widget.TableColumn[int] {
 	var cols []widget.TableColumn[int]
 	if len(n.declared) > 0 {
 		for _, d := range n.declared {
-			cols = append(cols, widget.TableColumn[int]{Title: d.title, Width: d.width, Cell: cell(d.role, 0), Elide: d.elide})
+			cols = append(cols, widget.TableColumn[int]{Title: d.title.Plain, TitleMsg: d.title.Message, Width: d.width,
+				Cell: cell(d.role, 0), Elide: d.elide})
 		}
 		return cols
 	}
@@ -678,10 +685,27 @@ func (n *tableViewNode) Layout(c tui.Constraints) tui.Size {
 	var child tui.Component = n.table
 	if n.grid != nil {
 		child = n.grid
+		n.remeasureTitles()
 	}
 	sz := n.Context().LayoutChild(child, c)
 	n.Context().PlaceChild(child, tui.Rect{W: sz.W, H: sz.H})
 	return sz
+}
+
+// remeasureTitles has the cell grid measure its columns again when a declared title reads
+// otherwise now (a qsTrId title in another language): its widths were measured for the old ones.
+func (n *tableViewNode) remeasureTitles() {
+	var b strings.Builder
+	for _, d := range n.declared {
+		b.WriteString(n.textNow(d.title))
+		b.WriteByte(0)
+	}
+	if t := b.String(); t != n.titles {
+		if n.titles != "" {
+			n.grid.Core().Remeasure()
+		}
+		n.titles = t
+	}
 }
 
 func (*tableViewNode) Render(tui.Surface)         {}

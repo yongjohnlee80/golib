@@ -215,6 +215,14 @@
         <source>&amp;Paste</source>
         <translation>貼り付け(&amp;p)</translation>
     </message>
+    <message id="tui.editor.view.raw">
+        <source>Raw</source>
+        <translation>ソース</translation>
+    </message>
+    <message id="tui.editor.view.rendered">
+        <source>Rendered</source>
+        <translation>表示</translation>
+    </message>
     <message id="tui.cmdline.title">
         <source>VIM Commands</source>
         <translation>VIM コマンド</translation>

@@ -63,6 +63,8 @@ var toolkitEnglish = map[string]string{
 	"tui.editor.menu.copy":        "&Copy",
 	"tui.editor.menu.cut":         "Cu&t",
 	"tui.editor.menu.paste":       "&Paste",
+	"tui.editor.view.raw":         "Raw",
+	"tui.editor.view.rendered":    "Rendered",
 	"tui.cmdline.title":           "VIM Commands",
 	"tui.cmdline.help":            "Enter runs · Tab completes · Esc closes",
 	"tui.cmdline.replaceTitle":    "Replace",

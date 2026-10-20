@@ -14,6 +14,10 @@ type TableColumn[T any] struct {
 	// Title is rendered in the header row.
 	Title string
 
+	// TitleMsg, when set, names the title by catalog id instead: the Table fills Title with it
+	// in the App's language at each layout.
+	TitleMsg tui.Message
+
 	// Width is the fixed cell width in monospace columns.
 	//
 	// Setting Width = 0 designates a FLEX column:
@@ -305,6 +309,12 @@ func pad(s string, w int) string {
 // Layout fills the height it is given. Offered an unbounded one, it asks for
 // its header and its rows — its content, as a Qt view's implicit height is.
 func (t *Table[T]) Layout(c tui.Constraints) tui.Size {
+	// Resolved here, never in Render: a language change lays the tree out again.
+	for i := range t.cols {
+		if t.cols[i].TitleMsg != (tui.Message{}) {
+			t.cols[i].Title = t.translate(t.cols[i].TitleMsg)
+		}
+	}
 	w := boundedMax(c.MaxW, max(c.MinW, 1))
 	h := boundedMax(c.MaxH, max(c.MinH, 1+max(t.list.Len(), 1)))
 	t.resolveWidths(w)

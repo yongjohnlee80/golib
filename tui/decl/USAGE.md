@@ -737,9 +737,11 @@ p.App().ApplyLanguage("ko_KR")                          // in a handler that cha
   (`파일(f)`), so a translator's mistake never moves a key.
 - **What takes a message:** `Text.text`, `Button.text`, `CheckBox.text`, `MenuItem.text`,
   `Menu.title`, `Frame.title`, `StatusBar`'s `left`, `center` and `right`, the dialogs'
-  `title` and `helpText`, and `TextField.placeholderText`. An `Editor`'s `text` is a
-  document, not UI text, and takes a string only. `TabView`'s `Tab.title`,
-  `TableViewColumn.title` and `ComboBox.placeholderText` take a string for now.
+  `title` and `helpText`, `TextField.placeholderText` and `ComboBox.placeholderText`,
+  `TabView`'s `Tab.title`, `TableViewColumn.title`, and every widget's `toolTipText`. An
+  `Editor`'s `text` is a document, not UI text, and takes a string only. In Go, the widgets
+  take a message beside their string: `widget.WithTabMessage`, `TableColumn.TitleMsg`,
+  `WithSelectPlaceholderMessage`, `Base.SetToolTipMessage`, and gui's `WithTitleMessage`.
 - **Under `HotReload` the catalogs are followed too.** A saved catalog relabels the
   screen; one that does not parse is refused like a broken layout. A reload is applied
   whole or not at all: a good catalog saved beside a broken layout waits for the layout.

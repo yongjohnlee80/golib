@@ -122,10 +122,11 @@ not declare the handler leaves a right press unhandled, as before.
 catalogs (`Translations`). These properties take a string or a message: `Text.text`,
 `Button.text`, `CheckBox.text`, `MenuItem.text`, `Menu.title`, `Frame.title`, `StatusBar`'s
 `left`, `center` and `right`, `Dialog`, `FileDialog` and `FolderDialog`'s `title` and
-`helpText`, and `TextField.placeholderText`. A message is shown in the App's language and
-follows `App.SetLanguage` with nothing rebound; a mnemonic keeps English's letter. `qsTrId`
-takes one non-empty string. `Editor.text`, `Tab.title`, `TableViewColumn.title` and
-`ComboBox.placeholderText` take a string only. See [USAGE.md §7c](USAGE.md#7c-languages).
+`helpText`, `TextField.placeholderText` and `ComboBox.placeholderText`, `Tab.title`,
+`TableViewColumn.title`, and every widget's `toolTipText`. A message is shown in the App's
+language and follows `App.SetLanguage` with nothing rebound; a mnemonic keeps English's letter.
+`qsTrId` takes one non-empty string. `Editor.text` is a document's, and takes a string only. See
+[USAGE.md §7c](USAGE.md#7c-languages).
 
 `Repeater`, `Instantiator`, `DelegateChooser` and `DelegateChoice` are the
 engine's, expanded before anything is built, so they have no widget.
@@ -409,7 +410,8 @@ reveals in a card while the pointer rests on it for half a second, and at once w
 brings focus to it (a `ComboBox`'s, when its field is focused). The card never takes focus or the
 pointer: a dialog's keys still reach the dialog, and the pointer over the card is still over the
 control. It closes when the pointer or focus leaves, on any key or mouse press, and when the text
-changes; `""` shows none, and removed by a reload, the item has none.
+changes; `""` shows none, and removed by a reload, the item has none. It takes `qsTrId("id")`
+too: the card shows the message in the App's language when it opens.
 
 **Every element except `Window`, `Frame`, `Split`, `Flex`, `Dialog` and the
 engine's `Repeater`, `Instantiator`, `DelegateChooser` and `DelegateChoice` is

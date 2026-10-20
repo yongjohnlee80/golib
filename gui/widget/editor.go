@@ -556,21 +556,34 @@ func (e *Editor) theme(fg, bg color.NRGBA, textPx float32, th *style.Theme) Them
 	return t
 }
 
-// modeSwitch is the title bar's [ Raw | Rendered ] control.
+// modeSwitch is the title bar's [ Raw | Rendered ] control, its two words golib's catalog messages
+// in the App's language.
 type modeSwitch struct {
 	tuiwidget.Base
 	e *Editor
+	// raw and rendered are the segments as painted, "[ Raw " and " Rendered ]" in English, and
+	// rawW the first's width in cells: where the separator is, for the paint and the hit-test.
+	raw, rendered string
+	rawLabel      string // the words alone, for the native paint
+	renderedLabel string
+	rawW          int
 }
 
-const (
-	switchRaw      = "[ Raw "
-	switchSep      = "|"
-	switchRendered = " Rendered ]"
+// The switch's words, golib's own ids (tui/i18n/catalogs).
+var (
+	msgViewRaw      = tui.Msg("tui.editor.view.raw")
+	msgViewRendered = tui.Msg("tui.editor.view.rendered")
 )
 
-// Layout is the control's width on one row.
+const switchSep = "|"
+
+// Layout is the control's width on one row, its words in the language now.
 func (s *modeSwitch) Layout(c tui.Constraints) tui.Size {
-	return c.Constrain(tui.Size{W: len(switchRaw) + len(switchSep) + len(switchRendered), H: 1})
+	ctx := s.Context()
+	s.rawLabel, s.renderedLabel = ctx.Translate(msgViewRaw), ctx.Translate(msgViewRendered)
+	s.raw, s.rendered = "[ "+s.rawLabel+" ", " "+s.renderedLabel+" ]"
+	s.rawW = ctx.StringWidth(s.raw) // the width policy putString paints with
+	return c.Constrain(tui.Size{W: s.rawW + ctx.StringWidth(switchSep) + ctx.StringWidth(s.rendered), H: 1})
 }
 
 // Render draws the two segments, the current one bold and underlined; Rendered is faint when it
@@ -584,9 +597,9 @@ func (s *modeSwitch) Render(sur tui.Surface) {
 	if !s.e.canRender() {
 		rendered = rendered.Faint(true)
 	}
-	x := putString(sur, 0, 0, switchRaw, raw)
+	x := putString(sur, 0, 0, s.raw, raw)
 	x = putString(sur, x, 0, switchSep, off)
-	putString(sur, x, 0, switchRendered, rendered)
+	putString(sur, x, 0, s.rendered, rendered)
 }
 
 // The native switch is a segmented control on the bar: a pill with a hairline border, split at
@@ -612,7 +625,7 @@ func (s *modeSwitch) paint(c gui.Canvas) {
 	c.FillRect(gui.Rect{W: size.W, H: size.H}, gui.Solid(fill))
 	h := cell.H * 0.74
 	pill := gui.Rect{X: 0.5, Y: (cell.H - h) / 2, W: size.W - 1, H: h}
-	split := (float32(len(switchRaw)) + 0.5) * cell.W
+	split := (float32(s.rawW) + 0.5) * cell.W
 	segs := [2]gui.Rect{{X: pill.X, Y: pill.Y, W: split - pill.X, H: h}, {X: split, Y: pill.Y, W: pill.X + pill.W - split, H: h}}
 	cur := 0
 	if s.e.mode == Rendered {
@@ -622,7 +635,7 @@ func (s *modeSwitch) paint(c gui.Canvas) {
 	c.StrokeRRect(pill, h/2, 1, gui.Solid(mix(text, page, 0.22)))
 	c.FillRect(gui.Rect{X: split, Y: pill.Y + h*0.2, W: 1, H: h * 0.6}, gui.Solid(mix(text, page, 0.22)))
 	f := gui.Font{Size: c.TextSize() * 0.86}
-	for i, label := range [2]string{"Raw", "Rendered"} {
+	for i, label := range [2]string{s.rawLabel, s.renderedLabel} {
 		col := mix(text, page, 0.58)
 		switch {
 		case i == cur:
@@ -643,9 +656,9 @@ func (s *modeSwitch) HandleEvent(ev tui.Event) bool {
 		return false
 	}
 	switch {
-	case m.X < len(switchRaw):
+	case m.X < s.rawW:
 		s.e.SetMode(Raw)
-	case m.X > len(switchRaw):
+	case m.X > s.rawW:
 		s.e.SetMode(Rendered)
 	}
 	return true

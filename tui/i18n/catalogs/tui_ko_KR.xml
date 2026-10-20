@@ -215,6 +215,14 @@
         <source>&amp;Paste</source>
         <translation>붙여넣기(&amp;p)</translation>
     </message>
+    <message id="tui.editor.view.raw">
+        <source>Raw</source>
+        <translation>원문</translation>
+    </message>
+    <message id="tui.editor.view.rendered">
+        <source>Rendered</source>
+        <translation>렌더링</translation>
+    </message>
     <message id="tui.cmdline.title">
         <source>VIM Commands</source>
         <translation>VIM 명령</translation>

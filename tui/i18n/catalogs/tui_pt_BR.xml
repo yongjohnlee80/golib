@@ -215,6 +215,14 @@
         <source>&amp;Paste</source>
         <translation>Colar(&amp;p)</translation>
     </message>
+    <message id="tui.editor.view.raw">
+        <source>Raw</source>
+        <translation>Fonte</translation>
+    </message>
+    <message id="tui.editor.view.rendered">
+        <source>Rendered</source>
+        <translation>Renderizado</translation>
+    </message>
     <message id="tui.cmdline.title">
         <source>VIM Commands</source>
         <translation>Comandos do VIM</translation>

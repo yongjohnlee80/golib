@@ -491,3 +491,38 @@ Window {
 	openDialog(t, s, "p")
 	waitAll(t, s, "the plain dialog", "┌ plain ", "written help")
 }
+
+// The labels that took a string only take a message too, and follow the language: a Tab's title,
+// a TableViewColumn's title (in a list table and in a cell-cursor one), a ComboBox's placeholder
+// and a tooltip.
+func TestTheLastStringOnlyLabelsTakeAMessage(t *testing.T) {
+	s := decltest.Run(t, 70, 22, tuidecl.LayoutSource("main.qml", []byte(`import tui 1.0
+import demo 1.0
+Window { Flex { direction: Tui.Vertical
+ Text { id: label; text: "body"; toolTipText: qsTrId("demo.hint") }
+ ComboBox { placeholderText: qsTrId("demo.panel") }
+ TabView { Layout.preferredHeight: 3; Tab { title: qsTrId("demo.greeting"); Text { text: "page" } } }
+ TableView { model: App.rows; Layout.preferredHeight: 4; TableViewColumn { role: "name"; title: qsTrId("demo.status") } }
+ TableView { model: App.rows; Layout.preferredHeight: 4; cellCursor: true; TableViewColumn { role: "name"; title: qsTrId("demo.dialog.title") } } } }`)),
+		tuidecl.Singleton("demo", "1.0", "App"), tuidecl.Sources(map[string]any{"App.rows": tableRows(2)}),
+		tuidecl.Translations(demoCatalogs(), "i18n", "app"))
+	tip := func() (text string) {
+		onScreenLoop(t, s, func() {
+			c, _ := s.Program.Find("label")
+			text = c.(interface{ ToolTip() string }).ToolTip()
+		})
+		return text
+	}
+	waitAll(t, s, "English", "Panel", "Hello", "ready", "Unsaved")
+	if got := tip(); got != "type here" {
+		t.Errorf("the English tooltip: %q", got)
+	}
+	setLanguage(t, s, "ko_KR")
+	waitAll(t, s, "Korean", "패널", "안녕", "준비", "저장 안 됨")
+	if got := tip(); got != "여기에 입력" {
+		t.Errorf("the Korean tooltip: %q", got)
+	}
+	if sc := s.String(); strings.Contains(sc, "Hello") || strings.Contains(sc, "ready") || strings.Contains(sc, "Unsaved") {
+		t.Errorf("English is left on the Korean screen:\n%s", sc)
+	}
+}

@@ -51,7 +51,7 @@ func (n *tabViewNode) setIndex(i int) {
 // tabNode is a declared Tab: a title and the one item under it.
 type tabNode struct {
 	widget.Base
-	title   string
+	title   UIText
 	content tui.Component
 }
 
@@ -60,7 +60,7 @@ func buildTab(b Build) (tui.Component, []string, error) {
 		return nil, nil, fmt.Errorf("a Tab needs exactly 1 child, its content, got %d (at %s)", len(b.Children), b.Pos)
 	}
 	n := &tabNode{content: b.Children[0]}
-	consumed, err := readProps(b.Props, map[string]field{"title": into(&n.title, stringOf)})
+	consumed, err := readProps(b.Props, map[string]field{"title": UITextField(&n.title)})
 	return n, consumed, err
 }
 
@@ -90,7 +90,11 @@ func buildTabView(b Build) (tui.Component, []string, error) {
 			return nil, nil, fmt.Errorf("a TabView holds Tabs only (at %s)", b.Pos)
 		}
 		n.pages = append(n.pages, page)
-		opts = append(opts, widget.WithTab(page.title, page))
+		if page.title.IsMessage() {
+			opts = append(opts, widget.WithTabMessage(page.title.Message, page))
+		} else {
+			opts = append(opts, widget.WithTab(page.title.Plain, page))
+		}
 	}
 	n.tabs = widget.NewTabs(append(opts, widget.WithKeepMounted(true))...)
 	return n, nil, nil

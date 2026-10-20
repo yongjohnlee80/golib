@@ -96,6 +96,7 @@ type Tabs struct {
 
 type tabEntry struct {
 	label   string
+	msg     tui.Message // WithTabMessage's: label is it in the App's language, set at each layout
 	comp    tui.Component
 	mounted bool
 }
@@ -111,6 +112,14 @@ func WithTab(label string, content tui.Component) TabsOption {
 		panic("widget: WithTab: nil content")
 	}
 	return func(t *Tabs) { t.tabs = append(t.tabs, tabEntry{label: label, comp: content}) }
+}
+
+// WithTabMessage is WithTab with its label a catalog message, shown in the App's language.
+func WithTabMessage(m tui.Message, content tui.Component) TabsOption {
+	if content == nil {
+		panic("widget: WithTabMessage: nil content")
+	}
+	return func(t *Tabs) { t.tabs = append(t.tabs, tabEntry{label: englishText(m), msg: m, comp: content}) }
 }
 
 // WithKeepMounted keeps deactivated tab content mounted (state and
@@ -293,6 +302,12 @@ func (t *Tabs) KeyBindings(m *keymap.Map) []keymap.Binding { return tui.Bindings
 
 // Layout gives the bar one row and the active content the rest.
 func (t *Tabs) Layout(c tui.Constraints) tui.Size {
+	// Resolved here, never in Render: a language change lays the tree out again.
+	for i := range t.tabs {
+		if t.tabs[i].msg != (tui.Message{}) {
+			t.tabs[i].label = t.translate(t.tabs[i].msg)
+		}
+	}
 	w := boundedMax(c.MaxW, max(c.MinW, 1))
 	h := boundedMax(c.MaxH, max(c.MinH, 1))
 	barH := 1

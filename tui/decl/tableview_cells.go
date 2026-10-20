@@ -28,7 +28,7 @@ func (s modelTable) Fields() []widget.TableField {
 	if len(n.declared) > 0 {
 		out := make([]widget.TableField, len(n.declared))
 		for i, d := range n.declared {
-			out[i] = widget.TableField{Title: d.title, Width: d.width}
+			out[i] = widget.TableField{Title: n.textNow(d.title), Width: d.width}
 		}
 		return out
 	}
@@ -40,6 +40,18 @@ func (s modelTable) Fields() []widget.TableField {
 		out[c].Title = n.mv.model.HeaderData(c)
 	}
 	return out
+}
+
+// textNow is t as shown now: a message in the App's language, read each time the fields are, so
+// the header follows a language change; before mount, its id.
+func (n *tableViewNode) textNow(t UIText) string {
+	if !t.IsMessage() {
+		return t.Plain
+	}
+	if ctx := n.Context(); ctx != nil {
+		return ctx.Translate(t.Message)
+	}
+	return t.Message.ID
 }
 
 func (s modelTable) Len() int { return s.n.mv.rows() }

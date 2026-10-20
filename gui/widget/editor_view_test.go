@@ -136,6 +136,7 @@ func TestRulerAtItsColumn(t *testing.T) {
 // one in the bar's text colour and the other muted; Rendered unavailable is fainter still.
 func TestModeSwitchSegmentsSitOnTheirHitCells(t *testing.T) {
 	h := startEditor(t, 60, 8, WithRenderer(NewMarkdownRenderer()), WithCore(tuiwidget.CoreInitialText("# hi")))
+	const switchRaw, switchRendered = "[ Raw ", " Rendered ]" // in English
 	w := len(switchRaw) + len(switchSep) + len(switchRendered)
 	labels := func() []gui.PaintCall { // Raw's, then Rendered's
 		var out []gui.PaintCall

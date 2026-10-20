@@ -355,7 +355,8 @@ func TestModeSwitching(t *testing.T) {
 	if mode() != Rendered {
 		t.Fatal("Ctrl+T did not switch to Rendered")
 	}
-	// the title bar's switch, at its right: "[ Raw " starts where the switch's cells do
+	// the title bar's switch, at its right: "[ Raw " starts where the switch's cells do (English)
+	const switchRaw, switchRendered = "[ Raw ", " Rendered ]"
 	at := 60 - len(switchRaw+switchSep+switchRendered)
 	click := func(x int) {
 		_ = h.tb.Inject(tui.MouseEvent{Kind: tui.MousePress, Button: tui.MouseLeft, X: x, Y: 0})

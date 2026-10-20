@@ -52,3 +52,41 @@ func TestTheEditorsTitleBarHoldsTheHostsTabs(t *testing.T) {
 		t.Fatalf("the bar with more tabs than fit:\n%q\nwant the tabs past column 81, up to a blank cell before the switch", row())
 	}
 }
+
+// The switch's words are golib's catalog messages: in Korean the bar shows them, a click lands on
+// the segment drawn, and a panel's title message follows the language too.
+func TestTheSwitchAndThePanelTitleFollowTheLanguage(t *testing.T) {
+	h := startEditor(t, 80, 6, WithRenderer(NewMarkdownRenderer()), WithPanel(WithTitleMessage(tui.Msg("tui.cmdline.title"))))
+	row := func() string { return strings.Split(h.tb.String(), "\n")[0] }
+	h.until("English", func() bool { return strings.HasSuffix(row(), "[ Raw | Rendered ]") })
+	h.onLoop(func() { h.app.ApplyLanguage("ko_KR") })
+	const sw = "[ 원문 | 렌더링 ]"
+	h.until("Korean", func() bool { return strings.HasSuffix(strings.TrimRight(row(), " "), sw) })
+	if r := row(); strings.Contains(r, "Raw") || strings.Contains(r, "Rendered") {
+		t.Errorf("English is left on the Korean bar: %q", r)
+	}
+	var title string
+	h.onLoop(func() { title = h.e.panel.title })
+	if title != "VIM 명령" {
+		t.Errorf("the panel's title in Korean: %q", title)
+	}
+	// "[ 원문 " is 7 cells, then the separator: a click past it is Rendered, before it Raw
+	var swAt int
+	h.onLoop(func() { // at the bar's right end
+		ctx := h.e.sw.Context()
+		swAt = 80 - (h.e.sw.rawW + ctx.StringWidth(switchSep) + ctx.StringWidth(h.e.sw.rendered))
+	})
+	click := func(x int) EditorMode {
+		_ = h.tb.Inject(tui.MouseEvent{Kind: tui.MousePress, Button: tui.MouseLeft, X: swAt + x, Y: 0})
+		h.barrier()
+		var m EditorMode
+		h.onLoop(func() { m = h.e.mode })
+		return m
+	}
+	if m := click(9); m != Rendered {
+		t.Errorf("a click on 렌더링: mode %v", m)
+	}
+	if m := click(6); m != Raw { // the last cell of "[ 원문 ", past English's six
+		t.Errorf("a click on 원문's last cell: mode %v", m)
+	}
+}

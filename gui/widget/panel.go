@@ -38,6 +38,7 @@ type Panel struct {
 	ctx *tui.Context
 
 	title    string
+	titleMsg tui.Message // WithTitleMessage's: title is it in the App's language, set at each layout
 	content  tui.Component
 	leading  []tui.Component
 	trailing []tui.Component
@@ -135,7 +136,14 @@ func NewPanel(content tui.Component, opts ...PanelOption) *Panel {
 }
 
 // WithTitle sets the title bar's text.
-func WithTitle(s string) PanelOption { return func(p *Panel) { p.title = s } }
+func WithTitle(s string) PanelOption {
+	return func(p *Panel) { p.title, p.titleMsg = s, tui.Message{} }
+}
+
+// WithTitleMessage sets the title bar's text to a catalog message, shown in the App's language.
+func WithTitleMessage(m tui.Message) PanelOption {
+	return func(p *Panel) { p.title, p.titleMsg = m.ID, m }
+}
 
 // TitleLeading puts ws at the title bar's left: tui children, with their own focus and keys.
 func TitleLeading(ws ...tui.Component) PanelOption {
@@ -246,6 +254,10 @@ func (p *Panel) controls() []control {
 // Layout puts the trailing widgets on the title row before the controls, the leading ones after
 // one cell, within their share, and the content under it. Minimized, the content gets no rows.
 func (p *Panel) Layout(c tui.Constraints) tui.Size {
+	// Resolved here, never in Render: a language change lays the tree out again.
+	if p.titleMsg != (tui.Message{}) && p.ctx != nil {
+		p.title = p.ctx.Translate(p.titleMsg)
+	}
 	w := c.MaxW
 	if w == tui.Unbounded {
 		w = max(c.MinW, len(p.title)+4+controlCells*len(p.controls()))

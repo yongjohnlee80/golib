@@ -215,6 +215,14 @@
         <source>&amp;Paste</source>
         <translation>粘贴(&amp;p)</translation>
     </message>
+    <message id="tui.editor.view.raw">
+        <source>Raw</source>
+        <translation>源码</translation>
+    </message>
+    <message id="tui.editor.view.rendered">
+        <source>Rendered</source>
+        <translation>渲染</translation>
+    </message>
     <message id="tui.cmdline.title">
         <source>VIM Commands</source>
         <translation>VIM 命令</translation>

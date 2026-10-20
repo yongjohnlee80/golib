@@ -123,7 +123,8 @@ type Select[T any] struct {
 	// default, which renders a blank field -- indistinguishable from a field
 	// that is still loading, or from one whose selected label happens to be
 	// empty. A host that wants the empty state to say so supplies the words.
-	placeholder string
+	placeholder    string
+	placeholderMsg tui.Message // WithSelectPlaceholderMessage's: placeholder is it, set at each layout
 
 	// focusedSt is merged over fieldSt while the keyboard is on this select,
 	// or its options are open.
@@ -216,7 +217,13 @@ func WithAffordance[T any](on bool) SelectOption[T] {
 // Blank cannot be told apart from a field still loading its options, or one
 // whose selection has an empty label, so a host that cares says the words.
 func WithSelectPlaceholder[T any](s string) SelectOption[T] {
-	return func(sel *Select[T]) { sel.placeholder = s }
+	return func(sel *Select[T]) { sel.placeholder, sel.placeholderMsg = s, tui.Message{} }
+}
+
+// WithSelectPlaceholderMessage is WithSelectPlaceholder with a catalog message, shown in the App's
+// language.
+func WithSelectPlaceholderMessage[T any](m tui.Message) SelectOption[T] {
+	return func(sel *Select[T]) { sel.placeholder, sel.placeholderMsg = englishText(m), m }
 }
 
 // WithSelectFocusedStyle is the look merged over the field while this select
@@ -418,6 +425,10 @@ func (s *Select[T]) KeyBindings(m *keymap.Map) []keymap.Binding { return tui.Bin
 
 // Layout: closed = height 1, capped content width or WithWidth.
 func (s *Select[T]) Layout(c tui.Constraints) tui.Size {
+	// Resolved here, never in Render: a language change lays the tree out again.
+	if s.placeholderMsg != (tui.Message{}) {
+		s.placeholder = s.translate(s.placeholderMsg)
+	}
 	if s.loadErr != nil {
 		s.errText = s.errorText()
 	}

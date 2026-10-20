@@ -109,25 +109,43 @@ import "github.com/yongjohnlee80/golib/tui"
 //	}
 type Base struct {
 	tui.Visibility
-	ctx     *tui.Context // set by Init; carries NodeID, App handles, unmount context
-	toolTip string       // SetToolTip's text; "" none
+	ctx        *tui.Context // set by Init; carries NodeID, App handles, unmount context
+	toolTip    string       // SetToolTip's text; "" none
+	toolTipMsg tui.Message  // SetToolTipMessage's message, shown in the App's language; zero none
 }
 
 // SetToolTip is the text the widget reveals in a card (tui.ToolTipper, tui/tooltip.go): while the
 // pointer rests on it, and when the keyboard brings focus to it — a clipped label's full text, a
 // terse control's meaning. "" shows none, and a change closes a card showing. Qt's ToolTip.text.
 func (b *Base) SetToolTip(text string) {
-	if b.toolTip == text {
+	if b.toolTip == text && b.toolTipMsg == (tui.Message{}) {
 		return
 	}
-	b.toolTip = text
+	b.toolTip, b.toolTipMsg = text, tui.Message{}
 	if b.ctx != nil {
 		b.ctx.MarkDirty()
 	}
 }
 
-// ToolTip is SetToolTip's text: tui.ToolTipper.
-func (b *Base) ToolTip() string { return b.toolTip }
+// SetToolTipMessage is SetToolTip with a catalog message: the card shows it in the App's language
+// at the time it opens, and a language change closes a card showing (its text changed).
+func (b *Base) SetToolTipMessage(m tui.Message) {
+	if b.toolTipMsg == m {
+		return
+	}
+	b.toolTip, b.toolTipMsg = "", m
+	if b.ctx != nil {
+		b.ctx.MarkDirty()
+	}
+}
+
+// ToolTip is the tooltip's text, a message in the App's language now: tui.ToolTipper.
+func (b *Base) ToolTip() string {
+	if b.toolTipMsg != (tui.Message{}) {
+		return b.translate(b.toolTipMsg)
+	}
+	return b.toolTip
+}
 
 // SetVisible shows or hides the widget and everything under it — Qt's
 // Item.visible (tui/visibility.go). Legal before mount; a mounted widget is
