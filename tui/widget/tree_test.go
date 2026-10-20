@@ -614,7 +614,7 @@ func TestTreeDoubleClickOnTheExpanderTogglesTwiceAndDoesNotActivate(t *testing.T
 }
 
 // A REJECTED SetRoots must leave the Tree untouched.
-// The lastPressNode clear used to run before preflightForest, so a call that
+// The pairing reset used to run before preflightForest, so a call that
 // then panicked had already mutated pairing state — a failed operation with a
 // side effect.
 func TestTreeRejectedSetRootsLeavesPairingIntact(t *testing.T) {

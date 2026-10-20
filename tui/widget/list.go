@@ -79,7 +79,7 @@ func SliceSource[T any](items []T) ListSource[T] { return sliceSource[T](items) 
 //  4. Mouse & Double-Click Identity Protection:
 //     Clicking selects a row, mouse wheel scrolls the viewport, and double-clicking
 //     publishes [ActivateEvent]. Double-click pairing verifies logical row identity
-//     ([List.lastPressIdx]) rather than screen cells, ensuring scrolling between presses
+//     (pressPairer) rather than screen cells, ensuring scrolling between presses
 //     never triggers an accidental double-click activation on a different row.
 //
 // # Layout & Virtualization Geometry
@@ -140,14 +140,14 @@ type List[T any] struct {
 	// pass reveals the cursor only when either changed, so the wheel's scroll stays
 	shown viewMark
 	count int // Len() cached at render/refresh; handlers use the cache
-	// lastPressIdx is the LOGICAL row of the previous press, so a double-click
-	// pair straddling a viewport scroll cannot activate a different row.
+	// presses pairs a double-click by LOGICAL row, so a pair straddling a
+	// viewport scroll cannot activate a different row.
 	//
 	// An index identifies a row only WITHIN ONE SOURCE EPOCH. Replacing or
 	// reordering the source makes the same integer mean something else, so it is
-	// cleared to noPress on every source change and starts there.
-	lastPressIdx int
-	w, h         int
+	// reset on every source change.
+	presses pressPairer[int]
+	w, h    int
 
 	emptyText string // shown (muted) in place of rows when the source is empty
 	// emptyMsg is the catalog message emptyText shows, resolved each layout; zero for plain text.
@@ -291,10 +291,6 @@ func (l *List[T]) Len() int { return l.count }
 
 // NewList builds a List. A source (WithSource or WithItems) is required —
 // misconfiguration panics at construction (golib convention).
-// noPress is the lastPressIdx sentinel: no press has happened in this source
-// epoch, so nothing can pair with one. Zero would alias row 0.
-const noPress = -1
-
 func NewList[T any](opts ...ListOption[T]) *List[T] {
 	l := &List[T]{
 		sel:    make(map[int]struct{}),
@@ -309,7 +305,6 @@ func NewList[T any](opts ...ListOption[T]) *List[T] {
 		panic("widget: NewList requires WithSource or WithItems")
 	}
 	l.count = l.src.Len()
-	l.lastPressIdx = noPress
 	return l
 }
 
@@ -326,7 +321,7 @@ func (l *List[T]) SetSource(src ListSource[T]) {
 	// A new source is a new epoch: the retained press index would otherwise let a
 	// single click on the NEW row N activate, because the OLD row N had been
 	// clicked.
-	l.lastPressIdx = noPress
+	l.presses.Reset()
 	l.MarkDirty()
 }
 
@@ -346,7 +341,7 @@ func (l *List[T]) RefreshSource() {
 	l.count = l.src.Len()
 	// In-place mutation can reorder or replace rows under the same source, so the
 	// previous index is no longer the row the user pressed.
-	l.lastPressIdx = noPress
+	l.presses.Reset()
 	l.clamp()
 	l.MarkDirty()
 }
@@ -503,20 +498,10 @@ func (l *List[T]) HandleEvent(ev tui.Event) bool {
 				return true
 			}
 			l.moveCursor(idx)
-			// Timing, cell and target identity come from the App.
-			// LOGICAL ROW identity stays here, because only List knows it: the
-			// App's continuity is an absolute CELL, and a viewport that scrolls
-			// between the two presses maps the same cell to a different row. The
-			// old per-widget detection compared logical rows and refused that
-			// pair; dropping the comparison silently activated the wrong row.
-			//
-			// EXACTLY 2, not >= 2: three presses would otherwise activate twice,
-			// on counts 2 and 3, while "double-click = Enter" means one
-			// activation per pair (finding 3).
-			if e.Count == 2 && idx == l.lastPressIdx {
+			// Timing and cell come from the App; the row is List's (pressPairer).
+			if l.presses.Pair(e.Count, idx) {
 				l.activate()
 			}
-			l.lastPressIdx = idx
 			return true
 		case e.Kind == tui.MousePress && e.Button == tui.MouseRight && l.contextMenu:
 			// the cursor moves to the row first, so the menu acts on what was pressed
