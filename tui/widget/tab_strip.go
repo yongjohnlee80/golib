@@ -42,14 +42,15 @@ type tabStrip struct {
 	choose func(id string)   // a tab chosen by a click or a key
 
 	maxLabel int // a tab's widest, in cells, its padding included; 0 for no cap (TabStrip.SetMaxTabWidth)
-	// SetLabelFit's: the narrowest a tab is cut to, padding included, the host's cut, and the width
-	// row last cut the tabs to (0: whole)
-	fitMin   int
-	fit      func(id string, w int) string
-	fitCap   int
-	avail    int    // the row's width as laid out; 0 before the first layout: room for every tab
-	first    int    // the first tab shown while the tabs overflow the row (< and > scroll it)
-	revealed string // the active tab the window last scrolled to show
+	// SetLabelFit's: the narrowest a tab is cut to, padding included, and the host's cut
+	fitMin int
+	fit    func(id string, w int) string
+	// avail, first and revealed are stored after layout (commitWindow), and by a scroll: the row's
+	// width as laid out (0 before the first layout: room for every tab), the first tab shown while the
+	// tabs overflow the row (< and > scroll it), and the active tab the window last scrolled to show
+	avail    int
+	first    int
+	revealed string
 }
 
 // stripKind is what a stretch of the row is.
@@ -170,11 +171,11 @@ func (s *tabStrip) closeMenu() {
 // label is tb's label as drawn now: cut to the tabs' cap (capNow), after a × when the tabs close.
 func (s *tabStrip) label(tb stripTab) string { return s.labelAt(tb, s.capNow()) }
 
-// capNow is a tab's widest now, its padding included: SetLabelFit's, as row last fitted the tabs,
-// or SetMaxTabWidth's; 0 for none.
+// capNow is a tab's widest now, its padding included: SetLabelFit's, as the tabs fit the row
+// (fitTabs), or SetMaxTabWidth's; 0 for none.
 func (s *tabStrip) capNow() int {
 	if s.fit != nil {
-		return s.fitCap
+		return s.fitTabs(s.tabs())
 	}
 	return s.maxLabel
 }
@@ -285,37 +286,25 @@ func (s *tabStrip) width() int {
 // A window that shows the last tab is packed against >: it starts no later than the first tab from
 // which every tab to the last fits (fitFrom), and the cells left over show the tab before it, cut
 // from its start, as the window's far end cuts the tab there.
+//
+// It is a read: Render, a press and the spans all draw it. The window it shows is view's, and is
+// stored only after layout (commitWindow) or by a scroll.
 func (s *tabStrip) row() []stripCell {
-	tabs := s.tabs()
-	if s.fit != nil {
-		s.fitCap = s.fitTabs(tabs)
-	}
-	labels, widths := make([]string, len(tabs)), make([]int, len(tabs))
-	natural := s.tail()
-	for i, tb := range tabs {
-		labels[i] = s.label(tb)
-		widths[i] = s.base.measure(labels[i])
-		natural += widths[i] + 1
-	}
+	v := s.view()
+	tabs, labels, widths := v.tabs, v.labels, v.widths
 	var out []stripCell
 	x := 0
-	if s.avail <= 0 || natural-1 <= s.avail || len(tabs) == 0 {
-		s.first, s.revealed = 0, "" // overflowing again, the window starts at the active tab
+	if !v.overflow {
 		for i, tb := range tabs {
 			out = append(out, stripCell{kind: cellTab, id: tb.id, label: labels[i], x: x, w: widths[i], close: s.closeShown(labels[i])})
 			x += widths[i] + 1
 		}
 	} else {
-		room := max(s.avail-s.tail()-8, 1) // the window: the row less < and > and their cells
-		s.reveal(tabs, widths, room)
-		// first is kept from layout to layout, so a row grown wider, or tabs closed at the end, would
-		// leave it later than it need be, and the cells it frees empty before >
-		fit := fitFrom(widths, room)
-		s.first = min(s.first, fit)
+		room, fit := v.room, fitFrom(widths, v.room)
 		out = append(out, stripCell{kind: cellPrev, label: prevLabel, w: s.base.measure(prevLabel)})
 		x = 4
 		end := x + room
-		if s.first == fit && fit > 0 {
+		if v.first == fit && fit > 0 {
 			used := -1
 			for _, w := range widths[fit:] {
 				used += w + 1
@@ -326,7 +315,7 @@ func (s *tabStrip) row() []stripCell {
 				x += w + 1
 			}
 		}
-		for i := s.first; i < len(tabs) && x < end; i++ {
+		for i := v.first; i < len(tabs) && x < end; i++ {
 			label, w := labels[i], widths[i]
 			if x+w > end { // the last one shown, cut at the window's edge
 				w = end - x
@@ -361,38 +350,77 @@ func fitFrom(widths []int, room int) int {
 	return 0
 }
 
-// reveal scrolls the window, room cells wide, to show the active tab when it changed since the
-// last time, and keeps first among the tabs.
-func (s *tabStrip) reveal(tabs []stripTab, widths []int, room int) {
-	s.first = min(s.first, max(len(tabs)-1, 0))
-	active := s.active()
-	if active == s.revealed {
-		return
-	}
-	s.revealed = active
-	at := slices.IndexFunc(tabs, func(tb stripTab) bool { return tb.id == active })
-	if at < 0 {
-		return
-	}
-	if at < s.first {
-		s.first = at
-	}
-	// forward until the active tab ends within the window
-	for s.first < at {
-		used := 0
-		for i := s.first; i <= at; i++ {
-			used += widths[i] + 1
-		}
-		if used-1 <= room {
-			break
-		}
-		s.first++
-	}
+// stripView is the row's tabs as they are drawn now: their labels and widths, whether they overflow
+// the row and, while they do, the window over them, room cells wide from first, and the active tab
+// it reveals.
+type stripView struct {
+	tabs     []stripTab
+	labels   []string
+	widths   []int
+	overflow bool
+	room     int
+	first    int
+	revealed string
 }
 
-// scroll moves the window by delta tabs, kept among them, and repaints.
+// view is the row as drawn now, from the stored window, storing nothing.
+func (s *tabStrip) view() stripView {
+	tabs := s.tabs()
+	limit := s.capNow()
+	v := stripView{tabs: tabs, labels: make([]string, len(tabs)), widths: make([]int, len(tabs))}
+	natural := s.tail()
+	for i, tb := range tabs {
+		v.labels[i] = s.labelAt(tb, limit)
+		v.widths[i] = s.base.measure(v.labels[i])
+		natural += v.widths[i] + 1
+	}
+	if s.avail <= 0 || natural-1 <= s.avail || len(tabs) == 0 {
+		return v // not overflowing: no window, and the next overflow starts at the active tab
+	}
+	v.overflow = true
+	v.room = max(s.avail-s.tail()-8, 1) // the window: the row less < and > and their cells
+	v.first, v.revealed = s.window(tabs, v.widths, v.room)
+	return v
+}
+
+// window is the stored window, room cells wide, scrolled to show the active tab when it changed
+// since the window last showed it, and kept among the tabs: first is kept from layout to layout,
+// so a row grown wider, or tabs closed at the end, would leave it later than it need be, and the
+// cells it frees empty before >.
+func (s *tabStrip) window(tabs []stripTab, widths []int, room int) (first int, revealed string) {
+	first, revealed = min(s.first, max(len(tabs)-1, 0)), s.revealed
+	if active := s.active(); active != revealed {
+		revealed = active
+		if at := slices.IndexFunc(tabs, func(tb stripTab) bool { return tb.id == active }); at >= 0 {
+			first = min(first, at)
+			// forward until the active tab ends within the window
+			for first < at {
+				used := 0
+				for i := first; i <= at; i++ {
+					used += widths[i] + 1
+				}
+				if used-1 <= room {
+					break
+				}
+				first++
+			}
+		}
+	}
+	return min(first, fitFrom(widths, room)), revealed
+}
+
+// commitWindow stores the window the row shows in avail cells: the strip's owner calls it after
+// layout (tui.Context.AfterLayout), with the width it was laid out in.
+func (s *tabStrip) commitWindow(avail int) {
+	s.avail = avail
+	v := s.view()
+	s.first, s.revealed = v.first, v.revealed
+}
+
+// scroll moves the window as shown by delta tabs, kept among them, and repaints.
 func (s *tabStrip) scroll(delta int) {
-	s.first = max(min(s.first+delta, len(s.tabs())-1), 0)
+	v := s.view()
+	s.first, s.revealed = max(min(v.first+delta, len(v.tabs)-1), 0), v.revealed
 	s.base.MarkDirty()
 }
 
@@ -739,7 +767,9 @@ func (t *TabStrip) Layout(c tui.Constraints) tui.Size {
 		w = min(w, c.MaxW)
 	}
 	sz := c.Constrain(tui.Size{W: w, H: 1})
-	t.core.avail = sz.W
+	if ctx := t.Context(); ctx != nil { // a measure before mount commits nothing
+		ctx.AfterLayout("tab-window", func() { t.core.commitWindow(sz.W) })
+	}
 	return sz
 }
 
