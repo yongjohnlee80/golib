@@ -27,3 +27,15 @@ func TestValuesRefusesWhatIsNotAThemeOfStrings(t *testing.T) {
 		t.Errorf("good = %v, %v", v, err)
 	}
 }
+
+// A theme with no words of its own, one added upstream before its label, shows as its name and is
+// still listed, after the first five.
+func TestAThemeWithoutWordsShowsAsItsName(t *testing.T) {
+	labels := menuLabels([]string{"newtheme", "sepia", "dark"})
+	if len(labels) != 3 || labels[0].Name != "dark" || labels[1].Name != "sepia" {
+		t.Fatalf("labels %+v; want dark and sepia first", labels)
+	}
+	if last := labels[2]; last.Name != "newtheme" || last.Text != "newtheme" {
+		t.Fatalf("the unlabelled theme: %+v; want its name as its words", last)
+	}
+}
