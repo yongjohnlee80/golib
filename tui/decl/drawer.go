@@ -366,9 +366,11 @@ func (n *drawerNode) reserving() bool {
 	return n.windowMods == nil || !n.windowMods.Core().State().Minimized
 }
 
-// liveSlot is the strip the Window's Dock placed for the Drawer this pass (AtLive's rectangle).
+// liveSlot is the strip the Window's Dock placed for the Drawer this pass (AtLive's rectangle). A
+// maximized Drawer is not over it: it fills the Window, its edge anchor offering the frame the whole
+// of it, while the strip stays reserved beneath.
 func (n *drawerNode) liveSlot() (tui.Rect, bool) {
-	return n.slot, n.reserving() && n.slot.W > 0 && n.slot.H > 0
+	return n.slot, n.reserving() && !n.windowTarget.maximized && n.slot.W > 0 && n.slot.H > 0
 }
 
 // dockedCells is the panel docked in a Window of win: size across its edge, the whole edge along
@@ -539,7 +541,7 @@ func (f *drawerFrame) Init(ctx *tui.Context) {
 // progress when there is one, within the Drawer's bounds, else from size and length.
 func (f *drawerFrame) Layout(c tui.Constraints) tui.Size {
 	sz := c.Constrain(tui.Size{W: c.MaxW, H: c.MaxH})
-	if n := f.owner; !n.windowTarget.maximized && n.windowTarget.moving == nil {
+	if n := f.owner; n.windowTarget.moving == nil {
 		if _, over := n.liveSlot(); over {
 			// over its strip: the Window's Dock sized it (the drag in progress included), and the
 			// frame fills that; the Window is the Float's area
