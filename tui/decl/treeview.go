@@ -251,6 +251,22 @@ func (n *treeViewNode) present(ix Index) (string, style.Style) {
 	return label, st
 }
 
+// represent presents every shown row again: after a restyle, or a source its delegate reads changed.
+func (n *treeViewNode) represent() {
+	for node, ix := range n.at {
+		label, st := n.present(ix)
+		node.SetLabel(label)
+		node.SetStyle(st)
+	}
+}
+
+// sourcesChanged re-presents the rows when the delegate may read a source (sourceFollower).
+func (n *treeViewNode) sourcesChanged() {
+	if n.template != nil {
+		n.represent()
+	}
+}
+
 func (n *treeViewNode) release() {
 	if n.cancel != nil {
 		n.cancel()
@@ -452,11 +468,7 @@ var treeViewType = Type{
 		if text, ok := p[roleText]; ok {
 			n.normal = text
 		}
-		for node, ix := range n.at {
-			label, st := n.present(ix)
-			node.SetLabel(label)
-			node.SetStyle(st)
-		}
+		n.represent()
 	},
 	Ctor: []string{"textRole", "badgeRole", "delegate"},
 	Setters: map[string]Setter{
