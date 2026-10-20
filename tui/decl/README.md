@@ -808,7 +808,7 @@ TileManager {
 }
 ```
 
-`tui.panels`' `TilePanel` is a Tile framed under a `heading`, as its `Panel` frames a Drawer.
+`tui.tiles`' `TilePanel` (tui/decl/tiles) is a Tile framed under a `heading`, as `tui.panels`' `Panel` frames a Drawer.
 
 **Reserving Drawers.** An ordinary Drawer lies over the Window, its bars and its page included.
 `reserve: true` makes a docked, shown one take its strip from the page instead, as a split pane
