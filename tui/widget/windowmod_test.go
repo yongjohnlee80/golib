@@ -331,3 +331,26 @@ func TestAMaximisedWindowIsNotFloating(t *testing.T) {
 		t.Fatal("a window restored from maximised is not floating")
 	}
 }
+
+// TestAFloatLandsTheSameWithAndWithoutAWindowMod: one placement for every Float. An AtRect that
+// overhangs the area is kept inside it, whether or not a WindowMod is bound in the Float
+// (tui-widget-shell-D1).
+func TestAFloatLandsTheSameWithAndWithoutAWindowMod(t *testing.T) {
+	overhang := tui.Rect{X: 40, Y: 15, W: 20, H: 6}
+	plain := widget.NewFloat(widget.NewButton("plain"), widget.WithAnchor(widget.AtRect(overhang)))
+	managed := widget.NewFloat(widget.NewWindowMod(widget.NewButton("managed"), widget.WithWindowMove()),
+		widget.WithAnchor(widget.AtRect(overhang)))
+	host := widget.NewOverlayHost(widget.NewButton("background"))
+	host.Attach(plain)
+	host.Attach(managed)
+	h := startApp(t, host, 50, 20)
+	defer h.stop()
+	h.onLoop(func() { plain.Show(); managed.Show() })
+	h.settle()
+	var p, m tui.Rect
+	h.onLoop(func() { p, m = plain.ContentRect(), managed.ContentRect() })
+	want := tui.Rect{X: 30, Y: 14, W: 20, H: 6}
+	if p != want || m != want {
+		t.Errorf("AtRect %+v in 50x20: plain at %+v, managed at %+v; want both at %+v", overhang, p, m, want)
+	}
+}

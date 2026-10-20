@@ -25,7 +25,7 @@ func (t *floatWindowTarget) RequestedBounds() tui.Rect {
 		return r // a live rectangle, when there is one, wins over its fallback
 	}
 	if a := t.float.anchor; a.atRect {
-		return a.rect
+		return a.rect // the request as made; Bounds is where the area keeps it (Float.place)
 	} else if a.atFraction {
 		return fractionRect(a.frac, t.area)
 	}
@@ -111,34 +111,11 @@ func (l *floatLayer) layoutManaged(c tui.Constraints, w, h int) tui.Size {
 	if t.workArea != nil {
 		area = area.Intersect(t.workArea(area))
 	}
-	a := f.anchor
 	r := area
-	liveRect, live := a.resolve(area)
-	switch {
-	case t.maximized:
-		l.ctx.LayoutChild(f.child, tui.Tight(tui.Size{W: r.W, H: r.H}))
-	case live:
-		r = liveRect
-		l.ctx.LayoutChild(f.child, tui.Tight(tui.Size{W: r.W, H: r.H}))
-	case a.atRect:
-		r = windowBoundsInArea(a.rect, area)
-		l.ctx.LayoutChild(f.child, tui.Tight(tui.Size{W: r.W, H: r.H}))
-	case a.atFraction:
-		r = fractionRect(a.frac, area)
-		l.ctx.LayoutChild(f.child, tui.Tight(tui.Size{W: r.W, H: r.H}))
-	default:
-		cc := tui.Loose(tui.Size{W: area.W, H: area.H})
-		if f.wPct > 0 {
-			cc.MinW = min(max(area.W*f.wPct/100, 1), area.W)
-			cc.MaxW = cc.MinW
-		}
-		if f.hPct > 0 {
-			cc.MinH = min(max(area.H*f.hPct/100, 1), area.H)
-			cc.MaxH = cc.MinH
-		}
-		sz := l.ctx.LayoutChild(f.child, cc)
-		x, y := alignOffset(a.align, tui.Size{W: area.W, H: area.H}, sz)
-		r = tui.Rect{X: area.X + x, Y: area.Y + y, W: sz.W, H: sz.H}
+	if t.maximized {
+		l.layoutChild(tui.Tight(tui.Size{W: r.W, H: r.H}))
+	} else {
+		r = f.place(area, l.layoutChild)
 	}
 	f.content = r
 	l.ctx.PlaceChild(f.child, r)
