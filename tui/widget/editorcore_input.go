@@ -349,50 +349,9 @@ func (c *EditorCore) handleInsertKey(k tui.KeyEvent) bool {
 			c.edited()
 		}
 		return true
-	case tui.KeyLeft:
-		c.hist.close()
-		b.desired = -1
-		b.moveCursor(b.ln, b.col-1, false)
-		c.reveal()
-		c.markDirty()
-		return true
-	case tui.KeyRight:
-		c.hist.close()
-		b.desired = -1
-		b.moveCursor(b.ln, b.col+1, false)
-		c.reveal()
-		c.markDirty()
-		return true
-	case tui.KeyUp, tui.KeyDown:
-		c.hist.close()
-		delta := 1
-		if k.Code == tui.KeyUp {
-			delta = -1
-		}
-		ln, col := c.lineTarget(delta)
-		d := b.desired
-		b.moveCursor(ln, col, false)
-		b.desired = d
-		c.reveal()
-		c.markDirty()
-		return true
-	case tui.KeyHome:
-		c.hist.close()
-		b.desired = -1
-		b.moveCursor(b.ln, 0, false)
-		c.markDirty()
-		return true
-	case tui.KeyEnd:
-		c.hist.close()
-		b.desired = -1
-		b.moveCursor(b.ln, len(b.lineClusters(b.ln)), false)
-		c.markDirty()
-		return true
-	case tui.KeyPageUp:
-		c.move(ActPageUp, 1)
-		return true
-	case tui.KeyPageDown:
-		c.move(ActPageDown, 1)
+	}
+	if act, caret := insertCaretKeys[k.Code]; caret {
+		c.move(act, 1)
 		return true
 	}
 
@@ -402,6 +361,13 @@ func (c *EditorCore) handleInsertKey(k tui.KeyEvent) bool {
 		return true
 	}
 	return false
+}
+
+// insertCaretKeys are Insert mode's caret keys, each the motion it is: move reveals the caret and,
+// in Insert, reaches past a line's last character.
+var insertCaretKeys = map[rune]Action{
+	tui.KeyLeft: ActLeft, tui.KeyRight: ActRight, tui.KeyUp: ActUp, tui.KeyDown: ActDown,
+	tui.KeyHome: ActLineStart, tui.KeyEnd: ActLineEnd, tui.KeyPageUp: ActPageUp, tui.KeyPageDown: ActPageDown,
 }
 
 // handleCommandKey: Normal/Visual dispatch — digits, the double-key pending buffer, then the
