@@ -163,3 +163,22 @@ func TestATileManagerRefusesAWrongShape(t *testing.T) {
 		}
 	}
 }
+
+// A Tile's minimumSize binding holds after the manager is built: a larger minimum widens the strip
+// the query lays out beside.
+func TestATilesMinimumSizeFollowsItsBinding(t *testing.T) {
+	src := `import tui 1.0
+import demo 1.0
+Window { TileManager {
+  Tile { edge: Tui.Left; size: 10; minimumSize: App.minimum; Frame { title: "LEFT"; Text { text: "l" } } }
+  Tile { edge: Tui.Center; Frame { title: "PAGE"; Text { text: "p" } } } } }`
+	s := decltest.Run(t, 80, 10, tuidecl.LayoutSource("main.qml", []byte(src)),
+		tuidecl.Singleton("demo", "1.0", "App"), tuidecl.Sources(map[string]any{"App.minimum": 10}))
+	titleAt(t, s, "PAGE", 12, 0)
+	onScreenLoop(t, s, func() {
+		if err := s.Program.Set("App.minimum", 30); err != nil {
+			t.Error(err)
+		}
+	})
+	titleAt(t, s, "PAGE", 32, 0)
+}

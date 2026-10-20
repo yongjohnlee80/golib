@@ -365,6 +365,15 @@ func allows(p TilePlace, e tui.DockEdge) bool {
 	return slices.Contains(p.Edges, e)
 }
 
+// SetMin sets the cells a tile keeps across its edge (a strip), or on both axes (the centre): held
+// at layout, as the clamp holds every Min.
+func (t *Tiles) SetMin(key string, cells int) {
+	if tile := t.tile(key); tile != nil && tile.place.Min != max(cells, 0) {
+		tile.place.Min = max(cells, 0)
+		t.RequestLayout()
+	}
+}
+
 // SetSize sets a strip's requested size, a percent of the manager across its edge: kept as asked,
 // clamped only where laid out.
 func (t *Tiles) SetSize(key string, pct float64) {
@@ -485,10 +494,12 @@ type tileDrop struct {
 	rect tui.Rect     // where the dragged tile would land: the preview
 }
 
-// sharedBorders are the borders tile shares with a neighbour: each side lying on a shown strip's
-// inner side, and a strip's own inner side when anything is beyond it.
-func (t *Tiles) sharedBorders(tile *Tile) []tileBorder {
-	r := tile.rect
+// sharedBorders are the borders tile shares with a neighbour in the given rects: each side lying on
+// a shown strip's inner side, and a strip's own inner side when anything is beyond it. A pointer
+// gesture reads the placed rects, the ones under the pointer (placedRects); a keyboard step reads
+// the requested ones (plan), since steps before a layout build on each other.
+func (t *Tiles) sharedBorders(tile *Tile, rects map[*Tile]tui.Rect) []tileBorder {
+	r := rects[tile]
 	if r.Empty() {
 		return nil
 	}
@@ -496,18 +507,28 @@ func (t *Tiles) sharedBorders(tile *Tile) []tileBorder {
 	for _, side := range []Handle{HandleLeft, HandleRight, HandleTop, HandleBottom} {
 		line := sideOf(r, side)
 		if tile.place.Edge == innerEdge(side) && line > 0 && line < t.extent(side) {
-			out = append(out, tileBorder{side: side, strip: tile, outer: outerOf(tile.rect, tile.place.Edge)})
+			out = append(out, tileBorder{side: side, strip: tile, outer: outerOf(r, tile.place.Edge)})
 			continue
 		}
 		for _, s := range t.tiles {
-			if s == tile || !t.shown(s) || s.place.Edge != outerEdge(side) || s.rect.Empty() {
+			sr := rects[s]
+			if s == tile || !t.shown(s) || s.place.Edge != outerEdge(side) || sr.Empty() {
 				continue
 			}
-			if sideOf(s.rect, opposite(side)) == line && overlaps(r, s.rect, side) {
-				out = append(out, tileBorder{side: side, strip: s, outer: outerOf(s.rect, s.place.Edge)})
+			if sideOf(sr, opposite(side)) == line && overlaps(r, sr, side) {
+				out = append(out, tileBorder{side: side, strip: s, outer: outerOf(sr, s.place.Edge)})
 				break
 			}
 		}
+	}
+	return out
+}
+
+// placedRects are where the last layout placed every tile.
+func (t *Tiles) placedRects() map[*Tile]tui.Rect {
+	out := make(map[*Tile]tui.Rect, len(t.tiles))
+	for _, tile := range t.tiles {
+		out[tile] = tile.rect
 	}
 	return out
 }
@@ -726,7 +747,7 @@ func (g *tileTarget) HandleAt(p tui.Point) (Handle, bool) {
 	m := g.owner()
 	best, bestDist, bestRank := Handle(0), math.MaxInt, math.MaxInt
 	found := false
-	for _, b := range m.sharedBorders(g.t) {
+	for _, b := range m.sharedBorders(g.t, m.placedRects()) {
 		line := sideOf(g.t.rect, b.side)
 		dist := p.Y - line
 		vertical := b.side == HandleLeft || b.side == HandleRight
@@ -753,7 +774,7 @@ func (g *tileTarget) StepHandle(dw, dh int) (Handle, bool) {
 	m := g.owner()
 	vertical := dw != 0
 	var pick *tileBorder
-	for _, b := range m.sharedBorders(g.t) {
+	for _, b := range m.sharedBorders(g.t, m.plan(m.size, nil)) {
 		if (b.side == HandleLeft || b.side == HandleRight) != vertical {
 			continue
 		}
@@ -771,26 +792,38 @@ func (g *tileTarget) StepHandle(dw, dh int) (Handle, bool) {
 	return pick.side, true
 }
 
-// GestureBegan records the gesture: a resize needs a shared border on the handle's side; a move
-// is the pointer's only (a keyboard move has no drop to aim).
+// GestureBegan records the gesture: a resize needs a shared border on the handle's side, in the
+// placed rects for the pointer and the requested ones for a keyboard step; a move is the pointer's
+// only (a keyboard move has no drop to aim). A refusal changes nothing: a drag in progress keeps
+// what it staged.
 func (g *tileTarget) GestureBegan(op WindowOperation, h Handle, at tui.Point, pointer bool) bool {
 	m := g.owner()
-	g.op, g.border, g.pointer, g.at, g.start = op, nil, pointer, at, g.t.rect
-	m.pending = nil
+	var border *tileBorder
 	switch op {
 	case WindowResize:
-		for _, b := range m.sharedBorders(g.t) {
+		rects := m.placedRects()
+		if !pointer {
+			rects = m.plan(m.size, nil)
+		}
+		for _, b := range m.sharedBorders(g.t, rects) {
 			if b.side == h {
-				b := b
-				g.border = &b
-				return true
+				border = &b
+				break
 			}
 		}
-		return false
+		if border == nil {
+			return false
+		}
 	case WindowMove:
-		return pointer
+		if !pointer {
+			return false
+		}
+	default:
+		return false
 	}
-	return false
+	g.op, g.border, g.pointer, g.at, g.start = op, border, pointer, at, g.t.rect
+	m.pending = nil
+	return true
 }
 
 // GestureChanged reports whether the staged gesture changes the committed policy: a new request,
