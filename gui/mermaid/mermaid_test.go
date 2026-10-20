@@ -8,6 +8,7 @@ import (
 
 	"github.com/yongjohnlee80/golib/gui"
 	pm "github.com/yongjohnlee80/golib/parse/mermaid"
+	"github.com/yongjohnlee80/golib/tui/style"
 )
 
 var testTheme = Theme{
@@ -105,6 +106,52 @@ func TestANodesStyleIsDrawn(t *testing.T) {
 	}
 	if b := l.nodes[1]; b.fill != testTheme.NodeFill {
 		t.Errorf("an unstyled node's fill %v, want the theme's", b.fill)
+	}
+}
+
+// A style that fills a node and names no text colour gets the theme's text raised to read on that
+// fill: a pale fill, written for a light page, in a dark theme whose text is light. A style's own
+// color is the author's, kept as written; an unstyled node keeps the theme's text; and a theme
+// whose text already reads on the fill keeps it as it is.
+func TestALabelReadsOnTheFillItsStyleChose(t *testing.T) {
+	dark := testTheme
+	dark.Background, dark.Text = color.NRGBA{R: 0x1e, G: 0x23, B: 0x2b, A: 0xff}, color.NRGBA{R: 0xd8, G: 0xde, B: 0xe9, A: 0xff}
+	dark.NodeFill, dark.NodeStroke = color.NRGBA{R: 0x2e, G: 0x34, B: 0x40, A: 0xff}, color.NRGBA{R: 0x81, G: 0xa1, B: 0xc1, A: 0xff}
+	src := "flowchart LR\n  A[admin reset] --> B[gold-http]\n  B --> C[plain]\n  C --> D[own colour]\n  E[by class]:::ext --> A\n" +
+		"  classDef ext fill:#e8f6f0,stroke:#3a9\n  class B ext\n  style A fill:#e8f6f0\n  style D fill:#e8f6f0,color:#eeeeee"
+	ratio := func(fg, bg color.NRGBA) float64 {
+		r, _ := style.ContrastRatio(style.RGB(fg.R, fg.G, fg.B), style.RGB(bg.R, bg.G, bg.B))
+		return r
+	}
+	for i, th := range []Theme{dark, testTheme} {
+		light := i == 1
+		m, release := gui.AcquireMeasurer(1)
+		l, err := Lay(context.Background(), src, 2000, th, m)
+		release()
+		if err != nil {
+			t.Fatal(err)
+		}
+		by := map[string]laidNode{} // by label: the layer keeps no flowchart node's id
+		for _, n := range l.nodes {
+			if len(n.label.lines) > 0 {
+				by[n.label.lines[0]] = n
+			}
+		}
+		for _, id := range []string{"admin reset", "gold-http", "by class"} {
+			n := by[id]
+			if r := ratio(n.label.color, n.fill); r < labelContrast {
+				t.Errorf("text %v on %s's fill %v reads at %.2f, want %g or more", th.Text, id, n.fill, r, labelContrast)
+			}
+			if light && n.label.color != th.Text {
+				t.Errorf("the light theme's text, which reads on %s's fill, became %v", id, n.label.color)
+			}
+		}
+		if c := by["plain"].label.color; c != th.Text {
+			t.Errorf("an unstyled node's text %v, want the theme's %v", c, th.Text)
+		}
+		if c := by["own colour"].label.color; c != (color.NRGBA{R: 0xee, G: 0xee, B: 0xee, A: 0xff}) {
+			t.Errorf("a style's own color became %v, want #eeeeee as written", c)
+		}
 	}
 }
 
