@@ -1,12 +1,12 @@
 package decl
 
 import (
-	"os"
-	"path/filepath"
+	"io/fs"
 	"strings"
 	"testing"
 
 	"github.com/yongjohnlee80/golib/parse/qml"
+	"github.com/yongjohnlee80/golib/tui/decl/themes/qmlfiles"
 	"github.com/yongjohnlee80/golib/tui/style"
 )
 
@@ -35,7 +35,7 @@ func TestViewCursorKeepsTextReadableInBothFocusStates(t *testing.T) {
 // This also rejects a theme that drops an active or inactive cursor role and falls back to
 // reverse/faint, which would make the table unreadable against some document backgrounds.
 func TestEveryBuiltInViewCursorIsReadableInBothFocusStates(t *testing.T) {
-	entries, err := os.ReadDir("themes")
+	entries, err := fs.ReadDir(qmlfiles.FS(), ".")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -47,7 +47,7 @@ func TestEveryBuiltInViewCursorIsReadableInBothFocusStates(t *testing.T) {
 		seen++
 		name := strings.TrimSuffix(entry.Name(), ".qml")
 		t.Run(name, func(t *testing.T) {
-			src, err := os.ReadFile(filepath.Join("themes", entry.Name()))
+			src, err := fs.ReadFile(qmlfiles.FS(), entry.Name())
 			if err != nil {
 				t.Fatal(err)
 			}
