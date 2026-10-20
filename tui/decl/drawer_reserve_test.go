@@ -211,9 +211,10 @@ func glyphAt(screen string, x, y int) string {
 	return string(row[x])
 }
 
-// A keyboard move of a reserving Drawer starts from its strip, between the bars and beside the other
-// strip: one column right keeps its rows and its height (its frame from row 1 to row 18), where the
-// Window's edge rectangle would put it over the menu bar and the status line.
+// A keyboard move of a reserving Drawer starts from its strip, between the bars: one column right
+// keeps its title on row 1, the strip's top. Started from the Window's edge rectangle (the whole
+// height, 20 rows) it lands on row 0, over the menu bar. Moved, it floats and gives its strip back,
+// so the bottom panel then spans the width, over the moved panel's lower rows.
 func TestAKeyboardMoveOfAReservingDrawerStartsFromItsStrip(t *testing.T) {
 	s, _ := runReserving(t, 60, 20)
 	layoutIs(t, s, "docked", 15, func(sc string) bool { _, y, ok := at(sc, "LEFT"); return ok && y == 1 })
@@ -224,7 +225,7 @@ func TestAKeyboardMoveOfAReservingDrawerStartsFromItsStrip(t *testing.T) {
 	})
 	s.WaitFor(t, "one column right of the strip", func(sc string) bool {
 		x, y, ok := at(sc, "LEFT")
-		return ok && x == 3 && y == 1 && glyphAt(sc, 1, 18) == "└"
+		return ok && x == 3 && y == 1
 	})
 }
 
