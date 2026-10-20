@@ -752,3 +752,27 @@ func TestARejectedSetModelKeepsAQueuedOpen(t *testing.T) {
 			n, h.grid())
 	}
 }
+
+// TestMnemonicsFoldBeyondASCII: a mnemonic is folded as Unicode letters are, so 'ф' and 'Ф' are one
+// key and two buttons claiming them collide, as 's' and 'S' do (tui-widget-shell-D13).
+func TestMnemonicsFoldBeyondASCII(t *testing.T) {
+	mk := func(label string, key rune) *widget.Button {
+		return widget.NewButton(label, widget.WithMnemonic(key))
+	}
+	if f := fatalFromWidgetExt(func() {
+		widget.NewModal(widget.NewText("x"), widget.WithButtons(mk("Файл", 'ф'), mk("Формат", 'Ф')))
+	}); f == nil {
+		t.Error("two buttons claiming ф and Ф were accepted")
+	}
+}
+
+// TestAPanicDetailKeepsANegativeNumber: the value a contract panic reports is the value given,
+// negative ones included (tui-widget-shell-D13).
+func TestAPanicDetailKeepsANegativeNumber(t *testing.T) {
+	f := fatalFromWidgetExt(func() {
+		widget.NewResizable(widget.NewText("x"), widget.WithResizeStep(-2, widget.StepCells))
+	})
+	if f == nil || f.Detail != "got -2" {
+		t.Errorf("WithResizeStep(-2) panicked with %+v, want the detail \"got -2\"", f)
+	}
+}

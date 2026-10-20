@@ -2,6 +2,7 @@ package widget
 
 import (
 	"errors"
+	"strconv"
 
 	"github.com/yongjohnlee80/golib/tui"
 	"github.com/yongjohnlee80/golib/tui/keymap"
@@ -740,7 +741,7 @@ func (m *Modal) mnemonicButton(r rune) *Button {
 	}
 	for _, b := range m.card.buttons {
 		if b != nil && b.Enabled() && b.Mnemonic() != 0 &&
-			lowerRune(b.Mnemonic()) == lowerRune(r) {
+			eqFold(b.Mnemonic(), r) {
 			return b
 		}
 	}
@@ -924,7 +925,7 @@ func (m *Modal) refreshSelection() {
 
 // tuiFatal builds the package's standard construction panic.
 func tuiFatal(op, rule string, got int) error {
-	return fatalOf(op, rule, "got "+itoa(got))
+	return fatalOf(op, rule, "got "+strconv.Itoa(got))
 }
 
 // KeyBindings is the Modal's commands as m binds them, then what the host's WithModalKeys consults if

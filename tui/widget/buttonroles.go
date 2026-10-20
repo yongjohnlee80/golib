@@ -2,6 +2,8 @@ package widget
 
 import (
 	"errors"
+	"strconv"
+	"unicode"
 
 	"github.com/yongjohnlee80/golib/tui"
 )
@@ -96,22 +98,22 @@ func (f listFault) describe() string {
 	switch f.kind {
 	case ErrDuplicateButtonRole:
 		return "at most one Button with role " + f.role.String() +
-			" per container; index " + itoa(f.first) + " and index " + itoa(f.dup) +
+			" per container; index " + strconv.Itoa(f.first) + " and index " + strconv.Itoa(f.dup) +
 			" both carry it"
 	case ErrDuplicateDefault:
 		return "at most one default Button per dialog — Enter presses the one; index " +
-			itoa(f.first) + " and index " + itoa(f.dup) + " are both default"
+			strconv.Itoa(f.first) + " and index " + strconv.Itoa(f.dup) + " are both default"
 	case ErrNilButton:
-		return "index " + itoa(f.dup) + " is nil; a button list states the controls " +
+		return "index " + strconv.Itoa(f.dup) + " is nil; a button list states the controls " +
 			"a dialog has, and a hole in it is not one of them"
 	case ErrRepeatedButton:
-		return "the same *Button appears at index " + itoa(f.first) + " and index " +
-			itoa(f.dup) + "; one component cannot be mounted at two places in the tree"
+		return "the same *Button appears at index " + strconv.Itoa(f.first) + " and index " +
+			strconv.Itoa(f.dup) + "; one component cannot be mounted at two places in the tree"
 	case ErrForeignButton:
-		return "index " + itoa(f.dup) + " is already mounted elsewhere in the tree; " +
+		return "index " + strconv.Itoa(f.dup) + " is already mounted elsewhere in the tree; " +
 			"adopting it would unmount it from its current parent behind that parent's back"
 	case ErrDuplicateMnemonic:
-		return "index " + itoa(f.first) + " and index " + itoa(f.dup) + " are both " +
+		return "index " + strconv.Itoa(f.first) + " and index " + strconv.Itoa(f.dup) + " are both " +
 			"enabled and both answer to the same key; one keystroke cannot mean two " +
 			"controls, and picking either silently would make the dialog behave " +
 			"differently from how it reads"
@@ -177,10 +179,10 @@ func validateButtonList(buttons []*Button, owner tui.Component) *listFault {
 		// against the declaration, exactly as duplicate Default and Cancel
 		// roles are, and a disabled control simply stays non-responsive.
 		if b.mnemonic != 0 {
-			if first, dup := seenKeys[lowerRune(b.mnemonic)]; dup {
+			if first, dup := seenKeys[foldMnemonic(b.mnemonic)]; dup {
 				return &listFault{kind: ErrDuplicateMnemonic, first: first, dup: i}
 			}
-			seenKeys[lowerRune(b.mnemonic)] = i
+			seenKeys[foldMnemonic(b.mnemonic)] = i
 		}
 		if b.role == ButtonRoleReject {
 			if first, dup := seen[b.role]; dup {
@@ -198,11 +200,5 @@ func validateButtonList(buttons []*Button, owner tui.Component) *listFault {
 	return nil
 }
 
-// lowerRune folds an ASCII mnemonic for comparison. A mnemonic is drawn from
-// the range a keyboard produces unmodified, so 'Y' and 'y' are one key.
-func lowerRune(r rune) rune {
-	if r >= 'A' && r <= 'Z' {
-		return r + ('a' - 'A')
-	}
-	return r
-}
+// foldMnemonic is a mnemonic as one key compares it: 'Y' and 'y', 'Ф' and 'ф', are one key.
+func foldMnemonic(r rune) rune { return unicode.ToLower(r) }

@@ -1,6 +1,8 @@
 package widget
 
 import (
+	"strconv"
+
 	"github.com/yongjohnlee80/golib/errs"
 	"github.com/yongjohnlee80/golib/tui"
 	"github.com/yongjohnlee80/golib/tui/keymap"
@@ -229,7 +231,7 @@ func (b *Button) WithPointerPolicy(p tui.PointerPolicy) *Button {
 		panic(errs.Fatal{
 			Op:     "widget: Button.WithPointerPolicy",
 			Rule:   "value outside PointerInherit, PointerEnabled, PointerDisabled",
-			Detail: "got " + itoa(int(p)),
+			Detail: "got " + strconv.Itoa(int(p)),
 		})
 	}
 	b.pointerPolicy = p
@@ -557,21 +559,6 @@ func checkButtonList(op string, buttons []*Button, owner tui.Component) {
 	if f := validateButtonList(buttons, owner); f != nil {
 		panic(errs.Fatal{Op: op, Rule: f.describe()})
 	}
-}
-
-// itoa renders a small non-negative int for a panic detail.
-func itoa(i int) string {
-	if i == 0 {
-		return "0"
-	}
-	var b [20]byte
-	p := len(b)
-	for i > 0 {
-		p--
-		b[p] = byte('0' + i%10)
-		i /= 10
-	}
-	return string(b[p:])
 }
 
 // KeyScope is a Button's key-map scope.
