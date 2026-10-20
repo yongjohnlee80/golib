@@ -754,36 +754,98 @@ func (r *besideRenderer) LayOut(b Block, lines []string, width float32, cursorIn
 	return out
 }
 
+// laidAfterPaint is block i's layout as the last paint left it: nil when it was not drawn, and
+// whether it is still the one from before a Relayout.
+func laidAfterPaint(h *edHarness, i int) (height float32, laid, stale bool) {
+	h.onLoop(func() {
+		if lb := h.e.layout.laid[i]; lb != nil {
+			height, laid, stale = lb.bl.Height, true, lb.stale
+		}
+	})
+	return height, laid, stale
+}
+
 // Relayout lays every block out again, the text unchanged: what the renderer draws from beside the
-// text changed, which no edit says. Until it is called the layouts kept stand. The cursor and the
-// text stay as they were.
+// text changed, which no edit says. Until it is called the layouts kept stand; once called, the
+// next paint draws the new one. The cursor and the text stay as they were.
 func TestRelayoutLaysTheBlocksOutAgain(t *testing.T) {
 	h := startEditor(t, 60, 14, WithRenderer(&besideRenderer{Renderer: NewMarkdownRenderer()}), WithMode(Rendered),
 		WithCore(tuiwidget.CoreInitialText("first\n## Title here\nlast")))
 	r := h.e.render.(*besideRenderer)
 	h.keys(key('j'))
 	h.paint()
-	height := func() float32 {
-		var got float32
-		h.onLoop(func() { got = h.e.layout.lay(1, nil).bl.Height })
-		return got
+	before, laid, _ := laidAfterPaint(h, 1)
+	if !laid {
+		t.Fatal("the heading was not drawn")
 	}
-	before := height()
 	h.onLoop(func() { r.extra = 40 })
 	h.paint()
-	if got := height(); got != before {
+	if got, _, _ := laidAfterPaint(h, 1); got != before {
 		t.Fatalf("the block was laid out again with nothing said: %v -> %v", before, got)
 	}
 	h.onLoop(func() { h.e.Relayout() })
 	h.paint()
-	if got := height(); got != before+40 {
-		t.Fatalf("after Relayout the block is %v high; want %v", got, before+40)
+	if got, laid, stale := laidAfterPaint(h, 1); !laid || stale || got != before+40 {
+		t.Fatalf("after Relayout the paint left the block %v high (drawn %v, stale %v); want %v", got, laid, stale, before+40)
 	}
 	var line int
 	var text string
 	h.onLoop(func() { line, text = h.e.Core().Cursor().Line, h.e.Core().Value() })
 	if line != 1 || text != "first\n## Title here\nlast" {
 		t.Errorf("Relayout moved the cursor to line %d or changed the text to %q", line, text)
+	}
+}
+
+// scrolledIntoATallBlock is an editor whose first block draws extra high from beside the text, the
+// view scrolled 200 into it, the cursor on the last block (Lector #397 r0).
+func scrolledIntoATallBlock(t *testing.T, extra float32) (*edHarness, *besideRenderer) {
+	t.Helper()
+	r := &besideRenderer{Renderer: NewMarkdownRenderer(), extra: extra}
+	h := startEditor(t, 60, 14, WithRenderer(r), WithMode(Rendered), WithCore(tuiwidget.CoreInitialText("external output\n\nlast")))
+	h.keys(key('G'))
+	h.paint()
+	h.onLoop(func() { h.e.layout.scrollBy(-100000); h.e.layout.scrollBy(200) })
+	h.paint()
+	if s := scrollOf(h); s != 200 {
+		t.Fatalf("the view is scrolled %v into the block, want 200", s)
+	}
+	return h, r
+}
+
+func scrollOf(h *edHarness) float32 {
+	var s float32
+	h.onLoop(func() { s = h.e.layout.scroll })
+	return s
+}
+
+// A tall block the view is scrolled into is drawn anew after Relayout: its height kept until it is
+// laid out again, the view still finds it at the top, though the cursor is in another block.
+func TestRelayoutRedrawsATallBlockScrolledInto(t *testing.T) {
+	h, r := scrolledIntoATallBlock(t, 500)
+	before, _, _ := laidAfterPaint(h, 0)
+	h.onLoop(func() { r.extra = 600; h.e.Relayout() })
+	h.paint()
+	if got, laid, stale := laidAfterPaint(h, 0); !laid || stale || got != before+100 {
+		t.Fatalf("after Relayout, scrolled into it, the block is %v high (drawn anew %v, stale %v); want %v", got, laid && !stale, stale, before+100)
+	}
+	if s := scrollOf(h); s != 200 {
+		t.Errorf("Relayout moved the view to %v", s)
+	}
+}
+
+// A tall block laid out again shorter than the scroll leaves the view at the text's end, not past it.
+func TestRelayoutKeepsTheScrollWithinAShorterText(t *testing.T) {
+	h, r := scrolledIntoATallBlock(t, 500)
+	h.onLoop(func() { r.extra = 0; h.e.Relayout() })
+	h.paint()
+	h.paint()
+	var s, want float32
+	h.onLoop(func() { s, want = h.e.layout.scroll, max(h.e.layout.total()-(h.e.layout.height-2*padY), 0) })
+	if s != want {
+		t.Fatalf("after the block shrank the view is scrolled %v; want the text's end, %v", s, want)
+	}
+	if _, laid, stale := laidAfterPaint(h, 2); !laid || stale {
+		t.Errorf("the last block is not drawn after the block above it shrank (drawn %v, stale %v)", laid, stale)
 	}
 }
 

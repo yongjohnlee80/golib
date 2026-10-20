@@ -36,6 +36,7 @@ type pixelLayout struct {
 	blocks []Block
 	laid   []*laidBlock // parallel to blocks: nil until laid out
 	stale  bool         // lines and blocks are to be read again
+	relaid bool         // Relayout: the scroll is kept within the text once the blocks drawn are laid out again
 	fonts  uint64       // the window's font generation they were shaped in (Canvas.Fonts)
 	keep   int          // after a change, blocks wholly before this line keep their layout
 
@@ -50,6 +51,7 @@ type laidBlock struct {
 	width  float32
 	colors []color.NRGBA // Raw: the line's cluster colours
 	text   string        // Raw: the line's text
+	stale  bool          // Relayout: laid out again when next drawn; its height stands in until then
 }
 
 // newPixelLayout instantiates a new high-resolution pixel layout manager for e,
@@ -223,6 +225,18 @@ func (l *pixelLayout) Changed(fromLine int) {
 
 // --- blocks ---------------------------------------------------------------------------------
 
+// relayout has every block laid out again as it is next drawn, the text unchanged (Editor.Relayout).
+// Each keeps its height until then, so the view finds the blocks it shows where they were, a tall
+// one scrolled into among them, and no block out of view is laid out for it.
+func (l *pixelLayout) relayout() {
+	for _, lb := range l.laid {
+		if lb != nil {
+			lb.stale = true
+		}
+	}
+	l.relaid = true
+}
+
 // invalidate drops every layout: the width, the mode or the fonts changed.
 func (l *pixelLayout) invalidate() {
 	l.stale, l.keep = true, 0
@@ -344,7 +358,7 @@ func (l *pixelLayout) lay(i int, frame *tuiwidget.HighlightFrame) *laidBlock {
 	// false, a cursor moving there re-lays nothing either.
 	inside := cl >= b.From && cl < b.To && l.typing()
 	if l.e.Shown() == Rendered && l.e.render != nil {
-		if lb := l.laid[i]; lb != nil && lb.width == l.width && lb.inside == inside {
+		if lb := l.laid[i]; lb != nil && !lb.stale && lb.width == l.width && lb.inside == inside {
 			return lb
 		}
 		lb := &laidBlock{inside: inside, width: l.width}
