@@ -135,6 +135,17 @@ func (n *tileNode) setSize(pct float64) {
 	n.tiles.SetSize(n.key, pct)
 }
 
+func (n *tileNode) setMinimumSize(cells float64) {
+	if !finite(cells) {
+		return
+	}
+	if n.tiles == nil {
+		n.place.Min = max(int(cells), 0)
+		return
+	}
+	n.tiles.SetMin(n.key, int(cells))
+}
+
 func (n *tileNode) window() (*widget.WindowMod, error) {
 	if n.tile == nil {
 		return nil, ErrWindowOperationUnavailable
@@ -239,13 +250,9 @@ var tileType = Type{
 	Ctor:    []string{"edges", "minimizable", "key"},
 	Signals: map[string][]string{"resized": {"size"}, "docked": {"edge"}, "changed": {"operation", "maximized", "hidden"}},
 	Setters: map[string]Setter{
-		"edge": setter("a Tile", drawerEdges.read, (*tileNode).setEdge),
-		"size": setter("a Tile", numberOf, (*tileNode).setSize),
-		"minimumSize": setter("a Tile", numberOf, func(n *tileNode, v float64) {
-			if n.tiles == nil && finite(v) {
-				n.place.Min = max(int(v), 0)
-			}
-		}),
+		"edge":        setter("a Tile", drawerEdges.read, (*tileNode).setEdge),
+		"size":        setter("a Tile", numberOf, (*tileNode).setSize),
+		"minimumSize": setter("a Tile", numberOf, (*tileNode).setMinimumSize),
 	},
 	Methods: map[string]Method{
 		"show":           NoArgMethod((*tileNode).show),

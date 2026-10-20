@@ -438,3 +438,41 @@ func TestTilesAnUndersizedRedockStillCommits(t *testing.T) {
 	f.h.settle()
 	f.wantRects("widened", map[string]tui.Rect{"explorer": {X: 90, Y: 0, W: 30, H: 30}})
 }
+
+// Keyboard steps on two owners before a layout build on each other: the second strip's depth is
+// measured from where the first one's step now puts it, not from where it was last placed.
+func TestTilesKeyboardStepsOnTwoOwnersBeforeALayout(t *testing.T) {
+	f := newTiles(t, 100, 20, []tileSpec{
+		{"a", widget.TilePlace{Edge: tui.DockLeft, Size: 20}},
+		{"b", widget.TilePlace{Edge: tui.DockLeft, Size: 30}},
+		{"centre", widget.TilePlace{Edge: tui.DockCenter}},
+	})
+	f.h.onLoop(func() {
+		f.m.Tile("a").Window().ResizeBy(1, 0)
+		f.m.Tile("b").Window().ResizeBy(1, 0)
+	})
+	f.h.settle()
+	if a, b := f.size("a"), f.size("b"); !near(a, 21) || !near(b, 31) {
+		t.Fatalf("requests a=%v b=%v, want 21 and 31", a, b)
+	}
+	f.wantRects("two owners stepped", map[string]tui.Rect{"a": {X: 0, Y: 0, W: 21, H: 20}, "b": {X: 21, Y: 0, W: 31, H: 20}})
+}
+
+// A keyboard move a tile refuses leaves a drag in progress as it was: the resize it staged still
+// completes at the release.
+func TestTilesARefusedKeyboardMoveKeepsTheDrag(t *testing.T) {
+	f := newTiles(t, 120, 30, defaultTiles())
+	f.press(tui.MouseRight, 25, 10)
+	f.motion(tui.MouseRight, 35, 10)
+	var moved bool
+	f.h.onLoop(func() { moved = f.m.Tile("explorer").Window().MoveBy(1, 0) })
+	if moved {
+		t.Fatal("a tile took a keyboard move")
+	}
+	f.h.inject(tui.MouseEvent{Kind: tui.MouseRelease, Button: tui.MouseRight, X: 35, Y: 10})
+	f.h.barrier(nil)
+	f.wantRects("released", map[string]tui.Rect{"explorer": {X: 0, Y: 0, W: 40, H: 30}})
+	if ev := f.changes(); len(ev) != 1 || ev[0].Key != "explorer" || !near(ev[0].Size, 100*40.0/120) {
+		t.Fatalf("events: %+v", ev)
+	}
+}
