@@ -89,3 +89,70 @@ func TestValidateAcceptsOnlyAPanelsOwnPreferences(t *testing.T) {
 		}
 	}
 }
+
+// SizePercent reads an integer or up to two decimals within bounds, and nothing else: no sign,
+// space, exponent, bare dot or third decimal.
+func TestSizePercentReadsTwoDecimalsInBounds(t *testing.T) {
+	for in, want := range map[string]float64{"30": 30, "25.25": 25.25, "25.5": 25.5, "15": 15, "90": 90, "90.00": 90} {
+		if n, ok := panelgeometry.SizePercent(in, 15, 90); !ok || n != want {
+			t.Errorf("SizePercent(%q) = %v %v, want %v", in, n, ok, want)
+		}
+	}
+	for _, bad := range []any{"14.99", "90.01", "25.255", "25.", ".5", "-20", "+20", " 20", "2e1", "", "a", 30, nil} {
+		if _, ok := panelgeometry.SizePercent(bad, 15, 90); ok {
+			t.Errorf("SizePercent(%v) accepted", bad)
+		}
+	}
+}
+
+// FormatPercent writes what SizePercent reads back, rounded to two decimals, as short as it reads;
+// a one-cell step of a 9999-cell extent survives the round trip.
+func TestFormatPercentRoundTripsSizePercent(t *testing.T) {
+	for p, want := range map[float64]string{25: "25", 25.25: "25.25", 25.251: "25.25", 25.255001: "25.26", 33.333333: "33.33"} {
+		if got := panelgeometry.FormatPercent(p); got != want {
+			t.Errorf("FormatPercent(%v) = %q, want %q", p, got, want)
+		}
+	}
+	const extent = 9999
+	for cells := 1; cells < extent; cells += 37 {
+		back, ok := panelgeometry.SizePercent(panelgeometry.FormatPercent(100*float64(cells)/extent), 0, 100)
+		if got := int(back*extent/100 + 0.5); !ok || got != cells {
+			t.Fatalf("%d cells → %v → %d cells", cells, back, got)
+		}
+	}
+}
+
+// A Fractional spec's size takes two decimals; an integer spec's still refuses them; an edge key
+// takes exactly one of the spec's edges.
+func TestValidateFractionalSizesAndTheEdgeKey(t *testing.T) {
+	tiles := []panelgeometry.Spec{
+		{ID: "explorer", Edges: []string{"left", "right"}, Size: [2]int{20, 90}, Fractional: true},
+		{ID: "results", Edges: []string{"bottom", "top"}, Size: [2]int{10, 90}},
+	}
+	if k := panelgeometry.EdgeKey("explorer"); k != "tui.explorer.edge" {
+		t.Errorf("EdgeKey = %q", k)
+	}
+	for _, ok := range [][2]string{
+		{"tui.explorer.left.size", "25.25"},
+		{"tui.explorer.right.size", "25"},
+		{"tui.explorer.edge", "right"},
+		{"tui.results.edge", "top"},
+		{"tui.results.bottom.size", "40"},
+	} {
+		if err := panelgeometry.Validate(tiles, ok[0], ok[1]); err != nil {
+			t.Errorf("%s = %s: %v", ok[0], ok[1], err)
+		}
+	}
+	for _, c := range []struct{ key, value string }{
+		{"tui.explorer.left.size", "25.255"}, // a third decimal
+		{"tui.explorer.left.size", "95"},     // above bounds
+		{"tui.explorer.left.size", "19.99"},  // below bounds
+		{"tui.results.bottom.size", "40.5"},  // not Fractional
+		{"tui.explorer.edge", "bottom"},      // not one of its edges
+		{"tui.explorer.edge", ""},
+	} {
+		if err := panelgeometry.Validate(tiles, c.key, c.value); !errors.Is(err, panelgeometry.ErrBadValue) {
+			t.Errorf("%s = %s: %v, want ErrBadValue", c.key, c.value, err)
+		}
+	}
+}
