@@ -179,12 +179,12 @@ var listViewType = Type{
 		"currentIndex": setter("a ListView", numberOf, func(n *listViewNode, v float64) { n.list.SetCursor(int(v)) }),
 	},
 	Getters: map[string]Getter{
-		"currentIndex": func(c tui.Component) (qml.SpecValue, error) {
-			return numberValue(c.(*listViewNode).currentIndex()), nil
-		},
+		"currentIndex": getter(func(n *listViewNode) (qml.SpecValue, error) {
+			return numberValue(n.currentIndex()), nil
+		}),
 	},
 	Signals:   map[string][]string{"activated": {"index"}, "currentIndexChanged": {"index"}},
-	Destroyed: func(c tui.Component) { c.(*listViewNode).mv.release() },
+	Destroyed: destroyer(func(n *listViewNode) { n.mv.release() }),
 }
 
 // ---------------------------------------------------------------- ComboBox
@@ -291,13 +291,12 @@ var comboBoxType = Type{
 		"currentIndex": setter("a ComboBox", numberOf, func(n *comboBoxNode, v float64) { n.sel.SetSelectedIndex(int(v)) }),
 	},
 	Getters: map[string]Getter{
-		"currentIndex": func(c tui.Component) (qml.SpecValue, error) {
-			return numberValue(c.(*comboBoxNode).currentIndex()), nil
-		},
+		"currentIndex": getter(func(n *comboBoxNode) (qml.SpecValue, error) {
+			return numberValue(n.currentIndex()), nil
+		}),
 		// The chosen row's valueRole — Qt's currentValue; a string "" when
 		// nothing is chosen.
-		"currentValue": func(c tui.Component) (qml.SpecValue, error) {
-			n := c.(*comboBoxNode)
+		"currentValue": getter(func(n *comboBoxNode) (qml.SpecValue, error) {
 			i := n.currentIndex()
 			if i < 0 || n.mv.model == nil {
 				return qml.SpecValue{Kind: qml.SpecValueString}, nil
@@ -307,10 +306,10 @@ var comboBoxType = Type{
 				return qml.SpecValue{Kind: qml.SpecValueString}, nil
 			}
 			return v, nil
-		},
+		}),
 	},
 	Signals:   map[string][]string{"activated": {"index"}},
-	Destroyed: func(c tui.Component) { c.(*comboBoxNode).mv.release() },
+	Destroyed: destroyer(func(n *comboBoxNode) { n.mv.release() }),
 }
 
 // ---------------------------------------------------------------- TableView
@@ -733,18 +732,17 @@ var tableViewType = Type{
 		}
 	},
 	Setters: map[string]Setter{
-		"model": func(c tui.Component, v qml.SpecValue) error {
+		"model": rawSetter(func(n *tableViewNode, v qml.SpecValue) error {
 			m, err := modelOf(v)
 			if err != nil {
 				return err
 			}
-			n := c.(*tableViewNode)
 			if err := n.checkTemplate(m); err != nil {
 				return err
 			}
 			n.mv.setModel(m)
 			return nil
-		},
+		}),
 		// golib's: each row's number in a gutter before the first field
 		"rowNumbers": cellsSetter("rowNumbers", boolOf, func(n *tableViewNode, on bool) {
 			n.grid.Core().SetRowNumbers(on)
@@ -777,21 +775,21 @@ var tableViewType = Type{
 		}),
 	},
 	Getters: map[string]Getter{
-		"currentIndex": func(c tui.Component) (qml.SpecValue, error) {
-			return numberValue(c.(*tableViewNode).currentIndex()), nil
-		},
-		"orderBy": func(c tui.Component) (qml.SpecValue, error) {
-			return qml.SpecValue{Kind: qml.SpecValueString, Raw: c.(*tableViewNode).orderBy}, nil
-		},
-		"orderByError": func(c tui.Component) (qml.SpecValue, error) {
-			return qml.SpecValue{Kind: qml.SpecValueString, Raw: c.(*tableViewNode).orderErr}, nil
-		},
-		"filter": func(c tui.Component) (qml.SpecValue, error) {
-			return qml.SpecValue{Kind: qml.SpecValueString, Raw: c.(*tableViewNode).filter}, nil
-		},
-		"filterError": func(c tui.Component) (qml.SpecValue, error) {
-			return qml.SpecValue{Kind: qml.SpecValueString, Raw: c.(*tableViewNode).filterErr}, nil
-		},
+		"currentIndex": getter(func(n *tableViewNode) (qml.SpecValue, error) {
+			return numberValue(n.currentIndex()), nil
+		}),
+		"orderBy": getter(func(n *tableViewNode) (qml.SpecValue, error) {
+			return qml.SpecValue{Kind: qml.SpecValueString, Raw: n.orderBy}, nil
+		}),
+		"orderByError": getter(func(n *tableViewNode) (qml.SpecValue, error) {
+			return qml.SpecValue{Kind: qml.SpecValueString, Raw: n.orderErr}, nil
+		}),
+		"filter": getter(func(n *tableViewNode) (qml.SpecValue, error) {
+			return qml.SpecValue{Kind: qml.SpecValueString, Raw: n.filter}, nil
+		}),
+		"filterError": getter(func(n *tableViewNode) (qml.SpecValue, error) {
+			return qml.SpecValue{Kind: qml.SpecValueString, Raw: n.filterErr}, nil
+		}),
 	},
 	Signals: map[string][]string{"activated": {"index"}, "currentIndexChanged": {"index"},
 		// a right press on a row (the cursor moved to it first), or Shift+F10 or the Menu key on
@@ -799,7 +797,7 @@ var tableViewType = Type{
 		"contextMenuRequested": {"index", "x", "y"},
 		// golib's: the view changed its sort (the s key), and wrote it to orderBy
 		"orderByChanged": {"orderBy"}},
-	Destroyed: func(c tui.Component) { c.(*tableViewNode).mv.release() },
+	Destroyed: destroyer(func(n *tableViewNode) { n.mv.release() }),
 }
 
 var tableViewColumnType = Type{

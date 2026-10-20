@@ -3,9 +3,10 @@ package decl
 import (
 	"errors"
 	"fmt"
-	"github.com/yongjohnlee80/golib/tui"
 	"maps"
 	"slices"
+
+	"github.com/yongjohnlee80/golib/tui"
 )
 
 // STYLES, as Qt Quick Controls has them: a set of types that replaces standard types by name, so
@@ -159,8 +160,11 @@ func StandardContract(name string) (Contract, bool) {
 }
 
 // StandardType is a copy of the standard type name, for a style to start from: its contract,
-// builder and setters. The vocabulary's private palette and child hooks are left out, since they
-// reach into the standard widget; a style's type sets Restyle for its own.
+// builder, setters, getters, methods and destroy hook. Each of those refuses a component that is not
+// the standard widget (an error, or nothing to release), so a style whose Build makes another widget
+// gets errors from the copied hooks, never a panic, and supplies its own. The vocabulary's private
+// palette and child hooks are left out, since they reach into the standard widget; a style's type
+// sets Restyle for its own.
 func StandardType(name string) (Type, bool) {
 	for _, t := range stdTypes() {
 		if t.Name == name {

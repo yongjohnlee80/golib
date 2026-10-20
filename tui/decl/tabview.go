@@ -131,12 +131,12 @@ var tabViewType = Type{
 		"currentIndex": setter("a TabView", numberOf, func(n *tabViewNode, v float64) { n.setIndex(int(v)) }),
 	},
 	Getters: map[string]Getter{
-		"currentIndex": func(c tui.Component) (qml.SpecValue, error) {
-			return numberValue(c.(*tabViewNode).tabs.Active()), nil
-		},
-		"count": func(c tui.Component) (qml.SpecValue, error) {
-			return numberValue(len(c.(*tabViewNode).pages)), nil
-		},
+		"currentIndex": getter(func(n *tabViewNode) (qml.SpecValue, error) {
+			return numberValue(n.tabs.Active()), nil
+		}),
+		"count": getter(func(n *tabViewNode) (qml.SpecValue, error) {
+			return numberValue(len(n.pages)), nil
+		}),
 	},
 	Signals: map[string][]string{"currentIndexChanged": {"index"}},
 }

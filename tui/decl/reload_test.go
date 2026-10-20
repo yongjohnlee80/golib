@@ -3,10 +3,11 @@ package decl_test
 import (
 	"context"
 	"errors"
-	"github.com/yongjohnlee80/golib/parse/qml"
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/yongjohnlee80/golib/parse/qml"
 
 	"github.com/yongjohnlee80/golib/decl"
 	"github.com/yongjohnlee80/golib/tui"

@@ -71,7 +71,7 @@ func appTypes() []Type {
 		},
 			Methods: map[string]Method{
 				// scrollToSource(byte): the block showing that source byte, at the top
-				"scrollToSource": func(c tui.Component, args []qml.SpecValue) error {
+				"scrollToSource": argMethod(func(v *widget.HTMLView, args []qml.SpecValue) error {
 					if len(args) != 1 {
 						return fmt.Errorf("HTMLView.scrollToSource takes one argument, a source byte; got %d", len(args))
 					}
@@ -79,9 +79,9 @@ func appTypes() []Type {
 					if err != nil {
 						return err
 					}
-					c.(*widget.HTMLView).ScrollToSource(int(n))
+					v.ScrollToSource(int(n))
 					return nil
-				},
+				}),
 			},
 			Signals: map[string][]string{"linkActivated": {"href"}, "scrolledTo": {"sourceByte"}}},
 		{Name: "Terminal", Build: buildTerminal, Ctor: []string{"command", "dir", "scrollback"}, restyle: restyleTerminal,
@@ -114,7 +114,7 @@ func appTypes() []Type {
 				}),
 			},
 			Signals:   map[string][]string{"exited": {"code"}, "titleChanged": {"title"}, "modeChanged": {"mode"}},
-			Destroyed: func(c tui.Component) { c.(*widget.Terminal).Stop() },
+			Destroyed: destroyer((*widget.Terminal).Stop),
 		},
 		editorType,
 		terminalTabsType,
@@ -135,9 +135,9 @@ func appTypes() []Type {
 				"enabled": setter("a menu row", boolOf, (*menuNode).setEnabled),
 			},
 			Getters: map[string]Getter{
-				"checked": func(c tui.Component) (qml.SpecValue, error) {
-					return boolValue(c.(*menuNode).model.Checked), nil
-				},
+				"checked": getter(func(n *menuNode) (qml.SpecValue, error) {
+					return boolValue(n.model.Checked), nil
+				}),
 			}},
 		{Name: "MenuSeparator", Build: buildMenuSeparator},
 		{Name: "Shortcut", Build: buildShortcut, Ctor: []string{"sequence"}},
