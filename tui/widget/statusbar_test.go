@@ -198,3 +198,33 @@ func TestStatusBarEdges(t *testing.T) {
 		t.Fatalf("Children went on after a break: %d", n)
 	}
 }
+
+// sizedSurface is a blank surface of a given size, for painting a widget somewhere other than its
+// place (a thumbnail, an offscreen copy).
+type sizedSurface struct{ size tui.Size }
+
+func (s *sizedSurface) SetCell(int, int, string, style.Style) {}
+func (s *sizedSurface) Fill(tui.Rect, string, style.Style)    {}
+func (s *sizedSurface) Sub(tui.Rect) tui.Surface              { return s }
+func (s *sizedSurface) Size() tui.Size                        { return s.size }
+func (s *sizedSurface) StringWidth(v string) int              { return len(v) }
+func (s *sizedSurface) Theme() *style.Theme                   { return nil }
+func (s *sizedSurface) Caps() tui.Capabilities                { return tui.Capabilities{} }
+
+// TestPaintingAnImageElsewhereKeepsItsCells: an Image's Cells are where it is laid out, the size a
+// host renders its PNG for. Painting it on another surface is a read, and changes neither
+// (tui-widget-shell-S2).
+func TestPaintingAnImageElsewhereKeepsItsCells(t *testing.T) {
+	img := widget.NewImage()
+	h := startApp(t, img, 40, 10)
+	defer h.stop()
+	h.settle()
+	var cols, rows int
+	h.onLoop(func() {
+		img.Render(&sizedSurface{size: tui.Size{W: 5, H: 2}})
+		cols, rows = img.Cells()
+	})
+	if cols != 40 || rows != 10 {
+		t.Errorf("after a paint on a 5x2 surface, Cells = %dx%d, want the 40x10 it is laid out in", cols, rows)
+	}
+}

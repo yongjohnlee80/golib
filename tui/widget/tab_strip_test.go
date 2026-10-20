@@ -421,3 +421,38 @@ func TestACutTabsHiddenCloseMarkDoesNotClose(t *testing.T) {
 		t.Fatalf("a press on a tab cut to %q closed %v", h.tb.String(), closed)
 	}
 }
+
+// TestDrawingATabStripStoresNothing: row, which Render, a press and the spans read, is a read. With
+// the active tab moved and no layout run yet, drawing the row shows the window that reveals it, and
+// leaves the window stored as the last layout committed it (tui-widget-shell-S2).
+func TestDrawingATabStripStoresNothing(t *testing.T) {
+	strip := NewTabStrip()
+	var tabs []StripTab
+	for i := range 12 {
+		tabs = append(tabs, StripTab{ID: fmt.Sprint(i), Label: fmt.Sprintf("tab number %d", i)})
+	}
+	strip.SetTabs(tabs)
+	strip.SetActive("0")
+	h := startAppInternal(t, strip, 30, 1)
+	defer h.stopInternal()
+	h.syncInternal()
+	var before, after [2]any
+	var shown bool
+	h.onLoopInternal(func() {
+		strip.SetActive("11") // a layout is asked for, not run
+		s := &strip.core
+		before = [2]any{s.first, s.revealed}
+		shown = slices.ContainsFunc(s.row(), func(c stripCell) bool { return c.kind == cellTab && c.id == "11" })
+		after = [2]any{s.first, s.revealed}
+	})
+	if !shown {
+		t.Error("the row drawn after SetActive(11) does not show tab 11")
+	}
+	if before != after {
+		t.Errorf("drawing the row stored first, revealed: %v -> %v", before, after)
+	}
+	h.syncInternal()
+	if got := h.tb.String(); !strings.Contains(got, "11") {
+		t.Errorf("after the layout the strip does not show tab 11:\n%s", got)
+	}
+}

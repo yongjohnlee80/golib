@@ -536,29 +536,33 @@ func (d *imageDrag) end(ctx *tui.Context) {
 	}
 }
 
-// Layout takes every cell offered.
+// Layout takes every cell offered, and the view takes them after layout (commitCells).
 func (m *Image) Layout(c tui.Constraints) tui.Size {
-	w, h := c.MaxW, c.MaxH
-	if w == tui.Unbounded {
-		w = c.MinW
+	sz := c.Constrain(tui.Size{W: boundedMax(c.MaxW, c.MinW), H: boundedMax(c.MaxH, c.MinH)})
+	if ctx := m.Context(); ctx != nil { // a measure before mount commits nothing
+		ctx.AfterLayout("image-cells", func() { m.commitCells(sz) })
 	}
-	if h == tui.Unbounded {
-		h = c.MinH
-	}
-	return c.Constrain(tui.Size{W: w, H: h})
+	return sz
 }
 
-// Cells are the columns and rows the Image last painted: the size a host renders its PNG for, so
-// the terminal does not stretch it. 0, 0 before its first paint.
+// commitCells makes sz the view's cells: the part shown is kept within what they hold now.
+func (m *Image) commitCells(sz tui.Size) {
+	v := &m.st.view
+	if v.cols == sz.W && v.rows == sz.H {
+		return
+	}
+	v.cols, v.rows = sz.W, sz.H
+	v.to(v.left, v.top) // the cells may hold more now
+	m.st.moved()
+}
+
+// Cells are the columns and rows the Image is laid out in: the size a host renders its PNG for, so
+// the terminal does not stretch it. 0, 0 before its first layout.
 func (m *Image) Cells() (cols, rows int) { return m.st.view.cols, m.st.view.rows }
 
 // Render paints the cells blank: the image is placed over them.
 func (m *Image) Render(s tui.Surface) {
 	sz := s.Size()
-	v := &m.st.view
-	v.cols, v.rows = sz.W, sz.H
-	v.to(v.left, v.top) // the cells may hold more now
-	m.st.moved()
 	// the page's colours under the PNG, and where there is none yet: an empty pane in a window
 	// was its default, a dark band, while a host rendered the PNG
 	page := style.New().Background(style.TokenBackground).Foreground(style.TokenForeground)
