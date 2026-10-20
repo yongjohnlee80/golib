@@ -53,3 +53,39 @@ func TestALiveAnchoredFloatFollowsItsRectangle(t *testing.T) {
 		t.Fatal("a live-anchored float reports floating")
 	}
 }
+
+// A window in a live-anchored Float (a Float with a window behaviour, laid out on the managed path)
+// is placed at the live rectangle, and a move starts from it: one step right lands a cell right of
+// where the live rectangle put it, the window then at an explicit rectangle, floating.
+func TestAWindowInALiveAnchoredFloatMovesFromItsRectangle(t *testing.T) {
+	w := widget.NewWindowMod(widget.NewBox(widget.NewButton("in"), widget.WithTitle("W")), widget.WithWindowMove())
+	live := widget.AtLive(func() (tui.Rect, bool) { return tui.Rect{X: 5, Y: 1, W: 10, H: 4}, true }, widget.Left)
+	f := widget.NewFloat(w, widget.WithAnchor(live))
+	host := widget.NewOverlayHost(widget.NewButton("base"))
+	host.Attach(f)
+	h := startApp(t, host, 30, 8)
+	defer h.stop()
+	h.onLoop(f.Show)
+	h.settle()
+	col := func() int {
+		for _, line := range strings.Split(h.tb.String(), "\n") {
+			if strings.Contains(line, "W") && strings.Contains(line, "┌") {
+				return len([]rune(line[:strings.Index(line, "┌")]))
+			}
+		}
+		return -1
+	}
+	if got := col(); got != 5 {
+		t.Fatalf("the window should be at the live column 5; it is at %d:\n%s", got, h.tb.String())
+	}
+	h.onLoop(func() {
+		w.Core().HandleAction(tui.ActionInvocation{Action: widget.WindowMoveByAction{DX: 1}, Origin: tui.OriginProgrammatic})
+	})
+	h.settle()
+	if got := col(); got != 6 {
+		t.Fatalf("one step right of the live column 5 is 6; the window is at %d:\n%s", got, h.tb.String())
+	}
+	if !f.Floating() {
+		t.Fatal("moved off its live rectangle, the window should float")
+	}
+}
