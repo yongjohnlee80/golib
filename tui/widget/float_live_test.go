@@ -55,11 +55,13 @@ func TestALiveAnchoredFloatFollowsItsRectangle(t *testing.T) {
 }
 
 // A window in a live-anchored Float (a Float with a window behaviour, laid out on the managed path)
-// is placed at the live rectangle, and a move starts from it: one step right lands a cell right of
-// where the live rectangle put it, the window then at an explicit rectangle, floating.
+// is placed at the live rectangle, and a move starts from it, not from the fallback (an AtRect
+// elsewhere): one step right lands a cell right of where the live rectangle put it, the window then
+// at an explicit rectangle, floating.
 func TestAWindowInALiveAnchoredFloatMovesFromItsRectangle(t *testing.T) {
 	w := widget.NewWindowMod(widget.NewBox(widget.NewButton("in"), widget.WithTitle("W")), widget.WithWindowMove())
-	live := widget.AtLive(func() (tui.Rect, bool) { return tui.Rect{X: 5, Y: 1, W: 10, H: 4}, true }, widget.Left)
+	live := widget.AtLive(func() (tui.Rect, bool) { return tui.Rect{X: 5, Y: 1, W: 10, H: 4}, true },
+		widget.AtRect(tui.Rect{X: 15, Y: 3, W: 10, H: 4}))
 	f := widget.NewFloat(w, widget.WithAnchor(live))
 	host := widget.NewOverlayHost(widget.NewButton("base"))
 	host.Attach(f)
