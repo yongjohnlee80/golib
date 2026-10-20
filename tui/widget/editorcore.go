@@ -776,6 +776,15 @@ func (c *EditorCore) normalMax(ln int) int {
 	return max(0, len(c.buf.lineClusters(ln))-1)
 }
 
+// lastCol is the furthest column a motion reaches on line ln: past the last grapheme in Insert,
+// where text is typed there, and on it otherwise (normalMax).
+func (c *EditorCore) lastCol(ln int) int {
+	if c.keys.mode == ModeInsert {
+		return len(c.buf.lineClusters(ln))
+	}
+	return c.normalMax(ln)
+}
+
 // clampNormal enforces the Normal/Visual cursor invariant.
 func (c *EditorCore) clampNormal() {
 	c.buf.col = min(c.buf.col, c.normalMax(c.buf.ln))

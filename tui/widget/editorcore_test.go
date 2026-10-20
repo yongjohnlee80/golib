@@ -254,3 +254,36 @@ func TestEditorCoreActionOf(t *testing.T) {
 		t.Error("an unbound Ctrl+T is bound")
 	}
 }
+
+// Insert mode's caret keys are motions like any other: each reveals where the caret lands, so a
+// scrolled-right line follows Home back to column 0, and Right and End reach past the last
+// character, where Insert types (tui-widget-editor-D18).
+func TestInsertCaretKeysRevealTheCaret(t *testing.T) {
+	c, l := coreWith(t, "hello world\nhi")
+	keys(c, "i")
+	for _, step := range []struct {
+		key     rune
+		ln, col int
+	}{
+		{tui.KeyEnd, 0, 11},
+		{tui.KeyRight, 0, 11},
+		{tui.KeyHome, 0, 0},
+		{tui.KeyRight, 0, 1},
+		{tui.KeyDown, 1, 1},
+		{tui.KeyEnd, 1, 2},
+		{tui.KeyLeft, 1, 1},
+		{tui.KeyUp, 0, 1},
+	} {
+		l.reveals = nil
+		c.HandleKey(tui.KeyEvent{Code: step.key})
+		if ln, col := c.Line(); ln != step.ln || col != step.col {
+			t.Fatalf("key %v: caret (%d, %d), want (%d, %d)", step.key, ln, col, step.ln, step.col)
+		}
+		if n := len(l.reveals); n == 0 || l.reveals[n-1] != [2]int{step.ln, step.col} {
+			t.Errorf("key %v: reveals %v, want the caret (%d, %d) revealed", step.key, l.reveals, step.ln, step.col)
+		}
+	}
+	if c.Mode() != widget.ModeInsert {
+		t.Fatalf("mode %v, want Insert", c.Mode())
+	}
+}
