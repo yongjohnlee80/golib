@@ -83,7 +83,7 @@ func (b *buffer) setCell(x, y int, c Cell) {
 	if c.Width == 2 {
 		b.clearOverlap(x+1, y)
 		b.put(i, c)
-		b.put(i+1, Cell{Content: "", Width: 0, Attrs: c.Attrs})
+		b.put(i+1, ContinuationOf(c))
 		return
 	}
 	b.put(i, c)

@@ -402,3 +402,16 @@ func TestFramer_BlockedClientDoesNotAccumulate(t *testing.T) {
 		t.Errorf("coalesced count = %d, want most of the 10000 publications counted", got)
 	}
 }
+
+// TestAWideCellsContinuationIsMirrored: a diff carries a wide cell's head only (its emission
+// covers the continuation), so the server grid writes the continuation itself, as every mirror of
+// the frame buffer does. Left as the blank it held, it went to the client as a width-1 cell, an
+// extra grid track after every CJK or emoji cell (tui-support-D1).
+func TestAWideCellsContinuationIsMirrored(t *testing.T) {
+	f := newFramer(2, 1)
+	f.publish([]tui.CellUpdate{{X: 0, Y: 0, Cell: tui.Cell{Content: "漢", Width: 2}}}, cursorState{})
+	snap := f.serverGrid().snapshot()
+	if len(snap) != 2 || snap[0].Cell.Width != 2 || snap[1].Cell != tui.ContinuationOf(snap[0].Cell) {
+		t.Fatalf("snapshot %+v, want the head then its continuation", snap)
+	}
+}

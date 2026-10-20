@@ -418,7 +418,7 @@ func (b *TestBackend) Flush(diff []CellUpdate) error {
 		}
 		b.grid[u.Y][u.X] = u.Cell
 		if u.Cell.Width == 2 {
-			b.grid[u.Y][u.X+1] = Cell{Content: "", Width: 0, Attrs: u.Cell.Attrs}
+			b.grid[u.Y][u.X+1] = ContinuationOf(u.Cell)
 		}
 	}
 	b.assertNoOrphansLocked()
