@@ -136,7 +136,7 @@ func TestTilesInfeasibleMinimumsGiveWayInOrder(t *testing.T) {
 		if s := f.size("explorer"); s != 25 {
 			t.Fatalf("the clamp rewrote the request: %v", s)
 		}
-		f.h.inject(tui.ResizeEvent{W: 120, H: 30})
+		f.h.tb.InjectResize(120, 30)
 		f.h.settle()
 		f.wantRects("widened", map[string]tui.Rect{"explorer": {X: 0, Y: 0, W: 30, H: 30}, "query": {X: 30, Y: 0, W: 90, H: 30}})
 	})
@@ -434,7 +434,7 @@ func TestTilesAnUndersizedRedockStillCommits(t *testing.T) {
 	if ev := f.changes(); len(ev) != 1 || ev[0].Edge != tui.DockRight {
 		t.Fatalf("the same-rect re-dock was not committed: %+v", ev)
 	}
-	f.h.inject(tui.ResizeEvent{W: 120, H: 30})
+	f.h.tb.InjectResize(120, 30)
 	f.h.settle()
 	f.wantRects("widened", map[string]tui.Rect{"explorer": {X: 90, Y: 0, W: 30, H: 30}})
 }
