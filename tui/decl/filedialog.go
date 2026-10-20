@@ -69,7 +69,7 @@ func buildFileDialog(b Build) (tui.Component, []string, error) {
 	s := dialogSpec{dim: true, align: widget.ButtonsRight}
 	mode := fileModeTable["OpenFile"]
 	var preview bool
-	consumed, err := readProps(b.Props, map[string]field{
+	consumed, err := b.ReadProps(map[string]field{
 		"title":    into(&s.title, textOf),
 		"helpText": into(&s.help, textOf),
 		"dim":      into(&s.dim, boolOf),
@@ -166,7 +166,7 @@ var closeButton = standardButton{name: "Close", msg: tui.Msg("tui.filedialog.clo
 func buildFolderDialog(b Build) (tui.Component, []string, error) {
 	s := dialogSpec{dim: true, align: widget.ButtonsRight, closeOnQ: true}
 	var preview bool
-	consumed, err := readProps(b.Props, map[string]field{
+	consumed, err := b.ReadProps(map[string]field{
 		"title":    into(&s.title, textOf),
 		"helpText": into(&s.help, textOf),
 		"dim":      into(&s.dim, boolOf),

@@ -325,7 +325,7 @@ func buildDialog(b Build) (tui.Component, []string, error) {
 	}
 	s := dialogSpec{body: body, dim: true, align: widget.ButtonsCenter, shortcuts: shortcuts, box: box, defaultAt: -1}
 	var flags, defaultFlag int64
-	consumed, err := readProps(b.Props, map[string]field{
+	consumed, err := b.ReadProps(map[string]field{
 		"title":            into(&s.title, textOf),
 		"helpText":         into(&s.help, textOf),
 		"dim":              into(&s.dim, boolOf),

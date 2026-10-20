@@ -60,7 +60,7 @@ func buildTab(b Build) (tui.Component, []string, error) {
 		return nil, nil, fmt.Errorf("a Tab needs exactly 1 child, its content, got %d (at %s)", len(b.Children), b.Pos)
 	}
 	n := &tabNode{content: b.Children[0]}
-	consumed, err := readProps(b.Props, map[string]field{"title": into(&n.title, stringOf)})
+	consumed, err := b.ReadProps(map[string]field{"title": into(&n.title, stringOf)})
 	return n, consumed, err
 }
 

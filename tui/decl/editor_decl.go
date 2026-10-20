@@ -43,7 +43,7 @@ type EditorDecl struct {
 // SyntaxHighlighter and one renderer) and its signals' emitters.
 func ReadEditor(b Build) (EditorDecl, error) {
 	var d EditorDecl
-	consumed, err := readProps(b.Props, map[string]field{
+	consumed, err := b.ReadProps(map[string]field{
 		"text":       into(&d.Text, stringOf),
 		"wrap":       into(&d.Wrap, boolOf),
 		"autoIndent": into(&d.AutoIndent, boolOf),

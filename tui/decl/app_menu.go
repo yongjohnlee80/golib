@@ -140,7 +140,7 @@ func buildMenuItem(b Build) (tui.Component, []string, error) {
 	var group string
 	var shortcut menuShortcut
 	var checkable bool
-	consumed, err := readProps(b.Props, map[string]field{
+	consumed, err := b.ReadProps(map[string]field{
 		"text":      into(&text, textOf),
 		"group":     into(&group, stringOf),
 		"shortcut":  into(&shortcut, menuShortcutOf),
@@ -196,7 +196,7 @@ var menuAligns = enum[bool]{values: map[string]bool{
 func buildMenu(b Build) (tui.Component, []string, error) {
 	var title UIText
 	var right bool
-	consumed, err := readProps(b.Props, map[string]field{
+	consumed, err := b.ReadProps(map[string]field{
 		"title": into(&title, textOf),
 		"align": into(&right, menuAligns.read),
 	})
@@ -231,7 +231,7 @@ func (c menuCommand) ActionID() tui.ActionID { return c.id }
 // the engine's emission rules — the menu never calls a handler itself.
 func buildMenuBar(b Build) (tui.Component, []string, error) {
 	var vim bool
-	consumed, err := readProps(b.Props, map[string]field{"vimNavigation": into(&vim, boolOf)})
+	consumed, err := b.ReadProps(map[string]field{"vimNavigation": into(&vim, boolOf)})
 	if err != nil {
 		return nil, nil, err
 	}

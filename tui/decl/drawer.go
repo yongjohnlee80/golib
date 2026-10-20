@@ -111,7 +111,7 @@ func buildDrawer(b Build) (tui.Component, []string, error) {
 	closeOnQ := false
 	windowResize, movable := false, false
 	wc := windowModConfig{modifier: tui.ModAlt, moveButton: tui.MouseLeft, resizeButton: tui.MouseRight}
-	consumed, err := readProps(b.Props, map[string]field{
+	consumed, err := b.ReadProps(map[string]field{
 		"modal": into(&modal, boolOf), "closeOnQ": into(&closeOnQ, boolOf), "resizable": into(&resizable, boolOf), "windowResize": into(&windowResize, boolOf),
 		"movable": into(&movable, boolOf), "moveButton": into(&wc.moveButton, windowMouseButtons.read),
 		"maximizable": into(&wc.maximize, boolOf), "minimizable": into(&wc.minimize, boolOf), "closable": into(&wc.close, boolOf),

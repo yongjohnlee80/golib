@@ -95,7 +95,7 @@ func buildTreeView(b Build) (tui.Component, []string, error) {
 	}
 	n := &treeViewNode{activated: b.EmitterWith("activated"), expanded: b.EmitterWith("expanded"),
 		moved: b.EmitterWith("currentIndexChanged"), eval: b.Eval, normal: style.Default(), sink: b.sink}
-	consumed, err := readProps(b.Props, map[string]field{
+	consumed, err := b.ReadProps(map[string]field{
 		"textRole":  into(&n.textRole, stringOf),
 		"badgeRole": into(&n.badgeRole, stringOf),
 	})

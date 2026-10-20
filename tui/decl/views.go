@@ -119,7 +119,7 @@ func buildListView(b Build) (tui.Component, []string, error) {
 		return nil, nil, fmt.Errorf("a ListView takes no children; its rows are its model's (at %s)", b.Pos)
 	}
 	n := &listViewNode{activated: b.EmitterWith("activated"), moved: b.EmitterWith("currentIndexChanged")}
-	consumed, err := readProps(b.Props, map[string]field{"textRole": into(&n.mv.textRole, stringOf)})
+	consumed, err := b.ReadProps(map[string]field{"textRole": into(&n.mv.textRole, stringOf)})
 	if err != nil {
 		return nil, nil, err
 	}
@@ -204,7 +204,7 @@ func buildComboBox(b Build) (tui.Component, []string, error) {
 	n := &comboBoxNode{activated: b.EmitterWith("activated")}
 	var placeholder string
 	var maxWidth int
-	consumed, err := readProps(b.Props, map[string]field{
+	consumed, err := b.ReadProps(map[string]field{
 		"textRole":        into(&n.mv.textRole, stringOf),
 		"valueRole":       into(&n.valueRole, stringOf),
 		"placeholderText": into(&placeholder, stringOf),
@@ -380,7 +380,7 @@ func buildTableViewColumn(b Build) (tui.Component, []string, error) {
 		return nil, nil, fmt.Errorf("a TableViewColumn takes no children (at %s)", b.Pos)
 	}
 	n := &tableColumnNode{}
-	consumed, err := readProps(b.Props, map[string]field{
+	consumed, err := b.ReadProps(map[string]field{
 		"role":      into(&n.role, stringOf),
 		"title":     into(&n.title, stringOf),
 		"width":     into(&n.width, cellsOf),

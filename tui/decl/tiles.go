@@ -50,7 +50,7 @@ func buildTile(b Build) (tui.Component, []string, error) {
 		resized: b.EmitterWith("resized"), docked: b.EmitterWith("docked"), changed: b.EmitterWith("changed")}
 	var edges string
 	var size, minimum float64
-	consumed, err := readProps(b.Props, map[string]field{
+	consumed, err := b.ReadProps(map[string]field{
 		"edge": into(&n.place.Edge, drawerEdges.read), "edges": into(&edges, stringOf),
 		"size": into(&size, numberOf), "minimumSize": into(&minimum, numberOf),
 		"minimizable": into(&n.place.Minimizable, boolOf), "key": into(&n.key, stringOf),

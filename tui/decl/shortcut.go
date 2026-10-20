@@ -48,7 +48,7 @@ func (*shortcutNode) HandleEvent(tui.Event) bool      { return false }
 
 func buildShortcut(b Build) (tui.Component, []string, error) {
 	var k shortcutKey
-	consumed, err := readProps(b.Props, map[string]field{"sequence": into(&k, shortcutKeyOf)})
+	consumed, err := b.ReadProps(map[string]field{"sequence": into(&k, shortcutKeyOf)})
 	if err != nil {
 		return nil, nil, err
 	}

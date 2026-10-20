@@ -2,6 +2,8 @@ package decl
 
 import (
 	"fmt"
+	"maps"
+	"slices"
 	"sort"
 	"strconv"
 	"strings"
@@ -87,9 +89,9 @@ func registerTypes(r *Registry, types []Type) {
 func typeOptions(types []Type) []Option {
 	var opts []Option
 	for _, w := range types {
-		if len(w.Ctor) > 0 {
-			opts = append(opts, WithConstructorProps(w.Name, w.Ctor...))
-		}
+		// Always, an empty Ctor too: the entry says this adapter holds the type's contract, which is what
+		// lets Build.ReadProps check its builder against it.
+		opts = append(opts, WithConstructorProps(w.Name, w.Ctor...))
 		if len(w.Setters) > 0 {
 			opts = append(opts, WithSetters(w.Name, w.Setters))
 		}
@@ -206,6 +208,24 @@ func into[V any](dst *V, read reader[V]) field {
 		*dst = x
 		return nil
 	}
+}
+
+// ReadProps reads the properties a builder takes by name and returns the ones it read, which is
+// exactly what the builder must return as CONSUMED. Every name in fields must be one the type
+// declares, in its Ctor or its Setters: a reload decides between rebuilding a node and calling a
+// setter from that declaration alone, so a property read here and declared nowhere mounts and is
+// then refused by the first reload that changes it. The check runs on every build, so any test that
+// mounts the type catches the drift.
+func (b Build) ReadProps(fields map[string]Field) ([]string, error) {
+	if b.declared != nil {
+		for _, name := range slices.Sorted(maps.Keys(fields)) {
+			if !b.declared[name] {
+				return nil, fmt.Errorf("%s reads property %q, which its Type does not declare in Ctor or Setters (at %s)",
+					b.Type, name, b.Pos)
+			}
+		}
+	}
+	return readProps(b.Props, fields)
 }
 
 // readProps reads a builder's constructor properties by name and reports the

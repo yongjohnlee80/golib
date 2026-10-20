@@ -98,14 +98,6 @@ func widgetName[W any]() string {
 
 // ---------------------------------------------------------------- builders
 
-// ReadProps reads a builder's constructor properties by name and returns the
-// ones it read — which is exactly what the builder must return as CONSUMED.
-// Deriving one from the other is what stops a builder reading a property and
-// forgetting to say so, which makes the engine apply it a second time.
-func ReadProps(props []qml.SpecProp, fields map[string]Field) ([]string, error) {
-	return readProps(props, fields)
-}
-
 // StringField reads a string property into dst.
 func StringField(dst *string) Field { return into(dst, stringOf) }
 

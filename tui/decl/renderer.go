@@ -70,7 +70,7 @@ func buildMarkdownRenderer(b Build) (tui.Component, []string, error) {
 	}
 	var scale float64
 	var mermaid bool
-	consumed, err := readProps(b.Props, map[string]field{
+	consumed, err := b.ReadProps(map[string]field{
 		"headingScale": into(&scale, numberOf),
 		"mermaid":      into(&mermaid, boolOf),
 	})
@@ -141,7 +141,7 @@ func buildHTMLDocumentView(b Build) (tui.Component, []string, error) {
 	if len(b.Children) != 0 {
 		return nil, nil, fmt.Errorf("an HTMLDocumentView takes no children (at %s)", b.Pos)
 	}
-	consumed, err := readProps(b.Props, map[string]field{})
+	consumed, err := b.ReadProps(map[string]field{})
 	if err != nil {
 		return nil, nil, err
 	}
