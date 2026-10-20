@@ -6,7 +6,8 @@
 //
 //	tui.<panel>.<edge>.size     its depth from the edge it docks to: an integer in its bounds
 //	tui.<panel>.<edge>.length   its extent along that edge: an integer in its bounds
-//	tui.<panel>.float           where it floats once moved: "x,y,w,h", each 0..100, w and h >= 5
+//	tui.<panel>.float           where it floats once moved: "x,y,w,h", each 0..100, w and h >= 5;
+//	                            "" docks it again (Reset layout, a move to a new edge)
 //
 // Size and length are kept per edge, so a panel docked left and then bottom keeps both shapes.
 package panelgeometry
@@ -19,8 +20,9 @@ import (
 	"strings"
 )
 
-// Spec is one panel a program docks: its preference id, the edges it may dock to (of left, right,
-// top and bottom), and the inclusive bounds of its size and length.
+// Spec is one panel a program docks: its preference id, the places it may dock to (left, right, top,
+// bottom, or a program's own, such as AutoDoc's terminal's center), and the inclusive bounds of its
+// size and length.
 type Spec struct {
 	ID           string
 	Edges        []string
@@ -94,6 +96,9 @@ func Validate(specs []Spec, key, value string) error {
 			continue
 		}
 		if tail == "float" {
+			if value == "" {
+				return nil // docked again: the program stores "" where it can't delete the key
+			}
 			if _, ok := ParseFloat(value); !ok {
 				return fmt.Errorf("%w: %s = %q: want x,y,w,h, each 0..100, w and h >= 5", ErrBadValue, key, value)
 			}

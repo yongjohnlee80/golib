@@ -61,6 +61,7 @@ func TestValidateAcceptsOnlyAPanelsOwnPreferences(t *testing.T) {
 		{"tui.explorer.right.length", "100"},
 		{"tui.results.bottom.size", "10"},
 		{"tui.results.float", "10,20,50,40"},
+		{"tui.results.float", ""}, // docked again: AutoDoc's dockPanel writes "", and a store with no unset keeps it
 	} {
 		if err := panelgeometry.Validate(specs, ok[0], ok[1]); err != nil {
 			t.Errorf("%s = %s: %v", ok[0], ok[1], err)
@@ -79,6 +80,8 @@ func TestValidateAcceptsOnlyAPanelsOwnPreferences(t *testing.T) {
 		{"tui.explorer.left.size", "14", panelgeometry.ErrBadValue},      // below bounds
 		{"tui.explorer.left.length", "101", panelgeometry.ErrBadValue},   // above bounds
 		{"tui.results.float", "1,2,3", panelgeometry.ErrBadValue},        // a malformed rectangle
+		{"tui.explorer.left.size", "", panelgeometry.ErrBadValue},        // "" docks a float only: a size is a number
+		{"tui.explorer.left.length", "", panelgeometry.ErrBadValue},
 	} {
 		err := panelgeometry.Validate(specs, c.key, c.value)
 		if !errors.Is(err, c.want) {
