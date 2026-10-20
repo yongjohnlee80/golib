@@ -136,8 +136,9 @@ var menuFirst = []string{"dark", "light", "mono", "retro", "sepia"}
 // MenuLabels are the themes as a menu lists them: dark, light, mono, retro and sepia first, then the
 // others in Names' order, each with its words and access key. A theme without words shows as its
 // name, with none.
-func MenuLabels() []Label {
-	names := Names()
+func MenuLabels() []Label { return menuLabels(Names()) }
+
+func menuLabels(names []string) []Label {
 	order := make([]string, 0, len(names))
 	for _, n := range menuFirst {
 		if slices.Contains(names, n) {

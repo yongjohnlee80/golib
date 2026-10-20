@@ -505,3 +505,13 @@ func TestSelectOpensUnderAFieldThatIsNotAtTheLeftEdge(t *testing.T) {
 		t.Errorf("alpha at %d,%d; want 12,3, under the field at column 9 on row 1:\n%s", x, y, h.grid())
 	}
 }
+
+// Affordance says whether the field draws its triangle: on by default, off with WithAffordance(false).
+func TestSelectAffordanceIsReported(t *testing.T) {
+	if !widget.NewSelect[string]().Affordance() {
+		t.Error("a Select draws no triangle by default")
+	}
+	if widget.NewSelect(widget.WithAffordance[string](false)).Affordance() {
+		t.Error("WithAffordance(false) still draws the triangle")
+	}
+}
