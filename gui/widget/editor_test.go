@@ -797,7 +797,7 @@ func TestRelayoutLaysTheBlocksOutAgain(t *testing.T) {
 }
 
 // scrolledIntoATallBlock is an editor whose first block draws extra high from beside the text, the
-// view scrolled 200 into it, the cursor on the last block (Lector #397 r0).
+// view scrolled 200 into it, the cursor on the last block.
 func scrolledIntoATallBlock(t *testing.T, extra float32) (*edHarness, *besideRenderer) {
 	t.Helper()
 	r := &besideRenderer{Renderer: NewMarkdownRenderer(), extra: extra}
@@ -864,7 +864,7 @@ func (r *tailRenderer) LayOut(b Block, lines []string, width float32, cursorInsi
 }
 
 // A block out of view at Relayout stays stale until it is drawn; laid out shorter then, on a later
-// paint, it still leaves the scroll at the text's end, not past it (Lector #397 r1).
+// paint, it still leaves the scroll at the text's end, not past it.
 func TestRelayoutKeepsTheScrollWithinTheTextWhenAStaleBlockIsDrawnLater(t *testing.T) {
 	r := &tailRenderer{Renderer: NewMarkdownRenderer(), extra: 500}
 	h := startEditor(t, 60, 14, WithRenderer(r), WithMode(Rendered), WithCore(tuiwidget.CoreInitialText(strings.Repeat("## heading\n\n", 40)+"tail")))
