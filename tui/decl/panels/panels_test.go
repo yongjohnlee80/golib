@@ -50,7 +50,7 @@ Window { Panel { heading: "Files"; edge: "left"; Text { text: "x" } } }`
 	}
 }
 
-// Panel is non-modal (ADR 1792459145 §3.7): a panel never traps focus or the pointer, which a Dialog
+// Panel is non-modal: a panel never traps focus or the pointer, which a Dialog
 // does. Asserted on the shipped file itself, not inferred from minimizable's build rule.
 func TestPanelIsNonModal(t *testing.T) {
 	src, err := fs.ReadFile(panels.FS(), "Panel.qml")
