@@ -458,55 +458,61 @@ func (l *floatLayer) AcceptsFocus() bool { return l.owner.modal && l.fallback }
 // (WithModal); fallback is what it is now.
 func (l *floatLayer) FocusableByDesign() bool { return l.owner.modal }
 
-// Layout places the child per the owner's anchor.
+// Layout places the child per the owner's anchor (Float.place); a bound window places it in its
+// work area (layoutManaged).
 func (l *floatLayer) Layout(c tui.Constraints) tui.Size {
 	w := boundedMax(c.MaxW, c.MinW)
 	h := boundedMax(c.MaxH, c.MinH)
 	if l.owner.windowTarget != nil {
 		return l.layoutManaged(c, w, h)
 	}
-	a := l.owner.anchor
-	var sz tui.Size
-	var x, y int
-	if r, ok := a.resolve(tui.Rect{W: w, H: h}); ok {
-		sz = l.ctx.LayoutChild(l.owner.child, tui.Tight(tui.Size{W: r.W, H: r.H}))
-		x, y = r.X, r.Y
-	} else if a.atRect || a.atFraction {
-		r := a.rect
-		if a.atFraction {
-			r = fractionRect(a.frac, tui.Rect{W: w, H: h})
-		}
-		sz = l.ctx.LayoutChild(l.owner.child, tui.Tight(tui.Size{W: r.W, H: r.H}))
-		x, y = r.X, r.Y
-	} else if l.owner.wPct > 0 || l.owner.hPct > 0 {
-		// A fraction of the area, per axis; the unset axis stays natural.
-		want := tui.Size{W: w, H: h}
-		if l.owner.wPct > 0 {
-			want.W = max(w*l.owner.wPct/100, 1)
-		}
-		if l.owner.hPct > 0 {
-			want.H = max(h*l.owner.hPct/100, 1)
-		}
-		if l.owner.wPct > 0 && l.owner.hPct > 0 {
-			sz = l.ctx.LayoutChild(l.owner.child, tui.Tight(want))
-		} else {
-			sz = l.ctx.LayoutChild(l.owner.child, tui.Constraints{
-				MinW: want.W, MaxW: want.W, MinH: 0, MaxH: want.H,
-			})
-			if l.owner.hPct > 0 {
-				sz = l.ctx.LayoutChild(l.owner.child, tui.Constraints{
-					MinW: 0, MaxW: want.W, MinH: want.H, MaxH: want.H,
-				})
-			}
-		}
-		x, y = alignOffset(a.align, tui.Size{W: w, H: h}, sz)
-	} else {
-		sz = l.ctx.LayoutChild(l.owner.child, tui.Loose(tui.Size{W: w, H: h}))
-		x, y = alignOffset(a.align, tui.Size{W: w, H: h}, sz)
-	}
-	l.owner.content = tui.Rect{X: x, Y: y, W: sz.W, H: sz.H}
+	l.owner.content = l.owner.place(tui.Rect{W: w, H: h}, l.layoutChild)
 	l.ctx.PlaceChild(l.owner.child, l.owner.content)
 	return c.Constrain(tui.Size{W: w, H: h})
+}
+
+// layoutChild lays the owner's child out in cc.
+func (l *floatLayer) layoutChild(cc tui.Constraints) tui.Size {
+	return l.ctx.LayoutChild(l.owner.child, cc)
+}
+
+// fixedRect is the rectangle f's anchor fixes in area, and whether it fixes one: a live rectangle
+// first, then AtRect kept inside area, then AtFraction. Any other anchor aligns content of its own
+// size (place).
+func (f *Float) fixedRect(area tui.Rect) (tui.Rect, bool) {
+	a := f.anchor
+	if r, ok := a.resolve(area); ok {
+		return r, true // a live rectangle, when there is one, wins over its fallback
+	}
+	switch {
+	case a.atRect:
+		return windowBoundsInArea(a.rect, area), true
+	case a.atFraction:
+		return fractionRect(a.frac, area), true
+	}
+	return tui.Rect{}, false
+}
+
+// place lays f's content out in area through layout and reports where it goes: the anchor's fixed
+// rectangle, or else the content's own size, loose within area except an axis WithSizeFraction
+// fixes to its share, aligned by the anchor.
+func (f *Float) place(area tui.Rect, layout func(tui.Constraints) tui.Size) tui.Rect {
+	if r, ok := f.fixedRect(area); ok {
+		layout(tui.Tight(tui.Size{W: r.W, H: r.H}))
+		return r
+	}
+	cc := tui.Loose(tui.Size{W: area.W, H: area.H})
+	if f.wPct > 0 {
+		cc.MinW = min(max(area.W*f.wPct/100, 1), area.W)
+		cc.MaxW = cc.MinW
+	}
+	if f.hPct > 0 {
+		cc.MinH = min(max(area.H*f.hPct/100, 1), area.H)
+		cc.MaxH = cc.MinH
+	}
+	sz := layout(cc)
+	x, y := alignOffset(f.anchor.align, tui.Size{W: area.W, H: area.H}, sz)
+	return tui.Rect{X: area.X + x, Y: area.Y + y, W: sz.W, H: sz.H}
 }
 
 // alignOffset resolves a tui.Align inside avail for content of size sz.
