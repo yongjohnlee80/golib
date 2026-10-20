@@ -645,3 +645,38 @@ func TestASourceSwapDropsATypedNamesCheck(t *testing.T) {
 	folder.g.release("stat:x")
 	h.shows("inner.md")
 }
+
+// TestAFileListReportsACursorMoveOnce: SetCurrent onto another entry, and a key moving the cursor,
+// each call WithOnCursor once, at once: the List tells its FileList directly, not through the bus a
+// tick later on top of FileList's own call (tui-widget-data-I4).
+func TestAFileListReportsACursorMoveOnce(t *testing.T) {
+	var calls []string
+	l := widget.NewFileList(
+		widget.WithFileListSource(widget.FileSource{FS: fstest.MapFS{
+			"a.txt": {Data: []byte("a")}, "b.txt": {Data: []byte("b")}, "c.txt": {Data: []byte("c")},
+		}, Root: "/"}),
+		widget.WithFileListDir("/"),
+		widget.WithOnCursor(func(p string, _ bool) { calls = append(calls, path.Base(p)) }))
+	h := startApp(t, l, 60, 12)
+	defer h.stop()
+	h.waitFor("listed", func() bool { return strings.Contains(h.grid(), "c.txt") })
+
+	var now []string
+	h.onLoop(func() { calls = nil; l.SetCurrent("c.txt"); now = append([]string(nil), calls...) })
+	h.settle()
+	var later []string
+	h.onLoop(func() { later = append([]string(nil), calls...) })
+	if len(now) != 1 || now[0] != "c.txt" || len(later) != 1 {
+		t.Errorf("SetCurrent(c.txt): %v at once, %v after the loop drained; want [c.txt] both", now, later)
+	}
+
+	h.inject(tab()) // the list takes the keys
+	h.settle()
+	h.onLoop(func() { calls = nil })
+	h.inject(key(tui.KeyUp))
+	h.settle()
+	h.onLoop(func() { later = append([]string(nil), calls...) })
+	if len(later) != 1 || later[0] != "b.txt" {
+		t.Errorf("Up from c.txt: %v, want [b.txt]", later)
+	}
+}
