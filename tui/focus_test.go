@@ -128,6 +128,39 @@ func TestFocusScopeTrapsAndRestores(t *testing.T) {
 	waitFor(t, "focus restored to a", func() bool { return focusedID(h) == a.nodeID() })
 }
 
+// TestScopeRestoreSkipsANodeHiddenMeanwhile: closing a modal does not restore focus to the node
+// it was opened from when that node was hidden while the modal was open; focus is repaired to a
+// live candidate in the same drain, before any layout could notice (tui-core-D4).
+func TestScopeRestoreSkipsANodeHiddenMeanwhile(t *testing.T) {
+	t.Parallel()
+	a := newFocusProbe("a", Size{W: 2, H: 1})
+	c := newFocusProbe("c", Size{W: 2, H: 1})
+	m1 := newFocusProbe("m1", Size{W: 2, H: 1})
+	pane := NewFlex(Vertical)
+	pane.Add(a)
+	modal := newScopeProbe(true)
+	modal.Add(m1)
+	root := NewFlex(Vertical)
+	root.Add(pane, c, modal)
+	h := startApp(t, root, 8, 8)
+
+	h.onLoop(func() { a.ctx.RequestFocus() })
+	waitFor(t, "a focused", func() bool { return focusedID(h) == a.nodeID() })
+	h.onLoop(func() { m1.ctx.RequestFocus() })
+	waitFor(t, "m1 focused", func() bool { return focusedID(h) == m1.nodeID() })
+	h.onLoop(func() { pane.SetVisible(false) })
+	h.sync()
+
+	var restored NodeID
+	h.onLoop(func() {
+		root.Remove(modal)
+		restored = h.app.focused // in the same drain: no layout has run
+	})
+	if restored != c.nodeID() {
+		t.Fatalf("focus after closing the modal = %d, want c (%d), not the hidden a (%d)", restored, c.nodeID(), a.nodeID())
+	}
+}
+
 // TestTrapExcludedFromOuterRing: an open (unfocused) trap's stops are not
 // part of the enclosing scope's Tab ring.
 func TestTrapExcludedFromOuterRing(t *testing.T) {
