@@ -424,9 +424,7 @@ func (c *EditorCore) Value() string { return c.buf.value() }
 func (c *EditorCore) SetValue(s string) {
 	ln, col := c.buf.ln, c.buf.col
 	defer c.cursorMoved(ln, col)
-	c.settlePendingRune()
-	c.keys.count, c.keys.pendingAct = 0, ActUnbound
-	c.oneShot, c.blockIns, c.replace = insertOneShot{}, nil, nil
+	c.resetInput()
 	c.hist.reset()
 	c.buf.setValue(s)
 	c.followEdits()         // a new document: no marks
@@ -603,10 +601,8 @@ func (c *EditorCore) SetKeyset(ks Keyset) {
 	if ks == c.keys.keyset {
 		return
 	}
-	c.settlePendingRune()
-	c.keys.dropPending()
+	c.resetInput()
 	c.dot = dotRecorder{} // a change recorded under another profile is not this one's to repeat
-	c.oneShot, c.blockIns, c.replace = insertOneShot{}, nil, nil
 	c.hist.close()
 	c.buf.anchor, c.vAnchor = nil, taPos{}
 	c.keys.applyKeyset(ks, c.liveKeymap())
@@ -742,6 +738,15 @@ func (c *EditorCore) SetChordHook(hook func(KeyChord) bool) { c.chordHook = hook
 
 // ChordsForAction returns every chord bound to act.
 func (c *EditorCore) ChordsForAction(act Action) []KeyChord { return c.keys.chordsFor(act) }
+
+// resetInput ends the input in flight at a boundary — a new document, a buffer switch, a keyset
+// switch: a pending insert rune settles where it was typed, and a command being typed (dropPending),
+// Ctrl-o's one-shot, a block insert and Replace are dropped, never completed against what follows.
+func (c *EditorCore) resetInput() {
+	c.settlePendingRune()
+	c.keys.dropPending()
+	c.oneShot, c.blockIns, c.replace = insertOneShot{}, nil, nil
+}
 
 // --- mode & cursor invariants -------------------------------------------
 

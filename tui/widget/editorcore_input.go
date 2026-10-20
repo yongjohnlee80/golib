@@ -412,9 +412,7 @@ func (c *EditorCore) handleCommandKey(k tui.KeyEvent) bool {
 
 	if k.Code == tui.KeyEscape {
 		hadPending := c.commandPending()
-		c.keys.count, c.keys.pendingAct, c.keys.findArmed = 0, ActUnbound, ActUnbound
-		c.keys.regArmed, c.keys.reg, c.keys.markArmed, c.keys.macroArmed = false, 0, ActUnbound, ActUnbound
-		c.keys.dropOp()
+		c.keys.dropPending()
 		if c.visual() {
 			c.exitVisual()
 			return true
