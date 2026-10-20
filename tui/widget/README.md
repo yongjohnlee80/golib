@@ -111,6 +111,12 @@ host.Attach(float)
   `WindowZoom`, `WindowVisibility` or `WindowDismissal` facets for an existing
   layout, including an application's own pane zoom. `WithWindowWorkArea` can
   reserve taskbar space; viewport shrink does not overwrite the saved request.
+- **Optional target facets:** `WindowHandles` picks the handle per resize press
+  (`HandleAt`) and per keyboard step (`StepHandle`), or refuses either.
+  `WindowGesture` is told each drag and step before it applies
+  (`GestureBegan`), decides at release whether it completed (`GestureChanged`,
+  in place of the rect comparison), and is told of a lost capture
+  (`GestureLost`). `Tiles` uses both; a target without them is unchanged.
 - **Minimize:** non-modal only, with an explicit collector. Content keeps its
   NodeID, lifetime context, tasks and timers. The model requires no taskbar;
   focus uses ordinary runtime repair, with an optional consumer focus hook.
