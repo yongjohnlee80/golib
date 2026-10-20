@@ -11,6 +11,7 @@ import (
 	"github.com/yongjohnlee80/golib/graph/layout"
 	"github.com/yongjohnlee80/golib/gui"
 	pm "github.com/yongjohnlee80/golib/parse/mermaid"
+	"github.com/yongjohnlee80/golib/tui/style"
 )
 
 // init registers the flowchart layout builder with the mermaid layout engine.
@@ -197,14 +198,17 @@ func nodeSize(s pm.Shape, text gui.Size, em float32) (w, h float32) {
 }
 
 // styled is a node's colours: the theme's, with its style's fill, stroke, color and stroke-width
-// where they are colours and lengths it can read.
+// where they are colours and lengths it can read. A style that fills the node and names no text
+// colour gets the theme's text raised to read on that fill: a diagram written for a light page (a
+// pale fill) keeps its labels legible in a dark theme, whose text is light.
 func styled(st pm.Style, th Theme) (fill, stroke, text color.NRGBA, width float32) {
 	fill, stroke, text, width = th.NodeFill, th.NodeStroke, th.Text, 1.2
+	filled, colored := false, false
 	for _, p := range st {
 		switch p.Name {
 		case "fill":
 			if c, ok := cssColor(p.Value); ok {
-				fill = c
+				fill, filled = c, true
 			}
 		case "stroke":
 			if c, ok := cssColor(p.Value); ok {
@@ -212,7 +216,7 @@ func styled(st pm.Style, th Theme) (fill, stroke, text color.NRGBA, width float3
 			}
 		case "color":
 			if c, ok := cssColor(p.Value); ok {
-				text = c
+				text, colored = c, true
 			}
 		case "stroke-width":
 			if v, err := strconv.ParseFloat(strings.TrimSuffix(strings.TrimSpace(p.Value), "px"), 32); err == nil && v > 0 {
@@ -220,5 +224,23 @@ func styled(st pm.Style, th Theme) (fill, stroke, text color.NRGBA, width float3
 			}
 		}
 	}
+	if filled && !colored {
+		text = readableOn(text, fill)
+	}
 	return fill, stroke, text, width
+}
+
+// labelContrast is the WCAG contrast ratio a label's text is raised to on a fill its style chose:
+// AA for body text.
+const labelContrast = 4.5
+
+// readableOn is text raised to labelContrast against fill, its hue kept (style.Legible); as it was
+// when it already reads.
+func readableOn(text, fill color.NRGBA) color.NRGBA {
+	c := style.Legible(style.RGB(text.R, text.G, text.B), style.RGB(fill.R, fill.G, fill.B), labelContrast)
+	r, g, b, ok := c.RGBValues()
+	if !ok {
+		return text
+	}
+	return color.NRGBA{R: r, G: g, B: b, A: text.A}
 }
