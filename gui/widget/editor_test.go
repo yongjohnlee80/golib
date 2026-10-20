@@ -849,6 +849,49 @@ func TestRelayoutKeepsTheScrollWithinAShorterText(t *testing.T) {
 	}
 }
 
+// tailRenderer draws the text's last block extra high: an output beside the text, at its end.
+type tailRenderer struct {
+	Renderer
+	extra float32
+}
+
+func (r *tailRenderer) LayOut(b Block, lines []string, width float32, cursorInside bool, t *gui.TextShaper, th Theme, host DiagramHost) BlockLayout {
+	out := r.Renderer.LayOut(b, lines, width, cursorInside, t, th, host)
+	if b.To == len(lines) {
+		out.Height += r.extra
+	}
+	return out
+}
+
+// A block out of view at Relayout stays stale until it is drawn; laid out shorter then, on a later
+// paint, it still leaves the scroll at the text's end, not past it (Lector #397 r1).
+func TestRelayoutKeepsTheScrollWithinTheTextWhenAStaleBlockIsDrawnLater(t *testing.T) {
+	r := &tailRenderer{Renderer: NewMarkdownRenderer(), extra: 500}
+	h := startEditor(t, 60, 14, WithRenderer(r), WithMode(Rendered), WithCore(tuiwidget.CoreInitialText(strings.Repeat("## heading\n\n", 40)+"tail")))
+	h.keys(key('G'))
+	h.paint() // the tail laid out, 500 high
+	h.keys(key('g'), key('g'))
+	h.onLoop(func() { h.e.layout.scrollBy(-100000) })
+	h.paint()
+	tail := func() int { var n int; h.onLoop(func() { n = len(h.e.layout.laid) - 1 }); return n }
+	h.onLoop(func() { r.extra = 0; h.e.Relayout() })
+	h.paint()
+	if _, laid, stale := laidAfterPaint(h, tail()); !laid || !stale {
+		t.Fatalf("the tail, out of view, was laid out at once (kept %v, stale %v)", laid, stale)
+	}
+	h.onLoop(func() { h.e.layout.scrollBy(100000) }) // to the end as the stale tail measured it
+	h.paint()
+	h.paint()
+	var s, want float32
+	h.onLoop(func() { s, want = h.e.layout.scroll, max(h.e.layout.total()-(h.e.layout.height-2*padY), 0) })
+	if _, laid, stale := laidAfterPaint(h, tail()); !laid || stale {
+		t.Fatalf("scrolled to it, the tail is not drawn anew (kept %v, stale %v)", laid, stale)
+	}
+	if s != want {
+		t.Fatalf("the tail drawn anew shorter leaves the view scrolled %v; want the text's end, %v", s, want)
+	}
+}
+
 // A read-only Rendered editor is a viewer: every block renders, the cursor's row
 // included, so no row shows its raw source. An editable one typing (Insert) keeps
 // the cursor's block raw, and turning read-only re-lays the row the cursor is on.
