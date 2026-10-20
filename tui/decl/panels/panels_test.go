@@ -2,6 +2,7 @@ package panels_test
 
 import (
 	"io/fs"
+	"strings"
 	"testing"
 
 	"github.com/yongjohnlee80/golib/parse/qml"
@@ -28,6 +29,15 @@ func collector() tuidecl.ProgramOption {
 func TestAPanelBuilds(t *testing.T) {
 	if err := tuidecl.Check(tuidecl.LayoutSource("main.qml", []byte(layout)), panels.Offer(), themes.Offer(), collector()); err != nil {
 		t.Fatalf("a Panel does not build: %v", err)
+	}
+}
+
+// A Panel's heading takes a catalog message as well as a string: a host's translated panels share
+// the one Panel.
+func TestAPanelsHeadingTakesAMessage(t *testing.T) {
+	src := strings.Replace(layout, `heading: "Files"`, `heading: qsTrId("demo.panel.files")`, 1)
+	if err := tuidecl.Check(tuidecl.LayoutSource("main.qml", []byte(src)), panels.Offer(), themes.Offer(), collector()); err != nil {
+		t.Fatalf("a Panel with a qsTrId heading does not build: %v", err)
 	}
 }
 
