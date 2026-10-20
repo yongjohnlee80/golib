@@ -58,7 +58,7 @@ type windowModConfig struct {
 
 func readWindowMod(b Build) (windowModConfig, []string, error) {
 	c := windowModConfig{modifier: tui.ModAlt, moveButton: tui.MouseLeft, resizeButton: tui.MouseRight}
-	consumed, err := readProps(b.Props, map[string]field{
+	consumed, err := b.ReadProps(map[string]field{
 		"movable": into(&c.move, boolOf), "resizable": into(&c.resize, boolOf),
 		"maximizable": into(&c.maximize, boolOf), "minimizable": into(&c.minimize, boolOf),
 		"closable": into(&c.close, boolOf), "label": into(&c.label, stringOf), "key": into(&c.key, stringOf),
@@ -223,7 +223,7 @@ var windowButtonsType = Type{Name: "WindowButtons", Ctor: []string{"target", "cl
 			return nil, nil, errors.New("WindowButtons supplies its own controls")
 		}
 		n := &windowButtonsNode{resolve: b.WindowCore, labels: [3]string{"x", "+", "_"}}
-		consumed, err := readProps(b.Props, map[string]field{
+		consumed, err := b.ReadProps(map[string]field{
 			"target": into(&n.target, stringOf), "closeText": into(&n.labels[0], stringOf),
 			"maximizeText": into(&n.labels[1], stringOf), "minimizeText": into(&n.labels[2], stringOf),
 		})

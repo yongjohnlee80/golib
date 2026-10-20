@@ -21,7 +21,7 @@ func buildTerminalTabs(b Build) (tui.Component, []string, error) {
 	if len(b.Children) != 0 {
 		return nil, nil, fmt.Errorf("TerminalTabs owns runtime terminals, not declared children (at %s)", b.Pos)
 	}
-	consumed, err := readProps(b.Props, map[string]field{})
+	consumed, err := b.ReadProps(map[string]field{})
 	if err != nil {
 		return nil, nil, err
 	}

@@ -2,11 +2,12 @@ package decl
 
 import (
 	"fmt"
+	"sort"
+	"strings"
+
 	"github.com/yongjohnlee80/golib/highlight"
 	"github.com/yongjohnlee80/golib/parse"
 	"github.com/yongjohnlee80/golib/parse/qml"
-	"sort"
-	"strings"
 
 	"github.com/yongjohnlee80/golib/decl"
 	"github.com/yongjohnlee80/golib/tui"
@@ -103,6 +104,23 @@ type Adapter struct {
 	// enums are the enumerations the types declared, published as constants
 	// under their scopes.
 	enums []Enum
+}
+
+// declaredProps are the properties typeName declares, its constructor properties and its setters:
+// the ones its builder may read (Build.ReadProps). Nil, the adapter was given no contract for the type
+// (a registry used without its properties) and nothing is checked.
+func (a *Adapter) declaredProps(typeName string) map[string]bool {
+	if _, ok := a.ctorProps[typeName]; !ok {
+		return nil
+	}
+	declared := make(map[string]bool, len(a.ctorProps[typeName])+len(a.setters[typeName]))
+	for name := range a.ctorProps[typeName] {
+		declared[name] = true
+	}
+	for name := range a.setters[typeName] {
+		declared[name] = true
+	}
+	return declared
 }
 
 // refreshTemplates invalidates visible cell paint on a source change. The
@@ -263,7 +281,7 @@ var _ decl.Methods = (*Adapter)(nil)
 func WithConstructorProps(typeName string, props ...string) Option {
 	return func(a *Adapter) {
 		if a.ctorProps[typeName] == nil {
-			a.ctorProps[typeName] = map[string]bool{}
+			a.ctorProps[typeName] = map[string]bool{} // an empty entry declares the type's contract
 		}
 		for _, p := range props {
 			a.ctorProps[typeName][p] = true
@@ -399,10 +417,11 @@ func (a *Adapter) Create(c decl.Construction) ([]string, error) {
 
 	asked := map[string]bool{}
 	comp, consumed, err := build(Build{
-		Type:  c.Type,
-		Pos:   c.Pos,
-		ID:    c.ID,
-		Props: own,
+		Type:     c.Type,
+		Pos:      c.Pos,
+		ID:       c.ID,
+		Props:    own,
+		declared: a.declaredProps(c.Type),
 		Eval: func(v qml.SpecValue, locals map[string]qml.SpecValue) (qml.SpecValue, error) {
 			if a.tree == nil {
 				return qml.SpecValue{}, fmt.Errorf("no tree evaluates a TableView delegate")

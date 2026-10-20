@@ -52,7 +52,7 @@ func appTypes() []Type {
 		// Qt Quick's Image, without its source: the host gives it a PNG (widget.Image.SetPNG), and
 		// it shows on a terminal that draws images (tui.Capabilities.KittyGraphics)
 		{Name: "Image", Build: func(b Build) (tui.Component, []string, error) {
-			consumed, err := readProps(b.Props, map[string]field{})
+			consumed, err := b.ReadProps(map[string]field{})
 			return widget.NewImage(), consumed, err
 		}, Setters: map[string]Setter{
 			// golib's: shown at its width and scrolled by the keys and the wheel (widget.Image)
@@ -164,7 +164,7 @@ func appTypes() []Type {
 			Signals:   map[string][]string{"accepted": {"selectedFolder"}},
 			Destroyed: releaseDialog},
 		{Name: "Dialog", Build: buildDialog,
-			Ctor:    []string{"title", "helpText", "dim", "width", "standardButtons", "defaultButton", "keyScope"},
+			Ctor:    []string{"title", "helpText", "dim", "width", "standardButtons", "defaultButton", "keyScope", "closeOnQ", "maxWidthPercent", "maxHeightPercent"},
 			restyle: restyleDialog,
 			Setters: map[string]Setter{
 				"title":    textSetter("a Dialog", (*dialogNode).setTitle, (*dialogNode).setTitleMessage),
@@ -225,7 +225,7 @@ func buildFrame(b Build) (tui.Component, []string, error) {
 		return nil, nil, fmt.Errorf("Frame needs exactly 1 child, got %d (at %s)", len(b.Children), b.Pos)
 	}
 	var title UIText
-	consumed, err := readProps(b.Props, map[string]field{"title": into(&title, textOf)})
+	consumed, err := b.ReadProps(map[string]field{"title": into(&title, textOf)})
 	if err != nil {
 		return nil, nil, err
 	}
@@ -264,7 +264,7 @@ func buildTerminal(b Build) (tui.Component, []string, error) {
 	var command, dir string
 	scrollback := -1.0
 	vimKeys, themeColors := false, true
-	consumed, err := readProps(b.Props, map[string]field{
+	consumed, err := b.ReadProps(map[string]field{
 		"command":     into(&command, stringOf),
 		"dir":         into(&dir, stringOf),
 		"scrollback":  into(&scrollback, numberOf),
@@ -303,7 +303,7 @@ func buildTerminal(b Build) (tui.Component, []string, error) {
 // row. A child is a permanent widget (Qt's QStatusBar.addPermanentWidget), at the bar's right end,
 // unless it says StatusBar.permanent: false: then it is a normal widget (addWidget), at the left end.
 func buildStatusBar(b Build) (tui.Component, []string, error) {
-	consumed, err := readProps(b.Props, map[string]field{})
+	consumed, err := b.ReadProps(map[string]field{})
 	if err != nil {
 		return nil, nil, err
 	}
@@ -356,7 +356,7 @@ var dialogMethods = map[string]Method{
 // buildHTMLView builds an HTMLView whose link clicks and scrolling emit linkActivated(href) and
 // scrolledTo(sourceByte).
 func buildHTMLView(b Build) (tui.Component, []string, error) {
-	consumed, err := readProps(b.Props, map[string]field{})
+	consumed, err := b.ReadProps(map[string]field{})
 	link, scrolled := b.EmitterWith("linkActivated"), b.EmitterWith("scrolledTo")
 	v := widget.NewHTMLView(
 		widget.WithOnLink(func(href string) { link(strValue(href)) }),

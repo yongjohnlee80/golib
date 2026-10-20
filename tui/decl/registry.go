@@ -71,6 +71,9 @@ type Build struct {
 	WindowCore func(string) (*widget.WindowCore, bool)
 	// highlighters are the adapter's syntax definitions, for SyntaxHighlighter.
 	highlighters *highlight.Repository
+	// declared are the properties the type declares, its Ctor and its Setters: the only ones its
+	// builder may read ([Build.ReadProps]). Nil when a test calls a builder directly.
+	declared map[string]bool
 
 	// asked records every signal the builder asked for an emitter of. A
 	// signal the document binds and the builder never asks for is one the

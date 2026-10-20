@@ -122,7 +122,7 @@ func buildSplit(b Build) (tui.Component, []string, error) {
 		return nil, nil, fmt.Errorf("Split needs exactly 2 children, got %d (at %s)", len(b.Children), b.Pos)
 	}
 	o := widget.Horizontal
-	consumed, err := readProps(b.Props, map[string]field{
+	consumed, err := b.ReadProps(map[string]field{
 		"orientation": into(&o, orientations.read),
 	})
 	if err != nil {
@@ -134,7 +134,7 @@ func buildSplit(b Build) (tui.Component, []string, error) {
 // buildFlex takes its direction at construction and its children afterwards.
 func buildFlex(b Build) (tui.Component, []string, error) {
 	dir := tui.Vertical
-	consumed, err := readProps(b.Props, map[string]field{
+	consumed, err := b.ReadProps(map[string]field{
 		"direction": into(&dir, directions.read),
 	})
 	if err != nil {
@@ -211,7 +211,7 @@ func adoptFlexChild(parent, child tui.Component, attached map[string]qml.SpecVal
 // buildButton reads Qt's Button.flat: no brackets, the label alone (a toolbar's, a dock's icon).
 func buildButton(b Build) (tui.Component, []string, error) {
 	var flat bool
-	consumed, err := readProps(b.Props, map[string]field{"flat": into(&flat, boolOf)})
+	consumed, err := b.ReadProps(map[string]field{"flat": into(&flat, boolOf)})
 	if err != nil {
 		return nil, nil, err
 	}
@@ -240,7 +240,7 @@ var wrapModes = enum[widget.WrapMode]{values: map[string]widget.WrapMode{
 // is given that card's colours, or it sits in a strip of the terminal's.
 func buildText(b Build) (tui.Component, []string, error) {
 	mode := widget.Truncate
-	consumed, err := readProps(b.Props, map[string]field{"wrapMode": into(&mode, wrapModes.read)})
+	consumed, err := b.ReadProps(map[string]field{"wrapMode": into(&mode, wrapModes.read)})
 	if err != nil {
 		return nil, nil, err
 	}
