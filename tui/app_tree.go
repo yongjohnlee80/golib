@@ -140,7 +140,8 @@ func (a *App) unmountTree(n *node) {
 	a.queue.wakeUp()
 
 	// Scope restore + focus repair. Pop scope entries whose trapping scope
-	// died; the innermost pop supplies the restore target.
+	// died; the outermost pop supplies the restore target, since an inner
+	// scope's target lay inside the outer scope that died with it.
 	restore := NodeID(0)
 	hadDeadScope := false
 	for len(a.scopeStack) > 0 {
@@ -163,9 +164,11 @@ func (a *App) unmountTree(n *node) {
 	// target first (open-modal → close-modal → focus-where-you-were),
 	// then repair within the innermost surviving scope.
 	a.focused = 0
+	// The target is held to what any focus move is: a live candidate (not
+	// hidden meanwhile) inside the confinement that survives.
 	if hadDeadScope && restore != 0 {
-		if rn := a.nodes[restore]; rn != nil {
-			if f, ok := rn.comp.(Focusable); ok && f.AcceptsFocus() {
+		if rn := a.nodes[restore]; a.acceptsFocus(rn) {
+			if scope := a.confinement(); scope == nil || withinScope(rn, scope) {
 				a.setFocus(restore)
 				return
 			}
