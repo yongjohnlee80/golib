@@ -43,7 +43,7 @@ var gaugeType = tuidecl.Type{
 	Build: func(b tuidecl.Build) (tui.Component, []string, error) {
 		g := newGauge()
 		var start float64
-		consumed, err := tuidecl.ReadProps(b.Props, map[string]tuidecl.Field{
+		consumed, err := b.ReadProps(map[string]tuidecl.Field{
 			"start": tuidecl.NumberField(&start),
 			"unit":  tuidecl.StringField(&g.unit),
 		})
