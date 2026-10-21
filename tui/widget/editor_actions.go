@@ -1,0 +1,133 @@
+package widget
+
+// editor_actions.go: what each Action IS, one row per action: its name, its description for a help
+// card, the binding classes that accept it, and whether it changes the text. String, Description,
+// actionModes and mutatingAction read this table, so a new action is one row here (and its key
+// bindings and behaviour), not an edit in each of them. A test holds every action below actMax to
+// having a row.
+
+// modeSet is the binding classes an action is accepted in.
+type modeSet uint8
+
+const (
+	inNormal modeSet = 1 << iota
+	inVisual
+	inInsert
+)
+
+// actionSpec is what an Action is, apart from what it does.
+type actionSpec struct {
+	name, desc string
+	modes      modeSet // where a key may be bound to it; none: it is bindable nowhere
+	mutating   bool    // it changes the text, so a read-only core refuses it
+}
+
+var actionSpecs = [actMax]actionSpec{
+	ActUnbound:          {name: "Unbound", desc: "Unbound key (bubbles to parent component)"},
+	ActLeft:             {name: "Left", desc: "Move cursor left", modes: inNormal | inVisual | inInsert},
+	ActDown:             {name: "Down", desc: "Move cursor down", modes: inNormal | inVisual | inInsert},
+	ActUp:               {name: "Up", desc: "Move cursor up", modes: inNormal | inVisual | inInsert},
+	ActRight:            {name: "Right", desc: "Move cursor right", modes: inNormal | inVisual | inInsert},
+	ActLineStart:        {name: "LineStart", desc: "Move cursor to start of line", modes: inNormal | inVisual | inInsert},
+	ActLineEnd:          {name: "LineEnd", desc: "Move cursor to end of line", modes: inNormal | inVisual | inInsert},
+	ActWordForward:      {name: "WordForward", desc: "Move cursor to start of next word", modes: inNormal | inVisual | inInsert},
+	ActWordBack:         {name: "WordBack", desc: "Move cursor to start of previous word", modes: inNormal | inVisual | inInsert},
+	ActWordEnd:          {name: "WordEnd", desc: "Move cursor to end of current word", modes: inNormal | inVisual | inInsert},
+	ActParaForward:      {name: "ParaForward", desc: "Move cursor to next paragraph boundary", modes: inNormal | inVisual | inInsert},
+	ActParaBack:         {name: "ParaBack", desc: "Move cursor to previous paragraph boundary", modes: inNormal | inVisual | inInsert},
+	ActGoBottom:         {name: "GoBottom", desc: "Move cursor to bottom line", modes: inNormal | inVisual},
+	ActPageUp:           {name: "PageUp", desc: "Scroll and move cursor up one page", modes: inNormal | inVisual | inInsert},
+	ActPageDown:         {name: "PageDown", desc: "Scroll and move cursor down one page", modes: inNormal | inVisual | inInsert},
+	ActDeletePrefix:     {name: "DeletePrefix", desc: "Arm linewise delete prefix (dd)", modes: inNormal, mutating: true},
+	ActYankPrefix:       {name: "YankPrefix", desc: "Arm linewise yank prefix (yy)", modes: inNormal},
+	ActGoPrefix:         {name: "GoPrefix", desc: "Arm jump to line prefix (gg)", modes: inNormal | inVisual},
+	ActInsert:           {name: "Insert", desc: "Enter Insert mode before cursor", modes: inNormal, mutating: true},
+	ActAppend:           {name: "Append", desc: "Enter Insert mode after cursor", modes: inNormal, mutating: true},
+	ActInsertLineStart:  {name: "InsertLineStart", desc: "Enter Insert mode at start of line", modes: inNormal, mutating: true},
+	ActAppendLineEnd:    {name: "AppendLineEnd", desc: "Enter Insert mode at end of line", modes: inNormal, mutating: true},
+	ActOpenBelow:        {name: "OpenBelow", desc: "Open new line below and enter Insert mode", modes: inNormal, mutating: true},
+	ActOpenAbove:        {name: "OpenAbove", desc: "Open new line above and enter Insert mode", modes: inNormal, mutating: true},
+	ActDeleteChar:       {name: "DeleteChar", desc: "Delete character at cursor", modes: inNormal, mutating: true},
+	ActDeleteToEnd:      {name: "DeleteToEnd", desc: "Delete characters to end of line", modes: inNormal, mutating: true},
+	ActPasteAfter:       {name: "PasteAfter", desc: "Paste register content after cursor", modes: inNormal, mutating: true},
+	ActPasteBefore:      {name: "PasteBefore", desc: "Paste register content before cursor", modes: inNormal, mutating: true},
+	ActUndo:             {name: "Undo", desc: "Undo previous edit", modes: inNormal | inInsert, mutating: true},
+	ActRedo:             {name: "Redo", desc: "Redo previously undone edit", modes: inNormal | inInsert, mutating: true},
+	ActVisual:           {name: "Visual", desc: "Toggle character-wise Visual mode", modes: inNormal | inVisual},
+	ActVisualLine:       {name: "VisualLine", desc: "Toggle line-wise Visual mode", modes: inNormal | inVisual},
+	ActVisualYank:       {name: "VisualYank", desc: "Yank selection to register and system clipboard", modes: inVisual},
+	ActVisualDelete:     {name: "VisualDelete", desc: "Delete selection to register", modes: inVisual, mutating: true},
+	ActCut:              {name: "Cut", desc: "Cut selection or current line to register", modes: inNormal | inVisual | inInsert, mutating: true},
+	ActCopy:             {name: "Copy", desc: "Copy selection or current line to register", modes: inNormal | inVisual | inInsert},
+	ActPaste:            {name: "Paste", desc: "Paste register content at cursor", modes: inNormal | inVisual | inInsert, mutating: true},
+	ActSelectAll:        {name: "SelectAll", desc: "Select entire buffer content", modes: inNormal | inVisual | inInsert},
+	ActEscape:           {name: "Escape", desc: "Escape to Normal mode", modes: inNormal | inVisual | inInsert},
+	ActToggleRendered:   {name: "ToggleRendered", desc: "Switch between the Rendered view and Raw", modes: inNormal | inVisual | inInsert},
+	ActFindNext:         {name: "FindNext", desc: "Go to the find's next match", modes: inNormal | inVisual},
+	ActFindPrev:         {name: "FindPrev", desc: "Go to the find's previous match", modes: inNormal | inVisual},
+	ActCommandLine:      {name: "CommandLine", desc: "Open the command line", modes: inNormal | inVisual},
+	ActLineDownFirst:    {name: "LineDownFirst", desc: "Next line, first non-blank", modes: inNormal | inVisual},
+	ActLineUpFirst:      {name: "LineUpFirst", desc: "Previous line, first non-blank", modes: inNormal | inVisual},
+	ActFirstNonBlank:    {name: "FirstNonBlank", desc: "First non-blank", modes: inNormal | inVisual},
+	ActLeftWrap:         {name: "LeftWrap", desc: "Left, across lines", modes: inNormal | inVisual},
+	ActFindCharForward:  {name: "FindCharForward", desc: "Find a character forward", modes: inNormal | inVisual},
+	ActFindCharBack:     {name: "FindCharBack", desc: "Find a character back", modes: inNormal | inVisual},
+	ActTillCharForward:  {name: "TillCharForward", desc: "Till a character forward", modes: inNormal | inVisual},
+	ActTillCharBack:     {name: "TillCharBack", desc: "Till a character back", modes: inNormal | inVisual},
+	ActFindCharRepeat:   {name: "FindCharRepeat", desc: "Repeat the character find", modes: inNormal | inVisual},
+	ActFindCharReverse:  {name: "FindCharReverse", desc: "Repeat the character find, reversed", modes: inNormal | inVisual},
+	ActMatchPair:        {name: "MatchPair", desc: "Matching bracket", modes: inNormal | inVisual},
+	ActViewTop:          {name: "ViewTop", desc: "Top of the view", modes: inNormal | inVisual},
+	ActViewMiddle:       {name: "ViewMiddle", desc: "Middle of the view", modes: inNormal | inVisual},
+	ActViewBottom:       {name: "ViewBottom", desc: "Bottom of the view", modes: inNormal | inVisual},
+	ActHalfPageDown:     {name: "HalfPageDown", desc: "Half a page down", modes: inNormal | inVisual},
+	ActHalfPageUp:       {name: "HalfPageUp", desc: "Half a page up", modes: inNormal | inVisual},
+	ActWORDForward:      {name: "WORDForward", desc: "Next WORD", modes: inNormal | inVisual},
+	ActWORDBack:         {name: "WORDBack", desc: "Previous WORD", modes: inNormal | inVisual},
+	ActWORDEnd:          {name: "WORDEnd", desc: "End of WORD", modes: inNormal | inVisual},
+	ActWordEndBack:      {name: "WordEndBack", desc: "End of the previous word", modes: inNormal | inVisual},
+	ActWORDEndBack:      {name: "WORDEndBack", desc: "End of the previous WORD", modes: inNormal | inVisual},
+	ActChangePrefix:     {name: "ChangePrefix", desc: "Change", modes: inNormal, mutating: true},
+	ActChangeToEnd:      {name: "ChangeToEnd", desc: "Change to end of line", modes: inNormal, mutating: true},
+	ActSubstChar:        {name: "SubstChar", desc: "Change the character", modes: inNormal, mutating: true},
+	ActSubstLine:        {name: "SubstLine", desc: "Change the line", modes: inNormal, mutating: true},
+	ActYankToEnd:        {name: "YankToEnd", desc: "Copy to end of line", modes: inNormal},
+	ActReplaceChar:      {name: "ReplaceChar", desc: "Replace the character", modes: inNormal, mutating: true},
+	ActJoin:             {name: "Join", desc: "Join lines", modes: inNormal, mutating: true},
+	ActJoinRaw:          {name: "JoinRaw", desc: "Join lines as they are", modes: inNormal, mutating: true},
+	ActToggleCase:       {name: "ToggleCase", desc: "Toggle case", modes: inNormal, mutating: true},
+	ActCaseToggleOp:     {name: "CaseToggleOp", desc: "Toggle case of the text", modes: inNormal, mutating: true},
+	ActLowerOp:          {name: "LowerOp", desc: "Lowercase the text", modes: inNormal, mutating: true},
+	ActUpperOp:          {name: "UpperOp", desc: "Uppercase the text", modes: inNormal, mutating: true},
+	ActIndentPrefix:     {name: "IndentPrefix", desc: "Indent", modes: inNormal, mutating: true},
+	ActOutdentPrefix:    {name: "OutdentPrefix", desc: "Outdent", modes: inNormal, mutating: true},
+	ActRepeat:           {name: "Repeat", desc: "Repeat the last change", modes: inNormal},
+	ActRegisterPrefix:   {name: "RegisterPrefix", desc: "Name the register", modes: inNormal | inVisual},
+	ActMarkSet:          {name: "MarkSet", desc: "Set a mark", modes: inNormal | inVisual},
+	ActMarkLine:         {name: "MarkLine", desc: "Go to a mark's line", modes: inNormal | inVisual},
+	ActMarkExact:        {name: "MarkExact", desc: "Go to a mark", modes: inNormal | inVisual},
+	ActMacroRecord:      {name: "MacroRecord", desc: "Record a macro", modes: inNormal},
+	ActMacroPlay:        {name: "MacroPlay", desc: "Play a macro", modes: inNormal},
+	ActJumpBack:         {name: "JumpBack", desc: "Jump back", modes: inNormal},
+	ActJumpForward:      {name: "JumpForward", desc: "Jump forward", modes: inNormal},
+	ActVisualChange:     {name: "VisualChange", desc: "Change the selection", modes: inVisual, mutating: true},
+	ActVisualReplace:    {name: "VisualReplace", desc: "Replace the selection's characters", modes: inVisual, mutating: true},
+	ActVisualToggleCase: {name: "VisualToggleCase", desc: "Toggle the selection's case", modes: inVisual, mutating: true},
+	ActVisualLower:      {name: "VisualLower", desc: "Lowercase the selection", modes: inVisual, mutating: true},
+	ActVisualUpper:      {name: "VisualUpper", desc: "Uppercase the selection", modes: inVisual, mutating: true},
+	ActVisualIndent:     {name: "VisualIndent", desc: "Indent the selection", modes: inVisual, mutating: true},
+	ActVisualOutdent:    {name: "VisualOutdent", desc: "Outdent the selection", modes: inVisual, mutating: true},
+	ActVisualOther:      {name: "VisualOther", desc: "Go to the selection's other end", modes: inVisual},
+	ActDeleteWordBack:   {name: "DeleteWordBack", desc: "Delete the word before the cursor", modes: inInsert, mutating: true},
+	ActDeleteLineBack:   {name: "DeleteLineBack", desc: "Delete back to the indent", modes: inInsert, mutating: true},
+	ActInsertOneShot:    {name: "InsertOneShot", desc: "Run one Normal-mode command", modes: inInsert},
+	ActVisualBlock:      {name: "VisualBlock", desc: "Select a block", modes: inNormal | inVisual},
+	ActVisualOtherCol:   {name: "VisualOtherCol", desc: "Go to the block's other column", modes: inVisual},
+	ActVisualInsert:     {name: "VisualInsert", desc: "Insert before the block", modes: inVisual, mutating: true},
+	ActVisualAppend:     {name: "VisualAppend", desc: "Append after the block", modes: inVisual, mutating: true},
+	ActSentenceForward:  {name: "SentenceForward", desc: "Next sentence", modes: inNormal | inVisual},
+	ActSentenceBack:     {name: "SentenceBack", desc: "Previous sentence", modes: inNormal | inVisual},
+	ActStarForward:      {name: "StarForward", desc: "Find the word under the cursor", modes: inNormal},
+	ActStarBack:         {name: "StarBack", desc: "Find the word under the cursor, back", modes: inNormal},
+	ActReplaceMode:      {name: "ReplaceMode", desc: "Replace mode", modes: inNormal, mutating: true},
+}

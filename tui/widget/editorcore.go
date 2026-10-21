@@ -898,22 +898,7 @@ func (c *EditorCore) CanRedo() bool { return !c.readOnly && c.hist.canRedo() }
 
 // mutatingAction reports the actions refused in read-only mode (motions, visual entry, and yank
 // stay available — a viewer still navigates and copies).
-func mutatingAction(act Action) bool {
-	switch act {
-	case ActInsert, ActAppend, ActInsertLineStart, ActAppendLineEnd,
-		ActOpenBelow, ActOpenAbove, ActDeleteChar, ActDeleteToEnd,
-		ActPasteAfter, ActPasteBefore, ActUndo, ActRedo,
-		ActDeletePrefix, ActVisualDelete, ActCut, ActPaste,
-		ActChangePrefix, ActChangeToEnd, ActSubstChar, ActSubstLine,
-		ActReplaceChar, ActJoin, ActJoinRaw, ActToggleCase, ActCaseToggleOp, ActLowerOp, ActUpperOp,
-		ActIndentPrefix, ActOutdentPrefix,
-		ActVisualChange, ActVisualReplace, ActVisualToggleCase, ActVisualLower, ActVisualUpper,
-		ActVisualIndent, ActVisualOutdent, ActDeleteWordBack, ActDeleteLineBack, ActVisualInsert, ActVisualAppend,
-		ActReplaceMode:
-		return true
-	}
-	return false
-}
+func mutatingAction(act Action) bool { return act < actMax && actionSpecs[act].mutating }
 
 // execAction runs one bound action with the (already consumed) count.
 func (c *EditorCore) execAction(act Action, count int) bool {
