@@ -1,6 +1,7 @@
 package tui
 
 import (
+	"iter"
 	"time"
 
 	"github.com/yongjohnlee80/golib/logger"
@@ -100,9 +101,7 @@ func (a *App) dispatch(ev Event) {
 		// repairFocus legitimately leaves focused == 0 while a trap survives
 		// with no focusable descendant (see focus.go), and defaulting to root
 		// there would hand the key to the controls the trap is covering.
-		limit := a.confinement()
-		target := a.confinedTarget(a.nodes[a.focused], limit)
-		if target != nil && a.bubbleWithin(target, limit, ev) {
+		if a.dispatchFocused(ev) {
 			return
 		}
 		// Unconsumed key falls through to the App's global keymap — which is how
@@ -117,10 +116,7 @@ func (a *App) dispatch(ev Event) {
 		a.globalKey(e)
 
 	case PasteEvent:
-		limit := a.confinement()
-		if target := a.confinedTarget(a.nodes[a.focused], limit); target != nil {
-			a.bubbleWithin(target, limit, ev)
-		}
+		a.dispatchFocused(ev)
 
 	case UserEvent:
 		// Consumer-defined input routes exactly like a key: to the focused
@@ -128,10 +124,7 @@ func (a *App) dispatch(ev Event) {
 		// confined by a trap for the same reason a keystroke is — a gamepad
 		// must not reach the controls a dialog is covering. Anything else
 		// would make UserEvent a way around the scope rules.
-		limit := a.confinement()
-		if target := a.confinedTarget(a.nodes[a.focused], limit); target != nil {
-			a.bubbleWithin(target, limit, ev)
-		}
+		a.dispatchFocused(ev)
 
 	case MouseEvent:
 		// A count belongs to presses only. Canonicalise every other kind to zero
@@ -239,16 +232,7 @@ func (a *App) dispatch(ev Event) {
 			e.Count = a.pressOrdinal(e, target)
 			ev = e
 		}
-		consumed := false
-		for n := target; n != nil; n = n.parent {
-			if a.routeToNode(n, e.localTo(n.absRect)) {
-				consumed = true
-				break
-			}
-			if n == ceiling {
-				break // same ceiling as the keyboard path
-			}
-		}
+		consumed := target != nil && a.bubbleWithin(target, ceiling, e) // the keyboard path's ceiling
 		// STEP 6 — the gesture recogniser, last and only on what nobody wanted.
 		//
 		// It sees a primary press ONLY after every node on the path has declined
@@ -361,15 +345,36 @@ func (a *App) globalKey(e KeyEvent) {
 // intent would invent one nobody expressed, and would also consult every
 // resolver on the path each time focus changed.
 func (a *App) bubble(n *node, ev Event) bool {
-	start := n
-	for ; n != nil; n = n.parent {
-		if a.deliverTo(n, ev) {
-			a.traceRouted(ev, start, n.id)
+	for m := range pathTo(n, nil) {
+		if a.deliverTo(m, ev) {
+			a.traceRouted(ev, n, m.id)
 			return true
 		}
 	}
-	a.traceRouted(ev, start, 0)
+	a.traceRouted(ev, n, 0)
 	return false
+}
+
+// pathTo yields n and its ancestors, up to and including limit (to the root when limit is nil):
+// the ONE walk every bubbling delivery makes. limit is delivered to and then not passed, which is
+// how a trapping scope confines input.
+func pathTo(n, limit *node) iter.Seq[*node] {
+	return func(yield func(*node) bool) {
+		for ; n != nil; n = n.parent {
+			if !yield(n) || n == limit {
+				return
+			}
+		}
+	}
+}
+
+// dispatchFocused routes ev as focused input — a key, a paste, a UserEvent: to the focused node,
+// or the active trap with nothing focused in it, bubbling up to the trap. It reports whether a node
+// consumed ev.
+func (a *App) dispatchFocused(ev Event) bool {
+	limit := a.confinement()
+	target := a.confinedTarget(a.nodes[a.focused], limit)
+	return target != nil && a.bubbleWithin(target, limit, ev)
 }
 
 // bubbleWithin is bubble with a ceiling: it delivers from n upward and STOPS
@@ -382,19 +387,20 @@ func (a *App) bubble(n *node, ev Event) bool {
 // an open dialog reaches the controls behind it on the very next hop.
 //
 // Delivery order and the consumed/unconsumed result are otherwise identical to
-// bubble, so an unconsumed event still lets the caller apply a fallback.
+// bubble, so an unconsumed event still lets the caller apply a fallback. A pointer
+// event reaches each node in that node's own frame.
 func (a *App) bubbleWithin(n, limit *node, ev Event) bool {
-	start := n
-	for ; n != nil; n = n.parent {
-		if a.routeToNode(n, ev) {
-			a.traceRouted(ev, start, n.id)
+	for m := range pathTo(n, limit) {
+		hop := ev
+		if e, ok := ev.(MouseEvent); ok {
+			hop = e.localTo(m.absRect)
+		}
+		if a.routeToNode(m, hop) {
+			a.traceRouted(ev, n, m.id)
 			return true
 		}
-		if n == limit {
-			break // limit is delivered to, then bubbling stops
-		}
 	}
-	a.traceRouted(ev, start, 0)
+	a.traceRouted(ev, n, 0)
 	return false
 }
 

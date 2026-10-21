@@ -43,14 +43,11 @@ func (a *App) KeyBindings(comp Component) ([]keymap.Binding, error) {
 	}
 	m := a.cfg.keymap
 	var stops [][]keymap.Binding
-	for ; n != nil; n = n.parent {
+	for n := range pathTo(n, limit) {
 		if kb, ok := n.comp.(KeyBinder); ok {
 			if bs := kb.KeyBindings(m); len(bs) > 0 {
 				stops = append(stops, bs)
 			}
-		}
-		if n == limit {
-			break
 		}
 	}
 	stops = append(stops, BindingsOf(m, FocusNext, FocusPrev)) // globalKey runs inside a trap too
