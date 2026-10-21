@@ -190,3 +190,7 @@ func (q *programQueue) pending() int {
 	defer q.mu.Unlock()
 	return len(q.items)
 }
+
+// enqueue posts fn to the program lane as a plain lane-B closure, not an Update: the Bus's
+// delivery (busLane).
+func (a *App) enqueue(fn func()) { a.queue.push(programItem{fn: fn}) }

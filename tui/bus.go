@@ -73,7 +73,7 @@ import (
 //  3. Copy-on-Write Subscription Lists: Delivery snapshots iterate over subscription slices
 //     without holding mutex locks, allowing handlers to safely subscribe or unsubscribe mid-delivery.
 type Bus struct {
-	app *App
+	lane busLane
 
 	mu   sync.Mutex
 	subs map[reflect.Type][]*subscription // copy-on-write slices
@@ -88,12 +88,22 @@ type subscription struct {
 	cancelled atomic.Bool
 }
 
-// newBus builds the App's bus.
-func newBus(app *App) *Bus {
+// busLane is what a Bus needs of the App: the program lane a delivery is enqueued on, and the
+// handler boundary each subscriber runs inside. *App is the one implementation; a Bus depends on
+// these two calls, not on the App.
+type busLane interface {
+	// enqueue posts fn to the program lane; safe from any goroutine, never blocks.
+	enqueue(fn func())
+	// contain is the handler boundary. It recovers, so it must be the deferred call itself.
+	contain(phase string, n *node, handled *bool)
+}
+
+// newBus builds the App's bus over its program lane.
+func newBus(app busLane) *Bus {
 	if app == nil {
 		panic(errs.Fatal{Op: "tui: newBus", Rule: "nil app"})
 	}
-	return &Bus{app: app, subs: make(map[reflect.Type][]*subscription)}
+	return &Bus{lane: app, subs: make(map[reflect.Type][]*subscription)}
 }
 
 // Subscribe registers fn for every published value of dynamic type T. The
@@ -172,7 +182,7 @@ func (b *Bus) Publish(v any) {
 	if v == nil {
 		panic(errs.Fatal{Op: "tui: Bus.Publish", Rule: "nil value"})
 	}
-	b.app.queue.push(programItem{fn: func() { b.deliver(v) }})
+	b.lane.enqueue(func() { b.deliver(v) })
 }
 
 // deliver runs on the loop goroutine: snapshot the handler slice for v's
@@ -194,8 +204,8 @@ func (b *Bus) deliver(v any) {
 // call delivers v to one subscriber, inside the bus's handler boundary (WithHandlerRecover): a
 // subscriber's panic is contained there, and the batch goes on to the next.
 func (b *Bus) call(s *subscription, v any) {
-	if b.app != nil {
-		defer b.app.contain("bus", nil, nil)
+	if b.lane != nil {
+		defer b.lane.contain("bus", nil, nil)
 	}
 	s.fn(v)
 }
