@@ -373,3 +373,27 @@ func TestProbeDarkBackgroundFollowsWCAG(t *testing.T) {
 		}
 	}
 }
+
+// The probe's replies read as capabilities without a terminal: the zero result is the documented
+// defaults, DECRPM 1-3 is support and 0 or silence is not, ?1006 is the only mouse evidence, a
+// termcap RGB upgrades the preseed profile, and a known background decides darkness.
+func TestProbeResultReadsAsCapabilities(t *testing.T) {
+	none := probeResult{}.capabilities(tui.ProfileANSI256)
+	if !none.DarkBackground || none.Mouse != tui.TriUnknown || none.KittyGraphics != tui.TriUnknown ||
+		none.BracketedPaste || none.ColorProfile != tui.ProfileANSI256 {
+		t.Errorf("no replies: %+v, want the documented defaults on the preseed", none)
+	}
+	r := probeResult{
+		modes:    map[int]int{2004: 1, 2026: 0, 2027: 3, 1006: 0},
+		rgb:      true,
+		graphics: tui.TriYes,
+		bg:       tui.ProbedColor{R: 0xff, G: 0xff, B: 0xff, Known: true},
+	}
+	c := r.capabilities(tui.ProfileANSI256)
+	if !c.BracketedPaste || c.SyncOutput || !c.UnicodeCore || c.InBandResize {
+		t.Errorf("modes read %v %v %v %v, want 2004 and 2027 only", c.BracketedPaste, c.SyncOutput, c.UnicodeCore, c.InBandResize)
+	}
+	if c.Mouse != tui.TriNo || c.ColorProfile != tui.ProfileTrueColor || c.KittyGraphics != tui.TriYes || c.DarkBackground {
+		t.Errorf("caps %+v: want mouse no (?1006 answered 0), truecolor, graphics yes, a light background", c)
+	}
+}
