@@ -411,26 +411,9 @@ func (t *DataTable) Render(s tui.Surface) {
 		return
 	}
 	fields := t.core.Fields()
-	keys, partial := t.core.SortedKeys()
 	gutter, digits := t.gutter(), t.core.RowNumberDigits()
-	for _, sp := range t.spans(sz.W, true) {
-		if sp.col == len(fields) { // the edge field
-			drawText(s, sp.x, 0, truncate(" + ", sz.W-sp.x, s.StringWidth), t.styles.Empty)
-			continue
-		}
-		title := fields[sp.col].Title
-		for i, k := range keys {
-			if k.Col != sp.col {
-				continue
-			}
-			title += map[bool]string{false: " ▲", true: " ▼"}[k.Desc]
-			if i == 0 && partial {
-				title += " (loaded rows)"
-			}
-			break
-		}
-		drawText(s, sp.x, 0, fitCell(title, min(sp.w, sz.W-sp.x), ElideRight, style.AlignLeft, s.StringWidth), t.styles.Header)
-	}
+	spans := t.spans(sz.W, true) // one layout of the columns for the whole paint
+	t.renderHeader(s, fields, spans)
 	t.drawRules(s, digits)
 	if t.core.DrawnRows() == 0 {
 		if sz.H > tableHeaderRows {
@@ -449,30 +432,64 @@ func (t *DataTable) Render(s tui.Surface) {
 			t.drawBlankRow(s, y, kind, row, gutter, cur, cursor)
 			continue
 		}
-		if digits > 0 {
-			n := strconv.Itoa(row + 1)
-			drawText(s, 0, y, truncate(strings.Repeat(" ", max(digits-len(n), 0))+n, sz.W, s.StringWidth), t.styles.Header)
-		}
-		for _, sp := range t.spans(sz.W, true) {
-			w := min(sp.w, sz.W-sp.x)
-			if sp.col == len(fields) { // the edge field: the cursor's, when it is there
-				if row == cur.Row && cur.Col == sp.col {
-					drawText(s, sp.x, y, strings.Repeat(" ", w), cursor.Inherit(t.styles.Cell))
-				}
-				continue
-			}
-			st := t.styles.Cell
-			switch {
-			case t.core.CursorCovers(row, sp.col):
-				st = cursor.Inherit(st)
-			case t.core.InSelection(row, sp.col):
-				st = t.styles.Selected.Inherit(st)
-			}
-			text := tableCellLine(t.core.Cell(row, sp.col))
-			drawText(s, sp.x, y, fitCell(text, w, ElideRight, fields[sp.col].Align, s.StringWidth), st)
-		}
+		t.renderRow(s, y, row, digits, fields, spans, cur, cursor)
 	}
 	t.drawField(s, gutter, fields)
+}
+
+// renderHeader writes each column's title on the first line, with its sort mark (▲ or ▼) and, on the
+// first key while only the loaded rows are sorted, "(loaded rows)"; the edge field's title is " + ".
+func (t *DataTable) renderHeader(s tui.Surface, fields []TableField, spans []colSpan) {
+	w := s.Size().W
+	keys, partial := t.core.SortedKeys()
+	for _, sp := range spans {
+		if sp.col == len(fields) { // the edge field
+			drawText(s, sp.x, 0, truncate(" + ", w-sp.x, s.StringWidth), t.styles.Empty)
+			continue
+		}
+		title := fields[sp.col].Title
+		for i, k := range keys {
+			if k.Col != sp.col {
+				continue
+			}
+			title += map[bool]string{false: " ▲", true: " ▼"}[k.Desc]
+			if i == 0 && partial {
+				title += " (loaded rows)"
+			}
+			break
+		}
+		drawText(s, sp.x, 0, fitCell(title, min(sp.w, w-sp.x), ElideRight, style.AlignLeft, s.StringWidth), t.styles.Header)
+	}
+}
+
+// renderRow writes data row row on line y: its number in the gutter (digits wide, none when 0), then
+// each cell in the cell look, the cursor's or the selection's over it; the edge field is blank but
+// for the cursor.
+func (t *DataTable) renderRow(s tui.Surface, y, row, digits int, fields []TableField, spans []colSpan,
+	cur TablePos, cursor style.Style) {
+	w := s.Size().W
+	if digits > 0 {
+		n := strconv.Itoa(row + 1)
+		drawText(s, 0, y, truncate(strings.Repeat(" ", max(digits-len(n), 0))+n, w, s.StringWidth), t.styles.Header)
+	}
+	for _, sp := range spans {
+		cw := min(sp.w, w-sp.x)
+		if sp.col == len(fields) { // the edge field: the cursor's, when it is there
+			if row == cur.Row && cur.Col == sp.col {
+				drawText(s, sp.x, y, strings.Repeat(" ", cw), cursor.Inherit(t.styles.Cell))
+			}
+			continue
+		}
+		st := t.styles.Cell
+		switch {
+		case t.core.CursorCovers(row, sp.col):
+			st = cursor.Inherit(st)
+		case t.core.InSelection(row, sp.col):
+			st = t.styles.Selected.Inherit(st)
+		}
+		text := tableCellLine(t.core.Cell(row, sp.col))
+		drawText(s, sp.x, y, fitCell(text, cw, ElideRight, fields[sp.col].Align, s.StringWidth), st)
+	}
 }
 
 // drawBlankRow draws o's new row or the edge row: empty cells, the cursor's among them; the edge
