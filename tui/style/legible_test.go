@@ -73,3 +73,22 @@ func ratioAgainst(t *testing.T, a, b style.Color) float64 {
 	}
 	return r
 }
+
+// RelativeLuminance runs from black's 0 to white's 1, and Dark turns at the grey where white and
+// black text have equal contrast: #757575 is dark (white reads better), #767676 light.
+func TestDarkTurnsWhereWhiteAndBlackContrastEqually(t *testing.T) {
+	if l := style.RelativeLuminance(0, 0, 0); l != 0 {
+		t.Errorf("black's luminance %v", l)
+	}
+	if l := style.RelativeLuminance(255, 255, 255); l < 0.9999 || l > 1.0001 {
+		t.Errorf("white's luminance %v", l)
+	}
+	for _, c := range []struct {
+		v    uint8
+		dark bool
+	}{{0x00, true}, {0x75, true}, {0x76, false}, {0xff, false}} {
+		if got := style.Dark(c.v, c.v, c.v); got != c.dark {
+			t.Errorf("#%02x%02x%02x: Dark %v, want %v", c.v, c.v, c.v, got, c.dark)
+		}
+	}
+}
