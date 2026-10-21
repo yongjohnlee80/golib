@@ -75,7 +75,9 @@ var _ tui.Backend = (*Backend)(nil)
 func Open(opts ...Option) (*Backend, error) {
 	cfg := defaultConfig()
 	for _, o := range opts {
-		o(&cfg)
+		if o != nil { // a nil option is skipped, as every other constructor here does
+			o(&cfg)
+		}
 	}
 	if cfg.in == nil || cfg.out == nil {
 		return nil, ErrNotTerminal
@@ -108,7 +110,9 @@ func newHarness(in io.Reader, out io.Writer, opts ...Option) *Backend {
 	cfg := defaultConfig()
 	cfg.in, cfg.out = nil, nil
 	for _, o := range opts {
-		o(&cfg)
+		if o != nil { // a nil option is skipped, as every other constructor here does
+			o(&cfg)
+		}
 	}
 	b := newBackend(cfg)
 	b.input, b.output = in, out

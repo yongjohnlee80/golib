@@ -1,7 +1,6 @@
 package term
 
 import (
-	"errors"
 	"os"
 	"time"
 
@@ -13,7 +12,7 @@ import (
 var (
 	// ErrNotTerminal reports that one of the configured file descriptors is
 	// not a terminal.
-	ErrNotTerminal = errors.New("term: file descriptor is not a terminal")
+	ErrNotTerminal = errs.Sentinel(errs.ErrUnsupported, "term: file descriptor is not a terminal")
 
 	// ErrClosed reports use of a stopped backend. It is an errs.ErrClosed, as web's ErrStopped is,
 	// so code holding only a tui.Backend can ask errors.Is(err, errs.ErrClosed).
@@ -22,7 +21,7 @@ var (
 	// ErrConsoleTooOld reports a Windows console without VT processing.
 	// The supported floor is Windows 10 1809+; there is no non-VT rendering
 	// path.
-	ErrConsoleTooOld = errors.New("term: console lacks VT processing (Windows 10 1809+ required)")
+	ErrConsoleTooOld = errs.Sentinel(errs.ErrUnsupported, "term: console lacks VT processing (Windows 10 1809+ required)")
 )
 
 const (

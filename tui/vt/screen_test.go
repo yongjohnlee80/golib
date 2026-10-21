@@ -291,3 +291,11 @@ func TestBlankedLinesWearThePensBackground(t *testing.T) {
 		t.Errorf("a row ED cleared has background %v, want the pen's blue", got)
 	}
 }
+
+// A nil option is skipped, as every other constructor in golib skips one.
+func TestNewSkipsANilOption(t *testing.T) {
+	s := New(2, 4, nil)
+	if rows, cols := s.Size(); rows != 2 || cols != 4 {
+		t.Fatalf("New(2, 4, nil) is %dx%d", rows, cols)
+	}
+}
