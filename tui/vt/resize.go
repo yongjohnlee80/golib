@@ -1,6 +1,10 @@
 package vt
 
-import "github.com/yongjohnlee80/golib/tui/style"
+import (
+	"slices"
+
+	"github.com/yongjohnlee80/golib/tui/style"
+)
 
 // styleNone is the default colour: what reflow pads rows with.
 var styleNone style.Color
@@ -99,10 +103,7 @@ func (s *Screen) reflowPrimary(rows, cols int, marks []*cursor, anchor bool) {
 		first := len(out)
 		row := make([]Cell, 0, cols)
 		flush := func(wrapped bool) {
-			for len(row) < cols {
-				row = append(row, blank(styleNone))
-			}
-			out = append(out, line{cells: row, wrapped: wrapped})
+			out = append(out, line{cells: padBlank(row, cols), wrapped: wrapped})
 			row = make([]Cell, 0, cols)
 		}
 		offsetPos := make(map[int][2]int) // offset -> (row in this logical, col)
@@ -193,7 +194,7 @@ func (s *Screen) reflowPrimary(rows, cols int, marks []*cursor, anchor bool) {
 	pri := make([]line, 0, rows)
 	pri = append(pri, screen...)
 	for len(pri) < rows {
-		pri = append(pri, line{cells: blankCells(cols)})
+		pri = append(pri, line{cells: blankCells(cols, styleNone)})
 	}
 	s.pri.lines = pri
 	s.hist.set(out[:start])
@@ -220,10 +221,19 @@ func lineBlank(l line) bool {
 	return true
 }
 
-func blankCells(cols int) []Cell {
+// blankCells is cols erased cells wearing bg.
+func blankCells(cols int, bg style.Color) []Cell {
 	cells := make([]Cell, cols)
 	for i := range cells {
-		cells[i] = blank(styleNone)
+		cells[i] = blank(bg)
+	}
+	return cells
+}
+
+// padBlank appends blank cells, with no background, to cells until it is cols long.
+func padBlank(cells []Cell, cols int) []Cell {
+	for len(cells) < cols {
+		cells = append(cells, blank(styleNone))
 	}
 	return cells
 }
@@ -240,14 +250,10 @@ func cutLines(ls []line, rows, cols int, marks []*cursor) []line {
 	out := make([]line, rows)
 	for i := range out {
 		if i >= len(ls) {
-			out[i] = line{cells: blankCells(cols)}
+			out[i] = line{cells: blankCells(cols, styleNone)}
 			continue
 		}
-		cells := make([]Cell, cols)
-		n := copy(cells, ls[i].cells)
-		for j := n; j < cols; j++ {
-			cells[j] = blank(styleNone)
-		}
+		cells := padBlank(slices.Clone(ls[i].cells[:min(len(ls[i].cells), cols)]), cols)
 		if cells[cols-1].Width == 2 {
 			cells[cols-1] = blank(cells[cols-1].BG) // its second half was cut
 		}

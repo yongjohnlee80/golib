@@ -277,3 +277,17 @@ func TestDECSTRSoftReset(t *testing.T) {
 		t.Errorf("pen survived DECSTR: %+v", c)
 	}
 }
+
+// A line the screen blanks wears the pen's background (xterm's background-colour erase): a row
+// scrolled in, and the rows ED clears.
+func TestBlankedLinesWearThePensBackground(t *testing.T) {
+	blue := style.ANSI(4)
+	s := feed(New(3, 4), "a\r\nb\r\nc\x1b[44m\n")
+	if got := s.Cell(2, 0).BG; got != blue {
+		t.Errorf("the row scrolled in has background %v, want the pen's blue", got)
+	}
+	s = feed(New(3, 4), "abc\x1b[44m\x1b[2J")
+	if got := s.Cell(1, 2).BG; got != blue {
+		t.Errorf("a row ED cleared has background %v, want the pen's blue", got)
+	}
+}
