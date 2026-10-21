@@ -56,7 +56,7 @@ func ParseMnemonic(text string) (label string, hotkey rune, idx int) {
 // marking another letter, or none, has its marker dropped and English's appended in
 // parentheses; one English gives no hotkey to has its marker dropped. An id English does
 // not carry has no letter to keep, and is shown as the catalog wrote it.
-func englishMnemonic(text string, s *i18n.Set, id string) string {
+func englishMnemonic(text string, s Translator, id string) string {
 	en, ok := s.Lookup(i18n.English, id)
 	if !ok {
 		return text

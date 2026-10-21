@@ -246,6 +246,9 @@ text passed as a plain string is never translated.
 - `WithLanguage("ko_KR")` sets the starting language (default English).
 - `WithTranslations(s)` sets the catalogs: `i18n.Toolkit()` with the application's own
   loaded over it (package [`tui/i18n`](i18n/README.md)).
+- Catalogs that are not an `i18n.Set` (a remote catalog, a test's fake) implement
+  `tui.Translator`, `Lookup(language, id) (text, ok)`, and go in through `WithTranslator(t)`,
+  `SetTranslator(t)` and `ApplyTranslator(t)`, which the `…Translations` calls are for a Set.
 - `app.SetLanguage(tag)` may be called from any goroutine. It queues the change on Lane B and
   relays out as well as repainting, because labels change width; focus, typed text and open
   dialogs are untouched. `SetTranslations(s)` replaces the catalogs the same way.
