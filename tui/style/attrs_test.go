@@ -77,3 +77,31 @@ func TestEachAttrGetterReportsItsValueAndSetness(t *testing.T) {
 		}
 	}
 }
+
+// The bit helpers derive a prop's bit from its place in the propKey list: the attribute props in
+// AttrMask's order, the border edges in the edge bits' order. A reordered const block fails here
+// rather than silently mapping the wrong bit.
+func TestPropBitsFollowTheirOrder(t *testing.T) {
+	for k, want := range map[propKey]AttrMask{
+		propBold: AttrBold, propFaint: AttrFaint, propItalic: AttrItalic, propUnderline: AttrUnderline,
+		propBlink: AttrBlink, propReverse: AttrReverse, propStrikethrough: AttrStrikethrough,
+		propForeground: 0, propPaddingTop: 0,
+	} {
+		if got := attrBit(k); got != want {
+			t.Errorf("attrBit(%#x) = %b, want %b", uint64(k), got, want)
+		}
+	}
+	for k, want := range map[propKey]uint8{
+		propBorderTop: edgeTop, propBorderRight: edgeRight, propBorderBottom: edgeBottom, propBorderLeft: edgeLeft,
+		propBorderStyle: 0, propBorderTopForeground: 0,
+	} {
+		if got := edgeBit(k); got != want {
+			t.Errorf("edgeBit(%#x) = %b, want %b", uint64(k), got, want)
+		}
+	}
+	for i, k := range []propKey{propBorderTopForeground, propBorderRightForeground, propBorderBottomForeground, propBorderLeftForeground} {
+		if got := edgeFgIndex(k); got != i {
+			t.Errorf("edgeFgIndex(%#x) = %d, want %d", uint64(k), got, i)
+		}
+	}
+}

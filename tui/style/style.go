@@ -2,6 +2,7 @@ package style
 
 import (
 	"fmt"
+	"math/bits"
 
 	"github.com/yongjohnlee80/golib/errs"
 )
@@ -12,13 +13,13 @@ type propKey uint64
 const (
 	propForeground propKey = 1 << iota
 	propBackground
-	propBold
+	propBold // the attribute props, in AttrMask's order: attrBit is a shift
+	propFaint
 	propItalic
 	propUnderline
-	propStrikethrough
-	propReverse
 	propBlink
-	propFaint
+	propReverse
+	propStrikethrough
 	propPaddingTop
 	propPaddingRight
 	propPaddingBottom
@@ -527,52 +528,39 @@ func (s *Style) copyProp(other Style, k propKey) {
 	case propBorderTop, propBorderRight, propBorderBottom, propBorderLeft:
 		bit := edgeBit(k)
 		s.borderEdges = s.borderEdges&^bit | other.borderEdges&bit
-	case propBorderTopForeground:
-		s.borderFg[0] = other.borderFg[0]
-	case propBorderRightForeground:
-		s.borderFg[1] = other.borderFg[1]
-	case propBorderBottomForeground:
-		s.borderFg[2] = other.borderFg[2]
-	case propBorderLeftForeground:
-		s.borderFg[3] = other.borderFg[3]
+	case propBorderTopForeground, propBorderRightForeground, propBorderBottomForeground, propBorderLeftForeground:
+		i := edgeFgIndex(k)
+		s.borderFg[i] = other.borderFg[i]
 	default:
 		panic(errs.Fatal{Op: "style: copyProp", Rule: fmt.Sprintf("unhandled property bit %#x", uint64(k))})
 	}
 	s.set(k)
 }
 
-// attrBit maps an attribute propKey to its packed value bit.
+// attrBit maps an attribute propKey to its packed value bit. The attribute props run from propBold
+// to propStrikethrough in AttrMask's order, so the bit is the prop shifted down; anything else is 0.
 func attrBit(k propKey) AttrMask {
-	switch k {
-	case propBold:
-		return attrBold
-	case propItalic:
-		return attrItalic
-	case propUnderline:
-		return attrUnderline
-	case propStrikethrough:
-		return attrStrikethrough
-	case propReverse:
-		return attrReverse
-	case propBlink:
-		return attrBlink
-	case propFaint:
-		return attrFaint
+	if k < propBold || k > propStrikethrough {
+		return 0
 	}
-	return 0
+	return AttrMask(k >> propBoldShift)
 }
 
-// edgeBit maps a border-edge propKey to its packed value bit.
+// edgeBit maps a border-edge propKey to its packed value bit. The edge props run from
+// propBorderTop to propBorderLeft in the edge bits' order (top, right, bottom, left).
 func edgeBit(k propKey) uint8 {
-	switch k {
-	case propBorderTop:
-		return edgeTop
-	case propBorderRight:
-		return edgeRight
-	case propBorderBottom:
-		return edgeBottom
-	case propBorderLeft:
-		return edgeLeft
+	if k < propBorderTop || k > propBorderLeft {
+		return 0
 	}
-	return 0
+	return uint8(k >> propBorderTopShift)
 }
+
+// edgeFgIndex is a border-edge colour prop's index in borderFg (top, right, bottom, left).
+func edgeFgIndex(k propKey) int {
+	return bits.TrailingZeros64(uint64(k)) - bits.TrailingZeros64(uint64(propBorderTopForeground))
+}
+
+var (
+	propBoldShift      = bits.TrailingZeros64(uint64(propBold))
+	propBorderTopShift = bits.TrailingZeros64(uint64(propBorderTop))
+)
