@@ -411,11 +411,8 @@ func (b *Backend) Attach(h Hello) error {
 	}
 	// A reconnect of the SAME session: resize to whatever the new client
 	// measured and resync from scratch, since it holds nothing.
-	b.mu.Lock()
-	b.metrics = h.Metrics
-	b.mu.Unlock()
-	if err := b.Resize(h.Cols, h.Rows); err != nil {
-		return err
+	if err := b.resize(h.Cols, h.Rows, h.Metrics); err != nil {
+		return err // refused: the old metrics stand
 	}
 	b.framer.reset()
 	logger.Info(b.log, sessionEvent{Kind: "reattach", Cols: h.Cols, Rows: h.Rows})
@@ -435,13 +432,27 @@ func (b *Backend) Detach() {
 // server's idea of the size while the App still believes the old one leaves the
 // two disagreeing with no mechanism to notice — the App lays out for a size that
 // no longer exists and every subsequent frame is wrong.
-func (b *Backend) Resize(cols, rows int) error {
+func (b *Backend) Resize(cols, rows int) error { return b.resize(cols, rows, Metrics{}) }
+
+// resize is Resize with the client's measured cell size m: published as CellPixels only when the
+// backend takes the ResizeEvent, so the metrics change only together with the event the App
+// reads them for (tui.CellMetrics). A refused resize leaves them as they were; a zero m keeps them.
+func (b *Backend) resize(cols, rows int, m Metrics) error {
 	if err := validGrid(cols, rows); err != nil {
 		return err
 	}
 	b.resizeMu.Lock()
 	defer b.resizeMu.Unlock()
+	b.mu.Lock()
+	old := b.metrics
+	if m.valid() {
+		b.metrics = m // before the event, so an App reading it for the event sees the new size
+	}
+	b.mu.Unlock()
 	if err := b.Submit(tui.ResizeEvent{W: cols, H: rows}); err != nil {
+		b.mu.Lock()
+		b.metrics = old
+		b.mu.Unlock()
 		return err
 	}
 	if b.resizeGap != nil {
@@ -524,6 +535,8 @@ func (s sessionEvent) String() string {
 // logical pixels; zero before a client has attached. Attach sets the metrics before it resizes, so
 // a change arrives with the ResizeEvent the capability requires.
 func (b *Backend) CellPixels() tui.CellPixels {
+	b.resizeMu.Lock() // a resize in flight has published its metrics, or restored them
+	defer b.resizeMu.Unlock()
 	m := b.Metrics()
 	return tui.CellPixels{W: float32(m.CellW), H: float32(m.CellH)}
 }
