@@ -345,3 +345,22 @@ func TestTheDrawnRowsFollowTheCore(t *testing.T) {
 		t.Fatalf("the field's caret: %d,%d, want 0,3", ln, col)
 	}
 }
+
+// Ctrl+V types the NEXT key of its own field. A field kept without that key (by the host, a
+// press) takes it along: the next field's Tab still moves across, never typed.
+func TestATableLiteralKeyDoesNotOutliveItsField(t *testing.T) {
+	const text = "a,b\n1,2\n"
+	c, src, _, _ := csvTable(text)
+	c.SetCursor(TablePos{0, 0})
+	c.HandleKey(enterKey)
+	c.HandleKey(ctrlV)
+	c.KeepEdit(0, 0) // the host keeps it: no key reached the field
+	c.HandleKey(enterKey)
+	c.HandleKey(tabKey)
+	if e := c.Editing(); e != nil && e.Pos == (TablePos{0, 0}) {
+		t.Fatalf("Tab in the next field typed %q, want it kept and moved across", e.Field.Value())
+	}
+	if got := src.Cell(0, 0); got != "1" {
+		t.Errorf("the cell kept %q, want 1", got)
+	}
+}
