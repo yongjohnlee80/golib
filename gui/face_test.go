@@ -46,3 +46,13 @@ func TestAFaceOnlyChangeRedrawsTheRow(t *testing.T) {
 		t.Fatalf("a face change: dirty %v, face %d", g.dirty[1], g.at(1, 1).Face)
 	}
 }
+
+// A wide cell's continuation carries the head's face, so its second column draws in the same font.
+func TestAWideCellsContinuationKeepsItsFace(t *testing.T) {
+	var g grid
+	g.resize(4, 1)
+	g.apply([]tui.CellUpdate{{X: 1, Y: 0, Cell: tui.Cell{Content: "漢", Width: 2, Face: 1}}})
+	if c := g.at(2, 0); c.Width != 0 || c.Face != 1 {
+		t.Fatalf("the continuation is %+v, want width 0 and the head's face 1", c)
+	}
+}
