@@ -260,6 +260,18 @@ func (t *DataTable) PageRows() int { return max(t.bodyRows()-1, 1) }
 // bodyRows is the rows shown below the header, at least one.
 func (t *DataTable) bodyRows() int { return max(t.h-tableHeaderRows, 1) }
 
+// ScrollState implements tui.Scroller, in rows; the titles and their rule are not counted. The
+// numbers are the ones the table scrolls by, so a native scrollbar and the wheel agree. A bound
+// layout that scrolls itself and reports where (a ScrollState of its own) answers instead.
+func (t *DataTable) ScrollState() (offset, viewport, content int) {
+	if s, ok := t.layout.(interface{ ScrollState() (int, int, int) }); ok && t.bound() {
+		return s.ScrollState()
+	}
+	return t.top, t.bodyRows(), t.core.Len()
+}
+
+var _ tui.Scroller = (*DataTable)(nil)
+
 // Measure implements TableLayout.
 func (t *DataTable) Measure(s string) int { return t.measure(s) }
 
