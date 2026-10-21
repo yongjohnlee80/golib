@@ -54,6 +54,13 @@ func (b *buffer) resize(w, h int) {
 	}
 }
 
+// clear blanks curr: the grid a frame paints onto.
+func (b *buffer) clear() {
+	for i := range b.curr {
+		b.curr[i] = blankCell
+	}
+}
+
 // size returns the grid size.
 func (b *buffer) size() Size { return Size{W: b.w, H: b.h} }
 

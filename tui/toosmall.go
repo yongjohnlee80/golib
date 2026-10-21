@@ -3,7 +3,6 @@ package tui
 import (
 	"strconv"
 	"strings"
-	"time"
 
 	"github.com/yongjohnlee80/golib/tui/style"
 )
@@ -95,9 +94,7 @@ func (a *App) renderTooSmall() {
 	// A gesture in progress has nothing on screen to continue on.
 	a.loseCapture(CaptureLostHidden)
 
-	for i := range a.buf.curr {
-		a.buf.curr[i] = blankCell
-	}
+	a.beginFrame()
 	s := newRootSurface(a.buf, a.rctx)
 	s.Fill(Rect{W: a.size.W, H: a.size.H}, " ", style.New().Background(style.TokenBackground))
 
@@ -131,15 +128,7 @@ func (a *App) renderTooSmall() {
 	a.quitButton = Rect{X: max((a.size.W-total)/2, 0), Y: y, W: s.StringWidth(quit), H: 1}
 	DrawText(s, x+gap, y, keys, base.Foreground(style.TokenTextMuted))
 
-	a.renderDirty = false
-	a.beginNatives()
-	a.applyNatives() // nothing painted natively: the host removes every view
-	a.frameImages = a.frameImages[:0]
-	a.applyImages() // nothing reported: every placed image is deleted
-	a.backend.HideCursor()
-	a.flush()
-	a.lastFrame = time.Now()
-	a.frames++
+	a.presentFrame(false) // nothing reported: every native view and placed image goes
 }
 
 // writeCentered writes text centred on row y.
