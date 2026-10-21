@@ -354,8 +354,9 @@ func (t *Toasts) Layout(c tui.Constraints) tui.Size {
 		bw, lines := t.box(it, maxW)
 		w, h = max(w, bw), h+len(lines)+2
 	}
-	t.laid = c.Constrain(tui.Size{W: w, H: h})
-	return t.laid
+	laid := c.Constrain(tui.Size{W: w, H: h})
+	t.Context().AfterLayout("widget.toasts", func() { t.laid = laid }) // read by Render: committed, so a measure moves nothing
+	return laid
 }
 
 // placedToast is one toast where it is drawn in a stack of a size: its card and its lines.
