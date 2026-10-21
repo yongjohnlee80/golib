@@ -62,6 +62,13 @@ func (h *harness) shows(sub string) {
 	h.waitFor(sub, func() bool { return strings.Contains(h.grid(), sub) })
 }
 
+// hides waits for text to leave the screen, for the same reason: the model may have moved on a
+// frame before the status line is repainted, so a one-shot look can still see the old text.
+func (h *harness) hides(sub string) {
+	h.t.Helper()
+	h.waitFor("no "+sub, func() bool { return !strings.Contains(h.grid(), sub) })
+}
+
 func (h *harness) rowWith(sub string) int {
 	h.t.Helper()
 	for i, r := range strings.Split(h.grid(), "\n") {
