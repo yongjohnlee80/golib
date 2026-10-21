@@ -222,7 +222,7 @@ func TestDisablingDuringACaptureCancelsIt(t *testing.T) {
 			"the program deciding the gesture is over", got, CaptureLostCancelled)
 	}
 	var held NodeID
-	h.onLoop(func() { held = h.app.captureOwner })
+	h.onLoop(func() { held = h.app.capture.captureOwner })
 	if held != 0 {
 		t.Errorf("capture still held by %d after the mouse was disabled", held)
 	}
@@ -314,7 +314,7 @@ func TestAnInvalidPointerPolicyIsRefusedBeforeItIsStored(t *testing.T) {
 	h.onLoop(func() {
 		own = h.app.byComp[owner].pointerPolicy
 		eff = h.app.byComp[owner].ctx.EffectivePointerPolicy()
-		held = h.app.captureOwner
+		held = h.app.capture.captureOwner
 	})
 	if own != PointerEnabled {
 		t.Errorf("stored policy is %v after a rejected call, want %v: validation must "+

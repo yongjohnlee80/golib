@@ -124,8 +124,8 @@ func TestTrapConfinesEveryEventKind(t *testing.T) {
 	// stays on the stack. That is the exact state under test.
 	h.onLoop(func() {
 		a := h.app
-		a.scopeStack = append(a.scopeStack, scopeEntry{scope: a.byComp[trap].id, restore: 0})
-		a.focused = 0
+		a.focus.scopeStack = append(a.focus.scopeStack, scopeEntry{scope: a.byComp[trap].id, restore: 0})
+		a.focus.focused = 0
 	})
 	h.onLoop(func() {
 		if h.app.confinement() == nil {
@@ -221,7 +221,7 @@ func TestTabStillTraversesInsideATrap(t *testing.T) {
 	h.onLoop(func() {
 		a := h.app
 		a.requestFocus(a.byComp[a1])
-		first = a.focused
+		first = a.focus.focused
 	})
 	if first == 0 {
 		t.Fatal("precondition failed: nothing focused inside the trap")
@@ -233,12 +233,12 @@ func TestTabStillTraversesInsideATrap(t *testing.T) {
 	h.inject(KeyEvent{Code: KeyTab})
 	waitFor(t, "Tab to move focus inside the trap", func() bool {
 		var f NodeID
-		h.onLoop(func() { f = h.app.focused })
+		h.onLoop(func() { f = h.app.focus.focused })
 		return f != first
 	})
 
 	var second NodeID
-	h.onLoop(func() { second = h.app.focused })
+	h.onLoop(func() { second = h.app.focus.focused })
 
 	if second == first {
 		t.Fatal("Tab did not traverse inside the trap; bounding the bubble " +
@@ -309,9 +309,9 @@ func TestRequestFocusRefusedOutsideTrap(t *testing.T) {
 		a.requestFocus(a.byComp[inside]) // enter the trap: legal
 	})
 	h.onLoop(func() {
-		if h.app.focused != insideID {
+		if h.app.focus.focused != insideID {
 			t.Fatalf("precondition failed: focus is %d, want the in-trap node %d",
-				h.app.focused, insideID)
+				h.app.focus.focused, insideID)
 		}
 	})
 
@@ -319,7 +319,7 @@ func TestRequestFocusRefusedOutsideTrap(t *testing.T) {
 	h.onLoop(func() { h.app.requestFocus(h.app.byComp[outside]) })
 
 	var got NodeID
-	h.onLoop(func() { got = h.app.focused })
+	h.onLoop(func() { got = h.app.focus.focused })
 	if got == outsideID {
 		t.Fatal("RequestFocus from outside an active trap was granted; " +
 			"confinement can be dissolved from the outside")
@@ -349,8 +349,8 @@ func TestStaleOutsideFocusStillConfined(t *testing.T) {
 	// Live stack entry, and focus deliberately forced OUTSIDE it.
 	h.onLoop(func() {
 		a := h.app
-		a.scopeStack = append(a.scopeStack, scopeEntry{scope: a.byComp[trap].id, restore: 0})
-		a.focused = a.byComp[outside].id
+		a.focus.scopeStack = append(a.focus.scopeStack, scopeEntry{scope: a.byComp[trap].id, restore: 0})
+		a.focus.focused = a.byComp[outside].id
 	})
 	h.onLoop(func() {
 		if h.app.confinement() == nil {
@@ -401,8 +401,8 @@ func TestTrapGovernsViaAncestryWithoutStackEntry(t *testing.T) {
 	h.onLoop(func() {
 		a := h.app
 		a.setFocus(a.byComp[inside].id)
-		if len(a.scopeStack) != 0 {
-			t.Fatalf("precondition failed: stack has %d entries, want none", len(a.scopeStack))
+		if len(a.focus.scopeStack) != 0 {
+			t.Fatalf("precondition failed: stack has %d entries, want none", len(a.focus.scopeStack))
 		}
 	})
 
@@ -451,10 +451,10 @@ func TestRepairLeavesFocusEmptyInsideSurvivingTrap(t *testing.T) {
 	// Enter the trap for real: requestFocus pushes the scope entry.
 	h.onLoop(func() { h.app.requestFocus(h.app.byComp[only]) })
 	h.onLoop(func() {
-		if h.app.focused == 0 {
+		if h.app.focus.focused == 0 {
 			t.Fatal("precondition failed: focus never entered the trap")
 		}
-		if len(h.app.scopeStack) == 0 {
+		if len(h.app.focus.scopeStack) == 0 {
 			t.Fatal("precondition failed: entering the trap pushed no scope entry")
 		}
 	})
@@ -464,8 +464,8 @@ func TestRepairLeavesFocusEmptyInsideSurvivingTrap(t *testing.T) {
 	h.onLoop(func() { trap.Remove(only) })
 
 	h.onLoop(func() {
-		if h.app.focused != 0 {
-			t.Errorf("focused = %d after removing the only focusable, want 0", h.app.focused)
+		if h.app.focus.focused != 0 {
+			t.Errorf("focused = %d after removing the only focusable, want 0", h.app.focus.focused)
 		}
 		if h.app.confinement() == nil {
 			t.Fatal("the surviving trap stopped governing once focus emptied")
@@ -541,7 +541,7 @@ func TestFocusingTheFocusedNodeIsANoOp(t *testing.T) {
 	h.onLoop(func() {
 		a := h.app
 		a.requestFocus(a.byComp[only])
-		id = a.focused
+		id = a.focus.focused
 	})
 	if id == 0 {
 		t.Fatal("precondition failed: nothing focused")
@@ -558,7 +558,7 @@ func TestFocusingTheFocusedNodeIsANoOp(t *testing.T) {
 	h.onLoop(func() { h.app.setFocus(id) }) // the same node again
 
 	var after NodeID
-	h.onLoop(func() { after = h.app.focused })
+	h.onLoop(func() { after = h.app.focus.focused })
 	if after != id {
 		t.Errorf("focus moved to %d on a redundant setFocus, want %d", after, id)
 	}
@@ -598,8 +598,8 @@ func TestPointerCannotFocusAnAncestorOutsideTheTrap(t *testing.T) {
 	// Enter the trap so it governs, with nothing focusable inside it.
 	h.onLoop(func() {
 		a := h.app
-		a.scopeStack = append(a.scopeStack, scopeEntry{scope: a.byComp[trap].id, restore: 0})
-		a.focused = 0
+		a.focus.scopeStack = append(a.focus.scopeStack, scopeEntry{scope: a.byComp[trap].id, restore: 0})
+		a.focus.focused = 0
 	})
 
 	// Press INSIDE the trap. The target is in scope, but the only focusable
@@ -613,7 +613,7 @@ func TestPointerCannotFocusAnAncestorOutsideTheTrap(t *testing.T) {
 
 	var focused, rootID NodeID
 	h.onLoop(func() {
-		focused = h.app.focused
+		focused = h.app.focus.focused
 		rootID = h.app.byComp[root].id
 	})
 	if focused == rootID {
@@ -650,15 +650,15 @@ func TestInvalidateFocusabilityRepairsFocusStrandedOutsideTheScope(t *testing.T)
 	// the exact state a plain focusability check cannot distinguish.
 	h.onLoop(func() {
 		a := h.app
-		a.scopeStack = append(a.scopeStack, scopeEntry{scope: a.byComp[trap].id, restore: 0})
-		a.focused = a.byComp[outside].id
+		a.focus.scopeStack = append(a.focus.scopeStack, scopeEntry{scope: a.byComp[trap].id, restore: 0})
+		a.focus.focused = a.byComp[outside].id
 	})
 	h.onLoop(func() {
 		a := h.app
 		if a.confinement() == nil {
 			t.Fatal("precondition failed: no active trap, so there is no scope to be outside of")
 		}
-		if !a.acceptsFocus(a.nodes[a.focused]) {
+		if !a.acceptsFocus(a.nodes[a.focus.focused]) {
 			t.Fatal("precondition failed: the stranded node is not focusable, so a " +
 				"focusability check alone would already repair it and this proves nothing")
 		}
@@ -668,7 +668,7 @@ func TestInvalidateFocusabilityRepairsFocusStrandedOutsideTheScope(t *testing.T)
 	h.sync()
 
 	var focused, want NodeID
-	h.onLoop(func() { focused, want = h.app.focused, h.app.byComp[inTrap].id })
+	h.onLoop(func() { focused, want = h.app.focus.focused, h.app.byComp[inTrap].id })
 	if focused != want {
 		t.Errorf("focused = %d after revalidation, want %d (the focusable inside the "+
 			"active trap): an eligible node OUTSIDE the scope must not satisfy the "+

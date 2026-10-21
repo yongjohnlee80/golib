@@ -100,7 +100,7 @@ func TestToolTip_ZeroWidthClustersStayInsideTheCard(t *testing.T) {
 	waitFor(t, "b's card", func() bool { return tipShown(h) == b.nodeID() })
 	h.sync()
 	var card Rect
-	h.onLoop(func() { card = h.app.tip.rect })
+	h.onLoop(func() { card = h.app.hover.tip.rect })
 	if card.W != 8 {
 		t.Fatalf("the card is %d wide, want 8: the text's six measured columns and a column each side", card.W)
 	}

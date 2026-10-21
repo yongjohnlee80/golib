@@ -136,12 +136,12 @@ func TestCellFace_TheToolTipCardOverAFacedSubtreeIsTheWindows(t *testing.T) {
 	h.inject(motion(1, 0))
 	waitFor(t, "the card", func() bool {
 		var id NodeID
-		h.onLoop(func() { id = h.app.tip.node })
+		h.onLoop(func() { id = h.app.hover.tip.node })
 		return id != 0
 	})
 	h.sync()
 	var card Rect
-	h.onLoop(func() { card = h.app.tip.rect })
+	h.onLoop(func() { card = h.app.hover.tip.rect })
 	if card.Y != 1 || card.W < 3 {
 		t.Fatalf("the card is at %+v, want over the terminal's first row", card)
 	}

@@ -80,7 +80,7 @@ func TestHover_TrapCeiling(t *testing.T) {
 	h.inject(motion(1, 0), motion(1, 1))
 	waitFor(t, "m1 hovered", func() bool {
 		var id NodeID
-		h.onLoop(func() { id = h.app.hovered })
+		h.onLoop(func() { id = h.app.hover.hovered })
 		return id == m1.nodeID()
 	})
 	if behind.on.Load() != 0 {
@@ -109,7 +109,7 @@ func TestHover_Clears(t *testing.T) {
 	waitFor(t, "hover on a third time", func() bool { return a.on.Load() == 3 })
 	h.onLoop(func() { root.Remove(a) })
 	var id NodeID
-	h.onLoop(func() { id = h.app.hovered })
+	h.onLoop(func() { id = h.app.hover.hovered })
 	if id != 0 {
 		t.Fatalf("hovered = %d after the node unmounted", id)
 	}

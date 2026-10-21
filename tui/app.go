@@ -47,17 +47,17 @@ type App struct {
 
 	// THE APP'S PARTS, each a type in the file of its concern, its fields loop-owned unless the
 	// type says otherwise.
-	imagePlacements // the images shown (graphics.go)
-	nativeState     // this frame's native placements (native.go)
-	faceTable       // the font faces cells name (face.go)
-	tooSmallState   // the smallest screen laid out for, and the too-small screen (toosmall.go)
-	hoverState      // the node under the pointer, and the tooltip (hover.go)
-	handlerPhase    // which phase runs, and whose handler (phase.go)
-	focusState      // the focused node, its scopes, batching and repair (focus.go)
-	captureState    // pointer capture and the gesture recogniser's state (capture.go)
-	pressCounter    // multi-click synthesis (app_routing.go)
-	timerState      // the timer heap (app_timers.go)
-	clipboardReads  // the clipboard reads waiting for an answer (clipboard.go)
+	images  imagePlacements // the images shown (graphics.go)
+	native  nativeState     // this frame's native placements (native.go)
+	faces   faceTable       // the font faces cells name (face.go)
+	small   tooSmallState   // the smallest screen laid out for, and the too-small screen (toosmall.go)
+	hover   hoverState      // the node under the pointer, and the tooltip (hover.go)
+	phase   handlerPhase    // which phase runs, and whose handler (phase.go)
+	focus   focusState      // the focused node, its scopes, batching and repair (focus.go)
+	capture captureState    // pointer capture and the gesture recogniser's state (capture.go)
+	presses pressCounter    // multi-click synthesis (app_routing.go)
+	timing  timerState      // the timer heap (app_timers.go)
+	clip    clipboardReads  // the clipboard reads waiting for an answer (clipboard.go)
 
 	ran  atomic.Bool
 	quit chan struct{} // closed when Run exits; stops the intake pump
@@ -160,7 +160,7 @@ func NewApp(root Component, opts ...AppOption) *App {
 	}
 	a.live = appLive{theme: cfg.theme, language: cfg.language, translations: cfg.translations, keymap: cfg.keymap, recognizer: cfg.recognizer}
 	a.caps = capsOf(cfg.backend)
-	a.minSize = cfg.minimumSize
+	a.small.minSize = cfg.minimumSize
 	a.queue.init(cfg.eventQueueLimit, cfg.logger)
 	a.bus = newBus(a)
 	a.async.ctxs = make(map[NodeID]context.Context)
@@ -466,7 +466,7 @@ func (a *App) loop(ctx context.Context) error {
 			a.drainProgramLane()
 			a.maybeFrame()
 
-		case <-a.timerC: // earliest deadline; nil, and so blocked, when idle
+		case <-a.timing.timerC: // earliest deadline; nil, and so blocked, when idle
 			a.fireDueTimers()
 
 		case <-ctx.Done():
@@ -505,8 +505,8 @@ func (a *App) drainProgramLane() {
 // A Bus delivery is not an Update merely because both travel lane B. Bus
 // subscribers that need a phase-gated mutation must enqueue an Update.
 func (a *App) runUpdate(fn func()) {
-	a.updateDepth++
-	defer func() { a.updateDepth-- }()
+	a.phase.updateDepth++
+	defer func() { a.phase.updateDepth-- }()
 	defer a.contain("update", nil, nil)
 	fn()
 }
@@ -647,7 +647,7 @@ func (a *App) renderFrame() {
 func (a *App) beginFrame() {
 	a.buf.clear()
 	a.beginNatives()
-	a.frameImages = a.frameImages[:0]
+	a.images.frameImages = a.images.frameImages[:0]
 }
 
 // presentFrame ends a frame, whatever painted it, the one way: the native views and images the
@@ -690,18 +690,18 @@ func (a *App) flush() {
 // or clears focus if no candidate is available. This guarantees that no component
 // can receive keyboard input invisibly without being displayed on screen.
 func (a *App) repairInvisibleFocus() {
-	if n := a.nodes[a.focused]; n != nil && !n.visible() {
+	if n := a.nodes[a.focus.focused]; n != nil && !n.visible() {
 		// A FocusInto waiting for this layout says where the focus goes: a pane shown in the turn
 		// the focused one was hidden (two views swapped). It is answered first; the repair, which
 		// would hand the focus to the first focusable and so overtake it, runs only if the focus
 		// is still not visible.
-		if id := a.pendingFocusInto; id != 0 {
-			a.pendingFocusInto = 0
+		if id := a.focus.pendingFocusInto; id != 0 {
+			a.focus.pendingFocusInto = 0
 			if p := a.nodes[id]; p != nil {
 				a.focusInto(p.comp, false)
 			}
 		}
-		if m := a.nodes[a.focused]; m != nil && !m.visible() {
+		if m := a.nodes[a.focus.focused]; m != nil && !m.visible() {
 			a.repairFocus()
 		}
 	}
@@ -728,16 +728,16 @@ func (a *App) repairInvisibleFocus() {
 // becomes visible, produces no repaint and therefore no further frame to retry
 // in. The flag is cleared before the retry, so one layout buys one attempt.
 func (a *App) retryDeferredFocusRepair() {
-	if id := a.pendingFocusInto; id != 0 {
-		a.pendingFocusInto = 0 // one layout buys one attempt
+	if id := a.focus.pendingFocusInto; id != 0 {
+		a.focus.pendingFocusInto = 0 // one layout buys one attempt
 		if n := a.nodes[id]; n != nil {
 			a.focusInto(n.comp, false) // never defers again
 		}
 	}
-	if !a.pendingRepair {
+	if !a.focus.pendingRepair {
 		return
 	}
-	a.pendingRepair = false
+	a.focus.pendingRepair = false
 	a.revalidateFocus()
 }
 
@@ -769,7 +769,7 @@ func (a *App) applyCursorColor(comp Component) {
 // This hardware cursor anchoring is required so operating system IME composition
 // windows anchor properly above or below the active text input cell.
 func (a *App) applyCursor() {
-	if n := a.nodes[a.focused]; n != nil && n.visible() {
+	if n := a.nodes[a.focus.focused]; n != nil && n.visible() {
 		if cr, ok := n.comp.(CursorReporter); ok {
 			// a cursor outside what the node can show (scrolled out of a ScrollView) is hidden, not
 			// drawn over whatever is there

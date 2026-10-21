@@ -34,11 +34,11 @@ type PointerLeaveEvent struct{}
 func (PointerLeaveEvent) isEvent() {}
 
 // Hovered reports whether the pointer is over this node.
-func (c *Context) Hovered() bool { return c.node.id != 0 && c.app.hovered == c.node.id }
+func (c *Context) Hovered() bool { return c.node.id != 0 && c.app.hover.hovered == c.node.id }
 
 // trackHover follows the pointer to the node under it.
 func (a *App) trackHover(e MouseEvent) {
-	a.pointer = Point{X: e.X, Y: e.Y}
+	a.hover.pointer = Point{X: e.X, Y: e.Y}
 	a.setHovered(a.nodeUnderPointer())
 }
 
@@ -48,9 +48,9 @@ func (a *App) refreshHover() { a.setHovered(a.nodeUnderPointer()) }
 
 // nodeUnderPointer is the hovered node at the last pointer position, or nil.
 func (a *App) nodeUnderPointer() *node {
-	x, y := a.pointer.X, a.pointer.Y
-	if a.captureOwner != 0 {
-		owner := a.nodes[a.captureOwner]
+	x, y := a.hover.pointer.X, a.hover.pointer.Y
+	if a.capture.captureOwner != 0 {
+		owner := a.nodes[a.capture.captureOwner]
 		if owner != nil && owner.absRect.Contains(x, y) {
 			return owner
 		}
@@ -65,11 +65,11 @@ func (a *App) setHovered(n *node) {
 	if n != nil {
 		id = n.id
 	}
-	if id == a.hovered {
+	if id == a.hover.hovered {
 		return
 	}
-	old := a.nodes[a.hovered]
-	a.hovered = id
+	old := a.nodes[a.hover.hovered]
+	a.hover.hovered = id
 	a.notifyHover(old, false)
 	a.notifyHover(n, true)
 	a.toolTipHover(n)

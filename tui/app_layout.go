@@ -48,9 +48,9 @@ func (a *App) layoutTree() {
 	if root == nil {
 		return
 	}
-	a.inLayout = true
+	a.phase.inLayout = true
 	defer func() {
-		a.inLayout = false
+		a.phase.inLayout = false
 		a.layingOut = nil
 	}()
 

@@ -188,7 +188,7 @@ func TestReadClipboardAnsweredBeforeItsTimeout(t *testing.T) {
 		t.Fatalf("answers %+v", got)
 	}
 	var deadlines int
-	h.onLoop(func() { deadlines = len(h.app.timers) })
+	h.onLoop(func() { deadlines = len(h.app.timing.timers) })
 	if deadlines != 0 {
 		t.Fatalf("%d deadlines left after the answer, want 0", deadlines)
 	}

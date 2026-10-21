@@ -7,7 +7,7 @@ package tui
 // # Architectural Invariants & Execution Guarantees
 //
 //  1. Single-Owner Loop Goroutine:
-//     renderTree executes strictly on the App loop goroutine. It sets the a.inRender
+//     renderTree executes strictly on the App loop goroutine. It sets the a.phase.inRender
 //     guard flag for the duration of the traversal, ensuring that any illicit tree
 //     mutation (Mount, Unmount, Move) attempted during Render triggers a fail-loud panic.
 //
@@ -24,8 +24,8 @@ func (a *App) renderTree() {
 	if root == nil {
 		return
 	}
-	a.inRender = true
-	defer func() { a.inRender = false }()
+	a.phase.inRender = true
+	defer func() { a.phase.inRender = false }()
 	a.renderNode(root, newRootSurface(a.buf, a.rctx))
 }
 
@@ -63,9 +63,9 @@ func (a *App) renderNode(n *node, s Surface) {
 	}
 	n.comp.Render(s)
 	a.noteImage(n)
-	subtree := native >= 0 && a.natives[native].Scope == ScopeSubtree
+	subtree := native >= 0 && a.native.natives[native].Scope == ScopeSubtree
 	if subtree {
-		a.styledDepth++
+		a.native.styledDepth++
 	}
 	for _, ch := range n.children {
 		if ch.visible() {
@@ -73,9 +73,9 @@ func (a *App) renderNode(n *node, s Surface) {
 		}
 	}
 	if subtree {
-		a.styledDepth--
+		a.native.styledDepth--
 	}
 	if native >= 0 {
-		a.natives[native].End = a.buf.order
+		a.native.natives[native].End = a.buf.order
 	}
 }

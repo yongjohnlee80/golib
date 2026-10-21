@@ -36,7 +36,7 @@ func (a *App) requestReveal(n *node) {
 // reports whether one moved. Nothing to show (focus gone, the node unplaced or removed), or no
 // Revealer that moves, clears the request.
 func (a *App) revealStep() bool {
-	n := a.nodes[a.focused]
+	n := a.nodes[a.focus.focused]
 	if n == nil || !n.mounted || !n.visible() {
 		a.reveal = false
 		return false

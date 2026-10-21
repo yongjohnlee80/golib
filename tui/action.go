@@ -256,7 +256,7 @@ func checkResolvers(op string, r []ActionResolver) {
 // setter hard to reach would only make the same mutation obscure.
 func (c *Context) SetDefaultActionResolvers(r ...ActionResolver) {
 	a := c.app
-	if a.initNode != c.node.id {
+	if a.phase.initNode != c.node.id {
 		panic(errs.Fatal{
 			Op:   "tui: Context.SetDefaultActionResolvers",
 			Rule: "legal only while this component's own Init is running",
@@ -336,7 +336,7 @@ func (c *Context) ForwardAction(target Component, a Action) bool {
 		return false
 	}
 	app := c.app
-	if app.actionHandlerNode != c.node.id {
+	if app.phase.actionHandlerNode != c.node.id {
 		// Not inside this node's own HandleAction, so there is no invocation to
 		// take provenance from. Refusing beats inventing one — and beats the
 		// worse case, a raw handler nested inside somebody's action delivery
@@ -349,8 +349,8 @@ func (c *Context) ForwardAction(target Component, a Action) bool {
 	}
 	return app.dispatchAction(tn, ActionInvocation{
 		Action: a,
-		Origin: app.handlerOrigin,
-		Source: app.handlerSource,
+		Origin: app.phase.handlerOrigin,
+		Source: app.phase.handlerSource,
 	})
 }
 
@@ -427,7 +427,7 @@ func (a *App) deliverAction(n *node, h ActionHandler, inv ActionInvocation) bool
 func (a *App) inActionPhase(n *node, inv ActionInvocation, fn func() bool) (handled bool) {
 	// The provenance is recorded so Context.ForwardAction can carry this invocation's to a child
 	// without the handler being able to state it.
-	defer a.leaveDelivery(a.enterDelivery(delivery{node: n.id, action: n.id, origin: inv.Origin, source: inv.Source}))
+	defer a.phase.leaveDelivery(a.phase.enterDelivery(delivery{node: n.id, action: n.id, origin: inv.Origin, source: inv.Source}))
 	defer a.contain("action", n, &handled)
 	return fn()
 }

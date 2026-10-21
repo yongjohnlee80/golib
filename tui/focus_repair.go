@@ -11,24 +11,24 @@ func (a *App) repairFocus() {
 	// unmounts three buttons and mounts two would otherwise repair five times
 	// against intermediate lists that were never a state the caller asked for,
 	// and land focus somewhere the final list does not justify.
-	if a.batchDepth > 0 {
-		a.batchRepair = true
+	if a.focus.batchDepth > 0 {
+		a.focus.batchRepair = true
 		return
 	}
 	scope := a.currentScope()
 	nom, retryNom := a.nominatedFocus(scope)
 	if nom != nil {
-		a.trace(TraceEvent{Kind: TraceFocusRepair, Node: nom.id, Prev: a.focused,
+		a.trace(TraceEvent{Kind: TraceFocusRepair, Node: nom.id, Prev: a.focus.focused,
 			Detail: "re-homed to the scope owner's nominated target"})
 		a.setFocus(nom.id)
 		return
 	}
 	if retryNom {
-		a.pendingRepair = true
+		a.focus.pendingRepair = true
 	}
 	ring := a.focusRing(scope)
 	if len(ring) == 0 {
-		a.trace(TraceEvent{Kind: TraceFocusRepair, Prev: a.focused,
+		a.trace(TraceEvent{Kind: TraceFocusRepair, Prev: a.focus.focused,
 			Detail: "no focusable in scope"})
 		// setFocus(0), not a direct assignment. This path was written for
 		// unmount, where the dead id is already cleared and nobody is left to
@@ -49,7 +49,7 @@ func (a *App) repairFocus() {
 		// the scope is empty, or its candidates have not been laid out yet — and
 		// giving up leaves focus nowhere for a dialog whose buttons are about to
 		// appear. One retry after layout tells the two apart.
-		a.pendingRepair = true
+		a.focus.pendingRepair = true
 		a.setFocus(0)
 		// And the capture check explicitly, because setFocus cannot do it on
 		// every path that reaches here. The UNMOUNT caller zeroes focus before
@@ -64,7 +64,7 @@ func (a *App) repairFocus() {
 		a.captureCheckFocus()
 		return
 	}
-	a.trace(TraceEvent{Kind: TraceFocusRepair, Node: ring[0].id, Prev: a.focused,
+	a.trace(TraceEvent{Kind: TraceFocusRepair, Node: ring[0].id, Prev: a.focus.focused,
 		Detail: "re-homed to the first focusable in scope"})
 	a.setFocus(ring[0].id)
 }
@@ -87,8 +87,8 @@ func (c *Context) InvalidateFocusability() {
 	// Inside a batch this is deferred with everything else. Revalidating against
 	// a half-applied list is exactly what the batch exists to prevent, and the
 	// end-of-batch step runs this same revalidation once.
-	if a.batchDepth > 0 {
-		a.batchRepair = true
+	if a.focus.batchDepth > 0 {
+		a.focus.batchRepair = true
 		return
 	}
 	a.revalidateFocus()
@@ -104,7 +104,7 @@ func (a *App) revalidateFocus() {
 	// rules make that state reachable — and returning early for it would leave
 	// the scope unrepaired while reporting that it had been checked.
 	scope := a.currentScope()
-	if n := a.nodes[a.focused]; n != nil && withinScope(n, scope) && a.acceptsFocus(n) {
+	if n := a.nodes[a.focus.focused]; n != nil && withinScope(n, scope) && a.acceptsFocus(n) {
 		// Still legal: focus stays where the user put it, as Qt's does. A
 		// scope owner's nomination says where focus STARTS and where it goes
 		// when it has to move; it never takes the keyboard off a control that

@@ -137,7 +137,7 @@ func TestBatchTreeMutationSurvivesAPanicInside(t *testing.T) {
 				panic("from inside the batch")
 			})
 		}()
-		depthAfter = h.app.batchDepth
+		depthAfter = h.app.focus.batchDepth
 	})
 	h.sync()
 

@@ -49,25 +49,25 @@ const maxCellFaces = 64
 
 // faceIndex is family's index in the face table, interned on first use. Past maxCellFaces it is 0.
 func (a *App) faceIndex(family string) uint16 {
-	if i, ok := a.faceIDs[family]; ok {
+	if i, ok := a.faces.faceIDs[family]; ok {
 		return i
 	}
-	if len(a.faceNames) == 0 {
-		a.faceNames = []string{""}
+	if len(a.faces.faceNames) == 0 {
+		a.faces.faceNames = []string{""}
 	}
-	if len(a.faceNames) >= maxCellFaces {
-		if !a.faceFull {
-			a.faceFull = true
+	if len(a.faces.faceNames) >= maxCellFaces {
+		if !a.faces.faceFull {
+			a.faces.faceFull = true
 			logger.Warning(a.cfg.logger, nil, map[string]any{"tui": "too many cell faces: drawn in the window's", "family": family, "max": maxCellFaces})
 		}
 		return 0
 	}
-	i := uint16(len(a.faceNames))
-	a.faceNames = append(a.faceNames, family)
-	if a.faceIDs == nil {
-		a.faceIDs = map[string]uint16{}
+	i := uint16(len(a.faces.faceNames))
+	a.faces.faceNames = append(a.faces.faceNames, family)
+	if a.faces.faceIDs == nil {
+		a.faces.faceIDs = map[string]uint16{}
 	}
-	a.faceIDs[family] = i
+	a.faces.faceIDs[family] = i
 	a.sendFaces()
 	return i
 }
@@ -75,7 +75,7 @@ func (a *App) faceIndex(family string) uint16 {
 // sendFaces hands the face table to a backend that draws fonts: when it grows, and when the
 // backend starts.
 func (a *App) sendFaces() {
-	if h := a.caps.faces; h != nil && len(a.faceNames) > 1 {
-		h.SetCellFaces(slices.Clone(a.faceNames))
+	if h := a.caps.faces; h != nil && len(a.faces.faceNames) > 1 {
+		h.SetCellFaces(slices.Clone(a.faces.faceNames))
 	}
 }

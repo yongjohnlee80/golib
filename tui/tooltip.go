@@ -68,20 +68,20 @@ func toolTipTarget(n *node) *node {
 // and the control it is over arms its own.
 func (a *App) toolTipHover(n *node) {
 	t := toolTipTarget(n)
-	if t == nil || t.id != a.tip.pressed {
-		a.tip.pressed = 0
+	if t == nil || t.id != a.hover.tip.pressed {
+		a.hover.tip.pressed = 0
 	}
-	if a.tip.node != 0 && !a.tip.focus && (t == nil || t.id != a.tip.node) {
+	if a.hover.tip.node != 0 && !a.hover.tip.focus && (t == nil || t.id != a.hover.tip.node) {
 		a.hideToolTip()
 	}
 	a.cancelToolTipTimer()
-	if t == nil || t.id == a.tip.node || t.id == a.tip.pressed {
+	if t == nil || t.id == a.hover.tip.node || t.id == a.hover.tip.pressed {
 		return
 	}
 	id := t.id
-	a.tip.pending = a.addDeadline(toolTipDelay, func() {
-		a.tip.pending = nil
-		if n := a.nodes[id]; n != nil && toolTipTarget(a.nodes[a.hovered]) == n {
+	a.hover.tip.pending = a.addDeadline(toolTipDelay, func() {
+		a.hover.tip.pending = nil
+		if n := a.nodes[id]; n != nil && toolTipTarget(a.nodes[a.hover.hovered]) == n {
 			a.showToolTip(n, false)
 		}
 	})
@@ -91,7 +91,7 @@ func (a *App) toolTipHover(n *node) {
 // above it shows at once (a ComboBox's field is inside the ComboBox); otherwise a card shown for
 // the focus it left closes.
 func (a *App) toolTipFocus(n *node, byKey bool) {
-	if a.tip.focus && a.tip.node != 0 {
+	if a.hover.tip.focus && a.hover.tip.node != 0 {
 		a.hideToolTip()
 	}
 	if !byKey || n == nil {
@@ -107,50 +107,50 @@ func (a *App) toolTipFocus(n *node, byKey bool) {
 func (a *App) toolTipPress(mouse bool) {
 	a.cancelToolTipTimer()
 	if mouse {
-		if t := toolTipTarget(a.nodes[a.hovered]); t != nil {
-			a.tip.pressed = t.id
+		if t := toolTipTarget(a.nodes[a.hover.hovered]); t != nil {
+			a.hover.tip.pressed = t.id
 		}
 	}
 	a.hideToolTip()
 }
 
 func (a *App) showToolTip(n *node, focus bool) {
-	a.tip.node, a.tip.text, a.tip.focus = n.id, n.comp.(ToolTipper).ToolTip(), focus
+	a.hover.tip.node, a.hover.tip.text, a.hover.tip.focus = n.id, n.comp.(ToolTipper).ToolTip(), focus
 	a.invalidate(false)
 }
 
 func (a *App) hideToolTip() {
-	if a.tip.node == 0 {
+	if a.hover.tip.node == 0 {
 		return
 	}
-	a.tip.node, a.tip.text, a.tip.focus, a.tip.rect = 0, "", false, Rect{}
+	a.hover.tip.node, a.hover.tip.text, a.hover.tip.focus, a.hover.tip.rect = 0, "", false, Rect{}
 	a.invalidate(false)
 }
 
 func (a *App) cancelToolTipTimer() {
-	if a.tip.pending != nil {
-		a.tip.pending()
-		a.tip.pending = nil
+	if a.hover.tip.pending != nil {
+		a.hover.tip.pending()
+		a.hover.tip.pending = nil
 	}
 }
 
 // renderToolTip paints the card over the frame, below its control (above it when there is no room
 // below), inside the screen. A control gone, hidden or with other text closes it instead.
 func (a *App) renderToolTip() {
-	if a.tip.node == 0 {
+	if a.hover.tip.node == 0 {
 		return
 	}
-	n := a.nodes[a.tip.node]
+	n := a.nodes[a.hover.tip.node]
 	t, ok := ToolTipper(nil), false
 	if n != nil {
 		t, ok = n.comp.(ToolTipper)
 	}
-	if !ok || !n.mounted || !n.visible() || t.ToolTip() != a.tip.text {
-		a.tip.node, a.tip.text, a.tip.focus, a.tip.rect = 0, "", false, Rect{}
+	if !ok || !n.mounted || !n.visible() || t.ToolTip() != a.hover.tip.text {
+		a.hover.tip.node, a.hover.tip.text, a.hover.tip.focus, a.hover.tip.rect = 0, "", false, Rect{}
 		return
 	}
 	s := newRootSurface(a.buf, a.rctx)
-	lines := wrapToolTip(a.tip.text, min(toolTipWidth, a.size.W-2), s.StringWidth)
+	lines := wrapToolTip(a.hover.tip.text, min(toolTipWidth, a.size.W-2), s.StringWidth)
 	if len(lines) == 0 {
 		return
 	}
@@ -165,7 +165,7 @@ func (a *App) renderToolTip() {
 	for i, l := range lines {
 		DrawText(s, r.X+1, r.Y+i, l, st)
 	}
-	a.tip.rect = r
+	a.hover.tip.rect = r
 }
 
 // placeToolTip is where a card of size sz goes for a control at anchor, on a screen of size

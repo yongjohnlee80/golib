@@ -23,7 +23,7 @@ func (p *tipProbe) ToolTip() string { return p.tip }
 
 // tipShown is the node the card is for, read on the loop (0: none).
 func tipShown(h *harness) (id NodeID) {
-	h.onLoop(func() { id = h.app.tip.node })
+	h.onLoop(func() { id = h.app.hover.tip.node })
 	return id
 }
 
@@ -62,7 +62,7 @@ func TestToolTip_HoverShowsAfterTheDelayAndTheCardPassesThePointer(t *testing.T)
 	h.inject(motion(4, 2))
 	waitFor(t, "the control under the card hovered", func() bool {
 		var id NodeID
-		h.onLoop(func() { id = h.app.hovered })
+		h.onLoop(func() { id = h.app.hover.hovered })
 		return id == under.nodeID()
 	})
 	waitFor(t, "the card closed", func() bool { return tipShown(h) == 0 })
@@ -100,7 +100,7 @@ func TestToolTip_KeyboardFocusShowsItAndAKeyClosesIt(t *testing.T) {
 	h.inject(motion(20, 5))
 	waitFor(t, "the pointer off a", func() bool {
 		var id NodeID
-		h.onLoop(func() { id = h.app.hovered })
+		h.onLoop(func() { id = h.app.hover.hovered })
 		return id != a.nodeID()
 	})
 	h.inject(motion(1, 0))
@@ -134,7 +134,7 @@ func TestToolTip_TheCardCoversANativeViewBeneath(t *testing.T) {
 	h.inject(motion(1, 0))
 	waitFor(t, "a's card", func() bool { return tipShown(h) == a.nodeID() })
 	var card Rect
-	h.onLoop(func() { card = h.app.tip.rect })
+	h.onLoop(func() { card = h.app.hover.tip.rect })
 	waitFor(t, "the graph covered by the card", func() bool {
 		for _, p := range nb.last() {
 			if p.View == "graph" && slices.Contains(p.Covered, card) {

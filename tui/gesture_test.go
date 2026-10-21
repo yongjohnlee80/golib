@@ -203,7 +203,7 @@ func TestReleasingOutsideDoesNotActivate(t *testing.T) {
 	// a deadline, so the only thing the wait removes is the race, not the check.
 	waitFor(t, "the capture to be released", func() bool {
 		var held NodeID
-		h.onLoop(func() { held = h.app.captureOwner })
+		h.onLoop(func() { held = h.app.capture.captureOwner })
 		return held == 0
 	})
 }
@@ -228,8 +228,8 @@ func TestAGestureHoldsThePointer(t *testing.T) {
 	var kind CaptureKind
 	var held bool
 	h.onLoop(func() {
-		held = h.app.captureOwner == h.app.byComp[c].id
-		kind = h.app.captureKind
+		held = h.app.capture.captureOwner == h.app.byComp[c].id
+		kind = h.app.capture.captureKind
 	})
 	if !held {
 		t.Fatal("the gesture did not take the pointer; motion would go to whatever the " +
@@ -344,7 +344,7 @@ func TestEveryCaptureLossLeavesTheControlDisarmed(t *testing.T) {
 				t.Errorf("a gesture that died activated the control %d time(s)", got)
 			}
 			var held NodeID
-			h.onLoop(func() { held = h.app.captureOwner })
+			h.onLoop(func() { held = h.app.capture.captureOwner })
 			if held != 0 {
 				t.Errorf("capture still held by %d", held)
 			}
@@ -426,7 +426,7 @@ func TestOnlyAnActivatableTargetStartsAGesture(t *testing.T) {
 	h.sync()
 
 	var held NodeID
-	h.onLoop(func() { held = h.app.captureOwner })
+	h.onLoop(func() { held = h.app.capture.captureOwner })
 	if held != 0 {
 		t.Errorf("a press on a non-Activatable component took capture %d; the gesture "+
 			"could produce nothing and the capture would swallow the next press", held)
@@ -641,7 +641,7 @@ func TestAPressOnAPolicyDisabledControlStartsNoGesture(t *testing.T) {
 		t.Errorf("a policy-disabled control was armed %d time(s), want 0", got)
 	}
 	var held NodeID
-	h.onLoop(func() { held = h.app.captureOwner })
+	h.onLoop(func() { held = h.app.capture.captureOwner })
 	if held != 0 {
 		t.Errorf("a policy-disabled control took capture %d", held)
 	}
@@ -686,7 +686,7 @@ func TestAConsumedPressNeverReachesTheRecognizer(t *testing.T) {
 			"(%d SetArmed calls, want 0)", got)
 	}
 	var held NodeID
-	h.onLoop(func() { held = h.app.captureOwner })
+	h.onLoop(func() { held = h.app.capture.captureOwner })
 	if held != 0 {
 		t.Errorf("a consumed press still took capture %d; the widget would be holding "+
 			"the pointer for a gesture it never began", held)
@@ -749,7 +749,7 @@ func TestATypedNilRecognizerActionActivatesNothing(t *testing.T) {
 	}
 	// The gesture still ends cleanly: consuming without producing is legal.
 	var held NodeID
-	h.onLoop(func() { held = h.app.captureOwner })
+	h.onLoop(func() { held = h.app.capture.captureOwner })
 	if held != 0 {
 		t.Errorf("capture still held by %d", held)
 	}
@@ -844,7 +844,7 @@ func TestReplacingTheRecognizerMidGestureCancelsIt(t *testing.T) {
 		t.Error("the old target is still armed after the recogniser was replaced")
 	}
 	var held NodeID
-	h.onLoop(func() { held = h.app.captureOwner })
+	h.onLoop(func() { held = h.app.capture.captureOwner })
 	if held != 0 {
 		t.Errorf("capture still held by %d after replacement", held)
 	}
@@ -971,11 +971,11 @@ func TestAnInvalidGestureStateIsRefusedBeforeAnythingChanges(t *testing.T) {
 	var armedAfter bool
 	var fatal *errs.Fatal
 	h.onLoop(func() {
-		before, stBefore = h.app.captureOwner, h.app.gestureState
+		before, stBefore = h.app.capture.captureOwner, h.app.capture.gestureState
 		n := h.app.byComp[c]
 		local := MouseEvent{Kind: MouseMotion, X: 1, Y: 1}
 		fatal = fatalFrom(func() { h.app.runRecognizer(badStateRecognizer{}, n, local) })
-		after, stAfter, armedAfter = h.app.captureOwner, h.app.gestureState, h.app.gestureArmed
+		after, stAfter, armedAfter = h.app.capture.captureOwner, h.app.capture.gestureState, h.app.capture.gestureArmed
 	})
 	h.sync()
 
@@ -1078,7 +1078,7 @@ func TestAnActivationThatEndsItsGestureIsNotArmedAgain(t *testing.T) {
 	waitFor(t, "activated on the press", func() bool { return c.activations.Load() == 1 })
 	h.sync()
 	var held NodeID
-	h.onLoop(func() { held = h.app.captureOwner })
+	h.onLoop(func() { held = h.app.capture.captureOwner })
 	if held != 0 {
 		t.Errorf("the capture is still held by node %d after the activation cancelled it", held)
 	}

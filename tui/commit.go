@@ -74,7 +74,7 @@ func (c *Context) AfterLayout(key CommitKey, fn func()) {
 	// so a parent may still register after laying its children out. This is the
 	// same rule CapturePointer enforces for handlers, and for the same reason:
 	// identity, not merely "some phase is running".
-	if !a.inLayout || a.layingOut != c.node {
+	if !a.phase.inLayout || a.layingOut != c.node {
 		panic(errs.Fatal{
 			Op: "tui: Context.AfterLayout",
 			Rule: "legal only inside this component's own Layout; geometry is not " +
