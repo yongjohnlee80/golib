@@ -5,7 +5,8 @@ import (
 	"testing"
 )
 
-// fakeLines is a cellLines of fixed lines, trailing blanks trimmed as a terminal's lineRunes does.
+// fakeLines is a cellLines of fixed lines, trailing blanks trimmed as a terminal's lineRunes does,
+// and a line out of range has nothing, as Terminal.lineCells gives.
 type fakeLines struct {
 	lines []string
 	cols  int
@@ -17,7 +18,12 @@ func (f fakeLines) width() int     { return f.cols }
 func (f fakeLines) wrapped(i int) bool {
 	return f.wraps[i]
 }
-func (f fakeLines) runes(i int) []rune { return []rune(strings.TrimRight(f.lines[i], " ")) }
+func (f fakeLines) runes(i int) []rune {
+	if i < 0 || i >= len(f.lines) {
+		return nil
+	}
+	return []rune(strings.TrimRight(f.lines[i], " "))
+}
 
 // The normal-mode motions read only a cellLines: w, b and e walk runs of non-blanks, and a line's
 // end ends a word.
@@ -39,6 +45,15 @@ func TestTerminalMotionsReadACellLines(t *testing.T) {
 		if [2]int{l, col} != c.want {
 			t.Errorf("%s from %v: %v, want %v", c.name, c.from, [2]int{l, col}, c.want)
 		}
+	}
+}
+
+// A motion reads the line it is on: e on a four-letter word ends it, though the next line is one
+// letter.
+func TestTerminalMotionsReadTheirOwnLine(t *testing.T) {
+	ls := fakeLines{lines: []string{"abcd", "x"}, cols: 6}
+	if l, c := wordEnd(ls, 0, 0); l != 0 || c != 3 {
+		t.Errorf("e on abcd from its start: %d,%d, want 0,3", l, c)
 	}
 }
 
