@@ -111,15 +111,8 @@ func (c *EditorCore) HandlePaste(text string) bool {
 func (c *EditorCore) HandleTick() bool {
 	ln, col := c.buf.ln, c.buf.col
 	defer c.cursorMoved(ln, col)
-	c.keys.chordCancel = nil
-	if c.keys.pendingRune != 0 {
-		r := c.keys.pendingRune
-		c.keys.pendingRune = 0
-		c.beginGroup()
-		c.buf.insertText(string(r))
-		c.edited()
-		c.dotTypedText(string(r)) // typed: what the tick committed is text, not the chord
-	}
+	c.keys.chordCancel = nil // fired: nothing left to cancel
+	c.settlePendingRune()    // typed: what the tick committed is text, not the chord
 	return true
 }
 
@@ -216,12 +209,9 @@ func (c *EditorCore) EndDrag() { c.dragging = false }
 // handleInsertKey: structural Insert handling (text, chord, Esc, editing keys). Tab INSERTS a tab
 // in Insert mode; traversal belongs to Normal mode, where Tab bubbles.
 func (c *EditorCore) handleInsertKey(k tui.KeyEvent) bool {
-	if c.readOnly {
-		if k.Text != "" || k.Code == tui.KeyEnter || k.Code == tui.KeyTab || k.Code == tui.KeyBackspace || k.Code == tui.KeyDelete {
-			return true
-		}
+	if c.readOnly && insertEdits(k) {
+		return true // consumed, refused: a viewer never changes text
 	}
-	b := &c.buf
 	var act Action
 	var bound, unbound bool
 	if s, ok := c.seqOf(k); ok {
@@ -247,32 +237,9 @@ func (c *EditorCore) handleInsertKey(k tui.KeyEvent) bool {
 
 	isText := k.Text != "" && k.Mods&nonTextMods == 0 && k.Code != tui.KeyTab
 
-	// Chord state machine first (only in modal editing).
-	if c.keys.modal && c.keys.pendingRune != 0 {
-		if isText && []rune(k.Text)[0] == c.keys.chord[1] {
-			// Second chord rune dispatched before the tick: escape.
-			c.keys.pendingRune = 0
-			if c.keys.chordCancel != nil {
-				c.keys.chordCancel()
-				c.keys.chordCancel = nil
-			}
-			c.macroKey(tui.KeyEvent{Code: tui.KeyEscape}) // the chord is an Esc, to a macro
-			c.exitInsert()
-			return true
-		}
-		// Commit the held rune, then process THIS key from the top of the Insert state machine —
-		// it may itself be a fresh chord start, so "jjk" commits the first j and escapes on the
-		// second j plus k.
-		c.settlePendingRune()
-	}
-	if c.keys.modal && isText && c.keys.chord != nil && c.keys.pendingRune == 0 && []rune(k.Text)[0] == c.keys.chord[0] {
-		c.keys.pendingRune = c.keys.chord[0]
-		if c.ctx != nil {
-			c.keys.chordCancel = c.ctx.After(c.keys.chordTimeout)
-		}
+	if c.keys.modal && c.takeEscapeChord(k, isText) {
 		return true
 	}
-
 	if c.replace != nil && c.replaceKey(k) {
 		return true
 	}
@@ -280,50 +247,9 @@ func (c *EditorCore) handleInsertKey(k tui.KeyEvent) bool {
 		c.dotInsertKey(k)
 		return true
 	}
-	switch k.Code {
-	case tui.KeyTab, tui.KeyEnter, tui.KeyBackspace, tui.KeyDelete,
-		tui.KeyLeft, tui.KeyRight, tui.KeyUp, tui.KeyDown, tui.KeyHome, tui.KeyEnd:
-		c.dotInsertKey(k) // replayed through this same handler: Enter re-runs auto-indent
-	case tui.KeyPageUp, tui.KeyPageDown:
-		c.macroKey(k)
-		c.dotJump() // a jump splits the change
-	}
-	switch k.Code {
-	case tui.KeyTab:
-		// Insert mode consumes Tab as text; traversal belongs to Normal mode, where Tab bubbles.
-		c.beginGroup()
-		b.insertText("\t")
-		c.edited()
-		return true
-	case tui.KeyEscape:
-		if c.keys.modal {
-			c.macroKey(k)
-			c.exitInsert()
-			return true
-		}
-		if c.vAnchor != (taPos{}) {
-			c.vAnchor = taPos{}
-			c.markDirty()
-			return true
-		}
-		// modeless, Esc is Normal mode's: it cancels the active find, then is the host's
-		return c.escapeFind()
-	case tui.KeyEnter:
-		c.beginGroup()
-		c.insertIndentedNewline()
-		c.edited()
-		return true
-	case tui.KeyBackspace, tui.KeyDelete:
-		region := b.forwardRegion
-		if k.Code == tui.KeyBackspace {
-			region = b.backspaceRegion
-		}
-		if lo, hi, ok := region(); ok {
-			c.beginGroup()
-			b.deleteRegion(lo, hi)
-			c.edited()
-		}
-		return true
+	c.recordInsertKey(k)
+	if done, handled := c.insertEditKey(k); done {
+		return handled
 	}
 	if act, caret := insertCaretKeys[k.Code]; caret {
 		c.move(act, 1)
@@ -336,6 +262,97 @@ func (c *EditorCore) handleInsertKey(k tui.KeyEvent) bool {
 		return true
 	}
 	return false
+}
+
+// insertEdits reports whether k, in Insert, would change the text: text, Enter, Tab, Backspace or
+// Delete.
+func insertEdits(k tui.KeyEvent) bool {
+	switch k.Code {
+	case tui.KeyEnter, tui.KeyTab, tui.KeyBackspace, tui.KeyDelete:
+		return true
+	}
+	return k.Text != ""
+}
+
+// takeEscapeChord is the modal escape chord (jk, jj): its first rune is held until the second
+// completes it as an Esc; any other key, or the tick, commits it as text. It reports whether it
+// took the key.
+func (c *EditorCore) takeEscapeChord(k tui.KeyEvent, isText bool) bool {
+	if c.keys.pendingRune != 0 {
+		if isText && []rune(k.Text)[0] == c.keys.chord[1] {
+			c.keys.takeRune()                             // the second rune before the tick: an escape
+			c.macroKey(tui.KeyEvent{Code: tui.KeyEscape}) // the chord is an Esc, to a macro
+			c.exitInsert()
+			return true
+		}
+		// Commit the held rune, then process THIS key afresh — it may itself be a fresh chord
+		// start, so "jjk" commits the first j and escapes on the second j plus k.
+		c.settlePendingRune()
+	}
+	if isText && c.keys.chord != nil && []rune(k.Text)[0] == c.keys.chord[0] {
+		c.keys.pendingRune = c.keys.chord[0]
+		if c.ctx != nil {
+			c.keys.chordCancel = c.ctx.After(c.keys.chordTimeout)
+		}
+		return true
+	}
+	return false
+}
+
+// recordInsertKey keeps an Insert editing or caret key for . and a macro: replayed through
+// handleInsertKey, so Enter re-runs auto-indent; a page jump splits the change.
+func (c *EditorCore) recordInsertKey(k tui.KeyEvent) {
+	switch k.Code {
+	case tui.KeyTab, tui.KeyEnter, tui.KeyBackspace, tui.KeyDelete,
+		tui.KeyLeft, tui.KeyRight, tui.KeyUp, tui.KeyDown, tui.KeyHome, tui.KeyEnd:
+		c.dotInsertKey(k)
+	case tui.KeyPageUp, tui.KeyPageDown:
+		c.macroKey(k)
+		c.dotJump()
+	}
+}
+
+// insertEditKey is Insert's editing keys: Tab, Esc, Enter, Backspace and Delete. done reports
+// whether k is one, and handled whether it is consumed.
+func (c *EditorCore) insertEditKey(k tui.KeyEvent) (done, handled bool) {
+	b := &c.buf
+	switch k.Code {
+	case tui.KeyTab:
+		c.beginGroup()
+		b.insertText("\t")
+		c.edited()
+		return true, true
+	case tui.KeyEscape:
+		if c.keys.modal {
+			c.macroKey(k)
+			c.exitInsert()
+			return true, true
+		}
+		if c.vAnchor != (taPos{}) {
+			c.vAnchor = taPos{}
+			c.markDirty()
+			return true, true
+		}
+		// modeless, Esc is Normal mode's: it cancels the active find, then is the host's
+		return true, c.escapeFind()
+	case tui.KeyEnter:
+		c.beginGroup()
+		c.insertIndentedNewline()
+		c.edited()
+		return true, true
+	case tui.KeyBackspace, tui.KeyDelete:
+		region := b.forwardRegion
+		if k.Code == tui.KeyBackspace {
+			region = b.backspaceRegion
+		}
+		if lo, hi, ok := region(); ok {
+			c.beginGroup()
+			b.deleteRegion(lo, hi)
+			c.edited()
+		}
+		return true, true
+	}
+	return false, false
 }
 
 // insertCaretKeys are Insert mode's caret keys, each the motion it is: move reveals the caret and,
