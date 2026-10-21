@@ -87,8 +87,8 @@ func (a *App) layoutComponent(n *node, cc Constraints) Size {
 	clamped := cc.Constrain(got)
 	if clamped != got {
 		v := ConstraintViolation{Node: n.id, Type: fmt.Sprintf("%T", n.comp), Got: got, C: cc}
-		if tb, ok := a.backend.(*TestBackend); ok {
-			tb.RecordConstraintViolation(v)
+		if r, ok := a.backend.(ViolationRecorder); ok {
+			r.RecordConstraintViolation(v)
 		}
 		logger.Warning(a.cfg.logger, nil, map[string]any{
 			"tui": "constraint violation (clamped)", "node": uint64(v.Node),

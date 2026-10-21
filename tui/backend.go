@@ -98,6 +98,14 @@ type SizedFlusher interface {
 	FlushSized(size Size, diff []CellUpdate) error
 }
 
+// ViolationRecorder is a Backend that is told of every constraint violation: a component's Layout
+// returning a size outside its constraints, which the App clamps (and logs) and goes on. A test
+// backend records them so a suite can fail on a silent clamp (TestBackend, FailOnViolations); any
+// diagnostic backend may. Called on the loop goroutine, during layout; it must only record.
+type ViolationRecorder interface {
+	RecordConstraintViolation(v ConstraintViolation)
+}
+
 // PointerResolver is a Backend whose pointer events are finished when the App dispatches them:
 // a native window that lays its cells out in regions of its own (golib/gui's panes) can only map
 // a position to cells against the layout the App routes with, and the App may lay out again

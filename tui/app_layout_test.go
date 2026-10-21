@@ -4,9 +4,13 @@ package tui
 // frames, constraint-violation clamping, relayout economy, the cursor rule.
 
 import (
-	"github.com/yongjohnlee80/golib/tui/style"
+	"context"
 	"math/rand"
+	"sync"
 	"testing"
+	"time"
+
+	"github.com/yongjohnlee80/golib/tui/style"
 )
 
 // childRects reads the placed parent-relative rects of comps on the loop.
@@ -359,4 +363,45 @@ func TestTheCursorWearsTheFocusedComponentsColour(t *testing.T) {
 	})
 	h.onLoop(func() { plain.ctx.RequestFocus() })
 	waitFor(t, "the cursor's own colour back", func() bool { _, ok := h.tb.CursorColor(); return !ok })
+}
+
+// violationSink is a backend other than *TestBackend that records constraint violations: the
+// capability, not the concrete test double, is what the runtime reports them to (tui-core-S1).
+type violationSink struct {
+	*TestBackend
+	mu  sync.Mutex
+	got []ConstraintViolation
+}
+
+func (s *violationSink) RecordConstraintViolation(v ConstraintViolation) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.got = append(s.got, v)
+}
+
+func (s *violationSink) recorded() int {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return len(s.got)
+}
+
+// TestAnyViolationRecorderHearsAClamp: a backend implementing ViolationRecorder is told of every
+// clamp, whatever its concrete type.
+func TestAnyViolationRecorderHearsAClamp(t *testing.T) {
+	t.Parallel()
+	liar := &probe{name: "liar", fill: "x"}
+	liar.onLayout = func(*probe, Constraints) Size { return Size{W: 999, H: 999} }
+	sink := &violationSink{TestBackend: NewTestBackend(10, 1)}
+	app := NewApp(liar, WithBackend(sink), WithMinFrameInterval(0))
+	ctx, cancel := context.WithCancel(context.Background())
+	done := make(chan error, 1)
+	go func() { done <- app.Run(ctx) }()
+	defer func() { cancel(); <-done }()
+	deadline := time.Now().Add(3 * time.Second)
+	for sink.recorded() == 0 {
+		if time.Now().After(deadline) {
+			t.Fatal("a ViolationRecorder backend that is not *TestBackend heard no violation")
+		}
+		time.Sleep(5 * time.Millisecond)
+	}
 }

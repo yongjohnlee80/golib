@@ -6,7 +6,6 @@ import (
 	"slices"
 	"strings"
 	"sync"
-	"testing"
 
 	"github.com/yongjohnlee80/golib/errs"
 )
@@ -138,8 +137,9 @@ func (b *TestBackend) AnswerClipboard(text string, err error) bool {
 }
 
 var (
-	_ Backend         = (*TestBackend)(nil)
-	_ ClipboardReader = (*TestBackend)(nil)
+	_ Backend           = (*TestBackend)(nil)
+	_ ClipboardReader   = (*TestBackend)(nil)
+	_ ViolationRecorder = (*TestBackend)(nil)
 )
 
 // testBackendConfig collects the option-set state for NewTestBackend.
@@ -539,8 +539,13 @@ func (b *TestBackend) ConstraintViolations() []ConstraintViolation {
 
 // FailOnViolations fails t (with one line per violation) when the run
 // clamped anything — widget test suites call it in a helper/cleanup so
-// silent clamps cannot ship.
-func FailOnViolations(t *testing.T, b *TestBackend) {
+// silent clamps cannot ship. t is a *testing.T or a testing.TB; the
+// interface keeps package tui itself free of package testing, which every
+// binary using tui would otherwise link.
+func FailOnViolations(t interface {
+	Helper()
+	Errorf(format string, args ...any)
+}, b *TestBackend) {
 	t.Helper()
 	b.mu.Lock()
 	violations := append([]ConstraintViolation(nil), b.violations...)
