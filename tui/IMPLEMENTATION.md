@@ -62,6 +62,7 @@ in the same change. Never add a second copy "for now".
 | Mechanism | Its one home |
 |---|---|
 | Text width, cells, graphemes | `tui.StringWidth` / `Surface.StringWidth`; `Base.measure` outside Render |
+| A backend's latched cursor and images | `tui.CursorLatch` and `tui.ImageLatch` (`backend.go`), held as fields under the backend's own lock; a backend filters what it cannot show before it latches |
 | CR/LF and paste normalization | one function in `tui` (or `style`), called at every entry |
 | Colour palette, xterm-256 cube, luminance, legibility | `tui/style` only |
 | Attribute bits, cursor shapes, xterm key/SGR tables | `tui/style` and one internal xterm table package, shared by `term`, `vt`, `web` |

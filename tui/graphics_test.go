@@ -41,7 +41,7 @@ func TestTheAppPlacesAndDeletesImages(t *testing.T) {
 	})
 	h.sync()
 	h.onLoop(func() {
-		if n := len(h.tb.imageOps); n != 0 {
+		if n := len(h.tb.images.ops); n != 0 {
 			t.Errorf("%d image commands latched for an unchanged image", n)
 		}
 	})

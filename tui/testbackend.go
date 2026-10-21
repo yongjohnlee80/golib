@@ -45,22 +45,13 @@ type TestBackend struct {
 	stopped bool
 	stop    sync.Once
 
-	// Latched cursor state (recorded by the cursor ops)…
-	latchX, latchY int
-	latchVisible   bool
-	latchShape     CursorShape
-	latchColor     CellColor
-	latchColored   bool
-	// …and the applied state the last Flush emitted.
-	curX, curY int
-	curVisible bool
-	curShape   CursorShape
-	curColor   CellColor
-	curColored bool
+	// cursor is the latched cursor the cursor ops record, cur what the last Flush applied
+	cursor CursorLatch
+	cur    CursorState
 
-	// images: the latched placements and deletes, and what the last Flush left on the screen
-	imageOps []imageOp
-	shown    map[uint32]ImagePlacement
+	// images are the latched placements and deletes, shown what the last Flush left on the screen
+	images ImageLatch
+	shown  map[uint32]ImagePlacement
 
 	flushes int
 
@@ -322,54 +313,49 @@ func (b *TestBackend) InjectResize(w, h int) {
 func (b *TestBackend) ShowCursor() {
 	b.mu.Lock()
 	defer b.mu.Unlock()
-	b.latchVisible = true
+	b.cursor.Show()
 }
 
 // HideCursor latches the cursor hidden.
 func (b *TestBackend) HideCursor() {
 	b.mu.Lock()
 	defer b.mu.Unlock()
-	b.latchVisible = false
+	b.cursor.Hide()
 }
 
 // SetCursor latches the cursor position.
 func (b *TestBackend) SetCursor(x, y int) {
 	b.mu.Lock()
 	defer b.mu.Unlock()
-	b.latchX, b.latchY = x, y
+	b.cursor.SetPos(x, y)
 }
 
 // SetCursorShape latches the cursor shape.
 func (b *TestBackend) SetCursorShape(s CursorShape) {
 	b.mu.Lock()
 	defer b.mu.Unlock()
-	b.latchShape = s
+	b.cursor.SetShape(s)
 }
 
 // SetCursorColor implements CursorColorSetter: latches the cursor's colour.
 func (b *TestBackend) SetCursorColor(c CellColor, set bool) {
 	b.mu.Lock()
 	defer b.mu.Unlock()
-	b.latchColor, b.latchColored = c, set
-}
-
-type imageOp struct {
-	place  *ImagePlacement
-	delete uint32
+	b.cursor.SetColor(c, set)
 }
 
 // PlaceImage implements GraphicsBackend: latches a placement for the next Flush.
 func (b *TestBackend) PlaceImage(p ImagePlacement) {
 	b.mu.Lock()
 	defer b.mu.Unlock()
-	b.imageOps = append(b.imageOps, imageOp{place: &p})
+	b.images.Place(p)
 }
 
 // DeleteImage implements GraphicsBackend: latches a delete for the next Flush.
 func (b *TestBackend) DeleteImage(id uint32) {
 	b.mu.Lock()
 	defer b.mu.Unlock()
-	b.imageOps = append(b.imageOps, imageOp{delete: id})
+	b.images.Delete(id)
 }
 
 // Images are the images the last Flush left on the screen, by id.
@@ -387,7 +373,7 @@ func (b *TestBackend) Images() map[uint32]ImagePlacement {
 func (b *TestBackend) CursorColor() (c CellColor, ok bool) {
 	b.mu.Lock()
 	defer b.mu.Unlock()
-	return b.curColor, b.curColored
+	return b.cur.Color, b.cur.Colored
 }
 
 // Flush implements Backend: applies the diff to the grid structurally (byte
@@ -401,14 +387,13 @@ func (b *TestBackend) Flush(diff []CellUpdate) error {
 	if b.shown == nil {
 		b.shown = map[uint32]ImagePlacement{}
 	}
-	for _, op := range b.imageOps {
-		if op.place != nil {
-			b.shown[op.place.ID] = *op.place
+	for _, op := range b.images.Take() {
+		if op.Place != nil {
+			b.shown[op.Place.ID] = *op.Place
 		} else {
-			delete(b.shown, op.delete)
+			delete(b.shown, op.Delete)
 		}
 	}
-	b.imageOps = nil
 	for _, u := range diff {
 		if u.X < 0 || u.Y < 0 || u.X >= b.w || u.Y >= b.h {
 			panic(errs.Fatal{Op: "tui: TestBackend.Flush", Rule: fmt.Sprintf("update outside the %dx%d grid at (%d, %d)", b.w, b.h, u.X, u.Y)})
@@ -422,10 +407,7 @@ func (b *TestBackend) Flush(diff []CellUpdate) error {
 		}
 	}
 	b.assertNoOrphansLocked()
-	b.curX, b.curY = b.latchX, b.latchY
-	b.curVisible = b.latchVisible
-	b.curShape = b.latchShape
-	b.curColor, b.curColored = b.latchColor, b.latchColored
+	b.cur, _ = b.cursor.Take()
 	b.flushes++
 	return nil
 }
@@ -486,14 +468,14 @@ func (b *TestBackend) String() string {
 func (b *TestBackend) CursorPos() (x, y int, visible bool) {
 	b.mu.Lock()
 	defer b.mu.Unlock()
-	return b.curX, b.curY, b.curVisible
+	return b.cur.X, b.cur.Y, b.cur.Visible
 }
 
 // CursorShape reports the cursor shape the last Flush applied.
 func (b *TestBackend) CursorShape() CursorShape {
 	b.mu.Lock()
 	defer b.mu.Unlock()
-	return b.curShape
+	return b.cur.Shape
 }
 
 // Flushes returns the Flush count, so a test can assert HOW MANY writes a
