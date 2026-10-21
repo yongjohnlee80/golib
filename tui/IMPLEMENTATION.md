@@ -5,7 +5,7 @@ The rules every change to `tui` and its sub-packages (`decl`, `widget`, `style`,
 without an ADR that names the rule it overrides. Where code today breaks a rule, the code is wrong,
 not the rule; fix it when you touch it, and never copy the broken pattern.
 
-The design behind these rules is in `docs/tui/adr-0001` … `adr-0011`; `README.md` is the user guide.
+The design behind these rules is in `docs/tui/adr-0001` … `adr-0011`; `adr-0012` holds the contracts the 2026-10 follow-up lanes share. `README.md` is the user guide.
 
 ## 1. Layers and dependencies
 
