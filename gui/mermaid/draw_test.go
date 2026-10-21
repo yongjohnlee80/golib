@@ -1,7 +1,6 @@
 package mermaid
 
 import (
-	"image/color"
 	"testing"
 
 	"github.com/yongjohnlee80/golib/gui"
@@ -54,24 +53,5 @@ func TestEveryPrimitivePaints(t *testing.T) {
 	}
 	if paths < int(formFace-formRect)+int(endZeroMany-endNone) {
 		t.Errorf("only %d paths drawn", paths)
-	}
-}
-
-// Colours are read as hex and as rgb()/rgba(); anything else is not.
-func TestCSSColours(t *testing.T) {
-	for in, want := range map[string]color.NRGBA{
-		"#f9f":                 {R: 0xff, G: 0x99, B: 0xff, A: 0xff},
-		"rgb(200, 150, 255)":   {R: 200, G: 150, B: 255, A: 255},
-		"rgba(0, 0, 255, .1)":  {B: 255, A: 26},
-		" rgba(10,20,30,0.5) ": {R: 10, G: 20, B: 30, A: 128},
-	} {
-		if got, ok := cssColor(in); !ok || got != want {
-			t.Errorf("cssColor(%q) = %v, %v; want %v", in, got, ok, want)
-		}
-	}
-	for _, in := range []string{"red", "rgb(1,2)", "rgb(300,0,0)", "rgba(0,0,0,2)", "hsl(0,0%,0%)"} {
-		if _, ok := cssColor(in); ok {
-			t.Errorf("cssColor(%q) was read", in)
-		}
 	}
 }

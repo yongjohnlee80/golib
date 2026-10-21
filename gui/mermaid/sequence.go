@@ -5,6 +5,7 @@ import (
 	"strconv"
 
 	"github.com/yongjohnlee80/golib/gui"
+	"github.com/yongjohnlee80/golib/gui/internal/csscolor"
 	pm "github.com/yongjohnlee80/golib/parse/mermaid"
 )
 
@@ -376,7 +377,7 @@ func (s *seqLayout) closeFrame(f *seqFrame, bottom float32) {
 	x0, x1 := f.x0-inset, f.x1+inset
 	g := laidGroup{bare: true, stroke: th.NodeStroke, tab: true}
 	if f.step.Block == pm.RectBlock {
-		fill, ok := cssColor(f.step.Text)
+		fill, ok := csscolor.Parse(f.step.Text, th.Text)
 		if !ok {
 			fill = th.ClusterFill
 		}

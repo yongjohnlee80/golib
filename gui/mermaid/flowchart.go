@@ -10,6 +10,7 @@ import (
 
 	"github.com/yongjohnlee80/golib/graph/layout"
 	"github.com/yongjohnlee80/golib/gui"
+	"github.com/yongjohnlee80/golib/gui/internal/csscolor"
 	pm "github.com/yongjohnlee80/golib/parse/mermaid"
 	"github.com/yongjohnlee80/golib/tui/style"
 )
@@ -209,15 +210,15 @@ func styled(st pm.Style, th Theme) (fill, stroke, text color.NRGBA, width float3
 	for _, p := range st {
 		switch p.Name {
 		case "fill":
-			if c, ok := cssColor(p.Value); ok {
+			if c, ok := csscolor.Parse(p.Value, th.Text); ok {
 				fill, filled = c, true
 			}
 		case "stroke":
-			if c, ok := cssColor(p.Value); ok {
+			if c, ok := csscolor.Parse(p.Value, th.Text); ok {
 				stroke = c
 			}
 		case "color":
-			if c, ok := cssColor(p.Value); ok {
+			if c, ok := csscolor.Parse(p.Value, th.Text); ok {
 				text, colored = c, true
 			}
 		case "stroke-width":
