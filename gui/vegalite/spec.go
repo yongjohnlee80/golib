@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"image/color"
+	"io"
 	"strings"
 
 	"github.com/yongjohnlee80/golib/gui/internal/csscolor"
@@ -221,9 +222,7 @@ func isNull(raw json.RawMessage) bool { return bytes.Equal(bytes.TrimSpace(raw),
 // condition name them.
 func parse(src string) (*spec, error) {
 	var top map[string]json.RawMessage
-	d := json.NewDecoder(strings.NewReader(src))
-	d.UseNumber()
-	if err := d.Decode(&top); err != nil {
+	if err := decodeNumbers(strings.NewReader(src), &top); err != nil {
 		return nil, fmt.Errorf("vegalite: %w", err)
 	}
 	if top == nil {
@@ -363,9 +362,7 @@ func readParams(raw json.RawMessage, params map[string]param) error {
 			switch k {
 			case "name", "bind", "description", "react", "views":
 			case "value":
-				d := json.NewDecoder(bytes.NewReader(v))
-				d.UseNumber()
-				if d.Decode(&p.value) != nil {
+				if decodeNumbers(bytes.NewReader(v), &p.value) != nil {
 					return unsupported("param %q's value", name)
 				}
 				hasValue = true
@@ -558,10 +555,8 @@ func readData(raw json.RawMessage) ([]map[string]any, error) {
 	}
 	rows := make([]map[string]any, 0, len(items))
 	for _, it := range items {
-		d := json.NewDecoder(bytes.NewReader(it))
-		d.UseNumber()
 		var row map[string]any
-		if d.Decode(&row) != nil || row == nil {
+		if decodeNumbers(bytes.NewReader(it), &row) != nil || row == nil {
 			return nil, unsupported("a data value that is not an object")
 		}
 		rows = append(rows, row)
@@ -783,10 +778,8 @@ func readDatum(raw json.RawMessage, name string, params map[string]param) (any, 
 		}
 		return p.value, nil
 	}
-	d := json.NewDecoder(bytes.NewReader(raw))
-	d.UseNumber()
 	var v any
-	if d.Decode(&v) != nil {
+	if decodeNumbers(bytes.NewReader(raw), &v) != nil {
 		return nil, unsupported("%s's datum %s", name, raw)
 	}
 	switch v.(type) {
@@ -974,9 +967,7 @@ func (ch *channel) readScale(raw json.RawMessage, name string) error {
 			}
 			ch.nice = &n
 		case k == "domain":
-			d := json.NewDecoder(bytes.NewReader(v))
-			d.UseNumber()
-			if d.Decode(&ch.domain) != nil || len(ch.domain) == 0 {
+			if decodeNumbers(bytes.NewReader(v), &ch.domain) != nil || len(ch.domain) == 0 {
 				return unsupported("%s's scale domain %s", name, v)
 			}
 		case k == "range":
@@ -1066,9 +1057,7 @@ func (ch *channel) readSort(raw json.RawMessage, name string) error {
 		}
 		return ch.readSortField(m, name)
 	}
-	d := json.NewDecoder(bytes.NewReader(raw))
-	d.UseNumber()
-	if d.Decode(&ch.sortList) == nil {
+	if decodeNumbers(bytes.NewReader(raw), &ch.sortList) == nil {
 		ch.sort = sortList
 		return nil
 	}
@@ -1165,4 +1154,12 @@ func cssColor(s string) (color.NRGBA, bool) {
 
 func (t fieldType) String() string {
 	return [...]string{"nominal", "ordinal", "quantitative", "temporal"}[t]
+}
+
+// decodeNumbers decodes one JSON value from r into v, its numbers as json.Number: a spec keeps a
+// number's text, so 0.1 and an integer past 2^53 read as written.
+func decodeNumbers(r io.Reader, v any) error {
+	d := json.NewDecoder(r)
+	d.UseNumber()
+	return d.Decode(v)
 }

@@ -2,8 +2,6 @@ package mermaid
 
 import (
 	"context"
-	"errors"
-	"fmt"
 	"image/color"
 
 	"github.com/yongjohnlee80/golib/graph/layout"
@@ -83,10 +81,7 @@ func layMindmap(ctx context.Context, d pm.Diagram, width float32, th Theme, m gu
 	}
 	res, err := layout.Tree(ctx, in, layout.Limits{})
 	if err != nil {
-		if errors.Is(err, layout.ErrTooLarge) {
-			return nil, fmt.Errorf("%w: %v", pm.ErrTooLarge, err)
-		}
-		return nil, err
+		return nil, layoutErr(err)
 	}
 	pad := em * 0.5
 	for i := range l.nodes {

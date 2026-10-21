@@ -2,8 +2,6 @@ package mermaid
 
 import (
 	"context"
-	"errors"
-	"fmt"
 
 	"github.com/yongjohnlee80/golib/graph/layout"
 	"github.com/yongjohnlee80/golib/gui"
@@ -147,10 +145,7 @@ func (sl *stateLayer) scope(id string, dir pm.Dir) (stateScope, error) {
 	}
 	res, err := layout.Layered(sl.ctx, in, layout.Limits{})
 	if err != nil {
-		if errors.Is(err, layout.ErrTooLarge) {
-			return stateScope{}, fmt.Errorf("%w: %v", pm.ErrTooLarge, err)
-		}
-		return stateScope{}, err
+		return stateScope{}, layoutErr(err)
 	}
 	out := stateScope{size: gui.Size{W: res.Size.W, H: res.Size.H}}
 	for i, it := range items {

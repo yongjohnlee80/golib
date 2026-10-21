@@ -2,8 +2,6 @@ package mermaid
 
 import (
 	"context"
-	"errors"
-	"fmt"
 
 	"github.com/yongjohnlee80/golib/graph/layout"
 	"github.com/yongjohnlee80/golib/gui"
@@ -178,10 +176,7 @@ func layClass(ctx context.Context, d pm.Diagram, _ float32, th Theme, m gui.Meas
 
 	res, err := layout.Layered(ctx, in, layout.Limits{})
 	if err != nil {
-		if errors.Is(err, layout.ErrTooLarge) {
-			return nil, fmt.Errorf("%w: %v", pm.ErrTooLarge, err)
-		}
-		return nil, err
+		return nil, layoutErr(err)
 	}
 	pad := em * 0.5
 	for i := range l.nodes {
