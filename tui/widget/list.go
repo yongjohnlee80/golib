@@ -132,6 +132,7 @@ type List[T any] struct {
 	// SelectionChangedEvent and ActivateEvent (WithListOnCursor, WithListOnActivate). They run last,
 	// so an owner may replace the rows from one.
 	onCursor, onActivate func(i int)
+	onMenu               func(i int, at tui.Point) // WithListOnContextMenu
 	// paint is an optional styled-row renderer. Navigation, clipping bounds,
 	// viewport selection and focus still belong to List.
 	paint func(tui.Surface, int, int, T, style.Style, bool)
@@ -233,6 +234,12 @@ func WithListOnActivate[T any](fn func(i int)) ListOption[T] {
 	return func(l *List[T]) { l.onActivate = fn }
 }
 
+// WithListOnContextMenu sets what runs, at once, when a row's menu is asked for (SetContextMenu): row
+// i (-1 below the rows) and the point, in the list's cells, as ContextMenuEvent carries them.
+func WithListOnContextMenu[T any](fn func(i int, at tui.Point)) ListOption[T] {
+	return func(l *List[T]) { l.onMenu = fn }
+}
+
 // WithListStyles overrides the style hooks; zero fields keep defaults.
 func WithListStyles[T any](st ListStyles) ListOption[T] {
 	return func(l *List[T]) {
@@ -296,6 +303,9 @@ func (l *List[T]) SetContextMenu(on bool) { l.contextMenu = on }
 // requestMenu emits ContextMenuEvent for row i (-1: none) at at, in the list's own cells.
 func (l *List[T]) requestMenu(i int, at tui.Point) {
 	l.publish(ContextMenuEvent{Owner: l.NodeID(), Index: i, At: at})
+	if l.onMenu != nil {
+		l.onMenu(i, at)
+	}
 }
 
 // SetCursor moves the cursor to i (clamped), scrolling it into view.

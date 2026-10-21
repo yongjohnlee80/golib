@@ -811,3 +811,32 @@ func TestTreeKnownChildrenShowInTheExpandingKeysHandling(t *testing.T) {
 		t.Fatalf("expand requests for lazy = %d, want 1", reqs.count())
 	}
 }
+
+// TestATreeTellsItsOwnerAtOnce: the owner's callbacks hear the cursor move, an expansion, the
+// request for a branch's children, and an activation, each once, with the node, as the key is
+// handled (data-I4, as List's).
+func TestATreeTellsItsOwnerAtOnce(t *testing.T) {
+	branch := widget.NewTreeNode("b", "branch")
+	leaf := widget.NewTreeNode("l", "leaf", widget.WithLeaf())
+	var cursor, expanded, requested, activated []string
+	h, _, sh := focusedTree(t, 40, 6, widget.WithRoots(branch, leaf),
+		widget.WithTreeOnCursor(func(n *widget.TreeNode) { cursor = append(cursor, n.ID()) }),
+		widget.WithTreeOnExpand(func(n *widget.TreeNode) { expanded = append(expanded, n.ID()) }),
+		widget.WithTreeOnExpandRequest(func(n *widget.TreeNode, _ uint64) { requested = append(requested, n.ID()) }),
+		widget.WithTreeOnActivate(func(n *widget.TreeNode) { activated = append(activated, n.ID()) }))
+	h.inject(key('l')) // open the branch: its children are asked for
+	h.barrier(sh)
+	h.inject(key(tui.KeyDown), key(tui.KeyEnter))
+	h.barrier(sh)
+	var c, e, r, a []string
+	h.onLoop(func() { c, e, r, a = cursor, expanded, requested, activated })
+	if len(e) != 1 || e[0] != "b" || len(r) != 1 || r[0] != "b" {
+		t.Errorf("expand %v, request %v, want each [b] once", e, r)
+	}
+	if len(c) == 0 || c[len(c)-1] != "l" {
+		t.Errorf("cursor %v, want it to end on l", c)
+	}
+	if len(a) != 1 || a[0] != "l" {
+		t.Errorf("activate %v, want [l]", a)
+	}
+}
