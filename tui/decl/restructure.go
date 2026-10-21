@@ -105,7 +105,7 @@ func (a *Adapter) InsertChild(parent, child decl.NodeID, at int) error {
 	if at < 0 || at > n {
 		return fmt.Errorf("insert: index %d is out of range for %d children of node %d", at, n, parent)
 	}
-	if adopt := a.adopters[a.nodes[parent].typ]; adopt != nil {
+	if adopt := a.contractOf(a.nodes[parent].typ).adopter; adopt != nil {
 		// The child is placed as its attached properties say, as it would
 		// have been had the parent been built with it.
 		if err := adopt(c, comp, a.nodes[child].attached); err != nil {
@@ -124,7 +124,7 @@ func (a *Adapter) InsertChild(parent, child decl.NodeID, at int) error {
 
 // withAdopt sets how a built-in container takes a child inserted by a reload.
 func withAdopt(typeName string, fn adopter) Option {
-	return func(a *Adapter) { a.adopters[typeName] = fn }
+	return func(a *Adapter) { a.declare(typeName).adopter = fn }
 }
 
 // RemoveChild detaches child from parent, unmounting its subtree.
@@ -230,7 +230,7 @@ func countChildren(c tui.Container) int {
 // not answer for a node the schema ADDS, or for the replacement of one whose
 // type changed, which are precisely the nodes a reload is about to build.
 func (a *Adapter) ClassifyProperty(typeName, prop string) decl.PropertyKind {
-	if _, ok := a.setters[typeName][prop]; ok {
+	if _, ok := a.contractOf(typeName).setters[prop]; ok {
 		return decl.PropRuntime
 	}
 	if _, ok := paletteRoles[prop]; ok {
@@ -240,7 +240,7 @@ func (a *Adapter) ClassifyProperty(typeName, prop string) decl.PropertyKind {
 	if prop == visibleProp || prop == toolTipProp {
 		return decl.PropRuntime
 	}
-	if a.ctorProps[typeName][prop] {
+	if a.contractOf(typeName).ctorProps[prop] {
 		return decl.PropConstructorOnly
 	}
 	// An attached property is read by the PARENT at the parent's construction,

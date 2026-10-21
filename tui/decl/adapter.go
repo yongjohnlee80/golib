@@ -2,6 +2,7 @@ package decl
 
 import (
 	"fmt"
+	"maps"
 	"sort"
 	"strings"
 
@@ -73,16 +74,8 @@ type Adapter struct {
 	// answer the wrong question.
 	nodes map[decl.NodeID]built
 
-	setters map[string]map[string]Setter
-	// ctorProps names the properties a type accepts ONLY at construction. It is
-	// DECLARED rather than inferred, because what a builder consumed tells you
-	// only about the schemas it has seen: a Split mounted without an
-	// orientation consumed nothing, and nothing in that record says the widget
-	// has no SetOrientation.
-	ctorProps       map[string]map[string]bool
-	methods         map[string]map[string]Method
-	getters         map[string]map[string]Getter
-	signals         map[string]map[string][]string
+	// types are each schema type's contract, merged from the Options (contractOf, declare).
+	types           map[string]*typeContract
 	files           widget.FileSource
 	overlay         *widget.OverlayHost
 	windowCollector widget.WindowCollector
@@ -90,14 +83,11 @@ type Adapter struct {
 	// highlighters are the syntax definitions a SyntaxHighlighter may name.
 	highlighters    *highlight.Repository
 	sourceLanguages *highlight.Catalog
-	destroyed       map[string]func(tui.Component)
-	adopters        map[string]adopter
 	sink            func(error)
 
 	// pal is the palette tree, and restylers each type's way of wearing an
 	// effective palette. See propagate.go.
-	pal       map[decl.NodeID]*palNode
-	restylers map[string]restyler
+	pal map[decl.NodeID]*palNode
 	// kids are each node's children, in order, as construction and every
 	// restructure left them.
 	kids map[decl.NodeID][]decl.NodeID
@@ -106,18 +96,62 @@ type Adapter struct {
 	enums []Enum
 }
 
+// typeContract is one schema type's contract, as the Options declared it.
+type typeContract struct {
+	// ctorProps names the properties a type accepts ONLY at construction. It is
+	// DECLARED rather than inferred, because what a builder consumed tells you
+	// only about the schemas it has seen: a Split mounted without an
+	// orientation consumed nothing, and nothing in that record says the widget
+	// has no SetOrientation. Non-nil, even empty, declares the type's contract.
+	ctorProps map[string]bool
+	setters   map[string]Setter
+	methods   map[string]Method
+	getters   map[string]Getter
+	signals   map[string][]string
+	destroyed func(tui.Component) // WithDestroyed
+	adopter   adopter             // WithAdopter (restructure.go)
+	restyler  restyler            // WithRestyler: how it wears an effective palette (propagate.go)
+}
+
+// contractOf is typeName's contract to read; an empty one when the adapter was given none.
+func (a *Adapter) contractOf(typeName string) *typeContract {
+	if c := a.types[typeName]; c != nil {
+		return c
+	}
+	return &typeContract{}
+}
+
+// declare is typeName's contract to fill, made on first use.
+func (a *Adapter) declare(typeName string) *typeContract {
+	c := a.types[typeName]
+	if c == nil {
+		c = &typeContract{}
+		a.types[typeName] = c
+	}
+	return c
+}
+
+// mergeInto adds src's entries to *dst, made on first use; a name given again is replaced.
+func mergeInto[K comparable, V any](dst *map[K]V, src map[K]V) {
+	if *dst == nil {
+		*dst = make(map[K]V, len(src))
+	}
+	maps.Copy(*dst, src)
+}
+
 // declaredProps are the properties typeName declares, its constructor properties and its setters:
 // the ones its builder may read (Build.ReadProps). Nil, the adapter was given no contract for the type
 // (a registry used without its properties) and nothing is checked.
 func (a *Adapter) declaredProps(typeName string) map[string]bool {
-	if _, ok := a.ctorProps[typeName]; !ok {
+	c := a.contractOf(typeName)
+	if c.ctorProps == nil {
 		return nil
 	}
-	declared := make(map[string]bool, len(a.ctorProps[typeName])+len(a.setters[typeName]))
-	for name := range a.ctorProps[typeName] {
+	declared := make(map[string]bool, len(c.ctorProps)+len(c.setters))
+	for name := range c.ctorProps {
 		declared[name] = true
 	}
-	for name := range a.setters[typeName] {
+	for name := range c.setters {
 		declared[name] = true
 	}
 	return declared
@@ -166,48 +200,28 @@ func WithErrorSink(fn func(error)) Option {
 // WithSetters registers the runtime property setters for a type — everything a
 // builder does not consume at construction.
 func WithSetters(typeName string, setters map[string]Setter) Option {
-	return func(a *Adapter) {
-		if a.setters[typeName] == nil {
-			a.setters[typeName] = map[string]Setter{}
-		}
-		for name, fn := range setters {
-			a.setters[typeName][name] = fn
-		}
-	}
+	return func(a *Adapter) { mergeInto(&a.declare(typeName).setters, setters) }
 }
 
 // WithMethods registers the methods a handler can call on a node of a type by
 // its id.
 func WithMethods(typeName string, methods map[string]Method) Option {
-	return func(a *Adapter) {
-		if a.methods[typeName] == nil {
-			a.methods[typeName] = map[string]Method{}
-		}
-		for name, fn := range methods {
-			a.methods[typeName][name] = fn
-		}
-	}
+	return func(a *Adapter) { mergeInto(&a.declare(typeName).methods, methods) }
 }
 
 // WithGetters sets what a handler can read from a node of a type by its id.
 func WithGetters(typeName string, getters map[string]Getter) Option {
-	return func(a *Adapter) {
-		if a.getters[typeName] == nil {
-			a.getters[typeName] = map[string]Getter{}
-		}
-		for name, fn := range getters {
-			a.getters[typeName][name] = fn
-		}
-	}
+	return func(a *Adapter) { mergeInto(&a.declare(typeName).getters, getters) }
 }
 
 // ReadablesOf implements [decl.PropertyReader]. Every item's keyScope is readable (keyScopeProp).
 func (a *Adapter) ReadablesOf(typeName string) []string {
-	names := make([]string, 0, len(a.getters[typeName])+1)
-	for n := range a.getters[typeName] {
+	getters := a.contractOf(typeName).getters
+	names := make([]string, 0, len(getters)+1)
+	for n := range getters {
 		names = append(names, n)
 	}
-	if _, own := a.getters[typeName][keyScopeProp]; !own {
+	if _, own := getters[keyScopeProp]; !own {
 		names = append(names, keyScopeProp)
 	}
 	sort.Strings(names)
@@ -224,7 +238,7 @@ func (a *Adapter) ReadProperty(node decl.NodeID, prop string) (qml.SpecValue, er
 	if !ok {
 		return qml.SpecValue{}, fmt.Errorf("%s: node %d was not built by this adapter", prop, node)
 	}
-	fn, ok := a.getters[b.typ][prop]
+	fn, ok := a.contractOf(b.typ).getters[prop]
 	if !ok && prop == keyScopeProp {
 		scope := ""
 		if a.app != nil {
@@ -242,11 +256,12 @@ var _ decl.PropertyReader = (*Adapter)(nil)
 
 // MethodsOf implements [decl.Methods].
 func (a *Adapter) MethodsOf(typeName string) []string {
-	names := make([]string, 0, len(a.methods[typeName])+1)
-	for n := range a.methods[typeName] {
+	methods := a.contractOf(typeName).methods
+	names := make([]string, 0, len(methods)+1)
+	for n := range methods {
 		names = append(names, n)
 	}
-	if _, own := a.methods[typeName][forceActiveFocus]; !own {
+	if _, own := methods[forceActiveFocus]; !own {
 		names = append(names, forceActiveFocus) // every item's (focus.go)
 	}
 	sort.Strings(names)
@@ -259,7 +274,7 @@ func (a *Adapter) Invoke(node decl.NodeID, method string, args []qml.SpecValue) 
 	if !ok {
 		return fmt.Errorf("%s: node %d was not built by this adapter", method, node)
 	}
-	fn, ok := a.methods[b.typ][method]
+	fn, ok := a.contractOf(b.typ).methods[method]
 	if !ok && method == forceActiveFocus {
 		return a.forceActiveFocus(b, args)
 	}
@@ -285,11 +300,12 @@ var _ decl.Methods = (*Adapter)(nil)
 // the rebuilt node would refuse it too.
 func WithConstructorProps(typeName string, props ...string) Option {
 	return func(a *Adapter) {
-		if a.ctorProps[typeName] == nil {
-			a.ctorProps[typeName] = map[string]bool{} // an empty entry declares the type's contract
+		c := a.declare(typeName)
+		if c.ctorProps == nil {
+			c.ctorProps = map[string]bool{} // an empty entry declares the type's contract
 		}
 		for _, p := range props {
-			a.ctorProps[typeName][p] = true
+			c.ctorProps[p] = true
 		}
 	}
 }
@@ -302,15 +318,8 @@ func New(reg *Registry, opts ...Option) *Adapter {
 	a := &Adapter{
 		reg:          reg,
 		nodes:        map[decl.NodeID]built{},
-		setters:      map[string]map[string]Setter{},
-		ctorProps:    map[string]map[string]bool{},
-		methods:      map[string]map[string]Method{},
-		getters:      map[string]map[string]Getter{},
-		signals:      map[string]map[string][]string{},
-		destroyed:    map[string]func(tui.Component){},
-		adopters:     map[string]adopter{},
+		types:        map[string]*typeContract{},
 		pal:          map[decl.NodeID]*palNode{},
-		restylers:    map[string]restyler{},
 		kids:         map[decl.NodeID][]decl.NodeID{},
 		highlighters: stdHighlighters(),
 	}
@@ -476,7 +485,7 @@ func (a *Adapter) Create(c decl.Construction) ([]string, error) {
 	// Popup's layer on the overlay host — and the node is never recorded,
 	// so no Destroy would reach them.
 	if unknown := unaskedSignals(c.Emitters, asked); len(unknown) > 0 {
-		if hook := a.destroyed[c.Type]; hook != nil {
+		if hook := a.contractOf(c.Type).destroyed; hook != nil {
 			hook(comp)
 		}
 		return nil, fmt.Errorf("%s has no signal %s: on%s is bound to nothing (declared at %s)",
@@ -517,7 +526,7 @@ func (a *Adapter) Apply(app decl.Application) error {
 	if app.Prop == toolTipProp {
 		return setToolTip(b.typ, b.comp, app.Value)
 	}
-	set, ok := a.setters[b.typ][app.Prop]
+	set, ok := a.contractOf(b.typ).setters[app.Prop]
 	if !ok {
 		return fmt.Errorf("type %q has no runtime property %q (declared at %s)",
 			b.typ, app.Prop, app.Value.Pos)
@@ -540,7 +549,7 @@ func (a *Adapter) Destroy(id decl.NodeID) error {
 	delete(a.pal, id)
 	delete(a.kids, id)
 	delete(a.nodes, id)
-	if hook := a.destroyed[b.typ]; ok && hook != nil {
+	if hook := a.contractOf(b.typ).destroyed; ok && hook != nil {
 		hook(b.comp)
 	}
 	return nil
@@ -549,7 +558,7 @@ func (a *Adapter) Destroy(id decl.NodeID) error {
 // WithDestroyHook sets what runs when a node of a type is destroyed — by a
 // reload that drops it, or by the tree's teardown — with the widget it built.
 func WithDestroyHook(typeName string, fn func(tui.Component)) Option {
-	return func(a *Adapter) { a.destroyed[typeName] = fn }
+	return func(a *Adapter) { a.declare(typeName).destroyed = fn }
 }
 
 // TypeNames implements [decl.Vocabulary]: a component named like a type this
@@ -568,18 +577,19 @@ var _ decl.Vocabulary = (*Adapter)(nil)
 // WithSignalParams names the parameters of a type's signals.
 func WithSignalParams(typeName string, signals map[string][]string) Option {
 	return func(a *Adapter) {
-		if a.signals[typeName] == nil {
-			a.signals[typeName] = map[string][]string{}
+		c := a.declare(typeName)
+		if c.signals == nil {
+			c.signals = map[string][]string{}
 		}
 		for sig, params := range signals {
-			a.signals[typeName][sig] = params
+			c.signals[sig] = params
 		}
 	}
 }
 
 // SignalParams implements [decl.SignalParameters].
 func (a *Adapter) SignalParams(typeName, signal string) []string {
-	return a.signals[typeName][signal]
+	return a.contractOf(typeName).signals[signal]
 }
 
 var _ decl.SignalParameters = (*Adapter)(nil)

@@ -51,7 +51,7 @@ type palNode struct {
 type restyler func(c tui.Component, p palette)
 
 func withRestyle(typeName string, fn restyler) Option {
-	return func(a *Adapter) { a.restylers[typeName] = fn }
+	return func(a *Adapter) { a.declare(typeName).restyler = fn }
 }
 
 // paletteRoles is every role a document may write, by its property name.
@@ -159,7 +159,7 @@ func (a *Adapter) refresh(id decl.NodeID) {
 	}
 	pn.eff = eff
 	if b, ok := a.nodes[id]; ok {
-		if fn := a.restylers[b.typ]; fn != nil {
+		if fn := a.contractOf(b.typ).restyler; fn != nil {
 			fn(b.comp, eff)
 		}
 		if b.typ == "Window" && !pn.hasParent {
