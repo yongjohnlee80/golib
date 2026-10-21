@@ -420,6 +420,36 @@ func TestTerminalNormalModeSearches(t *testing.T) {
 	f.h.waitFor("next", func() bool { x, y, _ := f.h.tb.CursorPos(); return x == 0 && y == 1 })
 }
 
+func TestTerminalNormalModeKeepsItsGrammar(t *testing.T) {
+	// A command between g and g ends g's grammar: g k g k is two lines up, not the first line.
+	// Switching a char-wise selection to line-wise keeps where it started.
+	f := startTerm(t, 20, 5, widget.WithVimKeys(true))
+	f.output("one\r\ntwo\r\nthree\r\n$ ")
+	f.h.inject(key(tui.KeyEscape))
+	f.h.waitFor("normal mode", func() bool { return f.mode() == widget.TerminalNormal })
+	f.h.inject(key('g'), key('k'), key('g'), key('k'))
+	f.h.waitFor("g k g k is two lines up", func() bool { _, y, _ := f.h.tb.CursorPos(); return y == 1 })
+	f.h.inject(key('v'), key('j'), key('V'), key('y'))
+	f.h.waitFor("v j V y yanks both lines", func() bool { return string(f.h.tb.Clipboard()) == "two\nthree" })
+}
+
+func TestTerminalNormalModePrevGoesBack(t *testing.T) {
+	// N repeats the last search the other way: /x, n, N comes back to the first match.
+	f := startTerm(t, 20, 5, widget.WithVimKeys(true))
+	f.output("b1 x\r\nx\r\nx x\r\n$ ")
+	f.h.inject(key(tui.KeyEscape))
+	f.h.waitFor("normal mode", func() bool { return f.mode() == widget.TerminalNormal })
+	at := func(x, y int) func() bool {
+		return func() bool { cx, cy, _ := f.h.tb.CursorPos(); return cx == x && cy == y }
+	}
+	f.h.inject(key('/'), key('x'), key(tui.KeyEnter))
+	f.h.waitFor("/x wraps to the first line's x", at(3, 0))
+	f.h.inject(key('n'))
+	f.h.waitFor("n goes on", at(0, 1))
+	f.h.inject(key('N'))
+	f.h.waitFor("N comes back", at(3, 0))
+}
+
 func TestTerminalWheel(t *testing.T) {
 	f := startTerm(t, 20, 3)
 	for i := 0; i < 10; i++ {
