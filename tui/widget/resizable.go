@@ -238,8 +238,7 @@ type Resizable struct {
 	// drag is the pointer gesture in progress, nil when there is none, and
 	// gripCtx is the handle that took the capture for it — only the node whose
 	// handler took a capture may release it.
-	drag    *resizeDrag
-	gripCtx *tui.Context
+	drag pointerDrag[resizeDrag] // the grip gesture; its ctx is the grip that took the pointer
 	// onEnd hears a drag that ended (not one cancelled), with the size it asked for last.
 	onEnd func(tui.Size)
 }
@@ -491,7 +490,7 @@ func (r *Resizable) WithPointerPolicy(p tui.PointerPolicy) *Resizable {
 func (r *Resizable) SizeMode() SizeMode { return r.mode }
 
 // Dragging reports whether a grip is being dragged.
-func (r *Resizable) Dragging() bool { return r.drag != nil }
+func (r *Resizable) Dragging() bool { return r.drag.on }
 
 // Size is the EFFECTIVE size — what is on screen, as stored by the last commit.
 // Before the first layout it is the zero Size, because nothing has been

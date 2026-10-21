@@ -139,10 +139,9 @@ type Split struct {
 	aCells int
 	bCells int
 	zoomed SplitPane
-	// drag is the divider gesture in progress, and dragCtx the node that took
-	// the pointer for it — only the node that took a capture may release it.
-	drag    *splitDrag
-	dragCtx *tui.Context
+	// drag is the divider gesture in progress; its ctx is the node that took the pointer for it,
+	// since only the node that took a capture may release it.
+	drag pointerDrag[splitDrag]
 
 	divider style.Style
 	// glyph is the divider's character, and step/stepUnit the keyboard's
@@ -377,7 +376,7 @@ func (s *Split) listChildren() []tui.Component {
 // Init mounts both panes. Re-entrant across remounts.
 func (s *Split) Init(ctx *tui.Context) {
 	s.Base.Init(ctx)
-	s.drag, s.dragCtx = nil, nil
+	s.drag = pointerDrag[splitDrag]{} // a gesture never spans two mounts
 	ctx.SetDefaultActionResolvers(tui.ActionResolverFunc(s.resolve))
 	ctx.Mount(s.a)
 	ctx.Mount(s.b)
@@ -631,35 +630,19 @@ func (s *Split) KeyBindings(m *keymap.Map) []keymap.Binding {
 // resolveMouse maps a press on the divider, and everything after it, onto the
 // gesture vocabulary.
 func (s *Split) resolveMouse(e tui.MouseEvent) (tui.Action, bool) {
-	if e.Button != tui.MouseLeft && e.Kind != tui.MouseMotion {
-		return nil, false // a non-primary release does not end a primary drag
-	}
-	at := tui.Point{X: e.X, Y: e.Y}
 	pos := e.X
 	if s.o == Vertical {
 		pos = e.Y
 	}
-	switch e.Kind {
-	case tui.MousePress:
-		// The whole divider is grabbable, not just its first column. A two-cell
-		// divider whose second column did nothing would be an affordance that
-		// works on half the pixels the user can see it occupying.
+	return resizeGesture(e, tui.Point{X: e.X, Y: e.Y}, s.drag.on, func() (Handle, bool) {
+		// The whole divider is grabbable, not just its first column. A two-cell divider whose
+		// second column did nothing would be an affordance that works on half the pixels the user
+		// can see it occupying.
 		if pos < s.aCells || pos >= s.aCells+s.dividerCells() {
-			return nil, false // not on the divider
+			return 0, false // not on the divider
 		}
-		return ResizeBeginAction{Handle: s.dividerHandle(), At: at}, true
-	case tui.MouseMotion:
-		if s.drag == nil {
-			return nil, false
-		}
-		return ResizeUpdateAction{At: at}, true
-	case tui.MouseRelease:
-		if s.drag == nil {
-			return nil, false
-		}
-		return ResizeEndAction{}, true
-	}
-	return nil, false
+		return s.dividerHandle(), true
+	})
 }
 
 // mainAxis projects a point onto the axis the divider moves along.
@@ -680,7 +663,7 @@ func (s *Split) HandleAction(inv tui.ActionInvocation) bool {
 	case ResizeBeginAction:
 		return s.beginDrag(a.Handle)
 	case ResizeUpdateAction:
-		if s.drag == nil {
+		if !s.drag.on {
 			return false
 		}
 		s.requestCells(s.mainAxis(a.At))
@@ -690,7 +673,7 @@ func (s *Split) HandleAction(inv tui.ActionInvocation) bool {
 	case ResizeSetAction:
 		return s.setFromAction(a.Size)
 	case ResizeEndAction:
-		if s.drag == nil {
+		if !s.drag.on {
 			return false
 		}
 		s.endDrag()
@@ -717,18 +700,7 @@ func (s *Split) stepBy(a ResizeStepAction) bool {
 	if d == 0 {
 		return false
 	}
-	return s.requestCells(s.aCells + d*s.stepCells(a.Unit))
-}
-
-// stepCells is how many cells one step moves, in the unit asked for.
-func (s *Split) stepCells(unit StepUnit) int {
-	if unit == StepPercent {
-		// At least one cell, for the same reason the wrapper rounds up: a
-		// percentage of a narrow split rounds to zero, and a keypress that
-		// provably cannot move anything is worse than a slow one.
-		return max(s.avail*s.step/100, 1)
-	}
-	return s.step
+	return s.requestCells(s.aCells + d*stepCellsOf(s.step, a.Unit, s.avail))
 }
 
 // setFromAction places the divider at an absolute main-axis size, routed
@@ -758,34 +730,23 @@ func (s *Split) beginDrag(h Handle) bool {
 	if s.zoomed != PaneNone || s.avail <= 0 {
 		return false
 	}
-	s.drag = &splitDrag{beginRequested: s.requested}
-	if ctx := s.Context(); ctx != nil {
-		ctx.CapturePointer()
-		s.dragCtx = ctx
-	}
+	s.drag.begin(splitDrag{beginRequested: s.requested})
+	s.drag.capture(s.Context())
 	return true
 }
 
 // endDrag finishes at the current division and releases the pointer.
 func (s *Split) endDrag() bool {
-	if s.drag == nil {
-		return false
-	}
-	s.drag = nil
-	if s.dragCtx != nil {
-		s.dragCtx.ReleasePointer()
-		s.dragCtx = nil
-	}
-	return true
+	_, ok := s.drag.end()
+	return ok
 }
 
 // cancelDrag restores the division asked for when the drag began.
 func (s *Split) cancelDrag() bool {
-	d := s.drag
-	if d == nil {
+	d, ok := s.drag.end()
+	if !ok {
 		return false
 	}
-	s.endDrag()
 	s.requested = d.beginRequested
 	s.RequestLayout()
 	s.MarkDirty()
@@ -797,7 +758,7 @@ func (s *Split) cancelDrag() bool {
 // reverting the user's drag would be a change they never made.
 func (s *Split) HandleEvent(ev tui.Event) bool {
 	if _, ok := ev.(tui.PointerCaptureLostEvent); ok {
-		s.drag, s.dragCtx = nil, nil
+		s.drag.lost()
 	}
 	return false
 }
