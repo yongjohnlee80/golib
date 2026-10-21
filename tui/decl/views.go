@@ -123,7 +123,9 @@ func buildListView(b Build) (tui.Component, []string, error) {
 	if err != nil {
 		return nil, nil, err
 	}
-	n.list = widget.NewList(widget.WithSource[int](modelSource{&n.mv}, n.mv.text))
+	n.list = widget.NewList(widget.WithSource[int](modelSource{&n.mv}, n.mv.text),
+		widget.WithListOnActivate[int](func(i int) { n.activated(numberValue(i)) }),
+		widget.WithListOnCursor[int](func(i int) { n.moved(numberValue(i)) }))
 	n.mv.changed = func(Change) {
 		key, had := n.mv.keyAt(n.currentIndex())
 		n.list.RefreshSource()
@@ -136,19 +138,10 @@ func buildListView(b Build) (tui.Component, []string, error) {
 	return n, consumed, nil
 }
 
+// Init mounts the list, which reports its rows to the ListView itself (WithListOnActivate).
 func (n *listViewNode) Init(ctx *tui.Context) {
 	n.Base.Init(ctx)
 	ctx.Mount(n.list)
-	tui.SubscribeScoped(ctx, func(ev widget.ActivateEvent) {
-		if ev.Owner == n.list.NodeID() {
-			n.activated(numberValue(ev.Index))
-		}
-	})
-	tui.SubscribeScoped(ctx, func(ev widget.SelectionChangedEvent) {
-		if ev.Owner == n.list.NodeID() {
-			n.moved(numberValue(ev.Index))
-		}
-	})
 }
 
 func (n *listViewNode) Layout(c tui.Constraints) tui.Size {
@@ -223,6 +216,7 @@ func buildComboBox(b Build) (tui.Component, []string, error) {
 		}
 		opts = append(opts, widget.WithSelectMaxWidth[int](maxWidth))
 	}
+	opts = append(opts, widget.WithSelectOnChange[int](func(i int) { n.activated(numberValue(i)) }))
 	n.sel = widget.NewSelect(opts...)
 	n.mv.changed = func(Change) {
 		key, had := n.mv.keyAt(n.currentIndex())
@@ -245,12 +239,7 @@ func (n *comboBoxNode) refill() {
 
 func (n *comboBoxNode) Init(ctx *tui.Context) {
 	n.Base.Init(ctx)
-	ctx.Mount(n.sel)
-	tui.SubscribeScoped(ctx, func(ev widget.SelectionChangedEvent) {
-		if ev.Owner == n.sel.NodeID() {
-			n.activated(numberValue(ev.Index))
-		}
-	})
+	ctx.Mount(n.sel) // it reports a choice to the ComboBox itself (WithSelectOnChange)
 }
 
 func (n *comboBoxNode) Layout(c tui.Constraints) tui.Size {
@@ -463,7 +452,15 @@ func buildTableView(b Build) (tui.Component, []string, error) {
 	if sortable {
 		return nil, nil, fmt.Errorf("TableView.sortable needs cellCursor: true (at %s)", b.Pos)
 	}
-	n.table = widget.NewTable(n.columns(), widget.WithSource[int](modelSource{&n.mv}, func(int) string { return "" }))
+	n.table = widget.NewTable(n.columns(), widget.WithSource[int](modelSource{&n.mv}, func(int) string { return "" }),
+		widget.WithListOnActivate[int](func(i int) { n.activated(numberValue(i)) }),
+		widget.WithListOnCursor[int](func(i int) { n.moved(numberValue(i)) }),
+		widget.WithListOnContextMenu[int](func(i int, at tui.Point) {
+			if n.menu != nil {
+				at := n.inView(n.table.List(), at)
+				n.menu(numberValue(i), numberValue(at.X), numberValue(at.Y))
+			}
+		}))
 	n.table.List().SetContextMenu(n.menu != nil)
 	n.mv.changed = n.follow
 	if n.template != nil {
@@ -647,24 +644,7 @@ func (n *tableViewNode) Init(ctx *tui.Context) {
 		ctx.Mount(n.grid)
 		return
 	}
-	ctx.Mount(n.table)
-	list := n.table.List()
-	tui.SubscribeScoped(ctx, func(ev widget.ActivateEvent) {
-		if ev.Owner == list.NodeID() {
-			n.activated(numberValue(ev.Index))
-		}
-	})
-	tui.SubscribeScoped(ctx, func(ev widget.SelectionChangedEvent) {
-		if ev.Owner == list.NodeID() {
-			n.moved(numberValue(ev.Index))
-		}
-	})
-	tui.SubscribeScoped(ctx, func(ev widget.ContextMenuEvent) {
-		if ev.Owner == list.NodeID() && n.menu != nil {
-			at := n.inView(list, ev.At)
-			n.menu(numberValue(ev.Index), numberValue(at.X), numberValue(at.Y))
-		}
-	})
+	ctx.Mount(n.table) // its rows report to the TableView itself (WithListOnActivate and siblings)
 }
 
 // inView is a point in the row list's cells in the TableView's own: under its header, wherever the

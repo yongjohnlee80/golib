@@ -125,7 +125,9 @@ func buildTreeView(b Build) (tui.Component, []string, error) {
 		}
 		consumed = append(consumed, "delegate")
 	}
-	n.tree = widget.NewTree(widget.WithKnownChildren(n.knownChildren))
+	n.tree = widget.NewTree(widget.WithKnownChildren(n.knownChildren),
+		widget.WithTreeOnExpandRequest(n.childrenAsked), widget.WithTreeOnExpand(n.opened),
+		widget.WithTreeOnCursor(n.cursorOn), widget.WithTreeOnActivate(n.activate))
 	if err := n.checkTemplate(nil); err != nil {
 		return nil, nil, err
 	}
@@ -361,61 +363,55 @@ func (n *treeViewNode) follow(c Change) {
 	n.tree.ReloadNode(node)
 }
 
+// Init mounts the tree, which reports to the TreeView itself (WithTreeOnCursor and its siblings).
 func (n *treeViewNode) Init(ctx *tui.Context) {
 	n.Base.Init(ctx)
 	ctx.Mount(n.tree)
-	tui.SubscribeScoped(ctx, func(ev widget.ExpandRequestEvent) {
-		if ev.Owner != n.tree.NodeID() || n.model == nil {
-			return
-		}
-		ix, ok := n.at[ev.Node]
-		if !ok || n.knownChildren(ev.Node, ev.Gen) {
-			return
-		}
-		n.pending[n.pathOf(ix)] = ev.Gen
-		if n.model.CanFetchMore(ix) {
-			n.model.FetchMore(ix) // the model ignores a repeat while one is in flight
-		}
-	})
-	tui.SubscribeScoped(ctx, func(ev widget.ExpandEvent) {
-		if ev.Owner != n.tree.NodeID() {
-			return
-		}
-		if ix, ok := n.at[ev.Node]; ok {
-			n.expanded(indexValue(ix))
-		}
-	})
-	tui.SubscribeScoped(ctx, func(ev widget.SelectionChangedEvent) {
-		if ev.Owner != n.tree.NodeID() || n.model == nil {
-			return
-		}
-		// The row under the cursor NOW: the event was queued, and the tree
-		// may have moved since. A repeat of the last row sends nothing.
-		node, ok := n.tree.Selected()
-		if !ok {
-			return
-		}
-		ix, ok := n.at[node]
-		if !ok {
-			return
-		}
-		if path := n.pathOf(ix); path != n.lastMoved {
-			n.lastMoved = path
-			n.moved(indexValue(ix))
-		}
-	})
-	tui.SubscribeScoped(ctx, func(ev widget.ActivateEvent) {
-		if ev.Owner != n.tree.NodeID() {
-			return
-		}
-		rows := n.tree.VisibleRows()
-		if ev.Index < 0 || ev.Index >= len(rows) {
-			return
-		}
-		if ix, ok := n.at[rows[ev.Index]]; ok {
-			n.activated(indexValue(ix))
-		}
-	})
+}
+
+// childrenAsked fetches an opened row's children from the model, unless the view already has them.
+func (n *treeViewNode) childrenAsked(node *widget.TreeNode, gen uint64) {
+	if n.model == nil {
+		return
+	}
+	ix, ok := n.at[node]
+	if !ok || n.knownChildren(node, gen) {
+		return
+	}
+	n.pending[n.pathOf(ix)] = gen
+	if n.model.CanFetchMore(ix) {
+		n.model.FetchMore(ix) // the model ignores a repeat while one is in flight
+	}
+}
+
+// opened raises expanded for an opened row.
+func (n *treeViewNode) opened(node *widget.TreeNode) {
+	if ix, ok := n.at[node]; ok {
+		n.expanded(indexValue(ix))
+	}
+}
+
+// cursorOn raises currentIndexChanged for the row the cursor moved to; a repeat of the last row
+// raises nothing.
+func (n *treeViewNode) cursorOn(node *widget.TreeNode) {
+	if n.model == nil {
+		return
+	}
+	ix, ok := n.at[node]
+	if !ok {
+		return
+	}
+	if path := n.pathOf(ix); path != n.lastMoved {
+		n.lastMoved = path
+		n.moved(indexValue(ix))
+	}
+}
+
+// activate raises activated for an activated row.
+func (n *treeViewNode) activate(node *widget.TreeNode) {
+	if ix, ok := n.at[node]; ok {
+		n.activated(indexValue(ix))
+	}
 }
 
 // knownChildren fills a row whose children the model already has, in the key's own handling (the
