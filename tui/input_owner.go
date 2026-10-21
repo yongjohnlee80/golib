@@ -102,31 +102,12 @@ func (a *App) pointerTarget(x, y int, limit *node) *node {
 		return a.hitTest(x, y)
 	}
 	if a.rootNode != nil {
-		if t := a.hitTestAdmitted(a.rootNode, x, y, limit); t != nil {
+		// only the nodes the scope admits are hit; one it does not is passed over as if absent
+		if t := hitTestNode(a.rootNode, x, y, func(n *node) bool { return a.inInputScope(n, limit) }); t != nil {
 			return t
 		}
 	}
-	return hitTestNode(limit, x, y)
-}
-
-// hitTestAdmitted is hitTestNode keeping only nodes the scope admits: one it does not is passed
-// over as if absent, and the search goes on to what lies beneath it.
-func (a *App) hitTestAdmitted(n *node, x, y int, scope *node) *node {
-	if !n.visible() || !n.absRect.Contains(x, y) {
-		return nil
-	}
-	for i := len(n.children) - 1; i >= 0; i-- {
-		if t := a.hitTestAdmitted(n.children[i], x, y, scope); t != nil {
-			return t
-		}
-	}
-	if pc, ok := n.comp.(PointerContainer); ok && !pc.ContainsPointer(x-n.absRect.X, y-n.absRect.Y) {
-		return nil
-	}
-	if !a.inInputScope(n, scope) {
-		return nil
-	}
-	return n
+	return hitTestNode(limit, x, y, nil)
 }
 
 // pointerCeiling is where a pointer event delivered to target stops bubbling: the active scope

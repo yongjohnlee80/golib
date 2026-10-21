@@ -629,22 +629,27 @@ func (a *App) hitTest(x, y int) *node {
 	if a.rootNode == nil {
 		return nil
 	}
-	return hitTestNode(a.rootNode, x, y)
+	return hitTestNode(a.rootNode, x, y, nil)
 }
 
-// hitTestNode recursively inspects n and its visible children for containment. A node whose
-// component is a PointerContainer is the target only at the points it contains: elsewhere, where
-// none of its children is under the pointer, the search goes on to what lies beneath it.
-func hitTestNode(n *node, x, y int) *node {
+// hitTestNode recursively inspects n and its visible children for containment: the ONE hit-test,
+// for routing, hover and a trapped scope alike. A node whose component is a PointerContainer is the
+// target only at the points it contains, and a node admit refuses (nil admits every node) is passed
+// over as if absent: elsewhere, where none of its children is under the pointer, the search goes on
+// to what lies beneath it.
+func hitTestNode(n *node, x, y int, admit func(*node) bool) *node {
 	if !n.visible() || !n.absRect.Contains(x, y) {
 		return nil
 	}
 	for i := len(n.children) - 1; i >= 0; i-- {
-		if t := hitTestNode(n.children[i], x, y); t != nil {
+		if t := hitTestNode(n.children[i], x, y, admit); t != nil {
 			return t
 		}
 	}
 	if pc, ok := n.comp.(PointerContainer); ok && !pc.ContainsPointer(x-n.absRect.X, y-n.absRect.Y) {
+		return nil
+	}
+	if admit != nil && !admit(n) {
 		return nil
 	}
 	return n
