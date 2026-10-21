@@ -50,6 +50,8 @@ type RecordingCanvas struct {
 	Around color.NRGBA
 	// TextPx answers TextSize; 0: the cell's height over the default font's line height.
 	TextPx float32
+	// Theme answers Indexed (Palette); nil: the default theme's.
+	Theme *Theme
 
 	root   *RecordingCanvas
 	off    Point
@@ -176,6 +178,14 @@ func (c *RecordingCanvas) CellColors(col, row int) (fg, bg color.NRGBA) {
 // CellCovered answers Covers.
 func (c *RecordingCanvas) CellCovered(col, row int) bool {
 	return c.Covers != nil && c.Covers(col, row)
+}
+
+// Indexed is Theme's colour for 256-colour index i (Palette).
+func (c *RecordingCanvas) Indexed(i uint8) color.NRGBA {
+	if th := c.root.Theme; th != nil {
+		return th.Indexed(i)
+	}
+	return defaultPalette.Indexed(i)
 }
 
 // Backdrop returns the simulated backdrop color.
