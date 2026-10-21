@@ -39,3 +39,17 @@ func hidden(c Component) bool {
 	h, ok := c.(Hideable)
 	return ok && !h.Visible()
 }
+
+// Visible reports current placement and visibility through every ancestor. It
+// sees a hidden ancestor immediately, before a layout resets descendant flags.
+func (c *Context) Visible() bool {
+	if !c.node.mounted {
+		return false
+	}
+	for n := c.node; n != nil; n = n.parent {
+		if !n.visible() {
+			return false
+		}
+	}
+	return true
+}

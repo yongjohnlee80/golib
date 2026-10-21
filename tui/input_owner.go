@@ -123,3 +123,14 @@ func (a *App) pointerCeiling(target, limit *node) *node {
 	}
 	return limit
 }
+
+// InInputScope reports whether this live node belongs to the active input scope: inside it, or in
+// a layer whose input owner is (SetChildInputOwner).
+// Visibility is separate: a hidden window can be restored through scoped input.
+// Application-owned operations need not use this input-only restriction.
+func (c *Context) InInputScope() bool {
+	if !c.node.mounted {
+		return false
+	}
+	return c.app.inInputScope(c.node, c.app.confinement())
+}

@@ -118,9 +118,7 @@ type ActionHandler interface {
 // runtime drives it, and a component must not infer anything else from it. It
 // is called only on transitions and only while the runtime owns the gesture,
 // and the runtime guarantees the component is left disarmed however the gesture
-// ends. Nothing drives it until the gesture recogniser lands; it is published
-// now because adding a method to this interface later would break every
-// implementation written against it in the meantime.
+// ends. The gesture recogniser (gesture.go) drives it.
 type Activatable interface {
 	Component
 	Activate(origin ActionOrigin) bool

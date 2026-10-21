@@ -25,31 +25,6 @@ type CaptureEscapeResolver interface {
 	ResolveCaptureEscape(KeyEvent) (Action, bool)
 }
 
-// InInputScope reports whether this live node belongs to the active input scope: inside it, or in
-// a layer whose input owner is (SetChildInputOwner).
-// Visibility is separate: a hidden window can be restored through scoped input.
-// Application-owned operations need not use this input-only restriction.
-func (c *Context) InInputScope() bool {
-	if !c.node.mounted {
-		return false
-	}
-	return c.app.inInputScope(c.node, c.app.confinement())
-}
-
-// Visible reports current placement and visibility through every ancestor. It
-// sees a hidden ancestor immediately, before a layout resets descendant flags.
-func (c *Context) Visible() bool {
-	if !c.node.mounted {
-		return false
-	}
-	for n := c.node; n != nil; n = n.parent {
-		if !n.visible() {
-			return false
-		}
-	}
-	return true
-}
-
 func (a *App) interceptPointerPress(target, limit *node, e MouseEvent) bool {
 	if e.Kind != MousePress {
 		return false

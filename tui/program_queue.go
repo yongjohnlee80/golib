@@ -66,7 +66,7 @@ type programItem struct {
 //	                    │ Awakens Event Loop                     │ Atomic Swap at Drain
 //	                    ▼                                        ▼
 //	+─────────────────────────────────────────────────────────────────────────────+
-//	│                       App.runLoop() Single Consumer                         │
+//	│                       App.loop()    Single Consumer                         │
 //	│                                                                             │
 //	│  1. Receives <-q.wake notification                                          │
 //	│  2. batch := q.drain()                                                      │

@@ -37,9 +37,8 @@ const (
 	CaptureRaw CaptureKind = iota
 
 	// CaptureGesture is held by the runtime on a component's behalf, so that
-	// captured events can be interpreted before the owner sees them. Nothing
-	// acquires it yet; it exists so that adding the interpreter later does not
-	// have to change the meaning of an already-published constant.
+	// captured events can be interpreted before the owner sees them: the gesture
+	// recogniser (gesture.go) acquires it for a press on an Activatable target.
 	CaptureGesture
 )
 

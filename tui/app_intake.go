@@ -46,7 +46,7 @@ import "github.com/yongjohnlee80/golib/logger"
 //	                                 │ Drained by Single Loop Goroutine
 //	                                 ▼
 //	+─────────────────────────────────────────────────────────────────+
-//	│                   App.runLoop() (Dispatch)                      │
+//	│                   App.loop()    (Dispatch)                      │
 //	│     - Focused node / Component.HandleEvent()                    │
 //	│     - Global keybindings & focus navigation                     │
 //	+─────────────────────────────────────────────────────────────────+

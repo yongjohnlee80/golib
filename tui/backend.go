@@ -195,3 +195,7 @@ type ProbedColor struct {
 	R, G, B uint8
 	Known   bool
 }
+
+// Capabilities is the attached terminal's negotiated profile (Backend.Capabilities), so a host can
+// choose what to show: an image where the terminal draws one, a fallback where it does not.
+func (a *App) Capabilities() Capabilities { return a.backend.Capabilities() }
