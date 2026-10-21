@@ -420,74 +420,84 @@ func (m *Menu) Layout(cs tui.Constraints) tui.Size {
 	clear(m.rowRects)
 
 	if m.horizontal {
-		// The ceiling is the constrained width, and a row beyond it is not on
-		// screen — so it declares nothing and gets no rect, for the same reason
-		// a clipped row of a vertical menu does not. A row that starts inside
-		// and runs past the edge is TRUNCATED rather than dropped: it has
-		// painted cells, so it is addressable through the cells it has.
-		limit := cs.MaxW // tui.Unbounded means the parent imposed no ceiling
-		place := func(id ItemID, r tui.Rect) {
-			if ctx != nil {
-				ctx.DeclareRegion(tui.RegionID(id), r)
-			}
-			m.rowRects[id] = r
-		}
+		return m.layoutBar(cs, ctx)
+	}
+	return m.layoutColumn(cs, ctx)
+}
 
-		// PEGGED ROWS ARE PLACED FIRST, from the right edge inward, so the
-		// leading run knows how much room it actually has. Doing it the other
-		// way round means discovering the overlap only after the left-hand rows
-		// are already placed, and then either moving them or letting Help sit
-		// on top of the row before it.
-		//
-		// Pegging needs a known edge, so with no ceiling there is nothing to peg
-		// TO: those rows join the ordinary run rather than vanishing.
-		right := limit
-		if limit != tui.Unbounded {
-			for _, i := range reverseVisible(m.items) {
-				it := m.items[i]
-				if !it.PegRight {
-					continue
-				}
-				rw := m.rowWidth(it, m.barMarkers, checkable(it)) + 2
-				if rw > right {
-					rw = right // it is the only thing that fits; clip it
-				}
-				if rw <= 0 {
-					continue
-				}
-				right -= rw
-				place(it.ID, tui.Rect{X: right, Y: 0, W: rw, H: 1})
-			}
+// layoutBar places the root's rows along one line, as a MenuBar shows them: right-pegged rows
+// first, from the edge inward, then the leading run up to them.
+func (m *Menu) layoutBar(cs tui.Constraints, ctx *tui.Context) tui.Size {
+	// The ceiling is the constrained width, and a row beyond it is not on
+	// screen — so it declares nothing and gets no rect, for the same reason
+	// a clipped row of a vertical menu does not. A row that starts inside
+	// and runs past the edge is TRUNCATED rather than dropped: it has
+	// painted cells, so it is addressable through the cells it has.
+	limit := cs.MaxW // tui.Unbounded means the parent imposed no ceiling
+	place := func(id ItemID, r tui.Rect) {
+		if ctx != nil {
+			ctx.DeclareRegion(tui.RegionID(id), r)
 		}
-
-		x := 0
-		for _, i := range visibleRows(m.items) {
-			it := m.items[i]
-			if it.PegRight && limit != tui.Unbounded {
-				continue // already placed against the right edge
-			}
-			rw := m.rowWidth(it, m.barMarkers, checkable(it)) + 2
-			if limit != tui.Unbounded {
-				// Stop at the pegged block rather than at the screen edge, so a
-				// leading row cannot be painted underneath Help.
-				if x >= right {
-					break
-				}
-				rw = min(rw, right-x)
-			}
-			place(it.ID, tui.Rect{X: x, Y: 0, W: rw, H: 1})
-			x += rw
-		}
-		// The bar claims the FULL width when something is pegged to its far end:
-		// returning only the used width would leave the right-hand rows outside
-		// the rect the parent placed, where they are clipped away entirely.
-		w := x
-		if limit != tui.Unbounded && right < limit {
-			w = limit
-		}
-		return cs.Constrain(tui.Size{W: w, H: 1})
+		m.rowRects[id] = r
 	}
 
+	// PEGGED ROWS ARE PLACED FIRST, from the right edge inward, so the
+	// leading run knows how much room it actually has. Doing it the other
+	// way round means discovering the overlap only after the left-hand rows
+	// are already placed, and then either moving them or letting Help sit
+	// on top of the row before it.
+	//
+	// Pegging needs a known edge, so with no ceiling there is nothing to peg
+	// TO: those rows join the ordinary run rather than vanishing.
+	right := limit
+	if limit != tui.Unbounded {
+		for _, i := range reverseVisible(m.items) {
+			it := m.items[i]
+			if !it.PegRight {
+				continue
+			}
+			rw := m.rowWidth(it, m.barMarkers, checkable(it)) + 2
+			if rw > right {
+				rw = right // it is the only thing that fits; clip it
+			}
+			if rw <= 0 {
+				continue
+			}
+			right -= rw
+			place(it.ID, tui.Rect{X: right, Y: 0, W: rw, H: 1})
+		}
+	}
+
+	x := 0
+	for _, i := range visibleRows(m.items) {
+		it := m.items[i]
+		if it.PegRight && limit != tui.Unbounded {
+			continue // already placed against the right edge
+		}
+		rw := m.rowWidth(it, m.barMarkers, checkable(it)) + 2
+		if limit != tui.Unbounded {
+			// Stop at the pegged block rather than at the screen edge, so a
+			// leading row cannot be painted underneath Help.
+			if x >= right {
+				break
+			}
+			rw = min(rw, right-x)
+		}
+		place(it.ID, tui.Rect{X: x, Y: 0, W: rw, H: 1})
+		x += rw
+	}
+	// The bar claims the FULL width when something is pegged to its far end:
+	// returning only the used width would leave the right-hand rows outside
+	// the rect the parent placed, where they are clipped away entirely.
+	w := x
+	if limit != tui.Unbounded && right < limit {
+		w = limit
+	}
+	return cs.Constrain(tui.Size{W: w, H: 1})
+}
+
+// layoutColumn places the root's rows down one column, through its window (levelView).
+func (m *Menu) layoutColumn(cs tui.Constraints, ctx *tui.Context) tui.Size {
 	w, h := m.measureRows(m.items)
 	size := cs.Constrain(tui.Size{W: w + 2, H: h})
 	top := m.root.place(m.items, m.selected, size.H)
