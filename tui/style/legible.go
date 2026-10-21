@@ -91,8 +91,10 @@ func raiseContrast(f, b [3]uint8, ratio float64) (r, g, bl uint8, moved bool) {
 	return q[0], q[1], q[2], true
 }
 
-// luminance is WCAG's relative luminance.
-func luminance(c [3]uint8) float64 {
+// RelativeLuminance is WCAG's relative luminance of an sRGB colour, 0 (black) to 1 (white): each
+// component linearized, then weighted by Rec. 709. It is the one luminance golib decides
+// darkness and contrast with.
+func RelativeLuminance(r, g, b uint8) float64 {
 	lin := func(v uint8) float64 {
 		s := float64(v) / 255
 		if s <= 0.03928 {
@@ -100,8 +102,19 @@ func luminance(c [3]uint8) float64 {
 		}
 		return math.Pow((s+0.055)/1.055, 2.4)
 	}
-	return 0.2126*lin(c[0]) + 0.7152*lin(c[1]) + 0.0722*lin(c[2])
+	return 0.2126*lin(r) + 0.7152*lin(g) + 0.0722*lin(b)
 }
+
+// Dark reports whether a background is dark: white text has a higher WCAG contrast on it than
+// black text. The two are equal at a relative luminance of about 0.179, a mid grey near #767676,
+// not at 0.5: luminance is not perceptually even.
+func Dark(r, g, b uint8) bool {
+	l := RelativeLuminance(r, g, b)
+	return contrastRatio(1, l) > contrastRatio(l, 0)
+}
+
+// luminance is RelativeLuminance of an RGB triple.
+func luminance(c [3]uint8) float64 { return RelativeLuminance(c[0], c[1], c[2]) }
 
 // contrastRatio is WCAG's contrast ratio of two luminances.
 func contrastRatio(a, b float64) float64 {

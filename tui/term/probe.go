@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/yongjohnlee80/golib/tui"
+	"github.com/yongjohnlee80/golib/tui/style"
 )
 
 // The startup capability probe: one batched write, one fence,
@@ -183,13 +184,7 @@ collect:
 	caps.DefaultFG = fg
 	caps.DefaultBG = bg
 	if bg.Known {
-		caps.DarkBackground = relativeLuminance(bg) < 0.5
+		caps.DarkBackground = style.Dark(bg.R, bg.G, bg.B) // WCAG: white reads better than black
 	}
 	return caps, nil
-}
-
-// relativeLuminance approximates the relative luminance of c in [0, 1]
-// (Rec. 709 coefficients) for the DarkBackground derivation.
-func relativeLuminance(c tui.ProbedColor) float64 {
-	return (0.2126*float64(c.R) + 0.7152*float64(c.G) + 0.0722*float64(c.B)) / 255
 }
