@@ -144,13 +144,7 @@ func (s *Screen) resetTabs() {
 	}
 }
 
-func (s *Screen) blankLine(bg style.Color) line {
-	cells := make([]Cell, s.cols)
-	for i := range cells {
-		cells[i] = blank(bg)
-	}
-	return line{cells: cells}
-}
+func (s *Screen) blankLine(bg style.Color) line { return line{cells: blankCells(s.cols, bg)} }
 
 func (s *Screen) blankLines(n int, bg style.Color) []line {
 	ls := make([]line, n)
