@@ -130,17 +130,18 @@ purpose": a difference in behaviour is a parameter of the shared code, named and
   same-turn variant is named `Apply*`. Every type documents its concurrency model.
 - **Async results carry a generation or epoch** and are dropped when stale.
 - **Phase legality is checked by identity** (`handlerNode == c.node.id`), never by a boolean.
-- **The runtime's state has one owner per concern.** Each is a named `App` field of its own type, in
-  its own file; only the functions listed change it:
+- **The runtime's state has one owner per concern.** Each is a named `App` field of its own type,
+  declared in the file of its concern, which holds its rules. The table says where each part is
+  written; a new writer goes in one of those files, or the table changes with it:
 
-  | Concern | State (`App` field) | Changed by |
+  | Concern | State (`App` field) | Written in |
   |---|---|---|
-  | Routing | `nodes`, `byComp`, the two lanes | `dispatch`, `dispatchKey`, `dispatchMouse` (`app_routing.go`), `runUpdate` |
-  | Focus | `focus` (`focusState`, `focus.go`) | `setFocus`; repair in `focus_repair.go`; trap admission in `focus_traps.go` |
-  | Pointer capture | `capture` (`captureState`, `capture.go`) | the capture calls in `capture.go`, ending through `loseCapture` |
-  | Rendering | `buf`, `native`, `images`, `faces` | `renderFrame` / `renderTooSmall`, between `beginFrame` and `presentFrame` |
-  | Delivery phase | `phase` (`handlerPhase`, `phase.go`) | `enterDelivery` / `leaveDelivery`, deferred around each handler |
-  | Settings | `live` (`appLive`); `cfg` is as configured | `SetTheme` and the `Apply*` calls |
+  | The tree | `nodes`, `byComp` | mount and unmount (`app_tree.go`); routing only reads them |
+  | Focus | `focus` (`focusState`) | `focus.go` (`setFocus`, the ring), `focus_repair.go`, `focus_into.go`, and the tree and batching paths that defer or start a repair (`app_tree.go`, `context.go`, `app.go`) |
+  | Pointer capture | `capture` (`captureState`) | `capture.go`, and the recogniser's state in `gesture.go` |
+  | Rendering | `buf`, `native`, `images`, `faces` | the frame, between `beginFrame` and `presentFrame`; the face table (`face.go`) and `RenderOffscreen`'s face scope (`offscreen.go`) |
+  | Delivery phase | `phase` (`handlerPhase`) | the phase marks around Init, Layout, Render and an Update (`app_tree.go`, `app_layout.go`, `app_render.go`, `app.go`), and `enterDelivery`/`leaveDelivery` around each handler (`action.go`, `app_routing.go`) |
+  | Settings | `live` (`appLive`); `cfg` stays as configured | `SetTheme`, the `Apply*` calls, `SetGestureRecognizer` |
 
 ## 7. Input
 
