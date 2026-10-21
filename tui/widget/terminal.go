@@ -198,7 +198,9 @@ type Terminal struct {
 func NewTerminal(opts ...TerminalOption) *Terminal {
 	cfg := terminalConfig{scrollback: vt.DefaultScrollback, themeColors: true}
 	for _, o := range opts {
-		o(&cfg)
+		if o != nil { // a nil option is skipped, as every other constructor here does
+			o(&cfg)
+		}
 	}
 	cfg.path = defaultShell(cfg.path)
 	if cfg.start == nil {

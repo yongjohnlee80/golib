@@ -3,7 +3,6 @@ package widget
 import (
 	"cmp"
 	"context"
-	"errors"
 	"fmt"
 	"sync"
 	"sync/atomic"
@@ -574,23 +573,12 @@ func (t *TerminalTabs) ShutdownWithResult() *TerminalShutdownResult {
 	if t.shutdown != nil {
 		return t.shutdown
 	}
-	r := &TerminalShutdownResult{completion: terminalCompletion{done: make(chan struct{})}}
-	t.shutdown = r
 	results := make([]*TerminalShutdownResult, 0, len(t.owned))
 	for _, terminal := range t.owned {
 		results = append(results, terminal.ShutdownWithResult())
 	}
-	go func() {
-		var failures []error
-		for _, result := range results {
-			if err := result.Wait(context.Background()); err != nil {
-				failures = append(failures, err)
-			}
-		}
-		r.completion.err = errors.Join(failures...)
-		close(r.completion.done)
-	}()
-	return r
+	t.shutdown = joinShutdowns(results)
+	return t.shutdown
 }
 
 func (t *TerminalTabs) Init(ctx *tui.Context) {
