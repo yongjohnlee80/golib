@@ -145,6 +145,14 @@ func WithSizeFraction(wPct, hPct int) FloatOption {
 	return func(f *Float) { f.wPct, f.hPct = clampPct(wPct), clampPct(hPct) }
 }
 
+// overlayTier is a shown modal Float's tier: an open dialog, as a Modal is (tieredLayer).
+func (f *Float) overlayTier() layerTier {
+	if f.modal && f.shown {
+		return tierDialog
+	}
+	return tierOrdinary
+}
+
 // WithDimBackground dims (scrims) the cells beneath while shown.
 func WithDimBackground(v bool) FloatOption { return func(f *Float) { f.dim = v } }
 
@@ -415,11 +423,9 @@ func alignOffset(a tui.Align, avail, sz tui.Size) (x, y int) {
 
 // Render paints the scrim when dimming.
 func (l *floatLayer) Render(s tui.Surface) {
-	if !l.owner.dim {
-		return
+	if l.owner.dim {
+		paintScrim(s, l.Context(), "░", l.owner.scrim)
 	}
-	sz := s.Size()
-	s.Fill(tui.Rect{X: 0, Y: 0, W: sz.W, H: sz.H}, "░", l.owner.scrim)
 }
 
 // HandleEvent: modal layers consume Esc (dismiss) and all backdrop mouse

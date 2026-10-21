@@ -424,15 +424,17 @@ func (s *Scrim) Layout(cs tui.Constraints) tui.Size {
 // NOT FOCUSABLE BY DESIGN — no tui.Focusable: the scrim is decoration, and the
 // dialog above it owns the focus.
 
-func (s *Scrim) Render(su tui.Surface) {
+func (s *Scrim) Render(su tui.Surface) { paintScrim(su, s.Context(), " ", s.st.Scrim()) }
+
+// paintScrim dims su's whole area with glyph in st: the one backdrop painter, a Modal's Scrim's and
+// a dimmed Float's. A native view drawing ctx's node dims what is beneath itself, and cells over it
+// would hide it, so then nothing is painted.
+func paintScrim(su tui.Surface, ctx *tui.Context, glyph string, st style.Style) {
 	sz := su.Size()
-	if sz.W <= 0 || sz.H <= 0 {
+	if sz.W <= 0 || sz.H <= 0 || ctx != nil && ctx.DrawnNatively() {
 		return
 	}
-	if ctx := s.Context(); ctx != nil && ctx.DrawnNatively() {
-		return // a native view dims what is beneath; covering it with cells would hide it
-	}
-	su.Fill(tui.Rect{X: 0, Y: 0, W: sz.W, H: sz.H}, " ", s.st.Scrim())
+	su.Fill(tui.Rect{W: sz.W, H: sz.H}, glyph, st)
 }
 
 // fatalOf builds the package's standard construction panic value.

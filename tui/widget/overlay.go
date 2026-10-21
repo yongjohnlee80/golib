@@ -170,7 +170,7 @@ func (h *OverlayHost) Raise(f *Float) {
 	if f == nil || !h.hasLayer(f) || slices.Contains(h.topmost, f) {
 		return
 	}
-	if f.modal && f.shown {
+	if h.tierOf(f) == tierDialog {
 		h.moveBelow(f, h.isTopmost)
 		return
 	}
@@ -199,26 +199,43 @@ func (h *OverlayHost) moveBelow(f *Float, ceiling func(tui.Component) bool) {
 	h.Stack.Move(f, to)
 }
 
-// pinned reports whether layer stays above the ordinary layers: an open dialog, its scrim, a shown
-// modal Float, or a topmost Float.
-func (h *OverlayHost) pinned(layer tui.Component) bool {
-	if h.scrim != nil && layer == tui.Component(h.scrim) {
-		return true
-	}
-	switch l := layer.(type) {
-	case *Modal:
-		return slices.Contains(h.modals, l)
-	case *Float:
-		return l.modal && l.shown || slices.Contains(h.topmost, l)
-	}
-	return false
+// layerTier is where an overlay layer stacks: above the ordinary layers sit the open dialogs with
+// their scrim, and above those the topmost layers.
+type layerTier int
+
+const (
+	tierOrdinary layerTier = iota // a panel, a popup, a hidden or non-modal Float
+	tierDialog                    // an open dialog, its scrim, a shown modal Float
+	tierTopmost                   // a topmost Float (AttachTopmost)
+)
+
+// tieredLayer is a layer that states its own tier; one that does not is ordinary, unless the host
+// put it in a tier itself (a topmost Float, an open Modal, the scrim).
+type tieredLayer interface {
+	overlayTier() layerTier
 }
 
-// isTopmost reports whether layer is one of the topmost floats.
-func (h *OverlayHost) isTopmost(layer tui.Component) bool {
-	f, ok := layer.(*Float)
-	return ok && slices.Contains(h.topmost, f)
+// tierOf is layer's tier: the host's own placements first (AttachTopmost, openModal, the scrim),
+// then what the layer states.
+func (h *OverlayHost) tierOf(layer tui.Component) layerTier {
+	switch {
+	case slices.ContainsFunc(h.topmost, func(f *Float) bool { return tui.Component(f) == layer }):
+		return tierTopmost
+	case h.scrim != nil && layer == tui.Component(h.scrim),
+		slices.ContainsFunc(h.modals, func(m *Modal) bool { return tui.Component(m) == layer }):
+		return tierDialog
+	}
+	if t, ok := layer.(tieredLayer); ok {
+		return t.overlayTier()
+	}
+	return tierOrdinary
 }
+
+// pinned reports whether layer stays above the ordinary layers.
+func (h *OverlayHost) pinned(layer tui.Component) bool { return h.tierOf(layer) > tierOrdinary }
+
+// isTopmost reports whether layer is one of the topmost layers.
+func (h *OverlayHost) isTopmost(layer tui.Component) bool { return h.tierOf(layer) == tierTopmost }
 
 // Detach removes a previously attached Float.
 //
@@ -382,8 +399,8 @@ func (h *OverlayHost) openModal(m *Modal) (err error) {
 	}
 
 	var scrim *Scrim
-	if m.wantScrim {
-		scrim = &Scrim{st: m.card.st}
+	if m.wantsScrim() {
+		scrim = &Scrim{st: m.scrimStyle()}
 		h.Stack.Add(scrim)
 		h.scrim = scrim
 	}
@@ -488,10 +505,10 @@ func (h *OverlayHost) restoreScrimForTop() {
 		return
 	}
 	top := h.modals[n-1]
-	if !top.wantScrim {
+	if !top.wantsScrim() {
 		return
 	}
-	scrim := &Scrim{st: top.card.st}
+	scrim := &Scrim{st: top.scrimStyle()}
 	h.Stack.Add(scrim)
 	h.scrim = scrim
 	// Added on top, then moved to the slot directly below the surviving dialog: the dialog's own

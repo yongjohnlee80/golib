@@ -387,6 +387,12 @@ func WithScrim(v bool) ModalOption {
 	return func(m *Modal) { m.wantScrim = v }
 }
 
+// wantsScrim reports whether the dialog asked for a backdrop (WithScrim); its host places it.
+func (m *Modal) wantsScrim() bool { return m.wantScrim }
+
+// scrimStyle is the look of the dialog's backdrop: its card's style.
+func (m *Modal) scrimStyle() *ModalStyle { return m.card.st }
+
 // SetButtons replaces the dialog's buttons and reports why if it cannot.
 //
 // A typed error rather than a panic, because at runtime a caller supplying a
