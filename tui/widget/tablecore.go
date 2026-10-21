@@ -85,6 +85,11 @@ func TableSortable(on bool) TableOption { return func(c *TableCore) { c.sortable
 // widest number has (RowNumberDigits).
 func TableRowNumbers(on bool) TableOption { return func(c *TableCore) { c.rowNumbers = on } }
 
+// TableCopyCSV makes the table's copies CSV (comma-separated, quoted as RFC 4180 has it), and its
+// register's pastes read back as CSV; off, the default, they are TSV. A paste from outside the
+// table (a PasteEvent: a spreadsheet's cells) is TSV either way.
+func TableCopyCSV(on bool) TableOption { return func(c *TableCore) { c.copyCSV = on } }
+
 // TableOnSort is called with the sort keys whenever the sort changes: SortKeys, SortBy, the s key,
 // or a new source or a removed field ending it. Rows merged into an unchanged sort call nothing.
 func TableOnSort(fn func(keys []TableSortKey)) TableOption {
@@ -156,6 +161,8 @@ type TableCore struct {
 	place         []int           // with a filter, display row → its place among the loaded rows in the sort's order
 	sortable      bool
 	rowNumbers    bool
+	rowCursor     bool // the cursor covers its whole row (TableRowCursor's r): y copies the row
+	copyCSV       bool // copies are CSV, not TSV (TableCopyCSV)
 	ahead         int
 	onActivate    func(row int)
 	onCursor      func(row int)
@@ -226,6 +233,33 @@ func (c *TableCore) SetSource(src TableSource) {
 func (c *TableCore) RowNumbers() bool { return c.rowNumbers }
 
 // SetRowNumbers turns the row numbers on or off.
+// SetCopyCSV is TableCopyCSV on a core already built.
+func (c *TableCore) SetCopyCSV(on bool) { c.copyCSV = on }
+
+// CopyCSV reports whether copies are CSV.
+func (c *TableCore) CopyCSV() bool { return c.copyCSV }
+
+// SetRowCursor makes the cursor cover its whole row (on) or its cell; r toggles it. On a row, y
+// copies the row (as yy does), and h and l still move the field the cell cursor returns to.
+func (c *TableCore) SetRowCursor(on bool) {
+	if c.rowCursor == on {
+		return
+	}
+	c.rowCursor = on
+	if c.layout != nil {
+		c.layout.Changed()
+	}
+}
+
+// RowCursor reports whether the cursor covers its whole row.
+func (c *TableCore) RowCursor() bool { return c.rowCursor }
+
+// CursorCovers reports whether the cursor covers display row row's field col: its cell, or with a
+// row cursor every field of its row. A view draws the cursor where it covers.
+func (c *TableCore) CursorCovers(row, col int) bool {
+	return row == c.cur.Row && (c.rowCursor || col == c.cur.Col)
+}
+
 func (c *TableCore) SetRowNumbers(on bool) {
 	if c.rowNumbers == on {
 		return

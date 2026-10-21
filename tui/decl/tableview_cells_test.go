@@ -177,3 +177,16 @@ func TestACellCursorTableViewWearsThePaletteAndKeepsCurrentIndex(t *testing.T) {
 		t.Errorf("currentIndex = %s, want 2 as the document set it", got)
 	}
 }
+
+// copyFormat: "csv" makes y copy CSV, and rowCursor: true starts the cursor on its whole row, so y
+// copies the row; r gives the cell cursor back.
+func TestACellCursorTableViewCopiesCSVAndCoversItsRow(t *testing.T) {
+	m, rec := scores(), &recorder{}
+	m.Reset([]tuidecl.Row{{"name": "carol, jr", "n": 41}, {"name": "alice", "n": 9}})
+	s := runCells(t, `TableView { model: App.rows; cellCursor: true; copyFormat: "csv"; rowCursor: true }`, m, rec)
+	s.WaitFor(t, "the rows", func(sc string) bool { return strings.Contains(sc, "alice") })
+	s.Keys(t, key(tui.KeyTab), decltest.Rune('y')) // focus, then y on the row cursor
+	s.WaitFor(t, "carol's row as CSV", func(string) bool { return string(s.Backend.Clipboard()) == `"carol, jr",41` })
+	s.Keys(t, decltest.Rune('r'), decltest.Rune('y'))
+	s.WaitFor(t, "carol's cell as CSV", func(string) bool { return string(s.Backend.Clipboard()) == `"carol, jr"` })
+}

@@ -36,7 +36,10 @@ func EncodeTableText(rows [][]string) string {
 // record holds is blank (the reader skips those) and is a row of one empty cell, found as the file
 // reader finds a record's span: from its first field's line (FieldPos) to its end (InputOffset), so
 // a blank line inside a quoted value stays in its cell. A parse error is returned with no rows.
-func DecodeTableText(text string) ([][]string, error) {
+func DecodeTableText(text string) ([][]string, error) { return decodeTableText(text, '\t') }
+
+// decodeTableText is DecodeTableText with comma as the delimiter: a CSV register's ','.
+func decodeTableText(text string, comma rune) ([][]string, error) {
 	if text == "" {
 		return nil, nil
 	}
@@ -53,7 +56,7 @@ func DecodeTableText(text string) ([][]string, error) {
 	}
 	var recs []span
 	r := csv.NewReader(strings.NewReader(text))
-	r.Comma, r.FieldsPerRecord = '\t', -1
+	r.Comma, r.FieldsPerRecord = comma, -1
 	for {
 		cells, err := r.Read()
 		if errors.Is(err, io.EOF) {
@@ -84,12 +87,15 @@ func DecodeTableText(text string) ([][]string, error) {
 // pastedRows is a pasted text as rows, in this order: one row of one cell, its value (a quoted
 // single cell gives back what it quotes); rows; a text that does not decode but is one line with no
 // tab, that line as it is (a bare quote pastes as typed); otherwise the parse error, and no rows.
-func pastedRows(text string) ([][]string, error) {
-	rows, err := DecodeTableText(text)
+func pastedRows(text string) ([][]string, error) { return pastedRowsIn(text, '\t') }
+
+// pastedRowsIn is pastedRows with comma as the delimiter: a CSV register's rows read as CSV.
+func pastedRowsIn(text string, comma rune) ([][]string, error) {
+	rows, err := decodeTableText(text, comma)
 	if err == nil {
 		return rows, nil
 	}
-	if line := strings.TrimSuffix(text, "\n"); !strings.ContainsAny(line, "\n\t") {
+	if line := strings.TrimSuffix(text, "\n"); !strings.ContainsAny(line, "\n"+string(comma)) {
 		return [][]string{{line}}, nil
 	}
 	return nil, err

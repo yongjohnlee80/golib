@@ -451,7 +451,11 @@ func (l *tableLayout) paintCursorCell(c gui.Canvas, cols []tableColumn, edge tab
 		}
 		return
 	}
-	r, ok := l.cellsRect(cols, cur, cur, last)
+	from, to := cur, cur
+	if l.core().RowCursor() { // the row cursor: every field of the cursor's row
+		from.Col, to.Col = 0, len(l.core().Fields())-1
+	}
+	r, ok := l.cellsRect(cols, from, to, last)
 	if !ok {
 		return
 	}

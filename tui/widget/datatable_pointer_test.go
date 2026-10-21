@@ -422,3 +422,65 @@ func TestDataTable_ACopyPastTheLimitCopiesNothing(t *testing.T) {
 	})
 	h.waitFor("the rows on the clipboard", func() bool { return string(h.tb.Clipboard()) == "1\trow1\t10\n2\trow2\t20" })
 }
+
+// r puts the cursor on its whole row: every field of the row is drawn in the cursor's style, y
+// copies the row (as yy would), and r again brings the cell cursor back, where y copies the cell.
+func TestDataTable_RTogglesARowCursorThatYCopiesWhole(t *testing.T) {
+	h, _, dt := dataTable(t, numbered(3), 30, 6)
+	cursorAt := func(x, y int) tui.CellAttrs { return cellAttrs(h, x, y) }
+	h.onLoop(func() {
+		dt.HandleEvent(key('j'))
+		dt.HandleEvent(key('l'))
+	})
+	h.settle()
+	cell := cursorAt(5, 2) // row 1's name: the cursor's cell
+	plain := cursorAt(0, 2)
+	if cell == plain {
+		t.Fatalf("precondition: the cursor's cell %+v is drawn as the row's id %+v", cell, plain)
+	}
+	h.onLoop(func() { dt.HandleEvent(key('r')) })
+	h.settle()
+	if got := cursorAt(0, 2); got != cell {
+		t.Errorf("the row cursor leaves row 1's id drawn %+v, want the cursor's %+v", got, cell)
+	}
+	if got := cursorAt(0, 3); got == cell {
+		t.Error("the row cursor covers row 2 too")
+	}
+	h.onLoop(func() { dt.HandleEvent(key('y')) })
+	h.waitFor("the row on the clipboard", func() bool { return string(h.tb.Clipboard()) == "1\trow1\t10" })
+	h.onLoop(func() {
+		dt.HandleEvent(key('r'))
+		dt.HandleEvent(key('y'))
+	})
+	h.settle()
+	if got := cursorAt(0, 2); got == cell {
+		t.Error("back on the cell, row 1's id is still drawn as the cursor")
+	}
+	h.waitFor("the cell on the clipboard", func() bool { return string(h.tb.Clipboard()) == "row1" })
+}
+
+// A table that copies CSV writes its cells comma-separated and quoted as RFC 4180 has it: a value
+// with a comma or a quote is quoted, its quotes doubled; whole rows are CSV lines.
+func TestDataTable_ACSVTableCopiesCSV(t *testing.T) {
+	src := numbered(2)
+	src.rows[1][1] = `say "hi", then`
+	h, _, dt := dataTable(t, src, 40, 6, widget.TableCopyCSV(true))
+	h.onLoop(func() {
+		dt.HandleEvent(key('j'))
+		dt.HandleEvent(key('l'))
+		dt.HandleEvent(key('y'))
+	})
+	h.waitFor("the quoted cell", func() bool { return string(h.tb.Clipboard()) == `"say ""hi"", then"` })
+	h.onLoop(func() { dt.HandleEvent(key('y')) })
+	h.waitFor("the row as CSV", func() bool { return string(h.tb.Clipboard()) == `1,"say ""hi"", then",10` })
+	h.onLoop(func() {
+		dt.HandleEvent(key('g'))
+		dt.HandleEvent(key('g'))
+		dt.HandleEvent(key('V'))
+		dt.HandleEvent(key('j'))
+		dt.HandleEvent(key('y'))
+	})
+	h.waitFor("two rows as CSV", func() bool {
+		return string(h.tb.Clipboard()) == "0,row0,0\n"+`1,"say ""hi"", then",10`
+	})
+}
