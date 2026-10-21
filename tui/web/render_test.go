@@ -27,6 +27,9 @@ func TestWireColors(t *testing.T) {
 		{"reverse swaps", tui.CellAttrs{FG: red, BG: tui.CellColor{Kind: tui.CellColorANSI, Index: 4},
 			Mask: tui.AttrReverse | tui.AttrBold}, "var(--a4)", "#ff0000", uint16(tui.AttrBold)},
 		{"default-on-default reverse", tui.CellAttrs{Mask: tui.AttrReverse}, "var(--bg)", "var(--fg)", 0},
+		// a kind outside tui's set (none is ever resolved to one) is the stylesheet's default, never
+		// an invented colour
+		{"unknown kind", tui.CellAttrs{FG: tui.CellColor{Kind: tui.CellColorRGB + 1}}, "", "", 0},
 	}
 	for _, c := range cases {
 		fg, bg, mask := wireColors(c.attrs)
