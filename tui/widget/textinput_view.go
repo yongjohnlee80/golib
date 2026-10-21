@@ -87,23 +87,60 @@ func (t *TextInput) Render(s tui.Surface) {
 		base = t.styles.Error.Inherit(t.styles.Text)
 	}
 	selLo, selHi, hasSel := t.selection()
+	x := t.eachVisible(inner, s.StringWidth, func(i int, cl string, x int) {
+		st := base
+		if hasSel && t.focused() && i >= selLo && i < selHi {
+			st = t.styles.Selection.Inherit(base)
+		}
+		s.SetCell(pad+x, 0, cl, st)
+	})
+	if h := t.hint(); h != "" && x >= 0 && x < inner {
+		drawText(s, pad+x, 0, truncate(h, inner-x, s.StringWidth), t.styles.Placeholder)
+	}
+}
+
+// eachVisible walks the clusters the field shows within inner cells: fn has each one's index, its
+// painted form and its cell offset from the text's left edge. A cluster cut by either edge is not
+// shown. It returns the offset where the walk stopped, past the last cluster shown, where Render
+// draws the completion hint. Render and SelectionCells both walk by it, so the cells a selection
+// is reported at are the cells it is drawn at.
+func (t *TextInput) eachVisible(inner int, measure func(string) int, fn func(i int, cl string, x int)) int {
 	x := -t.scroll
-	for i, c := range cs {
+	for i, c := range t.clusters() {
 		cl := t.renderCluster(c)
-		cw := s.StringWidth(cl)
+		cw := measure(cl)
 		if x+cw > inner {
 			break
 		}
 		if x >= 0 {
-			st := base
-			if hasSel && t.focused() && i >= selLo && i < selHi {
-				st = t.styles.Selection.Inherit(base)
-			}
-			s.SetCell(pad+x, 0, cl, st)
+			fn(i, cl, x)
 		}
 		x += cw
 	}
-	if h := t.hint(); h != "" && x >= 0 && x < inner {
-		drawText(s, pad+x, 0, truncate(h, inner-x, s.StringWidth), t.styles.Placeholder)
+	return x
+}
+
+var _ tui.SelectionCells = (*TextInput)(nil)
+
+// SelectionCells implements tui.SelectionCells: the cells Render draws the selection over, on the
+// field's one row, after its padding and scroll, clipped as Render clips. None while the field is
+// unfocused, as Render then draws none.
+func (t *TextInput) SelectionCells() ([]tui.Rect, bool) {
+	lo, hi, ok := t.selection()
+	if !ok || !t.focused() || t.width <= 0 {
+		return nil, false
 	}
+	x0, x1 := -1, -1
+	t.eachVisible(t.width, t.measure, func(i int, cl string, x int) {
+		if i >= lo && i < hi {
+			if x0 < 0 {
+				x0 = x
+			}
+			x1 = x + t.measure(cl)
+		}
+	})
+	if x0 < 0 {
+		return nil, false
+	}
+	return []tui.Rect{{X: t.pad + x0, W: x1 - x0, H: 1}}, true
 }

@@ -152,6 +152,20 @@ type CursorReporter interface {
 	Cursor() (x, y int, ok bool)
 }
 
+// SelectionCells is implemented by a component that draws a text selection, so a host that paints
+// it natively (gui) asks the component where it is rather than redoing its cell walk.
+//
+// The rects are in the component's own frame: the Rect its Render surface covers, (0,0) at its
+// top-left. A host translates them through the node's placed rect, as it does CursorReporter's
+// position. One rect per row the selection is drawn on, in row order; each covers the cells drawn
+// as selected, so a rect never includes a cell the component clips. ok is false whenever there are
+// no rects: no selection, an unfocused component that draws none, or a selection scrolled wholly
+// out of view. A consumer needs only that one check.
+type SelectionCells interface {
+	Component
+	SelectionCells() (spans []Rect, ok bool)
+}
+
 // CursorShaper is an optional capability interface implemented by components whose
 // hardware cursor shape depends on internal editing state (for example, a modal Vim
 // editor reporting CursorShapeBlock in Normal mode and CursorShapeBar in Insert mode).
