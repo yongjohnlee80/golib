@@ -617,8 +617,8 @@ func (m *Menu) openLevel(parent ItemID, children []MenuItemModel) error {
 	// The new level owns the selection: its first selectable row.
 	for _, it := range children {
 		if it.selectable() {
-			m.setSelected(it.ID)
-			break
+			m.setSelected(it.ID) // last: it tells the owner
+			return nil
 		}
 	}
 	return nil
