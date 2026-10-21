@@ -40,9 +40,6 @@ var (
 	scrollCommands = []keymap.Command{ScrollPageUp, ScrollPageDown, ScrollHome, ScrollEnd}
 )
 
-// wheelRows is how far one wheel step scrolls.
-const wheelRows = 3
-
 // NewScrollView makes a ScrollView over child.
 func NewScrollView(child tui.Component) *ScrollView { return &ScrollView{child: child} }
 
@@ -128,7 +125,7 @@ func (v *ScrollView) HandleEvent(ev tui.Event) bool {
 		if v.content <= v.view {
 			return false // nothing to scroll: an outer one may
 		}
-		step := wheelRows
+		step := scrollWheelRows
 		if e.Button == tui.WheelUp {
 			step = -step
 		}
