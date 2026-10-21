@@ -1,6 +1,7 @@
 package widget
 
 import (
+	"fmt"
 	"strings"
 
 	"github.com/yongjohnlee80/golib/tui"
@@ -27,8 +28,9 @@ type SelectItem[T any] struct {
 //  1. Two-Phase Presentation:
 //     - Closed Phase: Occupies 1 row in the parent layout, displaying the currently
 //     selected item label.
-//     - Open Phase: Projects a modal [selectPopup] onto the root [OverlayHost] via an
-//     nearest enclosing [OverlayHost], resolved from the component tree.
+//     - Open Phase: Opens its options as a popup on the nearest enclosing [OverlayHost],
+//     resolved from the component tree: the host's popupLayer, holding the options' panel,
+//     placed under the field (above it where they do not fit).
 //  2. Focus Trap & Outside Dismissal:
 //     When opened, focus is transferred to the overlay popup list. Tab traversal is
 //     trapped within the popup. Clicking anywhere outside the popup or pressing Escape
@@ -47,7 +49,7 @@ type SelectItem[T any] struct {
 //	│ [OverlayHost] Stack Canvas                                  │
 //	│                                                             │
 //	│  ┌───────────────────────────────────────────────────────┐  │
-//	│  │ selectPopup (FocusScope Trap on Top Overlay Layer)    │  │
+//	│  │ popupLayer (focus trap) holding the selectPanel       │  │
 //	│  │ ┌───────────────────────────────────────────────────┐ │  │
 //	│  │ │ [ Filter Input: "da..." ]                         │ │  │
 //	│  │ │ ───────────────────────────────────────────────── │ │  │
@@ -63,8 +65,8 @@ type SelectItem[T any] struct {
 // # Architectural Invariants
 //
 //  1. Decoupled Overlay Attachment:
-//     Select communicates with the enclosing [OverlayHost] exclusively via bus events.
-//     A Select can be nested at arbitrary layout depths without requiring parent pointer passing.
+//     Select finds the nearest enclosing [OverlayHost] through the component tree, so it can be
+//     nested at any layout depth without a parent pointer passed in.
 //  2. State Isolation Across Cancellation:
 //     Pressing Escape or clicking outside closes the popup and leaves the selected index untouched.
 //  3. Notification Contract:
@@ -110,7 +112,10 @@ type Select[T any] struct {
 
 	open  bool
 	armed bool
-	popup *selectPopup[T]
+	popup *selectPanel[T] // the open options; nil while closed
+	layer *popupLayer     // the popup holding them
+	// chosen is a commit's option, reported to onChange once the popup has gone; -1 for none
+	chosen int
 
 	// affordance draws the ▾/▴ triangle at the field's right edge. Some hosts
 	// mark the focused row themselves and do not want a second indicator.
@@ -326,68 +331,64 @@ func (s *Select[T]) AcceptsFocus() bool { return true }
 // down with it.
 func (s *Select[T]) Init(ctx *tui.Context) {
 	s.Base.Init(ctx)
-	s.open, s.popup = false, nil
-	ctx.OnUnmount(func() {
-		if s.open && s.popup != nil {
-			if host, ok := hostFor[layerHost](s.Context()); ok {
-				host.removeLayer(s.popup)
-			}
-			s.open, s.popup = false, nil
-		}
-	})
+	s.open, s.popup, s.layer, s.chosen = false, nil, nil, -1
 }
 
-// openPopup mounts the option list on the NEAREST ENCLOSING OverlayHost and
-// emits OpenedEvent.
-//
-// It used to publish an unaddressed request on the Bus, which every mounted
-// OverlayHost received: with two hosts in one application both tried to mount
-// the same popup component and the runtime panicked — a component value mounts
-// at most once — so opening a dropdown took the application down. The host is
-// now resolved from the tree and called directly, and a Select with no host
-// above it simply does not open rather than publishing into the void.
+// openPopup opens the options as a popup on the NEAREST ENCLOSING OverlayHost and emits
+// OpenedEvent. The popup is the host's (popupLayer): it lies over the whole host, so a press
+// outside the options closes them; it traps focus, giving it back to the field when it goes; and
+// it places the options at the field's top-left corner, under the field or, where they do not fit,
+// above it. A Select with no host above it does not open rather than publishing into the void.
 func (s *Select[T]) openPopup() {
 	if s.open {
 		return
 	}
-	host, ok := hostFor[layerHost](s.Context())
+	ctx := s.Context()
+	host, ok := hostFor[popupHost](ctx)
 	if !ok {
 		return // nothing can hold the popup; opening would be a lie
 	}
-	s.popup = &selectPopup[T]{owner: s}
-	s.open = true
-	host.addLayer(s.popup)
+	panel := &selectPanel[T]{owner: s}
+	layer, err := host.openPopupAt(LayerID(fmt.Sprintf("select.options.%d", ctx.ID())), s, panel, tui.Point{}, s.popupClosed)
+	if err != nil {
+		return
+	}
+	s.open, s.popup, s.layer, s.chosen = true, panel, layer, -1
 	s.publish(OpenedEvent{Owner: s.NodeID()})
 	s.MarkDirty()
 }
 
-// closePopup unmounts the option list (the runtime restores the prior
-// focus — normally this Select) and emits ClosedEvent.
-func (s *Select[T]) closePopup() {
-	if !s.open {
+// closePopup asks the popup to close, for the reason given. The options ask it from inside their own
+// dispatch, so the popup goes after it (popupClosed reports it then).
+func (s *Select[T]) closePopup(reason DismissReason) {
+	if !s.open || s.layer == nil {
 		return
 	}
-	popup := s.popup
-	s.open, s.popup = false, nil
-	if host, ok := hostFor[layerHost](s.Context()); ok {
-		host.removeLayer(popup)
-	}
-	s.publish(ClosedEvent{Owner: s.NodeID()})
-	s.MarkDirty()
+	s.layer.requestClose(reason)
 }
 
-// commit installs option index i and emits SelectionChangedEvent, then
-// closes.
+// popupClosed is the popup gone, however it went (a commit, Esc, a press outside, the field
+// unmounted): ClosedEvent, then, for a commit, the owner told, last, as the owner may replace the
+// options.
+func (s *Select[T]) popupClosed(DismissReason) {
+	chosen := s.chosen
+	s.open, s.popup, s.layer, s.chosen = false, nil, nil, -1
+	s.publish(ClosedEvent{Owner: s.NodeID()})
+	s.MarkDirty()
+	if chosen >= 0 && s.onChange != nil {
+		s.onChange(chosen)
+	}
+}
+
+// commit installs option index i, emits SelectionChangedEvent, and closes; the owner hears of it once
+// the popup has gone (popupClosed).
 func (s *Select[T]) commit(i int) {
-	chosen := i >= 0 && i < len(s.items)
-	if chosen {
+	if i >= 0 && i < len(s.items) {
 		s.selected = i
 		s.publish(SelectionChangedEvent{Owner: s.NodeID(), Index: i, Label: s.items[i].Label})
+		s.chosen = i
 	}
-	s.closePopup()
-	if chosen && s.onChange != nil {
-		s.onChange(i) // last: the owner may replace the options
-	}
+	s.closePopup(DismissAccept)
 }
 
 // HandleEvent: closed-state keys, plus the TaskResult conversion.
@@ -507,9 +508,10 @@ func (s *Select[T]) Render(sur tui.Surface) {
 	sur.SetCell(s.fieldW-1, 0, arrow, st.Bold(true))
 }
 
-// selectPopup is the open-state overlay layer: full-area (so outside clicks
-// close), focus-trapping, with the option panel centered inside it.
-type selectPopup[T any] struct {
+// selectPanel is the open options inside the popup: the filter line, when filtering, over the rows
+// that match it. The popup (popupLayer) places it, closes it on Esc or a press outside, and traps
+// focus; the panel sizes itself, takes the keys, the row presses and the wheel, and paints.
+type selectPanel[T any] struct {
 	Base
 	owner *Select[T]
 
@@ -517,34 +519,29 @@ type selectPopup[T any] struct {
 	matches []int // item indices surviving the filter
 	hi      int   // highlight position within matches
 	top     int
-	panel   tui.Rect // computed each layout
+	size    tui.Size // as the last layout gave it
 }
 
-var (
-	_ tui.Focusable  = (*selectPopup[any])(nil)
-	_ tui.FocusScope = (*selectPopup[any])(nil)
-)
+var _ tui.Focusable = (*selectPanel[any])(nil)
 
-func (p *selectPopup[T]) AcceptsFocus() bool { return true }
-func (p *selectPopup[T]) TrapsFocus() bool   { return true }
+// AcceptsFocus: the popup gives its first focusable control the keyboard, and the panel is it.
+func (p *selectPanel[T]) AcceptsFocus() bool { return true }
 
-// Init takes focus (the trap records the prior focus for Esc-restore).
-func (p *selectPopup[T]) Init(ctx *tui.Context) {
+// Init highlights the current selection when it survives the (empty) filter.
+func (p *selectPanel[T]) Init(ctx *tui.Context) {
 	p.Base.Init(ctx)
 	p.filter = ""
 	p.refilter()
-	// Highlight the current selection when it survives the (empty) filter.
 	for mi, idx := range p.matches {
 		if idx == p.owner.selected {
 			p.hi = mi
 			break
 		}
 	}
-	ctx.RequestFocus()
 }
 
 // refilter recomputes the visible options (case-insensitive substring).
-func (p *selectPopup[T]) refilter() {
+func (p *selectPanel[T]) refilter() {
 	p.matches = p.matches[:0]
 	for i, it := range p.owner.items {
 		if matchFold(it.Label, p.filter) {
@@ -556,21 +553,21 @@ func (p *selectPopup[T]) refilter() {
 	p.RequestLayout()
 }
 
-// rows is the option-row capacity of the current panel.
-func (p *selectPopup[T]) rows() int {
-	h := p.panel.H - 2 // borders
+// rows is the option-row capacity of the panel.
+func (p *selectPanel[T]) rows() int {
+	h := p.size.H - 2 // borders
 	if p.owner.filterOn {
 		h--
 	}
 	return max(h, 1)
 }
 
-func (p *selectPopup[T]) ensureVisible() { p.top = revealRow(p.top, p.hi, p.rows()) }
+func (p *selectPanel[T]) ensureVisible() { p.top = revealRow(p.top, p.hi, p.rows()) }
 
-// Layout spans the whole overlay and centers the option panel: width sized
-// to the longest label, height capped to the available space with internal
-// scrolling.
-func (p *selectPopup[T]) Layout(c tui.Constraints) tui.Size {
+// Layout sizes the panel within the room the popup offers (the whole host): wide enough for the
+// longest label and the filter, and at least the field's width; tall enough for every match, capped
+// to the room with scrolling inside.
+func (p *selectPanel[T]) Layout(c tui.Constraints) tui.Size {
 	w := boundedMax(c.MaxW, c.MinW)
 	h := boundedMax(c.MaxH, c.MinH)
 	labelW := max(p.owner.longestLabel(), 8)
@@ -584,36 +581,9 @@ func (p *selectPopup[T]) Layout(c tui.Constraints) tui.Size {
 		ph++
 	}
 	ph = min(ph, max(h-2, 3))
-	p.panel = tui.Rect{X: max((w-pw)/2, 0), Y: max((h-ph)/2, 0), W: pw, H: ph}
-	if f, ok := p.fieldRect(); ok {
-		p.panel.X = clampInt(f.X, 0, max(w-pw, 0))
-		switch below := f.Y + f.H; {
-		case below+ph <= h:
-			p.panel.Y = below
-		case f.Y-ph >= 0:
-			p.panel.Y = f.Y - ph
-		default:
-			p.panel.Y = max(h-ph, 0)
-		}
-		// The layer's own position is the last layout's; on the first one it may not be known yet,
-		// so the field is resolved again once this pass has placed everything.
-		p.Context().AfterLayout("select-popup-field", func() {
-			if again, ok := p.fieldRect(); ok && again != f {
-				p.RequestLayout()
-			}
-		})
-	}
+	p.size = tui.Size{W: pw, H: ph}
 	p.ensureVisible()
-	return c.Constrain(tui.Size{W: w, H: h})
-}
-
-// fieldRect is the owner's field in this layer's cells.
-func (p *selectPopup[T]) fieldRect() (tui.Rect, bool) {
-	pc, oc := p.Context(), p.owner.Context()
-	if pc == nil || oc == nil {
-		return tui.Rect{}, false
-	}
-	return pc.ResolveAnchor(oc.NodeAnchor())
+	return c.Constrain(p.size)
 }
 
 // popupKey is what a key does to the open options.
@@ -645,7 +615,7 @@ var popupKeyOf = map[string]popupKey{
 // spends every printable character on the query, so j and k there are the two letters the operator
 // most needs to TYPE -- "jetbrains", "sqlite". The arrows work in both modes and are what the footer
 // names; this is the convenience on top.
-func (p *selectPopup[T]) keyOf(e tui.KeyEvent, filterOn bool) popupKey {
+func (p *selectPanel[T]) keyOf(e tui.KeyEvent, filterOn bool) popupKey {
 	if cmd, ok := p.Context().KeyCommand(e, selectPopupCommands...); ok {
 		vim := cmd.ID == SelectVimUp.ID || cmd.ID == SelectVimDown.ID
 		if !vim || !filterOn {
@@ -659,29 +629,30 @@ func (p *selectPopup[T]) keyOf(e tui.KeyEvent, filterOn bool) popupKey {
 }
 
 // KeyScope is the open options' key-map scope.
-func (p *selectPopup[T]) KeyScope() keymap.Scope { return SelectPopupScope }
+func (p *selectPanel[T]) KeyScope() keymap.Scope { return SelectPopupScope }
 
 // KeyBindings is the open options' commands as m binds them (tui.KeyBinder). Typed filter text is not
 // a command.
-func (p *selectPopup[T]) KeyBindings(m *keymap.Map) []keymap.Binding {
+func (p *selectPanel[T]) KeyBindings(m *keymap.Map) []keymap.Binding {
 	return tui.BindingsOf(m, selectPopupCommands...)
 }
 
-// HandleEvent implements the open-state contract: filter typing, cursor
-// movement, Enter commit, Esc close, outside-click close, wheel scroll.
-func (p *selectPopup[T]) HandleEvent(ev tui.Event) bool {
+// HandleEvent implements the open-state contract: filter typing, cursor movement, Enter commit, Esc
+// close; a press on a row commits it; the wheel moves the highlight. A press outside the panel is the
+// popup's: it closes them.
+func (p *selectPanel[T]) HandleEvent(ev tui.Event) bool {
 	switch e := ev.(type) {
 	case tui.KeyEvent:
 		switch p.keyOf(e, p.owner.filterOn) {
 		case popupNone:
 			return false
 		case popupClose:
-			p.owner.closePopup()
+			p.owner.closePopup(DismissEscape)
 		case popupCommit:
 			if len(p.matches) > 0 {
 				p.owner.commit(p.matches[p.hi])
 			} else {
-				p.owner.closePopup()
+				p.owner.closePopup(DismissCancel)
 			}
 		case popupUp:
 			p.moveHi(-1)
@@ -710,11 +681,7 @@ func (p *selectPopup[T]) HandleEvent(ev tui.Event) bool {
 	case tui.MouseEvent:
 		switch e.Kind {
 		case tui.MousePress:
-			if !p.panel.Contains(e.X, e.Y) {
-				p.owner.closePopup() // outside click: the overlay sees it first
-				return true
-			}
-			row := e.Y - p.panel.Y - 1
+			row := e.Y - 1 // the panel's own cells: its top border, then the rows
 			if p.owner.filterOn {
 				row--
 			}
@@ -731,12 +698,12 @@ func (p *selectPopup[T]) HandleEvent(ev tui.Event) bool {
 			}
 			return true
 		}
-		return true // the open overlay swallows other mouse traffic
+		return true // the open options swallow other mouse traffic
 	}
 	return false
 }
 
-func (p *selectPopup[T]) moveHi(delta int) {
+func (p *selectPanel[T]) moveHi(delta int) {
 	if len(p.matches) == 0 {
 		return
 	}
@@ -745,10 +712,9 @@ func (p *selectPopup[T]) moveHi(delta int) {
 	p.MarkDirty()
 }
 
-// Render paints the option panel (the backdrop stays transparent — lower
-// Stack layers show through).
-func (p *selectPopup[T]) Render(s tui.Surface) {
-	r := p.panel
+// Render paints the panel: its frame, the filter line when filtering, and the rows from the first shown.
+func (p *selectPanel[T]) Render(s tui.Surface) {
+	r := tui.Rect{W: s.Size().W, H: s.Size().H}
 	if r.Empty() {
 		return
 	}

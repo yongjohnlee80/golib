@@ -74,7 +74,7 @@ var popupKeyName = map[popupKey]string{popupNone: "", popupClose: "close", popup
 	popupFirst: "first", popupLast: "last", popupBackspace: "backspace", popupType: "type"}
 
 func TestSelectPopupKeysMatchTheOldHandlerWithNoMap(t *testing.T) {
-	p := &selectPopup[string]{}
+	p := &selectPanel[string]{}
 	for _, filterOn := range []bool{false, true} {
 		keyGridDiff(t, map[bool]string{false: "Select options", true: "Select options, filtering"}[filterOn],
 			func(e tui.KeyEvent) string { return oldPopupKey(e, filterOn) },

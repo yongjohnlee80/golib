@@ -163,6 +163,16 @@ func (p *popupLayer) HandleEvent(ev tui.Event) bool {
 			return true
 		}
 	case tui.MouseEvent:
+		if e.Kind == tui.MouseWheel && !p.rect.Contains(e.X, e.Y) {
+			// A wheel over the backdrop is the panel's too: a Select's options move under it as under
+			// a wheel over them. It is called directly, outside the runtime's delivery, so the running
+			// handler is still this layer: a panel may only change its own state here (no
+			// CapturePointer, nothing phase-gated). The event is put in the panel's frame first.
+			local := e
+			local.X, local.Y = e.X-p.rect.X, e.Y-p.rect.Y
+			p.panel.HandleEvent(local)
+			return true
+		}
 		if e.Kind == tui.MousePress && !p.rect.Contains(e.X, e.Y) {
 			p.close(DismissCancel)
 		}
