@@ -1,6 +1,7 @@
 package widget
 
 import (
+	"fmt"
 	"testing"
 
 	"github.com/yongjohnlee80/golib/tui"
@@ -114,11 +115,12 @@ func TestActionStringAndDescription(t *testing.T) {
 	for act := ActUnbound; act < actMax; act++ {
 		str := act.String()
 		desc := act.Description()
-		if str == "" {
-			t.Errorf("action %d has empty String()", act)
+		// a row of its own in actionSpecs, not the fallbacks of an action with none
+		if str == "" || str == fmt.Sprintf("Action(%d)", act) {
+			t.Errorf("action %d has no name in actionSpecs", act)
 		}
-		if desc == "" {
-			t.Errorf("action %d has empty Description()", act)
+		if desc == "" || desc == "Custom action" {
+			t.Errorf("action %d (%s) has no description in actionSpecs", act, str)
 		}
 	}
 }
