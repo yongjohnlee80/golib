@@ -59,7 +59,7 @@ func (g *grid) apply(diff []tui.CellUpdate) {
 		i := u.Y*g.w + u.X
 		g.cells[i] = u.Cell
 		if u.Cell.Width == 2 && u.X+1 < g.w {
-			g.cells[i+1] = tui.Cell{Content: "", Width: 0, Attrs: u.Cell.Attrs, Face: u.Cell.Face}
+			g.cells[i+1] = tui.ContinuationOf(u.Cell) // the head's attributes and face
 		}
 		g.dirty[u.Y] = true
 	}
