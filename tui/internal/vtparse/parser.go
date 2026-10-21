@@ -178,9 +178,7 @@ func (p *Parser) Feed(b byte, emit func(*Action)) {
 	case 0x18, 0x1A:
 		// CAN/SUB abort any in-flight sequence without dispatch — and are
 		// still keys on an input stream (Ctrl+X / Ctrl+Z).
-		p.state = sGround
-		p.u8n = 0
-		p.c2 = false
+		p.Reset()
 		emit(&Action{Kind: Execute, Byte: b})
 		return
 	case 0x1B:
@@ -189,15 +187,11 @@ func (p *Parser) Feed(b byte, emit func(*Action)) {
 			p.stringByte(0xC2, emit) // it was data, not the start of ST
 		}
 		switch p.state {
-		case sOSC:
-			// xterm practice: OSC is dispatched when the ESC of its ESC \
+		case sOSC, sDCSPass, sAPC:
+			// xterm practice: a string is dispatched when the ESC of its ESC \
 			// terminator arrives (the trailing '\' dispatches as a harmless
 			// Esc the decoder ignores).
-			p.dispatchOSC(emit)
-		case sDCSPass:
-			p.dispatchDCS(emit)
-		case sAPC:
-			emit(&Action{Kind: APC, Data: p.data})
+			p.endString(emit)
 		case sEscape:
 			// ESC ESC on input: the pending ESC was a real Escape key;
 			// deliver it. On output the first ESC is simply abandoned.
@@ -234,29 +228,34 @@ func (p *Parser) Feed(b byte, emit func(*Action)) {
 	case sEscInter:
 		p.escInter(b, emit)
 	case sCSIEntry:
-		p.csiEntry(b, emit)
+		p.paramByte(b, true, csiStates, emit)
 	case sCSIParam:
-		p.csiParamState(b, emit)
+		p.paramByte(b, false, csiStates, emit)
 	case sCSIInter:
-		p.csiInter(b, emit)
+		p.interByte(b, csiStates, emit)
 	case sCSIIgnore:
 		p.csiIgnore(b, emit)
 	case sOSC:
 		p.osc(b, emit)
 	case sDCSEntry:
-		p.dcsEntry(b)
+		p.paramByte(b, true, dcsStates, emit)
 	case sDCSParam:
-		p.dcsParam(b)
+		p.paramByte(b, false, dcsStates, emit)
 	case sDCSInter:
-		p.dcsInter(b)
+		p.interByte(b, dcsStates, emit)
 	case sDCSPass:
 		p.dcsPass(b)
 	case sDCSIgnore, sSOSPMAPC:
 		// Consumed without effect until ESC / CAN / SUB (handled above).
 	case sAPC:
-		if b != 0x7F && len(p.data) < maxStringData {
-			p.data = append(p.data, b)
-		}
+		p.apcByte(b)
+	}
+}
+
+// apcByte is one byte of an APC's payload; DEL is dropped, as everywhere in a string.
+func (p *Parser) apcByte(b byte) {
+	if b != 0x7F && len(p.data) < maxStringData {
+		p.data = append(p.data, b)
 	}
 }
 
@@ -277,9 +276,7 @@ func (p *Parser) stringByte(b byte, emit func(*Action)) {
 	case sDCSPass:
 		p.dcsPass(b)
 	case sAPC:
-		if len(p.data) < maxStringData {
-			p.data = append(p.data, b)
-		}
+		p.apcByte(b)
 	}
 }
 
@@ -425,67 +422,82 @@ func (p *Parser) enterCSI() {
 	p.state = sCSIEntry
 }
 
-func (p *Parser) csiEntry(b byte, emit func(*Action)) {
+// seqStates are one sequence kind's parameter states. CSI and DCS walk the same parameter and
+// intermediate grammar (vt100.net's diagram draws them as separate states); they differ in these
+// states, in a C0 byte (a CSI executes it, a DCS ignores it) and in the final byte (a CSI
+// dispatches, a DCS starts its passthrough).
+type seqStates struct {
+	param, inter, ignore pState
+	dcs                  bool
+}
+
+var (
+	csiStates = seqStates{param: sCSIParam, inter: sCSIInter, ignore: sCSIIgnore}
+	dcsStates = seqStates{param: sDCSParam, inter: sDCSInter, ignore: sDCSIgnore, dcs: true}
+)
+
+// paramByte is one byte in a sequence's entry state (entry) or parameter state: a private marker is
+// taken at entry, and makes the sequence malformed after it.
+func (p *Parser) paramByte(b byte, entry bool, q seqStates, emit func(*Action)) {
 	switch {
 	case b <= 0x1F:
-		emit(&Action{Kind: Execute, Byte: b})
+		p.seqC0(b, q, emit)
 	case b <= 0x2F:
 		p.inter = append(p.inter, b)
-		p.state = sCSIInter
+		p.state = q.inter
 	case b >= '0' && b <= '9':
 		p.paramDigit(b)
-		p.state = sCSIParam
+		p.state = q.param
 	case b == ':':
 		p.paramSub()
-		p.state = sCSIParam
+		p.state = q.param
 	case b == ';':
 		p.paramSep()
-		p.state = sCSIParam
+		p.state = q.param
 	case b >= 0x3C && b <= 0x3F:
-		p.priv = b
-		p.state = sCSIParam
+		if entry {
+			p.priv = b
+			p.state = q.param
+		} else {
+			p.state = q.ignore // a private marker mid-params: malformed
+		}
 	case b <= 0x7E:
-		p.dispatchCSI(b, emit)
+		p.seqFinal(b, q, emit)
 	default:
 		// 0x7F and >= 0x80: ignore
 	}
 }
 
-func (p *Parser) csiParamState(b byte, emit func(*Action)) {
+// interByte is one byte in a sequence's intermediate state.
+func (p *Parser) interByte(b byte, q seqStates, emit func(*Action)) {
 	switch {
 	case b <= 0x1F:
-		emit(&Action{Kind: Execute, Byte: b})
+		p.seqC0(b, q, emit)
 	case b <= 0x2F:
 		p.inter = append(p.inter, b)
-		p.state = sCSIInter
-	case b >= '0' && b <= '9':
-		p.paramDigit(b)
-	case b == ':':
-		p.paramSub()
-	case b == ';':
-		p.paramSep()
-	case b >= 0x3C && b <= 0x3F:
-		p.state = sCSIIgnore // private marker mid-params: malformed
+	case b <= 0x3F:
+		p.state = q.ignore // params after intermediates: malformed
 	case b <= 0x7E:
-		p.dispatchCSI(b, emit)
+		p.seqFinal(b, q, emit)
 	default:
 		// ignore
 	}
 }
 
-func (p *Parser) csiInter(b byte, emit func(*Action)) {
-	switch {
-	case b <= 0x1F:
+// seqC0 is a C0 byte inside a sequence: a CSI executes it; a DCS ignores it.
+func (p *Parser) seqC0(b byte, q seqStates, emit func(*Action)) {
+	if !q.dcs {
 		emit(&Action{Kind: Execute, Byte: b})
-	case b <= 0x2F:
-		p.inter = append(p.inter, b)
-	case b <= 0x3F:
-		p.state = sCSIIgnore // params after intermediates: malformed
-	case b <= 0x7E:
-		p.dispatchCSI(b, emit)
-	default:
-		// ignore
 	}
+}
+
+// seqFinal is a sequence's final byte: a CSI dispatches; a DCS starts its passthrough.
+func (p *Parser) seqFinal(b byte, q seqStates, emit func(*Action)) {
+	if q.dcs {
+		p.dcsHook(b)
+		return
+	}
+	p.dispatchCSI(b, emit)
 }
 
 func (p *Parser) csiIgnore(b byte, emit func(*Action)) {
@@ -609,69 +621,6 @@ func (p *Parser) enterDCS() {
 	p.data = p.data[:0]
 	p.final = 0
 	p.state = sDCSEntry
-}
-
-func (p *Parser) dcsEntry(b byte) {
-	switch {
-	case b <= 0x1F:
-		// ignore
-	case b <= 0x2F:
-		p.inter = append(p.inter, b)
-		p.state = sDCSInter
-	case b >= '0' && b <= '9':
-		p.paramDigit(b)
-		p.state = sDCSParam
-	case b == ':':
-		p.paramSub()
-		p.state = sDCSParam
-	case b == ';':
-		p.paramSep()
-		p.state = sDCSParam
-	case b >= 0x3C && b <= 0x3F:
-		p.priv = b
-		p.state = sDCSParam
-	case b <= 0x7E:
-		p.dcsHook(b)
-	default:
-		// ignore
-	}
-}
-
-func (p *Parser) dcsParam(b byte) {
-	switch {
-	case b <= 0x1F:
-		// ignore
-	case b <= 0x2F:
-		p.inter = append(p.inter, b)
-		p.state = sDCSInter
-	case b >= '0' && b <= '9':
-		p.paramDigit(b)
-	case b == ':':
-		p.paramSub()
-	case b == ';':
-		p.paramSep()
-	case b >= 0x3C && b <= 0x3F:
-		p.state = sDCSIgnore
-	case b <= 0x7E:
-		p.dcsHook(b)
-	default:
-		// ignore
-	}
-}
-
-func (p *Parser) dcsInter(b byte) {
-	switch {
-	case b <= 0x1F:
-		// ignore
-	case b <= 0x2F:
-		p.inter = append(p.inter, b)
-	case b <= 0x3F:
-		p.state = sDCSIgnore
-	case b <= 0x7E:
-		p.dcsHook(b)
-	default:
-		// ignore
-	}
 }
 
 func (p *Parser) dcsHook(final byte) {
