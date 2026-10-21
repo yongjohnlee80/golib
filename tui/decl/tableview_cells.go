@@ -2,9 +2,12 @@ package decl
 
 import (
 	"fmt"
+	"maps"
 
+	"github.com/yongjohnlee80/golib/parse/js"
 	"github.com/yongjohnlee80/golib/parse/qml"
 	"github.com/yongjohnlee80/golib/tui"
+	"github.com/yongjohnlee80/golib/tui/style"
 	"github.com/yongjohnlee80/golib/tui/widget"
 )
 
@@ -208,4 +211,139 @@ func TableOf(c tui.Component) *widget.DataTable {
 		return n.grid
 	}
 	return nil
+}
+
+// cellTemplate is a view's delegate: a stateless Text template, parsed and vetted once and presented
+// per row (TreeView) or per visible cell (TableView). One copy of the rules, so a new property or a
+// new local is written once for both views.
+type cellTemplate struct {
+	owner    string // the view's type, as its errors name it
+	node     *qml.SpecNode
+	eval     func(qml.SpecValue, map[string]qml.SpecValue) (qml.SpecValue, error)
+	sink     func(error)
+	implicit string // a role the view supplies itself (TableView's "display"), not checked against the model
+}
+
+// parseCellTemplate reads owner's delegate from b: a Text object template with one text and an
+// optional color, and no id, handlers or children. nil when b writes none; the last one written
+// wins, as a property does.
+func parseCellTemplate(b Build, owner, implicit string) (*cellTemplate, error) {
+	var t *cellTemplate
+	for _, prop := range b.Props {
+		if prop.Name != "delegate" {
+			continue
+		}
+		if prop.Value.Kind != qml.SpecValueTemplate || prop.Value.Template == nil {
+			return nil, fmt.Errorf("%s.delegate takes a Text object template (at %s)", owner, prop.Pos)
+		}
+		node := prop.Value.Template
+		if node.Type != "Text" || node.ID != "" || len(node.Children) != 0 || len(node.Handlers) != 0 {
+			return nil, fmt.Errorf("%s.delegate supports stateless Text only, without ids, handlers or children (at %s)", owner, node.Pos)
+		}
+		seen := map[string]bool{}
+		for _, p := range node.Props {
+			if (p.Name != "text" && p.Name != "color") || seen[p.Name] {
+				return nil, fmt.Errorf("%s.delegate Text accepts one text and optional color, not %q (at %s)", owner, p.Name, p.Pos)
+			}
+			seen[p.Name] = true
+		}
+		if !seen["text"] {
+			return nil, fmt.Errorf("%s.delegate Text needs text (at %s)", owner, node.Pos)
+		}
+		t = &cellTemplate{owner: owner, node: node, eval: b.Eval, sink: b.sink, implicit: implicit}
+	}
+	return t, nil
+}
+
+// check vets the template even for an empty model, so it cannot hide an unsupported expression or an
+// unknown role behind zero rows. base is the view's own locals (palette.text; a table's row, column
+// and model.display); hasModel says roles are the model's, so a model.<role> the template reads must
+// be one of them. Every property must evaluate, and color to a color.
+func (t *cellTemplate) check(hasModel bool, roles []string, base map[string]qml.SpecValue) error {
+	locals := maps.Clone(base)
+	known := map[string]bool{}
+	for _, r := range roles {
+		known[r] = true
+	}
+	for _, p := range t.node.Props {
+		register := func(role string) error {
+			if role == t.implicit && t.implicit != "" {
+				return nil
+			}
+			if hasModel && !known[role] {
+				return fmt.Errorf("%s.delegate: unknown model role %q (at %s)", t.owner, role, p.Pos)
+			}
+			locals["model."+role] = qml.SpecValue{Kind: qml.SpecValueString, Raw: "normal"}
+			return nil
+		}
+		if p.Value.Kind == qml.SpecValueRef && len(p.Value.Path) == 2 && p.Value.Path[0] == "model" {
+			if err := register(p.Value.Path[1]); err != nil {
+				return err
+			}
+		}
+		if p.Value.Expr != nil {
+			var refErr error
+			p.Value.Expr.Walk(func(e *js.Expr) bool {
+				if e.Kind == js.ExprMember && e.Left != nil && e.Left.Kind == js.ExprIdent && e.Left.Raw == "model" {
+					if err := register(e.Name); err != nil {
+						refErr = err
+						return false
+					}
+				}
+				return true
+			})
+			if refErr != nil {
+				return refErr
+			}
+		}
+		v, err := t.eval(p.Value, locals)
+		if err != nil {
+			return fmt.Errorf("%s.delegate %s (at %s): %w", t.owner, p.Name, p.Pos, err)
+		}
+		if p.Name == "color" {
+			if _, err := colorOf(v); err != nil {
+				return err
+			}
+		}
+	}
+	return nil
+}
+
+// present evaluates the template over locals: its text (text when it has none that evaluates) and
+// its color. A property that fails to evaluate goes to the sink and is left as it was.
+func (t *cellTemplate) present(locals map[string]qml.SpecValue, text string) (string, style.Style) {
+	var st style.Style
+	for _, p := range t.node.Props {
+		v, err := t.eval(p.Value, locals)
+		if err != nil {
+			t.report(err)
+			continue
+		}
+		switch p.Name {
+		case "text":
+			text = v.Raw
+		case "color":
+			c, err := colorOf(v)
+			if err != nil {
+				t.report(err)
+				continue
+			}
+			st = st.Foreground(c)
+		}
+	}
+	return text, st
+}
+
+func (t *cellTemplate) report(err error) {
+	if t.sink != nil {
+		t.sink(err)
+	}
+}
+
+// modelValue is a model's value as a delegate reads it: an invalid one is an empty string.
+func modelValue(v qml.SpecValue) qml.SpecValue {
+	if v.Kind == qml.SpecValueInvalid {
+		return qml.SpecValue{Kind: qml.SpecValueString}
+	}
+	return v
 }

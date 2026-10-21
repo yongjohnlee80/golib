@@ -6,7 +6,6 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/yongjohnlee80/golib/parse/js"
 	"github.com/yongjohnlee80/golib/parse/qml"
 	"github.com/yongjohnlee80/golib/tui"
 	"github.com/yongjohnlee80/golib/tui/style"
@@ -59,7 +58,7 @@ type treeViewNode struct {
 	textRole  string
 	badgeRole string
 	tree      *widget.Tree
-	template  *qml.SpecNode
+	template  *cellTemplate
 	eval      func(qml.SpecValue, map[string]qml.SpecValue) (qml.SpecValue, error)
 	normal    style.Color
 	sink      func(error)
@@ -102,27 +101,10 @@ func buildTreeView(b Build) (tui.Component, []string, error) {
 	if err != nil {
 		return nil, nil, err
 	}
-	for _, prop := range b.Props {
-		if prop.Name != "delegate" {
-			continue
-		}
-		if prop.Value.Kind != qml.SpecValueTemplate || prop.Value.Template == nil {
-			return nil, nil, fmt.Errorf("TreeView.delegate takes a Text object template (at %s)", prop.Pos)
-		}
-		n.template = prop.Value.Template
-		if n.template.Type != "Text" || n.template.ID != "" || len(n.template.Children) != 0 || len(n.template.Handlers) != 0 {
-			return nil, nil, fmt.Errorf("TreeView.delegate supports stateless Text only, without ids, handlers or children (at %s)", n.template.Pos)
-		}
-		seen := map[string]bool{}
-		for _, p := range n.template.Props {
-			if (p.Name != "text" && p.Name != "color") || seen[p.Name] {
-				return nil, nil, fmt.Errorf("TreeView.delegate Text accepts one text and optional color, not %q (at %s)", p.Name, p.Pos)
-			}
-			seen[p.Name] = true
-		}
-		if !seen["text"] {
-			return nil, nil, fmt.Errorf("TreeView.delegate Text needs text (at %s)", n.template.Pos)
-		}
+	if n.template, err = parseCellTemplate(b, "TreeView", ""); err != nil {
+		return nil, nil, err
+	}
+	if n.template != nil {
 		consumed = append(consumed, "delegate")
 	}
 	n.tree = widget.NewTree(widget.WithKnownChildren(n.knownChildren),
@@ -141,54 +123,13 @@ func (n *treeViewNode) checkTemplate(m TreeModel) error {
 	if n.template == nil {
 		return nil
 	}
-	locals := map[string]qml.SpecValue{
-		"palette.text": {Kind: qml.SpecValueObject, Obj: n.normal},
-	}
-	known := map[string]bool{}
+	var roles []string
 	if m != nil {
-		for _, role := range m.Roles() {
-			known[role] = true
-		}
+		roles = m.Roles()
 	}
-	for _, p := range n.template.Props {
-		register := func(role string) error {
-			if m != nil && !known[role] {
-				return fmt.Errorf("TreeView.delegate: unknown model role %q (at %s)", role, p.Pos)
-			}
-			locals["model."+role] = qml.SpecValue{Kind: qml.SpecValueString, Raw: "normal"}
-			return nil
-		}
-		if p.Value.Kind == qml.SpecValueRef && len(p.Value.Path) == 2 && p.Value.Path[0] == "model" {
-			if err := register(p.Value.Path[1]); err != nil {
-				return err
-			}
-		}
-		if p.Value.Expr != nil {
-			var refErr error
-			p.Value.Expr.Walk(func(e *js.Expr) bool {
-				if e.Kind == js.ExprMember && e.Left != nil && e.Left.Kind == js.ExprIdent && e.Left.Raw == "model" {
-					if err := register(e.Name); err != nil {
-						refErr = err
-						return false
-					}
-				}
-				return true
-			})
-			if refErr != nil {
-				return refErr
-			}
-		}
-		v, err := n.eval(p.Value, locals)
-		if err != nil {
-			return fmt.Errorf("TreeView.delegate %s (at %s): %w", p.Name, p.Pos, err)
-		}
-		if p.Name == "color" {
-			if _, err := colorOf(v); err != nil {
-				return err
-			}
-		}
-	}
-	return nil
+	return n.template.check(m != nil, roles, map[string]qml.SpecValue{
+		"palette.text": {Kind: qml.SpecValueObject, Obj: n.normal},
+	})
 }
 
 func treeModelOf(v qml.SpecValue) (TreeModel, error) {
@@ -221,36 +162,9 @@ func (n *treeViewNode) present(ix Index) (string, style.Style) {
 		"palette.text": {Kind: qml.SpecValueObject, Obj: n.normal},
 	}
 	for _, role := range n.model.Roles() {
-		v := n.model.Data(ix, role)
-		if v.Kind == qml.SpecValueInvalid {
-			v = qml.SpecValue{Kind: qml.SpecValueString}
-		}
-		locals["model."+role] = v
+		locals["model."+role] = modelValue(n.model.Data(ix, role))
 	}
-	var st style.Style
-	for _, prop := range n.template.Props {
-		v, err := n.eval(prop.Value, locals)
-		if err != nil {
-			if n.sink != nil {
-				n.sink(err)
-			}
-			continue
-		}
-		switch prop.Name {
-		case "text":
-			label = v.Raw
-		case "color":
-			color, err := colorOf(v)
-			if err != nil {
-				if n.sink != nil {
-					n.sink(err)
-				}
-				continue
-			}
-			st = st.Foreground(color)
-		}
-	}
-	return label, st
+	return n.template.present(locals, label)
 }
 
 // represent presents every shown row again: after a restyle, or a source its delegate reads changed.
