@@ -66,11 +66,18 @@ type mark struct {
 // keeps the last rows physical rows as the screen. anchor says marks[0] is
 // the live cursor, which must stay on the screen.
 func (s *Screen) reflowPrimary(rows, cols int, marks []*cursor, anchor bool) {
-	phys := append(s.hist.all(), s.pri.lines...)
-	histN := s.hist.len()
+	ls, ms := joinLogical(append(s.hist.all(), s.pri.lines...), s.hist.len(), marks)
+	out, cursorRow := rebreak(ls, ms, cols, marks, anchor)
+	out = trimBlankTail(out, cursorRow)
+	s.splitScreenHistory(out, rows, cols, cursorRow, ms)
+}
 
-	// Join physical rows into logical lines, placing each mark.
-	type logical struct{ cells []Cell }
+// logical is one logical line: the cells of the physical rows a wrap joined.
+type logical struct{ cells []Cell }
+
+// joinLogical joins the physical rows (the history's histN, then the screen's) into logical lines,
+// and places each mark at its offset in its line.
+func joinLogical(phys []line, histN int, marks []*cursor) ([]logical, []mark) {
 	var ls []logical
 	var ms []mark
 	cur := -1
@@ -94,10 +101,13 @@ func (s *Screen) reflowPrimary(rows, cols int, marks []*cursor, anchor bool) {
 		}
 		ls[cur].cells = append(ls[cur].cells, cells...)
 	}
+	return ls, ms
+}
 
-	// Re-break each logical line at cols.
-	var out []line
-	cursorRow := -1
+// rebreak breaks each logical line at cols, and moves each mark to its row and column there.
+// cursorRow is the first mark's row when anchor asks for it, else -1.
+func rebreak(ls []logical, ms []mark, cols int, marks []*cursor, anchor bool) (out []line, cursorRow int) {
+	cursorRow = -1
 	for li, lg := range ls {
 		cells := trimBlank(lg.cells)
 		first := len(out)
@@ -174,9 +184,12 @@ func (s *Screen) reflowPrimary(rows, cols int, marks []*cursor, anchor bool) {
 			}
 		}
 	}
+	return out, cursorRow
+}
 
-	// Rows below both the cursor and the last text are dropped, so a
-	// narrower screen does not push text into the scrollback for blanks.
+// trimBlankTail drops the rows below both the cursor and the last text, so a narrower screen does
+// not push text into the scrollback for blanks.
+func trimBlankTail(out []line, cursorRow int) []line {
 	last := cursorRow
 	for i := len(out) - 1; i > last; i-- {
 		if !lineBlank(out[i]) {
@@ -184,8 +197,13 @@ func (s *Screen) reflowPrimary(rows, cols int, marks []*cursor, anchor bool) {
 			break
 		}
 	}
-	out = out[:max(last+1, 0)]
+	return out[:max(last+1, 0)]
+}
 
+// splitScreenHistory puts the last rows rows of out on the screen (from the cursor's row up when
+// it would fall above them), padded with blank rows, and the rest in the history; and moves the
+// marks onto the screen.
+func (s *Screen) splitScreenHistory(out []line, rows, cols, cursorRow int, ms []mark) {
 	start := max(len(out)-rows, 0)
 	if cursorRow >= 0 {
 		start = min(start, cursorRow)
