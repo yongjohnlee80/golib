@@ -7,6 +7,7 @@ import (
 	"unicode/utf8"
 
 	"github.com/yongjohnlee80/golib/tui"
+	"github.com/yongjohnlee80/golib/tui/internal/xterm"
 )
 
 // KeyReport is a faithful description of one browser `keydown`, as reported by
@@ -348,19 +349,10 @@ func decodeMouse(r MouseReport) (tui.Event, bool) {
 	return nil, false
 }
 
-// button maps a browser button index. An unknown index is refused rather than
-// mapped to MouseLeft, which would turn a stray back/forward button into a click.
-func button(i int) (tui.MouseButton, bool) {
-	switch i {
-	case 0:
-		return tui.MouseLeft, true
-	case 1:
-		return tui.MouseMiddle, true
-	case 2:
-		return tui.MouseRight, true
-	}
-	return tui.MouseNone, false
-}
+// button maps a browser button index, which numbers the buttons as xterm does (0 left, 1 middle,
+// 2 right). An unknown index is refused rather than mapped to MouseLeft, which would turn a stray
+// back/forward button into a click.
+func button(i int) (tui.MouseButton, bool) { return xterm.MouseButtonOf(i) }
 
 func wheelButton(dir string) (tui.MouseButton, bool) {
 	switch dir {

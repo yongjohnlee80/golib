@@ -2,6 +2,7 @@ package vt
 
 import (
 	"github.com/yongjohnlee80/golib/tui/internal/vtparse"
+	"github.com/yongjohnlee80/golib/tui/internal/xterm/sgr"
 	"github.com/yongjohnlee80/golib/tui/style"
 )
 
@@ -18,12 +19,6 @@ func (s *Screen) sgr(a *vtparse.Action) {
 		switch v := a.Param(i, 0); {
 		case v == 0:
 			*pen = Cell{}
-		case v == 1:
-			pen.Attr |= AttrBold
-		case v == 2:
-			pen.Attr |= AttrFaint
-		case v == 3:
-			pen.Attr |= AttrItalic
 		case v == 4:
 			// 4:0 is "no underline"; 4:1..4:5 are underline styles.
 			if a.Sub(i, 1, 1) == 0 {
@@ -31,30 +26,7 @@ func (s *Screen) sgr(a *vtparse.Action) {
 			} else {
 				pen.Attr |= AttrUnderline
 			}
-		case v == 5 || v == 6:
-			pen.Attr |= AttrBlink
-		case v == 7:
-			pen.Attr |= AttrReverse
-		case v == 8:
-			pen.Attr |= AttrInvisible
-		case v == 9:
-			pen.Attr |= AttrStrike
-		case v == 21:
-			pen.Attr |= AttrUnderline // double underline
-		case v == 22:
-			pen.Attr &^= AttrBold | AttrFaint
-		case v == 23:
-			pen.Attr &^= AttrItalic
-		case v == 24:
-			pen.Attr &^= AttrUnderline
-		case v == 25:
-			pen.Attr &^= AttrBlink
-		case v == 27:
-			pen.Attr &^= AttrReverse
-		case v == 28:
-			pen.Attr &^= AttrInvisible
-		case v == 29:
-			pen.Attr &^= AttrStrike
+		case attrSet(v, pen) || attrClear(v, pen): // the attribute codes term emits (sgr)
 		case v >= 30 && v <= 37:
 			pen.FG = style.ANSI(v - 30)
 		case v == 38:
@@ -126,4 +98,18 @@ func ansi256(n int) (style.Color, int, bool) {
 func rgb(r, g, b int) (style.Color, int, bool) {
 	clamp := func(v int) uint8 { return uint8(min(max(v, 0), 255)) }
 	return style.RGB(clamp(r), clamp(g), clamp(b)), 0, true
+}
+
+// attrSet turns on the attribute SGR code v sets, and reports whether it is one.
+func attrSet(v int, pen *Cell) bool {
+	at, ok := sgr.Set(v)
+	pen.Attr |= at
+	return ok
+}
+
+// attrClear turns off the attributes SGR code v ends, and reports whether it is one.
+func attrClear(v int, pen *Cell) bool {
+	at, ok := sgr.Clear(v)
+	pen.Attr &^= at
+	return ok
 }
