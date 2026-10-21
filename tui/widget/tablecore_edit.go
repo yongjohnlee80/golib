@@ -132,7 +132,7 @@ func (c *TableCore) open(e *TableEdit, typed string) {
 		v = typed
 	}
 	e.Field.SetValue(v) // the cursor at its end
-	c.editing = e
+	c.editing, c.literal = e, false // a Ctrl+V is its own field's: one kept without its key ends with it
 	c.dropPending()
 	c.repaint()
 }
