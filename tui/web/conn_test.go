@@ -278,6 +278,43 @@ func TestSessionLoop_FirstMessageMustBeHello(t *testing.T) {
 	}
 }
 
+// An unmeasured hello is refused as one, BEFORE the auth machinery runs: authenticating it first
+// would spend a ticket on an attach that cannot succeed.
+func TestSessionLoop_AnUnmeasuredHelloIsRefusedBeforeAuth(t *testing.T) {
+	t.Parallel()
+	authRan := false
+	var mu sync.Mutex
+	p, err := auth.NewPolicy(auth.Leaf(spyFactor{onVerify: func() {
+		mu.Lock()
+		authRan = true
+		mu.Unlock()
+	}}))
+	if err != nil {
+		t.Fatal(err)
+	}
+	l, _ := loopFor(t, p, nil)
+	for name, m := range map[string]clientMessage{
+		"unmeasured": {T: msgHello},
+		"no size":    {T: msgHello, CellW: 8, CellH: 16},
+		"no metrics": {T: msgHello, Cols: 20, Rows: 5},
+	} {
+		c := &fakeConn{}
+		c.push(m)
+		err := l.serve(context.Background(), c, handshakeReq("https://tui.example.test"))
+		if !errors.Is(err, ErrUnmeasuredClient) {
+			t.Errorf("%s: err = %v, want ErrUnmeasuredClient", name, err)
+		}
+		if _, _, reason := c.closeInfo(); reason != "unmeasured client" {
+			t.Errorf("%s: close reason %q, want \"unmeasured client\"", name, reason)
+		}
+	}
+	mu.Lock()
+	defer mu.Unlock()
+	if authRan {
+		t.Error("the auth machinery ran for an unmeasured hello")
+	}
+}
+
 // A successful attach reaches the App and reports the session id.
 func TestSessionLoop_SuccessfulAttach(t *testing.T) {
 	t.Parallel()
