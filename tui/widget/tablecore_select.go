@@ -172,6 +172,13 @@ func (c *TableCore) copyText(limit int) (text string, ok bool) {
 	return b.String(), true
 }
 
+// rowText is display row r whole, as a copy writes it: yy's, and a row cursor's y.
+func (c *TableCore) rowText(r int) string {
+	var b strings.Builder
+	c.writeRow(&b, r, 0, len(c.Fields())-1)
+	return b.String()
+}
+
 // writeRow writes display row r's fields lo..hi as one quoted TSV record (EncodeTableText's).
 func (c *TableCore) writeRow(b *strings.Builder, r, lo, hi int) {
 	cells := make([]string, 0, hi-lo+1)
@@ -316,10 +323,8 @@ func (c *TableCore) HandleKey(k tui.KeyEvent) bool {
 		switch {
 		case c.anchor != nil:
 			c.Copy()
-		case yanked || c.rowCursor: // yy, or y on a row cursor: the row
-			var b strings.Builder
-			c.writeRow(&b, c.cur.Row, 0, len(c.Fields())-1)
-			c.setRegister(b.String(), true)
+		case yanked: // yy: the row (a row cursor's y is the row already: yank)
+			c.setRegister(c.rowText(c.cur.Row), true)
 		default:
 			c.Copy()
 			c.yanked = true
