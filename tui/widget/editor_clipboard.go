@@ -33,25 +33,11 @@ func (c *EditorCore) inVisual(ln, col int) bool {
 	if !c.canSelect {
 		return false
 	}
-	switch c.keys.mode {
-	case ModeVisual:
-		lo, hiEx := c.visualRange()
-		p := taPos{ln: ln, col: col}
-		return (taPos{p.ln, p.col}).in(lo, hiEx)
-	case ModeVisualLine:
-		lo, hi := c.visualLines()
-		return ln >= lo && ln <= hi
-	case ModeVisualBlock:
-		v := c.visualBlock()
-		if ln < v.lo || ln > v.hi {
-			return false
-		}
-		l := v.line(c.buf.lineClusters(ln))
-		return col >= l.from && col < l.to
-	case ModeInsert:
-		return c.inCellSelection(ln, col) // a table cell Tab selected, which typing replaces
+	if s, ok := c.visualSelection(); ok {
+		return s.contains(ln, col)
 	}
-	return false
+	// a table cell Tab selected, which typing replaces
+	return c.keys.mode == ModeInsert && c.inCellSelection(ln, col)
 }
 
 // SelectedText returns the visual selection ("" outside visual modes or when selection is disabled):
@@ -60,16 +46,8 @@ func (c *EditorCore) SelectedText() string {
 	if !c.canSelect {
 		return ""
 	}
-	switch c.keys.mode {
-	case ModeVisual:
-		lo, hiEx := c.visualRange()
-		return c.buf.textIn(lo, hiEx)
-	case ModeVisualLine:
-		lo, hi := c.visualLines()
-		return strings.Join(c.buf.textLines[lo:hi+1], "\n")
-	case ModeVisualBlock:
-		pieces, _ := c.blockPieces(c.visualBlock())
-		return strings.Join(pieces, "\n")
+	if s, ok := c.visualSelection(); ok {
+		return s.text()
 	}
 	return ""
 }
@@ -93,18 +71,9 @@ func (c *EditorCore) SelectionRange() (row, col, endRow, endCol int, ok bool) {
 	if !c.canSelect {
 		return 0, 0, 0, 0, false
 	}
-	switch c.keys.mode {
-	case ModeVisual:
-		lo, hiEx := c.visualRange()
-		return lo.ln, lo.col, hiEx.ln, hiEx.col, true
-	case ModeVisualLine:
-		lo, hi := c.visualLines()
-		return lo, 0, hi, len(c.buf.lineClusters(hi)), true
-	case ModeVisualBlock:
-		// a block is no single region: the one from its top left to its bottom right
-		v := c.visualBlock()
-		top, bot := v.line(c.buf.lineClusters(v.lo)), v.line(c.buf.lineClusters(v.hi))
-		return v.lo, top.from, v.hi, bot.to, true
+	if s, ok := c.visualSelection(); ok {
+		row, col, endRow, endCol = s.bounds()
+		return row, col, endRow, endCol, true
 	}
 	return 0, 0, 0, 0, false
 }

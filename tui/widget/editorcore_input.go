@@ -78,29 +78,16 @@ func (c *EditorCore) HandlePaste(text string) bool {
 	b := &c.buf
 	c.settlePendingRune()
 	c.beginGroup()
+	if s, ok := c.visualSelection(); ok {
+		// a Visual paste replaces the selection (never silently discard the selection boundary)
+		s.remove()
+		c.setMode(ModeNormal)
+		b.insertText(text)
+		c.clampNormal()
+		c.edited()
+		return true
+	}
 	switch c.keys.mode {
-	case ModeVisual:
-		// Visual paste replaces the selection (never silently discard the selection boundary).
-		lo, hiEx := c.visualRange()
-		b.deleteRegion(lo, hiEx)
-		c.setMode(ModeNormal)
-		b.insertText(text)
-		c.clampNormal()
-	case ModeVisualBlock:
-		// the block's parts out, the paste at its top left
-		c.blockRemove(c.visualBlock())
-		c.setMode(ModeNormal)
-		b.insertText(text)
-		c.clampNormal()
-	case ModeVisualLine:
-		lo, hi := c.visualLines()
-		c.setMode(ModeNormal)
-		b.anchor = nil
-		b.setLine(lo, "") // the first line stays, emptied, for the paste
-		b.removeLines(lo+1, hi+1)
-		b.ln, b.col = lo, 0
-		b.insertText(text)
-		c.clampNormal()
 	case ModeInsert:
 		if c.replace != nil {
 			c.replaceText(text) // Replace overwrites, a paste too
