@@ -21,8 +21,10 @@ import (
 //	color.NRGBA (GPU Rasterization Ready)
 //
 // colorOf resolves style.Color specifications into concrete GPU color.NRGBA values.
-// Supports theme semantic tokens, adaptive light/dark pairs, direct 24-bit RGB, and ANSI indices.
-func colorOf(c style.Color, th *style.Theme, dark bool) (color.NRGBA, bool) {
+// Supports theme semantic tokens, adaptive light/dark pairs, direct 24-bit RGB, and palette
+// indices, which pal answers: the window's theme (gui.PaletteOf), so a view draws a palette
+// colour as the cells beside it are drawn. A nil pal is the default theme's.
+func colorOf(c style.Color, th *style.Theme, dark bool, pal gui.Palette) (color.NRGBA, bool) {
 	if tok, ok := c.Token(); ok {
 		if th == nil {
 			return color.NRGBA{}, false
@@ -41,33 +43,16 @@ func colorOf(c style.Color, th *style.Theme, dark bool) (color.NRGBA, bool) {
 	if r, g, b, ok := c.RGBValues(); ok {
 		return color.NRGBA{R: r, G: g, B: b, A: 0xff}, true
 	}
-	pal := gui.DefaultTheme().ANSI
+	if pal == nil {
+		pal = gui.PaletteOf(nil)
+	}
 	if n, ok := c.ANSIIndex(); ok && n < 16 {
-		return pal[n], true
+		return pal.Indexed(uint8(n)), true
 	}
 	if n, ok := c.ANSI256Index(); ok {
-		if n < 16 {
-			return pal[n], true
-		}
-		return ansi256(uint8(n)), true
+		return pal.Indexed(uint8(n)), true
 	}
 	return color.NRGBA{}, false
-}
-
-// ansi256 is xterm's colour n past the sixteen: the 6×6×6 cube, then the grey ramp.
-func ansi256(n uint8) color.NRGBA {
-	if n >= 232 {
-		v := 8 + (n-232)*10
-		return color.NRGBA{R: v, G: v, B: v, A: 0xff}
-	}
-	n -= 16
-	level := func(v uint8) uint8 {
-		if v == 0 {
-			return 0
-		}
-		return 55 + v*40
-	}
-	return color.NRGBA{R: level(n / 36), G: level(n / 6 % 6), B: level(n % 6), A: 0xff}
 }
 
 // openColors is the colours of the first cell of the view's rows [0, rows) that nothing covers

@@ -24,6 +24,7 @@ type pixelLayout struct {
 	e *Editor
 
 	sh   *gui.TextShaper // nil before the first paint
+	pal  gui.Palette     // the window's palette, from the canvas last painted on
 	cell gui.Size
 	th   Theme
 
@@ -417,7 +418,7 @@ func (l *pixelLayout) rawColors(ln int, text string, frame *tuiwidget.HighlightF
 		cc := l.th.Text
 		if st, ok := c.SyntaxStyle(k); ok {
 			if fg, set := st.GetForeground(); set {
-				if v, ok := colorOf(fg, l.e.body.styleTheme, dark); ok {
+				if v, ok := colorOf(fg, l.e.body.styleTheme, dark, l.pal); ok {
 					cc = v
 				}
 			}

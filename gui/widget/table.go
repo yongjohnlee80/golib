@@ -59,6 +59,7 @@ type tableColumn struct {
 type tableLayout struct {
 	t      *tuiwidget.DataTable
 	shaper *gui.TextShaper
+	pal    gui.Palette // the window's palette, from the canvas the look was last adopted from
 
 	look      uint64 // a hash of the colours, text size and font generation the bands were shaped in
 	body      gui.Font
@@ -587,7 +588,7 @@ func (l *tableLayout) cursorFill() color.NRGBA {
 		ground, set = st.GetForeground()
 	}
 	if set {
-		if col, ok := colorOf(ground, l.t.Theme(), isDark(l.bg)); ok {
+		if col, ok := colorOf(ground, l.t.Theme(), isDark(l.bg), l.pal); ok {
 			return col
 		}
 	}
@@ -607,7 +608,7 @@ func (l *tableLayout) cursorText(fill color.NRGBA) color.NRGBA {
 	}
 	text := l.fg
 	if ok {
-		if col, resolved := colorOf(fg, l.t.Theme(), isDark(l.bg)); resolved {
+		if col, resolved := colorOf(fg, l.t.Theme(), isDark(l.bg), l.pal); resolved {
 			text = col
 		}
 	}
@@ -781,6 +782,7 @@ func (l *tableLayout) elide(s string, w float32, f gui.Font) string {
 // cells under the view, the accent and muted text from the tui theme. A change shapes every band
 // again and measures the widths again.
 func (l *tableLayout) adoptLook(c gui.Canvas) {
+	l.pal = gui.PaletteOf(c)
 	fg, bg, ok := openColors(c, -1)
 	if !ok {
 		fg, bg = l.fg, l.bg // wholly covered: the look it had
@@ -793,10 +795,10 @@ func (l *tableLayout) adoptLook(c gui.Canvas) {
 	muted := mix(fg, bg, 0.55)
 	if th := l.t.Theme(); th != nil {
 		dark := isDark(bg)
-		if col, ok := colorOf(th.Color(style.TokenAccent), th, dark); ok {
+		if col, ok := colorOf(th.Color(style.TokenAccent), th, dark, l.pal); ok {
 			accent = col
 		}
-		if col, ok := colorOf(th.Color(style.TokenTextMuted), th, dark); ok {
+		if col, ok := colorOf(th.Color(style.TokenTextMuted), th, dark, l.pal); ok {
 			muted = col
 		}
 	}

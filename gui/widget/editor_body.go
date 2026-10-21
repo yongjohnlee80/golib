@@ -311,7 +311,8 @@ func (v bodyView) Paint(c gui.Canvas) {
 	refonted := c.Fonts().Gen != l.fonts                        // another family or size: shaped anew
 	l.fonts = c.Fonts().Gen
 	l.sh, l.cell = c.Text(), c.CellSize()
-	th := e.theme(fg, bg, c.TextSize(), b.styleTheme)
+	l.pal = gui.PaletteOf(c)
+	th := e.theme(fg, bg, c.TextSize(), b.styleTheme, l.pal)
 	prev := l.th
 	l.th = th // the gutter is counted in this theme's monospace cells
 	l.gutter = float32(e.GutterWidth()) * l.monoCell()
