@@ -523,13 +523,7 @@ func WithRoots(roots ...*TreeNode) TreeOption {
 // WithTreeStyles overrides the row styles (List slots).
 func WithTreeStyles(st ListStyles) TreeOption {
 	return func(t *Tree) {
-		t.styles = ListStyles{
-			Row:            st.Row.Inherit(t.styles.Row),
-			CursorRow:      st.CursorRow.Inherit(t.styles.CursorRow),
-			SelectedRow:    st.SelectedRow.Inherit(t.styles.SelectedRow),
-			CursorSelected: st.CursorSelected.Inherit(t.styles.CursorSelected),
-			CursorBlurred:  st.CursorBlurred.Inherit(t.styles.CursorBlurred),
-		}
+		t.styles = st.over(t.styles)
 	}
 }
 
@@ -583,9 +577,7 @@ func WithIndent(n int) TreeOption {
 func NewTree(opts ...TreeOption) *Tree {
 	t := &Tree{
 		indent: 2,
-		styles: ListStyles{
-			CursorRow: style.New().Reverse(true),
-		},
+		styles: defaultTreeStyles(),
 	}
 	for _, o := range opts {
 		if o != nil {
@@ -641,27 +633,17 @@ func (t *Tree) SetRoots(roots ...*TreeNode) {
 // SetStyles replaces the row styles at runtime; zero fields keep their
 // current values (see List.SetStyles — focus-dependent host styling).
 func (t *Tree) SetStyles(st ListStyles) {
-	t.styles = ListStyles{
-		Row:            st.Row.Inherit(t.styles.Row),
-		CursorRow:      st.CursorRow.Inherit(t.styles.CursorRow),
-		SelectedRow:    st.SelectedRow.Inherit(t.styles.SelectedRow),
-		CursorSelected: st.CursorSelected.Inherit(t.styles.CursorSelected),
-		CursorBlurred:  st.CursorBlurred.Inherit(t.styles.CursorBlurred),
-	}
+	t.styles = st.over(t.styles)
 	t.MarkDirty()
 }
+
+// defaultTreeStyles are a Tree's looks before any option: the cursor row reversed.
+func defaultTreeStyles() ListStyles { return ListStyles{CursorRow: style.New().Reverse(true)} }
 
 // ResetStyles replaces the Tree's looks from its defaults, so a removed QML
 // palette role does not leave the previously resolved color on a live view.
 func (t *Tree) ResetStyles(st ListStyles) {
-	base := ListStyles{CursorRow: style.New().Reverse(true)}
-	t.styles = ListStyles{
-		Row:            st.Row,
-		CursorRow:      st.CursorRow.Inherit(base.CursorRow),
-		SelectedRow:    st.SelectedRow,
-		CursorSelected: st.CursorSelected,
-		CursorBlurred:  st.CursorBlurred,
-	}
+	t.styles = st.over(defaultTreeStyles())
 	t.MarkDirty()
 }
 
