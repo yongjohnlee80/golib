@@ -88,6 +88,7 @@ type Tabs struct {
 	keep      bool
 	autoFocus bool
 	noBar     bool
+	onChange  func(i int) // WithTabsOnChange
 
 	barSt    style.Style
 	tabSt    style.Style
@@ -112,6 +113,11 @@ func WithTab(label string, content tui.Component) TabsOption {
 	}
 	return func(t *Tabs) { t.tabs = append(t.tabs, tabEntry{label: label, comp: content}) }
 }
+
+// WithTabsOnChange sets what runs, at once, when tab i becomes active: the bus's TabChangedEvent
+// reaches other subscribers a loop turn later. An owner composing a Tabs uses it rather than
+// subscribing app-wide and filtering by Owner.
+func WithTabsOnChange(fn func(i int)) TabsOption { return func(t *Tabs) { t.onChange = fn } }
 
 // WithKeepMounted keeps deactivated tab content mounted (state and
 // subscriptions live) instead of unmounting it on switch.
@@ -226,6 +232,9 @@ func (t *Tabs) Select(i int) {
 	t.RequestLayout()
 	t.MarkDirty()
 	t.publish(TabChangedEvent{Owner: t.NodeID(), Index: i, Label: t.tabs[i].label})
+	if t.onChange != nil {
+		t.onChange(i) // last: the owner may change the tabs
+	}
 }
 
 // cycle advances the active tab by delta with wraparound.

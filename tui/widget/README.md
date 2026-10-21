@@ -48,6 +48,14 @@ Dependency footprint: standard library + `golib/tui` + `golib/tui/style` only.
 | `FileSaveView`| Dialog Body     | its parts      | — (a `FileChooser`)                                    |
 | `FileFolderView`| Dialog Body   | its parts      | — (a `FileChooser`)                                    |
 
+The bus carries these events to listeners anywhere in the app, a loop turn
+after the widget acts. A widget's **owner** hears it directly instead, at once,
+through its options: `WithListOnCursor` / `WithListOnActivate` /
+`WithListOnContextMenu` (List, Table), `WithTreeOnCursor` / `WithTreeOnExpand` /
+`WithTreeOnExpandRequest` / `WithTreeOnActivate`, `WithSelectOnChange`,
+`WithTabsOnChange`, `WithOnEdit` / `WithOnSubmit` (TextInput), `WithOnActivate`
+(Button). Each runs last at its site, so the owner may change the widget from it.
+
 Every bus event carries `Owner tui.NodeID` as its first field so subscribers can filter by source. Publication is enqueue-only onto the application loop.
 
 ---
