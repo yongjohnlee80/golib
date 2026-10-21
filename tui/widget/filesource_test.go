@@ -680,3 +680,42 @@ func TestAFileListReportsACursorMoveOnce(t *testing.T) {
 		t.Errorf("Up from c.txt: %v, want [b.txt]", later)
 	}
 }
+
+// refusingFS is a VFS store that refuses to say what one name is, as a store does a path its user
+// may not see.
+type refusingFS struct {
+	vfs.FS
+	refused string
+}
+
+func (r refusingFS) Stat(ctx context.Context, name string) (vfs.FileInfo, error) {
+	if name == r.refused {
+		return vfs.FileInfo{}, fs.ErrPermission
+	}
+	return r.FS.Stat(ctx, name)
+}
+
+// A VFS source answers the path field through its backend's stat: a name it does not have is
+// not found, one it refuses to describe cannot be read, and a rooted path outside its root is not
+// found, even where the store has that name inside its root. The folder listed stays as it was.
+func TestAVFSSourceTellsThePathFieldWhatAPathIs(t *testing.T) {
+	g := newGated(t, map[string]string{"in/f.md": "f", "secret/x": "x"})
+	src := widget.FileSource{VFS: refusingFS{FS: g.FS, refused: "secret"}, Root: "vfs://"}
+	v := widget.NewFileFolderView(widget.WithFileViewSource(src), widget.WithFileViewDir("vfs://"))
+	h := startBrowser(t, v)
+	defer h.stop()
+	h.shows("in/")
+	h.inject(keyMod('k', tui.ModCtrl)) // to the path field
+	typePath(h, "vfs://nothere")
+	h.shows("Folder — not found")
+	typePath(h, "vfs://secret")
+	h.shows("Folder — cannot read")
+	typePath(h, "/in") // "in" is the store's, under vfs://, not under /
+	h.shows("Folder — not found")
+	if !dirIs(h, v, "vfs://")() {
+		t.Fatal("a path outside the source's root moved the listing")
+	}
+	typePath(h, "vfs://in")
+	h.waitFor("in listed", dirIs(h, v, "vfs://in"))
+	h.shows("f.md")
+}
