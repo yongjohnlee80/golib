@@ -110,7 +110,7 @@ func attrBits() map[string]uint16 {
 // headless Chromium does. This encoding is a legitimate simplification, not a
 // bug fix, and the test below asserts source-level identity rather than browser
 // behavior it cannot observe.
-func nonce() (string, error) { return randomToken(16) }
+func nonce() string { return randomToken(16) }
 
 // ServePage writes the client shell.
 //
@@ -118,11 +118,7 @@ func nonce() (string, error) { return randomToken(16) }
 // window title is a place where application data would escape the cell grid's
 // escaping.
 func (h *Handler) ServePage(w http.ResponseWriter, r *http.Request) {
-	n, err := nonce()
-	if err != nil {
-		http.Error(w, "unavailable", http.StatusInternalServerError)
-		return
-	}
+	n := nonce()
 	hardeningHeaders(w.Header(), n)
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 
