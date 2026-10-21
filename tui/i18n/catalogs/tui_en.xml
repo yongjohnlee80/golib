@@ -192,8 +192,8 @@
         <translation>Quit</translation>
     </message>
     <message id="tui.tooSmall.quitKeys">
-        <source>or press q / Ctrl+C</source>
-        <translation>or press q / Ctrl+C</translation>
+        <source>or press %1</source>
+        <translation>or press %1</translation>
     </message>
     <message id="tui.editor.menu.undo">
         <source>&amp;Undo</source>

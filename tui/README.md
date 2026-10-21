@@ -276,8 +276,10 @@ which of its commands a key is, instead of switching on raw keys.
   enclosing one up to a modal trap's ceiling, then traversal), each with the keys it really
   receives. `app.KeyScopeOf(comp)` is its scope. A component reports its bindings through the
   optional `KeyBinder` capability, and its scope through `KeyScoped`.
-- Tab traversal (`FocusNext`, `FocusPrev`) and the pointer-capture cancel (`CancelCapture`) are the
-  runtime's own commands (`tui.Commands()`).
+- Tab traversal (`FocusNext`, `FocusPrev`), the pointer-capture cancel (`CancelCapture`) and the
+  too-small screen's quit (`TooSmallQuit`, q and Ctrl+C in its own `tui.tooSmall` scope, so it
+  never shadows an application's keys) are the runtime's own commands (`tui.Commands()`). The
+  too-small screen prints the keys the map binds to its quit.
 
 ---
 

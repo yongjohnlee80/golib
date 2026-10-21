@@ -18,7 +18,14 @@ var (
 	// CaptureEscapeResolver, before the key is routed anywhere. Its scope is its own: it is live only
 	// while a gesture holds the pointer.
 	CancelCapture = keymap.Command{ID: "tui.capture.cancel", Scope: "tui.capture", Keys: key.MustParse("Esc")}
+
+	// TooSmallQuit quits from the too-small screen (App.dispatchTooSmall), which also prints its keys.
+	// Its scope is its own: it is live only while that screen shows, so it never shadows an
+	// application's q or Ctrl+C.
+	TooSmallQuit = keymap.Command{ID: "tui.tooSmall.quit", Scope: "tui.tooSmall", Keys: key.MustParse("q", "Ctrl+C")}
 )
 
 // Commands is the runtime's own commands, for keymap.Build beside every widget's.
-func Commands() []keymap.Command { return []keymap.Command{FocusNext, FocusPrev, CancelCapture} }
+func Commands() []keymap.Command {
+	return []keymap.Command{FocusNext, FocusPrev, CancelCapture, TooSmallQuit}
+}

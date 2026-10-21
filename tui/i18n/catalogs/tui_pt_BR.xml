@@ -192,8 +192,8 @@
         <translation>Sair</translation>
     </message>
     <message id="tui.tooSmall.quitKeys">
-        <source>or press q / Ctrl+C</source>
-        <translation>ou pressione q / Ctrl+C</translation>
+        <source>or press %1</source>
+        <translation>ou pressione %1</translation>
     </message>
     <message id="tui.editor.menu.undo">
         <source>&amp;Undo</source>
