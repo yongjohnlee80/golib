@@ -45,16 +45,14 @@ func (c *Context) Ctx() context.Context { return c.node.cctx }
 // handler. That is what lets a handler mark dirty as many times as it likes,
 // and what stops a component from observing a half-updated tree mid-handler.
 func (c *Context) MarkDirty() {
-	c.app.renderDirty = true
-	c.app.queue.wakeUp()
+	c.app.invalidate(false)
 }
 
 // RequestLayout signals the node's size may have changed: the next frame
 // runs one full layout pass from the root, then repaints. Use it when a
 // change affects SIZE; MarkDirty is enough when only appearance changed.
 func (c *Context) RequestLayout() {
-	c.app.layoutDirty = true
-	c.app.queue.wakeUp()
+	c.app.invalidate(true)
 }
 
 // RequestFocus asks the focus manager to focus this node. Ignored unless

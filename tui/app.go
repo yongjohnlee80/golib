@@ -238,7 +238,7 @@ func (a *App) SetLanguage(tag string) {
 // goroutine only.
 func (a *App) ApplyLanguage(tag string) {
 	a.cfg.language = tag
-	a.layoutDirty, a.renderDirty = true, true
+	a.invalidate(true)
 }
 
 // SetTranslations schedules replacing the catalogs every [Message] is looked up in, on the
@@ -282,7 +282,7 @@ func (a *App) ApplyTranslator(t Translator) {
 		panic(errs.Fatal{Op: "tui: App.ApplyTranslator", Rule: "the catalogs must not be nil"})
 	}
 	a.cfg.translations = t
-	a.layoutDirty, a.renderDirty = true, true
+	a.invalidate(true)
 }
 
 // SetKeymap schedules replacing the key bindings every widget matches keys against, on the loop
@@ -301,7 +301,7 @@ func (a *App) SetKeymap(m *keymap.Map) {
 // that prints one, so it dirties layout and render, as ApplyLanguage does. Loop goroutine only.
 func (a *App) ApplyKeymap(m *keymap.Map) {
 	a.cfg.keymap = m
-	a.layoutDirty, a.renderDirty = true, true
+	a.invalidate(true)
 }
 
 // Keymap is the key bindings in force; nil when none was given. Call it on the loop goroutine.
@@ -556,6 +556,16 @@ func (a *App) teardown() error {
 	}
 	// T3 — return; the deferred backend.Stop() restores the terminal.
 	return nil
+}
+
+// invalidate marks the next frame dirty, laid out first when layout is set, and wakes the loop:
+// a change made while dispatching input gets its frame, since that lane renders nothing by itself.
+func (a *App) invalidate(layout bool) {
+	if layout {
+		a.layoutDirty = true
+	}
+	a.renderDirty = true
+	a.queue.wakeUp()
 }
 
 // maybeFrame renders when dirt exists, honoring the min-frame-interval CAP:

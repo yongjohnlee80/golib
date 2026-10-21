@@ -34,8 +34,7 @@ func (a *App) SetMinimumSize(s Size) {
 		return
 	}
 	a.minSize = s
-	a.layoutDirty, a.renderDirty = true, true
-	a.queue.wakeUp()
+	a.invalidate(true)
 }
 
 // MinimumSize is the smallest screen the App lays out for; zero on an axis without one.

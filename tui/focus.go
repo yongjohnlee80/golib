@@ -146,8 +146,7 @@ func (a *App) setFocus(id NodeID) {
 	// that a handler which moves focus onward is accounted for by the check
 	// rather than racing it.
 	a.captureCheckFocus()
-	a.renderDirty = true // the cursor rule re-evaluates next frame
-	a.queue.wakeUp()
+	a.invalidate(false) // the cursor rule re-evaluates next frame
 }
 
 // mayEnterStackedTrap reports whether focus may move from the active trap into
@@ -632,8 +631,7 @@ func (a *App) focusInto(comp Component, mayDefer bool) bool {
 		// subtree is not deferred; it takes none.
 		if mayDefer && a.unplacedTargetIn(n) {
 			a.pendingFocusInto = n.id
-			a.layoutDirty = true
-			a.queue.wakeUp()
+			a.invalidate(true)
 		}
 		return false
 	}

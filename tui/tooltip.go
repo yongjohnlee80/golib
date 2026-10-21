@@ -115,8 +115,7 @@ func (a *App) toolTipPress(mouse bool) {
 
 func (a *App) showToolTip(n *node, focus bool) {
 	a.tip.node, a.tip.text, a.tip.focus = n.id, n.comp.(ToolTipper).ToolTip(), focus
-	a.renderDirty = true
-	a.queue.wakeUp()
+	a.invalidate(false)
 }
 
 func (a *App) hideToolTip() {
@@ -124,8 +123,7 @@ func (a *App) hideToolTip() {
 		return
 	}
 	a.tip.node, a.tip.text, a.tip.focus, a.tip.rect = 0, "", false, Rect{}
-	a.renderDirty = true
-	a.queue.wakeUp()
+	a.invalidate(false)
 }
 
 func (a *App) cancelToolTipTimer() {

@@ -73,8 +73,7 @@ func (a *App) mount(parent *node, comp Component) *node {
 	comp.Init(n.ctx)
 	a.initNode = prevInit
 
-	a.layoutDirty = true // a new child means geometry may change (step 4)
-	a.queue.wakeUp()
+	a.invalidate(true) // a new child means geometry may change (step 4)
 	return n
 }
 
@@ -107,8 +106,7 @@ func (a *App) moveWithin(parent *node, child Component, to int) {
 		parent.children = cs
 	}
 
-	a.layoutDirty = true // document order changed: paint + tab order may change
-	a.queue.wakeUp()
+	a.invalidate(true) // document order changed: paint + tab order may change
 }
 
 // unmountTree is the top-level unmount entry (Context.Unmount,
@@ -136,8 +134,7 @@ func (a *App) unmountTree(n *node) {
 	} else if a.rootNode == n {
 		a.rootNode = nil
 	}
-	a.layoutDirty = true
-	a.queue.wakeUp()
+	a.invalidate(true)
 
 	// Scope restore + focus repair. Pop scope entries whose trapping scope
 	// died; the outermost pop supplies the restore target, since an inner

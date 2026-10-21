@@ -26,8 +26,7 @@ func (a *App) requestReveal(n *node) {
 	for p := n.parent; p != nil; p = p.parent {
 		if _, ok := p.comp.(Revealer); ok {
 			a.reveal = true
-			a.layoutDirty = true
-			a.queue.wakeUp()
+			a.invalidate(true)
 			return
 		}
 	}
