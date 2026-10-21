@@ -56,3 +56,17 @@ func TestTheIntakeNamesACloseRequest(t *testing.T) {
 		t.Fatalf("eventName = %q", got)
 	}
 }
+
+// eventName names every event kind the intake's overflow line and an addressed delivery's dead
+// letter report, and any other event as "Event".
+func TestEventNameNamesEachKind(t *testing.T) {
+	for ev, want := range map[Event]string{
+		KeyEvent{}: "KeyEvent", MouseEvent{}: "MouseEvent", PasteEvent{}: "PasteEvent", ResizeEvent{}: "ResizeEvent",
+		FocusEvent{}: "FocusEvent", CloseRequestEvent{}: "CloseRequestEvent", TaskResult{}: "TaskResult",
+		TaskProgress{}: "TaskProgress", TickEvent{}: "TickEvent", UserEvent{}: "Event",
+	} {
+		if got := eventName(ev); got != want {
+			t.Errorf("eventName(%T) = %q, want %q", ev, got, want)
+		}
+	}
+}

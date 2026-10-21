@@ -41,3 +41,15 @@ func TestAKeysTraceLineNamesIt(t *testing.T) {
 		t.Errorf("trace details %q, want %q", got, want)
 	}
 }
+
+// Every trace kind has its name, and a kind outside the set reads "?".
+func TestEveryTraceKindHasItsName(t *testing.T) {
+	for k, want := range map[TraceKind]string{
+		TraceFocus: "focus", TraceFocusRepair: "focus-repair", TraceMount: "mount", TraceUnmount: "unmount",
+		TraceKey: "key", TraceScope: "scope", TraceAction: "action", TraceCapture: "capture", TraceCapture + 1: "?",
+	} {
+		if got := k.String(); got != want {
+			t.Errorf("TraceKind(%d).String() = %q, want %q", k, got, want)
+		}
+	}
+}
