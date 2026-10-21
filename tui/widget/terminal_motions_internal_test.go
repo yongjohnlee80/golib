@@ -66,3 +66,20 @@ func TestTerminalSelectionReadsACellLines(t *testing.T) {
 		t.Errorf("selection %q, want the wrapped line joined and the next after a newline", got)
 	}
 }
+
+func TestEveryNormalCommandHasAnAction(t *testing.T) {
+	// The normal-mode commands and their actions are one set: a command with no action would be
+	// matched and then dropped, and an action with no command could never run.
+	ids := map[string]bool{}
+	for _, c := range terminalNormalCommands {
+		ids[c.ID] = true
+		if terminalNormalActions[c.ID] == nil {
+			t.Errorf("%s has no action", c.ID)
+		}
+	}
+	for id := range terminalNormalActions {
+		if !ids[id] {
+			t.Errorf("the action for %s has no command in terminalNormalCommands", id)
+		}
+	}
+}

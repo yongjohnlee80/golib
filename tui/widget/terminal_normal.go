@@ -105,85 +105,102 @@ func (n *normalState) key(t *Terminal, k tui.KeyEvent) bool {
 		}
 		return false
 	}
-	h := max(t.shownRows(), 1)
-	switch cmd.ID {
-	case TermHalfUp.ID:
-		n.scroll(t, -h/2)
-		return true
-	case TermHalfDown.ID:
-		n.scroll(t, h/2)
-		return true
-	case TermPageUp.ID:
-		n.scroll(t, -h)
-		return true
-	case TermPageDown.ID:
-		n.scroll(t, h)
-		return true
-	case TermCancel.ID:
-		if n.visual != visualNone || n.pendingG {
-			n.visual, n.pendingG = visualNone, false
-			t.MarkDirty()
-			return true
-		}
-		return false // nothing to cancel: the host's Esc (a drawer closes)
+	act, ok := terminalNormalActions[cmd.ID]
+	if !ok {
+		return false // TestEveryNormalCommandHasAnAction keeps this unreached
 	}
-	n.pendingG = false // any other key ends g's grammar, and is itself
-	switch cmd.ID {
-	case TermInput.ID:
-		t.setMode(TerminalInput)
-	case TermLeft.ID:
-		n.col--
-	case TermRight.ID:
-		n.col++
-	case TermDown.ID:
-		n.line++
-	case TermUp.ID:
-		n.line--
-	case TermLineStart.ID:
-		n.col = 0
-	case TermLineEnd.ID:
+	return act(n, t)
+}
+
+// normalAction runs one normal-mode command; the bool is whether the key was used.
+type normalAction func(n *normalState, t *Terminal) bool
+
+// terminalNormalActions is what each of terminalNormalCommands does. The scrolls and Cancel keep
+// g's grammar as it was; every other command ends it (moving).
+var terminalNormalActions = map[string]normalAction{
+	TermHalfUp.ID:   func(n *normalState, t *Terminal) bool { n.scroll(t, -max(t.shownRows(), 1)/2); return true },
+	TermHalfDown.ID: func(n *normalState, t *Terminal) bool { n.scroll(t, max(t.shownRows(), 1)/2); return true },
+	TermPageUp.ID:   func(n *normalState, t *Terminal) bool { n.scroll(t, -max(t.shownRows(), 1)); return true },
+	TermPageDown.ID: func(n *normalState, t *Terminal) bool { n.scroll(t, max(t.shownRows(), 1)); return true },
+	TermCancel.ID:   (*normalState).cancel,
+
+	TermInput.ID:     moving(func(_ *normalState, t *Terminal) { t.setMode(TerminalInput) }),
+	TermLeft.ID:      moving(func(n *normalState, _ *Terminal) { n.col-- }),
+	TermRight.ID:     moving(func(n *normalState, _ *Terminal) { n.col++ }),
+	TermDown.ID:      moving(func(n *normalState, _ *Terminal) { n.line++ }),
+	TermUp.ID:        moving(func(n *normalState, _ *Terminal) { n.line-- }),
+	TermLineStart.ID: moving(func(n *normalState, _ *Terminal) { n.col = 0 }),
+	TermLineEnd.ID: moving(func(n *normalState, t *Terminal) {
 		n.col = max(len(lineRunes(t.lineCells(n.line)))-1, 0)
-	case TermWord.ID:
-		n.line, n.col = wordForward(t, n.line, n.col)
-	case TermWordBack.ID:
-		n.line, n.col = wordBackward(t, n.line, n.col)
-	case TermWordEnd.ID:
-		n.line, n.col = wordEnd(t, n.line, n.col)
-	case TermGoPrefix.ID:
-		n.pendingG = true
+	}),
+	TermWord.ID:     moving(func(n *normalState, t *Terminal) { n.line, n.col = wordForward(t, n.line, n.col) }),
+	TermWordBack.ID: moving(func(n *normalState, t *Terminal) { n.line, n.col = wordBackward(t, n.line, n.col) }),
+	TermWordEnd.ID:  moving(func(n *normalState, t *Terminal) { n.line, n.col = wordEnd(t, n.line, n.col) }),
+	TermGoPrefix.ID: func(n *normalState, _ *Terminal) bool { n.pendingG = true; return true },
+	TermBottom.ID:   moving(func(n *normalState, t *Terminal) { n.line, n.col = t.lineCount()-1, 0 }),
+
+	TermVisual.ID:     moving(func(n *normalState, _ *Terminal) { n.toggleVisual(visualChar) }),
+	TermVisualLine.ID: moving(func(n *normalState, _ *Terminal) { n.toggleVisual(visualLine) }),
+	TermYank.ID:       (*normalState).yank,
+
+	TermSearch.ID:     moving(func(n *normalState, _ *Terminal) { n.searching, n.backward, n.query = true, false, "" }),
+	TermSearchBack.ID: moving(func(n *normalState, _ *Terminal) { n.searching, n.backward, n.query = true, true, "" }),
+	TermNext.ID:       moving(func(n *normalState, t *Terminal) { n.repeatSearch(t, false) }),
+	TermPrev.ID:       moving(func(n *normalState, t *Terminal) { n.repeatSearch(t, true) }),
+}
+
+// moving is a command that ends g's grammar, runs fn, and keeps the cursor on the text.
+func moving(fn func(n *normalState, t *Terminal)) normalAction {
+	return func(n *normalState, t *Terminal) bool {
+		n.pendingG = false
+		fn(n, t)
+		n.moved(t)
 		return true
-	case TermBottom.ID:
-		n.line, n.col = t.lineCount()-1, 0
-	case TermVisual.ID, TermVisualLine.ID:
-		mode := visualChar
-		if cmd.ID == TermVisualLine.ID {
-			mode = visualLine
-		}
-		if n.visual == mode {
-			n.visual = visualNone
-		} else {
-			if n.visual == visualNone {
-				n.aLine, n.aCol = n.line, n.col
-			}
-			n.visual = mode
-		}
-	case TermYank.ID:
-		if n.visual == visualNone {
-			return true
-		}
-		if ctx := t.Context(); ctx != nil {
-			ctx.CopyToClipboard(n.selection(t))
-		}
-		n.visual = visualNone
-	case TermSearch.ID, TermSearchBack.ID:
-		n.searching, n.backward, n.query = true, cmd.ID == TermSearchBack.ID, ""
-	case TermNext.ID, TermPrev.ID:
-		if n.last != "" {
-			n.search(t, n.last, n.backward != (cmd.ID == TermPrev.ID))
-		}
 	}
+}
+
+// cancel ends a selection or g's grammar; with neither, Esc is the host's (a drawer closes).
+func (n *normalState) cancel(t *Terminal) bool {
+	if n.visual == visualNone && !n.pendingG {
+		return false
+	}
+	n.visual, n.pendingG = visualNone, false
+	t.MarkDirty()
+	return true
+}
+
+// toggleVisual starts a selection of mode at the cursor, switches to mode, or ends mode's.
+func (n *normalState) toggleVisual(mode int) {
+	switch n.visual {
+	case mode:
+		n.visual = visualNone
+	case visualNone:
+		n.aLine, n.aCol = n.line, n.col
+		n.visual = mode
+	default:
+		n.visual = mode
+	}
+}
+
+// yank copies the selection and ends it; with none, the key is used and nothing moves.
+func (n *normalState) yank(t *Terminal) bool {
+	n.pendingG = false
+	if n.visual == visualNone {
+		return true
+	}
+	if ctx := t.Context(); ctx != nil {
+		ctx.CopyToClipboard(n.selection(t))
+	}
+	n.visual = visualNone
 	n.moved(t)
 	return true
+}
+
+// repeatSearch runs the last search again, the other way when reverse.
+func (n *normalState) repeatSearch(t *Terminal, reverse bool) {
+	if n.last != "" {
+		n.search(t, n.last, n.backward != reverse)
+	}
 }
 
 func (n *normalState) moved(t *Terminal) {
