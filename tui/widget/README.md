@@ -245,11 +245,12 @@ input := widget.NewTextInput(
 
 #### `TextArea`
 
-Multi-line text editor with soft wrapping (`WrapSoft`) or horizontal scrolling (`WrapNone`), grapheme addressing, selection, and clipboard paste safety.
+Multi-line text editor with soft wrapping (`WrapSoft`) or horizontal scrolling (`WrapNone`), grapheme addressing, selection, and clipboard paste safety. Its placeholder (`WithTextAreaPlaceholder`, or `WithTextAreaPlaceholderMessage` for a catalog message) is drawn muted while it is empty.
 
 ```go
 area := widget.NewTextArea(
     widget.WithWrap(widget.WrapSoft),
+    widget.WithTextAreaPlaceholder("Commit message..."),
     widget.WithTextAreaStyles(widget.TextInputStyles{
         Text: style.New().Foreground(style.TokenForeground),
     }),

@@ -68,3 +68,24 @@ func TestASelectsPlaceholderIsMutedToo(t *testing.T) {
 		t.Fatalf("Select's placeholder is not faint (%v): %+v", ok, c.Attrs)
 	}
 }
+
+// TestATextAreasPlaceholderIsDrawnWhileItIsEmpty: a TextArea's placeholder shows, muted, while it
+// holds no text, and goes once a letter is typed.
+func TestATextAreasPlaceholderIsDrawnWhileItIsEmpty(t *testing.T) {
+	ta := widget.NewTextArea(widget.WithTextAreaPlaceholder("Commit message"))
+	h := startApp(t, ta, 30, 3)
+	defer h.stop()
+	h.settle()
+	c, ok := cellAt(h, 0, "Commit")
+	if !ok {
+		t.Fatalf("no placeholder:\n%s", h.grid())
+	}
+	if c.Attrs.Mask&tui.AttrFaint == 0 {
+		t.Fatalf("the placeholder is not faint: %+v", c.Attrs)
+	}
+	h.onLoop(func() { ta.SetValue("x") })
+	h.settle()
+	if _, ok := cellAt(h, 0, "Commit"); ok {
+		t.Fatalf("the placeholder stays over the text:\n%s", h.grid())
+	}
+}
