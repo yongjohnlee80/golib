@@ -331,51 +331,53 @@ func (s *Screen) setANSIMode(n int, on bool) {
 	}
 }
 
-func (s *Screen) setPrivateMode(n int, on bool) {
-	switch n {
-	case 1:
-		s.modes.AppCursor = on
-	case 6:
+// privateMode is one DEC private mode: how SM/RM (CSI ? n h/l) sets it, and how DECRQM reads it
+// back. A mode with no get is set but never reported (1048 saves and restores the cursor; it has
+// no state to report).
+type privateMode struct {
+	get func(Modes) bool
+	set func(s *Screen, on bool)
+}
+
+// privateModes are the DEC private modes the screen keeps, by number: one row each, so SM/RM and
+// DECRQM cannot disagree about which modes there are.
+var privateModes = map[int]privateMode{
+	1: {func(m Modes) bool { return m.AppCursor }, func(s *Screen, on bool) { s.modes.AppCursor = on }},
+	6: {func(m Modes) bool { return m.Origin }, func(s *Screen, on bool) {
 		s.cur.origin = on
 		s.modes.Origin = on
 		s.moveTo(0, 0)
-	case 7:
+	}},
+	7: {func(m Modes) bool { return m.Autowrap }, func(s *Screen, on bool) {
 		s.modes.Autowrap = on
 		if !on {
 			s.cur.wrapNext = false
 		}
-	case 9:
-		s.setMouse(MouseX10, on)
-	case 12:
-		s.modes.CursorBlink = on
-	case 25:
-		s.modes.CursorVisible = on
-	case 47:
-		s.switchScreen(on, false)
-	case 66:
-		s.modes.AppKeypad = on
-	case 1000:
-		s.setMouse(MouseClick, on)
-	case 1002:
-		s.setMouse(MouseDrag, on)
-	case 1003:
-		s.setMouse(MouseMotion, on)
-	case 1004:
-		s.modes.FocusEvents = on
-	case 1006:
-		s.modes.MouseSGR = on
-	case 1047:
+	}},
+	9:    {func(m Modes) bool { return m.Mouse == MouseX10 }, func(s *Screen, on bool) { s.setMouse(MouseX10, on) }},
+	12:   {func(m Modes) bool { return m.CursorBlink }, func(s *Screen, on bool) { s.modes.CursorBlink = on }},
+	25:   {func(m Modes) bool { return m.CursorVisible }, func(s *Screen, on bool) { s.modes.CursorVisible = on }},
+	47:   {func(m Modes) bool { return m.AltScreen }, func(s *Screen, on bool) { s.switchScreen(on, false) }},
+	66:   {func(m Modes) bool { return m.AppKeypad }, func(s *Screen, on bool) { s.modes.AppKeypad = on }},
+	1000: {func(m Modes) bool { return m.Mouse == MouseClick }, func(s *Screen, on bool) { s.setMouse(MouseClick, on) }},
+	1002: {func(m Modes) bool { return m.Mouse == MouseDrag }, func(s *Screen, on bool) { s.setMouse(MouseDrag, on) }},
+	1003: {func(m Modes) bool { return m.Mouse == MouseMotion }, func(s *Screen, on bool) { s.setMouse(MouseMotion, on) }},
+	1004: {func(m Modes) bool { return m.FocusEvents }, func(s *Screen, on bool) { s.modes.FocusEvents = on }},
+	1006: {func(m Modes) bool { return m.MouseSGR }, func(s *Screen, on bool) { s.modes.MouseSGR = on }},
+	1047: {func(m Modes) bool { return m.AltScreen }, func(s *Screen, on bool) {
 		if !on && s.buf == &s.alt {
 			s.clearBuffer(&s.alt)
 		}
 		s.switchScreen(on, false)
-	case 1048:
+	}},
+	1048: {nil, func(s *Screen, on bool) {
 		if on {
 			s.saveCursor()
 		} else {
 			s.restoreCursor()
 		}
-	case 1049:
+	}},
+	1049: {func(m Modes) bool { return m.AltScreen }, func(s *Screen, on bool) {
 		if on {
 			if s.buf == &s.alt {
 				return
@@ -389,10 +391,14 @@ func (s *Screen) setPrivateMode(n int, on bool) {
 			s.switchScreen(false, false)
 			s.restoreCursor()
 		}
-	case 2004:
-		s.modes.BracketedPaste = on
-	case 2026:
-		s.modes.Synchronized = on
+	}},
+	2004: {func(m Modes) bool { return m.BracketedPaste }, func(s *Screen, on bool) { s.modes.BracketedPaste = on }},
+	2026: {func(m Modes) bool { return m.Synchronized }, func(s *Screen, on bool) { s.modes.Synchronized = on }},
+}
+
+func (s *Screen) setPrivateMode(n int, on bool) {
+	if pm, ok := privateModes[n]; ok {
+		pm.set(s, on)
 	}
 }
 
@@ -447,39 +453,10 @@ func (s *Screen) reportMode(private bool, n int) {
 	known, on := true, false
 	m := s.modes
 	if private {
-		switch n {
-		case 1:
-			on = m.AppCursor
-		case 6:
-			on = m.Origin
-		case 7:
-			on = m.Autowrap
-		case 9:
-			on = m.Mouse == MouseX10
-		case 12:
-			on = m.CursorBlink
-		case 25:
-			on = m.CursorVisible
-		case 47, 1047, 1049:
-			on = m.AltScreen
-		case 66:
-			on = m.AppKeypad
-		case 1000:
-			on = m.Mouse == MouseClick
-		case 1002:
-			on = m.Mouse == MouseDrag
-		case 1003:
-			on = m.Mouse == MouseMotion
-		case 1004:
-			on = m.FocusEvents
-		case 1006:
-			on = m.MouseSGR
-		case 2004:
-			on = m.BracketedPaste
-		case 2026:
-			on = m.Synchronized
-		default:
-			known = false
+		pm, ok := privateModes[n]
+		known = ok && pm.get != nil
+		if known {
+			on = pm.get(m)
 		}
 		s.reply1(fmt.Appendf(nil, "\x1b[?%d;%d$y", n, modeValue(known, on)))
 		return
