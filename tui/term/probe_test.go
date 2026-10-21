@@ -351,3 +351,25 @@ func TestProbeKittyGraphics(t *testing.T) {
 		})
 	}
 }
+
+// DarkBackground follows WCAG: a background is dark when white text reads better on it than black.
+// Mid grey #777777 reads better with black (contrast 4.7 against 4.5), so it is light, where the
+// old unlinearized luminance (0.47, under 0.5) called it dark; #6e6e6e is dark under both.
+func TestProbeDarkBackgroundFollowsWCAG(t *testing.T) {
+	for _, c := range []struct {
+		osc  string
+		dark bool
+	}{
+		{"\x1b]11;rgb:7777/7777/7777\x1b\\", false},
+		{"\x1b]11;rgb:6e6e/6e6e/6e6e\x1b\\", true},
+	} {
+		s := newScript(t)
+		s.respond(c.osc + "\x1b[?62c")
+		if err := s.start(t.Context()); err != nil {
+			t.Fatal(err)
+		}
+		if caps := s.b.Capabilities(); caps.DarkBackground != c.dark {
+			t.Errorf("background %q: DarkBackground %v, want %v", c.osc, caps.DarkBackground, c.dark)
+		}
+	}
+}
