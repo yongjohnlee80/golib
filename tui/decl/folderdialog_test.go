@@ -246,10 +246,11 @@ func TestAFolderDialogsShortcutIsItsKey(t *testing.T) {
 // TestAFolderDialogRefusesWhatItCannotTake: its buttons are its own, and its properties are typed.
 func TestAFolderDialogRefusesWhatItCannotTake(t *testing.T) {
 	for name, c := range map[string]struct{ src, want string }{
-		"a button box":             {`FolderDialog { DialogButtonBox { Button { text: "x"; DialogButtonBox.buttonRole: DialogButtonBox.AcceptRole } } }`, "buttons are its own"},
-		"a dim that is not a bool": {`FolderDialog { dim: "yes" }`, "dim"},
-		"a FileDialog's children":  {`FileDialog { Text { text: "x" } }`, "takes no children"},
-		"a FileDialog's bad mode":  {`FileDialog { fileMode: FileDialog.Nope }`, "fileMode"},
+		"a button box":                          {`FolderDialog { DialogButtonBox { Button { text: "x"; DialogButtonBox.buttonRole: DialogButtonBox.AcceptRole } } }`, "buttons are its own"},
+		"a dim that is not a bool":              {`FolderDialog { dim: "yes" }`, "dim"},
+		"a FileDialog's children":               {`FileDialog { Text { text: "x" } }`, "takes no children"},
+		"a FileDialog's bad mode":               {`FileDialog { fileMode: FileDialog.Nope }`, "fileMode"},
+		"a FileDialog's dim that is not a bool": {`FileDialog { dim: "yes" }`, "dim"},
 	} {
 		if _, err := mountDoc(t, "import tui 1.0\nWindow { "+c.src+" }"); err == nil || !strings.Contains(err.Error(), c.want) {
 			t.Errorf("%s: %v, want an error naming %q", name, err, c.want)

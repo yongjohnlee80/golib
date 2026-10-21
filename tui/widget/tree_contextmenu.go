@@ -1,6 +1,7 @@
 package widget
 
 import (
+	"reflect"
 	"slices"
 
 	"github.com/yongjohnlee80/golib/tui"
@@ -73,6 +74,17 @@ type ContextMenuRequester interface {
 type MenuOpener interface {
 	OpenAt(at tui.Point) bool
 	Close()
+}
+
+// sameOpener reports whether a and b are the one menu. MenuOpener asks nothing of an implementation's
+// comparability (a named slice satisfies it), so the values are compared only when they are of one
+// type and comparable as they stand; any other pair is two menus, never a panic.
+func sameOpener(a, b MenuOpener) bool {
+	if a == nil || b == nil {
+		return a == nil && b == nil
+	}
+	va, vb := reflect.ValueOf(a), reflect.ValueOf(b)
+	return va.Type() == vb.Type() && va.Comparable() && va.Equal(vb)
 }
 
 // menuOn reports whether m would open: a menu that reports Enabled is asked, any other is on.

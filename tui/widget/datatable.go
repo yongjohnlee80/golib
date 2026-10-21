@@ -209,7 +209,7 @@ func (t *DataTable) SetMenuOpener(o MenuOpener) {
 	if nilLike(o) {
 		o = nil
 	}
-	if t.menu != nil && t.menu != o {
+	if t.menu != nil && !sameOpener(t.menu, o) {
 		t.menu.Close()
 	}
 	t.menu = o

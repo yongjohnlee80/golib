@@ -38,18 +38,22 @@ type menuPopup struct {
 // to has to be inside it, or it would be a row nobody can see and no submenu can anchor to.
 type levelView struct {
 	top, h int      // the first row shown, and the lines the last layout gave the rows
+	sel    ItemID   // the selection last revealed: a new one is revealed wherever it sits
 	shown  viewMark // the selection's place and the height last revealed, as List's cursor
 }
 
 // place is the first of rows' visible rows shown in h lines: moved to reveal sel when sel is one of
-// them and it or h changed since the last place (so a wheel scroll away from it stays put), and
-// kept within the rows. The same answer for the same inputs, so a second layout pass changes
-// nothing.
+// them and the selection (its id, keyed as Menu is, or its place) or h changed since the last place,
+// so a wheel scroll away from an unchanged selection stays put; and kept within the rows. The same
+// answer for the same inputs, so a second layout pass changes nothing.
 func (v *levelView) place(rows []MenuItemModel, sel ItemID, h int) int {
 	v.h = h
 	vis := visibleRows(rows)
-	if at := slices.IndexFunc(vis, func(i int) bool { return rows[i].ID == sel }); at >= 0 && v.shown.moved([2]int{at}, [2]int{h}) {
+	at := slices.IndexFunc(vis, func(i int) bool { return rows[i].ID == sel })
+	moved := v.shown.moved([2]int{at}, [2]int{h})
+	if at >= 0 && (moved || sel != v.sel) {
 		v.top = revealRow(v.top, at, h)
+		v.sel = sel
 	}
 	v.top = clampTop(v.top, len(vis), h)
 	return v.top
