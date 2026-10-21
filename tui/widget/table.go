@@ -305,7 +305,7 @@ func pad(s string, w int) string {
 // Layout fills the height it is given. Offered an unbounded one, it asks for
 // its header and its rows — its content, as a Qt view's implicit height is.
 func (t *Table[T]) Layout(c tui.Constraints) tui.Size {
-	w := boundedMax(c.MaxW, max(c.MinW, 1))
+	w := fillW(c)
 	h := boundedMax(c.MaxH, max(c.MinH, 1+max(t.list.Len(), 1)))
 	t.resolveWidths(w)
 	if lh := max(h-1, 0); lh > 0 {

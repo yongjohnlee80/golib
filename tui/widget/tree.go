@@ -1122,7 +1122,7 @@ func (t *Tree) ensureVisible() { t.top = revealRow(t.top, t.cursor, t.h) }
 // Layout fills the height it is given. Offered an unbounded one, it asks for
 // its visible rows — its content, as a Qt view's implicit height is.
 func (t *Tree) Layout(c tui.Constraints) tui.Size {
-	t.w = boundedMax(c.MaxW, max(c.MinW, 1))
+	t.w = fillW(c)
 	t.h = boundedMax(c.MaxH, max(c.MinH, len(t.flatten()), 1))
 	if t.shown.moved([2]int{t.cursor}, [2]int{t.h}) {
 		t.ensureVisible()

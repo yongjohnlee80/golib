@@ -554,7 +554,7 @@ func (l *List[T]) Layout(c tui.Constraints) tui.Size {
 	if l.emptyMsg != (tui.Message{}) {
 		l.emptyText = l.translate(l.emptyMsg)
 	}
-	l.w = boundedMax(c.MaxW, max(c.MinW, 1))
+	l.w = fillW(c)
 	l.h = boundedMax(c.MaxH, max(c.MinH, l.count, 1))
 	if l.shown.moved([2]int{l.cursor}, [2]int{l.h}) {
 		l.ensureVisible()

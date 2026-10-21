@@ -243,16 +243,6 @@ func WithSizeFraction(wPct, hPct int) FloatOption {
 	return func(f *Float) { f.wPct, f.hPct = clampPct(wPct), clampPct(hPct) }
 }
 
-func clampPct(p int) int {
-	switch {
-	case p <= 0:
-		return 0
-	case p > 100:
-		return 100
-	}
-	return p
-}
-
 // WithDimBackground dims (scrims) the cells beneath while shown.
 func WithDimBackground(v bool) FloatOption { return func(f *Float) { f.dim = v } }
 
@@ -503,11 +493,11 @@ func (f *Float) place(area tui.Rect, layout func(tui.Constraints) tui.Size) tui.
 	}
 	cc := tui.Loose(tui.Size{W: area.W, H: area.H})
 	if f.wPct > 0 {
-		cc.MinW = min(max(area.W*f.wPct/100, 1), area.W)
+		cc.MinW = min(pctOf(area.W, f.wPct), area.W)
 		cc.MaxW = cc.MinW
 	}
 	if f.hPct > 0 {
-		cc.MinH = min(max(area.H*f.hPct/100, 1), area.H)
+		cc.MinH = min(pctOf(area.H, f.hPct), area.H)
 		cc.MaxH = cc.MinH
 	}
 	sz := layout(cc)

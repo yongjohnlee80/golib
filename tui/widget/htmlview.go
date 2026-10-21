@@ -527,8 +527,8 @@ func (v *HTMLView) endDrag() {
 // Layout is greedy on both axes. The cell layout is laid out at the width, a column narrower when
 // the document is taller than the view, for the scroll indicator.
 func (v *HTMLView) Layout(c tui.Constraints) tui.Size {
-	v.w = boundedMax(c.MaxW, max(c.MinW, 1))
-	v.h = boundedMax(c.MaxH, max(c.MinH, 1))
+	v.w = fillW(c)
+	v.h = fillH(c)
 	if v.cells != nil {
 		v.cells.SetWidth(float32(v.w))
 		if v.cells.Height() > float32(v.h) && v.w > 1 {

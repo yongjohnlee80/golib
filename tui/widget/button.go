@@ -203,7 +203,7 @@ func (b *Button) ButtonStyle() *ButtonStyle { return b.st }
 
 func (b *Button) WithStyle(s *ButtonStyle) *Button {
 	b.st = s
-	b.markDirty()
+	b.MarkDirty()
 	return b
 }
 
@@ -320,7 +320,7 @@ func (b *Button) SetEnabled(v bool) {
 	if ctx := b.Context(); ctx != nil {
 		ctx.InvalidateFocusability()
 	}
-	b.markDirty()
+	b.MarkDirty()
 }
 
 // Activate triggers the button and reports whether it happened.
@@ -359,7 +359,7 @@ func (b *Button) SetArmed(v bool) {
 		return
 	}
 	b.armed = v
-	b.markDirty()
+	b.MarkDirty()
 }
 
 // Armed reports whether the button is currently showing pressed.
@@ -513,14 +513,6 @@ func (b *Button) Render(s tui.Surface) {
 		}
 		s.SetCell(x, 0, cluster, cst)
 		x += cw
-	}
-}
-
-// markDirty asks for a repaint after a visual change. Before the first mount
-// there is nothing to repaint and nothing to ask.
-func (b *Button) markDirty() {
-	if ctx := b.Context(); ctx != nil {
-		ctx.MarkDirty()
 	}
 }
 

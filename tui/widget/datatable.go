@@ -323,7 +323,7 @@ func (t *DataTable) fits(from, to int) bool {
 
 // Layout fills the space it is given; offered unbounded height it asks for a header and its rows.
 func (t *DataTable) Layout(c tui.Constraints) tui.Size {
-	w := boundedMax(c.MaxW, max(c.MinW, 1))
+	w := fillW(c)
 	h := boundedMax(c.MaxH, max(c.MinH, tableHeaderRows+max(t.core.DrawnRows(), 1)))
 	if w != t.w || h != t.h {
 		// a new size keeps the cursor in sight; the same size keeps the wheel's scroll. A bound

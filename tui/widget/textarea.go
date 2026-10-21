@@ -378,8 +378,8 @@ func (t *TextArea) ensureVisible() {
 
 // Layout is greedy on both axes.
 func (t *TextArea) Layout(c tui.Constraints) tui.Size {
-	t.w = boundedMax(c.MaxW, max(c.MinW, 1))
-	t.h = boundedMax(c.MaxH, max(c.MinH, 1))
+	t.w = fillW(c)
+	t.h = fillH(c)
 	t.ensureVisible()
 	return c.Constrain(tui.Size{W: t.w, H: t.h})
 }

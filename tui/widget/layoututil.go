@@ -50,6 +50,17 @@ func boundedMax(maxV, minV int) int {
 	return maxV
 }
 
+// fillW and fillH are the extent a greedy widget takes on each axis: all it is offered, or, offered
+// an unbounded axis, its minimum, at least one cell.
+func fillW(c tui.Constraints) int { return boundedMax(c.MaxW, max(c.MinW, 1)) }
+func fillH(c tui.Constraints) int { return boundedMax(c.MaxH, max(c.MinH, 1)) }
+
+// clampPct is a percentage kept within 0 to 100, the one rule every percent option applies.
+func clampPct(p int) int { return min(max(p, 0), 100) }
+
+// pctOf is pct percent of extent cells, at least one: a share that rounds to nothing still shows.
+func pctOf(extent, pct int) int { return max(extent*pct/100, 1) }
+
 // subFrame subtracts a frame size from a constraint max, preserving
 // Unbounded.
 func subFrame(maxV, frame int) int {

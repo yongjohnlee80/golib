@@ -782,10 +782,10 @@ func (e *Editor) Layout(c tui.Constraints) tui.Size {
 	if e.doc.shown {
 		return e.layoutDocument(c)
 	}
-	total := boundedMax(c.MaxW, max(c.MinW, 1))
+	total := fillW(c)
 	e.cells.gutter = min(e.gutterWidth(), total-1)
 	e.cells.w = total - e.cells.gutter
-	e.cells.h = boundedMax(c.MaxH, max(c.MinH, 1))
+	e.cells.h = fillH(c)
 	if e.shown.moved([2]int{e.core.buf.ln, e.core.buf.col}, [2]int{e.cells.h, e.cells.w}) {
 		e.ensureVisible()
 	}
