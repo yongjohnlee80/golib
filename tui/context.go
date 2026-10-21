@@ -74,20 +74,22 @@ func (c *Context) FocusComponent(comp Component) bool {
 	if comp == nil {
 		return false
 	}
-	// Fast path: widgets embed Base, which exposes the mount's node id.
-	if ider, ok := comp.(interface{ NodeID() NodeID }); ok {
+	// A widget embedding Base names its mount's node, the mounted composite's too when comp is a
+	// widget embedded in it; any other Component is found by the App's component index.
+	if ider, ok := comp.(nodeIdentifier); ok {
 		if id := ider.NodeID(); id != 0 {
 			return c.app.requestFocusByID(id)
 		}
 	}
-	// Fallback: reverse-lookup the node by identity so any Component works.
-	for id, n := range c.app.nodes {
-		if n.comp == comp {
-			return c.app.requestFocusByID(id)
-		}
+	if n := c.app.byComp[comp]; n != nil {
+		return c.app.requestFocusByID(n.id)
 	}
 	return false
 }
+
+// nodeIdentifier is a component that knows its mount's node: widget.Base, so a widget embedded in a
+// composite answers with the node the composite is mounted as.
+type nodeIdentifier interface{ NodeID() NodeID }
 
 // FocusInto moves focus INTO comp — Qt's forceActiveFocus(): comp itself when
 // it takes focus, else its focus child. The focus child is the one comp names as
