@@ -46,7 +46,8 @@ func DrawText(s Surface, x, y int, text string, st style.Style) int {
 // WrapText breaks text into lines of at most width columns, as measure counts them: at each of the
 // text's own line breaks, at a space where a line can break (the space is dropped there), and inside
 // a word too long for a line. A line with nothing in it is one empty line; a width below 1 gives
-// each of the text's lines as one empty line.
+// each of the text's lines as one empty line. Whitespace is the text's own: a leading space is a
+// break, so it leaves an empty row. Only a single cluster wider than width takes a row past it.
 func WrapText(text string, width int, measure func(string) int) []string {
 	var lines []string
 	for _, para := range strings.Split(text, "\n") {
@@ -70,7 +71,11 @@ func wrapLine(s string, w int, measure func(string) int) []string {
 	lastSpaceW := 0 // the row's width before that space
 	for c := range grapheme.Clusters(s) {
 		cw := measure(c)
-		if rowW+cw > w && rowW > 0 {
+		broke := false
+		// A soft break carries the word after the last space to the next row, and that word with c
+		// may still not fit: the check repeats, so the word then takes a row of its own.
+		for rowW+cw > w && rowW > 0 {
+			broke = true
 			if lastSpace >= 0 && lastSpace < row.Len() {
 				full := row.String()
 				rows = append(rows, full[:lastSpace])
@@ -81,15 +86,16 @@ func wrapLine(s string, w int, measure func(string) int) []string {
 				if rowW < 0 {
 					rowW = measure(rest)
 				}
-			} else {
-				rows = append(rows, row.String())
-				row.Reset()
-				rowW = 0
+				lastSpace = -1
+				continue
 			}
+			rows = append(rows, row.String())
+			row.Reset()
+			rowW = 0
 			lastSpace = -1
-			if c == " " && row.Len() == 0 {
-				continue // a row never starts with the space it broke at
-			}
+		}
+		if broke && c == " " && row.Len() == 0 {
+			continue // a row never starts with the space it broke at
 		}
 		if c == " " {
 			lastSpace = row.Len()

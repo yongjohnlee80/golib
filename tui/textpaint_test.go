@@ -45,9 +45,44 @@ func TestWrapTextBreaksAtLinesSpacesAndLongWords(t *testing.T) {
 		{"a\n\nb", 5, []string{"a", "", "b"}},
 		{"fits", 10, []string{"fits"}},
 		{"x\ny", 0, []string{"", ""}},
+		// a leading space, then a wide cluster: the word a soft break carries still does not fit with
+		// it, so it takes a row of its own; the text's own leading space stays an empty row
+		{" abc漢", 4, []string{"", "abc", "漢"}},
+		{" ab漢x", 3, []string{"", "ab", "漢x"}},
 	} {
-		if got := WrapText(c.in, c.w, width); !slices.Equal(got, c.want) {
+		got := WrapText(c.in, c.w, width)
+		if !slices.Equal(got, c.want) {
 			t.Errorf("WrapText(%q, %d) = %q, want %q", c.in, c.w, got, c.want)
+		}
+		for _, row := range got {
+			if c.w > 0 && width(row) > c.w {
+				t.Errorf("WrapText(%q, %d): the row %q is %d columns, past the width", c.in, c.w, row, width(row))
+			}
+		}
+	}
+}
+
+// A tooltip wraps through WrapText, and its whitespace is not its content, as before WrapText was
+// shared: a paragraph's words are joined by one space, so a leading space or a run of them makes no
+// blank or indented row, and no row passes the width.
+func TestToolTipWrapJoinsWordsAndKeepsTheWidth(t *testing.T) {
+	for _, c := range []struct {
+		in   string
+		w    int
+		want []string
+	}{
+		{" abc漢", 4, []string{"abc", "漢"}},
+		{"  one   two  ", 7, []string{"one two"}},
+		{"a\n  b", 5, []string{"a", "b"}},
+	} {
+		got := wrapToolTip(c.in, c.w, StringWidth)
+		if !slices.Equal(got, c.want) {
+			t.Errorf("wrapToolTip(%q, %d) = %q, want %q", c.in, c.w, got, c.want)
+		}
+		for _, row := range got {
+			if StringWidth(row) > c.w {
+				t.Errorf("wrapToolTip(%q, %d): the row %q passes the width", c.in, c.w, row)
+			}
 		}
 	}
 }

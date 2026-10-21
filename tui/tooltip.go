@@ -1,6 +1,7 @@
 package tui
 
 import (
+	"strings"
 	"time"
 
 	"github.com/yongjohnlee80/golib/tui/internal/grapheme"
@@ -188,7 +189,13 @@ func wrapToolTip(text string, width int, measure func(string) int) []string {
 	if width < 1 {
 		return nil
 	}
-	lines := WrapText(text, width, measure)
+	// A tooltip's whitespace is not its content: each paragraph's words are joined by one space
+	// before wrapping, so no row is blank or indented by the text's own spacing.
+	paras := strings.Split(text, "\n")
+	for i, p := range paras {
+		paras[i] = strings.Join(strings.Fields(p), " ")
+	}
+	lines := WrapText(strings.Join(paras, "\n"), width, measure)
 	if len(lines) > toolTipRows {
 		last := cutToWidth(lines[toolTipRows-1], width-1, measure)
 		lines = append(lines[:toolTipRows-1], last+"…")
