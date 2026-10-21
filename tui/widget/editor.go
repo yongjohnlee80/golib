@@ -752,28 +752,8 @@ func (e *Editor) ensureVisible() { e.reveal(e.core.buf.ln, e.core.buf.col) }
 
 // reveal scrolls (ln, col) into the viewport.
 func (e *Editor) reveal(ln, col int) {
-	l, lines := &e.cells, e.core.buf.textLines
-	if l.h <= 0 || l.w <= 0 {
-		return
-	}
-	if ln < l.top {
-		l.top = ln
-	}
-	l.top = lowestTop(lines, l.top, ln, l.h, e.view())
-	l.top = max(0, min(l.top, len(lines)-1))
-	if l.wrap == WrapNone {
-		cx := e.core.buf.cellsAt(ln, col, e.width)
-		w := e.wrapWidth()
-		if cx < l.left {
-			l.left = cx
-		}
-		if cx >= l.left+w {
-			l.left = cx - w + 1
-		}
-		l.left = max(l.left, 0)
-	} else {
-		l.left = 0
-	}
+	l := &e.cells
+	l.top, l.left = revealCaret(e.core.buf.textLines, e.view(), l.top, l.left, ln, e.core.buf.cellsAt(ln, col, e.width))
 }
 
 // Layout is greedy on both axes. The gutter, when the numbers show, takes its columns from the
@@ -795,25 +775,8 @@ func (e *Editor) Layout(c tui.Constraints) tui.Size {
 // Cursor implements tui.CursorReporter.
 func (e *Editor) Cursor() (int, int, bool) {
 	l, b := &e.cells, &e.core.buf
-	if b.ln < l.top {
-		return 0, 0, false
-	}
-	if l.wrap == WrapNone {
-		x := b.cellsAt(b.ln, b.col, e.width) - l.left
-		y := b.ln - l.top
-		if y >= l.h && l.h > 0 {
-			return 0, 0, false
-		}
-		return l.gutter + max(x, 0), max(y, 0), true
-	}
-	y := 0
-	v := e.view().settled(b.textLines)
-	for i := l.top; i < b.ln; i++ {
-		y += wrapRowsOfLine(b.textLines, i, v)
-	}
-	row, x := wrapPosOf(b.textLines, b.ln, b.col, v)
-	y += row
-	if l.h > 0 && y >= l.h {
+	x, y, ok := caretAt(b.textLines, e.view(), l.top, l.left, b.ln, b.col, b.cellsAt(b.ln, b.col, e.width))
+	if !ok {
 		return 0, 0, false
 	}
 	return l.gutter + x, y, true

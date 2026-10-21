@@ -541,3 +541,76 @@ func colInRow(cs []string, rows [][2]int, row, x int, measure func(string) int) 
 	}
 	return max(r[0], r[1]-1)
 }
+
+// revealCaret is the window that shows the caret at line ln, cell cx of it, over lines in view v:
+// the first line shown moved just far enough (and no lower than the last screenful needs), and in
+// WrapNone the first cell shown following cx; wrapped lines have no horizontal scroll. TextArea and
+// Editor reveal through it. A view with no size changes nothing.
+func revealCaret(lines []string, v wrapView, top, left, ln, cx int) (int, int) {
+	if v.h <= 0 || v.w <= 0 {
+		return top, left
+	}
+	top = min(top, ln)
+	top = lowestTop(lines, top, ln, v.h, v)
+	top = max(0, min(top, len(lines)-1))
+	if v.wrap != WrapNone {
+		return top, 0
+	}
+	w := wrapUsableWidth(lines, v)
+	left = min(left, cx)
+	if cx >= left+w {
+		left = cx - w + 1
+	}
+	return top, max(left, 0)
+}
+
+// caretAt is where the caret at line ln, cluster col (cell cx), shows in the window from line top
+// and cell left over lines in view v: its cell in the window's text area, and false when it is
+// above, below or (WrapNone) left of nothing the window shows.
+func caretAt(lines []string, v wrapView, top, left, ln, col, cx int) (x, y int, ok bool) {
+	if ln < top {
+		return 0, 0, false
+	}
+	if v.wrap == WrapNone {
+		x, y = cx-left, ln-top
+		if y >= v.h && v.h > 0 {
+			return 0, 0, false
+		}
+		return max(x, 0), max(y, 0), true
+	}
+	v = v.settled(lines)
+	for i := top; i < ln; i++ {
+		y += wrapRowsOfLine(lines, i, v)
+	}
+	row, x := wrapPosOf(lines, ln, col, v)
+	y += row
+	if v.h > 0 && y >= v.h {
+		return 0, 0, false
+	}
+	return x, y, true
+}
+
+// backspaceRegion is what Backspace deletes at the cursor: the cluster before it, or the line break
+// that joins this line to the one above. ok is false at the text's start, where it deletes nothing.
+// TextArea and the editor's modeless input delete through it (and their own grouping).
+func (b *textBuffer) backspaceRegion() (lo, hi taPos, ok bool) {
+	switch {
+	case b.col > 0:
+		return taPos{b.ln, b.col - 1}, taPos{b.ln, b.col}, true
+	case b.ln > 0:
+		return taPos{b.ln - 1, len(clusters(b.textLines[b.ln-1]))}, taPos{b.ln, 0}, true
+	}
+	return taPos{}, taPos{}, false
+}
+
+// forwardRegion is what Delete removes at the cursor: the cluster under it, or the line break that
+// joins the next line to this one. ok is false at the text's end.
+func (b *textBuffer) forwardRegion() (lo, hi taPos, ok bool) {
+	switch {
+	case b.col < len(clusters(b.textLines[b.ln])):
+		return taPos{b.ln, b.col}, taPos{b.ln, b.col + 1}, true
+	case b.ln < len(b.textLines)-1:
+		return taPos{b.ln, b.col}, taPos{b.ln + 1, 0}, true
+	}
+	return taPos{}, taPos{}, false
+}

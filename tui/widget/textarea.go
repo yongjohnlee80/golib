@@ -244,30 +244,19 @@ func (t *TextArea) handleKey(e tui.KeyEvent) bool {
 	switch id {
 	case TextAreaNewline.ID:
 		t.insert("\n") // newline — no submit event (Q5)
-	case TextAreaBackspace.ID:
-		switch lo, hi, ok := t.selection(); {
+	case TextAreaBackspace.ID, TextAreaDelete.ID:
+		lo, hi, ok := t.selection()
+		switch {
 		case ok:
-			t.deleteRegion(lo, hi)
-		case t.col > 0:
-			t.deleteRegion(taPos{t.ln, t.col - 1}, taPos{t.ln, t.col})
-		case t.ln > 0:
-			t.deleteRegion(taPos{t.ln - 1, len(t.lineClusters(t.ln - 1))}, taPos{t.ln, 0})
+		case id == TextAreaBackspace.ID:
+			lo, hi, ok = t.backspaceRegion()
 		default:
-			return true
+			lo, hi, ok = t.forwardRegion()
 		}
-		t.edited()
-	case TextAreaDelete.ID:
-		switch lo, hi, ok := t.selection(); {
-		case ok:
+		if ok {
 			t.deleteRegion(lo, hi)
-		case t.col < len(t.lineClusters(t.ln)):
-			t.deleteRegion(taPos{t.ln, t.col}, taPos{t.ln, t.col + 1})
-		case t.ln < len(t.textLines)-1:
-			t.deleteRegion(taPos{t.ln, t.col}, taPos{t.ln + 1, 0})
-		default:
-			return true
+			t.edited()
 		}
-		t.edited()
 	case TextAreaLineStart.ID:
 		t.desired = -1
 		t.moveTo(t.ln, 0, false)
@@ -353,27 +342,7 @@ func (t *TextArea) rowsOfLine(i int) int { return wrapRowsOfLine(t.textLines, i,
 // ensureVisible adjusts top/left so the cursor stays inside the viewport
 // (using the last layout size).
 func (t *TextArea) ensureVisible() {
-	if t.h <= 0 || t.w <= 0 {
-		return
-	}
-	if t.ln < t.top {
-		t.top = t.ln
-	}
-	t.top = lowestTop(t.textLines, t.top, t.ln, t.h, t.view())
-	t.top = max(0, min(t.top, len(t.textLines)-1))
-	if t.wrap == WrapNone {
-		cx := t.cellsAt(t.ln, t.col)
-		w := t.wrapWidth()
-		if cx < t.left {
-			t.left = cx
-		}
-		if cx >= t.left+w {
-			t.left = cx - w + 1
-		}
-		t.left = max(t.left, 0)
-	} else {
-		t.left = 0
-	}
+	t.top, t.left = revealCaret(t.textLines, t.view(), t.top, t.left, t.ln, t.cellsAt(t.ln, t.col))
 }
 
 // Layout is greedy on both axes.
@@ -386,28 +355,7 @@ func (t *TextArea) Layout(c tui.Constraints) tui.Size {
 
 // Cursor implements tui.CursorReporter (viewport-local insertion point).
 func (t *TextArea) Cursor() (int, int, bool) {
-	if t.ln < t.top {
-		return 0, 0, false
-	}
-	if t.wrap == WrapNone {
-		x := t.cellsAt(t.ln, t.col) - t.left
-		y := t.ln - t.top
-		if y >= t.h && t.h > 0 {
-			return 0, 0, false
-		}
-		return max(x, 0), max(y, 0), true
-	}
-	y := 0
-	v := t.view().settled(t.textLines)
-	for i := t.top; i < t.ln; i++ {
-		y += wrapRowsOfLine(t.textLines, i, v)
-	}
-	row, x := wrapPosOf(t.textLines, t.ln, t.col, v)
-	y += row
-	if t.h > 0 && y >= t.h {
-		return 0, 0, false
-	}
-	return x, y, true
+	return caretAt(t.textLines, t.view(), t.top, t.left, t.ln, t.col, t.cellsAt(t.ln, t.col))
 }
 
 // wrapPos locates cluster column col inside line ln's wrapped rows: the row

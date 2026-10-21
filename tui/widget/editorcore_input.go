@@ -326,25 +326,14 @@ func (c *EditorCore) handleInsertKey(k tui.KeyEvent) bool {
 		c.insertIndentedNewline()
 		c.edited()
 		return true
-	case tui.KeyBackspace:
-		if b.col > 0 {
-			c.beginGroup()
-			b.deleteRegion(taPos{b.ln, b.col - 1}, taPos{b.ln, b.col})
-			c.edited()
-		} else if b.ln > 0 {
-			c.beginGroup()
-			b.deleteRegion(taPos{b.ln - 1, len(b.lineClusters(b.ln - 1))}, taPos{b.ln, 0})
-			c.edited()
+	case tui.KeyBackspace, tui.KeyDelete:
+		region := b.forwardRegion
+		if k.Code == tui.KeyBackspace {
+			region = b.backspaceRegion
 		}
-		return true
-	case tui.KeyDelete:
-		if b.col < len(b.lineClusters(b.ln)) {
+		if lo, hi, ok := region(); ok {
 			c.beginGroup()
-			b.deleteRegion(taPos{b.ln, b.col}, taPos{b.ln, b.col + 1})
-			c.edited()
-		} else if b.ln < len(b.textLines)-1 {
-			c.beginGroup()
-			b.deleteRegion(taPos{b.ln, b.col}, taPos{b.ln + 1, 0})
+			b.deleteRegion(lo, hi)
 			c.edited()
 		}
 		return true
