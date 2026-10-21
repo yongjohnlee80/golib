@@ -424,19 +424,9 @@ func (a *App) deliverAction(n *node, h ActionHandler, inv ActionInvocation) bool
 // inActionPhase runs fn as n's action delivery of inv: n's HandleAction, or the Activate that
 // stands in for it. Both are the same phase, so both mark it the same way.
 func (a *App) inActionPhase(n *node, inv ActionInvocation, fn func() bool) (handled bool) {
-	prev, prevAction := a.handlerNode, a.actionHandlerNode
-	prevOrigin, prevSource := a.handlerOrigin, a.handlerSource
-	a.handlerNode = n.id
-	a.actionHandlerNode = n.id
-	// Recorded so Context.ForwardAction can carry this invocation's provenance
-	// to a child without the handler being able to state it — and restored on
-	// the way out, so a nested delivery cannot leave the outer one describing
-	// the wrong input.
-	a.handlerOrigin, a.handlerSource = inv.Origin, inv.Source
-	defer func() {
-		a.handlerNode, a.actionHandlerNode = prev, prevAction
-		a.handlerOrigin, a.handlerSource = prevOrigin, prevSource
-	}()
+	// The provenance is recorded so Context.ForwardAction can carry this invocation's to a child
+	// without the handler being able to state it.
+	defer a.leaveDelivery(a.enterDelivery(delivery{node: n.id, action: n.id, origin: inv.Origin, source: inv.Source}))
 	defer a.contain("action", n, &handled)
 	return fn()
 }

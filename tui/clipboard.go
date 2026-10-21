@@ -8,6 +8,12 @@ import (
 	"github.com/yongjohnlee80/golib/errs"
 )
 
+// clipboardReads are the clipboard reads waiting for an answer, by ClipboardRead.ID.
+type clipboardReads struct {
+	clipReads  map[uint64]*clipRead
+	nextClipID uint64
+}
+
 // ClipboardWriter is an OPTIONAL Backend capability: pushing text into the
 // host terminal's system clipboard (OSC 52 on ANSI terminals). Backends that
 // don't implement it simply don't support copy; callers must treat a false

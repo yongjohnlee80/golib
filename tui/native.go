@@ -16,6 +16,14 @@ package tui
 //
 // On a backend that is not a NativeHost, none of this runs: no stamps, no placements.
 
+// nativeState is this frame's native placements, and styledDepth how many subtree-scoped placements
+// the paint is inside; nativeStyler is the backend's, for this frame.
+type nativeState struct {
+	natives      []NativePlacement
+	styledDepth  int
+	nativeStyler NativeStyler
+}
+
 // NativeScope is what a native view draws for, and so what covers it.
 type NativeScope uint8
 

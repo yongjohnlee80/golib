@@ -90,6 +90,15 @@ import (
 //	    return false
 //	}
 
+// timerState is the timer heap and the one OS timer armed for its earliest deadline.
+type timerState struct {
+	timers      timerHeap
+	timer       *time.Timer
+	timerC      <-chan time.Time // nil when nothing is scheduled (idle — G5)
+	timerArms   int              // instrumentation
+	nextTimerID uint64
+}
+
 // timerEntry is one pending deadline in the App's demand-scheduled timer
 // heap: a component timer (After/Every) or a pending frame deadline (the
 // min-frame-interval cap rides the same timer).

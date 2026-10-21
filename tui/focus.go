@@ -1,5 +1,36 @@
 package tui
 
+// focusState is the focused node and the scopes it moved through, the tree-mutation batch, and the
+// repairs waiting for a layout.
+type focusState struct {
+	focused    NodeID // 0 = none
+	scopeStack []scopeEntry
+
+	// batchDepth counts the nested Context.BatchTreeMutation calls currently
+	// executing, and batchRepair records that something inside one asked for a
+	// focus repair. Focus is a single global, so batching is APP-WIDE rather
+	// than per-node: two compositions mutating in one batch still share the one
+	// focused node, and a per-node depth would let each conclude it was the
+	// outermost and repair against the other's half-applied tree.
+	//
+	// Only focus repair and focusability revalidation are deferred. Capture
+	// loss, OnUnmount hooks and lifetime-context cancellation stay synchronous:
+	// they are safety-critical, and deferring them would strand resources for
+	// the length of the batch.
+	batchDepth  int
+	batchRepair bool
+
+	// pendingRepair records that a focus repair ran while its only candidates
+	// had not been laid out, and must be retried once the frame has run. See
+	// repairFocus's empty-scope branch.
+	pendingRepair bool
+
+	// pendingFocusInto is a FocusInto whose target had not been laid out yet
+	// — a pane shown in the same turn — to apply after the next layout; 0 for
+	// none. A focus change before then cancels it. See FocusInto.
+	pendingFocusInto NodeID
+}
+
 // Focus management is framework-owned end-to-end:
 //
 //  1. Single Active Focus: Exactly one NodeID on the App holds focus at any time

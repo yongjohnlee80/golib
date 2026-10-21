@@ -43,44 +43,24 @@ type App struct {
 	root    Component
 	backend Backend
 
-	// frameImages are the images visible reporters asked for in this frame's paint, and placed what
-	// the backend was last told to show, by id (graphics.go)
-	frameImages []ImagePlacement
-	placed      map[uint32]ImagePlacement
+	// THE APP'S PARTS, each a type in the file of its concern, its fields loop-owned unless the
+	// type says otherwise.
+	imagePlacements // the images shown (graphics.go)
+	nativeState     // this frame's native placements (native.go)
+	faceTable       // the font faces cells name (face.go)
+	tooSmallState   // the smallest screen laid out for, and the too-small screen (toosmall.go)
+	hoverState      // the node under the pointer, and the tooltip (hover.go)
+	handlerPhase    // which phase runs, and whose handler (phase.go)
+	focusState      // the focused node, its scopes, batching and repair (focus.go)
+	captureState    // pointer capture and the gesture recogniser's state (capture.go)
+	pressCounter    // multi-click synthesis (app_routing.go)
+	timerState      // the timer heap (app_timers.go)
+	clipboardReads  // the clipboard reads waiting for an answer (clipboard.go)
 
 	ran  atomic.Bool
 	quit chan struct{} // closed when Run exits; stops the intake pump
 	// stopRun ends Run, as cancelling its context does: the too-small screen's default Quit.
 	stopRun context.CancelFunc
-
-	// minSize is the smallest screen the App lays out for (WithMinimumSize, SetMinimumSize), and
-	// quitButton the too-small screen's Quit, in screen cells, while it shows (toosmall.go).
-	minSize    Size
-	quitButton Rect
-
-	// natives are this frame's native placements, and styledDepth how many subtree-scoped
-	// placements the paint is inside; nativeStyler is the backend's, for this frame (native.go).
-	natives      []NativePlacement
-	styledDepth  int
-	nativeStyler NativeStyler
-
-	// hovered is the node under the pointer (0: none), and pointer the pointer's last screen
-	// cell, for re-checking when a capture ends (hover.go).
-	hovered NodeID
-	pointer Point
-	// tip is the tooltip card (tooltip.go); keyFocus is set while a key press is routed, so focus
-	// it moves is focus the keyboard brought
-	tip      toolTipState
-	keyFocus bool
-	// the face table (face.go): faceNames[i] is Cell.Face i, faceIDs its index by family; faceFull
-	// is the table refusing a family, said once
-	faceNames []string
-	faceIDs   map[string]uint16
-	faceFull  bool
-	// offFace is the face in effect inside a RenderOffscreen's draw (offDepth > 0), for a nested call
-	// with no face of its own (offscreen.go)
-	offFace  uint16
-	offDepth int
 
 	done   chan struct{} // closed once Run has returned, its teardown finished (Done)
 	runCtx context.Context
@@ -110,52 +90,6 @@ type App struct {
 	rootNode   *node
 	nextNodeID uint64
 
-	inLayout bool
-	inRender bool
-
-	// handlerNode is the node whose HandleEvent OR HandleAction is executing,
-	// or 0 outside input delivery. Both phases mark it, because capture may be
-	// taken from either and is granted to a specific node.
-	//
-	// It is an IDENTITY rather than a flag: with a bare "some handler is
-	// running" boolean, node A's handler could call a retained Context
-	// belonging to node B and take the pointer in B's name.
-	handlerNode NodeID
-
-	// actionHandlerNode is the node whose HandleAction is executing, or 0
-	// outside an action delivery. SEPARATE from handlerNode on purpose:
-	// handlerNode deliberately covers HandleEvent as well, because pointer
-	// capture may be taken from either phase, and reusing it to gate action
-	// forwarding let the RAW lane forward with provenance it does not own.
-	//
-	// Raw delivery clears it for its duration, so a raw handler running inside
-	// an action delivery cannot borrow the invocation still open above it.
-	actionHandlerNode NodeID
-
-	// handlerOrigin and handlerSource are the provenance of the action
-	// invocation currently being delivered, kept so Context.ForwardAction can
-	// pass it to a child without the handler supplying it. Provenance a
-	// consumer can state is provenance a consumer can forge, so the only way to
-	// carry it is to read it back from the runtime that recorded it.
-	//
-	// Meaningful only while handlerNode names an action delivery; both are
-	// saved and restored around every delivery so a nested one cannot leave the
-	// outer invocation described by the wrong input.
-	handlerOrigin ActionOrigin
-	handlerSource Event
-
-	// initNode is the node whose Init is running, or 0 outside mounting. Like
-	// handlerNode it is an identity, because the setter it gates publishes a
-	// specific component's own default bindings.
-	initNode NodeID
-
-	// updateDepth counts nested App.Update callbacks currently executing. The
-	// phases in which a capture may be ENDED are stated positively — a handler
-	// or an Update — because the forbidden list was incomplete twice over:
-	// Init and any callback reached outside an Update both slipped through a
-	// Layout/Render-only check.
-	updateDepth int
-
 	// structural counts the tree changes in progress (mount, unmount); poisoned is that a panic
 	// left one part made. A handler boundary contains no panic while either holds
 	// (WithHandlerRecover): the tree may be half mounted.
@@ -165,51 +99,9 @@ type App struct {
 
 	layingOut *node // the node whose Layout is executing (LayoutChild legality)
 
-	focused    NodeID // 0 = none
-	scopeStack []scopeEntry
-
-	// batchDepth counts the nested Context.BatchTreeMutation calls currently
-	// executing, and batchRepair records that something inside one asked for a
-	// focus repair. Focus is a single global, so batching is APP-WIDE rather
-	// than per-node: two compositions mutating in one batch still share the one
-	// focused node, and a per-node depth would let each conclude it was the
-	// outermost and repair against the other's half-applied tree.
-	//
-	// Only focus repair and focusability revalidation are deferred. Capture
-	// loss, OnUnmount hooks and lifetime-context cancellation stay synchronous:
-	// they are safety-critical, and deferring them would strand resources for
-	// the length of the batch.
-	batchDepth  int
-	batchRepair bool
-
 	// commits are the AfterLayout records registered by the layout pass in
 	// progress, drained by the commit phase that follows it. See commit.go.
 	commits []commitRecord
-
-	// pendingRepair records that a focus repair ran while its only candidates
-	// had not been laid out, and must be retried once the frame has run. See
-	// repairFocus's empty-scope branch.
-	pendingRepair bool
-
-	// pendingFocusInto is a FocusInto whose target had not been laid out yet
-	// — a pane shown in the same turn — to apply after the next layout; 0 for
-	// none. A focus change before then cancels it. See FocusInto.
-	pendingFocusInto NodeID
-
-	// Pointer capture. captureOwner is 0 when nobody holds the pointer.
-	// captureFocus is the focused node sampled at acquisition, which is what
-	// "focus left the owner's subtree" is measured against — the owner itself
-	// need not be focusable, so its own focus state cannot serve.
-	captureOwner NodeID
-	captureKind  CaptureKind
-	captureFocus NodeID
-
-	// Gesture recognition state. gestureState is what the recogniser is
-	// handed and returns; gestureArmed is the runtime's own record of
-	// whether it has called SetArmed(true) without a matching false, which
-	// is what lets it guarantee the target ends up disarmed.
-	gestureState GestureState
-	gestureArmed bool
 
 	size         Size
 	buf          *buffer
@@ -220,25 +112,7 @@ type App struct {
 	framePending bool // a frame deadline sits in the timer heap
 	lastFrame    time.Time
 
-	// Multi-click synthesis state. Owned by the event-loop
-	// goroutine, like the rest of App's dispatch state.
-	lastPressAt     time.Time
-	lastPressX      int
-	lastPressY      int
-	lastPressButton MouseButton
-	lastPressCount  int
-	lastPressTarget NodeID
-	frames          uint64
-
-	timers      timerHeap
-	timer       *time.Timer
-	timerC      <-chan time.Time // nil when nothing is scheduled (idle — G5)
-	timerArms   int              // instrumentation
-	nextTimerID uint64
-
-	// clipReads are the clipboard reads waiting for an answer, by ClipboardRead.ID (clipboard.go).
-	clipReads  map[uint64]*clipRead
-	nextClipID uint64
+	frames uint64
 
 	bus *Bus
 
@@ -281,8 +155,8 @@ func NewApp(root Component, opts ...AppOption) *App {
 		nodes:   make(map[NodeID]*node),
 		byComp:  make(map[Component]*node),
 		sem:     make(chan struct{}, cfg.taskPoolSize),
-		minSize: cfg.minimumSize,
 	}
+	a.minSize = cfg.minimumSize
 	a.queue.init(cfg.eventQueueLimit, cfg.logger)
 	a.bus = newBus(a)
 	a.async.ctxs = make(map[NodeID]context.Context)
