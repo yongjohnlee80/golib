@@ -30,21 +30,24 @@ type tabViewNode struct {
 	pages   []*tabNode
 	changed func(args ...qml.SpecValue)
 	// set is whether currentIndex has been given its value at construction: every later setting is
-	// a change from its source
-	set bool
+	// a change from its source. constructing is true while that first value is applied.
+	set, constructing bool
 }
 
-// setIndex is currentIndex set by the document. currentIndexChanged is raised once for a change:
-// while the view is mounted the widget's TabChangedEvent raises it (Init); while it is not (its
-// dialog closed) the event has no listener, so the view raises it here. The value given at
+// setIndex is currentIndex set by the document. currentIndexChanged is raised once for a change,
+// by the widget's own report (tabChanged), mounted or not (its dialog closed). The value given at
 // construction raises nothing, as in Qt.
 func (n *tabViewNode) setIndex(i int) {
-	was := n.tabs.Active()
-	n.tabs.Select(i)
-	first := !n.set
+	n.constructing = !n.set
 	n.set = true
-	if ctx := n.Context(); !first && (ctx == nil || !ctx.Mounted()) && n.tabs.Active() != was {
-		n.changed(numberValue(n.tabs.Active()))
+	n.tabs.Select(i)
+	n.constructing = false
+}
+
+// tabChanged is the widget's report of tab i made active (WithTabsOnChange).
+func (n *tabViewNode) tabChanged(i int) {
+	if !n.constructing {
+		n.changed(numberValue(i))
 	}
 }
 
@@ -92,18 +95,14 @@ func buildTabView(b Build) (tui.Component, []string, error) {
 		n.pages = append(n.pages, page)
 		opts = append(opts, widget.WithTab(page.title, page))
 	}
-	n.tabs = widget.NewTabs(append(opts, widget.WithKeepMounted(true))...)
+	n.tabs = widget.NewTabs(append(opts, widget.WithKeepMounted(true),
+		widget.WithTabsOnChange(n.tabChanged))...)
 	return n, nil, nil
 }
 
 func (n *tabViewNode) Init(ctx *tui.Context) {
 	n.Base.Init(ctx)
-	ctx.Mount(n.tabs)
-	tui.SubscribeScoped(ctx, func(ev widget.TabChangedEvent) {
-		if ev.Owner == n.tabs.NodeID() {
-			n.changed(numberValue(ev.Index))
-		}
-	})
+	ctx.Mount(n.tabs) // it reports a tab change to the TabView itself (WithTabsOnChange)
 }
 
 func (n *tabViewNode) Layout(c tui.Constraints) tui.Size {

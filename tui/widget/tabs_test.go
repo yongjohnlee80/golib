@@ -147,3 +147,20 @@ func TestTabsWithoutBar(t *testing.T) {
 	h.wantNotContains("one") // no bar drawn
 	h.wantNotContains("two")
 }
+
+// TestTabsTellTheirOwnerOfAChange: WithTabsOnChange hears the tab made active, once, as the key
+// switches it (data-I4).
+func TestTabsTellTheirOwnerOfAChange(t *testing.T) {
+	var got []int
+	tabs := widget.NewTabs(widget.WithTab("one", &lifeProbe{label: "A"}), widget.WithTab("two", &lifeProbe{label: "B"}),
+		widget.WithTabsOnChange(func(i int) { got = append(got, i) }))
+	sh := newShell(tabs)
+	h := startApp(t, sh, 20, 4)
+	h.inject(tab(), key(']'))
+	h.barrier(sh)
+	var seen []int
+	h.onLoop(func() { seen = got })
+	if len(seen) != 1 || seen[0] != 1 {
+		t.Fatalf("changes %v, want [1]", seen)
+	}
+}
