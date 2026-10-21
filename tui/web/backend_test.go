@@ -21,7 +21,7 @@ func started(t *testing.T, h Hello, opts ...Option) *Backend {
 	b := New(opts...)
 	done := make(chan error, 1)
 	go func() { done <- b.Start(context.Background()) }()
-	if err := b.Attach(h); err != nil {
+	if err := b.attach(h); err != nil {
 		t.Fatal(err)
 	}
 	select {
@@ -56,7 +56,7 @@ func TestBackend_StartWaitsForAClient(t *testing.T) {
 	case <-time.After(50 * time.Millisecond):
 	}
 
-	if err := b.Attach(hello()); err != nil {
+	if err := b.attach(hello()); err != nil {
 		t.Fatal(err)
 	}
 	select {
@@ -114,7 +114,7 @@ func TestBackend_AttachRequiresMeasurements(t *testing.T) {
 		"empty":      {},
 	} {
 		b := New()
-		if err := b.Attach(h); err == nil {
+		if err := b.attach(h); err == nil {
 			t.Errorf("%s: Attach accepted an unmeasured hello", name)
 		}
 		_ = b.Stop()
@@ -178,7 +178,7 @@ func TestBackend_CapabilitiesAreHonest(t *testing.T) {
 		first := b.Capabilities()
 		h := hello()
 		h.Pointer = true
-		if err := b.Attach(h); err != nil {
+		if err := b.attach(h); err != nil {
 			t.Fatal(err)
 		}
 		if b.Capabilities() != first {
@@ -194,7 +194,7 @@ func TestBackend_FlushNeverBlocks(t *testing.T) {
 
 	// Take a frame and never acknowledge it: the client is gone.
 	b.framer.publish(nil, tui.CursorState{})
-	if _, ok := b.NextFrame(); !ok {
+	if _, ok := b.nextFrame(); !ok {
 		t.Fatal("no frame to strand")
 	}
 
@@ -228,7 +228,7 @@ func TestBackend_CursorIsLatched(t *testing.T) {
 	if err := b.Flush(nil); err != nil {
 		t.Fatal(err)
 	}
-	fr, ok := b.NextFrame()
+	fr, ok := b.nextFrame()
 	if !ok {
 		t.Fatal("no frame")
 	}
@@ -236,13 +236,13 @@ func TestBackend_CursorIsLatched(t *testing.T) {
 	if fr.Cursor != want {
 		t.Errorf("frame cursor = %+v, want %+v", fr.Cursor, want)
 	}
-	b.AckFrame(fr.Rev)
+	b.ackFrame(fr.Rev)
 
 	b.HideCursor()
 	if err := b.Flush(nil); err != nil {
 		t.Fatal(err)
 	}
-	fr, ok = b.NextFrame()
+	fr, ok = b.nextFrame()
 	if !ok {
 		t.Fatal("hiding the cursor produced no frame")
 	}
@@ -259,11 +259,11 @@ func TestBackend_EventOverflowIsReportedNotDropped(t *testing.T) {
 	b := started(t, hello(), EventQueue(4))
 
 	for i := range 4 {
-		if err := b.Submit(tui.KeyEvent{Code: rune('a' + i)}); err != nil {
+		if err := b.submit(tui.KeyEvent{Code: rune('a' + i)}); err != nil {
 			t.Fatalf("event %d: %v", i, err)
 		}
 	}
-	err := b.Submit(tui.KeyEvent{Code: 'z'})
+	err := b.submit(tui.KeyEvent{Code: 'z'})
 	if !errors.Is(err, ErrEventOverflow) {
 		t.Fatalf("err = %v, want ErrEventOverflow — the transport must close the connection "+
 			"rather than the backend dropping an event", err)
@@ -306,10 +306,10 @@ func TestBackend_StopIsIdempotentAndClosesEvents(t *testing.T) {
 	if err := b.Flush(nil); !errors.Is(err, ErrStopped) {
 		t.Errorf("Flush after Stop = %v, want ErrStopped", err)
 	}
-	if err := b.Submit(tui.KeyEvent{}); !errors.Is(err, ErrStopped) {
+	if err := b.submit(tui.KeyEvent{}); !errors.Is(err, ErrStopped) {
 		t.Errorf("Submit after Stop = %v, want ErrStopped", err)
 	}
-	if err := b.Attach(hello()); !errors.Is(err, ErrStopped) {
+	if err := b.attach(hello()); !errors.Is(err, ErrStopped) {
 		t.Errorf("Attach after Stop = %v, want ErrStopped", err)
 	}
 }
@@ -326,7 +326,7 @@ func TestBackend_ConcurrentStop(t *testing.T) {
 			defer wg.Done()
 			_ = b.Stop()
 			_ = b.Flush(nil)
-			_ = b.Submit(tui.KeyEvent{})
+			_ = b.submit(tui.KeyEvent{})
 		}()
 	}
 	wg.Wait()
@@ -338,7 +338,7 @@ func TestBackend_FailRecordsTheTransportError(t *testing.T) {
 	t.Parallel()
 	b := started(t, hello())
 	boom := errors.New("websocket closed abnormally")
-	b.Fail(boom)
+	b.fail(boom)
 
 	if !errors.Is(b.Err(), boom) {
 		t.Errorf("Err = %v, want the transport error", b.Err())
@@ -348,7 +348,7 @@ func TestBackend_FailRecordsTheTransportError(t *testing.T) {
 	}
 	// The first error wins: a cascade of failures during teardown must not
 	// overwrite the one that actually ended the session.
-	b.Fail(errors.New("later noise"))
+	b.fail(errors.New("later noise"))
 	if !errors.Is(b.Err(), boom) {
 		t.Errorf("Err = %v, want the FIRST error", b.Err())
 	}
@@ -362,18 +362,18 @@ func TestBackend_ReattachResyncs(t *testing.T) {
 	if err := b.Flush([]tui.CellUpdate{put(0, 0, "a")}); err != nil {
 		t.Fatal(err)
 	}
-	fr, _ := b.NextFrame()
-	b.AckFrame(fr.Rev)
+	fr, _ := b.nextFrame()
+	b.ackFrame(fr.Rev)
 
 	h := hello()
 	h.Cols, h.Rows = 30, 8
-	if err := b.Attach(h); err != nil {
+	if err := b.attach(h); err != nil {
 		t.Fatal(err)
 	}
 	if got, _ := b.Size(); got != (tui.Size{W: 30, H: 8}) {
 		t.Errorf("Size = %+v, want the reconnecting client's 30x8", got)
 	}
-	next, ok := b.NextFrame()
+	next, ok := b.nextFrame()
 	if !ok {
 		t.Fatal("no frame after reattach")
 	}
@@ -394,7 +394,7 @@ func TestBackend_ReattachResyncs(t *testing.T) {
 func TestBackend_ResizeEmitsEventAndChangesSize(t *testing.T) {
 	t.Parallel()
 	b := started(t, hello())
-	b.Resize(40, 12)
+	b.resize(40, 12, Metrics{})
 	if got, _ := b.Size(); got != (tui.Size{W: 40, H: 12}) {
 		t.Errorf("Size = %+v, want 40x12", got)
 	}
@@ -407,8 +407,8 @@ func TestBackend_ResizeEmitsEventAndChangesSize(t *testing.T) {
 		t.Fatal("no resize event")
 	}
 	// A nonsense size is ignored rather than collapsing the grid.
-	b.Resize(0, 0)
-	b.Resize(-5, 3)
+	b.resize(0, 0, Metrics{})
+	b.resize(-5, 3, Metrics{})
 	if got, _ := b.Size(); got != (tui.Size{W: 40, H: 12}) {
 		t.Errorf("Size = %+v after nonsense resizes, want 40x12 unchanged", got)
 	}
@@ -458,7 +458,7 @@ func TestBackend_RenderBeforeAttachSurvivesIntoTheFirstFrame(t *testing.T) {
 
 	started := make(chan error, 1)
 	go func() { started <- b.Start(context.Background()) }()
-	if err := b.Attach(hello()); err != nil {
+	if err := b.attach(hello()); err != nil {
 		t.Fatal(err)
 	}
 	select {

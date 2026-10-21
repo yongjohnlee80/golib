@@ -89,7 +89,7 @@ func TestRegress2_ResizeIsRetriedNotDropped(t *testing.T) {
 	backend := s.Backend()
 
 	// Fill the single slot so the resize cannot land yet.
-	if err := backend.Submit(tui.KeyEvent{Code: 'x'}); err != nil {
+	if err := backend.submit(tui.KeyEvent{Code: 'x'}); err != nil {
 		t.Fatal(err)
 	}
 	go func() {
@@ -163,7 +163,7 @@ func TestRegress2_ResizeIsAnOrderedTransition(t *testing.T) {
 		}
 	}
 
-	if err := b.Resize(40, 12); err != nil {
+	if err := b.resize(40, 12, Metrics{}); err != nil {
 		t.Fatal(err)
 	}
 	if gapRuns.Load() != 1 {

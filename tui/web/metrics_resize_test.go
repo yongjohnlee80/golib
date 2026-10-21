@@ -14,7 +14,7 @@ func TestReconnectPublishesItsCellMetricsWithItsResize(t *testing.T) {
 	b := started(t, hello(), EventQueue(1))
 	h := hello()
 	h.Metrics = Metrics{CellW: 12, CellH: 24}
-	if err := b.Attach(h); err != nil {
+	if err := b.attach(h); err != nil {
 		t.Fatal(err)
 	}
 	if _, ok := (<-b.Events()).(tui.ResizeEvent); !ok {
@@ -31,12 +31,12 @@ func TestARefusedReconnectKeepsTheOldCellMetrics(t *testing.T) {
 	t.Parallel()
 	b := started(t, hello(), EventQueue(1))
 	before := b.CellPixels()
-	if err := b.Submit(tui.KeyEvent{Code: 'x'}); err != nil {
+	if err := b.submit(tui.KeyEvent{Code: 'x'}); err != nil {
 		t.Fatal(err)
 	}
 	h := hello()
 	h.Metrics = Metrics{CellW: 12, CellH: 24}
-	if err := b.Attach(h); !errors.Is(err, ErrEventOverflow) {
+	if err := b.attach(h); !errors.Is(err, ErrEventOverflow) {
 		t.Fatalf("Attach = %v, want the overflow", err)
 	}
 	if _, ok := (<-b.Events()).(tui.KeyEvent); !ok {

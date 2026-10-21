@@ -53,7 +53,7 @@ func TestRegress3_FlushAfterResizeIsNotDiscarded(t *testing.T) {
 		}
 	}
 
-	if err := b.Resize(40, 12); err != nil {
+	if err := b.resize(40, 12, Metrics{}); err != nil {
 		t.Fatal(err)
 	}
 	if !ran.Load() {

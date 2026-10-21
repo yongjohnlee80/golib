@@ -34,7 +34,7 @@ func TestRegress_StopDoesNotRaceSubmit(t *testing.T) {
 				defer wg.Done()
 				for range 200 {
 					// Any error is fine; a panic or a race is not.
-					_ = b.Submit(tui.KeyEvent{Code: 'x'})
+					_ = b.submit(tui.KeyEvent{Code: 'x'})
 				}
 			}()
 		}
@@ -77,7 +77,7 @@ func TestRegress_GridSizeIsBounded(t *testing.T) {
 
 	// Through the public surface, which is where the panic came from.
 	b := started(t, hello())
-	if err := b.Resize(math.MaxInt, 2); !errors.Is(err, ErrGridTooLarge) {
+	if err := b.resize(math.MaxInt, 2, Metrics{}); !errors.Is(err, ErrGridTooLarge) {
 		t.Errorf("Resize(MaxInt, 2) = %v, want ErrGridTooLarge", err)
 	}
 	if got, _ := b.Size(); got != (tui.Size{W: 20, H: 5}) {
@@ -94,12 +94,12 @@ func TestRegress_ResizeDoesNotDesyncWhenTheAppIsBusy(t *testing.T) {
 	t.Parallel()
 	b := started(t, hello(), EventQueue(1))
 	// Fill the queue so the resize event cannot be delivered.
-	if err := b.Submit(tui.KeyEvent{Code: 'a'}); err != nil {
+	if err := b.submit(tui.KeyEvent{Code: 'a'}); err != nil {
 		t.Fatal(err)
 	}
 	before, _ := b.Size()
 
-	if err := b.Resize(40, 10); !errors.Is(err, ErrEventOverflow) {
+	if err := b.resize(40, 10, Metrics{}); !errors.Is(err, ErrEventOverflow) {
 		t.Fatalf("Resize = %v, want ErrEventOverflow", err)
 	}
 	after, _ := b.Size()
@@ -132,7 +132,7 @@ func TestRegress_QueueDepthIsTheRealCapacity(t *testing.T) {
 	}
 	accepted := 0
 	for range depth * 4 {
-		if err := s.Backend().Submit(tui.KeyEvent{Code: 'x'}); err != nil {
+		if err := s.Backend().submit(tui.KeyEvent{Code: 'x'}); err != nil {
 			break
 		}
 		accepted++
@@ -160,7 +160,7 @@ func TestRegress_DeliverRetriesUntilAccepted(t *testing.T) {
 	backend := s.Backend()
 
 	// One slot, two events: the second can only land once the App drains.
-	if err := backend.Submit(tui.KeyEvent{Code: 'x'}); err != nil {
+	if err := backend.submit(tui.KeyEvent{Code: 'x'}); err != nil {
 		t.Fatal(err)
 	}
 	drained := make(chan struct{})

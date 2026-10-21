@@ -251,7 +251,7 @@ func (l *sessionLoop) pump(ctx context.Context, c conn, sess *Session) error {
 
 // readPump decodes client messages into events.
 func (l *sessionLoop) readPump(ctx context.Context, c conn, sess *Session) error {
-	backend := sess.Backend()
+	backend := sess.transport()
 	// CONNECTION-local, and passed down rather than stored on the loop.
 	//
 	// The sessionLoop is shared by every connection a Handler serves, so a field
@@ -277,7 +277,7 @@ func (l *sessionLoop) readPump(ctx context.Context, c conn, sess *Session) error
 		// An ack costs nothing and is not rate limited: throttling it would slow
 		// the very mechanism that lets frames flow.
 		if m.T == msgAck {
-			backend.AckFrame(m.Rev)
+			backend.ackFrame(m.Rev)
 			continue
 		}
 		// A resize is state, not input, and is likewise not metered — a client
@@ -316,8 +316,8 @@ func (l *sessionLoop) readPump(ctx context.Context, c conn, sess *Session) error
 // An earlier version retried once and then advanced past the event, which lost
 // input while still claiming an ordered un-coalesced stream.
 func (l *sessionLoop) deliver(ctx context.Context, c conn, sess *Session, limiter *bucket, ev tui.Event) error {
-	backend := sess.Backend()
-	return l.submitWithBackpressure(ctx, c, sess, limiter, true, "input", func() error { return backend.Submit(ev) })
+	backend := sess.transport()
+	return l.submitWithBackpressure(ctx, c, sess, limiter, true, "input", func() error { return backend.submit(ev) })
 }
 
 // deliverResize applies a size change, RETRYING rather than dropping it.
@@ -328,7 +328,7 @@ func (l *sessionLoop) deliver(ctx context.Context, c conn, sess *Session, limite
 // while the App was busy was lost and the client stayed the wrong size
 // indefinitely.
 func (l *sessionLoop) deliverResize(ctx context.Context, c conn, sess *Session, limiter *bucket, cols, rows int, m Metrics) error {
-	backend := sess.Backend()
+	backend := sess.transport()
 	return l.submitWithBackpressure(ctx, c, sess, limiter, false, "resize", func() error {
 		err := backend.resize(cols, rows, m) // the client's cell size, published with the resize it takes
 		if errors.Is(err, ErrGridTooLarge) {
@@ -437,7 +437,7 @@ func (l *sessionLoop) translate(m clientMessage) ([]tui.Event, error) {
 
 // writePump sends frames as they become available.
 func (l *sessionLoop) writePump(ctx context.Context, c conn, sess *Session) error {
-	backend := sess.Backend()
+	backend := sess.transport()
 	ticker := time.NewTicker(framePoll)
 	defer ticker.Stop()
 
@@ -451,7 +451,7 @@ func (l *sessionLoop) writePump(ctx context.Context, c conn, sess *Session) erro
 		case <-ticker.C:
 		}
 		for {
-			fr, ok := backend.NextFrame()
+			fr, ok := backend.nextFrame()
 			if !ok {
 				break
 			}
