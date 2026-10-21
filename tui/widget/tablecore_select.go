@@ -288,11 +288,17 @@ func (c *TableCore) clampPos(p TablePos) TablePos {
 	return p
 }
 
-// pairPress records a view's press on the cell at display position p with the App's count, and
-// reports whether it completes a double-click: on the same SOURCE row and field, so a sort or the
-// wheel moving another row under the pressed cell does not pair (pressPairer).
-func (c *TableCore) pairPress(count int, p TablePos) bool {
-	return c.presses.Pair(count, TablePos{Row: c.SourceRow(p.Row), Col: p.Col})
+// press is a view's press at display position p, on what hit says: PressAt, through the core's
+// pressPairer. live is false when the owner told of the cursor's move replaced the source, and the
+// view then does nothing more for the press. A press on a cell pairs by its SOURCE row and field, so
+// a sort or the wheel moving another row under the pressed cell does not; paired reports a
+// double-click there. Any other press pairs nothing.
+func (c *TableCore) press(count int, p TablePos, hit TableHit) (live, paired bool) {
+	moved := func() { c.PressAt(p, hit) }
+	if hit != TableHitCell {
+		return c.presses.Survives(moved), false
+	}
+	return c.presses.Press(count, TablePos{Row: c.SourceRow(p.Row), Col: p.Col}, moved)
 }
 
 // PressAt is a press of the pointer at p, on what hit says. A press is a COMMAND BOUNDARY, not

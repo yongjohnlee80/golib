@@ -514,9 +514,9 @@ func (l *List[T]) HandleEvent(ev tui.Event) bool {
 			if idx < 0 || idx >= l.count {
 				return true
 			}
-			l.moveCursor(idx)
-			// Timing and cell come from the App; the row is List's (pressPairer).
-			if l.presses.Pair(e.Count, idx) {
+			// Timing and cell come from the App; the row is List's, and gone if the owner told of
+			// the move replaced the rows (pressPairer).
+			if _, paired := l.presses.Press(e.Count, idx, func() { l.moveCursor(idx) }); paired {
 				l.activate()
 			}
 			return true
@@ -527,8 +527,9 @@ func (l *List[T]) HandleEvent(ev tui.Event) bool {
 				l.requestMenu(-1, tui.Point{X: e.X, Y: e.Y})
 				return true
 			}
-			l.moveCursor(idx)
-			l.requestMenu(idx, tui.Point{X: e.X, Y: e.Y})
+			if l.presses.Survives(func() { l.moveCursor(idx) }) {
+				l.requestMenu(idx, tui.Point{X: e.X, Y: e.Y})
+			}
 			return true
 		case e.Kind == tui.MouseWheel && (e.Button == tui.WheelUp || e.Button == tui.WheelDown):
 			step := listWheelRows

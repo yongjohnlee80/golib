@@ -374,3 +374,28 @@ func TestDataTable_ABoundLayoutPlacesThePointer(t *testing.T) {
 		t.Errorf("the wheel moved the cursor to %+v", got)
 	}
 }
+
+// A press whose cursor callback (TableOnCursor) replaces the source has pressed rows that are gone:
+// it does not pair with the next press on the new rows (data-D4's epoch, through the owner's
+// callback; the same-row control is TestDataTable_ADoublePressPairsOnTheSameRowOnce).
+func TestDataTable_APressDoesNotPairAcrossTheSourceItsCallbackReplaced(t *testing.T) {
+	var acts []int
+	var core *widget.TableCore
+	replaced := false
+	h, _, dt := dataTable(t, numbered(20), 30, 6,
+		widget.TableOnActivate(func(r int) { acts = append(acts, r) }),
+		widget.TableOnCursor(func(int) {
+			if !replaced && core != nil {
+				replaced = true
+				core.SetSource(numbered(20))
+			}
+		}))
+	h.onLoop(func() { core = dt.Core() })
+	press := tui.MouseEvent{Kind: tui.MousePress, Button: tui.MouseLeft, X: 1, Y: 3}
+	h.inject(press, press)
+	h.settle()
+	h.onLoop(func() {})
+	if !replaced || len(acts) != 0 {
+		t.Errorf("replaced %v; a press before the new source and one after it activated %v", replaced, acts)
+	}
+}
