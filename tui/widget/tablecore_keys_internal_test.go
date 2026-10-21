@@ -60,9 +60,9 @@ func oldTableKey(c *TableCore, k tui.KeyEvent) bool {
 	case 'l', tui.KeyRight:
 		c.Move(0, n)
 	case 'w':
-		c.moveFields(n)
+		c.SetCursor(c.fieldsTarget(n))
 	case 'b':
-		c.moveFields(-n)
+		c.SetCursor(c.fieldsTarget(-n))
 	case tui.KeyPageUp:
 		c.Move(-c.page(), 0)
 	case tui.KeyPageDown:

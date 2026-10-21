@@ -21,9 +21,12 @@ import (
 //
 // The rule, and this guard, are one: in the row views' methods, a call that can reach an owner
 // callback is either the operation's last step (in TAIL position: nothing but a return follows it,
-// in its block and every block around it) or its bool result is used, the view's pressPairer
-// reporting whether the rows survived it (Survives, and the view methods built on it). A function
-// literal is its own tail: the step a Survives call runs.
+// in its block and every block around it) or a SURVIVAL call whose result is used: a method whose
+// result is declared `live bool`, reporting through the view's pressPairer epoch whether the rows
+// survived (cursorTo, changed, expandNode, …). Any other result — a yank's ok, say — says nothing
+// about the rows, and is no licence to go on (golib #401 r2: Cut went on after yankFrom's copy
+// callback replaced the source). A function literal is its own tail: the step a Survives call runs.
+// The guard is structural; the callback-replacement tests are its behavioural counterpart.
 //
 // "Can reach an owner callback" is computed, not listed: a method that calls one of the view's on*
 // hooks (c.onCursor, t.on.expand) reaches one, and so does every method that calls such a method.
@@ -172,21 +175,60 @@ func TestOwnerCallbacksEndTheOperationOrAreChecked(t *testing.T) {
 		}
 	}
 
+	// survival: the methods whose result is declared live, the epoch's answer
+	survival := map[string]bool{}
+	for name, m := range methods {
+		if r := m.decl.Type.Results; r != nil {
+			for _, f := range r.List {
+				for _, n := range f.Names {
+					survival[name] = survival[name] || n.Name == "live"
+				}
+			}
+		}
+	}
+	if !survival["TableCore.cursorTo"] || !survival["TableCore.changed"] {
+		t.Error("cursorTo and changed are not seen as survival calls: the guard no longer models the views")
+	}
+
 	var bad []string
 	for name, m := range methods {
 		var walk func(stmts []ast.Stmt, tail bool)
+		// check flags, in a statement not in tail position, a call that can reach an owner callback
+		// and is not a survival call: its result, used or not, does not say the rows survived. Calls in
+		// a nested function literal are that literal's own (walked with it).
 		check := func(s ast.Stmt, tail bool) {
-			es, ok := s.(*ast.ExprStmt)
-			if !ok {
+			if tail {
 				return
 			}
-			call, ok := es.X.(*ast.CallExpr)
-			if !ok {
-				return
+			var inspect func(n ast.Node) bool
+			inspect = func(n ast.Node) bool {
+				switch x := n.(type) {
+				case *ast.FuncLit, *ast.BlockStmt:
+					return false
+				case *ast.CallExpr:
+					if callee, ok := calledMethod(x, m.typ, m.v); ok && reaches[callee] && !survival[callee] {
+						bad = append(bad, fmt.Sprintf("%s:%d %s calls %s and goes on: end the operation there, or make it a survival call (live bool) and check it",
+							rel(root, m.pos.Filename), fset.Position(x.Pos()).Line, name, callee))
+					}
+				}
+				return true
 			}
-			if callee, ok := calledMethod(call, m.typ, m.v); ok && reaches[callee] && !tail {
-				bad = append(bad, fmt.Sprintf("%s:%d %s calls %s and goes on: end the operation there, or check that the rows survived",
-					rel(root, m.pos.Filename), fset.Position(call.Pos()).Line, name, callee))
+			switch x := s.(type) {
+			case *ast.IfStmt: // its init and condition only: the bodies are walked as blocks
+				if x.Init != nil {
+					ast.Inspect(x.Init, inspect)
+				}
+				ast.Inspect(x.Cond, inspect)
+			case *ast.SwitchStmt:
+				if x.Init != nil {
+					ast.Inspect(x.Init, inspect)
+				}
+				if x.Tag != nil {
+					ast.Inspect(x.Tag, inspect)
+				}
+			case *ast.ForStmt, *ast.RangeStmt, *ast.TypeSwitchStmt, *ast.BlockStmt, *ast.ReturnStmt:
+			default:
+				ast.Inspect(s, inspect)
 			}
 		}
 		walk = func(stmts []ast.Stmt, tail bool) {

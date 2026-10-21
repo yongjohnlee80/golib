@@ -260,7 +260,7 @@ func (c *TableCore) deleteRow() bool {
 	if !c.edit.DeleteRow(c.SourceRow(c.cur.Row)) {
 		return false
 	}
-	c.Changed()
+	c.changed() // the core's own edit
 	return true
 }
 

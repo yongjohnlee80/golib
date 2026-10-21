@@ -267,15 +267,15 @@ func (c *TableCore) toggleSelect(kind TableSelectKind) {
 	}
 }
 
-// moveFields moves the cursor n fields in reading order, onto the next row past the last field
-// and the previous before the first, as vim's w and b cross lines.
-func (c *TableCore) moveFields(n int) {
+// fieldsTarget is the cursor n fields on in reading order, onto the next row past the last field
+// and the previous before the first, as vim's w and b cross lines; the cursor itself with no cells.
+func (c *TableCore) fieldsTarget(n int) TablePos {
 	fields := len(c.Fields())
 	if fields == 0 || c.Len() == 0 {
-		return
+		return c.cur
 	}
 	at := min(max(c.cur.Row*fields+c.cur.Col+n, 0), c.Len()*fields-1)
-	c.SetCursor(TablePos{at / fields, at % fields})
+	return TablePos{at / fields, at % fields}
 }
 
 // dropPending forgets a command not yet complete: a count, a g waiting, a y to double.

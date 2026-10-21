@@ -43,7 +43,14 @@ func (c *TableCore) HandleKey(k tui.KeyEvent) bool {
 	if k.Kind == tui.KeyRelease {
 		return false
 	}
-	if c.takeCountOrG(k) {
+	if c.takeCount(k) {
+		return true
+	}
+	if c.pendingG && isKey(k, literalG...) {
+		// g's grammar: the literal g after it is [count]gg, wherever a map moved the prefix
+		row := max(c.count, 1) - 1
+		c.dropPending()
+		c.SetCursor(TablePos{row, c.cur.Col})
 		return true
 	}
 	cmd, ok := c.ctx.KeyCommand(k, tableCommands...)
@@ -60,7 +67,11 @@ func (c *TableCore) HandleKey(k tui.KeyEvent) bool {
 	if wasG {
 		n, counted = 1, false // the count went with the g it was typed for
 	}
-	if c.motionKey(cmd.ID, n, counted) || c.selectionKey(cmd.ID) {
+	if p, ok := c.motionTarget(cmd.ID, n, counted); ok {
+		c.SetCursor(p) // last: the owner told of the move may replace the rows
+		return true
+	}
+	if c.selectionKey(cmd.ID) {
 		return true
 	}
 	if cmd.ID == TableEscape.ID {
@@ -73,21 +84,15 @@ func (c *TableCore) HandleKey(k tui.KeyEvent) bool {
 	return c.editKey(cmd.ID, yanked, deleting)
 }
 
-// takeCountOrG takes a count's digit, and the literal g that completes a pending g as [count]gg,
-// wherever a map moved the prefix. It reports whether it took the key.
-func (c *TableCore) takeCountOrG(k tui.KeyEvent) bool {
-	if d, ok := countDigit(k); ok && (d != 0 || c.count > 0) {
-		c.pendingG, c.yanked = false, false
-		c.count = min(c.count*10+d, tableCountMax)
-		return true
+// takeCount takes a count's digit. It reports whether it took the key.
+func (c *TableCore) takeCount(k tui.KeyEvent) bool {
+	d, ok := countDigit(k)
+	if !ok || d == 0 && c.count == 0 {
+		return false
 	}
-	if c.pendingG && isKey(k, literalG...) {
-		row := max(c.count, 1) - 1
-		c.dropPending()
-		c.SetCursor(TablePos{row, c.cur.Col})
-		return true
-	}
-	return false
+	c.pendingG, c.yanked = false, false
+	c.count = min(c.count*10+d, tableCountMax)
+	return true
 }
 
 // unboundKey is a key no table command has: it drops a count or a g, and is the application's
@@ -104,40 +109,40 @@ func (c *TableCore) unboundKey(k tui.KeyEvent) bool {
 	return false
 }
 
-// motionKey runs id when it is a cursor motion, n times where it counts; counted says a count was
-// typed ([count]G). It reports whether id was a motion.
-func (c *TableCore) motionKey(id string, n int, counted bool) bool {
+// motionTarget is where cursor motion id moves the cursor, n times where it counts; counted says a
+// count was typed ([count]G). ok is false when id is no motion. It moves nothing: the caller moves
+// the cursor there as its last step, since the owner told of the move may replace the rows.
+func (c *TableCore) motionTarget(id string, n int, counted bool) (p TablePos, ok bool) {
+	cur := c.cur
 	switch id {
 	case TableUp.ID:
-		c.Move(-n, 0)
+		return TablePos{cur.Row - n, cur.Col}, true
 	case TableDown.ID:
-		c.Move(n, 0)
+		return TablePos{cur.Row + n, cur.Col}, true
 	case TableLeft.ID:
-		c.Move(0, -n)
+		return TablePos{cur.Row, cur.Col - n}, true
 	case TableRight.ID:
-		c.Move(0, n)
+		return TablePos{cur.Row, cur.Col + n}, true
 	case TableFieldNext.ID:
-		c.moveFields(n)
+		return c.fieldsTarget(n), true
 	case TableFieldPrev.ID:
-		c.moveFields(-n)
+		return c.fieldsTarget(-n), true
 	case TablePageUp.ID:
-		c.Move(-c.page(), 0)
+		return TablePos{cur.Row - c.page(), cur.Col}, true
 	case TablePageDown.ID:
-		c.Move(c.page(), 0)
+		return TablePos{cur.Row + c.page(), cur.Col}, true
 	case TableLast.ID:
 		row := c.Len() - 1
 		if counted {
 			row = n - 1
 		}
-		c.SetCursor(TablePos{row, c.cur.Col})
+		return TablePos{row, cur.Col}, true
 	case TableFieldFirst.ID:
-		c.SetCursor(TablePos{c.cur.Row, 0})
+		return TablePos{cur.Row, 0}, true
 	case TableFieldLast.ID:
-		c.SetCursor(TablePos{c.cur.Row, len(c.Fields()) - 1})
-	default:
-		return false
+		return TablePos{cur.Row, len(c.Fields()) - 1}, true
 	}
-	return true
+	return TablePos{}, false
 }
 
 // selectionKey runs id when it starts, switches or ends a selection (v V Ctrl+V), or toggles the
