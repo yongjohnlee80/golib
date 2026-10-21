@@ -57,7 +57,7 @@ var toolkitEnglish = map[string]string{
 	"tui.tooSmall.size":           "%1 × %2 — needs %3 × %4",
 	"tui.tooSmall.enlarge":        "Enlarge the window to continue",
 	"tui.tooSmall.quit":           "Quit",
-	"tui.tooSmall.quitKeys":       "or press q / Ctrl+C",
+	"tui.tooSmall.quitKeys":       "or press %1",
 	"tui.editor.menu.undo":        "&Undo",
 	"tui.editor.menu.redo":        "&Redo",
 	"tui.editor.menu.copy":        "&Copy",

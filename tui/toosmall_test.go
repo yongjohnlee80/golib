@@ -61,7 +61,7 @@ func TestTooSmall_ShowsTheNoticeAndHoldsInput(t *testing.T) {
 	if screenHas(h.tb, "A") && !screenHas(h.tb, "Screen too small") {
 		t.Fatal("the application painted under the notice")
 	}
-	if !screenHas(h.tb, "Enlarge the window to continue") || !screenHas(h.tb, "or press q / Ctrl+C") {
+	if !screenHas(h.tb, "Enlarge the window to continue") || !screenHas(h.tb, "or press Q / Ctrl+C") {
 		t.Fatalf("the notice lacks its instructions:\n%s", h.tb.String())
 	}
 	h.inject(KeyEvent{Code: 'x', Text: "x"}, MouseEvent{Kind: MousePress, Button: MouseLeft, X: 0, Y: 0}, PasteEvent{Text: "p"})

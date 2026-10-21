@@ -76,6 +76,7 @@ command and cannot be rebound.
 | --- | --- |
 | `tui.app` | `tui.app.focusNext` (Tab), `tui.app.focusPrev` (Shift+Tab) |
 | `tui.capture` | `tui.capture.cancel` (Esc: cancels a held drag or resize) |
+| `tui.tooSmall` | `tui.tooSmall.quit` (q, Ctrl+C: quits from the too-small screen, which prints the bound keys) |
 | `global` | `tui.window.menu` (F10, Super+F10: a declarative Window's menu bar) |
 | `tui.button` | `tui.button.activate` (Enter, Space: a Button, a standalone MenuItem) |
 | `tui.list` | `tui.list.up` (Up, Shift+Up, K), `tui.list.down` (Down, Shift+Down, J), `tui.list.top` (G), `tui.list.bottom` (Shift+G), `tui.list.pageUp`, `tui.list.pageDown`, `tui.list.home`, `tui.list.end`, `tui.list.activate` (Enter), `tui.list.toggle` (Space, multi-select), `tui.list.contextMenu` (Shift+F10, Menu) |

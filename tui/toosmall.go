@@ -4,6 +4,7 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/yongjohnlee80/golib/tui/key"
 	"github.com/yongjohnlee80/golib/tui/style"
 )
 
@@ -45,12 +46,14 @@ func (a *App) tooSmall() bool {
 }
 
 // dispatchTooSmall handles an event while the too-small screen shows. It reports true for input,
-// which the screen takes whatever it is: q, Ctrl+C and a click on Quit quit, and nothing else
-// reaches the application.
+// which the screen takes whatever it is: TooSmallQuit's keys (q and Ctrl+C unless the key map
+// rebinds them) and a click on Quit quit, and nothing else reaches the application.
 func (a *App) dispatchTooSmall(ev Event) bool {
 	switch e := ev.(type) {
 	case KeyEvent:
-		if e.Kind != KeyRelease && isQuitKey(e) {
+		// The exact chord only, not keyCommand's legacy Ctrl+Shift fallback: Ctrl+Shift+C is a
+		// terminal's copy, and must not quit.
+		if chord, ok := key.Of(e.Code, e.Mods, e.Text); ok && e.Kind != KeyRelease && a.cfg.keymap.Has(TooSmallQuit, chord) {
 			a.requestQuit()
 		}
 		return true
@@ -61,17 +64,6 @@ func (a *App) dispatchTooSmall(ev Event) bool {
 		return true
 	case PasteEvent:
 		return true
-	}
-	return false
-}
-
-// isQuitKey is q, or Ctrl+C, with no other modifier held.
-func isQuitKey(e KeyEvent) bool {
-	switch mods := e.Mods.Chord(); {
-	case mods == 0:
-		return e.Code == 'q'
-	case mods == ModCtrl:
-		return e.Code == 'c'
 	}
 	return false
 }
@@ -103,7 +95,7 @@ func (a *App) renderTooSmall() {
 		need = strings.ReplaceAll(need, "%"+strconv.Itoa(i+1), strconv.Itoa(v))
 	}
 	quit := "[ " + a.Translate(Msg("tui.tooSmall.quit")) + " ]"
-	keys := a.Translate(Msg("tui.tooSmall.quitKeys"))
+	keys := strings.ReplaceAll(a.Translate(Msg("tui.tooSmall.quitKeys")), "%1", a.tooSmallQuitKeys())
 	type line struct {
 		text string
 		st   style.Style
@@ -134,4 +126,14 @@ func (a *App) renderTooSmall() {
 // writeCentered writes text centred on row y.
 func writeCentered(s Surface, y int, text string, st style.Style) {
 	DrawText(s, max((s.Size().W-s.StringWidth(text))/2, 0), y, text, st)
+}
+
+// tooSmallQuitKeys is TooSmallQuit's keys as the key map binds them, as a menu prints an
+// accelerator, so the screen names the keys that quit it.
+func (a *App) tooSmallQuitKeys() string {
+	var names []string
+	for _, s := range a.cfg.keymap.KeysOf(TooSmallQuit) {
+		names = append(names, s.String())
+	}
+	return strings.Join(names, " / ")
 }

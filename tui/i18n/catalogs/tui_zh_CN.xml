@@ -192,8 +192,8 @@
         <translation>退出</translation>
     </message>
     <message id="tui.tooSmall.quitKeys">
-        <source>or press q / Ctrl+C</source>
-        <translation>或按 q / Ctrl+C</translation>
+        <source>or press %1</source>
+        <translation>或按 %1</translation>
     </message>
     <message id="tui.editor.menu.undo">
         <source>&amp;Undo</source>
