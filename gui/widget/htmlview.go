@@ -1038,10 +1038,10 @@ func (l *htmlLayout) adoptLook(c gui.Canvas) {
 	muted := mix(fg, bg, 0.55)
 	if th := l.v.Theme(); th != nil {
 		dark := isDark(bg)
-		if col, ok := colorOf(th.Color(style.TokenAccent), th, dark); ok {
+		if col, ok := colorOf(th.Color(style.TokenAccent), th, dark, gui.PaletteOf(c)); ok {
 			accent = col
 		}
-		if col, ok := colorOf(th.Color(style.TokenTextMuted), th, dark); ok {
+		if col, ok := colorOf(th.Color(style.TokenTextMuted), th, dark, gui.PaletteOf(c)); ok {
 			muted = col
 		}
 	}

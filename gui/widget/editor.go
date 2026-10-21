@@ -489,12 +489,12 @@ func (e *Editor) pageColors(c gui.Canvas, th *style.Theme) (fg, bg color.NRGBA) 
 	}
 	dark := isDark(bg)
 	if v, set := e.page.GetBackground(); set {
-		if col, ok := colorOf(v, th, dark); ok {
+		if col, ok := colorOf(v, th, dark, gui.PaletteOf(c)); ok {
 			bg, dark = col, isDark(col)
 		}
 	}
 	if v, set := e.page.GetForeground(); set {
-		if col, ok := colorOf(v, th, dark); ok {
+		if col, ok := colorOf(v, th, dark, gui.PaletteOf(c)); ok {
 			fg = col
 		}
 	}
@@ -503,7 +503,7 @@ func (e *Editor) pageColors(c gui.Canvas, th *style.Theme) (fg, bg color.NRGBA) 
 
 // theme is what the text is drawn with: the colours of the cells under it, the tui theme's
 // accent and muted text, and fonts at the window's text size (textPx) unless WithFontSize set one.
-func (e *Editor) theme(fg, bg color.NRGBA, textPx float32, th *style.Theme) Theme {
+func (e *Editor) theme(fg, bg color.NRGBA, textPx float32, th *style.Theme, pal gui.Palette) Theme {
 	size := e.fontSize
 	if size <= 0 {
 		size = max(textPx, 10)
@@ -518,20 +518,20 @@ func (e *Editor) theme(fg, bg color.NRGBA, textPx float32, th *style.Theme) Them
 	dark := isDark(bg)
 	t.LineNumbers = t.Muted
 	if e.caretSet {
-		if c, ok := colorOf(e.caret, th, dark); ok {
+		if c, ok := colorOf(e.caret, th, dark, pal); ok {
 			t.Caret = c
 		}
 	}
 	if th != nil {
-		if c, ok := colorOf(th.Color(style.TokenAccent), th, dark); ok {
+		if c, ok := colorOf(th.Color(style.TokenAccent), th, dark, pal); ok {
 			t.Accent = c
 		}
-		if c, ok := colorOf(th.Color(style.TokenTextMuted), th, dark); ok {
+		if c, ok := colorOf(th.Color(style.TokenTextMuted), th, dark, pal); ok {
 			t.Muted, t.LineNumbers = c, c
 		}
 	}
 	if e.numberSet {
-		if c, ok := colorOf(e.numberCol, th, dark); ok {
+		if c, ok := colorOf(e.numberCol, th, dark, pal); ok {
 			t.LineNumbers = c
 		}
 	}
@@ -539,7 +539,7 @@ func (e *Editor) theme(fg, bg color.NRGBA, textPx float32, th *style.Theme) Them
 	for k := range highlight.Styles {
 		if st, ok := e.core.SyntaxStyle(highlight.Style(k)); ok {
 			if fg, set := st.GetForeground(); set {
-				if c, ok := colorOf(fg, th, dark); ok {
+				if c, ok := colorOf(fg, th, dark, pal); ok {
 					t.Syntax[k] = c
 				}
 			}
@@ -555,7 +555,7 @@ func (e *Editor) theme(fg, bg color.NRGBA, textPx float32, th *style.Theme) Them
 	} {
 		if st, ok := e.core.SyntaxStyle(s.k); ok {
 			if fg, set := st.GetForeground(); set {
-				if c, ok := colorOf(fg, th, dark); ok {
+				if c, ok := colorOf(fg, th, dark, pal); ok {
 					*s.to = c
 				}
 			}
