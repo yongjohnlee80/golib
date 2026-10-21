@@ -176,7 +176,7 @@ indexed colours read it rather than a table of their own.
 enum (`CursorShapeDefault`, `Block`, `Underline`, `Bar`). A `Style` packs its
 attribute values in an `AttrMask`. `tui.AttrMask`, `tui.CursorShape`, `vt.Attr`
 and `vt.CursorShape` alias these types; the web client is handed the bits by
-name (`AttrNames`). They live here because `style` sits below `tui` and `vt`.
+name (`AttrNames()`, a copy). They live here because `style` sits below `tui` and `vt`.
 `Style.Attrs()` is the attributes a style sets on, and `Style.WithAttrs(m)`
 sets them on, so a terminal cell's mask becomes a style in one call.
 
@@ -191,7 +191,7 @@ sets them on, so a terminal cell's mask becomes a style in one call.
 | `theme.go`  | `Token` vocabulary, `Theme`, `NewTheme`, `WithToken`/`WithDark`, `DefaultTheme` |
 | `border.go` | `BorderStyle` + prefabs                                                         |
 | `xterm.go`  | `XtermRGB`: xterm's default 256-colour palette                                  |
-| `attrs.go`  | `AttrMask`, `AttrNames`, `CursorShape`, `Style.Attrs`/`WithAttrs`               |
+| `attrs.go`  | `AttrMask`, `AttrNames()`, `CursorShape`, `Style.Attrs`/`WithAttrs`             |
 | `legible.go`| `Legible`, contrast ratio over WCAG relative luminance                          |
 | `ext.go`    | `StyleOption`, `Apply`, `ExtKey`, `Ext`/`GetExt`                                |
 

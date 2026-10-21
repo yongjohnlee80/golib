@@ -31,7 +31,7 @@ func TestAStylesAttrsAreTheSharedMask(t *testing.T) {
 // AttrNames names every bit once, in bit order, so the web client is handed all of them.
 func TestAttrNamesCoverEveryBit(t *testing.T) {
 	var seen AttrMask
-	for i, a := range AttrNames {
+	for i, a := range AttrNames() {
 		if a.Bit != 1<<i || seen&a.Bit != 0 || a.Name == "" {
 			t.Errorf("AttrNames[%d] = %+v", i, a)
 		}
@@ -39,5 +39,41 @@ func TestAttrNamesCoverEveryBit(t *testing.T) {
 	}
 	if seen != AttrInvisible<<1-1 {
 		t.Errorf("AttrNames covers %b, want every bit up to AttrInvisible", seen)
+	}
+}
+
+// AttrNames is a copy: a caller's change to it reaches neither a later call nor the web client.
+func TestAttrNamesIsACopy(t *testing.T) {
+	names := AttrNames()
+	names[0].Bit, names[0].Name = AttrReverse, "changed"
+	if again := AttrNames(); again[0].Bit != AttrBold || again[0].Name != "bold" {
+		t.Errorf("a caller's change reached the catalog: %+v", again[0])
+	}
+}
+
+// Each attribute getter reports its own value and whether it is set: unset is (false, false), set
+// true (true, true), set false (false, true).
+func TestEachAttrGetterReportsItsValueAndSetness(t *testing.T) {
+	for name, c := range map[string]struct {
+		set func(Style, bool) Style
+		get func(Style) (bool, bool)
+	}{
+		"bold": {Style.Bold, Style.GetBold}, "faint": {Style.Faint, Style.GetFaint},
+		"italic": {Style.Italic, Style.GetItalic}, "underline": {Style.Underline, Style.GetUnderline},
+		"blink": {Style.Blink, Style.GetBlink}, "reverse": {Style.Reverse, Style.GetReverse},
+		"strikethrough": {Style.Strikethrough, Style.GetStrikethrough},
+	} {
+		if v, ok := c.get(New()); v || ok {
+			t.Errorf("%s unset: (%v, %v), want (false, false)", name, v, ok)
+		}
+		if v, ok := c.get(c.set(New(), true)); !v || !ok {
+			t.Errorf("%s set true: (%v, %v), want (true, true)", name, v, ok)
+		}
+		if v, ok := c.get(c.set(New(), false)); v || !ok {
+			t.Errorf("%s set false: (%v, %v), want (false, true)", name, v, ok)
+		}
+		if v, _ := c.get(New().WithAttrs(AttrInvisible<<1 - 1)); !v {
+			t.Errorf("%s: WithAttrs of every bit leaves it off", name)
+		}
 	}
 }

@@ -1,5 +1,7 @@
 package style
 
+import "slices"
+
 // SHARED VOCABULARIES — the text attributes and the cursor shapes, written once. A Style packs its
 // attribute values in an AttrMask; tui's resolved cells (tui.CellAttrs.Mask), vt's cells (vt.Attr)
 // and the web client's painter (handed the bits by the page) use the same bits, so a new attribute
@@ -20,16 +22,22 @@ const (
 	AttrInvisible                          // SGR 8; a terminal's cells carry it, a Style has no setter for it
 )
 
-// AttrNames names each attribute bit, in bit order: the names the web client is handed with
-// the values.
-var AttrNames = []struct {
+// AttrName is one attribute bit and its name.
+type AttrName struct {
 	Name string
 	Bit  AttrMask
-}{
+}
+
+// attrNames is the catalog AttrNames copies; nothing outside this package reaches it.
+var attrNames = [...]AttrName{
 	{"bold", AttrBold}, {"faint", AttrFaint}, {"italic", AttrItalic}, {"underline", AttrUnderline},
 	{"blink", AttrBlink}, {"reverse", AttrReverse}, {"strikethrough", AttrStrikethrough},
 	{"invisible", AttrInvisible},
 }
+
+// AttrNames names each attribute bit, in bit order: the names the web client is handed with the
+// values. It is a copy, so a caller's change reaches no other reader.
+func AttrNames() []AttrName { return slices.Clone(attrNames[:]) }
 
 // CursorShape selects the hardware cursor glyph (DECSCUSR).
 type CursorShape uint8
