@@ -285,16 +285,5 @@ func quoteEmpty(s string) string {
 	return s
 }
 
-// sanitizeHeader bounds and de-controls an attacker-supplied header value.
-func sanitizeHeader(s string) string {
-	const max = 200
-	if len(s) > max {
-		s = s[:max] + "…"
-	}
-	return strings.Map(func(r rune) rune {
-		if r < 0x20 || r == 0x7f {
-			return '?'
-		}
-		return r
-	}, s)
-}
+// sanitizeHeader bounds and de-controls an attacker-supplied header value (logger.Safe).
+func sanitizeHeader(s string) string { return logger.Safe(s, 200) }
