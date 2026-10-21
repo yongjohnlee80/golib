@@ -39,9 +39,17 @@ func (c *TableCore) SetFilter(p TablePredicate) {
 // are equal without one.
 func (c *TableCore) Filtered() (shown, loaded int) { return c.Len(), c.loaded() }
 
+// tableFieldReader is a filter that knows how many of the source's fields it reads (a where
+// clause does); validFilter refuses one that reads past them. A filter without it is not asked.
+type tableFieldReader interface {
+	fieldsRead() int
+}
+
+var _ tableFieldReader = (*tableWhere)(nil)
+
 // validFilter is p, or nil when it reads a field the source lacks.
 func (c *TableCore) validFilter(p TablePredicate) TablePredicate {
-	if w, ok := p.(interface{ fieldsRead() int }); ok && w.fieldsRead() > len(c.Fields()) {
+	if w, ok := p.(tableFieldReader); ok && w.fieldsRead() > len(c.Fields()) {
 		return nil
 	}
 	return p
