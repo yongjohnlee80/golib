@@ -159,7 +159,7 @@ func axisTitle(ch *channel) string {
 // shared scales, and every layer's marks in order.
 func build(ctx context.Context, l *layered, width float32, th Theme, m gui.Measurer) *Laid {
 	p := l.base
-	b := &builder{ctx: ctx, l: l, p: p, th: th, m: m, unit: th.Font.Size / 11, lh: th.Font.Size * 1.2}
+	b := &builder{ctx: ctx, l: l, p: p, th: th, m: m, unit: th.Font.Size / 11, lh: th.Font.Size * gui.LineHeight}
 	b.bold = th.Font
 	b.bold.Bold = true
 	u, lh := b.unit, b.lh
@@ -303,7 +303,7 @@ func build(ctx context.Context, l *layered, width float32, th Theme, m gui.Measu
 	titleFont := b.bold
 	titleFont.Size *= 13.0 / 11
 	if sp.title != "" {
-		top += titleFont.Size*1.2 + 2*pad
+		top += titleFont.Size*gui.LineHeight + 2*pad
 	}
 	if sp.subtitle != "" {
 		top += lh + pad
@@ -330,8 +330,8 @@ func build(ctx context.Context, l *layered, width float32, th Theme, m gui.Measu
 
 	subY := pad
 	if sp.title != "" {
-		b.text(sp.title, titleFont, gui.Rect{X: 0, Y: pad, W: size.W, H: titleFont.Size * 1.2}, 0, false, th.Text)
-		subY += titleFont.Size*1.2 + pad/2
+		b.text(sp.title, titleFont, gui.Rect{X: 0, Y: pad, W: size.W, H: titleFont.Size * gui.LineHeight}, 0, false, th.Text)
+		subY += titleFont.Size*gui.LineHeight + pad/2
 	}
 	if sp.subtitle != "" { // under the title, quieter: Vega-Lite's subtitle
 		b.text(sp.subtitle, th.Font, gui.Rect{X: 0, Y: subY, W: size.W, H: lh}, 0, false, th.Axis)

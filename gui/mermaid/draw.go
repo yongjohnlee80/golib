@@ -157,7 +157,7 @@ func or(c, d color.NRGBA) color.NRGBA {
 // text draws a label's lines, each centred in its box or from its left.
 func (l *Laid) text(c gui.Canvas, lb label) {
 	y := lb.box.Y
-	lh := lb.font.Size * 1.2
+	lh := lb.font.Size * gui.LineHeight
 	for _, line := range lb.lines {
 		t := l.shape(c, line, lb.font)
 		x := lb.box.X
