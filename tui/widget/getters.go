@@ -32,7 +32,7 @@ func (b *Button) MnemonicIndex() (int, bool) {
 func (b *Button) HoverChanged(bool) {}
 
 // CursorIndex is the cursor as a cluster index into the value.
-func (t *TextInput) CursorIndex() int { return t.cur }
+func (t *TextInput) CursorIndex() int { return t.cursor() }
 
 // Selection is the selected span as cluster indexes [start, end); ok is false with nothing selected.
 func (t *TextInput) Selection() (start, end int, ok bool) { return t.selection() }

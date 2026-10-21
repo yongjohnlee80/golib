@@ -18,8 +18,9 @@ import (
 // # Subsystem Role & Responsibilities
 //
 //  1. Grapheme Cluster Integrity: Values are stored and addressed as Unicode Standard
-//     Annex #29 extended grapheme clusters ([TextInput.cs]). Multi-byte runes, emoji
-//     zwj sequences, and combining accents never suffer midpoint truncation or splitting.
+//     Annex #29 extended grapheme clusters, in a one-line textBuffer, the editor's own.
+//     Multi-byte runes, emoji zwj sequences, and combining accents never suffer midpoint
+//     truncation or splitting; a combining mark typed after a letter joins it.
 //  2. IME & Hardware Cursor Integration: Implements [tui.CursorReporter]. While focused,
 //     the runtime places the terminal's hardware cursor exactly at the input caret cell,
 //     anchoring OS IME composition popups directly beneath the active insertion point.
@@ -91,12 +92,12 @@ import (
 //	)
 type TextInput struct {
 	Base
-	cs     []string // value as grapheme clusters
-	cur    int      // cursor: cluster index in [0, len(cs)]
-	anchor int      // selection anchor cluster index; -1 = no selection
-	scroll int      // cells scrolled off the left edge
-	width  int      // last layout width (viewport cells, inside the padding)
-	pad    int      // cells inside each end: 1 where a native field frames the text, else 0
+	// buf is the value: one sanitized line, its cursor and selection anchor in clusters (line 0,
+	// col). The editor's buffer, so a TextInput composes graphemes as the Editor does.
+	buf    textBuffer
+	scroll int // cells scrolled off the left edge
+	width  int // last layout width (viewport cells, inside the padding)
+	pad    int // cells inside each end: 1 where a native field frames the text, else 0
 
 	placeholder uiText // shown (muted) while the value is empty
 	mask        rune
@@ -186,10 +187,7 @@ func WithOnEdit(fn func(string)) TextInputOption {
 
 // WithInitialValue sets the starting value (cursor at the end).
 func WithInitialValue(s string) TextInputOption {
-	return func(t *TextInput) {
-		t.cs = clusters(sanitizeLine(s))
-		t.cur = len(t.cs)
-	}
+	return func(t *TextInput) { t.buf.setValue(sanitizeLine(s)) }
 }
 
 // WithTextInputStyles overrides the style hooks; zero fields keep defaults.
@@ -230,7 +228,7 @@ func defaultTextInputStyles() TextInputStyles {
 
 func NewTextInput(opts ...TextInputOption) *TextInput {
 	t := &TextInput{
-		anchor: -1,
+		buf:    newTextBuffer(),
 		styles: defaultTextInputStyles(),
 	}
 	for _, o := range opts {
@@ -242,15 +240,19 @@ func NewTextInput(opts ...TextInputOption) *TextInput {
 }
 
 // Value returns the raw value (unmasked).
-func (t *TextInput) Value() string { return strings.Join(t.cs, "") }
+func (t *TextInput) Value() string { return t.buf.value() }
+
+// clusters is the value as grapheme clusters; cursor and length are the cursor's cluster index and
+// their count.
+func (t *TextInput) clusters() []string { return t.buf.lineClusters(0) }
+func (t *TextInput) cursor() int        { return t.buf.col }
+func (t *TextInput) length() int        { return len(t.clusters()) }
 
 // SetValue replaces the value programmatically (loop goroutine): cursor to
 // the end, selection and validation error cleared. No ChangeEvent — the
 // event reports user edits.
 func (t *TextInput) SetValue(s string) {
-	t.cs = clusters(sanitizeLine(s))
-	t.cur = len(t.cs)
-	t.anchor = -1
+	t.buf.setValue(sanitizeLine(s))
 	t.verr = nil
 	t.walk = nil
 	t.ensureVisible()
@@ -278,21 +280,17 @@ func sanitizeLine(s string) string {
 	}, strings.ReplaceAll(s, "\r\n", "\n"))
 }
 
-// renderCluster returns the painted form of cluster i (mask-aware).
-func (t *TextInput) renderCluster(i int) string {
+// renderCluster returns the painted form of cluster cl (mask-aware).
+func (t *TextInput) renderCluster(cl string) string {
 	if t.mask != 0 {
 		return string(t.mask)
 	}
-	return t.cs[i]
+	return cl
 }
 
 // cellAt is the display offset (cells) of cluster index i in painted form.
 func (t *TextInput) cellAt(i int) int {
-	w := 0
-	for j := 0; j < i && j < len(t.cs); j++ {
-		w += t.measure(t.renderCluster(j))
-	}
-	return w
+	return cellsBefore(t.clusters(), i, func(cl string) int { return t.measure(t.renderCluster(cl)) })
 }
 
 // ensureVisible adjusts the horizontal scroll so the cursor cell is inside
@@ -301,48 +299,31 @@ func (t *TextInput) ensureVisible() {
 	if t.width <= 0 {
 		return
 	}
-	cx := t.cellAt(t.cur)
+	cx := t.cellAt(t.cursor())
 	if cx < t.scroll {
 		t.scroll = cx
 	}
 	if cx >= t.scroll+t.width {
 		t.scroll = cx - t.width + 1
 	}
-	total := t.cellAt(len(t.cs)) + 1 // +1: the cursor cell past the end
+	total := t.cellAt(t.length()) + 1 // +1: the cursor cell past the end
 	t.scroll = max(0, min(t.scroll, max(total-t.width, 0)))
 }
 
 // selection returns the selected cluster range [lo, hi), ok=false when no
 // selection exists.
 func (t *TextInput) selection() (lo, hi int, ok bool) {
-	if t.anchor < 0 || t.anchor == t.cur {
-		return 0, 0, false
-	}
-	lo, hi = t.anchor, t.cur
-	if lo > hi {
-		lo, hi = hi, lo
-	}
-	return lo, hi, true
+	l, h, ok := t.buf.selection()
+	return l.col, h.col, ok
 }
 
 // deleteRange removes clusters [lo, hi) and moves the cursor to lo.
-func (t *TextInput) deleteRange(lo, hi int) {
-	t.cs = append(t.cs[:lo], t.cs[hi:]...)
-	t.cur = lo
-	t.anchor = -1
-}
+func (t *TextInput) deleteRange(lo, hi int) { t.buf.deleteRegion(taPos{col: lo}, taPos{col: hi}) }
 
 // insert places text at the cursor (replacing any selection) as one atomic
 // edit, then emits ChangeEvent.
 func (t *TextInput) insert(text string) {
-	if lo, hi, ok := t.selection(); ok {
-		t.deleteRange(lo, hi)
-	}
-	ins := clusters(sanitizeLine(text))
-	if len(ins) > 0 {
-		t.cs = append(t.cs[:t.cur], append(append([]string(nil), ins...), t.cs[t.cur:]...)...)
-		t.cur += len(ins)
-	}
+	t.buf.insertText(sanitizeLine(text))
 	t.edited()
 }
 
@@ -361,39 +342,20 @@ func (t *TextInput) edited() {
 // moveTo moves the cursor, extending the selection when extend is set and
 // clearing it otherwise.
 func (t *TextInput) moveTo(i int, extend bool) {
-	i = max(0, min(i, len(t.cs)))
-	if extend {
-		if t.anchor < 0 {
-			t.anchor = t.cur
-		}
-	} else {
-		t.anchor = -1
-	}
-	t.cur, t.walk = i, nil
+	t.buf.moveCursor(0, i, extend)
+	t.walk = nil
 	t.ensureVisible()
 	t.MarkDirty()
 }
 
 // wordLeft/wordRight are readline-style word hops (spaces, then non-spaces).
 func (t *TextInput) wordLeft() int {
-	i := t.cur
-	for i > 0 && t.cs[i-1] == " " {
-		i--
-	}
-	for i > 0 && t.cs[i-1] != " " {
-		i--
-	}
+	_, i := t.buf.wordLeft()
 	return i
 }
 
 func (t *TextInput) wordRight() int {
-	i := t.cur
-	for i < len(t.cs) && t.cs[i] == " " {
-		i++
-	}
-	for i < len(t.cs) && t.cs[i] != " " {
-		i++
-	}
+	_, i := t.buf.wordRight()
 	return i
 }
 
@@ -468,10 +430,10 @@ func (t *TextInput) handleKey(e tui.KeyEvent) bool {
 		switch lo, hi, ok := t.selection(); {
 		case ok:
 			t.deleteRange(lo, hi)
-		case word && t.wordLeft() < t.cur:
-			t.deleteRange(t.wordLeft(), t.cur)
-		case !word && t.cur > 0:
-			t.deleteRange(t.cur-1, t.cur)
+		case word && t.wordLeft() < t.cursor():
+			t.deleteRange(t.wordLeft(), t.cursor())
+		case !word && t.cursor() > 0:
+			t.deleteRange(t.cursor()-1, t.cursor())
 		default:
 			return true // consumed; nothing to delete
 		}
@@ -480,37 +442,37 @@ func (t *TextInput) handleKey(e tui.KeyEvent) bool {
 		switch lo, hi, ok := t.selection(); {
 		case ok:
 			t.deleteRange(lo, hi)
-		case t.cur < len(t.cs):
-			t.deleteRange(t.cur, t.cur+1)
+		case t.cursor() < t.length():
+			t.deleteRange(t.cursor(), t.cursor()+1)
 		default:
 			return true
 		}
 		t.edited()
 	case InputLeft.ID, InputSelectLeft.ID:
-		t.moveTo(t.cur-1, cmd.ID == InputSelectLeft.ID)
+		t.moveTo(t.cursor()-1, cmd.ID == InputSelectLeft.ID)
 	case InputWordLeft.ID, InputSelectWordLeft.ID:
 		t.moveTo(t.wordLeft(), cmd.ID == InputSelectWordLeft.ID)
 	case InputRight.ID, InputSelectRight.ID:
-		t.moveTo(t.cur+1, cmd.ID == InputSelectRight.ID)
+		t.moveTo(t.cursor()+1, cmd.ID == InputSelectRight.ID)
 	case InputWordRight.ID, InputSelectWordRight.ID:
 		t.moveTo(t.wordRight(), cmd.ID == InputSelectWordRight.ID)
 	case InputHome.ID, InputSelectHome.ID:
 		t.moveTo(0, cmd.ID == InputSelectHome.ID)
 	case InputEnd.ID, InputSelectEnd.ID:
-		t.moveTo(len(t.cs), cmd.ID == InputSelectEnd.ID)
+		t.moveTo(t.length(), cmd.ID == InputSelectEnd.ID)
 	// Readline subset (Ctrl+A/E/U/W).
 	case InputLineStart.ID:
 		t.moveTo(0, false)
 	case InputLineEnd.ID:
-		t.moveTo(len(t.cs), false)
+		t.moveTo(t.length(), false)
 	case InputKillLine.ID:
-		if t.cur > 0 {
-			t.deleteRange(0, t.cur)
+		if t.cursor() > 0 {
+			t.deleteRange(0, t.cursor())
 			t.edited()
 		}
 	case InputKillWord.ID:
-		if w := t.wordLeft(); w < t.cur {
-			t.deleteRange(w, t.cur)
+		if w := t.wordLeft(); w < t.cursor() {
+			t.deleteRange(w, t.cursor())
 			t.edited()
 		}
 	}
@@ -524,7 +486,7 @@ func (t *TextInput) Layout(c tui.Constraints) tui.Size {
 	if ctx := t.Context(); ctx != nil && ctx.Capabilities().NativeViews {
 		t.pad = 1 // the native field's rounded frame: text starts a cell in from each end
 	}
-	w := boundedMax(c.MaxW, max(c.MinW, t.cellAt(len(t.cs))+1+2*t.pad))
+	w := boundedMax(c.MaxW, max(c.MinW, t.cellAt(t.length())+1+2*t.pad))
 	if w <= 2*t.pad {
 		t.pad = 0
 	}
@@ -536,7 +498,7 @@ func (t *TextInput) Layout(c tui.Constraints) tui.Size {
 // Cursor implements tui.CursorReporter: the insertion point in local
 // coordinates (the runtime consults it only while this widget is focused).
 func (t *TextInput) Cursor() (int, int, bool) {
-	x := t.cellAt(t.cur) - t.scroll
+	x := t.cellAt(t.cursor()) - t.scroll
 	if t.width > 0 {
 		x = min(x, t.width-1)
 	}
@@ -557,7 +519,8 @@ func (t *TextInput) Render(s tui.Surface) {
 		pad = 0
 	}
 	inner := sz.W - 2*pad
-	if len(t.cs) == 0 {
+	cs := t.clusters()
+	if len(cs) == 0 {
 		if ph := t.placeholder.inLanguage(&t.Base); ph != "" {
 			drawText(s, pad, 0, truncate(ph, inner, s.StringWidth), t.styles.Placeholder)
 		}
@@ -569,8 +532,8 @@ func (t *TextInput) Render(s tui.Surface) {
 	}
 	selLo, selHi, hasSel := t.selection()
 	x := -t.scroll
-	for i := range t.cs {
-		cl := t.renderCluster(i)
+	for i, c := range cs {
+		cl := t.renderCluster(c)
 		cw := s.StringWidth(cl)
 		if x+cw > inner {
 			break

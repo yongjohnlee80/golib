@@ -52,7 +52,7 @@ type textWalk struct {
 // and the choices.
 func (t *TextInput) offered() (start int, items []string) {
 	value := t.Value()
-	at := len(strings.Join(t.cs[:t.cur], ""))
+	at := len(strings.Join(t.clusters()[:t.cursor()], ""))
 	b, items := t.completer(value, at)
 	if len(items) == 0 || b < 0 || b > at {
 		return 0, nil
@@ -85,7 +85,7 @@ func (t *TextInput) complete(back bool) bool {
 		if len(items) == 0 {
 			return false
 		}
-		typed := strings.Join(t.cs[start:t.cur], "")
+		typed := strings.Join(t.clusters()[start:t.cursor()], "")
 		if len(items) == 1 {
 			t.replaceWord(start, items[0])
 			return true
@@ -105,9 +105,8 @@ func (t *TextInput) complete(back bool) bool {
 // Tab's walk.
 func (t *TextInput) replaceWord(start int, s string) {
 	walk := t.walk
-	ins := clusters(sanitizeLine(s))
-	t.cs = append(t.cs[:start], append(append([]string(nil), ins...), t.cs[t.cur:]...)...)
-	t.cur, t.anchor = start+len(ins), -1
+	t.buf.anchor = &taPos{col: start} // the word typed, whatever was selected
+	t.buf.insertText(sanitizeLine(s))
 	t.edited()
 	t.walk = walk
 }
@@ -115,7 +114,7 @@ func (t *TextInput) replaceWord(start int, s string) {
 // hint is what the field draws after its text while it has the keys: the rest of the first choice
 // when it begins with the word typed, then the other choices; during Tab's walk, the others.
 func (t *TextInput) hint() string {
-	if t.completer == nil || !t.focused() || t.cur != len(t.cs) || t.mask != 0 {
+	if t.completer == nil || !t.focused() || t.cursor() != t.length() || t.mask != 0 {
 		return ""
 	}
 	if _, _, sel := t.selection(); sel {
@@ -137,7 +136,7 @@ func (t *TextInput) hint() string {
 	if len(items) == 0 {
 		return ""
 	}
-	typed := strings.Join(t.cs[start:t.cur], "")
+	typed := strings.Join(t.clusters()[start:t.cursor()], "")
 	head, rest := "", items
 	if strings.HasPrefix(items[0], typed) {
 		head, rest = items[0][len(typed):], items[1:]
