@@ -412,7 +412,7 @@ func (b *Button) keys(ev tui.Event) (tui.Action, bool) {
 // activateKeys turns the activation command's keys (ButtonActivate: Enter and Space by default) into
 // the runtime's activation action. Ctrl-Enter and friends are somebody else's binding unless a key
 // map makes them this one.
-func activateKeys(ctx *tui.Context, ev tui.Event) (tui.Action, bool) {
+func activateKeys(ctx tui.KeyResolver, ev tui.Event) (tui.Action, bool) {
 	k, ok := ev.(tui.KeyEvent)
 	if !ok {
 		return nil, false

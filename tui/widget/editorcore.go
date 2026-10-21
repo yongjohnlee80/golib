@@ -709,12 +709,7 @@ func (c *EditorCore) chordOf(k tui.KeyEvent) (KeyChord, bool) {
 }
 
 // liveKeymap is the key map the App holds, nil without a mounted Context.
-func (c *EditorCore) liveKeymap() *keymap.Map {
-	if c.ctx == nil || c.ctx.App() == nil {
-		return nil
-	}
-	return c.ctx.App().Keymap()
-}
+func (c *EditorCore) liveKeymap() *keymap.Map { return c.ctx.Keymap() }
 
 // syncKeymap rebuilds the table when the App holds a key map other than the one it was built from (a
 // reloaded scheme). The keyset, the mode and the document stay; pending grammar (a count, an

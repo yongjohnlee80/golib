@@ -65,7 +65,7 @@ func TestTerminalInputKeysMatchTheOldHandlerWithNoMap(t *testing.T) {
 				if e.Kind == tui.KeyRelease {
 					return ""
 				}
-				return fmt.Sprint(inputAct(nil, e, running, exited, prefix, vimKeys, alt))
+				return fmt.Sprint(inputAct(noKeymap, e, running, exited, prefix, vimKeys, alt))
 			},
 			terminalInputDeviation)
 	}

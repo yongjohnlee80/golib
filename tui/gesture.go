@@ -107,11 +107,8 @@ func WithGestureRecognizer(r GestureRecognizer) AppOption {
 	return func(c *appConfig) { c.recognizer = normalizeRecognizer(r) }
 }
 
-// SetGestureRecognizer replaces the recogniser on a running App.
-//
-// It is APP-SCOPED despite hanging off Context: there is one recogniser for the
-// whole tree, and Context is simply the sanctioned channel a component has to
-// the runtime. Loop-goroutine only, like every other Context mutation.
+// SetGestureRecognizer replaces the recogniser on a running App: there is one for the whole tree.
+// Loop-goroutine only.
 //
 // An in-flight gesture is CANCELLED first, through the ordinary loss path: the
 // target is disarmed, the capture released, and the owner told once with
@@ -120,8 +117,7 @@ func WithGestureRecognizer(r GestureRecognizer) AppOption {
 // and whose state it has no way to interpret.
 //
 // A nil recogniser — including a typed nil — switches recognition off.
-func (c *Context) SetGestureRecognizer(r GestureRecognizer) {
-	a := c.app
+func (a *App) SetGestureRecognizer(r GestureRecognizer) {
 	if a.captureOwner != 0 && a.captureKind == CaptureGesture {
 		a.loseCapture(CaptureLostCancelled)
 	}

@@ -49,7 +49,7 @@ func TestImageKeysMatchTheOldHandlerWithNoMap(t *testing.T) {
 	const rows, height = 7, 300
 	keyGridDiff(t, "Image",
 		func(e tui.KeyEvent) string { return stepName(oldScrollStep(e, rows, height)) },
-		func(e tui.KeyEvent) string { return stepName(scrollStep(nil, e, rows, height)) },
+		func(e tui.KeyEvent) string { return stepName(scrollStep(noKeymap, e, rows, height)) },
 		func(e tui.KeyEvent) string { return cmp.Or(hyperOrMeta(e), shiftSpentOnPrintable(e)) })
 }
 

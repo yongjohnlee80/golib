@@ -8,6 +8,10 @@ import (
 	"github.com/yongjohnlee80/golib/tui"
 )
 
+// noKeymap is an unmounted widget's Context: a nil *tui.Context, which matches each command's
+// declared keys. A bare nil would be a nil KeyResolver, which has no KeyCommand to call.
+var noKeymap tui.KeyResolver = (*tui.Context)(nil)
+
 // THE NO-MAP DIFFERENTIAL. Each converted widget keeps its old key handler in
 // its test file as the oracle, verbatim but for its effects, which become the name of what it did.
 // keyGridDiff drives the oracle and the converted decision over one grid of events and reports every

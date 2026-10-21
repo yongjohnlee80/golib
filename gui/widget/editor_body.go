@@ -67,7 +67,7 @@ func (b *editorBody) Layout(c tui.Constraints) tui.Size {
 // native reports whether a gui backend draws this body.
 func (b *editorBody) native() bool {
 	ctx := b.Context()
-	return ctx != nil && ctx.App().Capabilities().NativeViews
+	return ctx != nil && ctx.Capabilities().NativeViews
 }
 
 // Render draws the lines in cells: what a backend without native views shows, and what a native
@@ -203,7 +203,7 @@ func (b *editorBody) pixel(m tui.MouseEvent) (float32, float32) {
 	cell := b.e.layout.cell
 	if cell.W == 0 {
 		if ctx := b.Context(); ctx != nil {
-			cp := ctx.App().CellPixels()
+			cp := ctx.CellPixels()
 			cell = gui.Size{W: cp.W, H: cp.H}
 		}
 	}
@@ -348,7 +348,7 @@ func (v bodyView) Paint(c gui.Canvas) {
 		defer frame.Close()
 		if frame.Behind {
 			if ctx := b.Context(); ctx != nil {
-				ctx.App().Update(b.MarkDirty)
+				ctx.Update(b.MarkDirty)
 			}
 		}
 	}
