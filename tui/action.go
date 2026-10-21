@@ -437,20 +437,21 @@ func (a *App) inActionPhase(n *node, inv ActionInvocation, fn func() bool) (hand
 func (a *App) resolveFor(n *node, ev Event) (Action, bool) {
 	for _, r := range n.resolvers.chain() {
 		if act, ok := r.Resolve(ev); ok {
-			// A typed nil counts. It satisfies Action with a live type
-			// descriptor, so an == nil check passes it through and the nil
-			// then reaches a method call on a nil receiver inside dispatch,
-			// where nothing names the resolver that produced it.
-			if isNilLike(act) {
-				panic(errs.Fatal{
-					Op:   "tui: ActionResolver.Resolve",
-					Rule: "returned (nil, true); a resolver that matches must return an action",
-				})
-			}
-			return act, true
+			return mustAction("tui: ActionResolver.Resolve", "returned (nil, true); a resolver that matches must return an action", act), true
 		}
 	}
 	return nil, false
+}
+
+// mustAction is a matched resolver's action, refused with op and rule when it is nil. A typed nil
+// counts: it satisfies Action with a live type descriptor, so an == nil check passes it through,
+// and the nil then reaches a method call on a nil receiver inside dispatch, where nothing names the
+// resolver that produced it.
+func mustAction(op, rule string, act Action) Action {
+	if isNilLike(act) {
+		panic(errs.Fatal{Op: op, Rule: rule})
+	}
+	return act
 }
 
 // originFor maps a source event to the provenance the runtime will record.

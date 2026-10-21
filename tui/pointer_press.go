@@ -3,7 +3,6 @@ package tui
 import (
 	"time"
 
-	"github.com/yongjohnlee80/golib/errs"
 	"github.com/yongjohnlee80/golib/tui/keymap"
 )
 
@@ -36,9 +35,7 @@ func (a *App) interceptPointerPress(target, limit *node, e MouseEvent) bool {
 				local := e.localTo(n.absRect)
 				local.Count = a.previewPressOrdinal(e, n, now)
 				if action, matched := r.ResolvePointerPress(local); matched {
-					if isNilLike(action) {
-						panic(errs.Fatal{Op: "tui: PointerPressResolver", Rule: "matched press returned a nil action"})
-					}
+					action = mustAction("tui: PointerPressResolver", "matched press returned a nil action", action)
 					local.Count = a.pressOrdinalAt(e, n, now)
 					if !a.dispatchAction(n, ActionInvocation{Action: action, Origin: OriginPointer, Source: local}) {
 						a.trace(TraceEvent{Kind: TraceAction, Node: n.id, Detail: "reserved pointer press refused"})
@@ -73,9 +70,7 @@ func (a *App) interceptCaptureEscape(e KeyEvent) bool {
 	if !matched {
 		return false
 	}
-	if isNilLike(action) {
-		panic(errs.Fatal{Op: "tui: CaptureEscapeResolver", Rule: "matched Escape returned a nil action"})
-	}
+	action = mustAction("tui: CaptureEscapeResolver", "matched Escape returned a nil action", action)
 	if a.dispatchAction(n, ActionInvocation{Action: action, Origin: OriginKey, Source: e}) {
 		a.traceRouted(e, n, n.id)
 	} else {
