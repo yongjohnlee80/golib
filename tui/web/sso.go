@@ -184,19 +184,6 @@ type SSOConfig[T any] struct {
 	Logger logger.Logger
 }
 
-// SessionEnded is the [HandoffReason] for state released because the session it
-// belonged to ended — the ordinary teardown, not a failure.
-const SessionEnded HandoffReason = 3
-
-// LoginFailed is the [HandoffReason] for state a login allocated and then could
-// not park: a later factor refused, the ticket failed to mint, the park was full.
-//
-// Distinct from [Expired] because the two mean different things to whoever reads
-// the log. Expired says a user walked away after authenticating successfully;
-// LoginFailed says the login never completed at all, and the state exists only
-// because verification is the one place that holds the credential.
-const LoginFailed HandoffReason = 4
-
 // ErrAdmissionLapsed means a login lost its place in the pending-login budget
 // before it could park.
 //
@@ -220,9 +207,6 @@ var ErrNoUpstream = errors.New("web: no parked login and no Provision, so this "
 // ticket, and every second beyond that is a window in which allocated upstream
 // state sits unused.
 const DefaultHandoffTTL = 30 * time.Second
-
-// Expired is the [HandoffReason] for a login that was never attached.
-const Expired HandoffReason = 2
 
 // NewSSO builds the handoff workflow.
 //
