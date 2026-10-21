@@ -169,6 +169,24 @@ type Document struct {
 	Refs map[string]LinkRef
 
 	lines []int // offsets at which lines begin, after LF, CR or CRLF
+
+	nodes nodeSlab // where the parse's nodes are made; dropped when the parse is done
+}
+
+// nodeSlab hands out one parse's Nodes from chunks it allocates, so a document of n nodes costs a
+// few dozen allocations instead of n, and its tree lies together in memory. A chunk starts at 8
+// nodes (a one-line parse, as the highlighter makes, stays small) and doubles up to 1024. A node is
+// never moved: a chunk is only appended to within its capacity, and a full one is left as it is
+// for a new one. Each Parse has its own (on its Document), so nothing is shared between parses.
+type nodeSlab struct{ chunk []Node }
+
+// new places n in the slab and returns where it lies.
+func (s *nodeSlab) new(n Node) *Node {
+	if len(s.chunk) == cap(s.chunk) {
+		s.chunk = make([]Node, 0, min(max(2*cap(s.chunk), 8), 1024))
+	}
+	s.chunk = append(s.chunk, n)
+	return &s.chunk[len(s.chunk)-1]
 }
 
 // Position resolves a byte offset to a line and a rune-counted column. Lines end at LF, CR or CRLF,
@@ -205,6 +223,7 @@ func Parse(src []byte, opts ...Option) *Document {
 	p.run()
 	parseInlines(d, &cfg)
 	clearState(d.Root) // block state was kept for the inline phase
+	d.nodes = nodeSlab{}
 	return d
 }
 

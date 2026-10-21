@@ -128,7 +128,7 @@ func (p *inlineParser) textRun(from, to int) *Node {
 
 // textNode appends a text node for content[from:to] whose text is lit.
 func (p *inlineParser) textNode(from, to int, lit []byte) *Node {
-	n := &Node{Kind: KindText, Span: Span{p.srcAt(from), p.srcAt(to)}}
+	n := p.doc.nodes.new(Node{Kind: KindText, Span: Span{p.srcAt(from), p.srcAt(to)}})
 	lit = replaceNUL(lit)
 	if !bytes.Equal(lit, p.src[n.Span.Start:n.Span.End]) {
 		n.Literal = append([]byte(nil), lit...)
@@ -170,7 +170,7 @@ func (p *inlineParser) lineEnd() {
 		kind = KindHardBreak
 	}
 	start := p.srcAt(p.pos)
-	p.parent.AppendChild(&Node{Kind: kind, Span: Span{start, start}})
+	p.parent.AppendChild(p.doc.nodes.new(Node{Kind: kind, Span: Span{start, start}}))
 	p.pos++
 	for p.pos < len(p.text) && isSpaceOrTab(p.text[p.pos]) {
 		p.pos++
@@ -187,7 +187,7 @@ func (p *inlineParser) backslash() {
 		switch next := p.text[i+1]; {
 		case next == '\n':
 			start := p.srcAt(i)
-			p.parent.AppendChild(&Node{Kind: KindHardBreak, Span: Span{start, p.srcAt(i + 1)}})
+			p.parent.AppendChild(p.doc.nodes.new(Node{Kind: KindHardBreak, Span: Span{start, p.srcAt(i + 1)}}))
 			p.pos = i + 2
 			for p.pos < len(p.text) && isSpaceOrTab(p.text[p.pos]) {
 				p.pos++
@@ -242,8 +242,8 @@ func (p *inlineParser) codeSpan() {
 		len(bytes.Trim(content, " ")) > 0 {
 		content = content[1 : len(content)-1]
 	}
-	node := &Node{Kind: KindCodeSpan, Span: Span{p.srcAt(start), p.srcAt(close + n)},
-		Literal: replaceNUL(append([]byte{}, content...))}
+	node := p.doc.nodes.new(Node{Kind: KindCodeSpan, Span: Span{p.srcAt(start), p.srcAt(close + n)},
+		Literal: replaceNUL(append([]byte{}, content...))})
 	p.parent.AppendChild(node)
 	p.pos = close + n
 }
@@ -360,8 +360,8 @@ func (p *inlineParser) closeBracket() {
 	if opener.image {
 		kind = KindImage
 	}
-	link := &Node{Kind: kind, Dest: dest, Title: title,
-		Span: Span{opener.node.Span.Start, p.srcAt(end)}}
+	link := p.doc.nodes.new(Node{Kind: kind, Dest: dest, Title: title,
+		Span: Span{opener.node.Span.Start, p.srcAt(end)}})
 	for c := opener.node.Next; c != nil; {
 		next := c.Next
 		c.Unlink()
@@ -425,8 +425,8 @@ func (p *inlineParser) angle() {
 	rest := p.text[p.pos:]
 	if n, dest := autolink(rest); n > 0 {
 		// entity references decode in an autolink, as in any URL; backslash escapes do not
-		node := &Node{Kind: KindAutolink, Dest: decodeEntities(dest), Span: Span{p.srcAt(p.pos), p.srcAt(p.pos + n)}}
-		text := &Node{Kind: KindText, Span: Span{p.srcAt(p.pos + 1), p.srcAt(p.pos + n - 1)}}
+		node := p.doc.nodes.new(Node{Kind: KindAutolink, Dest: decodeEntities(dest), Span: Span{p.srcAt(p.pos), p.srcAt(p.pos + n)}})
+		text := p.doc.nodes.new(Node{Kind: KindText, Span: Span{p.srcAt(p.pos + 1), p.srcAt(p.pos + n - 1)}})
 		if lit := decodeEntities(rest[1 : n-1]); !bytes.Equal(lit, rest[1:n-1]) {
 			text.Literal = lit
 		}
@@ -436,8 +436,8 @@ func (p *inlineParser) angle() {
 		return
 	}
 	if n := rawHTML(rest); n > 0 {
-		node := &Node{Kind: KindRawHTML, Span: Span{p.srcAt(p.pos), p.srcAt(p.pos + n)},
-			Literal: append([]byte(nil), rest[:n]...)}
+		node := p.doc.nodes.new(Node{Kind: KindRawHTML, Span: Span{p.srcAt(p.pos), p.srcAt(p.pos + n)},
+			Literal: append([]byte(nil), rest[:n]...)})
 		p.parent.AppendChild(node)
 		p.pos += n
 		return
@@ -569,7 +569,7 @@ func (p *inlineParser) processEmphasis(bottom *delim) {
 			kind = KindStrong
 		}
 		on, cn := opener.node, closer.node
-		emph := &Node{Kind: kind, Span: Span{on.Span.End - use, cn.Span.Start + use}}
+		emph := p.doc.nodes.new(Node{Kind: kind, Span: Span{on.Span.End - use, cn.Span.Start + use}})
 		shrinkEnd(on, use)
 		shrinkStart(cn, use)
 		opener.num -= use
