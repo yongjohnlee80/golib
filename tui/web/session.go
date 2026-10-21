@@ -86,7 +86,7 @@ type Manager struct {
 	maxSess  int
 	idle     time.Duration
 	now      func() time.Time
-	newID    func() (string, error)
+	newID    func() string
 	backends []Option
 
 	bindPeer bool
@@ -399,10 +399,7 @@ func (m *Manager) register(id *auth.Identity, peer string) (*Session, context.Co
 		logger.Notice(m.log, sessionAudit{Kind: "refused", Subject: id.Subject, Reason: "session limit"})
 		return nil, nil, ErrSessionLimit
 	}
-	sid, err := m.newID()
-	if err != nil {
-		return nil, nil, err
-	}
+	sid := m.newID()
 	// The App's context comes from the MANAGER's lifetime, not from the
 	// WebSocket that happened to create the session.
 	//

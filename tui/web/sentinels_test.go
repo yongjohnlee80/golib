@@ -34,11 +34,7 @@ func TestHandoffReasonsAreOneEnum(t *testing.T) {
 
 // randomToken is n random bytes, URL-safe and unpadded, and two are not alike.
 func TestRandomTokenIsURLSafeAndRandom(t *testing.T) {
-	a, err := randomToken(16)
-	if err != nil {
-		t.Fatal(err)
-	}
-	b, _ := randomToken(16)
+	a, b := randomToken(16), randomToken(16)
 	if len(a) != 22 || a == b {
 		t.Errorf("tokens %q and %q: want 22 characters (16 bytes, unpadded) and distinct", a, b)
 	}

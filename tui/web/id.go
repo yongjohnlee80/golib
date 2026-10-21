@@ -14,14 +14,13 @@ import (
 const sessionIDBytes = 32
 
 // randomID returns a URL-safe high-entropy identifier.
-func randomID() (string, error) { return randomToken(sessionIDBytes) }
+func randomID() string { return randomToken(sessionIDBytes) }
 
 // randomToken is n random bytes, URL-safe: RawURLEncoding is fixed length, has no padding, and is
 // safe in a URL path and in a log line without escaping. A session ID and a CSP nonce are both one.
-func randomToken(n int) (string, error) {
+// It cannot fail: crypto/rand.Read never returns an error (it crashes the program instead).
+func randomToken(n int) string {
 	b := make([]byte, n)
-	if _, err := rand.Read(b); err != nil {
-		return "", err
-	}
-	return base64.RawURLEncoding.EncodeToString(b), nil
+	_, _ = rand.Read(b)
+	return base64.RawURLEncoding.EncodeToString(b)
 }

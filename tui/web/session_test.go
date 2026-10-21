@@ -374,10 +374,7 @@ func TestSessionIDs(t *testing.T) {
 	seen := make(map[string]bool, 1000)
 	var length int
 	for range 1000 {
-		id, err := randomID()
-		if err != nil {
-			t.Fatal(err)
-		}
+		id := randomID()
 		if seen[id] {
 			t.Fatalf("duplicate id %q", id)
 		}
