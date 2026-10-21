@@ -11,9 +11,9 @@
 //	TextInput       Form Input       yes             [SubmitEvent], [ChangeEvent]
 //	TextArea        Multi-line Text  yes             [ChangeEvent]
 //	Select[T]       Form Input       yes             [SelectionChangedEvent], [OpenedEvent], [ClosedEvent]
-//	List[T]         Collection       yes             [SelectionChangedEvent], [ActivateEvent]
+//	List[T]         Collection       yes             [SelectionChangedEvent], [ActivateEvent], [ContextMenuEvent] (opt-in)
 //	Table[T]        Collection       yes (via List)  [SelectionChangedEvent], [ActivateEvent]
-//	Tree            Navigation       yes             [ExpandRequestEvent], [CollapseEvent], [ActivateEvent], [SelectionChangedEvent]
+//	Tree            Navigation       yes             [ExpandRequestEvent], [CollapseEvent], [ActivateEvent], [SelectionChangedEvent], [ContextMenuEvent] (opt-in)
 //	Editor          Modal Text       yes             [ModeChangedEvent], [YankEvent]
 //	BufferView      Stream / Pager   yes (scroll)    [FollowTailChangedEvent]
 //	Tabs            Navigation       yes (bar)       [TabChangedEvent]
@@ -296,6 +296,20 @@
 // independent hosts, or a host nested inside another, each serve the menus that
 // live in it. [Menu.Open] returns an error matching [ErrAnchorUnusable] when
 // there is no host above it, rather than silently opening nothing.
+//
+// A level with more rows than the screen gives it scrolls: the keys keep the
+// selected row in view (so a submenu on it can open), the wheel scrolls without
+// moving the selection, and a scroll indicator shows on the level's frame.
+//
+// # Context menus on row views
+//
+// A row view asks its owner for a context menu rather than opening one when it
+// is a [ContextMenuRequester] ([List], [Tree]) with SetContextMenu(true): a right
+// press or Shift+F10 is reported as [ContextMenuEvent] and to the owner's hook,
+// and the owner opens its own menu at the point given. Off, the default, both go
+// on as before. A [DataTable] opens a menu itself instead: any [MenuOpener]
+// ([DataTable.SetMenuOpener]; [EditorMenu] is one). DataTable also reports its
+// scroll position as a [tui.Scroller], for a native scrollbar.
 //
 // The executor below is the dispatch seam: a plain function the consumer owns,
 // taking the runtime's own invocation and reporting whether it handled it.

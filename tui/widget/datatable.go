@@ -41,7 +41,7 @@ type DataTable struct {
 	Base
 	core      *TableCore
 	layout    TableLayout // the table itself (the cell layout) until a backend binds another
-	menu      *EditorMenu // opened by a right press; nil: the press goes on
+	menu      MenuOpener  // opened by a right press; nil: the press goes on
 	menuPos   TablePos    // where the right press that opened the menu was
 	menuHit   TableHit
 	styles    DataTableStyles
@@ -195,14 +195,34 @@ func (t *DataTable) CursorStyle() style.Style {
 // right press then goes on to the ancestors. Its rows are the caller's (EditorMenu.SetRows), and it
 // opens only while enabled. NewEditorMenu(table, nil) is a menu with no editor core.
 func (t *DataTable) SetMenu(m *EditorMenu) {
-	if t.menu != nil && t.menu != m {
-		t.menu.Close()
+	if m == nil {
+		t.SetMenuOpener(nil) // a nil *EditorMenu is no menu, not a typed-nil opener
+		return
 	}
-	t.menu = m
+	t.SetMenuOpener(m)
 }
 
-// Menu is the table's right-click menu, nil when it has none.
-func (t *DataTable) Menu() *EditorMenu { return t.menu }
+// SetMenuOpener is SetMenu for any menu (MenuOpener): opened by a right press at the pointer while
+// it is on (an Enabled() bool of its own, when it has one), after what was pressed is selected; closed when the table is given another. nil takes it
+// away, and a right press then goes on to the ancestors.
+func (t *DataTable) SetMenuOpener(o MenuOpener) {
+	if nilLike(o) {
+		o = nil
+	}
+	if t.menu != nil && t.menu != o {
+		t.menu.Close()
+	}
+	t.menu = o
+}
+
+// Menu is the table's right-click menu when it is an *EditorMenu (SetMenu), nil otherwise.
+func (t *DataTable) Menu() *EditorMenu {
+	m, _ := t.menu.(*EditorMenu)
+	return m
+}
+
+// MenuOpener is the table's right-click menu, whatever its kind; nil when it has none.
+func (t *DataTable) MenuOpener() MenuOpener { return t.menu }
 
 // MenuAt is where the right press that last opened the menu was, and on what: what a row acting on
 // "the field under the pointer" reads. Its rows are built as it opens, so they read the press
@@ -629,7 +649,7 @@ func (t *DataTable) HandleEvent(ev tui.Event) bool {
 				t.core.activateOrEdit()
 			}
 			return true
-		case e.Kind == tui.MousePress && e.Button == tui.MouseRight && t.menu != nil && t.menu.Enabled():
+		case e.Kind == tui.MousePress && e.Button == tui.MouseRight && t.menu != nil && menuOn(t.menu):
 			// Inside the selection it is left as it is, for the menu's rows to act on; outside, what
 			// was pressed is selected first (selectForMenu).
 			t.menuPos, t.menuHit = t.hitAt(e)
