@@ -73,25 +73,15 @@ type TerminalTabs struct {
 	strip   tabStrip // the row of tabs over the terminals (tab_strip.go)
 	look    style.Style
 	empty   string // the body with no tab; "" is the default message
-	// the look every tab takes (SetMinimumContrast, SetCursorColor): set, it overrides a tab's own
-	minContrast   float64
-	contrastSet   bool
-	cursorColor   style.Color
-	cursorColored bool
-	vimKeys       bool
-	vimKeysSet    bool
-	modeKey       func(tui.KeyEvent) bool
-	modeKeySet    bool
-	cellFace      string
-	faceSet       bool
-	makeView      func(*Terminal) TerminalView // SetTerminalViews: each tab's own view; nil for none
-	hostKeys      func(tui.KeyEvent) bool
-	hostKeysSet   bool
-	onChanged     func()
-	mu            sync.Mutex // lifetime registry and shutdown only; never loop-owned entries
-	owned         []*Terminal
-	shutdown      *TerminalShutdownResult
-	watching      bool
+	// defaults are what every tab takes, those added later too (SetMinimumContrast and the rest):
+	// each one set overrides a tab's own; nil is not set
+	defaults  [terminalDefaultCount]func(*Terminal)
+	makeView  func(*Terminal) TerminalView // SetTerminalViews: each tab's own view; nil for none
+	onChanged func()
+	mu        sync.Mutex // lifetime registry and shutdown only; never loop-owned entries
+	owned     []*Terminal
+	shutdown  *TerminalShutdownResult
+	watching  bool
 }
 
 // NewTerminalTabs creates a valid empty terminal container.
@@ -287,44 +277,58 @@ func (t *TerminalTabs) SetEmptyText(s string) {
 	}
 }
 
+// terminalDefault is a setting TerminalTabs gives every tab: its index in defaults, and the order
+// they are applied in.
+type terminalDefault int
+
+const (
+	defaultContrast terminalDefault = iota
+	defaultCursorColor
+	defaultVimKeys
+	defaultModeKey
+	defaultCellFace
+	defaultHostKeys
+	terminalDefaultCount
+)
+
+// setDefault records how every tab takes setting d, and gives it to the tabs there are.
+func (t *TerminalTabs) setDefault(d terminalDefault, apply func(*Terminal)) {
+	t.defaults[d] = apply
+	t.lookTabs()
+}
+
 // SetMinimumContrast gives every tab, those added later too, Terminal.SetMinimumContrast's ratio.
 func (t *TerminalTabs) SetMinimumContrast(ratio float64) {
-	t.minContrast, t.contrastSet = ratio, true
-	t.lookTabs()
+	t.setDefault(defaultContrast, func(tm *Terminal) { tm.SetMinimumContrast(ratio) })
 }
 
 // SetCursorColor gives every tab, those added later too, Terminal.SetCursorColor's colour.
 func (t *TerminalTabs) SetCursorColor(c style.Color) {
-	t.cursorColor, t.cursorColored = c, true
-	t.lookTabs()
+	t.setDefault(defaultCursorColor, func(tm *Terminal) { tm.SetCursorColor(c) })
 }
 
 // SetVimKeys gives every tab, those added later too, Terminal.SetVimKeys: an editor's keymap
 // changing reaches the shells already running.
 func (t *TerminalTabs) SetVimKeys(on bool) {
-	t.vimKeys, t.vimKeysSet = on, true
-	t.lookTabs()
+	t.setDefault(defaultVimKeys, func(tm *Terminal) { tm.SetVimKeys(on) })
 }
 
 // SetModeKey gives every tab, those added later too, Terminal.SetModeKey: the key that toggles
 // their input and normal mode.
 func (t *TerminalTabs) SetModeKey(match func(tui.KeyEvent) bool) {
-	t.modeKey, t.modeKeySet = match, true
-	t.lookTabs()
+	t.setDefault(defaultModeKey, func(tm *Terminal) { tm.SetModeKey(match) })
 }
 
 // SetHostKeys gives every tab, those added later too, Terminal.SetHostKeys: the keys their programs
 // never see, left to the host.
 func (t *TerminalTabs) SetHostKeys(match func(tui.KeyEvent) bool) {
-	t.hostKeys, t.hostKeysSet = match, true
-	t.lookTabs()
+	t.setDefault(defaultHostKeys, func(tm *Terminal) { tm.SetHostKeys(match) })
 }
 
 // SetCellFace gives every tab, those added later too, Terminal.SetCellFace: their cells in family,
 // the strip's and its menus' in the window's.
 func (t *TerminalTabs) SetCellFace(family string) {
-	t.cellFace, t.faceSet = family, true
-	t.lookTabs()
+	t.setDefault(defaultCellFace, func(tm *Terminal) { tm.SetCellFace(family) })
 }
 
 // SetTerminalViews gives each tab, those added later too, a view of its own, made for it by newView
@@ -346,25 +350,12 @@ func (t *TerminalTabs) lookTabs() {
 	}
 }
 
-// lookTab gives terminal the container's look, where one is set.
+// lookTab gives terminal the container's defaults, where one is set, in their order.
 func (t *TerminalTabs) lookTab(terminal *Terminal) {
-	if t.contrastSet {
-		terminal.SetMinimumContrast(t.minContrast)
-	}
-	if t.cursorColored {
-		terminal.SetCursorColor(t.cursorColor)
-	}
-	if t.vimKeysSet {
-		terminal.SetVimKeys(t.vimKeys)
-	}
-	if t.modeKeySet {
-		terminal.SetModeKey(t.modeKey)
-	}
-	if t.faceSet {
-		terminal.SetCellFace(t.cellFace)
-	}
-	if t.hostKeysSet {
-		terminal.SetHostKeys(t.hostKeys)
+	for _, apply := range t.defaults {
+		if apply != nil {
+			apply(terminal)
+		}
 	}
 	if t.makeView != nil && terminal.TerminalView() == nil { // a tab's view is made once, here or by SetTerminalViews
 		terminal.SetTerminalView(t.makeView(terminal))
