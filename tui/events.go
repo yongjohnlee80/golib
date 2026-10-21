@@ -15,7 +15,8 @@ type ResizeEvent struct{ W, H int }
 
 func (ResizeEvent) isEvent() {}
 
-// PasteEvent is one bracketed paste, with CR and CRLF normalized to \n.
+// PasteEvent is one bracketed paste, with CR and CRLF normalized to \n: a backend builds it with
+// NewPasteEvent.
 type PasteEvent struct{ Text string }
 
 func (PasteEvent) isEvent() {}

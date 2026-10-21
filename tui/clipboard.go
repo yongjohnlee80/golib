@@ -104,7 +104,7 @@ func (a *App) ReadClipboard(timeout time.Duration, done func(read ClipboardRead,
 	// registered before the backend is asked, so an answer the backend gives at once finds it
 	a.clipReads[read.ID] = r
 	cancel, err := cr.ReadClipboard(func(text string, err error) {
-		a.Update(func() { a.answerClipboard(read, normalizeNewlines(text), err) })
+		a.Update(func() { a.answerClipboard(read, NormalizeNewlines(text), err) })
 	})
 	if err != nil {
 		delete(a.clipReads, read.ID)
@@ -149,10 +149,17 @@ func (a *App) closeClipboardReads() {
 	}
 }
 
-// normalizeNewlines makes \r\n and \r line breaks \n, as a paste's are.
-func normalizeNewlines(s string) string {
+// NormalizeNewlines makes text's line breaks \n: a \r\n pair first, so it is one break, then a lone
+// \r. Pasted and clipboard text comes from sources that break lines differently (a terminal's
+// bracketed paste, a browser, a window's drop or clipboard); each source normalizes it here, so a
+// widget is always given \n.
+func NormalizeNewlines(s string) string {
 	return strings.ReplaceAll(strings.ReplaceAll(s, "\r\n", "\n"), "\r", "\n")
 }
+
+// NewPasteEvent is the PasteEvent for text, its line breaks normalized (NormalizeNewlines): a
+// backend builds its paste with it.
+func NewPasteEvent(text string) PasteEvent { return PasteEvent{Text: NormalizeNewlines(text)} }
 
 // ReadClipboard reads the system clipboard (see App.ReadClipboard). Loop goroutine only.
 func (c *Context) ReadClipboard(timeout time.Duration, done func(read ClipboardRead, text string, err error)) (ClipboardRead, error) {
