@@ -243,9 +243,11 @@ func (c *EditorCore) handleInsertKey(k tui.KeyEvent) bool {
 	if c.replace != nil && c.replaceKey(k) {
 		return true
 	}
-	if c.tableKey(k) || c.listKey(k) {
-		c.dotInsertKey(k)
-		return true
+	for _, assist := range insertAssists {
+		if assist(c, k) {
+			c.dotInsertKey(k)
+			return true
+		}
 	}
 	c.recordInsertKey(k)
 	if done, handled := c.insertEditKey(k); done {
@@ -263,6 +265,11 @@ func (c *EditorCore) handleInsertKey(k tui.KeyEvent) bool {
 	}
 	return false
 }
+
+// insertAssists are the Insert-mode assists, offered a key in this order before Insert's own
+// handling. Each checks its own switch (CoreTableEditing, CoreListEditing) and reports whether it
+// took the key; a key one takes is kept for . and a macro.
+var insertAssists = [...]func(*EditorCore, tui.KeyEvent) bool{(*EditorCore).tableKey, (*EditorCore).listKey}
 
 // insertEdits reports whether k, in Insert, would change the text: text, Enter, Tab, Backspace or
 // Delete.

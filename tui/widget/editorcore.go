@@ -156,11 +156,14 @@ func newEditorCore() *EditorCore {
 	return c
 }
 
-// settleOptions is the end of construction: a modeless profile starts in Insert.
-func (c *EditorCore) settleOptions() {
+// finishConstruction is the end of every constructor, once the options have run: a modeless
+// profile starts in Insert, and the scope it starts in is the one CoreOnKeyScopeChange reports
+// moves from.
+func (c *EditorCore) finishConstruction() {
 	if !c.keys.modal && c.keys.mode == ModeNormal {
 		c.setMode(ModeInsert)
 	}
+	c.lastScope = c.KeyScope() // after every option: CoreKeyset may follow CoreOnKeyScopeChange
 }
 
 // NewEditorCore builds a core with the default Vim keymap, modal editing and the "jk" escape
@@ -172,8 +175,7 @@ func NewEditorCore(opts ...CoreOption) *EditorCore {
 			o(c)
 		}
 	}
-	c.settleOptions()
-	c.lastScope = c.KeyScope() // after every option: CoreKeyset may follow CoreOnKeyScopeChange
+	c.finishConstruction()
 	return c
 }
 
