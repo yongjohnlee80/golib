@@ -402,3 +402,27 @@ func TestListDoubleClickWithUnchangedSourceStillActivates(t *testing.T) {
 			"must still pair two presses", ev, ok)
 	}
 }
+
+// TestAListOwnersCallbackMayReplaceTheRows: the owner's cursor callback runs inside the list's own
+// key handling, and may replace the rows it was told about (a model reset). The list then reads
+// nothing of the old rows: no panic, and the bus hears the row as it was when the cursor moved.
+func TestAListOwnersCallbackMayReplaceTheRows(t *testing.T) {
+	var l *widget.List[string]
+	moved := 0
+	h, l, sh := focusedList(t, widget.SliceSource([]string{"alpha", "beta", "gamma"}), 20, 3,
+		widget.WithListOnCursor[string](func(int) {
+			moved++
+			l.SetItems(nil) // the owner's model went away
+		}))
+	sels := record[widget.SelectionChangedEvent](h)
+	h.inject(key(tui.KeyDown))
+	h.barrier(sh)
+	var calls int
+	h.onLoop(func() { calls = moved })
+	if calls != 1 {
+		t.Fatalf("the cursor callback ran %d times, want 1", calls)
+	}
+	if ev, ok := sels.last(); !ok || ev.Index != 1 || ev.Label != "beta" {
+		t.Errorf("SelectionChangedEvent = %+v, want index 1 beta, as the cursor moved", ev)
+	}
+}
