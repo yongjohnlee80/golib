@@ -91,8 +91,7 @@ type WindowCore struct {
 	owner                                   tui.NodeID
 	minimized, closed, busy                 bool
 	drag                                    *windowDrag
-	observers                               map[uint64]func()
-	nextObserver                            uint64
+	observers                               observers
 }
 
 // NewWindowCore creates presentation-independent behavior for a WindowMod or GUI
@@ -258,28 +257,9 @@ func (c *WindowCore) PlacementCheckpoint() func() {
 }
 
 // Observe watches settled state changes. The consumer cancels on its own unmount.
-func (c *WindowCore) Observe(fn func()) func() {
-	if fn == nil {
-		return func() {}
-	}
-	if c.observers == nil {
-		c.observers = make(map[uint64]func())
-	}
-	c.nextObserver++
-	id := c.nextObserver
-	c.observers[id] = fn
-	return func() { delete(c.observers, id) }
-}
+func (c *WindowCore) Observe(fn func()) func() { return c.observers.add(fn) }
 
-func (c *WindowCore) notifyObservers() {
-	callbacks := make([]func(), 0, len(c.observers))
-	for _, fn := range c.observers {
-		callbacks = append(callbacks, fn)
-	}
-	for _, fn := range callbacks {
-		fn()
-	}
-}
+func (c *WindowCore) notifyObservers() { c.observers.notify() }
 
 func (c *WindowCore) publishWindowChanged(op WindowOperation, ctx *tui.Context, owner tui.NodeID) {
 	s := c.State()

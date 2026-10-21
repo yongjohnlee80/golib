@@ -38,8 +38,7 @@ type WindowCollector interface {
 // is usable. All model access and observations belong to the application loop.
 type MinimizedWindows struct {
 	entries   []MinimizedWindow
-	observers map[uint64]func()
-	next      uint64
+	observers observers
 }
 
 // NewMinimizedWindows creates a collector; it creates no taskbar or global state.
@@ -73,25 +72,6 @@ func (m *MinimizedWindows) Remove(owner tui.NodeID) {
 }
 
 // Observe subscribes a loop-owned callback and returns an idempotent unsubscribe.
-func (m *MinimizedWindows) Observe(fn func()) func() {
-	if fn == nil {
-		return func() {}
-	}
-	if m.observers == nil {
-		m.observers = make(map[uint64]func())
-	}
-	m.next++
-	id := m.next
-	m.observers[id] = fn
-	return func() { delete(m.observers, id) }
-}
+func (m *MinimizedWindows) Observe(fn func()) func() { return m.observers.add(fn) }
 
-func (m *MinimizedWindows) notifyWindowEntries() {
-	callbacks := make([]func(), 0, len(m.observers))
-	for _, fn := range m.observers {
-		callbacks = append(callbacks, fn)
-	}
-	for _, fn := range callbacks {
-		fn()
-	}
-}
+func (m *MinimizedWindows) notifyWindowEntries() { m.observers.notify() }
