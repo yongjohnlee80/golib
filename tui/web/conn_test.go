@@ -315,6 +315,29 @@ func TestSessionLoop_AnUnmeasuredHelloIsRefusedBeforeAuth(t *testing.T) {
 	}
 }
 
+// A connection's pre-auth slot goes back once however many times its release runs: serve releases
+// it when authentication succeeds and again on the way out. A second release that counted would
+// free a slot another connection took in between, and let one more past MaxPending.
+func TestSessionLoop_APreAuthSlotIsReleasedOnce(t *testing.T) {
+	t.Parallel()
+	l, _ := loopFor(t, testPolicy(t), nil)
+	l.pending = newGate(1)
+	relA, err := l.admitPending(&fakeConn{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	relA() // A authenticated
+	relB, err := l.admitPending(&fakeConn{})
+	if err != nil {
+		t.Fatalf("B, with A's slot back: %v", err)
+	}
+	defer relB()
+	relA() // A's connection ends: serve's deferred release
+	if _, err := l.admitPending(&fakeConn{}); !errors.Is(err, ErrPendingLimit) {
+		t.Fatalf("a third connection while B waits: %v, want ErrPendingLimit (A's second release freed B's slot)", err)
+	}
+}
+
 // A successful attach reaches the App and reports the session id.
 func TestSessionLoop_SuccessfulAttach(t *testing.T) {
 	t.Parallel()
