@@ -67,7 +67,12 @@ type Backend struct {
 	images tui.ImageLatch
 }
 
-var _ tui.Backend = (*Backend)(nil)
+var (
+	_ tui.Backend           = (*Backend)(nil)
+	_ tui.GraphicsBackend   = (*Backend)(nil)
+	_ tui.ClipboardWriter   = (*Backend)(nil)
+	_ tui.CursorColorSetter = (*Backend)(nil)
+)
 
 // Open validates the TTY and builds the backend WITHOUT touching terminal
 // state; all mode changes happen in Start so a constructed-but-unstarted
