@@ -546,9 +546,8 @@ func (p *selectPopup[T]) Init(ctx *tui.Context) {
 // refilter recomputes the visible options (case-insensitive substring).
 func (p *selectPopup[T]) refilter() {
 	p.matches = p.matches[:0]
-	needle := strings.ToLower(p.filter)
 	for i, it := range p.owner.items {
-		if needle == "" || strings.Contains(strings.ToLower(it.Label), needle) {
+		if matchFold(it.Label, p.filter) {
 			p.matches = append(p.matches, i)
 		}
 	}
