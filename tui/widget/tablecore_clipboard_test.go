@@ -498,3 +498,60 @@ func TestACSVTablesRegisterPastesBackAsCSV(t *testing.T) {
 		t.Fatalf("the register %q (rows %v), want the row as CSV", reg, rows)
 	}
 }
+
+// A row cursor's copy is its row, whole and linewise, by every path: y, Copy, and the document
+// menu's Yank; a selection made on a row cursor is still what is copied.
+func TestARowCursorsEveryCopyIsTheRow(t *testing.T) {
+	ed := NewEditorCore(CoreInitialText("a,b\n1,2\n3,4\n"))
+	d := NewTableDocument(ed, ',')
+	c := d.Core()
+	c.SetCursor(TablePos{1, 1})
+	c.SetRowCursor(true)
+	for name, copyNow := range map[string]func(){
+		"y":    func() { press(c, 'y') },
+		"Copy": func() { c.Copy() },
+		"the menu's Yank": func() {
+			for _, r := range d.menuRows() {
+				if r.ID == "table.yank" {
+					r.Action.(CoreMenuAction).Run(nil)
+				}
+			}
+		},
+	} {
+		ed.SetRegister("", false)
+		c.yanked = false
+		copyNow()
+		if text, rows := c.register().Register(); text != "3\t4" || !rows {
+			t.Errorf("%s on a row cursor: %q (rows %v), want row 1 whole, linewise", name, text, rows)
+		}
+	}
+	c.SetAnchor(&TablePos{0, 1}) // a selection on the row cursor: field 1 of rows 0 and 1
+	c.kind = TableSelectBlock
+	c.Copy()
+	if text, rows := c.register().Register(); text != "2\n4" || rows {
+		t.Errorf("a block selected on a row cursor copied %q (rows %v), want its cells", text, rows)
+	}
+}
+
+// The copy format names itself, defaults to TSV, and is set and read back; the row cursor reads
+// back and setting it to what it is changes nothing.
+func TestTheCopyFormatAndTheRowCursorReadBack(t *testing.T) {
+	for f, want := range map[TableCopyFormat]string{TableCopyTSV: "tsv", TableCopyCSV: "csv", TableCopyFormat(9): "unknown"} {
+		if got := f.String(); got != want {
+			t.Errorf("%d.String() = %q, want %q", f, got, want)
+		}
+	}
+	c := NewTableCore(people())
+	if c.CopyFormat() != TableCopyTSV || c.RowCursor() {
+		t.Fatalf("a new core copies %v, row cursor %v; want tsv, a cell cursor", c.CopyFormat(), c.RowCursor())
+	}
+	c.SetCopyFormat(TableCopyCSV)
+	c.SetRowCursor(true)
+	c.SetRowCursor(true)
+	if c.CopyFormat() != TableCopyCSV || !c.RowCursor() {
+		t.Fatalf("set: copies %v, row cursor %v", c.CopyFormat(), c.RowCursor())
+	}
+	if TableCopyAs(TableCopyCSV)(c); c.copyFormat != TableCopyCSV {
+		t.Fatal("TableCopyAs did not set the format")
+	}
+}
