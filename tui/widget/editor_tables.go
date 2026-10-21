@@ -37,10 +37,10 @@ func (c *EditorCore) TableEditing() bool { return c.tableEditing }
 
 // tableRow reports whether line ln is a table row table editing applies on.
 func (c *EditorCore) tableRow(ln int) ([][2]int, bool) {
-	if ln < 0 || ln >= len(c.buf.lines) || (c.listWhere != nil && !c.listWhere(ln)) {
+	if ln < 0 || ln >= len(c.buf.textLines) || (c.listWhere != nil && !c.listWhere(ln)) {
 		return nil, false
 	}
-	return tableCells(c.buf.lines[ln])
+	return tableCells(c.buf.textLines[ln])
 }
 
 // tableKey handles an Insert-mode key for table editing, reporting whether it did.
@@ -97,7 +97,7 @@ func (c *EditorCore) tableKey(k tui.KeyEvent) bool {
 		if back {
 			next = ln - 1
 		}
-		for next >= 0 && next < len(b.lines) && isDelimiterRow(b.lines[next]) {
+		for next >= 0 && next < len(b.textLines) && isDelimiterRow(b.textLines[next]) {
 			if back {
 				next--
 			} else {

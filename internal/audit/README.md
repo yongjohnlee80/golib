@@ -65,6 +65,7 @@ They could have been bash scripts or custom CI linters. They are standard Go tes
 | **Promotion Self-Calls** | `promotion_test.go` | Scans embeddable base methods for sibling self-calls on own receiver; forbids LIVE defects and enforces ratcheted LATENT allowlist (currently 24 sites across 20 allowlisted keys) | `testdata/promotion_selfcalls.txt` | Standard |
 | **Routing Documentation** | `routing_docs_test.go` | Asserts required routing vocabulary is present across monitored doc surfaces and one obsolete sentence claiming raw handlers run first is absent | None (Scans doc surfaces) | Standard |
 | **TUI Links No `testing`** | `tui_testing_test.go` | Asserts no non-test file under `tui/` imports `testing`, and no tui package reaches one that does, except the named test-helper packages (`tui/decl/decltest`); positive control: the scan must see the helper's own import | None (Named helper set in code) | Standard |
+| **Editor Line Primitives** | `textlines_test.go` | Asserts no non-test file in `tui/widget` but `textbuffer.go` assigns to `bufferText.textLines`, whole or by index; positive control: the scan must see the primitives' own writes | None | Standard |
 | **Comments-Only Check** | `commentsonly_test.go` | Asserts that a comment migration modified zero executable Go code by AST-stripping comments and comparing byte-for-byte against a base revision | None (Compares git tree) | `COMMENTS_ONLY_BASE=<rev>` (Opt-in) |
 
 ---
@@ -267,6 +268,7 @@ go test ./internal/audit/ -run TestPromotionSelfCalls
 | `N LIVE promotion defect(s) — an embedder is running the base's method today` | A base method reached for its own receiver, shadowing an embedder's override | Refactor the base method to accept the collaborator as an explicit parameter (e.g. pass the dialect interface). |
 | `<doc> does not mention "<term>"` | Architecture or widget docs drifted from runtime reality | Update the documentation surface to accurately explain the routing/widget model. Do NOT remove the term requirement. |
 | `<pkg> imports testing: a tui binary would link package testing` | Production tui code took a `*testing.T` or imported a test helper | Take a small interface (`Helper()`, `Errorf`) that `*testing.T` satisfies, or move the helper into a test-only package and name it in `tuiTestHelpers`. |
+| `<file> writes .textLines directly` | An editor change wrote the lines without the line primitives | Call `setLine`, `insertLines`, `removeLines`, `replaceLines` or `setLines` in `textbuffer.go`, which touch and log the change. |
 | `N file(s) had their CODE changed by a comments-only change` | A comment migration tool accidentally edited executable Go syntax | Inspect `git diff` for deleted commas, altered parens, or truncated lines. Restore code to byte-identical state. |
 
 ---

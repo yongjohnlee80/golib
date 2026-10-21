@@ -66,7 +66,7 @@ func (c *EditorCore) show(s *bufferState, keep bool) {
 		p.desired = -1 // the first time here: line 1, no sticky column
 	}
 	c.buf = textBuffer{bufferText: s.text, desired: p.desired}
-	c.buf.ln = max(0, min(p.at.ln, len(s.text.lines)-1))
+	c.buf.ln = max(0, min(p.at.ln, len(s.text.textLines)-1))
 	c.buf.col = c.buf.clampCol(c.buf.ln, p.at.col)
 	c.vAnchor = taPos{}
 	c.hl.text, c.hl.paint = &s.hlText, nil
@@ -117,13 +117,13 @@ func (c *EditorCore) leave(keep bool) {
 // otherEdited is an edit to the shown buffer made through another editor, from line from on: this
 // editor's cursor is kept in the text (followEdits moved it), and its layout and paint follow.
 func (c *EditorCore) otherEdited(from int) {
-	c.buf.ln = max(0, min(c.buf.ln, len(c.buf.lines)-1))
+	c.buf.ln = max(0, min(c.buf.ln, len(c.buf.textLines)-1))
 	c.buf.col = c.buf.clampCol(c.buf.ln, c.buf.col)
 	if c.keys.modal && c.keys.mode == ModeNormal {
 		c.clampNormal()
 	}
 	if c.layout != nil {
-		c.layout.Changed(min(from, max(len(c.buf.lines)-1, 0)))
+		c.layout.Changed(min(from, max(len(c.buf.textLines)-1, 0)))
 	}
 	c.markDirty()
 }
@@ -144,7 +144,7 @@ func (c *EditorCore) ReplaceFollowing(r TextRange, text string) error {
 	if err != nil {
 		return err
 	}
-	c.buf.ln = max(0, min(f.at.ln, len(c.buf.lines)-1))
+	c.buf.ln = max(0, min(f.at.ln, len(c.buf.textLines)-1))
 	c.buf.col = c.buf.clampCol(c.buf.ln, f.at.col)
 	if c.keys.modal && c.keys.mode == ModeNormal {
 		c.clampNormal()

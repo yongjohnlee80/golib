@@ -262,7 +262,7 @@ func (t *TextArea) handleKey(e tui.KeyEvent) bool {
 			t.deleteRegion(lo, hi)
 		case t.col < len(t.lineClusters(t.ln)):
 			t.deleteRegion(taPos{t.ln, t.col}, taPos{t.ln, t.col + 1})
-		case t.ln < len(t.lines)-1:
+		case t.ln < len(t.textLines)-1:
 			t.deleteRegion(taPos{t.ln, t.col}, taPos{t.ln + 1, 0})
 		default:
 			return true
@@ -312,7 +312,7 @@ func (t *TextArea) handleMove(id string, shift bool) {
 			t.moveTo(ln, col, shift)
 		case t.col < len(t.lineClusters(t.ln)):
 			t.moveTo(t.ln, t.col+1, shift)
-		case t.ln < len(t.lines)-1:
+		case t.ln < len(t.textLines)-1:
 			t.moveTo(t.ln+1, 0, shift)
 		default:
 			t.moveTo(t.ln, t.col, shift)
@@ -336,19 +336,19 @@ func (t *TextArea) handleMove(id string, shift bool) {
 		t.moveTo(t.ln, len(t.lineClusters(t.ln)), shift)
 	case TextAreaFinish.ID, TextAreaSelectFinish.ID:
 		t.desired = -1
-		t.moveTo(len(t.lines)-1, len(t.lineClusters(len(t.lines)-1)), shift)
+		t.moveTo(len(t.textLines)-1, len(t.lineClusters(len(t.textLines)-1)), shift)
 	}
 }
 
 // wrapWidth is the content width available for text (minus the scroll
 // indicator column when one is painted).
-func (t *TextArea) wrapWidth() int { return wrapUsableWidth(t.lines, t.view()) }
+func (t *TextArea) wrapWidth() int { return wrapUsableWidth(t.textLines, t.view()) }
 
 // scrollable reports whether content exceeds the viewport vertically.
-func (t *TextArea) scrollable() bool { return wrapScrollable(t.lines, t.view()) }
+func (t *TextArea) scrollable() bool { return wrapScrollable(t.textLines, t.view()) }
 
 // rowsOfLine is the wrapped visual height of line i at the current width.
-func (t *TextArea) rowsOfLine(i int) int { return wrapRowsOfLine(t.lines, i, t.view()) }
+func (t *TextArea) rowsOfLine(i int) int { return wrapRowsOfLine(t.textLines, i, t.view()) }
 
 // ensureVisible adjusts top/left so the cursor stays inside the viewport
 // (using the last layout size).
@@ -359,8 +359,8 @@ func (t *TextArea) ensureVisible() {
 	if t.ln < t.top {
 		t.top = t.ln
 	}
-	t.top = lowestTop(t.lines, t.top, t.ln, t.h, t.view())
-	t.top = max(0, min(t.top, len(t.lines)-1))
+	t.top = lowestTop(t.textLines, t.top, t.ln, t.h, t.view())
+	t.top = max(0, min(t.top, len(t.textLines)-1))
 	if t.wrap == WrapNone {
 		cx := t.cellsAt(t.ln, t.col)
 		w := t.wrapWidth()
@@ -398,11 +398,11 @@ func (t *TextArea) Cursor() (int, int, bool) {
 		return max(x, 0), max(y, 0), true
 	}
 	y := 0
-	v := t.view().settled(t.lines)
+	v := t.view().settled(t.textLines)
 	for i := t.top; i < t.ln; i++ {
-		y += wrapRowsOfLine(t.lines, i, v)
+		y += wrapRowsOfLine(t.textLines, i, v)
 	}
-	row, x := wrapPosOf(t.lines, t.ln, t.col, v)
+	row, x := wrapPosOf(t.textLines, t.ln, t.col, v)
 	y += row
 	if t.h > 0 && y >= t.h {
 		return 0, 0, false
@@ -413,7 +413,7 @@ func (t *TextArea) Cursor() (int, int, bool) {
 // wrapPos locates cluster column col inside line ln's wrapped rows: the row
 // index and the cell offset within that row.
 func (t *TextArea) wrapPos(ln, col int) (row, x int) {
-	return wrapPosOf(t.lines, ln, col, t.view())
+	return wrapPosOf(t.textLines, ln, col, t.view())
 }
 
 // posKey orders buffer positions for selection painting.
@@ -438,7 +438,7 @@ func (t *TextArea) Render(s tui.Surface) {
 		s.SetCell(x, y, cl, st)
 	}
 	y := 0
-	for ln := t.top; ln < len(t.lines) && y < sz.H; ln++ {
+	for ln := t.top; ln < len(t.textLines) && y < sz.H; ln++ {
 		cs := t.lineClusters(ln)
 		if t.wrap == WrapNone {
 			x := -t.left
@@ -469,7 +469,7 @@ func (t *TextArea) Render(s tui.Surface) {
 		}
 	}
 	if t.scrollable() {
-		paintScrollIndicator(s, sz.W-1, sz.H, t.top, wrapMaxTop(t.lines, t.view()))
+		paintScrollIndicator(s, sz.W-1, sz.H, t.top, wrapMaxTop(t.textLines, t.view()))
 	}
 }
 

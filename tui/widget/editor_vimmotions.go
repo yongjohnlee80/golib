@@ -41,7 +41,7 @@ func (c *EditorCore) firstNonBlank(ln int) int {
 
 // toLine moves the cursor to line ln's first non-blank, keeping no sticky column.
 func (c *EditorCore) toLine(ln int) {
-	ln = max(0, min(ln, len(c.buf.lines)-1))
+	ln = max(0, min(ln, len(c.buf.textLines)-1))
 	c.buf.desired = -1
 	c.buf.moveCursor(ln, c.firstNonBlank(ln), false)
 	c.clampNormal()
@@ -178,7 +178,7 @@ func (c *EditorCore) matchPairPos() (int, int, bool) {
 		if b.forward {
 			i++
 			for i >= len(c.buf.lineClusters(l)) {
-				if l == len(c.buf.lines)-1 {
+				if l == len(c.buf.textLines)-1 {
 					return 0, 0, false
 				}
 				l, i = l+1, 0
@@ -200,7 +200,7 @@ func (c *EditorCore) matchPairPos() (int, int, bool) {
 // 100 lands past the last line, which toLine clamps to it.
 func (c *EditorCore) percentLine(n int) {
 	c.setJumpMark()
-	c.toLine((n*len(c.buf.lines)+99)/100 - 1)
+	c.toLine((n*len(c.buf.textLines)+99)/100 - 1)
 }
 
 // viewLine is H M L: the cursor to viewLinePos. Without a viewport the key is consumed and

@@ -40,7 +40,7 @@ func (c *EditorCore) newRevision() uint64 {
 
 // clampPos keeps p inside the text.
 func (c *EditorCore) clampPos(p TextPos) taPos {
-	ln := max(0, min(p.Line, len(c.buf.lines)-1))
+	ln := max(0, min(p.Line, len(c.buf.textLines)-1))
 	return taPos{ln: ln, col: c.buf.clampCol(ln, p.Col)}
 }
 
@@ -200,7 +200,7 @@ func (c *EditorCore) ReadFrom(r io.Reader) (int64, error) {
 // file is written. It is io.WriterTo.
 func (c *EditorCore) WriteTo(w io.Writer) (int64, error) {
 	var n int64
-	for i, line := range c.buf.lines {
+	for i, line := range c.buf.textLines {
 		if i > 0 {
 			line = "\n" + line
 		}

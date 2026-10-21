@@ -14,7 +14,7 @@ func (c *EditorCore) visualRange() (lo, hiEx taPos) {
 		a, b = b, a
 	}
 	n := len(c.buf.lineClusters(b.ln))
-	if (c.vEOL && b.col >= n || n == 0) && b.ln+1 < len(c.buf.lines) {
+	if (c.vEOL && b.col >= n || n == 0) && b.ln+1 < len(c.buf.textLines) {
 		// the line's break is selected: Select's, or an empty line's, as Vim's inclusive Visual
 		// takes the break of an empty line it ends on
 		return a, taPos{ln: b.ln + 1}
@@ -69,7 +69,7 @@ func (c *EditorCore) SelectedText() string {
 		return c.buf.textIn(lo, hiEx)
 	case ModeVisualLine:
 		lo, hi := c.visualLines()
-		return strings.Join(c.buf.lines[lo:hi+1], "\n")
+		return strings.Join(c.buf.textLines[lo:hi+1], "\n")
 	case ModeVisualBlock:
 		pieces, _ := c.blockPieces(c.visualBlock())
 		return strings.Join(pieces, "\n")
@@ -239,18 +239,9 @@ func (c *EditorCore) deleteEntry(e regEntry, lines bool) {
 // deleteLines removes [lo, hi] inclusive into the register (linewise).
 func (c *EditorCore) deleteLines(lo, hi int) {
 	c.beginGroup()
-	c.regDelete(strings.Join(c.buf.lines[lo:hi+1], "\n"), true)
-	rest := append([]string{}, c.buf.lines[:lo]...)
-	rest = append(rest, c.buf.lines[hi+1:]...)
-	if len(rest) == 0 {
-		rest = []string{""}
-		c.buf.log.splice(0, hi+1, 1) // every line went: one empty line is left
-	} else {
-		c.buf.log.splice(lo, hi-lo+1, 0)
-	}
-	c.buf.lines = rest
-	c.buf.touch(lo)
-	c.buf.ln = min(lo, len(c.buf.lines)-1)
+	c.regDelete(strings.Join(c.buf.textLines[lo:hi+1], "\n"), true)
+	c.buf.removeLines(lo, hi+1) // every line gone leaves one empty line
+	c.buf.ln = min(lo, len(c.buf.textLines)-1)
 	c.buf.col = 0
 	c.buf.anchor = nil
 	c.clampNormal()
@@ -292,9 +283,7 @@ func (c *EditorCore) putEntry(e regEntry, after bool, count int) {
 			at++
 		}
 		newLines := strings.Split(strings.Repeat(text+"\n", count-1)+text, "\n")
-		c.buf.lines = append(c.buf.lines[:at], append(append([]string{}, newLines...), c.buf.lines[at:]...)...)
-		c.buf.touch(at)
-		c.buf.log.splice(at, 0, len(newLines))
+		c.buf.insertLines(at, newLines...)
 		c.buf.ln, c.buf.col = at, 0
 	} else {
 		col := c.buf.col

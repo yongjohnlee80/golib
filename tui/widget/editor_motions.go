@@ -82,7 +82,7 @@ func (w *wordWalker) inc() bool {
 		w.i++
 		return true
 	}
-	if w.ln >= len(w.b.lines)-1 {
+	if w.ln >= len(w.b.textLines)-1 {
 		return false
 	}
 	w.ln, w.i = w.ln+1, 0
@@ -200,10 +200,10 @@ func (c *EditorCore) paraForward(count int) int {
 	ln := c.buf.ln
 	for ; count > 0; count-- {
 		i := ln + 1
-		for i < len(c.buf.lines) && strings.TrimSpace(c.buf.lines[i]) != "" {
+		for i < len(c.buf.textLines) && strings.TrimSpace(c.buf.textLines[i]) != "" {
 			i++
 		}
-		ln = min(i, len(c.buf.lines)-1)
+		ln = min(i, len(c.buf.textLines)-1)
 	}
 	return ln
 }
@@ -212,7 +212,7 @@ func (c *EditorCore) paraBack(count int) int {
 	ln := c.buf.ln
 	for ; count > 0; count-- {
 		i := ln - 1
-		for i > 0 && strings.TrimSpace(c.buf.lines[i]) != "" {
+		for i > 0 && strings.TrimSpace(c.buf.textLines[i]) != "" {
 			i--
 		}
 		ln = max(i, 0)
@@ -329,9 +329,9 @@ func (c *EditorCore) goToLine(hadCount bool, count int, bottom bool) {
 	ln := 0
 	switch {
 	case hadCount:
-		ln = min(count-1, len(c.buf.lines)-1)
+		ln = min(count-1, len(c.buf.textLines)-1)
 	case bottom:
-		ln = len(c.buf.lines) - 1
+		ln = len(c.buf.textLines) - 1
 	}
 	c.buf.moveCursor(ln, 0, false)
 	c.clampNormal()

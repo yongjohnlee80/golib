@@ -116,7 +116,7 @@ func (c *EditorCore) listKey(k tui.KeyEvent) bool {
 	if k.Mods&^tui.ModShift != 0 || (k.Mods&tui.ModShift != 0 && k.Code != tui.KeyTab) {
 		return false
 	}
-	line := b.lines[b.ln]
+	line := b.textLines[b.ln]
 	it, ok := readListItem(line)
 	if !ok || (c.listWhere != nil && !c.listWhere(b.ln)) {
 		return false

@@ -85,7 +85,7 @@ func (c *EditorCore) wordObject(inner, big bool, count int) (opRange, bool) {
 // paraObject is ip ap: whole lines. ip is count runs of lines alike in being blank or not, from
 // the cursor's; ap is a paragraph with the blank lines after it (count times).
 func (c *EditorCore) paraObject(inner bool, count int) (opRange, bool) {
-	lines := c.buf.lines
+	lines := c.buf.textLines
 	blank := func(i int) bool { return strings.TrimSpace(lines[i]) == "" }
 	runEnd := func(i int) int { // the last line of the run i is in
 		for i+1 < len(lines) && blank(i+1) == blank(i) {
@@ -255,7 +255,7 @@ func (c *EditorCore) matching(o taPos, open, close string) (taPos, bool) {
 	b := &c.buf
 	depth := 0
 	ln, i := o.ln, o.col
-	for ln < len(b.lines) {
+	for ln < len(b.textLines) {
 		cs := b.lineClusters(ln)
 		for ; i < len(cs); i++ {
 			switch cs[i] {

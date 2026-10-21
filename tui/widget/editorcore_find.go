@@ -77,7 +77,7 @@ func matchesIn(line string, term []string, o FindOptions) [][2]int {
 func (c *EditorCore) FindAll(term string, o FindOptions) []TextRange {
 	t := clusters(term)
 	var out []TextRange
-	for ln, line := range c.buf.lines {
+	for ln, line := range c.buf.textLines {
 		for _, m := range matchesIn(line, t, o) {
 			out = append(out, TextRange{From: TextPos{ln, m[0]}, To: TextPos{ln, m[1]}})
 		}
@@ -277,8 +277,8 @@ func (c *EditorCore) StartReplace(term, with string, o FindOptions) (*ReplaceSes
 // seek selects the first match at or after `at`, or ends the session.
 func (s *ReplaceSession) seek(at taPos, inclusive bool) {
 	s.ok = false
-	for ln := at.ln; ln < len(s.c.buf.lines); ln++ {
-		for _, m := range matchesIn(s.c.buf.lines[ln], s.term, s.o) {
+	for ln := at.ln; ln < len(s.c.buf.textLines); ln++ {
+		for _, m := range matchesIn(s.c.buf.textLines[ln], s.term, s.o) {
 			if ln == at.ln && (m[0] < at.col || (!inclusive && m[0] == at.col)) {
 				continue
 			}

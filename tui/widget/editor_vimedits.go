@@ -41,15 +41,15 @@ func (c *EditorCore) replaceChars(char string, count int) {
 // the last join.
 func (c *EditorCore) joinLines(count int, raw bool) {
 	b := &c.buf
-	n := min(max(count, 2)-1, len(b.lines)-1-b.ln)
+	n := min(max(count, 2)-1, len(b.textLines)-1-b.ln)
 	if n <= 0 {
 		return
 	}
 	c.beginGroup()
-	cur := b.lines[b.ln]
+	cur := b.textLines[b.ln]
 	at := 0
 	for i := 1; i <= n; i++ {
-		next := b.lines[b.ln+i]
+		next := b.textLines[b.ln+i]
 		cut := 0
 		sep := ""
 		if !raw {
@@ -65,9 +65,8 @@ func (c *EditorCore) joinLines(count int, raw bool) {
 		b.log.move(b.ln+i, cut, b.ln, len(clusters(cur+sep)), true)
 		cur += sep + next
 	}
-	b.lines = append(append(b.lines[:b.ln:b.ln], cur), b.lines[b.ln+n+1:]...)
-	b.touch(b.ln)
-	b.log.splice(b.ln+1, n, 0)
+	b.setLine(b.ln, cur)
+	b.removeLines(b.ln+1, b.ln+n+1) // after the joined lines' moves, logged above
 	b.col = at
 	b.anchor = nil
 	c.clampNormal()
@@ -145,9 +144,8 @@ func (c *EditorCore) applyCase(op Action, r opRange) {
 	c.beginGroup()
 	if r.lines {
 		for i := r.lo.ln; i <= r.hiEx.ln; i++ {
-			b.lines[i] = f(b.lines[i])
+			b.setLine(i, f(b.textLines[i]))
 		}
-		b.touch(r.lo.ln)
 		b.ln = r.lo.ln
 	} else {
 		c.replaceRegion(r.lo, r.hiEx, f(b.textIn(r.lo, r.hiEx)))
@@ -168,9 +166,8 @@ func (c *EditorCore) applyShiftN(dir int, r opRange, n int) {
 	unit := strings.Repeat(c.shiftUnit(), max(n, 1))
 	c.beginGroup()
 	for i := r.lo.ln; i <= last; i++ {
-		b.lines[i] = shiftLine(b.lines[i], unit, dir)
+		b.setLine(i, shiftLine(b.textLines[i], unit, dir))
 	}
-	b.touch(r.lo.ln)
 	b.ln, b.col = r.lo.ln, c.firstNonBlank(r.lo.ln)
 	b.anchor = nil
 	c.clampNormal()
@@ -183,7 +180,7 @@ func (c *EditorCore) shiftUnit() string {
 	if c.indentUnit != "" {
 		return c.indentUnit
 	}
-	for _, l := range c.buf.lines {
+	for _, l := range c.buf.textLines {
 		if lead := indent.Leading(l); lead != "" && strings.TrimSpace(l) != "" {
 			return lead
 		}

@@ -264,7 +264,7 @@ func (c *EditorCore) RunCommand(line string) error {
 
 // goToLineNumber moves the cursor to the first non-blank of line n, counted from 1.
 func (c *EditorCore) goToLineNumber(n int) error {
-	total := len(c.buf.lines)
+	total := len(c.buf.textLines)
 	if n < 0 || n > total {
 		return fmt.Errorf("line %d: the document has %d line%s", n, total, plural(total))
 	}

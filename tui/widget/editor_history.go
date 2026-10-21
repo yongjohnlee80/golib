@@ -2,8 +2,8 @@ package widget
 
 // snapshot is the core's text and cursor, for its history (edithistory.go).
 func (c *EditorCore) snapshot() textSnap {
-	lines := make([]string, len(c.buf.lines))
-	copy(lines, c.buf.lines)
+	lines := make([]string, len(c.buf.textLines))
+	copy(lines, c.buf.textLines)
 	return textSnap{lines: lines, ln: c.buf.ln, col: c.buf.col, rev: c.rev, marks: c.marks}
 }
 
@@ -29,7 +29,7 @@ func (c *EditorCore) doRedo() {
 // restore resets the buffer content and cursor coordinates from a snapshot.
 func (c *EditorCore) restore(s textSnap) {
 	b := &c.buf
-	blk := changedBlock(b.lines, s.lines)
+	blk := changedBlock(b.textLines, s.lines)
 	c.marks.apply(blk)
 	for _, o := range c.editors { // the other editors showing the buffer, and the places left in it, move as the marks
 		if o != c {
@@ -39,11 +39,10 @@ func (c *EditorCore) restore(s textSnap) {
 	for ed, p := range c.places {
 		c.places[ed] = followPlace(p, blk)
 	}
-	b.lines = s.lines
-	b.touch(0)
+	b.setLines(s.lines)
 	b.log.take() // the snapshot is the text whole: what was logged since describes no edit of it
 	c.marks.restore(s.marks)
-	b.ln = max(0, min(s.ln, len(b.lines)-1))
+	b.ln = max(0, min(s.ln, len(b.textLines)-1))
 	b.col = s.col
 	b.anchor = nil
 	if c.keys.modal {

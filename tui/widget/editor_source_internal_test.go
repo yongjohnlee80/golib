@@ -98,7 +98,7 @@ func TestFindPaintDoesNotChangeDeepImmediateIndent(t *testing.T) {
 		t.Fatal("paint invalidation reset semantic context")
 	}
 	c.insertIndentedNewline()
-	if got := c.buf.lines[2501]; got != "  " {
+	if got := c.buf.textLines[2501]; got != "  " {
 		t.Fatalf("immediate newline got %q, want language indentation", got)
 	}
 }
@@ -162,7 +162,7 @@ func TestProvisionalEditChurnReclaimsStatesAndEventuallyCatchesUp(t *testing.T) 
 	c.SetValue("cat <<EOF\n" + strings.Repeat("body\n", 3000))
 	stats := c.source.Highlighter.(interface{ RetainedStates() int })
 	for i := 0; i < 100; i++ {
-		c.buf.lines[0] = fmt.Sprintf("cat <<EOF%d", i)
+		c.buf.textLines[0] = fmt.Sprintf("cat <<EOF%d", i)
 		c.buf.touch(0)
 		c.changed()
 		f := c.BeginHighlight(2500)
