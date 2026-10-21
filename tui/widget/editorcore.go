@@ -1097,17 +1097,8 @@ func (c *EditorCore) execAction(act Action, count int) bool {
 			c.exitVisual()
 			return true
 		}
-		switch c.keys.mode {
-		case ModeVisualBlock:
-			c.blockYank(c.visualBlock())
-		case ModeVisualLine:
-			lo, hi := c.visualLines()
-			c.regYank(strings.Join(b.textLines[lo:hi+1], "\n"), true)
-			b.ln, b.col = lo, 0
-		default:
-			lo, hiEx := c.visualRange()
-			c.regYank(b.textIn(lo, hiEx), false)
-			b.ln, b.col = lo.ln, lo.col
+		if s, ok := c.visualSelection(); ok {
+			s.yank()
 		}
 		c.exitVisual()
 		c.reveal()
