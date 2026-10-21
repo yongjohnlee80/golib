@@ -354,61 +354,15 @@ func (m *Manager) create(ctx context.Context, id *auth.Identity, h Hello, info S
 		return nil, err
 	}
 
-	m.mu.Lock()
-	if m.closed {
-		m.mu.Unlock()
-		return nil, ErrStopped
-	}
-	// Evict what is already dead before judging the cap, so a stale session does
-	// not deny a live user.
-	m.evictLocked(m.now())
-	if len(m.sessions) >= m.maxSess {
-		m.mu.Unlock()
-		logger.Notice(m.log, sessionAudit{Kind: "refused", Subject: id.Subject, Reason: "session limit"})
-		return nil, ErrSessionLimit
-	}
-	sid, err := m.newID()
+	s, runCtx, err := m.register(id, info.Peer)
 	if err != nil {
-		m.mu.Unlock()
 		return nil, err
 	}
 
-	backend := New(m.backends...)
-	// The App's context comes from the MANAGER's lifetime, not from the
-	// WebSocket that happened to create the session.
-	//
-	// Deriving it from the connection meant a disconnect cancelled the App
-	// immediately, so the detach window of — the whole reason a flaky
-	// network does not destroy work — was unreachable: Session.Done fired the
-	// moment the socket closed. ctx is honored for the CREATE call
-	// only; the session outlives it by design.
-	runCtx, cancel := context.WithCancel(m.base)
-	s := &Session{
-		id:       sid,
-		subject:  id.Subject,
-		peer:     info.Peer,
-		backend:  backend,
-		created:  m.now(),
-		lastSeen: m.now(),
-		cancel:   cancel,
-		done:     make(chan struct{}),
-	}
-	m.sessions[sid] = s
-	m.mu.Unlock()
-
 	info.Identity = id
-	app := m.factory(backend, &info)
+	app := m.factory(s.backend, &info)
 	if app == nil {
-		// backend is constructed above and no App goroutine exists on this exit,
-		// so this path owns its teardown outright — the same reasoning as the
-		// attach failure below, which is what made the omission visible: without
-		// the Stop this was the only exit past `New` that leaves a backend
-		// un-stopped. Harmless while New allocates channels and starts nothing;
-		// exactly the asymmetry that stops being harmless the day it does.
-		m.drop(sid)
-		cancel()
-		_ = backend.Stop()
-		close(s.done)
+		s.abortUnstarted(m)
 		return nil, errs.Wrap(errs.ErrPrecondition, "web: AppFactory returned no application")
 	}
 
@@ -416,75 +370,111 @@ func (m *Manager) create(ctx context.Context, id *auth.Identity, h Hello, info S
 	// session out from under a caller that has not had its turn yet.
 	if attach {
 		if _, err := m.attachSession(s, id, h, info.Peer); err != nil {
-			// The App goroutine has NOT started, so the teardown defer that
-			// normally stops the backend will never run — this path owns the
-			// cleanup outright. Same shape as the AppFactory-returned-nil case
-			// above, plus the Stop that [Manager.Close] does for a session whose
-			// App did start.
-			//
-			// On the ErrPeerChanged exit these are SECOND calls: attachSession
-			// terminates that session itself, by design. Both are idempotent —
-			// cancel by contract, Stop through its once — so the repeat is
-			// deliberate rather than a leak, and this comment exists so a reader
-			// tracing that path does not have to work that out.
-			m.drop(sid)
-			cancel()
-			_ = s.backend.Stop()
-			close(s.done)
+			// On the ErrPeerChanged exit abortUnstarted's calls are SECOND calls:
+			// attachSession terminates that session itself, by design. Each is
+			// idempotent — drop by key, cancel by contract, Stop through its once —
+			// and close(done) is not repeated, since only an App goroutine or this
+			// path closes it and the goroutine has not started.
+			s.abortUnstarted(m)
 			return nil, err
 		}
 	}
 
-	go func() {
-		defer close(s.done)
-		// Teardown runs on EVERY exit path — clean return, error, panic in the
-		// App — because the alternative is a leaked grid and a live goroutine
-		// holding an authenticated identity.
-		defer func() {
-			_ = backend.Stop()
-			cancel()
-			m.drop(sid)
-			logger.Info(m.log, sessionAudit{Kind: "closed", Subject: s.subject, ID: sid})
-		}()
-		// An App panic ends THIS SESSION, not the process.
-		//
-		// One process serves N users, so an unrecovered panic here took every other
-		// user's session down with it — and it was reached by application code, the
-		// least trustworthy code in the building. It is contained the same way
-		// server.Scaffold contains a connection handler's panic, and for the same
-		// reason. The panic is recorded as the session's run error, so a consumer
-		// sees a failed session rather than a silently closed one.
-		//
-		// It is contained, not swallowed: the record names it a panic and carries
-		// the value.
-		defer func() {
-			if rec := recover(); rec != nil {
-				// errs.Recovered keeps a panicked ERROR recoverable. The comment
-				// above says this record "carries the value", and %v did not:
-				// it rendered the value into text while the message still read
-				// correctly, so a consumer reading RunErr could see that a panic
-				// happened and never recover what it carried.
-				//
-				// The identity is tui.ErrPanic rather than a new one: this is
-				// the same condition App.Run reports under PanicReturn, and a
-				// consumer asking "did the app panic?" should not have to ask
-				// two different questions depending on which layer caught it.
-				err := errs.Recovered(tui.ErrPanic, rec, "web: the application panicked")
-				s.mu.Lock()
-				s.runErr = err
-				s.mu.Unlock()
-				logger.Error(m.log, err, sessionAudit{Kind: "panic",
-					Subject: s.subject, ID: sid})
-			}
-		}()
-		err := app.Run(runCtx)
-		s.mu.Lock()
-		s.runErr = err
-		s.mu.Unlock()
-	}()
-
-	logger.Info(m.log, sessionAudit{Kind: "created", Subject: id.Subject, ID: sid})
+	go m.run(s, app, runCtx)
+	logger.Info(m.log, sessionAudit{Kind: "created", Subject: id.Subject, ID: s.id})
 	return s, nil
+}
+
+// register admits a session for subject and records it: the manager is open, the dead are evicted
+// before the cap is judged (so a stale session does not deny a live user), and the id, backend and
+// session are made, all under one hold of mu so two creates cannot both pass the cap.
+func (m *Manager) register(id *auth.Identity, peer string) (*Session, context.Context, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	if m.closed {
+		return nil, nil, ErrStopped
+	}
+	m.evictLocked(m.now())
+	if len(m.sessions) >= m.maxSess {
+		logger.Notice(m.log, sessionAudit{Kind: "refused", Subject: id.Subject, Reason: "session limit"})
+		return nil, nil, ErrSessionLimit
+	}
+	sid, err := m.newID()
+	if err != nil {
+		return nil, nil, err
+	}
+	// The App's context comes from the MANAGER's lifetime, not from the
+	// WebSocket that happened to create the session.
+	//
+	// Deriving it from the connection meant a disconnect cancelled the App
+	// immediately, so the detach window — the whole reason a flaky
+	// network does not destroy work — was unreachable: Session.Done fired the
+	// moment the socket closed. create's ctx is honored for the CREATE call
+	// only; the session outlives it by design.
+	runCtx, cancel := context.WithCancel(m.base)
+	s := &Session{
+		id:       sid,
+		subject:  id.Subject,
+		peer:     peer,
+		backend:  New(m.backends...),
+		created:  m.now(),
+		lastSeen: m.now(),
+		cancel:   cancel,
+		done:     make(chan struct{}),
+	}
+	m.sessions[sid] = s
+	return s, runCtx, nil
+}
+
+// abortUnstarted tears down a registered session whose App goroutine never started, so the
+// teardown that goroutine runs never will: this path owns it outright, backend Stop included.
+func (s *Session) abortUnstarted(m *Manager) {
+	m.drop(s.id)
+	s.cancel()
+	_ = s.backend.Stop()
+	close(s.done)
+}
+
+// run is a session's App goroutine. Teardown runs on EVERY exit path — clean
+// return, error, panic in the App — because the alternative is a leaked grid
+// and a live goroutine holding an authenticated identity.
+func (m *Manager) run(s *Session, app Runner, runCtx context.Context) {
+	defer close(s.done)
+	defer func() {
+		_ = s.backend.Stop()
+		s.cancel()
+		m.drop(s.id)
+		logger.Info(m.log, sessionAudit{Kind: "closed", Subject: s.subject, ID: s.id})
+	}()
+	// An App panic ends THIS SESSION, not the process.
+	//
+	// One process serves N users, so an unrecovered panic here took every other
+	// user's session down with it — and it was reached by application code, the
+	// least trustworthy code in the building. It is contained the same way
+	// server.Scaffold contains a connection handler's panic, and for the same
+	// reason. The panic is recorded as the session's run error, so a consumer
+	// sees a failed session rather than a silently closed one.
+	//
+	// It is contained, not swallowed: the record names it a panic and carries
+	// the value.
+	defer func() {
+		if rec := recover(); rec != nil {
+			// errs.Recovered keeps a panicked ERROR recoverable: %v would render the
+			// value into text, so a consumer reading RunErr could see that a panic
+			// happened and never recover what it carried. The identity is
+			// tui.ErrPanic, the condition App.Run reports under PanicReturn, so "did
+			// the app panic?" is one question whichever layer caught it.
+			err := errs.Recovered(tui.ErrPanic, rec, "web: the application panicked")
+			s.mu.Lock()
+			s.runErr = err
+			s.mu.Unlock()
+			logger.Error(m.log, err, sessionAudit{Kind: "panic", Subject: s.subject, ID: s.id})
+		}
+	}()
+	err := app.Run(runCtx)
+	s.mu.Lock()
+	s.runErr = err
+	s.mu.Unlock()
 }
 
 // Attach binds a client to an existing session.
