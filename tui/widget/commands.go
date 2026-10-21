@@ -18,8 +18,14 @@ import (
 
 // cmd declares one command.
 func cmd(id string, scope keymap.Scope, keys ...string) keymap.Command {
-	return keymap.Command{ID: id, Scope: scope, Keys: tuikey.MustParse(keys...)}
+	c := keymap.Command{ID: id, Scope: scope, Keys: tuikey.MustParse(keys...)}
+	declared = append(declared, c)
+	return c
 }
+
+// declared is every key command a widget declares through cmd, in declaration order. KeyCommands
+// lists them, so a new widget's commands are in keymap.Build without another list to edit.
+var declared []keymap.Command
 
 // isKey reports whether e is one of keys, by the one matching model (key.Of, then its candidates). A
 // grammar's continuation is read with it: the second g, the key after the Terminal's prefix. They are
@@ -645,33 +651,11 @@ var (
 // KeyCommands is every key command golib declares: the runtime's and every widget's, for keymap.Build.
 // (Commands is the Editor command line's registry; these are keys.)
 func KeyCommands() []keymap.Command {
-	out := append([]keymap.Command(nil), tui.Commands()...)
-	out = append(out, listCommands...)
-	out = append(out, treeCommands...)
-	out = append(out, tableCommands...)
-	out = append(out, tableFieldCommands...)
-	out = append(out, inputCommands...)
-	out = append(out, menuCommands...)
-	out = append(out, ButtonActivate, WindowMenu, DrawerClose, DrawerCloseOnQ)
-	out = append(out, modalCommands...)
-	out = append(out, tabsCommands...)
-	out = append(out, tabStripCommands...)
-	out = append(out, SplitCancel, SplitLeft, SplitRight, SplitUp, SplitDown)
-	out = append(out, resizableCommands...)
-	out = append(out, SelectOpen)
-	out = append(out, scrollCommands...)
-	out = append(out, selectPopupCommands...)
-	out = append(out, textAreaCommands...)
-	out = append(out, htmlViewCommands...)
-	out = append(out, bufferViewCommands...)
-	out = append(out, fileViewCommands...)
-	out = append(out, cmdlineCommands...)
-	out = append(out, cmdlineReplaceCommands...)
-	out = append(out, terminalCommands...)
-	out = append(out, terminalNormalCommands...)
-	out = append(out, terminalSearchCommands...)
-	out = append(out, FloatClose, PopupClose)
-	out = append(out, imageCommands...)
-	out = append(out, EditorCommands()...)
+	out := append(slices.Clone(tui.Commands()), declared...)
+	for _, c := range EditorCommands() {
+		if c.ID != EditorContextMenu.ID { // declared through cmd already
+			out = append(out, c)
+		}
+	}
 	return out
 }
