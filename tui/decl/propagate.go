@@ -381,15 +381,8 @@ func restyleDialog(c tui.Component, p palette) {
 		return
 	}
 	st, _ := p.browserStyles()
-	switch v := d.chooser.(type) {
-	case *widget.FileOpenView:
-		v.WithStyles(st)
-		v.SetPreviewSourceHighlighting(d.highlighters, p.syntaxStyles())
-	case *widget.FileSaveView:
-		v.WithStyles(st)
-		v.SetPreviewSourceHighlighting(d.highlighters, p.syntaxStyles())
-	case *widget.FileFolderView:
-		v.WithStyles(st)
+	if v, ok := d.chooser.(widget.FileChooserStyler); ok {
+		v.SetPaneStyles(st)
 		v.SetPreviewSourceHighlighting(d.highlighters, p.syntaxStyles())
 	}
 }
