@@ -36,7 +36,7 @@ func ContinuationOf(head Cell) Cell { return Cell{Content: "", Width: 0, Attrs: 
 // CellAttrs is the resolved, output-form style payload of a Cell: packed
 // fg/bg colors already downsampled to the terminal's ColorProfile, plus the
 // SGR attribute bits. It is produced by the package's style resolver
-// (resolve.go) and consumed by the tui/term emitter; it is a small
+// (resolve_context.go) and consumed by the tui/term emitter; it is a small
 // comparable value so Cell equality stays one ==.
 type CellAttrs struct {
 	FG, BG CellColor

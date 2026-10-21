@@ -399,7 +399,7 @@ func (c *Context) StringWidth(s string) int {
 // # Lane & Dispatch Semantics
 //
 //   - Lane B (Program Queue): ev enters the non-blocking, unbounded-by-default
-//     program queue (see queue.go). Program-lane events are never dropped due
+//     program queue (see program_queue.go). Program-lane events are never dropped due
 //     to input overflow and never block the sender.
 //   - Concurrency: Safe to call from ANY goroutine — including external watchers,
 //     background network loops, and component handlers on the loop itself.

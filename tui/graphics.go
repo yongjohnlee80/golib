@@ -63,10 +63,6 @@ var imageIDs atomic.Uint32
 // NewImageID is an image id no other in this process has.
 func NewImageID() uint32 { return 1000 + imageIDs.Add(1) }
 
-// Capabilities is the attached terminal's negotiated profile (Backend.Capabilities), so a host can
-// choose what to show: an image where the terminal draws one, a fallback where it does not.
-func (a *App) Capabilities() Capabilities { return a.backend.Capabilities() }
-
 // noteImage records a visible reporter's image during the paint.
 func (a *App) noteImage(n *node) {
 	ir, ok := n.comp.(ImageReporter)

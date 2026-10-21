@@ -821,17 +821,6 @@ func (a *App) retryDeferredFocusRepair() {
 	a.revalidateFocus()
 }
 
-// applyCursor implements the real hardware cursor positioning invariant.
-//
-// If the focused node implements CursorReporter and reports an active insertion point,
-// the runtime translates the local surface coordinates through the laid-out Rect
-// chain to absolute screen coordinates and sets the hardware cursor position.
-// If the component also implements CursorShaper, its desired cursor shape (block,
-// underline, or bar) is latched onto the backend.
-//
-// If no focused node reports an active cursor, the hardware cursor is hidden.
-// This hardware cursor anchoring is required so operating system IME composition
-// windows anchor properly above or below the active text input cell.
 // applyCursorColor gives the hardware cursor the focused component's colour (CursorColorer),
 // resolved through the theme, or back its own, on a backend that can colour it.
 func (a *App) applyCursorColor(comp Component) {
@@ -848,6 +837,17 @@ func (a *App) applyCursorColor(comp Component) {
 	setter.SetCursorColor(CellColor{}, false)
 }
 
+// applyCursor implements the real hardware cursor positioning invariant.
+//
+// If the focused node implements CursorReporter and reports an active insertion point,
+// the runtime translates the local surface coordinates through the laid-out Rect
+// chain to absolute screen coordinates and sets the hardware cursor position.
+// If the component also implements CursorShaper, its desired cursor shape (block,
+// underline, or bar) is latched onto the backend.
+//
+// If no focused node reports an active cursor, the hardware cursor is hidden.
+// This hardware cursor anchoring is required so operating system IME composition
+// windows anchor properly above or below the active text input cell.
 func (a *App) applyCursor() {
 	if n := a.nodes[a.focused]; n != nil && n.visible() {
 		if cr, ok := n.comp.(CursorReporter); ok {
