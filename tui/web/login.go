@@ -119,76 +119,24 @@ func (h *Handler) ServeLogin(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// http.MaxBytesReader, and then EXACTLY ONE value followed by EOF.
-	//
-	// io.LimitReader plus a single Decode was not a bound at all: Decode stops at
-	// the end of the first JSON value, so a correct-password object followed by
-	// 8 KiB of junk decoded fine, never hit the limit, and minted a ticket.
-	// MaxBytesReader makes the read itself fail past the cap, and
-	// requiring EOF makes trailing bytes a rejection rather than something nobody
-	// looked at.
-	r.Body = http.MaxBytesReader(w, r.Body, maxLoginBody)
-	dec := json.NewDecoder(r.Body)
-	var req loginRequest
-	if err := dec.Decode(&req); err != nil {
-		h.denyLogin(w, r, "", errors.New("malformed login body"))
-		return
-	}
-	if err := dec.Decode(new(json.RawMessage)); !errors.Is(err, io.EOF) {
-		h.denyLogin(w, r, "", errors.New("trailing content after the login body"))
-		return
-	}
-	if req.Subject == "" || req.Password == "" {
-		// Refused without consulting the policy: an empty field is not an
-		// attempt, and running the policy on one would put a pointless entry in
-		// the lockout counters.
-		h.denyLogin(w, r, "", errors.New("incomplete login"))
+	req, err := decodeLogin(w, r)
+	if err != nil {
+		h.denyLogin(w, r, "", err)
 		return
 	}
 
-	// The pending-login budget, checked BEFORE the credential is verified.
-	//
-	// Parked logins bound a different resource than live sessions, so
-	// they get their own budget: counting them against MaxSessions is what made a
-	// reconnect at full capacity impossible, since a reconnect must log in before
-	// it can reattach.
-	if h.pending != nil && !h.pending.enter() {
-		logger.Notice(h.log, sessionAudit{Kind: "login-denied", Reason: "pending-login limit"})
+	lease, ok := h.admitLogin()
+	if !ok {
 		http.Error(w, "busy", http.StatusServiceUnavailable)
 		return
 	}
-	// The slot this request holds. It stays anonymous unless a handoff ends up
-	// owning it, in which case whoever settles that handoff returns it — see
-	// gate.hold. The previous version simply stopped returning the slot on a
-	// successful login and nothing ever gave it back, so the ninth login 503'd
-	// forever.
-	//
-	// leased is one-way: once a handoff owns this slot the KEY is the sole unit of
-	// accounting, and gate.release is idempotent per key. Flipping it back would
-	// let the deferred leave() decrement a slot another request had meanwhile
-	// taken.
-	leased := false
-	if h.pending != nil {
-		defer func() {
-			if !leased {
-				h.pending.leave()
-			}
-		}()
-	}
+	defer lease.leave()
 
-	var attemptID string
-	ctx := auth.WithAttemptSink(r.Context(), func(a auth.Attempt) { attemptID = a.ID })
 	// A per-REQUEST slot for state the credential check produces. Verify holds the
 	// credential and is the only place that can allocate upstream state, but the
 	// handoff is not known until the ticket is minted below — so the move happens
 	// in two steps within one request rather than through a shared key.
 	stash := &Stash{}
-	ctx = withStash(ctx, stash)
-	// the request as authhttp projects it, as the attach's is, with the login's credentials
-	authReq := authhttp.FromRequest(r, authhttp.Credentials(func(*http.Request) map[string]auth.Secret {
-		return map[string]auth.Secret{"subject": auth.NewSecret(req.Subject), "password": auth.NewSecret(req.Password)}
-	}))
-
 	// Anything the credential check allocated is released unless it is parked.
 	//
 	// A factor allocates during Verify because that is the only place holding the
@@ -198,7 +146,7 @@ func (h *Handler) ServeLogin(w http.ResponseWriter, r *http.Request) {
 	// A no-op once the value has been taken into a park.
 	defer stash.discard()
 
-	identity, err := h.cfg.LoginPolicy.Authenticate(ctx, authReq)
+	identity, attemptID, err := h.authenticateLogin(r, req, stash)
 	if err != nil {
 		h.denyLogin(w, r, attemptID, err)
 		return
@@ -215,96 +163,189 @@ func (h *Handler) ServeLogin(w http.ResponseWriter, r *http.Request) {
 	}
 	// The handoff is derived from the ticket, so this package stores nothing and
 	// only the ticket holder can compute it.
-	handoff := HandoffID(secret.Reveal())
-	if h.onLogin != nil {
-		// THE LEASE GOES IN FIRST, before the hook that parks.
-		//
-		// A parked entry can be settled the instant it exists — by its own expiry
-		// timer, by a Sweep, by a concurrent Close. If that settle lands before the
-		// lease is installed it finds no key and does nothing, and the lease
-		// installed a moment later is a ghost: no park entry will ever settle it, so
-		// it sits on the budget until the backstop expiry. on
-		// reproduced exactly that — parked=0, held=1.
-		//
-		// Installing first inverts the race harmlessly: a settle that arrives early
-		// finds the key and returns the slot, and the rollback below is idempotent.
-		if h.pending != nil {
-			leased = h.pending.hold(handoff, h.now().Add(h.pendingHold))
-			// The hook's capability to publish its own park entry atomically with
-			// that reservation. Without it a consumer not using web.SSO had no way
-			// to be safe here at all, because the gate is unexported.
-			stash.mu.Lock()
-			stash.commit = func(publish func()) bool {
-				return h.pending.commit(handoff, h.now().Add(h.pendingHold), publish)
-			}
-			stash.mu.Unlock()
-		}
-
-		// The publishing capability lives only for the hook's CALL — not for the rest
-		// of this request, and not past a panic.
-		//
-		// Two attempts got this wrong in the same place. `defer` is function-scoped,
-		// so deferring the retirement inside this block left the capability live
-		// through every path below: while an error path was blocked in
-		// Issuer.Revoke, a retained Stash published successfully.
-		// Calling disarm on the line after the hook then skipped it whenever the
-		// hook PANICKED, which leaves the capability alive after the request
-		// unwinds.
-		//
-		// An immediately-invoked function is the scope that actually matches the
-		// hook's call: the defer fires on a normal return, an error return, and a
-		// panic, and on nothing else.
-		var hookErr error
-		func() {
-			defer stash.disarm()
-			hookErr = h.onLogin(handoff, identity, stash)
-		}()
-		if err := hookErr; err != nil {
-			// The caller could not record the login, so the login did NOT succeed.
-			// Returning the ticket anyway would hand out a credential for state
-			// that does not exist — so the ticket is REVOKED before the refusal.
-			// Leaving it in the store left a usable credential behind a 503.
-			if rerr := h.cfg.Issuer.Revoke(secret.Reveal()); rerr != nil {
-				logger.Warning(h.log, rerr, sessionAudit{Kind: "login-denied",
-					Subject: identity.Subject, Reason: "ticket revoke failed"})
-			}
-			// The hook failed, so nothing is parked and nothing will ever settle
-			// this handoff: return the lease here. Idempotent — a settle may already
-			// have returned it — and `leased` deliberately stays true so the
-			// deferred leave() cannot decrement a second time.
-			if leased {
-				h.pending.release(handoff)
-			}
-			logger.Warning(h.log, err, sessionAudit{Kind: "login-denied",
-				Subject: identity.Subject, Reason: "handoff not recorded"})
-			http.Error(w, "unavailable", http.StatusServiceUnavailable)
-			return
-		}
-		// Did the hook actually park anything? THE GATE KNOWS, because parking goes
-		// through a commit — web.SSO's, or a hand-rolled hook's Stash.CommitPark —
-		// and a commit is what turns this request's reservation into a slot that
-		// accounts for an entry.
-		//
-		// Asking the stash whether its value was taken was the wrong question: a
-		// hand-rolled park need not take anything from the stash in order to park,
-		// and such a hook lost its slot the moment it succeeded.
-		//
-		// An absent key needs no action either. It means the slot has already been
-		// returned — swept, or settled because the entry was claimed or released
-		// during the hook — and `leased` stays true so the deferred leave() cannot
-		// decrement a second time. Re-querying rather than holding a token from the
-		// commit is deliberate: the answer CAN change in between, and every way it
-		// can change leads to the same correct action, because release is keyed and
-		// idempotent.
-		if leased && !h.pending.committed(handoff) {
-			h.pending.release(handoff)
-		}
+	if err := h.parkHandoff(lease, HandoffID(secret.Reveal()), identity, stash, secret); err != nil {
+		http.Error(w, "unavailable", http.StatusServiceUnavailable)
+		return
 	}
 	logger.Info(h.log, sessionAudit{Kind: "login", Subject: identity.Subject, ID: attemptID})
+	writeTicket(w, secret)
+}
 
+// decodeLogin reads the login body: within http.MaxBytesReader, and then EXACTLY ONE value
+// followed by EOF.
+//
+// io.LimitReader plus a single Decode was not a bound at all: Decode stops at
+// the end of the first JSON value, so a correct-password object followed by
+// 8 KiB of junk decoded fine, never hit the limit, and minted a ticket.
+// MaxBytesReader makes the read itself fail past the cap, and
+// requiring EOF makes trailing bytes a rejection rather than something nobody
+// looked at.
+func decodeLogin(w http.ResponseWriter, r *http.Request) (loginRequest, error) {
+	r.Body = http.MaxBytesReader(w, r.Body, maxLoginBody)
+	dec := json.NewDecoder(r.Body)
+	var req loginRequest
+	if err := dec.Decode(&req); err != nil {
+		return req, errors.New("malformed login body")
+	}
+	if err := dec.Decode(new(json.RawMessage)); !errors.Is(err, io.EOF) {
+		return req, errors.New("trailing content after the login body")
+	}
+	if req.Subject == "" || req.Password == "" {
+		// Refused without consulting the policy: an empty field is not an
+		// attempt, and running the policy on one would put a pointless entry in
+		// the lockout counters.
+		return req, errors.New("incomplete login")
+	}
+	return req, nil
+}
+
+// loginLease is the pending-login slot one request holds. It stays anonymous unless a handoff
+// ends up owning it, in which case whoever settles that handoff returns it — see gate.hold. The
+// previous version simply stopped returning the slot on a successful login and nothing ever gave
+// it back, so the ninth login 503'd forever.
+//
+// leased is one-way: once a handoff owns this slot the KEY is the sole unit of accounting, and
+// gate.release is idempotent per key. Flipping it back would let leave decrement a slot another
+// request had meanwhile taken.
+type loginLease struct {
+	gate   *gate // nil: no pending-login budget
+	leased bool
+}
+
+// admitLogin takes a pending-login slot, BEFORE the credential is verified.
+//
+// Parked logins bound a different resource than live sessions, so
+// they get their own budget: counting them against MaxSessions is what made a
+// reconnect at full capacity impossible, since a reconnect must log in before
+// it can reattach.
+func (h *Handler) admitLogin() (*loginLease, bool) {
+	if h.pending == nil {
+		return &loginLease{}, true
+	}
+	if !h.pending.enter() {
+		logger.Notice(h.log, sessionAudit{Kind: "login-denied", Reason: "pending-login limit"})
+		return nil, false
+	}
+	return &loginLease{gate: h.pending}, true
+}
+
+// leave returns the slot, unless a handoff owns it.
+func (l *loginLease) leave() {
+	if l.gate != nil && !l.leased {
+		l.gate.leave()
+	}
+}
+
+// authenticateLogin runs the login policy over the request as authhttp projects it, as the
+// attach's is, with the login's credentials, and with stash for what the check allocates.
+// attemptID is the attempt's correlation ID, for the refusal.
+func (h *Handler) authenticateLogin(r *http.Request, req loginRequest, stash *Stash) (identity *auth.Identity, attemptID string, err error) {
+	ctx := auth.WithAttemptSink(r.Context(), func(a auth.Attempt) { attemptID = a.ID })
+	ctx = withStash(ctx, stash)
+	authReq := authhttp.FromRequest(r, authhttp.Credentials(func(*http.Request) map[string]auth.Secret {
+		return map[string]auth.Secret{"subject": auth.NewSecret(req.Subject), "password": auth.NewSecret(req.Password)}
+	}))
+	identity, err = h.cfg.LoginPolicy.Authenticate(ctx, authReq)
+	return identity, attemptID, err
+}
+
+// parkHandoff gives the login to the OnLogin hook, which parks what the consumer keeps for
+// handoff, and settles the lease by what the hook did. With no hook there is nothing to park. An
+// error means the login did not succeed: the ticket is revoked and the lease returned, and the
+// caller refuses the request.
+func (h *Handler) parkHandoff(lease *loginLease, handoff string, identity *auth.Identity, stash *Stash, secret auth.Secret) error {
+	if h.onLogin == nil {
+		return nil
+	}
+	// THE LEASE GOES IN FIRST, before the hook that parks.
+	//
+	// A parked entry can be settled the instant it exists — by its own expiry
+	// timer, by a Sweep, by a concurrent Close. If that settle lands before the
+	// lease is installed it finds no key and does nothing, and the lease
+	// installed a moment later is a ghost: no park entry will ever settle it, so
+	// it sits on the budget until the backstop expiry — reproduced exactly that
+	// way: parked=0, held=1.
+	//
+	// Installing first inverts the race harmlessly: a settle that arrives early
+	// finds the key and returns the slot, and the rollback below is idempotent.
+	if lease.gate != nil {
+		lease.leased = lease.gate.hold(handoff, h.now().Add(h.pendingHold))
+		// The hook's capability to publish its own park entry atomically with
+		// that reservation. Without it a consumer not using web.SSO had no way
+		// to be safe here at all, because the gate is unexported.
+		stash.mu.Lock()
+		stash.commit = func(publish func()) bool {
+			return lease.gate.commit(handoff, h.now().Add(h.pendingHold), publish)
+		}
+		stash.mu.Unlock()
+	}
+
+	// The publishing capability lives only for the hook's CALL — not for the rest
+	// of this request, and not past a panic.
+	//
+	// Two attempts got this wrong in the same place. `defer` is function-scoped,
+	// so deferring the retirement in the request's function left the capability
+	// live through every path after the hook: while an error path was blocked in
+	// Issuer.Revoke, a retained Stash published successfully.
+	// Calling disarm on the line after the hook then skipped it whenever the
+	// hook PANICKED, which leaves the capability alive after the request
+	// unwinds.
+	//
+	// An immediately-invoked function is the scope that actually matches the
+	// hook's call: the defer fires on a normal return, an error return, and a
+	// panic, and on nothing else.
+	var hookErr error
+	func() {
+		defer stash.disarm()
+		hookErr = h.onLogin(handoff, identity, stash)
+	}()
+	if err := hookErr; err != nil {
+		// The caller could not record the login, so the login did NOT succeed.
+		// Returning the ticket anyway would hand out a credential for state
+		// that does not exist — so the ticket is REVOKED before the refusal.
+		// Leaving it in the store left a usable credential behind a 503.
+		if rerr := h.cfg.Issuer.Revoke(secret.Reveal()); rerr != nil {
+			logger.Warning(h.log, rerr, sessionAudit{Kind: "login-denied",
+				Subject: identity.Subject, Reason: "ticket revoke failed"})
+		}
+		// The hook failed, so nothing is parked and nothing will ever settle
+		// this handoff: return the lease here. Idempotent — a settle may already
+		// have returned it — and leased deliberately stays true so the
+		// deferred leave cannot decrement a second time.
+		if lease.leased {
+			lease.gate.release(handoff)
+		}
+		logger.Warning(h.log, err, sessionAudit{Kind: "login-denied",
+			Subject: identity.Subject, Reason: "handoff not recorded"})
+		return err
+	}
+	// Did the hook actually park anything? THE GATE KNOWS, because parking goes
+	// through a commit — web.SSO's, or a hand-rolled hook's Stash.CommitPark —
+	// and a commit is what turns this request's reservation into a slot that
+	// accounts for an entry.
+	//
+	// Asking the stash whether its value was taken was the wrong question: a
+	// hand-rolled park need not take anything from the stash in order to park,
+	// and such a hook lost its slot the moment it succeeded.
+	//
+	// An absent key needs no action either. It means the slot has already been
+	// returned — swept, or settled because the entry was claimed or released
+	// during the hook — and leased stays true so the deferred leave cannot
+	// decrement a second time. Re-querying rather than holding a token from the
+	// commit is deliberate: the answer CAN change in between, and every way it
+	// can change leads to the same correct action, because release is keyed and
+	// idempotent.
+	if lease.leased && !lease.gate.committed(handoff) {
+		lease.gate.release(handoff)
+	}
+	return nil
+}
+
+// writeTicket writes the login's response, the attach ticket. The body carries a credential, so
+// nothing may cache it — set at the top of ServeLogin, restated here because this is the one
+// response where it matters.
+func writeTicket(w http.ResponseWriter, secret auth.Secret) {
 	w.Header().Set("Content-Type", "application/json")
-	// The response body carries a credential, so nothing may cache it — already
-	// set above, restated here because this is the one response where it matters.
 	w.Header().Set("Cache-Control", "no-store")
 	_ = json.NewEncoder(w).Encode(loginResponse{Ticket: secret.Reveal()})
 }
