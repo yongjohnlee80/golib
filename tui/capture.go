@@ -237,13 +237,12 @@ func (c *Context) HasPointerCapture() bool {
 // assertReleasablePhase admits the phases in which ending a capture is
 // meaningful and safe, and rejects everything else.
 //
-// The legal set is stated POSITIVELY. An earlier version listed the forbidden
-// phases instead and named only Layout and Render, which silently admitted two
-// more: Init, where the node cannot yet hold a capture at all, and any callback
-// reached outside an Update — including one running on another goroutine, where
-// touching loop-owned capture state is a data race rather than merely a
-// contract breach. A negative list has to be complete to be correct, and this
-// one was not.
+// The legal set is stated POSITIVELY. A list of the forbidden phases has to be
+// complete to be correct: one naming only Layout and Render would silently
+// admit two more, Init, where the node cannot yet hold a capture at all, and any
+// callback reached outside an Update, including one running on another
+// goroutine, where touching loop-owned capture state is a data race rather than
+// merely a contract breach.
 //
 // An input handler — HandleEvent or HandleAction — or an Update callback is
 // the whole legal set. The commit phase joins it when that layer exists.
@@ -347,7 +346,7 @@ func (a *App) captureLostOnUnmount(n *node) {
 // The sampled focus taken at acquisition is the transition state this compares
 // against, and a retained in-subtree move RE-BASELINES it. Without that the
 // sample would only ever describe the instant the drag began, and the field
-// would be written and never read — which is what it was.
+// would be written and never read.
 //
 // Focus becoming nothing at all counts as leaving. A non-focusable owner — a
 // divider, a resize grip — is the case that makes this matter: its only focused

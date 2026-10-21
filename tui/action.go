@@ -359,10 +359,10 @@ func (c *Context) ForwardAction(target Component, a Action) bool {
 // recogniser.
 //
 // The Activatable fallback exists because activation must not depend on which
-// producer asked for it. An earlier design reached Activate only from a
-// recogniser, so a key binding that resolved to ActivateAction fell through to
-// raw event handling and activated nothing — the same intent worked by click
-// and silently did nothing by keyboard.
+// producer asked for it. Reached only from a recogniser, a key binding that
+// resolves to ActivateAction would fall through to raw event handling and
+// activate nothing: the same intent would work by click and silently do nothing
+// by keyboard.
 func (a *App) dispatchAction(n *node, inv ActionInvocation) bool {
 	if n == nil || !n.mounted {
 		return false

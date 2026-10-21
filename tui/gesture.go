@@ -21,10 +21,10 @@ import (
 // across the terminal, the web backend and TestBackend, without doing any
 // coordinate arithmetic of its own.
 //
-// WHY CAPTURE OWNERSHIP IS TYPED. An earlier design sent every held-capture
-// event straight to the owner — but the recogniser TAKES the capture on the
-// press, so its own motion and release bypassed it forever and it could never
-// re-arm, cancel or activate. Its own capture made completion impossible.
+// WHY CAPTURE OWNERSHIP IS TYPED. The recogniser TAKES the capture on the
+// press, so sending every held-capture event straight to the owner would let
+// its own motion and release bypass it forever: it could never re-arm, cancel
+// or activate, and its own capture would make completion impossible.
 // CaptureGesture routes to the recogniser and CaptureRaw to the owner, so the
 // two cannot be confused.
 

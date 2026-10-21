@@ -24,11 +24,10 @@ type RegionID string
 // whole node, or a region inside one.
 //
 // OPAQUE, and issued only by the owner's own Context, because that is what
-// makes ownership checkable. An earlier design let a caller name any Component
-// and promised the runtime would enforce "self or descendant" — but a method on
-// the overlay host receives no caller identity, so there was nothing to check
-// the claim against. A ref that carries its owner cannot be forged by the
-// component that consumes it.
+// makes ownership checkable. Letting a caller name any Component and promising
+// the runtime enforces "self or descendant" would check nothing: a method on the
+// overlay host receives no caller identity to check the claim against. A ref
+// that carries its owner cannot be forged by the component that consumes it.
 //
 // GENERATION-STAMPED, so a recycled row cannot be silently re-anchored. When an
 // owner invalidates its anchors the generation moves, every ref it previously
