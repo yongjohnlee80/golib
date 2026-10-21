@@ -327,3 +327,35 @@ func TestKittyKeyboardFlagsAreAMode(t *testing.T) {
 		t.Errorf("after the oldest was evicted, KeyboardFlags = %d; want 0", got)
 	}
 }
+
+// Every DEC private mode the screen keeps reports what SM and RM set it to, one row of
+// privateModes driving both; 1048, a cursor save with no state, reports unknown.
+func TestEveryPrivateModeReportsWhatItWasSetTo(t *testing.T) {
+	reply := func(in string) string {
+		var got []byte
+		feed(New(4, 10, WithReply(func(b []byte) { got = append(got, b...) })), in)
+		return string(got)
+	}
+	reported := 0
+	for n, pm := range privateModes {
+		if pm.get == nil {
+			continue
+		}
+		reported++
+		for _, set := range []struct {
+			final byte
+			want  int
+		}{{'h', 1}, {'l', 2}} {
+			want := fmt.Sprintf("\x1b[?%d;%d$y", n, set.want)
+			if got := reply(fmt.Sprintf("\x1b[?%d%c\x1b[?%d$p", n, set.final, n)); got != want {
+				t.Errorf("mode %d after %c: replied %q, want %q", n, set.final, got, want)
+			}
+		}
+	}
+	if reported != 17 {
+		t.Errorf("%d private modes are reported, want 17", reported)
+	}
+	if got := reply("\x1b[?1048h\x1b[?1048$p"); got != "\x1b[?1048;0$y" {
+		t.Errorf("1048 replied %q, want unknown", got)
+	}
+}
