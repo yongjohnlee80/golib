@@ -507,18 +507,7 @@ func (f *Float) place(area tui.Rect, layout func(tui.Constraints) tui.Size) tui.
 
 // alignOffset resolves a tui.Align inside avail for content of size sz.
 func alignOffset(a tui.Align, avail, sz tui.Size) (x, y int) {
-	switch a {
-	case tui.AlignTop, tui.AlignCenter, tui.AlignBottom:
-		x = (avail.W - sz.W) / 2
-	case tui.AlignTopRight, tui.AlignRight, tui.AlignBottomRight:
-		x = avail.W - sz.W
-	}
-	switch a {
-	case tui.AlignLeft, tui.AlignCenter, tui.AlignRight:
-		y = (avail.H - sz.H) / 2
-	case tui.AlignBottomLeft, tui.AlignBottom, tui.AlignBottomRight:
-		y = avail.H - sz.H
-	}
+	x, y = a.Offset(avail, sz)
 	return max(x, 0), max(y, 0)
 }
 
