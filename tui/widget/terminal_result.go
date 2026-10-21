@@ -106,6 +106,27 @@ type TerminalShutdownResult struct{ completion terminalCompletion }
 func (r *TerminalShutdownResult) Done() <-chan struct{}          { return r.completion.done }
 func (r *TerminalShutdownResult) Wait(ctx context.Context) error { return r.completion.wait(ctx) }
 
+// joinShutdowns is one result for many: done once each is done, its error each one's joined. With
+// none it is done at once.
+func joinShutdowns(results []*TerminalShutdownResult) *TerminalShutdownResult {
+	r := &TerminalShutdownResult{completion: terminalCompletion{done: make(chan struct{})}}
+	if len(results) == 0 {
+		close(r.completion.done)
+		return r
+	}
+	go func() {
+		var failures []error
+		for _, result := range results {
+			if err := result.Wait(context.Background()); err != nil {
+				failures = append(failures, err)
+			}
+		}
+		r.completion.err = errors.Join(failures...)
+		close(r.completion.done)
+	}()
+	return r
+}
+
 func joinTerminalCleanup(generations []*TerminalStopResult) *TerminalShutdownResult {
 	r := &TerminalShutdownResult{completion: terminalCompletion{done: make(chan struct{})}}
 	if len(generations) == 0 {
