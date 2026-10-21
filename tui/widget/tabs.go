@@ -302,8 +302,8 @@ func (t *Tabs) KeyBindings(m *keymap.Map) []keymap.Binding { return tui.Bindings
 
 // Layout gives the bar one row and the active content the rest.
 func (t *Tabs) Layout(c tui.Constraints) tui.Size {
-	w := boundedMax(c.MaxW, max(c.MinW, 1))
-	h := boundedMax(c.MaxH, max(c.MinH, 1))
+	w := fillW(c)
+	h := fillH(c)
 	barH := 1
 	if t.noBar {
 		barH = 0

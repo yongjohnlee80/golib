@@ -271,13 +271,16 @@ func (t *Terminal) SetVimKeys(on bool) { t.cfg.vimKeys = on }
 func (t *Terminal) SetModeKey(match func(tui.KeyEvent) bool) { t.cfg.modeKey = match }
 
 // isModeKey reports the mode key (WithModeKey), its press or a repeat of it: match judges the press.
-func (t *Terminal) isModeKey(e tui.KeyEvent) bool {
-	if t.cfg.modeKey == nil {
+func (t *Terminal) isModeKey(e tui.KeyEvent) bool { return pressMatches(t.cfg.modeKey, e) }
+
+// pressMatches reports whether match, if set, accepts e as the press it is, a repeat or a release
+// included: a key the host claims is claimed in every phase.
+func pressMatches(match func(tui.KeyEvent) bool, e tui.KeyEvent) bool {
+	if match == nil {
 		return false
 	}
-	press := e
-	press.Kind = tui.KeyPress
-	return t.cfg.modeKey(press)
+	e.Kind = tui.KeyPress
+	return match(e)
 }
 
 // toggleMode is the mode key: normal mode back to input, input mode into normal mode while a
@@ -591,8 +594,8 @@ func (t *Terminal) flushPrefix() {
 // the program after layout. With a view, that size is the view's cells for
 // the area placed (TerminalView.Cells), so the one resize registered is it.
 func (t *Terminal) Layout(c tui.Constraints) tui.Size {
-	t.w = boundedMax(c.MaxW, max(c.MinW, 1))
-	t.h = boundedMax(c.MaxH, max(c.MinH, 1))
+	t.w = fillW(c)
+	t.h = fillH(c)
 	w, h := t.w, t.h
 	if t.view != nil {
 		w, h = t.view.Cells(t.w, t.h)
@@ -1005,14 +1008,7 @@ func (t *Terminal) SetCellFace(family string) {
 func (t *Terminal) CellFace() string { return t.cellFace }
 
 // isHostKey reports a host key (SetHostKeys), its press or a repeat of it: match judges the press.
-func (t *Terminal) isHostKey(e tui.KeyEvent) bool {
-	if t.hostKeys == nil {
-		return false
-	}
-	press := e
-	press.Kind = tui.KeyPress
-	return t.hostKeys(press)
-}
+func (t *Terminal) isHostKey(e tui.KeyEvent) bool { return pressMatches(t.hostKeys, e) }
 
 // SetHostKeys leaves the keys match accepts to the host: in input mode the Terminal sends none of
 // such a key. Its press is not consumed, so it goes on to its ancestors and the Window's Shortcuts

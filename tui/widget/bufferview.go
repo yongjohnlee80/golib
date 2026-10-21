@@ -450,8 +450,8 @@ func incompleteTail(b []byte) int {
 // Layout is greedy on both axes; it re-derives the wrapped row count and
 // scroll bounds.
 func (v *BufferView) Layout(c tui.Constraints) tui.Size {
-	v.w = boundedMax(c.MaxW, max(c.MinW, 1))
-	v.h = boundedMax(c.MaxH, max(c.MinH, 1))
+	v.w = fillW(c)
+	v.h = fillH(c)
 	v.recount()
 	v.clampScroll()
 	return c.Constrain(tui.Size{W: v.w, H: v.h})

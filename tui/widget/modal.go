@@ -214,8 +214,7 @@ func WithModalWidth(w int) ModalOption {
 // The card remains centered and can still shrink with the terminal.
 func WithModalMaxSizePercent(width, height int) ModalOption {
 	return func(m *Modal) {
-		m.maxWidthPercent = min(max(width, 0), 100)
-		m.maxHeightPercent = min(max(height, 0), 100)
+		m.maxWidthPercent, m.maxHeightPercent = clampPct(width), clampPct(height)
 	}
 }
 
@@ -235,9 +234,7 @@ func (m *Modal) SetTitle(s string) {
 		return
 	}
 	m.card.title, m.card.titleMsg = s, tui.Message{}
-	if ctx := m.card.Context(); ctx != nil {
-		ctx.RequestLayout() // the title sets a floor on the card's width
-	}
+	m.card.RequestLayout() // the title sets a floor on the card's width
 }
 
 // SetRule turns the rule under the body on or off.
@@ -246,9 +243,7 @@ func (m *Modal) SetRule(v bool) {
 		return
 	}
 	m.card.rule = v
-	if ctx := m.card.Context(); ctx != nil {
-		ctx.RequestLayout()
-	}
+	m.card.RequestLayout()
 }
 
 // SetFooter replaces the help line under the buttons — for a dialog whose keys
@@ -258,27 +253,21 @@ func (m *Modal) SetFooter(text string) {
 		return
 	}
 	m.card.footer, m.card.footerMsg = text, tui.Message{}
-	if ctx := m.card.Context(); ctx != nil {
-		ctx.RequestLayout()
-	}
+	m.card.RequestLayout()
 }
 
 // SetTitleMessage shows a catalog message as the title, in the App's language from the next
 // layout.
 func (m *Modal) SetTitleMessage(msg tui.Message) {
 	m.card.title, m.card.titleMsg = m.card.translate(msg), msg
-	if ctx := m.card.Context(); ctx != nil {
-		ctx.RequestLayout()
-	}
+	m.card.RequestLayout()
 }
 
 // SetFooterMessage shows a catalog message as the help line under the buttons, in the App's
 // language from the next layout: a footer that stays right when the language changes.
 func (m *Modal) SetFooterMessage(msg tui.Message) {
 	m.card.footer, m.card.footerMsg = m.card.translate(msg), msg
-	if ctx := m.card.Context(); ctx != nil {
-		ctx.RequestLayout()
-	}
+	m.card.RequestLayout()
 }
 
 // Footer returns the help line under the buttons.
@@ -842,10 +831,10 @@ func (m *Modal) Layout(cs tui.Constraints) tui.Size {
 	if ctx := m.Context(); ctx != nil {
 		offer := full
 		if m.maxWidthPercent > 0 {
-			offer.W = max(1, full.W*m.maxWidthPercent/100)
+			offer.W = pctOf(full.W, m.maxWidthPercent)
 		}
 		if m.maxHeightPercent > 0 {
-			offer.H = max(1, full.H*m.maxHeightPercent/100)
+			offer.H = pctOf(full.H, m.maxHeightPercent)
 		}
 		cardSize := ctx.LayoutChild(m.card, tui.Loose(offer))
 		m.cardRect = placeCard(m.placement, full, cardSize)
