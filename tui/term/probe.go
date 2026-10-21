@@ -91,71 +91,85 @@ func preseedProfile(lookup func(string) (string, bool)) tui.ColorProfile {
 // cancellation it returns ctx.Err() and the caller discards everything —
 // a partially-negotiated profile is never observable.
 func (b *Backend) runProbe(ctx context.Context) (tui.Capabilities, error) {
+	preseed := preseedProfile(b.cfg.env)
+	b.probing.Store(true)
+	defer b.probing.Store(false)
+	tmux := inTmux(b.cfg.env)
+	if err := b.write([]byte(probeQueries(tmux))); err != nil {
+		return probeResult{}.capabilities(preseed), err
+	}
+	r, err := b.collectProbe(ctx, tmux)
+	if err != nil {
+		return probeResult{}.capabilities(preseed), err
+	}
+	return r.capabilities(preseed), nil
+}
+
+// probeResult is what the probe's replies said, before any of it is read as a capability.
+type probeResult struct {
+	modes             map[int]int // DECRPM: mode to its Ps
+	fg, bg            tui.ProbedColor
+	kitty, rgb, smulx bool
+	graphics          tui.Tri
+}
+
+// collectProbe gathers the replies until the DA1 fence, the probe timeout, or ctx's end (an error).
+// Behind tmux (tmux) the fence is tmux's own answer, which proves nothing of the terminal outside.
+func (b *Backend) collectProbe(ctx context.Context, tmux bool) (probeResult, error) {
+	r := probeResult{modes: make(map[int]int), graphics: tui.TriUnknown}
+	timer := time.NewTimer(b.cfg.probeTimeout)
+	defer timer.Stop()
+	for {
+		select {
+		case rep := <-b.probeCh:
+			switch rep.kind {
+			case prDECRPM:
+				r.modes[rep.mode] = rep.value
+			case prKitty:
+				r.kitty = true
+			case prOSCColor:
+				if rep.osc == 10 {
+					r.fg = rep.color
+				} else {
+					r.bg = rep.color
+				}
+			case prTermcap:
+				r.rgb = r.rgb || rep.rgb
+				r.smulx = r.smulx || rep.smulx
+			case prGraphics:
+				r.graphics = tui.TriNo
+				if rep.graphicsOK {
+					r.graphics = tui.TriYes
+				}
+			case prDA1:
+				if r.graphics == tui.TriUnknown && !tmux {
+					// the terminal answered in order and said nothing of graphics
+					r.graphics = tui.TriNo
+				}
+				return r, nil // the fence: everything unanswered is unsupported
+			}
+		case <-timer.C:
+			return r, nil // silent terminal: same defaults, at the deadline
+		case <-ctx.Done():
+			return r, ctx.Err()
+		}
+	}
+}
+
+// capabilities reads the replies as capabilities, on top of preseed's colour profile. It is pure:
+// the zero probeResult is a terminal that answered nothing, and gets the documented defaults
+// (DarkBackground assumed, Mouse unknown, graphics unknown).
+func (r probeResult) capabilities(preseed tui.ColorProfile) tui.Capabilities {
 	caps := tui.Capabilities{
-		ColorProfile: preseedProfile(b.cfg.env),
+		ColorProfile: preseed,
 		// The documented, fixed unknown-fallback: when OSC 11 goes
 		// unanswered, ASSUME DARK.
 		DarkBackground: true,
 	}
-
-	b.probing.Store(true)
-	defer b.probing.Store(false)
-
-	tmux := inTmux(b.cfg.env)
-	if err := b.write([]byte(probeQueries(tmux))); err != nil {
-		return caps, err
-	}
-
-	timer := time.NewTimer(b.cfg.probeTimeout)
-	defer timer.Stop()
-
-	modes := make(map[int]int)
-	var fg, bg tui.ProbedColor
-	var kitty, rgb, smulx bool
-	graphics := tui.TriUnknown
-
-collect:
-	for {
-		select {
-		case r := <-b.probeCh:
-			switch r.kind {
-			case prDECRPM:
-				modes[r.mode] = r.value
-			case prKitty:
-				kitty = true
-			case prOSCColor:
-				if r.osc == 10 {
-					fg = r.color
-				} else {
-					bg = r.color
-				}
-			case prTermcap:
-				rgb = rgb || r.rgb
-				smulx = smulx || r.smulx
-			case prGraphics:
-				graphics = tui.TriNo
-				if r.graphicsOK {
-					graphics = tui.TriYes
-				}
-			case prDA1:
-				if graphics == tui.TriUnknown && !tmux {
-					// the terminal answered in order and said nothing of graphics; behind tmux the
-					// fence is tmux's own answer, which proves nothing of the terminal outside
-					graphics = tui.TriNo
-				}
-				break collect // the fence: everything unanswered is unsupported
-			}
-		case <-timer.C:
-			break collect // silent terminal: same defaults, at the deadline
-		case <-ctx.Done():
-			return caps, ctx.Err()
-		}
-	}
-
 	// DECRPM Ps ∈ {1, 2, 3} (set / reset / permanently set) means the mode
 	// exists; 0 means unrecognized; silence means unsupported.
 	supported := func(mode int) bool {
-		v, ok := modes[mode]
+		v, ok := r.modes[mode]
 		return ok && v >= 1 && v <= 3
 	}
 	caps.BracketedPaste = supported(2004)
@@ -166,7 +180,7 @@ collect:
 	// Mouse is tri-state: TriYes only on a verifiable DECRQM ?1006
 	// answer; silence stays TriUnknown — a requested-but-unverified enable
 	// is never reported as support.
-	switch v, ok := modes[1006]; {
+	switch v, ok := r.modes[1006]; {
 	case ok && v >= 1 && v <= 3:
 		caps.Mouse = tui.TriYes
 	case ok:
@@ -175,16 +189,16 @@ collect:
 		caps.Mouse = tui.TriUnknown
 	}
 
-	caps.KittyKeyboard = kitty
-	caps.KittyGraphics = graphics
-	caps.Undercurl = smulx
-	if rgb {
+	caps.KittyKeyboard = r.kitty
+	caps.KittyGraphics = r.graphics
+	caps.Undercurl = r.smulx
+	if r.rgb {
 		caps.ColorProfile = tui.ProfileTrueColor // upgrade only, never downgrade
 	}
-	caps.DefaultFG = fg
-	caps.DefaultBG = bg
-	if bg.Known {
-		caps.DarkBackground = style.Dark(bg.R, bg.G, bg.B) // WCAG: white reads better than black
+	caps.DefaultFG = r.fg
+	caps.DefaultBG = r.bg
+	if r.bg.Known {
+		caps.DarkBackground = style.Dark(r.bg.R, r.bg.G, r.bg.B) // WCAG: white reads better than black
 	}
-	return caps, nil
+	return caps
 }
