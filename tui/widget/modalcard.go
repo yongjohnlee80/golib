@@ -282,16 +282,16 @@ func (c *modalCard) Layout(cs tui.Constraints) tui.Size {
 
 	// Place children inside the frame, now that the card's own size is fixed.
 	x0, y := border+pad, border+padTop
-	c.ruleY, c.footerY = -1, -1
+	ruleY, footerY := -1, -1
 	if c.body != nil {
 		ctx.PlaceChild(c.body, tui.Rect{X: x0, Y: y, W: min(bodyW, contentW), H: bodyH})
 		if ruleRow == 1 {
-			c.ruleY = y + bodyH + blankAbove
+			ruleY = y + bodyH + blankAbove
 		}
 		y += bodyH + blankAbove + ruleRow + blankBelow
 	}
 	if footLine == 1 {
-		c.footerY = size.H - 1 - border - padBottom
+		footerY = size.H - 1 - border - padBottom
 	}
 	// Each wrapped row is independently aligned so a short final line is
 	// still centered (or right-aligned), not stranded at the left edge.
@@ -317,6 +317,9 @@ func (c *modalCard) Layout(cs tui.Constraints) tui.Size {
 		}
 		y += r.height
 	}
+	// Render draws the rule and the help line at the rows committed after layout, so a measure
+	// moves nothing on screen.
+	ctx.AfterLayout("widget.modalcard", func() { c.ruleY, c.footerY = ruleY, footerY })
 	return size
 }
 

@@ -352,6 +352,9 @@ func borderEdgeSizes(st style.Style) (t, r, b, l int) {
 	return t, r, b, l
 }
 
+// boxCommitKey is the Box's inset commit (tui.Context.AfterLayout).
+const boxCommitKey tui.CommitKey = "widget.box"
+
 // Layout subtracts the frame (border + padding + margin, frame math) from
 // the constraints, lays out the child, and reports child size +
 // frame. Title and status cost zero extra rows: they render inside the
@@ -364,15 +367,18 @@ func (x *Box) Layout(c tui.Constraints) tui.Size {
 		h := boundedMax(c.MaxH, max(c.MinH, fv))
 		return c.Constrain(tui.Size{W: w, H: h})
 	}
-	x.inL, x.inR = 0, 0
+	inL, inR := 0, 0
+	// The insets Render centres a capped box by are committed after layout, so a measure moves
+	// nothing on screen.
+	defer func() { x.ctx.AfterLayout(boxCommitKey, func() { x.inL, x.inR = inL, inR }) }()
 	if x.maxW > 0 && c.MaxW != tui.Unbounded && c.MaxW > x.maxW {
 		// capped: the box is maxW wide, centred; it keeps what it was given, so nothing beside it moves
 		extra := c.MaxW - x.maxW
-		x.inL, x.inR = extra/2, extra-extra/2
+		inL, inR = extra/2, extra-extra/2
 		cc := tui.Constraints{MinW: x.maxW - fh, MaxW: x.maxW - fh, MinH: max(c.MinH-fv, 0), MaxH: subFrame(c.MaxH, fv)}
 		sz := x.ctx.LayoutChild(x.child, cc)
 		ft, _, _, fl := x.frame()
-		x.ctx.PlaceChild(x.child, tui.Rect{X: x.inL + fl, Y: ft, W: sz.W, H: sz.H})
+		x.ctx.PlaceChild(x.child, tui.Rect{X: inL + fl, Y: ft, W: sz.W, H: sz.H})
 		return c.Constrain(tui.Size{W: c.MaxW, H: sz.H + fv})
 	}
 	cc := tui.Constraints{

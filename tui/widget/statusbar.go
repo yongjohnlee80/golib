@@ -263,7 +263,7 @@ func (s *StatusBar) Layout(c tui.Constraints) tui.Size {
 		s.ctx.LayoutChild(child, tui.Tight(tui.Size{}))
 		s.ctx.PlaceChild(child, tui.Rect{X: max(x, 0)})
 	}
-	s.placed = sz.W - max(x, 0)
+	placed := sz.W - max(x, 0)
 	// left to right, in what is left: the first added sits at the start
 	lx, end := 0, max(x, 0)
 	for _, it := range s.items {
@@ -282,7 +282,9 @@ func (s *StatusBar) Layout(c tui.Constraints) tui.Size {
 		s.ctx.LayoutChild(it.c, tui.Tight(tui.Size{}))
 		s.ctx.PlaceChild(it.c, tui.Rect{X: min(lx, end)})
 	}
-	s.leading = min(lx, end)
+	leading := min(lx, end)
+	// what Render reads is committed after layout, so a measure moves nothing on screen
+	s.ctx.AfterLayout("widget.statusbar", func() { s.placed, s.leading = placed, leading })
 	return sz
 }
 

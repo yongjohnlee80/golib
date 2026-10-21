@@ -306,8 +306,9 @@ func (f *Float) Layout(c tui.Constraints) tui.Size {
 	}
 	w := boundedMax(c.MaxW, c.MinW)
 	h := boundedMax(c.MaxH, c.MinH)
-	f.area = tui.Size{W: w, H: h}
-	f.ctx.LayoutChild(f.layer, tui.Tight(tui.Size{W: w, H: h}))
+	area := tui.Size{W: w, H: h}
+	f.ctx.AfterLayout("widget.float.area", func() { f.area = area }) // Area's: committed, so a measure moves nothing
+	f.ctx.LayoutChild(f.layer, tui.Tight(area))
 	f.ctx.PlaceChild(f.layer, tui.Rect{X: 0, Y: 0, W: w, H: h})
 	return c.Constrain(tui.Size{W: w, H: h})
 }
@@ -371,8 +372,9 @@ func (l *floatLayer) Layout(c tui.Constraints) tui.Size {
 	if l.owner.windowTarget != nil {
 		return l.layoutManaged(c, w, h)
 	}
-	l.owner.content = l.owner.place(tui.Rect{W: w, H: h}, l.layoutChild)
-	l.ctx.PlaceChild(l.owner.child, l.owner.content)
+	content := l.owner.place(tui.Rect{W: w, H: h}, l.layoutChild)
+	l.ctx.PlaceChild(l.owner.child, content)
+	l.ctx.AfterLayout("widget.float", func() { l.owner.content = content }) // ContentRect's: committed, so a measure moves nothing
 	return c.Constrain(tui.Size{W: w, H: h})
 }
 

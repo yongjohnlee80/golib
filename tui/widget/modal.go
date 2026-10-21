@@ -843,8 +843,9 @@ func (m *Modal) Layout(cs tui.Constraints) tui.Size {
 			offer.H = pctOf(full.H, m.maxHeightPercent)
 		}
 		cardSize := ctx.LayoutChild(m.card, tui.Loose(offer))
-		m.cardRect = placeCard(m.placement, full, cardSize)
-		ctx.PlaceChild(m.card, m.cardRect)
+		card := placeCard(m.placement, full, cardSize)
+		ctx.PlaceChild(m.card, card)
+		ctx.AfterLayout("widget.modal", func() { m.cardRect = card }) // CardRect's: committed, so a measure moves nothing
 	}
 	return cs.Constrain(full)
 }
