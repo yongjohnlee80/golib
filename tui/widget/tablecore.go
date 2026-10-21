@@ -170,6 +170,8 @@ func TableOnActivate(fn func(row int)) TableOption { return func(c *TableCore) {
 
 // TableOnCursor is called with the source row under the cursor whenever that row changes: a move,
 // a new source, rows arriving under a sort. A sort that keeps the cursor on its row calls nothing.
+// It may replace the source (SetSource) or change it in place: the operation that moved the cursor
+// does nothing more on the old rows.
 func TableOnCursor(fn func(row int)) TableOption { return func(c *TableCore) { c.onCursor = fn } }
 
 const (
@@ -238,17 +240,18 @@ func (c *TableCore) SetSource(src TableSource) {
 	c.pager, _ = src.(TablePager)
 	c.edit, _ = src.(TableEditor)
 	c.commit, _ = src.(TableCommitter)
-	if c.tableEditSession.newSource() {
-		c.dropped()
-	}
 	c.kinds, _ = src.(TableKinds)
+	dropped := c.tableEditSession.newSource()
 	had := c.keys != nil
 	c.cur = TablePos{}
 	c.tableSelection.reset()
 	c.tableView.reset()
 	c.tableKeyState.reset()
 	c.presses.Reset() // a source row index means another row now
-	c.Changed()
+	// the owner is told last, the new source in place: each step stops once a callback replaced it
+	if dropped && !c.dropped() || !c.changed() {
+		return
+	}
 	if had {
 		c.sortChanged()
 	}
@@ -346,15 +349,20 @@ func (c *TableCore) Fields() []TableField {
 // cursor kept on the source row it was on (clamped when that row is gone, and on the first row
 // when the filter no longer shows it), and the view repainted. A pager's new rows are filtered
 // and merged into a sort without moving the cursor off its row.
-func (c *TableCore) Changed() {
+func (c *TableCore) Changed() { c.changed() }
+
+// changed is Changed, reporting whether the rows survived the owner's callbacks: an edit dropped,
+// the cursor's row, the sort. The owner is told last, the rows arranged.
+func (c *TableCore) changed() (live bool) {
 	c.measured = nil
+	drop := false
 	if c.editing != nil {
 		// a Raw edit, an undo, a reload: the cell may be another's now. A source with a revision
 		// says whether it changed; one without cannot, so its edit is dropped
 		_, revd := c.src.(TableRevisioner)
 		if !revd || !c.current(c.editing) {
 			c.editing = nil
-			c.dropped()
+			drop = true
 		}
 	}
 	keep := -1
@@ -373,11 +381,14 @@ func (c *TableCore) Changed() {
 		c.anchor, c.kind = nil, TableSelectCells
 	}
 	c.wantMore()
-	c.announce()
 	c.repaint()
-	if len(c.keys) != before {
-		c.sortChanged()
+	if drop && !c.dropped() || !c.announce() {
+		return false
 	}
+	if len(c.keys) != before {
+		return c.sortChanged()
+	}
+	return true
 }
 
 // ScrollFields asks the view to move its first field shown by n: the view
@@ -399,18 +410,22 @@ type TableLayoutFields interface {
 func (c *TableCore) Cursor() TablePos { return c.cur }
 
 // SetCursor moves the cursor, clamped to the table.
-func (c *TableCore) SetCursor(p TablePos) {
+func (c *TableCore) SetCursor(p TablePos) { c.cursorTo(p) }
+
+// cursorTo is SetCursor, reporting whether the rows survived the owner's TableOnCursor: an
+// operation that goes on after moving the cursor stops when it reports false.
+func (c *TableCore) cursorTo(p TablePos) (live bool) {
 	c.cur = p
 	c.clamp()
-	c.reach()
+	return c.reach()
 }
 
 // SelectSourceRow moves the cursor to the display row showing source row r, in its field; to the
 // first row when the filter hides r.
-func (c *TableCore) SelectSourceRow(r int) { c.SetCursor(TablePos{c.displayRow(r), c.cur.Col}) }
+func (c *TableCore) SelectSourceRow(r int) { c.cursorTo(TablePos{c.displayRow(r), c.cur.Col}) }
 
 // Move moves the cursor by rows and fields.
-func (c *TableCore) Move(dRow, dCol int) { c.SetCursor(TablePos{c.cur.Row + dRow, c.cur.Col + dCol}) }
+func (c *TableCore) Move(dRow, dCol int) { c.cursorTo(TablePos{c.cur.Row + dRow, c.cur.Col + dCol}) }
 
 // SourceRow is the source row shown at display row r.
 func (c *TableCore) SourceRow(r int) int {
@@ -555,38 +570,41 @@ func (c *TableCore) clamp() {
 
 // reach reveals the cursor and asks a pager for more rows when the cursor is near the end of
 // those loaded: what a move of the cursor does.
-func (c *TableCore) reach() {
+func (c *TableCore) reach() (live bool) {
 	if c.layout != nil {
 		c.layout.Reveal(c.cur.Row, c.cur.Col)
 	}
 	c.wantMore()
-	c.announce()
 	c.repaint()
+	return c.announce()
 }
 
 // show reveals the cursor without asking a pager for anything: what a sort and a filter do. They
 // rearrange the rows loaded, and only the cursor's moving (or rows arriving) may fetch ahead.
-func (c *TableCore) show() {
+func (c *TableCore) show() (live bool) {
 	if c.layout != nil {
 		c.layout.Reveal(c.cur.Row, c.cur.Col)
 	}
-	c.announce()
 	c.repaint()
+	return c.announce()
 }
 
-// announce tells onCursor the cursor's source row when it changed.
-func (c *TableCore) announce() {
+// announce tells onCursor the cursor's source row when it changed, and reports whether the rows
+// survived it (pressPairer's epoch: the owner may replace them there).
+func (c *TableCore) announce() (live bool) {
 	r := -1
 	if c.Len() > 0 && c.cur.Row < c.Len() { // the edge row is no source row
 		r = c.SourceRow(c.cur.Row)
 	}
 	if r == c.announced {
-		return
+		return true
 	}
 	c.announced = r
-	if c.onCursor != nil && r >= 0 {
-		c.onCursor(r)
-	}
+	return c.presses.Survives(func() {
+		if c.onCursor != nil && r >= 0 {
+			c.onCursor(r)
+		}
+	})
 }
 
 // wantMore asks a pager for rows while the cursor is within ahead rows of the end of those loaded:

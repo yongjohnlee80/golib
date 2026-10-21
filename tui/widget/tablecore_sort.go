@@ -63,14 +63,15 @@ const (
 // any others as text. Either way the sort is stable: rows equal on
 // every key keep the source's order.
 func (c *TableCore) SortKeys(keys []TableSortKey) {
-	c.CancelEdit() // the display rows it was opened among are rearranged
+	if !c.cancelEdit() { // the display rows it was opened among are rearranged
+		return
+	}
 	keep := c.SourceRow(c.cur.Row)
 	was := c.keys
 	c.keys = c.validKeys(keys)
 	c.arrange()
 	c.cur.Row = c.displayRow(keep)
-	c.show()
-	if !slices.Equal(was, c.keys) {
+	if c.show() && !slices.Equal(was, c.keys) {
 		c.sortChanged()
 	}
 }
@@ -96,10 +97,12 @@ func (c *TableCore) validKeys(keys []TableSortKey) []TableSortKey {
 	return out
 }
 
-func (c *TableCore) sortChanged() {
-	if c.onSort != nil {
-		c.onSort(slices.Clone(c.keys))
-	}
+func (c *TableCore) sortChanged() (live bool) {
+	return c.presses.Survives(func() {
+		if c.onSort != nil {
+			c.onSort(slices.Clone(c.keys))
+		}
+	})
 }
 
 // sorted is the order of every loaded row under the keys, before the filter.

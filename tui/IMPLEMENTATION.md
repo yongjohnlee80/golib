@@ -139,6 +139,12 @@ purpose": a difference in behaviour is a parameter of the shared code, named and
 ## 8. Notification
 
 - **The owner hears synchronously:** `WithOnX` callbacks for cursor, activate, change, submit.
+- **An owner callback ends the operation, or the operation checks the rows survived it.** A row
+  view's owner may replace or refresh the rows from its callback. In List, Tree, TableCore and
+  DataTable, a call that can reach an owner callback is either the last step (writes first, the
+  owner told last) or its result is checked: the view's `pressPairer` epoch, advanced by every new
+  source and refresh, is the one authority (`Survives`, and `cursorTo`, `changed`, `expandNode`
+  built on it). `internal/audit/owner_callback_test.go` enforces it.
 - **The bus is for app-wide listeners only:** an `XEvent` with `Owner tui.NodeID` first, published
   through `Base.publish`. Never both a callback and a bus event for the same fact to the same
   listener; never subscribe app-wide to hear your own child.

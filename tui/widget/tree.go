@@ -458,11 +458,12 @@ func planUnder(n, sel *TreeNode) map[string]*reopenPlan {
 }
 
 // childrenArrived opens again, among n's fresh children, those a Reload found open, and puts the
-// cursor back on the one it was on.
-func (t *Tree) childrenArrived(n *TreeNode) {
+// cursor back on the one it was on. It reports whether the roots survived the owner's expand
+// callbacks; the reopening stops once they have not.
+func (t *Tree) childrenArrived(n *TreeNode) (live bool) {
 	plan, ok := t.reopen[n]
 	if !ok {
-		return
+		return true
 	}
 	delete(t.reopen, n)
 	for _, c := range n.children {
@@ -477,13 +478,16 @@ func (t *Tree) childrenArrived(n *TreeNode) {
 			if len(cp.kids) > 0 {
 				t.reopen[c] = &reopenPlan{kids: cp.kids}
 			}
-			t.expandNode(c)
-			if c.loaded {
-				t.childrenArrived(c) // its children were already there: no request, no arrival
+			if !t.expandNode(c) {
+				return false // the owner set new roots: the plan was for the old ones
+			}
+			if c.loaded && !t.childrenArrived(c) { // its children were already there: no request, no arrival
+				return false
 			}
 		}
 	}
 	t.placeAnchor()
+	return true
 }
 
 // placeAnchor moves the cursor to the anchor's row, and lets the anchor go once nothing is left
@@ -702,7 +706,9 @@ func (t *Tree) ReloadNode(found *TreeNode) bool {
 				t.placeAnchor()
 			}
 		}
-		t.expandNode(found)
+		if !t.expandNode(found) {
+			return true
+		}
 	}
 	t.MarkDirty()
 	return true
@@ -773,8 +779,8 @@ func (t *Tree) ExpandPath(ids ...string) {
 			return
 		}
 		target = found
-		if !found.leaf && !found.expanded {
-			t.expandNode(found)
+		if !found.leaf && !found.expanded && !t.expandNode(found) {
+			return // the owner set new roots: the path was through the old ones
 		}
 		if !found.loaded {
 			break // async load in flight; caller re-runs when it settles
@@ -851,18 +857,17 @@ func (t *Tree) contains(n *TreeNode) bool {
 	return false
 }
 
-func (t *Tree) expandNode(n *TreeNode) {
+func (t *Tree) expandNode(n *TreeNode) (live bool) {
 	if n.leaf {
-		return
+		return true
 	}
 	if n.loaded {
 		n.expanded = true
 		t.MarkDirty()
-		t.expanded(n, false)
-		return
+		return t.expanded(n, false)
 	}
 	if n.loading {
-		return // request already in flight
+		return true // request already in flight
 	}
 	t.genSeq++
 	n.gen = t.genSeq
@@ -874,21 +879,25 @@ func (t *Tree) expandNode(n *TreeNode) {
 	if request {
 		t.publish(ExpandRequestEvent{Owner: t.NodeID(), Node: n, Gen: n.gen})
 	}
-	t.expanded(n, request)
+	return t.expanded(n, request)
 }
 
 // expanded reports n opened, on the bus and then to the owner. request: its children were asked for
 // (the ExpandRequestEvent is already published), and the owner's request callback runs first, as
 // the bus delivers the two events.
-func (t *Tree) expanded(n *TreeNode, request bool) {
+// It reports whether the roots survived the owner's callbacks (pressPairer's epoch: SetRoots
+// starts a new one); each callback is made only while they have.
+func (t *Tree) expanded(n *TreeNode, request bool) (live bool) {
 	gen := n.gen
 	t.publish(ExpandEvent{Owner: t.NodeID(), Node: n})
-	if request && t.on.expandRequest != nil {
-		t.on.expandRequest(n, gen)
+	if request && t.on.expandRequest != nil && !t.presses.Survives(func() { t.on.expandRequest(n, gen) }) {
+		return false
 	}
-	if t.on.expand != nil {
-		t.on.expand(n)
-	}
+	return t.presses.Survives(func() {
+		if t.on.expand != nil {
+			t.on.expand(n)
+		}
+	})
 }
 
 // collapseNode closes a node; collapsing a loading node invalidates its
@@ -1085,8 +1094,8 @@ func (t *Tree) handleMouse(e tui.MouseEvent) bool {
 	if onExpander {
 		if r.node.expanded {
 			t.collapseNode(r.node)
-		} else {
-			t.expandNode(r.node)
+		} else if !t.expandNode(r.node) {
+			return true // the owner set new roots: the old rows are not revealed
 		}
 	}
 	t.ensureVisible()
