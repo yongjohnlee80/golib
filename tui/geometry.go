@@ -50,6 +50,17 @@ func (r Rect) Translate(dx, dy int) Rect { return Rect{X: r.X + dx, Y: r.Y + dy,
 // the inverse of r.Translate(frame.X, frame.Y).
 func (r Rect) RelativeTo(frame Rect) Rect { return r.Translate(-frame.X, -frame.Y) }
 
+// Within is r kept inside area: grown to at least minSize cells each way, shrunk to area's size when
+// larger, then slid (never shrunk further) until it lies inside, its left and top edges winning
+// when area is the smaller. Sliding before shrinking: a popup one column off the edge moves one
+// column rather than lose one of its content.
+func (r Rect) Within(area Rect, minSize int) Rect {
+	r.W, r.H = min(max(r.W, minSize), area.W), min(max(r.H, minSize), area.H)
+	r.X = max(min(r.X, area.X+area.W-r.W), area.X)
+	r.Y = max(min(r.Y, area.Y+area.H-r.H), area.Y)
+	return r
+}
+
 // Translate is p moved by (dx, dy).
 func (p Point) Translate(dx, dy int) Point { return Point{X: p.X + dx, Y: p.Y + dy} }
 

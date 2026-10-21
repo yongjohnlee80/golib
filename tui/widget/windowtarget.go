@@ -33,12 +33,7 @@ func (t *floatWindowTarget) RequestedBounds() tui.Rect {
 }
 func (t *floatWindowTarget) Area() tui.Rect { return t.area }
 
-func windowBoundsInArea(r, area tui.Rect) tui.Rect {
-	r.W, r.H = min(max(r.W, 1), area.W), min(max(r.H, 1), area.H)
-	r.X = clampInt(r.X, area.X, area.X+area.W-r.W)
-	r.Y = clampInt(r.Y, area.Y, area.Y+area.H-r.H)
-	return r
-}
+func windowBoundsInArea(r, area tui.Rect) tui.Rect { return r.Within(area, 1) }
 
 func (t *floatWindowTarget) SetBounds(r tui.Rect) bool {
 	if t.area.Empty() || t.maximized {

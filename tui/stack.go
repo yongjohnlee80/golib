@@ -122,7 +122,7 @@ func (s *Stack) Layout(c Constraints) Size {
 		if l.hasOffset {
 			x, y = l.x, l.y
 		} else if w != Unbounded && h != Unbounded {
-			x, y = alignPos(l.align, Size{W: w, H: h}, sz)
+			x, y = l.align.Offset(Size{W: w, H: h}, sz)
 		}
 		s.Ctx().PlaceChild(it, Rect{X: x, Y: y, W: sz.W, H: sz.H})
 		maxW = max(maxW, x+sz.W)
@@ -137,8 +137,10 @@ func (s *Stack) Layout(c Constraints) Size {
 	return c.Constrain(Size{W: w, H: h})
 }
 
-// alignPos resolves an alignment inside avail for a child of size sz.
-func alignPos(a Align, avail, sz Size) (x, y int) {
+// Offset is where a's alignment puts content of size sz inside avail: the content's top-left
+// corner, relative to avail's. Content larger than avail is offset negatively (centred or flush
+// right overhangs both edges); a caller that must stay inside clamps at zero.
+func (a Align) Offset(avail, sz Size) (x, y int) {
 	switch a {
 	case AlignTop, AlignCenter, AlignBottom:
 		x = (avail.W - sz.W) / 2

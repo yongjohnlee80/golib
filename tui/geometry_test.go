@@ -105,3 +105,41 @@ func TestRectAndPointFrames(t *testing.T) {
 		t.Errorf("Point.Translate = %+v", got)
 	}
 }
+
+// TestAlignOffset: each alignment's corner for content inside an area, and an overhang when the
+// content is the larger.
+func TestAlignOffset(t *testing.T) {
+	avail, sz := Size{W: 10, H: 6}, Size{W: 4, H: 2}
+	for a, want := range map[Align][2]int{
+		AlignTopLeft: {0, 0}, AlignTop: {3, 0}, AlignTopRight: {6, 0},
+		AlignLeft: {0, 2}, AlignCenter: {3, 2}, AlignRight: {6, 2},
+		AlignBottomLeft: {0, 4}, AlignBottom: {3, 4}, AlignBottomRight: {6, 4},
+	} {
+		if x, y := a.Offset(avail, sz); [2]int{x, y} != want {
+			t.Errorf("%v.Offset = (%d, %d), want %v", a, x, y, want)
+		}
+	}
+	if x, _ := AlignRight.Offset(Size{W: 4, H: 1}, Size{W: 6, H: 1}); x != -2 {
+		t.Errorf("an overhang flush right is at %d, want -2", x)
+	}
+}
+
+// TestRectWithin: grown to the minimum, shrunk to the area, slid inside; the left and top edges win
+// when the area is the smaller.
+func TestRectWithin(t *testing.T) {
+	area := Rect{X: 2, Y: 1, W: 10, H: 5}
+	for _, c := range []struct {
+		r    Rect
+		min  int
+		want Rect
+	}{
+		{Rect{X: 9, Y: 4, W: 5, H: 3}, 0, Rect{X: 7, Y: 3, W: 5, H: 3}},   // slid back inside
+		{Rect{X: 0, Y: 0, W: 20, H: 9}, 0, Rect{X: 2, Y: 1, W: 10, H: 5}}, // shrunk to the area
+		{Rect{X: 5, Y: 2, W: 0, H: 1}, 3, Rect{X: 5, Y: 2, W: 3, H: 3}},   // grown to the minimum
+		{Rect{X: -4, Y: -4, W: 2, H: 2}, 1, Rect{X: 2, Y: 1, W: 2, H: 2}}, // left and top
+	} {
+		if got := c.r.Within(area, c.min); got != c.want {
+			t.Errorf("%+v.Within(area, %d) = %+v, want %+v", c.r, c.min, got, c.want)
+		}
+	}
+}

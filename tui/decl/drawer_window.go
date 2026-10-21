@@ -63,9 +63,7 @@ func (g *drawerWindowTarget) SetBounds(r tui.Rect) bool {
 	}
 	if n.movable { // anywhere in the Window, at least three cells each way
 		area := n.area()
-		r.W, r.H = max(r.W, 3), max(r.H, 3)
-		r.W, r.H = min(r.W, area.W), min(r.H, area.H)
-		r.X, r.Y = min(max(r.X, 0), area.W-r.W), min(max(r.Y, 0), area.H-r.H)
+		r = r.Within(area, 3)
 		if r == g.RequestedBounds() {
 			return false
 		}

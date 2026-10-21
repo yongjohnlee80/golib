@@ -155,27 +155,7 @@ func fits(x, y int, want tui.Size, viewport tui.Rect) bool {
 //
 // Sliding before shrinking, because a popup one column off the edge should move
 // one column rather than lose a column of its content.
-func clampInto(r, viewport tui.Rect) tui.Rect {
-	if r.W > viewport.W {
-		r.W = viewport.W
-	}
-	if r.H > viewport.H {
-		r.H = viewport.H
-	}
-	if r.X+r.W > viewport.X+viewport.W {
-		r.X = viewport.X + viewport.W - r.W
-	}
-	if r.Y+r.H > viewport.Y+viewport.H {
-		r.Y = viewport.Y + viewport.H - r.H
-	}
-	if r.X < viewport.X {
-		r.X = viewport.X
-	}
-	if r.Y < viewport.Y {
-		r.Y = viewport.Y
-	}
-	return r
-}
+func clampInto(r, viewport tui.Rect) tui.Rect { return r.Within(viewport, 0) }
 
 // anchoredLayer is one registered association.
 //
