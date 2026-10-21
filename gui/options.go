@@ -5,6 +5,7 @@ import (
 	"strings"
 
 	"github.com/yongjohnlee80/gio/unit"
+	"github.com/yongjohnlee80/golib/tui/style"
 )
 
 // Backend Configuration Model:
@@ -52,12 +53,9 @@ func DefaultTheme() Theme {
 	return th
 }
 
-// dark reports whether the background color represents a dark shade based on perceived
-// relative luminance calculation (standard ITU-R BT.709 coefficients).
-func (t Theme) dark() bool {
-	l := 0.2126*float64(t.BG.R) + 0.7152*float64(t.BG.G) + 0.0722*float64(t.BG.B)
-	return l/255 < 0.5
-}
+// dark reports whether the theme's background is dark, as tui/style judges it (style.Dark: white
+// text out-contrasts black), so the window and the terminal read a background alike.
+func (t Theme) dark() bool { return style.Dark(t.BG.R, t.BG.G, t.BG.B) }
 
 // config stores all resolved launch parameters and visual styles for the window and renderer.
 type config struct {

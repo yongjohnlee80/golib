@@ -71,10 +71,8 @@ func openColors(c gui.Canvas, rows int) (fg, bg color.NRGBA, ok bool) {
 	return gui.OpenCellColors(c, gui.CellRect{W: cols, H: rows})
 }
 
-// isDark reports whether c is a dark background, by relative luminance.
-func isDark(c color.NRGBA) bool {
-	return 0.2126*float64(c.R)+0.7152*float64(c.G)+0.0722*float64(c.B) < 0.5*255
-}
+// isDark reports whether c is a dark background, as tui/style judges it (style.Dark).
+func isDark(c color.NRGBA) bool { return style.Dark(c.R, c.G, c.B) }
 
 // mix is a tint of b toward a by t in [0, 1], always opaque: gui.Mix (the one blend) with its alpha
 // made whole, since a theme's colours may be unset (zero) and a tint is always drawn.
