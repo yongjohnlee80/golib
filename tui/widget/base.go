@@ -111,6 +111,10 @@ type Base struct {
 	tui.Visibility
 	ctx     *tui.Context // set by Init; carries NodeID, App handles, unmount context
 	toolTip string       // SetToolTip's text; "" none
+	// pointerPolicy is the policy a widget's WithPointerPolicy asked for (setPointerPolicy),
+	// remembered so a request made before mount is applied at Init. PointerInherit, the zero
+	// value, until one asks.
+	pointerPolicy tui.PointerPolicy
 }
 
 // SetToolTip is the text the widget reveals in a card (tui.ToolTipper, tui/tooltip.go): while the
@@ -140,7 +144,27 @@ func (b *Base) SetVisible(v bool) {
 
 // Init stores the mount context. Widgets overriding Init must chain to it
 // first. Re-entrant across remounts of the same widget value.
-func (b *Base) Init(ctx *tui.Context) { b.ctx = ctx }
+func (b *Base) Init(ctx *tui.Context) {
+	b.ctx = ctx
+	// applied before the widget mounts its subtree, so each descendant inherits it as it mounts
+	if b.pointerPolicy != tui.PointerInherit {
+		ctx.SetPointerPolicy(b.pointerPolicy)
+	}
+}
+
+// setPointerPolicy is every widget's WithPointerPolicy: p checked against the closed PointerPolicy
+// set (op names the widget's method in the panic), kept for Init, and applied now when mounted. It
+// is usable before mount, where there is no Context to route the check through, so it panics on an
+// invalid value before the stored policy changes.
+func (b *Base) setPointerPolicy(op string, p tui.PointerPolicy) {
+	if !p.Valid() {
+		panic(tuiFatal(op, "value outside PointerInherit, PointerEnabled, PointerDisabled", int(p)))
+	}
+	b.pointerPolicy = p
+	if b.ctx != nil {
+		b.ctx.SetPointerPolicy(p)
+	}
+}
 
 // Context returns the mount context (nil before the first mount).
 func (b *Base) Context() *tui.Context { return b.ctx }

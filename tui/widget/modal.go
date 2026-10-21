@@ -53,10 +53,6 @@ type Modal struct {
 	host     *OverlayHost
 	open     bool
 	cardRect tui.Rect // where the card was placed at the last layout, in the modal's cells
-	// pointerPolicy is the subtree-wide pointer setting, remembered so a
-	// chained WithPointerPolicy before mount is applied when the Context
-	// arrives rather than being silently dropped.
-	pointerPolicy tui.PointerPolicy
 	// vimKeys adds h/k and l/j as aliases for the directional keys.
 	vimKeys bool
 	// dismissKeys are additional plain keys that mean "close this", alongside
@@ -88,11 +84,10 @@ type ModalOption func(*Modal)
 // cannot come to disagree.
 func NewModal(body tui.Component, opts ...ModalOption) *Modal {
 	m := &Modal{
-		card:          newModalCard(body),
-		placement:     PlacementCenter,
-		wantScrim:     true,
-		selected:      -1,
-		pointerPolicy: tui.PointerInherit,
+		card:      newModalCard(body),
+		placement: PlacementCenter,
+		wantScrim: true,
+		selected:  -1,
 	}
 	for _, o := range opts {
 		if o != nil {
@@ -502,14 +497,7 @@ func (m *Modal) WithStyle(s *ModalStyle) *Modal {
 // before there is any Context; applying it only when mounted made that chain a
 // silent no-op. An invalid value is rejected before the stored policy changes.
 func (m *Modal) WithPointerPolicy(p tui.PointerPolicy) *Modal {
-	if !p.Valid() {
-		panic(tuiFatal("widget: Modal.WithPointerPolicy",
-			"value outside PointerInherit, PointerEnabled, PointerDisabled", int(p)))
-	}
-	m.pointerPolicy = p
-	if ctx := m.Context(); ctx != nil {
-		ctx.SetPointerPolicy(p)
-	}
+	m.setPointerPolicy("widget: Modal.WithPointerPolicy", p)
 	return m
 }
 
@@ -667,7 +655,6 @@ func (m *Modal) Init(ctx *tui.Context) {
 	m.Base.Init(ctx)
 	// Applied before the subtree exists, so every descendant inherits it as it
 	// mounts rather than needing a second pass afterwards.
-	ctx.SetPointerPolicy(m.pointerPolicy)
 	ctx.Mount(m.card)
 	ctx.SetDefaultActionResolvers(tui.ActionResolverFunc(m.keys))
 }

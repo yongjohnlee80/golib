@@ -101,8 +101,6 @@ type Menu struct {
 	// bar drops upward rather than back across itself. Zero means "the default
 	// for this orientation", which is what a bare Menu wants.
 	dropSide PlacementSide
-
-	pointerPolicy tui.PointerPolicy
 }
 
 // menuOpenLevel is one open submenu: the row that opened it and the layer id it
@@ -118,7 +116,7 @@ type MenuOption func(*Menu)
 
 // NewMenu builds an empty menu. Supply a model with SetModel.
 func NewMenu(opts ...MenuOption) *Menu {
-	m := &Menu{levelTitles: true, levelMinWidth: defaultLevelMinWidth, pointerPolicy: tui.PointerInherit}
+	m := &Menu{levelTitles: true, levelMinWidth: defaultLevelMinWidth}
 	for _, o := range opts {
 		if o != nil {
 			o(m)
@@ -627,14 +625,7 @@ func (m *Menu) WithStyle(s *MenuStyle) *Menu {
 // operation is unaffected: every action this widget resolves is reachable from
 // the keyboard, so a pointer-disabled menu stays fully usable.
 func (m *Menu) WithPointerPolicy(p tui.PointerPolicy) *Menu {
-	if !p.Valid() {
-		panic(tuiFatal("widget: Menu.WithPointerPolicy",
-			"value outside PointerInherit, PointerEnabled, PointerDisabled", int(p)))
-	}
-	m.pointerPolicy = p
-	if ctx := m.Context(); ctx != nil {
-		ctx.SetPointerPolicy(p)
-	}
+	m.setPointerPolicy("widget: Menu.WithPointerPolicy", p)
 	return m
 }
 
@@ -648,7 +639,6 @@ func (m *Menu) AcceptsFocus() bool {
 // layer, so a consumer may add bindings without re-supplying these.
 func (m *Menu) Init(ctx *tui.Context) {
 	m.Base.Init(ctx)
-	ctx.SetPointerPolicy(m.pointerPolicy)
 	ctx.SetDefaultActionResolvers(tui.ActionResolverFunc(m.resolve))
 
 	// A level lives on the host, not under this node, so the runtime's unmount

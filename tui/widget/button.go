@@ -1,8 +1,6 @@
 package widget
 
 import (
-	"strconv"
-
 	"github.com/yongjohnlee80/golib/errs"
 	"github.com/yongjohnlee80/golib/tui"
 	"github.com/yongjohnlee80/golib/tui/keymap"
@@ -100,11 +98,6 @@ type Button struct {
 	// answer is the dialog's answer for this button's role, run after its own
 	// callback; nil outside a dialog. Set by the Modal that holds the button.
 	answer func()
-
-	// pointerPolicy is the policy the author asked for, remembered so that a
-	// chained WithPointerPolicy before mount is applied when the Context
-	// arrives rather than silently discarded.
-	pointerPolicy tui.PointerPolicy
 }
 
 // ButtonOption configures a Button at construction.
@@ -227,17 +220,7 @@ func (b *Button) WithStyle(s *ButtonStyle) *Button {
 // An invalid value is rejected before the stored policy changes, so a refused
 // call leaves the previous request intact rather than half-applied.
 func (b *Button) WithPointerPolicy(p tui.PointerPolicy) *Button {
-	if !p.Valid() {
-		panic(errs.Fatal{
-			Op:     "widget: Button.WithPointerPolicy",
-			Rule:   "value outside PointerInherit, PointerEnabled, PointerDisabled",
-			Detail: "got " + strconv.Itoa(int(p)),
-		})
-	}
-	b.pointerPolicy = p
-	if ctx := b.Context(); ctx != nil {
-		ctx.SetPointerPolicy(p)
-	}
+	b.setPointerPolicy("widget: Button.WithPointerPolicy", p)
 	return b
 }
 
@@ -417,10 +400,6 @@ func (b *Button) State() WidgetState {
 func (b *Button) Init(ctx *tui.Context) {
 	b.Base.Init(ctx)
 	ctx.SetDefaultActionResolvers(tui.ActionResolverFunc(b.keys))
-	// Apply a policy requested before there was a Context to apply it to.
-	if b.pointerPolicy != tui.PointerInherit {
-		ctx.SetPointerPolicy(b.pointerPolicy)
-	}
 }
 
 // keys claims the button's activation keys. A focused dialog button gets Enter
