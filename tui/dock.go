@@ -92,10 +92,14 @@ func (d *Dock) Pin(edge DockEdge, child Component) {
 }
 
 // SetEdge pins child, already in the Dock, to edge from the next layout on: DockCenter makes it a
-// center child. Its place in the consumption order is kept.
+// center child. Its place in the consumption order is kept. A child the Dock does not hold is a
+// no-op, as for every Container.
 func (d *Dock) SetEdge(child Component, edge DockEdge) {
 	if edge > DockCenter {
 		panic("tui: Dock.SetEdge: invalid edge")
+	}
+	if d.indexOf(child) < 0 {
+		return
 	}
 	if edge == DockCenter {
 		delete(d.edges, child)
