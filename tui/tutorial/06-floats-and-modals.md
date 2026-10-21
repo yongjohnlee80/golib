@@ -39,7 +39,7 @@ func (m *Model) openFloat(title string, content tui.Component) *widget.Float {
     m.host.Attach(f)
     f.Show()
     // Detach on dismissal, or every open stacks another hidden layer.
-    tui.SubscribeScoped(m.ctx, func(ev widget.DismissEvent) {
+    tui.SubscribeScoped(m.ctx, func(ev widget.OverlayDismissedEvent) {
         if ev.Owner == f.NodeID() {
             m.host.Stack.Remove(f)
         }
@@ -197,7 +197,7 @@ To use modals reliably, understand how `OverlayHost`, `Float`, and the render pi
 ### 3. Overlay Best Practices Checklist
 
 - [ ] **Always wrap the root in `OverlayHost`** during application bootstrap, even if no floats are shown initially.
-- [ ] **Always subscribe to `DismissEvent`** to remove ephemeral floats from `host.Stack`, preventing unneeded hidden layers from accumulating in memory.
+- [ ] **Always subscribe to `OverlayDismissedEvent`** to remove ephemeral floats from `host.Stack`, preventing unneeded hidden layers from accumulating in memory.
 - [ ] **Use `WithSizeFraction`** for document and log viewers so they scale gracefully with terminal resizing.
 - [ ] **Re-seed focus in your data callback** if the modal's contents load asynchronously.
 - [ ] **Do not consume `Esc`** unless actively canceling a local action (e.g. exiting insert mode); let unhandled `Esc` bubble to the float layer for clean dismissal.

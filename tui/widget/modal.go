@@ -629,7 +629,7 @@ func (m *Modal) TrapsFocus() bool { return true }
 // target of last resort, and steps out again as soon as a real control is
 // available.
 func (m *Modal) AcceptsFocus() bool {
-	return m.enabledButtonCount() == 0 && firstFocusable(m.Context(), m.card.body) == nil
+	return m.enabledButtonCount() == 0 && trapFallback(m.Context(), m.card.body)
 }
 
 // enabledButtonCount counts the buttons that can currently be activated.

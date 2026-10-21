@@ -33,7 +33,7 @@ Dependency footprint: standard library + `golib/tui` + `golib/tui/style` only.
 | `WindowMod`   | Capabilities    | content only   | `WindowChangedEvent`                                   |
 | `WindowButtons` | Optional Chrome | its buttons | —                                                     |
 | `WindowTaskbar` | Optional Chrome | restore buttons | —                                                 |
-| `Float`       | Overlay / Modal | children       | `DismissEvent`                                         |
+| `Float`       | Overlay / Modal | children       | `OverlayDismissedEvent` (`DismissEvent`, deprecated)   |
 | `Modal`       | Dialog          | trap owner     | `OverlayDismissedEvent`                                |
 | `Menu`        | Menu / Command  | yes            | `MenuActivatedEvent`, `MenuSelectionChangedEvent`      |
 | `MenuBar`     | Menu / Chrome   | no (menu is)   | — (delegates to `Menu`)                                |
