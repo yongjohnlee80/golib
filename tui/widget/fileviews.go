@@ -1063,3 +1063,26 @@ func (v *FileFolderView) HintMessage() tui.Message {
 }
 
 var _ FileChooser = (*FileFolderView)(nil)
+
+// FileChooserStyler is a file view a palette restyles in place: its panes (SetPaneStyles, the
+// non-fluent WithStyles) and its preview's source highlighting. FileOpenView, FileSaveView and
+// FileFolderView are each one, so a host restyles any of them through one assertion.
+type FileChooserStyler interface {
+	SetPaneStyles(st FilePaneStyles)
+	SetPreviewSourceHighlighting(catalog *highlight.Catalog, styles SyntaxStyles)
+}
+
+// SetPaneStyles is WithStyles, for a caller that holds the view as a FileChooserStyler.
+func (v *FileOpenView) SetPaneStyles(st FilePaneStyles) { v.WithStyles(st) }
+
+// SetPaneStyles is WithStyles, for a caller that holds the view as a FileChooserStyler.
+func (v *FileSaveView) SetPaneStyles(st FilePaneStyles) { v.WithStyles(st) }
+
+// SetPaneStyles is WithStyles, for a caller that holds the view as a FileChooserStyler.
+func (v *FileFolderView) SetPaneStyles(st FilePaneStyles) { v.WithStyles(st) }
+
+var (
+	_ FileChooserStyler = (*FileOpenView)(nil)
+	_ FileChooserStyler = (*FileSaveView)(nil)
+	_ FileChooserStyler = (*FileFolderView)(nil)
+)

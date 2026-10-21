@@ -54,6 +54,13 @@ type hintedChooser interface {
 	HintMessage() tui.Message
 }
 
+// nameClearer is a file view with a name field (FileSaveView), which each opening empties.
+type nameClearer interface{ SetName(string) }
+
+// sourceSetter is a file view whose files can be replaced (the source property): every view a
+// dialog holds.
+type sourceSetter interface{ SetSource(widget.FileSource) }
+
 var fileModeTable = map[string]fileMode{
 	"OpenFile": {standardButton{name: "Open", msg: tui.Msg("tui.filedialog.open"), accept: true},
 		func(o ...widget.FileViewOption) hintedChooser { return widget.NewFileOpenView(o...) }},
@@ -133,7 +140,7 @@ func newChooserDialog(b Build, c chooserSpec) *dialogNode {
 				chooser.Select(d.selected)
 			} else {
 				chooser.SetDir(chooser.Dir())
-				if n, ok := chooser.(interface{ SetName(string) }); ok {
+				if n, ok := chooser.(nameClearer); ok {
 					n.SetName("")
 				}
 			}
@@ -223,7 +230,7 @@ func (d *dialogNode) setSelected(file string) {
 // setSource is source's setter: the files this dialog lists, in place of the
 // program's (tuidecl.Files). A rebinding lists the new source afresh.
 func (d *dialogNode) setSource(src widget.FileSource) {
-	if c, ok := d.chooser.(interface{ SetSource(widget.FileSource) }); ok {
+	if c, ok := d.chooser.(sourceSetter); ok {
 		c.SetSource(src)
 		if d.folder != "" {
 			d.chooser.SetDir(d.folder)
