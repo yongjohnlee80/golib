@@ -496,75 +496,89 @@ func (b *Backend) decodeLoop(readCh <-chan []byte) {
 	defer b.wg.Done()
 	defer close(b.events)
 
-	lastW, lastH := -1, -1
+	size := &sizeWatch{w: -1, h: -1}
 	if sz, err := b.querySize(); err == nil {
-		lastW, lastH = sz.W, sz.H
+		size.w, size.h = sz.W, sz.H
 	}
-	checkSize := func(force bool) {
-		sz, err := b.querySize()
-		if err != nil {
-			return
-		}
-		if force || sz.W != lastW || sz.H != lastH {
-			lastW, lastH = sz.W, sz.H
-			b.emitEvent(tui.ResizeEvent{W: sz.W, H: sz.H})
-		}
-	}
-
 	d := &decoder{
 		emit:       b.emitEvent,
 		probe:      b.probeReply,
-		onFocusIn:  func() { checkSize(false) }, // focus-in re-check
+		onFocusIn:  func() { size.check(b, false) }, // focus-in re-check
 		optionFold: b.cfg.optionFold,
 	}
-
-	var escTimer *time.Timer
-	var escC <-chan time.Time
-	disarm := func() {
-		if escTimer != nil {
-			escTimer.Stop()
-		}
-		escC = nil
-	}
+	var esc escTimer
 	lastRead := time.Now()
 
 	for {
 		select {
 		case chunk, ok := <-readCh:
 			if !ok {
-				disarm()
+				esc.disarm()
 				d.finish()
 				return
 			}
-			disarm()
+			esc.disarm()
 			if time.Since(lastRead) > quietPeriod {
-				checkSize(false) // first-input-after-quiet re-check
+				size.check(b, false) // first-input-after-quiet re-check
 			}
 			lastRead = time.Now()
 			d.feedBytes(chunk)
 			// ESC disambiguation timeout ONLY when kitty is inactive:
 			// flag 1's purpose is removing this ambiguity.
 			if !b.kittyOn.Load() && d.awaitingEsc() {
-				if escTimer == nil {
-					escTimer = time.NewTimer(b.cfg.escTimeout)
-				} else {
-					escTimer.Reset(b.cfg.escTimeout)
-				}
-				escC = escTimer.C
+				esc.arm(b.cfg.escTimeout)
 			}
-		case <-escC:
-			escC = nil
+		case <-esc.C:
+			esc.C = nil
 			d.resolveEsc()
 		case <-b.resizeCh:
 			// OS notification: re-query fresh truth, emit ordered and
 			// un-coalesced — the App intake owns coalescing.
-			checkSize(true)
+			size.check(b, true)
 		case <-b.done:
-			disarm()
+			esc.disarm()
 			d.finish()
 			return
 		}
 	}
+}
+
+// sizeWatch is the size decodeLoop last reported, so a re-check emits a ResizeEvent only when it
+// changed (or when forced, for an OS notification).
+type sizeWatch struct{ w, h int }
+
+func (s *sizeWatch) check(b *Backend, force bool) {
+	sz, err := b.querySize()
+	if err != nil {
+		return
+	}
+	if force || sz.W != s.w || sz.H != s.h {
+		s.w, s.h = sz.W, sz.H
+		b.emitEvent(tui.ResizeEvent{W: sz.W, H: sz.H})
+	}
+}
+
+// escTimer is the lone-ESC disambiguation timer: C fires once the timeout passes, and is nil
+// while the timer is disarmed, so a select on it waits forever.
+type escTimer struct {
+	t *time.Timer
+	C <-chan time.Time
+}
+
+func (e *escTimer) arm(d time.Duration) {
+	if e.t == nil {
+		e.t = time.NewTimer(d)
+	} else {
+		e.t.Reset(d)
+	}
+	e.C = e.t.C
+}
+
+func (e *escTimer) disarm() {
+	if e.t != nil {
+		e.t.Stop()
+	}
+	e.C = nil
 }
 
 // emitEvent delivers on Events, blocking if the consumer stalls (events are
