@@ -348,131 +348,13 @@ var insertCaretKeys = map[rune]Action{
 // handleCommandKey: Normal/Visual dispatch — digits, the double-key pending buffer, then the
 // keymap. Unbound keys clear pending state and bubble.
 func (c *EditorCore) handleCommandKey(k tui.KeyEvent) bool {
-	b := &c.buf
-	ctrl := k.Mods&tui.ModCtrl != 0
-
 	if k.Code == tui.KeyEscape {
-		hadPending := c.commandPending()
-		c.keys.dropPending()
-		if c.visual() {
-			c.exitVisual()
-			return true
-		}
-		// Normal mode with nothing pending: Esc cancels the active find (its marks, n and N) when
-		// there is one. Otherwise it is a vim no-op, so it BUBBLES: consuming it made an Editor
-		// inside a modal float undismissable, since the host never saw the key.
-		return hadPending || c.escapeFind()
+		return c.commandEscape()
 	}
-
-	// An armed f, F, t or T takes this key's text as its character, whatever it is (a digit or a
-	// space included): the typed cluster, never the code. A key with no text, or one with a command
-	// modifier, cancels the find and is processed afresh.
-	if armed := c.keys.findArmed; armed != ActUnbound {
-		count := c.keys.findCount
-		c.keys.findArmed, c.keys.findCount = ActUnbound, 0
-		if k.Text != "" && k.Mods&nonTextMods == 0 {
-			f := charFindOf(armed, firstCluster(k.Text))
-			c.keys.lastFind = &f
-			if op := c.keys.op; op != ActUnbound {
-				c.keys.dropOp()
-				if to, kind, ok := c.findTarget(f, count, false); ok {
-					c.runOp(op, to, kind)
-				}
-				return true
-			}
-			c.findChar(f, count, false)
-			return true
-		}
-		c.keys.dropOp() // a key with no text: no find, and no operator over it
-	}
-
-	// An armed r takes this key's text as its character, a digit or a space included, and Enter as a
-	// line break; a key with neither cancels it and is processed afresh.
-	if c.keys.replArmed {
-		count := c.keys.replCount
-		c.keys.replArmed, c.keys.replCount = false, 0
-		visual := c.visual()
-		switch {
-		case visual && k.Text != "" && k.Mods&nonTextMods == 0:
-			c.visualOp(ActVisualReplace, count, firstCluster(k.Text)) // every character of the selection
-			return true
-		case visual:
-			// Enter, or a key with no text: r is cancelled, Visual stays
-		case k.Code == tui.KeyEnter && k.Mods&nonTextMods == 0:
-			c.replaceChars("\n", count)
-			return true
-		case k.Text != "" && k.Mods&nonTextMods == 0:
-			c.replaceChars(firstCluster(k.Text), count)
-			return true
-		}
-	}
-
-	// An armed text object (i or a, after an operator or in Visual) takes this key's text as the
-	// object's name. A key with no text cancels it, and the operator, and is processed afresh.
-	if obj := c.keys.objArmed; obj != "" {
-		op, count := c.keys.op, max(c.keys.opCount, 1)*max(c.keys.objCount, 1)
-		c.keys.dropOp()
-		c.keys.count = 0
-		if k.Text != "" && k.Mods&nonTextMods == 0 {
-			r, found := c.textObject(obj == "i", firstCluster(k.Text), count)
-			switch {
-			case !found:
-			case op != ActUnbound:
-				c.runObject(op, r)
-			default:
-				c.selectObject(r)
-			}
-			return true
-		}
-	}
-
-	// An armed m, ' or ` takes this key's text as the mark's name (' and ` too, for the previous
-	// jump); a key with no text cancels it, and an operator waiting on it, and is processed afresh.
-	if armed := c.keys.markArmed; armed != ActUnbound {
-		c.keys.markArmed = ActUnbound
-		if k.Text != "" && k.Mods&nonTextMods == 0 {
-			c.markKey(armed, []rune(k.Text)[0])
-			return true
-		}
-		c.keys.dropOp()
-	}
-
-	// An armed q or @ takes this key's text as the register's name; a key with none cancels it.
-	if armed := c.keys.macroArmed; armed != ActUnbound {
-		count := c.keys.macroCount
-		c.keys.macroArmed, c.keys.macroCount = ActUnbound, 0
-		if k.Text != "" && k.Mods&nonTextMods == 0 {
-			if name := []rune(k.Text)[0]; armed == ActMacroRecord {
-				c.macroRecordKey(name)
-			} else {
-				c.macroPlay(name, count)
-			}
-			return true
-		}
-	}
-
-	// An armed " takes this key's text as the register's name ("a, "A, "0, "+, "_); a key that
-	// names no register cancels it and is processed afresh. A count typed before it is kept (3"ayy).
-	if c.keys.regArmed {
-		c.keys.regArmed = false
-		if k.Text != "" && k.Mods&nonTextMods == 0 {
-			if name := []rune(k.Text)[0]; validRegister(name) {
-				c.keys.reg, c.keys.regFresh = name, true
-				return true
-			}
-		}
-	}
-
-	// Count accumulation: 1-9 always; 0 only extends an existing count. Clamp BEFORE assignment
-	// so the cap is a hard ceiling.
-	if !ctrl && k.Text != "" {
-		r := []rune(k.Text)[0]
-		if r >= '1' && r <= '9' || (r == '0' && c.keys.count > 0) {
-			c.keys.pendingAct = ActUnbound
-			c.keys.count = min(c.keys.count*10+int(r-'0'), 1_000_000)
-			if n := len(c.dot.atoms); c.dot.on && n > 0 {
-				c.dot.atoms[n-1].count = true // N. replaces it
-			}
+	// a key an armed command waits on, or a count's digit, is that command's
+	for _, take := range []func(tui.KeyEvent) bool{c.takeFindChar, c.takeReplaceChar, c.takeObjectName,
+		c.takeMarkName, c.takeMacroName, c.takeRegisterName, c.takeCountDigit} {
+		if take(k) {
 			return true
 		}
 	}
@@ -508,71 +390,9 @@ func (c *EditorCore) handleCommandKey(k tui.KeyEvent) bool {
 	// key clears it and is processed normally. Under a pending operator the completion is the
 	// operator's motion (dgg, dge).
 	if c.keys.pendingAct != ActUnbound {
-		chord := c.keys.pendingChord
-		op := c.keys.op
-		hadCount := c.keys.pendingCount > 0 || c.keys.opCount > 0
-		count := max(c.keys.pendingCount, 1) * max(c.keys.opCount, 1)
-		c.keys.pendingAct = ActUnbound
-		c.keys.pendingCount = 0
-		back := ActUnbound
-		if !kc.Ctrl && kc.Code == 'e' {
-			back = ActWordEndBack
-		} else if !kc.Ctrl && kc.Code == 'E' {
-			back = ActWORDEndBack
+		if done, handled := c.completeGoPrefix(kc); done {
+			return handled
 		}
-		caseOp := ActUnbound
-		if !kc.Ctrl {
-			caseOp = caseOpOf(kc.Code)
-		}
-		switch {
-		case caseOp != ActUnbound && op == caseOp: // g~g~, gugu, gUgU: the doubled form
-			c.keys.dropOp()
-			c.runOp(op, taPos{min(b.ln+count-1, len(b.textLines)-1), 0}, linewise)
-			return true
-		case caseOp != ActUnbound && op == ActUnbound: // g~ gu gU: an operator, armed
-			if c.readOnly {
-				return false // refused, and the host's (#285's rule)
-			}
-			c.keys.op, c.keys.opChord, c.keys.opCount = caseOp, kc, 0
-			if hadCount {
-				c.keys.opCount = count
-			}
-			return true
-		case !kc.Ctrl && (kc.Code == 'j' || kc.Code == 'k') && op != ActUnbound: // dgj ygk
-			c.keys.dropOp()
-			if to, moved := c.rowTarget(kc.Code == 'j', count); moved {
-				c.runOp(op, to, exclusive)
-			}
-			return true
-		case !kc.Ctrl && (kc.Code == 'j' || kc.Code == 'k'): // gj gk
-			c.rowMove(kc.Code == 'j', count)
-			return true
-		case !kc.Ctrl && (kc.Code == '*' || kc.Code == '#') && op == ActUnbound: // g* g#
-			c.starSearch(kc.Code == '#', false, count)
-			return true
-		case !kc.Ctrl && kc.Code == 'J' && op == ActUnbound: // gJ
-			if c.readOnly {
-				return false
-			}
-			c.joinLines(count, true)
-			return true
-		case kc == chord && op != ActUnbound:
-			c.keys.dropOp()
-			c.runOp(op, c.gotoLineTarget(count, hadCount), linewise) // [count]dgg
-			return true
-		case kc == chord:
-			c.goToLine(hadCount, count, false) // [count]gg
-			return true
-		case back != ActUnbound && op != ActUnbound:
-			c.keys.dropOp()
-			c.opMotion(op, back, count, hadCount) // dge
-			return true
-		case back != ActUnbound:
-			c.move(back, count)
-			return true
-		}
-		c.keys.dropOp()
-		// Fall through: reprocess this key from scratch (count consumed).
 	}
 
 	// i and a name a text object after an operator (diw), and in Visual (viw): the next key says
@@ -590,7 +410,7 @@ func (c *EditorCore) handleCommandKey(k tui.KeyEvent) bool {
 		total := max(c.keys.opCount, 1) * max(c.keys.count, 1)
 		c.keys.count = 0
 		c.keys.dropOp()
-		c.runOp(op, taPos{min(b.ln+total-1, len(b.textLines)-1), 0}, linewise)
+		c.runLines(op, total)
 		return true
 	}
 
@@ -604,37 +424,44 @@ func (c *EditorCore) handleCommandKey(k tui.KeyEvent) bool {
 	count := max(c.keys.count, 1)
 	c.keys.count = 0
 
-	// Under a pending operator: the arming chord again is the doubled, linewise form (dd, cc, yy);
-	// g arms its second key and f t F T their character, keeping the operator; a motion runs it;
-	// any other key cancels it and is processed afresh.
-	if op := c.keys.op; op != ActUnbound {
-		total := max(c.keys.opCount, 1) * count
-		hadAny := hadCount || c.keys.opCount > 0
-		switch {
-		case kc == c.keys.opChord:
-			c.keys.dropOp()
-			c.runOp(op, taPos{min(b.ln+total-1, len(b.textLines)-1), 0}, linewise)
-			return true
-		case act == ActGoPrefix:
-			c.keys.pendingAct, c.keys.pendingChord, c.keys.pendingCount = act, kc, 0
-			if hadCount {
-				c.keys.pendingCount = count
-			}
-			return true
-		case act == ActFindCharForward || act == ActFindCharBack || act == ActTillCharForward || act == ActTillCharBack:
-			c.keys.findArmed, c.keys.findCount = act, total
-			return true
-		case act == ActMarkLine || act == ActMarkExact: // d'a, y`a: the mark's name completes it
-			c.keys.markArmed = act
-			return true
-		case opMotion(act):
-			c.keys.dropOp()
-			c.opMotion(op, act, total, hadAny)
-			return true
-		}
-		c.keys.dropOp()
+	if c.continueOperator(act, kc, count, hadCount) {
+		return true
 	}
+	return c.commandAction(act, kc, count, hadCount)
+}
 
+// continueOperator is a bound key under a pending operator, its doubled form taken already: g arms
+// its second key and f t F T their character, keeping the operator; a motion runs it; any other
+// key cancels it and is processed afresh. It reports whether it took the key.
+func (c *EditorCore) continueOperator(act Action, kc KeyChord, count int, hadCount bool) bool {
+	op := c.keys.op
+	if op == ActUnbound {
+		return false
+	}
+	total := max(c.keys.opCount, 1) * count
+	hadAny := hadCount || c.keys.opCount > 0
+	switch {
+	case act == ActGoPrefix:
+		c.armGoPrefix(kc, count, hadCount)
+		return true
+	case act == ActFindCharForward || act == ActFindCharBack || act == ActTillCharForward || act == ActTillCharBack:
+		c.keys.findArmed, c.keys.findCount = act, total
+		return true
+	case act == ActMarkLine || act == ActMarkExact: // d'a, y`a: the mark's name completes it
+		c.keys.markArmed = act
+		return true
+	case opMotion(act):
+		c.keys.dropOp()
+		c.opMotion(op, act, total, hadAny)
+		return true
+	}
+	c.keys.dropOp()
+	return false
+}
+
+// commandAction is a bound key with no command pending: an operator, a prefix or a command that
+// waits on the next key is armed; any other action runs, count times.
+func (c *EditorCore) commandAction(act Action, kc KeyChord, count int, hadCount bool) bool {
 	switch act {
 	case ActDeletePrefix, ActYankPrefix, ActChangePrefix, ActIndentPrefix, ActOutdentPrefix:
 		if act != ActYankPrefix && c.readOnly {
@@ -643,18 +470,10 @@ func (c *EditorCore) handleCommandKey(k tui.KeyEvent) bool {
 		if act == ActYankPrefix && !c.reg.yankAllowed() {
 			return true // consumed, refused: a yank-less core copies nothing
 		}
-		c.keys.op, c.keys.opChord, c.keys.opCount = act, kc, 0
-		if hadCount {
-			c.keys.opCount = count // multiplies the motion's (2d3w)
-		}
+		c.armOperator(act, kc, count, hadCount)
 		return true
 	case ActGoPrefix:
-		c.keys.pendingAct = act
-		c.keys.pendingChord = kc
-		c.keys.pendingCount = 0
-		if hadCount {
-			c.keys.pendingCount = count // preserved for the completion (5gg)
-		}
+		c.armGoPrefix(kc, count, hadCount)
 		return true
 	case ActGoBottom:
 		c.goToLine(hadCount, count, true) // [count]G
@@ -712,6 +531,255 @@ func (c *EditorCore) handleCommandKey(k tui.KeyEvent) bool {
 		c.dot.on = false // undoing is not a change . repeats
 	}
 	return c.execAction(act, count)
+}
+
+// completeGoPrefix is the key after an armed g prefix: the arming chord again is gg, e and E are ge
+// and gE, under a pending operator the operator's motion (dgg, dge). done reports whether the key
+// was the prefix's, and handled whether it is consumed; any other key clears the prefix and the
+// operator, and is processed afresh, its count consumed.
+func (c *EditorCore) completeGoPrefix(kc KeyChord) (done, handled bool) {
+	chord := c.keys.pendingChord
+	op := c.keys.op
+	hadCount := c.keys.pendingCount > 0 || c.keys.opCount > 0
+	count := max(c.keys.pendingCount, 1) * max(c.keys.opCount, 1)
+	c.keys.pendingAct = ActUnbound
+	c.keys.pendingCount = 0
+	back := ActUnbound
+	if !kc.Ctrl && kc.Code == 'e' {
+		back = ActWordEndBack
+	} else if !kc.Ctrl && kc.Code == 'E' {
+		back = ActWORDEndBack
+	}
+	caseOp := ActUnbound
+	if !kc.Ctrl {
+		caseOp = caseOpOf(kc.Code)
+	}
+	switch {
+	case caseOp != ActUnbound && op == caseOp: // g~g~, gugu, gUgU: the doubled form
+		c.keys.dropOp()
+		c.runLines(op, count)
+		return true, true
+	case caseOp != ActUnbound && op == ActUnbound: // g~ gu gU: an operator, armed
+		if c.readOnly {
+			return true, false // refused, and the host's (#285's rule)
+		}
+		c.armOperator(caseOp, kc, count, hadCount)
+		return true, true
+	case !kc.Ctrl && (kc.Code == 'j' || kc.Code == 'k') && op != ActUnbound: // dgj ygk
+		c.keys.dropOp()
+		if to, moved := c.rowTarget(kc.Code == 'j', count); moved {
+			c.runOp(op, to, exclusive)
+		}
+		return true, true
+	case !kc.Ctrl && (kc.Code == 'j' || kc.Code == 'k'): // gj gk
+		c.rowMove(kc.Code == 'j', count)
+		return true, true
+	case !kc.Ctrl && (kc.Code == '*' || kc.Code == '#') && op == ActUnbound: // g* g#
+		c.starSearch(kc.Code == '#', false, count)
+		return true, true
+	case !kc.Ctrl && kc.Code == 'J' && op == ActUnbound: // gJ
+		if c.readOnly {
+			return true, false
+		}
+		c.joinLines(count, true)
+		return true, true
+	case kc == chord && op != ActUnbound:
+		c.keys.dropOp()
+		c.runOp(op, c.gotoLineTarget(count, hadCount), linewise) // [count]dgg
+		return true, true
+	case kc == chord:
+		c.goToLine(hadCount, count, false) // [count]gg
+		return true, true
+	case back != ActUnbound && op != ActUnbound:
+		c.keys.dropOp()
+		c.opMotion(op, back, count, hadCount) // dge
+		return true, true
+	case back != ActUnbound:
+		c.move(back, count)
+		return true, true
+	}
+	c.keys.dropOp()
+	return false, false
+}
+
+// runLines runs op over n lines from the caret's, linewise: the doubled form (dd, 3yy, g~g~).
+func (c *EditorCore) runLines(op Action, n int) {
+	b := &c.buf
+	c.runOp(op, taPos{min(b.ln+n-1, len(b.textLines)-1), 0}, linewise)
+}
+
+// armOperator arms op, kc its chord; a count typed before it multiplies the motion's (2d3w).
+func (c *EditorCore) armOperator(op Action, kc KeyChord, count int, hadCount bool) {
+	c.keys.op, c.keys.opChord, c.keys.opCount = op, kc, 0
+	if hadCount {
+		c.keys.opCount = count
+	}
+}
+
+// armGoPrefix arms the g prefix on kc, its chord; a count typed before it is kept for the
+// completion (5gg).
+func (c *EditorCore) armGoPrefix(kc KeyChord, count int, hadCount bool) {
+	c.keys.pendingAct, c.keys.pendingChord, c.keys.pendingCount = ActGoPrefix, kc, 0
+	if hadCount {
+		c.keys.pendingCount = count
+	}
+}
+
+// commandEscape is Esc in Normal or Visual: what was pending is dropped, Visual ends, and in Normal
+// with nothing pending the active find is cancelled; otherwise Esc bubbles.
+func (c *EditorCore) commandEscape() bool {
+	hadPending := c.commandPending()
+	c.keys.dropPending()
+	if c.visual() {
+		c.exitVisual()
+		return true
+	}
+	// Normal mode with nothing pending: Esc cancels the active find (its marks, n and N) when
+	// there is one. Otherwise it is a vim no-op, so it BUBBLES: consuming it made an Editor
+	// inside a modal float undismissable, since the host never saw the key.
+	return hadPending || c.escapeFind()
+}
+
+// takeFindChar: an armed f, F, t or T takes this key's text as its character, whatever it is (a
+// digit or a space included): the typed cluster, never the code. A key with no text, or one with a
+// command modifier, cancels the find and is processed afresh.
+// It reports whether it took the key.
+func (c *EditorCore) takeFindChar(k tui.KeyEvent) bool {
+	if armed := c.keys.findArmed; armed != ActUnbound {
+		count := c.keys.findCount
+		c.keys.findArmed, c.keys.findCount = ActUnbound, 0
+		if k.Text != "" && k.Mods&nonTextMods == 0 {
+			f := charFindOf(armed, firstCluster(k.Text))
+			c.keys.lastFind = &f
+			if op := c.keys.op; op != ActUnbound {
+				c.keys.dropOp()
+				if to, kind, ok := c.findTarget(f, count, false); ok {
+					c.runOp(op, to, kind)
+				}
+				return true
+			}
+			c.findChar(f, count, false)
+			return true
+		}
+		c.keys.dropOp() // a key with no text: no find, and no operator over it
+	}
+	return false
+}
+
+// takeReplaceChar: an armed r takes this key's text as its character, a digit or a space included,
+// and Enter as a line break; a key with neither cancels it and is processed afresh. It reports
+// whether it took the key.
+func (c *EditorCore) takeReplaceChar(k tui.KeyEvent) bool {
+	if c.keys.replArmed {
+		count := c.keys.replCount
+		c.keys.replArmed, c.keys.replCount = false, 0
+		visual := c.visual()
+		switch {
+		case visual && k.Text != "" && k.Mods&nonTextMods == 0:
+			c.visualOp(ActVisualReplace, count, firstCluster(k.Text)) // every character of the selection
+			return true
+		case visual:
+			// Enter, or a key with no text: r is cancelled, Visual stays
+		case k.Code == tui.KeyEnter && k.Mods&nonTextMods == 0:
+			c.replaceChars("\n", count)
+			return true
+		case k.Text != "" && k.Mods&nonTextMods == 0:
+			c.replaceChars(firstCluster(k.Text), count)
+			return true
+		}
+	}
+	return false
+}
+
+// takeObjectName: an armed text object (i or a, after an operator or in Visual) takes this key's
+// text as the object's name. A key with no text cancels it, and the operator, and is processed
+// afresh. It reports whether it took the key.
+func (c *EditorCore) takeObjectName(k tui.KeyEvent) bool {
+	if obj := c.keys.objArmed; obj != "" {
+		op, count := c.keys.op, max(c.keys.opCount, 1)*max(c.keys.objCount, 1)
+		c.keys.dropOp()
+		c.keys.count = 0
+		if k.Text != "" && k.Mods&nonTextMods == 0 {
+			r, found := c.textObject(obj == "i", firstCluster(k.Text), count)
+			switch {
+			case !found:
+			case op != ActUnbound:
+				c.runObject(op, r)
+			default:
+				c.selectObject(r)
+			}
+			return true
+		}
+	}
+	return false
+}
+
+// takeMarkName: an armed m, ' or ` takes this key's text as the mark's name (' and ` too, for the
+// previous jump); a key with no text cancels it, and an operator waiting on it, and is processed
+// afresh. It reports whether it took the key.
+func (c *EditorCore) takeMarkName(k tui.KeyEvent) bool {
+	if armed := c.keys.markArmed; armed != ActUnbound {
+		c.keys.markArmed = ActUnbound
+		if k.Text != "" && k.Mods&nonTextMods == 0 {
+			c.markKey(armed, []rune(k.Text)[0])
+			return true
+		}
+		c.keys.dropOp()
+	}
+	return false
+}
+
+// takeMacroName: an armed q or @ takes this key's text as the register's name; a key with none
+// cancels it. It reports whether it took the key.
+func (c *EditorCore) takeMacroName(k tui.KeyEvent) bool {
+	if armed := c.keys.macroArmed; armed != ActUnbound {
+		count := c.keys.macroCount
+		c.keys.macroArmed, c.keys.macroCount = ActUnbound, 0
+		if k.Text != "" && k.Mods&nonTextMods == 0 {
+			if name := []rune(k.Text)[0]; armed == ActMacroRecord {
+				c.macroRecordKey(name)
+			} else {
+				c.macroPlay(name, count)
+			}
+			return true
+		}
+	}
+	return false
+}
+
+// takeRegisterName: an armed " takes this key's text as the register's name ("a, "A, "0, "+, "_); a
+// key that names no register cancels it and is processed afresh. A count typed before it is kept
+// (3"ayy). It reports whether it took the key.
+func (c *EditorCore) takeRegisterName(k tui.KeyEvent) bool {
+	if c.keys.regArmed {
+		c.keys.regArmed = false
+		if k.Text != "" && k.Mods&nonTextMods == 0 {
+			if name := []rune(k.Text)[0]; validRegister(name) {
+				c.keys.reg, c.keys.regFresh = name, true
+				return true
+			}
+		}
+	}
+	return false
+}
+
+// takeCountDigit: a digit accumulates the count: 1-9 always; 0 only extends an existing count.
+// Clamp BEFORE assignment so the cap is a hard ceiling.
+// It reports whether it took the key.
+func (c *EditorCore) takeCountDigit(k tui.KeyEvent) bool {
+	ctrl := k.Mods&tui.ModCtrl != 0
+	if !ctrl && k.Text != "" {
+		r := []rune(k.Text)[0]
+		if r >= '1' && r <= '9' || (r == '0' && c.keys.count > 0) {
+			c.keys.pendingAct = ActUnbound
+			c.keys.count = min(c.keys.count*10+int(r-'0'), 1_000_000)
+			if n := len(c.dot.atoms); c.dot.on && n > 0 {
+				c.dot.atoms[n-1].count = true // N. replaces it
+			}
+			return true
+		}
+	}
+	return false
 }
 
 // hookChord is k as SetChordHook has always been shown it, so a host's hook written against it keeps
