@@ -1,7 +1,5 @@
 package web
 
-import "github.com/yongjohnlee80/golib/tui"
-
 // The wire protocol. JSON over one WebSocket, client→server and server→client.
 //
 // JSON rather than a compact binary encoding because the payload is dominated by
@@ -179,22 +177,7 @@ func encodeFrame(f Frame) serverMessage {
 	out.Updates = make([]wireCell, 0, len(f.Updates))
 	for _, u := range f.Updates {
 		c := wireCell{X: u.X, Y: u.Y, S: u.Cell.Content, W: u.Cell.Width}
-		fg, bg := u.Cell.Attrs.FG, u.Cell.Attrs.BG
-		if u.Cell.Attrs.Mask&tui.AttrReverse != 0 {
-			fg, bg = bg, fg
-			if fg.Kind == tui.CellColorDefault {
-				fg = defaultBGToken
-			}
-			if bg.Kind == tui.CellColorDefault {
-				bg = defaultFGToken
-			}
-		}
-		c.F = cssColor(fg)
-		c.B = cssColor(bg)
-		// Reverse is already applied above, so it is cleared from the mask the
-		// client receives: sending it too would let a client apply the swap a
-		// second time and undo it.
-		c.A = uint16(u.Cell.Attrs.Mask & ^tui.AttrReverse)
+		c.F, c.B, c.A = wireColors(u.Cell.Attrs) // reverse applied, and cleared from the mask
 		out.Updates = append(out.Updates, c)
 	}
 	cur := wireCursor{
