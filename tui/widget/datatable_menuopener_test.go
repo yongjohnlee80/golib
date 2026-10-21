@@ -76,3 +76,26 @@ func TestADataTableOpensAMenuThatHasNoSwitch(t *testing.T) {
 		t.Errorf("a right press opened a switchless menu %d times, want 1", n)
 	}
 }
+
+// sliceOpener is a valid MenuOpener of a type that cannot be compared: a named slice.
+type sliceOpener []int
+
+func (o sliceOpener) OpenAt(tui.Point) bool { return true }
+func (o sliceOpener) Close()                { o[0]++ }
+
+// A menu of a type that cannot be compared replaces another of its type without a panic, and the
+// one replaced is closed once.
+func TestADataTableReplacesAMenuOfANoncomparableType(t *testing.T) {
+	table := widget.NewDataTable(widget.NewTableCore(nil))
+	first := sliceOpener{0}
+	table.SetMenuOpener(first)
+	defer func() {
+		if r := recover(); r != nil {
+			t.Fatalf("replacing a noncomparable MenuOpener panicked: %v", r)
+		}
+	}()
+	table.SetMenuOpener(sliceOpener{0})
+	if first[0] != 1 {
+		t.Fatalf("the replaced menu was closed %d times, want once", first[0])
+	}
+}

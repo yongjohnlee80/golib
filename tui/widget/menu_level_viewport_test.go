@@ -106,3 +106,35 @@ func TestAMenuColumnScrollsOnTheWheelAndStaysThere(t *testing.T) {
 		t.Errorf("the wheel moved the selection to %q; it scrolls the rows only", id)
 	}
 }
+
+// A new selection is revealed though it sits where the old one did: after the wheel scrolled away
+// from row 0, a model with new ids selects its own row 0, which is a different item and comes into
+// view. TestAMenuColumnScrollsOnTheWheelAndStaysThere is the control: an
+// unchanged selection leaves the wheel's scroll alone.
+func TestAMenuColumnRevealsANewSelectionAtTheOldOnesPlace(t *testing.T) {
+	m := widget.NewMenu()
+	if err := m.SetModel(rowsNamed("Original", 12)); err != nil {
+		t.Fatal(err)
+	}
+	h, _ := menuFixture(t, m, 30, 5)
+	defer h.stop()
+	for range 3 {
+		h.inject(tui.MouseEvent{Kind: tui.MouseWheel, Button: tui.WheelDown, X: 2, Y: 1})
+		h.settle()
+	}
+	if strings.Contains(h.grid(), "Original 00") {
+		t.Fatal("precondition: the wheel never scrolled away from the selection")
+	}
+	h.onLoop(func() {
+		if err := m.SetModel(rowsNamed("Replacement", 12)); err != nil {
+			t.Error(err)
+		}
+	})
+	h.settle()
+	if id := selectedOn(t, h, m); id != "Replacement 00" {
+		t.Fatalf("precondition: selected %q, want the new first row", id)
+	}
+	if got := h.grid(); !strings.Contains(got, "Replacement 00") {
+		t.Errorf("the new selection, at the old one's place, is scrolled off:\n%s", got)
+	}
+}
