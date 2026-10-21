@@ -204,6 +204,12 @@ func NewTable[T any](cols []TableColumn[T], opts ...ListOption[T]) *Table[T] {
 // List exposes the inner row list (focus target, Selected, SetItems…).
 func (t *Table[T]) List() *List[T] { return t.list }
 
+// SetStyles is the rows' List.SetStyles (RowStyler).
+func (t *Table[T]) SetStyles(st ListStyles) { t.list.SetStyles(st) }
+
+// ResetStyles is the rows' List.ResetStyles (RowStyler).
+func (t *Table[T]) ResetStyles(st ListStyles) { t.list.ResetStyles(st) }
+
 // SetColumns replaces the columns — a new query's result, say — keeping the
 // rows' source and the view; the header and every row are drawn to the new
 // columns on the next frame. None is a table too (see NewTable).

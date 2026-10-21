@@ -712,7 +712,7 @@ var tableViewType = Type{
 			n.grid.SetStyles(st)
 			return
 		}
-		n.table.List().ResetStyles(p.viewStyles())
+		n.table.ResetStyles(p.viewStyles())
 		if p.has(roleBase, roleText) {
 			n.table.SetHeaderStyle(p.look(roleBase, roleText).Bold(true).Underline(true))
 		} else {
