@@ -310,11 +310,13 @@ func (c *TableCore) HandleKey(k tui.KeyEvent) bool {
 			return wasG || counted // a pending command dropped is the key's work; otherwise it is the application's
 		}
 		c.SetAnchor(nil)
+	case TableRowCursor.ID:
+		c.SetRowCursor(!c.rowCursor)
 	case TableYank.ID:
 		switch {
 		case c.anchor != nil:
 			c.Copy()
-		case yanked:
+		case yanked || c.rowCursor: // yy, or y on a row cursor: the row
 			var b strings.Builder
 			c.writeRow(&b, c.cur.Row, 0, len(c.Fields())-1)
 			c.setRegister(b.String(), true)
@@ -558,6 +560,9 @@ func (c *TableCore) fieldSelected(col int) bool {
 // quote is quoted). A read-only table's are its values joined by tabs, as they always were: what a
 // reader copies out of a result, a JSON value as it is.
 func (c *TableCore) copyRecord(cells []string) string {
+	if c.copyCSV { // CSV, quoted as RFC 4180 has it, editable or not: what CSV is
+		return encodeRecord(',', cells)
+	}
 	if c.Editable() {
 		return encodeRecord('\t', cells)
 	}

@@ -116,7 +116,8 @@ var (
 	TableVisualRows  = cmd("tui.table.selectRows", TableScope, "Shift+V")
 	TableVisualBlock = cmd("tui.table.selectBlock", TableScope, "Ctrl+V")
 	TableEscape      = cmd("tui.table.escape", TableScope, with("Esc")...)
-	TableYank        = cmd("tui.table.yank", TableScope, "Y") // y copies; y again copies the row
+	TableYank        = cmd("tui.table.yank", TableScope, "Y")      // y copies; y again copies the row
+	TableRowCursor   = cmd("tui.table.rowCursor", TableScope, "R") // the cursor between its cell and its row
 	TableSort        = cmd("tui.table.sort", TableScope, "S")
 	TableActivate    = cmd("tui.table.activate", TableScope, with("Enter")...) // on an editable source: edit the cell
 	// An editable source's: open the cell's field, a new row below, delete the
@@ -133,7 +134,7 @@ var (
 	tableCommands = []keymap.Command{TableUp, TableDown, TableLeft, TableRight, TableFieldNext,
 		TableFieldPrev, TablePageUp, TablePageDown, TableGoPrefix, TableLast, TableFieldFirst,
 		TableFieldLast, TableVisual, TableVisualRows, TableVisualBlock, TableEscape, TableYank,
-		TableSort, TableActivate, TableEditCell, TableOpenRow, TableDeleteRow, TableClearCell,
+		TableRowCursor, TableSort, TableActivate, TableEditCell, TableOpenRow, TableDeleteRow, TableClearCell,
 		TablePasteAfter, TablePasteBefore, TableOpenRowAbove}
 )
 

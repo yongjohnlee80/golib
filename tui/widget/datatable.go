@@ -337,7 +337,7 @@ func (t *DataTable) Render(s tui.Surface) {
 			w := min(t.core.Width(col), sz.W-x)
 			st := t.styles.Cell
 			switch {
-			case row == cur.Row && col == cur.Col:
+			case t.core.CursorCovers(row, col):
 				st = cursor.Inherit(st)
 			case t.core.InSelection(row, col):
 				st = t.styles.Selected.Inherit(st)

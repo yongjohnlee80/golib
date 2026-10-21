@@ -484,3 +484,17 @@ func TestAReadOnlyTableCopiesItsValuesAsTheyAre(t *testing.T) {
 		t.Fatalf("an editable cell copied %q", got)
 	}
 }
+
+// A CSV table's register reads back as CSV: yy then p on a row whose cell holds a comma pastes the
+// same two cells, where reading it as TSV would make one cell of the whole line.
+func TestACSVTablesRegisterPastesBackAsCSV(t *testing.T) {
+	text := "a,b\n\"x,1\",y\n"
+	c, _, core, _ := csvTable(text, TableCopyCSV(true))
+	press(c, 'y', 'y', 'p')
+	if want := "a,b\n\"x,1\",y\n\"x,1\",y\n"; core.Value() != want {
+		t.Fatalf("yy p in a CSV table: %q, want %q", core.Value(), want)
+	}
+	if reg, rows := c.register().Register(); reg != `"x,1",y` || !rows {
+		t.Fatalf("the register %q (rows %v), want the row as CSV", reg, rows)
+	}
+}

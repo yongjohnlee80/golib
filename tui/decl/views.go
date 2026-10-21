@@ -744,6 +744,14 @@ var tableViewType = Type{
 		"rowNumbers": cellsSetter("rowNumbers", boolOf, func(n *tableViewNode, on bool) {
 			n.grid.Core().SetRowNumbers(on)
 		}),
+		// golib's: what y copies, "tsv" (the default) or "csv" (TableCopyCSV)
+		"copyFormat": cellsSetter("copyFormat", copyFormats.read, func(n *tableViewNode, csv bool) {
+			n.grid.Core().SetCopyCSV(csv)
+		}),
+		// golib's: the cursor covers its whole row (r toggles it): y copies the row
+		"rowCursor": cellsSetter("rowCursor", boolOf, func(n *tableViewNode, on bool) {
+			n.grid.Core().SetRowCursor(on)
+		}),
 		// golib's: the sort of the loaded rows as ORDER BY text, `name [ASC|DESC], …`; "" none
 		"orderBy": cellsSetter("orderBy", stringOf, (*tableViewNode).setOrderBy),
 		// golib's: the loaded rows shown, as WHERE text over the fields; "" every row
@@ -794,3 +802,6 @@ var tableViewColumnType = Type{
 	Build: buildTableViewColumn,
 	Ctor:  []string{"role", "title", "width", "elideMode"},
 }
+
+// copyFormats are a cell-cursor TableView's copyFormat values: whether y copies CSV.
+var copyFormats = enum[bool]{values: map[string]bool{"Tsv": false, "Csv": true}}
