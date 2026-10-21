@@ -128,8 +128,9 @@ type List[T any] struct {
 	Base
 	src    ListSource[T]
 	render func(T) string
-	// onCursor and onActivate tell the List's owner at once, before the bus's
-	// SelectionChangedEvent and ActivateEvent (WithListOnCursor, WithListOnActivate).
+	// onCursor and onActivate tell the List's owner at once, a loop turn before the bus delivers
+	// SelectionChangedEvent and ActivateEvent (WithListOnCursor, WithListOnActivate). They run last,
+	// so an owner may replace the rows from one.
 	onCursor, onActivate func(i int)
 	// paint is an optional styled-row renderer. Navigation, clipping bounds,
 	// viewport selection and focus still belong to List.
@@ -219,15 +220,15 @@ func WithEmptyTextMessage[T any](m tui.Message) ListOption[T] {
 	return func(l *List[T]) { l.emptyText, l.emptyMsg = englishText(m), m }
 }
 
-// WithListOnCursor sets what runs, at once, when the cursor moves to row i: before the bus's
-// SelectionChangedEvent, which other subscribers hear a loop turn later. An owner composing a List
+// WithListOnCursor sets what runs, at once, when the cursor moves to row i: the bus's
+// SelectionChangedEvent reaches other subscribers a loop turn later. fn may replace the rows. An owner composing a List
 // uses it rather than subscribing app-wide and filtering by Owner.
 func WithListOnCursor[T any](fn func(i int)) ListOption[T] {
 	return func(l *List[T]) { l.onCursor = fn }
 }
 
-// WithListOnActivate sets what runs, at once, when row i is activated (Enter, a double click):
-// before the bus's ActivateEvent.
+// WithListOnActivate sets what runs, at once, when row i is activated (Enter, a double click): the
+// bus's ActivateEvent reaches other subscribers a loop turn later. fn may replace the rows.
 func WithListOnActivate[T any](fn func(i int)) ListOption[T] {
 	return func(l *List[T]) { l.onActivate = fn }
 }
@@ -423,11 +424,12 @@ func (l *List[T]) moveCursor(i int) {
 	l.cursor = i
 	l.ensureVisible()
 	l.MarkDirty()
-	if l.onCursor != nil {
-		l.onCursor(i)
-	}
 	if !l.multi {
 		l.publish(SelectionChangedEvent{Owner: l.NodeID(), Index: i, Label: l.render(l.src.Item(i))})
+	}
+	// last: the owner may replace the rows from here, so nothing of them is read after it
+	if l.onCursor != nil {
+		l.onCursor(i)
 	}
 }
 
@@ -436,10 +438,11 @@ func (l *List[T]) activate() {
 	if l.count == 0 {
 		return
 	}
+	i := l.cursor
+	l.publish(ActivateEvent{Owner: l.NodeID(), Index: i})
 	if l.onActivate != nil {
-		l.onActivate(l.cursor)
+		l.onActivate(i) // last, as onCursor is
 	}
-	l.publish(ActivateEvent{Owner: l.NodeID(), Index: l.cursor})
 }
 
 // hasFocus reports whether the list itself holds the keyboard.
