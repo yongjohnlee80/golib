@@ -384,7 +384,7 @@ loaded rows as a view, merging rows that arrive later. A source that is `TableKi
 as exact decimals from their literal, never through float64; false before true; mixed kinds by
 kind. Without kinds, numbers sort as numbers when both cells are, else as text.
 `ParseTableOrder(text, fields)` reads an ORDER BY bar's `field [ASC|DESC], …` (a title, a
-`"quoted title"` or a 1-based position) into keys, its `*TableOrderError` carrying the byte at
+`"quoted title"` or a 1-based position) into keys, its `*TableBarError` (the error both bars, ORDER BY and WHERE, return) carrying the byte at
 fault; `FormatTableOrder` writes keys back as text it reads.
 
 `TableRowNumbers(true)` numbers the rows in a gutter as wide as the last row's number. `DataTable`

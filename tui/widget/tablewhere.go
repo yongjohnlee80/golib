@@ -1,7 +1,6 @@
 package widget
 
 import (
-	"fmt"
 	"math/big"
 	"strconv"
 	"strings"
@@ -53,15 +52,6 @@ func (t TableTruth) String() string {
 type TablePredicate interface {
 	Eval(src TableSource, r int) TableTruth
 }
-
-// TableWhereError is text that ParseTableWhere could not read: Offset is the byte of the token at
-// fault (len(text) when the text ended too soon), Msg what is wrong with it.
-type TableWhereError struct {
-	Offset int
-	Msg    string
-}
-
-func (e *TableWhereError) Error() string { return e.Msg }
 
 // ParseTableWhere reads text as a filter over fields; text of only spaces is no filter, a nil
 // predicate and no error.
@@ -150,7 +140,7 @@ type whereParser struct {
 }
 
 func (p *whereParser) fail(at int, format string, args ...any) error {
-	return &TableWhereError{Offset: at, Msg: fmt.Sprintf(format, args...)}
+	return barFail(at, format, args...)
 }
 
 // shown is the current token as the user wrote it, for a message.
@@ -255,19 +245,10 @@ func (p *whereParser) wordEnd() int {
 // quoted reads a name in double quotes or a string in single quotes, the quote doubled inside.
 func (p *whereParser) quoted(q byte) (string, error) {
 	start := p.i
-	var b strings.Builder
-	for p.i++; p.i < len(p.text); p.i++ {
-		if p.text[p.i] != q {
-			b.WriteByte(p.text[p.i])
-			continue
-		}
-		if p.i+1 < len(p.text) && p.text[p.i+1] == q {
-			b.WriteByte(q)
-			p.i++
-			continue
-		}
-		p.i++
-		return b.String(), nil
+	val, end, closed := readQuoted(p.text, p.i, q)
+	p.i = end
+	if closed {
+		return val, nil
 	}
 	if q == '"' {
 		return "", p.fail(start, "the quoted name is not closed")
@@ -426,11 +407,10 @@ func (p *whereParser) field() (int, error) {
 	t := p.tok
 	col := 0
 	if t.kind == wtPosition {
-		n, err := strconv.Atoi(t.val)
-		if err != nil || n < 1 || n > len(p.fields) {
+		var ok bool
+		if col, ok = fieldAtPosition(t.val, len(p.fields)); !ok {
 			return 0, p.fail(t.at, "no field #%s: the table has %d", t.val, len(p.fields))
 		}
-		col = n - 1
 	} else {
 		var msg string
 		if col, msg = fieldNamed(p.fields, t.val, "#"); msg != "" {

@@ -14,14 +14,49 @@ import (
 // bare name runs to a space, a comma or a quote. ASC and DESC are case-insensitive. The text is
 // read against a table's fields, and an error says where it went wrong, for the bar to point at.
 
-// TableOrderError is text that ParseTableOrder could not read: Offset is the byte of the token at
-// fault (len(text) when the text ended too soon), Msg what is wrong with it.
-type TableOrderError struct {
+// TableBarError is text a table bar could not read (ParseTableOrder, ParseTableWhere): Offset is the
+// byte of the token at fault (len(text) when the text ended too soon), Msg what is wrong with it.
+type TableBarError struct {
 	Offset int
 	Msg    string
 }
 
-func (e *TableOrderError) Error() string { return e.Msg }
+func (e *TableBarError) Error() string { return e.Msg }
+
+// barFail is a TableBarError at byte at.
+func barFail(at int, format string, args ...any) error {
+	return &TableBarError{Offset: at, Msg: fmt.Sprintf(format, args...)}
+}
+
+// readQuoted reads the text quoted by q that starts at text[i] (the opening quote), the quote
+// doubled inside standing for itself: its value, the byte after the closing quote, and false when
+// the text ends before it closes. A name in double quotes and a string in single quotes alike.
+func readQuoted(text string, i int, q byte) (val string, end int, closed bool) {
+	var b strings.Builder
+	for i++; i < len(text); i++ {
+		if text[i] != q {
+			b.WriteByte(text[i])
+			continue
+		}
+		if i+1 < len(text) && text[i+1] == q {
+			b.WriteByte(q)
+			i++
+			continue
+		}
+		return b.String(), i + 1, true
+	}
+	return "", i, false
+}
+
+// fieldAtPosition is the field a 1-based position (#2, or 2 in ORDER BY) names among n fields, and
+// false when it names none.
+func fieldAtPosition(digits string, n int) (int, bool) {
+	p, err := strconv.Atoi(digits)
+	if err != nil || p < 1 || p > n {
+		return 0, false
+	}
+	return p - 1, true
+}
 
 // ParseTableOrder reads text as sort keys over fields. A name matches the field with that title
 // exactly; failing that, the one field whose title matches it case-insensitively. A name two
@@ -57,7 +92,7 @@ type orderParser struct {
 }
 
 func (p *orderParser) fail(at int, format string, args ...any) error {
-	return &TableOrderError{Offset: at, Msg: fmt.Sprintf(format, args...)}
+	return barFail(at, format, args...)
 }
 
 func (p *orderParser) space() {
@@ -116,31 +151,22 @@ func (p *orderParser) field() (name string, quoted bool, err error) {
 		}
 		return p.text[start:p.i], false, nil
 	}
-	var b strings.Builder
-	for p.i++; p.i < len(p.text); p.i++ {
-		if p.text[p.i] != '"' {
-			b.WriteByte(p.text[p.i])
-			continue
-		}
-		if p.i+1 < len(p.text) && p.text[p.i+1] == '"' {
-			b.WriteByte('"')
-			p.i++
-			continue
-		}
-		p.i++
-		return b.String(), true, nil
+	name, end, closed := readQuoted(p.text, p.i, '"')
+	p.i = end
+	if !closed {
+		return "", true, p.fail(start, "the quoted name is not closed")
 	}
-	return "", true, p.fail(start, "the quoted name is not closed")
+	return name, true, nil
 }
 
 // resolve is the field a name or a position at offset at names.
 func (p *orderParser) resolve(name string, quoted bool, at int) (int, error) {
 	if !quoted && orderDigits(name) {
-		n, err := strconv.Atoi(name)
-		if err != nil || n < 1 || n > len(p.fields) {
+		col, ok := fieldAtPosition(name, len(p.fields))
+		if !ok {
 			return 0, p.fail(at, "no field %s: the table has %d", name, len(p.fields))
 		}
-		return n - 1, nil
+		return col, nil
 	}
 	col, msg := fieldNamed(p.fields, name, "")
 	if msg != "" {

@@ -83,9 +83,9 @@ func TestParseTableOrder_ErrorsCarryTheOffsetOfTheirToken(t *testing.T) {
 		{`Name"x"`, 4, `"\"x\"" is not ASC or DESC`},
 	} {
 		_, err := ParseTableOrder(c.text, fields)
-		var oe *TableOrderError
+		var oe *TableBarError
 		if !errors.As(err, &oe) {
-			t.Errorf("%q: err %v, want a *TableOrderError", c.text, err)
+			t.Errorf("%q: err %v, want a *TableBarError", c.text, err)
 			continue
 		}
 		if oe.Offset != c.offset || !strings.Contains(oe.Error(), c.says) {
