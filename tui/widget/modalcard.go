@@ -404,24 +404,10 @@ func (c *modalCard) renderFooter(s tui.Surface, sz tui.Size) {
 	}
 }
 
-// drawBorder paints a single-cell frame around the card.
+// drawBorder paints a single-cell frame around sz, in the border st carries (BorderNormal when
+// none).
 func drawBorder(s tui.Surface, sz tui.Size, st style.Style) {
-	if sz.W < 2 || sz.H < 2 {
-		return // no room for a frame that does not overlap itself
-	}
-	right, bottom := sz.W-1, sz.H-1
-	s.SetCell(0, 0, "┌", st)
-	s.SetCell(right, 0, "┐", st)
-	s.SetCell(0, bottom, "└", st)
-	s.SetCell(right, bottom, "┘", st)
-	for x := 1; x < right; x++ {
-		s.SetCell(x, 0, "─", st)
-		s.SetCell(x, bottom, "─", st)
-	}
-	for y := 1; y < bottom; y++ {
-		s.SetCell(0, y, "│", st)
-		s.SetCell(right, y, "│", st)
-	}
+	drawFrame(s, tui.Rect{W: sz.W, H: sz.H}, st, style.BorderNormal)
 }
 
 // Scrim dims everything beneath a dialog. The overlay host makes and owns it; it is exported

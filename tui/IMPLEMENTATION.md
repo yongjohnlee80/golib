@@ -71,7 +71,7 @@ in the same change. Never add a second copy "for now".
 | Row viewport: scroll, page, wheel step, reveal, clipping, row painting | `widget/rowviewport.go`: `revealRow`, `clampTop`, `paintRows`, `rowsWidth`, the named wheel steps; `ListStyles.cursorLook` for the cursor row |
 | Press pairing (double/triple click on the same target) | `pressPairer` in `widget` (List, Tree, `TableCore.pairPress`) |
 | Drag state machine | one drag helper in `widget` |
-| Borders and frames | one painter honouring `style.BorderStyle`; no hard-coded glyphs |
+| Borders and frames | `widget/frame.go`: `paintFrame` (per edge), `drawFrame` (whole), honouring the `style.BorderStyle` a style carries; no hard-coded glyphs |
 | Scrims and overlay layering | one scrim and one layer-tier capability on `OverlayHost` |
 | Floating placement (rect, percent, clamp) | `Float.place` / `fixedRect`; the managed (WindowMod) layout adds only its work area and maximize |
 | Text viewport (scroll, reveal, caret placement, paint loop) | one text viewport shared by TextInput, TextArea, Editor, CommandLine |

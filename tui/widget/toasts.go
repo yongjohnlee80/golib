@@ -410,16 +410,12 @@ func (t *Toasts) Render(s tui.Surface) {
 func (t *Toasts) paint(s tui.Surface, x, y, w int, lines []string, when string) {
 	h := len(lines) + 2
 	s.Fill(tui.Rect{X: x, Y: y, W: w, H: h}, " ", t.st)
-	top := "╭" + strings.Repeat("─", max(w-2, 0)) + "╮"
-	drawText(s, x, y, top, t.muted)
+	drawFrame(s, tui.Rect{X: x, Y: y, W: w, H: h}, t.muted, style.BorderRounded)
 	label := " " + when + " "
 	if lw := t.measure(label); lw+3 <= w {
 		drawText(s, x+w-2-lw, y, label, t.muted)
 	}
 	for i, l := range lines {
-		drawText(s, x, y+1+i, "│", t.muted)
 		drawText(s, x+2, y+1+i, l, t.st)
-		drawText(s, x+w-1, y+1+i, "│", t.muted)
 	}
-	drawText(s, x, y+h-1, "╰"+strings.Repeat("─", max(w-2, 0))+"╯", t.muted)
 }

@@ -129,7 +129,8 @@ func (s *ModalStyle) WithTitle(v style.Style) *ModalStyle {
 	return c
 }
 
-// WithBorder returns a copy with the border look replaced.
+// WithBorder returns a copy with the border look replaced. A style.BorderStyle it carries
+// (v.Border(style.BorderDouble), say) is the frame's shape; none keeps the single line.
 func (s *ModalStyle) WithBorder(v style.Style) *ModalStyle {
 	c := s.cloneModal()
 	c.border = v
