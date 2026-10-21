@@ -1,6 +1,7 @@
 package widget
 
 import (
+	"math"
 	"strconv"
 	"strings"
 
@@ -309,6 +310,35 @@ func (t *DataTable) drawRules(s tui.Surface, digits int) {
 	}
 }
 
+// colSpan is one field's place in the view: field col (len(Fields) for the edge field) starts at
+// cell x, gutter included, and is w cells wide, before the view clips it.
+type colSpan struct{ col, x, w int }
+
+// spans are the fields shown from the first one shown (left), in order, while they start inside
+// width cells: the ONE geometry the header, the cells, the blank rows and the pointer's hit-test
+// read. edge adds the edge field after the last, when the core has one.
+func (t *DataTable) spans(width int, edge bool) []colSpan {
+	n := len(t.core.Fields())
+	last := n - 1
+	if edge && t.core.EdgeField() {
+		last = n
+	}
+	var out []colSpan
+	x := t.gutter()
+	for col := t.left; col <= last && x < width; col++ {
+		if col > t.left {
+			x += tableGap
+		}
+		w := tableEdgeWidth
+		if col < n {
+			w = t.core.Width(col)
+		}
+		out = append(out, colSpan{col, x, w})
+		x += w
+	}
+	return out
+}
+
 // fits reports whether fields from..to fit the width when from is the first shown.
 func (t *DataTable) fits(from, to int) bool {
 	x := t.gutter()
@@ -353,14 +383,14 @@ func (t *DataTable) Render(s tui.Surface) {
 	fields := t.core.Fields()
 	keys, partial := t.core.SortedKeys()
 	gutter, digits := t.gutter(), t.core.RowNumberDigits()
-	x := gutter
-	for col := t.left; col < len(fields) && x < sz.W; col++ {
-		if col > t.left {
-			x += tableGap
+	for _, sp := range t.spans(sz.W, true) {
+		if sp.col == len(fields) { // the edge field
+			drawText(s, sp.x, 0, truncate(" + ", sz.W-sp.x, s.StringWidth), t.styles.Empty)
+			continue
 		}
-		title := fields[col].Title
+		title := fields[sp.col].Title
 		for i, k := range keys {
-			if k.Col != col {
+			if k.Col != sp.col {
 				continue
 			}
 			title += map[bool]string{false: " ▲", true: " ▼"}[k.Desc]
@@ -369,12 +399,7 @@ func (t *DataTable) Render(s tui.Surface) {
 			}
 			break
 		}
-		w := min(t.core.Width(col), sz.W-x)
-		drawText(s, x, 0, fitCell(title, w, ElideRight, style.AlignLeft, s.StringWidth), t.styles.Header)
-		x += t.core.Width(col)
-	}
-	if t.core.EdgeField() && x+tableGap < sz.W {
-		drawText(s, x+tableGap, 0, truncate(" + ", sz.W-x-tableGap, s.StringWidth), t.styles.Empty)
+		drawText(s, sp.x, 0, fitCell(title, min(sp.w, sz.W-sp.x), ElideRight, style.AlignLeft, s.StringWidth), t.styles.Header)
 	}
 	t.caret = nil
 	t.drawRules(s, digits)
@@ -392,32 +417,30 @@ func (t *DataTable) Render(s tui.Surface) {
 		}
 		kind, row := t.core.DrawnRow(v)
 		if kind != TableRowData {
-			t.drawBlankRow(s, y, kind, row, gutter, fields, cur, cursor)
+			t.drawBlankRow(s, y, kind, row, gutter, cur, cursor)
 			continue
 		}
 		if digits > 0 {
 			n := strconv.Itoa(row + 1)
 			drawText(s, 0, y, truncate(strings.Repeat(" ", max(digits-len(n), 0))+n, sz.W, s.StringWidth), t.styles.Header)
 		}
-		x := gutter
-		for col := t.left; col < len(fields) && x < sz.W; col++ {
-			if col > t.left {
-				x += tableGap
+		for _, sp := range t.spans(sz.W, true) {
+			w := min(sp.w, sz.W-sp.x)
+			if sp.col == len(fields) { // the edge field: the cursor's, when it is there
+				if row == cur.Row && cur.Col == sp.col {
+					drawText(s, sp.x, y, strings.Repeat(" ", w), cursor.Inherit(t.styles.Cell))
+				}
+				continue
 			}
-			w := min(t.core.Width(col), sz.W-x)
 			st := t.styles.Cell
 			switch {
-			case t.core.CursorCovers(row, col):
+			case t.core.CursorCovers(row, sp.col):
 				st = cursor.Inherit(st)
-			case t.core.InSelection(row, col):
+			case t.core.InSelection(row, sp.col):
 				st = t.styles.Selected.Inherit(st)
 			}
-			text := tableCellLine(t.core.Cell(row, col))
-			drawText(s, x, y, fitCell(text, w, ElideRight, fields[col].Align, s.StringWidth), st)
-			x += t.core.Width(col)
-		}
-		if t.core.EdgeField() && x+tableGap < sz.W && row == cur.Row && cur.Col == len(fields) {
-			drawText(s, x+tableGap, y, strings.Repeat(" ", min(tableEdgeWidth, sz.W-x-tableGap)), cursor.Inherit(t.styles.Cell))
+			text := tableCellLine(t.core.Cell(row, sp.col))
+			drawText(s, sp.x, y, fitCell(text, w, ElideRight, fields[sp.col].Align, s.StringWidth), st)
 		}
 	}
 	t.drawField(s, gutter, fields)
@@ -425,29 +448,19 @@ func (t *DataTable) Render(s tui.Surface) {
 
 // drawBlankRow draws o's new row or the edge row: empty cells, the cursor's among them; the edge
 // row's gutter says +.
-func (t *DataTable) drawBlankRow(s tui.Surface, y int, kind TableRowKind, row, gutter int, fields []TableField,
+func (t *DataTable) drawBlankRow(s tui.Surface, y int, kind TableRowKind, row, gutter int,
 	cur TablePos, cursor style.Style) {
 	sz := s.Size()
 	if kind == TableRowEdge && gutter > 0 {
 		drawText(s, 0, y, truncate(padAligned("+", t.core.RowNumberDigits(), style.AlignRight, s.StringWidth), sz.W, s.StringWidth), t.styles.Empty)
 	}
-	onCursorRow := kind == TableRowEdge && row == cur.Row
-	x := gutter
-	for col := t.left; col <= len(fields) && x < sz.W; col++ {
-		if col > t.left {
-			x += tableGap
+	if kind != TableRowEdge || row != cur.Row {
+		return
+	}
+	for _, sp := range t.spans(sz.W, true) {
+		if sp.col == cur.Col {
+			drawText(s, sp.x, y, strings.Repeat(" ", min(sp.w, sz.W-sp.x)), cursor.Inherit(t.styles.Cell))
 		}
-		w := tableEdgeWidth
-		if col < len(fields) {
-			w = t.core.Width(col)
-		} else if !t.core.EdgeField() {
-			break
-		}
-		w = min(w, sz.W-x)
-		if onCursorRow && col == cur.Col {
-			drawText(s, x, y, strings.Repeat(" ", w), cursor.Inherit(t.styles.Cell))
-		}
-		x += w
 	}
 }
 
@@ -457,7 +470,7 @@ func (t *DataTable) fieldX(col, gutter int) (int, bool) {
 		return 0, false
 	}
 	x := gutter
-	for c := t.left; c < col; c++ {
+	for c := t.left; c < col; c++ { // past the view's width too: an open field reads where it would be
 		x += t.core.Width(c) + tableGap
 	}
 	return x, true
@@ -706,16 +719,11 @@ func (t *DataTable) pixels(e tui.MouseEvent) (float32, float32) {
 
 // fieldAt is the field shown at column x, counted from the end of the gutter.
 func (t *DataTable) fieldAt(x int) (int, bool) {
-	at := 0
-	for col := t.left; col < len(t.core.Fields()); col++ {
-		if col > t.left {
-			at += tableGap
+	x += t.gutter() // spans count the gutter
+	for _, sp := range t.spans(math.MaxInt, false) {
+		if x < sp.x+sp.w {
+			return sp.col, x >= sp.x || sp.col > t.left // a gap is the field after it
 		}
-		end := at + t.core.Width(col)
-		if x < end {
-			return col, x >= at || col > t.left
-		}
-		at = end
 	}
 	return 0, false
 }
