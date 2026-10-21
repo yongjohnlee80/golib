@@ -356,6 +356,11 @@ func (m *Manager) create(ctx context.Context, id *auth.Identity, h Hello, info S
 
 	s, runCtx, err := m.register(id, info.Peer)
 	if err != nil {
+		if errors.Is(err, ErrSessionLimit) {
+			// Audited here, not in register: a log sink may read the Manager (Len), and
+			// under mu that would deadlock.
+			logger.Notice(m.log, sessionAudit{Kind: "refused", Subject: id.Subject, Reason: "session limit"})
+		}
 		return nil, err
 	}
 
@@ -388,6 +393,7 @@ func (m *Manager) create(ctx context.Context, id *auth.Identity, h Hello, info S
 // register admits a session for subject and records it: the manager is open, the dead are evicted
 // before the cap is judged (so a stale session does not deny a live user), and the id, backend and
 // session are made, all under one hold of mu so two creates cannot both pass the cap.
+// It logs nothing: a refusal at the cap is audited by its caller, after mu is released.
 func (m *Manager) register(id *auth.Identity, peer string) (*Session, context.Context, error) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
@@ -396,8 +402,7 @@ func (m *Manager) register(id *auth.Identity, peer string) (*Session, context.Co
 	}
 	m.evictLocked(m.now())
 	if len(m.sessions) >= m.maxSess {
-		logger.Notice(m.log, sessionAudit{Kind: "refused", Subject: id.Subject, Reason: "session limit"})
-		return nil, nil, ErrSessionLimit
+		return nil, nil, ErrSessionLimit // audited by create, with mu released
 	}
 	sid := m.newID()
 	// The App's context comes from the MANAGER's lifetime, not from the
