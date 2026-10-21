@@ -188,6 +188,23 @@ func (b *textBuffer) setLines(ls []string) {
 	touchFrom(&b.changedFrom, 0)
 }
 
+// taPos is a place in a text: line ln, cluster column col.
+type taPos struct{ ln, col int }
+
+// less reports whether p comes before q in the text.
+func (p taPos) less(q taPos) bool { return p.ln < q.ln || p.ln == q.ln && p.col < q.col }
+
+// in reports whether p lies in the region [lo, hiEx).
+func (p taPos) in(lo, hiEx taPos) bool { return !p.less(lo) && p.less(hiEx) }
+
+// ordered is a and b, the earlier first.
+func ordered(a, b taPos) (lo, hi taPos) {
+	if b.less(a) {
+		return b, a
+	}
+	return a, b
+}
+
 // newTextBuffer is a cursor over a text of its own: one empty line.
 func newTextBuffer() textBuffer {
 	return textBuffer{bufferText: newBufferText(), desired: -1}
@@ -245,11 +262,8 @@ func (b *textBuffer) selection() (lo, hi taPos, ok bool) {
 	if b.anchor == nil || (b.anchor.ln == b.ln && b.anchor.col == b.col) {
 		return taPos{}, taPos{}, false
 	}
-	a, bb := *b.anchor, taPos{ln: b.ln, col: b.col}
-	if a.ln > bb.ln || (a.ln == bb.ln && a.col > bb.col) {
-		a, bb = bb, a
-	}
-	return a, bb, true
+	lo, hi = ordered(*b.anchor, taPos{ln: b.ln, col: b.col})
+	return lo, hi, true
 }
 
 // deleteRegion removes [lo, hi) and moves the cursor to lo.

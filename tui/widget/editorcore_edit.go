@@ -46,11 +46,7 @@ func (c *EditorCore) clampPos(p TextPos) taPos {
 
 // clampRange orders and clamps r.
 func (c *EditorCore) clampRange(r TextRange) (lo, hi taPos) {
-	lo, hi = c.clampPos(r.From), c.clampPos(r.To)
-	if hi.ln < lo.ln || (hi.ln == lo.ln && hi.col < lo.col) {
-		lo, hi = hi, lo
-	}
-	return lo, hi
+	return ordered(c.clampPos(r.From), c.clampPos(r.To))
 }
 
 // Cursor is the cursor's position.

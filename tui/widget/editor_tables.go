@@ -162,5 +162,5 @@ func (c *EditorCore) addTableRow(ln, n int) {
 // inCellSelection reports whether (ln, col) is inside a table cell's selection.
 func (c *EditorCore) inCellSelection(ln, col int) bool {
 	lo, hi, ok := c.buf.selection()
-	return ok && c.tableEditing && posLE(lo, ln, col) && !posLE(hi, ln, col)
+	return ok && c.tableEditing && (taPos{ln, col}).in(lo, hi)
 }

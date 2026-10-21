@@ -165,10 +165,7 @@ type opRange struct {
 // of the line before it instead, and is whole lines when it also starts at or before its line's
 // first non-blank. empty reports a range with nothing in it: the only one that is a no-op.
 func (c *EditorCore) rangeOf(from, to taPos, k motionKind) (r opRange, empty bool) {
-	lo, hi := from, to
-	if hi.ln < lo.ln || (hi.ln == lo.ln && hi.col < lo.col) {
-		lo, hi = hi, lo
-	}
+	lo, hi := ordered(from, to)
 	switch k {
 	case linewise:
 		return opRange{lo: taPos{lo.ln, 0}, hiEx: taPos{hi.ln, 0}, lines: true}, false
