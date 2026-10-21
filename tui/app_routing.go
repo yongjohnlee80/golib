@@ -88,32 +88,7 @@ func (a *App) dispatch(ev Event) {
 	}
 	switch e := ev.(type) {
 	case KeyEvent:
-		if e.Kind != KeyRelease {
-			a.toolTipPress(false)
-			a.keyFocus = true
-			defer func() { a.keyFocus = false }()
-		}
-		if a.interceptCaptureEscape(e) {
-			return
-		}
-		// Target = the focused node. With nothing focused the fallback is the
-		// active trapping scope if there is one, and only otherwise the root:
-		// repairFocus legitimately leaves focused == 0 while a trap survives
-		// with no focusable descendant (see focus.go), and defaulting to root
-		// there would hand the key to the controls the trap is covering.
-		if a.dispatchFocused(ev) {
-			return
-		}
-		// Unconsumed key falls through to the App's global keymap — which is how
-		// framework Tab traversal works: a component that consumes Tab (e.g. a
-		// text area inserting \t) thereby opts out of traversal for that press.
-		//
-		// globalKey stays reachable INSIDE a trap on purpose. It is the only
-		// implementation of Tab/Shift-Tab, so skipping it would leave a generic
-		// scope with no traversal at all; and it is safe, because focusStep
-		// walks the ring of the current scope and cannot move focus out of one.
-		// Every other unconsumed key is simply dropped at the ceiling.
-		a.globalKey(e)
+		a.dispatchKey(e, ev)
 
 	case PasteEvent:
 		a.dispatchFocused(ev)
@@ -127,144 +102,7 @@ func (a *App) dispatch(ev Event) {
 		a.dispatchFocused(ev)
 
 	case MouseEvent:
-		// A count belongs to presses only. Canonicalise every other kind to zero
-		// rather than passing a producer's value through. Count is documented
-		// as 0 on every non-press kind, and rewriting only presses left that
-		// promise dependent on the producer: an injected MouseWheel{Count: 99}
-		// was delivered with 99 intact.
-		if e.Kind != MousePress {
-			e.Count = 0
-			ev = e
-		}
-		a.trackHover(e)
-		if e.Kind == MousePress || e.Kind == MouseWheel {
-			a.toolTipPress(true)
-		}
-		if e.Kind == MouseRelease {
-			defer a.refreshHover() // a capture this release ends: hover follows the pointer again
-		}
-		// A HELD CAPTURE PRE-EMPTS EVERYTHING BELOW. Press, motion and release
-		// go straight to the owner: no hit-test, no focus step, no bubbling.
-		// That is the whole point — the pointer has left the widget that owns
-		// the drag, so every mechanism that asks "what is under the pointer?"
-		// now answers with the wrong widget.
-		//
-		// The wheel is deliberately NOT captured. Scrolling addresses the pane
-		// under the pointer without taking focus, and capturing it would freeze
-		// scrolling for the duration of a drag.
-		if a.captureOwner != 0 && e.Kind != MouseWheel {
-			if a.deliverCaptured(e) {
-				return
-			}
-			// The owner vanished between acquisition and this event. Fall
-			// through and route normally rather than dropping the event.
-		}
-		// Target by hit-testing laid-out absolute rects, topmost first (reverse
-		// paint order — Stack z-order); coordinates are rewritten LOCAL to each
-		// receiving node at every hop.
-		//
-		// While a scope traps, the search is ROOTED AT THAT SCOPE, so a position
-		// outside its subtree resolves to no target and the event is dropped.
-		// Refusing the focus change is not enough on its own: focusFromPointer
-		// already declines to move focus outside the trap, but the press was
-		// still being delivered to whatever sat under the pointer.
-		//
-		// Dropping rather than retargeting to the scope is deliberate. A click on
-		// the dimmed area behind a dialog means "nothing"; synthesising a
-		// delivery to the dialog would invent an interaction the user did not
-		// make.
-		//
-		// A LAYER THE SCOPE OWNS is inside it for this purpose, though the tree
-		// puts it beside the scope: a submenu a trapped menu opened on the
-		// overlay host (SetChildInputOwner). Its ceiling is the layer itself.
-		limit := a.confinement()
-		target := a.pointerTarget(e.X, e.Y, limit)
-		if target == nil && limit != nil {
-			a.trace(TraceEvent{Kind: TraceScope, Node: limit.id,
-				Detail: "pointer dropped: outside the active focus scope"})
-			return
-		}
-		ceiling := a.pointerCeiling(target, limit)
-		if a.interceptPointerPress(target, ceiling, e) {
-			return
-		}
-		// A PRIMARY PRESS focuses before it is delivered: one gesture both moves
-		// focus into the clicked pane and acts on it. Motion, wheel and release
-		// deliberately do not, so scrolling over an unfocused pane never steals
-		// the keyboard.
-		if target != nil && e.Kind == MousePress && e.Button == MouseLeft {
-			focused := a.focusFromPointer(target)
-			// Focus handlers run arbitrary component code synchronously and may
-			// unmount the very node this press was addressed to. A replacement
-			// mounted during dispatch has measured=false/placed=false and is not
-			// hit-testable until the next layout pass, so there is nothing
-			// correct to re-target: the press is SKIPPED. The focus change
-			// stands, and the user's next click lands on the rebuilt tree.
-			if !target.mounted {
-				a.trace(TraceEvent{Kind: TraceUnmount, Node: target.id,
-					Detail: "pointer press skipped: focus handling unmounted the target"})
-				return
-			}
-			// A handler can also REDIRECT focus while leaving the target mounted.
-			// The target would then receive the press unfocused, which is the very
-			// thing focus-before-delivery exists to prevent, so mounted-ness alone
-			// is not enough: the candidate must still own focus.
-			if focused != nil && a.focused != focused.id {
-				a.trace(TraceEvent{Kind: TraceFocus, Node: a.focused, Prev: focused.id,
-					Detail: "pointer press skipped: focus was redirected away from the target"})
-				return
-			}
-		}
-		// The press ORDINAL is committed HERE — after hit-testing, after the focus
-		// step, and immediately before delivery — not on arrival.
-		//
-		// Committing on arrival made a SKIPPED press advance the run: the two
-		// early returns above deliver to nobody, yet the run continued, so the
-		// widget that replaced an unmounted target saw Count == 2 as its FIRST
-		// delivered press. Count drives activation, so a press nobody received
-		// must not count.
-		//
-		// Continuity is keyed on the DELIVERED TARGET as well as button, cell and
-		// window: a press landing on a different node is a different gesture even
-		// at the same coordinates, which happens whenever the tree under the
-		// pointer changes between clicks.
-		if e.Kind == MousePress {
-			e.Count = a.pressOrdinal(e, target)
-			ev = e
-		}
-		consumed := target != nil && a.bubbleWithin(target, ceiling, e) // the keyboard path's ceiling
-		// STEP 6 — the gesture recogniser, last and only on what nobody wanted.
-		//
-		// It sees a primary press ONLY after every node on the path has declined
-		// it, so a widget that handles its own presses is never second-guessed;
-		// the recogniser exists for the ones that would rather describe what
-		// they do than when they were clicked.
-		if !consumed && target != nil && e.Kind == MousePress && e.Button == MouseLeft {
-			// An OPTED-IN target, which means two things: it implements
-			// Activatable, and its effective pointer policy allows the mouse.
-			//
-			// The Activatable half is not decoration. A gesture whose only
-			// possible outcome is an activation is meaningless on a component
-			// that cannot be activated, and engaging anyway is actively
-			// harmful: the recogniser takes a capture on the press, and that
-			// capture then pre-empts routing for every pointer event until the
-			// release. Without this condition a plain container swallowed the
-			// second click of a double-click and a press aimed into a nested
-			// trap never arrived — two existing tests caught exactly that.
-			// Also skipped when the control says it cannot currently be
-			// activated. Without this a disabled button still starts a gesture
-			// and holds the pointer until release: it never arms and never
-			// activates, so it looks right, but it silently swallows every
-			// pointer event in between — the same harm as engaging on a
-			// component that is not Activatable at all.
-			if _, activatable := target.comp.(Activatable); activatable &&
-				activationAvailable(target) {
-				if r := a.recognizerFor(); r != nil &&
-					effectivePointerPolicy(target) != PointerDisabled {
-					a.runRecognizer(r, target, e.localTo(target.absRect))
-				}
-			}
-		}
+		a.dispatchMouse(e)
 
 	case CloseRequestEvent:
 		// Not routed through the tree: the program's quit, not a component's
@@ -281,28 +119,7 @@ func (a *App) dispatch(ev Event) {
 		a.queue.wakeUp()
 
 	case FocusEvent:
-		// Terminal focus in/out (mode 1004): delivered to the focused component
-		// and published on the Bus. Component focus changes do not pass through
-		// dispatch — setFocus bubbles them directly.
-		//
-		// The TERMINAL WINDOW losing focus ends any capture. No further motion
-		// or release is coming while another window has the pointer, so the
-		// owner would otherwise be left mid-drag with no event able to finish
-		// it.
-		//
-		// Terminal is required, not just Gained==false. FocusEvent carries both
-		// component focus and terminal focus, and only the terminal kind means
-		// input has stopped arriving; treating a component focus-loss as a
-		// backend loss would cancel drags for a reason that never happened and
-		// report the wrong one.
-		if e.Terminal && !e.Gained {
-			a.loseCapture(CaptureLostBackend)
-			a.setHovered(nil) // nothing is under a pointer another window has
-		}
-		if n := a.nodes[a.focused]; n != nil {
-			a.bubble(n, ev)
-		}
-		a.bus.Publish(e)
+		a.dispatchFocusEvent(e, ev)
 
 	case PointerLeaveEvent:
 		a.setHovered(nil)
@@ -314,6 +131,218 @@ func (a *App) dispatch(ev Event) {
 	case TaskProgress:
 		a.deliverAddressed(e.Owner, ev)
 	}
+}
+
+// dispatchKey routes a key: a capture's Escape first, then the focused node bubbling within the
+// active scope, then the App's global keymap (Tab traversal).
+func (a *App) dispatchKey(e KeyEvent, ev Event) {
+	if e.Kind != KeyRelease {
+		a.toolTipPress(false)
+		a.keyFocus = true
+		defer func() { a.keyFocus = false }()
+	}
+	if a.interceptCaptureEscape(e) {
+		return
+	}
+	// Target = the focused node. With nothing focused the fallback is the
+	// active trapping scope if there is one, and only otherwise the root:
+	// repairFocus legitimately leaves focused == 0 while a trap survives
+	// with no focusable descendant (see focus.go), and defaulting to root
+	// there would hand the key to the controls the trap is covering.
+	if a.dispatchFocused(ev) {
+		return
+	}
+	// Unconsumed key falls through to the App's global keymap — which is how
+	// framework Tab traversal works: a component that consumes Tab (e.g. a
+	// text area inserting \t) thereby opts out of traversal for that press.
+	//
+	// globalKey stays reachable INSIDE a trap on purpose. It is the only
+	// implementation of Tab/Shift-Tab, so skipping it would leave a generic
+	// scope with no traversal at all; and it is safe, because focusStep
+	// walks the ring of the current scope and cannot move focus out of one.
+	// Every other unconsumed key is simply dropped at the ceiling.
+	a.globalKey(e)
+}
+
+// dispatchMouse routes a pointer event: to a capture's owner, or hit-tested, focused on press,
+// bubbled within the active scope, and offered to the gesture recogniser when nobody took it.
+func (a *App) dispatchMouse(e MouseEvent) {
+	// A count belongs to presses only. Canonicalise every other kind to zero
+	// rather than passing a producer's value through. Count is documented
+	// as 0 on every non-press kind, and rewriting only presses left that
+	// promise dependent on the producer: an injected MouseWheel{Count: 99}
+	// was delivered with 99 intact.
+	if e.Kind != MousePress {
+		e.Count = 0
+	}
+	a.trackHover(e)
+	if e.Kind == MousePress || e.Kind == MouseWheel {
+		a.toolTipPress(true)
+	}
+	if e.Kind == MouseRelease {
+		defer a.refreshHover() // a capture this release ends: hover follows the pointer again
+	}
+	// A HELD CAPTURE PRE-EMPTS EVERYTHING BELOW. Press, motion and release
+	// go straight to the owner: no hit-test, no focus step, no bubbling.
+	// That is the whole point — the pointer has left the widget that owns
+	// the drag, so every mechanism that asks "what is under the pointer?"
+	// now answers with the wrong widget.
+	//
+	// The wheel is deliberately NOT captured. Scrolling addresses the pane
+	// under the pointer without taking focus, and capturing it would freeze
+	// scrolling for the duration of a drag.
+	if a.captureOwner != 0 && e.Kind != MouseWheel {
+		if a.deliverCaptured(e) {
+			return
+		}
+		// The owner vanished between acquisition and this event. Fall
+		// through and route normally rather than dropping the event.
+	}
+	// Target by hit-testing laid-out absolute rects, topmost first (reverse
+	// paint order — Stack z-order); coordinates are rewritten LOCAL to each
+	// receiving node at every hop.
+	//
+	// While a scope traps, the search is ROOTED AT THAT SCOPE, so a position
+	// outside its subtree resolves to no target and the event is dropped.
+	// Refusing the focus change is not enough on its own: focusFromPointer
+	// already declines to move focus outside the trap, but the press was
+	// still being delivered to whatever sat under the pointer.
+	//
+	// Dropping rather than retargeting to the scope is deliberate. A click on
+	// the dimmed area behind a dialog means "nothing"; synthesising a
+	// delivery to the dialog would invent an interaction the user did not
+	// make.
+	//
+	// A LAYER THE SCOPE OWNS is inside it for this purpose, though the tree
+	// puts it beside the scope: a submenu a trapped menu opened on the
+	// overlay host (SetChildInputOwner). Its ceiling is the layer itself.
+	limit := a.confinement()
+	target := a.pointerTarget(e.X, e.Y, limit)
+	if target == nil && limit != nil {
+		a.trace(TraceEvent{Kind: TraceScope, Node: limit.id,
+			Detail: "pointer dropped: outside the active focus scope"})
+		return
+	}
+	ceiling := a.pointerCeiling(target, limit)
+	if a.interceptPointerPress(target, ceiling, e) {
+		return
+	}
+	// A PRIMARY PRESS focuses before it is delivered: one gesture both moves
+	// focus into the clicked pane and acts on it. Motion, wheel and release
+	// deliberately do not, so scrolling over an unfocused pane never steals
+	// the keyboard.
+	if target != nil && e.Kind == MousePress && e.Button == MouseLeft && !a.pressFocus(target) {
+		return
+	}
+	// The press ORDINAL is committed HERE — after hit-testing, after the focus
+	// step, and immediately before delivery — not on arrival.
+	//
+	// Committing on arrival made a SKIPPED press advance the run: the two
+	// early returns above deliver to nobody, yet the run continued, so the
+	// widget that replaced an unmounted target saw Count == 2 as its FIRST
+	// delivered press. Count drives activation, so a press nobody received
+	// must not count.
+	//
+	// Continuity is keyed on the DELIVERED TARGET as well as button, cell and
+	// window: a press landing on a different node is a different gesture even
+	// at the same coordinates, which happens whenever the tree under the
+	// pointer changes between clicks.
+	if e.Kind == MousePress {
+		e.Count = a.pressOrdinal(e, target)
+	}
+	consumed := target != nil && a.bubbleWithin(target, ceiling, e) // the keyboard path's ceiling
+	// STEP 6 — the gesture recogniser, last and only on what nobody wanted.
+	//
+	// It sees a primary press ONLY after every node on the path has declined
+	// it, so a widget that handles its own presses is never second-guessed;
+	// the recogniser exists for the ones that would rather describe what
+	// they do than when they were clicked.
+	if !consumed && target != nil && e.Kind == MousePress && e.Button == MouseLeft {
+		a.offerToRecognizer(target, e)
+	}
+}
+
+// pressFocus is a primary press's focus step, before the press is delivered: focus moves to the
+// nearest focusable ancestor of target within the active scope. It reports false when the press must
+// not be delivered after it.
+func (a *App) pressFocus(target *node) bool {
+	focused := a.focusFromPointer(target)
+	// Focus handlers run arbitrary component code synchronously and may
+	// unmount the very node this press was addressed to. A replacement
+	// mounted during dispatch has measured=false/placed=false and is not
+	// hit-testable until the next layout pass, so there is nothing
+	// correct to re-target: the press is SKIPPED. The focus change
+	// stands, and the user's next click lands on the rebuilt tree.
+	if !target.mounted {
+		a.trace(TraceEvent{Kind: TraceUnmount, Node: target.id,
+			Detail: "pointer press skipped: focus handling unmounted the target"})
+		return false
+	}
+	// A handler can also REDIRECT focus while leaving the target mounted.
+	// The target would then receive the press unfocused, which is the very
+	// thing focus-before-delivery exists to prevent, so mounted-ness alone
+	// is not enough: the candidate must still own focus.
+	if focused != nil && a.focused != focused.id {
+		a.trace(TraceEvent{Kind: TraceFocus, Node: a.focused, Prev: focused.id,
+			Detail: "pointer press skipped: focus was redirected away from the target"})
+		return false
+	}
+	return true
+}
+
+// offerToRecognizer gives a primary press nobody consumed to the gesture recogniser, when target
+// opted in.
+func (a *App) offerToRecognizer(target *node, e MouseEvent) {
+	// An OPTED-IN target, which means two things: it implements
+	// Activatable, and its effective pointer policy allows the mouse.
+	//
+	// The Activatable half is not decoration. A gesture whose only
+	// possible outcome is an activation is meaningless on a component
+	// that cannot be activated, and engaging anyway is actively
+	// harmful: the recogniser takes a capture on the press, and that
+	// capture then pre-empts routing for every pointer event until the
+	// release. Without this condition a plain container swallowed the
+	// second click of a double-click and a press aimed into a nested
+	// trap never arrived — two existing tests caught exactly that.
+	// Also skipped when the control says it cannot currently be
+	// activated. Without this a disabled button still starts a gesture
+	// and holds the pointer until release: it never arms and never
+	// activates, so it looks right, but it silently swallows every
+	// pointer event in between — the same harm as engaging on a
+	// component that is not Activatable at all.
+	if _, activatable := target.comp.(Activatable); !activatable || !activationAvailable(target) {
+		return
+	}
+	if r := a.recognizerFor(); r != nil && effectivePointerPolicy(target) != PointerDisabled {
+		a.runRecognizer(r, target, e.localTo(target.absRect))
+	}
+}
+
+// dispatchFocusEvent delivers a terminal focus change (mode 1004) to the focused component and the
+// Bus; losing the terminal ends any capture and the hover.
+func (a *App) dispatchFocusEvent(e FocusEvent, ev Event) {
+	// Terminal focus in/out (mode 1004): delivered to the focused component
+	// and published on the Bus. Component focus changes do not pass through
+	// dispatch — setFocus bubbles them directly.
+	//
+	// The TERMINAL WINDOW losing focus ends any capture. No further motion
+	// or release is coming while another window has the pointer, so the
+	// owner would otherwise be left mid-drag with no event able to finish
+	// it.
+	//
+	// Terminal is required, not just Gained==false. FocusEvent carries both
+	// component focus and terminal focus, and only the terminal kind means
+	// input has stopped arriving; treating a component focus-loss as a
+	// backend loss would cancel drags for a reason that never happened and
+	// report the wrong one.
+	if e.Terminal && !e.Gained {
+		a.loseCapture(CaptureLostBackend)
+		a.setHovered(nil) // nothing is under a pointer another window has
+	}
+	if n := a.nodes[a.focused]; n != nil {
+		a.bubble(n, ev)
+	}
+	a.bus.Publish(e)
 }
 
 // globalKey is the App-level fallback for keys no component consumed:
