@@ -195,7 +195,7 @@ func (c *EditorCore) inCurrentMatch(ln, col int) bool {
 	}
 	r := c.find.cur
 	lo, hi := taPos{r.From.Line, r.From.Col}, taPos{r.To.Line, r.To.Col}
-	return posLE(lo, ln, col) && !posLE(hi, ln, col)
+	return (taPos{ln, col}).in(lo, hi)
 }
 
 // findOverlay is the host's overlay with the active find's marks over it.

@@ -9,10 +9,7 @@ import (
 // visualRange returns the INCLUSIVE charwise selection as an exclusive
 // [lo, hiEx) buffer region.
 func (c *EditorCore) visualRange() (lo, hiEx taPos) {
-	a, b := c.vAnchor, taPos{ln: c.buf.ln, col: c.buf.col}
-	if a.ln > b.ln || (a.ln == b.ln && a.col > b.col) {
-		a, b = b, a
-	}
+	a, b := ordered(c.vAnchor, taPos{ln: c.buf.ln, col: c.buf.col})
 	n := len(c.buf.lineClusters(b.ln))
 	if (c.vEOL && b.col >= n || n == 0) && b.ln+1 < len(c.buf.textLines) {
 		// the line's break is selected: Select's, or an empty line's, as Vim's inclusive Visual
@@ -40,7 +37,7 @@ func (c *EditorCore) inVisual(ln, col int) bool {
 	case ModeVisual:
 		lo, hiEx := c.visualRange()
 		p := taPos{ln: ln, col: col}
-		return posLE(lo, p.ln, p.col) && !posLE(hiEx, p.ln, p.col)
+		return (taPos{p.ln, p.col}).in(lo, hiEx)
 	case ModeVisualLine:
 		lo, hi := c.visualLines()
 		return ln >= lo && ln <= hi

@@ -183,7 +183,7 @@ func (c *EditorCore) bracketObject(inner bool, open, close string, count int) (o
 	if e.ln > lo.ln && e.col <= c.firstNonBlank(e.ln) && strings.TrimSpace(strings.Join(b.lineClusters(e.ln)[:e.col], "")) == "" {
 		hiEx = taPos{e.ln - 1, len(b.lineClusters(e.ln - 1))}
 	}
-	if hiEx.ln < lo.ln || (hiEx.ln == lo.ln && hiEx.col < lo.col) {
+	if hiEx.less(lo) {
 		hiEx = lo
 	}
 	// brackets on lines of their own around whole lines: the inside is those lines, as Vim's

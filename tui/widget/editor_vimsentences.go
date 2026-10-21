@@ -290,10 +290,10 @@ func (w *sentWalk) sentObject(cursor taPos, inner bool, count int) (start, last,
 // extend does. start is where the cursor was, cur the next sentence's start from it, pos the walk
 // position carried from the caller.
 func (w *sentWalk) sentExtend(start, cur, pos, anchor taPos, inner bool, count int) taPos {
-	if sentLess(start, anchor) { // the cursor at the selection's start: extend back
+	if start.less(anchor) { // the cursor at the selection's start: extend back
 		atStart := true
 		w.decl(&pos)
-		for sentLess(pos, cur) {
+		for pos.less(cur) {
 			if !isBlankChar(w.at(pos)) {
 				atStart = false
 				break
@@ -326,7 +326,7 @@ func (w *sentWalk) sentExtend(start, cur, pos, anchor taPos, inner bool, count i
 	atStart := true
 	if pos != cur { // not just before a sentence
 		atStart = false
-		for sentLess(pos, cur) {
+		for pos.less(cur) {
 			if !isBlankChar(w.at(pos)) {
 				atStart = true
 				break
@@ -344,8 +344,6 @@ func (w *sentWalk) sentExtend(start, cur, pos, anchor taPos, inner bool, count i
 	}
 	return w.sentForward(cur, count, atStart)
 }
-
-func sentLess(a, b taPos) bool { return a.ln < b.ln || a.ln == b.ln && a.col < b.col }
 
 // sentenceObject is is or as: for an operator, the range; in Visual, the selection made or
 // extended. ok is false when there is nothing to take.

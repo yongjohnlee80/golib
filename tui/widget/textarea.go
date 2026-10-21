@@ -82,8 +82,6 @@ type TextArea struct {
 	styles TextInputStyles
 }
 
-type taPos struct{ ln, col int }
-
 var (
 	_ tui.Focusable      = (*TextArea)(nil)
 	_ tui.CursorReporter = (*TextArea)(nil)
@@ -364,11 +362,6 @@ func (t *TextArea) wrapPos(ln, col int) (row, x int) {
 	return wrapPosOf(t.textLines, ln, col, t.view())
 }
 
-// posKey orders buffer positions for selection painting.
-func posLE(a taPos, bLn, bCol int) bool {
-	return a.ln < bLn || (a.ln == bLn && a.col <= bCol)
-}
-
 // Render paints the viewport, the selection fill, and the scroll indicator.
 func (t *TextArea) Render(s tui.Surface) {
 	sz := s.Size()
@@ -380,7 +373,7 @@ func (t *TextArea) Render(s tui.Surface) {
 	paintCluster := func(x, y int, cl string, ln, col int) {
 		st := t.styles.Text
 		if hasSel && t.focused() &&
-			posLE(selLo, ln, col) && !posLE(selHi, ln, col) {
+			(taPos{ln, col}).in(selLo, selHi) {
 			st = t.styles.Selection.Inherit(st)
 		}
 		s.SetCell(x, y, cl, st)
