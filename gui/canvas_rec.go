@@ -106,7 +106,7 @@ func (c *RecordingCanvas) TextSize() float32 {
 	if c.root.TextPx > 0 {
 		return c.root.TextPx
 	}
-	return c.cell.H / 1.2
+	return c.cell.H / LineHeight
 }
 
 // FillRect records a filled rectangle operation.

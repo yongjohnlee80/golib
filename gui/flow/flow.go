@@ -176,7 +176,7 @@ type piece struct {
 // Lay lays spans out.
 func Lay(spans []Span, o Options, t *gui.TextShaper) *Para {
 	if o.LineHeight <= 0 {
-		o.LineHeight = 1.2
+		o.LineHeight = gui.LineHeight
 	}
 	p := &Para{opts: o, last: -1}
 	if o.TabSize <= 0 {

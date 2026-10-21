@@ -153,7 +153,7 @@ func attributeTable(m gui.Measurer, attrs []pm.Attribute, f gui.Font, text color
 	parts := make([]part, len(attrs))
 	y := pad * 0.5
 	for i := range attrs {
-		h := f.Size * 1.2
+		h := f.Size * gui.LineHeight
 		for c := range cols {
 			h = max(h, cells[i][c].box.H)
 		}

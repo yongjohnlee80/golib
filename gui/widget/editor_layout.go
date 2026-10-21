@@ -302,11 +302,11 @@ func (l *pixelLayout) monoFont() gui.Font {
 	if l.th.Mono.Size > 0 {
 		return l.th.Mono
 	}
-	return gui.Font{Family: gui.CellFamily, Size: max(l.cell.H/1.2, 10)} // before the first paint: about the cells' font
+	return gui.Font{Family: gui.CellFamily, Size: max(l.cell.H/gui.LineHeight, 10)} // before the first paint: about the cells' font
 }
 
 // lineHeight calculates the default line height for font f.
-func (l *pixelLayout) lineHeight(f gui.Font) float32 { return max(f.Size*1.2, 1) }
+func (l *pixelLayout) lineHeight(f gui.Font) float32 { return max(f.Size*gui.LineHeight, 1) }
 
 // heightOf is block i's height: as laid out, else an estimate of a row per line.
 func (l *pixelLayout) heightOf(i int) float32 {

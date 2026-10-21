@@ -8,6 +8,10 @@ import (
 	"github.com/yongjohnlee80/gio/text"
 )
 
+// LineHeight is the height of a line of text as a multiple of its font size: what a measurer
+// sizes wrapped text at and a painter places its lines at, so the two agree.
+const LineHeight = 1.2
+
 // Thread-isolated typographical measurement and line wrapping for background workers.
 //
 // Because Gio's [text.Shaper] is not safe for concurrent use, background worker goroutines
@@ -118,7 +122,7 @@ func (m *measurer) Wrap(s string, f Font, width float32) ([]string, Size) {
 		lines = append(lines, line)
 		w = max(w, widthOf(line))
 	}
-	return lines, Size{W: w, H: float32(len(lines)) * f.Size * 1.2}
+	return lines, Size{W: w, H: float32(len(lines)) * f.Size * LineHeight}
 }
 
 // NewTextShaper is a shaper of its own at scale (device pixels per logical pixel), for text laid
