@@ -924,11 +924,16 @@ func (t *Tree) HandleEvent(ev tui.Event) bool {
 		if e.Kind == tui.KeyPress {
 			t.anchor = nil // the user moves the cursor now, not a Reload settling
 		}
-		handled := t.handleKey(e)
-		t.noteSelection()
+		var handled bool
+		if t.presses.Survives(func() { handled = t.handleKey(e) }) { // the owner may set new roots
+			t.noteSelection()
+		}
 		return handled
 	case tui.MouseEvent:
-		handled := t.handleMouse(e)
+		var handled bool
+		if !t.presses.Survives(func() { handled = t.handleMouse(e) }) {
+			return handled // the owner set new roots: they have no anchor and no selection yet
+		}
 		if handled {
 			t.anchor = nil
 		}

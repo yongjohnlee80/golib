@@ -171,7 +171,14 @@ func (c *TableCore) Cut(rows bool) bool {
 	if cc == nil || c.Len() == 0 {
 		return false
 	}
-	if !c.yankFrom(false) { // what is cut is what is stored: the selection, or the cursor's cell
+	// what is cut is what is stored: the selection, or the cursor's cell. The copy tells the owner
+	// (TableOnCopy), who may replace the rows: then the register keeps the yank, and nothing of the
+	// new rows is cut through the old source's committer.
+	var yanked bool
+	if !c.presses.Survives(func() { yanked = c.yankFrom(false) }) {
+		return true
+	}
+	if !yanked {
 		return false
 	}
 	var op TableCellsOp
@@ -196,7 +203,7 @@ func (c *TableCore) Cut(rows bool) bool {
 		return false
 	}
 	c.SetAnchor(nil)
-	c.Changed()
+	c.changed() // the core's own edit: the operation goes on with its rows
 	return true
 }
 
@@ -277,7 +284,7 @@ func (c *TableCore) DeleteRows() bool {
 		return false
 	}
 	c.SetAnchor(nil)
-	c.Changed()
+	c.changed() // the core's own edit: the operation goes on with its rows
 	return true
 }
 
@@ -299,7 +306,7 @@ func (c *TableCore) DeleteFields() bool {
 		return false
 	}
 	c.SetAnchor(nil)
-	c.Changed()
+	c.changed() // the core's own edit: the operation goes on with its rows
 	return true
 }
 

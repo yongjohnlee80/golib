@@ -349,10 +349,18 @@ func (c *TableCore) Fields() []TableField {
 // cursor kept on the source row it was on (clamped when that row is gone, and on the first row
 // when the filter no longer shows it), and the view repainted. A pager's new rows are filtered
 // and merged into a sort without moving the cursor off its row.
-func (c *TableCore) Changed() { c.changed() }
+//
+// It ends the rows' epoch, as a new source does: rows changed in place may mean other rows now, so an
+// operation in progress (a press, a cut, from inside an owner's callback) does nothing more on the old
+// ones, and a press before it does not pair with one after it.
+func (c *TableCore) Changed() {
+	c.presses.Reset()
+	c.changed()
+}
 
-// changed is Changed, reporting whether the rows survived the owner's callbacks: an edit dropped,
-// the cursor's row, the sort. The owner is told last, the rows arranged.
+// changed is Changed without ending the epoch: the core's own edits, which know their rows, arrange
+// the view with it. It reports whether the rows survived the owner's callbacks: an edit dropped, the
+// cursor's row, the sort. The owner is told last, the rows arranged.
 func (c *TableCore) changed() (live bool) {
 	c.measured = nil
 	drop := false
