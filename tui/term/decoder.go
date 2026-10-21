@@ -139,10 +139,7 @@ func (d *decoder) pasteByte(b byte) {
 }
 
 func (d *decoder) finishPaste() {
-	text := d.pasteBuf
-	text = bytes.ReplaceAll(text, []byte("\r\n"), []byte("\n"))
-	text = bytes.ReplaceAll(text, []byte("\r"), []byte("\n"))
-	ev := tui.PasteEvent{Text: string(text)}
+	ev := tui.NewPasteEvent(string(d.pasteBuf)) // the one normalizer: CRLF and CR are LF
 	d.pasteBuf = d.pasteBuf[:0]
 	d.pasteMatch = 0
 	d.pasting = false

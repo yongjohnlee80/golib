@@ -19,27 +19,18 @@ import (
 
 const graphicsChunk = 4096
 
-type imageOp struct {
-	place  *tui.ImagePlacement
-	delete uint32
-}
-
 // PlaceImage implements tui.GraphicsBackend: latches a placement for the next Flush.
 func (b *Backend) PlaceImage(p tui.ImagePlacement) {
-	b.cmu.Lock()
-	b.imageOps = append(b.imageOps, imageOp{place: &p})
-	b.cmu.Unlock()
+	b.latch(func() { b.images.Place(p) })
 }
 
 // DeleteImage implements tui.GraphicsBackend: latches a delete for the next Flush.
 func (b *Backend) DeleteImage(id uint32) {
-	b.cmu.Lock()
-	b.imageOps = append(b.imageOps, imageOp{delete: id})
-	b.cmu.Unlock()
+	b.latch(func() { b.images.Delete(id) })
 }
 
 // writeImages emits the latched image commands into the frame's buffer, under wmu.
-func (b *Backend) writeImages(ops []imageOp) {
+func (b *Backend) writeImages(ops []tui.ImageOp) {
 	if len(ops) == 0 {
 		return
 	}
@@ -47,13 +38,13 @@ func (b *Backend) writeImages(ops []imageOp) {
 		b.placed, b.sent = map[uint32]bool{}, map[uint32]uint64{}
 	}
 	for _, op := range ops {
-		if op.place == nil {
-			b.writeImageDelete(&b.buf, op.delete)
-			delete(b.placed, op.delete)
-			delete(b.sent, op.delete)
+		if op.Place == nil {
+			b.writeImageDelete(&b.buf, op.Delete)
+			delete(b.placed, op.Delete)
+			delete(b.sent, op.Delete)
 			continue
 		}
-		p := op.place
+		p := op.Place
 		held, ok := b.sent[p.ID]
 		if ok && held == p.Version {
 			b.writePlacementDelete(&b.buf, p.ID) // the old placement goes; the bytes stay

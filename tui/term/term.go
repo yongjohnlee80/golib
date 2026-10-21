@@ -72,27 +72,16 @@ type Backend struct {
 	lastAttrs   tui.CellAttrs
 	forceAnchor bool
 
-	// Latched cursor state, guarded by cmu.
-	cmu         sync.Mutex
-	want        cursorState
-	cursorDirty bool
-	// Latched image placements and deletes (graphics.go), guarded by cmu; placed is the ids this
-	// program has on the screen, guarded by wmu, to delete at teardown
-	imageOps []imageOp
-	placed   map[uint32]bool
+	// The Backend contract's latches (tui.CursorLatch, tui.ImageLatch), guarded by cmu: the cursor
+	// calls and the image placements and deletes (graphics.go) the next Flush takes. placed is the
+	// ids this program has on the screen, guarded by wmu, to delete at teardown.
+	cmu    sync.Mutex
+	cursor tui.CursorLatch
+	images tui.ImageLatch
+	placed map[uint32]bool
 	// sent is the version of each image whose bytes the terminal holds: placing that version again
 	// (a new clip, new cells) sends no bytes
 	sent map[uint32]uint64
-}
-
-type cursorState struct {
-	visible bool
-	x, y    int
-	posSet  bool
-	shape   tui.CursorShape
-	// color is the cursor's colour (OSC 12) while colored; not colored, the terminal's own
-	color   tui.CellColor
-	colored bool
 }
 
 var _ tui.Backend = (*Backend)(nil)

@@ -26,55 +26,28 @@ import (
 // re-anchored absolutely.
 
 // ShowCursor latches the cursor visible; the next Flush emits it.
-func (b *Backend) ShowCursor() {
-	b.cmu.Lock()
-	if !b.want.visible {
-		b.want.visible = true
-		b.cursorDirty = true
-	}
-	b.cmu.Unlock()
-}
+func (b *Backend) ShowCursor() { b.latch(func() { b.cursor.Show() }) }
 
 // HideCursor latches the cursor hidden; the next Flush emits it.
-func (b *Backend) HideCursor() {
-	b.cmu.Lock()
-	if b.want.visible {
-		b.want.visible = false
-		b.cursorDirty = true
-	}
-	b.cmu.Unlock()
-}
+func (b *Backend) HideCursor() { b.latch(func() { b.cursor.Hide() }) }
 
 // SetCursor latches the cursor position; the next Flush emits it.
-func (b *Backend) SetCursor(x, y int) {
-	b.cmu.Lock()
-	if !b.want.posSet || b.want.x != x || b.want.y != y {
-		b.want.x, b.want.y = x, y
-		b.want.posSet = true
-		b.cursorDirty = true
-	}
-	b.cmu.Unlock()
-}
+func (b *Backend) SetCursor(x, y int) { b.latch(func() { b.cursor.SetPos(x, y) }) }
 
 // SetCursorShape latches the cursor shape (DECSCUSR); the next Flush emits it.
-func (b *Backend) SetCursorShape(s tui.CursorShape) {
-	b.cmu.Lock()
-	if b.want.shape != s {
-		b.want.shape = s
-		b.cursorDirty = true
-	}
-	b.cmu.Unlock()
-}
+func (b *Backend) SetCursorShape(s tui.CursorShape) { b.latch(func() { b.cursor.SetShape(s) }) }
 
 // SetCursorColor latches the cursor's colour (OSC 12), or the terminal's own (OSC 112); the next
-// Flush emits it. Only an RGB colour is sent; a palette index leaves the terminal's own.
+// Flush emits it. Only an RGB colour is sent; a palette index leaves the terminal's own, decided
+// here, before it is latched.
 func (b *Backend) SetCursorColor(c tui.CellColor, set bool) {
-	set = set && c.Kind == tui.CellColorRGB
+	b.latch(func() { b.cursor.SetColor(c, set && c.Kind == tui.CellColorRGB) })
+}
+
+// latch runs fn under cmu, the latches' lock.
+func (b *Backend) latch(fn func()) {
 	b.cmu.Lock()
-	if b.want.colored != set || (set && b.want.color != c) {
-		b.want.color, b.want.colored = c, set
-		b.cursorDirty = true
-	}
+	fn()
 	b.cmu.Unlock()
 }
 
@@ -88,11 +61,8 @@ func (b *Backend) Flush(diff []tui.CellUpdate) error {
 	}
 
 	b.cmu.Lock()
-	want := b.want
-	dirty := b.cursorDirty
-	b.cursorDirty = false
-	images := b.imageOps
-	b.imageOps = nil
+	want, dirty := b.cursor.Take()
+	images := b.images.Take()
 	b.cmu.Unlock()
 
 	b.wmu.Lock()
@@ -148,29 +118,29 @@ func (b *Backend) Flush(diff []tui.CellUpdate) error {
 	b.writeImages(images)
 
 	// Latched cursor state, applied within the same Write.
-	if want.posSet {
-		b.writeCUP(want.x, want.y)
-		b.penX, b.penY, b.penKnown = want.x, want.y, true
+	if want.PosSet {
+		b.writeCUP(want.X, want.Y)
+		b.penX, b.penY, b.penKnown = want.X, want.Y, true
 	}
-	if want.shape != b.termShape {
-		b.writeShape(want.shape)
-		b.termShape = want.shape
+	if want.Shape != b.termShape {
+		b.writeShape(want.Shape)
+		b.termShape = want.Shape
 	}
-	if want.colored != b.termColored || (want.colored && want.color != b.termColor) {
-		if want.colored {
-			fmt.Fprintf(buf, "\x1b]12;#%02x%02x%02x\x07", want.color.R, want.color.G, want.color.B)
+	if want.Colored != b.termColored || (want.Colored && want.Color != b.termColor) {
+		if want.Colored {
+			fmt.Fprintf(buf, "\x1b]12;#%02x%02x%02x\x07", want.Color.R, want.Color.G, want.Color.B)
 		} else {
 			buf.WriteString("\x1b]112\x07")
 		}
-		b.termColor, b.termColored = want.color, want.colored
+		b.termColor, b.termColored = want.Color, want.Colored
 	}
-	if want.visible != b.termVisible {
-		if want.visible {
+	if want.Visible != b.termVisible {
+		if want.Visible {
 			buf.WriteString("\x1b[?25h")
 		} else {
 			buf.WriteString("\x1b[?25l")
 		}
-		b.termVisible = want.visible
+		b.termVisible = want.Visible
 	}
 	if sync {
 		buf.WriteString("\x1b[?2026l") // R4: end synchronized update
