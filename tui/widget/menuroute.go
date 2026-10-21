@@ -513,8 +513,10 @@ func (m *Menu) activate(id ItemID, inv tui.ActionInvocation) bool {
 	case ItemKindRadio:
 		m.report(m.check(it, true), true)
 	}
-	if it = findItem(m.items, id); it == nil {
-		return false // an owner told of the toggle removed the row
+	// Keyed, so the row is found again by its id; and the action runs only while the row can still
+	// be chosen: an owner told of the toggle may have removed, disabled or hidden it.
+	if it = findItem(m.items, id); it == nil || !it.selectable() {
+		return false
 	}
 
 	handled := m.runRowAction(it, inv)

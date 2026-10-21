@@ -141,16 +141,27 @@ purpose": a difference in behaviour is a parameter of the shared code, named and
 
 - **The owner hears synchronously:** `WithOnX` callbacks for cursor, activate, change, submit.
 - **An owner callback ends the operation, or the operation checks the rows survived it.** A row
-  view's owner may replace or refresh the rows from its callback. Everywhere, the owner is told last:
-  the view's own writes and the bus publish come first.
-  - **Positional views** (List, Tree, TableCore, DataTable, FileList: an index names a row) go on
-    after an owner call only through a survival call, its result declared `live bool`, and checked.
-    The view's `rowsEpoch` is the one authority (`Survives`; `pressPairer` embeds one). A new source,
-    a new listing and an owner's refresh (`List.RefreshSource`, `TableCore.Changed`) advance it;
-    the core's own edits arrange the view without advancing it. Any other result (a yank's ok) says
-    nothing about the rows.
-  - **Keyed views** (Menu, by `ItemID`) re-resolve by key after an owner call (`findItem`).
-  - `internal/audit/owner_callback_test.go` enforces the positional shape; the callback-replacement
+  view's owner may replace or refresh the rows from its callback. "Last" is per notifying step: a
+  step that tells the owner makes its own writes and its bus publish first, and the owner hook is
+  that step's last act. What the operation may do after the step depends on the view's kind.
+  - **Positional views** (List, Tree, TableCore, DataTable, FileList: an index names a row). A call
+    that can reach an owner hook is one of three shapes:
+    - the operation's last step (tail position);
+    - a step run inside the view's `rowsEpoch.Survives` or `pressPairer.Press`, whose answer is
+      checked before any further row-dependent effect (TableCore's Cut copies inside `Survives`,
+      then cuts only if the rows survived);
+    - a call to one of the view's own methods whose result is declared `live bool` (it wraps one
+      of the two above), checked by the caller.
+
+    `Survives` and `Press` are the authority whatever their results are named; the `live` name is
+    required of a view's own methods only, so a survival result is told apart from any other bool
+    (a yank's ok says nothing about the rows). A new source, a navigation's start (FileList's
+    `loadThen`), a new listing and an owner's refresh (`List.RefreshSource`, `TableCore.Changed`)
+    advance the epoch; the core's own edits arrange the view without advancing it.
+  - **Keyed views** (Menu, by `ItemID`) hold no epoch. After an owner call they find the row again
+    by its key (`findItem`) and recheck the state the continuation needs (`selectable`: still
+    there, visible and enabled), not merely that the key exists.
+  - `internal/audit/owner_callback_test.go` enforces the positional shapes; the callback-replacement
     tests, the behaviour.
 - **The bus is for app-wide listeners only:** an `XEvent` with `Owner tui.NodeID` first, published
   through `Base.publish`. Never both a callback and a bus event for the same fact to the same

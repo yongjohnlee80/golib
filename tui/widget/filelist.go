@@ -248,8 +248,9 @@ type FileList struct {
 	// onShow runs each time a folder's rows are put in: its view's filter
 	// field follows the filter, which a new folder clears
 	onShow func()
-	// rows is the listing's epoch: each folder shown starts one, so an owner hook that moves to
-	// another folder ends the reports still due for the first (C1).
+	// rows is the listing's epoch: each navigation or new source (loadThen) and each listing shown
+	// starts one, so an owner hook that moves elsewhere ends the reports still due for the listing it
+	// left (C1).
 	rows rowsEpoch
 
 	list *List[fileEntry]
@@ -547,6 +548,10 @@ func (l *FileList) load(dir string) { l.loadThen(dir, "") }
 // A source read on the loop is read here; an async one off it, the old rows
 // kept and the title saying it is loading until the listing arrives.
 func (l *FileList) loadThen(dir, want string) {
+	// Every navigation and new source starts here, and from here the listing shown is on its way out:
+	// an operation still reporting it stops now, not when the new rows arrive (an async read may
+	// return before they do).
+	l.rows.advance()
 	if l.onLoad != nil {
 		l.onLoad()
 	}
@@ -604,7 +609,7 @@ func goRead(ctx *tui.Context, group string, read func(context.Context) (any, err
 // show puts a folder's rows in the list, the filter cleared and the cursor on
 // the first; err says the folder could not be read.
 func (l *FileList) show(dir string, dirs, files []fileEntry, err error) (live bool) {
-	l.rows.advance()
+	l.rows.advance() // a listing arrived: the one shown is gone, whatever loadThen began
 	l.dir = dir
 	var entries []fileEntry
 	if dir != "." {
@@ -614,8 +619,7 @@ func (l *FileList) show(dir string, dirs, files []fileEntry, err error) (live bo
 	l.unreadable = err != nil
 	l.all = append(append(entries, dirs...), files...)
 	l.filter = ""
-	l.entries = l.all
-	l.list.SetItems(l.entries)
+	l.putRows(l.all)
 	l.fitTitle()
 	// The owner is told last, each hook only while this listing is still the one shown: a hook that
 	// moves to another folder has told the owner of that one, and nothing of this one may follow.
@@ -651,18 +655,25 @@ func (l *FileList) SetFilter(text string) {
 		return
 	}
 	l.filter = text
-	if text == "" {
-		l.entries = l.all
-	} else {
-		l.entries = nil
+	rows := l.all
+	if text != "" {
+		rows = nil
 		for _, e := range l.all {
 			if e.up || matchFold(e.name, text) {
-				l.entries = append(l.entries, e)
+				rows = append(rows, e)
 			}
 		}
 	}
-	l.list.SetItems(l.entries) // the cursor on the first row, untold
+	l.putRows(rows)
 	l.cursorOn(0)
+}
+
+// putRows puts rows in the list: a folder shown, or a filter applied. The list's cursor is on the
+// first row, untold. A filter does not end the listing's epoch: the folder is the same, and the
+// filter reports its own first row.
+func (l *FileList) putRows(rows []fileEntry) {
+	l.entries = rows
+	l.list.SetItems(rows)
 }
 
 // fitTitle elides the folder from the LEFT, at a "/", to fit the pane.
