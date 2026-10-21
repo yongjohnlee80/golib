@@ -163,6 +163,11 @@ getters on `Style`; `Color.IsDefault` / `Color.Token` / `Color.AdaptivePair`
 / `Color.ANSIIndex` / `Color.ANSI256Index` / `Color.RGBValues` (exactly one
 reports ok per Color); `Theme.Color` and `Theme.Dark`. No mutation surface.
 
+`XtermRGB(i)` is xterm's default RGB for a 256-colour index: the sixteen ANSI
+colours, the 6×6×6 cube and the grey ramp. It is the one statement of that
+palette. The downsampler, `Legible`'s contrast check and a renderer drawing
+indexed colours read it rather than a table of their own.
+
 ## File layout
 
 | File        | Contents                                                                        |
@@ -173,6 +178,8 @@ reports ok per Color); `Theme.Color` and `Theme.Dark`. No mutation surface.
 | `color.go`  | `Color`, `colorKind`, constructors, `ColorSpec`, resolver read accessors        |
 | `theme.go`  | `Token` vocabulary, `Theme`, `NewTheme`, `WithToken`/`WithDark`, `DefaultTheme` |
 | `border.go` | `BorderStyle` + prefabs                                                         |
+| `xterm.go`  | `XtermRGB`: xterm's default 256-colour palette                                  |
+| `legible.go`| `Legible`, contrast ratio over WCAG relative luminance                          |
 | `ext.go`    | `StyleOption`, `Apply`, `ExtKey`, `Ext`/`GetExt`                                |
 
 ## License
