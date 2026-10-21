@@ -72,18 +72,39 @@ func (b *Backend) Flush(diff []tui.CellUpdate) error {
 		return nil // zero bytes
 	}
 
-	buf := &b.buf
-	buf.Reset()
+	b.buf.Reset()
+	b.bracket(func() {
+		if len(diff) > 0 && b.termVisible {
+			b.buf.WriteString("\x1b[?25l") // R1: hide during paint
+			b.termVisible = false
+		}
+		b.emitCells(diff)
+		b.writeImages(images) // over the cells just written, within the same Write (graphics.go)
+		b.emitCursor(want)
+	})
+	if b.buf.Len() == 0 {
+		return nil
+	}
+	return b.writeAll(b.buf.Bytes()) // R3: one frame, one Write (short-write safe)
+}
 
+// bracket writes body's output inside mode-2026 synchronized-update brackets when the terminal has
+// them (R4).
+func (b *Backend) bracket(body func()) {
 	sync := b.caps.SyncOutput
 	if sync {
-		buf.WriteString("\x1b[?2026h") // R4: begin synchronized update
+		b.buf.WriteString("\x1b[?2026h") // R4: begin synchronized update
 	}
-	if len(diff) > 0 && b.termVisible {
-		buf.WriteString("\x1b[?25l") // R1: hide during paint
-		b.termVisible = false
+	body()
+	if sync {
+		b.buf.WriteString("\x1b[?2026l") // R4: end synchronized update
 	}
+}
 
+// emitCells writes the diff's cells: CUP only on a discontinuity, SGR only on an attribute change,
+// and an absolute re-anchor after a risky cluster on a terminal without mode 2027.
+func (b *Backend) emitCells(diff []tui.CellUpdate) {
+	buf := &b.buf
 	for i := range diff {
 		u := &diff[i]
 		if u.Cell.Width == 0 {
@@ -113,11 +134,12 @@ func (b *Backend) Flush(diff []tui.CellUpdate) error {
 			b.forceAnchor = true
 		}
 	}
+}
 
-	// Images, over the cells just written, within the same Write (graphics.go).
-	b.writeImages(images)
-
-	// Latched cursor state, applied within the same Write.
+// emitCursor writes the latched cursor state, within the same Write: its position, shape, colour
+// and visibility, each only where it differs from what the terminal has.
+func (b *Backend) emitCursor(want tui.CursorState) {
+	buf := &b.buf
 	if want.PosSet {
 		b.writeCUP(want.X, want.Y)
 		b.penX, b.penY, b.penKnown = want.X, want.Y, true
@@ -142,14 +164,6 @@ func (b *Backend) Flush(diff []tui.CellUpdate) error {
 		}
 		b.termVisible = want.Visible
 	}
-	if sync {
-		buf.WriteString("\x1b[?2026l") // R4: end synchronized update
-	}
-
-	if buf.Len() == 0 {
-		return nil
-	}
-	return b.writeAll(buf.Bytes()) // R3: one frame, one Write (short-write safe)
 }
 
 func (b *Backend) writeInt(n int) {
