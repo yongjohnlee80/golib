@@ -16,19 +16,29 @@ package widget
 // whether the rows outlived it. A press whose rows are gone does nothing more: no pair, no
 // activation, no menu. This is the one place that rule lives.
 type pressPairer[K comparable] struct {
-	last  K
-	has   bool
-	epoch uint64 // Resets so far: the rows' identity, as a press saw it
+	rowsEpoch // Reset advances it: the rows' identity, as a press saw it
+	last      K
+	has       bool
 }
 
-// Survives runs a press's first step, moved, and reports whether the rows are still the ones pressed:
-// false when moved led to a Reset (the owner replaced or refreshed them).
-func (p *pressPairer[K]) Survives(moved func()) bool {
-	epoch := p.epoch
-	if moved != nil {
-		moved()
+// rowsEpoch is a view's row identity over time: the one authority a view consults to learn whether
+// the rows an operation began on are still there. advance starts a new epoch (a new source, rows
+// changed in place, a new listing); Survives runs a step that may tell an owner, who may advance it
+// there and then. pressPairer holds one for the views that pair presses (List, Tree, TableCore);
+// a view that pairs none (FileList) holds its own.
+type rowsEpoch struct{ n uint64 }
+
+// advance starts a new epoch: the rows an operation in progress began on are gone.
+func (e *rowsEpoch) advance() { e.n++ }
+
+// Survives runs step and reports whether the rows are still the ones it began on: false when step
+// advanced the epoch (an owner it told replaced or refreshed them). A nil step survives.
+func (e *rowsEpoch) Survives(step func()) bool {
+	n := e.n
+	if step != nil {
+		step()
 	}
-	return p.epoch == epoch
+	return e.n == n
 }
 
 // Press is a press on k, with the App's count: it runs moved as Survives does and, when the rows
@@ -46,4 +56,4 @@ func (p *pressPairer[K]) Press(count int, k K, moved func()) (live, paired bool)
 // Reset forgets the previous press and starts a new epoch. A view calls it when its identities change
 // meaning (a new source, rows mutated in place), so a press before cannot pair with one after, and a
 // press in progress learns its rows are gone; a pointer key is also released for the collector.
-func (p *pressPairer[K]) Reset() { *p = pressPairer[K]{epoch: p.epoch + 1} }
+func (p *pressPairer[K]) Reset() { *p = pressPairer[K]{rowsEpoch: rowsEpoch{n: p.n + 1}} }

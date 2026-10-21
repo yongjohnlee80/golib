@@ -31,8 +31,12 @@ import (
 // "Can reach an owner callback" is computed, not listed: a method that calls one of the view's on*
 // hooks (c.onCursor, t.on.expand) reaches one, and so does every method that calls such a method.
 
-// ownerCallbackViews are the receivers whose owners may replace the rows from a callback.
-var ownerCallbackViews = map[string]bool{"List": true, "Tree": true, "TableCore": true, "DataTable": true, "TreeNode": true}
+// ownerCallbackViews are the receivers whose owners may replace the rows from a callback, and whose
+// rows are POSITIONAL: an index means another row once they change, so an operation stops on the
+// epoch. Menu is not among them: its rows are keyed by ItemID, and after an owner callback it
+// re-resolves by ID (findItem, Checked, repairSelection's scan), which C1 allows a keyed view.
+var ownerCallbackViews = map[string]bool{"List": true, "Tree": true, "TableCore": true, "DataTable": true, "TreeNode": true,
+	"Select": true, "selectPopup": true, "FileList": true}
 
 // ownerCallbackHops are the receivers that reach another view through a field: a DataTable its core,
 // a TreeNode its Tree.
@@ -42,7 +46,7 @@ var ownerCallbackHops = map[string]struct{ field, typ string }{"DataTable": {"co
 func ownerCallbackFiles(t *testing.T, root string) []string {
 	t.Helper()
 	var out []string
-	for _, glob := range []string{"list*.go", "tree*.go", "tablecore*.go", "datatable*.go"} {
+	for _, glob := range []string{"list*.go", "tree*.go", "tablecore*.go", "datatable*.go", "select*.go", "filelist*.go"} {
 		m, err := filepath.Glob(filepath.Join(root, "tui", "widget", glob))
 		if err != nil {
 			t.Fatal(err)
