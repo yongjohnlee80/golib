@@ -29,6 +29,7 @@ type tabStrip struct {
 	layer  string       // the menus' layer id prefix
 
 	bar, tab, selected style.Style
+	markFocus          bool // the selected tab is underlined while the owner has focus (Tabs)
 
 	onAdd    func()
 	onMenu   func(id string)
@@ -489,6 +490,9 @@ func (s *tabStrip) render(sur tui.Surface, w int) {
 		st := s.tab
 		if c.kind == cellTab && c.id == active {
 			st = s.selected
+			if s.markFocus && s.base.focused() {
+				st = style.New().Underline(true).Inherit(st)
+			}
 		}
 		drawText(sur, c.x, 0, truncate(c.label, w-c.x, sur.StringWidth), st)
 	}
