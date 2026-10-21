@@ -428,6 +428,8 @@ type Tree struct {
 	anchor *TreeNode
 	// known fills an unloaded node at once when the host already has its children (WithKnownChildren)
 	known func(n *TreeNode, gen uint64) bool
+	// contextMenu: a right press and the menu key ask the owner for a menu (SetContextMenu).
+	contextMenu bool
 }
 
 // reopenPlan is what was open under a reloaded node, by child ID — a path from the reloaded
@@ -543,6 +545,7 @@ func WithKnownChildren(known func(n *TreeNode, gen uint64) bool) TreeOption {
 type treeCallbacks struct {
 	cursor, expand, activate func(n *TreeNode)
 	expandRequest            func(n *TreeNode, gen uint64)
+	menu                     func(n *TreeNode, at tui.Point) // WithTreeOnContextMenu
 }
 
 // WithTreeOnCursor sets what runs, at once, when the cursor moves to another node: the bus's
@@ -981,7 +984,11 @@ func (t *Tree) KeyScope() keymap.Scope { return TreeScope }
 // keyCommand is which of the Tree's commands e is. A Ctrl, Alt or Super chord no command binds is the
 // application's (without that, Ctrl-h/Ctrl-l would collapse and expand instead of moving focus).
 func (t *Tree) keyCommand(e tui.KeyEvent) (keymap.Command, bool) {
-	return t.Context().KeyCommand(e, treeCommands...)
+	cmd, ok := t.Context().KeyCommand(e, treeKeyCommands...)
+	if ok && cmd.ID == TreeMenu.ID && (!t.contextMenu || e.Kind != tui.KeyPress) {
+		return keymap.Command{}, false // the menu key is the application's while the option is off
+	}
+	return cmd, ok
 }
 
 func (t *Tree) handleKey(e tui.KeyEvent) bool {
@@ -991,6 +998,10 @@ func (t *Tree) handleKey(e tui.KeyEvent) bool {
 	}
 	rows := t.flatten()
 	if len(rows) == 0 {
+		if cmd.ID == TreeMenu.ID {
+			t.requestMenu(nil, -1, tui.Point{})
+			return true
+		}
 		return false
 	}
 	t.cursor = max(0, min(t.cursor, len(rows)-1)) // never index a stale cursor
@@ -1022,6 +1033,8 @@ func (t *Tree) handleKey(e tui.KeyEvent) bool {
 			return true
 		}
 		t.expandNode(cur.node)
+	case TreeMenu.ID:
+		t.requestMenu(cur.node, t.cursor, tui.Point{Y: max(t.cursor-t.top, 0)})
 	case TreeActivate.ID:
 		// ANY row, branch or leaf, as Qt's item views emit activated on Enter
 		// and a double-click here already does: the Tree cannot know whether
@@ -1058,6 +1071,9 @@ func (t *Tree) handleMouse(e tui.MouseEvent) bool {
 		t.top = clampTop(t.top+d, len(t.flatten()), t.h)
 		t.MarkDirty()
 		return true
+	}
+	if e.Kind == tui.MousePress && e.Button == tui.MouseRight && t.contextMenu {
+		return t.menuPress(e)
 	}
 	if e.Kind != tui.MousePress || e.Button != tui.MouseLeft {
 		return false
@@ -1209,4 +1225,6 @@ func (t *Tree) rowText(r treeRow) string {
 }
 
 // KeyBindings is the Tree's commands as m binds them (tui.KeyBinder).
-func (t *Tree) KeyBindings(m *keymap.Map) []keymap.Binding { return tui.BindingsOf(m, treeCommands...) }
+func (t *Tree) KeyBindings(m *keymap.Map) []keymap.Binding {
+	return tui.BindingsOf(m, treeKeyCommands...)
+}
