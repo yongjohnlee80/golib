@@ -8,6 +8,7 @@ import (
 	"github.com/yongjohnlee80/golib/errs"
 	"github.com/yongjohnlee80/golib/tui/key"
 	"github.com/yongjohnlee80/golib/tui/keymap"
+	"github.com/yongjohnlee80/golib/tui/style"
 )
 
 // Context is a mounted component's identity and its ONLY sanctioned channel
@@ -362,6 +363,17 @@ var _ KeyResolver = (*Context)(nil)
 // A widget calls it as it is laid out, never as it renders: a language change always lays
 // the tree out again, so text resolved in Layout is current when it is painted.
 func (c *Context) Translate(m Message) string { return c.app.Translate(m) }
+
+// Theme is the App's theme as frames are drawn with it: WithTheme's (the default theme when none
+// was given), or the one SetTheme last applied. A component reads it where it needs the theme
+// outside Render (a Theme getter, say) instead of keeping the surface's. nil on a nil Context, so a
+// component asks whether or not it is mounted. Loop goroutine only, as the theme changes there.
+func (c *Context) Theme() *style.Theme {
+	if c == nil || c.app == nil {
+		return nil
+	}
+	return c.app.cfg.theme
+}
 
 // KeyCommand reports which of cmds ev is: the event's chord (key.Of), then each of its candidates in
 // order (key.Candidates), the first candidate any of cmds holds winning — by the App's key map, or a

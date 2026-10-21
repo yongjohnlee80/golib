@@ -237,7 +237,8 @@ real App implementations.
 Themes remain App-owned. `app.SetTheme(&theme)` may be called from any
 goroutine; it queues the swap on Lane B, invalidates resolved-style caches, and
 repaints without relayout. Widgets holding token-valued styles follow the new
-theme automatically.
+theme automatically. A component that needs the theme outside Render (a getter)
+reads `Context.Theme()` rather than keeping the surface's.
 
 The language is App-owned too. A widget given a `tui.Message` (a catalog id, built with
 `tui.Msg("tui.button.yes")`) looks it up as it is laid out, through `Context.Translate`;
