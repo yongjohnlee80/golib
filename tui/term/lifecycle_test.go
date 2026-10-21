@@ -266,6 +266,22 @@ func TestInBandResizeEmitsOrderedEvents(t *testing.T) {
 	}
 }
 
+func TestAnOSResizeNoticeReportsTheSizeEvenUnchanged(t *testing.T) {
+	// An OS resize notice (SIGWINCH) re-queries and reports the size even when it is the one last
+	// reported: coalescing is the App intake's, so a notice is never dropped here.
+	size := func(c *config) { c.sizeFn = func() (tui.Size, error) { return tui.Size{W: 90, H: 30}, nil } }
+	s := newScript(t, size)
+	s.respond("\x1b[?62c")
+	if err := s.start(t.Context()); err != nil {
+		t.Fatal(err)
+	}
+	s.b.resizeCh <- struct{}{}
+	ev, ok := s.waitEvent(2 * time.Second)
+	if want := (tui.ResizeEvent{W: 90, H: 30}); !ok || ev != want {
+		t.Fatalf("after an OS resize notice at an unchanged size: %#v (%v), want %#v", ev, ok, want)
+	}
+}
+
 func TestOpenRejectsNonTerminal(t *testing.T) {
 	// Open errors with ErrNotTerminal when IsTerminal fails
 	// on either fd. Pipes are not terminals, so this is hermetic.
