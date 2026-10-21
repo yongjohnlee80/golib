@@ -409,20 +409,7 @@ func (c *completionList) Render(s tui.Surface) {
 		return
 	}
 	// the frame, on the card's colours with the theme's border
-	frame := card.Foreground(style.TokenBorder)
-	right, bottom := sz.W-1, sz.H-1
-	s.SetCell(0, 0, "┌", frame)
-	s.SetCell(right, 0, "┐", frame)
-	s.SetCell(0, bottom, "└", frame)
-	s.SetCell(right, bottom, "┘", frame)
-	for x := 1; x < right; x++ {
-		s.SetCell(x, 0, "─", frame)
-		s.SetCell(x, bottom, "─", frame)
-	}
-	for y := 1; y < bottom; y++ {
-		s.SetCell(0, y, "│", frame)
-		s.SetCell(right, y, "│", frame)
-	}
+	drawFrame(s, tui.Rect{W: sz.W, H: sz.H}, card.Foreground(style.TokenBorder), style.BorderNormal)
 	inner := s.Sub(tui.Rect{X: 1, Y: 1, W: sz.W - 2, H: sz.H - 2})
 	iw, ih := sz.W-2, sz.H-2
 	chosen := style.New().Background(style.TokenPrimary).Foreground(style.TokenTextOnPrimary)

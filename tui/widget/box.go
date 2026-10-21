@@ -481,32 +481,8 @@ func (x *Box) renderBorder(s tui.Surface, st style.Style, bs style.BorderStyle, 
 	bottomSt := edge(st.GetBorderBottomForeground())
 	leftSt := edge(st.GetBorderLeftForeground())
 
-	x2, y2 := bx+bw-1, by+bh-1
-	if et && bs.Top != "" && bh > 0 {
-		s.Fill(tui.Rect{X: bx, Y: by, W: bw, H: 1}, bs.Top, topSt)
-	}
-	if eb && bs.Bottom != "" && bh > 1 {
-		s.Fill(tui.Rect{X: bx, Y: y2, W: bw, H: 1}, bs.Bottom, bottomSt)
-	}
-	if el && bs.Left != "" && bw > 0 {
-		s.Fill(tui.Rect{X: bx, Y: by, W: 1, H: bh}, bs.Left, leftSt)
-	}
-	if er && bs.Right != "" && bw > 1 {
-		s.Fill(tui.Rect{X: x2, Y: by, W: 1, H: bh}, bs.Right, rightSt)
-	}
-	// Corners paint where both adjoining edges exist.
-	if et && el && bs.TopLeft != "" {
-		s.SetCell(bx, by, bs.TopLeft, topSt)
-	}
-	if et && er && bs.TopRight != "" {
-		s.SetCell(x2, by, bs.TopRight, topSt)
-	}
-	if eb && el && bs.BottomLeft != "" {
-		s.SetCell(bx, y2, bs.BottomLeft, bottomSt)
-	}
-	if eb && er && bs.BottomRight != "" {
-		s.SetCell(x2, y2, bs.BottomRight, bottomSt)
-	}
+	paintFrame(s, tui.Rect{X: bx, Y: by, W: bw, H: bh}, bs,
+		frameEdge{et, topSt}, frameEdge{er, rightSt}, frameEdge{eb, bottomSt}, frameEdge{el, leftSt})
 }
 
 // renderBorderText paints one aligned, ellipsis-truncated text run into a
