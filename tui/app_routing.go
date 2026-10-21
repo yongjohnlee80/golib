@@ -552,7 +552,7 @@ func (a *App) deliverAddressed(owner NodeID, ev Event) {
 		case TaskResult, TaskProgress:
 			a.async.deadLetters.Add(1)
 			logger.Warning(a.cfg.logger, nil, map[string]any{
-				"tui": "dead-lettered addressed event", "event": typeNameAddressed(ev),
+				"tui": "dead-lettered addressed event", "event": eventName(ev),
 				"owner": uint64(owner),
 			})
 		}
@@ -635,18 +635,6 @@ func (a *App) deliverTo(n *node, ev Event) (handled bool) {
 	defer a.leaveDelivery(a.enterDelivery(delivery{node: n.id, origin: a.handlerOrigin, source: a.handlerSource}))
 	defer a.contain("event", n, &handled)
 	return n.comp.HandleEvent(ev)
-}
-
-// typeNameAddressed names addressed events for the dead-letter log line.
-func typeNameAddressed(ev Event) string {
-	switch ev.(type) {
-	case TaskResult:
-		return "TaskResult"
-	case TaskProgress:
-		return "TaskProgress"
-	default:
-		return "TickEvent"
-	}
 }
 
 // hitTest finds the deepest visible node whose absolute Rect contains the

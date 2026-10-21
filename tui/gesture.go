@@ -1,6 +1,10 @@
 package tui
 
-import "github.com/yongjohnlee80/golib/errs"
+import (
+	"strconv"
+
+	"github.com/yongjohnlee80/golib/errs"
+)
 
 // THE GESTURE RECOGNISER.
 //
@@ -244,7 +248,7 @@ func (a *App) runRecognizer(r GestureRecognizer, n *node, local MouseEvent) bool
 		panic(errs.Fatal{
 			Op:     "tui: GestureRecognizer.OnPointer",
 			Rule:   "returned a GestureState outside GestureIdle, GestureArmed",
-			Detail: "got " + itoa(int(next)),
+			Detail: "got " + strconv.Itoa(int(next)),
 		})
 	}
 
@@ -322,7 +326,7 @@ func (a *App) setGestureArmed(n *node, armed bool) {
 	act.SetArmed(armed)
 	a.gestureArmed = armed
 	a.trace(TraceEvent{Kind: TraceAction, Node: n.id,
-		Detail: "armed: " + boolWord(armed)})
+		Detail: "armed: " + strconv.FormatBool(armed)})
 }
 
 // endGesture returns the runtime to the no-gesture state, leaving the target
@@ -351,13 +355,4 @@ func (a *App) gestureLost() {
 	}
 	a.gestureState = GestureIdle
 	a.gestureArmed = false
-}
-
-// boolWord renders an armed transition for the trace without pulling strconv in
-// for one word.
-func boolWord(b bool) string {
-	if b {
-		return "true"
-	}
-	return "false"
 }

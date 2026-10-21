@@ -2,6 +2,7 @@ package tui
 
 import (
 	"reflect"
+	"strconv"
 
 	"github.com/yongjohnlee80/golib/errs"
 )
@@ -240,7 +241,7 @@ func checkResolvers(op string, r []ActionResolver) {
 			panic(errs.Fatal{
 				Op:     "tui: Context." + op,
 				Rule:   "nil resolver",
-				Detail: "entry " + itoa(i),
+				Detail: "entry " + strconv.Itoa(i),
 			})
 		}
 	}
@@ -467,20 +468,4 @@ func originFor(ev Event) ActionOrigin {
 		return OriginUser
 	}
 	return OriginProgrammatic
-}
-
-// itoa renders a small non-negative int without pulling strconv into this
-// file's import set for one panic detail.
-func itoa(i int) string {
-	if i == 0 {
-		return "0"
-	}
-	var b [20]byte
-	p := len(b)
-	for i > 0 {
-		p--
-		b[p] = byte('0' + i%10)
-		i /= 10
-	}
-	return string(b[p:])
 }

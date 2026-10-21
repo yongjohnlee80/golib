@@ -203,7 +203,7 @@ func (s *bufSurface) Size() Size { return Size{W: s.w, H: s.h} }
 // StringWidth implements Surface: measurement under the App-configured
 // width policy.
 func (s *bufSurface) StringWidth(str string) int {
-	return grapheme.StringWidth(str, s.ctx.policy.ambiguousWide())
+	return StringWidthPolicy(str, s.ctx.policy)
 }
 
 // Theme implements Surface.
