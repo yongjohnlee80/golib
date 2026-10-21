@@ -584,13 +584,16 @@ func (t *DataTable) HandleEvent(ev tui.Event) bool {
 			if t.unplacedHeader(hit) {
 				return true // which field is unknown: the selection is left as it is
 			}
-			t.core.PressAt(pos, hit)
+			live, paired := t.core.press(e.Count, pos, hit)
+			if !live {
+				return true // the owner replaced the rows pressed
+			}
 			if t.core.Dragging() {
 				if ctx := t.Context(); ctx != nil {
 					ctx.CapturePointer()
 				}
 			}
-			if hit == TableHitCell && t.core.pairPress(e.Count, pos) {
+			if paired {
 				t.core.dropPending()
 				t.core.activateOrEdit()
 			}
@@ -602,7 +605,9 @@ func (t *DataTable) HandleEvent(ev tui.Event) bool {
 			if t.unplacedHeader(t.menuHit) {
 				t.menuPos, t.menuHit = TablePos{}, TableHitNone
 			}
-			t.core.selectForMenu(t.menuPos, t.menuHit)
+			if !t.core.presses.Survives(func() { t.core.selectForMenu(t.menuPos, t.menuHit) }) {
+				return true // the owner replaced the rows pressed: no menu for them
+			}
 			return t.menu.OpenAt(tui.Point{X: e.X, Y: e.Y})
 		case e.Kind == tui.MouseMotion && e.Button == tui.MouseLeft && t.core.Dragging():
 			if pos, ok := t.dragAt(e); ok {

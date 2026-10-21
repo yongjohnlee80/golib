@@ -1054,9 +1054,11 @@ func (t *Tree) handleMouse(e tui.MouseEvent) bool {
 		return false
 	}
 	r := rows[idx]
-	t.cursor = idx
 	onExpander := e.X >= r.depth*t.indent && e.X < r.depth*t.indent+2 && !r.node.leaf
-	paired := t.presses.Pair(e.Count, r.node)
+	live, paired := t.presses.Press(e.Count, r.node, func() { t.cursor = idx })
+	if !live {
+		return true
+	}
 
 	// A SECOND press on the same NODE is activation, on the same channel ENTER
 	// already uses — so a host that handles ActivateEvent gets double-click for

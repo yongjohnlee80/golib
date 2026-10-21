@@ -531,3 +531,36 @@ func TestDataTable_ACSVTableCopiesCSV(t *testing.T) {
 		return string(h.tb.Clipboard()) == "0,row0,0\n"+`1,"say ""hi"", then",10`
 	})
 }
+
+// A right press whose cursor callback (TableOnCursor) replaces the source opens no menu: the row it
+// was for is gone. The control is TestDataTable_ARightPressOutsideTheSelectionTakesTheCell.
+func TestDataTable_ARightPressOpensNoMenuForRowsItsCallbackReplaced(t *testing.T) {
+	var core *widget.TableCore
+	replaced := false
+	dt := widget.NewDataTable(widget.NewTableCore(numbered(5), widget.TableMenuSelects(true),
+		widget.TableOnCursor(func(int) {
+			if !replaced && core != nil {
+				replaced = true
+				core.SetSource(numbered(5))
+			}
+		})))
+	sh := newShell(widget.NewOverlayHost(dt))
+	h := startApp(t, sh, 40, 12)
+	h.barrier(sh)
+	menu := widget.NewEditorMenu(dt, nil)
+	menu.SetRows(func() []widget.MenuItemModel {
+		return []widget.MenuItemModel{widget.NewCommand("table.copy", "Copy rows", widget.CoreMenuAction{ID: "table.copy"})}
+	})
+	h.onLoop(func() {
+		core = dt.Core()
+		dt.SetMenu(menu)
+		menu.SetEnabled(true)
+	})
+	h.inject(tui.MouseEvent{Kind: tui.MousePress, Button: tui.MouseRight, X: 7, Y: 5})
+	h.barrier(sh)
+	h.onLoop(func() {
+		if !replaced || menu.IsOpen() {
+			t.Errorf("replaced %v; the menu opened %v for a row that is gone", replaced, menu.IsOpen())
+		}
+	})
+}

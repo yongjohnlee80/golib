@@ -190,7 +190,8 @@ type TableCore struct {
 	tableSelection   // the anchor, what it covers, and the pointer's drag (tablecore_select.go)
 	tableView        // the sort and the filter: the display order (tablecore_sort.go)
 	tableKeyState    // the keys of a command not yet complete (tablecore_keys.go)
-	// presses pairs a view's double-click by source row and field (pairPress), reset with the source
+	// presses are a view's pointer presses (press): a double-click paired by source row and field, and
+	// a press whose rows the owner replaced; reset with the source
 	presses       pressPairer[TablePos]
 	keysFirst     func(tui.KeyEvent) bool
 	layout        TableLayout
