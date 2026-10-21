@@ -819,27 +819,7 @@ func VimKeymap() Keymap {
 	v := func(code rune) KeyChord { return KeyChord{Mode: ModeVisual, Code: code} }
 	km := Keymap{}
 
-	// Motions in both classes.
-	motions := map[rune]Action{
-		'h': ActLeft, 'j': ActDown, 'k': ActUp, 'l': ActRight,
-		tui.KeyLeft: ActLeft, tui.KeyDown: ActDown, tui.KeyUp: ActUp, tui.KeyRight: ActRight,
-		'0': ActLineStart, '$': ActLineEnd,
-		tui.KeyHome: ActLineStart, tui.KeyEnd: ActLineEnd,
-		'w': ActWordForward, 'b': ActWordBack, 'e': ActWordEnd,
-		'{': ActParaBack, '}': ActParaForward,
-		'[': ActParaBack, ']': ActParaForward, // v1 aliases
-		'G':           ActGoBottom,
-		tui.KeyPageUp: ActPageUp, tui.KeyPageDown: ActPageDown,
-		'g': ActGoPrefix,
-		'v': ActVisual, 'V': ActVisualLine,
-	}
-	for code, act := range motions {
-		km[n(code)] = act
-		km[v(code)] = act
-	}
-
-	// Normal-only.
-	// Motions (Normal + Visual).
+	// Motions (Normal + Visual): each bound once, here.
 	mv := func(kc KeyChord, act Action) { km[kc] = act }
 	for _, m := range []EditorMode{ModeNormal, ModeVisual} {
 		ch := func(code rune) KeyChord { return KeyChord{Mode: m, Code: code} }
@@ -861,6 +841,8 @@ func VimKeymap() Keymap {
 		mv(ch('e'), ActWordEnd)
 		mv(ch('}'), ActParaForward)
 		mv(ch('{'), ActParaBack)
+		mv(ch(']'), ActParaForward) // v1 aliases of } and {
+		mv(ch('['), ActParaBack)
 		mv(ch('G'), ActGoBottom)
 		mv(ch('g'), ActGoPrefix)
 		mv(ctrl('b'), ActPageUp)
