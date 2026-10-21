@@ -908,7 +908,28 @@ func (c *EditorCore) execAction(act Action, count int) bool {
 		// Swallowing it would leave the host deaf to it while the viewer did nothing.
 		return false
 	}
-	b := &c.buf
+	if act >= actMax {
+		return false
+	}
+	switch actionSpecs[act].exec {
+	case actMotion:
+		return c.execMotion(act, count)
+	case actInsertEntry:
+		return c.execInsertEntry(act, count)
+	case actEdit:
+		return c.execEdit(act, count)
+	case actVisualMode:
+		return c.execVisual(act, count)
+	case actInsertAssist:
+		return c.execInsertAssist(act, count)
+	case actOther:
+		return c.execOther(act, count)
+	}
+	return false
+}
+
+// execMotion runs the Motion actions (actionSpecs[act].exec).
+func (c *EditorCore) execMotion(act Action, count int) bool {
 	switch act {
 	// Motions.
 	case ActLeft, ActDown, ActUp, ActRight, ActLineStart, ActLineEnd,
@@ -925,7 +946,14 @@ func (c *EditorCore) execAction(act Action, count int) bool {
 		}
 		c.move(act, count)
 		return true
+	}
+	return false
+}
 
+// execInsertEntry runs the InsertEntry actions (actionSpecs[act].exec).
+func (c *EditorCore) execInsertEntry(act Action, count int) bool {
+	b := &c.buf
+	switch act {
 	// Insert entries.
 	case ActInsert:
 		c.enterInsert()
@@ -963,7 +991,15 @@ func (c *EditorCore) execAction(act Action, count int) bool {
 		c.edited()
 		return true
 
-	// Normal-mode edits.
+		// Normal-mode edits.
+	}
+	return false
+}
+
+// execEdit runs the Edit actions (actionSpecs[act].exec).
+func (c *EditorCore) execEdit(act Action, count int) bool {
+	b := &c.buf
+	switch act {
 	case ActDeleteChar:
 		if c.inFold(b.ln) { // x is dl, which takes a fold whole (Vim's fold-behavior)
 			c.runOp(ActDeletePrefix, taPos{b.ln, b.col + 1}, exclusive)
@@ -1032,7 +1068,15 @@ func (c *EditorCore) execAction(act Action, count int) bool {
 		c.doRedo()
 		return true
 
-	// Visual entry/exit.
+		// Visual entry/exit.
+	}
+	return false
+}
+
+// execVisual runs the VisualMode actions (actionSpecs[act].exec).
+func (c *EditorCore) execVisual(act Action, count int) bool {
+	b := &c.buf
+	switch act {
 	case ActVisual:
 		if !c.canSelect {
 			return true
@@ -1102,6 +1146,13 @@ func (c *EditorCore) execAction(act Action, count int) bool {
 			c.visualOther() // O is o outside a block
 		}
 		return true
+	}
+	return false
+}
+
+// execInsertAssist runs the InsertAssist actions (actionSpecs[act].exec).
+func (c *EditorCore) execInsertAssist(act Action, count int) bool {
+	switch act {
 	case ActDeleteWordBack, ActDeleteLineBack:
 		c.insertDeleteBack(act == ActDeleteLineBack)
 		return true
@@ -1111,7 +1162,15 @@ func (c *EditorCore) execAction(act Action, count int) bool {
 		c.enterReplace(count)
 		return true
 
-	// General actions (Nano / Standard).
+		// General actions (Nano / Standard).
+	}
+	return false
+}
+
+// execOther runs the Other actions (actionSpecs[act].exec).
+func (c *EditorCore) execOther(act Action, count int) bool {
+	b := &c.buf
+	switch act {
 	case ActCut:
 		if c.visual() {
 			return c.execAction(ActVisualDelete, count)
