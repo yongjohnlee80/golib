@@ -545,7 +545,7 @@ func TestEncodeFrame(t *testing.T) {
 			}}},
 			{X: 1, Y: 0, Cell: tui.Cell{Content: "漢", Width: 2}},
 		},
-		Cursor: cursorState{Visible: true, X: 1, Y: 0, Shape: tui.CursorShapeBar},
+		Cursor: tui.CursorState{Visible: true, X: 1, Y: 0, Shape: tui.CursorShapeBar},
 	}
 	m := encodeFrame(f)
 	if m.T != msgFrame || m.Rev != 7 || !m.Full || m.W != 2 || m.H != 1 {

@@ -313,13 +313,8 @@ func decodeText(s string) []tui.Event {
 	return out
 }
 
-// decodePaste normalizes clipboard text. CR and CRLF become \n so a component
-// sees one line ending regardless of the client's platform.
-func decodePaste(s string) tui.Event {
-	s = strings.ReplaceAll(s, "\r\n", "\n")
-	s = strings.ReplaceAll(s, "\r", "\n")
-	return tui.PasteEvent{Text: s}
-}
+// decodePaste is the client's clipboard text as a paste, one line ending whatever its platform.
+func decodePaste(s string) tui.Event { return tui.NewPasteEvent(s) }
 
 // decodeMouse maps a pointer report. ok=false means the report was unusable.
 func decodeMouse(r MouseReport) (tui.Event, bool) {

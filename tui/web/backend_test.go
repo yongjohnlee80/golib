@@ -193,7 +193,7 @@ func TestBackend_FlushNeverBlocks(t *testing.T) {
 	b := started(t, hello())
 
 	// Take a frame and never acknowledge it: the client is gone.
-	b.framer.publish(nil, cursorState{})
+	b.framer.publish(nil, tui.CursorState{})
 	if _, ok := b.NextFrame(); !ok {
 		t.Fatal("no frame to strand")
 	}
@@ -232,7 +232,7 @@ func TestBackend_CursorIsLatched(t *testing.T) {
 	if !ok {
 		t.Fatal("no frame")
 	}
-	want := cursorState{Visible: true, X: 4, Y: 2, Shape: tui.CursorShapeUnderline}
+	want := tui.CursorState{X: 4, Y: 2, PosSet: true, Visible: true, Shape: tui.CursorShapeUnderline}
 	if fr.Cursor != want {
 		t.Errorf("frame cursor = %+v, want %+v", fr.Cursor, want)
 	}

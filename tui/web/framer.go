@@ -6,14 +6,6 @@ import (
 	"github.com/yongjohnlee80/golib/tui"
 )
 
-// cursorState is the latched cursor, emitted with the next frame rather than
-// immediately.
-type cursorState struct {
-	Visible bool
-	X, Y    int
-	Shape   tui.CursorShape
-}
-
 // Frame is one atomic screen update.
 //
 // A frame reaches the client whole or not at all: a half-applied frame is a
@@ -35,7 +27,7 @@ type Frame struct {
 	Updates []tui.CellUpdate
 
 	// Cursor is the latched cursor state as of this frame.
-	Cursor cursorState
+	Cursor tui.CursorState
 }
 
 // framer owns the two grids and produces frames.
@@ -67,9 +59,9 @@ type framer struct {
 	dirty    bool // content changed since the last emitted frame
 	needFull bool // next frame must be a full snapshot
 
-	cursor      cursorState
-	sentCursor  cursorState
-	ackedCursor cursorState
+	cursor      tui.CursorState
+	sentCursor  tui.CursorState
+	ackedCursor tui.CursorState
 
 	// coalesced counts publications that were folded into a later frame. It is
 	// reported rather than discarded: silently swallowing one is a debugging
@@ -90,7 +82,7 @@ func newFramer(w, h int) *framer {
 //
 // It never blocks on network I/O and never waits for a client: the App loop
 // calls this once per frame and 's one-write rule assumes it is fast.
-func (f *framer) publish(updates []tui.CellUpdate, cursor cursorState) {
+func (f *framer) publish(updates []tui.CellUpdate, cursor tui.CursorState) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	f.current.apply(updates)
@@ -197,7 +189,7 @@ func (f *framer) reset() {
 	f.sent = nil
 	f.sentRev = 0
 	f.acked = newGrid(f.current.w, f.current.h)
-	f.ackedCursor = cursorState{}
+	f.ackedCursor = tui.CursorState{}
 	f.needFull = true
 	f.dirty = true
 }
