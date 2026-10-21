@@ -165,7 +165,7 @@ type Backend struct {
 	mu      sync.Mutex
 	started bool
 	caps    tui.Capabilities
-	cursor  cursorState
+	cursor  tui.CursorLatch
 	metrics Metrics
 	err     error
 }
@@ -325,7 +325,7 @@ func (b *Backend) Flush(diff []tui.CellUpdate) error {
 	default:
 	}
 	b.mu.Lock()
-	cursor := b.cursor
+	cursor, _ := b.cursor.Take() // the framer diffs it against what the client acknowledged
 	b.mu.Unlock()
 	// Serialized against Resize: see resizeMu. Without this a render that
 	// followed a dequeued expansion landed on the pre-resize grid and its cells
@@ -343,28 +343,28 @@ func (b *Backend) Flush(diff []tui.CellUpdate) error {
 func (b *Backend) ShowCursor() {
 	b.mu.Lock()
 	defer b.mu.Unlock()
-	b.cursor.Visible = true
+	b.cursor.Show()
 }
 
 // HideCursor latches the cursor hidden.
 func (b *Backend) HideCursor() {
 	b.mu.Lock()
 	defer b.mu.Unlock()
-	b.cursor.Visible = false
+	b.cursor.Hide()
 }
 
 // SetCursor latches the cursor position.
 func (b *Backend) SetCursor(x, y int) {
 	b.mu.Lock()
 	defer b.mu.Unlock()
-	b.cursor.X, b.cursor.Y = x, y
+	b.cursor.SetPos(x, y)
 }
 
 // SetCursorShape latches the cursor shape.
 func (b *Backend) SetCursorShape(s tui.CursorShape) {
 	b.mu.Lock()
 	defer b.mu.Unlock()
-	b.cursor.Shape = s
+	b.cursor.SetShape(s)
 }
 
 // Capabilities reports the negotiated profile. Constant after Start.

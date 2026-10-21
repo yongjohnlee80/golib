@@ -62,9 +62,9 @@ func TestDivergence_CoalescedSendStillConverges(t *testing.T) {
 
 	// The client's reader is blocked: change row A and let that publication be
 	// coalesced away by never draining it.
-	f.publish([]tui.CellUpdate{put(0, 0, "A")}, cursorState{})
+	f.publish([]tui.CellUpdate{put(0, 0, "A")}, tui.CursorState{})
 	// Then change only row B, with row A's frame never having been sent.
-	f.publish([]tui.CellUpdate{put(0, 1, "B")}, cursorState{})
+	f.publish([]tui.CellUpdate{put(0, 1, "B")}, tui.CursorState{})
 
 	if got := f.coalescedCount(); got == 0 {
 		t.Error("the folded publication was not counted — silently swallowing one is a debugging trap")
@@ -97,7 +97,7 @@ func TestDivergence_UnacknowledgedSendStaysInTheAggregate(t *testing.T) {
 
 	// Row A goes out, and the client applies it — but the acknowledgement is
 	// LOST on the way back.
-	f.publish([]tui.CellUpdate{put(0, 0, "A")}, cursorState{})
+	f.publish([]tui.CellUpdate{put(0, 0, "A")}, tui.CursorState{})
 	fr, ok := f.next()
 	if !ok {
 		t.Fatal("no frame produced")
@@ -119,7 +119,7 @@ func TestDivergence_UnacknowledgedSendStaysInTheAggregate(t *testing.T) {
 	}
 
 	// Now row B changes.
-	f.publish([]tui.CellUpdate{put(0, 1, "B")}, cursorState{})
+	f.publish([]tui.CellUpdate{put(0, 1, "B")}, tui.CursorState{})
 
 	// The lost frame is retried. Because the baseline never advanced, the retry
 	// must carry BOTH cells.
@@ -153,7 +153,7 @@ func TestFramer_StaleAckIsIgnored(t *testing.T) {
 	c := newClient(2, 1)
 	pump(t, f, c)
 
-	f.publish([]tui.CellUpdate{put(0, 0, "X")}, cursorState{})
+	f.publish([]tui.CellUpdate{put(0, 0, "X")}, tui.CursorState{})
 	fr, ok := f.next()
 	if !ok {
 		t.Fatal("no frame")
@@ -176,12 +176,12 @@ func TestFramer_StaleAckIsIgnored(t *testing.T) {
 func TestFramer_OneFrameInFlight(t *testing.T) {
 	t.Parallel()
 	f := newFramer(2, 2)
-	f.publish([]tui.CellUpdate{put(0, 0, "a")}, cursorState{})
+	f.publish([]tui.CellUpdate{put(0, 0, "a")}, tui.CursorState{})
 	first, ok := f.next()
 	if !ok {
 		t.Fatal("no first frame")
 	}
-	f.publish([]tui.CellUpdate{put(1, 1, "b")}, cursorState{})
+	f.publish([]tui.CellUpdate{put(1, 1, "b")}, tui.CursorState{})
 	if _, ok := f.next(); ok {
 		t.Fatal("a second frame was produced while the first was unacknowledged")
 	}
@@ -203,7 +203,7 @@ func TestFramer_RevisionsAndResync(t *testing.T) {
 	c := newClient(3, 2)
 
 	// The very first frame a client sees must be full: it holds nothing.
-	f.publish([]tui.CellUpdate{put(0, 0, "a")}, cursorState{})
+	f.publish([]tui.CellUpdate{put(0, 0, "a")}, tui.CursorState{})
 	first, ok := f.next()
 	if !ok {
 		t.Fatal("no first frame")
@@ -215,7 +215,7 @@ func TestFramer_RevisionsAndResync(t *testing.T) {
 	f.ack(first.Rev)
 
 	// A steady-state frame is a diff.
-	f.publish([]tui.CellUpdate{put(1, 0, "b")}, cursorState{})
+	f.publish([]tui.CellUpdate{put(1, 0, "b")}, tui.CursorState{})
 	second, ok := f.next()
 	if !ok {
 		t.Fatal("no second frame")
@@ -256,7 +256,7 @@ func TestFramer_ResizeForcesFullFrame(t *testing.T) {
 	t.Parallel()
 	f := newFramer(3, 2)
 	c := newClient(3, 2)
-	f.publish([]tui.CellUpdate{put(0, 0, "a"), put(2, 1, "z")}, cursorState{})
+	f.publish([]tui.CellUpdate{put(0, 0, "a"), put(2, 1, "z")}, tui.CursorState{})
 	pump(t, f, c)
 
 	f.resize(5, 3)
@@ -297,7 +297,7 @@ func TestFramer_ShrinkDropsOutOfRangeUpdates(t *testing.T) {
 	// An update aimed at a column that no longer exists: the client does not
 	// have that position, so dropping it is correct. Failing would take down the
 	// App loop for a race it cannot avoid.
-	f.publish([]tui.CellUpdate{put(3, 1, "gone"), put(0, 0, "k")}, cursorState{})
+	f.publish([]tui.CellUpdate{put(3, 1, "gone"), put(0, 0, "k")}, tui.CursorState{})
 	pump(t, f, c)
 
 	if !c.g.equal(f.serverGrid()) {
@@ -313,7 +313,7 @@ func TestFramer_ShrinkDropsOutOfRangeUpdates(t *testing.T) {
 func TestFramer_CursorTravelsWithTheFrame(t *testing.T) {
 	t.Parallel()
 	f := newFramer(3, 2)
-	want := cursorState{Visible: true, X: 2, Y: 1, Shape: tui.CursorShapeBar}
+	want := tui.CursorState{Visible: true, X: 2, Y: 1, Shape: tui.CursorShapeBar}
 
 	// A cursor change alone must still produce a frame: it is visible state.
 	f.publish(nil, want)
@@ -339,12 +339,12 @@ func TestFramer_NoChangeNoFrame(t *testing.T) {
 	c := newClient(2, 1)
 	// Get past the initial full snapshot first: a fresh framer owes the client
 	// everything, so its first frame is legitimately not a no-op.
-	f.publish([]tui.CellUpdate{put(0, 0, "a")}, cursorState{})
+	f.publish([]tui.CellUpdate{put(0, 0, "a")}, tui.CursorState{})
 	pump(t, f, c)
 	before := f.rev
 
 	// Writing content the grid already holds.
-	f.publish([]tui.CellUpdate{put(0, 0, "a"), {X: 1, Y: 0, Cell: blank}}, cursorState{})
+	f.publish([]tui.CellUpdate{put(0, 0, "a"), {X: 1, Y: 0, Cell: blank}}, tui.CursorState{})
 	if fr, ok := f.next(); ok {
 		if len(fr.Updates) != 0 {
 			t.Errorf("a no-op publication produced %d updates: %+v", len(fr.Updates), fr.Updates)
@@ -378,7 +378,7 @@ func render(g *grid) string {
 func TestFramer_BlockedClientDoesNotAccumulate(t *testing.T) {
 	t.Parallel()
 	f := newFramer(8, 4)
-	f.publish(nil, cursorState{})
+	f.publish(nil, tui.CursorState{})
 	inflight, ok := f.next()
 	if !ok {
 		t.Fatal("no frame")
@@ -386,7 +386,7 @@ func TestFramer_BlockedClientDoesNotAccumulate(t *testing.T) {
 	_ = inflight // never acknowledged: the client is gone
 
 	for i := range 10_000 {
-		f.publish([]tui.CellUpdate{put(i%8, (i/8)%4, fmt.Sprint(i%10))}, cursorState{})
+		f.publish([]tui.CellUpdate{put(i%8, (i/8)%4, fmt.Sprint(i%10))}, tui.CursorState{})
 	}
 	// Two grids plus one snapshot, regardless of how many publications happened.
 	f.mu.Lock()
@@ -409,7 +409,7 @@ func TestFramer_BlockedClientDoesNotAccumulate(t *testing.T) {
 // extra grid track after every CJK or emoji cell (tui-support-D1).
 func TestAWideCellsContinuationIsMirrored(t *testing.T) {
 	f := newFramer(2, 1)
-	f.publish([]tui.CellUpdate{{X: 0, Y: 0, Cell: tui.Cell{Content: "漢", Width: 2}}}, cursorState{})
+	f.publish([]tui.CellUpdate{{X: 0, Y: 0, Cell: tui.Cell{Content: "漢", Width: 2}}}, tui.CursorState{})
 	snap := f.serverGrid().snapshot()
 	if len(snap) != 2 || snap[0].Cell.Width != 2 || snap[1].Cell != tui.ContinuationOf(snap[0].Cell) {
 		t.Fatalf("snapshot %+v, want the head then its continuation", snap)
