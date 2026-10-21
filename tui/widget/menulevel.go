@@ -2,6 +2,7 @@ package widget
 
 import (
 	"fmt"
+	"slices"
 
 	"github.com/yongjohnlee80/golib/tui"
 )
@@ -28,6 +29,57 @@ type menuPopup struct {
 	// rects is where this level's rows were placed by the last committed
 	// layout, in THIS popup's local coordinates.
 	rects map[ItemID]tui.Rect
+	// view is the window onto the rows when they are more than the level has lines for.
+	view levelView
+}
+
+// levelView is a level's window onto its visible rows when they outnumber its lines: the first one
+// shown. A row outside the window is neither painted nor declared, so the selection the keys move
+// to has to be inside it, or it would be a row nobody can see and no submenu can anchor to.
+type levelView struct {
+	top, h int      // the first row shown, and the lines the last layout gave the rows
+	shown  viewMark // the selection's place and the height last revealed, as List's cursor
+}
+
+// place is the first of rows' visible rows shown in h lines: moved to reveal sel when sel is one of
+// them and it or h changed since the last place (so a wheel scroll away from it stays put), and
+// kept within the rows. The same answer for the same inputs, so a second layout pass changes
+// nothing.
+func (v *levelView) place(rows []MenuItemModel, sel ItemID, h int) int {
+	v.h = h
+	vis := visibleRows(rows)
+	if at := slices.IndexFunc(vis, func(i int) bool { return rows[i].ID == sel }); at >= 0 && v.shown.moved([2]int{at}, [2]int{h}) {
+		v.top = revealRow(v.top, at, h)
+	}
+	v.top = clampTop(v.top, len(vis), h)
+	return v.top
+}
+
+// wheel scrolls the window a notch over rows, in the lines the last layout gave them; the selection
+// stays where it is, as a List's cursor does.
+func (v *levelView) wheel(up bool, rows []MenuItemModel) {
+	step := listWheelRows
+	if up {
+		step = -step
+	}
+	v.top = clampTop(v.top+step, len(visibleRows(rows)), v.h)
+}
+
+// isWheel reports whether ev is a wheel notch, and whether it is up.
+func isWheel(ev tui.Event) (up, ok bool) {
+	e, ok := ev.(tui.MouseEvent)
+	if !ok || e.Kind != tui.MouseWheel || (e.Button != tui.WheelUp && e.Button != tui.WheelDown) {
+		return false, false
+	}
+	return e.Button == tui.WheelUp, true
+}
+
+// paintIndicator draws the window's scroll indicator in column x of lines [y, y+h) of s when the
+// rows overflow them.
+func (v *levelView) paintIndicator(s tui.Surface, rows []MenuItemModel, x, y, h int) {
+	if n := len(visibleRows(rows)); n > h && h > 0 {
+		paintScrollIndicator(s.Sub(tui.Rect{X: x, Y: y, W: 1, H: h}), 0, h, v.top, n-h)
+	}
 }
 
 // Init installs the owner's resolver against THIS level's rects.
@@ -64,7 +116,8 @@ func (p *menuPopup) HandleAction(inv tui.ActionInvocation) bool {
 	return p.owner.handleIn(inv, p.Context())
 }
 
-// HandleEvent forwards to the owner, and the capture-loss case is why it must.
+// HandleEvent scrolls the level on a wheel notch, and forwards anything else to the owner; the
+// capture-loss case is why it must.
 //
 // A gesture started in a level is CAPTURED BY THAT LEVEL — only the node whose
 // handler is running may take the pointer — so the runtime delivers the loss
@@ -72,6 +125,11 @@ func (p *menuPopup) HandleAction(inv tui.ActionInvocation) bool {
 // armed state survives a capture it no longer holds, and the next release
 // activates a row the user stopped pointing at.
 func (p *menuPopup) HandleEvent(ev tui.Event) bool {
+	if up, ok := isWheel(ev); ok {
+		p.view.wheel(up, p.rowsOf())
+		p.RequestLayout() // the rows' anchors and hit rects move with the window
+		return true
+	}
 	return p.owner.HandleEvent(ev)
 }
 
@@ -108,8 +166,10 @@ func (p *menuPopup) Layout(cs tui.Constraints) tui.Size {
 		p.rects = make(map[ItemID]tui.Rect)
 	}
 	clear(p.rects) // per-pass, like the runtime's own declared regions
+	in := p.interior(size)
+	top := p.view.place(rows, p.owner.selected, in.H)
 	if ctx := p.Context(); ctx != nil {
-		p.owner.declareRows(ctx, rows, p.interior(size), p.rects)
+		p.owner.declareRows(ctx, rows, top, in, p.rects)
 		p.owner.drainPending(ctx, p.rects)
 	}
 	return size
@@ -191,7 +251,9 @@ func (p *menuPopup) Render(s tui.Surface) {
 	s.Fill(tui.Rect{X: 0, Y: 0, W: sz.W, H: sz.H}, " ", p.st.Surface())
 	drawBorder(s, sz, p.st.Border())
 	p.paintTitle(s, sz)
-	p.owner.paintRows(s, p.rowsOf(), p.interior(sz))
+	rows, in := p.rowsOf(), p.interior(sz)
+	p.owner.paintRows(s, rows, p.view.top, in)
+	p.view.paintIndicator(s, rows, sz.W-1, in.Y, in.H) // on the frame's right side
 }
 
 // paintTitle writes the OPENING ROW'S LABEL into the popup's top border.
@@ -297,8 +359,8 @@ func (m *Menu) measureRows(rows []MenuItemModel) (w, h int) {
 	return w, h
 }
 
-// declareRows records one anchor region per visible row, in the declaring node's
-// local coordinates, and remembers the rects for hit-testing.
+// declareRows records one anchor region per visible row from the top'th on, in the declaring
+// node's local coordinates, and remembers the rects for hit-testing.
 //
 // ONE PASS produces both, which is the point: the region a submenu anchors to
 // and the rect a click is mapped through are the same rectangle, so they cannot
@@ -309,10 +371,10 @@ func (m *Menu) measureRows(rows []MenuItemModel) (w, h int) {
 // would therefore open a submenu hanging off a row nobody can see, and a click
 // in the space below would arm one. "Not painted" and "not addressable" have to
 // be the same condition, so both loops stop at the same line.
-func (m *Menu) declareRows(ctx *tui.Context, rows []MenuItemModel, area tui.Rect, into map[ItemID]tui.Rect) {
+func (m *Menu) declareRows(ctx *tui.Context, rows []MenuItemModel, top int, area tui.Rect, into map[ItemID]tui.Rect) {
 	y := area.Y
 	bottom := area.Y + max(area.H, 0)
-	for _, i := range visibleRows(rows) {
+	for _, i := range windowRows(rows, top) {
 		if y >= bottom || area.W <= 0 {
 			return
 		}
@@ -323,14 +385,14 @@ func (m *Menu) declareRows(ctx *tui.Context, rows []MenuItemModel, area tui.Rect
 	}
 }
 
-// paintRows draws each visible row into its line of area, stopping at the same
-// line declareRows does so that what is painted and what is addressable are one
-// set of rows rather than two.
-func (m *Menu) paintRows(s tui.Surface, rows []MenuItemModel, area tui.Rect) {
+// paintRows draws each visible row from the top'th on into its line of area, starting and stopping
+// where declareRows does so that what is painted and what is addressable are one set of rows rather
+// than two.
+func (m *Menu) paintRows(s tui.Surface, rows []MenuItemModel, top int, area tui.Rect) {
 	y := area.Y
 	bottom := area.Y + max(area.H, 0)
 	gutter := checkColumn(rows)
-	for _, i := range visibleRows(rows) {
+	for _, i := range windowRows(rows, top) {
 		if y >= bottom || area.W <= 0 {
 			return
 		}
@@ -424,8 +486,9 @@ func (m *Menu) Layout(cs tui.Constraints) tui.Size {
 
 	w, h := m.measureRows(m.items)
 	size := cs.Constrain(tui.Size{W: w + 2, H: h})
+	top := m.root.place(m.items, m.selected, size.H)
 	if ctx != nil {
-		m.declareRows(ctx, m.items, tui.Rect{X: 0, Y: 0, W: size.W, H: size.H}, m.rowRects)
+		m.declareRows(ctx, m.items, top, tui.Rect{X: 0, Y: 0, W: size.W, H: size.H}, m.rowRects)
 	}
 	return size
 }
@@ -455,7 +518,8 @@ func (m *Menu) Render(s tui.Surface) {
 		}
 		return
 	}
-	m.paintRows(s, m.items, tui.Rect{X: 0, Y: 0, W: sz.W, H: sz.H})
+	m.paintRows(s, m.items, m.root.top, tui.Rect{X: 0, Y: 0, W: sz.W, H: sz.H})
+	m.root.paintIndicator(s, m.items, sz.W-1, 0, sz.H) // in the column's right margin
 }
 
 // anchorHost is the overlay operation set a Menu needs from the container that

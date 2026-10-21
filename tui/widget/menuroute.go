@@ -559,6 +559,12 @@ func (m *Menu) runRowAction(it *MenuItemModel, inv tui.ActionInvocation) bool {
 // nothing, and leave the open levels alone. A capture loss is not a decision the
 // user made about the menu.
 func (m *Menu) HandleEvent(ev tui.Event) bool {
+	// A level scrolls its own rows (menuPopup.HandleEvent), so a notch here is the root column's.
+	if up, ok := isWheel(ev); ok && !m.horizontal {
+		m.root.wheel(up, m.items)
+		m.RequestLayout()
+		return true
+	}
 	if _, ok := ev.(tui.PointerCaptureLostEvent); ok {
 		m.pressed, m.armed = "", false
 		m.captureCtx = nil // the runtime has already taken it away

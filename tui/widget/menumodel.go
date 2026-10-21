@@ -378,6 +378,12 @@ type RowRenderer interface {
 	RenderRow(s tui.Surface, row RowView, st RowState)
 }
 
+// windowRows is items' visible rows from the top'th on: the ones a level's window can show.
+func windowRows(items []MenuItemModel, top int) []int {
+	vis := visibleRows(items)
+	return vis[min(max(top, 0), len(vis)):]
+}
+
 // visibleRows returns the indices of the rows a level actually shows, in order.
 // Separators are included — they are painted — but are not selectable.
 //
