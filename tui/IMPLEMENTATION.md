@@ -69,7 +69,11 @@ in the same change. Never add a second copy "for now".
 | The backend cell grid (wide-cell continuation) | one exported grid in `tui`, used by every backend and `TestBackend` |
 | Hit-testing, bubbling to the modal ceiling, focus candidacy | `hitTestNode` (an optional admit check), `pathTo` (the walk to the ceiling), `isFocusable` / `acceptsFocus` / `trapsFocus` / `hiddenWithin` in `tui` core |
 | Screen ↔ local coordinates | `Rect.Translate`/`RelativeTo`/`Origin`, `Point.Translate`/`RelativeTo`, `MouseEvent.localTo`; never hand-rolled arithmetic |
-| Row viewport: scroll, page, wheel step, reveal, clipping, row painting | `widget/rowviewport.go`: `revealRow`, `clampTop`, `paintRows`, `rowsWidth`, the named wheel steps; `ListStyles.cursorLook` for the cursor row |
+| Row viewport: scroll, page, wheel step, reveal, clipping, row painting | `widget/rowviewport.go`: `revealRow`, `clampTop`, `paintRows`, `rowsWidth`, the named wheel steps; `ListStyles.cursorLook` for the cursor row. A menu level's window is `levelView` (`menulevel.go`) over the same helpers: it declares and paints the rows it shows, so what is painted is what is addressable |
+| Row-view capabilities | `ContextMenuRequester` (List, Tree: ask the owner for a menu), `MenuOpener` (a menu a view opens itself: DataTable's; `*EditorMenu` is one), `RowStyler` (List, Table, Tree: `SetStyles`/`ResetStyles`); a DataTable is a `tui.Scroller` |
+| A Tree's visible rows | `Tree.flatten`, cached and dropped by `rowsChanged` at every write to what they are made of (roots, a node's children, loaded or expanded) |
+| A view delegate's Text template (decl) | `cellTemplate` in `decl/tableview_cells.go` (parse, check, present), shared by TableView and TreeView |
+| A picker dialog (decl) | `newChooserDialog` in `decl/filedialog.go`, over the `chooserSpec` FileDialog and FolderDialog read |
 | Press pairing (double/triple click on the same target); a positional view's row identity across owner callbacks | `pressPairer` (`Press`, `Survives`) built on `rowsEpoch` in `widget/presspair.go` (List, Tree, `TableCore.press`; FileList holds its own `rowsEpoch`) |
 | Drag state machine | `widget/drag.go`: `pointerDrag[S]` (begin, capture, end, lost), `resizeGesture`, `stepCellsOf`; WindowCore's richer gesture (focus entry, gesture observers, checkpoint) is its own |
 | Borders and frames | `widget/frame.go`: `paintFrame` (per edge), `drawFrame` (whole), honouring the `style.BorderStyle` a style carries; no hard-coded glyphs |
