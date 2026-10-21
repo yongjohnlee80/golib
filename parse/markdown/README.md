@@ -97,9 +97,18 @@ Frontmatter is not parsed here: YAML is a separate parser's job.
 `n.Level()`, and so on for `Info`, `Fence`, `List`, `Title`, `Label`, `HTML`, `Checked`, `Align`, `Target`
 and `Callout`; an assignment `n.Dest = v` is `n.SetDest(v)`. A struct literal may still set `Kind`,
 `Span`, the links and `Literal`; the moved values are set after. Go allows no field and method of one
-name, so the old fields could not be kept beside the methods: every use is a compile error until moved,
-and none changes meaning silently. One exception: `n.Callout != nil` and the like still compile (a method
-value is never nil), so `go vet`'s "comparison of function … is always true" is the check to run.
+name, so the old fields could not be kept beside the methods. A read or assignment of one in Go source
+is a compile error until moved, but the compiler does not catch everything:
+
+- `n.Callout != nil` and the like still compile (a method value is never nil); `go vet`'s "comparison
+  of function … is always true" finds them.
+- Code that reaches the fields by reflection or serialization (`reflect`, `fmt`'s `%+v`, an encoder)
+  compiles and no longer sees them.
+- A copy of a `Node` that carries values shares them, since they hang off it by a pointer: a setter on
+  the copy changes what the original reads. To give a copy values of its own, build a new `Node` and
+  set each one.
+- Every accessor answers its zero value when the value is not set, whatever the kind; the setters work
+  on a node of any kind.
 
 ## Readings taken
 
@@ -140,8 +149,10 @@ Obsidian's block ids (`^id` at a line's end), footnotes, `%%comments%%`, `==high
   and more) are timed at n and 10n and must scale by about 10×, not 100×. Only the families measured are
   claimed to be linear.
 - **Allocation.** A parse places its nodes in chunks (8 nodes at first, doubling to 1,024), so a document
-  of n nodes costs a few dozen allocations rather than n, and its tree lies together in memory. A node
-  held after its Document is dropped keeps its chunk alive.
+  of n nodes costs a few dozen allocations rather than n, and its tree lies together in memory. The
+  values of the kinds that always carry them (a heading's level, a link's destination, …) are chunked
+  the same way. A node of another kind that comes to carry one (a setext heading, a callout) takes it
+  from the heap, one allocation each. A node held after its Document is dropped keeps its chunk alive.
 
 ## As a `parse.Parser`
 

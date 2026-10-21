@@ -80,8 +80,10 @@ type ListData struct {
 
 // Node is one element of the document tree. Kind, Span, the tree links and Literal are fields; what
 // only some kinds carry (a heading's level, a link's destination, a list's data, …) is read through
-// methods, which answer the zero value on a node of another kind, and kept off the Node itself, so
-// text, emphasis and paragraphs, most of a document, stay small.
+// methods, which answer the zero value when it is not set, and kept off the Node itself, so text,
+// emphasis and paragraphs, most of a document, stay small. The values hang off the Node by a pointer:
+// a copy of a Node that carries values shares them, so a setter on the copy changes what the original
+// reads too.
 type Node struct {
 	Kind                                      Kind
 	Span                                      Span
@@ -110,8 +112,10 @@ type nodeAttrs struct {
 	callout            *Callout // a KindBlockQuote that is an Obsidian callout
 }
 
-// attrs is n's values, made when the first one is set. A nil node has none to set: its values go to
-// a scratch block nobody reads, so a setter on a nil node does nothing rather than panic.
+// attrs is n's values, made when the first one is set: from the slab for the kinds that always carry
+// them, and otherwise here, on the heap, on the first set (a setext heading, a callout). A nil node
+// has none to set: its values go to a scratch block nobody reads, so a setter on a nil node does
+// nothing rather than panic.
 func (n *Node) attrs() *nodeAttrs {
 	if n == nil {
 		return new(nodeAttrs)
@@ -122,40 +126,43 @@ func (n *Node) attrs() *nodeAttrs {
 	return n.a
 }
 
-// Level is a heading's level, 1–6; 0 on any other node.
+// Level is a heading's level, 1–6; 0 when none is set, as on every other kind the parser makes.
 func (n *Node) Level() int { return n.attrsOrZero().level }
 
-// Info is a fenced code block's info string, decoded; nil on any other node.
+// Info is a fenced code block's info string, decoded; nil when none is set.
 func (n *Node) Info() []byte { return n.attrsOrZero().info }
 
-// Fence is '`' or '~' for a fenced code block; 0 for an indented one and any other node.
+// Fence is '`' or '~' for a fenced code block; 0 for an indented one, and when none is set.
 func (n *Node) Fence() byte { return n.attrsOrZero().fence }
 
-// List is a KindList's or KindItem's list data; the zero ListData on any other node.
+// List is a KindList's or KindItem's list data; the zero ListData when none is set.
 func (n *Node) List() ListData { return n.attrsOrZero().list }
 
-// Dest is a link's or image's destination, decoded; nil on any other node.
+// Dest is a link's or image's destination, decoded; nil when none is set.
 func (n *Node) Dest() []byte { return n.attrsOrZero().dest }
 
-// Title is a link's or image's title, decoded; nil on any other node.
+// Title is a link's or image's title, decoded; nil when none is set.
 func (n *Node) Title() []byte { return n.attrsOrZero().title }
 
-// Label is a KindLinkRefDef's label as written, or a KindTag's tag without its '#'; nil otherwise.
+// Label is a KindLinkRefDef's label as written, or a KindTag's tag without its '#'; nil when none is
+// set.
 func (n *Node) Label() []byte { return n.attrsOrZero().label }
 
-// HTML is which of the seven start conditions opened a KindHTMLBlock; 0 on any other node.
+// HTML is which of the seven start conditions opened a KindHTMLBlock; 0 when none is set.
 func (n *Node) HTML() int { return n.attrsOrZero().html }
 
-// Checked is whether a GFM task list item is checked; nil on any other item and any other node.
+// Checked is whether a GFM task list item is checked; nil when none is set, as on an item that is
+// not a task.
 func (n *Node) Checked() *bool { return n.attrsOrZero().checked }
 
-// Align is a KindTable's column alignments; nil on any other node.
+// Align is a KindTable's column alignments; nil when none is set.
 func (n *Node) Align() []Align { return n.attrsOrZero().align }
 
-// Target is where a KindWikilink or KindEmbed points; nil on any other node.
+// Target is where a KindWikilink or KindEmbed points; nil when none is set.
 func (n *Node) Target() *Target { return n.attrsOrZero().target }
 
-// Callout is a KindBlockQuote's Obsidian callout; nil on any other block quote and any other node.
+// Callout is a KindBlockQuote's Obsidian callout; nil when none is set, as on a block quote that is
+// not a callout.
 func (n *Node) Callout() *Callout { return n.attrsOrZero().callout }
 
 // SetLevel sets a heading's level.

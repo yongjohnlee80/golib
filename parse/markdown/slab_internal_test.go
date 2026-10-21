@@ -57,3 +57,37 @@ func TestParsesAtOnceShareNoNode(t *testing.T) {
 		}
 	}
 }
+
+// release keeps the values of the nodes the tree holds and zeroes those of the nodes it let go, across
+// many chunks of nodes and of values, where a live node's values and a dead one's lie side by side.
+func TestReleaseKeepsALiveNodesValuesAndZeroesADeadOnes(t *testing.T) {
+	var s nodeSlab
+	root := s.new(Node{Kind: KindDocument})
+	const n = 3000
+	vals := make([]*nodeAttrs, n)
+	for i := range n {
+		node := s.newWith(Node{Kind: KindLink}, nodeAttrs{dest: []byte(fmt.Sprint(i)), level: i + 1})
+		vals[i] = node.a
+		if i%2 == 0 {
+			root.AppendChild(node) // live; the odd ones are let go
+		}
+	}
+	if len(s.attrs) < 3 {
+		t.Fatalf("the values span %d chunks; the cell needs several", len(s.attrs))
+	}
+	s.release(root)
+	for i, a := range vals {
+		live := i%2 == 0
+		switch {
+		case live && (string(a.dest) != fmt.Sprint(i) || a.level != i+1):
+			t.Fatalf("live node %d reads dest %q, level %d after release; want %d, %d", i, a.dest, a.level, i, i+1)
+		case !live && (a.dest != nil || a.level != 0):
+			t.Fatalf("dead node %d keeps dest %q, level %d after release; want them zeroed", i, a.dest, a.level)
+		}
+	}
+	for c := root.FirstChild; c != nil; c = c.Next {
+		if c.blk != nil {
+			t.Fatal("a live node keeps its block state after release")
+		}
+	}
+}
