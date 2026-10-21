@@ -775,7 +775,7 @@ func (dismissAction) ActionID() tui.ActionID { return "modal.dismiss" }
 // moment the list is reordered — both are real bugs that role-based resolution
 // cannot have.
 func (m *Modal) HandleAction(inv tui.ActionInvocation) bool {
-	switch a := inv.Action.(type) {
+	switch a := actionValue(inv.Action).(type) {
 	case modalStepAction:
 		return m.stepFocus(a.delta)
 	case modalActivateAction:
@@ -791,7 +791,7 @@ func (m *Modal) HandleAction(inv tui.ActionInvocation) bool {
 		}
 		return false
 	}
-	if _, ok := inv.Action.(dismissAction); !ok {
+	if _, ok := actionValue(inv.Action).(dismissAction); !ok {
 		return false
 	}
 	// A Reject-role button, if the dialog has one, is activated so a DISMISS

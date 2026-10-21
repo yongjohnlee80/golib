@@ -659,7 +659,7 @@ func (s *Split) mainAxis(p tui.Point) int {
 // does: an action is public input, and a refused one must leave no gesture
 // state behind for a later Update to act on.
 func (s *Split) HandleAction(inv tui.ActionInvocation) bool {
-	switch a := inv.Action.(type) {
+	switch a := actionValue(inv.Action).(type) {
 	case ResizeBeginAction:
 		return s.beginDrag(a.Handle)
 	case ResizeUpdateAction:

@@ -115,24 +115,20 @@ func (c *WindowCore) applyAction(action tui.Action) bool {
 	if nilLike(action) {
 		return false
 	}
-	switch a := action.(type) {
-	case WindowDragCancelAction, *WindowDragCancelAction:
+	switch a := actionValue(action).(type) {
+	case WindowDragCancelAction:
 		return c.cancelDrag()
 	case WindowMoveByAction:
 		return c.MoveBy(a.DX, a.DY)
-	case *WindowMoveByAction:
-		return c.MoveBy(a.DX, a.DY)
 	case WindowResizeByAction:
 		return c.ResizeBy(a.DW, a.DH)
-	case *WindowResizeByAction:
-		return c.ResizeBy(a.DW, a.DH)
-	case WindowMaximizeAction, *WindowMaximizeAction:
+	case WindowMaximizeAction:
 		return c.ToggleMaximize()
-	case WindowMinimizeAction, *WindowMinimizeAction:
+	case WindowMinimizeAction:
 		return c.Minimize()
-	case WindowRestoreAction, *WindowRestoreAction:
+	case WindowRestoreAction:
 		return c.Restore()
-	case WindowCloseAction, *WindowCloseAction:
+	case WindowCloseAction:
 		return c.Close()
 	}
 	return false

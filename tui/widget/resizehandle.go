@@ -113,7 +113,7 @@ func (r *Resizable) KeyBindings(m *keymap.Map) []keymap.Binding {
 // worth a panic. Refusing without mutation is what keeps a rejected Begin from
 // leaving live gesture state that a later Update would then act on.
 func (r *Resizable) HandleAction(inv tui.ActionInvocation) bool {
-	switch a := inv.Action.(type) {
+	switch a := actionValue(inv.Action).(type) {
 	case ResizeBeginAction:
 		return r.beginDrag(a)
 	case ResizeUpdateAction:
@@ -327,7 +327,7 @@ func (g *resizeHandle) toOwner(x, y int) tui.Point {
 // the node whose handler is running may take the pointer.
 func (g *resizeHandle) HandleAction(inv tui.ActionInvocation) bool {
 	handled := g.owner.HandleAction(inv)
-	if _, ok := inv.Action.(ResizeBeginAction); ok && handled {
+	if _, ok := actionValue(inv.Action).(ResizeBeginAction); ok && handled {
 		g.owner.drag.capture(g.Context())
 	}
 	return handled
