@@ -8,6 +8,18 @@ import (
 // THE KEYS — vim's grammar over a grid: a count, the g prefix, the y and d doubles, then the
 // command's motion, selection key or edit.
 
+// tableKeyState is the keys typed so far of a command not yet complete: a count, and a g waiting
+// for its second g. yanked is a y that copied the cursor's cell, which a second y turns into yy.
+type tableKeyState struct {
+	count    int
+	pendingG bool
+	yanked   bool
+	deleting bool // a d waiting for its second d (dd)
+}
+
+// reset drops what was typed.
+func (k *tableKeyState) reset() { *k = tableKeyState{} }
+
 // HandleKey moves, selects, sorts, copies and activates:
 //
 //	[count] k j h l ↑ ↓ ← →   move count cells     [count] w b   next / previous field, across rows

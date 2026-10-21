@@ -215,6 +215,23 @@ func (c *TableCore) dropped() {
 	c.repaint()
 }
 
+// tableEditSession is the open field and what it was opened on.
+type tableEditSession struct {
+	editing       *TableEdit // the open field, nil for none
+	srcGen        uint64     // SetSource's count: an open edit's source, by number
+	onEditDropped func()     // TableOnEditDropped
+	literal       bool       // Ctrl+V in the open field: a Tab next is typed
+}
+
+// newSource counts a new source, and closes the open field: the cell it was opened on is not the
+// new source's. It reports whether a field was open, to be reported dropped.
+func (e *tableEditSession) newSource() bool {
+	e.srcGen++
+	open := e.editing != nil
+	e.editing = nil
+	return open
+}
+
 // clearCell is x and Delete: the cell emptied, as a kept value of "".
 func (c *TableCore) clearCell() bool {
 	if !c.Editable() || c.cur.Row >= c.Len() || c.cur.Col >= len(c.Fields()) {

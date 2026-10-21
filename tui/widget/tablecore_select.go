@@ -22,6 +22,19 @@ const (
 	TableSelectBlock
 )
 
+// tableSelection is the selection, from anchor to the cursor, and the pointer's drag.
+type tableSelection struct {
+	anchor *TablePos
+	kind   TableSelectKind // what the selection between anchor and the cursor covers
+	// The pointer's drag: where it was pressed, and on what.
+	dragging bool
+	dragFrom TablePos
+	dragHit  TableHit
+}
+
+// reset ends the selection and a drag: a new source's rows are not the ones selected.
+func (s *tableSelection) reset() { *s = tableSelection{} }
+
 // TableHit is where a pointer is over a table.
 type TableHit int
 
@@ -266,7 +279,7 @@ func (c *TableCore) moveFields(n int) {
 }
 
 // dropPending forgets a command not yet complete: a count, a g waiting, a y to double.
-func (c *TableCore) dropPending() { c.count, c.pendingG, c.yanked, c.deleting = 0, false, false, false }
+func (c *TableCore) dropPending() { c.tableKeyState.reset() }
 
 // clampPos is p inside the table.
 func (c *TableCore) clampPos(p TablePos) TablePos {
