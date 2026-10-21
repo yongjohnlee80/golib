@@ -68,7 +68,7 @@ in the same change. Never add a second copy "for now".
 | The backend cell grid (wide-cell continuation) | one exported grid in `tui`, used by every backend and `TestBackend` |
 | Hit-testing, bubbling to the modal ceiling, focus candidacy | `hitTestNode` (an optional admit check), `pathTo` (the walk to the ceiling), `isFocusable` / `acceptsFocus` / `trapsFocus` / `hiddenWithin` in `tui` core |
 | Screen ↔ local coordinates | `Rect.Translate`/`RelativeTo`/`Origin`, `Point.Translate`/`RelativeTo`, `MouseEvent.localTo`; never hand-rolled arithmetic |
-| Row viewport: scroll, page, wheel step, reveal, clipping | one row viewport in `widget`, used by List, Tree, Select, DataTable, Menu |
+| Row viewport: scroll, page, wheel step, reveal, clipping, row painting | `widget/rowviewport.go`: `revealRow`, `clampTop`, `paintRows`, `rowsWidth`, the named wheel steps; `ListStyles.cursorLook` for the cursor row |
 | Press pairing (double/triple click on the same target) | `pressPairer` in `widget` (List, Tree, `TableCore.pairPress`) |
 | Drag state machine | one drag helper in `widget` |
 | Borders and frames | one painter honouring `style.BorderStyle`; no hard-coded glyphs |
