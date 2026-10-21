@@ -114,7 +114,9 @@ func New(rows, cols int, opts ...Option) *Screen {
 	s.p.Output = true
 	s.emit = s.handle
 	for _, o := range opts {
-		o(s)
+		if o != nil { // a nil option is skipped, as every other constructor here does
+			o(s)
+		}
 	}
 	s.reset()
 	return s
