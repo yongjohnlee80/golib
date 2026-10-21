@@ -744,9 +744,9 @@ var tableViewType = Type{
 		"rowNumbers": cellsSetter("rowNumbers", boolOf, func(n *tableViewNode, on bool) {
 			n.grid.Core().SetRowNumbers(on)
 		}),
-		// golib's: what y copies, "tsv" (the default) or "csv" (TableCopyCSV)
-		"copyFormat": cellsSetter("copyFormat", copyFormats.read, func(n *tableViewNode, csv bool) {
-			n.grid.Core().SetCopyCSV(csv)
+		// golib's: what y copies, "tsv" (the default) or "csv" (widget.TableCopyAs)
+		"copyFormat": cellsSetter("copyFormat", copyFormats.read, func(n *tableViewNode, f widget.TableCopyFormat) {
+			n.grid.Core().SetCopyFormat(f)
 		}),
 		// golib's: the cursor covers its whole row (r toggles it): y copies the row
 		"rowCursor": cellsSetter("rowCursor", boolOf, func(n *tableViewNode, on bool) {
@@ -803,5 +803,5 @@ var tableViewColumnType = Type{
 	Ctor:  []string{"role", "title", "width", "elideMode"},
 }
 
-// copyFormats are a cell-cursor TableView's copyFormat values: whether y copies CSV.
-var copyFormats = enum[bool]{values: map[string]bool{"Tsv": false, "Csv": true}}
+// copyFormats are a cell-cursor TableView's copyFormat values.
+var copyFormats = enum[widget.TableCopyFormat]{values: map[string]widget.TableCopyFormat{"Tsv": widget.TableCopyTSV, "Csv": widget.TableCopyCSV}}

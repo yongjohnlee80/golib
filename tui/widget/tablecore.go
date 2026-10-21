@@ -85,10 +85,42 @@ func TableSortable(on bool) TableOption { return func(c *TableCore) { c.sortable
 // widest number has (RowNumberDigits).
 func TableRowNumbers(on bool) TableOption { return func(c *TableCore) { c.rowNumbers = on } }
 
-// TableCopyCSV makes the table's copies CSV (comma-separated, quoted as RFC 4180 has it), and its
-// register's pastes read back as CSV; off, the default, they are TSV. A paste from outside the
-// table (a PasteEvent: a spreadsheet's cells) is TSV either way.
-func TableCopyCSV(on bool) TableOption { return func(c *TableCore) { c.copyCSV = on } }
+// TableCopyFormat is the text a table's copies are written in, and its register's pastes read
+// back in. A paste from outside the table (a PasteEvent: a spreadsheet's cells) is TSV whatever it
+// is.
+type TableCopyFormat uint8
+
+const (
+	// TableCopyTSV is tab-separated: an editable table's quoted as EncodeTableText has it, a
+	// read-only table's values joined by tabs. The default.
+	TableCopyTSV TableCopyFormat = iota
+	// TableCopyCSV is comma-separated, quoted as RFC 4180 has it, editable or not.
+	TableCopyCSV
+)
+
+// String names the format: "tsv" or "csv".
+func (f TableCopyFormat) String() string {
+	switch f {
+	case TableCopyTSV:
+		return "tsv"
+	case TableCopyCSV:
+		return "csv"
+	}
+	return "unknown"
+}
+
+// delimiter is the format's field separator: what a copy writes between cells and a register's
+// paste reads them apart by.
+func (f TableCopyFormat) delimiter() rune {
+	if f == TableCopyCSV {
+		return ','
+	}
+	return '\t'
+}
+
+// TableCopyAs is the format a table's copies are written in (TableCopyTSV, the default, or
+// TableCopyCSV).
+func TableCopyAs(f TableCopyFormat) TableOption { return func(c *TableCore) { c.copyFormat = f } }
 
 // TableOnSort is called with the sort keys whenever the sort changes: SortKeys, SortBy, the s key,
 // or a new source or a removed field ending it. Rows merged into an unchanged sort call nothing.
@@ -161,8 +193,8 @@ type TableCore struct {
 	place         []int           // with a filter, display row → its place among the loaded rows in the sort's order
 	sortable      bool
 	rowNumbers    bool
-	rowCursor     bool // the cursor covers its whole row (TableRowCursor's r): y copies the row
-	copyCSV       bool // copies are CSV, not TSV (TableCopyCSV)
+	rowCursor     bool            // the cursor covers its whole row (TableRowCursor's r): y copies the row
+	copyFormat    TableCopyFormat // what copies are written in (TableCopyAs)
 	ahead         int
 	onActivate    func(row int)
 	onCursor      func(row int)
@@ -232,12 +264,11 @@ func (c *TableCore) SetSource(src TableSource) {
 // RowNumbers reports whether a view shows each row's number (TableRowNumbers).
 func (c *TableCore) RowNumbers() bool { return c.rowNumbers }
 
-// SetRowNumbers turns the row numbers on or off.
-// SetCopyCSV is TableCopyCSV on a core already built.
-func (c *TableCore) SetCopyCSV(on bool) { c.copyCSV = on }
+// SetCopyFormat is TableCopyAs on a core already built.
+func (c *TableCore) SetCopyFormat(f TableCopyFormat) { c.copyFormat = f }
 
-// CopyCSV reports whether copies are CSV.
-func (c *TableCore) CopyCSV() bool { return c.copyCSV }
+// CopyFormat is the format the table's copies are written in.
+func (c *TableCore) CopyFormat() TableCopyFormat { return c.copyFormat }
 
 // SetRowCursor makes the cursor cover its whole row (on) or its cell; r toggles it. On a row, y
 // copies the row (as yy does), and h and l still move the field the cell cursor returns to.
@@ -260,6 +291,7 @@ func (c *TableCore) CursorCovers(row, col int) bool {
 	return row == c.cur.Row && (c.rowCursor || col == c.cur.Col)
 }
 
+// SetRowNumbers turns the row numbers on or off.
 func (c *TableCore) SetRowNumbers(on bool) {
 	if c.rowNumbers == on {
 		return
