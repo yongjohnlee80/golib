@@ -189,6 +189,15 @@ func newFileOpenView(cfg fileViewConfig, dirOpts ...FileListOption) *FileOpenVie
 	if cfg.preview {
 		v.preview = NewFilePreview(cfg.st, cfg.styled)
 	}
+	v.buildList(cfg, dirOpts)
+	above := v.buildFilter(cfg)
+	v.buildLayout(cfg, above)
+	return v
+}
+
+// buildList makes the listing: its source, folder and hooks, the location bar following it, and
+// any navigation dropping a typed path's check and a typed choice as it starts.
+func (v *FileOpenView) buildList(cfg fileViewConfig, dirOpts []FileListOption) {
 	listOpts := []FileListOption{
 		WithFileListSource(cfg.src),
 		WithFileListDir(cfg.dir),
@@ -216,6 +225,11 @@ func newFileOpenView(cfg fileViewConfig, dirOpts ...FileListOption) *FileOpenVie
 		v.path.stat.drop()
 		v.chosen = ""
 	}
+}
+
+// buildFilter makes the filter field when the view has one, hidden until asked for, and returns
+// what stands over the list: the view's fields, the path field and the filter.
+func (v *FileOpenView) buildFilter(cfg fileViewConfig) []tui.Component {
 	above := append(append([]tui.Component(nil), cfg.fields...), v.path.pane)
 	if cfg.filter {
 		inputOpts := []TextInputOption{WithOnEdit(func(text string) { v.list.SetFilter(text) })}
@@ -230,6 +244,12 @@ func newFileOpenView(cfg fileViewConfig, dirOpts ...FileListOption) *FileOpenVie
 		// a new folder clears the filter, so the field goes with it
 		v.list.onShow = func() { v.closeFilter() }
 	}
+	return above
+}
+
+// buildLayout lays the view out: above's parts over the list in the left column, the preview, if
+// any, on the right.
+func (v *FileOpenView) buildLayout(cfg fileViewConfig, above []tui.Component) {
 	// The picker's layout: the fields (and the filter) over the list in the left
 	// column, the preview on the right.
 	v.column = append(append([]tui.Component(nil), cfg.fields...), v.path.pane, v.list)
@@ -249,7 +269,6 @@ func newFileOpenView(cfg fileViewConfig, dirOpts ...FileListOption) *FileOpenVie
 		}
 		v.root = NewSplit(Horizontal, left, v.preview, splitOpts...)
 	}
-	return v
 }
 
 // movePart is Ctrl+h/j/k/l among the view's parts: down and up the left
@@ -500,6 +519,19 @@ func (v *FileOpenView) SetSource(src FileSource) {
 
 func (v *FileOpenView) Dir() string { return v.list.Source().Rooted(v.list.Dir()) }
 
+// The listing's parts, as the views built on a FileOpenView (Save, Folder) reach them: through the
+// view, not its list.
+func (v *FileOpenView) source() FileSource { return v.list.Source() }
+func (v *FileOpenView) listDir() string    { return v.list.Dir() } // the folder listed, as an fs path
+func (v *FileOpenView) loadDir(p string)   { v.list.load(p) }
+func (v *FileOpenView) listFocused() bool  { return v.list.Focused() }
+func (v *FileOpenView) focusList()         { v.list.Focus() }
+
+// setOnCursor replaces what runs when the list's cursor lands on a row. It is set once the view is
+// built, not passed in: a source read on the loop is listed while the list is built, and its first
+// row is reported to the view's own handler then.
+func (v *FileOpenView) setOnCursor(fn func(path string, folder bool)) { v.list.onCursor = fn }
+
 // Path is what the path field holds: the folder listed, or what was typed there since.
 func (v *FileOpenView) Path() string         { return v.path.input.Value() }
 func (v *FileOpenView) SetDir(rooted string) { v.list.SetDir(rooted) }
@@ -583,12 +615,12 @@ func NewFileSaveView(opts ...FileViewOption) *FileSaveView {
 	inner.onChoose = func() { v.SetName(path.Base(v.listing.Selected())); v.confirm() }
 	v.listing = newFileOpenView(inner)
 	// Moving onto a file in the listing names it, as picking one does.
-	v.listing.list.onCursor = func(p string, folder bool) {
+	v.listing.setOnCursor(func(p string, folder bool) {
 		v.listing.show(p, folder)
 		if !folder {
 			v.SetName(path.Base(p))
 		}
-	}
+	})
 	v.listing.enterPath = v.savePath
 	v.root = v.listing
 	return v
@@ -688,7 +720,7 @@ func (v *FileSaveView) Confirm() bool {
 	if !ok {
 		return false
 	}
-	src := v.listing.list.Source()
+	src := v.listing.source()
 	k, known := v.stat.known(p)
 	folder := k == pathFolder
 	ctx := v.Context()
@@ -719,7 +751,7 @@ func (v *FileSaveView) Confirm() bool {
 func (v *FileSaveView) into(p string) {
 	v.stat.drop()
 	v.name.SetValue("")
-	v.listing.list.load(p)
+	v.listing.loadDir(p)
 }
 
 // named is the name field as an fs path in the listed folder, or false when
@@ -729,11 +761,11 @@ func (v *FileSaveView) named() (string, bool) {
 	if name == "" {
 		return "", false
 	}
-	src := v.listing.list.Source()
+	src := v.listing.source()
 	if (src.Root != "" && strings.HasPrefix(name, src.Root)) || strings.HasPrefix(name, "/") {
 		return src.fsPath(name)
 	}
-	p := path.Clean(path.Join(v.listing.list.Dir(), name))
+	p := path.Clean(path.Join(v.listing.listDir(), name))
 	return p, fs.ValidPath(p)
 }
 
@@ -743,7 +775,7 @@ func (v *FileSaveView) Selected() string {
 	if !ok {
 		return ""
 	}
-	return v.listing.list.Source().Rooted(p)
+	return v.listing.source().Rooted(p)
 }
 
 // Select lists the file's folder and names the file — whether it exists yet
@@ -751,7 +783,7 @@ func (v *FileSaveView) Selected() string {
 func (v *FileSaveView) Select(rooted string) {
 	v.stat.drop()
 	v.listing.Select(rooted)
-	if p, ok := v.listing.cfg.src.fsPath(rooted); ok && p != "." {
+	if p, ok := v.listing.source().fsPath(rooted); ok && p != "." {
 		v.name.SetValue(path.Base(p))
 	}
 }
@@ -805,7 +837,7 @@ func (v *FileSaveView) HintMessage() tui.Message {
 	if ctx := v.name.Context(); ctx != nil && ctx.Focused() {
 		return tui.Msg("tui.files.hint.saveName")
 	}
-	if v.listing.list.Focused() {
+	if v.listing.listFocused() {
 		return tui.Msg("tui.files.hint.saveList")
 	}
 	return v.listing.HintMessage()
@@ -890,7 +922,7 @@ func NewFileFolderView(opts ...FileViewOption) *FileFolderView {
 	v.listing.path.pane.SetTitleMessage(folderTitle)
 	v.listing.enterPath = func(p string, k pathKind, _ bool) {
 		if k == pathFolder {
-			v.listing.list.load(p)
+			v.listing.loadDir(p)
 			return
 		}
 		v.listing.path.say(v.listing.path.titleFor(k))
@@ -999,7 +1031,7 @@ func (v *FileFolderView) Selected() string {
 	if !ok {
 		return ""
 	}
-	return v.listing.list.Source().Rooted(p)
+	return v.listing.source().Rooted(p)
 }
 
 // Select lists a folder, which the path field then holds.
@@ -1032,7 +1064,7 @@ func (v *FileFolderView) FocusInitial() {
 		ctx.FocusInto(v.cfg.fields[0])
 		return
 	}
-	v.listing.list.Focus()
+	v.listing.focusList()
 }
 
 // Path is what the path field holds.
@@ -1056,7 +1088,7 @@ func (v *FileFolderView) HintMessage() tui.Message {
 	if v.field().focused() {
 		return tui.Msg("tui.files.hint.folderPath")
 	}
-	if v.listing.list.Focused() {
+	if v.listing.listFocused() {
 		return tui.Msg("tui.files.hint.listPart")
 	}
 	return v.listing.HintMessage()
