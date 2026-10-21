@@ -317,34 +317,7 @@ func (l *sessionLoop) readPump(ctx context.Context, c conn, sess *Session) error
 // input while still claiming an ordered un-coalesced stream.
 func (l *sessionLoop) deliver(ctx context.Context, c conn, sess *Session, limiter *bucket, ev tui.Event) error {
 	backend := sess.Backend()
-	over := newOverload(l.limits.OverloadGrace, l.now)
-	for {
-		if wait := limiter.take(); wait > 0 {
-			// Backpressure, not a drop.
-			l.pause(ctx, wait)
-			if ctx.Err() != nil {
-				return nil
-			}
-		}
-		err := backend.Submit(ev)
-		switch {
-		case err == nil:
-			return nil
-		case errors.Is(err, ErrEventOverflow):
-			if over.full() {
-				logger.Notice(l.log, sessionAudit{Kind: "closed", ID: sess.ID(),
-					Subject: sess.Subject(), Reason: "input overload"})
-				_ = c.Close(closePolicy, "input overload")
-				return ErrEventOverflow
-			}
-			l.pause(ctx, overloadRetry)
-			if ctx.Err() != nil {
-				return nil
-			}
-		default:
-			return err // stopped
-		}
-	}
+	return l.submitWithBackpressure(ctx, c, sess, limiter, true, "input", func() error { return backend.Submit(ev) })
 }
 
 // deliverResize applies a size change, RETRYING rather than dropping it.
@@ -356,34 +329,59 @@ func (l *sessionLoop) deliver(ctx context.Context, c conn, sess *Session, limite
 // indefinitely.
 func (l *sessionLoop) deliverResize(ctx context.Context, c conn, sess *Session, limiter *bucket, cols, rows int) error {
 	backend := sess.Backend()
-	over := newOverload(l.limits.OverloadGrace, l.now)
-	for {
+	return l.submitWithBackpressure(ctx, c, sess, limiter, false, "resize", func() error {
 		err := backend.Resize(cols, rows)
-		switch {
-		case err == nil:
-			return nil
-		case errors.Is(err, ErrGridTooLarge):
+		if errors.Is(err, ErrGridTooLarge) {
 			// A protocol violation rather than a transient condition: the client
 			// will keep asking, so retrying is pointless and closing is honest.
 			logger.Notice(l.log, protocolNote{What: msgResize, Reason: err.Error()})
 			_ = c.Close(closePolicy, "grid too large")
-			return err
+		}
+		return err
+	})
+}
+
+// submitWithBackpressure runs try until the backend takes it. While the backend's queue is full
+// (ErrEventOverflow) it pauses and tries again, and once the overload outlasts its grace it audits
+// "<what> overload", closes the connection and returns the error. The input limiter is taken
+// before every try (limitEachTry: input events), or only between retries (a resize, which is not
+// itself rate-limited). It returns nil once try succeeds or ctx ends, and any other error of
+// try's at once (stopped, a resize refused).
+func (l *sessionLoop) submitWithBackpressure(ctx context.Context, c conn, sess *Session, limiter *bucket,
+	limitEachTry bool, what string, try func() error) error {
+	over := newOverload(l.limits.OverloadGrace, l.now)
+	for {
+		if limitEachTry {
+			if wait := limiter.take(); wait > 0 {
+				// Backpressure, not a drop.
+				l.pause(ctx, wait)
+				if ctx.Err() != nil {
+					return nil
+				}
+			}
+		}
+		err := try()
+		switch {
+		case err == nil:
+			return nil
 		case errors.Is(err, ErrEventOverflow):
 			if over.full() {
 				logger.Notice(l.log, sessionAudit{Kind: "closed", ID: sess.ID(),
-					Subject: sess.Subject(), Reason: "resize overload"})
+					Subject: sess.Subject(), Reason: what + " overload"})
 				_ = c.Close(closePolicy, "input overload")
 				return err
 			}
-			if wait := limiter.take(); wait > 0 {
-				l.pause(ctx, wait)
+			if !limitEachTry {
+				if wait := limiter.take(); wait > 0 {
+					l.pause(ctx, wait)
+				}
 			}
 			l.pause(ctx, overloadRetry)
 			if ctx.Err() != nil {
 				return nil
 			}
 		default:
-			return err // stopped
+			return err // stopped, or refused
 		}
 	}
 }
