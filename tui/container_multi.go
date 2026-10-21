@@ -32,8 +32,17 @@ type MultiChild struct {
 
 // SetVisible shows or hides the container and everything in it (visibility.go).
 func (m *MultiChild) SetVisible(v bool) {
-	if m.Show(v) && m.ctx != nil {
-		m.ctx.RequestLayout()
+	if m.Show(v) {
+		relayoutMounted(m.ctx)
+	}
+}
+
+// relayoutMounted asks for a layout pass through a container's mount context, while it is mounted
+// (ctx non-nil); before that, its Init and the first frame lay it out anyway. A function, not a
+// MultiChild method, so a base method calling it is no self-call an embedder could shadow.
+func relayoutMounted(ctx *Context) {
+	if ctx != nil {
+		ctx.RequestLayout()
 	}
 }
 
@@ -172,3 +181,25 @@ func (m *MultiChild) indexOf(child Component) int {
 	}
 	return -1
 }
+
+// childMeta is a container's per-child record (a weight, an edge, a layer), keyed by the child and
+// made on first use. A child with no entry reads as M's zero value; the container's Remove deletes
+// the entry with the child.
+type childMeta[M any] map[Component]M
+
+func (t *childMeta[M]) set(child Component, m M) {
+	if *t == nil {
+		*t = make(childMeta[M])
+	}
+	(*t)[child] = m
+}
+
+// geometry is a container that paints nothing and consumes no event: its children do both on the
+// sub-Surfaces and routes the framework gives them.
+type geometry struct{}
+
+// Render paints nothing: a geometry container is pure layout.
+func (geometry) Render(Surface) {}
+
+// HandleEvent consumes nothing; events bubble through.
+func (geometry) HandleEvent(Event) bool { return false }

@@ -17,6 +17,7 @@ package tui
 // gets that width, and the height the lines need.
 type Flow struct {
 	MultiChild
+	geometry
 	spacing    int
 	rowSpacing int // -1: as spacing
 }
@@ -61,9 +62,7 @@ func (f *Flow) SetRowSpacing(n int) {
 }
 
 func (f *Flow) relayout() {
-	if f.ctx != nil {
-		f.ctx.RequestLayout()
-	}
+	relayoutMounted(f.ctx)
 }
 
 // Layout measures each child up to the Flow's width and places it after the one before, or at the
@@ -97,9 +96,3 @@ func (f *Flow) Layout(c Constraints) Size {
 	}
 	return c.Constrain(Size{W: widest, H: y + lineH})
 }
-
-// Render paints nothing: a Flow is pure geometry.
-func (f *Flow) Render(Surface) {}
-
-// HandleEvent consumes nothing; events bubble through.
-func (f *Flow) HandleEvent(Event) bool { return false }

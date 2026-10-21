@@ -56,7 +56,8 @@ type stackLayer struct {
 //     underlying layers.
 type Stack struct {
 	MultiChild // order (== z-order), mount mirror, Move/Children/Init
-	layers     map[Component]stackLayer
+	geometry
+	layers childMeta[stackLayer]
 }
 
 var _ Container = (*Stack)(nil)
@@ -106,10 +107,7 @@ func (s *Stack) Remove(child Component) {
 }
 
 func (s *Stack) setLayer(child Component, l stackLayer) {
-	if s.layers == nil {
-		s.layers = make(map[Component]stackLayer)
-	}
-	s.layers[child] = l
+	s.layers.set(child, l)
 }
 
 func (s *Stack) Layout(c Constraints) Size {
@@ -155,9 +153,3 @@ func (a Align) Offset(avail, sz Size) (x, y int) {
 	}
 	return x, y
 }
-
-// Render paints nothing: a Stack is pure geometry.
-func (s *Stack) Render(Surface) {}
-
-// HandleEvent consumes nothing; events bubble through.
-func (s *Stack) HandleEvent(Event) bool { return false }
