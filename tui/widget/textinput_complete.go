@@ -60,6 +60,21 @@ func (t *TextInput) offered() (start int, items []string) {
 	return len(clusters(value[:b])), items
 }
 
+// walkStep is Tab's next place in a walk through n candidates from at (-1 before the first):
+// forward from the first, or with back (Shift+Tab) from the last, wrapping round. CommandLine's
+// completion and TextInput's walk by it.
+func walkStep(at, n int, back bool) int {
+	switch {
+	case at < 0 && back:
+		return n - 1
+	case at < 0:
+		return 0
+	case back:
+		return (at + n - 1) % n
+	}
+	return (at + 1) % n
+}
+
 // complete is Tab (back: Shift+Tab). It reports whether Tab was taken.
 func (t *TextInput) complete(back bool) bool {
 	if t.walk == nil {
@@ -81,17 +96,7 @@ func (t *TextInput) complete(back bool) bool {
 			return true
 		}
 	}
-	n := len(t.walk.items)
-	switch {
-	case t.walk.at < 0 && back:
-		t.walk.at = n - 1
-	case t.walk.at < 0:
-		t.walk.at = 0
-	case back:
-		t.walk.at = (t.walk.at + n - 1) % n
-	default:
-		t.walk.at = (t.walk.at + 1) % n
-	}
+	t.walk.at = walkStep(t.walk.at, len(t.walk.items), back)
 	t.replaceWord(t.walk.start, t.walk.items[t.walk.at])
 	return true
 }

@@ -223,17 +223,7 @@ func (l *CommandLine) complete(back bool) {
 			return
 		}
 	}
-	n := len(l.comp.cands)
-	switch {
-	case l.comp.at < 0 && back:
-		l.comp.at = n - 1
-	case l.comp.at < 0:
-		l.comp.at = 0
-	case back:
-		l.comp.at = (l.comp.at + n - 1) % n
-	default:
-		l.comp.at = (l.comp.at + 1) % n
-	}
+	l.comp.at = walkStep(l.comp.at, len(l.comp.cands), back)
 	l.list.choose(l.comp.at)
 	l.setField(l.comp.head + l.comp.cands[l.comp.at])
 }
