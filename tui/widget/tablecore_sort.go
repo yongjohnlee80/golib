@@ -97,46 +97,40 @@ func (c *TableCore) sorted() []int {
 	for i := range order {
 		order[i] = i
 	}
-	// Each key's cells are read and parsed once, not once per comparison: a decimal's parse
-	// allocates, and a sort compares each row many times.
 	if c.kinds == nil {
-		cols := make([][]plainCell, len(c.keys))
-		for i, k := range c.keys {
-			cols[i] = make([]plainCell, len(order))
-			for r := range order {
-				cols[i][r] = readPlainCell(c.src.Cell(r, k.Col))
-			}
-		}
-		slices.SortStableFunc(order, func(a, b int) int {
-			for i, k := range c.keys {
-				r := comparePlain(cols[i][a], cols[i][b])
-				if k.Desc {
-					r = -r
+		sortRows(order, c.keys, func(r, col int) plainCell { return readPlainCell(c.src.Cell(r, col)) },
+			func(a, b plainCell, desc bool) int {
+				if desc {
+					return comparePlain(b, a)
 				}
-				if r != 0 {
-					return r
-				}
-			}
-			return 0
-		})
+				return comparePlain(a, b)
+			})
 		return order
 	}
-	cols := make([][]sortCell, len(c.keys))
-	for i, k := range c.keys {
-		cols[i] = make([]sortCell, len(order))
+	sortRows(order, c.keys, func(r, col int) sortCell { return readSortCell(c.kinds.Kind(r, col), c.src.Cell(r, col)) },
+		compareSortCells)
+	return order
+}
+
+// sortRows orders rows stably by keys, the first deciding first. Each key's cells are read (and
+// parsed) once, not once per comparison: a decimal's parse allocates, and a sort compares each row
+// many times. cmp compares two cells of one key, descending when desc.
+func sortRows[C any](order []int, keys []TableSortKey, read func(row, col int) C, cmp func(a, b C, desc bool) int) {
+	cols := make([][]C, len(keys))
+	for i, k := range keys {
+		cols[i] = make([]C, len(order))
 		for r := range order {
-			cols[i][r] = readSortCell(c.kinds.Kind(r, k.Col), c.src.Cell(r, k.Col))
+			cols[i][r] = read(r, k.Col)
 		}
 	}
 	slices.SortStableFunc(order, func(a, b int) int {
-		for i, k := range c.keys {
-			if r := compareSortCells(cols[i][a], cols[i][b], k.Desc); r != 0 {
+		for i, k := range keys {
+			if r := cmp(cols[i][a], cols[i][b], k.Desc); r != 0 {
 				return r
 			}
 		}
 		return 0
 	})
-	return order
 }
 
 // sortCell is one cell as a kinded sort reads it.
