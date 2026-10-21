@@ -81,7 +81,6 @@ func (a *App) notifyHover(n *node, hovered bool) {
 	}
 	if o, ok := n.comp.(HoverObserver); ok {
 		o.HoverChanged(hovered)
-		a.renderDirty = true
-		a.queue.wakeUp()
+		a.invalidate(false)
 	}
 }

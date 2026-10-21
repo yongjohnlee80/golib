@@ -123,10 +123,8 @@ func (a *App) dispatch(ev Event) {
 		// + full render dirt (never diff across a size change), publish on the
 		// Bus for components that care about raw dimensions.
 		a.size = Size{W: e.W, H: e.H}
-		a.layoutDirty = true
-		a.renderDirty = true
+		a.invalidate(true)
 		a.bus.Publish(e)
-		a.queue.wakeUp()
 
 	case FocusEvent:
 		a.dispatchFocusEvent(e, ev)

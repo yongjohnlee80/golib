@@ -155,8 +155,7 @@ func (a *App) layoutAndCommit() {
 		}
 		if steps == maxRevealSteps {
 			// the rest is served on the next frame, the request kept
-			a.layoutDirty = true
-			a.queue.wakeUp()
+			a.invalidate(true)
 			return
 		}
 		if !a.revealStep() {
