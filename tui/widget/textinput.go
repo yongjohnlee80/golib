@@ -195,12 +195,7 @@ func WithInitialValue(s string) TextInputOption {
 // WithTextInputStyles overrides the style hooks; zero fields keep defaults.
 func WithTextInputStyles(st TextInputStyles) TextInputOption {
 	return func(t *TextInput) {
-		t.styles = TextInputStyles{
-			Text:        st.Text.Inherit(t.styles.Text),
-			Placeholder: st.Placeholder.Inherit(t.styles.Placeholder),
-			Selection:   st.Selection.Inherit(t.styles.Selection),
-			Error:       st.Error.Inherit(t.styles.Error),
-		}
+		t.styles = st.over(t.styles)
 	}
 }
 
@@ -212,7 +207,19 @@ func WithTextInputStyles(st TextInputStyles) TextInputOption {
 // all use it.
 func mutedPlaceholder() style.Style { return style.New().Foreground(style.TokenTextMuted).Faint(true) }
 
-// defaultTextInputStyles are a TextInput's looks before any option.
+// over is s laid over base, slot by slot: each set property of s wins, and base fills the rest. The
+// one merge of the text widgets' looks (TextInput, TextArea, Editor).
+func (s TextInputStyles) over(base TextInputStyles) TextInputStyles {
+	return TextInputStyles{
+		Text:        s.Text.Inherit(base.Text),
+		Placeholder: s.Placeholder.Inherit(base.Placeholder),
+		Selection:   s.Selection.Inherit(base.Selection),
+		Error:       s.Error.Inherit(base.Error),
+	}
+}
+
+// defaultTextInputStyles are a text widget's looks before any option: TextInput's, TextArea's and
+// the Editor's alike.
 func defaultTextInputStyles() TextInputStyles {
 	return TextInputStyles{
 		Placeholder: mutedPlaceholder(),
