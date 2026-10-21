@@ -2,9 +2,7 @@ package web
 
 import (
 	"context"
-	"crypto/rand"
 	_ "embed"
-	"encoding/base64"
 	"encoding/json"
 	"html/template"
 	"net/http"
@@ -120,13 +118,7 @@ func attrBits() map[string]uint16 {
 // headless Chromium does. This encoding is a legitimate simplification, not a
 // bug fix, and the test below asserts source-level identity rather than browser
 // behavior it cannot observe.
-func nonce() (string, error) {
-	var b [16]byte
-	if _, err := rand.Read(b[:]); err != nil {
-		return "", err
-	}
-	return base64.RawURLEncoding.EncodeToString(b[:]), nil
-}
+func nonce() (string, error) { return randomToken(16) }
 
 // ServePage writes the client shell.
 //

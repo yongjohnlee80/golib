@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"strconv"
 	"sync"
 
 	"github.com/yongjohnlee80/golib/errs"
@@ -17,8 +18,9 @@ var (
 	// grid size until a client has reported one.
 	ErrNotStarted = errors.New("web: backend not started")
 
-	// ErrStopped is returned once Stop has run.
-	ErrStopped = errors.New("web: backend stopped")
+	// ErrStopped is returned once Stop has run. It is an errs.ErrClosed, as term's ErrClosed is,
+	// so code holding only a tui.Backend can ask errors.Is(err, errs.ErrClosed).
+	ErrStopped = errs.Sentinel(errs.ErrClosed, "web: backend stopped")
 
 	// ErrNoClient means Start's context ended before any browser attached.
 	ErrNoClient = errors.New("web: no client attached")
@@ -513,23 +515,9 @@ type sessionEvent struct {
 func (s sessionEvent) String() string {
 	out := "web session " + s.Kind
 	if s.Cols > 0 {
-		out += " size=" + itoa(s.Cols) + "x" + itoa(s.Rows)
+		out += " size=" + strconv.Itoa(s.Cols) + "x" + strconv.Itoa(s.Rows)
 	}
 	return out
-}
-
-func itoa(n int) string {
-	if n == 0 {
-		return "0"
-	}
-	var buf [20]byte
-	i := len(buf)
-	for n > 0 {
-		i--
-		buf[i] = byte('0' + n%10)
-		n /= 10
-	}
-	return string(buf[i:])
 }
 
 // compile-time proof this satisfies the seam it exists to test

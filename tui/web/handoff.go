@@ -46,8 +46,21 @@ const (
 	// limit, an unusable hello, a transport error.
 	AttachFailed
 
-	// Expired, SessionEnded and LoginFailed are declared in sso.go, where the park
-	// that produces them lives.
+	// Expired: a login that was never attached. The SSO park produces it.
+	Expired
+
+	// SessionEnded: state released because the session it belonged to ended — the
+	// ordinary teardown, not a failure.
+	SessionEnded
+
+	// LoginFailed: state a login allocated and then could not park — a later factor
+	// refused, the ticket failed to mint, the park was full.
+	//
+	// Distinct from Expired because the two mean different things to whoever reads
+	// the log. Expired says a user walked away after authenticating successfully;
+	// LoginFailed says the login never completed at all, and the state exists only
+	// because verification is the one place that holds the credential.
+	LoginFailed
 )
 
 // String names the reason for a log line.
