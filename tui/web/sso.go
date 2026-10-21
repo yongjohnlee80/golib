@@ -123,9 +123,8 @@ type parkedEntry[T any] struct {
 	expires time.Time
 	// timer fires the expiry. One per entry rather than a package ticker: an empty
 	// park then costs nothing and a lone abandoned login is still released on time.
-	// The previous version only swept when ANOTHER login arrived, so on an idle
-	// server one abandoned login stayed logged in upstream indefinitely — the
-	// doc claimed an internal sweep that did not exist.
+	// A sweep that ran only when ANOTHER login arrived would leave one abandoned
+	// login logged in upstream indefinitely on an idle server.
 	timer *time.Timer
 }
 

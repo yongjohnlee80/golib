@@ -189,11 +189,9 @@ func NewHandler(cfg Config, mgr *Manager, opts ...HandlerOption) (*Handler, erro
 	if !h.parkSettles {
 		mgr.settle = h.pending.release
 	}
-	// Limits.QueueDepth is the single source of the event queue's capacity.
-	// It previously said 1024 while Backend defaulted to 256 and nothing read
-	// the field, so the documented limit and the real one were different numbers.
-	// The Manager builds each session's Backend, so the option is
-	// pushed there.
+	// Limits.QueueDepth is the single source of the event queue's capacity, so
+	// the documented limit and the real one are one number. The Manager builds
+	// each session's Backend, so the option is pushed there.
 	mgr.setQueueDepth(h.limits.QueueDepth)
 	h.loop = &sessionLoop{
 		cfg:     cfg,

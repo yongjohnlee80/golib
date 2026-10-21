@@ -82,9 +82,8 @@ func (r HandoffReason) String() string {
 
 // SessionInfo is what an [AppFactory] needs to build an App for a specific user.
 //
-// It exists because the factory previously received only a [Backend], so it could
-// not know WHICH user the session was for — which made single sign-on
-// unimplementable by any consumer.
+// A [Backend] alone cannot say WHICH user a session is for, and without that no consumer can
+// implement single sign-on.
 type SessionInfo struct {
 	// Identity is the authenticated principal. Never nil when a factory is
 	// called: [Manager.Create] refuses without one.
@@ -238,11 +237,10 @@ func (s *Stash) discard() {
 // # Why a callback rather than a boolean you check first
 //
 // Because a boolean returned before a mutation is a time-of-check-to-time-of-use
-// gap. An earlier version of this package checked the reservation and then
-// inserted, and the key could be swept in between: the entry landed with no slot
-// accounting for it, and the pending-login budget then permitted more parked logins
-// than its cap. publish runs while the reservation's own lock is held, so
-// membership and publication are one step.
+// gap: checking the reservation and then inserting lets the key be swept in between, so
+// the entry lands with no slot accounting for it, and the pending-login budget then
+// permits more parked logins than its cap. publish runs while the reservation's own
+// lock is held, so membership and publication are one step.
 //
 // publish must therefore be SHORT and must not block: no network calls, no waiting
 // on another goroutine that might need the same locks. Write your map entry and

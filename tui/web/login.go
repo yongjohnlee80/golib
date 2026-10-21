@@ -25,12 +25,9 @@ import (
 //     converts into the first of those and is never presented to it directly.
 //     The ticket it converts into is single-use and expires in 30 seconds, and
 //     it is accepted only behind the separately-enforced Origin allowlist — the
-//     ticket itself carries no origin binding, and earlier revisions of this
-//     comment wrongly said it did.
-//     (An earlier version of this comment said every attach presents a ticket,
-//     which is simply untrue — mTLS and the SSH challenge attach on their own.
-//     The real invariant is narrower and is the one that matters: a reusable
-//     secret is not among the things the attach path will accept.)
+//     ticket itself carries no origin binding. Not every attach presents a
+//     ticket (mTLS and the SSH challenge attach on their own); the invariant is
+//     that a reusable secret is not among the things the attach path accepts.
 //   - **The password crosses once, to a route that does nothing else.** It never
 //     touches session creation, frame delivery or the event stream, so no bug in
 //     those paths can be reached while a password is in flight.
@@ -51,13 +48,12 @@ import (
 // THIS HANDLER as well as by [Handler.Guard], a bounded body, one uniform
 // refusal, and no statement anywhere about whether the subject exists.
 //
-// The internal check is not redundancy. An earlier version relied entirely on
-// Guard, which [Handler.Mount] applies — so a caller who mounted the exported
-// handler directly got an unguarded login endpoint, and a direct call with an
-// attacker Host and Origin minted a ticket for a correct password.
-// The doc comment claimed the route itself carried those controls; it did not.
-// For an endpoint that turns a password into a credential, the check belongs
-// where the handler is, not only where someone remembered to wrap it.
+// The internal check is not redundancy. Relying on Guard alone, which
+// [Handler.Mount] applies, would leave a caller who mounts the exported handler
+// directly with an unguarded login endpoint, where a direct call with an attacker
+// Host and Origin mints a ticket for a correct password. For an endpoint that
+// turns a password into a credential, the check belongs where the handler is,
+// not only where someone remembered to wrap it.
 type loginRequest struct {
 	Subject  string `json:"subject"`
 	Password string `json:"password"`
@@ -142,8 +138,8 @@ func (h *Handler) ServeLogin(w http.ResponseWriter, r *http.Request) {
 	// A factor allocates during Verify because that is the only place holding the
 	// credential, but the login can still fail afterwards — a later factor in the
 	// policy refuses, the ticket fails to mint, the park is full. Each of those
-	// used to return having allocated an upstream session nothing would ever close.
-	// A no-op once the value has been taken into a park.
+	// would otherwise return having allocated an upstream session nothing would
+	// ever close. A no-op once the value has been taken into a park.
 	defer stash.discard()
 
 	identity, attemptID, err := h.authenticateLogin(r, req, stash)
@@ -200,9 +196,9 @@ func decodeLogin(w http.ResponseWriter, r *http.Request) (loginRequest, error) {
 }
 
 // loginLease is the pending-login slot one request holds. It stays anonymous unless a handoff
-// ends up owning it, in which case whoever settles that handoff returns it — see gate.hold. The
-// previous version simply stopped returning the slot on a successful login and nothing ever gave
-// it back, so the ninth login 503'd forever.
+// ends up owning it, in which case whoever settles that handoff returns it — see gate.hold. A slot
+// a successful login kept and nothing gave back would leave, with a cap of eight, the ninth login
+// refused forever.
 //
 // leased is one-way: once a handoff owns this slot the KEY is the sole unit of accounting, and
 // gate.release is idempotent per key. Flipping it back would let leave decrement a slot another

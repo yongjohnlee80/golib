@@ -102,14 +102,11 @@ func attrBits() map[string]uint16 {
 // document. That makes the header and the source directly comparable and removes
 // a whole class of question.
 //
-// CORRECTION: an earlier version of this comment claimed
-// that a "+" in a standard-alphabet nonce BREAKS the page, because html/template
-// renders it as "&#43;". The escaping is real; the conclusion was invented. A
-// browser decodes HTML entities before comparing the nonce, so
-// script-src 'nonce-a+b' matches a source nonce written a&#43;b, which is what
-// headless Chromium does. This encoding is a legitimate simplification, not a
-// bug fix, and the test below asserts source-level identity rather than browser
-// behavior it cannot observe.
+// A "+" in a standard-alphabet nonce would not break the page: html/template
+// renders it as "&#43;", but a browser decodes HTML entities before comparing the
+// nonce, so script-src 'nonce-a+b' matches a source nonce written a&#43;b, as
+// headless Chromium shows. This encoding is a simplification, and the test asserts
+// source-level identity rather than browser behavior it cannot observe.
 func nonce() string { return randomToken(16) }
 
 // ServePage writes the client shell.
@@ -130,9 +127,8 @@ func (h *Handler) ServePage(w http.ResponseWriter, r *http.Request) {
 		Path:      h.wsPath,
 		LoginPath: login,
 		NamedKeys: NamedKeys(),
-		// Injected, not reimplemented. The reserved table was previously
-		// hard-coded in BOTH places while the client's comment claimed it was
-		// injected, so the two could drift with nothing to notice.
+		// Injected, not reimplemented: a table hard-coded in both the server and
+		// the client could drift with nothing to notice.
 		Reserved: ReservedRules(),
 		Attrs:    attrBits(),
 	})
