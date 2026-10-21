@@ -243,7 +243,7 @@ func (p *blockParser) incorporate(ln line) {
 	}
 	t := container.Kind
 	lastLineBlank := p.blank &&
-		!(t == KindBlockQuote || (t == KindCodeBlock && container.Fence != 0) ||
+		!(t == KindBlockQuote || (t == KindCodeBlock && container.Fence() != 0) ||
 			(t == KindItem && container.FirstChild == nil && container.Span.Start >= p.ln.start))
 	for c := container; c != nil; c = c.Parent {
 		c.blk.lastLineBlank = lastLineBlank
@@ -252,8 +252,8 @@ func (p *blockParser) incorporate(ln line) {
 	switch {
 	case acceptsLines(container):
 		p.addLine()
-		if container.Kind == KindHTMLBlock && container.HTML >= 1 && container.HTML <= 5 &&
-			htmlBlockEnds(container.HTML, p.text[p.offset:]) {
+		if container.Kind == KindHTMLBlock && container.HTML() >= 1 && container.HTML() <= 5 &&
+			htmlBlockEnds(container.HTML(), p.text[p.offset:]) {
 			p.lastLineLengthClose(container)
 		}
 	case p.offset < len(p.text) && !p.blank:
@@ -296,17 +296,17 @@ func (p *blockParser) continues(b *Node) continueResult {
 			p.advanceNextNonspace()
 			return continueMatched
 		}
-		if p.indent >= b.List.markerOffset+b.List.padding {
-			p.advanceOffset(b.List.markerOffset+b.List.padding, true)
+		if p.indent >= b.List().markerOffset+b.List().padding {
+			p.advanceOffset(b.List().markerOffset+b.List().padding, true)
 			return continueMatched
 		}
 		return continueFailed
 	case KindHeading, KindThematicBreak:
 		return continueFailed
 	case KindCodeBlock:
-		if b.Fence != 0 {
-			if !p.indented && p.peek(p.nextNonspace) == b.Fence {
-				if n := closingFence(p.text[p.nextNonspace:], b.Fence); n >= b.blk.fenceLen {
+		if b.Fence() != 0 {
+			if !p.indented && p.peek(p.nextNonspace) == b.Fence() {
+				if n := closingFence(p.text[p.nextNonspace:], b.Fence()); n >= b.blk.fenceLen {
 					p.finalize(b, p.ln.end)
 					return continueLineDone
 				}
@@ -326,7 +326,7 @@ func (p *blockParser) continues(b *Node) continueResult {
 		}
 		return continueFailed
 	case KindHTMLBlock:
-		if p.blank && (b.HTML == 6 || b.HTML == 7) {
+		if p.blank && (b.HTML() == 6 || b.HTML() == 7) {
 			return continueFailed
 		}
 		return continueMatched
@@ -428,7 +428,7 @@ func (p *blockParser) addLine() {
 	b.segs = append(b.segs, s)
 	// blank lines at the end of an indented code block are not part of it, so they extend nothing
 	// until a later line with content does
-	if !p.blank || p.tip.Kind != KindCodeBlock || p.tip.Fence != 0 {
+	if !p.blank || p.tip.Kind != KindCodeBlock || p.tip.Fence() != 0 {
 		p.extendTo(p.tip, p.ln.end)
 	}
 }
@@ -462,7 +462,7 @@ func (p *blockParser) finalize(b *Node, end int) {
 
 func finalizeCode(b *Node) {
 	c := b.blk.content
-	if b.Fence != 0 {
+	if b.Fence() != 0 {
 		// the first line is the info string, kept apart at the start
 		b.Literal = c
 		return
@@ -496,7 +496,7 @@ func finalizeList(l *Node) {
 			}
 		}
 	}
-	l.List.Tight = tight
+	l.attrs().list.Tight = tight
 }
 
 func endsWithBlankLine(b *Node) bool {

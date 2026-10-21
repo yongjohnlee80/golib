@@ -27,26 +27,29 @@ LF, CR or CRLF, as CommonMark counts them; `parse.Scanner` does not end a line a
 differ on that input only.
 
 Every `Node` has a `Kind`, a `Span` (`[Start, End)` into `Source`), and parent, child and sibling
-links. A child's span lies inside its parent's; siblings' spans are ordered and disjoint. The other
-fields are used by the kinds that need them:
+links. A child's span lies inside its parent's; siblings' spans are ordered and disjoint. `Literal` is a
+field too. The values only some kinds carry are read through methods (`n.Level()`, `n.Dest()`, …), which
+answer the zero value on a node of another kind, and on a nil node, so no reader needs a guard; each has
+a setter (`SetLevel`, `SetDest`, …), which does nothing on a nil node. They are kept off the `Node`
+itself, so text, emphasis and paragraphs, most of a document, stay small:
 
-| kind | what it is | fields |
+| kind | what it is | values |
 | --- | --- | --- |
 | `KindDocument` | the root | |
-| `KindBlockQuote` | `>` lines | `Callout` (Obsidian) |
-| `KindList`, `KindItem` | a list and its items | `List` (type, bullet or delimiter, start, `Tight`); `Checked` on a GFM task item |
+| `KindBlockQuote` | `>` lines | `Callout()` (Obsidian) |
+| `KindList`, `KindItem` | a list and its items | `List()` (type, bullet or delimiter, start, `Tight`); `Checked()` on a GFM task item |
 | `KindParagraph` | | |
-| `KindHeading` | ATX or setext | `Level` |
+| `KindHeading` | ATX or setext | `Level()` |
 | `KindThematicBreak` | | |
-| `KindCodeBlock` | fenced or indented | `Fence` (0 for indented), `Info` (decoded), `Literal` (the content) |
-| `KindHTMLBlock` | | `HTML` (which of the seven start conditions), `Literal` |
-| `KindLinkRefDef` | a definition, where it was written | `Label` (as written), `Dest`, `Title` |
+| `KindCodeBlock` | fenced or indented | `Fence()` (0 for indented), `Info()` (decoded), `Literal` (the content) |
+| `KindHTMLBlock` | | `HTML()` (which of the seven start conditions), `Literal` |
+| `KindLinkRefDef` | a definition, where it was written | `Label()` (as written), `Dest()`, `Title()` |
 | `KindText` | | `Literal` only when it differs from the source |
 | `KindSoftBreak`, `KindHardBreak` | line endings | |
 | `KindCodeSpan` | | `Literal` (normalized) |
 | `KindEmph`, `KindStrong` | | |
-| `KindLink`, `KindImage` | inline or reference | `Dest`, `Title` (decoded) |
-| `KindAutolink` | `<…>`, and GFM's extended autolinks | `Dest` (with `mailto:` or `http://` added where the syntax implies it) |
+| `KindLink`, `KindImage` | inline or reference | `Dest()`, `Title()` (decoded) |
+| `KindAutolink` | `<…>`, and GFM's extended autolinks | `Dest()` (with `mailto:` or `http://` added where the syntax implies it) |
 | `KindRawHTML` | inline HTML | `Literal` |
 
 `(*Node).Text(src)` returns a text-bearing node's text: `Literal` if set, else the source it spans.
@@ -69,12 +72,12 @@ differently without being recognized.
 
 | kind | what it is | fields |
 | --- | --- | --- |
-| `KindTable` | a header row, a delimiter row, any body rows | `Align` (per column) |
+| `KindTable` | a header row, a delimiter row, any body rows | `Align()` (per column) |
 | `KindTableRow` | the first row is the header | |
 | `KindTableCell` | inline content; `\|` is a pipe anywhere in it | |
 | `KindStrikethrough` | `~~text~~` | |
 
-Task list items are `KindItem` with `Checked` set; extended autolinks (`www.`, `http://`, `https://`,
+Task list items are `KindItem` with `Checked()` non-nil; extended autolinks (`www.`, `http://`, `https://`,
 `ftp://`, email) are `KindAutolink`.
 
 ### Obsidian
@@ -82,13 +85,21 @@ Task list items are `KindItem` with `Checked` set; extended autolinks (`www.`, `
 | kind | what it is | fields |
 | --- | --- | --- |
 | `KindFrontmatter` | `---` at offset 0 through the next `---` line | `Literal` (the raw YAML between the fences) |
-| `KindWikilink` | `[[page#heading#^block\|alias]]` | `Target` (`Page`, `Heading`, `Block`, `Alias`, as written) |
-| `KindEmbed` | `![[…]]` | `Target` (for an image, `Alias` may be a size) |
-| `KindTag` | `#name`, nested with `/` | `Label` (the name without `#`) |
+| `KindWikilink` | `[[page#heading#^block\|alias]]` | `Target()` (`Page`, `Heading`, `Block`, `Alias`, as written) |
+| `KindEmbed` | `![[…]]` | `Target()` (for an image, `Alias` may be a size) |
+| `KindTag` | `#name`, nested with `/` | `Label()` (the name without `#`) |
 | `KindCalloutTitle` | a callout's title line, the first child of its block quote | |
 
-A callout is a `KindBlockQuote` with `Callout` set (`Type`, and `Fold`: `'+'`, `'-'` or 0).
+A callout is a `KindBlockQuote` with `Callout()` non-nil (`Type`, and `Fold`: `'+'`, `'-'` or 0).
 Frontmatter is not parsed here: YAML is a separate parser's job.
+
+**Moving from the fields (golib v0.7.29 and earlier).** `n.Dest` is `n.Dest()`, `n.Level` is
+`n.Level()`, and so on for `Info`, `Fence`, `List`, `Title`, `Label`, `HTML`, `Checked`, `Align`, `Target`
+and `Callout`; an assignment `n.Dest = v` is `n.SetDest(v)`. A struct literal may still set `Kind`,
+`Span`, the links and `Literal`; the moved values are set after. Go allows no field and method of one
+name, so the old fields could not be kept beside the methods: every use is a compile error until moved,
+and none changes meaning silently. One exception: `n.Callout != nil` and the like still compile (a method
+value is never nil), so `go vet`'s "comparison of function … is always true" is the check to run.
 
 ## Readings taken
 

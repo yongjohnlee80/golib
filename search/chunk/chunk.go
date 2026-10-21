@@ -109,10 +109,10 @@ func Markdown(doc *markdown.Document, title string, limit int) []search.Chunk {
 			continue
 		case markdown.KindHeading:
 			flush()
-			for len(stack) < n.Level {
+			for len(stack) < n.Level() {
 				stack = append(stack, "")
 			}
-			stack = append(stack[:n.Level-1], plainText(n, src))
+			stack = append(stack[:n.Level()-1], plainText(n, src))
 			continue
 		case markdown.KindList:
 			if tokensOf(src, n.Span.Start, n.Span.End) > limit {

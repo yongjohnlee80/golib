@@ -43,8 +43,7 @@ func (p *blockParser) extractLinkRefs(para *Node) {
 		}
 		start := mapOffset(b.segs, used)
 		end := mapOffset(b.segs, used+n)
-		def := p.doc.nodes.new(Node{Kind: KindLinkRefDef, Span: Span{start, max(start, trimEnd(p.src, end))},
-			Label: label, Dest: dest, Title: title, blk: &blockState{}}) // a closed block, like any other
+		def := p.doc.nodes.newWith(Node{Kind: KindLinkRefDef, Span: Span{start, max(start, trimEnd(p.src, end))}, blk: &blockState{}}, nodeAttrs{label: label, dest: dest, title: title}) // a closed block, like any other
 		para.InsertBefore(def)
 		used += n
 	}

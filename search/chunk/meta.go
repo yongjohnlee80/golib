@@ -67,9 +67,9 @@ func ReadMeta(doc *markdown.Document, p string) Meta {
 	walk = func(n *markdown.Node) {
 		for c := n.FirstChild; c != nil; c = c.Next {
 			if c.Kind == markdown.KindTag {
-				tags[strings.ToLower(string(c.Label))] = true
+				tags[strings.ToLower(string(c.Label()))] = true
 			}
-			if m.Title == "" && c.Kind == markdown.KindHeading && c.Level == 1 && c.Parent == doc.Root {
+			if m.Title == "" && c.Kind == markdown.KindHeading && c.Level() == 1 && c.Parent == doc.Root {
 				m.Title = plainText(c, doc.Source)
 			}
 			walk(c)

@@ -211,7 +211,7 @@ func (l *mdLine) walk(n *Node, off int) {
 			mark++
 		}
 		l.paint(start, mark, highlight.Operator)
-		if n.Callout != nil {
+		if n.Callout() != nil {
 			if c := n.FirstChild; c != nil && off+c.Span.Start > mark {
 				l.paint(mark, off+c.Span.Start, calloutStyle(n))
 			}
@@ -227,7 +227,7 @@ func (l *mdLine) walk(n *Node, off int) {
 // calloutStyle is a callout's colour: Alert for the kinds Obsidian draws as a
 // warning, ControlFlow for the rest.
 func calloutStyle(quote *Node) highlight.Style {
-	if quote != nil && quote.Callout != nil && warningCallout(string(quote.Callout.Type)) {
+	if quote != nil && quote.Callout() != nil && warningCallout(string(quote.Callout().Type)) {
 		return highlight.Alert
 	}
 	return highlight.ControlFlow
