@@ -49,7 +49,6 @@ type DataTable struct {
 	theme     *style.Theme // the surface's at the last paint, for a pixel layout's colours
 	top, left int          // the cell layout's first row shown, first field shown
 	w, h      int
-	caret     *tui.Point // the open field's caret, view-local, as last painted; nil for none
 }
 
 // tableEdgeWidth is the cells the edge field (TableAppendEdges) takes.
@@ -401,7 +400,6 @@ func (t *DataTable) Render(s tui.Surface) {
 		}
 		drawText(s, sp.x, 0, fitCell(title, min(sp.w, sz.W-sp.x), ElideRight, style.AlignLeft, s.StringWidth), t.styles.Header)
 	}
-	t.caret = nil
 	t.drawRules(s, digits)
 	if t.core.DrawnRows() == 0 {
 		if sz.H > tableHeaderRows {
@@ -477,44 +475,64 @@ func (t *DataTable) fieldX(col, gutter int) (int, bool) {
 }
 
 // drawField draws the open field over its cell, as wide as its field (at least 12 cells) and as tall
-// as its value's lines, growing downward, and keeps its caret for Cursor.
+// as its value's lines, growing downward, where fieldPlace puts it.
 func (t *DataTable) drawField(s tui.Surface, gutter int, fields []TableField) {
-	e := t.core.Editing()
-	if e == nil {
+	f, ok := t.fieldPlace(s.Size(), gutter, fields, s.StringWidth)
+	if !ok {
 		return
 	}
-	sz := s.Size()
+	st := t.CursorStyle().Inherit(t.styles.Cell)
+	s.Fill(f.rect, " ", st)
+	sub := s.Sub(f.rect)
+	for i := range f.rect.H {
+		drawText(sub, 0, i, fromCell(f.lines[f.top+i], f.left, s.StringWidth), st)
+	}
+}
+
+// openField is where the open field shows in the view: its cells, the first of its lines shown and
+// the first column, and its caret, view-local.
+type openField struct {
+	rect      tui.Rect
+	lines     []string
+	top, left int
+	caret     tui.Point
+}
+
+// fieldPlace places the open field in a view of size sz, measuring with measure: the one geometry
+// drawField paints and Cursor reports. ok is false with no field open, or one out of sight.
+func (t *DataTable) fieldPlace(sz tui.Size, gutter int, fields []TableField, measure func(string) int) (openField, bool) {
+	e := t.core.Editing()
+	if e == nil {
+		return openField{}, false
+	}
 	x, ok := t.fieldX(e.Pos.Col, gutter)
 	y := tableHeaderRows + t.core.DrawnOf(e.Pos.Row) - t.top
 	if e.Inserting() {
 		y = tableHeaderRows + e.Pos.Row - t.top
 	}
 	if !ok || x >= sz.W || y < tableHeaderRows || y >= sz.H {
-		return
+		return openField{}, false
 	}
 	w := tableEdgeWidth
 	if e.Pos.Col < len(fields) {
 		w = t.core.Width(e.Pos.Col)
 	}
 	w = min(max(w, 12), sz.W-x)
-	// drawn here, line by line, not through the TextArea's own Layout and Render: a Render that lays
-	// out or paints a component it does not own the placement of runs a second layout in the paint
+	// drawn line by line, not through the TextArea's own Layout and Render: a Render that lays out
+	// or paints a component it does not own the placement of runs a second layout in the paint
 	lines := strings.Split(e.Field.Value(), "\n")
 	ln, col := e.Field.Caret()
 	ln = min(ln, len(lines)-1)
 	h := min(len(lines), sz.H-y)
 	top := max(ln-h+1, 0)
 	cs := clusters(lines[ln])
-	caretX := s.StringWidth(strings.Join(cs[:min(col, len(cs))], ""))
+	caretX := measure(strings.Join(cs[:min(col, len(cs))], ""))
 	left := max(caretX-w+1, 0) // the caret kept in sight
-	r := tui.Rect{X: x, Y: y, W: w, H: h}
-	st := t.CursorStyle().Inherit(t.styles.Cell)
-	s.Fill(r, " ", st)
-	sub := s.Sub(r)
-	for i := range h {
-		drawText(sub, 0, i, fromCell(lines[top+i], left, s.StringWidth), st)
-	}
-	t.caret = &tui.Point{X: x + caretX - left, Y: y + ln - top}
+	return openField{
+		rect:  tui.Rect{X: x, Y: y, W: w, H: h},
+		lines: lines, top: top, left: left,
+		caret: tui.Point{X: x + caretX - left, Y: y + ln - top},
+	}, true
 }
 
 // fromCell is line from cell off on: the clusters before it dropped.
@@ -532,10 +550,11 @@ func fromCell(line string, off int, width func(string) int) string {
 // Cursor is the open field's caret (tui.CursorReporter), so a terminal shows it where the text is
 // typed; none while no field is open.
 func (t *DataTable) Cursor() (int, int, bool) {
-	if t.caret == nil || t.core.Editing() == nil {
-		return 0, 0, false
+	if t.bound() {
+		return 0, 0, false // a bound layout places its own field
 	}
-	return t.caret.X, t.caret.Y, true
+	f, ok := t.fieldPlace(tui.Size{W: t.w, H: t.h}, t.gutter(), t.core.Fields(), t.measure)
+	return f.caret.X, f.caret.Y, ok
 }
 
 // HandleEvent moves through the core's keys and drives its pointer: a left press is the core's
