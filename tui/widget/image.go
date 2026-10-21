@@ -536,24 +536,25 @@ func (d *imageDrag) end(ctx *tui.Context) {
 	}
 }
 
-// Layout takes every cell offered, and the view takes them after layout (commitCells).
+// Layout takes every cell offered, and the view takes them after layout (imageState.setCells).
 func (m *Image) Layout(c tui.Constraints) tui.Size {
 	sz := c.Constrain(tui.Size{W: boundedMax(c.MaxW, c.MinW), H: boundedMax(c.MaxH, c.MinH)})
 	if ctx := m.Context(); ctx != nil { // a measure before mount commits nothing
-		ctx.AfterLayout("image-cells", func() { m.commitCells(sz) })
+		ctx.AfterLayout("image-cells", func() { m.st.setCells(sz) })
 	}
 	return sz
 }
 
-// commitCells makes sz the view's cells: the part shown is kept within what they hold now.
-func (m *Image) commitCells(sz tui.Size) {
-	v := &m.st.view
+// setCells makes sz the view's cells, after layout: the part shown is kept within what they hold
+// now.
+func (s *imageState) setCells(sz tui.Size) {
+	v := &s.view
 	if v.cols == sz.W && v.rows == sz.H {
 		return
 	}
 	v.cols, v.rows = sz.W, sz.H
 	v.to(v.left, v.top) // the cells may hold more now
-	m.st.moved()
+	s.moved()
 }
 
 // Cells are the columns and rows the Image is laid out in: the size a host renders its PNG for, so
