@@ -97,7 +97,88 @@ func (s FileSource) or() FileSource {
 
 // async reports whether the source is read off the loop: a VFS one, or an
 // Async fs.FS.
-func (s FileSource) async() bool { return s.VFS != nil || s.Async }
+func (s FileSource) async() bool { return s.backend().offLoop() }
+
+// fileBackend is how a source is read: the one place that knows whether it is an fs.FS or a vfs.FS,
+// so a new kind of store (a cached one, a recording one) is a new backend rather than an edit at
+// every read. FileSource picks it in backend; its methods only ask.
+type fileBackend interface {
+	// readDir lists a folder's entries, folders marked, unsorted.
+	readDir(ctx context.Context, dir string) ([]fileEntry, error)
+	open(ctx context.Context, p string) (io.ReadCloser, error)
+	// stat reports whether an fs path is a folder, following a link for an fs.FS.
+	stat(ctx context.Context, p string) (folder bool, err error)
+	// offLoop reports whether the source is read off the UI loop.
+	offLoop() bool
+}
+
+// backend is the source's reader: its VFS when set (VFS wins over FS), else its FS.
+func (s FileSource) backend() fileBackend {
+	if s.VFS != nil {
+		return vfsBackend{s.VFS}
+	}
+	return fsBackend{s.FS, s.Async}
+}
+
+// fsBackend reads an fs.FS, on the loop unless async.
+type fsBackend struct {
+	fsys  fs.FS
+	async bool
+}
+
+func (b fsBackend) offLoop() bool { return b.async }
+
+func (b fsBackend) readDir(ctx context.Context, dir string) ([]fileEntry, error) {
+	ds, err := fs.ReadDir(b.fsys, dir)
+	out := make([]fileEntry, 0, len(ds))
+	for _, d := range ds {
+		// A LINK to a folder is a folder to the user; asking the source
+		// follows it, which DirEntry.IsDir does not.
+		folder := d.IsDir()
+		if !folder && d.Type()&fs.ModeSymlink != 0 {
+			folder, _ = b.stat(ctx, path.Join(dir, d.Name()))
+		}
+		out = append(out, fileEntry{name: d.Name(), dir: folder})
+	}
+	return out, err
+}
+
+func (b fsBackend) open(_ context.Context, p string) (io.ReadCloser, error) { return b.fsys.Open(p) }
+
+func (b fsBackend) stat(_ context.Context, p string) (bool, error) {
+	fi, err := fs.Stat(b.fsys, p)
+	if err != nil {
+		return false, err
+	}
+	return fi.IsDir(), nil
+}
+
+// vfsBackend reads a vfs.FS, always off the loop and with the reading task's context. Its symlinks
+// are listed as files, since vfs reports a link without following it.
+type vfsBackend struct{ fsys vfs.FS }
+
+func (vfsBackend) offLoop() bool { return true }
+
+func (b vfsBackend) readDir(ctx context.Context, dir string) ([]fileEntry, error) {
+	infos, err := b.fsys.ReadDir(ctx, dir)
+	out := make([]fileEntry, 0, len(infos))
+	for _, fi := range infos {
+		out = append(out, fileEntry{name: fi.Name, dir: fi.IsDir()})
+	}
+	return out, err
+}
+
+func (b vfsBackend) open(ctx context.Context, p string) (io.ReadCloser, error) {
+	return b.fsys.Open(ctx, p, 0)
+}
+
+func (b vfsBackend) stat(ctx context.Context, p string) (bool, error) {
+	vi, err := b.fsys.Stat(ctx, p)
+	if err != nil {
+		return false, err
+	}
+	return vi.IsDir(), nil
+}
 
 // isDir reports whether an fs path is a folder, following a link to one in an
 // fs.FS, with ctx bounding a VFS read: what [FileSource.kind] says, the one
@@ -107,27 +188,12 @@ func (s FileSource) isDir(ctx context.Context, p string) bool { return s.kind(ct
 // readDir lists a folder, its folders and its files each sorted without regard
 // to case, with ctx bounding a VFS read.
 func (s FileSource) readDir(ctx context.Context, dir string) (dirs, files []fileEntry, err error) {
-	if s.VFS != nil {
-		infos, err := s.VFS.ReadDir(ctx, dir)
-		for _, fi := range infos {
-			if fi.IsDir() {
-				dirs = append(dirs, fileEntry{name: fi.Name, dir: true})
-			} else {
-				files = append(files, fileEntry{name: fi.Name})
-			}
-		}
-		sortEntries(dirs)
-		sortEntries(files)
-		return dirs, files, err
-	}
-	ds, err := fs.ReadDir(s.FS, dir)
-	for _, d := range ds {
-		// A LINK to a folder is a folder to the user; asking the source
-		// follows it, which DirEntry.IsDir does not.
-		if d.IsDir() || (d.Type()&fs.ModeSymlink != 0 && s.isDir(ctx, path.Join(dir, d.Name()))) {
-			dirs = append(dirs, fileEntry{name: d.Name(), dir: true})
+	entries, err := s.backend().readDir(ctx, dir)
+	for _, e := range entries {
+		if e.dir {
+			dirs = append(dirs, e)
 		} else {
-			files = append(files, fileEntry{name: d.Name()})
+			files = append(files, e)
 		}
 	}
 	sortEntries(dirs)
@@ -141,10 +207,7 @@ func sortEntries(s []fileEntry) {
 
 // open opens a file to read, with ctx bounding a VFS read.
 func (s FileSource) open(ctx context.Context, p string) (io.ReadCloser, error) {
-	if s.VFS != nil {
-		return s.VFS.Open(ctx, p, 0)
-	}
-	return s.FS.Open(p)
+	return s.backend().open(ctx, p)
 }
 
 // pathKind is what a path names in a source.
@@ -159,19 +222,9 @@ const (
 
 // kind reports what an fs path names, following a link in an fs.FS, with ctx bounding a VFS read.
 func (s FileSource) kind(ctx context.Context, p string) pathKind {
-	var fi fs.FileInfo
-	var err error
-	if s.VFS != nil {
-		var vi interface{ IsDir() bool }
-		vi, err = s.VFS.Stat(ctx, p)
-		if err == nil {
-			return kindOf(vi.IsDir())
-		}
-	} else {
-		fi, err = fs.Stat(s.FS, p)
-		if err == nil {
-			return kindOf(fi.IsDir())
-		}
+	folder, err := s.backend().stat(ctx, p)
+	if err == nil {
+		return kindOf(folder)
 	}
 	if errors.Is(err, fs.ErrNotExist) {
 		return pathMissing
