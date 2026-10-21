@@ -34,11 +34,11 @@ func ParseColor(s string) (Color, error) {
 		return ANSI(8), nil
 	}
 	if strings.HasPrefix(name, "#") {
-		n, err := strconv.ParseUint(strings.TrimPrefix(name, "#"), 16, 32)
-		if len(name) != 7 || err != nil {
+		r, g, b, ok := ParseHexRGB(name)
+		if !ok {
 			return Color{}, fmt.Errorf("%q is not a #rrggbb colour", s)
 		}
-		return RGB(uint8(n>>16), uint8(n>>8), uint8(n)), nil
+		return RGB(r, g, b), nil
 	}
 	bright := strings.HasPrefix(name, "bright")
 	if n, ok := colourNames[strings.TrimPrefix(name, "bright")]; ok {
@@ -49,6 +49,19 @@ func ParseColor(s string) (Color, error) {
 	}
 	return Color{}, fmt.Errorf("%q is not a colour: want one of %s, bright<name>, gray, "+
 		"#rrggbb or default", s, colourList())
+}
+
+// ParseHexRGB reads a #rrggbb colour, in either case: exactly a # and six hex digits.
+func ParseHexRGB(s string) (r, g, b uint8, ok bool) {
+	h, found := strings.CutPrefix(s, "#")
+	if !found || len(h) != 6 {
+		return 0, 0, 0, false
+	}
+	n, err := strconv.ParseUint(h, 16, 32)
+	if err != nil {
+		return 0, 0, 0, false
+	}
+	return uint8(n >> 16), uint8(n >> 8), uint8(n), true
 }
 
 func colourList() string {

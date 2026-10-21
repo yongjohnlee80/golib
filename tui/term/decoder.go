@@ -9,6 +9,7 @@ import (
 	"github.com/yongjohnlee80/golib/tui"
 	"github.com/yongjohnlee80/golib/tui/internal/vtparse"
 	"github.com/yongjohnlee80/golib/tui/internal/xterm"
+	"github.com/yongjohnlee80/golib/tui/style"
 )
 
 // This file maps parser actions onto the core tui event set: legacy CSI/SS3
@@ -461,14 +462,8 @@ func (d *decoder) oscDispatch(a *vtparse.Action) {
 // parseOSCColor parses an OSC 10/11 color report: the X11 rgb:/rgba: spec
 // with 1–4 hex digits per component, or a #RRGGBB literal.
 func parseOSCColor(s string) (tui.ProbedColor, bool) {
-	if h, ok := strings.CutPrefix(s, "#"); ok && len(h) == 6 {
-		v, err := strconv.ParseUint(h, 16, 32)
-		if err != nil {
-			return tui.ProbedColor{}, false
-		}
-		return tui.ProbedColor{
-			R: uint8(v >> 16), G: uint8(v >> 8), B: uint8(v), Known: true,
-		}, true
+	if r, g, b, ok := style.ParseHexRGB(s); ok {
+		return tui.ProbedColor{R: r, G: g, B: b, Known: true}, true
 	}
 	body, ok := strings.CutPrefix(s, "rgb:")
 	if !ok {
