@@ -85,14 +85,14 @@ type NativeHost interface {
 
 // beginNatives starts a frame's native placements, when the backend hosts them.
 func (a *App) beginNatives() {
-	_, hosts := a.backend.(NativeHost)
+	hosts := a.caps.natives != nil
 	a.buf.stamping = hosts
 	a.natives = a.natives[:0]
 	a.styledDepth = 0
 	a.nativeStyler = nil
 	if hosts {
 		a.buf.resetStamps()
-		a.nativeStyler, _ = a.backend.(NativeStyler)
+		a.nativeStyler = a.caps.styler
 	}
 }
 
@@ -136,8 +136,8 @@ func (a *App) noteNative(n *node) int {
 // applyNatives works out each placement's Covered cells and hands the frame's placements to the
 // host.
 func (a *App) applyNatives() {
-	host, ok := a.backend.(NativeHost)
-	if !ok {
+	host := a.caps.natives
+	if host == nil {
 		return
 	}
 	for i := range a.natives {

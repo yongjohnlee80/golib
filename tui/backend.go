@@ -281,3 +281,36 @@ type ProbedColor struct {
 // Capabilities is the attached terminal's negotiated profile (Backend.Capabilities), so a host can
 // choose what to show: an image where the terminal draws one, a fallback where it does not.
 func (a *App) Capabilities() Capabilities { return a.backend.Capabilities() }
+
+// backendCaps is a backend's optional capabilities, asserted once, at NewApp: the backend is fixed
+// for the App's life, so no frame or event asks again. Discovery stays by interface, in this one
+// place. A nil field is a capability the backend lacks.
+type backendCaps struct {
+	sized       SizedFlusher
+	cursorColor CursorColorSetter
+	graphics    GraphicsBackend
+	violations  ViolationRecorder
+	metrics     CellMetrics
+	clipW       ClipboardWriter
+	clipR       ClipboardReader
+	natives     NativeHost
+	styler      NativeStyler
+	pointer     PointerResolver
+	faces       FaceHost
+}
+
+func capsOf(b Backend) backendCaps {
+	var c backendCaps
+	c.sized, _ = b.(SizedFlusher)
+	c.cursorColor, _ = b.(CursorColorSetter)
+	c.graphics, _ = b.(GraphicsBackend)
+	c.violations, _ = b.(ViolationRecorder)
+	c.metrics, _ = b.(CellMetrics)
+	c.clipW, _ = b.(ClipboardWriter)
+	c.clipR, _ = b.(ClipboardReader)
+	c.natives, _ = b.(NativeHost)
+	c.styler, _ = b.(NativeStyler)
+	c.pointer, _ = b.(PointerResolver)
+	c.faces, _ = b.(FaceHost)
+	return c
+}

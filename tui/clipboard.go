@@ -31,8 +31,8 @@ type ClipboardWriter interface {
 // ClipboardWriter capability. Returns false when the backend doesn't support
 // clipboard writes or the write failed. Loop goroutine only.
 func (a *App) CopyToClipboard(s string) bool {
-	cw, ok := a.backend.(ClipboardWriter)
-	if !ok {
+	cw := a.caps.clipW
+	if cw == nil {
 		return false
 	}
 	return cw.WriteClipboard([]byte(s)) == nil
@@ -85,11 +85,11 @@ type clipRead struct {
 // the platform's reply to an earlier one, still the clipboard's text. A caller that wants only its
 // latest read compares the ClipboardRead it was given with the one done is called with.
 func (a *App) ReadClipboard(timeout time.Duration, done func(read ClipboardRead, text string, err error)) (ClipboardRead, error) {
-	cr, ok := a.backend.(ClipboardReader)
+	cr := a.caps.clipR
 	switch {
 	case a.stoppingCalled: // teardown has answered the reads waiting; none after would be answered
 		return ClipboardRead{}, ErrClipboardClosed
-	case !ok:
+	case cr == nil:
 		return ClipboardRead{}, ErrClipboardUnsupported
 	}
 	if timeout <= 0 {

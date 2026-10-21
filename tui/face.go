@@ -75,7 +75,7 @@ func (a *App) faceIndex(family string) uint16 {
 // sendFaces hands the face table to a backend that draws fonts: when it grows, and when the
 // backend starts.
 func (a *App) sendFaces() {
-	if h, ok := a.backend.(FaceHost); ok && len(a.faceNames) > 1 {
+	if h := a.caps.faces; h != nil && len(a.faceNames) > 1 {
 		h.SetCellFaces(slices.Clone(a.faceNames))
 	}
 }

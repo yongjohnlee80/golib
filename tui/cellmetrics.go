@@ -14,7 +14,7 @@ type CellMetrics interface {
 // CellPixels is the backend's cell size in logical pixels, or zero. Read it in Layout, Render or
 // HandleEvent: it is current for the frame being built.
 func (a *App) CellPixels() CellPixels {
-	if m, ok := a.backend.(CellMetrics); ok {
+	if m := a.caps.metrics; m != nil {
 		return m.CellPixels()
 	}
 	return CellPixels{}

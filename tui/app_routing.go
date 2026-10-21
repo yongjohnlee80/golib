@@ -723,7 +723,7 @@ func (a *App) previewPressOrdinal(e MouseEvent, target *node, now time.Time) int
 // against the layout this dispatch routes with, and clears its Source: a component that keeps
 // the event (a gesture's press) must not keep the backend's frame alive with it.
 func (a *App) resolvePointer(e MouseEvent) MouseEvent {
-	if r, ok := a.backend.(PointerResolver); ok {
+	if r := a.caps.pointer; r != nil {
 		e = r.ResolvePointer(e)
 	}
 	e.Source = PointerSource{}

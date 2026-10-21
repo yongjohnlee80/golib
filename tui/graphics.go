@@ -106,10 +106,10 @@ func (a *App) noteImage(n *node) {
 
 // applyImages places what changed since the last frame and deletes what went.
 func (a *App) applyImages() {
-	g, ok := a.backend.(GraphicsBackend)
+	g := a.caps.graphics
 	want := a.frameImages
 	a.frameImages = a.frameImages[:0]
-	if !ok {
+	if g == nil {
 		return
 	}
 	if a.placed == nil {

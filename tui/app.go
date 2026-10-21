@@ -43,6 +43,7 @@ type App struct {
 	live    appLive   // the settings that change at run time, starting from cfg's
 	root    Component
 	backend Backend
+	caps    backendCaps // the backend's optional capabilities, asserted once at NewApp
 
 	// THE APP'S PARTS, each a type in the file of its concern, its fields loop-owned unless the
 	// type says otherwise.
@@ -158,6 +159,7 @@ func NewApp(root Component, opts ...AppOption) *App {
 		sem:     make(chan struct{}, cfg.taskPoolSize),
 	}
 	a.live = appLive{theme: cfg.theme, language: cfg.language, translations: cfg.translations, keymap: cfg.keymap, recognizer: cfg.recognizer}
+	a.caps = capsOf(cfg.backend)
 	a.minSize = cfg.minimumSize
 	a.queue.init(cfg.eventQueueLimit, cfg.logger)
 	a.bus = newBus(a)
@@ -669,7 +671,7 @@ func (a *App) presentFrame(cursor bool) {
 func (a *App) flush() {
 	diff := a.buf.diff()
 	var err error
-	if f, ok := a.backend.(SizedFlusher); ok {
+	if f := a.caps.sized; f != nil {
 		err = f.FlushSized(a.buf.size(), diff)
 	} else {
 		err = a.backend.Flush(diff)
@@ -742,8 +744,8 @@ func (a *App) retryDeferredFocusRepair() {
 // applyCursorColor gives the hardware cursor the focused component's colour (CursorColorer),
 // resolved through the theme, or back its own, on a backend that can colour it.
 func (a *App) applyCursorColor(comp Component) {
-	setter, ok := a.backend.(CursorColorSetter)
-	if !ok || a.rctx == nil {
+	setter := a.caps.cursorColor
+	if setter == nil || a.rctx == nil {
 		return
 	}
 	if cc, ok := comp.(CursorColorer); ok {
