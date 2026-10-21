@@ -3,6 +3,7 @@ package main
 import (
 	"os"
 	"path/filepath"
+	"regexp"
 	"strings"
 	"sync"
 	"testing"
@@ -161,8 +162,10 @@ func TestTheModeReachesTheStatusLine(t *testing.T) {
 // the scheduler moves the delivery onto the loop, and the status line
 // repaints.
 //
-// The assertion is on a time that is NOT the one the first frame showed, so a
-// clock that never ticked cannot pass it.
+// The assertion is on any time but the one the provider gave first, so a clock
+// that never ticked cannot pass it. Each read of the clock moves it a minute,
+// and a tick reads it every 10ms: a screen sampled under load can skip any
+// one minute, so the cell waits for none in particular.
 func TestTheClockTicksThroughTheProvider(t *testing.T) {
 	var mu sync.Mutex
 	calls := 0
@@ -172,9 +175,12 @@ func TestTheClockTicksThroughTheProvider(t *testing.T) {
 		calls++
 		return fixedNow().Add(time.Duration(calls-1) * time.Minute)
 	}
+	first := fixedNow().Format("15:04:05")
+	clockRe := regexp.MustCompile(`\d\d:\d\d:\d\d`)
 	r := startOpts(t, Options{Now: now, Tick: 10 * time.Millisecond}, 80, 14)
 	r.waitFor(t, "a tick past the first frame", func(s string) bool {
-		return strings.Contains(s, "08:04:00") || strings.Contains(s, "08:05:00")
+		shown := clockRe.FindString(s)
+		return shown != "" && shown != first
 	})
 }
 
