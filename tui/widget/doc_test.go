@@ -64,7 +64,7 @@ func startAppOpts(t *testing.T, root tui.Component, w, h int, opts ...tui.AppOpt
 	// other.
 	appOpts := append([]tui.AppOption{tui.WithBackend(tb), tui.WithMinFrameInterval(0)}, opts...)
 	appOpts = append(appOpts, tui.WithTrace(func(ev tui.TraceEvent) {
-		if ev.Kind == tui.TraceKey && ev.Detail == string(barrierKey) {
+		if ev.Kind == tui.TraceKey && ev.Detail == barrierName {
 			h2.barriers.Add(1)
 		}
 	}))
@@ -354,6 +354,9 @@ func (s *shell) bubbledKeys() []tui.KeyEvent {
 // lane A is a single ordered queue. See barrier for why dispatch, and not
 // arrival at any particular component, is the thing worth waiting on.
 const barrierKey = tui.KeyF12
+
+// barrierName is how a key's trace line names the sentinel.
+const barrierName = "F12"
 
 // barrier injects the sentinel and waits for the runtime to acknowledge having
 // DISPATCHED it, via the trace seam.

@@ -1,6 +1,10 @@
 package tui
 
-import "fmt"
+import (
+	"fmt"
+
+	"github.com/yongjohnlee80/golib/tui/key"
+)
 
 // Runtime Tracing Pipeline & Diagnostic Architecture
 //
@@ -241,7 +245,9 @@ func (a *App) compName(id NodeID) string {
 }
 
 // describe renders a human-readable string representation of a KeyEvent
-// for trace lines (e.g. "Ctrl-l", "Alt-Enter", "Shift-Tab", "Esc", "j").
+// for trace lines (e.g. "Ctrl-l", "Alt-Enter", "Shift-Tab", "Esc", "F12", "j"): a
+// functional key by the key package's name for it, and a key that types a
+// character by that character, as typed.
 func (k KeyEvent) describe() string {
 	var b []byte
 	if k.Mods&ModCtrl != 0 {
@@ -253,21 +259,8 @@ func (k KeyEvent) describe() string {
 	if k.Mods&ModShift != 0 {
 		b = append(b, "Shift-"...)
 	}
-	switch k.Code {
-	case KeyEnter:
-		return string(b) + "Enter"
-	case KeyEscape:
-		return string(b) + "Esc"
-	case KeyTab:
-		return string(b) + "Tab"
-	case KeyUp:
-		return string(b) + "Up"
-	case KeyDown:
-		return string(b) + "Down"
-	case KeyLeft:
-		return string(b) + "Left"
-	case KeyRight:
-		return string(b) + "Right"
+	if name, ok := key.Name(k.Code); ok && k.Code != ' ' {
+		return string(b) + name
 	}
 	if k.Text != "" {
 		return string(b) + k.Text
