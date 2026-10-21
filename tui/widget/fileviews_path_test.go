@@ -167,7 +167,7 @@ func TestTheFolderViewsFieldSaysWhatATypedPathIs(t *testing.T) {
 	h.shows("Folder — not found")
 	typePath(h, "in")
 	h.waitFor("in listed", dirIs(h, v, filepath.Join(root, "in")))
-	h.wantNotContains("not found")
+	h.hides("not found") // the status line follows a frame after the listing
 }
 
 // In the Save view, a typed path never saves: a file, or a new name in a folder that is there,
