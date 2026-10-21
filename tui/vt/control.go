@@ -75,12 +75,25 @@ func (s *Screen) alignment() {
 	s.moveTo(0, 0)
 }
 
+// csi dispatches a control sequence: a DEC private one (?), a marked one (> < =), one with an
+// intermediate byte, or a plain one by its final byte.
 func (s *Screen) csi(a *vtparse.Action) {
-	switch a.Priv {
-	case 0:
-	case '?':
+	switch {
+	case a.Priv == '?':
 		s.csiPrivate(a)
-		return
+	case a.Priv != 0:
+		s.csiMarked(a)
+	case a.Inter != "":
+		s.csiIntermediate(a)
+	default:
+		s.csiFinal(a)
+	}
+}
+
+// csiMarked is a CSI with a >, < or = marker: the secondary DA and the kitty keyboard stack. Any
+// other marker, and XTMODKEYS and the like, are not supported.
+func (s *Screen) csiMarked(a *vtparse.Action) {
+	switch a.Priv {
 	case '>':
 		if a.Final == 'c' && a.Inter == "" && a.Param(0, 0) == 0 {
 			s.reply1([]byte("\x1b[>1;10;0c")) // DA2: a VT220, firmware 10
@@ -88,40 +101,38 @@ func (s *Screen) csi(a *vtparse.Action) {
 		if a.Final == 'u' && a.Inter == "" {
 			s.pushKeyboard(a.Param(0, 0))
 		}
-		return // XTMODKEYS and the like: not supported
 	case '<':
 		if a.Final == 'u' && a.Inter == "" {
 			s.popKeyboard(a.Param(0, 1))
 		}
-		return
 	case '=':
 		if a.Final == 'u' && a.Inter == "" {
 			s.setKeyboard(a.Param(0, 0), a.Param(1, 1))
 		}
-		return
-	default:
-		return
 	}
+}
+
+// csiIntermediate is a CSI with an intermediate byte: DECSCUSR (SP q), DECRQM ($ p) and DECSTR
+// (! p). Any other is ignored.
+func (s *Screen) csiIntermediate(a *vtparse.Action) {
 	switch a.Inter {
-	case "":
 	case " ":
 		if a.Final == 'q' {
 			s.cursorStyle(a.Param(0, 0))
 		}
-		return
 	case "$":
 		if a.Final == 'p' {
 			s.reportMode(false, a.Param(0, 0))
 		}
-		return
 	case "!":
 		if a.Final == 'p' {
 			s.softReset()
 		}
-		return
-	default:
-		return
 	}
+}
+
+// csiFinal is a plain CSI, by its final byte.
+func (s *Screen) csiFinal(a *vtparse.Action) {
 	n := max(a.Param(0, 1), 1) // a count: 0 and absent both mean 1
 	switch a.Final {
 	case '@':
