@@ -650,3 +650,26 @@ func TestATableRowBandStaysBatchedWithTheGutterAndASelection(t *testing.T) {
 		t.Errorf("%d other calls: %+v", n, c.Calls)
 	}
 }
+
+// A row cursor is filled across its whole row: one fill from the first field's left to the last
+// field's right, on the cursor's row; the cell cursor back, the fill is its cell's again.
+func TestATableFillsARowCursorAcrossItsRow(t *testing.T) {
+	dt, l := pixelTable(t, cities(30))
+	core := dt.Core()
+	paintTable(l, 600, 200)
+	core.SetCursor(tuiwidget.TablePos{Row: 2, Col: 1})
+	core.SetRowCursor(true)
+	c := paintTable(l, 600, 200)
+	cols := l.columns(600)
+	last := cols[len(cols)-1]
+	want := gui.Rect{X: cols[0].x - l.pad, Y: 3 * l.rowH, W: last.x + last.w + l.pad - (cols[0].x - l.pad), H: l.rowH}
+	if got := fillsIn(c, l.blurred); len(got) != 1 || got[0] != want {
+		t.Errorf("the row cursor filled %+v, want row 2 across every field %+v", got, want)
+	}
+	core.SetRowCursor(false)
+	c = paintTable(l, 600, 200)
+	cell := gui.Rect{X: cols[1].x - l.pad, Y: 3 * l.rowH, W: cols[1].w + 2*l.pad, H: l.rowH}
+	if got := fillsIn(c, l.blurred); len(got) != 1 || got[0] != cell {
+		t.Errorf("the cell cursor filled %+v, want field 1's %+v", got, cell)
+	}
+}
