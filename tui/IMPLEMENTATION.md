@@ -69,7 +69,7 @@ in the same change. Never add a second copy "for now".
 | Hit-testing, bubbling to the modal ceiling, focus candidacy | `hitTestNode` (an optional admit check), `pathTo` (the walk to the ceiling), `isFocusable` / `acceptsFocus` / `trapsFocus` / `hiddenWithin` in `tui` core |
 | Screen ↔ local coordinates | `Rect.Translate`/`RelativeTo`/`Origin`, `Point.Translate`/`RelativeTo`, `MouseEvent.localTo`; never hand-rolled arithmetic |
 | Row viewport: scroll, page, wheel step, reveal, clipping, row painting | `widget/rowviewport.go`: `revealRow`, `clampTop`, `paintRows`, `rowsWidth`, the named wheel steps; `ListStyles.cursorLook` for the cursor row |
-| Press pairing (double/triple click on the same target) | `pressPairer` in `widget` (List, Tree, `TableCore.pairPress`) |
+| Press pairing (double/triple click on the same target); a positional view's row identity across owner callbacks | `pressPairer` (`Press`, `Survives`) built on `rowsEpoch` in `widget/presspair.go` (List, Tree, `TableCore.press`; FileList holds its own `rowsEpoch`) |
 | Drag state machine | `widget/drag.go`: `pointerDrag[S]` (begin, capture, end, lost), `resizeGesture`, `stepCellsOf`; WindowCore's richer gesture (focus entry, gesture observers, checkpoint) is its own |
 | Borders and frames | `widget/frame.go`: `paintFrame` (per edge), `drawFrame` (whole), honouring the `style.BorderStyle` a style carries; no hard-coded glyphs |
 | Scrims and overlay layering | one scrim and one layer-tier capability on `OverlayHost` |
@@ -140,14 +140,17 @@ purpose": a difference in behaviour is a parameter of the shared code, named and
 
 - **The owner hears synchronously:** `WithOnX` callbacks for cursor, activate, change, submit.
 - **An owner callback ends the operation, or the operation checks the rows survived it.** A row
-  view's owner may replace or refresh the rows from its callback. In List, Tree, TableCore and
-  DataTable, a call that can reach an owner callback is either the last step (writes first, the
-  owner told last) or it is a survival call, its result declared `live bool`, and checked: the view's
-  `pressPairer` epoch is the one authority (`Survives`, and `cursorTo`, `changed`, `expandNode`
-  built on it). A new source and an owner's refresh (`List.RefreshSource`, `TableCore.Changed`)
-  end the epoch; the core's own edits arrange the view without ending it. Any other result (a
-  yank's ok) says nothing about the rows. `internal/audit/owner_callback_test.go` enforces the
-  shape; the callback-replacement tests, the behaviour.
+  view's owner may replace or refresh the rows from its callback. Everywhere, the owner is told last:
+  the view's own writes and the bus publish come first.
+  - **Positional views** (List, Tree, TableCore, DataTable, FileList: an index names a row) go on
+    after an owner call only through a survival call, its result declared `live bool`, and checked.
+    The view's `rowsEpoch` is the one authority (`Survives`; `pressPairer` embeds one). A new source,
+    a new listing and an owner's refresh (`List.RefreshSource`, `TableCore.Changed`) advance it;
+    the core's own edits arrange the view without advancing it. Any other result (a yank's ok) says
+    nothing about the rows.
+  - **Keyed views** (Menu, by `ItemID`) re-resolve by key after an owner call (`findItem`).
+  - `internal/audit/owner_callback_test.go` enforces the positional shape; the callback-replacement
+    tests, the behaviour.
 - **The bus is for app-wide listeners only:** an `XEvent` with `Owner tui.NodeID` first, published
   through `Base.publish`. Never both a callback and a bus event for the same fact to the same
   listener; never subscribe app-wide to hear your own child.
