@@ -39,40 +39,19 @@ func ContrastRatio(a, b Color) (ratio float64, ok bool) {
 	return contrastRatio(luminance(x), luminance(y)), true
 }
 
-// rgbOf is a colour's RGB: an RGB colour's own, an ANSI or 256-colour index's in xterm's palette.
+// rgbOf is a colour's RGB: an RGB colour's own, an ANSI or 256-colour index's in xterm's palette
+// (XtermRGB).
 func rgbOf(c Color) ([3]uint8, bool) {
 	if r, g, b, ok := c.RGBValues(); ok {
 		return [3]uint8{r, g, b}, true
 	}
 	if i, ok := c.ANSIIndex(); ok {
-		return xterm16[i], true
+		return XtermRGB(uint8(i)), true
 	}
 	if i, ok := c.ANSI256Index(); ok {
-		if i < 16 {
-			return xterm16[i], true
-		}
-		if i < 232 {
-			i -= 16
-			level := func(v int) uint8 {
-				if v == 0 {
-					return 0
-				}
-				return uint8(55 + v*40)
-			}
-			return [3]uint8{level(i / 36), level(i / 6 % 6), level(i % 6)}, true
-		}
-		v := uint8(8 + (i-232)*10)
-		return [3]uint8{v, v, v}, true
+		return XtermRGB(uint8(i)), true
 	}
 	return [3]uint8{}, false
-}
-
-// xterm16 is xterm's sixteen ANSI colours.
-var xterm16 = [16][3]uint8{
-	{0x00, 0x00, 0x00}, {0xcd, 0x00, 0x00}, {0x00, 0xcd, 0x00}, {0xcd, 0xcd, 0x00},
-	{0x00, 0x00, 0xee}, {0xcd, 0x00, 0xcd}, {0x00, 0xcd, 0xcd}, {0xe5, 0xe5, 0xe5},
-	{0x7f, 0x7f, 0x7f}, {0xff, 0x00, 0x00}, {0x00, 0xff, 0x00}, {0xff, 0xff, 0x00},
-	{0x5c, 0x5c, 0xff}, {0xff, 0x00, 0xff}, {0x00, 0xff, 0xff}, {0xff, 0xff, 0xff},
 }
 
 // raiseContrast takes f toward black or white, whichever reads better against b, by the least

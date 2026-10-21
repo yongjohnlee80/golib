@@ -166,18 +166,14 @@ func (r *resolver) resolve(st style.Style, rc ResolveContext) CellAttrs {
 // --- downsampling tables (deterministic table math, no color-science
 //     dependency) ---
 
-// cubeLevels are the xterm 6×6×6 color-cube component levels.
-var cubeLevels = [6]uint8{0, 95, 135, 175, 215, 255}
-
-// ansi16RGB is the reference RGB of the 16 base SGR colors (xterm defaults),
-// used only to build the static 256→16 table — emitted ANSI-16 output always
-// stays palette-indexed (never upsampled).
-var ansi16RGB = [16][3]uint8{
-	{0, 0, 0}, {205, 0, 0}, {0, 205, 0}, {205, 205, 0},
-	{0, 0, 238}, {205, 0, 205}, {0, 205, 205}, {229, 229, 229},
-	{127, 127, 127}, {255, 0, 0}, {0, 255, 0}, {255, 255, 0},
-	{92, 92, 255}, {255, 0, 255}, {0, 255, 255}, {255, 255, 255},
-}
+// cubeLevels are the xterm 6×6×6 color-cube component levels, as style.XtermRGB has them: the
+// blue components of the cube's first six entries.
+var cubeLevels = func() (l [6]uint8) {
+	for k := range l {
+		l[k] = style.XtermRGB(uint8(16 + k))[2]
+	}
+	return l
+}()
 
 // ansi256To16 is the static 256→16 mapping table: identity for the base 16,
 // nearest base color (squared Euclidean in RGB, lowest index wins ties) for
@@ -190,31 +186,19 @@ func buildANSI256To16() (t [256]uint8) {
 			t[i] = uint8(i)
 			continue
 		}
-		r, g, b := ansi256RGB(uint8(i))
+		c := style.XtermRGB(uint8(i))
 		best, bestDist := 0, int(^uint(0)>>1)
-		for j, ref := range ansi16RGB {
-			if d := sqDist(r, g, b, ref[0], ref[1], ref[2]); d < bestDist {
+		for j := range 16 {
+			// the base colours' reference RGB, used only to build this table: emitted ANSI-16
+			// output stays palette-indexed (never upsampled)
+			ref := style.XtermRGB(uint8(j))
+			if d := sqDist(c[0], c[1], c[2], ref[0], ref[1], ref[2]); d < bestDist {
 				best, bestDist = j, d
 			}
 		}
 		t[i] = uint8(best)
 	}
 	return t
-}
-
-// ansi256RGB returns the xterm RGB value of palette index n (n >= 16: the
-// 6×6×6 cube then the 24-step gray ramp).
-func ansi256RGB(n uint8) (r, g, b uint8) {
-	if n < 16 {
-		c := ansi16RGB[n]
-		return c[0], c[1], c[2]
-	}
-	if n < 232 {
-		c := int(n) - 16
-		return cubeLevels[c/36], cubeLevels[c/6%6], cubeLevels[c%6]
-	}
-	gray := uint8(8 + 10*(int(n)-232))
-	return gray, gray, gray
 }
 
 // rgbToANSI256 maps a truecolor value to the nearest ANSI-256 index: the
