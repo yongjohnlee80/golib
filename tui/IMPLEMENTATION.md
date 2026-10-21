@@ -66,14 +66,14 @@ in the same change. Never add a second copy "for now".
 | Colour palette, xterm-256 cube, luminance, legibility | `tui/style` only |
 | Attribute bits, cursor shapes, xterm key/SGR tables | `tui/style` and one internal xterm table package, shared by `term`, `vt`, `web` |
 | The backend cell grid (wide-cell continuation) | one exported grid in `tui`, used by every backend and `TestBackend` |
-| Hit-testing, bubbling to the modal ceiling, focus candidacy | one walker / one predicate each in `tui` core |
-| Screen ↔ local coordinates | `Rect`/event translate helpers, never hand-rolled arithmetic |
+| Hit-testing, bubbling to the modal ceiling, focus candidacy | `hitTestNode` (an optional admit check), `pathTo` (the walk to the ceiling), `isFocusable` / `acceptsFocus` / `trapsFocus` / `hiddenWithin` in `tui` core |
+| Screen ↔ local coordinates | `Rect.Translate`/`RelativeTo`/`Origin`, `Point.Translate`/`RelativeTo`, `MouseEvent.localTo`; never hand-rolled arithmetic |
 | Row viewport: scroll, page, wheel step, reveal, clipping | one row viewport in `widget`, used by List, Tree, Select, DataTable, Menu |
-| Press pairing (double/triple click on the same target) | one pairer in `widget` |
+| Press pairing (double/triple click on the same target) | `pressPairer` in `widget` (List, Tree, `TableCore.pairPress`) |
 | Drag state machine | one drag helper in `widget` |
 | Borders and frames | one painter honouring `style.BorderStyle`; no hard-coded glyphs |
 | Scrims and overlay layering | one scrim and one layer-tier capability on `OverlayHost` |
-| Floating placement (rect, percent, clamp) | one placement function; Float, WindowCore and decl call it |
+| Floating placement (rect, percent, clamp) | `Float.place` / `fixedRect`; the managed (WindowMod) layout adds only its work area and maximize |
 | Text viewport (scroll, reveal, caret placement, paint loop) | one text viewport shared by TextInput, TextArea, Editor, CommandLine |
 | Buffer edits | the primitives in `textbuffer.go`; no code writes `.lines` elsewhere |
 | Pointer policy, focus state, publishing | `widget.Base` |

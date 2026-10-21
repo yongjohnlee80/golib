@@ -36,8 +36,7 @@ func (a *App) requestFocusByID(id NodeID) bool {
 }
 
 func (a *App) requestFocus(n *node) {
-	f, ok := n.comp.(Focusable)
-	if !ok || !f.AcceptsFocus() {
+	if !isFocusable(n) {
 		return
 	}
 	if a.focused == n.id {
@@ -253,7 +252,7 @@ func childIndex(parent, child *node) int {
 // not shown has no layer in the tree at all — so there is no mounted-ness to
 // re-check here.
 func (a *App) holdsLiveTrap(n *node) bool {
-	if fs, ok := n.comp.(FocusScope); ok && fs.TrapsFocus() {
+	if trapsFocus(n) {
 		return true
 	}
 	for _, ch := range n.children {
@@ -269,7 +268,7 @@ func (a *App) holdsLiveTrap(n *node) bool {
 // non-trapping scope.
 func (a *App) trapScopeOf(n *node) *node {
 	for ; n != nil; n = n.parent {
-		if fs, ok := n.comp.(FocusScope); ok && fs.TrapsFocus() {
+		if trapsFocus(n) {
 			return n
 		}
 	}
@@ -289,12 +288,10 @@ func (a *App) focusRing(scope *node) []*node {
 		if hidden(n.comp) {
 			return
 		}
-		if n != scope {
-			if fs, ok := n.comp.(FocusScope); ok && fs.TrapsFocus() {
-				return // another trap's subtree is not in this ring
-			}
+		if n != scope && trapsFocus(n) {
+			return // another trap's subtree is not in this ring
 		}
-		if f, ok := n.comp.(Focusable); ok && f.AcceptsFocus() && n.visible() {
+		if isFocusable(n) && n.visible() {
 			out = append(out, n)
 		}
 		for _, ch := range n.children {
@@ -363,8 +360,7 @@ func (a *App) currentScope() *node {
 func (a *App) focusFromPointer(target *node) *node {
 	scope := a.currentScope()
 	for n := target; n != nil; n = n.parent {
-		f, ok := n.comp.(Focusable)
-		if !ok || !f.AcceptsFocus() {
+		if !isFocusable(n) {
 			continue
 		}
 		if !withinScope(n, scope) {
@@ -611,12 +607,7 @@ func (a *App) focusInto(comp Component, mayDefer bool) bool {
 		return false
 	}
 	a.requestFocus(target)
-	for p := a.nodes[a.focused]; p != nil; p = p.parent {
-		if p == n {
-			return true
-		}
-	}
-	return false
+	return withinScope(a.nodes[a.focused], n)
 }
 
 // FocusWithin is Context.FocusWithin for a caller holding the App rather than
@@ -624,12 +615,8 @@ func (a *App) focusInto(comp Component, mayDefer bool) bool {
 // holds the keyboard. False when nothing is focused or comp is not mounted.
 // Loop goroutine only.
 func (a *App) FocusWithin(comp Component) bool {
-	for n := a.nodes[a.focused]; n != nil; n = n.parent {
-		if n.comp == comp {
-			return true
-		}
-	}
-	return false
+	n := a.byComp[comp]
+	return n != nil && withinScope(a.nodes[a.focused], n)
 }
 
 // unplacedTargetIn reports whether n's subtree holds a component that takes
@@ -638,17 +625,15 @@ func (a *App) FocusWithin(comp Component) bool {
 // node the last layout measured and left with no cells — a pane clipped to
 // nothing — is not waiting for a layout; another would leave it the same.
 func (a *App) unplacedTargetIn(n *node) bool {
-	for p := n; p != nil; p = p.parent {
-		if hidden(p.comp) {
-			return false
-		}
+	if hiddenWithin(n) {
+		return false
 	}
 	var walk func(n *node) bool
 	walk = func(n *node) bool {
 		if hidden(n.comp) {
 			return false
 		}
-		if f, ok := n.comp.(Focusable); ok && f.AcceptsFocus() && n.mounted && !n.measured {
+		if isFocusable(n) && n.mounted && !n.measured {
 			return true
 		}
 		for _, ch := range n.children {
@@ -723,14 +708,30 @@ func (a *App) focusTargetIn(n *node) *node {
 // pane's children still look placed, and focus could be put where nothing is
 // drawn.
 func (a *App) acceptsFocus(n *node) bool {
-	if n == nil || !n.mounted || !n.visible() {
-		return false
-	}
-	for p := n.parent; p != nil; p = p.parent {
-		if hidden(p.comp) {
-			return false
-		}
-	}
+	return n != nil && n.mounted && n.visible() && !hiddenWithin(n) && isFocusable(n)
+}
+
+// isFocusable reports whether n's component takes focus now: it implements Focusable and accepts
+// it. Whether the node is live (mounted, laid out, shown) is acceptsFocus's question; this one is
+// the component's.
+func isFocusable(n *node) bool {
 	f, ok := n.comp.(Focusable)
 	return ok && f.AcceptsFocus()
+}
+
+// trapsFocus reports whether n's component is a FocusScope that traps focus now.
+func trapsFocus(n *node) bool {
+	fs, ok := n.comp.(FocusScope)
+	return ok && fs.TrapsFocus()
+}
+
+// hiddenWithin reports whether n or any ancestor is hidden (Hideable). Hiding reaches a subtree at
+// once, before the next layout corrects its placement flags.
+func hiddenWithin(n *node) bool {
+	for p := n; p != nil; p = p.parent {
+		if hidden(p.comp) {
+			return true
+		}
+	}
+	return false
 }
