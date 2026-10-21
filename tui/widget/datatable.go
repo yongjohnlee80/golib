@@ -370,7 +370,7 @@ func (t *DataTable) Render(s tui.Surface) {
 			break
 		}
 		w := min(t.core.Width(col), sz.W-x)
-		drawText(s, x, 0, truncate(padAligned(title, w, style.AlignLeft), w, s.StringWidth), t.styles.Header)
+		drawText(s, x, 0, fitCell(title, w, ElideRight, style.AlignLeft, s.StringWidth), t.styles.Header)
 		x += t.core.Width(col)
 	}
 	if t.core.EdgeField() && x+tableGap < sz.W {
@@ -413,7 +413,7 @@ func (t *DataTable) Render(s tui.Surface) {
 				st = t.styles.Selected.Inherit(st)
 			}
 			text := tableCellLine(t.core.Cell(row, col))
-			drawText(s, x, y, padAligned(elide(text, w, ElideRight, s.StringWidth), w, fields[col].Align), st)
+			drawText(s, x, y, fitCell(text, w, ElideRight, fields[col].Align, s.StringWidth), st)
 			x += t.core.Width(col)
 		}
 		if t.core.EdgeField() && x+tableGap < sz.W && row == cur.Row && cur.Col == len(fields) {
@@ -429,7 +429,7 @@ func (t *DataTable) drawBlankRow(s tui.Surface, y int, kind TableRowKind, row, g
 	cur TablePos, cursor style.Style) {
 	sz := s.Size()
 	if kind == TableRowEdge && gutter > 0 {
-		drawText(s, 0, y, truncate(padAligned("+", t.core.RowNumberDigits(), style.AlignRight), sz.W, s.StringWidth), t.styles.Empty)
+		drawText(s, 0, y, truncate(padAligned("+", t.core.RowNumberDigits(), style.AlignRight, s.StringWidth), sz.W, s.StringWidth), t.styles.Empty)
 	}
 	onCursorRow := kind == TableRowEdge && row == cur.Row
 	x := gutter

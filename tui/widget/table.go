@@ -1,9 +1,6 @@
 package widget
 
 import (
-	"fmt"
-	"strings"
-
 	"github.com/yongjohnlee80/golib/tui"
 	"github.com/yongjohnlee80/golib/tui/style"
 )
@@ -179,14 +176,7 @@ func (t *Table[T]) paintRow(s tui.Surface, y, width int, item T, rowStyle style.
 			st = st.Reverse(false)
 		}
 		fit := min(t.widths[col], width-x)
-		var text string
-		if mode := t.cols[col].Elide; mode == ElideRight {
-			text = truncate(pad(cell.Text, t.widths[col]), fit, s.StringWidth)
-		} else {
-			text = elide(cell.Text, fit, mode, s.StringWidth)
-			text += strings.Repeat(" ", max(0, fit-s.StringWidth(text)))
-		}
-		drawText(s, x, y, text, st)
+		drawText(s, x, y, fitCell(cell.Text, fit, t.cols[col].Elide, style.AlignLeft, s.StringWidth), st)
 		x += t.widths[col]
 	}
 }
@@ -275,30 +265,9 @@ func (t *Table[T]) renderRow(item T) string {
 		if i > 0 {
 			row += "  "
 		}
-		if c.Elide == ElideRight {
-			row += pad(c.Cell(item), t.widths[i])
-			continue
-		}
-		cell := elide(c.Cell(item), t.widths[i], c.Elide, t.measure)
-		row += cell + strings.Repeat(" ", max(0, t.widths[i]-t.measure(cell)))
+		row += fitCell(c.Cell(item), t.widths[i], c.Elide, style.AlignLeft, t.measure)
 	}
 	return row
-}
-
-// pad truncates/pads s to exactly w cells (byte-width approximation like the
-// %-*s formatting it replaces; the List truncates display overflow cleanly).
-func pad(s string, w int) string {
-	if w <= 0 {
-		return ""
-	}
-	r := []rune(s)
-	if len(r) > w {
-		if w <= 1 {
-			return string(r[:w])
-		}
-		return string(r[:w-1]) + "…"
-	}
-	return fmt.Sprintf("%-*s", w+(len(s)-len(string(r))), s)
 }
 
 // Layout gives the header one row and the list the rest.
@@ -332,7 +301,7 @@ func (t *Table[T]) Render(s tui.Surface) {
 		if x >= sz.W {
 			break
 		}
-		drawText(s, x, 0, truncate(pad(c.Title, t.widths[i]), sz.W-x, s.StringWidth), t.headSt)
+		drawText(s, x, 0, fitCell(c.Title, min(t.widths[i], sz.W-x), ElideRight, style.AlignLeft, s.StringWidth), t.headSt)
 		x += t.widths[i]
 	}
 }
