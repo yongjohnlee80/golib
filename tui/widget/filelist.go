@@ -619,17 +619,14 @@ func (l *FileList) show(dir string, dirs, files []fileEntry, err error) (live bo
 	l.fitTitle()
 	// The owner is told last, each hook only while this listing is still the one shown: a hook that
 	// moves to another folder has told the owner of that one, and nothing of this one may follow.
-	if !l.rows.Survives(func() { l.list.SetCursor(0) }) {
-		return false
-	}
 	if l.onShow != nil && !l.rows.Survives(l.onShow) {
 		return false
 	}
 	if l.onDir != nil && !l.rows.Survives(func() { l.onDir(l.src.Rooted(dir)) }) {
 		return false
 	}
-	// SetCursor(0) publishes nothing when the cursor was already on row 0, so
-	// whoever follows the cursor is told here.
+	// SetItems put the cursor on the first row without telling anyone, so whoever follows the cursor
+	// is told here.
 	return l.cursorOn(0)
 }
 
