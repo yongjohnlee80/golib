@@ -109,3 +109,38 @@ func TestAnEditorCoresReadOnlyAndIndentUnit(t *testing.T) {
 		t.Error("CoreIndentUnit took x")
 	}
 }
+
+// A chosen row runs as its action says: a CoreMenuAction on the menu's core, an EditorMenuAction on
+// a tui Editor that owns the menu. An EditorMenuAction under another owner, an action with no Run,
+// and an action the menu does not know run nothing.
+func TestAnEditorMenuRunsEachRowAsItsActionSays(t *testing.T) {
+	ed := NewEditor()
+	var ranCore *EditorCore
+	var ranEditor *Editor
+	coreAct := CoreMenuAction{ID: "c", Run: func(c *EditorCore) { ranCore = c }}
+	edAct := EditorMenuAction{ID: "e", Run: func(e *Editor) { ranEditor = e }}
+
+	m := NewEditorMenu(ed, ed.core)
+	if run := m.action(coreAct); run == nil {
+		t.Fatal("a CoreMenuAction does not run")
+	} else if run(); ranCore != ed.core {
+		t.Error("a CoreMenuAction did not run on the menu's core")
+	}
+	if run := m.action(edAct); run == nil {
+		t.Fatal("an EditorMenuAction does not run in its Editor's menu")
+	} else if run(); ranEditor != ed {
+		t.Error("an EditorMenuAction did not run on the menu's Editor")
+	}
+
+	other := NewEditorMenu(NewTextInput(), ed.core)
+	for name, a := range map[string]tui.Action{
+		"an EditorMenuAction under another owner": edAct,
+		"a CoreMenuAction with no Run":            CoreMenuAction{ID: "n"},
+		"an EditorMenuAction with no Run":         EditorMenuAction{ID: "n"},
+		"an action the menu does not know":        tui.ActivateAction{},
+	} {
+		if other.action(a) != nil {
+			t.Errorf("%s runs", name)
+		}
+	}
+}

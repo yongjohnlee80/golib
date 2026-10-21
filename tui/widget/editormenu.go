@@ -109,21 +109,19 @@ func (m *EditorMenu) OpenAt(at tui.Point) bool {
 	return true
 }
 
-// action is what a chosen row does: a CoreMenuAction on the core, an EditorMenuAction on a tui
-// Editor owner. nil for any other action, which the menu does not run.
+// menuRunner is an action an EditorMenu knows how to run: what it does when its row is chosen in
+// m, or nil when it cannot run there. CoreMenuAction and EditorMenuAction are menuRunners; a new
+// kind of row action is another, not a case in the menu.
+type menuRunner interface {
+	tui.Action
+	runIn(m *EditorMenu) func()
+}
+
+// action is what a chosen row does; nil for an action that is not a menuRunner, which the menu does
+// not run.
 func (m *EditorMenu) action(a tui.Action) func() {
-	switch act := a.(type) {
-	case CoreMenuAction:
-		if act.Run == nil {
-			return nil
-		}
-		return func() { act.Run(m.core) }
-	case EditorMenuAction:
-		e, ok := m.owner.(*Editor)
-		if !ok || act.Run == nil {
-			return nil
-		}
-		return func() { act.Run(e) }
+	if r, ok := a.(menuRunner); ok {
+		return r.runIn(m)
 	}
 	return nil
 }
@@ -150,6 +148,14 @@ type CoreMenuAction struct {
 
 // ActionID implements tui.Action.
 func (a CoreMenuAction) ActionID() tui.ActionID { return a.ID }
+
+// runIn runs Run with the menu's core.
+func (a CoreMenuAction) runIn(m *EditorMenu) func() {
+	if a.Run == nil {
+		return nil
+	}
+	return func() { a.Run(m.core) }
+}
 
 // CoreContextItems are the stock rows over c, as EditorContextItems describes them, with
 // CoreMenuAction actions.
