@@ -154,9 +154,7 @@ type List[T any] struct {
 	presses pressPairer[int]
 	w, h    int
 
-	emptyText string // shown (muted) in place of rows when the source is empty
-	// emptyMsg is the catalog message emptyText shows, resolved each layout; zero for plain text.
-	emptyMsg tui.Message
+	emptyText uiText // shown (muted) in place of rows when the source is empty
 
 	styles ListStyles
 
@@ -233,13 +231,13 @@ func WithMultiSelect[T any](enabled bool) ListOption[T] {
 // the source has no items (e.g. "No results yet"). Empty by default: an empty
 // list paints nothing.
 func WithEmptyText[T any](s string) ListOption[T] {
-	return func(l *List[T]) { l.emptyText, l.emptyMsg = s, tui.Message{} }
+	return func(l *List[T]) { l.emptyText = plainText(s) }
 }
 
 // WithEmptyTextMessage sets the placeholder to a catalog message, shown in the App's
 // language.
 func WithEmptyTextMessage[T any](m tui.Message) ListOption[T] {
-	return func(l *List[T]) { l.emptyText, l.emptyMsg = englishText(m), m }
+	return func(l *List[T]) { l.emptyText = messageText(m) }
 }
 
 // WithListOnCursor sets what runs, at once, when the cursor moves to row i: the bus's
@@ -551,9 +549,6 @@ func (l *List[T]) HandleEvent(ev tui.Event) bool {
 // Layout fills the height it is given. Offered an unbounded one, it asks for
 // its rows — its content, as a Qt view's implicit height is — at least one.
 func (l *List[T]) Layout(c tui.Constraints) tui.Size {
-	if l.emptyMsg != (tui.Message{}) {
-		l.emptyText = l.translate(l.emptyMsg)
-	}
 	l.w = fillW(c)
 	l.h = boundedMax(c.MaxH, max(c.MinH, l.count, 1))
 	if l.shown.moved([2]int{l.cursor}, [2]int{l.h}) {
@@ -598,9 +593,9 @@ func (l *List[T]) Render(s tui.Surface) {
 	l.count = l.src.Len() // the one Len() read of this pass
 	l.clamp()
 	if l.count == 0 {
-		if l.emptyText != "" {
+		if empty := l.emptyText.inLanguage(&l.Base); empty != "" {
 			muted := style.New().Foreground(style.TokenTextMuted).Italic(true)
-			drawText(s, 0, 0, truncate(l.emptyText, sz.W, s.StringWidth), muted)
+			drawText(s, 0, 0, truncate(empty, sz.W, s.StringWidth), muted)
 		}
 		return
 	}

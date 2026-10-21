@@ -18,16 +18,13 @@ type modalCard struct {
 
 	body    tui.Component
 	buttons []*Button
-	title   string
+	title   uiText
 	st      *ModalStyle
 	align   ButtonAlign
 	// rule draws a line between the body and the buttons; footer is a help line
 	// beneath the buttons.
 	rule   bool
-	footer string
-	// titleMsg and footerMsg are the catalog messages the title and the help line show,
-	// resolved each layout; zero for plain text.
-	titleMsg, footerMsg tui.Message
+	footer uiText
 	// width is the card's own width, frame included; 0 sizes it to its
 	// content.
 	width int
@@ -148,12 +145,7 @@ func (c *modalCard) Layout(cs tui.Constraints) tui.Size {
 	if ctx == nil {
 		return cs.Constrain(tui.Size{})
 	}
-	if c.titleMsg != (tui.Message{}) {
-		c.title = c.translate(c.titleMsg)
-	}
-	if c.footerMsg != (tui.Message{}) {
-		c.footer = c.translate(c.footerMsg)
-	}
+	title, footer := c.title.inLanguage(&c.Base), c.footer.inLanguage(&c.Base)
 	const border, pad = 1, 1
 	frame := 2 * (border + pad) // across: the frame and its padding, both sides
 
@@ -163,7 +155,7 @@ func (c *modalCard) Layout(cs tui.Constraints) tui.Size {
 		// and never more than the host has. It is a width, not a clip: the
 		// help line and the title still fit, as they do on a card sized to
 		// its content.
-		want := max(c.width-frame, c.measure(c.footer), c.measure(c.title))
+		want := max(c.width-frame, c.measure(footer), c.measure(title))
 		inner.W = min(want, inner.W)
 	}
 
@@ -225,15 +217,15 @@ func (c *modalCard) Layout(cs tui.Constraints) tui.Size {
 	// footer of the whole card rather than a caption on the button row.
 	padTop, padBottom := pad, pad
 	blankAbove, ruleRow, blankBelow := 0, 0, 0
-	if c.body != nil && (btnH > 0 || c.footer != "") {
+	if c.body != nil && (btnH > 0 || footer != "") {
 		blankAbove = 1
 		if c.rule {
 			ruleRow, blankBelow = 1, 1
 		}
 	}
 	footBlank, footLine, footW := 0, 0, 0
-	if c.footer != "" {
-		footLine, footW = 1, c.measure(c.footer)
+	if footer != "" {
+		footLine, footW = 1, c.measure(footer)
 		if btnH > 0 {
 			footBlank = 1
 		}
@@ -280,7 +272,7 @@ func (c *modalCard) Layout(cs tui.Constraints) tui.Size {
 	if footLine == 0 {
 		footW = 0
 	}
-	contentW := min(max(bodyW, btnW, footW, c.measure(c.title)), inner.W)
+	contentW := min(max(bodyW, btnW, footW, c.measure(title)), inner.W)
 	if c.width > 0 {
 		contentW = inner.W
 	}
@@ -342,7 +334,8 @@ func (c *modalCard) Render(s tui.Surface) {
 	c.renderRule(s, sz)
 	c.renderFooter(s, sz)
 
-	if c.title == "" {
+	title := c.title.inLanguage(&c.Base)
+	if title == "" {
 		return
 	}
 	// ON THE BORDER LINE, with a space either side so the rule does not touch
@@ -357,7 +350,7 @@ func (c *modalCard) Render(s tui.Surface) {
 		s.SetCell(x, 0, " ", c.st.Border())
 		x++
 	}
-	for cluster := range tui.Graphemes(c.title) {
+	for cluster := range tui.Graphemes(title) {
 		w := s.StringWidth(cluster)
 		if x+w > limit {
 			break
@@ -389,12 +382,13 @@ func (c *modalCard) renderRule(s tui.Surface, sz tui.Size) {
 func (c *modalCard) renderFooter(s tui.Surface, sz tui.Size) {
 	const inset = 2 // border and padding, across
 	y := c.footerY  // the row Layout gave it
-	if c.footer == "" || y <= 0 || y >= sz.H-1 {
+	footer := c.footer.inLanguage(&c.Base)
+	if footer == "" || y <= 0 || y >= sz.H-1 {
 		return
 	}
 	x, limit := inset, sz.W-inset
 	st := c.st.Footer()
-	for cluster := range tui.Graphemes(c.footer) {
+	for cluster := range tui.Graphemes(footer) {
 		w := s.StringWidth(cluster)
 		if x+w > limit {
 			break

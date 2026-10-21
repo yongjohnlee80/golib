@@ -92,8 +92,7 @@ type Box struct {
 	Base
 	child tui.Component
 
-	title       string
-	titleMsg    tui.Message // the catalog message the title shows, resolved each layout; zero for plain text
+	title       uiText
 	titleAlign  style.Align
 	status      string
 	statusAlign style.Align
@@ -202,7 +201,7 @@ func NewBox(child tui.Component, opts ...BoxOption) *Box {
 	}
 	return &Box{
 		child:       child,
-		title:       cfg.title,
+		title:       plainText(cfg.title),
 		titleAlign:  cfg.titleAlign,
 		status:      cfg.status,
 		statusAlign: cfg.statusAlign,
@@ -239,15 +238,14 @@ func boxFocused(st style.Style, set bool) style.Style {
 //
 // It ends a title set by [Box.SetTitleMessage].
 func (x *Box) SetTitle(s string) {
-	x.title, x.titleMsg = s, tui.Message{}
+	x.title = plainText(s)
 	x.MarkDirty()
 }
 
 // SetTitleMessage shows a catalog message as the title, in the App's language from the next
 // layout.
 func (x *Box) SetTitleMessage(m tui.Message) {
-	x.titleMsg = m
-	x.title = x.translate(m)
+	x.title = messageText(m)
 	x.RequestLayout()
 }
 
@@ -359,9 +357,6 @@ func borderEdgeSizes(st style.Style) (t, r, b, l int) {
 // frame. Title and status cost zero extra rows: they render inside the
 // border rows.
 func (x *Box) Layout(c tui.Constraints) tui.Size {
-	if x.titleMsg != (tui.Message{}) {
-		x.title = x.translate(x.titleMsg)
-	}
 	fh := x.base.GetHorizontalFrameSize()
 	fv := x.base.GetVerticalFrameSize()
 	if x.child == nil {
@@ -453,8 +448,8 @@ func (x *Box) Render(s tui.Surface) {
 	if fg, ok := st.GetForeground(); ok {
 		titleSt = titleSt.Foreground(fg)
 	}
-	if bt == 1 && x.title != "" && availW > 0 {
-		x.renderBorderText(s, " "+x.title+" ", x.titleAlign, titleSt.Inherit(fill), bx+1, by, availW)
+	if title := x.title.inLanguage(&x.Base); bt == 1 && title != "" && availW > 0 {
+		x.renderBorderText(s, " "+title+" ", x.titleAlign, titleSt.Inherit(fill), bx+1, by, availW)
 	}
 	if bb == 1 && x.status != "" && availW > 0 {
 		x.renderBorderText(s, " "+x.status+" ", x.statusAlign, statusSt.Inherit(fill), bx+1, by+bh-1, availW)

@@ -98,15 +98,12 @@ type TextInput struct {
 	width  int      // last layout width (viewport cells, inside the padding)
 	pad    int      // cells inside each end: 1 where a native field frames the text, else 0
 
-	placeholder string
-	// placeholderMsg is the catalog message the placeholder shows, resolved each layout; zero
-	// for plain text.
-	placeholderMsg tui.Message
-	mask           rune
-	validate       func(string) error
-	onSubmit       func(string)
-	onEdit         func(string)
-	verr           error
+	placeholder uiText // shown (muted) while the value is empty
+	mask        rune
+	validate    func(string) error
+	onSubmit    func(string)
+	onEdit      func(string)
+	verr        error
 
 	completer TextCompleter
 	walk      *textWalk // Tab's way through the choices; nil once another key is pressed
@@ -133,13 +130,13 @@ type TextInputOption func(*TextInput)
 
 // WithPlaceholder sets the text rendered (muted) while the value is empty.
 func WithPlaceholder(s string) TextInputOption {
-	return func(t *TextInput) { t.placeholder, t.placeholderMsg = s, tui.Message{} }
+	return func(t *TextInput) { t.placeholder = plainText(s) }
 }
 
 // WithPlaceholderMessage sets the placeholder to a catalog message, shown in the App's
 // language.
 func WithPlaceholderMessage(m tui.Message) TextInputOption {
-	return func(t *TextInput) { t.placeholder, t.placeholderMsg = englishText(m), m }
+	return func(t *TextInput) { t.placeholder = messageText(m) }
 }
 
 // WithMask enables password masking: the given rune paints in place of
@@ -516,9 +513,6 @@ func (t *TextInput) handleKey(e tui.KeyEvent) bool {
 // Layout: height 1, width greedy; the viewport width feeds cursor-visible
 // scrolling.
 func (t *TextInput) Layout(c tui.Constraints) tui.Size {
-	if t.placeholderMsg != (tui.Message{}) {
-		t.placeholder = t.translate(t.placeholderMsg)
-	}
 	t.pad = 0
 	if ctx := t.Context(); ctx != nil && ctx.Capabilities().NativeViews {
 		t.pad = 1 // the native field's rounded frame: text starts a cell in from each end
@@ -557,8 +551,8 @@ func (t *TextInput) Render(s tui.Surface) {
 	}
 	inner := sz.W - 2*pad
 	if len(t.cs) == 0 {
-		if t.placeholder != "" {
-			drawText(s, pad, 0, truncate(t.placeholder, inner, s.StringWidth), t.styles.Placeholder)
+		if ph := t.placeholder.inLanguage(&t.Base); ph != "" {
+			drawText(s, pad, 0, truncate(ph, inner, s.StringWidth), t.styles.Placeholder)
 		}
 		return
 	}

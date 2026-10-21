@@ -45,7 +45,7 @@ func (t *TextInput) Scroll() int { return t.scroll }
 func (t *TextInput) Padding() int { return t.pad }
 
 // Placeholder is the text shown while the value is empty.
-func (t *TextInput) Placeholder() string { return t.placeholder }
+func (t *TextInput) Placeholder() string { return t.placeholder.inLanguage(&t.Base) }
 
 // Masked reports whether the value is drawn as a mask character.
 func (t *TextInput) Masked() bool { return t.mask != 0 }
@@ -111,7 +111,7 @@ func (s *StatusBar) Center() string { return s.center.text }
 func (s *StatusBar) Right() string { return s.right.text }
 
 // Title is the text on the top border.
-func (b *Box) Title() string { return b.title }
+func (b *Box) Title() string { return b.title.inLanguage(&b.Base) }
 
 // Status is the text on the bottom border.
 func (b *Box) Status() string { return b.status }
@@ -120,7 +120,7 @@ func (b *Box) Status() string { return b.status }
 func (b *Box) FocusWithin() bool { return b.focusWithin }
 
 // Title is the dialog's title.
-func (m *Modal) Title() string { return m.card.title }
+func (m *Modal) Title() string { return m.card.title.inLanguage(&m.card.Base) }
 
 // Items are the toasts showing, oldest first.
 func (t *Toasts) Items() []Toast {
