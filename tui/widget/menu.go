@@ -66,6 +66,8 @@ type Menu struct {
 	// because a popup's rows are in the POPUP's frame — one shared map would
 	// mix two coordinate systems and hit-test the wrong row.
 	rowRects map[ItemID]tui.Rect
+	// root is the vertical root level's window onto its rows; each open level has its own.
+	root levelView
 
 	// captureCtx is the node that took the pointer for the gesture in progress.
 	// Remembered because a press can land on the root or on any open level, and
@@ -505,7 +507,9 @@ func (m *Menu) setSelected(id ItemID) {
 	m.selected = id
 	if ctx := m.Context(); ctx != nil {
 		ctx.Bus().Publish(MenuSelectionChangedEvent{Owner: m.NodeID(), ItemID: id})
-		ctx.MarkDirty()
+		// A layout, not just a repaint: each level's window (levelView) follows the selection, and
+		// the rows it shows are the ones declared as anchors and hit rects.
+		ctx.RequestLayout()
 	}
 	if m.onSelect != nil {
 		m.onSelect(id) // last, after the bus: the owner may change the model from it
