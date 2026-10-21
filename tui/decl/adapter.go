@@ -364,42 +364,12 @@ func (a *Adapter) Create(c decl.Construction) ([]string, error) {
 	if !ok {
 		return nil, fmt.Errorf("no widget registered for type %q (declared at %s)", c.Type, c.Pos)
 	}
-
-	children := make([]tui.Component, 0, len(c.Children))
-	if c.Type != "Editor" {
-		for _, id := range c.Children {
-			if _, ok := a.nodes[id].comp.(*syntaxNode); ok {
-				return nil, fmt.Errorf("a SyntaxHighlighter highlights the Editor it is declared in, and %s is not one (at %s)",
-					c.Type, c.Pos)
-			}
-			if _, ok := a.nodes[id].comp.(*shortcutNode); ok && !shortcutHolders[c.Type] {
-				return nil, fmt.Errorf("a Shortcut is live while focus is in the element that declares it, a %s, "+
-					"and %s is none of them: put it in a FocusScope (at %s)", shortcutHolderNames(), c.Type, a.nodes[id].pos)
-			}
-			_, spec := a.nodes[id].comp.(*rendererNode)
-			_, doc := a.nodes[id].comp.(*documentNode)
-			if spec || doc {
-				return nil, fmt.Errorf("a %s draws the Editor it is declared in, and %s is not one (at %s)",
-					a.nodes[id].typ, c.Type, c.Pos)
-			}
-		}
+	if err := a.refuseMisplaced(c); err != nil {
+		return nil, err
 	}
-	childAttached := make([]map[string]qml.SpecValue, 0, len(c.Children))
-	var childNominee tui.Component
-	for _, id := range c.Children {
-		child, ok := a.nodes[id]
-		if !ok {
-			// The engine builds children first, so this cannot happen from a
-			// well-formed mount. It is reported rather than assumed away
-			// because the alternative is a nil child reaching a constructor
-			// that panics on one.
-			return nil, fmt.Errorf("child node %d was not built before its parent %d", id, c.Node)
-		}
-		children = append(children, child.comp)
-		childAttached = append(childAttached, child.attached)
-		if childNominee == nil {
-			childNominee = child.nominee
-		}
+	children, childAttached, childNominee, err := a.childrenOf(c)
+	if err != nil {
+		return nil, err
 	}
 	own, attached := a.splitProps(c.Props)
 	own, focus, err := takeFocus(own)
@@ -412,20 +382,8 @@ func (a *Adapter) Create(c decl.Construction) ([]string, error) {
 	if err != nil {
 		return nil, err
 	}
-
-	// A bound emitter with nowhere to send its error is refused at the point
-	// the wiring would happen, rather than becoming silence at the first
-	// failure. A schema that binds nothing needs no sink and is unaffected.
-	if len(c.Emitters) > 0 && a.sink == nil {
-		signals := make([]string, 0, len(c.Emitters))
-		for name := range c.Emitters {
-			signals = append(signals, name)
-		}
-		sort.Strings(signals)
-		return nil, fmt.Errorf(
-			"%q binds %v but this adapter has no error sink, so a failing handler "+
-				"would be silent: pass WithErrorSink (declared at %s)",
-			c.Type, signals, c.Pos)
+	if err := a.requireSink(c); err != nil {
+		return nil, err
 	}
 
 	asked := map[string]bool{}
@@ -451,20 +409,7 @@ func (a *Adapter) Create(c decl.Construction) ([]string, error) {
 		Overlay:         a.overlay,
 		WindowCollector: a.windowCollector,
 		WindowTarget:    a.windowTargets[c.ID],
-		WindowCore: func(id string) (*widget.WindowCore, bool) {
-			if a.tree == nil {
-				return nil, false
-			}
-			node, ok := a.tree.NodeByID(id)
-			if !ok {
-				return nil, false
-			}
-			component, ok := a.Component(node)
-			if !ok {
-				return nil, false
-			}
-			return windowCoreOf(component)
-		},
+		WindowCore:      a.windowCoreByID,
 		highlighters:    a.highlighters,
 		SourceLanguages: a.sourceLanguages,
 		asked:           asked,
@@ -475,21 +420,8 @@ func (a *Adapter) Create(c decl.Construction) ([]string, error) {
 	if comp == nil {
 		return nil, fmt.Errorf("the builder for %q returned no component", c.Type)
 	}
-	// Qt refuses a handler for a signal the type does not have. A builder
-	// wires every signal its widget raises at construction, so one it never
-	// asked for is not a signal of this type — and a handler bound to it would
-	// never run.
-	//
-	// Refused AFTER the builder ran, so what it built is released as a
-	// destroyed node's would be: a builder may already hold resources — a
-	// Popup's layer on the overlay host — and the node is never recorded,
-	// so no Destroy would reach them.
-	if unknown := unaskedSignals(c.Emitters, asked); len(unknown) > 0 {
-		if hook := a.contractOf(c.Type).destroyed; hook != nil {
-			hook(comp)
-		}
-		return nil, fmt.Errorf("%s has no signal %s: on%s is bound to nothing (declared at %s)",
-			c.Type, strings.Join(unknown, ", "), capitalize(unknown[0]), c.Pos)
+	if err := a.refuseUnaskedSignals(c, comp, asked); err != nil {
+		return nil, err
 	}
 	nominee := childNominee
 	if focus {
@@ -509,6 +441,111 @@ func (a *Adapter) Create(c decl.Construction) ([]string, error) {
 		consumed = append(consumed, name)
 	}
 	return consumed, nil
+}
+
+// refuseMisplaced refuses a child that belongs only in another type: a SyntaxHighlighter, a
+// Renderer or a Document outside an Editor, a Shortcut outside a shortcut holder.
+func (a *Adapter) refuseMisplaced(c decl.Construction) error {
+	if c.Type == "Editor" {
+		return nil
+	}
+	for _, id := range c.Children {
+		if _, ok := a.nodes[id].comp.(*syntaxNode); ok {
+			return fmt.Errorf("a SyntaxHighlighter highlights the Editor it is declared in, and %s is not one (at %s)",
+				c.Type, c.Pos)
+		}
+		if _, ok := a.nodes[id].comp.(*shortcutNode); ok && !shortcutHolders[c.Type] {
+			return fmt.Errorf("a Shortcut is live while focus is in the element that declares it, a %s, "+
+				"and %s is none of them: put it in a FocusScope (at %s)", shortcutHolderNames(), c.Type, a.nodes[id].pos)
+		}
+		_, spec := a.nodes[id].comp.(*rendererNode)
+		_, doc := a.nodes[id].comp.(*documentNode)
+		if spec || doc {
+			return fmt.Errorf("a %s draws the Editor it is declared in, and %s is not one (at %s)",
+				a.nodes[id].typ, c.Type, c.Pos)
+		}
+	}
+	return nil
+}
+
+// childrenOf is c's built children, in order, with the attached properties each carried and the
+// first focus nominee among them.
+func (a *Adapter) childrenOf(c decl.Construction) (children []tui.Component, attached []map[string]qml.SpecValue,
+	nominee tui.Component, err error) {
+	children = make([]tui.Component, 0, len(c.Children))
+	attached = make([]map[string]qml.SpecValue, 0, len(c.Children))
+	for _, id := range c.Children {
+		child, ok := a.nodes[id]
+		if !ok {
+			// The engine builds children first, so this cannot happen from a
+			// well-formed mount. It is reported rather than assumed away
+			// because the alternative is a nil child reaching a constructor
+			// that panics on one.
+			return nil, nil, nil, fmt.Errorf("child node %d was not built before its parent %d", id, c.Node)
+		}
+		children = append(children, child.comp)
+		attached = append(attached, child.attached)
+		if nominee == nil {
+			nominee = child.nominee
+		}
+	}
+	return children, attached, nominee, nil
+}
+
+// requireSink refuses a bound emitter with nowhere to send its error, at the point the wiring would
+// happen, rather than letting it become silence at the first failure. A schema that binds nothing
+// needs no sink.
+func (a *Adapter) requireSink(c decl.Construction) error {
+	if len(c.Emitters) > 0 && a.sink == nil {
+		signals := make([]string, 0, len(c.Emitters))
+		for name := range c.Emitters {
+			signals = append(signals, name)
+		}
+		sort.Strings(signals)
+		return fmt.Errorf(
+			"%q binds %v but this adapter has no error sink, so a failing handler "+
+				"would be silent: pass WithErrorSink (declared at %s)",
+			c.Type, signals, c.Pos)
+	}
+	return nil
+}
+
+// refuseUnaskedSignals refuses a handler bound to a signal the builder never asked for.
+//
+// Qt refuses a handler for a signal the type does not have. A builder
+// wires every signal its widget raises at construction, so one it never
+// asked for is not a signal of this type — and a handler bound to it would
+// never run.
+//
+// Refused AFTER the builder ran, so what it built is released as a
+// destroyed node's would be: a builder may already hold resources — a
+// Popup's layer on the overlay host — and the node is never recorded,
+// so no Destroy would reach them.
+func (a *Adapter) refuseUnaskedSignals(c decl.Construction, comp tui.Component, asked map[string]bool) error {
+	if unknown := unaskedSignals(c.Emitters, asked); len(unknown) > 0 {
+		if hook := a.contractOf(c.Type).destroyed; hook != nil {
+			hook(comp)
+		}
+		return fmt.Errorf("%s has no signal %s: on%s is bound to nothing (declared at %s)",
+			c.Type, strings.Join(unknown, ", "), capitalize(unknown[0]), c.Pos)
+	}
+	return nil
+}
+
+// windowCoreByID is the WindowCore of the node with schema id, for a builder's Build.WindowCore.
+func (a *Adapter) windowCoreByID(id string) (*widget.WindowCore, bool) {
+	if a.tree == nil {
+		return nil, false
+	}
+	node, ok := a.tree.NodeByID(id)
+	if !ok {
+		return nil, false
+	}
+	component, ok := a.Component(node)
+	if !ok {
+		return nil, false
+	}
+	return windowCoreOf(component)
 }
 
 // Apply implements decl.Adapter.
