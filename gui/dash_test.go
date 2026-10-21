@@ -47,8 +47,15 @@ func TestDashStaysBounded(t *testing.T) {
 		t.Errorf("a 2-pixel period over 100,000 px (50,000 dashes): %d runs, want solid", len(runs))
 	}
 	for _, pat := range [][]float32{{0}, {-3}, {}} {
-		if runs := Dash(line, pat); len(runs) != 1 || len(runs[0]) != 2 {
-			t.Errorf("pattern %v: %d runs, want the line solid", pat, len(runs))
+		done := make(chan [][]Point, 1)
+		go func() { done <- Dash(line, pat) }()
+		select {
+		case runs := <-done:
+			if len(runs) != 1 || len(runs[0]) != 2 {
+				t.Errorf("pattern %v: %d runs, want the line solid", pat, len(runs))
+			}
+		case <-time.After(5 * time.Second):
+			t.Fatalf("pattern %v: still cutting after 5 s", pat)
 		}
 	}
 }
