@@ -75,7 +75,7 @@ type ProgressBar struct {
 	frames        []string // spinner frames; nil = sweeping block
 	interval      time.Duration
 	phase         int
-	cancel        func()
+	anim          ticker
 
 	filled style.Style
 	empty  style.Style
@@ -127,7 +127,7 @@ func NewProgressBar(opts ...ProgressBarOption) *ProgressBar {
 // state.
 func (p *ProgressBar) Init(ctx *tui.Context) {
 	p.Base.Init(ctx)
-	p.cancel = nil
+	p.anim.forget()
 	if p.indeterminate {
 		p.startAnim()
 	}
@@ -154,23 +154,13 @@ func (p *ProgressBar) SetIndeterminate() {
 	p.MarkDirty()
 }
 
-func (p *ProgressBar) startAnim() {
-	if p.ctx == nil || p.cancel != nil {
-		return
-	}
-	p.cancel = p.ctx.Every(p.interval)
-}
+func (p *ProgressBar) startAnim() { p.anim.start(p.ctx, p.interval) }
 
-func (p *ProgressBar) stopAnim() {
-	if p.cancel != nil {
-		p.cancel()
-		p.cancel = nil
-	}
-}
+func (p *ProgressBar) stopAnim() { p.anim.halt() }
 
 // HandleEvent consumes this bar's animation ticks.
 func (p *ProgressBar) HandleEvent(ev tui.Event) bool {
-	if te, ok := ev.(tui.TickEvent); ok && te.Owner == p.NodeID() {
+	if tickOf(ev, p.NodeID()) {
 		p.phase++
 		p.MarkDirty()
 		return true
