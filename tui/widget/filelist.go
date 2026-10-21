@@ -2,17 +2,12 @@ package widget
 
 import (
 	"context"
-	"io"
-	"io/fs"
 	"os"
 	"path"
 	"path/filepath"
-	"sort"
-	"strings"
 
 	"github.com/yongjohnlee80/golib/tui"
 	"github.com/yongjohnlee80/golib/tui/style"
-	"github.com/yongjohnlee80/golib/vfs"
 )
 
 // FILE LIST — a folder's files, and moving between folders.
@@ -31,145 +26,6 @@ import (
 //
 // It is framed and titled with its folder, elided from the LEFT to fit — the
 // end of a path is what tells two folders apart.
-
-// FileSource is a filesystem the file widgets list, and how its paths are
-// written for a person.
-//
-// PLATFORM-INDEPENDENT: the widgets reach files only through io/fs, so a
-// FileSource over the local disk, an embedded tree, a zip or a remote store
-// (an SFTP or object-store fs.FS) lists and previews the same way. Root is
-// what a path is written under — "/" locally, "sftp://host/" remotely — and
-// every path the widgets report or accept is in that ROOTED form, so a host
-// hears an ordinary absolute path from a local dialog.
-//
-// An fs.FS is read on the UI loop, as the local disk always has been, unless
-// Async says to read it off the loop. A source that may be slow (a daemon's, a
-// remote store) is a [vfs.FS] in VFS instead, which the widgets read OFF the
-// loop, with the reading task's context: a listing or a preview that a newer
-// one supersedes, or that its dialog's closing ends, is stopped rather than
-// only dropped.
-type FileSource struct {
-	FS fs.FS
-	// VFS, when set, is read instead of FS, off the loop: VFS wins when both
-	// are set. Its symlinks are listed as files, since vfs reports a link
-	// without following it.
-	VFS vfs.FS
-	// Async reads FS off the loop, as a VFS source is read: a slow mount (NFS,
-	// sshfs) no longer holds the loop, and links are followed as on the loop.
-	// An fs.FS read takes no context, so a superseded one cannot be stopped:
-	// it runs to its end on a worker and its answer is dropped.
-	Async bool
-	Root  string
-	// Home is the rooted folder ~ stands for in a typed path; "" when the source has none, and
-	// then a typed ~ is refused rather than guessed.
-	Home string
-}
-
-// LocalFiles is the local filesystem, rooted at "/", ~ its user's home folder.
-func LocalFiles() FileSource {
-	home, _ := os.UserHomeDir()
-	return FileSource{FS: os.DirFS("/"), Root: "/", Home: home}
-}
-
-// Rooted writes an fs path as a person reads it: "home/me" → "/home/me".
-func (s FileSource) Rooted(p string) string {
-	if p == "." || p == "" {
-		return s.Root
-	}
-	return s.Root + p
-}
-
-// fsPath reads a rooted path back into an fs path, reporting false for one
-// outside this source. A relative path is taken as relative to the root.
-func (s FileSource) fsPath(rooted string) (string, bool) {
-	p := filepath.ToSlash(rooted)
-	if s.Root != "" && strings.HasPrefix(p, s.Root) {
-		p = strings.TrimPrefix(p, s.Root)
-	} else if strings.HasPrefix(p, "/") {
-		return "", false
-	}
-	p = path.Clean("/" + p)[1:]
-	if p == "" {
-		p = "."
-	}
-	return p, fs.ValidPath(p)
-}
-
-// or returns the source, or the local filesystem when it has none, read off
-// the loop when the source said Async.
-func (s FileSource) or() FileSource {
-	if s.FS == nil && s.VFS == nil {
-		local := LocalFiles()
-		local.Async = s.Async
-		if s.Home != "" {
-			local.Home = s.Home
-		}
-		return local
-	}
-	return s
-}
-
-// async reports whether the source is read off the loop: a VFS one, or an
-// Async fs.FS.
-func (s FileSource) async() bool { return s.VFS != nil || s.Async }
-
-// isDir reports whether an fs path is a folder, following a link to one in an
-// fs.FS, with ctx bounding a VFS read: what [FileSource.kind] says, the one
-// place a path is asked about.
-func (s FileSource) isDir(ctx context.Context, p string) bool { return s.kind(ctx, p) == pathFolder }
-
-// readDir lists a folder, its folders and its files each sorted without regard
-// to case, with ctx bounding a VFS read.
-func (s FileSource) readDir(ctx context.Context, dir string) (dirs, files []fileEntry, err error) {
-	if s.VFS != nil {
-		infos, err := s.VFS.ReadDir(ctx, dir)
-		for _, fi := range infos {
-			if fi.IsDir() {
-				dirs = append(dirs, fileEntry{name: fi.Name, dir: true})
-			} else {
-				files = append(files, fileEntry{name: fi.Name})
-			}
-		}
-		sortEntries(dirs)
-		sortEntries(files)
-		return dirs, files, err
-	}
-	ds, err := fs.ReadDir(s.FS, dir)
-	for _, d := range ds {
-		// A LINK to a folder is a folder to the user; asking the source
-		// follows it, which DirEntry.IsDir does not.
-		if d.IsDir() || (d.Type()&fs.ModeSymlink != 0 && s.isDir(ctx, path.Join(dir, d.Name()))) {
-			dirs = append(dirs, fileEntry{name: d.Name(), dir: true})
-		} else {
-			files = append(files, fileEntry{name: d.Name()})
-		}
-	}
-	sortEntries(dirs)
-	sortEntries(files)
-	return dirs, files, err
-}
-
-func sortEntries(s []fileEntry) {
-	sort.Slice(s, func(i, j int) bool { return strings.ToLower(s[i].name) < strings.ToLower(s[j].name) })
-}
-
-// open opens a file to read, with ctx bounding a VFS read.
-func (s FileSource) open(ctx context.Context, p string) (io.ReadCloser, error) {
-	if s.VFS != nil {
-		return s.VFS.Open(ctx, p, 0)
-	}
-	return s.FS.Open(p)
-}
-
-// FilePaneStyles are the looks the file views paint. Surface is every pane's
-// interior. Cursor is the list's row while the list has the keyboard,
-// CursorBlurred the same row once the keyboard has moved elsewhere. Border and
-// FocusedBorder frame each pane, without and with the keyboard. Gap is the
-// space between two panes, which belongs to whatever holds them — a dialog's
-// card — and so is painted in its colour, not left as the terminal's.
-type FilePaneStyles struct {
-	Surface, Cursor, CursorBlurred, Border, FocusedBorder, Gap style.Style
-}
 
 // FileListOption configures a FileList under construction.
 type FileListOption func(*FileList)
@@ -317,37 +173,6 @@ func fileListStyles(st FilePaneStyles) ListStyles {
 		ls.CursorBlurred = st.CursorBlurred.Reverse(false)
 	}
 	return ls
-}
-
-// newFilePane frames one part of a file view, titled. Every pane of every file
-// view is framed by this, so they cannot come to look different.
-//
-// PADDED: a column of room either side, so a name does not run into the frame.
-// The frame carries the focus — Box lights its border while the keyboard is
-// inside — so the pane in use is named by its own border.
-func newFilePane(child tui.Component, title string, st FilePaneStyles, styled bool) *Box {
-	b := NewBox(child, WithTitle(title))
-	stylePane(b, st, styled)
-	return b
-}
-
-// stylePane dresses a pane's frame: its interior on Surface, the border in
-// Border's colour, and in FocusedBorder's while the keyboard is inside.
-func stylePane(b *Box, st FilePaneStyles, styled bool) {
-	base := style.New().Padding(0, 1)
-	focused := style.Style{}
-	if styled {
-		// A look that names no colour leaves golib's border token in place.
-		base = st.Surface.Padding(0, 1)
-		if c, ok := st.Border.GetForeground(); ok {
-			base = base.BorderForeground(c)
-		}
-		if c, ok := st.FocusedBorder.GetForeground(); ok {
-			focused = style.New().BorderForeground(c)
-		}
-	}
-	b.WithStyle(base)
-	b.WithFocusedStyle(focused)
 }
 
 // Init mounts the list; the list reports its cursor and activation itself (WithListOnCursor).
@@ -589,21 +414,6 @@ func (l *FileList) stopRead() {
 		l.stopList()
 		l.stopList = nil
 	}
-}
-
-// goRead runs read off the loop as one of the owner's group's tasks: a newer
-// one in the group cancels it, as does its owner's unmount, and so does the
-// returned stop, which its owner calls when something not run as a task (a
-// folder row, an fs.FS source) takes over.
-func goRead(ctx *tui.Context, group string, read func(context.Context) (any, error)) (tui.TaskID, context.CancelFunc) {
-	own, stop := context.WithCancel(context.Background())
-	id := ctx.Go(func(task context.Context) (any, error) {
-		c, cancel := context.WithCancel(task)
-		defer cancel()
-		defer context.AfterFunc(own, cancel)()
-		return read(c)
-	}, tui.Exclusive(group))
-	return id, stop
 }
 
 // show puts a folder's rows in the list, the filter cleared and the cursor on

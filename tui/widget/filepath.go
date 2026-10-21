@@ -2,7 +2,6 @@ package widget
 
 import (
 	"context"
-	"errors"
 	"io/fs"
 	"path"
 	"strings"
@@ -15,45 +14,6 @@ import (
 // relative to the folder listed), finds out what it names (off the loop for an async source) and
 // hands that to the view, which decides what going there means: the Open view chooses a file,
 // the Save view names one, the Folder view lists a folder. Esc puts back the folder listed.
-
-// pathKind is what a path names in a source.
-type pathKind int
-
-const (
-	pathMissing    pathKind = iota // nothing there
-	pathFile                       // a file (a link followed, for an fs.FS)
-	pathFolder                     // a folder (a link to one, for an fs.FS)
-	pathUnreadable                 // there, perhaps, but the source refused to say (permission)
-)
-
-// kind reports what an fs path names, following a link in an fs.FS, with ctx bounding a VFS read.
-func (s FileSource) kind(ctx context.Context, p string) pathKind {
-	var fi fs.FileInfo
-	var err error
-	if s.VFS != nil {
-		var vi interface{ IsDir() bool }
-		vi, err = s.VFS.Stat(ctx, p)
-		if err == nil {
-			return kindOf(vi.IsDir())
-		}
-	} else {
-		fi, err = fs.Stat(s.FS, p)
-		if err == nil {
-			return kindOf(fi.IsDir())
-		}
-	}
-	if errors.Is(err, fs.ErrNotExist) {
-		return pathMissing
-	}
-	return pathUnreadable
-}
-
-func kindOf(folder bool) pathKind {
-	if folder {
-		return pathFolder
-	}
-	return pathFile
-}
 
 // pathTitles are a path field's titles: the field's own, and the field holding a path that is
 // not found, names no folder its view can use, has no folder to go in, uses a ~ the source does
