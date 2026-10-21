@@ -40,7 +40,7 @@ func (p *blockParser) tryStarts(container *Node) (startResult, *Node) {
 				p.advanceNextNonspace()
 				p.closeUnmatched()
 				h := p.addChild(KindHeading, ns)
-				h.Level = level
+				h.attrs().level = level
 				h.blk.content = append([]byte(nil), content...)
 				h.blk.segs = []seg{{at: 0, src: p.ln.start + ns + offsetIn(rest, content), n: len(content)}}
 				h.Span.End = p.ln.end
@@ -52,10 +52,10 @@ func (p *blockParser) tryStarts(container *Node) (startResult, *Node) {
 			if n, info, ok := openingFence(rest, c); ok {
 				p.closeUnmatched()
 				cb := p.addChild(KindCodeBlock, ns)
-				cb.Fence = c
+				cb.attrs().fence = c
 				cb.blk.fenceLen = n
 				cb.blk.fenceOffset = p.indent
-				cb.Info = decodeInline(info)
+				cb.attrs().info = decodeInline(info)
 				p.extendTo(cb, p.ln.end)
 				p.lineConsumed = true
 				return startLeaf, cb
@@ -66,7 +66,7 @@ func (p *blockParser) tryStarts(container *Node) (startResult, *Node) {
 			if kind := htmlBlockStart(rest, inParagraph); kind != 0 {
 				p.closeUnmatched()
 				hb := p.addChild(KindHTMLBlock, 0)
-				hb.HTML = kind
+				hb.attrs().html = kind
 				hb.Span.Start = p.ln.start + ns
 				// the line's content, indentation included, is added as-is
 				return startLeaf, hb
@@ -83,7 +83,7 @@ func (p *blockParser) tryStarts(container *Node) (startResult, *Node) {
 					return startNone, nil
 				}
 				container.Kind = KindHeading
-				container.Level = level
+				container.attrs().level = level
 				container.Span.End = p.ln.end
 				p.finalize(container, p.ln.end)
 				p.offset = len(p.text)
@@ -103,13 +103,13 @@ func (p *blockParser) tryStarts(container *Node) (startResult, *Node) {
 	if !p.indented {
 		if data, ok := p.listMarker(container); ok {
 			p.closeUnmatched()
-			if p.tip.Kind != KindList || !listMatches(p.tip.List, data) {
+			if p.tip.Kind != KindList || !listMatches(p.tip.List(), data) {
 				l := p.addChild(KindList, ns)
-				l.List = data
-				l.List.Tight = true
+				l.attrs().list = data
+				l.attrs().list.Tight = true
 			}
 			item := p.addChild(KindItem, ns)
-			item.List = data
+			item.attrs().list = data
 			if p.cfg.gfm {
 				if res, n, ok := p.taskMarker(item); ok {
 					return res, n

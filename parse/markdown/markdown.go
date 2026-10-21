@@ -78,8 +78,10 @@ type ListData struct {
 	padding      int // columns from the marker's start to the item's content
 }
 
-// Node is one element of the document tree. The fields after Span are used only by the kinds that
-// need them and are zero otherwise.
+// Node is one element of the document tree. Kind, Span, the tree links and Literal are fields; what
+// only some kinds carry (a heading's level, a link's destination, a list's data, …) is read through
+// methods, which answer the zero value on a node of another kind, and kept off the Node itself, so
+// text, emphasis and paragraphs, most of a document, stay small.
 type Node struct {
 	Kind                                      Kind
 	Span                                      Span
@@ -90,21 +92,118 @@ type Node struct {
 	// Code blocks and HTML blocks always carry their content here, since it is assembled from lines.
 	Literal []byte
 
-	Level int      // heading level, 1–6
-	Info  []byte   // a fenced code block's info string, decoded
-	Fence byte     // '`' or '~' for a fenced code block; 0 for an indented one
-	List  ListData // KindList and KindItem
-	Dest  []byte   // link or image destination, decoded
-	Title []byte   // link or image title, decoded
-	Label []byte   // KindLinkRefDef: the label as written; KindTag: the tag without its '#'
-	HTML  int      // KindHTMLBlock: which of the seven start conditions opened it
-
-	Checked *bool    // a GFM task list item: whether it is checked; nil on any other item
-	Align   []Align  // KindTable: each column's alignment
-	Target  *Target  // KindWikilink and KindEmbed: where it points
-	Callout *Callout // a KindBlockQuote that is an Obsidian callout; nil on any other
-
+	a   *nodeAttrs  // what only some kinds carry; nil on a node that carries none
 	blk *blockState // parse-time state of an open block; nil once the parse is done
+}
+
+// nodeAttrs are the values only some kinds of node carry. A node of another kind has none.
+type nodeAttrs struct {
+	level              int      // heading level, 1–6
+	info               []byte   // a fenced code block's info string, decoded
+	fence              byte     // '`' or '~' for a fenced code block; 0 for an indented one
+	list               ListData // KindList and KindItem
+	dest, title, label []byte   // a link's or image's destination and title; a definition's or tag's label
+	html               int      // KindHTMLBlock: which of the seven start conditions opened it
+	checked            *bool    // a GFM task list item: whether it is checked
+	align              []Align  // KindTable: each column's alignment
+	target             *Target  // KindWikilink and KindEmbed: where it points
+	callout            *Callout // a KindBlockQuote that is an Obsidian callout
+}
+
+// attrs is n's values, made when the first one is set. A nil node has none to set: its values go to
+// a scratch block nobody reads, so a setter on a nil node does nothing rather than panic.
+func (n *Node) attrs() *nodeAttrs {
+	if n == nil {
+		return new(nodeAttrs)
+	}
+	if n.a == nil {
+		n.a = new(nodeAttrs)
+	}
+	return n.a
+}
+
+// Level is a heading's level, 1–6; 0 on any other node.
+func (n *Node) Level() int { return n.attrsOrZero().level }
+
+// Info is a fenced code block's info string, decoded; nil on any other node.
+func (n *Node) Info() []byte { return n.attrsOrZero().info }
+
+// Fence is '`' or '~' for a fenced code block; 0 for an indented one and any other node.
+func (n *Node) Fence() byte { return n.attrsOrZero().fence }
+
+// List is a KindList's or KindItem's list data; the zero ListData on any other node.
+func (n *Node) List() ListData { return n.attrsOrZero().list }
+
+// Dest is a link's or image's destination, decoded; nil on any other node.
+func (n *Node) Dest() []byte { return n.attrsOrZero().dest }
+
+// Title is a link's or image's title, decoded; nil on any other node.
+func (n *Node) Title() []byte { return n.attrsOrZero().title }
+
+// Label is a KindLinkRefDef's label as written, or a KindTag's tag without its '#'; nil otherwise.
+func (n *Node) Label() []byte { return n.attrsOrZero().label }
+
+// HTML is which of the seven start conditions opened a KindHTMLBlock; 0 on any other node.
+func (n *Node) HTML() int { return n.attrsOrZero().html }
+
+// Checked is whether a GFM task list item is checked; nil on any other item and any other node.
+func (n *Node) Checked() *bool { return n.attrsOrZero().checked }
+
+// Align is a KindTable's column alignments; nil on any other node.
+func (n *Node) Align() []Align { return n.attrsOrZero().align }
+
+// Target is where a KindWikilink or KindEmbed points; nil on any other node.
+func (n *Node) Target() *Target { return n.attrsOrZero().target }
+
+// Callout is a KindBlockQuote's Obsidian callout; nil on any other block quote and any other node.
+func (n *Node) Callout() *Callout { return n.attrsOrZero().callout }
+
+// SetLevel sets a heading's level.
+func (n *Node) SetLevel(v int) { n.attrs().level = v }
+
+// SetInfo sets a fenced code block's info string.
+func (n *Node) SetInfo(v []byte) { n.attrs().info = v }
+
+// SetFence sets a fenced code block's fence character.
+func (n *Node) SetFence(v byte) { n.attrs().fence = v }
+
+// SetList sets a list's or item's list data.
+func (n *Node) SetList(v ListData) { n.attrs().list = v }
+
+// SetDest sets a link's or image's destination.
+func (n *Node) SetDest(v []byte) { n.attrs().dest = v }
+
+// SetTitle sets a link's or image's title.
+func (n *Node) SetTitle(v []byte) { n.attrs().title = v }
+
+// SetLabel sets a definition's or tag's label.
+func (n *Node) SetLabel(v []byte) { n.attrs().label = v }
+
+// SetHTML sets which start condition opened an HTML block.
+func (n *Node) SetHTML(v int) { n.attrs().html = v }
+
+// SetChecked sets whether a task list item is checked.
+func (n *Node) SetChecked(v *bool) { n.attrs().checked = v }
+
+// SetAlign sets a table's column alignments.
+func (n *Node) SetAlign(v []Align) { n.attrs().align = v }
+
+// SetTarget sets where a wikilink or embed points.
+func (n *Node) SetTarget(v *Target) { n.attrs().target = v }
+
+// SetCallout sets a block quote's Obsidian callout.
+func (n *Node) SetCallout(v *Callout) { n.attrs().callout = v }
+
+// noAttrs is what a node without values reads as. It is never written: setters go through attrs.
+var noAttrs nodeAttrs
+
+// attrsOrZero is n's values, or the zero values for a node that carries none, a nil node included,
+// so every accessor answers its zero value instead of panicking.
+func (n *Node) attrsOrZero() *nodeAttrs {
+	if n == nil || n.a == nil {
+		return &noAttrs
+	}
+	return n.a
 }
 
 // Text returns a text-bearing node's text: Literal when set, else the source it spans.
@@ -178,7 +277,19 @@ type Document struct {
 // nodes (a one-line parse, as the highlighter makes, stays small) and doubles up to 1024. A node is
 // never moved: a chunk is only appended to within its capacity, and a full one is left as it is
 // for a new one. Each Parse has its own (on its Document), so nothing is shared between parses.
-type nodeSlab struct{ chunks [][]Node }
+type nodeSlab struct {
+	chunks [][]Node
+	attrs  [][]nodeAttrs // the values of the nodes that carry them, chunked the same way
+}
+
+// carriesAttrs are the kinds every node of which carries values: their nodes take them from the
+// slab when made. A node of another kind that comes to carry one (a paragraph a setext underline
+// makes a heading, a block quote that is a callout) takes it when it is first set.
+var carriesAttrs = [...]bool{
+	KindHeading: true, KindCodeBlock: true, KindHTMLBlock: true, KindList: true, KindItem: true,
+	KindLink: true, KindImage: true, KindAutolink: true, KindLinkRefDef: true, KindTag: true,
+	KindTable: true, KindWikilink: true, KindEmbed: true,
+}
 
 // new places n in the slab and returns where it lies.
 func (s *nodeSlab) new(n Node) *Node {
@@ -191,8 +302,33 @@ func (s *nodeSlab) new(n Node) *Node {
 		s.chunks = append(s.chunks, make([]Node, 0, size))
 		last++
 	}
+	if n.a == nil && int(n.Kind) < len(carriesAttrs) && carriesAttrs[n.Kind] {
+		n.a = s.newAttrs(nodeAttrs{})
+	}
 	s.chunks[last] = append(s.chunks[last], n)
 	c := s.chunks[last]
+	return &c[len(c)-1]
+}
+
+// newWith places n, carrying the values a, in the slab.
+func (s *nodeSlab) newWith(n Node, a nodeAttrs) *Node {
+	n.a = s.newAttrs(a)
+	return s.new(n)
+}
+
+// newAttrs places a in the slab's value chunks, which grow as the node chunks do.
+func (s *nodeSlab) newAttrs(a nodeAttrs) *nodeAttrs {
+	last := len(s.attrs) - 1
+	if last < 0 || len(s.attrs[last]) == cap(s.attrs[last]) {
+		size := 8
+		if last >= 0 {
+			size = min(2*cap(s.attrs[last]), 1024)
+		}
+		s.attrs = append(s.attrs, make([]nodeAttrs, 0, size))
+		last++
+	}
+	s.attrs[last] = append(s.attrs[last], a)
+	c := s.attrs[last]
 	return &c[len(c)-1]
 }
 
@@ -208,11 +344,14 @@ func (s *nodeSlab) release(root *Node) {
 			if c[i].blk == &liveMark {
 				c[i].blk = nil
 			} else {
+				if c[i].a != nil {
+					*c[i].a = nodeAttrs{} // its values may share a chunk with a live node's
+				}
 				c[i] = Node{}
 			}
 		}
 	}
-	s.chunks = nil
+	s.chunks, s.attrs = nil, nil
 }
 
 // liveMark is release's mark for a node the tree holds; no parse-time block state is ever it.

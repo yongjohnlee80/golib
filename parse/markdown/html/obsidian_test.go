@@ -210,17 +210,17 @@ func TestObsidianTree(t *testing.T) {
 		t.Fatalf("frontmatter %s %q spans %q", fm.Kind, fm.Literal, src[fm.Span.Start:fm.Span.End])
 	}
 	bq := fm.Next
-	if bq.Callout == nil || string(bq.Callout.Type) != "Warn" || bq.Callout.Fold != '-' {
-		t.Fatalf("callout %+v", bq.Callout)
+	if bq.Callout() == nil || string(bq.Callout().Type) != "Warn" || bq.Callout().Fold != '-' {
+		t.Fatalf("callout %+v", bq.Callout())
 	}
 	para := bq.FirstChild.Next
 	wl := para.FirstChild
-	if wl.Kind != markdown.KindWikilink || string(wl.Target.Page) != "Page" || string(wl.Target.Heading) != "H" ||
-		string(wl.Target.Alias) != "al" || string(src[wl.Span.Start:wl.Span.End]) != "[[Page#H|al]]" {
-		t.Fatalf("wikilink %s %+v spans %q", wl.Kind, wl.Target, src[wl.Span.Start:wl.Span.End])
+	if wl.Kind != markdown.KindWikilink || string(wl.Target().Page) != "Page" || string(wl.Target().Heading) != "H" ||
+		string(wl.Target().Alias) != "al" || string(src[wl.Span.Start:wl.Span.End]) != "[[Page#H|al]]" {
+		t.Fatalf("wikilink %s %+v spans %q", wl.Kind, wl.Target(), src[wl.Span.Start:wl.Span.End])
 	}
 	tag := para.LastChild
-	if tag.Kind != markdown.KindTag || string(tag.Label) != "a/b" || string(src[tag.Span.Start:tag.Span.End]) != "#a/b" {
-		t.Fatalf("tag %s %q spans %q", tag.Kind, tag.Label, src[tag.Span.Start:tag.Span.End])
+	if tag.Kind != markdown.KindTag || string(tag.Label()) != "a/b" || string(src[tag.Span.Start:tag.Span.End]) != "#a/b" {
+		t.Fatalf("tag %s %q spans %q", tag.Kind, tag.Label(), src[tag.Span.Start:tag.Span.End])
 	}
 }

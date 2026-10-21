@@ -73,7 +73,7 @@ func inTightList(p *markdown.Node) bool {
 		return false
 	}
 	item, list := p.Parent, p.Parent.Parent
-	return item.Kind == markdown.KindItem && list.Kind == markdown.KindList && list.List.Tight
+	return item.Kind == markdown.KindItem && list.Kind == markdown.KindList && list.List().Tight
 }
 
 func (r *renderer) block(n *markdown.Node) {
@@ -92,7 +92,7 @@ func (r *renderer) block(n *markdown.Node) {
 		r.cr()
 	case markdown.KindHeading:
 		r.cr()
-		tag := "h" + strconv.Itoa(n.Level)
+		tag := "h" + strconv.Itoa(n.Level())
 		r.out.WriteString("<" + tag + r.dataSrc(n) + ">")
 		r.inlines(n)
 		r.out.WriteString("</" + tag + ">")
@@ -102,7 +102,7 @@ func (r *renderer) block(n *markdown.Node) {
 		r.out.WriteString("<hr />")
 		r.cr()
 	case markdown.KindBlockQuote:
-		if n.Callout != nil {
+		if n.Callout() != nil {
 			r.callout(n)
 			return
 		}
@@ -116,11 +116,11 @@ func (r *renderer) block(n *markdown.Node) {
 	case markdown.KindList:
 		r.cr()
 		tag := "ul"
-		if n.List.Type == markdown.ListOrdered {
+		if n.List().Type == markdown.ListOrdered {
 			tag = "ol"
 		}
-		if tag == "ol" && n.List.Start != 1 {
-			r.out.WriteString(`<ol start="` + strconv.Itoa(n.List.Start) + `">`)
+		if tag == "ol" && n.List().Start != 1 {
+			r.out.WriteString(`<ol start="` + strconv.Itoa(n.List().Start) + `">`)
 		} else {
 			r.out.WriteString("<" + tag + ">")
 		}
@@ -132,9 +132,9 @@ func (r *renderer) block(n *markdown.Node) {
 	case markdown.KindItem:
 		r.cr()
 		r.out.WriteString("<li" + r.dataSrc(n) + ">")
-		if n.Checked != nil {
+		if n.Checked() != nil {
 			// a GFM task list item: the checkbox, then the item's content
-			if *n.Checked {
+			if *n.Checked() {
 				r.out.WriteString(`<input checked="" disabled="" type="checkbox"> `)
 			} else {
 				r.out.WriteString(`<input disabled="" type="checkbox"> `)
@@ -146,7 +146,7 @@ func (r *renderer) block(n *markdown.Node) {
 	case markdown.KindCodeBlock:
 		r.cr()
 		r.out.WriteString("<pre" + r.dataSrc(n) + "><code")
-		if lang := firstWord(n.Info); len(lang) > 0 {
+		if lang := firstWord(n.Info()); len(lang) > 0 {
 			r.out.WriteString(` class="language-`)
 			r.escape(lang)
 			r.out.WriteString(`"`)
@@ -187,12 +187,12 @@ func wikiHref(t *markdown.Target) []byte {
 // and fold state as attributes, its title (the type, capitalized, when it has none), then its body.
 func (r *renderer) callout(bq *markdown.Node) {
 	r.cr()
-	typ := bytes.ToLower(bq.Callout.Type)
+	typ := bytes.ToLower(bq.Callout().Type)
 	r.out.WriteString(`<div class="callout"` + r.dataSrc(bq) + ` data-callout="`)
 	r.escape(typ)
 	r.out.WriteString(`"`)
-	if bq.Callout.Fold != 0 {
-		r.out.WriteString(` data-callout-fold="` + string(bq.Callout.Fold) + `"`)
+	if bq.Callout().Fold != 0 {
+		r.out.WriteString(` data-callout-fold="` + string(bq.Callout().Fold) + `"`)
 	}
 	r.out.WriteString(">\n<div class=\"callout-title\">")
 	body := bq.FirstChild
@@ -234,8 +234,8 @@ func (r *renderer) table(t *markdown.Node) {
 		col := 0
 		for cell := row.FirstChild; cell != nil; cell = cell.Next {
 			r.out.WriteString("<" + tag)
-			if col < len(t.Align) {
-				switch t.Align[col] {
+			if col < len(t.Align()) {
+				switch t.Align()[col] {
 				case markdown.AlignLeft:
 					r.out.WriteString(` align="left"`)
 				case markdown.AlignCenter:
@@ -299,11 +299,11 @@ func (r *renderer) inline(n *markdown.Node) {
 		r.out.WriteString("</del>")
 	case markdown.KindLink, markdown.KindAutolink:
 		r.out.WriteString(`<a href="`)
-		r.href(n.Dest)
+		r.href(n.Dest())
 		r.out.WriteString(`"`)
-		if len(n.Title) > 0 {
+		if len(n.Title()) > 0 {
 			r.out.WriteString(` title="`)
-			r.escape(n.Title)
+			r.escape(n.Title())
 			r.out.WriteString(`"`)
 		}
 		r.out.WriteString(">")
@@ -311,15 +311,15 @@ func (r *renderer) inline(n *markdown.Node) {
 		r.out.WriteString("</a>")
 	case markdown.KindImage:
 		r.out.WriteString(`<img src="`)
-		r.href(n.Dest)
+		r.href(n.Dest())
 		r.out.WriteString(`" alt="`)
 		var alt bytes.Buffer
 		plainText(&alt, n, r.src)
 		r.escape(alt.Bytes())
 		r.out.WriteString(`"`)
-		if len(n.Title) > 0 {
+		if len(n.Title()) > 0 {
 			r.out.WriteString(` title="`)
-			r.escape(n.Title)
+			r.escape(n.Title())
 			r.out.WriteString(`"`)
 		}
 		r.out.WriteString(" />")
@@ -327,7 +327,7 @@ func (r *renderer) inline(n *markdown.Node) {
 		r.raw(n.Literal)
 	case markdown.KindWikilink:
 		r.out.WriteString(`<a class="wikilink" href="`)
-		r.href(wikiHref(n.Target))
+		r.href(wikiHref(n.Target()))
 		r.out.WriteString(`">`)
 		r.inlines(n)
 		r.out.WriteString("</a>")
@@ -335,13 +335,13 @@ func (r *renderer) inline(n *markdown.Node) {
 		// an embed is content drawn from elsewhere, not a link: it may sit inside link text, and
 		// what it shows (a note, an image) is the consumer's to resolve
 		r.out.WriteString(`<span class="embed" data-href="`)
-		r.href(wikiHref(n.Target))
+		r.href(wikiHref(n.Target()))
 		r.out.WriteString(`">`)
 		r.inlines(n)
 		r.out.WriteString("</span>")
 	case markdown.KindTag:
 		r.out.WriteString(`<a class="tag" href="`)
-		r.href(append([]byte("#"), n.Label...))
+		r.href(append([]byte("#"), n.Label()...))
 		r.out.WriteString(`">`)
 		r.inlines(n)
 		r.out.WriteString("</a>")

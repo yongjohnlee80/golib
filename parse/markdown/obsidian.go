@@ -122,7 +122,7 @@ func (p *blockParser) calloutStart(bq *Node) (startResult, *Node, bool) {
 		c.Fold = rest[n]
 		n++
 	}
-	bq.Callout = c
+	bq.attrs().callout = c
 	p.advanceOffset(n, false)
 	p.findNextNonspace()
 	p.advanceNextNonspace()
@@ -202,7 +202,7 @@ func (p *inlineParser) wikilink(embed bool) bool {
 	if embed {
 		kind = KindEmbed
 	}
-	n := p.doc.nodes.new(Node{Kind: kind, Span: Span{p.srcAt(start), p.srcAt(closeAt + 2)}, Target: t})
+	n := p.doc.nodes.newWith(Node{Kind: kind, Span: Span{p.srcAt(start), p.srcAt(closeAt + 2)}}, nodeAttrs{target: t})
 	n.AppendChild(p.doc.nodes.new(Node{Kind: KindText, Span: Span{p.srcAt(display[0]), p.srcAt(display[1])}}))
 	p.parent.AppendChild(n)
 	p.pos = closeAt + 2
@@ -239,7 +239,7 @@ func (p *inlineParser) tag() bool {
 	if j == start+1 || digitsOnly {
 		return false
 	}
-	n := p.doc.nodes.new(Node{Kind: KindTag, Span: Span{p.srcAt(start), p.srcAt(j)}, Label: clone(p.text[start+1 : j])})
+	n := p.doc.nodes.newWith(Node{Kind: KindTag, Span: Span{p.srcAt(start), p.srcAt(j)}}, nodeAttrs{label: clone(p.text[start+1 : j])})
 	n.AppendChild(p.doc.nodes.new(Node{Kind: KindText, Span: n.Span}))
 	p.parent.AppendChild(n)
 	p.pos = j

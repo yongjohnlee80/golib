@@ -360,8 +360,7 @@ func (p *inlineParser) closeBracket() {
 	if opener.image {
 		kind = KindImage
 	}
-	link := p.doc.nodes.new(Node{Kind: kind, Dest: dest, Title: title,
-		Span: Span{opener.node.Span.Start, p.srcAt(end)}})
+	link := p.doc.nodes.newWith(Node{Kind: kind, Span: Span{opener.node.Span.Start, p.srcAt(end)}}, nodeAttrs{dest: dest, title: title})
 	for c := opener.node.Next; c != nil; {
 		next := c.Next
 		c.Unlink()
@@ -425,7 +424,7 @@ func (p *inlineParser) angle() {
 	rest := p.text[p.pos:]
 	if n, dest := autolink(rest); n > 0 {
 		// entity references decode in an autolink, as in any URL; backslash escapes do not
-		node := p.doc.nodes.new(Node{Kind: KindAutolink, Dest: decodeEntities(dest), Span: Span{p.srcAt(p.pos), p.srcAt(p.pos + n)}})
+		node := p.doc.nodes.newWith(Node{Kind: KindAutolink, Span: Span{p.srcAt(p.pos), p.srcAt(p.pos + n)}}, nodeAttrs{dest: decodeEntities(dest)})
 		text := p.doc.nodes.new(Node{Kind: KindText, Span: Span{p.srcAt(p.pos + 1), p.srcAt(p.pos + n - 1)}})
 		if lit := decodeEntities(rest[1 : n-1]); !bytes.Equal(lit, rest[1:n-1]) {
 			text.Literal = lit

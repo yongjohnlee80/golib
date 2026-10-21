@@ -89,7 +89,7 @@ func (p *blockParser) tableStart(para *Node) (startResult, *Node) {
 		para.Span.End = prev.src + prev.n
 		p.finalize(para, -1)
 	}
-	t := p.doc.nodes.new(Node{Kind: KindTable, Span: Span{last.src, last.src + last.n}, Align: aligns, blk: &blockState{open: true}})
+	t := p.doc.nodes.newWith(Node{Kind: KindTable, Span: Span{last.src, last.src + last.n}, blk: &blockState{open: true}}, nodeAttrs{align: aligns})
 	t.blk.content = append(append([]byte(nil), header...), '\n')
 	t.blk.segs = []seg{{at: 0, pad: last.pad, src: last.src, n: last.n}}
 	parent.AppendChild(t)
@@ -190,7 +190,7 @@ func (p *blockParser) finalizeTable(t *Node) {
 		row := p.doc.nodes.new(Node{Kind: KindTableRow, Span: Span{s.src, s.src + s.n}})
 		t.AppendChild(row)
 		cells := splitRow(line)
-		for col := range t.Align {
+		for col := range t.Align() {
 			cell := p.doc.nodes.new(Node{Kind: KindTableCell, Span: Span{row.Span.End, row.Span.End}, blk: &blockState{}})
 			if col < len(cells) {
 				tableCell(cell, line, cells[col], s)
@@ -232,7 +232,7 @@ func (p *blockParser) taskMarker(item *Node) (startResult, *Node, bool) {
 		return startNone, nil, false
 	}
 	checked := rest[1] == 'x' || rest[1] == 'X'
-	item.Checked = &checked
+	item.attrs().checked = &checked
 	p.advanceOffset(3, false)
 	p.extendTo(item, p.ln.start+p.offset)
 	p.findNextNonspace()
@@ -294,8 +294,7 @@ func (p *inlineParser) extendedAutolink(lead, prefix string) bool {
 	if last.Span.Start == last.Span.End {
 		last.Unlink()
 	}
-	link := p.doc.nodes.new(Node{Kind: KindAutolink, Span: Span{p.srcAt(start), p.srcAt(end)},
-		Dest: append([]byte(prefix), p.text[start:end]...)})
+	link := p.doc.nodes.newWith(Node{Kind: KindAutolink, Span: Span{p.srcAt(start), p.srcAt(end)}}, nodeAttrs{dest: append([]byte(prefix), p.text[start:end]...)})
 	link.AppendChild(p.doc.nodes.new(Node{Kind: KindText, Span: link.Span}))
 	p.parent.AppendChild(link)
 	p.pos = end
@@ -428,8 +427,7 @@ func (p *inlineParser) splitEmails(t *Node) *Node {
 			return t
 		}
 		base := t.Span.Start
-		link := p.doc.nodes.new(Node{Kind: KindAutolink, Span: Span{base + s, base + e},
-			Dest: append([]byte("mailto:"), text[s:e]...)})
+		link := p.doc.nodes.newWith(Node{Kind: KindAutolink, Span: Span{base + s, base + e}}, nodeAttrs{dest: append([]byte("mailto:"), text[s:e]...)})
 		link.AppendChild(p.doc.nodes.new(Node{Kind: KindText, Span: link.Span}))
 		rest := p.doc.nodes.new(Node{Kind: KindText, Span: Span{base + e, t.Span.End}})
 		t.Span.End = base + s
