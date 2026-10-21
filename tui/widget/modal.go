@@ -179,13 +179,13 @@ func WithOnDismiss(fn func(DismissReason)) ModalOption {
 // WithTitle for Box; this one is qualified, and ModalStyle.WithTitle — a method
 // — sets the title's LOOK rather than its text.
 func WithModalTitle(s string) ModalOption {
-	return func(m *Modal) { m.card.title, m.card.titleMsg = s, tui.Message{} }
+	return func(m *Modal) { m.card.title = plainText(s) }
 }
 
 // WithModalTitleMessage sets the card's title to a catalog message, shown in the App's
 // language.
 func WithModalTitleMessage(msg tui.Message) ModalOption {
-	return func(m *Modal) { m.card.title, m.card.titleMsg = englishText(msg), msg }
+	return func(m *Modal) { m.card.title = messageText(msg) }
 }
 
 // WithModalRule draws a line across the card between the body and the buttons,
@@ -224,16 +224,16 @@ func WithModalMaxSizePercent(width, height int) ModalOption {
 // letter, which is what moving the buttons into one to get a footer below
 // them used to cost.
 func WithModalFooter(text string) ModalOption {
-	return func(m *Modal) { m.card.footer = text }
+	return func(m *Modal) { m.card.footer = plainText(text) }
 }
 
 // SetTitle replaces the title in the card's top border, shown as given. It ends a title set
 // by [Modal.SetTitleMessage].
 func (m *Modal) SetTitle(s string) {
-	if m.card.title == s && m.card.titleMsg == (tui.Message{}) {
+	if m.card.title == plainText(s) {
 		return
 	}
-	m.card.title, m.card.titleMsg = s, tui.Message{}
+	m.card.title = plainText(s)
 	m.card.RequestLayout() // the title sets a floor on the card's width
 }
 
@@ -249,29 +249,29 @@ func (m *Modal) SetRule(v bool) {
 // SetFooter replaces the help line under the buttons — for a dialog whose keys
 // depend on where the keyboard is inside it. "" removes it.
 func (m *Modal) SetFooter(text string) {
-	if m.card.footer == text && m.card.footerMsg == (tui.Message{}) {
+	if m.card.footer == plainText(text) {
 		return
 	}
-	m.card.footer, m.card.footerMsg = text, tui.Message{}
+	m.card.footer = plainText(text)
 	m.card.RequestLayout()
 }
 
 // SetTitleMessage shows a catalog message as the title, in the App's language from the next
 // layout.
 func (m *Modal) SetTitleMessage(msg tui.Message) {
-	m.card.title, m.card.titleMsg = m.card.translate(msg), msg
+	m.card.title = messageText(msg)
 	m.card.RequestLayout()
 }
 
 // SetFooterMessage shows a catalog message as the help line under the buttons, in the App's
 // language from the next layout: a footer that stays right when the language changes.
 func (m *Modal) SetFooterMessage(msg tui.Message) {
-	m.card.footer, m.card.footerMsg = m.card.translate(msg), msg
+	m.card.footer = messageText(msg)
 	m.card.RequestLayout()
 }
 
 // Footer returns the help line under the buttons.
-func (m *Modal) Footer() string { return m.card.footer }
+func (m *Modal) Footer() string { return m.card.footer.inLanguage(&m.card.Base) }
 
 // WithModalStyle associates a style. The Modal does not own it; several dialogs
 // may share one.

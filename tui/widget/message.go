@@ -32,3 +32,27 @@ func englishText(m tui.Message) string {
 // withArg fills a message's "%1" with a, as Qt's QString::arg does. A message is translated
 // whole and then filled, so no language ever sees its sentence assembled from fragments.
 func withArg(text, a string) string { return strings.ReplaceAll(text, "%1", a) }
+
+// uiText is a text a widget shows: plain text, shown as it is, or a catalog message, resolved when
+// read in the language of the moment. A widget holds one per text and reads it (text) where it
+// measures and paints, so no Layout stores a translation and a language switch needs only a new
+// layout. The zero value is the empty plain text.
+type uiText struct {
+	plain string
+	msg   tui.Message
+}
+
+// plainText is s, shown as given.
+func plainText(s string) uiText { return uiText{plain: s} }
+
+// messageText is the catalog message m.
+func messageText(m tui.Message) uiText { return uiText{msg: m} }
+
+// inLanguage is u as b shows it now: the plain text, or the message in b's App's language (English before
+// mount).
+func (u uiText) inLanguage(b *Base) string {
+	if u.msg != (tui.Message{}) {
+		return b.translate(u.msg)
+	}
+	return u.plain
+}

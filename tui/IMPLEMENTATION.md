@@ -77,6 +77,7 @@ in the same change. Never add a second copy "for now".
 | Text viewport (scroll, reveal, caret placement, paint loop) | one text viewport shared by TextInput, TextArea, Editor, CommandLine |
 | Buffer edits | the line primitives in `textbuffer.go` (`setLine`, `insertLines`, `removeLines`, `replaceLines`, `setLines`); no other file writes `.textLines` (internal/audit) |
 | Pointer policy, focus state, publishing | `widget.Base` |
+| A widget's shown text, plain or a catalog message | `uiText` (`plainText`, `messageText`, `inLanguage`) in `widget/message.go`, read where it is measured and painted, never resolved into a field in Layout |
 | Fatal construction errors | `fatalOf` → `errs.Fatal` |
 | Parsing (expressions, SQL-ish where/order) | golib `parse` first |
 

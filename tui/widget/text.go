@@ -84,9 +84,7 @@ const (
 //	)
 type Text struct {
 	Base
-	text string
-	// textMsg is the catalog message the text shows, resolved each layout; zero for plain text.
-	textMsg tui.Message
+	text    uiText
 	st      style.Style
 	color   style.Color
 	colored bool
@@ -115,7 +113,7 @@ func WithWrapMode(m WrapMode) TextOption {
 
 // NewText builds a label.
 func NewText(s string, opts ...TextOption) *Text {
-	t := &Text{text: s, mode: Truncate}
+	t := &Text{text: plainText(s), mode: Truncate}
 	for _, o := range opts {
 		if o != nil {
 			o(t)
@@ -127,21 +125,20 @@ func NewText(s string, opts ...TextOption) *Text {
 // SetText replaces the content (loop goroutine, like all widget state), shown as given. It
 // ends a message set by [Text.SetTextMessage].
 func (t *Text) SetText(s string) {
-	if t.text == s && t.textMsg == (tui.Message{}) {
+	if t.text == plainText(s) {
 		return
 	}
-	t.text, t.textMsg = s, tui.Message{}
+	t.text = plainText(s)
 	t.RequestLayout()
 	t.MarkDirty()
 }
 
 // SetTextMessage shows a catalog message, in the App's language from the next layout.
 func (t *Text) SetTextMessage(m tui.Message) {
-	if t.textMsg == m {
+	if t.text == messageText(m) {
 		return
 	}
-	t.textMsg = m
-	t.text = t.translate(m)
+	t.text = messageText(m)
 	t.RequestLayout()
 	t.MarkDirty()
 }
@@ -171,18 +168,16 @@ func (t *Text) SetColor(c style.Color) {
 // lines splits on hard newlines; Truncate mode flattens them to spaces
 // (a Text in Truncate mode is one line by contract).
 func (t *Text) lines() []string {
+	text := t.text.inLanguage(&t.Base)
 	if t.mode == Truncate {
-		return []string{strings.ReplaceAll(t.text, "\n", " ")}
+		return []string{strings.ReplaceAll(text, "\n", " ")}
 	}
-	return strings.Split(t.text, "\n")
+	return strings.Split(text, "\n")
 }
 
 // Layout measures content within constraints (grapheme width):
 // Truncate reports one line; Wrap reports the wrapped height.
 func (t *Text) Layout(c tui.Constraints) tui.Size {
-	if t.textMsg != (tui.Message{}) {
-		t.text = t.translate(t.textMsg)
-	}
 	if t.mode == Truncate {
 		w := t.measure(t.lines()[0])
 		if c.MaxW != tui.Unbounded {
