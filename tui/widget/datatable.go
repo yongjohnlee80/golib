@@ -11,9 +11,9 @@ import (
 
 // DATA TABLE — the terminal view of a TableCore: a header (the titles over a rule), then the rows
 // with a cell cursor, scrolled both ways to keep the cursor in sight, and each row's number in a
-// gutter, ruled off from the cells, when the core says so. The core owns the rows, the cursor, the selection, the sort and the paging; DataTable
-// paints them and turns the pointer into the core's presses and drags. A right press opens its
-// menu (SetMenu), the selection left as it is.
+// gutter, ruled off from the cells, when the core says so. The core owns the rows, the cursor, the
+// selection, the sort and the paging; DataTable paints them and turns the pointer into the core's
+// presses and drags. A right press opens its menu (SetMenu), the selection left as it is.
 //
 // Its layout is the backend's. In a terminal it lays the rows out in cells. A native backend binds
 // a pixel layout with BindLayout before the first paint, which then scrolls, measures and paints
@@ -56,6 +56,13 @@ const tableEdgeWidth = 3
 
 // tableHeaderRows is the rows above the first row shown: the titles and the rule under them.
 const tableHeaderRows = 2
+
+// tableRuleRow is the row of the rule under the titles, the header's last.
+const tableRuleRow = tableHeaderRows - 1
+
+// tableRuleGap is the cells either side of the gutter's rule: the digits, the gap, the rule, the
+// gap, then the first field.
+const tableRuleGap = 1
 
 // tableRuleJunction is where the gutter's rule crosses the titles'.
 const tableRuleJunction = "┼"
@@ -248,10 +255,13 @@ func (t *DataTable) Changed() { t.MarkDirty() }
 // without them.
 func (t *DataTable) gutter() int {
 	if d := t.core.RowNumberDigits(); d > 0 {
-		return d + tableGap + 1
+		return ruleX(d) + 1 + tableRuleGap
 	}
 	return 0
 }
+
+// ruleX is the column of the gutter's rule after digits row-number digits.
+func ruleX(digits int) int { return digits + tableRuleGap }
 
 // rules are the glyphs of the gutter's rule and of the titles': Header's border, else BorderNormal.
 func (t *DataTable) rules() (vertical, horizontal string) {
@@ -267,18 +277,20 @@ func (t *DataTable) rules() (vertical, horizontal string) {
 func (t *DataTable) drawRules(s tui.Surface, digits int) {
 	sz := s.Size()
 	vertical, horizontal := t.rules()
-	if sz.H > 1 {
-		drawText(s, 0, 1, strings.Repeat(horizontal, sz.W), t.styles.Header)
+	if sz.H > tableRuleRow {
+		w := max(s.StringWidth(horizontal), 1) // a border's Top may be wider than a cell
+		drawText(s, 0, tableRuleRow, strings.Repeat(horizontal, sz.W/w), t.styles.Header)
 	}
-	if digits <= 0 || digits+1 >= sz.W {
+	x := ruleX(digits)
+	if digits <= 0 || x >= sz.W {
 		return
 	}
 	for y := range sz.H {
 		glyph := vertical
-		if y == 1 {
+		if y == tableRuleRow {
 			glyph = tableRuleJunction
 		}
-		drawText(s, digits+1, y, glyph, t.styles.Header)
+		drawText(s, x, y, glyph, t.styles.Header)
 	}
 }
 
