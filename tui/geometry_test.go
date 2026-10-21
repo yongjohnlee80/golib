@@ -1,6 +1,9 @@
 package tui
 
-import "testing"
+import (
+	"slices"
+	"testing"
+)
 
 // TestRectIntersect covers the clipping primitive and how clips compose.
 func TestRectIntersect(t *testing.T) {
@@ -140,6 +143,30 @@ func TestRectWithin(t *testing.T) {
 	} {
 		if got := c.r.Within(area, c.min); got != c.want {
 			t.Errorf("%+v.Within(area, %d) = %+v, want %+v", c.r, c.min, got, c.want)
+		}
+	}
+}
+
+// largestRemainder gives each positive weight its floor share, and the cells left over to the
+// largest fractional remainders, ties to the lowest index; a zero weight gets nothing, and the
+// shares always add up to the total.
+func TestLargestRemainderSplitsWithoutAGap(t *testing.T) {
+	for _, c := range []struct {
+		total   int
+		weights []int
+		want    []int
+	}{
+		{10, []int{1, 1, 1}, []int{4, 3, 3}},       // equal remainders: the lowest index first
+		{10, []int{1, 0, 2}, []int{3, 0, 7}},       // 10/3 and 20/3: 2/3 beats 1/3
+		{7, []int{3, 3, 1}, []int{3, 3, 1}},        // exact shares, nothing left over
+		{5, []int{2, 2, 2, 2}, []int{2, 1, 1, 1}},  // one cell left, four equal remainders
+		{0, []int{1, 2}, []int{0, 0}},              // nothing to split
+		{9, []int{0, 0}, []int{0, 0}},              // no weight: nothing given
+		{11, []int{5, 0, 1, 3}, []int{6, 0, 1, 4}}, // 55/9, 11/9, 33/9: 6 r1, 1 r2, 3 r6
+	} {
+		got := largestRemainder(c.total, c.weights)
+		if !slices.Equal(got, c.want) {
+			t.Errorf("largestRemainder(%d, %v) = %v, want %v", c.total, c.weights, got, c.want)
 		}
 	}
 }
