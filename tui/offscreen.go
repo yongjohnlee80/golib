@@ -29,17 +29,17 @@ func (c *Context) RenderOffscreen(o *Offscreen, size Size, face string, draw fun
 	// the face in effect: the node rendering now, or an outer RenderOffscreen's; while draw runs it
 	// is this grid's, so a nested call with no face of its own inherits it, and it is restored on
 	// return, a panic included
-	in := a.offFace
-	if a.offDepth == 0 && a.buf != nil {
+	in := a.faces.offFace
+	if a.faces.offDepth == 0 && a.buf != nil {
 		in = a.buf.face
 	}
 	o.buf.face = in
 	if face != "" {
 		o.buf.face = a.faceIndex(face)
 	}
-	prevFace, prevDepth := a.offFace, a.offDepth
-	a.offFace, a.offDepth = o.buf.face, a.offDepth+1
-	defer func() { a.offFace, a.offDepth = prevFace, prevDepth }()
+	prevFace, prevDepth := a.faces.offFace, a.faces.offDepth
+	a.faces.offFace, a.faces.offDepth = o.buf.face, a.faces.offDepth+1
+	defer func() { a.faces.offFace, a.faces.offDepth = prevFace, prevDepth }()
 	draw(newRootSurface(o.buf, a.rctx))
 	return o.buf.curr
 }

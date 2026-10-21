@@ -104,7 +104,7 @@ func (p *restoreProbe) Render(s Surface) {
 		p.ctx.RenderOffscreen(&p.a, Size{W: 2, H: 1}, "Other Mono", func(Surface) { panic("a draw that fails") })
 	}()
 	p.after = slices.Clone(p.ctx.RenderOffscreen(&p.b, Size{W: 2, H: 1}, "", func(o Surface) { o.SetCell(0, 0, "x", style.New()) }))
-	p.depth = p.ctx.app.offDepth
+	p.depth = p.ctx.app.faces.offDepth
 }
 func (p *restoreProbe) HandleEvent(Event) bool { return false }
 

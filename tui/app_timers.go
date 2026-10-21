@@ -27,7 +27,7 @@ import (
 //                    │                                           │
 //     Point single time.Timer at earliest             Disarm time.Timer completely
 //     deadline: min(Until(timers[0].at), 0)           Set timerC = nil
-//     Set timerC = a.timer.C                          Loop blocks ONLY on input / tasks:
+//     Set timerC = a.timing.timer.C                          Loop blocks ONLY on input / tasks:
 //                    │                                ZERO wakeups, ZERO CPU, ZERO power
 //                    ▼                                           │
 //        Loop select on timerC                                   ▼
@@ -164,9 +164,9 @@ func (a *App) addTimer(owner NodeID, d, every time.Duration) (cancel func()) {
 
 // pushTimer numbers e, puts it on the heap and re-arms; its cancel is idempotent, loop only.
 func (a *App) pushTimer(e *timerEntry) (cancel func()) {
-	a.nextTimerID++
-	e.seq = a.nextTimerID
-	heap.Push(&a.timers, e)
+	a.timing.nextTimerID++
+	e.seq = a.timing.nextTimerID
+	heap.Push(&a.timing.timers, e)
 	a.rearmTimer()
 	return func() {
 		if e.cancelled {
@@ -174,7 +174,7 @@ func (a *App) pushTimer(e *timerEntry) (cancel func()) {
 		}
 		e.cancelled = true
 		if e.index >= 0 {
-			heap.Remove(&a.timers, e.index)
+			heap.Remove(&a.timing.timers, e.index)
 			a.rearmTimer()
 		}
 	}
@@ -203,27 +203,27 @@ func (a *App) scheduleFrame(at time.Time) {
 //
 // Demand-Armed Lifecycle:
 //   - Empty Heap: If no component timers or pending frames exist, any existing
-//     timer is stopped and a.timerC is set to nil. The main loop's
+//     timer is stopped and a.timing.timerC is set to nil. The main loop's
 //     select statement then blocks purely on Lane A (terminal input) and
 //     Lane B (program events).
 //   - Non-Empty Heap: Calculates max(Until(timers[0].at), 0), resets or allocates
-//     the single timer, and exposes a.timer.C on a.timerC for the main select loop.
+//     the single timer, and exposes a.timing.timer.C on a.timing.timerC for the main select loop.
 func (a *App) rearmTimer() {
-	if len(a.timers) == 0 {
-		if a.timer != nil {
-			a.timer.Stop()
+	if len(a.timing.timers) == 0 {
+		if a.timing.timer != nil {
+			a.timing.timer.Stop()
 		}
-		a.timerC = nil
+		a.timing.timerC = nil
 		return
 	}
-	d := max(time.Until(a.timers[0].at), 0)
-	if a.timer == nil {
-		a.timer = time.NewTimer(d)
+	d := max(time.Until(a.timing.timers[0].at), 0)
+	if a.timing.timer == nil {
+		a.timing.timer = time.NewTimer(d)
 	} else {
-		a.timer.Reset(d)
+		a.timing.timer.Reset(d)
 	}
-	a.timerC = a.timer.C
-	a.timerArms++ // instrumentation: lets a test assert the idle app arms nothing
+	a.timing.timerC = a.timing.timer.C
+	a.timing.timerArms++ // instrumentation: lets a test assert the idle app arms nothing
 }
 
 // fireDueTimers delivers every due deadline on the loop goroutine:
@@ -236,8 +236,8 @@ func (a *App) rearmTimer() {
 //     the loop, it will NOT be followed by a burst of queued catch-up ticks.
 func (a *App) fireDueTimers() {
 	now := time.Now()
-	for len(a.timers) > 0 && !a.timers[0].at.After(now) {
-		e := heap.Pop(&a.timers).(*timerEntry)
+	for len(a.timing.timers) > 0 && !a.timing.timers[0].at.After(now) {
+		e := heap.Pop(&a.timing.timers).(*timerEntry)
 		if e.cancelled {
 			continue
 		}
@@ -256,7 +256,7 @@ func (a *App) fireDueTimers() {
 		if e.every > 0 && !e.cancelled {
 			if _, alive := a.nodes[e.owner]; alive {
 				e.at = time.Now().Add(e.every) // fixed-delay: no burst catch-up
-				heap.Push(&a.timers, e)
+				heap.Push(&a.timing.timers, e)
 			}
 		}
 	}

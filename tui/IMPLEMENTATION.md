@@ -130,6 +130,17 @@ purpose": a difference in behaviour is a parameter of the shared code, named and
   same-turn variant is named `Apply*`. Every type documents its concurrency model.
 - **Async results carry a generation or epoch** and are dropped when stale.
 - **Phase legality is checked by identity** (`handlerNode == c.node.id`), never by a boolean.
+- **The runtime's state has one owner per concern.** Each is a named `App` field of its own type, in
+  its own file; only the functions listed change it:
+
+  | Concern | State (`App` field) | Changed by |
+  |---|---|---|
+  | Routing | `nodes`, `byComp`, the two lanes | `dispatch`, `dispatchKey`, `dispatchMouse` (`app_routing.go`), `runUpdate` |
+  | Focus | `focus` (`focusState`, `focus.go`) | `setFocus`; repair in `focus_repair.go`; trap admission in `focus_traps.go` |
+  | Pointer capture | `capture` (`captureState`, `capture.go`) | the capture calls in `capture.go`, ending through `loseCapture` |
+  | Rendering | `buf`, `native`, `images`, `faces` | `renderFrame` / `renderTooSmall`, between `beginFrame` and `presentFrame` |
+  | Delivery phase | `phase` (`handlerPhase`, `phase.go`) | `enterDelivery` / `leaveDelivery`, deferred around each handler |
+  | Settings | `live` (`appLive`); `cfg` is as configured | `SetTheme` and the `Apply*` calls |
 
 ## 7. Input
 

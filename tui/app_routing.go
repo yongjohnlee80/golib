@@ -146,8 +146,8 @@ func (a *App) dispatch(ev Event) {
 func (a *App) dispatchKey(e KeyEvent, ev Event) {
 	if e.Kind != KeyRelease {
 		a.toolTipPress(false)
-		a.keyFocus = true
-		defer func() { a.keyFocus = false }()
+		a.hover.keyFocus = true
+		defer func() { a.hover.keyFocus = false }()
 	}
 	if a.interceptCaptureEscape(e) {
 		return
@@ -199,7 +199,7 @@ func (a *App) dispatchMouse(e MouseEvent) {
 	// The wheel is deliberately NOT captured. Scrolling addresses the pane
 	// under the pointer without taking focus, and capturing it would freeze
 	// scrolling for the duration of a drag.
-	if a.captureOwner != 0 && e.Kind != MouseWheel {
+	if a.capture.captureOwner != 0 && e.Kind != MouseWheel {
 		if a.deliverCaptured(e) {
 			return
 		}
@@ -290,8 +290,8 @@ func (a *App) pressFocus(target *node) bool {
 	// The target would then receive the press unfocused, which is the very
 	// thing focus-before-delivery exists to prevent, so mounted-ness alone
 	// is not enough: the candidate must still own focus.
-	if focused != nil && a.focused != focused.id {
-		a.trace(TraceEvent{Kind: TraceFocus, Node: a.focused, Prev: focused.id,
+	if focused != nil && a.focus.focused != focused.id {
+		a.trace(TraceEvent{Kind: TraceFocus, Node: a.focus.focused, Prev: focused.id,
 			Detail: "pointer press skipped: focus was redirected away from the target"})
 		return false
 	}
@@ -347,7 +347,7 @@ func (a *App) dispatchFocusEvent(e FocusEvent, ev Event) {
 		a.loseCapture(CaptureLostBackend)
 		a.setHovered(nil) // nothing is under a pointer another window has
 	}
-	if n := a.nodes[a.focused]; n != nil {
+	if n := a.nodes[a.focus.focused]; n != nil {
 		a.bubble(n, ev)
 	}
 	a.bus.Publish(e)
@@ -410,7 +410,7 @@ func pathTo(n, limit *node) iter.Seq[*node] {
 // consumed ev.
 func (a *App) dispatchFocused(ev Event) bool {
 	limit := a.confinement()
-	target := a.confinedTarget(a.nodes[a.focused], limit)
+	target := a.confinedTarget(a.nodes[a.focus.focused], limit)
 	return target != nil && a.bubbleWithin(target, limit, ev)
 }
 
@@ -587,7 +587,7 @@ func (a *App) deliverAddressed(owner NodeID, ev Event) {
 // A third check here would be one nothing can reach, which is worse than
 // absent — it reads as a guarded case and can never be shown to work.
 func (a *App) deliverCaptured(e MouseEvent) bool {
-	owner := a.nodes[a.captureOwner]
+	owner := a.nodes[a.capture.captureOwner]
 	if owner == nil || !owner.mounted {
 		return false
 	}
@@ -596,7 +596,7 @@ func (a *App) deliverCaptured(e MouseEvent) bool {
 	// exact mistake that stranded an earlier design: the recogniser captures on
 	// the press, so sending its own motion and release past it left it unable
 	// to ever re-arm, abandon or activate.
-	if a.captureKind == CaptureGesture {
+	if a.capture.captureKind == CaptureGesture {
 		if r := a.recognizerFor(); r != nil {
 			a.runRecognizer(r, owner, e.localTo(owner.absRect))
 			a.traceRouted(e, owner, owner.id)
@@ -632,7 +632,7 @@ func (a *App) deliverTo(n *node, ev Event) (handled bool) {
 	// goes unhandled, and leaving the action marker standing would let this raw
 	// handler forward a child action carrying the outer invocation's
 	// provenance — a real origin, belonging to an event the child never saw.
-	defer a.leaveDelivery(a.enterDelivery(delivery{node: n.id, origin: a.handlerOrigin, source: a.handlerSource}))
+	defer a.phase.leaveDelivery(a.phase.enterDelivery(delivery{node: n.id, origin: a.phase.handlerOrigin, source: a.phase.handlerSource}))
 	defer a.contain("event", n, &handled)
 	return n.comp.HandleEvent(ev)
 }
@@ -694,8 +694,8 @@ func (a *App) pressOrdinalAt(e MouseEvent, target *node, now time.Time) int {
 	if target != nil {
 		id = target.id
 	}
-	a.lastPressAt, a.lastPressX, a.lastPressY = now, e.X, e.Y
-	a.lastPressButton, a.lastPressCount, a.lastPressTarget = e.Button, count, id
+	a.presses.lastPressAt, a.presses.lastPressX, a.presses.lastPressY = now, e.X, e.Y
+	a.presses.lastPressButton, a.presses.lastPressCount, a.presses.lastPressTarget = e.Button, count, id
 	return count
 }
 
@@ -706,15 +706,15 @@ func (a *App) previewPressOrdinal(e MouseEvent, target *node, now time.Time) int
 		id = target.id
 	}
 	continues := window > 0 &&
-		a.lastPressCount > 0 &&
-		e.Button == a.lastPressButton &&
-		e.X == a.lastPressX && e.Y == a.lastPressY &&
-		id == a.lastPressTarget &&
-		now.Sub(a.lastPressAt) <= window
+		a.presses.lastPressCount > 0 &&
+		e.Button == a.presses.lastPressButton &&
+		e.X == a.presses.lastPressX && e.Y == a.presses.lastPressY &&
+		id == a.presses.lastPressTarget &&
+		now.Sub(a.presses.lastPressAt) <= window
 
 	count := 1
 	if continues {
-		count = a.lastPressCount + 1
+		count = a.presses.lastPressCount + 1
 	}
 	return count
 }

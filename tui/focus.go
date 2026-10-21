@@ -63,14 +63,14 @@ func (a *App) requestFocusByID(id NodeID) bool {
 	if n := a.nodes[id]; n != nil {
 		a.requestFocus(n)
 	}
-	return a.focused == id
+	return a.focus.focused == id
 }
 
 func (a *App) requestFocus(n *node) {
 	if !isFocusable(n) {
 		return
 	}
-	if a.focused == n.id {
+	if a.focus.focused == n.id {
 		return
 	}
 	// A trap must not be reachable around. Computing the active scope BEFORE
@@ -98,20 +98,20 @@ func (a *App) requestFocus(n *node) {
 		// stays unreachable, and a layer behind the active one still cannot pull
 		// the keyboard out of the one in front.
 		if !a.mayEnterStackedTrap(a.trapScopeOf(n), scope) {
-			a.trace(TraceEvent{Kind: TraceFocus, Node: n.id, Prev: a.focused,
+			a.trace(TraceEvent{Kind: TraceFocus, Node: n.id, Prev: a.focus.focused,
 				Detail: "focus refused: target outside the active focus scope"})
 			return
 		}
 	}
 	newScope := a.trapScopeOf(n)
 	var oldScope *node
-	if on := a.nodes[a.focused]; on != nil {
+	if on := a.nodes[a.focus.focused]; on != nil {
 		oldScope = a.trapScopeOf(on)
 	}
 	if newScope != nil && newScope != oldScope {
 		// Entering a trap: remember where focus came from.
-		a.scopeStack = append(a.scopeStack, scopeEntry{scope: newScope.id, restore: a.focused})
-		a.trace(TraceEvent{Kind: TraceScope, Node: newScope.id, Prev: a.focused, Detail: "open"})
+		a.focus.scopeStack = append(a.focus.scopeStack, scopeEntry{scope: newScope.id, restore: a.focus.focused})
+		a.trace(TraceEvent{Kind: TraceScope, Node: newScope.id, Prev: a.focus.focused, Detail: "open"})
 		// A trap that has just become active must not leave a drag running
 		// behind it. Checked here, at the push, rather than when the next
 		// pointer event arrives: with no further mouse input the owner would
@@ -126,12 +126,12 @@ func (a *App) requestFocus(n *node) {
 // so ancestor panels (such as widget.Box) can restyle their border chrome
 // (the lazygit active-panel highlight pattern).
 func (a *App) setFocus(id NodeID) {
-	if a.focused == id {
+	if a.focus.focused == id {
 		return
 	}
-	old := a.focused
-	a.focused = id
-	a.pendingFocusInto = 0 // focus moved: a deferred FocusInto is answered, or overtaken
+	old := a.focus.focused
+	a.focus.focused = id
+	a.focus.pendingFocusInto = 0 // focus moved: a deferred FocusInto is answered, or overtaken
 	a.trace(TraceEvent{Kind: TraceFocus, Node: id, Prev: old})
 	if on := a.nodes[old]; on != nil {
 		a.bubble(on, FocusEvent{Gained: false})
@@ -140,7 +140,7 @@ func (a *App) setFocus(id NodeID) {
 		a.bubble(nn, FocusEvent{Gained: true})
 		a.requestReveal(nn)
 	}
-	a.toolTipFocus(a.nodes[a.focused], a.keyFocus)
+	a.toolTipFocus(a.nodes[a.focus.focused], a.hover.keyFocus)
 	// A capture survives focus moving around inside the owner's own subtree and
 	// ends when focus leaves it. Checked after the FocusEvents are delivered so
 	// that a handler which moves focus onward is accounted for by the check
@@ -188,14 +188,14 @@ func (a *App) currentScope() *node {
 	// moment focus existed outside it, which is precisely when confinement
 	// matters most. Entries are removed by the unmount cascade, so a surviving
 	// entry means a live trap.
-	for i := len(a.scopeStack) - 1; i >= 0; i-- {
-		if sn := a.nodes[a.scopeStack[i].scope]; sn != nil && sn.mounted {
+	for i := len(a.focus.scopeStack) - 1; i >= 0; i-- {
+		if sn := a.nodes[a.focus.scopeStack[i].scope]; sn != nil && sn.mounted {
 			return sn
 		}
 	}
 	// No stack entry: a component may still trap by being an ancestor of the
 	// focused node without having been entered through requestFocus.
-	if fn := a.nodes[a.focused]; fn != nil {
+	if fn := a.nodes[a.focus.focused]; fn != nil {
 		if s := a.trapScopeOf(fn); s != nil {
 			return s
 		}
@@ -209,7 +209,7 @@ func (a *App) currentScope() *node {
 // delivered, so a widget handling the press already sees itself focused and one
 // gesture both focuses and acts.
 //
-// The boundary is [App.currentScope], deliberately NOT trapScopeOf(a.focused).
+// The boundary is [App.currentScope], deliberately NOT trapScopeOf(a.focus.focused).
 // Those agree everywhere except one state golib supports on purpose: when a
 // focused child dies while its trap survives with no remaining focusables,
 // [App.repairFocus] leaves focused = 0 and the scope stays on scopeStack. With
@@ -240,7 +240,7 @@ func (a *App) focusFromPointer(target *node) *node {
 		if !withinScope(n, scope) {
 			// Outside the active scope: refuse rather than escape the trap, and
 			// leave focus exactly where it was.
-			a.trace(TraceEvent{Kind: TraceFocus, Node: n.id, Prev: a.focused,
+			a.trace(TraceEvent{Kind: TraceFocus, Node: n.id, Prev: a.focus.focused,
 				Detail: "pointer refused: candidate outside the active focus scope"})
 			return nil
 		}
@@ -273,7 +273,7 @@ func (a *App) focusStep(delta int) {
 	}
 	cur := -1
 	for i, n := range ring {
-		if n.id == a.focused {
+		if n.id == a.focus.focused {
 			cur = i
 			break
 		}

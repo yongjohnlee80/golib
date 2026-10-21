@@ -200,7 +200,7 @@ func TestPointerRespectsSurvivingTrapWithNoFocusables(t *testing.T) {
 
 	// Click INSIDE, and this half is what makes the test discriminating.
 	//
-	// A trapScopeOf(a.focused) implementation reaches focusRing(nil), which is
+	// A trapScopeOf(a.focus.focused) implementation reaches focusRing(nil), which is
 	// EMPTY, so it refuses every candidate while focus is empty — over-restrictive
 	// rather than escaping, which the assertion above passes vacuously. Requiring
 	// that a click inside the surviving trap still WORKS pins the behaviour from

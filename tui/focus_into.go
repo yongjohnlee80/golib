@@ -24,13 +24,13 @@ func (a *App) focusInto(comp Component, mayDefer bool) bool {
 		// forceActiveFocus takes an item that is being shown. A hidden
 		// subtree is not deferred; it takes none.
 		if mayDefer && a.unplacedTargetIn(n) {
-			a.pendingFocusInto = n.id
+			a.focus.pendingFocusInto = n.id
 			a.invalidate(true)
 		}
 		return false
 	}
 	a.requestFocus(target)
-	return withinScope(a.nodes[a.focused], n)
+	return withinScope(a.nodes[a.focus.focused], n)
 }
 
 // FocusWithin is Context.FocusWithin for a caller holding the App rather than
@@ -39,7 +39,7 @@ func (a *App) focusInto(comp Component, mayDefer bool) bool {
 // Loop goroutine only.
 func (a *App) FocusWithin(comp Component) bool {
 	n := a.byComp[comp]
-	return n != nil && withinScope(a.nodes[a.focused], n)
+	return n != nil && withinScope(a.nodes[a.focus.focused], n)
 }
 
 // unplacedTargetIn reports whether n's subtree holds a component that takes

@@ -149,25 +149,25 @@ func (c *Context) CapturePointer() bool {
 	// handler — and every loss check would then be measured against the wrong
 	// subtree. Checking identity rather than "some handler is running" is what
 	// makes the promise in this method's doc comment true.
-	if a.handlerNode != c.node.id {
+	if a.phase.handlerNode != c.node.id {
 		panic(errs.Fatal{
 			Op:   "tui: Context.CapturePointer",
 			Rule: "legal only while this component's own HandleEvent or HandleAction is running",
 			Detail: fmt.Sprintf("requested for node %d while node %d is handling",
-				c.node.id, a.handlerNode),
+				c.node.id, a.phase.handlerNode),
 		})
 	}
 	if !c.node.mounted {
 		return false
 	}
-	if a.captureOwner == c.node.id {
+	if a.capture.captureOwner == c.node.id {
 		return true
 	}
 	// Both refusals are traced. "My drag never started" is the symptom either
 	// one produces, and without a record the widget's own silence is the only
 	// evidence there is.
-	if a.captureOwner != 0 {
-		a.trace(TraceEvent{Kind: TraceCapture, Node: c.node.id, Prev: a.captureOwner,
+	if a.capture.captureOwner != 0 {
+		a.trace(TraceEvent{Kind: TraceCapture, Node: c.node.id, Prev: a.capture.captureOwner,
 			Detail: "capture refused: already held by another node"})
 		return false
 	}
@@ -202,7 +202,7 @@ func (c *Context) CapturePointer() bool {
 func (c *Context) ReleasePointer() {
 	a := c.app
 	a.assertReleasablePhase("ReleasePointer")
-	if a.captureOwner == c.node.id {
+	if a.capture.captureOwner == c.node.id {
 		a.clearCapture()
 	}
 }
@@ -222,7 +222,7 @@ func (c *Context) ReleasePointer() {
 func (c *Context) CancelGesture() {
 	a := c.app
 	a.assertReleasablePhase("CancelGesture")
-	if a.captureOwner == c.node.id {
+	if a.capture.captureOwner == c.node.id {
 		a.loseCapture(CaptureLostCancelled)
 	}
 }
@@ -231,7 +231,7 @@ func (c *Context) CancelGesture() {
 // Read-only, and legal from every phase including Layout and Render, so a
 // component may render itself differently while dragging.
 func (c *Context) HasPointerCapture() bool {
-	return c.app.captureOwner == c.node.id
+	return c.app.capture.captureOwner == c.node.id
 }
 
 // assertReleasablePhase admits the phases in which ending a capture is
@@ -254,13 +254,13 @@ func (c *Context) HasPointerCapture() bool {
 // mutate dispatch state mid-walk. Being inside a legal phase is necessary, not
 // sufficient.
 func (a *App) assertReleasablePhase(op string) {
-	if a.inLayout || a.inRender {
+	if a.phase.inLayout || a.phase.inRender {
 		panic(errs.Fatal{
 			Op:   fmt.Sprintf("tui: Context.%s", op),
 			Rule: "illegal inside Layout or Render, which must not mutate dispatch state",
 		})
 	}
-	if a.handlerNode != 0 || a.updateDepth > 0 {
+	if a.phase.handlerNode != 0 || a.phase.updateDepth > 0 {
 		return
 	}
 	panic(errs.Fatal{
@@ -271,13 +271,13 @@ func (a *App) assertReleasablePhase(op string) {
 
 // setCapture records a new owner. Callers have already checked eligibility.
 func (a *App) setCapture(owner NodeID, kind CaptureKind) {
-	a.captureOwner = owner
-	a.captureKind = kind
+	a.capture.captureOwner = owner
+	a.capture.captureKind = kind
 	// Sample the focus now. The owner need not be focusable at all — a pane
 	// divider is not — so "the owner lost focus" would never become true for
 	// it; what matters is focus leaving the owner's SUBTREE, and deciding that
 	// needs a baseline taken while the capture was still valid.
-	a.captureFocus = a.focused
+	a.capture.captureFocus = a.focus.focused
 	a.trace(TraceEvent{Kind: TraceCapture, Node: owner, Detail: "pointer captured"})
 }
 
@@ -285,18 +285,18 @@ func (a *App) setCapture(owner NodeID, kind CaptureKind) {
 // explicit and involuntary paths so that each can emit its OWN trace record and
 // only that one.
 func (a *App) resetCapture() {
-	a.captureOwner = 0
-	a.captureKind = CaptureRaw
-	a.captureFocus = 0
+	a.capture.captureOwner = 0
+	a.capture.captureKind = CaptureRaw
+	a.capture.captureFocus = 0
 }
 
 // clearCapture forgets the capture without telling the owner, which is what an
 // explicit release wants, and records that a release is what happened.
 func (a *App) clearCapture() {
-	if a.captureOwner == 0 {
+	if a.capture.captureOwner == 0 {
 		return
 	}
-	a.trace(TraceEvent{Kind: TraceCapture, Node: a.captureOwner, Detail: "pointer released"})
+	a.trace(TraceEvent{Kind: TraceCapture, Node: a.capture.captureOwner, Detail: "pointer released"})
 	a.resetCapture()
 }
 
@@ -308,7 +308,7 @@ func (a *App) clearCapture() {
 // for the same acquisition is impossible because there is no longer an owner to
 // lose one.
 func (a *App) loseCapture(reason CaptureLostReason) {
-	owner := a.captureOwner
+	owner := a.capture.captureOwner
 	if owner == 0 {
 		return
 	}
@@ -333,7 +333,7 @@ func (a *App) loseCapture(reason CaptureLostReason) {
 // hears about the loss. Delivering afterwards would be calling a method on an
 // unmounted component.
 func (a *App) captureLostOnUnmount(n *node) {
-	if a.captureOwner != 0 && a.captureOwner == n.id {
+	if a.capture.captureOwner != 0 && a.capture.captureOwner == n.id {
 		a.loseCapture(CaptureLostUnmount)
 	}
 }
@@ -354,15 +354,15 @@ func (a *App) captureLostOnUnmount(n *node) {
 // descendant can be removed, leaving focus genuinely outside the subtree with
 // no new node to point at.
 func (a *App) captureCheckFocus() {
-	owner := a.nodes[a.captureOwner]
+	owner := a.nodes[a.capture.captureOwner]
 	if owner == nil {
 		return
 	}
-	if a.focused == a.captureFocus {
+	if a.focus.focused == a.capture.captureFocus {
 		return // focus did not actually move
 	}
-	if fn := a.nodes[a.focused]; fn != nil && withinScope(fn, owner) {
-		a.captureFocus = a.focused
+	if fn := a.nodes[a.focus.focused]; fn != nil && withinScope(fn, owner) {
+		a.capture.captureFocus = a.focus.focused
 		return
 	}
 	a.loseCapture(CaptureLostFocusChange)
@@ -385,7 +385,7 @@ func (a *App) captureCheckVisible() {
 
 // loseCaptureIf ends the capture for reason when its owner is still a node and lost holds for it.
 func (a *App) loseCaptureIf(lost func(owner *node) bool, reason CaptureLostReason) {
-	if owner := a.nodes[a.captureOwner]; owner != nil && lost(owner) {
+	if owner := a.nodes[a.capture.captureOwner]; owner != nil && lost(owner) {
 		a.loseCapture(reason)
 	}
 }

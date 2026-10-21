@@ -115,7 +115,7 @@ func (c *Context) HoldsFocusable(comp Component) bool {
 }
 
 // Focused reports whether this node currently holds focus.
-func (c *Context) Focused() bool { return c.app.focused == c.node.id }
+func (c *Context) Focused() bool { return c.app.focus.focused == c.node.id }
 
 // OnUnmount registers a cleanup hook; hooks run LIFO at unmount.
 // SubscribeScoped and After/Every register their cancels through it.
@@ -281,22 +281,22 @@ func (c *Context) BatchTreeMutation(fn func()) {
 		return
 	}
 	a := c.app
-	if a.inLayout || a.inRender {
+	if a.phase.inLayout || a.phase.inRender {
 		panic(errs.Fatal{
 			Op:   "tui: Context.BatchTreeMutation",
 			Rule: "tree mutation inside Layout/Render is illegal",
 		})
 	}
-	a.batchDepth++
+	a.focus.batchDepth++
 	defer func() {
-		a.batchDepth--
-		if a.batchDepth > 0 {
+		a.focus.batchDepth--
+		if a.focus.batchDepth > 0 {
 			return // an inner call is not a boundary
 		}
-		if !a.batchRepair {
+		if !a.focus.batchRepair {
 			return
 		}
-		a.batchRepair = false
+		a.focus.batchRepair = false
 		// The same revalidation the immediate path runs, so deferring cannot
 		// change what "repaired" means. Running it here rather than after fn()
 		// is what makes the boundary hold on the panic path too.

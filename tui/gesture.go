@@ -122,7 +122,7 @@ func WithGestureRecognizer(r GestureRecognizer) AppOption {
 //
 // A nil recogniser — including a typed nil — switches recognition off.
 func (a *App) SetGestureRecognizer(r GestureRecognizer) {
-	if a.captureOwner != 0 && a.captureKind == CaptureGesture {
+	if a.capture.captureOwner != 0 && a.capture.captureKind == CaptureGesture {
 		a.loseCapture(CaptureLostCancelled)
 	}
 	a.live.recognizer = normalizeRecognizer(r)
@@ -225,7 +225,7 @@ func (a *App) gestureCtxFor(n *node, local MouseEvent) GestureCtx {
 		Local:  Point{X: local.X, Y: local.Y},
 		Inside: local.X >= 0 && local.Y >= 0 &&
 			local.X < n.rect.W && local.Y < n.rect.H,
-		State: a.gestureState,
+		State: a.capture.gestureState,
 	}
 }
 
@@ -256,10 +256,10 @@ func (a *App) runRecognizer(r GestureRecognizer, n *node, local MouseEvent) bool
 	// seeing motion and release after they leave the target. Taken here and
 	// never by the recogniser: the runtime is what has to be able to release it
 	// on every death path.
-	if next == GestureArmed && a.captureOwner == 0 {
+	if next == GestureArmed && a.capture.captureOwner == 0 {
 		a.setCapture(n.id, CaptureGesture)
 	}
-	a.gestureState = next
+	a.capture.gestureState = next
 
 	// ARMED-NESS AND ALIVENESS ARE DIFFERENT THINGS, and conflating them was a
 	// real bug: GestureIdle means "would not activate if released now", which
@@ -281,7 +281,7 @@ func (a *App) runRecognizer(r GestureRecognizer, n *node, local MouseEvent) bool
 		//
 		// The runtime supplies provenance. A recogniser only ever produces the
 		// action itself, so it cannot label a pointer gesture as anything else.
-		held := a.captureOwner == n.id && a.captureKind == CaptureGesture
+		held := a.capture.captureOwner == n.id && a.capture.captureKind == CaptureGesture
 		a.dispatchAction(n, ActionInvocation{
 			Action: act,
 			Origin: OriginPointer,
@@ -291,7 +291,7 @@ func (a *App) runRecognizer(r GestureRecognizer, n *node, local MouseEvent) bool
 		// The activation may have ended the gesture itself: a control that disables itself
 		// cancels it. The state the recogniser asked for described a gesture that is gone, and
 		// arming on it would show pressed a control nothing holds or will release.
-		if held && a.captureOwner != n.id {
+		if held && a.capture.captureOwner != n.id {
 			next = GestureIdle
 		}
 	}
@@ -316,7 +316,7 @@ func (a *App) runRecognizer(r GestureRecognizer, n *node, local MouseEvent) bool
 // because it is the runtime that has to guarantee the component ends up
 // disarmed, and a guarantee needs a value to compare against.
 func (a *App) setGestureArmed(n *node, armed bool) {
-	if a.gestureArmed == armed {
+	if a.capture.gestureArmed == armed {
 		return
 	}
 	act, ok := n.comp.(Activatable)
@@ -324,7 +324,7 @@ func (a *App) setGestureArmed(n *node, armed bool) {
 		return
 	}
 	act.SetArmed(armed)
-	a.gestureArmed = armed
+	a.capture.gestureArmed = armed
 	a.trace(TraceEvent{Kind: TraceAction, Node: n.id,
 		Detail: "armed: " + strconv.FormatBool(armed)})
 }
@@ -346,7 +346,7 @@ func (a *App) endGesture() {
 // gestureLost disarms a target whose gesture is ending through a capture loss.
 // It runs BEFORE the capture is cleared, so the owner is still known.
 func (a *App) gestureLost() {
-	if a.captureKind != CaptureGesture {
+	if a.capture.captureKind != CaptureGesture {
 		return // a raw capture owner was never armed by the runtime
 	}
 	if owner := a.gestureOwner(); owner != nil {
@@ -358,14 +358,14 @@ func (a *App) gestureLost() {
 // gestureOwner is the node a gesture's capture holds: nil when the capture is not a gesture's, or
 // its owner is gone.
 func (a *App) gestureOwner() *node {
-	if a.captureKind != CaptureGesture {
+	if a.capture.captureKind != CaptureGesture {
 		return nil
 	}
-	return a.nodes[a.captureOwner]
+	return a.nodes[a.capture.captureOwner]
 }
 
 // idleGesture is the no-gesture state.
 func (a *App) idleGesture() {
-	a.gestureState = GestureIdle
-	a.gestureArmed = false
+	a.capture.gestureState = GestureIdle
+	a.capture.gestureArmed = false
 }

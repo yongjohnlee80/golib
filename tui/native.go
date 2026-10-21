@@ -87,19 +87,19 @@ type NativeHost interface {
 func (a *App) beginNatives() {
 	hosts := a.caps.natives != nil
 	a.buf.stamping = hosts
-	a.natives = a.natives[:0]
-	a.styledDepth = 0
-	a.nativeStyler = nil
+	a.native.natives = a.native.natives[:0]
+	a.native.styledDepth = 0
+	a.native.nativeStyler = nil
 	if hosts {
 		a.buf.resetStamps()
-		a.nativeStyler = a.caps.styler
+		a.native.nativeStyler = a.caps.styler
 	}
 }
 
-// noteNative records n's native placement, if it has one, and returns its index in a.natives, or
+// noteNative records n's native placement, if it has one, and returns its index in a.native.natives, or
 // -1. Called with n's paint order current, before n paints.
 func (a *App) noteNative(n *node) int {
-	if a.styledDepth > 0 {
+	if a.native.styledDepth > 0 {
 		return -1 // inside a subtree-scoped view: the owner draws it all
 	}
 	var (
@@ -112,8 +112,8 @@ func (a *App) noteNative(n *node) int {
 		if sc, has := n.comp.(NativeScoper); has {
 			scope = sc.NativeScope()
 		}
-	} else if a.nativeStyler != nil {
-		view, scope, ok = a.nativeStyler.NativeFor(n.comp)
+	} else if a.native.nativeStyler != nil {
+		view, scope, ok = a.native.nativeStyler.NativeFor(n.comp)
 	}
 	if !ok {
 		return -1
@@ -126,11 +126,11 @@ func (a *App) noteNative(n *node) int {
 	if r != n.absRect {
 		full = n.absRect // the view lays out at its whole size, shown only inside r
 	}
-	a.natives = append(a.natives, NativePlacement{
+	a.native.natives = append(a.native.natives, NativePlacement{
 		View: view, Node: n.id, Scope: scope, Layer: a.buf.order,
 		X: r.X, Y: r.Y, Cols: r.W, Rows: r.H, Full: full,
 	})
-	return len(a.natives) - 1
+	return len(a.native.natives) - 1
 }
 
 // applyNatives works out each placement's Covered cells and hands the frame's placements to the
@@ -140,15 +140,15 @@ func (a *App) applyNatives() {
 	if host == nil {
 		return
 	}
-	for i := range a.natives {
-		p := &a.natives[i]
+	for i := range a.native.natives {
+		p := &a.native.natives[i]
 		after := p.Layer
 		if p.Scope == ScopeSubtree {
 			after = p.End
 		}
 		p.Covered = a.coveredAfter(Rect{X: p.X, Y: p.Y, W: p.Cols, H: p.Rows}, after)
 	}
-	host.PlaceNatives(a.natives)
+	host.PlaceNatives(a.native.natives)
 }
 
 // coveredAfter is the cells of r stamped later than order, as one Rect per run on each row.

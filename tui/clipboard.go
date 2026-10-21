@@ -95,19 +95,19 @@ func (a *App) ReadClipboard(timeout time.Duration, done func(read ClipboardRead,
 	if timeout <= 0 {
 		timeout = DefaultClipboardTimeout
 	}
-	a.nextClipID++
-	read := ClipboardRead{ID: a.nextClipID}
+	a.clip.nextClipID++
+	read := ClipboardRead{ID: a.clip.nextClipID}
 	r := &clipRead{done: done}
-	if a.clipReads == nil {
-		a.clipReads = map[uint64]*clipRead{}
+	if a.clip.clipReads == nil {
+		a.clip.clipReads = map[uint64]*clipRead{}
 	}
 	// registered before the backend is asked, so an answer the backend gives at once finds it
-	a.clipReads[read.ID] = r
+	a.clip.clipReads[read.ID] = r
 	cancel, err := cr.ReadClipboard(func(text string, err error) {
 		a.Update(func() { a.answerClipboard(read, NormalizeNewlines(text), err) })
 	})
 	if err != nil {
-		delete(a.clipReads, read.ID)
+		delete(a.clip.clipReads, read.ID)
 		return ClipboardRead{}, err
 	}
 	r.cancelBackend = cancel
@@ -121,11 +121,11 @@ func (a *App) ReadClipboard(timeout time.Duration, done func(read ClipboardRead,
 // answerClipboard runs read's done once: the first answer, deadline or stop to arrive wins, and
 // the others find nothing waiting.
 func (a *App) answerClipboard(read ClipboardRead, text string, err error) {
-	r, ok := a.clipReads[read.ID]
+	r, ok := a.clip.clipReads[read.ID]
 	if !ok {
 		return
 	}
-	delete(a.clipReads, read.ID)
+	delete(a.clip.clipReads, read.ID)
 	r.stopDeadline()
 	if err != nil {
 		text = ""
@@ -136,13 +136,13 @@ func (a *App) answerClipboard(read ClipboardRead, text string, err error) {
 // closeClipboardReads answers every read still waiting with ErrClipboardClosed, withdrawing it
 // from the backend, in the order they were asked. Teardown runs it.
 func (a *App) closeClipboardReads() {
-	ids := make([]uint64, 0, len(a.clipReads))
-	for id := range a.clipReads {
+	ids := make([]uint64, 0, len(a.clip.clipReads))
+	for id := range a.clip.clipReads {
 		ids = append(ids, id)
 	}
 	slices.Sort(ids)
 	for _, id := range ids {
-		if r, ok := a.clipReads[id]; ok {
+		if r, ok := a.clip.clipReads[id]; ok {
 			r.cancelBackend()
 			a.answerClipboard(ClipboardRead{ID: id}, "", ErrClipboardClosed)
 		}

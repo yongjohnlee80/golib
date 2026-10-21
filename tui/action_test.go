@@ -737,7 +737,7 @@ func TestCaptureCanBeTakenFromAnActionHandler(t *testing.T) {
 		t.Errorf("captures granted from the action handler = %d, want 1", got)
 	}
 	var held bool
-	h.onLoop(func() { held = h.app.captureOwner == h.app.byComp[ad].id })
+	h.onLoop(func() { held = h.app.capture.captureOwner == h.app.byComp[ad].id })
 	if !held {
 		t.Error("the node does not hold the capture it was granted")
 	}
@@ -777,7 +777,7 @@ func TestAnActionHandlerCannotCaptureInAnothersName(t *testing.T) {
 			"identity requirement must hold on the action path too")
 	}
 	var heldAfterImp NodeID
-	h.onLoop(func() { heldAfterImp = h.app.captureOwner })
+	h.onLoop(func() { heldAfterImp = h.app.capture.captureOwner })
 	if heldAfterImp != 0 {
 		t.Errorf("capture is held by %d after an impersonated acquisition", heldAfterImp)
 	}
@@ -950,7 +950,7 @@ func TestCaptureIsRefusedWhenPointerInputIsDisabled(t *testing.T) {
 		t.Errorf("refusals = %d, want 1: if the handler never ran, this proves nothing", got)
 	}
 	var held NodeID
-	h.onLoop(func() { held = h.app.captureOwner })
+	h.onLoop(func() { held = h.app.capture.captureOwner })
 	if held != 0 {
 		t.Errorf("capture is held by %d after a refused acquisition", held)
 	}

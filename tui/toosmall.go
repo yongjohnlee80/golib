@@ -30,19 +30,19 @@ type tooSmallState struct {
 // A zero dimension sets no minimum on that axis. On the loop goroutine: a handler or an Update.
 func (a *App) SetMinimumSize(s Size) {
 	s = Size{W: max(s.W, 0), H: max(s.H, 0)}
-	if s == a.minSize {
+	if s == a.small.minSize {
 		return
 	}
-	a.minSize = s
+	a.small.minSize = s
 	a.invalidate(true)
 }
 
 // MinimumSize is the smallest screen the App lays out for; zero on an axis without one.
-func (a *App) MinimumSize() Size { return a.minSize }
+func (a *App) MinimumSize() Size { return a.small.minSize }
 
 // tooSmall reports whether the screen is under the minimum on either axis.
 func (a *App) tooSmall() bool {
-	return (a.minSize.W > 0 && a.size.W < a.minSize.W) || (a.minSize.H > 0 && a.size.H < a.minSize.H)
+	return (a.small.minSize.W > 0 && a.size.W < a.small.minSize.W) || (a.small.minSize.H > 0 && a.size.H < a.small.minSize.H)
 }
 
 // dispatchTooSmall handles an event while the too-small screen shows. It reports true for input,
@@ -58,7 +58,7 @@ func (a *App) dispatchTooSmall(ev Event) bool {
 		}
 		return true
 	case MouseEvent:
-		if e.Kind == MousePress && e.Button == MouseLeft && a.quitButton.Contains(e.X, e.Y) {
+		if e.Kind == MousePress && e.Button == MouseLeft && a.small.quitButton.Contains(e.X, e.Y) {
 			a.requestQuit()
 		}
 		return true
@@ -91,7 +91,7 @@ func (a *App) renderTooSmall() {
 	s.Fill(Rect{W: a.size.W, H: a.size.H}, " ", style.New().Background(style.TokenBackground))
 
 	need := a.Translate(Msg("tui.tooSmall.size"))
-	for i, v := range []int{a.size.W, a.size.H, a.minSize.W, a.minSize.H} {
+	for i, v := range []int{a.size.W, a.size.H, a.small.minSize.W, a.small.minSize.H} {
 		need = strings.ReplaceAll(need, "%"+strconv.Itoa(i+1), strconv.Itoa(v))
 	}
 	quit := "[ " + a.Translate(Msg("tui.tooSmall.quit")) + " ]"
@@ -117,7 +117,7 @@ func (a *App) renderTooSmall() {
 	total := s.StringWidth(quit) + gap + s.StringWidth(keys)
 	x := max((a.size.W-total)/2, 0)
 	x = DrawText(s, x, y, quit, base.Background(style.TokenPrimary).Foreground(style.TokenTextOnPrimary))
-	a.quitButton = Rect{X: max((a.size.W-total)/2, 0), Y: y, W: s.StringWidth(quit), H: 1}
+	a.small.quitButton = Rect{X: max((a.size.W-total)/2, 0), Y: y, W: s.StringWidth(quit), H: 1}
 	DrawText(s, x+gap, y, keys, base.Foreground(style.TokenTextMuted))
 
 	a.presentFrame(false) // nothing reported: every native view and placed image goes

@@ -194,7 +194,7 @@ func TestNative_NothingOnAPlainBackend(t *testing.T) {
 	waitFor(t, "the cells", func() bool { return screenHas(h.tb, "cccc") })
 	var stamping bool
 	var n int
-	h.onLoop(func() { stamping, n = h.app.buf.stamping, len(h.app.natives) })
+	h.onLoop(func() { stamping, n = h.app.buf.stamping, len(h.app.native.natives) })
 	if stamping || n != 0 {
 		t.Fatalf("stamping %v, %d placements on a backend that hosts nothing", stamping, n)
 	}

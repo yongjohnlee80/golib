@@ -35,7 +35,7 @@ func TestAfterDeliversAddressedTick(t *testing.T) {
 	}
 	var heapLen int
 	var armed bool
-	h.onLoop(func() { heapLen = len(h.app.timers); armed = h.app.timerC != nil })
+	h.onLoop(func() { heapLen = len(h.app.timing.timers); armed = h.app.timing.timerC != nil })
 	if heapLen != 0 || armed {
 		t.Fatalf("after a one-shot fired: heap len %d, armed %v — want empty and disarmed (G5)", heapLen, armed)
 	}
@@ -62,7 +62,7 @@ func TestEveryRepeatsAndCancelDisarms(t *testing.T) {
 	}
 	var heapLen int
 	var armed bool
-	h.onLoop(func() { heapLen = len(h.app.timers); armed = h.app.timerC != nil })
+	h.onLoop(func() { heapLen = len(h.app.timing.timers); armed = h.app.timing.timerC != nil })
 	if heapLen != 0 || armed {
 		t.Fatalf("after cancel: heap len %d, armed %v — want empty and disarmed", heapLen, armed)
 	}
@@ -80,7 +80,7 @@ func TestTimerCancelledOnUnmount(t *testing.T) {
 	waitFor(t, "first tick", func() bool { return len(tickEvents(child)) >= 1 })
 	h.onLoop(func() { root.Remove(child) })
 	var heapLen int
-	h.onLoop(func() { heapLen = len(h.app.timers) })
+	h.onLoop(func() { heapLen = len(h.app.timing.timers) })
 	if heapLen != 0 {
 		t.Fatalf("heap len after unmount = %d, want 0 (timer auto-cancelled)", heapLen)
 	}
@@ -100,7 +100,7 @@ func TestIdleSchedulesNothing(t *testing.T) {
 	h.sync()
 	var arms int
 	var armed bool
-	h.onLoop(func() { arms = h.app.timerArms; armed = h.app.timerC != nil })
+	h.onLoop(func() { arms = h.app.timing.timerArms; armed = h.app.timing.timerC != nil })
 	flushes := h.tb.Flushes()
 
 	time.Sleep(100 * time.Millisecond) // the observed idle window
@@ -108,7 +108,11 @@ func TestIdleSchedulesNothing(t *testing.T) {
 	var arms2 int
 	var armed2 bool
 	var heapLen int
-	h.onLoop(func() { arms2 = h.app.timerArms; armed2 = h.app.timerC != nil; heapLen = len(h.app.timers) })
+	h.onLoop(func() {
+		arms2 = h.app.timing.timerArms
+		armed2 = h.app.timing.timerC != nil
+		heapLen = len(h.app.timing.timers)
+	})
 	if arms2 != arms {
 		t.Errorf("timer arms grew while idle: %d → %d", arms, arms2)
 	}

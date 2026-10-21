@@ -10,7 +10,7 @@ import (
 // focusedID reads the loop-owned focus state safely.
 func focusedID(h *harness) NodeID {
 	var id NodeID
-	h.onLoop(func() { id = h.app.focused })
+	h.onLoop(func() { id = h.app.focus.focused })
 	return id
 }
 
@@ -154,7 +154,7 @@ func TestScopeRestoreSkipsANodeHiddenMeanwhile(t *testing.T) {
 	var restored NodeID
 	h.onLoop(func() {
 		root.Remove(modal)
-		restored = h.app.focused // in the same drain: no layout has run
+		restored = h.app.focus.focused // in the same drain: no layout has run
 	})
 	if restored != c.nodeID() {
 		t.Fatalf("focus after closing the modal = %d, want c (%d), not the hidden a (%d)", restored, c.nodeID(), a.nodeID())
@@ -193,7 +193,7 @@ func TestUnmountFocusedRepairsFocus(t *testing.T) {
 	var repaired NodeID
 	h.onLoop(func() {
 		root.Remove(b)
-		repaired = h.app.focused // observed INSIDE the same drain — same frame
+		repaired = h.app.focus.focused // observed INSIDE the same drain — same frame
 	})
 	if repaired != a.nodeID() {
 		t.Fatalf("focus after unmount = %d, want repaired to a (%d) within the cascade", repaired, a.nodeID())

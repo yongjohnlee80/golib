@@ -87,7 +87,7 @@ func (a *App) contain(phase string, n *node, handled *bool) {
 	if rec == nil {
 		return
 	}
-	if a.inLayout || a.inRender || a.structural > 0 || a.poisoned {
+	if a.phase.inLayout || a.phase.inRender || a.structural > 0 || a.poisoned {
 		panic(rec) // not safe to go on: Run's policy decides
 	}
 	hp := HandlerPanic{Phase: phase, Value: rec, Stack: debug.Stack()}
@@ -97,7 +97,7 @@ func (a *App) contain(phase string, n *node, handled *bool) {
 	if handled != nil {
 		*handled = true
 	}
-	if a.captureOwner != 0 {
+	if a.capture.captureOwner != 0 {
 		a.loseCapture(CaptureLostCancelled)
 	}
 	fn(hp)

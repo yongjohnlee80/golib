@@ -112,7 +112,7 @@ func (f *stackFixture) focus(c Component) NodeID {
 	var got NodeID
 	f.h.onLoop(func() {
 		f.h.app.requestFocusByID(f.id[c])
-		got = f.h.app.focused
+		got = f.h.app.focus.focused
 	})
 	return got
 }
@@ -230,7 +230,7 @@ func TestAnInnerTrapCannotEscapeIntoTheDialogAroundIt(t *testing.T) {
 	})
 	focus := func(id NodeID) NodeID {
 		var got NodeID
-		h.onLoop(func() { h.app.requestFocusByID(id); got = h.app.focused })
+		h.onLoop(func() { h.app.requestFocusByID(id); got = h.app.focus.focused })
 		return got
 	}
 
@@ -298,7 +298,7 @@ func TestSideBySideTrapsCannotStealFromEachOther(t *testing.T) {
 
 	focus := func(id NodeID) NodeID {
 		var got NodeID
-		h.onLoop(func() { h.app.requestFocusByID(id); got = h.app.focused })
+		h.onLoop(func() { h.app.requestFocusByID(id); got = h.app.focus.focused })
 		return got
 	}
 
@@ -369,7 +369,7 @@ func TestTrapsOnSeparateHostsCannotReachEachOther(t *testing.T) {
 	}
 	focus := func(h *harness, id NodeID) NodeID {
 		var got NodeID
-		h.onLoop(func() { h.app.requestFocusByID(id); got = h.app.focused })
+		h.onLoop(func() { h.app.requestFocusByID(id); got = h.app.focus.focused })
 		return got
 	}
 
@@ -435,7 +435,7 @@ func TestALayerWhoseTrapIsNestedInsideItStillCounts(t *testing.T) {
 	})
 	focus := func(id NodeID) NodeID {
 		var got NodeID
-		h.onLoop(func() { h.app.requestFocusByID(id); got = h.app.focused })
+		h.onLoop(func() { h.app.requestFocusByID(id); got = h.app.focus.focused })
 		return got
 	}
 
@@ -493,7 +493,7 @@ func TestNestedLayerHostsStillEnforceTopmost(t *testing.T) {
 	})
 	focus := func(id NodeID) NodeID {
 		var got NodeID
-		h.onLoop(func() { h.app.requestFocusByID(id); got = h.app.focused })
+		h.onLoop(func() { h.app.requestFocusByID(id); got = h.app.focus.focused })
 		return got
 	}
 
@@ -547,7 +547,7 @@ func TestSideBySideRefusalHoldsInTheOtherDirectionToo(t *testing.T) {
 	}
 	focus := func(id NodeID) NodeID {
 		var got NodeID
-		h.onLoop(func() { h.app.requestFocusByID(id); got = h.app.focused })
+		h.onLoop(func() { h.app.requestFocusByID(id); got = h.app.focus.focused })
 		return got
 	}
 

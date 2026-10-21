@@ -101,19 +101,19 @@ func (a *App) noteImage(n *node) {
 	if a.buf.stamping {
 		p.Layer = a.buf.order // the node's own paint order: noteImage runs before its children
 	}
-	a.frameImages = append(a.frameImages, p)
+	a.images.frameImages = append(a.images.frameImages, p)
 }
 
 // applyImages places what changed since the last frame and deletes what went.
 func (a *App) applyImages() {
 	g := a.caps.graphics
-	want := a.frameImages
-	a.frameImages = a.frameImages[:0]
+	want := a.images.frameImages
+	a.images.frameImages = a.images.frameImages[:0]
 	if g == nil {
 		return
 	}
-	if a.placed == nil {
-		a.placed = map[uint32]ImagePlacement{}
+	if a.images.placed == nil {
+		a.images.placed = map[uint32]ImagePlacement{}
 	}
 	seen := make(map[uint32]bool, len(want))
 	for _, p := range want {
@@ -121,18 +121,18 @@ func (a *App) applyImages() {
 		if a.buf.stamping {
 			p.Covered = a.coveredAfter(Rect{X: p.X, Y: p.Y, W: p.Cols, H: p.Rows}, p.Layer)
 		}
-		old, had := a.placed[p.ID]
+		old, had := a.images.placed[p.ID]
 		if had && old.Version == p.Version && old.Clip == p.Clip && old.X == p.X && old.Y == p.Y && old.Cols == p.Cols && old.Rows == p.Rows &&
 			old.Layer == p.Layer && slices.Equal(old.Covered, p.Covered) {
 			continue
 		}
 		g.PlaceImage(p)
-		a.placed[p.ID] = p
+		a.images.placed[p.ID] = p
 	}
-	for id := range a.placed {
+	for id := range a.images.placed {
 		if !seen[id] {
 			g.DeleteImage(id)
-			delete(a.placed, id)
+			delete(a.images.placed, id)
 		}
 	}
 }

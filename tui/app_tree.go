@@ -16,7 +16,7 @@ func (a *App) mount(parent *node, comp Component) *node {
 	if comp == nil {
 		panic(errs.Fatal{Op: "tui: Mount", Rule: "nil component"})
 	}
-	if a.inLayout || a.inRender {
+	if a.phase.inLayout || a.phase.inRender {
 		panic("tui: tree mutation (Mount) inside Layout/Render is illegal")
 	}
 	// The Component-keyed index requires a COMPARABLE dynamic type, so verify
@@ -68,10 +68,10 @@ func (a *App) mount(parent *node, comp Component) *node {
 	// exactly that reason: a child's Init runs inside its parent's, and
 	// clearing on the inner return would leave the parent's remaining Init
 	// wrongly classified as no longer initialising.
-	prevInit := a.initNode
-	a.initNode = n.id
+	prevInit := a.phase.initNode
+	a.phase.initNode = n.id
 	comp.Init(n.ctx)
-	a.initNode = prevInit
+	a.phase.initNode = prevInit
 
 	a.invalidate(true) // a new child means geometry may change (step 4)
 	return n
@@ -86,7 +86,7 @@ func (a *App) mount(parent *node, comp Component) *node {
 // registered in a.nodes, so a dangling focus ID is impossible by
 // construction. Loop goroutine only.
 func (a *App) moveWithin(parent *node, child Component, to int) {
-	if a.inLayout || a.inRender {
+	if a.phase.inLayout || a.phase.inRender {
 		panic(errs.Fatal{Op: "tui", Rule: "tree mutation (Move) inside Layout/Render is illegal"})
 	}
 	n := a.byComp[child]
@@ -114,12 +114,12 @@ func (a *App) moveWithin(parent *node, child Component, to int) {
 // parent, and performs focus repair / scope restore so no frame ever
 // renders with a dangling focus ID.
 func (a *App) unmountTree(n *node) {
-	if a.inLayout || a.inRender {
+	if a.phase.inLayout || a.phase.inRender {
 		panic(errs.Fatal{Op: "tui", Rule: "tree mutation (Unmount) inside Layout/Render is illegal"})
 	}
 	a.structural++
 	defer a.leaveStructural()
-	focusedBefore := a.focused
+	focusedBefore := a.focus.focused
 	parent := n.parent
 
 	a.unmountNode(n)
@@ -141,14 +141,14 @@ func (a *App) unmountTree(n *node) {
 	// scope's target lay inside the outer scope that died with it.
 	restore := NodeID(0)
 	hadDeadScope := false
-	for len(a.scopeStack) > 0 {
-		top := a.scopeStack[len(a.scopeStack)-1]
+	for len(a.focus.scopeStack) > 0 {
+		top := a.focus.scopeStack[len(a.focus.scopeStack)-1]
 		if _, alive := a.nodes[top.scope]; alive {
 			break
 		}
 		restore = top.restore
 		hadDeadScope = true
-		a.scopeStack = a.scopeStack[:len(a.scopeStack)-1]
+		a.focus.scopeStack = a.focus.scopeStack[:len(a.focus.scopeStack)-1]
 	}
 
 	if focusedBefore == 0 {
@@ -160,7 +160,7 @@ func (a *App) unmountTree(n *node) {
 	// The focused node died with the subtree. Try the scope-stack restore
 	// target first (open-modal → close-modal → focus-where-you-were),
 	// then repair within the innermost surviving scope.
-	a.focused = 0
+	a.focus.focused = 0
 	// The target is held to what any focus move is: a live candidate (not
 	// hidden meanwhile) inside the confinement that survives.
 	if hadDeadScope && restore != 0 {
@@ -202,8 +202,8 @@ func (a *App) unmountNode(n *node) {
 
 	delete(a.nodes, n.id)
 	delete(a.byComp, n.comp)
-	if a.hovered == n.id {
-		a.hovered = 0 // gone: nothing to tell it
+	if a.hover.hovered == n.id {
+		a.hover.hovered = 0 // gone: nothing to tell it
 	}
 	a.async.mu.Lock()
 	delete(a.async.ctxs, n.id)

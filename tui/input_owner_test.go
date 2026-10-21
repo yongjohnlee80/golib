@@ -61,8 +61,8 @@ func ownerFixture(t *testing.T) (h *harness, root, owner, loose *counter, trap *
 			t.Error("binding stray to loose was refused")
 		}
 		a := h.app
-		a.scopeStack = append(a.scopeStack, scopeEntry{scope: a.byComp[trap].id, restore: 0})
-		a.focused = 0
+		a.focus.scopeStack = append(a.focus.scopeStack, scopeEntry{scope: a.byComp[trap].id, restore: 0})
+		a.focus.focused = 0
 	})
 	h.onLoop(func() {
 		if h.app.confinement() != h.app.byComp[trap] {

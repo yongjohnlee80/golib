@@ -115,7 +115,7 @@ func startDrag(t *testing.T, h *harness, d *dragger, x, y int) {
 	waitFor(t, "owner captured the pointer", func() bool { return d.granted.Load() == 1 })
 	h.sync()
 	var held bool
-	h.onLoop(func() { held = h.app.captureOwner != 0 })
+	h.onLoop(func() { held = h.app.capture.captureOwner != 0 })
 	if !held {
 		t.Fatal("precondition failed: no capture is held, so nothing below is a capture test")
 	}
@@ -221,7 +221,7 @@ func TestCaptureIsRefusedOutsideTheActiveTrap(t *testing.T) {
 			"ran, this test proves nothing", got)
 	}
 	var held NodeID
-	h.onLoop(func() { held = h.app.captureOwner })
+	h.onLoop(func() { held = h.app.capture.captureOwner })
 	if held != 0 {
 		t.Errorf("capture is held by %d after a refused acquisition, want nobody", held)
 	}
@@ -303,7 +303,7 @@ func TestCaptureIsNeverStolen(t *testing.T) {
 
 	startDrag(t, h, owner, 2, 1)
 	ownerID := uint64(0)
-	h.onLoop(func() { ownerID = uint64(h.app.captureOwner) })
+	h.onLoop(func() { ownerID = uint64(h.app.capture.captureOwner) })
 
 	// The thief attempts an acquisition from its own real handler. A press
 	// cannot be used: capture routing already sends every press to the owner.
@@ -316,7 +316,7 @@ func TestCaptureIsNeverStolen(t *testing.T) {
 			"this test is asserting nothing", got)
 	}
 	var after uint64
-	h.onLoop(func() { after = uint64(h.app.captureOwner) })
+	h.onLoop(func() { after = uint64(h.app.capture.captureOwner) })
 	if after != ownerID {
 		t.Errorf("capture owner changed from %d to %d on a refused acquisition; "+
 			"a refusal must change nothing", ownerID, after)
@@ -372,7 +372,7 @@ func TestReleasePointerEmitsNothing(t *testing.T) {
 		t.Errorf("an explicit release delivered %d loss event(s), want 0", got)
 	}
 	var held NodeID
-	h.onLoop(func() { held = h.app.captureOwner })
+	h.onLoop(func() { held = h.app.capture.captureOwner })
 	if held != 0 {
 		t.Errorf("capture still held by %d after ReleasePointer", held)
 	}
@@ -437,7 +437,7 @@ func TestInvoluntaryLossReportsTheRightReason(t *testing.T) {
 				t.Errorf("loss reason = %v, want %v", got, tc.want)
 			}
 			var held NodeID
-			h.onLoop(func() { held = h.app.captureOwner })
+			h.onLoop(func() { held = h.app.capture.captureOwner })
 			if held != 0 {
 				t.Errorf("capture still held by %d after an involuntary loss", held)
 			}
@@ -610,7 +610,7 @@ func TestOneNodeCannotCaptureInAnothersName(t *testing.T) {
 			"must require the RUNNING handler to belong to the requesting node")
 	}
 	var held NodeID
-	h.onLoop(func() { held = h.app.captureOwner })
+	h.onLoop(func() { held = h.app.capture.captureOwner })
 	if held != 0 {
 		t.Errorf("capture is held by %d after an impersonated acquisition, want nobody", held)
 	}
@@ -695,7 +695,7 @@ func TestReleasePointerPhaseContract(t *testing.T) {
 				"callback is not an App.Update merely because both travel lane B")
 		}
 		var held NodeID
-		h.onLoop(func() { held = h.app.captureOwner })
+		h.onLoop(func() { held = h.app.capture.captureOwner })
 		if held == 0 {
 			t.Error("the refused call released the capture anyway")
 		}
@@ -719,7 +719,7 @@ func TestReleasePointerPhaseContract(t *testing.T) {
 				"is a legal phase")
 		}
 		var held NodeID
-		h.onLoop(func() { held = h.app.captureOwner })
+		h.onLoop(func() { held = h.app.capture.captureOwner })
 		if held != 0 {
 			t.Errorf("capture still held by %d after a legal release", held)
 		}
@@ -824,7 +824,7 @@ func TestFocusRepairToNothingEndsTheCapture(t *testing.T) {
 	h.onLoop(func() { h.app.requestFocus(h.app.byComp[inner]) })
 	h.sync()
 	var focusedInner bool
-	h.onLoop(func() { focusedInner = h.app.focused == h.app.byComp[inner].id })
+	h.onLoop(func() { focusedInner = h.app.focus.focused == h.app.byComp[inner].id })
 	if !focusedInner {
 		t.Fatal("precondition failed: the descendant does not hold focus, so removing " +
 			"it would not move focus out of the owner's subtree")
@@ -845,7 +845,7 @@ func TestFocusRepairToNothingEndsTheCapture(t *testing.T) {
 	}
 	var held NodeID
 	var focused NodeID
-	h.onLoop(func() { held, focused = h.app.captureOwner, h.app.focused })
+	h.onLoop(func() { held, focused = h.app.capture.captureOwner, h.app.focus.focused })
 	if held != 0 {
 		t.Errorf("capture still held by %d after focus left the subtree entirely", held)
 	}
@@ -895,7 +895,7 @@ func TestInSubtreeFocusMovesRebaseTheSnapshot(t *testing.T) {
 	}
 	var snap, focused, acq NodeID
 	h.onLoop(func() {
-		snap, focused, acq = h.app.captureFocus, h.app.focused, h.app.byComp[a1].id
+		snap, focused, acq = h.app.capture.captureFocus, h.app.focus.focused, h.app.byComp[a1].id
 	})
 	if snap == acq {
 		t.Errorf("sampled focus is still the node focused at acquisition (%d) after a "+
@@ -1030,7 +1030,7 @@ func TestANonTerminalFocusLossKeepsTheCapture(t *testing.T) {
 			got, CaptureLostReason(owner.lastReason.Load()))
 	}
 	var held NodeID
-	h.onLoop(func() { held = h.app.captureOwner })
+	h.onLoop(func() { held = h.app.capture.captureOwner })
 	if held == 0 {
 		t.Error("capture was dropped by a non-terminal focus event")
 	}
@@ -1348,7 +1348,7 @@ func TestFocusMovingWithinTheOwnersSubtreeKeepsTheCapture(t *testing.T) {
 	h.sync()
 
 	var held NodeID
-	h.onLoop(func() { held = h.app.captureOwner })
+	h.onLoop(func() { held = h.app.capture.captureOwner })
 	if held == 0 {
 		t.Fatal("capture was lost when focus moved WITHIN the owner's subtree; only " +
 			"focus leaving the subtree ends a capture")

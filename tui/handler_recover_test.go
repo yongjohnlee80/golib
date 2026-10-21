@@ -119,7 +119,7 @@ func TestAContainedActionPanicLeavesThePhaseBalanced(t *testing.T) {
 	waitFor(t, "the activation's panic contained", func() bool { return len(c.all()) == 1 })
 	var held NodeID
 	var handler NodeID
-	h.onLoop(func() { held, handler = h.app.captureOwner, h.app.handlerNode })
+	h.onLoop(func() { held, handler = h.app.capture.captureOwner, h.app.phase.handlerNode })
 	if held != 0 || handler != 0 {
 		t.Fatalf("after the contained panic: capture %d, handler phase %d; want neither", held, handler)
 	}
@@ -212,7 +212,7 @@ func TestAContainedPanicReleasesTheCapture(t *testing.T) {
 	h.inject(keyEv('x'))
 	waitFor(t, "the panic contained", func() bool { return len(c.all()) == 1 })
 	var held NodeID
-	h.onLoop(func() { held = h.app.captureOwner })
+	h.onLoop(func() { held = h.app.capture.captureOwner })
 	if held != 0 || ctl.armed.Load() {
 		t.Errorf("after a contained panic: capture %d, armed %v", held, ctl.armed.Load())
 	}
