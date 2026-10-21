@@ -134,6 +134,35 @@ Window {
 	s.WaitFor(t, "the cell cursor focused again", func(string) bool { return active(viewCell(t, s, "carol")) })
 }
 
+// A selection is the palette's inactive highlight, the region shown under the cursor, which keeps
+// the highlight; the titles are bold, ruled off rather than underlined.
+func TestACellCursorTableViewColoursItsSelectionFromTheInactivePalette(t *testing.T) {
+	s := decltest.Run(t, 40, 8,
+		tuidecl.LayoutSource("main.qml", []byte(`import tui 1.0
+import demo 1.0
+Window {
+ palette.base: "#101010"; palette.text: "#eeeeee"
+ palette.highlight: "#ffffff"; palette.highlightedText: "#000000"
+ palette.inactive.highlight: "#333344"; palette.inactive.highlightedText: "#bbbbbb"
+ TableView { model: App.rows; cellCursor: true; focus: true }
+}`)),
+		tuidecl.Singleton("demo", "1.0", "App"),
+		tuidecl.Sources(map[string]any{"App.rows": scores()}))
+	rgb := func(r, g, b uint8) tui.CellColor { return tui.CellColor{Kind: tui.CellColorRGB, R: r, G: g, B: b} }
+	s.WaitForText(t, "carol")
+	if c := viewCell(t, s, "NAME"); c.Mask&tui.AttrBold == 0 || c.Mask&tui.AttrUnderline != 0 {
+		t.Errorf("the NAME title drawn %+v, want bold, not underlined", c)
+	}
+	s.Keys(t, decltest.Rune('v'), decltest.Rune('j')) // carol and alice's names, the cursor on alice's
+	s.WaitFor(t, "the selection", func(string) bool {
+		c := viewCell(t, s, "carol")
+		return c.BG == rgb(0x33, 0x33, 0x44) && c.FG == rgb(0xbb, 0xbb, 0xbb)
+	})
+	if c := viewCell(t, s, "alice"); c.BG != rgb(255, 255, 255) {
+		t.Errorf("the cursor inside the selection drawn %+v, want the highlight over it", c)
+	}
+}
+
 // contextMenu turns the right-click menu on; its rows are the host's, through TableOf. The menu
 // opens in the Window's overlay.
 func TestACellCursorTableViewOpensTheHostsMenu(t *testing.T) {

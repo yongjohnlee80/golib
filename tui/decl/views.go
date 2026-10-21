@@ -715,7 +715,12 @@ var tableViewType = Type{
 			vs := p.viewStyles()
 			st := widget.DataTableStyles{Cell: vs.Row, Cursor: vs.CursorRow, CursorBlurred: vs.CursorBlurred, Selected: vs.SelectedRow}
 			if p.has(roleBase, roleText) {
-				st.Header = p.look(roleBase, roleText).Bold(true).Underline(true)
+				st.Header = p.look(roleBase, roleText).Bold(true) // ruled off, not underlined
+			}
+			// a selection is the inactive highlight, Qt's selection without the keys: the region
+			// shows under the cursor, which keeps the highlight
+			if p.has(roleInactiveHighlight, roleInactiveHighlightText) {
+				st.Selected = p.viewCursor(roleInactiveHighlight, roleInactiveHighlightText)
 			}
 			n.grid.SetStyles(st)
 			return
