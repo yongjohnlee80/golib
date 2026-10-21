@@ -328,6 +328,8 @@ type tableViewNode struct {
 	sink     func(error)
 	// grid is the cell-cursor view (cellCursor: true), in place of table
 	grid *widget.DataTable
+	// shown is whichever of table and grid the node shows, asked instead of branching on which
+	shown tableShown
 	// orderBy is the grid's sort as text, as the document set it or the view wrote it back;
 	// orderErr why it did not parse, "" when it did. orderChanged raises orderByChanged.
 	orderBy, orderErr string
@@ -446,6 +448,7 @@ func buildTableView(b Build) (tui.Component, []string, error) {
 				n.menu(numberValue(i), numberValue(at.X), numberValue(at.Y))
 			}
 		}))
+	n.shown = listShown{n.table}
 	n.table.List().SetContextMenu(n.menu != nil)
 	n.mv.changed = n.follow
 	if n.template != nil {
@@ -552,11 +555,7 @@ func (n *tableViewNode) follow(c Change) {
 
 func (n *tableViewNode) Init(ctx *tui.Context) {
 	n.Base.Init(ctx)
-	if n.grid != nil {
-		ctx.Mount(n.grid)
-		return
-	}
-	ctx.Mount(n.table) // its rows report to the TableView itself (WithListOnActivate and siblings)
+	ctx.Mount(n.shown.component()) // a list's rows report to the TableView itself (WithListOnActivate and siblings)
 }
 
 // inView is a point in the row list's cells in the TableView's own: under its header, wherever the
@@ -574,10 +573,7 @@ func (n *tableViewNode) inView(list tui.Component, at tui.Point) tui.Point {
 }
 
 func (n *tableViewNode) Layout(c tui.Constraints) tui.Size {
-	var child tui.Component = n.table
-	if n.grid != nil {
-		child = n.grid
-	}
+	child := n.shown.component()
 	sz := n.Context().LayoutChild(child, c)
 	n.Context().PlaceChild(child, tui.Rect{W: sz.W, H: sz.H})
 	return sz
@@ -586,19 +582,7 @@ func (n *tableViewNode) Layout(c tui.Constraints) tui.Size {
 func (*tableViewNode) Render(tui.Surface)         {}
 func (*tableViewNode) HandleEvent(tui.Event) bool { return false }
 
-func (n *tableViewNode) currentIndex() int {
-	if n.grid != nil {
-		core := n.grid.Core()
-		if core.Len() == 0 {
-			return -1
-		}
-		return core.SourceRow(core.Cursor().Row)
-	}
-	if i, ok := n.table.Selected(); ok {
-		return i
-	}
-	return -1
-}
+func (n *tableViewNode) currentIndex() int { return n.shown.current() }
 
 var tableViewType = Type{
 	Name:  "TableView",
@@ -610,26 +594,7 @@ var tableViewType = Type{
 		if text, ok := p[roleText]; ok {
 			n.normal = text
 		}
-		if n.grid != nil {
-			vs := p.viewStyles()
-			st := widget.DataTableStyles{Cell: vs.Row, Cursor: vs.CursorRow, CursorBlurred: vs.CursorBlurred, Selected: vs.SelectedRow}
-			if p.has(roleBase, roleText) {
-				st.Header = p.look(roleBase, roleText).Bold(true) // ruled off, not underlined
-			}
-			// a selection is the inactive highlight, Qt's selection without the keys: the region
-			// shows under the cursor, which keeps the highlight
-			if p.has(roleInactiveHighlight, roleInactiveHighlightText) {
-				st.Selected = p.viewCursor(roleInactiveHighlight, roleInactiveHighlightText)
-			}
-			n.grid.SetStyles(st)
-			return
-		}
-		n.table.ResetStyles(p.viewStyles())
-		if p.has(roleBase, roleText) {
-			n.table.SetHeaderStyle(p.look(roleBase, roleText).Bold(true).Underline(true))
-		} else {
-			n.table.SetHeaderStyle(style.Style{})
-		}
+		n.shown.restyle(p)
 	},
 	Setters: map[string]Setter{
 		"model": rawSetter(func(n *tableViewNode, v qml.SpecValue) error {
@@ -667,11 +632,7 @@ var tableViewType = Type{
 			n.grid.Menu().SetEnabled(on)
 		}),
 		"currentIndex": setter("a TableView", numberOf, func(n *tableViewNode, v float64) {
-			if n.grid != nil {
-				n.grid.Core().SelectSourceRow(int(v))
-				return
-			}
-			n.table.List().SetCursor(int(v))
+			n.shown.setCurrent(int(v))
 		}),
 	},
 	Getters: map[string]Getter{
