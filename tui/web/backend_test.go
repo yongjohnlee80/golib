@@ -491,3 +491,18 @@ func TestBackend_RenderBeforeAttachSurvivesIntoTheFirstFrame(t *testing.T) {
 		t.Error("a cell outside the client's measured grid reached the frame")
 	}
 }
+
+// The Backend reports the client's measured cell size as tui.CellMetrics, so the App's
+// CellPixels is the browser's font, not zero.
+func TestBackend_CellPixelsAreTheClientsMetrics(t *testing.T) {
+	t.Parallel()
+	if got := New().CellPixels(); got != (tui.CellPixels{}) {
+		t.Errorf("before a client: %+v, want zero", got)
+	}
+	h := hello()
+	h.Metrics = Metrics{CellW: 9.5, CellH: 19}
+	b := started(t, h)
+	if got := b.CellPixels(); got != (tui.CellPixels{W: 9.5, H: 19}) {
+		t.Errorf("CellPixels %+v, want the client's 9.5 by 19", got)
+	}
+}

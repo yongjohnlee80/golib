@@ -156,29 +156,17 @@ func TestDecodeKey_NeverSynthesizesRelease(t *testing.T) {
 	}
 }
 
-// The AltGraph opt-in exists because some browsers do not report the modifier.
-// It must stay OFF by default, or every legitimate Ctrl+Alt chord is swallowed.
-func TestDecodeKey_TreatCtrlAltAsAltGraph(t *testing.T) {
+// Ctrl+Alt is a chord, never inferred as AltGraph: that would swallow every legitimate Ctrl+Alt
+// chord. An AltGraph the browser reports goes to the text path.
+func TestDecodeKey_CtrlAltIsAChord(t *testing.T) {
 	t.Parallel()
-	report := KeyReport{Key: "d", Ctrl: true, Alt: true}
-
-	off := &decoder{}
-	got, ok := off.decodeKey(report)
-	if !ok {
-		t.Fatal("with the heuristic OFF, Ctrl+Alt must remain a chord")
-	}
+	got, ok := (&decoder{}).decodeKey(KeyReport{Key: "d", Ctrl: true, Alt: true})
 	want := tui.KeyEvent{Kind: tui.KeyPress, Code: 'd', Mods: tui.ModCtrl | tui.ModAlt}
-	if got != want {
-		t.Errorf("got %#v, want %#v", got, want)
+	if !ok || got != want {
+		t.Errorf("Ctrl+Alt+d decoded as %#v (%v), want the chord", got, ok)
 	}
-
-	on := &decoder{treatCtrlAltAsAltGraph: true}
-	if _, ok := on.decodeKey(report); ok {
-		t.Error("with the heuristic ON, Ctrl+Alt must go to the text path")
-	}
-	// The opt-in must not affect anything else.
-	if _, ok := on.decodeKey(KeyReport{Key: "c", Ctrl: true}); !ok {
-		t.Error("the opt-in swallowed a plain Ctrl chord")
+	if _, ok := (&decoder{}).decodeKey(KeyReport{Key: "d", Ctrl: true, Alt: true, AltGraph: true}); ok {
+		t.Error("a reported AltGraph was taken as a chord")
 	}
 }
 
