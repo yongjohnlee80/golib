@@ -30,7 +30,7 @@ func droppedText(kind string, data []byte) (string, bool) {
 	if err != nil {
 		return "", false
 	}
-	text := strings.ReplaceAll(strings.ReplaceAll(string(data), "\r\n", "\n"), "\r", "\n")
+	text := tui.NormalizeNewlines(string(data))
 	switch media {
 	case "text/plain":
 		charset := params["charset"]

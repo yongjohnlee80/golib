@@ -375,14 +375,12 @@ func TestACursorInAHoleTellsNoCaret(t *testing.T) {
 	m := stagedMetrics(t)
 	b := NewBackend()
 	b.grid.resize(m.grid.W, m.grid.H)
-	b.cursor = cursorState{visible: true, x: 8, y: 7} // the hole beside the view
 	var f frame
-	b.frameCaret(&f, m)
+	b.frameCaret(&f, m, cursorState{visible: true, x: 8, y: 7}) // the hole beside the view
 	if !f.caret.Empty() {
 		t.Fatalf("a cursor in a hole told the IME %v", f.caret)
 	}
-	b.cursor = cursorState{visible: true, x: 9, y: 0} // positive control: the view's first cell
-	b.frameCaret(&f, m)
+	b.frameCaret(&f, m, cursorState{visible: true, x: 9, y: 0}) // positive control: the view's first cell
 	if f.caret != image.Rect(150, 0, 166, 32) {
 		t.Fatalf("the caret in the view's first cell is %v; want at the view's origin", f.caret)
 	}

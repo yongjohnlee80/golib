@@ -98,10 +98,11 @@ type Backend struct {
 	grid    grid
 	paintM  metrics // the metrics the grid was laid out for (Flush)
 	render  *renderer
-	cursor  cursorState
-	images  map[uint32]placedImage
-	imgList []uint32              // placement order
-	natives []tui.NativePlacement // this frame's, from PlaceNatives
+	cursor  tui.CursorLatch        // the cursor calls; publishFrame takes it
+	images  tui.ImageLatch         // PlaceImage and DeleteImage; publishFrame applies them
+	placed  map[uint32]placedImage // the images shown, each decoded once per version
+	imgList []uint32               // placement order
+	natives []tui.NativePlacement  // this frame's, from PlaceNatives
 
 	stage stageLayouts // a Panes window's layout snapshots (panes.go)
 
@@ -150,11 +151,11 @@ type frame struct {
 
 // frameCaret puts the frame's caret, for the input method and the preedit: the cell cursor
 // when it shows, with its cell's colours, else a native view's own caret, read after it painted.
-func (b *Backend) frameCaret(f *frame, m metrics) {
-	if _, in := m.pane(b.cursor.x, b.cursor.y); b.cursor.visible && (in || m.layout == nil) {
-		f.caret = m.cellRect(b.cursor.x, b.cursor.y, 1, 1)
+func (b *Backend) frameCaret(f *frame, m metrics, cur cursorState) {
+	if _, in := m.pane(cur.x, cur.y); cur.visible && (in || m.layout == nil) {
+		f.caret = m.cellRect(cur.x, cur.y, 1, 1)
 		f.base = m.baseline
-		f.fg, f.bg = b.render.colors(b.grid.at(b.cursor.x, b.cursor.y).Attrs)
+		f.fg, f.bg = b.render.colors(b.grid.at(cur.x, cur.y).Attrs)
 		f.tinted = true
 	} else if c, ok := viewCaret(m, b.natives); ok {
 		f.caret, f.base, f.fg, f.bg, f.tinted = c.rect, c.base, c.fg, c.bg, c.tinted
@@ -189,7 +190,7 @@ func NewBackend(opts ...Option) *Backend {
 		started:  make(chan struct{}),
 		runDone:  make(chan struct{}),
 		render:   newRenderer(cells, fallbackChain(cfg.typeface), cfg.theme),
-		images:   map[uint32]placedImage{},
+		placed:   map[uint32]placedImage{},
 	}
 	if cfg.stage != nil {
 		cfg.stage.b = b
@@ -428,9 +429,11 @@ func (b *Backend) Flush(diff []tui.CellUpdate) error {
 
 // publishFrame draws the grid with m and hands the frame to the Gio goroutine.
 func (b *Backend) publishFrame(m metrics) {
-	draw, parts := b.render.frameParts(&b.grid, m, b.cursor, b.natives, b.imageList(), b.focused.Load())
+	cur := b.takeCursor()
+	b.applyImages()
+	draw, parts := b.render.frameParts(&b.grid, m, cur, b.natives, b.imageList(), b.focused.Load())
 	f := &frame{draw: draw, parts: parts, m: m, drawCost: b.render.firstCost}
-	b.frameCaret(f, m)
+	b.frameCaret(f, m, cur)
 	b.mu.Lock()
 	b.latest = f
 	b.mu.Unlock()
@@ -479,53 +482,72 @@ func fullRepaint(diff []tui.CellUpdate, s tui.Size) bool {
 	return x == 0 && y == s.H
 }
 
-// The cursor is latched, as tui/term latches it, and drawn by the next Flush.
+// The cursor and the images are latched, as every Backend latches them (tui.CursorLatch,
+// tui.ImageLatch), and the next frame takes them.
 
 // ShowCursor marks the cursor visible on the next Flush.
-func (b *Backend) ShowCursor() { b.cursor.visible = true }
+func (b *Backend) ShowCursor() { b.cursor.Show() }
 
 // HideCursor hides the cursor on the next Flush.
-func (b *Backend) HideCursor() { b.cursor.visible = false }
+func (b *Backend) HideCursor() { b.cursor.Hide() }
 
 // SetCursor moves the cursor to (x, y) grid cell coordinates.
-func (b *Backend) SetCursor(x, y int) { b.cursor.x, b.cursor.y = x, y }
+func (b *Backend) SetCursor(x, y int) { b.cursor.SetPos(x, y) }
 
 // SetCursorShape selects the visual shape of the cursor (block, beam, or underline).
-func (b *Backend) SetCursorShape(s tui.CursorShape) { b.cursor.shape = s }
+func (b *Backend) SetCursorShape(s tui.CursorShape) { b.cursor.SetShape(s) }
 
 // SetCursorColor colours the caret; set=false gives it back the theme's cursor colour.
-func (b *Backend) SetCursorColor(c tui.CellColor, set bool) {
-	b.cursor.colored = set
-	if set {
-		b.cursor.color = b.cfg.theme.resolve(c, true)
+func (b *Backend) SetCursorColor(c tui.CellColor, set bool) { b.cursor.SetColor(c, set) }
+
+// takeCursor is the latched cursor as the renderer draws it, its colour resolved by the theme the
+// frame is drawn with.
+func (b *Backend) takeCursor() cursorState {
+	st, _ := b.cursor.Take()
+	cur := cursorState{visible: st.Visible, x: st.X, y: st.Y, shape: st.Shape, colored: st.Colored}
+	if st.Colored {
+		cur.color = b.cfg.theme.resolve(st.Color, true)
 	}
+	return cur
 }
 
-// PlaceImage shows an image over its cells from the next Flush on. The PNG is decoded once per
-// version: a placement that only moves or changes its Clip reuses it.
-func (b *Backend) PlaceImage(p tui.ImagePlacement) {
-	old, had := b.images[p.ID]
-	if had && old.Version == p.Version {
-		old.ImagePlacement = p
-		b.images[p.ID] = old
-		return
-	}
-	img, ok := decodeImage(p)
-	if !ok {
-		return // not a PNG: the cells beneath show, as on a terminal that refuses it
-	}
-	if !had {
-		b.imgList = append(b.imgList, p.ID)
-	}
-	b.images[p.ID] = img
-}
+// PlaceImage shows an image over its cells from the next Flush on.
+func (b *Backend) PlaceImage(p tui.ImagePlacement) { b.images.Place(p) }
 
 // DeleteImage removes an image from the next Flush on.
-func (b *Backend) DeleteImage(id uint32) {
-	if _, ok := b.images[id]; !ok {
+func (b *Backend) DeleteImage(id uint32) { b.images.Delete(id) }
+
+// applyImages applies the latched placements and deletes, in the order made. The PNG is decoded
+// once per version: a placement that only moves or changes its Clip reuses it.
+func (b *Backend) applyImages() {
+	for _, op := range b.images.Take() {
+		if op.Place == nil {
+			b.removeImage(op.Delete)
+			continue
+		}
+		p := *op.Place
+		old, had := b.placed[p.ID]
+		if had && old.Version == p.Version {
+			old.ImagePlacement = p
+			b.placed[p.ID] = old
+			continue
+		}
+		img, ok := decodeImage(p)
+		if !ok {
+			continue // not a PNG: the cells beneath show, as on a terminal that refuses it
+		}
+		if !had {
+			b.imgList = append(b.imgList, p.ID)
+		}
+		b.placed[p.ID] = img
+	}
+}
+
+func (b *Backend) removeImage(id uint32) {
+	if _, ok := b.placed[id]; !ok {
 		return
 	}
-	delete(b.images, id)
+	delete(b.placed, id)
 	for i, v := range b.imgList {
 		if v == id {
 			b.imgList = append(b.imgList[:i], b.imgList[i+1:]...)
@@ -538,7 +560,7 @@ func (b *Backend) DeleteImage(id uint32) {
 func (b *Backend) imageList() []placedImage {
 	out := make([]placedImage, 0, len(b.imgList))
 	for _, id := range b.imgList {
-		out = append(out, b.images[id])
+		out = append(out, b.placed[id])
 	}
 	return out
 }
