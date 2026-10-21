@@ -284,8 +284,26 @@ func lineRunes(cells []vt.Cell) []rune {
 
 func isWordRune(r rune) bool { return r != 0 && !unicode.IsSpace(r) }
 
-func runeAt(t *Terminal, line, col int) rune {
-	rs := lineRunes(t.lineCells(line))
+// cellLines is what the normal-mode motions read: the lines, each line's runes, the width a line
+// wraps at, and whether a line continues on the next. Terminal is one; a fake is a test's.
+type cellLines interface {
+	lineCount() int
+	runes(i int) []rune
+	width() int
+	wrapped(i int) bool
+}
+
+// runes is line i's runes, as the motions read it (cellLines).
+func (t *Terminal) runes(i int) []rune { return lineRunes(t.lineCells(i)) }
+
+// width is the columns a line wraps at (cellLines).
+func (t *Terminal) width() int {
+	_, cols := t.scr.Size()
+	return cols
+}
+
+func runeAt(t cellLines, line, col int) rune {
+	rs := t.runes(line)
 	if col < 0 || col >= len(rs) {
 		return ' '
 	}
@@ -293,8 +311,8 @@ func runeAt(t *Terminal, line, col int) rune {
 }
 
 // step moves one cell forward or back across lines; ok is false at an end.
-func step(t *Terminal, line, col, d int) (int, int, bool) {
-	_, cols := t.scr.Size()
+func step(t cellLines, line, col, d int) (int, int, bool) {
+	cols := t.width()
 	col += d
 	if col >= cols {
 		if line+1 >= t.lineCount() {
@@ -312,7 +330,7 @@ func step(t *Terminal, line, col, d int) (int, int, bool) {
 }
 
 // wordForward is w: the start of the next run of non-blanks.
-func wordForward(t *Terminal, line, col int) (int, int) {
+func wordForward(t cellLines, line, col int) (int, int) {
 	l, c := line, col
 	ok := true
 	for ok && isWordRune(runeAt(t, l, c)) {
@@ -333,7 +351,7 @@ func wordForward(t *Terminal, line, col int) (int, int) {
 }
 
 // wordBackward is b: the start of this or the previous run of non-blanks.
-func wordBackward(t *Terminal, line, col int) (int, int) {
+func wordBackward(t cellLines, line, col int) (int, int) {
 	l, c, ok := step(t, line, col, -1)
 	for ok && !isWordRune(runeAt(t, l, c)) {
 		l, c, ok = step(t, l, c, -1)
@@ -349,7 +367,7 @@ func wordBackward(t *Terminal, line, col int) (int, int) {
 }
 
 // wordEnd is e: the end of this or the next run of non-blanks.
-func wordEnd(t *Terminal, line, col int) (int, int) {
+func wordEnd(t cellLines, line, col int) (int, int) {
 	l, c, ok := step(t, line, col, 1)
 	for ok && !isWordRune(runeAt(t, l, c)) {
 		l, c, ok = step(t, l, c, 1)
@@ -389,11 +407,11 @@ func (n *normalState) selected(line, col int) bool {
 
 // selection is the selected text. Lines autowrap broke are joined; others
 // end in a newline, and trailing blanks are trimmed.
-func (n *normalState) selection(t *Terminal) string {
+func (n *normalState) selection(t cellLines) string {
 	l0, c0, l1, c1 := n.span()
 	var b strings.Builder
 	for line := l0; line <= l1; line++ {
-		rs := lineRunes(t.lineCells(line))
+		rs := t.runes(line)
 		from, to := 0, len(rs)
 		if n.visual == visualChar {
 			if line == l0 {
