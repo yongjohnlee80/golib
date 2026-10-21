@@ -125,7 +125,7 @@ func (a *App) SetGestureRecognizer(r GestureRecognizer) {
 	if a.captureOwner != 0 && a.captureKind == CaptureGesture {
 		a.loseCapture(CaptureLostCancelled)
 	}
-	a.cfg.recognizer = normalizeRecognizer(r)
+	a.live.recognizer = normalizeRecognizer(r)
 }
 
 // normalizeRecognizer collapses every "no recogniser" spelling to a true nil,
@@ -213,7 +213,7 @@ type ControlActivatedEvent struct {
 
 // recognizerFor returns the App's recogniser, or nil when gesture recognition
 // is switched off.
-func (a *App) recognizerFor() GestureRecognizer { return a.cfg.recognizer }
+func (a *App) recognizerFor() GestureRecognizer { return a.live.recognizer }
 
 // gestureCtxFor builds the recogniser's view of one event against a target.
 //
