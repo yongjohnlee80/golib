@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/yongjohnlee80/golib/auth"
+	"github.com/yongjohnlee80/golib/logger"
 )
 
 // fakeApp blocks until its context ends, which is what a real App does.
@@ -115,6 +116,61 @@ func TestManager_AnUnstartedSessionStopsItsBackend(t *testing.T) {
 	}
 	if m.Len() != 0 {
 		t.Errorf("%d sessions remain", m.Len())
+	}
+}
+
+// managerProbe is a ManagerLogger that, on the session-limit refusal, asks whether the Manager's
+// lock is free, then reads the Manager the way an enriching sink would (Len).
+type managerProbe struct {
+	m           *Manager
+	sawRefusal  bool
+	lockHeld    bool
+	lenAtRefuse int
+}
+
+func (p *managerProbe) Log(_ logger.Severity, payload any) {
+	a, ok := payload.(sessionAudit)
+	if !ok || a.Reason != "session limit" {
+		return
+	}
+	p.sawRefusal = true
+	if !p.m.mu.TryLock() {
+		p.lockHeld = true // a sink calling Len here would deadlock
+		return
+	}
+	p.m.mu.Unlock()
+	p.lenAtRefuse = p.m.Len()
+}
+
+// The session-limit refusal is audited with the Manager's lock released, so a log sink may read
+// the Manager (Len) without deadlocking; the cap is still judged atomically.
+func TestManager_TheSessionLimitAuditRunsUnlocked(t *testing.T) {
+	t.Parallel()
+	probe := &managerProbe{}
+	m, err := NewManager(func(*Backend, *SessionInfo) Runner { return newFakeApp() }, MaxSessions(1), ManagerLogger(probe))
+	if err != nil {
+		t.Fatal(err)
+	}
+	probe.m = m
+	t.Cleanup(func() {
+		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer cancel()
+		_ = m.Shutdown(ctx)
+	})
+	if _, err := m.Create(context.Background(), identity("alice"), hello()); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := m.Create(context.Background(), identity("bob"), hello()); !errors.Is(err, ErrSessionLimit) {
+		t.Fatalf("a create past the cap: %v, want ErrSessionLimit", err)
+	}
+	if !probe.sawRefusal {
+		t.Fatal("the session-limit refusal was not audited")
+	}
+	if probe.lockHeld {
+		t.Fatal("the session-limit audit ran under Manager.mu: a sink reading the Manager would deadlock")
+	}
+	if probe.lenAtRefuse != 1 {
+		t.Errorf("the sink read Len %d at the refusal, want the one live session", probe.lenAtRefuse)
 	}
 }
 
