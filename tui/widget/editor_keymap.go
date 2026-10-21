@@ -5,6 +5,7 @@ import (
 	"sort"
 
 	"github.com/yongjohnlee80/golib/tui"
+	tuikey "github.com/yongjohnlee80/golib/tui/key"
 )
 
 // Editor keymap definitions, modal enumeration, and action dispatch bindings.
@@ -95,40 +96,15 @@ type KeyChord struct {
 
 // String returns a human-readable display label for the key chord (e.g. "Ctrl+K", "Home", "w").
 func (kc KeyChord) String() string {
-	var s string
-	switch kc.Code {
-	case tui.KeyLeft:
-		s = "Left"
-	case tui.KeyRight:
-		s = "Right"
-	case tui.KeyUp:
-		s = "Up"
-	case tui.KeyDown:
-		s = "Down"
-	case tui.KeyHome:
-		s = "Home"
-	case tui.KeyEnd:
-		s = "End"
-	case tui.KeyPageUp:
-		s = "PageUp"
-	case tui.KeyPageDown:
-		s = "PageDown"
-	case tui.KeyEscape:
-		s = "Esc"
-	case tui.KeyEnter:
-		s = "Enter"
-	case tui.KeyTab:
-		s = "Tab"
-	case tui.KeyBackspace:
-		s = "Backspace"
-	case tui.KeyDelete:
-		s = "Delete"
+	// a functional key by the name the key package writes it with, as key-map help shows it; a
+	// character as typed, case kept: in a vim keyset w and W are two keys
+	s, named := tuikey.Name(kc.Code)
+	switch {
+	case named:
+	case kc.Code >= 0x20 && kc.Code < 0xE000:
+		s = string(kc.Code)
 	default:
-		if kc.Code >= 0x20 && kc.Code < 0xE000 {
-			s = string(kc.Code)
-		} else {
-			s = fmt.Sprintf("Key(0x%x)", kc.Code)
-		}
+		s = fmt.Sprintf("Key(0x%x)", kc.Code)
 	}
 	prefix := ""
 	if kc.Ctrl {

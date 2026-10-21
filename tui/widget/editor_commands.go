@@ -2,6 +2,7 @@ package widget
 
 import (
 	"slices"
+	"strings"
 	"sync"
 	"unicode"
 
@@ -92,7 +93,7 @@ func deriveEditorCommands(ks Keyset, table Keymap) []editorCommand {
 	}
 	out := make([]editorCommand, 0, len(keys))
 	for sl, ks2 := range keys {
-		slices.SortFunc(ks2, func(a, b tuikey.Seq) int { return cmpString(a.String(), b.String()) })
+		slices.SortFunc(ks2, func(a, b tuikey.Seq) int { return strings.Compare(a.String(), b.String()) })
 		ks2 = slices.Compact(ks2)
 		id := "tui.editor." + keysetID(ks) + "." + classID(sl.class) + "." + lowerFirst(sl.act.String())
 		out = append(out, editorCommand{
@@ -101,18 +102,8 @@ func deriveEditorCommands(ks Keyset, table Keymap) []editorCommand {
 			act:   sl.act,
 		})
 	}
-	slices.SortFunc(out, func(a, b editorCommand) int { return cmpString(a.cmd.ID, b.cmd.ID) })
+	slices.SortFunc(out, func(a, b editorCommand) int { return strings.Compare(a.cmd.ID, b.cmd.ID) })
 	return out
-}
-
-func cmpString(a, b string) int {
-	switch {
-	case a < b:
-		return -1
-	case a > b:
-		return 1
-	}
-	return 0
 }
 
 func lowerFirst(s string) string {
@@ -222,9 +213,9 @@ func (c *EditorCore) keyBindings(m *keymap.Map) []keymap.Binding {
 				src = keymap.Source{Kind: keymap.FromOverlay}
 			}
 		}
-		slices.SortFunc(keys, func(a, b tuikey.Seq) int { return cmpString(a.String(), b.String()) })
+		slices.SortFunc(keys, func(a, b tuikey.Seq) int { return strings.Compare(a.String(), b.String()) })
 		out = append(out, keymap.Binding{Command: cmd, Keys: keys, Scope: scope, Source: src})
 	}
-	slices.SortFunc(out, func(a, b keymap.Binding) int { return cmpString(a.Command.ID, b.Command.ID) })
+	slices.SortFunc(out, func(a, b keymap.Binding) int { return strings.Compare(a.Command.ID, b.Command.ID) })
 	return out
 }
