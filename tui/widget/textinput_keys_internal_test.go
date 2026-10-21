@@ -7,9 +7,10 @@ import (
 	"github.com/yongjohnlee80/golib/tui"
 )
 
-// oldInputKey is TextInput.handleKey at golib 6a0b271, verbatim but for its receiver: the oracle of
-// the no-map differential, which compares effects (value, cursor, selection, completion, submits and
-// the answer) from several starting states.
+// oldInputKey is TextInput.handleKey at golib 6a0b271, verbatim but for its receiver and its reads
+// of the cursor and length, which are methods now: the oracle of the no-map differential, which
+// compares effects (value, cursor, selection, completion, submits and the answer) from several
+// starting states.
 func oldInputKey(t *TextInput, e tui.KeyEvent) bool {
 	if e.Kind == tui.KeyRelease {
 		return false
@@ -48,10 +49,10 @@ func oldInputKey(t *TextInput, e tui.KeyEvent) bool {
 		switch lo, hi, ok := t.selection(); {
 		case ok:
 			t.deleteRange(lo, hi)
-		case word && t.wordLeft() < t.cur:
-			t.deleteRange(t.wordLeft(), t.cur)
-		case !word && t.cur > 0:
-			t.deleteRange(t.cur-1, t.cur)
+		case word && t.wordLeft() < t.cursor():
+			t.deleteRange(t.wordLeft(), t.cursor())
+		case !word && t.cursor() > 0:
+			t.deleteRange(t.cursor()-1, t.cursor())
 		default:
 			return true // consumed; nothing to delete
 		}
@@ -61,8 +62,8 @@ func oldInputKey(t *TextInput, e tui.KeyEvent) bool {
 		switch lo, hi, ok := t.selection(); {
 		case ok:
 			t.deleteRange(lo, hi)
-		case t.cur < len(t.cs):
-			t.deleteRange(t.cur, t.cur+1)
+		case t.cursor() < t.length():
+			t.deleteRange(t.cursor(), t.cursor()+1)
 		default:
 			return true
 		}
@@ -72,21 +73,21 @@ func oldInputKey(t *TextInput, e tui.KeyEvent) bool {
 		if word {
 			t.moveTo(t.wordLeft(), shift)
 		} else {
-			t.moveTo(t.cur-1, shift)
+			t.moveTo(t.cursor()-1, shift)
 		}
 		return true
 	case tui.KeyRight:
 		if word {
 			t.moveTo(t.wordRight(), shift)
 		} else {
-			t.moveTo(t.cur+1, shift)
+			t.moveTo(t.cursor()+1, shift)
 		}
 		return true
 	case tui.KeyHome:
 		t.moveTo(0, shift)
 		return true
 	case tui.KeyEnd:
-		t.moveTo(len(t.cs), shift)
+		t.moveTo(t.length(), shift)
 		return true
 	}
 
@@ -97,17 +98,17 @@ func oldInputKey(t *TextInput, e tui.KeyEvent) bool {
 			t.moveTo(0, false)
 			return true
 		case 'e':
-			t.moveTo(len(t.cs), false)
+			t.moveTo(t.length(), false)
 			return true
 		case 'u':
-			if t.cur > 0 {
-				t.deleteRange(0, t.cur)
+			if t.cursor() > 0 {
+				t.deleteRange(0, t.cursor())
 				t.edited()
 			}
 			return true
 		case 'w':
-			if w := t.wordLeft(); w < t.cur {
-				t.deleteRange(w, t.cur)
+			if w := t.wordLeft(); w < t.cursor() {
+				t.deleteRange(w, t.cursor())
 				t.edited()
 			}
 			return true
@@ -148,8 +149,8 @@ func TestTextInputKeysMatchTheOldHandlerWithNoMap(t *testing.T) {
 	}{
 		{"empty", nil, func(*TextInput) {}},
 		{"words, cursor at the end", []TextInputOption{WithInitialValue("hello big world")}, func(*TextInput) {}},
-		{"words, cursor mid", []TextInputOption{WithInitialValue("hello big world")}, func(t *TextInput) { t.cur = 7 }},
-		{"a selection", []TextInputOption{WithInitialValue("hello big world")}, func(t *TextInput) { t.cur, t.anchor = 9, 6 }},
+		{"words, cursor mid", []TextInputOption{WithInitialValue("hello big world")}, func(t *TextInput) { t.buf.col = 7 }},
+		{"a selection", []TextInputOption{WithInitialValue("hello big world")}, func(t *TextInput) { t.buf.col, t.buf.anchor = 9, &taPos{col: 6} }},
 		{"a completer", []TextInputOption{WithInitialValue("al"), WithCompleter(completer)}, func(*TextInput) {}},
 		{"a refusing validator", []TextInputOption{WithInitialValue("x"), WithValidate(func(string) error { return fmt.Errorf("no") })}, func(*TextInput) {}},
 	} {
@@ -160,7 +161,7 @@ func TestTextInputKeysMatchTheOldHandlerWithNoMap(t *testing.T) {
 				st.prep(ti)
 				ret := handle(ti, e)
 				lo, hi, sel := ti.selection()
-				return fmt.Sprintf("ret=%v value=%q cur=%d sel=%v[%d,%d] verr=%v submits=%q", ret, ti.Value(), ti.cur, sel, lo, hi, ti.verr != nil, submits)
+				return fmt.Sprintf("ret=%v value=%q cur=%d sel=%v[%d,%d] verr=%v submits=%q", ret, ti.Value(), ti.cursor(), sel, lo, hi, ti.verr != nil, submits)
 			}
 		}
 		keyGridDiff(t, "TextInput ("+st.name+")", run(oldInputKey), run((*TextInput).handleKey), hyperOrMeta)
