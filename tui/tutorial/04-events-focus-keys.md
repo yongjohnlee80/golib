@@ -233,28 +233,45 @@ Components and widgets communicate decoupled state changes through the applicati
   - `widget.TabChangedEvent`: Active tab switched in `Tabs` (`Owner`, `Index`).
   - `widget.DismissEvent`: Modal float dismissed via Esc (`Owner`). (Backdrop mouse clicks are trapped and consumed by the modal layer, but do not dismiss it).
 
-### 1. Scoped Subscriptions (`tui.SubscribeScoped`)
+### 1. Your own widgets: their callbacks, not the bus
 
-Always prefer `tui.SubscribeScoped(ctx, handler)` inside a component's `Init(ctx)`:
+A component hears the widgets it owns through their options, called at once on
+the loop: `WithListOnActivate` and `WithListOnCursor` for a List or a Table,
+`WithOnEdit` and `WithOnSubmit` for a TextInput, `WithOnActivate` for a Button.
 
 ```go
-func (c *myController) Init(ctx *tui.Context) {
-    c.ctx = ctx
-    ctx.Mount(c.table)
+func newController(rows []Row) *myController {
+    c := &myController{}
+    c.table = widget.NewTable(cols,
+        widget.WithListOnActivate[Row](func(i int) { c.openDetail(i) }))
+    return c
+}
+```
 
+Subscribing app-wide to your own child's event and filtering by `Owner` hears it
+a loop turn late. If you also call the handler yourself, it runs twice.
+
+### 2. Scoped Subscriptions (`tui.SubscribeScoped`)
+
+For events from widgets you do not own, prefer `tui.SubscribeScoped(ctx, handler)`
+inside a component's `Init(ctx)`, and filter on `ev.Owner`, since bus events are
+app-wide:
+
+```go
+func (c *auditLog) Init(ctx *tui.Context) {
     // Automatically unsubscribed when c unmounts:
     tui.SubscribeScoped(ctx, func(ev widget.ActivateEvent) {
-        if ev.Owner != c.table.List().NodeID() {
+        if ev.Owner != c.watched {
             return // Filter by owner!
         }
-        c.openDetail(ev.Index)
+        c.record(ev.Index)
     })
 }
 ```
 
 Bare subscriptions (`cancel := tui.Subscribe(bus, handler)`) return a cancellation function that must be called explicitly when tearing down to avoid leaks. `tui.SubscribeScoped` handles this automatically upon component unmount.
 
-### 2. Thread-Safe Publishing
+### 3. Thread-Safe Publishing
 
 Any goroutine can safely publish to the bus:
 
@@ -265,7 +282,7 @@ bus.Publish(MyCustomEvent{ID: 42, Status: "synced"})
 
 Events are queued onto Lane B and delivered synchronously to subscribers on the event loop goroutine.
 
-### 3. Defining Custom Application Events
+### 4. Defining Custom Application Events
 
 Custom events are standard Go structs. Always include an `Owner` or source identifier when multiple instances could publish the same event:
 

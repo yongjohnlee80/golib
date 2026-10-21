@@ -275,8 +275,15 @@ list := widget.NewList(
         return fmt.Sprintf("%-20s %s", u.Name, u.Email)
     }),
     widget.WithEmptyText("No users found"),
+    widget.WithListOnActivate[User](func(i int) { openUser(users[i]) }),
 )
 ```
+
+The list's owner hears it directly: `WithListOnCursor[T]` runs when the cursor
+moves to a row and `WithListOnActivate[T]` when a row is activated (Enter, a
+double click), at once and before the bus hears `SelectionChangedEvent` and
+`ActivateEvent`. The bus events are for listeners elsewhere in the app, which a
+loop turn later filter on `ev.Owner`. A `Table[T]` takes the same options.
 
 The cursor row is a full-width bar, whether its look is a colour or a
 reversal. With two lists on screen, set `ListStyles.CursorBlurred`: the cursor
@@ -850,7 +857,7 @@ modal.Show() // Esc dismisses and restores previous focus
 ```
 
 Its anchor places the content: an alignment (`Center`, `TopLeft`, … `BottomRight`), `AtRect(r)`
-at a rectangle in cells, or `AtFraction(x, y, w, h)` at a rectangle in percent of the overlay
+at a rectangle in cells (kept inside the overlay area, with or without a `WindowMod` in the float), or `AtFraction(x, y, w, h)` at a rectangle in percent of the overlay
 area, which keeps its proportions when the area is resized. `FractionRect` is where an
 `AtFraction` lands in an area, `FractionOf` turns a rectangle back into percentages, and
 `Float.Area()` is the area the float last laid out in, to convert against.

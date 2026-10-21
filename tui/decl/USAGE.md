@@ -491,7 +491,8 @@ gauge := tuidecl.Type{
     Build: func(b tuidecl.Build) (tui.Component, []string, error) {
         g := mywidgets.NewGauge()
         var max float64 = 100
-        consumed, err := tuidecl.ReadProps(b.Props, map[string]tuidecl.Field{
+        // b.ReadProps refuses a property the Type does not declare in Ctor or Setters
+        consumed, err := b.ReadProps(map[string]tuidecl.Field{
             "maximum": tuidecl.NumberField(&max),   // a constructor-only property
         })
         if err != nil {
@@ -532,7 +533,7 @@ What each field is for:
 
 | field | put here | why |
 | --- | --- | --- |
-| `Build` | construction; read constructor props with `ReadProps` | returns what it consumed, so the engine does not apply it twice |
+| `Build` | construction; read constructor props with `b.ReadProps` (only properties the Type declares) | returns what it consumed, so the engine does not apply it twice |
 | `Ctor` | properties only the builder takes | a reload that changes one rebuilds the node instead of failing |
 | `Setters` | properties that can change | only these can be bound to a source |
 | `Methods` | what a handler may call by id | checked when the document mounts, not when the button is pressed |

@@ -47,9 +47,12 @@ Unconsumed keys bubble past floats to the root. Track open floats at the
 root and make `q` close the top float when one is open.
 → [chapter 6](06-floats-and-modals.md)
 
-## "My ActivateEvent handler fires for the wrong list"
+## "My ActivateEvent handler fires for the wrong list" (or twice, or late)
 
-Bus events are app-wide. Always filter on `ev.Owner == myWidget.NodeID()`.
+Bus events are app-wide and arrive a loop turn later. For a list you own,
+don't subscribe: pass `widget.WithListOnActivate` / `WithListOnCursor`, which
+run at once and only for that list. A subscriber to someone else's widget
+filters on `ev.Owner == theirWidget.NodeID()`.
 → [chapter 4](04-events-focus-keys.md)
 
 ## "I can't select/copy text with the mouse"
