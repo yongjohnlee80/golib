@@ -54,6 +54,13 @@ config and state in one struct; there is no element/config object to annotate as
 React/Flutter do. Containers that reconcile by key (a future keyed list widget)
 consume `Keyer`; the framework itself never consults it.
 
+> **Amended 2026-10-21 (Johno's core-S8 ruling, golib/tui follow-up Lane D):**
+> the keyed reconciler is `tui.Reconcile(c Container, next []Component, key func(Component) any)`.
+> It takes the key as a function and changes the container only through its own
+> `Add`, `Remove` and `Move`. `Keyer` and `AsKey` are deprecated
+> (`keyer_deprecated.go`) and still work; a component that has a `Key` method
+> passes `func(c Component) any { return c.(Keyer).Key() }`.
+
 ### 2.2 `Container.Move` — sibling reorder without unmount
 
 ```go
