@@ -44,6 +44,13 @@ type MouseEvent struct {
 	Source PointerSource
 }
 
+// localTo is e with its position stated in r's frame: a screen-absolute event made local to the
+// node whose absolute rectangle r is, as that node's component receives it.
+func (e MouseEvent) localTo(r Rect) MouseEvent {
+	e.X, e.Y = e.X-r.X, e.Y-r.Y
+	return e
+}
+
 // PointerSource is a backend's record of a pointer event's position, carried inside the event so
 // it lives exactly as long as the event does: coalesced, dropped or dispatched, nothing else
 // holds it. tui never reads it; it hands it back to the backend's ResolvePointer.

@@ -79,3 +79,29 @@ func TestConstraints(t *testing.T) {
 		t.Errorf("unbounded axis clamped: %+v", got)
 	}
 }
+
+// TestRectAndPointFrames: Translate moves a rectangle or a point, RelativeTo states it in another
+// rectangle's frame (the inverse of Translate by that rectangle's origin), and Origin is the corner.
+func TestRectAndPointFrames(t *testing.T) {
+	r := Rect{X: 5, Y: 7, W: 3, H: 2}
+	if got := r.Translate(2, -3); got != (Rect{X: 7, Y: 4, W: 3, H: 2}) {
+		t.Errorf("Translate = %+v", got)
+	}
+	frame := Rect{X: 4, Y: 5, W: 20, H: 20}
+	if got := r.RelativeTo(frame); got != (Rect{X: 1, Y: 2, W: 3, H: 2}) {
+		t.Errorf("RelativeTo = %+v", got)
+	}
+	if got := r.RelativeTo(frame).Translate(frame.X, frame.Y); got != r {
+		t.Errorf("RelativeTo then Translate by the frame's origin = %+v, want %+v back", got, r)
+	}
+	if got := r.Origin(); got != (Point{X: 5, Y: 7}) {
+		t.Errorf("Origin = %+v", got)
+	}
+	p := Point{X: 10, Y: 1}
+	if got := p.RelativeTo(frame); got != (Point{X: 6, Y: -4}) {
+		t.Errorf("Point.RelativeTo = %+v, want it outside the frame, negative", got)
+	}
+	if got := p.Translate(-10, 2); got != (Point{X: 0, Y: 3}) {
+		t.Errorf("Point.Translate = %+v", got)
+	}
+}

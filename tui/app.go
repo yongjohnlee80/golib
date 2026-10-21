@@ -853,16 +853,18 @@ func (a *App) applyCursor() {
 		if cr, ok := n.comp.(CursorReporter); ok {
 			// a cursor outside what the node can show (scrolled out of a ScrollView) is hidden, not
 			// drawn over whatever is there
-			if x, y, ok := cr.Cursor(); ok && n.visRect.Contains(n.absRect.X+x, n.absRect.Y+y) {
-				a.backend.SetCursor(n.absRect.X+x, n.absRect.Y+y)
-				if cs, ok := n.comp.(CursorShaper); ok {
-					a.backend.SetCursorShape(cs.CursorShape())
-				} else {
-					a.backend.SetCursorShape(CursorShapeDefault)
+			if x, y, ok := cr.Cursor(); ok {
+				if at := (Point{X: x, Y: y}).Translate(n.absRect.X, n.absRect.Y); n.visRect.Contains(at.X, at.Y) {
+					a.backend.SetCursor(at.X, at.Y)
+					if cs, ok := n.comp.(CursorShaper); ok {
+						a.backend.SetCursorShape(cs.CursorShape())
+					} else {
+						a.backend.SetCursorShape(CursorShapeDefault)
+					}
+					a.applyCursorColor(n.comp)
+					a.backend.ShowCursor()
+					return
 				}
-				a.applyCursorColor(n.comp)
-				a.backend.ShowCursor()
-				return
 			}
 		}
 	}

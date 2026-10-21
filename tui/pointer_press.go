@@ -58,8 +58,7 @@ func (a *App) interceptPointerPress(target, limit *node, e MouseEvent) bool {
 	for n := target; n != nil; n = n.parent {
 		if n.visible() && effectivePointerPolicy(n) != PointerDisabled {
 			if r, ok := n.comp.(PointerPressResolver); ok {
-				local := e
-				local.X, local.Y = e.X-n.absRect.X, e.Y-n.absRect.Y
+				local := e.localTo(n.absRect)
 				local.Count = a.previewPressOrdinal(e, n, now)
 				if action, matched := r.ResolvePointerPress(local); matched {
 					if isNilLike(action) {

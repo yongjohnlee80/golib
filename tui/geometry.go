@@ -39,6 +39,24 @@ func (r Rect) Contains(x, y int) bool {
 	return x >= r.X && x < r.X+r.W && y >= r.Y && y < r.Y+r.H
 }
 
+// Origin is r's top-left corner.
+func (r Rect) Origin() Point { return Point{X: r.X, Y: r.Y} }
+
+// Translate is r moved by (dx, dy), its size unchanged.
+func (r Rect) Translate(dx, dy int) Rect { return Rect{X: r.X + dx, Y: r.Y + dy, W: r.W, H: r.H} }
+
+// RelativeTo is r stated in frame's coordinates, frame's origin at (0, 0): a screen-absolute
+// rectangle made local to a component, or one component's rectangle made local to another's. It is
+// the inverse of r.Translate(frame.X, frame.Y).
+func (r Rect) RelativeTo(frame Rect) Rect { return r.Translate(-frame.X, -frame.Y) }
+
+// Translate is p moved by (dx, dy).
+func (p Point) Translate(dx, dy int) Point { return Point{X: p.X + dx, Y: p.Y + dy} }
+
+// RelativeTo is p stated in frame's coordinates, frame's origin at (0, 0). It may be negative, or
+// past frame's edge, for a point outside it.
+func (p Point) RelativeTo(frame Rect) Point { return p.Translate(-frame.X, -frame.Y) }
+
 // Constraints bound the allowable dimensions a child component may choose in Layout:
 // MinW <= W <= MaxW and MinH <= H <= MaxH.
 //
