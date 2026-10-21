@@ -474,7 +474,7 @@ func NewEditor(opts ...EditorOption) *Editor {
 			o(e)
 		}
 	}
-	e.core.settleOptions()
+	e.core.finishConstruction()
 	return e
 }
 
