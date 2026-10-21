@@ -139,6 +139,14 @@ func (n *TreeNode) dirty() {
 	}
 }
 
+// rowsChanged tells the owner its visible rows are to be walked again: called at every write to what
+// they are made of (a node's children, loaded or expanded).
+func (n *TreeNode) rowsChanged() {
+	if n.owner != nil {
+		n.owner.rowsChanged()
+	}
+}
+
 // structureChanged marks the owner dirty AND reconciles its cursor
 // synchronously — input handling must never depend on a later render to
 // make model state valid.
@@ -192,6 +200,7 @@ func (n *TreeNode) SetChildren(gen uint64, kids []*TreeNode) {
 	n.loading = false
 	n.loadErr = ""
 	n.gen = 0
+	n.rowsChanged()
 	n.structureChanged()
 	if n.owner != nil {
 		n.owner.childrenArrived(n)
@@ -210,6 +219,7 @@ func (n *TreeNode) SetLoadError(gen uint64, msg string) {
 	n.expanded = false
 	n.loadErr = msg
 	n.gen = 0
+	n.rowsChanged()
 	if t := n.owner; t.reopen != nil {
 		delete(t.reopen, n) // nothing arrives to reopen
 		if len(t.reopen) == 0 {
@@ -232,6 +242,7 @@ func (n *TreeNode) Reset() {
 	n.expanded = false
 	n.loadErr = ""
 	n.gen = 0
+	n.rowsChanged()
 	n.structureChanged()
 }
 
@@ -428,6 +439,10 @@ type Tree struct {
 	anchor *TreeNode
 	// known fills an unloaded node at once when the host already has its children (WithKnownChildren)
 	known func(n *TreeNode, gen uint64) bool
+	// visible caches flatten's rows while visibleOK; rowsChanged drops them (a memo of what the
+	// nodes say, so a query in Render fills it without changing anything observable).
+	visible   []treeRow
+	visibleOK bool
 	// contextMenu: a right press and the menu key ask the owner for a menu (SetContextMenu).
 	contextMenu bool
 }
@@ -631,6 +646,7 @@ func (t *Tree) SetRoots(roots ...*TreeNode) {
 		r.parent = nil
 		t.adopt(r)
 	}
+	t.rowsChanged()
 	t.cursor, t.top = 0, 0
 	t.selected = nil // the old nodes are gone; row 0 is a new choice
 	t.MarkDirty()
@@ -811,7 +827,21 @@ type treeRow struct {
 	depth int
 }
 
+// flatten is the visible rows: expanded and loaded nodes' children under them, depth first. They are
+// walked once per change, not per query (a key reads them several times, a frame twice); every write
+// to what they are made of calls rowsChanged. Callers only read the slice.
 func (t *Tree) flatten() []treeRow {
+	if !t.visibleOK {
+		t.visible, t.visibleOK = t.walkRows(), true
+	}
+	return t.visible
+}
+
+// rowsChanged drops the visible rows, to be walked again on the next query.
+func (t *Tree) rowsChanged() { t.visible, t.visibleOK = nil, false }
+
+// walkRows walks the visible rows afresh.
+func (t *Tree) walkRows() []treeRow {
 	var out []treeRow
 	var walk func(n *TreeNode, depth int)
 	walk = func(n *TreeNode, depth int) {
@@ -866,6 +896,7 @@ func (t *Tree) expandNode(n *TreeNode) (live bool) {
 	}
 	if n.loaded {
 		n.expanded = true
+		t.rowsChanged()
 		t.MarkDirty()
 		return t.expanded(n, false)
 	}
@@ -877,6 +908,7 @@ func (t *Tree) expandNode(n *TreeNode) (live bool) {
 	n.loading = true
 	n.loadErr = ""
 	n.expanded = true // renders the spinner badge until the result settles
+	t.rowsChanged()
 	t.MarkDirty()
 	request := t.known == nil || !t.known(n, n.gen) || !n.loaded
 	if request {
@@ -914,6 +946,7 @@ func (t *Tree) collapseNode(n *TreeNode) {
 		n.loading = false
 		n.gen = 0
 	}
+	t.rowsChanged()
 	t.MarkDirty()
 	t.publish(CollapseEvent{Owner: t.NodeID(), Node: n})
 }
