@@ -180,27 +180,23 @@ const (
 
 // TableCore holds a table's behaviour apart from any view.
 type TableCore struct {
-	src     TableSource
-	pager   TablePager
-	edit    TableEditor
-	commit  TableCommitter // the source's compound edits, nil when it has none (tablecore_edit.go)
-	edges   bool           // TableAppendEdges
-	editing *TableEdit     // the open field, nil for none
+	src    TableSource
+	pager  TablePager
+	edit   TableEditor
+	commit TableCommitter // the source's compound edits, nil when it has none (tablecore_edit.go)
+	edges  bool           // TableAppendEdges
+	// The core's parts, each in the file of its concern, with its own reset for a new source.
+	tableEditSession // the open field (tablecore_edit.go)
+	tableSelection   // the anchor, what it covers, and the pointer's drag (tablecore_select.go)
+	tableView        // the sort and the filter: the display order (tablecore_sort.go)
+	tableKeyState    // the keys of a command not yet complete (tablecore_keys.go)
 	// presses pairs a view's double-click by source row and field (pairPress), reset with the source
 	presses       pressPairer[TablePos]
-	srcGen        uint64 // SetSource's count: an open edit's source, by number
-	onEditDropped func()
 	keysFirst     func(tui.KeyEvent) bool
 	layout        TableLayout
 	ctx           *tui.Context
 	kinds         TableKinds // the source's cell kinds, nil when it has none
 	cur           TablePos
-	anchor        *TablePos
-	kind          TableSelectKind // what the selection between anchor and cur covers
-	order         []int           // display row → source row; nil: source order, every row
-	keys          []TableSortKey  // the sort, nil: unsorted
-	filter        TablePredicate  // the rows shown, nil: every row
-	place         []int           // with a filter, display row → its place among the loaded rows in the sort's order
 	sortable      bool
 	rowNumbers    bool
 	rowCursor     bool            // the cursor covers its whole row (TableRowCursor's r): y copies the row
@@ -217,19 +213,6 @@ type TableCore struct {
 	menuSelects   bool  // TableMenuSelects: a right press outside the selection selects what it was on
 	announced     int   // the source row onCursor was last told, -1 for none
 	measured      []int // measured widths, nil until asked for after a change
-
-	// The keys typed so far of a command not yet complete: a count, and a g waiting for its
-	// second g. yanked is a y that copied the cursor's cell, which a second y turns into yy.
-	count    int
-	pendingG bool
-	yanked   bool
-	deleting bool // a d waiting for its second d (dd)
-	literal  bool // Ctrl+V in the open field: a Tab next is typed
-
-	// The pointer's drag: where it was pressed, and on what.
-	dragging bool
-	dragFrom TablePos
-	dragHit  TableHit
 }
 
 // NewTableCore is a core over src, which may be nil until SetSource.
@@ -251,21 +234,19 @@ func (c *TableCore) Bind(ctx *tui.Context, l TableLayout) { c.ctx, c.layout = ct
 // SetSource replaces the rows; the cursor, selection, sort and filter start again.
 func (c *TableCore) SetSource(src TableSource) {
 	c.src = src
-	c.srcGen++
 	c.pager, _ = src.(TablePager)
 	c.edit, _ = src.(TableEditor)
 	c.commit, _ = src.(TableCommitter)
-	if c.editing != nil { // the cell it was opened on is not this source's
-		c.editing = nil
+	if c.tableEditSession.newSource() {
 		c.dropped()
 	}
 	c.kinds, _ = src.(TableKinds)
 	had := c.keys != nil
-	c.cur, c.anchor, c.kind, c.order, c.keys = TablePos{}, nil, TableSelectCells, nil, nil
-	c.filter, c.place = nil, nil
+	c.cur = TablePos{}
+	c.tableSelection.reset()
+	c.tableView.reset()
+	c.tableKeyState.reset()
 	c.presses.Reset() // a source row index means another row now
-	c.dropPending()
-	c.dragging = false
 	c.Changed()
 	if had {
 		c.sortChanged()

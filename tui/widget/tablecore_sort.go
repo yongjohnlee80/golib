@@ -11,6 +11,17 @@ import (
 // keeps its order, and rows that arrive later are merged in by Changed. A source that knows each
 // cell's kind (TableKinds) is ordered by those kinds; one that does not is ordered by compareCells.
 
+// tableView is the order the rows are shown in: the sort and the filter over the loaded rows.
+type tableView struct {
+	order  []int          // display row → source row; nil: source order, every row
+	keys   []TableSortKey // the sort, nil: unsorted
+	filter TablePredicate // the rows shown, nil: every row
+	place  []int          // with a filter, display row → its place among the loaded rows in the sort's order
+}
+
+// reset drops the sort and the filter: a new source is shown in its own order, every row.
+func (v *tableView) reset() { *v = tableView{} }
+
 // TableSortKey is one field of a sort and its direction.
 type TableSortKey struct {
 	Col  int
