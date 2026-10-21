@@ -70,8 +70,9 @@ import (
 //     box), the floatLayer itself acts as a fallback focus stop so that Escape keypresses
 //     remain trapped and reliably dismiss the modal.
 //  3. Notification Contract:
-//     Every dismissal, whether triggered via Escape key or programmatic [Float.Hide],
-//     publishes a [DismissEvent] stamped with the Float's [tui.NodeID].
+//     Every dismissal publishes an [OverlayDismissedEvent] stamped with the Float's
+//     [tui.NodeID] and its reason: [DismissEscape] for the Escape key, [DismissProgrammatic]
+//     for [Float.Hide]. The deprecated [DismissEvent] is published just before it.
 //
 // # Usage Examples
 //
@@ -255,12 +256,9 @@ func (f *Float) Show() {
 		// puts it, whenever this Float was attached. A panel raised since it was attached would
 		// otherwise cover the dialog that holds the keyboard.
 		f.raise()
-		if focusFirst(f.layer.Context(), f.child) {
-			f.layer.fallback = false
-		} else {
-			// No focusable content: the layer itself becomes the trap's
-			// single tab stop so keys (Esc!) stay inside the modal.
-			f.layer.fallback = true
+		if !focusFirst(f.layer.Context(), f.child) {
+			// No focusable content: the layer itself is the trap's tab stop (trapFallback), so
+			// keys (Esc!) stay inside the modal.
 			f.layer.focusSelf()
 		}
 	}
@@ -268,7 +266,11 @@ func (f *Float) Show() {
 
 // Hide unmounts the layer (focus restores to the pre-Show node when the
 // float was modal) and emits DismissEvent.
-func (f *Float) Hide() {
+func (f *Float) Hide() { f.hide(DismissProgrammatic) }
+
+// hide unmounts the layer and reports why: DismissEvent, then OverlayDismissedEvent with the
+// reason, once each per hide. A Float already hidden publishes nothing.
+func (f *Float) hide(reason DismissReason) {
 	if !f.shown {
 		return
 	}
@@ -277,7 +279,9 @@ func (f *Float) Hide() {
 	f.shown = false
 	f.ctx.Unmount(layer)
 	f.RequestLayout()
-	f.publish(DismissEvent{Owner: f.NodeID()})
+	owner := f.NodeID()
+	f.publish(DismissEvent{Owner: owner})
+	f.publish(OverlayDismissedEvent{Owner: owner, Reason: reason})
 }
 
 // Init re-arms hidden state on (re)mount. Re-entrant.
@@ -321,8 +325,7 @@ func (f *Float) ContainsPointer(x, y int) bool { return false }
 // backdrop scrim, Esc-dismiss, and anchor placement of the content.
 type floatLayer struct {
 	Base
-	owner    *Float
-	fallback bool // no focusable content: the layer is the trap's tab stop
+	owner *Float
 }
 
 var (
@@ -348,14 +351,16 @@ func (l *floatLayer) ContainsPointer(x, y int) bool { return l.owner.modal }
 func (l *floatLayer) TrapsFocus() bool { return l.owner.modal }
 
 // AcceptsFocus implements tui.Focusable: the layer joins the ring only as
-// the fallback stop of a modal whose content has no focusable — otherwise
-// it would pollute the trap's Tab cycle.
-func (l *floatLayer) AcceptsFocus() bool { return l.owner.modal && l.fallback }
+// the fallback stop of a modal whose content has no focusable now
+// (trapFallback) — otherwise it would pollute the trap's Tab cycle.
+func (l *floatLayer) AcceptsFocus() bool {
+	return l.owner.modal && trapFallback(l.Context(), l.owner.child)
+}
 
 // FocusableByDesign implements tui.FocusDesigner. Only a MODAL float's layer
 // was built to take focus — as that fallback stop; a non-modal one never
 // does, so it is not focusable by design. modal is chosen at construction
-// (WithModal); fallback is what it is now.
+// (WithModal); whether it is the stop now is AcceptsFocus's.
 func (l *floatLayer) FocusableByDesign() bool { return l.owner.modal }
 
 // Layout places the child per the owner's anchor (Float.place); a bound window places it in its
@@ -445,7 +450,7 @@ func (l *floatLayer) HandleEvent(ev tui.Event) bool {
 	switch e := ev.(type) {
 	case tui.KeyEvent:
 		if _, ok := l.Context().KeyCommand(e, FloatClose); ok {
-			l.owner.Hide()
+			l.owner.hide(DismissEscape)
 			return true
 		}
 	case tui.MouseEvent:

@@ -98,9 +98,9 @@ func (p *popupLayer) Init(ctx *tui.Context) {
 	})
 }
 
-// AcceptsFocus is the fallback for a panel with nothing focusable: the layer
-// itself holds focus, so Escape still reaches it.
-func (p *popupLayer) AcceptsFocus() bool { return true }
+// AcceptsFocus is the fallback for a panel with nothing focusable now (trapFallback): the layer
+// itself holds focus, so Escape still reaches it, and is no Tab stop beside the panel's controls.
+func (p *popupLayer) AcceptsFocus() bool { return trapFallback(p.Context(), p.panel) }
 
 // TrapsFocus keeps Tab inside the panel while it is open.
 func (p *popupLayer) TrapsFocus() bool { return true }

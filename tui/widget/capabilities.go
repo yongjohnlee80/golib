@@ -113,6 +113,14 @@ func childrenOf(ctx *tui.Context, c tui.Component) []tui.Component {
 // focusFirst walks c's subtree in document order and focuses the first
 // component that accepts focus, reporting whether one did. ctx is as for
 // firstFocusable.
+// trapFallback is the fallback-stop rule every trapping overlay shares (Float, the popup, Modal):
+// the overlay's own node takes focus only while content holds nothing that does, so the trap's ring
+// is never empty (Escape stays reachable) and never offers a phantom stop beside real controls. It
+// is read live, at every focus decision, so content that gains or loses a control moves the stop.
+func trapFallback(ctx *tui.Context, content tui.Component) bool {
+	return firstFocusable(ctx, content) == nil
+}
+
 func focusFirst(ctx *tui.Context, c tui.Component) bool {
 	f := firstFocusable(ctx, c)
 	return f != nil && ctx != nil && ctx.FocusComponent(f)
