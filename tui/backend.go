@@ -47,7 +47,8 @@ type Backend interface {
 	Flush(diff []CellUpdate) error
 
 	// Cursor state is LATCHED, not immediate: these record desired state
-	// which the next Flush emits, so a frame is always one write.
+	// which the next Flush emits, so a frame is always one write. CursorLatch
+	// is the latch a backend holds for them.
 	ShowCursor()
 	HideCursor()
 	SetCursor(x, y int)
@@ -116,6 +117,83 @@ type ViolationRecorder interface {
 // Source. A backend without it leaves such events as they were sent.
 type PointerResolver interface {
 	ResolvePointer(ev MouseEvent) MouseEvent
+}
+
+// CursorState is the hardware cursor as a Backend's cursor calls ask for it: where it is (PosSet
+// once a position was given), whether it shows, its shape, and its colour (Colored false: the
+// terminal's own, and Color is then zero).
+type CursorState struct {
+	X, Y    int
+	PosSet  bool
+	Visible bool
+	Shape   CursorShape
+	Color   CellColor
+	Colored bool
+}
+
+// CursorLatch is the Backend contract's latched cursor, for a backend to hold as a field: the
+// cursor calls (ShowCursor, HideCursor, SetCursor, SetCursorShape, CursorColorSetter's
+// SetCursorColor) record the state wanted, and the next Flush takes it. It keeps what it is given:
+// a backend that cannot show a value (a palette colour on a terminal that takes only RGB) decides
+// that before it latches. It does not lock; the backend's own lock guards it. The zero value is a
+// hidden cursor at no position, as a backend starts.
+type CursorLatch struct {
+	want, taken CursorState
+}
+
+// Show latches the cursor visible.
+func (l *CursorLatch) Show() { l.want.Visible = true }
+
+// Hide latches the cursor hidden.
+func (l *CursorLatch) Hide() { l.want.Visible = false }
+
+// SetPos latches the cursor's position.
+func (l *CursorLatch) SetPos(x, y int) { l.want.X, l.want.Y, l.want.PosSet = x, y, true }
+
+// SetShape latches the cursor's shape.
+func (l *CursorLatch) SetShape(s CursorShape) { l.want.Shape = s }
+
+// SetColor latches the cursor's colour, or with set false the terminal's own.
+func (l *CursorLatch) SetColor(c CellColor, set bool) {
+	if !set {
+		c = CellColor{}
+	}
+	l.want.Color, l.want.Colored = c, set
+}
+
+// Take is the state a Flush applies, and whether it differs from the state the last Take gave: a
+// change undone within the frame (shown, then hidden again) is no change, and a backend writes
+// nothing for it.
+func (l *CursorLatch) Take() (state CursorState, changed bool) {
+	changed = l.want != l.taken
+	l.taken = l.want
+	return l.want, changed
+}
+
+// ImageOp is one latched image call: a placement (Place set) or the delete of image Delete.
+type ImageOp struct {
+	Place  *ImagePlacement
+	Delete uint32
+}
+
+// ImageLatch is GraphicsBackend's latched images, for a backend to hold as a field: PlaceImage and
+// DeleteImage record their calls, and the next Flush takes them, in the order made. It does not
+// lock; the backend's own lock guards it.
+type ImageLatch struct {
+	ops []ImageOp
+}
+
+// Place latches a placement.
+func (l *ImageLatch) Place(p ImagePlacement) { l.ops = append(l.ops, ImageOp{Place: &p}) }
+
+// Delete latches the delete of image id.
+func (l *ImageLatch) Delete(id uint32) { l.ops = append(l.ops, ImageOp{Delete: id}) }
+
+// Take is the calls latched since the last Take, in the order made; nil when there were none.
+func (l *ImageLatch) Take() []ImageOp {
+	ops := l.ops
+	l.ops = nil
+	return ops
 }
 
 // CursorShape selects the hardware cursor glyph (DECSCUSR).
