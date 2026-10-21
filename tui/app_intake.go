@@ -161,15 +161,16 @@ func (a *App) intakeEnqueue(pending []Event, ev Event, limit int) []Event {
 		pending = pending[:len(pending)-1]
 		n := a.inputDrops.Add(1)
 		logger.Warning(a.cfg.logger, nil, map[string]any{
-			"tui": "input queue overflow — dropped oldest", "event": typeName(dropped),
+			"tui": "input queue overflow — dropped oldest", "event": eventName(dropped),
 			"dropped_total": n, "cap": limit,
 		})
 	}
 	return append(pending, ev)
 }
 
-// typeName names an event for diagnostics without fmt in the hot path.
-func typeName(ev Event) string {
+// eventName names an event for diagnostics without fmt in the hot path: the input queue's
+// overflow line and the dead letter of an addressed delivery.
+func eventName(ev Event) string {
 	switch ev.(type) {
 	case KeyEvent:
 		return "KeyEvent"
@@ -183,6 +184,12 @@ func typeName(ev Event) string {
 		return "FocusEvent"
 	case CloseRequestEvent:
 		return "CloseRequestEvent"
+	case TaskResult:
+		return "TaskResult"
+	case TaskProgress:
+		return "TaskProgress"
+	case TickEvent:
+		return "TickEvent"
 	default:
 		return "Event"
 	}

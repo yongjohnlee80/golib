@@ -52,7 +52,7 @@ func TestACloseRequestQuitsFromTheTooSmallScreen(t *testing.T) {
 
 // An input-queue overflow names a dropped close request as what it is.
 func TestTheIntakeNamesACloseRequest(t *testing.T) {
-	if got := typeName(CloseRequestEvent{}); got != "CloseRequestEvent" {
-		t.Fatalf("typeName = %q", got)
+	if got := eventName(CloseRequestEvent{}); got != "CloseRequestEvent" {
+		t.Fatalf("eventName = %q", got)
 	}
 }

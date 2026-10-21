@@ -1,6 +1,7 @@
 package tui
 
 import (
+	"strconv"
 	"sync"
 	"sync/atomic"
 	"testing"
@@ -66,7 +67,7 @@ func (c *control) SetArmed(v bool) {
 		c.armFalse.Add(1)
 	}
 	c.armed.Store(v)
-	c.note("armed:" + boolWord(v))
+	c.note("armed:" + strconv.FormatBool(v))
 }
 
 func (c *control) note(s string) {

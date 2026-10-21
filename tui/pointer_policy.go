@@ -1,6 +1,10 @@
 package tui
 
-import "github.com/yongjohnlee80/golib/errs"
+import (
+	"strconv"
+
+	"github.com/yongjohnlee80/golib/errs"
+)
 
 // PER-NODE POINTER POLICY.
 //
@@ -69,7 +73,7 @@ func (c *Context) SetPointerPolicy(p PointerPolicy) {
 		panic(errs.Fatal{
 			Op:     "tui: Context.SetPointerPolicy",
 			Rule:   "value outside PointerInherit, PointerEnabled, PointerDisabled",
-			Detail: "got " + itoa(int(p)),
+			Detail: "got " + strconv.Itoa(int(p)),
 		})
 	}
 	c.node.pointerPolicy = p
