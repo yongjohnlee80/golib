@@ -16,8 +16,8 @@ import (
 // But some things genuinely depend on geometry and genuinely have to happen: a
 // split that publishes the ratio it actually reached, a wrapper storing the size
 // it was clamped to, an overlay closing because the row it hung off is no longer
-// laid out. Doing them in Layout is what an earlier design did, and it made the
-// purity rule a comment rather than a rule.
+// laid out. Doing them in Layout would make the purity rule a comment rather
+// than a rule.
 //
 // So the frame gains one ordered phase between the two pure ones:
 //

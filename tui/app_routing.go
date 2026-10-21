@@ -592,10 +592,10 @@ func (a *App) deliverCaptured(e MouseEvent) bool {
 		return false
 	}
 	// A GESTURE capture belongs to the recogniser, which took it and is the
-	// only thing that can finish it. Routing these to the owner instead is the
-	// exact mistake that stranded an earlier design: the recogniser captures on
-	// the press, so sending its own motion and release past it left it unable
-	// to ever re-arm, abandon or activate.
+	// only thing that can finish it. Routing these to the owner instead would
+	// strand it: the recogniser captures on the press, so its own motion and
+	// release sent past it would leave it unable ever to re-arm, abandon or
+	// activate.
 	if a.capture.captureKind == CaptureGesture {
 		if r := a.recognizerFor(); r != nil {
 			a.runRecognizer(r, owner, e.localTo(owner.absRect))

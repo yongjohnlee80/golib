@@ -166,6 +166,24 @@
 //     drawing region with coordinate translation, grapheme cell writes ([Surface.SetCell]),
 //     box filling ([Surface.Fill]), and child sub-surface partitioning ([Surface.Sub]).
 //
+// # Optional Backend capabilities
+//
+// A [Backend] may implement any of these interfaces as well. The App asserts each one once, when
+// it is built, since the backend is fixed for its life; one it lacks is a feature that backend
+// does not have, never an error.
+//
+//	[SizedFlusher]       Flush told the buffer's size, so a frame that changed size is drawn whole
+//	[CursorColorSetter]  the hardware cursor's colour (a terminal's OSC 12)
+//	[GraphicsBackend]    images placed and deleted, latched until the next Flush
+//	[ViolationRecorder]  told of each clamped constraint violation (TestBackend records them)
+//	[CellMetrics]        the cell's size in pixels, read live
+//	[ClipboardWriter]    App.CopyToClipboard
+//	[ClipboardReader]    App.ReadClipboard; without it, ErrClipboardUnsupported
+//	[NativeHost]         native views, placed once per frame before Flush
+//	[NativeStyler]       a NativeHost drawing a tui primitive natively
+//	[PointerResolver]    a pointer event's cell, resolved from the backend's own source
+//	[FaceHost]           cells drawn in fonts (Cell.Face)
+//
 // # Frame Lifecycle & Rendering Pipeline
 //
 // When component state changes, components mark the tree dirty via [Context.MarkDirty]

@@ -30,13 +30,13 @@ func (a *App) repairFocus() {
 	if len(ring) == 0 {
 		a.trace(TraceEvent{Kind: TraceFocusRepair, Prev: a.focus.focused,
 			Detail: "no focusable in scope"})
-		// setFocus(0), not a direct assignment. This path was written for
-		// unmount, where the dead id is already cleared and nobody is left to
-		// notify — but it is now also reached from the public invalidation
-		// seam, with a node that is still MOUNTED and has merely stopped
-		// accepting focus. Assigning directly changed the focused id behind
-		// that node's back: neither it nor its ancestors received the
-		// focus-loss event the runtime promises.
+		// setFocus(0), not a direct assignment. This path serves unmount,
+		// where the dead id is already cleared and nobody is left to notify,
+		// and also the public invalidation seam, with a node that is still
+		// MOUNTED and has merely stopped accepting focus. Assigning directly
+		// would change the focused id behind that node's back: neither it nor
+		// its ancestors would receive the focus-loss event the runtime
+		// promises.
 		//
 		// setFocus does the whole transition — the loser's bubbled
 		// FocusEvent, the capture revalidation, the repaint and the wake-up —
