@@ -51,20 +51,18 @@ type Image struct {
 // imageLoading is an Image's loading spinner: shown with its text while the Image has no PNG yet,
 // so a host rendering one (a headless browser's page, a diagram) says so, instead of an empty pane.
 type imageLoading struct {
-	on        bool
-	text      string
-	frame     int    // the spinner's frame
-	stopTicks func() // the spinner's timer, nil when it is not running
+	on    bool
+	text  string
+	frame int    // the spinner's frame
+	spin  ticker // the spinner's timer
 }
 
 // tick runs the spinner's timer while it loads and ctx mounts the Image, and stops it otherwise.
 func (l *imageLoading) tick(ctx *tui.Context) {
-	switch {
-	case l.on && ctx != nil && l.stopTicks == nil:
-		l.stopTicks = ctx.Every(spinnerEvery)
-	case (!l.on || ctx == nil) && l.stopTicks != nil:
-		l.stopTicks()
-		l.stopTicks = nil
+	if l.on && ctx != nil {
+		l.spin.start(ctx, spinnerEvery)
+	} else {
+		l.spin.halt()
 	}
 }
 
@@ -97,7 +95,7 @@ func (m *Image) Loading() bool { return m.load.on }
 // Init starts the spinner of an Image told to load before it was mounted.
 func (m *Image) Init(ctx *tui.Context) {
 	m.Base.Init(ctx)
-	m.load.stopTicks = nil // a timer is the Context's: a new one starts with none
+	m.load.spin.forget()
 	m.load.tick(ctx)
 }
 
@@ -469,7 +467,7 @@ func (m *Image) KeyBindings(km *keymap.Map) []keymap.Binding {
 }
 
 func (m *Image) HandleEvent(ev tui.Event) bool {
-	if _, ok := ev.(tui.TickEvent); ok && m.load.on {
+	if tickOf(ev, m.NodeID()) && m.load.on {
 		m.load.frame = (m.load.frame + 1) % len(spinner)
 		m.MarkDirty()
 		return true
@@ -563,14 +561,7 @@ func (m *Image) Render(s tui.Surface) {
 		text = "loading…"
 	}
 	line := spinner[m.load.frame] + " " + text
-	x := max((sz.W-s.StringWidth(line))/2, 0)
-	for cluster := range tui.Graphemes(line) {
-		if x >= sz.W {
-			break
-		}
-		s.SetCell(x, sz.H/2, cluster, page)
-		x += s.StringWidth(cluster)
-	}
+	drawText(s, max((sz.W-s.StringWidth(line))/2, 0), sz.H/2, line, page)
 }
 
 // Image implements tui.ImageReporter.

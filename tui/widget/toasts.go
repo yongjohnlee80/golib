@@ -57,7 +57,7 @@ type Toasts struct {
 	now     func() time.Time
 	st      style.Style
 	muted   style.Style
-	stop    func()     // the tick, while anything is showing or waiting
+	clock   ticker     // the tick, while anything is showing or waiting
 	laid    tui.Size   // the size last laid out, where the cards are placed
 	pressed *toastItem // the card a primary press landed on, activated by the release over it
 }
@@ -246,20 +246,14 @@ func (t *Toasts) expire() {
 	if gone {
 		t.RequestLayout()
 	}
-	if len(t.showing) == 0 && len(t.queue) == 0 && t.stop != nil {
-		t.stop()
-		t.stop = nil
+	if len(t.showing) == 0 && len(t.queue) == 0 {
+		t.clock.halt()
 	}
 }
 
 // tick runs the clock once a second while anything shows or waits: the ages move, and the
 // lingering go.
-func (t *Toasts) tick() {
-	if t.stop != nil || t.ctx == nil {
-		return
-	}
-	t.stop = t.ctx.Every(time.Second)
-}
+func (t *Toasts) tick() { t.clock.start(t.ctx, time.Second) }
 
 func (t *Toasts) changed() {
 	t.RequestLayout()
@@ -269,7 +263,7 @@ func (t *Toasts) changed() {
 // Init starts the clock for what was posted before the stack was mounted.
 func (t *Toasts) Init(ctx *tui.Context) {
 	t.Base.Init(ctx)
-	t.stop = nil
+	t.clock.forget()
 	if len(t.showing)+len(t.queue) > 0 {
 		t.tick()
 	}
@@ -281,6 +275,9 @@ func (t *Toasts) Init(ctx *tui.Context) {
 func (t *Toasts) HandleEvent(ev tui.Event) bool {
 	switch e := ev.(type) {
 	case tui.TickEvent:
+		if !tickOf(e, t.NodeID()) {
+			return false
+		}
 		t.expire()
 		t.MarkDirty()
 		return true

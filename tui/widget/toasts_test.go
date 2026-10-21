@@ -39,7 +39,8 @@ func toastScreen(t *testing.T, opts ...widget.ToastsOption) (*harness, *widget.T
 
 // tick is the clock's second passing, as the stack's timer delivers it.
 func tick(h *harness, toasts *widget.Toasts) {
-	h.onLoop(func() { toasts.HandleEvent(tui.TickEvent{}) })
+	// a tick of the stack's own clock, addressed to it as the runtime addresses every timer's tick
+	h.onLoop(func() { toasts.HandleEvent(tui.TickEvent{Owner: toasts.NodeID()}) })
 	h.settle()
 }
 
