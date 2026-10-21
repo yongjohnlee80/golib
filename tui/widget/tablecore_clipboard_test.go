@@ -489,7 +489,7 @@ func TestAReadOnlyTableCopiesItsValuesAsTheyAre(t *testing.T) {
 // same two cells, where reading it as TSV would make one cell of the whole line.
 func TestACSVTablesRegisterPastesBackAsCSV(t *testing.T) {
 	text := "a,b\n\"x,1\",y\n"
-	c, _, core, _ := csvTable(text, TableCopyCSV(true))
+	c, _, core, _ := csvTable(text, TableCopyAs(TableCopyCSV))
 	press(c, 'y', 'y', 'p')
 	if want := "a,b\n\"x,1\",y\n\"x,1\",y\n"; core.Value() != want {
 		t.Fatalf("yy p in a CSV table: %q, want %q", core.Value(), want)

@@ -476,7 +476,7 @@ func TestDataTable_RTogglesARowCursorThatYCopiesWhole(t *testing.T) {
 func TestDataTable_ACSVTableCopiesCSV(t *testing.T) {
 	src := numbered(2)
 	src.rows[1][1] = `say "hi", then`
-	h, _, dt := dataTable(t, src, 40, 6, widget.TableCopyCSV(true))
+	h, _, dt := dataTable(t, src, 40, 6, widget.TableCopyAs(widget.TableCopyCSV))
 	h.onLoop(func() {
 		dt.HandleEvent(key('j'))
 		dt.HandleEvent(key('l'))

@@ -81,11 +81,7 @@ func (c *TableCore) setRegister(text string, rows bool) bool {
 // one that does not read (pastedRows), pastes nothing.
 func (c *TableCore) PasteRegister(before bool) bool {
 	text, rows := c.register().Register()
-	comma := '\t'
-	if c.copyCSV {
-		comma = ',' // the register holds what this table copies
-	}
-	block, err := pastedRowsIn(text, comma)
+	block, err := pastedRowsIn(text, c.copyFormat.delimiter()) // the register holds what this table copies
 	if err != nil || len(block) == 0 {
 		return false
 	}

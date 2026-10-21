@@ -560,11 +560,8 @@ func (c *TableCore) fieldSelected(col int) bool {
 // quote is quoted). A read-only table's are its values joined by tabs, as they always were: what a
 // reader copies out of a result, a JSON value as it is.
 func (c *TableCore) copyRecord(cells []string) string {
-	if c.copyCSV { // CSV, quoted as RFC 4180 has it, editable or not: what CSV is
-		return encodeRecord(',', cells)
-	}
-	if c.Editable() {
-		return encodeRecord('\t', cells)
+	if c.copyFormat == TableCopyCSV || c.Editable() { // CSV is quoted, editable or not
+		return encodeRecord(c.copyFormat.delimiter(), cells)
 	}
 	return strings.Join(cells, "\t")
 }
