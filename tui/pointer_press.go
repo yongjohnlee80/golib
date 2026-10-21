@@ -55,7 +55,7 @@ func (a *App) interceptPointerPress(target, limit *node, e MouseEvent) bool {
 		return false
 	}
 	now := time.Now()
-	for n := target; n != nil; n = n.parent {
+	for n := range pathTo(target, limit) {
 		if n.visible() && effectivePointerPolicy(n) != PointerDisabled {
 			if r, ok := n.comp.(PointerPressResolver); ok {
 				local := e.localTo(n.absRect)
@@ -71,9 +71,6 @@ func (a *App) interceptPointerPress(target, limit *node, e MouseEvent) bool {
 					return true // a reservation is never replayed into content
 				}
 			}
-		}
-		if n == limit {
-			break
 		}
 	}
 	return false
