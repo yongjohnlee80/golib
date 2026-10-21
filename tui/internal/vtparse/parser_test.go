@@ -120,6 +120,8 @@ var parserCorpus = []struct {
 	// drops the rest); SOS and PM are swallowed
 	{"apc dispatched with its string", "\x1b_hidden\x1b\\x",
 		[]string{`apc:"hidden"`, `esc:inter="" final="\\"`, `print:"x"`}},
+	{"apc drops DEL", "\x1b_hid\x7fden\x1b\\",
+		[]string{`apc:"hidden"`, `esc:inter="" final="\\"`}},
 	{"sos pm swallowed", "\x1bXhidden\x1b\\\x1b^also\x1b\\x",
 		[]string{`esc:inter="" final="\\"`, `esc:inter="" final="\\"`, `print:"x"`}},
 	{"csi ignore on bad private marker", "\x1b[1;?5m x",
