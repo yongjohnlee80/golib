@@ -174,3 +174,19 @@ func TestOwnersInARingEndTheWalk(t *testing.T) {
 		}
 	})
 }
+
+// A context kept past its node's unmount answers for nothing: it is neither visible nor in the
+// input scope. A layer whose owner has unmounted takes input on behalf of no one.
+func TestAnUnmountedNodeAndItsBoundLayerAnswerForNothing(t *testing.T) {
+	h, root, _, loose, _, _, stray := ownerFixture(t)
+	kept := loose.ctx
+	h.onLoop(func() { root.Remove(loose) })
+	h.onLoop(func() {
+		if kept.Visible() || kept.InInputScope() {
+			t.Errorf("an unmounted node's context: visible %v, in the input scope %v", kept.Visible(), kept.InInputScope())
+		}
+		if o := h.app.inputOwnerOf(h.app.byComp[stray]); o != nil {
+			t.Errorf("a layer bound to an unmounted owner takes input for node %d", o.id)
+		}
+	})
+}
