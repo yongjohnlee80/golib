@@ -284,7 +284,8 @@ Both editors hold a prompt, on by default:
 | `Commands()`, `RunCommand(line)` | the core's |
 
 Another editor widget can hold the same module: `NewCommandLine(owner, core)` and then
-`SetEnabled(true)`. A widget with a prompt of its own answers `:` through `SetCommandLine(open)`,
+`SetEnabled(true)`. The owner is a `ContextOwner`, a widget with the `Context` it is mounted under
+(every `Base`-embedding widget is one); the prompt opens only while it is mounted. A widget with a prompt of its own answers `:` through `SetCommandLine(open)`,
 and calls `CommandLineClosed()` once its line has run or been cancelled: Insert's Ctrl-o waits for
 that before Insert resumes.
 

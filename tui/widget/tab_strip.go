@@ -24,9 +24,9 @@ type stripTab struct {
 
 // tabStrip is the strip's state and its drawing and input, shared by its owners.
 type tabStrip struct {
-	base   *Base         // the owner's: its context, measure and focus
-	anchor tui.Component // the owner: what the menus open over
-	layer  string        // the menus' layer id prefix
+	base   *Base        // the owner's: its context, measure and focus
+	anchor ContextOwner // the owner: what the menus open over
+	layer  string       // the menus' layer id prefix
 
 	bar, tab, selected style.Style
 
