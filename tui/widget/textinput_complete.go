@@ -2,6 +2,7 @@ package widget
 
 import (
 	"strings"
+	"unicode/utf8"
 )
 
 // COMPLETION — a TextInput that offers what the word before its cursor may become. Tab takes it
@@ -216,4 +217,19 @@ func matching(items []string, word string) []string {
 
 func hasPrefixFold(s, prefix string) bool {
 	return len(s) >= len(prefix) && strings.EqualFold(s[:len(prefix)], prefix)
+}
+
+// commonPrefix is the longest prefix every candidate's name shares, at least typed.
+func commonPrefix(cs []string, typed string) string {
+	p := cs[0]
+	for _, c := range cs[1:] {
+		for !strings.HasPrefix(c, p) {
+			_, size := utf8.DecodeLastRuneInString(p) // a script's arguments need not be ASCII
+			p = p[:len(p)-size]
+		}
+	}
+	if len(p) < len(typed) {
+		return typed
+	}
+	return p
 }
