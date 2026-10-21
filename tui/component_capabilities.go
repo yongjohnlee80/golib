@@ -105,6 +105,10 @@ type InitialFocusProvider interface {
 // The framework's internal parent-child tree links are constructed via Context.Mount
 // and Context.Unmount. Container represents the caller-facing mutation API layered
 // on top of those primitives, providing deterministic child ordering.
+//
+// A child the container does not hold is a no-op for every call that names one:
+// Remove, Move, and a container's own per-child setters (Dock.SetEdge). Nothing is
+// recorded for it, so adding it later starts it with no metadata.
 type Container interface {
 	Component
 	// Add mounts child components immediately if the container is already mounted;

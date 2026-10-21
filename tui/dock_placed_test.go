@@ -56,3 +56,22 @@ func TestDockSetEdgeMovesAPinnedChild(t *testing.T) {
 		h.sync()
 	}
 }
+
+// SetEdge on a child the Dock does not hold is a no-op, as every Container treats a foreign child:
+// the child added later is a center child, not pinned by the earlier call.
+func TestDockSetEdgeIgnoresAForeignChild(t *testing.T) {
+	t.Parallel()
+	later := &probe{name: "later", fill: "c"}
+	dock := NewDock()
+	dock.SetEdge(later, DockLeft)
+	dock.Add(later)
+	h := startApp(t, dock, 6, 1)
+	if want := "cccccc"; h.tb.String() != want {
+		t.Fatalf("frame %q, want %q: the child added after SetEdge fills the Dock as a center child", h.tb.String(), want)
+	}
+	h.onLoop(func() {
+		if _, pinned := dock.edges[later]; pinned {
+			t.Error("the Dock kept an edge for a child it did not hold when SetEdge was called")
+		}
+	})
+}
