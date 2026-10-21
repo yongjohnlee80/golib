@@ -139,3 +139,28 @@ func TestBufferViewPartialLineAndCR(t *testing.T) {
 	write(t, w, " done\n")
 	h.waitFor("extended", func() bool { return strings.Contains(h.grid(), "prog: 90% done") })
 }
+
+// TestBufferViewScrolledIntoAWrappedLinePaintsFromThatRow: scrolled back to a row inside a wrapped
+// line, the view's first row is that row of the line, not the line's first row nor the next line.
+func TestBufferViewScrolledIntoAWrappedLinePaintsFromThatRow(t *testing.T) {
+	h, v, sh := mountedView(t, 10, 3)
+	var w io.Writer
+	h.onLoop(func() { w = v.Writer() })
+	for i := range 10 {
+		write(t, w, fmt.Sprintf("%02d-xxxxxxxxxxxxxx\n", i)) // 17 cells: two rows at the 9 left of the indicator
+	}
+	h.waitFor("all written", func() bool { return strings.Contains(h.grid(), "09-") })
+	h.inject(key(tui.KeyHome))
+	for range 7 {
+		h.inject(key(tui.KeyDown))
+	}
+	h.barrier(sh)
+	if r0, r1 := h.row(0), h.row(1); !strings.HasPrefix(r0, "xxxxxxxx ") || !strings.HasPrefix(r1, "04-") {
+		t.Fatalf("at row 7, rows 0 and 1 are %q and %q; want line 03's second row, then line 04\n%s", r0, r1, h.grid())
+	}
+	h.inject(key(tui.KeyUp))
+	h.barrier(sh)
+	if r0 := h.row(0); !strings.HasPrefix(r0, "03-") {
+		t.Fatalf("at row 6, row 0 is %q; want line 03's first row\n%s", r0, h.grid())
+	}
+}

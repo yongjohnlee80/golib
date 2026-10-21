@@ -2,7 +2,9 @@ package widget
 
 import (
 	"io"
+	"sort"
 	"strings"
+	"unicode/utf8"
 
 	"github.com/yongjohnlee80/golib/tui"
 	"github.com/yongjohnlee80/golib/tui/keymap"
@@ -92,6 +94,10 @@ type BufferView struct {
 
 	scrollRow int // first visible wrapped row (ignored while following)
 	totalRows int // wrapped rows at the last layout
+	// rowStart is each live line's first wrapped row at the last layout, so a paint starts at the
+	// line in view; rowsValid says no line has changed since.
+	rowStart  []int
+	rowsValid bool
 	w, h      int
 
 	alive bool
@@ -193,6 +199,7 @@ func (v *BufferView) Clear() {
 	v.lines = []bline{{}}
 	v.head = 0
 	v.scrollRow = 0
+	v.rowsValid = false
 	v.MarkDirty()
 }
 
@@ -275,13 +282,15 @@ func (l *bline) text() string {
 	return string(out)
 }
 
-// recount recomputes totalRows (called from Layout).
+// recount recomputes totalRows and each line's first row (called from Layout).
 func (v *BufferView) recount() {
 	// Two passes: the indicator column changes the wrap width when the
 	// content overflows.
 	count := func(w int) int {
+		v.rowStart = v.rowStart[:0]
 		total := 0
 		for i := 0; i < v.LineCount(); i++ {
+			v.rowStart = append(v.rowStart, total)
 			total += len(wrapRanges(clusters(v.line(i).text()), w, v.measure))
 		}
 		return total
@@ -291,6 +300,7 @@ func (v *BufferView) recount() {
 		total = count(v.w - 1)
 	}
 	v.totalRows = total
+	v.rowsValid = true
 }
 
 func (v *BufferView) maxScroll() int { return max(v.totalRows-v.h, 0) }
@@ -381,6 +391,7 @@ func (v *BufferView) ingest(chunk []byte) {
 		v.utf8Tail = append([]byte(nil), chunk[len(chunk)-tail:]...)
 		chunk = chunk[:len(chunk)-tail]
 	}
+	v.rowsValid = false
 	v.interp.feed(chunk, func(ev sgrEvent) {
 		last := &v.lines[len(v.lines)-1]
 		switch ev.kind {
@@ -423,25 +434,12 @@ func (v *BufferView) ingest(chunk []byte) {
 // UTF-8 rune (0 when the chunk ends on a boundary).
 func incompleteTail(b []byte) int {
 	n := len(b)
-	for back := 1; back <= 4 && back <= n; back++ {
-		c := b[n-back]
-		if c < 0x80 {
-			return 0 // ASCII tail: complete
-		}
-		if c >= 0xc0 { // rune start
-			runeLen := 0
-			switch {
-			case c >= 0xf0:
-				runeLen = 4
-			case c >= 0xe0:
-				runeLen = 3
-			default:
-				runeLen = 2
+	for back := 1; back <= utf8.UTFMax && back <= n; back++ {
+		if utf8.RuneStart(b[n-back]) {
+			if utf8.FullRune(b[n-back:]) {
+				return 0
 			}
-			if back < runeLen {
-				return back // incomplete
-			}
-			return 0
+			return back
 		}
 	}
 	return 0
@@ -468,8 +466,13 @@ func (v *BufferView) Render(s tui.Surface) {
 	if v.follow {
 		start = v.maxScroll()
 	}
-	row := 0
-	for i := 0; i < v.LineCount(); i++ {
+	first, row := 0, 0
+	if v.rowsValid && len(v.rowStart) == v.LineCount() && v.LineCount() > 0 {
+		// the line holding the first row in view: the last one starting at or above it
+		first = max(sort.SearchInts(v.rowStart, start+1)-1, 0)
+		row = v.rowStart[first]
+	}
+	for i := first; i < v.LineCount(); i++ {
 		ln := v.line(i)
 		rows := v.paintLine(s, ln, row-start, w)
 		row += rows
