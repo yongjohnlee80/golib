@@ -304,10 +304,10 @@ func (m *Menu) SetModel(items []MenuItemModel) error {
 
 	m.items = next
 	m.resolveLabels()
-	m.repairSelection()
 	if ctx := m.Context(); ctx != nil {
 		ctx.RequestLayout()
 	}
+	m.repairSelection() // last: it may tell the owner
 	return nil
 }
 
@@ -460,10 +460,10 @@ func (m *Menu) mutate(id ItemID, fn func(*MenuItemModel)) bool {
 	}
 	fn(it)
 	m.closeUnjustifiedLevels()
-	m.repairSelection()
 	if ctx := m.Context(); ctx != nil {
 		ctx.RequestLayout()
 	}
+	m.repairSelection() // last: it may tell the owner
 	return true
 }
 
@@ -503,12 +503,12 @@ func (m *Menu) setSelected(id ItemID) {
 		return
 	}
 	m.selected = id
-	if m.onSelect != nil {
-		m.onSelect(id)
-	}
 	if ctx := m.Context(); ctx != nil {
 		ctx.Bus().Publish(MenuSelectionChangedEvent{Owner: m.NodeID(), ItemID: id})
 		ctx.MarkDirty()
+	}
+	if m.onSelect != nil {
+		m.onSelect(id) // last, after the bus: the owner may change the model from it
 	}
 }
 

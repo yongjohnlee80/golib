@@ -399,13 +399,13 @@ func (m *Menu) arm(id ItemID, ctx *tui.Context) bool {
 	if it == nil || !it.selectable() {
 		return false
 	}
-	m.setSelected(id)
 	m.pressed, m.armed = id, true
 	if ctx != nil {
 		ctx.CapturePointer()
 		m.captureCtx = ctx
 		ctx.MarkDirty()
 	}
+	m.setSelected(id) // last: it tells the owner
 	return true
 }
 
@@ -420,10 +420,10 @@ func (m *Menu) selectRow(id ItemID) bool {
 	if it == nil || !it.selectable() {
 		return false
 	}
-	m.setSelected(id)
 	if m.pressed != "" {
 		m.armed = id == m.pressed
 	}
+	m.setSelected(id) // last: it tells the owner
 	return true
 }
 
