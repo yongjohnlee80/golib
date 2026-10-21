@@ -554,4 +554,17 @@ func TestTheCopyFormatAndTheRowCursorReadBack(t *testing.T) {
 	if TableCopyAs(TableCopyCSV)(c); c.copyFormat != TableCopyCSV {
 		t.Fatal("TableCopyAs did not set the format")
 	}
+	if !TableCopyTSV.Valid() || !TableCopyCSV.Valid() || TableCopyFormat(9).Valid() {
+		t.Fatal("Valid: want the two declared formats only")
+	}
+	c.SetCopyFormat(TableCopyFormat(9)) // a runtime setter normalizes
+	if c.CopyFormat() != TableCopyTSV {
+		t.Fatalf("an unknown format set at runtime copies %v, want tsv", c.CopyFormat())
+	}
+	defer func() {
+		if recover() == nil {
+			t.Fatal("TableCopyAs took an unknown format")
+		}
+	}()
+	TableCopyAs(TableCopyFormat(9)) // a construction option refuses
 }

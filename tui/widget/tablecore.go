@@ -109,6 +109,9 @@ func (f TableCopyFormat) String() string {
 	return "unknown"
 }
 
+// Valid reports whether f is one of the declared formats.
+func (f TableCopyFormat) Valid() bool { return f <= TableCopyCSV }
+
 // delimiter is the format's field separator: what a copy writes between cells and a register's
 // paste reads them apart by.
 func (f TableCopyFormat) delimiter() rune {
@@ -119,8 +122,13 @@ func (f TableCopyFormat) delimiter() rune {
 }
 
 // TableCopyAs is the format a table's copies are written in (TableCopyTSV, the default, or
-// TableCopyCSV).
-func TableCopyAs(f TableCopyFormat) TableOption { return func(c *TableCore) { c.copyFormat = f } }
+// TableCopyCSV). A format that is neither is a programmer error, refused as the core is built.
+func TableCopyAs(f TableCopyFormat) TableOption {
+	if !f.Valid() {
+		panic(fatalOf("widget: TableCopyAs", "unknown copy format", f.String()))
+	}
+	return func(c *TableCore) { c.copyFormat = f }
+}
 
 // TableOnSort is called with the sort keys whenever the sort changes: SortKeys, SortBy, the s key,
 // or a new source or a removed field ending it. Rows merged into an unchanged sort call nothing.
@@ -264,8 +272,14 @@ func (c *TableCore) SetSource(src TableSource) {
 // RowNumbers reports whether a view shows each row's number (TableRowNumbers).
 func (c *TableCore) RowNumbers() bool { return c.rowNumbers }
 
-// SetCopyFormat is TableCopyAs on a core already built.
-func (c *TableCore) SetCopyFormat(f TableCopyFormat) { c.copyFormat = f }
+// SetCopyFormat is TableCopyAs on a core already built. A format that is neither TSV nor CSV is
+// taken as TSV, the default: a runtime setter normalizes rather than fails.
+func (c *TableCore) SetCopyFormat(f TableCopyFormat) {
+	if !f.Valid() {
+		f = TableCopyTSV
+	}
+	c.copyFormat = f
+}
 
 // CopyFormat is the format the table's copies are written in.
 func (c *TableCore) CopyFormat() TableCopyFormat { return c.copyFormat }
