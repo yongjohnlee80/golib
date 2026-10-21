@@ -39,8 +39,8 @@ func TestTheTerminalEditorsDocumentView(t *testing.T) {
 	if c, s, in := views(h, ed, doc); c != widget.ViewRendered || s != widget.ViewRendered || !in {
 		t.Fatalf("Ctrl+T: chosen %v, drawn %v, table focused %v", c, s, in)
 	}
-	if !strings.HasPrefix(h.row(0), "name") || !strings.Contains(h.row(2), "bob") {
-		t.Fatalf("the table is not drawn:\n%q\n%q", h.row(0), h.row(2))
+	if !strings.HasPrefix(h.row(0), "name") || !strings.Contains(h.row(3), "bob") {
+		t.Fatalf("the table is not drawn:\n%q\n%q", h.row(0), h.row(3))
 	}
 	h.inject(keyText("j"), keyText("l"), dtEnter, keyText("0"), dtEnter)
 	h.barrier(sh)

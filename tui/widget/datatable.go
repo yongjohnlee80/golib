@@ -64,8 +64,24 @@ const tableRuleRow = tableHeaderRows - 1
 // gap, then the first field.
 const tableRuleGap = 1
 
-// tableRuleJunction is where the gutter's rule crosses the titles'.
-const tableRuleJunction = "┼"
+// tableRuleJunctions are where the gutter's rule crosses the titles', by their glyphs (vertical,
+// horizontal): the box-drawing cross of the prefab borders' weight, and ASCII's +. A pair not here
+// that is one glyph twice (BorderHidden's blank) crosses as that glyph; any other, as the vertical,
+// the gutter's rule unbroken.
+var tableRuleJunctions = map[[2]string]string{
+	{"│", "─"}: "┼", // BorderNormal, BorderRounded
+	{"┃", "━"}: "╋", // BorderThick
+	{"║", "═"}: "╬", // BorderDouble
+	{"|", "-"}: "+",
+}
+
+// ruleJunction is where rules of these glyphs cross (tableRuleJunctions).
+func ruleJunction(vertical, horizontal string) string {
+	if j, ok := tableRuleJunctions[[2]string{vertical, horizontal}]; ok {
+		return j
+	}
+	return vertical // the same glyph twice included
+}
 
 // tableCellLine is a cell's value on one line, as a table shows it: a newline is ⏎, a tab →. The
 // value itself is unchanged (an open field holds it whole).
@@ -273,7 +289,7 @@ func (t *DataTable) rules() (vertical, horizontal string) {
 }
 
 // drawRules draws the rule under the titles across the view, and the gutter's on every row shown,
-// crossing at tableRuleJunction.
+// crossing at their ruleJunction.
 func (t *DataTable) drawRules(s tui.Surface, digits int) {
 	sz := s.Size()
 	vertical, horizontal := t.rules()
@@ -288,7 +304,7 @@ func (t *DataTable) drawRules(s tui.Surface, digits int) {
 	for y := range sz.H {
 		glyph := vertical
 		if y == tableRuleRow {
-			glyph = tableRuleJunction
+			glyph = ruleJunction(vertical, horizontal)
 		}
 		drawText(s, x, y, glyph, t.styles.Header)
 	}
