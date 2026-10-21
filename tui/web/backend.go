@@ -387,12 +387,23 @@ func (b *Backend) Err() error {
 
 // --- the transport's side of the backend ------------------------------------
 
-// Attach binds a client to this backend. The FIRST attach releases Start.
+// sessionTransport is what a connection drives on its session's backend: input in, resizes, and
+// frames out. *Backend implements it; the App sees only tui.Backend's side.
+type sessionTransport interface {
+	submit(ev tui.Event) error
+	resize(cols, rows int, m Metrics) error
+	ackFrame(rev uint64)
+	nextFrame() (Frame, bool)
+}
+
+var _ sessionTransport = (*Backend)(nil)
+
+// attach binds a client to this backend. The FIRST attach releases Start.
 //
 // A second attach to a live session is refused rather than silently taking over:
 // session takeover is an authorization decision, not a transport convenience,
 // and answering it here would mean whoever connects last wins.
-func (b *Backend) Attach(h Hello) error {
+func (b *Backend) attach(h Hello) error {
 	if !h.valid() {
 		return ErrUnmeasuredClient
 	}
@@ -419,24 +430,22 @@ func (b *Backend) Attach(h Hello) error {
 	return nil
 }
 
-// Detach records that the client went away. The session stays alive so a
+// detach records that the client went away. The session stays alive so a
 // reconnect can resync; eviction is the session manager's decision.
-func (b *Backend) Detach() {
+func (b *Backend) detach() {
 	b.framer.reset()
 	logger.Info(b.log, sessionEvent{Kind: "detach"})
 }
 
-// Resize records a client-reported size change and emits the event.
+// resize records a client-reported size change and emits the event, with the client's measured
+// cell size m: published as CellPixels only when the backend takes the ResizeEvent, so the metrics
+// change only together with the event the App reads them for (tui.CellMetrics). A refused resize
+// leaves them as they were; a zero m keeps them.
 //
 // The grid is NOT mutated unless the event can also be delivered. Changing the
 // server's idea of the size while the App still believes the old one leaves the
 // two disagreeing with no mechanism to notice — the App lays out for a size that
 // no longer exists and every subsequent frame is wrong.
-func (b *Backend) Resize(cols, rows int) error { return b.resize(cols, rows, Metrics{}) }
-
-// resize is Resize with the client's measured cell size m: published as CellPixels only when the
-// backend takes the ResizeEvent, so the metrics change only together with the event the App
-// reads them for (tui.CellMetrics). A refused resize leaves them as they were; a zero m keeps them.
 func (b *Backend) resize(cols, rows int, m Metrics) error {
 	if err := validGrid(cols, rows); err != nil {
 		return err
@@ -449,7 +458,7 @@ func (b *Backend) resize(cols, rows int, m Metrics) error {
 		b.metrics = m // before the event, so an App reading it for the event sees the new size
 	}
 	b.mu.Unlock()
-	if err := b.Submit(tui.ResizeEvent{W: cols, H: rows}); err != nil {
+	if err := b.submit(tui.ResizeEvent{W: cols, H: rows}); err != nil {
 		b.mu.Lock()
 		b.metrics = old
 		b.mu.Unlock()
@@ -462,14 +471,14 @@ func (b *Backend) resize(cols, rows int, m Metrics) error {
 	return nil
 }
 
-// Submit queues one decoded event.
+// submit queues one decoded event.
 //
 // Returns [ErrEventOverflow] when the queue is full, and the caller closes the
 // connection. It does NOT drop the event and it does not coalesce: the Backend
 // contract promises an ordered un-coalesced stream, so silently discarding one
 // would make this backend behave differently from every other, and coalescing
 // here would take a decision that belongs to the App's intake stage.
-func (b *Backend) Submit(ev tui.Event) error {
+func (b *Backend) submit(ev tui.Event) error {
 	// The read lock spans the closed check AND the send, which is what makes the
 	// pair atomic with respect to Stop.
 	b.sendMu.RLock()
@@ -485,17 +494,17 @@ func (b *Backend) Submit(ev tui.Event) error {
 	}
 }
 
-// AckFrame records the client's acknowledgement of a revision.
-func (b *Backend) AckFrame(rev uint64) { b.framer.ack(rev) }
+// ackFrame records the client's acknowledgement of a revision.
+func (b *Backend) ackFrame(rev uint64) { b.framer.ack(rev) }
 
-// NextFrame returns the frame to send, if any.
-func (b *Backend) NextFrame() (Frame, bool) { return b.framer.next() }
+// nextFrame returns the frame to send, if any.
+func (b *Backend) nextFrame() (Frame, bool) { return b.framer.next() }
 
-// PendingFrame reports whether a frame is waiting to go out.
-func (b *Backend) PendingFrame() bool { return b.framer.pending() }
+// pendingFrame reports whether a frame is waiting to go out.
+func (b *Backend) pendingFrame() bool { return b.framer.pending() }
 
-// Fail records the transport error that ended the session, then stops.
-func (b *Backend) Fail(err error) {
+// fail records the transport error that ended the session, then stops.
+func (b *Backend) fail(err error) {
 	if err == nil {
 		_ = b.Stop()
 		return

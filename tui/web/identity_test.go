@@ -66,7 +66,7 @@ func TestConstructionRefusalsCarryInvalidArgument(t *testing.T) {
 func TestAttach_UnmeasuredClientHasOneIdentity(t *testing.T) {
 	b := New()
 
-	err := b.Attach(Hello{})
+	err := b.attach(Hello{})
 	if err == nil {
 		t.Fatal("a hello with no usable metrics must be refused")
 	}

@@ -89,7 +89,7 @@ func TestOverloadAuditNamesWhatOverflowed(t *testing.T) {
 		audit := &auditLog{}
 		l.log = audit
 		s := attachedSession(t, m)
-		for s.Backend().Submit(tui.KeyEvent{Code: 'x'}) == nil { // fill the queue; nothing drains it
+		for s.Backend().submit(tui.KeyEvent{Code: 'x'}) == nil { // fill the queue; nothing drains it
 		}
 		fc := &fakeConn{}
 		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)

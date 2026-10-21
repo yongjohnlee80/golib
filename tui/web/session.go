@@ -276,6 +276,9 @@ func (s *Session) Subject() string { return s.subject }
 // Backend is the session's [Backend].
 func (s *Session) Backend() *Backend { return s.backend }
 
+// transport is the backend's connection side, which the connection loop drives.
+func (s *Session) transport() sessionTransport { return s.backend }
+
 // Done closes when the session's App has exited and teardown has run.
 func (s *Session) Done() <-chan struct{} { return s.done }
 
@@ -560,7 +563,7 @@ func (m *Manager) attachSession(s *Session, id *auth.Identity, h Hello, peer str
 	s.lastSeen = m.now()
 	s.mu.Unlock()
 
-	if err := s.backend.Attach(h); err != nil {
+	if err := s.backend.attach(h); err != nil {
 		s.mu.Lock()
 		if s.lease == lease {
 			s.attached = false
@@ -601,7 +604,7 @@ func (m *Manager) Detach(sessionID string, lease uint64) {
 	s.attached = false
 	s.lastSeen = m.now()
 	s.mu.Unlock()
-	s.backend.Detach()
+	s.backend.detach()
 	logger.Info(m.log, sessionAudit{Kind: "detached", ID: sessionID, Subject: s.subject})
 }
 
