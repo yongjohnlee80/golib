@@ -3,6 +3,8 @@ package markdown_test
 import (
 	"bytes"
 	"runtime"
+	"slices"
+	"sort"
 	"strings"
 	"testing"
 	"time"
@@ -130,15 +132,17 @@ func FuzzParse(f *testing.F) {
 	})
 }
 
-// TestLinearTime measures each adversarial family at n and 10n. A quadratic parse would take about
-// 100 times longer at 10n; the bound of 30 leaves room for timer and scheduler noise while still
-// failing any super-linear family. Only the families measured here are claimed to be linear. The
-// smaller input is large enough to leave the cache: below that, a linear parse still shows ratios
-// near the bound, because the smaller run is the one that fits.
-func TestLinearTime(t *testing.T) {
-	if testing.Short() || raceEnabled {
-		t.Skip("timing measurement: not under -short, nor under -race's instrumentation")
-	}
+// linearFamily is one adversarial input shape, with the extensions it is parsed under.
+type linearFamily struct {
+	name string
+	opts []markdown.Option
+	gen  func(n int) string // about n bytes
+}
+
+// linearFamilies are the shapes TestLinearTime and BenchmarkParseFamilies measure: the CommonMark
+// ones alone, with GFM and with GFM and Obsidian on, and the GFM and Obsidian ones under their
+// extensions. Only these are claimed to parse in linear time.
+func linearFamilies() []linearFamily {
 	families := map[string]func(n int) string{
 		"nested-open-brackets":  func(n int) string { return strings.Repeat("[", n) + "a" },
 		"star-underscore-mod3":  func(n int) string { return strings.Repeat("*a**_b__", n/8) },
@@ -189,45 +193,99 @@ func TestLinearTime(t *testing.T) {
 		"obs-callouts":           func(n int) string { return strings.Repeat("> [!note]- T\n> a\n\n", n/18) },
 		"obs-unclosed-front":     func(n int) string { return "---\n" + strings.Repeat("a: b\n", n/5) },
 	}
-	var opts []markdown.Option
-	measure := func(src []byte) time.Duration {
-		best := time.Duration(1<<63 - 1)
-		for i := 0; i < 3; i++ {
-			runtime.GC() // collect the previous run's garbage outside the timing
-			start := time.Now()
-			markdown.Parse(src, opts...)
-			if d := time.Since(start); d < best {
-				best = d
+	var out []linearFamily
+	add := func(suffix string, opts []markdown.Option, m map[string]func(int) string) {
+		for name, gen := range m {
+			out = append(out, linearFamily{name + suffix, opts, gen})
+		}
+	}
+	gfm := []markdown.Option{markdown.GFM()}
+	both := []markdown.Option{markdown.GFM(), markdown.Obsidian()}
+	add("", nil, families)
+	add("", gfm, gfmFamilies)
+	add("+gfm", gfm, families) // the CommonMark families stay linear with GFM on
+	add("", both, obsidianFamilies)
+	add("+gfm+obs", both, families)
+	sort.Slice(out, func(i, j int) bool { return out[i].name < out[j].name })
+	return out
+}
+
+// TestLinearTime measures each adversarial family at n and 4n. Both sizes are past the caches: below
+// about 200k bytes a parse's working set still fits, so the smaller run is the one that fits and a
+// linear parse shows a ratio near the bound. A quadratic parse takes about 16 times longer at 4n; the
+// bound, 7.75, is the 30-at-10n this test used to apply, restated for 4n (the same growth exponent,
+// about 1.48).
+//
+// Each size is timed twice, the two sizes interleaved so a burst of load meets both, and the best of
+// each kept; a timing spans at least 20ms (timeBoth). A family over the bound is measured again, twice at most, and fails only when every
+// measurement is over: a super-linear family is over every time, a burst of load on a shared machine
+// is not.
+func TestLinearTime(t *testing.T) {
+	if testing.Short() || raceEnabled {
+		t.Skip("timing measurement: not under -short, nor under -race's instrumentation")
+	}
+	const n, k, bound = 200_000, 4, 7.75
+	for _, f := range linearFamilies() {
+		t.Run(f.name, func(t *testing.T) {
+			small, large := []byte(f.gen(n)), []byte(f.gen(k*n))
+			var ratios []float64
+			for attempt := 0; attempt < 3; attempt++ {
+				ts, tl := timeBoth(small, large, f.opts)
+				ratios = append(ratios, float64(tl)/float64(max(ts, time.Microsecond)))
+				if ratios[attempt] <= bound {
+					break
+				}
 			}
+			t.Logf("%7d bytes, %8d bytes, ratios %.1f", len(small), len(large), ratios)
+			if len(ratios) == 3 && slices.Min(ratios) > bound {
+				t.Errorf("%dx the input took %.1fx the time in each of %d measurements — not linear", k, ratios, len(ratios))
+			}
+		})
+	}
+}
+
+// timeBoth is the best of two timings of small and of large, interleaved, the garbage of each
+// collected outside the timing. A timing parses its input again until 20ms have passed and is the
+// time per parse: a family that parses 200k bytes in under a millisecond would otherwise be timed
+// over a few scheduler slices, and one slice lost to another process would double it.
+func timeBoth(small, large []byte, opts []markdown.Option) (ts, tl time.Duration) {
+	const window = 20 * time.Millisecond
+	perParse := func(src []byte) time.Duration {
+		runtime.GC()
+		start, n := time.Now(), 0
+		for n == 0 || time.Since(start) < window {
+			markdown.Parse(src, opts...)
+			n++
 		}
-		return best
+		return time.Since(start) / time.Duration(n)
 	}
-	const n = 50000
-	check := func(name string, gen func(int) string) {
-		small, large := []byte(gen(n)), []byte(gen(10*n))
-		ts, tl := measure(small), measure(large)
-		ratio := float64(tl) / float64(max(ts, time.Microsecond))
-		t.Logf("%-22s %7d bytes %9v, %8d bytes %9v, ratio %.1f", name, len(small), ts, len(large), tl, ratio)
-		if ratio > 30 {
-			t.Errorf("%s: 10x the input took %.1fx the time — not linear", name, ratio)
-		}
+	ts, tl = time.Duration(1<<63-1), time.Duration(1<<63-1)
+	for range 2 {
+		ts = min(ts, perParse(small))
+		tl = min(tl, perParse(large))
 	}
-	for name, gen := range families {
-		check(name, gen)
-	}
-	opts = []markdown.Option{markdown.GFM()}
-	for name, gen := range gfmFamilies {
-		check(name, gen)
-	}
-	for name, gen := range families { // the CommonMark families stay linear with GFM on
-		check(name+"+gfm", gen)
-	}
-	opts = []markdown.Option{markdown.GFM(), markdown.Obsidian()}
-	for name, gen := range obsidianFamilies {
-		check(name, gen)
-	}
-	for name, gen := range families {
-		check(name+"+gfm+obs", gen)
+	return ts, tl
+}
+
+// BenchmarkParseFamilies parses each family at 200k bytes and reports its cost per input byte:
+// ns/byte, and B/byte, what a parse allocates for each byte it reads. Compare runs with benchstat.
+func BenchmarkParseFamilies(b *testing.B) {
+	for _, f := range linearFamilies() {
+		src := []byte(f.gen(200_000))
+		b.Run(f.name, func(b *testing.B) {
+			b.ReportAllocs()
+			var ms0, ms1 runtime.MemStats
+			runtime.ReadMemStats(&ms0)
+			start := time.Now()
+			for b.Loop() {
+				markdown.Parse(src, f.opts...)
+			}
+			elapsed := time.Since(start)
+			runtime.ReadMemStats(&ms1)
+			per := float64(b.N) * float64(len(src))
+			b.ReportMetric(float64(elapsed.Nanoseconds())/per, "ns/byte")
+			b.ReportMetric(float64(ms1.TotalAlloc-ms0.TotalAlloc)/per, "B/byte")
+		})
 	}
 }
 
