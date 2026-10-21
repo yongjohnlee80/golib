@@ -46,8 +46,9 @@ const (
 // are easily composed using Dock in combination with Flex and Box.
 type Dock struct {
 	MultiChild // order (== pin-consumption order), mount mirror, Move/Children/Init
-	edges      map[Component]DockEdge
-	placed     func(child Component, r Rect)
+	geometry
+	edges  childMeta[DockEdge]
+	placed func(child Component, r Rect)
 }
 
 // OnPlaced has fn told where each child is placed, Dock-relative, as the Dock lays it out: one
@@ -84,10 +85,7 @@ func (d *Dock) Pin(edge DockEdge, child Component) {
 	}
 	d.MultiChild.Add(child)
 	if edge != DockCenter {
-		if d.edges == nil {
-			d.edges = make(map[Component]DockEdge)
-		}
-		d.edges[child] = edge
+		d.edges.set(child, edge)
 	}
 }
 
@@ -104,14 +102,9 @@ func (d *Dock) SetEdge(child Component, edge DockEdge) {
 	if edge == DockCenter {
 		delete(d.edges, child)
 	} else {
-		if d.edges == nil {
-			d.edges = make(map[Component]DockEdge)
-		}
-		d.edges[child] = edge
+		d.edges.set(child, edge)
 	}
-	if d.Ctx() != nil {
-		d.Ctx().RequestLayout()
-	}
+	relayoutMounted(d.Ctx())
 }
 
 // Remove unmounts child (cascade) and forgets it, edge entry included.
@@ -177,9 +170,3 @@ func (d *Dock) Layout(c Constraints) Size {
 	}
 	return c.Constrain(Size{W: w, H: h})
 }
-
-// Render paints nothing: a Dock is pure geometry.
-func (d *Dock) Render(Surface) {}
-
-// HandleEvent consumes nothing; events bubble through.
-func (d *Dock) HandleEvent(Event) bool { return false }

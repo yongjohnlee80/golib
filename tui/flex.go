@@ -48,9 +48,10 @@ const (
 // children have no entry. Remove cleans up the side table entry alongside the child.
 type Flex struct {
 	MultiChild // order, mount mirror, Move/Children/Init
-	dir        Direction
-	weights    map[Component]int
-	sized      map[Component]int // AddSized: a fixed main-axis extent
+	geometry
+	dir     Direction
+	weights childMeta[int]
+	sized   childMeta[int] // AddSized: a fixed main-axis extent
 	// stretch is that the cross axis of the layout in progress is fixed, so
 	// children are stretched across it (Layout).
 	stretch bool
@@ -77,10 +78,7 @@ func (f *Flex) AddWeighted(child Component, weight int) {
 		panic("tui: Flex.AddWeighted: nil child")
 	}
 	f.MultiChild.Add(child)
-	if f.weights == nil {
-		f.weights = make(map[Component]int)
-	}
-	f.weights[child] = weight
+	f.weights.set(child, weight)
 }
 
 // AddSized appends a child of a fixed main-axis extent: n cells wide in a row, n high in a column,
@@ -94,10 +92,7 @@ func (f *Flex) AddSized(child Component, n int) {
 		panic("tui: Flex.AddSized: nil child")
 	}
 	f.MultiChild.Add(child)
-	if f.sized == nil {
-		f.sized = make(map[Component]int)
-	}
-	f.sized[child] = n
+	f.sized.set(child, n)
 }
 
 // Remove unmounts child (cascade) and forgets it, weight entry included.
@@ -260,10 +255,3 @@ func (f *Flex) cross(s Size) int {
 	}
 	return s.W
 }
-
-// Render paints nothing: a Flex is pure geometry; children paint themselves
-// on the sub-Surfaces the framework hands them.
-func (f *Flex) Render(Surface) {}
-
-// HandleEvent consumes nothing; events bubble through.
-func (f *Flex) HandleEvent(Event) bool { return false }
