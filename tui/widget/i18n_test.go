@@ -196,6 +196,31 @@ func TestButton_UnderlinesTheMarkedLetterNotTheFirstMatch(t *testing.T) {
 	}
 }
 
+// An explicit mnemonic outlives a message label's translations: the label follows the language,
+// the key stays the one the program gave, and the underline marks the first letter matching it,
+// not the translation's marker. Each layout re-read the translation and its marker replaced the key.
+func TestButton_AnExplicitMnemonicOutlivesTheTranslation(t *testing.T) {
+	t.Parallel()
+	s := appCatalogs(t, map[string][]string{
+		"en":    {"app.saveAs", "Save &As…"},
+		"pt_BR": {"app.saveAs", "Salvar como(&a)…"},
+	})
+	b := widget.NewButton("", widget.WithLabelMessage(tui.Msg("app.saveAs")), widget.WithMnemonic('v'))
+	h := startAppOpts(t, b, 30, 1, tui.WithTranslations(s), tui.WithLanguage("pt_BR"))
+	defer h.stop()
+	h.shows("[ Salvar como(a)… ]")
+	var key rune
+	h.onLoop(func() { key = b.Mnemonic() })
+	if key != 'v' {
+		t.Errorf("Mnemonic() = %q after the translation was laid out, want the program's 'v'", key)
+	}
+	row := h.row(0)
+	want := len([]rune(row[:strings.Index(row, "v")]))
+	if got := underlinedColumns(h, 0); len(got) != 1 || got[0] != want {
+		t.Errorf("underlined columns %v, want only %d (the first v), not the translation's marker:\n%s", got, want, row)
+	}
+}
+
 func TestButton_AKeyGivenAloneStillUnderlinesTheFirstMatch(t *testing.T) {
 	t.Parallel()
 	b := widget.NewButton("Salvar como", widget.WithMnemonic('a'))

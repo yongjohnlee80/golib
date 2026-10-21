@@ -82,6 +82,9 @@ type Button struct {
 	// beside it — it is the CONTAINER, which knows the whole set and which of
 	// them are enabled, that resolves one.
 	mnemonic rune
+	// mnemonicSet is that the program chose the mnemonic (WithMnemonic, SetMnemonic): a
+	// translation's & marker then changes the label but not the key, in every language.
+	mnemonicSet bool
 	// labelMsg is the catalog message the label shows, resolved each layout; zero when the
 	// label is plain text. markAt is the label cluster its marker underlines, when markSet:
 	// a translation decides where its letter sits, so the underline follows the marker rather
@@ -156,8 +159,11 @@ func (b *Button) IsDefault() bool { return b.isDefault }
 // own enabled buttons, so the same metadata can later mean something slightly
 // different in a toolbar or a form without every button in the tree competing
 // for unmodified letters.
+//
+// An explicit mnemonic outlives a message label's translations: the translation's & marker then
+// changes the label but not the key, and the underline marks the first letter matching it.
 func WithMnemonic(r rune) ButtonOption {
-	return func(b *Button) { b.mnemonic = r }
+	return func(b *Button) { b.setMnemonic(r) }
 }
 
 // WithButtonDecoration replaces the pair a button is wrapped in. Two empty
@@ -235,15 +241,20 @@ func (b *Button) Role() ButtonRole { return b.role }
 // giving the buttons it adopts their answers (a dialog's button box).
 func (b *Button) SetRole(r ButtonRole) { b.role = r }
 
-// SetMnemonic changes the key that reaches the button directly; 0 for none. The underline
-// then marks the first letter of the label that matches it.
+// SetMnemonic changes the key that reaches the button directly. The underline then marks the first
+// letter of the label that matches it, and a message label's translations no longer change it. 0
+// gives the choice back: a message label takes its marker's key again from the next layout.
 func (b *Button) SetMnemonic(r rune) {
-	if b.mnemonic == r {
+	if b.mnemonic == r && b.mnemonicSet == (r != 0) {
 		return
 	}
-	b.mnemonic = r
-	b.markSet = false
+	b.setMnemonic(r)
 	b.MarkDirty()
+}
+
+// setMnemonic records the program's mnemonic, or with 0 hands the choice back to the label.
+func (b *Button) setMnemonic(r rune) {
+	b.mnemonic, b.mnemonicSet, b.markSet = r, r != 0, false
 }
 
 // Label reports the button's text.
@@ -277,7 +288,12 @@ func (b *Button) SetLabelMessage(m tui.Message) {
 // applyText shows "&"-marked text: the label, its mnemonic, and where the marker sits.
 func (b *Button) applyText(text string) {
 	label, key, idx := tui.ParseMnemonic(text)
-	b.label, b.mnemonic = label, key
+	b.label = label
+	if b.mnemonicSet {
+		b.markSet = false // the program's key stays; the underline finds its letter
+		return
+	}
+	b.mnemonic = key
 	b.markAt, b.markSet = idx, idx >= 0
 }
 
