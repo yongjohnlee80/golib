@@ -40,25 +40,16 @@ func (x *Box) WithFocusedStyle(st style.Style) *Box {
 
 // WithStyles replaces the editor's looks: each slot given over golib's own.
 func (e *Editor) WithStyles(st TextInputStyles) *Editor {
-	e.cells.styles = inheritTextStyles(st, defaultEditorStyles())
+	e.cells.styles = st.over(defaultTextInputStyles())
 	e.MarkDirty()
 	return e
 }
 
 // WithStyles replaces the input's looks: each slot given over golib's own.
 func (t *TextInput) WithStyles(st TextInputStyles) *TextInput {
-	t.styles = inheritTextStyles(st, defaultTextInputStyles())
+	t.styles = st.over(defaultTextInputStyles())
 	t.MarkDirty()
 	return t
-}
-
-func inheritTextStyles(st, under TextInputStyles) TextInputStyles {
-	return TextInputStyles{
-		Text:        st.Text.Inherit(under.Text),
-		Placeholder: st.Placeholder.Inherit(under.Placeholder),
-		Selection:   st.Selection.Inherit(under.Selection),
-		Error:       st.Error.Inherit(under.Error),
-	}
 }
 
 // WithBarStyle replaces the bar's base style; the zero value restores the

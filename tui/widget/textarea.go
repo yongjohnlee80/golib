@@ -5,7 +5,6 @@ import (
 
 	"github.com/yongjohnlee80/golib/tui"
 	"github.com/yongjohnlee80/golib/tui/keymap"
-	"github.com/yongjohnlee80/golib/tui/style"
 )
 
 // TextArea provides an interactive multi-line text editor suitable for commit messages,
@@ -103,12 +102,7 @@ func WithWrap(m WrapMode) TextAreaOption {
 // zero fields keep defaults).
 func WithTextAreaStyles(st TextInputStyles) TextAreaOption {
 	return func(t *TextArea) {
-		t.styles = TextInputStyles{
-			Text:        st.Text.Inherit(t.styles.Text),
-			Placeholder: st.Placeholder.Inherit(t.styles.Placeholder),
-			Selection:   st.Selection.Inherit(t.styles.Selection),
-			Error:       st.Error.Inherit(t.styles.Error),
-		}
+		t.styles = st.over(t.styles)
 	}
 }
 
@@ -117,10 +111,7 @@ func NewTextArea(opts ...TextAreaOption) *TextArea {
 	t := &TextArea{
 		textBuffer: newTextBuffer(),
 		wrap:       WrapNone,
-		styles: TextInputStyles{
-			Placeholder: mutedPlaceholder(),
-			Selection:   style.New().Reverse(true),
-		},
+		styles:     defaultTextInputStyles(),
 	}
 	for _, o := range opts {
 		if o != nil {

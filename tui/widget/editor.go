@@ -301,12 +301,6 @@ func (e *Editor) Init(ctx *tui.Context) {
 	}
 }
 
-// defaultEditorStyles are an Editor's looks before any option.
-func defaultEditorStyles() TextInputStyles {
-	return TextInputStyles{Placeholder: mutedPlaceholder(), Selection: style.New().Reverse(true)}
-}
-
-// WithEditorStyles overrides the style hooks (TextInput slots).
 // WithRuler marks column col (1-based: 120 marks the 120th) with a vertical guide, where text is
 // meant to wrap: vim's colorcolumn, as a line. It is drawn in the empty cells past each line's
 // text, in the placeholder's muted look, so a line that crosses it stays readable. 0 draws none.
@@ -318,14 +312,10 @@ func (e *Editor) SetRuler(col int) {
 	e.MarkDirty()
 }
 
+// WithEditorStyles overrides the style hooks (TextInput slots); zero fields keep defaults.
 func WithEditorStyles(st TextInputStyles) EditorOption {
 	return func(e *Editor) {
-		e.cells.styles = TextInputStyles{
-			Text:        st.Text.Inherit(e.cells.styles.Text),
-			Placeholder: st.Placeholder.Inherit(e.cells.styles.Placeholder),
-			Selection:   st.Selection.Inherit(e.cells.styles.Selection),
-			Error:       st.Error.Inherit(e.cells.styles.Error),
-		}
+		e.cells.styles = st.over(e.cells.styles)
 	}
 }
 
@@ -473,7 +463,7 @@ func normalizeKeyset(ks Keyset) Keyset {
 // or customize capabilities and styles.
 func NewEditor(opts ...EditorOption) *Editor {
 	e := &Editor{core: newEditorCore()}
-	e.cells = cellLayout{ed: e, wrap: WrapNone, styles: defaultEditorStyles()}
+	e.cells = cellLayout{ed: e, wrap: WrapNone, styles: defaultTextInputStyles()}
 	e.core.Bind(nil, &e.cells)
 	e.menu = NewEditorMenu(e, e.core)
 	e.menu.SetRows(func() []MenuItemModel { return EditorContextItems(e) })
