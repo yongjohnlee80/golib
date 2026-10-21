@@ -111,6 +111,7 @@ func (n *tableViewNode) buildCells(sortable bool) {
 		widget.TableOnCursor(func(row int) { n.moved(numberValue(row)) }),
 		widget.TableOnSort(n.sortChanged))
 	n.grid = widget.NewDataTable(core)
+	n.shown = gridShown{n.grid}
 	n.mv.changed = n.followCells
 }
 
@@ -346,4 +347,65 @@ func modelValue(v qml.SpecValue) qml.SpecValue {
 		return qml.SpecValue{Kind: qml.SpecValueString}
 	}
 	return v
+}
+
+// tableShown is the widget a TableView shows its rows in: a row list (widget.Table) or, with a
+// cellCursor, a cell grid (widget.DataTable). The node asks it instead of branching on which.
+type tableShown interface {
+	component() tui.Component
+	current() int // the source row under the cursor; -1 when there is none
+	setCurrent(row int)
+	restyle(p palette)
+}
+
+// listShown is a TableView's row list.
+type listShown struct{ t *widget.Table[int] }
+
+func (s listShown) component() tui.Component { return s.t }
+
+func (s listShown) current() int {
+	if i, ok := s.t.Selected(); ok {
+		return i
+	}
+	return -1
+}
+
+func (s listShown) setCurrent(row int) { s.t.List().SetCursor(row) }
+
+func (s listShown) restyle(p palette) {
+	s.t.ResetStyles(p.viewStyles())
+	if p.has(roleBase, roleText) {
+		s.t.SetHeaderStyle(p.look(roleBase, roleText).Bold(true).Underline(true))
+	} else {
+		s.t.SetHeaderStyle(style.Style{})
+	}
+}
+
+// gridShown is a TableView's cell grid (cellCursor: true).
+type gridShown struct{ g *widget.DataTable }
+
+func (s gridShown) component() tui.Component { return s.g }
+
+func (s gridShown) current() int {
+	core := s.g.Core()
+	if core.Len() == 0 {
+		return -1
+	}
+	return core.SourceRow(core.Cursor().Row)
+}
+
+func (s gridShown) setCurrent(row int) { s.g.Core().SelectSourceRow(row) }
+
+func (s gridShown) restyle(p palette) {
+	vs := p.viewStyles()
+	st := widget.DataTableStyles{Cell: vs.Row, Cursor: vs.CursorRow, CursorBlurred: vs.CursorBlurred, Selected: vs.SelectedRow}
+	if p.has(roleBase, roleText) {
+		st.Header = p.look(roleBase, roleText).Bold(true) // ruled off, not underlined
+	}
+	// a selection is the inactive highlight, Qt's selection without the keys: the region shows under
+	// the cursor, which keeps the highlight
+	if p.has(roleInactiveHighlight, roleInactiveHighlightText) {
+		st.Selected = p.viewCursor(roleInactiveHighlight, roleInactiveHighlightText)
+	}
+	s.g.SetStyles(st)
 }
