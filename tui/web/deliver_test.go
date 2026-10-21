@@ -34,7 +34,7 @@ func TestDeliverWaitsForTheLimiterBeforeSubmitting(t *testing.T) {
 	s := attachedSession(t, m)
 	at := time.Now()
 	limiter := newBucket(1, 1, func() time.Time { return at }) // a frozen clock: no refill
-	limiter.take()                                               // the one token gone
+	limiter.take()                                             // the one token gone
 	ctx, cancel := context.WithTimeout(context.Background(), 100*time.Millisecond)
 	defer cancel()
 	if err := l.deliver(ctx, &fakeConn{}, s, limiter, tui.KeyEvent{Code: 'z'}); err != nil {
