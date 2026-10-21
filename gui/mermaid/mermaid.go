@@ -28,6 +28,7 @@ import (
 	"image/color"
 	"sync"
 
+	"github.com/yongjohnlee80/golib/graph/layout"
 	"github.com/yongjohnlee80/golib/gui"
 	pm "github.com/yongjohnlee80/golib/parse/mermaid"
 )
@@ -303,4 +304,13 @@ type laidGroup struct {
 type shapeKey struct {
 	text string
 	font gui.Font
+}
+
+// layoutErr is a layout engine's error as Lay reports it: one too large for the engine is the
+// parser's ErrTooLarge, which a caller tests for whichever stage refused.
+func layoutErr(err error) error {
+	if errors.Is(err, layout.ErrTooLarge) {
+		return fmt.Errorf("%w: %v", pm.ErrTooLarge, err)
+	}
+	return err
 }
