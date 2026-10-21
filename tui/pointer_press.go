@@ -52,7 +52,7 @@ func (a *App) interceptCaptureEscape(e KeyEvent) bool {
 	if a.captureOwner == 0 {
 		return false
 	}
-	if _, ok := keyCommand(a.cfg.keymap, e, []keymap.Command{CancelCapture}); !ok {
+	if _, ok := keyCommand(a.live.keymap, e, []keymap.Command{CancelCapture}); !ok {
 		return false
 	}
 	n := a.nodes[a.captureOwner]

@@ -41,7 +41,7 @@ func (a *App) KeyBindings(comp Component) ([]keymap.Binding, error) {
 	if limit != nil && !withinScope(n, limit) {
 		return nil, ErrConfined
 	}
-	m := a.cfg.keymap
+	m := a.live.keymap
 	var stops [][]keymap.Binding
 	for n := range pathTo(n, limit) {
 		if kb, ok := n.comp.(KeyBinder); ok {

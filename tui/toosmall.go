@@ -53,7 +53,7 @@ func (a *App) dispatchTooSmall(ev Event) bool {
 	case KeyEvent:
 		// The exact chord only, not keyCommand's legacy Ctrl+Shift fallback: Ctrl+Shift+C is a
 		// terminal's copy, and must not quit.
-		if chord, ok := key.Of(e.Code, e.Mods, e.Text); ok && e.Kind != KeyRelease && a.cfg.keymap.Has(TooSmallQuit, chord) {
+		if chord, ok := key.Of(e.Code, e.Mods, e.Text); ok && e.Kind != KeyRelease && a.live.keymap.Has(TooSmallQuit, chord) {
 			a.requestQuit()
 		}
 		return true
@@ -132,7 +132,7 @@ func writeCentered(s Surface, y int, text string, st style.Style) {
 // accelerator, so the screen names the keys that quit it.
 func (a *App) tooSmallQuitKeys() string {
 	var names []string
-	for _, s := range a.cfg.keymap.KeysOf(TooSmallQuit) {
+	for _, s := range a.live.keymap.KeysOf(TooSmallQuit) {
 		names = append(names, s.String())
 	}
 	return strings.Join(names, " / ")

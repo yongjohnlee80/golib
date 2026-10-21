@@ -11,6 +11,17 @@ import (
 	"github.com/yongjohnlee80/golib/tui/style"
 )
 
+// appLive is what changes while the App runs, copied from appConfig at NewApp: SetTheme,
+// ApplyLanguage, ApplyTranslator, ApplyKeymap and SetGestureRecognizer write here, never into the
+// configuration, which stays what the options said.
+type appLive struct {
+	theme        *style.Theme
+	language     string
+	translations Translator
+	keymap       *keymap.Map
+	recognizer   GestureRecognizer
+}
+
 // appConfig collects the option-set construction state of an App
 // (pattern: server/scaffold.go:21-28's scaffoldConfig).
 type appConfig struct {
@@ -132,7 +143,8 @@ func WithBackend(b Backend) AppOption {
 	return func(c *appConfig) { c.backend = b }
 }
 
-// WithTheme sets the initial style.Theme. Default: style.DefaultTheme().
+// WithTheme sets the initial style.Theme. Default: style.DefaultTheme(), which a nil theme also
+// gives (unlike SetTheme, which refuses nil: a running App has a theme to keep).
 func WithTheme(t *style.Theme) AppOption {
 	return func(c *appConfig) { c.theme = t }
 }

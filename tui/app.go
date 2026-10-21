@@ -39,7 +39,8 @@ import (
 //   - Lane B (Program): Carries user-posted closures (App.Update), bus deliveries,
 //     and completed task results. Lane B never drops events and provides queue isolation from Lane A.
 type App struct {
-	cfg     appConfig
+	cfg     appConfig // as configured: NewApp's options, never written after NewApp
+	live    appLive   // the settings that change at run time, starting from cfg's
 	root    Component
 	backend Backend
 
@@ -156,6 +157,7 @@ func NewApp(root Component, opts ...AppOption) *App {
 		byComp:  make(map[Component]*node),
 		sem:     make(chan struct{}, cfg.taskPoolSize),
 	}
+	a.live = appLive{theme: cfg.theme, language: cfg.language, translations: cfg.translations, keymap: cfg.keymap, recognizer: cfg.recognizer}
 	a.minSize = cfg.minimumSize
 	a.queue.init(cfg.eventQueueLimit, cfg.logger)
 	a.bus = newBus(a)
@@ -209,7 +211,7 @@ func (a *App) SetTheme(th *style.Theme) {
 		panic(errs.Fatal{Op: "tui: App.SetTheme", Rule: "nil theme"})
 	}
 	a.Update(func() {
-		a.cfg.theme = th
+		a.live.theme = th
 		if a.rctx != nil {
 			a.rctx.theme = th
 			a.rctx.themeGen++
@@ -237,7 +239,7 @@ func (a *App) SetLanguage(tag string) {
 // land a frame after state set directly, and that frame shows the two disagreeing. Loop
 // goroutine only.
 func (a *App) ApplyLanguage(tag string) {
-	a.cfg.language = tag
+	a.live.language = tag
 	a.invalidate(true)
 }
 
@@ -281,7 +283,7 @@ func (a *App) ApplyTranslator(t Translator) {
 	if isNilLike(t) {
 		panic(errs.Fatal{Op: "tui: App.ApplyTranslator", Rule: "the catalogs must not be nil"})
 	}
-	a.cfg.translations = t
+	a.live.translations = t
 	a.invalidate(true)
 }
 
@@ -300,16 +302,16 @@ func (a *App) SetKeymap(m *keymap.Map) {
 // together. A key's meaning changes, and so does the width of every accelerator and help line
 // that prints one, so it dirties layout and render, as ApplyLanguage does. Loop goroutine only.
 func (a *App) ApplyKeymap(m *keymap.Map) {
-	a.cfg.keymap = m
+	a.live.keymap = m
 	a.invalidate(true)
 }
 
 // Keymap is the key bindings in force; nil when none was given. Call it on the loop goroutine.
-func (a *App) Keymap() *keymap.Map { return a.cfg.keymap }
+func (a *App) Keymap() *keymap.Map { return a.live.keymap }
 
 // Language is the language widgets currently show a [Message] in. Call it on the loop
 // goroutine, from a handler or inside Update.
-func (a *App) Language() string { return a.cfg.language }
+func (a *App) Language() string { return a.live.language }
 
 // Translate is m's text in the current language, exactly as a widget shows it (see
 // [Context.Translate]): for text an application composes itself, such as a status line
@@ -317,8 +319,8 @@ func (a *App) Language() string { return a.cfg.language }
 // follow a later [App.SetLanguage]; text that should is published as the [Message] itself.
 // Call it on the loop goroutine, from a handler or inside Update.
 func (a *App) Translate(m Message) string {
-	s := a.cfg.translations
-	text, ok := s.Lookup(a.cfg.language, m.ID)
+	s := a.live.translations
+	text, ok := s.Lookup(a.live.language, m.ID)
 	if !ok {
 		return m.ID
 	}
@@ -421,7 +423,7 @@ func (a *App) Run(ctx context.Context) (err error) {
 	}
 	a.size = sz
 	a.buf = newBuffer(sz.W, sz.H)
-	a.rctx = newRenderContext(a.cfg.theme, a.backend.Capabilities(), a.cfg.widthPolicy)
+	a.rctx = newRenderContext(a.live.theme, a.backend.Capabilities(), a.cfg.widthPolicy)
 
 	a.mount(nil, a.root)
 	a.layoutDirty, a.renderDirty = true, true

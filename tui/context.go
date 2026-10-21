@@ -370,7 +370,7 @@ func (c *Context) Theme() *style.Theme {
 	if c == nil || c.app == nil {
 		return nil
 	}
-	return c.app.cfg.theme
+	return c.app.live.theme
 }
 
 // KeyCommand reports which of cmds ev is: the event's chord (key.Of), then each of its candidates in
@@ -386,7 +386,7 @@ func (c *Context) Theme() *style.Theme {
 func (c *Context) KeyCommand(ev KeyEvent, cmds ...keymap.Command) (keymap.Command, bool) {
 	var m *keymap.Map
 	if c != nil && c.app != nil {
-		m = c.app.cfg.keymap
+		m = c.app.live.keymap
 	}
 	return keyCommand(m, ev, cmds)
 }

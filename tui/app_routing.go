@@ -361,7 +361,7 @@ func (a *App) dispatchFocusEvent(e FocusEvent, ev Event) {
 // inserting \t) return true from HandleEvent, naturally opting out of global
 // focus stepping.
 func (a *App) globalKey(e KeyEvent) {
-	cmd, ok := keyCommand(a.cfg.keymap, e, []keymap.Command{FocusNext, FocusPrev})
+	cmd, ok := keyCommand(a.live.keymap, e, []keymap.Command{FocusNext, FocusPrev})
 	switch {
 	case !ok:
 	case cmd.ID == FocusPrev.ID:
