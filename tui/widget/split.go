@@ -152,7 +152,6 @@ type Split struct {
 	glyphH, glyphV string
 	step           int
 	stepUnit       StepUnit
-	pointerPolicy  tui.PointerPolicy
 }
 
 var _ tui.Component = (*Split)(nil)
@@ -316,14 +315,7 @@ type SplitZoomEvent struct {
 // operation is unaffected: every action the divider resolves is reachable from
 // the keyboard, so a pointer-disabled split stays fully usable.
 func (s *Split) WithPointerPolicy(p tui.PointerPolicy) *Split {
-	if !p.Valid() {
-		panic(tuiFatal("widget: Split.WithPointerPolicy",
-			"value outside PointerInherit, PointerEnabled, PointerDisabled", int(p)))
-	}
-	s.pointerPolicy = p
-	if ctx := s.Context(); ctx != nil {
-		ctx.SetPointerPolicy(p)
-	}
+	s.setPointerPolicy("widget: Split.WithPointerPolicy", p)
 	return s
 }
 
@@ -385,7 +377,6 @@ func (s *Split) listChildren() []tui.Component {
 // Init mounts both panes. Re-entrant across remounts.
 func (s *Split) Init(ctx *tui.Context) {
 	s.Base.Init(ctx)
-	ctx.SetPointerPolicy(s.pointerPolicy)
 	s.drag, s.dragCtx = nil, nil
 	ctx.SetDefaultActionResolvers(tui.ActionResolverFunc(s.resolve))
 	ctx.Mount(s.a)

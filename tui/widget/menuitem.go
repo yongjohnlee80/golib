@@ -28,8 +28,7 @@ type MenuItem struct {
 	onRun   func()
 	st      *MenuStyle
 
-	armed         bool
-	pointerPolicy tui.PointerPolicy
+	armed bool
 }
 
 // MenuItemOption configures a MenuItem at construction.
@@ -38,10 +37,9 @@ type MenuItemOption func(*MenuItem)
 // NewMenuItem builds a standalone, enabled menu entry.
 func NewMenuItem(label string, opts ...MenuItemOption) *MenuItem {
 	m := &MenuItem{
-		label:         label,
-		kind:          ItemKindCommand,
-		enabled:       true,
-		pointerPolicy: tui.PointerInherit,
+		label:   label,
+		kind:    ItemKindCommand,
+		enabled: true,
 	}
 	for _, o := range opts {
 		if o != nil {
@@ -135,14 +133,7 @@ func (m *MenuItem) WithStyle(s *MenuStyle) *MenuItem {
 // for chaining. Remembered as well as applied, because
 // NewMenuItem(...).WithPointerPolicy(...) runs before there is any Context.
 func (m *MenuItem) WithPointerPolicy(p tui.PointerPolicy) *MenuItem {
-	if !p.Valid() {
-		panic(tuiFatal("widget: MenuItem.WithPointerPolicy",
-			"value outside PointerInherit, PointerEnabled, PointerDisabled", int(p)))
-	}
-	m.pointerPolicy = p
-	if ctx := m.Context(); ctx != nil {
-		ctx.SetPointerPolicy(p)
-	}
+	m.setPointerPolicy("widget: MenuItem.WithPointerPolicy", p)
 	return m
 }
 
@@ -201,7 +192,6 @@ func (m *MenuItem) Armed() bool { return m.armed }
 func (m *MenuItem) Init(ctx *tui.Context) {
 	m.Base.Init(ctx)
 	ctx.SetDefaultActionResolvers(tui.ActionResolverFunc(func(ev tui.Event) (tui.Action, bool) { return activateKeys(ctx, ev) }))
-	ctx.SetPointerPolicy(m.pointerPolicy)
 }
 
 // state is the item's current look, using the same vocabulary as a Menu row so

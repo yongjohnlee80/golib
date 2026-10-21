@@ -238,9 +238,8 @@ type Resizable struct {
 	// drag is the pointer gesture in progress, nil when there is none, and
 	// gripCtx is the handle that took the capture for it — only the node whose
 	// handler took a capture may release it.
-	drag          *resizeDrag
-	gripCtx       *tui.Context
-	pointerPolicy tui.PointerPolicy
+	drag    *resizeDrag
+	gripCtx *tui.Context
 	// onEnd hears a drag that ended (not one cancelled), with the size it asked for last.
 	onEnd func(tui.Size)
 }
@@ -262,10 +261,9 @@ func NewResizable(child tui.Component, opts ...ResizableOption) *Resizable {
 		glyph:   "◢",
 		// glyphCells is measured at Init from the active width policy; this is
 		// only the value a wrapper reports if it is asked before it is mounted.
-		glyphCells:    1,
-		step:          1,
-		stepUnit:      StepCells,
-		pointerPolicy: tui.PointerInherit,
+		glyphCells: 1,
+		step:       1,
+		stepUnit:   StepCells,
 	}
 	for _, o := range opts {
 		if o != nil {
@@ -485,14 +483,7 @@ func (r *Resizable) WithStyle(s *ResizableStyle) *Resizable {
 // wrapper itself, so a pointer-disabled Resizable is still fully resizable from
 // the keyboard.
 func (r *Resizable) WithPointerPolicy(p tui.PointerPolicy) *Resizable {
-	if !p.Valid() {
-		panic(tuiFatal("widget: Resizable.WithPointerPolicy",
-			"value outside PointerInherit, PointerEnabled, PointerDisabled", int(p)))
-	}
-	r.pointerPolicy = p
-	if ctx := r.Context(); ctx != nil {
-		ctx.SetPointerPolicy(p)
-	}
+	r.setPointerPolicy("widget: Resizable.WithPointerPolicy", p)
 	return r
 }
 
@@ -571,7 +562,6 @@ func (r *Resizable) SetAuto() {
 // Init mounts the child and one component per configured handle.
 func (r *Resizable) Init(ctx *tui.Context) {
 	r.Base.Init(ctx)
-	ctx.SetPointerPolicy(r.pointerPolicy)
 	ctx.SetDefaultActionResolvers(tui.ActionResolverFunc(r.resizeKeys))
 	ctx.Mount(r.child)
 	// THE ACTIVE POLICY decides how many cells the glyph occupies, and Init is
