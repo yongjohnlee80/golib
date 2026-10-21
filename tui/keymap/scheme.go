@@ -7,6 +7,7 @@ import (
 	"strings"
 
 	"github.com/yongjohnlee80/golib/errs"
+	"github.com/yongjohnlee80/golib/tui/internal/xmlpos"
 	"github.com/yongjohnlee80/golib/tui/key"
 )
 
@@ -64,7 +65,7 @@ func ParseScheme(r io.Reader, file string) (*Scheme, error) {
 		switch t := tok.(type) {
 		case xml.StartElement:
 			if root || t.Name.Local != "mapping" {
-				return nil, errs.Wrap(errs.ErrInvalidArgument, "keymap: %s, line %d: <%s> where <mapping> is the root", file, line(d), t.Name.Local)
+				return nil, errs.Wrap(errs.ErrInvalidArgument, "keymap: %s, line %d: <%s> where <mapping> is the root", file, xmlpos.Line(d), t.Name.Local)
 			}
 			if err := noAttrs(d, t, file); err != nil {
 				return nil, err
@@ -75,7 +76,7 @@ func ParseScheme(r io.Reader, file string) (*Scheme, error) {
 			}
 		case xml.CharData:
 			if strings.TrimSpace(string(t)) != "" {
-				return nil, errs.Wrap(errs.ErrInvalidArgument, "keymap: %s, line %d: text outside <mapping>", file, line(d))
+				return nil, errs.Wrap(errs.ErrInvalidArgument, "keymap: %s, line %d: text outside <mapping>", file, xmlpos.Line(d))
 			}
 		}
 	}
@@ -95,7 +96,7 @@ func (s *Scheme) readMapping(d *xml.Decoder, file string, seen map[string]int) e
 		switch t := tok.(type) {
 		case xml.StartElement:
 			if t.Name.Local != "shortcut" {
-				return errs.Wrap(errs.ErrInvalidArgument, "keymap: %s, line %d: <%s> in <mapping>, where only <shortcut> belongs", file, line(d), t.Name.Local)
+				return errs.Wrap(errs.ErrInvalidArgument, "keymap: %s, line %d: <%s> in <mapping>, where only <shortcut> belongs", file, xmlpos.Line(d), t.Name.Local)
 			}
 			e, err := readShortcut(d, t, file)
 			if err != nil {
@@ -108,7 +109,7 @@ func (s *Scheme) readMapping(d *xml.Decoder, file string, seen map[string]int) e
 			s.entries = append(s.entries, e)
 		case xml.CharData:
 			if strings.TrimSpace(string(t)) != "" {
-				return errs.Wrap(errs.ErrInvalidArgument, "keymap: %s, line %d: text in <mapping>, where only <shortcut> belongs", file, line(d))
+				return errs.Wrap(errs.ErrInvalidArgument, "keymap: %s, line %d: text in <mapping>, where only <shortcut> belongs", file, xmlpos.Line(d))
 			}
 		case xml.EndElement:
 			return nil
@@ -118,7 +119,7 @@ func (s *Scheme) readMapping(d *xml.Decoder, file string, seen map[string]int) e
 
 // readShortcut reads one <shortcut> through its end tag.
 func readShortcut(d *xml.Decoder, start xml.StartElement, file string) (entry, error) {
-	e := entry{line: line(d)}
+	e := entry{line: xmlpos.Line(d)}
 	for _, a := range start.Attr {
 		if a.Name.Local != "id" || a.Name.Space != "" {
 			return entry{}, errs.Wrap(errs.ErrInvalidArgument, "keymap: %s, line %d: <shortcut> has an attribute %q, where only id belongs", file, e.line, a.Name.Local)
@@ -135,7 +136,7 @@ func readShortcut(d *xml.Decoder, start xml.StartElement, file string) (entry, e
 		}
 		switch t := tok.(type) {
 		case xml.StartElement:
-			at := line(d)
+			at := xmlpos.Line(d)
 			if t.Name.Local != "key" {
 				return entry{}, errs.Wrap(errs.ErrInvalidArgument, "keymap: %s, line %d: <%s> in shortcut %q, where only <key> belongs", file, at, t.Name.Local, e.id)
 			}
@@ -166,7 +167,7 @@ func readShortcut(d *xml.Decoder, start xml.StartElement, file string) (entry, e
 			}
 		case xml.CharData:
 			if strings.TrimSpace(string(t)) != "" {
-				return entry{}, errs.Wrap(errs.ErrInvalidArgument, "keymap: %s, line %d: text in shortcut %q, where only <key> belongs", file, line(d), e.id)
+				return entry{}, errs.Wrap(errs.ErrInvalidArgument, "keymap: %s, line %d: text in shortcut %q, where only <key> belongs", file, xmlpos.Line(d), e.id)
 			}
 		case xml.EndElement:
 			if !e.unbind && len(e.keys) == 0 {
@@ -186,7 +187,7 @@ func endsEmpty(d *xml.Decoder, file string, at int) error {
 		}
 		switch t := tok.(type) {
 		case xml.StartElement:
-			return errs.Wrap(errs.ErrInvalidArgument, "keymap: %s, line %d: <%s> inside a <key>, which holds nothing", file, line(d), t.Name.Local)
+			return errs.Wrap(errs.ErrInvalidArgument, "keymap: %s, line %d: <%s> inside a <key>, which holds nothing", file, xmlpos.Line(d), t.Name.Local)
 		case xml.CharData:
 			if strings.TrimSpace(string(t)) != "" {
 				return errs.Wrap(errs.ErrInvalidArgument, "keymap: %s, line %d: text inside a <key>, which holds nothing", file, at)
@@ -203,13 +204,7 @@ func noAttrs(d *xml.Decoder, t xml.StartElement, file string) error {
 		if a.Name.Space == "xmlns" || (a.Name.Space == "" && a.Name.Local == "xmlns") {
 			continue
 		}
-		return errs.Wrap(errs.ErrInvalidArgument, "keymap: %s, line %d: <%s> has an attribute %q, where none belongs", file, line(d), t.Name.Local, a.Name.Local)
+		return errs.Wrap(errs.ErrInvalidArgument, "keymap: %s, line %d: <%s> has an attribute %q, where none belongs", file, xmlpos.Line(d), t.Name.Local, a.Name.Local)
 	}
 	return nil
-}
-
-// line is the decoder's current line.
-func line(d *xml.Decoder) int {
-	l, _ := d.InputPos()
-	return l
 }

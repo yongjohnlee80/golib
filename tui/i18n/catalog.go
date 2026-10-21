@@ -7,6 +7,7 @@ import (
 	"strings"
 
 	"github.com/yongjohnlee80/golib/errs"
+	"github.com/yongjohnlee80/golib/tui/internal/xmlpos"
 )
 
 // Catalog is one language's translated messages, by message id. It is immutable once
@@ -53,7 +54,7 @@ func parse(r io.Reader, src string) (*Catalog, error) {
 			c.language = canonical(attr(start, "language"))
 		case "message":
 			if !root {
-				return nil, errs.Wrap(errs.ErrInvalidArgument, "i18n: %s has a <message> outside <TS>, at line %d", src, line(d))
+				return nil, errs.Wrap(errs.ErrInvalidArgument, "i18n: %s has a <message> outside <TS>, at line %d", src, xmlpos.Line(d))
 			}
 			if err := c.readMessage(d, start, src); err != nil {
 				return nil, err
@@ -69,7 +70,7 @@ func parse(r io.Reader, src string) (*Catalog, error) {
 // readMessage reads one <message>, through its end tag, and keeps its translation if it
 // has one.
 func (c *Catalog) readMessage(d *xml.Decoder, start xml.StartElement, src string) error {
-	at := line(d)
+	at := xmlpos.Line(d)
 	id := attr(start, "id")
 	if id == "" {
 		return errs.Wrap(errs.ErrInvalidArgument, "i18n: %s, line %d: a message has no id", src, at)
@@ -141,11 +142,6 @@ func attr(e xml.StartElement, name string) string {
 		}
 	}
 	return ""
-}
-
-func line(d *xml.Decoder) int {
-	l, _ := d.InputPos()
-	return l
 }
 
 // canonical writes a language tag the one way this package compares it: "-" as "_", so
