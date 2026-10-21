@@ -621,75 +621,108 @@ func (t *DataTable) HandleEvent(ev tui.Event) bool {
 	case tui.PasteEvent:
 		return t.core.Paste(e.Text)
 	case tui.MouseEvent:
-		p, placed := t.layout.(TableLayoutPointer)
-		if t.bound() && !placed {
-			return false
-		}
-		switch {
-		case e.Kind == tui.MouseWheel && (e.Button == tui.WheelLeft || e.Button == tui.WheelRight ||
-			e.Mods&tui.ModShift != 0 && (e.Button == tui.WheelUp || e.Button == tui.WheelDown)):
-			n := 1 // Shift+wheel and a horizontal wheel move the fields, a field a step
-			if e.Button == tui.WheelLeft || e.Button == tui.WheelUp {
-				n = -1
-			}
-			t.core.ScrollFields(n)
-			return true
-		case e.Kind == tui.MouseWheel && (e.Button == tui.WheelUp || e.Button == tui.WheelDown):
-			step := tableWheelRows
-			if e.Button == tui.WheelUp {
-				step = -step
-			}
-			if t.bound() {
-				p.ScrollRows(step)
-			} else {
-				t.top = clampTop(t.top+step, t.core.Len(), t.bodyRows())
-			}
-			t.MarkDirty()
-			return true
-		case e.Kind == tui.MousePress && e.Button == tui.MouseLeft:
-			pos, hit := t.hitAt(e)
-			if t.unplacedHeader(hit) {
-				return true // which field is unknown: the selection is left as it is
-			}
-			live, paired := t.core.press(e.Count, pos, hit)
-			if !live {
-				return true // the owner replaced the rows pressed
-			}
-			if t.core.Dragging() {
-				if ctx := t.Context(); ctx != nil {
-					ctx.CapturePointer()
-				}
-			}
-			if paired {
-				t.core.dropPending()
-				t.core.activateOrEdit()
-			}
-			return true
-		case e.Kind == tui.MousePress && e.Button == tui.MouseRight && t.menu != nil && menuOn(t.menu):
-			// Inside the selection it is left as it is, for the menu's rows to act on; outside, what
-			// was pressed is selected first (selectForMenu).
-			t.menuPos, t.menuHit = t.hitAt(e)
-			if t.unplacedHeader(t.menuHit) {
-				t.menuPos, t.menuHit = TablePos{}, TableHitNone
-			}
-			if !t.core.presses.Survives(func() { t.core.selectForMenu(t.menuPos, t.menuHit) }) {
-				return true // the owner replaced the rows pressed: no menu for them
-			}
-			return t.menu.OpenAt(tui.Point{X: e.X, Y: e.Y})
-		case e.Kind == tui.MouseMotion && e.Button == tui.MouseLeft && t.core.Dragging():
-			if pos, ok := t.dragAt(e); ok {
-				t.core.DragTo(pos)
-			}
-			return true
-		case e.Kind == tui.MouseRelease && t.core.Dragging():
-			t.core.EndDrag()
-			if ctx := t.Context(); ctx != nil && ctx.HasPointerCapture() {
-				ctx.ReleasePointer()
-			}
-			return true
-		}
+		return t.handleMouse(e)
 	}
 	return false
+}
+
+// handleMouse routes a pointer event to the gesture it starts or continues. A bound layout that does
+// not place the pointer itself leaves the event to its backend.
+func (t *DataTable) handleMouse(e tui.MouseEvent) bool {
+	p, placed := t.layout.(TableLayoutPointer)
+	if t.bound() && !placed {
+		return false
+	}
+	switch {
+	case e.Kind == tui.MouseWheel:
+		return t.handleWheel(e, p)
+	case e.Kind == tui.MousePress && e.Button == tui.MouseLeft:
+		return t.handlePress(e)
+	case e.Kind == tui.MousePress && e.Button == tui.MouseRight && t.menu != nil && menuOn(t.menu):
+		return t.handleMenuPress(e)
+	case t.core.Dragging() && (e.Kind == tui.MouseMotion && e.Button == tui.MouseLeft || e.Kind == tui.MouseRelease):
+		return t.handleDrag(e)
+	}
+	return false
+}
+
+// handleWheel scrolls: Shift+wheel and a horizontal wheel move the fields, a field a step; the wheel
+// moves the rows, by a bound layout when there is one. Any other wheel button is not the table's.
+func (t *DataTable) handleWheel(e tui.MouseEvent, p TableLayoutPointer) bool {
+	vertical := e.Button == tui.WheelUp || e.Button == tui.WheelDown
+	switch {
+	case e.Button == tui.WheelLeft || e.Button == tui.WheelRight || e.Mods&tui.ModShift != 0 && vertical:
+		n := 1
+		if e.Button == tui.WheelLeft || e.Button == tui.WheelUp {
+			n = -1
+		}
+		t.core.ScrollFields(n)
+		return true
+	case vertical:
+		step := tableWheelRows
+		if e.Button == tui.WheelUp {
+			step = -step
+		}
+		if t.bound() {
+			p.ScrollRows(step)
+		} else {
+			t.top = clampTop(t.top+step, t.core.Len(), t.bodyRows())
+		}
+		t.MarkDirty()
+		return true
+	}
+	return false
+}
+
+// handlePress is a left press: it places the cursor or starts a selection (the core's press, which
+// pairs a double-click), takes the pointer for a drag, and a double-click edits or activates.
+func (t *DataTable) handlePress(e tui.MouseEvent) bool {
+	pos, hit := t.hitAt(e)
+	if t.unplacedHeader(hit) {
+		return true // which field is unknown: the selection is left as it is
+	}
+	live, paired := t.core.press(e.Count, pos, hit)
+	if !live {
+		return true // the owner replaced the rows pressed
+	}
+	if t.core.Dragging() {
+		if ctx := t.Context(); ctx != nil {
+			ctx.CapturePointer()
+		}
+	}
+	if paired {
+		t.core.dropPending()
+		t.core.activateOrEdit()
+	}
+	return true
+}
+
+// handleMenuPress is a right press with a menu on: inside the selection it is left as it is, for the
+// menu's rows to act on; outside, what was pressed is selected first (selectForMenu).
+func (t *DataTable) handleMenuPress(e tui.MouseEvent) bool {
+	t.menuPos, t.menuHit = t.hitAt(e)
+	if t.unplacedHeader(t.menuHit) {
+		t.menuPos, t.menuHit = TablePos{}, TableHitNone
+	}
+	if !t.core.presses.Survives(func() { t.core.selectForMenu(t.menuPos, t.menuHit) }) {
+		return true // the owner replaced the rows pressed: no menu for them
+	}
+	return t.menu.OpenAt(tui.Point{X: e.X, Y: e.Y})
+}
+
+// handleDrag continues a selection drag while the left button moves, and ends it on the release.
+func (t *DataTable) handleDrag(e tui.MouseEvent) bool {
+	if e.Kind == tui.MouseRelease {
+		t.core.EndDrag()
+		if ctx := t.Context(); ctx != nil && ctx.HasPointerCapture() {
+			ctx.ReleasePointer()
+		}
+		return true
+	}
+	if pos, ok := t.dragAt(e); ok {
+		t.core.DragTo(pos)
+	}
+	return true
 }
 
 // hitAt is what the pointer is over: a bound layout's HitAt, else its CellAt (with no gutter); the
