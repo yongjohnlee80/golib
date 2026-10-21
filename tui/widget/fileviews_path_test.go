@@ -413,3 +413,24 @@ func TestALocalSourceKeepsTheHomeItWasGiven(t *testing.T) {
 	h.waitFor("~ listed", dirIs(h, v, filepath.Join(root, "in-home")))
 	h.shows("h.md")
 }
+
+// The path field says "not found" for what names nothing it can go to: an empty path, and a path
+// that climbs out of its source. The folder listed stays as it was.
+func TestThePathFieldSaysAnEmptyPathAndOneOutsideTheSourceAreNotFound(t *testing.T) {
+	src := widget.FileSource{FS: fstest.MapFS{"in/f.md": {}}, Root: "/"}
+	v := widget.NewFileFolderView(widget.WithFileViewSource(src), widget.WithFileViewDir("/"))
+	h := startBrowser(t, v)
+	defer h.stop()
+	h.shows("in/")
+	h.inject(keyMod('k', tui.ModCtrl)) // to the path field
+	typePath(h, "")
+	h.shows("Folder — not found")
+	typePath(h, "in")
+	h.waitFor("in listed", dirIs(h, v, "/in"))
+	h.hides("not found")
+	typePath(h, "../../x")
+	h.shows("Folder — not found")
+	if !dirIs(h, v, "/in")() {
+		t.Error("a path outside the source moved the listing")
+	}
+}
