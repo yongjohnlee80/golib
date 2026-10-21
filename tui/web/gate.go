@@ -131,12 +131,11 @@ func (g *gate) commit(key string, until time.Time, publish func()) bool {
 	g.held[key] = slot{expires: until, committed: true}
 	// A PANICKING publish keeps the commitment.
 	//
-	// The earlier version rolled it back on the reasoning that nothing had been
-	// written — which is only true for a callback that panics before it mutates.
-	// A consumer's callback can insert into its own park and then panic, and
-	// undoing that is not something this package can do: the mutation is in the
-	// consumer's data structure. Rolling back there yields parked=1 with
-	// committed=0 — an entry nothing accounts for.
+	// Rolling it back on the reasoning that nothing had been written holds only for
+	// a callback that panics before it mutates. A consumer's callback can insert into
+	// its own park and then panic, and undoing that is not something this package can
+	// do: the mutation is in the consumer's data structure. Rolling back there would
+	// yield parked=1 with committed=0 — an entry nothing accounts for.
 	//
 	// So the accounting is preserved CONSERVATIVELY. The two possible errors are
 	// not symmetric: keeping a commitment for an entry that was never written

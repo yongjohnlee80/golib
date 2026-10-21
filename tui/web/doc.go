@@ -108,6 +108,15 @@
 // exported for a park that must live elsewhere, such as a store shared across
 // replicas.
 //
+// # Capabilities
+//
+// Besides [tui.Backend], a *Backend implements [tui.CellMetrics]: CellPixels is the browser's
+// measured cell size in CSS pixels, published only together with the ResizeEvent the backend
+// accepts, so an App reading it for that event sees the matching size.
+//
+// It does not implement [tui.GraphicsBackend], [tui.ClipboardWriter], [tui.ClipboardReader] or
+// [tui.CursorColorSetter].
+//
 // # Seam report
 //
 // 's second purpose was to test whether tui.Backend was drawn in the

@@ -329,8 +329,8 @@ func (l *sessionLoop) readPump(ctx context.Context, c conn, sess *Session) error
 // "Un-coalesced" in the Backend contract means nothing is silently dropped, so
 // this RETRIES until the event is accepted, the context ends, or the overload
 // grace elapses — at which point the connection closes and the client is told.
-// An earlier version retried once and then advanced past the event, which lost
-// input while still claiming an ordered un-coalesced stream.
+// Retrying once and then advancing past the event would lose input while still
+// claiming an ordered un-coalesced stream.
 func (l *sessionLoop) deliver(ctx context.Context, c conn, sess *Session, limiter *bucket, ev tui.Event) error {
 	backend := sess.transport()
 	return l.submitWithBackpressure(ctx, c, sess, limiter, true, "input", func() error { return backend.submit(ev) })
@@ -340,9 +340,8 @@ func (l *sessionLoop) deliver(ctx context.Context, c conn, sess *Session, limite
 //
 // A resize is not one of a stream of equivalent events: it is the only report of
 // that size, and the next one arrives only when the user drags the window again.
-// An earlier version logged an overflow and advanced, so a resize that arrived
-// while the App was busy was lost and the client stayed the wrong size
-// indefinitely.
+// Logging an overflow and advancing would lose a resize that arrived while the App
+// was busy, and the client would stay the wrong size indefinitely.
 func (l *sessionLoop) deliverResize(ctx context.Context, c conn, sess *Session, limiter *bucket, cols, rows int, m Metrics) error {
 	backend := sess.transport()
 	return l.submitWithBackpressure(ctx, c, sess, limiter, false, "resize", func() error {

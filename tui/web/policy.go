@@ -57,10 +57,10 @@ func RecommendedPolicy(mechanisms []auth.Factor, constrain ...auth.Factor) (auth
 //
 // # This builds Config.LoginPolicy, not Config.Policy
 //
-// It takes no "stronger mechanisms" parameter. An earlier version did, and the
-// arms it accepted were unreachable: [Handler.ServeLogin] projects only a subject
-// and a password, so a ticket, certificate or SSH signature placed in this policy
-// could never be presented to it. Tickets, mTLS and SSH belong on
+// It takes no "stronger mechanisms" parameter, because such arms would be
+// unreachable: [Handler.ServeLogin] projects only a subject and a password, so a
+// ticket, certificate or SSH signature placed in this policy could never be
+// presented to it. Tickets, mTLS and SSH belong on
 // [Config.Policy] via [RecommendedPolicy]; this is the front door that mints the
 // ticket that policy accepts.
 //

@@ -17,12 +17,11 @@ import (
 //
 // # Why this exists and why it wraps rather than checks inside
 //
-// The Origin and Host checks previously ran inside the WebSocket session loop —
-// which is after server/ws has already called websocket.Accept, so the upgrade
-// had happened and a 101 had been sent before the request was judged.
-// A refusal after the upgrade is still a refusal, but it means the connection
-// existed, the client saw a successful handshake, and any per-connection cost was
-// already paid.
+// Checking Origin and Host inside the WebSocket session loop would be too late:
+// server/ws has already called websocket.Accept there, so the upgrade has happened
+// and a 101 has been sent before the request is judged. A refusal after the upgrade
+// is still a refusal, but the connection existed, the client saw a successful
+// handshake, and any per-connection cost was already paid.
 //
 // As an http.Handler wrapper the decision happens while a plain 403 is still
 // possible, and the WS handler is simply never reached.
@@ -52,8 +51,8 @@ func (h *Handler) Guard(next http.Handler) http.Handler {
 // It accepts a server somebody else built, and it does NOT inspect that server's
 // address or TLS settings. So mounting on a server bound to plaintext
 // 0.0.0.0 succeeds even when the Config says loopback-plus-TLS: the routes are
-// safe, the BIND is the caller's. An earlier version of this comment said Mount
-// binds the validated config to the listener, which was simply untrue.
+// safe, the BIND is the caller's: Mount does not bind the validated config to a
+// listener.
 //
 // [Handler.Serve] is the path where the validated Config and the listener are
 // the same decision. Use Mount when you are composing this into a larger server
@@ -98,9 +97,8 @@ func (h *Handler) WebSocketHandler(reg *server.Registry) http.Handler {
 //
 // This is the path where the guarantees actually hold: the bind address and
 // TLS settings [Config.validate] checked are the ones used here, so a
-// non-loopback plaintext bind cannot happen. Previously validate() inspected
-// fields nothing consumed, so it described an intention rather than constraining
-// anything.
+// non-loopback plaintext bind cannot happen. Validation constrains only the fields
+// something consumes, and this is where they are consumed.
 //
 // Prefer this over [Handler.Mount] unless you are deliberately composing into a
 // server whose bind you own.

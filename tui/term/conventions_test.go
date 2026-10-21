@@ -20,6 +20,11 @@ func TestTermSentinelsAreErrsKinds(t *testing.T) {
 
 // A nil option is skipped, as every other constructor in golib skips one.
 func TestANilOptionIsSkipped(t *testing.T) {
+	defer func() {
+		if r := recover(); r != nil {
+			t.Fatalf("a nil option panicked: %v", r)
+		}
+	}()
 	b := newHarness(strings.NewReader(""), &countingWriter{}, nil, WithEnv(noEnv), nil)
 	if b == nil {
 		t.Fatal("no backend")

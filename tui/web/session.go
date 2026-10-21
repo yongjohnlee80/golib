@@ -60,8 +60,7 @@ type Runner interface {
 // [Manager.Create] for where the boundary is.
 // It receives a [SessionInfo] carrying the authenticated identity, the login
 // handoff (if any) and the creating peer. The identity is what makes a per-user
-// App possible at all; an earlier signature took only the Backend and so could
-// not know who the session was for.
+// App possible at all: the Backend alone cannot say who the session is for.
 type AppFactory func(*Backend, *SessionInfo) Runner
 
 // Manager owns session lifecycle: create, attach, detach, evict, shut down.
@@ -346,10 +345,10 @@ func (m *Manager) create(ctx context.Context, id *auth.Identity, h Hello, info S
 	if !h.valid() {
 		return nil, ErrUnmeasuredClient
 	}
-	// Checked BEFORE the lock. An earlier version checked it while holding m.mu
-	// and then called m.drop, which takes m.mu again — a self-deadlock on a path
-	// a cancelled connection reaches routinely. No session exists
-	// yet here, so there is nothing to drop either.
+	// Checked BEFORE the lock: checking it while holding m.mu and then calling
+	// m.drop, which takes m.mu again, would self-deadlock on a path a cancelled
+	// connection reaches routinely. No session exists yet here, so there is
+	// nothing to drop either.
 	if err := ctx.Err(); err != nil {
 		return nil, err
 	}
