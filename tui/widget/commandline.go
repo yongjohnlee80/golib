@@ -25,7 +25,7 @@ import (
 // editor with the match selected behind it.
 type CommandLine struct {
 	on    bool
-	owner tui.Component // the widget it opens over
+	owner ContextOwner // the widget it opens over
 	core  *EditorCore
 
 	modal *Modal          // the open prompt, nil when closed
@@ -52,8 +52,8 @@ type completion struct {
 const commandLineWidth = 64
 
 // NewCommandLine is a prompt over owner running lines on core. It is off until SetEnabled(true).
-// owner must have a Context (a mounted widget) when the prompt opens.
-func NewCommandLine(owner tui.Component, core *EditorCore) *CommandLine {
+// It opens only while owner is mounted.
+func NewCommandLine(owner ContextOwner, core *EditorCore) *CommandLine {
 	l := &CommandLine{owner: owner, core: core}
 	core.SetCommandLine(func() bool { return l.Open("") })
 	core.SetReplaceAsk(l.askReplace)
@@ -87,11 +87,11 @@ func (l *CommandLine) Close() {
 
 // host is the OverlayHost above the owner; ok false before the owner is mounted or with none.
 func (l *CommandLine) host() (*OverlayHost, bool) {
-	ider, ok := l.owner.(interface{ Context() *tui.Context })
-	if !ok || ider.Context() == nil {
+	ctx := ownerContext(l.owner)
+	if ctx == nil {
 		return nil, false
 	}
-	return hostFor[*OverlayHost](ider.Context())
+	return hostFor[*OverlayHost](ctx)
 }
 
 // Open opens the prompt with initial in its field. It reports false, and ':' bubbles on, when it

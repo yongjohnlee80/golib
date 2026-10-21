@@ -17,14 +17,14 @@ type EditorMenu struct {
 	on    bool
 	build func() []MenuItemModel // nil: CoreContextItems(core)
 	open  *popupLayer            // the shown popup, nil when closed
-	owner tui.Component          // the widget it opens over, under that widget's OverlayHost
+	owner ContextOwner           // the widget it opens over, under that widget's OverlayHost
 	core  *EditorCore            // the stock rows' target
 }
 
 // NewEditorMenu is a menu over owner whose stock rows act on core. It is off until
-// SetEnabled(true). owner must have a Context (a mounted widget) when the menu opens. With a nil
+// SetEnabled(true), and opens only while owner is mounted. With a nil
 // core there are no stock rows: the menu shows SetRows's, and a CoreMenuAction's Run is given nil.
-func NewEditorMenu(owner tui.Component, core *EditorCore) *EditorMenu {
+func NewEditorMenu(owner ContextOwner, core *EditorCore) *EditorMenu {
 	return &EditorMenu{owner: owner, core: core}
 }
 
@@ -50,11 +50,11 @@ func (m *EditorMenu) OpenAt(at tui.Point) bool {
 	if !m.on {
 		return false
 	}
-	ider, ok := m.owner.(interface{ Context() *tui.Context })
-	if !ok || ider.Context() == nil {
+	ctx := ownerContext(m.owner)
+	if ctx == nil {
 		return false
 	}
-	host, ok := hostFor[popupHost](ider.Context())
+	host, ok := hostFor[popupHost](ctx)
 	if !ok {
 		return false
 	}
@@ -88,11 +88,10 @@ func (m *EditorMenu) OpenAt(at tui.Point) bool {
 	if err := menu.SetModel(items); err != nil {
 		return false
 	}
-	id := LayerID(fmt.Sprintf("editor.contextmenu.%d", ider.Context().ID()))
+	id := LayerID(fmt.Sprintf("editor.contextmenu.%d", ctx.ID()))
 	// the box on the menu's own surface: a bare one's border cells kept the terminal's default
 	// background, a band of it around the menu in a window
 	box := NewBox(menu, WithStyle(style.New().Background(style.TokenPanel)))
-	ctx := ider.Context()
 	l, err := host.openPopupAt(id, m.owner, box, at, func(reason DismissReason) {
 		if m.open == layer {
 			m.open = nil

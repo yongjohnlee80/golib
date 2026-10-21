@@ -49,6 +49,21 @@ import "github.com/yongjohnlee80/golib/tui"
 //   - Ownership: loop-goroutine-owned. Capability queries and focus delegation must run
 //     on the application event loop goroutine.
 
+// ContextOwner is a widget a menu, popup or prompt opens over: a component with the Context it is
+// mounted under (nil before it is). Every Base-embedding widget is one.
+type ContextOwner interface {
+	tui.Component
+	Context() *tui.Context
+}
+
+// ownerContext is o's Context; nil for a nil o, or before it is mounted.
+func ownerContext(o ContextOwner) *tui.Context {
+	if o == nil {
+		return nil
+	}
+	return o.Context()
+}
+
 // childLister lets non-Container widgets expose their children to
 // focusFirst's walk (Split, Tabs).
 type childLister interface {

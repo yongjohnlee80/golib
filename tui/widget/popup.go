@@ -31,7 +31,7 @@ type anchorReceiver interface {
 // popupHost is what a widget needs from the nearest OverlayHost to open a
 // popup at a point.
 type popupHost interface {
-	openPopupAt(id LayerID, owner tui.Component, panel tui.Component, at tui.Point, onClosed func(DismissReason)) (*popupLayer, error)
+	openPopupAt(id LayerID, owner ContextOwner, panel tui.Component, at tui.Point, onClosed func(DismissReason)) (*popupLayer, error)
 	CloseAnchored(id LayerID, reason DismissReason)
 }
 
@@ -45,14 +45,14 @@ func (fillPolicy) Place(_, viewport tui.Rect, _ tui.Size, _ Placement) tui.Rect 
 // onClosed runs once when the layer leaves the tree, however it left: a row
 // chosen, Escape, a press outside, the owner unmounted (anchor lost), or a
 // replacement under the same id.
-func (h *OverlayHost) openPopupAt(id LayerID, owner tui.Component, panel tui.Component, at tui.Point, onClosed func(DismissReason)) (*popupLayer, error) {
-	ider, ok := owner.(interface{ Context() *tui.Context })
-	if !ok || ider.Context() == nil {
+func (h *OverlayHost) openPopupAt(id LayerID, owner ContextOwner, panel tui.Component, at tui.Point, onClosed func(DismissReason)) (*popupLayer, error) {
+	ctx := ownerContext(owner)
+	if ctx == nil {
 		return nil, ErrAnchorUnusable
 	}
 	p := &popupLayer{host: h, id: id, panel: panel, at: at, onClosed: onClosed,
 		reason: DismissProgrammatic}
-	spec := AnchorSpec{Ref: ider.Context().NodeAnchor(), Pref: Placement{Side: PlacementBelow, Align: PlacementAlignStart}}
+	spec := AnchorSpec{Ref: ctx.NodeAnchor(), Pref: Placement{Side: PlacementBelow, Align: PlacementAlignStart}}
 	if err := h.OpenAnchored(id, p, spec, fillPolicy{}); err != nil {
 		return nil, err
 	}
