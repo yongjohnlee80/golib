@@ -429,6 +429,7 @@ func TestDataTable_RTogglesARowCursorThatYCopiesWhole(t *testing.T) {
 	h, _, dt := dataTable(t, numbered(3), 30, 6)
 	cursorAt := func(x, y int) tui.CellAttrs { return cellAttrs(h, x, y) }
 	h.onLoop(func() {
+		dt.SetStyles(widget.DataTableStyles{Cursor: style.New().Bold(true), CursorBlurred: style.New().Underline(true)})
 		dt.HandleEvent(key('j'))
 		dt.HandleEvent(key('l'))
 	})
