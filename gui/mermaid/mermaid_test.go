@@ -109,6 +109,22 @@ func TestANodesStyleIsDrawn(t *testing.T) {
 	}
 }
 
+// A style's colours are CSS colours as the rest of gui reads them (gui/internal/csscolor): a named
+// colour and any letter case fill and stroke a node, as `style A fill:red` does in an HTMLView.
+func TestANodesStyleReadsNamedColours(t *testing.T) {
+	l, err := lay(t, "flowchart TB\n  A --> B\n  style A fill:red,stroke:Navy", 400)
+	if err != nil {
+		t.Fatal(err)
+	}
+	a := l.nodes[0]
+	if want := (color.NRGBA{R: 255, A: 255}); a.fill != want {
+		t.Errorf("fill:red drew %v, want %v", a.fill, want)
+	}
+	if want := (color.NRGBA{B: 128, A: 255}); a.stroke != want {
+		t.Errorf("stroke:Navy drew %v, want %v", a.stroke, want)
+	}
+}
+
 // A style that fills a node and names no text colour gets the theme's text raised to read on that
 // fill: a pale fill, written for a light page, in a dark theme whose text is light. A style's own
 // color is the author's, kept as written; an unstyled node keeps the theme's text; and a theme
