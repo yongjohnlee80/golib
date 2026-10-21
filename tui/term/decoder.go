@@ -8,6 +8,7 @@ import (
 
 	"github.com/yongjohnlee80/golib/tui"
 	"github.com/yongjohnlee80/golib/tui/internal/vtparse"
+	"github.com/yongjohnlee80/golib/tui/internal/xterm"
 )
 
 // This file maps parser actions onto the core tui event set: legacy CSI/SS3
@@ -65,7 +66,7 @@ type decoder struct {
 	pasteMatch int // bytes of pasteEnd matched so far
 }
 
-var pasteEnd = []byte("\x1b[201~")
+var pasteEnd = []byte(xterm.PasteEnd)
 
 // feedBytes decodes one read chunk. Sequences may split across chunks at any
 // byte boundary.
@@ -212,23 +213,11 @@ func (d *decoder) apcDispatch(a *vtparse.Action) {
 // Ctrl+[ = ESC, no key release — are inherent to this encoding and are
 // exactly what kitty mode removes.
 func ctrlKey(b byte) (tui.KeyEvent, bool) {
-	switch b {
-	case 0x0D:
-		return tui.KeyEvent{Code: tui.KeyEnter}, true
-	case 0x09:
-		return tui.KeyEvent{Code: tui.KeyTab}, true
-	case 0x7F:
-		return tui.KeyEvent{Code: tui.KeyBackspace}, true
-	case 0x1B:
-		return tui.KeyEvent{Code: tui.KeyEscape}, true
-	case 0x00:
-		return tui.KeyEvent{Code: ' ', Mods: tui.ModCtrl}, true
+	if k, ok := xterm.C0Key(b); ok {
+		return tui.KeyEvent{Code: k}, true
 	}
-	switch {
-	case b >= 0x01 && b <= 0x1A: // Ctrl+A .. Ctrl+Z (byte & 0x1F)
-		return tui.KeyEvent{Code: rune('a' + b - 1), Mods: tui.ModCtrl}, true
-	case b >= 0x1C && b <= 0x1F: // Ctrl+\ Ctrl+] Ctrl+^ Ctrl+_
-		return tui.KeyEvent{Code: rune(b | 0x40), Mods: tui.ModCtrl}, true
+	if k, ok := xterm.CtrlKey(b); ok {
+		return tui.KeyEvent{Code: k, Mods: tui.ModCtrl}, true
 	}
 	return tui.KeyEvent{}, false
 }
@@ -249,34 +238,11 @@ func (d *decoder) escDispatch(a *vtparse.Action) {
 }
 
 func ss3Key(final byte) (tui.KeyEvent, bool) {
-	var code rune
-	switch final {
-	case 'A':
-		code = tui.KeyUp
-	case 'B':
-		code = tui.KeyDown
-	case 'C':
-		code = tui.KeyRight
-	case 'D':
-		code = tui.KeyLeft
-	case 'H':
-		code = tui.KeyHome
-	case 'F':
-		code = tui.KeyEnd
-	case 'P':
-		code = tui.KeyF1
-	case 'Q':
-		code = tui.KeyF2
-	case 'R':
-		code = tui.KeyF3
-	case 'S':
-		code = tui.KeyF4
-	case 'M':
-		code = tui.KeyEnter // keypad Enter
-	default:
-		return tui.KeyEvent{}, false
+	if final == xterm.SS3KeypadEnter {
+		return tui.KeyEvent{Code: tui.KeyEnter}, true
 	}
-	return tui.KeyEvent{Code: code}, true
+	k, ok := xterm.LetterKey(final)
+	return tui.KeyEvent{Code: k}, ok
 }
 
 // modsEvent decodes the xterm/kitty modifier parameter at index idx —
@@ -284,11 +250,7 @@ func ss3Key(final byte) (tui.KeyEvent, bool) {
 // positions to tui.Mods — plus kitty's event-type sub-parameter
 // (1 press, 2 repeat, 3 release).
 func modsEvent(a *vtparse.Action, idx int) (tui.Mods, tui.KeyKind) {
-	m := a.Param(idx, 1)
-	if m < 1 {
-		m = 1
-	}
-	mods := tui.Mods(m - 1)
+	mods := xterm.ParamMods(a.Param(idx, 1))
 	kind := tui.KeyPress
 	switch a.Sub(idx, 1, 1) {
 	case 2:
@@ -320,13 +282,15 @@ func (d *decoder) csiDispatch(a *vtparse.Action) {
 	switch a.Final {
 	case 'A', 'B', 'C', 'D', 'H', 'F':
 		mods, kind := modsEvent(a, 1)
-		d.emit(tui.KeyEvent{Kind: kind, Code: navKey(a.Final), Mods: mods})
+		k, _ := xterm.LetterKey(a.Final)
+		d.emit(tui.KeyEvent{Kind: kind, Code: k, Mods: mods})
 	case 'P', 'Q', 'R', 'S':
 		// Modified F1–F4: CSI 1 ; m {P,Q,R,S}. A bare final (no params)
 		// is not key input (CSI R is also the CPR report shape).
 		if a.Param(0, 0) == 1 && len(a.Params) >= 2 {
 			mods, kind := modsEvent(a, 1)
-			d.emit(tui.KeyEvent{Kind: kind, Code: tui.KeyF1 + rune(a.Final-'P'), Mods: mods})
+			k, _ := xterm.LetterKey(a.Final)
+			d.emit(tui.KeyEvent{Kind: kind, Code: k, Mods: mods})
 		}
 	case 'Z': // back-tab
 		mods, kind := modsEvent(a, 1)
@@ -356,60 +320,18 @@ func (d *decoder) csiDispatch(a *vtparse.Action) {
 	}
 }
 
-func navKey(final byte) rune {
-	switch final {
-	case 'A':
-		return tui.KeyUp
-	case 'B':
-		return tui.KeyDown
-	case 'C':
-		return tui.KeyRight
-	case 'D':
-		return tui.KeyLeft
-	case 'H':
-		return tui.KeyHome
-	default: // 'F'
-		return tui.KeyEnd
-	}
-}
-
-// tildeKeys maps the legacy CSI k ~ keycodes
-// (https://invisible-island.net/xterm/ctlseqs/ctlseqs.html).
-var tildeKeys = map[int]rune{
-	1:  tui.KeyHome,
-	2:  tui.KeyInsert,
-	3:  tui.KeyDelete,
-	4:  tui.KeyEnd,
-	5:  tui.KeyPageUp,
-	6:  tui.KeyPageDown,
-	7:  tui.KeyHome,
-	8:  tui.KeyEnd,
-	11: tui.KeyF1,
-	12: tui.KeyF2,
-	13: tui.KeyF3,
-	14: tui.KeyF4,
-	15: tui.KeyF5,
-	17: tui.KeyF6,
-	18: tui.KeyF7,
-	19: tui.KeyF8,
-	20: tui.KeyF9,
-	21: tui.KeyF10,
-	23: tui.KeyF11,
-	24: tui.KeyF12,
-}
-
 func (d *decoder) tildeKey(a *vtparse.Action) {
 	code := a.Param(0, 0)
 	switch code {
-	case 200: // bracketed paste opener: capture until ESC [ 2 0 1 ~
+	case xterm.PasteStartCode: // bracketed paste opener: capture until ESC [ 2 0 1 ~
 		d.pasting = true
 		d.pasteBuf = d.pasteBuf[:0]
 		d.pasteMatch = 0
 		return
-	case 201: // stray terminator outside a paste: drop
+	case xterm.PasteEndCode: // stray terminator outside a paste: drop
 		return
 	}
-	key, ok := tildeKeys[code]
+	key, ok := xterm.TildeKey(code)
 	if !ok {
 		return
 	}
@@ -462,30 +384,21 @@ func (d *decoder) mouse(a *vtparse.Action) {
 	b0 := a.Param(0, 0)
 	x := a.Param(1, 1) - 1
 	y := a.Param(2, 1) - 1
-	var mods tui.Mods
-	if b0&4 != 0 {
-		mods |= tui.ModShift
-	}
-	if b0&8 != 0 {
-		mods |= tui.ModAlt
-	}
-	if b0&16 != 0 {
-		mods |= tui.ModCtrl
-	}
+	mods := xterm.MouseMods(b0)
 	switch {
-	case b0&64 != 0:
+	case b0&xterm.MouseWheelBit != 0:
 		if a.Final != 'M' {
 			return // wheel has no release
 		}
 		d.emit(tui.MouseEvent{
 			Kind:   tui.MouseWheel,
-			Button: tui.WheelUp + tui.MouseButton(b0&3),
+			Button: xterm.WheelOf(b0),
 			X:      x, Y: y, Mods: mods,
 		})
-	case b0&32 != 0:
+	case b0&xterm.MouseMotionBit != 0:
 		d.emit(tui.MouseEvent{
 			Kind:   tui.MouseMotion,
-			Button: mouseButton(b0 & 3),
+			Button: mouseButton(b0),
 			X:      x, Y: y, Mods: mods,
 		})
 	default:
@@ -495,23 +408,16 @@ func (d *decoder) mouse(a *vtparse.Action) {
 		}
 		d.emit(tui.MouseEvent{
 			Kind:   kind,
-			Button: mouseButton(b0 & 3),
+			Button: mouseButton(b0),
 			X:      x, Y: y, Mods: mods,
 		})
 	}
 }
 
+// mouseButton is the button a report's low two bits name; none for 3.
 func mouseButton(b int) tui.MouseButton {
-	switch b {
-	case 0:
-		return tui.MouseLeft
-	case 1:
-		return tui.MouseMiddle
-	case 2:
-		return tui.MouseRight
-	default:
-		return tui.MouseNone
-	}
+	btn, _ := xterm.MouseButtonOf(b & 3)
+	return btn
 }
 
 // --- probe replies ---

@@ -5,6 +5,7 @@ import (
 	"strconv"
 
 	"github.com/yongjohnlee80/golib/tui"
+	"github.com/yongjohnlee80/golib/tui/internal/xterm/sgr"
 )
 
 // The frame emitter:
@@ -200,27 +201,11 @@ func (b *Backend) writeCUP(x, y int) {
 func (b *Backend) writeSGR(a tui.CellAttrs) {
 	buf := &b.buf
 	buf.WriteString("\x1b[0")
-	mask := a.Mask
-	if mask&tui.AttrBold != 0 {
-		buf.WriteString(";1")
-	}
-	if mask&tui.AttrFaint != 0 {
-		buf.WriteString(";2")
-	}
-	if mask&tui.AttrItalic != 0 {
-		buf.WriteString(";3")
-	}
-	if mask&tui.AttrUnderline != 0 {
-		buf.WriteString(";4")
-	}
-	if mask&tui.AttrBlink != 0 {
-		buf.WriteString(";5")
-	}
-	if mask&tui.AttrReverse != 0 {
-		buf.WriteString(";7")
-	}
-	if mask&tui.AttrStrikethrough != 0 {
-		buf.WriteString(";9")
+	for _, at := range sgr.Attrs { // the codes vt reads them with
+		if a.Mask&at.Attr != 0 {
+			buf.WriteByte(';')
+			b.writeInt(at.On)
+		}
 	}
 	b.writeColor(a.FG, false)
 	b.writeColor(a.BG, true)

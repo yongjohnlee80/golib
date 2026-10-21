@@ -6,6 +6,7 @@ import (
 	"unicode"
 
 	"github.com/yongjohnlee80/golib/tui"
+	"github.com/yongjohnlee80/golib/tui/internal/xterm"
 	"github.com/yongjohnlee80/golib/tui/vt"
 )
 
@@ -31,25 +32,16 @@ func encodeKey(k tui.KeyEvent, m vt.Modes) []byte {
 	}
 
 	var b []byte
-	switch k.Code {
-	case tui.KeyEnter:
-		b = []byte{'\r'}
-	case tui.KeyTab:
-		if shift {
-			return []byte("\x1b[Z")
-		}
-		b = []byte{'\t'}
-	case tui.KeyBackspace:
-		if ctrl {
-			b = []byte{0x08}
-		} else {
-			b = []byte{0x7f}
-		}
-	case tui.KeyEscape:
-		b = []byte{0x1b}
+	switch c0, isC0 := xterm.C0Byte(k.Code); {
+	case k.Code == tui.KeyTab && shift:
+		return []byte("\x1b[Z")
+	case k.Code == tui.KeyBackspace && ctrl:
+		b = []byte{0x08}
+	case isC0: // Enter, Tab, Backspace, Escape
+		b = []byte{c0}
 	default:
 		if ctrl {
-			c, ok := ctrlByte(k.Code)
+			c, ok := xterm.CtrlByte(k.Code)
 			if !ok {
 				return nil
 			}
@@ -74,15 +66,13 @@ func encodeKey(k tui.KeyEvent, m vt.Modes) []byte {
 // and a text key with Ctrl or Alt (Ctrl+i is not Tab, Alt+x is not Escape
 // then x). It returns nil for every other key, which keeps its legacy bytes.
 func kittyKey(k tui.KeyEvent, mods tui.Mods) []byte {
-	var code rune
+	code := k.Code // tui's key codes are kitty's own: Escape 27, Enter 13, Tab 9, Backspace 127
 	switch k.Code {
 	case tui.KeyEscape:
-		code = 27
 	case tui.KeyEnter, tui.KeyTab, tui.KeyBackspace:
 		if mods == 0 {
 			return nil
 		}
-		code = map[rune]rune{tui.KeyEnter: 13, tui.KeyTab: 9, tui.KeyBackspace: 127}[k.Code]
 	default:
 		// Shift alone types the shifted text; any other modifier makes the key ambiguous.
 		if mods&^tui.ModShift == 0 || k.Code < 0x20 || k.Code >= 0xE000 {
@@ -91,76 +81,17 @@ func kittyKey(k tui.KeyEvent, mods tui.Mods) []byte {
 		// The key's own code, unshifted: Ctrl+Shift+A is a with Ctrl and Shift.
 		code = unicode.ToLower(k.Code)
 	}
-	if mod := kittyMod(mods); mod > 1 {
+	if mod := xterm.KittyModParam(mods); mod > 1 {
 		return []byte("\x1b[" + strconv.Itoa(int(code)) + ";" + strconv.Itoa(mod) + "u")
 	}
 	return []byte("\x1b[" + strconv.Itoa(int(code)) + "u")
 }
 
-// kittyMod is the kitty protocol's modifier parameter: 1 + shift(1) + alt(2) + ctrl(4) +
-// super(8) + hyper(16) + meta(32), which are tui.Mods's own bits in the same order. It is
-// not xtermMod: xterm counts meta as 8, where kitty puts super.
-func kittyMod(m tui.Mods) int {
-	const kitty = tui.ModShift | tui.ModAlt | tui.ModCtrl | tui.ModSuper | tui.ModHyper | tui.ModMeta
-	return 1 + int(m&kitty)
-}
-
-// ctrlByte is the C0 byte Ctrl+key sends.
-func ctrlByte(r rune) (byte, bool) {
-	switch {
-	case r >= 'a' && r <= 'z':
-		return byte(r - 'a' + 1), true
-	case r >= 'A' && r <= 'Z':
-		return byte(r - 'A' + 1), true
-	}
-	switch r {
-	case ' ', '@', '2':
-		return 0x00, true
-	case '[', '3':
-		return 0x1b, true
-	case '\\', '4':
-		return 0x1c, true
-	case ']', '5':
-		return 0x1d, true
-	case '^', '6':
-		return 0x1e, true
-	case '_', '-', '/', '7':
-		return 0x1f, true
-	case '?', '8':
-		return 0x7f, true
-	}
-	return 0, false
-}
-
-// xtermMod is the modifier parameter xterm appends: 1 + shift(1) + alt(2) +
-// ctrl(4) + meta(8). 1 means none.
-func xtermMod(m tui.Mods) int {
-	n := 1
-	if m&tui.ModShift != 0 {
-		n += 1
-	}
-	if m&tui.ModAlt != 0 {
-		n += 2
-	}
-	if m&tui.ModCtrl != 0 {
-		n += 4
-	}
-	if m&tui.ModMeta != 0 {
-		n += 8
-	}
-	return n
-}
-
 // functionKey encodes cursor, editing and function keys, or returns nil.
 func functionKey(code rune, mods tui.Mods, m vt.Modes) []byte {
-	mod := xtermMod(mods)
+	mod := xterm.ModParam(mods)
 	// Keys sent as CSI/SS3 + a final letter.
-	letter := map[rune]byte{
-		tui.KeyUp: 'A', tui.KeyDown: 'B', tui.KeyRight: 'C', tui.KeyLeft: 'D',
-		tui.KeyHome: 'H', tui.KeyEnd: 'F',
-		tui.KeyF1: 'P', tui.KeyF2: 'Q', tui.KeyF3: 'R', tui.KeyF4: 'S',
-	}
-	if f, ok := letter[code]; ok {
+	if f, ok := xterm.KeyLetter(code); ok {
 		if mod > 1 {
 			return []byte("\x1b[1;" + strconv.Itoa(mod) + string(f))
 		}
@@ -171,12 +102,7 @@ func functionKey(code rune, mods tui.Mods, m vt.Modes) []byte {
 		return []byte{0x1b, '[', f}
 	}
 	// Keys sent as CSI n ~.
-	tilde := map[rune]int{
-		tui.KeyInsert: 2, tui.KeyDelete: 3, tui.KeyPageUp: 5, tui.KeyPageDown: 6,
-		tui.KeyF5: 15, tui.KeyF6: 17, tui.KeyF7: 18, tui.KeyF8: 19,
-		tui.KeyF9: 20, tui.KeyF10: 21, tui.KeyF11: 23, tui.KeyF12: 24,
-	}
-	if n, ok := tilde[code]; ok {
+	if n, ok := xterm.TildeCode(code); ok {
 		if mod > 1 {
 			return []byte("\x1b[" + strconv.Itoa(n) + ";" + strconv.Itoa(mod) + "~")
 		}
@@ -186,13 +112,13 @@ func functionKey(code rune, mods tui.Mods, m vt.Modes) []byte {
 }
 
 // pasteEndMarker ends a bracketed paste (mode 2004).
-const pasteEndMarker = "\x1b[201~"
+const pasteEndMarker = xterm.PasteEnd
 
 // encodePaste brackets a paste when the program asked for it (2004), and
 // otherwise sends it as typed, with newlines as Enter.
 func encodePaste(text string, m vt.Modes) []byte {
 	if m.BracketedPaste {
-		return []byte("\x1b[200~" + withoutPasteEnd(text) + pasteEndMarker)
+		return []byte(xterm.PasteStart + withoutPasteEnd(text) + pasteEndMarker)
 	}
 	return []byte(strings.ReplaceAll(text, "\n", "\r"))
 }
@@ -230,37 +156,25 @@ func (t *mouseTracker) encode(e tui.MouseEvent, m vt.Modes) []byte {
 	release := false
 	switch e.Kind {
 	case tui.MousePress:
-		switch e.Button {
-		case tui.MouseLeft:
-			b = 0
-		case tui.MouseMiddle:
-			b = 1
-		case tui.MouseRight:
-			b = 2
-		default:
+		code, ok := xterm.MouseButtonCode(e.Button)
+		if !ok {
 			return nil
 		}
+		b = code
 		t.held = e.Button
 	case tui.MouseRelease:
 		if m.Mouse == vt.MouseX10 {
 			return nil
 		}
 		release = true
-		b = map[tui.MouseButton]int{tui.MouseLeft: 0, tui.MouseMiddle: 1, tui.MouseRight: 2}[t.held]
+		b, _ = xterm.MouseButtonCode(t.held) // none held: 0, as before
 		t.held = tui.MouseNone
 	case tui.MouseWheel:
-		switch e.Button {
-		case tui.WheelUp:
-			b = 64
-		case tui.WheelDown:
-			b = 65
-		case tui.WheelLeft:
-			b = 66
-		case tui.WheelRight:
-			b = 67
-		default:
+		code, ok := xterm.WheelCode(e.Button)
+		if !ok {
 			return nil
 		}
+		b = code
 		if m.Mouse == vt.MouseX10 {
 			return nil
 		}
@@ -271,20 +185,16 @@ func (t *mouseTracker) encode(e tui.MouseEvent, m vt.Modes) []byte {
 		default:
 			return nil
 		}
-		b = 32 + map[tui.MouseButton]int{tui.MouseNone: 3, tui.MouseLeft: 0, tui.MouseMiddle: 1, tui.MouseRight: 2}[t.held]
+		held, ok := xterm.MouseButtonCode(t.held)
+		if !ok {
+			held = xterm.MouseNoButton
+		}
+		b = xterm.MouseMotionBit + held
 	default:
 		return nil
 	}
 	if m.Mouse != vt.MouseX10 {
-		if e.Mods&tui.ModShift != 0 {
-			b += 4
-		}
-		if e.Mods&(tui.ModAlt|tui.ModMeta) != 0 {
-			b += 8
-		}
-		if e.Mods&tui.ModCtrl != 0 {
-			b += 16
-		}
+		b += xterm.MouseModBits(e.Mods)
 	}
 	x, y := e.X+1, e.Y+1
 	if m.MouseSGR {
@@ -295,7 +205,7 @@ func (t *mouseTracker) encode(e tui.MouseEvent, m vt.Modes) []byte {
 		return []byte("\x1b[<" + strconv.Itoa(b) + ";" + strconv.Itoa(x) + ";" + strconv.Itoa(y) + string(final))
 	}
 	if release {
-		b = 3 | (b &^ 3)
+		b = xterm.MouseNoButton | (b &^ 3)
 	}
 	if x > 223 || y > 223 {
 		return nil // the legacy encoding cannot say it
