@@ -150,6 +150,24 @@ func CellCovered(c Canvas, col, row int) bool {
 	return ok && cc.CellCovered(col, row)
 }
 
+// Palette is a [Canvas] that draws in a window's theme: Indexed is that theme's colour for a
+// 256-colour index ([Theme.Indexed]). A view resolving a palette colour asks [PaletteOf], so a
+// theme set with WithTheme colours the view as it colours the cells beside it.
+type Palette interface {
+	Indexed(i uint8) color.NRGBA
+}
+
+// PaletteOf is the palette c draws with: c's own when it is a [Palette], else the default theme's.
+func PaletteOf(c Canvas) Palette {
+	if p, ok := c.(Palette); ok {
+		return p
+	}
+	return &defaultPalette
+}
+
+// defaultPalette is DefaultTheme, for a canvas that knows no window's theme.
+var defaultPalette = DefaultTheme()
+
 // OpenCellColors is the colours of the first cell of r, row by row, that nothing covers, and
 // whether r has one. A view takes its colours from it rather than from a fixed cell, which a
 // raised panel may cover: the panel's colours would become the view's. With none open the view is
@@ -447,6 +465,9 @@ func (c *gioCanvas) WindowMoveArea(r Rect) {
 	system.ActionInputOp(system.ActionMove).Add(c.ops)
 	st.Pop()
 }
+
+// Indexed is the window theme's colour for 256-colour index i (Palette).
+func (c *gioCanvas) Indexed(i uint8) color.NRGBA { return c.r.theme.Indexed(i) }
 
 // CellColors returns the foreground and background colors of the cell at grid (col, row).
 func (c *gioCanvas) CellColors(col, row int) (fg, bg color.NRGBA) {
