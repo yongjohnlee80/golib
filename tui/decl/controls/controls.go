@@ -125,7 +125,7 @@ func buildTextField(b tuidecl.Build) (tui.Component, []string, error) {
 	}
 	var placeholder tuidecl.UIText
 	var echo string
-	consumed, err := tuidecl.ReadProps(b.Props, map[string]tuidecl.Field{
+	consumed, err := b.ReadProps(map[string]tuidecl.Field{
 		"placeholderText": tuidecl.UITextField(&placeholder),
 		"echoMode":        tuidecl.EnumField(&echo, EchoMode),
 	})
@@ -197,7 +197,7 @@ func buildPopup(b tuidecl.Build) (tui.Component, []string, error) {
 		return nil, nil, errors.New("a Popup holds exactly one child, its content")
 	}
 	var modal, dim bool
-	consumed, err := tuidecl.ReadProps(b.Props, map[string]tuidecl.Field{
+	consumed, err := b.ReadProps(map[string]tuidecl.Field{
 		"modal": tuidecl.BoolField(&modal),
 		"dim":   tuidecl.BoolField(&dim),
 	})

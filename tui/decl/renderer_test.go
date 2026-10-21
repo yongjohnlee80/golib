@@ -72,7 +72,7 @@ func TestAConsumersRendererSpecReachesTheStylesEditor(t *testing.T) {
 	zoom := tuidecl.Type{Name: "ZoomRenderer", Ctor: []string{"level"},
 		Build: func(b tuidecl.Build) (tui.Component, []string, error) {
 			var level float64
-			consumed, err := tuidecl.ReadProps(b.Props, map[string]tuidecl.Field{"level": tuidecl.NumberField(&level)})
+			consumed, err := b.ReadProps(map[string]tuidecl.Field{"level": tuidecl.NumberField(&level)})
 			return tuidecl.RendererNode(zoomSpec{Level: int(level)}), consumed, err
 		}}
 	doc := tuidecl.LayoutSource("main.qml", []byte("import tui 1.0\nWindow { Editor { ZoomRenderer { level: 3 } } }"))
