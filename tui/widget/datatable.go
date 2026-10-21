@@ -46,8 +46,7 @@ type DataTable struct {
 	menuHit   TableHit
 	styles    DataTableStyles
 	emptyText string
-	theme     *style.Theme // the surface's at the last paint, for a pixel layout's colours
-	top, left int          // the cell layout's first row shown, first field shown
+	top, left int // the cell layout's first row shown, first field shown
 	w, h      int
 }
 
@@ -152,9 +151,10 @@ func (t *DataTable) Styles() DataTableStyles { return t.styles }
 // EmptyText is what an empty table shows.
 func (t *DataTable) EmptyText() string { return t.emptyText }
 
-// Theme is the tui theme of the surface the table last painted on: what a pixel layout takes its
-// accent and muted colours from. nil before the first paint.
-func (t *DataTable) Theme() *style.Theme { return t.theme }
+// Theme is the App's tui theme, as frames are drawn with it now: what a pixel layout takes its accent
+// and muted colours from. nil while the table is not mounted. Read from the App, not kept from the
+// last paint, so Render stores nothing and a SetTheme is seen before the next frame.
+func (t *DataTable) Theme() *style.Theme { return t.Context().Theme() }
 
 // Core is the table's behaviour.
 func (t *DataTable) Core() *TableCore { return t.core }
@@ -401,7 +401,6 @@ func (t *DataTable) Layout(c tui.Constraints) tui.Size {
 // backend: the cells under it are filled with the rows' colours, which the native view reads as
 // its own.
 func (t *DataTable) Render(s tui.Surface) {
-	t.theme = s.Theme()
 	sz := s.Size()
 	if sz.W <= 0 || sz.H <= 0 {
 		return
