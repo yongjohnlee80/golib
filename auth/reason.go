@@ -3,7 +3,8 @@ package auth
 import (
 	"errors"
 	"fmt"
-	"strings"
+
+	"github.com/yongjohnlee80/golib/logger"
 )
 
 // Reason is an error whose text is fixed at COMPILE TIME and is therefore safe
@@ -81,16 +82,5 @@ func clampDetail(s string) string {
 }
 
 // sanitize replaces control characters and bounds length, so a value that
-// reached a rendered field cannot inject a line into a log.
-func sanitize(s string) string {
-	const maxField = 256
-	if len(s) > maxField {
-		s = s[:maxField] + "…"
-	}
-	return strings.Map(func(r rune) rune {
-		if r < 0x20 || r == 0x7f {
-			return '?'
-		}
-		return r
-	}, s)
-}
+// reached a rendered field cannot inject a line into a log (logger.Safe).
+func sanitize(s string) string { return logger.Safe(s, 256) }
