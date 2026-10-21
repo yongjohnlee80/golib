@@ -25,7 +25,7 @@ const (
 func (c *EditorCore) opTarget(act Action, count int, hadCount bool) (to taPos, kind motionKind, ok bool) {
 	b := &c.buf
 	ln, col := b.ln, b.col
-	last := len(b.lines) - 1
+	last := len(b.textLines) - 1
 	lineLen := func(l int) int { return len(b.lineClusters(l)) }
 	switch act {
 	case ActLeft:
@@ -64,7 +64,7 @@ func (c *EditorCore) opTarget(act Action, count int, hadCount bool) (to taPos, k
 		return taPos{last, 0}, linewise, true
 	case ActParaForward:
 		p := c.paraForward(count)
-		if p == last && strings.TrimSpace(b.lines[p]) != "" {
+		if p == last && strings.TrimSpace(b.textLines[p]) != "" {
 			return taPos{p, lineLen(p)}, exclusive, true // the last paragraph: to the text's end
 		}
 		return taPos{p, 0}, exclusive, p != ln
@@ -96,7 +96,7 @@ func (c *EditorCore) opTarget(act Action, count int, hadCount bool) (to taPos, k
 		return c.findTarget(g, count, true)
 	case ActMatchPair:
 		if hadCount { // N%
-			return taPos{max(0, min((count*len(b.lines)+99)/100-1, last)), 0}, linewise, true
+			return taPos{max(0, min((count*len(b.textLines)+99)/100-1, last)), 0}, linewise, true
 		}
 		l, cc, found := c.matchPairPos()
 		return taPos{l, cc}, inclusive, found
@@ -110,7 +110,7 @@ func (c *EditorCore) opTarget(act Action, count int, hadCount bool) (to taPos, k
 // gotoLineTarget is gg's target for an operator: line count when one was typed, else the first.
 func (c *EditorCore) gotoLineTarget(count int, hadCount bool) taPos {
 	if hadCount {
-		return taPos{min(count-1, len(c.buf.lines)-1), 0}
+		return taPos{min(count-1, len(c.buf.textLines)-1), 0}
 	}
 	return taPos{}
 }
@@ -204,7 +204,7 @@ func (c *EditorCore) applyOp(op Action, r opRange) {
 		}
 		text := b.textIn(r.lo, r.hiEx)
 		if r.lines {
-			text = strings.Join(b.lines[r.lo.ln:r.hiEx.ln+1], "\n")
+			text = strings.Join(b.textLines[r.lo.ln:r.hiEx.ln+1], "\n")
 		}
 		c.regYank(text, r.lines)
 		if r.lines {
@@ -229,13 +229,11 @@ func (c *EditorCore) applyOp(op Action, r opRange) {
 	case ActChangePrefix:
 		c.beginGroup()
 		if r.lines {
-			lines := b.lines[r.lo.ln : r.hiEx.ln+1]
+			lines := b.textLines[r.lo.ln : r.hiEx.ln+1]
 			c.regDelete(strings.Join(lines, "\n"), true)
 			indent := leadingBlanks(lines[0])
-			rest := append(append(append([]string{}, b.lines[:r.lo.ln]...), indent), b.lines[r.hiEx.ln+1:]...)
-			b.lines = rest
-			b.touch(r.lo.ln)
-			b.log.splice(r.lo.ln+1, r.hiEx.ln-r.lo.ln, 0) // the first line stays, emptied (Vim's cc)
+			b.setLine(r.lo.ln, indent) // the first line stays, emptied (Vim's cc)
+			b.removeLines(r.lo.ln+1, r.hiEx.ln+1)
 			b.ln, b.col = r.lo.ln, len(clusters(indent))
 		} else {
 			c.regDelete(b.textIn(r.lo, r.hiEx), false)

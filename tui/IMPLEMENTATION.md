@@ -75,7 +75,7 @@ in the same change. Never add a second copy "for now".
 | Scrims and overlay layering | one scrim and one layer-tier capability on `OverlayHost` |
 | Floating placement (rect, percent, clamp) | `Float.place` / `fixedRect`; the managed (WindowMod) layout adds only its work area and maximize |
 | Text viewport (scroll, reveal, caret placement, paint loop) | one text viewport shared by TextInput, TextArea, Editor, CommandLine |
-| Buffer edits | the primitives in `textbuffer.go`; no code writes `.lines` elsewhere |
+| Buffer edits | the line primitives in `textbuffer.go` (`setLine`, `insertLines`, `removeLines`, `replaceLines`, `setLines`); no other file writes `.textLines` (internal/audit) |
 | Pointer policy, focus state, publishing | `widget.Base` |
 | Fatal construction errors | `fatalOf` → `errs.Fatal` |
 | Parsing (expressions, SQL-ish where/order) | golib `parse` first |

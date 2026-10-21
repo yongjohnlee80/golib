@@ -7,7 +7,7 @@ import (
 )
 
 func (c *EditorCore) indentDecision(op indent.Operation, column int) indent.Decision {
-	line := c.buf.lines[c.buf.ln]
+	line := c.buf.textLines[c.buf.ln]
 	d := indent.Decision{}
 	if !c.autoIndent || c.readOnly {
 		return d
@@ -17,7 +17,7 @@ func (c *EditorCore) indentDecision(op indent.Operation, column int) indent.Deci
 		return d
 	}
 	known, incoming := c.buf.ln == 0, highlight.State(0)
-	valid := c.hl.text.verifiedFrom(c.buf.lines, c.takeHighlightChanged)
+	valid := c.hl.text.verifiedFrom(c.buf.textLines, c.takeHighlightChanged)
 	if c.buf.ln > 0 && valid >= c.buf.ln && len(c.hl.text.lines) >= c.buf.ln {
 		known, incoming = true, c.hl.text.lines[c.buf.ln-1].out
 	}
@@ -44,7 +44,7 @@ func (c *EditorCore) insertIndentedNewline() {
 	d := c.indentDecision(indent.Newline, c.byteColumn())
 	text := "\n" + d.Prefix
 	if d.SplitClosing {
-		right := b.lines[b.ln][c.byteColumn():]
+		right := b.textLines[b.ln][c.byteColumn():]
 		spaces := len(indent.Leading(right))
 		if spaces > 0 {
 			b.deleteRegion(taPos{b.ln, b.col}, taPos{b.ln, b.col + spaces})
@@ -64,12 +64,11 @@ func (c *EditorCore) alignClosing() {
 		return
 	}
 	b := &c.buf
-	old := indent.Leading(b.lines[b.ln])
+	old := indent.Leading(b.textLines[b.ln])
 	d := c.indentDecision(indent.Closing, c.byteColumn())
 	if old == d.Prefix {
 		return
 	}
-	b.lines[b.ln] = d.Prefix + b.lines[b.ln][len(old):]
+	b.setLine(b.ln, d.Prefix+b.textLines[b.ln][len(old):])
 	b.col = max(0, b.col+len(clusters(d.Prefix))-len(clusters(old)))
-	b.touch(b.ln)
 }

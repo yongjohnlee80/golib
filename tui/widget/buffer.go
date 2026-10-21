@@ -21,7 +21,7 @@ import (
 //	             └── places           where each editor that has shown it left its cursor
 //
 // bufferState and bufferText are data only, with no methods: an EditorCore embeds the shown
-// buffer's bufferState, and its textBuffer embeds the text, so c.hist, c.marks, c.rev and c.buf.lines
+// buffer's bufferState, and its textBuffer embeds the text, so c.hist, c.marks, c.rev and c.buf.textLines
 // read as they did when the core held them itself, and no method is ever promoted.
 //
 // An edit made through any editor is logged once in the buffer, and followEdits drains it once:
@@ -134,7 +134,7 @@ func BufferSourceFactory(factory func() highlight.Source) BufferOption {
 func BufferName(doc string) BufferOption { return func(b *Buffer) { b.s.jumpDoc = doc } }
 
 // Value returns the text, lines joined with newlines.
-func (b *Buffer) Value() string { return strings.Join(b.s.text.lines, "\n") }
+func (b *Buffer) Value() string { return strings.Join(b.s.text.textLines, "\n") }
 
 // Modified reports whether the text differs from the saved revision (MarkSaved).
 func (b *Buffer) Modified() bool { return b.s.rev != b.s.savedRev }

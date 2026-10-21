@@ -186,10 +186,9 @@ func (c *EditorCore) blockRemove(v vblock) {
 	b := &c.buf
 	for ln := v.lo; ln <= v.hi; ln++ {
 		if l := v.line(b.lineClusters(ln)); l.from < l.to {
-			b.lines[ln] = l.deleted()
+			b.setLine(ln, l.deleted())
 		}
 	}
-	b.touch(v.lo)
 	c.blockTopLeftAfterDelete(v)
 }
 
@@ -219,10 +218,9 @@ func (c *EditorCore) blockReplace(v vblock, char string) {
 			continue
 		}
 		in := min(l.width, l.rightCel) - l.leftCell
-		b.lines[ln] = strings.Join(l.cs[:l.from], "") + spaces(l.startOut) + strings.Repeat(char, in/cw) +
-			spaces(in%cw) + spaces(l.endOut) + strings.Join(l.cs[l.to:], "")
+		b.setLine(ln, strings.Join(l.cs[:l.from], "")+spaces(l.startOut)+strings.Repeat(char, in/cw)+
+			spaces(in%cw)+spaces(l.endOut)+strings.Join(l.cs[l.to:], ""))
 	}
-	b.touch(v.lo)
 	c.blockTopLeftAfterDelete(v)
 	c.edited()
 }
@@ -237,10 +235,9 @@ func (c *EditorCore) blockCase(v vblock, op Action) {
 		if l.inFrom >= l.inTo {
 			continue
 		}
-		b.lines[ln] = strings.Join(l.cs[:l.inFrom], "") + f(strings.Join(l.cs[l.inFrom:l.inTo], "")) +
-			strings.Join(l.cs[l.inTo:], "")
+		b.setLine(ln, strings.Join(l.cs[:l.inFrom], "")+f(strings.Join(l.cs[l.inFrom:l.inTo], ""))+
+			strings.Join(l.cs[l.inTo:], ""))
 	}
-	b.touch(v.lo)
 	c.blockTopLeft(v)
 	c.edited()
 }
@@ -254,9 +251,8 @@ func (c *EditorCore) blockShift(v vblock, dir, n int) {
 	c.beginGroup()
 	for ln := v.lo; ln <= v.hi; ln++ {
 		before, after := splitAt(b.lineClusters(ln), v.left, false)
-		b.lines[ln] = before + shiftLine(after, unit, dir)
+		b.setLine(ln, before+shiftLine(after, unit, dir))
 	}
-	b.touch(v.lo)
 	c.blockTopLeft(v)
 	c.edited()
 }
@@ -294,9 +290,8 @@ func (c *EditorCore) blockPut(e regEntry, after bool, count int) {
 	topCol := 0
 	for i, p := range pieces {
 		ln := top + i
-		if ln >= len(b.lines) {
-			b.lines = append(b.lines, "")
-			b.log.splice(ln, 0, 1)
+		if ln >= len(b.textLines) {
+			b.insertLines(ln, "")
 		}
 		before, rest, short := putSplit(b.lineClusters(ln), col)
 		pad := spaces(e.width - blockCells(p))
@@ -307,12 +302,11 @@ func (c *EditorCore) blockPut(e regEntry, after bool, count int) {
 				mid.WriteString(pad)
 			}
 		}
-		b.lines[ln] = before + mid.String() + rest
+		b.setLine(ln, before+mid.String()+rest)
 		if i == 0 {
 			topCol = len(clusters(before))
 		}
 	}
-	b.touch(top)
 	b.ln, b.col = top, topCol
 	b.desired = -1
 	c.clampNormal()
@@ -365,8 +359,7 @@ func (c *EditorCore) blockStartInsert(v vblock, appending bool) {
 		bi.at, bi.pad = v.right, true
 		if first.width < v.right {
 			c.beginGroup() // the padding, and what is typed after it, are one step
-			b.lines[v.lo] += spaces(v.right - first.width)
-			b.touch(v.lo)
+			b.setLine(v.lo, b.textLines[v.lo]+spaces(v.right-first.width))
 			b.col = len(b.lineClusters(v.lo))
 			padded = true
 			c.edited()
@@ -409,7 +402,7 @@ func (c *EditorCore) blockInsertDone() {
 	bi := c.blockIns
 	c.blockIns = nil
 	b := &c.buf
-	if bi == nil || b.ln != bi.ln || bi.ln >= len(b.lines) {
+	if bi == nil || b.ln != bi.ln || bi.ln >= len(b.textLines) {
 		return
 	}
 	cs := b.lineClusters(bi.ln)
@@ -418,18 +411,17 @@ func (c *EditorCore) blockInsertDone() {
 		return
 	}
 	text := strings.Join(cs[bi.col:bi.col+grown], "")
-	for ln := bi.ln + 1; ln <= min(bi.last, len(b.lines)-1); ln++ {
+	for ln := bi.ln + 1; ln <= min(bi.last, len(b.textLines)-1); ln++ {
 		lcs := b.lineClusters(ln)
 		if bi.at < 0 {
-			b.lines[ln] += text
+			b.setLine(ln, b.textLines[ln]+text)
 			continue
 		}
 		before, after := splitAt(lcs, bi.at, bi.pad)
 		if !bi.pad && blockCells(before) < bi.at {
 			continue
 		}
-		b.lines[ln] = before + text + after
+		b.setLine(ln, before+text+after)
 	}
-	b.touch(bi.ln)
 	c.edited()
 }

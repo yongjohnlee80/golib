@@ -143,7 +143,7 @@ func (c *EditorCore) blockApply(op Action, v vblock, count int, char string) {
 // the cursor, cut to the text.
 func (c *EditorCore) visualReplay(v visualRedo) {
 	b := &c.buf
-	last := min(b.ln+v.nLine-1, len(b.lines)-1)
+	last := min(b.ln+v.nLine-1, len(b.textLines)-1)
 	if v.block {
 		left, _ := c.cellSpan(taPos{b.ln, b.col})
 		c.blockApply(v.op, vblock{lo: b.ln, hi: last, left: left, right: left + v.cols, toEnd: v.toEnd}, v.count, v.char)
@@ -180,10 +180,9 @@ func (c *EditorCore) replaceSelection(r opRange, char string) {
 			}
 		}
 		if from < to {
-			b.lines[ln] = strings.Join(cs[:from], "") + strings.Repeat(char, to-from) + strings.Join(cs[to:], "")
+			b.setLine(ln, strings.Join(cs[:from], "")+strings.Repeat(char, to-from)+strings.Join(cs[to:], ""))
 		}
 	}
-	b.touch(r.lo.ln)
 	b.ln, b.col = r.lo.ln, r.lo.col
 	b.anchor = nil
 	c.clampNormal()

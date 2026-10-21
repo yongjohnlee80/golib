@@ -67,7 +67,7 @@ func (c *EditorCore) jumpStep(back bool, count int) {
 	if !l.Commit(step) {
 		return
 	}
-	ln := min(max(step.To.Line, 0), len(c.buf.lines)-1)
+	ln := min(max(step.To.Line, 0), len(c.buf.textLines)-1)
 	c.hist.close()
 	c.buf.desired = -1
 	c.buf.moveCursor(ln, c.buf.clampCol(ln, step.To.Col), false)

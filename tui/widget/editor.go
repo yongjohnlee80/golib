@@ -215,7 +215,7 @@ func (l *cellLayout) PageLines() int { return max(l.h, 1) }
 // VisibleLines is the lines from the top one to the last whose first row is in the view: the top
 // line always starts at the view's first row, so it is never partly off.
 func (l *cellLayout) VisibleLines() (first, last int) {
-	lines := l.ed.core.buf.lines
+	lines := l.ed.core.buf.textLines
 	if l.h <= 0 {
 		return l.ed.core.buf.ln, l.ed.core.buf.ln
 	}
@@ -232,7 +232,7 @@ func (l *cellLayout) VisibleLines() (first, last int) {
 // ScrollLines moves the top line by delta, down no further than the top that shows the last
 // line at the view's bottom.
 func (l *cellLayout) ScrollLines(delta int) {
-	lines := l.ed.core.buf.lines
+	lines := l.ed.core.buf.textLines
 	if l.h <= 0 {
 		return
 	}
@@ -250,7 +250,7 @@ func (l *cellLayout) Measure(s string) int { return l.ed.width(s) }
 func (l *cellLayout) RowCount(line int) int { return l.ed.rowsOfLine(line) }
 
 func (l *cellLayout) RowOf(line, col int) (row, x int) {
-	lines, v := l.ed.core.buf.lines, l.ed.view()
+	lines, v := l.ed.core.buf.textLines, l.ed.view()
 	if v.wrap == WrapNone {
 		return 0, cellsBefore(clusters(lines[line]), col, v.measure)
 	}
@@ -258,7 +258,7 @@ func (l *cellLayout) RowOf(line, col int) (row, x int) {
 }
 
 func (l *cellLayout) ColAt(line, row, x int) int {
-	lines, v := l.ed.core.buf.lines, l.ed.view()
+	lines, v := l.ed.core.buf.textLines, l.ed.view()
 	cs := clusters(lines[line])
 	rows := [][2]int{{0, len(cs)}}
 	if v.wrap != WrapNone {
@@ -387,7 +387,7 @@ func (e *Editor) gutterWidth() int {
 	if !e.cells.numbers {
 		return 0
 	}
-	return max(len(fmt.Sprint(len(e.core.buf.lines))), 4) + gutterGap
+	return max(len(fmt.Sprint(len(e.core.buf.textLines))), 4) + gutterGap
 }
 
 // WithEditorWrap selects WrapNone (default) or WrapSoft.
@@ -741,18 +741,18 @@ func (e *Editor) HandleEvent(ev tui.Event) bool {
 
 // --- viewport & rendering (TextArea discipline) ------------------------------
 
-func (e *Editor) wrapWidth() int { return wrapUsableWidth(e.core.buf.lines, e.view()) }
+func (e *Editor) wrapWidth() int { return wrapUsableWidth(e.core.buf.textLines, e.view()) }
 
-func (e *Editor) scrollable() bool { return wrapScrollable(e.core.buf.lines, e.view()) }
+func (e *Editor) scrollable() bool { return wrapScrollable(e.core.buf.textLines, e.view()) }
 
-func (e *Editor) rowsOfLine(i int) int { return wrapRowsOfLine(e.core.buf.lines, i, e.view()) }
+func (e *Editor) rowsOfLine(i int) int { return wrapRowsOfLine(e.core.buf.textLines, i, e.view()) }
 
 // ensureVisible scrolls the cursor into the viewport.
 func (e *Editor) ensureVisible() { e.reveal(e.core.buf.ln, e.core.buf.col) }
 
 // reveal scrolls (ln, col) into the viewport.
 func (e *Editor) reveal(ln, col int) {
-	l, lines := &e.cells, e.core.buf.lines
+	l, lines := &e.cells, e.core.buf.textLines
 	if l.h <= 0 || l.w <= 0 {
 		return
 	}
@@ -807,11 +807,11 @@ func (e *Editor) Cursor() (int, int, bool) {
 		return l.gutter + max(x, 0), max(y, 0), true
 	}
 	y := 0
-	v := e.view().settled(b.lines)
+	v := e.view().settled(b.textLines)
 	for i := l.top; i < b.ln; i++ {
-		y += wrapRowsOfLine(b.lines, i, v)
+		y += wrapRowsOfLine(b.textLines, i, v)
 	}
-	row, x := wrapPosOf(b.lines, b.ln, b.col, v)
+	row, x := wrapPosOf(b.textLines, b.ln, b.col, v)
 	y += row
 	if l.h > 0 && y >= l.h {
 		return 0, 0, false
@@ -951,10 +951,10 @@ func (e *Editor) wheel(delta int) bool {
 // instead of counting cells.
 func (e *Editor) posAt(x, y int) (ln, col int) {
 	l, b := &e.cells, &e.core.buf
-	if len(b.lines) == 0 {
+	if len(b.textLines) == 0 {
 		return 0, 0
 	}
-	lastLn := len(b.lines) - 1
+	lastLn := len(b.textLines) - 1
 
 	if l.wrap == WrapNone {
 		ln = min(l.top+max(y, 0), lastLn)
@@ -965,9 +965,9 @@ func (e *Editor) posAt(x, y int) (ln, col int) {
 	// WrapSoft: walk the same wrap computation the renderer used, rather than
 	// dividing by width — one logical line spans several visual rows.
 	remaining := max(y, 0)
-	v := e.view().settled(b.lines)
+	v := e.view().settled(b.textLines)
 	for i := l.top; i <= lastLn; i++ {
-		rows := wrapRowsOfLine(b.lines, i, v)
+		rows := wrapRowsOfLine(b.textLines, i, v)
 		if remaining < rows || i == lastLn {
 			cs := b.lineClusters(i)
 			ranges := wrapRanges(cs, v.usable, e.width)
@@ -1001,7 +1001,7 @@ func (e *Editor) colAtCells(cs []string, from, end, cells int) int {
 }
 
 func (e *Editor) wrapPos(ln, col int) (row, x int) {
-	return wrapPosOf(e.core.buf.lines, ln, col, e.view())
+	return wrapPosOf(e.core.buf.textLines, ln, col, e.view())
 }
 
 // Render paints the viewport with the visual-selection fill.
@@ -1029,15 +1029,15 @@ func (e *Editor) renderGutter(s tui.Surface) {
 	}
 	s.Fill(tui.Rect{W: l.gutter, H: h}, " ", l.styles.Text)
 	y := 0
-	v := e.view().settled(b.lines)
-	for ln := l.top; ln < len(b.lines) && y < h; ln++ {
+	v := e.view().settled(b.textLines)
+	for ln := l.top; ln < len(b.textLines) && y < h; ln++ {
 		num := fmt.Sprint(ln + 1)
 		st := dim
 		if ln == b.ln {
 			st = l.styles.Text
 		}
 		drawText(s, l.gutter-gutterGap-len(num), y, num, st)
-		y += max(wrapRowsOfLine(b.lines, ln, v), 1)
+		y += max(wrapRowsOfLine(b.textLines, ln, v), 1)
 	}
 }
 
@@ -1108,7 +1108,7 @@ func (e *Editor) renderText(s tui.Surface) {
 	// ends is where each screen row's text ends, for the ruler
 	ends := make([]int, sz.H)
 	y := 0
-	for ln := l.top; ln < len(c.buf.lines) && y < sz.H; ln++ {
+	for ln := l.top; ln < len(c.buf.textLines) && y < sz.H; ln++ {
 		cs := c.buf.lineClusters(ln)
 		if l.wrap == WrapNone {
 			lineFill(y, ln)
@@ -1156,7 +1156,7 @@ func (e *Editor) renderText(s tui.Surface) {
 		}
 	}
 	if e.scrollable() {
-		paintScrollIndicator(s, sz.W-1, sz.H, l.top, wrapMaxTop(c.buf.lines, e.view()))
+		paintScrollIndicator(s, sz.W-1, sz.H, l.top, wrapMaxTop(c.buf.textLines, e.view()))
 	}
 }
 

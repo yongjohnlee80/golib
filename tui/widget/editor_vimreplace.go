@@ -77,8 +77,7 @@ func (c *EditorCore) replaceText(s string) {
 			continue
 		}
 		r.stack = append(r.stack, replaceEntry{kind: replOverwrote, orig: cs[b.col]})
-		b.lines[b.ln] = strings.Join(cs[:b.col], "") + cl + strings.Join(cs[b.col+1:], "")
-		b.touch(b.ln)
+		b.setLine(b.ln, strings.Join(cs[:b.col], "")+cl+strings.Join(cs[b.col+1:], ""))
 		b.col++
 	}
 	c.edited()
@@ -114,8 +113,7 @@ func (c *EditorCore) replaceBackspace() {
 		}
 	default:
 		if cs := b.lineClusters(b.ln); b.col > 0 && b.col <= len(cs) {
-			b.lines[b.ln] = strings.Join(cs[:b.col-1], "") + e.orig + strings.Join(cs[b.col:], "")
-			b.touch(b.ln)
+			b.setLine(b.ln, strings.Join(cs[:b.col-1], "")+e.orig+strings.Join(cs[b.col:], ""))
 			b.col--
 		}
 	}

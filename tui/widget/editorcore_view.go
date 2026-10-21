@@ -9,14 +9,14 @@ import (
 // layout reads through these, as a widget in another package must.
 
 // LineCount is the number of lines in the buffer; never 0.
-func (c *EditorCore) LineCount() int { return len(c.buf.lines) }
+func (c *EditorCore) LineCount() int { return len(c.buf.textLines) }
 
 // LineAt is line i's text, without copying the buffer. i outside the buffer is "".
 func (c *EditorCore) LineAt(i int) string {
-	if i < 0 || i >= len(c.buf.lines) {
+	if i < 0 || i >= len(c.buf.textLines) {
 		return ""
 	}
-	return c.buf.lines[i]
+	return c.buf.textLines[i]
 }
 
 // Selected reports whether cluster col of line ln is inside the Visual selection. In
@@ -48,7 +48,7 @@ type HighlightFrame struct {
 // BeginHighlight starts a render's walk with top the first line on screen.
 func (c *EditorCore) BeginHighlight(top int) *HighlightFrame {
 	c.retireHighlightFrame()
-	f, behind := c.hl.text.beginFrame(c.buf.lines, top, c.takeHighlightChanged)
+	f, behind := c.hl.text.beginFrame(c.buf.textLines, top, c.takeHighlightChanged)
 	c.highlightFrame = &HighlightFrame{c: c, f: f, top: top, Behind: behind}
 	return c.highlightFrame
 }
@@ -73,7 +73,7 @@ func finishHighlightFrame(h *HighlightFrame) {
 
 // Styles is each cluster's highlight style on line ln; nil with no highlighter.
 func (h *HighlightFrame) Styles(ln int) []highlight.Style {
-	return h.c.hl.highlighted(h.c.buf.lines, h.top, ln, h.f)
+	return h.c.hl.highlighted(h.c.buf.textLines, h.top, ln, h.f)
 }
 
 // Highlighting reports whether a highlighter is set.

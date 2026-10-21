@@ -361,7 +361,7 @@ func (c *EditorCore) changed() {
 	}
 	c.hlFrom = min(c.hlFrom, from)
 	if c.layout != nil {
-		c.layout.Changed(min(from, max(len(c.buf.lines)-1, 0)))
+		c.layout.Changed(min(from, max(len(c.buf.textLines)-1, 0)))
 	}
 	for _, o := range c.editors {
 		if o != c {
@@ -480,7 +480,7 @@ func (c *EditorCore) SetLine(row, col int) {
 	ln, was := c.buf.ln, c.buf.col
 	defer c.cursorMoved(ln, was)
 	c.settlePendingRune()
-	c.buf.ln = max(0, min(row, len(c.buf.lines)-1))
+	c.buf.ln = max(0, min(row, len(c.buf.textLines)-1))
 	c.buf.col = max(0, col)
 	if c.keys.modal {
 		c.clampNormal()
@@ -494,9 +494,9 @@ func (c *EditorCore) SetLine(row, col int) {
 // reveals it, as SetLine does. A position past the end is the end.
 func (c *EditorCore) SetCursorPosition(pos int) {
 	pos = max(pos, 0)
-	for row, line := range c.buf.lines {
+	for row, line := range c.buf.textLines {
 		n := len(clusters(line))
-		if pos <= n || row == len(c.buf.lines)-1 {
+		if pos <= n || row == len(c.buf.textLines)-1 {
 			c.SetLine(row, min(pos, n))
 			return
 		}
@@ -505,7 +505,7 @@ func (c *EditorCore) SetCursorPosition(pos int) {
 }
 
 // Lines returns a snapshot of the document's lines.
-func (c *EditorCore) Lines() []string { return append([]string(nil), c.buf.lines...) }
+func (c *EditorCore) Lines() []string { return append([]string(nil), c.buf.textLines...) }
 
 // SetHighlighter replaces the highlighter; nil turns highlighting off. Every line is highlighted
 // afresh.
@@ -961,10 +961,8 @@ func (c *EditorCore) execAction(act Action, count int) bool {
 		return true
 	case ActOpenBelow:
 		c.beginGroup()
-		prefix := c.indentDecision(indent.OpenBelow, len(b.lines[b.ln])).Prefix
-		b.lines = append(b.lines[:b.ln+1], append([]string{prefix}, b.lines[b.ln+1:]...)...)
-		b.touch(b.ln + 1)
-		b.log.splice(b.ln+1, 0, 1)
+		prefix := c.indentDecision(indent.OpenBelow, len(b.textLines[b.ln])).Prefix
+		b.insertLines(b.ln+1, prefix)
 		b.ln, b.col = b.ln+1, len(clusters(prefix))
 		c.enterInsert()
 		c.hist.keepOpen() // the open-line already began this group
@@ -973,9 +971,7 @@ func (c *EditorCore) execAction(act Action, count int) bool {
 	case ActOpenAbove:
 		c.beginGroup()
 		prefix := c.indentDecision(indent.OpenAbove, 0).Prefix
-		b.lines = append(b.lines[:b.ln], append([]string{prefix}, b.lines[b.ln:]...)...)
-		b.touch(b.ln)
-		b.log.splice(b.ln, 0, 1)
+		b.insertLines(b.ln, prefix)
 		b.col = len(clusters(prefix))
 		c.enterInsert()
 		c.hist.keepOpen()
@@ -1036,7 +1032,7 @@ func (c *EditorCore) execAction(act Action, count int) bool {
 		c.toggleCaseChars(count)
 		return true
 	case ActSubstLine: // S: cc
-		c.runOp(ActChangePrefix, taPos{min(b.ln+count-1, len(b.lines)-1), 0}, linewise)
+		c.runOp(ActChangePrefix, taPos{min(b.ln+count-1, len(b.textLines)-1), 0}, linewise)
 		return true
 	case ActPasteAfter:
 		c.pasteRegister(true, count)
@@ -1106,7 +1102,7 @@ func (c *EditorCore) execAction(act Action, count int) bool {
 			c.blockYank(c.visualBlock())
 		case ModeVisualLine:
 			lo, hi := c.visualLines()
-			c.regYank(strings.Join(b.lines[lo:hi+1], "\n"), true)
+			c.regYank(strings.Join(b.textLines[lo:hi+1], "\n"), true)
 			b.ln, b.col = lo, 0
 		default:
 			lo, hiEx := c.visualRange()
@@ -1157,8 +1153,8 @@ func (c *EditorCore) execAction(act Action, count int) bool {
 		if c.visual() {
 			return c.execAction(ActVisualYank, count)
 		}
-		if b.ln < len(b.lines) {
-			c.regYank(b.lines[b.ln], true)
+		if b.ln < len(b.textLines) {
+			c.regYank(b.textLines[b.ln], true)
 		}
 		return true
 
@@ -1193,11 +1189,11 @@ func (c *EditorCore) execAction(act Action, count int) bool {
 		return c.toggleRendered()
 
 	case ActSelectAll:
-		if !c.canSelect || len(b.lines) == 0 {
+		if !c.canSelect || len(b.textLines) == 0 {
 			return true
 		}
 		c.vAnchor = taPos{ln: 0, col: 0}
-		lastLn := len(b.lines) - 1
+		lastLn := len(b.textLines) - 1
 		b.ln = lastLn
 		b.col = max(0, len(b.lineClusters(lastLn))-1)
 		c.setMode(ModeVisual)

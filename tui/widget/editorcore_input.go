@@ -96,9 +96,8 @@ func (c *EditorCore) HandlePaste(text string) bool {
 		lo, hi := c.visualLines()
 		c.setMode(ModeNormal)
 		b.anchor = nil
-		b.lines = append(b.lines[:lo], append([]string{""}, b.lines[hi+1:]...)...)
-		b.touch(lo)
-		b.log.splice(lo+1, hi-lo, 0) // the first line stays, emptied, for the paste
+		b.setLine(lo, "") // the first line stays, emptied, for the paste
+		b.removeLines(lo+1, hi+1)
 		b.ln, b.col = lo, 0
 		b.insertText(text)
 		c.clampNormal()
@@ -343,7 +342,7 @@ func (c *EditorCore) handleInsertKey(k tui.KeyEvent) bool {
 			c.beginGroup()
 			b.deleteRegion(taPos{b.ln, b.col}, taPos{b.ln, b.col + 1})
 			c.edited()
-		} else if b.ln < len(b.lines)-1 {
+		} else if b.ln < len(b.textLines)-1 {
 			c.beginGroup()
 			b.deleteRegion(taPos{b.ln, b.col}, taPos{b.ln + 1, 0})
 			c.edited()
@@ -552,7 +551,7 @@ func (c *EditorCore) handleCommandKey(k tui.KeyEvent) bool {
 		switch {
 		case caseOp != ActUnbound && op == caseOp: // g~g~, gugu, gUgU: the doubled form
 			c.keys.dropOp()
-			c.runOp(op, taPos{min(b.ln+count-1, len(b.lines)-1), 0}, linewise)
+			c.runOp(op, taPos{min(b.ln+count-1, len(b.textLines)-1), 0}, linewise)
 			return true
 		case caseOp != ActUnbound && op == ActUnbound: // g~ gu gU: an operator, armed
 			if c.readOnly {
@@ -615,7 +614,7 @@ func (c *EditorCore) handleCommandKey(k tui.KeyEvent) bool {
 		total := max(c.keys.opCount, 1) * max(c.keys.count, 1)
 		c.keys.count = 0
 		c.keys.dropOp()
-		c.runOp(op, taPos{min(b.ln+total-1, len(b.lines)-1), 0}, linewise)
+		c.runOp(op, taPos{min(b.ln+total-1, len(b.textLines)-1), 0}, linewise)
 		return true
 	}
 
@@ -638,7 +637,7 @@ func (c *EditorCore) handleCommandKey(k tui.KeyEvent) bool {
 		switch {
 		case kc == c.keys.opChord:
 			c.keys.dropOp()
-			c.runOp(op, taPos{min(b.ln+total-1, len(b.lines)-1), 0}, linewise)
+			c.runOp(op, taPos{min(b.ln+total-1, len(b.textLines)-1), 0}, linewise)
 			return true
 		case act == ActGoPrefix:
 			c.keys.pendingAct, c.keys.pendingChord, c.keys.pendingCount = act, kc, 0

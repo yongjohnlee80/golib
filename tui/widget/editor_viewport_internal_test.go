@@ -14,9 +14,9 @@ func viewportEditor(t *testing.T, h int) *Editor {
 	text := strings.Repeat("a", 25) + "\nb\n" + strings.Repeat("c", 15) + "\nd\ne"
 	e := NewEditor(WithInitialText(text), WithEditorWrap(WrapSoft))
 	e.Layout(tui.Constraints{MaxW: 10, MaxH: h})
-	v := e.view().settled(e.core.buf.lines)
+	v := e.view().settled(e.core.buf.textLines)
 	for i, want := range []int{3, 1, 2, 1, 1} {
-		if got := wrapRowsOfLine(e.core.buf.lines, i, v); got != want {
+		if got := wrapRowsOfLine(e.core.buf.textLines, i, v); got != want {
 			t.Fatalf("the fixture's line %d takes %d rows, want %d", i, got, want)
 		}
 	}

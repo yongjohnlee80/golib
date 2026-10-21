@@ -31,7 +31,7 @@ func (c *EditorCore) foldLayout() EditorFoldLayout {
 // way: the text's end, or only hidden lines beyond it.
 func (c *EditorCore) lineStep(ln int, down bool) (int, bool) {
 	fl := c.foldLayout()
-	last := len(c.buf.lines) - 1
+	last := len(c.buf.textLines) - 1
 	edge := func(from, to int) int {
 		if down {
 			return to - 1

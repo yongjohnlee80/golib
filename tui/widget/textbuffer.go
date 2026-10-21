@@ -1,6 +1,9 @@
 package widget
 
-import "strings"
+import (
+	"slices"
+	"strings"
+)
 
 // textBuffer is the multi-line grapheme-addressed buffer substrate shared by
 // TextArea and Editor: a []string of lines with a cursor
@@ -37,7 +40,7 @@ import "strings"
 // A textBuffer is a cursor over a text. The text (bufferText) is embedded by pointer, so every
 // cursor over one document shares its lines: an EditorCore's text is its shown Buffer's, and a
 // TextArea's is its own. bufferText is data only, with no methods, so embedding it promotes fields
-// and never a method; b.lines, b.changedFrom and b.log read as they always have.
+// and never a method; b.textLines, b.changedFrom and b.log read as they always have.
 type textBuffer struct {
 	*bufferText
 	ln, col int // cursor line + cluster column
@@ -48,7 +51,10 @@ type textBuffer struct {
 // bufferText is a document's lines and what follows their changes: the part of a textBuffer every
 // cursor over the same document shares.
 type bufferText struct {
-	lines []string
+	// textLines are the document's lines. Only this file assigns them, through the line primitives
+	// (setLine, insertLines, removeLines, replaceLines, setLines) and setValue; internal/audit holds
+	// every other file to it.
+	textLines []string
 	// changedFrom is the first line any change has touched since the owner
 	// last took it (takeChanged): what a line-by-line consumer — the
 	// Editor's highlighter cache — must look at again. Every change to
@@ -134,32 +140,80 @@ func (b *textBuffer) takeChanged() int {
 	return ln
 }
 
+// THE LINE PRIMITIVES. Every change to the lines goes through one of these, so each change touches
+// what it changed (the highlighter's cache, the layout) and logs what it did to the line structure
+// (marks, and the other editors over a shared buffer): a site that forgot either left them pointing
+// at the wrong lines, with nothing to say so. No file but this one assigns to the lines
+// (internal/audit). A join or a split logs its column moves (log.move) before the splice that
+// removes or adds the lines, in the order the lines are then.
+
+// setLine replaces line ln's text: a change within one line, so nothing is logged (marks keep their
+// columns, as Vim's do).
+func (b *textBuffer) setLine(ln int, s string) {
+	b.textLines[ln] = s
+	touchFrom(&b.changedFrom, ln)
+}
+
+// insertLines puts ls before line at (at len(lines): after the last).
+func (b *textBuffer) insertLines(at int, ls ...string) {
+	b.textLines = slices.Insert(b.textLines, at, ls...)
+	touchFrom(&b.changedFrom, at)
+	b.log.splice(at, 0, len(ls))
+}
+
+// removeLines removes lines [lo, hi). Removing every line leaves one empty line, a document's least.
+func (b *textBuffer) removeLines(lo, hi int) {
+	if lo == 0 && hi >= len(b.textLines) {
+		b.textLines = []string{""}
+		touchFrom(&b.changedFrom, 0)
+		b.log.splice(0, hi, 1)
+		return
+	}
+	b.textLines = slices.Delete(b.textLines, lo, hi)
+	touchFrom(&b.changedFrom, lo)
+	b.log.splice(lo, hi-lo, 0)
+}
+
+// replaceLines puts ls in place of lines [lo, hi).
+func (b *textBuffer) replaceLines(lo, hi int, ls ...string) {
+	b.textLines = slices.Replace(b.textLines, lo, hi, ls...)
+	touchFrom(&b.changedFrom, lo)
+	b.log.splice(lo, hi-lo, len(ls))
+}
+
+// setLines makes ls the lines whole, logging nothing: a snapshot restored (undo), whose caller
+// decides what the log says about it.
+func (b *textBuffer) setLines(ls []string) {
+	b.textLines = ls
+	touchFrom(&b.changedFrom, 0)
+}
+
 // newTextBuffer is a cursor over a text of its own: one empty line.
 func newTextBuffer() textBuffer {
 	return textBuffer{bufferText: newBufferText(), desired: -1}
 }
 
 // newBufferText is an empty document: one empty line.
-func newBufferText() *bufferText { return &bufferText{lines: []string{""}} }
+func newBufferText() *bufferText { return &bufferText{textLines: []string{""}} }
 
 // value returns the buffer joined with newlines.
-func (b *textBuffer) value() string { return strings.Join(b.lines, "\n") }
+func (b *textBuffer) value() string { return strings.Join(b.textLines, "\n") }
 
 // setValue replaces the buffer, normalizing newlines; cursor to the end,
 // selection cleared, sticky column reset.
 func (b *textBuffer) setValue(s string) {
 	s = strings.ReplaceAll(strings.ReplaceAll(s, "\r\n", "\n"), "\r", "\n")
-	b.lines = strings.Split(s, "\n")
+	b.textLines = strings.Split(s, "\n")
 	touchFrom(&b.changedFrom, 0)
 	b.log.reset()
-	b.ln = len(b.lines) - 1
-	b.col = len(clusters(b.lines[b.ln]))
+	b.ln = len(b.textLines) - 1
+	b.col = len(clusters(b.textLines[b.ln]))
 	b.anchor = nil
 	b.desired = -1
 }
 
 // lineClusters returns the clusters of line i.
-func (b *textBuffer) lineClusters(i int) []string { return clusters(b.lines[i]) }
+func (b *textBuffer) lineClusters(i int) []string { return clusters(b.textLines[i]) }
 
 // cellsAt is the display offset (cells) of (ln, col) under measure.
 func (b *textBuffer) cellsAt(ln, col int, measure func(string) int) int {
@@ -208,7 +262,7 @@ func (b *textBuffer) deleteRegion(lo, hi taPos) {
 		b.log.move(hi.ln, hi.col, lo.ln, lo.col, true)
 		b.log.splice(lo.ln+1, hi.ln-lo.ln, 0)
 	}
-	b.lines = append(b.lines[:lo.ln], append([]string{joined}, b.lines[hi.ln+1:]...)...)
+	b.textLines = append(b.textLines[:lo.ln], append([]string{joined}, b.textLines[hi.ln+1:]...)...)
 	b.ln, b.col = lo.ln, min(lo.col, len(clusters(joined)))
 	b.anchor = nil
 }
@@ -223,7 +277,7 @@ func (b *textBuffer) textIn(lo, hi taPos) string {
 	sb.WriteString(strings.Join(b.lineClusters(lo.ln)[lo.col:], ""))
 	for i := lo.ln + 1; i < hi.ln; i++ {
 		sb.WriteString("\n")
-		sb.WriteString(b.lines[i])
+		sb.WriteString(b.textLines[i])
 	}
 	sb.WriteString("\n")
 	sb.WriteString(strings.Join(b.lineClusters(hi.ln)[:hi.col], ""))
@@ -244,24 +298,24 @@ func (b *textBuffer) insertText(text string) {
 	head := strings.Join(cs[:b.col], "")
 	tail := strings.Join(cs[b.col:], "")
 	if len(parts) == 1 {
-		b.lines[b.ln] = head + parts[0] + tail
+		b.textLines[b.ln] = head + parts[0] + tail
 		// The inserted text may COMBINE with the cluster before the cursor.
 		// Counting its clusters in isolation creates a phantom column (e +
 		// a combining accent is one grapheme, not two), then the next typed
 		// rune slices past cs and panics. Count the recomposed prefix instead.
-		b.col = min(len(clusters(head+parts[0])), len(clusters(b.lines[b.ln])))
+		b.col = min(len(clusters(head+parts[0])), len(clusters(b.textLines[b.ln])))
 	} else {
 		newLines := make([]string, 0, len(parts))
 		newLines = append(newLines, head+parts[0])
 		newLines = append(newLines, parts[1:len(parts)-1]...)
 		lastPart := parts[len(parts)-1]
 		newLines = append(newLines, lastPart+tail)
-		b.lines = append(b.lines[:b.ln], append(newLines, b.lines[b.ln+1:]...)...)
+		b.textLines = append(b.textLines[:b.ln], append(newLines, b.textLines[b.ln+1:]...)...)
 		// the lines below move down, then the split line's marks after the cursor follow its tail
 		b.log.splice(b.ln+1, 0, len(parts)-1)
 		b.log.move(b.ln, b.col, b.ln+len(parts)-1, len(clusters(lastPart)), false)
 		b.ln += len(parts) - 1
-		b.col = min(len(clusters(lastPart)), len(clusters(b.lines[b.ln])))
+		b.col = min(len(clusters(lastPart)), len(clusters(b.textLines[b.ln])))
 	}
 	b.anchor = nil
 	b.desired = -1
@@ -269,7 +323,7 @@ func (b *textBuffer) insertText(text string) {
 
 // moveCursor moves the cursor with clamping, managing the selection anchor.
 func (b *textBuffer) moveCursor(ln, col int, extend bool) {
-	ln = max(0, min(ln, len(b.lines)-1))
+	ln = max(0, min(ln, len(b.textLines)-1))
 	col = b.clampCol(ln, col)
 	if extend {
 		if b.anchor == nil {
@@ -287,7 +341,7 @@ func (b *textBuffer) verticalTarget(delta int, measure func(string) int) (int, i
 	if b.desired < 0 {
 		b.desired = b.cellsAt(b.ln, b.col, measure)
 	}
-	ln := max(0, min(b.ln+delta, len(b.lines)-1))
+	ln := max(0, min(b.ln+delta, len(b.textLines)-1))
 	return ln, b.colForCells(ln, b.desired, measure)
 }
 
@@ -315,7 +369,7 @@ func (b *textBuffer) wordRight() (int, int) {
 	cs := b.lineClusters(b.ln)
 	i := b.col
 	if i == len(cs) {
-		if b.ln < len(b.lines)-1 {
+		if b.ln < len(b.textLines)-1 {
 			return b.ln + 1, 0
 		}
 		return b.ln, i

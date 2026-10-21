@@ -20,8 +20,8 @@ type sentWalk struct {
 }
 
 func (c *EditorCore) sentWalk() *sentWalk {
-	w := &sentWalk{lines: make([][]string, len(c.buf.lines))}
-	for i, l := range c.buf.lines {
+	w := &sentWalk{lines: make([][]string, len(c.buf.textLines))}
+	for i, l := range c.buf.textLines {
 		if strings.TrimSpace(l) != "" {
 			w.lines[i] = clusters(l)
 		}
@@ -235,7 +235,7 @@ func (c *EditorCore) sentenceTarget(forward bool, count int) taPos {
 
 // clampSentPos puts a walk's position on the text: past a line's last cluster is its last.
 func (c *EditorCore) clampSentPos(p taPos) taPos {
-	p.ln = max(0, min(p.ln, len(c.buf.lines)-1))
+	p.ln = max(0, min(p.ln, len(c.buf.textLines)-1))
 	p.col = max(0, min(p.col, len(c.buf.lineClusters(p.ln))))
 	return p
 }

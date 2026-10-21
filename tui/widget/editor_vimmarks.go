@@ -95,7 +95,7 @@ func (c *EditorCore) jumpedFrom(from taPos) {
 // place for ` (exclusive), the column kept inside the line. ok is false for a mark not set.
 func (c *EditorCore) markTarget(name rune, exact bool) (to taPos, kind motionKind, ok bool) {
 	p, ok := c.marks.get(name)
-	if !ok || p.ln >= len(c.buf.lines) {
+	if !ok || p.ln >= len(c.buf.textLines) {
 		return taPos{}, exclusive, false
 	}
 	if !exact {
