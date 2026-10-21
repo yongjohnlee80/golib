@@ -727,8 +727,7 @@ func (t *TabStrip) TabSpans() []TabSpan { return t.core.spans() }
 
 // SetStyles sets the strip's looks: its blank, a tab, and the active tab.
 func (t *TabStrip) SetStyles(bar, tab, selected style.Style) {
-	t.core.bar, t.core.tab, t.core.selected = defaultTabsStyles()
-	t.core.bar, t.core.tab, t.core.selected = bar.Inherit(t.core.bar), tab.Inherit(t.core.tab), selected.Inherit(t.core.selected)
+	t.core.bar, t.core.tab, t.core.selected = tabsStyles(bar, tab, selected)
 	t.MarkDirty()
 }
 

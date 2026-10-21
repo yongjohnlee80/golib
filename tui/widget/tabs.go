@@ -150,6 +150,13 @@ func defaultTabsStyles() (bar, tab, active style.Style) {
 		style.New().Background(style.TokenSurface).Foreground(style.TokenForeground).Bold(true)
 }
 
+// tabsStyles are a tab bar's looks from its defaults: each one given laid over its default, so a
+// look left unset is the default's (Tabs, TabStrip and TerminalTabs SetStyles).
+func tabsStyles(bar, tab, active style.Style) (style.Style, style.Style, style.Style) {
+	b, t, a := defaultTabsStyles()
+	return bar.Inherit(b), tab.Inherit(t), active.Inherit(a)
+}
+
 // NewTabs builds a tab switcher. At least one tab is required.
 func NewTabs(opts ...TabsOption) *Tabs {
 	t := &Tabs{}
@@ -169,8 +176,7 @@ func NewTabs(opts ...TabsOption) *Tabs {
 // [WithTabsStyles] does at construction: what a style leaves unset is the default's, so zero
 // styles restore the defaults.
 func (t *Tabs) SetStyles(bar, tab, active style.Style) {
-	t.barSt, t.tabSt, t.activeSt = defaultTabsStyles()
-	t.barSt, t.tabSt, t.activeSt = bar.Inherit(t.barSt), tab.Inherit(t.tabSt), active.Inherit(t.activeSt)
+	t.barSt, t.tabSt, t.activeSt = tabsStyles(bar, tab, active)
 	t.MarkDirty()
 }
 

@@ -136,6 +136,24 @@ func (t *TerminalTabs) changed() {
 	}
 }
 
+// liveTab is tab id while the tabs are not shutting down: ErrTerminalShutdown, or find's error.
+func (t *TerminalTabs) liveTab(id TerminalTabID) (*terminalTab, error) {
+	if t.shuttingDown() {
+		return nil, ErrTerminalShutdown
+	}
+	return t.find(id)
+}
+
+// openTab is liveTab, refusing a tab that is closing (ErrTerminalTabClosing): what a runtime
+// operation on the tab's process requires.
+func (t *TerminalTabs) openTab(id TerminalTabID) (*terminalTab, error) {
+	e, err := t.liveTab(id)
+	if err == nil && e.closing != nil {
+		return nil, ErrTerminalTabClosing
+	}
+	return e, err
+}
+
 func (t *TerminalTabs) shuttingDown() bool {
 	t.mu.Lock()
 	defer t.mu.Unlock()
@@ -385,10 +403,7 @@ func (*TerminalTabs) AccessibleRole() tui.AccessibleRole { return tui.RolePageTa
 
 // Select focuses only the selected child within this owned container.
 func (t *TerminalTabs) Select(id TerminalTabID) error {
-	if t.shuttingDown() {
-		return ErrTerminalShutdown
-	}
-	e, err := t.find(id)
+	e, err := t.liveTab(id)
 	if err != nil {
 		return err
 	}
@@ -410,15 +425,9 @@ func (t *TerminalTabs) Select(id TerminalTabID) error {
 // Start starts an existing configured tab. Mount is required so startup errors
 // are returned immediately rather than hidden in a pending pre-mount request.
 func (t *TerminalTabs) Start(id TerminalTabID) error {
-	if t.shuttingDown() {
-		return ErrTerminalShutdown
-	}
-	e, err := t.find(id)
+	e, err := t.openTab(id)
 	if err != nil {
 		return err
-	}
-	if e.closing != nil {
-		return ErrTerminalTabClosing
 	}
 	if t.ctx == nil || !t.ctx.Mounted() {
 		return ErrTerminalTabsUnmounted
@@ -431,30 +440,18 @@ func (t *TerminalTabs) Start(id TerminalTabID) error {
 // SendText queues literal text for this exact runtime identity. Closing,
 // removed and nonrunning targets reject the entire send without side effects.
 func (t *TerminalTabs) SendText(id TerminalTabID, text string) error {
-	if t.shuttingDown() {
-		return ErrTerminalShutdown
-	}
-	e, err := t.find(id)
+	e, err := t.openTab(id)
 	if err != nil {
 		return err
-	}
-	if e.closing != nil {
-		return ErrTerminalTabClosing
 	}
 	return e.terminal.SendText(text)
 }
 
 // SendPaste is Terminal.SendPaste for this exact runtime identity, refused as SendText is.
 func (t *TerminalTabs) SendPaste(id TerminalTabID, text string) error {
-	if t.shuttingDown() {
-		return ErrTerminalShutdown
-	}
-	e, err := t.find(id)
+	e, err := t.openTab(id)
 	if err != nil {
 		return err
-	}
-	if e.closing != nil {
-		return ErrTerminalTabClosing
 	}
 	return e.terminal.SendPaste(text)
 }
@@ -465,10 +462,7 @@ func (t *TerminalTabs) SendPaste(id TerminalTabID, text string) error {
 // errors keep the closing tab visible; cancellation of Wait affects only that
 // waiter. Retain the handle to observe completion after the UI loop ends.
 func (t *TerminalTabs) Remove(id TerminalTabID) (*TerminalTabRemovalResult, error) {
-	if t.shuttingDown() {
-		return nil, ErrTerminalShutdown
-	}
-	e, err := t.find(id)
+	e, err := t.liveTab(id)
 	if err != nil {
 		return nil, err
 	}
@@ -515,10 +509,7 @@ func (t *TerminalTabs) Remove(id TerminalTabID) (*TerminalTabRemovalResult, erro
 // its cleanup error). Its process remains owned by ShutdownWithResult; hiding a
 // failed cleanup does not discard the lifetime result or reuse its identity.
 func (t *TerminalTabs) ForceRemove(id TerminalTabID) error {
-	if t.shuttingDown() {
-		return ErrTerminalShutdown
-	}
-	e, err := t.find(id)
+	e, err := t.liveTab(id)
 	if err != nil {
 		return err
 	}
@@ -625,9 +616,7 @@ func (t *TerminalTabs) listChildren() []tui.Component {
 
 // SetStyles and SetDefaultLook preserve palette changes across existing and new tabs.
 func (t *TerminalTabs) SetStyles(bar, tab, selected style.Style) {
-	st := &t.strip
-	st.bar, st.tab, st.selected = defaultTabsStyles()
-	st.bar, st.tab, st.selected = bar.Inherit(st.bar), tab.Inherit(st.tab), selected.Inherit(st.selected)
+	t.strip.bar, t.strip.tab, t.strip.selected = tabsStyles(bar, tab, selected)
 	t.MarkDirty()
 }
 func (t *TerminalTabs) SetDefaultLook(look style.Style) {
