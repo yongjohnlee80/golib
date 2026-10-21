@@ -333,8 +333,26 @@ func (c *Context) PlaceChild(child Component, r Rect) {
 	cn.placed = true
 }
 
-// App returns the owning runtime.
+// App returns the owning runtime: the handle for what is the App's alone (its options, Update from
+// another goroutine). A widget's on-loop questions are the Context's own (Keymap, Capabilities,
+// CellPixels, Update).
 func (c *Context) App() *App { return c.app }
+
+// Keymap is the App's key map; nil for a nil Context (a widget not mounted) or an App without one.
+func (c *Context) Keymap() *keymap.Map {
+	if c == nil || c.app == nil {
+		return nil
+	}
+	return c.app.Keymap()
+}
+
+// KeyResolver is the Context's key question alone (KeyCommand), for a key helper to take rather
+// than the whole Context. *Context is one, a nil one included.
+type KeyResolver interface {
+	KeyCommand(ev KeyEvent, cmds ...keymap.Command) (keymap.Command, bool)
+}
+
+var _ KeyResolver = (*Context)(nil)
 
 // Translate is m's text in the App's language ([App.SetLanguage]): the language itself, then
 // its base ("es_MX" → "es"), then English, and the id itself when no catalog has it. Its

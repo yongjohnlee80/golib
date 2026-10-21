@@ -355,7 +355,7 @@ func (v *imageView) to(x, y int) bool {
 
 // scrollStep is how far ev moves a scrollable Image of rows cells, in its PNG's pixels; ok is
 // whether ev is one of its keys (on ctx's map) or the wheel.
-func scrollStep(ctx *tui.Context, ev tui.Event, rows, height int) (dx, dy int, ok bool) {
+func scrollStep(ctx tui.KeyResolver, ev tui.Event, rows, height int) (dx, dy int, ok bool) {
 	const col = 4 * CellPixelsW
 	switch e := ev.(type) {
 	case tui.KeyEvent:

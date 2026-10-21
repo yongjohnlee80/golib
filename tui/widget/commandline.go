@@ -180,7 +180,7 @@ func (l *CommandLine) keys(k tui.KeyEvent) bool {
 
 // cmdlineStep is the completion step k is, back for the previous candidate. Down and Up step only with
 // the dropdown open.
-func cmdlineStep(ctx *tui.Context, k tui.KeyEvent, dropdown bool) (back, ok bool) {
+func cmdlineStep(ctx tui.KeyResolver, k tui.KeyEvent, dropdown bool) (back, ok bool) {
 	cmd, ok := ctx.KeyCommand(k, cmdlineCommands...)
 	if !ok || !dropdown && (cmd.ID == CmdlineNext.ID || cmd.ID == CmdlinePrev.ID) {
 		return false, false
@@ -189,7 +189,7 @@ func cmdlineStep(ctx *tui.Context, k tui.KeyEvent, dropdown bool) (back, ok bool
 }
 
 // replaceAnswer is the replace question's answer k is: "yes", "no", "quit", or "" for none.
-func replaceAnswer(ctx *tui.Context, k tui.KeyEvent) string {
+func replaceAnswer(ctx tui.KeyResolver, k tui.KeyEvent) string {
 	cmd, ok := ctx.KeyCommand(k, cmdlineReplaceCommands...)
 	if !ok {
 		return ""

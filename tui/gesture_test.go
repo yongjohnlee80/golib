@@ -821,7 +821,7 @@ func TestReplacingTheRecognizerMidGestureCancelsIt(t *testing.T) {
 	h.onLoop(func() { ownerID = h.app.byComp[c].id })
 
 	replacement := &armingCountingRecognizer{}
-	h.onLoop(func() { h.app.byComp[c].ctx.SetGestureRecognizer(replacement) })
+	h.onLoop(func() { h.app.SetGestureRecognizer(replacement) })
 	waitFor(t, "the owner was told its capture ended", func() bool { return c.losses.Load() == 1 })
 	h.sync()
 
@@ -869,10 +869,10 @@ func TestRecognitionCanBeDisabledAtRuntime(t *testing.T) {
 		name string
 		set  func(c *Context)
 	}{
-		{"nil interface", func(c *Context) { c.SetGestureRecognizer(nil) }},
+		{"nil interface", func(c *Context) { c.App().SetGestureRecognizer(nil) }},
 		{"typed nil", func(c *Context) {
 			var r *countingRecognizer
-			c.SetGestureRecognizer(r)
+			c.App().SetGestureRecognizer(r)
 		}},
 	} {
 		t.Run(tc.name, func(t *testing.T) {

@@ -46,7 +46,7 @@ func TestCommandLineKeysMatchTheOldHandlerWithNoMap(t *testing.T) {
 		keyGridDiff(t, map[bool]string{false: "CommandLine", true: "CommandLine, dropdown open"}[dropdown],
 			presses(func(e tui.KeyEvent) string { return oldCmdlineKey(e, dropdown) }),
 			presses(func(e tui.KeyEvent) string {
-				back, ok := cmdlineStep(nil, e, dropdown)
+				back, ok := cmdlineStep(noKeymap, e, dropdown)
 				if !ok {
 					return ""
 				}
@@ -56,6 +56,6 @@ func TestCommandLineKeysMatchTheOldHandlerWithNoMap(t *testing.T) {
 	}
 	keyGridDiff(t, "CommandLine replace question",
 		presses(oldReplaceKey),
-		presses(func(e tui.KeyEvent) string { return replaceAnswer(nil, e) }),
+		presses(func(e tui.KeyEvent) string { return replaceAnswer(noKeymap, e) }),
 		hyperOrMeta)
 }

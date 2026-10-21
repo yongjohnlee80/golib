@@ -332,11 +332,10 @@ func (m *Menu) resolveLabelsIn(items []MenuItemModel) {
 
 // accelOf is the first key of the command named id in the App's key map, as an accelerator shows it.
 func (m *Menu) accelOf(id string) string {
-	ctx := m.Context()
-	if ctx == nil || ctx.App() == nil {
+	km := m.Context().Keymap()
+	if km == nil {
 		return ""
 	}
-	km := ctx.App().Keymap()
 	if cmd, ok := km.Command(id); ok {
 		if keys := km.KeysOf(cmd); len(keys) > 0 {
 			return keys[0].String()

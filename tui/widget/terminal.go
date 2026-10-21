@@ -704,7 +704,7 @@ const (
 
 // inputAct is what k does in input mode. Every key that is not one of the Terminal's commands, or is
 // one whose condition does not hold, is the program's.
-func inputAct(ctx *tui.Context, k tui.KeyEvent, running, exited, prefix, vimKeys, altScreen bool) termInput {
+func inputAct(ctx tui.KeyResolver, k tui.KeyEvent, running, exited, prefix, vimKeys, altScreen bool) termInput {
 	cmd, isCmd := ctx.KeyCommand(k, terminalCommands...)
 	switch {
 	case !running && exited && isCmd && cmd.ID == TerminalRestart.ID:

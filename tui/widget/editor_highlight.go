@@ -129,7 +129,7 @@ func (e *Editor) beginHighlightFrame() *HighlightFrame {
 	f := e.core.BeginHighlight(e.cells.top)
 	if f.Behind {
 		if ctx := e.Context(); ctx != nil {
-			ctx.App().Update(e.MarkDirty)
+			ctx.Update(e.MarkDirty)
 		}
 	}
 	return f

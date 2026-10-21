@@ -224,7 +224,7 @@ func fireShortcut(ctx *tui.Context, scope keymap.Scope, shortcuts []*shortcutNod
 	if !ok || k.Kind != tui.KeyPress || len(shortcuts) == 0 {
 		return false
 	}
-	cmds, ids := shortcutCommands(keymapOf(ctx), scope, shortcuts)
+	cmds, ids := shortcutCommands(ctx.Keymap(), scope, shortcuts)
 	cmd, ok := ctx.KeyCommand(k, cmds...)
 	if !ok {
 		return false
@@ -245,12 +245,4 @@ func shortcutBindings(m *keymap.Map, scope keymap.Scope, shortcuts []*shortcutNo
 		}
 	}
 	return out
-}
-
-// keymapOf is the App's key map, nil without one.
-func keymapOf(ctx *tui.Context) *keymap.Map {
-	if ctx == nil || ctx.App() == nil {
-		return nil
-	}
-	return ctx.App().Keymap()
 }
