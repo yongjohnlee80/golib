@@ -29,35 +29,35 @@ func (b *Backend) DeleteImage(id uint32) {
 	b.latch(func() { b.images.Delete(id) })
 }
 
-// writeImages emits the latched image commands into the frame's buffer, under wmu.
-func (b *Backend) writeImages(ops []tui.ImageOp) {
+// writeImages emits the latched image commands into the frame's buffer.
+func (e *emitter) writeImages(ops []tui.ImageOp) {
 	if len(ops) == 0 {
 		return
 	}
-	if b.placed == nil {
-		b.placed, b.sent = map[uint32]bool{}, map[uint32]uint64{}
+	if e.placed == nil {
+		e.placed, e.sent = map[uint32]bool{}, map[uint32]uint64{}
 	}
 	for _, op := range ops {
 		if op.Place == nil {
-			b.writeImageDelete(&b.buf, op.Delete)
-			delete(b.placed, op.Delete)
-			delete(b.sent, op.Delete)
+			e.writeImageDelete(&e.buf, op.Delete)
+			delete(e.placed, op.Delete)
+			delete(e.sent, op.Delete)
 			continue
 		}
 		p := op.Place
-		held, ok := b.sent[p.ID]
+		held, ok := e.sent[p.ID]
 		if ok && held == p.Version {
-			b.writePlacementDelete(&b.buf, p.ID) // the old placement goes; the bytes stay
-			b.writeCUP(p.X, p.Y)
-			b.writeAPC(&b.buf, "a=p,C=1,q=2,i="+strconv.FormatUint(uint64(p.ID), 10)+placementKeys(p), "")
+			e.writePlacementDelete(&e.buf, p.ID) // the old placement goes; the bytes stay
+			e.writeCUP(p.X, p.Y)
+			e.writeAPC(&e.buf, "a=p,C=1,q=2,i="+strconv.FormatUint(uint64(p.ID), 10)+placementKeys(p), "")
 		} else {
-			b.writeImageDelete(&b.buf, p.ID) // the old image goes, wherever it was
-			b.writeCUP(p.X, p.Y)
-			b.writeImagePNG(&b.buf, p)
-			b.sent[p.ID] = p.Version
+			e.writeImageDelete(&e.buf, p.ID) // the old image goes, wherever it was
+			e.writeCUP(p.X, p.Y)
+			e.writeImagePNG(&e.buf, p)
+			e.sent[p.ID] = p.Version
 		}
-		b.penKnown = false // the next cell anchors absolutely
-		b.placed[p.ID] = true
+		e.penKnown = false // the next cell anchors absolutely
+		e.placed[p.ID] = true
 	}
 }
 
@@ -70,16 +70,16 @@ func placementKeys(p *tui.ImagePlacement) string {
 	return keys
 }
 
-func (b *Backend) writeImageDelete(buf *bytes.Buffer, id uint32) {
-	b.writeAPC(buf, "a=d,d=I,q=2,i="+strconv.FormatUint(uint64(id), 10), "")
+func (e *emitter) writeImageDelete(buf *bytes.Buffer, id uint32) {
+	e.writeAPC(buf, "a=d,d=I,q=2,i="+strconv.FormatUint(uint64(id), 10), "")
 }
 
 // writePlacementDelete deletes an image's placements and keeps its data.
-func (b *Backend) writePlacementDelete(buf *bytes.Buffer, id uint32) {
-	b.writeAPC(buf, "a=d,d=i,q=2,i="+strconv.FormatUint(uint64(id), 10), "")
+func (e *emitter) writePlacementDelete(buf *bytes.Buffer, id uint32) {
+	e.writeAPC(buf, "a=d,d=i,q=2,i="+strconv.FormatUint(uint64(id), 10), "")
 }
 
-func (b *Backend) writeImagePNG(buf *bytes.Buffer, p *tui.ImagePlacement) {
+func (e *emitter) writeImagePNG(buf *bytes.Buffer, p *tui.ImagePlacement) {
 	data := base64.StdEncoding.EncodeToString(p.PNG)
 	first := true
 	for len(data) > 0 || first {
@@ -95,16 +95,16 @@ func (b *Backend) writeImagePNG(buf *bytes.Buffer, p *tui.ImagePlacement) {
 			ctrl = "a=T,f=100,t=d,C=1,q=2,i=" + strconv.FormatUint(uint64(p.ID), 10) + placementKeys(p) + "," + ctrl
 			first = false
 		}
-		b.writeAPC(buf, ctrl, chunk)
+		e.writeAPC(buf, ctrl, chunk)
 	}
 }
 
 // writeAPC writes one graphics command, passed through tmux when inside it.
-func (b *Backend) writeAPC(buf *bytes.Buffer, ctrl, payload string) {
+func (e *emitter) writeAPC(buf *bytes.Buffer, ctrl, payload string) {
 	seq := "\x1b_G" + ctrl
 	if payload != "" {
 		seq += ";" + payload
 	}
 	seq += "\x1b\\"
-	buf.WriteString(passthrough(seq, inTmux(b.cfg.env)))
+	buf.WriteString(passthrough(seq, e.tmux))
 }
