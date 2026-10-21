@@ -54,10 +54,7 @@ type Backend struct {
 	restoreOut  func() error
 	pollCleanup func() error // undo makePollable, after the reader joins
 	altEntered  bool
-	pasteOn     bool
-	mouseOn     bool
-	focusOn     bool
-	resize2048  bool
+	enabled     []vtMode // the modes Start turned on, in order; teardown turns them off in reverse
 	kittyPush   bool
 
 	// Emitter state (flush.go), guarded by wmu together with output writes.
@@ -212,14 +209,12 @@ func (b *Backend) start(ctx context.Context) error {
 	// 5. Negotiated mode enablement — one write.
 	var enable bytes.Buffer
 	if caps.BracketedPaste {
-		enable.WriteString("\x1b[?2004h")
-		b.pasteOn = true
+		b.enable(&enable, modePaste)
 	}
 	if b.cfg.mouse && caps.Mouse != tui.TriNo {
 		// The enable may be attempted on TriUnknown; Capabilities keeps
 		// reporting TriUnknown in that case — capability honesty.
-		enable.WriteString("\x1b[?1002h\x1b[?1006h")
-		b.mouseOn = true
+		b.enable(&enable, modeMouse)
 	}
 	if caps.KittyKeyboard {
 		enable.WriteString("\x1b[>3u") // push flags 1+2
@@ -227,13 +222,11 @@ func (b *Backend) start(ctx context.Context) error {
 		b.kittyOn.Store(true)
 	}
 	if caps.InBandResize {
-		enable.WriteString("\x1b[?2048h")
-		b.resize2048 = true
+		b.enable(&enable, modeResize)
 	}
 	// Focus reporting: required to deliver tui.FocusEvent (Terminal=true)
 	// and for the focus-in size re-check. Harmless where unsupported.
-	enable.WriteString("\x1b[?1004h")
-	b.focusOn = true
+	b.enable(&enable, modeFocus)
 	if err := b.write(enable.Bytes()); err != nil {
 		return err
 	}
@@ -244,6 +237,23 @@ func (b *Backend) start(ctx context.Context) error {
 		b.startResizeWatcher()
 	}
 	return nil
+}
+
+// vtMode is a terminal mode Start may turn on: the sequence that turns it on, and the one that
+// turns it off. Adding a mode is a value here and one enable call; teardown follows the list.
+type vtMode struct{ on, off string }
+
+var (
+	modePaste  = vtMode{"\x1b[?2004h", "\x1b[?2004l"}                       // bracketed paste
+	modeMouse  = vtMode{"\x1b[?1002h\x1b[?1006h", "\x1b[?1006l\x1b[?1002l"} // button-event tracking, SGR reports
+	modeResize = vtMode{"\x1b[?2048h", "\x1b[?2048l"}                       // in-band resize reports
+	modeFocus  = vtMode{"\x1b[?1004h", "\x1b[?1004l"}                       // focus reports
+)
+
+// enable writes m's on sequence into buf and records m for teardown.
+func (b *Backend) enable(buf *bytes.Buffer, m vtMode) {
+	buf.WriteString(m.on)
+	b.enabled = append(b.enabled, m)
 }
 
 // Stop restores the terminal completely and stops the reader goroutine.
@@ -265,19 +275,10 @@ func (b *Backend) teardown() error {
 		// cursor restore (default shape, show, SGR reset), leave alt screen.
 		var buf bytes.Buffer
 		if b.kittyPush {
-			buf.WriteString("\x1b[<u")
+			buf.WriteString("\x1b[<u") // a keyboard-stack push, popped before the modes go off
 		}
-		if b.focusOn {
-			buf.WriteString("\x1b[?1004l")
-		}
-		if b.resize2048 {
-			buf.WriteString("\x1b[?2048l")
-		}
-		if b.mouseOn {
-			buf.WriteString("\x1b[?1006l\x1b[?1002l")
-		}
-		if b.pasteOn {
-			buf.WriteString("\x1b[?2004l")
+		for i := len(b.enabled) - 1; i >= 0; i-- {
+			buf.WriteString(b.enabled[i].off)
 		}
 		if b.termColored {
 			buf.WriteString("\x1b]112\x07") // the cursor's own colour back (OSC 112)
