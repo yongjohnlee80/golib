@@ -79,7 +79,7 @@ func TestOverloadAuditNamesWhatOverflowed(t *testing.T) {
 			return l.deliver(ctx, c, s, b, tui.KeyEvent{Code: 'y'})
 		}},
 		{"resize overload", func(l *sessionLoop, ctx context.Context, c conn, s *Session, b *bucket) error {
-			return l.deliverResize(ctx, c, s, b, 40, 12)
+			return l.deliverResize(ctx, c, s, b, 40, 12, Metrics{})
 		}},
 	} {
 		l, m := loopFor(t, testPolicy(t), nil, BackendOptions(EventQueue(1)))

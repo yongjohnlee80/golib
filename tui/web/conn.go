@@ -283,7 +283,7 @@ func (l *sessionLoop) readPump(ctx context.Context, c conn, sess *Session) error
 		// A resize is state, not input, and is likewise not metered — a client
 		// dragging a window edge must not be treated as a flood.
 		if m.T == msgResize {
-			if err := l.deliverResize(ctx, c, sess, limiter, m.Cols, m.Rows); err != nil {
+			if err := l.deliverResize(ctx, c, sess, limiter, m.Cols, m.Rows, Metrics{CellW: m.CellW, CellH: m.CellH}); err != nil {
 				return err
 			}
 			continue
@@ -327,10 +327,10 @@ func (l *sessionLoop) deliver(ctx context.Context, c conn, sess *Session, limite
 // An earlier version logged an overflow and advanced, so a resize that arrived
 // while the App was busy was lost and the client stayed the wrong size
 // indefinitely.
-func (l *sessionLoop) deliverResize(ctx context.Context, c conn, sess *Session, limiter *bucket, cols, rows int) error {
+func (l *sessionLoop) deliverResize(ctx context.Context, c conn, sess *Session, limiter *bucket, cols, rows int, m Metrics) error {
 	backend := sess.Backend()
 	return l.submitWithBackpressure(ctx, c, sess, limiter, false, "resize", func() error {
-		err := backend.Resize(cols, rows)
+		err := backend.resize(cols, rows, m) // the client's cell size, published with the resize it takes
 		if errors.Is(err, ErrGridTooLarge) {
 			// A protocol violation rather than a transient condition: the client
 			// will keep asking, so retrying is pointless and closing is honest.

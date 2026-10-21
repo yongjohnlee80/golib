@@ -100,7 +100,7 @@ func TestRegress2_ResizeIsRetriedNotDropped(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
 	defer cancel()
 	limiter := newBucket(1e9, 1e9, nil)
-	if err := l.deliverResize(ctx, &fakeConn{}, s, limiter, 40, 12); err != nil {
+	if err := l.deliverResize(ctx, &fakeConn{}, s, limiter, 40, 12, Metrics{}); err != nil {
 		t.Fatalf("deliverResize = %v, want the resize waited for", err)
 	}
 
