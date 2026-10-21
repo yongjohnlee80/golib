@@ -654,7 +654,9 @@ func (t *Tree) SetRoots(roots ...*TreeNode) {
 }
 
 // SetStyles replaces the row styles at runtime; zero fields keep their
-// current values (see List.SetStyles — focus-dependent host styling).
+// current values (see List.SetStyles — focus-dependent host styling). A Tree
+// has no multi-selection, so it paints Row, CursorRow and CursorBlurred, and
+// SelectedRow and CursorSelected have no row to apply to.
 func (t *Tree) SetStyles(st ListStyles) {
 	t.styles = st.over(t.styles)
 	t.MarkDirty()

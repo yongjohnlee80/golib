@@ -292,6 +292,21 @@ func (l *List[T]) ResetStyles(st ListStyles) {
 	l.MarkDirty()
 }
 
+// RowStyler is a row view whose row looks a host or a palette replaces: List, Table and Tree.
+// SetStyles merges (zero fields keep theirs); ResetStyles starts from the view's defaults, so a
+// removed role drops. A view reads the fields it has use for; Tree, with no multi-selection, reads
+// Row, CursorRow and CursorBlurred.
+type RowStyler interface {
+	SetStyles(st ListStyles)
+	ResetStyles(st ListStyles)
+}
+
+var (
+	_ RowStyler = (*List[int])(nil)
+	_ RowStyler = (*Table[int])(nil)
+	_ RowStyler = (*Tree)(nil)
+)
+
 // SetContextMenu turns the row context-menu request on or off. On, a right press on a row moves
 // the cursor there, as a left press does, and then emits ContextMenuEvent for that row, at the
 // pointer; a right press below the rows emits it for no row (-1), the cursor left where it is; and
