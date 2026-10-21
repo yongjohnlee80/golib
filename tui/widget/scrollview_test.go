@@ -180,3 +180,32 @@ func TestATerminalInAScrollViewIsLaidOutAtOneWidth(t *testing.T) {
 		}
 	})
 }
+
+// A ScrollView in a Modal keeps its offset when the dialog lays out again: the dialog sizes its
+// card with an unbounded measure, which a ScrollView answers without storing anything. Its Layout
+// reset the offset to 0 on that measure, so every relayout scrolled the dialog back to the top.
+func TestAScrollViewInAModalKeepsItsOffset(t *testing.T) {
+	leaf := widget.NewButton("leaf")
+	sv := widget.NewScrollView(column(widget.NewButton("first"), 40, leaf))
+	modal := widget.NewModal(sv)
+	host := widget.NewOverlayHost(widget.NewText("base"))
+	sh := newShell(host)
+	h := startApp(t, sh, 40, 14)
+	h.onLoop(func() {
+		if err := modal.Open(host); err != nil {
+			t.Fatalf("Open: %v", err)
+		}
+	})
+	h.settle()
+	h.onLoop(func() { leaf.Context().RequestFocus() })
+	h.settle()
+	off, _, _ := scrollState(h, sv)
+	if off == 0 {
+		t.Fatal("focusing the last row did not scroll the dialog's ScrollView")
+	}
+	h.onLoop(func() { sv.Context().RequestLayout() })
+	h.settle()
+	if again, _, _ := scrollState(h, sv); again != off {
+		t.Errorf("after a relayout the offset is %d, want %d kept", again, off)
+	}
+}

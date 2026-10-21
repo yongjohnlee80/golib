@@ -63,24 +63,30 @@ func (v *ScrollView) Children() iter.Seq[tui.Component] {
 // KeyScope is the ScrollView's key-map scope.
 func (v *ScrollView) KeyScope() keymap.Scope { return ScrollScope }
 
-// Layout lays the child out once, at its own height, and places it offset rows up. An unbounded
-// offer is answered with the child's own size, and nothing scrolls.
+// scrollCommitKey is the ScrollView's geometry commit (tui.Context.AfterLayout).
+const scrollCommitKey tui.CommitKey = "widget.scroll"
+
+// Layout lays the child out once, at its own height, and places it offset rows up. It stores
+// nothing: the content and view heights, and the offset clamped to them, are committed after
+// layout, so a measure does not move the scroll. An unbounded offer is such a measure (a dialog
+// sizing its card): it is answered with the child's own size, and nothing is committed.
 func (v *ScrollView) Layout(c tui.Constraints) tui.Size {
+	ctx := v.Context()
 	if v.child == nil {
-		v.content, v.view, v.offset = 0, 0, 0
+		ctx.AfterLayout(scrollCommitKey, func() { v.content, v.view, v.offset = 0, 0, 0 })
 		return c.Constrain(tui.Size{})
 	}
 	if c.MaxW == tui.Unbounded || c.MaxH == tui.Unbounded {
-		sz := v.Context().LayoutChild(v.child, tui.Constraints{MaxW: c.MaxW, MaxH: tui.Unbounded})
-		v.content, v.view, v.offset = sz.H, sz.H, 0
-		v.Context().PlaceChild(v.child, tui.Rect{W: sz.W, H: sz.H})
+		sz := ctx.LayoutChild(v.child, tui.Constraints{MaxW: c.MaxW, MaxH: tui.Unbounded})
+		ctx.PlaceChild(v.child, tui.Rect{W: sz.W, H: sz.H})
 		return c.Constrain(tui.Size{W: sz.W + 1, H: sz.H})
 	}
 	w := max(c.MaxW-1, 0) // the indicator's column
-	sz := v.Context().LayoutChild(v.child, tui.Constraints{MinW: w, MaxW: w, MaxH: tui.Unbounded})
-	v.content, v.view = sz.H, max(c.MaxH, 0)
-	v.offset = clampOffset(v.offset, v.content, v.view)
-	v.Context().PlaceChild(v.child, tui.Rect{Y: -v.offset, W: w, H: sz.H})
+	sz := ctx.LayoutChild(v.child, tui.Constraints{MinW: w, MaxW: w, MaxH: tui.Unbounded})
+	view := max(c.MaxH, 0)
+	off := clampOffset(v.offset, sz.H, view)
+	ctx.PlaceChild(v.child, tui.Rect{Y: -off, W: w, H: sz.H})
+	ctx.AfterLayout(scrollCommitKey, func() { v.content, v.view, v.offset = sz.H, view, off })
 	return tui.Size{W: c.MaxW, H: c.MaxH}
 }
 
