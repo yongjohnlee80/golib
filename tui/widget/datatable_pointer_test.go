@@ -427,24 +427,35 @@ func TestDataTable_ACopyPastTheLimitCopiesNothing(t *testing.T) {
 // copies the row (as yy would), and r again brings the cell cursor back, where y copies the cell.
 func TestDataTable_RTogglesARowCursorThatYCopiesWhole(t *testing.T) {
 	h, _, dt := dataTable(t, numbered(3), 30, 6)
-	cursorAt := func(x, y int) tui.CellAttrs { return cellAttrs(h, x, y) }
+	// at is where text is drawn on the screen: the first line holding it, and its column there
+	at := func(text string) (x, y int) {
+		for y, line := range strings.Split(h.grid(), "\n") {
+			if i := strings.Index(line, text); i >= 0 {
+				return len([]rune(line[:i])), y
+			}
+		}
+		t.Fatalf("%q is not on the screen:\n%s", text, h.grid())
+		return 0, 0
+	}
 	h.onLoop(func() {
 		dt.SetStyles(widget.DataTableStyles{Cursor: style.New().Bold(true), CursorBlurred: style.New().Underline(true)})
 		dt.HandleEvent(key('j'))
 		dt.HandleEvent(key('l'))
 	})
 	h.settle()
-	cell := cursorAt(5, 2) // row 1's name: the cursor's cell
-	plain := cursorAt(0, 2)
-	if cell == plain {
-		t.Fatalf("precondition: the cursor's cell %+v is drawn as the row's id %+v", cell, plain)
+	nx, y := at("row1") // row 1's name: the cursor's cell
+	line := []rune(strings.Split(h.grid(), "\n")[y])
+	ix := slices.Index(line, '1') // row 1's id, the field before it: the line's first 1
+	cell := cellAttrs(h, nx, y)
+	if cell == cellAttrs(h, ix, y) {
+		t.Fatalf("precondition: the cursor's cell %+v is drawn as row 1's id", cell)
 	}
 	h.onLoop(func() { dt.HandleEvent(key('r')) })
 	h.settle()
-	if got := cursorAt(0, 2); got != cell {
+	if got := cellAttrs(h, ix, y); got != cell {
 		t.Errorf("the row cursor leaves row 1's id drawn %+v, want the cursor's %+v", got, cell)
 	}
-	if got := cursorAt(0, 3); got == cell {
+	if _, y2 := at("row2"); cellAttrs(h, ix, y2) == cell {
 		t.Error("the row cursor covers row 2 too")
 	}
 	h.onLoop(func() { dt.HandleEvent(key('y')) })
@@ -454,7 +465,7 @@ func TestDataTable_RTogglesARowCursorThatYCopiesWhole(t *testing.T) {
 		dt.HandleEvent(key('y'))
 	})
 	h.settle()
-	if got := cursorAt(0, 2); got == cell {
+	if got := cellAttrs(h, ix, y); got == cell {
 		t.Error("back on the cell, row 1's id is still drawn as the cursor")
 	}
 	h.waitFor("the cell on the clipboard", func() bool { return string(h.tb.Clipboard()) == "row1" })
