@@ -27,6 +27,16 @@ type EditorMenuAction struct {
 // ActionID implements tui.Action.
 func (a EditorMenuAction) ActionID() tui.ActionID { return a.ID }
 
+// runIn runs Run with the menu's owner, which must be a tui Editor: in any other menu the row does
+// nothing.
+func (a EditorMenuAction) runIn(m *EditorMenu) func() {
+	e, ok := m.owner.(*Editor)
+	if !ok || a.Run == nil {
+		return nil
+	}
+	return func() { a.Run(e) }
+}
+
 // The stock rows' ids and actions.
 const (
 	EditorMenuUndo  ItemID = "editor.undo"
