@@ -117,11 +117,5 @@ func pointerDerived(ev Event) bool {
 // is exactly what a policy change is — the program deciding this gesture is
 // over.
 func (a *App) captureCheckPolicy() {
-	owner := a.nodes[a.captureOwner]
-	if owner == nil {
-		return
-	}
-	if effectivePointerPolicy(owner) == PointerDisabled {
-		a.loseCapture(CaptureLostCancelled)
-	}
+	a.loseCaptureIf(func(owner *node) bool { return effectivePointerPolicy(owner) == PointerDisabled }, CaptureLostCancelled)
 }

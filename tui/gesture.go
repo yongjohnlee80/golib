@@ -336,12 +336,11 @@ func (a *App) setGestureArmed(n *node, armed bool) {
 // release, and every capture-loss path — so that "the target is left disarmed"
 // is true by construction rather than by each caller remembering.
 func (a *App) endGesture() {
-	if owner := a.nodes[a.captureOwner]; owner != nil && a.captureKind == CaptureGesture {
+	if owner := a.gestureOwner(); owner != nil {
 		a.setGestureArmed(owner, false)
 		a.clearCapture()
 	}
-	a.gestureState = GestureIdle
-	a.gestureArmed = false
+	a.idleGesture()
 }
 
 // gestureLost disarms a target whose gesture is ending through a capture loss.
@@ -350,9 +349,23 @@ func (a *App) gestureLost() {
 	if a.captureKind != CaptureGesture {
 		return // a raw capture owner was never armed by the runtime
 	}
-	if owner := a.nodes[a.captureOwner]; owner != nil {
+	if owner := a.gestureOwner(); owner != nil {
 		a.setGestureArmed(owner, false)
 	}
+	a.idleGesture()
+}
+
+// gestureOwner is the node a gesture's capture holds: nil when the capture is not a gesture's, or
+// its owner is gone.
+func (a *App) gestureOwner() *node {
+	if a.captureKind != CaptureGesture {
+		return nil
+	}
+	return a.nodes[a.captureOwner]
+}
+
+// idleGesture is the no-gesture state.
+func (a *App) idleGesture() {
 	a.gestureState = GestureIdle
 	a.gestureArmed = false
 }
