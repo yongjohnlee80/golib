@@ -248,6 +248,9 @@ type FileList struct {
 	// onShow runs each time a folder's rows are put in: its view's filter
 	// field follows the filter, which a new folder clears
 	onShow func()
+	// rows is the listing's epoch: each folder shown starts one, so an owner hook that moves to
+	// another folder ends the reports still due for the first (C1).
+	rows rowsEpoch
 
 	list *List[fileEntry]
 	box  *Box
@@ -287,7 +290,7 @@ func NewFileList(opts ...FileListOption) *FileList {
 	listOpts := []ListOption[fileEntry]{
 		WithItems([]fileEntry(nil), fileEntry.label),
 		WithEmptyTextMessage[fileEntry](tui.Msg("tui.files.empty")),
-		WithListOnCursor[fileEntry](l.cursorOn),
+		WithListOnCursor[fileEntry](func(i int) { l.cursorOn(i) }),
 		WithListOnActivate[fileEntry](l.activate),
 	}
 	if l.styled {
@@ -378,8 +381,9 @@ func (l *FileList) HandleEvent(ev tui.Event) bool {
 	got, _ := r.Value.(listing)
 	l.loading = ""
 	l.stopRead()
-	l.show(got.dir, got.dirs, got.files, r.Err)
-	l.placeWanted()
+	if l.show(got.dir, got.dirs, got.files, r.Err) {
+		l.placeWanted()
+	}
 	return true
 }
 
@@ -477,6 +481,7 @@ func (l *FileList) SetCurrent(name string) bool {
 		if !e.up && e.name == name {
 			if l.list.cursor == i {
 				l.cursorOn(i) // SetCursor reports no move when the cursor is already there
+				return true
 			}
 			l.list.SetCursor(i)
 			return true
@@ -517,12 +522,12 @@ func (l *FileList) pathOf(e fileEntry) string {
 	return path.Join(l.dir, e.name)
 }
 
-func (l *FileList) cursorOn(i int) {
+func (l *FileList) cursorOn(i int) (live bool) {
 	if i < 0 || i >= len(l.entries) || l.onCursor == nil {
-		return
+		return true
 	}
 	e := l.entries[i]
-	l.onCursor(l.pathOf(e), e.dir || e.up)
+	return l.rows.Survives(func() { l.onCursor(l.pathOf(e), e.dir || e.up) })
 }
 
 // activate is Enter, or a double click, on a row.
@@ -551,8 +556,9 @@ func (l *FileList) loadThen(dir, want string) {
 	if !l.src.async() {
 		l.loading = ""
 		dirs, files, err := l.src.readDir(context.Background(), dir)
-		l.show(dir, dirs, files, err)
-		l.placeWanted()
+		if l.show(dir, dirs, files, err) {
+			l.placeWanted()
+		}
 		return
 	}
 	if ctx == nil {
@@ -597,7 +603,8 @@ func goRead(ctx *tui.Context, group string, read func(context.Context) (any, err
 
 // show puts a folder's rows in the list, the filter cleared and the cursor on
 // the first; err says the folder could not be read.
-func (l *FileList) show(dir string, dirs, files []fileEntry, err error) {
+func (l *FileList) show(dir string, dirs, files []fileEntry, err error) (live bool) {
+	l.rows.advance()
 	l.dir = dir
 	var entries []fileEntry
 	if dir != "." {
@@ -609,17 +616,21 @@ func (l *FileList) show(dir string, dirs, files []fileEntry, err error) {
 	l.filter = ""
 	l.entries = l.all
 	l.list.SetItems(l.entries)
-	l.list.SetCursor(0)
 	l.fitTitle()
-	if l.onShow != nil {
-		l.onShow()
+	// The owner is told last, each hook only while this listing is still the one shown: a hook that
+	// moves to another folder has told the owner of that one, and nothing of this one may follow.
+	if !l.rows.Survives(func() { l.list.SetCursor(0) }) {
+		return false
 	}
-	if l.onDir != nil {
-		l.onDir(l.src.Rooted(dir))
+	if l.onShow != nil && !l.rows.Survives(l.onShow) {
+		return false
+	}
+	if l.onDir != nil && !l.rows.Survives(func() { l.onDir(l.src.Rooted(dir)) }) {
+		return false
 	}
 	// SetCursor(0) publishes nothing when the cursor was already on row 0, so
 	// whoever follows the cursor is told here.
-	l.cursorOn(0)
+	return l.cursorOn(0)
 }
 
 // placeWanted puts the cursor on the row a load asked for, once its rows are in.
