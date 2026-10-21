@@ -90,10 +90,11 @@ type clientConfig struct {
 	Attrs map[string]uint16 `json:"attrs"`
 }
 
-// AttrBits is the attribute bits by name, as the client is handed them (clientConfig.Attrs).
-func AttrBits() map[string]uint16 {
-	m := make(map[string]uint16, len(style.AttrNames))
-	for _, a := range style.AttrNames {
+// attrBits is the attribute bits by name, as the client is handed them (clientConfig.Attrs).
+func attrBits() map[string]uint16 {
+	names := style.AttrNames()
+	m := make(map[string]uint16, len(names))
+	for _, a := range names {
 		m[a.Name] = uint16(a.Bit)
 	}
 	return m
@@ -153,7 +154,7 @@ func (h *Handler) ServePage(w http.ResponseWriter, r *http.Request) {
 		// hard-coded in BOTH places while the client's comment claimed it was
 		// injected, so the two could drift with nothing to notice.
 		Reserved: ReservedRules(),
-		Attrs:    AttrBits(),
+		Attrs:    attrBits(),
 	})
 	if err != nil {
 		http.Error(w, "unavailable", http.StatusInternalServerError)

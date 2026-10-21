@@ -479,7 +479,7 @@ func TestAttrBitsAreInjectedNotDuplicated(t *testing.T) {
 	rec := httptest.NewRecorder()
 	h.ServePage(rec, httptest.NewRequest(http.MethodGet, "/", nil))
 	body := rec.Body.String()
-	for _, a := range style.AttrNames {
+	for _, a := range style.AttrNames() {
 		if want := fmt.Sprintf(`"%s":%d`, a.Name, a.Bit); !contains(body, want) {
 			t.Errorf("the page does not hand the client %s", want)
 		}
