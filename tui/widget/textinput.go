@@ -5,7 +5,6 @@ import (
 
 	"github.com/yongjohnlee80/golib/tui"
 	"github.com/yongjohnlee80/golib/tui/keymap"
-	"github.com/yongjohnlee80/golib/tui/style"
 )
 
 // Single-Line Text Input & Form Field Architecture
@@ -117,115 +116,7 @@ var (
 	_ tui.CursorReporter = (*TextInput)(nil)
 )
 
-// TextInputStyles are the TextInput style hooks. Zero
-// fields inherit the defaults.
-type TextInputStyles struct {
-	Text        style.Style // value text (default: theme foreground)
-	Placeholder style.Style // default: mutedPlaceholder, TokenTextMuted and faint
-	Selection   style.Style // default: inverted, no accent
-	Error       style.Style // value text in the failed-validation state
-}
-
-// TextInputOption customizes a TextInput under construction.
-type TextInputOption func(*TextInput)
-
-// WithPlaceholder sets the text rendered (muted) while the value is empty.
-func WithPlaceholder(s string) TextInputOption {
-	return func(t *TextInput) { t.placeholder = plainText(s) }
-}
-
-// WithPlaceholderMessage sets the placeholder to a catalog message, shown in the App's
-// language.
-func WithPlaceholderMessage(m tui.Message) TextInputOption {
-	return func(t *TextInput) { t.placeholder = messageText(m) }
-}
-
-// WithMask enables password masking: the given rune paints in place of
-// every cluster while Value() returns the raw string.
-func WithMask(r rune) TextInputOption {
-	if r == 0 {
-		panic("widget: WithMask: zero mask rune")
-	}
-	return func(t *TextInput) { t.mask = r }
-}
-
-// WithValidate installs the validation hook consulted on Enter.
-func WithValidate(fn func(string) error) TextInputOption {
-	return func(t *TextInput) { t.validate = fn }
-}
-
-// WithOnSubmit installs a SYNCHRONOUS Enter hook, run inside the key handler.
-//
-// It exists because SubmitEvent is not synchronous, and for one class of
-// subscriber that difference is a defect rather than a detail. Bus.Publish
-// QUEUES delivery onto the program lane, and the App selects between the input
-// lane and the program lane -- so when a keystroke is already waiting, Go
-// picks between them pseudo-randomly. A subscriber that moves focus on Enter
-// therefore moves it BEFORE or AFTER the next keystroke, about half the time
-// each, and the keystroke that loses goes to the input the operator has just
-// left.
-//
-// Measured, in a consumer whose form advances focus on Enter: typing "demo"
-// Enter "sqlite" produced a name of "demos" and an engine of "qlite". Every
-// paste is that race, since a paste is a burst of keystrokes with none of a
-// human's delay.
-//
-// The SubmitEvent is still published, unchanged, so existing subscribers are
-// unaffected. Use this hook only for work that must complete before the next
-// key is dispatched -- moving focus, closing the surface -- and the event for
-// everything else.
-func WithOnSubmit(fn func(string)) TextInputOption {
-	return func(t *TextInput) { t.onSubmit = fn }
-}
-
-// WithOnEdit calls fn with the value after every EDIT — the moment the widget
-// publishes a ChangeEvent, synchronously, inside the key handler. It is not
-// called by SetValue: a program replacing the value has made no edit.
-func WithOnEdit(fn func(string)) TextInputOption {
-	return func(t *TextInput) { t.onEdit = fn }
-}
-
-// WithInitialValue sets the starting value (cursor at the end).
-func WithInitialValue(s string) TextInputOption {
-	return func(t *TextInput) { t.buf.setValue(sanitizeLine(s)) }
-}
-
-// WithTextInputStyles overrides the style hooks; zero fields keep defaults.
-func WithTextInputStyles(st TextInputStyles) TextInputOption {
-	return func(t *TextInput) {
-		t.styles = st.over(t.styles)
-	}
-}
-
 // NewTextInput builds an empty single-line editor.
-// mutedPlaceholder is how a field's placeholder looks, and anything else drawn "muted": the muted
-// text colour AND faint, as the style package defines muted text (TokenTextMuted is the colour
-// only, and by default it is the foreground's). The colour alone drew a placeholder as bright as
-// typed text, so it read as a prefilled value. TextInput, TextArea, Editor (its ruler) and Select
-// all use it.
-func mutedPlaceholder() style.Style { return style.New().Foreground(style.TokenTextMuted).Faint(true) }
-
-// over is s laid over base, slot by slot: each set property of s wins, and base fills the rest. The
-// one merge of the text widgets' looks (TextInput, TextArea, Editor).
-func (s TextInputStyles) over(base TextInputStyles) TextInputStyles {
-	return TextInputStyles{
-		Text:        s.Text.Inherit(base.Text),
-		Placeholder: s.Placeholder.Inherit(base.Placeholder),
-		Selection:   s.Selection.Inherit(base.Selection),
-		Error:       s.Error.Inherit(base.Error),
-	}
-}
-
-// defaultTextInputStyles are a text widget's looks before any option: TextInput's, TextArea's and
-// the Editor's alike.
-func defaultTextInputStyles() TextInputStyles {
-	return TextInputStyles{
-		Placeholder: mutedPlaceholder(),
-		Selection:   style.New().Reverse(true),
-		Error:       style.New().Foreground(style.TokenError),
-	}
-}
-
 func NewTextInput(opts ...TextInputOption) *TextInput {
 	t := &TextInput{
 		buf:    newTextBuffer(),
@@ -278,36 +169,6 @@ func sanitizeLine(s string) string {
 		}
 		return r
 	}, strings.ReplaceAll(s, "\r\n", "\n"))
-}
-
-// renderCluster returns the painted form of cluster cl (mask-aware).
-func (t *TextInput) renderCluster(cl string) string {
-	if t.mask != 0 {
-		return string(t.mask)
-	}
-	return cl
-}
-
-// cellAt is the display offset (cells) of cluster index i in painted form.
-func (t *TextInput) cellAt(i int) int {
-	return cellsBefore(t.clusters(), i, func(cl string) int { return t.measure(t.renderCluster(cl)) })
-}
-
-// ensureVisible adjusts the horizontal scroll so the cursor cell is inside
-// the viewport (using the last layout width).
-func (t *TextInput) ensureVisible() {
-	if t.width <= 0 {
-		return
-	}
-	cx := t.cellAt(t.cursor())
-	if cx < t.scroll {
-		t.scroll = cx
-	}
-	if cx >= t.scroll+t.width {
-		t.scroll = cx - t.width + 1
-	}
-	total := t.cellAt(t.length()) + 1 // +1: the cursor cell past the end
-	t.scroll = max(0, min(t.scroll, max(total-t.width, 0)))
 }
 
 // selection returns the selected cluster range [lo, hi), ok=false when no
@@ -477,79 +338,6 @@ func (t *TextInput) handleKey(e tui.KeyEvent) bool {
 		}
 	}
 	return true
-}
-
-// Layout: height 1, width greedy; the viewport width feeds cursor-visible
-// scrolling.
-func (t *TextInput) Layout(c tui.Constraints) tui.Size {
-	t.pad = 0
-	if ctx := t.Context(); ctx != nil && ctx.Capabilities().NativeViews {
-		t.pad = 1 // the native field's rounded frame: text starts a cell in from each end
-	}
-	w := boundedMax(c.MaxW, max(c.MinW, t.cellAt(t.length())+1+2*t.pad))
-	if w <= 2*t.pad {
-		t.pad = 0
-	}
-	t.width = w - 2*t.pad
-	t.ensureVisible()
-	return c.Constrain(tui.Size{W: w, H: 1})
-}
-
-// Cursor implements tui.CursorReporter: the insertion point in local
-// coordinates (the runtime consults it only while this widget is focused).
-func (t *TextInput) Cursor() (int, int, bool) {
-	x := t.cellAt(t.cursor()) - t.scroll
-	if t.width > 0 {
-		x = min(x, t.width-1)
-	}
-	return max(x, 0) + t.pad, 0, true
-}
-
-// Render paints value (or placeholder), selection fill, and mask runes.
-func (t *TextInput) Render(s tui.Surface) {
-	sz := s.Size()
-	if sz.W <= 0 || sz.H <= 0 {
-		return
-	}
-	// The field paints its whole box, as a Qt field does, not only the cells
-	// its text covers: an empty field on a card is still a field.
-	s.Fill(tui.Rect{W: sz.W, H: sz.H}, " ", t.styles.Text)
-	pad := t.pad
-	if sz.W <= 2*pad {
-		pad = 0
-	}
-	inner := sz.W - 2*pad
-	cs := t.clusters()
-	if len(cs) == 0 {
-		if ph := t.placeholder.inLanguage(&t.Base); ph != "" {
-			drawText(s, pad, 0, truncate(ph, inner, s.StringWidth), t.styles.Placeholder)
-		}
-		return
-	}
-	base := t.styles.Text
-	if t.verr != nil {
-		base = t.styles.Error.Inherit(t.styles.Text)
-	}
-	selLo, selHi, hasSel := t.selection()
-	x := -t.scroll
-	for i, c := range cs {
-		cl := t.renderCluster(c)
-		cw := s.StringWidth(cl)
-		if x+cw > inner {
-			break
-		}
-		if x >= 0 {
-			st := base
-			if hasSel && t.focused() && i >= selLo && i < selHi {
-				st = t.styles.Selection.Inherit(base)
-			}
-			s.SetCell(pad+x, 0, cl, st)
-		}
-		x += cw
-	}
-	if h := t.hint(); h != "" && x >= 0 && x < inner {
-		drawText(s, pad+x, 0, truncate(h, inner-x, s.StringWidth), t.styles.Placeholder)
-	}
 }
 
 // KeyBindings is the TextInput's commands as m binds them (tui.KeyBinder). Typed text is not a
