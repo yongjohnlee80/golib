@@ -28,13 +28,13 @@ func TestDeprecatedTransportMethodsStillWork(t *testing.T) {
 	if err := b.Submit(tui.KeyEvent{Code: 'a', Text: "a"}); err != nil {
 		t.Fatalf("Submit: %v", err)
 	}
-	if ev := <-b.Events(); ev != (tui.KeyEvent{Code: 'a', Text: "a"}) {
+	if ev := nextEvent(t, b); ev != (tui.KeyEvent{Code: 'a', Text: "a"}) {
 		t.Fatalf("Submit delivered %#v", ev)
 	}
 	if err := b.Resize(30, 6); err != nil {
 		t.Fatalf("Resize: %v", err)
 	}
-	if ev := <-b.Events(); ev != (tui.ResizeEvent{W: 30, H: 6}) {
+	if ev := nextEvent(t, b); ev != (tui.ResizeEvent{W: 30, H: 6}) {
 		t.Fatalf("Resize delivered %#v", ev)
 	}
 	if !b.PendingFrame() {
@@ -50,5 +50,17 @@ func TestDeprecatedTransportMethodsStillWork(t *testing.T) {
 	b.Fail(boom)
 	if err := b.Err(); !errors.Is(err, boom) {
 		t.Fatalf("Err after Fail = %v, want %v", err, boom)
+	}
+}
+
+// nextEvent is b's next event, or a named failure when none comes.
+func nextEvent(t *testing.T, b *Backend) tui.Event {
+	t.Helper()
+	select {
+	case ev := <-b.Events():
+		return ev
+	case <-time.After(2 * time.Second):
+		t.Fatal("no event within 2s")
+		return nil
 	}
 }

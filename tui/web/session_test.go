@@ -92,6 +92,32 @@ func TestNewManager_RequiresAFactory(t *testing.T) {
 	}
 }
 
+// A session whose App never starts (the factory built none) is torn down whole by create: its
+// backend is stopped, not left for nobody to stop, and no session remains.
+func TestManager_AnUnstartedSessionStopsItsBackend(t *testing.T) {
+	t.Parallel()
+	var built *Backend
+	m, err := NewManager(func(b *Backend, _ *SessionInfo) Runner {
+		built = b
+		return nil
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := m.Create(context.Background(), identity("alice"), hello()); err == nil {
+		t.Fatal("a factory that built no App gave a session")
+	}
+	if built == nil {
+		t.Fatal("the factory was not called")
+	}
+	if err := built.Flush(nil); !errors.Is(err, ErrStopped) {
+		t.Errorf("the unstarted session's backend: Flush = %v, want ErrStopped", err)
+	}
+	if m.Len() != 0 {
+		t.Errorf("%d sessions remain", m.Len())
+	}
+}
+
 // An authenticated user must not be able to attach to somebody else's session by
 // guessing its id. Authentication establishes that you are somebody; it does not
 // establish that you are the right somebody.
