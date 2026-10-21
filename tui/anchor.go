@@ -165,12 +165,7 @@ func (c *Context) ResolveAnchor(r AnchorRef) (Rect, bool) {
 	}
 	self := c.node.absRect
 	if r.region == "" {
-		return Rect{
-			X: n.absRect.X - self.X,
-			Y: n.absRect.Y - self.Y,
-			W: n.absRect.W,
-			H: n.absRect.H,
-		}, true
+		return n.absRect.RelativeTo(self), true
 	}
 	local, ok := n.regions[r.region]
 	if !ok {
@@ -181,10 +176,5 @@ func (c *Context) ResolveAnchor(r AnchorRef) (Rect, bool) {
 	// clamped here: an owner may legitimately declare a row that its own
 	// clipping hides, and deciding what to do about that belongs to the
 	// placement policy rather than to resolution.
-	return Rect{
-		X: n.absRect.X + local.X - self.X,
-		Y: n.absRect.Y + local.Y - self.Y,
-		W: local.W,
-		H: local.H,
-	}, true
+	return local.Translate(n.absRect.X, n.absRect.Y).RelativeTo(self), true
 }

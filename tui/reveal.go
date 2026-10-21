@@ -47,8 +47,7 @@ func (a *App) revealStep() bool {
 		if !ok || !p.visible() {
 			continue
 		}
-		r := Rect{X: n.absRect.X - p.absRect.X, Y: n.absRect.Y - p.absRect.Y, W: n.absRect.W, H: n.absRect.H}
-		if rv.Reveal(r) {
+		if rv.Reveal(n.absRect.RelativeTo(p.absRect)) {
 			return true
 		}
 	}

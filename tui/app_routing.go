@@ -241,10 +241,7 @@ func (a *App) dispatch(ev Event) {
 		}
 		consumed := false
 		for n := target; n != nil; n = n.parent {
-			local := e
-			local.X = e.X - n.absRect.X
-			local.Y = e.Y - n.absRect.Y
-			if a.routeToNode(n, local) {
+			if a.routeToNode(n, e.localTo(n.absRect)) {
 				consumed = true
 				break
 			}
@@ -280,10 +277,7 @@ func (a *App) dispatch(ev Event) {
 				activationAvailable(target) {
 				if r := a.recognizerFor(); r != nil &&
 					effectivePointerPolicy(target) != PointerDisabled {
-					local := e
-					local.X = e.X - target.absRect.X
-					local.Y = e.Y - target.absRect.Y
-					a.runRecognizer(r, target, local)
+					a.runRecognizer(r, target, e.localTo(target.absRect))
 				}
 			}
 		}
@@ -561,10 +555,7 @@ func (a *App) deliverCaptured(e MouseEvent) bool {
 	// to ever re-arm, abandon or activate.
 	if a.captureKind == CaptureGesture {
 		if r := a.recognizerFor(); r != nil {
-			local := e
-			local.X = e.X - owner.absRect.X
-			local.Y = e.Y - owner.absRect.Y
-			a.runRecognizer(r, owner, local)
+			a.runRecognizer(r, owner, e.localTo(owner.absRect))
 			a.traceRouted(e, owner, owner.id)
 			return true
 		}
@@ -579,10 +570,7 @@ func (a *App) deliverCaptured(e MouseEvent) bool {
 	if e.Kind == MousePress {
 		e.Count = a.pressOrdinal(e, owner)
 	}
-	local := e
-	local.X = e.X - owner.absRect.X
-	local.Y = e.Y - owner.absRect.Y
-	a.routeToNode(owner, local)
+	a.routeToNode(owner, e.localTo(owner.absRect))
 	a.traceRouted(e, owner, owner.id)
 	return true
 }
@@ -646,8 +634,10 @@ func hitTestNode(n *node, x, y int, admit func(*node) bool) *node {
 			return t
 		}
 	}
-	if pc, ok := n.comp.(PointerContainer); ok && !pc.ContainsPointer(x-n.absRect.X, y-n.absRect.Y) {
-		return nil
+	if pc, ok := n.comp.(PointerContainer); ok {
+		if l := (Point{X: x, Y: y}).RelativeTo(n.absRect); !pc.ContainsPointer(l.X, l.Y) {
+			return nil
+		}
 	}
 	if admit != nil && !admit(n) {
 		return nil
