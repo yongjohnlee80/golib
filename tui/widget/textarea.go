@@ -56,7 +56,7 @@ import (
 //
 //	commitMsg := widget.NewTextArea(
 //		widget.WithWrap(widget.WrapSoft),
-//		widget.WithPlaceholder("Enter commit title and summary..."),
+//		widget.WithTextAreaPlaceholder("Enter commit title and summary..."),
 //	)
 //	panel := widget.NewBox(commitMsg,
 //		widget.WithTitle("Commit Message"),
@@ -78,7 +78,8 @@ type TextArea struct {
 	left int // horizontal scroll (cells; WrapNone only)
 	w, h int // last layout size
 
-	styles TextInputStyles
+	placeholder uiText // shown (muted) while the value is empty
+	styles      TextInputStyles
 }
 
 var (
@@ -96,6 +97,17 @@ func WithWrap(m WrapMode) TextAreaOption {
 		panic(fmt.Sprintf("widget: WithWrap: mode %d is not WrapNone or WrapSoft", m))
 	}
 	return func(t *TextArea) { t.wrap = m }
+}
+
+// WithTextAreaPlaceholder sets the text drawn (muted) while the value is empty.
+func WithTextAreaPlaceholder(s string) TextAreaOption {
+	return func(t *TextArea) { t.placeholder = plainText(s) }
+}
+
+// WithTextAreaPlaceholderMessage sets the placeholder to a catalog message, shown in the App's
+// language.
+func WithTextAreaPlaceholderMessage(m tui.Message) TextAreaOption {
+	return func(t *TextArea) { t.placeholder = messageText(m) }
 }
 
 // WithTextAreaStyles overrides the style hooks (same slots as TextInput;
@@ -360,6 +372,12 @@ func (t *TextArea) Render(s tui.Surface) {
 		return
 	}
 	w := t.wrapWidth()
+	if len(t.textLines) == 1 && t.textLines[0] == "" {
+		if ph := t.placeholder.inLanguage(&t.Base); ph != "" {
+			drawText(s, 0, 0, truncate(ph, w, s.StringWidth), t.styles.Placeholder)
+		}
+		return
+	}
 	selLo, selHi, hasSel := t.selection()
 	paintCluster := func(x, y int, cl string, ln, col int) {
 		st := t.styles.Text
