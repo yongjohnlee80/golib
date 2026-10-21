@@ -170,7 +170,7 @@ type Document struct {
 
 	lines []int // offsets at which lines begin, after LF, CR or CRLF
 
-	nodes nodeSlab // where the parse's nodes are made; dropped when the parse is done
+	nodes nodeSlab // where the parse's nodes are made; released when the parse is done
 }
 
 // nodeSlab hands out one parse's Nodes from chunks it allocates, so a document of n nodes costs a
@@ -178,15 +178,53 @@ type Document struct {
 // nodes (a one-line parse, as the highlighter makes, stays small) and doubles up to 1024. A node is
 // never moved: a chunk is only appended to within its capacity, and a full one is left as it is
 // for a new one. Each Parse has its own (on its Document), so nothing is shared between parses.
-type nodeSlab struct{ chunk []Node }
+type nodeSlab struct{ chunks [][]Node }
 
 // new places n in the slab and returns where it lies.
 func (s *nodeSlab) new(n Node) *Node {
-	if len(s.chunk) == cap(s.chunk) {
-		s.chunk = make([]Node, 0, min(max(2*cap(s.chunk), 8), 1024))
+	last := len(s.chunks) - 1
+	if last < 0 || len(s.chunks[last]) == cap(s.chunks[last]) {
+		size := 8
+		if last >= 0 {
+			size = min(2*cap(s.chunks[last]), 1024)
+		}
+		s.chunks = append(s.chunks, make([]Node, 0, size))
+		last++
 	}
-	s.chunk = append(s.chunk, n)
-	return &s.chunk[len(s.chunk)-1]
+	s.chunks[last] = append(s.chunks[last], n)
+	c := s.chunks[last]
+	return &c[len(c)-1]
+}
+
+// release ends the parse. A node the tree holds (reached from root by FirstChild and Next, as every
+// reader of the tree walks it) keeps its value and drops its block state, which only the parse
+// needed. A node the parse made and then let go (a paragraph that became a table, a delimiter run
+// consumed by emphasis) is zeroed whole. A chunk lives as long as any of its nodes, so without this
+// a dead node's block state, a whole paragraph's content, would outlive the parse.
+func (s *nodeSlab) release(root *Node) {
+	markLive(root)
+	for _, c := range s.chunks {
+		for i := range c {
+			if c[i].blk == &liveMark {
+				c[i].blk = nil
+			} else {
+				c[i] = Node{}
+			}
+		}
+	}
+	s.chunks = nil
+}
+
+// liveMark is release's mark for a node the tree holds; no parse-time block state is ever it.
+var liveMark blockState
+
+func markLive(n *Node) {
+	for c := n; c != nil; c = c.Next {
+		c.blk = &liveMark
+		if c.FirstChild != nil {
+			markLive(c.FirstChild)
+		}
+	}
 }
 
 // Position resolves a byte offset to a line and a rune-counted column. Lines end at LF, CR or CRLF,
@@ -222,8 +260,7 @@ func Parse(src []byte, opts ...Option) *Document {
 	p := newBlockParser(d, &cfg)
 	p.run()
 	parseInlines(d, &cfg)
-	clearState(d.Root) // block state was kept for the inline phase
-	d.nodes = nodeSlab{}
+	d.nodes.release(d.Root) // block state was kept for the inline phase; a node let go goes too
 	return d
 }
 

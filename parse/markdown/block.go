@@ -83,15 +83,6 @@ func (p *blockParser) run() {
 	p.root.Span = Span{0, len(src)}
 }
 
-func clearState(n *Node) {
-	for c := n; c != nil; c = c.Next {
-		c.blk = nil
-		if c.FirstChild != nil {
-			clearState(c.FirstChild)
-		}
-	}
-}
-
 // findNextNonspace measures the indentation ahead of the cursor without moving it.
 func (p *blockParser) findNextNonspace() {
 	i, cols := p.offset, p.column
