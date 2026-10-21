@@ -593,9 +593,9 @@ func (r *MarkdownRenderer) lineSpans(ln int, line string, th Theme) ([]flow.Span
 	walk = func(n *markdown.Node) {
 		switch n.Kind {
 		case markdown.KindHeading:
-			level = n.Level
+			level = n.Level()
 			for i := n.Span.Start; i < n.Span.End; i++ {
-				attrs[i].heading = n.Level
+				attrs[i].heading = n.Level()
 			}
 			if n.FirstChild == nil {
 				hide(attrs, n.Span.Start, n.Span.End)
