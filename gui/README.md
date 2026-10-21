@@ -204,6 +204,8 @@ and the markdown view. Each `Canvas` call is replayed on every frame:
    items.
 5. Shape text and lay out on change, not on paint.
 6. Request a frame only when something changed; stop when an animation stops.
+7. Dash a line with `gui.Dash`, the one bounded walk (at most `MaxDashes`, solid
+   where a dash is too fine to see), and stroke its runs as one path.
 
 `FillRect` is currently drawn as a path, so it costs one. Making it a plain
 rectangle where the transform allows is planned.

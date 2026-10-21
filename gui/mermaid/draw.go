@@ -471,31 +471,15 @@ func dist(a, b gui.Point) float32 {
 	return float32(math.Hypot(float64(b.X-a.X), float64(b.Y-a.Y)))
 }
 
-// dashes strokes the polyline as dashes of length dash with gaps as long.
+// dashes strokes the polyline as dashes of length dash with gaps as long, as one path (gui.Dash:
+// bounded, and solid where a dash would be too fine to see).
 func dashes(c gui.Canvas, pts []gui.Point, width float32, b gui.Brush, dash float32) {
 	p := new(gui.Path)
-	on, left := true, dash
-	for i := 1; i < len(pts); i++ {
-		a, z := pts[i-1], pts[i]
-		seg := dist(a, z)
-		for at := float32(0); at < seg; {
-			step := min(left, seg-at)
-			from := lerp(a, z, at/seg)
-			to := lerp(a, z, (at+step)/seg)
-			if on {
-				p.MoveTo(from).LineTo(to)
-			}
-			at += step
-			left -= step
-			if left <= 0 {
-				on, left = !on, dash
-			}
+	for _, run := range gui.Dash(pts, []float32{dash}) {
+		p.MoveTo(run[0])
+		for _, q := range run[1:] {
+			p.LineTo(q)
 		}
 	}
 	c.StrokePath(p, width, b)
-}
-
-// lerp linearly interpolates between points a and b with parameter t.
-func lerp(a, b gui.Point, t float32) gui.Point {
-	return gui.Pt(a.X+(b.X-a.X)*t, a.Y+(b.Y-a.Y)*t)
 }

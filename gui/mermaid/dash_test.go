@@ -26,7 +26,7 @@ func TestADottedEdgePaintsForAnyFontSize(t *testing.T) {
 		case <-time.After(5 * time.Second):
 			t.Fatalf("font size %v: painting a dotted edge never finished", size)
 		}
-		if rc.segments > 2*4096 { // 4096 dashes, a move and a line each
+		if rc.segments > 2*gui.MaxDashes { // a move and a line each
 			t.Errorf("font size %v: a dotted edge drew %d path segments", size, rc.segments)
 		}
 	}

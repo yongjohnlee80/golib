@@ -89,6 +89,9 @@ func LayDiagram(ctx context.Context, d pm.Diagram, width float32, th Theme, m gu
 
 // layParsed lays out d, a model its parser built or validModel accepted.
 func layParsed(ctx context.Context, d pm.Diagram, width float32, th Theme, m gui.Measurer) (*Laid, error) {
+	if !(th.Font.Size > 0) { // every length is a multiple of it: nothing lays out to scale without one
+		return nil, fmt.Errorf("%w: a font size of %v", pm.ErrUnsupported, th.Font.Size)
+	}
 	lay := layers[d.Kind()]
 	if lay == nil {
 		return nil, fmt.Errorf("%w: %v diagrams", pm.ErrUnsupported, d.Kind())
