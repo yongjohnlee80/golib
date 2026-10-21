@@ -144,7 +144,7 @@ type List[T any] struct {
 	// shown is the cursor and viewport height Layout last kept the cursor in view for: a layout
 	// pass reveals the cursor only when either changed, so the wheel's scroll stays
 	shown viewMark
-	count int // Len() cached at render/refresh; handlers use the cache
+	count int // Len() as last told (SetSource, RefreshSource); handlers and Layout use it, Render only bounds by it
 	// presses pairs a double-click by LOGICAL row, so a pair straddling a
 	// viewport scroll cannot activate a different row.
 	//
@@ -591,17 +591,19 @@ func (l *List[T]) Render(s tui.Surface) {
 	if _, hasBG := l.styles.Row.GetBackground(); hasBG {
 		s.Fill(tui.Rect{W: sz.W, H: sz.H}, " ", l.styles.Row)
 	}
-	l.count = l.src.Len() // the one Len() read of this pass
-	l.clamp()
-	if l.count == 0 {
+	// Render is pure: it paints the committed rows and stores nothing. A source changed in place
+	// without RefreshSource (a caller violation) is bounded here, never read past its end, and the
+	// list catches up when it is told.
+	count := min(l.count, l.src.Len())
+	if count == 0 {
 		if empty := l.emptyText.inLanguage(&l.Base); empty != "" {
 			muted := style.New().Foreground(style.TokenTextMuted).Italic(true)
 			drawText(s, 0, 0, truncate(empty, sz.W, s.StringWidth), muted)
 		}
 		return
 	}
-	contentW, scrollable := rowsWidth(sz.W, sz.H, l.count)
-	paintRows(s, l.top, l.count, contentW, l.rowStyle, func(s tui.Surface, i, y, w int, st style.Style) {
+	contentW, scrollable := rowsWidth(sz.W, sz.H, count)
+	paintRows(s, min(l.top, count), count, contentW, l.rowStyle, func(s tui.Surface, i, y, w int, st style.Style) {
 		item := l.src.Item(i)
 		if l.paint != nil {
 			_, selected := l.sel[i]
@@ -611,7 +613,7 @@ func (l *List[T]) Render(s tui.Surface) {
 		}
 	})
 	if scrollable {
-		paintScrollIndicator(s, sz.W-1, sz.H, l.top, l.count-sz.H)
+		paintScrollIndicator(s, sz.W-1, sz.H, l.top, count-sz.H)
 	}
 }
 
