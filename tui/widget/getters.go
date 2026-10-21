@@ -165,16 +165,7 @@ var (
 type TabSpan struct{ X, W int }
 
 // TabSpans are the tabs' labels on the bar, in order, where a press selects them.
-func (t *Tabs) TabSpans() []TabSpan {
-	out := make([]TabSpan, 0, len(t.tabs))
-	x := 0
-	for _, tab := range t.tabs {
-		w := t.measure(cellLabel(tab.label))
-		out = append(out, TabSpan{X: x, W: w})
-		x += w + 1
-	}
-	return out
-}
+func (t *Tabs) TabSpans() []TabSpan { return t.strip.spans() }
 
 // CardRect is where the dialog's card was placed at the last layout, in the modal's cells.
 func (m *Modal) CardRect() tui.Rect { return m.cardRect }

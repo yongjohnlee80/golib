@@ -1,6 +1,8 @@
 package widget
 
 import (
+	"strconv"
+
 	"github.com/yongjohnlee80/golib/errs"
 	"github.com/yongjohnlee80/golib/tui"
 	"github.com/yongjohnlee80/golib/tui/keymap"
@@ -90,9 +92,9 @@ type Tabs struct {
 	noBar     bool
 	onChange  func(i int) // WithTabsOnChange
 
-	barSt    style.Style
-	tabSt    style.Style
-	activeSt style.Style
+	// strip is the bar: the shared tab-row engine TabStrip and TerminalTabs draw with (tab_strip.go),
+	// its tabs this container's, by index. Its styles are the bar's, the tabs' and the active tab's.
+	strip tabStrip
 }
 
 type tabEntry struct {
@@ -137,9 +139,9 @@ func WithoutBar() TabsOption { return func(t *Tabs) { t.noBar = true } }
 // WithTabsStyles overrides the bar, tab, and active-tab styles.
 func WithTabsStyles(bar, tab, active style.Style) TabsOption {
 	return func(t *Tabs) {
-		t.barSt = bar.Inherit(t.barSt)
-		t.tabSt = tab.Inherit(t.tabSt)
-		t.activeSt = active.Inherit(t.activeSt)
+		t.strip.bar = bar.Inherit(t.strip.bar)
+		t.strip.tab = tab.Inherit(t.strip.tab)
+		t.strip.selected = active.Inherit(t.strip.selected)
 	}
 }
 
@@ -160,7 +162,22 @@ func tabsStyles(bar, tab, active style.Style) (style.Style, style.Style, style.S
 // NewTabs builds a tab switcher. At least one tab is required.
 func NewTabs(opts ...TabsOption) *Tabs {
 	t := &Tabs{}
-	t.barSt, t.tabSt, t.activeSt = defaultTabsStyles()
+	t.strip = tabStrip{base: &t.Base, anchor: t, layer: "tabs", markFocus: true,
+		tabs: func() []stripTab {
+			out := make([]stripTab, len(t.tabs))
+			for i, tab := range t.tabs {
+				out[i] = stripTab{id: strconv.Itoa(i), label: cellLabel(tab.label)}
+			}
+			return out
+		},
+		active: func() string { return strconv.Itoa(t.active) },
+		choose: func(id string) {
+			if i, err := strconv.Atoi(id); err == nil {
+				t.Select(i)
+			}
+		},
+	}
+	t.strip.bar, t.strip.tab, t.strip.selected = defaultTabsStyles()
 	for _, o := range opts {
 		if o != nil {
 			o(t)
@@ -176,7 +193,7 @@ func NewTabs(opts ...TabsOption) *Tabs {
 // [WithTabsStyles] does at construction: what a style leaves unset is the default's, so zero
 // styles restore the defaults.
 func (t *Tabs) SetStyles(bar, tab, active style.Style) {
-	t.barSt, t.tabSt, t.activeSt = tabsStyles(bar, tab, active)
+	t.strip.bar, t.strip.tab, t.strip.selected = tabsStyles(bar, tab, active)
 	t.MarkDirty()
 }
 
@@ -264,18 +281,10 @@ func (t *Tabs) HandleEvent(ev tui.Event) bool {
 		return true
 
 	case tui.MouseEvent:
-		if e.Kind != tui.MousePress || e.Button != tui.MouseLeft || e.Y != 0 {
+		if t.noBar || e.Kind != tui.MousePress || e.Button != tui.MouseLeft || e.Y != 0 {
 			return false
 		}
-		x := 0
-		for i, tab := range t.tabs {
-			w := t.measure(cellLabel(tab.label))
-			if e.X >= x && e.X < x+w {
-				t.Select(i)
-				return true
-			}
-			x += w + 1
-		}
+		t.strip.press(e)
 		return true // clicks on the empty bar are consumed, not bubbled
 	}
 	return false
@@ -315,6 +324,9 @@ func (t *Tabs) Layout(c tui.Constraints) tui.Size {
 		barH = 0
 	}
 	ch := max(h-barH, 0)
+	if !t.noBar {
+		t.ctx.AfterLayout("tab-window", func() { t.strip.commitWindow(w) })
+	}
 	active := t.tabs[t.active]
 	if active.mounted && ch > 0 {
 		t.ctx.LayoutChild(active.comp, tui.Tight(tui.Size{W: w, H: ch}))
@@ -323,31 +335,13 @@ func (t *Tabs) Layout(c tui.Constraints) tui.Size {
 	return c.Constrain(tui.Size{W: w, H: h})
 }
 
-// Render paints the tab bar; only the active child renders below.
+// Render paints the tab bar, the shared strip's row: the window of tabs that fits, scrolled to
+// show the active one, with ← and → when they overflow. Only the active child renders below.
 func (t *Tabs) Render(s tui.Surface) {
 	if t.noBar {
 		return // content-switcher mode: an external widget draws the menu
 	}
-	w := s.Size().W
-	if w <= 0 {
-		return
-	}
-	s.Fill(tui.Rect{X: 0, Y: 0, W: w, H: 1}, " ", t.barSt)
-	x := 0
-	for i, tab := range t.tabs {
-		st := t.tabSt
-		if i == t.active {
-			st = t.activeSt
-			if t.focused() {
-				st = style.New().Underline(true).Inherit(st)
-			}
-		}
-		label := cellLabel(tab.label)
-		lw := s.StringWidth(label)
-		if x >= w {
-			break
-		}
-		drawText(s, x, 0, truncate(label, w-x, s.StringWidth), st)
-		x += lw + 1
+	if w := s.Size().W; w > 0 {
+		t.strip.render(s, w)
 	}
 }
