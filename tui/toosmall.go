@@ -20,6 +20,13 @@ import (
 // Everything else carries on — the program lane, timers, tasks, resize and focus events — so the
 // application's state is current when the screen is large enough again.
 
+// tooSmallState is the smallest screen the App lays out for (WithMinimumSize, SetMinimumSize), and
+// quitButton the too-small screen's Quit, in screen cells, while it shows.
+type tooSmallState struct {
+	minSize    Size
+	quitButton Rect
+}
+
 // SetMinimumSize sets the smallest screen, in cells, the App lays out for (see WithMinimumSize).
 // A zero dimension sets no minimum on that axis. On the loop goroutine: a handler or an Update.
 func (a *App) SetMinimumSize(s Size) {

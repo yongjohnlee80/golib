@@ -25,6 +25,24 @@ import (
 // uncaptured one runs — so a drag begun as a semantic action continues as one
 // rather than degrading into raw events halfway through.
 
+// captureState is who holds the pointer, and the gesture recogniser's state.
+type captureState struct {
+	// Pointer capture. captureOwner is 0 when nobody holds the pointer.
+	// captureFocus is the focused node sampled at acquisition, which is what
+	// "focus left the owner's subtree" is measured against — the owner itself
+	// need not be focusable, so its own focus state cannot serve.
+	captureOwner NodeID
+	captureKind  CaptureKind
+	captureFocus NodeID
+
+	// Gesture recognition state. gestureState is what the recogniser is
+	// handed and returns; gestureArmed is the runtime's own record of
+	// whether it has called SetArmed(true) without a matching false, which
+	// is what lets it guarantee the target ends up disarmed.
+	gestureState GestureState
+	gestureArmed bool
+}
+
 // CaptureKind distinguishes who owns a capture, which decides how a captured
 // event is routed.
 type CaptureKind uint8

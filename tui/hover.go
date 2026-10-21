@@ -10,6 +10,16 @@ package tui
 // leaves the screen (PointerLeaveEvent), when the terminal or window loses focus, and when the
 // hovered node unmounts.
 
+// hoverState is the node under the pointer (0: none), and pointer the pointer's last screen cell, for
+// re-checking when a capture ends. tip is the tooltip card (tooltip.go); keyFocus is set while a key
+// press is routed, so focus it moves is focus the keyboard brought.
+type hoverState struct {
+	hovered  NodeID
+	pointer  Point
+	tip      toolTipState
+	keyFocus bool
+}
+
 // HoverObserver opts a component into hover: the App calls HoverChanged when the pointer starts
 // or stops being over it, on the loop goroutine, and repaints.
 type HoverObserver interface {

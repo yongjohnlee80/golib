@@ -19,6 +19,17 @@ import (
 // once. A backend that draws fonts (FaceHost) is handed the table when it starts and whenever it
 // grows; every other backend has no font to change and ignores Face.
 
+// faceTable is the font faces cells name: faceNames[i] is Cell.Face i, faceIDs its index by family;
+// faceFull is the table refusing a family, said once. offFace is the face in effect inside a
+// RenderOffscreen's draw (offDepth > 0), for a nested call with no face of its own (offscreen.go).
+type faceTable struct {
+	faceNames []string
+	faceIDs   map[string]uint16
+	faceFull  bool
+	offFace   uint16
+	offDepth  int
+}
+
 // CellFacer is a component whose subtree's cells are drawn in another font family. "" is no
 // family of its own: the subtree keeps the face it is painted in.
 type CellFacer interface {

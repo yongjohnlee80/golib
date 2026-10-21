@@ -21,6 +21,13 @@ import (
 //
 // Only the images this program placed are ever deleted: each placement is by its own id.
 
+// imagePlacements is the images visible reporters asked for in this frame's paint (frameImages), and
+// what the backend was last told to show, by id (placed).
+type imagePlacements struct {
+	frameImages []ImagePlacement
+	placed      map[uint32]ImagePlacement
+}
+
 // Image is a raster image a component shows over its cells: PNG bytes, the id the component keeps
 // for it (NewImageID), and a version that changes whenever the bytes do. Clip is the part of the
 // PNG shown, in its pixels (Qt's Image.sourceClipRect): empty, the whole of it. A change of Clip
