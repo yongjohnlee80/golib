@@ -1,9 +1,6 @@
 package tui
 
-import (
-	"fmt"
-	"sort"
-)
+import "fmt"
 
 // Direction selects a Flex's main axis.
 type Direction uint8
@@ -52,9 +49,6 @@ type Flex struct {
 	dir     Direction
 	weights childMeta[int]
 	sized   childMeta[int] // AddSized: a fixed main-axis extent
-	// stretch is that the cross axis of the layout in progress is fixed, so
-	// children are stretched across it (Layout).
-	stretch bool
 }
 
 var _ Container = (*Flex)(nil)
@@ -106,99 +100,113 @@ func (f *Flex) Remove(child Component) {
 // largest-remainder distribution over weights, then placement in
 // declaration order.
 func (f *Flex) Layout(c Constraints) Size {
-	horiz := f.dir == Horizontal
-	mainMax, crossMax := c.MaxW, c.MaxH
+	p := f.pass(c)
+	sizes := make([]Size, f.Len())
+	used, wsum := f.measureFixed(p, sizes)
+	f.measureWeighted(p, sizes, used, wsum)
+	off, cross := f.place(sizes)
+
+	// Container size: with weighted children the flex fills the bounded
+	// main axis; otherwise it wraps its content. Cross: stretch when
+	// bounded, else the children's max.
+	mainSize := off
+	if wsum > 0 && p.mainMax != Unbounded {
+		mainSize = p.mainMax
+	}
+	crossSize := p.crossMax
+	if !p.stretch {
+		crossSize = cross
+	}
+	if f.dir == Horizontal {
+		return c.Constrain(Size{W: mainSize, H: crossSize})
+	}
+	return c.Constrain(Size{W: crossSize, H: mainSize})
+}
+
+// flexPass is what one Layout is offered along each axis, and whether the cross axis is fixed, so
+// children are stretched across it. It lives for the call: Layout keeps nothing in the Flex.
+type flexPass struct {
+	mainMax, crossMax int
+	stretch           bool
+}
+
+func (f *Flex) pass(c Constraints) flexPass {
+	p := flexPass{mainMax: c.MaxW, crossMax: c.MaxH}
 	crossTight := c.MinH == c.MaxH
-	if !horiz {
-		mainMax, crossMax = c.MaxH, c.MaxW
+	if f.dir != Horizontal {
+		p.mainMax, p.crossMax = c.MaxH, c.MaxW
 		crossTight = c.MinW == c.MaxW
 	}
 	// STRETCH ONLY WHEN THE CROSS AXIS IS FIXED, as Qt's layouts do: a row
 	// offered "up to ten rows high" is as high as its tallest child, not ten.
 	// A parent that fixes the extent — the screen, a split's pane, a frame —
 	// still stretches its children across it.
-	f.stretch = crossTight && crossMax != Unbounded
+	p.stretch = crossTight && p.crossMax != Unbounded
+	return p
+}
 
-	sizes := make([]Size, f.Len())
-
-	// Pass 1 — fixed children: loose main-axis constraints, tight cross
-	// (stretch), each measured extent consumed from the remainder.
-	used := 0
-	wsum := 0
+// measureFixed is pass 1: each visible unweighted child is measured with loose main-axis
+// constraints (a sized child's fixed extent, or what is left of it) and tight cross, its extent
+// consumed from the remainder. It returns the main-axis cells used and the weighted children's
+// weight sum.
+func (f *Flex) measureFixed(p flexPass, sizes []Size) (used, wsum int) {
 	for i, it := range f.All() {
 		if hidden(it) {
 			continue // a hidden child neither measures nor reserves a share
 		}
-		w := f.weights[it]
-		if w > 0 {
+		if w := f.weights[it]; w > 0 {
 			wsum += w
 			continue
 		}
 		avail := Unbounded
-		if mainMax != Unbounded {
-			avail = max(mainMax-used, 0)
+		if p.mainMax != Unbounded {
+			avail = max(p.mainMax-used, 0)
 		}
 		if n, ok := f.sized[it]; ok { // a fixed extent, or what is left of it
-			sizes[i] = f.Ctx().LayoutChild(it, f.childConstraints(min(n, avail), true, crossMax))
-			used += f.main(sizes[i])
-			continue
+			sizes[i] = f.Ctx().LayoutChild(it, f.childConstraints(p, min(n, avail), true))
+		} else {
+			sizes[i] = f.Ctx().LayoutChild(it, f.childConstraints(p, avail, false))
 		}
-		sizes[i] = f.Ctx().LayoutChild(it, f.childConstraints(avail, false, crossMax))
 		used += f.main(sizes[i])
 	}
+	return used, wsum
+}
 
-	// Pass 2 — weighted children split the remainder R by integer
-	// largest-remainder: floor shares, then one extra cell each to the r
-	// children with the largest fractional remainders (R·wᵢ mod Wsum),
-	// ties broken by LOWEST child index (deterministic, gap-free).
-	if wsum > 0 && mainMax != Unbounded {
-		r := max(mainMax-used, 0)
-		shares := make(map[int]int, f.Len()) // item index → main-axis cells
-		type rem struct{ idx, rem int }
-		var rems []rem
-		assigned := 0
-		for i, it := range f.All() {
-			w := f.weights[it]
-			if w == 0 || hidden(it) {
-				continue
-			}
-			shares[i] = r * w / wsum
-			assigned += shares[i]
-			rems = append(rems, rem{idx: i, rem: (r * w) % wsum})
-		}
-		sort.Slice(rems, func(a, b int) bool {
-			if rems[a].rem != rems[b].rem {
-				return rems[a].rem > rems[b].rem
-			}
-			return rems[a].idx < rems[b].idx
-		})
-		for i := 0; i < r-assigned; i++ {
-			shares[rems[i].idx]++
-		}
-		for i, it := range f.All() {
-			if f.weights[it] == 0 || hidden(it) {
-				continue
-			}
-			sizes[i] = f.Ctx().LayoutChild(it, f.childConstraints(shares[i], true, crossMax))
-		}
-	} else if wsum > 0 {
-		// Unbounded main axis: there is no remainder to split — weighted
-		// children size to content like fixed ones.
-		for i, it := range f.All() {
-			if f.weights[it] == 0 || hidden(it) {
-				continue
-			}
-			sizes[i] = f.Ctx().LayoutChild(it, f.childConstraints(Unbounded, false, crossMax))
-			used += f.main(sizes[i])
+// measureWeighted is pass 2: the visible weighted children split the bounded remainder by
+// largestRemainder, each laid out tight to its share. On an unbounded main axis there is no
+// remainder to split, and they size to content like fixed ones.
+func (f *Flex) measureWeighted(p flexPass, sizes []Size, used, wsum int) {
+	if wsum == 0 {
+		return
+	}
+	weights := make([]int, f.Len())
+	for i, it := range f.All() {
+		if !hidden(it) {
+			weights[i] = f.weights[it]
 		}
 	}
+	if p.mainMax == Unbounded {
+		for i, it := range f.All() {
+			if weights[i] > 0 {
+				sizes[i] = f.Ctx().LayoutChild(it, f.childConstraints(p, Unbounded, false))
+			}
+		}
+		return
+	}
+	shares := largestRemainder(max(p.mainMax-used, 0), weights)
+	for i, it := range f.All() {
+		if weights[i] > 0 {
+			sizes[i] = f.Ctx().LayoutChild(it, f.childConstraints(p, shares[i], true))
+		}
+	}
+}
 
-	// Pass 3 — placement in declaration order along the main axis.
-	off := 0
-	cross := 0
+// place is pass 3: the children in declaration order along the main axis. It returns the main-axis
+// extent they cover and the largest cross-axis extent among them.
+func (f *Flex) place(sizes []Size) (off, cross int) {
 	for i, it := range f.All() {
 		sz := sizes[i]
-		if horiz {
+		if f.dir == Horizontal {
 			f.Ctx().PlaceChild(it, Rect{X: off, Y: 0, W: sz.W, H: sz.H})
 		} else {
 			f.Ctx().PlaceChild(it, Rect{X: 0, Y: off, W: sz.W, H: sz.H})
@@ -206,40 +214,24 @@ func (f *Flex) Layout(c Constraints) Size {
 		off += f.main(sz)
 		cross = max(cross, f.cross(sz))
 	}
-
-	// Container size: with weighted children the flex fills the bounded
-	// main axis; otherwise it wraps its content. Cross: stretch when
-	// bounded, else the children's max.
-	mainSize := off
-	if wsum > 0 && mainMax != Unbounded {
-		mainSize = mainMax
-	}
-	crossSize := crossMax
-	if !f.stretch {
-		crossSize = cross
-	}
-	if horiz {
-		return c.Constrain(Size{W: mainSize, H: crossSize})
-	}
-	return c.Constrain(Size{W: crossSize, H: mainSize})
+	return off, cross
 }
 
-// childConstraints builds a child's constraints: main axis loose up to
-// avail (or tight when tightMain), cross axis tight to the flex's extent
-// when that extent is fixed (stretch), else loose up to it.
-func (f *Flex) childConstraints(avail int, tightMain bool, crossMax int) Constraints {
+// childConstraints builds a child's constraints: tight on the main axis to avail when tightMain,
+// else loose up to it; tight on the cross axis when the pass stretches, else loose up to it.
+func (f *Flex) childConstraints(p flexPass, avail int, tightMain bool) Constraints {
 	mainMin := 0
 	if tightMain {
 		mainMin = avail
 	}
 	crossMin := 0
-	if f.stretch {
-		crossMin = crossMax // a fixed cross axis: stretch
+	if p.stretch {
+		crossMin = p.crossMax // a fixed cross axis: stretch
 	}
 	if f.dir == Horizontal {
-		return Constraints{MinW: mainMin, MaxW: avail, MinH: crossMin, MaxH: crossMax}
+		return Constraints{MinW: mainMin, MaxW: avail, MinH: crossMin, MaxH: p.crossMax}
 	}
-	return Constraints{MinW: crossMin, MaxW: crossMax, MinH: mainMin, MaxH: avail}
+	return Constraints{MinW: crossMin, MaxW: p.crossMax, MinH: mainMin, MaxH: avail}
 }
 
 func (f *Flex) main(s Size) int {

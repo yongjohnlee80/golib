@@ -1,6 +1,10 @@
 package tui
 
-import "math"
+import (
+	"cmp"
+	"math"
+	"slices"
+)
 
 // Size represents a two-dimensional extent in terminal cells.
 type Size struct{ W, H int }
@@ -118,4 +122,35 @@ type ConstraintViolation struct {
 	Type string      // dynamic Go type of the component
 	Got  Size        // the out-of-bounds Size returned by Layout
 	C    Constraints // the Constraints passed into Layout
+}
+
+// largestRemainder splits total cells among weights without a gap: each positive weight gets the
+// floor of its share, and the cells left over go one each to the largest fractional remainders
+// (total·w mod Σw), ties to the lowest index. A weight of 0 gets nothing; the shares sum to total
+// whenever any weight is positive.
+func largestRemainder(total int, weights []int) []int {
+	shares := make([]int, len(weights))
+	wsum := 0
+	for _, w := range weights {
+		wsum += max(w, 0)
+	}
+	if wsum == 0 {
+		return shares
+	}
+	type rem struct{ idx, rem int }
+	var rems []rem
+	assigned := 0
+	for i, w := range weights {
+		if w <= 0 {
+			continue
+		}
+		shares[i] = total * w / wsum
+		assigned += shares[i]
+		rems = append(rems, rem{idx: i, rem: (total * w) % wsum})
+	}
+	slices.SortStableFunc(rems, func(a, b rem) int { return cmp.Compare(b.rem, a.rem) })
+	for i := range total - assigned {
+		shares[rems[i].idx]++
+	}
+	return shares
 }
