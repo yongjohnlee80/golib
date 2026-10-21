@@ -131,6 +131,19 @@ func TestAVegaLitePreDrawsItsChart(t *testing.T) {
 	}
 }
 
+// A <pre class="vegalite"> is a chart too, as a ```vegalite fence is (gui-S10): both spellings
+// name the language, and the request carries its one name, vega-lite.
+func TestAVegaLitePreAcceptsBothSpellings(t *testing.T) {
+	f := &htmlFakeDiagrams{state: Ready}
+	l, _ := diagramView(t, `<pre class="vegalite">{"mark": "bar"}</pre>`, f)
+	if len(f.asked) == 0 || f.asked[0].Lang != "vega-lite" {
+		t.Fatalf("asked %+v, want a vega-lite request for a pre of class vegalite", f.asked)
+	}
+	if !preDrawn(l) {
+		t.Error("the chart is not in the pre's place")
+	}
+}
+
 // A view given another Diagrammer asks it, not the first one's answers kept: the engine that draws
 // a page's diagrams can be changed while the page shows.
 func TestAnotherDiagrammerDrawsThePagesDiagramsAgain(t *testing.T) {
