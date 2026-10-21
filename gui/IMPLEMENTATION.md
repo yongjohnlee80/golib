@@ -99,6 +99,8 @@ func (l *Laid) Paint(c gui.Canvas)                                              
 - Doc comments are definitional ("X is …") and state the invariant; a file with a pipeline opens with
   its ASCII diagram. Docs describe the code as it is: a supported subset, a platform list, a parameter
   name is updated in the same change as the code.
+- A change to an API, a pattern or a behaviour updates, in the same commit, every user-facing
+  document that shows it (`README.md`, `doc.go`, examples), so none teaches an outdated usage.
 
 ## 9. Before you open a PR
 

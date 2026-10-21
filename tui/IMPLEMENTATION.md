@@ -215,6 +215,11 @@ purpose": a difference in behaviour is a parameter of the shared code, named and
 - Exported widgets carry `# Architectural Invariants`, `# Concurrency Model` and `# Usage Examples`
   doc sections; examples compile.
 - A doc comment sits on the declaration it describes and is updated in the same change as the code.
+- A change to an API, a pattern or a behaviour updates, in the same commit, every user-facing
+  document that shows it: the package `README.md` and `USAGE.md`, `doc.go`, the `tutorial/`
+  chapters and `examples/`. No document may teach an outdated usage. A deprecated declaration
+  appears only in its `_deprecated.go`, never in a document as something to write. ADRs are the
+  record of a decision and are not rewritten.
 
 ## 14. Before you open a PR
 

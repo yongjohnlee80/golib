@@ -183,7 +183,7 @@ To use modals reliably, understand how `OverlayHost`, `Float`, and the render pi
    - **Anchoring**: `Float` positions its child using anchors:
      - `widget.Center`: centered horizontally and vertically.
      - `widget.TopRight`, `widget.BottomLeft`, etc.: pinned to viewport edges.
-     - `widget.AtRect(r)`: pinned to an explicit overlay-relative coordinate rectangle `r` (useful for dropdowns, autocomplete menus, and context tooltips).
+     - `widget.AtRect(r)`: pinned to an explicit overlay-relative coordinate rectangle `r`, kept inside the overlay area (useful for dropdowns, autocomplete menus, and context tooltips).
 
 ### 2. Double-Buffering & The Render Pass
 

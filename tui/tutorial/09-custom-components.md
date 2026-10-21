@@ -32,15 +32,17 @@ type Component interface {
    - Invoked once when the component is mounted into the active tree.
    - Store `ctx` on your struct for subsequent layout, focus, and async calls.
    - Mount any child components via `ctx.Mount(child)`.
-   - Register bus subscriptions with `tui.SubscribeScoped(ctx, ...)`.
+   - Hear your own children through their options (`WithOnEdit`, `WithListOnActivate`, …), which run at once; register bus subscriptions, for widgets you do not own, with `tui.SubscribeScoped(ctx, ...)`.
    - Must be re-entrant: if a component is unmounted and remounted, `Init` runs again.
 2. **`Layout(c Constraints) Size`**:
    - Implements the Flutter-style **constraints-down, sizes-up** contract.
    - The parent passes `c` (min/max width and height); the component returns the `tui.Size` it intends to occupy.
    - **This is the ONLY method where calling `ctx.LayoutChild` and `ctx.PlaceChild` is legal.** Calling them outside `Layout` will panic.
+   - Layout is pure: it measures and places, and stores nothing. A value that depends on the geometry (the width you were given, a scroll window) is stored after the pass, with `ctx.AfterLayout(key, fn)`; the runtime may lay out twice in a frame.
 3. **`Render(s Surface)`**:
    - Draws local chrome into `s` (which is translated and clipped to your placed rectangle).
    - **Children draw themselves**: you do NOT call `child.Render()`. The runtime renders mounted, placed children automatically.
+   - Render is pure: it draws and stores nothing. A paint may happen more than once, or on another surface (an offscreen copy), so a size or a scroll position read from `s` is never kept.
 4. **`HandleEvent(ev Event) bool`**:
    - Executes strictly on the event loop goroutine.
    - Return `true` if your component handled and consumed the event.
@@ -77,30 +79,26 @@ func NewSearchableList[T any](
 	renderItem func(item T) string,
 	filterFn func(item T, query string) bool,
 ) *SearchableList[T] {
-	return &SearchableList[T]{
+	sl := &SearchableList[T]{
 		allItems: items,
 		filterFn: filterFn,
-		input: widget.NewTextInput(
-			widget.WithPlaceholder("Search... (/ to focus, Esc to clear)"),
-		),
 		list: widget.NewList(
 			widget.WithItems(items, renderItem),
 		),
 	}
+	// The input is the wrapper's own: it reports each edit straight to the wrapper.
+	sl.input = widget.NewTextInput(
+		widget.WithPlaceholder("Search... (/ to focus, Esc to clear)"),
+		widget.WithOnEdit(sl.applyFilter),
+	)
+	return sl
 }
 
-// 1. Init: Mount children and listen for text changes
+// 1. Init: Mount children (the input's edits already reach applyFilter)
 func (sl *SearchableList[T]) Init(ctx *tui.Context) {
 	sl.ctx = ctx
 	ctx.Mount(sl.input)
 	ctx.Mount(sl.list)
-
-	// Subscribe to filter input text changes with automatic mount-bound cleanup:
-	tui.SubscribeScoped(ctx, func(ev widget.ChangeEvent) {
-		if ev.Owner == sl.input.NodeID() {
-			sl.applyFilter(ev.Value)
-		}
-	})
 }
 
 // 2. Layout: Position input at top, list takes the remainder

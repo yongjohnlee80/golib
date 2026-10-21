@@ -69,7 +69,7 @@ RPC server and a CLI prompt.
 
 | Adapter | Use |
 |---------|-----|
-| `auth/authhttp` | `Middleware(policy)`, `FromRequest`, `IdentityFrom(ctx)` |
+| `auth/authhttp` | `Middleware(policy)`, `FromRequest`, `Peer(r)`, `IdentityFrom(ctx)` |
 | `auth.FromConn` | `server/rpc`, `server/ws`, a plain listener |
 
 `auth/authhttp` copies an **allowlist** of headers into `Metadata` — never
@@ -79,6 +79,14 @@ redact, and the bearer projection uses `token.DefaultScheme` so the adapter and
 the factor cannot drift apart. Configuration is resolved once at construction and
 its inputs are cloned: an allowlist that can change after the middleware exists
 is not configuration, it is a race.
+
+The peer is the transport's view, `RemoteAddr`, never a forwarded header, and
+`auth.FromConn` and `authhttp.Peer` agree on it: an IPv4 client on a dual-stack
+listener (`::ffff:a.b.c.d`) is its IPv4 address, so an address-keyed factor sees
+one address whichever adapter built the request. A server with routes of its own
+(a login, an attach) projects each through `authhttp.FromRequest`, passing its
+credentials with `authhttp.Credentials`, rather than building an `auth.Request`
+by hand.
 
 ## Things that are easy to get wrong, and what this does
 

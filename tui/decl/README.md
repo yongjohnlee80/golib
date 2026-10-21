@@ -856,7 +856,8 @@ setters, methods, signal parameters and a destroy hook — the same value the
 standard vocabulary is a table of. `WithTypes` (or `Types` for a Program) adds
 it; `Instance(name, widget)` places a widget the host already built. Helpers
 read values as the built-ins do: `StringSetter`, `BoolSetter`, `NumberSetter`,
-`ColorSetter`, `EnumSetter`, `NoArgMethod`, and `ReadProps` with `StringField`,
+`ColorSetter`, `EnumSetter`, `NoArgMethod`, and `Build.ReadProps` (which refuses a property the
+type does not declare in `Ctor` or `Setters`) with `StringField`,
 `BoolField`, `NumberField`, `ColorField`, `EnumField`. UI text is read with
 `UITextSetter` and `UITextField` into a `UIText` — plain text or a catalog message — so
 `qsTrId` works on a custom widget's properties as on the built-in ones. A type can declare Qt-style

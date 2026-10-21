@@ -136,8 +136,10 @@ ctx.FocusComponent(table.List())      // focus the inner list
 ```
 
 `↑/↓`, paging, Home/End work when the inner list is focused; `Enter`
-publishes `widget.ActivateEvent{Owner, Index}` — subscribe to open a detail
-view (chapter 6). Size the fixed columns generously: cells truncate with an
+activates the row. The table's owner passes
+`widget.WithListOnActivate[Delivery](func(i int) { ... })` to open a detail
+view (chapter 6); the bus also hears `widget.ActivateEvent{Owner, Index}`, for
+listeners elsewhere. Size the fixed columns generously: cells truncate with an
 ellipsis, and a too-narrow status column will truncate exactly the value
 you assert on in tests.
 
@@ -160,8 +162,9 @@ cols := []widget.TableColumn[Row]{
 ## List — when you don't need headers
 
 Same interaction model as Table's row area. `WithItems(items, render)`,
-`WithEmptyText`, `SetItems`, `Selected`, `SelectionChangedEvent`,
-`ActivateEvent`. The cursor row is painted even while the list is NOT
+`WithEmptyText`, `SetItems`, `Selected`, and the owner's callbacks
+`WithListOnCursor` and `WithListOnActivate` (the bus hears
+`SelectionChangedEvent` and `ActivateEvent` too). The cursor row is painted even while the list is NOT
 focused — a controller can forward `↑/↓` to an unfocused list and the user
 still sees the cursor move.
 
