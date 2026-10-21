@@ -40,34 +40,34 @@ var (
 // its cell.
 func TestDataTableDrawsAnEditableTable(t *testing.T) {
 	h, sh, dt, core := csvDataTable(t, "name,note\nann,\"one\ntwo\"\nbob,\"a\tb\"\n", 40, 8)
-	if !strings.Contains(h.row(1), "one⏎two") || !strings.Contains(h.row(2), "a→b") {
-		t.Fatalf("the one-line cells:\n%q\n%q", h.row(1), h.row(2))
+	if !strings.Contains(h.row(2), "one⏎two") || !strings.Contains(h.row(3), "a→b") {
+		t.Fatalf("the one-line cells:\n%q\n%q", h.row(2), h.row(3))
 	}
 	if !strings.Contains(h.row(0), " + ") {
 		t.Fatalf("no edge field in the header: %q", h.row(0))
 	}
 	var drawn int
 	h.onLoop(func() { drawn = dt.Core().Len() })
-	if drawn != 2 || strings.TrimSpace(h.row(4)) != "" {
-		t.Fatalf("rows %d; below the edge row: %q", drawn, h.row(4))
+	if drawn != 2 || strings.TrimSpace(h.row(5)) != "" {
+		t.Fatalf("rows %d; below the edge row: %q", drawn, h.row(5))
 	}
 
 	dtPress(h, sh, dt, keyText("l"), dtEnter)
-	if !strings.Contains(h.row(1), "one") || strings.Contains(h.row(1), "one⏎two") || !strings.Contains(h.row(2), "two") {
-		t.Fatalf("the open field, over its cell and the row below:\n%q\n%q", h.row(1), h.row(2))
+	if !strings.Contains(h.row(2), "one") || strings.Contains(h.row(2), "one⏎two") || !strings.Contains(h.row(3), "two") {
+		t.Fatalf("the open field, over its cell and the row below:\n%q\n%q", h.row(2), h.row(3))
 	}
 	var x, y int
 	var ok bool
 	h.onLoop(func() { x, y, ok = dt.Cursor() })
-	if !ok || y != 2 || x != strings.Index(h.row(2), "two")+3 {
-		t.Fatalf("the caret at %d,%d (%v), want after two on row 2:\n%q", x, y, ok, h.row(2))
+	if !ok || y != 3 || x != strings.Index(h.row(3), "two")+3 {
+		t.Fatalf("the caret at %d,%d (%v), want after two on line 3:\n%q", x, y, ok, h.row(3))
 	}
 	dtPress(h, sh, dt, keyText("!"), dtEnter)
 	if v := core.Value(); v != "name,note\nann,\"one\ntwo!\"\nbob,\"a\tb\"\n" {
 		t.Fatalf("kept: %q", v)
 	}
-	if !strings.Contains(h.row(1), "one⏎two!") {
-		t.Fatalf("the kept value: %q", h.row(1))
+	if !strings.Contains(h.row(2), "one⏎two!") {
+		t.Fatalf("the kept value: %q", h.row(2))
 	}
 	h.onLoop(func() { _, _, ok = dt.Cursor() })
 	if ok {
@@ -81,16 +81,16 @@ func TestDataTableDrawsOsRowAndTakesPaste(t *testing.T) {
 	const text = "k,v\na,1\nb,2\n"
 	h, sh, dt, core := csvDataTable(t, text, 40, 8)
 	dtPress(h, sh, dt, keyText("o"))
-	if !strings.Contains(h.row(1), "a") || strings.Contains(h.row(2), "b") || !strings.Contains(h.row(3), "b") {
-		t.Fatalf("o's row:\n%q\n%q\n%q", h.row(1), h.row(2), h.row(3))
+	if !strings.Contains(h.row(2), "a") || strings.Contains(h.row(3), "b") || !strings.Contains(h.row(4), "b") {
+		t.Fatalf("o's row:\n%q\n%q\n%q", h.row(2), h.row(3), h.row(4))
 	}
 	dtPress(h, sh, dt, tui.PasteEvent{Text: "pasted"})
-	if !strings.Contains(h.row(2), "pasted") {
-		t.Fatalf("the paste: %q", h.row(2))
+	if !strings.Contains(h.row(3), "pasted") {
+		t.Fatalf("the paste: %q", h.row(3))
 	}
 	dtPress(h, sh, dt, dtEsc)
-	if core.Value() != text || !strings.Contains(h.row(2), "b") {
-		t.Fatalf("Esc: %q; row 2 %q", core.Value(), h.row(2))
+	if core.Value() != text || !strings.Contains(h.row(3), "b") {
+		t.Fatalf("Esc: %q; line 3 %q", core.Value(), h.row(3))
 	}
 }
 
@@ -98,9 +98,9 @@ func TestDataTableDrawsOsRowAndTakesPaste(t *testing.T) {
 // rather than activating its row; a click on the edge field puts the cursor there.
 func TestADoubleClickEditsAnEditableCell(t *testing.T) {
 	h, sh, dt, _ := csvDataTable(t, "k,v\na,1\n", 40, 6)
-	at := strings.Index(h.row(1), "1")
-	h.inject(tui.MouseEvent{Kind: tui.MousePress, Button: tui.MouseLeft, X: at, Y: 1},
-		tui.MouseEvent{Kind: tui.MousePress, Button: tui.MouseLeft, X: at, Y: 1, Count: 2})
+	at := strings.Index(h.row(2), "1")
+	h.inject(tui.MouseEvent{Kind: tui.MousePress, Button: tui.MouseLeft, X: at, Y: 2},
+		tui.MouseEvent{Kind: tui.MousePress, Button: tui.MouseLeft, X: at, Y: 2, Count: 2})
 	h.barrier(sh)
 	var editing bool
 	h.onLoop(func() { editing = dt.Core().Editing() != nil })
@@ -109,7 +109,7 @@ func TestADoubleClickEditsAnEditableCell(t *testing.T) {
 	}
 	dtPress(h, sh, dt, dtEsc)
 	plus := strings.Index(h.row(0), "+")
-	h.inject(tui.MouseEvent{Kind: tui.MousePress, Button: tui.MouseLeft, X: plus, Y: 1})
+	h.inject(tui.MouseEvent{Kind: tui.MousePress, Button: tui.MouseLeft, X: plus, Y: 2})
 	h.barrier(sh)
 	if got := tableCursor(h, dt); got != (widget.TablePos{Row: 0, Col: 2}) {
 		t.Fatalf("a click on the edge field: %+v", got)
@@ -152,22 +152,22 @@ func TestTheWheelScrollsTheFieldsSideways(t *testing.T) {
 func TestTheFieldKeepsItsCaretInSight(t *testing.T) {
 	core := widget.NewEditorCore(widget.CoreInitialText("k,v\na," + strings.Repeat("x", 30) + "END\n"))
 	h, sh, dt := dataTable(t, widget.NewTableCSV(core, ','), 30, 6, widget.TableAppendEdges(), widget.TableRowNumbers(true))
-	if !strings.Contains(h.row(2), "+") {
-		t.Fatalf("the edge row's gutter: %q", h.row(2))
+	if !strings.HasPrefix(h.row(3), "+ │") {
+		t.Fatalf("the edge row's gutter: %q", h.row(3))
 	}
 	dtPress(h, sh, dt, keyText("l"), dtEnter)
-	if !strings.Contains(h.row(1), "END") {
-		t.Fatalf("the field does not show the value's end:\n%q", h.row(1))
+	if !strings.Contains(h.row(2), "END") {
+		t.Fatalf("the field does not show the value's end:\n%q", h.row(2))
 	}
 	var x, y int
 	var ok bool
 	h.onLoop(func() { x, y, ok = dt.Cursor() })
-	if !ok || y != 1 || x != strings.Index(h.row(1), "END")+3 {
-		t.Fatalf("the caret at %d,%d (%v), want after END:\n%q", x, y, ok, h.row(1))
+	if !ok || y != 2 || x != len([]rune(h.row(2)[:strings.Index(h.row(2), "END")]))+3 {
+		t.Fatalf("the caret at %d,%d (%v), want after END:\n%q", x, y, ok, h.row(2))
 	}
 	dtPress(h, sh, dt, dtEsc)
 	before := tableCursor(h, dt)
-	h.inject(tui.MouseEvent{Kind: tui.MousePress, Button: tui.MouseLeft, X: 0, Y: 2})
+	h.inject(tui.MouseEvent{Kind: tui.MousePress, Button: tui.MouseLeft, X: 0, Y: 3})
 	h.barrier(sh)
 	if got := tableCursor(h, dt); got != before {
 		t.Fatalf("a press on the edge row's gutter moved the cursor to %+v", got)

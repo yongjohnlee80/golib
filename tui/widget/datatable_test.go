@@ -46,9 +46,15 @@ func tableCursor(h *harness, dt *widget.DataTable) (pos widget.TablePos) {
 
 func TestDataTable_HeaderAndAlignedCells(t *testing.T) {
 	h, _, _ := dataTable(t, numbered(3), 30, 6)
-	head, row := h.row(0), h.row(2)
+	head, row := h.row(0), h.row(3)
 	if !strings.HasPrefix(head, "id    name      n") {
 		t.Errorf("header %q", head)
+	}
+	if rule := h.row(1); rule != strings.Repeat("─", 30) {
+		t.Errorf("the rule under the titles %q, want ─ across the view", rule)
+	}
+	if a := cellAttrs(h, 0, 0); a.Mask&tui.AttrBold == 0 || a.Mask&tui.AttrUnderline != 0 {
+		t.Errorf("the id title drawn %+v, want bold and ruled off, not underlined", a)
 	}
 	if strings.Index(head, "name") != strings.Index(row, "row1") {
 		t.Errorf("name misaligned:\n%q\n%q", head, row)
@@ -109,13 +115,13 @@ func TestDataTable_AFilterScrollsBackToFitTheRows(t *testing.T) {
 func TestDataTable_PressesAndPassThrough(t *testing.T) {
 	activated := -1
 	h, sh, dt := dataTable(t, numbered(5), 30, 6, widget.TableOnActivate(func(r int) { activated = r }))
-	h.inject(tui.MouseEvent{Kind: tui.MousePress, Button: tui.MouseLeft, X: 7, Y: 3})
+	h.inject(tui.MouseEvent{Kind: tui.MousePress, Button: tui.MouseLeft, X: 7, Y: 4})
 	h.settle()
 	if got := tableCursor(h, dt); got != (widget.TablePos{Row: 2, Col: 1}) {
-		t.Errorf("press at (7,3): cursor %+v, want row 2 field 1", got)
+		t.Errorf("press at (7,4): cursor %+v, want row 2 field 1", got)
 	}
-	h.inject(tui.MouseEvent{Kind: tui.MousePress, Button: tui.MouseLeft, X: 1, Y: 2},
-		tui.MouseEvent{Kind: tui.MousePress, Button: tui.MouseLeft, X: 1, Y: 2})
+	h.inject(tui.MouseEvent{Kind: tui.MousePress, Button: tui.MouseLeft, X: 1, Y: 3},
+		tui.MouseEvent{Kind: tui.MousePress, Button: tui.MouseLeft, X: 1, Y: 3})
 	h.settle()
 	h.onLoop(func() {})
 	if activated != 1 {
@@ -148,8 +154,38 @@ func TestDataTable_WheelScrollsWithoutTheCursor(t *testing.T) {
 	if got := tableCursor(h, dt); got.Row != 0 {
 		t.Errorf("the wheel moved the cursor to %+v", got)
 	}
-	if !strings.HasPrefix(strings.TrimSpace(h.row(1)), "6") {
-		t.Errorf("first row shown %q, want row 6 after two wheel steps of 3", h.row(1))
+	if !strings.HasPrefix(strings.TrimSpace(h.row(2)), "6") {
+		t.Errorf("first row shown %q, want row 6 after two wheel steps of 3", h.row(2))
+	}
+}
+
+// A selection is filled with the secondary fill by default, so a region shows in colour, and the
+// cursor's cell keeps its own look inside it. A press on the rule under the titles is no hit.
+func TestDataTable_ASelectionIsFilledAndTheRuleTakesNoPress(t *testing.T) {
+	h, sh, dt := dataTable(t, numbered(3), 30, 6)
+	plain := cellAttrs(h, 6, 3) // row 1's name, before any selection
+	h.onLoop(func() {
+		dt.HandleEvent(key('v'))
+		dt.HandleEvent(key('j'))
+		dt.HandleEvent(key('l'))
+	})
+	h.barrier(sh)
+	sel, cursor := cellAttrs(h, 0, 2), cellAttrs(h, 6, 3) // row 0's id; the cursor on row 1's name
+	if sel.BG == plain.BG || sel.BG.Kind == tui.CellColorDefault {
+		t.Errorf("a selected cell drawn %+v, want a fill unlike a plain cell's %+v", sel, plain)
+	}
+	if cursor == sel || cursor.Mask&tui.AttrReverse == 0 {
+		t.Errorf("the cursor's cell inside the selection drawn %+v, want the cursor's reverse, not the fill %+v", cursor, sel)
+	}
+	h.onLoop(func() { dt.HandleEvent(key(tui.KeyEscape)) })
+	h.inject(tui.MouseEvent{Kind: tui.MousePress, Button: tui.MouseLeft, X: 1, Y: 1},
+		tui.MouseEvent{Kind: tui.MouseRelease, Button: tui.MouseLeft, X: 1, Y: 1})
+	h.settle()
+	if got := tableCursor(h, dt); got != (widget.TablePos{Row: 1, Col: 1}) {
+		t.Errorf("a press on the rule moved the cursor to %+v", got)
+	}
+	if _, _, ok := tableSelected(h, dt); ok {
+		t.Error("a press on the rule selected")
 	}
 }
 
@@ -160,8 +196,8 @@ func TestDataTable_SortMarkAndEmptyText(t *testing.T) {
 		dt.HandleEvent(tui.KeyEvent{Kind: tui.KeyPress, Text: "s"})
 	})
 	h.barrier(sh)
-	if !strings.Contains(h.row(0), "id ▼") || !strings.HasPrefix(strings.TrimSpace(h.row(1)), "2") {
-		t.Errorf("sorted by id descending: header %q, first row %q", h.row(0), h.row(1))
+	if !strings.Contains(h.row(0), "id ▼") || !strings.HasPrefix(strings.TrimSpace(h.row(2)), "2") {
+		t.Errorf("sorted by id descending: header %q, first row %q", h.row(0), h.row(2))
 	}
 	h.onLoop(func() {
 		dt.Core().SetSource(&gridSource{fields: []widget.TableField{{Title: "x"}}})

@@ -9,9 +9,9 @@ import (
 	"github.com/yongjohnlee80/golib/tui/style"
 )
 
-// DATA TABLE — the terminal view of a TableCore: a header row, then the rows with a cell cursor,
-// scrolled both ways to keep the cursor in sight, and each row's number in a gutter when the core
-// says so. The core owns the rows, the cursor, the selection, the sort and the paging; DataTable
+// DATA TABLE — the terminal view of a TableCore: a header (the titles over a rule), then the rows
+// with a cell cursor, scrolled both ways to keep the cursor in sight, and each row's number in a
+// gutter, ruled off from the cells, when the core says so. The core owns the rows, the cursor, the selection, the sort and the paging; DataTable
 // paints them and turns the pointer into the core's presses and drags. A right press opens its
 // menu (SetMenu), the selection left as it is.
 //
@@ -21,14 +21,17 @@ import (
 
 // DataTableStyles are DataTable's looks. Zero fields keep the defaults.
 type DataTableStyles struct {
-	Header style.Style // default: muted, bold, underlined; the row numbers too
+	// Header is the titles, the row numbers and the rules between them and the cells. Its border's
+	// Top is the rule under the titles and its Left the gutter's (default: BorderNormal's).
+	// default: muted, bold
+	Header style.Style
 	Cell   style.Style // default: the theme's
 	Cursor style.Style // default: reversed
 	// CursorBlurred is the cursor's cell while the table does not have the keys, so a screen with
 	// two panes shows which one the keyboard is in, and still where this one's cursor waits.
 	// default: Cursor, faint
 	CursorBlurred style.Style
-	Selected      style.Style // default: bold
+	Selected      style.Style // default: the secondary fill
 	Empty         style.Style // default: muted
 }
 
@@ -50,6 +53,12 @@ type DataTable struct {
 
 // tableEdgeWidth is the cells the edge field (TableAppendEdges) takes.
 const tableEdgeWidth = 3
+
+// tableHeaderRows is the rows above the first row shown: the titles and the rule under them.
+const tableHeaderRows = 2
+
+// tableRuleJunction is where the gutter's rule crosses the titles'.
+const tableRuleJunction = "┼"
 
 // tableCellLine is a cell's value on one line, as a table shows it: a newline is ⏎, a tab →. The
 // value itself is unchanged (an open field holds it whole).
@@ -130,9 +139,9 @@ func (t *DataTable) Core() *TableCore { return t.core }
 // SetStyles replaces the looks; zero fields keep the defaults.
 func (t *DataTable) SetStyles(st DataTableStyles) {
 	def := DataTableStyles{
-		Header:   style.New().Foreground(style.TokenTextMuted).Bold(true).Underline(true),
+		Header:   style.New().Foreground(style.TokenTextMuted).Bold(true),
 		Cursor:   style.New().Reverse(true),
-		Selected: style.New().Bold(true),
+		Selected: style.New().Background(style.TokenSecondary).Foreground(style.TokenTextOnSecondary),
 		Empty:    style.New().Foreground(style.TokenTextMuted),
 	}
 	pick := func(a, b style.Style) style.Style {
@@ -194,7 +203,7 @@ func (t *DataTable) AcceptsFocus() bool { return true }
 
 // Reveal implements TableLayout: scroll so the cell is in sight.
 func (t *DataTable) Reveal(row, col int) {
-	body := max(t.h-1, 1)
+	body := t.bodyRows()
 	t.top = min(t.top, max(t.core.Len()-body, 0)) // rows gone (a filter) leave no blank below the last
 	t.top = min(max(t.top, row-body+1), row)
 	t.top = max(t.top, 0)
@@ -224,7 +233,10 @@ func (t *DataTable) ScrollFields(n int) {
 }
 
 // PageRows implements TableLayout.
-func (t *DataTable) PageRows() int { return max(t.h-2, 1) }
+func (t *DataTable) PageRows() int { return max(t.bodyRows()-1, 1) }
+
+// bodyRows is the rows shown below the header, at least one.
+func (t *DataTable) bodyRows() int { return max(t.h-tableHeaderRows, 1) }
 
 // Measure implements TableLayout.
 func (t *DataTable) Measure(s string) int { return t.measure(s) }
@@ -232,12 +244,42 @@ func (t *DataTable) Measure(s string) int { return t.measure(s) }
 // Changed implements TableLayout.
 func (t *DataTable) Changed() { t.MarkDirty() }
 
-// gutter is the cells the row numbers take, their gap included; 0 without them.
+// gutter is the cells the row numbers take, their rule and the gap either side of it included; 0
+// without them.
 func (t *DataTable) gutter() int {
 	if d := t.core.RowNumberDigits(); d > 0 {
-		return d + tableGap
+		return d + tableGap + 1
 	}
 	return 0
+}
+
+// rules are the glyphs of the gutter's rule and of the titles': Header's border, else BorderNormal.
+func (t *DataTable) rules() (vertical, horizontal string) {
+	b, ok := t.styles.Header.GetBorder()
+	if !ok || b.Left == "" || b.Top == "" {
+		b = style.BorderNormal
+	}
+	return b.Left, b.Top
+}
+
+// drawRules draws the rule under the titles across the view, and the gutter's on every row shown,
+// crossing at tableRuleJunction.
+func (t *DataTable) drawRules(s tui.Surface, digits int) {
+	sz := s.Size()
+	vertical, horizontal := t.rules()
+	if sz.H > 1 {
+		drawText(s, 0, 1, strings.Repeat(horizontal, sz.W), t.styles.Header)
+	}
+	if digits <= 0 || digits+1 >= sz.W {
+		return
+	}
+	for y := range sz.H {
+		glyph := vertical
+		if y == 1 {
+			glyph = tableRuleJunction
+		}
+		drawText(s, digits+1, y, glyph, t.styles.Header)
+	}
 }
 
 // fits reports whether fields from..to fit the width when from is the first shown.
@@ -255,7 +297,7 @@ func (t *DataTable) fits(from, to int) bool {
 // Layout fills the space it is given; offered unbounded height it asks for a header and its rows.
 func (t *DataTable) Layout(c tui.Constraints) tui.Size {
 	w := boundedMax(c.MaxW, max(c.MinW, 1))
-	h := boundedMax(c.MaxH, max(c.MinH, 1+max(t.core.DrawnRows(), 1)))
+	h := boundedMax(c.MaxH, max(c.MinH, tableHeaderRows+max(t.core.DrawnRows(), 1)))
 	if w != t.w || h != t.h {
 		// a new size keeps the cursor in sight; the same size keeps the wheel's scroll. A bound
 		// layout keeps it in sight at its own size, which is in its units.
@@ -308,15 +350,16 @@ func (t *DataTable) Render(s tui.Surface) {
 		drawText(s, x+tableGap, 0, truncate(" + ", sz.W-x-tableGap, s.StringWidth), t.styles.Empty)
 	}
 	t.caret = nil
+	t.drawRules(s, digits)
 	if t.core.DrawnRows() == 0 {
-		if sz.H > 1 {
-			drawText(s, 0, 1, truncate(t.emptyText, sz.W, s.StringWidth), t.styles.Empty)
+		if sz.H > tableHeaderRows {
+			drawText(s, gutter, tableHeaderRows, truncate(t.emptyText, max(sz.W-gutter, 0), s.StringWidth), t.styles.Empty)
 		}
 		return
 	}
 	cur, cursor := t.core.Cursor(), t.CursorStyle()
-	for y := 1; y < sz.H; y++ {
-		v := t.top + y - 1
+	for y := tableHeaderRows; y < sz.H; y++ {
+		v := t.top + y - tableHeaderRows
 		if v >= t.core.DrawnRows() {
 			break
 		}
@@ -359,7 +402,7 @@ func (t *DataTable) drawBlankRow(s tui.Surface, y int, kind TableRowKind, row, g
 	cur TablePos, cursor style.Style) {
 	sz := s.Size()
 	if kind == TableRowEdge && gutter > 0 {
-		drawText(s, 0, y, truncate(padAligned("+", gutter-tableGap, style.AlignRight), sz.W, s.StringWidth), t.styles.Empty)
+		drawText(s, 0, y, truncate(padAligned("+", t.core.RowNumberDigits(), style.AlignRight), sz.W, s.StringWidth), t.styles.Empty)
 	}
 	onCursorRow := kind == TableRowEdge && row == cur.Row
 	x := gutter
@@ -402,11 +445,11 @@ func (t *DataTable) drawField(s tui.Surface, gutter int, fields []TableField) {
 	}
 	sz := s.Size()
 	x, ok := t.fieldX(e.Pos.Col, gutter)
-	y := 1 + t.core.DrawnOf(e.Pos.Row) - t.top
+	y := tableHeaderRows + t.core.DrawnOf(e.Pos.Row) - t.top
 	if e.Inserting() {
-		y = 1 + e.Pos.Row - t.top
+		y = tableHeaderRows + e.Pos.Row - t.top
 	}
-	if !ok || x >= sz.W || y < 1 || y >= sz.H {
+	if !ok || x >= sz.W || y < tableHeaderRows || y >= sz.H {
 		return
 	}
 	w := tableEdgeWidth
@@ -492,7 +535,7 @@ func (t *DataTable) HandleEvent(ev tui.Event) bool {
 			if t.bound() {
 				p.ScrollRows(step)
 			} else {
-				t.top = min(max(t.top+step, 0), max(t.core.Len()-max(t.h-1, 1), 0))
+				t.top = min(max(t.top+step, 0), max(t.core.Len()-t.bodyRows(), 0))
 			}
 			t.MarkDirty()
 			return true
@@ -587,7 +630,7 @@ func (t *DataTable) dragAt(e tui.MouseEvent) (TablePos, bool) {
 			col = len(t.core.Fields()) - 1
 		}
 	}
-	return TablePos{Row: t.top + e.Y - 1, Col: col}, true
+	return TablePos{Row: t.top + e.Y - tableHeaderRows, Col: col}, true
 }
 
 // cellHit is what is at cell (x, y) of the cell layout.
@@ -599,10 +642,11 @@ func (t *DataTable) cellHit(x, y int) (TablePos, TableHit) {
 		}
 		return TablePos{}, TableHitNone
 	}
-	if y < 0 || t.top+y-1 >= t.core.DrawnRows() {
+	v := t.top + y - tableHeaderRows
+	if y < tableHeaderRows || v >= t.core.DrawnRows() { // the rule under the titles is no hit
 		return TablePos{}, TableHitNone
 	}
-	kind, row := t.core.DrawnRow(t.top + y - 1)
+	kind, row := t.core.DrawnRow(v)
 	switch {
 	case kind == TableRowPending:
 		return TablePos{}, TableHitNone

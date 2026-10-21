@@ -42,26 +42,30 @@ func gesture(h *harness, pts ...[2]int) {
 }
 
 // The cell layout with row numbers: the numbers are drawn in the header's style before the first
-// field, a drag over cells selects them in reading order, over the gutter whole rows, over the
-// titles the fields under them, every row.
+// field, ruled off from it, and the titles ruled off from the rows, the rules crossing. A drag over
+// cells selects them in reading order, over the gutter (its rule too) whole rows, over the titles
+// the fields under them, every row.
 func TestDataTable_CellLayoutDragsOverCellsGutterAndHeaders(t *testing.T) {
 	h, sh, dt := dataTable(t, numbered(5), 30, 8, widget.TableRowNumbers(true))
-	if at := strings.Index(h.row(0), "id"); at != 3 {
-		t.Fatalf("the id title at %d, want 3: after one digit and the gap\n%s", at, h.grid())
+	if at := strings.Index(h.row(0), "id"); at != 4 {
+		t.Fatalf("the id title at %d, want 4: after one digit, its rule and the gap\n%s", at, h.grid())
 	}
-	if !strings.HasPrefix(h.row(1), "1  0") || !strings.HasPrefix(h.row(5), "5  4") {
+	if !strings.HasPrefix(h.row(0), "  │ id") || !strings.HasPrefix(h.row(1), "──┼─────") {
+		t.Errorf("the rules, under the titles and after the numbers, crossing:\n%s", h.grid())
+	}
+	if !strings.HasPrefix(h.row(2), "1 │ 0") || !strings.HasPrefix(h.row(6), "5 │ 4") {
 		t.Errorf("row numbers:\n%s", h.grid())
 	}
-	if a := cellAttrs(h, 0, 1); a.Mask&tui.AttrBold == 0 || a.Mask&tui.AttrUnderline == 0 {
-		t.Errorf("the number 1 drawn %+v, want the header's bold underline", a)
+	if a := cellAttrs(h, 0, 2); a.Mask&tui.AttrBold == 0 || a.Mask&tui.AttrUnderline != 0 {
+		t.Errorf("the number 1 drawn %+v, want the header's bold, not underlined", a)
 	}
 
-	gesture(h, [2]int{10, 2}, [2]int{10, 2}, [2]int{4, 4}) // row 1 name → row 3 id
+	gesture(h, [2]int{10, 3}, [2]int{10, 3}, [2]int{4, 5}) // row 1 name → row 3 id
 	if kind, text, _ := tableSelected(h, dt); kind != widget.TableSelectCells || text != "row1\t10\n2\trow2\t20\n3" {
 		t.Errorf("a drag over cells: kind %v, %q", kind, text)
 	}
 
-	gesture(h, [2]int{0, 2}, [2]int{1, 3}) // the numbers of rows 1 and 2
+	gesture(h, [2]int{2, 3}, [2]int{1, 4}) // the numbers of rows 1 and 2, from the rule
 	if kind, text, _ := tableSelected(h, dt); kind != widget.TableSelectRows || text != "1\trow1\t10\n2\trow2\t20" {
 		t.Errorf("a drag over the gutter: kind %v, %q", kind, text)
 	}
@@ -74,7 +78,7 @@ func TestDataTable_CellLayoutDragsOverCellsGutterAndHeaders(t *testing.T) {
 	}
 
 	// a press is a command boundary: it ends the selection, and the release lets the pointer go
-	gesture(h, [2]int{4, 1})
+	gesture(h, [2]int{4, 2})
 	if _, _, ok := tableSelected(h, dt); ok {
 		t.Error("a press kept the selection")
 	}
@@ -86,12 +90,24 @@ func TestDataTable_CellLayoutDragsOverCellsGutterAndHeaders(t *testing.T) {
 	}
 }
 
+// The rules are drawn in the Header's border: its Left after the numbers, its Top under the titles.
+func TestDataTable_TheRulesAreTheHeadersBorder(t *testing.T) {
+	h, sh, dt := dataTable(t, numbered(3), 20, 6, widget.TableRowNumbers(true))
+	h.onLoop(func() {
+		dt.SetStyles(widget.DataTableStyles{Header: style.New().Bold(true).Border(style.BorderDouble)})
+	})
+	h.barrier(sh)
+	if !strings.HasPrefix(h.row(1), "══┼═") || !strings.HasPrefix(h.row(2), "1 ║ 0") {
+		t.Errorf("a double border's rules:\n%s", h.grid())
+	}
+}
+
 // The gutter is as wide as the digits of the rows loaded: one digit for 9 rows, two once a tenth
 // arrives, and the fields and the pointer move with it.
 func TestDataTable_TheGutterGrowsFromNineRowsToTen(t *testing.T) {
 	src := numbered(9)
 	h, sh, dt := dataTable(t, src, 30, 14, widget.TableRowNumbers(true))
-	if at := strings.Index(h.row(0), "id"); at != 3 || !strings.HasPrefix(h.row(9), "9  8") {
+	if at := strings.Index(h.row(0), "id"); at != 4 || !strings.HasPrefix(h.row(10), "9 │ 8") {
 		t.Fatalf("9 rows: id at %d\n%s", at, h.grid())
 	}
 	h.onLoop(func() {
@@ -102,7 +118,7 @@ func TestDataTable_TheGutterGrowsFromNineRowsToTen(t *testing.T) {
 		dt.Core().Changed()
 	})
 	h.barrier(sh)
-	if at := strings.Index(h.row(0), "id"); at != 4 || !strings.HasPrefix(h.row(1), " 1  0") || !strings.HasPrefix(h.row(10), "10  9") {
+	if at := strings.Index(h.row(0), "id"); at != 5 || !strings.HasPrefix(h.row(2), " 1 │ 0") || !strings.HasPrefix(h.row(11), "10 │ 9") {
 		t.Errorf("10 rows: id at %d\n%s", at, h.grid())
 	}
 	h.onLoop(func() {
@@ -110,9 +126,9 @@ func TestDataTable_TheGutterGrowsFromNineRowsToTen(t *testing.T) {
 			t.Errorf("10 rows: %d digits", d)
 		}
 	})
-	gesture(h, [2]int{3, 2}) // a cell of the id field with one digit; the gutter's gap with two
+	gesture(h, [2]int{4, 3}) // a cell of the id field with one digit; the gutter's gap with two
 	if kind, text, _ := tableSelected(h, dt); kind != widget.TableSelectRows || text != "1\trow1\t10" {
-		t.Errorf("a press at x=3 with two digits: kind %v, %q; want row 1, from the gutter", kind, text)
+		t.Errorf("a press at x=4 with two digits: kind %v, %q; want row 1, from the gutter", kind, text)
 	}
 	h.onLoop(func() { dt.Core().SetRowNumbers(false) })
 	h.barrier(sh)
@@ -222,7 +238,7 @@ func TestDataTable_TheCursorBlursWithoutTheKeys(t *testing.T) {
 	root.AddSized(dt, 5)
 	root.Add(other)
 	h := startApp(t, root, 30, 8)
-	cursor := func() tui.CellAttrs { return cellAttrs(h, 0, 1) } // row 0's id
+	cursor := func() tui.CellAttrs { return cellAttrs(h, 0, 2) } // row 0's id
 	focus := func(c interface{ Context() *tui.Context }) {
 		h.onLoop(func() { c.Context().RequestFocus() })
 		h.settle()
@@ -275,7 +291,7 @@ func TestDataTable_ARightPressOpensTheMenuOverTheSelection(t *testing.T) {
 		dt.HandleEvent(key('V'))
 		dt.HandleEvent(key('j'))
 	})
-	h.inject(tui.MouseEvent{Kind: tui.MousePress, Button: tui.MouseRight, X: 7, Y: 2})
+	h.inject(tui.MouseEvent{Kind: tui.MousePress, Button: tui.MouseRight, X: 7, Y: 3})
 	h.waitFor("the menu opened", func() bool {
 		var open bool
 		h.onLoop(func() { open = menu.IsOpen() })
@@ -319,7 +335,7 @@ func TestDataTable_ARightPressOutsideTheSelectionTakesTheCell(t *testing.T) {
 		dt.HandleEvent(key('V'))
 		dt.HandleEvent(key('j'))
 	})
-	h.inject(tui.MouseEvent{Kind: tui.MousePress, Button: tui.MouseRight, X: 7, Y: 4})
+	h.inject(tui.MouseEvent{Kind: tui.MousePress, Button: tui.MouseRight, X: 7, Y: 5})
 	h.waitFor("the menu opened", func() bool {
 		var open bool
 		h.onLoop(func() { open = menu.IsOpen() })
