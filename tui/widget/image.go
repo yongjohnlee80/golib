@@ -43,7 +43,7 @@ type Image struct {
 	Base
 	id   uint32
 	st   imageState
-	drag imageDrag // a left-button drag panning a scrollable Image
+	drag pointerDrag[imagePan] // a left-button drag panning a scrollable Image
 
 	load imageLoading // the spinner shown while a host renders the PNG
 }
@@ -101,9 +101,8 @@ func (m *Image) Init(ctx *tui.Context) {
 	m.load.tick(ctx)
 }
 
-// imageDrag is a pan in progress: where the press was, in cells, and the corner shown then.
-type imageDrag struct {
-	on        bool
+// imagePan is where a pan began: the press, in cells, and the corner shown then.
+type imagePan struct {
 	x, y      int
 	left, top int
 }
@@ -432,7 +431,7 @@ func (m *Image) HasImage() bool { return len(m.st.png) > 0 }
 // SetScrollable sets whether the Image scrolls; see SCROLLABLE.
 func (m *Image) SetScrollable(on bool) {
 	if !on {
-		m.drag.end(m.Context()) // a drag the Image no longer scrolls for lets the pointer go
+		m.drag.end() // a drag the Image no longer scrolls for lets the pointer go
 	}
 	m.st.setScrollable(on)
 	m.MarkDirty()
@@ -477,11 +476,11 @@ func (m *Image) HandleEvent(ev tui.Event) bool {
 	}
 	// a drag's end is the drag's, scrollable or not: the pointer it captured is let go
 	if _, ok := ev.(tui.PointerCaptureLostEvent); ok && m.drag.on {
-		m.drag.on = false
+		m.drag.lost()
 		return true
 	}
 	if e, ok := ev.(tui.MouseEvent); ok && e.Kind == tui.MouseRelease && m.drag.on {
-		m.drag.end(m.Context())
+		m.drag.end()
 		return true
 	}
 	if !m.st.scrollable {
@@ -489,7 +488,7 @@ func (m *Image) HandleEvent(ev tui.Event) bool {
 	}
 	v := &m.st.view
 	if e, ok := ev.(tui.MouseEvent); ok {
-		if taken, moved := m.drag.pan(e, v, m.Context()); taken {
+		if taken, moved := pan(&m.drag, e, v, m.Context()); taken {
 			if moved {
 				m.st.moved()
 				m.MarkDirty()
@@ -505,35 +504,23 @@ func (m *Image) HandleEvent(ev tui.Event) bool {
 	return ok
 }
 
-// pan handles a drag of the left button over view v: a press starts it (the pointer captured, on
-// ctx), a move shows the PNG moved with the pointer, a release ends it. taken is whether e was part
-// of one, moved whether the corner shown moved.
-func (d *imageDrag) pan(e tui.MouseEvent, v *imageView, ctx *tui.Context) (taken, moved bool) {
+// pan is a left-button drag over a scrollable Image: the press begins it, motion moves the corner
+// shown by the pointer's travel since the press, and the release ends it. taken: the event was the
+// pan's; moved: the corner changed.
+func pan(d *pointerDrag[imagePan], e tui.MouseEvent, v *imageView, ctx *tui.Context) (taken, moved bool) {
 	switch {
 	case e.Kind == tui.MousePress && e.Button == tui.MouseLeft:
-		*d = imageDrag{on: true, x: e.X, y: e.Y, left: v.left, top: v.top}
-		if ctx != nil {
-			ctx.CapturePointer()
-		}
+		d.begin(imagePan{x: e.X, y: e.Y, left: v.left, top: v.top})
+		d.capture(ctx)
 		return true, false
 	case e.Kind == tui.MouseMotion && d.on:
-		return true, v.to(d.left-(e.X-d.x)*CellPixelsW, d.top-(e.Y-d.y)*CellPixelsH)
+		p := d.start
+		return true, v.to(p.left-(e.X-p.x)*CellPixelsW, p.top-(e.Y-p.y)*CellPixelsH)
 	case e.Kind == tui.MouseRelease && d.on:
-		d.end(ctx)
+		d.end()
 		return true, false
 	}
 	return false, false
-}
-
-// end ends a drag in progress, letting go of the pointer it captured.
-func (d *imageDrag) end(ctx *tui.Context) {
-	if !d.on {
-		return
-	}
-	d.on = false
-	if ctx != nil {
-		ctx.ReleasePointer()
-	}
 }
 
 // Layout takes every cell offered, and the view takes them after layout (imageState.setCells).
