@@ -294,32 +294,51 @@ type planCell struct {
 // place and inserted before the row they precede; then each record's fields deleted and inserted;
 // then the cells set. A record is dirty when its cells differ from what was read.
 func (t *TableCSV) plan(op TableCellsOp) ([]recordWrite, bool) {
+	delRow, delField, width, ok := t.validateCellsOp(op)
+	if !ok {
+		return nil, false
+	}
+	all := t.planRows(op, delRow)
+	t.planFields(all, op, delField)
+	if !planCells(all, op, width) {
+		return nil, false
+	}
+	return all, true
+}
+
+// validateCellsOp checks op's indices against the records as read: the rows and fields deleted (as
+// sets), the result's width, and whether op is valid at all.
+func (t *TableCSV) validateCellsOp(op TableCellsOp) (delRow, delField map[int]bool, width int, ok bool) {
 	n := len(t.records)
-	delRow, ok := indexSet(op.DeleteRows, n)
+	delRow, ok = indexSet(op.DeleteRows, n)
 	if !ok {
-		return nil, false
+		return nil, nil, 0, false
 	}
-	delField, ok := indexSet(op.DeleteFields, t.width)
+	delField, ok = indexSet(op.DeleteFields, t.width)
 	if !ok {
-		return nil, false
+		return nil, nil, 0, false
 	}
-	width := t.width - len(delField) + len(op.InsertFields)
+	width = t.width - len(delField) + len(op.InsertFields)
 	if width < 1 && (len(op.DeleteFields) > 0 || len(op.InsertFields) > 0) {
-		return nil, false // no field left
+		return nil, nil, 0, false // no field left
 	}
 	for _, at := range op.InsertRows {
 		if at < 0 || at > n {
-			return nil, false
+			return nil, nil, 0, false
 		}
 	}
 	for _, f := range op.InsertFields {
 		if f.At < 0 || f.At > t.width {
-			return nil, false
+			return nil, nil, 0, false
 		}
 	}
+	return delRow, delField, width, true
+}
 
-	// the rows, in text order: the header (one made for an empty file), then each record with the
-	// inserts before it, then the inserts at the end
+// planRows is the rows in text order, each a copy of its cells: the header (one made for an empty
+// file), then each record with the inserts before it, deleted ones marked, then the inserts at the end.
+func (t *TableCSV) planRows(op TableCellsOp, delRow map[int]bool) []recordWrite {
+	n := len(t.records)
 	all := make([]recordWrite, 0, n+1+len(op.InsertRows))
 	if t.header != nil {
 		all = append(all, recordWrite{rec: t.header, cells: slices.Clone(t.header.cells)})
@@ -341,8 +360,11 @@ func (t *TableCSV) plan(op TableCellsOp) ([]recordWrite, bool) {
 			deleted: delRow[i], dirty: delRow[i]})
 	}
 	inserted(n)
+	return all
+}
 
-	// the fields, over every record kept: walked by the field as read, the inserts before it
+// planFields deletes and inserts fields in every row kept, walked by the field as read.
+func (t *TableCSV) planFields(all []recordWrite, op TableCellsOp, delField map[int]bool) {
 	if len(delField) > 0 || len(op.InsertFields) > 0 {
 		ins := make(map[int][]TableField, len(op.InsertFields)) // fields inserted before each, in order
 		for _, f := range op.InsertFields {
@@ -355,8 +377,11 @@ func (t *TableCSV) plan(op TableCellsOp) ([]recordWrite, bool) {
 			all[i].cells = moveFields(all[i].cells, t.width, delField, ins, i == 0)
 		}
 	}
+}
 
-	// the cells, in the result's rows: the header, then each record kept
+// planCells sets op's cells in the result's rows (the header, then each record kept) and marks a
+// record dirty when its cells differ from what was read. false: a cell is out of range, or named twice.
+func planCells(all []recordWrite, op TableCellsOp, width int) bool {
 	rows := make([]int, 0, len(all))
 	for i := 1; i < len(all); i++ {
 		if !all[i].deleted {
@@ -366,11 +391,11 @@ func (t *TableCSV) plan(op TableCellsOp) ([]recordWrite, bool) {
 	named := make(map[TableCell]bool, len(op.Cells)) // by Row and Col alone: a cell named twice refuses
 	for _, c := range op.Cells {
 		if c.Row < -1 || c.Row >= len(rows) || c.Col < 0 || c.Col >= width {
-			return nil, false
+			return false
 		}
 		k := TableCell{Row: c.Row, Col: c.Col}
 		if named[k] {
-			return nil, false
+			return false
 		}
 		named[k] = true
 		at := 0
@@ -389,7 +414,7 @@ func (t *TableCSV) plan(op TableCellsOp) ([]recordWrite, bool) {
 			all[i].dirty = true
 		}
 	}
-	return all, true
+	return true
 }
 
 // indexSet is idx as a set, and whether every index is in [0, n) and none repeats.
