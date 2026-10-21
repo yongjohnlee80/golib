@@ -89,7 +89,7 @@ func (p *blockParser) tableStart(para *Node) (startResult, *Node) {
 		para.Span.End = prev.src + prev.n
 		p.finalize(para, -1)
 	}
-	t := &Node{Kind: KindTable, Span: Span{last.src, last.src + last.n}, Align: aligns, blk: &blockState{open: true}}
+	t := p.doc.nodes.new(Node{Kind: KindTable, Span: Span{last.src, last.src + last.n}, Align: aligns, blk: &blockState{open: true}})
 	t.blk.content = append(append([]byte(nil), header...), '\n')
 	t.blk.segs = []seg{{at: 0, pad: last.pad, src: last.src, n: last.n}}
 	parent.AppendChild(t)
@@ -180,18 +180,18 @@ func escapedPipe(line []byte, j int) bool {
 // finalizeTable turns the table's lines into rows: the header, then the body rows, each with as
 // many cells as the header (missing cells are empty, extra ones are dropped). The delimiter row
 // becomes no node.
-func finalizeTable(t *Node) {
+func (p *blockParser) finalizeTable(t *Node) {
 	b := t.blk
 	for i, s := range b.segs {
 		if i == 1 {
 			continue
 		}
 		line := b.content[s.at : s.at+s.pad+s.n]
-		row := &Node{Kind: KindTableRow, Span: Span{s.src, s.src + s.n}}
+		row := p.doc.nodes.new(Node{Kind: KindTableRow, Span: Span{s.src, s.src + s.n}})
 		t.AppendChild(row)
 		cells := splitRow(line)
 		for col := range t.Align {
-			cell := &Node{Kind: KindTableCell, Span: Span{row.Span.End, row.Span.End}, blk: &blockState{}}
+			cell := p.doc.nodes.new(Node{Kind: KindTableCell, Span: Span{row.Span.End, row.Span.End}, blk: &blockState{}})
 			if col < len(cells) {
 				tableCell(cell, line, cells[col], s)
 			}
@@ -294,9 +294,9 @@ func (p *inlineParser) extendedAutolink(lead, prefix string) bool {
 	if last.Span.Start == last.Span.End {
 		last.Unlink()
 	}
-	link := &Node{Kind: KindAutolink, Span: Span{p.srcAt(start), p.srcAt(end)},
-		Dest: append([]byte(prefix), p.text[start:end]...)}
-	link.AppendChild(&Node{Kind: KindText, Span: link.Span})
+	link := p.doc.nodes.new(Node{Kind: KindAutolink, Span: Span{p.srcAt(start), p.srcAt(end)},
+		Dest: append([]byte(prefix), p.text[start:end]...)})
+	link.AppendChild(p.doc.nodes.new(Node{Kind: KindText, Span: link.Span}))
 	p.parent.AppendChild(link)
 	p.pos = end
 	return true
@@ -428,10 +428,10 @@ func (p *inlineParser) splitEmails(t *Node) *Node {
 			return t
 		}
 		base := t.Span.Start
-		link := &Node{Kind: KindAutolink, Span: Span{base + s, base + e},
-			Dest: append([]byte("mailto:"), text[s:e]...)}
-		link.AppendChild(&Node{Kind: KindText, Span: link.Span})
-		rest := &Node{Kind: KindText, Span: Span{base + e, t.Span.End}}
+		link := p.doc.nodes.new(Node{Kind: KindAutolink, Span: Span{base + s, base + e},
+			Dest: append([]byte("mailto:"), text[s:e]...)})
+		link.AppendChild(p.doc.nodes.new(Node{Kind: KindText, Span: link.Span}))
+		rest := p.doc.nodes.new(Node{Kind: KindText, Span: Span{base + e, t.Span.End}})
 		t.Span.End = base + s
 		if t.Next != nil {
 			t.Next.InsertBefore(link)

@@ -128,6 +128,9 @@ Obsidian's block ids (`^id` at a line's end), footnotes, `%%comments%%`, `==high
   quotes and lists, unclosed link destinations and wikilinks, trailing parentheses after an autolink,
   and more) are timed at n and 10n and must scale by about 10×, not 100×. Only the families measured are
   claimed to be linear.
+- **Allocation.** A parse places its nodes in chunks (8 nodes at first, doubling to 1,024), so a document
+  of n nodes costs a few dozen allocations rather than n, and its tree lies together in memory. A node
+  held after its Document is dropped keeps its chunk alive.
 
 ## As a `parse.Parser`
 

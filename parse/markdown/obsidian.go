@@ -90,7 +90,7 @@ func (p *blockParser) frontmatter() int {
 	for s := body; s < len(src); {
 		e, next := lineEnd(s)
 		if fence(s, e) {
-			fm := &Node{Kind: KindFrontmatter, Span: Span{0, e}, Literal: src[body:s:s], blk: &blockState{}}
+			fm := p.doc.nodes.new(Node{Kind: KindFrontmatter, Span: Span{0, e}, Literal: src[body:s:s], blk: &blockState{}})
 			p.root.AppendChild(fm)
 			return next
 		}
@@ -202,8 +202,8 @@ func (p *inlineParser) wikilink(embed bool) bool {
 	if embed {
 		kind = KindEmbed
 	}
-	n := &Node{Kind: kind, Span: Span{p.srcAt(start), p.srcAt(closeAt + 2)}, Target: t}
-	n.AppendChild(&Node{Kind: KindText, Span: Span{p.srcAt(display[0]), p.srcAt(display[1])}})
+	n := p.doc.nodes.new(Node{Kind: kind, Span: Span{p.srcAt(start), p.srcAt(closeAt + 2)}, Target: t})
+	n.AppendChild(p.doc.nodes.new(Node{Kind: KindText, Span: Span{p.srcAt(display[0]), p.srcAt(display[1])}}))
 	p.parent.AppendChild(n)
 	p.pos = closeAt + 2
 	if !embed {
@@ -239,8 +239,8 @@ func (p *inlineParser) tag() bool {
 	if j == start+1 || digitsOnly {
 		return false
 	}
-	n := &Node{Kind: KindTag, Span: Span{p.srcAt(start), p.srcAt(j)}, Label: clone(p.text[start+1 : j])}
-	n.AppendChild(&Node{Kind: KindText, Span: n.Span})
+	n := p.doc.nodes.new(Node{Kind: KindTag, Span: Span{p.srcAt(start), p.srcAt(j)}, Label: clone(p.text[start+1 : j])})
+	n.AppendChild(p.doc.nodes.new(Node{Kind: KindText, Span: n.Span}))
 	p.parent.AppendChild(n)
 	p.pos = j
 	return true

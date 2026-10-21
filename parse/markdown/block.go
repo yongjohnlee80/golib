@@ -50,7 +50,7 @@ type blockParser struct {
 }
 
 func newBlockParser(d *Document, cfg *config) *blockParser {
-	root := &Node{Kind: KindDocument, blk: &blockState{open: true}}
+	root := d.nodes.new(Node{Kind: KindDocument, blk: &blockState{open: true}})
 	d.Root = root
 	return &blockParser{doc: d, cfg: cfg, src: d.Source, tip: root, root: root}
 }
@@ -387,7 +387,7 @@ func (p *blockParser) addChild(k Kind, off int) *Node {
 	for !canContain(p.tip.Kind, k) {
 		p.finalize(p.tip, -1)
 	}
-	n := &Node{Kind: k, Span: Span{p.ln.start + off, p.ln.start + off}, blk: &blockState{open: true}}
+	n := p.doc.nodes.new(Node{Kind: k, Span: Span{p.ln.start + off, p.ln.start + off}, blk: &blockState{open: true}})
 	p.tip.AppendChild(n)
 	p.tip = n
 	return n
@@ -464,7 +464,7 @@ func (p *blockParser) finalize(b *Node, end int) {
 	case KindList:
 		finalizeList(b)
 	case KindTable:
-		finalizeTable(b)
+		p.finalizeTable(b)
 	}
 	p.tip = parent
 }
