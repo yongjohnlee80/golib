@@ -592,11 +592,7 @@ func (t *DataTable) HandleEvent(ev tui.Event) bool {
 			}
 			if hit == TableHitCell && t.core.pairPress(e.Count, pos) {
 				t.core.dropPending()
-				if t.core.Editable() { // an editable table's double click edits the cell
-					t.core.EditCell("")
-				} else {
-					t.core.activateCursor()
-				}
+				t.core.activateOrEdit()
 			}
 			return true
 		case e.Kind == tui.MousePress && e.Button == tui.MouseRight && t.menu != nil && t.menu.Enabled():
