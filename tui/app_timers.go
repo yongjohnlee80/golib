@@ -195,9 +195,7 @@ func (a *App) addDeadline(d time.Duration, fn func()) (cancel func()) {
 // loop: when the UI is clean and idle, the heap is empty, costing zero wakeups,
 // zero memory allocations, and zero CPU cycles.
 func (a *App) scheduleFrame(at time.Time) {
-	a.nextTimerID++
-	heap.Push(&a.timers, &timerEntry{at: at, seq: a.nextTimerID, frame: true})
-	a.rearmTimer()
+	a.pushTimer(&timerEntry{at: at, frame: true})
 }
 
 // rearmTimer points the App's single time.Timer at the earliest pending
@@ -205,7 +203,7 @@ func (a *App) scheduleFrame(at time.Time) {
 //
 // Demand-Armed Lifecycle:
 //   - Empty Heap: If no component timers or pending frames exist, any existing
-//     timer is stopped, drained, and a.timerC is set to nil. The main loop's
+//     timer is stopped and a.timerC is set to nil. The main loop's
 //     select statement then blocks purely on Lane A (terminal input) and
 //     Lane B (program events).
 //   - Non-Empty Heap: Calculates max(Until(timers[0].at), 0), resets or allocates
@@ -213,12 +211,7 @@ func (a *App) scheduleFrame(at time.Time) {
 func (a *App) rearmTimer() {
 	if len(a.timers) == 0 {
 		if a.timer != nil {
-			if !a.timer.Stop() {
-				select {
-				case <-a.timer.C:
-				default:
-				}
-			}
+			a.timer.Stop()
 		}
 		a.timerC = nil
 		return
@@ -227,12 +220,6 @@ func (a *App) rearmTimer() {
 	if a.timer == nil {
 		a.timer = time.NewTimer(d)
 	} else {
-		if !a.timer.Stop() {
-			select {
-			case <-a.timer.C:
-			default:
-			}
-		}
 		a.timer.Reset(d)
 	}
 	a.timerC = a.timer.C

@@ -371,23 +371,21 @@ func (a *App) captureCheckFocus() {
 // captureCheckScope ends a capture whose owner a newly active trapping scope
 // excludes, so an opening dialog cannot leave a drag running behind it.
 func (a *App) captureCheckScope() {
-	owner := a.nodes[a.captureOwner]
-	if owner == nil {
-		return
-	}
-	if scope := a.confinement(); scope != nil && !a.inInputScope(owner, scope) {
-		a.loseCapture(CaptureLostFocusScope)
-	}
+	a.loseCaptureIf(func(owner *node) bool {
+		scope := a.confinement()
+		return scope != nil && !a.inInputScope(owner, scope)
+	}, CaptureLostFocusScope)
 }
 
 // captureCheckVisible ends a capture whose owner is no longer laid out and on
 // screen, since there is nothing left for the user to be dragging.
 func (a *App) captureCheckVisible() {
-	owner := a.nodes[a.captureOwner]
-	if owner == nil {
-		return
-	}
-	if !owner.visible() {
-		a.loseCapture(CaptureLostHidden)
+	a.loseCaptureIf(func(owner *node) bool { return !owner.visible() }, CaptureLostHidden)
+}
+
+// loseCaptureIf ends the capture for reason when its owner is still a node and lost holds for it.
+func (a *App) loseCaptureIf(lost func(owner *node) bool, reason CaptureLostReason) {
+	if owner := a.nodes[a.captureOwner]; owner != nil && lost(owner) {
+		a.loseCapture(reason)
 	}
 }
