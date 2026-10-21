@@ -62,3 +62,46 @@ func TestTheCursorIsTakenAsLastSet(t *testing.T) {
 		t.Fatalf("after HideCursor and the theme's colour back: %+v", cur)
 	}
 }
+
+// Flush is where the latches meet the frame: nothing shows before it; it applies the image calls
+// in the order made (a place, a delete and a newer place of one id leave the newer one), and
+// publishes the latched cursor as the frame's caret; the next Flush applies a delete and a hide.
+func TestFlushAppliesTheLatchesToTheFrame(t *testing.T) {
+	b := NewBackend()
+	m := metrics{window: image.Pt(32, 32), cell: image.Pt(8, 16), ppem: 14, baseline: 12, scale: 1, grid: tui.Size{W: 4, H: 2}}
+	b.metrics.Store(&m)
+	b.grid.resize(4, 2)
+	pic := onePixelPNG(t)
+	b.PlaceImage(tui.ImagePlacement{Image: tui.Image{ID: 1, PNG: pic, Version: 1}, Cols: 1, Rows: 1})
+	b.DeleteImage(1)
+	b.PlaceImage(tui.ImagePlacement{Image: tui.Image{ID: 1, PNG: pic, Version: 2}, X: 1, Cols: 1, Rows: 1})
+	b.PlaceImage(tui.ImagePlacement{Image: tui.Image{ID: 2, PNG: pic, Version: 1}, X: 2, Cols: 1, Rows: 1})
+	b.ShowCursor()
+	b.SetCursor(3, 1)
+	if n := len(b.imageList()); n != 0 || b.latest != nil {
+		t.Fatalf("before any Flush: %d images shown, frame %v; want none", n, b.latest)
+	}
+
+	if err := b.Flush(nil); err != nil {
+		t.Fatal(err)
+	}
+	list := b.imageList()
+	if len(list) != 2 || list[0].ID != 1 || list[0].Version != 2 || list[0].X != 1 || list[1].ID != 2 {
+		t.Fatalf("after Flush: %+v, want image 1 at version 2 and x 1, then image 2", list)
+	}
+	if b.latest == nil || b.latest.caret != image.Rect(24, 16, 32, 32) {
+		t.Fatalf("after Flush the frame's caret is not the cursor's cell (3, 1): %+v", b.latest)
+	}
+
+	b.DeleteImage(1)
+	b.HideCursor()
+	if err := b.Flush(nil); err != nil {
+		t.Fatal(err)
+	}
+	if list := b.imageList(); len(list) != 1 || list[0].ID != 2 {
+		t.Fatalf("the next Flush kept a deleted image: %+v", list)
+	}
+	if !b.latest.caret.Empty() {
+		t.Fatalf("the next Flush kept a hidden cursor's caret %v", b.latest.caret)
+	}
+}
