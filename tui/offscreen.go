@@ -25,9 +25,7 @@ func (c *Context) RenderOffscreen(o *Offscreen, size Size, face string, draw fun
 	if o.buf == nil || o.buf.w != w || o.buf.h != h {
 		o.buf = &buffer{w: w, h: h, curr: make([]Cell, w*h)}
 	}
-	for i := range o.buf.curr {
-		o.buf.curr[i] = blankCell
-	}
+	o.buf.clear()
 	// the face in effect: the node rendering now, or an outer RenderOffscreen's; while draw runs it
 	// is this grid's, so a nested call with no face of its own inherits it, and it is restored on
 	// return, a panic included

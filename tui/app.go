@@ -633,17 +633,30 @@ func (a *App) renderFrame() {
 	// v1 repaints the whole visible tree; the cell diff keeps the flush
 	// minimal — the copy of the last frame IS the dirty tracking, so nothing
 	// else has to remember what changed.
-	for i := range a.buf.curr {
-		a.buf.curr[i] = blankCell
-	}
-	a.beginNatives()
+	a.beginFrame()
 	a.renderTree()
 	a.renderToolTip()
-	a.renderDirty = false
+	a.presentFrame(true)
+}
 
+// beginFrame starts a frame on a blank grid, with no native view or image reported yet.
+func (a *App) beginFrame() {
+	a.buf.clear()
+	a.beginNatives()
+	a.frameImages = a.frameImages[:0]
+}
+
+// presentFrame ends a frame, whatever painted it, the one way: the native views and images the
+// paint reported (none removes every one), the cursor by its rule or hidden, and the one flush.
+func (a *App) presentFrame(cursor bool) {
+	a.renderDirty = false
 	a.applyNatives()
 	a.applyImages()
-	a.applyCursor()
+	if cursor {
+		a.applyCursor()
+	} else {
+		a.backend.HideCursor()
+	}
 	a.flush()
 	a.lastFrame = time.Now()
 	a.frames++
