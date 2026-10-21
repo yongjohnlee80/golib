@@ -177,9 +177,9 @@ func TestParseTableWhere_ErrorsCarryTheOffsetOfTheirToken(t *testing.T) {
 		{"Age = 1; DROP", 7, `unexpected ';'`},
 	} {
 		_, err := ParseTableWhere(c.text, fields)
-		var we *TableWhereError
+		var we *TableBarError
 		if !errors.As(err, &we) {
-			t.Errorf("%q: err %v, want a *TableWhereError", c.text, err)
+			t.Errorf("%q: err %v, want a *TableBarError", c.text, err)
 			continue
 		}
 		if we.Offset != c.offset || !strings.Contains(we.Error(), c.says) {
