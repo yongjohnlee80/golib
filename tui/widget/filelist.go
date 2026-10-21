@@ -646,10 +646,9 @@ func (l *FileList) SetFilter(text string) {
 	if text == "" {
 		l.entries = l.all
 	} else {
-		q := strings.ToLower(text)
 		l.entries = nil
 		for _, e := range l.all {
-			if e.up || strings.Contains(strings.ToLower(e.name), q) {
+			if e.up || matchFold(e.name, text) {
 				l.entries = append(l.entries, e)
 			}
 		}

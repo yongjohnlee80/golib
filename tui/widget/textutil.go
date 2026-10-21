@@ -287,3 +287,9 @@ func paintScrollIndicator(s tui.Surface, x, h, top, maxTop int) {
 func fitCell(s string, w int, mode Elide, a style.Align, measure func(string) int) string {
 	return padAligned(elide(s, w, mode, measure), w, a, measure)
 }
+
+// matchFold reports whether label holds q, case folded: the one filter rule for what a user types to
+// narrow a list (a Select's options, a FileList's entries). An empty q matches every label.
+func matchFold(label, q string) bool {
+	return q == "" || strings.Contains(strings.ToLower(label), strings.ToLower(q))
+}
