@@ -198,7 +198,7 @@ func (t *Text) Layout(c tui.Constraints) tui.Size {
 	}
 	h := 0
 	for _, ln := range t.lines() {
-		h += len(wrapLine(ln, w, t.measure))
+		h += len(tui.WrapText(ln, w, t.measure))
 	}
 	return c.Constrain(tui.Size{W: w, H: max(h, 1)})
 }
@@ -220,16 +220,16 @@ func (t *Text) Render(s tui.Surface) {
 		st = st.Italic(true)
 	}
 	if t.mode == Truncate {
-		drawText(s, 0, 0, truncate(t.lines()[0], sz.W, s.StringWidth), st)
+		tui.DrawText(s, 0, 0, truncate(t.lines()[0], sz.W, s.StringWidth), st)
 		return
 	}
 	y := 0
 	for _, ln := range t.lines() {
-		for _, row := range wrapLine(ln, sz.W, s.StringWidth) {
+		for _, row := range tui.WrapText(ln, sz.W, s.StringWidth) {
 			if y >= sz.H {
 				return
 			}
-			drawText(s, 0, y, row, st)
+			tui.DrawText(s, 0, y, row, st)
 			y++
 		}
 	}

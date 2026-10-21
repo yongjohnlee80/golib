@@ -1,7 +1,6 @@
 package tui
 
 import (
-	"strings"
 	"time"
 
 	"github.com/yongjohnlee80/golib/tui/internal/grapheme"
@@ -165,11 +164,7 @@ func (a *App) renderToolTip() {
 	st := style.New().Foreground(style.TokenForeground).Background(style.TokenPanel)
 	s.Fill(r, " ", st)
 	for i, l := range lines {
-		x := r.X + 1
-		for g := range grapheme.Clusters(l) {
-			s.SetCell(x, r.Y+i, g, st)
-			x += max(s.StringWidth(g), 1)
-		}
+		DrawText(s, r.X+1, r.Y+i, l, st)
 	}
 	a.tip.rect = r
 }
@@ -189,32 +184,13 @@ func placeToolTip(anchor Rect, sz Size, screen Size) Rect {
 	return r
 }
 
-// wrapToolTip breaks text into lines of at most width columns: at spaces, and inside a word too
-// long for a line; its own line breaks are kept. Past toolTipRows, the last line kept ends with an
-// ellipsis.
+// wrapToolTip breaks text into lines of at most width columns (WrapText). Past toolTipRows, the
+// last line kept ends with an ellipsis.
 func wrapToolTip(text string, width int, measure func(string) int) []string {
 	if width < 1 {
 		return nil
 	}
-	var lines []string
-	for _, para := range strings.Split(text, "\n") {
-		line := ""
-		for _, word := range strings.Fields(para) {
-			if line != "" && measure(line)+1+measure(word) <= width {
-				line += " " + word
-				continue
-			}
-			if line != "" {
-				lines = append(lines, line)
-			}
-			for measure(word) > width {
-				head := cutToWidth(word, width, measure)
-				lines, word = append(lines, head), word[len(head):]
-			}
-			line = word
-		}
-		lines = append(lines, line)
-	}
+	lines := WrapText(text, width, measure)
 	if len(lines) > toolTipRows {
 		last := cutToWidth(lines[toolTipRows-1], width-1, measure)
 		lines = append(lines[:toolTipRows-1], last+"…")

@@ -5,7 +5,6 @@ import (
 	"strings"
 	"time"
 
-	"github.com/yongjohnlee80/golib/tui/internal/grapheme"
 	"github.com/yongjohnlee80/golib/tui/style"
 )
 
@@ -129,9 +128,9 @@ func (a *App) renderTooSmall() {
 	gap := 2
 	total := s.StringWidth(quit) + gap + s.StringWidth(keys)
 	x := max((a.size.W-total)/2, 0)
-	x = writeAt(s, x, y, quit, base.Background(style.TokenPrimary).Foreground(style.TokenTextOnPrimary))
+	x = DrawText(s, x, y, quit, base.Background(style.TokenPrimary).Foreground(style.TokenTextOnPrimary))
 	a.quitButton = Rect{X: max((a.size.W-total)/2, 0), Y: y, W: s.StringWidth(quit), H: 1}
-	writeAt(s, x+gap, y, keys, base.Foreground(style.TokenTextMuted))
+	DrawText(s, x+gap, y, keys, base.Foreground(style.TokenTextMuted))
 
 	a.renderDirty = false
 	a.beginNatives()
@@ -146,15 +145,5 @@ func (a *App) renderTooSmall() {
 
 // writeCentered writes text centred on row y.
 func writeCentered(s Surface, y int, text string, st style.Style) {
-	writeAt(s, max((s.Size().W-s.StringWidth(text))/2, 0), y, text, st)
-}
-
-// writeAt writes text from column x on row y and returns the column after it. What does not fit is
-// clipped by the surface.
-func writeAt(s Surface, x, y int, text string, st style.Style) int {
-	for c := range grapheme.Clusters(text) {
-		s.SetCell(x, y, c, st)
-		x += max(s.StringWidth(c), 1)
-	}
-	return x
+	DrawText(s, max((s.Size().W-s.StringWidth(text))/2, 0), y, text, st)
 }
