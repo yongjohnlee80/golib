@@ -2,18 +2,19 @@ package vt
 
 import "github.com/yongjohnlee80/golib/tui/style"
 
-// Attr is a cell's packed text attributes.
-type Attr uint16
+// Attr is a cell's packed text attributes: style's AttrMask, the bits a Style, tui's cells and
+// the web client share.
+type Attr = style.AttrMask
 
 const (
-	AttrBold Attr = 1 << iota
-	AttrFaint
-	AttrItalic
-	AttrUnderline
-	AttrBlink
-	AttrReverse
-	AttrInvisible
-	AttrStrike
+	AttrBold      = style.AttrBold
+	AttrFaint     = style.AttrFaint
+	AttrItalic    = style.AttrItalic
+	AttrUnderline = style.AttrUnderline
+	AttrBlink     = style.AttrBlink
+	AttrReverse   = style.AttrReverse
+	AttrInvisible = style.AttrInvisible
+	AttrStrike    = style.AttrStrikethrough
 )
 
 // Cell is one grid position.
@@ -39,14 +40,14 @@ func (c Cell) isBlank() bool {
 	return c.Content == "" && c.Width == 1 && c.Attr == 0 && c.FG.IsDefault() && c.BG.IsDefault()
 }
 
-// CursorShape is the cursor's glyph as DECSCUSR sets it.
-type CursorShape uint8
+// CursorShape is the cursor's glyph as DECSCUSR sets it: style's, shared with tui.
+type CursorShape = style.CursorShape
 
 const (
-	CursorDefault   CursorShape = iota // the host's own (DECSCUSR 0)
-	CursorBlock                        // DECSCUSR 1, 2
-	CursorUnderline                    // DECSCUSR 3, 4
-	CursorBar                          // DECSCUSR 5, 6
+	CursorDefault   = style.CursorShapeDefault   // the host's own (DECSCUSR 0)
+	CursorBlock     = style.CursorShapeBlock     // DECSCUSR 1, 2
+	CursorUnderline = style.CursorShapeUnderline // DECSCUSR 3, 4
+	CursorBar       = style.CursorShapeBar       // DECSCUSR 5, 6
 )
 
 // MouseMode is the mouse reporting a program asked for.

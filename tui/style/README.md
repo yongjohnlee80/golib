@@ -168,6 +168,18 @@ colours, the 6×6×6 cube and the grey ramp. It is the one statement of that
 palette. The downsampler, `Legible`'s contrast check and a renderer drawing
 indexed colours read it rather than a table of their own.
 
+## Attributes and cursor shapes
+
+`AttrMask` is the one set of text-attribute bits (`AttrBold`, `AttrFaint`,
+`AttrItalic`, `AttrUnderline`, `AttrBlink`, `AttrReverse`,
+`AttrStrikethrough`, `AttrInvisible`), and `CursorShape` the one cursor-shape
+enum (`CursorShapeDefault`, `Block`, `Underline`, `Bar`). A `Style` packs its
+attribute values in an `AttrMask`. `tui.AttrMask`, `tui.CursorShape`, `vt.Attr`
+and `vt.CursorShape` alias these types; the web client is handed the bits by
+name (`AttrNames`). They live here because `style` sits below `tui` and `vt`.
+`Style.Attrs()` is the attributes a style sets on, and `Style.WithAttrs(m)`
+sets them on, so a terminal cell's mask becomes a style in one call.
+
 ## File layout
 
 | File        | Contents                                                                        |
@@ -179,6 +191,7 @@ indexed colours read it rather than a table of their own.
 | `theme.go`  | `Token` vocabulary, `Theme`, `NewTheme`, `WithToken`/`WithDark`, `DefaultTheme` |
 | `border.go` | `BorderStyle` + prefabs                                                         |
 | `xterm.go`  | `XtermRGB`: xterm's default 256-colour palette                                  |
+| `attrs.go`  | `AttrMask`, `AttrNames`, `CursorShape`, `Style.Attrs`/`WithAttrs`               |
 | `legible.go`| `Legible`, contrast ratio over WCAG relative luminance                          |
 | `ext.go`    | `StyleOption`, `Apply`, `ExtKey`, `Ext`/`GetExt`                                |
 

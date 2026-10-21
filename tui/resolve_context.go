@@ -37,28 +37,8 @@ func resolveStyle(st style.Style, rc ResolveContext) CellAttrs {
 		a.BG = resolveColor(bg, rc.Theme, rc.Caps.ColorProfile, dark)
 	}
 	// Attributes survive every profile including ProfileMono — the mono step
-	// of the chain drops color and keeps attributes.
-	if v, ok := st.GetBold(); ok && v {
-		a.Mask |= AttrBold
-	}
-	if v, ok := st.GetFaint(); ok && v {
-		a.Mask |= AttrFaint
-	}
-	if v, ok := st.GetItalic(); ok && v {
-		a.Mask |= AttrItalic
-	}
-	if v, ok := st.GetUnderline(); ok && v {
-		a.Mask |= AttrUnderline
-	}
-	if v, ok := st.GetBlink(); ok && v {
-		a.Mask |= AttrBlink
-	}
-	if v, ok := st.GetReverse(); ok && v {
-		a.Mask |= AttrReverse
-	}
-	if v, ok := st.GetStrikethrough(); ok && v {
-		a.Mask |= AttrStrikethrough
-	}
+	// of the chain drops color and keeps attributes. A Style and a cell share the bits.
+	a.Mask = st.Attrs()
 	return a
 }
 

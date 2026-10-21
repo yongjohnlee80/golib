@@ -16,6 +16,7 @@ import (
 	"github.com/yongjohnlee80/golib/errs"
 	"github.com/yongjohnlee80/golib/logger"
 	"github.com/yongjohnlee80/golib/server/ws"
+	"github.com/yongjohnlee80/golib/tui/style"
 )
 
 //go:embed assets/client.js
@@ -84,6 +85,18 @@ type clientConfig struct {
 	LoginPath string         `json:"loginPath,omitempty"`
 	NamedKeys []string       `json:"namedKeys"`
 	Reserved  []reservedRule `json:"reserved"`
+	// Attrs is the attribute bits the frames' masks carry, by name: style's AttrMask, injected so
+	// the painter reads the same values the server packs.
+	Attrs map[string]uint16 `json:"attrs"`
+}
+
+// AttrBits is the attribute bits by name, as the client is handed them (clientConfig.Attrs).
+func AttrBits() map[string]uint16 {
+	m := make(map[string]uint16, len(style.AttrNames))
+	for _, a := range style.AttrNames {
+		m[a.Name] = uint16(a.Bit)
+	}
+	return m
 }
 
 // nonce returns a fresh CSP nonce.
@@ -140,6 +153,7 @@ func (h *Handler) ServePage(w http.ResponseWriter, r *http.Request) {
 		// hard-coded in BOTH places while the client's comment claimed it was
 		// injected, so the two could drift with nothing to notice.
 		Reserved: ReservedRules(),
+		Attrs:    AttrBits(),
 	})
 	if err != nil {
 		http.Error(w, "unavailable", http.StatusInternalServerError)

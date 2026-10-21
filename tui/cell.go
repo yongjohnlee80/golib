@@ -1,5 +1,7 @@
 package tui
 
+import "github.com/yongjohnlee80/golib/tui/style"
+
 // Cell represents a single terminal grid position.
 //
 // # Architectural Principles
@@ -63,15 +65,17 @@ type CellColor struct {
 	R, G, B uint8 // components for CellColorRGB
 }
 
-// AttrMask is the resolved SGR attribute bitset of a cell.
-type AttrMask uint16
+// AttrMask is the resolved SGR attribute bitset of a cell: style's, the one set of attribute bits
+// a Style, a cell, vt and the web client share.
+type AttrMask = style.AttrMask
 
 const (
-	AttrBold AttrMask = 1 << iota
-	AttrFaint
-	AttrItalic
-	AttrUnderline
-	AttrBlink
-	AttrReverse
-	AttrStrikethrough
+	AttrBold          = style.AttrBold
+	AttrFaint         = style.AttrFaint
+	AttrItalic        = style.AttrItalic
+	AttrUnderline     = style.AttrUnderline
+	AttrBlink         = style.AttrBlink
+	AttrReverse       = style.AttrReverse
+	AttrStrikethrough = style.AttrStrikethrough
+	AttrInvisible     = style.AttrInvisible
 )
