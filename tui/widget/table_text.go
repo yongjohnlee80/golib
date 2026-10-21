@@ -183,7 +183,7 @@ func (t *TableText) write(d tableData) bool {
 		var b strings.Builder
 		b.WriteString("|")
 		for c, w := range widths {
-			b.WriteString(" " + padAligned(cells[c], w, aligns[c]) + " |")
+			b.WriteString(" " + padAligned(cells[c], w, aligns[c], tui.StringWidth) + " |")
 		}
 		return b.String()
 	}
@@ -211,9 +211,9 @@ func (t *TableText) write(d tableData) bool {
 	return true
 }
 
-// padAligned is s in a column w wide, placed as a says.
-func padAligned(s string, w int, a style.Align) string {
-	gap := max(w-tui.StringWidth(s), 0)
+// padAligned is s in a column w cells wide, measured by measure, placed as a says.
+func padAligned(s string, w int, a style.Align, measure func(string) int) string {
+	gap := max(w-measure(s), 0)
 	switch a {
 	case style.AlignRight:
 		return strings.Repeat(" ", gap) + s
