@@ -198,7 +198,7 @@ func TestEveryTableCommandDoesSomething(t *testing.T) {
 		c := NewTableCore(people(), TableSortable(true), TableOnActivate(func(int) {}))
 		c.Bind(nil, &fakeTableLayout{})
 		c.cur = TablePos{1, 1}
-		before := tableEffect(c, false, nil, nil)
+		before, rowBefore := tableEffect(c, false, nil, nil), c.rowCursor
 		k := keys[0]
 		e := tui.KeyEvent{Code: k.Code, Mods: k.Mods}
 		ret := c.HandleKey(e)
@@ -207,6 +207,12 @@ func TestEveryTableCommandDoesSomething(t *testing.T) {
 		}
 		if !ret && cmd.ID != TableEscape.ID {
 			t.Errorf("%s (%v): not handled", cmd.ID, k)
+		}
+		if cmd.ID == TableRowCursor.ID { // its effect is the cursor's cover, which tableEffect leaves out
+			if c.rowCursor == rowBefore {
+				t.Errorf("%s (%v): the row cursor stayed %v", cmd.ID, k, rowBefore)
+			}
+			continue
 		}
 		if after := tableEffect(c, false, nil, nil); after == before && !slices.Contains([]string{TableEscape.ID, TableYank.ID, TableActivate.ID, TableFieldPrev.ID}, cmd.ID) {
 			t.Errorf("%s (%v): changed nothing", cmd.ID, k)
