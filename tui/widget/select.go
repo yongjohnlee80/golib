@@ -782,20 +782,16 @@ func (p *selectPopup[T]) Render(s tui.Surface) {
 		y++
 	}
 	rows := p.rows()
-	for row := 0; row < rows; row++ {
-		mi := p.top + row
-		if mi >= len(p.matches) {
-			break
-		}
-		st := optSt
+	styleOf := func(mi int) style.Style {
 		if mi == p.hi {
-			st = hiSt
+			return hiSt
 		}
-		s.Fill(tui.Rect{X: innerX, Y: y + row, W: innerW, H: 1}, " ", st)
-		sub := s.Sub(tui.Rect{X: innerX, Y: y + row, W: innerW, H: 1})
-		label := p.owner.items[p.matches[mi]].Label
-		drawText(sub, 0, 0, truncate(label, innerW, s.StringWidth), st)
+		return optSt
 	}
+	paintRows(s.Sub(tui.Rect{X: innerX, Y: y, W: innerW, H: rows}), p.top, len(p.matches), innerW, styleOf,
+		func(s tui.Surface, mi, y, w int, st style.Style) {
+			drawText(s, 0, y, truncate(p.owner.items[p.matches[mi]].Label, w, s.StringWidth), st)
+		})
 	if len(p.matches) > rows {
 		sub := s.Sub(tui.Rect{X: r.X + r.W - 1, Y: y, W: 1, H: rows})
 		paintScrollIndicator(sub, 0, rows, p.top, len(p.matches)-rows)

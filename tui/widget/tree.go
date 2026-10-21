@@ -1162,39 +1162,24 @@ func (t *Tree) Render(s tui.Surface) {
 	// last, match the text instead of showing what the tree sits on.
 	s.Fill(tui.Rect{W: sz.W, H: sz.H}, " ", t.styles.Row)
 	rows := t.flatten()
-	if t.cursor >= len(rows) {
-		t.cursor = max(0, len(rows)-1)
-	}
-	w := sz.W
-	scrollable := len(rows) > sz.H
-	if scrollable {
-		w--
-	}
-	for y := 0; y < sz.H; y++ {
-		idx := t.top + y
-		if idx >= len(rows) {
-			break
-		}
-		r := rows[idx]
+	cursor := min(t.cursor, len(rows)-1) // read, not stored: Render is pure
+	w, scrollable := rowsWidth(sz.W, sz.H, len(rows))
+	styleOf := func(i int) style.Style {
 		st := t.styles.Row
-		if r.node.hasSt {
-			st = r.node.st.Inherit(st)
+		if n := rows[i].node; n.hasSt {
+			st = n.st.Inherit(st)
 		}
-		// The cursor remains visible without focus. A caller that names a
-		// blurred look can distinguish panes; otherwise the original cursor
-		// look stays, including under a delegating wrapper.
-		if idx == t.cursor {
-			cursor := t.styles.CursorRow
-			if t.styles.CursorBlurred != (style.Style{}) && (t.Context() == nil || !t.Context().Focused()) {
-				cursor = t.styles.CursorBlurred
-			}
-			st = cursor.Inherit(st)
-			s.Fill(tui.Rect{X: 0, Y: y, W: w, H: 1}, " ", st)
+		// The cursor remains visible without focus. A caller that names a blurred look can
+		// distinguish panes; otherwise the cursor look stays, including under a delegating wrapper.
+		if i == cursor {
+			st = t.styles.cursorLook(t.focused()).Inherit(st)
 		}
-		line := t.rowText(r)
-		s.SetCell(0, y, "", st) // ensure the row participates even when empty
-		drawText(s, 0, y, truncate(line, w, s.StringWidth), st)
+		return st
 	}
+	paintRows(s, t.top, len(rows), w, styleOf, func(s tui.Surface, i, y, w int, st style.Style) {
+		s.SetCell(0, y, "", st) // ensure the row participates even when empty
+		drawText(s, 0, y, truncate(t.rowText(rows[i]), w, s.StringWidth), st)
+	})
 	if scrollable {
 		paintScrollIndicator(s, sz.W-1, sz.H, t.top, len(rows)-sz.H)
 	}

@@ -180,6 +180,15 @@ type ListStyles struct {
 	CursorBlurred style.Style
 }
 
+// cursorLook is the cursor row's look: CursorBlurred while the view has not the keyboard, when one
+// is named, and CursorRow otherwise.
+func (st ListStyles) cursorLook(focused bool) style.Style {
+	if !focused && st.CursorBlurred != (style.Style{}) {
+		return st.CursorBlurred
+	}
+	return st.CursorRow
+}
+
 // ListOption customizes a List under construction.
 type ListOption[T any] func(*List[T])
 
@@ -443,11 +452,6 @@ func (l *List[T]) activate() {
 }
 
 // hasFocus reports whether the list itself holds the keyboard.
-func (l *List[T]) hasFocus() bool {
-	ctx := l.Context()
-	return ctx != nil && ctx.Focused()
-}
-
 // keyCommand is which of the List's commands e is, declined where the List has nothing to do with
 // it: the context-menu key without a context menu, or held (a repeat opens no second menu), and Space
 // without multi-select. A Ctrl, Alt or Super chord no command binds is the application's (pane motion,
@@ -575,10 +579,8 @@ func (l *List[T]) rowStyle(i int) style.Style {
 	switch {
 	case i == l.cursor && selected && l.multi:
 		return l.styles.CursorSelected.Inherit(l.styles.SelectedRow).Inherit(l.styles.Row)
-	case i == l.cursor && !l.hasFocus() && l.styles.CursorBlurred != (style.Style{}):
-		return l.styles.CursorBlurred.Inherit(l.styles.Row)
 	case i == l.cursor:
-		return l.styles.CursorRow.Inherit(l.styles.Row)
+		return l.styles.cursorLook(l.focused()).Inherit(l.styles.Row)
 	case selected:
 		return l.styles.SelectedRow.Inherit(l.styles.Row)
 	default:
@@ -609,31 +611,16 @@ func (l *List[T]) Render(s tui.Surface) {
 		}
 		return
 	}
-	rows := min(sz.H, l.count-l.top)
-	scrollable := l.count > sz.H
-	contentW := sz.W
-	if scrollable {
-		contentW--
-	}
-	for r := 0; r < rows; r++ {
-		i := l.top + r
-		st := l.rowStyle(i)
-		// A row that is MARKED fills its width, whether the mark is a colour or
-		// a reversal: a reversed cursor that covered only its letters read as a
-		// highlighted word, not as the row the cursor is on.
-		_, bg := st.GetBackground()
-		if reversed, _ := st.GetReverse(); bg || reversed {
-			s.Fill(tui.Rect{X: 0, Y: r, W: contentW, H: 1}, " ", st)
-		}
+	contentW, scrollable := rowsWidth(sz.W, sz.H, l.count)
+	paintRows(s, l.top, l.count, contentW, l.rowStyle, func(s tui.Surface, i, y, w int, st style.Style) {
 		item := l.src.Item(i)
 		if l.paint != nil {
 			_, selected := l.sel[i]
-			l.paint(s, r, contentW, item, st, i == l.cursor || selected)
+			l.paint(s, y, w, item, st, i == l.cursor || selected)
 		} else {
-			text := truncate(l.render(item), contentW, s.StringWidth)
-			drawText(s, 0, r, text, st)
+			drawText(s, 0, y, truncate(l.render(item), w, s.StringWidth), st)
 		}
-	}
+	})
 	if scrollable {
 		paintScrollIndicator(s, sz.W-1, sz.H, l.top, l.count-sz.H)
 	}
