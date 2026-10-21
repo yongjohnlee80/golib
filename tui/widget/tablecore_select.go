@@ -317,17 +317,24 @@ func (c *TableCore) PressAt(p TablePos, hit TableHit) bool {
 	if c.anchor != nil {
 		c.SetAnchor(nil)
 	}
+	// a press whose cursor move the owner answered with new rows starts no drag over them
 	switch hit {
 	case TableHitCell:
-		c.SetCursor(p)
+		if !c.cursorTo(p) {
+			return true
+		}
 		c.dragFrom = c.cur
 	case TableHitGutter:
-		c.SetCursor(TablePos{p.Row, c.cur.Col})
+		if !c.cursorTo(TablePos{p.Row, c.cur.Col}) {
+			return true
+		}
 		c.Select(TableSelectRows, c.cur)
 		c.dragFrom = c.cur
 	case TableHitHeader:
 		c.dragFrom = c.clampPos(TablePos{Col: p.Col})
-		c.selectFields(c.dragFrom.Col)
+		if !c.selectFields(c.dragFrom.Col) {
+			return true
+		}
 	default:
 		return false
 	}
@@ -338,13 +345,13 @@ func (c *TableCore) PressAt(p TablePos, hit TableHit) bool {
 // selectFields selects the fields from the press's to col over every loaded row: the anchor on the
 // last row and the cursor on the first, so the cursor stays in sight near the titles and a paged
 // source is asked for no rows.
-func (c *TableCore) selectFields(col int) {
+// It reports whether the rows survived the owner's TableOnCursor.
+func (c *TableCore) selectFields(col int) (live bool) {
 	if c.Len() == 0 {
-		c.SetCursor(TablePos{0, col})
-		return
+		return c.cursorTo(TablePos{0, col})
 	}
 	c.Select(TableSelectBlock, TablePos{c.Len() - 1, c.dragFrom.Col})
-	c.SetCursor(TablePos{0, col})
+	return c.cursorTo(TablePos{0, col})
 }
 
 // Dragging reports whether a press started a drag that has not ended: the view keeps the pointer
@@ -396,7 +403,9 @@ func (c *TableCore) selectForMenu(p TablePos, hit TableHit) {
 	case TableHitGutter:
 		if !c.rowSelected(p.Row) {
 			c.SetAnchor(nil)
-			c.SetCursor(TablePos{p.Row, c.cur.Col})
+			if !c.cursorTo(TablePos{p.Row, c.cur.Col}) {
+				return // the owner replaced the rows: none of them is selected for the menu
+			}
 			c.Select(TableSelectRows, c.cur)
 		}
 	case TableHitHeader:

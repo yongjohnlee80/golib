@@ -157,8 +157,7 @@ func (c *TableCore) PasteCells(rows [][]string, kind TablePasteKind, before bool
 	if !cc.CommitCells(op) {
 		return false
 	}
-	c.Changed()
-	if first >= 0 {
+	if c.changed() && first >= 0 {
 		c.SetCursor(TablePos{first, c.cur.Col}) // on the first row pasted, as vim's p and P
 	}
 	return true
@@ -235,8 +234,9 @@ func (c *TableCore) InsertRows(before bool) bool {
 	if !cc.CommitCells(TableCellsOp{InsertRows: []int{at}}) {
 		return false
 	}
-	c.Changed()
-	c.SetCursor(TablePos{at, c.cur.Col}) // on the row inserted: a whole view shows source row at there
+	if c.changed() {
+		c.SetCursor(TablePos{at, c.cur.Col}) // on the row inserted: a whole view shows source row at there
+	}
 	return true
 }
 
@@ -253,8 +253,7 @@ func (c *TableCore) InsertFields(before bool) bool {
 	if !cc.CommitCells(TableCellsOp{InsertFields: []TableFieldAt{{At: at}}}) {
 		return false
 	}
-	c.Changed()
-	if !before {
+	if c.changed() && !before {
 		c.SetCursor(TablePos{c.cur.Row, at})
 	}
 	return true

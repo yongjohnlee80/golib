@@ -169,8 +169,8 @@ func (c *TableCore) editKey(id string, yanked, deleting bool) bool {
 		case yanked: // yy: the row (a row cursor's y is the row already: yank)
 			c.setRegister(c.rowText(c.cur.Row), true)
 		default:
+			c.yanked = true // first: Copy tells the owner (TableOnCopy), who may replace the rows
 			c.Copy()
-			c.yanked = true
 		}
 	case TableSort.ID:
 		if !c.sortable {

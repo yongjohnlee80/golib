@@ -17,7 +17,9 @@ func (c *TableCore) SetFilter(p TablePredicate) {
 	if p == nil && c.filter == nil {
 		return
 	}
-	c.CancelEdit() // the display rows it was opened among change
+	if !c.cancelEdit() { // the display rows it was opened among change
+		return
+	}
 	keep := -1
 	if c.Len() > 0 {
 		keep = c.SourceRow(c.cur.Row)

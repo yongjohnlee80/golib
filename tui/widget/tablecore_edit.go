@@ -181,8 +181,9 @@ func (c *TableCore) KeepEdit(dRow, dCol int) bool {
 			c.dropped()
 			return false
 		}
-		c.Changed()
-		c.SetCursor(TablePos{c.displayRow(e.srcRow), e.col})
+		if !c.changed() || !c.cursorTo(TablePos{c.displayRow(e.srcRow), e.col}) {
+			return true // kept; the owner replaced the rows, so the move is not made on them
+		}
 	} else if e.insertRow { // nothing typed in a new row: it is not inserted
 		c.repaint()
 	}
@@ -200,19 +201,25 @@ func (c *TableCore) DropEdit() {
 
 // CancelEdit drops an open edit because of a change the core does not see (the view hidden, the
 // document switched, the Rendered toggle), telling TableOnEditDropped.
-func (c *TableCore) CancelEdit() {
-	if c.editing != nil {
-		c.editing = nil
-		c.dropped()
+func (c *TableCore) CancelEdit() { c.cancelEdit() }
+
+// cancelEdit is CancelEdit, reporting whether the rows survived the owner's TableOnEditDropped.
+func (c *TableCore) cancelEdit() (live bool) {
+	if c.editing == nil {
+		return true
 	}
+	c.editing = nil
+	return c.dropped()
 }
 
 // dropped tells the host an edit was dropped, and repaints without its field.
-func (c *TableCore) dropped() {
-	if c.onEditDropped != nil {
-		c.onEditDropped()
-	}
+func (c *TableCore) dropped() (live bool) {
 	c.repaint()
+	return c.presses.Survives(func() {
+		if c.onEditDropped != nil {
+			c.onEditDropped()
+		}
+	})
 }
 
 // tableEditSession is the open field and what it was opened on.
