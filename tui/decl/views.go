@@ -4,7 +4,6 @@ import (
 	"fmt"
 	"strconv"
 
-	"github.com/yongjohnlee80/golib/parse/js"
 	"github.com/yongjohnlee80/golib/parse/qml"
 	"github.com/yongjohnlee80/golib/tui"
 	"github.com/yongjohnlee80/golib/tui/style"
@@ -323,7 +322,7 @@ type tableViewNode struct {
 	moved     func(args ...qml.SpecValue)
 	// menu is contextMenuRequested(index, x, y), raised only when the document declares it
 	menu     func(args ...qml.SpecValue)
-	template *qml.SpecNode
+	template *cellTemplate
 	eval     func(qml.SpecValue, map[string]qml.SpecValue) (qml.SpecValue, error)
 	normal   style.Color
 	sink     func(error)
@@ -409,29 +408,15 @@ func buildTableView(b Build) (tui.Component, []string, error) {
 			consumed = append(consumed, prop.Name)
 			continue
 		}
-		if prop.Name != "delegate" {
-			continue
-		}
-		if prop.Value.Kind != qml.SpecValueTemplate || prop.Value.Template == nil {
-			return nil, nil, fmt.Errorf("TableView.delegate takes a Text object template (at %s)", prop.Pos)
-		}
-		n.template = prop.Value.Template
-		if n.template.Type != "Text" || n.template.ID != "" || len(n.template.Children) != 0 || len(n.template.Handlers) != 0 {
-			return nil, nil, fmt.Errorf("TableView.delegate supports stateless Text only, without ids, handlers or children (at %s)", n.template.Pos)
-		}
-		seen := map[string]bool{}
-		for _, p := range n.template.Props {
-			if (p.Name != "text" && p.Name != "color") || seen[p.Name] {
-				return nil, nil, fmt.Errorf("TableView.delegate Text accepts one text and optional color, not %q (at %s)", p.Name, p.Pos)
-			}
-			seen[p.Name] = true
-		}
-		if !seen["text"] {
-			return nil, nil, fmt.Errorf("TableView.delegate Text needs text (at %s)", n.template.Pos)
-		}
-		consumed = append(consumed, "delegate")
 	}
 	n.eval, n.normal, n.sink = b.Eval, style.Default(), b.sink
+	var err error
+	if n.template, err = parseCellTemplate(b, "TableView", "display"); err != nil {
+		return nil, nil, err
+	}
+	if n.template != nil {
+		consumed = append(consumed, "delegate")
+	}
 	for _, c := range b.Children {
 		col, ok := c.(*tableColumnNode)
 		if !ok {
@@ -478,59 +463,15 @@ func (n *tableViewNode) checkTemplate(m ItemModel) error {
 	if n.template == nil {
 		return nil
 	}
-	locals := map[string]qml.SpecValue{
+	var roles []string
+	if m != nil {
+		roles = m.Roles()
+	}
+	return n.template.check(m != nil, roles, map[string]qml.SpecValue{
 		"row": numberValue(0), "column": numberValue(0),
 		"model.display": {Kind: qml.SpecValueString, Raw: ""},
 		"palette.text":  {Kind: qml.SpecValueObject, Obj: n.normal},
-	}
-	known := map[string]bool{}
-	if m != nil {
-		for _, r := range m.Roles() {
-			known[r] = true
-		}
-	}
-	for _, p := range n.template.Props {
-		register := func(role string) error {
-			if role == "display" {
-				return nil
-			}
-			if m != nil && !known[role] {
-				return fmt.Errorf("TableView.delegate: unknown model role %q (at %s)", role, p.Pos)
-			}
-			locals["model."+role] = qml.SpecValue{Kind: qml.SpecValueString, Raw: "normal"}
-			return nil
-		}
-		if p.Value.Kind == qml.SpecValueRef && len(p.Value.Path) == 2 && p.Value.Path[0] == "model" {
-			if err := register(p.Value.Path[1]); err != nil {
-				return err
-			}
-		}
-		if p.Value.Expr != nil {
-			var refErr error
-			p.Value.Expr.Walk(func(e *js.Expr) bool {
-				if e.Kind == js.ExprMember && e.Left != nil && e.Left.Kind == js.ExprIdent && e.Left.Raw == "model" {
-					if err := register(e.Name); err != nil {
-						refErr = err
-						return false
-					}
-				}
-				return true
-			})
-			if refErr != nil {
-				return refErr
-			}
-		}
-		v, err := n.eval(p.Value, locals)
-		if err != nil {
-			return fmt.Errorf("TableView.delegate %s (at %s): %w", p.Name, p.Pos, err)
-		}
-		if p.Name == "color" {
-			if _, err := colorOf(v); err != nil {
-				return err
-			}
-		}
-	}
-	return nil
+	})
 }
 
 // presentCell evaluates one stateless QML Text template only when the native
@@ -546,45 +487,16 @@ func (n *tableViewNode) presentCell(row, col int) widget.StyledCell {
 	}
 	locals := map[string]qml.SpecValue{
 		"row": numberValue(row), "column": numberValue(col),
-		"model.display": n.mv.model.Data(ix, role),
+		"model.display": modelValue(n.mv.model.Data(ix, role)),
 		"palette.text":  {Kind: qml.SpecValueObject, Obj: n.normal},
-	}
-	if locals["model.display"].Kind == qml.SpecValueInvalid {
-		locals["model.display"] = qml.SpecValue{Kind: qml.SpecValueString}
 	}
 	for _, name := range n.mv.model.Roles() {
 		if name != "display" {
-			v := n.mv.model.Data(ix, name)
-			if v.Kind == qml.SpecValueInvalid {
-				v = qml.SpecValue{Kind: qml.SpecValueString}
-			}
-			locals["model."+name] = v
+			locals["model."+name] = modelValue(n.mv.model.Data(ix, name))
 		}
 	}
-	cell := widget.StyledCell{}
-	for _, p := range n.template.Props {
-		v, err := n.eval(p.Value, locals)
-		if err != nil {
-			if n.sink != nil {
-				n.sink(err)
-			}
-			continue
-		}
-		switch p.Name {
-		case "text":
-			cell.Text = v.Raw
-		case "color":
-			c, err := colorOf(v)
-			if err != nil {
-				if n.sink != nil {
-					n.sink(err)
-				}
-				continue
-			}
-			cell.Style = cell.Style.Foreground(c)
-		}
-	}
-	return cell
+	text, st := n.template.present(locals, "")
+	return widget.StyledCell{Text: text, Style: st}
 }
 
 // columns are the table's columns now: the declared ones, else the model's.
