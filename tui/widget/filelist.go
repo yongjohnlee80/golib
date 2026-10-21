@@ -661,8 +661,7 @@ func (l *FileList) SetFilter(text string) {
 			}
 		}
 	}
-	l.list.SetItems(l.entries)
-	l.list.SetCursor(0)
+	l.list.SetItems(l.entries) // the cursor on the first row, untold
 	l.cursorOn(0)
 }
 
