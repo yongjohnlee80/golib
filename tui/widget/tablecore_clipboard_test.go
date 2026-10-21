@@ -533,6 +533,31 @@ func TestARowCursorsEveryCopyIsTheRow(t *testing.T) {
 	}
 }
 
+// Cut on a row cursor with nothing selected still cuts the cursor's cell, as Cut documents, and
+// stores that cell, so a paste puts back what was removed rather than a row that was not.
+func TestCutOnARowCursorStoresTheCellItEmpties(t *testing.T) {
+	ed := NewEditorCore(CoreInitialText("a,b\n1,2\n3,4\n"))
+	d := NewTableDocument(ed, ',')
+	c := d.Core()
+	c.SetCursor(TablePos{0, 0})
+	c.SetRowCursor(true)
+	if !c.Cut(false) {
+		t.Fatal("Cut refused")
+	}
+	if text, rows := c.register().Register(); text != "1" || rows {
+		t.Fatalf("Cut on a row cursor stored %q (rows %v), want the cell it emptied", text, rows)
+	}
+	if want := "a,b\n,2\n3,4\n"; ed.Value() != want {
+		t.Fatalf("Cut emptied %q, want only the cursor's cell: %q", ed.Value(), want)
+	}
+	if !c.PasteRegister(false) {
+		t.Fatal("the paste refused")
+	}
+	if want := "a,b\n1,2\n3,4\n"; ed.Value() != want {
+		t.Fatalf("pasted back: %q, want what was cut restored %q", ed.Value(), want)
+	}
+}
+
 // The copy format names itself, defaults to TSV, and is set and read back; the row cursor reads
 // back and setting it to what it is changes nothing.
 func TestTheCopyFormatAndTheRowCursorReadBack(t *testing.T) {

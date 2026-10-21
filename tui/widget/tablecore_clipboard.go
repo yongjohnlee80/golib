@@ -172,7 +172,7 @@ func (c *TableCore) Cut(rows bool) bool {
 	if cc == nil || c.Len() == 0 {
 		return false
 	}
-	if !c.yank() {
+	if !c.yankFrom(false) { // what is cut is what is stored: the selection, or the cursor's cell
 		return false
 	}
 	var op TableCellsOp
@@ -205,11 +205,15 @@ func (c *TableCore) Cut(rows bool) bool {
 // whole row, as yy), into the register (whole rows for a V selection or a row cursor), then the
 // clipboard. It is every copy's path, y's, Copy's and a menu's Yank alike. It reports whether the
 // register took it: past the copy limit it takes nothing, and TableOnCopyRefused hears of it.
-func (c *TableCore) yank() bool {
+func (c *TableCore) yank() bool { return c.yankFrom(c.rowCursor) }
+
+// yankFrom is yank, a row cursor's row copied only when row says so: Cut stores the cell it empties,
+// whatever the cursor covers, so a paste puts back what was removed.
+func (c *TableCore) yankFrom(row bool) bool {
 	if c.Len() == 0 {
 		return false
 	}
-	if c.anchor == nil && c.rowCursor { // a selection wins over the cursor's cover
+	if c.anchor == nil && row { // a selection wins over the cursor's cover
 		return c.setRegister(c.rowText(c.cur.Row), true)
 	}
 	s, ok := c.copyText(c.copyLimit)
