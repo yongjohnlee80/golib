@@ -402,13 +402,16 @@ type Tree struct {
 	// string: a host may render the same id under two parents (autodb does, for
 	// a connection attached to two workspaces).
 	presses pressPairer[*TreeNode]
-	cursor  int
-	top     int
-	shown   viewMark // as List's: Layout reveals the cursor only when it or the height changed
-	w, h    int
-	indent  int
-	styles  ListStyles
-	genSeq  uint64
+	// on tells the Tree's owner at once (WithTreeOnCursor and its siblings); each runs last at its
+	// site, after the bus event is published, so an owner may change the tree from one.
+	on     treeCallbacks
+	cursor int
+	top    int
+	shown  viewMark // as List's: Layout reveals the cursor only when it or the height changed
+	w, h   int
+	indent int
+	styles ListStyles
+	genSeq uint64
 	// selected is the node the last SelectionChangedEvent named: the event
 	// fires when the node under the cursor changes, not when its row number
 	// does (an expand above it moves the row, not the choice).
@@ -536,6 +539,36 @@ func WithTreeStyles(st ListStyles) TreeOption {
 // opened the node then finds its children there: l j lands on the first child.
 func WithKnownChildren(known func(n *TreeNode, gen uint64) bool) TreeOption {
 	return func(t *Tree) { t.known = known }
+}
+
+// treeCallbacks are the owner's callbacks, each nil for none.
+type treeCallbacks struct {
+	cursor, expand, activate func(n *TreeNode)
+	expandRequest            func(n *TreeNode, gen uint64)
+}
+
+// WithTreeOnCursor sets what runs, at once, when the cursor moves to another node: the bus's
+// SelectionChangedEvent reaches other subscribers a loop turn later. An owner composing a Tree uses
+// it rather than subscribing app-wide and filtering by Owner.
+func WithTreeOnCursor(fn func(n *TreeNode)) TreeOption {
+	return func(t *Tree) { t.on.cursor = fn }
+}
+
+// WithTreeOnExpand sets what runs, at once, when a node opens (ExpandEvent).
+func WithTreeOnExpand(fn func(n *TreeNode)) TreeOption {
+	return func(t *Tree) { t.on.expand = fn }
+}
+
+// WithTreeOnExpandRequest sets what runs, at once, when an opened node's children are asked for
+// (ExpandRequestEvent): the owner answers with n.SetChildren(gen, …), now or later.
+func WithTreeOnExpandRequest(fn func(n *TreeNode, gen uint64)) TreeOption {
+	return func(t *Tree) { t.on.expandRequest = fn }
+}
+
+// WithTreeOnActivate sets what runs, at once, when a node is activated (Enter, l on a leaf, a
+// double click): the bus's ActivateEvent reaches other subscribers a loop turn later.
+func WithTreeOnActivate(fn func(n *TreeNode)) TreeOption {
+	return func(t *Tree) { t.on.activate = fn }
 }
 
 // WithIndent sets the per-depth indent (default 2; non-positive panics).
@@ -843,7 +876,7 @@ func (t *Tree) expandNode(n *TreeNode) {
 	if n.loaded {
 		n.expanded = true
 		t.MarkDirty()
-		t.publish(ExpandEvent{Owner: t.NodeID(), Node: n})
+		t.expanded(n, false)
 		return
 	}
 	if n.loading {
@@ -855,10 +888,25 @@ func (t *Tree) expandNode(n *TreeNode) {
 	n.loadErr = ""
 	n.expanded = true // renders the spinner badge until the result settles
 	t.MarkDirty()
-	if t.known == nil || !t.known(n, n.gen) || !n.loaded {
+	request := t.known == nil || !t.known(n, n.gen) || !n.loaded
+	if request {
 		t.publish(ExpandRequestEvent{Owner: t.NodeID(), Node: n, Gen: n.gen})
 	}
+	t.expanded(n, request)
+}
+
+// expanded reports n opened, on the bus and then to the owner. request: its children were asked for
+// (the ExpandRequestEvent is already published), and the owner's request callback runs first, as
+// the bus delivers the two events.
+func (t *Tree) expanded(n *TreeNode, request bool) {
+	gen := n.gen
 	t.publish(ExpandEvent{Owner: t.NodeID(), Node: n})
+	if request && t.on.expandRequest != nil {
+		t.on.expandRequest(n, gen)
+	}
+	if t.on.expand != nil {
+		t.on.expand(n)
+	}
 }
 
 // collapseNode closes a node; collapsing a loading node invalidates its
@@ -918,6 +966,17 @@ func (t *Tree) noteSelection() {
 	}
 	t.selected = node
 	t.publish(SelectionChangedEvent{Owner: t.NodeID(), Index: t.cursor, Label: node.label})
+	if t.on.cursor != nil {
+		t.on.cursor(node)
+	}
+}
+
+// activate reports the row at index idx activated: on the bus, then to the owner.
+func (t *Tree) activate(idx int) {
+	t.publish(ActivateEvent{Owner: t.NodeID(), Index: idx})
+	if rows := t.flatten(); t.on.activate != nil && idx >= 0 && idx < len(rows) {
+		t.on.activate(rows[idx].node)
+	}
 }
 
 // KeyScope is the Tree's key-map scope.
@@ -959,7 +1018,7 @@ func (t *Tree) handleKey(e tui.KeyEvent) bool {
 		t.MarkDirty()
 	case TreeExpand.ID:
 		if cur.node.leaf {
-			t.publish(ActivateEvent{Owner: t.NodeID(), Index: t.cursor})
+			t.activate(t.cursor)
 			return true
 		}
 		if cur.node.expanded && cur.node.loaded && len(cur.node.children) > 0 {
@@ -973,7 +1032,7 @@ func (t *Tree) handleKey(e tui.KeyEvent) bool {
 		// a branch is activatable (a table whose children are its columns
 		// is), so it reports and the host decides. Expansion is l/Right and
 		// h/Left.
-		t.publish(ActivateEvent{Owner: t.NodeID(), Index: t.cursor})
+		t.activate(t.cursor)
 	case TreeCollapse.ID:
 		if cur.node.expanded || cur.node.loading {
 			t.collapseNode(cur.node)
@@ -1035,7 +1094,7 @@ func (t *Tree) handleMouse(e tui.MouseEvent) bool {
 	if paired && !onExpander {
 		t.ensureVisible()
 		t.MarkDirty()
-		t.publish(ActivateEvent{Owner: t.NodeID(), Index: idx})
+		t.activate(idx)
 		return true
 	}
 	// A click on the expander glyph toggles; elsewhere selects.

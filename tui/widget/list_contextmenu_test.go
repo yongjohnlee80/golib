@@ -121,3 +121,24 @@ func TestListContextMenuKeys(t *testing.T) {
 		t.Fatalf("an empty list's menu: %+v", got)
 	}
 }
+
+// TestAListTellsItsOwnerOfAMenuRequest: WithListOnContextMenu hears a right press's request, with
+// the row and the point, as ContextMenuEvent carries them (data-I4).
+func TestAListTellsItsOwnerOfAMenuRequest(t *testing.T) {
+	type ask struct {
+		i  int
+		at tui.Point
+	}
+	var asks []ask
+	src := widget.SliceSource([]string{"a", "b", "c"})
+	h, l, sh := focusedList(t, src, 10, 4,
+		widget.WithListOnContextMenu[string](func(i int, at tui.Point) { asks = append(asks, ask{i, at}) }))
+	h.onLoop(func() { l.SetContextMenu(true) })
+	h.inject(rightPress(3, 2))
+	h.barrier(sh)
+	var got []ask
+	h.onLoop(func() { got = asks })
+	if len(got) != 1 || got[0] != (ask{2, tui.Point{X: 3, Y: 2}}) {
+		t.Fatalf("menu requests %+v, want row 2 at (3,2)", got)
+	}
+}

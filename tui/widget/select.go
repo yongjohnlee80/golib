@@ -101,6 +101,8 @@ type Select[T any] struct {
 	Base
 	items    []SelectItem[T]
 	selected int // -1 = none
+	// onChange tells the owner of a choice at once (WithSelectOnChange), after the popup closed
+	onChange func(i int)
 	filterOn bool
 	fixedW   int // 0 = content-sized
 	maxW     int
@@ -184,6 +186,13 @@ type SelectOption[T any] func(*Select[T])
 // WithOptions sets the initial option items.
 func WithOptions[T any](items []SelectItem[T]) SelectOption[T] {
 	return func(s *Select[T]) { s.items = append([]SelectItem[T](nil), items...) }
+}
+
+// WithSelectOnChange sets what runs, at once, when option i is chosen, after the popup closes: the
+// bus's SelectionChangedEvent reaches other subscribers a loop turn later. An owner composing a
+// Select uses it rather than subscribing app-wide and filtering by Owner. fn may replace the options.
+func WithSelectOnChange[T any](fn func(i int)) SelectOption[T] {
+	return func(s *Select[T]) { s.onChange = fn }
 }
 
 // WithFilter enables filter-as-you-type in the open state.
@@ -370,11 +379,15 @@ func (s *Select[T]) closePopup() {
 // commit installs option index i and emits SelectionChangedEvent, then
 // closes.
 func (s *Select[T]) commit(i int) {
-	if i >= 0 && i < len(s.items) {
+	chosen := i >= 0 && i < len(s.items)
+	if chosen {
 		s.selected = i
 		s.publish(SelectionChangedEvent{Owner: s.NodeID(), Index: i, Label: s.items[i].Label})
 	}
 	s.closePopup()
+	if chosen && s.onChange != nil {
+		s.onChange(i) // last: the owner may replace the options
+	}
 }
 
 // HandleEvent: closed-state keys, plus the TaskResult conversion.

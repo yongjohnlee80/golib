@@ -260,6 +260,7 @@ sel := widget.NewSelect[string](
         {Label: "MySQL", Value: "mysql"},
     }),
     widget.WithFilter(true), // filter-as-you-type
+    widget.WithSelectOnChange[string](func(i int) { useDriver(i) }), // the owner hears a choice at once
 )
 ```
 
@@ -283,7 +284,9 @@ The list's owner hears it directly: `WithListOnCursor[T]` runs when the cursor
 moves to a row and `WithListOnActivate[T]` when a row is activated (Enter, a
 double click), at once and before the bus hears `SelectionChangedEvent` and
 `ActivateEvent`. The bus events are for listeners elsewhere in the app, which a
-loop turn later filter on `ev.Owner`. A `Table[T]` takes the same options.
+loop turn later filter on `ev.Owner`. A `Table[T]` takes the same options, and
+`WithListOnContextMenu[T]` hears a row's menu request (`SetContextMenu`). A
+callback runs last at its site, so it may replace the rows.
 
 The cursor row is a full-width bar, whether its look is a colour or a
 reversal. With two lists on screen, set `ListStyles.CursorBlurred`: the cursor
@@ -319,19 +322,22 @@ Hierarchical tree explorer supporting lazy-loaded asynchronous subtrees via gene
 
 ```go
 tree := widget.NewTree(
-    widget.NewTreeNode("src", "src/",
-        widget.WithBadge("dir"),
-    ),
+    widget.WithRoots(widget.NewTreeNode("src", "src/", widget.WithBadge("dir"))),
+    // A branch opened: load its children off the loop, and give them back on it.
+    widget.WithTreeOnExpandRequest(func(n *widget.TreeNode, gen uint64) {
+        go func() {
+            kids := fetchSubdir(n.ID())
+            app.Update(func() { n.SetChildren(gen, kids) }) // a stale gen is ignored
+        }()
+    }),
+    widget.WithTreeOnActivate(func(n *widget.TreeNode) { open(n.ID()) }),
 )
-
-// Handle async child expansion:
-tui.Subscribe(bus, func(ev widget.ExpandRequestEvent) {
-    app.Go(tree.NodeID(), func(ctx context.Context) (any, error) {
-        children := fetchSubdir(ev.Node.ID())
-        return children, nil
-    })
-})
 ```
+
+The Tree's owner hears it through `WithTreeOnCursor`, `WithTreeOnExpand`,
+`WithTreeOnExpandRequest` and `WithTreeOnActivate`, each at once, with the node.
+`SelectionChangedEvent`, `ExpandEvent`, `ExpandRequestEvent` and `ActivateEvent`
+reach the bus a loop turn later, for listeners elsewhere.
 
 Enter raises `ActivateEvent` on any row, a branch as well as a leaf, as Qt's
 item views emit `activated`; `l`/Right opens a branch and `h`/Left closes it.

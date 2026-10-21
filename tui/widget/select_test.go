@@ -527,3 +527,18 @@ func TestSelectAffordanceIsReported(t *testing.T) {
 		t.Error("WithAffordance(false) still draws the triangle")
 	}
 }
+
+// TestASelectTellsItsOwnerOfAChoice: WithSelectOnChange hears the option chosen, once, as Enter
+// commits it, after the popup has closed (data-I4, as List's).
+func TestASelectTellsItsOwnerOfAChoice(t *testing.T) {
+	var chosen []int
+	h, _, sh := selectFixture(t, widget.WithOptions(selectItems("alpha", "beta", "gamma")),
+		widget.WithSelectOnChange[string](func(i int) { chosen = append(chosen, i) }))
+	h.inject(key(tui.KeyEnter), key(tui.KeyDown), key(tui.KeyEnter))
+	h.barrier(sh)
+	var got []int
+	h.onLoop(func() { got = chosen })
+	if len(got) != 1 || got[0] != 1 {
+		t.Fatalf("chosen %v, want [1]", got)
+	}
+}
