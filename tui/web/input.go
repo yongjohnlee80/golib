@@ -183,13 +183,10 @@ func reservedShortcut(r KeyReport) bool {
 func ReservedShortcut(r KeyReport) bool { return reservedShortcut(r) }
 
 // decoder applies 's resolution order.
-type decoder struct {
-	// treatCtrlAltAsAltGraph enables the Ctrl+Alt heuristic on browsers that do
-	// not report AltGraph. OFF by default: inferring AltGraph from Ctrl+Alt
-	// would silently swallow every legitimate Ctrl+Alt chord, so it is an opt-in
-	// with the trade-off stated in the README.
-	treatCtrlAltAsAltGraph bool
-}
+// Ctrl+Alt is always a chord: inferring AltGraph from it would swallow every legitimate Ctrl+Alt
+// chord, and every engine the browser matrix runs reports AltGraph itself (README, "The browser
+// matrix").
+type decoder struct{}
 
 // mods maps the reported modifier flags.
 //
@@ -228,9 +225,6 @@ func (d *decoder) decodeKey(r KeyReport) (tui.Event, bool) {
 	// Ctrl+Alt we would otherwise emit a COMMAND instead of the character the
 	// user typed.
 	if r.Composing || r.AltGraph {
-		return nil, false
-	}
-	if d.treatCtrlAltAsAltGraph && r.Ctrl && r.Alt {
 		return nil, false
 	}
 

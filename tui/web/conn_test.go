@@ -430,12 +430,6 @@ func TestOverload_RequiresSustainedPressure(t *testing.T) {
 	if o.full() {
 		t.Error("one second of pressure must not trip a two-second grace")
 	}
-	// Draining resets it.
-	o.clear()
-	now = now.Add(time.Hour)
-	if o.full() {
-		t.Error("pressure after a drain must start a new window")
-	}
 	now = now.Add(3 * time.Second)
 	if !o.full() {
 		t.Error("sustained pressure past the grace must trip the close")

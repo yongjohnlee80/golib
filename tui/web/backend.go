@@ -520,5 +520,16 @@ func (s sessionEvent) String() string {
 	return out
 }
 
-// compile-time proof this satisfies the seam it exists to test
-var _ tui.Backend = (*Backend)(nil)
+// CellPixels is the client's measured cell size (tui.CellMetrics), in CSS pixels, which are
+// logical pixels; zero before a client has attached. Attach sets the metrics before it resizes, so
+// a change arrives with the ResizeEvent the capability requires.
+func (b *Backend) CellPixels() tui.CellPixels {
+	m := b.Metrics()
+	return tui.CellPixels{W: float32(m.CellW), H: float32(m.CellH)}
+}
+
+// compile-time proof this satisfies the seam it exists to test, and the capabilities it offers
+var (
+	_ tui.Backend     = (*Backend)(nil)
+	_ tui.CellMetrics = (*Backend)(nil)
+)

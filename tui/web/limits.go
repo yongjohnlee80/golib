@@ -185,9 +185,6 @@ func (o *overload) full() bool {
 	return now.Sub(o.since) >= o.grace
 }
 
-// clear records that the queue drained, resetting the timer.
-func (o *overload) clear() { o.since = time.Time{} }
-
 // gate is a counting semaphore bounding unauthenticated connections.
 //
 // It is deliberately non-blocking: a connection that cannot get a slot is
