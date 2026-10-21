@@ -251,7 +251,17 @@ func (a *App) SetTranslations(s *i18n.Set) {
 	if s == nil {
 		panic(errs.Fatal{Op: "tui: App.SetTranslations", Rule: "the catalogs must not be nil"})
 	}
-	a.Update(func() { a.ApplyTranslations(s) })
+	a.SetTranslator(s)
+}
+
+// SetTranslator is [App.SetTranslations] for any [Translator]: catalogs that are not an
+// [i18n.Set] (a remote catalog, a test's fake). Nil catalogs, a typed nil too, panic before
+// anything is queued. Safe from any goroutine.
+func (a *App) SetTranslator(t Translator) {
+	if isNilLike(t) {
+		panic(errs.Fatal{Op: "tui: App.SetTranslator", Rule: "the catalogs must not be nil"})
+	}
+	a.Update(func() { a.ApplyTranslator(t) })
 }
 
 // ApplyTranslations is [App.SetTranslations] taking effect at once, for code already on the
@@ -262,7 +272,16 @@ func (a *App) ApplyTranslations(s *i18n.Set) {
 	if s == nil {
 		panic(errs.Fatal{Op: "tui: App.ApplyTranslations", Rule: "the catalogs must not be nil"})
 	}
-	a.cfg.translations = s
+	a.ApplyTranslator(s)
+}
+
+// ApplyTranslator is [App.ApplyTranslations] for any [Translator]. Nil catalogs, a typed nil
+// too, panic. Loop goroutine only.
+func (a *App) ApplyTranslator(t Translator) {
+	if isNilLike(t) {
+		panic(errs.Fatal{Op: "tui: App.ApplyTranslator", Rule: "the catalogs must not be nil"})
+	}
+	a.cfg.translations = t
 	a.layoutDirty, a.renderDirty = true, true
 }
 

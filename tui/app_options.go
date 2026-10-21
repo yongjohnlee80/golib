@@ -64,7 +64,7 @@ type appConfig struct {
 
 	// translations are the catalogs a Message is looked up in: golib's own, plus whatever the
 	// application layered over them.
-	translations *i18n.Set
+	translations Translator
 
 	// keymap is the key bindings widgets match keys against (Context.KeyCommand), changed at run
 	// time by App.SetKeymap. nil: every command keeps its declared defaults.
@@ -240,6 +240,16 @@ func WithTranslations(s *i18n.Set) AppOption {
 		panic(errs.Fatal{Op: "tui: WithTranslations", Rule: "the catalogs must not be nil"})
 	}
 	return func(c *appConfig) { c.translations = s }
+}
+
+// WithTranslator is [WithTranslations] for any [Translator]: catalogs that are not an
+// [i18n.Set] (a remote catalog, a test's fake). Default: [i18n.Toolkit]. Nil catalogs, a typed
+// nil too, are a configuration error and panic, before anything is built.
+func WithTranslator(t Translator) AppOption {
+	if isNilLike(t) {
+		panic(errs.Fatal{Op: "tui: WithTranslator", Rule: "the catalogs must not be nil"})
+	}
+	return func(c *appConfig) { c.translations = t }
 }
 
 // WithKeymap sets the key bindings every widget matches keys against: golib's commands and the
