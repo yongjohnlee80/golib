@@ -28,6 +28,16 @@ func tableSelected(h *harness, dt *widget.DataTable) (kind widget.TableSelectKin
 	return kind, text, ok
 }
 
+// cellIndex is the cell sub starts at in line, a cell a rune (the rules are one cell, three bytes);
+// -1 when it is not there.
+func cellIndex(line, sub string) int {
+	i := strings.Index(line, sub)
+	if i < 0 {
+		return -1
+	}
+	return len([]rune(line[:i]))
+}
+
 // gesture presses at the first point, drags through the rest, and releases at the last.
 func gesture(h *harness, pts ...[2]int) {
 	h.t.Helper()
@@ -47,7 +57,7 @@ func gesture(h *harness, pts ...[2]int) {
 // the fields under them, every row.
 func TestDataTable_CellLayoutDragsOverCellsGutterAndHeaders(t *testing.T) {
 	h, sh, dt := dataTable(t, numbered(5), 30, 8, widget.TableRowNumbers(true))
-	if at := strings.Index(h.row(0), "id"); at != 4 {
+	if at := cellIndex(h.row(0), "id"); at != 4 {
 		t.Fatalf("the id title at %d, want 4: after one digit, its rule and the gap\n%s", at, h.grid())
 	}
 	if !strings.HasPrefix(h.row(0), "  │ id") || !strings.HasPrefix(h.row(1), "──┼─────") {
@@ -90,15 +100,24 @@ func TestDataTable_CellLayoutDragsOverCellsGutterAndHeaders(t *testing.T) {
 	}
 }
 
-// The rules are drawn in the Header's border: its Left after the numbers, its Top under the titles.
+// The rules are drawn in the Header's border: its Left after the numbers, its Top under the titles,
+// crossing in the border's weight. A hidden border hides both, and their crossing.
 func TestDataTable_TheRulesAreTheHeadersBorder(t *testing.T) {
 	h, sh, dt := dataTable(t, numbered(3), 20, 6, widget.TableRowNumbers(true))
-	h.onLoop(func() {
-		dt.SetStyles(widget.DataTableStyles{Header: style.New().Bold(true).Border(style.BorderDouble)})
-	})
-	h.barrier(sh)
-	if !strings.HasPrefix(h.row(1), "══┼═") || !strings.HasPrefix(h.row(2), "1 ║ 0") {
-		t.Errorf("a double border's rules:\n%s", h.grid())
+	for _, c := range []struct {
+		name       string
+		border     style.BorderStyle
+		rule, cell string
+	}{
+		{"double", style.BorderDouble, "══╬═", "1 ║ 0"},
+		{"thick", style.BorderThick, "━━╋━", "1 ┃ 0"},
+		{"hidden", style.BorderHidden, "    ", "1   0"},
+	} {
+		h.onLoop(func() { dt.SetStyles(widget.DataTableStyles{Header: style.New().Bold(true).Border(c.border)}) })
+		h.barrier(sh)
+		if !strings.HasPrefix(h.row(1), c.rule) || !strings.HasPrefix(h.row(2), c.cell) {
+			t.Errorf("a %s border's rules, want %q over %q:\n%s", c.name, c.rule, c.cell, h.grid())
+		}
 	}
 }
 
@@ -107,7 +126,7 @@ func TestDataTable_TheRulesAreTheHeadersBorder(t *testing.T) {
 func TestDataTable_TheGutterGrowsFromNineRowsToTen(t *testing.T) {
 	src := numbered(9)
 	h, sh, dt := dataTable(t, src, 30, 14, widget.TableRowNumbers(true))
-	if at := strings.Index(h.row(0), "id"); at != 4 || !strings.HasPrefix(h.row(10), "9 │ 8") {
+	if at := cellIndex(h.row(0), "id"); at != 4 || !strings.HasPrefix(h.row(10), "9 │ 8") {
 		t.Fatalf("9 rows: id at %d\n%s", at, h.grid())
 	}
 	h.onLoop(func() {
@@ -118,7 +137,7 @@ func TestDataTable_TheGutterGrowsFromNineRowsToTen(t *testing.T) {
 		dt.Core().Changed()
 	})
 	h.barrier(sh)
-	if at := strings.Index(h.row(0), "id"); at != 5 || !strings.HasPrefix(h.row(2), " 1 │ 0") || !strings.HasPrefix(h.row(11), "10 │ 9") {
+	if at := cellIndex(h.row(0), "id"); at != 5 || !strings.HasPrefix(h.row(2), " 1 │ 0") || !strings.HasPrefix(h.row(11), "10 │ 9") {
 		t.Errorf("10 rows: id at %d\n%s", at, h.grid())
 	}
 	h.onLoop(func() {

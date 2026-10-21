@@ -87,7 +87,7 @@ Window {
 func TestACellCursorTableViewNumbersItsRows(t *testing.T) {
 	s := runCells(t, `TableView { model: App.rows; cellCursor: true; rowNumbers: true }`, scores(), &recorder{})
 	s.WaitFor(t, "numbered rows", func(sc string) bool {
-		return strings.Contains(sc, "1  carol") && strings.Contains(sc, "3  bob")
+		return strings.Contains(sc, "1 │ carol") && strings.Contains(sc, "3 │ bob")
 	})
 	for _, prop := range []string{"rowNumbers: true", `orderBy: "n"`, "contextMenu: true"} {
 		err := tuidecl.Check(
