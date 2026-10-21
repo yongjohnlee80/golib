@@ -261,8 +261,7 @@ func (b *Backend) readInput(src eventSource, tag event.Tag, m metrics) {
 			}
 		case transfer.DataEvent:
 			if data, ok := transferText(e); ok {
-				text := strings.ReplaceAll(strings.ReplaceAll(data, "\r\n", "\n"), "\r", "\n")
-				b.q.push(tui.PasteEvent{Text: text})
+				b.q.push(tui.NewPasteEvent(data))
 			}
 		}
 	}

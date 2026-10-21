@@ -92,10 +92,9 @@ func TestTheCellCursorsCaretCarriesItsCellsColours(t *testing.T) {
 	page := tui.CellColor{Kind: tui.CellColorRGB, R: 0xe8, G: 0xdc, B: 0xc0}
 	ink := tui.CellColor{Kind: tui.CellColorRGB, R: 0x30, G: 0x28, B: 0x20}
 	b.grid.cells[1*4+2] = tui.Cell{Content: " ", Width: 1, Attrs: tui.CellAttrs{FG: ink, BG: page}}
-	b.cursor = cursorState{visible: true, x: 2, y: 1}
 	m := metrics{scale: 1, cell: image.Pt(8, 16), baseline: 12}
 	var f frame
-	b.frameCaret(&f, m)
+	b.frameCaret(&f, m, cursorState{visible: true, x: 2, y: 1})
 	wantFG, wantBG := b.render.colors(b.grid.at(2, 1).Attrs)
 	if !f.tinted || f.fg != wantFG || f.bg != wantBG {
 		t.Fatalf("caret colours %v/%v tinted %v, want the cell's %v/%v", f.fg, f.bg, f.tinted, wantFG, wantBG)
