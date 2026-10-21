@@ -180,6 +180,18 @@ type ListStyles struct {
 	CursorBlurred style.Style
 }
 
+// over is st laid over base, slot by slot: each set property of st wins, and base fills the rest. A
+// new slot is merged here, once, for every widget that takes ListStyles.
+func (st ListStyles) over(base ListStyles) ListStyles {
+	return ListStyles{
+		Row:            st.Row.Inherit(base.Row),
+		CursorRow:      st.CursorRow.Inherit(base.CursorRow),
+		SelectedRow:    st.SelectedRow.Inherit(base.SelectedRow),
+		CursorSelected: st.CursorSelected.Inherit(base.CursorSelected),
+		CursorBlurred:  st.CursorBlurred.Inherit(base.CursorBlurred),
+	}
+}
+
 // cursorLook is the cursor row's look: CursorBlurred while the view has not the keyboard, when one
 // is named, and CursorRow otherwise.
 func (st ListStyles) cursorLook(focused bool) style.Style {
@@ -252,13 +264,7 @@ func WithListOnContextMenu[T any](fn func(i int, at tui.Point)) ListOption[T] {
 // WithListStyles overrides the style hooks; zero fields keep defaults.
 func WithListStyles[T any](st ListStyles) ListOption[T] {
 	return func(l *List[T]) {
-		l.styles = ListStyles{
-			Row:            st.Row.Inherit(l.styles.Row),
-			CursorRow:      st.CursorRow.Inherit(l.styles.CursorRow),
-			SelectedRow:    st.SelectedRow.Inherit(l.styles.SelectedRow),
-			CursorSelected: st.CursorSelected.Inherit(l.styles.CursorSelected),
-			CursorBlurred:  st.CursorBlurred.Inherit(l.styles.CursorBlurred),
-		}
+		l.styles = st.over(l.styles)
 	}
 }
 
@@ -277,27 +283,14 @@ func defaultListStyles() ListStyles {
 // current values. Hosts use this for focus-dependent styling — the
 // widget cannot see focus that rests on a delegating wrapper.
 func (l *List[T]) SetStyles(st ListStyles) {
-	l.styles = ListStyles{
-		Row:            st.Row.Inherit(l.styles.Row),
-		CursorRow:      st.CursorRow.Inherit(l.styles.CursorRow),
-		SelectedRow:    st.SelectedRow.Inherit(l.styles.SelectedRow),
-		CursorSelected: st.CursorSelected.Inherit(l.styles.CursorSelected),
-		CursorBlurred:  st.CursorBlurred.Inherit(l.styles.CursorBlurred),
-	}
+	l.styles = st.over(l.styles)
 	l.MarkDirty()
 }
 
 // ResetStyles replaces the List's looks from its defaults. Unlike SetStyles,
 // absent fields drop previously supplied roles (as when QML removes a palette).
 func (l *List[T]) ResetStyles(st ListStyles) {
-	base := defaultListStyles()
-	l.styles = ListStyles{
-		Row:            st.Row,
-		CursorRow:      st.CursorRow.Inherit(base.CursorRow),
-		SelectedRow:    st.SelectedRow.Inherit(base.SelectedRow),
-		CursorSelected: st.CursorSelected.Inherit(base.CursorSelected),
-		CursorBlurred:  st.CursorBlurred,
-	}
+	l.styles = st.over(defaultListStyles())
 	l.MarkDirty()
 }
 
