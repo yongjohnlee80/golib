@@ -173,10 +173,8 @@ func (m *Menu) resolveBarKey(e tui.KeyEvent) (tui.Action, bool) {
 		// category instead of stepping to the next one — which is Down's job
 		// and was briefly Right's too, breaking the bar entirely.
 		if len(m.levels) > 0 {
-			if id, ok := m.Selected(); ok {
-				if it := findItem(m.items, id); it != nil && it.Kind == ItemKindSubmenu {
-					return MenuActivateAction{ItemID: id}, true
-				}
+			if id, ok := m.selectedSubmenu(); ok {
+				return MenuActivateAction{ItemID: id}, true
 			}
 		}
 		return m.barStep(+1)
@@ -192,10 +190,8 @@ func (m *Menu) resolveBarKey(e tui.KeyEvent) (tui.Action, bool) {
 		if len(m.levels) == 0 {
 			// Down opens the category the selection is on, which is the only
 			// way into the cascade from the bar besides Enter.
-			if id, ok := m.Selected(); ok {
-				if it := findItem(m.items, id); it != nil && it.Kind == ItemKindSubmenu {
-					return MenuActivateAction{ItemID: id}, true
-				}
+			if id, ok := m.selectedSubmenu(); ok {
+				return MenuActivateAction{ItemID: id}, true
 			}
 			return nil, false
 		}
@@ -226,10 +222,8 @@ func (m *Menu) resolveColumnKey(e tui.KeyEvent) (tui.Action, bool) {
 	case tui.KeyUp:
 		return MenuSelectAction{ItemID: m.neighbour(-1)}, true
 	case tui.KeyRight:
-		if id, ok := m.Selected(); ok {
-			if it := findItem(m.items, id); it != nil && it.Kind == ItemKindSubmenu {
-				return MenuActivateAction{ItemID: id}, true
-			}
+		if id, ok := m.selectedSubmenu(); ok {
+			return MenuActivateAction{ItemID: id}, true
 		}
 		return nil, false
 	case tui.KeyLeft:
@@ -291,12 +285,8 @@ func (m *Menu) barNeighbour(delta int) (ItemID, bool) {
 	if idx < 0 {
 		return "", false
 	}
-	n := len(m.items)
-	for stepN := 1; stepN <= n; stepN++ {
-		j := ((idx+delta*stepN)%n + n) % n
-		if m.items[j].selectable() && m.items[j].Kind == ItemKindSubmenu {
-			return m.items[j].ID, true
-		}
+	if j, ok := nextSelectable(m.items, idx, delta, func(it MenuItemModel) bool { return it.Kind == ItemKindSubmenu }); ok {
+		return m.items[j].ID, true
 	}
 	return "", false
 }
@@ -313,14 +303,34 @@ func (m *Menu) neighbour(delta int) ItemID {
 			break
 		}
 	}
-	n := len(level)
-	for step := 1; step <= n; step++ {
-		j := ((idx+delta*step)%n + n) % n
-		if level[j].selectable() {
-			return level[j].ID
-		}
+	if j, ok := nextSelectable(level, idx, delta, nil); ok {
+		return level[j].ID
 	}
 	return m.selected
+}
+
+// nextSelectable is the index of the next selectable row of items after from, delta (+1 or -1) at a
+// time, wrapping round, that also meets also (nil: any): the one wrap-and-skip search of the bar
+// and of a level. from may be -1 (nothing selected). false when no row qualifies.
+func nextSelectable(items []MenuItemModel, from, delta int, also func(MenuItemModel) bool) (int, bool) {
+	n := len(items)
+	for step := 1; step <= n; step++ {
+		j := ((from+delta*step)%n + n) % n
+		if items[j].selectable() && (also == nil || also(items[j])) {
+			return j, true
+		}
+	}
+	return 0, false
+}
+
+// selectedSubmenu is the selected row when it opens a submenu: what Right or Down descends into.
+func (m *Menu) selectedSubmenu() (ItemID, bool) {
+	if id, ok := m.Selected(); ok {
+		if it := findItem(m.items, id); it != nil && it.Kind == ItemKindSubmenu {
+			return id, true
+		}
+	}
+	return "", false
 }
 
 // mnemonic finds the row whose Hotkey matches, in the current level only —
@@ -343,7 +353,7 @@ func eqFold(a, b rune) bool { return foldMnemonic(a) == foldMnemonic(b) }
 // them would make every caller re-check.
 func (m *Menu) rowAt(x, y int, rects map[ItemID]tui.Rect) (ItemID, bool) {
 	for id, r := range rects {
-		if x >= r.X && x < r.X+r.W && y >= r.Y && y < r.Y+r.H {
+		if r.Contains(x, y) {
 			if it := findItem(m.items, id); it != nil && it.selectable() {
 				return id, true
 			}
