@@ -18,6 +18,7 @@ package csscolor
 
 import (
 	"image/color"
+	"math"
 	"strconv"
 	"strings"
 )
@@ -100,7 +101,7 @@ func Parse(s string, cur color.NRGBA) (color.NRGBA, bool) {
 			case pct:
 				n = n / 100 * 255
 			}
-			c[i] = uint8(min(max(n, 0), 255))
+			c[i] = uint8(math.Round(min(max(n, 0), 255))) // CSS rounds to the nearest; truncation made .5 alpha 127
 		}
 		return color.NRGBA{c[0], c[1], c[2], c[3]}, true
 	}
