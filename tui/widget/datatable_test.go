@@ -115,7 +115,7 @@ func TestDataTable_AFilterScrollsBackToFitTheRows(t *testing.T) {
 func TestDataTable_ADoublePressPairsOnTheSameRowOnce(t *testing.T) {
 	var acts []int
 	h, _, _ := dataTable(t, numbered(20), 30, 6, widget.TableOnActivate(func(r int) { acts = append(acts, r) }))
-	press := tui.MouseEvent{Kind: tui.MousePress, Button: tui.MouseLeft, X: 1, Y: 2}
+	press := tui.MouseEvent{Kind: tui.MousePress, Button: tui.MouseLeft, X: 1, Y: 3}
 	h.inject(press, press, press)
 	h.settle()
 	h.onLoop(func() {})
@@ -125,9 +125,9 @@ func TestDataTable_ADoublePressPairsOnTheSameRowOnce(t *testing.T) {
 
 	acts = nil
 	// a press elsewhere starts the App's count afresh, so the second press on the cell counts 2
-	h.inject(tui.MouseEvent{Kind: tui.MousePress, Button: tui.MouseLeft, X: 1, Y: 4})
+	h.inject(tui.MouseEvent{Kind: tui.MousePress, Button: tui.MouseLeft, X: 1, Y: 5})
 	h.settle()
-	h.inject(press, tui.MouseEvent{Kind: tui.MouseWheel, Button: tui.WheelDown, X: 1, Y: 2}, press)
+	h.inject(press, tui.MouseEvent{Kind: tui.MouseWheel, Button: tui.WheelDown, X: 1, Y: 3}, press)
 	h.settle()
 	h.onLoop(func() {})
 	if len(acts) != 0 {
