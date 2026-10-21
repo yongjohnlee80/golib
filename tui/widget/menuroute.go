@@ -375,7 +375,7 @@ func (m *Menu) HandleAction(inv tui.ActionInvocation) bool {
 // context in is what lets one machine serve every level rather than each level
 // growing its own copy.
 func (m *Menu) handleIn(inv tui.ActionInvocation, ctx *tui.Context) bool {
-	switch a := inv.Action.(type) {
+	switch a := actionValue(inv.Action).(type) {
 	case MenuArmAction:
 		return m.arm(a.ItemID, ctx)
 	case MenuSelectAction:

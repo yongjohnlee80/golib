@@ -85,6 +85,21 @@ func subFrame(maxV, frame int) int {
 // The kind switch matters as much as the reflection: IsNil panics on kinds that
 // cannot be nil, so asking it about a struct value would turn a validity check
 // into the crash it exists to prevent.
+// actionValue is a in the form a handler matches: for a pointer to an action value, the value it
+// points at, else a unchanged. Every widget handler switches on actionValue(inv.Action), so T and
+// *T are one action wherever they arrive, as WindowCore always took them. A nil pointer, or a
+// pointer whose element is no Action (one with pointer-receiver methods), stays as given.
+func actionValue(a tui.Action) tui.Action {
+	rv := reflect.ValueOf(a)
+	if rv.Kind() != reflect.Pointer || rv.IsNil() {
+		return a
+	}
+	if v, ok := rv.Elem().Interface().(tui.Action); ok {
+		return v
+	}
+	return a
+}
+
 func nilLike(v any) bool {
 	if v == nil {
 		return true

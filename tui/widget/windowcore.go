@@ -410,13 +410,8 @@ func (c *WindowCore) HandleAction(inv tui.ActionInvocation) bool {
 	}
 	if inv.Origin == tui.OriginPointer {
 		if source, ok := inv.Source.(tui.MouseEvent); ok && source.Kind == tui.MousePress {
-			switch a := inv.Action.(type) {
-			case WindowDragBeginAction:
+			if a, ok := actionValue(inv.Action).(WindowDragBeginAction); ok {
 				return c.beginDrag(a, source.Button, a.handleOr(c.handle))
-			case *WindowDragBeginAction:
-				if a != nil {
-					return c.beginDrag(*a, source.Button, a.handleOr(c.handle))
-				}
 			}
 		}
 	}
