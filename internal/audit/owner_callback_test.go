@@ -36,7 +36,7 @@ import (
 // epoch. Menu is not among them: its rows are keyed by ItemID, and after an owner callback it
 // re-resolves by ID (findItem, Checked, repairSelection's scan), which C1 allows a keyed view.
 var ownerCallbackViews = map[string]bool{"List": true, "Tree": true, "TableCore": true, "DataTable": true, "TreeNode": true,
-	"Select": true, "selectPopup": true, "FileList": true}
+	"Select": true, "selectPanel": true, "FileList": true}
 
 // ownerCallbackHops are the receivers that reach another view through a field: a DataTable its core,
 // a TreeNode its Tree.
