@@ -399,27 +399,14 @@ func (l *List[T]) clamp() {
 	if l.count == 0 {
 		l.cursor = 0
 	}
-	maxTop := max(l.count-l.viewRows(), 0)
-	l.top = max(0, min(l.top, maxTop))
+	l.top = clampTop(l.top, l.count, l.viewRows())
 }
 
 // viewRows is the number of content rows in the viewport.
 func (l *List[T]) viewRows() int { return max(l.h, 0) }
 
 // ensureVisible scrolls the viewport to keep the cursor inside it.
-func (l *List[T]) ensureVisible() {
-	rows := l.viewRows()
-	if rows <= 0 {
-		return
-	}
-	if l.cursor < l.top {
-		l.top = l.cursor
-	}
-	if l.cursor >= l.top+rows {
-		l.top = l.cursor - rows + 1
-	}
-	l.top = max(l.top, 0)
-}
+func (l *List[T]) ensureVisible() { l.top = revealRow(l.top, l.cursor, l.viewRows()) }
 
 // moveCursor moves the cursor to i (clamped), tells the owner (WithListOnCursor),
 // and emits SelectionChangedEvent in single-select mode.
@@ -548,12 +535,12 @@ func (l *List[T]) HandleEvent(ev tui.Event) bool {
 			l.moveCursor(idx)
 			l.requestMenu(idx, tui.Point{X: e.X, Y: e.Y})
 			return true
-		case e.Kind == tui.MouseWheel && e.Button == tui.WheelUp:
-			l.top = max(l.top-1, 0)
-			l.MarkDirty()
-			return true
-		case e.Kind == tui.MouseWheel && e.Button == tui.WheelDown:
-			l.top = min(l.top+1, max(l.count-l.viewRows(), 0))
+		case e.Kind == tui.MouseWheel && (e.Button == tui.WheelUp || e.Button == tui.WheelDown):
+			step := listWheelRows
+			if e.Button == tui.WheelUp {
+				step = -step
+			}
+			l.top = clampTop(l.top+step, l.count, l.viewRows())
 			l.MarkDirty()
 			return true
 		}

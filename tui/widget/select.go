@@ -566,16 +566,7 @@ func (p *selectPopup[T]) rows() int {
 	return max(h, 1)
 }
 
-func (p *selectPopup[T]) ensureVisible() {
-	rows := p.rows()
-	if p.hi < p.top {
-		p.top = p.hi
-	}
-	if p.hi >= p.top+rows {
-		p.top = p.hi - rows + 1
-	}
-	p.top = max(p.top, 0)
-}
+func (p *selectPopup[T]) ensureVisible() { p.top = revealRow(p.top, p.hi, p.rows()) }
 
 // Layout spans the whole overlay and centers the option panel: width sized
 // to the longest label, height capped to the available space with internal

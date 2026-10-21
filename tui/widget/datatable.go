@@ -227,9 +227,8 @@ func (t *DataTable) AcceptsFocus() bool { return true }
 // Reveal implements TableLayout: scroll so the cell is in sight.
 func (t *DataTable) Reveal(row, col int) {
 	body := t.bodyRows()
-	t.top = min(t.top, max(t.core.Len()-body, 0)) // rows gone (a filter) leave no blank below the last
-	t.top = min(max(t.top, row-body+1), row)
-	t.top = max(t.top, 0)
+	// rows gone (a filter) leave no blank below the last
+	t.top = revealRow(clampTop(t.top, t.core.Len(), body), row, body)
 	if col < t.left {
 		t.left = col
 	}
@@ -556,14 +555,14 @@ func (t *DataTable) HandleEvent(ev tui.Event) bool {
 			t.core.ScrollFields(n)
 			return true
 		case e.Kind == tui.MouseWheel && (e.Button == tui.WheelUp || e.Button == tui.WheelDown):
-			step := 3
+			step := tableWheelRows
 			if e.Button == tui.WheelUp {
-				step = -3
+				step = -step
 			}
 			if t.bound() {
 				p.ScrollRows(step)
 			} else {
-				t.top = min(max(t.top+step, 0), max(t.core.Len()-t.bodyRows(), 0))
+				t.top = clampTop(t.top+step, t.core.Len(), t.bodyRows())
 			}
 			t.MarkDirty()
 			return true

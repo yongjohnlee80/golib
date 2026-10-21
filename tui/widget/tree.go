@@ -1055,11 +1055,11 @@ func (t *Tree) handleKey(e tui.KeyEvent) bool {
 func (t *Tree) handleMouse(e tui.MouseEvent) bool {
 	if e.Kind == tui.MouseWheel && (e.Button == tui.WheelUp || e.Button == tui.WheelDown) {
 		// the wheel scrolls the rows and leaves the cursor where it is, as List's
-		d := 1
+		d := listWheelRows
 		if e.Button == tui.WheelUp {
-			d = -1
+			d = -d
 		}
-		t.top = max(0, min(t.top+d, len(t.flatten())-t.h))
+		t.top = clampTop(t.top+d, len(t.flatten()), t.h)
 		t.MarkDirty()
 		return true
 	}
@@ -1132,18 +1132,7 @@ func (t *Tree) moveCursor(delta, total int) {
 	t.MarkDirty()
 }
 
-func (t *Tree) ensureVisible() {
-	if t.h <= 0 {
-		return
-	}
-	if t.cursor < t.top {
-		t.top = t.cursor
-	}
-	if t.cursor >= t.top+t.h {
-		t.top = t.cursor - t.h + 1
-	}
-	t.top = max(0, t.top)
-}
+func (t *Tree) ensureVisible() { t.top = revealRow(t.top, t.cursor, t.h) }
 
 // --- layout & render -----------------------------------------------------------
 
