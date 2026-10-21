@@ -96,8 +96,11 @@
     grid.appendChild(frag);
   }
 
-  const A_BOLD = 1, A_FAINT = 2, A_ITALIC = 4, A_UNDERLINE = 8,
-        A_BLINK = 16, A_STRIKE = 64;
+  // The attribute bits are injected (clientConfig.Attrs, from style.AttrMask), not
+  // hand-mirrored: the server packs the same values the painter reads.
+  const A_BOLD = CFG.attrs.bold, A_FAINT = CFG.attrs.faint,
+        A_ITALIC = CFG.attrs.italic, A_UNDERLINE = CFG.attrs.underline,
+        A_BLINK = CFG.attrs.blink, A_STRIKE = CFG.attrs.strikethrough;
 
   function paint(u) {
     const i = u.y * cols + u.x;

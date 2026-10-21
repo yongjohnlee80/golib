@@ -48,15 +48,16 @@ const (
 // propLast is the highest assigned bit; Inherit iterates [1, propLast].
 const propLast = propBorderLeftForeground
 
-// attrs bits: packed boolean attribute values. Set-ness lives in props.
+// attrs bits: packed boolean attribute values, the shared AttrMask bits (attrs.go). Set-ness lives
+// in props.
 const (
-	attrBold uint16 = 1 << iota
-	attrItalic
-	attrUnderline
-	attrStrikethrough
-	attrReverse
-	attrBlink
-	attrFaint
+	attrBold          = AttrBold
+	attrItalic        = AttrItalic
+	attrUnderline     = AttrUnderline
+	attrStrikethrough = AttrStrikethrough
+	attrReverse       = AttrReverse
+	attrBlink         = AttrBlink
+	attrFaint         = AttrFaint
 )
 
 // border-edge bits (Style.borderEdges); index order matches the [4] arrays:
@@ -179,7 +180,7 @@ type Style struct {
 	props propKey // bitfield: which properties are explicitly set
 
 	fg, bg                             Color
-	attrs                              uint16 // bold/italic/… packed bools (values; set-ness lives in props)
+	attrs                              AttrMask // bold/italic/… packed bools (values; set-ness lives in props)
 	padding                            [4]int16
 	margin                             [4]int16
 	width, height, maxWidth, maxHeight int16
@@ -201,7 +202,7 @@ func (s *Style) set(k propKey)       { s.props |= k }  // internal; on the copy
 func (s *Style) unset(k propKey)     { s.props &^= k } // internal; on the copy
 
 // setAttr sets one packed boolean attribute (value + set bit) on the copy.
-func (s Style) setAttr(k propKey, bit uint16, v bool) Style {
+func (s Style) setAttr(k propKey, bit AttrMask, v bool) Style {
 	if v {
 		s.attrs |= bit
 	} else {
@@ -541,7 +542,7 @@ func (s *Style) copyProp(other Style, k propKey) {
 }
 
 // attrBit maps an attribute propKey to its packed value bit.
-func attrBit(k propKey) uint16 {
+func attrBit(k propKey) AttrMask {
 	switch k {
 	case propBold:
 		return attrBold

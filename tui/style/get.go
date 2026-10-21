@@ -12,7 +12,7 @@ func (s Style) GetForeground() (Color, bool) { return s.fg, s.isSet(propForegrou
 // GetBackground returns the background color and whether it is set.
 func (s Style) GetBackground() (Color, bool) { return s.bg, s.isSet(propBackground) }
 
-func (s Style) getAttr(k propKey, bit uint16) (bool, bool) {
+func (s Style) getAttr(k propKey, bit AttrMask) (bool, bool) {
 	return s.attrs&bit != 0, s.isSet(k)
 }
 

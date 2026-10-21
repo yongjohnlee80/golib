@@ -1,6 +1,10 @@
 package tui
 
-import "context"
+import (
+	"context"
+
+	"github.com/yongjohnlee80/golib/tui/style"
+)
 
 // Backend is the primary driver seam between the TUI runtime and the underlying
 // terminal display device.
@@ -196,14 +200,14 @@ func (l *ImageLatch) Take() []ImageOp {
 	return ops
 }
 
-// CursorShape selects the hardware cursor glyph (DECSCUSR).
-type CursorShape uint8
+// CursorShape selects the hardware cursor glyph (DECSCUSR): style's, shared with vt.
+type CursorShape = style.CursorShape
 
 const (
-	CursorShapeDefault   CursorShape = iota // terminal's configured default
-	CursorShapeBlock                        // DECSCUSR 1/2
-	CursorShapeUnderline                    // DECSCUSR 3/4
-	CursorShapeBar                          // DECSCUSR 5/6
+	CursorShapeDefault   = style.CursorShapeDefault   // terminal's configured default
+	CursorShapeBlock     = style.CursorShapeBlock     // DECSCUSR 1/2
+	CursorShapeUnderline = style.CursorShapeUnderline // DECSCUSR 3/4
+	CursorShapeBar       = style.CursorShapeBar       // DECSCUSR 5/6
 )
 
 // ColorProfile is the canonical color-capability tier, and style resolution

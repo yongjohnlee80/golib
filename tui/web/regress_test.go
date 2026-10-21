@@ -6,6 +6,7 @@ import (
 	"crypto/x509"
 	"crypto/x509/pkix"
 	"errors"
+	"fmt"
 	"math"
 	"net/http"
 	"net/http/httptest"
@@ -15,6 +16,7 @@ import (
 
 	"github.com/yongjohnlee80/golib/auth"
 	"github.com/yongjohnlee80/golib/tui"
+	"github.com/yongjohnlee80/golib/tui/style"
 )
 
 // First round of review regressions. Each one reproduces a probe that failed.
@@ -466,6 +468,29 @@ func TestRegress_ReservedTableIsInjectedNotDuplicated(t *testing.T) {
 	rules[0].Key = "a"
 	if ReservedRules()[0].Key == "a" {
 		t.Error("ReservedRules returns the live table")
+	}
+}
+
+// The attribute bits the frames carry are injected into the client (style.AttrMask by name), not
+// hand-mirrored in client.js, so the painter reads the values the server packs.
+func TestAttrBitsAreInjectedNotDuplicated(t *testing.T) {
+	t.Parallel()
+	h := handlerFor(t)
+	rec := httptest.NewRecorder()
+	h.ServePage(rec, httptest.NewRequest(http.MethodGet, "/", nil))
+	body := rec.Body.String()
+	for _, a := range style.AttrNames {
+		if want := fmt.Sprintf(`"%s":%d`, a.Name, a.Bit); !contains(body, want) {
+			t.Errorf("the page does not hand the client %s", want)
+		}
+	}
+	for _, name := range []string{"bold", "faint", "italic", "underline", "blink", "strikethrough"} {
+		if !contains(clientJS, "CFG.attrs."+name) {
+			t.Errorf("the client does not read the injected %s bit", name)
+		}
+	}
+	if contains(clientJS, "A_BOLD = 1") {
+		t.Error("the client still hard-codes its attribute bits")
 	}
 }
 

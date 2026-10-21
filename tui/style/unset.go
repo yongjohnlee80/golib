@@ -72,7 +72,7 @@ func (s Style) UnsetBackground() Style {
 }
 
 // unsetAttr clears one packed boolean attribute (value + set bit).
-func (s Style) unsetAttr(k propKey, bit uint16) Style {
+func (s Style) unsetAttr(k propKey, bit AttrMask) Style {
 	s.attrs &^= bit
 	s.unset(k)
 	return s

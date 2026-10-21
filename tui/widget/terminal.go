@@ -932,29 +932,7 @@ func (t *Terminal) cellStyle(c vt.Cell) style.Style {
 			st = st.Foreground(t.legible(fg, bg))
 		}
 	}
-	a := c.Attr
-	if a&vt.AttrBold != 0 {
-		st = st.Bold(true)
-	}
-	if a&vt.AttrFaint != 0 {
-		st = st.Faint(true)
-	}
-	if a&vt.AttrItalic != 0 {
-		st = st.Italic(true)
-	}
-	if a&vt.AttrUnderline != 0 {
-		st = st.Underline(true)
-	}
-	if a&vt.AttrBlink != 0 {
-		st = st.Blink(true)
-	}
-	if a&vt.AttrReverse != 0 {
-		st = st.Reverse(true)
-	}
-	if a&vt.AttrStrike != 0 {
-		st = st.Strikethrough(true)
-	}
-	return st
+	return st.WithAttrs(c.Attr) // vt's cells and a Style share the bits (invisible is not a Style's)
 }
 
 // Cursor is the program's cursor in input mode (hidden when the program
@@ -983,14 +961,11 @@ func (t *Terminal) CursorShape() tui.CursorShape {
 	if t.mode == TerminalNormal {
 		return tui.CursorShapeBlock
 	}
-	_, _, _, shape := t.scr.Cursor()
-	switch shape {
-	case vt.CursorBlock:
-		return tui.CursorShapeBlock
-	case vt.CursorUnderline:
-		return tui.CursorShapeUnderline
+	_, _, _, shape := t.scr.Cursor() // vt's shapes are tui's
+	if shape == tui.CursorShapeDefault {
+		return tui.CursorShapeBar
 	}
-	return tui.CursorShapeBar
+	return shape
 }
 
 // SetCellFace draws the Terminal's cells in family, a monospace font of its own, at the window's
