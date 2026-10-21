@@ -79,28 +79,11 @@ type sessionLoop struct {
 // callers, since auth.Identity is an exported struct anyone can construct. See
 // [Manager.Create] for where that boundary actually sits.
 func (l *sessionLoop) serve(ctx context.Context, c conn, req requestInfo) error {
-	// The unauthenticated waiting room is BOUNDED. MaxSessions bounds only what
-	// exists after a successful hello, so without this a responsive non-browser
-	// that forges Host and Origin holds sockets and goroutines while consuming no
-	// session slot.
-	// The slot covers the PRE-AUTH window only, and is released the moment
-	// authentication succeeds.
-	//
-	// Holding it for the whole authenticated pump made MaxPending a cap on live
-	// sessions as well: with MaxPending=1, one healthy session refused every
-	// newcomer even with spare MaxSessions and nothing actually pending.
-	// releaseOnce keeps the deferred release from double-counting.
-	var releaseOnce sync.Once
-	release := func() {}
-	if l.pending != nil {
-		if !l.pending.enter() {
-			logger.Notice(l.log, sessionAudit{Kind: "refused", Reason: "pre-auth connection limit"})
-			_ = c.Close(closeTryAgain, "busy")
-			return ErrPendingLimit
-		}
-		release = func() { releaseOnce.Do(l.pending.leave) }
-		defer release()
+	release, err := l.admitPending(c)
+	if err != nil {
+		return err
 	}
+	defer release()
 
 	if err := l.cfg.checkHandshake(req.http); err != nil {
 		logHandshakeDenial(l.log, req.http, err)
@@ -110,54 +93,20 @@ func (l *sessionLoop) serve(ctx context.Context, c conn, req requestInfo) error 
 		return err
 	}
 
-	// Step 2. The first message must be a hello; anything else is a protocol
-	// error, not an opportunity to guess what the client meant.
-	// A first-message DEADLINE. Without one, a client that connects and says
-	// nothing is held forever, because the read simply blocks — and it occupies a
-	// pre-auth slot while doing so.
-	helloCtx, cancelHello := context.WithTimeout(ctx, l.limits.HelloTimeout)
-	defer cancelHello()
-
-	var first clientMessage
-	if err := c.ReadJSON(helloCtx, &first); err != nil {
-		_ = c.Close(closeUnsupported, "malformed hello")
-		return fmt.Errorf("web: reading hello: %w", err)
-	}
-	if first.T != msgHello {
-		_ = c.Close(closePolicy, "expected hello")
-		return fmt.Errorf("web: first message was %q, want hello", sanitizeHeader(first.T))
-	}
-	h := first.hello()
-	if !h.valid() {
-		_ = c.Close(closePolicy, "unmeasured client")
-		return ErrUnmeasuredClient
-	}
-
-	// Step 3. Every attach re-runs the completed policy from scratch. Nothing is
-	// resurrected: a reconnect authenticates again, and on the ticket branch
-	// auth/token performs the atomic consume, so a replayed ticket is refused by
-	// the credential layer rather than by anything here.
-	// A per-request sink, so a refused attach can hand the user a correlation ID.
-	// The client-visible error says nothing by design, which leaves a user with
-	// nothing to quote; the ID is random and outcome-independent, so it is safe to
-	// return and it is the only thing that makes a refusal diagnosable.
-	var attemptID string
-	authCtx := auth.WithAttemptSink(ctx, func(a auth.Attempt) { attemptID = a.ID })
-	identity, err := l.cfg.Policy.Authenticate(authCtx, authRequest(req.http, first))
+	first, h, err := l.readHello(ctx, c)
 	if err != nil {
-		logger.Notice(l.log, sessionAudit{Kind: "denied", Reason: "authentication failed",
-			ID: attemptID})
-		// One uniform refusal. Which factor failed is the audit record's
-		// business, never the client's — but the attempt ID is safe to return.
-		_ = c.Close(closePolicy, "unauthorized ref="+sanitizeHeader(attemptID))
 		return err
 	}
 
+	identity, err := l.authenticate(ctx, c, req, first)
+	if err != nil {
+		return err
+	}
 	// Authenticated: this connection is no longer pending, so the slot goes back
 	// before any long-lived work begins.
 	release()
 
-	// Step 4. An App may now exist.
+	// An App may now exist.
 	//
 	// The handoff is derived from the ticket this attach presented, so it matches
 	// what OnLogin gave the consumer for the login that minted it. An attach
@@ -187,6 +136,73 @@ func (l *sessionLoop) serve(ctx context.Context, c conn, req requestInfo) error 
 	}
 
 	return l.pump(ctx, c, sess)
+}
+
+// admitPending takes a pre-auth slot for c, or refuses it. The unauthenticated waiting room is
+// BOUNDED: MaxSessions bounds only what exists after a successful hello, so without this a
+// responsive non-browser that forges Host and Origin holds sockets and goroutines while consuming
+// no session slot.
+//
+// The slot covers the PRE-AUTH window only: serve releases it the moment authentication succeeds.
+// Holding it for the whole authenticated pump made MaxPending a cap on live sessions as well:
+// with MaxPending=1, one healthy session refused every newcomer even with spare MaxSessions and
+// nothing actually pending. release is idempotent, so the deferred call does not double-count.
+func (l *sessionLoop) admitPending(c conn) (release func(), err error) {
+	if l.pending == nil {
+		return func() {}, nil
+	}
+	if !l.pending.enter() {
+		logger.Notice(l.log, sessionAudit{Kind: "refused", Reason: "pre-auth connection limit"})
+		_ = c.Close(closeTryAgain, "busy")
+		return nil, ErrPendingLimit
+	}
+	var once sync.Once
+	return func() { once.Do(l.pending.leave) }, nil
+}
+
+// readHello reads the first message, which must be a measured hello; anything else is a protocol
+// error, not an opportunity to guess what the client meant. It has a DEADLINE: without one, a
+// client that connects and says nothing is held forever, because the read simply blocks — and it
+// occupies a pre-auth slot while doing so.
+func (l *sessionLoop) readHello(ctx context.Context, c conn) (clientMessage, Hello, error) {
+	helloCtx, cancel := context.WithTimeout(ctx, l.limits.HelloTimeout)
+	defer cancel()
+
+	var first clientMessage
+	if err := c.ReadJSON(helloCtx, &first); err != nil {
+		_ = c.Close(closeUnsupported, "malformed hello")
+		return first, Hello{}, fmt.Errorf("web: reading hello: %w", err)
+	}
+	if first.T != msgHello {
+		_ = c.Close(closePolicy, "expected hello")
+		return first, Hello{}, fmt.Errorf("web: first message was %q, want hello", sanitizeHeader(first.T))
+	}
+	h := first.hello()
+	if !h.valid() {
+		_ = c.Close(closePolicy, "unmeasured client")
+		return first, Hello{}, ErrUnmeasuredClient
+	}
+	return first, h, nil
+}
+
+// authenticate runs the completed policy for this attach, from scratch: nothing is resurrected. A
+// reconnect authenticates again, and on the ticket branch auth/token performs the atomic consume,
+// so a replayed ticket is refused by the credential layer rather than by anything here.
+//
+// A refusal is one uniform close. Which factor failed is the audit record's business, never the
+// client's; the attempt ID, random and outcome-independent, is safe to return, and it is the only
+// thing that lets a user quote a refusal.
+func (l *sessionLoop) authenticate(ctx context.Context, c conn, req requestInfo, first clientMessage) (*auth.Identity, error) {
+	var attemptID string
+	authCtx := auth.WithAttemptSink(ctx, func(a auth.Attempt) { attemptID = a.ID })
+	identity, err := l.cfg.Policy.Authenticate(authCtx, authRequest(req.http, first))
+	if err != nil {
+		logger.Notice(l.log, sessionAudit{Kind: "denied", Reason: "authentication failed",
+			ID: attemptID})
+		_ = c.Close(closePolicy, "unauthorized ref="+sanitizeHeader(attemptID))
+		return nil, err
+	}
+	return identity, nil
 }
 
 // bind creates a new session or attaches to an existing one.
