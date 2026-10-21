@@ -73,6 +73,13 @@ var names = map[rune]string{
 	LeftAlt: "LeftAlt", RightAlt: "RightAlt", LeftSuper: "LeftSuper", RightSuper: "RightSuper",
 }
 
+// Name is the name a functional key is written by ("Esc", "PgUp", "F10", "Space"), and false for a
+// key that types a character, which is written as that character.
+func Name(code rune) (string, bool) {
+	name, ok := names[code]
+	return name, ok
+}
+
 // Parse reads one chord in Qt's portable text, its names case-insensitive as Qt's are:
 //
 //	"Ctrl+S", "Shift+Down", "F10", "?", "G" (the key g), "Shift+G" (the capital)
