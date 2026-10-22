@@ -9,17 +9,6 @@ import (
 	"github.com/yongjohnlee80/golib/tui"
 )
 
-// EditorMode is how an Editor draws its text.
-type EditorMode uint8
-
-const (
-	// Raw draws the text as it is, in the monospace font, with its syntax colours.
-	Raw EditorMode = iota
-	// Rendered draws it through the Editor's Renderer: a Markdown heading at its size, emphasis in
-	// its style, its marks hidden but on the cursor's block.
-	Rendered
-)
-
 // # Block & Line Layout Architecture
 //
 // Below is the layout hierarchy constructed by a [Renderer] for rich text display:

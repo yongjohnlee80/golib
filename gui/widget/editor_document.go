@@ -24,7 +24,7 @@ import (
 //	                 ┌──────────────┴──────────────┐
 //	                 │   Mode & Document Switch?   │
 //	                 └──────┬───────────────┬──────┘
-//	         Rendered && docOn              Raw || !docOn
+//	  Rendered && the view on               Raw || the view off
 //	                 │                             │
 //	                 ▼                             ▼
 //	        ┌─────────────────┐           ┌─────────────────┐
@@ -35,18 +35,12 @@ import (
 //	        └─────────────────┘           └─────────────────┘
 
 // DocumentView is a Rendered view that draws the whole document as one widget: a page
-// (tuiwidget.HTMLView, read only) or a CSV table (tuiwidget.TableDocument, edited in place). The
-// Editor shows and hides it through SetVisible, and the framework reads Visible: a hidden view is
-// not laid out, painted or focused. Shown, the focus goes into it (the view itself, or what it
-// holds that takes the keys), so a key it leaves, the Rendered toggle among them, bubbles to the
-// Editor.
-type DocumentView interface {
-	tui.Component
-	tui.Hideable
-	// ShowDocument shows text: called as the view is shown, and on SetValue while it is.
-	ShowDocument(text []byte)
-	SetVisible(bool)
-}
+// (tuiwidget.HTMLView, read only) or a CSV table (tuiwidget.TableDocument, edited in place). It is
+// the terminal Editor's, and both editors keep it in a tuiwidget.DocumentSlot. gui's Editor calls
+// ShowDocument as the view is shown, and again on SetValue while it is. Shown, the focus goes into
+// it (the view itself, or what it holds that takes the keys), so a key it leaves, the Rendered
+// toggle among them, bubbles to the Editor.
+type DocumentView = tuiwidget.DocumentView
 
 var (
 	_ DocumentView = (*tuiwidget.HTMLView)(nil)
@@ -57,25 +51,21 @@ var (
 func WithDocumentView(v DocumentView) EditorOption { return func(c *editorConfig) { c.doc = v } }
 
 // DocumentView is the Editor's document view; nil for none (SetDocumentView).
-func (e *Editor) DocumentView() DocumentView { return e.doc }
+func (e *Editor) DocumentView() DocumentView { return e.doc.Document() }
 
 // DocumentComponent is the document view as a component, nil for none: for a host that names no
 // gui type and reaches the view by its own (an HTMLView, for its links and images).
 func (e *Editor) DocumentComponent() tui.Component {
-	if e.doc == nil {
-		return nil
-	}
-	return e.doc
+	return e.doc.Document() // a nil view is a nil component
 }
 
 // SetRenderedDocument makes Rendered draw the document view (true) or the renderer (false): a host
 // turns it on for a document its view reads (an HTML file) and off for any other. Without a
 // document view it does nothing.
 func (e *Editor) SetRenderedDocument(on bool) {
-	if e.doc == nil || e.docOn == on {
+	if e.doc.Document() == nil || !e.doc.SetOn(on) {
 		return
 	}
-	e.docOn = on
 	e.applyShown() // the view shown or hidden, and Raw drawn when nothing can render
 	e.sw.MarkDirty()
 }
@@ -85,43 +75,34 @@ func (e *Editor) SetRenderedDocument(on bool) {
 // hidden, shown when Rendered is drawn and SetRenderedDocument has turned it on. A host with one
 // editor and several kinds of document (an HTML page, a table) gives each buffer its view.
 func (e *Editor) SetDocumentView(v DocumentView) {
-	if v == e.doc {
+	if v == e.doc.Document() {
 		return
 	}
 	e.showDocument(false)
-	if e.doc != nil {
-		e.stack.Remove(e.doc)
+	if old := e.doc.PutDocument(v); old != nil {
+		e.stack.Remove(old)
 	}
-	e.doc = v
 	if v != nil {
-		v.SetVisible(false)
 		e.stack.Add(v)
 	}
 	e.applyShown()
 	e.sw.MarkDirty()
 }
 
-// docActive reports whether Rendered is the document view's.
-func (e *Editor) docActive() bool { return e.doc != nil && e.docOn }
-
 // showDocument shows the document view in place of the body, or the body again, moving the focus
 // with them when it was in either.
 func (e *Editor) showDocument(on bool) {
 	s := e.stack
-	if e.doc == nil || s.docShown == on {
+	if e.doc.Document() == nil || e.doc.Shown() == on {
 		return
 	}
-	s.docShown = on
-	if on {
-		e.doc.ShowDocument([]byte(e.core.Value()))
-	}
 	focused := s.ctx != nil && s.ctx.FocusWithin(s)
-	e.doc.SetVisible(on)
+	e.doc.Show(on, func() []byte { return []byte(e.core.Value()) })
 	e.body.SetVisible(!on)
 	if focused {
 		var to tui.Component = e.body
 		if on {
-			to = e.doc
+			to = e.doc.Document()
 		}
 		s.ctx.FocusInto(to)
 	}
@@ -131,9 +112,8 @@ func (e *Editor) showDocument(on bool) {
 // Both stay mounted, so the body keeps its scroll and layout across a toggle.
 type editorStack struct {
 	tui.MultiChild
-	e        *Editor
-	ctx      *tui.Context
-	docShown bool
+	e   *Editor
+	ctx *tui.Context
 }
 
 // newEditorStack builds the stack component containing the editor body and optional document view.
@@ -141,9 +121,8 @@ func newEditorStack(e *Editor) *editorStack {
 	s := &editorStack{e: e}
 	s.Label("editorStack")
 	s.Add(e.body)
-	if e.doc != nil {
-		e.doc.SetVisible(false)
-		s.Add(e.doc)
+	if v := e.doc.Document(); v != nil { // hidden: the slot hid it
+		s.Add(v)
 	}
 	return s
 }
@@ -176,7 +155,7 @@ func (s *editorStack) Render(tui.Surface) {}
 // and its release toggle once.
 func (s *editorStack) HandleEvent(ev tui.Event) bool {
 	k, ok := ev.(tui.KeyEvent)
-	if !ok || !s.docShown {
+	if !ok || !s.e.doc.Shown() {
 		return false
 	}
 	if act, ok := s.e.core.ActionOf(k); ok && act == tuiwidget.ActToggleRendered && s.e.canRender() {

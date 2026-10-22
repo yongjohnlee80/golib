@@ -336,7 +336,7 @@ func (v bodyView) Paint(c gui.Canvas) {
 	// the gutter, and placed at the text's left edge.
 	textLeft := padX + l.gutter
 	tc := c.Sub(gui.Rect{X: textLeft, W: max(c.Size().W-textLeft, 0), H: h})
-	if e.ruler > 0 && e.Shown() == Raw {
+	if e.ruler > 0 && e.ShownView() == tuiwidget.ViewRaw {
 		// the guide sits under the text, so a line that crosses it stays readable
 		if x := l.textX() + float32(e.ruler-1)*l.monoCell(); x >= textLeft && x < c.Size().W {
 			c.FillRect(gui.Rect{X: x, Y: 0, W: 1, H: h}, gui.Solid(mix(th.Muted, bg, 0.5)))
@@ -353,7 +353,7 @@ func (v bodyView) Paint(c gui.Canvas) {
 		}
 		y += hh
 	}
-	if e.Shown() == Raw && top < len(l.blocks) {
+	if e.ShownView() == tuiwidget.ViewRaw && top < len(l.blocks) {
 		frame = e.core.BeginHighlight(l.blocks[top].From)
 		defer frame.Close()
 		if frame.Behind {
@@ -383,7 +383,7 @@ func (v bodyView) Paint(c gui.Canvas) {
 				tc.FillRect(gui.Rect{X: at.X + m.Rect.X, Y: at.Y + m.Rect.Y, W: m.Rect.W, H: m.Rect.H}, gui.Solid(m.Color))
 			}
 			ll.Para.Paint(tc, at, ll.Spans)
-			if e.Shown() == Raw {
+			if e.ShownView() == tuiwidget.ViewRaw {
 				paintIndentMarks(tc, e.core, ll, at, b.focused, l.monoFont(), mix(th.Muted, bg, 0.5))
 			}
 			if e.numbers && !ll.Unnumbered && len(ll.Spans) > 0 && ll.Spans[0].Line >= 0 && ll.Spans[0].Line != numbered && len(ll.Para.Lines) > 0 {

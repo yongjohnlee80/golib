@@ -22,7 +22,7 @@ import (
 //	                           |
 //	           +---------------+---------------+
 //	           |                               |
-//	           v (Mode: Raw)                   v (Mode: Rendered)
+//	           v (View: Raw)                   v (View: Rendered)
 //	+----------------------+        +-----------------------+
 //	| Monospace Text View  |        | Renderer Engine       |
 //	|  - Syntax Highlight  |        |  (e.g., Markdown,     |
@@ -58,15 +58,12 @@ type Editor struct {
 	sw        *modeSwitch
 	tabs      *tuiwidget.TabStrip // the host's tabs on the title bar (Tabs)
 
-	mode   EditorMode // the view the user chose (Mode); Shown is the one drawn
-	drawn  EditorMode // the view the layout was last made for (applyShown)
-	render Renderer
-	// renderOff withholds the Rendered view while a renderer is set: the document in the editor
-	// is not one the renderer reads (SetRenderedEnabled).
-	renderOff bool
-	doc       DocumentView // a whole-document Rendered view (editor_document.go); nil: none
-	docOn     bool         // Rendered is the document view's (SetRenderedDocument)
-	fontSize  float32
+	// doc is the Rendered state: the view chosen (View), whether the document can render, and the
+	// whole-document Rendered view (editor_document.go). The Renderer is the editor's own.
+	doc      tuiwidget.DocumentSlot
+	drawn    tuiwidget.EditorView // the view the layout was last made for (applyShown)
+	render   Renderer
+	fontSize float32
 
 	caret    style.Color // the caret's colour (SetCursorColor); the default is the text's
 	caretSet bool
@@ -86,7 +83,7 @@ type editorConfig struct {
 	core     []tuiwidget.CoreOption
 	render   Renderer
 	doc      DocumentView
-	mode     EditorMode
+	view     tuiwidget.EditorView
 	menu     bool
 	noCmd    bool // the ':' prompt is off (WithCommandLine(false))
 	rows     func(*tuiwidget.EditorCore) []tuiwidget.MenuItemModel
@@ -111,8 +108,8 @@ func WithContextMenu(build func(c *tuiwidget.EditorCore) []tuiwidget.MenuItemMod
 	return func(c *editorConfig) { c.menu, c.rows = true, build }
 }
 
-// WithMode starts the Editor in m; Rendered without a renderer stays Raw.
-func WithMode(m EditorMode) EditorOption { return func(c *editorConfig) { c.mode = m } }
+// WithView starts the Editor in v; Rendered without a renderer or a document view is drawn Raw.
+func WithView(v tuiwidget.EditorView) EditorOption { return func(c *editorConfig) { c.view = v } }
 
 // WithPanel configures the Editor's Panel: its title, and whether it moves, resizes or closes.
 func WithPanel(opts ...PanelOption) EditorOption {
@@ -139,8 +136,9 @@ func NewEditor(opts ...EditorOption) *Editor {
 	for _, o := range opts {
 		o(&cfg)
 	}
-	e := &Editor{core: tuiwidget.NewEditorCore(cfg.core...), render: cfg.render, doc: cfg.doc, fontSize: cfg.fontSize,
+	e := &Editor{core: tuiwidget.NewEditorCore(cfg.core...), render: cfg.render, fontSize: cfg.fontSize,
 		wrap: tuiwidget.WrapNone, numbers: cfg.numbers, ruler: cfg.ruler}
+	e.doc.PutDocument(cfg.doc)
 	if cfg.wrap == tuiwidget.WrapSoft {
 		e.wrap = tuiwidget.WrapSoft
 	}
@@ -196,7 +194,7 @@ func NewEditor(opts ...EditorOption) *Editor {
 			return row
 		})
 	}
-	e.SetMode(cfg.mode)
+	e.SetView(cfg.view)
 	return e
 }
 
@@ -252,36 +250,32 @@ func (e *Editor) Core() *tuiwidget.EditorCore { return e.core }
 // SetLabelFit lets its tabs widen into the room it has.
 func (e *Editor) Tabs() *tuiwidget.TabStrip { return e.tabs }
 
-// Mode is the view the user chose: Rendered stays the choice while a document that cannot render
-// is drawn Raw (Shown), so the next one that can is drawn Rendered again.
-func (e *Editor) Mode() EditorMode { return e.mode }
+// View is the view the user chose: Rendered stays the choice while a document that cannot render
+// is drawn Raw (ShownView), so the next one that can is drawn Rendered again.
+func (e *Editor) View() tuiwidget.EditorView { return e.doc.Chosen() }
 
-// Shown is the view drawn now: Rendered only when the mode is Rendered and the document can render.
-func (e *Editor) Shown() EditorMode {
-	if e.mode == Rendered && e.canRender() {
-		return Rendered
-	}
-	return Raw
-}
+// ShownView is the view drawn now: Rendered only when it is chosen and the document can render.
+func (e *Editor) ShownView() tuiwidget.EditorView { return e.doc.Drawn(e.render != nil) }
 
-// SetMode chooses Raw or Rendered. Rendered is drawn when the document can render (a renderer or a
-// document view, and the Rendered view not turned off, SetRenderedEnabled); otherwise Raw is drawn
-// and Rendered kept as the choice. Rendered Markdown edits lists as a writer's editor does
-// (EditorCore.SetListEditing): Enter continues an item, Tab nests it. Raw is the source as typed.
-func (e *Editor) SetMode(m EditorMode) {
-	e.mode = m
+// SetView chooses Raw or Rendered (tuiwidget.ViewChooser). Rendered is drawn when the document can
+// render (a renderer or a document view, and the Rendered view not turned off, SetRenderedEnabled);
+// otherwise Raw is drawn and Rendered kept as the choice. Rendered Markdown edits lists as a
+// writer's editor does (EditorCore.SetListEditing): Enter continues an item, Tab nests it. Raw is
+// the source as typed.
+func (e *Editor) SetView(v tuiwidget.EditorView) {
+	e.doc.Choose(v)
 	e.applyShown()
 }
 
-// applyShown makes the editor draw Shown, after the choice or the document's renderability changed:
-// list editing, the document view, and the layout, which is made again (scrolled to the cursor)
-// only when the view drawn changed.
+// applyShown makes the editor draw ShownView, after the choice or the document's renderability
+// changed: list editing, the document view, and the layout, which is made again (scrolled to the
+// cursor) only when the view drawn changed.
 func (e *Editor) applyShown() {
-	shown := e.Shown()
+	shown := e.ShownView()
 	_, md := e.render.(StructureRenderer)
-	e.core.SetListEditing(shown == Rendered && md && !e.docActive())
-	// before the early return: the view follows docOn even when the view drawn does not change
-	e.showDocument(shown == Rendered && e.docActive())
+	e.core.SetListEditing(shown == tuiwidget.ViewRendered && md && !e.doc.Active())
+	// before the early return: the view follows SetRenderedDocument even when the view drawn does not
+	e.showDocument(shown == tuiwidget.ViewRendered && e.doc.Active())
 	if shown == e.drawn && e.layout.blocks != nil {
 		e.sw.MarkDirty() // the switch shows the choice, which may have changed
 		return
@@ -298,24 +292,23 @@ func (e *Editor) applyShown() {
 
 // canRender reports whether the Rendered view is available: a renderer or a document view turned
 // on, and not turned off.
-func (e *Editor) canRender() bool { return (e.render != nil || e.docActive()) && !e.renderOff }
+func (e *Editor) canRender() bool { return e.doc.CanRender(e.render != nil) }
 
 // SetRenderedEnabled says whether this document can be Rendered, keeping the renderer: a host turns
 // it off for a document its renderer does not read (Markdown's renderer and a Go file, say), and
-// on again for one it does. Off, Raw is drawn but the choice kept (Mode); on again, the choice is
+// on again for one it does. Off, Raw is drawn but the choice kept (View); on again, the choice is
 // drawn. While off the keymap's toggle is not consumed, and the title bar's Rendered segment is
 // faint.
 func (e *Editor) SetRenderedEnabled(on bool) {
-	if e.renderOff == !on {
+	if !e.doc.SetEnabled(on) {
 		return
 	}
-	e.renderOff = !on
 	e.applyShown()
 	e.sw.MarkDirty()
 }
 
 // RenderedEnabled reports whether the Rendered view is turned on (it also needs a renderer).
-func (e *Editor) RenderedEnabled() bool { return !e.renderOff }
+func (e *Editor) RenderedEnabled() bool { return e.doc.Enabled() }
 
 // Relayout lays every block out again as it is next drawn, its text unchanged: a host's renderer
 // drawing from more than the text (a file beside the document, say) calls it once that changed.
@@ -325,12 +318,12 @@ func (e *Editor) Relayout() {
 	e.body.MarkDirty()
 }
 
-// toggleMode toggles the editor mode between Raw and Rendered.
+// toggleMode toggles the view chosen between Raw and Rendered.
 func (e *Editor) toggleMode() {
-	if e.mode == Raw {
-		e.SetMode(Rendered)
+	if e.View() == tuiwidget.ViewRaw {
+		e.SetView(tuiwidget.ViewRendered)
 	} else {
-		e.SetMode(Raw)
+		e.SetView(tuiwidget.ViewRaw)
 	}
 }
 
@@ -377,8 +370,8 @@ func (e *Editor) SetValue(s string) {
 	e.core.SetValue(s)
 	e.layout.scroll = 0
 	e.body.MarkDirty()
-	if e.stack.docShown {
-		e.doc.ShowDocument([]byte(s))
+	if e.doc.Shown() {
+		e.doc.Document().ShowDocument([]byte(s))
 	}
 }
 
@@ -586,7 +579,7 @@ func (s *modeSwitch) Layout(c tui.Constraints) tui.Size {
 func (s *modeSwitch) Render(sur tui.Surface) {
 	on, off := style.New().Bold(true).Underline(true), style.New()
 	raw, rendered := on, off
-	if s.e.mode == Rendered {
+	if s.e.View() == tuiwidget.ViewRendered {
 		raw, rendered = off, on
 	}
 	if !s.e.canRender() {
@@ -623,7 +616,7 @@ func (s *modeSwitch) paint(c gui.Canvas) {
 	split := (float32(len(switchRaw)) + 0.5) * cell.W
 	segs := [2]gui.Rect{{X: pill.X, Y: pill.Y, W: split - pill.X, H: h}, {X: split, Y: pill.Y, W: pill.X + pill.W - split, H: h}}
 	cur := 0
-	if s.e.mode == Rendered {
+	if s.e.View() == tuiwidget.ViewRendered {
 		cur = 1
 	}
 	c.Sub(segs[cur]).FillRRect(gui.Rect{X: pill.X - segs[cur].X, Y: 0, W: pill.W, H: h}, h/2, gui.Solid(mix(accent, page, 0.30)))
@@ -652,9 +645,9 @@ func (s *modeSwitch) HandleEvent(ev tui.Event) bool {
 	}
 	switch {
 	case m.X < len(switchRaw):
-		s.e.SetMode(Raw)
+		s.e.SetView(tuiwidget.ViewRaw)
 	case m.X > len(switchRaw):
-		s.e.SetMode(Rendered)
+		s.e.SetView(tuiwidget.ViewRendered)
 	}
 	return true
 }
