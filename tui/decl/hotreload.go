@@ -361,10 +361,11 @@ func (p *Program) redirect(to *Program) {
 	p.pending, p.app = nil, to.app
 }
 
-// checkReloadKeys mounts spec apart from the live tree, with no App, checks its keyId Shortcuts against
-// keys, and destroys it. Its sources are the live tree's, frozen: one provider delivers their current
-// values once and never runs, so no host provider is subscribed twice. A layout that does not mount is
-// the real reconcile's to report, so it passes here. Loop goroutine only: it reads the live tree.
+// checkReloadKeys mounts spec apart from the live tree, keys-only (keycheck.go) and with no App, checks
+// its keyId Shortcuts against keys, and destroys it. No type's Build or Destroyed runs for it but a
+// Shortcut's. Its sources are the live tree's, frozen: one provider delivers their current values once
+// and never runs, so no host provider is subscribed twice. A layout that does not mount is the real
+// reconcile's to report, so it passes here. Loop goroutine only: it reads the live tree.
 func (p *Program) checkReloadKeys(spec qml.SpecTree, keys *keymap.Map) error {
 	c := p.cfg
 	c.sources, c.providers, c.keys = nil, nil, keys
@@ -373,6 +374,7 @@ func (p *Program) checkReloadKeys(spec qml.SpecTree, keys *keymap.Map) error {
 	if live := p.tree.Sources(); len(live) > 0 {
 		c.providers = []decl.Provider{frozenSources(live)}
 	}
+	c.adapterOpts = append(slices.Clone(c.adapterOpts), keysOnly())
 	q, err := mount(c, spec)
 	if err != nil {
 		return nil

@@ -84,7 +84,10 @@ type Adapter struct {
 	// highlighters are the syntax definitions a SyntaxHighlighter may name.
 	highlighters *highlight.Repository
 	// services are the WithService values, by type, handed to every Build.
-	services        map[reflect.Type]any
+	services map[reflect.Type]any
+	// keysOnly is a keys-only mount (keycheck.go): no Build, setter, palette or Destroyed but a
+	// Shortcut's runs.
+	keysOnly        bool
 	sourceLanguages *highlight.Catalog
 	sink            func(error)
 
@@ -364,6 +367,9 @@ func (a *Adapter) Create(c decl.Construction) ([]string, error) {
 	if !ok {
 		return nil, fmt.Errorf("no widget registered for type %q (declared at %s)", c.Type, c.Pos)
 	}
+	if a.keysOnly && c.Type != shortcutType.Name {
+		return a.createKeysOnly(c)
+	}
 	if err := a.refuseMisplaced(c); err != nil {
 		return nil, err
 	}
@@ -522,6 +528,9 @@ func (a *Adapter) Apply(app decl.Application) error {
 	if !ok {
 		return fmt.Errorf("node %d has no component", app.Node)
 	}
+	if a.keysOnly {
+		return nil // a keys-only mount sets nothing (keycheck.go)
+	}
 	if u, ok := universalOf(app.Prop); ok && u.set != nil {
 		return u.set(a, b, app.Node, app.Prop, app.Value)
 	}
@@ -548,7 +557,7 @@ func (a *Adapter) Destroy(id decl.NodeID) error {
 	delete(a.pal, id)
 	delete(a.kids, id)
 	delete(a.nodes, id)
-	if hook := a.contractOf(b.typ).destroyed; ok && hook != nil {
+	if hook := a.contractOf(b.typ).destroyed; ok && hook != nil && !a.keysOnly {
 		hook(b.comp)
 	}
 	return nil
