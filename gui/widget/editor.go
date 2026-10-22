@@ -54,7 +54,8 @@ type Editor struct {
 	layout    *pixelLayout
 	keepPlace bool // a text set keeps the reader's place (SetKeepPlace, ReplaceValue)
 	menu      *tuiwidget.EditorMenu
-	cmdline   *tuiwidget.CommandLine // the ':' prompt, shared with the terminal's Editor
+	pointer   *tuiwidget.EditorPointer // the press, the drag and its auto-scroll, the menu's keys (editor_body.go)
+	cmdline   *tuiwidget.CommandLine   // the ':' prompt, shared with the terminal's Editor
 	sw        *modeSwitch
 	tabs      *tuiwidget.TabStrip // the host's tabs on the title bar (Tabs)
 
@@ -146,6 +147,7 @@ func NewEditor(opts ...EditorOption) *Editor {
 	e.body = &editorBody{e: e}
 	e.sw = &modeSwitch{e: e}
 	e.menu = tuiwidget.NewEditorMenu(e.body, e.core)
+	e.pointer = tuiwidget.NewEditorPointer(e.core, e.menu, bodyPointer{e.body})
 	if cfg.rows != nil {
 		build := cfg.rows
 		e.menu.SetRows(func() []tuiwidget.MenuItemModel { return build(e.core) })
@@ -337,16 +339,7 @@ func (e *Editor) SetContextMenu(on bool) { e.menu.SetEnabled(on) }
 // OpenContextMenu opens the right-click menu from the keyboard, as a right press on the caret's
 // cell would: below its line, as the terminal's Editor does. Shift+F10 and the Menu key call it while the menu is on.
 // False when the menu is off or the caret is not on the screen.
-func (e *Editor) OpenContextMenu() bool {
-	if !e.menu.Enabled() {
-		return false
-	}
-	x, y, ok := e.body.caretCell()
-	if !ok {
-		return false
-	}
-	return e.menu.OpenAt(tui.Point{X: x, Y: y})
-}
+func (e *Editor) OpenContextMenu() bool { return e.pointer.OpenMenu() }
 
 // SetContextMenuRows gives the right-click menu build's rows, built each time it opens, and turns
 // it on: what WithContextMenu does, for an Editor something else constructed (a QML style). nil
