@@ -159,7 +159,8 @@ func (b *editorBody) caretCell() (x, y int, ok bool) {
 }
 
 // HandleEvent routes keys, paste, ticks and focus to the core, and the pointer through the
-// pixel layout.
+// pixel layout: the wheel is the body's own, the rest the editor's EditorPointer, as the terminal
+// Editor's.
 func (b *editorBody) HandleEvent(ev tui.Event) bool {
 	c := b.e.core
 	if r, ok := diagramResult(ev); ok {
@@ -167,11 +168,9 @@ func (b *editorBody) HandleEvent(ev tui.Event) bool {
 	}
 	switch t := ev.(type) {
 	case tui.KeyEvent:
-		// the key map's menu key, as the terminal Editor reads it; a repeat opens no second menu
-		if b.e.menu.Enabled() && t.Kind == tui.KeyPress {
-			if _, ok := b.Context().KeyCommand(t, tuiwidget.EditorContextMenu); ok {
-				return b.e.OpenContextMenu()
-			}
+		// the key map's menu key: the menu at the caret; off-screen, the key bubbles, the core untouched
+		if b.e.pointer.MenuKey(t) {
+			return b.e.pointer.OpenMenu()
 		}
 		if c.HandleKey(t) {
 			b.MarkDirty()
@@ -182,6 +181,10 @@ func (b *editorBody) HandleEvent(ev tui.Event) bool {
 		b.MarkDirty()
 		return c.HandlePaste(t.Text)
 	case tui.TickEvent:
+		if b.e.pointer.HandleEvent(t) { // the drag's auto-scroll
+			b.MarkDirty()
+			return true
+		}
 		return c.HandleTick()
 	case tui.FocusEvent:
 		if b.focused != t.Gained {
@@ -193,8 +196,7 @@ func (b *editorBody) HandleEvent(ev tui.Event) bool {
 		}
 		return false
 	case tui.PointerCaptureLostEvent:
-		c.EndDrag()
-		return true
+		return b.e.pointer.HandleEvent(t)
 	case tui.MouseEvent:
 		return b.mouse(t)
 	}
@@ -229,10 +231,9 @@ func (b *editorBody) at(m tui.MouseEvent) (int, int) {
 	return ln, clusterAt(b.e.core.LineAt(ln), max(m.X, 0))
 }
 
-// mouse dispatches pointer events (press, release, drag, wheel scrolling, clicks)
-// across pixel layout coordinates or cell fallback coordinates, returning true if handled.
+// mouse handles the wheel, the body's own (pixels, sideways with a horizontal wheel or Shift),
+// and hands the rest to the editor's EditorPointer: press, drag, release and the right button.
 func (b *editorBody) mouse(m tui.MouseEvent) bool {
-	c := b.e.core
 	l := b.e.layout
 	switch {
 	case m.Kind == tui.MouseWheel && (m.Button == tui.WheelLeft || m.Button == tui.WheelRight ||
@@ -255,45 +256,57 @@ func (b *editorBody) mouse(m tui.MouseEvent) bool {
 			b.MarkDirty()
 		}
 		return true
-	case m.Kind == tui.MousePress && m.Button == tui.MouseLeft:
-		ln, col := b.at(m)
-		handled := c.PressAt(ln, col)
-		if c.Dragging() {
-			b.Context().CapturePointer()
-		}
+	}
+	if b.e.pointer.HandleEvent(m) {
 		b.MarkDirty()
-		return handled
-	case m.Kind == tui.MousePress && m.Button == tui.MouseRight && b.e.menu.Enabled():
-		return b.e.menu.OpenAt(tui.Point{X: m.X, Y: m.Y})
-	case m.Kind == tui.MouseMotion && c.Dragging():
-		if b.native() {
-			x, y := b.pixel(m)
-			switch {
-			case y < 0:
-				l.scrollBy(-l.lineHeight(l.monoFont()))
-			case y > l.height:
-				l.scrollBy(l.lineHeight(l.monoFont()))
-			}
-			switch {
-			case x < padX+l.gutter:
-				l.scrollX(-l.monoCell())
-			case x > padX+l.gutter+l.width:
-				l.scrollX(l.monoCell())
-			}
-		}
-		ln, col := b.at(m)
-		c.DragTo(ln, col)
-		b.MarkDirty()
-		return true
-	case m.Kind == tui.MouseRelease && c.Dragging():
-		c.EndDrag()
-		if ctx := b.Context(); ctx != nil && ctx.HasPointerCapture() {
-			ctx.ReleasePointer()
-		}
 		return true
 	}
 	return false
 }
+
+// bodyPointer is the body's tuiwidget.PointerView, in pixels once painted natively.
+type bodyPointer struct{ b *editorBody }
+
+func (p bodyPointer) Context() *tui.Context { return p.b.Context() }
+
+func (p bodyPointer) PointerAt(m tui.MouseEvent) (int, int) { return p.b.at(m) }
+
+// PointerEdge is past the text's top or bottom, or its left or right, in pixels; the cell
+// fallback has none, and scrolls only as the caret moves.
+func (p bodyPointer) PointerEdge(m tui.MouseEvent) (dx, dy int) {
+	if !p.b.native() {
+		return 0, 0
+	}
+	l := p.b.e.layout
+	x, y := p.b.pixel(m)
+	switch {
+	case y < 0:
+		dy = -1
+	case y > l.height:
+		dy = 1
+	}
+	switch {
+	case x < padX+l.gutter:
+		dx = -1
+	case x > padX+l.gutter+l.width:
+		dx = 1
+	}
+	return dx, dy
+}
+
+// ScrollStep scrolls a line down or up, and a monospace cell sideways.
+func (p bodyPointer) ScrollStep(dx, dy int) {
+	l := p.b.e.layout
+	if dy != 0 {
+		l.scrollBy(float32(dy) * l.lineHeight(l.monoFont()))
+	}
+	if dx != 0 {
+		l.scrollX(float32(dx) * l.monoCell())
+	}
+	p.b.MarkDirty()
+}
+
+func (p bodyPointer) CaretCell() (int, int, bool) { return p.b.caretCell() }
 
 // NativeView is the text drawn in pixels.
 func (b *editorBody) NativeView() (any, bool) { return bodyView{b}, true }
