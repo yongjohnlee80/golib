@@ -21,7 +21,7 @@ import (
 // # Architectural Invariants
 //
 //  1. Keyset Composability: Keymap is a flat map from [KeyChord] to [Action], allowing full
-//     customization or partial overriding via [WithKeymap].
+//     customization or partial overriding via [CoreKeymap].
 //  2. Visual Line Shared Bindings: [ModeVisualLine] dynamically shares the exact binding set of
 //     [ModeVisual], ensuring consistent operator selection behavior.
 //  3. Unbound Bubbling Sentinel: [ActUnbound] explicitly unbinds a default chord, permitting the

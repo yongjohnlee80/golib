@@ -1,9 +1,10 @@
 package widget
 
 import (
+	"unicode/utf8"
+
 	"github.com/yongjohnlee80/golib/highlight"
 	"github.com/yongjohnlee80/golib/tui/style"
-	"unicode/utf8"
 )
 
 // SYNTAX HIGHLIGHTING — Qt's QSyntaxHighlighter, on the Editor.
@@ -104,22 +105,6 @@ func (t *hlText) setSource(source highlight.Source) {
 		t.lease(entry, false)
 	}
 	t.hl, t.states, t.lines, t.valid = source.Highlighter, source.States, nil, 0
-}
-
-// WithHighlighter sets the Editor's highlighter; nil is none.
-func WithHighlighter(h highlight.Highlighter) EditorOption { return WithCore(CoreHighlighter(h)) }
-
-// WithSyntaxStyles sets what each highlight style looks like.
-func WithSyntaxStyles(st SyntaxStyles) EditorOption { return WithCore(CoreSyntaxStyles(st)) }
-
-// SetHighlighter replaces the highlighter at runtime; nil turns highlighting
-// off. Every line is highlighted afresh.
-func (e *Editor) SetHighlighter(h highlight.Highlighter) { e.core.SetHighlighter(h) }
-
-// WithSyntaxStyles replaces what each highlight style looks like.
-func (e *Editor) WithSyntaxStyles(st SyntaxStyles) *Editor {
-	e.core.SetSyntaxStyles(st)
-	return e
 }
 
 // beginHighlightFrame starts a Render's walk from the screen's top line. When the walk has not

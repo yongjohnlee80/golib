@@ -18,7 +18,7 @@ func rightClick(x, y int) tui.MouseEvent {
 // opens) inside a shell (which records what bubbles past the editor).
 func ctxFixture(t *testing.T, w, hgt int, opts ...widget.EditorOption) (*harness, *widget.Editor, *shell) {
 	t.Helper()
-	ed := widget.NewEditor(append([]widget.EditorOption{widget.WithInitialText("hello world\nsecond line")}, opts...)...)
+	ed := widget.NewEditor(append([]widget.EditorOption{widget.WithCore(widget.CoreInitialText("hello world\nsecond line"))}, opts...)...)
 	sh := newShell(widget.NewOverlayHost(ed))
 	h := startApp(t, sh, w, hgt)
 	h.inject(click(0, 0)) // focus the editor; the cursor goes to 1:1
@@ -44,14 +44,14 @@ func panelCorner(t *testing.T, h *harness) (x, y int) {
 
 func menuOpen(h *harness, ed *widget.Editor) bool {
 	var open bool
-	h.onLoop(func() { open = ed.ContextMenuOpen() })
+	h.onLoop(func() { open = ed.ContextMenu().IsOpen() })
 	return open
 }
 
 // OFF UNLESS ASKED: a right press on an editor without the option bubbles to
 // its parents, as before this menu existed.
 func TestEditorContextMenu_OffByDefaultTheRightPressBubbles(t *testing.T) {
-	ed := widget.NewEditor(widget.WithInitialText("hello"))
+	ed := widget.NewEditor(widget.WithCore(widget.CoreInitialText("hello")))
 	sh := newShell(widget.NewOverlayHost(ed))
 	h := startApp(t, sh, 30, 6)
 	h.inject(rightClick(2, 0))
@@ -111,7 +111,7 @@ func TestEditorContextMenu_CopyTakesTheSelection(t *testing.T) {
 	var reg string
 	var focused bool
 	h.onLoop(func() {
-		reg, _ = ed.Register()
+		reg, _ = ed.Core().Register()
 		focused = ed.Context().Focused()
 	})
 	if reg != "hello" {
@@ -139,14 +139,14 @@ func TestEditorContextMenu_PasteNeedsARegisterAndCopyNeedsASelection(t *testing.
 		}
 	}
 
-	h.onLoop(func() { ed.SetRegister("XY", false) })
+	h.onLoop(func() { ed.Core().SetRegister("XY", false) })
 	h.inject(rightClick(0, 0))
 	h.waitFor("the menu opened", func() bool { return menuOpen(h, ed) })
 	h.settle()
 	h.inject(key(tui.KeyEnter)) // the only enabled row: Paste
 	h.waitFor("the menu closed", func() bool { return !menuOpen(h, ed) })
 	var v string
-	h.onLoop(func() { v = ed.Value() })
+	h.onLoop(func() { v = ed.Core().Value() })
 	if !strings.HasPrefix(v, "XYhello") {
 		t.Errorf("value = %q, want the register pasted before the cursor", v)
 	}
@@ -154,10 +154,10 @@ func TestEditorContextMenu_PasteNeedsARegisterAndCopyNeedsASelection(t *testing.
 
 // READ-ONLY: Cut and Paste are disabled whatever the selection and register.
 func TestEditorContextMenu_ReadOnlyDisablesCutAndPaste(t *testing.T) {
-	h, ed, _ := ctxFixture(t, 40, 12, widget.WithContextMenu(nil), widget.WithEditorReadOnly(true))
+	h, ed, _ := ctxFixture(t, 40, 12, widget.WithContextMenu(nil), widget.WithCore(widget.CoreReadOnly(true)))
 	h.inject(typeString("vll")...)
 	h.settle()
-	h.onLoop(func() { ed.SetRegister("XY", false) })
+	h.onLoop(func() { ed.Core().SetRegister("XY", false) })
 	var rows []widget.MenuItemModel
 	h.onLoop(func() { rows = widget.EditorContextItems(ed) })
 	for _, r := range rows {
@@ -183,7 +183,7 @@ func TestEditorContextMenu_EscapeAndAnOutsidePressClose(t *testing.T) {
 	h.inject(click(30, 1)) // outside the panel, on the editor's second line
 	h.waitFor("the outside press closed it", func() bool { return !menuOpen(h, ed) })
 	var line int
-	h.onLoop(func() { line, _ = ed.Line() })
+	h.onLoop(func() { line, _ = ed.Core().Line() })
 	if line != 0 {
 		t.Errorf("the dismissing press moved the cursor to line %d: it reached the editor", line)
 	}
@@ -198,7 +198,7 @@ func TestEditorContextMenu_ConsumerRowsRun(t *testing.T) {
 		return append(rows, widget.NewCommand("upper", "Upper",
 			widget.EditorMenuAction{ID: "upper", Run: func(e *widget.Editor) {
 				ran++
-				e.SetValue(strings.ToUpper(e.Value()))
+				e.SetValue(strings.ToUpper(e.Core().Value()))
 			}}))
 	}
 	h, ed, _ := ctxFixture(t, 40, 12, widget.WithContextMenu(build))
@@ -213,7 +213,7 @@ func TestEditorContextMenu_ConsumerRowsRun(t *testing.T) {
 	h.inject(tui.MouseEvent{Kind: tui.MouseRelease, Button: tui.MouseLeft, X: x, Y: y})
 	h.waitFor("the menu closed", func() bool { return !menuOpen(h, ed) })
 	var v string
-	h.onLoop(func() { v = ed.Value() })
+	h.onLoop(func() { v = ed.Core().Value() })
 	if ran != 1 || !strings.HasPrefix(v, "HELLO WORLD") {
 		t.Errorf("ran %d, value %q", ran, v)
 	}
@@ -224,7 +224,7 @@ func TestEditorContextMenu_ConsumerRowsRun(t *testing.T) {
 // editor's position (the popup layer, a sibling, cannot), and the click's
 // editor-local point is added to it.
 func TestEditorContextMenu_OpensAtThePointerWhenTheEditorIsInset(t *testing.T) {
-	ed := widget.NewEditor(widget.WithInitialText("hello world\nsecond line"), widget.WithContextMenu(nil))
+	ed := widget.NewEditor(widget.WithCore(widget.CoreInitialText("hello world\nsecond line")), widget.WithContextMenu(nil))
 	h := startApp(t, widget.NewOverlayHost(widget.NewBox(ed)), 40, 12) // the editor starts at 1,1
 	h.inject(click(1, 1))
 	h.settle()
@@ -262,7 +262,7 @@ func TestEditorContextMenu_UndoRedo(t *testing.T) {
 		t.Fatalf("Undo or Redo enabled before any edit: %v", on)
 	}
 	var before string
-	h.onLoop(func() { before = ed.Value() })
+	h.onLoop(func() { before = ed.Core().Value() })
 	h.inject(typeString("x")...) // x deletes the character under the cursor
 	h.settle()
 	if on := rows(); !on[widget.EditorMenuUndo] || on[widget.EditorMenuRedo] {
@@ -279,7 +279,7 @@ func TestEditorContextMenu_UndoRedo(t *testing.T) {
 	}
 	run(widget.EditorMenuUndo)
 	var v string
-	h.onLoop(func() { v = ed.Value() })
+	h.onLoop(func() { v = ed.Core().Value() })
 	if v != before {
 		t.Fatalf("after Undo %q; want %q", v, before)
 	}
@@ -287,11 +287,11 @@ func TestEditorContextMenu_UndoRedo(t *testing.T) {
 		t.Fatal("Redo is not enabled after an Undo")
 	}
 	run(widget.EditorMenuRedo)
-	h.onLoop(func() { v = ed.Value() })
+	h.onLoop(func() { v = ed.Core().Value() })
 	if v == before {
 		t.Fatal("Redo did not reapply the edit")
 	}
-	h.onLoop(func() { ed.SetReadOnly(true) })
+	h.onLoop(func() { ed.Core().SetReadOnly(true) })
 	if on := rows(); on[widget.EditorMenuUndo] {
 		t.Fatal("Undo enabled on a read-only editor")
 	}
@@ -347,7 +347,7 @@ func TestEditorContextMenu_ShiftF10AndTheMenuKeyOpenItAtTheCaret(t *testing.T) {
 // WITH THE MENU OFF the keys are the keyset's, as before: nothing opens, and they go on to the
 // editor's parents.
 func TestEditorContextMenu_OffTheKeysGoOn(t *testing.T) {
-	ed := widget.NewEditor(widget.WithInitialText("hello"))
+	ed := widget.NewEditor(widget.WithCore(widget.CoreInitialText("hello")))
 	sh := newShell(widget.NewOverlayHost(ed))
 	h := startApp(t, sh, 30, 6)
 	h.inject(click(0, 0))
@@ -460,7 +460,7 @@ func TestEditorContextMenu_KeyWithTheCaretOffScreenLeavesTheCoreAlone(t *testing
 	h.inject(key('d'), shiftF10, key('d'))
 	h.settle()
 	var lines int
-	h.onLoop(func() { lines = len(ed.Lines()) })
+	h.onLoop(func() { lines = len(ed.Core().Lines()) })
 	if lines != 30 || menuOpen(h, ed) {
 		t.Errorf("d, Shift+F10, d: %d lines, menu open %v; want 30 (the line deleted), no menu", lines, menuOpen(h, ed))
 	}
@@ -470,7 +470,7 @@ func TestEditorContextMenu_KeyWithTheCaretOffScreenLeavesTheCoreAlone(t *testing
 	h.inject(key('q'), key('a'), shiftF10, key('q'))
 	h.settle()
 	var macro string
-	h.onLoop(func() { macro, _, _ = ed.NamedRegister('a') })
+	h.onLoop(func() { macro, _, _ = ed.Core().NamedRegister('a') })
 	if macro != "" {
 		t.Errorf("the macro recorded %q of the menu key; want nothing", macro)
 	}

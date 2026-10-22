@@ -47,7 +47,7 @@ func TestAWindowTakesChangedChildrenInPlace(t *testing.T) {
 		t.Helper()
 		onScreenLoop(t, s, func() {
 			now, _ := tuidecl.FindAs[*widget.Editor](s.Program, "ed")
-			if now != ed || now.Value() != "typed" || now.NodeID() != mount {
+			if now != ed || now.Core().Value() != "typed" || now.NodeID() != mount {
 				t.Errorf("%s: the editor was replaced, remounted or lost its text", what)
 			}
 		})

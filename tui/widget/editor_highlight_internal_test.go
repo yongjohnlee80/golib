@@ -63,10 +63,10 @@ func syntaxRedGreen() SyntaxStyles {
 }
 
 func TestTheByteSpansMapOntoClusters(t *testing.T) {
-	e := NewEditor(WithHighlighter(highlight.HighlighterFunc(func(line string, _ highlight.State) ([]highlight.Span, highlight.State) {
+	e := NewEditor(WithCore(CoreHighlighter(highlight.HighlighterFunc(func(line string, _ highlight.State) ([]highlight.Span, highlight.State) {
 		i := strings.Index(line, "kw")
 		return []highlight.Span{{Start: i, End: i + 2, Style: highlight.Keyword}}, 0
-	})))
+	}))))
 	e.SetValue("中é kw")
 	got := e.core.hl.paintEntry(e.core.hl.text.highlightLine(e.core.buf.textLines[0], 0))
 	want := []highlight.Style{highlight.Normal, highlight.Normal, highlight.Normal, highlight.Keyword, highlight.Keyword}
@@ -91,7 +91,7 @@ func renderEditor(t *testing.T, e *Editor, w, h int) *tui.TestBackend {
 
 func TestASpanPaintsOverTheTextAndUnderTheSelection(t *testing.T) {
 	hl := &wordHighlighter{}
-	e := NewEditor(WithHighlighter(hl), WithSyntaxStyles(syntaxRedGreen()),
+	e := NewEditor(WithCore(CoreHighlighter(hl)), WithCore(CoreSyntaxStyles(syntaxRedGreen())),
 		WithEditorStyles(TextInputStyles{Text: style.New().Background(style.ANSI(4))}))
 	e.SetValue("a kw /* c */ b")
 	tb := renderEditor(t, e, 30, 3)
@@ -110,7 +110,7 @@ func TestASpanPaintsOverTheTextAndUnderTheSelection(t *testing.T) {
 // TestTheSelectionWinsOverASpan: select the keyword in Visual mode — it is
 // reversed, over its syntax colour.
 func TestTheSelectionWinsOverASpan(t *testing.T) {
-	e := NewEditor(WithHighlighter(&wordHighlighter{}), WithSyntaxStyles(syntaxRedGreen()))
+	e := NewEditor(WithCore(CoreHighlighter(&wordHighlighter{})), WithCore(CoreSyntaxStyles(syntaxRedGreen())))
 	e.SetValue("a kw b")
 	ih := startAppInternal(t, e, 20, 2)
 	t.Cleanup(ih.stopInternal)
@@ -129,7 +129,7 @@ func TestTheSelectionWinsOverASpan(t *testing.T) {
 
 func TestOnlyWhatIsSeenOrChangedIsHighlighted(t *testing.T) {
 	hl := &wordHighlighter{}
-	e := NewEditor(WithHighlighter(hl), WithSyntaxStyles(syntaxRedGreen()))
+	e := NewEditor(WithCore(CoreHighlighter(hl)), WithCore(CoreSyntaxStyles(syntaxRedGreen())))
 	var lines []string
 	for range 100 {
 		lines = append(lines, "kw x")
@@ -173,7 +173,7 @@ func TestOnlyWhatIsSeenOrChangedIsHighlighted(t *testing.T) {
 }
 
 func TestACommentCarriesAcrossLinesOnScreen(t *testing.T) {
-	e := NewEditor(WithHighlighter(&wordHighlighter{}), WithSyntaxStyles(syntaxRedGreen()))
+	e := NewEditor(WithCore(CoreHighlighter(&wordHighlighter{})), WithCore(CoreSyntaxStyles(syntaxRedGreen())))
 	e.SetValue("x /* open\ninside\nend */ kw")
 	tb := renderEditor(t, e, 20, 4)
 	waitCells(t, tb, func(g [][]tui.Cell) bool {
@@ -182,14 +182,14 @@ func TestACommentCarriesAcrossLinesOnScreen(t *testing.T) {
 }
 
 func TestSetHighlighterNilTurnsItOff(t *testing.T) {
-	e := NewEditor(WithHighlighter(&wordHighlighter{}), WithSyntaxStyles(syntaxRedGreen()))
+	e := NewEditor(WithCore(CoreHighlighter(&wordHighlighter{})), WithCore(CoreSyntaxStyles(syntaxRedGreen())))
 	e.SetValue("kw")
 	ih := startAppInternal(t, e, 10, 2)
 	t.Cleanup(ih.stopInternal)
 	waitCells(t, ih.tb, func(g [][]tui.Cell) bool { return g[0][0].Attrs.FG == ansiCell(1) })
-	ih.onLoopInternal(func() { e.SetHighlighter(nil) })
+	ih.onLoopInternal(func() { e.Core().SetHighlighter(nil) })
 	waitCells(t, ih.tb, func(g [][]tui.Cell) bool { return g[0][0].Attrs.FG == (tui.CellColor{}) })
-	ih.onLoopInternal(func() { e.WithSyntaxStyles(SyntaxStyles{}).SetHighlighter(&wordHighlighter{}) })
+	ih.onLoopInternal(func() { e.core.SetSyntaxStyles(SyntaxStyles{}); e.core.SetHighlighter(&wordHighlighter{}) })
 	waitCells(t, ih.tb, func(g [][]tui.Cell) bool { return g[0][0].Attrs.FG == (tui.CellColor{}) })
 }
 
@@ -227,7 +227,7 @@ func frameWork(e *Editor, rows int) (examined int, provisional bool) {
 func TestADeepJumpHighlightsInBoundedFrames(t *testing.T) {
 	const n, rows = 20001, 5
 	hl := &wordHighlighter{}
-	e := NewEditor(WithHighlighter(hl), WithSyntaxStyles(syntaxRedGreen()))
+	e := NewEditor(WithCore(CoreHighlighter(hl)), WithCore(CoreSyntaxStyles(syntaxRedGreen())))
 	lines := make([]string, n)
 	lines[0] = "/* never closed"
 	for i := 1; i < n; i++ {
@@ -290,7 +290,7 @@ func TestADeepJumpHighlightsInBoundedFrames(t *testing.T) {
 // A change that forgot to say which line it touched shows up here.
 func TestTheCacheAgreesWithAFreshHighlightAfterAnyEdit(t *testing.T) {
 	const rows = 6
-	e := NewEditor(WithHighlighter(&wordHighlighter{}), WithSyntaxStyles(syntaxRedGreen()))
+	e := NewEditor(WithCore(CoreHighlighter(&wordHighlighter{})), WithCore(CoreSyntaxStyles(syntaxRedGreen())))
 	var lines []string
 	for i := range 60 {
 		lines = append(lines, []string{"kw a", "x /* open", "b */ kw", "plain"}[i%4])

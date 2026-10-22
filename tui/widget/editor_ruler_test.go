@@ -11,7 +11,7 @@ import (
 // has ended — rows past the document too — and yields to a line that crosses it; 0 takes it away.
 func TestTheRulerMarksItsColumnPastTheText(t *testing.T) {
 	ed := widget.NewEditor(widget.WithRuler(10))
-	ed.SetKeyset(widget.KeysetStandard)
+	ed.Core().SetKeyset(widget.KeysetStandard)
 	ed.SetValue("short\nthis line runs past the ruler")
 	h := startApp(t, ed, 40, 4)
 	defer h.stop()

@@ -65,10 +65,10 @@ func TestOverlayKeymapValidatesTheWholeOverlayFirst(t *testing.T) {
 
 // The Editor passes it to its core.
 func TestEditorOverlayKeymap(t *testing.T) {
-	e := widget.NewEditor(widget.WithInitialText("abc"))
-	e.OverlayKeymap(widget.Keymap{normalQ: widget.ActUnbound})
-	if _, ok := e.Keymap()[normalQ]; ok && e.Keymap()[normalQ] != widget.ActUnbound {
-		t.Errorf("the Editor's keymap still binds q to %v", e.Keymap()[normalQ])
+	e := widget.NewEditor(widget.WithCore(widget.CoreInitialText("abc")))
+	e.Core().OverlayKeymap(widget.Keymap{normalQ: widget.ActUnbound})
+	if _, ok := e.Core().Keymap()[normalQ]; ok && e.Core().Keymap()[normalQ] != widget.ActUnbound {
+		t.Errorf("the Editor's keymap still binds q to %v", e.Core().Keymap()[normalQ])
 	}
 }
 

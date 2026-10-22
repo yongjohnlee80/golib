@@ -2,13 +2,14 @@ package widget
 
 import (
 	"fmt"
-	tuikey "github.com/yongjohnlee80/golib/tui/key"
 	"sort"
+
+	tuikey "github.com/yongjohnlee80/golib/tui/key"
 )
 
 // THE EDITOR'S CHORD API: KeyChord, Keymap and the legacy tables, kept working as
 // an adapter over the command declarations (editor_keytables.go). VimKeymap, NanoKeymap and
-// StandardKeymap return each keyset's table as it always was; a host's overlay (WithKeymap,
+// StandardKeymap return each keyset's table as it always was; a host's overlay (CoreKeymap,
 // OverlayKeymap) is written in chords.
 
 // KeyChord addresses one binding: a mode class and a normalized key. A chord has one spelling: a
@@ -96,7 +97,7 @@ func (km Keymap) Bindings() []KeyBinding {
 	return list
 }
 
-// Keymap maps chords to actions. Overlays passed to WithKeymap replace (or,
+// Keymap maps chords to actions. Overlays passed to CoreKeymap replace (or,
 // with ActUnbound, clear) entries in the default table. Chords carry their
 // modes, and disallowed mode/action combinations panic at construction.
 type Keymap map[KeyChord]Action
@@ -121,16 +122,16 @@ func StandardKeymap() Keymap { return declsOf(KeysetStandard).projection() }
 // validateKeymapEntry panics on an entry the Editor cannot honor.
 func validateKeymapEntry(kc KeyChord, act Action) {
 	if kc.Mode != ModeNormal && kc.Mode != ModeVisual && kc.Mode != ModeInsert {
-		panic(fmt.Sprintf("widget: WithKeymap: chord %+v: bindings exist only for ModeNormal/ModeVisual/ModeInsert", kc))
+		panic(fmt.Sprintf("widget: CoreKeymap: chord %+v: bindings exist only for ModeNormal/ModeVisual/ModeInsert", kc))
 	}
 	if act >= actMax {
-		panic(fmt.Sprintf("widget: WithKeymap: chord %+v: unknown action %d", kc, act))
+		panic(fmt.Sprintf("widget: CoreKeymap: chord %+v: unknown action %d", kc, act))
 	}
 	if act == ActUnbound {
 		return // always allowed: removes the default
 	}
 	nOK, vOK, iOK := actionModes(act)
 	if (kc.Mode == ModeNormal && !nOK) || (kc.Mode == ModeVisual && !vOK) || (kc.Mode == ModeInsert && !iOK) {
-		panic(fmt.Sprintf("widget: WithKeymap: chord %+v: action %d is not supported in that mode", kc, act))
+		panic(fmt.Sprintf("widget: CoreKeymap: chord %+v: action %d is not supported in that mode", kc, act))
 	}
 }

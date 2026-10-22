@@ -829,7 +829,7 @@ Window {
 - **A Shortcut's holder gives its scope**: a Window's is `global`; a `FocusScope`'s, `Dialog`'s,
   `FolderDialog`'s or `Drawer`'s is its `keyScope`. A `keyId` in the wrong holder is refused.
 - **What stays fixed**: a label's mnemonic (`&File`, a button's letter) is the label's, on English's
-  letter in every language. A host's Go `WithKeymap` overlay on an Editor is code, and wins over a
+  letter in every language. A host's Go keymap overlay on an Editor (`CoreKeymap`) is code, and wins over a
   scheme; declare a binding as a command if users should move it. The Editor's grammar after a
   prefix (`d`'s motion, `f`'s character, a count) is not a command; its first key is.
 - **Ask what a key does** with `p.KeyBindings("id")` on the loop goroutine: the bindings that reach

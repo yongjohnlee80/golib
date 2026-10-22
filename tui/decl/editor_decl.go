@@ -114,20 +114,17 @@ func (d EditorDecl) Attach(core *widget.EditorCore) {
 
 // The behaviour an Editor's runtime properties set, as any editor widget offers it.
 type (
-	keysetter   interface{ SetKeyset(widget.Keyset) }
-	readOnlyer  interface{ SetReadOnly(bool) }
-	valueSetter interface{ SetValue(string) }
-	placeKeeper interface {
+	keysetter    interface{ SetKeyset(widget.Keyset) }
+	readOnlyer   interface{ SetReadOnly(bool) }
+	cursorPlacer interface{ SetCursorPosition(int) }
+	valueSetter  interface{ SetValue(string) }
+	placeKeeper  interface {
 		SetKeepPlace(bool)
 		KeepsPlace() bool
 		ReplaceValue(string)
 	}
-	cursorPlacer interface{ SetCursorPosition(int) }
 	coreEditor   interface{ Core() *widget.EditorCore }
-	commandLiner interface {
-		SetCommandLineEnabled(bool)
-		OpenCommandLine(string) bool
-	}
+	commandLiner interface{ CommandLine() *widget.CommandLine }
 	// renderedEnabler is not widget's with the view capabilities: an exported interface's
 	// method ending in Enabled reads as a capability predicate to dao's guard
 	renderedEnabler interface{ SetRenderedEnabled(bool) }
@@ -137,11 +134,13 @@ type (
 // they call: `keyset` (SetKeyset), `readOnly` (SetReadOnly), `text` (SetValue, replacing the
 // buffer as a load does; with `keepPlace`, ReplaceValue, keeping the reader's cursor and scroll, for
 // a viewer a program refreshes) and `cursorPosition` (SetCursorPosition: characters from the
-// start, a line break one). Each widget adds its own view properties beside them.
+// start, a line break one). A widget without keyset's, readOnly's or cursorPosition's method has
+// them set on its core (Core()), as the cell Editor does. Each widget adds its own view
+// properties beside them.
 func EditorSetters() map[string]Setter {
 	return map[string]Setter{
-		"keyset":   setter("an Editor", keysets.read, keysetter.SetKeyset),
-		"readOnly": setter("an Editor", boolOf, readOnlyer.SetReadOnly),
+		"keyset":   capOrCore(keysets.read, keysetter.SetKeyset, (*widget.EditorCore).SetKeyset),
+		"readOnly": capOrCore(boolOf, readOnlyer.SetReadOnly, (*widget.EditorCore).SetReadOnly),
 		"text": func(c tui.Component, v qml.SpecValue) error {
 			s, err := stringOf(v)
 			if err != nil {
@@ -161,7 +160,7 @@ func EditorSetters() map[string]Setter {
 		"keepPlace":  setter("an Editor", boolOf, placeKeeper.SetKeepPlace),
 		"autoIndent": setter("an Editor", boolOf, func(e coreEditor, v bool) { e.Core().SetAutoIndent(v) }),
 		// the ':' prompt, on by default
-		"commandLine": setter("an Editor", boolOf, commandLiner.SetCommandLineEnabled),
+		"commandLine": setter("an Editor", boolOf, func(e commandLiner, on bool) { e.CommandLine().SetEnabled(on) }),
 		"indentUnit": func(c tui.Component, v qml.SpecValue) error {
 			unit, err := stringOf(v)
 			if err != nil {
@@ -174,7 +173,30 @@ func EditorSetters() map[string]Setter {
 			return e.Core().SetIndentUnit(unit)
 		},
 		"indentMarks":    setter("an Editor", indentMarks.read, func(e coreEditor, m widget.IndentMarks) { e.Core().SetIndentMarks(m) }),
-		"cursorPosition": setter("an Editor", truncOf, cursorPlacer.SetCursorPosition),
+		"cursorPosition": capOrCore(truncOf, cursorPlacer.SetCursorPosition, (*widget.EditorCore).SetCursorPosition),
+	}
+}
+
+// capOrCore is an Editor property set through the widget's own method, capability I (a style's
+// editor, gui's, which redraws as it sets), or else on its core: the cell Editor reaches its core's
+// behaviour through Core() alone.
+func capOrCore[I any, V any](read reader[V], viaCap func(I, V), viaCore func(*widget.EditorCore, V)) Setter {
+	return func(c tui.Component, v qml.SpecValue) error {
+		w, isCap := any(c).(I)
+		e, isCore := c.(coreEditor)
+		if !isCap && !isCore {
+			return fmt.Errorf("not an Editor")
+		}
+		val, err := read(v)
+		if err != nil {
+			return err
+		}
+		if isCap {
+			viaCap(w, val)
+		} else {
+			viaCore(e.Core(), val)
+		}
+		return nil
 	}
 }
 
@@ -260,7 +282,7 @@ func EditorMethods() map[string]Method {
 			if !ok {
 				return fmt.Errorf("openCommandLine needs an Editor")
 			}
-			e.OpenCommandLine(initial)
+			e.CommandLine().Open(initial)
 			return nil
 		},
 	}

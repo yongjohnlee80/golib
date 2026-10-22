@@ -222,11 +222,11 @@ func CoreInitialText(s string) CoreOption {
 func CoreEscapeChord(chord string) CoreOption {
 	rs := []rune(chord)
 	if chord != "" && len(rs) != 2 {
-		panic(fmt.Sprintf("widget: WithEscapeChord: %q is not exactly two runes (or empty to disable)", chord))
+		panic(fmt.Sprintf("widget: CoreEscapeChord: %q is not exactly two runes (or empty to disable)", chord))
 	}
 	for _, r := range rs {
 		if !unicode.IsPrint(r) {
-			panic(fmt.Sprintf("widget: WithEscapeChord: %q contains a non-printable rune", chord))
+			panic(fmt.Sprintf("widget: CoreEscapeChord: %q contains a non-printable rune", chord))
 		}
 	}
 	return func(c *EditorCore) {

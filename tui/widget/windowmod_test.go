@@ -1,9 +1,10 @@
 package widget_test
 
 import (
+	"testing"
+
 	"github.com/yongjohnlee80/golib/tui"
 	"github.com/yongjohnlee80/golib/tui/widget"
-	"testing"
 )
 
 func windowBounds(h *harness, w *widget.WindowMod) tui.Rect {
@@ -41,14 +42,14 @@ func TestWindowDragPreemptsEditorAndEscapeRestoresPolicy(t *testing.T) {
 		t.Fatalf("cancelled bounds: %+v", got)
 	}
 	var mode widget.EditorMode
-	h.onLoop(func() { mode = editor.Mode(); capture = w.Context().HasPointerCapture() })
+	h.onLoop(func() { mode = editor.Core().Mode(); capture = w.Context().HasPointerCapture() })
 	if mode != widget.ModeInsert || capture {
 		t.Fatalf("Escape reached content or capture survived: mode=%v capture=%v", mode, capture)
 	}
 	// A noncaptured Escape retains the Editor's normal behavior.
 	h.inject(key(tui.KeyEscape))
 	h.barrier(nil)
-	h.onLoop(func() { mode = editor.Mode() })
+	h.onLoop(func() { mode = editor.Core().Mode() })
 	if mode != widget.ModeNormal {
 		t.Fatalf("ordinary Escape was stolen: mode=%v", mode)
 	}

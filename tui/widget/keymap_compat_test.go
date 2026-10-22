@@ -42,9 +42,9 @@ func TestTheOldKeyAPICompilesAndMeansTheSame(t *testing.T) {
 // An old keyed overlay literal on a functional key meant the key with or without Shift, because the
 // editor read Shift+Down as Down; replayed over a scheme-built table it still does.
 func TestAnOldFunctionalKeyOverlayKeepsItsShiftTwin(t *testing.T) {
-	h, e, sh := mountedEditor(t, mustKeymap(t, `<mapping/>`), widget.WithKeymap(widget.Keymap{
+	h, e, sh := mountedEditor(t, mustKeymap(t, `<mapping/>`), widget.WithCore(widget.CoreKeymap(widget.Keymap{
 		{Mode: widget.ModeNormal, Code: tui.KeyDown}: widget.ActLineEnd,
-	}))
+	})))
 	h.inject(tui.KeyEvent{Kind: tui.KeyPress, Code: tui.KeyDown, Mods: tui.ModShift}, ch('i'), ch('!'))
 	h.barrier(sh)
 	if got := editorValue(h, e); got != "one two thre!e" {

@@ -9,10 +9,10 @@ import (
 
 func TestEditorMotionsWordsAndParagraphs(t *testing.T) {
 	text := "first word\n\nsecond paragraph word\nthird"
-	h, ed, sh := focusedEditor(t, 40, 10, widget.WithInitialText(text))
+	h, ed, sh := focusedEditor(t, 40, 10, widget.WithCore(widget.CoreInitialText(text)))
 
 	// Initial cursor at (0, 0)
-	row, col := ed.Line()
+	row, col := ed.Core().Line()
 	if row != 0 || col != 0 {
 		t.Fatalf("initial pos: got (%d, %d), want (0, 0)", row, col)
 	}
@@ -20,7 +20,7 @@ func TestEditorMotionsWordsAndParagraphs(t *testing.T) {
 	// 'w' moves to start of "word"
 	h.inject(key('w'))
 	h.barrier(sh)
-	row, col = ed.Line()
+	row, col = ed.Core().Line()
 	if row != 0 || col != 6 {
 		t.Errorf("after 'w': got (%d, %d), want (0, 6)", row, col)
 	}
@@ -28,7 +28,7 @@ func TestEditorMotionsWordsAndParagraphs(t *testing.T) {
 	// 'w' crosses the line end and stops on the empty line, as Vim's does
 	h.inject(key('w'))
 	h.barrier(sh)
-	row, col = ed.Line()
+	row, col = ed.Core().Line()
 	if row != 1 || col != 0 {
 		t.Errorf("after second 'w': got (%d, %d), want (1, 0)", row, col)
 	}
@@ -36,7 +36,7 @@ func TestEditorMotionsWordsAndParagraphs(t *testing.T) {
 	// 'b' moves back to "word" on line 0
 	h.inject(key('b'))
 	h.barrier(sh)
-	row, col = ed.Line()
+	row, col = ed.Core().Line()
 	if row != 0 || col != 6 {
 		t.Errorf("after 'b': got (%d, %d), want (0, 6)", row, col)
 	}
@@ -44,7 +44,7 @@ func TestEditorMotionsWordsAndParagraphs(t *testing.T) {
 	// 'G' moves to bottom line
 	h.inject(key('G'))
 	h.barrier(sh)
-	row, _ = ed.Line()
+	row, _ = ed.Core().Line()
 	if row != 3 {
 		t.Errorf("after 'G': got row %d, want 3", row)
 	}
@@ -52,7 +52,7 @@ func TestEditorMotionsWordsAndParagraphs(t *testing.T) {
 	// 'g' 'g' moves to top line
 	h.inject(key('g'), key('g'))
 	h.barrier(sh)
-	row, _ = ed.Line()
+	row, _ = ed.Core().Line()
 	if row != 0 {
 		t.Errorf("after 'gg': got row %d, want 0", row)
 	}
@@ -60,7 +60,7 @@ func TestEditorMotionsWordsAndParagraphs(t *testing.T) {
 	// '}' moves forward to blank line boundary
 	h.inject(key('}'))
 	h.barrier(sh)
-	row, _ = ed.Line()
+	row, _ = ed.Core().Line()
 	if row != 1 {
 		t.Errorf("after '}': got row %d, want 1", row)
 	}
@@ -68,7 +68,7 @@ func TestEditorMotionsWordsAndParagraphs(t *testing.T) {
 	// '{' moves back to beginning
 	h.inject(key('{'))
 	h.barrier(sh)
-	row, _ = ed.Line()
+	row, _ = ed.Core().Line()
 	if row != 0 {
 		t.Errorf("after '{': got row %d, want 0", row)
 	}
@@ -76,16 +76,16 @@ func TestEditorMotionsWordsAndParagraphs(t *testing.T) {
 
 func TestEditorMotionsNanoLineEnd(t *testing.T) {
 	h, ed, sh := focusedEditor(t, 40, 10,
-		widget.WithInitialText("abc"),
-		widget.WithKeymap(widget.NanoKeymap()),
-		widget.WithModalEditing(false),
+		widget.WithCore(widget.CoreInitialText("abc")),
+		widget.WithCore(widget.CoreKeymap(widget.NanoKeymap())),
+		widget.WithCore(widget.CoreModal(false)),
 	)
 
 	// Ctrl+E in Nano moves to insertion boundary at end of line (col 3)
 	h.inject(keyMod('e', tui.ModCtrl))
 	h.barrier(sh)
 
-	row, col := ed.Line()
+	row, col := ed.Core().Line()
 	if row != 0 || col != 3 {
 		t.Fatalf("after Ctrl+E in Nano: got (%d, %d), want (0, 3)", row, col)
 	}
@@ -94,7 +94,7 @@ func TestEditorMotionsNanoLineEnd(t *testing.T) {
 	h.inject(key('X'))
 	h.barrier(sh)
 
-	if got := ed.Value(); got != "abcX" {
+	if got := ed.Core().Value(); got != "abcX" {
 		t.Errorf("value after typing 'X' at end of line: got %q, want %q", got, "abcX")
 	}
 }

@@ -35,7 +35,7 @@ func TestSetKeysetSettlesHeldChordRune(t *testing.T) {
 		t.Fatalf("value = %q, want %q while the rune is held", got, "ab")
 	}
 
-	e.SetKeyset(KeysetStandard)
+	e.Core().SetKeyset(KeysetStandard)
 
 	if e.core.keys.pendingRune != 0 {
 		t.Errorf("pendingRune = %q, want 0 — the chord outlived its profile", e.core.keys.pendingRune)
@@ -48,24 +48,24 @@ func TestSetKeysetSettlesHeldChordRune(t *testing.T) {
 // A count belongs to the profile that was reading it: it goes when the profile
 // goes, and it stays when nothing goes.
 func TestSetKeysetCountDroppedOnSwitchKeptOnNoOp(t *testing.T) {
-	e := NewEditor(WithInitialText("abcdef"))
+	e := NewEditor(WithCore(CoreInitialText("abcdef")))
 	pressRune(e, '3')
 	if e.core.keys.count != 3 {
 		t.Fatalf("count = %d, want 3 — the fixture never armed a count", e.core.keys.count)
 	}
 
-	e.SetKeyset(KeysetVim) // already Vim: nothing happens, pending input included
+	e.Core().SetKeyset(KeysetVim) // already Vim: nothing happens, pending input included
 	if e.core.keys.count != 3 {
 		t.Fatalf("count = %d after a no-op switch, want 3", e.core.keys.count)
 	}
 
-	e.SetKeyset(KeysetNano)
+	e.Core().SetKeyset(KeysetNano)
 	if e.core.keys.count != 0 {
 		t.Fatalf("count = %d after Vim->Nano, want 0 — a stale count survived", e.core.keys.count)
 	}
 
 	// And the next Vim command counts once, not three times.
-	e.SetKeyset(KeysetVim)
+	e.Core().SetKeyset(KeysetVim)
 	pressRune(e, 'x')
 	if got := e.core.buf.value(); got != "bcdef" {
 		t.Errorf("value = %q, want %q — `x` acted on a count nobody typed", got, "bcdef")
@@ -75,18 +75,18 @@ func TestSetKeysetCountDroppedOnSwitchKeptOnNoOp(t *testing.T) {
 // An operator prefix is half a command. Carrying `d` across a switch would let
 // the next `d` complete a `dd` the operator started under another profile.
 func TestSetKeysetDropsOperatorPrefix(t *testing.T) {
-	e := NewEditor(WithInitialText("one\ntwo"))
+	e := NewEditor(WithCore(CoreInitialText("one\ntwo")))
 	pressRune(e, 'd')
 	if e.core.keys.op != ActDeletePrefix {
 		t.Fatalf("op = %v, want ActDeletePrefix — the fixture never armed an operator", e.core.keys.op)
 	}
 
-	e.SetKeyset(KeysetStandard)
+	e.Core().SetKeyset(KeysetStandard)
 	if e.core.keys.op != ActUnbound {
 		t.Fatalf("op = %v, want ActUnbound", e.core.keys.op)
 	}
 
-	e.SetKeyset(KeysetVim)
+	e.Core().SetKeyset(KeysetVim)
 	pressRune(e, 'd') // a FRESH prefix, not the completion of the old one
 	if got := e.core.buf.value(); got != "one\ntwo" {
 		t.Errorf("value = %q, want both lines — the stale prefix completed a dd", got)
@@ -108,7 +108,7 @@ func TestSetKeysetClosesOpenUndoGroup(t *testing.T) {
 		t.Fatalf("hist.open = false, want true — the fixture never opened a group")
 	}
 
-	e.SetKeyset(KeysetStandard)
+	e.Core().SetKeyset(KeysetStandard)
 	if e.core.hist.open {
 		t.Errorf("hist.open = true, want false — the group outlived the switch")
 	}

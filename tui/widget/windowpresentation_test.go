@@ -1,10 +1,11 @@
 package widget_test
 
 import (
-	"github.com/yongjohnlee80/golib/tui"
-	"github.com/yongjohnlee80/golib/tui/widget"
 	"strings"
 	"testing"
+
+	"github.com/yongjohnlee80/golib/tui"
+	"github.com/yongjohnlee80/golib/tui/widget"
 )
 
 func TestWindowTaskbarRestoresByKeyboardWithoutInlineChildRemoval(t *testing.T) {

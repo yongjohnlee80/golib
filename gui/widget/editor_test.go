@@ -205,7 +205,7 @@ func TestKeyScriptMatchesTheTuiEditor(t *testing.T) {
 	g := startEditor(t, 60, 12, WithCore(tuiwidget.CoreInitialText(initial), tuiwidget.CoreSelection(true), tuiwidget.CoreYank(true), tuiwidget.CoreUndo(true)))
 	g.keys(script...)
 
-	te := tuiwidget.NewEditor(tuiwidget.WithInitialText(initial), tuiwidget.WithSelection(true), tuiwidget.WithYank(true), tuiwidget.WithUndo(true))
+	te := tuiwidget.NewEditor(tuiwidget.WithCore(tuiwidget.CoreInitialText(initial)), tuiwidget.WithCore(tuiwidget.CoreSelection(true)), tuiwidget.WithCore(tuiwidget.CoreYank(true)), tuiwidget.WithCore(tuiwidget.CoreUndo(true)))
 	tb := tui.NewTestBackend(60, 12)
 	tsh := &shell{child: te}
 	app := tui.NewApp(tsh, tui.WithBackend(tb))
@@ -222,7 +222,7 @@ func TestKeyScriptMatchesTheTuiEditor(t *testing.T) {
 	var gl, gc, tl, tc int
 	var gm, tm tuiwidget.EditorMode
 	g.onLoop(func() { gv, gm = g.e.core.Value(), g.e.core.Mode(); gl, gc = g.e.core.Line() })
-	th.onLoop(func() { tv, tm = te.Value(), te.Mode(); tl, tc = te.Line() })
+	th.onLoop(func() { tv, tm = te.Core().Value(), te.Core().Mode(); tl, tc = te.Core().Line() })
 	if gv == initial {
 		t.Fatalf("the script changed nothing: %q", gv)
 	}

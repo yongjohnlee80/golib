@@ -13,7 +13,7 @@ import (
 // (which records what bubbles past it), with the keyboard in the editor.
 func cmdFixture(t *testing.T, text string, opts ...widget.EditorOption) (*harness, *widget.Editor, *shell) {
 	t.Helper()
-	ed := widget.NewEditor(append([]widget.EditorOption{widget.WithInitialText(text)}, opts...)...)
+	ed := widget.NewEditor(append([]widget.EditorOption{widget.WithCore(widget.CoreInitialText(text))}, opts...)...)
 	sh := newShell(widget.NewOverlayHost(ed))
 	h := startApp(t, sh, 80, 20)
 	h.inject(click(0, 0))
@@ -32,7 +32,7 @@ func enter(h *harness) { h.inject(tui.KeyEvent{Code: tui.KeyEnter}); h.settle() 
 
 func promptOpen(h *harness, ed *widget.Editor) bool {
 	var open bool
-	h.onLoop(func() { open = ed.CommandLineOpen() })
+	h.onLoop(func() { open = ed.CommandLine().IsOpen() })
 	return open
 }
 
@@ -83,7 +83,7 @@ func TestTabCompletesAndListsTheCandidates(t *testing.T) {
 	h, ed, _ := cmdFixture(t, "text")
 	defer h.stop()
 	h.onLoop(func() {
-		_ = ed.Commands().Add(widget.Command{Name: "table", Args: "<cols> <rows>", Help: "a Markdown table",
+		_ = ed.Core().Commands().Add(widget.Command{Name: "table", Args: "<cols> <rows>", Help: "a Markdown table",
 			Run: func(widget.CommandContext) error { return nil }})
 	})
 	typeIn(h, ":")
@@ -143,13 +143,13 @@ func TestTabCompletesAnArgument(t *testing.T) {
 	defer h.stop()
 	var got []widget.CompleteContext
 	h.onLoop(func() {
-		_ = ed.Commands().Add(widget.Command{Name: "mermaid", Args: "<type>", Help: "a diagram",
+		_ = ed.Core().Commands().Add(widget.Command{Name: "mermaid", Args: "<type>", Help: "a diagram",
 			Run: func(widget.CommandContext) error { return nil },
 			Complete: func(x widget.CompleteContext) []string {
 				got = append(got, x)
 				return []string{"flowchart", "sequence", "state", "sequence", ""}
 			}})
-		_ = ed.Commands().Add(widget.Command{Name: "acc", Run: func(widget.CommandContext) error { return nil },
+		_ = ed.Core().Commands().Add(widget.Command{Name: "acc", Run: func(widget.CommandContext) error { return nil },
 			Complete: func(widget.CompleteContext) []string { return []string{"éa", "èb"} }})
 	})
 	tab := func(line string) {
@@ -213,8 +213,8 @@ func TestTabCompletesAnArgument(t *testing.T) {
 func TestWriteAndQuitFromThePromptReachTheHost(t *testing.T) {
 	var got []string
 	h, _, _ := cmdFixture(t, "text",
-		widget.WithOnWrite(func(quit bool) error { got = append(got, map[bool]string{false: "w", true: "wq"}[quit]); return nil }),
-		widget.WithOnQuit(func(force bool) error { got = append(got, map[bool]string{false: "q", true: "q!"}[force]); return nil }))
+		widget.WithCore(widget.CoreOnWrite(func(quit bool) error { got = append(got, map[bool]string{false: "w", true: "wq"}[quit]); return nil })),
+		widget.WithCore(widget.CoreOnQuit(func(force bool) error { got = append(got, map[bool]string{false: "q", true: "q!"}[force]); return nil })))
 	defer h.stop()
 	for _, line := range []string{"w", "wq", "q!"} {
 		typeIn(h, ":"+line)
@@ -252,7 +252,7 @@ func TestReplaceAsksAtEachMatch(t *testing.T) {
 	typeIn(h, "y")
 	h.waitFor("the question to go", func() bool { return !strings.Contains(h.grid(), "Replace this match?") })
 	var text string
-	h.onLoop(func() { text = ed.Value() })
+	h.onLoop(func() { text = ed.Core().Value() })
 	if text != "dog cat\ndog" {
 		t.Fatalf("text = %q", text)
 	}
@@ -262,14 +262,15 @@ func TestReplaceAsksAtEachMatch(t *testing.T) {
 	h.waitFor("the question", func() bool { return strings.Contains(h.grid(), "Replace this match?") })
 	typeIn(h, "q")
 	h.waitFor("the question to go", func() bool { return !strings.Contains(h.grid(), "Replace this match?") })
-	h.onLoop(func() { text = ed.Value() })
+	h.onLoop(func() { text = ed.Core().Value() })
 	if text != "dog cat\ndog" {
 		t.Fatalf("after q: %q", text)
 	}
 }
 
 func TestWithCommandLineOffLetsColonBubble(t *testing.T) {
-	h, ed, sh := cmdFixture(t, "text", widget.WithCommandLine(false))
+	h, ed, sh := cmdFixture(t, "text")
+	h.onLoop(func() { ed.CommandLine().SetEnabled(false) })
 	defer h.stop()
 	typeIn(h, ":")
 	if promptOpen(h, ed) {
@@ -294,7 +295,7 @@ func TestTheCandidatesWearTheCardsBackground(t *testing.T) {
 		style.WithToken(style.TokenSurface, style.ANSI(6)),
 		style.WithToken(style.TokenPrimary, style.ANSI(1)),
 		style.WithToken(style.TokenTextOnPrimary, style.ANSI(7)))
-	ed := widget.NewEditor(widget.WithInitialText("text"))
+	ed := widget.NewEditor(widget.WithCore(widget.CoreInitialText("text")))
 	h := startAppOpts(t, newShell(widget.NewOverlayHost(ed)), 80, 20, tui.WithTheme(&th))
 	defer h.stop()
 	h.inject(click(0, 0))
@@ -328,7 +329,7 @@ func TestTheDropdownFollowsTheChosenCandidate(t *testing.T) {
 	defer h.stop()
 	h.onLoop(func() {
 		for _, n := range []string{"ca", "cb", "cc", "cd", "ce", "cf", "cg", "ch", "ci", "cj"} {
-			_ = ed.Commands().Add(widget.Command{Name: n, Help: "help " + n, Run: func(widget.CommandContext) error { return nil }})
+			_ = ed.Core().Commands().Add(widget.Command{Name: n, Help: "help " + n, Run: func(widget.CommandContext) error { return nil }})
 		}
 	})
 	typeIn(h, ":c")

@@ -1,8 +1,9 @@
 package widget
 
 import (
-	"github.com/yongjohnlee80/golib/tui"
 	"math"
+
+	"github.com/yongjohnlee80/golib/tui"
 )
 
 type windowDrag struct {

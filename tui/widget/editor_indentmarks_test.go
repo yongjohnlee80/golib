@@ -45,7 +45,7 @@ func TestIndentMarkedCountsTheMarkedLinesLeadingRun(t *testing.T) {
 // The terminal editor draws the cursor line's leading spaces as a dimmed "·": the text after
 // them, and the other lines, are untouched. "All" marks every line.
 func TestTheEditorMarksTheCursorLinesIndentation(t *testing.T) {
-	h, ed, _ := focusedEditor(t, 20, 4, widget.WithInitialText("  a b\n    c"),
+	h, ed, _ := focusedEditor(t, 20, 4, widget.WithCore(widget.CoreInitialText("  a b\n    c")),
 		widget.WithCore(widget.CoreIndentMarks(widget.IndentMarksCursorLine)))
 	h.settle()
 	if got := strings.TrimRight(h.row(0), " "); got != "··a b" {
@@ -80,7 +80,7 @@ func TestALeadingSpaceWithACombiningMarkIsIndentation(t *testing.T) {
 		t.Errorf("IndentMarked(\"\\u0301x\") = %d, want 0 (no leading space)", got)
 	}
 
-	h, _, _ := focusedEditor(t, 20, 4, widget.WithInitialText(" \u0301x"),
+	h, _, _ := focusedEditor(t, 20, 4, widget.WithCore(widget.CoreInitialText(" \u0301x")),
 		widget.WithCore(widget.CoreIndentMarks(widget.IndentMarksCursorLine)))
 	h.settle()
 	cell := h.tb.Snapshot()[0][0]

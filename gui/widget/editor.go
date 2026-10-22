@@ -245,6 +245,10 @@ func (e *Editor) Visible() bool                         { return e.panel.Visible
 // Core is the editor's behaviour: its text, cursor, modes and keymap.
 func (e *Editor) Core() *tuiwidget.EditorCore { return e.core }
 
+// ContextMenu is the editor's right-click menu: off unless turned on (WithContextMenu, or
+// ContextMenu().SetEnabled), its rows the stock ones or a consumer's.
+func (e *Editor) ContextMenu() *tuiwidget.EditorMenu { return e.menu }
+
 // Tabs is the strip at the title bar's left, in all its room up to Raw | Rendered: the host's tabs
 // (its open buffers, say), which the host sets and hears chosen. With none set it takes no room;
 // SetLabelFit lets its tabs widen into the room it has.

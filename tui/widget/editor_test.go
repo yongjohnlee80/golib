@@ -28,9 +28,9 @@ func focusedEditor(t *testing.T, w, h int, opts ...widget.EditorOption) (*harnes
 // edState reads editor state on the loop goroutine.
 func edState(h *harness, ed *widget.Editor) (val string, mode widget.EditorMode, ln, col int) {
 	h.onLoop(func() {
-		val = ed.Value()
-		mode = ed.Mode()
-		ln, col = ed.Line()
+		val = ed.Core().Value()
+		mode = ed.Core().Mode()
+		ln, col = ed.Core().Line()
 	})
 	return
 }
@@ -86,7 +86,7 @@ func TestEditorChordSettledByOtherKeyAndPaste(t *testing.T) {
 }
 
 func TestEditorChordDisabled(t *testing.T) {
-	h, ed, sh := focusedEditor(t, 30, 6, widget.WithEscapeChord(""))
+	h, ed, sh := focusedEditor(t, 30, 6, widget.WithCore(widget.CoreEscapeChord("")))
 	h.inject(key('i'))
 	h.inject(typeString("jk")...)
 	h.barrier(sh)
@@ -104,14 +104,14 @@ func TestEditorEscapeChordValidation(t *testing.T) {
 					t.Fatalf("WithEscapeChord(%q) did not panic", bad)
 				}
 			}()
-			widget.NewEditor(widget.WithEscapeChord(bad))
+			widget.NewEditor(widget.WithCore(widget.CoreEscapeChord(bad)))
 		}()
 	}
 }
 
 func TestEditorNormalMotionsAndCounts(t *testing.T) {
 	h, ed, sh := focusedEditor(t, 40, 8,
-		widget.WithInitialText("alpha beta gamma\nsecond line\n\nfourth"))
+		widget.WithCore(widget.CoreInitialText("alpha beta gamma\nsecond line\n\nfourth")))
 
 	step := func(keys string, wantLn, wantCol int) {
 		t.Helper()
@@ -147,13 +147,13 @@ func TestEditorNormalMotionsAndCounts(t *testing.T) {
 }
 
 func TestEditorXRegisterAndPaste(t *testing.T) {
-	h, ed, sh := focusedEditor(t, 30, 6, widget.WithInitialText("abcd"))
+	h, ed, sh := focusedEditor(t, 30, 6, widget.WithCore(widget.CoreInitialText("abcd")))
 	h.inject(typeString("2x")...) // delete "ab" into the register
 	h.barrier(sh)
 	wantState(t, h, ed, "cd", widget.ModeNormal, 0, 0)
 	var reg string
 	var lw bool
-	h.onLoop(func() { reg, lw = ed.Register() })
+	h.onLoop(func() { reg, lw = ed.Core().Register() })
 	if reg != "ab" || lw {
 		t.Fatalf("register = (%q, %v), want (\"ab\", charwise)", reg, lw)
 	}
@@ -166,14 +166,14 @@ func TestEditorXRegisterAndPaste(t *testing.T) {
 }
 
 func TestEditorLineDeleteYankPaste(t *testing.T) {
-	h, ed, sh := focusedEditor(t, 30, 8, widget.WithInitialText("one\ntwo\nthree"))
+	h, ed, sh := focusedEditor(t, 30, 8, widget.WithCore(widget.CoreInitialText("one\ntwo\nthree")))
 
 	h.inject(typeString("dd")...) // delete "one" linewise
 	h.barrier(sh)
 	wantState(t, h, ed, "two\nthree", widget.ModeNormal, 0, 0)
 	var reg string
 	var lw bool
-	h.onLoop(func() { reg, lw = ed.Register() })
+	h.onLoop(func() { reg, lw = ed.Core().Register() })
 	if reg != "one" || !lw {
 		t.Fatalf("register = (%q, %v), want (\"one\", linewise)", reg, lw)
 	}
@@ -190,7 +190,7 @@ func TestEditorLineDeleteYankPaste(t *testing.T) {
 	h.inject(typeString("2dd")...) // count on dd
 	h.barrier(sh)
 	wantState(t, h, ed, "two\nthree", widget.ModeNormal, 1, 0)
-	h.onLoop(func() { reg, lw = ed.Register() })
+	h.onLoop(func() { reg, lw = ed.Core().Register() })
 	if reg != "one\none" || !lw {
 		t.Fatalf("register = (%q, %v), want two lines linewise", reg, lw)
 	}
@@ -199,7 +199,7 @@ func TestEditorLineDeleteYankPaste(t *testing.T) {
 func TestEditorDoubleKeyCancel(t *testing.T) {
 	// `d` is an operator: a motion completes it (`dw` deletes the word); a key that is no motion
 	// cancels it and is processed afresh (`dx` is x).
-	h, ed, sh := focusedEditor(t, 30, 6, widget.WithInitialText("alpha beta"))
+	h, ed, sh := focusedEditor(t, 30, 6, widget.WithCore(widget.CoreInitialText("alpha beta")))
 	h.inject(typeString("dw")...)
 	h.barrier(sh)
 	wantState(t, h, ed, "beta", widget.ModeNormal, 0, 0)
@@ -209,24 +209,24 @@ func TestEditorDoubleKeyCancel(t *testing.T) {
 }
 
 func TestEditorDeleteToEnd(t *testing.T) {
-	h, ed, sh := focusedEditor(t, 30, 6, widget.WithInitialText("alpha beta"))
+	h, ed, sh := focusedEditor(t, 30, 6, widget.WithCore(widget.CoreInitialText("alpha beta")))
 	h.inject(typeString("wD")...) // cursor to "beta", delete to end
 	h.barrier(sh)
 	wantState(t, h, ed, "alpha ", widget.ModeNormal, 0, 5)
 	var reg string
-	h.onLoop(func() { reg, _ = ed.Register() })
+	h.onLoop(func() { reg, _ = ed.Core().Register() })
 	if reg != "beta" {
 		t.Fatalf("register = %q, want \"beta\"", reg)
 	}
 }
 
 func TestEditorVisualCharwiseInclusive(t *testing.T) {
-	h, ed, sh := focusedEditor(t, 30, 6, widget.WithInitialText("abcdef"))
+	h, ed, sh := focusedEditor(t, 30, 6, widget.WithCore(widget.CoreInitialText("abcdef")))
 	h.inject(typeString("v2ly")...) // select a..c inclusive, yank
 	h.barrier(sh)
 	var reg string
 	var lw bool
-	h.onLoop(func() { reg, lw = ed.Register() })
+	h.onLoop(func() { reg, lw = ed.Core().Register() })
 	if reg != "abc" || lw {
 		t.Fatalf("register = (%q, %v), want (\"abc\", charwise)", reg, lw)
 	}
@@ -241,20 +241,20 @@ func TestEditorVisualCharwiseInclusive(t *testing.T) {
 }
 
 func TestEditorVisualLine(t *testing.T) {
-	h, ed, sh := focusedEditor(t, 30, 8, widget.WithInitialText("one\ntwo\nthree"))
+	h, ed, sh := focusedEditor(t, 30, 8, widget.WithCore(widget.CoreInitialText("one\ntwo\nthree")))
 	h.inject(typeString("Vjd")...) // line-select one+two, delete
 	h.barrier(sh)
 	wantState(t, h, ed, "three", widget.ModeNormal, 0, 0)
 	var reg string
 	var lw bool
-	h.onLoop(func() { reg, lw = ed.Register() })
+	h.onLoop(func() { reg, lw = ed.Core().Register() })
 	if reg != "one\ntwo" || !lw {
 		t.Fatalf("register = (%q, %v), want linewise one+two", reg, lw)
 	}
 }
 
 func TestEditorVisualEscape(t *testing.T) {
-	h, ed, sh := focusedEditor(t, 30, 6, widget.WithInitialText("abc"))
+	h, ed, sh := focusedEditor(t, 30, 6, widget.WithCore(widget.CoreInitialText("abc")))
 	h.inject(typeString("vl")...)
 	h.barrier(sh)
 	if _, mode, _, _ := edState(h, ed); mode != widget.ModeVisual {
@@ -304,12 +304,12 @@ func TestEditorUndoGroups(t *testing.T) {
 }
 
 func TestEditorSetValueIsDocumentBoundary(t *testing.T) {
-	h, ed, sh := focusedEditor(t, 30, 6, widget.WithInitialText("seed"))
+	h, ed, sh := focusedEditor(t, 30, 6, widget.WithCore(widget.CoreInitialText("seed")))
 	h.inject(typeString("x")...) // build undo history
 	h.inject(key('i'))
 	h.barrier(sh)
 
-	h.onLoop(func() { ed.SetRegister("keepme", false); ed.SetValue("fresh doc") })
+	h.onLoop(func() { ed.Core().SetRegister("keepme", false); ed.SetValue("fresh doc") })
 	h.barrier(sh)
 	wantState(t, h, ed, "fresh doc", widget.ModeNormal, 0, 0)
 
@@ -321,14 +321,14 @@ func TestEditorSetValueIsDocumentBoundary(t *testing.T) {
 		t.Fatalf("undo after SetValue mutated the doc: %q", val)
 	}
 	var reg string
-	h.onLoop(func() { reg, _ = ed.Register() })
+	h.onLoop(func() { reg, _ = ed.Core().Register() })
 	if reg != "keepme" {
 		t.Fatalf("register = %q, want preserved", reg)
 	}
 }
 
 func TestEditorUnboundKeysBubble(t *testing.T) {
-	h, ed, sh := focusedEditor(t, 30, 6, widget.WithInitialText("abc"))
+	h, ed, sh := focusedEditor(t, 30, 6, widget.WithCore(widget.CoreInitialText("abc")))
 	h.inject(key(' ')) // the leader key must reach the application
 	h.inject(key('Q')) // unbound
 	h.barrier(sh)
@@ -367,7 +367,7 @@ func TestEditorKeymapOverlayAndUnbind(t *testing.T) {
 		{Mode: widget.ModeNormal, Code: ';'}: widget.ActLineEnd,
 		{Mode: widget.ModeNormal, Code: '$'}: widget.ActUnbound,
 	}
-	h, ed, sh := focusedEditor(t, 30, 6, widget.WithInitialText("abcdef"), widget.WithKeymap(overlay))
+	h, ed, sh := focusedEditor(t, 30, 6, widget.WithCore(widget.CoreInitialText("abcdef")), widget.WithCore(widget.CoreKeymap(overlay)))
 	h.inject(key(';'))
 	h.barrier(sh)
 	_, _, _, col := edState(h, ed)
@@ -398,13 +398,13 @@ func TestEditorKeymapValidationPanics(t *testing.T) {
 					t.Fatalf("case %d: WithKeymap did not panic", i)
 				}
 			}()
-			widget.NewEditor(widget.WithKeymap(km))
+			widget.NewEditor(widget.WithCore(widget.CoreKeymap(km)))
 		}()
 	}
 }
 
 func TestEditorOpenLinesAndAppend(t *testing.T) {
-	h, ed, sh := focusedEditor(t, 30, 8, widget.WithInitialText("top\nbottom"))
+	h, ed, sh := focusedEditor(t, 30, 8, widget.WithCore(widget.CoreInitialText("top\nbottom")))
 	h.inject(key('o'))
 	h.inject(typeString("mid")...)
 	h.inject(key(tui.KeyEscape))
@@ -481,7 +481,7 @@ func TestEditorTabInsertAndWhitespaceMotions(t *testing.T) {
 // The count cap is a hard ceiling; explicit counts drive gg and G.
 func TestEditorCountCapAndGoToLine(t *testing.T) {
 	h, ed, sh := focusedEditor(t, 30, 8,
-		widget.WithInitialText("l1\nl2\nl3\nl4\nl5"))
+		widget.WithCore(widget.CoreInitialText("l1\nl2\nl3\nl4\nl5")))
 
 	h.inject(typeString("3G")...)
 	h.barrier(sh)
@@ -515,7 +515,7 @@ func TestEditorReboundPrefixCompletesOnItsChord(t *testing.T) {
 		{Mode: widget.ModeNormal, Code: 'd'}: widget.ActUnbound,
 	}
 	h, ed, sh := focusedEditor(t, 30, 8,
-		widget.WithInitialText("one\ntwo"), widget.WithKeymap(overlay))
+		widget.WithCore(widget.CoreInitialText("one\ntwo")), widget.WithCore(widget.CoreKeymap(overlay)))
 	h.inject(typeString("ss")...)
 	h.barrier(sh)
 	val, _, _, _ := edState(h, ed)
@@ -532,7 +532,7 @@ func TestEditorReboundPrefixCompletesOnItsChord(t *testing.T) {
 
 // S3: paste in Visual replaces the selection.
 func TestEditorVisualPasteReplacesSelection(t *testing.T) {
-	h, ed, sh := focusedEditor(t, 30, 6, widget.WithInitialText("abcdef"))
+	h, ed, sh := focusedEditor(t, 30, 6, widget.WithCore(widget.CoreInitialText("abcdef")))
 	h.inject(typeString("v2l")...) // select abc
 	h.inject(tui.PasteEvent{Text: "XY"})
 	h.barrier(sh)
@@ -544,7 +544,7 @@ func TestEditorVisualPasteReplacesSelection(t *testing.T) {
 
 // r2 residual: focus loss clears the pending double-key prefix and count.
 func TestEditorFocusLossClearsPendingCommand(t *testing.T) {
-	ed := widget.NewEditor(widget.WithInitialText("one\ntwo"))
+	ed := widget.NewEditor(widget.WithCore(widget.CoreInitialText("one\ntwo")))
 	other := widget.NewTextInput()
 	sp := widget.NewSplit(widget.Horizontal, ed, other)
 	sh := newShell(sp)
@@ -558,7 +558,7 @@ func TestEditorFocusLossClearsPendingCommand(t *testing.T) {
 	h.inject(key('d')) // must ARM again, not complete a stale dd
 	h.barrier(sh)
 	var val string
-	h.onLoop(func() { val = ed.Value() })
+	h.onLoop(func() { val = ed.Core().Value() })
 	if val != "one\ntwo" {
 		t.Fatalf("stale dd completed across focus loss: %q", val)
 	}
@@ -578,9 +578,9 @@ func TestEditorSetLineAndLines(t *testing.T) {
 	var lines []string
 	var row, col int
 	h.onLoop(func() {
-		lines = e.Lines()
-		e.SetLine(2, 3)
-		row, col = e.Line()
+		lines = e.Core().Lines()
+		e.Core().SetLine(2, 3)
+		row, col = e.Core().Line()
 	})
 	h.barrier(sh)
 	if len(lines) != 3 || lines[1] != "beta" {
@@ -591,8 +591,8 @@ func TestEditorSetLineAndLines(t *testing.T) {
 	}
 	// Out-of-range targets clamp instead of panicking.
 	h.onLoop(func() {
-		e.SetLine(99, 99)
-		row, col = e.Line()
+		e.Core().SetLine(99, 99)
+		row, col = e.Core().Line()
 	})
 	h.barrier(sh)
 	if row != 2 || col > 4 {
@@ -612,7 +612,7 @@ func TestEditorReadOnlyViewer(t *testing.T) {
 	const doc = "alpha\nbeta\ngamma"
 	h.onLoop(func() {
 		e.SetValue(doc)
-		e.SetReadOnly(true)
+		e.Core().SetReadOnly(true)
 	})
 	h.barrier(sh)
 
@@ -621,7 +621,7 @@ func TestEditorReadOnlyViewer(t *testing.T) {
 	h.barrier(sh)
 	var got string
 	var mode widget.EditorMode
-	h.onLoop(func() { got, mode = e.Value(), e.Mode() })
+	h.onLoop(func() { got, mode = e.Core().Value(), e.Core().Mode() })
 	if got != doc {
 		t.Fatalf("read-only document changed: %q", got)
 	}
@@ -635,8 +635,8 @@ func TestEditorReadOnlyViewer(t *testing.T) {
 	var reg string
 	var row int
 	h.onLoop(func() {
-		reg, _ = e.Register()
-		row, _ = e.Line()
+		reg, _ = e.Core().Register()
+		row, _ = e.Core().Line()
 	})
 	if row != 1 {
 		t.Fatalf("j should move in read-only mode: row = %d", row)
@@ -647,7 +647,7 @@ func TestEditorReadOnlyViewer(t *testing.T) {
 	// Paste events cannot sneak text in either.
 	h.inject(tui.PasteEvent{Text: "nope"})
 	h.barrier(sh)
-	h.onLoop(func() { got = e.Value() })
+	h.onLoop(func() { got = e.Core().Value() })
 	if got != doc {
 		t.Fatalf("paste mutated a read-only document: %q", got)
 	}
@@ -684,7 +684,7 @@ func TestEditorEscBubblesWhenIdle(t *testing.T) {
 		t.Fatal("Esc in Visual mode must be consumed (it exits Visual)")
 	}
 	var mode widget.EditorMode
-	h.onLoop(func() { mode = e.Mode() })
+	h.onLoop(func() { mode = e.Core().Mode() })
 	if mode != widget.ModeNormal {
 		t.Fatalf("Esc should leave Visual: mode = %v", mode)
 	}
@@ -1186,12 +1186,12 @@ func TestEditorWrapSoftClickStaysOnItsRow(t *testing.T) {
 
 func TestEditorNanoKeymap(t *testing.T) {
 	h, ed, sh := focusedEditor(t, 40, 10,
-		widget.WithNanoKeymap(),
-		widget.WithInitialText("first line\nsecond line"),
+		widget.WithCore(widget.CoreKeyset(widget.KeysetNano)),
+		widget.WithCore(widget.CoreInitialText("first line\nsecond line")),
 	)
 
 	// Nano starts in insert mode immediately (modeless)
-	if mode := ed.Mode(); mode != widget.ModeInsert {
+	if mode := ed.Core().Mode(); mode != widget.ModeInsert {
 		t.Fatalf("expected initial mode ModeInsert for Nano, got %v", mode)
 	}
 
@@ -1225,11 +1225,11 @@ func TestEditorNanoKeymap(t *testing.T) {
 
 func TestEditorStandardKeymap(t *testing.T) {
 	h, ed, sh := focusedEditor(t, 40, 10,
-		widget.WithStandardKeymap(),
-		widget.WithInitialText("sample text"),
+		widget.WithCore(widget.CoreKeyset(widget.KeysetStandard)),
+		widget.WithCore(widget.CoreInitialText("sample text")),
 	)
 
-	if mode := ed.Mode(); mode != widget.ModeInsert {
+	if mode := ed.Core().Mode(); mode != widget.ModeInsert {
 		t.Fatalf("expected initial mode ModeInsert for Standard, got %v", mode)
 	}
 
@@ -1241,7 +1241,7 @@ func TestEditorStandardKeymap(t *testing.T) {
 	h.inject(keyMod('c', tui.ModCtrl))
 	h.barrier(sh)
 
-	reg, _ := ed.Register()
+	reg, _ := ed.Core().Register()
 	if reg != "sample text" {
 		t.Fatalf("after Ctrl+C: register has %q, want \"sample text\"", reg)
 	}
@@ -1271,9 +1271,9 @@ func TestEditorStandardKeymap(t *testing.T) {
 
 func TestEditorVimKeysetEscapeChord(t *testing.T) {
 	// Confirm that 'jk' functions as escape for Vim keyset by default
-	h, ed, sh := focusedEditor(t, 40, 10, widget.WithVimKeymap(), widget.WithInitialText("start"))
+	h, ed, sh := focusedEditor(t, 40, 10, widget.WithCore(widget.CoreKeyset(widget.KeysetVim)), widget.WithCore(widget.CoreInitialText("start")))
 
-	if chord := ed.EscapeChord(); chord != "jk" {
+	if chord := ed.Core().EscapeChord(); chord != "jk" {
 		t.Fatalf("ed.EscapeChord() = %q, want \"jk\"", chord)
 	}
 
@@ -1282,7 +1282,7 @@ func TestEditorVimKeysetEscapeChord(t *testing.T) {
 	h.inject(typeString(" more text")...)
 	h.barrier(sh)
 
-	if mode := ed.Mode(); mode != widget.ModeInsert {
+	if mode := ed.Core().Mode(); mode != widget.ModeInsert {
 		t.Fatalf("expected ModeInsert, got %v", mode)
 	}
 
@@ -1295,16 +1295,16 @@ func TestEditorVimKeysetEscapeChord(t *testing.T) {
 }
 
 func TestEditorRuntimeKeymapReflection(t *testing.T) {
-	ed := widget.NewEditor(widget.WithVimKeymap())
+	ed := widget.NewEditor(widget.WithCore(widget.CoreKeyset(widget.KeysetVim)))
 
-	if ed.Keyset() != widget.KeysetVim {
-		t.Errorf("ed.Keyset() = %v, want KeysetVim", ed.Keyset())
+	if ed.Core().Keyset() != widget.KeysetVim {
+		t.Errorf("ed.Keyset() = %v, want KeysetVim", ed.Core().Keyset())
 	}
-	if ed.EscapeChord() != "jk" {
-		t.Errorf("ed.EscapeChord() = %q, want \"jk\"", ed.EscapeChord())
+	if ed.Core().EscapeChord() != "jk" {
+		t.Errorf("ed.EscapeChord() = %q, want \"jk\"", ed.Core().EscapeChord())
 	}
 
-	snap := ed.SnapshotKeymap()
+	snap := ed.Core().SnapshotKeymap()
 	if snap.KeysetName != "Vim" || !snap.Modal || snap.EscapeChord != "jk" {
 		t.Errorf("unexpected snapshot metadata: %+v", snap)
 	}
@@ -1320,13 +1320,13 @@ func TestEditorRuntimeKeymapReflection(t *testing.T) {
 	}
 
 	// ActionForChord lookup
-	act, ok := ed.ActionForChord(widget.KeyChord{Mode: widget.ModeNormal, Code: 'j'})
+	act, ok := ed.Core().ActionForChord(widget.KeyChord{Mode: widget.ModeNormal, Code: 'j'})
 	if !ok || act != widget.ActDown {
 		t.Errorf("ActionForChord(Normal, 'j') = (%v, %v), want (ActDown, true)", act, ok)
 	}
 
 	// ChordsForAction reverse lookup
-	chords := ed.ChordsForAction(widget.ActDown)
+	chords := ed.Core().ChordsForAction(widget.ActDown)
 	foundJ := false
 	for _, c := range chords {
 		if c.Mode == widget.ModeNormal && c.Code == 'j' {
@@ -1339,22 +1339,22 @@ func TestEditorRuntimeKeymapReflection(t *testing.T) {
 	}
 
 	// Keymap defensive copy
-	km1 := ed.Keymap()
+	km1 := ed.Core().Keymap()
 	km1[widget.KeyChord{Mode: widget.ModeNormal, Code: 'j'}] = widget.ActUp
-	km2 := ed.Keymap()
+	km2 := ed.Core().Keymap()
 	if km2[widget.KeyChord{Mode: widget.ModeNormal, Code: 'j'}] != widget.ActDown {
 		t.Errorf("mutating Keymap copy affected internal keymap")
 	}
 }
 
 func TestEditorMousePressModelessVisualExit(t *testing.T) {
-	ed := widget.NewEditor(widget.WithStandardKeymap(), widget.WithInitialText("hello\nworld"))
+	ed := widget.NewEditor(widget.WithCore(widget.CoreKeyset(widget.KeysetStandard)), widget.WithCore(widget.CoreInitialText("hello\nworld")))
 	_ = ed.Layout(tui.Tight(tui.Size{W: 20, H: 10}))
 
 	// Select all with Ctrl+A -> ModeVisual
 	ed.HandleEvent(tui.KeyEvent{Code: 'a', Mods: tui.ModCtrl})
-	if ed.Mode() != widget.ModeVisual {
-		t.Fatalf("expected ModeVisual after Ctrl+A, got %v", ed.Mode())
+	if ed.Core().Mode() != widget.ModeVisual {
+		t.Fatalf("expected ModeVisual after Ctrl+A, got %v", ed.Core().Mode())
 	}
 
 	// Mouse press at (1, 1) -> must exit visual mode and return to ModeInsert (modeless)
@@ -1365,10 +1365,10 @@ func TestEditorMousePressModelessVisualExit(t *testing.T) {
 		Y:      1,
 	})
 
-	if ed.Mode() != widget.ModeInsert {
-		t.Errorf("expected ModeInsert after mouse press in modeless editor, got %v", ed.Mode())
+	if ed.Core().Mode() != widget.ModeInsert {
+		t.Errorf("expected ModeInsert after mouse press in modeless editor, got %v", ed.Core().Mode())
 	}
-	row, col := ed.Line()
+	row, col := ed.Core().Line()
 	if row != 1 || col != 1 {
 		t.Errorf("expected cursor at (1, 1), got (%d, %d)", row, col)
 	}

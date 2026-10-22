@@ -36,7 +36,7 @@ func TestAnEditorsRulerAndCursorPositionFromTheDocument(t *testing.T) {
 				t.Error("no editor ed") // on the UI loop: Fatal would not end the test
 				return
 			}
-			got[0], got[1] = e.Line()
+			got[0], got[1] = e.Core().Line()
 		})
 		return got
 	}
@@ -84,7 +84,7 @@ func TestAnEditorSaysItsCursorMoved(t *testing.T) {
 			t.Error("no editor ed")
 			return
 		}
-		e.SetLine(0, 1)
+		e.Core().SetLine(0, 1)
 	})
 	s.WaitFor(t, "SetLine reported", func(string) bool { return moves.Load() == 2 })
 }
@@ -177,7 +177,7 @@ func TestAnEditorThatKeepsItsPlace(t *testing.T) {
 			s.WaitForText(t, "l0")
 			onScreenLoop(t, s, func() {
 				e, _ := tuidecl.FindAs[*widget.Editor](s.Program, "ed")
-				e.SetLine(12, 0) // shown from line 8: the cursor on the last of five rows
+				e.Core().SetLine(12, 0) // shown from line 8: the cursor on the last of five rows
 			})
 			s.WaitFor(t, "line 8 at the top", func(string) bool { return strings.HasPrefix(row(s, 0), "l8") })
 			onScreenLoop(t, s, func() {
@@ -189,7 +189,7 @@ func TestAnEditorThatKeepsItsPlace(t *testing.T) {
 			var line int
 			onScreenLoop(t, s, func() {
 				e, _ := tuidecl.FindAs[*widget.Editor](s.Program, "ed")
-				line, _ = e.Line()
+				line, _ = e.Core().Line()
 			})
 			if line != c.wantLine {
 				t.Errorf("the cursor is on line %d, want %d", line, c.wantLine)

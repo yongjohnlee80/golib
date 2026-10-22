@@ -47,7 +47,7 @@ func (m *maximizeRow) answered() bool { return m.took.Load()+m.refused.Load() > 
 // it once the menu has closed, and the window around the editor maximizes.
 func TestAnEditorMenuRowMaximizesTheWindowAroundIt(t *testing.T) {
 	row := &maximizeRow{}
-	ed := widget.NewEditor(widget.WithInitialText("hello"), widget.WithContextMenu(func(*widget.Editor) []widget.MenuItemModel {
+	ed := widget.NewEditor(widget.WithCore(widget.CoreInitialText("hello")), widget.WithContextMenu(func(*widget.Editor) []widget.MenuItemModel {
 		return []widget.MenuItemModel{widget.NewCommand("max", "Maximize", widget.EditorMenuAction{ID: "max",
 			Run: func(*widget.Editor) { row.run() }})}
 	}))
@@ -71,7 +71,7 @@ func TestAnEditorMenuRowMaximizesTheWindowAroundIt(t *testing.T) {
 			row.took.Load(), row.refused.Load())
 	}
 	var maximized, open bool
-	h.onLoop(func() { maximized, open = w.Core().State().Maximized, ed.ContextMenuOpen() })
+	h.onLoop(func() { maximized, open = w.Core().State().Maximized, ed.ContextMenu().IsOpen() })
 	if !maximized || open {
 		t.Errorf("maximized %v, the menu open %v", maximized, open)
 	}

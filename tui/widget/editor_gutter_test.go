@@ -13,7 +13,7 @@ import (
 // columns. Hidden, the text takes the whole width again. A count that gains a digit widens the
 // gutter.
 func TestTheEditorsLineNumbers(t *testing.T) {
-	h, ed, sh := focusedEditor(t, 22, 6, widget.WithInitialText("alpha\nbravo charlie delta echo\ngolf"),
+	h, ed, sh := focusedEditor(t, 22, 6, widget.WithCore(widget.CoreInitialText("alpha\nbravo charlie delta echo\ngolf")),
 		widget.WithEditorLineNumbers(true), widget.WithEditorWrap(widget.WrapSoft))
 	h.settle()
 	for y, want := range []string{"   1  alpha", "   2  bravo charlie", "      delta echo", "   3  golf"} {

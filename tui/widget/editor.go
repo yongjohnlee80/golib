@@ -19,12 +19,13 @@ import (
 //   - [KeysetNano]: Modeless terminal editor with Nano-style control shortcuts (Ctrl+K cut line, Ctrl+U paste, Ctrl+A/E line start/end).
 //   - [KeysetStandard]: Modeless desktop/GUI editor with standard shortcuts (Ctrl+A, Ctrl+C, Ctrl+V, Ctrl+X, Ctrl+Z, etc.).
 //
-// In addition to predefined keysets, the editor supports custom keymap overlays ([WithKeymap]),
-// configurable escape chords ([WithEscapeChord]), and toggling modal vs modeless editing ([WithModalEditing]).
+// In addition to predefined keysets, the editor supports custom keymap overlays ([CoreKeymap]),
+// configurable escape chords ([CoreEscapeChord]), and toggling modal vs modeless editing ([CoreModal]),
+// each given to [WithCore].
 //
 // # Modal State Machine Architecture (Vim Keyset)
 //
-// When modal editing is active ([KeysetVim] or [WithModalEditing](true)), Editor implements
+// When modal editing is active ([KeysetVim] or [CoreModal](true)), Editor implements
 // the classical Vim tripartite modal state machine:
 //
 //	     ┌────────────────────────────────────────────────────────┐
@@ -95,16 +96,17 @@ import (
 //  7. Configurable Capabilities:
 //     Editor capabilities can be fine-tuned or restricted:
 //     - Selection: Visual modes and range selection can be enabled or disabled ([canSelect]).
-//     - Yank & System Clipboard: OS clipboard and internal register copying can be enabled or restricted ([WithYank]).
-//     - Bounded Undo Ring: Undo and redo tracking can be enabled or bypassed ([WithUndo]).
-//     - Modality: The editor can run modally (Vim tripartite) or modelessly (Nano, Standard) ([WithModalEditing], [WithKeyset]).
+//     - Yank & System Clipboard: OS clipboard and internal register copying can be enabled or restricted ([CoreYank]).
+//     - Bounded Undo Ring: Undo and redo tracking can be enabled or bypassed ([CoreUndo]).
+//     - Modality: The editor can run modally (Vim tripartite) or modelessly (Nano, Standard) ([CoreModal], [CoreKeyset]).
 //
 //  8. Structural Runtime Keymap Reflection:
 //     Hosts and overlays can introspect the editor's live key configuration at runtime:
-//     - Query active profile ([Editor.Keyset]) and escape chord ([Editor.EscapeChord]).
-//     - Query structured keybindings with semantic actions and human-readable descriptions ([Editor.Bindings], [Editor.BindingsForMode]).
-//     - Export serializable snapshots for command palettes or help popups ([Editor.SnapshotKeymap]).
-//     - Resolve chord actions ([Editor.ActionForChord]) or find chords for an action ([Editor.ChordsForAction]).
+//     - Query active profile ([EditorCore.Keyset]) and escape chord ([EditorCore.EscapeChord]).
+//     - Query structured keybindings with semantic actions and human-readable descriptions ([EditorCore.Bindings], [EditorCore.BindingsForMode]).
+//     - Export serializable snapshots for command palettes or help popups ([EditorCore.SnapshotKeymap]).
+//     - Resolve chord actions ([EditorCore.ActionForChord]) or find chords for an action ([EditorCore.ChordsForAction]).
+//     Each is the core's, through [Editor.Core].
 //
 // # Concurrency Model
 //
@@ -117,7 +119,7 @@ import (
 // 1. Embedding in a titled panel with status hints:
 //
 //	ed := widget.NewEditor(
-//		widget.WithEditorReadOnly(false),
+//		widget.WithCore(widget.CoreReadOnly(false)),
 //	)
 //	panel := widget.NewBox(ed,
 //		widget.WithTitle("Configuration Editor"),
@@ -127,16 +129,16 @@ import (
 // 2. Custom escape chord and initial text:
 //
 //	codeEditor := widget.NewEditor(
-//		widget.WithEscapeChord("jk"),
+//		widget.WithCore(widget.CoreEscapeChord("jk")),
 //	)
 //	codeEditor.SetValue("package main\n\nfunc main() {\n\tprintln(\"hello world\")\n}\n")
 //
 // 3. Modeless standard editor with runtime keymap reflection:
 //
 //	ed := widget.NewEditor(
-//		widget.WithStandardKeymap(),
+//		widget.WithCore(widget.CoreKeyset(widget.KeysetStandard)),
 //	)
-//	snap := ed.SnapshotKeymap()
+//	snap := ed.Core().SnapshotKeymap()
 //	for _, b := range snap.Bindings {
 //		fmt.Printf("%s: %s (%s)\n", b.Chord, b.Name, b.Description)
 //	}
@@ -145,7 +147,10 @@ import (
 //
 // Editor is an [EditorCore] and its cell layout (ADR 1791385086): the core holds the text, the
 // modes, the keys and undo; the Editor lays it out in cells, hit-tests the pointer, scrolls, and
-// paints. [Editor.Core] hands the core to code that drives it apart from this view.
+// paints. [Editor.Core] hands the core to code that drives it apart from this view, and is the one
+// way to reach its behaviour (its text, cursor, modes, keys, registers and undo); [WithCore] is the
+// one way to configure it. What the Editor itself holds has its own accessor: the ':' prompt
+// ([Editor.CommandLine]) and the right-click menu ([Editor.ContextMenu]).
 type Editor struct {
 	Base
 	core      *EditorCore  // the behaviour; a field, never embedded
@@ -248,7 +253,7 @@ func (e *Editor) gutterWidth() int {
 
 // NewEditor builds an empty editor initialized with the default Vim keymap,
 // modal editing enabled, and the "jk" escape chord armed. Custom options
-// can select alternative keysets (e.g. WithNanoKeymap, WithStandardKeymap)
+// can select alternative keysets (WithCore(CoreKeyset(KeysetNano)), say)
 // or customize capabilities and styles.
 func NewEditor(opts ...EditorOption) *Editor {
 	e := &Editor{core: newEditorCore()}
@@ -267,9 +272,6 @@ func NewEditor(opts ...EditorOption) *Editor {
 	e.core.finishConstruction()
 	return e
 }
-
-// Value returns the buffer joined with newlines.
-func (e *Editor) Value() string { return e.core.Value() }
 
 // SetValue is a document-boundary operation: pending input
 // settles, the editor returns to Normal mode (or Insert mode if modeless),
@@ -296,38 +298,6 @@ func (e *Editor) ReplaceValue(s string) {
 	e.cells.top, e.cells.left = min(top, max(e.core.LineCount()-1, 0)), left
 }
 
-// Mode reports the current mode.
-func (e *Editor) Mode() EditorMode { return e.core.Mode() }
-
-// ReadOnly reports whether edits are refused.
-func (e *Editor) ReadOnly() bool { return e.core.ReadOnly() }
-
-// SetReadOnly makes the editor a VIEWER: motions, counts, visual
-// selection, yank, and search all work; every mutating action (insert
-// entry, delete, paste, undo/redo, typed text) is refused, and an active
-// Insert session returns to Normal (in modal mode). Hosts use it for panels the user
-// navigates but must not change.
-func (e *Editor) SetReadOnly(v bool) { e.core.SetReadOnly(v) }
-
-// Line reports the cursor position (0-based) for status bars.
-func (e *Editor) Line() (row, col int) { return e.core.Line() }
-
-// SetLine moves the cursor to row/col (both clamped to the document) and
-// scrolls it into view — the programmatic sibling of the motions, for
-// hosts driving search, jump-to-error, and reveal. Pending input settles
-// first; the mode is left alone.
-func (e *Editor) SetLine(row, col int) { e.core.SetLine(row, col) }
-
-// SetCursorPosition moves the cursor to a position in the document, counted
-// as Qt's TextEdit.cursorPosition counts it — characters (grapheme clusters),
-// a line break one — and scrolls it into view, as SetLine does. A position
-// past the end is the end.
-func (e *Editor) SetCursorPosition(pos int) { e.core.SetCursorPosition(pos) }
-
-// Lines returns a snapshot of the document's lines — what a host needs to
-// search without re-splitting Value().
-func (e *Editor) Lines() []string { return e.core.Lines() }
-
 // AcceptsFocus implements tui.Focusable.
 func (e *Editor) AcceptsFocus() bool { return true }
 
@@ -346,135 +316,7 @@ func (e *Editor) CursorShape() tui.CursorShape {
 
 // --- runtime keymap reflection -------------------------------------------
 
-// Keyset reports the active editing & keymap profile.
-func (e *Editor) Keyset() Keyset { return e.core.Keyset() }
-
-// SetKeyset switches the editing profile on a LIVE editor, so a host can offer
-// "Vim / TextEdit" as a user preference without rebuilding the widget and
-// losing what the operator is working on.
-//
-// The document survives: text, cursor, viewport, undo/redo history, and the
-// yank register are all untouched, because a preference change is not a reason
-// to lose a buffer.
-//
-// In-flight input does NOT survive, because it was addressed to the profile
-// being left: a pending count or operator prefix, a visual selection, and an
-// open undo group are all discarded, and the next edit starts a fresh group. A
-// half-typed escape chord is an exception — it is the operator's TEXT, so it is
-// committed to the buffer the way any other key would settle it, rather than
-// dropped.
-//
-// Mode follows the new profile: Vim lands in Normal with the cursor clamped
-// onto a grapheme, the modeless profiles land in Insert. Each publishes the
-// usual [ModeChangedEvent], so a status bar updates without a special case.
-//
-// Host bindings from [WithKeymap] are replayed onto the new profile's base
-// table — a rebound key means it for the editor, not for one profile of it.
-// Switching to the profile already active is a no-op, pending input included.
-func (e *Editor) SetKeyset(ks Keyset) { e.core.SetKeyset(ks) }
-
-// Keymap returns a defensive copy of the editor's active keymap.
-func (e *Editor) Keymap() Keymap { return e.core.Keymap() }
-
-// OverlayKeymap folds overlay into the keymap of an editor already built: see
-// [EditorCore.OverlayKeymap]. A declarative host, whose Editor is built from markup, uses it where
-// a Go host would pass [WithKeymap].
-func (e *Editor) OverlayKeymap(overlay Keymap) { e.core.OverlayKeymap(overlay) }
-
-// EscapeChord returns the configured two-rune escape chord (e.g. "jk"), or "" if disabled.
-func (e *Editor) EscapeChord() string { return e.core.EscapeChord() }
-
-// Bindings returns all discrete key chords configured in this editor's active keymap,
-// sorted deterministically by mode, key chord, and action.
-//
-// Multi-rune escape sequences (such as the modal Insert-mode "jk" chord) operate via
-// the chord timeout engine rather than single-chord mappings, and are reported via
-// [Editor.EscapeChord] and [KeymapSnapshot.EscapeChord].
-func (e *Editor) Bindings() []KeyBinding { return e.core.Bindings() }
-
-// BindingsForMode returns all active bindings available when the editor is in mode m.
-func (e *Editor) BindingsForMode(m EditorMode) []KeyBinding { return e.core.BindingsForMode(m) }
-
-// SnapshotKeymap generates a complete, serializable runtime reflection snapshot of the
-// editor's active key configuration, profile, and action mappings.
-func (e *Editor) SnapshotKeymap() KeymapSnapshot { return e.core.SnapshotKeymap() }
-
-// ActionForChord looks up the bound action for a given key chord.
-func (e *Editor) ActionForChord(kc KeyChord) (Action, bool) { return e.core.ActionForChord(kc) }
-
-// ChordsForAction returns all key chords that map to the specified action.
-func (e *Editor) ChordsForAction(act Action) []KeyChord { return e.core.ChordsForAction(act) }
-
 // --- semantic commands ----------------------------------------------------------
-
-// Copy yanks the selected text, or the current line without a selection, to
-// the unnamed register and attempts to export it to the system clipboard.
-// When yanking is disabled it changes neither destination.
-func (e *Editor) Copy() { e.core.Copy() }
-
-// Cut deletes the selection, or the current line without a selection, into
-// the unnamed register. As with keyboard deletes, it does NOT export to the
-// system clipboard; a read-only editor refuses the mutation.
-func (e *Editor) Cut() { e.core.Cut() }
-
-// Paste inserts the unnamed editor register at the cursor, not the system
-// clipboard. A read-only editor refuses the mutation.
-func (e *Editor) Paste() { e.core.Paste() }
-
-// Undo reverts the last edit group, as u does; Redo reapplies it, as Ctrl+R does. A read-only
-// editor, or one without undo history, refuses both.
-func (e *Editor) Undo() { e.core.Undo() }
-
-// Redo reapplies the most recently undone edit group.
-func (e *Editor) Redo() { e.core.Redo() }
-
-// CanUndo reports whether Undo would change the text now.
-func (e *Editor) CanUndo() bool { return e.core.CanUndo() }
-
-// CanRedo reports whether Redo would change the text now.
-func (e *Editor) CanRedo() bool { return e.core.CanRedo() }
-
-// SelectedText returns the visual selection ("" outside visual modes or when selection is disabled).
-func (e *Editor) SelectedText() string { return e.core.SelectedText() }
-
-// SelectionRange returns the visual selection as a region from (row, col) up to, not including,
-// (endRow, endCol): rows and columns from 0, a column counting grapheme clusters, as Line reports
-// the cursor. A line-wise selection runs from the start of its first line to the end of its last.
-// ok is false outside the visual modes, or when selection is disabled. It is the region
-// SelectedText returns the text of.
-func (e *Editor) SelectionRange() (row, col, endRow, endCol int, ok bool) {
-	return e.core.SelectionRange()
-}
-
-// SetRegister imports text into the unnamed register (the application's
-// value-inspect copy path).
-func (e *Editor) SetRegister(text string, linewise bool) { e.core.SetRegister(text, linewise) }
-
-// Register returns the unnamed register's content.
-func (e *Editor) Register() (text string, linewise bool) { return e.core.Register() }
-
-// SetJumps makes list the one the editor's Ctrl+O and Ctrl+I walk, and goTo how it reaches a
-// place in another document or view (see EditorCore.SetJumps).
-func (e *Editor) SetJumps(list *JumpList, goTo func(JumpStep)) { e.core.SetJumps(list, goTo) }
-
-// SetJumpDoc names the document the editor shows, as the host's jump list knows it.
-func (e *Editor) SetJumpDoc(doc string) { e.core.SetJumpDoc(doc) }
-
-// SetJumpView is how the editor learns the host's view of its document (see EditorCore.SetJumpView).
-func (e *Editor) SetJumpView(view func() string) { e.core.SetJumpView(view) }
-
-// JumpHere is the cursor's place as a jump list holds it.
-func (e *Editor) JumpHere() JumpPos { return e.core.JumpHere() }
-
-// NamedRegister returns register name's content (see EditorCore.NamedRegister).
-func (e *Editor) NamedRegister(name rune) (text string, linewise, ok bool) {
-	return e.core.NamedRegister(name)
-}
-
-// SetNamedRegister sets register name as a yank into it would (see EditorCore.SetNamedRegister).
-func (e *Editor) SetNamedRegister(name rune, text string, linewise bool) bool {
-	return e.core.SetNamedRegister(name, text, linewise)
-}
 
 // --- event handling -----------------------------------------------------------
 

@@ -265,12 +265,6 @@ func (c *EditorCore) putEntry(e regEntry, after bool, count int) {
 	c.edited()
 }
 
-// WithSelection configures whether visual selection is enabled on the editor.
-func WithSelection(enabled bool) EditorOption { return WithCore(CoreSelection(enabled)) }
-
-// WithYank configures whether yanking to system clipboard and registers is enabled.
-func WithYank(enabled bool) EditorOption { return WithCore(CoreYank(enabled)) }
-
 // clipPut is a "+p or "*p waiting for the system clipboard: the read it waits on, and the put as
 // it was asked for, at the text's revision and the cursor it was asked at.
 type clipPut struct {

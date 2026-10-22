@@ -77,9 +77,6 @@ func (c *EditorCore) notifyEdited() {
 	}
 }
 
-// WithUndo configures whether the editor maintains undo/redo history.
-func WithUndo(enabled bool) EditorOption { return WithCore(CoreUndo(enabled)) }
-
 // changedBlock is the splice an undo or a redo makes, as Vim's u_undoredo adjusts marks for it:
 // the lines between the texts' common first and last lines, replaced. Vim moves marks only when the
 // block's size changes, erasing those in it; a block of the same size keeps them, so then the

@@ -203,7 +203,7 @@ func TestW4APopupIsACommandPrompt(t *testing.T) {
 		done := make(chan struct{})
 		s.Program.Post(func() {
 			ed, _ := tuidecl.FindAs[*widget.Editor](s.Program, "ed")
-			value = ed.Value()
+			value = ed.Core().Value()
 			close(done)
 		})
 		<-done

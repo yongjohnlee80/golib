@@ -11,7 +11,7 @@ import (
 // columns in, the cursor on the text after it sits there, a click there lands on it, and a
 // wrapped line counts it.
 func TestATabTakesFourCells(t *testing.T) {
-	ed := widget.NewEditor(widget.WithInitialText("\tx\n\t\tyy"))
+	ed := widget.NewEditor(widget.WithCore(widget.CoreInitialText("\tx\n\t\tyy")))
 	h := startApp(t, newShell(ed), 30, 4)
 	defer h.stop()
 	h.inject(click(0, 0))
@@ -39,7 +39,7 @@ func TestATabTakesFourCells(t *testing.T) {
 
 // Wrapped, a tab's four cells count toward the row's width.
 func TestAWrappedLineCountsItsTabs(t *testing.T) {
-	ed := widget.NewEditor(widget.WithInitialText("\tabcdefgh"), widget.WithEditorWrap(widget.WrapSoft))
+	ed := widget.NewEditor(widget.WithCore(widget.CoreInitialText("\tabcdefgh")), widget.WithEditorWrap(widget.WrapSoft))
 	h := startApp(t, newShell(ed), 8, 4)
 	defer h.stop()
 	h.settle()
@@ -51,7 +51,7 @@ func TestAWrappedLineCountsItsTabs(t *testing.T) {
 
 // With indentation marks on, a leading tab shows as an arrow in its first cell.
 func TestALeadingTabIsMarkedAsAnArrow(t *testing.T) {
-	ed := widget.NewEditor(widget.WithInitialText("\tx"))
+	ed := widget.NewEditor(widget.WithCore(widget.CoreInitialText("\tx")))
 	h := startApp(t, newShell(ed), 20, 3)
 	defer h.stop()
 	h.onLoop(func() { ed.Core().SetIndentMarks(widget.IndentMarksAll) })
@@ -65,7 +65,7 @@ func TestALeadingTabIsMarkedAsAnArrow(t *testing.T) {
 // the row, as any cluster wider than a row does; the text after it starts the next row, and the
 // cursor follows it there.
 func TestATabWiderThanTheRowIsClipped(t *testing.T) {
-	ed := widget.NewEditor(widget.WithInitialText("\tx"), widget.WithEditorWrap(widget.WrapSoft))
+	ed := widget.NewEditor(widget.WithCore(widget.CoreInitialText("\tx")), widget.WithEditorWrap(widget.WrapSoft))
 	h := startApp(t, newShell(ed), 3, 4)
 	defer h.stop()
 	h.settle()
@@ -84,7 +84,7 @@ func TestATabWiderThanTheRowIsClipped(t *testing.T) {
 // A wrapped line's character that starts a row has the cursor on that row: the cursor is where its
 // character is drawn, not past the end of the row before.
 func TestTheCursorIsOnTheRowItsCharacterStarts(t *testing.T) {
-	ed := widget.NewEditor(widget.WithInitialText("abcdefgh ij"), widget.WithEditorWrap(widget.WrapSoft))
+	ed := widget.NewEditor(widget.WithCore(widget.CoreInitialText("abcdefgh ij")), widget.WithEditorWrap(widget.WrapSoft))
 	h := startApp(t, newShell(ed), 4, 5)
 	defer h.stop()
 	h.settle()

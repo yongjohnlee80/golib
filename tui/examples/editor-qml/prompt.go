@@ -20,7 +20,7 @@ import (
 
 // addCommands composes this program's commands into the editor's.
 func (h *Host) addCommands() error {
-	return h.editor.Commands().Add(widget.Command{
+	return h.editor.Core().Commands().Add(widget.Command{
 		Name: "e", Aliases: []string{"edit"}, Args: "<file>", Help: "open a file",
 		Run: func(x widget.CommandContext) error {
 			if x.Line == "" {

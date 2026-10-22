@@ -62,7 +62,7 @@ func NewFilePreview(st FilePaneStyles, styled bool) *FilePreview {
 	// and read the whole file in. It does not consume Escape when idle, so
 	// Escape still reaches a dialog around it.
 	p := &FilePreview{view: NewEditor(opts...)}
-	p.view.SetReadOnly(true)
+	p.view.Core().SetReadOnly(true)
 	p.box = newFilePane(p.view, "", st, styled)
 	p.box.SetTitleMessage(tui.Msg("tui.files.preview"))
 	return p
@@ -81,7 +81,7 @@ func (p *FilePreview) Layout(c tui.Constraints) tui.Size {
 	// The note is the view's text. Setting it edits the view, which a pure phase must not do,
 	// so a note that reads differently in the new language is put in at the commit.
 	if p.note != (tui.Message{}) {
-		if text := p.noteText(); text != p.view.Value() {
+		if text := p.noteText(); text != p.view.Core().Value() {
 			ctx.AfterLayout("preview-note", func() { p.view.SetValue(text) })
 		}
 	}
@@ -167,7 +167,7 @@ func (p *FilePreview) put(path, text string, note tui.Message, arg string) {
 func (p *FilePreview) SetHighlighting(forFile func(name string) highlight.Highlighter, styles SyntaxStyles) {
 	p.forFile = forFile
 	p.catalog = nil
-	p.view.WithSyntaxStyles(styles)
+	p.view.Core().SetSyntaxStyles(styles)
 	p.highlight()
 }
 
@@ -185,13 +185,13 @@ func (p *FilePreview) highlight() {
 	if p.forFile != nil && p.shown != "" {
 		h = p.forFile(p.shown)
 	}
-	p.view.SetHighlighter(h)
+	p.view.Core().SetHighlighter(h)
 }
 
 // SetSourceHighlighting selects complete document-owned providers for previews.
 // Palette-only changes preserve the selected source and its leased states.
 func (p *FilePreview) SetSourceHighlighting(catalog *highlight.Catalog, styles SyntaxStyles) {
-	p.view.WithSyntaxStyles(styles)
+	p.view.Core().SetSyntaxStyles(styles)
 	if p.catalog == catalog {
 		return
 	}
@@ -200,7 +200,7 @@ func (p *FilePreview) SetSourceHighlighting(catalog *highlight.Catalog, styles S
 }
 
 // Text is what the preview holds.
-func (p *FilePreview) Text() string { return p.view.Value() }
+func (p *FilePreview) Text() string { return p.view.Core().Value() }
 
 // Focused reports whether the preview has the keyboard.
 func (p *FilePreview) Focused() bool {

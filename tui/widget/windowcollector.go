@@ -1,8 +1,9 @@
 package widget
 
 import (
-	"github.com/yongjohnlee80/golib/tui"
 	"slices"
+
+	"github.com/yongjohnlee80/golib/tui"
 )
 
 // MinimizedWindow is a value descriptor for one originating window mount.

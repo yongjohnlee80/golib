@@ -10,7 +10,7 @@ import (
 // wrappedEditor is a soft-wrapped terminal Editor laid out w cells wide.
 func wrappedEditor(t *testing.T, text string, w int) *widget.Editor {
 	t.Helper()
-	ed := widget.NewEditor(widget.WithInitialText(text), widget.WithEditorWrap(widget.WrapSoft))
+	ed := widget.NewEditor(widget.WithCore(widget.CoreInitialText(text)), widget.WithEditorWrap(widget.WrapSoft))
 	ed.Layout(tui.Constraints{MaxW: w, MaxH: 10})
 	return ed
 }

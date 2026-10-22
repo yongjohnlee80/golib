@@ -547,7 +547,7 @@
 //
 //		// 2. Right pane: Query editor + Log viewer split vertically
 //		editor := widget.NewEditor(
-//			widget.WithInitialText("SELECT * FROM users LIMIT 50;"),
+//			widget.WithCore(widget.CoreInitialText("SELECT * FROM users LIMIT 50;")),
 //		)
 //		editorBox := widget.NewBox(editor,
 //			widget.WithTitle("SQL Query (Vim)"),
