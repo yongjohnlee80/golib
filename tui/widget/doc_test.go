@@ -517,7 +517,7 @@ func TestSqlitComposition(t *testing.T) {
 }
 
 // TestLazygitComposition asserts the 5-panel lazygit shape builds;
-// the modal Float traps focus, dims, dismisses on Esc with DismissEvent;
+// the modal Float traps focus, dims, dismisses on Esc with OverlayDismissedEvent;
 // BufferView streams a fake subprocess script with ANSI colors intact.
 func TestLazygitComposition(t *testing.T) {
 	statusBox := widget.NewBox(widget.NewList(widget.WithItems([]string{"master → origin"}, func(s string) string { return s })), widget.WithTitle("Status"))
@@ -542,7 +542,7 @@ func TestLazygitComposition(t *testing.T) {
 	host.Attach(dialog)
 
 	h := startApp(t, host, 80, 24)
-	dismissed := record[widget.DismissEvent](h)
+	dismissed := record[widget.OverlayDismissedEvent](h)
 	h.onLoop(func() { hints.SetLeft("c: commit · q: quit") })
 	h.settle()
 

@@ -463,7 +463,7 @@ func TestTheNestingLimitIsTheOneTheCallerSetAndCountsExpressionsToo(t *testing.T
 	// keeps to itself, and the budget is shared with the expressions inside —
 	// which is what makes it a bound on the RECURSION rather than on one of the
 	// two grammars that take turns driving it.
-	shallow := js.Statements{MaxDepth: 3}
+	shallow := js.NewStatements(js.MaxDepth(3))
 	if _, err := shallow.Parse([]byte("{{{ f(); }}}")); err == nil {
 		t.Error("three nested blocks parsed under MaxDepth 3, want a refusal")
 	}
@@ -609,7 +609,7 @@ func TestTheDialectIsThreadedIntoTheExpressionsStatementsContain(t *testing.T) {
 	// A statement parser that built its own default expression parser would
 	// accept `===` under the C dialect and hand back a tree for source C cannot
 	// express — and FormatName would still read "c-statements".
-	c := js.Statements{Dialect: &js.C}
+	c := js.NewStatements(js.WithDialect(&js.C))
 	if c.FormatName() != "c-statements" {
 		t.Errorf("FormatName = %q, want c-statements", c.FormatName())
 	}

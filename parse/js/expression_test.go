@@ -83,7 +83,7 @@ func renderExprList(args []js.Expr) string {
 // parses.
 func shapes(t *testing.T, d *js.ExprDialect, cases map[string]string) {
 	t.Helper()
-	x := js.Expression{Dialect: d}
+	x := js.NewExpression(js.WithDialect(d))
 	for src, want := range cases {
 		e, err := x.Parse([]byte(src))
 		if err != nil {
@@ -105,7 +105,7 @@ func shapesJS(t *testing.T, cases map[string]string) {
 // gets: the "keep typing" one or the "this cannot work" one.
 func refuses(t *testing.T, d *js.ExprDialect, incomplete bool, sources ...string) {
 	t.Helper()
-	x := js.Expression{Dialect: d}
+	x := js.NewExpression(js.WithDialect(d))
 	for _, src := range sources {
 		e, err := x.Parse([]byte(src))
 		if err == nil {
@@ -785,7 +785,7 @@ func TestTheDepthLimitIsASharpBoundaryThatTracksNesting(t *testing.T) {
 	const src = "((((a))))"
 	limit := 0
 	for d := 1; d <= js.DefaultExprMaxDepth; d++ {
-		if _, err := (js.Expression{MaxDepth: d}).Parse([]byte(src)); err == nil {
+		if _, err := js.NewExpression(js.MaxDepth(d)).Parse([]byte(src)); err == nil {
 			limit = d
 			break
 		}
@@ -793,10 +793,10 @@ func TestTheDepthLimitIsASharpBoundaryThatTracksNesting(t *testing.T) {
 	if limit == 0 {
 		t.Fatalf("no MaxDepth up to %d accepts %q", js.DefaultExprMaxDepth, src)
 	}
-	if _, err := (js.Expression{MaxDepth: limit - 1}).Parse([]byte(src)); err == nil {
+	if _, err := js.NewExpression(js.MaxDepth(limit - 1)).Parse([]byte(src)); err == nil {
 		t.Errorf("MaxDepth %d accepted %q, but %d was the smallest that worked", limit-1, src, limit)
 	}
-	if _, err := (js.Expression{MaxDepth: limit}).Parse([]byte("(" + src + ")")); err == nil {
+	if _, err := js.NewExpression(js.MaxDepth(limit)).Parse([]byte("(" + src + ")")); err == nil {
 		t.Errorf("MaxDepth %d accepted a strictly deeper expression too, so the limit does not track nesting", limit)
 	}
 }
@@ -809,7 +809,7 @@ func TestAZeroMaxDepthMeansTheDefaultRatherThanNoNestingAtAll(t *testing.T) {
 	if _, err := (js.Expression{}).Parse([]byte(deep)); err != nil {
 		t.Errorf("the zero value rejected 20 levels of grouping: %v", err)
 	}
-	if _, err := (js.Expression{MaxDepth: js.DefaultExprMaxDepth}).Parse([]byte(deep)); err != nil {
+	if _, err := js.NewExpression(js.MaxDepth(js.DefaultExprMaxDepth)).Parse([]byte(deep)); err != nil {
 		t.Errorf("MaxDepth = DefaultExprMaxDepth rejected the same source: %v", err)
 	}
 }
@@ -928,7 +928,7 @@ func TestParsingIsRepeatableBecauseNothingIsCarriedBetweenCalls(t *testing.T) {
 	// Expression is a value and holds no cursor, so one value must parse twice
 	// identically — including the depth counter, which lives on the per-parse
 	// state and would otherwise leak from the first call into the second.
-	x := js.Expression{MaxDepth: 8}
+	x := js.NewExpression(js.MaxDepth(8))
 	first, err := x.Parse([]byte("((a + b))"))
 	if err != nil {
 		t.Fatal(err)

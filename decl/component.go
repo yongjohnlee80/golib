@@ -118,7 +118,7 @@ func ComponentFiles(fsys fs.FS, dir string) ModuleLoader {
 // parseComponent reads one component file and checks what a component may
 // not contain.
 func parseComponent(file string, src []byte) (*qml.SpecNode, error) {
-	spec, err := qml.QML{File: file}.Parse(src)
+	spec, err := qml.New(qml.WithName(file)).Parse(src)
 	if err != nil {
 		return nil, err
 	}

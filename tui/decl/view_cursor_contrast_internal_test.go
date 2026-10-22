@@ -51,7 +51,7 @@ func TestEveryBuiltInViewCursorIsReadableInBothFocusStates(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			tree, err := (qml.QML{File: entry.Name()}).Parse(src)
+			tree, err := qml.New(qml.WithName(entry.Name())).Parse(src)
 			if err != nil {
 				t.Fatal(err)
 			}

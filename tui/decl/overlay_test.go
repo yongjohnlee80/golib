@@ -50,7 +50,7 @@ func runGoScreen(t *testing.T, doc string) *goScreen {
 	}); err != nil {
 		t.Fatal(err)
 	}
-	spec, err := qml.QML{File: "part.qml"}.Parse([]byte(doc))
+	spec, err := qml.New(qml.WithName("part.qml")).Parse([]byte(doc))
 	if err != nil {
 		t.Fatal(err)
 	}

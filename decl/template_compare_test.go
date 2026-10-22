@@ -8,7 +8,7 @@ import (
 
 func templateProp(t *testing.T, source string) qml.SpecValue {
 	t.Helper()
-	spec, err := (qml.QML{File: "view.qml"}).Parse([]byte(source))
+	spec, err := qml.New(qml.WithName("view.qml")).Parse([]byte(source))
 	if err != nil {
 		t.Fatal(err)
 	}

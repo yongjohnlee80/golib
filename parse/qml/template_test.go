@@ -3,7 +3,7 @@ package qml
 import "testing"
 
 func TestObjectPropertyKeepsItsTemplateSeparateFromChildren(t *testing.T) {
-	spec, err := (QML{File: "table.qml"}).Parse([]byte(`TableView {
+	spec, err := New(WithName("table.qml")).Parse([]byte(`TableView {
     model: App.rows
     delegate: Text { text: model.display; color: Theme.warning }
     TableViewColumn { role: "value" }
@@ -21,7 +21,7 @@ func TestObjectPropertyKeepsItsTemplateSeparateFromChildren(t *testing.T) {
 }
 
 func TestTemplateRequiresAClosingBrace(t *testing.T) {
-	if _, err := (QML{File: "bad.qml"}).Parse([]byte(`TableView { delegate: Text { text: "hello" `)); err == nil {
+	if _, err := New(WithName("bad.qml")).Parse([]byte(`TableView { delegate: Text { text: "hello" `)); err == nil {
 		t.Fatal("an incomplete object property was accepted")
 	}
 }

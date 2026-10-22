@@ -51,7 +51,7 @@ func TestTilePanelIsATile(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	tree, err := qml.QML{File: "TilePanel.qml"}.Parse(src)
+	tree, err := qml.New(qml.WithName("TilePanel.qml")).Parse(src)
 	if err != nil || tree.Root == nil || tree.Root.Type != "Tile" {
 		t.Fatalf("TilePanel.qml: %v, root %+v", err, tree.Root)
 	}

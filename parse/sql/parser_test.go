@@ -89,25 +89,25 @@ func TestSQL_SemicolonInsideAConstructDoesNotSplit(t *testing.T) {
 		},
 		{
 			name: "backticks quote when enabled",
-			sql:  sql.SQL{Backticks: true},
+			sql:  sql.New(sql.Backticks()),
 			src:  "SELECT `a;b`; SELECT 2",
 			want: []string{"SELECT `a;b`", "SELECT 2"},
 		},
 		{
 			name: "dollar-quoted body when enabled",
-			sql:  sql.SQL{DollarQuotes: true},
+			sql:  sql.New(sql.DollarQuotes()),
 			src:  "CREATE FUNCTION f() AS $$ BEGIN a; b; END $$; SELECT 2",
 			want: []string{"CREATE FUNCTION f() AS $$ BEGIN a; b; END $$", "SELECT 2"},
 		},
 		{
 			name: "tagged dollar quote when enabled",
-			sql:  sql.SQL{DollarQuotes: true},
+			sql:  sql.New(sql.DollarQuotes()),
 			src:  "SELECT $body$ a; b $body$; SELECT 2",
 			want: []string{"SELECT $body$ a; b $body$", "SELECT 2"},
 		},
 		{
 			name: "a lone dollar sign stays ordinary text",
-			sql:  sql.SQL{DollarQuotes: true},
+			sql:  sql.New(sql.DollarQuotes()),
 			src:  "SELECT $1; SELECT 2",
 			want: []string{"SELECT $1", "SELECT 2"},
 		},
@@ -115,7 +115,7 @@ func TestSQL_SemicolonInsideAConstructDoesNotSplit(t *testing.T) {
 			// Valid PostgreSQL: the E prefix is the engine's opt-in to backslash
 			// escapes, so the quote after the backslash does NOT close the run.
 			name: "E-string backslash escape when the dialect enables it",
-			sql:  sql.SQL{EStringEscapes: true},
+			sql:  sql.New(sql.EStringEscapes()),
 			src:  `SELECT E'a\'b'; SELECT 2`,
 			want: []string{`SELECT E'a\'b'`, "SELECT 2"},
 		},
@@ -124,20 +124,20 @@ func TestSQL_SemicolonInsideAConstructDoesNotSplit(t *testing.T) {
 			// keeps the standard reading even with E-strings enabled, so a path
 			// ending in a backslash still closes where it should.
 			name: "an ordinary string keeps standard backslash handling",
-			sql:  sql.SQL{EStringEscapes: true},
+			sql:  sql.New(sql.EStringEscapes()),
 			src:  `SELECT 'C:\'; SELECT 2`,
 			want: []string{`SELECT 'C:\'`, "SELECT 2"},
 		},
 		{
 			// A trailing e on an identifier is not a string prefix.
 			name: "a word ending in e does not make the next string an E-string",
-			sql:  sql.SQL{EStringEscapes: true},
+			sql:  sql.New(sql.EStringEscapes()),
 			src:  `SELECT value'a\'; SELECT 2`,
 			want: []string{`SELECT value'a\'`, "SELECT 2"},
 		},
 		{
 			name: "nested block comment when the dialect nests",
-			sql:  sql.SQL{NestedBlockComments: true},
+			sql:  sql.New(sql.NestedBlockComments()),
 			src:  "SELECT /* a /* b; */ c */ 1; SELECT 2",
 			want: []string{"SELECT /* a /* b; */ c */ 1", "SELECT 2"},
 		},
@@ -167,7 +167,7 @@ func TestSQL_SemicolonInsideAConstructDoesNotSplit(t *testing.T) {
 // was checked against SQLite's own sqlite3_complete, along with 3000 random
 // token strings.
 func TestSQL_TriggerBodiesAsSQLiteReadsThem(t *testing.T) {
-	on := sql.SQL{TriggerBodies: true}
+	on := sql.New(sql.TriggerBodies())
 	cases := []struct {
 		name string
 		sql  sql.SQL
@@ -269,7 +269,7 @@ func TestSQL_TriggerBodiesAsSQLiteReadsThem(t *testing.T) {
 // like an unclosed string, and says where the trigger began.
 func TestSQL_AnOpenTriggerBodyIsUnterminated(t *testing.T) {
 	src := "SELECT 1;\nCREATE TRIGGER t AFTER INSERT ON c BEGIN SELECT 1; SELECT 2;"
-	_, err := sql.SQL{TriggerBodies: true}.Parse([]byte(src))
+	_, err := sql.New(sql.TriggerBodies()).Parse([]byte(src))
 	if !errors.Is(err, parse.ErrUnterminated) {
 		t.Fatalf("want ErrUnterminated, got %v", err)
 	}

@@ -20,7 +20,7 @@ func TestFloatModal(t *testing.T) {
 	host.Attach(dialog)
 	sh := newShell(host)
 	h := startApp(t, sh, 30, 9)
-	dismissed := record[widget.DismissEvent](h)
+	dismissed := record[widget.OverlayDismissedEvent](h)
 	h.inject(tab()) // focus the base input
 	h.barrier(sh)
 	h.wantNotContains("Commit message")
@@ -49,7 +49,7 @@ func TestFloatModal(t *testing.T) {
 		t.Fatalf("Tab escaped the trap: dialog=%q base=%q", dlgVal, baseVal)
 	}
 
-	// Esc dismisses with DismissEvent; focus restores to the base input.
+	// Esc dismisses the Float (OverlayDismissedEvent); focus restores to the base input.
 	h.inject(key(tui.KeyEscape))
 	h.barrier(sh)
 	h.wantNotContains("Commit message")
@@ -57,7 +57,7 @@ func TestFloatModal(t *testing.T) {
 	var id tui.NodeID
 	h.onLoop(func() { id = dialog.NodeID() })
 	if ev, ok := dismissed.last(); !ok || ev.Owner != id {
-		t.Fatalf("DismissEvent = %+v, want owner %d", ev, id)
+		t.Fatalf("OverlayDismissedEvent = %+v, want owner %d", ev, id)
 	}
 	h.inject(typeString("back")...)
 	h.barrier(sh)
