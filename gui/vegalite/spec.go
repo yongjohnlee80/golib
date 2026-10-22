@@ -826,12 +826,11 @@ func readChannel(m map[string]json.RawMessage, name string, params map[string]pa
 			ch.isDatum = true
 			ch.datum, err = readDatum(v, name, params)
 		case k == "field":
-			if json.Unmarshal(v, &ch.field) != nil || ch.field == "" {
+			f, ok := readField(v)
+			if !ok {
 				return nil, unsupported("%s's field %s", name, v)
 			}
-			if strings.ContainsAny(ch.field, `.[]\`) { // a nested field, or an escape: a path, not a key
-				return nil, unsupported("%s's field %q", name, ch.field)
-			}
+			ch.field = f
 		case k == "type":
 			var t string
 			_ = json.Unmarshal(v, &t)
@@ -1054,6 +1053,16 @@ func (ch *channel) readSort(raw json.RawMessage, name string) error {
 	return unsupported("%s's sort %s", name, raw)
 }
 
+// readField reads a field's name: a non-empty key of a row. A nested field or an escape is a path,
+// not a key, and is refused.
+func readField(v json.RawMessage) (string, bool) {
+	var f string
+	if json.Unmarshal(v, &f) != nil || f == "" || strings.ContainsAny(f, `.[]\`) {
+		return "", false
+	}
+	return f, true
+}
+
 // readSortField reads a sort by another field: its field, its aggregate (op) and its order
 // (ascending, descending, or null: the data's order).
 func (ch *channel) readSortField(m map[string]json.RawMessage, name string) error {
@@ -1061,9 +1070,11 @@ func (ch *channel) readSortField(m map[string]json.RawMessage, name string) erro
 	for k, v := range m {
 		switch k {
 		case "field":
-			if json.Unmarshal(v, &ch.sortField) != nil || ch.sortField == "" || strings.ContainsAny(ch.sortField, `.[]\`) {
+			f, ok := readField(v)
+			if !ok {
 				return unsupported("%s's sort field %s", name, v)
 			}
+			ch.sortField = f
 		case "op":
 			op, ok := aggregateOp(v)
 			if !ok {
