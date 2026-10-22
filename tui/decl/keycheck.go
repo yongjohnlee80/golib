@@ -18,6 +18,10 @@ import (
 //   - a shortcut holder (shortcutHolders), a keyHolder: its keyScope as declared, Global for a
 //     Window, and its Shortcut children;
 //   - any other type, an inertNode.
+//
+// The holders are known by name (shortcutHolders), and that is complete. A Shortcut is refused in any
+// other parent (shortcutNode.allowedIn), so a consumer's own type holds none unless it takes a
+// holder's name, as a style's Dialog does, and that one is a keyHolder here.
 
 // keysOnly makes the adapter build a keys-only mount.
 func keysOnly() Option { return func(a *Adapter) { a.keysOnly = true } }

@@ -179,7 +179,8 @@ var indentMarks = enum[widget.IndentMarks]{bare: true, order: []string{"off", "c
 // EditorViewSetters are the Editor's view properties, for any editor widget with the capabilities
 // they set (widget.LineNumberer, Ruler, Wrapper, CursorColorer, ContextMenuEnabler, ViewChooser,
 // and SetRenderedEnabled): the cell Editor's and a style's own, as EditorSetters are the
-// behaviour's. A widget without one refuses that property, "not an Editor".
+// behaviour's. A widget without one refuses that property: "not an Editor", or for view, typed on
+// the capability, "not a widget.ViewChooser".
 func EditorViewSetters() map[string]Setter {
 	return map[string]Setter{
 		// golib's: a right-click menu with Undo, Redo, Copy, Cut and Paste, opened at the pointer
