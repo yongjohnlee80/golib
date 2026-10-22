@@ -89,6 +89,43 @@ func universalOf(prop string) (universalProp, bool) {
 	return universalProp{}, false
 }
 
+// atBuild is what Create takes out of a declaration's properties before its builder sees them: the
+// universal properties read at construction.
+type atBuild struct {
+	// focus is `focus: true`: the node is its subtree's focus nominee.
+	focus bool
+	// declaredFocus is whether `focus` was written at all, true or false.
+	declaredFocus bool
+	// palette is the node's own roles, which propagate to its children (propagate.go).
+	palette palette
+	// roles are the role properties it declared.
+	roles []string
+}
+
+// takeUniversal takes the universal properties read at construction out of props: focus
+// (takeFocus) and the palette roles (takePalette).
+func takeUniversal(props []qml.SpecProp) ([]qml.SpecProp, atBuild, error) {
+	own, focus, declared, err := takeFocus(props)
+	if err != nil {
+		return nil, atBuild{}, err
+	}
+	pal, own, roles, err := takePalette(own)
+	if err != nil {
+		return nil, atBuild{}, err
+	}
+	return own, atBuild{focus: focus, declaredFocus: declared, palette: pal, roles: roles}, nil
+}
+
+// consumed are the properties Create reports consumed for these: the roles, and focus when it was
+// declared. A false focus is consumed too: the engine would otherwise apply it, and nothing sets
+// focus.
+func (t atBuild) consumed() []string {
+	if t.declaredFocus {
+		return append(t.roles, focusProp)
+	}
+	return t.roles
+}
+
 // keyScopeProp is every item's readable key-map scope: its own, or the nearest enclosing one's, read
 // live from the App (tui.App.KeyScopeOf), so an Editor's follows its mode. "" before the App runs.
 const keyScopeProp = "keyScope"
