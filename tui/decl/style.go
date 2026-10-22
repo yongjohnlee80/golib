@@ -50,12 +50,8 @@ func Replaceable(name string) bool {
 	if _, private := readPrivately[name]; private {
 		return false
 	}
-	for _, t := range stdTypes() {
-		if t.Name == name {
-			return t.Adopt == nil
-		}
-	}
-	return false
+	t, ok := stdType(name)
+	return ok && t.Adopt == nil
 }
 
 // readPrivately are the standard types whose instances another type, the runtime or a host
@@ -157,10 +153,8 @@ func (t Type) Contract() Contract {
 
 // StandardContract is the standard type name's QML API, and whether there is such a type.
 func StandardContract(name string) (Contract, bool) {
-	for _, t := range stdTypes() {
-		if t.Name == name {
-			return t.Contract(), true
-		}
+	if t, ok := stdType(name); ok {
+		return t.Contract(), true
 	}
 	return Contract{}, false
 }
@@ -172,17 +166,16 @@ func StandardContract(name string) (Contract, bool) {
 // palette and child hooks are left out, since they reach into the standard widget; a style's type
 // sets Restyle for its own.
 func StandardType(name string) (Type, bool) {
-	for _, t := range stdTypes() {
-		if t.Name == name {
-			t.restyle, t.Adopt = nil, nil
-			t.Setters = maps.Clone(t.Setters)
-			t.Methods = maps.Clone(t.Methods)
-			t.Getters = maps.Clone(t.Getters)
-			t.Signals = maps.Clone(t.Signals)
-			t.Ctor = slices.Clone(t.Ctor)
-			t.Enums = slices.Clone(t.Enums)
-			return t, true
-		}
+	t, ok := stdType(name)
+	if !ok {
+		return Type{}, false
 	}
-	return Type{}, false
+	t.restyle, t.Adopt = nil, nil
+	t.Setters = maps.Clone(t.Setters)
+	t.Methods = maps.Clone(t.Methods)
+	t.Getters = maps.Clone(t.Getters)
+	t.Signals = maps.Clone(t.Signals)
+	t.Ctor = slices.Clone(t.Ctor)
+	t.Enums = slices.Clone(t.Enums)
+	return t, true
 }

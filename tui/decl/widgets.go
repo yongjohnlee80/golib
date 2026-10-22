@@ -2,6 +2,7 @@ package decl
 
 import (
 	"fmt"
+	"sync"
 
 	"github.com/yongjohnlee80/golib/parse/qml"
 	"github.com/yongjohnlee80/golib/tui"
@@ -56,6 +57,23 @@ func registryOf(types []Type) *Registry {
 func StdProperties() []Option { return typeOptions(stdTypes()) }
 
 // stdTypes is every standard widget type, in one table.
+// stdIndex is the standard types by name, built once. Its entries share their maps with every
+// reader: a reader must not change one (StandardType clones before handing a copy out).
+var stdIndex = sync.OnceValue(func() map[string]Type {
+	types := stdTypes()
+	index := make(map[string]Type, len(types))
+	for _, t := range types {
+		index[t.Name] = t
+	}
+	return index
+})
+
+// stdType is the standard type name, from the index.
+func stdType(name string) (Type, bool) {
+	t, ok := stdIndex()[name]
+	return t, ok
+}
+
 func stdTypes() []Type {
 	return append(append(coreTypes(), appTypes()...), listViewType, comboBoxType, tableViewType, tableViewColumnType, treeViewType, buttonBoxType, drawerType, focusScopeType, tabViewType, tabType, checkBoxType, markdownRendererType, htmlDocumentViewType, windowModType, windowButtonsType, windowTaskbarType, tileManagerType, tileType)
 }
