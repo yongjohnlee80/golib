@@ -64,15 +64,42 @@ type pageDiagram struct{ lang, src string }
 const maxHTMLDiagrams = 64
 
 type htmlDiagrams struct {
-	l     *htmlLayout
+	l     diagramHost
 	slots map[pageDiagram]*diagramSlot
 	set   uint64 // the view's DiagramsSet the slots were asked under
 	gen   uint64
 	tasks map[tui.TaskID]struct{} // ready waits started for this layout: their results are ours
 }
 
+// diagramHost is what an HTML view's diagrams read of its layout: the view's Diagrammer and the
+// generation of its setting, the view's Context, the layout's shaper (nil before its first paint),
+// and the page's look as a diagram theme.
+type diagramHost interface {
+	diagrammer() (d Diagrammer, set uint64)
+	context() *tui.Context
+	textShaper() *gui.TextShaper
+	diagramTheme() Theme
+}
+
+var _ diagramHost = (*htmlLayout)(nil)
+
+func (l *htmlLayout) diagrammer() (Diagrammer, uint64) {
+	d, _ := l.v.Diagrams().(Diagrammer)
+	return d, l.v.DiagramsSet()
+}
+
+func (l *htmlLayout) context() *tui.Context { return l.v.Context() }
+
+func (l *htmlLayout) textShaper() *gui.TextShaper { return l.shaper }
+
+// diagramTheme is the diagrams' theme from the page's colours.
+func (l *htmlLayout) diagramTheme() Theme {
+	return Theme{Text: l.fg, Background: l.bg, Accent: l.accent, Muted: l.muted, CodeBackground: l.surface,
+		Prose: gui.Font{Size: l.textPx}, Mono: gui.Font{Size: l.textPx, Family: gui.CellFamily}}
+}
+
 // newHTMLDiagrams constructs the diagram manager for an HTML layout instance.
-func newHTMLDiagrams(l *htmlLayout) *htmlDiagrams {
+func newHTMLDiagrams(l diagramHost) *htmlDiagrams {
 	return &htmlDiagrams{l: l, slots: map[pageDiagram]*diagramSlot{}, tasks: map[tui.TaskID]struct{}{}}
 }
 
@@ -102,25 +129,19 @@ func diagramSource(n *phtml.Node) (pageDiagram, bool) {
 	return pageDiagram{lang: lang, src: strings.TrimSpace(b.String())}, true
 }
 
-// theme is the diagrams' theme from the page's colours.
-func (m *htmlDiagrams) theme() Theme {
-	l := m.l
-	return Theme{Text: l.fg, Background: l.bg, Accent: l.accent, Muted: l.muted, CodeBackground: l.surface,
-		Prose: gui.Font{Size: l.textPx}, Mono: gui.Font{Size: l.textPx, Family: gui.CellFamily}}
-}
-
 // answer is dg's picture at width: asked of the view's Diagrammer on first sight, and again once
 // its ready fires or its width, scale or theme changes.
 func (m *htmlDiagrams) answer(dg pageDiagram, width float32) DiagramAnswer {
-	d, _ := m.l.v.Diagrams().(Diagrammer)
-	if d == nil || m.l.shaper == nil {
+	d, set := m.l.diagrammer()
+	sh := m.l.textShaper()
+	if d == nil || sh == nil {
 		return DiagramAnswer{State: Declined}
 	}
-	if set := m.l.v.DiagramsSet(); set != m.set { // WithDiagrams again: the new Diagrammer's answers
+	if set != m.set { // WithDiagrams again: the new Diagrammer's answers
 		m.reset()
 		m.set = set
 	}
-	req := DiagramRequest{Lang: dg.lang, Src: dg.src, Width: width, Scale: m.l.shaper.Scale(), Theme: diagramFonts(m.theme(), m.l.shaper.Fonts())}
+	req := DiagramRequest{Lang: dg.lang, Src: dg.src, Width: width, Scale: sh.Scale(), Theme: diagramFonts(m.l.diagramTheme(), sh.Fonts())}
 	s := m.slots[dg]
 	if s.current(keyOf(req)) {
 		return s.answer()
@@ -131,7 +152,7 @@ func (m *htmlDiagrams) answer(dg pageDiagram, width float32) DiagramAnswer {
 	m.gen++
 	gen := m.gen
 	s = askAfter(s, d, req, gen, func(ctx context.Context) func() {
-		ready, id, ok := readyTask(m.l.v.Context(), ctx, htmlDiagramReady{dg: dg, gen: gen})
+		ready, id, ok := readyTask(m.l.context(), ctx, htmlDiagramReady{dg: dg, gen: gen})
 		if ok {
 			m.tasks[id] = struct{}{}
 		}
