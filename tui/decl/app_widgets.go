@@ -34,16 +34,13 @@ func appTypes() []Type {
 			"color": setter("a Window", colorOf, (*windowNode).setColor),
 			// Qt's Window.minimumWidth / minimumHeight, in cells: on a smaller screen the App
 			// shows its too-small screen instead of the layout (tui.App.SetMinimumSize)
-			"minimumWidth":  setter("a Window", wholeNumber, (*windowNode).setMinimumWidth),
-			"minimumHeight": setter("a Window", wholeNumber, (*windowNode).setMinimumHeight),
+			"minimumWidth":  setter("a Window", truncOf, (*windowNode).setMinimumWidth),
+			"minimumHeight": setter("a Window", truncOf, (*windowNode).setMinimumHeight),
 		}},
 		{Name: "Frame", Build: buildFrame, Ctor: []string{"title"}, restyle: restyleFrame, Setters: map[string]Setter{
 			"title": textSetter("a Frame", (*widget.Box).SetTitle, (*widget.Box).SetTitleMessage),
 			// golib's: at most this many columns, border included, centred — a page, not the screen
-			"maximumWidth": setter("a Frame", func(v qml.SpecValue) (int, error) {
-				n, err := numberOf(v)
-				return int(n), err
-			}, (*widget.Box).SetMaximumWidth),
+			"maximumWidth": setter("a Frame", truncOf, (*widget.Box).SetMaximumWidth),
 		}},
 		// golib's: a vertical window onto one child taller than itself; the wheel and
 		// the page keys scroll it, and a field taking focus is brought into view
@@ -75,11 +72,11 @@ func appTypes() []Type {
 					if len(args) != 1 {
 						return fmt.Errorf("HTMLView.scrollToSource takes one argument, a source byte; got %d", len(args))
 					}
-					n, err := numberOf(args[0])
+					n, err := truncOf(args[0])
 					if err != nil {
 						return err
 					}
-					v.ScrollToSource(int(n))
+					v.ScrollToSource(n)
 					return nil
 				}),
 			},

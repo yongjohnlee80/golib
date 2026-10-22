@@ -504,12 +504,6 @@ func (m *menuBarNode) close() {
 	}
 }
 
-// wholeNumber reads a number property as whole cells.
-func wholeNumber(v qml.SpecValue) (int, error) {
-	n, err := numberOf(v)
-	return int(n), err
-}
-
 // KeyScope is a Window's: keymap.Global (tui.KeyScoped).
 func (w *windowNode) KeyScope() keymap.Scope { return keymap.Global }
 

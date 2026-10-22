@@ -143,6 +143,29 @@ func boolOf(v qml.SpecValue) (bool, error) {
 	return v.Raw == "true", nil
 }
 
+// The two number-to-int readers. Every int property reads through one of them, and each property
+// keeps the rule it has always had (Johno's F1 ruling): truncOf truncates a fraction (a Drawer's
+// size: 33.7 is 33, as an expression like parent.width * 0.3 gives fractions); cellsOf refuses a
+// fraction and a negative (a Dialog's width: 33.7 is an error).
+
+// truncOf reads a number property as an int, its fraction dropped.
+func truncOf(v qml.SpecValue) (int, error) {
+	n, err := numberOf(v)
+	return int(n), err
+}
+
+// cellsOf reads a size in cells: a whole number, not negative.
+func cellsOf(v qml.SpecValue) (int, error) {
+	n, err := numberOf(v)
+	if err != nil {
+		return 0, err
+	}
+	if n < 0 || n != float64(int(n)) {
+		return 0, fmt.Errorf("want a whole number of cells, got %s (at %s)", v.Raw, v.Pos)
+	}
+	return int(n), nil
+}
+
 // strValue is a string property value, for the adapter's own tables.
 func strValue(s string) qml.SpecValue { return qml.SpecValue{Kind: qml.SpecValueString, Raw: s} }
 

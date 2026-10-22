@@ -365,18 +365,6 @@ func buildDialog(b Build) (tui.Component, []string, error) {
 	return newDialog(b, s), consumed, nil
 }
 
-// cellsOf reads a size in cells: a whole number, not negative.
-func cellsOf(v qml.SpecValue) (int, error) {
-	n, err := numberOf(v)
-	if err != nil {
-		return 0, err
-	}
-	if n < 0 || n != float64(int(n)) {
-		return 0, fmt.Errorf("want a whole number of cells, got %s (at %s)", v.Raw, v.Pos)
-	}
-	return int(n), nil
-}
-
 // dialogChildren takes a Dialog's children: exactly one CONTENT item, and any
 // number of Shortcuts — Qt's non-visual children, here keys that are live while
 // the dialog is open and the controls in it leave them.
