@@ -4,6 +4,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/yongjohnlee80/golib/tui"
 	tuidecl "github.com/yongjohnlee80/golib/tui/decl"
 	"github.com/yongjohnlee80/golib/tui/decl/decltest"
 )
@@ -29,5 +30,18 @@ func TestAReloadGivingAMenuItemAChildIsRefusedAtItsPosition(t *testing.T) {
 	if err == nil || !strings.Contains(err.Error(), "MenuItem takes no children") ||
 		!strings.Contains(err.Error(), "use a Menu for a submenu") || !strings.Contains(err.Error(), "(at main.qml:") {
 		t.Errorf("a reload giving a MenuItem a child: %v; want the arity's refusal, positioned, naming a Menu", err)
+	}
+}
+
+// A node that belongs only in some parents says so itself (parentBound), in its parent's Create
+// and, for the root, in VetRoot: a Shortcut as the root is refused, with its position, rather
+// than mounted live in nothing. Before, VetRoot asked only about a SyntaxHighlighter and the
+// renderers, so a root Shortcut was taken.
+func TestARootShortcutIsRefused(t *testing.T) {
+	_, err := tuidecl.NewProgram(tuidecl.LayoutSource("main.qml", []byte(menuRowsHead+`Shortcut { sequence: "Ctrl+Q" }`)),
+		tuidecl.AppOptions(tui.WithBackend(tui.NewTestBackend(10, 2))))
+	if err == nil || !strings.Contains(err.Error(), "a Shortcut is live while focus is in the element that declares it") ||
+		!strings.Contains(err.Error(), "the root is in none") || !strings.Contains(err.Error(), "(at main.qml:2:1)") {
+		t.Errorf("a root Shortcut: %v; want refused, as in no holder, at main.qml:2:1", err)
 	}
 }
