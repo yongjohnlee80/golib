@@ -407,7 +407,7 @@ func (l *htmlLayout) keyOf(b *topBlock, width float32) uint64 {
 		nodes = []*phtml.Node{b.node}
 	}
 	diagram := func(n *phtml.Node) {
-		if dg, ok := diagramSource(n); ok {
+		if dg, ok := diagramSource(n, l); ok {
 			// its answer's state, and which Diagrammer gives it: another one is asked again
 			for _, g := range []uint64{l.diagrams.genOf(dg), l.v.DiagramsSet()} {
 				for i := range 8 {

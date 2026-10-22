@@ -28,6 +28,40 @@ type Diagrammer interface {
 	Diagram(ctx context.Context, req DiagramRequest, ready func()) DiagramAnswer
 }
 
+// DiagramLanguages is a Diagrammer that names the languages it draws. An HTMLView draws a <pre>
+// as a picture when one of its classes is such a language; with a Diagrammer that does not name
+// them, the native ones (mermaid, vega-lite and vegalite). Diagrams names its engines', then its
+// fallback's.
+type DiagramLanguages interface {
+	// DiagramLanguage is the language a fence's info or a pre's class spells as name, by its
+	// engine's own name (vegalite is vega-lite), and whether it is one.
+	DiagramLanguage(name string) (lang string, ok bool)
+}
+
+// DiagramEngine lays out a diagram language for [Diagrams], which gives it the cache, one job per
+// diagram whoever waits for it, and the fallback. golib's are Mermaid and Vega-Lite; a host adds
+// its own, or replaces one, with Diagrams' engines.
+type DiagramEngine interface {
+	// Langs are the language's spellings, as a fence's info or a pre's class gives them; the
+	// first is its name.
+	Langs() []string
+	// Lay lays req out on a worker, measuring with m, which is the job's until Lay returns. ctx
+	// is done when no one waits for the diagram any more. An error that is a
+	// *[github.com/yongjohnlee80/golib/parse/mermaid.SyntaxError] is drawn in place, as a picture
+	// of the error and its line.
+	Lay(ctx context.Context, req DiagramRequest, m gui.Measurer) (LaidPicture, error)
+	// Declines reports whether err hands the diagram to the fallback: one the engine does not
+	// draw, or one over a limit. Another error draws the source as code.
+	Declines(err error) bool
+}
+
+// LaidPicture is a diagram or chart laid out: what it paints, and its size. A [DiagramEngine]
+// returns one; mermaid.Lay's and vegalite.Lay's are ones.
+type LaidPicture interface {
+	gui.View
+	Size() gui.Size
+}
+
 // DiagramRequest is a diagram block to draw. Its Theme's fonts name their families as the
 // window resolves them (no "" or [gui.CellFamily]): a diagram is laid out on a worker, whose shaper
 // knows no window, and must be measured in the family the window draws it in.

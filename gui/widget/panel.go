@@ -1,5 +1,3 @@
-// Package widget holds gui's native widgets: components that lay out in tui's cells and draw
-// natively when a gui backend hosts them, and in cells on any other backend.
 package widget
 
 import (
