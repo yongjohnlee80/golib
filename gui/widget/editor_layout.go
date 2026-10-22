@@ -98,7 +98,7 @@ func (l *pixelLayout) Reveal(line, col int) {
 
 // sideways reports whether the view scrolls horizontally: the Raw view, with WrapNone.
 func (l *pixelLayout) sideways() bool {
-	return l.e.wrap == tuiwidget.WrapNone && !(l.e.Shown() == Rendered && l.e.render != nil)
+	return l.e.wrap == tuiwidget.WrapNone && !(l.e.ShownView() == tuiwidget.ViewRendered && l.e.render != nil)
 }
 
 // monoCell is one monospace cluster's width: the unit the gutter and the ruler are counted in.
@@ -256,7 +256,7 @@ func (l *pixelLayout) ensure() {
 		l.lines = append(l.lines, c.LineAt(i))
 	}
 	var blocks []Block
-	if l.e.Shown() == Rendered && l.e.render != nil {
+	if l.e.ShownView() == tuiwidget.ViewRendered && l.e.render != nil {
 		blocks = l.e.render.Blocks(l.lines, 0, n)
 		if r, ok := l.e.render.(ReflowRenderer); ok {
 			keep := max(0, min(l.keep, r.ReflowFrom(l.keep)))
@@ -314,7 +314,7 @@ func (l *pixelLayout) heightOf(i int) float32 {
 		return lb.bl.Height
 	}
 	f := l.monoFont()
-	if l.e.Shown() == Rendered {
+	if l.e.ShownView() == tuiwidget.ViewRendered {
 		f = l.th.Prose
 	}
 	return float32(l.blocks[i].To-l.blocks[i].From) * l.lineHeight(f)
@@ -357,7 +357,7 @@ func (l *pixelLayout) lay(i int, frame *tuiwidget.HighlightFrame) *laidBlock {
 	// Normal and Visual, and on a viewer, it renders as every other block does. With inside
 	// false, a cursor moving there re-lays nothing either.
 	inside := cl >= b.From && cl < b.To && l.typing()
-	if l.e.Shown() == Rendered && l.e.render != nil {
+	if l.e.ShownView() == tuiwidget.ViewRendered && l.e.render != nil {
 		if lb := l.laid[i]; lb != nil && !lb.stale && lb.width == l.width && lb.inside == inside {
 			return lb
 		}

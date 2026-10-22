@@ -18,7 +18,7 @@ var _ tuiwidget.EditorFoldLayout = (*pixelLayout)(nil)
 // may ask for its diagram: the block a move is about to reveal. Before the first paint there is no
 // shaper to lay out with, and nothing has been drawn to fold: none, as caretAt estimates then.
 func (l *pixelLayout) FoldOf(line int) (from, to int, hidden, ok bool) {
-	if l.sh == nil || l.typing() || l.e.Shown() != Rendered || l.e.render == nil {
+	if l.sh == nil || l.typing() || l.e.ShownView() != tuiwidget.ViewRendered || l.e.render == nil {
 		return 0, 0, false, false
 	}
 	i := l.blockOf(line)

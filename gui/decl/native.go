@@ -187,19 +187,12 @@ func wrapMode(wrap bool) tuiwidget.WrapMode {
 func editorSetters() map[string]tuidecl.Setter {
 	s := tuidecl.EditorSetters()
 	maps.Copy(s, tuidecl.EditorViewSetters())
-	// view: gui's Editor chooses its view with SetMode, not tuiwidget.ViewChooser's SetView
-	s["view"] = tuidecl.EnumSetter(tuidecl.EditorViews, func(e *widget.Editor, v string) {
-		if v == "Rendered" { // the enum's bare value: tuidecl's Enum reads Editor.Rendered as "Rendered"
-			e.SetMode(widget.Rendered)
-		} else {
-			e.SetMode(widget.Raw)
-		}
-	})
 	return s
 }
 
-// gui's Editor has the view capabilities EditorViewSetters sets, but ViewChooser (above).
+// gui's Editor has the view capabilities EditorViewSetters sets.
 var (
+	_ tuiwidget.ViewChooser                 = (*widget.Editor)(nil)
 	_ tuiwidget.LineNumberer                = (*widget.Editor)(nil)
 	_ tuiwidget.Ruler                       = (*widget.Editor)(nil)
 	_ tuiwidget.Wrapper                     = (*widget.Editor)(nil)

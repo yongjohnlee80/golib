@@ -33,7 +33,7 @@ type docState struct {
 
 func (h *edHarness) docState(v *tuiwidget.HTMLView) (s docState) {
 	h.onLoop(func() {
-		s = docState{mode: h.e.Mode(), shown: h.e.Shown(), docShown: h.e.stack.docShown, bodyVis: h.e.body.Visible(), docVis: v.Visible(),
+		s = docState{mode: h.e.Mode(), shown: h.e.Shown(), docShown: h.e.doc.Shown(), bodyVis: h.e.body.Visible(), docVis: v.Visible(),
 			focusDoc: h.app.FocusWithin(v), focus: h.app.FocusWithin(h.e.body), source: string(v.Source()),
 			listEditing: h.e.core.ListEditing()}
 	})
@@ -289,7 +289,7 @@ func TestADocumentViewSwappedInAtRunTime(t *testing.T) {
 	h.until("the focus in the body", focused(h.e.body))
 	var s docState
 	h.onLoop(func() {
-		s = docState{mode: h.e.Mode(), shown: h.e.Shown(), docShown: h.e.stack.docShown, bodyVis: h.e.body.Visible()}
+		s = docState{mode: h.e.Mode(), shown: h.e.Shown(), docShown: h.e.doc.Shown(), bodyVis: h.e.body.Visible()}
 	})
 	if s.mode != Rendered || s.shown != Rendered || s.docShown || !s.bodyVis {
 		t.Fatalf("the view removed while shown: %+v, want Rendered by the renderer on the body", s)
@@ -348,5 +348,29 @@ func TestTheGuiTableUndoesAndRedoesItsKeptEditByKey(t *testing.T) {
 				t.Fatalf("redo: %q, want %q", got, edited)
 			}
 		})
+	}
+}
+
+// gui's Editor chooses its view as the terminal's does (tuiwidget.ViewChooser, EditorView), and the
+// deprecated Mode names read and set the same state.
+func TestTheEditorsViewIsTuisEditorView(t *testing.T) {
+	var _ tuiwidget.ViewChooser = (*Editor)(nil)
+	e := NewEditor(WithRenderer(NewMarkdownRenderer()), WithView(tuiwidget.ViewRendered))
+	if e.View() != tuiwidget.ViewRendered || e.ShownView() != tuiwidget.ViewRendered {
+		t.Fatalf("WithView(Rendered): view %v, shown %v; want both Rendered", e.View(), e.ShownView())
+	}
+	e.SetRenderedEnabled(false)
+	if e.View() != tuiwidget.ViewRendered || e.ShownView() != tuiwidget.ViewRaw {
+		t.Errorf("Rendered withheld: view %v, shown %v; want Rendered kept, Raw drawn", e.View(), e.ShownView())
+	}
+	if e.Mode() != e.View() || e.Shown() != e.ShownView() {
+		t.Errorf("Mode %v, Shown %v; want View's %v and ShownView's %v", e.Mode(), e.Shown(), e.View(), e.ShownView())
+	}
+	e.SetMode(Raw)
+	if e.View() != tuiwidget.ViewRaw {
+		t.Errorf("SetMode(Raw): view %v, want Raw", e.View())
+	}
+	if NewEditor(WithView(tuiwidget.ViewRendered)).ShownView() != tuiwidget.ViewRaw {
+		t.Error("Rendered with no renderer or document view is drawn, want Raw")
 	}
 }
