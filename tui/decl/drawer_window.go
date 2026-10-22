@@ -114,22 +114,13 @@ func (g *drawerWindowTarget) SetWindowVisible(v bool) bool {
 	return true
 }
 
-func drawerWindowInvoke(action tui.Action) Method {
-	return NoArgMethod(func(n *drawerNode) error {
-		if n.windowMods == nil || !n.windowMods.InvokeInput(action) {
+// drawerWindow is a WindowMod method (windowInvoke, windowStep) run on the WindowMod a Drawer's
+// window controls are, as tileWindow runs one on a Tile's. A Drawer with none refuses it.
+func drawerWindow(m Method) Method {
+	return argMethod(func(n *drawerNode, args []qml.SpecValue) error {
+		if n.windowMods == nil {
 			return ErrWindowOperationUnavailable
 		}
-		return nil
+		return m(n.windowMods, args)
 	})
-}
-
-func drawerWindowStep(move bool) Method {
-	step := windowStep(move)
-	return func(component tui.Component, args []qml.SpecValue) error {
-		n, ok := component.(*drawerNode)
-		if !ok || n.windowMods == nil {
-			return ErrWindowOperationUnavailable
-		}
-		return step(n.windowMods, args)
-	}
 }
