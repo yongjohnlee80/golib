@@ -6,6 +6,7 @@ import (
 
 	xhtml "github.com/yongjohnlee80/golib/extract/html"
 	"github.com/yongjohnlee80/golib/gui/flow"
+	"github.com/yongjohnlee80/golib/gui/internal/css"
 	phtml "github.com/yongjohnlee80/golib/parse/html"
 )
 
@@ -306,7 +307,7 @@ func (l *htmlLayout) gridColumns(st *computed, width, gap float32, n int) []floa
 		case s == "auto":
 			return gridTrack{fr: 1}, true
 		case strings.HasPrefix(s, "minmax(") && strings.HasSuffix(s, ")"):
-			parts := splitTop(s[len("minmax("):len(s)-1], ',')
+			parts := css.SplitTop(s[len("minmax("):len(s)-1], ',')
 			if len(parts) != 2 {
 				return gridTrack{}, false
 			}
@@ -324,18 +325,18 @@ func (l *htmlLayout) gridColumns(st *computed, width, gap float32, n int) []floa
 		return gridTrack{min: v, fixed: true}, ok
 	}
 	var tracks []gridTrack
-	for _, tok := range splitTop(spec, ' ') {
+	for _, tok := range css.SplitTop(spec, ' ') {
 		tok = strings.TrimSpace(tok)
 		if tok == "" {
 			continue
 		}
 		if strings.HasPrefix(tok, "repeat(") && strings.HasSuffix(tok, ")") {
-			parts := splitTop(tok[len("repeat("):len(tok)-1], ',')
+			parts := css.SplitTop(tok[len("repeat("):len(tok)-1], ',')
 			if len(parts) != 2 {
 				return []float32{width}
 			}
 			var inner []gridTrack
-			for _, t := range splitTop(strings.TrimSpace(parts[1]), ' ') {
+			for _, t := range css.SplitTop(strings.TrimSpace(parts[1]), ' ') {
 				if strings.TrimSpace(t) == "" {
 					continue
 				}
