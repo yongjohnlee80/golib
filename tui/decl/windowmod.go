@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"maps"
 	"math"
-	"strconv"
 
 	"github.com/yongjohnlee80/golib/errs"
 	"github.com/yongjohnlee80/golib/parse/qml"
@@ -87,8 +86,8 @@ func buildWindowMod(b Build) (tui.Component, []string, error) {
 		widget.WithWindowLabel(c.label), widget.WithWindowKey(c.key),
 		widget.WithWindowMoveBinding(c.modifier, c.moveButton), widget.WithWindowResizeBinding(c.modifier, c.resizeButton),
 		widget.WithWindowChanged(func(e widget.WindowChangedEvent) {
-			emit(strValue(e.Operation.String()), strValue(e.Key), windowNumber(e.Bounds.X), windowNumber(e.Bounds.Y),
-				windowNumber(e.Bounds.W), windowNumber(e.Bounds.H), windowBool(e.Maximized), windowBool(e.Minimized))
+			emit(strValue(e.Operation.String()), strValue(e.Key), numberValue(e.Bounds.X), numberValue(e.Bounds.Y),
+				numberValue(e.Bounds.W), numberValue(e.Bounds.H), boolValue(e.Maximized), boolValue(e.Minimized))
 		}),
 	}
 	if c.move {
@@ -110,13 +109,6 @@ func buildWindowMod(b Build) (tui.Component, []string, error) {
 		opts = append(opts, widget.WithWindowTarget(b.WindowTarget))
 	}
 	return widget.NewWindowMod(b.Children[0], opts...), consumed, nil
-}
-
-func windowNumber(n int) qml.SpecValue {
-	return qml.SpecValue{Kind: qml.SpecValueNumber, Raw: strconv.Itoa(n)}
-}
-func windowBool(b bool) qml.SpecValue {
-	return qml.SpecValue{Kind: qml.SpecValueBool, Raw: strconv.FormatBool(b)}
 }
 
 func windowInvoke(action tui.Action) Method {
@@ -167,10 +159,10 @@ var windowModType = Type{
 	},
 	Getters: map[string]Getter{
 		"maximized": getter(func(w *widget.WindowMod) (qml.SpecValue, error) {
-			return windowBool(w.Core().State().Maximized), nil
+			return boolValue(w.Core().State().Maximized), nil
 		}),
 		"minimized": getter(func(w *widget.WindowMod) (qml.SpecValue, error) {
-			return windowBool(w.Core().State().Minimized), nil
+			return boolValue(w.Core().State().Minimized), nil
 		}),
 	},
 }

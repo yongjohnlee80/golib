@@ -183,7 +183,7 @@ func (n *tableViewNode) sortChanged(keys []widget.TableSortKey) {
 		return
 	}
 	n.orderBy = text
-	n.orderChanged(qml.SpecValue{Kind: qml.SpecValueString, Raw: text})
+	n.orderChanged(strValue(text))
 }
 
 // cellsSetter is a setter for a property only a TableView with a cellCursor has.
@@ -274,7 +274,7 @@ func (t *cellTemplate) check(hasModel bool, roles []string, base map[string]qml.
 			if hasModel && !known[role] {
 				return fmt.Errorf("%s.delegate: unknown model role %q (at %s)", t.owner, role, p.Pos)
 			}
-			locals["model."+role] = qml.SpecValue{Kind: qml.SpecValueString, Raw: "normal"}
+			locals["model."+role] = strValue("normal")
 			return nil
 		}
 		if p.Value.Kind == qml.SpecValueRef && len(p.Value.Path) == 2 && p.Value.Path[0] == "model" {
@@ -344,7 +344,7 @@ func (t *cellTemplate) report(err error) {
 // modelValue is a model's value as a delegate reads it: an invalid one is an empty string.
 func modelValue(v qml.SpecValue) qml.SpecValue {
 	if v.Kind == qml.SpecValueInvalid {
-		return qml.SpecValue{Kind: qml.SpecValueString}
+		return strValue("")
 	}
 	return v
 }

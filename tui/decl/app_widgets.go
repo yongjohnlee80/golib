@@ -2,7 +2,6 @@ package decl
 
 import (
 	"fmt"
-	"strconv"
 	"strings"
 
 	"github.com/yongjohnlee80/golib/parse/qml"
@@ -276,7 +275,7 @@ func buildTerminal(b Build) (tui.Component, []string, error) {
 		widget.WithVimKeys(vimKeys),
 		widget.WithThemeColors(themeColors),
 		widget.WithOnExit(func(code int) {
-			exited(qml.SpecValue{Kind: qml.SpecValueNumber, Raw: strconv.Itoa(code)})
+			exited(numberValue(code))
 		}),
 		widget.WithOnTitle(func(title string) { titled(strValue(title)) }),
 		widget.WithOnMode(func(m widget.TerminalMode) { moded(strValue(strings.ToLower(m.String()))) }),

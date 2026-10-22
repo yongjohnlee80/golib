@@ -72,7 +72,7 @@ func buildTile(b Build) (tui.Component, []string, error) {
 func tileEdges(s string) ([]tui.DockEdge, error) {
 	var out []tui.DockEdge
 	for _, name := range strings.FieldsFunc(s, func(r rune) bool { return r == ' ' || r == ',' }) {
-		e, err := drawerEdges.read(qml.SpecValue{Kind: qml.SpecValueString, Raw: name})
+		e, err := drawerEdges.read(strValue(name))
 		if err != nil {
 			return nil, fmt.Errorf("a Tile's edges: %w", err)
 		}
@@ -235,11 +235,11 @@ func buildTileManager(b Build) (tui.Component, []string, error) {
 func (n *tileNode) emit(e widget.TilesChangedEvent) {
 	switch e.Operation {
 	case widget.WindowResize:
-		n.resized(fracNumber(e.Size))
+		n.resized(floatValue(e.Size))
 	case widget.WindowMove:
 		n.docked(strValue(edgeName(e.Edge)))
 	}
-	n.changed(strValue(e.Operation.String()), windowBool(e.Maximized), windowBool(e.Hidden))
+	n.changed(strValue(e.Operation.String()), boolValue(e.Maximized), boolValue(e.Hidden))
 }
 
 var tileManagerType = Type{Name: "TileManager", Build: buildTileManager}

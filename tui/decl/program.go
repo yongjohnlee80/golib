@@ -706,13 +706,9 @@ func Value(v any) (qml.SpecValue, error) {
 	case qml.SpecValue:
 		return x, nil
 	case string:
-		return qml.SpecValue{Kind: qml.SpecValueString, Raw: x}, nil
+		return strValue(x), nil
 	case bool:
-		raw := "false"
-		if x {
-			raw = "true"
-		}
-		return qml.SpecValue{Kind: qml.SpecValueBool, Raw: raw}, nil
+		return boolValue(x), nil
 	case int, int8, int16, int32, int64, uint, uint8, uint16, uint32, uint64:
 		return qml.SpecValue{Kind: qml.SpecValueNumber, Raw: fmt.Sprint(x)}, nil
 	case float32, float64:

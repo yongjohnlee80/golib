@@ -244,7 +244,7 @@ func (a *Adapter) ReadProperty(node decl.NodeID, prop string) (qml.SpecValue, er
 		if a.app != nil {
 			scope = string(a.app.KeyScopeOf(b.comp))
 		}
-		return qml.SpecValue{Kind: qml.SpecValueString, Raw: scope}, nil
+		return strValue(scope), nil
 	}
 	if !ok {
 		return qml.SpecValue{}, fmt.Errorf("a %s has no readable property %s", b.typ, prop)

@@ -149,7 +149,7 @@ func (m *TreeListModel) Data(ix Index, role string) qml.SpecValue {
 	}
 	sv, err := Value(v)
 	if err != nil {
-		return qml.SpecValue{Kind: qml.SpecValueString, Raw: fmt.Sprint(v)}
+		return strValue(fmt.Sprint(v))
 	}
 	return sv
 }
