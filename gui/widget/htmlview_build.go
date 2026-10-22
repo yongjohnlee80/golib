@@ -83,7 +83,7 @@ func (l *htmlLayout) build() {
 	// so html{font-size:2rem} is twice the text however often the page is built
 	l.rootPx = l.textPx
 	l.styler.rootPx = l.textPx
-	root := &computed{color: l.fg, fontSize: l.textPx, lineHeight: 1.2, display: "block"}
+	root := &computed{color: l.fg, fontSize: l.textPx, lineHeight: 1.2, display: displayBlock}
 	htmlNode, bodyNode := findElement(doc, "html"), findElement(doc, "body")
 	chain := []*phtml.Node{}
 	st := root
@@ -129,10 +129,10 @@ func (l *htmlLayout) build() {
 			continue // a dropped element (a form, an iframe, an svg, aria-hidden) at the top too
 		}
 		cs := l.styler.style(c, st, append(chain, c))
-		if cs.display == "none" {
+		if cs.display == displayNone {
 			continue
 		}
-		if cs.position == "absolute" {
+		if cs.position == positionAbsolute {
 			flushInline()
 			l.abs = append(l.abs, &topBlock{node: c, src: spanOf(c), after: len(l.blocks)})
 			continue

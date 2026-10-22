@@ -143,12 +143,12 @@ func (l *htmlLayout) layTop(b *topBlock) {
 	} else {
 		holder := &phtml.Node{Kind: phtml.StartTag, Children: b.inline}
 		bx = &box{kind: kBlock, st: l.body.inherit(), src: b.src}
-		bx.st.display = "block"
+		bx.st.display = displayBlock
 		bx.kids = bd.children(holder, l.body, b.src)
 	}
 	e := l.edgesOf(bx.st, width)
 	l.layBlock(bx, l.bodyLeft(), 0, width)
-	if bx.st.position == "relative" {
+	if bx.st.position == positionRelative {
 		l.shiftRelative(bx, width)
 	}
 	if b.node == nil {

@@ -341,21 +341,21 @@ func (l *htmlLayout) imageBox(st *computed, iw, ih, aw, ah float32) (float32, fl
 // fitted is where a raster of iw × ih is drawn in a box of sz under object-fit: fill (the
 // default) stretches it; contain fits it whole, cover fills the box (the canvas clips the rest),
 // none keeps its size; the last three centred.
-func fitted(fit string, sz gui.Size, iw, ih float32) gui.Rect {
+func fitted(fit objectFit, sz gui.Size, iw, ih float32) gui.Rect {
 	full := gui.Rect{W: sz.W, H: sz.H}
 	if iw <= 0 || ih <= 0 {
 		return full
 	}
 	s := float32(1)
 	switch fit {
-	case "contain", "scale-down":
+	case fitContain, fitScaleDown:
 		s = min(sz.W/iw, sz.H/ih)
-		if fit == "scale-down" {
+		if fit == fitScaleDown {
 			s = min(s, 1)
 		}
-	case "cover":
+	case fitCover:
 		s = max(sz.W/iw, sz.H/ih)
-	case "none":
+	case fitNone:
 	default:
 		return full
 	}

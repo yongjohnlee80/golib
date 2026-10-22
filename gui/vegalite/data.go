@@ -68,10 +68,10 @@ func newPlan(c *chart) (*plan, error) {
 	if x.isDatum || y.isDatum {
 		return nil, unsupported("a datum in a %s mark", c.mark.kind)
 	}
-	if x.aggregate != "" && y.aggregate != "" {
+	if x.aggregate != aggNone && y.aggregate != aggNone {
 		return nil, unsupported("x and y both aggregated")
 	}
-	if col := c.color; col != nil && col.value == nil && (col.typ != typeNominal || col.aggregate != "") {
+	if col := c.color; col != nil && col.value == nil && (col.typ != typeNominal || col.aggregate != aggNone) {
 		return nil, unsupported("a %v colour", col.typ)
 	}
 	def := marks[c.mark.kind]
@@ -83,10 +83,10 @@ func newPlan(c *chart) (*plan, error) {
 	if c.shape != nil && !def.shapes {
 		return nil, unsupported("a shape on a %s mark", c.mark.kind)
 	}
-	if sh := c.shape; sh != nil && sh.shape == "" && (!sh.typ.discrete() || sh.aggregate != "") {
+	if sh := c.shape; sh != nil && sh.shape == "" && (!sh.typ.discrete() || sh.aggregate != aggNone) {
 		return nil, unsupported("a %v shape", sh.typ)
 	}
-	if p.value().aggregate == "" && p.dim().aggregate != "" {
+	if p.value().aggregate == aggNone && p.dim().aggregate != aggNone {
 		return nil, unsupported("the dimension aggregated")
 	}
 	if err := p.read(); err != nil {
@@ -151,7 +151,7 @@ func (p *plan) read() error {
 			d.x, d.y = dimension, v
 		}
 	}
-	if val.aggregate == "" {
+	if val.aggregate == aggNone {
 		for _, row := range p.c.rows {
 			xv, okx := posOf(p.c.x, row)
 			yv, oky := posOf(p.c.y, row)
@@ -179,7 +179,7 @@ func (p *plan) read() error {
 			order = append(order, k)
 		}
 		counts[k]++
-		if val.aggregate != "count" {
+		if val.aggregate != aggCount {
 			if f, ok := numberOf(row[val.field]); ok {
 				groups[k] = append(groups[k], f)
 			}
@@ -200,11 +200,11 @@ func (p *plan) read() error {
 
 // aggregate is op over vs (count: the group's rows, n). ok is false for a group with no value an
 // op other than count and sum can be of.
-func aggregate(op string, vs []float64, n int) (float64, bool) {
+func aggregate(op aggregation, vs []float64, n int) (float64, bool) {
 	switch op {
-	case "count":
+	case aggCount:
 		return float64(n), true
-	case "sum":
+	case aggSum:
 		s := 0.0
 		for _, v := range vs {
 			s += v
@@ -215,15 +215,15 @@ func aggregate(op string, vs []float64, n int) (float64, bool) {
 		return 0, false
 	}
 	switch op {
-	case "mean":
+	case aggMean:
 		s := 0.0
 		for _, v := range vs {
 			s += v
 		}
 		return s / float64(len(vs)), true
-	case "min":
+	case aggMin:
 		return slices.Min(vs), true
-	case "max":
+	case aggMax:
 		return slices.Max(vs), true
 	}
 	s := slices.Clone(vs) // median
@@ -368,10 +368,10 @@ func naturalLess(a, b string) bool {
 // category's rows, by the sort's op or Vega-Lite's default, sum in a stacked plot and min otherwise.
 func (p *plan) sortKeys(ch *channel) map[string]float64 {
 	op := ch.sortOp
-	if op == "" {
-		op = "min"
+	if op == aggNone {
+		op = aggMin
 		if p.stacking() != stackNone {
-			op = "sum"
+			op = aggSum
 		}
 	}
 	vs := map[string][]float64{}
@@ -569,7 +569,7 @@ func newRule(c *chart) (*rulePlan, error) {
 		r.vals = []pos{v}
 		return r, nil
 	}
-	if r.ch.aggregate != "" {
+	if r.ch.aggregate != aggNone {
 		var vs []float64
 		for _, row := range c.rows {
 			if f, ok := numberOf(row[r.ch.field]); ok {

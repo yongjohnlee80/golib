@@ -147,10 +147,10 @@ func axisTitle(ch *channel) string {
 		return ""
 	case ch.title != nil:
 		return *ch.title
-	case ch.aggregate == "count":
+	case ch.aggregate == aggCount:
 		return "Count of Records"
-	case ch.aggregate != "":
-		return map[string]string{"sum": "Sum", "mean": "Mean", "median": "Median", "min": "Min", "max": "Max"}[ch.aggregate] + " of " + ch.field
+	case ch.aggregate != aggNone:
+		return map[aggregation]string{aggSum: "Sum", aggMean: "Mean", aggMedian: "Median", aggMin: "Min", aggMax: "Max"}[ch.aggregate] + " of " + ch.field
 	}
 	return ch.field
 }

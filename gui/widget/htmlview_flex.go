@@ -38,7 +38,7 @@ func (b *builder) items(n *phtml.Node, st *computed, src [2]int) []*box {
 			}
 			holder := &phtml.Node{Kind: phtml.StartTag, Children: []*phtml.Node{c}}
 			anon := &box{kind: kBlock, st: st.inherit(), src: src}
-			anon.st.display = "block"
+			anon.st.display = displayBlock
 			anon.kids = b.children(holder, st, src)
 			out = append(out, anon)
 			continue
@@ -52,7 +52,7 @@ func (b *builder) items(n *phtml.Node, st *computed, src [2]int) []*box {
 		b.chain = append(b.chain, c)
 		cs := b.s.style(c, st, b.chain)
 		switch {
-		case cs.display == "none":
+		case cs.display == displayNone:
 		case c.Name == "img":
 			item := &box{kind: kBlock, st: cs, node: c, src: src}
 			item.kids = []*box{{kind: kRun, st: cs, src: src, spans: []flow.Span{b.l.imageSpan(c, cs, src)}}}
@@ -74,14 +74,14 @@ func (l *htmlLayout) layFlex(bx *box, x, y, width float32) float32 {
 	gapRow, gapCol := px(st.gap[0], 0), px(st.gap[1], width)
 	var items, abs []*box
 	for _, k := range bx.kids {
-		if k.st.position == "absolute" {
+		if k.st.position == positionAbsolute {
 			abs = append(abs, k)
 		} else {
 			items = append(items, k)
 		}
 	}
 	var h float32
-	if st.flexDir == "column" {
+	if st.flexDir == flexColumn {
 		h = l.layFlexColumn(bx, items, x, y, width, gapRow)
 	} else {
 		h = l.layFlexRow(bx, items, x, y, width, gapRow, gapCol)
@@ -198,15 +198,15 @@ func (l *htmlLayout) layFlexColumn(bx *box, items []*box, x, y, width, gapRow fl
 		e := l.edgesOf(k.st, width)
 		avail := width
 		al := alignOf(bx.st, k.st)
-		if al != "stretch" && (!k.st.width.set() || k.st.width.auto()) {
+		if al != alignStretch && (!k.st.width.set() || k.st.width.auto()) {
 			_, hi := l.minMax(k, width)
 			avail = min(hi+e.m[1]+e.m[3], width)
 		}
 		l.layBlock(k, x, cy+e.m[0], avail)
 		switch al {
-		case "center":
+		case alignCenter:
 			shiftBox(k, (width-avail)/2, 0)
-		case "end", "flex-end":
+		case alignEnd, alignFlexEnd:
 			shiftBox(k, width-avail, 0)
 		}
 		cy = k.y + k.h + e.m[2]
@@ -215,12 +215,12 @@ func (l *htmlLayout) layFlexColumn(bx *box, items []*box, x, y, width, gapRow fl
 }
 
 // alignOf is an item's alignment in its container: align-self, else the container's align-items.
-func alignOf(container, item *computed) string {
-	if item.alignSelf != "" && item.alignSelf != "auto" {
+func alignOf(container, item *computed) flexAlign {
+	if item.alignSelf != alignUnset && item.alignSelf != alignAuto {
 		return item.alignSelf
 	}
-	if container.alignItems == "" || container.alignItems == "normal" {
-		return "stretch"
+	if container.alignItems == alignUnset || container.alignItems == alignNormal {
+		return alignStretch
 	}
 	return container.alignItems
 }
@@ -230,13 +230,13 @@ func alignOf(container, item *computed) string {
 func (l *htmlLayout) align(k *box, e edges, top, lineH float32) {
 	room := lineH - e.m[0] - e.m[2] - k.h
 	switch alignOf(l.containerOf(k), k.st) {
-	case "stretch":
+	case alignStretch:
 		if !k.st.height.set() || k.st.height.auto() {
 			k.h += max(room, 0)
 		}
-	case "center":
+	case alignCenter:
 		shiftBox(k, 0, room/2)
-	case "end", "flex-end":
+	case alignEnd, alignFlexEnd:
 		shiftBox(k, 0, room)
 	}
 }
@@ -251,23 +251,23 @@ func (l *htmlLayout) containerOf(k *box) *computed {
 
 // justify is where the first item starts and the extra room between items, for left room spread
 // by justify-content among n items.
-func justify(how string, left float32, n int) (start, between float32) {
+func justify(how flexAlign, left float32, n int) (start, between float32) {
 	if left <= 0 || n == 0 {
 		return 0, 0
 	}
 	switch how {
-	case "center":
+	case alignCenter:
 		return left / 2, 0
-	case "end", "flex-end", "right":
+	case alignEnd, alignFlexEnd, alignRight:
 		return left, 0
-	case "space-between":
+	case alignSpaceBetween:
 		if n == 1 {
 			return 0, 0
 		}
 		return 0, left / float32(n-1)
-	case "space-around":
+	case alignSpaceAround:
 		return left / float32(n) / 2, left / float32(n)
-	case "space-evenly":
+	case alignSpaceEvenly:
 		return left / float32(n+1), left / float32(n+1)
 	}
 	return 0, 0
@@ -432,7 +432,7 @@ func (l *htmlLayout) layGrid(bx *box, x, y, width float32) float32 {
 	gapRow, gapCol := px(st.gap[0], 0), px(st.gap[1], width)
 	var items, abs []*box
 	for _, k := range bx.kids {
-		if k.st.position == "absolute" {
+		if k.st.position == positionAbsolute {
 			abs = append(abs, k)
 		} else {
 			items = append(items, k)

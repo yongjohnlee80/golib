@@ -24,9 +24,23 @@ type cssCompound struct {
 
 // cssAttr is an attribute selector: [name], or [name op value] with op one of = ~= |= ^= $= *=.
 type cssAttr struct {
-	name, op, value string
-	fold            bool // the i flag: the value is compared case-insensitively
+	name, value string
+	op          attrOp
+	fold        bool // the i flag: the value is compared case-insensitively
 }
+
+// attrOp is an attribute selector's comparison, as written between its name and its value.
+type attrOp string
+
+const (
+	attrPresent   attrOp = ""   // [name]
+	attrEquals    attrOp = "="  // [name=v]
+	attrWord      attrOp = "~=" // a whitespace-separated word is v
+	attrDashed    attrOp = "|=" // v, or v followed by "-"
+	attrPrefix    attrOp = "^=" // starts with v
+	attrSuffix    attrOp = "$=" // ends with v
+	attrSubstring attrOp = "*=" // contains v
+)
 
 type cssSelector struct {
 	parts []cssCompound
@@ -260,10 +274,10 @@ func parseAttrSelector(s string) (cssAttr, bool) {
 		name := strings.ToLower(s)
 		return cssAttr{name: name}, name != "" && !strings.ContainsAny(name, " \t\"'")
 	}
-	a := cssAttr{op: "="}
+	a := cssAttr{op: attrEquals}
 	name := s[:eq]
 	if eq > 0 && strings.ContainsRune("~|^$*", rune(s[eq-1])) {
-		a.op = s[eq-1 : eq+1]
+		a.op = attrOp(s[eq-1 : eq+1])
 		name = s[:eq-1]
 	}
 	a.name = strings.ToLower(strings.TrimSpace(name))
@@ -356,24 +370,24 @@ func (a cssAttr) matches(n *phtml.Node) bool {
 		have, want = strings.ToLower(have), strings.ToLower(want)
 	}
 	switch a.op {
-	case "":
+	case attrPresent:
 		return true
-	case "=":
+	case attrEquals:
 		return have == want
-	case "~=":
+	case attrWord:
 		for _, f := range strings.Fields(have) {
 			if f == want {
 				return true
 			}
 		}
 		return false
-	case "|=":
+	case attrDashed:
 		return have == want || strings.HasPrefix(have, want+"-")
-	case "^=":
+	case attrPrefix:
 		return want != "" && strings.HasPrefix(have, want)
-	case "$=":
+	case attrSuffix:
 		return want != "" && strings.HasSuffix(have, want)
-	case "*=":
+	case attrSubstring:
 		return want != "" && strings.Contains(have, want)
 	}
 	return false
