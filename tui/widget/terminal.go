@@ -136,7 +136,9 @@ func WithStarter(fn func(pty.Cmd) (TerminalProcess, error)) TerminalOption {
 
 // Terminal runs one program on a pseudo-terminal and shows its screen. In
 // input mode the keys go to the program; in normal mode they move over the
-// scrollback, select and yank, and the host's own keys work.
+// scrollback, select and yank, and the host's own keys work. Normal mode's
+// word motions are the editor's: w, b, e and ge by word, W, B, E and gE by
+// WORD, a wide character one cluster over its two cells.
 //
 // The program outlives the Terminal's mounts: a drawer that hides it
 // unmounts it, and the program keeps running and its screen keeps taking

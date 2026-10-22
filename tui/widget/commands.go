@@ -49,6 +49,8 @@ func isKey(e tui.KeyEvent, keys ...tuikey.Seq) bool {
 // The literal continuations: g after g, and Ctrl+\ after the Terminal's prefix, which sends it.
 var (
 	literalG         = tuikey.MustParse("G")
+	literalE         = tuikey.MustParse("E")
+	literalShiftE    = tuikey.MustParse("Shift+E")
 	literalCtrlSlash = tuikey.MustParse("Ctrl+\\", "Ctrl+Shift+\\")
 )
 
@@ -578,7 +580,10 @@ var (
 	TermWord       = cmd("tui.terminal.normal.wordForward", TerminalNormalScope, "W")
 	TermWordBack   = cmd("tui.terminal.normal.wordBackward", TerminalNormalScope, "B")
 	TermWordEnd    = cmd("tui.terminal.normal.wordEnd", TerminalNormalScope, "E")
-	TermGoPrefix   = cmd("tui.terminal.normal.goPrefix", TerminalNormalScope, "G") // then G: the first line
+	TermWORD       = cmd("tui.terminal.normal.WORDForward", TerminalNormalScope, "Shift+W")
+	TermWORDBack   = cmd("tui.terminal.normal.WORDBackward", TerminalNormalScope, "Shift+B")
+	TermWORDEnd    = cmd("tui.terminal.normal.WORDEnd", TerminalNormalScope, "Shift+E")
+	TermGoPrefix   = cmd("tui.terminal.normal.goPrefix", TerminalNormalScope, "G") // then G: the first line; E, Shift+E: ge, gE
 	TermBottom     = cmd("tui.terminal.normal.bottom", TerminalNormalScope, "Shift+G")
 	TermVisual     = cmd("tui.terminal.normal.visual", TerminalNormalScope, "V")
 	TermVisualLine = cmd("tui.terminal.normal.visualLine", TerminalNormalScope, "Shift+V")
@@ -590,7 +595,7 @@ var (
 
 	terminalNormalCommands = []keymap.Command{TermHalfUp, TermHalfDown, TermPageUp, TermPageDown,
 		TermCancel, TermInput, TermLeft, TermRight, TermDown, TermUp, TermLineStart, TermLineEnd, TermWord,
-		TermWordBack, TermWordEnd, TermGoPrefix, TermBottom, TermVisual, TermVisualLine, TermYank,
+		TermWordBack, TermWordEnd, TermWORD, TermWORDBack, TermWORDEnd, TermGoPrefix, TermBottom, TermVisual, TermVisualLine, TermYank,
 		TermSearch, TermSearchBack, TermNext, TermPrev}
 )
 

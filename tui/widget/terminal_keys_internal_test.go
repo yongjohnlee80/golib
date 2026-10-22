@@ -160,11 +160,14 @@ func oldNormalKey(k tui.KeyEvent) string {
 
 // normalDeviation names what the key map changes on purpose in normal mode: Hyper or Meta held; a
 // letter with no text, which the old handler, reading only the text, ignored and the key map reads by
-// its code; and the old prefix test's case folding (Ctrl and a capital letter is the letter's chord
+// its code; W, B and E, which the old handler did not have; and the old prefix test's case folding (Ctrl and a capital letter is the letter's chord
 // both ways, but the old test also took a Ctrl capital that key.Of reads with Shift).
 func normalDeviation(e tui.KeyEvent) string {
 	if e.Text == "" && e.Code < 128 && e.Code > ' ' && e.Mods.Chord()&^tui.ModShift == 0 {
 		return "a character with no text reads its code"
+	}
+	if isKey(e, TermWORD.Keys...) || isKey(e, TermWORDBack.Keys...) || isKey(e, TermWORDEnd.Keys...) {
+		return "W, B and E are new: the WORD motions, the editor's"
 	}
 	return cmp.Or(hyperOrMeta(e), ctrlShiftLetter(e))
 }
