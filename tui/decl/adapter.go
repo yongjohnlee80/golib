@@ -638,6 +638,11 @@ var _ decl.SignalParameters = (*Adapter)(nil)
 func withEnums(enums ...Enum) Option {
 	return func(a *Adapter) {
 		for _, e := range enums {
+			if e.Scope == "" {
+				// an empty scope reads as Tui's on the enum engine, and its constants would
+				// overwrite Tui's
+				panic("tui/decl: an enum needs a scope: the type before the dot, as in TextInput.Password")
+			}
 			for _, taken := range a.exports() {
 				if taken == e.Scope {
 					panic("tui/decl: enum scope " + e.Scope + " is already a singleton of the tui module")

@@ -1,6 +1,7 @@
 package decl_test
 
 import (
+	"fmt"
 	"strings"
 	"testing"
 
@@ -35,4 +36,18 @@ func TestATypesArityIsCheckedWithItsPosition(t *testing.T) {
 	if built != 0 {
 		t.Errorf("Pair's Build ran %d times for a refused count", built)
 	}
+}
+
+// An Enum without a scope is refused when its type is registered: on the enum engine an empty scope
+// reads as Tui's, and its constants would overwrite Tui's.
+func TestAnEnumWithoutAScopeIsRefused(t *testing.T) {
+	defer func() {
+		if r := recover(); r == nil || !strings.Contains(fmt.Sprint(r), "an enum needs a scope") {
+			t.Errorf("an Enum without a scope: recovered %v, want refused", r)
+		}
+	}()
+	odd := tuidecl.Type{Name: "Odd", Enums: []tuidecl.Enum{{Values: []string{"A"}}},
+		Build: func(tuidecl.Build) (tui.Component, []string, error) { return widget.NewText("odd"), nil, nil }}
+	_, _ = tuidecl.NewProgram(tuidecl.LayoutSource("main.qml", []byte("import tui 1.0\nOdd { }")),
+		tuidecl.Types(odd), tuidecl.AppOptions(tui.WithBackend(tui.NewTestBackend(10, 2))))
 }
