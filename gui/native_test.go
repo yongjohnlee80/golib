@@ -201,6 +201,51 @@ func TestTextFieldSelectionKeepsTuisColumns(t *testing.T) {
 	}
 }
 
+// The native selection is the cells tui draws selected, no more: a wide cluster the field's edge
+// cuts is not drawn by tui, so its cell is not painted selected either.
+func TestTextFieldSelectionIsTheCellsTuiDrawsSelected(t *testing.T) {
+	in := widget.NewTextInput()
+	root := tui.NewFlex(tui.Vertical)
+	root.Add(in)
+	app, sb := styledApp(t, root, 20, 1, NativeStyle())
+	sb.Inject(tui.KeyEvent{Kind: tui.KeyPress, Code: tui.KeyTab})
+	var pad int
+	onLoop(t, app, func() { pad = in.Padding() })
+	n := 20 - 2*pad - 1 // letters to the last cell but one: the wide cluster after them is cut
+	for range n {
+		sb.Inject(tui.KeyEvent{Kind: tui.KeyPress, Code: 'a', Text: "a"})
+	}
+	sb.Inject(tui.KeyEvent{Kind: tui.KeyPress, Code: '界', Text: "界"})
+	for range n + 1 { // back to the start: the field scrolls home, the selection takes in 界
+		sb.Inject(tui.KeyEvent{Kind: tui.KeyPress, Code: tui.KeyLeft, Mods: tui.ModShift})
+	}
+	waitUntil(t, "the whole value selected, scrolled home", func() bool {
+		var lo, hi int
+		var ok bool
+		onLoop(t, app, func() { lo, hi, ok = in.Selection(); ok = ok && in.Scroll() == 0 })
+		return ok && lo == 0 && hi == n+1
+	})
+	p := placementOf(t, sb, in.NodeID())
+	r := newRenderer(nil, "Go Mono", DefaultTheme())
+	var drawn []int
+	waitUntil(t, "tui's selection drawn", func() bool {
+		snap := sb.Snapshot()
+		_, sel := r.colors(snap[p.Y][p.X+pad].Attrs)
+		drawn = drawn[:0]
+		for x := range p.Cols {
+			if _, bg := r.colors(snap[p.Y][p.X+x].Attrs); bg == sel {
+				drawn = append(drawn, x)
+			}
+		}
+		return len(drawn) == n
+	})
+	rc := paintOn(t, app, sb, p)
+	want := CellRect{X: drawn[0], W: len(drawn), H: 1}
+	if !slices.ContainsFunc(rc.Calls, func(c PaintCall) bool { return c.Op == "PaintCells" && !c.GlyphsOnly && c.Cells == want }) {
+		t.Fatalf("tui drew cells %v selected; the native selection is not %+v: %+v", drawn, want, rc.Calls)
+	}
+}
+
 // A field covered at both ends takes its colours from an open cell outside its selection: the
 // selection's colours are not the field's.
 func TestAFieldUnderPanelsIsNotItsSelectionsColour(t *testing.T) {
