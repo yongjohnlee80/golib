@@ -305,9 +305,9 @@ func (h *OverlayHost) mountLayer(layer tui.Component) (err error) {
 
 // policyOr substitutes the default for a nil or TYPED-NIL policy.
 //
-// The typed case is the one that mattered and the one the old == nil check
-// missed: an AnchorPolicyFunc holding no function is a non-nil interface with a
-// live type descriptor, so it was stored and then called — inside a layout pass,
+// The typed case is the one that matters, and a plain == nil check would miss it:
+// an AnchorPolicyFunc holding no function is a non-nil interface with a live type
+// descriptor, so it would be stored and then called — inside a layout pass,
 // several frames after the OpenAnchored call that supplied it, with nothing in
 // the panic naming either. The host stores a policy for LATER, so the boundary
 // that stores it is the only place that can still name what went wrong.

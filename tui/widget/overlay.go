@@ -48,8 +48,8 @@ var ErrModalNotMountable = errors.New("widget: modal cannot be mounted")
 //  1. Automatic Popups: [Select] and [Menu] project their layers onto the NEAREST
 //     ENCLOSING host, which each resolves from the component tree and then calls
 //     directly. A widget nested arbitrarily deep inside split panes or flex containers
-//     requires zero manual wiring, and — unlike the bus broadcast this replaced — two
-//     hosts in one application each serve only the widgets inside them.
+//     requires zero manual wiring, and two hosts in one application each serve only the
+//     widgets inside them, which a bus broadcast to every host could not.
 //  2. Explicit Modals: [Float] instances are registered via [OverlayHost.Attach].
 //     While hidden, a Float occupies zero cells, participates in no hit-testing, and
 //     is omitted from tab navigation until activated by [Float.Show].
@@ -238,8 +238,8 @@ func (h *OverlayHost) isTopmost(layer tui.Component) bool { return h.tierOf(laye
 
 // Detach removes a previously attached Float.
 //
-// Attach used to be permanent, which made a Float usable only by an owner that
-// lived as long as the application. Detaching runs the ordinary unmount cascade,
+// Without it Attach would be permanent, and a Float usable only by an owner that
+// lives as long as the application. Detaching runs the ordinary unmount cascade,
 // so a Float that holds the pointer releases it and one holding focus has focus
 // returned through the runtime's scope stack — the same cleanup any other
 // unmount performs, which is exactly why it must go through the tree rather
@@ -275,10 +275,9 @@ func (h *OverlayHost) hasLayer(c tui.Component) bool {
 
 // Init chains the Stack's child mounting.
 //
-// It no longer subscribes to anything. The overlay protocol used to be a pair
-// of Bus events every host in the application received; layers are now added
-// and removed by the widget that owns them, through the host it resolved from
-// the tree.
+// It subscribes to nothing: layers are added and removed by the widget that owns
+// them, through the host it resolved from the tree, so no host receives another's
+// requests.
 func (h *OverlayHost) Init(ctx *tui.Context) {
 	h.ctx = ctx
 	h.Stack.Init(ctx)

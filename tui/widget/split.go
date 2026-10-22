@@ -515,10 +515,10 @@ func (s *Split) requestCells(a int) bool {
 
 // THE DIVIDER RUNS ON CAPTURE AND ACTIONS.
 //
-// It used to read raw mouse events and track a dragging flag, which meant the
-// drag ended wherever the pointer happened to still be over the Split — leave
-// its rect and the motion went elsewhere, so the divider stopped following and
-// the release was never seen. A capture fixes that, and the named actions mean
+// Reading raw mouse events and tracking a dragging flag would end the drag
+// wherever the pointer happened to still be over the Split — leave its rect and
+// the motion goes elsewhere, so the divider stops following and the release is
+// never seen. A capture holds the pointer, and the named actions mean
 // the keyboard and the pointer reach one implementation rather than two.
 //
 // A divider REDISTRIBUTES ONE SHARED EXTENT between two panes; Resizable SIZES
@@ -569,8 +569,8 @@ func (s *Split) dividerHandle() Handle {
 //
 // One vocabulary for both resizing widgets: a consumer binding a key to
 // ResizeStepAction gets a divider step here and a box step on a Resizable,
-// without having to know which widget will answer. The parallel split.* family
-// this replaced meant the same intent had two names and two implementations.
+// without having to know which widget will answer. A parallel split.* family
+// would give the same intent two names and two implementations.
 func (s *Split) resolve(ev tui.Event) (tui.Action, bool) {
 	if s.zoomed != PaneNone {
 		return nil, false // no divider: resize keys and drag are inert
