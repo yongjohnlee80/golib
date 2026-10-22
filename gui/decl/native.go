@@ -32,6 +32,7 @@ import (
 	"github.com/yongjohnlee80/golib/tui"
 	tuidecl "github.com/yongjohnlee80/golib/tui/decl"
 	tuiwidget "github.com/yongjohnlee80/golib/tui/widget"
+	"maps"
 )
 
 // NativeOption configures optional renderers, document views, and diagram fallbacks on the native style.
@@ -180,13 +181,13 @@ func wrapMode(wrap bool) tuiwidget.WrapMode {
 	return tuiwidget.WrapNone
 }
 
-// editorSetters are the Editor's runtime properties on gui's Editor: the behaviour ones shared
-// with tui's, and its own view ones, which mean what they mean on tui's Editor. The contract is
-// tui's Editor's, property for property.
+// editorSetters are the Editor's runtime properties on gui's Editor: tui's Editor's, behaviour and
+// view, set through the capabilities gui's Editor has (tuidecl.EditorSetters, EditorViewSetters).
+// The contract is tui's Editor's, property for property.
 func editorSetters() map[string]tuidecl.Setter {
 	s := tuidecl.EditorSetters()
-	s["contextMenu"] = tuidecl.BoolSetter((*widget.Editor).SetContextMenu)
-	s["cursorColor"] = tuidecl.ColorSetter((*widget.Editor).SetCursorColor)
+	maps.Copy(s, tuidecl.EditorViewSetters())
+	// view: gui's Editor chooses its view with SetMode, not tuiwidget.ViewChooser's SetView
 	s["view"] = tuidecl.EnumSetter(tuidecl.EditorViews, func(e *widget.Editor, v string) {
 		if v == "Rendered" { // the enum's bare value: tuidecl's Enum reads Editor.Rendered as "Rendered"
 			e.SetMode(widget.Rendered)
@@ -194,14 +195,18 @@ func editorSetters() map[string]tuidecl.Setter {
 			e.SetMode(widget.Raw)
 		}
 	})
-	s["renderedEnabled"] = tuidecl.BoolSetter((*widget.Editor).SetRenderedEnabled)
-	s["wrap"] = tuidecl.BoolSetter(func(e *widget.Editor, v bool) { e.SetWrap(wrapMode(v)) })
-	s["lineNumbers"] = tuidecl.BoolSetter((*widget.Editor).SetLineNumbers)
-	s["lineNumberColor"] = tuidecl.ColorSetter((*widget.Editor).SetLineNumberColor)
-	// the Raw view's guide, at this column (1-based); 0 for none
-	s["ruler"] = tuidecl.NumberSetter(func(e *widget.Editor, v float64) { e.SetRuler(int(v)) })
 	return s
 }
+
+// gui's Editor has the view capabilities EditorViewSetters sets, but ViewChooser (above).
+var (
+	_ tuiwidget.LineNumberer                = (*widget.Editor)(nil)
+	_ tuiwidget.Ruler                       = (*widget.Editor)(nil)
+	_ tuiwidget.Wrapper                     = (*widget.Editor)(nil)
+	_ tuiwidget.CursorColorer               = (*widget.Editor)(nil)
+	_ tuiwidget.ContextMenuEnabler          = (*widget.Editor)(nil)
+	_ interface{ SetRenderedEnabled(bool) } = (*widget.Editor)(nil)
+)
 
 // restyleEditor puts the palette's text on base under the Editor: the cells its view takes its
 // colours from; and its title bar's tabs in TerminalTabs's looks. An empty palette is the terminal
