@@ -293,3 +293,20 @@ func TestLetterSpacing(t *testing.T) {
 		t.Errorf("an unspaced span drew %d runs, want 1", n)
 	}
 }
+
+// A word's leading hyphen, a minus, opens no break: "x -12345" wraps before "-12345", not after
+// its minus, which would leave a bare "-" at the line's end. Other hyphens still break after.
+func TestALeadingMinusStaysWithItsNumber(t *testing.T) {
+	sh := shaper()
+	w := flow.Lay([]flow.Span{plain("-12345")}, flow.Options{}, sh).Width
+	p := flow.Lay([]flow.Span{plain("x -12345")}, flow.Options{Width: w + 1}, sh)
+	if len(p.Lines) != 2 || len(p.Lines[1].Frags) == 0 || p.Lines[1].Frags[0].From != len("x ") {
+		var starts []int
+		for _, l := range p.Lines {
+			if len(l.Frags) > 0 {
+				starts = append(starts, l.Frags[0].From)
+			}
+		}
+		t.Fatalf("%d lines starting at bytes %v, want 2, the second at %d (the minus)", len(p.Lines), starts, len("x "))
+	}
+}

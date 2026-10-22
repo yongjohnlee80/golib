@@ -274,8 +274,9 @@ func split(spans []Span, ws WhiteSpace) []piece {
 					if linebreak.IsSpace(r2) {
 						break
 					}
+					first := j == i
 					j += n2
-					if linebreak.After(r2) {
+					if linebreak.BreakAfter(r2, first) {
 						break // a break opportunity after it
 					}
 				}
