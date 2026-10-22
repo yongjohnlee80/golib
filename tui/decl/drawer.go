@@ -382,7 +382,7 @@ func (f *drawerFrame) Layout(c tui.Constraints) tui.Size {
 
 // fill lays the frame's child out at sz, the panel's whole size.
 func (f *drawerFrame) fill(sz tui.Size) {
-	for _, child := range f.Items() {
+	for _, child := range f.All() {
 		f.ctx.LayoutChild(child, tui.Tight(sz))
 		f.ctx.PlaceChild(child, tui.Rect{W: sz.W, H: sz.H})
 	}

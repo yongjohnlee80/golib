@@ -242,7 +242,7 @@ func newPopupFrame(child tui.Component, owner *popupNode) *popupFrame {
 // Layout gives the one child what the Float offers, at its own size.
 func (f *popupFrame) Layout(c tui.Constraints) tui.Size {
 	sz := c.Constrain(tui.Size{})
-	for _, child := range f.Items() {
+	for _, child := range f.All() {
 		sz = f.ctx.LayoutChild(child, c)
 		f.ctx.PlaceChild(child, tui.Rect{W: sz.W, H: sz.H})
 	}

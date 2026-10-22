@@ -68,12 +68,12 @@ func (s *focusScopeNode) arrange(children []tui.Component, _ []map[string]qml.Sp
 	if len(rest) == 1 {
 		content = rest[0]
 	}
-	for _, c := range append([]tui.Component(nil), s.Items()...) {
+	for _, c := range slices.Collect(s.Children()) {
 		if c != content {
 			s.Remove(c)
 		}
 	}
-	if content != nil && len(s.Items()) == 0 {
+	if content != nil && s.Len() == 0 {
 		s.Add(content)
 	}
 	s.shortcuts = shortcuts
@@ -88,7 +88,7 @@ func (s *focusScopeNode) Init(ctx *tui.Context) {
 // Layout gives the content what the FocusScope is given, and is the content's size.
 func (s *focusScopeNode) Layout(c tui.Constraints) tui.Size {
 	var sz tui.Size
-	for _, child := range s.Items() {
+	for _, child := range s.All() {
 		sz = s.ctx.LayoutChild(child, c)
 		s.ctx.PlaceChild(child, tui.Rect{W: sz.W, H: sz.H})
 	}
