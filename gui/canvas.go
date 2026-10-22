@@ -60,11 +60,22 @@ type ViewFunc func(c Canvas)
 // Paint invokes f(c).
 func (f ViewFunc) Paint(c Canvas) { f(c) }
 
-// Canvas provides immediate-mode 2D vector drawing operations in logical pixels.
+// Canvas provides immediate-mode 2D vector drawing operations in logical pixels: a [Drawer], the
+// [TextEnv] it draws text with, the [CellView] of the grid under the view, and the [WindowChrome]
+// it may mark. A function that only draws asks for the part it uses.
 type Canvas interface {
 	// Sub returns a sub-canvas bounded by rect r, pre-clipped to r, with (0,0) mapped to r.Min.
 	Sub(r Rect) Canvas
 
+	Drawer
+	TextEnv
+	CellView
+	WindowChrome
+}
+
+// Drawer is a canvas's drawing: shapes, paths, text and images in logical pixels, under the
+// transform and opacity pushed on it. A diagram's or a chart's painting needs this, and a TextEnv.
+type Drawer interface {
 	// Size returns the canvas dimensions in logical pixels.
 	Size() Size
 
@@ -102,24 +113,31 @@ type Canvas interface {
 
 	// Pop restores the most recently saved transformation or opacity state.
 	Pop()
+}
 
-	// WindowMoveArea designates rect r as an interactive handle that drags the OS window.
-	WindowMoveArea(r Rect)
-
+// TextEnv is the text a canvas draws with: the window's shaper, its scale, its text size and its
+// fonts.
+type TextEnv interface {
 	// Text returns the window's text shaper for measuring fonts and shaping layouts.
 	Text() *TextShaper
 
 	// Scale returns the display scaling factor (physical device pixels per logical pixel).
 	Scale() float32
 
-	// CellSize returns the physical dimensions of a single character cell in logical pixels.
-	CellSize() Size
 	// TextSize is the size of the window's text (the cells' font), in logical pixels: what a
 	// view sizes its own text by, so it reads at the size of everything around it.
 	TextSize() float32
 	// Fonts are the window's families now, and their generation: a view keeping shaped text keys
 	// it on Fonts().Gen, so a change of family shapes it again.
 	Fonts() Fonts
+}
+
+// CellView is the grid under a view: its cells' size, colours and text, the colour around the
+// view, and the cells drawn as the grid draws them. A canvas with no grid (an SVG export, a stream)
+// answers zeros and draws none.
+type CellView interface {
+	// CellSize returns the physical dimensions of a single character cell in logical pixels.
+	CellSize() Size
 	// CellColors is a cell's colours as composed on screen; zero outside the grid. A cell another
 	// layer covers (a raised panel, a dialog) answers that layer's colours: a view taking its own
 	// colours from the cells reads one nothing covers ([CellCovered], [OpenCellColors]).
@@ -132,6 +150,12 @@ type Canvas interface {
 	// PaintCells draws the cells in r as the grid draws them, over what the view has drawn.
 	// glyphsOnly leaves out their backgrounds, so the view's own fill shows behind the text.
 	PaintCells(r CellRect, glyphsOnly bool)
+}
+
+// WindowChrome is what a view marks of the window itself.
+type WindowChrome interface {
+	// WindowMoveArea designates rect r as an interactive handle that drags the OS window.
+	WindowMoveArea(r Rect)
 }
 
 // CellCoverer is a [Canvas] that knows which of its view's cells something painted after the view

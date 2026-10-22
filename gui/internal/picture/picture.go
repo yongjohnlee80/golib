@@ -22,7 +22,7 @@ func FitTo(size gui.Size, width float32) (gui.Size, float32) {
 
 // Push scales c by scale about the origin, and is the Pop that undoes it; a scale of 1 pushes
 // nothing. Paint defers its result: defer picture.Push(c, l.fit)().
-func Push(c gui.Canvas, scale float32) (pop func()) {
+func Push(c gui.Drawer, scale float32) (pop func()) {
 	if scale == 1 {
 		return func() {}
 	}
@@ -43,7 +43,7 @@ type labelKey struct {
 }
 
 // Shape is s in f, shaped by c's text shaper the first time it is asked for.
-func (l *Labels) Shape(c gui.Canvas, s string, f gui.Font) *gui.TextLayout {
+func (l *Labels) Shape(c gui.TextEnv, s string, f gui.Font) *gui.TextLayout {
 	l.mu.Lock()
 	defer l.mu.Unlock()
 	k := labelKey{s, f}
