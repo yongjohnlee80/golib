@@ -3,6 +3,7 @@ package decl
 import (
 	"fmt"
 	"maps"
+	"math"
 	"slices"
 	"sort"
 	"strconv"
@@ -148,15 +149,26 @@ func boolOf(v qml.SpecValue) (bool, error) {
 // size: 33.7 is 33, as an expression like parent.width * 0.3 gives fractions); cellsOf refuses a
 // fraction and a negative (a Dialog's width: 33.7 is an error).
 
+// finiteOf reads a number an int is made from: NaN and ±Inf, which no int holds (Go's int(NaN) is
+// any value at all), are refused with the value's position. A host's Value(math.NaN()) reaches a
+// property as "NaN".
+func finiteOf(v qml.SpecValue) (float64, error) {
+	n, err := numberOf(v)
+	if err == nil && (math.IsNaN(n) || math.IsInf(n, 0)) {
+		return 0, fmt.Errorf("want a finite number, got %s (at %s)", v.Raw, v.Pos)
+	}
+	return n, err
+}
+
 // truncOf reads a number property as an int, its fraction dropped.
 func truncOf(v qml.SpecValue) (int, error) {
-	n, err := numberOf(v)
+	n, err := finiteOf(v)
 	return int(n), err
 }
 
 // cellsOf reads a size in cells: a whole number, not negative.
 func cellsOf(v qml.SpecValue) (int, error) {
-	n, err := numberOf(v)
+	n, err := finiteOf(v)
 	if err != nil {
 		return 0, err
 	}
