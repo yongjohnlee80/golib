@@ -86,13 +86,13 @@ type imgEntry struct {
 }
 
 type htmlImages struct {
-	l               *htmlLayout
+	v               loadHost
 	loads[imgEntry] // by src; reset when a new resolver reads a page's relative src as another file
 }
 
 // newHTMLImages constructs the image manager and tracker for an HTML layout instance.
-func newHTMLImages(l *htmlLayout) *htmlImages {
-	return &htmlImages{l: l, loads: newLoads[imgEntry]()}
+func newHTMLImages(v loadHost) *htmlImages {
+	return &htmlImages{v: v, loads: newLoads[imgEntry]()}
 }
 
 // gen is an image's state as a number, for its block's key: a decode that lands changes it.
@@ -110,8 +110,8 @@ func (m *htmlImages) entry(src string) *imgEntry {
 	}
 	e := &imgEntry{state: imgLoading}
 	m.entries[src] = e
-	ctx := m.l.v.Context()
-	resolve := m.l.v.Images()
+	ctx := m.v.Context()
+	resolve := m.v.Images()
 	if ctx == nil || !strings.HasPrefix(src, "data:") && resolve == nil {
 		e.state = imgFailed
 		return e
@@ -131,7 +131,7 @@ func (m *htmlImages) done(r tui.TaskResult) bool {
 		return true // the old resolver's: dropped
 	}
 	if errors.Is(r.Err, tuiwidget.ErrImageRefused) {
-		m.l.v.Refused(src)
+		m.v.Refused(src)
 		if e != nil {
 			e.refused = true
 		}

@@ -107,8 +107,8 @@ type htmlLayout struct {
 // newHTMLLayout initializes the HTML layout engine and subsystems for an HTMLView.
 func newHTMLLayout(v *tuiwidget.HTMLView) *htmlLayout {
 	l := &htmlLayout{v: v, width: 600, textPx: 16, rootPx: 16}
-	l.images = newHTMLImages(l)
-	l.sheets = newHTMLSheets(l)
+	l.images = newHTMLImages(v)
+	l.sheets = newHTMLSheets(v)
 	l.diagrams = newHTMLDiagrams(l)
 	return l
 }

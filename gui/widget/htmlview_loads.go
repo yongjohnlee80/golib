@@ -1,6 +1,19 @@
 package widget
 
-import "github.com/yongjohnlee80/golib/tui"
+import (
+	"github.com/yongjohnlee80/golib/tui"
+	tuiwidget "github.com/yongjohnlee80/golib/tui/widget"
+)
+
+// loadHost is what a page's loads need of their view: the loop a load reports to, the resolver
+// that reads a src, and where a refused src is reported. An HTMLView is one; a test can be.
+type loadHost interface {
+	Context() *tui.Context
+	Images() tuiwidget.ImageResolver
+	Refused(src string)
+}
+
+var _ loadHost = (*tuiwidget.HTMLView)(nil)
 
 // loads is what an HTMLView keeps of the things a page loads off the loop (its images, its linked
 // stylesheets): the entry for each key, the loads in flight, and those started before the last
