@@ -234,12 +234,9 @@ func (a *Adapter) ClassifyProperty(typeName, prop string) decl.PropertyKind {
 	if _, ok := a.contractOf(typeName).setters[prop]; ok {
 		return decl.PropRuntime
 	}
-	if _, ok := paletteRoles[prop]; ok {
-		return decl.PropRuntime
-	}
-	// `visible` is every type's, as Qt's Item.visible is — see setVisible.
-	if prop == visibleProp || prop == toolTipProp {
-		return decl.PropRuntime
+	// a universal property (universal.go) is every type's, as Qt's Item.visible is
+	if u, ok := universalOf(prop); ok && u.kind != decl.PropUnknown {
+		return u.kind
 	}
 	if a.contractOf(typeName).ctorProps[prop] {
 		return decl.PropConstructorOnly
@@ -249,10 +246,6 @@ func (a *Adapter) ClassifyProperty(typeName, prop string) decl.PropertyKind {
 	// setter to apply a change through. Whether this parent honours it is a
 	// separate question, answered by CheckAttached during planning.
 	if a.isAttached(prop) {
-		return decl.PropConstructorOnly
-	}
-	// `focus` is the adapter's, for every type — see takeFocus.
-	if prop == "focus" {
 		return decl.PropConstructorOnly
 	}
 	return decl.PropUnknown

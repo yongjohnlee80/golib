@@ -217,23 +217,22 @@ func WithGetters(typeName string, getters map[string]Getter) Option {
 	return func(a *Adapter) { mergeInto(&a.declare(typeName).getters, getters) }
 }
 
-// ReadablesOf implements [decl.PropertyReader]. Every item's keyScope is readable (keyScopeProp).
+// ReadablesOf implements [decl.PropertyReader]: the type's getters and the readable universal
+// properties (universal.go).
 func (a *Adapter) ReadablesOf(typeName string) []string {
 	getters := a.contractOf(typeName).getters
 	names := make([]string, 0, len(getters)+1)
 	for n := range getters {
 		names = append(names, n)
 	}
-	if _, own := getters[keyScopeProp]; !own {
-		names = append(names, keyScopeProp)
+	for n, u := range universalProps {
+		if _, own := getters[n]; !own && u.read != nil {
+			names = append(names, n)
+		}
 	}
 	sort.Strings(names)
 	return names
 }
-
-// keyScopeProp is every item's readable key-map scope: its own, or the nearest enclosing one's, read
-// live from the App (tui.App.KeyScopeOf), so an Editor's follows its mode. "" before the App runs.
-const keyScopeProp = "keyScope"
 
 // ReadProperty implements [decl.PropertyReader].
 func (a *Adapter) ReadProperty(node decl.NodeID, prop string) (qml.SpecValue, error) {
@@ -242,12 +241,8 @@ func (a *Adapter) ReadProperty(node decl.NodeID, prop string) (qml.SpecValue, er
 		return qml.SpecValue{}, fmt.Errorf("%s: node %d was not built by this adapter", prop, node)
 	}
 	fn, ok := a.contractOf(b.typ).getters[prop]
-	if !ok && prop == keyScopeProp {
-		scope := ""
-		if a.app != nil {
-			scope = string(a.app.KeyScopeOf(b.comp))
-		}
-		return strValue(scope), nil
+	if u := universalProps[prop]; !ok && u.read != nil {
+		return u.read(a, b)
 	}
 	if !ok {
 		return qml.SpecValue{}, fmt.Errorf("a %s has no readable property %s", b.typ, prop)
@@ -257,15 +252,17 @@ func (a *Adapter) ReadProperty(node decl.NodeID, prop string) (qml.SpecValue, er
 
 var _ decl.PropertyReader = (*Adapter)(nil)
 
-// MethodsOf implements [decl.Methods].
+// MethodsOf implements [decl.Methods]: the type's methods and the universal ones (universal.go).
 func (a *Adapter) MethodsOf(typeName string) []string {
 	methods := a.contractOf(typeName).methods
-	names := make([]string, 0, len(methods)+1)
+	names := make([]string, 0, len(methods)+len(universalMethods))
 	for n := range methods {
 		names = append(names, n)
 	}
-	if _, own := methods[forceActiveFocus]; !own {
-		names = append(names, forceActiveFocus) // every item's (focus.go)
+	for n := range universalMethods {
+		if _, own := methods[n]; !own {
+			names = append(names, n)
+		}
 	}
 	sort.Strings(names)
 	return names
@@ -278,8 +275,8 @@ func (a *Adapter) Invoke(node decl.NodeID, method string, args []qml.SpecValue) 
 		return fmt.Errorf("%s: node %d was not built by this adapter", method, node)
 	}
 	fn, ok := a.contractOf(b.typ).methods[method]
-	if !ok && method == forceActiveFocus {
-		return a.forceActiveFocus(b, args)
+	if every, universal := universalMethods[method]; !ok && universal {
+		return every(a, b, args)
 	}
 	if !ok {
 		return fmt.Errorf("a %s has no method %s", b.typ, method)
@@ -436,7 +433,7 @@ func (a *Adapter) Create(c decl.Construction) ([]string, error) {
 	a.paletteBuilt(c.Node, ownPalette, c.Children)
 	consumed = append(consumed, paletteNames...)
 	if focus {
-		consumed = append(consumed, "focus")
+		consumed = append(consumed, focusProp)
 	}
 	// The attached properties are reported consumed: they were read — by the
 	// parent, at its construction — and there is no setter on THIS widget for
@@ -547,14 +544,8 @@ func (a *Adapter) Apply(app decl.Application) error {
 	if !ok {
 		return fmt.Errorf("node %d has no component", app.Node)
 	}
-	if isPaletteProp(app.Prop) {
-		return a.setRole(app.Node, app.Prop, app.Value)
-	}
-	if app.Prop == visibleProp {
-		return setVisible(b.typ, b.comp, app.Value)
-	}
-	if app.Prop == toolTipProp {
-		return setToolTip(b.typ, b.comp, app.Value)
+	if u, ok := universalOf(app.Prop); ok && u.set != nil {
+		return u.set(a, b, app.Node, app.Prop, app.Value)
 	}
 	set, ok := a.contractOf(b.typ).setters[app.Prop]
 	if !ok {

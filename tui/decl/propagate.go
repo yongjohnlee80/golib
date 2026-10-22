@@ -256,36 +256,27 @@ func (a *Adapter) setRole(id decl.NodeID, prop string, v qml.SpecValue) error {
 	return nil
 }
 
-// Resettable implements [decl.Resetter]: every palette role can be reset, and
-// the node then inherits its parent's.
+// Resettable implements [decl.Resetter]: a universal property with a reset (universal.go). A
+// palette role is one: the node then inherits its parent's.
 func (a *Adapter) Resettable(_, prop string) bool {
-	_, ok := paletteRoles[prop]
-	return ok || prop == visibleProp || prop == toolTipProp
+	u, _ := universalOf(prop)
+	return u.reset != nil
 }
 
 // Reset implements [decl.Resetter].
 func (a *Adapter) Reset(id decl.NodeID, prop string) error {
-	if prop == toolTipProp {
-		// Removed from the document: no tooltip, as an item with no toolTipText has.
-		b, ok := a.nodes[id]
-		if !ok {
-			return fmt.Errorf("%s: node %d has no component", toolTipProp, id)
-		}
-		return setToolTip(b.typ, b.comp, strValue(""))
-	}
-	if prop == visibleProp {
-		// Removed from the document: shown again, as an item with no
-		// `visible` is.
-		b, ok := a.nodes[id]
-		if !ok {
-			return fmt.Errorf("visible: node %d has no component", id)
-		}
-		return setVisible(b.typ, b.comp, boolValue(true))
-	}
-	r, ok := paletteRoles[prop]
-	if !ok {
+	u, _ := universalOf(prop)
+	if u.reset == nil {
 		return fmt.Errorf("%s cannot be reset", prop)
 	}
+	return u.reset(a, id, prop)
+}
+
+var _ decl.Resetter = (*Adapter)(nil)
+
+// resetRole drops a node's own value for a known role, so it inherits its parent's.
+func (a *Adapter) resetRole(id decl.NodeID, prop string) error {
+	r := paletteRoles[prop]
 	pn, ok := a.pal[id]
 	if !ok {
 		return fmt.Errorf("%s: node %d has no palette", prop, id)
@@ -294,8 +285,6 @@ func (a *Adapter) Reset(id decl.NodeID, prop string) error {
 	a.refresh(id)
 	return nil
 }
-
-var _ decl.Resetter = (*Adapter)(nil)
 
 // paletteAdopt places a child under a parent a reload spliced it into.
 func (a *Adapter) paletteAdopt(parent, child decl.NodeID) {
