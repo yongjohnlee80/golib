@@ -54,7 +54,7 @@ const (
 	FromDefault SourceKind = iota
 	// FromScheme: a scheme file's <shortcut>, at File and Line.
 	FromScheme
-	// FromOverlay: a host's Go code (an Editor's WithKeymap overlay), reported by a query, never by Build.
+	// FromOverlay: a host's Go code (an Editor's CoreKeymap overlay), reported by a query, never by Build.
 	FromOverlay
 )
 

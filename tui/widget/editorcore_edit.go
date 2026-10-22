@@ -63,7 +63,7 @@ func (c *EditorCore) TextIn(r TextRange) string {
 
 // Select shows r as the selection: the Visual selection, exactly [r.From, r.To). A range that ends
 // at a line's start selects the line break before it, the cursor just past the previous line's
-// last cluster. An empty r, or a core that does not select (WithSelection(false)), leaves the
+// last cluster. An empty r, or a core that does not select (CoreSelection(false)), leaves the
 // selection it has; Unselect clears it.
 func (c *EditorCore) Select(r TextRange) {
 	lo, hi := c.clampRange(r)

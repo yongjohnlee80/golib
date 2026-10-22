@@ -78,8 +78,9 @@ func WithContextMenu(build func(e *Editor) []MenuItemModel) EditorOption {
 // off closes a menu that is open.
 func (e *Editor) SetContextMenu(on bool) { e.menu.SetEnabled(on) }
 
-// ContextMenuOpen reports whether the right-click menu is showing.
-func (e *Editor) ContextMenuOpen() bool { return e.menu.IsOpen() }
+// ContextMenu is the editor's right-click menu: off unless turned on (WithContextMenu, or
+// ContextMenu().SetEnabled), its rows the stock ones or a consumer's.
+func (e *Editor) ContextMenu() *EditorMenu { return e.menu }
 
 // OpenContextMenu opens the right-click menu from the keyboard, as a right press on the caret's
 // cell would: below its line, so the line stays in sight. Shift+F10 and the Menu key call it while the menu is

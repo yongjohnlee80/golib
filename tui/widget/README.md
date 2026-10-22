@@ -465,10 +465,10 @@ binds them to) undo and redo in the table as in the text.
 Embedded modal Vim-like editor featuring Normal, Insert, Replace, and Visual modes (characters, lines and blocks), a data-driven keymap, Vim's registers (named, numbered, small-delete and clipboard; blockwise from a Visual block), bounded undo ring (64 snapshots), and escape chord support ("jk"):
 
 ```go
-editor := widget.NewEditor(
-    widget.WithInitialText("package main\n\nfunc main() {\n}\n"),
-    widget.WithEscapeChord("jk"), // jk in Insert mode returns to Normal mode
-)
+editor := widget.NewEditor(widget.WithCore(
+    widget.CoreInitialText("package main\n\nfunc main() {\n}\n"),
+    widget.CoreEscapeChord("jk"), // jk in Insert mode returns to Normal mode
+))
 
 // Unbound Normal-mode keys (like Space) bubble up, enabling app-level leader menus:
 ```
@@ -479,7 +479,7 @@ A right-click menu is opt-in. `WithContextMenu(nil)` gives the stock rows (Undo 
 editor := widget.NewEditor(widget.WithContextMenu(func(e *widget.Editor) []widget.MenuItemModel {
     return append(widget.EditorContextItems(e), widget.NewCommand("upper", "Upper case",
         widget.EditorMenuAction{ID: "upper", Run: func(e *widget.Editor) {
-            e.SetValue(strings.ToUpper(e.Value()))
+            e.SetValue(strings.ToUpper(e.Core().Value()))
         }}))
 }))
 ```
@@ -968,7 +968,7 @@ func NewDevWorkspace(app *tui.App) tui.Component {
     leftPanel := widget.NewBox(tree, widget.WithTitle("Files"))
 
     // 2. Code editor and build output split
-    editor := widget.NewEditor(widget.WithEscapeChord("jk"))
+    editor := widget.NewEditor(widget.WithCore(widget.CoreEscapeChord("jk")))
     editorBox := widget.NewBox(editor, widget.WithTitle("Editor"))
 
     logs := widget.NewBufferView(widget.WithFollowTail(true))

@@ -87,7 +87,7 @@ func TestKeymapOverlayUnbind(t *testing.T) {
 	overlay := Keymap{
 		chord: ActUnbound,
 	}
-	ed := NewEditor(WithKeymap(overlay))
+	ed := NewEditor(WithCore(CoreKeymap(overlay)))
 	if act, ok := ed.core.keys.keymap[chord]; ok {
 		t.Errorf("chord should be unbound, but got action %v", act)
 	}
@@ -151,11 +151,11 @@ func TestKeymapBindings(t *testing.T) {
 }
 
 func TestInsertKeymapOverlayAndUnbind(t *testing.T) {
-	// 1. WithKeymap accepting ModeInsert chord
+	// 1. CoreKeymap accepting ModeInsert chord
 	overlay := Keymap{
 		KeyChord{Mode: ModeInsert, Code: 'q', Ctrl: true}: ActUndo,
 	}
-	ed := NewEditor(WithKeymap(overlay))
+	ed := NewEditor(WithCore(CoreKeymap(overlay)))
 	if act, ok := ed.core.keys.keymap[KeyChord{Mode: ModeInsert, Code: 'q', Ctrl: true}]; !ok || act != ActUndo {
 		t.Fatalf("expected ModeInsert Ctrl+Q -> ActUndo, got (%v, %v)", act, ok)
 	}
@@ -163,15 +163,15 @@ func TestInsertKeymapOverlayAndUnbind(t *testing.T) {
 	// 2. Overlay unbinding a standard ModeInsert chord
 	stdWithUnbind := StandardKeymap()
 	stdWithUnbind[KeyChord{Mode: ModeInsert, Code: 'z', Ctrl: true}] = ActUnbound
-	edStd := NewEditor(WithKeymap(stdWithUnbind), WithModalEditing(false))
+	edStd := NewEditor(WithCore(CoreKeymap(stdWithUnbind)), WithCore(CoreModal(false)))
 	if _, ok := edStd.core.keys.keymap[KeyChord{Mode: ModeInsert, Code: 'z', Ctrl: true}]; ok {
 		t.Fatalf("expected Ctrl+Z to be unbound in edStd")
 	}
 }
 
 func TestSnapshotKeymapReflection(t *testing.T) {
-	ed := NewEditor(WithEscapeChord("jk"))
-	snap := ed.SnapshotKeymap()
+	ed := NewEditor(WithCore(CoreEscapeChord("jk")))
+	snap := ed.Core().SnapshotKeymap()
 
 	if snap.EscapeChord != "jk" {
 		t.Errorf("snap.EscapeChord: got %q, want %q", snap.EscapeChord, "jk")
@@ -181,7 +181,7 @@ func TestSnapshotKeymapReflection(t *testing.T) {
 	}
 
 	// Check reverse lookup
-	chords := ed.ChordsForAction(ActDown)
+	chords := ed.Core().ChordsForAction(ActDown)
 	found := false
 	for _, c := range chords {
 		if c.Mode == ModeNormal && c.Code == 'j' && !c.Ctrl {
@@ -194,7 +194,7 @@ func TestSnapshotKeymapReflection(t *testing.T) {
 	}
 
 	// Check chord lookup
-	act, ok := ed.ActionForChord(KeyChord{Mode: ModeNormal, Code: 'j'})
+	act, ok := ed.Core().ActionForChord(KeyChord{Mode: ModeNormal, Code: 'j'})
 	if !ok || act != ActDown {
 		t.Errorf("ActionForChord(normal 'j'): got (%v, %v), want (ActDown, true)", act, ok)
 	}
@@ -211,16 +211,16 @@ func TestInsertKeymapHandleEventDispatch(t *testing.T) {
 	// 1. Unmodified printable key bound to an action in insert mode (e.g. 'q' -> ActUndo)
 	// Must execute the action instead of typing the character.
 	ed1 := NewEditor(
-		WithModalEditing(false),
-		WithKeymap(Keymap{
+		WithCore(CoreModal(false)),
+		WithCore(CoreKeymap(Keymap{
 			KeyChord{Mode: ModeInsert, Code: 'q'}: ActUndo,
-		}),
+		})),
 	)
 	ed1.SetValue("hello")
-	ed1.SetLine(0, 5)
+	ed1.Core().SetLine(0, 5)
 	// Type '!' to verify normal insert works
 	ed1.HandleEvent(tui.KeyEvent{Kind: tui.KeyPress, Code: '!', Text: "!"})
-	if got := ed1.Value(); got != "hello!" {
+	if got := ed1.Core().Value(); got != "hello!" {
 		t.Fatalf("expected 'hello!', got %q", got)
 	}
 	// Press 'q' -> should execute ActUndo, reverting the '!' insertion, NOT typing 'q'
@@ -228,7 +228,7 @@ func TestInsertKeymapHandleEventDispatch(t *testing.T) {
 	if !handled {
 		t.Errorf("expected 'q' key event to be handled by custom binding")
 	}
-	if got := ed1.Value(); got != "hello" {
+	if got := ed1.Core().Value(); got != "hello" {
 		t.Errorf("expected undo to restore 'hello', got %q", got)
 	}
 
@@ -236,18 +236,18 @@ func TestInsertKeymapHandleEventDispatch(t *testing.T) {
 	// When unbound, pressing KeyHome must bubble (return false) and NOT trigger the
 	// structural fallback (cursor remains at col 5, does not move to 0).
 	ed2 := NewEditor(
-		WithModalEditing(false),
-		WithKeymap(Keymap{
+		WithCore(CoreModal(false)),
+		WithCore(CoreKeymap(Keymap{
 			KeyChord{Mode: ModeInsert, Code: tui.KeyHome}: ActUnbound,
-		}),
+		})),
 	)
 	ed2.SetValue("hello world")
-	ed2.SetLine(0, 5)
+	ed2.Core().SetLine(0, 5)
 	handledHome := ed2.HandleEvent(tui.KeyEvent{Kind: tui.KeyPress, Code: tui.KeyHome})
 	if handledHome {
 		t.Errorf("expected unbound KeyHome event to bubble (return false)")
 	}
-	_, col := ed2.Line()
+	_, col := ed2.Core().Line()
 	if col != 5 {
 		t.Errorf("expected cursor col to stay 5, got %d", col)
 	}
@@ -255,27 +255,27 @@ func TestInsertKeymapHandleEventDispatch(t *testing.T) {
 	// 3. Functional key binding: KeyF1 -> ActUndo
 	// Functional keys (Code in PUA 0xE000 range) must be dispatched if bound.
 	ed3 := NewEditor(
-		WithModalEditing(false),
-		WithKeymap(Keymap{
+		WithCore(CoreModal(false)),
+		WithCore(CoreKeymap(Keymap{
 			KeyChord{Mode: ModeInsert, Code: tui.KeyF1}: ActUndo,
-		}),
+		})),
 	)
 	ed3.SetValue("foo")
-	ed3.SetLine(0, 3)
+	ed3.Core().SetLine(0, 3)
 	ed3.HandleEvent(tui.KeyEvent{Kind: tui.KeyPress, Code: '!', Text: "!"})
-	if got := ed3.Value(); got != "foo!" {
+	if got := ed3.Core().Value(); got != "foo!" {
 		t.Fatalf("expected 'foo!', got %q", got)
 	}
 	handledF1 := ed3.HandleEvent(tui.KeyEvent{Kind: tui.KeyPress, Code: tui.KeyF1})
 	if !handledF1 {
 		t.Errorf("expected KeyF1 to be handled")
 	}
-	if got := ed3.Value(); got != "foo" {
+	if got := ed3.Core().Value(); got != "foo" {
 		t.Errorf("expected F1 undo to restore 'foo', got %q", got)
 	}
 
 	// 4. ActionForChord for unbound chord
-	act, ok := ed2.ActionForChord(KeyChord{Mode: ModeInsert, Code: tui.KeyHome})
+	act, ok := ed2.Core().ActionForChord(KeyChord{Mode: ModeInsert, Code: tui.KeyHome})
 	if ok || act != ActUnbound {
 		t.Errorf("ActionForChord for unbound chord: got (%v, %v), want (ActUnbound, false)", act, ok)
 	}
@@ -286,19 +286,19 @@ func TestInsertKeymapHandleEventDispatch(t *testing.T) {
 // may sit after a line's last character; in Vim's Normal mode it rests on it.
 func TestSetCursorPositionCountsAsQtDoes(t *testing.T) {
 	ed := NewEditor()
-	ed.SetKeyset(KeysetStandard)
+	ed.Core().SetKeyset(KeysetStandard)
 	ed.SetValue("ab\ncdé本\nx")
 	for _, c := range []struct{ pos, row, col int }{
 		{0, 0, 0}, {2, 0, 2}, {3, 1, 0}, {6, 1, 3}, {7, 1, 4}, {8, 2, 0}, {9, 2, 1}, {100, 2, 1}, {-3, 0, 0},
 	} {
-		ed.SetCursorPosition(c.pos)
-		if row, col := ed.Line(); row != c.row || col != c.col {
+		ed.Core().SetCursorPosition(c.pos)
+		if row, col := ed.Core().Line(); row != c.row || col != c.col {
 			t.Errorf("modeless: cursorPosition %d = line %d col %d, want line %d col %d", c.pos, row, col, c.row, c.col)
 		}
 	}
-	ed.SetKeyset(KeysetVim)
-	ed.SetCursorPosition(7) // the end of "cdé本": Normal mode rests on 本
-	if row, col := ed.Line(); row != 1 || col != 3 {
+	ed.Core().SetKeyset(KeysetVim)
+	ed.Core().SetCursorPosition(7) // the end of "cdé本": Normal mode rests on 本
+	if row, col := ed.Core().Line(); row != 1 || col != 3 {
 		t.Errorf("Normal mode: cursorPosition 7 = line %d col %d, want line 1 col 3", row, col)
 	}
 }

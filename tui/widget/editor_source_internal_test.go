@@ -2,12 +2,13 @@ package widget
 
 import (
 	"fmt"
-	"github.com/yongjohnlee80/golib/highlight"
-	"github.com/yongjohnlee80/golib/indent"
-	"github.com/yongjohnlee80/golib/parse/shell"
 	"strings"
 	"testing"
 	"testing/fstest"
+
+	"github.com/yongjohnlee80/golib/highlight"
+	"github.com/yongjohnlee80/golib/indent"
+	"github.com/yongjohnlee80/golib/parse/shell"
 )
 
 type sourceTrace struct {

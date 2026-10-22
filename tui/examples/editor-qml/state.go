@@ -53,7 +53,7 @@ func (h *Host) message(s string) error {
 
 // syncStatus brings the status bar's mode up to date with the editor's.
 func (h *Host) syncStatus() error {
-	return h.p.Set("App.mode", modeMessage(h.editor.Mode()))
+	return h.p.Set("App.mode", modeMessage(h.editor.Core().Mode()))
 }
 
 // modeMessage is how the status bar names an editor mode. The mode's String is its

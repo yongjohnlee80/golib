@@ -37,7 +37,7 @@ Implementations: `parse/qml.Highlighter()` (QML and its JavaScript) and
 `Definitions()` names them as KSyntaxHighlighting does, with the fence aliases
 `sql`, `sqlite`, `mysql` and the like, and `parse/languages` includes them;
 `highlight/sql` forwards to it, deprecated). Painters:
-`tui/widget.Editor` (`WithHighlighter`), and `SyntaxHighlighter` in
+`tui/widget.Editor` (`WithCore(CoreHighlighter(h))`), and `SyntaxHighlighter` in
 [tui/decl](../tui/decl/README.md).
 
 ## Source providers and immutable catalogs

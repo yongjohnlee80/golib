@@ -42,7 +42,7 @@ func TestAPlaceholderIsDrawnMutedNotAsText(t *testing.T) {
 // muted look", as its doc says: faint, where the Editor's default had no placeholder look at all.
 func TestTheRulerIsDrawnInThePlaceholdersMutedLook(t *testing.T) {
 	ed := widget.NewEditor(widget.WithRuler(10))
-	ed.SetKeyset(widget.KeysetStandard)
+	ed.Core().SetKeyset(widget.KeysetStandard)
 	ed.SetValue("short")
 	h := startApp(t, ed, 40, 3)
 	defer h.stop()

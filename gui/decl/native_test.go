@@ -63,7 +63,7 @@ func valueOf(t *testing.T, s *decltest.Screen) string {
 		case *widget.Editor:
 			v = e.Core().Value()
 		case *tuiwidget.Editor:
-			v = e.Value()
+			v = e.Core().Value()
 		default:
 			t.Errorf("ed is a %T", c)
 		}

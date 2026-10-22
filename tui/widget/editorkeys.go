@@ -24,7 +24,7 @@ type keyDispatch struct {
 	// base table so a keyset switch can replay it. A host that rebinds a key
 	// means it for the editor, not for one profile of it: without this, the
 	// binding would survive or vanish depending on the order the options ran
-	// in, and would vanish outright on [Editor.SetKeyset].
+	// in, and would vanish outright on [EditorCore.SetKeyset].
 	overlay Keymap
 
 	// Normal/Visual command state.

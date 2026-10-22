@@ -80,7 +80,7 @@ func TestAListContinuesOnEnterButNotOnShiftEnter(t *testing.T) {
 // map; the keys are handed to it on the loop.
 func TestAMovedTabCommandTakesTheTablesTabWithIt(t *testing.T) {
 	m := mustKeymap(t, `<mapping><shortcut id="tui.editor.vim.insert.insertTab"><key value="Alt+I"/></shortcut></mapping>`)
-	h, e, sh := mountedEditor(t, m, widget.WithInitialText(sampleTable), widget.WithCore(widget.CoreTableEditing(true)))
+	h, e, sh := mountedEditor(t, m, widget.WithCore(widget.CoreInitialText(sampleTable)), widget.WithCore(widget.CoreTableEditing(true)))
 	defer h.stop()
 	h.inject(ch('i'))
 	h.barrier(sh)
@@ -160,7 +160,7 @@ func TestAReadOnlyCoreRefusesEditingKeysAndMoves(t *testing.T) {
 // and zz does not.
 func TestGGFollowsTheGoLineCommand(t *testing.T) {
 	m := mustKeymap(t, `<mapping><shortcut id="tui.editor.vim.normal.goPrefix"><key value="Z"/></shortcut></mapping>`)
-	h, e, sh := mountedEditor(t, m, widget.WithInitialText("one\ntwo\nthree"))
+	h, e, sh := mountedEditor(t, m, widget.WithCore(widget.CoreInitialText("one\ntwo\nthree")))
 	defer h.stop()
 	line := func() int {
 		var l int
@@ -183,7 +183,7 @@ func TestGGFollowsTheGoLineCommand(t *testing.T) {
 // bubbling.
 func TestAnAltBoundGCommandRuns(t *testing.T) {
 	m := mustKeymap(t, `<mapping><shortcut id="tui.editor.vim.g.goLine"><key value="Alt+G"/></shortcut></mapping>`)
-	h, e, sh := mountedEditor(t, m, widget.WithInitialText("one\ntwo"))
+	h, e, sh := mountedEditor(t, m, widget.WithCore(widget.CoreInitialText("one\ntwo")))
 	defer h.stop()
 	h.inject(ch('j'), ch('g'), tui.KeyEvent{Kind: tui.KeyPress, Code: 'g', Mods: tui.ModAlt})
 	h.barrier(sh)

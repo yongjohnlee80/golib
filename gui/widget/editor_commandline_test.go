@@ -36,7 +36,7 @@ func TestColonOpensThePromptOverTheNativeEditor(t *testing.T) {
 		t.Fatalf("after :3 the cursor is on line %d", at.Line+1)
 	}
 
-	h.onLoop(func() { e.SetCommandLineEnabled(false) })
+	h.onLoop(func() { e.CommandLine().SetEnabled(false) })
 	_ = tb.Inject(tui.KeyEvent{Code: ':', Text: ":"})
 	h.barrier()
 	if strings.Contains(tb.String(), "VIM Commands") {

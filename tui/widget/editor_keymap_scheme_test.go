@@ -12,7 +12,7 @@ import (
 // mountedEditor is a focused Editor in an App holding m.
 func mountedEditor(t *testing.T, m *keymap.Map, opts ...widget.EditorOption) (*harness, *widget.Editor, *shell) {
 	t.Helper()
-	e := widget.NewEditor(append([]widget.EditorOption{widget.WithInitialText("one two three")}, opts...)...)
+	e := widget.NewEditor(append([]widget.EditorOption{widget.WithCore(widget.CoreInitialText("one two three"))}, opts...)...)
 	sh := newShell(e)
 	h := startAppOpts(t, sh, 40, 6, tui.WithKeymap(m))
 	h.inject(tab())
@@ -22,7 +22,7 @@ func mountedEditor(t *testing.T, m *keymap.Map, opts ...widget.EditorOption) (*h
 
 func editorValue(h *harness, e *widget.Editor) string {
 	var v string
-	h.onLoop(func() { v = e.Value() })
+	h.onLoop(func() { v = e.Core().Value() })
 	return v
 }
 
@@ -76,10 +76,10 @@ func TestEditorScopesRefuseOnlyTheirOwnConflicts(t *testing.T) {
 // bound, and its rebinding takes a key the scheme moved away.
 func TestAHostOverlayWinsOverAScheme(t *testing.T) {
 	m := mustKeymap(t, `<mapping><shortcut id="tui.editor.vim.normal.deleteChar"><key value="Ctrl+Q"/></shortcut></mapping>`)
-	h, e, sh := mountedEditor(t, m, widget.WithKeymap(widget.Keymap{
+	h, e, sh := mountedEditor(t, m, widget.WithCore(widget.CoreKeymap(widget.Keymap{
 		{Mode: widget.ModeNormal, Code: 'q', Ctrl: true}: widget.ActUnbound, // the host owns Ctrl+Q
 		{Mode: widget.ModeNormal, Code: 'x'}:             widget.ActLineEnd, // and gives x another meaning
-	}))
+	})))
 	h.inject(tui.KeyEvent{Kind: tui.KeyPress, Code: 'q', Mods: tui.ModCtrl})
 	h.barrier(sh)
 	if got := editorValue(h, e); got != "one two three" {
@@ -107,7 +107,7 @@ func TestAReloadedMapClearsPendingGrammar(t *testing.T) {
 				sh.ctx.App().ApplyKeymap(other)
 			}
 			e.HandleEvent(ch('w'))
-			got = e.Value()
+			got = e.Core().Value()
 		})
 		switch {
 		case !reload && got != "two three":

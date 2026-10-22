@@ -221,7 +221,7 @@ widget.CoreOnQuit(func(force bool) error { ... }) // q: false, q!: true
 - `quit` asks the host to quit once *its* write has succeeded. A write may finish later, after a
   Save As dialog or a daemon round trip, so only the host knows when.
 - Without a hook, `w` answers `ErrNoWriter` and `q` answers `ErrNoQuit`.
-- The terminal `Editor` also takes them as `WithOnWrite` and `WithOnQuit`.
+- Either editor takes them through `WithCore(CoreOnWrite(fn), CoreOnQuit(fn))`.
 
 **Commands are a registry the host composes into.** Every core starts with `DefaultCommands()`:
 
@@ -277,11 +277,12 @@ Both editors hold a prompt, on by default:
 
 | Terminal `Editor` / GUI `Editor` | |
 |---|---|
-| `WithCommandLine(false)` | no prompt: `:` reaches the application; `RunCommand` still works |
-| `SetCommandLineEnabled(on)`, `CommandLineEnabled()` | turn it on or off at run time |
-| `OpenCommandLine(initial)` | open it from a key or a menu row, with `initial` in the field |
-| `CommandLineOpen()` | whether it is showing |
-| `Commands()`, `RunCommand(line)` | the core's |
+| `CommandLine()` | the prompt (`*CommandLine`) |
+| `CommandLine().SetEnabled(false)` | no prompt: `:` reaches the application; `RunCommand` still works |
+| `CommandLine().SetEnabled(on)`, `Enabled()` | turn it on or off at run time |
+| `CommandLine().Open(initial)` | open it from a key or a menu row, with `initial` in the field |
+| `CommandLine().IsOpen()` | whether it is showing |
+| `Core().Commands()`, `Core().RunCommand(line)` | the core's |
 
 Another editor widget can hold the same module: `NewCommandLine(owner, core)` and then
 `SetEnabled(true)`. The owner is a `ContextOwner`, a widget with the `Context` it is mounted under

@@ -1,12 +1,13 @@
 package widget_test
 
 import (
+	"testing"
+
 	"github.com/yongjohnlee80/golib/highlight"
 	"github.com/yongjohnlee80/golib/parse/golang"
 	"github.com/yongjohnlee80/golib/parse/markdown"
 	"github.com/yongjohnlee80/golib/tui"
 	"github.com/yongjohnlee80/golib/tui/widget"
-	"testing"
 )
 
 func goCore(text string) *widget.EditorCore {

@@ -218,11 +218,11 @@ func TestATableDocumentsRightPressActsOnWhatItWasOn(t *testing.T) {
 		tui.MouseEvent{Kind: tui.MouseRelease, Button: tui.MouseLeft, X: x, Y: y})
 	h.waitFor("the menu's Yank", func() bool {
 		var text string
-		h.onLoop(func() { text, _ = ed.Register() })
+		h.onLoop(func() { text, _ = ed.Core().Register() })
 		return text != ""
 	})
 	h.onLoop(func() {
-		if text, linewise := ed.Register(); text != "cid" || linewise {
+		if text, linewise := ed.Core().Register(); text != "cid" || linewise {
 			t.Errorf("the menu's Yank yanked %q (linewise %v), want the cell pressed, cid", text, linewise)
 		}
 	})

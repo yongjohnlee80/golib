@@ -6,7 +6,7 @@ import (
 )
 
 // Every action a host can name is bindable somewhere: an action actionModes leaves out panics in
-// an overlay (WithKeymap) though the built-in tables, which skip that check, bind it.
+// an overlay (CoreKeymap) though the built-in tables, which skip that check, bind it.
 func TestEveryActionHasAMode(t *testing.T) {
 	for a := ActUnbound + 1; a < actMax; a++ {
 		if n, v, i := actionModes(a); !n && !v && !i {

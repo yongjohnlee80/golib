@@ -1,9 +1,10 @@
 package widget
 
 import (
+	"strings"
+
 	"github.com/yongjohnlee80/golib/highlight"
 	"github.com/yongjohnlee80/golib/indent"
-	"strings"
 )
 
 func (c *EditorCore) indentDecision(op indent.Operation, column int) indent.Decision {

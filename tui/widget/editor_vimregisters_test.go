@@ -194,13 +194,13 @@ func clipEditor(t *testing.T, text string, tb *tui.TestBackend) (*harness, *widg
 	}
 	h.inject(tab())
 	h.barrier(sh)
-	h.onLoop(func() { ed.SetValue(text); ed.SetLine(0, 0) })
+	h.onLoop(func() { ed.SetValue(text); ed.Core().SetLine(0, 0) })
 	h.barrier(sh)
 	return h, ed, sh
 }
 
 func edValue(h *harness, ed *widget.Editor) (v string) {
-	h.onLoop(func() { v = ed.Value() })
+	h.onLoop(func() { v = ed.Core().Value() })
 	return v
 }
 
@@ -241,7 +241,7 @@ func TestVimRegistersClipboardPutGuards(t *testing.T) {
 	h.tb.AnswerClipboard("second", nil)
 	h.waitFor("only the second put", func() bool { return edValue(h, ed) == "bsecond" })
 
-	h.onLoop(func() { ed.SetValue("cd"); ed.SetLine(0, 0) })
+	h.onLoop(func() { ed.SetValue("cd"); ed.Core().SetLine(0, 0) })
 	h.inject(key('"'), key('+'), key('y'), key('l')) // + last written: "c"
 	h.inject(key('"'), key('+'), key('p'))
 	h.barrier(sh)

@@ -46,12 +46,12 @@ func TestEditorThumbSpansTheScrollRange(t *testing.T) {
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			h, ed, sh := focusedEditor(t, 20, 5, tc.opts...)
-			h.onLoop(func() { ed.SetValue(tc.text); ed.SetLine(0, 0) })
+			h.onLoop(func() { ed.SetValue(tc.text); ed.Core().SetLine(0, 0) })
 			h.barrier(sh)
 			if got := thumbRow(h); got != 0 {
 				t.Fatalf("at the first line the thumb is on row %d, want 0\n%s", got, h.grid())
 			}
-			h.onLoop(func() { ed.SetLine(9, 0) })
+			h.onLoop(func() { ed.Core().SetLine(9, 0) })
 			h.barrier(sh)
 			if !strings.Contains(h.grid(), "line 9") && tc.name == "unwrapped" {
 				t.Fatalf("the last line is not on screen\n%s", h.grid())

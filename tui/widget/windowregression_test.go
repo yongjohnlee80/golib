@@ -1,10 +1,11 @@
 package widget_test
 
 import (
-	"github.com/yongjohnlee80/golib/tui"
-	"github.com/yongjohnlee80/golib/tui/widget"
 	"testing"
 	"time"
+
+	"github.com/yongjohnlee80/golib/tui"
+	"github.com/yongjohnlee80/golib/tui/widget"
 )
 
 func TestWindowResizeByUsesPinnedHandleAndStateRefusals(t *testing.T) {
@@ -304,8 +305,8 @@ func TestWindowCaptureEscapeFilteringAndRefusalAreNotReplayed(t *testing.T) {
 				h.inject(key(tui.KeyEscape))
 				h.barrier(nil)
 				h.onLoop(func() {
-					if editor.Mode() != widget.ModeInsert || len(editor.keys) != 1 || editor.keys[0].Code != barrierKey {
-						t.Errorf("refused Escape replayed: mode=%v keys=%+v", editor.Mode(), editor.keys)
+					if editor.Core().Mode() != widget.ModeInsert || len(editor.keys) != 1 || editor.keys[0].Code != barrierKey {
+						t.Errorf("refused Escape replayed: mode=%v keys=%+v", editor.Core().Mode(), editor.keys)
 					}
 				})
 			} else {

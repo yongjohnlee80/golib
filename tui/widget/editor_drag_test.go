@@ -12,7 +12,7 @@ func drag(x, y int) tui.MouseEvent {
 }
 
 func editorSelection(h *harness, ed *widget.Editor) (text string) {
-	h.onLoop(func() { text = ed.SelectedText() })
+	h.onLoop(func() { text = ed.Core().SelectedText() })
 	return text
 }
 
@@ -70,7 +70,7 @@ func TestEditorClickWithoutDragSelectsNothing(t *testing.T) {
 
 // In Text (modeless) mode, a drag selects and Ctrl+C copies.
 func TestEditorDragThenCtrlCInTextMode(t *testing.T) {
-	h, ed, sh := focusedEditor(t, 30, 4, widget.WithStandardKeymap())
+	h, ed, sh := focusedEditor(t, 30, 4, widget.WithCore(widget.CoreKeyset(widget.KeysetStandard)))
 	h.onLoop(func() { ed.SetValue("copy this text") })
 	h.barrier(sh)
 

@@ -262,8 +262,8 @@ func TestR6APatchedEditorKeepsItsTextAndFocus(t *testing.T) {
 	s.WaitForText(t, "v2")
 	onScreenLoop(t, s, func() {
 		after, _ := tuidecl.FindAs[*widget.Editor](s.Program, "ed")
-		if after != before || after.Value() != "kept" {
-			t.Errorf("the editor was replaced or lost its text: same=%v value=%q", after == before, after.Value())
+		if after != before || after.Core().Value() != "kept" {
+			t.Errorf("the editor was replaced or lost its text: same=%v value=%q", after == before, after.Core().Value())
 		}
 	})
 	s.Keys(t, decltest.Type("!")...)

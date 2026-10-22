@@ -17,12 +17,12 @@ import (
 // setKeyset switches the profile on the loop goroutine, where every other
 // editor mutation happens.
 func setKeyset(h *harness, ed *widget.Editor, ks widget.Keyset) {
-	h.onLoop(func() { ed.SetKeyset(ks) })
+	h.onLoop(func() { ed.Core().SetKeyset(ks) })
 }
 
 func keysetOf(h *harness, ed *widget.Editor) widget.Keyset {
 	var ks widget.Keyset
-	h.onLoop(func() { ks = ed.Keyset() })
+	h.onLoop(func() { ks = ed.Core().Keyset() })
 	return ks
 }
 
@@ -97,19 +97,19 @@ func TestEditorSetKeysetPublishesOneModeChangePerSwitch(t *testing.T) {
 // Leaving a visual selection behind would let a later yank or delete act on a
 // span the operator can no longer see.
 func TestEditorSetKeysetClearsVisualSelection(t *testing.T) {
-	h, ed, sh := focusedEditor(t, 30, 6, widget.WithInitialText("hello"))
+	h, ed, sh := focusedEditor(t, 30, 6, widget.WithCore(widget.CoreInitialText("hello")))
 
 	h.inject(key('v'), key('l'))
 	h.barrier(sh)
 	var sel string
-	h.onLoop(func() { sel = ed.SelectedText() })
+	h.onLoop(func() { sel = ed.Core().SelectedText() })
 	if sel != "he" {
 		t.Fatalf("SelectedText() = %q, want %q before the switch", sel, "he")
 	}
 
 	setKeyset(h, ed, widget.KeysetStandard)
 	h.barrier(sh)
-	h.onLoop(func() { sel = ed.SelectedText() })
+	h.onLoop(func() { sel = ed.Core().SelectedText() })
 	if sel != "" {
 		t.Fatalf("SelectedText() = %q, want empty — the selection outlived the switch", sel)
 	}
@@ -125,7 +125,7 @@ func TestEditorSetKeysetReplaysHostKeymap(t *testing.T) {
 	// The overlay is declared BEFORE the profile option: the profile installs
 	// a fresh base table, and the host binding still has to be there.
 	h, ed, sh := focusedEditor(t, 30, 6,
-		widget.WithKeymap(overlay), widget.WithStandardKeymap())
+		widget.WithCore(widget.CoreKeymap(overlay)), widget.WithCore(widget.CoreKeyset(widget.KeysetStandard)))
 
 	bound := func(when string) {
 		t.Helper()
@@ -133,7 +133,7 @@ func TestEditorSetKeysetReplaysHostKeymap(t *testing.T) {
 			act widget.Action
 			ok  bool
 		)
-		h.onLoop(func() { act, ok = ed.ActionForChord(home) })
+		h.onLoop(func() { act, ok = ed.Core().ActionForChord(home) })
 		if !ok || act != widget.ActLineStart {
 			t.Fatalf("%s: Ctrl+Q -> (%v, %v), want ActLineStart, true", when, act, ok)
 		}
@@ -158,10 +158,10 @@ func TestEditorSetKeysetReplaysHostKeymap(t *testing.T) {
 }
 
 // An out-of-range profile is a caller bug, and the editor must not be left
-// with no keymap at all: it lands on Vim, the same normalization WithKeyset
+// with no keymap at all: it lands on Vim, the same normalization CoreKeyset
 // has always applied at construction.
 func TestEditorSetKeysetNormalizesUnknownProfile(t *testing.T) {
-	h, ed, sh := focusedEditor(t, 30, 6, widget.WithStandardKeymap())
+	h, ed, sh := focusedEditor(t, 30, 6, widget.WithCore(widget.CoreKeyset(widget.KeysetStandard)))
 
 	setKeyset(h, ed, widget.Keyset(99))
 	h.barrier(sh)
@@ -184,7 +184,7 @@ func TestEditorSetKeysetNormalizesUnknownProfile(t *testing.T) {
 // forwards or backwards, one over multi-byte text (columns count clusters, not bytes), a line-wise
 // one, and none outside the visual modes.
 func TestEditorSelectionRange(t *testing.T) {
-	h, ed, sh := focusedEditor(t, 30, 6, widget.WithInitialText("héllo\nworld"))
+	h, ed, sh := focusedEditor(t, 30, 6, widget.WithCore(widget.CoreInitialText("héllo\nworld")))
 	type region struct {
 		row, col, endRow, endCol int
 		ok                       bool
@@ -194,8 +194,8 @@ func TestEditorSelectionRange(t *testing.T) {
 		h.barrier(sh)
 		var r region
 		h.onLoop(func() {
-			r.row, r.col, r.endRow, r.endCol, r.ok = ed.SelectionRange()
-			r.text = ed.SelectedText()
+			r.row, r.col, r.endRow, r.endCol, r.ok = ed.Core().SelectionRange()
+			r.text = ed.Core().SelectedText()
 		})
 		return r
 	}

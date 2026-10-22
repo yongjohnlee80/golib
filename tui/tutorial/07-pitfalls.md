@@ -165,6 +165,6 @@ render, or gate on the previous surface closing.
 The default Vim, Nano, and Standard keymaps handle common editing chords. If you
 want a specific chord (such as `KeyHome`, `Ctrl+O`, or an arrow key) to bypass the
 editor and bubble to a parent modal or controller, explicitly bind it to
-`widget.ActUnbound` in `WithKeymap(...)`. Leaving it absent from a custom keymap can
+`widget.ActUnbound` in `WithCore(CoreKeymap(...))`. Leaving it absent from a custom keymap can
 still let structural fallbacks consume it.
 → [chapter 3](03-widgets.md)

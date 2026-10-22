@@ -1,10 +1,11 @@
 package widget
 
 import (
+	"image/color"
+
 	"github.com/yongjohnlee80/golib/gui"
 	"github.com/yongjohnlee80/golib/tui"
 	tuiwidget "github.com/yongjohnlee80/golib/tui/widget"
-	"image/color"
 )
 
 // WindowButtons is the optional circular GUI appearance of ordinary TUI window

@@ -8,7 +8,7 @@ import (
 )
 
 func TestEditorMenuActionsWorkAfterFocusMovesWithoutStealingItBack(t *testing.T) {
-	ed := widget.NewEditor(widget.WithInitialText("one\ntwo"))
+	ed := widget.NewEditor(widget.WithCore(widget.CoreInitialText("one\ntwo")))
 	menu := widget.NewTextInput()
 	root := tui.NewFlex(tui.Vertical)
 	root.Add(ed, menu)
@@ -19,13 +19,13 @@ func TestEditorMenuActionsWorkAfterFocusMovesWithoutStealingItBack(t *testing.T)
 		if !menu.Context().Focused() || ed.Context().Focused() {
 			t.Error("fixture did not move focus off the editor")
 		}
-		ed.Copy()
-		ed.Cut()
-		ed.Paste()
-		if ed.Value() != "one\ntwo" || !menu.Context().Focused() {
-			t.Errorf("menu commands returned %q or took focus from the menu", ed.Value())
+		ed.Core().Copy()
+		ed.Core().Cut()
+		ed.Core().Paste()
+		if ed.Core().Value() != "one\ntwo" || !menu.Context().Focused() {
+			t.Errorf("menu commands returned %q or took focus from the menu", ed.Core().Value())
 		}
-		if got, linewise := ed.Register(); got != "one" || !linewise {
+		if got, linewise := ed.Core().Register(); got != "one" || !linewise {
 			t.Errorf("menu commands did not use the editor register: (%q, %t)", got, linewise)
 		}
 	})

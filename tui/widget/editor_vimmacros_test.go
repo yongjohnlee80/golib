@@ -90,9 +90,9 @@ func TestVimMacrosStoppedEvent(t *testing.T) {
 	rec := record[widget.MacroStoppedEvent](h)
 	h.onLoop(func() {
 		ed.SetValue("ab")
-		ed.SetLine(0, 0)
-		ed.SetNamedRegister('a', "2@a", false)
-		ed.SetNamedRegister('b', "A!\x1b", false)
+		ed.Core().SetLine(0, 0)
+		ed.Core().SetNamedRegister('a', "2@a", false)
+		ed.Core().SetNamedRegister('b', "A!\x1b", false)
 	})
 	h.inject(key('@'), key('a'))
 	h.barrier(sh)

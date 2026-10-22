@@ -95,7 +95,7 @@ func TestVimReplacePress(t *testing.T) {
 
 // The terminal Editor's caret: an underline in Replace.
 func TestVimReplaceCaret(t *testing.T) {
-	ed := widget.NewEditor(widget.WithInitialText("1234"))
+	ed := widget.NewEditor(widget.WithCore(widget.CoreInitialText("1234")))
 	ed.Core().HandleKey(tui.KeyEvent{Code: 'R', Text: "R"})
 	if got := ed.CursorShape(); got != tui.CursorShapeUnderline {
 		t.Fatalf("Replace's caret: %v", got)

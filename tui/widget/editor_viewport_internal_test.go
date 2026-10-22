@@ -12,7 +12,7 @@ import (
 func viewportEditor(t *testing.T, h int) *Editor {
 	t.Helper()
 	text := strings.Repeat("a", 25) + "\nb\n" + strings.Repeat("c", 15) + "\nd\ne"
-	e := NewEditor(WithInitialText(text), WithEditorWrap(WrapSoft))
+	e := NewEditor(WithCore(CoreInitialText(text)), WithEditorWrap(WrapSoft))
 	e.Layout(tui.Constraints{MaxW: 10, MaxH: h})
 	v := e.view().settled(e.core.buf.textLines)
 	for i, want := range []int{3, 1, 2, 1, 1} {
@@ -89,23 +89,23 @@ func TestEditorViewKeysUseItsLayout(t *testing.T) {
 		e.Layout(tui.Constraints{MaxW: 10, MaxH: 6})
 	}
 	press(tui.KeyEvent{Kind: tui.KeyPress, Code: 'L', Text: "L"})
-	if ln, _ := e.Line(); ln != 2 {
+	if ln, _ := e.Core().Line(); ln != 2 {
 		t.Fatalf("L: line %d, want 2", ln)
 	}
 	press(tui.KeyEvent{Kind: tui.KeyPress, Code: 'M', Text: "M"})
-	if ln, _ := e.Line(); ln != 1 {
+	if ln, _ := e.Core().Line(); ln != 1 {
 		t.Fatalf("M: line %d, want 1", ln)
 	}
 	press(tui.KeyEvent{Kind: tui.KeyPress, Code: 'H', Text: "H"})
-	if ln, _ := e.Line(); ln != 0 {
+	if ln, _ := e.Core().Line(); ln != 0 {
 		t.Fatalf("H: line %d, want 0", ln)
 	}
 	press(tui.KeyEvent{Kind: tui.KeyPress, Code: 'd', Mods: tui.ModCtrl}) // half of 6 rows: 3
-	if ln, _ := e.Line(); ln != 3 || e.cells.top != 1 {
+	if ln, _ := e.Core().Line(); ln != 3 || e.cells.top != 1 {
 		t.Fatalf("Ctrl-d: line %d top %d, want line 3 top 1", ln, e.cells.top)
 	}
 	press(tui.KeyEvent{Kind: tui.KeyPress, Code: 'u', Mods: tui.ModCtrl})
-	if ln, _ := e.Line(); ln != 0 || e.cells.top != 0 {
+	if ln, _ := e.Core().Line(); ln != 0 || e.cells.top != 0 {
 		t.Fatalf("Ctrl-u: line %d top %d, want line 0 top 0", ln, e.cells.top)
 	}
 }

@@ -16,9 +16,9 @@ import (
 
 func TestOnModeChangeHearsEveryTransitionAndNothingElse(t *testing.T) {
 	var got []widget.EditorMode
-	h, ed, sh := focusedEditor(t, 30, 6, widget.WithOnModeChange(func(m widget.EditorMode) {
+	h, ed, sh := focusedEditor(t, 30, 6, widget.WithCore(widget.CoreOnModeChange(func(m widget.EditorMode) {
 		got = append(got, m)
-	}))
+	})))
 	bus := record[widget.ModeChangedEvent](h)
 
 	h.inject(key('i'))
@@ -43,7 +43,7 @@ func TestOnModeChangeHearsEveryTransitionAndNothingElse(t *testing.T) {
 // mark a freshly loaded file dirty the moment it opened.
 func TestOnChangeHearsEditsButNotSetValue(t *testing.T) {
 	edits := 0
-	h, ed, sh := focusedEditor(t, 30, 6, widget.WithOnChange(func() { edits++ }))
+	h, ed, sh := focusedEditor(t, 30, 6, widget.WithCore(widget.CoreOnChange(func() { edits++ })))
 
 	h.onLoop(func() { ed.SetValue("loaded from disk") })
 	h.barrier(sh)
@@ -68,7 +68,7 @@ func TestOnChangeHearsEditsButNotSetValue(t *testing.T) {
 // leaves it where it was (a refused motion at the buffer's edge).
 func TestOnCursorPositionChangeHearsMovesNotStillKeys(t *testing.T) {
 	moves := 0
-	h, ed, sh := focusedEditor(t, 30, 6, widget.WithOnCursorPositionChange(func() { moves++ }))
+	h, ed, sh := focusedEditor(t, 30, 6, widget.WithCore(widget.CoreOnCursorPositionChange(func() { moves++ })))
 	count := func() int {
 		h.barrier(sh)
 		var n int
@@ -88,11 +88,11 @@ func TestOnCursorPositionChangeHearsMovesNotStillKeys(t *testing.T) {
 	if n := count(); n != 2 {
 		t.Fatalf("k k (the second at the top) reported %d moves in all, want 2", n)
 	}
-	h.onLoop(func() { ed.SetLine(2, 1) })
+	h.onLoop(func() { ed.Core().SetLine(2, 1) })
 	if n := count(); n != 3 {
 		t.Fatalf("SetLine reported %d moves in all, want 3", n)
 	}
-	h.onLoop(func() { ed.SetLine(2, 1) }) // where it already is
+	h.onLoop(func() { ed.Core().SetLine(2, 1) }) // where it already is
 	if n := count(); n != 3 {
 		t.Fatalf("SetLine to the same place reported a move (%d)", n)
 	}
