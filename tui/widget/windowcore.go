@@ -157,22 +157,8 @@ func (c *WindowCore) bind(ctx *tui.Context, content tui.Component, target any, e
 	c.pointerFrame = nil
 	needsTarget := c.move || c.resize || c.maximize || c.minimize || (c.close && c.onClose == nil) || c.workArea != nil
 	if !explicit && needsTarget {
-		if parent := ctx.Ancestor(func(v tui.Component) bool { _, ok := v.(*Float); return ok }); parent != nil {
-			f := parent.(*Float)
-			if f.windowTarget == nil {
-				f.windowTarget = &floatWindowTarget{float: f}
-			}
-			if old := f.windowTarget.core; old != nil && old != c && old.live() {
-				panic(fatalOf("widget: WindowCore.Bind", "Float already has a live window behavior owner", "compose capabilities on one widget"))
-			}
-			f.windowTarget.core, f.windowTarget.workArea = c, c.workArea
-			target = f.windowTarget
-			c.pointerFrame = func(at tui.Point) tui.Point {
-				if r, ok := f.ctx.ResolveAnchor(ctx.NodeAnchor()); ok {
-					return tui.Point{X: r.X + at.X, Y: r.Y + at.Y}
-				}
-				return at
-			}
+		if parent := ctx.Ancestor(func(v tui.Component) bool { _, ok := v.(WindowTargetProvider); return ok }); parent != nil {
+			target, c.pointerFrame = parent.(WindowTargetProvider).WindowTargetFor(c, ctx)
 		}
 	}
 	c.geometry, _ = target.(WindowGeometry)
