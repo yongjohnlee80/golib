@@ -656,28 +656,16 @@ var drawerType = Type{
 	Signals: map[string][]string{"resized": {"size", "length"}, "placed": {"x", "y", "width", "height"},
 		"changed": {"operation", "key", "x", "y", "width", "height", "maximized", "minimized"}},
 	Setters: map[string]Setter{
-		"edge": setter("a Drawer", drawerEdges.read, (*drawerNode).setEdge),
-		"size": setter("a Drawer", func(v qml.SpecValue) (int, error) {
-			f, err := numberOf(v)
-			return int(f), err
-		}, (*drawerNode).setSize),
-		"length": setter("a Drawer", func(v qml.SpecValue) (int, error) {
-			f, err := numberOf(v)
-			return int(f), err
-		}, (*drawerNode).setLength),
-		"minimumSize": setter("a Drawer", func(v qml.SpecValue) (int, error) {
-			f, err := numberOf(v)
-			return int(f), err
-		}, (*drawerNode).setMinimumSize),
-		"minimumLength": setter("a Drawer", func(v qml.SpecValue) (int, error) {
-			f, err := numberOf(v)
-			return int(f), err
-		}, (*drawerNode).setMinimumLength),
-		"floating":    setter("a Drawer", boolOf, (*drawerNode).setFloating),
-		"floatX":      drawerFracSetter(0),
-		"floatY":      drawerFracSetter(1),
-		"floatWidth":  drawerFracSetter(2),
-		"floatHeight": drawerFracSetter(3),
+		"edge":          setter("a Drawer", drawerEdges.read, (*drawerNode).setEdge),
+		"size":          setter("a Drawer", truncOf, (*drawerNode).setSize),
+		"length":        setter("a Drawer", truncOf, (*drawerNode).setLength),
+		"minimumSize":   setter("a Drawer", truncOf, (*drawerNode).setMinimumSize),
+		"minimumLength": setter("a Drawer", truncOf, (*drawerNode).setMinimumLength),
+		"floating":      setter("a Drawer", boolOf, (*drawerNode).setFloating),
+		"floatX":        drawerFracSetter(0),
+		"floatY":        drawerFracSetter(1),
+		"floatWidth":    drawerFracSetter(2),
+		"floatHeight":   drawerFracSetter(3),
 	},
 	Methods: map[string]Method{
 		"open":           NoArgMethod((*drawerNode).open),

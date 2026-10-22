@@ -127,7 +127,7 @@ var tabViewType = Type{
 	restyle: restyleTabView,
 	Setters: map[string]Setter{
 		// Qt's: the index of the current tab; one out of range is ignored
-		"currentIndex": setter("a TabView", numberOf, func(n *tabViewNode, v float64) { n.setIndex(int(v)) }),
+		"currentIndex": setter("a TabView", truncOf, func(n *tabViewNode, v int) { n.setIndex(v) }),
 	},
 	Getters: map[string]Getter{
 		"currentIndex": getter(func(n *tabViewNode) (qml.SpecValue, error) {

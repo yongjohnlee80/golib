@@ -168,7 +168,7 @@ var listViewType = Type{
 	Ctor: []string{"textRole"},
 	Setters: map[string]Setter{
 		"model":        setter("a ListView", modelOf, func(n *listViewNode, m ItemModel) { n.mv.setModel(m) }),
-		"currentIndex": setter("a ListView", numberOf, func(n *listViewNode, v float64) { n.list.SetCursor(int(v)) }),
+		"currentIndex": setter("a ListView", truncOf, func(n *listViewNode, v int) { n.list.SetCursor(v) }),
 	},
 	Getters: map[string]Getter{
 		"currentIndex": getter(func(n *listViewNode) (qml.SpecValue, error) {
@@ -276,7 +276,7 @@ var comboBoxType = Type{
 		"model": setter("a ComboBox", modelOf, func(n *comboBoxNode, m ItemModel) { n.mv.setModel(m) }),
 		// Qt's writable currentIndex: the row chosen, -1 for none. A row the
 		// model does not have chooses none.
-		"currentIndex": setter("a ComboBox", numberOf, func(n *comboBoxNode, v float64) { n.sel.SetSelectedIndex(int(v)) }),
+		"currentIndex": setter("a ComboBox", truncOf, func(n *comboBoxNode, v int) { n.sel.SetSelectedIndex(v) }),
 	},
 	Getters: map[string]Getter{
 		"currentIndex": getter(func(n *comboBoxNode) (qml.SpecValue, error) {
@@ -631,9 +631,7 @@ var tableViewType = Type{
 			}
 			n.grid.Menu().SetEnabled(on)
 		}),
-		"currentIndex": setter("a TableView", numberOf, func(n *tableViewNode, v float64) {
-			n.shown.setCurrent(int(v))
-		}),
+		"currentIndex": setter("a TableView", truncOf, func(n *tableViewNode, v int) { n.shown.setCurrent(v) }),
 	},
 	Getters: map[string]Getter{
 		"currentIndex": getter(func(n *tableViewNode) (qml.SpecValue, error) {

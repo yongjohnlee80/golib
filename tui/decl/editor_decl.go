@@ -161,11 +161,8 @@ func EditorSetters() map[string]Setter {
 			}
 			return e.Core().SetIndentUnit(unit)
 		},
-		"indentMarks": setter("an Editor", indentMarksOf, func(e coreEditor, m widget.IndentMarks) { e.Core().SetIndentMarks(m) }),
-		"cursorPosition": setter("an Editor", func(v qml.SpecValue) (int, error) {
-			n, err := numberOf(v)
-			return int(n), err
-		}, cursorPlacer.SetCursorPosition),
+		"indentMarks":    setter("an Editor", indentMarksOf, func(e coreEditor, m widget.IndentMarks) { e.Core().SetIndentMarks(m) }),
+		"cursorPosition": setter("an Editor", truncOf, cursorPlacer.SetCursorPosition),
 	}
 }
 
@@ -206,10 +203,7 @@ func editorViewSetters() map[string]Setter {
 		// golib's: the line numbers' colour, a theme's dim tone; muted and faint otherwise
 		"lineNumberColor": setter("an Editor", colorOf, (*widget.Editor).SetLineNumberColor),
 		// golib's: a vertical guide at this column (1-based), where text is meant to wrap; 0 for none
-		"ruler": setter("an Editor", func(v qml.SpecValue) (int, error) {
-			n, err := numberOf(v)
-			return int(n), err
-		}, (*widget.Editor).SetRuler),
+		"ruler": setter("an Editor", truncOf, (*widget.Editor).SetRuler),
 		// golib's: Editor.Raw or Editor.Rendered, the view chosen. The cell Editor's Rendered view is
 		// its document view (SetDocumentView, a table); without one it draws Raw and keeps the choice.
 		"view": EnumSetter(EditorViews, func(e *widget.Editor, v string) {
