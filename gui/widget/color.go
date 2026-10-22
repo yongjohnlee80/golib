@@ -1,6 +1,8 @@
 package widget
 
 import (
+	"encoding/binary"
+	"hash/fnv"
 	"image/color"
 	"math"
 
@@ -90,4 +92,47 @@ func contrast(a, b color.NRGBA) float64 {
 		return -d
 	}
 	return d
+}
+
+// defaultAccent is the accent a view draws with when no tui theme names one.
+var defaultAccent = color.NRGBA{R: 0x5c, G: 0x9c, B: 0xf5, A: 0xff}
+
+// pageLook is a view's look, read from the window: text and ground, the text size, and the accent
+// and muted text. key hashes all of it with the font generation, so a change in any of them (a
+// family change included) is a new key, and the view restyles.
+type pageLook struct {
+	fg, bg, accent, muted color.NRGBA
+	px                    float32
+	key                   uint64
+}
+
+// readLook reads the look of a view drawn on c: the text and ground from the cells under it that
+// nothing covers (prevFg and prevBg when it is wholly covered, black on white when there are none),
+// the text size (10 at least), and the accent and muted text from th when it names them.
+func readLook(c gui.Canvas, th *style.Theme, prevFg, prevBg color.NRGBA) pageLook {
+	fg, bg, ok := openColors(c, -1)
+	if !ok {
+		fg, bg = prevFg, prevBg // wholly covered: the look it had
+	}
+	if fg.A == 0 && bg.A == 0 {
+		fg, bg = color.NRGBA{A: 255}, color.NRGBA{R: 255, G: 255, B: 255, A: 255}
+	}
+	lk := pageLook{fg: fg, bg: bg, px: max(c.TextSize(), 10), accent: defaultAccent, muted: mix(fg, bg, 0.55)}
+	if th != nil {
+		dark, pal := isDark(bg), gui.PaletteOf(c)
+		if col, ok := colorOf(th.Color(style.TokenAccent), th, dark, pal); ok {
+			lk.accent = col
+		}
+		if col, ok := colorOf(th.Color(style.TokenTextMuted), th, dark, pal); ok {
+			lk.muted = col
+		}
+	}
+	h := fnv.New64a()
+	for _, col := range []color.NRGBA{lk.fg, lk.bg, lk.accent, lk.muted} {
+		_, _ = h.Write([]byte{col.R, col.G, col.B, col.A})
+	}
+	_ = binary.Write(h, binary.LittleEndian, lk.px)
+	_ = binary.Write(h, binary.LittleEndian, c.Fonts().Gen)
+	lk.key = h.Sum64()
+	return lk
 }

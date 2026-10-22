@@ -2,7 +2,6 @@ package widget
 
 import (
 	"bytes"
-	"encoding/binary"
 	"hash/fnv"
 	"image/color"
 	"math"
@@ -13,7 +12,6 @@ import (
 	"github.com/yongjohnlee80/golib/gui/flow"
 	phtml "github.com/yongjohnlee80/golib/parse/html"
 	"github.com/yongjohnlee80/golib/tui"
-	"github.com/yongjohnlee80/golib/tui/style"
 	tuiwidget "github.com/yongjohnlee80/golib/tui/widget"
 )
 
@@ -1027,41 +1025,15 @@ func (l *htmlLayout) layAbsTop(b *topBlock) {
 // under the view that nothing covers, the accent and muted text from the tui theme. A change restyles
 // every block.
 func (l *htmlLayout) adoptLook(c gui.Canvas) {
-	fg, bg, ok := openColors(c, -1)
-	if !ok {
-		fg, bg = l.fg, l.bg // wholly covered: the look it had
-	}
-	if fg.A == 0 && bg.A == 0 {
-		fg, bg = color.NRGBA{A: 255}, color.NRGBA{R: 255, G: 255, B: 255, A: 255}
-	}
-	px := max(c.TextSize(), 10)
-	accent := color.NRGBA{R: 0x5c, G: 0x9c, B: 0xf5, A: 0xff}
-	muted := mix(fg, bg, 0.55)
-	if th := l.v.Theme(); th != nil {
-		dark := isDark(bg)
-		if col, ok := colorOf(th.Color(style.TokenAccent), th, dark, gui.PaletteOf(c)); ok {
-			accent = col
-		}
-		if col, ok := colorOf(th.Color(style.TokenTextMuted), th, dark, gui.PaletteOf(c)); ok {
-			muted = col
-		}
-	}
-	h := fnv.New64a()
-	for _, col := range []color.NRGBA{fg, bg, accent, muted} {
-		_, _ = h.Write([]byte{col.R, col.G, col.B, col.A})
-	}
-	_, _ = h.Write([]byte{byte(math.Float32bits(px)), byte(math.Float32bits(px) >> 8), byte(math.Float32bits(px) >> 16)})
-	// the families: a family-only change keeps colours and size, and must still shape every block anew
-	_ = binary.Write(h, binary.LittleEndian, c.Fonts().Gen)
-	look := h.Sum64()
-	if look == l.look {
+	lk := readLook(c, l.v.Theme(), l.fg, l.bg)
+	if lk.key == l.look {
 		return
 	}
-	l.look = look
-	l.fg, l.bg, l.accent, l.muted = fg, bg, accent, muted
-	l.surface = mix(fg, bg, 0.07)
-	l.selColor = mix(accent, bg, 0.35)
-	l.textPx, l.rootPx = px, px
+	l.look = lk.key
+	l.fg, l.bg, l.accent, l.muted = lk.fg, lk.bg, lk.accent, lk.muted
+	l.surface = mix(lk.fg, lk.bg, 0.07)
+	l.selColor = mix(lk.accent, lk.bg, 0.35)
+	l.textPx, l.rootPx = lk.px, lk.px
 	l.built = false
 }
 
