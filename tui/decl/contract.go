@@ -70,18 +70,22 @@ type Type struct {
 	// still inherits through it.
 	Restyle func(c tui.Component, p Palette)
 
+	// Adopt is a container's way of taking a child by its attached properties
+	// (RegisterAttached, Honour): Layout.fillHeight in a column makes a weighted
+	// child. The adapter calls it when a reload inserts a child. At construction
+	// Build places the children itself, and calls the same function for each,
+	// with b.ChildAttached[i], as Flex's does, so both paths read the attached
+	// properties one way. It refuses a value it cannot read BEFORE adding, so a
+	// refused child is never left half-placed. Nil, the container's own Add
+	// places an inserted child.
+	Adopt func(parent, child tui.Component, attached map[string]qml.SpecValue) error
+
 	// restyle is a built-in type's, reading the palette directly.
 	restyle restyler
-	// adopt is a built-in container's way of taking a child: the one place the
-	// child's attached properties are read, at construction and on a reload
-	// that inserts it. Nil, the container's own Add places it.
-	adopt adopter
 }
 
-// adopter adds child to parent as the child's attached properties say —
-// Layout.fillHeight in a column is a weighted child. It refuses a value it
-// cannot read BEFORE adding, so a refused child is never left half-placed.
-type adopter func(parent, child tui.Component, attached map[string]qml.SpecValue) error
+// adopter is a Type's Adopt.
+type adopter = func(parent, child tui.Component, attached map[string]qml.SpecValue) error
 
 // registerTypes adds each type's builder to the registry, behind its Children check.
 func registerTypes(r *Registry, types []Type) {
@@ -182,8 +186,8 @@ func typeOptions(types []Type) []Option {
 			wear := w.Restyle
 			opts = append(opts, withRestyle(w.Name, func(c tui.Component, p palette) { wear(c, Palette{p}) }))
 		}
-		if w.adopt != nil {
-			opts = append(opts, withAdopt(w.Name, w.adopt))
+		if w.Adopt != nil {
+			opts = append(opts, withAdopt(w.Name, w.Adopt))
 		}
 		if len(w.Enums) > 0 {
 			opts = append(opts, withEnums(w.Enums...))

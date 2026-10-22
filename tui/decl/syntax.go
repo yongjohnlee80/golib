@@ -138,7 +138,7 @@ func syntaxSetters() map[string]Setter {
 
 // A SyntaxHighlighter takes no place in the layout.
 func (n *syntaxNode) Layout(c tui.Constraints) tui.Size { return c.Constrain(tui.Size{}) }
-func (*syntaxNode) declarationOnly()                    {}
+func (*syntaxNode) DeclarationOnly()                    {}
 func (n *syntaxNode) Render(tui.Surface)                {}
 
 // editorChildren takes an Editor's children: at most one SyntaxHighlighter, at most one document
