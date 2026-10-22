@@ -213,7 +213,7 @@ func (f *Float) Floating() bool {
 // raise moves the float to the top of its OverlayHost's ordinary layers (OverlayHost.Raise), or
 // above the open dialogs when it is a shown modal one; a no-op outside an OverlayHost.
 func (f *Float) raise() {
-	if h, ok := hostFor[*OverlayHost](f.ctx); ok {
+	if h, ok := hostFor[layerRaiser](f.ctx); ok {
 		h.Raise(f)
 	}
 }

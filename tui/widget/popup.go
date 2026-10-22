@@ -28,13 +28,6 @@ type anchorReceiver interface {
 	receiveAnchor(anchor tui.Rect)
 }
 
-// popupHost is what a widget needs from the nearest OverlayHost to open a
-// popup at a point.
-type popupHost interface {
-	openPopupAt(id LayerID, owner ContextOwner, panel tui.Component, at tui.Point, onClosed func(DismissReason)) (*popupLayer, error)
-	CloseAnchored(id LayerID, reason DismissReason)
-}
-
 // fillPolicy places a layer over the whole host, whatever its anchor.
 type fillPolicy struct{}
 

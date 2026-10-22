@@ -319,7 +319,7 @@ func (h *OverlayHost) CloseAnchored(id LayerID, reason DismissReason) {
 	if h.ctx != nil {
 		bus = h.ctx.Bus()
 	}
-	if ider, ok := al.comp.(interface{ NodeID() tui.NodeID }); ok {
+	if ider, ok := al.comp.(identified); ok {
 		owner = ider.NodeID()
 	}
 	h.anchored = slices.Delete(h.anchored, i, i+1)

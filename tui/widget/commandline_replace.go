@@ -61,7 +61,7 @@ func (l *CommandLine) askReplace(s *ReplaceSession) error {
 				l.ask = nil
 			}
 		}))
-	if err := m.Open(host); err != nil {
+	if err := m.openOn(host); err != nil {
 		s.Stop()
 		return err
 	}
