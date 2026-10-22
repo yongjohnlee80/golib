@@ -89,6 +89,32 @@ func edgeLabelRoom(lb label) layout.Size {
 	return layout.Size{W: lb.box.W + 2*pad, H: lb.box.H + 2*pad}
 }
 
+// placeEdges routes each edge along res's polyline for it and centres its label on res's label
+// point, moved by margin: a layered layout's coordinates, inside the diagram's margin.
+func placeEdges(edges []laidEdge, res layout.Result, margin float32) {
+	for i := range edges {
+		e := &edges[i]
+		for _, p := range res.Edges[i] {
+			e.pts = append(e.pts, gui.Pt(p.X+margin, p.Y+margin))
+		}
+		if e.label != nil {
+			c := res.Labels[i]
+			*e.label = e.label.at(c.X+margin-e.label.box.W/2, c.Y+margin-e.label.box.H/2)
+		}
+	}
+}
+
+// placeGroups places each group on res's rectangle for it, moved by margin, its title inset at its
+// top left by the title font's size.
+func placeGroups(groups []laidGroup, res layout.Result, margin float32, title gui.Font) {
+	for i := range groups {
+		g := &groups[i]
+		r := res.Groups[i]
+		g.box = gui.Rect{X: r.X + margin, Y: r.Y + margin, W: r.W, H: r.H}
+		g.title = g.title.at(g.box.X+title.Size*0.5, g.box.Y+title.Size*0.3)
+	}
+}
+
 // ground fills col behind a label, a little past it (labelPad).
 func (l *Laid) ground(c gui.Canvas, lb label, col color.NRGBA) {
 	pad := labelPad(lb.font)
