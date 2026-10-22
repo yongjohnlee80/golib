@@ -123,7 +123,7 @@ func (b *builder) textW(s string, f gui.Font) float32 {
 		return 0
 	}
 	ms := b.m.Measure(s, f)
-	return ms.X[len(ms.X)-1]
+	return ms.Width()
 }
 
 func (b *builder) add(it item) { b.items = append(b.items, it) }

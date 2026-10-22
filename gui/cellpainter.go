@@ -140,9 +140,9 @@ func (p *CellPainter) metrics(gc *gioCanvas, px float32, cols, rows int) metrics
 }
 
 // headlessCell is a typical monospace cell at text size px, for a RecordingCanvas, which has no
-// font: 0.6 em wide, 1.2 em tall, the baseline at 0.96 em.
+// font: 0.6 em wide, a line (LineHeight) tall, the baseline at 0.96 em.
 func headlessCell(px float32) (Size, float32) {
-	return Size{W: float32(math.Round(float64(px * 0.6))), H: float32(math.Ceil(float64(px * 1.2)))}, px * 0.96
+	return Size{W: float32(math.Round(float64(px * 0.6))), H: float32(math.Ceil(float64(px * LineHeight)))}, px * 0.96
 }
 
 // cellMetrics is a headless cell: a RecordingCanvas has no font.

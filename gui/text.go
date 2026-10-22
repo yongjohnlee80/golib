@@ -160,6 +160,9 @@ type Measured struct {
 	Ascent, Descent float32   // the font's, from the baseline
 }
 
+// Width is the line's width: its last X.
+func (m Measured) Width() float32 { return m.X[len(m.X)-1] }
+
 // Scale is the shaper's device pixels per logical pixel: what it measures at.
 func (t *TextShaper) Scale() float32 { return t.scale }
 
