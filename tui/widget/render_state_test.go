@@ -67,3 +67,18 @@ func TestATabStripsBarColorIsWhatItWasGiven(t *testing.T) {
 		t.Fatal("a bar colour taken away was still reported")
 	}
 }
+
+// A WindowButtons' controls are its buttons in their order, each with the operation it invokes.
+func TestWindowButtonsControlsPairEachButtonWithItsOperation(t *testing.T) {
+	w := widget.NewWindowButtons(widget.NewWindowCore(widget.WithWindowClose(), widget.WithWindowMaximize()))
+	got := w.Controls()
+	if len(got) != 2 || got[0].Op != widget.WindowMaximize || got[1].Op != widget.WindowClose {
+		t.Fatalf("Controls %+v, want maximize then close", got)
+	}
+	for _, c := range got {
+		want := map[widget.WindowOperation]string{widget.WindowMaximize: "+", widget.WindowClose: "x"}[c.Op]
+		if c.Button == nil || c.Button.Label() != want {
+			t.Errorf("%v's button is %+v, want the one labelled %q", c.Op, c.Button, want)
+		}
+	}
+}
