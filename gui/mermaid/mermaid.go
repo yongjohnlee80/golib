@@ -326,6 +326,7 @@ const (
 	endZeroOne         // o|: zero or one
 	endMany            // }|: one or more
 	endZeroMany        // }o: zero or more
+	endKinds           // not an end: how many kinds there are, the ends table's length
 )
 
 // laidEdge is a polyline through pts, its ends, and its labels: one at its middle, and one near
