@@ -127,7 +127,7 @@ func (s *source) HighlightBlock(line string, previous highlight.State) ([]highli
 		if !ok {
 			return highlightMarkdown(line, stateBody)
 		}
-		if fenceCloses(line, f.character, f.length) {
+		if FenceCloses(line, f.character, f.length) {
 			return []highlight.Span{{Start: 0, End: len(line), Style: highlight.Comment}}, stateBody
 		}
 		child := s.child(f.language)
@@ -148,7 +148,7 @@ func (s *source) HighlightBlock(line string, previous highlight.State) ([]highli
 		return spans, embeddedState + s.store.Intern(f)
 	}
 	if previous != stateFrontmatter && previous != stateComment {
-		if ch, n, ok := fenceOpens(line); ok {
+		if ch, n, ok := FenceOpens(line); ok {
 			offset := len(line) - len(strings.TrimLeft(line, " "))
 			info := strings.Fields(line[offset+n:])
 			name := ""
@@ -174,7 +174,7 @@ func (s *source) Indent(r indent.Request) (indent.Decision, bool) {
 		return indent.Decision{}, false
 	}
 	f, ok := s.store.Get(highlight.State(r.PreviousState) - embeddedState)
-	if !ok || fenceCloses(r.Line, f.character, f.length) {
+	if !ok || FenceCloses(r.Line, f.character, f.length) {
 		return indent.Decision{}, false
 	}
 	child := s.child(f.language)
