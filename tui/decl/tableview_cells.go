@@ -111,7 +111,7 @@ func (n *tableViewNode) buildCells(sortable bool) {
 		widget.TableOnCursor(func(row int) { n.moved(numberValue(row)) }),
 		widget.TableOnSort(n.sortChanged))
 	n.grid = widget.NewDataTable(core)
-	n.shown = gridShown{n.grid}
+	n.show(gridShown{n.grid})
 	n.mv.changed = n.followCells
 }
 
