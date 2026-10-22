@@ -43,10 +43,11 @@ import (
 //
 // So the obligations are structural here:
 //
-//   - [SSO.Options] returns BOTH hooks together, so the release side is not
-//     something to remember separately. Go being Go, a caller can still discard
-//     one of the two returned options or override the hooks afterwards; what the
-//     API removes is having to KNOW that the second hook exists.
+//   - Attaching to the [Admission] ([SSOConfig.Admission]) wires BOTH hooks
+//     together: the login parks through the SSO and the unused-handoff release
+//     reaches it, so the release side is not something to remember separately. A
+//     hook a caller sets by hand ([OnLogin], [OnHandoffUnused]) takes over from
+//     the park's; what the API removes is having to KNOW the second one exists.
 //   - Release is REQUIRED. [NewSSO] fails without it, so "allocated and never
 //     cleaned up" is not a state this type can be constructed in.
 //   - The expiry sweep is internal and calls Release, so a client that abandons a
@@ -156,6 +157,11 @@ type SSOConfig[T any] struct {
 	// [Manager] is given ([ManagerAdmission]), and through it the [Handler]'s. The SSO
 	// attaches itself to it, so the Handler's login route parks through it and the park,
 	// not the Manager, settles the handoffs. Nil: a park on its own, with no budget.
+	//
+	// An attached SSO stays attached for the Admission's life, closed or not. After
+	// [SSO.Close] its park refuses every login with [ErrStopped] (the login fails and
+	// returns its slot at once), the Manager keeps leaving settlement to it, and a second
+	// SSO cannot attach: rebuild with a new Admission and Manager.
 	Admission *Admission
 
 	// Max is the capacity of the park. With an Admission the park holds the
@@ -511,7 +517,7 @@ func (s *SSO[T]) releaseOnce(v T) func() {
 //	    sso.Factory(func(b tui.Backend, id *auth.Identity, up *myUpstream) web.Runner {
 //	        return myApp(b, id, up)
 //	    }),
-//	    managerOpt,
+//	    web.ManagerAdmission(adm), // the Admission the SSO attached to (SSOConfig.Admission)
 //	)
 //
 // A session that cannot be given upstream state gets no App: Run returns an
