@@ -1,9 +1,9 @@
 package widget
 
 import (
-	"errors"
 	"strings"
 
+	"github.com/yongjohnlee80/golib/errs"
 	"github.com/yongjohnlee80/golib/tui"
 )
 
@@ -25,8 +25,10 @@ const macroDepth = 100
 // macro holding 2@ of itself plays twice at every level, some 2^99 times in all.
 const macroBudget = 100_000
 
-// ErrMacroTooLong is why a macro stopped when it played more than one @ may (macroBudget).
-var ErrMacroTooLong = errors.New("widget: the macro played too long, and was stopped")
+// ErrMacroTooLong is why a macro stopped when it played more than one @ may (macroBudget). It is
+// an errs.ErrUnsupported: the editor plays no more than that, so playing the same macro again stops
+// the same way.
+var ErrMacroTooLong = errs.Sentinel(errs.ErrUnsupported, "widget: the macro played too long, and was stopped")
 
 // macroRecorder is the macro being recorded, and what plays.
 type macroRecorder struct {
