@@ -220,16 +220,25 @@ func boolOf(v qml.SpecValue) (bool, error) {
 // size: 33.7 is 33, as a host's value or a bound source may be fractional); cellsOf refuses a
 // fraction and a negative (a Dialog's width: 33.7 is an error).
 
-// finiteOf reads a number an int is made from: NaN and ±Inf, which no int holds (Go's int(NaN) is
-// any value at all), are refused with the value's position. A host's Value(math.NaN()) reaches a
-// property as "NaN".
+// finiteOf reads a number an int is made from: NaN and ±Inf, and a finite number outside an int's
+// range, which no int holds (Go's int() of any of them is any value at all), are refused with the
+// value's position. A host's Value(math.NaN()) reaches a property as "NaN".
 func finiteOf(v qml.SpecValue) (float64, error) {
 	n, err := numberOf(v)
-	if err == nil && (math.IsNaN(n) || math.IsInf(n, 0)) {
+	switch {
+	case err != nil:
+		return 0, err
+	case math.IsNaN(n) || math.IsInf(n, 0):
 		return 0, fmt.Errorf("want a finite number, got %s (at %s)", v.Raw, v.Pos)
+	case !inIntRange(n):
+		return 0, fmt.Errorf("want a number in an int's range, got %s (at %s)", v.Raw, v.Pos)
 	}
-	return n, err
+	return n, nil
 }
+
+// inIntRange reports whether a finite n fits an int. float64(math.MaxInt) rounds up to 2^63, which
+// no int holds, so the top bound is exclusive.
+func inIntRange(n float64) bool { return n >= float64(math.MinInt) && n < float64(math.MaxInt) }
 
 // truncOf reads a number property as an int, its fraction dropped.
 func truncOf(v qml.SpecValue) (int, error) {
