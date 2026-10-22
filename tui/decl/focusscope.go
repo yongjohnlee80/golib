@@ -45,11 +45,11 @@ type focusScopeNode struct {
 
 func buildFocusScope(b Build) (tui.Component, []string, error) {
 	if _, rest := splitShortcuts(b.Children); len(rest) != 1 {
-		_, err := oneContent(rest, "FocusScope", b.Pos)
+		_, err := oneContent(rest, focusScopeName, b.Pos)
 		return nil, nil, err
 	}
 	s := &focusScopeNode{}
-	s.Label("FocusScope")
+	s.Label(focusScopeName)
 	if err := s.arrange(b.Children, nil, nil); err != nil {
 		return nil, nil, err
 	}
@@ -116,9 +116,12 @@ func (s *focusScopeNode) heldShortcuts() (keymap.Scope, []*shortcutNode) {
 
 func (s *focusScopeNode) setKeyScope(v string) { s.keyScope = keymap.Scope(v) }
 
+// focusScopeName is FocusScope's name: its Type's, and what the placement and attached checks ask.
+const focusScopeName = "FocusScope"
+
 // shortcutHolders are the types a Shortcut may be declared in: each makes the keys live while
 // focus is within it, and builds a shortcutHolder.
-var shortcutHolders = map[string]bool{"Window": true, "Dialog": true, "FolderDialog": true, "Drawer": true, "FocusScope": true}
+var shortcutHolders = map[string]bool{"Window": true, "Dialog": true, "FolderDialog": true, "Drawer": true, focusScopeName: true}
 
 // shortcutHolderNames is shortcutHolders as a refusal lists them: "Dialog, Drawer, … or Window".
 func shortcutHolderNames() string {
@@ -128,7 +131,7 @@ func shortcutHolderNames() string {
 
 // focusScopeType is the FocusScope's entry in the standard vocabulary.
 var focusScopeType = Type{
-	Name:    "FocusScope",
+	Name:    focusScopeName,
 	Build:   buildFocusScope,
 	Setters: map[string]Setter{"keyScope": setter("a FocusScope", stringOf, (*focusScopeNode).setKeyScope)},
 	Getters: map[string]Getter{"keyScope": StringGetter(func(s *focusScopeNode) string { return string(s.keyScope) })},
