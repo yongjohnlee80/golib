@@ -15,12 +15,13 @@
 package panelgeometry
 
 import (
-	"errors"
 	"fmt"
 	"math"
 	"slices"
 	"strconv"
 	"strings"
+
+	"github.com/yongjohnlee80/golib/errs"
 )
 
 // Spec is one panel a program docks: its preference id, the places it may dock to (left, right, top,
@@ -108,8 +109,8 @@ func FormatFloat(r [4]float64) string {
 // ErrNotGeometry is a key that is no panel geometry preference of the specs; ErrBadValue is one
 // whose value is the wrong shape or out of its bounds.
 var (
-	ErrNotGeometry = errors.New("panelgeometry: not a panel geometry preference")
-	ErrBadValue    = errors.New("panelgeometry: bad value")
+	ErrNotGeometry = errs.Sentinel(errs.ErrInvalidArgument, "panelgeometry: not a panel geometry preference")
+	ErrBadValue    = errs.Sentinel(errs.ErrInvalidArgument, "panelgeometry: bad value")
 )
 
 // Validate reports whether key and value are a geometry preference of one of specs: an exact panel
