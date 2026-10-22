@@ -178,7 +178,7 @@ func (t *TabStrip) Layout(c tui.Constraints) tui.Size {
 	}
 	sz := c.Constrain(tui.Size{W: w, H: 1})
 	if ctx := t.Context(); ctx != nil { // a measure before mount commits nothing
-		ctx.AfterLayout("tab-window", func() { t.core.commitWindow(sz.W) })
+		ctx.AfterLayout(tabWindowCommitKey, func() { t.core.commitWindow(sz.W) })
 	}
 	return sz
 }

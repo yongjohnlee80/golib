@@ -329,7 +329,7 @@ func (t *Tabs) Layout(c tui.Constraints) tui.Size {
 	}
 	ch := max(h-barH, 0)
 	if !t.noBar {
-		t.ctx.AfterLayout("tab-window", func() { t.strip.commitWindow(w) })
+		t.ctx.AfterLayout(tabWindowCommitKey, func() { t.strip.commitWindow(w) })
 	}
 	active := t.tabs[t.active]
 	if active.mounted && ch > 0 {

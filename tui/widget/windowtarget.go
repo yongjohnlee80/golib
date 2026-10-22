@@ -145,6 +145,10 @@ func (l *floatLayer) layoutManaged(c tui.Constraints, w, h int) tui.Size {
 		r = f.place(area, l.layoutChild)
 	}
 	l.ctx.PlaceChild(f.child, r)
-	l.ctx.AfterLayout("window-placement", func() { t.bounds, t.area, f.content = r, area, r })
+	l.ctx.AfterLayout(windowPlacementCommitKey, func() { t.bounds, t.area, f.content = r, area, r })
 	return c.Constrain(tui.Size{W: w, H: h})
 }
+
+// windowPlacementCommitKey is a managed window's placement commit: its bounds, its area and its
+// content (tui.Context.AfterLayout).
+const windowPlacementCommitKey tui.CommitKey = "window-placement"

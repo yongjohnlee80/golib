@@ -100,7 +100,7 @@ func (c *modalCard) Layout(cs tui.Constraints) tui.Size {
 	c.placeButtons(ctx, buttonRows, sizes, x0, y, contentW)
 	// Render draws the rule and the help line at the rows committed after layout, so a measure
 	// moves nothing on screen.
-	ctx.AfterLayout("widget.modalcard", func() { c.ruleY, c.footerY = ruleY, footerY })
+	ctx.AfterLayout(modalCardCommitKey, func() { c.ruleY, c.footerY = ruleY, footerY })
 	return size
 }
 
@@ -232,3 +232,6 @@ func (c *modalCard) placeButtons(ctx *tui.Context, rows []cardButtonRow, sizes [
 		y += r.height
 	}
 }
+
+// modalCardCommitKey is the card's rule and footer rows commit (tui.Context.AfterLayout).
+const modalCardCommitKey tui.CommitKey = "widget.modalcard"

@@ -70,21 +70,6 @@ func subFrame(maxV, frame int) int {
 	return max(maxV-frame, 0)
 }
 
-// nilLike reports whether v is nil OR a TYPED nil — an interface holding a nil
-// pointer, a nil func, or another nil-capable zero value.
-//
-// A plain v == nil catches only the first. A nil *myAction and an
-// AnchorPolicyFunc(nil) both satisfy their interface with a live type
-// descriptor, so they pass an == nil check and then panic on call — somewhere
-// else entirely, in a layout pass or a consumer's executor, with nothing naming
-// what supplied them. The runtime already defines a typed nil as ABSENT at its
-// own action and resolver seams; this is the same rule for the seams this
-// package owns, in ONE place, because three slightly different local rules is
-// how two of them come to disagree.
-//
-// The kind switch matters as much as the reflection: IsNil panics on kinds that
-// cannot be nil, so asking it about a struct value would turn a validity check
-// into the crash it exists to prevent.
 // actionValue is a in the form a handler matches: for a pointer to an action value, the value it
 // points at, else a unchanged. Every widget handler switches on actionValue(inv.Action), so T and
 // *T are one action wherever they arrive, as WindowCore always took them. A nil pointer, or a
@@ -100,6 +85,21 @@ func actionValue(a tui.Action) tui.Action {
 	return a
 }
 
+// nilLike reports whether v is nil OR a TYPED nil — an interface holding a nil
+// pointer, a nil func, or another nil-capable zero value.
+//
+// A plain v == nil catches only the first. A nil *myAction and an
+// AnchorPolicyFunc(nil) both satisfy their interface with a live type
+// descriptor, so they pass an == nil check and then panic on call — somewhere
+// else entirely, in a layout pass or a consumer's executor, with nothing naming
+// what supplied them. The runtime already defines a typed nil as ABSENT at its
+// own action and resolver seams; this is the same rule for the seams this
+// package owns, in ONE place, because three slightly different local rules is
+// how two of them come to disagree.
+//
+// The kind switch matters as much as the reflection: IsNil panics on kinds that
+// cannot be nil, so asking it about a struct value would turn a validity check
+// into the crash it exists to prevent.
 func nilLike(v any) bool {
 	if v == nil {
 		return true

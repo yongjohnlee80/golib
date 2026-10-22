@@ -312,7 +312,7 @@ func (h *OverlayHost) Layout(c tui.Constraints) tui.Size {
 		// overlay is a geometry-derived side effect, which is exactly what
 		// commit exists for. Deferring it to a later turn instead would paint
 		// one frame containing a popup the host has already decided to close.
-		h.ctx.AfterLayout("anchor-loss", h.commitAnchorLoss)
+		h.ctx.AfterLayout(anchorLossCommitKey, h.commitAnchorLoss)
 	}
 	return size
 }
@@ -334,3 +334,7 @@ func (h *OverlayHost) commitAnchorLoss() {
 // which dialog is topmost, and where the scrim goes. A Modal states whether it
 // wants a backdrop; it never asks whether it is the top one, because answering
 // that would mean reaching outside itself into global state.
+
+// anchorLossCommitKey is the host's commit closing the anchored layers whose anchors left
+// (tui.Context.AfterLayout).
+const anchorLossCommitKey tui.CommitKey = "anchor-loss"
