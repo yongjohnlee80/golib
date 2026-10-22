@@ -60,24 +60,13 @@ type sheetEntry struct {
 }
 
 type htmlSheets struct {
-	l       *htmlLayout
-	entries map[string]*sheetEntry
-	tasks   map[tui.TaskID]string
-	stale   map[tui.TaskID]struct{} // loads started before the last reset: their results are dropped
+	l                 *htmlLayout
+	loads[sheetEntry] // by href; reset when a new resolver reads href as another file
 }
 
 // newHTMLSheets constructs the external stylesheet manager for an HTML layout instance.
 func newHTMLSheets(l *htmlLayout) *htmlSheets {
-	return &htmlSheets{l: l, entries: map[string]*sheetEntry{}, tasks: map[tui.TaskID]string{},
-		stale: map[tui.TaskID]struct{}{}}
-}
-
-// reset forgets every sheet and every load on its way: a new resolver reads href as another file.
-func (m *htmlSheets) reset() {
-	for id := range m.tasks {
-		m.stale[id] = struct{}{}
-	}
-	m.entries, m.tasks = map[string]*sheetEntry{}, map[tui.TaskID]string{}
+	return &htmlSheets{l: l, loads: newLoads[sheetEntry]()}
 }
 
 // entry is href's sheet, its load started on first sight; one with nothing to load it fails.
@@ -102,16 +91,13 @@ func (m *htmlSheets) entry(href string) *sheetEntry {
 
 // done takes a load's result; it reports whether the result was a sheet's.
 func (m *htmlSheets) done(r tui.TaskResult) bool {
-	if _, ok := m.stale[r.ID]; ok {
-		delete(m.stale, r.ID)
-		return true
-	}
-	href, ok := m.tasks[r.ID]
+	href, e, stale, ok := m.take(r.ID)
 	if !ok {
 		return false
 	}
-	delete(m.tasks, r.ID)
-	e := m.entries[href]
+	if stale {
+		return true // the old resolver's: dropped
+	}
 	if errors.Is(r.Err, tuiwidget.ErrImageRefused) {
 		m.l.v.Refused(href)
 		if e != nil {
