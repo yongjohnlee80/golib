@@ -217,7 +217,7 @@ func boolOf(v qml.SpecValue) (bool, error) {
 
 // The two number-to-int readers. Every int property reads through one of them, and each property
 // keeps the rule it has always had (Johno's F1 ruling): truncOf truncates a fraction (a Drawer's
-// size: 33.7 is 33, as an expression like parent.width * 0.3 gives fractions); cellsOf refuses a
+// size: 33.7 is 33, as a host's value or a bound source may be fractional); cellsOf refuses a
 // fraction and a negative (a Dialog's width: 33.7 is an error).
 
 // finiteOf reads a number an int is made from: NaN and ±Inf, which no int holds (Go's int(NaN) is
