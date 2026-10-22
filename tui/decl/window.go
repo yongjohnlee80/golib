@@ -80,8 +80,8 @@ func (w *windowNode) arrange(children []tui.Component, attached []map[string]qml
 	var items []docked
 	for i, child := range children {
 		switch c := child.(type) {
-		case *menuNode:
-			return fmt.Errorf("a %s belongs inside a MenuBar, not directly in a Window", c.kind)
+		case menuRow:
+			return fmt.Errorf("a %s belongs inside a MenuBar, not directly in a Window", c.row().kind)
 		case *shortcutNode:
 			// Keys, not layout: a Shortcut takes no place on the screen.
 			shortcuts = append(shortcuts, c)
