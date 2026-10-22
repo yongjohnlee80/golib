@@ -448,8 +448,9 @@ var ends = [...]endSpec{
 	endZeroMany:    {0, drawCrowsFoot},
 }
 
-// ends has one entry per end kind: a kind added before endKinds fails to build here until the table
-// has its entry, rather than indexing past it.
+// ends reaches every end kind: a kind added before endKinds fails to build here until the table
+// is as long, rather than indexing past it. The table is keyed, so an entry dropped from its middle
+// leaves a hole this does not see; TestEveryEndKindDraws does.
 var _ = [1]struct{}{}[len(ends)-int(endKinds)]
 
 // drawDiamond is a diamond end: filled for composition, hollow (the background) for aggregation.

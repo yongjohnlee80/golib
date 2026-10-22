@@ -55,3 +55,16 @@ func TestEveryPrimitivePaints(t *testing.T) {
 		t.Errorf("only %d paths drawn", paths)
 	}
 }
+
+// Every end kind but endNone has its drawing in the ends table: the table is keyed, so a dropped
+// entry would leave a kind that silently draws nothing.
+func TestEveryEndKindDraws(t *testing.T) {
+	for k := endNone + 1; k < endKinds; k++ {
+		if ends[k].draw == nil {
+			t.Errorf("end kind %d has no drawing in the ends table", k)
+		}
+	}
+	if ends[endNone].draw != nil {
+		t.Error("endNone draws")
+	}
+}
