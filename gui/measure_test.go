@@ -1,6 +1,7 @@
 package gui
 
 import (
+	"slices"
 	"testing"
 )
 
@@ -70,5 +71,22 @@ func TestLayoutRunsPlacesEachRunOnOneLine(t *testing.T) {
 	}
 	if e := sh.LayoutRuns([]TextRun{{Text: ""}}, f); e.Width != 0 || len(e.lines) != 0 {
 		t.Errorf("empty runs laid %+v", e)
+	}
+}
+
+// A shaper wraps as a leased Measurer does: one interface, one rule. The shaper is made as the
+// measurer makes its own (NewTextShaper), so the two shape in the same fonts and only the wrap is
+// compared.
+func TestTheShaperWrapsAsTheMeasurerDoes(t *testing.T) {
+	sh := NewTextShaper(1)
+	m, release := AcquireMeasurer(sh.Scale())
+	defer release()
+	f := Font{Size: 14}
+	for _, s := range []string{"a few words to wrap across lines", "東京都の天気", "long-hyphenated-word here", ""} {
+		gl, gs := sh.Wrap(s, f, 60)
+		ml, ms := m.Wrap(s, f, 60)
+		if !slices.Equal(gl, ml) || gs != ms {
+			t.Errorf("%q: the shaper wraps %q %v, the measurer %q %v", s, gl, gs, ml, ms)
+		}
 	}
 }

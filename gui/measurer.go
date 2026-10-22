@@ -97,14 +97,24 @@ type measurer struct{ t *TextShaper }
 // Measure shapes string s with font f and returns its width and ascent.
 func (m *measurer) Measure(s string, f Font) Measured { return m.t.Measure(s, f) }
 
-// Wrap measures and breaks string s across lines constrained to the given width.
+// Wrap measures and breaks string s across lines constrained to the given width: the shaper's
+// Wrap.
 func (m *measurer) Wrap(s string, f Font, width float32) ([]string, Size) {
+	return m.t.Wrap(s, f, width)
+}
+
+var (
+	_ Measurer = (*measurer)(nil)
+	_ Measurer = (*TextShaper)(nil) // a canvas's shaper measures as a leased Measurer does
+)
+
+// Wrap splits s into lines no wider than width (logical pixels) in f, as [Measurer.Wrap] does: at
+// white space, and after a CJK character or a hyphen, a word with neither overflowing its line.
+// It answers the lines and their bounding size.
+func (t *TextShaper) Wrap(s string, f Font, width float32) ([]string, Size) {
 	var lines []string
 	var w float32
-	widthOf := func(s string) float32 {
-		x := m.t.Measure(s, f).X
-		return x[len(x)-1]
-	}
+	widthOf := func(s string) float32 { return t.Measure(s, f).Width() }
 	for _, para := range strings.Split(s, "\n") {
 		units := linebreak.Units(para)
 		if len(units) == 0 {
