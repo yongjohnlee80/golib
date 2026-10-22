@@ -148,7 +148,7 @@ func (t Type) Contract() Contract {
 	}
 	for _, e := range t.Enums {
 		for _, v := range e.Values {
-			c.Enums = append(c.Enums, enumConstant(e.Scope, v))
+			c.Enums = append(c.Enums, e.enum().value(v))
 		}
 	}
 	slices.Sort(c.Enums)

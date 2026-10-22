@@ -3,7 +3,6 @@ package decl
 import (
 	"fmt"
 	"strconv"
-	"strings"
 
 	"github.com/yongjohnlee80/golib/parse/qml"
 	"github.com/yongjohnlee80/golib/tui"
@@ -181,30 +180,18 @@ type Enum struct {
 // where it was written, so a string spelling the qualified name —
 // `"TextInput.Password"` — is accepted as the constant would be; an
 // unqualified one, `"Password"`, is not.
-func (e Enum) read(v qml.SpecValue) (string, error) {
-	if v.Kind != qml.SpecValueString {
-		return "", fmt.Errorf("must be one of %s, got %s (at %s)", e.spelling(), v.Kind, v.Pos)
-	}
+func (e Enum) read(v qml.SpecValue) (string, error) { return e.enum().read(v) }
+
+// enum is the Enum on the one enum engine: qualified, so `Scope.Value` resolves to the qualified
+// name and an unqualified string ("Password") is not one of its values; each value reads as its
+// name.
+func (e Enum) enum() enum[string] {
+	values := make(map[string]string, len(e.Values))
 	for _, n := range e.Values {
-		if enumConstant(e.Scope, n) == v.Raw {
-			return n, nil
-		}
+		values[n] = n
 	}
-	return "", fmt.Errorf("must be one of %s, got %q (at %s)", e.spelling(), v.Raw, v.Pos)
+	return enum[string]{values: values, scope: e.Scope, qualified: true, order: e.Values}
 }
-
-func (e Enum) spelling() string {
-	names := make([]string, len(e.Values))
-	for i, n := range e.Values {
-		names[i] = e.Scope + "." + n
-	}
-	return strings.Join(names, ", ")
-}
-
-// enumConstant is what `Scope.Value` resolves to: the qualified name, so an
-// unqualified string ("Password") is not one of the enum's values. A string
-// spelling the qualified name is — see Enum.read.
-func enumConstant(scope, value string) string { return scope + "." + value }
 
 // EnumField reads an enum property into dst: the value's name.
 func EnumField(dst *string, e Enum) Field { return into(dst, e.read) }

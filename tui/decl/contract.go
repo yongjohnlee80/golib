@@ -332,20 +332,49 @@ func readProps(props []qml.SpecProp, fields map[string]field) ([]string, error) 
 
 // ---------------------------------------------------------------- enums
 
-// enum is a closed set of symbolic values one property accepts, keyed by the
-// name a document writes after `Tui.` — "Horizontal" for `Tui.Horizontal`.
+// enum is a closed set of names one property takes, and the value a builder receives for each.
+// One reader, one spelling and one constant table serve three ways a document writes a value:
+//   - Tui's own enums (the zero scope): `Tui.Horizontal` resolves to "horizontal" (constantValue);
+//   - a Type's [Enum] (qualified): `TextInput.Password` resolves to "TextInput.Password";
+//   - a bare string set (bare): indentMarks takes "off", "cursorLine" or "all", and no constant
+//     names them.
 //
-// The Tui singleton's constants are DERIVED from every enum in [tuiEnums], so
-// the spelling a document writes and the value a builder accepts come from the
-// same entry and cannot drift apart. Adding a value is one entry.
+// The Tui singleton's constants are DERIVED from every enum in [tuiEnums], so the spelling a
+// document writes and the value a builder accepts come from the same entry and cannot drift apart.
+// Adding a value is one entry.
 type enum[T any] struct {
 	values map[string]T
+	// scope is the singleton a constant is written under; "" is Tui.
+	scope string
+	// qualified: a constant resolves to "Scope.Name" (a Type's Enum), not the lower-cased name.
+	qualified bool
+	// bare: the values are written as the names themselves, as strings, with no constants.
+	bare bool
+	// order is the spelling's order; nil sorts the names.
+	order []string
 }
 
-// constantValue is what a `Tui.<Name>` constant resolves to: the name in lower
-// case. It is the ONE place that relation is stated — both the constant table
-// and every enum's reader go through it.
+// constantValue is what a `Tui.<Name>` constant resolves to: the name in lower case. It is the ONE
+// place that relation is stated: both the constant table and every Tui enum's reader go through it.
 func constantValue(name string) string { return strings.ToLower(name) }
+
+// value is what the document's spelling of name resolves to, the string read compares.
+func (e enum[T]) value(name string) string {
+	switch {
+	case e.bare:
+		return name
+	case e.qualified:
+		return e.scopeName() + "." + name
+	}
+	return constantValue(name)
+}
+
+func (e enum[T]) scopeName() string {
+	if e.scope == "" {
+		return "Tui"
+	}
+	return e.scope
+}
 
 func (e enum[T]) read(v qml.SpecValue) (T, error) {
 	var zero T
@@ -353,7 +382,7 @@ func (e enum[T]) read(v qml.SpecValue) (T, error) {
 		return zero, fmt.Errorf("must be written as a string, got %s (at %s)", v.Kind, v.Pos)
 	}
 	for name, val := range e.values {
-		if constantValue(name) == v.Raw {
+		if e.value(name) == v.Raw {
 			return val, nil
 		}
 	}
@@ -361,6 +390,9 @@ func (e enum[T]) read(v qml.SpecValue) (T, error) {
 }
 
 func (e enum[T]) names() []string {
+	if e.order != nil {
+		return slices.Clone(e.order)
+	}
 	names := make([]string, 0, len(e.values))
 	for n := range e.values {
 		names = append(names, n)
@@ -369,10 +401,15 @@ func (e enum[T]) names() []string {
 	return names
 }
 
+// spelling lists the values as a document writes them: "Tui.A, Tui.B or Tui.C".
 func (e enum[T]) spelling() string {
 	names := e.names()
 	for i, n := range names {
-		names[i] = "Tui." + n
+		if e.bare {
+			names[i] = strconv.Quote(n)
+		} else {
+			names[i] = e.scopeName() + "." + n
+		}
 	}
 	switch len(names) {
 	case 0:
@@ -383,18 +420,29 @@ func (e enum[T]) spelling() string {
 	return strings.Join(names[:len(names)-1], ", ") + " or " + names[len(names)-1]
 }
 
-// enumeration is what the constant table needs from an enum, whatever its
-// value type.
-type enumeration interface{ names() []string }
+// constants are the enum's qualified names, each resolving to its value: none for a bare set.
+func (e enum[T]) constants() map[string]qml.SpecValue {
+	out := map[string]qml.SpecValue{}
+	if e.bare {
+		return out
+	}
+	for n := range e.values {
+		out[e.scopeName()+"."+n] = strValue(e.value(n))
+	}
+	return out
+}
+
+// enumeration is what the constant table needs from an enum, whatever its value type.
+type enumeration interface {
+	constants() map[string]qml.SpecValue
+}
 
 // tuiConstants derives the Tui singleton's qualified names from every enum,
 // and each flag set's under its own singleton.
 func tuiConstants(enums []enumeration, sets []flagSet) map[string]qml.SpecValue {
 	out := map[string]qml.SpecValue{}
 	for _, e := range enums {
-		for _, n := range e.names() {
-			out["Tui."+n] = strValue(constantValue(n))
-		}
+		maps.Copy(out, e.constants())
 	}
 	for _, f := range sets {
 		for n, bit := range f.values {

@@ -266,7 +266,7 @@ func TestAnEnumIsPublishedUnderItsScopeAndReadAtRuntime(t *testing.T) {
 	s.WaitForText(t, "Dial")
 	if _, err := tuidecl.NewProgram(tuidecl.LayoutSource("m.qml", []byte("import tui 1.0\nGauge { style: \"Dial\" }")),
 		tuidecl.Types(gauge), tuidecl.AppOptions(tui.WithBackend(tui.NewTestBackend(1, 1)))); err == nil ||
-		!strings.Contains(err.Error(), "Gauge.Bar, Gauge.Dial") {
+		!strings.Contains(err.Error(), "must be Gauge.Bar or Gauge.Dial") {
 		t.Fatalf("a bare string: err = %v", err)
 	}
 	defer func() {
