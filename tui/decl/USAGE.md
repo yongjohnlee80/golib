@@ -603,7 +603,11 @@ clock, ok := tuidecl.Service[Clock](b)   // false when none was given, or a nil 
 
 **Starting from a built-in.** `StandardType(name)` is a copy of a standard type
 for a style to build its own on. The copy keeps the type's `Children`: a style
-whose `Build` counts children differently sets `Arity{}` (unchecked) or its own.
+whose `Build` counts children differently sets `Arity{}` (unchecked) or its own. A style's own editor
+widget takes the Editor's properties through `EditorSetters()` (behaviour:
+keyset, readOnly, text, …) and `EditorViewSetters()` (view: lineNumbers, ruler,
+wrap, cursorColor, contextMenu, view, renderedEnabled), which set capabilities
+(`widget.LineNumberer`, `widget.ViewChooser`, …) rather than a `*widget.Editor`.
 
 Package [`controls`](controls/) is written this way, with nothing but this
 contract: `TextField` and `Popup`, from Qt Quick Controls.
