@@ -246,15 +246,8 @@ func (t *DataTable) AcceptsFocus() bool { return true }
 
 // Reveal implements TableLayout: scroll so the cell is in sight.
 func (t *DataTable) Reveal(row, col int) {
-	body := t.bodyRows()
-	// rows gone (a filter) leave no blank below the last
-	t.top = revealRow(clampTop(t.top, t.core.Len(), body), row, body)
-	if col < t.left {
-		t.left = col
-	}
-	for t.left < col && !t.fits(t.left, col) {
-		t.left++
-	}
+	t.top = TableRevealRow(t.top, row, t.core.Len(), t.bodyRows())
+	t.left = TableRevealField(t.left, col, t.fits)
 }
 
 // ScrollFields implements TableLayoutFields: the first field shown moves by n, clamped so the last
