@@ -183,7 +183,7 @@ func NewEditor(opts ...EditorOption) *Editor {
 	// table's row is a row: the table keys (CoreTableEditing) run on the rows they read, the ones
 	// with both outer pipes, which no list item starts with; a row GFM reads without them takes
 	// neither, so its "- x" is not an item either.
-	if md, ok := e.render.(*MarkdownRenderer); ok {
+	if md, ok := e.render.(StructureRenderer); ok {
 		e.core.SetListEditingWhere(func(ln int) bool {
 			lines := e.core.Lines()
 			if md.InCode(lines, ln) {
@@ -278,7 +278,7 @@ func (e *Editor) SetMode(m EditorMode) {
 // only when the view drawn changed.
 func (e *Editor) applyShown() {
 	shown := e.Shown()
-	_, md := e.render.(*MarkdownRenderer)
+	_, md := e.render.(StructureRenderer)
 	e.core.SetListEditing(shown == Rendered && md && !e.docActive())
 	// before the early return: the view follows docOn even when the view drawn does not change
 	e.showDocument(shown == Rendered && e.docActive())

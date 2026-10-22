@@ -640,6 +640,34 @@ func TestListEditingFollowsTheView(t *testing.T) {
 	}
 }
 
+// wrappedMarkdown is an application's Markdown renderer: golib's, embedded, with its own additions.
+type wrappedMarkdown struct{ *MarkdownRenderer }
+
+// List editing follows the renderer's capability, not its type: a renderer that embeds golib's
+// Markdown renderer (as one installed with WithRendererFor does) edits lists in its Rendered view,
+// and its code stays code.
+func TestListEditingFollowsAStructureRenderer(t *testing.T) {
+	doc := "```\n- code\n```\n\n- item"
+	h := startEditor(t, 60, 20, WithRenderer(wrappedMarkdown{NewMarkdownRenderer()}), WithMode(Rendered),
+		WithCore(tuiwidget.CoreInitialText(doc), tuiwidget.CoreKeyset(tuiwidget.KeysetStandard)))
+	at := func(ln, col int) string {
+		var v string
+		h.onLoop(func() {
+			h.e.Core().SetValue(doc)
+			h.e.Core().SetLine(ln, col)
+			h.e.Core().HandleKey(tui.KeyEvent{Code: tui.KeyEnter})
+			v = h.e.Core().Value()
+		})
+		return v
+	}
+	if got := at(4, 6); got != doc+"\n- " {
+		t.Errorf("Enter on an item did not continue the list:\n%s", got)
+	}
+	if got := at(1, 6); got != strings.Replace(doc, "- code\n", "- code\n\n", 1) {
+		t.Errorf("Enter in the fenced block continued a list:\n%s", got)
+	}
+}
+
 // In a code block, fenced or indented, "- x" is code: Enter and Tab there type as ever, while a
 // list item in the prose around it continues.
 func TestListEditingSkipsCodeBlocks(t *testing.T) {
