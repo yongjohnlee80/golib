@@ -80,6 +80,26 @@
 //   - Space activates the focused button; Escape or RejectRole buttons emit `rejected` and dismiss the dialog.
 //   - DestructiveRole buttons dismiss the dialog cleanly without firing `accepted` or `rejected`.
 //
+// # Capabilities a Consumer's Type Implements
+//
+// A consumer's own [Type] builds its own widget, and takes part in the vocabulary by
+// implementing these, found by type assertion:
+//
+//	Capability          Method(s)                         Purpose
+//	──────────────────  ────────────────────────────────  ──────────────────────────────────────────
+//	[Overlaid]          SetOverlay(host, afterClose)      Opens over the Window: a popup, a prompt.
+//	[DeclarationOnly]   DeclarationOnly()                 A declaration never on screen; no focus.
+//	[HostObject]        HostObject()                      A host value [Value] passes as an object.
+//	[ItemModel]         RowCount, Data, Key, Subscribe …  A list or table's rows, for its views.
+//	[TreeModel]         an ItemModel and a Fetcher        A TreeView's rows, children loaded on demand.
+//	[Fetcher]           CanFetchMore, FetchMore           Rows still to load, as Qt's model fetches.
+//	[RendererSpec]      RendererKind()                    An Editor's renderer, for a style to build.
+//	[DocumentSpec]      DocumentKind()                    An Editor's document view, likewise.
+//
+// An editor widget of a style's own takes the Editor's properties through [EditorSetters] and
+// [EditorViewSetters], which set capabilities (widget.LineNumberer, widget.ViewChooser and the
+// rest) rather than a *widget.Editor.
+//
 // # Palette Roles and Theming
 //
 // Colours are specified using standard QPalette role conventions (`palette.window`,
