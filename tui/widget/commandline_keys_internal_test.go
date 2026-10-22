@@ -56,6 +56,13 @@ func TestCommandLineKeysMatchTheOldHandlerWithNoMap(t *testing.T) {
 	}
 	keyGridDiff(t, "CommandLine replace question",
 		presses(oldReplaceKey),
-		presses(func(e tui.KeyEvent) string { return replaceAnswer(noKeymap, e) }),
+		presses(func(e tui.KeyEvent) string { return replaceAnswer(noKeymap, e).String() }),
 		hyperOrMeta)
+}
+
+// A replaceChoice past the answers says "unknown", never panicking.
+func TestAReplaceChoicePastTheAnswersIsUnknown(t *testing.T) {
+	if got := (replaceQuit + 1).String(); got != "unknown" {
+		t.Fatalf("String() = %q, want unknown", got)
+	}
 }
