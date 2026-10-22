@@ -38,3 +38,35 @@ func TestAFloatsDismissalSaysWhy(t *testing.T) {
 		t.Fatalf("published %q, want %q", g, want)
 	}
 }
+
+// Escape still closes a modal Float whose focused control was disabled under it: the trap's ring
+// keeps a stop (the Float's own node, as trapFallback says), so the key reaches the Float. This is
+// the experience the fallback-stop cell's predicate is for.
+func TestEscapeClosesAModalFloatWhoseFocusedControlWasDisabled(t *testing.T) {
+	btn := widget.NewButton("ok")
+	dialog := widget.NewFloat(widget.NewBox(btn), widget.WithModal(true))
+	host := widget.NewOverlayHost(widget.NewBox(widget.NewTextInput()))
+	host.Attach(dialog)
+	sh := newShell(host)
+	h := startApp(t, sh, 30, 8)
+	var mu sync.Mutex
+	var got []string
+	tui.Subscribe(h.app.Bus(), func(e widget.OverlayDismissedEvent) { mu.Lock(); got = append(got, e.Reason.String()); mu.Unlock() })
+
+	h.onLoop(dialog.Show)
+	h.settle()
+	var focused bool
+	h.onLoop(func() { focused = btn.Context() != nil && btn.Context().Focused() })
+	if !focused {
+		t.Fatal("the dialog's button is not focused when it opens")
+	}
+	h.onLoop(func() { btn.SetEnabled(false) })
+	h.settle()
+	h.inject(key(tui.KeyEscape))
+	h.barrier(sh)
+	mu.Lock()
+	defer mu.Unlock()
+	if !slices.Equal(got, []string{"escape"}) {
+		t.Errorf("dismissals %q after Escape, want [escape]: the dialog kept the key", got)
+	}
+}
