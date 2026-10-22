@@ -14,7 +14,7 @@ func readyDiagrams(t *testing.T, text string, opts ...MarkdownOption) *edHarness
 	t.Helper()
 	f := &fakeDiagrams{done: map[string]bool{"A-->B": true}}
 	h := startEditor(t, 50, 14, WithRenderer(NewMarkdownRenderer(append([]MarkdownOption{WithDiagrams(f)}, opts...)...)),
-		WithMode(Rendered), WithCore(tuiwidget.CoreInitialText(text)))
+		WithView(tuiwidget.ViewRendered), WithCore(tuiwidget.CoreInitialText(text)))
 	h.paint()
 	return h
 }
@@ -124,7 +124,7 @@ func TestRevealScrollsToADiagram(t *testing.T) {
 // Hidden metadata is no row: k under it stays; gg reaches it and draws a bar at its place; j
 // leaves it.
 func TestHiddenMetadataIsABar(t *testing.T) {
-	h := startEditor(t, 50, 14, WithRenderer(NewMarkdownRenderer(HideMetadata())), WithMode(Rendered),
+	h := startEditor(t, 50, 14, WithRenderer(NewMarkdownRenderer(HideMetadata())), WithView(tuiwidget.ViewRendered),
 		WithCore(tuiwidget.CoreInitialText("---\ntitle: x\n---\nbody\nmore")))
 	h.onLoop(func() { h.e.core.SetLine(3, 0) })
 	h.keys(key('k'))
@@ -208,7 +208,7 @@ func TestDrawnLinesDoNotFold(t *testing.T) {
 // core before its first paint.
 func TestFoldsBeforeTheFirstPaint(t *testing.T) {
 	f := &fakeDiagrams{done: map[string]bool{"A-->B": true}}
-	e := NewEditor(WithRenderer(NewMarkdownRenderer(WithDiagrams(f))), WithMode(Rendered),
+	e := NewEditor(WithRenderer(NewMarkdownRenderer(WithDiagrams(f))), WithView(tuiwidget.ViewRendered),
 		WithCore(tuiwidget.CoreInitialText(diagramDoc)))
 	e.core.Bind(nil, e.layout) // as the body's Init binds it, with no paint yet
 	if _, _, _, ok := e.layout.FoldOf(1); ok {

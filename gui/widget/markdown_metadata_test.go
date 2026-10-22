@@ -29,7 +29,7 @@ func metadataLayout(t *testing.T, source string, line int, editing bool) BlockLa
 func TestLaterCommentCloseAndRemovalReflowEarlierEditorBlocks(t *testing.T) {
 	source := "before <!-- note\nstill note\nend\n\nlast"
 	h := startEditor(t, 60, 20, WithRenderer(NewMarkdownRenderer(HideMetadata())), WithCore(tuiwidget.CoreInitialText(source)))
-	h.onLoop(func() { h.e.SetMode(Rendered); h.e.core.SetLine(4, 0) })
+	h.onLoop(func() { h.e.SetView(tuiwidget.ViewRendered); h.e.core.SetLine(4, 0) })
 	firstText := func() string {
 		var text strings.Builder
 		h.onLoop(func() {

@@ -122,11 +122,11 @@ func TestRulerAtItsColumn(t *testing.T) {
 	if !guide(rc) {
 		t.Errorf("no guide at x %v (column 5)", want)
 	}
-	h.onLoop(func() { h.e.SetMode(Rendered) })
+	h.onLoop(func() { h.e.SetView(tuiwidget.ViewRendered) })
 	if guide(h.paint()) {
 		t.Error("the Rendered view drew the ruler")
 	}
-	h.onLoop(func() { h.e.SetMode(Raw); h.e.SetRuler(0) })
+	h.onLoop(func() { h.e.SetView(tuiwidget.ViewRaw); h.e.SetRuler(0) })
 	if guide(h.paint()) {
 		t.Error("SetRuler(0) left the guide")
 	}
@@ -168,7 +168,7 @@ func TestModeSwitchSegmentsSitOnTheirHitCells(t *testing.T) {
 	if raw.Brush.Color == ren.Brush.Color {
 		t.Error("the current and the other segment drawn alike")
 	}
-	h.onLoop(func() { h.e.SetMode(Rendered) })
+	h.onLoop(func() { h.e.SetView(tuiwidget.ViewRendered) })
 	l2 := labels()
 	if l2[1].Brush.Color != raw.Brush.Color {
 		t.Errorf("Rendered current drawn %v, want the current colour %v", l2[1].Brush.Color, raw.Brush.Color)
@@ -217,7 +217,7 @@ func TestPageColoursAreThePageStylesNotACoveredCell(t *testing.T) {
 // The cursor's line number wears the text's colour, the others the muted tone; a table's rule
 // row, too thin to hold one, takes none.
 func TestTheCursorsLineNumberStandsOut(t *testing.T) {
-	h := startEditor(t, 40, 10, WithLineNumbers(true), WithRenderer(NewMarkdownRenderer()), WithMode(Rendered),
+	h := startEditor(t, 40, 10, WithLineNumbers(true), WithRenderer(NewMarkdownRenderer()), WithView(tuiwidget.ViewRendered),
 		WithCore(tuiwidget.CoreInitialText("alpha\n| a | b |\n|---|---|\n| c | d |\n\nend")))
 	h.onLoop(func() { h.e.Core().SetLine(5, 0) }) // past the blank line: outside the table
 	rc := h.paint()

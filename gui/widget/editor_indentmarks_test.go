@@ -65,7 +65,7 @@ func TestIndentMarksDrawOnTheCursorLineInRawOnly(t *testing.T) {
 		t.Errorf("all lines: %d marks, want 3 (two spaces and a tab)", len(got))
 	}
 
-	h.onLoop(func() { h.e.SetMode(Rendered) })
+	h.onLoop(func() { h.e.SetView(tuiwidget.ViewRendered) })
 	if got = marks(tuiwidget.IndentMarksAll); len(got) != 0 {
 		t.Errorf("the Rendered view drew %d marks, want none", len(got))
 	}

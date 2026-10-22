@@ -13,7 +13,7 @@ import (
 // Ctrl-o's command render it; i and R show it raw, and Esc renders it again. The Text keymap is
 // always typing; a viewer never is.
 func TestTheRenderedCursorRowByMode(t *testing.T) {
-	h := startEditor(t, 60, 12, WithRenderer(NewMarkdownRenderer()), WithMode(Rendered),
+	h := startEditor(t, 60, 12, WithRenderer(NewMarkdownRenderer()), WithView(tuiwidget.ViewRendered),
 		WithCore(tuiwidget.CoreInitialText("# Heading\n\nbody **bold** text")))
 	inside := func() (in bool) {
 		h.onLoop(func() { l := h.e.layout; in = l.lay(l.blockOf(l.cursorLine()), nil).inside })
@@ -61,7 +61,7 @@ func TestTheRenderedCursorRowByMode(t *testing.T) {
 // The caret on hidden markup sits on the next drawn character of its line, or after the last
 // drawn one; motions stay on the source, so l h and i Esc come back to the same drawn place.
 func TestTheCaretOnHiddenMarkup(t *testing.T) {
-	h := startEditor(t, 60, 12, WithRenderer(NewMarkdownRenderer()), WithMode(Rendered),
+	h := startEditor(t, 60, 12, WithRenderer(NewMarkdownRenderer()), WithView(tuiwidget.ViewRendered),
 		WithCore(tuiwidget.CoreInitialText("# Heading\n\nbody **bold** text\n\nend **x**")))
 	caretX := func(line, col int) (x float32) {
 		h.onLoop(func() {
@@ -118,8 +118,8 @@ func TestTheCaretOnHiddenMarkup(t *testing.T) {
 // gj and gk over the GUI's display rows: a wrapped raw line, and a rendered paragraph's rows.
 func TestGjGkOverPixelRows(t *testing.T) {
 	text := "alpha bravo charlie delta echo foxtrot golf hotel india juliet kilo lima"
-	for _, view := range []EditorMode{Raw, Rendered} {
-		h := startEditor(t, 24, 12, WithRenderer(NewMarkdownRenderer()), WithMode(view), WithWrap(tuiwidget.WrapSoft),
+	for _, view := range []tuiwidget.EditorView{tuiwidget.ViewRaw, tuiwidget.ViewRendered} {
+		h := startEditor(t, 24, 12, WithRenderer(NewMarkdownRenderer()), WithView(view), WithWrap(tuiwidget.WrapSoft),
 			WithCore(tuiwidget.CoreInitialText(text)))
 		var rows int
 		h.onLoop(func() { rows = h.e.layout.RowCount(0) })
@@ -180,7 +180,7 @@ func TestTheReplaceCaretIsAnUnderline(t *testing.T) {
 // A block is raw or rendered whole: typing on a fence's opening line shows its closing fence's
 // marks too; and a Visual selection over hidden markup is drawn on the rendered text.
 func TestTheRenderedBlockIsRawWholeAndVisualShows(t *testing.T) {
-	h := startEditor(t, 60, 14, WithRenderer(NewMarkdownRenderer()), WithMode(Rendered),
+	h := startEditor(t, 60, 14, WithRenderer(NewMarkdownRenderer()), WithView(tuiwidget.ViewRendered),
 		WithCore(tuiwidget.CoreInitialText("```go\nx := 1\n```\n\nbody **bold** text")))
 	h.keys(key('i'))
 	h.paint()
