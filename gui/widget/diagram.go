@@ -28,12 +28,31 @@ type Diagrammer interface {
 	Diagram(ctx context.Context, req DiagramRequest, ready func()) DiagramAnswer
 }
 
-// DiagramRequest is a diagram block to draw.
+// DiagramRequest is a diagram block to draw. Its Theme's fonts name their families as the
+// window resolves them (no "" or [gui.CellFamily]): a diagram is laid out on a worker, whose shaper
+// knows no window, and must be measured in the family the window draws it in.
 type DiagramRequest struct {
 	Lang, Src string
 	Width     float32
 	Scale     float32
 	Theme     Theme
+}
+
+// diagramFonts is th with its fonts' families as fonts resolves them: "" is the window's prose,
+// [gui.CellFamily] its cells' face. A family th names stays, and one fonts leaves unset stays as
+// it was.
+func diagramFonts(th Theme, fonts gui.Fonts) Theme {
+	resolve := func(f gui.Font) gui.Font {
+		switch {
+		case f.Family == "" && fonts.Prose != "":
+			f.Family = fonts.Prose
+		case f.Family == gui.CellFamily && fonts.Mono != "":
+			f.Family = fonts.Mono
+		}
+		return f
+	}
+	th.Prose, th.Mono = resolve(th.Prose), resolve(th.Mono)
+	return th
 }
 
 // DiagramAnswer is a Diagrammer's answer.

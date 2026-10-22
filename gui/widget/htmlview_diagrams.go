@@ -131,7 +131,7 @@ func (m *htmlDiagrams) answer(dg pageDiagram, width float32) DiagramAnswer {
 		m.reset()
 		m.set = set
 	}
-	req := DiagramRequest{Lang: dg.lang, Src: dg.src, Width: width, Scale: m.l.shaper.Scale(), Theme: m.theme()}
+	req := DiagramRequest{Lang: dg.lang, Src: dg.src, Width: width, Scale: m.l.shaper.Scale(), Theme: diagramFonts(m.theme(), m.l.shaper.Fonts())}
 	key := diagramKey{req.Lang, req.Src, req.Width, req.Scale, req.Theme}
 	s := m.slots[dg]
 	if s != nil && s.key == key && !s.refresh {
