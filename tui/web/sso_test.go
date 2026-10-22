@@ -657,3 +657,53 @@ func TestSSO_ReleaseReasonsAreDistinct(t *testing.T) {
 		t.Errorf("reason = %v, want LoginFailed", got)
 	}
 }
+
+// A handoff no session will claim is released through the attached park: the Manager needs no
+// OnHandoffUnused for an SSO, and the value goes back with the reason.
+func TestAdmission_AnUnusedHandoffIsReleasedThroughThePark(t *testing.T) {
+	t.Parallel()
+	adm := NewAdmission(AdmissionCap(2))
+	var reasons []HandoffReason
+	s, err := NewSSO(SSOConfig[*upstream]{Admission: adm, Release: func(_ *upstream, r HandoffReason) {
+		reasons = append(reasons, r)
+	}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	m, err := NewManager(func(tui.Backend, *SessionInfo) Runner { return newFakeApp() }, ManagerAdmission(adm))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !adm.gate.enter() || !adm.gate.hold("k", adm.deadline()) {
+		t.Fatal("no reservation")
+	}
+	if err := s.hold("k", &upstream{id: "a"}); err != nil {
+		t.Fatal(err)
+	}
+	m.releaseHandoff("k", AttachFailed)
+	if len(reasons) != 1 || reasons[0] != AttachFailed {
+		t.Errorf("released %v, want one AttachFailed through the attached park", reasons)
+	}
+	if n := s.Len(); n != 0 {
+		t.Errorf("%d entries still parked after the release", n)
+	}
+	if n := adm.gate.pending(); n != 0 {
+		t.Errorf("%d slots held after the release", n)
+	}
+}
+
+// A keyed slot lasts at least as long as the attached park keeps its entry, even with a shorter
+// hold set: the gate must not free a slot whose entry is still parked.
+func TestAdmission_HoldCoversTheParksTTL(t *testing.T) {
+	t.Parallel()
+	adm := NewAdmission(AdmissionHold(time.Second))
+	if got := adm.holdNow(); got != loginTicketTTL {
+		t.Fatalf("with no park the hold is %s, want the ticket's %s", got, loginTicketTTL)
+	}
+	if _, err := NewSSO(SSOConfig[*upstream]{Admission: adm, TTL: 10 * time.Minute, Release: func(*upstream, HandoffReason) {}}); err != nil {
+		t.Fatal(err)
+	}
+	if got := adm.holdNow(); got != 10*time.Minute {
+		t.Errorf("with a 10m park the hold is %s, want 10m", got)
+	}
+}
