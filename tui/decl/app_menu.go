@@ -172,7 +172,7 @@ func buildMenuItem(b Build) (tui.Component, []string, error) {
 	}
 	m = withMnemonic(m, text)
 	m.Accel, m.AccelCommand = shortcut.text, shortcut.command
-	n := &menuNode{kind: "MenuItem", id: b.ID, model: m}
+	n := &menuNode{kind: menuItemName, id: b.ID, model: m}
 	// Only a row the document BOUND gets a trigger. Build.Emitter hands back a
 	// no-op for an unbound signal, which is right for a widget callback and
 	// wrong here: every row would then report its activation as handled, and
@@ -190,7 +190,7 @@ func buildMenuSeparator(b Build) (tui.Component, []string, error) {
 	if len(b.Children) != 0 || len(b.Props) != 0 {
 		return nil, nil, fmt.Errorf("MenuSeparator takes no properties or children (at %s)", b.Pos)
 	}
-	return &menuNode{kind: "MenuSeparator", id: b.ID, model: widget.NewSeparator("")}, nil, nil
+	return &menuNode{kind: menuSeparatorName, id: b.ID, model: widget.NewSeparator("")}, nil, nil
 }
 
 // menuAligns is where a top-level Menu sits on its bar.
@@ -216,7 +216,7 @@ func buildMenu(b Build) (tui.Component, []string, error) {
 	if err != nil {
 		return nil, nil, fmt.Errorf("%w (at %s)", err, b.Pos)
 	}
-	n := &menuNode{kind: "Menu", id: b.ID, children: rows}
+	n := &menuNode{kind: menuName, id: b.ID, children: rows}
 	n.model = withMnemonic(widget.NewSubmenu("", "", nil), title)
 	n.model.PegRight = right
 	return &menuListNode{n}, consumed, nil
@@ -316,12 +316,12 @@ func (m *menuBarNode) project() error {
 		n.model.ID = id
 		byID[id] = n
 		nodes = append(nodes, n)
-		if n.kind == "MenuItem" && n.trigger != nil {
+		if n.kind == menuItemName && n.trigger != nil {
 			act := tui.ActionID(id)
 			n.model.Action = menuCommand{act}
 			triggers[act] = n.trigger
 		}
-		if n.kind == "Menu" {
+		if n.kind == menuName {
 			n.model.Children = nil
 			anon := 0
 			for _, c := range n.children {
@@ -395,7 +395,7 @@ func barRows(children []tui.Component) ([]*menuNode, tui.Component, error) {
 		return nil, nil, err
 	}
 	for _, n := range rows {
-		if n.kind != "Menu" {
+		if n.kind != menuName {
 			return nil, nil, errors.New(refusal)
 		}
 	}
@@ -416,11 +416,18 @@ var barPlacements = map[tui.DockEdge]widget.BarPlacement{
 var menuBarType = Type{Name: "MenuBar", Build: buildMenuBar, Ctor: []string{"vimNavigation"}, restyle: restyleMenuBar,
 	Setters: map[string]Setter{"autoHide": setter("a MenuBar", boolOf, (*menuBarNode).setAutoHide)}}
 
+// The menu types' names: their Type's, and a menuNode's kind.
+const (
+	menuName          = "Menu"
+	menuItemName      = "MenuItem"
+	menuSeparatorName = "MenuSeparator"
+)
+
 // menuType is the Menu type.
-var menuType = Type{Name: "Menu", Build: buildMenu, Ctor: []string{"title", "align"}}
+var menuType = Type{Name: menuName, Build: buildMenu, Ctor: []string{"title", "align"}}
 
 // menuItemType is the MenuItem type.
-var menuItemType = Type{Name: "MenuItem", Children: NoChildren().Because("use a Menu for a submenu"), Build: buildMenuItem, Ctor: []string{"text", "checkable", "group", "shortcut"},
+var menuItemType = Type{Name: menuItemName, Children: NoChildren().Because("use a Menu for a submenu"), Build: buildMenuItem, Ctor: []string{"text", "checkable", "group", "shortcut"},
 	Setters: map[string]Setter{
 		"checked": setter("a menu row", boolOf, (*menuNode).setChecked),
 		"enabled": setter("a menu row", boolOf, (*menuNode).setEnabled),
@@ -432,4 +439,4 @@ var menuItemType = Type{Name: "MenuItem", Children: NoChildren().Because("use a 
 	}}
 
 // menuSeparatorType is the MenuSeparator type.
-var menuSeparatorType = Type{Name: "MenuSeparator", Build: buildMenuSeparator}
+var menuSeparatorType = Type{Name: menuSeparatorName, Build: buildMenuSeparator}

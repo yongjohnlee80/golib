@@ -13,9 +13,18 @@ import (
 // WHAT AN EDITOR DECLARATION MEANS, for any editor widget: the standard Editor and a style's
 // read the same declaration the same way, so a document cannot tell them apart.
 
+// editorName is the Editor's name: its Type's, its enums' scope, and the parent its parts ask for.
+const editorName = "Editor"
+
+// The Editor's views, as EditorViews spells them: Editor.Raw and Editor.Rendered.
+const (
+	editorRaw      = "Raw"
+	editorRendered = "Rendered"
+)
+
 // EditorViews are the Editor's `view`: Editor.Raw, the source as written, and Editor.Rendered,
 // drawn by the Editor's renderer. An editor with no Rendered view stays Raw.
-var EditorViews = Enum{Scope: "Editor", Values: []string{"Raw", "Rendered"}}
+var EditorViews = Enum{Scope: editorName, Values: []string{editorRaw, editorRendered}}
 
 // EditorDecl is an Editor declaration as an editor widget's builder needs it.
 type EditorDecl struct {
@@ -204,7 +213,7 @@ func EditorViewSetters() map[string]Setter {
 		// golib's: Editor.Raw or Editor.Rendered, the view chosen. The cell Editor's Rendered view is
 		// its document view (SetDocumentView, a table); without one it draws Raw and keeps the choice.
 		"view": EnumSetter(EditorViews, func(e widget.ViewChooser, v string) {
-			if v == "Rendered" {
+			if v == editorRendered {
 				e.SetView(widget.ViewRendered)
 			} else {
 				e.SetView(widget.ViewRaw)
@@ -226,7 +235,7 @@ func editorSetters() map[string]Setter {
 }
 
 // editorType is the standard Editor.
-var editorType = Type{Name: "Editor", Build: buildEditor, Ctor: []string{"text", "wrap", "autoIndent", "indentUnit"}, restyle: restyleEditor,
+var editorType = Type{Name: editorName, Build: buildEditor, Ctor: []string{"text", "wrap", "autoIndent", "indentUnit"}, restyle: restyleEditor,
 	Setters: editorSetters(), Enums: []Enum{EditorViews},
 	Signals: map[string][]string{"writeRequested": {"quit"}, "quitRequested": {"force"}},
 	Methods: EditorMethods()}

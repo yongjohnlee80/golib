@@ -20,7 +20,7 @@ func notOne(parent string) string {
 
 // allowedIn: a SyntaxHighlighter highlights the Editor it is declared in.
 func (*syntaxNode) allowedIn(_, parent string) error {
-	if parent == "Editor" {
+	if parent == editorName {
 		return nil
 	}
 	return fmt.Errorf("a SyntaxHighlighter highlights the Editor it is declared in, and %s", notOne(parent))
@@ -33,7 +33,7 @@ func (*rendererNode) allowedIn(self, parent string) error { return editorPart(se
 func (*documentNode) allowedIn(self, parent string) error { return editorPart(self, parent) }
 
 func editorPart(what, parent string) error {
-	if parent == "Editor" {
+	if parent == editorName {
 		return nil
 	}
 	return fmt.Errorf("a %s draws the Editor it is declared in, and %s", what, notOne(parent))

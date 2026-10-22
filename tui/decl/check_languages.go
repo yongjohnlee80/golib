@@ -100,7 +100,7 @@ func menuCollisions(p *Program, set *i18n.Set) []error {
 			walkLevels("the menu bar", bar.rows, set, func(level string, rows []*menuNode) {
 				seen := map[rune]int{}
 				for i, r := range rows {
-					if r.kind == "MenuSeparator" {
+					if r.kind == menuSeparatorName {
 						continue
 					}
 					_, key := rowKey(r.model, set, lang)
