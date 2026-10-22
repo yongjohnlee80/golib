@@ -533,6 +533,54 @@
 // capture the RUNTIME revokes is not a cancellation: the size reached stands,
 // and only the gesture ends.
 //
+// # Capabilities of the row views, the tables and the editors
+//
+// A host's data, a view of a shared core and a host's widget take part through these, found by
+// type assertion. TableSource, TableLayout, EditorLayout, PointerView and FileChooser are what
+// their reader needs; every other one is optional, and one a value lacks is a feature it does not
+// have, never an error.
+//
+//	Capability             Method(s)                            Purpose
+//	─────────────────────  ───────────────────────────────────  ─────────────────────────────────────
+//	A table's source, as TableCore reads it
+//	[TableSource]          Fields, Len, Cell                    The rows, read on the loop.
+//	[TablePager]           More, FetchMore                      Rows still to load.
+//	[TableEditor]          SetCell, InsertRow, DeleteRow …      Cells and shape that change.
+//	[TableReadOnlySource]  ReadOnly                             Why it may not be edited now.
+//	[TableKinds]           Kind                                 Each cell's kind, for sorting.
+//	[TableRevisioner]      Revision                             An open edit fenced by revision.
+//	[TableCommitter]       Commit                               A whole edit as one operation.
+//	[TableCellsCommitter]  CommitCells                          A compound edit as one operation.
+//	[TablePredicate]       Eval                                 A filter (TableCore.SetFilter).
+//	[TableRegisterStore]   Register, SetRegister                Where yanks go (EditorCore is one).
+//	A table's view, as TableCore and DataTable reach it
+//	[TableLayout]          Reveal, PageRows, Measure, Changed   The view, in its own units.
+//	[TableLayoutFields]    ScrollFields                         Fields scrolled sideways.
+//	[TableLayoutPointer]   CellAt, ScrollRows                   A pixel layout placing the pointer.
+//	[TableLayoutHitter]    HitAt                                Every part told apart, gutter too.
+//	An editor's view, as EditorCore reaches it
+//	[EditorLayout]         Reveal, PageLines, Measure, Changed  The view, in its own units.
+//	[EditorViewport]       VisibleLines, ScrollLines            H, M, L and Ctrl-d/u as Vim's.
+//	[EditorRowLayout]      RowCount, RowOf, ColAt               Display rows, for gj and gk.
+//	[EditorFoldLayout]     FoldOf                               Runs of lines drawn as one.
+//	[PointerView]          PointerAt, PointerEdge, CaretCell …  What an EditorPointer reads.
+//	[PointerInert]         PointerInert                         Places a press does nothing at.
+//	[DocumentView]         ShowDocument, SetVisible             A Rendered view of the document.
+//	An editor widget's properties, as a declarative layer sets them
+//	[LineNumberer]         SetLineNumbers, SetLineNumberColor   A line-number gutter.
+//	[Ruler]                SetRuler                             A guide at a column.
+//	[Wrapper]              SetWrap                              Long lines wrapped, or not.
+//	[CursorColorer]        SetCursorColor                       The text cursor's colour.
+//	[ContextMenuEnabler]   SetContextMenu                       The right-click menu on or off.
+//	[ViewChooser]          SetView                              Raw, or Rendered.
+//	Row views, menus and file dialogs
+//	[RowStyler]            SetStyles, ResetStyles               A List's, Table's or Tree's looks.
+//	[ContextMenuRequester] SetContextMenu                       A view asking its owner for a menu.
+//	[MenuOpener]           OpenAt, Close                        A menu a view opens itself.
+//	[RowRenderer]          RenderRow                            A Menu row's own appearance.
+//	[FileChooser]          Confirm, Selected, Dir, SetDir …     A file dialog's body.
+//	[FileChooserStyler]    SetPaneStyles, SetPreview…           A file view restyled in place.
+//
 // # Practical Composition Example
 //
 // Below is a complete example demonstrating how standard widgets compose into a responsive,
