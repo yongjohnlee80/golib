@@ -71,7 +71,6 @@ func Example_singleSignOn() {
 	sso, err := web.NewSSO(web.SSOConfig[*upstreamSession]{
 		Admission: adm, // the SSO attaches itself: its park holds adm's cap and settles its handoffs
 
-		Max: 8,
 		TTL: 30 * time.Second,
 
 		// REQUIRED, and the reason this type is worth using: every path that

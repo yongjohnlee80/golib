@@ -1375,8 +1375,8 @@ func TestSSO_SettleBeforeTheLeaseLeavesNoGhostSlot(t *testing.T) {
 		AllowedOrigins: []string{"https://tui.example.test"},
 		ExpectedHost:   "tui.example.test",
 	}, m, HandlerLogger(nopLogger{}),
-		// Replaces SSO's own OnLogin, keeping everything else hOpt wired (the
-		// settle callback, MaxPendingLogins, parkSettles). It parks exactly as SSO
+		// Takes over from the attached SSO's login hook, keeping the rest of the
+		// Admission's wiring (the park's settlement, its cap). It parks exactly as SSO
 		// does and then settles the entry, landing the settle inside the window.
 		OnLogin(func(handoff string, _ *auth.Identity, st *Stash) error {
 			v, ok := st.Take().(*upstream)
@@ -1825,7 +1825,7 @@ func stressReq() requestInfo {
 // allocated.
 //
 // Reaching this at all took discovering something worth writing down: when
-// SSO.Options ties the two budgets — the park's Max SETS MaxPendingLogins — the
+// the SSO attaches to the Admission, which ties the two budgets — the park holds the cap — the
 // park can never be full at the moment a committed reservation exists. Our own slot
 // is one of the at-most-Max slots and our entry is not inserted yet, so parked
 // entries are at most Max-1. The gate refuses first, at the door, with a 503. The

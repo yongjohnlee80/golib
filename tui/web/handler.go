@@ -69,6 +69,11 @@ func WithLimits(l Limits) HandlerOption {
 // is the rollback for "the state could not be recorded": a login whose state does
 // not exist must not look like it succeeded.
 //
+// A hook set here takes over from an [SSO] attached to the Admission: the park then
+// parks nothing, and since the Manager leaves settlement to an attached park, a slot
+// this hook commits ([Stash.CommitPark]) is held until the hold deadline unless the
+// hook's own park settles it. Set OnLogin or attach an SSO, not both.
+//
 // # The admission reservation, if you park by hand
 //
 // A slot in the [Admission]'s budget is reserved BEFORE this hook runs, keyed

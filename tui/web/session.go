@@ -165,7 +165,8 @@ func BindPeer(on bool) ManagerOption {
 // Called at most once per handoff, for a reattach or a failed attach. Without it
 // a consumer that parks per-login state by hand leaks an entry on every reconnect.
 // An [SSO] attached to the Manager's [Admission] needs none: its park is released
-// through the Admission.
+// through the Admission. A hook set here takes over from the park's release, so a
+// parked entry for an unused handoff then waits for the park's TTL sweep.
 func OnHandoffUnused(fn func(handoff string, reason HandoffReason)) ManagerOption {
 	return func(m *Manager) { m.unused = fn }
 }
