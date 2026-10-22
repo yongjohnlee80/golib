@@ -261,3 +261,38 @@ func TestPanelTitleTrailingSitsAtTheRight(t *testing.T) {
 		t.Fatalf("a long title: %q; want it cut a cell before TRAIL", r)
 	}
 }
+
+// A panel's title paints a zero-width cluster in no column, as tui.DrawText does: the letters
+// either side of it sit side by side. The panel's own painter gave it a cell of its own, a blank
+// column inside the title that its measured width had not counted.
+func TestAPanelTitleGivesAZeroWidthClusterNoColumn(t *testing.T) {
+	panel := gw.NewPanel(widget.NewText("content"), gw.WithTitle("Ab​Cd"))
+	float := widget.NewFloat(panel)
+	host := widget.NewOverlayHost(widget.NewText("background"))
+	tb := tui.NewTestBackend(60, 20)
+	app := tui.NewApp(host, tui.WithBackend(tb))
+	ctx, cancel := context.WithCancel(context.Background())
+	t.Cleanup(cancel)
+	go app.Run(ctx)
+	h := &panelHarness{t: t, app: app, tb: tb, panel: panel}
+	h.until("a frame", func() bool { return tb.Flushes() > 0 })
+	h.onLoop(func() {
+		host.Attach(float)
+		panel.InFloat(float, tui.Rect{X: 2, Y: 2, W: 24, H: 6})
+		float.Show()
+	})
+	h.until("the title", func() bool { return strings.Contains(h.row(2), "Ab") })
+	row := []rune(h.row(2))
+	a, c := -1, -1
+	for i, r := range row {
+		switch {
+		case r == 'A' && a < 0:
+			a = i
+		case r == 'C' && c < 0:
+			c = i
+		}
+	}
+	if a < 0 || c != a+2 {
+		t.Errorf("C at column %d with A at %d, want %d: the zero-width cluster took a column\n%s", c, a, a+2, h.row(2))
+	}
+}

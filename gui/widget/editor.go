@@ -592,9 +592,9 @@ func (s *modeSwitch) Render(sur tui.Surface) {
 	if !s.e.canRender() {
 		rendered = rendered.Faint(true)
 	}
-	x := putString(sur, 0, 0, switchRaw, raw)
-	x = putString(sur, x, 0, switchSep, off)
-	putString(sur, x, 0, switchRendered, rendered)
+	x := tui.DrawText(sur, 0, 0, switchRaw, raw)
+	x = tui.DrawText(sur, x, 0, switchSep, off)
+	tui.DrawText(sur, x, 0, switchRendered, rendered)
 }
 
 // The native switch is a segmented control on the bar: a pill with a hairline border, split at

@@ -308,25 +308,12 @@ func (p *Panel) Render(s tui.Surface) {
 	s.Fill(tui.Rect{W: sz.W, H: sz.H}, " ", style.New())
 	s.Fill(tui.Rect{W: sz.W, H: 1}, " ", p.barSt)
 	if p.titleX < p.titleEnd {
-		putString(s.Sub(tui.Rect{W: p.titleEnd, H: 1}), p.titleX, 0, p.title, p.barSt.Bold(true))
+		tui.DrawText(s.Sub(tui.Rect{W: p.titleEnd, H: 1}), p.titleX, 0, p.title, p.barSt.Bold(true))
 	}
 	for i, c := range p.controls() {
 		x := sz.W - (i+1)*controlCells
-		putString(s, x, 0, [...]string{"[x]", "[□]", "[_]"}[c], p.barSt)
+		tui.DrawText(s, x, 0, [...]string{"[x]", "[□]", "[_]"}[c], p.barSt)
 	}
-}
-
-// putString sets s's cells from (x, y) to s's clusters, one cell each but for wide ones, and
-// returns the column after them.
-func putString(s tui.Surface, x, y int, str string, st style.Style) int {
-	for c := range tui.Graphemes(str) {
-		if x >= s.Size().W {
-			return x
-		}
-		s.SetCell(x, y, c, st)
-		x += max(s.StringWidth(c), 1)
-	}
-	return x
 }
 
 // HandleEvent takes the title bar's clicks and drags, and the edges' resizing drags.
