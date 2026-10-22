@@ -1,0 +1,15 @@
+0 116 ctrl=true alt=false super=false shift=false	ToggleRendered
+1 101 ctrl=true alt=false super=false shift=false	LineEnd
+1 107 ctrl=true alt=false super=false shift=false	Cut
+1 116 ctrl=true alt=false super=false shift=false	ToggleRendered
+1 117 ctrl=true alt=false super=false shift=false	Paste
+1 118 ctrl=true alt=false super=false shift=false	PageDown
+1 121 ctrl=true alt=false super=false shift=false	PageUp
+1 122 ctrl=true alt=false super=false shift=false	Undo
+1 57354 ctrl=false alt=false super=false shift=false	PageUp
+1 57355 ctrl=false alt=false super=false shift=false	PageDown
+1 57356 ctrl=false alt=false super=false shift=false	LineStart
+1 57357 ctrl=false alt=false super=false shift=false	LineEnd
+1 97 ctrl=true alt=false super=false shift=false	LineStart
+2 107 ctrl=true alt=false super=false shift=false	VisualDelete
+2 116 ctrl=true alt=false super=false shift=false	ToggleRendered

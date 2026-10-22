@@ -1,0 +1,171 @@
+tui.editor.contextMenu	tui.editor	Shift+F10 Menu
+tui.editor.vim.insert.deleteLineBack	tui.editor.vim.insert	Ctrl+U
+tui.editor.vim.insert.deleteWordBack	tui.editor.vim.insert	Ctrl+W
+tui.editor.vim.insert.insertOneShot	tui.editor.vim.insert	Ctrl+O
+tui.editor.vim.insert.toggleRendered	tui.editor.vim.insert	Ctrl+T
+tui.editor.vim.normal.append	tui.editor.vim.normal	A
+tui.editor.vim.normal.appendLineEnd	tui.editor.vim.normal	Shift+A
+tui.editor.vim.normal.changePrefix	tui.editor.vim.normal	C
+tui.editor.vim.normal.changeToEnd	tui.editor.vim.normal	Shift+C
+tui.editor.vim.normal.commandLine	tui.editor.vim.normal	:
+tui.editor.vim.normal.deleteChar	tui.editor.vim.normal	X
+tui.editor.vim.normal.deletePrefix	tui.editor.vim.normal	D
+tui.editor.vim.normal.deleteToEnd	tui.editor.vim.normal	Shift+D
+tui.editor.vim.normal.down	tui.editor.vim.normal	Down J Shift+Down
+tui.editor.vim.normal.findCharBack	tui.editor.vim.normal	Shift+F
+tui.editor.vim.normal.findCharForward	tui.editor.vim.normal	F
+tui.editor.vim.normal.findCharRepeat	tui.editor.vim.normal	;
+tui.editor.vim.normal.findCharReverse	tui.editor.vim.normal	,
+tui.editor.vim.normal.findNext	tui.editor.vim.normal	N
+tui.editor.vim.normal.findPrev	tui.editor.vim.normal	Shift+N
+tui.editor.vim.normal.firstNonBlank	tui.editor.vim.normal	^
+tui.editor.vim.normal.goBottom	tui.editor.vim.normal	Shift+G
+tui.editor.vim.normal.goPrefix	tui.editor.vim.normal	G
+tui.editor.vim.normal.halfPageDown	tui.editor.vim.normal	Ctrl+D
+tui.editor.vim.normal.halfPageUp	tui.editor.vim.normal	Ctrl+U
+tui.editor.vim.normal.indentPrefix	tui.editor.vim.normal	>
+tui.editor.vim.normal.insert	tui.editor.vim.normal	I
+tui.editor.vim.normal.insertLineStart	tui.editor.vim.normal	Shift+I
+tui.editor.vim.normal.join	tui.editor.vim.normal	Shift+J
+tui.editor.vim.normal.jumpBack	tui.editor.vim.normal	Ctrl+O
+tui.editor.vim.normal.jumpForward	tui.editor.vim.normal	Ctrl+I
+tui.editor.vim.normal.left	tui.editor.vim.normal	H Left Shift+Left
+tui.editor.vim.normal.leftWrap	tui.editor.vim.normal	Backspace Shift+Backspace
+tui.editor.vim.normal.lineDownFirst	tui.editor.vim.normal	+ Enter Shift+Enter
+tui.editor.vim.normal.lineEnd	tui.editor.vim.normal	$ End Shift+End
+tui.editor.vim.normal.lineStart	tui.editor.vim.normal	0 Home Shift+Home
+tui.editor.vim.normal.lineUpFirst	tui.editor.vim.normal	-
+tui.editor.vim.normal.macroPlay	tui.editor.vim.normal	@
+tui.editor.vim.normal.macroRecord	tui.editor.vim.normal	Q
+tui.editor.vim.normal.markExact	tui.editor.vim.normal	`
+tui.editor.vim.normal.markLine	tui.editor.vim.normal	'
+tui.editor.vim.normal.markSet	tui.editor.vim.normal	M
+tui.editor.vim.normal.matchPair	tui.editor.vim.normal	%
+tui.editor.vim.normal.openAbove	tui.editor.vim.normal	Shift+O
+tui.editor.vim.normal.openBelow	tui.editor.vim.normal	O
+tui.editor.vim.normal.outdentPrefix	tui.editor.vim.normal	<
+tui.editor.vim.normal.pageDown	tui.editor.vim.normal	Ctrl+F PgDown Shift+PgDown
+tui.editor.vim.normal.pageUp	tui.editor.vim.normal	Ctrl+B PgUp Shift+PgUp
+tui.editor.vim.normal.paraBack	tui.editor.vim.normal	[ {
+tui.editor.vim.normal.paraForward	tui.editor.vim.normal	] }
+tui.editor.vim.normal.pasteAfter	tui.editor.vim.normal	P
+tui.editor.vim.normal.pasteBefore	tui.editor.vim.normal	Shift+P
+tui.editor.vim.normal.redo	tui.editor.vim.normal	Ctrl+R
+tui.editor.vim.normal.registerPrefix	tui.editor.vim.normal	"
+tui.editor.vim.normal.repeat	tui.editor.vim.normal	.
+tui.editor.vim.normal.replaceChar	tui.editor.vim.normal	R
+tui.editor.vim.normal.replaceMode	tui.editor.vim.normal	Shift+R
+tui.editor.vim.normal.right	tui.editor.vim.normal	L Right Shift+Right
+tui.editor.vim.normal.sentenceBack	tui.editor.vim.normal	(
+tui.editor.vim.normal.sentenceForward	tui.editor.vim.normal	)
+tui.editor.vim.normal.starBack	tui.editor.vim.normal	#
+tui.editor.vim.normal.starForward	tui.editor.vim.normal	*
+tui.editor.vim.normal.substChar	tui.editor.vim.normal	S
+tui.editor.vim.normal.substLine	tui.editor.vim.normal	Shift+S
+tui.editor.vim.normal.tillCharBack	tui.editor.vim.normal	Shift+T
+tui.editor.vim.normal.tillCharForward	tui.editor.vim.normal	T
+tui.editor.vim.normal.toggleCase	tui.editor.vim.normal	~
+tui.editor.vim.normal.toggleRendered	tui.editor.vim.normal	Ctrl+T
+tui.editor.vim.normal.undo	tui.editor.vim.normal	U
+tui.editor.vim.normal.up	tui.editor.vim.normal	K Shift+Up Up
+tui.editor.vim.normal.viewBottom	tui.editor.vim.normal	Shift+L
+tui.editor.vim.normal.viewMiddle	tui.editor.vim.normal	Shift+M
+tui.editor.vim.normal.viewTop	tui.editor.vim.normal	Shift+H
+tui.editor.vim.normal.visual	tui.editor.vim.normal	V
+tui.editor.vim.normal.visualBlock	tui.editor.vim.normal	Ctrl+V
+tui.editor.vim.normal.visualLine	tui.editor.vim.normal	Shift+V
+tui.editor.vim.normal.wORDBack	tui.editor.vim.normal	Shift+B
+tui.editor.vim.normal.wORDEnd	tui.editor.vim.normal	Shift+E
+tui.editor.vim.normal.wORDForward	tui.editor.vim.normal	Shift+W
+tui.editor.vim.normal.wordBack	tui.editor.vim.normal	B
+tui.editor.vim.normal.wordEnd	tui.editor.vim.normal	E
+tui.editor.vim.normal.wordForward	tui.editor.vim.normal	W
+tui.editor.vim.normal.yankPrefix	tui.editor.vim.normal	Y
+tui.editor.vim.normal.yankToEnd	tui.editor.vim.normal	Shift+Y
+tui.editor.vim.visual.commandLine	tui.editor.vim.visual	:
+tui.editor.vim.visual.down	tui.editor.vim.visual	Down J Shift+Down
+tui.editor.vim.visual.findCharBack	tui.editor.vim.visual	Shift+F
+tui.editor.vim.visual.findCharForward	tui.editor.vim.visual	F
+tui.editor.vim.visual.findCharRepeat	tui.editor.vim.visual	;
+tui.editor.vim.visual.findCharReverse	tui.editor.vim.visual	,
+tui.editor.vim.visual.findNext	tui.editor.vim.visual	N
+tui.editor.vim.visual.findPrev	tui.editor.vim.visual	Shift+N
+tui.editor.vim.visual.firstNonBlank	tui.editor.vim.visual	^
+tui.editor.vim.visual.goBottom	tui.editor.vim.visual	Shift+G
+tui.editor.vim.visual.goPrefix	tui.editor.vim.visual	G
+tui.editor.vim.visual.halfPageDown	tui.editor.vim.visual	Ctrl+D
+tui.editor.vim.visual.halfPageUp	tui.editor.vim.visual	Ctrl+U
+tui.editor.vim.visual.left	tui.editor.vim.visual	H Left Shift+Left
+tui.editor.vim.visual.leftWrap	tui.editor.vim.visual	Backspace Shift+Backspace
+tui.editor.vim.visual.lineDownFirst	tui.editor.vim.visual	+ Enter Shift+Enter
+tui.editor.vim.visual.lineEnd	tui.editor.vim.visual	$ End Shift+End
+tui.editor.vim.visual.lineStart	tui.editor.vim.visual	0 Home Shift+Home
+tui.editor.vim.visual.lineUpFirst	tui.editor.vim.visual	-
+tui.editor.vim.visual.markExact	tui.editor.vim.visual	`
+tui.editor.vim.visual.markLine	tui.editor.vim.visual	'
+tui.editor.vim.visual.markSet	tui.editor.vim.visual	M
+tui.editor.vim.visual.matchPair	tui.editor.vim.visual	%
+tui.editor.vim.visual.pageDown	tui.editor.vim.visual	Ctrl+F PgDown Shift+PgDown
+tui.editor.vim.visual.pageUp	tui.editor.vim.visual	Ctrl+B PgUp Shift+PgUp
+tui.editor.vim.visual.paraBack	tui.editor.vim.visual	[ {
+tui.editor.vim.visual.paraForward	tui.editor.vim.visual	] }
+tui.editor.vim.visual.registerPrefix	tui.editor.vim.visual	"
+tui.editor.vim.visual.right	tui.editor.vim.visual	L Right Shift+Right
+tui.editor.vim.visual.sentenceBack	tui.editor.vim.visual	(
+tui.editor.vim.visual.sentenceForward	tui.editor.vim.visual	)
+tui.editor.vim.visual.tillCharBack	tui.editor.vim.visual	Shift+T
+tui.editor.vim.visual.tillCharForward	tui.editor.vim.visual	T
+tui.editor.vim.visual.toggleRendered	tui.editor.vim.visual	Ctrl+T
+tui.editor.vim.visual.up	tui.editor.vim.visual	K Shift+Up Up
+tui.editor.vim.visual.viewBottom	tui.editor.vim.visual	Shift+L
+tui.editor.vim.visual.viewMiddle	tui.editor.vim.visual	Shift+M
+tui.editor.vim.visual.viewTop	tui.editor.vim.visual	Shift+H
+tui.editor.vim.visual.visual	tui.editor.vim.visual	V
+tui.editor.vim.visual.visualAppend	tui.editor.vim.visual	Shift+A
+tui.editor.vim.visual.visualBlock	tui.editor.vim.visual	Ctrl+V
+tui.editor.vim.visual.visualChange	tui.editor.vim.visual	C S
+tui.editor.vim.visual.visualDelete	tui.editor.vim.visual	D X
+tui.editor.vim.visual.visualIndent	tui.editor.vim.visual	>
+tui.editor.vim.visual.visualInsert	tui.editor.vim.visual	Shift+I
+tui.editor.vim.visual.visualLine	tui.editor.vim.visual	Shift+V
+tui.editor.vim.visual.visualLower	tui.editor.vim.visual	U
+tui.editor.vim.visual.visualOther	tui.editor.vim.visual	O
+tui.editor.vim.visual.visualOtherCol	tui.editor.vim.visual	Shift+O
+tui.editor.vim.visual.visualOutdent	tui.editor.vim.visual	<
+tui.editor.vim.visual.visualReplace	tui.editor.vim.visual	R
+tui.editor.vim.visual.visualToggleCase	tui.editor.vim.visual	~
+tui.editor.vim.visual.visualUpper	tui.editor.vim.visual	Shift+U
+tui.editor.vim.visual.visualYank	tui.editor.vim.visual	Y
+tui.editor.vim.visual.wORDBack	tui.editor.vim.visual	Shift+B
+tui.editor.vim.visual.wORDEnd	tui.editor.vim.visual	Shift+E
+tui.editor.vim.visual.wORDForward	tui.editor.vim.visual	Shift+W
+tui.editor.vim.visual.wordBack	tui.editor.vim.visual	B
+tui.editor.vim.visual.wordEnd	tui.editor.vim.visual	E
+tui.editor.vim.visual.wordForward	tui.editor.vim.visual	W
+tui.editor.standard.insert.copy	tui.editor.standard.insert	Ctrl+C
+tui.editor.standard.insert.cut	tui.editor.standard.insert	Ctrl+X
+tui.editor.standard.insert.lineEnd	tui.editor.standard.insert	End Shift+End
+tui.editor.standard.insert.lineStart	tui.editor.standard.insert	Home Shift+Home
+tui.editor.standard.insert.pageDown	tui.editor.standard.insert	PgDown Shift+PgDown
+tui.editor.standard.insert.pageUp	tui.editor.standard.insert	PgUp Shift+PgUp
+tui.editor.standard.insert.paste	tui.editor.standard.insert	Ctrl+V
+tui.editor.standard.insert.redo	tui.editor.standard.insert	Ctrl+Y
+tui.editor.standard.insert.selectAll	tui.editor.standard.insert	Ctrl+A
+tui.editor.standard.insert.toggleRendered	tui.editor.standard.insert	Ctrl+T
+tui.editor.standard.insert.undo	tui.editor.standard.insert	Ctrl+Z
+tui.editor.standard.normal.toggleRendered	tui.editor.standard.normal	Ctrl+T
+tui.editor.standard.visual.selectAll	tui.editor.standard.visual	Ctrl+A
+tui.editor.standard.visual.toggleRendered	tui.editor.standard.visual	Ctrl+T
+tui.editor.standard.visual.visualDelete	tui.editor.standard.visual	Ctrl+X
+tui.editor.standard.visual.visualYank	tui.editor.standard.visual	Ctrl+C
+tui.editor.nano.insert.cut	tui.editor.nano.insert	Ctrl+K
+tui.editor.nano.insert.lineEnd	tui.editor.nano.insert	Ctrl+E End Shift+End
+tui.editor.nano.insert.lineStart	tui.editor.nano.insert	Ctrl+A Home Shift+Home
+tui.editor.nano.insert.pageDown	tui.editor.nano.insert	Ctrl+V PgDown Shift+PgDown
+tui.editor.nano.insert.pageUp	tui.editor.nano.insert	Ctrl+Y PgUp Shift+PgUp
+tui.editor.nano.insert.paste	tui.editor.nano.insert	Ctrl+U
+tui.editor.nano.insert.toggleRendered	tui.editor.nano.insert	Ctrl+T
+tui.editor.nano.insert.undo	tui.editor.nano.insert	Ctrl+Z
+tui.editor.nano.normal.toggleRendered	tui.editor.nano.normal	Ctrl+T
+tui.editor.nano.visual.toggleRendered	tui.editor.nano.visual	Ctrl+T
+tui.editor.nano.visual.visualDelete	tui.editor.nano.visual	Ctrl+K
