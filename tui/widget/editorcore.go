@@ -919,6 +919,8 @@ func (c *EditorCore) execAction(act Action, count int) bool {
 		return c.execVisual(act, count)
 	case actInsertAssist:
 		return c.execInsertAssist(act, count)
+	case actInsertEdit: // bound early, by a host's overlay
+		return c.execInsertEdit(act, tui.KeyEvent{})
 	case actOther:
 		return c.execOther(act, count)
 	}

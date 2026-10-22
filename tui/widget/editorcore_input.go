@@ -2,6 +2,7 @@ package widget
 
 import (
 	"github.com/yongjohnlee80/golib/tui"
+	tuikey "github.com/yongjohnlee80/golib/tui/key"
 )
 
 // THE CORE'S INPUT. A widget hands its EditorCore the input it does not keep for itself: keys,
@@ -206,80 +207,148 @@ func (c *EditorCore) DragTo(line, col int) {
 // EndDrag ends the drag; the selection, if any, stays for the key combos to copy.
 func (c *EditorCore) EndDrag() { c.dragging = false }
 
-// handleInsertKey: structural Insert handling (text, chord, Esc, editing keys). Tab INSERTS a tab
-// in Insert mode; traversal belongs to Normal mode, where Tab bubbles.
-func (c *EditorCore) handleInsertKey(k tui.KeyEvent) bool {
-	if c.readOnly && insertEdits(k) {
-		return true // consumed, refused: a viewer never changes text
-	}
-	var act Action
-	var bound, unbound bool
+// insertKey is an Insert key resolved once, before any stage reads it (resolveInsert).
+type insertKey struct {
+	act     Action
+	bound   bool     // a binding matched: exactly, or by the bare-key fallback
+	unbound bool     // the exact chord is explicitly unbound
+	late    bool     // the matched binding is an editing command's (keyDecl.late)
+	qual    tui.Mods // the pressed modifiers the matched binding does not name
+	text    bool     // typed text no binding takes: Text set, no Ctrl/Alt/Super/Hyper/Meta, not Tab
+}
+
+// resolveInsert is k in the Insert class. An exact binding or explicit unbind wins. A modified key
+// no binding names reaches the editing command its bare key is bound to, the modifiers handed on
+// as qualifiers (so Ctrl+Tab inserts a tab, and Shift+Tab is Tab with Shift); an early binding or
+// an unbind of the bare key lends it nothing.
+func (c *EditorCore) resolveInsert(k tui.KeyEvent) insertKey {
+	var r insertKey
 	if s, ok := c.seqOf(k); ok {
-		_, act, bound, unbound = c.keys.lookupSeq(ModeInsert, s)
-	}
-
-	// 1. Explicit unbind sentinel: unhandled keystroke bubbles up to application.
-	if unbound {
-		c.settlePendingRune()
-		return false
-	}
-
-	// 2. Configured keymap actions (custom bindings, Nano/Standard profiles, etc.).
-	if bound {
-		c.settlePendingRune()
-		if act == ActInsertOneShot {
-			c.macroKey(k) // a macro keeps it; . does not: the Insert before it ends there
-		} else {
-			c.dotInsertKey(k)
+		kc, act, bound, unbound := c.keys.lookupSeq(ModeInsert, s)
+		switch {
+		case unbound:
+			return insertKey{unbound: true}
+		case bound:
+			return insertKey{act: act, bound: true, late: c.keys.late[kc]}
 		}
-		return c.execAction(act, 1)
-	}
-
-	isText := k.Text != "" && k.Mods&nonTextMods == 0 && k.Code != tui.KeyTab
-
-	if c.keys.modal && c.takeEscapeChord(k, isText) {
-		return true
-	}
-	if c.replace != nil && c.replaceKey(k) {
-		return true
-	}
-	for _, assist := range insertAssists {
-		if assist(c, k) {
-			c.dotInsertKey(k)
-			return true
+		if s.Mods != 0 {
+			bare := chordOfSeq(ModeInsert, tuikey.Seq{Code: s.Code})
+			if act, ok := c.keys.keymap[bare]; ok && c.keys.late[bare] {
+				return insertKey{act: act, bound: true, late: true, qual: k.Mods}
+			}
 		}
 	}
-	c.recordInsertKey(k)
-	if done, handled := c.insertEditKey(k); done {
-		return handled
-	}
-	if act, caret := insertCaretKeys[k.Code]; caret {
-		c.move(act, 1)
-		return true
-	}
+	r.text = k.Text != "" && k.Mods&nonTextMods == 0 && k.Code != tui.KeyTab
+	return r
+}
 
-	if isText {
-		c.typeText(k.Text)
-		c.dotTypedText(k.Text)
-		return true
+// handleInsertKey runs an Insert key through insertStages, in order, until one settles it. A key
+// none settles is not consumed: it bubbles.
+func (c *EditorCore) handleInsertKey(k tui.KeyEvent) bool {
+	r := c.resolveInsert(k)
+	for _, stage := range insertStages {
+		if done, handled := stage(c, k, r); done {
+			return handled
+		}
 	}
 	return false
 }
 
-// insertAssists are the Insert-mode assists, offered a key in this order before Insert's own
-// handling. Each checks its own switch (CoreTableEditing, CoreListEditing) and reports whether it
-// took the key; a key one takes is kept for . and a macro.
-var insertAssists = [...]func(*EditorCore, tui.KeyEvent) bool{(*EditorCore).tableKey, (*EditorCore).listKey}
+// insertStage is one step of Insert's key handling: done when it settled the key, handled whether
+// the key is consumed.
+type insertStage func(c *EditorCore, k tui.KeyEvent, r insertKey) (done, handled bool)
 
-// insertEdits reports whether k, in Insert, would change the text: text, Enter, Tab, Backspace or
-// Delete.
-func insertEdits(k tui.KeyEvent) bool {
-	switch k.Code {
-	case tui.KeyEnter, tui.KeyTab, tui.KeyBackspace, tui.KeyDelete:
-		return true
-	}
-	return k.Text != ""
+// insertStages is Insert's order, the contract hosts rely on: each stage's comment is its
+// contract.
+var insertStages = [...]insertStage{
+	(*EditorCore).refuseReadOnly, // read-only: text and a late mutating command are consumed, refused
+	(*EditorCore).bubbleUnbound,  // an explicitly unbound key: the held rune settles; it bubbles
+	(*EditorCore).runEarly,       // an early binding: the held rune settles; recorded, then run
+	(*EditorCore).escapeChord,    // modal: the held rune and its timeout; a held rune settles on any other key
+	(*EditorCore).replaceStage,   // Replace mode: offered the key and its command
+	(*EditorCore).assistStage,    // the table, then the list assist: offered the key and its command
+	(*EditorCore).recordLate,     // . and a macro keep an editing command's key (settles nothing)
+	(*EditorCore).runLate,        // an editing command runs
+	(*EditorCore).typeStage,      // typed text
 }
+
+func (c *EditorCore) refuseReadOnly(k tui.KeyEvent, r insertKey) (bool, bool) {
+	refuse := c.readOnly && (k.Text != "" || (r.late && mutatingAction(r.act)))
+	return refuse, refuse // a viewer never changes text
+}
+
+func (c *EditorCore) bubbleUnbound(_ tui.KeyEvent, r insertKey) (bool, bool) {
+	if !r.unbound {
+		return false, false
+	}
+	c.settlePendingRune()
+	return true, false
+}
+
+func (c *EditorCore) runEarly(k tui.KeyEvent, r insertKey) (bool, bool) {
+	if !r.bound || r.late {
+		return false, false
+	}
+	c.settlePendingRune()
+	if r.act == ActInsertOneShot {
+		c.macroKey(k) // a macro keeps it; . does not: the Insert before it ends there
+	} else {
+		c.dotInsertKey(k)
+	}
+	return true, c.execAction(r.act, 1)
+}
+
+func (c *EditorCore) escapeChord(k tui.KeyEvent, r insertKey) (bool, bool) {
+	if c.keys.modal && c.takeEscapeChord(k, r.text) {
+		return true, true
+	}
+	return false, false
+}
+
+func (c *EditorCore) replaceStage(k tui.KeyEvent, r insertKey) (bool, bool) {
+	if c.replace != nil && c.replaceKey(k, r) {
+		return true, true
+	}
+	return false, false
+}
+
+func (c *EditorCore) assistStage(k tui.KeyEvent, r insertKey) (bool, bool) {
+	for _, assist := range insertAssists {
+		if assist(c, k, r) {
+			c.dotInsertKey(k)
+			return true, true
+		}
+	}
+	return false, false
+}
+
+func (c *EditorCore) recordLate(k tui.KeyEvent, r insertKey) (bool, bool) {
+	if r.late {
+		c.recordInsertKey(r.act, k)
+	}
+	return false, false
+}
+
+func (c *EditorCore) runLate(k tui.KeyEvent, r insertKey) (bool, bool) {
+	if !r.late {
+		return false, false
+	}
+	return true, c.execInsertEdit(r.act, k)
+}
+
+func (c *EditorCore) typeStage(k tui.KeyEvent, r insertKey) (bool, bool) {
+	if !r.text {
+		return false, false
+	}
+	c.typeText(k.Text)
+	c.dotTypedText(k.Text)
+	return true, true
+}
+
+// insertAssists are the Insert-mode assists, offered a key and its command in this order, after
+// Replace and before the editing commands run. Each checks its own switch (CoreTableEditing,
+// CoreListEditing) and reports whether it took the key; a key one takes is kept for . and a macro.
+var insertAssists = [...]func(*EditorCore, tui.KeyEvent, insertKey) bool{(*EditorCore).tableKey, (*EditorCore).listKey}
 
 // takeEscapeChord is the modal escape chord (jk, jj): its first rune is held until the second
 // completes it as an Esc; any other key, or the tick, commits it as text. It reports whether it
@@ -306,50 +375,37 @@ func (c *EditorCore) takeEscapeChord(k tui.KeyEvent, isText bool) bool {
 	return false
 }
 
-// recordInsertKey keeps an Insert editing or caret key for . and a macro: replayed through
-// handleInsertKey, so Enter re-runs auto-indent; a page jump splits the change.
-func (c *EditorCore) recordInsertKey(k tui.KeyEvent) {
-	switch k.Code {
-	case tui.KeyTab, tui.KeyEnter, tui.KeyBackspace, tui.KeyDelete,
-		tui.KeyLeft, tui.KeyRight, tui.KeyUp, tui.KeyDown, tui.KeyHome, tui.KeyEnd:
+// recordInsertKey keeps an editing command's key for . and a macro: replayed through
+// handleInsertKey, so Enter re-runs auto-indent; a page jump splits the change. Esc is the macro's
+// in execInsertEdit.
+func (c *EditorCore) recordInsertKey(act Action, k tui.KeyEvent) {
+	switch act {
+	case ActInsertTab, ActNewline, ActBackspace, ActDeleteForward,
+		ActLeft, ActRight, ActUp, ActDown, ActLineStart, ActLineEnd:
 		c.dotInsertKey(k)
-	case tui.KeyPageUp, tui.KeyPageDown:
+	case ActPageUp, ActPageDown:
 		c.macroKey(k)
 		c.dotJump()
 	}
 }
 
-// insertEditKey is Insert's editing keys: Tab, Esc, Enter, Backspace and Delete. done reports
-// whether k is one, and handled whether it is consumed.
-func (c *EditorCore) insertEditKey(k tui.KeyEvent) (done, handled bool) {
+// execInsertEdit runs an editing command: Tab, Enter, Backspace and Delete edit; Esc leaves Insert
+// (modal), or clears the selection anchor or the find, else is the host's (modeless); a caret
+// motion moves, past a line's last character as Insert may. k is the key that ran it, for a macro.
+func (c *EditorCore) execInsertEdit(act Action, k tui.KeyEvent) bool {
 	b := &c.buf
-	switch k.Code {
-	case tui.KeyTab:
+	switch act {
+	case ActInsertTab:
 		c.beginGroup()
 		b.insertText("\t")
 		c.edited()
-		return true, true
-	case tui.KeyEscape:
-		if c.keys.modal {
-			c.macroKey(k)
-			c.exitInsert()
-			return true, true
-		}
-		if c.vAnchor != (taPos{}) {
-			c.vAnchor = taPos{}
-			c.markDirty()
-			return true, true
-		}
-		// modeless, Esc is Normal mode's: it cancels the active find, then is the host's
-		return true, c.escapeFind()
-	case tui.KeyEnter:
+	case ActNewline:
 		c.beginGroup()
 		c.insertIndentedNewline()
 		c.edited()
-		return true, true
-	case tui.KeyBackspace, tui.KeyDelete:
+	case ActBackspace, ActDeleteForward:
 		region := b.forwardRegion
-		if k.Code == tui.KeyBackspace {
+		if act == ActBackspace {
 			region = b.backspaceRegion
 		}
 		if lo, hi, ok := region(); ok {
@@ -357,16 +413,23 @@ func (c *EditorCore) insertEditKey(k tui.KeyEvent) (done, handled bool) {
 			b.deleteRegion(lo, hi)
 			c.edited()
 		}
-		return true, true
+	case ActEscape:
+		if c.keys.modal {
+			c.macroKey(k)
+			c.exitInsert()
+			return true
+		}
+		if c.vAnchor != (taPos{}) {
+			c.vAnchor = taPos{}
+			c.markDirty()
+			return true
+		}
+		// modeless, Esc is Normal mode's: it cancels the active find, then is the host's
+		return c.escapeFind()
+	default:
+		c.move(act, 1)
 	}
-	return false, false
-}
-
-// insertCaretKeys are Insert mode's caret keys, each the motion it is: move reveals the caret and,
-// in Insert, reaches past a line's last character.
-var insertCaretKeys = map[rune]Action{
-	tui.KeyLeft: ActLeft, tui.KeyRight: ActRight, tui.KeyUp: ActUp, tui.KeyDown: ActDown,
-	tui.KeyHome: ActLineStart, tui.KeyEnd: ActLineEnd, tui.KeyPageUp: ActPageUp, tui.KeyPageDown: ActPageDown,
+	return true
 }
 
 // hookChord is k as SetChordHook has always been shown it, so a host's hook written against it keeps

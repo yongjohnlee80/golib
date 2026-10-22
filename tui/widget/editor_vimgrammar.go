@@ -13,12 +13,20 @@ func (c *EditorCore) handleCommandKey(k tui.KeyEvent) bool {
 	if k.Code == tui.KeyEscape {
 		return c.commandEscape()
 	}
-	// a key an armed command waits on, or a count's digit, is that command's
+	// a key an armed command waits on is that command's
 	for _, take := range []func(tui.KeyEvent) bool{c.takeFindChar, c.takeReplaceChar, c.takeObjectName,
-		c.takeMarkName, c.takeMacroName, c.takeRegisterName, c.takeCountDigit} {
+		c.takeMarkName, c.takeMacroName, c.takeRegisterName} {
 		if take(k) {
 			return true
 		}
+	}
+	// a pending key's sub-scope first: the g prefix's second key, or the i or a that names a text
+	// object, however the key map binds them, before the root table and its Alt and Super bubbling
+	if done, handled := c.pendingSubScope(k); done {
+		return handled
+	}
+	if c.takeCountDigit(k) {
+		return true
 	}
 
 	// A key with Hyper or Meta held matches nothing, and bubbles.
@@ -47,22 +55,17 @@ func (c *EditorCore) handleCommandKey(k tui.KeyEvent) bool {
 		return false
 	}
 
-	// The g prefix, keyed by the ARMING CHORD, so a rebound prefix completes on its own chord
-	// rather than a hard-coded rune: the same chord again is gg, e and E are ge and gE; any other
-	// key clears it and is processed normally. Under a pending operator the completion is the
-	// operator's motion (dgg, dge).
+	// A key after g that the g sub-scope did not take (pendingSubScope): the prefix and any operator
+	// go, and the key is processed as any key is.
 	if c.keys.pendingAct != ActUnbound {
-		if done, handled := c.completeGoPrefix(kc); done {
-			return handled
-		}
+		c.completeGoPrefix(goNone, kc) // a key the g sub-scope does not bind: the prefix goes
 	}
 
 	// i and a name a text object after an operator (diw), and in Visual (viw): the next key says
 	// which. Neither is Visual's own key, so it is read before the keymap's answer.
-	visual := c.visual()
-	if !kc.Ctrl && (kc.Code == 'i' || kc.Code == 'a') && (c.keys.op != ActUnbound || visual) {
-		c.keys.objArmed, c.keys.objCount = string(kc.Code), c.keys.count
-		c.keys.count = 0
+	// (after a g the sub-scope did not take, as before the sub-scopes: Visual's g then i)
+	if around, ok := c.objectOf(k); ok && (c.keys.op != ActUnbound || c.visual()) {
+		c.armObject(around)
 		return true
 	}
 
@@ -104,7 +107,7 @@ func (c *EditorCore) continueOperator(act Action, kc KeyChord, count int, hadCou
 	hadAny := hadCount || c.keys.opCount > 0
 	switch {
 	case act == ActGoPrefix:
-		c.armGoPrefix(kc, count, hadCount)
+		c.armGoPrefix(count, hadCount)
 		return true
 	case act == ActFindCharForward || act == ActFindCharBack || act == ActTillCharForward || act == ActTillCharBack:
 		c.keys.findArmed, c.keys.findCount = act, total
@@ -135,7 +138,7 @@ func (c *EditorCore) commandAction(act Action, kc KeyChord, count int, hadCount 
 		c.armOperator(act, kc, count, hadCount)
 		return true
 	case ActGoPrefix:
-		c.armGoPrefix(kc, count, hadCount)
+		c.armGoPrefix(count, hadCount)
 		return true
 	case ActGoBottom:
 		c.goToLine(hadCount, count, true) // [count]G
@@ -195,27 +198,27 @@ func (c *EditorCore) commandAction(act Action, kc KeyChord, count int, hadCount 
 	return c.execAction(act, count)
 }
 
-// completeGoPrefix is the key after an armed g prefix: the arming chord again is gg, e and E are ge
-// and gE, under a pending operator the operator's motion (dgg, dge). done reports whether the key
-// was the prefix's, and handled whether it is consumed; any other key clears the prefix and the
-// operator, and is processed afresh, its count consumed.
-func (c *EditorCore) completeGoPrefix(kc KeyChord) (done, handled bool) {
-	chord := c.keys.pendingChord
+// completeGoPrefix is the key after an armed g prefix, g the command it is (goNone for a key the g
+// sub-scope does not bind): gg goes to a line, ge and gE back to a word's end, under a pending
+// operator the operator's motion (dgg, dge). done reports whether the key was the prefix's, and
+// handled whether it is consumed; any other key clears the prefix and the operator, and is
+// processed afresh, its count consumed. kc is the key's chord, which a case operator it arms
+// keeps for its doubled form (gUU).
+func (c *EditorCore) completeGoPrefix(g goKey, kc KeyChord) (done, handled bool) {
 	op := c.keys.op
 	hadCount := c.keys.pendingCount > 0 || c.keys.opCount > 0
 	count := max(c.keys.pendingCount, 1) * max(c.keys.opCount, 1)
 	c.keys.pendingAct = ActUnbound
 	c.keys.pendingCount = 0
 	back := ActUnbound
-	if !kc.Ctrl && kc.Code == 'e' {
+	switch g {
+	case goWordEndBack:
 		back = ActWordEndBack
-	} else if !kc.Ctrl && kc.Code == 'E' {
+	case goWORDEndBack:
 		back = ActWORDEndBack
 	}
-	caseOp := ActUnbound
-	if !kc.Ctrl {
-		caseOp = caseOpOf(kc.Code)
-	}
+	caseOp := caseOpOfGo(g)
+	rows := g == goRowDown || g == goRowUp
 	switch {
 	case caseOp != ActUnbound && op == caseOp: // g~g~, gugu, gUgU: the doubled form
 		c.keys.dropOp()
@@ -227,29 +230,29 @@ func (c *EditorCore) completeGoPrefix(kc KeyChord) (done, handled bool) {
 		}
 		c.armOperator(caseOp, kc, count, hadCount)
 		return true, true
-	case !kc.Ctrl && (kc.Code == 'j' || kc.Code == 'k') && op != ActUnbound: // dgj ygk
+	case rows && op != ActUnbound: // dgj ygk
 		c.keys.dropOp()
-		if to, moved := c.rowTarget(kc.Code == 'j', count); moved {
+		if to, moved := c.rowTarget(g == goRowDown, count); moved {
 			c.runOp(op, to, exclusive)
 		}
 		return true, true
-	case !kc.Ctrl && (kc.Code == 'j' || kc.Code == 'k'): // gj gk
-		c.rowMove(kc.Code == 'j', count)
+	case rows: // gj gk
+		c.rowMove(g == goRowDown, count)
 		return true, true
-	case !kc.Ctrl && (kc.Code == '*' || kc.Code == '#') && op == ActUnbound: // g* g#
-		c.starSearch(kc.Code == '#', false, count)
+	case (g == goStarPartial || g == goHashPartial) && op == ActUnbound: // g* g#
+		c.starSearch(g == goHashPartial, false, count)
 		return true, true
-	case !kc.Ctrl && kc.Code == 'J' && op == ActUnbound: // gJ
+	case g == goJoinRaw && op == ActUnbound: // gJ
 		if c.readOnly {
 			return true, false
 		}
 		c.joinLines(count, true)
 		return true, true
-	case kc == chord && op != ActUnbound:
+	case g == goLine && op != ActUnbound:
 		c.keys.dropOp()
 		c.runOp(op, c.gotoLineTarget(count, hadCount), linewise) // [count]dgg
 		return true, true
-	case kc == chord:
+	case g == goLine:
 		c.goToLine(hadCount, count, false) // [count]gg
 		return true, true
 	case back != ActUnbound && op != ActUnbound:
@@ -262,6 +265,37 @@ func (c *EditorCore) completeGoPrefix(kc KeyChord) (done, handled bool) {
 	}
 	c.keys.dropOp()
 	return false, false
+}
+
+// pendingSubScope is a pending key looked up in its sub-scope (editor_vimsubscopes.go): after an
+// armed g, the g commands; after an operator or in Visual, the text-object extents. done reports
+// whether the sub-scope took the key, handled whether it is consumed; a key it does not bind goes
+// on as any key does.
+func (c *EditorCore) pendingSubScope(k tui.KeyEvent) (done, handled bool) {
+	if c.keys.pendingAct != ActUnbound {
+		g := c.goKeyOf(k)
+		if g == goNone {
+			return false, false
+		}
+		kc, _ := c.chordOf(k) // goKeyOf matched it, so it has one
+		return c.completeGoPrefix(g, kc)
+	}
+	if c.keys.op != ActUnbound || c.visual() {
+		if around, ok := c.objectOf(k); ok {
+			c.armObject(around)
+			return true, true
+		}
+	}
+	return false, false
+}
+
+// armObject arms a text object's name, around or inner, with the count typed before it.
+func (c *EditorCore) armObject(around bool) {
+	c.keys.objArmed, c.keys.objCount = "i", c.keys.count
+	if around {
+		c.keys.objArmed = "a"
+	}
+	c.keys.count = 0
 }
 
 // runLines runs op over n lines from the caret's, linewise: the doubled form (dd, 3yy, g~g~).
@@ -278,10 +312,9 @@ func (c *EditorCore) armOperator(op Action, kc KeyChord, count int, hadCount boo
 	}
 }
 
-// armGoPrefix arms the g prefix on kc, its chord; a count typed before it is kept for the
-// completion (5gg).
-func (c *EditorCore) armGoPrefix(kc KeyChord, count int, hadCount bool) {
-	c.keys.pendingAct, c.keys.pendingChord, c.keys.pendingCount = ActGoPrefix, kc, 0
+// armGoPrefix arms the g prefix; a count typed before it is kept for the completion (5gg).
+func (c *EditorCore) armGoPrefix(count int, hadCount bool) {
+	c.keys.pendingAct, c.keys.pendingCount = ActGoPrefix, 0
 	if hadCount {
 		c.keys.pendingCount = count
 	}
@@ -425,21 +458,16 @@ func (c *EditorCore) takeRegisterName(k tui.KeyEvent) bool {
 	return false
 }
 
-// takeCountDigit: a digit accumulates the count: 1-9 always; 0 only extends an existing count.
-// Clamp BEFORE assignment so the cap is a hard ceiling.
-// It reports whether it took the key.
+// takeCountDigit takes a count's digit (countDigit: a digit key with no modifier held): 1-9 always,
+// 0 only extending a count, capped at editorCountMax. It reports whether it took the key.
 func (c *EditorCore) takeCountDigit(k tui.KeyEvent) bool {
-	ctrl := k.Mods&tui.ModCtrl != 0
-	if !ctrl && k.Text != "" {
-		r := []rune(k.Text)[0]
-		if r >= '1' && r <= '9' || (r == '0' && c.keys.count > 0) {
-			c.keys.pendingAct = ActUnbound
-			c.keys.count = min(c.keys.count*10+int(r-'0'), 1_000_000)
-			if n := len(c.dot.atoms); c.dot.on && n > 0 {
-				c.dot.atoms[n-1].count = true // N. replaces it
-			}
-			return true
-		}
+	d, ok := countDigit(k)
+	if !ok || !addCount(&c.keys.count, d, editorCountMax) {
+		return false
 	}
-	return false
+	c.keys.pendingAct = ActUnbound
+	if n := len(c.dot.atoms); c.dot.on && n > 0 {
+		c.dot.atoms[n-1].count = true // N. replaces it
+	}
+	return true
 }

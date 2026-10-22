@@ -149,24 +149,24 @@ func (c *EditorCore) replaceDone() {
 
 // replaceKey is Replace's own keys: Enter breaks the line, Backspace pops the stack, Tab
 // overwrites as typed text does; an arrow key starts a new stack, and Insert's handling moves.
-func (c *EditorCore) replaceKey(k tui.KeyEvent) bool {
-	if k.Mods&nonTextMods != 0 {
+func (c *EditorCore) replaceKey(k tui.KeyEvent, r insertKey) bool {
+	if r.qual&nonTextMods != 0 {
 		return false
 	}
-	switch k.Code {
-	case tui.KeyEnter:
+	switch r.act {
+	case ActNewline:
 		c.dotInsertKey(k)
 		c.replaceText("\n")
 		return true
-	case tui.KeyBackspace:
+	case ActBackspace:
 		c.dotInsertKey(k)
 		c.replaceBackspace()
 		return true
-	case tui.KeyTab:
+	case ActInsertTab:
 		c.dotInsertKey(k)
 		c.replaceText("\t")
 		return true
-	case tui.KeyLeft, tui.KeyRight, tui.KeyUp, tui.KeyDown, tui.KeyHome, tui.KeyEnd, tui.KeyPageUp, tui.KeyPageDown:
+	case ActLeft, ActRight, ActUp, ActDown, ActLineStart, ActLineEnd, ActPageUp, ActPageDown:
 		c.replaceRestart()
 	}
 	return false
