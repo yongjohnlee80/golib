@@ -8,7 +8,7 @@ import (
 //
 // ONE helper computes the child's constraints, used by BOTH modes, so they
 // cannot diverge. And the constraints are computed BEFORE the child is measured,
-// which is the part an earlier design got wrong: measuring under the parent's
+// which is the part that matters: measuring under the parent's
 // constraints and clamping afterwards lets the child choose outside the
 // configured min/max, and it is then PLACED into a rect it was never laid out
 // under — breaking constraints-down/sizes-up and desynchronising render, hit
@@ -94,8 +94,8 @@ func (r *Resizable) childConstraints(c tui.Constraints) tui.Constraints {
 // wrapper with a 30-cell cap inside a rect tightly fixed at 40. The child must
 // not be forced past its cap, so it is measured at 30; the wrapper must not
 // return a size its parent forbids, so it reports 40 and carries ten cells of
-// slack. An earlier version returned 30 and the runtime flagged the constraint
-// violation, which is the right answer arriving in the wrong place: a component
+// slack. Returning 30 would have the runtime flag a constraint violation, the
+// right answer arriving in the wrong place: a component
 // that returns an illegal size has already broken the layout contract by the
 // time anyone checks.
 //

@@ -79,7 +79,7 @@ func WithModalMaxSizePercent(width, height int) ModalOption {
 // dialog answers to, say. It belongs to the CARD, not the body, so the buttons
 // stay the card's and keep their mnemonics: a body cannot resolve a bare
 // letter, which is what moving the buttons into one to get a footer below
-// them used to cost.
+// them would cost.
 func WithModalFooter(text string) ModalOption {
 	return func(m *Modal) { m.card.footer = plainText(text) }
 }

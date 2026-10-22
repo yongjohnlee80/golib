@@ -344,8 +344,8 @@ func (l *floatLayer) Init(ctx *tui.Context) {
 // ContainsPointer implements tui.PointerContainer. A modal layer is the backdrop and contains every
 // point (HandleEvent catches what lands on it). A non-modal layer fills the area only to place its
 // content, and contains none: the pointer reaches the content, which contains its own, or the
-// application beneath. An always-shown non-modal float (the toasts) once took every click on the
-// screen, the menu bar's among them.
+// application beneath. Containing the area would let an always-shown non-modal float (the toasts)
+// take every click on the screen, the menu bar's among them.
 func (l *floatLayer) ContainsPointer(x, y int) bool { return l.owner.modal }
 
 // TrapsFocus implements tui.FocusScope: modal floats confine Tab.
