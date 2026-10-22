@@ -87,20 +87,21 @@ type TerminalTabs struct {
 // NewTerminalTabs creates a valid empty terminal container.
 func NewTerminalTabs() *TerminalTabs {
 	t := &TerminalTabs{}
-	t.strip = tabStrip{base: &t.Base, anchor: t, layer: "terminaltabs",
-		tabs: func() []stripTab {
-			out := make([]stripTab, len(t.entries))
-			for i, e := range t.entries {
-				out[i] = stripTab{id: string(e.id), label: terminalTabLabel(e)}
-			}
-			return out
-		},
-		active: func() string { return string(t.active) },
-		choose: func(id string) { _ = t.Select(TerminalTabID(id)) },
-	}
+	t.strip = tabStrip{base: &t.Base, anchor: t, layer: "terminaltabs", owner: t}
 	t.strip.bar, t.strip.tab, t.strip.selected = defaultTabsStyles()
 	return t
 }
+
+func (t *TerminalTabs) stripTabs() []stripTab {
+	out := make([]stripTab, len(t.entries))
+	for i, e := range t.entries {
+		out[i] = stripTab{id: string(e.id), label: terminalTabLabel(e)}
+	}
+	return out
+}
+
+func (t *TerminalTabs) stripActive() string   { return string(t.active) }
+func (t *TerminalTabs) stripChoose(id string) { _ = t.Select(TerminalTabID(id)) }
 
 // SetActions configures the separate '+' and right-click strip menu targets.
 // The host decides what to add and supplies its own contextual menu.
