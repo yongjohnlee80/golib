@@ -2,6 +2,7 @@ package decl
 
 import (
 	"fmt"
+	"slices"
 	"unicode"
 
 	"github.com/yongjohnlee80/golib/parse/qml"
@@ -174,13 +175,15 @@ func (w *windowNode) syncDock(items []docked) {
 	for _, it := range items {
 		keep[it.comp] = true
 	}
-	for _, c := range w.dock.Items() {
+	// a snapshot: removing shifts the dock's children under a live range, which would skip the
+	// one after each removal
+	for _, c := range slices.Collect(w.dock.Children()) {
 		if !keep[c] {
 			w.dock.Remove(c)
 		}
 	}
 	present := map[tui.Component]bool{}
-	for _, c := range w.dock.Items() {
+	for _, c := range w.dock.All() {
 		present[c] = true
 	}
 	for _, it := range items {
