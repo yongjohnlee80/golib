@@ -282,6 +282,11 @@ func (w *hwalker) node(n *phtml.Node) {
 		w.space = true
 		return
 	}
+	if style, ok := inlineTags[n.Name]; ok {
+		style(&w.st)
+		w.walk(n)
+		return
+	}
 	switch n.Name {
 	case "br":
 		if w.pre > 0 || w.open {
@@ -300,37 +305,13 @@ func (w *hwalker) node(n *phtml.Node) {
 			w.st.link = href
 		}
 		w.walk(n)
-	case "b", "strong":
-		w.st.bold = true
-		w.walk(n)
-	case "i", "em", "cite", "dfn", "var":
-		w.st.italic = true
-		w.walk(n)
-	case "code", "kbd", "samp", "tt":
-		w.st.code = true
-		w.walk(n)
-	case "u", "ins":
-		w.st.under = true
-		w.walk(n)
-	case "s", "del", "strike":
-		w.st.strike = true
-		w.walk(n)
 	case "h1", "h2", "h3", "h4", "h5", "h6":
 		b := w.block(hHeading)
 		b.level = int(n.Name[1] - '0')
 		w.walk(n)
 		w.close()
 	case "pre":
-		w.block(hPre)
-		w.pre++
-		w.walk(n)
-		w.pre--
-		if b := &w.blocks[len(w.blocks)-1]; w.open && len(b.spans) > 0 {
-			// the newline before </pre> ends the last line, it is not an empty one
-			last := &b.spans[len(b.spans)-1]
-			last.text = strings.TrimSuffix(last.text, "\n")
-		}
-		w.close()
+		w.preBlock(n)
 	case "blockquote":
 		w.close()
 		w.quote++
@@ -338,56 +319,11 @@ func (w *hwalker) node(n *phtml.Node) {
 		w.close()
 		w.quote--
 	case "div":
-		switch {
-		case hasClass(n, "callout"):
-			w.close()
-			w.quote++
-			w.walk(n)
-			w.close()
-			w.quote--
-		case hasClass(n, "callout-title"):
-			w.block(hPara)
-			w.st.bold = true
-			w.walk(n)
-			w.close()
-		default:
-			w.close()
-			w.walk(n)
-			w.close()
-		}
+		w.div(n)
 	case "ul", "ol", "menu":
-		w.close()
-		l := hlist{ordered: n.Name == "ol"}
-		if v, ok := n.Attr("start"); ok && l.ordered {
-			if s, err := strconv.Atoi(strings.TrimSpace(v)); err == nil {
-				l.n = s - 1
-			}
-		}
-		w.lists = append(w.lists, l)
-		w.walk(n)
-		w.close()
-		w.lists = w.lists[:len(w.lists)-1]
-		w.marker = ""
+		w.list(n)
 	case "li":
-		w.close()
-		if len(w.lists) == 0 {
-			w.lists = append(w.lists, hlist{})
-			defer func() { w.lists = w.lists[:len(w.lists)-1] }()
-		}
-		l := &w.lists[len(w.lists)-1]
-		l.n++
-		l.items++
-		if l.ordered {
-			w.marker = strconv.Itoa(l.n) + "."
-		} else {
-			w.marker = bullets[(len(w.lists)-1)%len(bullets)]
-		}
-		w.walk(n)
-		if w.marker != "" {
-			// an item with no text still shows its marker
-			w.block(hPara)
-		}
-		w.close()
+		w.item(n)
 	case "hr":
 		w.block(hRule)
 	case "table":
@@ -404,25 +340,7 @@ func (w *hwalker) node(n *phtml.Node) {
 		w.walk(n)
 		w.close()
 	case "td", "th":
-		if !w.open || w.blocks[len(w.blocks)-1].kind != hRow {
-			w.walk(n) // a cell outside a row is read as inline content
-			return
-		}
-		b := &w.blocks[len(w.blocks)-1]
-		if len(b.cellStarts) > 0 {
-			b.spans = append(b.spans, hspan{text: " │ ", deco: true, copy: "\t"})
-		}
-		b.cellStarts = append(b.cellStarts, len(b.spans))
-		w.space = false
-		if n.Name == "th" {
-			w.st.bold = true
-		}
-		w.cell++
-		w.walk(n)
-		w.cell--
-		if n := len(b.spans); n > 0 && !b.spans[n-1].deco {
-			b.spans[n-1].text = strings.TrimRight(b.spans[n-1].text, " ")
-		}
+		w.tableCell(n)
 	default:
 		if xhtml.Block(n.Name) {
 			w.close()
@@ -431,5 +349,119 @@ func (w *hwalker) node(n *phtml.Node) {
 			return
 		}
 		w.walk(n)
+	}
+}
+
+// inlineTags are the tags that only style their text: each sets one part of the walk's style for
+// what it encloses.
+var inlineTags = map[string]func(*inlineStyle){
+	"b": setBold, "strong": setBold,
+	"i": setItalic, "em": setItalic, "cite": setItalic, "dfn": setItalic, "var": setItalic,
+	"code": setCode, "kbd": setCode, "samp": setCode, "tt": setCode,
+	"u": setUnder, "ins": setUnder,
+	"s": setStrike, "del": setStrike, "strike": setStrike,
+}
+
+func setBold(s *inlineStyle)   { s.bold = true }
+func setItalic(s *inlineStyle) { s.italic = true }
+func setCode(s *inlineStyle)   { s.code = true }
+func setUnder(s *inlineStyle)  { s.under = true }
+func setStrike(s *inlineStyle) { s.strike = true }
+
+// preBlock is a <pre>: one block, its whitespace kept.
+func (w *hwalker) preBlock(n *phtml.Node) {
+	w.block(hPre)
+	w.pre++
+	w.walk(n)
+	w.pre--
+	if b := &w.blocks[len(w.blocks)-1]; w.open && len(b.spans) > 0 {
+		// the newline before </pre> ends the last line, it is not an empty one
+		last := &b.spans[len(b.spans)-1]
+		last.text = strings.TrimSuffix(last.text, "\n")
+	}
+	w.close()
+}
+
+// div is a <div>: a callout reads as a quote, its title as a bold paragraph, any other as a block.
+func (w *hwalker) div(n *phtml.Node) {
+	switch {
+	case hasClass(n, "callout"):
+		w.close()
+		w.quote++
+		w.walk(n)
+		w.close()
+		w.quote--
+	case hasClass(n, "callout-title"):
+		w.block(hPara)
+		w.st.bold = true
+		w.walk(n)
+		w.close()
+	default:
+		w.close()
+		w.walk(n)
+		w.close()
+	}
+}
+
+// list is a <ul>, <ol> or <menu>: its items are numbered from start for an ordered one.
+func (w *hwalker) list(n *phtml.Node) {
+	w.close()
+	l := hlist{ordered: n.Name == "ol"}
+	if v, ok := n.Attr("start"); ok && l.ordered {
+		if s, err := strconv.Atoi(strings.TrimSpace(v)); err == nil {
+			l.n = s - 1
+		}
+	}
+	w.lists = append(w.lists, l)
+	w.walk(n)
+	w.close()
+	w.lists = w.lists[:len(w.lists)-1]
+	w.marker = ""
+}
+
+// item is an <li>: its marker, the next number or the depth's bullet, goes to its first block.
+func (w *hwalker) item(n *phtml.Node) {
+	w.close()
+	if len(w.lists) == 0 {
+		w.lists = append(w.lists, hlist{})
+		defer func() { w.lists = w.lists[:len(w.lists)-1] }()
+	}
+	l := &w.lists[len(w.lists)-1]
+	l.n++
+	l.items++
+	if l.ordered {
+		w.marker = strconv.Itoa(l.n) + "."
+	} else {
+		w.marker = bullets[(len(w.lists)-1)%len(bullets)]
+	}
+	w.walk(n)
+	if w.marker != "" {
+		// an item with no text still shows its marker
+		w.block(hPara)
+	}
+	w.close()
+}
+
+// tableCell is a <td> or <th>: its spans join the row's, after a column rule; outside a row it is
+// read as inline content.
+func (w *hwalker) tableCell(n *phtml.Node) {
+	if !w.open || w.blocks[len(w.blocks)-1].kind != hRow {
+		w.walk(n) // a cell outside a row is read as inline content
+		return
+	}
+	b := &w.blocks[len(w.blocks)-1]
+	if len(b.cellStarts) > 0 {
+		b.spans = append(b.spans, hspan{text: " │ ", deco: true, copy: "\t"})
+	}
+	b.cellStarts = append(b.cellStarts, len(b.spans))
+	w.space = false
+	if n.Name == "th" {
+		w.st.bold = true
+	}
+	w.cell++
+	w.walk(n)
+	w.cell--
+	if n := len(b.spans); n > 0 && !b.spans[n-1].deco {
+		b.spans[n-1].text = strings.TrimRight(b.spans[n-1].text, " ")
 	}
 }
