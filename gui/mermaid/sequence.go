@@ -463,42 +463,16 @@ func (s *seqLayout) place(top, bottom float32) {
 
 // shift moves everything laid right by dx.
 func (l *Laid) shift(dx float32) {
-	mv := func(r *gui.Rect) { r.X += dx }
-	mvl := func(lb *label) {
-		if lb != nil {
-			mv(&lb.box)
-		}
-	}
 	for i := range l.nodes {
-		n := &l.nodes[i]
-		mv(&n.box)
-		mvl(&n.label)
-		for j := range n.parts {
-			for k := range n.parts[j].labels {
-				mvl(&n.parts[j].labels[k])
-			}
-		}
+		l.nodes[i] = l.nodes[i].moved(dx, 0)
 	}
 	for i := range l.edges {
-		e := &l.edges[i]
-		for j := range e.pts {
-			e.pts[j].X += dx
-		}
-		mvl(e.label)
-		mvl(e.headLabel)
-		mvl(e.tailLabel)
+		l.edges[i] = l.edges[i].moved(dx, 0)
 	}
 	for i := range l.group {
-		g := &l.group[i]
-		mv(&g.box)
-		mvl(&g.title)
-		for j := range g.parts {
-			for k := range g.parts[j].labels {
-				mvl(&g.parts[j].labels[k])
-			}
-		}
+		l.group[i] = l.group[i].moved(dx, 0)
 	}
 	for i := range l.texts {
-		mvl(&l.texts[i])
+		l.texts[i] = l.texts[i].moved(dx, 0)
 	}
 }

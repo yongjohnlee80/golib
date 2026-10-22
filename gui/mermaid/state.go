@@ -151,7 +151,7 @@ func (sl *stateLayer) scope(id string, dir pm.Dir) (stateScope, error) {
 		sz, c := in.Nodes[i], res.Nodes[i]
 		x, y := c.X-sz.W/2, c.Y-sz.H/2
 		if it.inner == nil {
-			out.nodes = append(out.nodes, shiftNode(it.node, x, y))
+			out.nodes = append(out.nodes, it.node.moved(x, y))
 			continue
 		}
 		box := gui.Rect{X: x, Y: y, W: sz.W, H: sz.H}
@@ -247,62 +247,15 @@ func (sl *stateLayer) item(st pm.StateNode, dir pm.Dir) (stateItem, error) {
 	return stateItem{node: n}, nil
 }
 
-// shiftNode is n placed dx, dy further on.
-func shiftNode(n laidNode, dx, dy float32) laidNode {
-	n.box.X, n.box.Y = n.box.X+dx, n.box.Y+dy
-	n.label = n.label.at(n.label.box.X+dx, n.label.box.Y+dy)
-	if n.parts != nil {
-		parts := make([]part, len(n.parts))
-		for i, p := range n.parts {
-			parts[i] = shiftPart(p, dx, dy)
-		}
-		n.parts = parts
-	}
-	return n
-}
-
-// shiftPart is p placed dx, dy further on; a part without a divider keeps none.
-func shiftPart(p part, dx, dy float32) part {
-	if p.y != 0 {
-		p.y += dy
-	}
-	labels := make([]label, len(p.labels))
-	for i, lb := range p.labels {
-		labels[i] = lb.at(lb.box.X+dx, lb.box.Y+dy)
-	}
-	p.labels = labels
-	return p
-}
-
 // shift places everything in s dx, dy further on.
 func (s *stateScope) shift(dx, dy float32) {
 	for i := range s.nodes {
-		s.nodes[i] = shiftNode(s.nodes[i], dx, dy)
+		s.nodes[i] = s.nodes[i].moved(dx, dy)
 	}
 	for i := range s.edges {
-		e := &s.edges[i]
-		pts := make([]gui.Point, len(e.pts))
-		for j, p := range e.pts {
-			pts[j] = gui.Pt(p.X+dx, p.Y+dy)
-		}
-		e.pts = pts
-		for _, lb := range []**label{&e.label, &e.headLabel, &e.tailLabel} {
-			if *lb != nil {
-				moved := (*lb).at((*lb).box.X+dx, (*lb).box.Y+dy)
-				*lb = &moved
-			}
-		}
+		s.edges[i] = s.edges[i].moved(dx, dy)
 	}
 	for i := range s.groups {
-		g := &s.groups[i]
-		g.box.X, g.box.Y = g.box.X+dx, g.box.Y+dy
-		g.title = g.title.at(g.title.box.X+dx, g.title.box.Y+dy)
-		if g.parts != nil {
-			parts := make([]part, len(g.parts))
-			for j, p := range g.parts {
-				parts[j] = shiftPart(p, dx, dy)
-			}
-			g.parts = parts
-		}
+		s.groups[i] = s.groups[i].moved(dx, dy)
 	}
 }
