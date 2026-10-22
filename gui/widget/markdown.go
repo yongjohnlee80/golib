@@ -118,38 +118,17 @@ type fence struct {
 	info string
 }
 
-// openFence reads a line as a fence opening: up to three spaces, then three or more '`' or '~'.
+// openFence reads a line as a fence opening (markdown.FenceOpens), with its info string.
 func openFence(line string) (fence, bool) {
-	s := strings.TrimLeft(line, " ")
-	if len(line)-len(s) > 3 || len(s) < 3 || (s[0] != '`' && s[0] != '~') {
+	ch, n, ok := markdown.FenceOpens(line)
+	if !ok {
 		return fence{}, false
 	}
-	n := 0
-	for n < len(s) && s[n] == s[0] {
-		n++
-	}
-	if n < 3 {
-		return fence{}, false
-	}
-	info := strings.TrimSpace(s[n:])
-	if s[0] == '`' && strings.Contains(info, "`") {
-		return fence{}, false
-	}
-	return fence{ch: s[0], n: n, info: info}, true
+	return fence{ch: ch, n: n, info: strings.TrimSpace(strings.TrimLeft(line, " ")[n:])}, true
 }
 
-// closes reports whether line closes f: its character, at least as many, nothing else.
-func (f fence) closes(line string) bool {
-	s := strings.TrimLeft(line, " ")
-	if len(line)-len(s) > 3 {
-		return false
-	}
-	n := 0
-	for n < len(s) && s[n] == f.ch {
-		n++
-	}
-	return n >= f.n && strings.TrimSpace(s[n:]) == ""
-}
+// closes reports whether line closes f (markdown.FenceCloses).
+func (f fence) closes(line string) bool { return markdown.FenceCloses(line, f.ch, f.n) }
 
 // Blocks are the fenced code blocks, each a block of its lines (an unclosed one runs to the end),
 // and every other line alone.
@@ -322,27 +301,10 @@ func spanWidth(s flow.Span, t *gui.TextShaper) float32 {
 // "---" right under a line of text underlines it instead (a setext heading), so is left as text.
 func isRule(lines []string, ln int) bool {
 	s := strings.TrimSpace(lines[ln])
-	if !isThematic(s) || isListItem(lines[ln]) {
+	if !markdown.ThematicBreak(s) || isListItem(lines[ln]) {
 		return false
 	}
 	return s[0] != '-' || ln == 0 || isBlank(lines[ln-1])
-}
-
-// isThematic reports whether string s is a Markdown thematic break rule.
-func isThematic(s string) bool {
-	if s == "" || !strings.ContainsRune("-*_", rune(s[0])) {
-		return false
-	}
-	n := 0
-	for _, c := range s {
-		switch {
-		case c == rune(s[0]):
-			n++
-		case c != ' ' && c != '\t':
-			return false
-		}
-	}
-	return n >= 3
 }
 
 // quoteDepth reads a line's blockquote marks: how many '>' (each with the space after it) before
@@ -369,11 +331,11 @@ func quoteDepth(line string) (depth, off int) {
 // view's highlighter reads it: a "---" first line, closed by "---" or "...". Unclosed (while it
 // is being written), it runs to the end. 0: none.
 func frontmatterEnd(lines []string) (end int, closed bool) {
-	if len(lines) == 0 || strings.TrimSpace(lines[0]) != "---" {
+	if len(lines) == 0 || !markdown.FrontmatterOpens(lines[0]) {
 		return 0, false
 	}
 	for k := 1; k < len(lines); k++ {
-		if s := strings.TrimSpace(lines[k]); s == "---" || s == "..." {
+		if markdown.FrontmatterCloses(lines[k]) {
 			return k + 1, true
 		}
 	}
