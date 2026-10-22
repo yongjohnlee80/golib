@@ -91,7 +91,7 @@ func (v *modelView) text(i int) string {
 // ---------------------------------------------------------------- ListView
 
 type listViewNode struct {
-	widget.Base
+	hostOne
 	mv        modelView // composed, not embedded: its methods call each other
 	list      *widget.List[int]
 	activated func(args ...qml.SpecValue)
@@ -113,6 +113,7 @@ func buildListView(b Build) (tui.Component, []string, error) {
 	n.list = widget.NewList(widget.WithSource[int](modelSource{&n.mv}, n.mv.text),
 		widget.WithListOnActivate[int](func(i int) { n.activated(numberValue(i)) }),
 		widget.WithListOnCursor[int](func(i int) { n.moved(numberValue(i)) }))
+	n.inner = n.list
 	n.mv.changed = func(Change) {
 		key, had := n.mv.keyAt(n.currentIndex())
 		n.list.RefreshSource()
@@ -125,20 +126,7 @@ func buildListView(b Build) (tui.Component, []string, error) {
 	return n, consumed, nil
 }
 
-// Init mounts the list, which reports its rows to the ListView itself (WithListOnActivate).
-func (n *listViewNode) Init(ctx *tui.Context) {
-	n.Base.Init(ctx)
-	ctx.Mount(n.list)
-}
-
-func (n *listViewNode) Layout(c tui.Constraints) tui.Size {
-	sz := n.Context().LayoutChild(n.list, c)
-	n.Context().PlaceChild(n.list, tui.Rect{W: sz.W, H: sz.H})
-	return sz
-}
-
-func (*listViewNode) Render(tui.Surface)         {}
-func (*listViewNode) HandleEvent(tui.Event) bool { return false }
+// The list, hosted (hostOne), reports its rows to the ListView itself (WithListOnActivate).
 
 func (n *listViewNode) currentIndex() int {
 	if i, ok := n.list.Selected(); ok {
@@ -170,7 +158,7 @@ var listViewType = Type{
 // ---------------------------------------------------------------- ComboBox
 
 type comboBoxNode struct {
-	widget.Base
+	hostOne
 	mv        modelView // composed, not embedded: its methods call each other
 	valueRole string
 	sel       *widget.Select[int]
@@ -202,6 +190,7 @@ func buildComboBox(b Build) (tui.Component, []string, error) {
 	}
 	opts = append(opts, widget.WithSelectOnChange[int](func(i int) { n.activated(numberValue(i)) }))
 	n.sel = widget.NewSelect(opts...)
+	n.inner = n.sel
 	n.mv.changed = func(Change) {
 		key, had := n.mv.keyAt(n.currentIndex())
 		n.refill()
@@ -221,11 +210,8 @@ func (n *comboBoxNode) refill() {
 	n.sel.SetOptions(items)
 }
 
-func (n *comboBoxNode) Init(ctx *tui.Context) {
-	n.Base.Init(ctx)
-	ctx.Mount(n.sel) // it reports a choice to the ComboBox itself (WithSelectOnChange)
-}
-
+// Layout lays the hosted field out free of a minimum width, so the ComboBox is as wide as its
+// field. The field reports a choice to the ComboBox itself (WithSelectOnChange).
 func (n *comboBoxNode) Layout(c tui.Constraints) tui.Size {
 	fieldConstraints := c
 	fieldConstraints.MinW = 0
@@ -233,9 +219,6 @@ func (n *comboBoxNode) Layout(c tui.Constraints) tui.Size {
 	n.Context().PlaceChild(n.sel, tui.Rect{W: sz.W, H: sz.H})
 	return c.Constrain(sz)
 }
-
-func (*comboBoxNode) Render(tui.Surface)         {}
-func (*comboBoxNode) HandleEvent(tui.Event) bool { return false }
 
 func (n *comboBoxNode) currentIndex() int {
 	if i, ok := n.sel.Value(); ok {
