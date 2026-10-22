@@ -1,6 +1,9 @@
 package widget
 
 import (
+	"image/color"
+	"sync/atomic"
+
 	"github.com/yongjohnlee80/golib/tui"
 	"github.com/yongjohnlee80/golib/tui/keymap"
 	"github.com/yongjohnlee80/golib/tui/style"
@@ -29,6 +32,27 @@ type TabStrip struct {
 	tabs     []StripTab
 	active   string
 	onSelect func(id string)
+	barColor atomic.Pointer[func() (color.NRGBA, bool)] // SetBarColor; read where a native painter paints
+}
+
+// SetBarColor gives a native painter the colour to fill the strip's bar with, asked at each paint
+// (false: none yet, and the cells' colour stands): a strip on a panel's title bar takes the panel's
+// colour, not its cells', so the bar reads as one. The terminal draws the cells and never asks. nil
+// takes it away.
+func (t *TabStrip) SetBarColor(fn func() (color.NRGBA, bool)) {
+	if fn == nil {
+		t.barColor.Store(nil)
+		return
+	}
+	t.barColor.Store(&fn)
+}
+
+// BarColor is the colour SetBarColor gives, false when none is set or it has none yet.
+func (t *TabStrip) BarColor() (color.NRGBA, bool) {
+	if fn := t.barColor.Load(); fn != nil {
+		return (*fn)()
+	}
+	return color.NRGBA{}, false
 }
 
 // NewTabStrip is an empty strip.
