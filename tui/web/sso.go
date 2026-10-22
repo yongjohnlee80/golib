@@ -51,15 +51,17 @@ import (
 //     cleaned up" is not a state this type can be constructed in.
 //   - The expiry sweep is internal and calls Release, so a client that abandons a
 //     login cannot leave state behind by the consumer forgetting a timer.
-//   - The park's capacity also sets [MaxPendingLogins], so the two bounds cannot
-//     drift into disagreeing about how many logins may be in flight.
+//   - The park holds its [Admission]'s cap, so the two bounds cannot drift into
+//     disagreeing about how many logins may be in flight.
 //   - [SSO.Factory] puts the release on the App's own stack as a deferred call, so
 //     it runs on every exit path including a panic.
 //
 // # The shape of a consumer
 //
+//	adm := web.NewAdmission(web.AdmissionCap(8)) // the pending-login budget, built first
 //	sso, err := web.NewSSO(web.SSOConfig[*myUpstream]{
-//	    Max: 8, TTL: 30 * time.Second,
+//	    Admission: adm, // attaches: the login route parks here, and the park settles
+//	    TTL:       30 * time.Second,
 //	    Provision: func(ctx context.Context, id *auth.Identity) (*myUpstream, error) {
 //	        return dial(ctx, id.Subject) // for ticket / mTLS / SSHSIG attaches
 //	    },
@@ -74,11 +76,9 @@ import (
 //	    sso.Factory(func(b tui.Backend, id *auth.Identity, up *myUpstream) web.Runner {
 //	        return myApp(b, id, up)
 //	    }),
-//	    mOpt,
+//	    web.ManagerAdmission(adm),
 //	)
-//
-//	// Wiring, both hooks at once:
-//	hOpt, mOpt := sso.Options()
+//	h, err := web.NewHandler(cfg, mgr) // leases from mgr's Admission, so parks through sso
 //
 // [SSO.Claim] remains for a consumer writing their own Runner; [SSO.Factory] is
 // the form to reach for.
@@ -90,23 +90,14 @@ type SSO[T any] struct {
 	now       func() time.Time
 	log       logger.Logger
 
-	// settle returns the admission slot a parked handoff owns. Installed by
-	// [SSO.Options], because only the park knows when its entry is actually gone:
-	// the Manager returns from CreateFor as soon as the factory hands back a
-	// Runner, and the claim happens later on the session's own goroutine. Settling
-	// on the Manager's schedule left a window in which the gate had a free slot
-	// while the park was still full, so a new login could authenticate, allocate,
-	// and then be told 503.
-	settle func(string)
-
-	// commit converts this login's admission reservation into an accounted slot AND
-	// publishes the park entry while the gate's own lock is held, so membership and
-	// publication are indivisible. Reporting the answer and letting hold insert
-	// afterwards was still a time-of-check-to-time-of-use gap: the key could be
-	// swept in between.
-	//
-	// false means the reservation lapsed and the entry was NOT published.
-	commit func(handoff string, publish func()) bool
+	// adm is the pending-login budget the park accounts against, nil for a park on
+	// its own. Only the park knows when its entry is actually gone: the Manager
+	// returns from CreateFor as soon as the factory hands back a Runner, and the claim
+	// happens later on the session's own goroutine. So the park settles the slots
+	// (settleFromPark), and it publishes each entry through adm.commit, which turns the
+	// login's reservation into an accounted slot while the gate's lock is held, so
+	// membership and publication are indivisible.
+	adm *Admission
 
 	mu     sync.Mutex
 	cond   *sync.Cond
@@ -161,8 +152,15 @@ type SSOConfig[T any] struct {
 	// reasons, and on the sweeper for the third.
 	Release func(T, HandoffReason)
 
-	// Max is the capacity of the park, and also becomes [MaxPendingLogins] so the
-	// two cannot disagree. Zero uses [DefaultMaxPendingLogins].
+	// Admission is the pending-login budget the park accounts against: the one the
+	// [Manager] is given ([ManagerAdmission]), and through it the [Handler]'s. The SSO
+	// attaches itself to it, so the Handler's login route parks through it and the park,
+	// not the Manager, settles the handoffs. Nil: a park on its own, with no budget.
+	Admission *Admission
+
+	// Max is the capacity of the park. With an Admission the park holds the
+	// Admission's [Admission.Cap], so the two cannot disagree: leave Max zero, or set
+	// it equal. Without one, zero uses [DefaultMaxPendingLogins].
 	Max int
 
 	// TTL bounds how long a parked value waits for an attach. Zero uses
@@ -240,6 +238,17 @@ func NewSSO[T any](cfg SSOConfig[T]) (*SSO[T], error) {
 	if s.ttl == 0 {
 		s.ttl = DefaultHandoffTTL
 	}
+	if a := cfg.Admission; a != nil {
+		if cfg.Max != 0 && cfg.Max != a.Cap() {
+			return nil, errs.Wrap(errs.ErrInvalidArgument, "web.NewSSO: Max %d differs from the Admission's cap %d; "+
+				"set the cap once, with AdmissionCap", cfg.Max, a.Cap())
+		}
+		s.max = a.Cap()
+		if err := a.attach(s); err != nil {
+			return nil, err
+		}
+		s.adm = a
+	}
 	if s.max == 0 {
 		s.max = DefaultMaxPendingLogins
 	}
@@ -273,10 +282,10 @@ func (s *SSO[T]) Stash(ctx context.Context, v T) error {
 // from every path that removes a parked entry — and only from those paths, so the
 // slot cannot come back before the entry is gone.
 func (s *SSO[T]) settleHandoff(handoff string) {
-	if handoff == "" || s.settle == nil {
+	if handoff == "" || s.adm == nil {
 		return
 	}
-	s.settle(handoff)
+	s.adm.settleFromPark(handoff)
 }
 
 // releaseValue runs the consumer's cleanup, contained.
@@ -348,76 +357,44 @@ func (s *SSO[T]) Claim(info *SessionInfo) (T, bool) {
 	return e.value, true
 }
 
-// Options returns the handler and manager wiring, together.
-//
-// Together on purpose. Returning them separately would let a consumer wire the
-// login side and forget the release side, which is the leak of with extra
-// steps.
-func (s *SSO[T]) Options() (HandlerOption, ManagerOption) {
-	hOpt := func(h *Handler) {
-		OnLogin(func(handoff string, _ *auth.Identity, slot *Stash) error {
-			v, ok := slot.Take().(T)
-			if !ok {
-				// NOTHING WAS STASHED. This is the stock auth/password factor: it
-				// verifies a hash and knows nothing about this package, so it cannot
-				// call Stash. Refusing the login here meant the shipped password
-				// mechanism returned 503 through the helper that claimed to support
-				// every mechanism.
-				//
-				// With a Provision, the login is fine: it mints its ticket, parks
-				// nothing, and the attach provisions like any other direct
-				// mechanism. Without one there is no way to give the session
-				// upstream state at all, so the login fails HERE rather than
-				// handing out a ticket that is guaranteed to fail at attach.
-				if s.provision != nil {
-					return nil
-				}
-				return errs.Wrap(errs.ErrPrecondition, "web: the login stashed no upstream state and no "+
-					"Provision is configured, so the ticket it would mint could not "+
-					"produce a usable session")
-			}
-			if err := s.hold(handoff, v); err != nil {
-				// The value is ours now — Take transferred ownership — and the login
-				// is about to fail, so it must not be dropped on the floor.
-				s.releaseValue(v, LoginFailed)
-				return err
-			}
+// parkLogin is the login hook an attached Admission gives the Handler: it takes what the login's
+// factor stashed into the park, keyed by the handoff, through the Admission's commit.
+func (s *SSO[T]) parkLogin(handoff string, _ *auth.Identity, slot *Stash) error {
+	v, ok := slot.Take().(T)
+	if !ok {
+		// NOTHING WAS STASHED. This is the stock auth/password factor: it
+		// verifies a hash and knows nothing about this package, so it cannot
+		// call Stash. Refusing the login here meant the shipped password
+		// mechanism returned 503 through the helper that claimed to support
+		// every mechanism.
+		//
+		// With a Provision, the login is fine: it mints its ticket, parks
+		// nothing, and the attach provisions like any other direct
+		// mechanism. Without one there is no way to give the session
+		// upstream state at all, so the login fails HERE rather than
+		// handing out a ticket that is guaranteed to fail at attach.
+		if s.provision != nil {
 			return nil
-		})(h)
-		// The park's capacity IS the pending-login budget, so the two cannot
-		// drift into disagreeing.
-		MaxPendingLogins(s.max)(h)
-		// And the park, not the Manager, returns the slots: see SSO.settle. The
-		// backstop deadline covers the case where nothing settles at all — a
-		// session that failed before its Runner started — so it must outlast BOTH
-		// the ticket and the park's own TTL, or the gate would free a slot while
-		// the park still held its entry.
-		h.parkSettles = true
-		if s.ttl > h.pendingHold {
-			h.pendingHold = s.ttl
 		}
-		s.settle = func(handoff string) {
-			if h.pending != nil {
-				h.pending.release(handoff)
-			}
-		}
-		s.commit = func(handoff string, publish func()) bool {
-			if h.pending == nil {
-				publish()
-				return true
-			}
-			// Stamped from the handler's clock at the moment of the park, so the
-			// slot's deadline cannot end up EARLIER in absolute time than the
-			// park's — which it necessarily was when the two were set at
-			// different moments with equal durations.
-			return h.pending.commit(handoff, h.now().Add(h.pendingHold), publish)
-		}
+		return errs.Wrap(errs.ErrPrecondition, "web: the login stashed no upstream state and no "+
+			"Provision is configured, so the ticket it would mint could not "+
+			"produce a usable session")
 	}
-	mOpt := OnHandoffUnused(func(handoff string, r HandoffReason) {
-		s.Release(handoff, r)
-	})
-	return hOpt, mOpt
+	if err := s.hold(handoff, v); err != nil {
+		// The value is ours now — Take transferred ownership — and the login
+		// is about to fail, so it must not be dropped on the floor.
+		s.releaseValue(v, LoginFailed)
+		return err
+	}
+	return nil
 }
+
+// releaseUnused releases a parked handoff no session will claim: what the Manager does for an
+// attached park on a reattach or a failed attach.
+func (s *SSO[T]) releaseUnused(handoff string, reason HandoffReason) { s.Release(handoff, reason) }
+
+// entryTTL is how long an entry stays parked, which the Admission's backstop hold never undercuts.
+func (s *SSO[T]) entryTTL() time.Duration { return s.ttl }
 
 // Session returns this session's upstream state and the release that MUST run
 // when the session ends.
@@ -606,11 +583,11 @@ func (s *SSO[T]) hold(handoff string, v T) error {
 		e.timer = time.AfterFunc(s.ttl, func() { s.expire(handoff) })
 		s.parked[handoff] = e
 	}
-	if s.commit == nil {
-		// No gate wired: nothing to account against, so publish directly. This is
-		// the shape a unit test or a consumer with no Handler sees.
+	if s.adm == nil {
+		// No budget: nothing to account against, so publish directly. This is the
+		// shape a park on its own sees.
 		publish()
-	} else if !s.commit(handoff, publish) {
+	} else if !s.adm.commit(handoff, publish) {
 		s.mu.Unlock()
 		s.releaseAll(stale, Expired)
 		return ErrAdmissionLapsed

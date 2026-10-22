@@ -503,16 +503,16 @@ func TestLimits_Normalize(t *testing.T) {
 		t.Errorf("a zero Limits must yield the defaults: got %+v want %+v", got, d)
 	}
 	// Setting one field must not clear the rest.
-	got := Limits{QueueDepth: 4}.normalize()
-	if got.QueueDepth != 4 {
-		t.Errorf("QueueDepth = %d, want 4", got.QueueDepth)
+	got := Limits{Burst: 4}.normalize()
+	if got.Burst != 4 {
+		t.Errorf("Burst = %v, want 4", got.Burst)
 	}
 	if got.MaxMessage != d.MaxMessage || got.EventsPerSecond != d.EventsPerSecond {
 		t.Errorf("setting one field cleared others: %+v", got)
 	}
 	// The documented defaults, exactly.
 	if d.MaxMessage != 64<<10 || d.EventsPerSecond != 500 || d.Burst != 2000 ||
-		d.QueueDepth != 1024 || d.OverloadGrace != 2*time.Second {
+		d.OverloadGrace != 2*time.Second || DefaultQueueDepth != 1024 {
 		t.Errorf("defaults drifted from ADR-0009 §2.9: %+v", d)
 	}
 }
@@ -522,8 +522,8 @@ func TestSessionLoop_SustainedFloodCloses(t *testing.T) {
 	t.Parallel()
 	now := time.Now()
 	// A tiny queue and no grace, so the flood is unambiguous.
-	l, _ := loopFor(t, testPolicy(t), nil, BackendOptions(EventQueue(2)))
-	l.limits = Limits{EventsPerSecond: 1e9, Burst: 1e9, QueueDepth: 2, OverloadGrace: 0}.normalize()
+	l, _ := loopFor(t, testPolicy(t), nil, QueueDepth(2))
+	l.limits = Limits{EventsPerSecond: 1e9, Burst: 1e9, OverloadGrace: 0}.normalize()
 	l.limits.OverloadGrace = 0
 	l.now = func() time.Time { return now }
 	l.sleep = func(context.Context, time.Duration) { now = now.Add(time.Second) }

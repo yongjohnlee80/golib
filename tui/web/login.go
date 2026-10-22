@@ -215,14 +215,11 @@ type loginLease struct {
 // reconnect at full capacity impossible, since a reconnect must log in before
 // it can reattach.
 func (h *Handler) admitLogin() (*loginLease, bool) {
-	if h.pending == nil {
-		return &loginLease{}, true
-	}
-	if !h.pending.enter() {
+	if !h.adm.gate.enter() {
 		logger.Notice(h.log, sessionAudit{Kind: "login-denied", Reason: "pending-login limit"})
 		return nil, false
 	}
-	return &loginLease{gate: h.pending}, true
+	return &loginLease{gate: h.adm.gate}, true
 }
 
 // leave returns the slot, unless a handoff owns it.
@@ -250,7 +247,13 @@ func (h *Handler) authenticateLogin(r *http.Request, req loginRequest, stash *St
 // error means the login did not succeed: the ticket is revoked and the lease returned, and the
 // caller refuses the request.
 func (h *Handler) parkHandoff(lease *loginLease, handoff string, identity *auth.Identity, stash *Stash, secret auth.Secret) error {
-	if h.onLogin == nil {
+	hook := h.onLogin // an OnLogin set by hand, else the attached park's, read now
+	if hook == nil {
+		if p := h.adm.attached(); p != nil {
+			hook = p.parkLogin
+		}
+	}
+	if hook == nil {
 		return nil
 	}
 	// THE LEASE GOES IN FIRST, before the hook that parks.
@@ -265,13 +268,13 @@ func (h *Handler) parkHandoff(lease *loginLease, handoff string, identity *auth.
 	// Installing first inverts the race harmlessly: a settle that arrives early
 	// finds the key and returns the slot, and the rollback below is idempotent.
 	if lease.gate != nil {
-		lease.leased = lease.gate.hold(handoff, h.now().Add(h.pendingHold))
+		lease.leased = lease.gate.hold(handoff, h.adm.deadline())
 		// The hook's capability to publish its own park entry atomically with
 		// that reservation. Without it a consumer not using web.SSO had no way
 		// to be safe here at all, because the gate is unexported.
 		stash.mu.Lock()
 		stash.commit = func(publish func()) bool {
-			return lease.gate.commit(handoff, h.now().Add(h.pendingHold), publish)
+			return h.adm.commit(handoff, publish)
 		}
 		stash.mu.Unlock()
 	}
@@ -293,7 +296,7 @@ func (h *Handler) parkHandoff(lease *loginLease, handoff string, identity *auth.
 	var hookErr error
 	func() {
 		defer stash.disarm()
-		hookErr = h.onLogin(handoff, identity, stash)
+		hookErr = hook(handoff, identity, stash)
 	}()
 	if err := hookErr; err != nil {
 		// The caller could not record the login, so the login did NOT succeed.

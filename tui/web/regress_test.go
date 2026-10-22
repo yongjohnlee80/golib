@@ -109,21 +109,15 @@ func TestRegress_ResizeDoesNotDesyncWhenTheAppIsBusy(t *testing.T) {
 	}
 }
 
-// #5b: Limits.QueueDepth was documented as 1024 while the Backend defaulted to
-// 256 and nothing read the field, so the documented limit and the real one were
-// different numbers.
+// #5b: the queue depth is the one number that decides a session's event queue: the Manager's
+// QueueDepth, over a BackendOptions EventQueue (a documented limit and a real one must not be two
+// numbers).
 func TestRegress_QueueDepthIsTheRealCapacity(t *testing.T) {
 	t.Parallel()
-	m, err := NewManager(func(tui.Backend, *SessionInfo) Runner { return newFakeApp() })
-	if err != nil {
-		t.Fatal(err)
-	}
 	const depth = 7
-	if _, err := NewHandler(Config{
-		Addr: "127.0.0.1:8080", Policy: testPolicy(t),
-		AllowedOrigins: []string{"https://tui.example.test"},
-		ExpectedHost:   "tui.example.test",
-	}, m, WithLimits(Limits{QueueDepth: depth})); err != nil {
+	m, err := NewManager(func(tui.Backend, *SessionInfo) Runner { return newFakeApp() },
+		BackendOptions(EventQueue(depth*3)), QueueDepth(depth))
+	if err != nil {
 		t.Fatal(err)
 	}
 	s, err := m.Create(context.Background(), &auth.Identity{Subject: "alice"}, hello())

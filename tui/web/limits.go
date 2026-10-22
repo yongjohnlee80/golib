@@ -19,12 +19,9 @@ type Limits struct {
 	EventsPerSecond float64
 
 	// Burst is a token-bucket CREDIT, not a promise that this many events are
-	// absorbed. The event queue holds [Limits.QueueDepth]; anything beyond it
-	// applies backpressure and may reach the overload close.
+	// absorbed. The event queue holds the Manager's [QueueDepth]; anything beyond
+	// it applies backpressure and may reach the overload close.
 	Burst float64
-
-	// QueueDepth is the un-coalesced event queue capacity.
-	QueueDepth int
 
 	// OverloadGrace is how long the queue may stay continuously full before the
 	// connection is closed with 1008 Policy Violation. A brief burst is
@@ -54,7 +51,6 @@ const (
 	DefaultMaxMessage      = 64 << 10
 	DefaultEventsPerSecond = 500
 	DefaultBurst           = 2000
-	DefaultQueueDepth      = 1024
 	DefaultOverloadGrace   = 2 * time.Second
 
 	// DefaultMaxPending is generous relative to DefaultMaxSessions: a burst of
@@ -73,7 +69,6 @@ func DefaultLimits() Limits {
 		MaxMessage:      DefaultMaxMessage,
 		EventsPerSecond: DefaultEventsPerSecond,
 		Burst:           DefaultBurst,
-		QueueDepth:      DefaultQueueDepth,
 		OverloadGrace:   DefaultOverloadGrace,
 		MaxPending:      DefaultMaxPending,
 		HelloTimeout:    DefaultHelloTimeout,
@@ -93,9 +88,6 @@ func (l Limits) normalize() Limits {
 	}
 	if l.Burst <= 0 {
 		l.Burst = d.Burst
-	}
-	if l.QueueDepth <= 0 {
-		l.QueueDepth = d.QueueDepth
 	}
 	if l.OverloadGrace <= 0 {
 		l.OverloadGrace = d.OverloadGrace

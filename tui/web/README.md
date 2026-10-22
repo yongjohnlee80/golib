@@ -337,8 +337,10 @@ session — from the login route to the `App` built for that login.
 wrong.** See `Example_singleSignOn` in the godoc for a complete wiring.
 
 ```go
+adm := web.NewAdmission(web.AdmissionCap(8)) // the pending-login budget, built first
 sso, err := web.NewSSO(web.SSOConfig[*myUpstream]{
-    Max: 8, TTL: 30 * time.Second,
+    Admission: adm, // attaches: the login route parks here, and the park settles
+    TTL:       30 * time.Second,
     // For attaches that carried no login: ticket, mTLS, SSHSIG.
     Provision: func(ctx context.Context, id *auth.Identity) (*myUpstream, error) {
         return dial(ctx, id.Subject)
@@ -347,7 +349,6 @@ sso, err := web.NewSSO(web.SSOConfig[*myUpstream]{
     // Revoke BEFORE closing: closing a transport does not revoke a credential.
     Release: func(u *myUpstream, r web.HandoffReason) { u.Logout(); u.Close() },
 })
-handlerOpt, managerOpt := sso.Options()      // both hooks, together
 
 // in the login factor's Verify — the only place holding the credential:
 sso.Stash(ctx, upstream)
@@ -357,8 +358,9 @@ mgr, err := web.NewManager(
     sso.Factory(func(b tui.Backend, id *auth.Identity, up *myUpstream) web.Runner {
         return myApp(b, id, up)
     }),
-    managerOpt,
+    web.ManagerAdmission(adm),
 )
+h, err := web.NewHandler(cfg, mgr) // leases from mgr's Admission, so parks through sso
 ```
 
 A consumer writes three things: **how to allocate for a login** (`Stash`, in
@@ -429,7 +431,7 @@ So the obligations are structural:
 | Obligation | How it is enforced |
 |---|---|
 | release on every path | `Release` is **required**; `NewSSO` fails without it |
-| both hooks are one value | `Options()` returns them **together**, so you never have to know the second exists (Go being Go, you can still discard one) |
+| both hooks are one value | the SSO attaches to its `Admission`, which gives the Handler its login hook and the Manager its release, so there is nothing to wire separately |
 | clean up abandoned logins | each parked entry carries **its own timer** |
 | an expired entry is never served | `Claim` refuses and releases it |
 | release before the park | `SSO.Stash` registers the cleanup **with** the value, so a later refusal, a failed ticket or a full park releases it |
@@ -447,7 +449,7 @@ So the obligations are structural:
 
 ### The raw hooks
 
-`OnLogin`, `OnHandoffUnused`, `Stash`, `HandoffID` and `MaxPendingLogins` remain
+`OnLogin`, `OnHandoffUnused`, `Stash`, `HandoffID` and `Admission` remain
 exported for a consumer whose park must live somewhere else — a shared store
 across replicas, say. `SSO.Claim` and `SSO.Session` likewise remain exported for a
 consumer writing their own `Runner`; if you use `Session` directly, **defer the
@@ -468,7 +470,7 @@ Four things about this are load-bearing, and each was forced by a specific defec
   existing App, so a reconnecting client's fresh login parks state that nothing
   claims. Without this hook that leaks on every reconnect — the defect the whole
   seam exists for.
-- **Parked logins have their own budget** (`MaxPendingLogins`), separate from
+- **Parked logins have their own budget** (an `Admission`, `AdmissionCap`), separate from
   `MaxSessions`. Counting them together deadlocks a reconnect at a full session
   cap, because a reconnect must log in *before* it can reattach.
 

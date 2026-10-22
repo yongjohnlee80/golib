@@ -464,7 +464,7 @@ func TestHandoff_PendingLoginBudget(t *testing.T) {
 	t.Parallel()
 	p := newPark()
 	h, _, _ := handoffHandler(t, p)
-	h.pending = newGate(3)
+	h.adm.gate = newGate(3)
 
 	// A REFUSED login must not consume a slot. Checked with the budget NOT full,
 	// because the budget is judged BEFORE the credential — see below.
@@ -473,7 +473,7 @@ func TestHandoff_PendingLoginBudget(t *testing.T) {
 	if rec.Code != http.StatusUnauthorized {
 		t.Fatalf("a wrong password returned %d, want 401", rec.Code)
 	}
-	if got := h.pending.pending(); got != 0 {
+	if got := h.adm.gate.pending(); got != 0 {
 		t.Fatalf("a failed login consumed %d slots, want 0", got)
 	}
 
@@ -482,7 +482,7 @@ func TestHandoff_PendingLoginBudget(t *testing.T) {
 			t.Fatalf("login %d: %v", i, err)
 		}
 	}
-	if got := h.pending.pending(); got != 3 {
+	if got := h.adm.gate.pending(); got != 3 {
 		t.Fatalf("pending = %d after 3 parked logins, want 3", got)
 	}
 	if _, err := tryLogin(h); err == nil {
