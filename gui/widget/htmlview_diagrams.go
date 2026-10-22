@@ -67,10 +67,6 @@ type htmlDiagramReady struct {
 // pageDiagram is a pre drawn as a picture: its language (mermaid, vega-lite) and its source.
 type pageDiagram struct{ lang, src string }
 
-// diagramClasses are the pre classes drawn as pictures, with the language each asks for: both
-// spellings of Vega-Lite, as a fence accepts them (isChart).
-var diagramClasses = map[string]string{"mermaid": "mermaid", "vega-lite": "vega-lite", "vegalite": "vega-lite"}
-
 // maxHTMLDiagrams bounds the slots a view keeps: each holds a picture.
 const maxHTMLDiagrams = 64
 
@@ -96,7 +92,7 @@ func diagramSource(n *phtml.Node) (pageDiagram, bool) {
 	class, _ := n.Attr("class")
 	lang := ""
 	for _, c := range strings.Fields(class) {
-		if l, ok := diagramClasses[c]; ok {
+		if l, ok := diagramLangs[c]; ok { // the pre classes drawn as pictures, as a fence's languages
 			lang = l
 			break
 		}

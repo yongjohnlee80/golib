@@ -79,23 +79,54 @@ type laidPicture interface {
 	Size() gui.Size
 }
 
-// isChart reports whether a block's language is Vega-Lite's.
-func isChart(lang string) bool { return lang == "vega-lite" || lang == "vegalite" }
+// diagramLangs are the languages golib draws natively, by each spelling a fence's info or a pre's
+// class may give, to the language's own name: both spellings of Vega-Lite.
+var diagramLangs = map[string]string{"mermaid": "mermaid", "vega-lite": "vega-lite", "vegalite": "vega-lite"}
+
+// diagramEngine is a language golib lays out natively: its layout, and the errors it hands to the
+// fallback (a diagram it does not draw, ErrUnsupported; one over a limit, ErrTooLarge).
+type diagramEngine struct {
+	lay      func(ctx context.Context, req DiagramRequest, m gui.Measurer) (laidPicture, error)
+	declines []error
+}
+
+// diagramEngines are the native engines, by language name (diagramLangs).
+var diagramEngines = map[string]diagramEngine{
+	"mermaid": {
+		lay: func(ctx context.Context, req DiagramRequest, m gui.Measurer) (laidPicture, error) {
+			return mermaid.Lay(ctx, req.Src, req.Width, mermaidTheme(req.Theme), m)
+		},
+		declines: []error{pm.ErrUnsupported, pm.ErrTooLarge},
+	},
+	"vega-lite": {
+		lay: func(ctx context.Context, req DiagramRequest, m gui.Measurer) (laidPicture, error) {
+			return vegalite.Lay(ctx, req.Src, req.Width, chartTheme(req.Theme), m)
+		},
+		declines: []error{vegalite.ErrUnsupported, vegalite.ErrTooLarge},
+	},
+}
+
+// engineFor is the native engine for a block's language, in any of its spellings.
+func engineFor(lang string) (diagramEngine, bool) {
+	e, ok := diagramEngines[diagramLangs[lang]]
+	return e, ok
+}
 
 // Diagram answers the diagram request from cache, kicks off background layout, or falls back.
 func (d *diagrams) Diagram(ctx context.Context, req DiagramRequest, ready func()) DiagramAnswer {
-	if req.Lang != "mermaid" && !isChart(req.Lang) {
+	e, ok := engineFor(req.Lang)
+	if !ok {
 		return d.fall(ctx, req, ready)
 	}
 	k := hashOf(req)
 	d.mu.Lock()
 	if r, ok := d.cache.get(k); ok {
 		d.mu.Unlock()
-		return d.answer(ctx, req, ready, r)
+		return d.answer(ctx, req, ready, e, r)
 	}
 	j := d.jobs[k]
 	if j == nil {
-		j = d.start(k, req)
+		j = d.start(k, req, e)
 	}
 	id := j.next
 	j.next++
@@ -108,19 +139,13 @@ func (d *diagrams) Diagram(ctx context.Context, req DiagramRequest, ready func()
 
 // start runs a job laying out req, on a worker of its own, with a measurer it holds for the job.
 // Called with d.mu held.
-func (d *diagrams) start(k diagramHash, req DiagramRequest) *diagramJob {
+func (d *diagrams) start(k diagramHash, req DiagramRequest, e diagramEngine) *diagramJob {
 	ctx, cancel := context.WithCancel(context.Background())
 	j := &diagramJob{cancel: cancel, waiters: map[int]*diagramWaiter{}}
 	d.jobs[k] = j
-	lay := func(m gui.Measurer) (laidPicture, error) {
-		if isChart(req.Lang) {
-			return vegalite.Lay(ctx, req.Src, req.Width, chartTheme(req.Theme), m)
-		}
-		return mermaid.Lay(ctx, req.Src, req.Width, mermaidTheme(req.Theme), m)
-	}
 	go func() {
 		m, release := gui.AcquireMeasurer(req.Scale)
-		laid, err := lay(m)
+		laid, err := e.lay(ctx, req, m)
 		release()
 		if err != nil { // a typed nil *Laid in the interface is not a picture
 			laid = nil
@@ -169,7 +194,7 @@ func (d *diagrams) leave(k diagramHash, id int) {
 }
 
 // answer is a cached result's answer: the picture, the error's picture, or the fallback's.
-func (d *diagrams) answer(ctx context.Context, req DiagramRequest, ready func(), r laidResult) DiagramAnswer {
+func (d *diagrams) answer(ctx context.Context, req DiagramRequest, ready func(), e diagramEngine, r laidResult) DiagramAnswer {
 	var se *pm.SyntaxError
 	switch {
 	case r.err == nil:
@@ -177,9 +202,11 @@ func (d *diagrams) answer(ctx context.Context, req DiagramRequest, ready func(),
 	case errors.As(r.err, &se):
 		pic, size := syntaxPicture(se, req)
 		return DiagramAnswer{State: Ready, Pic: pic, Size: size}
-	case errors.Is(r.err, pm.ErrUnsupported), errors.Is(r.err, pm.ErrTooLarge),
-		errors.Is(r.err, vegalite.ErrUnsupported), errors.Is(r.err, vegalite.ErrTooLarge):
-		return d.fall(ctx, req, ready)
+	}
+	for _, decline := range e.declines {
+		if errors.Is(r.err, decline) {
+			return d.fall(ctx, req, ready)
+		}
 	}
 	return DiagramAnswer{State: Declined}
 }
@@ -205,12 +232,18 @@ func estimate(req DiagramRequest) gui.Size {
 	return gui.Size{W: req.Width, H: float32(lines) * max(req.Theme.Prose.Size, 10) * 1.4}
 }
 
+// diagramFont is a diagram's text: the editor's prose a little smaller, 10 at least.
+func diagramFont(th Theme) gui.Font {
+	f := th.Prose
+	f.Size = max(f.Size*0.9, 10)
+	return f
+}
+
 // mermaidTheme is a diagram's theme from the editor's: its page and text, the Raw view's colours
 // for the strokes, and its prose font a little smaller.
 func mermaidTheme(th Theme) mermaid.Theme {
 	stroke := or(th.Heading, th.Accent)
-	f := th.Prose
-	f.Size = max(f.Size*0.9, 10)
+	f := diagramFont(th)
 	return mermaid.Theme{
 		Background:    th.Background,
 		Text:          th.Text,
@@ -226,8 +259,7 @@ func mermaidTheme(th Theme) mermaid.Theme {
 // chartTheme is a chart's theme from the editor's: its page and text, the axes in the text's
 // colour toned down, a faint grid, and its prose font a little smaller.
 func chartTheme(th Theme) vegalite.Theme {
-	f := th.Prose
-	f.Size = max(f.Size*0.9, 10)
+	f := diagramFont(th)
 	return vegalite.Theme{
 		Background: th.Background,
 		Text:       th.Text,
@@ -241,8 +273,7 @@ func chartTheme(th Theme) vegalite.Theme {
 // code's tint, so the writer sees what to fix where the diagram would be.
 func syntaxPicture(se *pm.SyntaxError, req DiagramRequest) (gui.View, gui.Size) {
 	th := req.Theme
-	f := th.Prose
-	f.Size = max(f.Size*0.9, 10)
+	f := diagramFont(th)
 	text := fmt.Sprintf("Mermaid: %s (line %d, column %d)", se.Msg, se.Line, se.Col)
 	size := gui.Size{W: req.Width, H: f.Size * 2.4}
 	return gui.ViewFunc(func(c gui.Canvas) {
