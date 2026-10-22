@@ -143,3 +143,19 @@ func TestAWindowModIsReachedThroughItsBehavior(t *testing.T) {
 		t.Error("a WindowMod's WindowBehavior is not its Core")
 	}
 }
+
+// A style that keeps a standard getter, copied from StandardType, while its Build makes another
+// widget fails CheckStyle at the type and the getter: the getter refuses the style's widget, which
+// a document would meet only reading it. Before, CheckStyle compared contracts and passed it.
+func TestCheckStyleNamesACopiedGetterThatRefusesTheStylesWidget(t *testing.T) {
+	list, ok := tuidecl.StandardType("ListView")
+	if !ok {
+		t.Fatal("no standard ListView")
+	}
+	list.Build = func(tuidecl.Build) (tui.Component, []string, error) { return widget.NewText("list"), nil, nil }
+	r := &recTB{}
+	decltest.CheckStyle(r, tuidecl.Style{Name: "odd", Types: []tuidecl.Type{list}})
+	if !r.has(`style "odd", ListView: getter currentIndex refuses the style's widget`) {
+		t.Errorf("CheckStyle did not name the copied getter; said %q", r.errs)
+	}
+}

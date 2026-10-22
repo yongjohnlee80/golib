@@ -29,6 +29,7 @@ func TestSaveAsksForAName(t *testing.T) {
 | `Screen.Quit()` | closed when the program stops |
 | `Rune`, `Type`, `Ctrl`, `Alt` | key events |
 | `WaitTimeout` | how long every wait lasts (3s) |
+| `CheckStyle(t, style)` | fails t for each type a style replaces that a document could tell from the standard one: its contract differs, or, mounted in that type's minimal declaration under the style, a getter, its Restyle or its Destroyed refuses or panics on the widget the style's Build makes |
 
 What `Check` mounts, and why, is in [USAGE.md §11](../USAGE.md#11-testing-a-qml-screen).
 
