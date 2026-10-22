@@ -42,12 +42,12 @@ import (
 // preference can move it. open(), close() and toggle() (golib's: open when closed, else close),
 // and opened() and closed().
 
-// drawerNode is a Drawer: its Float, the overlay it is on, and where it opens from.
+// drawerNode is a Drawer: its Float, the overlay it is on (OverlayLayer), and where it opens from.
 type drawerNode struct {
 	widget.Base
+	OverlayLayer
 	float   *widget.Float
 	frame   *drawerFrame
-	host    *widget.OverlayHost
 	edge    tui.DockEdge
 	size    int
 	length  int
@@ -140,6 +140,7 @@ func buildDrawer(b Build) (tui.Component, []string, error) {
 	n.frame.Label("Drawer")
 	n.frame.Add(n.wrapped())
 	n.float = widget.NewFloat(n.frame, widget.WithModal(modal))
+	n.OverlayLayer = NewOverlayLayer(n.float, "a Drawer")
 	n.place()
 	if b.Overlay != nil {
 		n.SetOverlay(b.Overlay, nil)
@@ -466,39 +467,18 @@ func (n *drawerNode) area() tui.Rect {
 	return tui.Rect{W: n.win.W, H: n.win.H}
 }
 
-// SetOverlay implements Overlaid: the Drawer's Float becomes one of the host's layers, hidden
-// until opened.
-func (n *drawerNode) SetOverlay(host *widget.OverlayHost, _ func()) {
-	if n.host == host {
-		return
-	}
-	n.detach()
-	n.host = host
-	host.Attach(n.float)
-}
-
-func (n *drawerNode) detach() {
-	if n.host != nil {
-		n.host.Detach(n.float)
-		n.host = nil
-	}
-}
-
-var errDrawerOutsideWindow = errors.New("a Drawer opens over a Window, and this one is not in one; " +
-	"inside a Go program, give the adapter WithOverlay(host)")
-
+// open shows the Drawer over its Window (OverlayLayer.Open). Open already, a minimized one is
+// restored.
 func (n *drawerNode) open() error {
-	if n.host == nil {
-		return errDrawerOutsideWindow
+	opened, err := n.Open()
+	switch {
+	case err != nil:
+		return err
+	case opened:
+		n.opened()
+	case n.windowMods != nil && n.windowMods.Core().State().Minimized:
+		n.windowMods.Restore()
 	}
-	if n.float.Shown() {
-		if n.windowMods != nil && n.windowMods.Core().State().Minimized {
-			n.windowMods.Restore()
-		}
-		return nil
-	}
-	n.float.Show()
-	n.opened()
 	return nil
 }
 
@@ -676,7 +656,7 @@ var drawerType = Type{
 		"resizeBy":       drawerWindowStep(false),
 		"moveBy":         drawerWindowStep(true),
 	},
-	Destroyed: destroyer((*drawerNode).detach),
+	Destroyed: destroyer((*drawerNode).Detach),
 }
 
 // drawerFracSetter is the setter of the floating rectangle's i-th percentage.

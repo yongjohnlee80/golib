@@ -177,15 +177,15 @@ var Popup = tuidecl.Type{
 		"open":  tuidecl.NoArgMethod((*popupNode).open),
 		"close": tuidecl.NoArgMethod((*popupNode).close),
 	},
-	Destroyed: tuidecl.Destroyer((*popupNode).detach),
+	Destroyed: tuidecl.Destroyer((*popupNode).Detach),
 }
 
-// popupNode is a Popup: the Float, and the overlay it is attached to.
+// popupNode is a Popup: the Float, and the overlay it is attached to (OverlayLayer).
 type popupNode struct {
 	widget.Base
+	tuidecl.OverlayLayer
 	float  *widget.Float
 	frame  *popupFrame
-	host   *widget.OverlayHost
 	opened func()
 	closed func()
 }
@@ -207,43 +207,19 @@ func buildPopup(b tuidecl.Build) (tui.Component, []string, error) {
 	n := &popupNode{opened: b.Emitter("opened"), closed: b.Emitter("closed")}
 	n.frame = newPopupFrame(b.Children[0], n)
 	n.float = widget.NewFloat(n.frame, widget.WithModal(modal), widget.WithDimBackground(dim))
+	n.OverlayLayer = tuidecl.NewOverlayLayer(n.float, "a Popup")
 	if b.Overlay != nil {
 		n.SetOverlay(b.Overlay, nil)
 	}
 	return n, consumed, nil
 }
 
-// SetOverlay implements [tuidecl.Overlaid]: the Popup's Float becomes one of
-// the host's layers, hidden until opened.
-func (n *popupNode) SetOverlay(host *widget.OverlayHost, _ func()) {
-	if n.host == host {
-		return
-	}
-	n.detach()
-	n.host = host
-	host.Attach(n.float)
-}
-
-func (n *popupNode) detach() {
-	if n.host != nil {
-		n.host.Detach(n.float)
-		n.host = nil
-	}
-}
-
-var errNoOverlay = errors.New("a Popup opens over a Window, and this one is not in one; " +
-	"inside a Go program, give the adapter WithOverlay(host)")
-
 func (n *popupNode) open() error {
-	if n.host == nil {
-		return errNoOverlay
+	opened, err := n.Open()
+	if opened {
+		n.opened()
 	}
-	if n.float.Shown() {
-		return nil
-	}
-	n.float.Show()
-	n.opened()
-	return nil
+	return err
 }
 
 func (n *popupNode) close() error {

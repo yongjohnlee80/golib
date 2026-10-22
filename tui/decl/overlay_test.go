@@ -2,6 +2,7 @@ package decl_test
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"strings"
 	"sync/atomic"
@@ -188,7 +189,20 @@ func TestH5WithoutAnOverlayOpenNamesTheRemedy(t *testing.T) {
 		t.Fatal(err)
 	}
 	id, _ := tr.NodeByID("d")
-	if err := a.Invoke(id, "open", nil); err == nil || !strings.Contains(err.Error(), "WithOverlay") {
-		t.Fatalf("err = %v, want WithOverlay named", err)
+	if err := a.Invoke(id, "open", nil); err == nil || !strings.Contains(err.Error(), "WithOverlay") ||
+		!errors.Is(err, tuidecl.ErrOutsideWindow) {
+		t.Fatalf("err = %v, want WithOverlay named, and ErrOutsideWindow", err)
+	}
+	// a Drawer is refused the same way, through its OverlayLayer
+	a2 := tuidecl.New(tuidecl.StdRegistry(), append(tuidecl.StdProperties(), tuidecl.WithErrorSink(func(error) {}))...)
+	spec, _ = qml.QML{}.Parse([]byte("import tui 1.0\nDrawer { id: dr; Text { } }"))
+	tr = decl.New(a2)
+	if err := tr.Mount(spec); err != nil {
+		t.Fatal(err)
+	}
+	id, _ = tr.NodeByID("dr")
+	if err := a2.Invoke(id, "open", nil); err == nil || !strings.Contains(err.Error(), "a Drawer opens over a Window") ||
+		!errors.Is(err, tuidecl.ErrOutsideWindow) {
+		t.Fatalf("Drawer: err = %v, want its own words, and ErrOutsideWindow", err)
 	}
 }
