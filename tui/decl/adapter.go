@@ -446,23 +446,12 @@ func (a *Adapter) Create(c decl.Construction) ([]string, error) {
 // refuseMisplaced refuses a child that belongs only in another type: a SyntaxHighlighter, a
 // Renderer or a Document outside an Editor, a Shortcut outside a shortcut holder.
 func (a *Adapter) refuseMisplaced(c decl.Construction) error {
-	if c.Type == "Editor" {
-		return nil
-	}
 	for _, id := range c.Children {
-		if _, ok := a.nodes[id].comp.(*syntaxNode); ok {
-			return fmt.Errorf("a SyntaxHighlighter highlights the Editor it is declared in, and %s is not one (at %s)",
-				c.Type, c.Pos)
-		}
-		if _, ok := a.nodes[id].comp.(*shortcutNode); ok && !shortcutHolders[c.Type] {
-			return fmt.Errorf("a Shortcut is live while focus is in the element that declares it, a %s, "+
-				"and %s is none of them: put it in a FocusScope (at %s)", shortcutHolderNames(), c.Type, a.nodes[id].pos)
-		}
-		_, spec := a.nodes[id].comp.(*rendererNode)
-		_, doc := a.nodes[id].comp.(*documentNode)
-		if spec || doc {
-			return fmt.Errorf("a %s draws the Editor it is declared in, and %s is not one (at %s)",
-				a.nodes[id].typ, c.Type, c.Pos)
+		child := a.nodes[id]
+		if p, ok := child.comp.(parentBound); ok {
+			if err := p.allowedIn(child.typ, c.Type); err != nil {
+				return fmt.Errorf("%w (at %s)", err, child.pos)
+			}
 		}
 	}
 	return nil

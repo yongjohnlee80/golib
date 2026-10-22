@@ -176,18 +176,16 @@ func editorChildren(b Build) ([]*syntaxNode, RendererSpec, DocumentSpec, error) 
 	return out, spec, doc, nil
 }
 
-// VetRoot implements [decl.RootVetter]: a SyntaxHighlighter is refused where
-// its parent is built unless that parent is an Editor, and a root has no
-// parent — so it is refused here, not left mounted highlighting nothing.
+// VetRoot implements [decl.RootVetter]: a node that belongs only in some parents (parentBound) is
+// refused where its parent is built, and a root has none, so it is asked here, not left mounted
+// highlighting, drawing or listening to nothing: a SyntaxHighlighter, a renderer, a document view,
+// a Shortcut.
 func (a *Adapter) VetRoot(id decl.NodeID) error {
-	if b, ok := a.nodes[id]; ok && b.typ == "SyntaxHighlighter" {
-		return fmt.Errorf("a SyntaxHighlighter highlights the Editor it is declared in, and the root is in none")
-	}
 	if b, ok := a.nodes[id]; ok {
-		_, spec := b.comp.(*rendererNode)
-		_, doc := b.comp.(*documentNode)
-		if spec || doc {
-			return fmt.Errorf("a %s draws the Editor it is declared in, and the root is in none", b.typ)
+		if p, ok := b.comp.(parentBound); ok {
+			if err := p.allowedIn(b.typ, ""); err != nil {
+				return fmt.Errorf("%w (at %s)", err, b.pos)
+			}
 		}
 	}
 	return nil
