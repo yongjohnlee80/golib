@@ -185,10 +185,10 @@ func (p *ProgressBar) split(w int) (full, frac int) {
 }
 
 // FilledColumns is how many of a bar's cols cells Render draws filled: the full cells and the
-// partial block after them. 0 for an indeterminate bar, whose block moves. A native painter fills
-// as many.
+// partial block after them. 0 for an indeterminate bar, whose block moves, and for a spinner bar,
+// which draws one cell, a frame or a blank, at any progress. A native painter fills as many.
 func (p *ProgressBar) FilledColumns(cols int) int {
-	if p.indeterminate || cols <= 0 {
+	if p.indeterminate || p.frames != nil || cols <= 0 {
 		return 0
 	}
 	full, frac := p.split(cols)
