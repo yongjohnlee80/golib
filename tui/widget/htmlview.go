@@ -123,6 +123,54 @@ type HTMLLayoutPixels interface {
 // layout's own; positions compare in document order.
 type DocPos struct{ Block, Span, Offset int }
 
+// Before reports whether p comes before o in the document: by block, then span, then offset.
+func (p DocPos) Before(o DocPos) bool {
+	if p.Block != o.Block {
+		return p.Block < o.Block
+	}
+	if p.Span != o.Span {
+		return p.Span < o.Span
+	}
+	return p.Offset < o.Offset
+}
+
+// OrderDocPos is a and b in document order, the earlier first: a selection's ends, however it was
+// dragged.
+func OrderDocPos(a, b DocPos) (DocPos, DocPos) {
+	if b.Before(a) {
+		return b, a
+	}
+	return a, b
+}
+
+// SourceIndex is which of n blocks shows source byte b, by the one rule an HTML layout answers it
+// with: the block whose source holds b, else the first that starts after it, else (a byte after
+// every block, the blank lines that end a note) the last before it. src(i) is block i's source
+// bytes, from-to, with from -1 when it has none. -1 when no block has any.
+func SourceIndex(n int, src func(i int) [2]int, b int) int {
+	after, last := -1, -1
+	for i := range n {
+		s := src(i)
+		if s[0] < 0 {
+			continue
+		}
+		if s[0] <= b && b < s[1] {
+			return i
+		}
+		if s[0] >= b {
+			if after < 0 {
+				after = i
+			}
+			continue
+		}
+		last = i
+	}
+	if after < 0 {
+		return last
+	}
+	return after
+}
+
 // Rect32 is a rectangle in a layout's units.
 type Rect32 struct{ X, Y, W, H float32 }
 

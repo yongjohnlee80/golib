@@ -316,7 +316,7 @@ func (c *cellHTML) endPos() DocPos {
 
 // Rects are the cells a selection from..to covers, a rect for each row it touches.
 func (c *cellHTML) Rects(from, to DocPos) []Rect32 {
-	from, to = orderPos(from, to)
+	from, to = OrderDocPos(from, to)
 	if from == to {
 		return nil
 	}
@@ -343,7 +343,7 @@ func (c *cellHTML) Rects(from, to DocPos) []Rect32 {
 // Text is the document's text from..to: the blocks it crosses on lines of their own, a hard
 // break as a newline, a wrapped row joined to the next, a table's cells by tabs.
 func (c *cellHTML) Text(from, to DocPos) string {
-	from, to = orderPos(from, to)
+	from, to = OrderDocPos(from, to)
 	var sb strings.Builder
 	for bi := from.Block; bi <= to.Block && bi < len(c.doc); bi++ {
 		if bi > from.Block {
@@ -406,30 +406,11 @@ func (c *cellHTML) BlockAt(y float32) (int, float32) {
 // else the first that starts after it, else (a byte after every block, the blank lines that end a
 // note) the last.
 func (c *cellHTML) BlockTop(b int) (float32, bool) {
-	after, last := -1, -1
-	for bi := range c.doc {
-		s := c.doc[bi].src
-		if s[0] < 0 {
-			continue
-		}
-		if s[0] <= b && b < s[1] {
-			return float32(c.tops[bi]), true
-		}
-		if s[0] >= b {
-			if after < 0 {
-				after = bi
-			}
-			continue
-		}
-		last = bi
+	bi := SourceIndex(len(c.doc), func(i int) [2]int { return c.doc[i].src }, b)
+	if bi < 0 {
+		return 0, false
 	}
-	if after < 0 {
-		after = last
-	}
-	if after >= 0 {
-		return float32(c.tops[after]), true
-	}
-	return 0, false
+	return float32(c.tops[bi]), true
 }
 
 var _ HTMLLayoutCells = (*cellHTML)(nil)
@@ -437,7 +418,7 @@ var _ HTMLLayoutCells = (*cellHTML)(nil)
 // PaintCells implements HTMLLayoutCells: the rows from top on, the selection from..to reversed.
 func (c *cellHTML) PaintCells(s tui.Surface, top, w int, from, to DocPos) {
 	sz := s.Size()
-	from, to = orderPos(from, to)
+	from, to = OrderDocPos(from, to)
 	selecting := from != to
 	for y := 0; y < sz.H; y++ {
 		ri := top + y
@@ -508,23 +489,5 @@ func (c *cellHTML) styleOf(r *hrow, k hcl) style.Style {
 // selected reports whether cluster k is inside the selection from..to: a cluster of the
 // document's own spans (a cell separator too, between selected cells), never the layout's padding.
 func selected(k hcl, from, to DocPos) bool {
-	return k.sp != nil && k.pos != k.end && posLess(k.pos, to) && posLess(from, k.end)
-}
-
-// posLess orders document positions.
-func posLess(a, b DocPos) bool {
-	if a.Block != b.Block {
-		return a.Block < b.Block
-	}
-	if a.Span != b.Span {
-		return a.Span < b.Span
-	}
-	return a.Offset < b.Offset
-}
-
-func orderPos(a, b DocPos) (DocPos, DocPos) {
-	if posLess(b, a) {
-		return b, a
-	}
-	return a, b
+	return k.sp != nil && k.pos != k.end && k.pos.Before(to) && from.Before(k.end)
 }
