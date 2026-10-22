@@ -454,12 +454,8 @@ func paintTextField(comp tui.Component) (View, tui.NativeScope, bool) {
 		c.FillRect(r, Solid(bg))
 		c.StrokeRRect(r.Inset(width/2), 0, width, Solid(border))
 		c.PaintCells(CellRect{W: cols, H: rows}, true)
-		if lo, hi, sel := ti.Selection(); sel && focusedNode(ti) {
-			x0, x1 := selectionCells(ti, lo, hi)
-			x0, x1 = max(x0, ti.Padding()), min(x1, cols-ti.Padding()) // the frame's end cells stay the frame's
-			if x1 > x0 {
-				c.PaintCells(CellRect{X: x0, W: x1 - x0, H: 1}, false)
-			}
+		if x0, x1 := selectionSpan(ti); x1 > x0 {
+			c.PaintCells(CellRect{X: x0, W: x1 - x0, H: 1}, false)
 		}
 	}), tui.ScopeSubtree, true
 }
@@ -467,10 +463,7 @@ func paintTextField(comp tui.Component) (View, tui.NativeScope, bool) {
 // fieldColors are the field's own colours: its first open cell, the frame's end cells first, and
 // never a selected cell, which wears the selection's.
 func fieldColors(c Canvas, ti *widget.TextInput, cols int) (fg, bg color.NRGBA, ok bool) {
-	x0, x1 := -1, -1
-	if lo, hi, sel := ti.Selection(); sel && focusedNode(ti) {
-		x0, x1 = selectionCells(ti, lo, hi)
-	}
+	x0, x1 := selectionSpan(ti)
 	var xs []int
 	for _, x := range endsFirst(max(cols, 1)) {
 		if x < x0 || x >= x1 {
@@ -480,30 +473,15 @@ func fieldColors(c Canvas, ti *widget.TextInput, cols int) (fg, bg color.NRGBA, 
 	return openColors(c, 0, xs...)
 }
 
-// selectionCells is the cell span of clusters [lo, hi) on screen: the columns TextInput.Render
-// writes them at, after its padding and its scroll.
-func selectionCells(ti *widget.TextInput, lo, hi int) (x0, x1 int) {
-	ctx := ti.Context()
-	if ctx == nil {
-		return 0, 0
+// selectionSpan is the cells tui draws the field's selection over, as it reports them
+// (tui.SelectionCells: after the padding and scroll, clipped as Render clips, none while the field
+// is unfocused): x0 to x1, end excluded; -1, -1 when there are none.
+func selectionSpan(ti *widget.TextInput) (x0, x1 int) {
+	rs, ok := ti.SelectionCells()
+	if !ok || len(rs) == 0 {
+		return -1, -1
 	}
-	x := ti.Padding() - ti.Scroll()
-	i := 0
-	x0, x1 = -1, -1
-	for cl := range tui.Graphemes(ti.Value()) {
-		if ti.Masked() {
-			cl = string(ti.Mask())
-		}
-		if i == lo {
-			x0 = x
-		}
-		x += ctx.StringWidth(cl)
-		i++
-		if i == hi {
-			x1 = x
-		}
-	}
-	return x0, x1
+	return rs[0].X, rs[0].X + rs[0].W
 }
 
 // paintProgress draws a determinate bar as a rounded track and fill in the bar's colours; an
