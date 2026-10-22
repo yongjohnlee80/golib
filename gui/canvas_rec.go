@@ -3,6 +3,7 @@ package gui
 import (
 	"image/color"
 
+	"github.com/yongjohnlee80/gio/f32"
 	"github.com/yongjohnlee80/gio/font/gofont"
 	"github.com/yongjohnlee80/gio/text"
 )
@@ -22,7 +23,10 @@ import (
 //	                                         +--------------------+
 //
 // PaintCall records an individual drawing command received by a [RecordingCanvas].
-// Rect is specified in root canvas coordinates (with any sub-canvas offsets pre-applied).
+// Rect is specified in root canvas coordinates (with any sub-canvas offsets pre-applied), as the
+// view gave it. Drawn is where a window draws it: the transforms pushed (a fitted diagram's
+// scale, a turned label) applied too, a turned rect's bounding box; Alpha is the opacity it is
+// drawn at, the pushed opacities multiplied.
 type PaintCall struct {
 	Op         string // Name of the operation: "FillRect", "FillRRect", "StrokeRRect", "DrawText", etc.
 	Rect       Rect
@@ -33,6 +37,8 @@ type PaintCall struct {
 	Cells      CellRect // Grid cells specified in PaintCells
 	GlyphsOnly bool
 	Opacity    float32
+	Drawn      Rect
+	Alpha      float32
 }
 
 // RecordingCanvas implements [Canvas] by recording all invoked operations into an inspectable
@@ -58,27 +64,44 @@ type RecordingCanvas struct {
 	size   Size
 	cell   Size
 	shaper *TextShaper
+	ps     paintState // the transform and opacity pushed, as a window's canvas keeps them
 }
 
 // NewRecordingCanvas is a canvas of size, over cells of cell size, at scale 1.
 func NewRecordingCanvas(size, cell Size) *RecordingCanvas {
 	rc := &RecordingCanvas{size: size, cell: cell,
 		shaper: &TextShaper{s: text.NewShaper(text.WithCollection(gofont.Collection()), text.NoSystemFonts()), scale: 1,
-			fonts: defaultFonts()}}
+			fonts: defaultFonts()}, ps: opaque()}
 	rc.root = rc
 	return rc
 }
 
-// rec records a paint call into the root log with the current offset applied.
+// rec records a paint call into the root log with the current offset applied, and where and at
+// what opacity a window draws it.
 func (c *RecordingCanvas) rec(p PaintCall) {
+	p.Drawn = c.drawn(p.Rect)
+	p.Alpha = c.ps.alpha
 	p.Rect.X += c.off.X
 	p.Rect.Y += c.off.Y
 	c.root.Calls = append(c.root.Calls, p)
 }
 
+// drawn is r as a window draws it: through the pushed transform, then the sub-canvas offset; the
+// bounding box of its corners when the transform turns it.
+func (c *RecordingCanvas) drawn(r Rect) Rect {
+	m := c.ps.xform
+	pts := [4]f32.Point{m.Transform(f32.Pt(r.X, r.Y)), m.Transform(f32.Pt(r.X+r.W, r.Y)),
+		m.Transform(f32.Pt(r.X, r.Y+r.H)), m.Transform(f32.Pt(r.X+r.W, r.Y+r.H))}
+	x0, y0, x1, y1 := pts[0].X, pts[0].Y, pts[0].X, pts[0].Y
+	for _, q := range pts[1:] {
+		x0, y0, x1, y1 = min(x0, q.X), min(y0, q.Y), max(x1, q.X), max(y1, q.Y)
+	}
+	return Rect{X: x0 + c.off.X, Y: y0 + c.off.Y, W: x1 - x0, H: y1 - y0}
+}
+
 // Sub records into the same log, offset by r.
 func (c *RecordingCanvas) Sub(r Rect) Canvas {
-	return &RecordingCanvas{root: c.root, off: Pt(c.off.X+r.X, c.off.Y+r.Y), size: r.Size(), cell: c.cell, shaper: c.shaper, Colors: c.Colors, Content: c.Content, Covers: c.Covers, Around: c.Around}
+	return &RecordingCanvas{root: c.root, off: Pt(c.off.X+r.X, c.off.Y+r.Y), size: r.Size(), cell: c.cell, shaper: c.shaper, Colors: c.Colors, Content: c.Content, Covers: c.Covers, Around: c.Around, ps: c.ps.within()}
 }
 
 // Size returns the logical bounds of the recording canvas.
@@ -129,8 +152,14 @@ func (c *RecordingCanvas) FillEllipse(r Rect, b Brush) {
 	c.rec(PaintCall{Op: "FillEllipse", Rect: r, Brush: b})
 }
 
-// FillPath records a filled vector path operation.
-func (c *RecordingCanvas) FillPath(_ *Path, b Brush) { c.rec(PaintCall{Op: "FillPath", Brush: b}) }
+// FillPath records a filled vector path operation, its Rect the path's bounds.
+func (c *RecordingCanvas) FillPath(p *Path, b Brush) {
+	var r Rect
+	if p != nil {
+		r = p.Bounds()
+	}
+	c.rec(PaintCall{Op: "FillPath", Rect: r, Brush: b})
+}
 
 // StrokePath records a stroked vector path operation, its Rect the path's bounds.
 func (c *RecordingCanvas) StrokePath(p *Path, width float32, b Brush) {
@@ -155,14 +184,24 @@ func (c *RecordingCanvas) DrawImage(_ *Image, dst, _ Rect) {
 	c.rec(PaintCall{Op: "DrawImage", Rect: dst})
 }
 
-// PushTransform records pushing an affine transform.
-func (c *RecordingCanvas) PushTransform(Affine) { c.rec(PaintCall{Op: "PushTransform"}) }
+// PushTransform records pushing an affine transform, and applies it to what is drawn after it
+// (Drawn) until the matching Pop.
+func (c *RecordingCanvas) PushTransform(m Affine) {
+	c.rec(PaintCall{Op: "PushTransform"})
+	c.ps.PushTransform(m)
+}
 
-// PushOpacity records pushing an opacity layer.
-func (c *RecordingCanvas) PushOpacity(a float32) { c.rec(PaintCall{Op: "PushOpacity", Opacity: a}) }
+// PushOpacity records pushing an opacity layer, and applies it (Alpha) until the matching Pop.
+func (c *RecordingCanvas) PushOpacity(a float32) {
+	c.rec(PaintCall{Op: "PushOpacity", Opacity: a})
+	c.ps.PushOpacity(a)
+}
 
-// Pop records popping the top canvas layer.
-func (c *RecordingCanvas) Pop() { c.rec(PaintCall{Op: "Pop"}) }
+// Pop records popping the top canvas layer, and restores the state its Push saved.
+func (c *RecordingCanvas) Pop() {
+	c.rec(PaintCall{Op: "Pop"})
+	c.ps.Pop()
+}
 
 // WindowMoveArea records registering a window drag area.
 func (c *RecordingCanvas) WindowMoveArea(r Rect) { c.rec(PaintCall{Op: "WindowMoveArea", Rect: r}) }
