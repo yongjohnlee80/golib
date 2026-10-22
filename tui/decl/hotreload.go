@@ -223,8 +223,16 @@ func (f *follower) step(now snapshot) bool {
 	return false
 }
 
-// hotReload runs on the UI loop: clear the cache, re-read the layout, and
-// reconcile — or, after a part-way failure, remount.
+// reloadCandidate is a hot reload read from the files and not yet applied: the catalogs and the key
+// map are installed only once the layout has been, so a reload lands whole or not at all.
+type reloadCandidate struct {
+	catalogs *i18n.Set // nil: the Program has no translations
+	keys     *keymap.Map
+	spec     qml.SpecTree
+}
+
+// hotReload runs on the UI loop: read the files, then apply them (reloadSpec) and install the
+// catalogs and the key map with the layout.
 func (p *Program) hotReload() {
 	h := p.cfg.hot
 	refuse := func(err error) {
@@ -237,69 +245,61 @@ func (p *Program) hotReload() {
 			p.keep(err)
 		}
 	}
-	// The catalogs are READ first and INSTALLED last: a reload is applied whole or not at all,
-	// so a bad catalog leaves the layout alone, and a good one saved beside a bad layout never
-	// relabels the old screen.
-	var catalogs *i18n.Set
+	c, err := p.loadReloadCandidate()
+	switch {
+	case errors.Is(err, decl.ErrIncomplete):
+		return // a save caught half-written; the finished one follows
+	case err != nil:
+		refuse(err)
+		return
+	}
+	if err := p.applyReloadCandidate(c); err != nil {
+		refuse(err)
+	}
+}
+
+// loadReloadCandidate reads a hot reload's catalogs, key map and layout. The catalogs and the key
+// map are READ first and INSTALLED last (applyReloadCandidate): a bad catalog leaves the layout
+// alone, and a good one saved beside a bad layout never relabels the old screen.
+func (p *Program) loadReloadCandidate() (reloadCandidate, error) {
+	var c reloadCandidate
 	if len(p.cfg.translations) > 0 {
 		s, err := loadTranslations(p.cfg)
 		if err != nil {
-			refuse(fmt.Errorf("hot reload: %w", err))
-			return
+			return c, fmt.Errorf("hot reload: %w", err)
 		}
-		catalogs = s
+		c.catalogs = s
 	}
-	// The key map is built first too, and installed last, with the catalogs.
 	keys, err := loadKeymap(p.cfg)
 	if err != nil {
-		refuse(fmt.Errorf("hot reload: %w", err))
-		return
+		return c, fmt.Errorf("hot reload: %w", err)
 	}
+	c.keys = keys
 	src := p.liveLayout
 	if p.cfg.layoutFS != nil {
-		var err error
-		src, err = fs.ReadFile(p.cfg.layoutFS, p.cfg.layoutFile)
-		if err != nil {
-			refuse(fmt.Errorf("hot reload: %w", err))
-			return
+		if src, err = fs.ReadFile(p.cfg.layoutFS, p.cfg.layoutFile); err != nil {
+			return c, fmt.Errorf("hot reload: %w", err)
 		}
 	}
-	spec, err := parseReload(p.cfg.layoutFile, src)
+	c.spec, err = parseReload(p.cfg.layoutFile, src)
+	return c, err
+}
+
+// applyReloadCandidate applies a read reload: the layout first (reloadSpec, its keyId Shortcuts
+// checked against the CANDIDATE map), then the catalogs and the key map, in the same frame as the
+// layout, and OnReload sees both.
+func (p *Program) applyReloadCandidate(c reloadCandidate) error {
+	res, err := p.reloadSpec(c.spec, c.keys)
 	if err != nil {
-		if errors.Is(err, decl.ErrIncomplete) {
-			return // a save caught half-written; the finished one follows
-		}
-		refuse(err)
-		return
+		return fmt.Errorf("hot reload: %w", err)
 	}
-	// Every keyId Shortcut of the NEW layout is checked against the CANDIDATE map before the live
-	// tree is touched, so a refusal leaves the screen, the map and the catalogs as they were.
-	if err := p.checkReloadKeys(spec, keys); err != nil {
-		refuse(fmt.Errorf("hot reload: %w", err))
-		return
-	}
-	var res decl.Result
-	if p.tree.Failed() {
-		res, err = p.remount(spec)
-	} else {
-		if err = p.tree.ClearComponentCache(); err == nil {
-			res, err = p.tree.Reconcile(spec)
-		}
-		if err == nil && res.RootReplaced {
-			p.showRoot()
-		}
-	}
-	if err != nil {
-		refuse(err)
-		return
-	}
-	// The catalogs land in the same frame as the layout, and OnReload sees both. They go to
-	// the App alone: the poller reads the config from its own goroutine.
+	h := p.cfg.hot
+	// They go to the App alone: the poller reads the config from its own goroutine.
 	finish := func() {
-		if catalogs != nil {
-			p.app.ApplyTranslations(catalogs)
+		if c.catalogs != nil {
+			p.app.ApplyTranslations(c.catalogs)
 		}
-		p.app.ApplyKeymap(keys)
+		p.app.ApplyKeymap(c.keys)
 		if h.onReload != nil {
 			h.onReload(res)
 		}
@@ -308,11 +308,12 @@ func (p *Program) hotReload() {
 		// The new root is mounted by an enqueued SetRoot, so the catalogs follow it in the
 		// same drain: installed now, the old screen would paint a frame in the new catalogs.
 		p.app.Update(finish)
-		return
+		return nil
 	}
 	// Reconciled in place, the layout is live now: an enqueued install could land a frame
 	// later, and that frame would show the new layout in the old catalogs.
 	finish()
+	return nil
 }
 
 // remount builds the screen afresh from the files, and shows it, after a

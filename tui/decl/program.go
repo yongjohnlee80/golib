@@ -645,18 +645,39 @@ func (p *Program) Call(id, method string, args ...any) error {
 }
 
 // Reload replaces the document with src, patching what changed. On the UI
-// loop. A refused reload leaves the screen as it was.
+// loop. A refused reload leaves the screen as it was. It is held to what a hot
+// reload is (reloadSpec): its keyId Shortcuts are checked against the live key
+// map first, and after a reload that failed part-way the screen is remounted.
 func (p *Program) Reload(src []byte) (decl.Result, error) {
 	spec, err := parseReload(p.file, src)
 	if err != nil {
 		return decl.Result{}, err
 	}
+	res, err := p.reloadSpec(spec, p.app.Keymap())
+	if err == nil {
+		p.liveLayout = append([]byte(nil), src...)
+	}
+	return res, err
+}
+
+// reloadSpec applies a parsed reload to the live tree: the one validation both reload paths run,
+// Program.Reload and a hot reload. Every keyId Shortcut of the new layout is checked against keys
+// before the tree is touched, so a refusal leaves the screen as it was. A tree that failed part-way
+// is remounted; otherwise the component cache is cleared (a component's file may have changed with
+// the layout) and the tree reconciled, its root shown when replaced.
+func (p *Program) reloadSpec(spec qml.SpecTree, keys *keymap.Map) (decl.Result, error) {
+	if err := p.checkReloadKeys(spec, keys); err != nil {
+		return decl.Result{}, err
+	}
+	if p.tree.Failed() {
+		return p.remount(spec)
+	}
+	if err := p.tree.ClearComponentCache(); err != nil {
+		return decl.Result{}, err
+	}
 	res, err := p.tree.Reconcile(spec)
 	if err == nil && res.RootReplaced {
 		p.showRoot()
-	}
-	if err == nil {
-		p.liveLayout = append([]byte(nil), src...)
 	}
 	return res, err
 }
