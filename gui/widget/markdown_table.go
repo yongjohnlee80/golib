@@ -5,6 +5,7 @@ import (
 
 	"github.com/yongjohnlee80/golib/gui"
 	"github.com/yongjohnlee80/golib/gui/flow"
+	"github.com/yongjohnlee80/golib/parse/markdown"
 	"github.com/yongjohnlee80/golib/tui/style"
 	tuiwidget "github.com/yongjohnlee80/golib/tui/widget"
 )
@@ -109,7 +110,7 @@ func startsBlock(line string) bool {
 	if n := len(s) - len(strings.TrimLeft(s, "#")); n >= 1 && n <= 6 && (n == len(s) || s[n] == ' ') {
 		return true
 	}
-	return isThematic(strings.TrimSpace(line)) || isListItem(line)
+	return markdown.ThematicBreak(strings.TrimSpace(line)) || isListItem(line)
 }
 
 // InTable reports whether line ln is a row of a table: its source is not a list, whatever it
