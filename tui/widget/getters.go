@@ -92,6 +92,11 @@ func (p *ProgressBar) Progress() (f float64, determinate bool) {
 	return p.progress, !p.indeterminate
 }
 
+// Spinner reports whether the bar is a one-cell spinner (WithSpinner): it draws a frame while
+// indeterminate and one blank cell otherwise, never a track, so a native painter leaves it to its
+// cells.
+func (p *ProgressBar) Spinner() bool { return p.frames != nil }
+
 // Titles are the tab labels, in order.
 func (t *Tabs) Titles() []string {
 	out := make([]string, len(t.tabs))

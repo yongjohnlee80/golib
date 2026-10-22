@@ -32,6 +32,9 @@ func TestAProgressBarsFilledColumnsAreWhatItDraws(t *testing.T) {
 	if got := sp.FilledColumns(10); got != 0 {
 		t.Errorf("a spinner at 0.5: %d filled, want 0 (Render draws one blank cell)", got)
 	}
+	if !sp.Spinner() || p.Spinner() {
+		t.Errorf("Spinner: %v for a WithSpinner bar, %v for a plain one; want true, false", sp.Spinner(), p.Spinner())
+	}
 }
 
 // A button's mnemonic column is where its cells show the key's cluster.
