@@ -34,7 +34,7 @@ import (
 
 // menuNode is one declared row, before a MenuBar adopts it.
 type menuNode struct {
-	kind     string // "Menu", "MenuItem" or "MenuSeparator" — for diagnostics
+	kind     string // "Menu", "MenuItem" or "MenuSeparator": what the bar and the checks read
 	id       string // the node's engine identity, "" when anonymous; see rowID
 	model    widget.MenuItemModel
 	trigger  func()
@@ -60,11 +60,20 @@ func (*menuNode) DeclarationOnly()                {}
 func (*menuNode) Render(tui.Surface)              {}
 func (*menuNode) HandleEvent(tui.Event) bool      { return false }
 
+// row is the node as a menu's row: itself (menuRow).
+func (n *menuNode) row() *menuNode { return n }
+
+// menuRow is a node a menu or a MenuBar takes as a row: a MenuItem, a MenuSeparator, or a Menu
+// (menuListNode).
+type menuRow interface{ row() *menuNode }
+
+// menuListNode is a Menu: a row holding rows, the one kind whose rows can change in place. A
+// MenuItem and a MenuSeparator take none, so they are plain menuNodes and not rearrangers: the
+// engine rebuilds one a reload gives a child, and its Children arity refuses it.
+type menuListNode struct{ *menuNode }
+
 // arrange takes a Menu's rows as they now are, and has its bar project them.
-func (n *menuNode) arrange(children []tui.Component, _ []map[string]qml.SpecValue, _ tui.Component) error {
-	if n.kind != "Menu" {
-		return fmt.Errorf("a %s takes no rows", n.kind)
-	}
+func (n *menuListNode) arrange(children []tui.Component, _ []map[string]qml.SpecValue, _ tui.Component) error {
 	rows, err := menuRows(children, "a Menu holds MenuItem, MenuSeparator and Menu rows only")
 	if err != nil {
 		return err
@@ -80,11 +89,11 @@ func (n *menuNode) arrange(children []tui.Component, _ []map[string]qml.SpecValu
 func menuRows(children []tui.Component, refusal string) ([]*menuNode, error) {
 	rows := make([]*menuNode, 0, len(children))
 	for _, c := range children {
-		n, ok := c.(*menuNode)
+		r, ok := c.(menuRow)
 		if !ok {
 			return nil, errors.New(refusal)
 		}
-		rows = append(rows, n)
+		rows = append(rows, r.row())
 	}
 	return rows, nil
 }
@@ -210,7 +219,7 @@ func buildMenu(b Build) (tui.Component, []string, error) {
 	n := &menuNode{kind: "Menu", id: b.ID, children: rows}
 	n.model = withMnemonic(widget.NewSubmenu("", "", nil), title)
 	n.model.PegRight = right
-	return n, consumed, nil
+	return &menuListNode{n}, consumed, nil
 }
 
 // ---------------------------------------------------------------- bar
@@ -372,7 +381,7 @@ func barRows(children []tui.Component) ([]*menuNode, tui.Component, error) {
 	var menus []tui.Component
 	var corner tui.Component
 	for _, c := range children {
-		if _, ok := c.(*menuNode); ok {
+		if _, ok := c.(menuRow); ok {
 			menus = append(menus, c)
 			continue
 		}
