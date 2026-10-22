@@ -30,7 +30,7 @@ func TestAQualifiedTypeIsANodeAndAGroupIsNot(t *testing.T) {
 // TestAFileNameReachesEveryPosition, the JavaScript inside included: the
 // expression parser reads through the same scanner.
 func TestAFileNameReachesEveryPosition(t *testing.T) {
-	spec, err := qml.QML{File: "ui/Card.qml"}.Parse([]byte("Box {\n title: a + b\n onClicked: go()\n}"))
+	spec, err := qml.New(qml.WithName("ui/Card.qml")).Parse([]byte("Box {\n title: a + b\n onClicked: go()\n}"))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -43,7 +43,7 @@ func TestAFileNameReachesEveryPosition(t *testing.T) {
 			t.Errorf("the %s is at %q, want it in ui/Card.qml", what, pos)
 		}
 	}
-	_, err = qml.QML{File: "ui/Card.qml"}.Parse([]byte("Box {"))
+	_, err = qml.New(qml.WithName("ui/Card.qml")).Parse([]byte("Box {"))
 	if err == nil || !strings.Contains(err.Error(), "ui/Card.qml:1:5") {
 		t.Errorf("a syntax error = %v, want it placed in ui/Card.qml", err)
 	}

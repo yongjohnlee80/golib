@@ -320,7 +320,7 @@ func NewProgram(opts ...ProgramOption) (*Program, error) {
 	if err != nil {
 		return nil, err
 	}
-	spec, err := qml.QML{File: c.layoutFile}.Parse(c.layout)
+	spec, err := qml.New(qml.WithName(c.layoutFile)).Parse(c.layout)
 	if err != nil {
 		return nil, err
 	}
@@ -686,7 +686,7 @@ func (p *Program) reloadSpec(spec qml.SpecTree, keys *keymap.Map) (decl.Result, 
 // document that stops mid-construct is [decl.ErrIncomplete] — a save caught
 // part-way, a reason to wait rather than an error to show.
 func parseReload(file string, src []byte) (qml.SpecTree, error) {
-	spec, err := qml.QML{File: file}.Parse(src)
+	spec, err := qml.New(qml.WithName(file)).Parse(src)
 	if err != nil && errors.Is(err, parse.ErrUnterminated) {
 		return spec, fmt.Errorf("%w: %w", decl.ErrIncomplete, err)
 	}

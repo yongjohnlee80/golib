@@ -50,7 +50,7 @@ func TestAConsumersTypeCanAdoptAndBeDeclarationOnly(t *testing.T) {
 		tuidecl.WithErrorSink(func(error) {}))...)
 	tr := decl.New(a)
 	parse := func(src string) qml.SpecTree {
-		spec, err := qml.QML{File: "main.qml"}.Parse([]byte("import tui 1.0\n" + src))
+		spec, err := qml.New(qml.WithName("main.qml")).Parse([]byte("import tui 1.0\n" + src))
 		if err != nil {
 			t.Fatal(err)
 		}

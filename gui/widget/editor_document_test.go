@@ -279,7 +279,7 @@ func TestADocumentViewSwappedInAtRunTime(t *testing.T) {
 	var mounted, inStack bool
 	h.onLoop(func() {
 		mounted = first.Context() != nil && first.Context().Mounted()
-		inStack = slices.Contains(h.e.stack.Items(), tui.Component(first))
+		inStack = slices.Contains(slices.Collect(h.e.stack.Children()), tui.Component(first))
 	})
 	if mounted || inStack {
 		t.Fatalf("the replaced view: mounted %v, in the stack %v", mounted, inStack)

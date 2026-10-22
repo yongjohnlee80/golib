@@ -164,11 +164,11 @@ func (s Script) Statements() ([]Statement, error) {
 func lexer(engine string) (gsql.SQL, error) {
 	switch engine {
 	case dao.DialectSQLite:
-		return gsql.SQL{TriggerBodies: true}, nil
+		return gsql.New(gsql.TriggerBodies()), nil
 	case dao.DialectPostgres:
-		return gsql.SQL{DollarQuotes: true, NestedBlockComments: true, EStringEscapes: true}, nil
+		return gsql.New(gsql.DollarQuotes(), gsql.NestedBlockComments(), gsql.EStringEscapes()), nil
 	case dao.DialectMySQL:
-		return gsql.SQL{Backticks: true}, nil
+		return gsql.New(gsql.Backticks()), nil
 	}
 	return gsql.SQL{}, fmt.Errorf("%w: schema scripts for engine %q", dao.ErrUnsupported, engine)
 }

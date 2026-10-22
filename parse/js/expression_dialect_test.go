@@ -24,7 +24,7 @@ func TestJavaScriptIsWhatTheZeroValueParses(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	named, err := js.Expression{Dialect: &js.JavaScript}.Parse([]byte(src))
+	named, err := js.NewExpression(js.WithDialect(&js.JavaScript)).Parse([]byte(src))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -140,7 +140,7 @@ func TestGoGroupsItsOperatorsIntoFiveLevelsNotTen(t *testing.T) {
 }
 
 func TestGoSpellsTheNullLiteralNil(t *testing.T) {
-	x := js.Expression{Dialect: &js.Go}
+	x := js.NewExpression(js.WithDialect(&js.Go))
 	e, err := x.Parse([]byte("nil"))
 	if err != nil {
 		t.Fatal(err)
@@ -250,7 +250,7 @@ func TestADialectWithNoBinaryOperatorsStillParsesPrimariesAndPostfix(t *testing.
 	// the behaviour a dialect gets by declaring nothing rather than a refusal.
 	refuses(t, &bare, false, "a + b", "-a", "a ? b : c", "a?.b", "`t`")
 	shapes(t, &bare, map[string]string{"true": "true"})
-	if strings.Contains(js.Expression{Dialect: &bare}.FormatName(), "js") {
+	if strings.Contains(js.NewExpression(js.WithDialect(&bare)).FormatName(), "js") {
 		t.Error("FormatName fell back to the default dialect instead of using the one given")
 	}
 }
@@ -265,7 +265,7 @@ func TestADialectWithNoBinaryOperatorsStillParsesPrimariesAndPostfix(t *testing.
 // it to say.
 func refusesAnyhow(t *testing.T, d *js.ExprDialect, sources ...string) {
 	t.Helper()
-	x := js.Expression{Dialect: d}
+	x := js.NewExpression(js.WithDialect(d))
 	for _, src := range sources {
 		e, err := x.Parse([]byte(src))
 		if err == nil {

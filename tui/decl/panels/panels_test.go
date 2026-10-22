@@ -68,7 +68,7 @@ func TestPanelIsNonModal(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	tree, err := qml.QML{File: "Panel.qml"}.Parse(src)
+	tree, err := qml.New(qml.WithName("Panel.qml")).Parse(src)
 	if err != nil || tree.Root == nil || tree.Root.Type != "Drawer" {
 		t.Fatalf("Panel.qml: %v, root %+v", err, tree.Root)
 	}

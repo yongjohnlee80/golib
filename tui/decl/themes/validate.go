@@ -79,7 +79,7 @@ func (d Diagnostic) Error() string { return fmt.Sprintf("%s: %s: %s", d.Pos, d.K
 // It reports all semantic problems, or the parser's positioned syntax failure. Values are nil
 // when anything is wrong: consumers cannot accidentally install a partial palette.
 func Validate(file string, src []byte) (map[string]string, []Diagnostic) {
-	tree, err := (qml.QML{File: file}).Parse(src)
+	tree, err := qml.New(qml.WithName(file)).Parse(src)
 	if err != nil {
 		pos := parse.Position{File: file, Line: 1, Column: 1}
 		var syntax parse.SyntaxError

@@ -240,7 +240,7 @@ func TestAHandlerForASignalTheTypeLacksIsRefused(t *testing.T) {
 	if err := tuidecl.InjectHosts(tr, tuidecl.HostFuncs{"go": func() error { return nil }}); err != nil {
 		t.Fatal(err)
 	}
-	spec, _ := qml.QML{File: "m.qml"}.Parse([]byte("import tui 1.0\nFlex { Text { onFoo: go(); onBar: go() }\n Button { onClicked: go() } }"))
+	spec, _ := qml.New(qml.WithName("m.qml")).Parse([]byte("import tui 1.0\nFlex { Text { onFoo: go(); onBar: go() }\n Button { onClicked: go() } }"))
 	err := tr.Mount(spec)
 	if err == nil || !strings.Contains(err.Error(), "Text has no signal bar, foo") || !strings.Contains(err.Error(), "m.qml:2") {
 		t.Fatalf("err = %v, want Text's missing signals named and placed", err)

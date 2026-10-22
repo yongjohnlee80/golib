@@ -34,7 +34,7 @@ func CheckKeymap(opts ...ProgramOption) (warnings []keymap.Problem, err error) {
 	if err != nil {
 		return nil, err
 	}
-	spec, err := qml.QML{File: c.layoutFile}.Parse(c.layout)
+	spec, err := qml.New(qml.WithName(c.layoutFile)).Parse(c.layout)
 	if err != nil {
 		return programWarnings(c.keys), err
 	}

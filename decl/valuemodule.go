@@ -42,7 +42,7 @@ func ValueFile(fsys fs.FS, file string) ModuleLoader {
 }
 
 func valueModule(file string, src []byte) (ModuleContents, error) {
-	spec, err := qml.QML{File: file}.Parse(src)
+	spec, err := qml.New(qml.WithName(file)).Parse(src)
 	if err != nil {
 		return ModuleContents{}, err
 	}

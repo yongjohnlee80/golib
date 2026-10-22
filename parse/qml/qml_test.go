@@ -355,7 +355,7 @@ func TestQMLDepthBoundsEveryRecursivePath(t *testing.T) {
 	limitFor := func(src string) int {
 		t.Helper()
 		for n := 1; n <= 64; n++ {
-			if _, err := (qml.QML{MaxDepth: n}).Parse([]byte(src)); err == nil {
+			if _, err := qml.New(qml.MaxDepth(n)).Parse([]byte(src)); err == nil {
 				return n
 			}
 		}
@@ -463,10 +463,10 @@ func TestQMLDepthIsBounded(t *testing.T) {
 
 	// And the bound is configurable, so a legitimately deep schema is not
 	// stuck with the default.
-	if _, err := (qml.QML{MaxDepth: 3}).Parse([]byte("A { B { C { D { } } } }")); err == nil {
+	if _, err := qml.New(qml.MaxDepth(3)).Parse([]byte("A { B { C { D { } } } }")); err == nil {
 		t.Error("MaxDepth=3 accepted 4 levels")
 	}
-	if _, err := (qml.QML{MaxDepth: 8}).Parse([]byte("A { B { C { D { } } } }")); err != nil {
+	if _, err := qml.New(qml.MaxDepth(8)).Parse([]byte("A { B { C { D { } } } }")); err != nil {
 		t.Errorf("MaxDepth=8 rejected 4 levels: %v", err)
 	}
 }
@@ -601,10 +601,10 @@ func TestAHandlerBodySpendsTheDOCUMENTSNestingBudget(t *testing.T) {
 	deep := "A { onGo: " + strings.Repeat("f(", limit+2) + "x" + strings.Repeat(")", limit+2) + " }"
 	shallow := "A { onGo: f(f(x)) }"
 
-	if _, err := (qml.QML{MaxDepth: limit}).Parse([]byte(shallow)); err != nil {
+	if _, err := qml.New(qml.MaxDepth(limit)).Parse([]byte(shallow)); err != nil {
 		t.Fatalf("a shallow handler body was refused at MaxDepth=%d: %v", limit, err)
 	}
-	if _, err := (qml.QML{MaxDepth: limit}).Parse([]byte(deep)); err == nil {
+	if _, err := qml.New(qml.MaxDepth(limit)).Parse([]byte(deep)); err == nil {
 		t.Errorf("a handler body nested past MaxDepth=%d was accepted; "+
 			"the body is parsing its own budget rather than the document's", limit)
 	}
@@ -612,10 +612,10 @@ func TestAHandlerBodySpendsTheDOCUMENTSNestingBudget(t *testing.T) {
 	// And the budget is SHARED, not merely present: nodes already spent bring
 	// the same body over the line.
 	nested := "A { B { C { onGo: f(f(f(x))) } } }"
-	if _, err := (qml.QML{MaxDepth: 12}).Parse([]byte(nested)); err != nil {
+	if _, err := qml.New(qml.MaxDepth(12)).Parse([]byte(nested)); err != nil {
 		t.Fatalf("a body under three nodes was refused with budget to spare: %v", err)
 	}
-	if _, err := (qml.QML{MaxDepth: 4}).Parse([]byte(nested)); err == nil {
+	if _, err := qml.New(qml.MaxDepth(4)).Parse([]byte(nested)); err == nil {
 		t.Error("nodes and a handler body together exceeded the limit and were accepted")
 	}
 }

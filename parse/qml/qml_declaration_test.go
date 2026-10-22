@@ -15,7 +15,7 @@ import (
 
 // TestADeclarationIsRecordedOnItsNode, in document order, apart from Props.
 func TestADeclarationIsRecordedOnItsNode(t *testing.T) {
-	tree, err := qml.QML{File: "Picker.qml"}.Parse([]byte(`Dialog {
+	tree, err := qml.New(qml.WithName("Picker.qml")).Parse([]byte(`Dialog {
 	property string label: "Find"
 	required property var model
 	property list<string> names; property real ratio: -0.5

@@ -150,7 +150,7 @@ func TestADocumentDeclaringNothingExpandsAsBefore(t *testing.T) {
 	docs = append(docs, string(layout))
 
 	for i, src := range docs {
-		spec, err := qml.QML{File: fmt.Sprintf("doc%d.qml", i)}.Parse([]byte(src))
+		spec, err := qml.New(qml.WithName(fmt.Sprintf("doc%d.qml", i))).Parse([]byte(src))
 		if err != nil {
 			t.Fatal(err)
 		}

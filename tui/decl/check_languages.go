@@ -36,7 +36,7 @@ func CheckLanguages(opts ...ProgramOption) error {
 	}
 	errs := catalogProblems(set)
 
-	spec, err := qml.QML{File: c.layoutFile}.Parse(c.layout)
+	spec, err := qml.New(qml.WithName(c.layoutFile)).Parse(c.layout)
 	if err != nil {
 		return errors.Join(append(errs, err)...)
 	}
