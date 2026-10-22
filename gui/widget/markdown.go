@@ -52,6 +52,13 @@ type MarkdownRenderer struct {
 // MarkdownOption sets up a MarkdownRenderer.
 type MarkdownOption func(*MarkdownRenderer)
 
+// The capabilities the Editor discovers in a renderer: a MarkdownRenderer has each.
+var (
+	_ Renderer          = (*MarkdownRenderer)(nil)
+	_ ReflowRenderer    = (*MarkdownRenderer)(nil)
+	_ StructureRenderer = (*MarkdownRenderer)(nil)
+)
+
 // NewMarkdownRenderer is a MarkdownRenderer.
 func NewMarkdownRenderer(opts ...MarkdownOption) *MarkdownRenderer {
 	r := &MarkdownRenderer{h1: 2, languages: highlight.NewRepository(languages.Definitions()...).Snapshot()}
