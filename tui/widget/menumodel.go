@@ -1,11 +1,11 @@
 package widget
 
 import (
-	"errors"
 	"fmt"
 	"slices"
 	"strings"
 
+	"github.com/yongjohnlee80/golib/errs"
 	"github.com/yongjohnlee80/golib/tui"
 )
 
@@ -191,17 +191,18 @@ func copyItems(items []MenuItemModel) []MenuItemModel {
 	return out
 }
 
-// ErrInvalidMenuModel is the umbrella every model rejection matches.
-var ErrInvalidMenuModel = errors.New("widget: invalid menu model")
+// ErrInvalidMenuModel is the umbrella every model rejection matches. It is an
+// errs.ErrInvalidArgument, as each of the specific rejections below is.
+var ErrInvalidMenuModel = errs.Sentinel(errs.ErrInvalidArgument, "widget: invalid menu model")
 
 // ErrEmptyItemID reports a row with no ID.
-var ErrEmptyItemID = errors.New("widget: empty ItemID")
+var ErrEmptyItemID = errs.Sentinel(errs.ErrInvalidArgument, "widget: empty ItemID")
 
 // ErrDuplicateItemID reports the same ItemID twice anywhere in the model.
-var ErrDuplicateItemID = errors.New("widget: duplicate ItemID")
+var ErrDuplicateItemID = errs.Sentinel(errs.ErrInvalidArgument, "widget: duplicate ItemID")
 
 // ErrUnknownItemKind reports a row carrying a value outside the closed set.
-var ErrUnknownItemKind = errors.New("widget: unknown ItemKind")
+var ErrUnknownItemKind = errs.Sentinel(errs.ErrInvalidArgument, "widget: unknown ItemKind")
 
 // menuModelError carries both identities, like the button-list error: a caller
 // may handle "the model was bad" or the specific fault without the two

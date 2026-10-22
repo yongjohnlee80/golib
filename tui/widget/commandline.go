@@ -1,7 +1,7 @@
 package widget
 
 import (
-	"strings"
+	"errors"
 
 	"github.com/yongjohnlee80/golib/tui"
 	"github.com/yongjohnlee80/golib/tui/keymap"
@@ -99,8 +99,7 @@ func (l *CommandLine) open(initial string, failed error) bool {
 	l.comp = completion{at: -1}
 	l.list = &completionList{at: -1}
 	if failed != nil {
-		// the package's sentinels name it for a log; the user reads only what went wrong
-		l.list.say(strings.TrimPrefix(failed.Error(), "widget: "))
+		l.list.say(promptSays(failed))
 	}
 	// the field wears the theme's surface, as a field on a card does: a style with no colours
 	// would clear its cells to the terminal's own, a hole in the card
@@ -180,4 +179,23 @@ func cmdlineStep(ctx tui.KeyResolver, k tui.KeyEvent, dropdown bool) (back, ok b
 // clear its cells to the screen's default background, a dark block on a themed card.
 func cardText() style.Style {
 	return style.New().Background(style.TokenPanel).Foreground(style.TokenForeground)
+}
+
+// promptSays is what the prompt shows for a command's failure: the command line's own refusals in
+// the user's words, never their package name or errs kind; any other error, a host command's, as it
+// reads itself.
+func promptSays(err error) string {
+	var r *commandRefusal
+	if errors.As(err, &r) {
+		return r.words
+	}
+	for _, w := range [...]struct {
+		err   error
+		words string
+	}{{ErrNoWriter, noWriterWords}, {ErrNoQuit, noQuitWords}, {ErrReadOnly, readOnlyWords}} {
+		if errors.Is(err, w.err) {
+			return w.words
+		}
+	}
+	return err.Error()
 }
