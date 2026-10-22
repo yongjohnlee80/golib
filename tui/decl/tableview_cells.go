@@ -225,6 +225,9 @@ type cellTemplate struct {
 	implicit string // a role the view supplies itself (TableView's "display"), not checked against the model
 }
 
+// textName is the Text type's name (widgets.go registers it): the one type a cell delegate may be.
+const textName = "Text"
+
 // parseCellTemplate reads owner's delegate from b: a Text object template with one text and an
 // optional color, and no id, handlers or children. nil when b writes none; the last one written
 // wins, as a property does.
@@ -238,7 +241,7 @@ func parseCellTemplate(b Build, owner, implicit string) (*cellTemplate, error) {
 			return nil, fmt.Errorf("%s.delegate takes a Text object template (at %s)", owner, prop.Pos)
 		}
 		node := prop.Value.Template
-		if node.Type != "Text" || node.ID != "" || len(node.Children) != 0 || len(node.Handlers) != 0 {
+		if node.Type != textName || node.ID != "" || len(node.Children) != 0 || len(node.Handlers) != 0 {
 			return nil, fmt.Errorf("%s.delegate supports stateless Text only, without ids, handlers or children (at %s)", owner, node.Pos)
 		}
 		seen := map[string]bool{}
