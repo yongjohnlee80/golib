@@ -90,7 +90,9 @@ type Tile struct {
 func NewTiles(opts ...TilesOption) *Tiles {
 	t := &Tiles{preview: &tilePreview{}}
 	for _, o := range opts {
-		o(t)
+		if o != nil { // a nil option is no option
+			o(t)
+		}
 	}
 	if t.collector == nil {
 		t.collector = NewMinimizedWindows()

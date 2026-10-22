@@ -322,7 +322,9 @@ func New(reg *Registry, opts ...Option) *Adapter {
 		highlighters: stdHighlighters(),
 	}
 	for _, o := range opts {
-		o(a)
+		if o != nil { // a nil option is no option
+			o(a)
+		}
 	}
 	a.sourceLanguages = a.highlighters.Snapshot()
 	return a
