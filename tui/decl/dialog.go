@@ -1,7 +1,6 @@
 package decl
 
 import (
-	"errors"
 	"fmt"
 
 	"github.com/yongjohnlee80/golib/highlight"
@@ -134,8 +133,7 @@ func (*dialogNode) Render(tui.Surface)        {}
 func (d *dialogNode) heldShortcuts() (keymap.Scope, []*shortcutNode) { return d.keyScope, d.shortcuts }
 func (*dialogNode) HandleEvent(tui.Event) bool                       { return false }
 
-var errDialogOutsideWindow = errors.New("a Dialog opens over a Window, and this one is not in one; " +
-	"inside a Go program, give the adapter WithOverlay(host)")
+var errDialogOutsideWindow error = outsideWindow{"a Dialog"}
 
 // SetOverlay implements [Overlaid]: the Window's host, and what the Window
 // runs once the dialog has closed.
