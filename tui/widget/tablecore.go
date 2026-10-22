@@ -529,6 +529,29 @@ func (c *TableCore) Sorted() (col int, desc, partial bool) {
 	return keys[0].Col, keys[0].Desc, partial
 }
 
+// SortMark is field col's sort mark, as a header shows it: "▲" ascending or "▼" descending, and
+// its key's place among the sort's keys (0 the first). ok is false when no key is on col; a field
+// keyed twice shows its first key.
+func (c *TableCore) SortMark(col int) (mark string, place int, ok bool) {
+	keys, _ := c.SortedKeys()
+	for i, k := range keys {
+		if k.Col == col {
+			return map[bool]string{false: "▲", true: "▼"}[k.Desc], i, true
+		}
+	}
+	return "", 0, false
+}
+
+// HeaderNote is what a header says after field col's mark: "(loaded rows)" on the sort's first
+// key while rows remain to load, so the sort is known to cover only those; "" otherwise.
+func (c *TableCore) HeaderNote(col int) string {
+	keys, partial := c.SortedKeys()
+	if partial && len(keys) > 0 && keys[0].Col == col {
+		return "(loaded rows)"
+	}
+	return ""
+}
+
 // compareCells orders two cells: as exact decimals when both are (parseDecimal, as the WHERE
 // filter reads numbers), else as text.
 func compareCells(a, b string) int { return comparePlain(readPlainCell(a), readPlainCell(b)) }

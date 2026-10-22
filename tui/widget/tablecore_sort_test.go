@@ -237,3 +237,36 @@ func TestTableSort_TheSKeyReplacesSeveralKeysAndIsHeard(t *testing.T) {
 		t.Errorf("a new source ending the sort was heard as %+v", heard)
 	}
 }
+
+// A field's sort mark is its key's direction and place; the header's note, "(loaded rows)", is on
+// the first key alone, and only while rows remain to load.
+func TestASortMarkIsItsKeysDirectionAndPlace(t *testing.T) {
+	p := &pagedSource{rowsSource: rowsSource{fields: []TableField{{Title: "n"}, {Title: "r"}}}, total: 30}
+	c := NewTableCore(p, TableFetchAhead(5))
+	p.arrive(c)
+	c.SortKeys([]TableSortKey{{Col: 1, Desc: true}, {Col: 0}})
+	for _, tc := range []struct {
+		col   int
+		mark  string
+		place int
+		ok    bool
+		note  string
+	}{
+		{1, "▼", 0, true, "(loaded rows)"},
+		{0, "▲", 1, true, ""},
+		{2, "", 0, false, ""},
+	} {
+		mark, place, ok := c.SortMark(tc.col)
+		if mark != tc.mark || place != tc.place || ok != tc.ok {
+			t.Errorf("SortMark(%d) = %q, %d, %v; want %q, %d, %v", tc.col, mark, place, ok, tc.mark, tc.place, tc.ok)
+		}
+		if note := c.HeaderNote(tc.col); note != tc.note {
+			t.Errorf("HeaderNote(%d) = %q, want %q", tc.col, note, tc.note)
+		}
+	}
+	whole := NewTableCore(&rowsSource{fields: p.fields, rows: p.rows}) // every row loaded
+	whole.SortKeys([]TableSortKey{{Col: 1, Desc: true}})
+	if note := whole.HeaderNote(1); note != "" {
+		t.Errorf("every row loaded: HeaderNote(1) = %q, want none", note)
+	}
+}
