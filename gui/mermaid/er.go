@@ -98,16 +98,7 @@ func layER(ctx context.Context, d pm.Diagram, width float32, th Theme, m gui.Mea
 			}
 		}
 	}
-	for i := range l.edges {
-		e := &l.edges[i]
-		for _, p := range res.Edges[i] {
-			e.pts = append(e.pts, gui.Pt(p.X+margin, p.Y+margin))
-		}
-		if e.label != nil {
-			c := res.Labels[i]
-			*e.label = e.label.at(c.X+margin-e.label.box.W/2, c.Y+margin-e.label.box.H/2)
-		}
-	}
+	placeEdges(l.edges, res, margin)
 	l.size = gui.Size{W: res.Size.W + 2*margin, H: res.Size.H + 2*margin}
 	return l, nil
 }

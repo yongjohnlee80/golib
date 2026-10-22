@@ -130,22 +130,8 @@ func layFlowchart(ctx context.Context, d pm.Diagram, width float32, th Theme, m 
 		n.box = gui.Rect{X: c.X - sz.W/2 + pad, Y: c.Y - sz.H/2 + pad, W: sz.W, H: sz.H}
 		n.label.box.X, n.label.box.Y = n.box.X+(n.box.W-n.label.box.W)/2, n.box.Y+(n.box.H-n.label.box.H)/2
 	}
-	for i := range l.edges {
-		e := &l.edges[i]
-		for _, p := range res.Edges[i] {
-			e.pts = append(e.pts, gui.Pt(p.X+pad, p.Y+pad))
-		}
-		if e.label != nil {
-			c := res.Labels[i]
-			e.label.box.X, e.label.box.Y = c.X+pad-e.label.box.W/2, c.Y+pad-e.label.box.H/2
-		}
-	}
-	for i := range l.group {
-		g := &l.group[i]
-		r := res.Groups[i]
-		g.box = gui.Rect{X: r.X + pad, Y: r.Y + pad, W: r.W, H: r.H}
-		g.title.box.X, g.title.box.Y = g.box.X+small.Size*0.5, g.box.Y+small.Size*0.3
-	}
+	placeEdges(l.edges, res, pad)
+	placeGroups(l.group, res, pad, small)
 	l.size = gui.Size{W: res.Size.W + 2*pad, H: res.Size.H + 2*pad}
 	return l, nil
 }

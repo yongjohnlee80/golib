@@ -199,15 +199,9 @@ func layClass(ctx context.Context, d pm.Diagram, _ float32, th Theme, m gui.Meas
 			n.parts = append(n.parts, p)
 		}
 	}
+	placeEdges(l.edges, res, pad)
 	for i := range l.edges {
 		e := &l.edges[i]
-		for _, p := range res.Edges[i] {
-			e.pts = append(e.pts, gui.Pt(p.X+pad, p.Y+pad))
-		}
-		if e.label != nil {
-			c := res.Labels[i]
-			e.label.box.X, e.label.box.Y = c.X+pad-e.label.box.W/2, c.Y+pad-e.label.box.H/2
-		}
 		if n := len(e.pts); n >= 2 {
 			if e.tailLabel != nil {
 				*e.tailLabel = cardinalityAt(*e.tailLabel, e.pts[0], e.pts[1], em)
@@ -217,12 +211,7 @@ func layClass(ctx context.Context, d pm.Diagram, _ float32, th Theme, m gui.Meas
 			}
 		}
 	}
-	for i := range l.group {
-		g := &l.group[i]
-		r := res.Groups[i]
-		g.box = gui.Rect{X: r.X + pad, Y: r.Y + pad, W: r.W, H: r.H}
-		g.title = g.title.at(g.box.X+small.Size*0.5, g.box.Y+small.Size*0.3)
-	}
+	placeGroups(l.group, res, pad, small)
 	l.size = gui.Size{W: res.Size.W + 2*pad, H: res.Size.H + 2*pad}
 	return l, nil
 }
