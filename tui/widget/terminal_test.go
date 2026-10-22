@@ -882,3 +882,30 @@ func TestTerminalModeKey(t *testing.T) {
 		}
 	})
 }
+
+// Normal mode's word motions are the editor's: w stops at punctuation, W only at blanks, w and ge
+// stop at an empty line, and a wide cluster is one cluster over two cells.
+func TestTerminalWordMotionsAreTheEditors(t *testing.T) {
+	f := startTerm(t, 20, 6, widget.WithVimKeys(true))
+	f.output("ab.cd ef\r\n\r\n界界 yz\r\n$")
+	f.h.inject(key(tui.KeyEscape))
+	f.h.waitFor("normal mode", func() bool { return f.mode() == widget.TerminalNormal })
+	cur := func() [2]int {
+		x, y, _ := f.h.tb.CursorPos()
+		return [2]int{x, y}
+	}
+	step := func(name string, want [2]int, keys ...tui.Event) {
+		t.Helper()
+		f.h.inject(keys...)
+		f.h.waitFor(name, func() bool { return cur() == want })
+	}
+	step("gg", [2]int{0, 0}, key('g'), key('g'))
+	step("w to the punctuation", [2]int{2, 0}, key('w'))
+	step("w past it", [2]int{3, 0}, key('w'))
+	step("W to the next WORD", [2]int{6, 0}, key('g'), key('g'), key('W'))
+	step("w to the empty line", [2]int{0, 1}, key('w'))
+	step("w to the wide word", [2]int{0, 2}, key('w'))
+	step("w over two wide clusters", [2]int{5, 2}, key('w'))
+	step("e back on the wide word's end", [2]int{2, 2}, key('b'), key('e'))
+	step("ge to the empty line", [2]int{0, 1}, key('b'), key('g'), key('e'))
+}

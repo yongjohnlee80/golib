@@ -2,7 +2,6 @@ package widget
 
 import (
 	"strings"
-	"unicode"
 
 	"github.com/yongjohnlee80/golib/tui"
 	"github.com/yongjohnlee80/golib/tui/style"
@@ -91,11 +90,7 @@ func (n *normalState) key(t *Terminal, k tui.KeyEvent) bool {
 	if n.searching {
 		return n.searchKey(t, k)
 	}
-	if n.pendingG && isKey(k, literalG...) {
-		// g's grammar: the literal g after it is the first line, wherever a map moved the prefix
-		n.pendingG = false
-		n.line, n.col = 0, 0
-		n.moved(t)
+	if n.pendingG && n.goSecond(t, k) {
 		return true
 	}
 	cmd, ok := t.Context().KeyCommand(k, terminalNormalCommands...)
@@ -110,6 +105,25 @@ func (n *normalState) key(t *Terminal, k tui.KeyEvent) bool {
 		return false // TestEveryNormalCommandHasAnAction keeps this unreached
 	}
 	return act(n, t)
+}
+
+// goSecond is the key after g, wherever a map moved the prefix: the literal g is the first line, e
+// and E the end of the previous word and WORD (ge, gE). It reports whether k was one; any other key
+// goes on as a command.
+func (n *normalState) goSecond(t *Terminal, k tui.KeyEvent) bool {
+	switch {
+	case isKey(k, literalG...):
+		n.line, n.col = 0, 0
+	case isKey(k, literalE...):
+		n.wordMotion(t, wordEndBackFrom, false)
+	case isKey(k, literalShiftE...):
+		n.wordMotion(t, wordEndBackFrom, true)
+	default:
+		return false
+	}
+	n.pendingG = false
+	n.moved(t)
+	return true
 }
 
 // normalAction runs one normal-mode command; the bool is whether the key was used.
@@ -133,9 +147,12 @@ var terminalNormalActions = map[string]normalAction{
 	TermLineEnd.ID: moving(func(n *normalState, t *Terminal) {
 		n.col = max(len(lineRunes(t.lineCells(n.line)))-1, 0)
 	}),
-	TermWord.ID:     moving(func(n *normalState, t *Terminal) { n.line, n.col = wordForward(t, n.line, n.col) }),
-	TermWordBack.ID: moving(func(n *normalState, t *Terminal) { n.line, n.col = wordBackward(t, n.line, n.col) }),
-	TermWordEnd.ID:  moving(func(n *normalState, t *Terminal) { n.line, n.col = wordEnd(t, n.line, n.col) }),
+	TermWord.ID:     moving(func(n *normalState, t *Terminal) { n.wordMotion(t, wordForwardFrom, false) }),
+	TermWordBack.ID: moving(func(n *normalState, t *Terminal) { n.wordMotion(t, wordBackFrom, false) }),
+	TermWordEnd.ID:  moving(func(n *normalState, t *Terminal) { n.wordMotion(t, wordEndFrom, false) }),
+	TermWORD.ID:     moving(func(n *normalState, t *Terminal) { n.wordMotion(t, wordForwardFrom, true) }),
+	TermWORDBack.ID: moving(func(n *normalState, t *Terminal) { n.wordMotion(t, wordBackFrom, true) }),
+	TermWORDEnd.ID:  moving(func(n *normalState, t *Terminal) { n.wordMotion(t, wordEndFrom, true) }),
 	TermGoPrefix.ID: func(n *normalState, _ *Terminal) bool { n.pendingG = true; return true },
 	TermBottom.ID:   moving(func(n *normalState, t *Terminal) { n.line, n.col = t.lineCount()-1, 0 }),
 
@@ -299,104 +316,95 @@ func lineRunes(cells []vt.Cell) []rune {
 	return out[:n]
 }
 
-func isWordRune(r rune) bool { return r != 0 && !unicode.IsSpace(r) }
-
-// cellLines is what the normal-mode motions read: the lines, each line's runes, the width a line
-// wraps at, and whether a line continues on the next. Terminal is one; a fake is a test's.
+// cellLines is what a normal-mode selection reads: the lines, each line's runes, and whether a line
+// continues on the next. Terminal is one; a fake is a test's. (The word motions read terminalWords.)
 type cellLines interface {
 	lineCount() int
 	runes(i int) []rune
-	width() int
 	wrapped(i int) bool
 }
 
-// runes is line i's runes, as the motions read it (cellLines).
+// runes is line i's runes, as a selection reads them (cellLines).
 func (t *Terminal) runes(i int) []rune { return lineRunes(t.lineCells(i)) }
 
-// width is the columns a line wraps at (cellLines).
-func (t *Terminal) width() int {
-	_, cols := t.scr.Size()
-	return cols
+// terminalWords is a Terminal's lines as the word motions read them (wordText): each line's
+// grapheme clusters, a wide cluster once, the trailing blanks gone. w, b, e and ge then mean in
+// normal mode what they mean in the editor.
+type terminalWords struct{ t *Terminal }
+
+func (w terminalWords) lineCount() int { return w.t.lineCount() }
+
+func (w terminalWords) lineClusters(i int) []string {
+	cs, _ := lineClustersOf(w.t.lineCells(i))
+	return cs
 }
 
-func runeAt(t cellLines, line, col int) rune {
-	rs := t.runes(line)
-	if col < 0 || col >= len(rs) {
-		return ' '
-	}
-	return rs[col]
-}
-
-// step moves one cell forward or back across lines; ok is false at an end.
-func step(t cellLines, line, col, d int) (int, int, bool) {
-	cols := t.width()
-	col += d
-	if col >= cols {
-		if line+1 >= t.lineCount() {
-			return line, cols - 1, false
+// lineClustersOf is a line's clusters and the cell each starts at: a wide cluster's continuation
+// cell is no cluster, a blank cell is a space, and the trailing blanks are trimmed.
+func lineClustersOf(cells []vt.Cell) (cs []string, cols []int) {
+	for x, c := range cells {
+		switch {
+		case c.Width == 0:
+			continue
+		case c.Content == "":
+			cs = append(cs, " ")
+		default:
+			cs = append(cs, c.Content)
 		}
-		return line + 1, 0, true
+		cols = append(cols, x)
 	}
-	if col < 0 {
-		if line == 0 {
-			return 0, 0, false
-		}
-		return line - 1, cols - 1, true
+	n := len(cs)
+	for n > 0 && cs[n-1] == " " {
+		n--
 	}
-	return line, col, true
+	return cs[:n], cols[:n]
 }
 
-// wordForward is w: the start of the next run of non-blanks.
-func wordForward(t cellLines, line, col int) (int, int) {
-	l, c := line, col
-	ok := true
-	for ok && isWordRune(runeAt(t, l, c)) {
-		l2, c2, more := step(t, l, c, 1)
-		if l2 != l {
-			l, c = l2, c2
-			break // a line end ends a word
-		}
-		l, c, ok = l2, c2, more
+// clusterAtCell is the cluster index of cell col in a line's cells: the cluster covering it, or
+// the line's end at or past the cell after its text.
+func clusterAtCell(cells []vt.Cell, col int) int {
+	_, cols := lineClustersOf(cells)
+	if len(cols) == 0 || col >= cellAfterText(cells) {
+		return len(cols)
 	}
-	for ok && !isWordRune(runeAt(t, l, c)) {
-		l, c, ok = step(t, l, c, 1)
-	}
-	if !ok {
-		return line, col
-	}
-	return l, c
-}
-
-// wordBackward is b: the start of this or the previous run of non-blanks.
-func wordBackward(t cellLines, line, col int) (int, int) {
-	l, c, ok := step(t, line, col, -1)
-	for ok && !isWordRune(runeAt(t, l, c)) {
-		l, c, ok = step(t, l, c, -1)
-	}
-	for ok {
-		l2, c2, more := step(t, l, c, -1)
-		if !more || l2 != l || !isWordRune(runeAt(t, l2, c2)) {
+	idx := 0
+	for j, c := range cols {
+		if c > col {
 			break
 		}
-		l, c = l2, c2
+		idx = j
 	}
-	return l, c
+	return idx
 }
 
-// wordEnd is e: the end of this or the next run of non-blanks.
-func wordEnd(t cellLines, line, col int) (int, int) {
-	l, c, ok := step(t, line, col, 1)
-	for ok && !isWordRune(runeAt(t, l, c)) {
-		l, c, ok = step(t, l, c, 1)
+// cellAfterText is the cell just past a line's text.
+func cellAfterText(cells []vt.Cell) int {
+	_, cols := lineClustersOf(cells)
+	if len(cols) == 0 {
+		return 0
 	}
-	for ok {
-		l2, c2, more := step(t, l, c, 1)
-		if !more || l2 != l || !isWordRune(runeAt(t, l2, c2)) {
-			break
-		}
-		l, c = l2, c2
+	last := cols[len(cols)-1]
+	return last + max(int(cells[last].Width), 1)
+}
+
+// cellOfCluster is the cell cluster idx starts at; the line's end, as normal mode's cursor rests
+// on a line's last character, is its last cluster's cell (0 on an empty line).
+func cellOfCluster(cells []vt.Cell, idx int) int {
+	_, cols := lineClustersOf(cells)
+	switch {
+	case len(cols) == 0:
+		return 0
+	case idx >= len(cols):
+		return cols[len(cols)-1]
 	}
-	return l, c
+	return cols[idx]
+}
+
+// wordMotion runs one of the editor's word motions from the cursor, by WORD with big, and puts the
+// cursor where it lands.
+func (n *normalState) wordMotion(t *Terminal, motion func(*wordWalker) (int, int), big bool) {
+	ln, idx := motion(newWordWalker(terminalWords{t}, n.line, clusterAtCell(t.lineCells(n.line), n.col), big))
+	n.line, n.col = ln, cellOfCluster(t.lineCells(ln), idx)
 }
 
 // span orders the selection's ends.

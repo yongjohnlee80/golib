@@ -52,17 +52,36 @@ func wordClass(cluster string, big bool) int {
 	return 1
 }
 
-// wordWalker steps through the buffer as Vim's inc and dec do: over each line's clusters and
-// then its end, a blank position of its own (an empty line is that position alone).
+// wordText is the text the word motions walk: lines of grapheme clusters. The editor's buffer is
+// one (bufferWords); a Terminal's lines are another (terminalWords), so w, b, e and ge mean the
+// same in both.
+type wordText interface {
+	lineCount() int
+	lineClusters(i int) []string
+}
+
+// bufferWords is a buffer as the word motions read it.
+type bufferWords struct{ b *textBuffer }
+
+func (w bufferWords) lineCount() int              { return len(w.b.textLines) }
+func (w bufferWords) lineClusters(i int) []string { return w.b.lineClusters(i) }
+
+// wordWalker steps through a wordText as Vim's inc and dec do: over each line's clusters and then
+// its end, a blank position of its own (an empty line is that position alone).
 type wordWalker struct {
-	b     *textBuffer
+	src   wordText
 	big   bool
 	ln, i int
 	cs    []string
 }
 
+// newWordWalker is a walker at (ln, col) of src, by WORD with big.
+func newWordWalker(src wordText, ln, col int, big bool) *wordWalker {
+	return &wordWalker{src: src, big: big, ln: ln, i: col, cs: src.lineClusters(ln)}
+}
+
 func (c *EditorCore) walker(big bool) *wordWalker {
-	return &wordWalker{b: &c.buf, big: big, ln: c.buf.ln, i: c.buf.col, cs: c.buf.lineClusters(c.buf.ln)}
+	return newWordWalker(bufferWords{&c.buf}, c.buf.ln, c.buf.col, big)
 }
 
 // cls is the class at the walker; a line's end is blank.
@@ -82,11 +101,11 @@ func (w *wordWalker) inc() bool {
 		w.i++
 		return true
 	}
-	if w.ln >= len(w.b.textLines)-1 {
+	if w.ln >= w.src.lineCount()-1 {
 		return false
 	}
 	w.ln, w.i = w.ln+1, 0
-	w.cs = w.b.lineClusters(w.ln)
+	w.cs = w.src.lineClusters(w.ln)
 	return true
 }
 
@@ -100,7 +119,7 @@ func (w *wordWalker) dec() bool {
 		return false
 	}
 	w.ln--
-	w.cs = w.b.lineClusters(w.ln)
+	w.cs = w.src.lineClusters(w.ln)
 	w.i = len(w.cs)
 	return true
 }
@@ -109,8 +128,10 @@ func (w *wordWalker) at() (int, int) { return w.ln, w.i }
 
 // wordForward is w (W with big), as Vim's fwd_word: past the cursor's run, then past blanks to
 // the next run's start, stopping on an empty line. At the text's end it rests there.
-func (c *EditorCore) wordForward(big bool) (int, int) {
-	w := c.walker(big)
+func (c *EditorCore) wordForward(big bool) (int, int) { return wordForwardFrom(c.walker(big)) }
+
+// wordForwardFrom is wordForward from where w stands.
+func wordForwardFrom(w *wordWalker) (int, int) {
 	start := w.cls()
 	if !w.inc() {
 		return w.at()
@@ -132,8 +153,10 @@ func (c *EditorCore) wordForward(big bool) (int, int) {
 
 // wordBack is b (B with big), as Vim's bck_word: back past blanks, stopping on an empty line, then
 // to the start of the run there.
-func (c *EditorCore) wordBack(big bool) (int, int) {
-	w := c.walker(big)
+func (c *EditorCore) wordBack(big bool) (int, int) { return wordBackFrom(c.walker(big)) }
+
+// wordBackFrom is wordBack from where w stands.
+func wordBackFrom(w *wordWalker) (int, int) {
 	if !w.dec() {
 		return w.at()
 	}
@@ -153,8 +176,10 @@ func (c *EditorCore) wordBack(big bool) (int, int) {
 
 // wordEnd is e (E with big), as Vim's end_word: one step, then past blanks (empty lines too), then
 // to the end of the run there, which is the cursor's own when it goes on.
-func (c *EditorCore) wordEnd(big bool) (int, int) {
-	w := c.walker(big)
+func (c *EditorCore) wordEnd(big bool) (int, int) { return wordEndFrom(c.walker(big)) }
+
+// wordEndFrom is wordEnd from where w stands.
+func wordEndFrom(w *wordWalker) (int, int) {
 	if !w.inc() {
 		return w.at()
 	}
@@ -174,8 +199,10 @@ func (c *EditorCore) wordEnd(big bool) (int, int) {
 
 // wordEndBack is ge (gE with big), as Vim's bckend_word: back past the cursor's run, then past
 // blanks to the end of the previous run, stopping on an empty line.
-func (c *EditorCore) wordEndBack(big bool) (int, int) {
-	w := c.walker(big)
+func (c *EditorCore) wordEndBack(big bool) (int, int) { return wordEndBackFrom(c.walker(big)) }
+
+// wordEndBackFrom is wordEndBack from where w stands.
+func wordEndBackFrom(w *wordWalker) (int, int) {
 	start := w.cls()
 	if !w.dec() {
 		return w.at()
