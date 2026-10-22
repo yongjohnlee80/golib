@@ -73,6 +73,23 @@ func ColorSetter[W any](apply func(W, style.Color)) Setter {
 	return setter(widgetName[W](), colorOf, apply)
 }
 
+// ModelField reads a model property into dst: `model: App.connections`, a host's [ItemModel].
+func ModelField(dst *ItemModel) Field { return into(dst, modelOf) }
+
+// ModelSetter is a runtime property holding a model, a host's [ItemModel].
+func ModelSetter[W any](apply func(W, ItemModel)) Setter {
+	return setter(widgetName[W](), modelOf, apply)
+}
+
+// HostObject marks a Go value a host hands a document as an object, beyond the kinds decl knows
+// (a model, a message, a row's Index, a FileSource, Keys): [Value] passes one through as an
+// object, and the type that reads it takes it back from [qml.SpecValue.Obj]. A consumer's own
+// host object implements it rather than waiting for decl to list its type.
+type HostObject interface {
+	// HostObject is the marker; it does nothing.
+	HostObject()
+}
+
 // StringGetter is a readable property holding a string.
 func StringGetter[W any](read func(W) string) Getter {
 	return getter(func(w W) (qml.SpecValue, error) { return strValue(read(w)), nil })
