@@ -3,6 +3,9 @@
 // toolkit. A terminal build records the same file a windowed one does — the
 // tui's own trace maps into it too — without linking Gio or needing cgo, which
 // is why the recorder's types live here and package gui re-exports them.
+//
+// Its one capability is Recorder: anything that takes a Record without blocking the window.
+// JSONLRecorder is golib's, one JSON object per line.
 package record
 
 import (
