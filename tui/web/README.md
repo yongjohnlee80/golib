@@ -33,7 +33,7 @@ warning: a warning in a log is not a control. An unspecified address (`""`,
 as local is exactly how a terminal ends up on the internet.
 
 ```go
-mgr, _ := web.NewManager(func(b *web.Backend) web.Runner {
+mgr, _ := web.NewManager(func(b tui.Backend, _ *web.SessionInfo) web.Runner {
     return tui.NewApp(buildRoot(), tui.WithBackend(b))
 })
 h, err := web.NewHandler(web.Config{
@@ -354,7 +354,7 @@ sso.Stash(ctx, upstream)
 
 // the app: one build function for every mechanism, release handled
 mgr, err := web.NewManager(
-    sso.Factory(func(b *web.Backend, id *auth.Identity, up *myUpstream) web.Runner {
+    sso.Factory(func(b tui.Backend, id *auth.Identity, up *myUpstream) web.Runner {
         return myApp(b, id, up)
     }),
     managerOpt,

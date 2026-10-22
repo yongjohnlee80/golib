@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/yongjohnlee80/golib/auth"
+	"github.com/yongjohnlee80/golib/tui"
 	"github.com/yongjohnlee80/golib/tui/web"
 )
 
@@ -109,7 +110,7 @@ func Example_singleSignOn() {
 	// session and never sees claim, provision or release, so the release cannot be
 	// forgotten. It runs on every exit path of the app, panics included.
 	mgr, err := web.NewManager(
-		sso.Factory(func(b *web.Backend, id *auth.Identity, up *upstreamSession) web.Runner {
+		sso.Factory(func(b tui.Backend, id *auth.Identity, up *upstreamSession) web.Runner {
 			return newUserApp(b, id, up)
 		}),
 		managerOpt,
@@ -142,7 +143,7 @@ func Example_singleSignOn() {
 	// Output: wired
 }
 
-func newUserApp(*web.Backend, *auth.Identity, *upstreamSession) web.Runner { return nil }
+func newUserApp(tui.Backend, *auth.Identity, *upstreamSession) web.Runner { return nil }
 
 // ipAllowlist stands in for a contextual factor. PasswordPolicyExample requires
 // one: a contextual factor cannot satisfy a policy alone, so it narrows who may

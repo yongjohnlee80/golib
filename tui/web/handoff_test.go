@@ -15,6 +15,7 @@ import (
 
 	"github.com/yongjohnlee80/golib/auth"
 	"github.com/yongjohnlee80/golib/auth/token"
+	"github.com/yongjohnlee80/golib/tui"
 )
 
 // --- the derived key ---------------------------------------------------------
@@ -223,7 +224,7 @@ func handoffHandler(t *testing.T, p *park, opts ...ManagerOption) (*Handler, *Ma
 	base := []ManagerOption{
 		OnHandoffUnused(func(h string, r HandoffReason) { p.release(h, r) }),
 	}
-	m, err := NewManager(func(_ *Backend, info *SessionInfo) Runner {
+	m, err := NewManager(func(_ tui.Backend, info *SessionInfo) Runner {
 		if info == nil || info.Identity == nil {
 			t.Error("the factory received no identity")
 			return newFakeApp()

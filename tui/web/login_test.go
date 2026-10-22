@@ -13,6 +13,7 @@ import (
 
 	"github.com/yongjohnlee80/golib/auth"
 	"github.com/yongjohnlee80/golib/auth/token"
+	"github.com/yongjohnlee80/golib/tui"
 )
 
 // loginHandler builds a Handler with password login enabled.
@@ -33,7 +34,7 @@ func loginHandler(t *testing.T, password, want string) (*Handler, *token.MemStor
 	if err != nil {
 		t.Fatal(err)
 	}
-	m, err := NewManager(func(*Backend, *SessionInfo) Runner { return newFakeApp() })
+	m, err := NewManager(func(tui.Backend, *SessionInfo) Runner { return newFakeApp() })
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -213,7 +214,7 @@ func TestLogin_AbsentWhenNotConfigured(t *testing.T) {
 // One without the other is a half-configured front door.
 func TestLogin_PolicyAndIssuerMustBeSetTogether(t *testing.T) {
 	t.Parallel()
-	m, err := NewManager(func(*Backend, *SessionInfo) Runner { return newFakeApp() })
+	m, err := NewManager(func(tui.Backend, *SessionInfo) Runner { return newFakeApp() })
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -349,7 +350,7 @@ func TestLogin_IssuerFailureIsNotARejection(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	m, err := NewManager(func(*Backend, *SessionInfo) Runner { return newFakeApp() })
+	m, err := NewManager(func(tui.Backend, *SessionInfo) Runner { return newFakeApp() })
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -403,7 +404,7 @@ func TestLogin_ProjectsTheRequestAsAttachDoes(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	m, err := NewManager(func(*Backend, *SessionInfo) Runner { return newFakeApp() })
+	m, err := NewManager(func(tui.Backend, *SessionInfo) Runner { return newFakeApp() })
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -54,14 +54,17 @@ type Runner interface {
 
 // AppFactory builds the application for a new session.
 //
-// It receives the session's [Backend]. On the network path it runs only after
+// It receives the session's backend as a [tui.Backend]: the App's side of it, which is all an App
+// needs. The connection's side (submitting input, taking frames) is this package's own, so an App
+// cannot drive its own session; the client's cell size is [tui.CellMetrics], which the backend
+// implements. On the network path it runs only after
 // [auth.Policy] has succeeded; [Manager.Create] requires an identity VALUE,
 // which constrains that path but not another in-process caller. See
 // [Manager.Create] for where the boundary is.
 // It receives a [SessionInfo] carrying the authenticated identity, the login
 // handoff (if any) and the creating peer. The identity is what makes a per-user
 // App possible at all: the Backend alone cannot say who the session is for.
-type AppFactory func(*Backend, *SessionInfo) Runner
+type AppFactory func(tui.Backend, *SessionInfo) Runner
 
 // Manager owns session lifecycle: create, attach, detach, evict, shut down.
 //

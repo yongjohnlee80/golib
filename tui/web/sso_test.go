@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/yongjohnlee80/golib/auth"
+	"github.com/yongjohnlee80/golib/tui"
 )
 
 // upstream models a consumer's per-login state: a thing that must be logged out
@@ -505,7 +506,7 @@ func TestSSO_FactoryReleasesOnEveryExit(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			factory := s.Factory(func(*Backend, *auth.Identity, *upstream) Runner { return c.app() })
+			factory := s.Factory(func(tui.Backend, *auth.Identity, *upstream) Runner { return c.app() })
 			runner := factory(New(), &SessionInfo{Identity: &auth.Identity{Subject: "a"}})
 			_ = runner.Run(context.Background())
 
@@ -532,7 +533,7 @@ func TestSSO_FactoryReleasesOnPanic(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	factory := s.Factory(func(*Backend, *auth.Identity, *upstream) Runner {
+	factory := s.Factory(func(tui.Backend, *auth.Identity, *upstream) Runner {
 		return runnerFunc(func(context.Context) error { panic("app exploded") })
 	})
 	runner := factory(New(), &SessionInfo{Identity: &auth.Identity{Subject: "a"}})

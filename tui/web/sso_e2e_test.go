@@ -31,6 +31,7 @@ import (
 	"github.com/yongjohnlee80/golib/auth/sshkey"
 	"github.com/yongjohnlee80/golib/auth/token"
 	"github.com/yongjohnlee80/golib/logger"
+	"github.com/yongjohnlee80/golib/tui"
 )
 
 // This file answers one question end to end: does web.SSO serve EVERY mechanism
@@ -276,7 +277,7 @@ func newSSORigWith(t *testing.T, loginFactor auth.Factor, opts ...rigOption) *ss
 	}
 
 	// --- the consumer's whole app wiring: one build function ----------------
-	build := func(_ *Backend, id *auth.Identity, up *e2eUpstream) Runner {
+	build := func(_ tui.Backend, id *auth.Identity, up *e2eUpstream) Runner {
 		if up == nil {
 			rig.complain("the build function received no upstream state")
 			return newFakeApp()
@@ -296,7 +297,7 @@ func newSSORigWith(t *testing.T, loginFactor auth.Factor, opts ...rigOption) *ss
 		// describes for a consumer writing their own — so the test controls WHEN the
 		// claim happens. Gating sso.settle instead would have been a test of the
 		// gate stub rather than of the code.
-		factory = func(b *Backend, info *SessionInfo) Runner {
+		factory = func(b tui.Backend, info *SessionInfo) Runner {
 			return runnerFunc(func(ctx context.Context) error {
 				<-cfg.holdBuild
 				up, release, err := sso.Session(ctx, info)
@@ -1363,7 +1364,7 @@ func TestSSO_SettleBeforeTheLeaseLeavesNoGhostSlot(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	m, err := NewManager(func(*Backend, *SessionInfo) Runner { return newFakeApp() }, mOpt)
+	m, err := NewManager(func(tui.Backend, *SessionInfo) Runner { return newFakeApp() }, mOpt)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1505,7 +1506,7 @@ func TestSSO_LoginOutlivingItsReservationCannotPark(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	m, err := NewManager(func(*Backend, *SessionInfo) Runner { return newFakeApp() }, mOpt)
+	m, err := NewManager(func(tui.Backend, *SessionInfo) Runner { return newFakeApp() }, mOpt)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1654,7 +1655,7 @@ func TestSSO_ConcurrentLoginsPreserveTheInvariant(t *testing.T) {
 		t.Fatal(err)
 	}
 	m, err := NewManager(sso.Factory(
-		func(*Backend, *auth.Identity, *upstream) Runner { return newFakeApp() }), mOpt)
+		func(tui.Backend, *auth.Identity, *upstream) Runner { return newFakeApp() }), mOpt)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1870,7 +1871,7 @@ func TestSSO_ParkFullReleasesTheTakenValue(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	m, err := NewManager(func(*Backend, *SessionInfo) Runner { return newFakeApp() }, mOpt)
+	m, err := NewManager(func(tui.Backend, *SessionInfo) Runner { return newFakeApp() }, mOpt)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1986,7 +1987,7 @@ func TestSSO_ReservationSweptBetweenCheckAndPublish(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	m, err := NewManager(func(*Backend, *SessionInfo) Runner { return newFakeApp() }, mOpt)
+	m, err := NewManager(func(tui.Backend, *SessionInfo) Runner { return newFakeApp() }, mOpt)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -2113,7 +2114,7 @@ func TestOnLogin_RawHookCanPublishAtomically(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	m, err := NewManager(func(*Backend, *SessionInfo) Runner { return newFakeApp() })
+	m, err := NewManager(func(tui.Backend, *SessionInfo) Runner { return newFakeApp() })
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -2552,7 +2553,7 @@ func TestStash_LateCommitAfterTheHookReturnsIsRefused(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	m, err := NewManager(func(*Backend, *SessionInfo) Runner { return newFakeApp() })
+	m, err := NewManager(func(tui.Backend, *SessionInfo) Runner { return newFakeApp() })
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -2647,7 +2648,7 @@ func TestStash_CapabilityDiesWithTheHookNotTheRequest(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	m, err := NewManager(func(*Backend, *SessionInfo) Runner { return newFakeApp() })
+	m, err := NewManager(func(tui.Backend, *SessionInfo) Runner { return newFakeApp() })
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -2763,7 +2764,7 @@ func TestStash_CapabilityDiesEvenIfTheHookPanics(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	m, err := NewManager(func(*Backend, *SessionInfo) Runner { return newFakeApp() })
+	m, err := NewManager(func(tui.Backend, *SessionInfo) Runner { return newFakeApp() })
 	if err != nil {
 		t.Fatal(err)
 	}
