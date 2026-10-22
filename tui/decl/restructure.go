@@ -226,10 +226,9 @@ func countChildren(c tui.Container) int {
 // simply does not have, and saying so is what stops a typo from demolishing a
 // working widget to build one that would refuse it just the same.
 //
-// It is keyed by the schema TYPE, not by a mounted node. An earlier version took
-// a NodeID and used it for nothing but looking up that node's type — so it could
-// not answer for a node the schema ADDS, or for the replacement of one whose
-// type changed, which are precisely the nodes a reload is about to build.
+// It is keyed by the schema TYPE, not by a mounted node, so it answers for a node
+// the schema ADDS, and for the replacement of one whose type changed: precisely
+// the nodes a reload is about to build.
 func (a *Adapter) ClassifyProperty(typeName, prop string) decl.PropertyKind {
 	if _, ok := a.contractOf(typeName).setters[prop]; ok {
 		return decl.PropRuntime
@@ -281,9 +280,9 @@ const TuiModuleVersion = "1.0"
 //
 // The module EXPORTS a singleton rather than being a name itself, which is how
 // QML works: `import tui 1.0` brings `Tui` into scope, and the document writes
-// `Tui.Horizontal`. An earlier version bound the module name, producing
-// `Tui.Horizontal` — a spelling no QML runtime accepts, because a singleton is
-// a type and a type is capitalised.
+// `Tui.Horizontal`. The module's own name is no qualifier: `tui.Horizontal` is a
+// spelling no QML runtime accepts, because a singleton is a type and a type is
+// capitalised.
 func (a *Adapter) Modules() []decl.Module {
 	return []decl.Module{{
 		Name:    "tui",
