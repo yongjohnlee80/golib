@@ -441,22 +441,17 @@ func (t *DataTable) Render(s tui.Surface) {
 // first key while only the loaded rows are sorted, "(loaded rows)"; the edge field's title is " + ".
 func (t *DataTable) renderHeader(s tui.Surface, fields []TableField, spans []colSpan) {
 	w := s.Size().W
-	keys, partial := t.core.SortedKeys()
 	for _, sp := range spans {
 		if sp.col == len(fields) { // the edge field
 			drawText(s, sp.x, 0, truncate(" + ", w-sp.x, s.StringWidth), t.styles.Empty)
 			continue
 		}
 		title := fields[sp.col].Title
-		for i, k := range keys {
-			if k.Col != sp.col {
-				continue
-			}
-			title += map[bool]string{false: " ▲", true: " ▼"}[k.Desc]
-			if i == 0 && partial {
-				title += " (loaded rows)"
-			}
-			break
+		if mark, _, ok := t.core.SortMark(sp.col); ok {
+			title += " " + mark
+		}
+		if note := t.core.HeaderNote(sp.col); note != "" {
+			title += " " + note
 		}
 		drawText(s, sp.x, 0, fitCell(title, min(sp.w, w-sp.x), ElideRight, style.AlignLeft, s.StringWidth), t.styles.Header)
 	}
