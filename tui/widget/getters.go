@@ -167,5 +167,23 @@ type TabSpan struct{ X, W int }
 // TabSpans are the tabs' labels on the bar, in order, where a press selects them.
 func (t *Tabs) TabSpans() []TabSpan { return t.strip.spans() }
 
+// ActiveTabIndex is the active tab's place among TabSpans, -1 when it is not shown: with the bar
+// overflowing, the spans hold the tabs in view and the < and > around them, so it is not Active.
+func (t *Tabs) ActiveTabIndex() int { return t.strip.activeIndex() }
+
+// TabSpanner is a tab strip as a native painter reads it: the stretches its row draws (TabSpans)
+// and the active tab's place among them (-1 when it is not shown). Tabs, TabStrip and TerminalTabs
+// all draw through one strip, so each answers the same way.
+type TabSpanner interface {
+	TabSpans() []TabSpan
+	ActiveTabIndex() int
+}
+
+var (
+	_ TabSpanner = (*Tabs)(nil)
+	_ TabSpanner = (*TabStrip)(nil)
+	_ TabSpanner = (*TerminalTabs)(nil)
+)
+
 // CardRect is where the dialog's card was placed at the last layout, in the modal's cells.
 func (m *Modal) CardRect() tui.Rect { return m.cardRect }

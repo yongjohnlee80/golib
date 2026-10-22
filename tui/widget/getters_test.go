@@ -2,6 +2,7 @@ package widget_test
 
 import (
 	"context"
+	"fmt"
 	"slices"
 	"strconv"
 	"strings"
@@ -293,5 +294,32 @@ func TestButtonMnemonicIndexIsTheUnderlinedCluster(t *testing.T) {
 		if under != cl[tc.want] {
 			t.Errorf("%q: Render underlines %q; MnemonicIndex names %q", tc.label, under, cl[tc.want])
 		}
+	}
+}
+
+// With the bar overflowing, ActiveTabIndex is the active tab's place among the spans drawn (the
+// tabs in view, and < and > around them), which is the active tab's label: not its place among
+// all the tabs.
+func TestActiveTabIndexIsTheActiveTabsSpan(t *testing.T) {
+	var opts []widget.TabsOption
+	for i := range 8 {
+		opts = append(opts, widget.WithTab(fmt.Sprintf("tab%d", i), widget.NewText(fmt.Sprint(i))))
+	}
+	tabs := widget.NewTabs(opts...)
+	h := startApp(t, newShell(tabs), 20, 3)
+	h.onLoop(func() { tabs.Select(7) })
+	h.waitFor("tab7 shown on the bar", func() bool { return strings.Contains(h.row(0), "tab7") })
+	var spans []widget.TabSpan
+	var at, active int
+	h.onLoop(func() { spans, at, active = tabs.TabSpans(), tabs.ActiveTabIndex(), tabs.Active() })
+	if at < 0 || at >= len(spans) {
+		t.Fatalf("ActiveTabIndex %d of %d spans", at, len(spans))
+	}
+	row := []rune(h.row(0))
+	if s := spans[at]; !strings.Contains(string(row[s.X:min(s.X+s.W, len(row))]), "tab7") {
+		t.Fatalf("span %d %+v reads %q, not the active tab7", at, s, string(row[s.X:min(s.X+s.W, len(row))]))
+	}
+	if at == active {
+		t.Fatalf("the bar did not overflow: ActiveTabIndex %d equals Active %d", at, active)
 	}
 }
