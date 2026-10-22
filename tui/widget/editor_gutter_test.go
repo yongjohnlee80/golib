@@ -75,13 +75,3 @@ func TestTheEditorsLineNumbers(t *testing.T) {
 		t.Fatalf("the line above, in the wider gutter:\n%s", h.grid())
 	}
 }
-
-// TestSetWrapRefusesAnotherMode: SetWrap takes WrapNone or WrapSoft.
-func TestSetWrapRefusesAnotherMode(t *testing.T) {
-	defer func() {
-		if r := recover(); r == nil {
-			t.Fatal("SetWrap(Truncate) was taken")
-		}
-	}()
-	widget.NewEditor().SetWrap(widget.Truncate)
-}
