@@ -187,6 +187,52 @@ type anchoredLayer struct {
 // A nil policy selects FlipClipPolicy. Whatever policy is used, the rect it
 // returns is bounded to the viewport by the host.
 func (h *OverlayHost) OpenAnchored(id LayerID, layer tui.Component, spec AnchorSpec, pol AnchorPolicy) error {
+	if err := h.validateAnchored(id, layer, spec); err != nil {
+		return err
+	}
+
+	prev := h.indexAnchored(id)
+	if prev >= 0 && h.anchored[prev].comp == layer {
+		// Same layer, same id: re-registering updates the preference without
+		// disturbing a mounted subtree that is already correct.
+		h.anchored[prev].spec = spec
+		h.anchored[prev].pol = policyOr(pol)
+		h.ctx.SetChildInputOwner(layer, spec.Ref)
+		h.ctx.RequestLayout()
+		return nil
+	}
+
+	// Already mounted somewhere — as this host's content, or in another tree.
+	// Checked BEFORE the add rather than discovered by the panic it would
+	// cause: the undo for a failed add is to remove the child, and removing a
+	// component that was already mounted elsewhere unmounts it from where it
+	// legitimately lives. Placed after the same-layer-same-id return above,
+	// because re-registering the layer already open under this id is not an
+	// attempt to mount it twice.
+	if h.ctx.MountedComponent(layer) {
+		return fmt.Errorf("%w: it is already mounted elsewhere", ErrAnchorUnusable)
+	}
+
+	if err := h.mountLayer(layer); err != nil {
+		return err // the old layer, if any, is untouched
+	}
+	// THE LAYER BELONGS TO ITS ANCHOR. It is mounted here, beside the content, so
+	// the tree alone puts it outside any trapping scope the anchor's owner is in:
+	// a submenu opened by a menu inside a dialog, or inside a right-click menu's
+	// own popup layer, took no pointer input at all, every press landing on the
+	// scope behind it. Bound to the owner, it is inside whatever scope the owner
+	// is. The owner was checked above, mounted and inside this host, so the
+	// binding cannot be refused.
+	h.ctx.SetChildInputOwner(layer, spec.Ref)
+	h.replaceAnchored(prev, anchoredLayer{id: id, comp: layer, spec: spec, pol: policyOr(pol)})
+	h.ctx.RequestLayout()
+	return nil
+}
+
+// validateAnchored refuses an open that cannot succeed, before anything changes: an empty id, a nil
+// layer, a ref or preference that is no anchor, an unmounted host, an anchor outside this host or
+// no longer resolving, or a layer already open under another id.
+func (h *OverlayHost) validateAnchored(id LayerID, layer tui.Component, spec AnchorSpec) error {
 	if id == "" {
 		return ErrEmptyLayerID
 	}
@@ -226,50 +272,18 @@ func (h *OverlayHost) OpenAnchored(id LayerID, layer tui.Component, spec AnchorS
 			return fmt.Errorf("%w: %q", ErrLayerAlreadyRegistered, al.id)
 		}
 	}
+	return nil
+}
 
-	prev := h.indexAnchored(id)
-	if prev >= 0 && h.anchored[prev].comp == layer {
-		// Same layer, same id: re-registering updates the preference without
-		// disturbing a mounted subtree that is already correct.
-		h.anchored[prev].spec = spec
-		h.anchored[prev].pol = policyOr(pol)
-		h.ctx.SetChildInputOwner(layer, spec.Ref)
-		h.ctx.RequestLayout()
-		return nil
-	}
-
-	// Already mounted somewhere — as this host's content, or in another tree.
-	// Checked BEFORE the add rather than discovered by the panic it would
-	// cause: the undo for a failed add is to remove the child, and removing a
-	// component that was already mounted elsewhere unmounts it from where it
-	// legitimately lives. Placed after the same-layer-same-id return above,
-	// because re-registering the layer already open under this id is not an
-	// attempt to mount it twice.
-	if h.ctx.MountedComponent(layer) {
-		return fmt.Errorf("%w: it is already mounted elsewhere", ErrAnchorUnusable)
-	}
-
-	if err := h.mountLayer(layer); err != nil {
-		return err // the old layer, if any, is untouched
-	}
-	// THE LAYER BELONGS TO ITS ANCHOR. It is mounted here, beside the content, so
-	// the tree alone puts it outside any trapping scope the anchor's owner is in:
-	// a submenu opened by a menu inside a dialog, or inside a right-click menu's
-	// own popup layer, took no pointer input at all, every press landing on the
-	// scope behind it. Bound to the owner, it is inside whatever scope the owner
-	// is. The owner was checked above, mounted and inside this host, so the
-	// binding cannot be refused.
-	h.ctx.SetChildInputOwner(layer, spec.Ref)
+// replaceAnchored records al as the open layer, in place of the one at prev (removed from the
+// stack), or as a new one when prev < 0.
+func (h *OverlayHost) replaceAnchored(prev int, al anchoredLayer) {
 	if prev >= 0 {
 		old := h.anchored[prev].comp
 		h.anchored = slices.Delete(h.anchored, prev, prev+1)
 		h.Stack.Remove(old)
 	}
-	h.anchored = append(h.anchored, anchoredLayer{
-		id: id, comp: layer, spec: spec, pol: policyOr(pol),
-	})
-	h.ctx.RequestLayout()
-	return nil
+	h.anchored = append(h.anchored, al)
 }
 
 // mountLayer adds a layer to the stack, converting a failed mount into an error
