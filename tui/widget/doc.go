@@ -14,7 +14,12 @@
 //	List[T]         Collection       yes             [SelectionChangedEvent], [ActivateEvent], [ContextMenuEvent] (opt-in)
 //	Table[T]        Collection       yes (via List)  [SelectionChangedEvent], [ActivateEvent]
 //	Tree            Navigation       yes             [ExpandRequestEvent], [CollapseEvent], [ActivateEvent], [SelectionChangedEvent], [ContextMenuEvent] (opt-in)
+//	DataTable       Collection       yes             — (callbacks: TableOnActivate, TableOnCursor, TableOnSort, TableOnCopy)
+//	FileList        Collection       yes             — (callbacks: WithOnFile, WithOnDir, WithOnCursor)
+//	FileOpenView    Dialog content   list and fields — (callbacks: WithOnChoose, WithOnHint); FileSaveView alike
 //	Editor          Modal Text       yes             [ModeChangedEvent], [YankEvent]
+//	CommandLine     Editor module    its field, open — (runs its core's commands; a failure reopens it)
+//	EditorMenu      Editor module    its popup, open — (its stock rows act on its core)
 //	BufferView      Stream / Pager   yes (scroll)    [FollowTailChangedEvent]
 //	Tabs            Navigation       yes (bar)       [TabChangedEvent]
 //	Split           Container        no (panes are)  [SplitResizedEvent], [SplitZoomEvent]
