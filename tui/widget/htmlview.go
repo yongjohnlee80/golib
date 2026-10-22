@@ -28,7 +28,6 @@ type HTMLView struct {
 	Base
 	src       []byte
 	layout    HTMLLayout
-	cells     *cellHTML // the default layout; nil once another is bound
 	sel       [2]DocPos
 	scrollY   float32 // in the layout's units
 	w, h      int
@@ -102,6 +101,16 @@ type HTMLLayoutImages interface {
 	ResetImages()
 }
 
+// HTMLLayoutCells is a layout drawn in the view's own cells, as the built-in one is. The view lays
+// it out a column narrower when it is taller than the view, for the scroll indicator, and paints it
+// from row top, w cells wide, with the selection from..to marked. A layout without it is drawn by
+// its backend.
+type HTMLLayoutCells interface {
+	HTMLLayout
+	HTMLLayoutWidth
+	PaintCells(s tui.Surface, top, w int, from, to DocPos)
+}
+
 // HTMLLayoutPixels is a layout whose units are the backend's pixels rather than cells. The view
 // turns a pointer's cell (and the point inside it) into pixels with the App's CellPixels, and
 // scrolls by a cell's height a line.
@@ -170,8 +179,7 @@ func WithDiagrams(d any) HTMLOption {
 // NewHTMLView builds an empty view, laid out in cells until a backend binds another layout.
 func NewHTMLView(opts ...HTMLOption) *HTMLView {
 	v := &HTMLView{lastSrc: -1}
-	v.cells = newCellHTML(v.measure)
-	v.layout = v.cells
+	v.layout = newCellHTML(v.measure)
 	for _, o := range opts {
 		if o != nil {
 			o(v)
@@ -191,7 +199,7 @@ func (v *HTMLView) BindLayout(l HTMLLayout) {
 	if l == nil {
 		return
 	}
-	v.layout, v.cells = l, nil
+	v.layout = l
 	v.sel = [2]DocPos{}
 	v.scrollY = 0
 	v.layout.SetSource(v.src)
@@ -529,10 +537,10 @@ func (v *HTMLView) endDrag() {
 func (v *HTMLView) Layout(c tui.Constraints) tui.Size {
 	v.w = fillW(c)
 	v.h = fillH(c)
-	if v.cells != nil {
-		v.cells.SetWidth(float32(v.w))
-		if v.cells.Height() > float32(v.h) && v.w > 1 {
-			v.cells.SetWidth(float32(v.w - 1))
+	if cells, ok := v.layout.(HTMLLayoutCells); ok {
+		cells.SetWidth(float32(v.w))
+		if cells.Height() > float32(v.h) && v.w > 1 {
+			cells.SetWidth(float32(v.w - 1))
 		}
 	} else if lw, ok := v.layout.(HTMLLayoutWidth); ok {
 		ux, _ := v.units()
@@ -550,7 +558,8 @@ func (v *HTMLView) Theme() *style.Theme { return v.theme }
 // filled with the page's colours, which the native view reads as its own.
 func (v *HTMLView) Render(s tui.Surface) {
 	v.theme = s.Theme()
-	if v.cells == nil {
+	cells, ok := v.layout.(HTMLLayoutCells)
+	if !ok {
 		sz := s.Size()
 		s.Fill(tui.Rect{W: sz.W, H: sz.H}, " ", style.New().Foreground(style.TokenForeground).Background(style.TokenBackground))
 		return
@@ -561,10 +570,10 @@ func (v *HTMLView) Render(s tui.Surface) {
 	}
 	top := int(v.scrollY)
 	w := sz.W
-	rows := int(v.cells.Height())
+	rows := int(cells.Height())
 	if rows > sz.H {
 		w--
 		paintScrollIndicator(s, sz.W-1, sz.H, top, rows-sz.H)
 	}
-	v.cells.paint(s, top, w, v.sel[0], v.sel[1])
+	cells.PaintCells(s, top, w, v.sel[0], v.sel[1])
 }
