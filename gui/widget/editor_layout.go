@@ -211,7 +211,7 @@ func (l *pixelLayout) Measure(s string) int {
 		return n * max(int(l.cell.W), 1)
 	}
 	m := l.sh.Measure(s, l.monoFont())
-	return int(m.X[len(m.X)-1] + 0.5)
+	return int(m.Width() + 0.5)
 }
 
 // Changed lays out again from fromLine on.

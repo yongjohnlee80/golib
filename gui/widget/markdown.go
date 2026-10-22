@@ -315,7 +315,7 @@ func spanWidth(s flow.Span, t *gui.TextShaper) float32 {
 		return w
 	}
 	m := t.Measure(s.Text, s.Font)
-	return m.X[len(m.X)-1]
+	return m.Width()
 }
 
 // isRule reports whether line ln is a thematic break: "---", "***" or "___", three or more. A

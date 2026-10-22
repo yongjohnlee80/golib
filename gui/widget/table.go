@@ -205,7 +205,7 @@ func (l *tableLayout) Measure(s string) int {
 		return int(math.Ceil(float64(float32(len([]rune(s))) * l.body.Size * 0.6)))
 	}
 	m := l.shaper.Measure(s, l.head)
-	return int(math.Ceil(float64(m.X[len(m.X)-1])))
+	return int(math.Ceil(float64(m.Width())))
 }
 
 // Changed implements tuiwidget.TableLayout.
@@ -754,7 +754,7 @@ func (l *tableLayout) key(texts []string, cols []tableColumn, aligns []style.Ali
 // width is s's width in f.
 func (l *tableLayout) width(s string, f gui.Font) float32 {
 	m := l.shaper.Measure(s, f)
-	return m.X[len(m.X)-1]
+	return m.Width()
 }
 
 // elide is s cut to w with an ellipsis, whole when it fits; "" when not even the ellipsis does.
@@ -763,7 +763,7 @@ func (l *tableLayout) elide(s string, w float32, f gui.Font) string {
 		return ""
 	}
 	m := l.shaper.Measure(s, f)
-	if m.X[len(m.X)-1] <= w {
+	if m.Width() <= w {
 		return s
 	}
 	ell := l.width("…", f)

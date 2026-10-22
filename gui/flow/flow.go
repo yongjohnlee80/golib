@@ -208,7 +208,7 @@ func Lay(spans []Span, o Options, t *gui.TextShaper) *Para {
 					pc.m.X[j] += float32(j) * ls
 				}
 			}
-			pc.w = pc.m.X[len(pc.m.X)-1]
+			pc.w = pc.m.Width()
 		}
 	}
 	// a hidden span with Room: its room at the end of its last piece
@@ -388,7 +388,7 @@ func (p *Para) splitWide(k int, spans []Span, t *gui.TextShaper) {
 		d := pc.display[pc.m.Clusters[c]:end]
 		np := piece{kind: word, span: pc.span, from: pc.from + pc.m.Clusters[c], to: pc.from + end, display: d, cjk: true}
 		np.m = t.Measure(d, spans[pc.span].Font)
-		np.w = np.m.X[len(np.m.X)-1]
+		np.w = np.m.Width()
 		if spans[pc.span].Hidden {
 			np.w = 0
 			for e := range np.m.X {
