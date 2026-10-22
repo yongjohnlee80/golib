@@ -136,19 +136,12 @@ func (l *tableLayout) Reveal(row, col int) {
 
 // revealDrawn scrolls so drawn row v shows.
 func (l *tableLayout) revealDrawn(v int) {
-	l.top = min(l.top, max(l.core().DrawnRows()-l.bodyRows(), 0)) // rows gone (a filter, a new result) leave no blank below the last
-	l.top = max(min(max(l.top, v-l.bodyRows()+1), v), 0)
+	// rows gone (a filter, a new result) leave no blank below the last
+	l.top = tuiwidget.TableRevealRow(l.top, v, l.core().DrawnRows(), l.bodyRows())
 }
 
 // revealField scrolls sideways so field col shows whole, the edge field after the last among them.
-func (l *tableLayout) revealField(col int) {
-	if col < l.left {
-		l.left = col
-	}
-	for l.left < col && !l.fits(l.left, col) {
-		l.left++
-	}
-}
+func (l *tableLayout) revealField(col int) { l.left = tuiwidget.TableRevealField(l.left, col, l.fits) }
 
 // revealEdit scrolls the open field into sight when it is new or its text or caret moved: its
 // first row, its caret's line under it as far as the view allows, and its field.
@@ -653,7 +646,8 @@ func (l *tableLayout) drawBand(c gui.Canvas, b *tableBand, y float32, col color.
 // title says "(loaded rows)" while rows remain to load, when that fits.
 func (l *tableLayout) shapeHeader(old *tableBand, cols []tableColumn) *tableBand {
 	fields := l.core().Fields()
-	keys, partial := l.core().SortedKeys()
+	core := l.core()
+	keys, _ := core.SortedKeys()
 	texts := make([]string, 0, 2*len(cols))
 	for _, c := range cols {
 		texts = append(texts, fields[c.col].Title)
@@ -665,20 +659,18 @@ func (l *tableLayout) shapeHeader(old *tableBand, cols []tableColumn) *tableBand
 	var marks []mark
 	noted := -1
 	for i, c := range cols {
-		for k, key := range keys {
-			if key.Col != c.col {
-				continue
-			}
-			m := mark{text: map[bool]string{false: "▲", true: "▼"}[key.Desc], at: i, of: k}
-			if len(keys) > 1 {
-				m.text += superscript(k + 1)
-			}
-			marks = append(marks, m)
-			if k == 0 && partial {
-				texts[i] += " (loaded rows)"
-				noted = i
-			}
-			break
+		text, place, ok := core.SortMark(c.col)
+		if !ok {
+			continue
+		}
+		m := mark{text: text, at: i, of: place}
+		if len(keys) > 1 {
+			m.text += superscript(place + 1)
+		}
+		marks = append(marks, m)
+		if note := core.HeaderNote(c.col); note != "" {
+			texts[i] += " " + note
+			noted = i
 		}
 	}
 	slices.SortFunc(marks, func(a, b mark) int { return a.of - b.of }) // in key order
