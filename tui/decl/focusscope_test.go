@@ -333,3 +333,26 @@ func TestAReloadEditsADrawersShortcuts(t *testing.T) {
 		t.Fatalf("got %v, want only the reloaded b", got)
 	}
 }
+
+// TestAReloadGivingAFocusScopeTwoContentsIsRefused: a FocusScope holds one content item besides its
+// Shortcuts, and a reload that gives it a second is refused by its arrange, as its build refuses one
+// declared so.
+func TestAReloadGivingAFocusScopeTwoContentsIsRefused(t *testing.T) {
+	scope := func(content string) string {
+		return `
+    FocusScope {
+        Shortcut { sequence: "F5" }
+        ` + content + `
+    }`
+	}
+	s, _ := runScoped(t, 40, 4, scope(`TextField { id: first }`))
+	s.WaitFor(t, "mounted", func(string) bool { _, ok := s.Program.Find("first"); return ok })
+	var err error
+	onScreenLoop(t, s, func() {
+		_, err = s.Program.Reload([]byte(scopedDoc(scope(`TextField { id: first }
+        TextField { id: second }`))))
+	})
+	if err == nil || !strings.Contains(err.Error(), "a FocusScope holds exactly one content item besides its Shortcuts, got 2") {
+		t.Errorf("a reload giving a FocusScope two contents: %v; want refused", err)
+	}
+}
