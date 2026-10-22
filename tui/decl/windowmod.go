@@ -55,15 +55,61 @@ type windowModConfig struct {
 	moveButton, resizeButton                tui.MouseButton
 }
 
-func readWindowMod(b Build) (windowModConfig, []string, error) {
-	c := windowModConfig{modifier: tui.ModAlt, moveButton: tui.MouseLeft, resizeButton: tui.MouseRight}
-	consumed, err := b.ReadProps(map[string]field{
-		"movable": into(&c.move, boolOf), "resizable": into(&c.resize, boolOf),
+// newWindowModConfig is a window declaration's defaults: Alt with the left button moves, Alt with
+// the right resizes, as WindowCore's own.
+func newWindowModConfig() windowModConfig {
+	return windowModConfig{modifier: tui.ModAlt, moveButton: tui.MouseLeft, resizeButton: tui.MouseRight}
+}
+
+// windowModFields are the window properties a WindowMod and a Drawer share, read into c. Each adds
+// the one that turns resizing on: a WindowMod's resizable, a Drawer's windowResize (its resizable is
+// its grip).
+func windowModFields(c *windowModConfig) map[string]field {
+	return map[string]field{
+		"movable":     into(&c.move, boolOf),
 		"maximizable": into(&c.maximize, boolOf), "minimizable": into(&c.minimize, boolOf),
 		"closable": into(&c.close, boolOf), "label": into(&c.label, stringOf), "key": into(&c.key, stringOf),
 		"dragModifier": into(&c.modifier, windowModifierOf),
 		"moveButton":   into(&c.moveButton, windowMouseButtons.read), "resizeButton": into(&c.resizeButton, windowMouseButtons.read),
-	})
+	}
+}
+
+// options are the WindowMod options c declares: its label and key, its drag bindings, the
+// operations it turns on (minimizing into collector), and changed. Closing is the caller's: a
+// WindowMod's closes it, a Drawer's closes the Drawer.
+func (c windowModConfig) options(collector widget.WindowCollector, changed func(widget.WindowChangedEvent)) []widget.WindowModOption {
+	opts := []widget.WindowModOption{
+		widget.WithWindowLabel(c.label), widget.WithWindowKey(c.key),
+		widget.WithWindowMoveBinding(c.modifier, c.moveButton), widget.WithWindowResizeBinding(c.modifier, c.resizeButton),
+		widget.WithWindowChanged(changed),
+	}
+	if c.move {
+		opts = append(opts, widget.WithWindowMove())
+	}
+	if c.resize {
+		opts = append(opts, widget.WithWindowResize())
+	}
+	if c.maximize {
+		opts = append(opts, widget.WithWindowMaximize())
+	}
+	if c.minimize {
+		opts = append(opts, widget.WithWindowMinimize(collector))
+	}
+	return opts
+}
+
+// windowChangedArgs are the changed signal's arguments for e, as its declaration names them:
+// operation, key, x, y, width, height, maximized, minimized.
+func windowChangedArgs(e widget.WindowChangedEvent) []qml.SpecValue {
+	return []qml.SpecValue{strValue(e.Operation.String()), strValue(e.Key), numberValue(e.Bounds.X), numberValue(e.Bounds.Y),
+		numberValue(e.Bounds.W), numberValue(e.Bounds.H), boolValue(e.Maximized), boolValue(e.Minimized)}
+}
+
+func readWindowMod(b Build) (windowModConfig, []string, error) {
+	c := newWindowModConfig()
+	fields := windowModFields(&c)
+	fields["resizable"] = into(&c.resize, boolOf)
+	consumed, err := b.ReadProps(fields)
 	if err == nil && c.minimize && b.WindowCollector == nil {
 		err = errors.New("minimizable requires WithWindowCollector")
 	}
@@ -79,26 +125,7 @@ func buildWindowMod(b Build) (tui.Component, []string, error) {
 		return nil, nil, err
 	}
 	emit := b.EmitterWith("changed")
-	opts := []widget.WindowModOption{
-		widget.WithWindowLabel(c.label), widget.WithWindowKey(c.key),
-		widget.WithWindowMoveBinding(c.modifier, c.moveButton), widget.WithWindowResizeBinding(c.modifier, c.resizeButton),
-		widget.WithWindowChanged(func(e widget.WindowChangedEvent) {
-			emit(strValue(e.Operation.String()), strValue(e.Key), numberValue(e.Bounds.X), numberValue(e.Bounds.Y),
-				numberValue(e.Bounds.W), numberValue(e.Bounds.H), boolValue(e.Maximized), boolValue(e.Minimized))
-		}),
-	}
-	if c.move {
-		opts = append(opts, widget.WithWindowMove())
-	}
-	if c.resize {
-		opts = append(opts, widget.WithWindowResize())
-	}
-	if c.maximize {
-		opts = append(opts, widget.WithWindowMaximize())
-	}
-	if c.minimize {
-		opts = append(opts, widget.WithWindowMinimize(b.WindowCollector))
-	}
+	opts := c.options(b.WindowCollector, func(e widget.WindowChangedEvent) { emit(windowChangedArgs(e)...) })
 	if c.close {
 		opts = append(opts, widget.WithWindowClose())
 	}

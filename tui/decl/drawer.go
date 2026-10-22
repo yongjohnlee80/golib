@@ -99,26 +99,24 @@ func buildDrawer(b Build) (tui.Component, []string, error) {
 	modal, resizable, reserve := true, false, false
 	var keyScope keymap.Scope
 	closeOnQ := false
-	windowResize, movable := false, false
-	wc := windowModConfig{modifier: tui.ModAlt, moveButton: tui.MouseLeft, resizeButton: tui.MouseRight}
-	consumed, err := b.ReadProps(map[string]field{
-		"modal": into(&modal, boolOf), "closeOnQ": into(&closeOnQ, boolOf), "resizable": into(&resizable, boolOf), "windowResize": into(&windowResize, boolOf),
-		"movable": into(&movable, boolOf), "moveButton": into(&wc.moveButton, windowMouseButtons.read),
-		"maximizable": into(&wc.maximize, boolOf), "minimizable": into(&wc.minimize, boolOf), "closable": into(&wc.close, boolOf),
-		"label": into(&wc.label, stringOf), "key": into(&wc.key, stringOf), "keyScope": into(&keyScope, scopeOf),
-		"dragModifier": into(&wc.modifier, windowModifierOf), "resizeButton": into(&wc.resizeButton, windowMouseButtons.read),
-		"reserve": into(&reserve, boolOf),
-	})
+	// the window controls are a WindowMod's (windowModFields), but windowResize turns resizing on:
+	// a Drawer's resizable is its grip
+	wc := newWindowModConfig()
+	fields := windowModFields(&wc)
+	fields["windowResize"] = into(&wc.resize, boolOf)
+	fields["modal"], fields["closeOnQ"], fields["resizable"] = into(&modal, boolOf), into(&closeOnQ, boolOf), into(&resizable, boolOf)
+	fields["keyScope"], fields["reserve"] = into(&keyScope, scopeOf), into(&reserve, boolOf)
+	consumed, err := b.ReadProps(fields)
 	if err != nil {
 		return nil, nil, err
 	}
+	windowResize, movable := wc.resize, wc.move
 	if wc.minimize && (modal || b.WindowCollector == nil) {
 		return nil, nil, errors.New("minimizable Drawer requires modal: false and WithWindowCollector")
 	}
 	if movable && windowResize && wc.moveButton == wc.resizeButton {
 		return nil, nil, errors.New("a Drawer's moveButton and resizeButton must differ")
 	}
-	wc.resize, wc.move = windowResize, movable
 	n := &drawerNode{edge: tui.DockLeft, size: defaultDrawerSize, length: 100, opened: b.Emitter("opened"), closed: b.Emitter("closed"),
 		content: content, shortcuts: shortcuts, keyScope: keyScope, resizable: resizable || windowResize, minSize: 10, minLength: 10, resized: b.EmitterWith("resized"),
 		windowResize: windowResize, windowConfig: wc, windowCollector: b.WindowCollector, modal: modal, closeOnQ: closeOnQ, windowEmit: b.EmitterWith("changed"),
@@ -163,21 +161,8 @@ func (n *drawerNode) wrapped() tui.Component {
 	if !n.windowControls() {
 		return content
 	}
-	opts := []widget.WindowModOption{widget.WithWindowTarget(n.windowTarget), widget.WithWindowLabel(n.windowConfig.label),
-		widget.WithWindowKey(n.windowConfig.key), widget.WithWindowResizeHandle(handle),
-		widget.WithWindowResizeBinding(n.windowConfig.modifier, n.windowConfig.resizeButton), widget.WithWindowChanged(n.windowChanged)}
-	if n.windowResize {
-		opts = append(opts, widget.WithWindowResize())
-	}
-	if n.movable {
-		opts = append(opts, widget.WithWindowMove(), widget.WithWindowMoveBinding(n.windowConfig.modifier, n.windowConfig.moveButton))
-	}
-	if n.windowConfig.maximize {
-		opts = append(opts, widget.WithWindowMaximize())
-	}
-	if n.windowConfig.minimize {
-		opts = append(opts, widget.WithWindowMinimize(n.windowCollector))
-	}
+	opts := append(n.windowConfig.options(n.windowCollector, n.windowChanged),
+		widget.WithWindowTarget(n.windowTarget), widget.WithWindowResizeHandle(handle))
 	if n.windowConfig.close {
 		opts = append(opts, widget.WithWindowCloseHandler(func() bool {
 			shown := n.float.Shown()
@@ -220,8 +205,7 @@ func (n *drawerNode) windowChanged(e widget.WindowChangedEvent) {
 		n.windowTarget.preview = nil
 		n.dragEnded(tui.Size{W: e.Bounds.W, H: e.Bounds.H})
 	}
-	n.windowEmit(strValue(e.Operation.String()), strValue(e.Key), numberValue(e.Bounds.X), numberValue(e.Bounds.Y),
-		numberValue(e.Bounds.W), numberValue(e.Bounds.H), boolValue(e.Maximized), boolValue(e.Minimized))
+	n.windowEmit(windowChangedArgs(e)...)
 }
 
 func (n *drawerNode) stopWindowDrag() {
@@ -641,11 +625,11 @@ var drawerType = Type{
 		"open":           NoArgMethod((*drawerNode).open),
 		"close":          NoArgMethod((*drawerNode).close),
 		"toggle":         NoArgMethod((*drawerNode).toggle),
-		"toggleMaximize": drawerWindowInvoke(widget.WindowMaximizeAction{}),
-		"minimize":       drawerWindowInvoke(widget.WindowMinimizeAction{}),
-		"restore":        drawerWindowInvoke(widget.WindowRestoreAction{}),
-		"resizeBy":       drawerWindowStep(false),
-		"moveBy":         drawerWindowStep(true),
+		"toggleMaximize": drawerWindow(windowInvoke(widget.WindowMaximizeAction{})),
+		"minimize":       drawerWindow(windowInvoke(widget.WindowMinimizeAction{})),
+		"restore":        drawerWindow(windowInvoke(widget.WindowRestoreAction{})),
+		"resizeBy":       drawerWindow(windowStep(false)),
+		"moveBy":         drawerWindow(windowStep(true)),
 	},
 	Destroyed: destroyer((*drawerNode).Detach),
 }
