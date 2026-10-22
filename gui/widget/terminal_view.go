@@ -118,7 +118,7 @@ func (v *terminalView) Pointer(e tui.MouseEvent) tui.MouseEvent {
 		return e
 	}
 	cw, ch := v.cellPx(ctx)
-	px, py := (float32(e.X)+e.SubX)*cp.W, (float32(e.Y)+e.SubY)*cp.H
+	px, py := eventPixel(e, cp.W, cp.H)
 	fx, fy := px/cw, py/ch
 	e.X, e.Y = int(fx), int(fy)
 	e.SubX, e.SubY = fx-float32(e.X), fy-float32(e.Y)

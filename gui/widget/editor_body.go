@@ -210,7 +210,13 @@ func (b *editorBody) pixel(m tui.MouseEvent) (float32, float32) {
 			cell = gui.Size{W: cp.W, H: cp.H}
 		}
 	}
-	return (float32(m.X) + m.SubX) * cell.W, (float32(m.Y) + m.SubY) * cell.H
+	return eventPixel(m, cell.W, cell.H)
+}
+
+// eventPixel is the pointer's pixel in its component, from its cell and the place inside it:
+// (X + SubX) cells of w pixels across, (Y + SubY) of h down.
+func eventPixel(m tui.MouseEvent, w, h float32) (x, y float32) {
+	return (float32(m.X) + m.SubX) * w, (float32(m.Y) + m.SubY) * h
 }
 
 // at is the buffer position under the pointer: through the pixel layout once painted natively,
