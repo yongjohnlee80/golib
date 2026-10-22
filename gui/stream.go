@@ -8,7 +8,6 @@ import (
 
 	"github.com/yongjohnlee80/gio/f32"
 	"github.com/yongjohnlee80/gio/op"
-	"github.com/yongjohnlee80/gio/op/clip"
 	"github.com/yongjohnlee80/gio/op/extimage"
 	"github.com/yongjohnlee80/gio/op/paint"
 )
@@ -435,16 +434,10 @@ func (sl streamSlot) add(ops *op.Ops) {
 	if p == nil {
 		return
 	}
-	cl := clip.Rect(sl.clip).Push(ops)
-	defer cl.Pop()
-	countClip()
-	if sl.alpha < 1 {
-		countTransform()
-		defer paint.PushOpacity(ops, sl.alpha).Pop()
-	}
-	countTransform()
-	defer op.Affine(sl.xform).Push(ops).Pop()
+	pp := pushPaint(ops, sl.clip, sl.alpha)
+	pp.transform(ops, sl.xform)
 	p.add(ops, sl.dst, sl.s.report)
+	pp.pop()
 }
 
 // streamDrawer is the optional Canvas capability DrawStream needs: the window's own canvas.

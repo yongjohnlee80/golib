@@ -601,6 +601,11 @@ func (r *renderer) typefaceOf(face uint16) font.Typeface {
 }
 
 // drawImage draws an image over its cells, its Clip (in image pixels) scaled to fill them.
+// rectOf is r in float coordinates.
+func rectOf(r image.Rectangle) Rect {
+	return Rect{X: float32(r.Min.X), Y: float32(r.Min.Y), W: float32(r.Dx()), H: float32(r.Dy())}
+}
+
 func (r *renderer) drawImage(ops *op.Ops, img placedImage) {
 	dst, within, ok := r.m.anchored(tui.Rect{X: img.X, Y: img.Y, W: img.Cols, H: img.Rows})
 	if !ok {
@@ -613,16 +618,11 @@ func (r *renderer) drawImage(ops *op.Ops, img placedImage) {
 	if dst.Empty() || src.Empty() {
 		return
 	}
-	sx := float32(dst.Dx()) / float32(src.Dx())
-	sy := float32(dst.Dy()) / float32(src.Dy())
 	countClip()
 	countTransform()
 	countImage()
 	cl := clip.Rect(dst.Intersect(within)).Push(ops)
-	tr := op.Affine(f32.Affine2D{}.
-		Offset(f32.Pt(-float32(src.Min.X), -float32(src.Min.Y))).
-		Scale(f32.Point{}, f32.Pt(sx, sy)).
-		Offset(f32.Pt(float32(dst.Min.X), float32(dst.Min.Y)))).Push(ops)
+	tr := op.Affine(imageAffine(rectOf(src), rectOf(dst))).Push(ops)
 	img.op.Add(ops)
 	paint.PaintOp{}.Add(ops)
 	tr.Pop()
