@@ -7,6 +7,7 @@ import (
 	"github.com/yongjohnlee80/golib/decl"
 	tuidecl "github.com/yongjohnlee80/golib/tui/decl"
 	"github.com/yongjohnlee80/golib/tui/decl/decltest"
+	"github.com/yongjohnlee80/golib/tui/widget"
 )
 
 // Program.Reload is held to what a hot reload is: a keyId Shortcut naming no declared key command
@@ -121,5 +122,32 @@ func TestAReloadChecksAKeyIdAgainstItsHoldersScope(t *testing.T) {
 		case c.want != "" && (err == nil || !strings.Contains(err.Error(), c.want)):
 			t.Errorf("%s: %v; want refused, %q", c.name, err, c.want)
 		}
+	}
+}
+
+// The reload's keyId check refuses a bad keyId in a layout that places a host's Instance: a widget
+// that can be in the tree once. The check passes a layout its own mount cannot build (the reconcile
+// reports that), so a mount that failed on the check's own account switched the check off unseen.
+// It did for a source-less program (the frozen provider of none). It would for an Instance, which a
+// full second mount builds a second time, but the keys-only mount builds no Instance. This keeps a
+// known-bad keyId refused there.
+func TestAReloadWithAnInstanceStillChecksItsKeyIds(t *testing.T) {
+	window := func(id string) []byte {
+		return []byte(keysHead + `Window { Shortcut { sequence: keyId("` + id + `"); onActivated: App.saved() }
+    Flex { direction: Tui.Vertical
+        Text { text: App.status }
+        Preview { } } }`)
+	}
+	s := decltest.Run(t, 30, 4, tuidecl.LayoutSource("main.qml", window("demo.save")),
+		tuidecl.Singleton("demo", "1.0", "App"),
+		tuidecl.Sources(map[string]any{"App.status": "ready"}),
+		tuidecl.Commands(map[string]func() error{"App.saved": func() error { return nil }}),
+		tuidecl.KeyCommands(demoSave),
+		tuidecl.Types(tuidecl.Instance("Preview", widget.NewText("preview"))))
+	s.WaitForText(t, "preview")
+	var err error
+	onScreenLoop(t, s, func() { _, err = s.Program.Reload(window("demo.nothing")) })
+	if err == nil || !strings.Contains(err.Error(), `keyId("demo.nothing") names no declared key command`) {
+		t.Errorf("a reload with an undeclared keyId beside an Instance: %v; want refused", err)
 	}
 }
