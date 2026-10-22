@@ -217,4 +217,6 @@ var (
 	_ Canvas      = (*RecordingCanvas)(nil)
 	_ CellCoverer = (*RecordingCanvas)(nil)
 	_ CellCoverer = (*gioCanvas)(nil)
+	_ cellHost    = (*RecordingCanvas)(nil)
+	_ cellHost    = (*gioCanvas)(nil)
 )
