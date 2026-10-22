@@ -15,7 +15,7 @@ import (
 // Render paints the viewport with the visual-selection fill.
 func (e *Editor) Render(s tui.Surface) {
 	sz := s.Size()
-	if sz.W <= 0 || sz.H <= 0 || e.doc.shown { // the document view paints itself
+	if sz.W <= 0 || sz.H <= 0 || e.doc.Shown() { // the document view paints itself
 		return
 	}
 	if g := e.cells.gutter; g > 0 {

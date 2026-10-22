@@ -130,7 +130,7 @@ func (e *Editor) reveal(ln, col int) {
 // Layout is greedy on both axes. The gutter, when the numbers show, takes its columns from the
 // text's area, never all of it.
 func (e *Editor) Layout(c tui.Constraints) tui.Size {
-	if e.doc.shown {
+	if e.doc.Shown() {
 		return e.layoutDocument(c)
 	}
 	total := fillW(c)
