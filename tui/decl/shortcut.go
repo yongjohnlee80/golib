@@ -79,3 +79,6 @@ func oneContent(rest []tui.Component, owner string, pos fmt.Stringer) (tui.Compo
 	}
 	return rest[0], nil
 }
+
+// shortcutType is the Shortcut type.
+var shortcutType = Type{Name: "Shortcut", Build: buildShortcut, Ctor: []string{"sequence"}}

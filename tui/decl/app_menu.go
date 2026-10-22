@@ -411,3 +411,25 @@ var barPlacements = map[tui.DockEdge]widget.BarPlacement{
 	tui.DockLeft:   widget.BarPlacementLeft,
 	tui.DockRight:  widget.BarPlacementRight,
 }
+
+// menuBarType is the MenuBar type.
+var menuBarType = Type{Name: "MenuBar", Build: buildMenuBar, Ctor: []string{"vimNavigation"}, restyle: restyleMenuBar,
+	Setters: map[string]Setter{"autoHide": setter("a MenuBar", boolOf, (*menuBarNode).setAutoHide)}}
+
+// menuType is the Menu type.
+var menuType = Type{Name: "Menu", Build: buildMenu, Ctor: []string{"title", "align"}}
+
+// menuItemType is the MenuItem type.
+var menuItemType = Type{Name: "MenuItem", Children: NoChildren().Because("use a Menu for a submenu"), Build: buildMenuItem, Ctor: []string{"text", "checkable", "group", "shortcut"},
+	Setters: map[string]Setter{
+		"checked": setter("a menu row", boolOf, (*menuNode).setChecked),
+		"enabled": setter("a menu row", boolOf, (*menuNode).setEnabled),
+	},
+	Getters: map[string]Getter{
+		"checked": getter(func(n *menuNode) (qml.SpecValue, error) {
+			return boolValue(n.model.Checked), nil
+		}),
+	}}
+
+// menuSeparatorType is the MenuSeparator type.
+var menuSeparatorType = Type{Name: "MenuSeparator", Build: buildMenuSeparator}

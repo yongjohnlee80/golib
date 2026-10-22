@@ -192,3 +192,6 @@ func (a *Adapter) VetRoot(id decl.NodeID) error {
 }
 
 var _ decl.RootVetter = (*Adapter)(nil)
+
+// syntaxHighlighterType is the SyntaxHighlighter type.
+var syntaxHighlighterType = Type{Name: "SyntaxHighlighter", Children: NoChildren(), Build: buildSyntaxHighlighter, restyle: restyleSyntax, Setters: syntaxSetters()}
