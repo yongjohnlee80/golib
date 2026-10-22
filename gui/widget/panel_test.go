@@ -297,7 +297,7 @@ func TestAPanelTitleGivesAZeroWidthClusterNoColumn(t *testing.T) {
 }
 
 // The bar's text is whichever of its cells' colours has the higher WCAG contrast with the page
-// (tui/style's measure): on a mid grey page, black (5.3:1), not white (4.0:1), which a difference of
+// (tui/style's measure): on a mid grey page, black (5.24:1), not white (4.0:1), which a difference of
 // gamma-unaware luminances picked.
 func TestPanelBarTextHasTheHigherWCAGContrast(t *testing.T) {
 	p := gw.NewPanel(widget.NewText("x"), gw.WithTitle("Notes"))

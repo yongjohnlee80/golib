@@ -105,7 +105,9 @@ func (m *measurer) Wrap(s string, f Font, width float32) ([]string, Size) {
 
 var (
 	_ Measurer = (*measurer)(nil)
-	_ Measurer = (*TextShaper)(nil) // a canvas's shaper measures as a leased Measurer does
+	// A canvas's shaper measures as a leased Measurer does. It belongs to the UI loop, which draws
+	// with it: work off the loop leases its own with AcquireMeasurer.
+	_ Measurer = (*TextShaper)(nil)
 )
 
 // Wrap splits s into lines no wider than width (logical pixels) in f, as [Measurer.Wrap] does: at
