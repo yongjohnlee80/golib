@@ -11,8 +11,25 @@ type WindowButtons struct {
 	tui.MultiChild
 	core    *WindowCore
 	buttons []*Button
+	ops     []WindowOperation // each button's, in the same order
 	labels  map[WindowOperation]string
 	styles  map[WindowOperation]*ButtonStyle
+}
+
+// WindowControl is one of WindowButtons' buttons and the operation it invokes.
+type WindowControl struct {
+	Op     WindowOperation
+	Button *Button
+}
+
+// Controls are the buttons in their order on the bar, each with its operation: a native painter
+// colours each by what it does, not by where it sits.
+func (w *WindowButtons) Controls() []WindowControl {
+	out := make([]WindowControl, len(w.buttons))
+	for i, b := range w.buttons {
+		out[i] = WindowControl{Op: w.ops[i], Button: b}
+	}
+	return out
 }
 
 // WindowButtonsOption configures appearance independently of window behavior.
@@ -67,6 +84,7 @@ func NewWindowButtons(core *WindowCore, opts ...WindowButtonsOption) *WindowButt
 		button := NewButton(w.labels[control.op], WithButtonDecoration("", ""), WithButtonStyle(st),
 			WithOnActivate(func() { core.InvokeInput(action) }))
 		w.buttons = append(w.buttons, button)
+		w.ops = append(w.ops, control.op)
 		w.Add(button)
 	}
 	return w
