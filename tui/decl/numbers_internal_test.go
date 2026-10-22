@@ -49,7 +49,7 @@ func TestTheIntReadersRefuseANumberOutsideIntsRange(t *testing.T) {
 			}
 		}
 	}
-	if n, err := truncOf(qml.SpecValue{Kind: qml.SpecValueNumber, Raw: "9e18", Pos: at}); err != nil || n != 9000000000000000000 {
-		t.Errorf("truncOf(9e18) = %d, %v; want it read, in range", n, err)
+	if n, err := truncOf(qml.SpecValue{Kind: qml.SpecValueNumber, Raw: "2e9", Pos: at}); err != nil || n != 2000000000 {
+		t.Errorf("truncOf(2e9) = %d, %v; want it read, in range on any int size", n, err)
 	}
 }
