@@ -4,10 +4,9 @@ import (
 	"image/color"
 	"math"
 
-	"github.com/yongjohnlee80/gio/f32"
-
 	"github.com/yongjohnlee80/golib/graph/layout"
 	"github.com/yongjohnlee80/golib/gui"
+	"github.com/yongjohnlee80/golib/gui/internal/picture"
 	pm "github.com/yongjohnlee80/golib/parse/mermaid"
 )
 
@@ -29,10 +28,7 @@ import (
 // Paint renders the laid-out diagram geometry onto canvas c with its origin at (0, 0).
 // Text labels are dynamically shaped on the first frame using the canvas text shaper.
 func (l *Laid) Paint(c gui.Canvas) {
-	if l.fit != 1 {
-		c.PushTransform(f32.Affine2D{}.Scale(f32.Pt(0, 0), f32.Pt(l.fit, l.fit)))
-		defer c.Pop()
-	}
+	defer picture.Push(c, l.fit)()
 	for _, g := range l.group {
 		l.frame(c, g)
 	}
@@ -170,7 +166,7 @@ func (l *Laid) text(c gui.Canvas, lb label) {
 	y := lb.box.Y
 	lh := lb.font.Size * gui.LineHeight
 	for _, line := range lb.lines {
-		t := l.shape(c, line, lb.font)
+		t := l.labels.Shape(c, line, lb.font)
 		x := lb.box.X
 		if !lb.left {
 			x += (lb.box.W - t.Width) / 2
@@ -178,22 +174,6 @@ func (l *Laid) text(c gui.Canvas, lb label) {
 		c.DrawText(t, gui.Pt(x, y+(lh-t.Height)/2), gui.Solid(lb.color))
 		y += lh
 	}
-}
-
-// shape retrieves or builds a cached shaped TextLayout for text s and font f.
-func (l *Laid) shape(c gui.Canvas, s string, f gui.Font) *gui.TextLayout {
-	l.mu.Lock()
-	defer l.mu.Unlock()
-	k := shapeKey{s, f}
-	if t, ok := l.shaped[k]; ok {
-		return t
-	}
-	if l.shaped == nil {
-		l.shaped = map[shapeKey]*gui.TextLayout{}
-	}
-	t := c.Text().Layout(s, f, 0)
-	l.shaped[k] = t
-	return t
 }
 
 // node draws a box: its form filled and outlined, its label, and its compartments.
@@ -212,11 +192,7 @@ func paintForm(c gui.Canvas, n laidNode, em float32) {
 	x0, y0, x1, y1 := b.X, b.Y, b.X+b.W, b.Y+b.H
 	cx, cy := b.X+b.W/2, b.Y+b.H/2
 	poly := func(pts ...gui.Point) {
-		p := new(gui.Path).MoveTo(pts[0])
-		for _, q := range pts[1:] {
-			p.LineTo(q)
-		}
-		p.Close()
+		p := new(gui.Path).Polyline(pts, true)
 		c.FillPath(p, fill)
 		if n.dashed {
 			dashes(c, append(pts, pts[0]), n.width, stroke, em*0.3)

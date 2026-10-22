@@ -17,3 +17,18 @@ func TestPathEllipseAddsASubpath(t *testing.T) {
 		t.Errorf("FillEllipse's path: %d segments, bounds %v", e.Segments(), e.Bounds())
 	}
 }
+
+// Polyline adds a subpath through its points, closed when asked; no points add nothing.
+func TestPathPolylineAddsASubpath(t *testing.T) {
+	pts := []Point{{X: 0, Y: 0}, {X: 10, Y: 0}, {X: 10, Y: 5}}
+	if p := new(Path).Polyline(pts, false); p.Segments() != 3 || p.Bounds() != (Rect{W: 10, H: 5}) {
+		t.Fatalf("open: %d segments, bounds %v; want 3 and 10x5", p.Segments(), p.Bounds())
+	}
+	p := new(Path).Polyline(pts, true)
+	if p.Segments() != 4 {
+		t.Fatalf("closed: %d segments, want 4 (a move, two lines, a close)", p.Segments())
+	}
+	if p.Polyline(nil, true) != p || p.Segments() != 4 {
+		t.Errorf("no points added %d segments", p.Segments()-4)
+	}
+}

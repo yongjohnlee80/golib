@@ -126,6 +126,22 @@ func (p *Path) RoundRect(r Rect, rx, ry float32) *Path {
 	return p.Close()
 }
 
+// Polyline adds the polyline through pts to p, a subpath of its own, closed when closed is set, and
+// is p. No points add nothing.
+func (p *Path) Polyline(pts []Point, closed bool) *Path {
+	for i, pt := range pts {
+		if i == 0 {
+			p.MoveTo(pt)
+		} else {
+			p.LineTo(pt)
+		}
+	}
+	if closed && len(pts) > 0 {
+		p.Close()
+	}
+	return p
+}
+
 // ellipsePath is the ellipse inscribed in r.
 func ellipsePath(r Rect) *Path { return new(Path).Ellipse(r) }
 

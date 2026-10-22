@@ -33,11 +33,11 @@ import (
 	"context"
 	"image/color"
 	"math"
-	"sync"
 
 	"github.com/yongjohnlee80/gio/f32"
 
 	"github.com/yongjohnlee80/golib/gui"
+	"github.com/yongjohnlee80/golib/gui/internal/picture"
 )
 
 // Theme is what a chart is drawn in: its page, its text (titles and labels), its axes' lines, its
@@ -93,13 +93,7 @@ type Laid struct {
 	items []item
 	ops   []paintOp
 
-	mu     sync.Mutex
-	shaped map[shapeKey]*gui.TextLayout
-}
-
-type shapeKey struct {
-	text string
-	font gui.Font
+	labels picture.Labels
 }
 
 // itemKind is what an item draws.
@@ -133,13 +127,7 @@ type item struct {
 func (l *Laid) Size() gui.Size { return l.size }
 
 // fitTo sets the fit that scales a chart wider than width down to it.
-func (l *Laid) fitTo(width float32) {
-	l.fit = 1
-	if width > 0 && l.size.W > width {
-		l.fit = width / l.size.W
-		l.size = gui.Size{W: width, H: l.size.H * l.fit}
-	}
-}
+func (l *Laid) fitTo(width float32) { l.size, l.fit = picture.FitTo(l.size, width) }
 
 // paintOp is one draw call: a path filled or stroked (every shape of a run of one colour, and
 // width, in it), or a label.
@@ -172,11 +160,11 @@ func batch(items []item) []paintOp {
 		switch it.kind {
 		case itemRect:
 			r := it.rect
-			addPoly(op.path, []gui.Point{{X: r.X, Y: r.Y}, {X: r.X + r.W, Y: r.Y}, {X: r.X + r.W, Y: r.Y + r.H}, {X: r.X, Y: r.Y + r.H}}, true)
+			op.path.Polyline([]gui.Point{{X: r.X, Y: r.Y}, {X: r.X + r.W, Y: r.Y}, {X: r.X + r.W, Y: r.Y + r.H}, {X: r.X, Y: r.Y + r.H}}, true)
 		case itemFill:
-			addPoly(op.path, it.pts, true)
+			op.path.Polyline(it.pts, true)
 		case itemLine:
-			addPoly(op.path, it.pts, false)
+			op.path.Polyline(it.pts, false)
 		case itemDot, itemRing:
 			op.path.Ellipse(it.rect)
 		}
@@ -186,10 +174,7 @@ func batch(items []item) []paintOp {
 
 // Paint draws the chart on c with its top left at (0, 0).
 func (l *Laid) Paint(c gui.Canvas) {
-	if l.fit != 1 {
-		c.PushTransform(f32.Affine2D{}.Scale(f32.Pt(0, 0), f32.Pt(l.fit, l.fit)))
-		defer c.Pop()
-	}
+	defer picture.Push(c, l.fit)()
 	for _, op := range l.ops {
 		switch {
 		case op.path == nil:
@@ -204,7 +189,7 @@ func (l *Laid) Paint(c gui.Canvas) {
 
 // text draws a label: shaped once, then placed in its box, or turned upright about its corner.
 func (l *Laid) text(c gui.Canvas, it item) {
-	t := l.shape(c, it.text, it.font)
+	t := l.labels.Shape(c, it.text, it.font)
 	r := it.rect
 	if it.up {
 		at := gui.Pt(r.X+r.W/2, r.Y+r.H) // the box's bottom middle: where the text starts, upright
@@ -221,34 +206,4 @@ func (l *Laid) text(c gui.Canvas, it item) {
 		x += r.W - t.Width
 	}
 	c.DrawText(t, gui.Pt(x, r.Y+(r.H-t.Height)/2), gui.Solid(it.color))
-}
-
-// shape is s in f, shaped on the loop the first time it is drawn.
-func (l *Laid) shape(c gui.Canvas, s string, f gui.Font) *gui.TextLayout {
-	l.mu.Lock()
-	defer l.mu.Unlock()
-	k := shapeKey{s, f}
-	if t, ok := l.shaped[k]; ok {
-		return t
-	}
-	if l.shaped == nil {
-		l.shaped = map[shapeKey]*gui.TextLayout{}
-	}
-	t := c.Text().Layout(s, f, 0)
-	l.shaped[k] = t
-	return t
-}
-
-// addPoly adds the polyline through pts to p, as a subpath of its own, closed when close is set.
-func addPoly(p *gui.Path, pts []gui.Point, close bool) {
-	for i, pt := range pts {
-		if i == 0 {
-			p.MoveTo(pt)
-		} else {
-			p.LineTo(pt)
-		}
-	}
-	if close && len(pts) > 0 {
-		p.Close()
-	}
 }
