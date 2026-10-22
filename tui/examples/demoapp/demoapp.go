@@ -1,10 +1,8 @@
-// Package demoapp is the demo's component tree, in an importable package.
-//
-// It was moved out of tui/examples/demo verbatim so that the SAME component code
-// can be driven by two different backends — the terminal and tui/web — which is
-// acceptance. The component logic below is unchanged by the
-// move; only the package clause and the constructor's visibility differ, because
-// package main cannot be imported.
+// Package demoapp is the demo's component tree, in an importable package, so that
+// the SAME component code can be driven by two different backends — tui/web
+// (tui/examples/webdemo) and gui's native window (gui/examples/demo) — which is
+// acceptance. Package main cannot be imported, so the tree lives here and each
+// demo's main builds it with New.
 package demoapp
 
 import (
@@ -32,7 +30,7 @@ type demo struct {
 	ctx *tui.Context
 }
 
-// newDemo assembles the layout:
+// New assembles the layout:
 //
 //	┌ Items ─┐┌ Input ────────────┐
 //	│ (list) ││ (text input)      │

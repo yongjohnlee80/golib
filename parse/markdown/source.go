@@ -27,8 +27,9 @@ type source struct {
 	collectMore  bool
 }
 
-// Definition creates Markdown behavior that borrows source-language providers
-// from the supplied immutable catalog. The legacy Highlighter remains unchanged.
+// Definition is Markdown's highlight definition: its SourceFactory borrows the
+// source-language providers from the catalog it is given (golib's languages when
+// nil), and its Highlighter is Highlighter, for a host that has no catalog.
 func Definition() highlight.Definition {
 	return highlight.Definition{Name: "Markdown", Extensions: []string{"*.md", "*.markdown"}, Aliases: []string{"markdown", "md"}, DocumentAdapter: true, Highlighter: Highlighter(), SourceFactory: func(catalog *highlight.Catalog) highlight.Source {
 		if catalog == nil {
