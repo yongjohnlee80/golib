@@ -90,3 +90,17 @@ func TestAWindowTaskbarRefusesATypedNilCollector(t *testing.T) {
 		t.Errorf("a typed-nil collector: %v; want refused", err)
 	}
 }
+
+// A typed-nil collector given to WithWindowCollector is no collector, as golib's nil-like rule has
+// it (tui.NilLike): a minimizable Drawer is refused for want of one, as with none given. Before, the
+// option stored it as present, the Drawer's check passed, and minimizing would reach a nil.
+func TestATypedNilWindowCollectorIsNone(t *testing.T) {
+	_, err := tuidecl.NewProgram(tuidecl.LayoutSource("main.qml", []byte(`import tui 1.0
+Window { Text { text: "page" }
+ Drawer { modal: false; minimizable: true; Text { text: "drawer" } } }`)),
+		tuidecl.AppOptions(tui.WithBackend(tui.NewTestBackend(30, 4))),
+		tuidecl.AdapterOptions(tuidecl.WithWindowCollector((*widget.MinimizedWindows)(nil))))
+	if err == nil || !strings.Contains(err.Error(), "minimizable Drawer requires modal: false and WithWindowCollector") {
+		t.Errorf("a minimizable Drawer with a typed-nil collector: %v; want refused, as with none", err)
+	}
+}

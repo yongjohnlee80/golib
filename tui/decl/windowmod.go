@@ -16,8 +16,12 @@ import (
 // configuration or input scope. Hosts can compare it through wrapped errors.
 var ErrWindowOperationUnavailable = errors.New("tui/decl: window operation unavailable")
 
-// WithWindowCollector supplies a caller-owned model; no registry or taskbar is created.
+// WithWindowCollector supplies a caller-owned model; no registry or taskbar is created. A nil one,
+// typed or not (tui.NilLike), is none.
 func WithWindowCollector(model widget.WindowCollector) Option {
+	if tui.NilLike(model) {
+		model = nil
+	}
 	return func(a *Adapter) { a.windowCollector = model }
 }
 
