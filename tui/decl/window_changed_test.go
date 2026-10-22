@@ -2,6 +2,7 @@ package decl_test
 
 import (
 	"errors"
+	"slices"
 	"strconv"
 	"strings"
 	"testing"
@@ -68,4 +69,43 @@ func TestAWindowModAndADrawerRaiseChangedAlike(t *testing.T) {
 			t.Errorf("plain.toggleMaximize(): %v; want ErrWindowOperationUnavailable", err)
 		}
 	})
+}
+
+// A Drawer's other window operations raise changed as a WindowMod's do: moveBy a move, resizeBy a
+// resize, minimize then restore each its own, in the signal's order, with its key.
+func TestADrawersWindowOperationsRaiseChanged(t *testing.T) {
+	rec := &calls{}
+	s := decltest.Run(t, 60, 20, tuidecl.LayoutSource("main.qml", []byte(`import tui 1.0
+import demo 1.0
+Window {
+ Text { text: "page" }
+ Drawer { id: dr; key: "dr"; modal: false; movable: true; windowResize: true; minimizable: true
+  onChanged: App.log(operation, key, minimized)
+  Text { text: "drawer" } }
+}`)),
+		tuidecl.Singleton("demo", "1.0", "App"),
+		tuidecl.Handlers(map[string]decl.HandlerFunc{"App.log": rec.handler}),
+		tuidecl.AdapterOptions(tuidecl.WithWindowCollector(widget.NewMinimizedWindows())))
+	s.WaitForText(t, "page")
+	onScreenLoop(t, s, func() {
+		if err := s.Program.Call("dr", "open"); err != nil {
+			t.Errorf("dr.open(): %v", err)
+		}
+	})
+	s.WaitForText(t, "drawer")
+	want := []string{"move dr false", "resize dr false", "minimize dr true", "restore dr false"}
+	for i, call := range []struct {
+		method string
+		args   []any
+	}{{"moveBy", []any{1, 0}}, {"resizeBy", []any{1, 1}}, {"minimize", nil}, {"restore", nil}} {
+		onScreenLoop(t, s, func() {
+			if err := s.Program.Call("dr", call.method, call.args...); err != nil {
+				t.Errorf("dr.%s(): %v", call.method, err)
+			}
+		})
+		s.WaitFor(t, call.method+"'s changed", func(string) bool { return len(rec.all()) > i })
+	}
+	if got := rec.all(); !slices.Equal(got, want) {
+		t.Errorf("changed raised %q; want %q", got, want)
+	}
 }
