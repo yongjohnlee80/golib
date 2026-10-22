@@ -138,7 +138,7 @@ func TestPanelCapabilityOnlyDoubleClickMaximize(t *testing.T) {
 }
 
 func TestPanelConsumerResizeMinimumIsNotOverwritten(t *testing.T) {
-	h := startPanel(t, tui.Rect{X: 2, Y: 2, W: 30, H: 10}, gw.Resizable(),
+	h := startPanel(t, tui.Rect{X: 2, Y: 2, W: 30, H: 10}, gw.WithResizable(),
 		gw.WithWindowCapabilities(widget.WithWindowMinSize(tui.Size{W: 25, H: 8})))
 	h.onLoop(func() {
 		if !h.panel.WindowBehavior().ResizeBy(-100, -100) {

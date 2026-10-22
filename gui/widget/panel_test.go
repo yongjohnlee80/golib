@@ -90,7 +90,7 @@ func (h *panelHarness) row(y int) string {
 }
 
 func TestPanelMovesByItsTitleBar(t *testing.T) {
-	h := startPanel(t, tui.Rect{X: 2, Y: 2, W: 24, H: 6}, gw.Movable())
+	h := startPanel(t, tui.Rect{X: 2, Y: 2, W: 24, H: 6}, gw.WithMovable())
 	h.mouse(tui.MousePress, 10, 2)
 	h.mouse(tui.MouseMotion, 15, 3)
 	h.mouse(tui.MouseMotion, 17, 4)
@@ -100,7 +100,7 @@ func TestPanelMovesByItsTitleBar(t *testing.T) {
 }
 
 func TestPanelResizesByItsCorner(t *testing.T) {
-	h := startPanel(t, tui.Rect{X: 2, Y: 2, W: 24, H: 6}, gw.Resizable())
+	h := startPanel(t, tui.Rect{X: 2, Y: 2, W: 24, H: 6}, gw.WithResizable())
 	h.mouse(tui.MousePress, 2+24-1, 2+6-1)
 	h.mouse(tui.MouseMotion, 2+24+3, 2+6+2)
 	h.mouse(tui.MouseRelease, 2+24+3, 2+6+2)
@@ -117,7 +117,7 @@ func TestPanelWithoutTheOptionsStaysPut(t *testing.T) {
 		t.Fatalf("an immovable panel moved to %+v", b)
 	}
 	if strings.Contains(h.row(2), "[x]") {
-		t.Errorf("a panel without Closable shows a close control: %q", h.row(2))
+		t.Errorf("a panel without WithClosable shows a close control: %q", h.row(2))
 	}
 }
 
@@ -125,7 +125,7 @@ func TestPanelControls(t *testing.T) {
 	var closed atomic.Bool
 	dock := widget.NewMinimizedWindows()
 	h := startPanel(t, tui.Rect{X: 2, Y: 2, W: 30, H: 6},
-		gw.Closable(func() { closed.Store(true) }), gw.Maximizable(),
+		gw.WithClosable(func() { closed.Store(true) }), gw.WithMaximizable(),
 		gw.WithWindowCapabilities(widget.WithWindowMinimize(dock)))
 	title := h.row(2)
 	for _, c := range []string{"[x]", "[□]", "[_]"} {
@@ -167,7 +167,7 @@ func TestPanelControls(t *testing.T) {
 }
 
 func TestPanelNativeBar(t *testing.T) {
-	p := gw.NewPanel(widget.NewText("x"), gw.WithTitle("Notes"), gw.Closable(func() {}), gw.Maximizable(),
+	p := gw.NewPanel(widget.NewText("x"), gw.WithTitle("Notes"), gw.WithClosable(func() {}), gw.WithMaximizable(),
 		gw.WithWindowCapabilities(widget.WithWindowMinimize(widget.NewMinimizedWindows())))
 	v, ok := p.NativeView()
 	if !ok {
@@ -205,7 +205,7 @@ func TestMinimizableAloneShowsNoMinimizeControl(t *testing.T) {
 }
 
 func TestPanelBoundsWhileMaximized(t *testing.T) {
-	h := startPanel(t, tui.Rect{X: 2, Y: 2, W: 30, H: 6}, gw.Maximizable())
+	h := startPanel(t, tui.Rect{X: 2, Y: 2, W: 30, H: 6}, gw.WithMaximizable())
 	h.mouse(tui.MousePress, 2+30-3+1, 2)
 	h.mouse(tui.MouseRelease, 2+30-3+1, 2)
 	h.until("the whole screen", func() bool { return h.bounds() == tui.Rect{W: 60, H: 20} })
@@ -247,13 +247,13 @@ func TestPanelBarIsAPageSurface(t *testing.T) {
 // TestPanelTitleTrailingSitsAtTheRight: a trailing widget sits at the bar's right, before the
 // controls; the title keeps to the room left of it, cut where it would run under it.
 func TestPanelTitleTrailingSitsAtTheRight(t *testing.T) {
-	h := startPanel(t, tui.Rect{X: 2, Y: 2, W: 40, H: 6}, gw.TitleTrailing(widget.NewText("TRAIL")))
+	h := startPanel(t, tui.Rect{X: 2, Y: 2, W: 40, H: 6}, gw.WithTitleTrailing(widget.NewText("TRAIL")))
 	h.until("the trailing widget", func() bool { return strings.Contains(h.row(2), "TRAIL") })
 	if r := h.row(2); r[2+40-len("TRAIL"):2+40] != "TRAIL" || !strings.Contains(r, "Notes") {
 		t.Fatalf("the bar: %q; want Notes, and TRAIL at its right edge", r)
 	}
 
-	long := startPanel(t, tui.Rect{X: 2, Y: 2, W: 24, H: 6}, gw.WithTitle("Notes with a title far too long"), gw.TitleTrailing(widget.NewText("TRAIL")))
+	long := startPanel(t, tui.Rect{X: 2, Y: 2, W: 24, H: 6}, gw.WithTitle("Notes with a title far too long"), gw.WithTitleTrailing(widget.NewText("TRAIL")))
 	long.until("the trailing widget", func() bool { return strings.Contains(long.row(2), "TRAIL") })
 	// cut a cell short of TRAIL, as the leading widgets keep a cell between them
 	if r := long.row(2); r[2+24-len("TRAIL"):2+24] != "TRAIL" || r[2+24-len("TRAIL")-1] != ' ' || strings.Contains(r, "too long") || !strings.Contains(r, "Notes") {

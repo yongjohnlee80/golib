@@ -54,7 +54,7 @@ func TestTheDocumentViewDrawsThroughTheStylesOneChain(t *testing.T) {
 
 func TestMarkdownOptionsReachTheDefaultNativeFactory(t *testing.T) {
 	n := &native{}
-	WithMarkdownOptions(widget.HideMetadata())(n)
+	WithMarkdownOptions(widget.WithHideMetadata())(n)
 	r := n.markdownRenderer(tuidecl.MarkdownSpec{Mermaid: true}).(*widget.MarkdownRenderer)
 	if r.Diagrams() != n.diagramChain() {
 		t.Fatal("options lost the style's diagram chain")
@@ -64,6 +64,6 @@ func TestMarkdownOptionsReachTheDefaultNativeFactory(t *testing.T) {
 	sh := gui.NewRecordingCanvas(gui.Size{W: 400, H: 200}, gui.Size{W: 8, H: 16}).Text()
 	bl := r.LayOut(blocks[0], lines, 300, false, sh, widget.Theme{Mono: gui.Font{Size: 14}, Prose: gui.Font{Size: 16}}, nil)
 	if bl.Height != 0 || len(bl.Lines) != 0 {
-		t.Fatalf("native defaults ignored HideMetadata: %+v", bl)
+		t.Fatalf("native defaults ignored WithHideMetadata: %+v", bl)
 	}
 }
