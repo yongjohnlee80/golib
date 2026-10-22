@@ -160,7 +160,7 @@ func windowStep(move bool) Method {
 			if err != nil {
 				return err
 			}
-			if math.IsNaN(n) || math.IsInf(n, 0) || math.Trunc(n) != n || n < float64(math.MinInt) || n >= float64(math.MaxInt) {
+			if math.IsNaN(n) || math.IsInf(n, 0) || math.Trunc(n) != n || !inIntRange(n) {
 				return errors.New("window delta must be a finite integer in range")
 			}
 			delta[i] = int(n)

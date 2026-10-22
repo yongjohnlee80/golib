@@ -34,3 +34,22 @@ func TestTheIntReadersRefuseNaNAndInfinities(t *testing.T) {
 		t.Errorf("cellsOf(12) = %d, %v", n, err)
 	}
 }
+
+// Both int readers refuse a finite number outside int's range, naming the value and where it came
+// from, as they refuse NaN and ±Inf: Go's int() of an out-of-range float is implementation-defined.
+// Before, truncOf cast 1e300 to whatever the platform made of it.
+func TestTheIntReadersRefuseANumberOutsideIntsRange(t *testing.T) {
+	at := parse.Position{File: "main.qml", Line: 4, Column: 2}
+	for _, raw := range []string{"1e300", "-1e300", "9.3e18", "-9.3e18"} {
+		v := qml.SpecValue{Kind: qml.SpecValueNumber, Raw: raw, Pos: at}
+		for name, read := range map[string]func(qml.SpecValue) (int, error){"truncOf": truncOf, "cellsOf": cellsOf} {
+			n, err := read(v)
+			if err == nil || !strings.Contains(err.Error(), raw) || !strings.Contains(err.Error(), at.String()) {
+				t.Errorf("%s(%s) = %d, %v; want it refused, naming %s at %s", name, raw, n, err, raw, at)
+			}
+		}
+	}
+	if n, err := truncOf(qml.SpecValue{Kind: qml.SpecValueNumber, Raw: "9e18", Pos: at}); err != nil || n != 9000000000000000000 {
+		t.Errorf("truncOf(9e18) = %d, %v; want it read, in range", n, err)
+	}
+}
