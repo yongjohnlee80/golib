@@ -783,43 +783,18 @@ func (l *tableLayout) elide(s string, w float32, f gui.Font) string {
 // again and measures the widths again.
 func (l *tableLayout) adoptLook(c gui.Canvas) {
 	l.pal = gui.PaletteOf(c)
-	fg, bg, ok := openColors(c, -1)
-	if !ok {
-		fg, bg = l.fg, l.bg // wholly covered: the look it had
-	}
-	if fg.A == 0 && bg.A == 0 {
-		fg, bg = color.NRGBA{A: 255}, color.NRGBA{R: 255, G: 255, B: 255, A: 255}
-	}
-	px := max(c.TextSize(), 10)
-	accent := color.NRGBA{R: 0x5c, G: 0x9c, B: 0xf5, A: 0xff}
-	muted := mix(fg, bg, 0.55)
-	if th := l.t.Theme(); th != nil {
-		dark := isDark(bg)
-		if col, ok := colorOf(th.Color(style.TokenAccent), th, dark, l.pal); ok {
-			accent = col
-		}
-		if col, ok := colorOf(th.Color(style.TokenTextMuted), th, dark, l.pal); ok {
-			muted = col
-		}
-	}
-	h := fnv.New64a()
-	for _, col := range []color.NRGBA{fg, bg, accent, muted} {
-		_, _ = h.Write([]byte{col.R, col.G, col.B, col.A})
-	}
-	_ = binary.Write(h, binary.LittleEndian, px)
-	_ = binary.Write(h, binary.LittleEndian, c.Fonts().Gen)
-	look := h.Sum64()
-	if look == l.look {
+	lk := readLook(c, l.t.Theme(), l.fg, l.bg)
+	if lk.key == l.look {
 		return
 	}
-	l.look = look
-	l.fg, l.bg, l.muted = fg, bg, muted
-	l.tint = mix(fg, bg, 0.06)
-	l.rule = mix(muted, bg, 0.45)
-	l.cursor = mix(accent, bg, 0.35)
-	l.blurred = mix(fg, bg, 0.16) // grey: the selection's accent tint stays its own
-	l.selection = mix(accent, bg, 0.18)
-	l.sizeText(px)
+	l.look = lk.key
+	l.fg, l.bg, l.muted = lk.fg, lk.bg, lk.muted
+	l.tint = mix(lk.fg, lk.bg, 0.06)
+	l.rule = mix(lk.muted, lk.bg, 0.45)
+	l.cursor = mix(lk.accent, lk.bg, 0.35)
+	l.blurred = mix(lk.fg, lk.bg, 0.16) // grey: the selection's accent tint stays its own
+	l.selection = mix(lk.accent, lk.bg, 0.18)
+	l.sizeText(lk.px)
 	l.header, l.bands, l.nums, l.empty = nil, nil, nil, nil
 	l.core().Remeasure()
 }

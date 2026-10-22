@@ -510,7 +510,7 @@ func (e *Editor) theme(fg, bg color.NRGBA, textPx float32, th *style.Theme, pal 
 	}
 	t := Theme{Text: fg, Background: bg,
 		Muted:          mix(fg, bg, 0.55),
-		Accent:         color.NRGBA{R: 0x5c, G: 0x9c, B: 0xf5, A: 0xff},
+		Accent:         defaultAccent,
 		CodeBackground: mix(fg, bg, 0.08),
 		Prose:          gui.Font{Size: size * 1.05},
 		Mono:           gui.Font{Family: gui.CellFamily, Size: size},
@@ -614,7 +614,7 @@ func (s *modeSwitch) paint(c gui.Canvas) {
 	}
 	accent := s.e.layout.th.Accent
 	if accent == (color.NRGBA{}) {
-		accent = color.NRGBA{R: 0x5c, G: 0x9c, B: 0xf5, A: 0xff}
+		accent = defaultAccent
 	}
 	cell, size := c.CellSize(), c.Size()
 	c.FillRect(gui.Rect{W: size.W, H: size.H}, gui.Solid(fill))
