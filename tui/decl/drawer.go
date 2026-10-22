@@ -91,19 +91,10 @@ var _ Overlaid = (*drawerNode)(nil)
 const defaultDrawerSize = 33
 
 func buildDrawer(b Build) (tui.Component, []string, error) {
-	var content tui.Component
-	var shortcuts []*shortcutNode
-	for _, c := range b.Children {
-		if sc, ok := c.(*shortcutNode); ok {
-			shortcuts = append(shortcuts, sc)
-		} else if content == nil {
-			content = c
-		} else {
-			return nil, nil, errors.New("a Drawer holds exactly one child, its content, besides its Shortcuts")
-		}
-	}
-	if content == nil {
-		return nil, nil, errors.New("a Drawer holds exactly one child, its content, besides its Shortcuts")
+	shortcuts, rest := splitShortcuts(b.Children)
+	content, err := oneContent(rest, "Drawer", b.Pos)
+	if err != nil {
+		return nil, nil, err
 	}
 	modal, resizable, reserve := true, false, false
 	var keyScope keymap.Scope

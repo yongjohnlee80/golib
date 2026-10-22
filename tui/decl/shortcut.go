@@ -57,3 +57,25 @@ func buildShortcut(b Build) (tui.Component, []string, error) {
 	}
 	return &shortcutNode{key: k, pos: fmt.Sprint(b.Pos), trigger: b.Emitter("activated")}, consumed, nil
 }
+
+// splitShortcuts parts a Shortcut holder's children into its Shortcuts and the rest, each in its
+// order: the one partition every holder makes (FocusScope, Drawer, Dialog, FolderDialog).
+func splitShortcuts(children []tui.Component) (shortcuts []*shortcutNode, rest []tui.Component) {
+	for _, c := range children {
+		if sc, ok := c.(*shortcutNode); ok {
+			shortcuts = append(shortcuts, sc)
+		} else {
+			rest = append(rest, c)
+		}
+	}
+	return shortcuts, rest
+}
+
+// oneContent is a holder's one content item among the rest of its children, refusing none or more,
+// in one wording: "a Drawer holds exactly one content item besides its Shortcuts, got 2 (at …)".
+func oneContent(rest []tui.Component, owner string, pos fmt.Stringer) (tui.Component, error) {
+	if len(rest) != 1 {
+		return nil, fmt.Errorf("a %s holds exactly one content item besides its Shortcuts, got %d (at %s)", owner, len(rest), pos)
+	}
+	return rest[0], nil
+}

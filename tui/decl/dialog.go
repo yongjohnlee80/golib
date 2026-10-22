@@ -368,14 +368,10 @@ func buildDialog(b Build) (tui.Component, []string, error) {
 // the dialog is open and the controls in it leave them.
 func dialogChildren(b Build) (tui.Component, []*shortcutNode, *buttonBoxNode, error) {
 	var body tui.Component
-	var shortcuts []*shortcutNode
 	var box *buttonBoxNode
 	n := 0
-	for _, c := range b.Children {
-		if sc, ok := c.(*shortcutNode); ok {
-			shortcuts = append(shortcuts, sc)
-			continue
-		}
+	shortcuts, rest := splitShortcuts(b.Children)
+	for _, c := range rest {
 		if bb, ok := c.(*buttonBoxNode); ok {
 			if box != nil {
 				return nil, nil, nil, fmt.Errorf("a Dialog holds one DialogButtonBox (at %s)", b.Pos)

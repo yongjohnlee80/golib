@@ -197,15 +197,13 @@ func buildFolderDialog(b Build) (tui.Component, []string, error) {
 	if err != nil {
 		return nil, nil, err
 	}
-	for _, ch := range b.Children {
-		switch ch := ch.(type) {
-		case *shortcutNode:
-			c.spec.shortcuts = append(c.spec.shortcuts, ch)
-		case *buttonBoxNode:
+	shortcuts, rest := splitShortcuts(b.Children)
+	c.spec.shortcuts = append(c.spec.shortcuts, shortcuts...)
+	for _, ch := range rest {
+		if _, ok := ch.(*buttonBoxNode); ok {
 			return nil, nil, fmt.Errorf("a FolderDialog's buttons are its own, Select and Close (at %s)", b.Pos)
-		default:
-			c.fields = append(c.fields, ch)
 		}
+		c.fields = append(c.fields, ch)
 	}
 	// Select is the default: Enter in a field that leaves it unclaimed (a
 	// name typed) chooses the folder the path holds.
