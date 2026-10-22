@@ -10,6 +10,7 @@ import (
 	"github.com/yongjohnlee80/golib/gui"
 	"github.com/yongjohnlee80/golib/gui/flow"
 	phtml "github.com/yongjohnlee80/golib/parse/html"
+	mdhtml "github.com/yongjohnlee80/golib/parse/markdown/html"
 )
 
 // HTML Box Tree & Layout Hierarchy:
@@ -373,22 +374,14 @@ func trimPre(n *phtml.Node) {
 	}
 }
 
-// blockSrc reads data-src="from-to".
+// blockSrc reads an element's source span, data-src="from-to" (mdhtml.SourceSpanAttr).
 func blockSrc(n *phtml.Node) ([2]int, bool) {
-	v, ok := n.Attr("data-src")
+	v, ok := n.Attr(mdhtml.SourceSpanAttr)
 	if !ok {
 		return [2]int{}, false
 	}
-	a, c, ok := strings.Cut(v, "-")
-	if !ok {
-		return [2]int{}, false
-	}
-	from, err1 := strconv.Atoi(strings.TrimSpace(a))
-	to, err2 := strconv.Atoi(strings.TrimSpace(c))
-	if err1 != nil || err2 != nil || from < 0 || to < from {
-		return [2]int{}, false
-	}
-	return [2]int{from, to}, true
+	from, to, ok := mdhtml.ParseSourceSpan(v)
+	return [2]int{from, to}, ok
 }
 
 // fontOf is a style's font.
