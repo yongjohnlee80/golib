@@ -2,11 +2,12 @@ package gui
 
 import (
 	"context"
-	"errors"
 	"image"
 	"image/color"
 	"sync"
 	"sync/atomic"
+
+	"github.com/yongjohnlee80/golib/errs"
 
 	"github.com/yongjohnlee80/gio/app"
 	"github.com/yongjohnlee80/gio/font"
@@ -21,10 +22,10 @@ import (
 )
 
 // ErrNotStarted is returned by Size before Start has opened the window.
-var ErrNotStarted = errors.New("gui: backend not started")
+var ErrNotStarted = errs.Sentinel(errs.ErrPrecondition, "gui: backend not started")
 
 // errClosedBeforeOpen is Start's answer when the window is destroyed before its first frame.
-var errClosedBeforeOpen = errors.New("gui: window closed before it opened")
+var errClosedBeforeOpen = errs.Sentinel(errs.ErrClosed, "gui: window closed before it opened")
 
 // Backend Concurrency and Thread Handoff Architecture:
 //

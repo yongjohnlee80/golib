@@ -1,8 +1,9 @@
 package gui
 
 import (
-	"errors"
 	"sync"
+
+	"github.com/yongjohnlee80/golib/errs"
 
 	"github.com/yongjohnlee80/golib/tui"
 )
@@ -13,7 +14,7 @@ import (
 // In accordance with the [tui.Backend] contract, input events must be delivered strictly in
 // arrival order without dropping or coalescing at the driver boundary. When the queue overflows,
 // the backend terminates cleanly with this error rather than silently degrading event integrity.
-var ErrEventOverflow = errors.New("gui: event queue overflow")
+var ErrEventOverflow = errs.Sentinel(errs.ErrPrecondition, "gui: event queue overflow")
 
 // maxQueued is the maximum number of pending input events buffered in the [eventQueue] before
 // signaling [ErrEventOverflow]. Under ordinary execution, the TUI loop drains events promptly;

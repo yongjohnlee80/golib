@@ -47,6 +47,8 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/yongjohnlee80/golib/errs"
+
 	"github.com/yongjohnlee80/gio/f32"
 
 	"github.com/yongjohnlee80/golib/gui"
@@ -67,11 +69,11 @@ const (
 
 var (
 	// ErrNotSVG is a document with no <svg> root element.
-	ErrNotSVG = errors.New("svg: not an SVG document")
+	ErrNotSVG = errs.Sentinel(errs.ErrInvalidArgument, "svg: not an SVG document")
 	// ErrTooLarge is a document over one of the bounds.
-	ErrTooLarge = errors.New("svg: over a size bound")
+	ErrTooLarge = errs.Sentinel(errs.ErrInvalidArgument, "svg: over a size bound")
 	// ErrInvalid is a number that is not finite, or too large to draw.
-	ErrInvalid = errors.New("svg: a number that cannot be drawn")
+	ErrInvalid = errs.Sentinel(errs.ErrInvalidArgument, "svg: a number that cannot be drawn")
 )
 
 // paint is a fill or a stroke as written: a colour, none, or currentColor.

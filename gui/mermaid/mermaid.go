@@ -27,6 +27,8 @@ import (
 	"fmt"
 	"image/color"
 
+	"github.com/yongjohnlee80/golib/errs"
+
 	"github.com/yongjohnlee80/golib/graph/layout"
 	"github.com/yongjohnlee80/golib/gui"
 	"github.com/yongjohnlee80/golib/gui/internal/picture"
@@ -65,7 +67,7 @@ func Lay(ctx context.Context, src string, width float32, th Theme, m gui.Measure
 
 // ErrInvalidModel is a diagram model that breaks an invariant its parser keeps, so its layer can't
 // lay it out.
-var ErrInvalidModel = errors.New("mermaid: the diagram model breaks its parser's invariants")
+var ErrInvalidModel = errs.Sentinel(errs.ErrInvalidArgument, "mermaid: the diagram model breaks its parser's invariants")
 
 // maxModelNodes is the most nodes a modelled mind map may have: the tree layout's own bound, checked
 // before any label is measured.
