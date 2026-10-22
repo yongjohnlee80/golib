@@ -76,7 +76,7 @@ var TextField = tuidecl.Type{
 	},
 	Signals: map[string][]string{"accepted": {"text"}, "textEdited": {"text"}},
 	Enums:   []tuidecl.Enum{EchoMode},
-	Restyle: func(c tui.Component, p tuidecl.Palette) {
+	Restyle: tuidecl.Restyler(func(ti *widget.TextInput, p tuidecl.Palette) {
 		// The placeholder sits on the field's base too, as in Qt; its own
 		// muted foreground stays golib's.
 		base, _ := p.Color(tuidecl.RoleBase)
@@ -87,8 +87,8 @@ var TextField = tuidecl.Type{
 		if _, ok := p.Color(tuidecl.RoleHighlight); ok {
 			st.Selection = p.Look(tuidecl.RoleHighlight, tuidecl.RoleHighlightedText).Reverse(false)
 		}
-		c.(*widget.TextInput).WithStyles(st)
-	},
+		ti.WithStyles(st)
+	}),
 }
 
 // setCompletions is the completions setter: the word before the cursor is completed from the
@@ -177,7 +177,7 @@ var Popup = tuidecl.Type{
 		"open":  tuidecl.NoArgMethod((*popupNode).open),
 		"close": tuidecl.NoArgMethod((*popupNode).close),
 	},
-	Destroyed: func(c tui.Component) { c.(*popupNode).detach() },
+	Destroyed: tuidecl.Destroyer((*popupNode).detach),
 }
 
 // popupNode is a Popup: the Float, and the overlay it is attached to.
