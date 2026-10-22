@@ -212,7 +212,7 @@ func (l *Laid) node(c gui.Canvas, n laidNode) {
 // paintForm draws a box's form, at em, the font size the diagram is laid out in: a dashed
 // outline's dashes and a form's insets scale with it. It reads nothing of a Laid, so a mind map's
 // key draws the same forms (PaintMindShape).
-func paintForm(c gui.Canvas, n laidNode, em float32) {
+func paintForm(c gui.Drawer, n laidNode, em float32) {
 	b := n.box
 	fill, stroke := gui.Solid(n.fill), gui.Solid(n.stroke)
 	x0, y0, x1, y1 := b.X, b.Y, b.X+b.W, b.Y+b.H
@@ -519,7 +519,7 @@ func dist(a, b gui.Point) float32 {
 
 // dashes strokes the polyline as dashes of length dash with gaps as long, as one path (gui.Dash:
 // bounded, and solid where a dash would be too fine to see).
-func dashes(c gui.Canvas, pts []gui.Point, width float32, b gui.Brush, dash float32) {
+func dashes(c gui.Drawer, pts []gui.Point, width float32, b gui.Brush, dash float32) {
 	p := new(gui.Path)
 	for _, run := range gui.Dash(pts, []float32{dash}) {
 		p.MoveTo(run[0])
