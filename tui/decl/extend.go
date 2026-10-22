@@ -78,6 +78,21 @@ func StringGetter[W any](read func(W) string) Getter {
 	return getter(func(w W) (qml.SpecValue, error) { return strValue(read(w)), nil })
 }
 
+// Destroyer is a Type's Destroyed hook for a W: release runs with the widget when its node is
+// destroyed. A widget that is not a W (a style's Build made another) holds nothing of a W's, so
+// nothing is released, rather than a panic on a copied Type.
+func Destroyer[W any](release func(W)) func(tui.Component) { return destroyer(release) }
+
+// Restyler is a Type's Restyle hook for a W: wear runs with the widget and its palette. A widget
+// that is not a W is left as it is, rather than a panic on a copied Type whose Build makes another.
+func Restyler[W any](wear func(W, Palette)) func(tui.Component, Palette) {
+	return func(c tui.Component, p Palette) {
+		if w, ok := any(c).(W); ok {
+			wear(w, p)
+		}
+	}
+}
+
 // NoArgMethod is a method a handler calls with no arguments: `gauge.reset()`.
 func NoArgMethod[W any](run func(W) error) Method {
 	return method(widgetName[W](), run)
