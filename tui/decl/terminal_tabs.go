@@ -1,8 +1,6 @@
 package decl
 
 import (
-	"fmt"
-
 	"github.com/yongjohnlee80/golib/parse/qml"
 	"github.com/yongjohnlee80/golib/tui"
 	"github.com/yongjohnlee80/golib/tui/widget"
@@ -18,9 +16,6 @@ func TerminalTabsOf(c tui.Component) (*widget.TerminalTabs, bool) {
 }
 
 func buildTerminalTabs(b Build) (tui.Component, []string, error) {
-	if len(b.Children) != 0 {
-		return nil, nil, fmt.Errorf("TerminalTabs owns runtime terminals, not declared children (at %s)", b.Pos)
-	}
 	consumed, err := b.ReadProps(map[string]field{})
 	if err != nil {
 		return nil, nil, err
@@ -39,7 +34,7 @@ func restyleTerminalTabs(c tui.Component, p palette) {
 }
 
 var terminalTabsType = Type{
-	Name:    "TerminalTabs",
+	Name: "TerminalTabs", Children: NoChildren().Because("it owns runtime terminals, not declared children"),
 	Build:   buildTerminalTabs,
 	restyle: restyleTerminalTabs,
 	Getters: map[string]Getter{

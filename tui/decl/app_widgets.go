@@ -28,7 +28,7 @@ import (
 
 func appTypes() []Type {
 	return []Type{
-		{Name: "Window", Build: buildWindow, Setters: map[string]Setter{
+		{Name: "Window", Children: AtLeast(1), Build: buildWindow, Setters: map[string]Setter{
 			// Qt's Window.color: the background under everything, where no widget paints
 			"color": setter("a Window", colorOf, (*windowNode).setColor),
 			// Qt's Window.minimumWidth / minimumHeight, in cells: on a smaller screen the App
@@ -36,15 +36,15 @@ func appTypes() []Type {
 			"minimumWidth":  setter("a Window", truncOf, (*windowNode).setMinimumWidth),
 			"minimumHeight": setter("a Window", truncOf, (*windowNode).setMinimumHeight),
 		}},
-		{Name: "Frame", Build: buildFrame, Ctor: []string{"title"}, restyle: restyleFrame, Setters: map[string]Setter{
+		{Name: "Frame", Children: Exactly(1), Build: buildFrame, Ctor: []string{"title"}, restyle: restyleFrame, Setters: map[string]Setter{
 			"title": textSetter("a Frame", (*widget.Box).SetTitle, (*widget.Box).SetTitleMessage),
 			// golib's: at most this many columns, border included, centred — a page, not the screen
 			"maximumWidth": setter("a Frame", truncOf, (*widget.Box).SetMaximumWidth),
 		}},
 		// golib's: a vertical window onto one child taller than itself; the wheel and
 		// the page keys scroll it, and a field taking focus is brought into view
-		{Name: "ScrollView", Build: buildScrollView},
-		{Name: "SyntaxHighlighter", Build: buildSyntaxHighlighter, restyle: restyleSyntax, Setters: syntaxSetters()},
+		{Name: "ScrollView", Children: Exactly(1), Build: buildScrollView},
+		{Name: "SyntaxHighlighter", Children: NoChildren(), Build: buildSyntaxHighlighter, restyle: restyleSyntax, Setters: syntaxSetters()},
 		// Qt Quick's Image, without its source: the host gives it a PNG (widget.Image.SetPNG), and
 		// it shows on a terminal that draws images (tui.Capabilities.KittyGraphics)
 		{Name: "Image", Build: func(b Build) (tui.Component, []string, error) {
@@ -125,7 +125,7 @@ func appTypes() []Type {
 		{Name: "MenuBar", Build: buildMenuBar, Ctor: []string{"vimNavigation"}, restyle: restyleMenuBar,
 			Setters: map[string]Setter{"autoHide": setter("a MenuBar", boolOf, (*menuBarNode).setAutoHide)}},
 		{Name: "Menu", Build: buildMenu, Ctor: []string{"title", "align"}},
-		{Name: "MenuItem", Build: buildMenuItem, Ctor: []string{"text", "checkable", "group", "shortcut"},
+		{Name: "MenuItem", Children: NoChildren().Because("use a Menu for a submenu"), Build: buildMenuItem, Ctor: []string{"text", "checkable", "group", "shortcut"},
 			Setters: map[string]Setter{
 				"checked": setter("a menu row", boolOf, (*menuNode).setChecked),
 				"enabled": setter("a menu row", boolOf, (*menuNode).setEnabled),
@@ -137,7 +137,7 @@ func appTypes() []Type {
 			}},
 		{Name: "MenuSeparator", Build: buildMenuSeparator},
 		{Name: "Shortcut", Build: buildShortcut, Ctor: []string{"sequence"}},
-		{Name: "FileDialog", Build: buildFileDialog,
+		{Name: "FileDialog", Children: NoChildren().Because("its content is the file view"), Build: buildFileDialog,
 			Ctor:    []string{"title", "helpText", "dim", "fileMode", "preview"},
 			restyle: restyleDialog,
 			Setters: map[string]Setter{
@@ -217,9 +217,6 @@ var keysets = enum[widget.Keyset]{values: map[string]widget.Keyset{
 
 // buildFrame boxes exactly one child.
 func buildFrame(b Build) (tui.Component, []string, error) {
-	if len(b.Children) != 1 {
-		return nil, nil, fmt.Errorf("Frame needs exactly 1 child, got %d (at %s)", len(b.Children), b.Pos)
-	}
 	var title UIText
 	consumed, err := b.ReadProps(map[string]field{"title": into(&title, textOf)})
 	if err != nil {
@@ -237,9 +234,6 @@ func buildFrame(b Build) (tui.Component, []string, error) {
 }
 
 func buildScrollView(b Build) (tui.Component, []string, error) {
-	if len(b.Children) != 1 {
-		return nil, nil, fmt.Errorf("ScrollView needs exactly 1 child, got %d (at %s)", len(b.Children), b.Pos)
-	}
 	return widget.NewScrollView(b.Children[0]), nil, nil
 }
 

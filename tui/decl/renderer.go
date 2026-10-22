@@ -66,9 +66,6 @@ func (n *rendererNode) Render(tui.Surface)                {}
 
 // buildMarkdownRenderer declares golib's Markdown renderer.
 func buildMarkdownRenderer(b Build) (tui.Component, []string, error) {
-	if len(b.Children) != 0 {
-		return nil, nil, fmt.Errorf("a MarkdownRenderer takes no children (at %s)", b.Pos)
-	}
 	var scale float64
 	var mermaid bool
 	consumed, err := b.ReadProps(map[string]field{
@@ -86,7 +83,7 @@ func buildMarkdownRenderer(b Build) (tui.Component, []string, error) {
 
 // markdownRendererType is the standard vocabulary's MarkdownRenderer. Its settings are taken at
 // construction: a change rebuilds the Editor's renderer.
-var markdownRendererType = Type{Name: "MarkdownRenderer", Build: buildMarkdownRenderer,
+var markdownRendererType = Type{Name: "MarkdownRenderer", Children: NoChildren(), Build: buildMarkdownRenderer,
 	Ctor: []string{"headingScale", "mermaid"}}
 
 // DOCUMENT VIEW SPECS: a whole-document Rendered view, declared as an Editor's child beside its
@@ -139,9 +136,6 @@ func (n *documentNode) Render(tui.Surface)                {}
 
 // buildHTMLDocumentView declares golib's HTML document view.
 func buildHTMLDocumentView(b Build) (tui.Component, []string, error) {
-	if len(b.Children) != 0 {
-		return nil, nil, fmt.Errorf("an HTMLDocumentView takes no children (at %s)", b.Pos)
-	}
 	consumed, err := b.ReadProps(map[string]field{})
 	if err != nil {
 		return nil, nil, err
@@ -150,4 +144,4 @@ func buildHTMLDocumentView(b Build) (tui.Component, []string, error) {
 }
 
 // htmlDocumentViewType is the standard vocabulary's HTMLDocumentView.
-var htmlDocumentViewType = Type{Name: "HTMLDocumentView", Build: buildHTMLDocumentView}
+var htmlDocumentViewType = Type{Name: "HTMLDocumentView", Children: NoChildren(), Build: buildHTMLDocumentView}

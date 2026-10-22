@@ -248,7 +248,7 @@ func TestW5WhatTheControlsRefuse(t *testing.T) {
 		"TextField { echoMode: \"Password\" }":                "must be TextInput.Normal or TextInput.Password",
 		"TextField { onFoo: App.run() }":                      "has no signal foo",
 		"TextField { Text { } }":                              "takes no children",
-		"Window { Text { }\n Popup { Text { }\n Text { } } }": "exactly one child",
+		"Window { Text { }\n Popup { Text { }\n Text { } } }": "Popup needs exactly 1 child, got 2",
 		"Window { Text { }\n Popup { modal: 1\n Text { } } }": "modal",
 	} {
 		_, err := tuidecl.NewProgram(

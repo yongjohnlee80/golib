@@ -22,6 +22,7 @@ func TestACopiedTextFieldOrPopupDoesNotPanic(t *testing.T) {
 	field.Name, field.Build, field.Enums, field.Ctor = "MyField", text("my field"), nil, nil
 	popup := controls.Popup
 	popup.Name, popup.Build, popup.Ctor = "MyPopup", text("my popup"), nil
+	popup.Children = tuidecl.Arity{} // the copy's Build makes a leaf: no content child to count
 
 	s := decltest.Run(t, 40, 4,
 		tuidecl.LayoutSource("main.qml", []byte("import tui 1.0\nFlex { direction: Tui.Vertical\n"+

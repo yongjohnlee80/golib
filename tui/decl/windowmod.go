@@ -74,9 +74,6 @@ func readWindowMod(b Build) (windowModConfig, []string, error) {
 }
 
 func buildWindowMod(b Build) (tui.Component, []string, error) {
-	if len(b.Children) != 1 {
-		return nil, nil, errors.New("WindowMod wraps exactly one content child")
-	}
 	c, consumed, err := readWindowMod(b)
 	if err != nil {
 		return nil, nil, err
@@ -149,7 +146,7 @@ func windowStep(move bool) Method {
 }
 
 var windowModType = Type{
-	Name: "WindowMod", Build: buildWindowMod,
+	Name: "WindowMod", Children: Exactly(1).Because("its content"), Build: buildWindowMod,
 	Ctor:    []string{"movable", "resizable", "maximizable", "minimizable", "closable", "label", "key", "dragModifier", "moveButton", "resizeButton"},
 	Signals: map[string][]string{"changed": {"operation", "key", "x", "y", "width", "height", "maximized", "minimized"}},
 	Methods: map[string]Method{
@@ -226,10 +223,7 @@ var windowButtonsType = Type{Name: "WindowButtons", Ctor: []string{"target", "cl
 	},
 }
 
-var windowTaskbarType = Type{Name: "WindowTaskbar", Build: func(b Build) (tui.Component, []string, error) {
-	if len(b.Children) != 0 {
-		return nil, nil, errors.New("WindowTaskbar supplies its own entry controls")
-	}
+var windowTaskbarType = Type{Name: "WindowTaskbar", Children: NoChildren().Because("it supplies its own entry controls"), Build: func(b Build) (tui.Component, []string, error) {
 	model, ok := b.WindowCollector.(*widget.MinimizedWindows)
 	if !ok || model == nil {
 		return nil, nil, fmt.Errorf("WindowTaskbar requires WithWindowCollector with a MinimizedWindows model")

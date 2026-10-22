@@ -133,9 +133,6 @@ func withMnemonic(m widget.MenuItemModel, text UIText) widget.MenuItemModel {
 // ---------------------------------------------------------------- rows
 
 func buildMenuItem(b Build) (tui.Component, []string, error) {
-	if len(b.Children) != 0 {
-		return nil, nil, fmt.Errorf("MenuItem takes no children; use a Menu for a submenu (at %s)", b.Pos)
-	}
 	var text UIText
 	var group string
 	var shortcut menuShortcut

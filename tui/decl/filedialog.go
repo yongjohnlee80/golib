@@ -71,9 +71,6 @@ var fileModeTable = map[string]fileMode{
 var fileModes = enum[fileMode]{values: fileModeTable}
 
 func buildFileDialog(b Build) (tui.Component, []string, error) {
-	if len(b.Children) != 0 {
-		return nil, nil, fmt.Errorf("FileDialog takes no children; its content is the file view (at %s)", b.Pos)
-	}
 	c := chooserSpec{spec: dialogSpec{dim: true, align: widget.ButtonsRight}}
 	mode := fileModeTable["OpenFile"]
 	consumed, err := b.ReadProps(map[string]field{

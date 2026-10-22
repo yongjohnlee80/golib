@@ -81,9 +81,6 @@ type syntaxNode struct {
 }
 
 func buildSyntaxHighlighter(b Build) (tui.Component, []string, error) {
-	if len(b.Children) != 0 {
-		return nil, nil, fmt.Errorf("a SyntaxHighlighter takes no children (at %s)", b.Pos)
-	}
 	return &syntaxNode{registry: b.SourceLanguages}, nil, nil
 }
 

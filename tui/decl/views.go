@@ -105,9 +105,6 @@ func (s modelSource) Len() int       { return s.v.rows() }
 func (s modelSource) Item(i int) int { return i }
 
 func buildListView(b Build) (tui.Component, []string, error) {
-	if len(b.Children) != 0 {
-		return nil, nil, fmt.Errorf("a ListView takes no children; its rows are its model's (at %s)", b.Pos)
-	}
 	n := &listViewNode{activated: b.EmitterWith("activated"), moved: b.EmitterWith("currentIndexChanged")}
 	consumed, err := b.ReadProps(map[string]field{"textRole": into(&n.mv.textRole, stringOf)})
 	if err != nil {
@@ -151,7 +148,7 @@ func (n *listViewNode) currentIndex() int {
 }
 
 var listViewType = Type{
-	Name:  "ListView",
+	Name: "ListView", Children: NoChildren().Because("its rows are its model's"),
 	Build: buildListView,
 	restyle: func(c tui.Component, p palette) {
 		c.(*listViewNode).list.ResetStyles(p.viewStyles())
@@ -181,9 +178,6 @@ type comboBoxNode struct {
 }
 
 func buildComboBox(b Build) (tui.Component, []string, error) {
-	if len(b.Children) != 0 {
-		return nil, nil, fmt.Errorf("a ComboBox takes no children; its choices are its model's (at %s)", b.Pos)
-	}
 	n := &comboBoxNode{activated: b.EmitterWith("activated")}
 	var placeholder string
 	var maxWidth int
@@ -251,7 +245,7 @@ func (n *comboBoxNode) currentIndex() int {
 }
 
 var comboBoxType = Type{
-	Name:  "ComboBox",
+	Name: "ComboBox", Children: NoChildren().Because("its choices are its model's"),
 	Build: buildComboBox,
 	// The field wears the Button role, as Qt Quick Controls' non-editable
 	// ComboBox does; with none set, golib's own look.
@@ -356,9 +350,6 @@ func (*tableColumnNode) declarationOnly()                  {}
 func (*tableColumnNode) Render(tui.Surface)                {}
 
 func buildTableViewColumn(b Build) (tui.Component, []string, error) {
-	if len(b.Children) != 0 {
-		return nil, nil, fmt.Errorf("a TableViewColumn takes no children (at %s)", b.Pos)
-	}
 	n := &tableColumnNode{}
 	consumed, err := b.ReadProps(map[string]field{
 		"role":      into(&n.role, stringOf),
@@ -651,7 +642,7 @@ var tableViewType = Type{
 }
 
 var tableViewColumnType = Type{
-	Name:  "TableViewColumn",
+	Name: "TableViewColumn", Children: NoChildren(),
 	Build: buildTableViewColumn,
 	Ctor:  []string{"role", "title", "width", "elideMode"},
 }

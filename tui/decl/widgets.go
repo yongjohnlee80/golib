@@ -86,7 +86,7 @@ var directions = enum[tui.Direction]{values: map[string]tui.Direction{
 
 func coreTypes() []Type {
 	return []Type{
-		{Name: "Split", Build: buildSplit, Ctor: []string{"orientation"}, restyle: restyleSplit, Setters: map[string]Setter{
+		{Name: "Split", Children: Exactly(2), Build: buildSplit, Ctor: []string{"orientation"}, restyle: restyleSplit, Setters: map[string]Setter{
 			"ratio": setter("a Split", numberOf, (*widget.Split).SetRatio),
 		}},
 		{Name: "Flex", Build: buildFlex, Ctor: []string{"direction"}, adopt: adoptFlexChild},
@@ -118,9 +118,6 @@ func coreTypes() []Type {
 // The orientation is REPORTED consumed: there is no SetOrientation, so an engine
 // that re-applied it would find no setter and fail the mount.
 func buildSplit(b Build) (tui.Component, []string, error) {
-	if len(b.Children) != 2 {
-		return nil, nil, fmt.Errorf("Split needs exactly 2 children, got %d (at %s)", len(b.Children), b.Pos)
-	}
 	o := widget.Horizontal
 	consumed, err := b.ReadProps(map[string]field{
 		"orientation": into(&o, orientations.read),

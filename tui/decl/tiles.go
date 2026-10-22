@@ -43,9 +43,6 @@ type tileNode struct {
 }
 
 func buildTile(b Build) (tui.Component, []string, error) {
-	if len(b.Children) != 1 {
-		return nil, nil, fmt.Errorf("a Tile holds exactly one child, its content, got %d (at %s)", len(b.Children), b.Pos)
-	}
 	n := &tileNode{content: b.Children[0], key: b.ID,
 		resized: b.EmitterWith("resized"), docked: b.EmitterWith("docked"), changed: b.EmitterWith("changed")}
 	var edges string
@@ -245,7 +242,7 @@ func (n *tileNode) emit(e widget.TilesChangedEvent) {
 var tileManagerType = Type{Name: "TileManager", Build: buildTileManager}
 
 var tileType = Type{
-	Name:    "Tile",
+	Name: "Tile", Children: Exactly(1).Because("its content"),
 	Build:   buildTile,
 	Ctor:    []string{"edges", "minimizable", "key"},
 	Signals: map[string][]string{"resized": {"size"}, "docked": {"edge"}, "changed": {"operation", "maximized", "hidden"}},

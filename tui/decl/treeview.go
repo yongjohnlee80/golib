@@ -89,9 +89,6 @@ type treeReveal struct {
 func (r *treeReveal) path(depth int) string { return strings.Join(r.parts[:depth+1], "/") }
 
 func buildTreeView(b Build) (tui.Component, []string, error) {
-	if len(b.Children) != 0 {
-		return nil, nil, fmt.Errorf("a TreeView takes no children; its rows are its model's (at %s)", b.Pos)
-	}
 	n := &treeViewNode{activated: b.EmitterWith("activated"), expanded: b.EmitterWith("expanded"),
 		moved: b.EmitterWith("currentIndexChanged"), eval: b.Eval, normal: style.Default(), sink: b.sink}
 	consumed, err := b.ReadProps(map[string]field{
@@ -369,7 +366,7 @@ func treeIndexMethod(name string, run func(*treeViewNode, Index) error) Method {
 }
 
 var treeViewType = Type{
-	Name:  "TreeView",
+	Name: "TreeView", Children: NoChildren().Because("its rows are its model's"),
 	Build: buildTreeView,
 	restyle: func(c tui.Component, p palette) {
 		n := c.(*treeViewNode)
