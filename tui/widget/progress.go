@@ -176,6 +176,28 @@ func (p *ProgressBar) Layout(c tui.Constraints) tui.Size {
 	return c.Constrain(tui.Size{W: boundedMax(c.MaxW, c.MinW), H: 1})
 }
 
+// split is a determinate bar's fill in w cells: its full cells, and the eighths of the partial
+// block after them.
+func (p *ProgressBar) split(w int) (full, frac int) {
+	cells := p.progress * float64(w)
+	full = int(cells)
+	return full, int((cells - float64(full)) * 8)
+}
+
+// FilledColumns is how many of a bar's cols cells Render draws filled: the full cells and the
+// partial block after them. 0 for an indeterminate bar, whose block moves. A native painter fills
+// as many.
+func (p *ProgressBar) FilledColumns(cols int) int {
+	if p.indeterminate || cols <= 0 {
+		return 0
+	}
+	full, frac := p.split(cols)
+	if full < cols && frac > 0 {
+		full++
+	}
+	return min(full, cols)
+}
+
 // eighth blocks for sub-cell resolution (index = eighths filled).
 var eighths = []string{"", "▏", "▎", "▍", "▌", "▋", "▊", "▉"}
 
@@ -206,9 +228,7 @@ func (p *ProgressBar) Render(s tui.Surface) {
 		return
 	}
 	// Determinate: full cells plus one partial block in eighths.
-	cells := p.progress * float64(w)
-	full := int(cells)
-	frac := int((cells - float64(full)) * 8)
+	full, frac := p.split(w)
 	s.Fill(tui.Rect{X: 0, Y: 0, W: w, H: 1}, "░", p.empty)
 	if full > 0 {
 		s.Fill(tui.Rect{X: 0, Y: 0, W: full, H: 1}, "█", p.filled)

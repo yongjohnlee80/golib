@@ -484,9 +484,20 @@ func (b *Button) Render(s tui.Surface) {
 	// Centre using the SURFACE's policy, which is the one that will draw this.
 	// Layout used the Context's; they are the same policy, and taking each from
 	// its own phase is what keeps them so.
+	b.eachDrawn(sz.W, s.StringWidth, func(cluster string, x int, key bool) {
+		cst := st
+		if key {
+			cst = b.st.Hotkey().Inherit(st)
+		}
+		s.SetCell(x, 0, cluster, cst)
+	})
+}
+
+// eachDrawn walks the label as Render draws it in w cells, measured by width: each cluster drawn,
+// its column, and whether it is the mnemonic's.
+func (b *Button) eachDrawn(w int, width func(string) int, fn func(cluster string, x int, key bool)) {
 	painted := b.decorated()
-	w := s.StringWidth(painted)
-	x := (sz.W - w) / 2
+	x := (w - width(painted)) / 2
 	if x < 0 {
 		x = 0
 	}
@@ -507,28 +518,42 @@ func (b *Button) Render(s tui.Surface) {
 	i := -1
 	for cluster := range tui.Graphemes(painted) {
 		i++
-		cw := s.StringWidth(cluster)
+		cw := width(cluster)
 		// Stop before writing a cluster that does not fit. Half of a
 		// double-width cluster in the final column is a broken cell rather than
 		// a truncated string.
-		if x+cw > sz.W {
+		if x+cw > w {
 			break
 		}
-		cst := st
 		// THE FIRST MATCHING CLUSTER ONLY. A mnemonic names one key, so marking
 		// every "o" in "Choose Folder" would advertise three ways in where
 		// there is one.
+		key := false
 		if b.markSet {
-			if i == at {
-				cst = b.st.Hotkey().Inherit(st)
-			}
+			key = i == at
 		} else if !marked && b.mnemonic != 0 && eqFold([]rune(cluster)[0], b.mnemonic) {
-			cst = b.st.Hotkey().Inherit(st)
-			marked = true
+			key, marked = true, true
 		}
-		s.SetCell(x, 0, cluster, cst)
+		fn(cluster, x, key)
 		x += cw
 	}
+}
+
+// MnemonicColumn is the column Render draws the mnemonic's cluster at, in a button cols cells
+// wide, and true; false when the label has no mnemonic, or none is drawn (cut by the width), or the
+// button is not mounted. A native painter marks that cell as the button's cells mark it.
+func (b *Button) MnemonicColumn(cols int) (int, bool) {
+	ctx := b.Context()
+	if ctx == nil {
+		return 0, false
+	}
+	col := -1
+	b.eachDrawn(cols, ctx.StringWidth, func(_ string, x int, key bool) {
+		if key {
+			col = x
+		}
+	})
+	return col, col >= 0
 }
 
 // KeyScope is a Button's key-map scope.
