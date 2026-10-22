@@ -121,7 +121,9 @@
 //     [ProgressBar.FilledColumns], [ProgressBar.Spinner], [Button.MnemonicColumn],
 //     [TabStrip.BarColor] and [WindowButtons.Controls]. A declarative layer sets an editor's
 //     view through [LineNumberer], [Ruler], [Wrapper], [CursorColorer], [ContextMenuEnabler]
-//     and [ViewChooser], whichever editor widget it builds.
+//     and [ViewChooser], whichever editor widget it builds. Both golib editors route the pointer
+//     and the menu key through an [EditorPointer], each mapping the pointer through a
+//     [PointerView] of its own (and [PointerInert] where a press is not text).
 //   - Any widget overriding [Base.Init] MUST chain to b.Base.Init(ctx) first.
 //
 // 3. Composable Panel Chrome via Box:
