@@ -167,6 +167,16 @@ type shortcutHolder interface {
 // whose holder has no keyScope, or whose command's scope is not its holder's. The reload checks the
 // CANDIDATE map before installing anything.
 func (a *Adapter) checkShortcuts(m *keymap.Map) error {
+	problems := a.shortcutProblems(m)
+	if len(problems) == 0 {
+		return nil
+	}
+	return errors.New("keymap: " + strings.Join(problems, "; "))
+}
+
+// shortcutProblems are checkShortcuts' refusals, one each, sorted: what CheckKeymap lists beside its
+// own.
+func (a *Adapter) shortcutProblems(m *keymap.Map) []string {
 	var problems []string
 	for _, b := range a.nodes {
 		h, ok := b.comp.(shortcutHolder)
@@ -189,11 +199,8 @@ func (a *Adapter) checkShortcuts(m *keymap.Map) error {
 			}
 		}
 	}
-	if len(problems) == 0 {
-		return nil
-	}
 	slices.Sort(problems)
-	return errors.New("keymap: " + strings.Join(problems, "; "))
+	return problems
 }
 
 // shortcutCommands is each Shortcut as a key command, in order: a keyId's the declared command (its
