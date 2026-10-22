@@ -167,7 +167,7 @@ func takeFocus(props []qml.SpecProp) ([]qml.SpecProp, bool, error) {
 	var own []qml.SpecProp
 	focus := false
 	for _, p := range props {
-		if p.Name != "focus" {
+		if p.Name != focusProp {
 			own = append(own, p)
 			continue
 		}
