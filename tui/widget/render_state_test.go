@@ -4,6 +4,7 @@ import (
 	"image/color"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/yongjohnlee80/golib/tui/widget"
 )
@@ -24,6 +25,12 @@ func TestAProgressBarsFilledColumnsAreWhatItDraws(t *testing.T) {
 	p.SetIndeterminate()
 	if got := p.FilledColumns(10); got != 0 {
 		t.Errorf("indeterminate: %d filled, want 0", got)
+	}
+	// a spinner bar draws one cell, a frame or a blank, at any progress: none of it a fill
+	sp := widget.NewProgressBar(widget.WithSpinner([]string{"|", "/"}, time.Second))
+	sp.SetProgress(0.5)
+	if got := sp.FilledColumns(10); got != 0 {
+		t.Errorf("a spinner at 0.5: %d filled, want 0 (Render draws one blank cell)", got)
 	}
 }
 
