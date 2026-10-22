@@ -60,26 +60,26 @@ type sheetEntry struct {
 }
 
 type htmlSheets struct {
-	l                 *htmlLayout
+	v                 loadHost
 	loads[sheetEntry] // by href; reset when a new resolver reads href as another file
 }
 
 // newHTMLSheets constructs the external stylesheet manager for an HTML layout instance.
-func newHTMLSheets(l *htmlLayout) *htmlSheets {
-	return &htmlSheets{l: l, loads: newLoads[sheetEntry]()}
+func newHTMLSheets(v loadHost) *htmlSheets {
+	return &htmlSheets{v: v, loads: newLoads[sheetEntry]()}
 }
 
 // entry is href's sheet, its load started on first sight; one with nothing to load it fails.
 func (m *htmlSheets) entry(href string) *sheetEntry {
 	if e, ok := m.entries[href]; ok {
 		if e.refused {
-			m.l.v.Refused(href)
+			m.v.Refused(href)
 		}
 		return e
 	}
 	e := &sheetEntry{state: imgLoading}
 	m.entries[href] = e
-	ctx, resolve := m.l.v.Context(), m.l.v.Images()
+	ctx, resolve := m.v.Context(), m.v.Images()
 	if ctx == nil || resolve == nil || href == "" {
 		e.state = imgFailed
 		return e
@@ -99,7 +99,7 @@ func (m *htmlSheets) done(r tui.TaskResult) bool {
 		return true // the old resolver's: dropped
 	}
 	if errors.Is(r.Err, tuiwidget.ErrImageRefused) {
-		m.l.v.Refused(href)
+		m.v.Refused(href)
 		if e != nil {
 			e.refused = true
 		}
