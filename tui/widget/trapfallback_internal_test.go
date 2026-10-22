@@ -33,6 +33,14 @@ func TestATrappingOverlaysFallbackStopFollowsItsContent(t *testing.T) {
 		if !f.layer.AcceptsFocus() {
 			t.Error("the control was disabled again, and the Float's layer does not take the stop back")
 		}
+		// an enabled control that is hidden is no stop to the ring either (tui's hiddenWithin)
+		floatBtn.SetEnabled(true)
+		floatBtn.SetVisible(false)
+		if !f.layer.AcceptsFocus() {
+			t.Error("the Float's only control is hidden, and its layer refuses focus: the ring has no stop")
+		}
+		floatBtn.SetVisible(true)
+		floatBtn.SetEnabled(false)
 		f.Hide()
 	})
 
