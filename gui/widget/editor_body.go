@@ -167,8 +167,11 @@ func (b *editorBody) HandleEvent(ev tui.Event) bool {
 	}
 	switch t := ev.(type) {
 	case tui.KeyEvent:
-		if b.e.menu.Enabled() && tuiwidget.IsContextMenuKey(t) {
-			return b.e.OpenContextMenu()
+		// the key map's menu key, as the terminal Editor reads it; a repeat opens no second menu
+		if b.e.menu.Enabled() && t.Kind == tui.KeyPress {
+			if _, ok := b.Context().KeyCommand(t, tuiwidget.EditorContextMenu); ok {
+				return b.e.OpenContextMenu()
+			}
 		}
 		if c.HandleKey(t) {
 			b.MarkDirty()
