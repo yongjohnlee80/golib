@@ -10,6 +10,7 @@ import (
 	"math"
 	"net/http"
 	"net/http/httptest"
+	"strconv"
 	"sync"
 	"testing"
 	"time"
@@ -49,14 +50,20 @@ func TestRegress_StopDoesNotRaceSubmit(t *testing.T) {
 func TestRegress_GridSizeIsBounded(t *testing.T) {
 	t.Parallel()
 
+	// wrapRows times 3 overflows int and comes out small and positive (2), on a
+	// 32-bit int as on a 64-bit one: 2^n is 1 more than a multiple of 3 for any
+	// even n, so (2^n + 2) / 3 is exact and 3 times it is 2^n + 2. That is how a
+	// naive cols*rows bounds check gets passed by the value meant to trip it.
+	const wrapRows = (1<<strconv.IntSize + 2) / 3
+	if p := 3 * func() int { return wrapRows }(); p != 2 {
+		t.Fatalf("3 * %d is %d in an int: the case no longer wraps to a small product", wrapRows, p)
+	}
 	hostile := []struct{ cols, rows int }{
 		{math.MaxInt, 2},
 		{2, math.MaxInt},
 		{math.MaxInt, math.MaxInt},
-		// The product overflows int and comes out small and positive, which is
-		// exactly how a naive bounds check gets passed by the value meant to
-		// trip it.
-		{1 << 31, 1 << 33},
+		{3, wrapRows},
+		{wrapRows, 3},
 		{MaxCols + 1, 1},
 		{1, MaxRows + 1},
 		{MaxCols, MaxRows}, // legal individually, over the cell cap together
