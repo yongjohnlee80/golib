@@ -7,7 +7,7 @@ import "github.com/yongjohnlee80/golib/tui"
 // Button inline or mutates children during Layout.
 type WindowTaskbar struct {
 	tui.MultiChild
-	model          *MinimizedWindows
+	model          WindowEntries
 	buttons        map[tui.NodeID]*Button
 	entries        []MinimizedWindow
 	caption        func(MinimizedWindow) string
@@ -28,9 +28,10 @@ func WithWindowTaskbarStyle(st *ButtonStyle) WindowTaskbarOption {
 	return func(w *WindowTaskbar) { w.buttonStyle = st }
 }
 
-// NewWindowTaskbar constructs a presentation over an explicitly supplied model.
-func NewWindowTaskbar(model *MinimizedWindows, opts ...WindowTaskbarOption) *WindowTaskbar {
-	if model == nil {
+// NewWindowTaskbar constructs a presentation over an explicitly supplied model: a
+// *MinimizedWindows, or any collector's read side (WindowEntries).
+func NewWindowTaskbar(model WindowEntries, opts ...WindowTaskbarOption) *WindowTaskbar {
+	if nilLike(model) {
 		panic(fatalOf("widget: NewWindowTaskbar", "nil collector model", "a taskbar presents a caller-owned collector"))
 	}
 	w := &WindowTaskbar{model: model, buttons: make(map[tui.NodeID]*Button)}

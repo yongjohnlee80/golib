@@ -34,6 +34,19 @@ type WindowCollector interface {
 	Remove(tui.NodeID)
 }
 
+// WindowEntries is the read side of a collector: what a presentation of the minimized windows (a
+// WindowTaskbar, a consumer's own) shows, and how it learns of changes. Entries is a detached
+// snapshot in order; Observe calls fn on each change, on the loop, until the returned func cancels.
+type WindowEntries interface {
+	Entries() []MinimizedWindow
+	Observe(fn func()) (cancel func())
+}
+
+var (
+	_ WindowCollector = (*MinimizedWindows)(nil)
+	_ WindowEntries   = (*MinimizedWindows)(nil)
+)
+
 // MinimizedWindows is an ordered, presentation-free collector. Its zero value
 // is usable. All model access and observations belong to the application loop.
 type MinimizedWindows struct {
