@@ -198,7 +198,8 @@ func (p *Panel) Maximized() bool { return p.behavior.State().Maximized }
 // Init keeps the panel's Context and mounts its children.
 func (p *Panel) Init(ctx *tui.Context) {
 	p.ctx = ctx
-	parent := ctx.Ancestor(func(c tui.Component) bool { _, ok := c.(*tuiwidget.Float); return ok })
+	// a container that places windows (a Float, or any WindowTargetProvider) gives the panel its target
+	parent := ctx.Ancestor(func(c tui.Component) bool { _, ok := c.(tuiwidget.WindowTargetProvider); return ok })
 	if parent == nil && len(p.windowOptions) == 0 {
 		p.behavior.BindTarget(ctx, p.content, staticPanelTarget{})
 	} else {
