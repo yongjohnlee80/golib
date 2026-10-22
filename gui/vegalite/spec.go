@@ -650,15 +650,16 @@ func number(raw json.RawMessage, f *float32, lo, hi float64) error {
 	return nil
 }
 
-// markDef is what a mark type draws: its kind, and whether its points are filled.
-type markDef struct {
+// markType is what a Vega-Lite mark type draws: its kind (marks), and whether its points are
+// filled.
+type markType struct {
 	kind   markKind
 	filled bool
 }
 
 // markTypes are the marks a chart draws, by their Vega-Lite type. The config has a section for each,
 // so the two cannot disagree on which marks exist.
-var markTypes = map[string]markDef{
+var markTypes = map[string]markType{
 	"bar":    {kind: markBar},
 	"line":   {kind: markLine},
 	"point":  {kind: markPoint},
