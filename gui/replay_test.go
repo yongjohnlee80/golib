@@ -58,14 +58,44 @@ import (
 // build's recording. The tui stage's kinds are tui.TraceEvent's (TraceKind
 // names), which a host that records the tui's trace maps in.
 var kindOf = map[Stage][]string{
-	StageIn:    {"KeyInput", "TextEdit", "Composition", "SelectionSet", "SnippetAsk", "FocusChange"},
+	StageIn:    kindsOf([]InputEvent{KeyInput{}, TextEdit{}, Composition{}, SelectionSet{}, SnippetAsk{}, FocusChange{}}, eventFields),
 	StageIME:   {"imeState"},
 	StageOut:   {"KeyEvent"},
-	StageCmd:   {"SnippetReply", "SelectionTell", "KeyboardShow", "FocusTake"},
+	StageCmd:   kindsOf([]TextInputCmd{SnippetReply{}, SelectionTell{}, KeyboardShow{}, KeyboardHide{}, FocusTake{}}, cmdFields),
 	StageDraw:  {"preedit"},
 	StageMeta:  {"dropped"},
 	StageFrame: {"begin", "end"},
 	StageTui:   {"focus", "focus-repair", "mount", "unmount", "key", "scope", "action", "capture"},
+}
+
+// kindsOf is the record kinds the recorder writes for each of vs, through the recorder's own
+// fields function, so a kind the recorder writes is a kind a recording may hold.
+func kindsOf[V any](vs []V, fields func(V) (string, map[string]any)) []string {
+	out := make([]string, len(vs))
+	for i, v := range vs {
+		out[i], _ = fields(v)
+	}
+	return out
+}
+
+// Every input and command kind has its own record kind, KeyboardHide included: the recorder names
+// each, and a recording holding it decodes. kindOf listed the kinds by hand and missed
+// KeyboardHide, so a recording of a closed keyboard was refused.
+func TestEveryRecordedKindDecodes(t *testing.T) {
+	for st, kinds := range kindOf {
+		for _, k := range kinds {
+			if k == "unknown" {
+				t.Errorf("stage %v lists a kind the recorder does not name", st)
+			}
+		}
+	}
+	line, err := json.Marshal(Record{Stage: StageCmd, Kind: "KeyboardHide", Data: map[string]any{}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := decodeRecording(line); err != nil {
+		t.Errorf("a recorded KeyboardHide: %v", err)
+	}
 }
 
 // decodeRecording reads a JSONL recording, one record per line, and rejects a
