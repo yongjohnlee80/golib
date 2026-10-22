@@ -18,6 +18,9 @@ func TestUnitsBreakAtSpacesAndAfterCJKAndHyphens(t *testing.T) {
 		"x- y":            {{"x-", false}, {"y", true}},
 		"한국어 カナ":          {{"한", false}, {"국", false}, {"어", false}, {"カ", true}, {"ナ", false}},
 		"well-known-word": {{"well-", false}, {"known-", false}, {"word", false}},
+		"-5":              {{"-5", false}},
+		"a -5 b-c":        {{"a", false}, {"-5", true}, {"b-", true}, {"c", false}},
+		"日-5":             {{"日", false}, {"-5", false}},
 	} {
 		got := Units(s)
 		if len(got) == 0 && len(want) == 0 {
