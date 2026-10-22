@@ -1,9 +1,6 @@
 package gui
 
 import (
-	"unicode"
-	"unicode/utf8"
-
 	"github.com/yongjohnlee80/gio/io/event"
 	"github.com/yongjohnlee80/gio/io/key"
 	"github.com/yongjohnlee80/golib/tui"
@@ -41,20 +38,14 @@ func rawKeyOf(in KeyInput) (tui.KeyEvent, bool) {
 		kind = tui.KeyPress
 	}
 	name := key.Name(in.Name)
-	if code, ok := named[name]; ok {
-		return tui.KeyEvent{Kind: kind, Code: code, Mods: in.Mods}, true
-	}
+	// The modifiers first: Gio names Command "⌘", one printable rune, which keyCode reads as a key.
 	if code, ok := rawModifiers[name]; ok {
 		return tui.KeyEvent{Kind: kind, Code: code, Mods: in.Mods}, true
 	}
-	if name == key.NameSpace {
-		return tui.KeyEvent{Kind: kind, Code: ' ', Mods: in.Mods}, true
+	if code, _, ok := keyCode(name); ok { // raw mode reports a typed key as a key too
+		return tui.KeyEvent{Kind: kind, Code: code, Mods: in.Mods}, true
 	}
-	r, size := utf8.DecodeRuneInString(in.Name)
-	if size == 0 || size != len(in.Name) || !unicode.IsPrint(r) {
-		return tui.KeyEvent{}, false
-	}
-	return tui.KeyEvent{Kind: kind, Code: unicode.ToLower(r), Mods: in.Mods}, true
+	return tui.KeyEvent{}, false
 }
 
 // applyRawMode brings the Gio goroutine to the mode SetRawKeys last asked for. Entering raw mode

@@ -103,27 +103,31 @@ func translateKey(e key.Event) (tui.KeyEvent, bool) {
 	if e.State == key.Release {
 		kind = tui.KeyRelease
 	}
-	mods := modsOf(e.Modifiers)
-	if code, ok := named[e.Name]; ok {
-		return tui.KeyEvent{Kind: kind, Code: code, Mods: mods}, true
+	code, typed, ok := keyCode(e.Name)
+	if !ok || typed && e.Modifiers&chordMods == 0 {
+		return tui.KeyEvent{}, false // a modifier or system key; or text, which arrives as an edit event
 	}
-	chord := e.Modifiers&chordMods != 0
-	if e.Name == key.NameSpace {
-		if !chord {
-			return tui.KeyEvent{}, false // the space arrives as text
-		}
-		return tui.KeyEvent{Kind: kind, Code: ' ', Mods: mods}, true
+	return tui.KeyEvent{Kind: kind, Code: code, Mods: modsOf(e.Modifiers)}, true
+}
+
+// keyCode is the tui code of a key Gio names: a named key's, the space's, or a printable key's own
+// rune in lower case. Gio names a letter by its capital; kitty reports the key's own code point,
+// with Shift as a modifier, so Ctrl+Shift+A is Code 'a'. typed is that the key types text (the
+// space, a printable), which arrives as an edit event when no chord is held. ok is false for a name
+// that is not one printable rune: Ctrl, Shift, Alt, Super, Back. Command's name, "⌘", is one, so
+// it reads as a typed key: a caller that reports modifiers looks them up first.
+func keyCode(name key.Name) (code rune, typed, ok bool) {
+	if code, ok := named[name]; ok {
+		return code, false, true
 	}
-	r, size := utf8.DecodeRuneInString(string(e.Name))
-	if size == 0 || size != len(e.Name) || !unicode.IsPrint(r) {
-		return tui.KeyEvent{}, false // Ctrl, Shift, Alt, Super, Command, Back: modifiers and system keys
+	if name == key.NameSpace {
+		return ' ', true, true
 	}
-	if !chord {
-		return tui.KeyEvent{}, false // the text arrives as an edit event
+	r, size := utf8.DecodeRuneInString(string(name))
+	if size == 0 || size != len(name) || !unicode.IsPrint(r) {
+		return 0, false, false
 	}
-	// Gio names a letter by its capital; kitty reports the key's own code point, lower case,
-	// with Shift as a modifier: Ctrl+Shift+A is Code 'a', Mods ctrl|shift.
-	return tui.KeyEvent{Kind: kind, Code: unicode.ToLower(r), Mods: mods}, true
+	return unicode.ToLower(r), true, true
 }
 
 // textKeys converts a string of typed characters into individual [tui.KeyEvent] records,
