@@ -44,14 +44,14 @@ func (c *EditorCore) tableRow(ln int) ([][2]int, bool) {
 }
 
 // tableKey handles an Insert-mode key for table editing, reporting whether it did.
-func (c *EditorCore) tableKey(k tui.KeyEvent) bool {
+func (c *EditorCore) tableKey(k tui.KeyEvent, r insertKey) bool {
 	b := &c.buf
 	if !c.tableEditing || c.readOnly {
 		return false
 	}
 	if b.anchor != nil {
 		switch {
-		case k.Code == tui.KeyBackspace || k.Code == tui.KeyDelete:
+		case r.act == ActBackspace || r.act == ActDeleteForward:
 			lo, hi, ok := b.selection()
 			b.anchor = nil
 			if ok {
@@ -60,7 +60,7 @@ func (c *EditorCore) tableKey(k tui.KeyEvent) bool {
 				c.edited()
 			}
 			return true
-		case k.Code == tui.KeyTab:
+		case r.act == ActInsertTab:
 			// moves on below, from the selection's cell
 		case k.Text != "" && k.Mods&^tui.ModShift == 0:
 			return false // typed: insertText replaces the selection
@@ -70,14 +70,14 @@ func (c *EditorCore) tableKey(k tui.KeyEvent) bool {
 			return false
 		}
 	}
-	if k.Code != tui.KeyTab || k.Mods&^tui.ModShift != 0 {
+	if r.act != ActInsertTab || r.qual&^tui.ModShift != 0 {
 		return false
 	}
 	cells, ok := c.tableRow(b.ln)
 	if !ok {
 		return false
 	}
-	back := k.Mods&tui.ModShift != 0
+	back := r.qual&tui.ModShift != 0
 	at := cellAt(cells, b.col)
 	if b.anchor != nil {
 		at = cellAt(cells, min(b.anchor.col, b.col))

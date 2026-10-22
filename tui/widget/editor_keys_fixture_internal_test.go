@@ -3,8 +3,10 @@ package widget
 import (
 	"flag"
 	"fmt"
+	"maps"
 	"os"
 	"path/filepath"
+	"slices"
 	"sort"
 	"strings"
 	"testing"
@@ -48,12 +50,80 @@ func TestTheEditorsKeyTablesMatchTheirFixtures(t *testing.T) {
 		}
 		fmt.Fprintf(&cmds, "%s\t%s\t%s\n", c.ID, c.Scope, strings.Join(keys, " "))
 	}
-	check("commands.txt", cmds.String())
+	checkCommands(t, cmds.String())
 	var acts strings.Builder
 	for a := Action(0); a < actMax; a++ {
 		fmt.Fprintf(&acts, "%d\t%s\n", int(a), a)
 	}
-	check("actions.txt", acts.String())
+	checkActions(t, acts.String())
+}
+
+// editingCommandIDs are the commands ADR 1792624213 adds: each keyset's Insert editing commands,
+// less the actions Nano and Standard already bind in Insert (Home, End and the Page keys, early).
+func editingCommandIDs() map[string]bool {
+	ids := map[string]bool{}
+	common := []string{"insertTab", "newline", "backspace", "deleteForward", "escape", "left", "right", "up", "down"}
+	for _, ks := range []string{"vim", "nano", "standard"} {
+		names := common
+		if ks == "vim" {
+			names = append(append([]string(nil), common...), "lineStart", "lineEnd", "pageUp", "pageDown")
+		}
+		for _, n := range names {
+			ids["tui.editor."+ks+".insert."+n] = true
+		}
+	}
+	return ids
+}
+
+// checkCommands holds EditorCommands to the fixture: every recorded line, unchanged and in order,
+// with only the editing commands added among them.
+func checkCommands(t *testing.T, got string) {
+	t.Helper()
+	path := filepath.Join("testdata", "editorkeys", "commands.txt")
+	if *updateKeyFixtures {
+		return // the recorded list is the one before the editing commands; it is never rewritten
+	}
+	want, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	old := strings.Split(strings.TrimSuffix(string(want), "\n"), "\n")
+	added := map[string]bool{}
+	i := 0
+	for _, line := range strings.Split(strings.TrimSuffix(got, "\n"), "\n") {
+		if i < len(old) && line == old[i] {
+			i++
+			continue
+		}
+		added[strings.SplitN(line, "\t", 2)[0]] = true
+	}
+	if i < len(old) {
+		t.Fatalf("commands.txt line %d is gone or changed: %q", i+1, old[i])
+	}
+	if wantAdded := editingCommandIDs(); !maps.Equal(added, wantAdded) {
+		t.Fatalf("commands added: %v; want exactly the editing commands %v", slices.Sorted(maps.Keys(added)), slices.Sorted(maps.Keys(wantAdded)))
+	}
+}
+
+// checkActions holds the Actions to the fixture: every recorded value and name unchanged, and only
+// the editing actions appended after them.
+func checkActions(t *testing.T, got string) {
+	t.Helper()
+	if *updateKeyFixtures {
+		return // the recorded list is the one before the editing actions; it is never rewritten
+	}
+	want, err := os.ReadFile(filepath.Join("testdata", "editorkeys", "actions.txt"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	old, rest, ok := strings.Cut(got, string(want))
+	if !ok || old != "" {
+		t.Fatalf("an existing Action changed its value or name:\n%s", firstDiff(string(want), got))
+	}
+	if rest != fmt.Sprintf("%d\tInsertTab\n%d\tNewline\n%d\tBackspace\n%d\tDeleteForward\n",
+		ActInsertTab, ActNewline, ActBackspace, ActDeleteForward) {
+		t.Fatalf("Actions appended after the recorded ones:\n%s", rest)
+	}
 }
 
 // keymapFixture is a Keymap as sorted lines: each chord's mode, code and modifiers, then its action.

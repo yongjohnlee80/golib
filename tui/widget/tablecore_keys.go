@@ -2,7 +2,6 @@ package widget
 
 import (
 	"github.com/yongjohnlee80/golib/tui"
-	tuikey "github.com/yongjohnlee80/golib/tui/key"
 )
 
 // THE KEYS — vim's grammar over a grid: a count, the g prefix, the y and d doubles, then the
@@ -46,8 +45,8 @@ func (c *TableCore) HandleKey(k tui.KeyEvent) bool {
 	if c.takeCount(k) {
 		return true
 	}
-	if c.pendingG && isKey(k, literalG...) {
-		// g's grammar: the literal g after it is [count]gg, wherever a map moved the prefix
+	if c.pendingG && isKey(k, c.ctx.Keymap().KeysOf(tableGoLine)...) {
+		// g's grammar: the goLine command after it is [count]gg, wherever a map moved either key
 		row := max(c.count, 1) - 1
 		c.dropPending()
 		c.SetCursor(TablePos{row, c.cur.Col})
@@ -87,11 +86,10 @@ func (c *TableCore) HandleKey(k tui.KeyEvent) bool {
 // takeCount takes a count's digit. It reports whether it took the key.
 func (c *TableCore) takeCount(k tui.KeyEvent) bool {
 	d, ok := countDigit(k)
-	if !ok || d == 0 && c.count == 0 {
+	if !ok || !addCount(&c.count, d, tableCountMax) {
 		return false
 	}
 	c.pendingG, c.yanked = false, false
-	c.count = min(c.count*10+d, tableCountMax)
 	return true
 }
 
@@ -221,13 +219,4 @@ func (c *TableCore) activateOrEdit() bool {
 		return c.EditCell("")
 	}
 	return c.activateCursor()
-}
-
-// countDigit is the digit a count is typed with: a digit key with no modifier held.
-func countDigit(k tui.KeyEvent) (int, bool) {
-	s, ok := tuikey.Of(k.Code, k.Mods, k.Text)
-	if !ok || s.Mods != 0 || s.Code < '0' || s.Code > '9' {
-		return 0, false
-	}
-	return int(s.Code - '0'), true
 }

@@ -1,5 +1,7 @@
 package widget
 
+import "fmt"
+
 // editor_actions.go: what each Action IS, one row per action: its name, its description for a help
 // card, the binding classes that accept it, and whether it changes the text. String, Description,
 // actionModes and mutatingAction read this table, so a new action is one row here (and its key
@@ -33,6 +35,7 @@ const (
 	actEdit                           // a Normal-mode edit, undo or redo (execEdit)
 	actVisualMode                     // entering, leaving or acting on Visual (execVisual)
 	actInsertAssist                   // an Insert-mode assist (execInsertAssist)
+	actInsertEdit                     // an Insert editing key: Tab, Enter, Backspace, Delete (execInsertEdit)
 	actOther                          // the clipboard, the command line, find and the rest (execOther)
 )
 
@@ -144,4 +147,183 @@ var actionSpecs = [actMax]actionSpec{
 	ActStarForward:      {name: "StarForward", desc: "Find the word under the cursor", modes: inNormal},
 	ActStarBack:         {name: "StarBack", desc: "Find the word under the cursor, back", modes: inNormal},
 	ActReplaceMode:      {name: "ReplaceMode", desc: "Replace mode", modes: inNormal, mutating: true, exec: actInsertAssist},
+	ActInsertTab:        {name: "InsertTab", desc: "Insert a tab (in a table, the next cell; Shift, the previous)", modes: inInsert, mutating: true, exec: actInsertEdit},
+	ActNewline:          {name: "Newline", desc: "Break the line, keeping its indent", modes: inInsert, mutating: true, exec: actInsertEdit},
+	ActBackspace:        {name: "Backspace", desc: "Delete the character before the cursor", modes: inInsert, mutating: true, exec: actInsertEdit},
+	ActDeleteForward:    {name: "DeleteForward", desc: "Delete the character under the cursor", modes: inInsert, mutating: true, exec: actInsertEdit},
+}
+
+// Action is one enumerated Editor operation a chord can bind.
+type Action uint8
+
+const (
+	// ActUnbound removes a default binding (overlay-only sentinel).
+	ActUnbound Action = iota
+
+	// Motions (Normal + Visual, count-prefixable).
+	ActLeft
+	ActDown
+	ActUp
+	ActRight
+	ActLineStart
+	ActLineEnd
+	ActWordForward
+	ActWordBack
+	ActWordEnd
+	ActParaForward
+	ActParaBack
+	ActGoBottom
+	ActPageUp
+	ActPageDown
+
+	// Double-key prefixes (the one-key pending buffer).
+	ActDeletePrefix // d → dd
+	ActYankPrefix   // y → yy
+	ActGoPrefix     // g → gg
+
+	// Insert entries (Normal only).
+	ActInsert          // i
+	ActAppend          // a
+	ActInsertLineStart // I
+	ActAppendLineEnd   // A
+	ActOpenBelow       // o
+	ActOpenAbove       // O
+
+	// Edits (Normal only).
+	ActDeleteChar  // x
+	ActDeleteToEnd // D
+	ActPasteAfter  // p
+	ActPasteBefore // P
+	ActUndo        // u
+	ActRedo        // Ctrl-R
+
+	// Visual-mode entry/exit and operations.
+	ActVisual       // v (Normal: enter; Visual: exit)
+	ActVisualLine   // V (Normal: enter; Visual: switch/exit)
+	ActVisualYank   // y in visual
+	ActVisualDelete // d / x in visual
+
+	// General non-modal & standard editor actions (Nano / TextEdit).
+	ActCut       // Cut selection or current line (Nano Ctrl+K, Standard Ctrl+X)
+	ActCopy      // Copy selection or line (Standard Ctrl+C)
+	ActPaste     // Paste at cursor (Nano Ctrl+U, Standard Ctrl+V)
+	ActSelectAll // Select entire buffer (Standard Ctrl+A)
+	ActEscape    // Escape / return to Normal mode
+
+	// ActToggleRendered switches an editor with a Rendered view between it and Raw (Ctrl+T).
+	// An editor without one does not take it: the key bubbles.
+	ActToggleRendered
+
+	// ActFindNext and ActFindPrev go to the active find's next and previous match (n, N in the Vim
+	// keyset), wrapping. With no active find the key is not consumed: it reaches the application.
+	ActFindNext
+	ActFindPrev
+
+	// ActCommandLine opens the editor's ':' prompt (the Vim keyset's ':'), when its widget has
+	// one (SetCommandLine). Without one the key is not consumed.
+	ActCommandLine
+
+	// Vim line and character motions (Normal + Visual, count-prefixable): appended, so no
+	// earlier action's value moves.
+	ActLineDownFirst   // Enter and + (Vim): count lines down, to the first non-blank
+	ActLineUpFirst     // - (Vim): count lines up, to the first non-blank
+	ActFirstNonBlank   // ^ (Vim): the line's first non-blank
+	ActLeftWrap        // Backspace (Vim): left, onto the previous line's end
+	ActFindCharForward // f{char} (Vim): the countth {char} after the cursor on the line
+	ActFindCharBack    // F{char} (Vim): the countth {char} before the cursor on the line
+	ActTillCharForward // t{char} (Vim): just before the countth {char} after the cursor
+	ActTillCharBack    // T{char} (Vim): just after the countth {char} before the cursor
+	ActFindCharRepeat  // ; (Vim): the last f, F, t or T again
+	ActFindCharReverse // , (Vim): the last f, F, t or T, the other way
+	ActMatchPair       // % (Vim): the bracket matching the one at or after the cursor; N% goes to N% of the text
+	ActViewTop         // H (Vim): the countth line from the view's top
+	ActViewMiddle      // M (Vim): the view's middle line
+	ActViewBottom      // L (Vim): the countth line from the view's bottom
+	ActHalfPageDown    // Ctrl-d (Vim): half a page down, or count lines
+	ActHalfPageUp      // Ctrl-u (Vim): half a page up, or count lines
+	ActWORDForward     // W (Vim): the next whitespace-delimited WORD
+	ActWORDBack        // B (Vim): the previous WORD's start
+	ActWORDEnd         // E (Vim): the WORD's end
+	ActWordEndBack     // ge (Vim): back to the previous word's end
+	ActWORDEndBack     // gE (Vim): back to the previous WORD's end
+	ActChangePrefix    // c{motion}, cc (Vim): change — delete, then type in its place
+	ActChangeToEnd     // C (Vim): change to the line's end (c$)
+	ActSubstChar       // s (Vim): change count characters (cl)
+	ActSubstLine       // S (Vim): change the line (cc)
+	ActYankToEnd       // Y (Vim, as Neovim maps it): yank to the line's end (y$)
+	ActReplaceChar     // r{char} (Vim): replace count clusters with {char}
+	ActJoin            // J (Vim): join count lines, a blank between
+	ActJoinRaw         // gJ (Vim): join count lines as they are
+	ActToggleCase      // ~ (Vim): toggle the case of count clusters, and move past them
+	ActCaseToggleOp    // g~{motion} (Vim): toggle the case of the text
+	ActLowerOp         // gu{motion} (Vim): lowercase the text
+	ActUpperOp         // gU{motion} (Vim): uppercase the text
+	ActIndentPrefix    // >{motion}, >> (Vim): indent the lines by one unit
+	ActOutdentPrefix   // <{motion}, << (Vim): outdent the lines by one unit
+	ActRepeat          // . (Vim): repeat the last change
+	ActRegisterPrefix  // "{reg} (Vim): name the register the next yank, delete or put uses
+	ActMarkSet         // m{a-z} (Vim): set a mark at the cursor
+	ActMarkLine        // '{a-z} (Vim): to the mark's line, first non-blank ('' the previous jump)
+	ActMarkExact       // `{a-z} (Vim): to the mark's exact place (`` the previous jump)
+	ActMacroRecord     // q{a-z} … q (Vim): record a macro into the register (A-Z append)
+	ActMacroPlay       // @{a-z} (Vim): play the register's macro (@@ the last played)
+	ActJumpBack        // Ctrl-o (Vim): back along the jump list
+	ActJumpForward     // Ctrl-i (Vim): forward along the jump list
+
+	ActVisualChange     // c, s (Vim Visual): change the selection
+	ActVisualReplace    // r{c} (Vim Visual): every character of the selection becomes c
+	ActVisualToggleCase // ~ (Vim Visual): toggle the selection's case
+	ActVisualLower      // u (Vim Visual): lowercase the selection
+	ActVisualUpper      // U (Vim Visual): uppercase the selection
+	ActVisualIndent     // > (Vim Visual): indent the selected lines
+	ActVisualOutdent    // < (Vim Visual): outdent the selected lines
+	ActVisualOther      // o (Vim Visual): to the selection's other end
+
+	ActDeleteWordBack // Ctrl-w (Vim Insert): delete the word before the cursor
+	ActDeleteLineBack // Ctrl-u (Vim Insert): delete back to the indent, then the line's start
+	ActInsertOneShot  // Ctrl-o (Vim Insert): one Normal-mode command, then Insert again
+
+	ActVisualBlock    // Ctrl-v (Vim Normal: enter Visual block; Visual: switch/exit)
+	ActVisualOtherCol // O (Vim Visual): in a block, the cursor and the anchor swap columns
+	ActVisualInsert   // I (Vim Visual): Insert before the block, on each line; else at the first line's start
+	ActVisualAppend   // A (Vim Visual): Insert after the block, on each line; else at the last line's end
+
+	ActSentenceForward // ) (Vim): to the next sentence's start
+	ActSentenceBack    // ( (Vim): to this sentence's start, or the previous one's
+	ActStarForward     // * (Vim): the whole word under the cursor, found on
+	ActStarBack        // # (Vim): the whole word under the cursor, found back
+	ActReplaceMode     // R (Vim): Replace mode, typing overwrites
+
+	// Insert's editing keys, as commands (appended, so every value above is kept).
+	ActInsertTab     // Tab (Insert): a tab; in a table, the next cell (Shift: the previous)
+	ActNewline       // Enter (Insert): break the line, keeping its indent
+	ActBackspace     // Backspace (Insert): delete the cluster before the cursor
+	ActDeleteForward // Delete (Insert): delete the cluster under the cursor
+
+	actMax // sentinel for validation
+)
+
+// String returns the canonical identifier name for an Action.
+func (a Action) String() string {
+	if a < actMax {
+		return actionSpecs[a].name
+	}
+	return fmt.Sprintf("Action(%d)", a)
+}
+
+// Description returns a concise human-readable explanation of the action.
+func (a Action) Description() string {
+	if a < actMax {
+		return actionSpecs[a].desc
+	}
+	return "Custom action"
+}
+
+// actionModes reports which binding classes accept an action.
+func actionModes(a Action) (normal, visual, insert bool) {
+	if a >= actMax {
+		return false, false, false
+	}
+	m := actionSpecs[a].modes
+	return m&inNormal != 0, m&inVisual != 0, m&inInsert != 0
 }

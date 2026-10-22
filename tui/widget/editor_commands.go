@@ -49,57 +49,54 @@ func classID(class EditorMode) string {
 	return "normal"
 }
 
-// editorCommand is one command and the table entry it stands for.
+// editorCommand is one command and the declaration it stands for.
 type editorCommand struct {
 	cmd   keymap.Command // a named field, not embedded: an embedded Command would make every type of that name look embeddable
 	class EditorMode
 	act   Action
+	late  bool // an editing command (keyDecl.late)
 }
 
-// editorCommandsOf is every command of keyset ks, derived from its base table once. A functional key's
-// Shift twin is a default too: the editor's chord ignored Shift on a functional key before chords had
-// Shift, so a table chord Down answered Shift+Down as well, and still does.
+// editorCommandsOf is every command of keyset ks, derived from its declarations once. An early
+// command's functional key has its Shift twin as a default too: the editor's chord ignored Shift on
+// a functional key before chords had Shift, so a table chord Down answered Shift+Down as well, and
+// still does. An editing command has none: Shift reaches it as a qualifier (resolveInsert).
 var editorCommandsOf = func() func(Keyset) []editorCommand {
 	type built struct {
 		once sync.Once
 		cmds []editorCommand
 	}
 	tables := map[Keyset]*built{KeysetVim: {}, KeysetNano: {}, KeysetStandard: {}}
-	base := map[Keyset]func() Keymap{KeysetVim: VimKeymap, KeysetNano: NanoKeymap, KeysetStandard: StandardKeymap}
 	return func(ks Keyset) []editorCommand {
 		ks = normalizeKeyset(ks)
 		b := tables[ks]
-		b.once.Do(func() { b.cmds = deriveEditorCommands(ks, base[ks]()) })
+		b.once.Do(func() { b.cmds = deriveEditorCommands(ks, declsOf(ks)) })
 		return b.cmds
 	}
 }()
 
-func deriveEditorCommands(ks Keyset, table Keymap) []editorCommand {
-	type slot struct {
-		class EditorMode
-		act   Action
-	}
-	keys := map[slot][]tuikey.Seq{}
-	for kc, act := range table {
-		if act == ActUnbound {
+func deriveEditorCommands(ks Keyset, decls keyDecls) []editorCommand {
+	out := make([]editorCommand, 0, len(decls))
+	for _, d := range decls {
+		if d.act == ActUnbound || len(d.chords) == 0 {
 			continue
 		}
-		sl := slot{modeClass(kc.Mode), act}
-		s := seqOfChord(kc)
-		keys[sl] = append(keys[sl], s)
-		if twin := (tuikey.Seq{Code: s.Code, Mods: s.Mods | tuikey.Shift}); functionalCode(s.Code) && s.Mods&tuikey.Shift == 0 {
-			keys[sl] = append(keys[sl], twin)
+		var keys []tuikey.Seq
+		for _, kc := range d.chords {
+			s := seqOfChord(kc)
+			keys = append(keys, s)
+			if twin := (tuikey.Seq{Code: s.Code, Mods: s.Mods | tuikey.Shift}); !d.late && functionalCode(s.Code) && s.Mods&tuikey.Shift == 0 {
+				keys = append(keys, twin)
+			}
 		}
-	}
-	out := make([]editorCommand, 0, len(keys))
-	for sl, ks2 := range keys {
-		slices.SortFunc(ks2, func(a, b tuikey.Seq) int { return strings.Compare(a.String(), b.String()) })
-		ks2 = slices.Compact(ks2)
-		id := "tui.editor." + keysetID(ks) + "." + classID(sl.class) + "." + lowerFirst(sl.act.String())
+		slices.SortFunc(keys, func(a, b tuikey.Seq) int { return strings.Compare(a.String(), b.String()) })
+		keys = slices.Compact(keys)
+		id := "tui.editor." + keysetID(ks) + "." + classID(d.class) + "." + lowerFirst(d.act.String())
 		out = append(out, editorCommand{
-			cmd:   keymap.Command{ID: id, Scope: editorScope(ks, sl.class), Keys: ks2},
-			class: sl.class,
-			act:   sl.act,
+			cmd:   keymap.Command{ID: id, Scope: editorScope(ks, d.class), Keys: keys},
+			class: d.class,
+			act:   d.act,
+			late:  d.late,
 		})
 	}
 	slices.SortFunc(out, func(a, b editorCommand) int { return strings.Compare(a.cmd.ID, b.cmd.ID) })
@@ -126,15 +123,20 @@ func EditorCommands() []keymap.Command {
 }
 
 // keymapFrom is keyset ks's table as m binds it: each of its commands at m's keys (its defaults where m
-// does not declare it). A command a scheme unbinds has no entry.
-func keymapFrom(m *keymap.Map, ks Keyset) Keymap {
-	out := Keymap{}
+// does not declare it), and the chords of its editing commands, which run late. A command a scheme
+// unbinds has no entry.
+func keymapFrom(m *keymap.Map, ks Keyset) (table Keymap, late map[KeyChord]bool) {
+	table, late = Keymap{}, map[KeyChord]bool{}
 	for _, c := range editorCommandsOf(ks) {
 		for _, s := range m.KeysOf(c.cmd) {
-			out[chordOfSeq(c.class, s)] = c.act
+			kc := chordOfSeq(c.class, s)
+			table[kc] = c.act
+			if c.late {
+				late[kc] = true
+			}
 		}
 	}
-	return out
+	return table, late
 }
 
 // chordOfSeq is a key as the editor's chord. It is total: every key a key map can spell has a chord.

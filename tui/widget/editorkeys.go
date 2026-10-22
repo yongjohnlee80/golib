@@ -18,6 +18,7 @@ type keyDispatch struct {
 	keyset  Keyset // active editing & keymap profile
 	modal   bool   // true = Vim tripartite state machine; false = modeless editor
 	keymap  Keymap
+	late    map[KeyChord]bool // chords bound to editing commands, run late in Insert (keyDecl.late)
 	unbound map[KeyChord]bool // explicitly unbound chords (via ActUnbound)
 	// overlay is every host-supplied binding, kept apart from the profile's
 	// base table so a keyset switch can replay it. A host that rebinds a key
@@ -27,10 +28,9 @@ type keyDispatch struct {
 	overlay Keymap
 
 	// Normal/Visual command state.
-	count        int      // pending count; 0 = none
-	pendingAct   Action   // pending double-key prefix action; ActUnbound = none
-	pendingChord KeyChord // the chord that armed it (completion = same chord)
-	pendingCount int      // count captured when the prefix was armed
+	count        int    // pending count; 0 = none
+	pendingAct   Action // pending double-key prefix action; ActUnbound = none
+	pendingCount int    // count captured when the prefix was armed
 	// findArmed is an f, F, t or T waiting for its character; findCount its count. lastFind is the
 	// last one completed, which ; and , repeat (a mode change keeps it, as in Vim).
 	findArmed Action
@@ -74,10 +74,12 @@ type keyDispatch struct {
 
 // newKeyDispatch is the default: the Vim keymap, modal, the "jk" escape chord.
 func newKeyDispatch() keyDispatch {
+	table, late := keymapFrom(nil, KeysetVim)
 	return keyDispatch{
 		keyset:       KeysetVim,
 		modal:        true,
-		keymap:       keymapFrom(nil, KeysetVim),
+		keymap:       table,
+		late:         late,
 		unbound:      make(map[KeyChord]bool),
 		chord:        []rune{'j', 'k'},
 		chordTimeout: 300 * time.Millisecond,
@@ -97,7 +99,8 @@ func (k *keyDispatch) applyKeyset(ks Keyset, m *keymap.Map) {
 	default:
 		k.keyset, k.modal = KeysetVim, true
 	}
-	k.keymap, k.builtFrom = keymapFrom(m, k.keyset), m
+	k.keymap, k.late = keymapFrom(m, k.keyset)
+	k.builtFrom = m
 	k.unbound = make(map[KeyChord]bool)
 	k.applyOverlay(k.overlay)
 }
@@ -112,6 +115,7 @@ func (k *keyDispatch) applyKeyset(ks Keyset, m *keymap.Map) {
 // Shift+Down as Down, so the old literal meant both, and still does.
 func (k *keyDispatch) applyOverlay(ov Keymap) {
 	set := func(kc KeyChord, act Action) {
+		delete(k.late, kc) // a host's binding is early, whatever its action
 		if act == ActUnbound {
 			delete(k.keymap, kc)
 			if k.unbound == nil {
@@ -181,7 +185,7 @@ func (k *keyDispatch) chordsFor(act Action) []KeyChord {
 // action, a keyset switch, an overlay, a press, the focus leaving).
 func (k *keyDispatch) dropPending() {
 	k.count, k.pendingCount = 0, 0
-	k.pendingAct, k.pendingChord = ActUnbound, KeyChord{}
+	k.pendingAct = ActUnbound
 	k.findArmed, k.findCount = ActUnbound, 0
 	// A key waiting for a name — a register's, a mark's, a macro's — is pending too: left armed,
 	// it would take the next key as that name, whatever ended the command around it.

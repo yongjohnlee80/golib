@@ -40,9 +40,9 @@ func TestKeyDispatchChordsForAreSorted(t *testing.T) {
 
 func TestKeyDispatchPendingInput(t *testing.T) {
 	k := newKeyDispatch()
-	k.count, k.pendingCount, k.pendingAct, k.pendingChord = 3, 2, ActDeletePrefix, KeyChord{Code: 'd'}
+	k.count, k.pendingCount, k.pendingAct = 3, 2, ActDeletePrefix
 	k.dropPending()
-	if k.count != 0 || k.pendingCount != 0 || k.pendingAct != ActUnbound || k.pendingChord != (KeyChord{}) {
+	if k.count != 0 || k.pendingCount != 0 || k.pendingAct != ActUnbound {
 		t.Fatalf("after dropPending: %+v", k)
 	}
 	if _, ok := k.takeRune(); ok {

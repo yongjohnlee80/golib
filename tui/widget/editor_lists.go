@@ -108,12 +108,12 @@ func (it listItem) next() string {
 }
 
 // listKey handles an Insert-mode key on a list item, reporting whether it did.
-func (c *EditorCore) listKey(k tui.KeyEvent) bool {
+func (c *EditorCore) listKey(_ tui.KeyEvent, r insertKey) bool {
 	b := &c.buf
 	if !c.listEditing || c.readOnly || c.vAnchor != (taPos{}) || b.anchor != nil {
 		return false
 	}
-	if k.Mods&^tui.ModShift != 0 || (k.Mods&tui.ModShift != 0 && k.Code != tui.KeyTab) {
+	if r.qual&^tui.ModShift != 0 || (r.qual&tui.ModShift != 0 && r.act != ActInsertTab) {
 		return false
 	}
 	line := b.textLines[b.ln]
@@ -122,8 +122,8 @@ func (c *EditorCore) listKey(k tui.KeyEvent) bool {
 		return false
 	}
 	start := len(it.indent) + len(it.marker) // in clusters: both are ASCII or tabs
-	switch k.Code {
-	case tui.KeyEnter:
+	switch r.act {
+	case ActNewline:
 		if b.col < start {
 			return false
 		}
@@ -135,7 +135,7 @@ func (c *EditorCore) listKey(k tui.KeyEvent) bool {
 		}
 		c.edited()
 		return true
-	case tui.KeyBackspace:
+	case ActBackspace:
 		if b.col != start {
 			return false
 		}
@@ -143,10 +143,10 @@ func (c *EditorCore) listKey(k tui.KeyEvent) bool {
 		b.deleteRegion(taPos{b.ln, len(it.indent)}, taPos{b.ln, start})
 		c.edited()
 		return true
-	case tui.KeyTab:
+	case ActInsertTab:
 		col := b.col
 		c.beginGroup()
-		if k.Mods&tui.ModShift == 0 {
+		if r.qual&tui.ModShift == 0 {
 			unit := strings.Repeat(" ", it.unit)
 			if strings.HasPrefix(it.indent, "\t") {
 				unit = "\t"
