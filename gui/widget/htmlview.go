@@ -687,21 +687,8 @@ type selRange struct {
 
 // makeSel constructs an ordered selection range between document positions a and b.
 func makeSel(a, b tuiwidget.DocPos) selRange {
-	if posBefore(b, a) {
-		a, b = b, a
-	}
+	a, b = tuiwidget.OrderDocPos(a, b)
 	return selRange{from: a, to: b, ok: a != b}
-}
-
-// posBefore reports whether document position a precedes document position b.
-func posBefore(a, b tuiwidget.DocPos) bool {
-	if a.Block != b.Block {
-		return a.Block < b.Block
-	}
-	if a.Span != b.Span {
-		return a.Span < b.Span
-	}
-	return a.Offset < b.Offset
 }
 
 // within is the part of the selection in run i, as flow positions.
@@ -883,26 +870,7 @@ func (l *htmlLayout) BlockTop(b int) (float32, bool) {
 	if !l.ready() {
 		return 0, false
 	}
-	at, last := -1, -1
-	for i, blk := range l.blocks {
-		if blk.src[0] < 0 {
-			continue
-		}
-		if blk.src[0] <= b && b < blk.src[1] {
-			at = i
-			break
-		}
-		if blk.src[0] >= b {
-			if at < 0 {
-				at = i
-			}
-			continue
-		}
-		last = i
-	}
-	if at < 0 {
-		at = last
-	}
+	at := tuiwidget.SourceIndex(len(l.blocks), func(i int) [2]int { return l.blocks[i].src }, b)
 	if at < 0 {
 		return 0, false
 	}
