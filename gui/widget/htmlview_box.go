@@ -148,15 +148,15 @@ func (s *styler) style(n *phtml.Node, parent *computed, chain []*phtml.Node) *co
 		}
 	}
 	if _, ok := n.Attr("hidden"); ok {
-		c.display = "none"
+		c.display = displayNone
 	}
 	return c
 }
 
 // blockLevel reports whether a display starts a box of its own (not inline content).
-func blockLevel(d string) bool {
+func blockLevel(d cssDisplay) bool {
 	switch d {
-	case "inline", "inline-block", "":
+	case displayInline, displayInlineBlock, displayDefault:
 		return false
 	}
 	return true
@@ -214,7 +214,7 @@ func (b *builder) children(n *phtml.Node, st *computed, src [2]int) []*box {
 			b.chain = append(b.chain, c)
 			cs := b.s.style(c, st, b.chain)
 			switch {
-			case cs.display == "none":
+			case cs.display == displayNone:
 			case c.Name == "br":
 				if st.white != flow.Normal {
 					cur().spans = append(cur().spans, b.span("\n", st, src))
@@ -222,9 +222,9 @@ func (b *builder) children(n *phtml.Node, st *computed, src [2]int) []*box {
 					flush()
 					run = &box{kind: kRun, st: st, src: src, sep: "\n"}
 				}
-			case c.Name == "img" && cs.position != "absolute":
+			case c.Name == "img" && cs.position != positionAbsolute:
 				cur().spans = append(cur().spans, b.l.imageSpan(c, cs, src))
-			case (blockLevel(cs.display) || cs.position == "absolute") && b.depth < maxBoxDepth:
+			case (blockLevel(cs.display) || cs.position == positionAbsolute) && b.depth < maxBoxDepth:
 				flush()
 				b.depth++
 				out = append(out, b.box(c, cs, src))
@@ -261,21 +261,21 @@ func (b *builder) box(n *phtml.Node, st *computed, src [2]int) *box {
 	}
 	bx := &box{kind: kBlock, st: st, node: n, src: src, own: own}
 	switch st.display {
-	case "table":
+	case displayTable:
 		bx.kind = kTable
 		bx.kids = b.rows(n, st, src)
 		return bx
-	case "table-row":
+	case displayTableRow:
 		bx.kind = kRow
-	case "table-cell":
+	case displayTableCell:
 		bx.kind = kCell
-	case "list-item":
+	case displayListItem:
 		bx.item = true
-	case "flex", "inline-flex":
+	case displayFlex, displayInlineFlex:
 		bx.kind = kFlex
 		bx.kids = b.items(n, st, src)
 		return bx
-	case "grid", "inline-grid":
+	case displayGrid, displayInlineGrid:
 		bx.kind = kGrid
 		bx.kids = b.items(n, st, src)
 		return bx
@@ -326,9 +326,9 @@ func (b *builder) rows(n *phtml.Node, st *computed, src [2]int) []*box {
 		b.chain = append(b.chain, c)
 		cs := b.s.style(c, st, b.chain)
 		switch cs.display {
-		case "table-row-group":
+		case displayTableRowGroup:
 			out = append(out, b.rows(c, cs, src)...)
-		case "table-row":
+		case displayTableRow:
 			row := &box{kind: kRow, st: cs, node: c, src: src}
 			for _, cell := range c.Children {
 				if cell.Kind != phtml.StartTag || xhtml.Dropped(cell) {
@@ -336,7 +336,7 @@ func (b *builder) rows(n *phtml.Node, st *computed, src [2]int) []*box {
 				}
 				b.chain = append(b.chain, cell)
 				ccs := b.s.style(cell, cs, b.chain)
-				if ccs.display != "none" {
+				if ccs.display != displayNone {
 					cb := b.box(cell, ccs, src)
 					cb.kind = kCell
 					row.kids = append(row.kids, cb)
@@ -394,13 +394,13 @@ func fontOf(st *computed) gui.Font {
 }
 
 // transformed is text as text-transform shows it.
-func transformed(text, transform string) string {
+func transformed(text string, transform textTransform) string {
 	switch transform {
-	case "uppercase":
+	case transformUppercase:
 		return strings.ToUpper(text)
-	case "lowercase":
+	case transformLowercase:
 		return strings.ToLower(text)
-	case "capitalize":
+	case transformCapitalize:
 		b := []rune(text)
 		start := true
 		for i, r := range b {
@@ -546,7 +546,7 @@ func (l *htmlLayout) layKids(bx *box, x, y, width float32) float32 {
 			cy += k.h
 			continue
 		}
-		if k.st.position == "absolute" {
+		if k.st.position == positionAbsolute {
 			abs = append(abs, placed{k, cy + pending})
 			continue
 		}
@@ -554,7 +554,7 @@ func (l *htmlLayout) layKids(bx *box, x, y, width float32) float32 {
 		l.layBlock(k, x, cy+max(pending, e.m[0]), width)
 		cy = k.y + k.h
 		pending = e.m[2]
-		if k.st.position == "relative" {
+		if k.st.position == positionRelative {
 			l.shiftRelative(k, width)
 		}
 	}
@@ -754,7 +754,7 @@ func (l *htmlLayout) minMax(bx *box, avail float32) (float32, float32) {
 		default:
 			a, b = l.minMax(k, avail)
 		}
-		if bx.kind == kFlex && bx.st.flexDir != "column" {
+		if bx.kind == kFlex && bx.st.flexDir != flexColumn {
 			// a row's items stand side by side: its widest is their sum, with the gaps
 			lo, hi = max(lo, a), hi+b
 			if hi > b {
@@ -801,12 +801,12 @@ func (l *htmlLayout) paintBox(c gui.Canvas, bx *box, ox, oy float32, sel selRang
 	}
 	// a positioned child is painted over the flow
 	for _, k := range bx.kids {
-		if k.st.position != "absolute" {
+		if k.st.position != positionAbsolute {
 			l.paintBox(c, k, ox, oy, sel)
 		}
 	}
 	for _, k := range bx.kids {
-		if k.st.position == "absolute" {
+		if k.st.position == positionAbsolute {
 			l.paintBox(c, k, ox, oy, sel)
 		}
 	}

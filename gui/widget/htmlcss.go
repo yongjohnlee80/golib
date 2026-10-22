@@ -80,10 +80,10 @@ type computed struct {
 	bold       bool
 	italic     bool
 	mono       bool
-	family     string  // font-family as written, a CSS list; "" the window's typeface
-	transform  string  // text-transform: uppercase, lowercase, capitalize; "" none
-	spacing    cssLen  // letter-spacing; unset is normal
-	lineHeight float32 // a multiple of the font size
+	family     string        // font-family as written, a CSS list; "" the window's typeface
+	transform  textTransform // text-transform
+	spacing    cssLen        // letter-spacing; unset is normal
+	lineHeight float32       // a multiple of the font size
 	align      flow.Align
 	white      flow.WhiteSpace
 	vars       map[string]string // custom properties, shared with the parent until one is set here
@@ -91,7 +91,7 @@ type computed struct {
 	link       string // the enclosing <a>'s href
 
 	// not inherited
-	display        string
+	display        cssDisplay
 	background     color.NRGBA
 	underline      bool
 	strike         bool
@@ -103,26 +103,26 @@ type computed struct {
 	maxWidth       cssLen
 	collapse       bool // border-collapse: collapse
 	overflowScroll bool
-	borderBox      bool      // box-sizing: border-box: width and height hold padding and border
-	height         cssLen    // height; unset or auto: its content's
-	minWidth       cssLen    // min-width
-	minHeight      cssLen    // min-height
-	maxHeight      cssLen    // max-height
-	position       string    // "", relative, absolute or fixed (fixed is laid out as absolute)
-	inset          [4]cssLen // top, right, bottom, left of a positioned box
-	objectFit      string    // an image's: contain, cover, fill (the default), none
-	invisible      bool      // visibility: hidden; inherited, so a child can show again
+	borderBox      bool        // box-sizing: border-box: width and height hold padding and border
+	height         cssLen      // height; unset or auto: its content's
+	minWidth       cssLen      // min-width
+	minHeight      cssLen      // min-height
+	maxHeight      cssLen      // max-height
+	position       cssPosition // fixed is laid out as absolute
+	inset          [4]cssLen   // top, right, bottom, left of a positioned box
+	objectFit      objectFit   // an image's; fill is the default
+	invisible      bool        // visibility: hidden; inherited, so a child can show again
 	// flex and grid (htmlview_flex.go)
-	flexDir    string    // "row" (the default) or "column"
-	flexWrap   bool      // flex-wrap: wrap
-	gap        [2]cssLen // row-gap, column-gap
-	justify    string    // justify-content
-	alignItems string    // align-items
-	alignSelf  string    // align-self
-	grow       float32   // flex-grow
-	shrink     float32   // flex-shrink; 1 initially
-	basis      cssLen    // flex-basis; unset or auto: the width, else the content's
-	gridCols   string    // grid-template-columns, as written
+	flexDir    flexDirection // "" is row, the default
+	flexWrap   bool          // flex-wrap: wrap
+	gap        [2]cssLen     // row-gap, column-gap
+	justify    flexAlign     // justify-content
+	alignItems flexAlign     // align-items
+	alignSelf  flexAlign     // align-self
+	grow       float32       // flex-grow
+	shrink     float32       // flex-shrink; 1 initially
+	basis      cssLen        // flex-basis; unset or auto: the width, else the content's
+	gridCols   string        // grid-template-columns, as written
 }
 
 // inherit is a child's starting style: what CSS inherits, the rest at its initial value.
@@ -147,3 +147,82 @@ type cssRule struct {
 	decls []cssDecl
 	order int
 }
+
+// THE KEYWORD SETS — the values of the properties the layout reads, as the computed style holds
+// them. A property handler reads the CSS text into one (htmlcss_props.go); the layout names the
+// constants. A value outside a set is kept as written and read as the property's default.
+
+// cssDisplay is a display value.
+type cssDisplay string
+
+const (
+	displayDefault       cssDisplay = "" // as unset: inline
+	displayNone          cssDisplay = "none"
+	displayBlock         cssDisplay = "block"
+	displayInline        cssDisplay = "inline"
+	displayInlineBlock   cssDisplay = "inline-block"
+	displayListItem      cssDisplay = "list-item"
+	displayFlex          cssDisplay = "flex"
+	displayInlineFlex    cssDisplay = "inline-flex"
+	displayGrid          cssDisplay = "grid"
+	displayInlineGrid    cssDisplay = "inline-grid"
+	displayTable         cssDisplay = "table"
+	displayTableRowGroup cssDisplay = "table-row-group"
+	displayTableRow      cssDisplay = "table-row"
+	displayTableCell     cssDisplay = "table-cell"
+)
+
+// cssPosition is a position value; fixed is read as absolute.
+type cssPosition string
+
+const (
+	positionStatic   cssPosition = ""
+	positionRelative cssPosition = "relative"
+	positionAbsolute cssPosition = "absolute"
+)
+
+// flexDirection is a flex container's main axis.
+type flexDirection string
+
+const (
+	flexRow    flexDirection = "row"
+	flexColumn flexDirection = "column"
+)
+
+// flexAlign is a justify-content, align-items or align-self value.
+type flexAlign string
+
+const (
+	alignUnset        flexAlign = ""
+	alignNormal       flexAlign = "normal"
+	alignAuto         flexAlign = "auto"
+	alignStretch      flexAlign = "stretch"
+	alignCenter       flexAlign = "center"
+	alignEnd          flexAlign = "end"
+	alignFlexEnd      flexAlign = "flex-end"
+	alignRight        flexAlign = "right"
+	alignSpaceBetween flexAlign = "space-between"
+	alignSpaceAround  flexAlign = "space-around"
+	alignSpaceEvenly  flexAlign = "space-evenly"
+)
+
+// objectFit is an image's object-fit.
+type objectFit string
+
+const (
+	fitFill      objectFit = "fill"
+	fitContain   objectFit = "contain"
+	fitScaleDown objectFit = "scale-down"
+	fitCover     objectFit = "cover"
+	fitNone      objectFit = "none"
+)
+
+// textTransform is a text-transform value; transformNone is none.
+type textTransform string
+
+const (
+	transformNone       textTransform = ""
+	transformUppercase  textTransform = "uppercase"
+	transformLowercase  textTransform = "lowercase"
+	transformCapitalize textTransform = "capitalize"
+)

@@ -20,7 +20,7 @@ import (
 //
 // The recorder's own types live in [record], which imports no windowing
 // toolkit, so a terminal build records the same file without linking Gio; the
-// aliases below keep gui's public surface as it was.
+// aliases below are gui's names for them.
 
 // Stage is where along the input path a record was taken.
 type Stage = record.Stage

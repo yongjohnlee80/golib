@@ -85,16 +85,16 @@ const (
 type channel struct {
 	field     string
 	typ       fieldType
-	aggregate string // "", count, sum, mean, median, min or max
+	aggregate aggregation // aggNone, or the operation the channel aggregates by
 	title     *string
 	noTitle   bool // title: null
 	noAxis    bool // axis: null, or legend: null for colour
 	grid      *bool
 	sort      sortKind
-	sortDesc  bool   // sortByOther: descending
-	sortList  []any  // sortList's values
-	sortField string // sortByField: the field whose aggregate orders the categories
-	sortOp    string // sortByField: its aggregate; "": Vega-Lite's default (sum stacked, else min)
+	sortDesc  bool        // sortByOther: descending
+	sortList  []any       // sortList's values
+	sortField string      // sortByField: the field whose aggregate orders the categories
+	sortOp    aggregation // sortByField: its aggregate; aggNone: Vega-Lite's default (sum stacked, else min)
 	zero      *bool
 	domain    []any // an explicit scale domain
 	nice      *bool
@@ -875,7 +875,7 @@ func readChannel(m map[string]json.RawMessage, name string, params map[string]pa
 		}
 	}
 	if ch.isDatum {
-		if ch.field != "" || ch.aggregate != "" {
+		if ch.field != "" || ch.aggregate != aggNone {
 			return nil, unsupported("%s with a datum and a field", name)
 		}
 		if !typed { // Vega-Lite's default for a datum: by its value
@@ -886,16 +886,16 @@ func readChannel(m map[string]json.RawMessage, name string, params map[string]pa
 		}
 		return ch, nil
 	}
-	if ch.field == "" && ch.aggregate != "count" {
+	if ch.field == "" && ch.aggregate != aggCount {
 		return nil, unsupported("%s without a field", name)
 	}
 	if !typed {
 		ch.typ = typeNominal // Vega-Lite's default for a field, and quantitative for an aggregate
-		if ch.aggregate != "" {
+		if ch.aggregate != aggNone {
 			ch.typ = typeQuantitative
 		}
 	}
-	if ch.aggregate != "" && ch.typ != typeQuantitative {
+	if ch.aggregate != aggNone && ch.typ != typeQuantitative {
 		return nil, unsupported("%s aggregated as %v", name, ch.typ)
 	}
 	return ch, nil
@@ -1151,18 +1151,31 @@ func jsonColor(raw json.RawMessage) (color.NRGBA, bool) {
 	return cssColor(s)
 }
 
+// aggregation is an aggregate operation over a group's values; aggNone is none.
+type aggregation string
+
+const (
+	aggNone   aggregation = ""
+	aggCount  aggregation = "count"
+	aggSum    aggregation = "sum"
+	aggMean   aggregation = "mean"
+	aggMedian aggregation = "median"
+	aggMin    aggregation = "min"
+	aggMax    aggregation = "max"
+)
+
 // aggregateOp is an aggregate operation, as an encoding's aggregate and a sort's op both name one:
 // count, sum, mean (or its alias average), median, min or max.
-func aggregateOp(raw json.RawMessage) (string, bool) {
+func aggregateOp(raw json.RawMessage) (aggregation, bool) {
 	var a string
 	_ = json.Unmarshal(raw, &a)
-	switch a {
-	case "count", "sum", "mean", "median", "min", "max":
-		return a, true
-	case "average":
-		return "mean", true
+	switch op := aggregation(a); op {
+	case aggCount, aggSum, aggMean, aggMedian, aggMin, aggMax:
+		return op, true
+	case "average": // Vega-Lite's alias of mean
+		return aggMean, true
 	}
-	return "", false
+	return aggNone, false
 }
 
 // readTitle reads a channel's or its guide's title: null hides it, a string sets it. false for

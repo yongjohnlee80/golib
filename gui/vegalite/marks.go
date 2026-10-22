@@ -130,7 +130,7 @@ func checkLine(p *plan) error {
 	if c.y.typ != typeQuantitative {
 		return unsupported("a %s with a %v y", c.mark.kind, c.y.typ)
 	}
-	if c.x.aggregate != "" {
+	if c.x.aggregate != aggNone {
 		return unsupported("a %s with x aggregated", c.mark.kind)
 	}
 	return nil
@@ -140,7 +140,7 @@ func checkLine(p *plan) error {
 func overlaid(p *plan) bool { return !p.stacked && len(p.series) > 1 }
 
 // unaggregated is a point's fade: one per row, not a summary.
-func unaggregated(p *plan) bool { return p.value().aggregate == "" }
+func unaggregated(p *plan) bool { return p.value().aggregate == aggNone }
 
 // bars draws a bar per datum: from its pile's base to its top, or from zero (the domain's end
 // nearer it) when the bars are not piled.

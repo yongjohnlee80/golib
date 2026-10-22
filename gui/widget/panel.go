@@ -99,7 +99,8 @@ func NewPanel(content tui.Component, opts ...PanelOption) *Panel {
 	}
 	if p.onClose != nil {
 		behavior = append(behavior, tuiwidget.WithWindowCloseHandler(func() bool {
-			// The legacy callback does not report whether it accepted a dismissal.
+			// WithClosable's onClose does not report whether it accepted the dismissal, so the
+			// handler answers false and leaves the closing to onClose.
 			p.onClose()
 			return false
 		}))

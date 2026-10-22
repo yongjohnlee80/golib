@@ -83,11 +83,11 @@ func init() {
 	registerProps(func(c *computed, x cssValue) { c.mono, c.family = monoFamily(x.lv), familyList(x.v) }, "font-family")
 	registerProps(func(c *computed, x cssValue) { c.font(x.lv, x.parent.fontSize, x.rootPx, x.view) }, "font")
 	registerProps(func(c *computed, x cssValue) {
-		switch x.lv {
-		case "uppercase", "lowercase", "capitalize":
-			c.transform = x.lv
+		switch t := textTransform(x.lv); t {
+		case transformUppercase, transformLowercase, transformCapitalize:
+			c.transform = t
 		default:
-			c.transform = ""
+			c.transform = transformNone
 		}
 	}, "text-transform")
 	registerProps(func(c *computed, x cssValue) {
@@ -126,7 +126,7 @@ func init() {
 
 // The box: display, its sides (margin, padding, border), its size, its position, and how it shows.
 func init() {
-	registerProps(func(c *computed, x cssValue) { c.display = x.lv }, "display")
+	registerProps(func(c *computed, x cssValue) { c.display = cssDisplay(x.lv) }, "display")
 	registerProps(func(c *computed, x cssValue) { boxSides(x.lv, &c.margin) }, "margin")
 	registerProps(func(c *computed, x cssValue) { boxSides(x.lv, &c.padding) }, "padding")
 	registerProps(func(c *computed, x cssValue) {
@@ -193,13 +193,13 @@ func init() {
 		}
 	}, "height", "min-width", "min-height", "max-height")
 	registerProps(func(c *computed, x cssValue) {
-		switch x.lv {
-		case "relative", "absolute":
-			c.position = x.lv
-		case "fixed":
-			c.position = "absolute"
+		switch p := cssPosition(x.lv); p {
+		case positionRelative, positionAbsolute:
+			c.position = p
+		case "fixed": // laid out as absolute
+			c.position = positionAbsolute
 		default:
-			c.position = ""
+			c.position = positionStatic
 		}
 	}, "position")
 	registerProps(func(c *computed, x cssValue) {
@@ -209,16 +209,16 @@ func init() {
 	}, "top", "right", "bottom", "left")
 	registerProps(func(c *computed, x cssValue) { boxSides(x.lv, &c.inset) }, "inset")
 	registerProps(func(c *computed, x cssValue) { c.invisible = x.lv == "hidden" || x.lv == "collapse" }, "visibility")
-	registerProps(func(c *computed, x cssValue) { c.objectFit = x.lv }, "object-fit")
+	registerProps(func(c *computed, x cssValue) { c.objectFit = objectFit(x.lv) }, "object-fit")
 	registerProps(func(c *computed, x cssValue) { c.overflowScroll = x.lv == "auto" || x.lv == "scroll" }, "overflow", "overflow-x")
 }
 
 // Flex and grid: the container's direction, wrap, gaps and alignment, and an item's own.
 func init() {
 	registerProps(func(c *computed, x cssValue) {
-		c.flexDir = "row"
+		c.flexDir = flexRow
 		if strings.HasPrefix(x.lv, "column") {
-			c.flexDir = "column"
+			c.flexDir = flexColumn
 		}
 	}, "flex-direction")
 	registerProps(func(c *computed, x cssValue) { c.flexWrap = strings.HasPrefix(x.lv, "wrap") }, "flex-wrap")
@@ -226,9 +226,9 @@ func init() {
 		for _, f := range strings.Fields(x.lv) {
 			switch {
 			case strings.HasPrefix(f, "column"):
-				c.flexDir = "column"
+				c.flexDir = flexColumn
 			case strings.HasPrefix(f, "row"):
-				c.flexDir = "row"
+				c.flexDir = flexRow
 			case strings.HasPrefix(f, "wrap"):
 				c.flexWrap = true
 			case f == "nowrap":
@@ -259,9 +259,9 @@ func init() {
 			c.gap[map[bool]int{true: 0, false: 1}[strings.Contains(x.prop, "row")]] = l
 		}
 	}, "row-gap", "grid-row-gap", "column-gap", "grid-column-gap")
-	registerProps(func(c *computed, x cssValue) { c.justify = x.lv }, "justify-content")
-	registerProps(func(c *computed, x cssValue) { c.alignItems = x.lv }, "align-items")
-	registerProps(func(c *computed, x cssValue) { c.alignSelf = x.lv }, "align-self")
+	registerProps(func(c *computed, x cssValue) { c.justify = flexAlign(x.lv) }, "justify-content")
+	registerProps(func(c *computed, x cssValue) { c.alignItems = flexAlign(x.lv) }, "align-items")
+	registerProps(func(c *computed, x cssValue) { c.alignSelf = flexAlign(x.lv) }, "align-self")
 	registerProps(func(c *computed, x cssValue) {
 		if f, err := strconv.ParseFloat(x.lv, 32); err == nil && f >= 0 {
 			if x.prop == "flex-grow" {

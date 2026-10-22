@@ -293,8 +293,8 @@ func TestCSSImageBox(t *testing.T) {
 		}
 	}
 	sz := gui.Size{W: 200, H: 100}
-	for fit, want := range map[string]gui.Rect{"": {W: 200, H: 100}, "fill": {W: 200, H: 100},
-		"contain": {X: 50, W: 100, H: 100}, "cover": {Y: -50, W: 200, H: 200}, "none": {X: 75, Y: 25, W: 50, H: 50}} {
+	for fit, want := range map[objectFit]gui.Rect{"": {W: 200, H: 100}, fitFill: {W: 200, H: 100},
+		fitContain: {X: 50, W: 100, H: 100}, fitCover: {Y: -50, W: 200, H: 200}, fitNone: {X: 75, Y: 25, W: 50, H: 50}} {
 		if got := fitted(fit, sz, 50, 50); got != want {
 			t.Errorf("object-fit %q: %+v, want %+v", fit, got, want)
 		}
