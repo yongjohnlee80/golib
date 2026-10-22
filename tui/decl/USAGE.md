@@ -487,7 +487,8 @@ signals exactly as `Editor` does.
 
 ```go
 gauge := tuidecl.Type{
-    Name: "Gauge",
+    Name:     "Gauge",
+    Children: tuidecl.NoChildren(),                // checked, with its position, before Build runs
     Build: func(b tuidecl.Build) (tui.Component, []string, error) {
         g := mywidgets.NewGauge()
         var max float64 = 100
@@ -510,7 +511,7 @@ gauge := tuidecl.Type{
     },
     Methods:   map[string]tuidecl.Method{"reset": tuidecl.NoArgMethod((*mywidgets.Gauge).Reset)},
     Signals:   map[string][]string{"overflowed": {"value"}},
-    Destroyed: func(c tui.Component) { c.(*mywidgets.Gauge).StopSampling() },
+    Destroyed: tuidecl.Destroyer((*mywidgets.Gauge).StopSampling),
 }
 
 tuidecl.NewProgram(…, tuidecl.Types(gauge))
@@ -534,13 +535,15 @@ What each field is for:
 | field | put here | why |
 | --- | --- | --- |
 | `Build` | construction; read constructor props with `b.ReadProps` (only properties the Type declares) | returns what it consumed, so the engine does not apply it twice |
+| `Children` | how many children a declaration takes: `NoChildren()`, `Exactly(n)`, `AtLeast(n)`, with `.Because(why)` | refused with the declaration's position before `Build` runs; the zero `Arity` checks nothing |
 | `Ctor` | properties only the builder takes | a reload that changes one rebuilds the node instead of failing |
 | `Setters` | properties that can change | only these can be bound to a source |
 | `Methods` | what a handler may call by id | checked when the document mounts, not when the button is pressed |
 | `Signals` | parameter names, in raise order | a handler names them; `b.EmitterWith(sig)(values…)` raises them |
-| `Destroyed` | releasing what the widget holds | runs when a reload drops the node, or the tree is torn down |
+| `Destroyed` | releasing what the widget holds, written with `Destroyer[W]` | runs when a reload drops the node, or the tree is torn down; a widget that is not a `W` releases nothing rather than panicking |
 | `Enums` | the enumerations its properties take | published as Qt spells them — `Gauge.Dial` — and read with `EnumField` / `EnumSetter` |
-| `Restyle` | how it wears a palette | called with the effective `Palette` whenever it changes — its own roles or a parent's |
+| `Restyle` | how it wears a palette, written with `Restyler[W]` | called with the effective `Palette` whenever it changes — its own roles or a parent's |
+| `Adopt` | a container's way of taking a child by its attached properties | the adapter calls it for a child a reload inserts; `Build` calls the same function for each child at construction, with `b.ChildAttached[i]` |
 
 A signal with no parameters needs no `Signals` entry: `b.Emitter("clicked")`
 returns a `func()` to hand the widget as its callback, and a no-op when the
@@ -571,13 +574,36 @@ palette — `p.Look(tuidecl.RoleBase, tuidecl.RoleText)`, `p.Color(role)` — an
 empty one must leave the widget as golib draws it.
 
 **Widgets that open over the screen** — a popup, a prompt — implement
-`Overlaid` (`SetOverlay(host, afterClose)`). A Window does not lay them out; it
+`Overlaid` (`SetOverlay(host, afterClose)`). One that opens through a
+`widget.Float` embeds an `OverlayLayer` (`NewOverlayLayer(float, "a Popup")`),
+which implements it: `Open()` shows the Float on its Window's overlay, and
+returns `ErrOutsideWindow` (`errors.Is`) when the node is in no Window. Its
+`Destroyed` hook calls `Detach`. A Window does not lay them out; it
 hands each its overlay when it arranges its children. Outside a Window,
 `Build.Overlay` is the adapter's `WithOverlay` host. A child that should be
 focused when a modal surface opens is found through `tui.Container`, so a
 wrapper around content is one (build on `tui.MultiChild`, never by embedding a
 concrete container: its methods call their own receiver, and Go has no virtual
 dispatch).
+
+**Models and host objects.** A property holding a host's `ItemModel` is read
+with `ModelField` at construction and `ModelSetter[W]` at run time, the way
+`ListView`'s `model` is. A Go value the host hands a document that is none of
+decl's kinds implements `HostObject` (a marker): `Value` passes it through as
+an object, and the type reading it takes it back from `SpecValue.Obj`.
+
+**Services.** A builder that needs a collaborator of the host's own (a store,
+a clock, a client) takes it by type, with no `Build` field for it:
+
+```go
+tuidecl.AdapterOptions(tuidecl.WithService[Clock](sysClock{}))   // T is what a builder asks for
+// in a Build:
+clock, ok := tuidecl.Service[Clock](b)   // false when none was given, or a nil one
+```
+
+**Starting from a built-in.** `StandardType(name)` is a copy of a standard type
+for a style to build its own on. The copy keeps the type's `Children`: a style
+whose `Build` counts children differently sets `Arity{}` (unchecked) or its own.
 
 Package [`controls`](controls/) is written this way, with nothing but this
 contract: `TextField` and `Popup`, from Qt Quick Controls.
