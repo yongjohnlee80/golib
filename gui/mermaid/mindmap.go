@@ -20,8 +20,7 @@ func PaintMindShape(c gui.Canvas, s pm.MindShape, box gui.Rect, fill, stroke col
 	if int(s) < len(mindmapForm) {
 		fm = mindmapForm[s]
 	}
-	l := &Laid{th: Theme{Font: gui.Font{Size: em}}}
-	l.outline(c, laidNode{form: fm, box: box, fill: fill, stroke: stroke, width: width})
+	paintForm(c, laidNode{form: fm, box: box, fill: fill, stroke: stroke, width: width}, em)
 }
 
 // mindmapForm is each mind map shape's form. golib has no starburst or cloud outline: a bang takes

@@ -198,18 +198,19 @@ func (l *Laid) shape(c gui.Canvas, s string, f gui.Font) *gui.TextLayout {
 
 // node draws a box: its form filled and outlined, its label, and its compartments.
 func (l *Laid) node(c gui.Canvas, n laidNode) {
-	l.outline(c, n)
+	paintForm(c, n, l.th.Font.Size)
 	l.text(c, n.label)
 	l.parts(c, n.box, n.parts, n.stroke)
 }
 
-// outline draws a box's form.
-func (l *Laid) outline(c gui.Canvas, n laidNode) {
+// paintForm draws a box's form, at em, the font size the diagram is laid out in: a dashed
+// outline's dashes and a form's insets scale with it. It reads nothing of a Laid, so a mind map's
+// key draws the same forms (PaintMindShape).
+func paintForm(c gui.Canvas, n laidNode, em float32) {
 	b := n.box
 	fill, stroke := gui.Solid(n.fill), gui.Solid(n.stroke)
 	x0, y0, x1, y1 := b.X, b.Y, b.X+b.W, b.Y+b.H
 	cx, cy := b.X+b.W/2, b.Y+b.H/2
-	em := l.th.Font.Size
 	poly := func(pts ...gui.Point) {
 		p := new(gui.Path).MoveTo(pts[0])
 		for _, q := range pts[1:] {

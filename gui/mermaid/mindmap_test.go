@@ -185,10 +185,11 @@ func TestPaintMindShapeIsTheMapsOutline(t *testing.T) {
 			t.Errorf("shape %v: a box %v radius %v; want %v radius %v", c.s, got[0].Rect, got[0].Radius, box, c.radius)
 		}
 	}
-	// the very outline a laid-out node of a shape gets
+	// the very outline a laid-out node of a shape gets, drawn as a laid diagram draws its nodes
+	// (no label or parts here, so only the form)
 	l := &Laid{th: Theme{Font: gui.Font{Size: 14}}}
 	rc := gui.NewRecordingCanvas(gui.Size{W: 64, H: 32}, gui.Size{W: 8, H: 16})
-	l.outline(rc, laidNode{form: formHexagon, box: box, fill: fill, stroke: stroke, width: 1.2})
+	l.node(rc, laidNode{form: formHexagon, box: box, fill: fill, stroke: stroke, width: 1.2})
 	if got := ops(pm.MindHexagon); !reflect.DeepEqual(got, rc.Calls) {
 		t.Error("PaintMindShape's hexagon is not a laid node's")
 	}
