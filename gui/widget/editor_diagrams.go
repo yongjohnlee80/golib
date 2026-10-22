@@ -2,9 +2,7 @@ package widget
 
 import (
 	"context"
-	"sync"
 
-	"github.com/yongjohnlee80/golib/gui"
 	"github.com/yongjohnlee80/golib/tui"
 )
 
@@ -35,27 +33,6 @@ import (
 //	            ▼
 //	    Slot marked refresh=true, block invalidated, body.MarkDirty()
 
-// diagramSlot is one block's diagram request: what was asked, under which generation, and the
-// last picture the block had.
-type diagramSlot struct {
-	key     diagramKey
-	to      int // the block's end line, exclusive
-	gen     uint64
-	cancel  context.CancelFunc
-	state   DiagramState
-	refresh bool // ready was called: ask the Diagrammer again on the next lay
-	pic     gui.View
-	size    gui.Size
-}
-
-// diagramKey is a request's identity: everything the picture depends on. A theme change is a
-// new request, as an edited source is.
-type diagramKey struct {
-	lang, src    string
-	width, scale float32
-	theme        Theme
-}
-
 // diagramReady is a request's ready callback, brought to the loop as a task result addressed to
 // the editor's body.
 type diagramReady struct {
@@ -67,69 +44,19 @@ type diagramReady struct {
 // or one whose ready has fired, asks d with a context of its own and a ready that the body's
 // loop receives. Pending keeps the block's last picture, so an edit never flashes it away.
 func (l *pixelLayout) Diagram(d Diagrammer, b Block, req DiagramRequest) DiagramAnswer {
-	key := diagramKey{req.Lang, req.Src, req.Width, req.Scale, req.Theme}
 	s := l.diagrams[b.From]
-	if s != nil && s.key == key && !s.refresh {
+	if s.current(keyOf(req)) {
 		return s.answer()
 	}
-	var pic gui.View
-	var size gui.Size
-	if s != nil {
-		s.cancel()
-		if s.key.lang == key.lang { // a mermaid picture never stands in for a chart
-			pic, size = s.pic, s.size
-		}
-	}
 	l.gen++
-	ctx, cancel := context.WithCancel(context.Background())
-	s = &diagramSlot{key: key, to: b.To, gen: l.gen, cancel: cancel, state: Pending, pic: pic, size: size}
-	l.diagrams[b.From] = s
-	a := d.Diagram(ctx, req, l.readyFor(ctx, b.From, s.gen))
-	switch a.State {
-	case Ready:
-		s.state, s.pic, s.size = Ready, a.Pic, a.Size
-		cancel()
-	case Declined:
-		s.state = Declined
-		cancel()
-	case Pending:
-		if a.Pic != nil {
-			s.pic, s.size = a.Pic, a.Size
-		}
-	}
-	return s.answer()
-}
-
-// answer formats the slot's current diagram answer.
-func (s *diagramSlot) answer() DiagramAnswer {
-	if s.state == Declined {
-		return DiagramAnswer{State: Declined}
-	}
-	return DiagramAnswer{State: s.state, Pic: s.pic, Size: s.size}
-}
-
-// readyFor is the ready callback of one request. Called at most once, from any goroutine; it
-// wakes a task on the body's Context that returns diagramReady to the body on its loop. The task
-// ends without a result when the request is cancelled (an edit, a newer request) or the body
-// unmounts, so a withdrawn ready never reaches the loop.
-func (l *pixelLayout) readyFor(ctx context.Context, line int, gen uint64) func() {
-	tc := l.e.body.Context()
-	if tc == nil {
-		return func() {}
-	}
-	fired := make(chan struct{})
-	var once sync.Once
-	tc.Go(func(task context.Context) (any, error) {
-		select {
-		case <-fired:
-			return diagramReady{line: line, gen: gen}, nil
-		case <-ctx.Done():
-			return nil, ctx.Err()
-		case <-task.Done():
-			return nil, task.Err()
-		}
+	gen := l.gen
+	s = askAfter(s, d, req, gen, func(ctx context.Context) func() {
+		ready, _, _ := readyTask(l.e.body.Context(), ctx, diagramReady{line: b.From, gen: gen})
+		return ready
 	})
-	return func() { once.Do(func() { close(fired) }) }
+	s.to = b.To
+	l.diagrams[b.From] = s
+	return s.answer()
 }
 
 // diagramReady handles a request's ready on the loop: a current generation marks the slot to

@@ -3,7 +3,6 @@ package widget
 import (
 	"context"
 	"strings"
-	"sync"
 
 	"github.com/yongjohnlee80/golib/gui"
 	"github.com/yongjohnlee80/golib/gui/flow"
@@ -46,18 +45,6 @@ import (
 //	                                    ▼
 //	                           s.refresh = true -> rebuild page
 
-// htmlDiagram is one diagram's request: what was asked, under which generation, and its last
-// picture.
-type htmlDiagram struct {
-	key     diagramKey
-	gen     uint64
-	cancel  context.CancelFunc
-	state   DiagramState
-	refresh bool // ready was called: ask again on the next build
-	pic     gui.View
-	size    gui.Size
-}
-
 // htmlDiagramReady is a request's ready, brought to the loop as a task result.
 type htmlDiagramReady struct {
 	dg  pageDiagram
@@ -72,7 +59,7 @@ const maxHTMLDiagrams = 64
 
 type htmlDiagrams struct {
 	l     *htmlLayout
-	slots map[pageDiagram]*htmlDiagram
+	slots map[pageDiagram]*diagramSlot
 	set   uint64 // the view's DiagramsSet the slots were asked under
 	gen   uint64
 	tasks map[tui.TaskID]struct{} // ready waits started for this layout: their results are ours
@@ -80,7 +67,7 @@ type htmlDiagrams struct {
 
 // newHTMLDiagrams constructs the diagram manager for an HTML layout instance.
 func newHTMLDiagrams(l *htmlLayout) *htmlDiagrams {
-	return &htmlDiagrams{l: l, slots: map[pageDiagram]*htmlDiagram{}, tasks: map[tui.TaskID]struct{}{}}
+	return &htmlDiagrams{l: l, slots: map[pageDiagram]*diagramSlot{}, tasks: map[tui.TaskID]struct{}{}}
 }
 
 // diagramSource is a pre's diagram when it is a <pre class="mermaid"> or a <pre
@@ -128,46 +115,24 @@ func (m *htmlDiagrams) answer(dg pageDiagram, width float32) DiagramAnswer {
 		m.set = set
 	}
 	req := DiagramRequest{Lang: dg.lang, Src: dg.src, Width: width, Scale: m.l.shaper.Scale(), Theme: diagramFonts(m.theme(), m.l.shaper.Fonts())}
-	key := diagramKey{req.Lang, req.Src, req.Width, req.Scale, req.Theme}
 	s := m.slots[dg]
-	if s != nil && s.key == key && !s.refresh {
-		return s.answerOf()
-	}
-	var pic gui.View
-	var size gui.Size
-	if s != nil {
-		s.cancel()
-		pic, size = s.pic, s.size
+	if s.current(keyOf(req)) {
+		return s.answer()
 	}
 	if len(m.slots) >= maxHTMLDiagrams { // a page edited for long: forget the others, kept by the chain's cache
-		m.reset()
+		m.reset() // s's picture still stands in for the new request's
 	}
 	m.gen++
-	ctx, cancel := context.WithCancel(context.Background())
-	s = &htmlDiagram{key: key, gen: m.gen, cancel: cancel, state: Pending, pic: pic, size: size}
-	m.slots[dg] = s
-	a := d.Diagram(ctx, req, m.readyFor(ctx, dg, s.gen))
-	switch a.State {
-	case Ready:
-		s.state, s.pic, s.size = Ready, a.Pic, a.Size
-		cancel()
-	case Declined:
-		s.state = Declined
-		cancel()
-	case Pending:
-		if a.Pic != nil {
-			s.pic, s.size = a.Pic, a.Size
+	gen := m.gen
+	s = askAfter(s, d, req, gen, func(ctx context.Context) func() {
+		ready, id, ok := readyTask(m.l.v.Context(), ctx, htmlDiagramReady{dg: dg, gen: gen})
+		if ok {
+			m.tasks[id] = struct{}{}
 		}
-	}
-	return s.answerOf()
-}
-
-// answerOf returns the current DiagramAnswer from the HTML diagram slot.
-func (s *htmlDiagram) answerOf() DiagramAnswer {
-	if s.state == Declined {
-		return DiagramAnswer{State: Declined}
-	}
-	return DiagramAnswer{State: s.state, Pic: s.pic, Size: s.size}
+		return ready
+	})
+	m.slots[dg] = s
+	return s.answer()
 }
 
 // genOf is a diagram's state as a number, for its block's key: a ready that fires, or a picture
@@ -182,30 +147,6 @@ func (m *htmlDiagrams) genOf(dg pageDiagram) uint64 {
 		refresh = 1
 	}
 	return s.gen<<3 | refresh<<2 | uint64(s.state)
-}
-
-// readyFor is a request's ready: called at most once, from any goroutine, it wakes a task on the
-// view's Context that brings htmlDiagramReady to the loop. A cancelled request (a newer one, a
-// reset) or an unmounted view ends the task with no result.
-func (m *htmlDiagrams) readyFor(ctx context.Context, dg pageDiagram, gen uint64) func() {
-	tc := m.l.v.Context()
-	if tc == nil {
-		return func() {}
-	}
-	fired := make(chan struct{})
-	var once sync.Once
-	id := tc.Go(func(task context.Context) (any, error) {
-		select {
-		case <-fired:
-			return htmlDiagramReady{dg: dg, gen: gen}, nil
-		case <-ctx.Done():
-			return nil, ctx.Err()
-		case <-task.Done():
-			return nil, task.Err()
-		}
-	})
-	m.tasks[id] = struct{}{}
-	return func() { once.Do(func() { close(fired) }) }
 }
 
 // done takes a ready on the loop; it reports whether the result was a diagram's. A current
@@ -228,7 +169,7 @@ func (m *htmlDiagrams) reset() {
 	for _, s := range m.slots {
 		s.cancel()
 	}
-	m.slots = map[pageDiagram]*htmlDiagram{}
+	m.slots = map[pageDiagram]*diagramSlot{}
 }
 
 // diagramBox is a diagram pre's box when its picture is drawn: one run holding the picture as an
