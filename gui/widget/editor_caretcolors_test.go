@@ -34,7 +34,7 @@ func TestTheEditorReportsItsCaretsColours(t *testing.T) {
 		t.Fatalf("on the prose line: %v on %v, want the text %v on the page %v", fg, bg, th.Text, page)
 	}
 
-	h.onLoop(func() { h.e.SetMode(Rendered); h.e.core.SetLine(3, 0) })
+	h.onLoop(func() { h.e.SetView(tuiwidget.ViewRendered); h.e.core.SetLine(3, 0) })
 	_, bg, th = paint()
 	if th.CodeBackground.A == 0 || th.CodeBackground == page {
 		t.Fatalf("the theme's code background %v must be its own for this cell to observe anything", th.CodeBackground)
@@ -46,7 +46,7 @@ func TestTheEditorReportsItsCaretsColours(t *testing.T) {
 	// In Visual mode the caret's cluster is selected and painted on the selection's colour:
 	// the composition sits on that, not on the page under it.
 	h.onLoop(func() {
-		h.e.SetMode(Raw)
+		h.e.SetView(tuiwidget.ViewRaw)
 		h.e.core.SetLine(0, 1)
 		h.e.core.HandleKey(tui.KeyEvent{Code: 'v', Text: "v"})
 	})

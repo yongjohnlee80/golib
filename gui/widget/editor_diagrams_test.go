@@ -58,7 +58,7 @@ const diagramDoc = "top\n```mermaid\nA-->B\n```\nend"
 func startDiagrams(t *testing.T) (*edHarness, *fakeDiagrams) {
 	t.Helper()
 	f := &fakeDiagrams{done: map[string]bool{}}
-	h := startEditor(t, 50, 14, WithRenderer(NewMarkdownRenderer(WithDiagrams(f))), WithMode(Rendered),
+	h := startEditor(t, 50, 14, WithRenderer(NewMarkdownRenderer(WithDiagrams(f))), WithView(tuiwidget.ViewRendered),
 		WithCore(tuiwidget.CoreInitialText(diagramDoc)))
 	h.paint()
 	return h, f

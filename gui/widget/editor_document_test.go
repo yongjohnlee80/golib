@@ -23,7 +23,7 @@ func docEditor(t *testing.T, text string, opts ...EditorOption) (*edHarness, *tu
 
 // state is what the cells read on the loop: the mode, which child shows, and where the focus is.
 type docState struct {
-	mode, shown     EditorMode
+	mode, shown     tuiwidget.EditorView
 	docShown        bool
 	bodyVis, docVis bool
 	focusDoc, focus bool // focus in the view; focus in the body
@@ -33,7 +33,7 @@ type docState struct {
 
 func (h *edHarness) docState(v *tuiwidget.HTMLView) (s docState) {
 	h.onLoop(func() {
-		s = docState{mode: h.e.Mode(), shown: h.e.Shown(), docShown: h.e.doc.Shown(), bodyVis: h.e.body.Visible(), docVis: v.Visible(),
+		s = docState{mode: h.e.View(), shown: h.e.ShownView(), docShown: h.e.doc.Shown(), bodyVis: h.e.body.Visible(), docVis: v.Visible(),
 			focusDoc: h.app.FocusWithin(v), focus: h.app.FocusWithin(h.e.body), source: string(v.Source()),
 			listEditing: h.e.core.ListEditing()}
 	})
@@ -49,14 +49,14 @@ func TestTheDocumentViewIsRenderedForADocumentItReads(t *testing.T) {
 	h.onLoop(func() { h.e.SetRenderedDocument(true) })
 	h.keys(ctrl('t'))
 	s := h.docState(v)
-	if s.mode != Rendered || !s.docShown || s.bodyVis || !s.docVis || s.source != "<p>one</p>" || s.listEditing {
+	if s.mode != tuiwidget.ViewRendered || !s.docShown || s.bodyVis || !s.docVis || s.source != "<p>one</p>" || s.listEditing {
 		t.Fatalf("Rendered with the view on: %+v", s)
 	}
 	h.until("the focus in the view", func() bool { return h.docState(v).focusDoc })
 
 	h.keys(ctrl('t'), tui.KeyEvent{Code: 't', Mods: tui.ModCtrl, Kind: tui.KeyRelease})
 	s = h.docState(v)
-	if s.mode != Raw || s.docShown || !s.bodyVis || s.docVis {
+	if s.mode != tuiwidget.ViewRaw || s.docShown || !s.bodyVis || s.docVis {
 		t.Fatalf("Ctrl+T (pressed, then released) from the view: %+v, want Raw on the body", s)
 	}
 	h.until("the focus back in the body", func() bool { return h.docState(v).focus })
@@ -77,11 +77,11 @@ func TestTheDocumentViewIsRenderedForADocumentItReads(t *testing.T) {
 // though SetMode's mode is unchanged; with no renderer, Raw is drawn and Rendered stays the choice.
 func TestTheDocumentViewTurnedOffWhileRendered(t *testing.T) {
 	h, v := docEditor(t, "- item")
-	h.onLoop(func() { h.e.SetRenderedDocument(true); h.e.SetMode(Rendered) })
+	h.onLoop(func() { h.e.SetRenderedDocument(true); h.e.SetView(tuiwidget.ViewRendered) })
 	h.until("the focus in the view", func() bool { return h.docState(v).focusDoc })
 	h.onLoop(func() { h.e.SetRenderedDocument(false) })
 	s := h.docState(v)
-	if s.mode != Rendered || s.docShown || !s.bodyVis || s.docVis || !s.listEditing {
+	if s.mode != tuiwidget.ViewRendered || s.docShown || !s.bodyVis || s.docVis || !s.listEditing {
 		t.Fatalf("turned off while Rendered: %+v, want Rendered Markdown on the body", s)
 	}
 	h.until("the focus back in the body", func() bool { return h.docState(v).focus })
@@ -92,12 +92,12 @@ func TestTheDocumentViewTurnedOffWhileRendered(t *testing.T) {
 	v2 := tuiwidget.NewHTMLView()
 	BindHTML(v2)
 	h2 := startEditor(t, 60, 20, WithDocumentView(v2), WithCore(tuiwidget.CoreInitialText("<p>x</p>")))
-	h2.onLoop(func() { h2.e.SetRenderedDocument(true); h2.e.SetMode(Rendered) })
-	if s := h2.docState(v2); s.mode != Rendered || !s.docShown {
+	h2.onLoop(func() { h2.e.SetRenderedDocument(true); h2.e.SetView(tuiwidget.ViewRendered) })
+	if s := h2.docState(v2); s.mode != tuiwidget.ViewRendered || !s.docShown {
 		t.Fatalf("a document view alone gives Rendered: %+v", s)
 	}
 	h2.onLoop(func() { h2.e.SetRenderedDocument(false) })
-	if s := h2.docState(v2); s.mode != Rendered || s.shown != Raw || s.docShown || !s.bodyVis {
+	if s := h2.docState(v2); s.mode != tuiwidget.ViewRendered || s.shown != tuiwidget.ViewRaw || s.docShown || !s.bodyVis {
 		t.Errorf("turned off with no renderer: %+v, want Raw drawn, Rendered chosen", s)
 	}
 }
@@ -106,7 +106,7 @@ func TestTheDocumentViewTurnedOffWhileRendered(t *testing.T) {
 // body's core, and a key the keymap leaves unbound bubbles.
 func TestTheDocumentViewLeavesOtherKeys(t *testing.T) {
 	h, v := docEditor(t, "<p>a</p>")
-	h.onLoop(func() { h.e.SetRenderedDocument(true); h.e.SetMode(Rendered) })
+	h.onLoop(func() { h.e.SetRenderedDocument(true); h.e.SetView(tuiwidget.ViewRendered) })
 	h.until("the focus in the view", func() bool { return h.docState(v).focusDoc })
 	var ln int
 	h.onLoop(func() { ln, _ = h.e.core.Line() })
@@ -128,7 +128,7 @@ func TestCtrlTPressAndReleaseFromRawTogglesOnce(t *testing.T) {
 	h.keys(ctrl('t'))
 	h.until("the focus in the view", func() bool { return h.docState(v).focusDoc })
 	h.keys(tui.KeyEvent{Code: 't', Mods: tui.ModCtrl, Kind: tui.KeyRelease})
-	if s := h.docState(v); s.mode != Rendered || !s.docShown {
+	if s := h.docState(v); s.mode != tuiwidget.ViewRendered || !s.docShown {
 		t.Errorf("Ctrl+T's release in the view toggled again: %+v", s)
 	}
 }
@@ -201,9 +201,9 @@ func TestAConsumersDocumentView(t *testing.T) {
 		t.Fatalf("the view was shown %q", text)
 	}
 	h.keys(ctrl('t'))
-	var mode EditorMode
-	h.onLoop(func() { mode = h.e.Mode() })
-	if mode != Raw {
+	var mode tuiwidget.EditorView
+	h.onLoop(func() { mode = h.e.View() })
+	if mode != tuiwidget.ViewRaw {
 		t.Fatalf("Ctrl+T from the consumer's view: mode %v, want Raw", mode)
 	}
 	var before int
@@ -253,7 +253,7 @@ func TestADocumentViewSwappedInAtRunTime(t *testing.T) {
 		return k
 	}
 	first := &keyDoc{}
-	h.onLoop(func() { h.e.SetDocumentView(first); h.e.SetRenderedDocument(true); h.e.SetMode(Rendered) })
+	h.onLoop(func() { h.e.SetDocumentView(first); h.e.SetRenderedDocument(true); h.e.SetView(tuiwidget.ViewRendered) })
 	h.until("the focus in the swapped-in view", focused(first))
 	h.keys(tui.KeyEvent{Code: 'x', Text: "x"}, tui.KeyEvent{Code: 'y', Text: "y"})
 	if got := typed(first); got != "xy" {
@@ -289,9 +289,9 @@ func TestADocumentViewSwappedInAtRunTime(t *testing.T) {
 	h.until("the focus in the body", focused(h.e.body))
 	var s docState
 	h.onLoop(func() {
-		s = docState{mode: h.e.Mode(), shown: h.e.Shown(), docShown: h.e.doc.Shown(), bodyVis: h.e.body.Visible()}
+		s = docState{mode: h.e.View(), shown: h.e.ShownView(), docShown: h.e.doc.Shown(), bodyVis: h.e.body.Visible()}
 	})
-	if s.mode != Rendered || s.shown != Rendered || s.docShown || !s.bodyVis {
+	if s.mode != tuiwidget.ViewRendered || s.shown != tuiwidget.ViewRendered || s.docShown || !s.bodyVis {
 		t.Fatalf("the view removed while shown: %+v, want Rendered by the renderer on the body", s)
 	}
 }
@@ -318,7 +318,7 @@ func TestTheGuiTableUndoesAndRedoesItsKeptEditByKey(t *testing.T) {
 				doc = NewTableDocument(h.e.Core(), ',')
 				h.e.SetDocumentView(doc)
 				h.e.SetRenderedDocument(true)
-				h.e.SetMode(Rendered)
+				h.e.SetView(tuiwidget.ViewRendered)
 			})
 			h.until("the focus in the table", func() bool {
 				var ok bool

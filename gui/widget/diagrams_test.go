@@ -156,7 +156,7 @@ func TestAFenceAsksAtTheWindowsScale(t *testing.T) {
 // its diagram: Pending at first, then, once the layout's ready reaches the loop, a picture.
 func TestTheEditorDrawsAFlowchart(t *testing.T) {
 	doc := "top\n```mermaid\nflowchart LR\n  A[Start] --> B{Ok?}\n  B -->|yes| C[Done]\n```\nend"
-	h := startEditor(t, 60, 20, WithRenderer(NewMarkdownRenderer(WithDiagrams(Diagrams(nil)))), WithMode(Rendered),
+	h := startEditor(t, 60, 20, WithRenderer(NewMarkdownRenderer(WithDiagrams(Diagrams(nil)))), WithView(tuiwidget.ViewRendered),
 		WithCore(tuiwidget.CoreInitialText(doc)))
 	h.paint()
 	picture := func() bool {
@@ -195,7 +195,7 @@ func (c scaledCanvas) Scale() float32        { return c.sh.Scale() }
 // diagram anew at the new scale rather than keeping one measured at the old.
 func TestTheEditorLaysOutAgainAtANewScale(t *testing.T) {
 	doc := "top\n```mermaid\nflowchart LR\n  A --> B\n```\nend"
-	h := startEditor(t, 60, 20, WithRenderer(NewMarkdownRenderer(WithDiagrams(Diagrams(nil)))), WithMode(Rendered),
+	h := startEditor(t, 60, 20, WithRenderer(NewMarkdownRenderer(WithDiagrams(Diagrams(nil)))), WithView(tuiwidget.ViewRendered),
 		WithCore(tuiwidget.CoreInitialText(doc)))
 	host := func() *diagramSlot {
 		var s *diagramSlot

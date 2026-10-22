@@ -81,8 +81,8 @@ func TestOneDocumentTwoEditors(t *testing.T) {
 		if !ok {
 			t.Fatalf("under the native style ed is a %T, want gui's Editor", c)
 		}
-		if e.Mode() != widget.Rendered {
-			t.Errorf("view: Editor.Rendered left the gui Editor %v", e.Mode())
+		if e.View() != tuiwidget.ViewRendered {
+			t.Errorf("view: Editor.Rendered left the gui Editor %v", e.View())
 		}
 	})
 	plain := run(t, doc)
@@ -134,16 +134,16 @@ Window { Editor { id: ed; text: "hello"; view: Editor.Rendered; FooRenderer { } 
 	s := run(t, src, tuidecl.Types(fooType), tuidecl.WithStyle(withFoo))
 	onLoop(t, s, func() {
 		c, _ := s.Program.Find("ed")
-		if e := c.(*widget.Editor); e.Mode() != widget.Rendered || made != 1 {
-			t.Errorf("with a foo renderer: mode %v, factory called %d times", e.Mode(), made)
+		if e := c.(*widget.Editor); e.View() != tuiwidget.ViewRendered || made != 1 {
+			t.Errorf("with a foo renderer: mode %v, factory called %d times", e.View(), made)
 		}
 	})
 	none := run(t, src, tuidecl.Types(fooType), tuidecl.WithStyle(guidecl.Native()))
 	onLoop(t, none, func() {
 		c, _ := none.Program.Find("ed")
 		// no renderer: Raw is drawn, Rendered kept as the choice
-		if e := c.(*widget.Editor); e.Shown() != widget.Raw || e.Mode() != widget.Rendered {
-			t.Errorf("a spec with no renderer: drawn %v, chosen %v; want Raw drawn, Rendered chosen", e.Shown(), e.Mode())
+		if e := c.(*widget.Editor); e.ShownView() != tuiwidget.ViewRaw || e.View() != tuiwidget.ViewRendered {
+			t.Errorf("a spec with no renderer: drawn %v, chosen %v; want Raw drawn, Rendered chosen", e.ShownView(), e.View())
 		}
 	})
 }
@@ -251,8 +251,8 @@ Window { Editor { id: ed; text: "<p>hello</p>"; MarkdownRenderer { } HTMLDocumen
 		if _, pixels := v.BoundLayout().(interface{ Pixels() bool }); !pixels {
 			t.Error("the HTMLView is not bound to the pixel layout")
 		}
-		if e.SetMode(widget.Rendered); e.Mode() != widget.Rendered || string(v.Source()) != "" {
-			t.Errorf("before the host turns it on, Rendered is the renderer's: mode %v, view %q", e.Mode(), v.Source())
+		if e.SetView(tuiwidget.ViewRendered); e.View() != tuiwidget.ViewRendered || string(v.Source()) != "" {
+			t.Errorf("before the host turns it on, Rendered is the renderer's: mode %v, view %q", e.View(), v.Source())
 		}
 		e.SetRenderedDocument(true)
 		if string(v.Source()) != "<p>hello</p>" {

@@ -118,7 +118,7 @@ func TestPixelScrollLines(t *testing.T) {
 // In the Rendered view blocks are not a line a row: the range still follows the painted tops.
 func TestPixelVisibleLinesRendered(t *testing.T) {
 	text := "# Title\n\npara one\n\n```go\nx := 1\ny := 2\nz := 3\n```\n\n## Next\n\n" + numbered(30)
-	h := startEditor(t, 40, 10, WithRenderer(NewMarkdownRenderer()), WithMode(Rendered),
+	h := startEditor(t, 40, 10, WithRenderer(NewMarkdownRenderer()), WithView(tuiwidget.ViewRendered),
 		WithCore(tuiwidget.CoreInitialText(text)))
 	h.paint()
 	checkVisible(t, h, "rendered, at the top")
