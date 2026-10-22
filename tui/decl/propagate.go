@@ -162,7 +162,7 @@ func (a *Adapter) refresh(id decl.NodeID) {
 		if fn := a.contractOf(b.typ).restyler; fn != nil {
 			fn(b.comp, eff)
 		}
-		if b.typ == "Window" && !pn.hasParent {
+		if _, root := b.comp.(themeRoot); root && !pn.hasParent {
 			a.windowTheme(eff)
 		}
 	}
@@ -184,6 +184,12 @@ func (a *Adapter) windowTheme(p palette) {
 		a.app.SetTheme(a.theme)
 	}
 }
+
+// themeRoot is a node whose palette, as the document's root, is the App's token theme: a Window.
+// The palette refresh asks the capability rather than the type's name.
+type themeRoot interface{ themesTheApp() }
+
+func (*windowNode) themesTheApp() {}
 
 // tokenTheme is the token theme a palette makes, each surface with the text that pairs with it:
 // the base and text the background and foreground, and the page's base the surface and panel
