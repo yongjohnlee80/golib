@@ -41,8 +41,8 @@ func WithStyle(s Style) ProgramOption {
 
 // Replaceable reports whether a style may replace the standard type name. Two kinds may not:
 //   - a container whose children are placed by their attached properties (Flex's
-//     Layout.fillHeight, say): the hook that reads them is the vocabulary's own, and a public
-//     Type has no way to carry it;
+//     Layout.fillHeight, say): its Adopt places them into the standard widget, which a style's
+//     Build would not make;
 //   - a type whose instances another part of the vocabulary reads by its concrete type
 //     (readPrivately): a replacement with an equal contract would pass CheckStyle and then
 //     break a valid document, since the reader would not recognize it.
@@ -52,7 +52,7 @@ func Replaceable(name string) bool {
 	}
 	for _, t := range stdTypes() {
 		if t.Name == name {
-			return t.adopt == nil
+			return t.Adopt == nil
 		}
 	}
 	return false
@@ -97,7 +97,7 @@ func styledTypes(s Style) ([]Type, error) {
 		switch {
 		case !ok:
 			return nil, fmt.Errorf("%w: style %q, type %q", ErrUnknownStyleType, s.Name, t.Name)
-		case types[i].adopt != nil:
+		case types[i].Adopt != nil:
 			return nil, fmt.Errorf("%w: style %q, type %q", ErrStyleTypeNotReplaceable, s.Name, t.Name)
 		case readPrivately[t.Name] != "":
 			return nil, fmt.Errorf("%w: style %q, type %q: %s", ErrStyleTypeNotReplaceable, s.Name, t.Name, readPrivately[t.Name])
@@ -174,7 +174,7 @@ func StandardContract(name string) (Contract, bool) {
 func StandardType(name string) (Type, bool) {
 	for _, t := range stdTypes() {
 		if t.Name == name {
-			t.restyle, t.adopt = nil, nil
+			t.restyle, t.Adopt = nil, nil
 			t.Setters = maps.Clone(t.Setters)
 			t.Methods = maps.Clone(t.Methods)
 			t.Getters = maps.Clone(t.Getters)

@@ -42,7 +42,7 @@ type shortcutNode struct {
 
 func (*shortcutNode) Init(*tui.Context)               {}
 func (*shortcutNode) Layout(tui.Constraints) tui.Size { return tui.Size{} }
-func (*shortcutNode) declarationOnly()                {}
+func (*shortcutNode) DeclarationOnly()                {}
 func (*shortcutNode) Render(tui.Surface)              {}
 func (*shortcutNode) HandleEvent(tui.Event) bool      { return false }
 

@@ -114,7 +114,7 @@ func appTypes() []Type {
 		},
 		editorType,
 		terminalTabsType,
-		{Name: "StatusBar", Build: buildStatusBar, restyle: restyleStatusBar, adopt: adoptStatusBarChild, Setters: map[string]Setter{
+		{Name: "StatusBar", Build: buildStatusBar, restyle: restyleStatusBar, Adopt: adoptStatusBarChild, Setters: map[string]Setter{
 			"left": textSetter("a StatusBar", statusSegment((*widget.StatusBar).SetLeft),
 				statusMessage((*widget.StatusBar).SetLeftMessage)),
 			"center": textSetter("a StatusBar", statusSegment((*widget.StatusBar).SetCenter),

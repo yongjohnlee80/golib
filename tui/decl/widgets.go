@@ -89,7 +89,7 @@ func coreTypes() []Type {
 		{Name: "Split", Children: Exactly(2), Build: buildSplit, Ctor: []string{"orientation"}, restyle: restyleSplit, Setters: map[string]Setter{
 			"ratio": setter("a Split", numberOf, (*widget.Split).SetRatio),
 		}},
-		{Name: "Flex", Build: buildFlex, Ctor: []string{"direction"}, adopt: adoptFlexChild},
+		{Name: "Flex", Build: buildFlex, Ctor: []string{"direction"}, Adopt: adoptFlexChild},
 		// Qt's Flow: a row that wraps. spacing is the gap on a line and, unless rowSpacing sets its
 		// own, between lines.
 		{Name: "Flow", Build: buildFlow,

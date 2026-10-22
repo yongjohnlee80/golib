@@ -29,10 +29,12 @@ import (
 
 const forceActiveFocus = "forceActiveFocus"
 
-// declarationOnly is a node that is a declaration and never on screen: a menu
-// row, a Shortcut, a TableViewColumn, a SyntaxHighlighter, a DialogButtonBox
-// before its Dialog takes it.
-type declarationOnly interface{ declarationOnly() }
+// DeclarationOnly is a component that is a declaration and never on screen: a
+// menu row, a Shortcut, a TableViewColumn, a SyntaxHighlighter, a
+// DialogButtonBox before its Dialog takes it. forceActiveFocus on one is
+// refused as having nothing to focus. A consumer's non-visual type (a data
+// source, a timer) implements it to be refused the same way.
+type DeclarationOnly interface{ DeclarationOnly() }
 
 // onScreenAs is a node whose screen presence is another component: a Dialog
 // is on screen as its modal.
@@ -52,7 +54,7 @@ func (a *Adapter) forceActiveFocus(b built, args []qml.SpecValue) error {
 		return fmt.Errorf("%s.%s: takes no arguments, and was given %d", b.typ, forceActiveFocus, len(args))
 	}
 	comp := b.comp
-	if _, ok := comp.(declarationOnly); ok {
+	if _, ok := comp.(DeclarationOnly); ok {
 		return fmt.Errorf("%s.%s: a %s has nothing on screen to focus", b.typ, forceActiveFocus, b.typ)
 	}
 	if s, ok := comp.(onScreenAs); ok {

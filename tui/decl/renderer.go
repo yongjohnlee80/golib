@@ -61,7 +61,7 @@ func RendererOf(c tui.Component) (RendererSpec, bool) {
 
 // A renderer spec takes no place in the layout.
 func (n *rendererNode) Layout(c tui.Constraints) tui.Size { return c.Constrain(tui.Size{}) }
-func (*rendererNode) declarationOnly()                    {}
+func (*rendererNode) DeclarationOnly()                    {}
 func (n *rendererNode) Render(tui.Surface)                {}
 
 // buildMarkdownRenderer declares golib's Markdown renderer.
@@ -131,7 +131,7 @@ func DocumentOf(c tui.Component) (DocumentSpec, bool) {
 
 // A document view spec takes no place in the layout.
 func (n *documentNode) Layout(c tui.Constraints) tui.Size { return c.Constrain(tui.Size{}) }
-func (*documentNode) declarationOnly()                    {}
+func (*documentNode) DeclarationOnly()                    {}
 func (n *documentNode) Render(tui.Surface)                {}
 
 // buildHTMLDocumentView declares golib's HTML document view.
