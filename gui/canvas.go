@@ -348,27 +348,50 @@ func (c *gioCanvas) CellSize() Size {
 	return Size{W: float32(c.m.cell.X) / c.m.scale, H: float32(c.m.cell.Y) / c.m.scale}
 }
 
+// paintPush is what a draw pushes on its ops, in this order: the clip, the opacity below full
+// alpha, and a transform. pop undoes them. It is a value, so a frame's draw allocates nothing.
+type paintPush struct {
+	cl          clip.Stack
+	opacity     paint.OpacityStack
+	tr          op.TransformStack
+	faded, xfmd bool
+}
+
+// pushPaint pushes the clip r and, below full alpha, the opacity alpha.
+func pushPaint(ops *op.Ops, r image.Rectangle, alpha float32) paintPush {
+	p := paintPush{cl: clip.Rect(r).Push(ops), faded: alpha < 1}
+	countClip()
+	if p.faded {
+		countTransform()
+		p.opacity = paint.PushOpacity(ops, alpha)
+	}
+	return p
+}
+
+// transform pushes m after the clip and the opacity.
+func (p *paintPush) transform(ops *op.Ops, m f32.Affine2D) {
+	countTransform()
+	p.tr, p.xfmd = op.Affine(m).Push(ops), true
+}
+
+// pop undoes the pushes, the last first.
+func (p paintPush) pop() {
+	if p.xfmd {
+		p.tr.Pop()
+	}
+	if p.faded {
+		p.opacity.Pop()
+	}
+	p.cl.Pop()
+}
+
 // begin pushes the clip, the opacity and the logical-to-device transform; end pops them.
 func (c *gioCanvas) begin() (end func()) {
-	cl := clip.Rect(c.clip).Push(c.ops)
-	countClip()
-	var opacity paint.OpacityStack
-	faded := c.alpha < 1
-	if faded {
-		countTransform()
-		opacity = paint.PushOpacity(c.ops, c.alpha)
-	}
-	countTransform()
+	p := pushPaint(c.ops, c.clip, c.alpha)
 	s := c.m.scale
 	base := f32.Affine2D{}.Scale(f32.Point{}, f32.Pt(s, s)).Offset(c.origin)
-	tr := op.Affine(base.Mul(c.xform)).Push(c.ops)
-	return func() {
-		tr.Pop()
-		if faded {
-			opacity.Pop()
-		}
-		cl.Pop()
-	}
+	p.transform(c.ops, base.Mul(c.xform))
+	return p.pop
 }
 
 // fill paints the current clip with b.
@@ -454,15 +477,20 @@ func (c *gioCanvas) DrawImage(img *Image, dst, src Rect) {
 	countTransform()
 	countImage()
 	st := clip.Outline{Path: rrectPath(dst, 0).spec(c.ops)}.Op().Push(c.ops)
-	tr := op.Affine(f32.Affine2D{}.
-		Offset(f32.Pt(-src.X, -src.Y)).
-		Scale(f32.Point{}, f32.Pt(dst.W/src.W, dst.H/src.H)).
-		Offset(f32.Pt(dst.X, dst.Y))).Push(c.ops)
+	tr := op.Affine(imageAffine(src, dst)).Push(c.ops)
 	img.op.Add(c.ops)
 	paint.PaintOp{}.Add(c.ops)
 	tr.Pop()
 	st.Pop()
 	end()
+}
+
+// imageAffine maps an image's src onto dst: src's corner to dst's, scaled to its size.
+func imageAffine(src, dst Rect) f32.Affine2D {
+	return f32.Affine2D{}.
+		Offset(f32.Pt(-src.X, -src.Y)).
+		Scale(f32.Point{}, f32.Pt(dst.W/src.W, dst.H/src.H)).
+		Offset(f32.Pt(dst.X, dst.Y))
 }
 
 // drawStream records a slot for s, if this canvas is drawing its window's frame.
@@ -534,17 +562,7 @@ func (c *gioCanvas) PaintCells(r CellRect, glyphsOnly bool) {
 	if c.g == nil {
 		return // a canvas stream's: no cells to paint
 	}
-	cl := clip.Rect(c.clip).Push(c.ops)
-	countClip()
-	var opacity paint.OpacityStack
-	faded := c.alpha < 1
-	if faded {
-		countTransform()
-		opacity = paint.PushOpacity(c.ops, c.alpha)
-	}
+	p := pushPaint(c.ops, c.clip, c.alpha)
 	c.r.paintCells(c.ops, c.g, CellRect{X: c.cellX + r.X, Y: c.cellY + r.Y, W: r.W, H: r.H}, glyphsOnly)
-	if faded {
-		opacity.Pop()
-	}
-	cl.Pop()
+	p.pop()
 }

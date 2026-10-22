@@ -163,6 +163,17 @@ type Measured struct {
 // Width is the line's width: its last X.
 func (m Measured) Width() float32 { return m.X[len(m.X)-1] }
 
+// unwrapped is a line width no text reaches: a layout that never wraps.
+const unwrapped = 1 << 20
+
+// params is the shaping of text in ft at f's size, wrapped at maxW device pixels.
+func (t *TextShaper) params(ft font.Font, f Font, maxW int) text.Parameters {
+	return text.Parameters{Font: ft, PxPerEm: fixed.Int26_6(f.Size * t.scale * 64), MaxWidth: maxW}
+}
+
+// px is v, a 26.6 device length, in logical pixels.
+func (t *TextShaper) px(v fixed.Int26_6) float32 { return float32(v) / 64 / t.scale }
+
 // Scale is the shaper's device pixels per logical pixel: what it measures at.
 func (t *TextShaper) Scale() float32 { return t.scale }
 
@@ -196,20 +207,15 @@ func (t *TextShaper) Measure(s string, f Font) Measured {
 // runeEdges shapes s on one line and returns the font's ascent and descent and the x where
 // each rune starts, then the line's width: len(runes)+1 positions, in logical pixels.
 func (t *TextShaper) runeEdges(s string, f Font) (ascent, descent float32, x []float32) {
-	t.s.LayoutString(text.Parameters{
-		Font:     t.font(s, f),
-		PxPerEm:  fixed.Int26_6(f.Size * t.scale * 64),
-		MaxWidth: 1 << 20,
-	}, s)
+	t.s.LayoutString(t.params(t.font(s, f), f, unwrapped), s)
 	n := utf8.RuneCountInString(s)
 	x = make([]float32, n+1)
-	px := func(v fixed.Int26_6) float32 { return float32(v) / 64 / t.scale }
 	ri, first := 0, true
 	var start, end fixed.Int26_6
 	open := false
 	for g, ok := t.s.NextGlyph(); ok; g, ok = t.s.NextGlyph() {
 		if first {
-			ascent, descent, first = px(g.Ascent), px(g.Descent), false
+			ascent, descent, first = t.px(g.Ascent), t.px(g.Descent), false
 		}
 		if !open {
 			start, end, open = g.X, g.X, true
@@ -222,11 +228,11 @@ func (t *TextShaper) runeEdges(s string, f Font) (ascent, descent float32, x []f
 		open = false
 		runes := int(g.Runes)
 		for k := 0; k < runes && ri+k < n; k++ {
-			x[ri+k] = px(start) + (px(end)-px(start))*float32(k)/float32(runes)
+			x[ri+k] = t.px(start) + (t.px(end)-t.px(start))*float32(k)/float32(runes)
 		}
 		ri += runes
 		if ri <= n {
-			x[min(ri, n)] = px(end)
+			x[min(ri, n)] = t.px(end)
 		}
 	}
 	for ; ri < n; ri++ { // runes no glyph covered (a trailing line break): at the end
@@ -246,15 +252,11 @@ func (t *TextShaper) runeEdges(s string, f Font) (ascent, descent float32, x []f
 // Returns a [TextLayout] holding vector path outlines, bitmap glyphs, and layout dimensions.
 func (t *TextShaper) Layout(s string, f Font, maxWidth float32) *TextLayout {
 	ft := t.font(s, f)
-	maxW := 1 << 20
+	maxW := unwrapped
 	if maxWidth > 0 {
 		maxW = max(int(maxWidth*t.scale), 1)
 	}
-	t.s.LayoutString(text.Parameters{
-		Font:     ft,
-		PxPerEm:  fixed.Int26_6(f.Size * t.scale * 64),
-		MaxWidth: maxW,
-	}, s)
+	t.s.LayoutString(t.params(ft, f, maxW), s)
 	tl := &TextLayout{scale: t.scale, font: f, family: string(ft.Typeface)}
 	var line []text.Glyph
 	var firstY int32
@@ -284,8 +286,8 @@ func (t *TextShaper) Layout(s string, f Font, maxWidth float32) *TextLayout {
 	for g, ok := t.s.NextGlyph(); ok; g, ok = t.s.NextGlyph() {
 		if len(tl.lines) == 0 && len(line) == 0 {
 			firstY = g.Y
-			tl.Ascent = float32(g.Ascent) / 64 / t.scale
-			tl.Descent = float32(g.Descent) / 64 / t.scale
+			tl.Ascent = t.px(g.Ascent)
+			tl.Descent = t.px(g.Descent)
 		} else if len(line) > 0 && g.Y != line[0].Y {
 			flush()
 		}
@@ -296,7 +298,7 @@ func (t *TextShaper) Layout(s string, f Font, maxWidth float32) *TextLayout {
 	if len(line) > 0 {
 		lastY := line[0].Y
 		flush()
-		tl.Width = float32(right) / 64 / t.scale
+		tl.Width = t.px(right)
 		tl.Height = tl.Ascent + (float32(lastY-firstY)+float32(lastDescent)/64)/t.scale
 	}
 	return tl
@@ -321,11 +323,7 @@ func (t *TextShaper) LayoutRuns(runs []TextRun, f Font) *TextLayout {
 			continue
 		}
 		s := strings.Map(oneLine, r.Text)
-		t.s.LayoutString(text.Parameters{
-			Font:     t.font(s, f),
-			PxPerEm:  fixed.Int26_6(f.Size * t.scale * 64),
-			MaxWidth: 1 << 20,
-		}, s)
+		t.s.LayoutString(t.params(t.font(s, f), f, unwrapped), s)
 		at := fixed.Int26_6(r.X * t.scale * 64)
 		said = append(said, textRun{text: s, x: float32(at) / 64})
 		first, origin := true, fixed.Int26_6(0)
@@ -334,8 +332,8 @@ func (t *TextShaper) LayoutRuns(runs []TextRun, f Font) *TextLayout {
 				first, origin = false, g.X
 			}
 			g.X += at - origin
-			tl.Ascent = max(tl.Ascent, float32(g.Ascent)/64/t.scale)
-			tl.Descent = max(tl.Descent, float32(g.Descent)/64/t.scale)
+			tl.Ascent = max(tl.Ascent, t.px(g.Ascent))
+			tl.Descent = max(tl.Descent, t.px(g.Descent))
 			right = max(right, g.X+g.Advance)
 			glyphs = append(glyphs, g)
 		}
@@ -344,7 +342,7 @@ func (t *TextShaper) LayoutRuns(runs []TextRun, f Font) *TextLayout {
 		return tl
 	}
 	tl.lines = []shapedLine{{path: t.shape(glyphs), bitmaps: t.s.Bitmaps(glyphs), x: float32(glyphs[0].X) / 64, runs: said}}
-	tl.Width = float32(right) / 64 / t.scale
+	tl.Width = t.px(right)
 	tl.Height = tl.Ascent + tl.Descent
 	return tl
 }
