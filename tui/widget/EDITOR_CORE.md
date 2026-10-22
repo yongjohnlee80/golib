@@ -385,3 +385,34 @@ core.Commands().Add(widget.Command{
 The function reads with `Selection` and `TextIn`, edits with `Replace`, and is one undo step.
 The same seven functions (`Cursor`, `TextIn`, `Insert`, `Replace`, `Find`, `Batch` and
 `RunCommand`) are what a scripting binding or an agent's tool needs to expose.
+
+## Inside the core: who owns what
+
+This section is for whoever changes the core. `EditorCore` holds one module per concern, each in
+its own files. A module reaches another only through the contract named here, never by setting
+its fields from outside.
+
+| Concern | Owner (files, types) | What it offers the others |
+|---|---|---|
+| Input grammar | `editorcore_input.go` (`HandleKey`, `HandlePaste`, `insertStages`), `editorkeys.go` (`keyDispatch`: the mode and the input pending between keys), `editor_keytables.go` and `editor_commands.go` (the key declarations, as `keymap` commands), `editor_actions.go` (`Action`: its name, modes, whether it mutates, and what runs it), `editor_vimgrammar.go` and `editor_vimsubscopes.go` (Normal and Visual as Vim reads them), `keygrammar.go` (the count and g grammar, shared with `TableCore`), `editor_keymap.go` and `editor_keymap_compat.go` (`Keyset`, and the `Keymap`/`KeyChord` adapter) | A key becomes exactly one thing: an `Action` run through its table entry, typed text, or nothing (it bubbles). Insert's order is `insertStages`, and each stage's comment is its contract. A module that reacts to keys in Insert (Replace mode, the assists) is one of those stages; none reads keys on its own. |
+| Text editing | `textbuffer.go` (`textBuffer`: the line primitives, the cursor, the sticky column), `editorcore_edit.go` (the public functions: `Insert`, `Delete`, `Replace`, `Batch`), and the Vim edits over them (`editor_vimoperators.go`, `editor_vimedits.go`, `editor_vimvisual.go`, `editor_vimblock.go`, `editor_vimreplace.go`, `editor_viminsert.go`) with their motions and objects (`editor_motions.go`, `editor_vimmotions.go`, `editor_vimobjects.go`, `editor_vimsentences.go`, `editor_vimrows.go`) | Every change to the lines goes through a `textBuffer` primitive. Every edit ends in `edited`, which gives the text a new revision, tells the layout which lines changed (`EditorLayout.Changed`), reveals the cursor and publishes `ChangeEvent`. A `Batch` holds that until its outermost call returns. |
+| History | `edithistory.go` (the undo groups), `editor_history.go` (`snapshot`, `beginGroup`, undo and redo, `edited`), `editor_vimrepeat.go` (`.`), `editor_vimmacros.go` (macros), `editor_jumps.go` and `jumplist.go` (Ctrl+O and Ctrl+I), `editregister.go` and `editor_clipboard.go` (the registers and the system clipboard) | An edit opens its group with `beginGroup` before it changes anything: a Normal-mode edit is one group, an Insert session one. Undo and redo restore a snapshot and move the marks, the other editors on the buffer and the places left in it, then notify like an edit. `.` and macros replay what they recorded through the input path (`HandleKey`, typed text, `HandlePaste`), so they need nothing from the edits. |
+| Search | `editorcore_find.go` (`FindOptions`, the active find, `ReplaceSession`), `editor_vimstar.go` (`*` and `#`, and `FindRequest` for a host that keeps its own find) | Matching is over buffer positions and whole grapheme clusters. Replacement edits through `Replace`, a core function, and a `ReplaceSession`'s replacements join one undo group. |
+| Completion | `commandline_complete.go`, on the `CommandLine` widget, not the core | The core offers only the registry: `Commands`, and each `Command`'s `Complete(CompleteContext)`. The prompt does the walking and the dropdown. The core completes nothing in the text itself. |
+| Command line | `editorcore_commands.go` (`Command`, `Commands`, `RunCommand`) | A verb runs with a `CommandContext` carrying the `*EditorCore`, and edits through the public functions like any host. Its refusals are sentinels the prompt words itself (`promptSays`). |
+| Assists | `editor_tables.go` (Tab walks a Markdown table's cells), `editor_lists.go` (Markdown list items), `editor_indent.go` (auto-indent and the indent unit) | The table and list assists are one Insert stage (`assistStage`, the table first). Each is offered a key and its command, and edits as any edit does: `beginGroup` (in Insert, the session's open group), `textBuffer`, then `edited`. Off their lines, they settle nothing. |
+| Presentation state | `editor_highlight.go` (`highlightCache`), `editor_indentmarks.go`, `editor_vimfolds.go` (what a layout draws as one row) | The core keeps no cells. It reaches its widget through `EditorLayout` and the optional `EditorViewport`, `EditorRowLayout` and `EditorFoldLayout`, in the widget's own units. |
+
+### Splits that were not made
+
+- **TextArea does not run on `EditorCore`.** TextArea stays a widget of its own, and so no
+  shared "edit actions" interface is drawn between the two: nothing but TextArea would
+  implement it.
+- **No narrower host interface for the command registry.** `Command.Run` and `Complete` take
+  contexts carrying `*EditorCore`. A host that is not an editor would need the registry
+  redesigned, not an interface extracted.
+- **A motion and an operator's target stay separate functions.** They differ by Vim's own
+  definitions, not by drift: an operator's `j` is linewise over fold rows where the motion keeps
+  the sticky column, `d$` is inclusive, and an operator's `l` reaches the line's length. The
+  positions they use already come from shared helpers (the paragraph, sentence, word and find
+  walks).
