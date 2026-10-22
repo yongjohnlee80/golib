@@ -114,10 +114,13 @@ func (p *popupLayer) Layout(c tui.Constraints) tui.Size {
 		// A close asked from inside the panel's own dispatch (a row's action):
 		// the layer leaves after this pass, never while that dispatch is still
 		// running inside the panel.
-		p.ctx.AfterLayout("popup.close", func() { p.host.CloseAnchored(p.id, p.reason) })
+		p.ctx.AfterLayout(popupCloseCommitKey, func() { p.host.CloseAnchored(p.id, p.reason) })
 	}
 	return c.Constrain(tui.Size{W: w, H: h})
 }
+
+// popupCloseCommitKey is the layer's deferred close (tui.Context.AfterLayout).
+const popupCloseCommitKey tui.CommitKey = "widget.popup.close"
 
 func (p *popupLayer) Render(tui.Surface) {} // transparent: only the panel paints
 
