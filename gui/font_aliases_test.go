@@ -64,7 +64,7 @@ func TestTheCellFontByItsLongNameIsTheFont(t *testing.T) {
 	}
 	b := NewBackend()
 	b.SetFont("JetBrainsMono Nerd Font", 0)
-	if got := b.font.Load().typeface; !namesFamily(got, "JetBrainsMono NF") {
+	if got := b.font.load().typeface; !namesFamily(got, "JetBrainsMono NF") {
 		t.Errorf("SetFont's chain %q lacks the short name", got)
 	}
 }

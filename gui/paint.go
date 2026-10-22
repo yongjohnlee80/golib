@@ -66,15 +66,10 @@ type renderer struct {
 	// glyphs is cleared with the row cache when the font size or the window's face changes. It
 	// holds one entry per (cluster, bold, italic, face) drawn since: bounded by the faces in the
 	// table (at most tui's maxCellFaces) times the clusters actually on screen, not by frames.
-	// The frame being recorded, cut at stream slots (frameParts).
-	cutOps   *op.Ops
-	cutRec   op.MacroOp
-	cuts     []framePart
-	cutting  bool
-	segStart int // the walk when the segment being recorded began (gui_opcount)
-	glyphs   map[glyphKey]glyphShape
-	faces    []font.Typeface // the cell faces (tui.FaceHost), index 0 unused: the window's typeface
-	fonts    Fonts           // the window's families, for the native views (Canvas.Fonts)
+	cutter frameCutter // the frame being recorded, cut at stream slots (frameParts; paint_cut.go)
+	glyphs map[glyphKey]glyphShape
+	faces  []font.Typeface // the cell faces (tui.FaceHost), index 0 unused: the window's typeface
+	fonts  Fonts           // the window's families, for the native views (Canvas.Fonts)
 }
 
 type glyphKey struct {
@@ -170,8 +165,7 @@ func (r *renderer) frameParts(g *grid, m metrics, cur cursorState, natives []tui
 	}
 
 	ops := new(op.Ops) // owned by the frame from here on
-	r.cutOps, r.cutRec, r.cuts, r.cutting = ops, op.Record(ops), r.cuts[:0], true
-	r.segStart = walkNow()
+	r.cutter.begin(ops)
 	r.drawMargins(ops, g, m)
 	for i, row := range r.rows {
 		row.Add(ops)
@@ -181,34 +175,10 @@ func (r *renderer) frameParts(g *grid, m metrics, cur cursorState, natives []tui
 	if cur.visible {
 		r.drawCursor(ops, g, cur, focused)
 	}
-	r.cutting = false
-	last := r.cutRec.Stop()
-	lastCost := walkNow() - r.segStart
+	first, cost, parts := r.cutter.end()
+	r.firstCost = cost // with no slot, the whole frame's
 	r.paths.endFrame()
-	if len(r.cuts) == 0 {
-		r.firstCost = lastCost // the whole frame is one segment
-		return last, nil
-	}
-	// cuts[0].seg is the drawing before the first slot; each later seg follows the slot before.
-	first := r.cuts[0].seg
-	r.firstCost = r.cuts[0].cost
-	parts := make([]framePart, len(r.cuts))
-	for i := range r.cuts {
-		parts[i].slot = r.cuts[i].slot
-		if i+1 < len(r.cuts) {
-			parts[i].seg, parts[i].cost = r.cuts[i+1].seg, r.cuts[i+1].cost
-		} else {
-			parts[i].seg, parts[i].cost = last, lastCost
-		}
-	}
 	return first, parts
-}
-
-// cut ends the drawing so far at a stream slot and starts the next segment.
-func (r *renderer) cut(slot streamSlot) {
-	r.cuts = append(r.cuts, framePart{slot: slot, seg: r.cutRec.Stop(), cost: walkNow() - r.segStart})
-	r.segStart = walkNow()
-	r.cutRec = op.Record(r.cutOps)
 }
 
 // drawMargins fills everything around the grid (the window's padding, and the half-cells of

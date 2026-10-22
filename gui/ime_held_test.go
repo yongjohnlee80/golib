@@ -52,7 +52,7 @@ func TestHeldShowsTheCommittedTextTheCompositionHolds(t *testing.T) {
 func TestThePreeditDrawsTheHeldCommitBeforeTheComposition(t *testing.T) {
 	b := NewBackend()
 	hangulHeldThenComposing(&b.gio.ime)
-	fs := b.font.Load()
+	fs := b.font.load()
 	m := measure(fs.fm, fs.size, 0, image.Pt(240, 60), unit.Metric{PxPerDp: 1, PxPerSp: 1})
 	hw, err := headless.NewWindow(m.window.X, m.window.Y)
 	if err != nil {
@@ -124,7 +124,7 @@ func TestThePreeditUnderlineSpansRightToLeftAndCombiningText(t *testing.T) {
 			b := NewBackend()
 			b.gio.ime.edit(TextEdit{Start: 0, End: 0, Text: tc.text})
 			b.gio.ime.compose(tc.comp)
-			fs := b.font.Load()
+			fs := b.font.load()
 			m := measure(fs.fm, fs.size, 0, image.Pt(240, 60), unit.Metric{PxPerDp: 1, PxPerSp: 1})
 			hw, err := headless.NewWindow(m.window.X, m.window.Y)
 			if err != nil {

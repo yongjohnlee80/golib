@@ -16,7 +16,7 @@ func TestThePreeditIsDrawnInTheTextsColours(t *testing.T) {
 	b := NewBackend()
 	b.gio.ime.edit(TextEdit{Text: "한"})
 	b.gio.ime.compose(Composition{Start: 0, End: 1})
-	fs := b.font.Load()
+	fs := b.font.load()
 	m := measure(fs.fm, fs.size, 0, image.Pt(200, 60), unit.Metric{PxPerDp: 1, PxPerSp: 1})
 	hw, err := headless.NewWindow(m.window.X, m.window.Y)
 	if err != nil {

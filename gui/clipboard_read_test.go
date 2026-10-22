@@ -178,8 +178,8 @@ func TestClipboardReadCancelWaitsForAnAnswerInProgress(t *testing.T) {
 	b := &Backend{q: newEventQueue()}
 	started, release := make(chan struct{}), make(chan struct{})
 	cancel, _ := b.ReadClipboard(func(string, error) { close(started); <-release })
-	gen := b.startReadGen()
-	go b.answerGen(gen, "x")
+	gen := b.clip.startGen()
+	go b.clip.answer(gen, "x")
 	<-started
 	returned := make(chan struct{})
 	go func() { cancel(); close(returned) }()

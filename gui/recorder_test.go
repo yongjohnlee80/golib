@@ -40,7 +40,7 @@ func TestARecordedHangulCompositionShowsTheInputPathInRecords(t *testing.T) {
 	b.readInput(r.Source(), tag, metrics{})
 	b.readInput(r.Source(), tag, metrics{})
 	b.q.queue = nil
-	b.rec = ring
+	b.rec.r = ring
 	r.Queue(
 		key.EditEvent{Range: key.Range{Start: 0, End: 0}, Text: "ㅎ"},
 		key.SnippetEvent(key.Range{Start: 0, End: 1}),
@@ -108,7 +108,7 @@ func TestTheJSONLRecordingParsesBack(t *testing.T) {
 	tag := &b.gio
 	b.readInput(r.Source(), tag, metrics{})
 	b.readInput(r.Source(), tag, metrics{}) // the router's focus events are not this cell's subject
-	b.rec = rec
+	b.rec.r = rec
 	r.Queue(key.EditEvent{Range: key.Range{Start: 0, End: 0}, Text: "a"})
 	b.readInput(r.Source(), tag, metrics{})
 	if err := rec.Close(); err != nil {
@@ -186,7 +186,7 @@ func TestTheRingRecorderKeepsTheLastRecords(t *testing.T) {
 // With no recorder, the input path allocates nothing for the recorder's sake.
 // The six allocations readInput makes per call are its own, and predate the
 // recorder: they are the variadic filter slice it hands the event source, and
-// the filters boxed into it. Every recorder operation is behind b.rec != nil,
+// the filters boxed into it. Every recorder operation is behind b.rec.on(),
 // and none of them runs here — the same probe against origin/main, which has
 // no recorder at all, measures the same six.
 func TestTheUnrecordedInputPathAllocatesNothing(t *testing.T) {
@@ -206,7 +206,7 @@ func TestTheUnrecordedInputPathAllocatesNothing(t *testing.T) {
 // are cmd records, in the order they were sent.
 func TestTheFocusHandshakeIsRecorded(t *testing.T) {
 	ring := newRingRecorder(8)
-	b := &Backend{q: newEventQueue(), rec: ring}
+	b := &Backend{q: newEventQueue(), rec: inputRecorder{r: ring}}
 	tag := &b.gio
 	src := &recordingSource{}
 	b.readInput(src, tag, metrics{})
@@ -252,7 +252,7 @@ func TestStopWaitsForTheWindowGoroutineBeforeTheRecorderCloses(t *testing.T) {
 	go func() { // the window goroutine: records flow while the App stops, then run's tail
 		defer close(flowing)
 		for i := range 100000 {
-			b.record(StageIn, "TextEdit", map[string]any{"i": i})
+			b.rec.record(StageIn, "TextEdit", map[string]any{"i": i})
 		}
 		b.finishRun()
 	}()
@@ -370,7 +370,7 @@ func TestAStopBeforeStartClosesTheRecorder(t *testing.T) {
 	var buf bytes.Buffer
 	rec := NewJSONLRecorder(&buf)
 	b := NewBackend(WithRecorder(rec))
-	b.record(StageIn, "TextEdit", map[string]any{"text": "a"})
+	b.rec.record(StageIn, "TextEdit", map[string]any{"text": "a"})
 	if err := b.Stop(); err != nil {
 		t.Fatalf("Stop before Start: %v", err)
 	}
@@ -416,10 +416,10 @@ func TestAnUnmarshallableRecordIsTheRecordingsStickyError(t *testing.T) {
 
 func TestWithRecorderInstallsTheRecorder(t *testing.T) {
 	ring := newRingRecorder(4)
-	if b := NewBackend(WithRecorder(ring)); b.rec != Recorder(ring) {
+	if b := NewBackend(WithRecorder(ring)); b.rec.r != Recorder(ring) {
 		t.Fatal("WithRecorder's recorder did not reach the backend")
 	}
-	if b := NewBackend(); b.rec != nil {
+	if b := NewBackend(); b.rec.r != nil {
 		t.Fatal("a backend built with no WithRecorder must record nothing")
 	}
 }

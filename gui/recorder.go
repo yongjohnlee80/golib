@@ -2,6 +2,7 @@ package gui
 
 import (
 	"io"
+	"sync"
 	"time"
 
 	"github.com/yongjohnlee80/golib/gui/record"
@@ -61,13 +62,26 @@ const (
 	StageTui = record.StageTui
 )
 
-// record numbers and hands one record to the installed recorder. The hooks build
-// their data inside their own b.rec != nil guard, so the path with no recorder
-// allocates nothing.
-func (b *Backend) record(stage Stage, kind string, data map[string]any) {
-	rec := Record{Seq: b.recSeq, At: time.Now(), Stage: stage, Kind: kind, Data: data}
-	b.recSeq++
-	b.rec.Record(rec)
+// inputRecorder is the input path's recorder (nil records nothing) and the next record's number.
+// Both belong to the Gio goroutine: readInput, deliverIME, placeCaret and drawPreedit all run
+// there. The recorder is closed once: by that goroutine as the window finishes (finishRun), or by
+// Stop when the window never ran. The close's error is kept for Stop to report.
+type inputRecorder struct {
+	r    Recorder
+	seq  uint64
+	once sync.Once
+	err  error
+}
+
+// on reports whether a recorder is installed. The hooks build their data inside their own on()
+// guard, so the path with no recorder allocates nothing.
+func (r *inputRecorder) on() bool { return r.r != nil }
+
+// record numbers and hands one record to the installed recorder.
+func (r *inputRecorder) record(stage Stage, kind string, data map[string]any) {
+	rec := Record{Seq: r.seq, At: time.Now(), Stage: stage, Kind: kind, Data: data}
+	r.seq++
+	r.r.Record(rec)
 }
 
 // eventFields flattens one InputEvent into its record's kind and fields.
@@ -123,15 +137,15 @@ func imeFields(s *imeState) map[string]any {
 	}
 }
 
-// closeRecorder closes the recorder exactly once, from the only goroutine that
-// records into it, and keeps the error for Stop to report.
-func (b *Backend) closeRecorder() {
-	if b.rec == nil {
+// close closes the recorder exactly once, from the only goroutine that records into it, and keeps
+// the error for Stop to report.
+func (r *inputRecorder) close() {
+	if r.r == nil {
 		return
 	}
-	b.closeRec.Do(func() {
-		if c, ok := b.rec.(io.Closer); ok {
-			b.recErr = c.Close()
+	r.once.Do(func() {
+		if c, ok := r.r.(io.Closer); ok {
+			r.err = c.Close()
 		}
 	})
 }
@@ -140,7 +154,7 @@ func (b *Backend) closeRecorder() {
 // recorder is closed by its only writer, and only then is the goroutine's
 // completion signalled for Stop to wait on.
 func (b *Backend) finishRun() {
-	b.closeRecorder()
+	b.rec.close()
 	close(b.runDone)
 }
 

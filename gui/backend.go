@@ -77,12 +77,9 @@ type Backend struct {
 	cfg config
 	win *app.Window
 
-	// font is the cell font as the Gio goroutine reads it: one Load per frame, for measure and
-	// the IME's preedit alike. The tui loop replaces it (SetFont, SetZoom) and never mutates one.
-	font atomic.Pointer[fontState]
-	// The tui loop owns these: what SetFont, SetProseFont and SetZoom were last given.
-	fontSize unit.Sp // the size before zoom
-	zoom     int     // percent
+	// font is the cell font: SetFont's size and SetZoom's percent, and the fontState the Gio
+	// goroutine reads, one load per frame (fonts.go).
+	font fontControl
 
 	// metrics is the Gio goroutine's latest snapshot. Readers Load it once and use that value.
 	metrics atomic.Pointer[metrics]
@@ -98,11 +95,9 @@ type Backend struct {
 	grid    grid
 	paintM  metrics // the metrics the grid was laid out for (Flush)
 	render  *renderer
-	cursor  tui.CursorLatch        // the cursor calls; publishFrame takes it
-	images  tui.ImageLatch         // PlaceImage and DeleteImage; publishFrame applies them
-	placed  map[uint32]placedImage // the images shown, each decoded once per version
-	imgList []uint32               // placement order
-	natives []tui.NativePlacement  // this frame's, from PlaceNatives
+	cursor  tui.CursorLatch       // the cursor calls; publishFrame takes it
+	images  imageTable            // PlaceImage and DeleteImage; publishFrame applies them (images.go)
+	natives []tui.NativePlacement // this frame's, from PlaceNatives
 
 	stage stageLayouts // a Panes window's layout snapshots (panes.go)
 
@@ -110,28 +105,19 @@ type Backend struct {
 	presentList []*stream // streamsPresented's list, reused; Gio goroutine
 	presenting  []*stream // the streams the frame being presented selected; Gio goroutine
 
-	// The hand-over to the Gio goroutine, guarded by mu.
-	mu       sync.Mutex
-	latest   *frame  // the newest finished frame; Flush replaces it and never waits
-	copyText *string // a clipboard write for the Gio goroutine to perform
-	// Clipboard reads (clipboard_read.go): reads waiting for the next generation, and the generation
-	// in flight (nil for none), whose pointer is its Gio tag.
-	reads []*clipRead
-	gen   *readGen
+	// The hand-over of frames to the Gio goroutine, guarded by mu.
+	mu     sync.Mutex
+	latest *frame // the newest finished frame; Flush replaces it and never waits
+	// clip is the clipboard's hand-over: a write, and the reads (clipboard_read.go). Its own lock.
+	clip clipboardBridge
 
 	// The Gio goroutine owns these.
 	gio gioState
 
-	// The input path's recorder (nil records nothing), and the next record's
-	// number. Both belong to the Gio goroutine: readInput, deliverIME, placeCaret
-	// and drawPreedit all run there. The recorder is closed by that goroutine
-	// alone, when the window finishes, and Stop reports its error once runDone
+	// rec is the input path's recorder (recorder.go). Stop reports its close's error once runDone
 	// says the close has happened.
-	rec         Recorder
-	recSeq      uint64
+	rec         inputRecorder
 	runDone     chan struct{}
-	recErr      error
-	closeRec    sync.Once
 	runLaunched atomic.Bool // run was launched: its tail closes the recorder, and Stop waits
 }
 
@@ -182,33 +168,23 @@ func NewBackend(opts ...Option) *Backend {
 	cells := text.NewShaper(text.WithCollection(gofont.Collection()))
 	cfg.typeface = cellTypeface(cfg) // the full list, once: fallbackChain leaves it as it is
 	b := &Backend{
-		cfg:      cfg,
-		win:      new(app.Window),
-		fontSize: cfg.fontSize,
-		zoom:     100,
-		q:        newEventQueue(),
-		started:  make(chan struct{}),
-		runDone:  make(chan struct{}),
-		render:   newRenderer(cells, fallbackChain(cfg.typeface), cfg.theme),
-		placed:   map[uint32]placedImage{},
+		cfg:     cfg,
+		win:     new(app.Window),
+		q:       newEventQueue(),
+		started: make(chan struct{}),
+		runDone: make(chan struct{}),
+		render:  newRenderer(cells, fallbackChain(cfg.typeface), cfg.theme),
+		images:  newImageTable(),
 	}
 	if cfg.stage != nil {
 		cfg.stage.b = b
 	}
 	b.gio.shaper = text.NewShaper(text.WithCollection(gofont.Collection()))
-	b.rec = cfg.recorder
-	b.font.Store(&fontState{fm: measureFont(cells, fallbackChain(cfg.typeface)), typeface: fallbackChain(cfg.typeface),
+	b.rec.r = cfg.recorder
+	b.font.size, b.font.zoom = cfg.fontSize, 100
+	b.font.state.Store(&fontState{fm: measureFont(cells, fallbackChain(cfg.typeface)), typeface: fallbackChain(cfg.typeface),
 		size: cfg.fontSize, fonts: b.render.fonts})
 	return b
-}
-
-// fontState is one hand-over of the cell font to the Gio goroutine.
-type fontState struct {
-	fm       fontMetrics
-	typeface string  // the cell typeface list, fallbackChain's
-	size     unit.Sp // the size the cells are drawn at: SetFont's, times SetZoom's percent
-	gen      uint64  // bumped by every change of font, family or size
-	fonts    Fonts   // the native views' families, as the renderer has them
 }
 
 // SetFont changes the cell font while the window runs: typeface a CSS-style family list as
@@ -221,7 +197,7 @@ func (b *Backend) SetFont(typeface string, size float32) {
 		b.cfg.typeface = cellTypeface(b.cfg)
 	}
 	if size > 0 {
-		b.fontSize = unit.Sp(size)
+		b.font.size = unit.Sp(size)
 	}
 	b.refont(typeface != "")
 }
@@ -243,7 +219,7 @@ func (b *Backend) SetCellFaces(families []string) {
 // SetZoom scales the cell font, and with it everything sized by the window's text (Canvas.TextSize),
 // to pct percent of SetFont's size: 50 to 300, 100 the size itself. On the tui loop.
 func (b *Backend) SetZoom(pct int) {
-	b.zoom = min(max(pct, 50), 300)
+	b.font.setZoom(pct)
 	b.refont(false)
 }
 
@@ -258,21 +234,11 @@ func (b *Backend) SetProseFont(family string) {
 	b.refont(false)
 }
 
-// refont publishes a new fontState: the cell font measured again, a new generation, and the
-// renderer's face when the typeface changed (the glyphs it cached are cleared by the generation).
-// Then it asks Gio for a frame, which pushes the App a ResizeEvent at the new generation.
+// refont publishes a new fontState (fontControl.publish), measured again and the renderer's face
+// changed when face. Then it asks Gio for a frame, which pushes the App a ResizeEvent at the new
+// generation.
 func (b *Backend) refont(face bool) {
-	old := b.font.Load()
-	tf := fallbackChain(b.cfg.typeface)
-	fs := &fontState{fm: old.fm, typeface: tf, size: b.fontSize * unit.Sp(b.zoom) / 100, gen: old.gen + 1}
-	if face {
-		fs.fm = measureFont(b.render.shaper, tf)
-		b.render.typeface = font.Typeface(tf)
-		b.render.fonts.Mono = tf
-	}
-	b.render.fonts.Gen = fs.gen
-	fs.fonts = b.render.fonts // for other goroutines (a CanvasStream's producer)
-	b.font.Store(fs)
+	b.font.publish(b.render, b.cfg.typeface, face)
 	b.win.Invalidate()
 }
 
@@ -339,9 +305,9 @@ func (b *Backend) Stop() error {
 	} else {
 		// run was never launched, so its tail will not close the recorder: Stop is
 		// the recorder's only close. The once keeps it single.
-		b.closeRecorder()
+		b.rec.close()
 	}
-	return b.recErr
+	return b.rec.err
 }
 
 // Size reports the current grid dimensions in whole monospace character cells.
@@ -370,7 +336,7 @@ func (b *Backend) Grid() (tui.Size, uint64) {
 
 // FontGeneration returns the monotonic generation counter of the most recently requested
 // font or zoom configuration (via [Backend.SetFont], [Backend.SetProseFont], or [Backend.SetZoom]).
-func (b *Backend) FontGeneration() uint64 { return b.font.Load().gen }
+func (b *Backend) FontGeneration() uint64 { return b.font.load().gen }
 
 // Events returns the receive-only channel carrying decoded, un-coalesced [tui.Event] values.
 //
@@ -430,8 +396,8 @@ func (b *Backend) Flush(diff []tui.CellUpdate) error {
 // publishFrame draws the grid with m and hands the frame to the Gio goroutine.
 func (b *Backend) publishFrame(m metrics) {
 	cur := b.takeCursor()
-	b.applyImages()
-	draw, parts := b.render.frameParts(&b.grid, m, cur, b.natives, b.imageList(), b.focused.Load())
+	b.images.apply()
+	draw, parts := b.render.frameParts(&b.grid, m, cur, b.natives, b.images.list(), b.focused.Load())
 	f := &frame{draw: draw, parts: parts, m: m, drawCost: b.render.firstCost}
 	b.frameCaret(f, m, cur)
 	b.mu.Lock()
@@ -512,65 +478,14 @@ func (b *Backend) takeCursor() cursorState {
 }
 
 // PlaceImage shows an image over its cells from the next Flush on.
-func (b *Backend) PlaceImage(p tui.ImagePlacement) { b.images.Place(p) }
+func (b *Backend) PlaceImage(p tui.ImagePlacement) { b.images.latch.Place(p) }
 
 // DeleteImage removes an image from the next Flush on.
-func (b *Backend) DeleteImage(id uint32) { b.images.Delete(id) }
-
-// applyImages applies the latched placements and deletes, in the order made. The PNG is decoded
-// once per version: a placement that only moves or changes its Clip reuses it.
-func (b *Backend) applyImages() {
-	for _, op := range b.images.Take() {
-		if op.Place == nil {
-			b.removeImage(op.Delete)
-			continue
-		}
-		p := *op.Place
-		old, had := b.placed[p.ID]
-		if had && old.Version == p.Version {
-			old.ImagePlacement = p
-			b.placed[p.ID] = old
-			continue
-		}
-		img, ok := decodeImage(p)
-		if !ok {
-			continue // not a PNG: the cells beneath show, as on a terminal that refuses it
-		}
-		if !had {
-			b.imgList = append(b.imgList, p.ID)
-		}
-		b.placed[p.ID] = img
-	}
-}
-
-func (b *Backend) removeImage(id uint32) {
-	if _, ok := b.placed[id]; !ok {
-		return
-	}
-	delete(b.placed, id)
-	for i, v := range b.imgList {
-		if v == id {
-			b.imgList = append(b.imgList[:i], b.imgList[i+1:]...)
-			break
-		}
-	}
-}
-
-// imageList returns the active placed images in registration order for the frame snapshot.
-func (b *Backend) imageList() []placedImage {
-	out := make([]placedImage, 0, len(b.imgList))
-	for _, id := range b.imgList {
-		out = append(out, b.placed[id])
-	}
-	return out
-}
+func (b *Backend) DeleteImage(id uint32) { b.images.latch.Delete(id) }
 
 // WriteClipboard sets the system clipboard. The Gio goroutine performs it on its next frame.
 func (b *Backend) WriteClipboard(p []byte) error {
-	s := string(p)
-	b.mu.Lock()
-	b.copyText = &s
-	b.mu.Unlock()
+	b.clip.put(string(p))
 	b.win.Invalidate()
 	return nil
 }
