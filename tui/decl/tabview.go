@@ -53,30 +53,17 @@ func (n *tabViewNode) tabChanged(i int) {
 
 // tabNode is a declared Tab: a title and the one item under it.
 type tabNode struct {
-	widget.Base
+	hostOne
 	title   string
 	content tui.Component
 }
 
 func buildTab(b Build) (tui.Component, []string, error) {
 	n := &tabNode{content: b.Children[0]}
+	n.inner = n.content
 	consumed, err := b.ReadProps(map[string]field{"title": into(&n.title, stringOf)})
 	return n, consumed, err
 }
-
-func (n *tabNode) Init(ctx *tui.Context) {
-	n.Base.Init(ctx)
-	ctx.Mount(n.content)
-}
-
-func (n *tabNode) Layout(c tui.Constraints) tui.Size {
-	sz := n.Context().LayoutChild(n.content, c)
-	n.Context().PlaceChild(n.content, tui.Rect{W: sz.W, H: sz.H})
-	return c.Constrain(sz)
-}
-
-func (*tabNode) Render(tui.Surface)         {}
-func (*tabNode) HandleEvent(tui.Event) bool { return false }
 
 func buildTabView(b Build) (tui.Component, []string, error) {
 	if len(b.Children) == 0 {
