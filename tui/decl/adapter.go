@@ -367,18 +367,12 @@ func (a *Adapter) Create(c decl.Construction) ([]string, error) {
 	if err := a.refuseMisplaced(c); err != nil {
 		return nil, err
 	}
-	children, childAttached, childNominee, err := a.childrenOf(c)
+	kids, err := a.childrenOf(c)
 	if err != nil {
 		return nil, err
 	}
 	own, attached := a.splitProps(c.Props)
-	own, focus, declaredFocus, err := takeFocus(own)
-	if err != nil {
-		return nil, err
-	}
-	// Palette roles are the adapter's, on every type: they propagate to the
-	// children whether or not this type wears them. See propagate.go.
-	ownPalette, own, paletteNames, err := takePalette(own)
+	own, every, err := takeUniversal(own)
 	if err != nil {
 		return nil, err
 	}
@@ -387,34 +381,7 @@ func (a *Adapter) Create(c decl.Construction) ([]string, error) {
 	}
 
 	asked := map[string]bool{}
-	comp, consumed, err := build(Build{
-		Type:     c.Type,
-		Pos:      c.Pos,
-		ID:       c.ID,
-		Props:    own,
-		declared: a.declaredProps(c.Type),
-		Eval: func(v qml.SpecValue, locals map[string]qml.SpecValue) (qml.SpecValue, error) {
-			if a.tree == nil {
-				return qml.SpecValue{}, fmt.Errorf("no tree evaluates a TableView delegate")
-			}
-			return a.tree.EvaluateWith(v, locals)
-		},
-		Children:        children,
-		ChildAttached:   childAttached,
-		SelfAttached:    attached,
-		FocusNominee:    childNominee,
-		Emitters:        c.Emitters,
-		Files:           a.files,
-		sink:            a.sink,
-		Overlay:         a.overlay,
-		WindowCollector: a.windowCollector,
-		WindowTarget:    a.windowTargets[c.ID],
-		WindowCore:      a.windowCoreByID,
-		highlighters:    a.highlighters,
-		services:        a.services,
-		SourceLanguages: a.sourceLanguages,
-		asked:           asked,
-	})
+	comp, consumed, err := build(a.newBuild(c, own, attached, kids, asked))
 	if err != nil {
 		return nil, err
 	}
@@ -424,18 +391,12 @@ func (a *Adapter) Create(c decl.Construction) ([]string, error) {
 	if err := a.refuseUnaskedSignals(c, comp, asked); err != nil {
 		return nil, err
 	}
-	nominee := childNominee
-	if focus {
+	nominee := kids.nominee
+	if every.focus {
 		nominee = comp
 	}
-	a.nodes[c.Node] = built{comp: comp, typ: c.Type, attached: attached, nominee: nominee, pos: c.Pos}
-	a.kids[c.Node] = append([]decl.NodeID(nil), c.Children...)
-	a.paletteBuilt(c.Node, ownPalette, c.Children)
-	consumed = append(consumed, paletteNames...)
-	// a false focus is consumed too: the engine would otherwise apply it, and nothing sets focus
-	if declaredFocus {
-		consumed = append(consumed, focusProp)
-	}
+	a.record(c, built{comp: comp, typ: c.Type, attached: attached, nominee: nominee, pos: c.Pos}, every.palette)
+	consumed = append(consumed, every.consumed()...)
 	// The attached properties are reported consumed: they were read — by the
 	// parent, at its construction — and there is no setter on THIS widget for
 	// the engine to apply them through.
@@ -443,6 +404,14 @@ func (a *Adapter) Create(c decl.Construction) ([]string, error) {
 		consumed = append(consumed, name)
 	}
 	return consumed, nil
+}
+
+// record keeps a node Create built: its widget and what it carried, its children, and its palette,
+// which it hands down to them (paletteBuilt).
+func (a *Adapter) record(c decl.Construction, b built, own palette) {
+	a.nodes[c.Node] = b
+	a.kids[c.Node] = append([]decl.NodeID(nil), c.Children...)
+	a.paletteBuilt(c.Node, own, c.Children)
 }
 
 // refuseMisplaced refuses a child that belongs only in another type: a SyntaxHighlighter, a
@@ -459,12 +428,20 @@ func (a *Adapter) refuseMisplaced(c decl.Construction) error {
 	return nil
 }
 
-// childrenOf is c's built children, in order, with the attached properties each carried and the
+// childSet is a node's built children, in order, with the attached properties each carried and the
 // first focus nominee among them.
-func (a *Adapter) childrenOf(c decl.Construction) (children []tui.Component, attached []map[string]qml.SpecValue,
-	nominee tui.Component, err error) {
-	children = make([]tui.Component, 0, len(c.Children))
-	attached = make([]map[string]qml.SpecValue, 0, len(c.Children))
+type childSet struct {
+	comps    []tui.Component
+	attached []map[string]qml.SpecValue
+	nominee  tui.Component
+}
+
+// childrenOf is c's childSet.
+func (a *Adapter) childrenOf(c decl.Construction) (childSet, error) {
+	kids := childSet{
+		comps:    make([]tui.Component, 0, len(c.Children)),
+		attached: make([]map[string]qml.SpecValue, 0, len(c.Children)),
+	}
 	for _, id := range c.Children {
 		child, ok := a.nodes[id]
 		if !ok {
@@ -472,15 +449,15 @@ func (a *Adapter) childrenOf(c decl.Construction) (children []tui.Component, att
 			// well-formed mount. It is reported rather than assumed away
 			// because the alternative is a nil child reaching a constructor
 			// that panics on one.
-			return nil, nil, nil, fmt.Errorf("child node %d was not built before its parent %d", id, c.Node)
+			return childSet{}, fmt.Errorf("child node %d was not built before its parent %d", id, c.Node)
 		}
-		children = append(children, child.comp)
-		attached = append(attached, child.attached)
-		if nominee == nil {
-			nominee = child.nominee
+		kids.comps = append(kids.comps, child.comp)
+		kids.attached = append(kids.attached, child.attached)
+		if kids.nominee == nil {
+			kids.nominee = child.nominee
 		}
 	}
-	return children, attached, nominee, nil
+	return kids, nil
 }
 
 // requireSink refuses a bound emitter with nowhere to send its error, at the point the wiring would

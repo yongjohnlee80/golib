@@ -1,6 +1,7 @@
 package decl
 
 import (
+	"fmt"
 	"reflect"
 
 	"github.com/yongjohnlee80/golib/decl"
@@ -201,4 +202,38 @@ func Service[T any](b Build) (T, bool) {
 		return zero, false
 	}
 	return v, true
+}
+
+// newBuild is the Build Create hands c's builder: the declaration's own properties, its children,
+// and the adapter's collaborators. asked collects the signals the builder wires (Build.Emitter).
+func (a *Adapter) newBuild(c decl.Construction, own []qml.SpecProp, attached map[string]qml.SpecValue,
+	kids childSet, asked map[string]bool) Build {
+	return Build{
+		Type:     c.Type,
+		Pos:      c.Pos,
+		ID:       c.ID,
+		Props:    own,
+		declared: a.declaredProps(c.Type),
+		Eval: func(v qml.SpecValue, locals map[string]qml.SpecValue) (qml.SpecValue, error) {
+			if a.tree == nil {
+				return qml.SpecValue{}, fmt.Errorf("no tree evaluates a TableView delegate")
+			}
+			return a.tree.EvaluateWith(v, locals)
+		},
+		Children:        kids.comps,
+		ChildAttached:   kids.attached,
+		SelfAttached:    attached,
+		FocusNominee:    kids.nominee,
+		Emitters:        c.Emitters,
+		Files:           a.files,
+		sink:            a.sink,
+		Overlay:         a.overlay,
+		WindowCollector: a.windowCollector,
+		WindowTarget:    a.windowTargets[c.ID],
+		WindowCore:      a.windowCoreByID,
+		highlighters:    a.highlighters,
+		services:        a.services,
+		SourceLanguages: a.sourceLanguages,
+		asked:           asked,
+	}
 }
