@@ -592,6 +592,37 @@ func (a *App) maybeFrame() {
 	a.renderFrame()
 }
 
+// settleLayout lays the tree out and commits it, then settles what only a placed tree can answer:
+// a capture whose owner left the screen, and a focus that did, or that a FocusInto waits to move.
+func (a *App) settleLayout() {
+	// Layout and commit alternate until geometry settles; see commit.go.
+	// The frame must not paint a layout its own commit has invalidated.
+	a.layoutAndCommit()
+	a.renderDirty = true // geometry changed; repaint
+	// Visibility is only knowable once the pass has placed everything, so
+	// this is the earliest honest moment to end a capture whose owner is
+	// no longer on screen.
+	//
+	// It runs BEFORE the focus repair below on purpose. An owner that went
+	// invisible usually loses focus in the same pass, and both losses are
+	// genuinely true; checking visibility first means the owner is told the
+	// reason that actually explains its gesture ending rather than the
+	// knock-on one.
+	a.captureCheckVisible()
+	a.repairInvisibleFocus()
+}
+
+// settleFocusInto lays out now, ahead of the frame, when a FocusInto waits for its target's layout
+// and input that goes to the focused node is about to be routed: the keys typed after the one that
+// showed a field reach the field, not the control the focus was leaving, however the loop orders
+// the frame against them. The frame still paints at its own pace.
+func (a *App) settleFocusInto() {
+	if a.focus.pendingFocusInto == 0 || !a.layoutDirty || a.rootNode == nil || a.buf.size() != a.size || a.tooSmall() {
+		return
+	}
+	a.settleLayout()
+}
+
 // renderFrame runs the frame pipeline against the cell buffer and its diff:
 // (re)layout if dirty, repaint the visible tree into the cell buffer, apply
 // the cursor rule, diff, and hand the backend ONE Flush (the one-write
@@ -614,21 +645,7 @@ func (a *App) renderFrame() {
 		return
 	}
 	if a.layoutDirty {
-		// Layout and commit alternate until geometry settles; see commit.go.
-		// The frame must not paint a layout its own commit has invalidated.
-		a.layoutAndCommit()
-		a.renderDirty = true // geometry changed; repaint
-		// Visibility is only knowable once the pass has placed everything, so
-		// this is the earliest honest moment to end a capture whose owner is
-		// no longer on screen.
-		//
-		// It runs BEFORE the focus repair below on purpose. An owner that went
-		// invisible usually loses focus in the same pass, and both losses are
-		// genuinely true; checking visibility first means the owner is told the
-		// reason that actually explains its gesture ending rather than the
-		// knock-on one.
-		a.captureCheckVisible()
-		a.repairInvisibleFocus()
+		a.settleLayout()
 	}
 	if !a.renderDirty {
 		return

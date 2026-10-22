@@ -96,6 +96,10 @@ func (a *App) dispatch(ev Event) {
 	if a.tooSmall() && a.dispatchTooSmall(ev) {
 		return // the too-small screen took it: only its Quit is live
 	}
+	switch ev.(type) {
+	case KeyEvent, PasteEvent, UserEvent: // routed to the focused node: settle a focus on its way first
+		a.settleFocusInto()
+	}
 	switch e := ev.(type) {
 	case KeyEvent:
 		a.dispatchKey(e, ev)
