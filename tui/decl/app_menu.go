@@ -285,11 +285,11 @@ func buildMenuBar(b Build) (tui.Component, []string, error) {
 	}
 
 	var barOpts []widget.MenuBarOption
-	if v, ok := b.SelfAttached["Dock.edge"]; ok {
-		edge, err := dockEdges.read(v)
-		if err != nil {
-			return nil, nil, fmt.Errorf("Dock.edge: %w", err)
-		}
+	edge, pinned, err := dockEdgeOf(b.SelfAttached)
+	if err != nil {
+		return nil, nil, err
+	}
+	if pinned {
 		barOpts = append(barOpts, widget.WithBarPlacement(barPlacements[edge]))
 	}
 	if corner != nil {
