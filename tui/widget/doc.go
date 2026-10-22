@@ -116,6 +116,12 @@
 //   - Capability interfaces ([tui.Focusable], [tui.Container], [tui.FocusScope],
 //     [tui.CursorReporter], [tui.CursorShaper]) are detected via type assertions on the outer
 //     widget value; [Base] implements none of them, preventing accidental capability leakage.
+//   - A native backend's painters read what a widget draws through small capabilities, never by
+//     re-deriving its cells or naming its type: [tui.SelectionCells], [TabSpanner],
+//     [ProgressBar.FilledColumns], [Button.MnemonicColumn], [TabStrip.BarColor] and
+//     [WindowButtons.Controls]. A declarative layer sets an editor's view through
+//     [LineNumberer], [Ruler], [Wrapper], [CursorColorer], [ContextMenuEnabler] and
+//     [ViewChooser], whichever editor widget it builds.
 //   - Any widget overriding [Base.Init] MUST chain to b.Base.Init(ctx) first.
 //
 // 3. Composable Panel Chrome via Box:
