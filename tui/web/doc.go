@@ -100,9 +100,10 @@
 // It is a helper rather than a documented protocol on purpose: the raw seam has
 // four paths plus an expiry sweep, the easiest to miss is reattach because
 // nothing in the happy path exercises it, and a missed path leaks upstream state.
-// [SSO] makes each obligation structural — Release is required, Options returns
-// both hooks together, Factory defers the release, the sweep is internal, and the
-// park's capacity sets [MaxPendingLogins] so the two bounds cannot disagree.
+// [SSO] makes each obligation structural — Release is required, it attaches to the
+// [Admission] it is given so its login hook and its release are wired together,
+// Factory defers the release, the sweep is internal, and the park holds the
+// Admission's cap so the two bounds cannot disagree.
 //
 // The raw hooks ([OnLogin], [OnHandoffUnused], [Stash], [HandoffID]) stay
 // exported for a park that must live elsewhere, such as a store shared across

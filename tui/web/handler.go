@@ -14,30 +14,19 @@ import (
 
 // Handler serves the WebTUI: the client shell and the WebSocket endpoint.
 type Handler struct {
-	cfg              Config
-	mgr              *Manager
-	log              logger.Logger
-	limits           Limits
-	title            string
-	wsPath           string
-	loginPath        string
-	onLogin          func(handoff string, id *auth.Identity, stash *Stash) error
-	pending          *gate
-	maxPendingLogins int
+	cfg       Config
+	mgr       *Manager
+	log       logger.Logger
+	limits    Limits
+	title     string
+	wsPath    string
+	loginPath string
+	onLogin   func(handoff string, id *auth.Identity, stash *Stash) error
+	adm       *Admission // the Manager's: the login route leases from it
 	// grace bounds session teardown on Serve's exit. Injectable so the boundary
 	// is testable without a 30-second wait.
 	grace time.Duration
 	loop  *sessionLoop
-	// now is the clock the admission gate ages its keyed slots by. Injectable so
-	// a test can prove the expiry without waiting out a ticket's lifetime.
-	now func() time.Time
-	// parkSettles says a consumer's park returns the admission slots itself, so
-	// the Manager must not return them earlier. Set by SSO.Options.
-	parkSettles bool
-	// pendingHold is the backstop lifetime of a keyed admission slot: how long it
-	// can be held by a handoff nothing ever settles. Never shorter than the attach
-	// ticket's own life.
-	pendingHold time.Duration
 }
 
 // HandlerOption configures a [Handler].
@@ -82,7 +71,7 @@ func WithLimits(l Limits) HandlerOption {
 //
 // # The admission reservation, if you park by hand
 //
-// A slot in the [MaxPendingLogins] budget is reserved BEFORE this hook runs, keyed
+// A slot in the [Admission]'s budget is reserved BEFORE this hook runs, keyed
 // by the handoff, and returned when the handoff is claimed, released or expires.
 // The reservation covers this hook's duration and no more.
 //
@@ -99,21 +88,6 @@ func WithLimits(l Limits) HandlerOption {
 func OnLogin(fn func(handoff string, id *auth.Identity, stash *Stash) error) HandlerOption {
 	return func(h *Handler) { h.onLogin = fn }
 }
-
-// MaxPendingLogins caps logins parked awaiting an attach (default 8).
-//
-// A separate budget from [MaxSessions] on purpose: they bound different
-// resources, and a reconnect at a full session cap must still be able to log in.
-func MaxPendingLogins(n int) HandlerOption {
-	return func(h *Handler) {
-		if n > 0 {
-			h.maxPendingLogins = n
-		}
-	}
-}
-
-// DefaultMaxPendingLogins is the parked-login budget when none is given.
-const DefaultMaxPendingLogins = 8
 
 // ShutdownGrace bounds how long sessions get to exit when [Handler.Serve]
 // returns. Defaults to [DefaultShutdownGrace].
@@ -158,15 +132,15 @@ func NewHandler(cfg Config, mgr *Manager, opts ...HandlerOption) (*Handler, erro
 	// configuration mutable long after construction.
 	cfg.AllowedOrigins = slices.Clone(cfg.AllowedOrigins)
 	h := &Handler{
-		cfg:              cfg,
-		mgr:              mgr,
-		log:              logger.Nop{},
-		limits:           DefaultLimits(),
-		title:            DefaultTitle,
-		wsPath:           DefaultWSPath,
-		loginPath:        DefaultLoginPath,
-		grace:            DefaultShutdownGrace,
-		maxPendingLogins: DefaultMaxPendingLogins,
+		cfg:       cfg,
+		mgr:       mgr,
+		log:       logger.Nop{},
+		limits:    DefaultLimits(),
+		title:     DefaultTitle,
+		wsPath:    DefaultWSPath,
+		loginPath: DefaultLoginPath,
+		grace:     DefaultShutdownGrace,
+		adm:       mgr.adm,
 	}
 	for _, o := range opts {
 		if o != nil {
@@ -174,25 +148,6 @@ func NewHandler(cfg Config, mgr *Manager, opts ...HandlerOption) (*Handler, erro
 		}
 	}
 	h.limits = h.limits.normalize()
-	if h.now == nil {
-		h.now = time.Now
-	}
-	h.pending = newGate(h.maxPendingLogins)
-	h.pending.now = h.now
-	if h.pendingHold < loginTicketTTL {
-		h.pendingHold = loginTicketTTL
-	}
-	// For a consumer with no park of its own, the Manager's view is the best signal
-	// there is: it knows when the factory has had its chance to claim. A consumer
-	// whose park settles its own slots (SSO) must not be pre-empted by it, because
-	// the Manager returns before the claim happens.
-	if !h.parkSettles {
-		mgr.settle = h.pending.release
-	}
-	// Limits.QueueDepth is the single source of the event queue's capacity, so
-	// the documented limit and the real one are one number. The Manager builds
-	// each session's Backend, so the option is pushed there.
-	mgr.setQueueDepth(h.limits.QueueDepth)
 	h.loop = &sessionLoop{
 		cfg:     cfg,
 		mgr:     mgr,

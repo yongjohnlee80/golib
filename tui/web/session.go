@@ -91,12 +91,10 @@ type Manager struct {
 	newID    func() string
 	backends []Option
 
-	bindPeer bool
-	unused   func(string, HandoffReason)
-	// settle returns the admission slot a parked handoff owns, once that handoff
-	// can no longer be waiting for an attach. Installed by NewHandler, which owns
-	// the gate; nil for a Manager used on its own.
-	settle func(string)
+	bindPeer   bool
+	unused     func(string, HandoffReason)
+	adm        *Admission // the pending-login budget; its own when none is given (ManagerAdmission)
+	queueDepth int        // each session's event queue (QueueDepth)
 
 	mu       sync.Mutex
 	sessions map[string]*Session
@@ -160,7 +158,9 @@ func BindPeer(on bool) ManagerOption {
 // claim.
 //
 // Called at most once per handoff, for a reattach or a failed attach. Without it
-// a consumer that parks per-login state leaks an entry on every reconnect.
+// a consumer that parks per-login state by hand leaks an entry on every reconnect.
+// An [SSO] attached to the Manager's [Admission] needs none: its park is released
+// through the Admission.
 func OnHandoffUnused(fn func(handoff string, reason HandoffReason)) ManagerOption {
 	return func(m *Manager) { m.unused = fn }
 }
@@ -170,18 +170,34 @@ func BackendOptions(opts ...Option) ManagerOption {
 	return func(m *Manager) { m.backends = slices.Clone(opts) }
 }
 
-// setQueueDepth forces the event queue capacity, so [Limits.QueueDepth] is the
-// one number that decides it. Called by [NewHandler]; a BackendOptions-supplied
-// EventQueue is applied first and this overrides it, because the documented limit
-// must win over an incidental one.
-func (m *Manager) setQueueDepth(n int) {
-	if n <= 0 {
-		return
+// ManagerAdmission sets the pending-login budget the Manager settles handoffs against, and that a
+// [Handler] built on this Manager leases logins from. Hand the same [Admission] to an [SSO] so its
+// park accounts against it. Without one the Manager makes its own.
+func ManagerAdmission(a *Admission) ManagerOption {
+	return func(m *Manager) {
+		if a != nil {
+			m.adm = a
+		}
 	}
-	m.mu.Lock()
-	defer m.mu.Unlock()
-	m.backends = append(slices.Clone(m.backends), EventQueue(n))
 }
+
+// QueueDepth sets each session's un-coalesced event queue capacity (default [DefaultQueueDepth]).
+// It is the one number that decides it: a BackendOptions-supplied EventQueue is applied first
+// and this overrides it.
+//
+// The queue is bounded because an unbounded one is a memory-exhaustion vector driven by whoever
+// is typing; input beyond it backpressures the client, and a client that keeps outrunning it is
+// closed as overloaded (Limits.OverloadGrace).
+func QueueDepth(n int) ManagerOption {
+	return func(m *Manager) {
+		if n > 0 {
+			m.queueDepth = n
+		}
+	}
+}
+
+// DefaultQueueDepth is a session's event queue capacity when none is given.
+const DefaultQueueDepth = 1024
 
 // Defaults for a [Manager].
 const (
@@ -231,19 +247,23 @@ func NewManager(factory AppFactory, opts ...ManagerOption) (*Manager, error) {
 		return nil, errs.Wrap(errs.ErrInvalidArgument, "web.NewManager: an AppFactory is required")
 	}
 	m := &Manager{
-		base:     context.Background(),
-		factory:  factory,
-		log:      logger.Nop{},
-		maxSess:  DefaultMaxSessions,
-		idle:     DefaultIdleTimeout,
-		now:      time.Now,
-		newID:    randomID,
-		sessions: make(map[string]*Session),
+		base:       context.Background(),
+		factory:    factory,
+		log:        logger.Nop{},
+		maxSess:    DefaultMaxSessions,
+		idle:       DefaultIdleTimeout,
+		now:        time.Now,
+		newID:      randomID,
+		queueDepth: DefaultQueueDepth,
+		sessions:   make(map[string]*Session),
 	}
 	for _, o := range opts {
 		if o != nil {
 			o(m)
 		}
+	}
+	if m.adm == nil {
+		m.adm = NewAdmission() // a deployment with no park: the Manager settles its handoffs
 	}
 	return m, nil
 }
@@ -420,7 +440,7 @@ func (m *Manager) register(id *auth.Identity, peer string) (*Session, context.Co
 		id:       sid,
 		subject:  id.Subject,
 		peer:     peer,
-		backend:  New(m.backends...),
+		backend:  New(append(slices.Clone(m.backends), EventQueue(m.queueDepth))...), // QueueDepth wins over a BackendOptions EventQueue
 		created:  m.now(),
 		lastSeen: m.now(),
 		cancel:   cancel,
@@ -692,20 +712,23 @@ func (m *Manager) releaseHandoff(handoff string, reason HandoffReason) {
 		return
 	}
 	m.settleHandoff(handoff)
-	if m.unused == nil {
+	if m.unused != nil {
+		m.unused(handoff, reason)
 		return
 	}
-	m.unused(handoff, reason)
+	if p := m.adm.attached(); p != nil {
+		p.releaseUnused(handoff, reason) // the attached park releases what it parked
+	}
 }
 
 // settleHandoff returns the admission slot the handoff owned. Idempotent, since a
 // handoff can be settled by a claim, a release, or the gate's own expiry and those
 // paths do not coordinate.
 func (m *Manager) settleHandoff(handoff string) {
-	if handoff == "" || m.settle == nil {
+	if handoff == "" {
 		return
 	}
-	m.settle(handoff)
+	m.adm.settleFromManager(handoff)
 }
 
 func (m *Manager) drop(id string) {

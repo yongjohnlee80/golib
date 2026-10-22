@@ -78,31 +78,103 @@ func TestNewSSO_ReleaseIsRequired(t *testing.T) {
 	}
 }
 
-// Options must hand back BOTH hooks, because returning them separately is what
-// lets a consumer wire the login side and forget the release side.
-func TestSSO_OptionsWiresBothHooks(t *testing.T) {
+// An SSO built with an Admission attaches itself to it: its park holds the Admission's cap (one
+// home: a Max that disagrees is refused), and one Admission takes one park.
+func TestSSO_AttachesToItsAdmission(t *testing.T) {
 	t.Parallel()
-	s, _, _, _ := ssoFor(t, 4, time.Minute)
-	hOpt, mOpt := s.Options()
-	if hOpt == nil || mOpt == nil {
-		t.Fatal("Options returned a nil hook")
+	release := func(*upstream, HandoffReason) {}
+	adm := NewAdmission(AdmissionCap(3))
+	s, err := NewSSO(SSOConfig[*upstream]{Admission: adm, Release: release})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if adm.attached() != attachedPark(s) {
+		t.Error("the SSO did not attach to its Admission")
+	}
+	if s.max != adm.Cap() {
+		t.Errorf("the park holds %d, the Admission's cap is %d: they must not disagree", s.max, adm.Cap())
+	}
+	if _, err := NewSSO(SSOConfig[*upstream]{Admission: NewAdmission(AdmissionCap(3)), Max: 5, Release: release}); err == nil {
+		t.Error("a Max that disagrees with the Admission's cap was accepted")
+	}
+	if _, err := NewSSO(SSOConfig[*upstream]{Admission: adm, Release: release}); err == nil {
+		t.Error("a second park attached to one Admission")
+	}
+}
+
+// Who settles a handoff is decided when it settles, not when things were built: an SSO attached
+// after the Manager and the Handler still takes over, so the Manager's settle no longer returns
+// the slot (the park's does, once its entry is gone), and the Handler's login hook is the park's.
+func TestAdmission_AnSSOAttachedLastStillSettles(t *testing.T) {
+	t.Parallel()
+	adm := NewAdmission(AdmissionCap(4))
+	m, err := NewManager(func(tui.Backend, *SessionInfo) Runner { return newFakeApp() }, ManagerAdmission(adm))
+	if err != nil {
+		t.Fatal(err)
+	}
+	h, err := NewHandler(Config{
+		Addr: "127.0.0.1:8080", Policy: testPolicy(t),
+		AllowedOrigins: []string{"https://tui.example.test"},
+		ExpectedHost:   "tui.example.test",
+	}, m)
+	if err != nil {
+		t.Fatal(err)
+	}
+	reserve := func(key string) {
+		t.Helper()
+		if !adm.gate.enter() || !adm.gate.hold(key, adm.deadline()) {
+			t.Fatalf("no reservation for %s", key)
+		}
 	}
 
-	var h Handler
-	hOpt(&h)
-	if h.onLogin == nil {
-		t.Error("the handler option did not install OnLogin")
-	}
-	// The park's capacity IS the pending budget, so the two cannot drift.
-	if h.maxPendingLogins != s.max {
-		t.Errorf("MaxPendingLogins = %d, park Max = %d — they must not disagree",
-			h.maxPendingLogins, s.max)
+	// Before any park: the Manager settles.
+	reserve("before")
+	m.settleHandoff("before")
+	if n := adm.gate.pending(); n != 0 {
+		t.Fatalf("with no park attached, the Manager's settle left %d slots held", n)
 	}
 
-	var m Manager
-	mOpt(&m)
-	if m.unused == nil {
-		t.Error("the manager option did not install OnHandoffUnused")
+	s, err := NewSSO(SSOConfig[*upstream]{Admission: adm, Release: func(*upstream, HandoffReason) {}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if h.adm.attached() != attachedPark(s) {
+		t.Fatal("the Handler built first does not see the SSO attached after it")
+	}
+
+	// After: the Manager leaves it to the park, and the park settles it.
+	reserve("after")
+	m.settleHandoff("after")
+	if n := adm.gate.pending(); n != 1 {
+		t.Fatalf("with a park attached, the Manager's settle left %d slots held, want 1 (the park settles)", n)
+	}
+	s.settleHandoff("after")
+	if n := adm.gate.pending(); n != 0 {
+		t.Errorf("the park's settle left %d slots held", n)
+	}
+}
+
+// The Admission publishes an entry while the gate's lock is held, so a sweep cannot take the key
+// between the check and the publication: membership and publication are one step.
+func TestAdmission_PublishesUnderTheGateLock(t *testing.T) {
+	t.Parallel()
+	now := time.Now()
+	adm := NewAdmission(AdmissionCap(2))
+	adm.setClock(func() time.Time { return now })
+	if !adm.gate.enter() || !adm.gate.hold("k", adm.deadline()) {
+		t.Fatal("no reservation")
+	}
+	published := false
+	ok := adm.commit("k", func() {
+		now = now.Add(2 * adm.holdNow()) // past the deadline: a sweep would want the key now
+		if adm.gate.mu.TryLock() {
+			adm.gate.mu.Unlock()
+			t.Error("the gate's lock is free during publication: a sweep could take the key")
+		}
+		published = true
+	})
+	if !ok || !published {
+		t.Fatalf("commit = %v, published = %v; want both", ok, published)
 	}
 }
 

@@ -206,7 +206,7 @@ func newSSORigWith(t *testing.T, loginFactor auth.Factor, opts ...rigOption) *ss
 		t.Fatal(err)
 	}
 	rig.sso = sso
-	hOpt, mOpt := sso.Options()
+	adm := admissionFor(t, sso)
 
 	// --- the attach mechanisms, all real ------------------------------------
 	leaf := &x509.Certificate{
@@ -310,7 +310,7 @@ func newSSORigWith(t *testing.T, loginFactor auth.Factor, opts ...rigOption) *ss
 			})
 		}
 	}
-	m, err := NewManager(factory, mOpt)
+	m, err := NewManager(factory, ManagerAdmission(adm))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -330,7 +330,7 @@ func newSSORigWith(t *testing.T, loginFactor auth.Factor, opts ...rigOption) *ss
 		Issuer:         issuer,
 		AllowedOrigins: []string{"https://tui.example.test"},
 		ExpectedHost:   "tui.example.test",
-	}, m, HandlerLogger(nopLogger{}), hOpt)
+	}, m, HandlerLogger(nopLogger{}))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -671,7 +671,7 @@ func TestSSO_EndToEnd_AdmissionSlotsAreReturned(t *testing.T) {
 			rig.m.Close(s.ID())
 		}
 	}
-	if n := rig.h.pending.pending(); n != 0 {
+	if n := rig.h.adm.gate.pending(); n != 0 {
 		t.Errorf("%d admission slots still held after %d completed cycles", n, cycles)
 	}
 }
@@ -701,7 +701,7 @@ func TestSSO_EndToEnd_LaterRefusalReleasesTheStash(t *testing.T) {
 	if rel[0].origin != "login" {
 		t.Errorf("released %+v", rel[0])
 	}
-	if n := rig.h.pending.pending(); n != 0 {
+	if n := rig.h.adm.gate.pending(); n != 0 {
 		t.Errorf("%d admission slots held after a failed login", n)
 	}
 }
@@ -724,7 +724,7 @@ func TestSSO_EndToEnd_ConstraintFirstAllocatesNothing(t *testing.T) {
 		t.Errorf("%d releases: the constraint runs first, so the credential is never "+
 			"verified and nothing should have been allocated", n)
 	}
-	if n := rig.h.pending.pending(); n != 0 {
+	if n := rig.h.adm.gate.pending(); n != 0 {
 		t.Errorf("%d admission slots held after a failed login", n)
 	}
 }
@@ -1002,9 +1002,9 @@ func TestSSO_AdmissionSlotHeldUntilTheParkEntryIsGone(t *testing.T) {
 	if err := json.Unmarshal(rec.Body.Bytes(), &out); err != nil {
 		t.Fatal(err)
 	}
-	if rig.sso.Len() != 1 || rig.h.pending.pending() != 1 {
+	if rig.sso.Len() != 1 || rig.h.adm.gate.pending() != 1 {
 		t.Fatalf("parked=%d held=%d after a login, want 1 and 1",
-			rig.sso.Len(), rig.h.pending.pending())
+			rig.sso.Len(), rig.h.adm.gate.pending())
 	}
 
 	msg := helloMsg()
@@ -1022,7 +1022,7 @@ func TestSSO_AdmissionSlotHeldUntilTheParkEntryIsGone(t *testing.T) {
 	// THE ASSERTION. The park still holds the entry, so the slot must still be
 	// held: the two have to move together or a login can be admitted against
 	// capacity that does not exist.
-	if parked, held := rig.sso.Len(), rig.h.pending.pending(); parked == 1 && held == 0 {
+	if parked, held := rig.sso.Len(), rig.h.adm.gate.pending(); parked == 1 && held == 0 {
 		t.Fatalf("parked=%d but held=%d: the admission slot came back while the park "+
 			"was still full, so the next login is admitted and then 503'd",
 			parked, held)
@@ -1030,7 +1030,7 @@ func TestSSO_AdmissionSlotHeldUntilTheParkEntryIsGone(t *testing.T) {
 
 	close(gateHeld) // let the claim happen
 	rig.waitBuild(t)
-	waitFor(t, func() bool { return rig.sso.Len() == 0 && rig.h.pending.pending() == 0 },
+	waitFor(t, func() bool { return rig.sso.Len() == 0 && rig.h.adm.gate.pending() == 0 },
 		"the claim to empty the park and return the slot")
 }
 
@@ -1213,8 +1213,6 @@ func TestSSO_EverySettlePath(t *testing.T) {
 	for name, remove := range cases {
 		t.Run(name, func(t *testing.T) {
 			t.Parallel()
-			var mu sync.Mutex
-			var settled []string
 			s, err := NewSSO(SSOConfig[*upstream]{
 				Max: 4, TTL: time.Minute,
 				Release: func(*upstream, HandoffReason) {},
@@ -1222,10 +1220,10 @@ func TestSSO_EverySettlePath(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			s.settle = func(h string) {
-				mu.Lock()
-				settled = append(settled, h)
-				mu.Unlock()
+			adm := admissionFor(t, s)
+			// The login route's reservation, then the park's commit through it.
+			if !adm.gate.enter() || !adm.gate.hold("the-handoff", adm.deadline()) {
+				t.Fatal("no reservation for the handoff")
 			}
 			if err := s.hold("the-handoff", &upstream{id: "a"}); err != nil {
 				t.Fatal(err)
@@ -1233,12 +1231,9 @@ func TestSSO_EverySettlePath(t *testing.T) {
 
 			remove(t, s, "the-handoff")
 
-			mu.Lock()
-			defer mu.Unlock()
-			if len(settled) != 1 || settled[0] != "the-handoff" {
-				t.Errorf("settled %v via %s, want exactly [the-handoff] — an entry "+
-					"removed without settling holds an admission slot until the "+
-					"gate's backstop expiry", settled, name)
+			if n := adm.gate.pending(); n != 0 {
+				t.Errorf("%d admission slots held after %s: an entry removed without "+
+					"settling holds its slot until the gate's backstop expiry", n, name)
 			}
 			if n := s.Len(); n != 0 {
 				t.Errorf("%d entries still parked after %s", n, name)
@@ -1255,7 +1250,7 @@ func TestHandoff_RawHooksStillReturnAdmissionSlots(t *testing.T) {
 	p := newPark()
 	h, m, _ := handoffHandler(t, p) // raw OnLogin / OnHandoffUnused, no SSO
 
-	if h.parkSettles {
+	if h.adm.attached() != nil {
 		t.Fatal("a raw-hook handler must keep the Manager's settlement")
 	}
 	for i := range DefaultMaxPendingLogins + 1 {
@@ -1269,11 +1264,11 @@ func TestHandoff_RawHooksStillReturnAdmissionSlots(t *testing.T) {
 		sid := waitForSession(t, c)
 		cancel()
 		m.Close(sid)
-		if n := h.pending.pending(); n > 1 {
+		if n := h.adm.gate.pending(); n > 1 {
 			t.Fatalf("cycle %d: %d admission slots held", i+1, n)
 		}
 	}
-	if n := h.pending.pending(); n != 0 {
+	if n := h.adm.gate.pending(); n != 0 {
 		t.Errorf("%d admission slots held after %d cycles", n, DefaultMaxPendingLogins+1)
 	}
 }
@@ -1346,7 +1341,7 @@ func TestSSO_SettleBeforeTheLeaseLeavesNoGhostSlot(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	hOpt, mOpt := sso.Options()
+	adm := admissionFor(t, sso)
 
 	store := token.NewMemStore(16)
 	tracker, err := auth.NewMemTracker(16, auth.Backoff{
@@ -1364,7 +1359,7 @@ func TestSSO_SettleBeforeTheLeaseLeavesNoGhostSlot(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	m, err := NewManager(func(tui.Backend, *SessionInfo) Runner { return newFakeApp() }, mOpt)
+	m, err := NewManager(func(tui.Backend, *SessionInfo) Runner { return newFakeApp() }, ManagerAdmission(adm))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1379,7 +1374,7 @@ func TestSSO_SettleBeforeTheLeaseLeavesNoGhostSlot(t *testing.T) {
 		Issuer:         token.NewIssuer(store),
 		AllowedOrigins: []string{"https://tui.example.test"},
 		ExpectedHost:   "tui.example.test",
-	}, m, HandlerLogger(nopLogger{}), hOpt,
+	}, m, HandlerLogger(nopLogger{}),
 		// Replaces SSO's own OnLogin, keeping everything else hOpt wired (the
 		// settle callback, MaxPendingLogins, parkSettles). It parks exactly as SSO
 		// does and then settles the entry, landing the settle inside the window.
@@ -1411,7 +1406,7 @@ func TestSSO_SettleBeforeTheLeaseLeavesNoGhostSlot(t *testing.T) {
 		t.Fatalf("%d entries parked, want 0 — the sweep inside the hook should have "+
 			"emptied the park", n)
 	}
-	if n := h.pending.pending(); n != 0 {
+	if n := h.adm.gate.pending(); n != 0 {
 		t.Errorf("%d admission slots held with an EMPTY park: the settle landed before "+
 			"the lease existed, so the lease is a ghost nothing will ever return and "+
 			"it sits on the budget until the backstop", n)
@@ -1488,7 +1483,7 @@ func TestSSO_LoginOutlivingItsReservationCannotPark(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	hOpt, mOpt := sso.Options()
+	adm := admissionFor(t, sso)
 
 	store := token.NewMemStore(16)
 	tracker, err := auth.NewMemTracker(16, auth.Backoff{
@@ -1506,7 +1501,7 @@ func TestSSO_LoginOutlivingItsReservationCannotPark(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	m, err := NewManager(func(tui.Backend, *SessionInfo) Runner { return newFakeApp() }, mOpt)
+	m, err := NewManager(func(tui.Backend, *SessionInfo) Runner { return newFakeApp() }, ManagerAdmission(adm))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1523,25 +1518,28 @@ func TestSSO_LoginOutlivingItsReservationCannotPark(t *testing.T) {
 		Issuer:         token.NewIssuer(store),
 		AllowedOrigins: []string{"https://tui.example.test"},
 		ExpectedHost:   "tui.example.test",
-	}, m, HandlerLogger(nopLogger{}), hOpt)
+	}, m, HandlerLogger(nopLogger{}))
 	if err != nil {
 		t.Fatal(err)
 	}
-	h.now = shared
-	h.pending.now = shared
+	h.adm.setClock(shared)
 
-	// The delay goes exactly where a slow hook puts it: after the reservation,
-	// before the park's insert. Only the TIMING is injected — the decision is still
-	// the real gate's, since inner is the commit hOpt installed.
-	inner := sso.commit
-	sso.commit = func(handoff string, publish func()) bool {
-		advance(2 * h.pendingHold)
-		// Another login arriving is what reclaims the slot; the sweep is lazy, at
-		// the door, and pending() sweeps the same way enter() does.
-		if held := h.pending.pending(); held != 0 {
-			t.Errorf("%d slots held after the reservation lapsed", held)
-		}
-		return inner(handoff, publish)
+	// The delay goes exactly where a slow hook puts it: after the reservation, before
+	// the park's insert. The park reads its clock once, as it begins to park (hold), so
+	// the clock advances there. Only the TIMING is injected — the decision is still the
+	// real gate's, through the Admission's commit.
+	inner := sso.now
+	var once sync.Once
+	sso.now = func() time.Time {
+		once.Do(func() {
+			advance(2 * h.adm.holdNow())
+			// Another login arriving is what reclaims the slot; the sweep is lazy, at
+			// the door, and pending() sweeps the same way enter() does.
+			if held := h.adm.gate.pending(); held != 0 {
+				t.Errorf("%d slots held after the reservation lapsed", held)
+			}
+		})
+		return inner()
 	}
 
 	rec := httptest.NewRecorder()
@@ -1555,7 +1553,7 @@ func TestSSO_LoginOutlivingItsReservationCannotPark(t *testing.T) {
 		t.Errorf("%d entries parked with 0 admission slots held: the budget now "+
 			"under-counts, so more logins can park than the cap allows", n)
 	}
-	if n := h.pending.pending(); n != 0 {
+	if n := h.adm.gate.pending(); n != 0 {
 		t.Errorf("%d admission slots held after the failed login", n)
 	}
 	// The value the factor allocated is still cleaned up.
@@ -1629,7 +1627,7 @@ func TestSSO_ConcurrentLoginsPreserveTheInvariant(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	hOpt, mOpt := sso.Options()
+	adm := admissionFor(t, sso)
 
 	store := token.NewMemStore(256)
 	tracker, err := auth.NewMemTracker(256, auth.Backoff{
@@ -1655,7 +1653,7 @@ func TestSSO_ConcurrentLoginsPreserveTheInvariant(t *testing.T) {
 		t.Fatal(err)
 	}
 	m, err := NewManager(sso.Factory(
-		func(tui.Backend, *auth.Identity, *upstream) Runner { return newFakeApp() }), mOpt)
+		func(tui.Backend, *auth.Identity, *upstream) Runner { return newFakeApp() }), ManagerAdmission(adm))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1664,7 +1662,7 @@ func TestSSO_ConcurrentLoginsPreserveTheInvariant(t *testing.T) {
 		Issuer:         token.NewIssuer(store),
 		AllowedOrigins: []string{"https://tui.example.test"},
 		ExpectedHost:   "tui.example.test",
-	}, m, HandlerLogger(nopLogger{}), hOpt)
+	}, m, HandlerLogger(nopLogger{}))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1730,7 +1728,7 @@ func TestSSO_ConcurrentLoginsPreserveTheInvariant(t *testing.T) {
 	if n := sso.Len(); n != 0 {
 		t.Errorf("%d entries still parked after shutdown", n)
 	}
-	if n := h.pending.pending(); n != 0 {
+	if n := h.adm.gate.pending(); n != 0 {
 		t.Errorf("%d admission slots still held after shutdown", n)
 	}
 
@@ -1833,11 +1831,12 @@ func stressReq() requestInfo {
 // entries are at most Max-1. The gate refuses first, at the door, with a 503. The
 // park-full branch is therefore UNREACHABLE in the tied configuration.
 //
-// It becomes reachable again the moment a consumer unties them, which this test
-// does deliberately: apply Options and then override MaxPendingLogins upward. That
-// is an ill-advised configuration and it is a supported one, so the release on that
-// branch is not dead code — and the value has already been taken out of the stash
-// by then, so SSO's own release is the only cleanup that can see it.
+// An Admission ties them (an attached SSO's park holds the Admission's cap), so the
+// branch is reachable only with the SSO's login hook wired by hand and the SSO not
+// attached, which this test does deliberately: the Manager's Admission caps at 8,
+// the park at 1. The release on that branch is not dead code — and the value has
+// already been taken out of the stash by then, so SSO's own release is the only
+// cleanup that can see it.
 func TestSSO_ParkFullReleasesTheTakenValue(t *testing.T) {
 	t.Parallel()
 	var mu sync.Mutex
@@ -1853,7 +1852,6 @@ func TestSSO_ParkFullReleasesTheTakenValue(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	hOpt, mOpt := sso.Options()
 
 	store := token.NewMemStore(16)
 	tracker, err := auth.NewMemTracker(16, auth.Backoff{
@@ -1871,7 +1869,8 @@ func TestSSO_ParkFullReleasesTheTakenValue(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	m, err := NewManager(func(tui.Backend, *SessionInfo) Runner { return newFakeApp() }, mOpt)
+	m, err := NewManager(func(tui.Backend, *SessionInfo) Runner { return newFakeApp() },
+		ManagerAdmission(NewAdmission(AdmissionCap(8))))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1885,9 +1884,9 @@ func TestSSO_ParkFullReleasesTheTakenValue(t *testing.T) {
 		Issuer:         token.NewIssuer(store),
 		AllowedOrigins: []string{"https://tui.example.test"},
 		ExpectedHost:   "tui.example.test",
-		// The untying: the gate is now larger than the park, so a second login
-		// reaches the park instead of being turned away at the door.
-	}, m, HandlerLogger(nopLogger{}), hOpt, MaxPendingLogins(8))
+		// The untying: the gate (8) is larger than the park (1), and the SSO's hook is
+		// wired by hand, so a second login reaches the park instead of the door.
+	}, m, HandlerLogger(nopLogger{}), OnLogin(sso.parkLogin))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1921,152 +1920,9 @@ func TestSSO_ParkFullReleasesTheTakenValue(t *testing.T) {
 	}
 	// The first login's slot is still held (its entry is still parked); the second
 	// login's is not.
-	if n := h.pending.pending(); n != 1 {
+	if n := h.adm.gate.pending(); n != 1 {
 		t.Errorf("%d admission slots held, want 1 — the refused login's slot must go "+
 			"back and the parked one's must not", n)
-	}
-}
-
-// The reservation must still be alive at the moment the entry is PUBLISHED, not
-// merely at the moment it was checked.
-//
-// r4's repair checked the reservation before inserting. r5 showed that was still
-// not atomic: gate.commit released the gate's lock as it returned its answer, and
-// the key could be swept between the answer and the insert. A bool returned before
-// a mutation is a time-of-check-to-time-of-use gap however carefully it is
-// computed.
-//
-// This pauses in exactly that gap. The previous test
-// (TestSSO_LoginOutlivingItsReservationCannotPark) pauses BEFORE the check, so it
-// cannot see this; the two windows are one instruction apart and need separate
-// probes.
-func TestSSO_ReservationSweptBetweenCheckAndPublish(t *testing.T) {
-	t.Parallel()
-
-	var clockMu sync.Mutex
-	now := time.Now()
-	shared := func() time.Time {
-		clockMu.Lock()
-		defer clockMu.Unlock()
-		return now
-	}
-	advance := func(d time.Duration) {
-		clockMu.Lock()
-		now = now.Add(d)
-		clockMu.Unlock()
-	}
-
-	var relMu sync.Mutex
-	var released []HandoffReason
-	sso, err := NewSSO(SSOConfig[*upstream]{
-		Max: 4, TTL: time.Minute, Clock: shared,
-		Release: func(_ *upstream, r HandoffReason) {
-			relMu.Lock()
-			released = append(released, r)
-			relMu.Unlock()
-		},
-	})
-	if err != nil {
-		t.Fatal(err)
-	}
-	hOpt, mOpt := sso.Options()
-
-	store := token.NewMemStore(16)
-	tracker, err := auth.NewMemTracker(16, auth.Backoff{
-		Threshold: 100, Base: time.Second, Max: time.Second, Forget: time.Hour,
-	})
-	if err != nil {
-		t.Fatal(err)
-	}
-	loginPolicy, err := PasswordPolicyExample(
-		ghostFactor{sso: sso}, tracker, contextualFactor{allow: true})
-	if err != nil {
-		t.Fatal(err)
-	}
-	attach, err := auth.NewPolicy(auth.Leaf(token.NewFactor(store)))
-	if err != nil {
-		t.Fatal(err)
-	}
-	m, err := NewManager(func(tui.Backend, *SessionInfo) Runner { return newFakeApp() }, mOpt)
-	if err != nil {
-		t.Fatal(err)
-	}
-	t.Cleanup(func() {
-		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-		defer cancel()
-		_ = m.Shutdown(ctx)
-	})
-	h, err := NewHandler(Config{
-		Addr: "127.0.0.1:8080", Policy: attach, LoginPolicy: loginPolicy,
-		Issuer:         token.NewIssuer(store),
-		AllowedOrigins: []string{"https://tui.example.test"},
-		ExpectedHost:   "tui.example.test",
-	}, m, HandlerLogger(nopLogger{}), hOpt)
-	if err != nil {
-		t.Fatal(err)
-	}
-	h.now = shared
-	h.pending.now = shared
-
-	// The pause goes INSIDE the publish callback: by the time this runs, the gate
-	// has already checked membership and re-stamped the deadline. Advancing the
-	// clock past it and sweeping is what r5's probe does — and if publication were
-	// not happening under the gate's own lock, the sweep would take the key and the
-	// entry would land anyway.
-	// The pause goes INSIDE the publish callback, which is the gap itself: the gate
-	// has already checked membership and re-stamped the deadline by the time this
-	// runs.
-	//
-	// The clock is advanced so a sweep WANTS to take the key, a sweeper is started
-	// concurrently, and then the entry is published. If publication happened outside
-	// the gate's lock, the sweeper would win and the entry would land on a key that
-	// no longer exists. The clock is rolled back before the callback returns, so the
-	// sweeper — once it is finally let in — measures the live state rather than the
-	// artificial one, and the end-state assertions mean what they say.
-	inner := sso.commit
-	sso.commit = func(handoff string, publish func()) bool {
-		return inner(handoff, func() {
-			before := shared()
-			advance(2 * h.pendingHold)
-
-			// DETERMINISTIC, not timed. A sleep-and-check can miss a sweeper that is
-			// merely slow to start, so it proves nothing on a fast pass.
-			// TryLock asks the question directly: can anything else enter the gate
-			// right now? While publication is atomic the answer must be no, and the
-			// answer does not depend on scheduling.
-			if h.pending.mu.TryLock() {
-				h.pending.mu.Unlock()
-				t.Error("the gate's lock is free during publication, so a sweep can " +
-					"take the key and the entry will be published against a slot " +
-					"that no longer exists")
-			}
-
-			publish()
-
-			// Rolled back before returning, so anything that enters the gate after
-			// this measures the real deadline rather than the artificial one.
-			clockMu.Lock()
-			now = before
-			clockMu.Unlock()
-		})
-	}
-
-	rec := httptest.NewRecorder()
-	h.ServeLogin(rec, loginPost(`{"subject":"alice","password":"pw"}`))
-	if rec.Code != http.StatusOK {
-		t.Fatalf("login: %d %s", rec.Code, rec.Body.String())
-	}
-	// THE INVARIANT: an entry exists only if a slot accounts for it.
-	parked, held := sso.Len(), h.pending.pending()
-	if parked != 1 || held != 1 {
-		t.Errorf("parked=%d held=%d, want 1 and 1 — an entry published with no "+
-			"admission slot accounting for it makes the budget under-count", parked, held)
-	}
-	relMu.Lock()
-	defer relMu.Unlock()
-	if len(released) != 0 {
-		t.Errorf("released %v: the parked value is still live and must not have been "+
-			"cleaned up", released)
 	}
 }
 
@@ -2114,7 +1970,8 @@ func TestOnLogin_RawHookCanPublishAtomically(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	m, err := NewManager(func(tui.Backend, *SessionInfo) Runner { return newFakeApp() })
+	m, err := NewManager(func(tui.Backend, *SessionInfo) Runner { return newFakeApp() },
+		ManagerAdmission(NewAdmission(AdmissionCap(4))))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -2134,14 +1991,14 @@ func TestOnLogin_RawHookCanPublishAtomically(t *testing.T) {
 		Issuer:         token.NewIssuer(store),
 		AllowedOrigins: []string{"https://tui.example.test"},
 		ExpectedHost:   "tui.example.test",
-	}, m, HandlerLogger(nopLogger{}), MaxPendingLogins(4),
+	}, m, HandlerLogger(nopLogger{}),
 		OnLogin(func(handoff string, id *auth.Identity, st *Stash) error {
 			if lapse.Load() {
 				// Simulate a hook that took too long: its reservation is gone.
 				clockMu.Lock()
-				now = now.Add(2 * h.pendingHold)
+				now = now.Add(2 * h.adm.holdNow())
 				clockMu.Unlock()
-				_ = h.pending.pending() // the sweep another login would trigger
+				_ = h.adm.gate.pending() // the sweep another login would trigger
 			}
 			ok := st.CommitPark(func() {
 				parkMu.Lock()
@@ -2160,8 +2017,7 @@ func TestOnLogin_RawHookCanPublishAtomically(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	h.now = shared
-	h.pending.now = shared
+	h.adm.setClock(shared)
 
 	// The ordinary case: commits, parks, and holds its slot.
 	rec := httptest.NewRecorder()
@@ -2175,7 +2031,7 @@ func TestOnLogin_RawHookCanPublishAtomically(t *testing.T) {
 	if n != 1 {
 		t.Errorf("hand-rolled park holds %d after a successful login, want 1", n)
 	}
-	if held := h.pending.pending(); held != 1 {
+	if held := h.adm.gate.pending(); held != 1 {
 		t.Errorf("%d admission slots held, want 1", held)
 	}
 
@@ -2553,7 +2409,8 @@ func TestStash_LateCommitAfterTheHookReturnsIsRefused(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	m, err := NewManager(func(tui.Backend, *SessionInfo) Runner { return newFakeApp() })
+	m, err := NewManager(func(tui.Backend, *SessionInfo) Runner { return newFakeApp() },
+		ManagerAdmission(NewAdmission(AdmissionCap(4))))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -2568,7 +2425,7 @@ func TestStash_LateCommitAfterTheHookReturnsIsRefused(t *testing.T) {
 		Issuer:         token.NewIssuer(store),
 		AllowedOrigins: []string{"https://tui.example.test"},
 		ExpectedHost:   "tui.example.test",
-	}, m, HandlerLogger(nopLogger{}), MaxPendingLogins(4),
+	}, m, HandlerLogger(nopLogger{}),
 		OnLogin(func(_ string, _ *auth.Identity, st *Stash) error {
 			// A hook that defers its own work to a goroutine and returns. Wrong, and
 			// the point is that being wrong cannot corrupt the accounting.
@@ -2597,7 +2454,7 @@ func TestStash_LateCommitAfterTheHookReturnsIsRefused(t *testing.T) {
 	case <-time.After(5 * time.Second):
 		t.Fatal("the late CommitPark never returned")
 	}
-	if n := h.pending.pending(); n != 0 {
+	if n := h.adm.gate.pending(); n != 0 {
 		t.Errorf("%d admission slots held after a hook that parked nothing", n)
 	}
 }
@@ -2648,7 +2505,8 @@ func TestStash_CapabilityDiesWithTheHookNotTheRequest(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	m, err := NewManager(func(tui.Backend, *SessionInfo) Runner { return newFakeApp() })
+	m, err := NewManager(func(tui.Backend, *SessionInfo) Runner { return newFakeApp() },
+		ManagerAdmission(NewAdmission(AdmissionCap(4))))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -2663,7 +2521,7 @@ func TestStash_CapabilityDiesWithTheHookNotTheRequest(t *testing.T) {
 		Issuer:         token.NewIssuer(store),
 		AllowedOrigins: []string{"https://tui.example.test"},
 		ExpectedHost:   "tui.example.test",
-	}, m, HandlerLogger(nopLogger{}), MaxPendingLogins(4),
+	}, m, HandlerLogger(nopLogger{}),
 		OnLogin(func(_ string, _ *auth.Identity, st *Stash) error {
 			// A hook that keeps the Stash and fails, which sends the request down
 			// the revoke path.
@@ -2702,7 +2560,7 @@ func TestStash_CapabilityDiesWithTheHookNotTheRequest(t *testing.T) {
 	if rec.Code == http.StatusOK {
 		t.Error("a login whose hook refused returned a ticket")
 	}
-	if n := h.pending.pending(); n != 0 {
+	if n := h.adm.gate.pending(); n != 0 {
 		t.Errorf("%d admission slots held after a refused login", n)
 	}
 }
@@ -2764,7 +2622,8 @@ func TestStash_CapabilityDiesEvenIfTheHookPanics(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	m, err := NewManager(func(tui.Backend, *SessionInfo) Runner { return newFakeApp() })
+	m, err := NewManager(func(tui.Backend, *SessionInfo) Runner { return newFakeApp() },
+		ManagerAdmission(NewAdmission(AdmissionCap(4))))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -2779,7 +2638,7 @@ func TestStash_CapabilityDiesEvenIfTheHookPanics(t *testing.T) {
 		Issuer:         token.NewIssuer(store),
 		AllowedOrigins: []string{"https://tui.example.test"},
 		ExpectedHost:   "tui.example.test",
-	}, m, HandlerLogger(nopLogger{}), MaxPendingLogins(4),
+	}, m, HandlerLogger(nopLogger{}),
 		OnLogin(func(_ string, _ *auth.Identity, st *Stash) error {
 			retained = st
 			panic("the consumer's hook exploded")

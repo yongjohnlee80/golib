@@ -64,7 +64,13 @@ func (f loginFactor) Verify(ctx context.Context, r *auth.Request) (auth.Contribu
 // ATTACH, so no login ran and there is nothing parked to claim. Both arrive at
 // the same build function.
 func Example_singleSignOn() {
+	// The pending-login budget, built first and handed to each part, so none of them
+	// writes another's fields and the order they are built in does not matter.
+	adm := web.NewAdmission(web.AdmissionCap(8))
+
 	sso, err := web.NewSSO(web.SSOConfig[*upstreamSession]{
+		Admission: adm, // the SSO attaches itself: its park holds adm's cap and settles its handoffs
+
 		Max: 8,
 		TTL: 30 * time.Second,
 
@@ -102,10 +108,6 @@ func Example_singleSignOn() {
 	}
 	defer sso.Close()
 
-	// Both hooks arrive together, so the login side cannot be wired without the
-	// release side.
-	handlerOpt, managerOpt := sso.Options()
-
 	// Factory is the form to use: the build function receives a READY upstream
 	// session and never sees claim, provision or release, so the release cannot be
 	// forgotten. It runs on every exit path of the app, panics included.
@@ -113,7 +115,7 @@ func Example_singleSignOn() {
 		sso.Factory(func(b tui.Backend, id *auth.Identity, up *upstreamSession) web.Runner {
 			return newUserApp(b, id, up)
 		}),
-		managerOpt,
+		web.ManagerAdmission(adm), // the SSO is attached to it: its park settles the handoffs
 		web.MaxSessions(8),
 	)
 	if err != nil {
@@ -135,9 +137,9 @@ func Example_singleSignOn() {
 		panic(err)
 	}
 	_ = loginPolicy
-	_ = handlerOpt
 
-	// web.NewHandler(cfg, mgr, handlerOpt, ...) then wires the login route, and
+	// web.NewHandler(cfg, mgr, ...) then wires the login route, which leases from the
+	// Manager's Admission and parks through the SSO attached to it, and
 	// Serve builds the listener from the validated config.
 	fmt.Println("wired")
 	// Output: wired
