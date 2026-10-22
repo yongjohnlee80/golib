@@ -183,14 +183,7 @@ func build(ctx context.Context, l *layered, width float32, th Theme, m gui.Measu
 	legendTitle := ""
 	if colorLegend {
 		legendTitle = axisTitle(lp.c.color)
-		legendW = b.textW(legendTitle, b.bold)
-		for _, s := range l.series {
-			legendW = max(legendW, lh+pad+b.textW(s, th.Font))
-		}
-		legendH = float32(len(l.series)) * lh
-		if legendTitle != "" {
-			legendH += lh + pad
-		}
+		legendW, legendH = b.legendSize(legendTitle, l.series)
 	}
 	// the shape's legend, under the colour's
 	var sp2 *plan // the layer the shape legend is of: the first shaped by a field
@@ -210,14 +203,8 @@ func build(ctx context.Context, l *layered, width float32, th Theme, m gui.Measu
 			shapeTop = legendH + 2*pad
 		}
 		shapeTitle = axisTitle(sp2.c.shape)
-		legendW = max(legendW, b.textW(shapeTitle, b.bold))
-		for _, s := range l.shapes {
-			legendW = max(legendW, lh+pad+b.textW(s, th.Font))
-		}
-		legendH = shapeTop + float32(len(l.shapes))*lh
-		if shapeTitle != "" {
-			legendH += lh + pad
-		}
+		w, h := b.legendSize(shapeTitle, l.shapes)
+		legendW, legendH = max(legendW, w), shapeTop+h
 	}
 	legend := colorLegend || shapeLegend
 
@@ -535,12 +522,8 @@ func (b *builder) xAxis(xs *scale, labels []string, up bool, labelH float32, tit
 
 // colorOf is a series' colour: the mark's, the colour channel's value, or the palette's.
 func (b *builder) colorOf(series string) color.NRGBA {
-	c := b.p.c
-	switch {
-	case c.mark.color != nil:
-		return *c.mark.color
-	case c.color != nil && c.color.value != nil:
-		return *c.color.value
+	if col, ok := b.p.c.fixedColor(); ok {
+		return col
 	}
 	i := max(slices.Index(b.l.series, series), 0) // the shared colour domain: a series is one colour in every layer
 	palette := b.th.Palette
@@ -554,11 +537,8 @@ func (b *builder) colorOf(series string) color.NRGBA {
 // and for bars or areas overlaid by series).
 func (b *builder) opacity() float32 {
 	p := b.p
-	if p.c.opacity != nil {
-		return *p.c.opacity
-	}
-	if p.c.mark.opacity > 0 {
-		return p.c.mark.opacity
+	if a, ok := p.c.fixedOpacity(); ok {
+		return a
 	}
 	switch {
 	case p.c.mark.kind == markPoint && p.value().aggregate == "":
@@ -623,10 +603,7 @@ func (b *builder) marks(xs, ys *scale) {
 				b.add(item{kind: itemFill, pts: pts, color: col})
 				continue
 			}
-			width := 2 * b.unit
-			if p.c.mark.strokeWidth > 0 {
-				width = p.c.mark.strokeWidth * b.unit
-			}
+			width := p.c.strokeWidth(2) * b.unit
 			if len(top) > 1 {
 				b.stroke(col, width, p.c.mark.dash, top...)
 			}
@@ -734,6 +711,29 @@ func clockwise(pts []gui.Point) []gui.Point {
 // shapeLegend draws the shape's legend with its top left at at: its title, then each shape's
 // symbol, in the axes' colour, and its label.
 func (b *builder) shapeLegend(title string, at gui.Point) {
+	b.legendEntries(title, b.l.shapes, at, func(s string, x, cy, sw float32) {
+		b.symbol(gui.Pt(x+sw/2, cy), b.symbolOf(s), sw/2.5, b.th.Axis, b.p.c.mark.filled)
+	})
+}
+
+// legendSize is the size of a legend: its title (bold) over its entries, each a swatch and a
+// label, one line apiece.
+func (b *builder) legendSize(title string, entries []string) (w, h float32) {
+	lh, pad := b.lh, 4*b.unit
+	w = b.textW(title, b.bold)
+	for _, s := range entries {
+		w = max(w, lh+pad+b.textW(s, b.th.Font))
+	}
+	h = float32(len(entries)) * lh
+	if title != "" {
+		h += lh + pad
+	}
+	return w, h
+}
+
+// legendEntries draws a legend with its top left at at, in legendSize's box: its title, then each
+// entry's swatch (swatch draws it at x, centred on cy, sw across) and its label.
+func (b *builder) legendEntries(title string, entries []string, at gui.Point, swatch func(s string, x, cy, sw float32)) {
 	th, lh := b.th, b.lh
 	pad := 4 * b.unit
 	y := at.Y
@@ -742,8 +742,8 @@ func (b *builder) shapeLegend(title string, at gui.Point) {
 		y += lh + pad
 	}
 	sw := th.Font.Size * 0.8
-	for _, s := range b.l.shapes {
-		b.symbol(gui.Pt(at.X+sw/2, y+lh/2), b.symbolOf(s), sw/2.5, th.Axis, b.p.c.mark.filled)
+	for _, s := range entries {
+		swatch(s, at.X, y+lh/2, sw)
 		b.text(s, th.Font, gui.Rect{X: at.X + lh + pad, Y: y, W: b.textW(s, th.Font), H: lh}, -1, false, th.Text)
 		y += lh
 	}
@@ -795,32 +795,53 @@ func (b *builder) seriesData(xs *scale) []series {
 // legend draws the colour's legend with its top left at at: its title, then a swatch and a label
 // a series. A line's swatch is a stroke, a point's a circle, a bar's or an area's a square.
 func (b *builder) legend(title string, at gui.Point) {
-	th, lh := b.th, b.lh
-	pad := 4 * b.unit
-	y := at.Y
-	if title != "" {
-		b.text(title, b.bold, gui.Rect{X: at.X, Y: y, W: b.textW(title, b.bold), H: lh}, -1, false, th.Text)
-		y += lh + pad
-	}
-	sw := th.Font.Size * 0.8
-	for _, s := range b.l.series {
+	b.legendEntries(title, b.l.series, at, func(s string, x, cy, sw float32) {
 		col := b.colorOf(s)
-		cy := y + lh/2
 		switch b.p.c.mark.kind {
 		case markLine:
-			b.line(col, 2*b.unit, gui.Pt(at.X, cy), gui.Pt(at.X+sw, cy))
+			b.line(col, 2*b.unit, gui.Pt(x, cy), gui.Pt(x+sw, cy))
 		case markPoint:
 			sym := "circle"
 			if sh := b.p.c.shape; sh != nil && (sh.shape != "" || sh.field == b.p.c.color.field) {
 				sym = b.symbolOf(s) // the layer's constant shape, or the shape it shares the field of
 			}
-			b.symbol(gui.Pt(at.X+sw/2, cy), sym, sw/2.5, col, b.p.c.mark.filled)
+			b.symbol(gui.Pt(x+sw/2, cy), sym, sw/2.5, col, b.p.c.mark.filled)
 		default:
-			b.add(item{kind: itemRect, rect: gui.Rect{X: at.X, Y: cy - sw/2, W: sw, H: sw}, color: col})
+			b.add(item{kind: itemRect, rect: gui.Rect{X: x, Y: cy - sw/2, W: sw, H: sw}, color: col})
 		}
-		b.text(s, th.Font, gui.Rect{X: at.X + lh + pad, Y: y, W: b.textW(s, th.Font), H: lh}, -1, false, th.Text)
-		y += lh
+	})
+}
+
+// fixedColor is the colour c's marks are given outright: the mark's own, then the colour
+// channel's value. false: a field colours them, or nothing does.
+func (c *chart) fixedColor() (color.NRGBA, bool) {
+	switch {
+	case c.mark.color != nil:
+		return *c.mark.color, true
+	case c.color != nil && c.color.value != nil:
+		return *c.color.value, true
 	}
+	return color.NRGBA{}, false
+}
+
+// fixedOpacity is the opacity c's marks are given outright: the opacity channel's value, then the
+// mark's own. false: neither is set, and the layer's default applies.
+func (c *chart) fixedOpacity() (float32, bool) {
+	switch {
+	case c.opacity != nil:
+		return *c.opacity, true
+	case c.mark.opacity > 0:
+		return c.mark.opacity, true
+	}
+	return 0, false
+}
+
+// strokeWidth is c's stroke width in units: the mark's, else def (a line's 2, a rule's 1).
+func (c *chart) strokeWidth(def float32) float32 {
+	if c.mark.strokeWidth > 0 {
+		return c.mark.strokeWidth
+	}
+	return def
 }
 
 // rule draws a rule layer: a line across the plot at each of its values, in its colour (the
@@ -828,24 +849,15 @@ func (b *builder) legend(title string, at gui.Point) {
 // (Vega-Lite's 1 by default) and dashes.
 func (b *builder) rule(r *rulePlan, xs, ys *scale, plot gui.Rect) {
 	c := r.c
-	col := b.th.Palette[0]
-	switch {
-	case c.mark.color != nil:
-		col = *c.mark.color
-	case c.color != nil && c.color.value != nil:
-		col = *c.color.value
+	col, ok := c.fixedColor()
+	if !ok {
+		col = b.th.Palette[0]
 	}
-	alpha := float32(1)
-	switch {
-	case c.opacity != nil:
-		alpha = *c.opacity
-	case c.mark.opacity > 0:
-		alpha = c.mark.opacity
+	alpha, ok := c.fixedOpacity()
+	if !ok {
+		alpha = 1
 	}
-	width := b.unit
-	if c.mark.strokeWidth > 0 {
-		width = c.mark.strokeWidth * b.unit
-	}
+	width := c.strokeWidth(1) * b.unit
 	for _, v := range r.vals {
 		if r.onX {
 			x := xs.centre(v)
