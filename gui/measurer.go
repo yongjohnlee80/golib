@@ -6,6 +6,7 @@ import (
 
 	"github.com/yongjohnlee80/gio/font/gofont"
 	"github.com/yongjohnlee80/gio/text"
+	"github.com/yongjohnlee80/golib/gui/internal/linebreak"
 )
 
 // LineHeight is the height of a line of text as a multiple of its font size: what a measurer
@@ -54,8 +55,9 @@ type Measurer interface {
 	// Measure computes grapheme cluster coordinates and line ascent/descent for a single line of text.
 	Measure(s string, f Font) Measured
 
-	// Wrap splits text string s into lines no wider than width (in logical pixels), breaking on
-	// whitespace. Returns the wrapped line slices and the total bounding [Size].
+	// Wrap splits text string s into lines no wider than width (in logical pixels), breaking where
+	// flow's paragraphs do: at white space, and after a CJK character or a hyphen. A word with
+	// neither overflows its line. Returns the wrapped lines and their bounding [Size].
 	Wrap(s string, f Font, width float32) (lines []string, size Size)
 }
 
@@ -104,20 +106,24 @@ func (m *measurer) Wrap(s string, f Font, width float32) ([]string, Size) {
 		return x[len(x)-1]
 	}
 	for _, para := range strings.Split(s, "\n") {
-		words := strings.Fields(para)
-		if len(words) == 0 {
+		units := linebreak.Units(para)
+		if len(units) == 0 {
 			lines = append(lines, "")
 			continue
 		}
-		line := words[0]
-		for _, word := range words[1:] {
-			if try := line + " " + word; width <= 0 || widthOf(try) <= width {
+		line := units[0].Text
+		for _, u := range units[1:] {
+			try := line + u.Text
+			if u.Spaced {
+				try = line + " " + u.Text
+			}
+			if width <= 0 || widthOf(try) <= width {
 				line = try
 				continue
 			}
 			lines = append(lines, line)
 			w = max(w, widthOf(line))
-			line = word
+			line = u.Text
 		}
 		lines = append(lines, line)
 		w = max(w, widthOf(line))
