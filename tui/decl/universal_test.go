@@ -5,6 +5,7 @@ import (
 	"testing"
 
 	"github.com/yongjohnlee80/golib/decl"
+	"github.com/yongjohnlee80/golib/tui"
 	tuidecl "github.com/yongjohnlee80/golib/tui/decl"
 )
 
@@ -50,5 +51,16 @@ func TestEveryTypeAgreesOnTheUniversalProperties(t *testing.T) {
 		if !slices.Contains(a.MethodsOf(typ), "forceActiveFocus") {
 			t.Errorf("MethodsOf(%q) lacks forceActiveFocus: %v", typ, a.MethodsOf(typ))
 		}
+	}
+}
+
+// `focus: false` is QML's default, written out, and mounts as `focus: true` does. Before, Create
+// took it out of the builder's properties but reported it consumed only when true, so the engine
+// applied a false one, and Apply refused it: "has no runtime property focus".
+func TestAFalseFocusMounts(t *testing.T) {
+	_, err := tuidecl.NewProgram(tuidecl.LayoutSource("main.qml", []byte("import tui 1.0\nFlex { Text { text: \"a\"; focus: false } }")),
+		tuidecl.AppOptions(tui.WithBackend(tui.NewTestBackend(10, 2))))
+	if err != nil {
+		t.Errorf("a Text with focus: false: %v; want mounted", err)
 	}
 }
