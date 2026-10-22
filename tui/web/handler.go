@@ -131,6 +131,7 @@ func NewHandler(cfg Config, mgr *Manager, opts ...HandlerOption) (*Handler, erro
 	// NewHandler returned would change the live allowlist, which leaves the
 	// configuration mutable long after construction.
 	cfg.AllowedOrigins = slices.Clone(cfg.AllowedOrigins)
+	mgr.handlerQueue.Store(true) // its sessions default to DefaultQueueDepth (sessionBackendOptions)
 	h := &Handler{
 		cfg:       cfg,
 		mgr:       mgr,
