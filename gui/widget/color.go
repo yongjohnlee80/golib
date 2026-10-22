@@ -4,7 +4,6 @@ import (
 	"encoding/binary"
 	"hash/fnv"
 	"image/color"
-	"math"
 
 	"github.com/yongjohnlee80/golib/gui"
 	"github.com/yongjohnlee80/golib/tui/style"
@@ -61,12 +60,8 @@ func colorOf(c style.Color, th *style.Theme, dark bool, pal gui.Palette) (color.
 // (rows < 0: all of them), and whether one is open. The cells are the composed screen: a raised
 // panel over a view's corner would lend the view its colours (gui.OpenCellColors).
 func openColors(c gui.Canvas, rows int) (fg, bg color.NRGBA, ok bool) {
-	cols, all := 1, 1
-	if cs := c.CellSize(); cs.W > 0 && cs.H > 0 {
-		sz := c.Size()
-		cols = max(int(math.Round(float64(sz.W/cs.W))), 1)
-		all = max(int(math.Round(float64(sz.H/cs.H))), 1)
-	}
+	cols, all := gui.CanvasCells(c)
+	cols, all = max(cols, 1), max(all, 1)
 	if rows < 0 || rows > all {
 		rows = all
 	}
