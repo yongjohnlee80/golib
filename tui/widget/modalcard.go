@@ -1,7 +1,6 @@
 package widget
 
 import (
-	"github.com/yongjohnlee80/golib/errs"
 	"github.com/yongjohnlee80/golib/tui"
 	"github.com/yongjohnlee80/golib/tui/style"
 )
@@ -438,9 +437,4 @@ func paintScrim(su tui.Surface, ctx *tui.Context, glyph string, st style.Style) 
 		return
 	}
 	su.Fill(tui.Rect{W: sz.W, H: sz.H}, glyph, st)
-}
-
-// fatalOf builds the package's standard construction panic value.
-func fatalOf(op, rule, detail string) error {
-	return errs.Fatal{Op: op, Rule: rule, Detail: detail}
 }

@@ -2,7 +2,6 @@ package widget
 
 import (
 	"errors"
-	"strconv"
 
 	"github.com/yongjohnlee80/golib/tui"
 	"github.com/yongjohnlee80/golib/tui/keymap"
@@ -71,9 +70,6 @@ type Modal struct {
 	acceptGate func() bool
 }
 
-// ModalOption configures a Modal at construction.
-type ModalOption func(*Modal)
-
 // NewModal builds a dialog around the caller's content.
 //
 // Panics on a button list the validator refuses: a nil entry, the same *Button
@@ -99,19 +95,6 @@ func NewModal(body tui.Component, opts ...ModalOption) *Modal {
 	// replace an earlier one's, and a list refused above takes no button.
 	m.adopt(nil, m.card.buttons)
 	return m
-}
-
-// WithButtons supplies the dialog's buttons. The list is validated at
-// construction; see [NewModal] for what is refused.
-func WithButtons(b ...*Button) ModalOption {
-	return func(m *Modal) { m.card.buttons = append([]*Button(nil), b...) }
-}
-
-// WithAcceptGate says whether an Accept answer may accept NOW: a file dialog
-// with nothing chosen yet. A refused accept leaves the dialog open. The button's
-// own callback has run either way.
-func WithAcceptGate(fn func() bool) ModalOption {
-	return func(m *Modal) { m.acceptGate = fn }
 }
 
 // ANSWERS — Qt's QDialogButtonBox roles, answered by the dialog itself, so a
@@ -167,66 +150,6 @@ func (m *Modal) defaultButton() *Button {
 	return nil
 }
 
-// WithOnDismiss sets the callback run when the dialog closes. It runs before
-// the dismissal event reaches the bus, so an observer sees settled state.
-func WithOnDismiss(fn func(DismissReason)) ModalOption {
-	return func(m *Modal) { m.onDismiss = fn }
-}
-
-// WithModalTitle sets the card's title text.
-//
-// Named WithModalTitle rather than WithTitle because the package already has a
-// WithTitle for Box; this one is qualified, and ModalStyle.WithTitle — a method
-// — sets the title's LOOK rather than its text.
-func WithModalTitle(s string) ModalOption {
-	return func(m *Modal) { m.card.title = plainText(s) }
-}
-
-// WithModalTitleMessage sets the card's title to a catalog message, shown in the App's
-// language.
-func WithModalTitleMessage(msg tui.Message) ModalOption {
-	return func(m *Modal) { m.card.title = messageText(msg) }
-}
-
-// WithModalRule draws a line across the card between the body and the buttons,
-// joined to the frame at both ends: the message above it, the decision below.
-// Without it the two are separated by a blank line.
-func WithModalRule(v bool) ModalOption {
-	return func(m *Modal) { m.card.rule = v }
-}
-
-// WithModalKeys gives the dialog keys of its own: fn sees every key press the
-// controls inside it leave unconsumed, while it is open, and reports whether it
-// took it — a viewer's `y` copying, say.
-func WithModalKeys(fn func(tui.KeyEvent) bool) ModalOption {
-	return func(m *Modal) { m.ownKeys = fn }
-}
-
-// WithModalWidth sets the card's width in cells, frame included, where it
-// would otherwise take its content's: a prompt whose field would fill the
-// screen. Clamped to the host; 0 is the content's width.
-func WithModalWidth(w int) ModalOption {
-	return func(m *Modal) { m.card.width = max(w, 0) }
-}
-
-// WithModalMaxSizePercent caps the card's available width and height as a
-// percentage of the host. Zero on either axis leaves that axis uncapped.
-// The card remains centered and can still shrink with the terminal.
-func WithModalMaxSizePercent(width, height int) ModalOption {
-	return func(m *Modal) {
-		m.maxWidthPercent, m.maxHeightPercent = clampPct(width), clampPct(height)
-	}
-}
-
-// WithModalFooter sets a line of help text under the buttons — the keys the
-// dialog answers to, say. It belongs to the CARD, not the body, so the buttons
-// stay the card's and keep their mnemonics: a body cannot resolve a bare
-// letter, which is what moving the buttons into one to get a footer below
-// them used to cost.
-func WithModalFooter(text string) ModalOption {
-	return func(m *Modal) { m.card.footer = plainText(text) }
-}
-
 // SetTitle replaces the title in the card's top border, shown as given. It ends a title set
 // by [Modal.SetTitleMessage].
 func (m *Modal) SetTitle(s string) {
@@ -272,120 +195,6 @@ func (m *Modal) SetFooterMessage(msg tui.Message) {
 
 // Footer returns the help line under the buttons.
 func (m *Modal) Footer() string { return m.card.footer.inLanguage(&m.card.Base) }
-
-// WithModalStyle associates a style. The Modal does not own it; several dialogs
-// may share one.
-func WithModalStyle(s *ModalStyle) ModalOption {
-	return func(m *Modal) { m.card.st = s }
-}
-
-// ButtonAlign is where a dialog's row of buttons sits within its card.
-//
-// The zero value CENTRES them, which is the conventional look for a
-// confirmation and the one a caller who says nothing should get: a pair of
-// controls hugging one edge of a card wider than they are reads as detached
-// from the question above.
-type ButtonAlign uint8
-
-const (
-	// ButtonsCenter centres the row. The default.
-	ButtonsCenter ButtonAlign = iota
-	// ButtonsLeft packs the row against the leading edge.
-	ButtonsLeft
-	// ButtonsRight packs it against the trailing edge, the placement a form-like
-	// dialog with a wide body usually wants.
-	ButtonsRight
-)
-
-// Valid reports whether a is one of the declared alignments.
-func (a ButtonAlign) Valid() bool { return a <= ButtonsRight }
-
-// String names the alignment for traces and test failures.
-func (a ButtonAlign) String() string {
-	switch a {
-	case ButtonsCenter:
-		return "center"
-	case ButtonsLeft:
-		return "left"
-	case ButtonsRight:
-		return "right"
-	}
-	return "unknown"
-}
-
-// WithModalVimNavigation adds h/k and l/j as aliases for the arrow keys that
-// move between a dialog's buttons. Off by default.
-//
-// OPT-IN, because h and l are ordinary letters: a dialog whose buttons carry
-// mnemonics may legitimately answer to one of them, and a consumer that is not
-// a Vim-shaped application should not have two of its letters quietly taken.
-// An explicit mnemonic still wins over an alias, so enabling this cannot make
-// a declared key unreachable.
-func WithModalVimNavigation(v bool) ModalOption {
-	return func(m *Modal) { m.vimKeys = v }
-}
-
-// WithModalDismissKeys adds plain keys that close the dialog, alongside Escape.
-//
-// A configured key is an ESCAPE EQUIVALENT in full: it resolves through the same
-// path, so a dialog with a Cancel-role button has that button ACTIVATED, and the
-// dismissal is reported as DismissEscape — the reason names the intention, not
-// the key. A key that closed the dialog without running Cancel would be a
-// second, quieter way out with different consequences.
-//
-// A terminal application usually has a second dismiss key — `q` is the common
-// one — and a dialog that traps focus swallows it, so a surface that honoured it
-// as a Float stops honouring it as a Modal with nothing to say so. The keys
-// belong to the HOST rather than to this widget: only the application knows
-// which of its dialogs a reader navigates and which take typed input, and a `q`
-// that closes the dialog is a `q` the operator cannot type into it.
-//
-// RESOLVED AFTER MNEMONICS AND AFTER THE FOCUSED CONTROL. A declared mnemonic is
-// specific intent and wins; and a dismiss key never reaches this while a control
-// that consumes text has focus, because the runtime offers the key there first.
-// Both orderings matter: a dialog whose Cancel button is mnemonic `q` keeps
-// activating Cancel, and a dialog containing a text input keeps typing `q`.
-//
-// Modified keys are never dismiss keys — Ctrl-Q is not `q`.
-func WithModalDismissKeys(keys ...rune) ModalOption {
-	return func(m *Modal) {
-		m.dismissKeys = append(m.dismissKeys, keys...)
-	}
-}
-
-// WithButtonAlign sets where the button row sits. An invalid value is refused
-// at construction rather than stored, like every other closed set here.
-func WithButtonAlign(a ButtonAlign) ModalOption {
-	return func(m *Modal) {
-		if !a.Valid() {
-			panic(tuiFatal("widget: WithButtonAlign",
-				"value outside the declared ButtonAlign set", int(a)))
-		}
-		m.card.align = a
-	}
-}
-
-// WithPlacement sets where the card sits within the host. Default is centred,
-// which is what a dialog almost always wants — and what a plain stack layer
-// does NOT do on its own, since a stack places an unaligned layer top-left.
-//
-// An invalid value is refused at construction rather than stored.
-func WithPlacement(p ModalPlacement) ModalOption {
-	return func(m *Modal) {
-		if !p.Valid() {
-			panic(tuiFatal("widget: WithPlacement",
-				"value outside the declared ModalPlacement set", int(p)))
-		}
-		m.placement = p
-	}
-}
-
-// WithScrim sets whether the background is dimmed behind this dialog. Default
-// is true. This decides WHETHER; ModalStyle.WithScrim decides what it looks
-// like.
-func WithScrim(v bool) ModalOption {
-	return func(m *Modal) { m.wantScrim = v }
-}
 
 // wantsScrim reports whether the dialog asked for a backdrop (WithScrim); its host places it.
 func (m *Modal) wantsScrim() bool { return m.wantScrim }
@@ -660,179 +469,6 @@ func (m *Modal) Init(ctx *tui.Context) {
 	ctx.SetDefaultActionResolvers(tui.ActionResolverFunc(m.keys))
 }
 
-// keys handles Escape and the dialog's fallback Enter. Routing starts at the
-// focused control, so a focused button claims Enter before it reaches here.
-func (m *Modal) keys(ev tui.Event) (tui.Action, bool) {
-	k, ok := ev.(tui.KeyEvent)
-	if !ok || k.Kind == tui.KeyRelease {
-		return nil, false
-	}
-	cmd, isCmd := m.Context().KeyCommand(k, modalCommands...)
-	switch {
-	case isCmd && cmd.ID == ModalDismiss.ID:
-		return dismissAction{}, true
-	case isCmd && cmd.ID == ModalAccept.ID:
-		// ENTER, unclaimed by the control that has focus: the default button's,
-		// through the runtime as a mnemonic is. None declared, no answer.
-		if b := m.defaultButton(); b != nil {
-			return modalActivateAction{target: b}, true
-		}
-		return nil, false
-	}
-	if k.Mods.Chord() == 0 {
-		// MNEMONIC FIRST, ALWAYS. A declared key is specific intent; a direction is
-		// a convenience. Resolving the alias first would make a button whose
-		// mnemonic happens to be 'l' unreachable the moment Vim keys were enabled,
-		// and the author who declared it would have no way to know why.
-		if b := m.mnemonicButton(k.Code); b != nil {
-			return modalActivateAction{target: b}, true
-		}
-		// A HOST DISMISS KEY, after the mnemonics. See WithModalDismissKeys for why the
-		// order is load-bearing in both directions.
-		for _, r := range m.dismissKeys {
-			if k.Code == r {
-				return dismissAction{}, true
-			}
-		}
-	}
-	switch {
-	case !isCmd:
-	case cmd.ID == ModalPrev.ID, cmd.ID == ModalVimPrev.ID && m.vimKeys:
-		return modalStepAction{delta: -1}, true
-	case cmd.ID == ModalNext.ID, cmd.ID == ModalVimNext.ID && m.vimKeys:
-		return modalStepAction{delta: +1}, true
-	}
-	return nil, false
-}
-
-// KeyScope is a Modal's key-map scope.
-func (m *Modal) KeyScope() keymap.Scope { return ModalScope }
-
-// modalStepAction moves the focus between a dialog's buttons.
-type modalStepAction struct{ delta int }
-
-func (modalStepAction) ActionID() tui.ActionID { return "modal.step" }
-
-// modalActivateAction presses the button a mnemonic names.
-type modalActivateAction struct{ target *Button }
-
-func (modalActivateAction) ActionID() tui.ActionID { return "modal.activate" }
-
-// mnemonicButton is the ENABLED button answering to r, or nil.
-//
-// Enabled only: a greyed control does not answer its key, for the same reason
-// it does not answer Enter. The list is validated against two enabled buttons
-// claiming one key, so the first match is the only match.
-func (m *Modal) mnemonicButton(r rune) *Button {
-	if r == 0 {
-		return nil
-	}
-	for _, b := range m.card.buttons {
-		if b != nil && b.Enabled() && b.Mnemonic() != 0 &&
-			eqFold(b.Mnemonic(), r) {
-			return b
-		}
-	}
-	return nil
-}
-
-// stepFocus moves focus to the next enabled button in the given direction,
-// wrapping, and skipping the disabled.
-//
-// Anchored on the button that HAS focus rather than on a remembered index: the
-// user may have arrived by Tab or by clicking, and an index of our own would
-// disagree with the runtime about where they are.
-func (m *Modal) stepFocus(delta int) bool {
-	ctx := m.Context()
-	if ctx == nil || len(m.card.buttons) == 0 {
-		return false
-	}
-	cur := -1
-	for i, b := range m.card.buttons {
-		if b == nil {
-			continue
-		}
-		if bc := b.Context(); bc != nil && bc.Focused() {
-			cur = i
-			break
-		}
-	}
-	n := len(m.card.buttons)
-	for step := 1; step <= n; step++ {
-		j := ((cur+delta*step)%n + n) % n
-		if b := m.card.buttons[j]; b != nil && b.Enabled() {
-			ctx.FocusComponent(b)
-			return true
-		}
-	}
-	return false
-}
-
-// dismissAction is the dialog's own semantic action for "close this".
-type dismissAction struct{}
-
-// ActionID returns the stable published name of this action.
-func (dismissAction) ActionID() tui.ActionID { return "modal.dismiss" }
-
-// HandleAction resolves Escape against the dialog's roles.
-//
-// ROLES DECIDE, never labels or position. Matching "Cancel" or "No" breaks the
-// moment an application is translated, and matching the last button breaks the
-// moment the list is reordered — both are real bugs that role-based resolution
-// cannot have.
-func (m *Modal) HandleAction(inv tui.ActionInvocation) bool {
-	switch a := actionValue(inv.Action).(type) {
-	case modalStepAction:
-		return m.stepFocus(a.delta)
-	case modalActivateAction:
-		// THROUGH THE RUNTIME, never by calling Activate directly. The runtime
-		// is the sole publisher of ControlActivatedEvent, so a direct call
-		// would run the button's own callback and nothing else: a command log,
-		// an undo stack or a test watching the bus would see a keystroke that
-		// activated nothing. ForwardAction carries this invocation's
-		// provenance, so a mnemonic press is recorded as the keyboard event it
-		// was — identical to Enter and to a click.
-		if ctx := m.Context(); ctx != nil {
-			return ctx.ForwardAction(a.target, tui.ActivateAction{})
-		}
-		return false
-	}
-	if _, ok := actionValue(inv.Action).(dismissAction); !ok {
-		return false
-	}
-	// A Reject-role button, if the dialog has one, is activated so a DISMISS
-	// REQUEST means exactly what pressing that button means — whether the
-	// request arrived as Escape or as a host-configured dismiss key. The
-	// resolution is the same for both, deliberately: a `q` that closed the
-	// dialog without running Cancel would be a second, quieter way out with
-	// different consequences.
-	//
-	// Forwarded through the RUNTIME rather than by calling Button.Activate
-	// directly. The runtime is the sole publisher of ControlActivatedEvent, so a
-	// direct call ran the button's own callback and nothing else: anything
-	// watching the bus for activations — a command log, an undo stack, a test —
-	// saw a keypress that activated nothing, and the equivalence this comment
-	// claims was not one the code kept. ForwardAction carries this invocation's
-	// provenance, so the activation is recorded as the keyboard event it was.
-	for _, b := range m.card.buttons {
-		if b != nil && b.Role() == ButtonRoleReject && b.Enabled() {
-			if ctx := m.Context(); ctx != nil {
-				ctx.ForwardAction(b, tui.ActivateAction{})
-			}
-			// Dismiss even if the button refused: Escape closes the dialog, and
-			// a Cancel handler that declined is not a reason to trap the user.
-			// Idempotent, so a callback that dismissed already costs nothing.
-			m.Dismiss(DismissCancel)
-			return true
-		}
-	}
-	// No Reject role: the dialog simply closes. DismissEscape is the reason for
-	// either key, because it names the INTENTION — leaving without choosing —
-	// rather than the physical key that carried it.
-	m.Dismiss(DismissEscape)
-	return true
-}
-
 // Layout fills the host and PLACES the card within itself.
 //
 // The card is measured against loose constraints so it takes its natural size,
@@ -912,24 +548,24 @@ func (m *Modal) refreshSelection() {
 	}
 }
 
-// tuiFatal builds the package's standard construction panic.
-func tuiFatal(op, rule string, got int) error {
-	return fatalOf(op, rule, "got "+strconv.Itoa(got))
-}
-
-// KeyBindings is the Modal's commands as m binds them, then what the host's WithModalKeys consults if
-// it said so with WithModalKeyBinder (tui.KeyBinder). Its buttons' mnemonics and a host's
-// WithModalDismissKeys are not commands, and are not listed.
-func (m *Modal) KeyBindings(km *keymap.Map) []keymap.Binding {
-	out := tui.BindingsOf(km, modalCommands...)
-	if m.keyBinder != nil {
-		out = append(out, m.keyBinder(km)...)
+// focusInitial moves focus to the dialog's preferred starting control.
+//
+// The DEFAULT-role button is preferred unconditionally, not merely as a
+// tie-break: a dialog's affirmative action is where a user expects to land, and
+// choosing it only when nothing else qualified would make the preference depend
+// on button order. Failing that, the first enabled button; failing that, the
+// body's first focusable control; failing that, the Modal itself, which is the
+// target of last resort that keeps Escape reachable.
+func (m *Modal) focusInitial() {
+	// InitialFocus always nominates — a button, a control, or failing those
+	// the Modal node itself — so there is no "no nomination" case to handle here. Guarding for
+	// one would be a branch nothing can reach.
+	target, _ := m.InitialFocus()
+	if ctx := m.Context(); ctx != nil {
+		ctx.FocusComponent(target)
 	}
-	return out
-}
-
-// WithModalKeyBinder says what a WithModalKeys handler binds, so App.KeyBindings lists it after the
-// Modal's own commands, in the order the Modal consults them.
-func WithModalKeyBinder(fn func(*keymap.Map) []keymap.Binding) ModalOption {
-	return func(m *Modal) { m.keyBinder = fn }
+	// Read back from where focus actually landed rather than assuming the
+	// nomination was honoured: it can be refused, and a selection index derived
+	// from the request instead of the result would then name the wrong button.
+	m.refreshSelection()
 }
