@@ -471,7 +471,7 @@ func paintProgress(comp tui.Component) (View, tui.NativeScope, bool) {
 	if !ok {
 		return nil, 0, false
 	}
-	if _, det := p.Progress(); !det {
+	if _, det := p.Progress(); !det || p.Spinner() { // a spinner draws one cell, never a track: its cells show
 		return nil, 0, false
 	}
 	return ViewFunc(func(c Canvas) {
