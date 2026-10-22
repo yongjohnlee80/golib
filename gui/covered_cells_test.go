@@ -8,6 +8,7 @@ import (
 	"slices"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/yongjohnlee80/gio/op"
 	"github.com/yongjohnlee80/gio/unit"
@@ -524,4 +525,14 @@ func TestAnOverflowingTabBarUnderlinesTheActiveTab(t *testing.T) {
 		}
 	}
 	t.Fatalf("no underline drawn; tab7 is at cell %d of %q: %+v", label, row, rc.Calls)
+}
+
+// A spinner bar draws one cell, a frame or a blank, and never a track: given a progress, the
+// painter leaves it to its cells rather than drawing a track and a fill tui never draws.
+func TestADeterminateSpinnerBarIsLeftToItsCells(t *testing.T) {
+	p := widget.NewProgressBar(widget.WithSpinner([]string{"|", "/"}, time.Second))
+	p.SetProgress(0.5)
+	if view, _, ok := paintProgress(p); ok || view != nil {
+		t.Fatal("a spinner bar at 0.5 is painted natively: a track and a fill tui never draws")
+	}
 }
