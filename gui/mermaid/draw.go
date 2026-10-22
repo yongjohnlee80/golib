@@ -347,17 +347,7 @@ func halfEllipse(r gui.Rect) *gui.Path {
 
 // endLength is how far an end reaches back along its edge from the tip: the line stops there, so
 // a hollow end is not drawn through.
-func endLength(e end, size float32) float32 {
-	switch e {
-	case endArrow:
-		return size * 0.8
-	case endTriangle:
-		return size
-	case endDiamond, endDiamondOpen:
-		return size * 1.6
-	}
-	return 0
-}
+func endLength(e end, size float32) float32 { return ends[e].reach * size }
 
 // edge draws an edge's line through its points, its corners rounded, and its ends.
 func (l *Laid) edge(c gui.Canvas, e laidEdge) {
@@ -389,65 +379,107 @@ func (l *Laid) edge(c gui.Canvas, e laidEdge) {
 // end draws an edge's end with its tip at tip, the edge coming from from.
 func (l *Laid) end(c gui.Canvas, kind end, tip, from gui.Point, size, width float32, b gui.Brush) {
 	u, ok := unit(from, tip)
-	if !ok {
+	if !ok || ends[kind].draw == nil {
 		return
 	}
-	nx, ny := -u.Y, u.X // the normal
-	at := func(along, across float32) gui.Point {
-		return gui.Pt(tip.X-u.X*along+nx*across, tip.Y-u.Y*along+ny*across)
-	}
-	w := size * 0.45
-	switch kind {
-	case endArrow:
-		c.FillPath(new(gui.Path).MoveTo(tip).LineTo(at(size, w)).LineTo(at(size, -w)).Close(), b)
-	case endOpen:
-		c.StrokePath(new(gui.Path).MoveTo(at(size, w)).LineTo(tip).LineTo(at(size, -w)), width, b)
-	case endHalf:
-		c.StrokePath(new(gui.Path).MoveTo(at(size, w)).LineTo(tip), width, b)
-	case endDot:
-		r := size * 0.35
-		o := at(r, 0)
-		c.FillEllipse(gui.Rect{X: o.X - r, Y: o.Y - r, W: 2 * r, H: 2 * r}, b)
-	case endCross:
-		r := size * 0.35
-		o := at(r*1.4, 0)
+	ends[kind].draw(endMark{c: c, kind: kind, tip: tip, u: u, size: size, w: size * 0.45, width: width, b: b, bg: gui.Solid(l.th.Background)})
+}
+
+// endMark is an end being drawn: its tip, the edge's direction toward it (u), the end's size and
+// half breadth (w), the line's width and brush, and the background a hollow end is filled with.
+type endMark struct {
+	c              gui.Canvas
+	kind           end
+	tip, u         gui.Point
+	size, w, width float32
+	b, bg          gui.Brush
+}
+
+// at is the point along the edge back from the tip, and across it (along the normal).
+func (m endMark) at(along, across float32) gui.Point {
+	nx, ny := -m.u.Y, m.u.X
+	return gui.Pt(m.tip.X-m.u.X*along+nx*across, m.tip.Y-m.u.Y*along+ny*across)
+}
+
+// endSpec is an end kind: how far it reaches back from the tip, in end sizes (endLength), and how
+// it draws. endNone has neither.
+type endSpec struct {
+	reach float32
+	draw  func(m endMark)
+}
+
+// diamondReach is a diamond's length, in end sizes: the line stops where the diamond starts.
+const diamondReach = 1.6
+
+// ends is each end kind's reach and drawing.
+var ends = [...]endSpec{
+	endNone: {},
+	endArrow: {0.8, func(m endMark) {
+		m.c.FillPath(new(gui.Path).MoveTo(m.tip).LineTo(m.at(m.size, m.w)).LineTo(m.at(m.size, -m.w)).Close(), m.b)
+	}},
+	endOpen: {0, func(m endMark) {
+		m.c.StrokePath(new(gui.Path).MoveTo(m.at(m.size, m.w)).LineTo(m.tip).LineTo(m.at(m.size, -m.w)), m.width, m.b)
+	}},
+	endHalf: {0, func(m endMark) {
+		m.c.StrokePath(new(gui.Path).MoveTo(m.at(m.size, m.w)).LineTo(m.tip), m.width, m.b)
+	}},
+	endDot: {0, func(m endMark) {
+		r := m.size * 0.35
+		o := m.at(r, 0)
+		m.c.FillEllipse(gui.Rect{X: o.X - r, Y: o.Y - r, W: 2 * r, H: 2 * r}, m.b)
+	}},
+	endCross: {0, func(m endMark) {
+		r := m.size * 0.35
+		o := m.at(r*1.4, 0)
 		x := new(gui.Path).MoveTo(gui.Pt(o.X-r, o.Y-r)).LineTo(gui.Pt(o.X+r, o.Y+r))
 		x.MoveTo(gui.Pt(o.X-r, o.Y+r)).LineTo(gui.Pt(o.X+r, o.Y-r))
-		c.StrokePath(x, width, b)
-	case endTriangle:
-		p := new(gui.Path).MoveTo(tip).LineTo(at(size, w*1.2)).LineTo(at(size, -w*1.2)).Close()
-		c.FillPath(p, gui.Solid(l.th.Background))
-		c.StrokePath(p, width, b)
-	case endDiamond, endDiamondOpen:
-		d := size * 1.6
-		p := new(gui.Path).MoveTo(tip).LineTo(at(d/2, w)).LineTo(at(d, 0)).LineTo(at(d/2, -w)).Close()
-		if kind == endDiamond {
-			c.FillPath(p, b)
-		} else {
-			c.FillPath(p, gui.Solid(l.th.Background))
-		}
-		c.StrokePath(p, width, b)
-	case endOne, endZeroOne, endMany, endZeroMany:
-		// crow's foot: the inner mark (a bar, or a ring for zero) and the outer (a bar, or the foot
-		// for many), the outer nearer the box
-		p := new(gui.Path)
-		bar := func(along float32) { p.MoveTo(at(along, w)).LineTo(at(along, -w)) }
-		if kind == endMany || kind == endZeroMany {
-			p.MoveTo(at(0, w)).LineTo(at(size, 0)).LineTo(at(0, -w))
-		} else {
-			bar(size * 0.5)
-		}
-		if kind == endZeroOne || kind == endZeroMany {
-			r := size * 0.3
-			o := at(size*1.1+r, 0)
-			ring := gui.Rect{X: o.X - r, Y: o.Y - r, W: 2 * r, H: 2 * r}
-			c.FillEllipse(ring, gui.Solid(l.th.Background))
-			c.StrokePath(ellipse(ring), width, b)
-		} else {
-			bar(size * 1.1)
-		}
-		c.StrokePath(p, width, b)
+		m.c.StrokePath(x, m.width, m.b)
+	}},
+	endTriangle: {1, func(m endMark) {
+		p := new(gui.Path).MoveTo(m.tip).LineTo(m.at(m.size, m.w*1.2)).LineTo(m.at(m.size, -m.w*1.2)).Close()
+		m.c.FillPath(p, m.bg)
+		m.c.StrokePath(p, m.width, m.b)
+	}},
+	endDiamond:     {diamondReach, drawDiamond},
+	endDiamondOpen: {diamondReach, drawDiamond},
+	endOne:         {0, drawCrowsFoot},
+	endZeroOne:     {0, drawCrowsFoot},
+	endMany:        {0, drawCrowsFoot},
+	endZeroMany:    {0, drawCrowsFoot},
+}
+
+// drawDiamond is a diamond end: filled for composition, hollow (the background) for aggregation.
+func drawDiamond(m endMark) {
+	d := m.size * diamondReach
+	p := new(gui.Path).MoveTo(m.tip).LineTo(m.at(d/2, m.w)).LineTo(m.at(d, 0)).LineTo(m.at(d/2, -m.w)).Close()
+	if m.kind == endDiamond {
+		m.c.FillPath(p, m.b)
+	} else {
+		m.c.FillPath(p, m.bg)
 	}
+	m.c.StrokePath(p, m.width, m.b)
+}
+
+// drawCrowsFoot is a crow's foot end: the inner mark (a bar, or a ring for zero) and the outer (a
+// bar, or the foot for many), the outer nearer the box.
+func drawCrowsFoot(m endMark) {
+	p := new(gui.Path)
+	bar := func(along float32) { p.MoveTo(m.at(along, m.w)).LineTo(m.at(along, -m.w)) }
+	if m.kind == endMany || m.kind == endZeroMany {
+		p.MoveTo(m.at(0, m.w)).LineTo(m.at(m.size, 0)).LineTo(m.at(0, -m.w))
+	} else {
+		bar(m.size * 0.5)
+	}
+	if m.kind == endZeroOne || m.kind == endZeroMany {
+		r := m.size * 0.3
+		o := m.at(m.size*1.1+r, 0)
+		ring := gui.Rect{X: o.X - r, Y: o.Y - r, W: 2 * r, H: 2 * r}
+		m.c.FillEllipse(ring, m.bg)
+		m.c.StrokePath(ellipse(ring), m.width, m.b)
+	} else {
+		bar(m.size * 1.1)
+	}
+	m.c.StrokePath(p, m.width, m.b)
 }
 
 // unit is the unit vector from a to b.
