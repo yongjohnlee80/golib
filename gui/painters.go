@@ -108,24 +108,41 @@ func cells(c Canvas) (cols, rows int) {
 	return int(math.Round(float64(sz.W / cs.W))), int(math.Round(float64(sz.H / cs.H)))
 }
 
+// contextOf is the component's Context, nil when it has none (it is not mounted, or embeds no Base).
+func contextOf(c tui.Component) *tui.Context {
+	if b, ok := c.(interface{ Context() *tui.Context }); ok {
+		return b.Context()
+	}
+	return nil
+}
+
 // focusedNode reports whether the component holds the keyboard focus.
 func focusedNode(c tui.Component) bool {
-	if b, ok := c.(interface{ Context() *tui.Context }); ok {
-		if ctx := b.Context(); ctx != nil {
-			return ctx.Focused()
-		}
-	}
-	return false
+	ctx := contextOf(c)
+	return ctx != nil && ctx.Focused()
 }
 
 // hovered reports whether the pointer is over the component.
 func hovered(c tui.Component) bool {
-	if b, ok := c.(interface{ Context() *tui.Context }); ok {
-		if ctx := b.Context(); ctx != nil {
-			return ctx.Hovered()
-		}
+	ctx := contextOf(c)
+	return ctx != nil && ctx.Hovered()
+}
+
+// controlChrome is a rounded control's look over its ground bg and text fg: the fill, lighter
+// under the pointer and more so while armed, and the border, faint, or strong and wider with focus.
+func controlChrome(fg, bg color.NRGBA, armed, hover, focus bool) (fill, border color.NRGBA, width float32) {
+	fill = bg
+	switch {
+	case armed:
+		fill = Mix(bg, fg, 0.22)
+	case hover:
+		fill = Mix(bg, fg, 0.1)
 	}
-	return false
+	border, width = alpha(fg, 0.35), 1
+	if focus {
+		border, width = alpha(fg, 0.9), 1.5
+	}
+	return fill, border, width
 }
 
 // openColors is the colours of the first of the cells xs on row that nothing covers, and whether
@@ -190,20 +207,10 @@ func paintButton(comp tui.Component) (View, tui.NativeScope, bool) {
 		}
 		r := Rect{W: c.Size().W, H: c.Size().H}
 		radius := min(r.H/2, 6)
-		fill := bg
-		switch {
-		case b.State() == widget.WidgetStateArmed:
-			fill = Mix(bg, fg, 0.22)
-		case b.Hovered():
-			fill = Mix(bg, fg, 0.1)
-		}
+		fill, border, width := controlChrome(fg, bg, b.State() == widget.WidgetStateArmed, b.Hovered(),
+			b.State() == widget.WidgetStateFocused)
 		c.FillRect(r, Solid(c.Backdrop())) // the corners show what is around the button
 		c.FillRRect(r, radius, Solid(fill))
-		border := alpha(fg, 0.35)
-		width := float32(1)
-		if b.State() == widget.WidgetStateFocused {
-			border, width = alpha(fg, 0.9), 1.5
-		}
 		c.StrokeRRect(r.Inset(width/2), radius, width, Solid(border))
 		drawLabel(c, b.Label(), i, labelFont(c), fg, readableOn(keyColor(c, b.Label(), i, fg), fill, fg))
 	}), tui.ScopeSubtree, true
@@ -240,16 +247,9 @@ func paintComboBox(comp tui.Component) (View, tui.NativeScope, bool) {
 			return // wholly covered: the host paints the covering cells
 		}
 		radius := min(r.H/2, 6)
-		fill := bg
-		if hovered(comp) {
-			fill = Mix(bg, fg, 0.1)
-		}
+		fill, border, width := controlChrome(fg, bg, false, hovered(comp), focusedNode(comp) || f.Open())
 		c.FillRect(Rect{W: c.Size().W, H: c.Size().H}, Solid(c.Backdrop())) // the corners, and the slot past the field
 		c.FillRRect(r, radius, Solid(fill))
-		border, width := alpha(fg, 0.35), float32(1)
-		if focusedNode(comp) || f.Open() {
-			border, width = alpha(fg, 0.9), 1.5
-		}
 		c.StrokeRRect(r.Inset(width/2), radius, width, Solid(border))
 		chevron := f.Affordance() && cols > 2
 		text := cols
