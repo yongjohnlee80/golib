@@ -1918,11 +1918,12 @@ func TestSSO_ParkFullReleasesTheTakenValue(t *testing.T) {
 	if n := sso.Len(); n != 1 {
 		t.Errorf("park holds %d, want just the first login's entry", n)
 	}
-	// The first login's slot is still held (its entry is still parked); the second
-	// login's is not.
-	if n := h.adm.gate.pending(); n != 1 {
-		t.Errorf("%d admission slots held, want 1 — the refused login's slot must go "+
-			"back and the parked one's must not", n)
+	// No slot is held: the refused login's goes back, and the unattached park's entry
+	// never accounted for one (it published without the Admission's commit, so the
+	// login route returned its uncommitted reservation).
+	if n := h.adm.gate.pending(); n != 0 {
+		t.Errorf("%d admission slots held, want 0 — the refused login's slot must go "+
+			"back, and an unattached park's entry holds none", n)
 	}
 }
 
