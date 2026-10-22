@@ -7,6 +7,7 @@ import (
 
 	"github.com/yongjohnlee80/golib/gui"
 	"github.com/yongjohnlee80/golib/gui/flow"
+	"github.com/yongjohnlee80/golib/gui/internal/css"
 	"github.com/yongjohnlee80/golib/gui/internal/csscolor"
 	phtml "github.com/yongjohnlee80/golib/parse/html"
 )
@@ -248,45 +249,14 @@ func stripComments(s string) string {
 	}
 }
 
-// parseDecls reads "prop: value; …" (a rule's body, or a style attribute).
+// parseDecls reads "prop: value; …" (a rule's body, or a style attribute): gui's one CSS
+// declaration reader (internal/css), shared with the SVG reader.
 func parseDecls(s string) []cssDecl {
 	var out []cssDecl
-	for _, d := range splitTop(s, ';') {
-		prop, value, ok := strings.Cut(d, ":")
-		if !ok {
-			continue
-		}
-		prop = strings.ToLower(strings.TrimSpace(prop))
-		value = strings.TrimSpace(value)
-		imp := false
-		if i := strings.LastIndex(strings.ToLower(value), "!important"); i >= 0 {
-			value, imp = strings.TrimSpace(value[:i]), true
-		}
-		if prop != "" && value != "" {
-			out = append(out, cssDecl{prop: prop, value: value, important: imp})
-		}
+	for _, d := range css.Decls(s) {
+		out = append(out, cssDecl{prop: d.Prop, value: d.Value, important: d.Important})
 	}
 	return out
-}
-
-// splitTop splits s at sep outside parentheses.
-func splitTop(s string, sep byte) []string {
-	var out []string
-	depth, start := 0, 0
-	for i := 0; i < len(s); i++ {
-		switch s[i] {
-		case '(':
-			depth++
-		case ')':
-			depth = max(depth-1, 0)
-		case sep:
-			if depth == 0 {
-				out = append(out, s[start:i])
-				start = i + 1
-			}
-		}
-	}
-	return append(out, s[start:])
 }
 
 // parseSelector reads one selector of the subset: compounds joined by descendant and child
@@ -453,7 +423,7 @@ func parseCompound(tok string) (cssCompound, bool) {
 			case name == "last-child" && arg == "":
 				c.last = true
 			case name == "not":
-				for _, part := range splitTop(arg, ',') {
+				for _, part := range css.SplitTop(arg, ',') {
 					x, ok := parseCompound(strings.TrimSpace(part))
 					if !ok || strings.TrimSpace(part) == "" {
 						return c, false
@@ -943,7 +913,7 @@ func (c *computed) apply(d cssDecl, parent *computed, rootPx float32, view gui.S
 			}
 		}
 	case "gap", "grid-gap":
-		f := splitTop(lv, ' ')
+		f := css.SplitTop(lv, ' ')
 		var vals []cssLen
 		for _, s := range f {
 			if s = strings.TrimSpace(s); s == "" {
@@ -1067,7 +1037,7 @@ func splitFields(v string) []string {
 		return r
 	}, v)
 	var out []string
-	for _, f := range splitTop(v, ' ') {
+	for _, f := range css.SplitTop(v, ' ') {
 		if f = strings.TrimSpace(f); f != "" {
 			out = append(out, f)
 		}
@@ -1216,7 +1186,7 @@ func (c *computed) font(v string, parent, root float32, view gui.Size) {
 // max-width and -height, width, height, orientation and prefers-color-scheme. Any other feature,
 // and print, never matches.
 func mediaMatches(list string, env mediaEnv) bool {
-	for _, q := range splitTop(list, ',') {
+	for _, q := range css.SplitTop(list, ',') {
 		if mediaQuery(strings.TrimSpace(q), env) {
 			return true
 		}

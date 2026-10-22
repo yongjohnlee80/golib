@@ -50,6 +50,7 @@ import (
 	"github.com/yongjohnlee80/gio/f32"
 
 	"github.com/yongjohnlee80/golib/gui"
+	"github.com/yongjohnlee80/golib/gui/internal/css"
 	"github.com/yongjohnlee80/golib/gui/internal/csscolor"
 )
 
@@ -350,16 +351,11 @@ func (p *parser) styled(t xml.StartElement, st *style) error {
 			return err
 		}
 	}
-	for _, decl := range strings.Split(attr(t, "style"), ";") {
-		k, v, ok := strings.Cut(decl, ":")
-		if !ok {
-			continue
-		}
-		k = strings.ToLower(strings.TrimSpace(k))
-		if k == "transform" {
+	for _, d := range css.Decls(attr(t, "style")) {
+		if d.Prop == "transform" {
 			continue // a CSS transform is not SVG's attribute; left alone
 		}
-		if err := set(k, v); err != nil {
+		if err := set(d.Prop, d.Value); err != nil {
 			return err
 		}
 	}
