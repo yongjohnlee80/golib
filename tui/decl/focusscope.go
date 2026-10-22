@@ -44,8 +44,9 @@ type focusScopeNode struct {
 }
 
 func buildFocusScope(b Build) (tui.Component, []string, error) {
-	if n := len(b.Children) - len(shortcutsIn(b.Children)); n != 1 {
-		return nil, nil, fmt.Errorf("a FocusScope holds exactly one content item besides its Shortcuts, got %d (at %s)", n, b.Pos)
+	if _, rest := splitShortcuts(b.Children); len(rest) != 1 {
+		_, err := oneContent(rest, "FocusScope", b.Pos)
+		return nil, nil, err
 	}
 	s := &focusScopeNode{}
 	s.Label("FocusScope")
@@ -55,30 +56,17 @@ func buildFocusScope(b Build) (tui.Component, []string, error) {
 	return s, nil, nil
 }
 
-// shortcutsIn is the Shortcuts among children.
-func shortcutsIn(children []tui.Component) []*shortcutNode {
-	var out []*shortcutNode
-	for _, c := range children {
-		if sc, ok := c.(*shortcutNode); ok {
-			out = append(out, sc)
-		}
-	}
-	return out
-}
-
 // arrange sorts the children into the keys and the content, mounting a content item that came and
 // unmounting one that went. A reload removes before it inserts, so a replaced content leaves the
 // scope empty for a moment; two content items are refused.
 func (s *focusScopeNode) arrange(children []tui.Component, _ []map[string]qml.SpecValue, _ tui.Component) error {
+	shortcuts, rest := splitShortcuts(children)
+	if len(rest) > 1 {
+		return fmt.Errorf("a FocusScope holds exactly one content item besides its Shortcuts, got %d", len(rest))
+	}
 	var content tui.Component
-	for _, c := range children {
-		if _, ok := c.(*shortcutNode); ok {
-			continue
-		}
-		if content != nil {
-			return fmt.Errorf("a FocusScope holds exactly one content item besides its Shortcuts")
-		}
-		content = c
+	if len(rest) == 1 {
+		content = rest[0]
 	}
 	for _, c := range append([]tui.Component(nil), s.Items()...) {
 		if c != content {
@@ -88,7 +76,7 @@ func (s *focusScopeNode) arrange(children []tui.Component, _ []map[string]qml.Sp
 	if content != nil && len(s.Items()) == 0 {
 		s.Add(content)
 	}
-	s.shortcuts = shortcutsIn(children)
+	s.shortcuts = shortcuts
 	return nil
 }
 
