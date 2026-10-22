@@ -130,6 +130,27 @@
 //     cells do not change across frames are replayed verbatim without re-shaping glyphs or
 //     re-evaluating geometries.
 //
+// # Capabilities
+//
+// What a view draws with and what a host may offer it, as small interfaces a function asks for
+// by the part it uses:
+//
+//	Capability        Method(s)                                     Purpose
+//	View              Paint                                         a component's pixels, painted on the loop in Flush
+//	Canvas            Sub; the four below                           the whole surface a View paints on
+//	Drawer            FillRect, FillPath, DrawText, DrawImage, …    shapes, paths, text, images, under pushed transforms
+//	TextEnv           Text, Scale, TextSize, Fonts                  the window's shaper, scale, text size and fonts
+//	CellView          CellSize, CellColors, CellText, PaintCells    the grid under a view; zeros where there is none
+//	WindowChrome      WindowMoveArea                                what a view marks of the window itself
+//	Palette           Indexed                                       a canvas that draws in a window's theme (PaletteOf)
+//	CellCoverer       CellCovered                                   a canvas that knows which cells a later layer covers
+//	CaretView         Caret                                         a View that reports its caret, for the IME
+//	CaretColorsView   CaretColors                                   a CaretView that reports the text colours at its caret
+//	Measurer          Measure, Wrap                                 text measured off the loop (AcquireMeasurer)
+//
+// InputEvent, TextInputCmd and Node are closed sets, not capabilities: the toolkit's events, what
+// gui tells the toolkit back, and a Panes tree's nodes.
+//
 // # Getting Started
 //
 // To launch a native window hosting a TUI application:
