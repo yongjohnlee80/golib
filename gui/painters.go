@@ -5,8 +5,6 @@ import (
 	"math"
 	"slices"
 	"strings"
-	"sync"
-	"weak"
 
 	"github.com/yongjohnlee80/golib/tui"
 	"github.com/yongjohnlee80/golib/tui/style"
@@ -527,45 +525,23 @@ func filledCells(f float64, cols int) int {
 	return min(full, cols)
 }
 
-// panelBarStrips are the tab strips a panel's title bar holds (OnPanelBar), each with the bar's
-// colour. Weak, so a strip dropped with its editor leaves nothing behind.
-var panelBarStrips struct {
-	sync.Mutex
-	m map[weak.Pointer[widget.TabStrip]]func() (color.NRGBA, bool)
-}
-
 // OnPanelBar marks t as drawn on a panel's title bar (gui/widget's Editor.Tabs), whose colour bar
 // answers (false before the panel's first paint). t's painter fills its bar in that colour, the
 // panel's own, not its cells': the strip's cells cover the panel's bar, and in their colour the title
-// bar was two shades, the strip's band and the panel's tint beyond it (Johno: one or the other).
-func OnPanelBar(t *widget.TabStrip, bar func() (color.NRGBA, bool)) {
-	panelBarStrips.Lock()
-	defer panelBarStrips.Unlock()
-	if panelBarStrips.m == nil {
-		panelBarStrips.m = map[weak.Pointer[widget.TabStrip]]func() (color.NRGBA, bool){}
-	}
-	for k := range panelBarStrips.m {
-		if k.Value() == nil {
-			delete(panelBarStrips.m, k)
-		}
-	}
-	panelBarStrips.m[weak.Make(t)] = bar
-}
+// bar was two shades, the strip's band and the panel's tint beyond it (Johno: one or the other). The
+// strip keeps it (TabStrip.SetBarColor).
+func OnPanelBar(t *widget.TabStrip, bar func() (color.NRGBA, bool)) { t.SetBarColor(bar) }
+
+// barColorer is a tab strip that fills its bar in a colour of its own (TabStrip.SetBarColor).
+type barColorer interface{ BarColor() (color.NRGBA, bool) }
 
 // panelBar is the colour of the panel's bar comp is on (OnPanelBar), when it is one and the panel
 // has painted it.
 func panelBar(comp tui.Component) (color.NRGBA, bool) {
-	t, ok := comp.(*widget.TabStrip)
-	if !ok {
-		return color.NRGBA{}, false
+	if b, ok := comp.(barColorer); ok {
+		return b.BarColor()
 	}
-	panelBarStrips.Lock()
-	bar := panelBarStrips.m[weak.Make(t)]
-	panelBarStrips.Unlock()
-	if bar == nil {
-		return color.NRGBA{}, false
-	}
-	return bar()
+	return color.NRGBA{}, false
 }
 
 // paintTabs draws the bar with the active tab raised, a divider between neighbours, its labels kept
@@ -573,22 +549,11 @@ func panelBar(comp tui.Component) (color.NRGBA, bool) {
 // content below the bar is the active tab's child and draws over this view, so the scope is
 // the chrome.
 func paintTabs(comp tui.Component) (View, tui.NativeScope, bool) {
-	var tabSpans func() []widget.TabSpan
-	var active func() int
-	switch t := comp.(type) {
-	case *widget.Tabs:
-		tabSpans, active = t.TabSpans, t.Active
-	case interface {
-		TabSpans() []widget.TabSpan
-		ActiveTabIndex() int
-	}:
-		// Runtime terminal tabs keep IDs for operations; the painter needs
-		// only the strip's spans and current presentation index. This seam
-		// also builds against the released root module, before its next tag.
-		tabSpans, active = t.TabSpans, t.ActiveTabIndex
-	default:
+	t, ok := comp.(widget.TabSpanner)
+	if !ok {
 		return nil, 0, false
 	}
+	tabSpans, active := t.TabSpans, t.ActiveTabIndex
 	return ViewFunc(func(c Canvas) {
 		cols, _ := CanvasCells(c)
 		cs := c.CellSize()
