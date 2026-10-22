@@ -50,7 +50,7 @@ type Modal struct {
 	onDismiss                         func(DismissReason)
 	maxWidthPercent, maxHeightPercent int
 
-	host     *OverlayHost
+	host     modalHost
 	open     bool
 	cardRect tui.Rect // where the card was placed at the last layout, in the modal's cells
 	// vimKeys adds h/k and l/j as aliases for the directional keys.
@@ -522,6 +522,12 @@ func (m *Modal) Open(h *OverlayHost) error {
 	if h == nil {
 		return ErrNilOverlayHost
 	}
+	return m.openOn(h)
+}
+
+// openOn is Open on any modal host: the CommandLine opens its prompt dialog on the host it found
+// (hostFor[modalHost]).
+func (m *Modal) openOn(h modalHost) error {
 	if m.open {
 		return ErrModalAlreadyOpen
 	}

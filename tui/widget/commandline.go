@@ -72,13 +72,14 @@ func (l *CommandLine) Close() {
 	}
 }
 
-// host is the OverlayHost above the owner; ok false before the owner is mounted or with none.
-func (l *CommandLine) host() (*OverlayHost, bool) {
+// host is the overlay host above the owner its prompt dialog opens on; ok false before the owner
+// is mounted or with none.
+func (l *CommandLine) host() (modalHost, bool) {
 	ctx := ownerContext(l.owner)
 	if ctx == nil {
 		return nil, false
 	}
-	return hostFor[*OverlayHost](ctx)
+	return hostFor[modalHost](ctx)
 }
 
 // Open opens the prompt with initial in its field. It reports false, and ':' bubbles on, when it
@@ -133,7 +134,7 @@ func (l *CommandLine) open(initial string, failed error) bool {
 			}
 		}))
 	m.SetFooterMessage(tui.Msg("tui.cmdline.help"))
-	if err := m.Open(host); err != nil {
+	if err := m.openOn(host); err != nil {
 		return false
 	}
 	l.modal = m
