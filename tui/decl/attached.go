@@ -156,16 +156,14 @@ func (b Build) Attached(i int, prop string) (qml.SpecValue, bool) {
 }
 
 // takeFocus removes QML's `focus` property from a node's own properties and
-// reports its value.
+// reports its value, and whether it was declared at all.
 //
 // `focus: true` is understood for EVERY type, the way QML's Item.focus is: it
 // says where the keyboard should start, which is a statement about the
 // document rather than about any one widget. So no builder sees it, and the
 // adapter carries the nominee up the tree to the container that owns the focus
 // scope.
-func takeFocus(props []qml.SpecProp) ([]qml.SpecProp, bool, error) {
-	var own []qml.SpecProp
-	focus := false
+func takeFocus(props []qml.SpecProp) (own []qml.SpecProp, focus, declared bool, err error) {
 	for _, p := range props {
 		if p.Name != focusProp {
 			own = append(own, p)
@@ -173,9 +171,9 @@ func takeFocus(props []qml.SpecProp) ([]qml.SpecProp, bool, error) {
 		}
 		on, err := boolOf(p.Value)
 		if err != nil {
-			return nil, false, err
+			return nil, false, false, err
 		}
-		focus = on
+		focus, declared = on, true
 	}
-	return own, focus, nil
+	return own, focus, declared, nil
 }

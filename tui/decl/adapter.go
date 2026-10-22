@@ -372,7 +372,7 @@ func (a *Adapter) Create(c decl.Construction) ([]string, error) {
 		return nil, err
 	}
 	own, attached := a.splitProps(c.Props)
-	own, focus, err := takeFocus(own)
+	own, focus, declaredFocus, err := takeFocus(own)
 	if err != nil {
 		return nil, err
 	}
@@ -432,7 +432,8 @@ func (a *Adapter) Create(c decl.Construction) ([]string, error) {
 	a.kids[c.Node] = append([]decl.NodeID(nil), c.Children...)
 	a.paletteBuilt(c.Node, ownPalette, c.Children)
 	consumed = append(consumed, paletteNames...)
-	if focus {
+	// a false focus is consumed too: the engine would otherwise apply it, and nothing sets focus
+	if declaredFocus {
 		consumed = append(consumed, focusProp)
 	}
 	// The attached properties are reported consumed: they were read — by the
