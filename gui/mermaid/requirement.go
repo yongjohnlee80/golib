@@ -113,8 +113,7 @@ func layRequirement(ctx context.Context, d pm.Diagram, _ float32, th Theme, m gu
 			e.line, e.head, e.tail = pm.Solid, endNone, endDot
 		}
 		lb := newLabel(m, "«"+r.Kind.String()+"»", small, wrapAt, th.Text)
-		pad := small.Size * 0.3
-		le.Label = layout.Size{W: lb.box.W + 2*pad, H: lb.box.H + 2*pad}
+		le.Label = edgeLabelRoom(lb)
 		e.label = &lb
 		in.Edges = append(in.Edges, le)
 		l.edges = append(l.edges, e)

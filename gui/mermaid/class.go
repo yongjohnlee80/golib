@@ -129,8 +129,7 @@ func layClass(ctx context.Context, d pm.Diagram, _ float32, th Theme, m gui.Meas
 		e := laidEdge{line: r.Line, tail: relEnd(r.FromEnd, r.Line), head: relEnd(r.ToEnd, r.Line), color: th.Line}
 		if r.Label != "" {
 			lb := newLabel(m, r.Label, small, wrapAt, th.Text)
-			pad := small.Size * 0.3
-			le.Label = layout.Size{W: lb.box.W + 2*pad, H: lb.box.H + 2*pad}
+			le.Label = edgeLabelRoom(lb)
 			e.label = &lb
 		}
 		if r.FromCard != "" {

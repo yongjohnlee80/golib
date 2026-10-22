@@ -6,6 +6,7 @@ import (
 
 	"github.com/yongjohnlee80/gio/f32"
 
+	"github.com/yongjohnlee80/golib/graph/layout"
 	"github.com/yongjohnlee80/golib/gui"
 	pm "github.com/yongjohnlee80/golib/parse/mermaid"
 )
@@ -82,9 +83,19 @@ func (l *Laid) edgesAt(c gui.Canvas, over bool) {
 	}
 }
 
-// ground fills col behind a label, a little past it.
+// labelPad is how far a label's ground reaches past its text: what ground draws, and the room
+// edgeLabelRoom keeps for it in the layout.
+func labelPad(f gui.Font) float32 { return f.Size * 0.3 }
+
+// edgeLabelRoom is the room an edge's label takes in the layout: its text and its ground's pad.
+func edgeLabelRoom(lb label) layout.Size {
+	pad := labelPad(lb.font)
+	return layout.Size{W: lb.box.W + 2*pad, H: lb.box.H + 2*pad}
+}
+
+// ground fills col behind a label, a little past it (labelPad).
 func (l *Laid) ground(c gui.Canvas, lb label, col color.NRGBA) {
-	pad := lb.font.Size * 0.3
+	pad := labelPad(lb.font)
 	b := lb.box
 	c.FillRRect(gui.Rect{X: b.X - pad, Y: b.Y - pad, W: b.W + 2*pad, H: b.H + 2*pad}, 3, gui.Solid(col))
 }
