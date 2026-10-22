@@ -1,6 +1,9 @@
 package tui
 
-import "testing"
+import (
+	"testing"
+	"time"
+)
 
 // focus_into_test.go: Context.FocusInto — Qt's forceActiveFocus(): focus moved
 // INTO a component, whatever its focusable part is.
@@ -222,5 +225,57 @@ func TestFocusIntoAPaneShownAsTheFocusedOneIsHidden(t *testing.T) {
 	h.sync()
 	if got := focusedID(h); got != b.nodeID() {
 		t.Errorf("after the swap the focus is on %d, want b %d (out is %d)", got, b.nodeID(), out.nodeID())
+	}
+}
+
+// Keys typed right after the one that showed a field and focused into it reach the field, not the
+// control the focus was leaving, though no frame runs between them: the deferred focus settles
+// before the next key is routed. A frame cap of an hour keeps every frame out after the first.
+func TestKeysAfterAFocusIntoReachTheShownField(t *testing.T) {
+	t.Parallel()
+	out := newFocusProbe("out", Size{W: 2, H: 1})
+	field := newFocusProbe("field", Size{W: 2, H: 1})
+	pane := NewFlex(Vertical)
+	pane.Add(field)
+	pane.SetVisible(false)
+	out.onEvent = func(p *probe, ev Event) bool {
+		if k, ok := ev.(KeyEvent); ok && k.Code == '/' {
+			pane.SetVisible(true)
+			p.ctx.FocusInto(pane)
+			return true
+		}
+		return false
+	}
+	root := NewFlex(Vertical)
+	root.Add(out, pane)
+	h := startApp(t, root, 8, 8, WithMinFrameInterval(time.Hour))
+	h.onLoop(func() { h.app.repairFocus() })
+	h.sync()
+	if got := focusedID(h); got != out.nodeID() {
+		t.Fatalf("fixture: focus on %d, want out %d", got, out.nodeID())
+	}
+	h.inject(keyEv('/'), keyEv('a'), keyEv('b'))
+	keys := func(p *focusProbe) int {
+		n := 0
+		for _, ev := range p.recorded() {
+			if _, ok := ev.(KeyEvent); ok {
+				n++
+			}
+		}
+		return n
+	}
+	for deadline := time.Now().Add(3 * time.Second); keys(out)+keys(field) < 3; time.Sleep(time.Millisecond) {
+		if time.Now().After(deadline) {
+			t.Fatalf("the three keys were not all routed: out %d, field %d", keys(out), keys(field))
+		}
+	}
+	var typed []rune
+	for _, ev := range field.recorded() {
+		if k, ok := ev.(KeyEvent); ok {
+			typed = append(typed, k.Code)
+		}
+	}
+	if string(typed) != "ab" {
+		t.Fatalf("the shown field got %q, want \"ab\"; focus on %d (field %d)", string(typed), focusedID(h), field.nodeID())
 	}
 }
