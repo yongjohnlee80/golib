@@ -43,10 +43,7 @@ func CheckKeymap(opts ...ProgramOption) (warnings []keymap.Problem, err error) {
 		return programWarnings(c.keys), err
 	}
 	defer func() { _ = p.tree.Destroy() }()
-	var problems []string
-	if err := p.adapter.checkShortcuts(c.keys); err != nil {
-		problems = append(problems, strings.TrimPrefix(err.Error(), "keymap: "))
-	}
+	problems := p.adapter.shortcutProblems(c.keys)
 	problems = append(problems, fixedKeyProblems(p.adapter, c.keys)...)
 	problems = append(problems, mnemonicProblems(p.adapter, c.keys)...)
 	if len(problems) == 0 {
