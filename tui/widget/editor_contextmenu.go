@@ -84,16 +84,7 @@ func (e *Editor) ContextMenuOpen() bool { return e.menu.IsOpen() }
 // OpenContextMenu opens the right-click menu from the keyboard, as a right press on the caret's
 // cell would: below its line, so the line stays in sight. Shift+F10 and the Menu key call it while the menu is
 // on. False when the menu is off or the caret is not on the screen.
-func (e *Editor) OpenContextMenu() bool {
-	if !e.menu.Enabled() {
-		return false
-	}
-	x, y, ok := e.Cursor()
-	if !ok {
-		return false
-	}
-	return e.menu.OpenAt(tui.Point{X: x, Y: y})
-}
+func (e *Editor) OpenContextMenu() bool { return e.pointer.OpenMenu() }
 
 // IsContextMenuKey reports whether k is one of the DEFAULT keys that open a context menu: Shift+F10,
 // the desktop convention, or the Menu key where the backend delivers it. A golib widget matches its own

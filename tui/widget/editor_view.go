@@ -35,12 +35,6 @@ type cellLayout struct {
 	numberColored bool
 
 	styles TextInputStyles
-
-	// dragEdge is -1 or +1 while the dragging pointer is above or below the view, which keeps
-	// scrolling on dragTick (a GUI editor's auto-scroll); dragX is the pointer's column.
-	dragEdge   int
-	dragX      int
-	dragCancel func()
 }
 
 // Reveal scrolls (line, col) into the viewport.

@@ -157,8 +157,9 @@ type Editor struct {
 	// reveals it only when either changed, so the wheel's scroll stays
 	shown viewMark
 
-	menu    *EditorMenu  // the right-click menu: off unless a consumer turns it on
-	cmdline *CommandLine // the ':' prompt: on unless a consumer turns it off
+	menu    *EditorMenu    // the right-click menu: off unless a consumer turns it on
+	pointer *EditorPointer // the press, the drag, and the context menu's keys (editor_pointer.go)
+	cmdline *CommandLine   // the ':' prompt: on unless a consumer turns it off
 }
 
 var (
@@ -254,6 +255,7 @@ func NewEditor(opts ...EditorOption) *Editor {
 	e.cells = cellLayout{ed: e, wrap: WrapNone, styles: defaultTextInputStyles()}
 	e.core.Bind(nil, &e.cells)
 	e.menu = NewEditorMenu(e, e.core)
+	e.pointer = NewEditorPointer(e.core, e.menu, editorPointerView{e})
 	e.menu.SetRows(func() []MenuItemModel { return EditorContextItems(e) })
 	e.cmdline = NewCommandLine(e, e.core)
 	e.cmdline.SetEnabled(true)
@@ -488,11 +490,9 @@ func (e *Editor) HandleEvent(ev tui.Event) bool {
 	}
 	switch t := ev.(type) {
 	case tui.MouseEvent:
-		return e.handleMouse(t)
+		return e.wheel(t) || e.pointer.HandleEvent(t)
 	case tui.PointerCaptureLostEvent:
-		e.core.EndDrag() // the selection made so far stays
-		e.setDragEdge(0)
-		return true
+		return e.pointer.HandleEvent(t)
 	case tui.PasteEvent:
 		return e.core.HandlePaste(t.Text)
 	case tui.FocusEvent:
@@ -501,18 +501,11 @@ func (e *Editor) HandleEvent(ev tui.Event) bool {
 		}
 		return false // focus events are informational; let them bubble
 	case tui.TickEvent:
-		if e.core.Dragging() && e.cells.dragEdge != 0 {
-			e.dragTick() // the drag's auto-scroll: a press settled any pending rune
-			return true
-		}
-		return e.core.HandleTick() // the chord timeout
+		// the drag's auto-scroll, else the chord timeout
+		return e.pointer.HandleEvent(t) || e.core.HandleTick()
 	case tui.KeyEvent:
-		if e.menu.Enabled() && t.Kind == tui.KeyPress { // a repeat opens no second menu
-			if _, ok := e.Context().KeyCommand(t, EditorContextMenu); ok {
-				return e.OpenContextMenu()
-			}
-		}
-		return e.core.HandleKey(t)
+		// the key map's menu key, else the core's
+		return e.pointer.HandleEvent(t) || e.core.HandleKey(t)
 	}
 	return false
 }
