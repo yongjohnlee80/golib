@@ -94,3 +94,32 @@ func TestAReloadWithoutSourcesStillChecksItsKeyIds(t *testing.T) {
 		t.Errorf("a reload with an undeclared keyId, in a program with no sources: %v; want refused", err)
 	}
 }
+
+// A reload's keyId check reads each holder's keyScope as the document declares it, a Drawer's and a
+// FocusScope's: a keyId in the scope it names is taken, one in another scope or in a holder with none
+// is refused, naming why. The check mounts keys-only (keycheck.go), so this pins what it still sees.
+func TestAReloadChecksAKeyIdAgainstItsHoldersScope(t *testing.T) {
+	s, _ := runKeys(t, keyIdWindow, "")
+	s.WaitForText(t, "ready")
+	todo := `Shortcut { sequence: keyId("demo.todos.add"); onActivated: App.added() }`
+	for _, c := range []struct {
+		name, holder, want string // want "" is taken
+	}{
+		{"a FocusScope in its scope", `FocusScope { keyScope: "demo.todos"; ` + todo + ` Text { text: "in" } }`, ""},
+		{"a Drawer in its scope", `Drawer { keyScope: "demo.todos"; ` + todo + ` Text { text: "in" } }`, ""},
+		{"a FocusScope in another", `FocusScope { keyScope: "demo.other"; ` + todo + ` Text { text: "in" } }`,
+			"is a demo.todos command, in a FocusScope whose scope is demo.other"},
+		{"a FocusScope with none", `FocusScope { ` + todo + ` Text { text: "in" } }`,
+			`in a FocusScope with no keyScope: give it keyScope: "demo.todos"`},
+	} {
+		layout := keysHead + "Window { Flex { direction: Tui.Vertical\n Text { text: App.status }\n " + c.holder + " } }"
+		var err error
+		onScreenLoop(t, s, func() { _, err = s.Program.Reload([]byte(layout)) })
+		switch {
+		case c.want == "" && err != nil:
+			t.Errorf("%s: %v; want taken", c.name, err)
+		case c.want != "" && (err == nil || !strings.Contains(err.Error(), c.want)):
+			t.Errorf("%s: %v; want refused, %q", c.name, err, c.want)
+		}
+	}
+}
