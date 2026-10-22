@@ -148,10 +148,11 @@ import (
 // paints. [Editor.Core] hands the core to code that drives it apart from this view.
 type Editor struct {
 	Base
-	core      *EditorCore // the behaviour; a field, never embedded
-	doc       docSlot     // a Rendered view drawn in place of the text (editor_document.go)
-	cells     cellLayout  // the geometry, in cells: implements EditorLayout
-	keepPlace bool        // a text set keeps the reader's place (SetKeepPlace, ReplaceValue)
+	core      *EditorCore  // the behaviour; a field, never embedded
+	doc       DocumentSlot // a Rendered view drawn in place of the text (editor_document.go)
+	docToggle bool         // the core's Rendered toggle is wired (wireToggle)
+	cells     cellLayout   // the geometry, in cells: implements EditorLayout
+	keepPlace bool         // a text set keeps the reader's place (SetKeepPlace, ReplaceValue)
 	// shown is the cursor and viewport Layout last kept the cursor in view for: a layout pass
 	// reveals it only when either changed, so the wheel's scroll stays
 	shown viewMark
@@ -175,8 +176,8 @@ func (e *Editor) Core() *EditorCore { return e.core }
 func (e *Editor) Init(ctx *tui.Context) {
 	e.Base.Init(ctx)
 	e.core.Bind(ctx, &e.cells)
-	if e.doc.view != nil { // given before the mount
-		ctx.Mount(e.doc.view)
+	if v := e.doc.Document(); v != nil { // given before the mount
+		ctx.Mount(v)
 	}
 }
 
@@ -479,7 +480,7 @@ func (e *Editor) SetNamedRegister(name rune, text string, linewise bool) bool {
 // across modal and modeless editing profiles. The pointer is the view's: it becomes a buffer
 // position here; everything else is the core's.
 func (e *Editor) HandleEvent(ev tui.Event) bool {
-	if e.doc.shown { // a key the document view left; the hidden text takes nothing
+	if e.doc.Shown() { // a key the document view left; the hidden text takes nothing
 		if k, ok := ev.(tui.KeyEvent); ok {
 			return e.documentKey(k)
 		}
