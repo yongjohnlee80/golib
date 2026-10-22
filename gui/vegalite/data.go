@@ -74,24 +74,13 @@ func newPlan(c *chart) (*plan, error) {
 	if col := c.color; col != nil && col.value == nil && (col.typ != typeNominal || col.aggregate != "") {
 		return nil, unsupported("a %v colour", col.typ)
 	}
-	switch c.mark.kind {
-	case markBar:
-		switch {
-		case x.typ.discrete() && y.typ == typeQuantitative:
-		case y.typ.discrete() && x.typ == typeQuantitative:
-			p.dimY = true
-		default:
-			return nil, unsupported("a bar of %v x and %v y", x.typ, y.typ)
-		}
-	case markLine, markArea:
-		if y.typ != typeQuantitative {
-			return nil, unsupported("a %s with a %v y", c.mark.kind, y.typ)
-		}
-		if x.aggregate != "" {
-			return nil, unsupported("a %s with x aggregated", c.mark.kind)
+	def := marks[c.mark.kind]
+	if def.check != nil {
+		if err := def.check(p); err != nil {
+			return nil, err
 		}
 	}
-	if c.shape != nil && c.mark.kind != markPoint {
+	if c.shape != nil && !def.shapes {
 		return nil, unsupported("a shape on a %s mark", c.mark.kind)
 	}
 	if sh := c.shape; sh != nil && sh.shape == "" && (!sh.typ.discrete() || sh.aggregate != "") {
@@ -251,7 +240,7 @@ func (p *plan) domains() error {
 	c := p.c
 	p.xs = axisPlan{ch: c.x, discrete: c.x.typ.discrete(), temporal: c.x.typ == typeTemporal}
 	p.ys = axisPlan{ch: c.y, discrete: c.y.typ.discrete(), temporal: c.y.typ == typeTemporal}
-	if c.mark.kind == markBar {
+	if marks[c.mark.kind].band {
 		p.xs.band, p.ys.band = p.xs.discrete, p.ys.discrete
 	}
 	var err error
@@ -406,10 +395,10 @@ func (p *plan) sortKeys(ch *channel) map[string]float64 {
 	return out
 }
 
-// stacking is how the measure piles: the value channel's stack, or Vega-Lite's default (a bar or
-// an area split into series piles from zero); other marks never pile.
+// stacking is how the measure piles: the value channel's stack, or Vega-Lite's default (a mark
+// that stacks, a bar or an area, split into series piles from zero); other marks never pile.
 func (p *plan) stacking() stackMode {
-	if p.c.mark.kind != markBar && p.c.mark.kind != markArea {
+	if !marks[p.c.mark.kind].stacks {
 		return stackNone
 	}
 	mode := p.value().stack
@@ -606,8 +595,8 @@ func newRule(c *chart) (*rulePlan, error) {
 // one colour domain, as Vega-Lite resolves a layer's scales by default.
 type layered struct {
 	sp     *spec
-	order  []any // each layer's *plan or *rulePlan, in paint order
-	base   *plan // the first mark layer: the axes' titles and guides
+	order  []layer // in paint order
+	base   *plan   // the first mark layer: the axes' titles and guides
 	xs, ys axisPlan
 	series []string
 	shapes []string
@@ -620,14 +609,12 @@ type layered struct {
 func newLayered(sp *spec) (*layered, error) {
 	l := &layered{sp: sp}
 	var plans []*plan
-	var rules []*rulePlan
 	for _, c := range sp.layers {
-		if c.mark.kind == markRule {
-			r, err := newRule(c)
+		if read := marks[c.mark.kind].layer; read != nil {
+			r, err := read(c)
 			if err != nil {
 				return nil, err
 			}
-			rules = append(rules, r)
 			l.order = append(l.order, r)
 			continue
 		}
@@ -668,23 +655,9 @@ func newLayered(sp *spec) (*layered, error) {
 			l.symbs = sh.shapes
 		}
 	}
-	for _, r := range rules {
-		a, name := &l.ys, "y"
-		if r.onX {
-			a, name = &l.xs, "x"
-		}
-		if r.ch.typ.discrete() != a.discrete || (r.ch.typ == typeTemporal) != a.temporal {
-			return nil, unsupported("a rule of %v on a %s axis of another type", r.ch.typ, name)
-		}
-		for _, v := range r.vals {
-			switch {
-			case a.discrete:
-				if !slices.Contains(a.domain, v.str) {
-					a.domain = append(a.domain, v.str)
-				}
-			case len(a.ch.domain) == 0: // an explicit domain stays as the spec says
-				a.lo, a.hi = math.Min(a.lo, v.num), math.Max(a.hi, v.num)
-			}
+	for _, o := range l.order {
+		if err := o.widen(l); err != nil {
+			return nil, err
 		}
 	}
 	if len(l.xs.domain) > maxBands || len(l.ys.domain) > maxBands {

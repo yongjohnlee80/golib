@@ -174,7 +174,7 @@ func build(ctx context.Context, l *layered, width float32, th Theme, m gui.Measu
 	var legendW, legendH float32
 	var lp *plan // the layer the legend is of: the first coloured by a field
 	for _, o := range l.order {
-		if q, ok := o.(*plan); ok && q.c.color != nil && q.c.color.value == nil {
+		if q, ok := o.axisLayer(); ok && q.c.color != nil && q.c.color.value == nil {
 			lp = q
 			break
 		}
@@ -188,7 +188,7 @@ func build(ctx context.Context, l *layered, width float32, th Theme, m gui.Measu
 	// the shape's legend, under the colour's
 	var sp2 *plan // the layer the shape legend is of: the first shaped by a field
 	for _, o := range l.order {
-		if q, ok := o.(*plan); ok && q.c.shape != nil && q.c.shape.shape == "" {
+		if q, ok := o.axisLayer(); ok && q.c.shape != nil && q.c.shape.shape == "" {
 			sp2 = q
 			break
 		}
@@ -325,13 +325,7 @@ func build(ctx context.Context, l *layered, width float32, th Theme, m gui.Measu
 	}
 	b.grid(xs, ys, plot)
 	for _, o := range l.order {
-		switch v := o.(type) {
-		case *plan:
-			b.p = v
-			b.marks(xs, ys)
-		case *rulePlan:
-			b.rule(v, xs, ys, plot)
-		}
+		o.paint(b, xs, ys, plot)
 	}
 	b.p = p
 	if yAxis {
@@ -362,7 +356,7 @@ func (b *builder) sharedTitle(of func(*chart) *channel) string {
 	}
 	var titles []string
 	for _, o := range b.l.order {
-		if q, ok := o.(*plan); ok {
+		if q, ok := o.axisLayer(); ok {
 			if t := axisTitle(of(q.c)); t != "" && !slices.Contains(titles, t) {
 				titles = append(titles, t)
 			}
@@ -533,17 +527,14 @@ func (b *builder) colorOf(series string) color.NRGBA {
 	return palette[i%len(palette)]
 }
 
-// opacity is a mark's: the opacity channel's, the mark's, or Vega-Lite's default (0.7 for points,
-// and for bars or areas overlaid by series).
+// opacity is a mark's: the opacity channel's, the mark's, or Vega-Lite's default (0.7 where the
+// kind fades, markDef.faded: for points, and for bars or areas overlaid by series).
 func (b *builder) opacity() float32 {
 	p := b.p
 	if a, ok := p.c.fixedOpacity(); ok {
 		return a
 	}
-	switch {
-	case p.c.mark.kind == markPoint && p.value().aggregate == "":
-		return 0.7
-	case (p.c.mark.kind == markBar || p.c.mark.kind == markArea) && !p.stacked && len(p.series) > 1:
+	if faded := marks[p.c.mark.kind].faded; faded != nil && faded(p) {
 		return 0.7
 	}
 	return 1
@@ -553,72 +544,6 @@ func (b *builder) opacity() float32 {
 func fade(c color.NRGBA, a float32) color.NRGBA {
 	c.A = uint8(float32(c.A)*a + 0.5)
 	return c
-}
-
-// marks draws the data.
-func (b *builder) marks(xs, ys *scale) {
-	p := b.p
-	alpha := b.opacity()
-	switch p.c.mark.kind {
-	case markBar:
-		dimS, valS := xs, ys
-		if p.dimY {
-			dimS, valS = ys, xs
-		}
-		for _, d := range p.data {
-			dv := d.x
-			if p.dimY {
-				dv = d.y
-			}
-			at := dimS.at(dv.str)
-			v0, v1 := valS.px(d.v0), valS.px(d.v1)
-			if !p.stacked {
-				v0 = valS.px(math.Min(math.Max(0, valS.a.lo), valS.a.hi)) // from zero, or the domain's end nearer it
-			}
-			r := gui.Rect{X: at, Y: min(v0, v1), W: dimS.band, H: float32(math.Abs(float64(v1 - v0)))}
-			if p.dimY {
-				r = gui.Rect{X: min(v0, v1), Y: at, W: float32(math.Abs(float64(v1 - v0))), H: dimS.band}
-			}
-			b.add(item{kind: itemRect, rect: r, color: fade(b.colorOf(d.series), alpha)})
-		}
-	case markLine, markArea:
-		for _, s := range b.seriesData(xs) {
-			if len(s.data) == 0 {
-				continue
-			}
-			col := fade(b.colorOf(s.name), alpha)
-			top := make([]gui.Point, len(s.data))
-			for i, d := range s.data {
-				top[i] = gui.Pt(xs.centre(d.x), ys.px(d.v1))
-			}
-			if p.c.mark.kind == markArea {
-				pts := slices.Clone(top)
-				for i := len(s.data) - 1; i >= 0; i-- {
-					v0 := s.data[i].v0
-					if !p.stacked {
-						v0 = math.Min(math.Max(0, ys.a.lo), ys.a.hi)
-					}
-					pts = append(pts, gui.Pt(top[i].X, ys.px(v0)))
-				}
-				b.add(item{kind: itemFill, pts: pts, color: col})
-				continue
-			}
-			width := p.c.strokeWidth(2) * b.unit
-			if len(top) > 1 {
-				b.stroke(col, width, p.c.mark.dash, top...)
-			}
-			if p.c.mark.point || len(top) == 1 {
-				for _, pt := range top {
-					b.dot(pt, b.radius(), col, true)
-				}
-			}
-		}
-	case markPoint:
-		filled := p.c.mark.filled
-		for _, d := range p.data {
-			b.symbol(gui.Pt(xs.centre(d.x), ys.centre(d.y)), b.symbolOf(d.shape), b.radius(), fade(b.colorOf(d.series), alpha), filled)
-		}
-	}
 }
 
 // radius is a point's: half the side of its bounding box, whose area is its size (Vega-Lite's
@@ -797,18 +722,11 @@ func (b *builder) seriesData(xs *scale) []series {
 func (b *builder) legend(title string, at gui.Point) {
 	b.legendEntries(title, b.l.series, at, func(s string, x, cy, sw float32) {
 		col := b.colorOf(s)
-		switch b.p.c.mark.kind {
-		case markLine:
-			b.line(col, 2*b.unit, gui.Pt(x, cy), gui.Pt(x+sw, cy))
-		case markPoint:
-			sym := "circle"
-			if sh := b.p.c.shape; sh != nil && (sh.shape != "" || sh.field == b.p.c.color.field) {
-				sym = b.symbolOf(s) // the layer's constant shape, or the shape it shares the field of
-			}
-			b.symbol(gui.Pt(x+sw/2, cy), sym, sw/2.5, col, b.p.c.mark.filled)
-		default:
-			b.add(item{kind: itemRect, rect: gui.Rect{X: x, Y: cy - sw/2, W: sw, H: sw}, color: col})
+		if swatch := marks[b.p.c.mark.kind].swatch; swatch != nil {
+			swatch(b, s, x, cy, sw, col)
+			return
 		}
+		b.add(item{kind: itemRect, rect: gui.Rect{X: x, Y: cy - sw/2, W: sw, H: sw}, color: col})
 	})
 }
 
