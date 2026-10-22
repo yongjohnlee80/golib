@@ -266,3 +266,23 @@ func TestADrawersTerminalTabsMenuMaximizesTheDrawer(t *testing.T) {
 	})
 	s.WaitFor(t, "the Drawer over the page", func(sc string) bool { return !strings.Contains(sc, "page") })
 }
+
+// A TerminalTabs reads how many tabs it has and which is current (count, currentId): none, and "",
+// before the host adds one.
+func TestATerminalTabsReadsItsCountAndCurrentTab(t *testing.T) {
+	s := decltest.Run(t, 60, 6, tuidecl.LayoutSource("main.qml", []byte("import tui 1.0\nWindow { TerminalTabs { id: agents } }")))
+	s.WaitFor(t, "mounted", func(string) bool { _, ok := s.Program.Find("agents"); return ok })
+	onScreenLoop(t, s, func() {
+		node, ok := s.Program.Tree().NodeByID("agents")
+		if !ok {
+			t.Error("no node agents")
+			return
+		}
+		for prop, want := range map[string]string{"count": "0", "currentId": ""} {
+			v, err := s.Program.Adapter().ReadProperty(node, prop)
+			if err != nil || v.Raw != want {
+				t.Errorf("agents.%s = %q, %v; want %q", prop, v.Raw, err, want)
+			}
+		}
+	})
+}
