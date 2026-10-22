@@ -2,6 +2,7 @@ package decl
 
 import (
 	"fmt"
+	"maps"
 
 	"github.com/yongjohnlee80/golib/parse/qml"
 
@@ -270,9 +271,7 @@ func (a *Adapter) Constants() map[string]qml.SpecValue {
 	// builder would then refuse.
 	out := tuiConstants(tuiEnums, tuiFlags)
 	for _, e := range a.enums {
-		for _, n := range e.Values {
-			out[e.Scope+"."+n] = strValue(enumConstant(e.Scope, n))
-		}
+		maps.Copy(out, e.enum().constants())
 	}
 	return out
 }

@@ -245,7 +245,7 @@ func TestW5WhatTheControlsRefuse(t *testing.T) {
 	for doc, want := range map[string]string{
 		"TextField { colour: 1 }":                             "colour",
 		"TextField { echoMode: TextInput.Pasword }":           "TextInput.Pasword",
-		"TextField { echoMode: \"Password\" }":                "TextInput.Normal, TextInput.Password",
+		"TextField { echoMode: \"Password\" }":                "must be TextInput.Normal or TextInput.Password",
 		"TextField { onFoo: App.run() }":                      "has no signal foo",
 		"TextField { Text { } }":                              "takes no children",
 		"Window { Text { }\n Popup { Text { }\n Text { } } }": "exactly one child",
