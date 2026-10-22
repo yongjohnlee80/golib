@@ -80,10 +80,9 @@ func layFlowchart(ctx context.Context, d pm.Diagram, width float32, th Theme, m 
 		le := layout.Edge{From: index[e.From], To: index[e.To], MinLen: max(e.MinLen, 1)}
 		var lb *label
 		if e.Label != "" {
-			lines, ts := m.Wrap(e.Label, small, wrapAt)
-			pad := small.Size * 0.3
-			le.Label = layout.Size{W: ts.W + 2*pad, H: ts.H + 2*pad}
-			lb = &label{lines: lines, font: small, color: th.Text, box: gui.Rect{W: ts.W, H: ts.H}}
+			l := newLabel(m, e.Label, small, wrapAt, th.Text) // as every layer's edge label
+			lb = &l
+			le.Label = edgeLabelRoom(l)
 		}
 		in.Edges = append(in.Edges, le)
 		de := laidEdge{line: e.Line, head: arrowEnd[e.Head], tail: arrowEnd[e.Tail], color: th.Line, label: lb}

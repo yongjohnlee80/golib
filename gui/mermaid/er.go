@@ -68,8 +68,7 @@ func layER(ctx context.Context, d pm.Diagram, width float32, th Theme, m gui.Mea
 		}
 		if r.Label != "" {
 			lb := newLabel(m, r.Label, small, wrapAt, th.Text)
-			p := small.Size * 0.3
-			le.Label = layout.Size{W: lb.box.W + 2*p, H: lb.box.H + 2*p}
+			le.Label = edgeLabelRoom(lb)
 			e.label = &lb
 		}
 		in.Edges = append(in.Edges, le)

@@ -118,8 +118,7 @@ func (sl *stateLayer) scope(id string, dir pm.Dir) (stateScope, error) {
 		}
 		if t.Label != "" {
 			lb := newLabel(sl.m, t.Label, sl.small, wrapAt, sl.th.Text)
-			pad := sl.small.Size * 0.3
-			le.Label = layout.Size{W: lb.box.W + 2*pad, H: lb.box.H + 2*pad}
+			le.Label = edgeLabelRoom(lb)
 			e.label = &lb
 		}
 		in.Edges = append(in.Edges, le)
