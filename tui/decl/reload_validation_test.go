@@ -74,3 +74,23 @@ func TestProgramReloadRemountsAfterAPartWayFailure(t *testing.T) {
 		t.Errorf("the remount lost the host's source value:\n%s", s.String())
 	}
 }
+
+// A program with no sources checks a reload's keyIds too. Before, the check froze the live tree's
+// sources into a provider for its mount, a provider of none declared no names, the engine refused it,
+// and the check, taking a mount that failed for the reconcile's to report, passed every layout.
+func TestAReloadWithoutSourcesStillChecksItsKeyIds(t *testing.T) {
+	window := func(id string) []byte {
+		return []byte(keysHead + `Window { Shortcut { sequence: keyId("` + id + `"); onActivated: App.saved() }
+    Text { text: "ready" } }`)
+	}
+	s := decltest.Run(t, 30, 4, tuidecl.LayoutSource("main.qml", window("demo.save")),
+		tuidecl.Singleton("demo", "1.0", "App"),
+		tuidecl.Commands(map[string]func() error{"App.saved": func() error { return nil }}),
+		tuidecl.KeyCommands(demoSave))
+	s.WaitForText(t, "ready")
+	var err error
+	onScreenLoop(t, s, func() { _, err = s.Program.Reload(window("demo.nothing")) })
+	if err == nil || !strings.Contains(err.Error(), `keyId("demo.nothing") names no declared key command`) {
+		t.Errorf("a reload with an undeclared keyId, in a program with no sources: %v; want refused", err)
+	}
+}

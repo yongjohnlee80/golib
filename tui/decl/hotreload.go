@@ -367,7 +367,12 @@ func (p *Program) redirect(to *Program) {
 // the real reconcile's to report, so it passes here. Loop goroutine only: it reads the live tree.
 func (p *Program) checkReloadKeys(spec qml.SpecTree, keys *keymap.Map) error {
 	c := p.cfg
-	c.sources, c.providers, c.keys = nil, []decl.Provider{frozenSources(p.tree.Sources())}, keys
+	c.sources, c.providers, c.keys = nil, nil, keys
+	// none when the live tree has none: a provider of no names breaks the engine's contract, and the
+	// mount failing on it would pass every layout unchecked
+	if live := p.tree.Sources(); len(live) > 0 {
+		c.providers = []decl.Provider{frozenSources(live)}
+	}
 	q, err := mount(c, spec)
 	if err != nil {
 		return nil
