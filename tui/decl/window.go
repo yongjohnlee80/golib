@@ -70,63 +70,91 @@ func buildWindow(b Build) (tui.Component, []string, error) {
 // or went is mounted or unmounted. That is what lets an edit to one menu leave
 // the editor beside it untouched.
 func (w *windowNode) arrange(children []tui.Component, attached []map[string]qml.SpecValue, nominee tui.Component) error {
-	type docked struct {
-		comp tui.Component
-		edge tui.DockEdge
-	}
-	var shortcuts []*shortcutNode
-	var menus []*menuBarNode
-	var overlaid []Overlaid
-	var items []docked
-	for i, child := range children {
-		switch c := child.(type) {
-		case menuRow:
-			return fmt.Errorf("a %s belongs inside a MenuBar, not directly in a Window", c.row().kind)
-		case *shortcutNode:
-			// Keys, not layout: a Shortcut takes no place on the screen.
-			shortcuts = append(shortcuts, c)
-			continue
-		case Overlaid:
-			// Not layout either: a Dialog, a Popup, opens over the Window.
-			overlaid = append(overlaid, c)
-			continue
-		case *menuBarNode:
-			menus = append(menus, c)
-		}
-		edge := tui.DockCenter
-		if i < len(attached) {
-			if v, pinned := attached[i]["Dock.edge"]; pinned {
-				e, err := dockEdges.read(v)
-				if err != nil {
-					return fmt.Errorf("Dock.edge: %w", err)
-				}
-				edge = e
-			}
-		}
-		items = append(items, docked{child, edge})
+	kids, err := classifyWindowChildren(children, attached)
+	if err != nil {
+		return err
 	}
 	// each reserving Drawer's strip, after the document's own children: the Dock consumes its pinned
 	// children in order, so the strips are between the bars
-	slots := map[*drawerNode]*reserveSlot{}
-	for _, o := range overlaid {
-		d, ok := o.(*drawerNode)
-		if !ok || !d.reserve {
-			continue
-		}
-		s := w.slots[d]
-		if s == nil {
-			s = newReserveSlot(d)
-		}
-		slots[d] = s
-		d.onEdge = func(tui.DockEdge) {
-			if w.dock != nil {
-				w.dock.SetEdge(s, slotEdge(d))
-			}
-		}
-		items = append(items, docked{s, slotEdge(d)})
+	items := append(kids.items, w.reserveSlots(kids.overlaid)...)
+	w.syncDock(items)
+	w.shortcuts, w.menus, w.overlaid, w.focus = kids.shortcuts, kids.menus, kids.overlaid, nominee
+	for _, m := range w.menus {
+		m.leave = func() { w.restoreFocus(); m.endVisit() }
 	}
-	w.slots = slots
+	for _, o := range w.overlaid {
+		o.SetOverlay(w.host, w.afterOverlay)
+	}
+	return nil
+}
 
+// docked is a child of the Window's dock and the edge it is pinned to.
+type docked struct {
+	comp tui.Component
+	edge tui.DockEdge
+}
+
+// windowChildren are a Window's children by what each is: keys, menu bars, what opens over the
+// Window, and what its dock lays out (a menu bar among them).
+type windowChildren struct {
+	shortcuts []*shortcutNode
+	menus     []*menuBarNode
+	overlaid  []Overlaid
+	items     []docked
+}
+
+// classifyWindowChildren sorts a Window's children, reading each docked one's Dock.edge.
+func classifyWindowChildren(children []tui.Component, attached []map[string]qml.SpecValue) (windowChildren, error) {
+	var kids windowChildren
+	for i, child := range children {
+		switch c := child.(type) {
+		case menuRow:
+			return windowChildren{}, fmt.Errorf("a %s belongs inside a MenuBar, not directly in a Window", c.row().kind)
+		case *shortcutNode:
+			// Keys, not layout: a Shortcut takes no place on the screen.
+			kids.shortcuts = append(kids.shortcuts, c)
+			continue
+		case Overlaid:
+			// Not layout either: a Dialog, a Popup, opens over the Window.
+			kids.overlaid = append(kids.overlaid, c)
+			continue
+		case *menuBarNode:
+			kids.menus = append(kids.menus, c)
+		}
+		var own map[string]qml.SpecValue
+		if i < len(attached) {
+			own = attached[i]
+		}
+		edge, _, err := dockEdgeOf(own)
+		if err != nil {
+			return windowChildren{}, err
+		}
+		kids.items = append(kids.items, docked{child, edge})
+	}
+	return kids, nil
+}
+
+// dockEdgeProp is the attached property that pins a Window's child to an edge of its dock.
+const dockEdgeProp = "Dock.edge"
+
+// dockEdgeOf is the edge a child's attached Dock.edge pins it to, and whether it wrote one. A child
+// that wrote none is the dock's centre.
+func dockEdgeOf(attached map[string]qml.SpecValue) (tui.DockEdge, bool, error) {
+	v, pinned := attached[dockEdgeProp]
+	if !pinned {
+		return tui.DockCenter, false, nil
+	}
+	e, err := dockEdges.read(v)
+	if err != nil {
+		return tui.DockCenter, true, fmt.Errorf("%s: %w", dockEdgeProp, err)
+	}
+	return e, true, nil
+}
+
+// syncDock makes the dock hold items, in order. The first time it builds the dock and the overlay
+// host over it. After, it DIFFS: a child that is still there keeps its mount, and only what came or
+// went is pinned or removed.
+func (w *windowNode) syncDock(items []docked) {
 	if w.dock == nil {
 		w.dock = tui.NewDock()
 		// layout-safe: the slot's rectangle is recorded for its Drawer's Float, placed after the Dock
@@ -140,37 +168,29 @@ func (w *windowNode) arrange(children []tui.Component, attached []map[string]qml
 			w.dock.Pin(it.edge, it.comp)
 		}
 		w.host = widget.NewOverlayHost(w.dock)
-	} else {
-		keep := map[tui.Component]bool{}
-		for _, it := range items {
-			keep[it.comp] = true
-		}
-		for _, c := range w.dock.Items() {
-			if !keep[c] {
-				w.dock.Remove(c)
-			}
-		}
-		present := map[tui.Component]bool{}
-		for _, c := range w.dock.Items() {
-			present[c] = true
-		}
-		for _, it := range items {
-			if !present[it.comp] {
-				w.dock.Pin(it.edge, it.comp)
-			}
-		}
-		for i, it := range items {
-			w.dock.Move(it.comp, i)
+		return
+	}
+	keep := map[tui.Component]bool{}
+	for _, it := range items {
+		keep[it.comp] = true
+	}
+	for _, c := range w.dock.Items() {
+		if !keep[c] {
+			w.dock.Remove(c)
 		}
 	}
-	w.shortcuts, w.menus, w.overlaid, w.focus = shortcuts, menus, overlaid, nominee
-	for _, m := range w.menus {
-		m.leave = func() { w.restoreFocus(); m.endVisit() }
+	present := map[tui.Component]bool{}
+	for _, c := range w.dock.Items() {
+		present[c] = true
 	}
-	for _, o := range w.overlaid {
-		o.SetOverlay(w.host, w.afterOverlay)
+	for _, it := range items {
+		if !present[it.comp] {
+			w.dock.Pin(it.edge, it.comp)
+		}
 	}
-	return nil
+	for i, it := range items {
+		w.dock.Move(it.comp, i)
+	}
 }
 
 func (w *windowNode) Init(ctx *tui.Context) {

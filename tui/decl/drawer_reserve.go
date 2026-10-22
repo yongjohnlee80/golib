@@ -60,3 +60,29 @@ func (s *reserveSlot) Layout(c tui.Constraints) tui.Size {
 }
 
 func (s *reserveSlot) Render(tui.Surface) {}
+
+// reserveSlots are the strips of the reserving Drawers among overlaid, to dock after the Window's
+// own children. A Drawer keeps its slot across a reload; one no longer reserving loses it.
+func (w *windowNode) reserveSlots(overlaid []Overlaid) []docked {
+	var items []docked
+	slots := map[*drawerNode]*reserveSlot{}
+	for _, o := range overlaid {
+		d, ok := o.(*drawerNode)
+		if !ok || !d.reserve {
+			continue
+		}
+		s := w.slots[d]
+		if s == nil {
+			s = newReserveSlot(d)
+		}
+		slots[d] = s
+		d.onEdge = func(tui.DockEdge) {
+			if w.dock != nil {
+				w.dock.SetEdge(s, slotEdge(d))
+			}
+		}
+		items = append(items, docked{s, slotEdge(d)})
+	}
+	w.slots = slots
+	return items
+}
