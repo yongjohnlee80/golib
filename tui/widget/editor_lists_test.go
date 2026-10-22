@@ -117,3 +117,27 @@ func TestListContinuationUndoesInOne(t *testing.T) {
 		t.Errorf("after undo %q, want %q", got, "- one")
 	}
 }
+
+// Enter before the marker is an ordinary break; a tab-indented item nests by a tab and un-nests by
+// one; MarkdownListItem reads a line as list editing does.
+func TestListEditingOnTabsAndBeforeTheMarker(t *testing.T) {
+	c := listCore(t, "- one", 0, 0)
+	if !c.ListEditing() {
+		t.Fatal("ListEditing() = false on a core made with CoreListEditing(true)")
+	}
+	listPress(c, tui.KeyEnter, 0)
+	wantText(t, c, "\n- one", 1, 0)
+
+	c = listCore(t, "\t- two", 0, 3)
+	listPress(c, tui.KeyTab, 0)
+	wantText(t, c, "\t\t- two", 0, 4)
+	listPress(c, tui.KeyTab, tui.ModShift)
+	wantText(t, c, "\t- two", 0, 3)
+
+	if indent, marker, ok := widget.MarkdownListItem("  3. [x] three"); !ok || indent != "  " || marker != "3. [x] " {
+		t.Errorf("MarkdownListItem = (%q, %q, %v), want (\"  \", \"3. [x] \", true)", indent, marker, ok)
+	}
+	if _, _, ok := widget.MarkdownListItem("- - -"); ok {
+		t.Error("MarkdownListItem read a thematic break as an item")
+	}
+}

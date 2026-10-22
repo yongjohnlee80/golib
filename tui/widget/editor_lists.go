@@ -4,6 +4,8 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/yongjohnlee80/golib/parse/markdown"
+
 	"github.com/yongjohnlee80/golib/tui"
 )
 
@@ -57,7 +59,7 @@ func readListItem(line string) (listItem, bool) {
 		}
 		n++
 	}
-	if n >= len(body) || body[n] != ' ' || isThematicBreak(body) {
+	if n >= len(body) || body[n] != ' ' || markdown.ThematicBreak(body) {
 		return listItem{}, false
 	}
 	unit := n + 1
@@ -70,24 +72,6 @@ func readListItem(line string) (listItem, bool) {
 		m += min(4, len(rest))
 	}
 	return listItem{indent: indent, marker: body[:m], unit: unit}, true
-}
-
-// isThematicBreak reports a line of three or more of one of '-', '*', '_', and spaces.
-func isThematicBreak(s string) bool {
-	s = strings.TrimSpace(s)
-	if s == "" || !strings.ContainsRune("-*_", rune(s[0])) {
-		return false
-	}
-	n := 0
-	for _, r := range s {
-		switch {
-		case r == rune(s[0]):
-			n++
-		case r != ' ' && r != '\t':
-			return false
-		}
-	}
-	return n >= 3
 }
 
 // next is the marker of the item after it: the number one up, a task's box unchecked.

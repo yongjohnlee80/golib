@@ -225,10 +225,14 @@ func setextUnderline(rest []byte) (int, bool) {
 	return 2, true
 }
 
-// thematicBreak recognizes three or more '*', '-' or '_' of one kind, with only spaces and tabs
-// between them.
+// ThematicBreak reports whether text, past its indentation, is a thematic break: three or more of
+// one of '*', '-' and '_', with only spaces and tabs between. The caller takes the indentation its
+// context allows (a document line, up to three spaces; a list item's body, its own).
 //
 // https://spec.commonmark.org/0.31.2/#thematic-breaks
+func ThematicBreak(text string) bool { return thematicBreak([]byte(text)) }
+
+// thematicBreak is ThematicBreak over the parser's bytes.
 func thematicBreak(rest []byte) bool {
 	var c byte
 	n := 0

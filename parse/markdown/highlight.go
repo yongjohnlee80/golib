@@ -96,10 +96,9 @@ func (l *mdLine) spans() []highlight.Span {
 
 func highlightMarkdown(text string, previous highlight.State) ([]highlight.Span, highlight.State) {
 	l := &mdLine{text: text, styles: make([]highlight.Style, len(text))}
-	trimmed := strings.TrimSpace(text)
 	switch {
 	case previous == stateFrontmatter:
-		if trimmed == "---" || trimmed == "..." {
+		if FrontmatterCloses(text) {
 			l.paint(0, len(text), highlight.Comment)
 			return l.spans(), stateBody
 		}
@@ -110,7 +109,7 @@ func highlightMarkdown(text string, previous highlight.State) ([]highlight.Span,
 		return l.spans(), stateFrontmatter
 	case previous >= stateFence:
 		ch, n := fenceOf(previous)
-		if fenceCloses(text, ch, n) {
+		if FenceCloses(text, ch, n) {
 			l.paint(0, len(text), highlight.Comment)
 			return l.spans(), stateBody
 		}
@@ -124,11 +123,11 @@ func highlightMarkdown(text string, previous highlight.State) ([]highlight.Span,
 		}
 		l.paint(0, end+3, highlight.Comment)
 		return l.rest(text[end+3:], end+3)
-	case previous == stateStart && trimmed == "---":
+	case previous == stateStart && FrontmatterOpens(text):
 		l.paint(0, len(text), highlight.Comment)
 		return l.spans(), stateFrontmatter
 	}
-	if ch, n, ok := fenceOpens(text); ok {
+	if ch, n, ok := FenceOpens(text); ok {
 		l.paint(0, len(text), highlight.Comment)
 		return l.spans(), fenceState(ch, n)
 	}
@@ -242,10 +241,11 @@ func warningCallout(t string) bool {
 	return false
 }
 
-// fenceOpens reports a line that opens a fenced code block: up to three
-// spaces, then three or more backticks or tildes (a backtick fence's info
-// string holds no backtick).
-func fenceOpens(text string) (byte, int, bool) {
+// FenceOpens reports a line that opens a fenced code block, and its fence: the character (a
+// backtick or a tilde) and how many. Up to three spaces, then three or more backticks or tildes; a
+// backtick fence's info string holds no backtick. One recogniser for every reader of Markdown blocks
+// (the parser, the highlighter, a renderer).
+func FenceOpens(text string) (byte, int, bool) {
 	s := strings.TrimLeft(text, " ")
 	if len(text)-len(s) > 3 || len(s) < 3 || (s[0] != '`' && s[0] != '~') {
 		return 0, 0, false
@@ -261,9 +261,9 @@ func fenceOpens(text string) (byte, int, bool) {
 	return ch, n, true
 }
 
-// fenceCloses reports a line that closes a fence of ch, n long: up to three
-// spaces, at least n of ch, then only spaces.
-func fenceCloses(text string, ch byte, n int) bool {
+// FenceCloses reports a line that closes a fence of ch, n long: up to three spaces, at least n of
+// ch, then only spaces.
+func FenceCloses(text string, ch byte, n int) bool {
 	s := strings.TrimLeft(text, " ")
 	if len(text)-len(s) > 3 {
 		return false
@@ -273,4 +273,13 @@ func fenceCloses(text string, ch byte, n int) bool {
 		k++
 	}
 	return k >= n && strings.TrimSpace(s[k:]) == ""
+}
+
+// FrontmatterOpens reports a document's first line opening YAML frontmatter: "---".
+func FrontmatterOpens(line string) bool { return strings.TrimSpace(line) == "---" }
+
+// FrontmatterCloses reports a line closing frontmatter: "---" or "...".
+func FrontmatterCloses(line string) bool {
+	t := strings.TrimSpace(line)
+	return t == "---" || t == "..."
 }
