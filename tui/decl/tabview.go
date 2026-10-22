@@ -59,9 +59,6 @@ type tabNode struct {
 }
 
 func buildTab(b Build) (tui.Component, []string, error) {
-	if len(b.Children) != 1 {
-		return nil, nil, fmt.Errorf("a Tab needs exactly 1 child, its content, got %d (at %s)", len(b.Children), b.Pos)
-	}
 	n := &tabNode{content: b.Children[0]}
 	consumed, err := b.ReadProps(map[string]field{"title": into(&n.title, stringOf)})
 	return n, consumed, err
@@ -141,7 +138,7 @@ var tabViewType = Type{
 }
 
 var tabType = Type{
-	Name:  "Tab",
+	Name: "Tab", Children: Exactly(1).Because("its content"),
 	Build: buildTab,
 	Ctor:  []string{"title"},
 }

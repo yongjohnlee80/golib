@@ -1,6 +1,7 @@
 package decl
 
 import (
+	"errors"
 	"fmt"
 	"maps"
 	"math"
@@ -35,6 +36,10 @@ type Type struct {
 	Name string
 	// Build constructs the widget from a declaration.
 	Build Builder
+	// Children is how many children a declaration of the type takes: NoChildren, Exactly(n) or
+	// AtLeast(n), checked before Build runs, with the declaration's position. The zero Arity
+	// checks nothing: Build counts its children itself.
+	Children Arity
 	// Ctor are the properties Build consumes and no setter can change. A
 	// reload that changes one rebuilds the node.
 	Ctor []string
@@ -78,10 +83,72 @@ type Type struct {
 // cannot read BEFORE adding, so a refused child is never left half-placed.
 type adopter func(parent, child tui.Component, attached map[string]qml.SpecValue) error
 
-// registerTypes adds each type's builder to the registry.
+// registerTypes adds each type's builder to the registry, behind its Children check.
 func registerTypes(r *Registry, types []Type) {
 	for _, w := range types {
-		Register(r, w.Name, w.Build)
+		Register(r, w.Name, w.Children.guard(w.Name, w.Build))
+	}
+}
+
+// Arity is how many children a declaration takes: [NoChildren], [Exactly] or [AtLeast], and a note
+// saying why, for the refusal. The zero Arity is unstated.
+type Arity struct {
+	min, max int // max < 0: no upper bound
+	set      bool
+	note     string
+}
+
+// NoChildren is a type that takes no children.
+func NoChildren() Arity { return Arity{set: true} }
+
+// Exactly is a type that takes n children.
+func Exactly(n int) Arity { return Arity{min: n, max: n, set: true} }
+
+// AtLeast is a type that takes n children or more.
+func AtLeast(n int) Arity { return Arity{min: n, max: -1, set: true} }
+
+// Because adds why to the refusal: "its rows are its model's".
+func (a Arity) Because(why string) Arity { a.note = why; return a }
+
+// check refuses a count the arity does not take, naming the type and the declaration's position.
+func (a Arity) check(name string, got int, pos fmt.Stringer) error {
+	if !a.set || got >= a.min && (a.max < 0 || got <= a.max) {
+		return nil
+	}
+	var want string
+	switch {
+	case a.max == 0:
+		want = "takes no children"
+	case a.min == a.max:
+		want = fmt.Sprintf("needs exactly %s", childCount(a.min))
+	default:
+		want = fmt.Sprintf("needs at least %s", childCount(a.min))
+	}
+	msg := fmt.Sprintf("%s %s, got %d (at %s)", name, want, got, pos)
+	if a.note != "" {
+		msg += "; " + a.note
+	}
+	return errors.New(msg)
+}
+
+func childCount(n int) string {
+	if n == 1 {
+		return "1 child"
+	}
+	return fmt.Sprintf("%d children", n)
+}
+
+// guard is build behind the arity's check: a declaration with the wrong count of children is
+// refused before build runs.
+func (a Arity) guard(name string, build Builder) Builder {
+	if !a.set || build == nil {
+		return build
+	}
+	return func(b Build) (tui.Component, []string, error) {
+		if err := a.check(name, len(b.Children), b.Pos); err != nil {
+			return nil, nil, err
+		}
+		return build(b)
 	}
 }
 

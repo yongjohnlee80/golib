@@ -53,9 +53,6 @@ type windowNode struct {
 }
 
 func buildWindow(b Build) (tui.Component, []string, error) {
-	if len(b.Children) == 0 {
-		return nil, nil, fmt.Errorf("Window needs at least one child (at %s)", b.Pos)
-	}
 	w := &windowNode{}
 	if err := w.arrange(b.Children, b.ChildAttached, b.FocusNominee); err != nil {
 		return nil, nil, fmt.Errorf("%w (at %s)", err, b.Pos)

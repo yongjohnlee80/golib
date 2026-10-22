@@ -22,8 +22,6 @@
 package controls
 
 import (
-	"errors"
-
 	"github.com/yongjohnlee80/golib/parse/qml"
 	"github.com/yongjohnlee80/golib/tui"
 	tuidecl "github.com/yongjohnlee80/golib/tui/decl"
@@ -58,7 +56,7 @@ var EchoMode = tuidecl.Enum{Scope: "TextInput", Values: []string{"Normal", "Pass
 // It wears `base` and `text` for the field, `highlight`/`highlightedText`
 // for a selection.
 var TextField = tuidecl.Type{
-	Name:  "TextField",
+	Name: "TextField", Children: tuidecl.NoChildren(),
 	Build: buildTextField,
 	Ctor:  []string{"placeholderText", "echoMode"},
 	Setters: map[string]tuidecl.Setter{
@@ -110,9 +108,6 @@ func setCompletions(ti *widget.TextInput, m tuidecl.ItemModel) {
 }
 
 func buildTextField(b tuidecl.Build) (tui.Component, []string, error) {
-	if len(b.Children) != 0 {
-		return nil, nil, errors.New("a TextField takes no children")
-	}
 	var placeholder tuidecl.UIText
 	var echo string
 	consumed, err := b.ReadProps(map[string]tuidecl.Field{
@@ -160,7 +155,7 @@ func buildTextField(b tuidecl.Build) (tui.Component, []string, error) {
 // does. It is centred, as `anchors.centerIn` places a Qt Popup; positioning
 // by x and y needs expressions this evaluator does not run.
 var Popup = tuidecl.Type{
-	Name:  "Popup",
+	Name: "Popup", Children: tuidecl.Exactly(1).Because("its content"),
 	Build: buildPopup,
 	Ctor:  []string{"modal", "dim"},
 	Methods: map[string]tuidecl.Method{
@@ -183,9 +178,6 @@ type popupNode struct {
 var _ tuidecl.Overlaid = (*popupNode)(nil)
 
 func buildPopup(b tuidecl.Build) (tui.Component, []string, error) {
-	if len(b.Children) != 1 {
-		return nil, nil, errors.New("a Popup holds exactly one child, its content")
-	}
 	var modal, dim bool
 	consumed, err := b.ReadProps(map[string]tuidecl.Field{
 		"modal": tuidecl.BoolField(&modal),
