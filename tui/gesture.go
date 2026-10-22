@@ -136,7 +136,7 @@ func (a *App) SetGestureRecognizer(r GestureRecognizer) {
 // == nil check passes it and the first call panics on a nil receiver, far from
 // whoever installed it.
 func normalizeRecognizer(r GestureRecognizer) GestureRecognizer {
-	if isNilLike(r) {
+	if NilLike(r) {
 		return nil
 	}
 	return r
@@ -274,7 +274,7 @@ func (a *App) runRecognizer(r GestureRecognizer, n *node, local MouseEvent) bool
 	// pointer arm, and activate a control on the strength of no action at all.
 	// Recognisers legitimately consume an event while producing nothing, so a
 	// typed nil is treated exactly like an absent action rather than as an error.
-	if !isNilLike(act) {
+	if !NilLike(act) {
 		// Dispatch BEFORE the disarm, so the widget observes arm, activate,
 		// disarm in that order. Disarming first would make anything repainting
 		// on the callbacks flash through an unpressed frame before firing.

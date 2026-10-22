@@ -227,7 +227,7 @@ var windowTaskbarType = Type{Name: "WindowTaskbar", Children: NoChildren().Becau
 	// any collector that also presents its entries (widget.WindowEntries) will do: a
 	// MinimizedWindows, or a consumer's own
 	model, ok := b.WindowCollector.(widget.WindowEntries)
-	if mw, isMW := model.(*widget.MinimizedWindows); !ok || isMW && mw == nil {
+	if !ok || tui.NilLike(model) {
 		return nil, nil, fmt.Errorf("WindowTaskbar requires WithWindowCollector with a collector it can present (widget.WindowEntries), as a MinimizedWindows is")
 	}
 	return widget.NewWindowTaskbar(model), nil, nil

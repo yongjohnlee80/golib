@@ -206,8 +206,9 @@ func (rs *resolverSet) chain() []ActionResolver {
 	return append(out, rs.defaults...)
 }
 
-// isNilLike reports whether v is nil OR a typed nil — an interface holding a
-// nil pointer, a nil func, or another nil-capable zero value.
+// NilLike reports whether v is nil OR a typed nil — an interface holding a
+// nil pointer, a nil func, or another nil-capable zero value: golib's one rule
+// for a value that is ABSENT at a seam taking any.
 //
 // A plain v == nil catches only the first. ActionResolverFunc(nil) and a nil
 // *myResolver both satisfy the interface with a non-nil type descriptor, so
@@ -215,7 +216,7 @@ func (rs *resolverSet) chain() []ActionResolver {
 // nothing naming what supplied them. The kind switch matters as much as the
 // reflection: IsNil panics on kinds that cannot be nil, so asking it about a
 // struct value would turn a validity check into a crash.
-func isNilLike(v any) bool {
+func NilLike(v any) bool {
 	if v == nil {
 		return true
 	}
@@ -237,7 +238,7 @@ func isNilLike(v any) bool {
 // good entries and then panic, leaving a half-replaced chain.
 func checkResolvers(op string, r []ActionResolver) {
 	for i, x := range r {
-		if isNilLike(x) {
+		if NilLike(x) {
 			panic(errs.Fatal{
 				Op:     "tui: Context." + op,
 				Rule:   "nil resolver",
@@ -297,7 +298,7 @@ func (c *Context) ActionResolvers() []ActionResolver {
 // opposite of a resolver returning (nil, true), which claims a match it cannot
 // supply and stays a contract breach.
 func (c *Context) DoAction(a Action) bool {
-	if isNilLike(a) {
+	if NilLike(a) {
 		return false
 	}
 	return c.app.dispatchAction(c.node, ActionInvocation{
@@ -332,7 +333,7 @@ func (c *Context) DoAction(a Action) bool {
 // unmounted target, or a target outside this subtree returns false and does
 // nothing.
 func (c *Context) ForwardAction(target Component, a Action) bool {
-	if isNilLike(a) || target == nil {
+	if NilLike(a) || target == nil {
 		return false
 	}
 	app := c.app
@@ -449,7 +450,7 @@ func (a *App) resolveFor(n *node, ev Event) (Action, bool) {
 // and the nil then reaches a method call on a nil receiver inside dispatch, where nothing names the
 // resolver that produced it.
 func mustAction(op, rule string, act Action) Action {
-	if isNilLike(act) {
+	if NilLike(act) {
 		panic(errs.Fatal{Op: op, Rule: rule})
 	}
 	return act

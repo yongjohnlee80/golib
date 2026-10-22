@@ -193,12 +193,12 @@ func WithService[T any](v T) Option {
 }
 
 // Service is the service of type T the adapter was given (WithService), and whether it was given
-// one.
+// one. A nil service, untyped or typed (tui.NilLike), is one never given.
 func Service[T any](b Build) (T, bool) {
-	v, ok := b.services[reflect.TypeFor[T]()]
-	if !ok {
+	v, ok := b.services[reflect.TypeFor[T]()].(T)
+	if !ok || tui.NilLike(v) {
 		var zero T
 		return zero, false
 	}
-	return v.(T), true
+	return v, true
 }

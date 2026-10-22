@@ -262,7 +262,7 @@ func (a *App) SetTranslations(s *i18n.Set) {
 // [i18n.Set] (a remote catalog, a test's fake). Nil catalogs, a typed nil too, panic before
 // anything is queued. Safe from any goroutine.
 func (a *App) SetTranslator(t Translator) {
-	if isNilLike(t) {
+	if NilLike(t) {
 		panic(errs.Fatal{Op: "tui: App.SetTranslator", Rule: "the catalogs must not be nil"})
 	}
 	a.Update(func() { a.ApplyTranslator(t) })
@@ -282,7 +282,7 @@ func (a *App) ApplyTranslations(s *i18n.Set) {
 // ApplyTranslator is [App.ApplyTranslations] for any [Translator]. Nil catalogs, a typed nil
 // too, panic. Loop goroutine only.
 func (a *App) ApplyTranslator(t Translator) {
-	if isNilLike(t) {
+	if NilLike(t) {
 		panic(errs.Fatal{Op: "tui: App.ApplyTranslator", Rule: "the catalogs must not be nil"})
 	}
 	a.live.translations = t
