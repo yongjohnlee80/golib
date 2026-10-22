@@ -133,17 +133,120 @@ purpose": a difference in behaviour is a parameter of the shared code, named and
 - **Async results carry a generation or epoch** and are dropped when stale.
 - **Phase legality is checked by identity** (`handlerNode == c.node.id`), never by a boolean.
 - **The runtime's state has one owner per concern.** Each is a named `App` field of its own type,
-  declared in the file of its concern, which holds its rules. The table says where each part is
-  written; a new writer goes in one of those files, or the table changes with it:
+  declared in the file of its concern, which holds its rules. No part is embedded in `App`, so none
+  of its fields is promoted: a write names the part it changes (`a.focus.focused`, never
+  `a.focused`). The map below (§6.1) says where each part is written and which other concerns may
+  touch it; a new writer goes in one of those files, or the map changes with it.
 
-  | Concern | State (`App` field) | Written in |
-  |---|---|---|
-  | The tree | `nodes`, `byComp` | mount and unmount (`app_tree.go`); routing only reads them |
-  | Focus | `focus` (`focusState`) | `focus.go` (`setFocus`, the ring), `focus_repair.go`, `focus_into.go`, and the tree and batching paths that defer or start a repair (`app_tree.go`, `context.go`, `app.go`) |
-  | Pointer capture | `capture` (`captureState`) | `capture.go`, and the recogniser's state in `gesture.go` |
-  | Rendering | `buf`, `native`, `images`, `faces` | the frame, between `beginFrame` and `presentFrame`; the face table (`face.go`) and `RenderOffscreen`'s face scope (`offscreen.go`) |
-  | Delivery phase | `phase` (`handlerPhase`) | the phase marks around Init, Layout, Render and an Update (`app_tree.go`, `app_layout.go`, `app_render.go`, `app.go`), and `enterDelivery`/`leaveDelivery` around each handler (`action.go`, `app_routing.go`) |
-  | Settings | `live` (`appLive`); `cfg` stays as configured | `SetTheme`, the `Apply*` calls, `SetGestureRecognizer` |
+### 6.1 The App's state, by owner
+
+Each entry: the `App` fields; the goroutine that owns them; the files that write them; the writes
+another concern may make (**Crosses**); the cells that hold the entry through real dispatch (a
+running `App` on a `TestBackend`). Loop-owned state is read and written on the loop goroutine only.
+Every write not listed is a change to this map.
+
+- **The tree.** `nodes`, `byComp`, `rootNode`, `nextNodeID`, `structural`, `poisoned`, and `root`,
+  the component `Run` mounts. Loop. Written in mount and unmount (`app_tree.go`), the panic
+  boundary's unwind (`panic.go`) and `SetRoot` (`app.go`, an Update that unmounts the old tree and
+  mounts the new); routing only reads it. Crosses: mount marks `phase.initNode` around Init and
+  registers the node's task context (`async.ctxs`); unmount ends the node's capture while it is
+  still mounted, cancels its context, runs its `OnUnmount` hooks (which cancel its timers), clears
+  `hover.hovered`, drops its task context, pops the trapping scopes that died and repairs focus.
+  Held by: TestLifecycleOrder, TestUnmountCascade, TestUnmountFocusedRepairsFocus, TestHover_Clears,
+  TestInvoluntaryLossReportsTheRightReason, TestDeadLetterAfterUnmount,
+  TestQueuedTaskCancelledNeverRuns, TestTimerCancelledOnUnmount.
+- **Focus.** `focus` (`focusState`). Loop. Written in `focus.go` (`setFocus`, the ring),
+  `focus_repair.go`, `focus_into.go`, and the paths that defer or run a repair: unmount
+  (`app_tree.go`), `BatchTreeMutation` and `SettleBeforeInput` (`context.go`), and the repair after
+  layout (`app.go`). Crosses: a focus move delivers `FocusEvent`s, ends a capture whose owner it
+  leaves (`captureCheckFocus`), and shows the newly focused node's tooltip when a key moved it. Held
+  by: TestFocusScopeTrapsAndRestores, `decl`'s TestADialogClosesBackToWhereFocusWas,
+  TestRequestFocusRefusedOutsideTrap, the stacked-trap cells (`stacked_traps_test.go`),
+  TestBatchTreeMutationRepairsOnceForTheWholeMutation,
+  TestFocusLeavingTheOwnersSubtreeEndsTheCapture.
+- **Routing.** `presses` (`pressCounter`), and the key-provenance mark `hover.keyFocus`. Loop.
+  Written in `app_routing.go`. Routing reads the tree, focus, capture and the active scope, and
+  confines every event kind to that scope: keys and pastes go to the focused node or the trap,
+  pointer events to the hit node under the scope's ceiling. Crosses: `hover.keyFocus` is set for the
+  span of a key's routing, so a focus move it causes is one the keyboard brought (the tooltip's
+  rule); a `ResizeEvent` sets `size` and invalidates. Held by: TestKeyTargetThenBubble,
+  TestTrapConfinesEveryEventKind with its negative control TestNoTrapStillReachesRoot,
+  TestToolTip_KeyboardFocusShowsItAndAKeyClosesIt,
+  TestSizedFlusherDiffsMatchTheirSizeUnderResizeBursts.
+- **Pointer capture.** `capture` (`captureState`). Loop. Written in `capture.go`, and the gesture
+  recogniser's state in `gesture.go`. Taken only by the node whose handler runs
+  (`phase.handlerNode`), inside the active scope; ended by a release, Escape (`CancelCapture`),
+  focus leaving the owner, a trap opening over it, its hiding or unmount, and shutdown, each with
+  its `CaptureLostReason`. Held by: TestOneNodeCannotCaptureInAnothersName,
+  TestCaptureIsRefusedOutsideTheActiveTrap, TestShutdownDeliversExactlyOneLoss,
+  TestHidingTheOwnerEndsTheCapture, and `widget`'s
+  TestWindowDragPreemptsEditorAndEscapeRestoresPolicy.
+- **Hover and the tooltip.** `hover` (`hoverState`). Loop. Written in `hover.go` and `tooltip.go`.
+  Crosses: unmount clears `hovered`; routing sets `keyFocus` (above). Hover is ceilinged at the
+  active scope as routing is. Held by: TestHover_Clears, TestHover_TrapCeiling, the TestToolTip_
+  cells.
+- **Delivery phase.** `phase` (`handlerPhase`). Loop. Written by the marks around Init, Layout,
+  Render and an Update (`app_tree.go`, `app_layout.go`, `app_render.go`, `app.go`), and by
+  `enterDelivery`/`leaveDelivery` around each handler (`action.go`, `app_routing.go`), which save
+  and restore the outer delivery, so a nested one cannot leave it described by the wrong node or
+  input. An action's provenance is recorded here and only read back (`ForwardAction`). Held by:
+  TestProvenanceIsTheRuntimesToRecord,
+  TestForwardActionCannotBorrowAnOuterInvocationFromARawHandler,
+  TestAContainedActionPanicLeavesThePhaseBalanced, TestOneNodesInitCannotSetAnothersDefaults,
+  TestReleasePointerInsideLayoutPanics.
+- **The frame.** `size`, `renderDirty`, `layoutDirty`, `framePending`, `lastFrame`, `frames`,
+  `reveal`, `commits`, `layingOut`. Loop. Written in `app.go` (`invalidate`, `maybeFrame`,
+  `presentFrame`, `settleLayout`), `app_layout.go`, `commit.go` (`AfterLayout`, the commit phase),
+  `reveal.go`, and `app_timers.go` (the frame deadline is a timer). Order: layout, then the commit
+  phase (a commit that changes geometry lays out again before anything else), then a capture whose
+  owner is no longer visible ends and focus on a hidden node is repaired, then the tree renders,
+  then the tooltip card, then the frame is presented. Held by:
+  TestCommitRunsAfterGeometryIsFinalAndBeforeAnyRender,
+  TestACallbackThatDirtiesLayoutGetsAnotherPass, TestLayoutAndCommitSettleInsideONEFrame.
+- **Rendering.** `buf`, `rctx`, `native`, `images`, `faces`, `small.quitButton`. Loop. Written in
+  the frame, between `beginFrame` and `presentFrame` (`app.go`, `app_render.go`, `native.go`,
+  `graphics.go`, `toosmall.go`, and `tooltip.go`, which records where it drew the card); the face
+  table (`face.go`) and `RenderOffscreen`'s face scope (`offscreen.go`). Crosses: `SetTheme`
+  replaces `rctx`'s theme.
+- **Settings.** `live` (`appLive`) and `small.minSize`; `cfg` stays as configured. Loop. Written by
+  `SetTheme` and the `Apply*` calls (`app.go`), `SetGestureRecognizer` (`gesture.go`) and
+  `SetMinimumSize` (`toosmall.go`). Held by: TestAContextReadsTheAppsTheme.
+- **The two lanes.** `input`, `inputDrops` (lane A: the intake pump, `app_intake.go`); `queue` (lane
+  B: any goroutine, under its own lock, `program_queue.go`). An `Update` always enqueues, even from
+  the loop, and runs in a later drain before the next frame. Held by: TestUpdateFromHandlerDeferred,
+  TestContextUpdateDropsAnUnmountedOriginatingOwner, TestIntakeKeysNeverDroppedBelowCapacity,
+  TestPostConcurrentNeverBlocks.
+- **Tasks.** `async` (`asyncState`), `sem`, `nextTaskID`. Any goroutine, under `async.mu` and
+  atomics. Written in `app_tasks.go`; mount and unmount register and drop the node's task context
+  (`app_tree.go`); routing counts a dead letter (`app_routing.go`); teardown drains the pool
+  (`app.go`). Held by: TestTaskResultAddressedToOwner, TestExclusivePreemptionAndStaleness,
+  TestQueuedTaskCancelledNeverRuns, TestGoUnknownOwnerDeadLetters, TestTeardownAbandonedTasks.
+- **Timers.** `timing` (`timerState`). Loop. Written in `app_timers.go`. Held by:
+  TestAfterDeliversAddressedTick, TestEveryRepeatsAndCancelDisarms, TestTimerCancelledOnUnmount.
+- **Clipboard reads.** `clip` (`clipboardReads`). Loop. Written in `clipboard.go`; teardown answers
+  the reads still waiting. Held by: TestReadClipboardAnsweredBeforeItsTimeout.
+- **The run.** `ran`, `quit`, `done`, `stopRun`, `runCtx`, `stoppingCalled`. `Run`'s goroutine.
+  Written in `Run` and `teardown` (`app.go`).
+- **Fixed at construction.** `cfg`, `backend`, `caps`, `bus`. Written in `NewApp` only. The Bus
+  reaches the App only through its `busLane`.
+
+The lifecycle, and what each step changes:
+
+1. **`NewApp`:** sets `cfg`, `caps`, `live` (from `cfg`), `small.minSize`, the queue, the Bus and
+   the task maps. The tree, the frame and the run's state start at `Run`.
+2. **`Run` starts:** `ran`, `stopRun`, `runCtx`, `size`, `buf`, `rctx`; the root is mounted (the
+   tree, its task contexts, `phase.initNode` around each Init); the first frame is drawn before any
+   input.
+3. **A turn:** an event from either lane is routed under the delivery marks; the parts it changes
+   are changed by their owners, and `invalidate` asks for a frame; due timers fire; the frame lays
+   out, commits, repairs focus, renders and presents.
+4. **An unmount:** the node's capture ends while it is still mounted; its children unmount first;
+   its context is cancelled (its tasks), its hooks run (its timers); it leaves the indexes, hover
+   and the task contexts; then the dead scopes are popped and focus is repaired.
+5. **Teardown:** a capture ends as `CaptureLostShutdown`; the `OnStopping` callbacks run once; the
+   clipboard reads still waiting are answered; the root unmounts (step 4); the task pool drains
+   until its deadline; the backend stops. Held by:
+   TestOnStoppingRunsOnceOnLoopAfterCaptureLossBeforeUnmount.
 
 ## 7. Input
 

@@ -116,6 +116,17 @@ func TestUnmountCascade(t *testing.T) {
 	if leaf.eventCount() != 0 {
 		t.Fatalf("dead component received %d events, want 0", leaf.eventCount())
 	}
+
+	// The subtree leaves no task context behind: a long-running app mounts and unmounts without
+	// the task map growing.
+	h.onLoop(func() {
+		h.app.async.mu.Lock()
+		defer h.app.async.mu.Unlock()
+		if len(h.app.async.ctxs) != len(h.app.nodes) {
+			t.Errorf("%d task contexts for %d mounted nodes: an unmounted node's is still held",
+				len(h.app.async.ctxs), len(h.app.nodes))
+		}
+	})
 }
 
 // valueComp is a NON-comparable value component (slice field, value
