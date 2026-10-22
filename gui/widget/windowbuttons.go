@@ -55,6 +55,17 @@ func (w *WindowButtons) Render(s tui.Surface) { w.buttons.Render(s) }
 // HandleEvent leaves input behavior to the real Button children.
 func (w *WindowButtons) HandleEvent(tui.Event) bool { return false }
 
+// colorOf is op's circle colour: close, maximize or minimize (WithWindowButtonColors).
+func (w *WindowButtons) colorOf(op tuiwidget.WindowOperation) color.NRGBA {
+	switch op {
+	case tuiwidget.WindowMaximize:
+		return w.colors[1]
+	case tuiwidget.WindowMinimize:
+		return w.colors[2]
+	}
+	return w.colors[0]
+}
+
 // NativeView returns circular appearance without replacing the input components.
 func (w *WindowButtons) NativeView() (any, bool) { return gui.ViewFunc(w.paint), true }
 
@@ -72,28 +83,14 @@ func (w *WindowButtons) paint(c gui.Canvas) {
 		return // wholly covered: the host paints the covering cells
 	}
 	c.FillRect(gui.Rect{W: c.Size().W, H: c.Size().H}, gui.Solid(bg))
-	s := w.core.State()
-	var colors []color.NRGBA
-	if s.Minimize {
-		colors = append(colors, w.colors[2])
-	}
-	if s.Maximize {
-		colors = append(colors, w.colors[1])
-	}
-	if s.Close {
-		colors = append(colors, w.colors[0])
-	}
 	cell := c.CellSize()
-	for i, child := range w.buttons.All() {
-		button, ok := child.(*tuiwidget.Button)
-		if !ok || i >= len(colors) {
-			continue
-		}
+	for _, ctl := range w.buttons.Controls() { // each button with its operation, in tui's order
+		button := ctl.Button
 		r, ok := w.ctx.ResolveAnchor(button.Context().NodeAnchor())
 		if !ok || r.Empty() {
 			continue
 		}
-		col := colors[i]
+		col := w.colorOf(ctl.Op)
 		if !button.ActivationAvailable() {
 			col.A = 90
 		}
