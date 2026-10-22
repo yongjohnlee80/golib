@@ -236,9 +236,10 @@ func finiteOf(v qml.SpecValue) (float64, error) {
 	return n, nil
 }
 
-// inIntRange reports whether a finite n fits an int. float64(math.MaxInt) rounds up to 2^63, which
-// no int holds, so the top bound is exclusive.
-func inIntRange(n float64) bool { return n >= float64(math.MinInt) && n < float64(math.MaxInt) }
+// inIntRange reports whether a finite n fits an int: from MinInt up to, not including, -MinInt.
+// Both bounds are powers of two, exact as a float64 whatever an int's size; float64(MaxInt) is not
+// (on 64 bits it rounds up to 2^63, which no int holds).
+func inIntRange(n float64) bool { return n >= float64(math.MinInt) && n < -float64(math.MinInt) }
 
 // truncOf reads a number property as an int, its fraction dropped.
 func truncOf(v qml.SpecValue) (int, error) {
