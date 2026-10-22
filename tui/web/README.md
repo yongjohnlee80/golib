@@ -1,5 +1,8 @@
 # tui/web
 
+> **Direction:** this package is slated for a refactor, potentially moving to a `gui/web` that
+> serves the gui widgets to a browser. Don't build on its current shape.
+
 Render an existing golib TUI in a browser. Implements `tui.Backend` over a
 server-side cell grid: the browser displays cells and reports input.
 

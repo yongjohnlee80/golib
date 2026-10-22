@@ -300,7 +300,7 @@ The lifecycle, and what each step changes:
 - **Functional options:** `type XOption func(*X)`, constructors `NewX(required…, opts ...XOption)`
   that apply defaults first, skip nil options, then normalize. Names are `WithX`; a widget-specific
   option that would collide is `With<Widget>X`, consistently.
-- **Two option families are named otherwise.** A new option in one of them follows its family; any
+- **Three option families are named otherwise.** A new option in one of them follows its family; any
   other option is `WithX`. Each skips a nil option like any other (`TestConstructorsSkipANilOption`
   checks every constructor's loop).
   - **A core's options are named for the core they configure:** `Core*` (`CoreOption`,
@@ -311,6 +311,11 @@ The lifecycle, and what each step changes:
   - **decl's Program options are unprefixed:** `ProgramOption` and `HotReloadOption` (`Types`,
     `Themes`, `Keymap`, `KeyCommands`, `ReloadInterval`, a package's `Offer`, …), because a Program
     reads as a declaration: `tuidecl.NewProgram(tuidecl.Types(…), tuidecl.Themes(…))`.
+  - **tui/web's options keep their unprefixed names:** `Option`, `ManagerOption`,
+    `HandlerOption` and `AdmissionOption` (`MaxSessions`, `IdleTimeout`, `Title`, `WSPath`,
+    `AdmissionCap`, `EventQueue`, …). tui/web is slated for a refactor, likely moving to a `gui/web`
+    that serves the gui widgets to a browser; renaming its options now would churn an API that is
+    about to move. The new package's option names are decided with that refactor.
 - **Programmer errors fail at construction** with `fatalOf`/`errs.Fatal{Op, Rule, Detail}`, never a
   bare string panic. **Runtime setters normalize** (clamp), or return a typed error. Never panic at
   runtime on user data.

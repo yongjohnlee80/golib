@@ -1,5 +1,8 @@
 // Package web renders an existing golib TUI in a browser.
 //
+// Direction: this package is slated for a refactor, potentially moving to a gui/web that serves the
+// gui widgets to a browser. Don't build on its current shape.
+//
 // It implements [github.com/yongjohnlee80/golib/tui.Backend] over a server-side
 // cell grid: each Flush diff is applied to the grid, and the grid is emitted as
 // HTML. The browser is a dumb surface — it displays cells and reports input. No
