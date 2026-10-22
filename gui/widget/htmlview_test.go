@@ -605,3 +605,24 @@ func TestHTMLRefusalsAreToldForEachPage(t *testing.T) {
 		t.Errorf("a second page naming them told %v, want both again", told)
 	}
 }
+
+// A dropped element (a form, an iframe, aria-hidden) is not drawn at the top of a page either, as
+// it is not one level down: the page's own blocks drop it as the boxes inside them do. Before, a
+// form directly in the body was drawn while the same form inside a div was not.
+func TestHTMLLayoutDropsADroppedElementAtTheTop(t *testing.T) {
+	_, l, _ := pixelView(t, exportPage(`<form><p>a secret form</p></form><iframe>framed</iframe>`+
+		`<p aria-hidden="true">hidden</p><p>shown</p>`), 800, 600)
+	if l.boxOf("form") != nil || l.boxOf("iframe") != nil {
+		t.Error("a top-level form or iframe was laid out")
+	}
+	for _, b := range l.blocks {
+		if b.node != nil && b.node.Name == "p" {
+			if v, _ := b.node.Attr("aria-hidden"); v == "true" {
+				t.Error("a top-level aria-hidden paragraph was laid out")
+			}
+		}
+	}
+	if l.boxOf("p") == nil {
+		t.Error("the shown paragraph was dropped too")
+	}
+}
