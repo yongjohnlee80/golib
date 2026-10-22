@@ -135,7 +135,7 @@ func streamWindow(t *testing.T) (*Backend, *Stream, metrics) {
 // presentAt runs the real present for b's frame at now, the toolkit taking the ops as they are.
 func presentAt(b *Backend, m metrics, now time.Time) {
 	router := new(input.Router)
-	b.present(app.FrameEvent{Now: now, Size: m.window, Source: router.Source(), Frame: func(*op.Ops) {}}, &b.gio, m, b.font.Load())
+	b.present(app.FrameEvent{Now: now, Size: m.window, Source: router.Source(), Frame: func(*op.Ops) {}}, &b.gio, m, b.font.load())
 }
 
 // One stream frame makes Gio walk at most the flushed frame's ops plus 4 per slot, through the

@@ -519,12 +519,12 @@ func imageAffine(src, dst Rect) f32.Affine2D {
 
 // drawStream records a slot for s, if this canvas is drawing its window's frame.
 func (c *gioCanvas) drawStream(s *stream, dst Rect) bool {
-	if s.b == nil || s.b.render != c.r || !c.r.cutting || c.r.cutOps != c.ops {
+	if s.b == nil || s.b.render != c.r || !c.r.cutter.recording(c.ops) {
 		return false
 	}
 	scale := c.m.scale
 	base := f32.Affine2D{}.Scale(f32.Point{}, f32.Pt(scale, scale)).Offset(c.origin)
-	c.r.cut(streamSlot{s: s, clip: c.clip, alpha: c.alpha, xform: base.Mul(c.xform), dst: dst})
+	c.r.cutter.cut(streamSlot{s: s, clip: c.clip, alpha: c.alpha, xform: base.Mul(c.xform), dst: dst})
 	return true
 }
 

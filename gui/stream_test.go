@@ -231,7 +231,7 @@ func TestPresentDrawsTheSlotAndSettlesTheStream(t *testing.T) {
 	var captured *op.Ops
 	now := time.Unix(200, 0)
 	router := new(input.Router)
-	b.present(app.FrameEvent{Now: now, Size: image.Pt(64, 64), Source: router.Source(), Frame: func(o *op.Ops) { captured = o }}, &b.gio, m, b.font.Load())
+	b.present(app.FrameEvent{Now: now, Size: image.Pt(64, 64), Source: router.Source(), Frame: func(o *op.Ops) { captured = o }}, &b.gio, m, b.font.load())
 	if captured == nil {
 		t.Fatal("present did not hand the toolkit a frame")
 	}
@@ -333,7 +333,7 @@ func (g *presentRig) present(now time.Time, during func()) {
 		if during != nil {
 			during()
 		}
-	}}, &g.b.gio, g.m, g.b.font.Load())
+	}}, &g.b.gio, g.m, g.b.font.load())
 }
 
 // release releases the headless window, and with it its texture cache's references to the frames
@@ -496,19 +496,19 @@ func TestACanvasStreamRecordsAtTheFontsSize(t *testing.T) {
 	b := NewBackend(WithFont("", 17))
 	cs := b.NewCanvasStream()
 	defer cs.Close()
-	want := float32(b.font.Load().size)
+	want := float32(b.font.load().size)
 	if size, scale := recorded(t, cs); size != want || scale != 1 || want != 17 {
 		t.Fatalf("before the first frame: text %v at scale %v; want the configured %v (17) at 1", size, scale, want)
 	}
 	// A frame was drawn with this font at scale 2: its metrics are the recording's.
-	fs := b.font.Load()
+	fs := b.font.load()
 	b.metrics.Store(&metrics{scale: 2, ppem: 40, cell: image.Pt(20, 44), baseline: 34, fontGen: fs.gen})
 	if size, scale := recorded(t, cs); size != 20 || scale != 2 {
 		t.Fatalf("after a frame: text %v at scale %v; want the frame's 40/2 = 20 at 2", size, scale)
 	}
 	// The font changed and no frame has drawn it yet: the new size, at the window's scale.
 	b.SetZoom(200)
-	want = float32(b.font.Load().size)
+	want = float32(b.font.load().size)
 	if size, scale := recorded(t, cs); size != want || scale != 2 || want != 34 {
 		t.Fatalf("after SetZoom(200): text %v at scale %v; want %v (34) at 2", size, scale, want)
 	}

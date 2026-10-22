@@ -70,7 +70,7 @@ func (cs *CanvasStream) Push(size Size, draw func(c Canvas)) *Receipt {
 // they are measured from the font state's size, at the window's scale (1 before its first frame).
 func (cs *CanvasStream) snapshot() metrics {
 	b := cs.s.b
-	fs := b.font.Load()
+	fs := b.font.load()
 	m := metrics{scale: 1}
 	cur := b.metrics.Load()
 	if cur != nil && cur.scale > 0 {

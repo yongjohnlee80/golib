@@ -13,7 +13,7 @@ import (
 // and for an index the table does not have. Each face's glyphs are cached apart.
 func TestCellFacesShapeInTheirOwnTypeface(t *testing.T) {
 	b := NewBackend()
-	fs := b.font.Load()
+	fs := b.font.load()
 	b.render.m = measure(fs.fm, fs.size, 0, image.Pt(200, 100), unit.Metric{PxPerDp: 1, PxPerSp: 1})
 	b.SetCellFaces([]string{"", "Go"}) // the window's is Go Mono
 	window := b.render.shape("a", false, false, 0)

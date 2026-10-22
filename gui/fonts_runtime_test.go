@@ -16,9 +16,9 @@ import (
 // next frame's metrics differ from the last's, so the App is told to lay out and paint again.
 func TestSetZoomScalesTheCellsAndIsANewGeneration(t *testing.T) {
 	b := NewBackend()
-	before := b.font.Load()
+	before := b.font.load()
 	b.SetZoom(150)
-	after := b.font.Load()
+	after := b.font.load()
 	if after.size != before.size*3/2 || after.gen != before.gen+1 {
 		t.Fatalf("after SetZoom(150): size %v gen %d, from size %v gen %d", after.size, after.gen, before.size, before.gen)
 	}
@@ -35,8 +35,8 @@ func TestSetZoomScalesTheCellsAndIsANewGeneration(t *testing.T) {
 		t.Error("the zoomed metrics are the same cells: no ResizeEvent would be pushed")
 	}
 	b.SetZoom(1000)
-	if got := b.font.Load().size; got != b.fontSize*3 {
-		t.Errorf("SetZoom(1000) drew at %v, want 300%% of %v", got, b.fontSize)
+	if got := b.font.load().size; got != b.font.size*3 {
+		t.Errorf("SetZoom(1000) drew at %v, want 300%% of %v", got, b.font.size)
 	}
 }
 
@@ -45,7 +45,7 @@ func TestSetZoomScalesTheCellsAndIsANewGeneration(t *testing.T) {
 // old face.
 func TestAFamilyOnlyChangeRepaintsEveryRow(t *testing.T) {
 	b := NewBackend()
-	fs := b.font.Load()
+	fs := b.font.load()
 	m := measure(fs.fm, fs.size, 0, image.Pt(200, 100), unit.Metric{PxPerDp: 1, PxPerSp: 1})
 	m.fontGen = fs.gen
 	var g grid
@@ -55,7 +55,7 @@ func TestAFamilyOnlyChangeRepaintsEveryRow(t *testing.T) {
 	b.render.glyphs[glyphKey{content: "x"}] = glyphShape{advance: 7}
 
 	b.SetProseFont("Go") // the size is unchanged: only the generation moves
-	next := b.font.Load()
+	next := b.font.load()
 	m2 := measure(next.fm, next.size, 0, image.Pt(200, 100), unit.Metric{PxPerDp: 1, PxPerSp: 1})
 	m2.fontGen = next.gen
 	if m2.cell != m.cell || m2.ppem != m.ppem {
@@ -78,7 +78,7 @@ func TestAFamilyOnlyChangeRepaintsEveryRow(t *testing.T) {
 func TestSetFontChangesTheFaceOfCellsViewsAndPreedit(t *testing.T) {
 	b := NewBackend()
 	b.SetFont("Go Mono", 18)
-	fs := b.font.Load()
+	fs := b.font.load()
 	if !strings.HasPrefix(fs.typeface, "Go Mono") || fs.size != 18 {
 		t.Fatalf("fontState %q at %v", fs.typeface, fs.size)
 	}
@@ -86,7 +86,7 @@ func TestSetFontChangesTheFaceOfCellsViewsAndPreedit(t *testing.T) {
 		t.Errorf("renderer %q, views' mono %q; want both %q", b.render.typeface, b.render.fonts.Mono, fs.typeface)
 	}
 	b.SetFont("", 0) // keeps both
-	if again := b.font.Load(); again.typeface != fs.typeface || again.size != 18 || again.gen != fs.gen+1 {
+	if again := b.font.load(); again.typeface != fs.typeface || again.size != 18 || again.gen != fs.gen+1 {
 		t.Errorf("SetFont(\"\", 0): %q at %v gen %d", again.typeface, again.size, again.gen)
 	}
 }
@@ -102,7 +102,7 @@ func TestFontChangesRaceNeitherFramesNorPreedit(t *testing.T) {
 	go func() { // the Gio goroutine's frame
 		defer wg.Done()
 		for range 200 {
-			fs := b.font.Load()
+			fs := b.font.load()
 			m := measure(fs.fm, fs.size, 0, image.Pt(400, 200), unit.Metric{PxPerDp: 1, PxPerSp: 1})
 			m.fontGen = fs.gen
 			var ops op.Ops
@@ -164,14 +164,14 @@ func TestGridReportsTheGenerationItWasMeasuredAt(t *testing.T) {
 		m.fontGen = fs.gen
 		b.metrics.Store(&m)
 	}
-	before := b.font.Load() // a frame loads the fonts at generation 0 ...
+	before := b.font.load() // a frame loads the fonts at generation 0 ...
 	b.SetZoom(150)          // ... the tui loop changes them ...
 	measureAt(before)       // ... and the frame publishes what it measured with the old ones
 	g100, gen := b.Grid()
 	if gen != 0 || b.FontGeneration() != 1 {
 		t.Fatalf("the late frame reads generation %d with the latest %d; want 0 and 1", gen, b.FontGeneration())
 	}
-	measureAt(b.font.Load())
+	measureAt(b.font.load())
 	g150, gen := b.Grid()
 	if gen != 1 || g150.W >= g100.W {
 		t.Errorf("at generation %d the grid is %v, from %v at 0: want 1, and fewer columns", gen, g150, g100)

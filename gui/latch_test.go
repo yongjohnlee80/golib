@@ -25,20 +25,20 @@ func TestTheImageCallsApplyAtTheFrameInOrder(t *testing.T) {
 	pic := onePixelPNG(t)
 	b.PlaceImage(tui.ImagePlacement{Image: tui.Image{ID: 1, PNG: pic, Version: 1}, Cols: 1, Rows: 1})
 	b.PlaceImage(tui.ImagePlacement{Image: tui.Image{ID: 2, PNG: pic, Version: 1}, Cols: 1, Rows: 1})
-	if n := len(b.imageList()); n != 0 {
+	if n := len(b.images.list()); n != 0 {
 		t.Fatalf("%d images shown before a frame took the calls", n)
 	}
-	b.applyImages()
-	first := b.placed[1].op
+	b.images.apply()
+	first := b.images.placed[1].op
 
 	b.PlaceImage(tui.ImagePlacement{Image: tui.Image{ID: 1, PNG: pic, Version: 1}, X: 3, Cols: 1, Rows: 1})
 	b.DeleteImage(2)
-	b.applyImages()
-	list := b.imageList()
+	b.images.apply()
+	list := b.images.list()
 	if len(list) != 1 || list[0].ID != 1 || list[0].X != 3 {
 		t.Fatalf("after a move and a delete: %+v, want image 1 alone at x 3", list)
 	}
-	if b.placed[1].op != first {
+	if b.images.placed[1].op != first {
 		t.Fatal("moving a placement of the same version decoded it again")
 	}
 }
@@ -78,14 +78,14 @@ func TestFlushAppliesTheLatchesToTheFrame(t *testing.T) {
 	b.PlaceImage(tui.ImagePlacement{Image: tui.Image{ID: 2, PNG: pic, Version: 1}, X: 2, Cols: 1, Rows: 1})
 	b.ShowCursor()
 	b.SetCursor(3, 1)
-	if n := len(b.imageList()); n != 0 || b.latest != nil {
+	if n := len(b.images.list()); n != 0 || b.latest != nil {
 		t.Fatalf("before any Flush: %d images shown, frame %v; want none", n, b.latest)
 	}
 
 	if err := b.Flush(nil); err != nil {
 		t.Fatal(err)
 	}
-	list := b.imageList()
+	list := b.images.list()
 	if len(list) != 2 || list[0].ID != 1 || list[0].Version != 2 || list[0].X != 1 || list[1].ID != 2 {
 		t.Fatalf("after Flush: %+v, want image 1 at version 2 and x 1, then image 2", list)
 	}
@@ -98,10 +98,49 @@ func TestFlushAppliesTheLatchesToTheFrame(t *testing.T) {
 	if err := b.Flush(nil); err != nil {
 		t.Fatal(err)
 	}
-	if list := b.imageList(); len(list) != 1 || list[0].ID != 2 {
+	if list := b.images.list(); len(list) != 1 || list[0].ID != 2 {
 		t.Fatalf("the next Flush kept a deleted image: %+v", list)
 	}
 	if !b.latest.caret.Empty() {
 		t.Fatalf("the next Flush kept a hidden cursor's caret %v", b.latest.caret)
+	}
+}
+
+// A placement of a new version decodes its image again; one that is not a PNG shows nothing, the
+// cells beneath it showing as on a terminal that refuses it.
+func TestANewVersionOfAnImageIsDecodedAgain(t *testing.T) {
+	b := NewBackend()
+	b.PlaceImage(tui.ImagePlacement{Image: tui.Image{ID: 1, PNG: onePixelPNG(t), Version: 1}, Cols: 1, Rows: 1})
+	b.images.apply()
+	first := b.images.placed[1].op
+
+	var two bytes.Buffer
+	if err := png.Encode(&two, image.NewRGBA(image.Rect(0, 0, 2, 2))); err != nil {
+		t.Fatal(err)
+	}
+	b.PlaceImage(tui.ImagePlacement{Image: tui.Image{ID: 1, PNG: two.Bytes(), Version: 2}, Cols: 1, Rows: 1})
+	b.PlaceImage(tui.ImagePlacement{Image: tui.Image{ID: 3, PNG: []byte("not a png"), Version: 1}, Cols: 1, Rows: 1})
+	b.images.apply()
+	if got := b.images.placed[1]; got.op == first || got.Version != 2 {
+		t.Errorf("version 2 of image 1: version %d, decoded again %v; want 2, true", got.Version, got.op != first)
+	}
+	if list := b.images.list(); len(list) != 1 || list[0].ID != 1 {
+		t.Errorf("shown %+v, want image 1 alone: the one that is not a PNG shows nothing", list)
+	}
+}
+
+// A clipboard write waits on the bridge for the Gio goroutine's next frame, which takes it once.
+func TestAClipboardWriteIsTakenOnce(t *testing.T) {
+	var c clipboardBridge
+	if c.take() != nil {
+		t.Fatal("a write taken before any was put")
+	}
+	c.put("one")
+	c.put("two") // the newer write replaces one not yet taken
+	if s := c.take(); s == nil || *s != "two" {
+		t.Fatalf("took %v, want the newest write, two", s)
+	}
+	if c.take() != nil {
+		t.Error("a write was taken twice")
 	}
 }

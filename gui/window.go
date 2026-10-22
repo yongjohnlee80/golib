@@ -135,7 +135,7 @@ func (b *Backend) run() {
 
 		case app.FrameEvent:
 			b.gio.source = e.Source
-			fs := b.font.Load()
+			fs := b.font.load()
 			m := measure(fs.fm, fs.size, b.cfg.padding, e.Size, e.Metric)
 			m.fontGen = fs.gen
 			old := b.metrics.Load()
@@ -167,8 +167,8 @@ func (b *Backend) isStarted() bool {
 // readInput reads this frame's events: keys, text, pointer, clipboard.
 func (b *Backend) readInput(src eventSource, tag event.Tag, m metrics) {
 	b.gio.frames++
-	if b.rec != nil {
-		b.record(StageFrame, "begin", map[string]any{"n": b.gio.frames})
+	if b.rec.on() {
+		b.rec.record(StageFrame, "begin", map[string]any{"n": b.gio.frames})
 	}
 	b.applyRawMode(src, tag)
 	for _, cmd := range b.gio.takeFocus() {
@@ -224,9 +224,9 @@ func (b *Backend) readInput(src eventSource, tag event.Tag, m metrics) {
 				// text mode, so a window that lost the keyboard asks for it back.
 				continue
 			}
-			if b.rec != nil {
+			if b.rec.on() {
 				kind, data := eventFields(ev)
-				b.record(StageIn, kind, data)
+				b.rec.record(StageIn, kind, data)
 			}
 			switch ev := ev.(type) {
 			case SnippetAsk:
@@ -242,8 +242,8 @@ func (b *Backend) readInput(src eventSource, tag event.Tag, m metrics) {
 			case FocusChange:
 				b.gio.focused = ev.Focused
 			}
-			if b.rec != nil {
-				b.record(StageIME, "imeState", imeFields(&b.gio.ime))
+			if b.rec.on() {
+				b.rec.record(StageIME, "imeState", imeFields(&b.gio.ime))
 			}
 		case pointer.Event:
 			if e.Kind == pointer.Leave {
@@ -267,14 +267,10 @@ func (b *Backend) readInput(src eventSource, tag event.Tag, m metrics) {
 	}
 	b.readClipboardReplies(src)
 	b.deliverIME(src, tag)
-	if b.rec != nil {
-		b.record(StageFrame, "end", map[string]any{"n": b.gio.frames})
+	if b.rec.on() {
+		b.rec.record(StageFrame, "end", map[string]any{"n": b.gio.frames})
 	}
-	b.mu.Lock()
-	cp := b.copyText
-	b.copyText = nil
-	b.mu.Unlock()
-	if cp != nil {
+	if cp := b.clip.take(); cp != nil {
 		src.Execute(clipboard.WriteCmd{Type: textType, Data: io.NopCloser(strings.NewReader(*cp))})
 	}
 }
@@ -290,8 +286,8 @@ func (b *Backend) deliverIME(src eventSource, tag event.Tag) {
 	for _, k := range keys {
 		b.q.push(k)
 	}
-	if b.rec != nil {
-		b.record(StageOut, "KeyEvent", map[string]any{"events": keys})
+	if b.rec.on() {
+		b.rec.record(StageOut, "KeyEvent", map[string]any{"events": keys})
 	}
 	for _, cmd := range resets {
 		b.execRecorded(src, tag, cmd)
@@ -304,9 +300,9 @@ func (b *Backend) deliverIME(src eventSource, tag event.Tag) {
 // so a recording shows everything sent to the toolkit, not only what its next
 // state implies.
 func (b *Backend) execRecorded(src eventSource, tag event.Tag, cmd TextInputCmd) {
-	if b.rec != nil {
+	if b.rec.on() {
 		kind, data := cmdFields(cmd)
-		b.record(StageCmd, kind, data)
+		b.rec.record(StageCmd, kind, data)
 	}
 	execTextInputCmd(src, tag, cmd)
 }
@@ -385,11 +381,11 @@ func caretPlace(caret image.Rectangle, base int) CaretPlace {
 // right-to-left text and zero-width marks need no visual-order bookkeeping.
 func (b *Backend) drawPreedit(ops *op.Ops, f *frame, m metrics, fs *fontState) {
 	held, comp, ok := b.gio.ime.held()
-	if b.rec != nil && ok {
+	if b.rec.on() && ok {
 		// Frames with nothing held record nothing here: there is no preedit to draw, and
 		// the caret's own record is the command placeCaret just sent. "drawn" carries the
 		// anomaly: held text that an empty caret kept off the screen.
-		b.record(StageDraw, "preedit", map[string]any{
+		b.rec.record(StageDraw, "preedit", map[string]any{
 			"held":  string(held),
 			"comp":  map[string]any{"start": comp.Start, "end": comp.End},
 			"caret": map[string]any{"x": f.caret.Min.X, "y": f.caret.Min.Y, "w": f.caret.Dx(), "h": f.caret.Dy(), "base": f.base},
