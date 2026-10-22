@@ -224,11 +224,10 @@ func (e *Editor) SetLineNumbers(v bool) {
 func (e *Editor) Wrap() WrapMode { return e.cells.wrap }
 
 // SetWrap selects WrapNone or WrapSoft while the editor runs, as WithEditorWrap does at
-// construction; the cursor stays where it is.
+// construction; the cursor stays where it is. A mode neither is WrapNone, as with gui's Editor: a
+// closed enum's stray value leaves the editor working, as normalizeKeyset does for a keyset.
 func (e *Editor) SetWrap(m WrapMode) {
-	if m != WrapNone && m != WrapSoft {
-		panic(fmt.Sprintf("widget: Editor.SetWrap: mode %d is not WrapNone or WrapSoft", m))
-	}
+	m = editorWrap(m)
 	if e.cells.wrap == m {
 		return
 	}

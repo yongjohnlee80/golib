@@ -1,7 +1,5 @@
 package widget
 
-import "fmt"
-
 // THE EDITOR'S OPTIONS: how an Editor is configured at construction. Most set the core's own
 // options (WithCore); the rest set the view's.
 
@@ -34,12 +32,18 @@ func WithEditorStyles(st TextInputStyles) EditorOption {
 // WithEditorLineNumbers shows each line's number in a gutter at the left.
 func WithEditorLineNumbers(v bool) EditorOption { return func(e *Editor) { e.cells.numbers = v } }
 
-// WithEditorWrap selects WrapNone (default) or WrapSoft.
+// WithEditorWrap selects WrapNone (default) or WrapSoft; any other mode is WrapNone (SetWrap).
 func WithEditorWrap(m WrapMode) EditorOption {
-	if m != WrapNone && m != WrapSoft {
-		panic(fmt.Sprintf("widget: WithEditorWrap: mode %d is not WrapNone or WrapSoft", m))
-	}
+	m = editorWrap(m)
 	return func(e *Editor) { e.cells.wrap = m }
+}
+
+// editorWrap is m as an Editor takes it: WrapSoft, or WrapNone for anything else (SetWrap).
+func editorWrap(m WrapMode) WrapMode {
+	if m != WrapSoft {
+		return WrapNone
+	}
+	return m
 }
 
 // normalizeKeyset maps anything outside the defined profiles onto Vim, which
