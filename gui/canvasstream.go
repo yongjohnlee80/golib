@@ -55,7 +55,7 @@ func (cs *CanvasStream) Push(size Size, draw func(c Canvas)) *Receipt {
 	ops := new(op.Ops)
 	rec := op.Record(ops)
 	start := walkNow()
-	draw(&gioCanvas{ops: ops, r: cs.r, m: m, size: size, clip: dev, alpha: 1})
+	draw(&gioCanvas{ops: ops, r: cs.r, m: m, size: size, clip: dev, paintState: opaque()})
 	cost := walkNow() - start
 	// A recording is the stream's frame for its own outline cache: runs no recording has used
 	// lately go, so a picture of changing text does not grow the cache. The recording flag makes

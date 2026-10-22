@@ -216,14 +216,58 @@ type gioCanvas struct {
 
 	covered []tui.Rect // grid cells inside the view painted after it (NativePlacement.Covered)
 
-	xform Affine
-	alpha float32
-	stack []canvasState
+	paintState
 }
 
-type canvasState struct {
+// paintState is a canvas's transform and opacity, and the stack its Pushes save them on: the
+// same for the window's canvas and an SVGCanvas.
+type paintState struct {
+	xform Affine  // the Pushes' transforms, composed; the zero Affine is none
+	alpha float32 // the Pushes' opacities, multiplied, and its parent's when it was made
+	stack []savedPaint
+}
+
+// savedPaint is what a Push saves and its Pop restores.
+type savedPaint struct {
 	xform Affine
 	alpha float32
+}
+
+// opaque is the state of a new canvas: no transform, full opacity.
+func opaque() paintState { return paintState{alpha: 1} }
+
+// within is the state of a sub-canvas made from p: its opacity, no transform of its own.
+func (p *paintState) within() paintState { return paintState{alpha: p.alpha} }
+
+// PushTransform applies m to what the canvas draws until the matching Pop.
+func (p *paintState) PushTransform(m Affine) {
+	p.stack = append(p.stack, savedPaint{p.xform, p.alpha})
+	p.xform = p.xform.Mul(m)
+}
+
+// PushOpacity multiplies what the canvas draws until the matching Pop by a, clamped to [0, 1].
+func (p *paintState) PushOpacity(a float32) {
+	p.stack = append(p.stack, savedPaint{p.xform, p.alpha})
+	p.alpha *= min(max(a, 0), 1)
+}
+
+// Pop restores the state the latest Push saved; with none, it does nothing.
+func (p *paintState) Pop() {
+	if n := len(p.stack); n > 0 {
+		p.xform, p.alpha = p.stack[n-1].xform, p.stack[n-1].alpha
+		p.stack = p.stack[:n-1]
+	}
+}
+
+// viewOrigin is the device origin of a view placed at cell (x, y), whose top-left is at in device
+// pixels, and whose own rect is full when only part of it shows (NativePlacement.Full): full's
+// top-left then, so the view lays out as it would unclipped. The canvas and the IME caret both
+// place the view by it.
+func (m metrics) viewOrigin(at image.Point, x, y int, full tui.Rect) image.Point {
+	if full.Empty() {
+		return at
+	}
+	return at.Add(image.Pt((full.X-x)*m.cell.X, (full.Y-y)*m.cell.Y))
 }
 
 // newGioCanvas is the canvas over the cells of rect r, origin at its top-left cell; covered are the
@@ -245,11 +289,10 @@ func newGioCanvas(ops *op.Ops, r *renderer, g *grid, m metrics, cells CellRect, 
 	// The origin stays the placement's own top-left even when its pane cuts it: a pointer at a
 	// device point reconstructs the same local position the canvas draws at. The size runs from
 	// that origin to the visible edge, so a Pixels pane's canvas is exactly its pane.
-	origin := dev.Min
+	origin := m.viewOrigin(dev.Min, cells.X, cells.Y, full)
 	size := image.Pt(max(clip.Max.X-dev.Min.X, 0), max(clip.Max.Y-dev.Min.Y, 0))
 	cellX, cellY := cells.X, cells.Y
 	if !full.Empty() {
-		origin = dev.Min.Add(image.Pt((full.X-cells.X)*m.cell.X, (full.Y-cells.Y)*m.cell.Y))
 		size = image.Pt(full.W*m.cell.X, full.H*m.cell.Y)
 		cellX, cellY = full.X, full.Y
 	}
@@ -262,8 +305,8 @@ func newGioCanvas(ops *op.Ops, r *renderer, g *grid, m metrics, cells CellRect, 
 		size:   Size{W: float32(size.X) / m.scale, H: float32(size.Y) / m.scale},
 		clip:   clip,
 		cellX:  cellX, cellY: cellY, view: cells,
-		covered: covered,
-		alpha:   1,
+		covered:    covered,
+		paintState: opaque(),
 	}
 }
 
@@ -278,8 +321,8 @@ func (c *gioCanvas) Sub(r Rect) Canvas {
 		ops: c.ops, r: c.r, g: c.g, m: c.m,
 		origin: o, size: Size{W: r.W, H: r.H}, clip: dev,
 		cellX: c.cellX, cellY: c.cellY, view: c.view,
-		covered: c.covered,
-		alpha:   c.alpha,
+		covered:    c.covered,
+		paintState: c.within(),
 	}
 }
 
@@ -303,26 +346,6 @@ func (c *gioCanvas) TextSize() float32 { return c.m.ppem / c.m.scale }
 // CellSize returns the logical size of a single character cell.
 func (c *gioCanvas) CellSize() Size {
 	return Size{W: float32(c.m.cell.X) / c.m.scale, H: float32(c.m.cell.Y) / c.m.scale}
-}
-
-// PushTransform appends a 2D affine transform to the canvas transform stack.
-func (c *gioCanvas) PushTransform(m Affine) {
-	c.stack = append(c.stack, canvasState{c.xform, c.alpha})
-	c.xform = c.xform.Mul(m)
-}
-
-// PushOpacity multiplies the current canvas alpha by a factor clamped to [0, 1].
-func (c *gioCanvas) PushOpacity(a float32) {
-	c.stack = append(c.stack, canvasState{c.xform, c.alpha})
-	c.alpha *= min(max(a, 0), 1)
-}
-
-// Pop restores the previous transform and opacity from the state stack.
-func (c *gioCanvas) Pop() {
-	if n := len(c.stack); n > 0 {
-		c.xform, c.alpha = c.stack[n-1].xform, c.stack[n-1].alpha
-		c.stack = c.stack[:n-1]
-	}
 }
 
 // begin pushes the clip, the opacity and the logical-to-device transform; end pops them.
