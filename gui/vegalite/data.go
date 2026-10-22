@@ -254,60 +254,54 @@ func (p *plan) domains() error {
 	if c.mark.kind == markBar {
 		p.xs.band, p.ys.band = p.xs.discrete, p.ys.discrete
 	}
+	var err error
 	if col := c.color; col != nil && col.value == nil {
-		var vals []string
-		for _, d := range p.data {
-			vals = append(vals, d.series)
+		if p.series, err = p.discreteDomain(col, func(d datum) string { return d.series }, nil, maxSeries, "series"); err != nil {
+			return err
 		}
-		p.series = order(vals, col, nil)
-		if len(p.series) > maxSeries {
-			return fmt.Errorf("%w: %d series (at most %d)", ErrTooLarge, len(p.series), maxSeries)
-		}
-		p.data = slices.DeleteFunc(p.data, func(d datum) bool { return !slices.Contains(p.series, d.series) })
 	}
 	if sh := c.shape; sh != nil && sh.shape == "" {
-		var vals []string
-		for _, d := range p.data {
-			vals = append(vals, d.shape)
+		if p.shapes, err = p.discreteDomain(sh, func(d datum) string { return d.shape }, nil, maxSeries, "shapes"); err != nil {
+			return err
 		}
-		p.shapes = order(vals, sh, nil)
-		if len(p.shapes) > maxSeries {
-			return fmt.Errorf("%w: %d shapes (at most %d)", ErrTooLarge, len(p.shapes), maxSeries)
-		}
-		p.data = slices.DeleteFunc(p.data, func(d datum) bool { return !slices.Contains(p.shapes, d.shape) })
 	}
 	for _, a := range []*axisPlan{&p.xs, &p.ys} {
 		if !a.discrete {
 			continue
 		}
-		isX := a == &p.xs
-		var vals []string
+		at, other := func(d datum) pos { return d.y }, func(d datum) pos { return d.x }
+		if a == &p.xs {
+			at, other = other, at
+		}
 		by := map[string]float64{}
 		for _, d := range p.data {
-			v, other := d.y, d.x
-			if isX {
-				v, other = d.x, d.y
-			}
-			vals = append(vals, v.str)
-			by[v.str] += other.num
+			by[at(d).str] += other(d).num
 		}
 		if a.ch.sort == sortByField {
 			by = p.sortKeys(a.ch)
 		}
-		a.domain = order(vals, a.ch, by)
-		if len(a.domain) > maxBands {
-			return fmt.Errorf("%w: %d categories (at most %d)", ErrTooLarge, len(a.domain), maxBands)
+		if a.domain, err = p.discreteDomain(a.ch, func(d datum) string { return at(d).str }, by, maxBands, "categories"); err != nil {
+			return err
 		}
-		p.data = slices.DeleteFunc(p.data, func(d datum) bool {
-			v := d.y.str
-			if isX {
-				v = d.x.str
-			}
-			return !slices.Contains(a.domain, v)
-		})
 	}
 	p.stack()
 	return p.continuous()
+}
+
+// discreteDomain is ch's domain over the data's values (of each datum), ordered as ch says (by:
+// each value's measure, for a sort by the other channel), refused past limit; the data outside it
+// is dropped. what names the values in the refusal.
+func (p *plan) discreteDomain(ch *channel, of func(datum) string, by map[string]float64, limit int, what string) ([]string, error) {
+	vals := make([]string, 0, len(p.data))
+	for _, d := range p.data {
+		vals = append(vals, of(d))
+	}
+	dom := order(vals, ch, by)
+	if len(dom) > limit {
+		return nil, fmt.Errorf("%w: %d %s (at most %d)", ErrTooLarge, len(dom), what, limit)
+	}
+	p.data = slices.DeleteFunc(p.data, func(d datum) bool { return !slices.Contains(dom, of(d)) })
+	return dom, nil
 }
 
 // order is a discrete channel's domain from its values (in the data's order): sorted as ch says,
