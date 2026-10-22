@@ -750,8 +750,11 @@ func Value(v any) (qml.SpecValue, error) {
 	case Keys:
 		// An OBJECT: the keys a Terminal's hostKeys or modeKey take, each one key (hostkeys.go).
 		return qml.SpecValue{Kind: qml.SpecValueObject, Obj: slices.Clone(x)}, nil
+	case HostObject:
+		// An OBJECT a consumer's type reads: decl need not know its type.
+		return qml.SpecValue{Kind: qml.SpecValueObject, Obj: x}, nil
 	}
-	return qml.SpecValue{}, fmt.Errorf("a %T is not a value a document can hold: want a string, bool, number, a tui.Message, a model, a row's Index, a widget.FileSource or Keys", v)
+	return qml.SpecValue{}, fmt.Errorf("a %T is not a value a document can hold: want a string, bool, number, a tui.Message, a model, a row's Index, a widget.FileSource, Keys or a HostObject", v)
 }
 
 // Arg reads a handler's argument i as a string — a path, a name — or says why

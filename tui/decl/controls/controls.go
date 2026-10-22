@@ -23,7 +23,6 @@ package controls
 
 import (
 	"errors"
-	"fmt"
 
 	"github.com/yongjohnlee80/golib/parse/qml"
 	"github.com/yongjohnlee80/golib/tui"
@@ -64,7 +63,7 @@ var TextField = tuidecl.Type{
 	Ctor:  []string{"placeholderText", "echoMode"},
 	Setters: map[string]tuidecl.Setter{
 		"text":        tuidecl.StringSetter((*widget.TextInput).SetValue),
-		"completions": setCompletions,
+		"completions": tuidecl.ModelSetter(setCompletions),
 	},
 	Methods: map[string]tuidecl.Method{
 		// Qt's TextField.clear(): empty the field — a prompt starting over.
@@ -95,15 +94,7 @@ var TextField = tuidecl.Type{
 // model's rows, read at each Tab and paint so they follow the model. A host wanting other rules
 // (a table's field names, as its bar reads them) sets the field's completer from Go:
 // tuidecl.FindAs[*widget.TextInput](p, id) and SetCompleter(widget.TableFieldCompleter(widget.TableWhereBar, …)).
-func setCompletions(c tui.Component, v qml.SpecValue) error {
-	ti, ok := c.(*widget.TextInput)
-	if !ok {
-		return errors.New("not a TextField")
-	}
-	m, ok := v.Obj.(tuidecl.ItemModel)
-	if v.Kind != qml.SpecValueObject || !ok {
-		return fmt.Errorf("TextField.completions wants a model, got %s (at %s)", v.Kind, v.Pos)
-	}
+func setCompletions(ti *widget.TextInput, m tuidecl.ItemModel) {
 	ti.SetCompleter(widget.WordCompleter(func() []string {
 		role := ""
 		if roles := m.Roles(); len(roles) > 0 {
@@ -116,7 +107,6 @@ func setCompletions(c tui.Component, v qml.SpecValue) error {
 		}
 		return out
 	}))
-	return nil
 }
 
 func buildTextField(b tuidecl.Build) (tui.Component, []string, error) {

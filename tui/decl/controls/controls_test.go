@@ -363,18 +363,18 @@ func TestATextFieldCompletesFromItsModel(t *testing.T) {
 	}
 }
 
-// The completions setter refuses what it is not given: a component that is not a TextField, and a
-// value that is not a model.
+// The completions setter refuses what it is not given, as every ModelSetter does: a component that
+// is not a TextField's widget, and a value that is not a model.
 func TestTheCompletionsSetterRefusesWhatItIsNotGiven(t *testing.T) {
 	set := controls.TextField.Setters["completions"]
-	if err := set(widget.NewButton("no"), qml.SpecValue{}); err == nil || err.Error() != "not a TextField" {
+	if err := set(widget.NewButton("no"), qml.SpecValue{}); err == nil || !strings.Contains(err.Error(), "not a *widget.TextInput") {
 		t.Errorf("a component that is not a TextField: %v", err)
 	}
 	in := widget.NewTextInput()
-	if err := set(in, qml.SpecValue{Kind: qml.SpecValueString, Raw: "no"}); err == nil || !strings.Contains(err.Error(), "wants a model") {
+	if err := set(in, qml.SpecValue{Kind: qml.SpecValueString, Raw: "no"}); err == nil || !strings.Contains(err.Error(), "want a model") {
 		t.Errorf("a value that is not a model: %v", err)
 	}
-	if err := set(in, qml.SpecValue{Kind: qml.SpecValueObject}); err == nil || !strings.Contains(err.Error(), "wants a model") {
+	if err := set(in, qml.SpecValue{Kind: qml.SpecValueObject}); err == nil || !strings.Contains(err.Error(), "want a model") {
 		t.Errorf("an object that is not a model: %v", err)
 	}
 }
