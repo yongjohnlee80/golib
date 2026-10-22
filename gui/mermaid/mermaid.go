@@ -196,6 +196,66 @@ func (lb label) at(x, y float32) label {
 	return lb
 }
 
+// moved is lb placed dx, dy further on.
+func (lb label) moved(dx, dy float32) label { return lb.at(lb.box.X+dx, lb.box.Y+dy) }
+
+// moved is p placed dx, dy further on, its labels copied; a part without a divider keeps none.
+func (p part) moved(dx, dy float32) part {
+	if p.y != 0 {
+		p.y += dy
+	}
+	labels := make([]label, len(p.labels))
+	for i, lb := range p.labels {
+		labels[i] = lb.moved(dx, dy)
+	}
+	p.labels = labels
+	return p
+}
+
+// movedParts is ps placed dx, dy further on, copied; nil stays nil.
+func movedParts(ps []part, dx, dy float32) []part {
+	if ps == nil {
+		return nil
+	}
+	out := make([]part, len(ps))
+	for i, p := range ps {
+		out[i] = p.moved(dx, dy)
+	}
+	return out
+}
+
+// moved is n placed dx, dy further on.
+func (n laidNode) moved(dx, dy float32) laidNode {
+	n.box.X, n.box.Y = n.box.X+dx, n.box.Y+dy
+	n.label = n.label.moved(dx, dy)
+	n.parts = movedParts(n.parts, dx, dy)
+	return n
+}
+
+// moved is e placed dx, dy further on: its route copied, and each of its labels.
+func (e laidEdge) moved(dx, dy float32) laidEdge {
+	pts := make([]gui.Point, len(e.pts))
+	for j, p := range e.pts {
+		pts[j] = gui.Pt(p.X+dx, p.Y+dy)
+	}
+	e.pts = pts
+	for _, lb := range []**label{&e.label, &e.headLabel, &e.tailLabel} {
+		if *lb != nil {
+			m := (*lb).moved(dx, dy)
+			*lb = &m
+		}
+	}
+	return e
+}
+
+// moved is g placed dx, dy further on.
+func (g laidGroup) moved(dx, dy float32) laidGroup {
+	g.box.X, g.box.Y = g.box.X+dx, g.box.Y+dy
+	g.title = g.title.moved(dx, dy)
+	g.parts = movedParts(g.parts, dx, dy)
+	return g
+}
+
 // centredIn places a label's box at the centre of r.
 func (lb label) centredIn(r gui.Rect) label {
 	return lb.at(r.X+(r.W-lb.box.W)/2, r.Y+(r.H-lb.box.H)/2)
