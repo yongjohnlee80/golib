@@ -31,6 +31,26 @@ func TestAMovedTableGoPrefixKeepsItsLiteralSecondG(t *testing.T) {
 	h.waitFor("F9 g: the first row", func() bool { return tableCursor(h, dt).Row == 0 })
 }
 
+// A table's goLine moved to F8: g then F8 is the first row, and [count]g F8 that row; g g no
+// longer completes, the second g waiting again.
+func TestAMovedTableGoLineCompletesTheGoPrefix(t *testing.T) {
+	m := mustKeymap(t, `<mapping><shortcut id="tui.table.g.goLine"><key value="F8"/></shortcut></mapping>`)
+	dt := widget.NewDataTable(widget.NewTableCore(numbered(20)))
+	sh := newShell(dt)
+	h := startAppOpts(t, sh, 40, 12, tui.WithKeymap(m))
+	h.inject(tab(), key('G'))
+	h.waitFor("G: the last row", func() bool { return tableCursor(h, dt).Row == 19 })
+	h.inject(key('g'), key('g'))
+	h.barrier(sh)
+	if row := tableCursor(h, dt).Row; row != 19 {
+		t.Fatalf("g g after the scheme moved goLine: row %d", row)
+	}
+	h.inject(key(tui.KeyEscape), key('g'), fkey(tui.KeyF8))
+	h.waitFor("g F8: the first row", func() bool { return tableCursor(h, dt).Row == 0 })
+	h.inject(key('5'), key('g'), fkey(tui.KeyF8))
+	h.waitFor("5 g F8: the fifth row", func() bool { return tableCursor(h, dt).Row == 4 })
+}
+
 // The Terminal's prefix moved to F11: F11 then the literal Ctrl+\ sends one Ctrl+\ to the program,
 // and F11 then Ctrl+n is normal mode.
 func TestAMovedTerminalPrefixKeepsItsLiteralContinuation(t *testing.T) {
