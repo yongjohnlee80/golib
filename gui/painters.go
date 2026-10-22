@@ -199,7 +199,12 @@ func paintButton(comp tui.Component) (View, tui.NativeScope, bool) {
 		if !ok {
 			i = -1
 		}
-		fg, bg, open := buttonColors(c, b.Label(), i)
+		cols, _ := CanvasCells(c)
+		key, drawn := b.MnemonicColumn(cols)
+		if !drawn {
+			key = -1
+		}
+		fg, bg, open := buttonColors(c, key)
 		if !open {
 			return // wholly covered: the host paints the covering cells
 		}
@@ -210,7 +215,7 @@ func paintButton(comp tui.Component) (View, tui.NativeScope, bool) {
 		c.FillRect(r, Solid(c.Backdrop())) // the corners show what is around the button
 		c.FillRRect(r, radius, Solid(fill))
 		c.StrokeRRect(r.Inset(width/2), radius, width, Solid(border))
-		drawLabel(c, b.Label(), i, labelFont(c), fg, readableOn(keyColor(c, b.Label(), i, fg), fill, fg))
+		drawLabel(c, b.Label(), i, labelFont(c), fg, readableOn(keyColor(c, key, fg), fill, fg))
 	}), tui.ScopeSubtree, true
 }
 
@@ -272,50 +277,27 @@ func paintComboBox(comp tui.Component) (View, tui.NativeScope, bool) {
 }
 
 // buttonColors are the button's own colours: its first open cell, the ends first, never the
-// mnemonic's (a theme's accent there would become the whole label's).
-func buttonColors(c Canvas, label string, key int) (fg, bg color.NRGBA, ok bool) {
-	cluster := keyCluster(label, key)
+// mnemonic's at column key (a theme's accent there would become the whole label's); -1 for none.
+func buttonColors(c Canvas, key int) (fg, bg color.NRGBA, ok bool) {
 	cols, _ := CanvasCells(c)
 	var xs []int
 	for _, x := range endsFirst(max(cols, 1)) {
-		if cluster == "" || c.CellText(x, 0) != cluster {
+		if x != key {
 			xs = append(xs, x)
 		}
 	}
 	return openColors(c, 0, xs...)
 }
 
-// keyCluster is the label's cluster at index key, or "" for none.
-func keyCluster(label string, key int) string {
-	if key < 0 {
-		return ""
-	}
-	i := 0
-	for cl := range tui.Graphemes(label) {
-		if i == key {
-			return cl
-		}
-		i++
-	}
-	return ""
-}
-
-// keyColor is the colour of the mnemonic's cell, as the button's cells paint it: a theme's accent
-// when it sets one (ButtonStyle.Hotkey), else fg. The cell is the key's cluster wearing a colour
-// other than the label's.
-func keyColor(c Canvas, label string, key int, fg color.NRGBA) color.NRGBA {
-	cluster := keyCluster(label, key)
-	if cluster == "" {
+// keyColor is the colour of the mnemonic's cell at column key, as the button's cells paint it
+// (Button.MnemonicColumn): a theme's accent when it sets one (ButtonStyle.Hotkey), else fg. fg when
+// there is none, or the cell is covered.
+func keyColor(c Canvas, key int, fg color.NRGBA) color.NRGBA {
+	if key < 0 || CellCovered(c, key, 0) {
 		return fg
 	}
-	cols, _ := CanvasCells(c)
-	for x := range cols {
-		if CellCovered(c, x, 0) || c.CellText(x, 0) != cluster {
-			continue
-		}
-		if kfg, _ := c.CellColors(x, 0); kfg != fg {
-			return kfg
-		}
+	if kfg, _ := c.CellColors(key, 0); kfg != fg {
+		return kfg
 	}
 	return fg
 }
@@ -495,7 +477,7 @@ func paintProgress(comp tui.Component) (View, tui.NativeScope, bool) {
 	return ViewFunc(func(c Canvas) {
 		f, _ := p.Progress()
 		cols, _ := CanvasCells(c)
-		n := filledCells(f, cols)
+		n := p.FilledColumns(cols)
 		filled, _, fillOpen := openColors(c, 0, span(0, max(n, 1))...) // none filled yet: the first cell, as before
 		last := max(cols, 1) - 1
 		emptyFG, emptyBG, emptyOpen := openColors(c, 0, span(last, min(n, last)-1)...)
@@ -512,17 +494,6 @@ func paintProgress(comp tui.Component) (View, tui.NativeScope, bool) {
 			c.FillRRect(fill, h/2, Solid(filled))
 		}
 	}), tui.ScopeSubtree, true
-}
-
-// filledCells is how many cells of a determinate bar of cols cells ProgressBar.Render fills at
-// fraction f: the full ones and the partial one.
-func filledCells(f float64, cols int) int {
-	exact := f * float64(cols)
-	full := int(exact)
-	if full < cols && int((exact-float64(full))*8) > 0 {
-		full++
-	}
-	return min(full, cols)
 }
 
 // OnPanelBar marks t as drawn on a panel's title bar (gui/widget's Editor.Tabs), whose colour bar

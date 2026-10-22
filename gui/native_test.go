@@ -742,11 +742,14 @@ func TestTheAccessKeyTakesItsCellsColour(t *testing.T) {
 		}
 		return text, color.NRGBA{A: 255}
 	}
-	if got := keyColor(rc, "Save", 0, text); got != accent {
+	if got := keyColor(rc, 2, text); got != accent { // the S, the key's cell (Button.MnemonicColumn)
 		t.Fatalf("key colour %v; want the accent of its cell", got)
 	}
-	if got := keyColor(rc, "Save", 1, text); got != text {
+	if got := keyColor(rc, 3, text); got != text {
 		t.Fatalf("a letter in the label's colour gave %v", got)
+	}
+	if got := keyColor(rc, -1, text); got != text {
+		t.Fatalf("no key gave %v", got)
 	}
 	drawLabel(rc, "Save", 0, Font{Size: 12}, text, accent)
 	var texts, lines []PaintCall

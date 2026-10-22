@@ -299,13 +299,28 @@ func TestButtonFieldAndScrollbarAreNotThePanelsColour(t *testing.T) {
 			own: func(int, int) (color.NRGBA, color.NRGBA) { return white, navy }})
 	})
 	t.Run("button between two panels", func(t *testing.T) {
-		// both ends covered, the first open cell is the mnemonic's, in a theme's accent
+		// both ends covered, the first open cell is the mnemonic's, in a theme's accent. The button is
+		// mounted, so the key's cell is where tui draws it (Button.MnemonicColumn), and the row is
+		// what tui drew.
 		accent := color.NRGBA{R: 0xc0, G: 0x30, B: 0x20, A: 0xff}
-		row := []string{" ", "S", "a", "v", "e", " ", " ", " "}
-		view, _, _ := paintButton(widget.NewButton("Save", widget.WithMnemonic('S')))
-		rc := paintUnder(t, view, overView{cols: 8, rows: 1, covered: at(0, 7), text: func(col, _ int) string { return row[col] },
+		b := widget.NewButton("Save", widget.WithMnemonic('S'), widget.WithButtonDecoration("", ""))
+		_, sb := styledApp(t, b, 6, 1, NativeStyle())
+		var row []string
+		waitUntil(t, "the button drawn", func() bool {
+			row = row[:0]
+			for _, c := range sb.Snapshot()[0] {
+				row = append(row, c.Content)
+			}
+			return strings.Contains(strings.Join(row, ""), "Save")
+		})
+		key := slices.Index(row, "S")
+		if key <= 0 || key >= 5 {
+			t.Fatalf("the key's cell %d in %q: want one inside the ends", key, row)
+		}
+		view, _, _ := paintButton(b)
+		rc := paintUnder(t, view, overView{cols: 6, rows: 1, covered: at(0, 5), text: func(col, _ int) string { return row[col] },
 			own: func(col, _ int) (color.NRGBA, color.NRGBA) {
-				if col == 1 {
+				if col == key {
 					return accent, sepiaBG
 				}
 				return sepiaFG, sepiaBG
