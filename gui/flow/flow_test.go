@@ -310,3 +310,22 @@ func TestALeadingMinusStaysWithItsNumber(t *testing.T) {
 		t.Fatalf("%d lines starting at bytes %v, want 2, the second at %d (the minus)", len(p.Lines), starts, len("x "))
 	}
 }
+
+// The minus keeps its number across spans too: a '-' that ends its span (-**5**, a styled number
+// after the sign) opens no break before the next span, as one in the same span opens none.
+func TestALeadingMinusEndingItsSpanStaysWithTheNextSpan(t *testing.T) {
+	sh := shaper()
+	bold := plain("12345")
+	bold.Font.Bold = true
+	w := flow.Lay([]flow.Span{plain("-"), bold}, flow.Options{}, sh).Width // the run "-12345" as styled
+	p := flow.Lay([]flow.Span{plain("x -"), bold}, flow.Options{Width: w + 1}, sh)
+	if len(p.Lines) != 2 || len(p.Lines[1].Frags) == 0 || p.Lines[1].Frags[0].Span != 0 || p.Lines[1].Frags[0].From != len("x ") {
+		var starts [][2]int
+		for _, l := range p.Lines {
+			if len(l.Frags) > 0 {
+				starts = append(starts, [2]int{l.Frags[0].Span, l.Frags[0].From})
+			}
+		}
+		t.Fatalf("%d lines starting at (span, byte) %v, want 2, the second at (0, %d): the minus", len(p.Lines), starts, len("x "))
+	}
+}
