@@ -131,7 +131,8 @@ func (p *popupLayer) requestClose(reason DismissReason) {
 		return
 	}
 	p.closing, p.reason = true, reason
-	p.RequestLayout()
+	// the close is the next layout's commit, and input routed before it would reach this layer
+	p.Context().SettleBeforeInput()
 }
 
 // close removes the layer now, for a caller that is the layer itself.

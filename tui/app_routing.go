@@ -98,7 +98,9 @@ func (a *App) dispatch(ev Event) {
 	}
 	switch ev.(type) {
 	case KeyEvent, PasteEvent, UserEvent: // routed to the focused node: settle a focus on its way first
-		a.settleFocusInto()
+		a.settleBeforeInput(true)
+	case MouseEvent: // hit-tested: settle a layer that is leaving, so it is not hit
+		a.settleBeforeInput(false)
 	}
 	switch e := ev.(type) {
 	case KeyEvent:

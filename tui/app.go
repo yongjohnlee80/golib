@@ -595,6 +595,7 @@ func (a *App) maybeFrame() {
 // settleLayout lays the tree out and commits it, then settles what only a placed tree can answer:
 // a capture whose owner left the screen, and a focus that did, or that a FocusInto waits to move.
 func (a *App) settleLayout() {
+	a.focus.settleBeforeInput = false // this layout answers it
 	// Layout and commit alternate until geometry settles; see commit.go.
 	// The frame must not paint a layout its own commit has invalidated.
 	a.layoutAndCommit()
@@ -612,12 +613,15 @@ func (a *App) settleLayout() {
 	a.repairInvisibleFocus()
 }
 
-// settleFocusInto lays out now, ahead of the frame, when a FocusInto waits for its target's layout
-// and input that goes to the focused node is about to be routed: the keys typed after the one that
-// showed a field reach the field, not the control the focus was leaving, however the loop orders
-// the frame against them. The frame still paints at its own pace.
-func (a *App) settleFocusInto() {
-	if a.focus.pendingFocusInto == 0 || !a.layoutDirty || a.rootNode == nil || a.buf.size() != a.size || a.tooSmall() {
+// settleBeforeInput lays out now, ahead of the frame, when the next layout moves where input is
+// about to be routed: a component's SettleBeforeInput (a popup closing in its commit), or, for input
+// that goes to the focused node, a FocusInto waiting for its target's layout. The keys typed after
+// the one that showed a field reach the field, and those after the one that closed a popup reach
+// what it leaves focused, however the loop orders the frame against them. The frame still paints at
+// its own pace.
+func (a *App) settleBeforeInput(focused bool) {
+	pending := a.focus.settleBeforeInput || focused && a.focus.pendingFocusInto != 0
+	if !pending || !a.layoutDirty || a.rootNode == nil || a.buf.size() != a.size || a.tooSmall() {
 		return
 	}
 	a.settleLayout()

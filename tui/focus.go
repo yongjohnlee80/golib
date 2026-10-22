@@ -29,6 +29,11 @@ type focusState struct {
 	// — a pane shown in the same turn — to apply after the next layout; 0 for
 	// none. A focus change before then cancels it. See FocusInto.
 	pendingFocusInto NodeID
+
+	// settleBeforeInput is a component's Context.SettleBeforeInput: its next
+	// layout moves where input goes, so the App lays out before routing the
+	// next input. Cleared by any layout.
+	settleBeforeInput bool
 }
 
 // Focus management is framework-owned end-to-end:
