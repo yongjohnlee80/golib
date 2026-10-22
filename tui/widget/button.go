@@ -1,7 +1,6 @@
 package widget
 
 import (
-	"github.com/yongjohnlee80/golib/errs"
 	"github.com/yongjohnlee80/golib/tui"
 	"github.com/yongjohnlee80/golib/tui/keymap"
 )
@@ -529,22 +528,6 @@ func (b *Button) Render(s tui.Surface) {
 		}
 		s.SetCell(x, 0, cluster, cst)
 		x += cw
-	}
-}
-
-// checkButtonList is the CONSTRUCTION adapter over validateButtonList.
-//
-// A panic rather than a silent precedence rule: with two defaults, Enter would
-// pick one by an ordering the author never stated, and the dialog would do the
-// wrong thing in a way that reads as a toolkit bug rather than a mistake in the
-// button list. Construction options have no error to return, and the list is
-// written in source, so this is a programmer error.
-//
-// It shares its rules with the runtime setter's typed error rather than
-// restating them, so the two cannot come to disagree about what a valid list is.
-func checkButtonList(op string, buttons []*Button, owner tui.Component) {
-	if f := validateButtonList(buttons, owner); f != nil {
-		panic(errs.Fatal{Op: op, Rule: f.describe()})
 	}
 }
 
