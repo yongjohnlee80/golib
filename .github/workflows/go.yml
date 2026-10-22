@@ -57,6 +57,11 @@ jobs:
       - name: vet (darwin)
         run: GOOS=darwin go vet ./...
 
+      # A 32-bit int: a constant that fits 64 bits but not 32 builds on every runner and fails only
+      # here, as tui/web's hostile-size table did from 2026-08-22 until this step.
+      - name: vet (386)
+        run: GOARCH=386 go vet ./...
+
       # -count=2 on purpose: a suite run once is a suite whose flakes are
       # someone else's problem later. Two runs in one job is the cheapest
       # pressure that catches the common ordering races.
