@@ -2,6 +2,7 @@ package decl
 
 import (
 	"fmt"
+	"reflect"
 	"strconv"
 
 	"github.com/yongjohnlee80/golib/parse/qml"
@@ -117,8 +118,8 @@ func NoArgMethod[W any](run func(W) error) Method {
 
 // widgetName names a widget type for a diagnostic: "not a *mywidgets.Gauge".
 func widgetName[W any]() string {
-	var zero W
-	return fmt.Sprintf("a %T", zero)
+	// the type, not a zero value's: an interface's zero is nil, which %T prints as <nil>
+	return fmt.Sprintf("a %s", reflect.TypeFor[W]())
 }
 
 // ---------------------------------------------------------------- builders

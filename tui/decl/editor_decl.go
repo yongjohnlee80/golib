@@ -119,6 +119,9 @@ type (
 		SetCommandLineEnabled(bool)
 		OpenCommandLine(string) bool
 	}
+	// renderedEnabler is not widget's with the view capabilities: an exported interface's
+	// method ending in Enabled reads as a capability predicate to dao's guard
+	renderedEnabler interface{ SetRenderedEnabled(bool) }
 )
 
 // EditorSetters are the Editor's behaviour properties, for any editor widget with the methods
@@ -173,13 +176,16 @@ var indentMarks = enum[widget.IndentMarks]{bare: true, order: []string{"off", "c
 		"off": widget.IndentMarksOff, "cursorLine": widget.IndentMarksCursorLine, "all": widget.IndentMarksAll,
 	}}
 
-// editorViewSetters are the standard Editor's view properties: its cell layout's.
-func editorViewSetters() map[string]Setter {
+// EditorViewSetters are the Editor's view properties, for any editor widget with the capabilities
+// they set (widget.LineNumberer, Ruler, Wrapper, CursorColorer, ContextMenuEnabler, ViewChooser,
+// and SetRenderedEnabled): the cell Editor's and a style's own, as EditorSetters are the
+// behaviour's. A widget without one refuses that property, "not an Editor".
+func EditorViewSetters() map[string]Setter {
 	return map[string]Setter{
 		// golib's: a right-click menu with Undo, Redo, Copy, Cut and Paste, opened at the pointer
-		"contextMenu": setter("an Editor", boolOf, (*widget.Editor).SetContextMenu),
+		"contextMenu": setter("an Editor", boolOf, widget.ContextMenuEnabler.SetContextMenu),
 		// Qt's TextEdit.wrapMode, as a bool: true wraps long lines at the editor's width
-		"wrap": setter("an Editor", boolOf, func(e *widget.Editor, v bool) {
+		"wrap": setter("an Editor", boolOf, func(e widget.Wrapper, v bool) {
 			if v {
 				e.SetWrap(widget.WrapSoft)
 			} else {
@@ -187,16 +193,16 @@ func editorViewSetters() map[string]Setter {
 			}
 		}),
 		// golib's: each line's number in a gutter at the left
-		"lineNumbers": setter("an Editor", boolOf, (*widget.Editor).SetLineNumbers),
+		"lineNumbers": setter("an Editor", boolOf, widget.LineNumberer.SetLineNumbers),
 		// golib's: the text cursor's colour, a theme's accent; the terminal's own otherwise
-		"cursorColor": setter("an Editor", colorOf, (*widget.Editor).SetCursorColor),
+		"cursorColor": setter("an Editor", colorOf, widget.CursorColorer.SetCursorColor),
 		// golib's: the line numbers' colour, a theme's dim tone; muted and faint otherwise
-		"lineNumberColor": setter("an Editor", colorOf, (*widget.Editor).SetLineNumberColor),
+		"lineNumberColor": setter("an Editor", colorOf, widget.LineNumberer.SetLineNumberColor),
 		// golib's: a vertical guide at this column (1-based), where text is meant to wrap; 0 for none
-		"ruler": setter("an Editor", truncOf, (*widget.Editor).SetRuler),
+		"ruler": setter("an Editor", truncOf, widget.Ruler.SetRuler),
 		// golib's: Editor.Raw or Editor.Rendered, the view chosen. The cell Editor's Rendered view is
 		// its document view (SetDocumentView, a table); without one it draws Raw and keeps the choice.
-		"view": EnumSetter(EditorViews, func(e *widget.Editor, v string) {
+		"view": EnumSetter(EditorViews, func(e widget.ViewChooser, v string) {
 			if v == "Rendered" {
 				e.SetView(widget.ViewRendered)
 			} else {
@@ -205,14 +211,14 @@ func editorViewSetters() map[string]Setter {
 		}),
 		// golib's: whether the Rendered view is available, for the document shown (Markdown's
 		// renderer and a Go file: false).
-		"renderedEnabled": setter("an Editor", boolOf, (*widget.Editor).SetRenderedEnabled),
+		"renderedEnabled": setter("an Editor", boolOf, renderedEnabler.SetRenderedEnabled),
 	}
 }
 
 // editorSetters are the standard Editor's runtime properties: behaviour and view.
 func editorSetters() map[string]Setter {
 	s := EditorSetters()
-	for name, set := range editorViewSetters() {
+	for name, set := range EditorViewSetters() {
 		s[name] = set
 	}
 	return s
