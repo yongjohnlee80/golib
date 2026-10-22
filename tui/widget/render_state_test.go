@@ -1,6 +1,7 @@
 package widget_test
 
 import (
+	"image/color"
 	"strings"
 	"testing"
 
@@ -42,5 +43,27 @@ func TestAButtonsMnemonicColumnIsWhereItsKeyIsDrawn(t *testing.T) {
 	h.onLoop(func() { col, ok = widget.NewButton("Open").MnemonicColumn(12) })
 	if ok {
 		t.Errorf("an unmounted button reported a mnemonic column %d", col)
+	}
+}
+
+// A strip's bar colour is what SetBarColor gives, asked each time; none without one, or once taken
+// away.
+func TestATabStripsBarColorIsWhatItWasGiven(t *testing.T) {
+	s := widget.NewTabStrip()
+	if _, ok := s.BarColor(); ok {
+		t.Fatal("a new strip has a bar colour")
+	}
+	c, ok := color.NRGBA{R: 1}, false
+	s.SetBarColor(func() (color.NRGBA, bool) { return c, ok })
+	if _, got := s.BarColor(); got {
+		t.Fatal("a colour that has none yet was reported")
+	}
+	ok = true
+	if got, has := s.BarColor(); !has || got != c {
+		t.Fatalf("BarColor = %v, %v; want %v", got, has, c)
+	}
+	s.SetBarColor(nil)
+	if _, has := s.BarColor(); has {
+		t.Fatal("a bar colour taken away was still reported")
 	}
 }
