@@ -5,6 +5,8 @@ import (
 	"fmt"
 	"strconv"
 	"strings"
+
+	"github.com/yongjohnlee80/golib/errs"
 )
 
 // THE COMMAND LINE — the verbs an editor runs from its ':' prompt, and RunCommand, which a host, a
@@ -15,17 +17,44 @@ import (
 // (CoreCommands). Saving and quitting are the host's: w, wq and x call the CoreOnWrite hook, q the
 // CoreOnQuit hook, and with no hook they answer ErrNoWriter / ErrNoQuit.
 
-// ErrUnknownCommand is RunCommand's answer to a verb the registry does not have.
-var ErrUnknownCommand = errors.New("widget: not an editor command")
+// What the prompt says for the command line's own refusals (promptSays): the user's words, which
+// the sentinels' texts carry too.
+const (
+	unknownCommandWords = "not an editor command"
+	noWriterWords       = "this editor cannot save"
+	noQuitWords         = "this editor cannot quit"
+)
 
-// ErrCommandExists is Add's answer to a name or alias already registered.
-var ErrCommandExists = errors.New("widget: an editor command by that name exists")
+// ErrUnknownCommand is RunCommand's answer to a verb the registry does not have. It is an
+// errs.ErrInvalidArgument.
+var ErrUnknownCommand = errs.Sentinel(errs.ErrInvalidArgument, "widget: "+unknownCommandWords)
 
-// ErrNoWriter is w's answer when the host gave the core no way to save (CoreOnWrite).
-var ErrNoWriter = errors.New("widget: this editor cannot save")
+// ErrCommandExists is Add's answer to a name or alias already registered. It is an
+// errs.ErrInvalidArgument.
+var ErrCommandExists = errs.Sentinel(errs.ErrInvalidArgument, "widget: an editor command by that name exists")
 
-// ErrNoQuit is q's answer when the host gave the core no way to quit (CoreOnQuit).
-var ErrNoQuit = errors.New("widget: this editor cannot quit")
+// ErrNoWriter is w's answer when the host gave the core no way to save (CoreOnWrite). It is an
+// errs.ErrUnsupported: this editor cannot, whatever is asked again.
+var ErrNoWriter = errs.Sentinel(errs.ErrUnsupported, "widget: "+noWriterWords)
+
+// ErrNoQuit is q's answer when the host gave the core no way to quit (CoreOnQuit). It is an
+// errs.ErrUnsupported.
+var ErrNoQuit = errs.Sentinel(errs.ErrUnsupported, "widget: "+noQuitWords)
+
+// commandRefusal is a refusal of the command line's own that carries a detail (the verb): its error,
+// for errors.Is, and what the prompt says, without reading the error's text.
+type commandRefusal struct {
+	err   error
+	words string
+}
+
+func (r *commandRefusal) Error() string { return r.err.Error() }
+func (r *commandRefusal) Unwrap() error { return r.err }
+
+// unknownCommand is RunCommand's refusal of verb: ErrUnknownCommand, with the verb.
+func unknownCommand(verb string) error {
+	return &commandRefusal{err: fmt.Errorf("%w: %s", ErrUnknownCommand, verb), words: unknownCommandWords + ": " + verb}
+}
 
 // Command is one verb of the command line.
 type Command struct {
@@ -250,11 +279,11 @@ func (c *EditorCore) RunCommand(line string) error {
 	bang := strings.HasSuffix(verb, "!")
 	verb = strings.TrimSuffix(verb, "!")
 	if c.commands == nil {
-		return fmt.Errorf("%w: %s", ErrUnknownCommand, verb)
+		return unknownCommand(verb)
 	}
 	cmd, ok := c.commands.Lookup(verb)
 	if !ok {
-		return fmt.Errorf("%w: %s", ErrUnknownCommand, verb)
+		return unknownCommand(verb)
 	}
 	rest = strings.TrimSpace(rest)
 	x := CommandContext{Core: c, Name: verb, Bang: bang, Args: strings.Fields(rest), Line: rest}

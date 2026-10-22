@@ -1,15 +1,15 @@
 package widget
 
 import (
-	"errors"
 	"sync"
 
+	"github.com/yongjohnlee80/golib/errs"
 	"github.com/yongjohnlee80/golib/tui"
 )
 
 // ErrClosed is returned by writes to a Writer whose BufferView has been
 // unmounted (or never mounted).
-var ErrClosed = errors.New("widget: buffer view closed")
+var ErrClosed = errs.Sentinel(errs.ErrClosed, "widget: buffer view closed")
 
 // Streaming data ingestion pipeline and concurrent writer handle for [BufferView].
 //

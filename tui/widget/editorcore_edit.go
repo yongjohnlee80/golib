@@ -1,8 +1,9 @@
 package widget
 
 import (
-	"errors"
 	"io"
+
+	"github.com/yongjohnlee80/golib/errs"
 )
 
 // THE EDITOR CORE FUNCTIONS — what a host, a script or an agent edits a document through.
@@ -17,8 +18,12 @@ import (
 //	I/O         ReadFrom (io.ReaderFrom), WriteTo (io.WriterTo)
 //	State       Modified, MarkSaved, Revision
 
-// ErrReadOnly is what an edit returns on a read-only core.
-var ErrReadOnly = errors.New("widget: the editor is read-only")
+// readOnlyWords is what the prompt says for ErrReadOnly (promptSays).
+const readOnlyWords = "the editor is read-only"
+
+// ErrReadOnly is what an edit returns on a read-only core. It is an errs.ErrPrecondition: the core
+// must be writable first.
+var ErrReadOnly = errs.Sentinel(errs.ErrPrecondition, "widget: "+readOnlyWords)
 
 // TextPos is a place in an editor's text: Line counts lines from 0, Col counts grapheme clusters
 // from 0. A position past a line's end is its end; a line past the last is the last.
