@@ -194,6 +194,13 @@ func TestButton_UnderlinesTheMarkedLetterNotTheFirstMatch(t *testing.T) {
 	if len(got) != 1 || got[0] != want {
 		t.Errorf("underlined columns %v, want only %d (the marked a), not the a of Salvar:\n%s", got, want, row)
 	}
+	var idx int
+	var marked bool
+	var label string
+	h.onLoop(func() { idx, marked = b.MnemonicIndex(); label = b.Label() })
+	if at := len([]rune(label[:strings.Index(label, "(a)")])) + 1; !marked || idx != at {
+		t.Errorf("MnemonicIndex() = %d, %v; want %d, true: the marked a's cluster in %q", idx, marked, at, label)
+	}
 }
 
 // An explicit mnemonic outlives a message label's translations: the label follows the language,
