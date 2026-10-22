@@ -7,6 +7,7 @@ import (
 	"bytes"
 	"io"
 	"strconv"
+	"strings"
 	"unicode/utf8"
 
 	"github.com/yongjohnlee80/golib/parse/markdown"
@@ -47,12 +48,32 @@ type renderer struct {
 	out bytes.Buffer
 }
 
-// dataSrc is n's data-src attribute, with its leading space, when SourceSpans asked for them.
+// SourceSpanAttr is the attribute SourceSpans writes on an element: the source bytes it shows,
+// "from-to".
+const SourceSpanAttr = "data-src"
+
+// dataSrc is n's SourceSpanAttr, with its leading space, when SourceSpans asked for them.
 func (r *renderer) dataSrc(n *markdown.Node) string {
 	if !r.cfg.spans {
 		return ""
 	}
-	return ` data-src="` + strconv.Itoa(n.Span.Start) + "-" + strconv.Itoa(n.Span.End) + `"`
+	return " " + SourceSpanAttr + `="` + strconv.Itoa(n.Span.Start) + "-" + strconv.Itoa(n.Span.End) + `"`
+}
+
+// ParseSourceSpan reads a SourceSpanAttr value, "from-to" as dataSrc writes it, spaces about each
+// number allowed: the source bytes an element shows. ok is false for anything else, or a span that
+// runs backwards.
+func ParseSourceSpan(v string) (from, to int, ok bool) {
+	a, b, ok := strings.Cut(v, "-")
+	if !ok {
+		return 0, 0, false
+	}
+	from, err1 := strconv.Atoi(strings.TrimSpace(a))
+	to, err2 := strconv.Atoi(strings.TrimSpace(b))
+	if err1 != nil || err2 != nil || from < 0 || to < from {
+		return 0, 0, false
+	}
+	return from, to, true
 }
 
 // cr starts a new line unless the output already ends one.

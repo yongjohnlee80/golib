@@ -7,6 +7,7 @@ import (
 
 	xhtml "github.com/yongjohnlee80/golib/extract/html"
 	phtml "github.com/yongjohnlee80/golib/parse/html"
+	mdhtml "github.com/yongjohnlee80/golib/parse/markdown/html"
 )
 
 // THE CELL LAYOUT'S DOCUMENT — parse/html's tree read into blocks of styled spans, for an
@@ -90,22 +91,14 @@ func readHTMLDoc(src []byte) []hblock {
 	return w.blocks
 }
 
-// dataSrc reads data-src="from-to".
+// dataSrc reads an element's source bytes, as parse/markdown/html writes them (SourceSpanAttr).
 func dataSrc(n *phtml.Node) ([2]int, bool) {
-	v, ok := n.Attr("data-src")
+	v, ok := n.Attr(mdhtml.SourceSpanAttr)
 	if !ok {
 		return [2]int{}, false
 	}
-	a, b, ok := strings.Cut(v, "-")
-	if !ok {
-		return [2]int{}, false
-	}
-	from, err1 := strconv.Atoi(strings.TrimSpace(a))
-	to, err2 := strconv.Atoi(strings.TrimSpace(b))
-	if err1 != nil || err2 != nil || from < 0 || to < from {
-		return [2]int{}, false
-	}
-	return [2]int{from, to}, true
+	from, to, ok := mdhtml.ParseSourceSpan(v)
+	return [2]int{from, to}, ok
 }
 
 func hasClass(n *phtml.Node, class string) bool {
