@@ -98,8 +98,8 @@ func alpha(c color.NRGBA, a float32) color.NRGBA {
 	return c
 }
 
-// cols and rows are the canvas's size in whole cells.
-func cells(c Canvas) (cols, rows int) {
+// CanvasCells is c's size in whole cells, rounded: 0, 0 when c has no cell size.
+func CanvasCells(c Canvas) (cols, rows int) {
 	cs := c.CellSize()
 	if cs.W <= 0 || cs.H <= 0 {
 		return 0, 0
@@ -237,7 +237,7 @@ func paintComboBox(comp tui.Component) (View, tui.NativeScope, bool) {
 		return nil, 0, false
 	}
 	return ViewFunc(func(c Canvas) {
-		cols, rows := cells(c)
+		cols, rows := CanvasCells(c)
 		r := Rect{W: c.Size().W, H: c.Size().H}
 		if fw := f.FieldWidth(); fw > 0 && fw < cols {
 			cols, r.W = fw, float32(fw)*c.CellSize().W
@@ -277,7 +277,7 @@ func paintComboBox(comp tui.Component) (View, tui.NativeScope, bool) {
 // mnemonic's (a theme's accent there would become the whole label's).
 func buttonColors(c Canvas, label string, key int) (fg, bg color.NRGBA, ok bool) {
 	cluster := keyCluster(label, key)
-	cols, _ := cells(c)
+	cols, _ := CanvasCells(c)
 	var xs []int
 	for _, x := range endsFirst(max(cols, 1)) {
 		if cluster == "" || c.CellText(x, 0) != cluster {
@@ -310,7 +310,7 @@ func keyColor(c Canvas, label string, key int, fg color.NRGBA) color.NRGBA {
 	if cluster == "" {
 		return fg
 	}
-	cols, _ := cells(c)
+	cols, _ := CanvasCells(c)
 	for x := range cols {
 		if CellCovered(c, x, 0) || c.CellText(x, 0) != cluster {
 			continue
@@ -385,7 +385,7 @@ func paintCheckBox(comp tui.Component) (View, tui.NativeScope, bool) {
 		return nil, 0, false
 	}
 	return ViewFunc(func(c Canvas) {
-		cols, rows := cells(c)
+		cols, rows := CanvasCells(c)
 		at := boxCells(c, cols)
 		if at < 0 {
 			c.PaintCells(CellRect{W: cols, H: rows}, false) // no box in the cells: show them as they are
@@ -441,7 +441,7 @@ func paintTextField(comp tui.Component) (View, tui.NativeScope, bool) {
 		return nil, 0, false
 	}
 	return ViewFunc(func(c Canvas) {
-		cols, rows := cells(c)
+		cols, rows := CanvasCells(c)
 		fg, bg, open := fieldColors(c, ti, cols)
 		if !open {
 			return // wholly covered: the host paints the covering cells
@@ -518,7 +518,7 @@ func paintProgress(comp tui.Component) (View, tui.NativeScope, bool) {
 	}
 	return ViewFunc(func(c Canvas) {
 		f, _ := p.Progress()
-		cols, _ := cells(c)
+		cols, _ := CanvasCells(c)
 		n := filledCells(f, cols)
 		filled, _, fillOpen := openColors(c, 0, span(0, max(n, 1))...) // none filled yet: the first cell, as before
 		last := max(cols, 1) - 1
@@ -612,7 +612,7 @@ func paintTabs(comp tui.Component) (View, tui.NativeScope, bool) {
 		return nil, 0, false
 	}
 	return ViewFunc(func(c Canvas) {
-		cols, _ := cells(c)
+		cols, _ := CanvasCells(c)
 		cs := c.CellSize()
 		spans := tabSpans()
 		if cols <= 0 || len(spans) == 0 {
@@ -701,7 +701,7 @@ func paintScrollbar(comp tui.Component) (View, tui.NativeScope, bool) {
 	return ViewFunc(func(c Canvas) {
 		off, view, content := s.ScrollState()
 		sz := c.Size()
-		cols, rows := cells(c)
+		cols, rows := CanvasCells(c)
 		fg, _, ok := OpenCellColors(c, CellRect{W: max(cols, 1), H: max(rows, 1)})
 		if !ok {
 			return // wholly covered
