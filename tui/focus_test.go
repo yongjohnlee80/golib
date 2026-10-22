@@ -99,16 +99,18 @@ func TestFocusEventsAndBubble(t *testing.T) {
 
 // TestFocusScopeTrapsAndRestores: a trapping FocusScope
 // confines Tab within its subtree; closing the scope restores focus to the
-// pre-modal node.
+// pre-modal node. b is the first stop, ahead of a, so the restore is not the
+// repair that would hand focus to the first focusable.
 func TestFocusScopeTrapsAndRestores(t *testing.T) {
 	t.Parallel()
+	b := newFocusProbe("b", Size{W: 2, H: 1})
 	a := newFocusProbe("a", Size{W: 2, H: 1})
 	m1 := newFocusProbe("m1", Size{W: 2, H: 1})
 	m2 := newFocusProbe("m2", Size{W: 2, H: 1})
 	modal := newScopeProbe(true)
 	modal.Add(m1, m2)
 	root := NewFlex(Vertical)
-	root.Add(a, modal)
+	root.Add(b, a, modal)
 	h := startApp(t, root, 8, 8)
 
 	// Focus a, then enter the modal via RequestFocus (pushes the scope).
