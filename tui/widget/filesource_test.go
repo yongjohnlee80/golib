@@ -250,6 +250,23 @@ func TestTheOpenViewFilters(t *testing.T) {
 	}
 }
 
+// TestAFilterTypedRightAfterSlashReachesTheField: the keys typed in one burst after `/` are the
+// filter field's, though the frame that shows the field is held back: a frame cap here, a loaded
+// machine on CI. A frame has just run, so the cap holds the next one while the burst is routed.
+func TestAFilterTypedRightAfterSlashReachesTheField(t *testing.T) {
+	root := tree(t, map[string]string{"alpha.md": "a", "beta.md": "b", "gamma.txt": "g", "sub/c.md": "c"})
+	v := widget.NewFileOpenView(widget.WithFileViewDir(root), widget.WithFileViewPreview(false))
+	h := startAppOpts(t, v, 80, 20, tui.WithMinFrameInterval(300*time.Millisecond))
+	defer h.stop()
+	h.onLoop(v.FocusInitial)
+	h.shows("gamma.txt")
+	f := h.tb.Flushes()
+	h.inject(key(tui.KeyDown))
+	h.waitFor("a frame", func() bool { return h.tb.Flushes() > f })
+	h.inject(key('/'), key('s'), key('u'), key('b'))
+	h.waitFor("only sub left", func() bool { g := h.grid(); return strings.Contains(g, "sub/") && !strings.Contains(g, "alpha.md") })
+}
+
 // TestALateAnswerIsDropped: a read that cannot be stopped answers after the one
 // that superseded it; its listing and its preview are dropped, not shown over
 // the newer.
