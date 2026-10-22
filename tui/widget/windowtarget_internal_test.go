@@ -12,7 +12,7 @@ import (
 // through unchanged once the owner is laid out nowhere (hidden).
 func TestAFloatHasOneWindowOwnerAndItsPointMapFollowsTheOwner(t *testing.T) {
 	mod := NewWindowMod(NewText("x"), WithWindowMove())
-	f := NewFloat(mod)
+	f := NewFloat(NewBox(mod)) // the box's frame lays the owner out off the Float's origin
 	host := NewOverlayHost(NewBox(NewButton("base")))
 	host.Attach(f)
 	ih := startAppInternal(t, host, 40, 10)
@@ -37,8 +37,8 @@ func TestAFloatHasOneWindowOwnerAndItsPointMapFollowsTheOwner(t *testing.T) {
 		_, toTarget := f.WindowTargetFor(mod.Core(), mod.Context()) // the owner again: no panic
 		at := tui.Point{X: 1, Y: 1}
 		r, ok := f.ctx.ResolveAnchor(mod.Context().NodeAnchor())
-		if !ok {
-			t.Fatal("the owner is shown, and its anchor does not resolve")
+		if !ok || r.X == 0 && r.Y == 0 {
+			t.Fatalf("the owner is shown at %+v (resolved %v): want it resolved off the Float's origin, so the map is observed", r, ok)
 		}
 		if got := toTarget(at); got != (tui.Point{X: r.X + 1, Y: r.Y + 1}) {
 			t.Errorf("a point in the owner's frame maps to %+v, want %+v", got, tui.Point{X: r.X + 1, Y: r.Y + 1})

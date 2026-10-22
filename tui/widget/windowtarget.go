@@ -9,15 +9,17 @@ type WindowTargetProvider interface {
 	// WindowTargetFor makes core the window behaviour owner of this container and returns the
 	// target its capabilities act on (WindowGeometry, WindowZoom and the other facets it
 	// implements), and how a point in the frame of owner (core's node) maps into the target's
-	// frame; nil maps none. It panics when another live core already owns the container: one
-	// container has one behaviour owner.
+	// frame; nil maps none. A container has one behaviour owner. A provider may refuse a second
+	// one by panicking, as Float does. Bind calls it again on every mount of core, so the owner
+	// itself asking again, after an unmount or a remount, is no second owner.
 	WindowTargetFor(core *WindowCore, owner *tui.Context) (target any, pointerFrame func(tui.Point) tui.Point)
 }
 
 var _ WindowTargetProvider = (*Float)(nil)
 
 // WindowTargetFor implements WindowTargetProvider: the Float's own placement, its anchor and size,
-// is the target, and a point maps through where owner is laid out inside the Float.
+// is the target, and a point maps through where owner is laid out inside the Float. It panics when
+// another core, still live (mounted, on the node it bound), already owns the Float.
 func (f *Float) WindowTargetFor(core *WindowCore, owner *tui.Context) (any, func(tui.Point) tui.Point) {
 	if f.windowTarget == nil {
 		f.windowTarget = &floatWindowTarget{float: f}
