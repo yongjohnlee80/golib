@@ -517,3 +517,13 @@ func (w *windowNode) KeyBindings(m *keymap.Map) []keymap.Binding {
 	}
 	return out
 }
+
+// windowType is the Window type.
+var windowType = Type{Name: "Window", Children: AtLeast(1), Build: buildWindow, Setters: map[string]Setter{
+	// Qt's Window.color: the background under everything, where no widget paints
+	"color": setter("a Window", colorOf, (*windowNode).setColor),
+	// Qt's Window.minimumWidth / minimumHeight, in cells: on a smaller screen the App
+	// shows its too-small screen instead of the layout (tui.App.SetMinimumSize)
+	"minimumWidth":  setter("a Window", truncOf, (*windowNode).setMinimumWidth),
+	"minimumHeight": setter("a Window", truncOf, (*windowNode).setMinimumHeight),
+}}

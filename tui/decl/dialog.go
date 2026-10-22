@@ -388,3 +388,14 @@ func dialogChildren(b Build) (tui.Component, []*shortcutNode, *buttonBoxNode, er
 	}
 	return body, shortcuts, box, nil
 }
+
+// dialogType is the Dialog type.
+var dialogType = Type{Name: "Dialog", Build: buildDialog,
+	Ctor:    []string{"title", "helpText", "dim", "width", "standardButtons", "defaultButton", "keyScope", "closeOnQ", "maxWidthPercent", "maxHeightPercent"},
+	restyle: restyleDialog,
+	Setters: map[string]Setter{
+		"title":    textSetter("a Dialog", (*dialogNode).setTitle, (*dialogNode).setTitleMessage),
+		"helpText": textSetter("a Dialog", (*dialogNode).setHelp, (*dialogNode).setHelpMessage),
+	},
+	Methods:   dialogMethods,
+	Destroyed: releaseDialog}

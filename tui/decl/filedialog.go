@@ -249,3 +249,29 @@ func (d *dialogNode) highlighterFor(name string) highlight.Highlighter {
 	}
 	return nil
 }
+
+// fileDialogType is the FileDialog type.
+var fileDialogType = Type{Name: "FileDialog", Children: NoChildren().Because("its content is the file view"), Build: buildFileDialog,
+	Ctor:    []string{"title", "helpText", "dim", "fileMode", "preview"},
+	restyle: restyleDialog,
+	Setters: map[string]Setter{
+		"source":        setter("a FileDialog", fileSourceOf, (*dialogNode).setSource),
+		"currentFolder": setter("a FileDialog", stringOf, (*dialogNode).setFolder),
+		"selectedFile":  setter("a FileDialog", stringOf, (*dialogNode).setSelected),
+	},
+	Methods:   dialogMethods,
+	Signals:   map[string][]string{"accepted": {"selectedFile"}},
+	Destroyed: releaseDialog}
+
+// folderDialogType is the FolderDialog type.
+var folderDialogType = Type{Name: "FolderDialog", Build: buildFolderDialog,
+	Ctor:    []string{"title", "helpText", "dim", "preview", "keyScope"},
+	restyle: restyleDialog,
+	Setters: map[string]Setter{
+		"source":         setter("a FolderDialog", fileSourceOf, (*dialogNode).setSource),
+		"currentFolder":  setter("a FolderDialog", stringOf, (*dialogNode).setFolder),
+		"selectedFolder": setter("a FolderDialog", stringOf, (*dialogNode).setSelected),
+	},
+	Methods:   dialogMethods,
+	Signals:   map[string][]string{"accepted": {"selectedFolder"}},
+	Destroyed: releaseDialog}

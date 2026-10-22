@@ -28,146 +28,24 @@ import (
 
 func appTypes() []Type {
 	return []Type{
-		{Name: "Window", Children: AtLeast(1), Build: buildWindow, Setters: map[string]Setter{
-			// Qt's Window.color: the background under everything, where no widget paints
-			"color": setter("a Window", colorOf, (*windowNode).setColor),
-			// Qt's Window.minimumWidth / minimumHeight, in cells: on a smaller screen the App
-			// shows its too-small screen instead of the layout (tui.App.SetMinimumSize)
-			"minimumWidth":  setter("a Window", truncOf, (*windowNode).setMinimumWidth),
-			"minimumHeight": setter("a Window", truncOf, (*windowNode).setMinimumHeight),
-		}},
-		{Name: "Frame", Children: Exactly(1), Build: buildFrame, Ctor: []string{"title"}, restyle: restyleFrame, Setters: map[string]Setter{
-			"title": textSetter("a Frame", (*widget.Box).SetTitle, (*widget.Box).SetTitleMessage),
-			// golib's: at most this many columns, border included, centred — a page, not the screen
-			"maximumWidth": setter("a Frame", truncOf, (*widget.Box).SetMaximumWidth),
-		}},
-		// golib's: a vertical window onto one child taller than itself; the wheel and
-		// the page keys scroll it, and a field taking focus is brought into view
-		{Name: "ScrollView", Children: Exactly(1), Build: buildScrollView},
-		{Name: "SyntaxHighlighter", Children: NoChildren(), Build: buildSyntaxHighlighter, restyle: restyleSyntax, Setters: syntaxSetters()},
-		// Qt Quick's Image, without its source: the host gives it a PNG (widget.Image.SetPNG), and
-		// it shows on a terminal that draws images (tui.Capabilities.KittyGraphics)
-		{Name: "Image", Build: func(b Build) (tui.Component, []string, error) {
-			consumed, err := b.ReadProps(map[string]field{})
-			return widget.NewImage(), consumed, err
-		}, Setters: map[string]Setter{
-			// golib's: shown at its width and scrolled by the keys and the wheel (widget.Image)
-			"scrollable": setter("an Image", boolOf, (*widget.Image).SetScrollable),
-			// golib's: a spinner and loadingText while the host renders the PNG it will show
-			"loading":     setter("an Image", boolOf, (*widget.Image).SetLoading),
-			"loadingText": setter("an Image", stringOf, (*widget.Image).SetLoadingText),
-		}},
-		// golib's: an HTML document, read-only and selectable (widget.HTMLView). A terminal lays it
-		// out in cells; a native backend binds its pixel layout. The host gives it the page
-		// (html), and is told of a clicked link and of the source byte at the top as it scrolls.
-		{Name: "HTMLView", Build: buildHTMLView, Setters: map[string]Setter{
-			"html": setter("an HTMLView", stringOf, func(v *widget.HTMLView, s string) { v.SetHTML([]byte(s)) }),
-			// a stylesheet a pixel layout applies after the page's own
-			"stylesheet": setter("an HTMLView", stringOf, (*widget.HTMLView).SetStylesheet),
-		},
-			Methods: map[string]Method{
-				// scrollToSource(byte): the block showing that source byte, at the top
-				"scrollToSource": argMethod(func(v *widget.HTMLView, args []qml.SpecValue) error {
-					if len(args) != 1 {
-						return fmt.Errorf("HTMLView.scrollToSource takes one argument, a source byte; got %d", len(args))
-					}
-					n, err := truncOf(args[0])
-					if err != nil {
-						return err
-					}
-					v.ScrollToSource(n)
-					return nil
-				}),
-			},
-			Signals: map[string][]string{"linkActivated": {"href"}, "scrolledTo": {"sourceByte"}}},
-		{Name: "Terminal", Build: buildTerminal, Ctor: []string{"command", "dir", "scrollback"}, restyle: restyleTerminal,
-			Setters: map[string]Setter{
-				// command and dir take effect at the next start(): a host learns where to start
-				// the program after building it, and moves it when the user changes workspace.
-				"command":     setter("a Terminal", stringOf, func(t *widget.Terminal, p string) { t.SetCommand(p) }),
-				"dir":         setter("a Terminal", stringOf, (*widget.Terminal).SetDir),
-				"vimKeys":     setter("a Terminal", boolOf, (*widget.Terminal).SetVimKeys),
-				"themeColors": setter("a Terminal", boolOf, (*widget.Terminal).SetThemeColors),
-				// golib's: the contrast ratio (WCAG's) every foreground is raised to against its
-				// background, so a program's colours read on a light theme; 0 is off
-				"minimumContrast": setter("a Terminal", numberOf, (*widget.Terminal).SetMinimumContrast),
-				"cursorColor":     setter("a Terminal", colorOf, (*widget.Terminal).SetCursorColor),
-				// golib's: the family its cells are drawn in, at the window's cell size; "" the window's
-				"cellFont": setter("a Terminal", stringOf, (*widget.Terminal).SetCellFace),
-				// golib's: keys its program never sees, left to the Window's Shortcuts (hostkeys.go)
-				"hostKeys": setter("a Terminal", hostKeysOf, (*widget.Terminal).SetHostKeys),
-				// golib's: the key that toggles input and normal mode, Esc then the program's (hostkeys.go)
-				"modeKey": setter("a Terminal", modeKeyOf, (*widget.Terminal).SetModeKey),
-			},
-			Methods: map[string]Method{
-				"start": NoArgMethod((*widget.Terminal).Start),
-				"stop":  NoArgMethod(func(t *widget.Terminal) error { t.Stop(); return nil }),
-				"focus": NoArgMethod(func(t *widget.Terminal) error {
-					if ctx := t.Context(); ctx != nil {
-						ctx.RequestFocus()
-					}
-					return nil
-				}),
-			},
-			Signals:   map[string][]string{"exited": {"code"}, "titleChanged": {"title"}, "modeChanged": {"mode"}},
-			Destroyed: destroyer((*widget.Terminal).Stop),
-		},
+		windowType,
+		frameType,
+		scrollViewType,
+		syntaxHighlighterType,
+		imageType,
+		htmlViewType,
+		terminalType,
 		editorType,
 		terminalTabsType,
-		{Name: "StatusBar", Build: buildStatusBar, restyle: restyleStatusBar, Adopt: adoptStatusBarChild, Setters: map[string]Setter{
-			"left": textSetter("a StatusBar", statusSegment((*widget.StatusBar).SetLeft),
-				statusMessage((*widget.StatusBar).SetLeftMessage)),
-			"center": textSetter("a StatusBar", statusSegment((*widget.StatusBar).SetCenter),
-				statusMessage((*widget.StatusBar).SetCenterMessage)),
-			"right": textSetter("a StatusBar", statusSegment((*widget.StatusBar).SetRight),
-				statusMessage((*widget.StatusBar).SetRightMessage)),
-		}},
-		{Name: "MenuBar", Build: buildMenuBar, Ctor: []string{"vimNavigation"}, restyle: restyleMenuBar,
-			Setters: map[string]Setter{"autoHide": setter("a MenuBar", boolOf, (*menuBarNode).setAutoHide)}},
-		{Name: "Menu", Build: buildMenu, Ctor: []string{"title", "align"}},
-		{Name: "MenuItem", Children: NoChildren().Because("use a Menu for a submenu"), Build: buildMenuItem, Ctor: []string{"text", "checkable", "group", "shortcut"},
-			Setters: map[string]Setter{
-				"checked": setter("a menu row", boolOf, (*menuNode).setChecked),
-				"enabled": setter("a menu row", boolOf, (*menuNode).setEnabled),
-			},
-			Getters: map[string]Getter{
-				"checked": getter(func(n *menuNode) (qml.SpecValue, error) {
-					return boolValue(n.model.Checked), nil
-				}),
-			}},
-		{Name: "MenuSeparator", Build: buildMenuSeparator},
-		{Name: "Shortcut", Build: buildShortcut, Ctor: []string{"sequence"}},
-		{Name: "FileDialog", Children: NoChildren().Because("its content is the file view"), Build: buildFileDialog,
-			Ctor:    []string{"title", "helpText", "dim", "fileMode", "preview"},
-			restyle: restyleDialog,
-			Setters: map[string]Setter{
-				"source":        setter("a FileDialog", fileSourceOf, (*dialogNode).setSource),
-				"currentFolder": setter("a FileDialog", stringOf, (*dialogNode).setFolder),
-				"selectedFile":  setter("a FileDialog", stringOf, (*dialogNode).setSelected),
-			},
-			Methods:   dialogMethods,
-			Signals:   map[string][]string{"accepted": {"selectedFile"}},
-			Destroyed: releaseDialog},
-		{Name: "FolderDialog", Build: buildFolderDialog,
-			Ctor:    []string{"title", "helpText", "dim", "preview", "keyScope"},
-			restyle: restyleDialog,
-			Setters: map[string]Setter{
-				"source":         setter("a FolderDialog", fileSourceOf, (*dialogNode).setSource),
-				"currentFolder":  setter("a FolderDialog", stringOf, (*dialogNode).setFolder),
-				"selectedFolder": setter("a FolderDialog", stringOf, (*dialogNode).setSelected),
-			},
-			Methods:   dialogMethods,
-			Signals:   map[string][]string{"accepted": {"selectedFolder"}},
-			Destroyed: releaseDialog},
-		{Name: "Dialog", Build: buildDialog,
-			Ctor:    []string{"title", "helpText", "dim", "width", "standardButtons", "defaultButton", "keyScope", "closeOnQ", "maxWidthPercent", "maxHeightPercent"},
-			restyle: restyleDialog,
-			Setters: map[string]Setter{
-				"title":    textSetter("a Dialog", (*dialogNode).setTitle, (*dialogNode).setTitleMessage),
-				"helpText": textSetter("a Dialog", (*dialogNode).setHelp, (*dialogNode).setHelpMessage),
-			},
-			Methods:   dialogMethods,
-			Destroyed: releaseDialog},
+		statusBarType,
+		menuBarType,
+		menuType,
+		menuItemType,
+		menuSeparatorType,
+		shortcutType,
+		fileDialogType,
+		folderDialogType,
+		dialogType,
 	}
 }
 
@@ -354,3 +232,95 @@ func buildHTMLView(b Build) (tui.Component, []string, error) {
 	)
 	return v, consumed, err
 }
+
+// frameType is the Frame type.
+var frameType = Type{Name: "Frame", Children: Exactly(1), Build: buildFrame, Ctor: []string{"title"}, restyle: restyleFrame, Setters: map[string]Setter{
+	"title": textSetter("a Frame", (*widget.Box).SetTitle, (*widget.Box).SetTitleMessage),
+	// golib's: at most this many columns, border included, centred — a page, not the screen
+	"maximumWidth": setter("a Frame", truncOf, (*widget.Box).SetMaximumWidth),
+}}
+
+// golib's: a vertical window onto one child taller than itself; the wheel and
+// the page keys scroll it, and a field taking focus is brought into view
+var scrollViewType = Type{Name: "ScrollView", Children: Exactly(1), Build: buildScrollView}
+
+// Qt Quick's Image, without its source: the host gives it a PNG (widget.Image.SetPNG), and
+// it shows on a terminal that draws images (tui.Capabilities.KittyGraphics)
+var imageType = Type{Name: "Image", Build: func(b Build) (tui.Component, []string, error) {
+	consumed, err := b.ReadProps(map[string]field{})
+	return widget.NewImage(), consumed, err
+}, Setters: map[string]Setter{
+	// golib's: shown at its width and scrolled by the keys and the wheel (widget.Image)
+	"scrollable": setter("an Image", boolOf, (*widget.Image).SetScrollable),
+	// golib's: a spinner and loadingText while the host renders the PNG it will show
+	"loading":     setter("an Image", boolOf, (*widget.Image).SetLoading),
+	"loadingText": setter("an Image", stringOf, (*widget.Image).SetLoadingText),
+}}
+
+// golib's: an HTML document, read-only and selectable (widget.HTMLView). A terminal lays it
+// out in cells; a native backend binds its pixel layout. The host gives it the page
+// (html), and is told of a clicked link and of the source byte at the top as it scrolls.
+var htmlViewType = Type{Name: "HTMLView", Build: buildHTMLView, Setters: map[string]Setter{
+	"html": setter("an HTMLView", stringOf, func(v *widget.HTMLView, s string) { v.SetHTML([]byte(s)) }),
+	// a stylesheet a pixel layout applies after the page's own
+	"stylesheet": setter("an HTMLView", stringOf, (*widget.HTMLView).SetStylesheet),
+},
+	Methods: map[string]Method{
+		// scrollToSource(byte): the block showing that source byte, at the top
+		"scrollToSource": argMethod(func(v *widget.HTMLView, args []qml.SpecValue) error {
+			if len(args) != 1 {
+				return fmt.Errorf("HTMLView.scrollToSource takes one argument, a source byte; got %d", len(args))
+			}
+			n, err := truncOf(args[0])
+			if err != nil {
+				return err
+			}
+			v.ScrollToSource(n)
+			return nil
+		}),
+	},
+	Signals: map[string][]string{"linkActivated": {"href"}, "scrolledTo": {"sourceByte"}}}
+
+// terminalType is the Terminal type.
+var terminalType = Type{Name: "Terminal", Build: buildTerminal, Ctor: []string{"command", "dir", "scrollback"}, restyle: restyleTerminal,
+	Setters: map[string]Setter{
+		// command and dir take effect at the next start(): a host learns where to start
+		// the program after building it, and moves it when the user changes workspace.
+		"command":     setter("a Terminal", stringOf, func(t *widget.Terminal, p string) { t.SetCommand(p) }),
+		"dir":         setter("a Terminal", stringOf, (*widget.Terminal).SetDir),
+		"vimKeys":     setter("a Terminal", boolOf, (*widget.Terminal).SetVimKeys),
+		"themeColors": setter("a Terminal", boolOf, (*widget.Terminal).SetThemeColors),
+		// golib's: the contrast ratio (WCAG's) every foreground is raised to against its
+		// background, so a program's colours read on a light theme; 0 is off
+		"minimumContrast": setter("a Terminal", numberOf, (*widget.Terminal).SetMinimumContrast),
+		"cursorColor":     setter("a Terminal", colorOf, (*widget.Terminal).SetCursorColor),
+		// golib's: the family its cells are drawn in, at the window's cell size; "" the window's
+		"cellFont": setter("a Terminal", stringOf, (*widget.Terminal).SetCellFace),
+		// golib's: keys its program never sees, left to the Window's Shortcuts (hostkeys.go)
+		"hostKeys": setter("a Terminal", hostKeysOf, (*widget.Terminal).SetHostKeys),
+		// golib's: the key that toggles input and normal mode, Esc then the program's (hostkeys.go)
+		"modeKey": setter("a Terminal", modeKeyOf, (*widget.Terminal).SetModeKey),
+	},
+	Methods: map[string]Method{
+		"start": NoArgMethod((*widget.Terminal).Start),
+		"stop":  NoArgMethod(func(t *widget.Terminal) error { t.Stop(); return nil }),
+		"focus": NoArgMethod(func(t *widget.Terminal) error {
+			if ctx := t.Context(); ctx != nil {
+				ctx.RequestFocus()
+			}
+			return nil
+		}),
+	},
+	Signals:   map[string][]string{"exited": {"code"}, "titleChanged": {"title"}, "modeChanged": {"mode"}},
+	Destroyed: destroyer((*widget.Terminal).Stop),
+}
+
+// statusBarType is the StatusBar type.
+var statusBarType = Type{Name: "StatusBar", Build: buildStatusBar, restyle: restyleStatusBar, Adopt: adoptStatusBarChild, Setters: map[string]Setter{
+	"left": textSetter("a StatusBar", statusSegment((*widget.StatusBar).SetLeft),
+		statusMessage((*widget.StatusBar).SetLeftMessage)),
+	"center": textSetter("a StatusBar", statusSegment((*widget.StatusBar).SetCenter),
+		statusMessage((*widget.StatusBar).SetCenterMessage)),
+	"right": textSetter("a StatusBar", statusSegment((*widget.StatusBar).SetRight),
+		statusMessage((*widget.StatusBar).SetRightMessage)),
+}}
