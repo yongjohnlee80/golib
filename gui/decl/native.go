@@ -188,7 +188,7 @@ func editorSetters() map[string]tuidecl.Setter {
 	s["contextMenu"] = tuidecl.BoolSetter((*widget.Editor).SetContextMenu)
 	s["cursorColor"] = tuidecl.ColorSetter((*widget.Editor).SetCursorColor)
 	s["view"] = tuidecl.EnumSetter(tuidecl.EditorViews, func(e *widget.Editor, v string) {
-		if v == "Editor.Rendered" || v == "Rendered" {
+		if v == "Rendered" { // the enum's bare value: tuidecl's Enum reads Editor.Rendered as "Rendered"
 			e.SetMode(widget.Rendered)
 		} else {
 			e.SetMode(widget.Raw)
