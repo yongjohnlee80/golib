@@ -258,7 +258,7 @@ func WithTranslations(s *i18n.Set) AppOption {
 // [i18n.Set] (a remote catalog, a test's fake). Default: [i18n.Toolkit]. Nil catalogs, a typed
 // nil too, are a configuration error and panic, before anything is built.
 func WithTranslator(t Translator) AppOption {
-	if isNilLike(t) {
+	if NilLike(t) {
 		panic(errs.Fatal{Op: "tui: WithTranslator", Rule: "the catalogs must not be nil"})
 	}
 	return func(c *appConfig) { c.translations = t }
