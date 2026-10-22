@@ -2,6 +2,38 @@ package widget
 
 import "github.com/yongjohnlee80/golib/tui"
 
+// WindowTargetProvider is a container that places a WindowMod inside it: a WindowCore given no
+// target of its own (WithWindowTarget) asks the nearest ancestor implementing it, at Bind. Float is
+// one; a docked panel or a declarative drawer may be another, with no WindowMod option to pass.
+type WindowTargetProvider interface {
+	// WindowTargetFor makes core the window behaviour owner of this container and returns the
+	// target its capabilities act on (WindowGeometry, WindowZoom and the other facets it
+	// implements), and how a point in the frame of owner (core's node) maps into the target's
+	// frame; nil maps none. It panics when another live core already owns the container: one
+	// container has one behaviour owner.
+	WindowTargetFor(core *WindowCore, owner *tui.Context) (target any, pointerFrame func(tui.Point) tui.Point)
+}
+
+var _ WindowTargetProvider = (*Float)(nil)
+
+// WindowTargetFor implements WindowTargetProvider: the Float's own placement, its anchor and size,
+// is the target, and a point maps through where owner is laid out inside the Float.
+func (f *Float) WindowTargetFor(core *WindowCore, owner *tui.Context) (any, func(tui.Point) tui.Point) {
+	if f.windowTarget == nil {
+		f.windowTarget = &floatWindowTarget{float: f}
+	}
+	if old := f.windowTarget.core; old != nil && old != core && old.live() {
+		panic(fatalOf("widget: WindowCore.Bind", "Float already has a live window behavior owner", "compose capabilities on one widget"))
+	}
+	f.windowTarget.core, f.windowTarget.workArea = core, core.workArea
+	return f.windowTarget, func(at tui.Point) tui.Point {
+		if r, ok := f.ctx.ResolveAnchor(owner.NodeAnchor()); ok {
+			return tui.Point{X: r.X + at.X, Y: r.Y + at.Y}
+		}
+		return at
+	}
+}
+
 type floatWindowPolicy struct {
 	anchor     Anchor
 	wPct, hPct int
