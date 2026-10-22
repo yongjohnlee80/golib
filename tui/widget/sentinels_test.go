@@ -8,7 +8,7 @@ import (
 	"github.com/yongjohnlee80/golib/tui/widget"
 )
 
-// Each of the editor's, the buffer view's and the menu model's conditions is one of errs' kinds, so
+// Each of the editor's (its macros' too), the buffer view's and the menu model's conditions is one of errs' kinds, so
 // a caller asks errors.Is of the kind as of the package's sentinel.
 func TestTheWidgetConditionsAreErrsKinds(t *testing.T) {
 	for _, c := range []struct {
@@ -25,6 +25,7 @@ func TestTheWidgetConditionsAreErrsKinds(t *testing.T) {
 		{"ErrEmptyItemID", widget.ErrEmptyItemID, errs.ErrInvalidArgument},
 		{"ErrDuplicateItemID", widget.ErrDuplicateItemID, errs.ErrInvalidArgument},
 		{"ErrUnknownItemKind", widget.ErrUnknownItemKind, errs.ErrInvalidArgument},
+		{"ErrMacroTooLong", widget.ErrMacroTooLong, errs.ErrUnsupported},
 	} {
 		if !errors.Is(c.err, c.kind) {
 			t.Errorf("%s is not %v", c.name, c.kind)
