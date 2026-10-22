@@ -34,20 +34,21 @@ type TabStrip struct {
 // NewTabStrip is an empty strip.
 func NewTabStrip() *TabStrip {
 	t := &TabStrip{}
-	t.core = tabStrip{base: &t.Base, anchor: t, layer: "tabstrip",
-		tabs: func() []stripTab {
-			out := make([]stripTab, len(t.tabs))
-			for i, tb := range t.tabs {
-				out[i] = stripTab{id: tb.ID, label: cellLabel(tb.Label)}
-			}
-			return out
-		},
-		active: func() string { return t.active },
-		choose: t.choose,
-	}
+	t.core = tabStrip{base: &t.Base, anchor: t, layer: "tabstrip", owner: t}
 	t.core.bar, t.core.tab, t.core.selected = defaultTabsStyles()
 	return t
 }
+
+func (t *TabStrip) stripTabs() []stripTab {
+	out := make([]stripTab, len(t.tabs))
+	for i, tb := range t.tabs {
+		out[i] = stripTab{id: tb.ID, label: cellLabel(tb.Label)}
+	}
+	return out
+}
+
+func (t *TabStrip) stripActive() string   { return t.active }
+func (t *TabStrip) stripChoose(id string) { t.choose(id) }
 
 // SetTabs replaces the tabs, in order. The active tab stays active if it is still among them.
 func (t *TabStrip) SetTabs(tabs []StripTab) {

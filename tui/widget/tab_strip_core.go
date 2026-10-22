@@ -14,6 +14,14 @@ import (
 // tabStrip is that row; its owner keeps the tabs and says which is active, and is told what the
 // user chose.
 
+// stripOwner is a strip's owner (TabStrip, TerminalTabs, Tabs): it keeps the tabs, says which is
+// active, and is told which one the user chose.
+type stripOwner interface {
+	stripTabs() []stripTab // the tabs, in order
+	stripActive() string   // the active tab's id; "" for none
+	stripChoose(id string) // a tab chosen by a click or a key
+}
+
 // stripTab is one tab as the strip draws it: its id, and its label as drawn (cellLabel's padding
 // and any status mark included).
 type stripTab struct {
@@ -37,9 +45,7 @@ type tabStrip struct {
 	addRows  func() []MenuItemModel          // what + offers (SetAddMenu)
 	menuOpen *popupLayer
 
-	tabs   func() []stripTab // the owner's tabs, in order
-	active func() string     // the owner's active tab; "" for none
-	choose func(id string)   // a tab chosen by a click or a key
+	owner stripOwner // keeps the tabs, says which is active, and is told what the user chose
 
 	maxLabel int // a tab's widest, in cells, its padding included; 0 for no cap (TabStrip.SetMaxTabWidth)
 	// SetLabelFit's: the narrowest a tab is cut to, padding included, and the host's cut
@@ -97,7 +103,9 @@ func (s *tabStrip) hasMenu() bool { return s.menuRows != nil || s.onMenu != nil 
 
 // menuShown is whether ≡ is on the strip: the strip's own menu always, with no tab too; the host's
 // callback only for a tab.
-func (s *tabStrip) menuShown() bool { return s.menuRows != nil || s.onMenu != nil && s.active() != "" }
+func (s *tabStrip) menuShown() bool {
+	return s.menuRows != nil || s.onMenu != nil && s.owner.stripActive() != ""
+}
 
 func (s *tabStrip) hasAdd() bool { return s.addRows != nil || s.onAdd != nil }
 
@@ -175,7 +183,7 @@ func (s *tabStrip) label(tb stripTab) string { return s.labelAt(tb, s.capNow()) 
 // (fitTabs), or SetMaxTabWidth's; 0 for none.
 func (s *tabStrip) capNow() int {
 	if s.fit != nil {
-		return s.fitTabs(s.tabs())
+		return s.fitTabs(s.owner.stripTabs())
 	}
 	return s.maxLabel
 }
@@ -274,7 +282,7 @@ func (s *tabStrip) width() int {
 		limit = 0
 	}
 	w := s.tail()
-	for _, tb := range s.tabs() {
+	for _, tb := range s.owner.stripTabs() {
 		w += s.base.measure(s.labelAt(tb, limit)) + 1
 	}
 	return max(w-1, 0)
@@ -365,7 +373,7 @@ type stripView struct {
 
 // view is the row as drawn now, from the stored window, storing nothing.
 func (s *tabStrip) view() stripView {
-	tabs := s.tabs()
+	tabs := s.owner.stripTabs()
 	limit := s.capNow()
 	v := stripView{tabs: tabs, labels: make([]string, len(tabs)), widths: make([]int, len(tabs))}
 	natural := s.tail()
@@ -389,7 +397,7 @@ func (s *tabStrip) view() stripView {
 // cells it frees empty before >.
 func (s *tabStrip) window(tabs []stripTab, widths []int, room int) (first int, revealed string) {
 	first, revealed = min(s.first, max(len(tabs)-1, 0)), s.revealed
-	if active := s.active(); active != revealed {
+	if active := s.owner.stripActive(); active != revealed {
 		revealed = active
 		if at := slices.IndexFunc(tabs, func(tb stripTab) bool { return tb.id == active }); at >= 0 {
 			first = min(first, at)
@@ -426,7 +434,7 @@ func (s *tabStrip) scroll(delta int) {
 
 // lastShown is whether the window shows the last tab.
 func (s *tabStrip) lastShown(row []stripCell) bool {
-	tabs := s.tabs()
+	tabs := s.owner.stripTabs()
 	for i := len(row) - 1; i >= 0; i-- {
 		if row[i].kind == cellTab {
 			return len(tabs) > 0 && row[i].id == tabs[len(tabs)-1].id && s.base.measure(s.label(tabs[len(tabs)-1])) == row[i].w
@@ -457,13 +465,13 @@ func (s *tabStrip) tabX(id string) int {
 
 // tabIndex is the active tab's place among the tabs, or -1.
 func (s *tabStrip) tabIndex() int {
-	active := s.active()
-	return slices.IndexFunc(s.tabs(), func(tb stripTab) bool { return tb.id == active })
+	active := s.owner.stripActive()
+	return slices.IndexFunc(s.owner.stripTabs(), func(tb stripTab) bool { return tb.id == active })
 }
 
 // activeIndex is the active tab's place among the spans, or -1 when it is not shown.
 func (s *tabStrip) activeIndex() int {
-	active := s.active()
+	active := s.owner.stripActive()
 	return slices.IndexFunc(s.row(), func(c stripCell) bool { return c.kind == cellTab && c.id == active })
 }
 
@@ -481,7 +489,7 @@ func (s *tabStrip) spans() []TabSpan {
 // render draws the row on row 0 of sur, w cells wide.
 func (s *tabStrip) render(sur tui.Surface, w int) {
 	sur.Fill(tui.Rect{W: w, H: 1}, " ", s.bar)
-	active := s.active()
+	active := s.owner.stripActive()
 	for _, c := range s.row() {
 		if c.x >= w {
 			break
@@ -543,10 +551,10 @@ func (s *tabStrip) key(e tui.KeyEvent) bool {
 		s.add(tui.Point{X: s.addX(), Y: 1})
 		return true
 	case stripMenu:
-		s.openMenu(s.active(), tui.Point{X: s.tabX(s.active()), Y: 1})
+		s.openMenu(s.owner.stripActive(), tui.Point{X: s.tabX(s.owner.stripActive()), Y: 1})
 		return true
 	}
-	tabs := s.tabs()
+	tabs := s.owner.stripTabs()
 	if len(tabs) == 0 {
 		return false
 	}
@@ -555,7 +563,7 @@ func (s *tabStrip) key(e tui.KeyEvent) bool {
 		delta = -1
 	}
 	if i := s.tabIndex(); i >= 0 {
-		s.choose(tabs[(i+delta+len(tabs))%len(tabs)].id)
+		s.owner.stripChoose(tabs[(i+delta+len(tabs))%len(tabs)].id)
 		return true
 	}
 	return false
@@ -574,7 +582,7 @@ func (s *tabStrip) press(e tui.MouseEvent) bool {
 		case c.kind == cellTab && e.Button == tui.MouseLeft && c.close && e.X < c.x+s.base.measure(closeMark):
 			s.onClose(c.id) // the tab's ×: closed, not chosen
 		case c.kind == cellTab && e.Button == tui.MouseLeft:
-			s.choose(c.id)
+			s.owner.stripChoose(c.id)
 		case c.kind == cellTab && e.Button == tui.MouseRight && s.hasMenu():
 			s.openMenu(c.id, tui.Point{X: e.X, Y: 1})
 		case c.kind == cellTab:
@@ -589,14 +597,14 @@ func (s *tabStrip) press(e tui.MouseEvent) bool {
 		case c.kind == cellAdd && e.Button == tui.MouseLeft:
 			s.add(tui.Point{X: c.x, Y: 1})
 		case c.kind == cellMenu && e.Button == tui.MouseLeft:
-			s.openMenu(s.active(), tui.Point{X: c.x, Y: 1})
+			s.openMenu(s.owner.stripActive(), tui.Point{X: c.x, Y: 1})
 		default:
 			continue
 		}
 		return true
 	}
 	if e.Button == tui.MouseRight && s.menuRows != nil {
-		s.openMenu(s.active(), tui.Point{X: e.X, Y: 1})
+		s.openMenu(s.owner.stripActive(), tui.Point{X: e.X, Y: 1})
 		return true
 	}
 	return false

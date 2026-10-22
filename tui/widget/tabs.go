@@ -162,21 +162,7 @@ func tabsStyles(bar, tab, active style.Style) (style.Style, style.Style, style.S
 // NewTabs builds a tab switcher. At least one tab is required.
 func NewTabs(opts ...TabsOption) *Tabs {
 	t := &Tabs{}
-	t.strip = tabStrip{base: &t.Base, anchor: t, layer: "tabs", markFocus: true,
-		tabs: func() []stripTab {
-			out := make([]stripTab, len(t.tabs))
-			for i, tab := range t.tabs {
-				out[i] = stripTab{id: strconv.Itoa(i), label: cellLabel(tab.label)}
-			}
-			return out
-		},
-		active: func() string { return strconv.Itoa(t.active) },
-		choose: func(id string) {
-			if i, err := strconv.Atoi(id); err == nil {
-				t.Select(i)
-			}
-		},
-	}
+	t.strip = tabStrip{base: &t.Base, anchor: t, layer: "tabs", markFocus: true, owner: t}
 	t.strip.bar, t.strip.tab, t.strip.selected = defaultTabsStyles()
 	for _, o := range opts {
 		if o != nil {
@@ -187,6 +173,24 @@ func NewTabs(opts ...TabsOption) *Tabs {
 		panic("widget: NewTabs requires at least one WithTab")
 	}
 	return t
+}
+
+// stripTabs, stripActive and stripChoose are the bar's owner side (stripOwner): the tabs by
+// index, the active one, and Select.
+func (t *Tabs) stripTabs() []stripTab {
+	out := make([]stripTab, len(t.tabs))
+	for i, tab := range t.tabs {
+		out[i] = stripTab{id: strconv.Itoa(i), label: cellLabel(tab.label)}
+	}
+	return out
+}
+
+func (t *Tabs) stripActive() string { return strconv.Itoa(t.active) }
+
+func (t *Tabs) stripChoose(id string) {
+	if i, err := strconv.Atoi(id); err == nil {
+		t.Select(i)
+	}
 }
 
 // SetStyles gives the bar, the tabs and the active tab these styles over the defaults, as
