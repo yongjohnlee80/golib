@@ -88,11 +88,11 @@ func NewMenuBar(m *Menu, opts ...MenuBarOption) *MenuBar {
 		}
 	}
 	// The orientation is applied at MOUNT, not here. Writing it into the Menu at
-	// construction made building a bar a mutation of somebody else's widget:
-	// constructing a second bar around the same Menu re-laid-out the first one,
-	// which was already mounted and had nothing to do with the new shell, and a
-	// Menu that had ever been in a bar stayed horizontal when later mounted on
-	// its own. A shell configures the thing it owns for as long as it owns it.
+	// construction would make building a bar a mutation of somebody else's
+	// widget: constructing a second bar around the same Menu would re-lay-out the
+	// first, already mounted and nothing to do with the new shell, and a Menu
+	// that had ever been in a bar would stay horizontal when later mounted on its
+	// own. A shell configures the thing it owns for as long as it owns it.
 	return b
 }
 
@@ -183,8 +183,8 @@ func (b *MenuBar) Init(ctx *tui.Context) {
 // THE BAR DOES NOT POSITION ITSELF, and cannot: a component's parent decides
 // where it goes. A bar that returned a one-row size and then tried to place its
 // menu at the bottom of the screen would place it outside its own rect, where it
-// is clipped away entirely — which is exactly what an earlier version of this
-// did. So BarPlacement means ORIENTATION and DROPDOWN DIRECTION; put the bar at
+// is clipped away entirely. So BarPlacement means ORIENTATION and DROPDOWN
+// DIRECTION; put the bar at
 // the bottom of the screen by putting it at the bottom of the layout that owns
 // it, as with any other component.
 func (b *MenuBar) Layout(cs tui.Constraints) tui.Size {

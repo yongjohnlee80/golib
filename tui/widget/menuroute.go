@@ -118,11 +118,10 @@ func (m *Menu) resolveKey(e tui.KeyEvent) (tui.Action, bool) {
 	case tui.KeyEscape:
 		// STAGED, ONE LEVEL PER PRESS, and unhandled once there are none.
 		//
-		// Escape used to close the whole cascade and report itself handled even
-		// with nothing open. Both halves were wrong. Closing everything skips
-		// the intermediate states a user is aiming at — from a nested submenu
-		// the first Escape should return to the dropdown that opened it, not to
-		// the bar. And claiming the key with nothing open swallows it: a menu
+		// Neither closing the whole cascade nor reporting the key handled with
+		// nothing open would be right. Closing everything skips the intermediate
+		// states a user is aiming at — from a nested submenu the first Escape
+		// should return to the dropdown that opened it, not to the bar. And claiming the key with nothing open swallows it: a menu
 		// may be nested inside something with its own meaning for Escape, and
 		// the consumer is the only one who knows what leaving the root means.
 		//
@@ -147,9 +146,9 @@ func (m *Menu) resolveKey(e tui.KeyEvent) (tui.Action, bool) {
 // point. Left and Right walk the BAR — always, whatever is open and whatever
 // kind of row the selection is on. Up and Down walk the open dropdown.
 //
-// Right used to open a submenu when the selection was on one, which made the
-// bar unreachable from inside a category whose first row cascades: in a menu
-// whose Option holds "Keymaps", Right opened Keymaps and there was no way to
+// Right opening a submenu when the selection is on one would make the bar
+// unreachable from inside a category whose first row cascades: in a menu whose
+// Option holds "Keymaps", Right would open Keymaps and there would be no way to
 // reach Help at all. One key cannot both walk the bar and descend a cascade;
 // Enter descends, and Up comes back out.
 //
