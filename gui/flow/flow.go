@@ -11,6 +11,7 @@ import (
 	"math"
 	"strings"
 	"unicode"
+	"unicode/utf8"
 
 	"github.com/yongjohnlee80/golib/gui"
 	"github.com/yongjohnlee80/golib/gui/internal/linebreak"
@@ -282,7 +283,10 @@ func split(spans []Span, ws WhiteSpace) []piece {
 				}
 				w := s[i:j]
 				last, _ := lastRune(w)
-				out = append(out, piece{kind: word, span: si, from: i, to: j, display: w, cjk: linebreak.After(last)})
+				// a piece that is its word's first rune alone (a lone '-' ending its span) opens a
+				// break only as BreakAfter says, so "-" then a styled "5" stay one run
+				out = append(out, piece{kind: word, span: si, from: i, to: j, display: w,
+					cjk: linebreak.BreakAfter(last, utf8.RuneCountInString(w) == 1)})
 				lastSpace = false
 				i = j
 			}
