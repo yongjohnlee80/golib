@@ -24,8 +24,7 @@ import (
 // modelView is what ListView and ComboBox share: the model, the subscription,
 // and the role the rows show.
 type modelView struct {
-	model    ItemModel
-	cancel   func()
+	modelSub[ItemModel]
 	textRole string
 	changed  func(Change)
 	// shown are the keys of the rows as the view last showed them: what a
@@ -59,19 +58,8 @@ func (v *modelView) reshow(key string, had bool) int {
 }
 
 func (v *modelView) setModel(m ItemModel) {
-	v.release()
-	v.model = m
-	if m != nil {
-		v.cancel = m.Subscribe(v.changed)
-	}
+	v.swap(m, v.changed)
 	v.changed(Change{Kind: Reset})
-}
-
-func (v *modelView) release() {
-	if v.cancel != nil {
-		v.cancel()
-		v.cancel = nil
-	}
 }
 
 func (v *modelView) rows() int {
@@ -282,7 +270,7 @@ var comboBoxType = Type{
 //	    TableViewColumn { role: "role"; title: "ROLE"; width: 0 }   // 0: flex
 //	}
 type tableViewNode struct {
-	widget.Base
+	hostOne             // inner: shown's component
 	mv        modelView // composed, not embedded: its methods call each other
 	declared  []*tableColumnNode
 	table     *widget.Table[int]
@@ -413,7 +401,7 @@ func buildTableView(b Build) (tui.Component, []string, error) {
 				n.menu(numberValue(i), numberValue(at.X), numberValue(at.Y))
 			}
 		}))
-	n.shown = listShown{n.table}
+	n.show(listShown{n.table})
 	n.table.List().SetContextMenu(n.menu != nil)
 	n.mv.changed = n.follow
 	if n.template != nil {
@@ -518,11 +506,6 @@ func (n *tableViewNode) follow(c Change) {
 	}
 }
 
-func (n *tableViewNode) Init(ctx *tui.Context) {
-	n.Base.Init(ctx)
-	ctx.Mount(n.shown.component()) // a list's rows report to the TableView itself (WithListOnActivate and siblings)
-}
-
 // inView is a point in the row list's cells in the TableView's own: under its header, wherever the
 // table placed the list. A list not laid out yet is at the view's origin.
 func (n *tableViewNode) inView(list tui.Component, at tui.Point) tui.Point {
@@ -537,17 +520,11 @@ func (n *tableViewNode) inView(list tui.Component, at tui.Point) tui.Point {
 	return tui.Point{X: at.X + r.X, Y: at.Y + r.Y}
 }
 
-func (n *tableViewNode) Layout(c tui.Constraints) tui.Size {
-	child := n.shown.component()
-	sz := n.Context().LayoutChild(child, c)
-	n.Context().PlaceChild(child, tui.Rect{W: sz.W, H: sz.H})
-	return sz
-}
-
-func (*tableViewNode) Render(tui.Surface)         {}
-func (*tableViewNode) HandleEvent(tui.Event) bool { return false }
-
 func (n *tableViewNode) currentIndex() int { return n.shown.current() }
+
+// show makes s what the TableView shows and hosts: its rows report to the TableView itself
+// (WithListOnActivate and its siblings).
+func (n *tableViewNode) show(s tableShown) { n.shown, n.inner = s, s.component() }
 
 var tableViewType = Type{
 	Name:  "TableView",

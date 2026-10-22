@@ -52,9 +52,8 @@ import (
 //   - The Index is passed directly back to host handlers and model methods to uniquely address
 //     the target node in the model hierarchy.
 type treeViewNode struct {
-	widget.Base
-	model     TreeModel
-	cancel    func()
+	hostOne // inner: tree
+	modelSub[TreeModel]
 	textRole  string
 	badgeRole string
 	tree      *widget.Tree
@@ -107,6 +106,7 @@ func buildTreeView(b Build) (tui.Component, []string, error) {
 	n.tree = widget.NewTree(widget.WithKnownChildren(n.knownChildren),
 		widget.WithTreeOnExpandRequest(n.childrenAsked), widget.WithTreeOnExpand(n.opened),
 		widget.WithTreeOnCursor(n.cursorOn), widget.WithTreeOnActivate(n.activate))
+	n.inner = n.tree // it reports to the TreeView itself (WithTreeOnCursor and its siblings)
 	if err := n.checkTemplate(nil); err != nil {
 		return nil, nil, err
 	}
@@ -142,11 +142,7 @@ func treeModelOf(v qml.SpecValue) (TreeModel, error) {
 }
 
 func (n *treeViewNode) setModel(m TreeModel) {
-	n.release()
-	n.model = m
-	if m != nil {
-		n.cancel = m.Subscribe(n.follow)
-	}
+	n.swap(m, n.follow)
 	n.rebuild()
 }
 
@@ -177,13 +173,6 @@ func (n *treeViewNode) represent() {
 func (n *treeViewNode) sourcesChanged() {
 	if n.template != nil {
 		n.represent()
-	}
-}
-
-func (n *treeViewNode) release() {
-	if n.cancel != nil {
-		n.cancel()
-		n.cancel = nil
 	}
 }
 
@@ -274,12 +263,6 @@ func (n *treeViewNode) follow(c Change) {
 	n.tree.ReloadNode(node)
 }
 
-// Init mounts the tree, which reports to the TreeView itself (WithTreeOnCursor and its siblings).
-func (n *treeViewNode) Init(ctx *tui.Context) {
-	n.Base.Init(ctx)
-	ctx.Mount(n.tree)
-}
-
 // childrenAsked fetches an opened row's children from the model, unless the view already has them.
 func (n *treeViewNode) childrenAsked(node *widget.TreeNode, gen uint64) {
 	if n.model == nil {
@@ -341,15 +324,6 @@ func (n *treeViewNode) knownChildren(node *widget.TreeNode, gen uint64) bool {
 	n.continueReveal(n.pathOf(ix))
 	return true
 }
-
-func (n *treeViewNode) Layout(c tui.Constraints) tui.Size {
-	sz := n.Context().LayoutChild(n.tree, c)
-	n.Context().PlaceChild(n.tree, tui.Rect{W: sz.W, H: sz.H})
-	return sz
-}
-
-func (*treeViewNode) Render(tui.Surface)         {}
-func (*treeViewNode) HandleEvent(tui.Event) bool { return false }
 
 // treeIndexMethod is a TreeView method taking one row's index, as a signal hands it: `index`.
 func treeIndexMethod(name string, run func(*treeViewNode, Index) error) Method {
