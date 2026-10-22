@@ -504,8 +504,10 @@ func (e *Editor) HandleEvent(ev tui.Event) bool {
 		// the drag's auto-scroll, else the chord timeout
 		return e.pointer.HandleEvent(t) || e.core.HandleTick()
 	case tui.KeyEvent:
-		// the key map's menu key, else the core's
-		return e.pointer.HandleEvent(t) || e.core.HandleKey(t)
+		if e.pointer.MenuKey(t) { // the menu at the caret; off-screen, the key bubbles, the core untouched
+			return e.pointer.OpenMenu()
+		}
+		return e.core.HandleKey(t)
 	}
 	return false
 }

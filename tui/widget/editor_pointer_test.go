@@ -65,7 +65,7 @@ func TestAnEditorPointerAutoScrollsAnyView(t *testing.T) {
 		t.Error("the release did not end the drag")
 	}
 	right := tui.MouseEvent{Kind: tui.MousePress, Button: tui.MouseRight}
-	if p.HandleEvent(right) || p.OpenMenu() || p.HandleEvent(tui.KeyEvent{Code: tui.KeyF10, Mods: tui.ModShift, Kind: tui.KeyPress}) {
+	if p.HandleEvent(right) || p.OpenMenu() || p.MenuKey(tui.KeyEvent{Code: tui.KeyF10, Mods: tui.ModShift, Kind: tui.KeyPress}) {
 		t.Error("with no menu, the right button or the menu key was the pointer's")
 	}
 }
