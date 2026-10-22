@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"slices"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/yongjohnlee80/golib/auth"
@@ -94,7 +95,11 @@ type Manager struct {
 	bindPeer   bool
 	unused     func(string, HandoffReason)
 	adm        *Admission // the pending-login budget; its own when none is given (ManagerAdmission)
-	queueDepth int        // each session's event queue (QueueDepth)
+	queueDepth int        // each session's event queue when QueueDepth set one; 0 for none
+	// handlerQueue is that a Handler serves this Manager: its sessions default to DefaultQueueDepth,
+	// a BackendOptions EventQueue overriding it, as they did before QueueDepth was a ManagerOption.
+	// Set by NewHandler, read at each session's creation.
+	handlerQueue atomic.Bool
 
 	mu       sync.Mutex
 	sessions map[string]*Session
@@ -181,9 +186,10 @@ func ManagerAdmission(a *Admission) ManagerOption {
 	}
 }
 
-// QueueDepth sets each session's un-coalesced event queue capacity (default [DefaultQueueDepth]).
-// It is the one number that decides it: a BackendOptions-supplied EventQueue is applied first
-// and this overrides it.
+// QueueDepth sets each session's un-coalesced event queue capacity, overriding a
+// BackendOptions-supplied EventQueue. Without it, a session's queue is a BackendOptions EventQueue
+// when one is given, else [DefaultQueueDepth] for a Manager a Handler serves, else the Backend's
+// own default ([DefaultEventQueue]).
 //
 // The queue is bounded because an unbounded one is a memory-exhaustion vector driven by whoever
 // is typing; input beyond it backpressures the client, and a client that keeps outrunning it is
@@ -196,7 +202,23 @@ func QueueDepth(n int) ManagerOption {
 	}
 }
 
-// DefaultQueueDepth is a session's event queue capacity when none is given.
+// sessionBackendOptions are a new session's Backend options, in the order that decides its event
+// queue: a Handler's default first, then the consumer's BackendOptions, then an explicit
+// QueueDepth, each overriding the one before.
+func (m *Manager) sessionBackendOptions() []Option {
+	var opts []Option
+	if m.handlerQueue.Load() {
+		opts = append(opts, EventQueue(DefaultQueueDepth))
+	}
+	opts = append(opts, m.backends...)
+	if m.queueDepth > 0 {
+		opts = append(opts, EventQueue(m.queueDepth))
+	}
+	return opts
+}
+
+// DefaultQueueDepth is the event queue capacity of a session a Handler serves when neither
+// QueueDepth nor a BackendOptions EventQueue gives one.
 const DefaultQueueDepth = 1024
 
 // Defaults for a [Manager].
@@ -247,15 +269,14 @@ func NewManager(factory AppFactory, opts ...ManagerOption) (*Manager, error) {
 		return nil, errs.Wrap(errs.ErrInvalidArgument, "web.NewManager: an AppFactory is required")
 	}
 	m := &Manager{
-		base:       context.Background(),
-		factory:    factory,
-		log:        logger.Nop{},
-		maxSess:    DefaultMaxSessions,
-		idle:       DefaultIdleTimeout,
-		now:        time.Now,
-		newID:      randomID,
-		queueDepth: DefaultQueueDepth,
-		sessions:   make(map[string]*Session),
+		base:     context.Background(),
+		factory:  factory,
+		log:      logger.Nop{},
+		maxSess:  DefaultMaxSessions,
+		idle:     DefaultIdleTimeout,
+		now:      time.Now,
+		newID:    randomID,
+		sessions: make(map[string]*Session),
 	}
 	for _, o := range opts {
 		if o != nil {
@@ -440,7 +461,7 @@ func (m *Manager) register(id *auth.Identity, peer string) (*Session, context.Co
 		id:       sid,
 		subject:  id.Subject,
 		peer:     peer,
-		backend:  New(append(slices.Clone(m.backends), EventQueue(m.queueDepth))...), // QueueDepth wins over a BackendOptions EventQueue
+		backend:  New(m.sessionBackendOptions()...),
 		created:  m.now(),
 		lastSeen: m.now(),
 		cancel:   cancel,
