@@ -73,20 +73,33 @@ func editingDecls(d keyDecls) keyDecls {
 			has[x.act] = true
 		}
 	}
-	for _, e := range []struct {
-		code rune
-		act  Action
-	}{
-		{tui.KeyTab, ActInsertTab}, {tui.KeyEnter, ActNewline}, {tui.KeyBackspace, ActBackspace},
-		{tui.KeyDelete, ActDeleteForward}, {tui.KeyEscape, ActEscape},
-		{tui.KeyLeft, ActLeft}, {tui.KeyRight, ActRight}, {tui.KeyUp, ActUp}, {tui.KeyDown, ActDown},
-		{tui.KeyHome, ActLineStart}, {tui.KeyEnd, ActLineEnd}, {tui.KeyPageUp, ActPageUp}, {tui.KeyPageDown, ActPageDown},
-	} {
+	for _, e := range editingKeys {
 		if !has[e.act] {
 			d.add(KeyChord{Mode: ModeInsert, Code: e.code}, e.act, true)
 		}
 	}
 	return d
+}
+
+// editingKeys are Insert's editing keys, each with the editing command it is.
+var editingKeys = [...]struct {
+	code rune
+	act  Action
+}{
+	{tui.KeyTab, ActInsertTab}, {tui.KeyEnter, ActNewline}, {tui.KeyBackspace, ActBackspace},
+	{tui.KeyDelete, ActDeleteForward}, {tui.KeyEscape, ActEscape},
+	{tui.KeyLeft, ActLeft}, {tui.KeyRight, ActRight}, {tui.KeyUp, ActUp}, {tui.KeyDown, ActDown},
+	{tui.KeyHome, ActLineStart}, {tui.KeyEnd, ActLineEnd}, {tui.KeyPageUp, ActPageUp}, {tui.KeyPageDown, ActPageDown},
+}
+
+// editingActOf is the editing command of Insert's editing key code.
+func editingActOf(code rune) (Action, bool) {
+	for _, e := range editingKeys {
+		if e.code == code {
+			return e.act, true
+		}
+	}
+	return ActUnbound, false
 }
 
 // declsOf is keyset ks's whole table: its early bindings and its editing commands.

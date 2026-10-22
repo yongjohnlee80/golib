@@ -219,8 +219,10 @@ type insertKey struct {
 
 // resolveInsert is k in the Insert class. An exact binding or explicit unbind wins. A modified key
 // no binding names reaches the editing command its bare key is bound to, the modifiers handed on
-// as qualifiers (so Ctrl+Tab inserts a tab, and Shift+Tab is Tab with Shift); an early binding or
-// an unbind of the bare key lends it nothing.
+// as qualifiers (so Ctrl+Tab inserts a tab, and Shift+Tab is Tab with Shift). An editing key whose
+// bare key is bound early (Nano's Home, an overlay's Right) reaches its own editing command, so
+// Ctrl+Home still goes to the line's start; any other early binding, or an unbind of the bare key,
+// lends it nothing.
 func (c *EditorCore) resolveInsert(k tui.KeyEvent) insertKey {
 	var r insertKey
 	if s, ok := c.seqOf(k); ok {
@@ -233,8 +235,13 @@ func (c *EditorCore) resolveInsert(k tui.KeyEvent) insertKey {
 		}
 		if s.Mods != 0 {
 			bare := chordOfSeq(ModeInsert, tuikey.Seq{Code: s.Code})
-			if act, ok := c.keys.keymap[bare]; ok && c.keys.late[bare] {
-				return insertKey{act: act, bound: true, late: true, qual: k.Mods}
+			if act, ok := c.keys.keymap[bare]; ok {
+				if c.keys.late[bare] {
+					return insertKey{act: act, bound: true, late: true, qual: k.Mods}
+				}
+				if act, ok := editingActOf(s.Code); ok {
+					return insertKey{act: act, bound: true, late: true, qual: k.Mods}
+				}
 			}
 		}
 	}
@@ -261,7 +268,7 @@ type insertStage func(c *EditorCore, k tui.KeyEvent, r insertKey) (done, handled
 // insertStages is Insert's order, the contract hosts rely on: each stage's comment is its
 // contract.
 var insertStages = [...]insertStage{
-	(*EditorCore).refuseReadOnly, // read-only: text and a late mutating command are consumed, refused
+	(*EditorCore).refuseReadOnly, // read-only: text, an editing key and a late mutating command are consumed, refused
 	(*EditorCore).bubbleUnbound,  // an explicitly unbound key: the held rune settles; it bubbles
 	(*EditorCore).runEarly,       // an early binding: the held rune settles; recorded, then run
 	(*EditorCore).escapeChord,    // modal: the held rune and its timeout; a held rune settles on any other key
@@ -273,9 +280,13 @@ var insertStages = [...]insertStage{
 }
 
 func (c *EditorCore) refuseReadOnly(k tui.KeyEvent, r insertKey) (bool, bool) {
-	refuse := c.readOnly && (k.Text != "" || (r.late && mutatingAction(r.act)))
+	refuse := c.readOnly && (k.Text != "" || textKeys[k.Code] || (r.late && mutatingAction(r.act)))
 	return refuse, refuse // a viewer never changes text
 }
+
+// textKeys are the keys that edit the text whatever a scheme binds them to, so a read-only core
+// consumes them unconditionally.
+var textKeys = map[rune]bool{tui.KeyTab: true, tui.KeyEnter: true, tui.KeyBackspace: true, tui.KeyDelete: true}
 
 func (c *EditorCore) bubbleUnbound(_ tui.KeyEvent, r insertKey) (bool, bool) {
 	if !r.unbound {
