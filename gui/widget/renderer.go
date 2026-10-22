@@ -67,6 +67,17 @@ type ReflowRenderer interface {
 	ReflowFrom(changedLine int) int
 }
 
+// StructureRenderer is a Renderer that knows where its document's code and tables are. The Editor
+// runs list editing (Enter continues an item, Tab nests it) in the Rendered view of one, outside
+// its code, and on a table's lines only where they are not rows. A renderer that is not one gets
+// no list editing. MarkdownRenderer is one, and so is a renderer that embeds it.
+type StructureRenderer interface {
+	// InCode reports whether line ln is inside a code block, where "- x" is code, not an item.
+	InCode(lines []string, ln int) bool
+	// InTable reports whether line ln is a row of a table, whose source is not a list.
+	InTable(lines []string, ln int) bool
+}
+
 // Block is lines [From, To) of the buffer.
 type Block struct{ From, To int }
 
