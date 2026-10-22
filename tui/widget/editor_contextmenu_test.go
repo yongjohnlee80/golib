@@ -439,3 +439,39 @@ func TestEditorContextMenu_HJKLMoveTheCursor(t *testing.T) {
 		t.Errorf("j j k Enter ran %v; want second", ran)
 	}
 }
+
+// The menu key with the caret scrolled off the screen opens no menu and bubbles, the core never
+// seeing it: a pending d and its second d still delete the line, and a macro records nothing of it.
+func TestEditorContextMenu_KeyWithTheCaretOffScreenLeavesTheCoreAlone(t *testing.T) {
+	h, ed, sh := ctxFixture(t, 40, 6, widget.WithContextMenu(nil))
+	h.onLoop(func() { ed.SetValue(strings.Repeat("line\n", 30) + "last") })
+	h.settle()
+	for range 10 {
+		h.inject(tui.MouseEvent{Kind: tui.MouseWheel, Button: tui.WheelDown})
+	}
+	h.settle()
+	var onScreen bool
+	h.onLoop(func() { _, _, onScreen = ed.Cursor() })
+	if onScreen {
+		t.Fatalf("the caret is still on the screen after the wheel:\n%s", h.grid())
+	}
+	shiftF10 := tui.KeyEvent{Code: tui.KeyF10, Mods: tui.ModShift}
+	before := len(sh.bubbledKeys())
+	h.inject(key('d'), shiftF10, key('d'))
+	h.settle()
+	var lines int
+	h.onLoop(func() { lines = len(ed.Lines()) })
+	if lines != 30 || menuOpen(h, ed) {
+		t.Errorf("d, Shift+F10, d: %d lines, menu open %v; want 30 (the line deleted), no menu", lines, menuOpen(h, ed))
+	}
+	if len(sh.bubbledKeys()) == before {
+		t.Error("the menu key that opened nothing did not bubble")
+	}
+	h.inject(key('q'), key('a'), shiftF10, key('q'))
+	h.settle()
+	var macro string
+	h.onLoop(func() { macro, _, _ = ed.NamedRegister('a') })
+	if macro != "" {
+		t.Errorf("the macro recorded %q of the menu key; want nothing", macro)
+	}
+}

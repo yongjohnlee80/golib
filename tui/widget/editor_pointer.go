@@ -66,9 +66,9 @@ func (p *EditorPointer) menuOn() bool { return p.menu != nil && p.menu.Enabled()
 // dragScrollInterval is the auto-scroll's pace: a step per tick while the pointer is past an edge.
 const dragScrollInterval = 50 * time.Millisecond
 
-// HandleEvent handles ev when it is the pointer's: a press, drag or release, the capture lost, an
-// auto-scroll tick, or the menu key. Anything else (the wheel, another key, a chord's tick) is
-// false, for the editor's own routing.
+// HandleEvent handles ev when it is the pointer's: a press, drag or release, the capture lost, or
+// an auto-scroll tick. Anything else (the wheel, a key, a chord's tick) is false, for the editor's
+// own routing; the editor asks MenuKey of a key first.
 func (p *EditorPointer) HandleEvent(ev tui.Event) bool {
 	switch t := ev.(type) {
 	case tui.MouseEvent:
@@ -84,15 +84,21 @@ func (p *EditorPointer) HandleEvent(ev tui.Event) bool {
 		p.view.ScrollStep(p.dx, p.dy) // a press settled any pending rune
 		p.extend(p.last)
 		return true
-	case tui.KeyEvent:
-		ctx := p.view.Context()
-		if p.menuOn() && t.Kind == tui.KeyPress && ctx != nil { // a repeat opens no second menu
-			if _, ok := ctx.KeyCommand(t, EditorContextMenu); ok {
-				return p.OpenMenu()
-			}
-		}
 	}
 	return false
+}
+
+// MenuKey reports whether k is the key map's menu key (EditorContextMenu) with the menu on: the
+// editor then opens the menu (OpenMenu) and, when it cannot, lets the key bubble. The core never
+// sees the key either way, so it is not recorded into a macro or '.', and a pending operator and
+// count survive it. A repeat is not the menu key: it opens no second menu.
+func (p *EditorPointer) MenuKey(k tui.KeyEvent) bool {
+	ctx := p.view.Context()
+	if !p.menuOn() || k.Kind != tui.KeyPress || ctx == nil {
+		return false
+	}
+	_, ok := ctx.KeyCommand(k, EditorContextMenu)
+	return ok
 }
 
 // OpenMenu opens the context menu at the caret's cell, as the menu key does. False when the menu
