@@ -251,3 +251,57 @@ func TestAKeysetNamesItself(t *testing.T) {
 		}
 	}
 }
+
+// A caret key a keyset binds early (Nano's and Standard's Home, End and Page keys, an overlay's
+// arrow) still moves the caret held with a modifier no binding names, as Insert's caret keys always
+// did: Ctrl+Home goes to the line's start, and Ctrl+PgDn moves a page rather than bubbling to the
+// application.
+func TestAnEarlyBoundCaretKeyStillMovesWithAModifier(t *testing.T) {
+	text := "0123\n1\n2\n3\n4\n5\n6\n7\n8\n9"
+	right := widget.CoreKeymap(widget.Keymap{{Mode: widget.ModeInsert, Code: tui.KeyRight}: widget.ActLineEnd})
+	for _, tc := range []struct {
+		name string
+		opts []widget.CoreOption
+		pre  string // Vim keys before the caret key; Nano and Standard start in Insert
+		key  tui.KeyEvent
+		want widget.TextPos
+	}{
+		{"Nano Ctrl+End", []widget.CoreOption{widget.CoreKeyset(widget.KeysetNano)}, "", keyPress(tui.KeyEnd, tui.ModCtrl), widget.TextPos{Line: 0, Col: 4}},
+		{"Standard Ctrl+End", []widget.CoreOption{widget.CoreKeyset(widget.KeysetStandard)}, "", keyPress(tui.KeyEnd, tui.ModCtrl), widget.TextPos{Line: 0, Col: 4}},
+		{"Nano Alt+PgDn", []widget.CoreOption{widget.CoreKeyset(widget.KeysetNano)}, "", keyPress(tui.KeyPageDown, tui.ModAlt), widget.TextPos{Line: 5, Col: 0}},
+		{"Standard Ctrl+PgDn", []widget.CoreOption{widget.CoreKeyset(widget.KeysetStandard)}, "", keyPress(tui.KeyPageDown, tui.ModCtrl), widget.TextPos{Line: 5, Col: 0}},
+		{"an overlay's Right, with Super", []widget.CoreOption{right}, "i", keyPress(tui.KeyRight, tui.ModSuper), widget.TextPos{Line: 0, Col: 1}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			c, _ := coreWith(t, text, tc.opts...)
+			keys(c, tc.pre)
+			if !c.HandleKey(tc.key) {
+				t.Fatal("the key bubbled; want it to move the caret")
+			}
+			if got := c.Cursor(); got != tc.want {
+				t.Fatalf("the caret at %+v, want %+v", got, tc.want)
+			}
+		})
+	}
+	c, _ := coreWith(t, text, widget.CoreKeyset(widget.KeysetStandard))
+	c.HandleKey(keyPress(tui.KeyEnd, 0))
+	if !c.HandleKey(keyPress(tui.KeyHome, tui.ModCtrl)) || c.Cursor() != (widget.TextPos{}) {
+		t.Fatalf("Standard End, Ctrl+Home: the caret at %+v, want the line's start", c.Cursor())
+	}
+}
+
+// A read-only core consumes and refuses Tab, Enter, Backspace and Delete whatever a scheme binds
+// them to, as it always did: an overlay's Enter bound to Undo, or an unbound Tab, never reaches the
+// host while the viewer does nothing.
+func TestAReadOnlyCoreConsumesAnEditingKeyWhateverItsBinding(t *testing.T) {
+	km := widget.CoreKeymap(widget.Keymap{
+		{Mode: widget.ModeInsert, Code: tui.KeyEnter}: widget.ActUndo,
+		{Mode: widget.ModeInsert, Code: tui.KeyTab}:   widget.ActUnbound,
+	})
+	c, _ := coreWith(t, "ab", widget.CoreKeyset(widget.KeysetStandard), widget.CoreReadOnly(true), km)
+	for _, k := range []tui.KeyEvent{keyPress(tui.KeyEnter, 0), keyPress(tui.KeyTab, 0), keyPress(tui.KeyBackspace, tui.ModCtrl)} {
+		if !c.HandleKey(k) || c.Value() != "ab" {
+			t.Errorf("%+v in a read-only core: consumed false or %q; want it consumed and refused", k, c.Value())
+		}
+	}
+}
