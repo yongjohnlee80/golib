@@ -419,8 +419,10 @@ func (c *cellHTML) BlockTop(b int) (float32, bool) {
 	return 0, false
 }
 
-// paint draws the rows from top on, the selection from..to reversed.
-func (c *cellHTML) paint(s tui.Surface, top, w int, from, to DocPos) {
+var _ HTMLLayoutCells = (*cellHTML)(nil)
+
+// PaintCells implements HTMLLayoutCells: the rows from top on, the selection from..to reversed.
+func (c *cellHTML) PaintCells(s tui.Surface, top, w int, from, to DocPos) {
 	sz := s.Size()
 	from, to = orderPos(from, to)
 	selecting := from != to

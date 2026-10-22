@@ -235,7 +235,7 @@ func TestHTMLViewAsksActivateBeforeALink(t *testing.T) {
 	var links []string
 	v := NewHTMLView(WithOnLink(func(href string) { links = append(links, href) }))
 	v.SetHTML([]byte(`<p><a href="x">link</a> text</p>`))
-	fake := &activating{cellHTML: v.cells, act: true}
+	fake := &activating{cellHTML: v.layout.(*cellHTML), act: true}
 	v.BindLayout(fake)
 	fake.SetWidth(40)
 	click := func(evs ...tui.MouseEvent) {
