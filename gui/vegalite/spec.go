@@ -430,7 +430,7 @@ func readConfig(raw json.RawMessage) error {
 	for k, v := range m {
 		switch {
 		case passedConfig[k]:
-		case k == "mark" || k == "bar" || k == "line" || k == "point" || k == "area" || k == "circle":
+		case k == "mark" || isMarkType(k): // the marks' shared config, and each type's
 			mc, err := object(v, "config's "+k)
 			if err != nil {
 				return err
@@ -654,23 +654,38 @@ func number(raw json.RawMessage, f *float32, lo, hi float64) error {
 	return nil
 }
 
-// markType sets the mark's type: bar, line, point, area, or circle (a filled point).
+// markDef is what a mark type draws: its kind, and whether its points are filled.
+type markDef struct {
+	kind   markKind
+	filled bool
+}
+
+// markTypes are the marks a chart draws, by their Vega-Lite type. The config has a section for each,
+// so the two cannot disagree on which marks exist.
+var markTypes = map[string]markDef{
+	"bar":    {kind: markBar},
+	"line":   {kind: markLine},
+	"point":  {kind: markPoint},
+	"circle": {kind: markPoint, filled: true}, // a filled point
+	"area":   {kind: markArea},
+	"rule":   {kind: markRule},
+}
+
+// isMarkType reports whether t is a mark type a chart draws.
+func isMarkType(t string) bool {
+	_, ok := markTypes[t]
+	return ok
+}
+
+// markType sets the mark's type: one of markTypes.
 func (c *chart) markType(t string) error {
-	switch t {
-	case "bar":
-		c.mark.kind = markBar
-	case "line":
-		c.mark.kind = markLine
-	case "point":
-		c.mark.kind = markPoint
-	case "circle":
-		c.mark.kind, c.mark.filled = markPoint, true
-	case "area":
-		c.mark.kind = markArea
-	case "rule":
-		c.mark.kind = markRule
-	default:
+	def, ok := markTypes[t]
+	if !ok {
 		return unsupported("the mark %q", t)
+	}
+	c.mark.kind = def.kind
+	if def.filled {
+		c.mark.filled = true
 	}
 	return nil
 }
