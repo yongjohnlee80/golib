@@ -55,6 +55,17 @@ func (c *Context) RequestLayout() {
 	c.app.invalidate(true)
 }
 
+// SettleBeforeInput is RequestLayout for a change whose next layout moves where input goes: a layer
+// that leaves in that pass's commit (a popup its own row closed), or a focus landing there. The App
+// lays out before it routes the next input, rather than when the frame comes, so input queued behind
+// the event that asked (a burst of keys, a loop the CPU starves) reaches where the screen it follows
+// sends it, not a layer already leaving. A FocusInto waiting for its target's layout settles the
+// same way on its own.
+func (c *Context) SettleBeforeInput() {
+	c.app.focus.settleBeforeInput = true
+	c.app.invalidate(true)
+}
+
 // RequestFocus asks the focus manager to focus this node. Ignored unless
 // the component implements Focusable and accepts focus.
 func (c *Context) RequestFocus() { c.app.requestFocus(c.node) }
