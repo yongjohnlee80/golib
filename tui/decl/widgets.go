@@ -170,7 +170,7 @@ func adoptFlexChild(parent, child tui.Component, attached map[string]qml.SpecVal
 		fill, preferred = "Layout.fillWidth", "Layout.preferredWidth"
 	}
 	if v, ok := attached[preferred]; ok {
-		n, err := numberOf(v)
+		n, err := finiteOf(v)
 		if err != nil {
 			return fmt.Errorf("%s: %w", preferred, err)
 		}

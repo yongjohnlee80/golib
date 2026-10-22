@@ -1,6 +1,7 @@
 package decl_test
 
 import (
+	"math"
 	"strings"
 	"testing"
 
@@ -49,6 +50,11 @@ func TestAnHTMLViewFromTheDocument(t *testing.T) {
 		}
 		if err := s.Program.Call("page", "scrollToSource", "three"); err == nil {
 			t.Error("scrollToSource took a string for its byte")
+		}
+		for _, x := range []float64{math.NaN(), math.Inf(1), math.Inf(-1)} {
+			if err := s.Program.Call("page", "scrollToSource", x); err == nil || !strings.Contains(err.Error(), "finite") {
+				t.Errorf("scrollToSource(%v): %v, want it refused as not finite", x, err)
+			}
 		}
 	})
 	onScreenLoop(t, s, func() {
