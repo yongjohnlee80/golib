@@ -178,9 +178,6 @@ func cellsOf(v qml.SpecValue) (int, error) {
 	return int(n), nil
 }
 
-// strValue is a string property value, for the adapter's own tables.
-func strValue(s string) qml.SpecValue { return qml.SpecValue{Kind: qml.SpecValueString, Raw: s} }
-
 // ---------------------------------------------------------------- setters
 
 // setter is the one shape of a runtime property: find the widget, read the

@@ -265,7 +265,7 @@ func (a *Adapter) Reset(id decl.NodeID, prop string) error {
 		if !ok {
 			return fmt.Errorf("%s: node %d has no component", toolTipProp, id)
 		}
-		return setToolTip(b.typ, b.comp, qml.SpecValue{Kind: qml.SpecValueString, Raw: ""})
+		return setToolTip(b.typ, b.comp, strValue(""))
 	}
 	if prop == visibleProp {
 		// Removed from the document: shown again, as an item with no
@@ -274,7 +274,7 @@ func (a *Adapter) Reset(id decl.NodeID, prop string) error {
 		if !ok {
 			return fmt.Errorf("visible: node %d has no component", id)
 		}
-		return setVisible(b.typ, b.comp, qml.SpecValue{Kind: qml.SpecValueBool, Raw: "true"})
+		return setVisible(b.typ, b.comp, boolValue(true))
 	}
 	r, ok := paletteRoles[prop]
 	if !ok {

@@ -2,7 +2,6 @@ package decl
 
 import (
 	"fmt"
-	"strconv"
 
 	"github.com/yongjohnlee80/golib/parse/qml"
 	"github.com/yongjohnlee80/golib/tui"
@@ -87,14 +86,6 @@ func (v *modelView) text(i int) string {
 		return ""
 	}
 	return v.model.Data(Index{Row: i}, v.textRole).Raw
-}
-
-func numberValue(i int) qml.SpecValue {
-	return qml.SpecValue{Kind: qml.SpecValueNumber, Raw: strconv.Itoa(i)}
-}
-
-func boolValue(b bool) qml.SpecValue {
-	return qml.SpecValue{Kind: qml.SpecValueBool, Raw: strconv.FormatBool(b)}
 }
 
 // ---------------------------------------------------------------- ListView
@@ -287,11 +278,11 @@ var comboBoxType = Type{
 		"currentValue": getter(func(n *comboBoxNode) (qml.SpecValue, error) {
 			i := n.currentIndex()
 			if i < 0 || n.mv.model == nil {
-				return qml.SpecValue{Kind: qml.SpecValueString}, nil
+				return strValue(""), nil
 			}
 			v := n.mv.model.Data(Index{Row: i}, n.valueRole)
 			if v.Kind == qml.SpecValueInvalid {
-				return qml.SpecValue{Kind: qml.SpecValueString}, nil
+				return strValue(""), nil
 			}
 			return v, nil
 		}),
@@ -638,16 +629,16 @@ var tableViewType = Type{
 			return numberValue(n.currentIndex()), nil
 		}),
 		"orderBy": getter(func(n *tableViewNode) (qml.SpecValue, error) {
-			return qml.SpecValue{Kind: qml.SpecValueString, Raw: n.orderBy}, nil
+			return strValue(n.orderBy), nil
 		}),
 		"orderByError": getter(func(n *tableViewNode) (qml.SpecValue, error) {
-			return qml.SpecValue{Kind: qml.SpecValueString, Raw: n.orderErr}, nil
+			return strValue(n.orderErr), nil
 		}),
 		"filter": getter(func(n *tableViewNode) (qml.SpecValue, error) {
-			return qml.SpecValue{Kind: qml.SpecValueString, Raw: n.filter}, nil
+			return strValue(n.filter), nil
 		}),
 		"filterError": getter(func(n *tableViewNode) (qml.SpecValue, error) {
-			return qml.SpecValue{Kind: qml.SpecValueString, Raw: n.filterErr}, nil
+			return strValue(n.filterErr), nil
 		}),
 	},
 	Signals: map[string][]string{"activated": {"index"}, "currentIndexChanged": {"index"},

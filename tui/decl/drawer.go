@@ -3,7 +3,6 @@ package decl
 import (
 	"errors"
 	"math"
-	"strconv"
 
 	"github.com/yongjohnlee80/golib/parse/qml"
 	"github.com/yongjohnlee80/golib/tui"
@@ -224,13 +223,13 @@ func (n *drawerNode) windowChanged(e widget.WindowChangedEvent) {
 		x, y, w, h := widget.FractionOf(e.Bounds, n.area())
 		n.floating, n.frac = true, [4]float64{x, y, w, h}
 		n.place()
-		n.placed(fracNumber(x), fracNumber(y), fracNumber(w), fracNumber(h))
+		n.placed(floatValue(x), floatValue(y), floatValue(w), floatValue(h))
 	case e.Operation == widget.WindowResize:
 		n.windowTarget.preview = nil
 		n.dragEnded(tui.Size{W: e.Bounds.W, H: e.Bounds.H})
 	}
-	n.windowEmit(strValue(e.Operation.String()), strValue(e.Key), windowNumber(e.Bounds.X), windowNumber(e.Bounds.Y),
-		windowNumber(e.Bounds.W), windowNumber(e.Bounds.H), windowBool(e.Maximized), windowBool(e.Minimized))
+	n.windowEmit(strValue(e.Operation.String()), strValue(e.Key), numberValue(e.Bounds.X), numberValue(e.Bounds.Y),
+		numberValue(e.Bounds.W), numberValue(e.Bounds.H), boolValue(e.Maximized), boolValue(e.Minimized))
 }
 
 func (n *drawerNode) stopWindowDrag() {
@@ -257,8 +256,8 @@ func (n *drawerNode) dragEnded(final tui.Size) {
 	if n.frame.ctx != nil {
 		n.frame.ctx.RequestLayout()
 	}
-	n.resized(qml.SpecValue{Kind: qml.SpecValueNumber, Raw: strconv.Itoa(n.size)},
-		qml.SpecValue{Kind: qml.SpecValueNumber, Raw: strconv.Itoa(n.length)})
+	n.resized(numberValue(n.size),
+		numberValue(n.length))
 }
 
 // across reports whether the edge's size is a width (a left or right drawer) rather than a height.
@@ -689,11 +688,6 @@ func drawerFracSetter(i int) Setter {
 		}
 		return f, err
 	}, func(n *drawerNode, pct float64) { n.setFrac(i, pct) })
-}
-
-// fracNumber is a percentage as placed reports it: as short as it reads, 50 or 33.33.
-func fracNumber(p float64) qml.SpecValue {
-	return qml.SpecValue{Kind: qml.SpecValueNumber, Raw: strconv.FormatFloat(p, 'f', -1, 64)}
 }
 
 // KeyScope is the Drawer's keyScope: the frame is where its Shortcuts fire (tui.KeyScoped).
