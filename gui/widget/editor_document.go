@@ -136,7 +136,7 @@ func (s *editorStack) Init(ctx *tui.Context) {
 // Layout gives the shown child the whole area.
 func (s *editorStack) Layout(c tui.Constraints) tui.Size {
 	var sz tui.Size
-	for _, k := range s.Items() {
+	for _, k := range s.All() {
 		if h, ok := k.(tui.Hideable); ok && !h.Visible() {
 			continue
 		}
