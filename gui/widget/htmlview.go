@@ -8,6 +8,7 @@ import (
 	"math"
 	"strings"
 
+	xhtml "github.com/yongjohnlee80/golib/extract/html"
 	"github.com/yongjohnlee80/golib/gui"
 	"github.com/yongjohnlee80/golib/gui/flow"
 	phtml "github.com/yongjohnlee80/golib/parse/html"
@@ -318,8 +319,8 @@ func (l *htmlLayout) build() {
 			pending = append(pending, c)
 			continue
 		}
-		if c.Kind != phtml.StartTag && c.Kind != phtml.SelfClosing {
-			continue
+		if c.Kind != phtml.StartTag && c.Kind != phtml.SelfClosing || xhtml.Dropped(c) {
+			continue // a dropped element (a form, an iframe, an svg, aria-hidden) at the top too
 		}
 		cs := l.styler.style(c, st, append(chain, c))
 		if cs.display == "none" {
