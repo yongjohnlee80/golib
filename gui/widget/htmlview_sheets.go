@@ -7,6 +7,8 @@ import (
 	"strings"
 	"unicode/utf8"
 
+	"github.com/yongjohnlee80/golib/errs"
+
 	phtml "github.com/yongjohnlee80/golib/parse/html"
 	"github.com/yongjohnlee80/golib/tui"
 	tuiwidget "github.com/yongjohnlee80/golib/tui/widget"
@@ -51,7 +53,10 @@ const (
 	maxSheets     = 32      // linked stylesheets a page loads
 )
 
-var errSheetCap = errors.New("htmlview: stylesheet over a size cap")
+var (
+	errSheetCap     = errs.Sentinel(errs.ErrInvalidArgument, "htmlview: stylesheet over a size cap")
+	errSheetNotUTF8 = errs.Sentinel(errs.ErrInvalidArgument, "htmlview: a stylesheet that is not UTF-8")
+)
 
 type sheetEntry struct {
 	state   imgState
@@ -130,7 +135,7 @@ func loadSheet(ctx context.Context, href string, resolve tuiwidget.ImageResolver
 		return nil, errSheetCap
 	}
 	if !utf8.Valid(b) {
-		return nil, errors.New("htmlview: a stylesheet that is not UTF-8")
+		return nil, errSheetNotUTF8
 	}
 	return string(b), nil
 }

@@ -3,11 +3,12 @@ package vegalite
 import (
 	"bytes"
 	"encoding/json"
-	"errors"
 	"fmt"
 	"image/color"
 	"io"
 	"strings"
+
+	"github.com/yongjohnlee80/golib/errs"
 
 	"github.com/yongjohnlee80/golib/gui/internal/csscolor"
 )
@@ -22,9 +23,9 @@ import (
 var (
 	// ErrUnsupported is a spec outside the subset drawn; the error names what. The caller falls
 	// back, as for a Mermaid diagram type golib does not draw.
-	ErrUnsupported = errors.New("vegalite: unsupported")
+	ErrUnsupported = errs.Sentinel(errs.ErrUnsupported, "vegalite: a spec outside the subset drawn")
 	// ErrTooLarge is a spec over a limit: rows, categories or series.
-	ErrTooLarge = errors.New("vegalite: too large")
+	ErrTooLarge = errs.Sentinel(errs.ErrInvalidArgument, "vegalite: a spec over a limit")
 )
 
 // The limits: the rows of data read, the categories of a discrete axis, the series of a colour.

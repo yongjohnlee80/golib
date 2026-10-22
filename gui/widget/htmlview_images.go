@@ -5,7 +5,6 @@ import (
 	"context"
 	"encoding/base64"
 	"errors"
-	"fmt"
 	"image"
 	_ "image/gif" // the formats a page's images are decoded from
 	_ "image/jpeg"
@@ -14,6 +13,8 @@ import (
 	"net/url"
 	"strconv"
 	"strings"
+
+	"github.com/yongjohnlee80/golib/errs"
 
 	"github.com/yongjohnlee80/golib/gui"
 	"github.com/yongjohnlee80/golib/gui/flow"
@@ -67,7 +68,10 @@ const (
 	maxImagePixels = 40_000_000
 )
 
-var errImageCap = errors.New("htmlview: image over a size cap")
+var (
+	errImageCap     = errs.Sentinel(errs.ErrInvalidArgument, "htmlview: image over a size cap")
+	errDataURIEmpty = errs.Sentinel(errs.ErrInvalidArgument, "htmlview: a data: URI without data")
+)
 
 type imgState uint8
 
@@ -188,7 +192,7 @@ func loadImage(ctx context.Context, src string, resolve func(context.Context, st
 	if strings.HasPrefix(src, "data:") {
 		meta, payload, ok := strings.Cut(src[len("data:"):], ",")
 		if !ok {
-			return nil, fmt.Errorf("htmlview: a data: URI without data")
+			return nil, errDataURIEmpty
 		}
 		if strings.HasSuffix(meta, ";base64") {
 			if base64.StdEncoding.DecodedLen(len(payload)) > maxImageData {

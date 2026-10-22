@@ -1,7 +1,6 @@
 package widget
 
 import (
-	"fmt"
 	"image/color"
 	"strconv"
 	"weak"
@@ -398,10 +397,11 @@ func (e *Editor) SetCursorColor(c style.Color) {
 }
 
 // SetWrap selects tuiwidget.WrapNone or tuiwidget.WrapSoft while the editor runs, as WithWrap
-// does at construction; the cursor stays where it is.
+// does at construction, and normalizes a mode it does not know to WrapNone as WithWrap does; the
+// cursor stays where it is.
 func (e *Editor) SetWrap(m tuiwidget.WrapMode) {
-	if m != tuiwidget.WrapNone && m != tuiwidget.WrapSoft {
-		panic(fmt.Sprintf("gui/widget: Editor.SetWrap: mode %d is not WrapNone or WrapSoft", m))
+	if m != tuiwidget.WrapSoft {
+		m = tuiwidget.WrapNone
 	}
 	if e.wrap == m {
 		return
