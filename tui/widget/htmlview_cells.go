@@ -132,60 +132,92 @@ const hruleCluster = "─"
 
 // layBlock wraps block bi into rows.
 func (c *cellHTML) layBlock(bi int, b *hblock, cols []int) {
-	prefix := func(first bool) []hcl {
-		var out []hcl
-		x := 0
-		for range b.quote {
-			out = append(out, hcl{text: "▎", x: x, w: 1, deco: true}, hcl{text: " ", x: x + 1, w: 1, deco: true})
-			x += 2
-		}
-		if b.indent > 0 {
-			mark := ""
-			if first {
-				mark = b.marker
-			}
-			mw := c.measure(mark)
-			pad := max(b.indent-mw-1, 0)
-			for range pad {
-				out = append(out, hcl{text: " ", x: x, w: 1, deco: true})
-				x++
-			}
-			if mark != "" {
-				out = append(out, hcl{text: mark, x: x, w: mw, deco: true})
-				x += mw
-			}
-			for x < 2*b.quote+b.indent {
-				out = append(out, hcl{text: " ", x: x, w: 1, deco: true})
-				x++
-			}
-		}
-		return out
-	}
 	room := max(c.width-2*b.quote-b.indent, 1)
 	if b.kind == hRule {
-		row := hrow{block: bi, first: true, rule: true, cls: prefix(true)}
-		x := 2*b.quote + b.indent
-		end := DocPos{Block: bi}
-		for range room {
-			row.cls = append(row.cls, hcl{text: hruleCluster, x: x, w: 1, pos: end, end: end, deco: true})
-			x++
-		}
-		c.rows = append(c.rows, row)
+		c.layRule(bi, b, room)
 		return
 	}
-	// the block's clusters, each with its position; a hard break ("\n") splits the block into
-	// lines that wrap on their own
-	type cl struct {
-		text     string
-		pos, end DocPos
-		sp       *hspan
-		deco     bool
+	firstRow := true
+	for _, ln := range c.blockLines(bi, b, cols) {
+		cs := make([]string, len(ln))
+		for i, k := range ln {
+			cs[i] = k.text
+		}
+		for _, rr := range wrapRanges(cs, room, c.measure) {
+			row := hrow{block: bi, first: firstRow, shade: b.kind == hPre, cls: c.prefix(b, firstRow)}
+			firstRow = false
+			x := 2*b.quote + b.indent
+			for i := rr[0]; i < rr[1]; i++ {
+				k := ln[i]
+				w := c.measure(k.text)
+				row.cls = append(row.cls, hcl{text: k.text, x: x, w: w, pos: k.pos, end: k.end, sp: k.sp, deco: k.deco})
+				x += w
+			}
+			c.rows = append(c.rows, row)
+		}
 	}
-	var lines [][]cl
-	var line []cl
+}
+
+// prefix is the decoration a row of b starts with: a bar and a space per quote level, then the
+// indent, with the list marker right-aligned in it on the block's first row.
+func (c *cellHTML) prefix(b *hblock, first bool) []hcl {
+	var out []hcl
+	x := 0
+	for range b.quote {
+		out = append(out, hcl{text: "▎", x: x, w: 1, deco: true}, hcl{text: " ", x: x + 1, w: 1, deco: true})
+		x += 2
+	}
+	if b.indent > 0 {
+		mark := ""
+		if first {
+			mark = b.marker
+		}
+		mw := c.measure(mark)
+		pad := max(b.indent-mw-1, 0)
+		for range pad {
+			out = append(out, hcl{text: " ", x: x, w: 1, deco: true})
+			x++
+		}
+		if mark != "" {
+			out = append(out, hcl{text: mark, x: x, w: mw, deco: true})
+			x += mw
+		}
+		for x < 2*b.quote+b.indent {
+			out = append(out, hcl{text: " ", x: x, w: 1, deco: true})
+			x++
+		}
+	}
+	return out
+}
+
+// layRule is a rule block: one row of room rule clusters after its prefix.
+func (c *cellHTML) layRule(bi int, b *hblock, room int) {
+	row := hrow{block: bi, first: true, rule: true, cls: c.prefix(b, true)}
+	x := 2*b.quote + b.indent
+	end := DocPos{Block: bi}
+	for range room {
+		row.cls = append(row.cls, hcl{text: hruleCluster, x: x, w: 1, pos: end, end: end, deco: true})
+		x++
+	}
+	c.rows = append(c.rows, row)
+}
+
+// lineCluster is one cluster of a block's line, with its document position.
+type lineCluster struct {
+	text     string
+	pos, end DocPos
+	sp       *hspan
+	deco     bool
+}
+
+// blockLines is block bi's clusters, each with its position, split into the lines a hard break
+// ("\n") ends, which wrap on their own. A table row's cells are padded to their columns (cols).
+func (c *cellHTML) blockLines(bi int, b *hblock, cols []int) [][]lineCluster {
+	var lines [][]lineCluster
+	var line []lineCluster
 	pad := func(n int, at DocPos) {
 		for range n {
-			line = append(line, cl{text: " ", pos: at, end: at, deco: true})
+			line = append(line, lineCluster{text: " ", pos: at, end: at, deco: true})
 		}
 	}
 	cell := 0
@@ -209,29 +241,10 @@ func (c *cellHTML) layBlock(bi int, b *hblock, cols []int) {
 				line = nil
 				continue
 			}
-			line = append(line, cl{text: g, pos: at, end: DocPos{Block: bi, Span: si, Offset: off}, sp: sp, deco: sp.deco})
+			line = append(line, lineCluster{text: g, pos: at, end: DocPos{Block: bi, Span: si, Offset: off}, sp: sp, deco: sp.deco})
 		}
 	}
-	lines = append(lines, line)
-	firstRow := true
-	for _, ln := range lines {
-		cs := make([]string, len(ln))
-		for i, k := range ln {
-			cs[i] = k.text
-		}
-		for _, rr := range wrapRanges(cs, room, c.measure) {
-			row := hrow{block: bi, first: firstRow, shade: b.kind == hPre, cls: prefix(firstRow)}
-			firstRow = false
-			x := 2*b.quote + b.indent
-			for i := rr[0]; i < rr[1]; i++ {
-				k := ln[i]
-				w := c.measure(k.text)
-				row.cls = append(row.cls, hcl{text: k.text, x: x, w: w, pos: k.pos, end: k.end, sp: k.sp, deco: k.deco})
-				x += w
-			}
-			c.rows = append(c.rows, row)
-		}
-	}
+	return append(lines, line)
 }
 
 // rowAt is the row at y, clamped to the document.
