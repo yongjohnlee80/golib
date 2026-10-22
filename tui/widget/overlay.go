@@ -285,45 +285,6 @@ func (h *OverlayHost) Init(ctx *tui.Context) {
 	h.Stack.Init(ctx)
 }
 
-// addLayer mounts an unkeyed popup layer on top of the stack.
-//
-// ADDRESSED, not broadcast. This used to be a Bus subscription, so a request
-// published by one widget reached EVERY mounted OverlayHost: with two hosts in
-// one application, both tried to mount the same component and the runtime
-// panicked — a component value mounts at most once — taking the application
-// down for opening a dropdown. A widget now resolves the host that contains it
-// and calls this.
-//
-// Idempotent. A duplicate open is an ordinary consequence of double activation,
-// and the runtime refuses to mount one component twice.
-func (h *OverlayHost) addLayer(layer tui.Component) {
-	if layer == nil || h.hasLayer(layer) {
-		return
-	}
-	h.Stack.Add(layer)
-	h.raiseTopmost()
-}
-
-// removeLayer unmounts a popup layer, restoring focus through the runtime's
-// scope stack. Idempotent, mirroring addLayer.
-//
-// The mounted check is the APP TEARDOWN case, and it is not hypothetical: the
-// unmount cascade takes this host's children — the layers among them — before it
-// reaches the widget whose own unmount hook closes its layer. By then the layer
-// is still in the stack's list, because a cascade does not edit container
-// bookkeeping, but its node is gone; unmounting it again panics. Asking whether
-// it is still mounted is the difference between a clean shutdown and a crash on
-// the way out.
-func (h *OverlayHost) removeLayer(layer tui.Component) {
-	if layer == nil || !h.hasLayer(layer) {
-		return
-	}
-	if h.ctx == nil || !h.ctx.MountedComponent(layer) {
-		return
-	}
-	h.Stack.Remove(layer)
-}
-
 // Layout lays the stack out, then re-places the anchored layers against their
 // anchors and dismisses any whose anchor has gone.
 //
