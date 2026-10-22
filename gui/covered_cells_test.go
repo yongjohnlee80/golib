@@ -1,10 +1,12 @@
 package gui
 
 import (
+	"fmt"
 	"image"
 	"image/color"
 	"math"
 	"slices"
+	"strings"
 	"testing"
 
 	"github.com/yongjohnlee80/gio/op"
@@ -466,4 +468,45 @@ func TestARaisedPanelOverTheTabBarLeavesTheBarItsColour(t *testing.T) {
 	if fill := rc.Calls[0]; fill.Op != "FillRect" || fill.Brush.Color != sepiaBG {
 		t.Fatalf("the bar was filled %+v; want its own %v, not the panel's %v", fill, sepiaBG, darkBG)
 	}
+}
+
+// With the bar overflowing, the active tab's underline is under the active tab's label: the
+// painter reads the tab's place among the spans drawn (tabs in view, < and > around them), not its
+// place among all the tabs, which is another span or none once the bar scrolls.
+func TestAnOverflowingTabBarUnderlinesTheActiveTab(t *testing.T) {
+	var opts []widget.TabsOption
+	for i := range 8 {
+		opts = append(opts, widget.WithTab(fmt.Sprintf("tab%d", i), widget.NewText(fmt.Sprint(i))))
+	}
+	tabs := widget.NewTabs(opts...)
+	app, sb := styledApp(t, tabs, 20, 3, NativeStyle())
+	onLoop(t, app, func() { tabs.Select(7) })
+	var row string
+	label := -1 // the cell tab7's label starts at
+	waitUntil(t, "tab7 on the bar", func() bool {
+		cells := sb.Snapshot()[0]
+		var b strings.Builder
+		for _, c := range cells {
+			b.WriteString(c.Content)
+		}
+		row = b.String()
+		for x := 0; x+3 < len(cells); x++ {
+			if cells[x].Content+cells[x+1].Content+cells[x+2].Content+cells[x+3].Content == "tab7" {
+				label = x
+				return true
+			}
+		}
+		return false
+	})
+	rc := paintOn(t, app, sb, placementOf(t, sb, tabs.NodeID()))
+	cell := float32(8)
+	for _, c := range rc.Calls {
+		if c.Op == "FillRect" && c.Rect.H == 2 { // the active tab's underline
+			if x := float32(label) * cell; c.Rect.X > x || c.Rect.X+c.Rect.W < x+4*cell {
+				t.Fatalf("the underline %+v is not under tab7, at cells %d-%d of %q", c.Rect, label, label+4, row)
+			}
+			return
+		}
+	}
+	t.Fatalf("no underline drawn; tab7 is at cell %d of %q: %+v", label, row, rc.Calls)
 }
