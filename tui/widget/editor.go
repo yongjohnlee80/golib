@@ -220,6 +220,9 @@ func (e *Editor) SetLineNumbers(v bool) {
 	e.MarkDirty()
 }
 
+// Wrap is the editor's wrap mode: WrapNone or WrapSoft.
+func (e *Editor) Wrap() WrapMode { return e.cells.wrap }
+
 // SetWrap selects WrapNone or WrapSoft while the editor runs, as WithEditorWrap does at
 // construction; the cursor stays where it is.
 func (e *Editor) SetWrap(m WrapMode) {
