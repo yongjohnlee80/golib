@@ -21,7 +21,7 @@
 // [Config] that was validated — so a non-loopback bind without TLS cannot happen.
 // [Handler.Mount] composes into a server you built, and then the bind is yours.
 //
-//	mgr, err := web.NewManager(func(b *web.Backend) web.Runner {
+//	mgr, err := web.NewManager(func(b tui.Backend, _ *web.SessionInfo) web.Runner {
 //	    return tui.NewApp(buildRoot(), tui.WithBackend(b))
 //	})
 //	h, err := web.NewHandler(web.Config{

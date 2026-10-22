@@ -11,6 +11,7 @@ import (
 
 	"github.com/yongjohnlee80/golib/auth"
 	"github.com/yongjohnlee80/golib/logger"
+	"github.com/yongjohnlee80/golib/tui"
 )
 
 // fakeApp blocks until its context ends, which is what a real App does.
@@ -36,7 +37,7 @@ func manager(t *testing.T, opts ...ManagerOption) (*Manager, *[]*fakeApp) {
 	t.Helper()
 	var mu sync.Mutex
 	var apps []*fakeApp
-	m, err := NewManager(func(*Backend, *SessionInfo) Runner {
+	m, err := NewManager(func(tui.Backend, *SessionInfo) Runner {
 		app := newFakeApp()
 		mu.Lock()
 		apps = append(apps, app)
@@ -64,7 +65,7 @@ func manager(t *testing.T, opts ...ManagerOption) (*Manager, *[]*fakeApp) {
 func TestManager_RefusesToCreateWithoutAnIdentity(t *testing.T) {
 	t.Parallel()
 	built := 0
-	m, err := NewManager(func(*Backend, *SessionInfo) Runner { built++; return newFakeApp() })
+	m, err := NewManager(func(tui.Backend, *SessionInfo) Runner { built++; return newFakeApp() })
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -97,8 +98,8 @@ func TestNewManager_RequiresAFactory(t *testing.T) {
 // backend is stopped, not left for nobody to stop, and no session remains.
 func TestManager_AnUnstartedSessionStopsItsBackend(t *testing.T) {
 	t.Parallel()
-	var built *Backend
-	m, err := NewManager(func(b *Backend, _ *SessionInfo) Runner {
+	var built tui.Backend
+	m, err := NewManager(func(b tui.Backend, _ *SessionInfo) Runner {
 		built = b
 		return nil
 	})
@@ -147,7 +148,7 @@ func (p *managerProbe) Log(_ logger.Severity, payload any) {
 func TestManager_TheSessionLimitAuditRunsUnlocked(t *testing.T) {
 	t.Parallel()
 	probe := &managerProbe{}
-	m, err := NewManager(func(*Backend, *SessionInfo) Runner { return newFakeApp() }, MaxSessions(1), ManagerLogger(probe))
+	m, err := NewManager(func(tui.Backend, *SessionInfo) Runner { return newFakeApp() }, MaxSessions(1), ManagerLogger(probe))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -292,7 +293,7 @@ func TestManager_NoGoroutineLeak(t *testing.T) {
 	before := runtime.NumGoroutine()
 
 	now := time.Now()
-	m, err := NewManager(func(*Backend, *SessionInfo) Runner { return newFakeApp() },
+	m, err := NewManager(func(tui.Backend, *SessionInfo) Runner { return newFakeApp() },
 		IdleTimeout(time.Minute), MaxSessions(32))
 	if err != nil {
 		t.Fatal(err)
@@ -351,7 +352,7 @@ func TestManager_NoGoroutineLeak(t *testing.T) {
 func TestManager_TeardownRunsWhenTheAppFails(t *testing.T) {
 	t.Parallel()
 	boom := errors.New("app exploded")
-	m, err := NewManager(func(*Backend, *SessionInfo) Runner { return &failingApp{err: boom} })
+	m, err := NewManager(func(tui.Backend, *SessionInfo) Runner { return &failingApp{err: boom} })
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -522,7 +523,7 @@ func TestManager_ConcurrentLifecycle(t *testing.T) {
 // production symptom was a 1.2% flake in TestSSO_EndToEnd_AppPanicIsContained.
 func TestManager_CreateAttached_SurvivesAnAppThatExitsImmediately(t *testing.T) {
 	t.Parallel()
-	m, err := NewManager(func(*Backend, *SessionInfo) Runner {
+	m, err := NewManager(func(tui.Backend, *SessionInfo) Runner {
 		return runnerFunc(func(context.Context) error { return nil }) // exits at once
 	})
 	if err != nil {
@@ -555,7 +556,7 @@ func TestManager_CreateAttached_SurvivesAnAppThatExitsImmediately(t *testing.T) 
 // CreateAttachedFor's justification needs re-reading rather than assuming.
 func TestManager_CreateThenAttach_LosesToAnAppThatExitsImmediately(t *testing.T) {
 	t.Parallel()
-	m, err := NewManager(func(*Backend, *SessionInfo) Runner {
+	m, err := NewManager(func(tui.Backend, *SessionInfo) Runner {
 		return runnerFunc(func(context.Context) error { return nil })
 	})
 	if err != nil {

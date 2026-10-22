@@ -10,6 +10,7 @@ import (
 	"github.com/yongjohnlee80/golib/auth"
 	"github.com/yongjohnlee80/golib/errs"
 	"github.com/yongjohnlee80/golib/logger"
+	"github.com/yongjohnlee80/golib/tui"
 )
 
 // SSO wires the whole login-handoff workflow of, so a consumer
@@ -70,7 +71,7 @@ import (
 //
 //	// The app: one build function for every mechanism, release handled.
 //	mgr, err := web.NewManager(
-//	    sso.Factory(func(b *web.Backend, id *auth.Identity, up *myUpstream) web.Runner {
+//	    sso.Factory(func(b tui.Backend, id *auth.Identity, up *myUpstream) web.Runner {
 //	        return myApp(b, id, up)
 //	    }),
 //	    mOpt,
@@ -525,7 +526,7 @@ func (s *SSO[T]) releaseOnce(v T) func() {
 // Release should not panic, and one that does is recorded, not retried.
 //
 //	mgr, err := web.NewManager(
-//	    sso.Factory(func(b *web.Backend, id *auth.Identity, up *myUpstream) web.Runner {
+//	    sso.Factory(func(b tui.Backend, id *auth.Identity, up *myUpstream) web.Runner {
 //	        return myApp(b, id, up)
 //	    }),
 //	    managerOpt,
@@ -534,8 +535,8 @@ func (s *SSO[T]) releaseOnce(v T) func() {
 // A session that cannot be given upstream state gets no App: Run returns an
 // error, which the [Manager] treats as the session failing. That is deliberate —
 // an App holding a nil upstream session fails later and further from the cause.
-func (s *SSO[T]) Factory(build func(*Backend, *auth.Identity, T) Runner) AppFactory {
-	return func(b *Backend, info *SessionInfo) Runner {
+func (s *SSO[T]) Factory(build func(tui.Backend, *auth.Identity, T) Runner) AppFactory {
+	return func(b tui.Backend, info *SessionInfo) Runner {
 		return &ssoRunner[T]{sso: s, backend: b, info: info, build: build}
 	}
 }
@@ -547,9 +548,9 @@ func (s *SSO[T]) Factory(build func(*Backend, *auth.Identity, T) Runner) AppFact
 // creation. It also puts the release on the same stack as the work it protects.
 type ssoRunner[T any] struct {
 	sso     *SSO[T]
-	backend *Backend
+	backend tui.Backend
 	info    *SessionInfo
-	build   func(*Backend, *auth.Identity, T) Runner
+	build   func(tui.Backend, *auth.Identity, T) Runner
 }
 
 func (r *ssoRunner[T]) Run(ctx context.Context) error {

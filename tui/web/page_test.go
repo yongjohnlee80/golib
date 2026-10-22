@@ -5,11 +5,13 @@ import (
 	"net/http/httptest"
 	"strings"
 	"testing"
+
+	"github.com/yongjohnlee80/golib/tui"
 )
 
 func handlerFor(t *testing.T, opts ...HandlerOption) *Handler {
 	t.Helper()
-	m, err := NewManager(func(*Backend, *SessionInfo) Runner { return newFakeApp() })
+	m, err := NewManager(func(tui.Backend, *SessionInfo) Runner { return newFakeApp() })
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -29,7 +31,7 @@ func handlerFor(t *testing.T, opts ...HandlerOption) *Handler {
 // connection at all.
 func TestNewHandler_ValidatesConfig(t *testing.T) {
 	t.Parallel()
-	m, err := NewManager(func(*Backend, *SessionInfo) Runner { return newFakeApp() })
+	m, err := NewManager(func(tui.Backend, *SessionInfo) Runner { return newFakeApp() })
 	if err != nil {
 		t.Fatal(err)
 	}
