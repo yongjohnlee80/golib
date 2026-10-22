@@ -600,12 +600,12 @@ func (r *renderer) typefaceOf(face uint16) font.Typeface {
 	return r.typeface
 }
 
-// drawImage draws an image over its cells, its Clip (in image pixels) scaled to fill them.
 // rectOf is r in float coordinates.
 func rectOf(r image.Rectangle) Rect {
 	return Rect{X: float32(r.Min.X), Y: float32(r.Min.Y), W: float32(r.Dx()), H: float32(r.Dy())}
 }
 
+// drawImage draws an image over its cells, its Clip (in image pixels) scaled to fill them.
 func (r *renderer) drawImage(ops *op.Ops, img placedImage) {
 	dst, within, ok := r.m.anchored(tui.Rect{X: img.X, Y: img.Y, W: img.Cols, H: img.Rows})
 	if !ok {

@@ -448,6 +448,10 @@ var ends = [...]endSpec{
 	endZeroMany:    {0, drawCrowsFoot},
 }
 
+// ends has one entry per end kind: a kind added before endKinds fails to build here until the table
+// has its entry, rather than indexing past it.
+var _ = [1]struct{}{}[len(ends)-int(endKinds)]
+
 // drawDiamond is a diamond end: filled for composition, hollow (the background) for aggregation.
 func drawDiamond(m endMark) {
 	d := m.size * diamondReach
