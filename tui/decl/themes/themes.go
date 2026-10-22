@@ -50,7 +50,6 @@ import (
 	"slices"
 	"strings"
 
-	"github.com/yongjohnlee80/golib/parse/qml"
 	tuidecl "github.com/yongjohnlee80/golib/tui/decl"
 	"github.com/yongjohnlee80/golib/tui/decl/themes/qmlfiles"
 )
@@ -79,7 +78,7 @@ func FS() fs.FS { return files }
 // "app.window" → "white", "app.inactive.highlight" → "brightblack". It is for
 // a program handing the theme to something outside its layout, a plugin
 // drawing in its own window, say; [style.ParseColor] reads each value. An
-// unknown theme, or a file that is not a Theme of strings, is an error.
+// unknown theme, or a file Validate refuses, is an error.
 func Values(name string) (map[string]string, error) { return values(files, name) }
 
 func values(fsys fs.FS, name string) (map[string]string, error) {
@@ -87,19 +86,15 @@ func values(fsys fs.FS, name string) (map[string]string, error) {
 	if err != nil {
 		return nil, fmt.Errorf("themes: no theme %q (want one of %s)", name, strings.Join(Names(), ", "))
 	}
-	tree, err := qml.QML{File: name + ".qml"}.Parse(src)
-	if err != nil {
-		return nil, fmt.Errorf("themes: %w", err)
-	}
-	if tree.Root == nil || tree.Root.Type != "Theme" {
-		return nil, fmt.Errorf("themes: %s.qml is not a Theme", name)
-	}
-	out := make(map[string]string, len(tree.Root.Props))
-	for _, p := range tree.Root.Props {
-		if p.Value.Kind != qml.SpecValueString {
-			return nil, fmt.Errorf("themes: %s is not a string (at %s)", p.Name, p.Pos)
+	// The one reading of a theme: what Validate refuses (an unknown key, a colour the toolkit
+	// cannot read, a missing role), Values refuses, every problem named.
+	out, diags := Validate(name+".qml", src)
+	if len(diags) != 0 {
+		msgs := make([]string, len(diags))
+		for i, d := range diags {
+			msgs[i] = d.Error()
 		}
-		out[p.Name] = p.Value.Raw
+		return nil, fmt.Errorf("themes: %s.qml is not a valid Theme: %s", name, strings.Join(msgs, "; "))
 	}
 	return out, nil
 }
