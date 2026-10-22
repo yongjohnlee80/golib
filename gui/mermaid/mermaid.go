@@ -26,10 +26,10 @@ import (
 	"errors"
 	"fmt"
 	"image/color"
-	"sync"
 
 	"github.com/yongjohnlee80/golib/graph/layout"
 	"github.com/yongjohnlee80/golib/gui"
+	"github.com/yongjohnlee80/golib/gui/internal/picture"
 	pm "github.com/yongjohnlee80/golib/parse/mermaid"
 )
 
@@ -146,8 +146,7 @@ type Laid struct {
 	group []laidGroup
 	texts []label
 
-	mu     sync.Mutex
-	shaped map[shapeKey]*gui.TextLayout // the loop's shaping of each label line
+	labels picture.Labels // the loop's shaping of each label line
 }
 
 // Size is the diagram as Paint draws it.
@@ -169,13 +168,7 @@ func (l *Laid) NodeAt(p gui.Point) (string, bool) {
 
 // fitTo sets the fit that scales a diagram wider than width down to it. A layer sets size, its
 // extent unscaled.
-func (l *Laid) fitTo(width float32) {
-	l.fit = 1
-	if width > 0 && l.size.W > width {
-		l.fit = width / l.size.W
-		l.size = gui.Size{W: width, H: l.size.H * l.fit}
-	}
-}
+func (l *Laid) fitTo(width float32) { l.size, l.fit = picture.FitTo(l.size, width) }
 
 // label is lines of text in one font and colour, placed in box: each line centred in it, or from
 // its left when left is set.
@@ -299,11 +292,6 @@ type laidGroup struct {
 	dashed       bool
 	tab          bool // the title in a tab at the top left, as a sequence diagram's loop and alt
 	parts        []part
-}
-
-type shapeKey struct {
-	text string
-	font gui.Font
 }
 
 // layoutErr is a layout engine's error as Lay reports it: one too large for the engine is the
