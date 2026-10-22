@@ -11,9 +11,9 @@ import "github.com/yongjohnlee80/golib/tui"
 // driven by named actions rather than by raw event handling, so the same
 // vocabulary serves the mouse, the keyboard, a UserEvent and DoAction.
 //
-// The six are deliberately NOT one cancel action with a flag. An earlier design
-// mapped motion-outside, release-elsewhere, capture loss, Escape, hide and
-// unmount all onto a single cancel, which cannot work: moving off a row must
+// The six are deliberately NOT one cancel action with a flag. One cancel for
+// motion-outside, release-elsewhere, capture loss, Escape, hide and unmount
+// cannot work: moving off a row must
 // KEEP the pointer grabbed so moving back re-arms, releasing elsewhere must END
 // the grab but leave the menu open, and Escape must actually close it. Those are
 // three incompatible effects.

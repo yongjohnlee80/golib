@@ -111,8 +111,8 @@ func (k *keyDispatch) applyKeyset(ks Keyset, m *keymap.Map) {
 // mode and the action, neither of which depends on the keyset.
 //
 // An overlay chord on a functional key without Shift ({Code: KeyDown}) is replayed onto its Shift
-// twin as well, unless the overlay names the twin itself: before chords had Shift, the editor read
-// Shift+Down as Down, so the old literal meant both, and still does.
+// twin as well, unless the overlay names the twin itself: a chord with no Shift field means the key
+// with or without Shift, so a host's overlay written that way binds both.
 func (k *keyDispatch) applyOverlay(ov Keymap) {
 	set := func(kc KeyChord, act Action) {
 		delete(k.late, kc) // a host's binding is early, whatever its action

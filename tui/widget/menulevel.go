@@ -90,8 +90,8 @@ func (v *levelView) paintIndicator(s tui.Surface, rows []MenuItemModel, x, y, h 
 //
 // A level is a separate node, so the runtime delivers its pointer events here
 // rather than to the Menu — and without a resolver of its own a submenu's rows
-// would simply not be clickable, which is exactly what happened before this
-// existed. The resolver and the handler both delegate to the owner, so there is
+// would not be clickable at all. The resolver and the handler both delegate to
+// the owner, so there is
 // one state machine for the whole cascade rather than one per level.
 func (p *menuPopup) Init(ctx *tui.Context) {
 	p.Base.Init(ctx)
@@ -101,11 +101,11 @@ func (p *menuPopup) Init(ctx *tui.Context) {
 	// THE LEVEL IS GONE WHEN THIS NODE IS GONE, and the owner learns it HERE —
 	// synchronously, on the unmount itself, whoever caused it.
 	//
-	// The Menu used to reconcile through OverlayDismissedEvent instead, which is
-	// published on the program lane: CloseAnchored unmounts the popup and
-	// returns, and until that event drains the Menu still counts a level that no
-	// longer exists. In the same turn, reopening the row then hit the
-	// already-deepest early return and mounted nothing while reporting success.
+	// Reconciling through OverlayDismissedEvent instead would lag: it is
+	// published on the program lane, so after CloseAnchored unmounts the popup
+	// and returns, the Menu would still count a level that no longer exists
+	// until that event drains. Reopening the row in the same turn would then hit
+	// the already-deepest early return and mount nothing while reporting success.
 	//
 	// An unmount hook covers every path rather than the one the host mediates:
 	// an explicit CloseAnchored, the anchor-loss commit, the host's own
@@ -586,12 +586,12 @@ func (m *Menu) openLevel(parent ItemID, children []MenuItemModel) error {
 	}
 	// A NEW LEVEL REPLACES EVERYTHING BELOW ITS OWN ROW.
 	//
-	// Opening used to simply append, so a level stayed on screen when the user
-	// moved to a row that had nothing to do with it: clicking File and then Help
-	// left File's dropdown open beside Help's, and a third click added a third.
-	// Which rows are on screen then disagrees with which rows the model says are
-	// open, and the arrow keys drive one cascade while the user is looking at
-	// another.
+	// Appending instead would keep a level on screen when the user moves to a
+	// row that has nothing to do with it: clicking File and then Help would
+	// leave File's dropdown open beside Help's, and a third click would add a
+	// third. Which rows are on screen would then disagree with which rows the
+	// model says are open, and the arrow keys would drive one cascade while the
+	// user looks at another.
 	//
 	// The row's own depth decides what goes: a root row replaces the whole
 	// cascade, a row inside the first dropdown keeps that dropdown and replaces
@@ -769,8 +769,8 @@ func (m *Menu) closeLevelsFrom(i int) {
 // that opened it.
 //
 // The levels are the HOST's children, not the Menu's, so the runtime's own
-// unmount cascade does not reach them — unmounting the Menu used to leave its
-// popups mounted and its model still counting them. Registered as an unmount
+// unmount cascade does not reach them: without this, unmounting the Menu would
+// leave its popups mounted and its model still counting them. Registered as an unmount
 // hook so the cleanup is synchronous and cannot be missed by a caller who
 // removed the Menu without calling Close.
 //
