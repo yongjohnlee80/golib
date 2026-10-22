@@ -79,14 +79,11 @@ func mix(a, b color.NRGBA, t float32) color.NRGBA {
 	return c
 }
 
-// contrast is how far apart two colours read: the difference of their luminance.
+// contrast is how far apart two colours read: WCAG's contrast ratio (style.ContrastRatio), golib's
+// one measure of it.
 func contrast(a, b color.NRGBA) float64 {
-	l := func(c color.NRGBA) float64 { return 0.2126*float64(c.R) + 0.7152*float64(c.G) + 0.0722*float64(c.B) }
-	d := l(a) - l(b)
-	if d < 0 {
-		return -d
-	}
-	return d
+	r, _ := style.ContrastRatio(style.RGB(a.R, a.G, a.B), style.RGB(b.R, b.G, b.B))
+	return r
 }
 
 // defaultAccent is the accent a view draws with when no tui theme names one.
