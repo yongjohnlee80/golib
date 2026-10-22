@@ -1,6 +1,8 @@
 package decl
 
 import (
+	"reflect"
+
 	"github.com/yongjohnlee80/golib/decl"
 	"github.com/yongjohnlee80/golib/highlight"
 	"github.com/yongjohnlee80/golib/parse"
@@ -71,6 +73,8 @@ type Build struct {
 	WindowCore func(string) (*widget.WindowCore, bool)
 	// highlighters are the adapter's syntax definitions, for SyntaxHighlighter.
 	highlighters *highlight.Repository
+	// services are the adapter's WithService values, by type: what Service[T] reads.
+	services map[reflect.Type]any
 	// declared are the properties the type declares, its Ctor and its Setters: the only ones its
 	// builder may read ([Build.ReadProps]). Nil when a test calls a builder directly.
 	declared map[string]bool
@@ -173,3 +177,28 @@ func Register(r *Registry, typeName string, b Builder) {
 type Setter func(c tui.Component, v qml.SpecValue) error
 
 var _ decl.Adapter = (*Adapter)(nil)
+
+// WithService gives every builder the service v, of type T, which a builder takes with
+// Service[T]: a consumer's own collaborator (a store, a clock, a client) that its types need at
+// Build, without decl knowing its type or growing a Build field for it. T is the type the builder
+// asks for, so an interface registers as itself: WithService[Clock](sysClock{}). A second service
+// of one type replaces the first.
+func WithService[T any](v T) Option {
+	return func(a *Adapter) {
+		if a.services == nil {
+			a.services = map[reflect.Type]any{}
+		}
+		a.services[reflect.TypeFor[T]()] = v
+	}
+}
+
+// Service is the service of type T the adapter was given (WithService), and whether it was given
+// one.
+func Service[T any](b Build) (T, bool) {
+	v, ok := b.services[reflect.TypeFor[T]()]
+	if !ok {
+		var zero T
+		return zero, false
+	}
+	return v.(T), true
+}

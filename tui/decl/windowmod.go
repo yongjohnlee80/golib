@@ -224,9 +224,11 @@ var windowButtonsType = Type{Name: "WindowButtons", Ctor: []string{"target", "cl
 }
 
 var windowTaskbarType = Type{Name: "WindowTaskbar", Children: NoChildren().Because("it supplies its own entry controls"), Build: func(b Build) (tui.Component, []string, error) {
-	model, ok := b.WindowCollector.(*widget.MinimizedWindows)
-	if !ok || model == nil {
-		return nil, nil, fmt.Errorf("WindowTaskbar requires WithWindowCollector with a MinimizedWindows model")
+	// any collector that also presents its entries (widget.WindowEntries) will do: a
+	// MinimizedWindows, or a consumer's own
+	model, ok := b.WindowCollector.(widget.WindowEntries)
+	if mw, isMW := model.(*widget.MinimizedWindows); !ok || isMW && mw == nil {
+		return nil, nil, fmt.Errorf("WindowTaskbar requires WithWindowCollector with a collector it can present (widget.WindowEntries), as a MinimizedWindows is")
 	}
 	return widget.NewWindowTaskbar(model), nil, nil
 }}

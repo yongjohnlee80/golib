@@ -3,6 +3,7 @@ package decl
 import (
 	"fmt"
 	"maps"
+	"reflect"
 	"sort"
 	"strings"
 
@@ -81,7 +82,9 @@ type Adapter struct {
 	windowCollector widget.WindowCollector
 	windowTargets   map[string]any
 	// highlighters are the syntax definitions a SyntaxHighlighter may name.
-	highlighters    *highlight.Repository
+	highlighters *highlight.Repository
+	// services are the WithService values, by type, handed to every Build.
+	services        map[reflect.Type]any
 	sourceLanguages *highlight.Catalog
 	sink            func(error)
 
@@ -411,6 +414,7 @@ func (a *Adapter) Create(c decl.Construction) ([]string, error) {
 		WindowTarget:    a.windowTargets[c.ID],
 		WindowCore:      a.windowCoreByID,
 		highlighters:    a.highlighters,
+		services:        a.services,
 		SourceLanguages: a.sourceLanguages,
 		asked:           asked,
 	})
