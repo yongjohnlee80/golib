@@ -76,8 +76,17 @@ type childLister interface {
 // childLister is walked through its mounted children (Context.Children), so a
 // control inside an adapter's node — a ComboBox's select — is found where Tab
 // finds it.
+//
+// A hidden component (a Hideable that is not Visible) and its subtree are
+// skipped, as the focus ring skips them (tui's hiddenWithin), so a trap whose
+// only control is hidden keeps its fallback stop. Placement is not read: a
+// control not yet laid out, or laid out at no size, still counts, since
+// focusFirst runs when an overlay opens, before its first layout.
 func firstFocusable(ctx *tui.Context, c tui.Component) tui.Component {
 	if c == nil {
+		return nil
+	}
+	if h, ok := c.(tui.Hideable); ok && !h.Visible() {
 		return nil
 	}
 	if f, ok := c.(tui.Focusable); ok && f.AcceptsFocus() {
@@ -110,9 +119,6 @@ func childrenOf(ctx *tui.Context, c tui.Component) []tui.Component {
 	return ctx.Children(c)
 }
 
-// focusFirst walks c's subtree in document order and focuses the first
-// component that accepts focus, reporting whether one did. ctx is as for
-// firstFocusable.
 // trapFallback is the fallback-stop rule every trapping overlay shares (Float, the popup, Modal):
 // the overlay's own node takes focus only while content holds nothing that does, so the trap's ring
 // is never empty (Escape stays reachable) and never offers a phantom stop beside real controls. It
@@ -121,6 +127,9 @@ func trapFallback(ctx *tui.Context, content tui.Component) bool {
 	return firstFocusable(ctx, content) == nil
 }
 
+// focusFirst walks c's subtree in document order and focuses the first
+// component that accepts focus, reporting whether one did. ctx is as for
+// firstFocusable.
 func focusFirst(ctx *tui.Context, c tui.Component) bool {
 	f := firstFocusable(ctx, c)
 	return f != nil && ctx != nil && ctx.FocusComponent(f)
