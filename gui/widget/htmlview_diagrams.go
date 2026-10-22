@@ -11,9 +11,9 @@ import (
 	tuiwidget "github.com/yongjohnlee80/golib/tui/widget"
 )
 
-// DIAGRAMS — a page's <pre class="mermaid"> and <pre class="vega-lite">, drawn by the view's
-// Diagrammer (tui/widget's WithDiagrams), as the editor's Rendered view draws a mermaid or
-// vega-lite fence: Ready is its picture, in the pre's place; Pending keeps the last picture, or
+// DIAGRAMS — a page's <pre class="mermaid"> and <pre class="vega-lite">, or a pre of another
+// language the view's Diagrammer names (DiagramLanguages), drawn by that Diagrammer (tui/widget's
+// WithDiagrams), as the editor's Rendered view draws the language's fence: Ready is its picture, in the pre's place; Pending keeps the last picture, or
 // the code until there is one; Declined, or no Diagrammer, is the code.
 //
 // # HTML Mermaid Diagram Lifecycle Architecture
@@ -53,7 +53,7 @@ type htmlDiagramReady struct {
 }
 
 // WithHTMLDiagrams gives an HTMLView the Diagrammer that draws its pages' diagrams (a pre of class
-// mermaid or vega-lite), as tui/widget's WithDiagrams does, typed: that one holds any value, and
+// mermaid or vega-lite, or of a language the Diagrammer names), as tui/widget's WithDiagrams does, typed: that one holds any value, and
 // one that is not a Diagrammer draws every diagram as its source.
 func WithHTMLDiagrams(d Diagrammer) tuiwidget.HTMLOption { return tuiwidget.WithDiagrams(d) }
 
@@ -103,17 +103,24 @@ func newHTMLDiagrams(l diagramHost) *htmlDiagrams {
 	return &htmlDiagrams{l: l, slots: map[pageDiagram]*diagramSlot{}, tasks: map[tui.TaskID]struct{}{}}
 }
 
-// diagramSource is a pre's diagram when it is a <pre class="mermaid"> or a <pre
-// class="vega-lite">: its language, and its text as the page holds it.
-func diagramSource(n *phtml.Node) (pageDiagram, bool) {
+// diagramSource is a pre's diagram when one of its classes is a language the view's Diagrammer
+// draws (DiagramLanguages; golib's own, <pre class="mermaid"> or <pre class="vega-lite">, for one
+// that does not name them): its language, and its text as the page holds it.
+func diagramSource(n *phtml.Node, l diagramHost) (pageDiagram, bool) {
 	if n.Name != "pre" {
 		return pageDiagram{}, false
 	}
 	class, _ := n.Attr("class")
+	language := nativeLanguage
+	if d, _ := l.diagrammer(); d != nil {
+		if names, ok := d.(DiagramLanguages); ok {
+			language = names.DiagramLanguage
+		}
+	}
 	lang := ""
 	for _, c := range strings.Fields(class) {
-		if l, ok := diagramLangs[c]; ok { // the pre classes drawn as pictures, as a fence's languages
-			lang = l
+		if name, ok := language(c); ok { // the pre classes drawn as pictures, as a fence's languages
+			lang = name
 			break
 		}
 	}
@@ -202,7 +209,7 @@ func (m *htmlDiagrams) reset() {
 // diagramBox is a diagram pre's box when its picture is drawn: one run holding the picture as an
 // inline box, fitted to width. False keeps the code.
 func (b *builder) diagramBox(bx *box, n *phtml.Node, st *computed, src [2]int) bool {
-	dg, ok := diagramSource(n)
+	dg, ok := diagramSource(n, b.l)
 	if !ok || dg.src == "" {
 		return false
 	}

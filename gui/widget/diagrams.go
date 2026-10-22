@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"math"
+	"slices"
 	"strings"
 	"sync"
 
@@ -14,6 +15,7 @@ import (
 	"github.com/yongjohnlee80/golib/gui/mermaid"
 	"github.com/yongjohnlee80/golib/gui/vegalite"
 	pm "github.com/yongjohnlee80/golib/parse/mermaid"
+	"github.com/yongjohnlee80/golib/tui"
 )
 
 // Diagram Caching and Worker Deduplication Architecture:
@@ -42,14 +44,30 @@ import (
 // that asks, and each diagram is laid out once, by one job on a worker, whoever else waits for it.
 // A job is cancelled when its last waiter withdraws; one that finishes fills the cache whether or
 // not anyone still waits, so a block shown again finds it.
-func Diagrams(fallback Diagrammer) Diagrammer {
-	return &diagrams{fallback: fallback, jobs: map[diagramHash]*diagramJob{}, cache: newLaidCache(64)}
+//
+// engines are the host's own languages, laid out natively as golib's are: an engine takes each of
+// its spellings from golib's and from an engine before it. A nil engine is none.
+func Diagrams(fallback Diagrammer, engines ...DiagramEngine) Diagrammer {
+	d := &diagrams{fallback: fallback, jobs: map[diagramHash]*diagramJob{}, cache: newLaidCache(64),
+		engines: map[string]DiagramEngine{}, langs: map[string]string{}}
+	for _, e := range append([]DiagramEngine{mermaidEngine, vegaliteEngine}, engines...) {
+		if tui.NilLike(e) {
+			continue
+		}
+		langs := e.Langs()
+		for _, l := range langs {
+			d.engines[l], d.langs[l] = e, langs[0]
+		}
+	}
+	return d
 }
 
 type diagramHash [32]byte
 
 type diagrams struct {
 	fallback Diagrammer
+	engines  map[string]DiagramEngine // by each spelling of its language
+	langs    map[string]string        // each spelling's language name: its engine's first
 	mu       sync.Mutex
 	jobs     map[diagramHash]*diagramJob
 	cache    *laidCache
@@ -69,52 +87,78 @@ type diagramWaiter struct {
 
 // laidResult is a diagram's layout, or why there is none.
 type laidResult struct {
-	laid laidPicture
+	laid LaidPicture
 	err  error
 }
 
-// laidPicture is a diagram or chart laid out: what it paints, and its size.
-type laidPicture interface {
-	gui.View
-	Size() gui.Size
-}
-
-// diagramLangs are the languages golib draws natively, by each spelling a fence's info or a pre's
-// class may give, to the language's own name: both spellings of Vega-Lite.
-var diagramLangs = map[string]string{"mermaid": "mermaid", "vega-lite": "vega-lite", "vegalite": "vega-lite"}
-
-// diagramEngine is a language golib lays out natively: its layout, and the errors it hands to the
-// fallback (a diagram it does not draw, ErrUnsupported; one over a limit, ErrTooLarge).
-type diagramEngine struct {
-	lay      func(ctx context.Context, req DiagramRequest, m gui.Measurer) (laidPicture, error)
+// nativeEngine is a language golib lays out natively: its spellings, its layout, and the errors
+// it hands to the fallback (a diagram it does not draw, ErrUnsupported; one over a limit,
+// ErrTooLarge).
+type nativeEngine struct {
+	langs    []string
+	lay      func(ctx context.Context, req DiagramRequest, m gui.Measurer) (LaidPicture, error)
 	declines []error
 }
 
-// diagramEngines are the native engines, by language name (diagramLangs).
-var diagramEngines = map[string]diagramEngine{
-	"mermaid": {
-		lay: func(ctx context.Context, req DiagramRequest, m gui.Measurer) (laidPicture, error) {
+func (e nativeEngine) Langs() []string { return e.langs }
+
+func (e nativeEngine) Lay(ctx context.Context, req DiagramRequest, m gui.Measurer) (LaidPicture, error) {
+	return e.lay(ctx, req, m)
+}
+
+func (e nativeEngine) Declines(err error) bool {
+	for _, decline := range e.declines {
+		if errors.Is(err, decline) {
+			return true
+		}
+	}
+	return false
+}
+
+// golib's engines, which every Diagrams starts from.
+var (
+	mermaidEngine DiagramEngine = nativeEngine{
+		langs: []string{"mermaid"},
+		lay: func(ctx context.Context, req DiagramRequest, m gui.Measurer) (LaidPicture, error) {
 			return mermaid.Lay(ctx, req.Src, req.Width, mermaidTheme(req.Theme), m)
 		},
 		declines: []error{pm.ErrUnsupported, pm.ErrTooLarge},
-	},
-	"vega-lite": {
-		lay: func(ctx context.Context, req DiagramRequest, m gui.Measurer) (laidPicture, error) {
+	}
+	vegaliteEngine DiagramEngine = nativeEngine{
+		langs: []string{"vega-lite", "vegalite"},
+		lay: func(ctx context.Context, req DiagramRequest, m gui.Measurer) (LaidPicture, error) {
 			return vegalite.Lay(ctx, req.Src, req.Width, chartTheme(req.Theme), m)
 		},
 		declines: []error{vegalite.ErrUnsupported, vegalite.ErrTooLarge},
-	},
+	}
+)
+
+// nativeLanguage is DiagramLanguage for a Diagrammer that names no languages: golib's own.
+func nativeLanguage(name string) (string, bool) {
+	for _, e := range []DiagramEngine{mermaidEngine, vegaliteEngine} {
+		if langs := e.Langs(); slices.Contains(langs, name) {
+			return langs[0], true
+		}
+	}
+	return "", false
 }
 
-// engineFor is the native engine for a block's language, in any of its spellings.
-func engineFor(lang string) (diagramEngine, bool) {
-	e, ok := diagramEngines[diagramLangs[lang]]
-	return e, ok
+// DiagramLanguage names d's engines' languages, then its fallback's.
+func (d *diagrams) DiagramLanguage(name string) (string, bool) {
+	if l, ok := d.langs[name]; ok {
+		return l, true
+	}
+	if f, ok := d.fallback.(DiagramLanguages); ok {
+		if l, ok := f.DiagramLanguage(name); ok {
+			return l, true
+		}
+	}
+	return "", false
 }
 
 // Diagram answers the diagram request from cache, kicks off background layout, or falls back.
 func (d *diagrams) Diagram(ctx context.Context, req DiagramRequest, ready func()) DiagramAnswer {
-	e, ok := engineFor(req.Lang)
+	e, ok := d.engines[req.Lang]
 	if !ok {
 		return d.fall(ctx, req, ready)
 	}
@@ -139,13 +183,13 @@ func (d *diagrams) Diagram(ctx context.Context, req DiagramRequest, ready func()
 
 // start runs a job laying out req, on a worker of its own, with a measurer it holds for the job.
 // Called with d.mu held.
-func (d *diagrams) start(k diagramHash, req DiagramRequest, e diagramEngine) *diagramJob {
+func (d *diagrams) start(k diagramHash, req DiagramRequest, e DiagramEngine) *diagramJob {
 	ctx, cancel := context.WithCancel(context.Background())
 	j := &diagramJob{cancel: cancel, waiters: map[int]*diagramWaiter{}}
 	d.jobs[k] = j
 	go func() {
 		m, release := gui.AcquireMeasurer(req.Scale)
-		laid, err := e.lay(ctx, req, m)
+		laid, err := e.Lay(ctx, req, m)
 		release()
 		if err != nil { // a typed nil *Laid in the interface is not a picture
 			laid = nil
@@ -194,7 +238,7 @@ func (d *diagrams) leave(k diagramHash, id int) {
 }
 
 // answer is a cached result's answer: the picture, the error's picture, or the fallback's.
-func (d *diagrams) answer(ctx context.Context, req DiagramRequest, ready func(), e diagramEngine, r laidResult) DiagramAnswer {
+func (d *diagrams) answer(ctx context.Context, req DiagramRequest, ready func(), e DiagramEngine, r laidResult) DiagramAnswer {
 	var se *pm.SyntaxError
 	switch {
 	case r.err == nil:
@@ -203,10 +247,8 @@ func (d *diagrams) answer(ctx context.Context, req DiagramRequest, ready func(),
 		pic, size := syntaxPicture(se, req)
 		return DiagramAnswer{State: Ready, Pic: pic, Size: size}
 	}
-	for _, decline := range e.declines {
-		if errors.Is(r.err, decline) {
-			return d.fall(ctx, req, ready)
-		}
+	if e.Declines(r.err) {
+		return d.fall(ctx, req, ready)
 	}
 	return DiagramAnswer{State: Declined}
 }
