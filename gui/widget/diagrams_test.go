@@ -3,6 +3,7 @@ package widget
 import (
 	"context"
 	"image/color"
+	"strings"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -243,5 +244,61 @@ func TestDiagramsLayAChart(t *testing.T) {
 	}
 	if a := ask(chart(`{"mark":`)); a.State != Declined || fb.asked.Load() != 1 {
 		t.Errorf("malformed JSON: %v (fallback asked %d times), want Declined", a.State, fb.asked.Load())
+	}
+}
+
+// laidSize is req laid out by the native chain: its size once Ready.
+func laidSize(t *testing.T, req DiagramRequest) gui.Size {
+	t.Helper()
+	d := Diagrams(nil)
+	ready := make(chan struct{}, 1)
+	d.Diagram(context.Background(), req, func() { ready <- struct{}{} })
+	select {
+	case <-ready:
+	case <-time.After(10 * time.Second):
+		t.Fatal("the diagram was never laid out")
+	}
+	a := d.Diagram(context.Background(), req, func() {})
+	if a.State != Ready {
+		t.Fatalf("laid out: %v, want Ready", a.State)
+	}
+	return a.Size
+}
+
+// wideLabels is a flowchart whose boxes are as wide as their labels, which are far wider in a
+// monospace face than in a proportional one.
+const wideLabels = "flowchart LR\n  A[iiiiiiiiiiiiiiii] --> B[llllllllllllllll]"
+
+// inFamily is th with its prose in family.
+func inFamily(th Theme, family string) Theme {
+	th.Prose.Family = family
+	return th
+}
+
+// A fence's diagram is measured in the family the window draws its prose in: laid out in a window
+// whose prose is Go Mono, it is the size of one whose theme names Go Mono, not one in the default
+// family, which the worker laying it out would otherwise use.
+func TestAFencesDiagramIsMeasuredInTheWindowsProse(t *testing.T) {
+	_, release := gui.AcquireMeasurer(1)
+	release()
+	rc := gui.NewRecordingCanvas(gui.Size{W: 600, H: 400}, gui.Size{W: 8, H: 19.2})
+	rc.SetFonts(gui.Fonts{Prose: "Go Mono", Mono: "Go Mono"})
+	host := &askedAt{}
+	r := NewMarkdownRenderer(WithDiagrams(Diagrams(nil)))
+	r.LayOut(Block{From: 0, To: 4}, append(append([]string{"```mermaid"}, strings.Split(wideLabels, "\n")...), "```"),
+		600, false, rc.Text(), diagramTheme, host)
+	if len(host.reqs) != 1 {
+		t.Fatalf("asked %d times, want once", len(host.reqs))
+	}
+	mono := flowReq(wideLabels)
+	mono.Theme = inFamily(diagramTheme, "Go Mono")
+	sans := flowReq(wideLabels)
+	sans.Theme = inFamily(diagramTheme, "Go")
+	want, other := laidSize(t, mono), laidSize(t, sans)
+	if want == other {
+		t.Fatalf("Go Mono and Go lay out alike (%+v): the cell observes nothing", want)
+	}
+	if size := laidSize(t, host.reqs[0]); size != want {
+		t.Errorf("laid out at %+v, want %+v (Go Mono's), not %+v (Go's)", size, want, other)
 	}
 }

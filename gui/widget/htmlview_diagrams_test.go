@@ -3,6 +3,7 @@ package widget
 import (
 	"context"
 	"image/color"
+	"strings"
 	"testing"
 
 	"github.com/yongjohnlee80/golib/gui"
@@ -225,5 +226,31 @@ func TestAnyDiagrammerReplacedDrawsAgain(t *testing.T) {
 	paint() // two values of one type holding slices: comparing them panics
 	if n < 2 || preDrawn(l) {
 		t.Errorf("a value Diagrammer replaced by another: asked %d times, the first's picture kept %v", n, preDrawn(l))
+	}
+}
+
+// A page's diagram is measured in the family the window draws its prose in, as an Editor's is:
+// asked in a window whose prose is Go Mono, it lays out at the size of one naming Go Mono.
+func TestAPagesDiagramIsMeasuredInTheWindowsProse(t *testing.T) {
+	f := &htmlFakeDiagrams{state: Pending}
+	v := tuiwidget.NewHTMLView(tuiwidget.WithDiagrams(f))
+	v.SetHTML([]byte("<pre class=\"mermaid\">" + strings.ReplaceAll(wideLabels, ">", "&gt;") + "</pre>"))
+	BindHTML(v)
+	c := gui.NewRecordingCanvas(gui.Size{W: 600, H: 400}, gui.Size{W: 8, H: 19.2})
+	c.TextPx = 16
+	c.SetFonts(gui.Fonts{Prose: "Go Mono", Mono: "Go Mono"})
+	v.BoundLayout().(*htmlLayout).Paint(c)
+	if len(f.asked) == 0 || f.asked[0].Src != wideLabels {
+		t.Fatalf("asked %+v, want the page's diagram", f.asked)
+	}
+	req := f.asked[0]
+	mono, sans := req, req
+	mono.Theme, sans.Theme = inFamily(req.Theme, "Go Mono"), inFamily(req.Theme, "Go")
+	want, other := laidSize(t, mono), laidSize(t, sans)
+	if want == other {
+		t.Fatalf("Go Mono and Go lay out alike (%+v): the cell observes nothing", want)
+	}
+	if size := laidSize(t, req); size != want {
+		t.Errorf("laid out at %+v, want %+v (Go Mono's), not %+v (Go's)", size, want, other)
 	}
 }
