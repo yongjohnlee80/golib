@@ -128,28 +128,6 @@ func TestGuiWindowButtonsPaintRealControlGeometry(t *testing.T) {
 	})
 }
 
-func TestPanelCollapsedMoveRestoresAtTheMovedPosition(t *testing.T) {
-	h := startPanel(t, tui.Rect{X: 2, Y: 2, W: 30, H: 6}, gw.Movable(), gw.Minimizable())
-	h.mouse(tui.MousePress, 30, 2)
-	h.mouse(tui.MouseRelease, 30, 2)
-	h.until("collapsed", func() bool {
-		var height int
-		h.onLoop(func() { height = h.panel.WindowBehavior().Bounds().H })
-		return height == 1
-	})
-	h.mouse(tui.MousePress, 10, 2)
-	h.mouse(tui.MouseMotion, 15, 3)
-	h.mouse(tui.MouseRelease, 15, 3)
-	h.until("moved collapsed row", func() bool {
-		var bounds tui.Rect
-		h.onLoop(func() { bounds = h.panel.WindowBehavior().Bounds() })
-		return bounds == (tui.Rect{X: 7, Y: 3, W: 30, H: 1})
-	})
-	h.mouse(tui.MousePress, 35, 3)
-	h.mouse(tui.MouseRelease, 35, 3)
-	h.until("restored at moved position", func() bool { return h.bounds() == (tui.Rect{X: 7, Y: 3, W: 30, H: 6}) })
-}
-
 func TestPanelCapabilityOnlyDoubleClickMaximize(t *testing.T) {
 	h := startPanel(t, tui.Rect{X: 2, Y: 2, W: 30, H: 6}, gw.WithWindowCapabilities(widget.WithWindowMaximize()))
 	h.mouse(tui.MousePress, 10, 2)

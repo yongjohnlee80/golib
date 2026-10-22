@@ -123,8 +123,10 @@ func TestPanelWithoutTheOptionsStaysPut(t *testing.T) {
 
 func TestPanelControls(t *testing.T) {
 	var closed atomic.Bool
+	dock := widget.NewMinimizedWindows()
 	h := startPanel(t, tui.Rect{X: 2, Y: 2, W: 30, H: 6},
-		gw.Closable(func() { closed.Store(true) }), gw.Minimizable(), gw.Maximizable())
+		gw.Closable(func() { closed.Store(true) }), gw.Maximizable(),
+		gw.WithWindowCapabilities(widget.WithWindowMinimize(dock)))
 	title := h.row(2)
 	for _, c := range []string{"[x]", "[□]", "[_]"} {
 		if !strings.Contains(title, c) {
@@ -134,15 +136,15 @@ func TestPanelControls(t *testing.T) {
 	right := 2 + 30
 	click := func(x int) { h.mouse(tui.MousePress, x, 2); h.mouse(tui.MouseRelease, x, 2) }
 
-	click(right - 3*3 + 1) // [_]
+	click(right - 3*3 + 1) // [_]: the panel goes to its collector, hidden, title bar and all
 	h.until("minimized", func() bool {
 		var m bool
-		h.onLoop(func() { m = h.panel.Minimized() })
+		h.onLoop(func() { m = h.panel.Minimized() && len(dock.Entries()) == 1 })
 		return m
 	})
-	h.until("the content gone", func() bool { return !strings.Contains(h.tb.String(), "content") })
-	click(right - 3*3 + 1)
-	h.until("restored", func() bool { return strings.Contains(h.tb.String(), "content") })
+	h.until("the panel gone", func() bool { return !strings.Contains(h.tb.String(), "Notes") })
+	h.onLoop(func() { h.panel.WindowBehavior().Restore() }) // as the collector's taskbar does
+	h.until("restored", func() bool { return strings.Contains(h.tb.String(), "content") && len(dock.Entries()) == 0 })
 
 	click(right - 2*3 + 1) // [□]
 	h.until("maximized", func() bool {
@@ -165,7 +167,8 @@ func TestPanelControls(t *testing.T) {
 }
 
 func TestPanelNativeBar(t *testing.T) {
-	p := gw.NewPanel(widget.NewText("x"), gw.WithTitle("Notes"), gw.Closable(func() {}), gw.Minimizable(), gw.Maximizable())
+	p := gw.NewPanel(widget.NewText("x"), gw.WithTitle("Notes"), gw.Closable(func() {}), gw.Maximizable(),
+		gw.WithWindowCapabilities(widget.WithWindowMinimize(widget.NewMinimizedWindows())))
 	v, ok := p.NativeView()
 	if !ok {
 		t.Fatal("no native view")
@@ -189,20 +192,16 @@ func TestPanelNativeBar(t *testing.T) {
 	}
 }
 
-func TestPanelMinimizedCollapsesItsFloat(t *testing.T) {
+// A panel no longer collapses to its title bar: Minimizable is deprecated and does nothing, so a
+// panel given only it shows no minimize control, and its bar shows no "[_]" to click.
+func TestMinimizableAloneShowsNoMinimizeControl(t *testing.T) {
 	h := startPanel(t, tui.Rect{X: 2, Y: 2, W: 30, H: 6}, gw.Minimizable())
-	h.until("the content", func() bool { return strings.Contains(h.tb.String(), "content") })
-	if strings.Contains(h.row(4), "under the panel") {
-		t.Fatalf("the open panel does not cover the background: %q", h.row(4))
+	if strings.Contains(h.row(2), "[_]") {
+		t.Errorf("a panel given only the deprecated Minimizable shows a minimize control: %q", h.row(2))
 	}
 	h.mouse(tui.MousePress, 2+30-3+1, 2)
 	h.mouse(tui.MouseRelease, 2+30-3+1, 2)
-	h.until("the title row alone", func() bool { return h.bounds() == tui.Rect{X: 2, Y: 2, W: 30, H: 1} })
-	// what was under the panel's content shows again
-	h.until("the background under it", func() bool { return strings.Contains(h.row(4), "under the panel") })
-	if !strings.Contains(h.row(2), "Notes") {
-		t.Errorf("the title bar went with the content: %q", h.row(2))
-	}
+	h.until("the panel still whole", func() bool { return h.bounds() == tui.Rect{X: 2, Y: 2, W: 30, H: 6} })
 }
 
 func TestPanelBoundsWhileMaximized(t *testing.T) {
