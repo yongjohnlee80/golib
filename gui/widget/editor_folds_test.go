@@ -124,7 +124,7 @@ func TestRevealScrollsToADiagram(t *testing.T) {
 // Hidden metadata is no row: k under it stays; gg reaches it and draws a bar at its place; j
 // leaves it.
 func TestHiddenMetadataIsABar(t *testing.T) {
-	h := startEditor(t, 50, 14, WithRenderer(NewMarkdownRenderer(HideMetadata())), WithView(tuiwidget.ViewRendered),
+	h := startEditor(t, 50, 14, WithRenderer(NewMarkdownRenderer(WithHideMetadata())), WithView(tuiwidget.ViewRendered),
 		WithCore(tuiwidget.CoreInitialText("---\ntitle: x\n---\nbody\nmore")))
 	h.onLoop(func() { h.e.core.SetLine(3, 0) })
 	h.keys(key('k'))

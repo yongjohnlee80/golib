@@ -161,7 +161,9 @@ var (
 func NewBackend(opts ...Option) *Backend {
 	cfg := defaultConfig()
 	for _, o := range opts {
-		o(&cfg)
+		if o != nil { // a nil option is no option
+			o(&cfg)
+		}
 	}
 	// Two shapers: text.Shaper is not safe for concurrent use, and both tui's loop (cells) and
 	// the Gio goroutine (the IME preedit) shape text. System fonts stay enabled, so characters

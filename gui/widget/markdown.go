@@ -63,20 +63,22 @@ var (
 func NewMarkdownRenderer(opts ...MarkdownOption) *MarkdownRenderer {
 	r := &MarkdownRenderer{h1: 2, languages: highlight.NewRepository(languages.Definitions()...).Snapshot()}
 	for _, o := range opts {
-		o(r)
+		if o != nil { // a nil option is no option
+			o(r)
+		}
 	}
 	return r
 }
 
-// HeadingScale is h1's size as a multiple of the text's; the levels step down to 1.0 at h6.
-func HeadingScale(h1 float32) MarkdownOption {
+// WithHeadingScale is h1's size as a multiple of the text's; the levels step down to 1.0 at h6.
+func WithHeadingScale(h1 float32) MarkdownOption {
 	return func(r *MarkdownRenderer) { r.h1 = max(h1, 1) }
 }
 
-// HideMetadata omits closed frontmatter and HTML comments from the reading view, without
+// WithHideMetadata omits closed frontmatter and HTML comments from the reading view, without
 // changing source positions. A block being edited still reveals its source, as other Markdown
 // blocks do; Raw mode always shows the original buffer. Incomplete frontmatter stays visible.
-func HideMetadata() MarkdownOption { return func(r *MarkdownRenderer) { r.hideMetadata = true } }
+func WithHideMetadata() MarkdownOption { return func(r *MarkdownRenderer) { r.hideMetadata = true } }
 
 // ReflowFrom includes earlier lines whose metadata presentation changed in the last source
 // update. Repeated Blocks calls for that same source keep the answer (InCode also calls Blocks).

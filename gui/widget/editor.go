@@ -134,7 +134,9 @@ func WithRuler(col int) EditorOption { return func(c *editorConfig) { c.ruler = 
 func NewEditor(opts ...EditorOption) *Editor {
 	var cfg editorConfig
 	for _, o := range opts {
-		o(&cfg)
+		if o != nil { // a nil option is no option
+			o(&cfg)
+		}
 	}
 	e := &Editor{core: tuiwidget.NewEditorCore(cfg.core...), render: cfg.render, fontSize: cfg.fontSize,
 		wrap: tuiwidget.WrapNone, numbers: cfg.numbers, ruler: cfg.ruler}
@@ -157,7 +159,7 @@ func NewEditor(opts ...EditorOption) *Editor {
 	e.stack = newEditorStack(e)
 	e.tabs = tuiwidget.NewTabStrip()
 	// the host's tabs at the bar's left, in all its room up to Raw | Rendered at its right
-	e.panel = NewPanel(e.stack, append([]PanelOption{TitleLeading(e.tabs), TitleTrailing(e.sw)}, cfg.panel...)...)
+	e.panel = NewPanel(e.stack, append([]PanelOption{WithTitleLeading(e.tabs), WithTitleTrailing(e.sw)}, cfg.panel...)...)
 	// the strip's bar is the title bar's own colour, the panel's as it painted it last. The callback
 	// holds the panel weakly: the registry is global, and a callback holding the editor (or anything
 	// that holds its strip) would keep the strip, its weak key, alive, and every editor with it

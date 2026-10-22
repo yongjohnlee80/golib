@@ -13,7 +13,7 @@ import (
 
 func metadataLayout(t *testing.T, source string, line int, editing bool) BlockLayout {
 	t.Helper()
-	r := NewMarkdownRenderer(HideMetadata())
+	r := NewMarkdownRenderer(WithHideMetadata())
 	lines := strings.Split(source, "\n")
 	sh := gui.NewRecordingCanvas(gui.Size{W: 500, H: 500}, gui.Size{W: 8, H: 16}).Text()
 	th := Theme{Prose: gui.Font{Size: 16}, Mono: gui.Font{Family: gui.MonospaceFamily(), Size: 14}}
@@ -28,7 +28,7 @@ func metadataLayout(t *testing.T, source string, line int, editing bool) BlockLa
 
 func TestLaterCommentCloseAndRemovalReflowEarlierEditorBlocks(t *testing.T) {
 	source := "before <!-- note\nstill note\nend\n\nlast"
-	h := startEditor(t, 60, 20, WithRenderer(NewMarkdownRenderer(HideMetadata())), WithCore(tuiwidget.CoreInitialText(source)))
+	h := startEditor(t, 60, 20, WithRenderer(NewMarkdownRenderer(WithHideMetadata())), WithCore(tuiwidget.CoreInitialText(source)))
 	h.onLoop(func() { h.e.SetView(tuiwidget.ViewRendered); h.e.core.SetLine(4, 0) })
 	firstText := func() string {
 		var text strings.Builder
@@ -107,7 +107,7 @@ func BenchmarkMetadataBlocksAfterOrdinaryEdit(b *testing.B) {
 			lines := append([]string(nil), base...)
 			r := NewMarkdownRenderer()
 			if hide {
-				r = NewMarkdownRenderer(HideMetadata())
+				r = NewMarkdownRenderer(WithHideMetadata())
 			}
 			r.Blocks(lines, 0, len(lines))
 			b.ResetTimer()
@@ -216,7 +216,7 @@ func TestCommentLookingCodeAndEscapesStayVisible(t *testing.T) {
 }
 
 func TestMetadataMaskChangesWithTheDocumentAndPartialBlockRanges(t *testing.T) {
-	r := NewMarkdownRenderer(HideMetadata())
+	r := NewMarkdownRenderer(WithHideMetadata())
 	lines := []string{"before", "<!-- hidden", "still hidden", "-->", "after"}
 	blocks := r.Blocks(lines, 2, 5)
 	if len(blocks) != 2 || blocks[0] != (Block{From: 2, To: 4}) || blocks[1] != (Block{From: 4, To: 5}) {

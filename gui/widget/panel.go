@@ -40,7 +40,7 @@ type Panel struct {
 	leading  []tui.Component
 	trailing []tui.Component
 	// leadingShare caps the leading widgets at this share of the bar's width; 0 leaves them the
-	// whole bar (TitleLeadingShare)
+	// whole bar (WithTitleLeadingShare)
 	leadingShare float64
 
 	movable, resizable, maximizable bool
@@ -83,7 +83,9 @@ func NewPanel(content tui.Component, opts ...PanelOption) *Panel {
 	p := &Panel{content: content, hover: noControl, barSt: style.New().Reverse(true)}
 	p.Label("Panel")
 	for _, o := range opts {
-		o(p)
+		if o != nil { // a nil option is no option
+			o(p)
+		}
 	}
 	var behavior []tuiwidget.WindowModOption
 	if p.movable {
@@ -124,36 +126,36 @@ func NewPanel(content tui.Component, opts ...PanelOption) *Panel {
 // WithTitle sets the title bar's text.
 func WithTitle(s string) PanelOption { return func(p *Panel) { p.title = s } }
 
-// TitleLeading puts ws at the title bar's left: tui children, with their own focus and keys.
-func TitleLeading(ws ...tui.Component) PanelOption {
+// WithTitleLeading puts ws at the title bar's left: tui children, with their own focus and keys.
+func WithTitleLeading(ws ...tui.Component) PanelOption {
 	return func(p *Panel) { p.leading = append(p.leading, ws...) }
 }
 
-// TitleTrailing puts ws at the title bar's right, before the window controls: tui children, with
-// their own focus and keys, as TitleLeading's. The first given is the leftmost.
-func TitleTrailing(ws ...tui.Component) PanelOption {
+// WithTitleTrailing puts ws at the title bar's right, before the window controls: tui children, with
+// their own focus and keys, as WithTitleLeading's. The first given is the leftmost.
+func WithTitleTrailing(ws ...tui.Component) PanelOption {
 	return func(p *Panel) { p.trailing = append(p.trailing, ws...) }
 }
 
-// TitleLeadingShare caps the leading widgets at share of the bar's width (two thirds: 2.0/3), so
+// WithTitleLeadingShare caps the leading widgets at share of the bar's width (two thirds: 2.0/3), so
 // the title and the trailing widgets keep the rest; 0, the default, caps them only by the room
 // left.
-func TitleLeadingShare(share float64) PanelOption {
+func WithTitleLeadingShare(share float64) PanelOption {
 	return func(p *Panel) { p.leadingShare = share }
 }
 
-// Movable lets a drag of the title bar move the panel.
-func Movable() PanelOption { return func(p *Panel) { p.movable = true } }
+// WithMovable lets a drag of the title bar move the panel.
+func WithMovable() PanelOption { return func(p *Panel) { p.movable = true } }
 
-// Resizable lets a drag of the right edge, the bottom edge or their corner resize the panel.
-func Resizable() PanelOption { return func(p *Panel) { p.resizable = true } }
+// WithResizable lets a drag of the right edge, the bottom edge or their corner resize the panel.
+func WithResizable() PanelOption { return func(p *Panel) { p.resizable = true } }
 
-// Closable shows a close control that calls onClose.
-func Closable(onClose func()) PanelOption { return func(p *Panel) { p.onClose = onClose } }
+// WithClosable shows a close control that calls onClose.
+func WithClosable(onClose func()) PanelOption { return func(p *Panel) { p.onClose = onClose } }
 
-// Maximizable shows a control, and takes a title-bar double-click, that fills the Float's area,
+// WithMaximizable shows a control, and takes a title-bar double-click, that fills the Float's area,
 // and again restores.
-func Maximizable() PanelOption { return func(p *Panel) { p.maximizable = true } }
+func WithMaximizable() PanelOption { return func(p *Panel) { p.maximizable = true } }
 
 // WithBarStyle sets the title bar's look in cells.
 func WithBarStyle(st style.Style) PanelOption { return func(p *Panel) { p.barSt = st } }
@@ -450,7 +452,7 @@ func (p *Panel) paintBar(c gui.Canvas) {
 }
 
 // BarColors are the native bar's text, fill and page colours from its last paint: a widget on
-// the bar (TitleLeading) draws in them. Zero before the first paint.
+// the bar (WithTitleLeading) draws in them. Zero before the first paint.
 func (p *Panel) BarColors() (text, fill, page color.NRGBA) { return p.barText, p.barFill, p.barPage }
 
 var (

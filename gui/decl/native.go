@@ -100,7 +100,9 @@ func Native(opts ...NativeOption) tuidecl.Style {
 	n.documents["html"] = n.htmlDocument
 	n.renderers["markdown"] = n.markdownRenderer
 	for _, o := range opts {
-		o(n)
+		if o != nil { // a nil option is no option
+			o(n)
+		}
 	}
 	ed, _ := tuidecl.StandardType("Editor")
 	ed.Build = n.buildEditor
@@ -135,7 +137,7 @@ func (n *native) markdownRenderer(s tuidecl.RendererSpec) widget.Renderer {
 	if m, ok := s.(tuidecl.MarkdownSpec); ok {
 		opts = append(opts, widget.WithCodeLanguages(m.SourceLanguages))
 		if m.HeadingScale > 0 {
-			opts = append(opts, widget.HeadingScale(m.HeadingScale))
+			opts = append(opts, widget.WithHeadingScale(m.HeadingScale))
 		}
 		if m.Mermaid {
 			opts = append(opts, widget.WithDiagrams(n.diagramChain()))
