@@ -593,11 +593,7 @@ func (c *chart) readMark(raw json.RawMessage) error {
 		case k == "filled":
 			err = json.Unmarshal(v, &c.mark.filled)
 		case k == "color", k == "fill":
-			var s string
-			col, ok := color.NRGBA{}, false
-			if json.Unmarshal(v, &s) == nil {
-				col, ok = cssColor(s)
-			}
+			col, ok := jsonColor(v)
 			if !ok {
 				return unsupported("the mark's colour %s", v)
 			}
@@ -814,11 +810,7 @@ func readChannel(m map[string]json.RawMessage, name string, params map[string]pa
 		return ch, nil
 	}
 	if v, ok := m["value"]; ok {
-		var s string
-		col, ok := color.NRGBA{}, false
-		if json.Unmarshal(v, &s) == nil {
-			col, ok = cssColor(s)
-		}
+		col, ok := jsonColor(v)
 		if (name != "color" && name != "fill") || !ok || len(m) != 1 {
 			return nil, unsupported("%s as a value", name)
 		}
@@ -857,26 +849,15 @@ func readChannel(m map[string]json.RawMessage, name string, params map[string]pa
 			}
 			typed = true
 		case k == "aggregate":
-			var a string
-			_ = json.Unmarshal(v, &a)
-			switch a {
-			case "count", "sum", "mean", "median", "min", "max":
-				ch.aggregate = a
-			case "average":
-				ch.aggregate = "mean"
-			default:
+			a, ok := aggregateOp(v)
+			if !ok {
 				return nil, unsupported("%s's aggregate %s", name, v)
 			}
+			ch.aggregate = a
 		case k == "title":
-			if isNull(v) {
-				ch.noTitle = true
-				continue
-			}
-			var t string
-			if json.Unmarshal(v, &t) != nil {
+			if !ch.readTitle(v) {
 				return nil, unsupported("%s's title %s", name, v)
 			}
-			ch.title = &t
 		case k == "axis" || k == "legend":
 			err = ch.readGuide(v, name, k)
 		case k == "scale":
@@ -933,15 +914,9 @@ func (ch *channel) readGuide(raw json.RawMessage, name, guide string) error {
 	for k, v := range m {
 		switch {
 		case k == "title":
-			if isNull(v) {
-				ch.noTitle = true
-				continue
-			}
-			var t string
-			if json.Unmarshal(v, &t) != nil {
+			if !ch.readTitle(v) {
 				return unsupported("%s's %s title", name, guide)
 			}
-			ch.title = &t
 		case k == "grid" && guide == "axis":
 			var g bool
 			if json.Unmarshal(v, &g) != nil {
@@ -1090,16 +1065,11 @@ func (ch *channel) readSortField(m map[string]json.RawMessage, name string) erro
 				return unsupported("%s's sort field %s", name, v)
 			}
 		case "op":
-			var op string
-			_ = json.Unmarshal(v, &op)
-			switch op {
-			case "count", "sum", "mean", "median", "min", "max":
-				ch.sortOp = op
-			case "average":
-				ch.sortOp = "mean"
-			default:
+			op, ok := aggregateOp(v)
+			if !ok {
 				return unsupported("%s's sort op %s", name, v)
 			}
+			ch.sortOp = op
 		case "order":
 			if isNull(v) {
 				continue
@@ -1157,6 +1127,44 @@ func (ch *channel) readStack(raw json.RawMessage, name string) error {
 		return unsupported("%s's stack %s", name, raw)
 	}
 	return nil
+}
+
+// jsonColor is a JSON string read as a CSS colour; false when it is not a string or not a colour.
+func jsonColor(raw json.RawMessage) (color.NRGBA, bool) {
+	var s string
+	if json.Unmarshal(raw, &s) != nil {
+		return color.NRGBA{}, false
+	}
+	return cssColor(s)
+}
+
+// aggregateOp is an aggregate operation, as an encoding's aggregate and a sort's op both name one:
+// count, sum, mean (or its alias average), median, min or max.
+func aggregateOp(raw json.RawMessage) (string, bool) {
+	var a string
+	_ = json.Unmarshal(raw, &a)
+	switch a {
+	case "count", "sum", "mean", "median", "min", "max":
+		return a, true
+	case "average":
+		return "mean", true
+	}
+	return "", false
+}
+
+// readTitle reads a channel's or its guide's title: null hides it, a string sets it. false for
+// anything else.
+func (ch *channel) readTitle(raw json.RawMessage) bool {
+	if isNull(raw) {
+		ch.noTitle = true
+		return true
+	}
+	var t string
+	if json.Unmarshal(raw, &t) != nil {
+		return false
+	}
+	ch.title = &t
+	return true
 }
 
 // cssColor reads a CSS colour, as Vega-Lite takes one; currentColor is not one.
