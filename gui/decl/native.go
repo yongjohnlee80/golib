@@ -85,7 +85,7 @@ func WithDocumentViewFor(kind string, f func(tuidecl.DocumentSpec) widget.Docume
 // in pixels, which a host reaches through the Editor's DocumentView. Its pre class="mermaid" draw
 // through the style's one chain.
 func (n *native) htmlDocument(tuidecl.DocumentSpec) widget.DocumentView {
-	v := tuiwidget.NewHTMLView(tuiwidget.WithDiagrams(n.diagramChain()))
+	v := tuiwidget.NewHTMLView(widget.WithHTMLDiagrams(n.diagramChain()))
 	widget.BindHTML(v)
 	return v
 }
@@ -110,8 +110,8 @@ func Native(opts ...NativeOption) tuidecl.Style {
 	hv.Build = func(b tuidecl.Build) (tui.Component, []string, error) {
 		c, consumed, err := build(b)
 		if v, ok := c.(*tuiwidget.HTMLView); ok && err == nil {
-			widget.BindHTML(v)                          // laid out in pixels and drawn natively, the same widget to the host
-			tuiwidget.WithDiagrams(n.diagramChain())(v) // its pre class="mermaid", through the style's one chain
+			widget.BindHTML(v)                           // laid out in pixels and drawn natively, the same widget to the host
+			widget.WithHTMLDiagrams(n.diagramChain())(v) // its pre class="mermaid", through the style's one chain
 		}
 		return c, consumed, err
 	}

@@ -8,6 +8,7 @@ import (
 	"github.com/yongjohnlee80/golib/gui/flow"
 	phtml "github.com/yongjohnlee80/golib/parse/html"
 	"github.com/yongjohnlee80/golib/tui"
+	tuiwidget "github.com/yongjohnlee80/golib/tui/widget"
 )
 
 // DIAGRAMS — a page's <pre class="mermaid"> and <pre class="vega-lite">, drawn by the view's
@@ -50,6 +51,11 @@ type htmlDiagramReady struct {
 	dg  pageDiagram
 	gen uint64
 }
+
+// WithHTMLDiagrams gives an HTMLView the Diagrammer that draws its pages' diagrams (a pre of class
+// mermaid or vega-lite), as tui/widget's WithDiagrams does, typed: that one holds any value, and
+// one that is not a Diagrammer draws every diagram as its source.
+func WithHTMLDiagrams(d Diagrammer) tuiwidget.HTMLOption { return tuiwidget.WithDiagrams(d) }
 
 // pageDiagram is a pre drawn as a picture: its language (mermaid, vega-lite) and its source.
 type pageDiagram struct{ lang, src string }
