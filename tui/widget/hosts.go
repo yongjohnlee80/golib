@@ -54,7 +54,8 @@ type modalHost interface {
 }
 
 // layerRaiser is what a Float raises itself through: to the top of the ordinary layers, or above
-// the open dialogs when it is a shown modal one.
+// the open dialogs when it is a shown modal one. Raise is exported, so a host outside this package
+// that implements it raises the Floats under it too, where only an *OverlayHost did before.
 type layerRaiser interface {
 	Raise(f *Float)
 }
