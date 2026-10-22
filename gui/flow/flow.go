@@ -13,6 +13,7 @@ import (
 	"unicode"
 
 	"github.com/yongjohnlee80/golib/gui"
+	"github.com/yongjohnlee80/golib/gui/internal/linebreak"
 )
 
 // Rich Text Layout and Line Breaking Pipeline:
@@ -242,11 +243,11 @@ func split(spans []Span, ws WhiteSpace) []piece {
 				out = append(out, piece{kind: newline, span: si, from: i, to: i + n})
 				i += n
 				lastSpace = true
-			case isSpace(r):
+			case linebreak.IsSpace(r):
 				j := i
 				for j < len(s) {
 					r2, n2 := decode(s[j:])
-					if !isSpace(r2) || (r2 == '\n' && ws != Normal) {
+					if !linebreak.IsSpace(r2) || (r2 == '\n' && ws != Normal) {
 						break
 					}
 					j += n2
@@ -270,17 +271,17 @@ func split(spans []Span, ws WhiteSpace) []piece {
 				j := i
 				for j < len(s) {
 					r2, n2 := decode(s[j:])
-					if isSpace(r2) {
+					if linebreak.IsSpace(r2) {
 						break
 					}
 					j += n2
-					if isCJK(r2) || r2 == '-' {
+					if linebreak.After(r2) {
 						break // a break opportunity after it
 					}
 				}
 				w := s[i:j]
 				last, _ := lastRune(w)
-				out = append(out, piece{kind: word, span: si, from: i, to: j, display: w, cjk: isCJK(last) || last == '-'})
+				out = append(out, piece{kind: word, span: si, from: i, to: j, display: w, cjk: linebreak.After(last)})
 				lastSpace = false
 				i = j
 			}
@@ -605,15 +606,6 @@ func lastRune(s string) (rune, bool) {
 		last, ok = r, true
 	}
 	return last, ok
-}
-
-// isSpace reports whether the rune is an ASCII whitespace character.
-func isSpace(r rune) bool { return r == ' ' || r == '\t' || r == '\n' || r == '\r' || r == '\f' }
-
-// isCJK reports a character after which a line may break: CJK ideographs, kana and Hangul
-// syllables (UAX #14's ID class, approximately).
-func isCJK(r rune) bool {
-	return unicode.Is(unicode.Han, r) || unicode.Is(unicode.Hiragana, r) || unicode.Is(unicode.Katakana, r) || unicode.Is(unicode.Hangul, r)
 }
 
 // clusterLayouts shapes a letter-spaced frag's clusters one by one, nil for a space: each is drawn
