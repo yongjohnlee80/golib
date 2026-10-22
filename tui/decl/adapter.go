@@ -192,13 +192,8 @@ type Option func(*Adapter)
 // It is REQUIRED for any schema that binds a handler. Without it, mounting such
 // a schema fails rather than proceeding: a toolkit callback is shaped func()
 // with nowhere to put an error, so an adapter with no sink would make a handler
-// that always fails indistinguishable from one that works.
-//
-// An earlier version documented that absence as "the error is dropped", three
-// lines below a comment calling exactly that the one handling this design will
-// not defend. Documenting a violation does not make it a decision; the rule is
-// now enforced where it can be, and a schema with no handlers still needs no
-// sink.
+// that always fails indistinguishable from one that works. A schema with no
+// handlers needs no sink.
 func WithErrorSink(fn func(error)) Option {
 	return func(a *Adapter) { a.sink = fn }
 }

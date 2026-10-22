@@ -211,19 +211,14 @@ func adoptFlexChild(parent, child tui.Component, attached map[string]qml.SpecVal
 }
 
 // buildButton wires its activation at construction, which is the only chance
-// the widget gives: there is no SetOnActivate.
+// the widget gives: there is no SetOnActivate. It reads Qt's Button.flat (no
+// brackets, the label alone: a toolbar's, a dock's icon), and builds with an
+// EMPTY label: Button has a SetLabel, so the label travels the runtime path.
 //
-// It builds with an EMPTY label and consumes nothing. Button has a SetLabel, so
-// the label travels the runtime path and exercises the half of the seam that
-// Split cannot.
-//
-// The empty label is the point, not laziness. An earlier version read the label
-// here AND reported nothing consumed, so the engine applied it again: the value
-// was set twice, and SetLabel's equality guard hid that for a single
-// declaration. Two declarations of the same property exposed it — construction
-// took the LAST while the replay ran in DOCUMENT order — which is the general
-// shape of consuming a property without saying so.
-// buildButton reads Qt's Button.flat: no brackets, the label alone (a toolbar's, a dock's icon).
+// A property a builder reads, it reports consumed. The engine applies any it
+// does not, so a label read here and not reported would be set twice, and two
+// declarations of it would land in two orders: construction takes the LAST, the
+// replay runs in DOCUMENT order.
 func buildButton(b Build) (tui.Component, []string, error) {
 	var flat bool
 	consumed, err := b.ReadProps(map[string]field{"flat": into(&flat, boolOf)})
