@@ -238,22 +238,27 @@ func NewSSO[T any](cfg SSOConfig[T]) (*SSO[T], error) {
 	if s.ttl == 0 {
 		s.ttl = DefaultHandoffTTL
 	}
-	if a := cfg.Admission; a != nil {
+	if s.now == nil {
+		s.now = time.Now
+	}
+	a := cfg.Admission
+	if a != nil {
 		if cfg.Max != 0 && cfg.Max != a.Cap() {
 			return nil, errs.Wrap(errs.ErrInvalidArgument, "web.NewSSO: Max %d differs from the Admission's cap %d; "+
 				"set the cap once, with AdmissionCap", cfg.Max, a.Cap())
 		}
-		s.max = a.Cap()
-		if err := a.attach(s); err != nil {
-			return nil, err
-		}
-		s.adm = a
+		s.max, s.adm = a.Cap(), a
 	}
 	if s.max == 0 {
 		s.max = DefaultMaxPendingLogins
 	}
-	if s.now == nil {
-		s.now = time.Now
+	// ATTACHED LAST. Attaching publishes s to a Handler that may already be serving logins (an SSO
+	// may attach after the Manager and Handler are built), so every field a login reads (the
+	// clock, the Admission, the cap) is set before it.
+	if a != nil {
+		if err := a.attach(s); err != nil {
+			return nil, err
+		}
 	}
 	return s, nil
 }
