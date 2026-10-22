@@ -295,3 +295,21 @@ func TestAPanelTitleGivesAZeroWidthClusterNoColumn(t *testing.T) {
 		t.Errorf("C at column %d with A at %d, want %d: the zero-width cluster took a column\n%s", c, a, a+2, h.row(2))
 	}
 }
+
+// The bar's text is whichever of its cells' colours has the higher WCAG contrast with the page
+// (tui/style's measure): on a mid grey page, black (5.3:1), not white (4.0:1), which a difference of
+// gamma-unaware luminances picked.
+func TestPanelBarTextHasTheHigherWCAGContrast(t *testing.T) {
+	p := gw.NewPanel(widget.NewText("x"), gw.WithTitle("Notes"))
+	v, _ := p.NativeView()
+	black := color.NRGBA{A: 0xff}
+	white := color.NRGBA{R: 0xff, G: 0xff, B: 0xff, A: 0xff}
+	page := color.NRGBA{R: 0x7f, G: 0x7f, B: 0x7f, A: 0xff}
+	rc := gui.NewRecordingCanvas(gui.Size{W: 240, H: 80}, gui.Size{W: 8, H: 16})
+	rc.Around = page
+	rc.Colors = func(int, int) (fg, bg color.NRGBA) { return black, white }
+	v.(gui.View).Paint(rc)
+	if text, _, _ := p.BarColors(); text != black {
+		t.Fatalf("the bar's text is %v on the page %v; want black, the higher contrast", text, page)
+	}
+}
