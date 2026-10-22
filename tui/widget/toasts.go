@@ -355,7 +355,7 @@ func (t *Toasts) Layout(c tui.Constraints) tui.Size {
 		w, h = max(w, bw), h+len(lines)+2
 	}
 	laid := c.Constrain(tui.Size{W: w, H: h})
-	t.Context().AfterLayout("widget.toasts", func() { t.laid = laid }) // read by Render: committed, so a measure moves nothing
+	t.Context().AfterLayout(toastsCommitKey, func() { t.laid = laid }) // read by Render: committed, so a measure moves nothing
 	return laid
 }
 
@@ -417,3 +417,6 @@ func (t *Toasts) paint(s tui.Surface, x, y, w int, lines []string, when string) 
 		drawText(s, x+2, y+1+i, l, t.st)
 	}
 }
+
+// toastsCommitKey is the Toasts' laid stack commit (tui.Context.AfterLayout).
+const toastsCommitKey tui.CommitKey = "widget.toasts"

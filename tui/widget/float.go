@@ -307,7 +307,7 @@ func (f *Float) Layout(c tui.Constraints) tui.Size {
 	w := boundedMax(c.MaxW, c.MinW)
 	h := boundedMax(c.MaxH, c.MinH)
 	area := tui.Size{W: w, H: h}
-	f.ctx.AfterLayout("widget.float.area", func() { f.area = area }) // Area's: committed, so a measure moves nothing
+	f.ctx.AfterLayout(floatAreaCommitKey, func() { f.area = area }) // Area's: committed, so a measure moves nothing
 	f.ctx.LayoutChild(f.layer, tui.Tight(area))
 	f.ctx.PlaceChild(f.layer, tui.Rect{X: 0, Y: 0, W: w, H: h})
 	return c.Constrain(tui.Size{W: w, H: h})
@@ -374,7 +374,7 @@ func (l *floatLayer) Layout(c tui.Constraints) tui.Size {
 	}
 	content := l.owner.place(tui.Rect{W: w, H: h}, l.layoutChild)
 	l.ctx.PlaceChild(l.owner.child, content)
-	l.ctx.AfterLayout("widget.float", func() { l.owner.content = content }) // ContentRect's: committed, so a measure moves nothing
+	l.ctx.AfterLayout(floatContentCommitKey, func() { l.owner.content = content }) // ContentRect's: committed, so a measure moves nothing
 	return c.Constrain(tui.Size{W: w, H: h})
 }
 
@@ -471,3 +471,9 @@ func (l *floatLayer) KeyBindings(m *keymap.Map) []keymap.Binding {
 	}
 	return tui.BindingsOf(m, FloatClose)
 }
+
+// The Float's commits (tui.Context.AfterLayout): its area, and its content's rect.
+const (
+	floatAreaCommitKey    tui.CommitKey = "widget.float.area"
+	floatContentCommitKey tui.CommitKey = "widget.float"
+)

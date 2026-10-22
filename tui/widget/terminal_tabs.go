@@ -609,7 +609,7 @@ func (t *TerminalTabs) SetDefaultLook(look style.Style) {
 func (t *TerminalTabs) Layout(c tui.Constraints) tui.Size {
 	w, h := fillW(c), fillH(c)
 	if t.ctx != nil { // narrower than its tabs, the strip scrolls them between < and >
-		t.ctx.AfterLayout("tab-window", func() { t.strip.commitWindow(w) })
+		t.ctx.AfterLayout(tabWindowCommitKey, func() { t.strip.commitWindow(w) })
 	}
 	if e, err := t.find(t.active); err == nil && e.closing == nil && h > 1 {
 		t.ctx.LayoutChild(e.terminal, tui.Tight(tui.Size{W: w, H: h - 1}))

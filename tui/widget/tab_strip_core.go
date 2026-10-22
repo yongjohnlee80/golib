@@ -417,6 +417,10 @@ func (s *tabStrip) window(tabs []stripTab, widths []int, room int) (first int, r
 	return min(first, fitFrom(widths, room)), revealed
 }
 
+// tabWindowCommitKey is a tab row's window commit (tui.Context.AfterLayout), the same for every
+// owner of a strip: TabStrip, Tabs and TerminalTabs.
+const tabWindowCommitKey tui.CommitKey = "tab-window"
+
 // commitWindow stores the window the row shows in avail cells: the strip's owner calls it after
 // layout (tui.Context.AfterLayout), with the width it was laid out in.
 func (s *tabStrip) commitWindow(avail int) {

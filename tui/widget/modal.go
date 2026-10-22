@@ -487,7 +487,7 @@ func (m *Modal) Layout(cs tui.Constraints) tui.Size {
 		cardSize := ctx.LayoutChild(m.card, tui.Loose(offer))
 		card := placeCard(m.placement, full, cardSize)
 		ctx.PlaceChild(m.card, card)
-		ctx.AfterLayout("widget.modal", func() { m.cardRect = card }) // CardRect's: committed, so a measure moves nothing
+		ctx.AfterLayout(modalCommitKey, func() { m.cardRect = card }) // CardRect's: committed, so a measure moves nothing
 	}
 	return cs.Constrain(full)
 }
@@ -569,3 +569,6 @@ func (m *Modal) focusInitial() {
 	// from the request instead of the result would then name the wrong button.
 	m.refreshSelection()
 }
+
+// modalCommitKey is the Modal's card rect commit (tui.Context.AfterLayout).
+const modalCommitKey tui.CommitKey = "widget.modal"

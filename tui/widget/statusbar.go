@@ -284,7 +284,7 @@ func (s *StatusBar) Layout(c tui.Constraints) tui.Size {
 	}
 	leading := min(lx, end)
 	// what Render reads is committed after layout, so a measure moves nothing on screen
-	s.ctx.AfterLayout("widget.statusbar", func() { s.placed, s.leading = placed, leading })
+	s.ctx.AfterLayout(statusBarCommitKey, func() { s.placed, s.leading = placed, leading })
 	return sz
 }
 
@@ -349,3 +349,6 @@ func (s *StatusBar) Render(sur tui.Surface) {
 	}
 	drawText(sur, cx, 0, ct, s.segStyle(s.center))
 }
+
+// statusBarCommitKey is the StatusBar's placed segments commit (tui.Context.AfterLayout).
+const statusBarCommitKey tui.CommitKey = "widget.statusbar"
