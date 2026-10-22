@@ -253,19 +253,35 @@ func (r *renderer) drawStageMargins(ops *op.Ops, m metrics) {
 	}
 }
 
+// modeColor tallies colours for the most common one, ties going to the first seen; with none
+// tallied, the colour it was made with.
+type modeColor struct {
+	counts map[color.NRGBA]int
+	best   color.NRGBA
+	n      int
+}
+
+func newModeColor(none color.NRGBA) *modeColor {
+	return &modeColor{counts: map[color.NRGBA]int{}, best: none}
+}
+
+// add tallies c.
+func (m *modeColor) add(c color.NRGBA) {
+	m.counts[c]++
+	if n := m.counts[c]; n > m.n {
+		m.best, m.n = c, n
+	}
+}
+
 // pageBackground is the background most cells of the grid have: the app's page or backdrop, not a
 // bar's or a panel's. Ties go to the colour seen first, row by row. With no cells, the theme's.
 func (r *renderer) pageBackground(g *grid) color.NRGBA {
-	counts := map[color.NRGBA]int{}
-	best, bestN := r.theme.BG, 0
+	mode := newModeColor(r.theme.BG)
 	for _, c := range g.cells {
 		_, bg := r.colors(c.Attrs)
-		counts[bg]++
-		if n := counts[bg]; n > bestN {
-			best, bestN = bg, n
-		}
+		mode.add(bg)
 	}
-	return best
+	return mode.best
 }
 
 // recordRow records row y: backgrounds first, merged into runs, then glyphs and decorations.
@@ -705,17 +721,13 @@ func (r *renderer) paintCells(ops *op.Ops, g *grid, cr CellRect, glyphsOnly bool
 // backdrop is the most common background of the cells bordering v (outside it), ties to the
 // first seen; the page background when none borders it (v fills the grid).
 func (r *renderer) backdrop(g *grid, v CellRect) color.NRGBA {
-	counts := map[color.NRGBA]int{}
-	best, bestN := r.pageBG, 0
+	mode := newModeColor(r.pageBG)
 	look := func(x, y int) {
 		if x < 0 || y < 0 || x >= g.w || y >= g.h {
 			return
 		}
 		_, bg := r.colors(g.at(x, y).Attrs)
-		counts[bg]++
-		if n := counts[bg]; n > bestN {
-			best, bestN = bg, n
-		}
+		mode.add(bg)
 	}
 	for x := v.X - 1; x <= v.X+v.W; x++ {
 		look(x, v.Y-1)
@@ -725,5 +737,5 @@ func (r *renderer) backdrop(g *grid, v CellRect) color.NRGBA {
 		look(v.X-1, y)
 		look(v.X+v.W, y)
 	}
-	return best
+	return mode.best
 }

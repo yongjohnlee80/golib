@@ -86,10 +86,7 @@ func viewCaret(m metrics, natives []tui.NativePlacement) (caretAt, bool) {
 		if !in {
 			continue // over no pane: nothing to anchor the caret to
 		}
-		o := dev.Min // the view's own origin, as its canvas has it: Full's when only part shows
-		if !p.Full.Empty() {
-			o = o.Add(image.Pt((p.Full.X-p.X)*m.cell.X, (p.Full.Y-p.Y)*m.cell.Y))
-		}
+		o := m.viewOrigin(dev.Min, p.X, p.Y, p.Full) // the view's own origin, as its canvas has it
 		s := m.scale
 		rect := image.Rect(o.X+int(r.X*s), o.Y+int(r.Y*s), o.X+int((r.X+max(r.W, 1))*s), o.Y+int((r.Y+r.H)*s))
 		base := int(b * s)

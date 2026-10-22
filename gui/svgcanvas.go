@@ -28,15 +28,7 @@ type SVGCanvas struct {
 	off   Point    // the canvas's origin in the drawing's coordinates
 	size  Size     // logical
 	clips []string // the clip paths it draws inside, its parents' first: their intersection
-	xform Affine   // the Pushes' transforms, composed; the zero Affine is none
-	alpha float32  // the Pushes' opacities, multiplied, and its parent's when it was made
-	stack []svgState
-}
-
-// svgState is what a Push saves and its Pop restores.
-type svgState struct {
-	xform Affine
-	alpha float32
+	paintState
 }
 
 // svgDoc is what every canvas of one drawing writes into.
@@ -60,7 +52,7 @@ func NewSVGCanvas(size Size, shaper *TextShaper) *SVGCanvas {
 		shaper = NewTextShaper(1)
 	}
 	d := &svgDoc{size: size, shaper: shaper, textPx: 14, prefix: "svg" + strconv.FormatUint(svgDocs.Add(1), 10) + "-"}
-	return &SVGCanvas{doc: d, size: size, alpha: 1}
+	return &SVGCanvas{doc: d, size: size, paintState: opaque()}
 }
 
 // SetTextSize sets what TextSize answers, the text size a view sizes its own by (14 unless set).
@@ -101,7 +93,7 @@ func (c *SVGCanvas) Sub(r Rect) Canvas {
 	// in the drawing's coordinates: the clip group is outside every transform
 	fmt.Fprintf(&d.defs, `<clipPath id="%s"><rect x="%s" y="%s" width="%s" height="%s"/></clipPath>`,
 		id, num(at.X), num(at.Y), num(r.W), num(r.H))
-	return &SVGCanvas{doc: d, off: at, size: r.Size(), clips: append(slices.Clip(c.clips), id), alpha: c.alpha}
+	return &SVGCanvas{doc: d, off: at, size: r.Size(), clips: append(slices.Clip(c.clips), id), paintState: c.within()}
 }
 
 // Size is the canvas's size in logical pixels.
@@ -138,26 +130,6 @@ func (c *SVGCanvas) draw(element string) {
 		b.WriteString("</g>")
 	}
 	b.WriteString(strings.Repeat("</g>", len(c.clips)))
-}
-
-// PushTransform applies m to what this canvas draws until the matching Pop.
-func (c *SVGCanvas) PushTransform(m Affine) {
-	c.stack = append(c.stack, svgState{c.xform, c.alpha})
-	c.xform = c.xform.Mul(m)
-}
-
-// PushOpacity multiplies what this canvas draws until the matching Pop by a, clamped to [0, 1].
-func (c *SVGCanvas) PushOpacity(a float32) {
-	c.stack = append(c.stack, svgState{c.xform, c.alpha})
-	c.alpha *= min(max(a, 0), 1)
-}
-
-// Pop restores the state the latest Push saved; with none, it does nothing.
-func (c *SVGCanvas) Pop() {
-	if n := len(c.stack); n > 0 {
-		c.xform, c.alpha = c.stack[n-1].xform, c.stack[n-1].alpha
-		c.stack = c.stack[:n-1]
-	}
 }
 
 // FillRect fills r.
