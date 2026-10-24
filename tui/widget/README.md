@@ -820,12 +820,15 @@ intention, not the physical key.
 | a host dismiss key | the application asked for it |
 | a navigation alias (arrows, and `hjkl` under `WithModalVimNavigation`) | a convenience, and the most easily shadowed |
 
-**Focus.** Focus starts on the first control in Tab order that takes it: the
-body's first field, else the first enabled button, else the `Modal` node itself
-— the last case keeps Escape reachable when every control is disabled. So an
-input dialog starts in its first field, and a message on its first button; the
-default button answers Enter the focused control leaves unclaimed (a field
-after it submits; never a Select or a list, which use Enter). When focus has to move (the
+**Focus.** Focus starts on the body's first control in Tab order that takes
+it, else the enabled default button, else the first enabled button, else the
+`Modal` node itself — the last case keeps Escape reachable when every control is
+disabled. So an input dialog starts in its first field, and a message on its
+default button: a focused button claims Enter, so a Yes/No defaulting to No
+answers Enter with No. A message with no default, or a disabled one, starts on
+its first enabled button. The default button answers Enter the focused control
+leaves unclaimed (a field after it submits; never a Select or a list, which use
+Enter). When focus has to move (the
 focused control is disabled or removed) it goes by the same rule; while the
 focused control can still hold it, it stays. `SelectedButton()` reports the
 focused button's index, or `-1` when the dialog itself holds focus.

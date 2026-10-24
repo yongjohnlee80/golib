@@ -66,10 +66,10 @@ func cellOfLabel(t *testing.T, h *harness, label string) (x, y int) {
 
 // ─── the focus provider ──────────────────────────────────────────────────────
 
-// TestButtonsAddedToAnEmptyDialogTakeFocusInTabOrder. Opened with no buttons,
-// the Modal node itself holds focus; once buttons arrive it is no longer the
-// fallback, and focus moves to the first of them.
-func TestButtonsAddedToAnEmptyDialogTakeFocusInTabOrder(t *testing.T) {
+// TestButtonsAddedToAnEmptyDialogTakeFocus. Opened with no buttons, the Modal
+// node itself holds focus; once buttons arrive it is no longer the fallback, and
+// focus moves to the default among them (the body takes none).
+func TestButtonsAddedToAnEmptyDialogTakeFocus(t *testing.T) {
 	m := widget.NewModal(widget.NewText("Body"))
 	h, host, _ := modalFixture(t, m, 40, 12)
 	defer h.stop()
@@ -84,13 +84,13 @@ func TestButtonsAddedToAnEmptyDialogTakeFocusInTabOrder(t *testing.T) {
 	}
 	h.settle()
 
-	if !focusedOn(t, h, normal) {
-		t.Error("focus did not move to the first button once the dialog had buttons")
+	if !focusedOn(t, h, def) {
+		t.Error("focus did not move to the default button once the dialog had buttons")
 	}
 	var sel int
 	h.onLoop(func() { sel = m.SelectedButton() })
-	if sel != 0 {
-		t.Errorf("SelectedButton() = %d, want 0 (the first button)", sel)
+	if sel != 1 {
+		t.Errorf("SelectedButton() = %d, want 1 (the default, after Normal)", sel)
 	}
 }
 

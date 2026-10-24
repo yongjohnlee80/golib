@@ -247,11 +247,11 @@
 // than a double-mount panic.
 //
 // FOCUS. The dialog traps focus, so Tab cannot reach the controls underneath.
-// It nominates where focus lands through [tui.InitialFocusProvider]: the first
-// control in Tab order that takes focus — the body's first field, else the
-// first enabled button — else the Modal node itself. An input dialog starts in
-// its first field, a message on its first button; the default button
-// ([WithDefault]) answers Enter the focused control leaves unclaimed. The last case is what keeps
+// It nominates where focus lands through [tui.InitialFocusProvider]: the body's
+// first field, else the enabled default button ([WithDefault]), else the first
+// enabled button, else the Modal node itself. An input dialog starts in its
+// first field, a message on its default button, so Enter answers the default;
+// the default button answers Enter the focused control leaves unclaimed. The last case is what keeps
 // Escape reachable when every control is disabled — the ring inside a trap must
 // never be empty. The nomination applies when focus has to move (the focused
 // control disabled or removed); while the focused control can still hold

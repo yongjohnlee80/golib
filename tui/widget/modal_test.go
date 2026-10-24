@@ -40,10 +40,10 @@ func openOn(t *testing.T, h *harness, m *widget.Modal, host *widget.OverlayHost)
 	h.settle()
 }
 
-// TestOpeningADialogTrapsFocusOnItsFirstButton. A message's body takes no
-// focus, so the dialog starts on its first button in Tab order — whichever
-// button is the default; Enter answers the default from anywhere.
-func TestOpeningADialogTrapsFocusOnItsFirstButton(t *testing.T) {
+// TestOpeningADialogTrapsFocusOnItsDefaultButton. A message's body takes no
+// focus, so the dialog starts on its default button, though another comes first
+// in Tab order: a focused button claims Enter, and Enter must answer the default.
+func TestOpeningADialogTrapsFocusOnItsDefaultButton(t *testing.T) {
 	cancel := widget.NewButton("Cancel", widget.WithRole(widget.ButtonRoleReject))
 	ok := widget.NewButton("OK", widget.WithRole(widget.ButtonRoleAccept), widget.WithDefault(true))
 	m := widget.NewModal(widget.NewText("Sure?"), widget.WithButtons(cancel, ok))
@@ -68,11 +68,11 @@ func TestOpeningADialogTrapsFocusOnItsFirstButton(t *testing.T) {
 	if baseFocused {
 		t.Error("focus stayed outside the dialog; opening one must move focus into it")
 	}
-	if !focusedOn(t, h, cancel) {
-		t.Error("focus did not land on the first button in Tab order")
+	if !focusedOn(t, h, ok) {
+		t.Error("focus did not land on the default button")
 	}
-	if sel != 0 {
-		t.Errorf("SelectedButton() = %d, want 0 (the first button)", sel)
+	if sel != 1 {
+		t.Errorf("SelectedButton() = %d, want 1 (the default, after Cancel)", sel)
 	}
 	if !m.IsOpen() {
 		t.Error("IsOpen() is false after a successful Open")

@@ -554,14 +554,9 @@ func (m *Modal) refreshSelection() {
 	}
 }
 
-// focusInitial moves focus to the dialog's preferred starting control.
-//
-// The DEFAULT-role button is preferred unconditionally, not merely as a
-// tie-break: a dialog's affirmative action is where a user expects to land, and
-// choosing it only when nothing else qualified would make the preference depend
-// on button order. Failing that, the first enabled button; failing that, the
-// body's first focusable control; failing that, the Modal itself, which is the
-// target of last resort that keeps Escape reachable.
+// focusInitial moves focus to the dialog's preferred starting control: the one
+// InitialFocus nominates, by its order (the body's first field, the enabled
+// default button, the first enabled button, the Modal itself).
 func (m *Modal) focusInitial() {
 	// InitialFocus always nominates — a button, a control, or failing those
 	// the Modal node itself — so there is no "no nomination" case to handle here. Guarding for
