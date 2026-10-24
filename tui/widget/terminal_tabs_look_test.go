@@ -2,6 +2,7 @@ package widget
 
 import (
 	"errors"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -438,9 +439,10 @@ func TestTerminalTabsShowTheNormalHintWhileTheActiveTabIsInNormalMode(t *testing
 	}
 }
 
-// SetWindowButtons puts _ and x at the strip's right end, off by default: they are not tabs to a
-// native painter (TabSpans), they say where they are (TabWindowControls), a press runs
-// SetOnWindowButton with each one's operation, the tabs' window leaves them room when the tabs
+// SetWindowButtons puts _, + and x at the strip's right end, off by default: side by side, three
+// cells each at a three-cell pitch as the title bar's, the last ending at the strip's last cell. They
+// are not tabs to a native painter (TabSpans), they say where they are (TabWindowControls), a press
+// runs SetOnWindowButton with each one's operation, the tabs' window leaves them room when the tabs
 // overflow, and the normal-mode hint sits before them.
 func TestTerminalTabsWindowButtonsAtTheStripsRightEnd(t *testing.T) {
 	tabs := NewTerminalTabs()
@@ -469,9 +471,14 @@ func TestTerminalTabsWindowButtonsAtTheStripsRightEnd(t *testing.T) {
 	var controls []TabControl
 	var spans []TabSpan
 	h.onLoopInternal(func() { controls, spans = tabs.TabWindowControls(), tabs.TabSpans() })
-	if len(controls) != 2 || controls[0].Op != WindowMinimize || controls[1].Op != WindowClose ||
-		controls[1].X+controls[1].W != 40 {
-		t.Fatalf("controls %+v, want _ then x ending at the strip's last cell", controls)
+	wantOps := []WindowOperation{WindowMinimize, WindowMaximize, WindowClose}
+	if len(controls) != 3 || controls[2].X+controls[2].W != 40 {
+		t.Fatalf("controls %+v, want _, + and x ending at the strip's last cell", controls)
+	}
+	for i, c := range controls {
+		if c.Op != wantOps[i] || c.W != 3 || c.X != controls[0].X+3*i {
+			t.Errorf("control %d is %+v; want %v, 3 cells wide at %d (side by side)", i, c, wantOps[i], controls[0].X+3*i)
+		}
 	}
 	for _, s := range spans {
 		if s.X >= controls[0].X {
@@ -479,8 +486,8 @@ func TestTerminalTabsWindowButtonsAtTheStripsRightEnd(t *testing.T) {
 		}
 	}
 	bar := []rune(strings.Split(h.tb.String(), "\n")[0])
-	if string(bar[controls[0].X+1]) != "_" || string(bar[controls[1].X+1]) != "x" {
-		t.Fatalf("the bar:\n%s", string(bar))
+	if got := string(bar[controls[0].X:]); got != " _  +  x " {
+		t.Fatalf("the controls read %q; want \" _  +  x \":\n%s", got, string(bar))
 	}
 	for _, c := range controls {
 		if err := h.tb.Inject(tui.MouseEvent{Kind: tui.MousePress, Button: tui.MouseLeft, X: c.X + 1, Y: 0}); err != nil {
@@ -490,13 +497,13 @@ func TestTerminalTabsWindowButtonsAtTheStripsRightEnd(t *testing.T) {
 	var got []WindowOperation
 	for range 300 { // injected events and the loop's Updates are unordered: poll
 		h.onLoopInternal(func() { got = append([]WindowOperation(nil), pressed...) })
-		if len(got) == 2 {
+		if len(got) == 3 {
 			break
 		}
 		time.Sleep(10 * time.Millisecond)
 	}
-	if len(got) != 2 || got[0] != WindowMinimize || got[1] != WindowClose {
-		t.Errorf("pressed %v, want minimize then close", got)
+	if !slices.Equal(got, wantOps) {
+		t.Errorf("pressed %v, want minimize, maximize, close", got)
 	}
 
 	// the normal-mode hint sits before the controls, never over them
@@ -523,7 +530,7 @@ func TestTerminalTabsWindowButtonsAtTheStripsRightEnd(t *testing.T) {
 	})
 	h.syncInternal()
 	h.onLoopInternal(func() { controls, spans = tabs.TabWindowControls(), tabs.TabSpans() })
-	if len(controls) != 2 || controls[1].X+controls[1].W != 40 {
+	if len(controls) != 3 || controls[2].X+controls[2].W != 40 {
 		t.Fatalf("overflowing: controls %+v", controls)
 	}
 	for _, s := range spans {

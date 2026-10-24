@@ -280,14 +280,28 @@ func (s *tabStrip) tail() int {
 	return w + s.controlsWidth()
 }
 
-// controlsWidth is the window controls' cells, each three wide after a cell: none without them.
-func (s *tabStrip) controlsWidth() int { return 4 * len(s.windowOps) }
+// stripControlCells is a window control's width, and the pitch they sit at side by side: the native
+// title bar's (gui/widget's controlCells), so a painter's dots are as far apart as its.
+const stripControlCells = 3
 
-// setWindowButtons shows _ and x at the row's right end, or none.
+// stripControls are the window controls a strip shows, in the title bar's order: minimize, maximize,
+// close. Another control is one more entry.
+var stripControls = []WindowOperation{WindowMinimize, WindowMaximize, WindowClose}
+
+// controlsWidth is the window controls' cells: a cell before them, then each side by side; none
+// without them.
+func (s *tabStrip) controlsWidth() int {
+	if len(s.windowOps) == 0 {
+		return 0
+	}
+	return 1 + stripControlCells*len(s.windowOps)
+}
+
+// setWindowButtons shows _, + and x at the row's right end, or none.
 func (s *tabStrip) setWindowButtons(on bool) {
 	s.windowOps = nil
 	if on {
-		s.windowOps = []WindowOperation{WindowMinimize, WindowClose}
+		s.windowOps = slices.Clone(stripControls)
 	}
 	s.base.MarkDirty()
 }
@@ -298,7 +312,7 @@ func (s *tabStrip) controlCells(x int) []stripCell {
 	start := max(x, s.avail-s.controlsWidth()+1)
 	out := make([]stripCell, len(s.windowOps))
 	for i, op := range s.windowOps {
-		out[i] = stripCell{kind: cellControl, op: op, label: " " + windowControlLabels[op] + " ", x: start + 4*i, w: 3}
+		out[i] = stripCell{kind: cellControl, op: op, label: " " + windowControlLabels[op] + " ", x: start + stripControlCells*i, w: stripControlCells}
 	}
 	return out
 }

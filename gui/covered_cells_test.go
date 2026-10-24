@@ -540,11 +540,11 @@ func TestADeterminateSpinnerBarIsLeftToItsCells(t *testing.T) {
 }
 
 // A tab strip's window controls are painted as the title bar's: a dot over each control's cells, in
-// its colour (WindowControlColor), centred on them; none for a control a panel covers, and none on a
-// strip without controls.
+// its colour (WindowControlColor), centred on them, so side by side they are three cells apart, at the
+// title bar's radius; none for a control a panel covers, and none on a strip without controls.
 func TestATabStripsWindowControlsAreTheTitleBarsDots(t *testing.T) {
 	tabs := &fakeTabs{spans: []widget.TabSpan{{X: 0, W: 5}},
-		controls: []widget.TabControl{{X: 13, W: 3, Op: widget.WindowMinimize}, {X: 17, W: 3, Op: widget.WindowClose}}}
+		controls: []widget.TabControl{{X: 11, W: 3, Op: widget.WindowMinimize}, {X: 14, W: 3, Op: widget.WindowMaximize}, {X: 17, W: 3, Op: widget.WindowClose}}}
 	view, _, ok := paintTabs(tabs)
 	if !ok {
 		t.Fatal("no view")
@@ -560,18 +560,27 @@ func TestATabStripsWindowControlsAreTheTitleBarsDots(t *testing.T) {
 	}
 	rc := paintUnder(t, view, overView{cols: 20, rows: 1, covered: func(int, int) bool { return false }})
 	got := dots(rc)
-	if len(got) != 2 {
+	if len(got) != 3 {
 		t.Fatalf("%d dots; want one per control: %+v", len(got), rc.Calls)
 	}
+	radius := min(float32(16)*0.32, float32(8)*1.2) // the title bar's, on 8×16 cells
 	for i, ctl := range tabs.controls {
 		centre := got[i].Rect.X + got[i].Rect.W/2
 		if want := (float32(ctl.X) + float32(ctl.W)/2) * 8; centre != want || got[i].Brush.Color != WindowControlColor(ctl.Op) {
 			t.Errorf("dot %d: centre %v colour %v; want %v in %v", i, centre, got[i].Brush.Color, want, WindowControlColor(ctl.Op))
 		}
+		if r := got[i].Rect.W / 2; r != radius {
+			t.Errorf("dot %d: radius %v; want the title bar's %v", i, r, radius)
+		}
+		if i > 0 {
+			if gap := (got[i].Rect.X + got[i].Rect.W/2) - (got[i-1].Rect.X + got[i-1].Rect.W/2); gap != 3*8 {
+				t.Errorf("dots %d and %d are %v apart; want three cells (%v), as the title bar's", i-1, i, gap, 3*8)
+			}
+		}
 	}
-	if got := dots(paintUnder(t, view, overView{cols: 20, rows: 1, covered: at(17, 18, 19)})); len(got) != 1 ||
-		got[0].Brush.Color != WindowControlColor(widget.WindowMinimize) {
-		t.Errorf("with x covered: dots %+v; want _'s alone", got)
+	if got := dots(paintUnder(t, view, overView{cols: 20, rows: 1, covered: at(17, 18, 19)})); len(got) != 2 ||
+		got[0].Brush.Color != WindowControlColor(widget.WindowMinimize) || got[1].Brush.Color != WindowControlColor(widget.WindowMaximize) {
+		t.Errorf("with x covered: dots %+v; want _'s and +'s alone", got)
 	}
 	plain, _, _ := paintTabs(&fakeTabs{spans: []widget.TabSpan{{X: 0, W: 5}}})
 	if got := dots(paintUnder(t, plain, overView{cols: 20, rows: 1, covered: func(int, int) bool { return false }})); len(got) != 0 {
@@ -587,8 +596,8 @@ func TestAnEmptyTabStripStillPaintsItsWindowControls(t *testing.T) {
 	if n := len(tabs.TabSpans()); n != 0 {
 		t.Fatalf("an empty strip has %d spans", n)
 	}
-	if n := len(tabs.TabWindowControls()); n != 2 {
-		t.Fatalf("%d controls; want _ and x", n)
+	if n := len(tabs.TabWindowControls()); n != 3 {
+		t.Fatalf("%d controls; want _, + and x", n)
 	}
 	view, _, ok := paintTabs(tabs)
 	if !ok {
@@ -600,7 +609,7 @@ func TestAnEmptyTabStripStillPaintsItsWindowControls(t *testing.T) {
 			got = append(got, p.Brush.Color)
 		}
 	}
-	if want := []color.NRGBA{WindowControlColor(widget.WindowMinimize), WindowControlColor(widget.WindowClose)}; !slices.Equal(got, want) {
+	if want := []color.NRGBA{WindowControlColor(widget.WindowMinimize), WindowControlColor(widget.WindowMaximize), WindowControlColor(widget.WindowClose)}; !slices.Equal(got, want) {
 		t.Errorf("an empty strip painted dots %v; want %v", got, want)
 	}
 	plain, _, _ := paintTabs(&fakeTabs{})

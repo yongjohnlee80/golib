@@ -606,8 +606,8 @@ func paintTabControls(c Canvas, controls []widget.TabControl, cols int) {
 			continue
 		}
 		cell := Rect{X: float32(ctl.X) * cs.W, W: float32(ctl.W) * cs.W, H: cs.H}
-		c.FillRect(cell, Solid(bg)) // the control's glyph, the terminal's fallback, under the dot
-		radius := min(cs.H*0.3, cell.W*0.45)
+		c.FillRect(cell, Solid(bg))        // the control's glyph, the terminal's fallback, under the dot
+		radius := min(cs.H*0.32, cs.W*1.2) // the title bar's (gui/widget Panel's): one size of dot
 		cx, cy := cell.X+cell.W/2, cs.H/2
 		c.FillEllipse(Rect{X: cx - radius, Y: cy - radius, W: radius * 2, H: radius * 2}, Solid(WindowControlColor(ctl.Op)))
 	}
