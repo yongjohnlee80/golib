@@ -91,8 +91,9 @@ type HTMLLayoutHScroll interface {
 }
 
 // HTMLLayoutLinks is a layout that tells where its links are: LinkRects appends to dst each link's
-// rects, in the layout's units, that fall between top and bottom. The view shows the pointer's
-// hand over them.
+// rects, in the layout's units, that fall between top and bottom. For a cell layout
+// (HTMLLayoutCells) the view shows the pointer's hand over them; a layout a backend paints gives
+// its hands itself (gui's PointerRegionsView).
 type HTMLLayoutLinks interface {
 	LinkRects(top, bottom float32, dst []Rect32) []Rect32
 }
