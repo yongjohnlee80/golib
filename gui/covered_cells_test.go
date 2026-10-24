@@ -109,15 +109,17 @@ func at(cols ...int) func(col, row int) bool {
 // fakeTabs is a tab strip of spans, as TerminalTabs reports them.
 type fakeTabs struct {
 	tui.MultiChild
-	spans  []widget.TabSpan
-	active int
+	spans    []widget.TabSpan
+	active   int
+	controls []widget.TabControl // its window controls at the bar's end (SetWindowButtons)
 }
 
-func (f *fakeTabs) Layout(cs tui.Constraints) tui.Size { return cs.Constrain(tui.Size{W: 20, H: 1}) }
-func (f *fakeTabs) Render(tui.Surface)                 {}
-func (f *fakeTabs) HandleEvent(tui.Event) bool         { return false }
-func (f *fakeTabs) TabSpans() []widget.TabSpan         { return f.spans }
-func (f *fakeTabs) ActiveTabIndex() int                { return f.active }
+func (f *fakeTabs) Layout(cs tui.Constraints) tui.Size     { return cs.Constrain(tui.Size{W: 20, H: 1}) }
+func (f *fakeTabs) Render(tui.Surface)                     {}
+func (f *fakeTabs) HandleEvent(tui.Event) bool             { return false }
+func (f *fakeTabs) TabSpans() []widget.TabSpan             { return f.spans }
+func (f *fakeTabs) ActiveTabIndex() int                    { return f.active }
+func (f *fakeTabs) TabWindowControls() []widget.TabControl { return f.controls }
 
 // The bar is filled in its own colour with the panel raised over its right end: AutoDoc's todos tab
 // bar turned the agent terminal's black while the agent panel, raised by its focus, covered its
@@ -534,5 +536,45 @@ func TestADeterminateSpinnerBarIsLeftToItsCells(t *testing.T) {
 	p.SetProgress(0.5)
 	if view, _, ok := paintProgress(p); ok || view != nil {
 		t.Fatal("a spinner bar at 0.5 is painted natively: a track and a fill tui never draws")
+	}
+}
+
+// A tab strip's window controls are painted as the title bar's: a dot over each control's cells, in
+// its colour (WindowControlColor), centred on them; none for a control a panel covers, and none on a
+// strip without controls.
+func TestATabStripsWindowControlsAreTheTitleBarsDots(t *testing.T) {
+	tabs := &fakeTabs{spans: []widget.TabSpan{{X: 0, W: 5}},
+		controls: []widget.TabControl{{X: 13, W: 3, Op: widget.WindowMinimize}, {X: 17, W: 3, Op: widget.WindowClose}}}
+	view, _, ok := paintTabs(tabs)
+	if !ok {
+		t.Fatal("no view")
+	}
+	dots := func(rc *RecordingCanvas) []PaintCall {
+		var out []PaintCall
+		for _, p := range rc.Calls {
+			if p.Op == "FillEllipse" {
+				out = append(out, p)
+			}
+		}
+		return out
+	}
+	rc := paintUnder(t, view, overView{cols: 20, rows: 1, covered: func(int, int) bool { return false }})
+	got := dots(rc)
+	if len(got) != 2 {
+		t.Fatalf("%d dots; want one per control: %+v", len(got), rc.Calls)
+	}
+	for i, ctl := range tabs.controls {
+		centre := got[i].Rect.X + got[i].Rect.W/2
+		if want := (float32(ctl.X) + float32(ctl.W)/2) * 8; centre != want || got[i].Brush.Color != WindowControlColor(ctl.Op) {
+			t.Errorf("dot %d: centre %v colour %v; want %v in %v", i, centre, got[i].Brush.Color, want, WindowControlColor(ctl.Op))
+		}
+	}
+	if got := dots(paintUnder(t, view, overView{cols: 20, rows: 1, covered: at(17, 18, 19)})); len(got) != 1 ||
+		got[0].Brush.Color != WindowControlColor(widget.WindowMinimize) {
+		t.Errorf("with x covered: dots %+v; want _'s alone", got)
+	}
+	plain, _, _ := paintTabs(&fakeTabs{spans: []widget.TabSpan{{X: 0, W: 5}}})
+	if got := dots(paintUnder(t, plain, overView{cols: 20, rows: 1, covered: func(int, int) bool { return false }})); len(got) != 0 {
+		t.Errorf("a strip without controls painted %d dots", len(got))
 	}
 }

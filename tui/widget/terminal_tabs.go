@@ -713,9 +713,9 @@ func (t *TerminalTabs) HandleEvent(ev tui.Event) bool {
 	return false
 }
 
-// renderNormalHint draws SetNormalHint's text at the strip's right end while the active tab is in
-// normal mode, in the room the strip's own cells leave: cut when there is too little, none in fewer
-// than four cells.
+// renderNormalHint draws SetNormalHint's text at the strip's right end, before its window controls,
+// while the active tab is in normal mode, in the room the strip's own cells leave: cut when there is
+// too little, none in fewer than four cells.
 func (t *TerminalTabs) renderNormalHint(s tui.Surface, w int) {
 	if t.normalHint == "" {
 		return
@@ -724,14 +724,18 @@ func (t *TerminalTabs) renderNormalHint(s tui.Surface, w int) {
 	if err != nil || e.terminal.Mode() != TerminalNormal {
 		return
 	}
-	used := 0
+	used, end := 0, w // the hint sits between the tabs' cells and the window controls, if any
 	for _, c := range t.strip.row() {
+		if c.kind == cellControl {
+			end = min(end, c.x-1)
+			continue
+		}
 		used = max(used, c.x+s.StringWidth(c.label))
 	}
-	room := w - used - 1
+	room := end - used - 1
 	if room < 4 {
 		return
 	}
 	text := truncate(t.normalHint, room, s.StringWidth)
-	drawText(s, w-s.StringWidth(text), 0, text, t.strip.tab)
+	drawText(s, end-s.StringWidth(text), 0, text, t.strip.tab)
 }

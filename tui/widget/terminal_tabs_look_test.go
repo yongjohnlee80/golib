@@ -437,3 +437,98 @@ func TestTerminalTabsShowTheNormalHintWhileTheActiveTabIsInNormalMode(t *testing
 		t.Fatal("no hint set, yet one shows")
 	}
 }
+
+// SetWindowButtons puts _ and x at the strip's right end, off by default: they are not tabs to a
+// native painter (TabSpans), they say where they are (TabWindowControls), a press runs
+// SetOnWindowButton with each one's operation, the tabs' window leaves them room when the tabs
+// overflow, and the normal-mode hint sits before them.
+func TestTerminalTabsWindowButtonsAtTheStripsRightEnd(t *testing.T) {
+	tabs := NewTerminalTabs()
+	var procs []*resultProc
+	defer func() {
+		for _, p := range procs {
+			close(p.release)
+		}
+	}()
+	add := func(label string) TerminalTabID {
+		p := newResultProc()
+		procs = append(procs, p)
+		return addTestTerminal(t, tabs, label, p)
+	}
+	id := add("one")
+	var pressed []WindowOperation
+	tabs.SetOnWindowButton(func(op WindowOperation) { pressed = append(pressed, op) })
+	h := startAppInternal(t, tabs, 40, 4)
+	defer h.stopInternal()
+	h.syncInternal()
+	if got := h.tb.String(); strings.Contains(strings.Split(got, "\n")[0], " x ") {
+		t.Fatalf("window buttons drawn by default:\n%s", got)
+	}
+	h.onLoopInternal(func() { tabs.SetWindowButtons(true) })
+	h.syncInternal()
+	var controls []TabControl
+	var spans []TabSpan
+	h.onLoopInternal(func() { controls, spans = tabs.TabWindowControls(), tabs.TabSpans() })
+	if len(controls) != 2 || controls[0].Op != WindowMinimize || controls[1].Op != WindowClose ||
+		controls[1].X+controls[1].W != 40 {
+		t.Fatalf("controls %+v, want _ then x ending at the strip's last cell", controls)
+	}
+	for _, s := range spans {
+		if s.X >= controls[0].X {
+			t.Errorf("a tab span %+v reaches the controls: they are not tabs", s)
+		}
+	}
+	bar := []rune(strings.Split(h.tb.String(), "\n")[0])
+	if string(bar[controls[0].X+1]) != "_" || string(bar[controls[1].X+1]) != "x" {
+		t.Fatalf("the bar:\n%s", string(bar))
+	}
+	for _, c := range controls {
+		if err := h.tb.Inject(tui.MouseEvent{Kind: tui.MousePress, Button: tui.MouseLeft, X: c.X + 1, Y: 0}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	var got []WindowOperation
+	for range 300 { // injected events and the loop's Updates are unordered: poll
+		h.onLoopInternal(func() { got = append([]WindowOperation(nil), pressed...) })
+		if len(got) == 2 {
+			break
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+	if len(got) != 2 || got[0] != WindowMinimize || got[1] != WindowClose {
+		t.Errorf("pressed %v, want minimize then close", got)
+	}
+
+	// the normal-mode hint sits before the controls, never over them
+	h.onLoopInternal(func() {
+		tabs.SetNormalHint("back")
+		e, _ := tabs.find(id)
+		e.terminal.setMode(TerminalNormal)
+	})
+	h.syncInternal()
+	row := strings.Split(h.tb.String(), "\n")[0]
+	if i, j := strings.Index(row, "back"), strings.Index(row, " _ "); i < 0 || j < 0 || i > j {
+		t.Errorf("the hint is not before the controls:\n%s", row)
+	}
+
+	// many tabs: the window of tabs leaves the controls their cells
+	h.onLoopInternal(func() {
+		for _, l := range []string{"alpha-long", "beta-long", "gamma-long", "delta-long"} {
+			_, _ = tabs.Add(l, WithStarter(func(pty.Cmd) (TerminalProcess, error) {
+				p := newResultProc()
+				procs = append(procs, p)
+				return p, nil
+			}))
+		}
+	})
+	h.syncInternal()
+	h.onLoopInternal(func() { controls, spans = tabs.TabWindowControls(), tabs.TabSpans() })
+	if len(controls) != 2 || controls[1].X+controls[1].W != 40 {
+		t.Fatalf("overflowing: controls %+v", controls)
+	}
+	for _, s := range spans {
+		if s.X+s.W > controls[0].X {
+			t.Errorf("overflowing: span %+v runs into the controls at %d", s, controls[0].X)
+		}
+	}
+}

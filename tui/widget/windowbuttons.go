@@ -1,6 +1,8 @@
 package widget
 
 import (
+	"maps"
+
 	"github.com/yongjohnlee80/golib/tui"
 	"github.com/yongjohnlee80/golib/tui/style"
 )
@@ -14,6 +16,16 @@ type WindowButtons struct {
 	ops     []WindowOperation // each button's, in the same order
 	labels  map[WindowOperation]string
 	styles  map[WindowOperation]*ButtonStyle
+}
+
+// windowControlLabels are the window controls' default labels, one cell each, as WindowButtons and
+// a tab strip's controls (SetWindowButtons) draw them.
+var windowControlLabels = map[WindowOperation]string{WindowClose: "x", WindowMaximize: "+", WindowMinimize: "_"}
+
+// windowControlTokens are their default colours: close an error's, maximize a success's, minimize a
+// warning's.
+var windowControlTokens = map[WindowOperation]style.Token{
+	WindowClose: style.TokenError, WindowMaximize: style.TokenSuccess, WindowMinimize: style.TokenWarning,
 }
 
 // WindowControl is one of WindowButtons' buttons and the operation it invokes.
@@ -53,8 +65,7 @@ func NewWindowButtons(core *WindowCore, opts ...WindowButtonsOption) *WindowButt
 	if core == nil {
 		panic(fatalOf("widget: NewWindowButtons", "nil core", "controls need a window behavior target"))
 	}
-	w := &WindowButtons{core: core, styles: make(map[WindowOperation]*ButtonStyle),
-		labels: map[WindowOperation]string{WindowClose: "x", WindowMaximize: "+", WindowMinimize: "_"}}
+	w := &WindowButtons{core: core, styles: make(map[WindowOperation]*ButtonStyle), labels: maps.Clone(windowControlLabels)}
 	w.Label("WindowButtons")
 	for _, opt := range opts {
 		if opt != nil {
@@ -66,18 +77,17 @@ func NewWindowButtons(core *WindowCore, opts ...WindowButtonsOption) *WindowButt
 		op      WindowOperation
 		enabled bool
 		action  tui.Action
-		color   style.Token
 	}{
-		{WindowMinimize, s.Minimize, WindowMinimizeAction{}, style.TokenWarning},
-		{WindowMaximize, s.Maximize, WindowMaximizeAction{}, style.TokenSuccess},
-		{WindowClose, s.Close, WindowCloseAction{}, style.TokenError},
+		{WindowMinimize, s.Minimize, WindowMinimizeAction{}},
+		{WindowMaximize, s.Maximize, WindowMaximizeAction{}},
+		{WindowClose, s.Close, WindowCloseAction{}},
 	} {
 		if !control.enabled {
 			continue
 		}
 		st := w.styles[control.op]
 		if st == nil {
-			normal := style.New().Foreground(control.color)
+			normal := style.New().Foreground(windowControlTokens[control.op])
 			st = NewButtonStyle(normal, normal.Reverse(true))
 		}
 		action := control.action

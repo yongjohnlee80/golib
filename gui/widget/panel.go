@@ -395,11 +395,11 @@ func (p *Panel) setHover(c control) {
 	}
 }
 
-// The native title bar's control colours, macOS's.
+// The native title bar's control colours (gui.WindowControlColor).
 var (
-	closeRed      = color.NRGBA{R: 0xff, G: 0x5f, B: 0x57, A: 0xff}
-	minimizeAmber = color.NRGBA{R: 0xfe, G: 0xbc, B: 0x2e, A: 0xff}
-	maximizeGreen = color.NRGBA{R: 0x28, G: 0xc8, B: 0x40, A: 0xff}
+	closeRed      = gui.WindowControlColor(tuiwidget.WindowClose)
+	minimizeAmber = gui.WindowControlColor(tuiwidget.WindowMinimize)
+	maximizeGreen = gui.WindowControlColor(tuiwidget.WindowMaximize)
 )
 
 // NativeView is the title bar a gui backend draws over the panel's own cells: the bar in the

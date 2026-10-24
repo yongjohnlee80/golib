@@ -584,7 +584,31 @@ func paintTabs(comp tui.Component) (View, tui.NativeScope, bool) {
 			c.FillRect(Rect{X: x, Y: cs.H * 0.2, W: 1 / px, H: cs.H * 0.6}, Solid(Mix(bg, fg, 0.55)))
 		}
 		c.PaintCells(CellRect{W: cols, H: 1}, true)
+		if wc, ok := comp.(widget.TabWindowController); ok {
+			paintTabControls(c, wc.TabWindowControls(), cols)
+		}
 	}), tui.ScopeChrome, true
+}
+
+// paintTabControls draws a tab strip's window controls (widget.TabWindowController) as the title
+// bar's: a dot in each control's colour (WindowControlColor) over its cells, on the bar's ground.
+// A control a panel covers is left to it.
+func paintTabControls(c Canvas, controls []widget.TabControl, cols int) {
+	cs := c.CellSize()
+	for _, ctl := range controls {
+		if ctl.X >= cols {
+			continue
+		}
+		_, bg, ok := openColors(c, 0, span(ctl.X, min(ctl.X+ctl.W, cols))...)
+		if !ok {
+			continue
+		}
+		cell := Rect{X: float32(ctl.X) * cs.W, W: float32(ctl.W) * cs.W, H: cs.H}
+		c.FillRect(cell, Solid(bg)) // the control's glyph, the terminal's fallback, under the dot
+		radius := min(cs.H*0.3, cell.W*0.45)
+		cx, cy := cell.X+cell.W/2, cs.H/2
+		c.FillEllipse(Rect{X: cx - radius, Y: cy - radius, W: radius * 2, H: radius * 2}, Solid(WindowControlColor(ctl.Op)))
+	}
 }
 
 // barCells are the cells the bar's colour is read from: its last, then the others in no tab's
