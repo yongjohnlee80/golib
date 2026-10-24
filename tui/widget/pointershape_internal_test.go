@@ -29,3 +29,12 @@ func TestASplitWithNoRoomShapesNothing(t *testing.T) {
 		t.Errorf("a split never laid out: %+v", got)
 	}
 }
+
+// An HTML view never laid out has no links showing to shape.
+func TestAnHTMLViewNeverLaidOutShapesNothing(t *testing.T) {
+	v := NewHTMLView()
+	v.SetHTML([]byte(`<a href="b.md">a link</a>`))
+	if got := v.PointerShapes(nil); len(got) != 0 {
+		t.Errorf("a view never laid out: %+v", got)
+	}
+}
