@@ -29,13 +29,16 @@ func buildTerminalTabs(b Build) (tui.Component, []string, error) {
 }
 
 // windowButtonSignals is what a press on a tab row's window control emits (windowButtons):
-// minimizeRequested for _, closeRequested for x. The host decides what each does.
+// minimizeRequested for _, maximizeRequested for +, closeRequested for x. The host decides what
+// each does.
 func windowButtonSignals(b Build) func(widget.WindowOperation) {
-	minimize, close := b.EmitterWith("minimizeRequested"), b.EmitterWith("closeRequested")
+	minimize, maximize, close := b.EmitterWith("minimizeRequested"), b.EmitterWith("maximizeRequested"), b.EmitterWith("closeRequested")
 	return func(op widget.WindowOperation) {
 		switch op {
 		case widget.WindowMinimize:
 			minimize()
+		case widget.WindowMaximize:
+			maximize()
 		case widget.WindowClose:
 			close()
 		}
@@ -71,10 +74,11 @@ var terminalTabsType = Type{
 		"hostKeys": setter("a TerminalTabs", hostKeysOf, (*widget.TerminalTabs).SetHostKeys),
 		// golib's: the key that toggles their input and normal mode (hostkeys.go)
 		"modeKey": setter("a TerminalTabs", modeKeyOf, (*widget.TerminalTabs).SetModeKey),
-		// golib's: _ and x at the strip's right end, emitting minimizeRequested and closeRequested
+		// golib's: _, + and x at the strip's right end, emitting minimizeRequested, maximizeRequested
+		// and closeRequested
 		"windowButtons": setter("a TerminalTabs", boolOf, (*widget.TerminalTabs).SetWindowButtons),
 	},
 	Signals: map[string][]string{"addRequested": {}, "menuRequested": {"id"}, "changed": {},
-		"minimizeRequested": {}, "closeRequested": {}},
+		"minimizeRequested": {}, "maximizeRequested": {}, "closeRequested": {}},
 	Destroyed: destroyer(func(t *widget.TerminalTabs) { t.ShutdownWithResult() }),
 }

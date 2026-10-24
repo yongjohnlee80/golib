@@ -202,25 +202,25 @@ var (
 	_ TabWindowController = (*TerminalTabs)(nil)
 )
 
-// SetWindowButtons shows _ and x at the bar's right end, or takes them off (the default, none): a
-// panel's own minimize and close. A press runs SetOnWindowButton's function with the control's
+// SetWindowButtons shows _, + and x at the bar's right end, side by side as the title bar's, or takes
+// them off (the default, none): a panel's own minimize, maximize and close. A press runs SetOnWindowButton's function with the control's
 // WindowOperation.
 func (t *Tabs) SetWindowButtons(on bool) { t.strip.setWindowButtons(on) }
 
 // SetOnWindowButton is what a press on a window control does (SetWindowButtons): fn with its
-// operation, WindowMinimize or WindowClose. nil does nothing.
+// operation, WindowMinimize, WindowMaximize or WindowClose. nil does nothing.
 func (t *Tabs) SetOnWindowButton(fn func(WindowOperation)) { t.strip.onWindow = fn }
 
 // TabWindowControls are the window controls on the bar, as drawn now.
 func (t *Tabs) TabWindowControls() []TabControl { return t.strip.controlSpans() }
 
-// SetWindowButtons shows _ and x at the strip's right end, or takes them off (the default, none): a
-// panel's own minimize and close. A press runs SetOnWindowButton's function with the control's
+// SetWindowButtons shows _, + and x at the strip's right end, side by side as the title bar's, or
+// takes them off (the default, none): a panel's own minimize, maximize and close. A press runs SetOnWindowButton's function with the control's
 // WindowOperation.
 func (t *TerminalTabs) SetWindowButtons(on bool) { t.strip.setWindowButtons(on) }
 
 // SetOnWindowButton is what a press on a window control does (SetWindowButtons): fn with its
-// operation, WindowMinimize or WindowClose. nil does nothing.
+// operation, WindowMinimize, WindowMaximize or WindowClose. nil does nothing.
 func (t *TerminalTabs) SetOnWindowButton(fn func(WindowOperation)) { t.strip.onWindow = fn }
 
 // TabWindowControls are the window controls on the strip, as drawn now.
