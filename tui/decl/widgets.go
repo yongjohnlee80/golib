@@ -83,8 +83,23 @@ func stdTypes() []Type {
 // listed here — and nowhere else.
 var tuiEnums = []enumeration{
 	orientations, directions, dockEdges, drawerEdges, keysets, menuAligns, wrapModes, fileModes, elideModes,
-	windowModifierNames, windowMouseButtons,
+	windowModifierNames, windowMouseButtons, cursorShapes,
 }
+
+// cursorShapes are the pointer's shapes, in Qt's names (Qt.PointingHandCursor is Tui's
+// PointingHandCursor): a GUI window shows them, and a terminal has none.
+var cursorShapes = enum[tui.PointerShape]{values: map[string]tui.PointerShape{
+	"ArrowCursor":        tui.PointerDefault,
+	"IBeamCursor":        tui.PointerText,
+	"PointingHandCursor": tui.PointerHand,
+	"CrossCursor":        tui.PointerCrosshair,
+	"SizeAllCursor":      tui.PointerMove,
+	"SizeHorCursor":      tui.PointerResizeEW,
+	"SizeVerCursor":      tui.PointerResizeNS,
+	"ForbiddenCursor":    tui.PointerNotAllowed,
+	"SizeFDiagCursor":    tui.PointerResizeNWSE,
+	"SizeBDiagCursor":    tui.PointerResizeNESW,
+}}
 
 // tuiFlags is every flag set, each under its own singleton. Listed here and
 // nowhere else: the constants AND the module's exports derive from it.

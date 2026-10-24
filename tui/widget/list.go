@@ -154,6 +154,8 @@ type List[T any] struct {
 	presses pressPairer[int]
 	w, h    int
 
+	rowPointer tui.PointerShape // the pointer over the rows (SetRowPointerShape); the default: none
+
 	emptyText uiText // shown (muted) in place of rows when the source is empty
 
 	styles ListStyles
@@ -245,6 +247,12 @@ func WithEmptyTextMessage[T any](m tui.Message) ListOption[T] {
 // uses it rather than subscribing app-wide and filtering by Owner.
 func WithListOnCursor[T any](fn func(i int)) ListOption[T] {
 	return func(l *List[T]) { l.onCursor = fn }
+}
+
+// WithListRowPointer is the pointer's shape over the list's rows, such as the hand for rows that
+// open something: see SetRowPointerShape.
+func WithListRowPointer[T any](shape tui.PointerShape) ListOption[T] {
+	return func(l *List[T]) { l.rowPointer = shape }
 }
 
 // WithListOnActivate sets what runs, at once, when row i is activated (Enter, a double click): the
@@ -630,6 +638,21 @@ func (l *List[T]) Render(s tui.Surface) {
 	if scrollable {
 		paintScrollIndicator(s, sz.W-1, sz.H, l.top, count-sz.H)
 	}
+}
+
+// SetRowPointerShape is the pointer's shape over the list's rows: the rows that hold an item, not
+// the scroll indicator or the space past the last row. PointerDefault, the default, gives none.
+func (l *List[T]) SetRowPointerShape(shape tui.PointerShape) { l.rowPointer = shape }
+
+// PointerShapes is the row pointer over the rows that show an item.
+func (l *List[T]) PointerShapes(dst []tui.PointerRegion) []tui.PointerRegion {
+	count := min(l.count, l.src.Len())
+	if l.rowPointer == tui.PointerDefault || count == 0 || l.w <= 0 || l.h <= 0 {
+		return dst
+	}
+	w, _ := rowsWidth(l.w, l.h, count)
+	rows := min(count-min(l.top, count), l.h)
+	return append(dst, tui.PointerRegion{Rect: tui.Rect{W: w, H: rows}, Shape: l.rowPointer})
 }
 
 // KeyBindings is the List's commands as m binds them (tui.KeyBinder).
