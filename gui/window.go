@@ -342,6 +342,9 @@ func (b *Backend) present(e app.FrameEvent, tag event.Tag, m metrics, fs *fontSt
 	countClip()
 	event.Op(ops, tag)
 	area.Pop()
+	if f != nil {
+		addCursors(ops, f.cursors) // over the input area: see addCursors
+	}
 	e.Frame(ops)
 	b.streamsPresented(e.Now)
 }

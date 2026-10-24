@@ -87,7 +87,8 @@ func buttonOf(b pointer.Buttons) tui.MouseButton {
 // Translates pointer types:
 //   - Press / Release: Resolves changed buttons via bitwise diff against held state.
 //   - Move / Drag: Projects coordinates into cell (X, Y) and fractional offsets (SubX, SubY).
-//   - Scroll: Accumulates fractional deltas and converts them into discrete wheel step events.
+//   - Scroll: Accumulates fractional deltas and converts them into discrete wheel step events,
+//     each scroll told precisely in dp as well.
 //   - Cancel: Clears all held buttons and issues release events.
 func (p *pointerState) translate(e pointer.Event, m metrics) []tui.MouseEvent {
 	if e.Kind == pointer.Press && !p.pressing {
@@ -142,10 +143,15 @@ func (p *pointerState) translate(e pointer.Event, m metrics) []tui.MouseEvent {
 // are accumulated in scrollX and scrollY until crossing a step threshold (half a character
 // cell height). This ensures both high-resolution trackpad gestures and traditional notched
 // mouse wheels feel natural and responsive.
+//
+// Each scroll is also told precisely, in dp ([tui.MouseEvent.ScrollX], ScrollY): on the first
+// step it made, or, when it made none, on a MouseWheel with no Button, which the App sends only to
+// a [tui.PreciseScroller]. A component that takes both sums them to the whole scroll.
 func (p *pointerState) wheel(out []tui.MouseEvent, e pointer.Event, m metrics, ev func(tui.MouseKind, tui.MouseButton) tui.MouseEvent) []tui.MouseEvent {
 	step := max(float32(m.cell.Y)/2, 1)
 	p.scrollY += e.Scroll.Y
 	p.scrollX += e.Scroll.X
+	first := len(out)
 	for ; p.scrollY >= step; p.scrollY -= step {
 		out = append(out, ev(tui.MouseWheel, tui.WheelDown))
 	}
@@ -158,5 +164,16 @@ func (p *pointerState) wheel(out []tui.MouseEvent, e pointer.Event, m metrics, e
 	for ; p.scrollX <= -step; p.scrollX += step {
 		out = append(out, ev(tui.MouseWheel, tui.WheelLeft))
 	}
+	if e.Scroll.X == 0 && e.Scroll.Y == 0 {
+		return out
+	}
+	if len(out) == first {
+		out = append(out, ev(tui.MouseWheel, tui.MouseNone))
+	}
+	scale := m.scale
+	if scale <= 0 {
+		scale = 1 // a snapshot without one: device pixels are dp
+	}
+	out[first].ScrollX, out[first].ScrollY = e.Scroll.X/scale, e.Scroll.Y/scale
 	return out
 }

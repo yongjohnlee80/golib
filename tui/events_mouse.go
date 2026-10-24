@@ -38,11 +38,28 @@ type MouseEvent struct {
 	// with App.CellPixels a component recovers its own pixels: (X + SubX) * CellPixels().W.
 	SubX, SubY float32
 
+	// ScrollX and ScrollY are a MouseWheel's precise scroll, in dp, positive right and down: what
+	// the pointer scrolled to produce it. A backend with only steps (a terminal) leaves them zero.
+	// A wheel step carries its scroll on the first step it made; a MouseWheel with no Button is
+	// a precise scroll that made no step, and only a PreciseScroller is ever sent one.
+	ScrollX, ScrollY float32
+
 	// Source is a PointerResolver backend's own record of where the event happened. With
 	// Source.Ref set, X, Y, SubX and SubY are filled in when the App dispatches the event (see
 	// PointerResolver), and Source is cleared then. Every other producer leaves it zero.
 	Source PointerSource
 }
+
+// PreciseScroller is a component that takes every precise scroll, the part a wheel step can't
+// say included: a MouseWheel with no Button goes to the nearest one under the pointer whose
+// PreciseScroll is true, and to no other component. It still gets the wheel steps, as every
+// component does, so the ScrollX and ScrollY it is sent sum to the whole scroll.
+type PreciseScroller interface {
+	PreciseScroll() bool
+}
+
+// precise reports whether e is a precise scroll that made no wheel step.
+func (e MouseEvent) precise() bool { return e.Kind == MouseWheel && e.Button == MouseNone }
 
 // localTo is e with its position stated in r's frame: a screen-absolute event made local to the
 // node whose absolute rectangle r is, as that node's component receives it.

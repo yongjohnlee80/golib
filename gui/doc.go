@@ -146,6 +146,7 @@
 //	CellCoverer       CellCovered                                   a canvas that knows which cells a later layer covers
 //	CaretView         Caret                                         a View that reports its caret, for the IME
 //	CaretColorsView   CaretColors                                   a CaretView that reports the text colours at its caret
+//	PointerShapeView  PointerShape                                  a View that shapes the pointer over its rect
 //	Measurer          Measure, Wrap                                 text measured off the loop (AcquireMeasurer)
 //
 // InputEvent, TextInputCmd and Node are closed sets, not capabilities: the toolkit's events, what
