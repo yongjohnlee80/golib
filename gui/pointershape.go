@@ -52,7 +52,9 @@ type PointerShapeView interface {
 // PointerRegions appends its regions in its own cells, from the origin it paints at (its Full
 // rect's, when it shows in part). It is asked after it paints, each frame, as a [CaretView] is, so
 // the regions are the geometry it just painted with (a gutter it measured in pixels, the links
-// it laid out), never the frame before's. The cells it gives no region take the default.
+// it laid out), never the frame before's. The cells it gives no region take the default. A view
+// that implements both this and [PointerShapeView] is shaped by its regions alone: its
+// PointerShape is not asked.
 type PointerRegionsView interface {
 	PointerRegions(dst []tui.PointerRegion) []tui.PointerRegion
 }
