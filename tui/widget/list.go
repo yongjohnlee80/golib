@@ -642,7 +642,12 @@ func (l *List[T]) Render(s tui.Surface) {
 
 // SetRowPointerShape is the pointer's shape over the list's rows: the rows that hold an item, not
 // the scroll indicator or the space past the last row. PointerDefault, the default, gives none.
-func (l *List[T]) SetRowPointerShape(shape tui.PointerShape) { l.rowPointer = shape }
+func (l *List[T]) SetRowPointerShape(shape tui.PointerShape) {
+	if l.rowPointer != shape {
+		l.rowPointer = shape
+		l.MarkDirty() // the shapes are a frame's: a new one shows with the next
+	}
+}
 
 // PointerShapes is the row pointer over the rows that show an item.
 func (l *List[T]) PointerShapes(dst []tui.PointerRegion) []tui.PointerRegion {

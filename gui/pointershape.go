@@ -13,7 +13,8 @@ import (
 // The pointer's shape, over native views and cell regions.
 //
 // A native view that implements [PointerShapeView] is asked for its shape after it paints, each
-// frame, as a [CaretView] is asked for its caret. A cell-drawn component gives its regions as a
+// frame, as a [CaretView] is asked for its caret; one that implements [PointerRegionsView], for
+// its regions, the same way. A cell-drawn component gives its regions as a
 // [tui.PointerShaper], which the App cuts to what shows and hands over in PlacePointerShapes. The
 // window shows a shape over the cells it is the last to have, in paint order, and the default over
 // a cell painted over it (a dialog), so a covered view or region never shapes the pointer.
@@ -47,6 +48,15 @@ type PointerShapeView interface {
 	PointerShape() tui.PointerShape
 }
 
+// PointerRegionsView is implemented by a [View] that shapes the pointer over parts of itself:
+// PointerRegions appends its regions in its own cells, from the origin it paints at (its Full
+// rect's, when it shows in part). It is asked after it paints, each frame, as a [CaretView] is, so
+// the regions are the geometry it just painted with (a gutter it measured in pixels, the links
+// it laid out), never the frame before's. The cells it gives no region take the default.
+type PointerRegionsView interface {
+	PointerRegions(dst []tui.PointerRegion) []tui.PointerRegion
+}
+
 // PlacePointerShapes records the frame's cell-region shapes, for the frame Flush draws.
 func (b *Backend) PlacePointerShapes(ps []tui.PointerShapePlacement) {
 	b.shapes = append(b.shapes[:0], ps...)
@@ -73,9 +83,15 @@ type shapedCell struct {
 func viewCursors(dst []cursorArea, m metrics, natives []tui.NativePlacement, shapes []tui.PointerShapePlacement) []cursorArea {
 	dst = dst[:0]
 	views := make([]tui.PointerShape, len(natives))
+	regions := make([][]tui.PointerRegion, len(natives)) // a PointerRegionsView's, asked once
 	shapedAny := false
 	for i, p := range natives {
-		if sv, ok := p.View.(PointerShapeView); ok && gioCursor(sv.PointerShape()) != pointer.CursorDefault {
+		if rv, ok := p.View.(PointerRegionsView); ok {
+			regions[i] = rv.PointerRegions(nil)
+			for _, r := range regions[i] {
+				shapedAny = shapedAny || gioCursor(r.Shape) != pointer.CursorDefault
+			}
+		} else if sv, ok := p.View.(PointerShapeView); ok && gioCursor(sv.PointerShape()) != pointer.CursorDefault {
 			views[i], shapedAny = sv.PointerShape(), true
 		}
 	}
@@ -98,7 +114,19 @@ func viewCursors(dst []cursorArea, m metrics, natives []tui.NativePlacement, sha
 	for i, j := 0, 0; i < len(natives) || j < len(shapes); {
 		if i < len(natives) && (j == len(shapes) || natives[i].Layer <= shapes[j].Layer) {
 			p := natives[i]
-			set(tui.Rect{X: p.X, Y: p.Y, W: p.Cols, H: p.Rows}, shapedCell{views[i], i + 1})
+			shown := tui.Rect{X: p.X, Y: p.Y, W: p.Cols, H: p.Rows}
+			set(shown, shapedCell{views[i], i + 1})
+			ox, oy := p.X, p.Y
+			if !p.Full.Empty() {
+				ox, oy = p.Full.X, p.Full.Y // the view paints from its whole rect's origin
+			}
+			for _, r := range regions[i] {
+				shape := r.Shape
+				if gioCursor(shape) == pointer.CursorDefault {
+					shape = tui.PointerDefault
+				}
+				set(r.Rect.Translate(ox, oy).Intersect(shown), shapedCell{shape, i + 1})
+			}
 			for _, c := range p.Covered {
 				set(c, shapedCell{})
 			}

@@ -6,9 +6,11 @@ import (
 
 	"github.com/yongjohnlee80/gio/app"
 	"github.com/yongjohnlee80/gio/f32"
+	"github.com/yongjohnlee80/gio/font/gofont"
 	"github.com/yongjohnlee80/gio/io/input"
 	"github.com/yongjohnlee80/gio/io/pointer"
 	"github.com/yongjohnlee80/gio/op"
+	"github.com/yongjohnlee80/gio/text"
 
 	"github.com/yongjohnlee80/golib/tui"
 )
@@ -118,5 +120,42 @@ func TestCellRegionsAndViewsShapeThePointerInPaintOrder(t *testing.T) {
 		if got[i] != want[i] {
 			t.Errorf("area %d: %+v, want %+v", i, got[i], want[i])
 		}
+	}
+}
+
+// paintedRegion is a view whose region is decided as it paints: an I-beam two cells wide from the
+// column next holds when Paint runs.
+type paintedRegion struct{ next, painted *int }
+
+func (v paintedRegion) Paint(Canvas) { *v.painted = *v.next }
+
+func (v paintedRegion) PointerRegions(dst []tui.PointerRegion) []tui.PointerRegion {
+	if *v.painted < 0 {
+		return dst
+	}
+	return append(dst, tui.PointerRegion{Rect: tui.Rect{X: *v.painted, W: 2, H: 1}, Shape: tui.PointerText})
+}
+
+// A native view's regions are the frame's own: asked after the frame paints it, through the real
+// publish, on the first frame and on the one after its geometry moves, never the paint before's.
+func TestANativeViewsRegionsAreTheFrameItPainted(t *testing.T) {
+	b := NewBackend()
+	b.render = newRenderer(text.NewShaper(text.WithCollection(gofont.Collection()), text.NoSystemFonts()), "Go Mono", DefaultTheme())
+	m := metrics{window: image.Pt(64, 64), cell: image.Pt(8, 16), ppem: 14, baseline: 12, scale: 1, grid: tui.Size{W: 8, H: 4}}
+	b.grid.resize(8, 4)
+	next, painted := 3, -1
+	b.PlaceNatives([]tui.NativePlacement{{View: paintedRegion{&next, &painted}, Cols: 8, Rows: 4}})
+	frame := func() []cursorArea {
+		b.publishFrame(m)
+		b.mu.Lock()
+		defer b.mu.Unlock()
+		return b.latest.cursors
+	}
+	if got := frame(); len(got) != 1 || got[0].rect != m.cellRect(3, 0, 2, 1) || got[0].cursor != pointer.CursorText {
+		t.Fatalf("the first frame: %+v, want the I-beam from column 3, as it painted", got)
+	}
+	next = 5
+	if got := frame(); len(got) != 1 || got[0].rect != m.cellRect(5, 0, 2, 1) {
+		t.Fatalf("the frame after: %+v, want column 5, its own paint's, not the one before's 3", got)
 	}
 }

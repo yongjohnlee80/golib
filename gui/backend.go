@@ -406,7 +406,7 @@ func (b *Backend) publishFrame(m metrics) {
 	draw, parts := b.render.frameParts(&b.grid, m, cur, b.natives, b.images.list(), b.focused.Load())
 	f := &frame{draw: draw, parts: parts, m: m, drawCost: b.render.firstCost}
 	b.frameCaret(f, m, cur)
-	f.cursors = viewCursors(nil, m, b.natives, b.shapes)
+	f.cursors = viewCursors(nil, m, b.natives, b.shapes) // after frameParts painted the natives: their own shapes are this frame's
 	b.mu.Lock()
 	b.latest = f
 	b.mu.Unlock()

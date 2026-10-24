@@ -611,11 +611,12 @@ func (v *HTMLView) Layout(c tui.Constraints) tui.Size {
 // accent and muted colours from. nil before the first paint.
 func (v *HTMLView) Theme() *style.Theme { return v.theme }
 
-// PointerShapes is the hand over the links that show, when the layout tells where they are
-// (HTMLLayoutLinks): a cell any part of a link falls in.
+// PointerShapes is the hand over the links that show, when a cell layout tells where they are
+// (HTMLLayoutLinks): a cell any part of a link falls in. A bound layout the backend paints gives
+// its own, after it paints (gui.PointerRegionsView): its links are where that paint laid them out.
 func (v *HTMLView) PointerShapes(dst []tui.PointerRegion) []tui.PointerRegion {
 	links, ok := v.layout.(HTMLLayoutLinks)
-	if !ok || v.w <= 0 || v.h <= 0 {
+	if _, cells := v.layout.(HTMLLayoutCells); !ok || !cells || v.w <= 0 || v.h <= 0 {
 		return dst
 	}
 	ux, uy := v.units()
