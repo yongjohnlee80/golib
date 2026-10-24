@@ -222,3 +222,20 @@ func TestAListsRowPointerIsOverItsItems(t *testing.T) {
 		t.Errorf("a list not asked for a row pointer shows %v", s)
 	}
 }
+
+// While an editor's rendered document shows in the text's place, the editor gives no I-beam of its
+// own; back on the text, it does.
+func TestTheEditorGivesItsIBeamUpToItsDocument(t *testing.T) {
+	h, sh, ed, _ := csvEditor(t, "name,n\nann,1\n")
+	var text, doc []tui.PointerRegion
+	h.onLoop(func() { text = ed.PointerShapes(nil) })
+	h.inject(ctrlEv('t'))
+	h.barrier(sh)
+	h.onLoop(func() { doc = ed.PointerShapes(nil) })
+	if len(text) != 1 || text[0].Shape != tui.PointerText {
+		t.Errorf("on the text: %+v, want the I-beam", text)
+	}
+	if len(doc) != 0 {
+		t.Errorf("with the document shown: %+v, want none of the editor's", doc)
+	}
+}
