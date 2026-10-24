@@ -133,6 +133,7 @@ var listViewType = Type{
 	Setters: map[string]Setter{
 		"model":        setter("a ListView", modelOf, func(n *listViewNode, m ItemModel) { n.mv.setModel(m) }),
 		"currentIndex": setter("a ListView", truncOf, func(n *listViewNode, v int) { n.list.SetCursor(v) }),
+		"cursorShape":  setter("a ListView", cursorShapes.read, func(n *listViewNode, s tui.PointerShape) { n.list.SetRowPointerShape(s) }),
 	},
 	Getters: map[string]Getter{
 		"currentIndex": getter(func(n *listViewNode) (qml.SpecValue, error) {

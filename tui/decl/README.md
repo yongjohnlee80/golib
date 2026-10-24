@@ -93,7 +93,7 @@ change at runtime, which is what makes it bindable to a source.
 | `Flow` | — | `spacing` (the gap between two children on a line, and between lines unless `rowSpacing` says otherwise), `rowSpacing` (golib's, from Qt's GridLayout: the gap between lines) | — | — | — |
 | `Dialog` | `dim`, `width`, `standardButtons`, `defaultButton`, `keyScope` (golib's: the scope of its `keyId` Shortcuts), `closeOnQ` (golib's: q closes it too, as the Drawer's), `maxWidthPercent` and `maxHeightPercent` (golib's: its card's largest size, percentages of the screen, at most 100), palette | `title`, `helpText` | — | `opened`, `accepted`, `rejected`, `closed` | `open()`, `close()` |
 | `DialogButtonBox` | — (its Buttons carry `DialogButtonBox.buttonRole`) | — | — | — | — |
-| `ListView` | `textRole` | `model`, `currentIndex` | `currentIndex` | `activated(index)`, `currentIndexChanged(index)` | — |
+| `ListView` | `textRole` | `model`, `currentIndex`, `cursorShape` | `currentIndex` | `activated(index)`, `currentIndexChanged(index)` | — |
 | `ComboBox` | `textRole`, `valueRole`, `placeholderText`, `maxWidth` (default 40 cells) | `model`, `currentIndex` | `currentIndex`, `currentValue` | `activated(index)` | — |
 | `TableView` | golib's `cellCursor`, `sortable` (see below), `delegate` (a row cursor's cells: a `Text` template with a text and an optional colour, no id, handlers or children) | `model`, `currentIndex`; with a cell cursor (`cellCursor: true`), golib's `rowNumbers` (each row's number in a gutter), `copyFormat` (`"tsv"`, the default, or `"csv"`: what `y` copies), `rowCursor` (the cursor covers its whole row; `r` toggles it, and `y` then copies the row), `orderBy` (the sort as ORDER BY text), `filter` (the rows shown, as WHERE text) and `contextMenu` (a right-click menu of the host's rows) (see below) | `currentIndex`; with a cell cursor (`cellCursor: true`), golib's `orderBy`, `orderByError`, `filter` and `filterError` | `activated(index)`, `currentIndexChanged(index)`, golib's `contextMenuRequested(index, x, y)`, golib's `orderByChanged(orderBy)` (see below) | — |
 | `TableViewColumn` | `role`, `title`, `width`, `elideMode` | — | — | — | — |
@@ -488,6 +488,7 @@ they are `Tui.Horizontal`.
 | `wrapMode` (Text) | `Tui.NoWrap` (one line, default), `Tui.WordWrap` |
 | `fileMode` (FileDialog) | `Tui.OpenFile`, `Tui.SaveFile` |
 | `elideMode` (TableViewColumn) | `Tui.ElideRight` (default), `Tui.ElideLeft`, `Tui.ElideMiddle`, `Tui.ElideNone`, and golib's `Tui.ElidePath` (a path cut at a `/`: `…/dao/name.go`) |
+| `cursorShape` (ListView: the pointer over its rows, in a GUI window) | `Tui.ArrowCursor` (default), `Tui.IBeamCursor`, `Tui.PointingHandCursor`, `Tui.CrossCursor`, `Tui.SizeAllCursor`, `Tui.SizeHorCursor`, `Tui.SizeVerCursor`, `Tui.ForbiddenCursor`, `Tui.SizeFDiagCursor`, `Tui.SizeBDiagCursor`, as Qt names them |
 
 ### Flags — the `Dialog` singleton
 

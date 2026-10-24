@@ -196,3 +196,29 @@ func TestAResizablesGripsAreResizeArrows(t *testing.T) {
 		t.Fatalf("grips: %d EW, %d NS, %d corner cells, (0, 0) %v; want each grip shaped and the body plain", ew, ns, corner, sh.at(0, 0))
 	}
 }
+
+// A list's row pointer is over the rows that hold an item: not the scroll indicator, not the
+// space past its last row, and nothing at all unless it is asked for.
+func TestAListsRowPointerIsOverItsItems(t *testing.T) {
+	src := func(n int) widget.ListOption[string] {
+		items := make([]string, n)
+		for i := range items {
+			items[i] = "item"
+		}
+		return widget.WithItems(items, func(s string) string { return s })
+	}
+	short := widget.NewList(src(3), widget.WithListRowPointer[string](tui.PointerHand))
+	sh := runShaped(t, short, 20, 5)
+	expect(t, sh, map[[2]int]tui.PointerShape{{0, 0}: tui.PointerHand, {19, 2}: tui.PointerHand, {0, 3}: tui.PointerDefault, {5, 4}: tui.PointerDefault})
+
+	long := widget.NewList(src(10), widget.WithListRowPointer[string](tui.PointerHand))
+	sh = runShaped(t, long, 20, 5)
+	expect(t, sh, map[[2]int]tui.PointerShape{{0, 0}: tui.PointerHand, {18, 4}: tui.PointerHand, {19, 0}: tui.PointerDefault})
+
+	plain := widget.NewList(src(3))
+	sh = runShaped(t, plain, 20, 5)
+	time.Sleep(50 * time.Millisecond)
+	if s := sh.at(0, 0); s != tui.PointerDefault {
+		t.Errorf("a list not asked for a row pointer shows %v", s)
+	}
+}
