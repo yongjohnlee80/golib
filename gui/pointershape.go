@@ -10,41 +10,32 @@ import (
 	"github.com/yongjohnlee80/golib/tui"
 )
 
-// The pointer's shape over native views.
+// The pointer's shape, over native views and cell regions.
 //
 // A native view that implements [PointerShapeView] is asked for its shape after it paints, each
-// frame, as a [CaretView] is asked for its caret. The window shows that shape while the pointer is
-// over the part of the view that shows, and the default over a cell painted over it (a dialog) or a
-// later view over it, so a covered view never shapes the pointer.
+// frame, as a [CaretView] is asked for its caret. A cell-drawn component gives its regions as a
+// [tui.PointerShaper], which the App cuts to what shows and hands over in PlacePointerShapes. The
+// window shows a shape over the cells it is the last to have, in paint order, and the default over
+// a cell painted over it (a dialog), so a covered view or region never shapes the pointer.
 
-// PointerShape is a shape the window's pointer takes.
-type PointerShape uint8
+var _ tui.PointerShapeHost = (*Backend)(nil)
 
-const (
-	PointerDefault    PointerShape = iota // the platform's arrow
-	PointerText                           // an I-beam, over text to select or type
-	PointerHand                           // a pointing hand, over a link
-	PointerCrosshair                      // a crosshair, for a precise point
-	PointerMove                           // arrows in four directions, for something to move
-	PointerResizeEW                       // a left-right arrow, for a width
-	PointerResizeNS                       // an up-down arrow, for a height
-	PointerNotAllowed                     // a struck circle, for what can't be done here
-)
-
-// gioCursors is each PointerShape's Gio cursor.
+// gioCursors is each [tui.PointerShape]'s Gio cursor.
 var gioCursors = [...]pointer.Cursor{
-	PointerDefault:    pointer.CursorDefault,
-	PointerText:       pointer.CursorText,
-	PointerHand:       pointer.CursorPointer,
-	PointerCrosshair:  pointer.CursorCrosshair,
-	PointerMove:       pointer.CursorAllScroll,
-	PointerResizeEW:   pointer.CursorEastWestResize,
-	PointerResizeNS:   pointer.CursorNorthSouthResize,
-	PointerNotAllowed: pointer.CursorNotAllowed,
+	tui.PointerDefault:    pointer.CursorDefault,
+	tui.PointerText:       pointer.CursorText,
+	tui.PointerHand:       pointer.CursorPointer,
+	tui.PointerCrosshair:  pointer.CursorCrosshair,
+	tui.PointerMove:       pointer.CursorAllScroll,
+	tui.PointerResizeEW:   pointer.CursorEastWestResize,
+	tui.PointerResizeNS:   pointer.CursorNorthSouthResize,
+	tui.PointerNotAllowed: pointer.CursorNotAllowed,
+	tui.PointerResizeNWSE: pointer.CursorNorthWestSouthEastResize,
+	tui.PointerResizeNESW: pointer.CursorNorthEastSouthWestResize,
 }
 
-// cursor is s's Gio cursor; the default for a shape it doesn't know.
-func (s PointerShape) cursor() pointer.Cursor {
+// gioCursor is s's Gio cursor; the default for a shape it doesn't know.
+func gioCursor(s tui.PointerShape) pointer.Cursor {
 	if int(s) < len(gioCursors) {
 		return gioCursors[s]
 	}
@@ -53,7 +44,12 @@ func (s PointerShape) cursor() pointer.Cursor {
 
 // PointerShapeView is implemented by a [View] that wants a pointer shape over its rect.
 type PointerShapeView interface {
-	PointerShape() PointerShape
+	PointerShape() tui.PointerShape
+}
+
+// PlacePointerShapes records the frame's cell-region shapes, for the frame Flush draws.
+func (b *Backend) PlacePointerShapes(ps []tui.PointerShapePlacement) {
+	b.shapes = append(b.shapes[:0], ps...)
 }
 
 // cursorArea is a rect of the window, in device pixels, and the cursor over it.
@@ -62,24 +58,29 @@ type cursorArea struct {
 	cursor pointer.Cursor
 }
 
-// shapedCell is one cell's shape, and the placement it is from (its index plus one; 0: none).
+// shapedCell is one cell's shape, and what it is from (a native placement's index plus one, or a
+// run's, past the natives; 0: none), so a run of cells is one source's.
 type shapedCell struct {
-	shape PointerShape
+	shape tui.PointerShape
 	from  int
 }
 
-// viewCursors is the frame's cursor areas: one per row run of a view's shaped cells, as they show
-// after the views paint in order, each view's covered cells and a later view over it taking the
-// shape away. The areas never overlap a cell they don't shape: Gio reads the default as no cursor
-// and takes the next area's beneath, so the default can't be put over a shape, only left out.
-func viewCursors(dst []cursorArea, m metrics, natives []tui.NativePlacement) []cursorArea {
+// viewCursors is the frame's cursor areas: one per row run of one source's shaped cells, as they
+// show once the natives and the cell regions are laid in paint order, each native's covered cells
+// and anything later over it taking the shape away. The areas never overlap a cell they don't
+// shape: Gio reads the default as no cursor and takes the next area's beneath, so the default
+// can't be put over a shape, only left out.
+func viewCursors(dst []cursorArea, m metrics, natives []tui.NativePlacement, shapes []tui.PointerShapePlacement) []cursorArea {
 	dst = dst[:0]
-	shapes := make([]PointerShape, len(natives))
+	views := make([]tui.PointerShape, len(natives))
 	shapedAny := false
 	for i, p := range natives {
-		if sv, ok := p.View.(PointerShapeView); ok && sv.PointerShape().cursor() != pointer.CursorDefault {
-			shapes[i], shapedAny = sv.PointerShape(), true
+		if sv, ok := p.View.(PointerShapeView); ok && gioCursor(sv.PointerShape()) != pointer.CursorDefault {
+			views[i], shapedAny = sv.PointerShape(), true
 		}
+	}
+	for _, s := range shapes {
+		shapedAny = shapedAny || gioCursor(s.Shape) != pointer.CursorDefault
 	}
 	w, h := m.grid.W, m.grid.H
 	if !shapedAny || w <= 0 || h <= 0 {
@@ -93,16 +94,29 @@ func viewCursors(dst []cursorArea, m metrics, natives []tui.NativePlacement) []c
 			}
 		}
 	}
-	for i, p := range natives {
-		set(tui.Rect{X: p.X, Y: p.Y, W: p.Cols, H: p.Rows}, shapedCell{shapes[i], i + 1})
-		for _, c := range p.Covered {
-			set(c, shapedCell{})
+	// both lists are in paint order: the earlier layer first, a native before a region of its node
+	for i, j := 0, 0; i < len(natives) || j < len(shapes); {
+		if i < len(natives) && (j == len(shapes) || natives[i].Layer <= shapes[j].Layer) {
+			p := natives[i]
+			set(tui.Rect{X: p.X, Y: p.Y, W: p.Cols, H: p.Rows}, shapedCell{views[i], i + 1})
+			for _, c := range p.Covered {
+				set(c, shapedCell{})
+			}
+			i++
+			continue
 		}
+		s := shapes[j]
+		shape := s.Shape
+		if gioCursor(shape) == pointer.CursorDefault {
+			shape = tui.PointerDefault
+		}
+		set(tui.Rect{X: s.X, Y: s.Y, W: s.W, H: 1}, shapedCell{shape, len(natives) + j + 1})
+		j++
 	}
 	for y := range h {
 		for x := 0; x < w; {
 			c := cells[y*w+x]
-			if c.shape == PointerDefault {
+			if c.shape == tui.PointerDefault {
 				x++
 				continue
 			}
@@ -110,7 +124,7 @@ func viewCursors(dst []cursorArea, m metrics, natives []tui.NativePlacement) []c
 			for x < w && cells[y*w+x] == c {
 				x++
 			}
-			dst = appendCursorArea(dst, m, tui.Rect{X: x0, Y: y, W: x - x0, H: 1}, c.shape.cursor())
+			dst = appendCursorArea(dst, m, tui.Rect{X: x0, Y: y, W: x - x0, H: 1}, gioCursor(c.shape))
 		}
 	}
 	return dst

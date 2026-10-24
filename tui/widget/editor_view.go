@@ -108,6 +108,16 @@ func (l *cellLayout) Changed(int) {
 
 func (e *Editor) wrapWidth() int { return wrapUsableWidth(e.core.buf.textLines, e.view()) }
 
+// PointerShapes is the I-beam over the text, where a press puts the caret: the gutter and the
+// scroll indicator keep the arrow. A rendered document, which paints in the text's place, gives
+// its own.
+func (e *Editor) PointerShapes(dst []tui.PointerRegion) []tui.PointerRegion {
+	if e.doc.Shown() {
+		return dst
+	}
+	return append(dst, tui.PointerRegion{Rect: tui.Rect{X: e.cells.gutter, W: e.wrapWidth(), H: e.cells.h}, Shape: tui.PointerText})
+}
+
 func (e *Editor) scrollable() bool { return wrapScrollable(e.core.buf.textLines, e.view()) }
 
 func (e *Editor) rowsOfLine(i int) int { return wrapRowsOfLine(e.core.buf.textLines, i, e.view()) }

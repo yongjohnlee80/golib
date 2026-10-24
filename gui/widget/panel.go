@@ -352,6 +352,20 @@ func (p *Panel) mouse(m tui.MouseEvent) bool {
 	return false
 }
 
+// PointerShapes is a floating, resizable panel's resize arrows, over the cells a press resizes
+// from (mouse): its right column, its bottom row and the corner between them. The title row,
+// which moves it and holds its controls, keeps the arrow.
+func (p *Panel) PointerShapes(dst []tui.PointerRegion) []tui.PointerRegion {
+	if !p.resizable || p.float == nil || p.behavior.State().Maximized || p.w < 2 || p.h < 2 {
+		return dst
+	}
+	return append(dst,
+		tui.PointerRegion{Rect: tui.Rect{X: p.w - 1, Y: 1, W: 1, H: p.h - 2}, Shape: tui.PointerResizeEW},
+		tui.PointerRegion{Rect: tui.Rect{Y: p.h - 1, W: p.w - 1, H: 1}, Shape: tui.PointerResizeNS},
+		tui.PointerRegion{Rect: tui.Rect{X: p.w - 1, Y: p.h - 1, W: 1, H: 1}, Shape: tui.PointerResizeNWSE},
+	)
+}
+
 // ResolvePointerPress delegates configured Alt/Option gestures to shared behavior.
 func (p *Panel) ResolvePointerPress(e tui.MouseEvent) (tui.Action, bool) {
 	return p.behavior.ResolvePointerPress(e)

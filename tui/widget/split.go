@@ -456,6 +456,20 @@ func (s *Split) Render(sur tui.Surface) {
 	}
 }
 
+// PointerShapes is the divider's resize arrows, over the cells Render paints it in: the whole
+// divider is grabbable.
+func (s *Split) PointerShapes(dst []tui.PointerRegion) []tui.PointerRegion {
+	if s.avail <= 0 {
+		return dst
+	}
+	const all = 1 << 16 // across the split, cut to its cells as they show
+	r := tui.Rect{X: 0, Y: s.aCells, W: all, H: 1}
+	if s.o == Horizontal {
+		r = tui.Rect{X: s.aCells, Y: 0, W: s.dividerCells(), H: all}
+	}
+	return append(dst, tui.PointerRegion{Rect: r, Shape: s.dividerHandle().pointerShape()})
+}
+
 // splitCommitKey identifies the Split's commit record.
 const splitCommitKey tui.CommitKey = "widget.split"
 

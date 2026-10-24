@@ -334,6 +334,11 @@ func (t *TextArea) handleMove(id string, shift bool) {
 // indicator column when one is painted).
 func (t *TextArea) wrapWidth() int { return wrapUsableWidth(t.textLines, t.view()) }
 
+// PointerShapes is the I-beam over the text: the scroll indicator keeps the arrow.
+func (t *TextArea) PointerShapes(dst []tui.PointerRegion) []tui.PointerRegion {
+	return append(dst, tui.PointerRegion{Rect: tui.Rect{W: t.wrapWidth(), H: t.h}, Shape: tui.PointerText})
+}
+
 // scrollable reports whether content exceeds the viewport vertically.
 func (t *TextArea) scrollable() bool { return wrapScrollable(t.textLines, t.view()) }
 

@@ -2,6 +2,7 @@ package widget
 
 import (
 	"image/color"
+	"math"
 	"strconv"
 	"strings"
 
@@ -310,6 +311,19 @@ func (p bodyPointer) CaretCell() (int, int, bool) { return p.b.caretCell() }
 
 // NativeView is the text drawn in pixels.
 func (b *editorBody) NativeView() (any, bool) { return bodyView{b}, true }
+
+// PointerShapes is the I-beam over the text, from the first whole cell past the gutter, as the
+// last paint measured it (padX and the gutter are pixels, not cells): the gutter keeps the arrow.
+// Before the first paint there is nothing measured, and no shape.
+func (b *editorBody) PointerShapes(dst []tui.PointerRegion) []tui.PointerRegion {
+	l := b.e.layout
+	if l.cell.W <= 0 {
+		return dst
+	}
+	x := int(math.Ceil(float64((padX + l.gutter) / l.cell.W)))
+	const all = 1 << 16 // cut to the body's cells as they show
+	return append(dst, tui.PointerRegion{Rect: tui.Rect{X: x, W: all, H: all}, Shape: tui.PointerText})
+}
 
 // NativeScope: the view draws the whole body.
 func (b *editorBody) NativeScope() tui.NativeScope { return tui.ScopeSubtree }

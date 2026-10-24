@@ -62,6 +62,9 @@ func (a *App) renderNode(n *node, s Surface) {
 		}
 	}
 	n.comp.Render(s)
+	if a.buf.stamping {
+		a.noteShapes(n, a.buf.order) // its own order: its children's cells, painted next, cover it
+	}
 	a.noteImage(n)
 	subtree := native >= 0 && a.native.natives[native].Scope == ScopeSubtree
 	if subtree {

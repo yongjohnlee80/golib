@@ -2,6 +2,7 @@ package widget
 
 import (
 	"bytes"
+	"math"
 	"time"
 
 	"github.com/yongjohnlee80/golib/tui"
@@ -31,6 +32,7 @@ type HTMLView struct {
 	sel       [2]DocPos
 	scrollY   float32 // in the layout's units
 	w, h      int
+	linkRects []Rect32 // PointerShapes' scratch
 	onLink    func(href string)
 	onScroll  func(srcByte int)
 	lastSrc   int // the source byte last reported to onScroll
@@ -86,6 +88,13 @@ type HTMLLayoutTasks interface {
 // the page): the view hands it a sideways wheel (Shift+wheel, or a horizontal wheel) at (x, y).
 type HTMLLayoutHScroll interface {
 	ScrollX(x, y, dx float32) bool
+}
+
+// HTMLLayoutLinks is a layout that tells where its links are: LinkRects appends to dst each link's
+// rects, in the layout's units, that fall between top and bottom. The view shows the pointer's
+// hand over them.
+type HTMLLayoutLinks interface {
+	LinkRects(top, bottom float32, dst []Rect32) []Rect32
 }
 
 // HTMLLayoutActivate is a layout with parts a click acts on (a <details>' summary, which folds
@@ -601,6 +610,25 @@ func (v *HTMLView) Layout(c tui.Constraints) tui.Size {
 // Theme is the tui theme of the surface the view last painted on: what a pixel layout takes its
 // accent and muted colours from. nil before the first paint.
 func (v *HTMLView) Theme() *style.Theme { return v.theme }
+
+// PointerShapes is the hand over the links that show, when the layout tells where they are
+// (HTMLLayoutLinks): a cell any part of a link falls in.
+func (v *HTMLView) PointerShapes(dst []tui.PointerRegion) []tui.PointerRegion {
+	links, ok := v.layout.(HTMLLayoutLinks)
+	if !ok || v.w <= 0 || v.h <= 0 {
+		return dst
+	}
+	ux, uy := v.units()
+	v.linkRects = links.LinkRects(v.scrollY, v.scrollY+v.viewHeight(), v.linkRects[:0])
+	for _, r := range v.linkRects {
+		x0, x1 := int(math.Floor(float64(r.X/ux))), int(math.Ceil(float64((r.X+r.W)/ux)))
+		y0, y1 := int(math.Floor(float64((r.Y-v.scrollY)/uy))), int(math.Ceil(float64((r.Y+r.H-v.scrollY)/uy)))
+		if x1 > x0 && y1 > y0 {
+			dst = append(dst, tui.PointerRegion{Rect: tui.Rect{X: x0, Y: y0, W: x1 - x0, H: y1 - y0}, Shape: tui.PointerHand})
+		}
+	}
+	return dst
+}
 
 // Render paints the cell layout. A bound layout is drawn by its backend: the cells under it are
 // filled with the page's colours, which the native view reads as its own.

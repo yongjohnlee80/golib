@@ -142,6 +142,30 @@ func (l *htmlLayout) Text(from, to tuiwidget.DocPos) string {
 	return sb.String()
 }
 
+// LinkRects are the link fragments' boxes on the lines between top and bottom.
+func (l *htmlLayout) LinkRects(top, bottom float32, dst []tuiwidget.Rect32) []tuiwidget.Rect32 {
+	if !l.ready() {
+		return dst
+	}
+	for _, r := range l.runs {
+		ox, oy := runOrigin(r)
+		if oy >= bottom || oy+r.para.Height <= top {
+			continue
+		}
+		for _, ln := range r.para.Lines {
+			if oy+ln.Y >= bottom || oy+ln.Y+ln.H <= top {
+				continue
+			}
+			for _, f := range ln.Frags {
+				if r.spans[f.Span].Link != "" {
+					dst = append(dst, tuiwidget.Rect32{X: ox + f.X, Y: oy + ln.Y, W: f.W, H: ln.H})
+				}
+			}
+		}
+	}
+	return dst
+}
+
 // LinkAt is the target of the link under (x, y): the fragment the point is inside, not the
 // nearest.
 func (l *htmlLayout) LinkAt(x, y float32) string {

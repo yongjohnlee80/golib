@@ -295,6 +295,7 @@ type backendCaps struct {
 	clipR       ClipboardReader
 	natives     NativeHost
 	styler      NativeStyler
+	shapes      PointerShapeHost
 	pointer     PointerResolver
 	faces       FaceHost
 }
@@ -310,6 +311,7 @@ func capsOf(b Backend) backendCaps {
 	c.clipR, _ = b.(ClipboardReader)
 	c.natives, _ = b.(NativeHost)
 	c.styler, _ = b.(NativeStyler)
+	c.shapes, _ = b.(PointerShapeHost)
 	c.pointer, _ = b.(PointerResolver)
 	c.faces, _ = b.(FaceHost)
 	return c

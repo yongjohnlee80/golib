@@ -49,6 +49,7 @@ type App struct {
 	// type says otherwise.
 	images  imagePlacements // the images shown (graphics.go)
 	native  nativeState     // this frame's native placements (native.go)
+	shape   shapeState      // this frame's pointer-shape regions (pointershape.go)
 	faces   faceTable       // the font faces cells name (face.go)
 	small   tooSmallState   // the smallest screen laid out for, and the too-small screen (toosmall.go)
 	hover   hoverState      // the node under the pointer, and the tooltip (hover.go)
@@ -668,6 +669,7 @@ func (a *App) renderFrame() {
 func (a *App) beginFrame() {
 	a.buf.clear()
 	a.beginNatives()
+	a.shape.regions = a.shape.regions[:0]
 	a.images.frameImages = a.images.frameImages[:0]
 }
 
@@ -676,6 +678,7 @@ func (a *App) beginFrame() {
 func (a *App) presentFrame(cursor bool) {
 	a.renderDirty = false
 	a.applyNatives()
+	a.applyShapes()
 	a.applyImages()
 	if cursor {
 		a.applyCursor()

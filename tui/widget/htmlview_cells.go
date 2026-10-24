@@ -1,6 +1,7 @@
 package widget
 
 import (
+	"math"
 	"strings"
 
 	"github.com/yongjohnlee80/golib/tui"
@@ -374,6 +375,32 @@ func (c *cellHTML) Text(from, to DocPos) string {
 		}
 	}
 	return sb.String()
+}
+
+// LinkRects are the links' runs on the rows between top and bottom: each row's adjacent
+// clusters of one link, one rect.
+func (c *cellHTML) LinkRects(top, bottom float32, dst []Rect32) []Rect32 {
+	for y := max(int(top), 0); y < min(int(math.Ceil(float64(bottom))), len(c.rows)); y++ {
+		start, end, link := 0, 0, ""
+		flush := func() {
+			if link != "" && end > start {
+				dst = append(dst, Rect32{X: float32(start), Y: float32(y), W: float32(end - start), H: 1})
+			}
+		}
+		for _, k := range c.rows[y].cls {
+			l := ""
+			if k.sp != nil {
+				l = k.sp.link
+			}
+			if l != link || k.x != end {
+				flush()
+				start, link = k.x, l
+			}
+			end = k.x + k.w
+		}
+		flush()
+	}
+	return dst
 }
 
 // LinkAt is the link target of the text under (x, y); "" when there is none.

@@ -86,12 +86,14 @@ type NativeHost interface {
 // beginNatives starts a frame's native placements, when the backend hosts them.
 func (a *App) beginNatives() {
 	hosts := a.caps.natives != nil
-	a.buf.stamping = hosts
+	a.buf.stamping = hosts || a.caps.shapes != nil // pointer shapes are cut by the same stamps
 	a.native.natives = a.native.natives[:0]
 	a.native.styledDepth = 0
 	a.native.nativeStyler = nil
-	if hosts {
+	if a.buf.stamping {
 		a.buf.resetStamps()
+	}
+	if hosts {
 		a.native.nativeStyler = a.caps.styler
 	}
 }
