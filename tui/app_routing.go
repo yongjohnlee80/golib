@@ -282,8 +282,9 @@ func (a *App) dispatchMouse(e MouseEvent) {
 
 // dispatchPreciseScroll is a precise scroll that made no wheel step: it goes to the nearest
 // PreciseScroller under the pointer that wants it, within the active scope, and to no other node.
-// No hover, tooltip, capture or recogniser sees it: for every other component the wheel is as it
-// was, steps only.
+// Hover is left as it is: a scroll doesn't move the pointer, so hover can't change without a
+// motion. No tooltip, capture or recogniser sees it either: for every other component the wheel is
+// as it was, steps only.
 func (a *App) dispatchPreciseScroll(e MouseEvent) {
 	limit := a.confinement()
 	target := a.pointerTarget(e.X, e.Y, limit)
