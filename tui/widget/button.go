@@ -3,6 +3,7 @@ package widget
 import (
 	"github.com/yongjohnlee80/golib/tui"
 	"github.com/yongjohnlee80/golib/tui/keymap"
+	"github.com/yongjohnlee80/golib/tui/style"
 )
 
 // BUTTON.
@@ -75,6 +76,9 @@ type Button struct {
 	role  ButtonRole
 	st    *ButtonStyle
 	deco  decoration
+	// color is the label's foreground over its look while enabled (SetColor); colored that it is set
+	color   style.Color
+	colored bool
 	// mnemonic is the key that reaches this button directly, or 0. METADATA
 	// ONLY: the button never claims the rune itself. A standalone control that
 	// grabbed an unmodified letter out of the air would break every text field
@@ -205,6 +209,18 @@ func WithOnActivate(fn func()) ButtonOption {
 // a method.
 // ButtonStyle is the button's style: the one WithStyle set, or nil for golib's.
 func (b *Button) ButtonStyle() *ButtonStyle { return b.st }
+
+// SetColor is the label's colour over the button's look, as Text.color is a Text's: a host colouring
+// one button (a dock's icon lit or dimmed) without restyling it. A disabled button keeps its own
+// faded look. A Button wears no palette role of its own (palette.buttonText is a Dialog's and a
+// FileDialog's), so this is how a document colours one: decl's color.
+func (b *Button) SetColor(c style.Color) {
+	if b.colored && b.color == c {
+		return
+	}
+	b.color, b.colored = c, true
+	b.MarkDirty()
+}
 
 func (b *Button) WithStyle(s *ButtonStyle) *Button {
 	b.st = s
@@ -479,6 +495,9 @@ func (b *Button) Render(s tui.Surface) {
 		return
 	}
 	st := b.st.Style(b.State())
+	if b.colored && b.enabled {
+		st = st.Foreground(b.color)
+	}
 	s.Fill(tui.Rect{X: 0, Y: 0, W: sz.W, H: sz.H}, " ", st)
 
 	// Centre using the SURFACE's policy, which is the one that will draw this.

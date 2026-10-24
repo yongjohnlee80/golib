@@ -132,6 +132,8 @@ func coreTypes() []Type {
 			}},
 		{Name: "Button", Build: buildButton, Ctor: []string{"flat"}, restyle: restyleButton, Setters: map[string]Setter{
 			"enabled": setter("a Button", boolOf, (*widget.Button).SetEnabled),
+			// golib's: the label's colour over its look, as a Text's color
+			"color": setter("a Button", colorOf, (*widget.Button).SetColor),
 			// Qt's AbstractButton.text: `&` marks the mnemonic, "&Save".
 			"text": textSetter("a Button", setButtonText, (*widget.Button).SetLabelMessage),
 		}},

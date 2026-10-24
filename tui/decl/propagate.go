@@ -356,7 +356,10 @@ func restyleTerminal(c tui.Component, p palette) {
 
 // restyleButton gives a Button's access key the accent's look, or with none the plain underline.
 // Only the key's look changes: the button's colours are its own, or the Dialog's it sits in
-// (restyleDialog), whichever restyle runs first.
+// (restyleDialog), whichever restyle runs first. A Button takes no palette roles of its own:
+// palette.button and palette.buttonText are a Dialog's and a FileDialog's (the README's role table),
+// so a Button that sets them paints nothing different. Its color property is how a document colours
+// one button.
 func restyleButton(c tui.Component, p palette) {
 	b := c.(*widget.Button)
 	hk, _ := p.hotkey() // zero without an accent: the underline
