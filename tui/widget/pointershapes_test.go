@@ -17,6 +17,7 @@ type shapeHost struct {
 	mu   sync.Mutex
 	last []tui.PointerShapePlacement
 	n    int
+	app  *tui.App
 }
 
 func (b *shapeHost) PlacePointerShapes(ps []tui.PointerShapePlacement) {
@@ -43,6 +44,7 @@ func runShaped(t *testing.T, root tui.Component, w, h int) *shapeHost {
 	t.Helper()
 	sh := &shapeHost{TestBackend: tui.NewTestBackend(w, h)}
 	app := tui.NewApp(root, tui.WithBackend(sh), tui.WithMinFrameInterval(0))
+	sh.app = app
 	ctx, cancel := context.WithCancel(context.Background())
 	done := make(chan struct{})
 	go func() { _ = app.Run(ctx); close(done) }()
@@ -238,4 +240,16 @@ func TestTheEditorGivesItsIBeamUpToItsDocument(t *testing.T) {
 	if len(doc) != 0 {
 		t.Errorf("with the document shown: %+v, want none of the editor's", doc)
 	}
+}
+
+// A list's row pointer changed at runtime shows with the next frame, and so does its clearing: the
+// change repaints.
+func TestAListsRowPointerChangesWithTheNextFrame(t *testing.T) {
+	l := widget.NewList(widget.WithItems([]string{"a", "b"}, func(s string) string { return s }), widget.WithListRowPointer[string](tui.PointerHand))
+	sh := runShaped(t, l, 20, 4)
+	expect(t, sh, map[[2]int]tui.PointerShape{{0, 0}: tui.PointerHand})
+	sh.app.Update(func() { l.SetRowPointerShape(tui.PointerText) })
+	expect(t, sh, map[[2]int]tui.PointerShape{{0, 0}: tui.PointerText, {0, 1}: tui.PointerText})
+	sh.app.Update(func() { l.SetRowPointerShape(tui.PointerDefault) })
+	expect(t, sh, map[[2]int]tui.PointerShape{{0, 0}: tui.PointerDefault, {0, 1}: tui.PointerDefault})
 }

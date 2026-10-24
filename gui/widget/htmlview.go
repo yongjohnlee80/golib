@@ -3,6 +3,7 @@ package widget
 import (
 	"bytes"
 	"image/color"
+	"math"
 
 	"github.com/yongjohnlee80/golib/gui"
 	phtml "github.com/yongjohnlee80/golib/parse/html"
@@ -75,8 +76,12 @@ type htmlLayout struct {
 	selColor color.NRGBA
 	look     uint64 // a hash of the colours, text size and font generation the boxes were styled with
 
-	width  float32
-	viewH  float32 // the view's height at the last paint: vh, and a media query's height
+	width float32
+	viewH float32 // the view's height at the last paint: vh, and a media query's height
+	// cell and scroll are the last paint's cell size and scroll position: PointerRegions maps the
+	// links it laid out through them
+	cell   gui.Size
+	scroll float32
 	styler *styler
 	css    uint64 // a hash of the stylesheets in force
 	body   *computed
@@ -210,6 +215,23 @@ func (l *htmlLayout) HandleTask(r tui.TaskResult) bool {
 	return true
 }
 
+// PointerRegions is the hand over the links the paint just before laid out, in the view's cells (a
+// cell any part of a link falls in): gui.PointerRegionsView, asked after Paint, so a link shows its
+// hand on the first frame it is drawn.
+func (l *htmlLayout) PointerRegions(dst []tui.PointerRegion) []tui.PointerRegion {
+	if l.cell.W <= 0 || l.cell.H <= 0 || l.viewH <= 0 {
+		return dst
+	}
+	for _, r := range l.LinkRects(l.scroll, l.scroll+l.viewH, nil) {
+		x0, x1 := int(math.Floor(float64(r.X/l.cell.W))), int(math.Ceil(float64((r.X+r.W)/l.cell.W)))
+		y0, y1 := int(math.Floor(float64((r.Y-l.scroll)/l.cell.H))), int(math.Ceil(float64((r.Y+r.H-l.scroll)/l.cell.H)))
+		if x1 > x0 && y1 > y0 {
+			dst = append(dst, tui.PointerRegion{Rect: tui.Rect{X: x0, Y: y0, W: x1 - x0, H: y1 - y0}, Shape: tui.PointerHand})
+		}
+	}
+	return dst
+}
+
 // Paint draws the page from the view's scroll position: the visible blocks, laid out as far as
 // one screen below, with the selection under the text.
 func (l *htmlLayout) Paint(c gui.Canvas) {
@@ -228,6 +250,7 @@ func (l *htmlLayout) Paint(c gui.Canvas) {
 		l.build()
 	}
 	scroll := l.v.ScrollY()
+	l.cell, l.scroll = c.CellSize(), scroll
 	l.layOutTo(scroll + 2*size.H)
 	c.FillRect(gui.Rect{W: size.W, H: size.H}, gui.Solid(l.bg))
 	if l.body.background.A > 0 {
