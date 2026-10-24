@@ -1,6 +1,7 @@
 package widget_test
 
 import (
+	"strings"
 	"sync"
 	"sync/atomic"
 	"testing"
@@ -1247,4 +1248,36 @@ func TestAButtonDisabledFromABusDeliveryDoesNotPanic(t *testing.T) {
 		h.onLoop(func() { on = b.Enabled() })
 		return !on
 	})
+}
+
+// TestAButtonsColorPaintsItsLabel: SetColor paints the label in the colour over the button's look,
+// live, as Text.color does; a second colour repaints it, and a disabled button keeps its own faded
+// look. A Button takes no palette roles of its own (palette.buttonText is a Dialog's and a
+// FileDialog's), so color is how a host colours one.
+func TestAButtonsColorPaintsItsLabel(t *testing.T) {
+	b := widget.NewButton("Go")
+	h := startApp(t, b, 8, 1)
+	defer h.stop()
+	h.sync()
+	x := strings.Index(h.tb.String(), "Go")
+	if x < 0 {
+		t.Fatalf("no label:\n%s", h.tb.String())
+	}
+	fg := func() (uint8, uint8, uint8) { a := cellAttrs(h, x, 0); return a.FG.R, a.FG.G, a.FG.B }
+
+	h.onLoop(func() { b.SetColor(style.RGB(0xd0, 0x30, 0x30)) })
+	h.sync()
+	if r, g, bl := fg(); r != 0xd0 || g != 0x30 || bl != 0x30 {
+		t.Fatalf("the label is painted %d,%d,%d; want the colour 208,48,48", r, g, bl)
+	}
+	h.onLoop(func() { b.SetColor(style.RGB(0x30, 0xd0, 0x30)) })
+	h.sync()
+	if r, g, bl := fg(); r != 0x30 || g != 0xd0 || bl != 0x30 {
+		t.Fatalf("a second colour left the label %d,%d,%d; want 48,208,48", r, g, bl)
+	}
+	h.onLoop(func() { b.SetEnabled(false) })
+	h.sync()
+	if r, g, bl := fg(); r == 0x30 && g == 0xd0 && bl == 0x30 {
+		t.Error("a disabled button wears its colour; want its own faded look")
+	}
 }
