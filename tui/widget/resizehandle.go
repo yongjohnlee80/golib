@@ -298,6 +298,12 @@ type resizeHandle struct {
 // to make it conditional later, which is exactly how a grip becomes a tab stop
 // in one edit.
 
+// PointerShapes is the grip's resize arrows over the whole grip.
+func (g *resizeHandle) PointerShapes(dst []tui.PointerRegion) []tui.PointerRegion {
+	const all = 1 << 16 // cut to the grip's cells as they show
+	return append(dst, tui.PointerRegion{Rect: tui.Rect{W: all, H: all}, Shape: g.handle.pointerShape()})
+}
+
 // Init installs the grip's pointer resolver.
 func (g *resizeHandle) Init(ctx *tui.Context) {
 	g.Base.Init(ctx)

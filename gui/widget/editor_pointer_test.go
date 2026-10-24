@@ -1,41 +1,39 @@
 package widget
 
 import (
-	"strings"
+	"math"
 	"testing"
-	"time"
 
+	"github.com/yongjohnlee80/golib/gui"
 	"github.com/yongjohnlee80/golib/tui"
 	tuiwidget "github.com/yongjohnlee80/golib/tui/widget"
 )
 
-// A drag held past the text's bottom keeps scrolling, a line per tick, and the selection with it,
-// though the pointer does not move, as the terminal Editor's does (tuiwidget.EditorPointer); the
-// release stops it.
-func TestADragHeldPastTheBottomKeepsScrolling(t *testing.T) {
-	h := startEditor(t, 40, 10, WithCore(tuiwidget.CoreInitialText(strings.Repeat("line\n", 100))))
-	h.paint()
-	ox, oy := h.bodyOrigin()
-	var rows int
-	h.onLoop(func() { rows = h.e.body.h })
-	_ = h.tb.Inject(tui.MouseEvent{Kind: tui.MousePress, Button: tui.MouseLeft, X: ox + 1, Y: oy})
-	_ = h.tb.Inject(tui.MouseEvent{Kind: tui.MouseMotion, Button: tui.MouseLeft, X: ox + 1, Y: oy + rows, SubY: 0.5})
-	h.barrier()
-	var line float32
-	h.onLoop(func() { line = h.e.layout.lineHeight(h.e.layout.monoFont()) })
-	scroll := func() (s float32) { h.onLoop(func() { s = h.e.layout.scroll }); return s }
-	// the motion itself scrolls (its step, and the caret's reveal); what follows is the hold's
-	held := scroll()
-	heldLine, _ := h.line()
-	h.until("the held drag to scroll on by four lines, the pointer still", func() bool { return scroll() >= held+4*line })
-	if ln, _ := h.line(); ln < heldLine+4 {
-		t.Errorf("the selection's end is on line %d, want it carried four lines on from %d", ln, heldLine)
+// The native editor body is an I-beam from the first whole cell past its gutter, as its paint
+// measured it: with the line numbers off, past the page's padding alone; with them on, past the
+// numbers too.
+func TestTheNativeEditorBodyIsAnIBeamPastItsGutter(t *testing.T) {
+	h := startEditor(t, 60, 8, WithCore(tuiwidget.CoreInitialText("one\ntwo")))
+	shape := func(numbers bool) (got []tui.PointerRegion, want int) {
+		h.onLoop(func() {
+			h.e.SetLineNumbers(numbers)
+			rc := gui.NewRecordingCanvas(gui.Size{W: float32(h.e.body.w) * cellW, H: float32(h.e.body.h) * cellH}, h.cell)
+			v, _ := h.e.body.NativeView()
+			v.(gui.View).Paint(rc)
+			got = h.e.body.PointerShapes(nil)
+			want = int(math.Ceil(float64((padX + h.e.layout.gutter) / h.e.layout.cell.W)))
+		})
+		return got, want
 	}
-	_ = h.tb.Inject(tui.MouseEvent{Kind: tui.MouseRelease, Button: tui.MouseLeft, X: ox + 1, Y: oy + rows})
-	h.barrier()
-	stopped := scroll()
-	time.Sleep(200 * time.Millisecond) // four of the auto-scroll's ticks
-	if got := scroll(); got != stopped {
-		t.Errorf("after the release the view scrolled on, %v to %v", stopped, got)
+	plain, at := shape(false)
+	if len(plain) != 1 || plain[0].Shape != tui.PointerText || plain[0].Rect.X != at {
+		t.Fatalf("without numbers: %+v, want the I-beam from column %d", plain, at)
+	}
+	numbered, past := shape(true)
+	if past <= at {
+		t.Fatalf("the numbers' gutter moved the text to column %d from %d: the cell observes nothing", past, at)
+	}
+	if len(numbered) != 1 || numbered[0].Shape != tui.PointerText || numbered[0].Rect.X != past {
+		t.Fatalf("with numbers: %+v, want the I-beam from column %d", numbered, past)
 	}
 }

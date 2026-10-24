@@ -84,6 +84,21 @@ const (
 	HandleHorizontalDivider
 )
 
+// pointerShape is the pointer over the handle: the arrows of the way it drags.
+func (h Handle) pointerShape() tui.PointerShape {
+	switch h {
+	case HandleLeft, HandleRight, HandleVerticalDivider:
+		return tui.PointerResizeEW
+	case HandleTop, HandleBottom, HandleHorizontalDivider:
+		return tui.PointerResizeNS
+	case HandleTopLeft, HandleBottomRight:
+		return tui.PointerResizeNWSE
+	case HandleTopRight, HandleBottomLeft:
+		return tui.PointerResizeNESW
+	}
+	return tui.PointerDefault
+}
+
 // String names the handle for traces and test failures.
 func (h Handle) String() string {
 	switch h {

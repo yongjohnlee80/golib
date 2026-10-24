@@ -51,6 +51,12 @@ func (t *TextInput) Layout(c tui.Constraints) tui.Size {
 	return c.Constrain(tui.Size{W: w, H: 1})
 }
 
+// PointerShapes is the I-beam over the text: a native field's frame, a cell at each end, keeps
+// the arrow.
+func (t *TextInput) PointerShapes(dst []tui.PointerRegion) []tui.PointerRegion {
+	return append(dst, tui.PointerRegion{Rect: tui.Rect{X: t.pad, W: t.width, H: 1}, Shape: tui.PointerText})
+}
+
 // Cursor implements tui.CursorReporter: the insertion point in local
 // coordinates (the runtime consults it only while this widget is focused).
 func (t *TextInput) Cursor() (int, int, bool) {
