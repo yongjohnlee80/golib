@@ -91,6 +91,7 @@ What a Program gives back:
 | `Find(id)` / `FindAs[W](p, id)` | the widget a document declared | UI loop |
 | `Call(id, method, args…)` | a method by id, as a handler's `x.open()` | UI loop |
 | `Reload(src)` | reconciles against a new document | UI loop |
+| `ReloadWithSources(src, m)` | `Reload`, declaring the sources the new document reads that the program has not | UI loop |
 | `Tree()`, `Adapter()`, `App()`, `Root()` | what it built, for anything else | — |
 
 `NewProgram` is sugar over `tuidecl.New`, `decl.New` and `tui.NewApp`, not a
@@ -885,6 +886,21 @@ default:
     for _, rb := range res.Rebuilt { log.Println(rb) }  // what lost its state, and why
 }
 ```
+
+A document that reads a source the program never declared is refused, as at
+build. `ReloadWithSources` declares them as it reloads: a host that adds a part
+at runtime (a panel for a plugin installed while it runs) passes the part's
+sources with their first values.
+
+```go
+_, err := p.ReloadWithSources(src, map[string]any{"App.card_ddexTitle": "DDEX"})
+```
+
+They are declared before the new document is planned, and kept for a remount.
+A name already declared is refused. A refused reload declares none of them: one
+refused before it touched the tree leaves the screen as it was, and one that
+failed part-way latches the tree, as `Reload`'s does, so the next `Reload`
+remounts, without them.
 
 A module a reload is the first to import is loaded then; a reload refused
 before it touched the tree unloads it again. Call `Tree().ClearComponentCache()`

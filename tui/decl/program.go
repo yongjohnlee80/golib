@@ -772,3 +772,47 @@ func Arg(args []qml.SpecValue, i int) (string, error) {
 	}
 	return args[i].Raw, nil
 }
+
+// ReloadWithSources is Reload for a document that reads sources this program has not declared:
+// their names and first values. They are declared as the reload plans, and kept for a remount, so
+// a later reload that fails part-way builds them again. A reload refused before it touched the tree
+// leaves the screen and the declared set as they were. One that fails part-way latches the tree, as
+// Reload's does, and declares none of its sources: the next Reload remounts without them.
+func (p *Program) ReloadWithSources(src []byte, sources map[string]any) (decl.Result, error) {
+	spec, err := parseReload(p.file, src)
+	if err != nil {
+		return decl.Result{}, err
+	}
+	svs := make(map[string]qml.SpecValue, len(sources))
+	for name, v := range sources {
+		sv, err := Value(v)
+		if err != nil {
+			return decl.Result{}, fmt.Errorf("%s: %w", name, err)
+		}
+		svs[name] = sv
+	}
+	if err := p.checkReloadKeys(spec, p.app.Keymap()); err != nil {
+		return decl.Result{}, err
+	}
+	if p.tree.Failed() {
+		return decl.Result{}, errors.New("tui/decl: a failed tree is remounted by Reload, which declares no new sources")
+	}
+	if err := p.tree.ClearComponentCache(); err != nil {
+		return decl.Result{}, err
+	}
+	res, err := p.tree.ReconcileWithSources(spec, svs)
+	if err != nil {
+		return res, err
+	}
+	if p.cfg.sources == nil {
+		p.cfg.sources = map[string]any{}
+	}
+	for name, v := range sources {
+		p.cfg.sources[name] = v
+	}
+	if res.RootReplaced {
+		p.showRoot()
+	}
+	p.liveLayout = append([]byte(nil), src...)
+	return res, nil
+}

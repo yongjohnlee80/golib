@@ -78,6 +78,13 @@ keeps its identity keeps everything the toolkit hung on it — scroll offset,
 focus, half-typed input, in-flight tasks — because it is *moved*, never
 re-created.
 
+**New sources.** A source is declared before Mount, so the set a schema is
+checked against is fixed when planning begins. A reconcile whose document reads
+a source never declared is refused. `tree.ReconcileWithSources(spec, sources)`
+declares them first, then reconciles against the enlarged set; a refused
+declaration or reconcile removes every name it added. A reconcile that fails
+part-way latches the tree, as `Reconcile`'s does.
+
 **Identity** is the declared `id`, else position among the remaining children.
 A node the author named is never handed to an anonymous newcomer; the reverse is
 allowed, so giving an existing node a name does not reset it. There is no rule
