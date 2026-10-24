@@ -158,7 +158,7 @@ func (l *mdLine) inline(text string, off int) {
 		l.paint(off, off+len(text), highlight.Operator)
 		return
 	}
-	doc := Parse([]byte(text), GFM(), Obsidian())
+	doc := Parse([]byte(text), WithGFM(), WithObsidian())
 	l.walk(doc.Root, off)
 }
 

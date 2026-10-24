@@ -18,16 +18,16 @@ type Option func(*config)
 
 type config struct{ unsafe, spans bool }
 
-// Unsafe passes raw HTML (HTML blocks and inline HTML) through as written, and writes every link and
+// WithUnsafe passes raw HTML (HTML blocks and inline HTML) through as written, and writes every link and
 // image URL. By default raw HTML is escaped, and a URL whose scheme is not on the allowlist (http,
 // https, mailto, ftp, tel; data: only for raster images) is written empty, so a document from an
 // untrusted author renders as text rather than as markup and cannot link to script.
-func Unsafe() Option { return func(c *config) { c.unsafe = true } }
+func WithUnsafe() Option { return func(c *config) { c.unsafe = true } }
 
-// SourceSpans puts each block element's source bytes on it as data-src="start-end": p, h1–h6,
+// WithSourceSpans puts each block element's source bytes on it as data-src="start-end": p, h1–h6,
 // li, pre, blockquote, table and a callout's div. A view of the page can then speak in source
 // positions (scroll an editor and its preview together); the rest of the output is unchanged.
-func SourceSpans() Option { return func(c *config) { c.spans = true } }
+func WithSourceSpans() Option { return func(c *config) { c.spans = true } }
 
 // Render writes doc as HTML.
 func Render(w io.Writer, doc *markdown.Document, opts ...Option) error {

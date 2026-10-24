@@ -8,7 +8,7 @@ import (
 )
 
 func note(src string) *markdown.Document {
-	return markdown.Parse([]byte(src), markdown.GFM(), markdown.Obsidian())
+	return markdown.Parse([]byte(src), markdown.WithGFM(), markdown.WithObsidian())
 }
 
 var relationFields = []string{"supersedes", "superseded_by", "amends", "related", "sources", "adr"}

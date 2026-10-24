@@ -121,7 +121,7 @@ func FuzzParse(f *testing.F) {
 	}
 	f.Fuzz(func(t *testing.T, in string) {
 		src := []byte(in)
-		for _, opts := range [][]markdown.Option{nil, {markdown.GFM()}, {markdown.Obsidian()}, {markdown.GFM(), markdown.Obsidian()}} {
+		for _, opts := range [][]markdown.Option{nil, {markdown.WithGFM()}, {markdown.WithObsidian()}, {markdown.WithGFM(), markdown.WithObsidian()}} {
 			d := markdown.Parse(src, opts...)
 			checkTree(t, src, d.Root)
 			var b bytes.Buffer
@@ -199,8 +199,8 @@ func linearFamilies() []linearFamily {
 			out = append(out, linearFamily{name + suffix, opts, gen})
 		}
 	}
-	gfm := []markdown.Option{markdown.GFM()}
-	both := []markdown.Option{markdown.GFM(), markdown.Obsidian()}
+	gfm := []markdown.Option{markdown.WithGFM()}
+	both := []markdown.Option{markdown.WithGFM(), markdown.WithObsidian()}
 	add("", nil, families)
 	add("", gfm, gfmFamilies)
 	add("+gfm", gfm, families) // the CommonMark families stay linear with GFM on

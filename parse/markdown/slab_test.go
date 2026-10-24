@@ -19,7 +19,7 @@ func TestAParseKeepsNothingOfANodeItLetGo(t *testing.T) {
 	var before, after runtime.MemStats
 	runtime.ReadMemStats(&before)
 	for i := range docs {
-		docs[i] = markdown.Parse(source, markdown.GFM())
+		docs[i] = markdown.Parse(source, markdown.WithGFM())
 		if docs[i].Root.FirstChild.Kind != markdown.KindTable {
 			t.Fatal("the fixture did not become a GFM table")
 		}

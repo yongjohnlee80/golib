@@ -6,7 +6,7 @@ document is, and this package decides how it is written.
 
 ```go
 err := html.Render(w, doc)                // raw HTML escaped: safe for an untrusted author
-err = html.Render(w, doc, html.Unsafe())  // raw HTML passed through, as CommonMark specifies
+err = html.Render(w, doc, html.WithUnsafe())  // raw HTML passed through, as CommonMark specifies
 ```
 
 **The default is safe for an untrusted author.** Raw HTML (HTML blocks and inline HTML) is escaped, so it
@@ -17,7 +17,7 @@ is written as an empty attribute. The check reads the URL the browser would rece
 references are decoded and whitespace is percent-encoded, so neither can hide or split a scheme. It
 covers every link: inline, reference, autolinks, GFM's extended autolinks, wikilinks and embeds.
 
-`Unsafe()` passes raw HTML through and writes every URL, as CommonMark specifies; it is the form the
+`WithUnsafe()` passes raw HTML through and writes every URL, as CommonMark specifies; it is the form the
 conformance cases compare.
 
 ## The form

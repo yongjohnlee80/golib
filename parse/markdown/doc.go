@@ -5,7 +5,7 @@
 // The inline phase then reads each paragraph, heading and table cell, pairing emphasis delimiters
 // and resolving links against every definition, wherever in the document it was written.
 //
-//	doc := markdown.Parse(src, markdown.GFM(), markdown.Obsidian())
+//	doc := markdown.Parse(src, markdown.WithGFM(), markdown.WithObsidian())
 //	for n := doc.Root.FirstChild; n != nil; n = n.Next {
 //		pos := doc.Position(n.Span.Start) // line and column, on demand
 //		_ = pos

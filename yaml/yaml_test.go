@@ -281,7 +281,7 @@ func TestFrontmatter(t *testing.T) {
 // raw, parse/yaml parses it, and Evaluate reads it under the Core schema.
 func TestFrontmatterFromMarkdown(t *testing.T) {
 	note := "---\ntitle: Weekly review\ntags: [review, weekly]\n---\n# Weekly review\n"
-	md := markdown.Parse([]byte(note), markdown.Obsidian())
+	md := markdown.Parse([]byte(note), markdown.WithObsidian())
 	fm := md.Root.FirstChild
 	if fm == nil || fm.Kind != markdown.KindFrontmatter {
 		t.Fatalf("no frontmatter node: %v", fm)

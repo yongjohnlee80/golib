@@ -35,7 +35,7 @@ func TestSafeDefaultEscapesRawHTML(t *testing.T) {
 		if got := renderWith(t, c.in); got != c.safe {
 			t.Errorf("default Render(%q) = %q, want %q", c.in, got, c.safe)
 		}
-		if got := renderWith(t, c.in, html.Unsafe()); got != c.unsafe {
+		if got := renderWith(t, c.in, html.WithUnsafe()); got != c.unsafe {
 			t.Errorf("Unsafe Render(%q) = %q, want %q", c.in, got, c.unsafe)
 		}
 	}
@@ -132,7 +132,7 @@ func TestSafeDefaultURLs(t *testing.T) {
 		if got := renderWith(t, c.in); got != c.safe {
 			t.Errorf("default Render(%q) =\n%q, want\n%q", c.in, got, c.safe)
 		}
-		if got := renderWith(t, c.in, html.Unsafe()); got != c.unsafe {
+		if got := renderWith(t, c.in, html.WithUnsafe()); got != c.unsafe {
 			t.Errorf("Unsafe Render(%q) =\n%q, want\n%q", c.in, got, c.unsafe)
 		}
 	}
@@ -141,7 +141,7 @@ func TestSafeDefaultURLs(t *testing.T) {
 		{"[[javascript:alert(1)]] ![[javascript:x]]\n", `<p><a class="wikilink" href="">javascript:alert(1)</a> <span class="embed" data-href="">javascript:x</span></p>` + "\n"},
 	} {
 		var b bytes.Buffer
-		if err := html.Render(&b, markdown.Parse([]byte(c.in), markdown.GFM(), markdown.Obsidian())); err != nil {
+		if err := html.Render(&b, markdown.Parse([]byte(c.in), markdown.WithGFM(), markdown.WithObsidian())); err != nil {
 			t.Fatal(err)
 		}
 		if b.String() != c.safe {
@@ -154,12 +154,12 @@ func TestSafeDefaultURLs(t *testing.T) {
 // without it the output is unchanged, byte for byte, apart from those attributes.
 func TestSourceSpans(t *testing.T) {
 	src := "# Title\n\npara\n\n- item\n\n> quote\n\n```\ncode\n```\n\n| a | b |\n|---|---|\n| 1 | 2 |\n"
-	doc := markdown.Parse([]byte(src), markdown.GFM())
+	doc := markdown.Parse([]byte(src), markdown.WithGFM())
 	var plain, spans bytes.Buffer
 	if err := html.Render(&plain, doc); err != nil {
 		t.Fatal(err)
 	}
-	if err := html.Render(&spans, doc, html.SourceSpans()); err != nil {
+	if err := html.Render(&spans, doc, html.WithSourceSpans()); err != nil {
 		t.Fatal(err)
 	}
 	if strings.Contains(plain.String(), "data-src") {

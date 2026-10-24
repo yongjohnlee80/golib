@@ -42,8 +42,8 @@ func GFMExtension() Extension {
 	return Extension{Name: "gfm", Recognizes: gfmRecognizes, enable: func(c *config) { c.gfm = true }}
 }
 
-// GFM enables GitHub Flavored Markdown.
-func GFM() Option { return GFMExtension().Option() }
+// WithGFM enables GitHub Flavored Markdown.
+func WithGFM() Option { return GFMExtension().Option() }
 
 // gfmRecognizes is true when src has a byte sequence one of the GFM rules starts from: a pipe or
 // a colon beside a hyphen (the delimiter rows setext cannot take), two tildes, a task marker, or

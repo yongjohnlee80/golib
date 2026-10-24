@@ -557,7 +557,7 @@ func (r *MarkdownRenderer) lineSpans(ln int, line string, th Theme) ([]flow.Span
 		return r.listSpans(ln, line, indent, marker, th), 0
 	}
 	src := []byte(line)
-	doc := markdown.Parse(src, markdown.GFM(), markdown.Obsidian())
+	doc := markdown.Parse(src, markdown.WithGFM(), markdown.WithObsidian())
 	attrs := make([]mdAttr, len(src))
 	level := 0
 	var walk func(n *markdown.Node)

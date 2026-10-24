@@ -16,7 +16,7 @@ type MarkdownChunker struct{}
 func (MarkdownChunker) Version() string { return Version }
 
 func (MarkdownChunker) Chunk(d search.Doc) ([]search.Chunk, error) {
-	doc := markdown.Parse(d.Text, markdown.GFM(), markdown.Obsidian())
+	doc := markdown.Parse(d.Text, markdown.WithGFM(), markdown.WithObsidian())
 	title := d.Title
 	if title == "" {
 		title = ReadMeta(doc, d.Path).Title
