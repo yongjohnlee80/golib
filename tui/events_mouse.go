@@ -52,8 +52,10 @@ type MouseEvent struct {
 
 // PreciseScroller is a component that takes every precise scroll, the part a wheel step can't
 // say included: a MouseWheel with no Button goes to the nearest one under the pointer whose
-// PreciseScroll is true, and to no other component. It still gets the wheel steps, as every
-// component does, so the ScrollX and ScrollY it is sent sum to the whole scroll.
+// PreciseScroll is true, and to no other component. The wheel steps still reach it as they reach
+// every component, bubbling from the one under the pointer, so the ScrollX and ScrollY it is sent
+// sum to the whole scroll when it takes them: a component under it that takes a step keeps that
+// step's scroll.
 type PreciseScroller interface {
 	PreciseScroll() bool
 }
