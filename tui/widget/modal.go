@@ -239,10 +239,13 @@ func (m *Modal) SetButtons(b ...*Button) error {
 	return nil
 }
 
-// InitialFocus nominates where focus belongs inside this dialog: the first
-// control in Tab order that takes focus — the body's, then the buttons' — else
-// the Modal node. An input dialog starts in its first field; a message, whose
-// body takes no focus, starts on its first enabled button.
+// InitialFocus nominates where focus belongs inside this dialog: the body's
+// first control in Tab order that takes focus; else its enabled default
+// button; else its first enabled button; else the Modal node. An input dialog
+// starts in its first field. A message, whose body takes no focus, starts on
+// its default button, so Enter answers the default: a Yes/No defaulting to No
+// answers Enter with No. With no default, or a disabled one, it starts on its
+// first enabled button.
 //
 // TAB ORDER, NOT THE DEFAULT ROLE. A dialog with fields that started on its
 // affirmative button pressed it with the first Space typed into what the user
@@ -259,6 +262,9 @@ func (m *Modal) SetButtons(b ...*Button) error {
 func (m *Modal) InitialFocus() (tui.Component, bool) {
 	if f := firstFocusable(m.Context(), m.card.body); f != nil {
 		return f, true
+	}
+	if b := m.defaultButton(); b != nil {
+		return b, true // a focused button claims Enter: the first would answer it, not the default
 	}
 	for _, b := range m.card.buttons {
 		if b != nil && b.Enabled() {
