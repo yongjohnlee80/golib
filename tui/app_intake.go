@@ -71,6 +71,9 @@ import "github.com/yongjohnlee80/golib/logger"
 //     in-place into the newest coordinate. This prevents high-frequency pointer
 //     sampling from overwhelming the bounded queue or flooding the loop goroutine.
 //
+//     Consecutive precise scrolls (a MouseWheel with no Button) at the same place sum
+//     theirs, so a touchpad's flood costs one event and loses none of the scroll.
+//
 //  4. Smart Drop-Oldest Overflow (intakeEnqueue):
 //     When pending reaches cfg.inputQueueSize, intake sheds load instead of
 //     blocking: it prioritizes dropping the oldest MouseMotion before dropping any
@@ -120,6 +123,15 @@ func (a *App) intake() {
 				if e.Kind == MouseMotion && len(pending) > 0 {
 					if last, ok := pending[len(pending)-1].(MouseEvent); ok && last.Kind == MouseMotion {
 						pending[len(pending)-1] = e // consecutive motions collapse to the newest
+						continue
+					}
+				}
+				if e.precise() && len(pending) > 0 {
+					// consecutive precise scrolls at the same place sum: none of the scroll is lost
+					if last, ok := pending[len(pending)-1].(MouseEvent); ok && last.precise() &&
+						last.X == e.X && last.Y == e.Y && last.Mods == e.Mods && last.Source == e.Source {
+						e.ScrollX, e.ScrollY = last.ScrollX+e.ScrollX, last.ScrollY+e.ScrollY
+						pending[len(pending)-1] = e
 						continue
 					}
 				}

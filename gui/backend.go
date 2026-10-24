@@ -134,6 +134,8 @@ type frame struct {
 	// false: unknown, and the window theme's are used.
 	fg, bg color.NRGBA
 	tinted bool
+	// cursors are the native views' pointer shapes, in paint order (pointershape.go)
+	cursors []cursorArea
 }
 
 // frameCaret puts the frame's caret, for the input method and the preedit: the cell cursor
@@ -403,6 +405,7 @@ func (b *Backend) publishFrame(m metrics) {
 	draw, parts := b.render.frameParts(&b.grid, m, cur, b.natives, b.images.list(), b.focused.Load())
 	f := &frame{draw: draw, parts: parts, m: m, drawCost: b.render.firstCost}
 	b.frameCaret(f, m, cur)
+	f.cursors = viewCursors(nil, m, b.natives)
 	b.mu.Lock()
 	b.latest = f
 	b.mu.Unlock()

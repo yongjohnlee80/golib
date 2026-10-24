@@ -189,6 +189,10 @@ func (a *App) dispatchMouse(e MouseEvent) {
 	if e.Kind != MousePress {
 		e.Count = 0
 	}
+	if e.precise() {
+		a.dispatchPreciseScroll(e)
+		return
+	}
 	a.trackHover(e)
 	if e.Kind == MousePress || e.Kind == MouseWheel {
 		a.toolTipPress(true)
@@ -273,6 +277,26 @@ func (a *App) dispatchMouse(e MouseEvent) {
 	// they do than when they were clicked.
 	if !consumed && target != nil && e.Kind == MousePress && e.Button == MouseLeft {
 		a.offerToRecognizer(target, e)
+	}
+}
+
+// dispatchPreciseScroll is a precise scroll that made no wheel step: it goes to the nearest
+// PreciseScroller under the pointer that wants it, within the active scope, and to no other node.
+// No hover, tooltip, capture or recogniser sees it: for every other component the wheel is as it
+// was, steps only.
+func (a *App) dispatchPreciseScroll(e MouseEvent) {
+	limit := a.confinement()
+	target := a.pointerTarget(e.X, e.Y, limit)
+	if target == nil {
+		return
+	}
+	for m := range pathTo(target, a.pointerCeiling(target, limit)) {
+		if ps, ok := m.comp.(PreciseScroller); ok && ps.PreciseScroll() {
+			if a.routeToNode(m, e.localTo(m.absRect)) {
+				a.traceRouted(e, target, m.id)
+			}
+			return
+		}
 	}
 }
 

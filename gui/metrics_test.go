@@ -108,15 +108,42 @@ func TestPointerWheelSteps(t *testing.T) {
 	scroll := func(dy float32) []tui.MouseEvent {
 		return p.translate(pointer.Event{Kind: pointer.Scroll, Scroll: f32.Pt(0, dy), Position: f32.Pt(8, 16)}, m)
 	}
-	// A step is half a cell (8px): small touchpad deltas add up rather than vanish.
-	if got := scroll(5); len(got) != 0 {
-		t.Fatalf("5px scrolled = %+v; want no step yet", got)
+	// A step is half a cell (8px): small touchpad deltas add up rather than vanish. A scroll that
+	// makes no step is told precisely, on a wheel with no button.
+	if got := scroll(5); len(got) != 1 || got[0].Kind != tui.MouseWheel || got[0].Button != tui.MouseNone || got[0].ScrollY != 5 {
+		t.Fatalf("5px scrolled = %+v; want no step yet, the 5 told precisely", got)
 	}
-	if got := scroll(5); len(got) != 1 || got[0].Button != tui.WheelDown || got[0].X != 1 || got[0].Y != 1 {
-		t.Fatalf("10px scrolled = %+v; want one WheelDown at 1,1", got)
+	if got := scroll(5); len(got) != 1 || got[0].Button != tui.WheelDown || got[0].X != 1 || got[0].Y != 1 || got[0].ScrollY != 5 {
+		t.Fatalf("10px scrolled = %+v; want one WheelDown at 1,1, with its 5", got)
 	}
-	if got := scroll(-34); len(got) != 4 || got[0].Button != tui.WheelUp {
-		t.Fatalf("-34px scrolled = %+v; want four WheelUp", got)
+	if got := scroll(-34); len(got) != 4 || got[0].Button != tui.WheelUp || got[0].ScrollY != -34 || got[1].ScrollY != 0 {
+		t.Fatalf("-34px scrolled = %+v; want four WheelUp, the first with the -34", got)
+	}
+}
+
+// Every scroll is told precisely, in dp: the precise deltas sum to the whole scroll, whether its
+// parts made steps or not, and a scroll of nothing tells nothing.
+func TestPointerWheelIsPreciseInDp(t *testing.T) {
+	m := metrics{cell: image.Pt(8, 16), grid: tui.Size{W: 100, H: 40}, scale: 2}
+	var p pointerState
+	var x, y float32
+	steps := 0
+	for _, d := range []f32.Point{{X: 0, Y: 3}, {X: 1.5, Y: 11}, {X: -20, Y: -2}, {X: 0, Y: 7.25}, {X: 0, Y: 0}} {
+		for _, e := range p.translate(pointer.Event{Kind: pointer.Scroll, Scroll: d, Position: f32.Pt(8, 16)}, m) {
+			x, y = x+e.ScrollX, y+e.ScrollY
+			if e.Button != tui.MouseNone {
+				steps++
+			}
+		}
+	}
+	if x != (1.5-20)/2 || y != (3+11-2+7.25)/2 {
+		t.Errorf("the precise deltas sum to %v, %v dp; want %v, %v", x, y, (1.5-20)/2, (3+11-2+7.25)/2)
+	}
+	if steps == 0 {
+		t.Error("no scroll made a step: the steps' share went unexercised")
+	}
+	if got := p.translate(pointer.Event{Kind: pointer.Scroll, Position: f32.Pt(8, 16)}, m); len(got) != 0 {
+		t.Errorf("a scroll of nothing = %+v", got)
 	}
 }
 
