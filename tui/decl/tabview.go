@@ -81,6 +81,7 @@ func buildTabView(b Build) (tui.Component, []string, error) {
 	}
 	n.tabs = widget.NewTabs(append(opts, widget.WithKeepMounted(true),
 		widget.WithTabsOnChange(n.tabChanged))...)
+	n.tabs.SetOnWindowButton(windowButtonSignals(b))
 	return n, nil, nil
 }
 
@@ -112,6 +113,8 @@ var tabViewType = Type{
 	Setters: map[string]Setter{
 		// Qt's: the index of the current tab; one out of range is ignored
 		"currentIndex": setter("a TabView", truncOf, func(n *tabViewNode, v int) { n.setIndex(v) }),
+		// golib's: _ and x at the bar's right end, emitting minimizeRequested and closeRequested
+		"windowButtons": setter("a TabView", boolOf, func(n *tabViewNode, on bool) { n.tabs.SetWindowButtons(on) }),
 	},
 	Getters: map[string]Getter{
 		"currentIndex": getter(func(n *tabViewNode) (qml.SpecValue, error) {
@@ -121,7 +124,7 @@ var tabViewType = Type{
 			return numberValue(len(n.pages)), nil
 		}),
 	},
-	Signals: map[string][]string{"currentIndexChanged": {"index"}},
+	Signals: map[string][]string{"currentIndexChanged": {"index"}, "minimizeRequested": {}, "closeRequested": {}},
 }
 
 var tabType = Type{

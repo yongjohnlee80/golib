@@ -44,6 +44,10 @@ type tabStrip struct {
 	menuRows func(id string) []MenuItemModel // the strip's own menu (SetMenu)
 	addRows  func() []MenuItemModel          // what + offers (SetAddMenu)
 	menuOpen *popupLayer
+	// windowOps are the window controls at the row's right end, in their order (SetWindowButtons):
+	// none by default; onWindow runs the one pressed
+	windowOps []WindowOperation
+	onWindow  func(WindowOperation)
 
 	owner stripOwner // keeps the tabs, says which is active, and is told what the user chose
 
@@ -63,11 +67,12 @@ type tabStrip struct {
 type stripKind uint8
 
 const (
-	cellTab  stripKind = iota // a tab
-	cellPrev                  // ←, the tabs before the window
-	cellNext                  // →, the tabs after it
-	cellAdd                   // +
-	cellMenu                  // ≡
+	cellTab     stripKind = iota // a tab
+	cellPrev                     // ←, the tabs before the window
+	cellNext                     // →, the tabs after it
+	cellAdd                      // +
+	cellMenu                     // ≡
+	cellControl                  // a window control at the row's right end (SetWindowButtons)
 )
 
 // stripCell is a stretch of the row as drawn: what it is, the tab's id, its text, where it starts
@@ -77,7 +82,8 @@ type stripCell struct {
 	id    string
 	label string
 	x, w  int
-	close bool // a tab whose × is drawn whole: a press on it closes the tab
+	close bool            // a tab whose × is drawn whole: a press on it closes the tab
+	op    WindowOperation // a window control's
 }
 
 // stripAction is a strip menu row's action: what runs, with the tab the menu opened for; nil for a
@@ -271,7 +277,41 @@ func (s *tabStrip) tail() int {
 	if s.menuShown() {
 		w += 4
 	}
-	return w
+	return w + s.controlsWidth()
+}
+
+// controlsWidth is the window controls' cells, each three wide after a cell: none without them.
+func (s *tabStrip) controlsWidth() int { return 4 * len(s.windowOps) }
+
+// setWindowButtons shows _ and x at the row's right end, or none.
+func (s *tabStrip) setWindowButtons(on bool) {
+	s.windowOps = nil
+	if on {
+		s.windowOps = []WindowOperation{WindowMinimize, WindowClose}
+	}
+	s.base.MarkDirty()
+}
+
+// controlCells are the window controls from x at the earliest: right-aligned in the row as laid out
+// (avail), else after the rest of it.
+func (s *tabStrip) controlCells(x int) []stripCell {
+	start := max(x, s.avail-s.controlsWidth()+1)
+	out := make([]stripCell, len(s.windowOps))
+	for i, op := range s.windowOps {
+		out[i] = stripCell{kind: cellControl, op: op, label: " " + windowControlLabels[op] + " ", x: start + 4*i, w: 3}
+	}
+	return out
+}
+
+// controlSpans are the window controls as a native painter reads them (TabWindowController).
+func (s *tabStrip) controlSpans() []TabControl {
+	var out []TabControl
+	for _, c := range s.row() {
+		if c.kind == cellControl {
+			out = append(out, TabControl{X: c.x, W: c.w, Op: c.op})
+		}
+	}
+	return out
 }
 
 // width is the strip's natural width: every tab, + and ≡, each followed by a cell. A strip that
@@ -342,8 +382,9 @@ func (s *tabStrip) row() []stripCell {
 	}
 	if s.menuShown() {
 		out = append(out, stripCell{kind: cellMenu, label: " ≡ ", x: x, w: 3})
+		x += 4
 	}
-	return out
+	return append(out, s.controlCells(x)...)
 }
 
 // fitFrom is the first tab from which every tab to the last fits room cells, each after the first
@@ -482,10 +523,11 @@ func (s *tabStrip) activeIndex() int {
 // spans are the row's stretches, in order: the tabs shown, < and > around them while they
 // overflow, + and ≡.
 func (s *tabStrip) spans() []TabSpan {
-	row := s.row()
-	spans := make([]TabSpan, len(row))
-	for i, c := range row {
-		spans[i] = TabSpan{X: c.x, W: c.w}
+	var spans []TabSpan
+	for _, c := range s.row() {
+		if c.kind != cellControl { // the window controls are their own (controlSpans), not tabs to box
+			spans = append(spans, TabSpan{X: c.x, W: c.w})
+		}
 	}
 	return spans
 }
@@ -499,6 +541,9 @@ func (s *tabStrip) render(sur tui.Surface, w int) {
 			break
 		}
 		st := s.tab
+		if c.kind == cellControl {
+			st = style.New().Foreground(windowControlTokens[c.op]).Inherit(s.bar)
+		}
 		if c.kind == cellTab && c.id == active {
 			st = s.selected
 			if s.markFocus && s.base.focused() {
@@ -602,6 +647,10 @@ func (s *tabStrip) press(e tui.MouseEvent) bool {
 			s.add(tui.Point{X: c.x, Y: 1})
 		case c.kind == cellMenu && e.Button == tui.MouseLeft:
 			s.openMenu(s.owner.stripActive(), tui.Point{X: c.x, Y: 1})
+		case c.kind == cellControl && e.Button == tui.MouseLeft:
+			if s.onWindow != nil {
+				s.onWindow(c.op)
+			}
 		default:
 			continue
 		}
