@@ -406,3 +406,34 @@ func TestTerminalTabsGiveEveryTabTheirHostKeys(t *testing.T) {
 		}
 	}
 }
+
+// SetNormalHint is shown at the strip's right end while the active tab is in normal mode, and only
+// then: a host tells a user who never learnt normal mode how to get back to typing.
+func TestTerminalTabsShowTheNormalHintWhileTheActiveTabIsInNormalMode(t *testing.T) {
+	tabs := NewTerminalTabs()
+	p := newResultProc()
+	defer close(p.release)
+	id := addTestTerminal(t, tabs, "one", p)
+	h := startAppInternal(t, tabs, 60, 4)
+	defer h.stopInternal()
+	h.syncInternal()
+	const hint = "Ctrl+T or i returns to typing"
+	shown := func() bool { h.syncInternal(); return strings.Contains(h.tb.String(), hint) }
+	h.onLoopInternal(func() { tabs.SetNormalHint(hint) })
+	if shown() {
+		t.Fatal("the hint shows in input mode")
+	}
+	e, _ := tabs.find(id)
+	h.onLoopInternal(func() { e.terminal.setMode(TerminalNormal) })
+	if !shown() {
+		t.Fatalf("no hint in normal mode:\n%s", h.tb.String())
+	}
+	h.onLoopInternal(func() { e.terminal.setMode(TerminalInput) })
+	if shown() {
+		t.Fatal("the hint stays after input mode returned")
+	}
+	h.onLoopInternal(func() { tabs.SetNormalHint(""); e.terminal.setMode(TerminalNormal) })
+	if shown() {
+		t.Fatal("no hint set, yet one shows")
+	}
+}

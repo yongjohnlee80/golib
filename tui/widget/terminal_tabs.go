@@ -75,14 +75,15 @@ type TerminalTabs struct {
 	empty   string // the body with no tab; "" is the default message
 	// defaults are what every tab takes, those added later too (SetMinimumContrast and the rest):
 	// each one set overrides a tab's own; nil is not set
-	defaults  [terminalDefaultCount]func(*Terminal)
-	makeView  func(*Terminal) TerminalView      // SetTerminalViews: each tab's own view; nil for none
-	onMode    func(TerminalTabID, TerminalMode) // SetOnMode: every tab's mode changes, by its identity
-	onChanged func()
-	mu        sync.Mutex // lifetime registry and shutdown only; never loop-owned entries
-	owned     []*Terminal
-	shutdown  *TerminalShutdownResult
-	watching  bool
+	defaults   [terminalDefaultCount]func(*Terminal)
+	makeView   func(*Terminal) TerminalView      // SetTerminalViews: each tab's own view; nil for none
+	onMode     func(TerminalTabID, TerminalMode) // SetOnMode: every tab's mode changes, by its identity
+	normalHint string                            // SetNormalHint: at the strip's end while the active tab is in normal mode
+	onChanged  func()
+	mu         sync.Mutex // lifetime registry and shutdown only; never loop-owned entries
+	owned      []*Terminal
+	shutdown   *TerminalShutdownResult
+	watching   bool
 }
 
 // NewTerminalTabs creates a valid empty terminal container.
@@ -198,6 +199,7 @@ func (t *TerminalTabs) Add(label string, options ...TerminalOption) (TerminalTab
 		if t.onMode != nil {
 			t.onMode(id, m)
 		}
+		t.MarkDirty() // the strip's normal-mode hint follows the mode
 	}
 	e := &terminalTab{id: id, label: label, terminal: terminal}
 	t.entries = append(t.entries, e)
@@ -341,6 +343,14 @@ func (t *TerminalTabs) SetModelessScroll(on bool) {
 // those added later too, after the tab's own WithOnMode; a host shows the mode, or how to leave it.
 // nil removes it.
 func (t *TerminalTabs) SetOnMode(fn func(TerminalTabID, TerminalMode)) { t.onMode = fn }
+
+// SetNormalHint shows text at the strip's right end while the active tab is in normal mode, in the
+// room the tabs leave: how to get back to typing, for a user who never learnt normal mode. "" (the
+// default) shows nothing.
+func (t *TerminalTabs) SetNormalHint(text string) {
+	t.normalHint = text
+	t.MarkDirty()
+}
 
 // SetHostKeys gives every tab, those added later too, Terminal.SetHostKeys: the keys their programs
 // never see, left to the host.
@@ -656,6 +666,7 @@ func (t *TerminalTabs) Render(s tui.Surface) {
 		return
 	}
 	t.strip.render(s, w)
+	t.renderNormalHint(s, w)
 	if s.Size().H > 1 {
 		message := ""
 		if e, err := t.find(t.active); err != nil {
@@ -700,4 +711,27 @@ func (t *TerminalTabs) HandleEvent(ev tui.Event) bool {
 		return t.strip.press(e)
 	}
 	return false
+}
+
+// renderNormalHint draws SetNormalHint's text at the strip's right end while the active tab is in
+// normal mode, in the room the strip's own cells leave: cut when there is too little, none in fewer
+// than four cells.
+func (t *TerminalTabs) renderNormalHint(s tui.Surface, w int) {
+	if t.normalHint == "" {
+		return
+	}
+	e, err := t.find(t.active)
+	if err != nil || e.terminal.Mode() != TerminalNormal {
+		return
+	}
+	used := 0
+	for _, c := range t.strip.row() {
+		used = max(used, c.x+s.StringWidth(c.label))
+	}
+	room := w - used - 1
+	if room < 4 {
+		return
+	}
+	text := truncate(t.normalHint, room, s.StringWidth)
+	drawText(s, w-s.StringWidth(text), 0, text, t.strip.tab)
 }
