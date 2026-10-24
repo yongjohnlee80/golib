@@ -222,6 +222,9 @@ func TestEnterAnswersOnlyTheNamedDefault(t *testing.T) {
 		{"none named", "Dialog.Ok | Dialog.Cancel", "", "TextField { }", "open"},
 		{"Ok named, from a field", "Dialog.Ok | Dialog.Cancel", "Dialog.Ok", "TextField { }", "accepted"},
 		{"No named, from a field", "Dialog.Yes | Dialog.No", "Dialog.No", "TextField { }", "rejected"},
+		// a body with nothing to type into starts on the named default, not the first button
+		{"No named, a text body", "Dialog.Yes | Dialog.No", "Dialog.No", `Text { text: "sure?" }`, "rejected"},
+		{"none named, a text body", "Dialog.Yes | Dialog.No", "", `Text { text: "sure?" }`, "accepted"},
 	} {
 		t.Run(c.name, func(t *testing.T) {
 			var mu sync.Mutex
