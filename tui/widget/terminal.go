@@ -55,6 +55,7 @@ type terminalConfig struct {
 	scrollback  int
 	vimKeys     bool
 	modeKey     func(tui.KeyEvent) bool // WithModeKey: the key that toggles input and normal mode
+	modeless    bool                    // WithModelessScroll: the wheel's scrollback view ends at the next key
 	themeColors bool
 	onExit      func(int)
 	onTitle     func(string)
@@ -87,6 +88,13 @@ func WithScrollback(n int) TerminalOption { return func(c *terminalConfig) { c.s
 // insert mode does, except while the program shows the alternate screen
 // (a full-screen program such as vim or less needs Esc itself).
 func WithVimKeys(on bool) TerminalOption { return func(c *terminalConfig) { c.vimKeys = on } }
+
+// WithModelessScroll makes the wheel's scrollback view no mode to leave, for a user who never
+// learnt normal mode: the wheel opens the view (normal mode, its cursor and selection), and the next
+// key or paste goes back to input and to the program, as if no view had opened; the view wheeled
+// back to the bottom is input again too. Normal mode asked for (the mode key, Ctrl+\ Ctrl+n, Esc
+// with WithVimKeys) stays modal. Off, the default, the wheel enters normal mode, as before.
+func WithModelessScroll() TerminalOption { return func(c *terminalConfig) { c.modeless = true } }
 
 // WithModeKey makes the keys match accepts toggle input and normal mode: from input mode into
 // normal mode, and from normal mode back to input (as i and a do). It works while a full-screen
@@ -150,6 +158,9 @@ func WithStarter(fn func(pty.Cmd) (TerminalProcess, error)) TerminalOption {
 // is sent after a Ctrl-\. Losing focus, unmounting or Stop while it is
 // pending sends the Ctrl-\. With WithVimKeys, Esc goes to normal mode too,
 // except on the alternate screen.
+//
+// The wheel scrolls the scrollback in normal mode. With WithModelessScroll that view is no mode to
+// leave: the next key or paste goes back to input and to the program.
 type Terminal struct {
 	Base
 	cfg terminalConfig
@@ -269,6 +280,10 @@ func (t *Terminal) SetDir(dir string) { t.cfg.dir = dir }
 
 // SetVimKeys turns WithVimKeys' Esc on or off while the Terminal runs.
 func (t *Terminal) SetVimKeys(on bool) { t.cfg.vimKeys = on }
+
+// SetModelessScroll sets WithModelessScroll while the Terminal runs; a scrollback view already open
+// keeps the way it was opened.
+func (t *Terminal) SetModelessScroll(on bool) { t.cfg.modeless = on }
 
 // SetModeKey sets WithModeKey's key while the Terminal runs; nil removes it.
 func (t *Terminal) SetModeKey(match func(tui.KeyEvent) bool) { t.cfg.modeKey = match }
@@ -419,6 +434,7 @@ func (t *Terminal) HandleEvent(ev tui.Event) bool {
 		}
 		return false
 	case tui.PasteEvent:
+		t.endTransientView()
 		if t.mode == TerminalNormal || !t.running {
 			return false
 		}
@@ -443,6 +459,7 @@ func (t *Terminal) HandleEvent(ev tui.Event) bool {
 			}
 			return t.toggleMode()
 		}
+		t.endTransientView()
 		if t.mode == TerminalNormal {
 			return t.normal.key(t, e)
 		}
@@ -516,9 +533,21 @@ func (t *Terminal) handleMouse(e tui.MouseEvent) bool {
 			return true // already at the bottom
 		}
 		t.setMode(TerminalNormal)
+		t.normal.transient = t.cfg.modeless
 	}
 	t.normal.scroll(t, n)
+	if t.normal.transient && t.normal.atBottom(t) {
+		t.setMode(TerminalInput) // wheeled back to the bottom: the view is closed
+	}
 	return true
+}
+
+// endTransientView closes a scrollback view the wheel opened under WithModelessScroll: the event
+// that ends it is the program's, handled in input mode as if no view had opened.
+func (t *Terminal) endTransientView() {
+	if t.mode == TerminalNormal && t.normal.transient {
+		t.setMode(TerminalInput)
+	}
 }
 
 // isHostKey reports a host key (SetHostKeys), its press or a repeat of it: match judges the press.
