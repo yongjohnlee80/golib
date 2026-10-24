@@ -3,8 +3,10 @@ package decl
 import (
 	"errors"
 	"fmt"
-	"github.com/yongjohnlee80/golib/parse/qml"
+	"slices"
 	"strings"
+
+	"github.com/yongjohnlee80/golib/parse/qml"
 )
 
 // Kind is what an injected name IS.
@@ -339,4 +341,43 @@ func allowedIn(ctx context, k Kind, called bool) (bool, string) {
 	default:
 		return false, "this name has no usable kind"
 	}
+}
+
+// ReconcileWithSources is Reconcile for a document that reads sources the tree has not declared:
+// sources are declared first, then spec is planned against the enlarged set. The set a schema is
+// checked against still changes only before planning begins, as inject's rule wants. A refused
+// declaration or reconcile takes every name it added away again, so no schema resolves a name the
+// caller was told does not exist. A reconcile refused before it touched the tree leaves the tree as
+// it was; one that fails part-way latches it (Failed), as Reconcile's does, and the names go with
+// it: only Destroy and a fresh Mount, which declares its own sources, use the tree after that.
+func (t *Tree) ReconcileWithSources(spec qml.SpecTree, sources map[string]qml.SpecValue) (Result, error) {
+	if t.ph != phaseIdle {
+		return Result{}, SchemaError{Op: "reconcile", Err: fmt.Errorf(
+			"%w: sources are declared between propagations, not during one", ErrPhase)}
+	}
+	var created []string
+	undo := func() {
+		for _, name := range created {
+			delete(t.injected, name)
+			delete(t.sources, name)
+		}
+	}
+	names := make([]string, 0, len(sources))
+	for name := range sources {
+		names = append(names, name)
+	}
+	slices.Sort(names)
+	for _, name := range names {
+		c, err := t.register("declare source", name, SourceValue(sources[name]))
+		if err != nil {
+			undo()
+			return Result{}, err
+		}
+		created = append(created, c...)
+	}
+	res, err := t.Reconcile(spec)
+	if err != nil {
+		undo()
+	}
+	return res, err
 }
