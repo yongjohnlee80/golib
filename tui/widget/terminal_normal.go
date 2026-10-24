@@ -20,6 +20,9 @@ type normalState struct {
 	aCol      int
 	pendingG  bool
 	searching bool
+	// transient is a view the wheel opened under WithModelessScroll: the next key or paste, or the
+	// view back at the bottom, returns to input (Terminal.endTransientView)
+	transient bool
 	backward  bool // the search being typed, or the last one, goes up
 	query     string
 	last      string // the last search, for n and N
@@ -42,7 +45,12 @@ func (n *normalState) enter(t *Terminal) {
 }
 
 func (n *normalState) leave() {
-	n.visual, n.pendingG, n.searching, n.query = visualNone, false, false, ""
+	n.visual, n.pendingG, n.searching, n.query, n.transient = visualNone, false, false, "", false
+}
+
+// atBottom reports the view on the screen's last lines, where input mode draws.
+func (n *normalState) atBottom(t *Terminal) bool {
+	return n.top >= max(t.lineCount()-max(t.shownRows(), 1), 0)
 }
 
 // follow keeps the view on the same text as output arrives.

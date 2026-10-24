@@ -76,7 +76,8 @@ type TerminalTabs struct {
 	// defaults are what every tab takes, those added later too (SetMinimumContrast and the rest):
 	// each one set overrides a tab's own; nil is not set
 	defaults  [terminalDefaultCount]func(*Terminal)
-	makeView  func(*Terminal) TerminalView // SetTerminalViews: each tab's own view; nil for none
+	makeView  func(*Terminal) TerminalView      // SetTerminalViews: each tab's own view; nil for none
+	onMode    func(TerminalTabID, TerminalMode) // SetOnMode: every tab's mode changes, by its identity
 	onChanged func()
 	mu        sync.Mutex // lifetime registry and shutdown only; never loop-owned entries
 	owned     []*Terminal
@@ -189,6 +190,15 @@ func (t *TerminalTabs) Add(label string, options ...TerminalOption) (TerminalTab
 	t.owned = append(t.owned, terminal)
 	t.mu.Unlock()
 	id := TerminalTabID(fmt.Sprintf("terminal-%d", terminalTabSequence.Add(1)))
+	onMode := terminal.cfg.onMode
+	terminal.cfg.onMode = func(m TerminalMode) {
+		if onMode != nil {
+			onMode(m)
+		}
+		if t.onMode != nil {
+			t.onMode(id, m)
+		}
+	}
 	e := &terminalTab{id: id, label: label, terminal: terminal}
 	t.entries = append(t.entries, e)
 	if t.active == "" {
@@ -289,6 +299,7 @@ const (
 	defaultModeKey
 	defaultCellFace
 	defaultHostKeys
+	defaultModeless
 	terminalDefaultCount
 )
 
@@ -319,6 +330,17 @@ func (t *TerminalTabs) SetVimKeys(on bool) {
 func (t *TerminalTabs) SetModeKey(match func(tui.KeyEvent) bool) {
 	t.setDefault(defaultModeKey, func(tm *Terminal) { tm.SetModeKey(match) })
 }
+
+// SetModelessScroll gives every tab, those added later too, Terminal.SetModelessScroll: the wheel's
+// scrollback view ends at the next key, for a user who never learnt normal mode.
+func (t *TerminalTabs) SetModelessScroll(on bool) {
+	t.setDefault(defaultModeless, func(tm *Terminal) { tm.SetModelessScroll(on) })
+}
+
+// SetOnMode calls fn on the UI loop with a tab's identity whenever its mode changes, for every tab,
+// those added later too, after the tab's own WithOnMode; a host shows the mode, or how to leave it.
+// nil removes it.
+func (t *TerminalTabs) SetOnMode(fn func(TerminalTabID, TerminalMode)) { t.onMode = fn }
 
 // SetHostKeys gives every tab, those added later too, Terminal.SetHostKeys: the keys their programs
 // never see, left to the host.

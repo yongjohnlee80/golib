@@ -909,3 +909,81 @@ func TestTerminalWordMotionsAreTheEditors(t *testing.T) {
 	step("e back on the wide word's end", [2]int{2, 2}, key('b'), key('e'))
 	step("ge to the empty line", [2]int{0, 1}, key('b'), key('g'), key('e'))
 }
+
+// scrolledBack is f's terminal with ten lines of output, scrolled back by a wheel: the scrollback view.
+func scrolledBack(f *termFixture) {
+	f.h.t.Helper()
+	for i := 0; i < 10; i++ {
+		f.output("line\r\n")
+	}
+	f.h.inject(tui.MouseEvent{Kind: tui.MouseWheel, Button: tui.WheelUp})
+	f.h.waitFor("the wheel opens the scrollback view", func() bool { return f.mode() == widget.TerminalNormal })
+}
+
+// With WithModelessScroll the wheel's scrollback view is no mode to leave: the next key goes back to
+// input and to the program, as if no view had opened, so a user who never learnt normal mode's i is
+// never left typing into nothing.
+func TestTerminalModelessScrollAKeyGoesBackToTheProgram(t *testing.T) {
+	f := startTerm(t, 20, 3, widget.WithModelessScroll())
+	scrolledBack(f)
+	f.h.inject(key('x'))
+	f.waitSent("x")
+	if m := f.mode(); m != widget.TerminalInput {
+		t.Errorf("after a key the mode is %v, want input", m)
+	}
+}
+
+// A paste in the scrollback view goes back to input and to the program too.
+func TestTerminalModelessScrollAPasteGoesBackToTheProgram(t *testing.T) {
+	f := startTerm(t, 20, 3, widget.WithModelessScroll())
+	scrolledBack(f)
+	f.h.inject(tui.PasteEvent{Text: "pasted"})
+	f.waitSent("pasted")
+	if m := f.mode(); m != widget.TerminalInput {
+		t.Errorf("after a paste the mode is %v, want input", m)
+	}
+}
+
+// Wheeling back down to the bottom closes the view: the terminal is in input again.
+func TestTerminalModelessScrollBackAtTheBottomIsInput(t *testing.T) {
+	f := startTerm(t, 20, 3, widget.WithModelessScroll())
+	scrolledBack(f)
+	f.h.inject(tui.MouseEvent{Kind: tui.MouseWheel, Button: tui.WheelDown})
+	f.h.waitFor("back at the bottom, input again", func() bool { return f.mode() == widget.TerminalInput })
+}
+
+// Normal mode asked for stays modal under WithModelessScroll: Ctrl+\ Ctrl+n and the mode key enter
+// it, and a key there is normal mode's, never the program's.
+func TestTerminalModelessScrollLeavesAskedNormalModeModal(t *testing.T) {
+	ctrlT := func(e tui.KeyEvent) bool { return e.Code == 't' && e.Mods.Chord() == tui.ModCtrl }
+	f := startTerm(t, 20, 3, widget.WithModelessScroll(), widget.WithModeKey(ctrlT))
+	for _, enter := range [][]tui.Event{
+		{tui.KeyEvent{Code: '\\', Mods: tui.ModCtrl}, tui.KeyEvent{Code: 'n', Mods: tui.ModCtrl}},
+		{tui.KeyEvent{Code: 't', Mods: tui.ModCtrl}},
+	} {
+		f.h.inject(enter...)
+		f.h.waitFor("normal mode asked for", func() bool { return f.mode() == widget.TerminalNormal })
+		f.h.inject(key('x'))
+		f.h.settle()
+		if m := f.mode(); m != widget.TerminalNormal {
+			t.Fatalf("a key in normal mode asked for left it: %v", m)
+		}
+		if strings.Contains(f.proc().sent(), "x") {
+			t.Fatal("a key in normal mode asked for reached the program")
+		}
+		f.h.inject(key('i'))
+		f.h.waitFor("i: input again", func() bool { return f.mode() == widget.TerminalInput })
+	}
+}
+
+// Without WithModelessScroll the wheel's view is normal mode, as it always was: a key there is
+// normal mode's, and i returns to input.
+func TestTerminalWheelWithoutModelessScrollIsNormalMode(t *testing.T) {
+	f := startTerm(t, 20, 3)
+	scrolledBack(f)
+	f.h.inject(key('x'))
+	f.h.settle()
+	if m := f.mode(); m != widget.TerminalNormal || strings.Contains(f.proc().sent(), "x") {
+		t.Fatalf("without the option a key left the wheel's view (%v) or reached the program", m)
+	}
+}

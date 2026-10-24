@@ -422,3 +422,31 @@ func TestTerminalTabsModeKeyReachesEveryTab(t *testing.T) {
 		}
 	}
 }
+
+// SetModelessScroll reaches every tab, those already there and those added later; SetOnMode reports
+// each tab's mode changes by its identity.
+func TestTerminalTabsModelessScrollAndOnModeReachEveryTab(t *testing.T) {
+	tabs := NewTerminalTabs()
+	before := newResultProc()
+	defer close(before.release)
+	first := addTestTerminal(t, tabs, "before", before)
+	tabs.SetModelessScroll(true)
+	var seen []string
+	tabs.SetOnMode(func(id TerminalTabID, m TerminalMode) { seen = append(seen, string(id)+":"+m.String()) })
+	after := newResultProc()
+	defer close(after.release)
+	second := addTestTerminal(t, tabs, "after", after)
+	for _, e := range tabs.entries {
+		if !e.terminal.cfg.modeless {
+			t.Errorf("tab %q is not modeless", e.label)
+		}
+	}
+	for _, e := range tabs.entries {
+		e.terminal.setMode(TerminalNormal)
+		e.terminal.setMode(TerminalInput)
+	}
+	want := []string{string(first) + ":NORMAL", string(first) + ":TERMINAL", string(second) + ":NORMAL", string(second) + ":TERMINAL"}
+	if strings.Join(seen, " ") != strings.Join(want, " ") {
+		t.Errorf("modes reported %v, want %v", seen, want)
+	}
+}
