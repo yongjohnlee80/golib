@@ -11,8 +11,8 @@ import (
     "github.com/yongjohnlee80/golib/parse/markdown/html"
 )
 
-doc := markdown.Parse(src, markdown.GFM(), markdown.Obsidian())
-err := html.Render(w, doc) // safe: raw HTML escaped, script URLs dropped; html.Unsafe() writes both
+doc := markdown.Parse(src, markdown.WithGFM(), markdown.WithObsidian())
+err := html.Render(w, doc) // safe: raw HTML escaped, script URLs dropped; html.WithUnsafe() writes both
 ```
 
 `Parse` takes any bytes and never fails — any sequence of characters is a CommonMark document — and
@@ -61,7 +61,7 @@ or an indexer can find it; renderers skip it, and a paragraph that held only def
 
 ## Extensions
 
-`GFM()` and `Obsidian()` enable the extensions; `GFMExtension()` and `ObsidianExtension()` describe
+`WithGFM()` and `WithObsidian()` enable the extensions; `GFMExtension()` and `ObsidianExtension()` describe
 them. An extension re-reads some valid CommonMark (a pipe table was a paragraph, `#tag` was text), so
 the promise is narrower than "CommonMark is unchanged": **on a source its `Recognizes` rejects, the
 tree is the same with the extension as without it.** The tests take that literally: every CommonMark
@@ -133,7 +133,7 @@ reading is pinned by a rule and its cases. The ones a user may notice:
   non-digit. A callout's marker is on the block quote's first line; the rest of that line is its title,
   never part of the body.
 
-Not read: GFM's disallowed-raw-HTML filter (the renderer escapes all raw HTML unless `Unsafe()`), and
+Not read: GFM's disallowed-raw-HTML filter (the renderer escapes all raw HTML unless `WithUnsafe()`), and
 Obsidian's block ids (`^id` at a line's end), footnotes, `%%comments%%`, `==highlights==` and math.
 
 ## How it is tested
@@ -160,5 +160,5 @@ Obsidian's block ids (`^id` at a line's end), footnotes, `%%comments%%`, `==high
 and `Named`, for code that holds parsers of several formats behind those interfaces:
 
 ```go
-var p parse.Parser[*Document] = markdown.New(markdown.GFM())
+var p parse.Parser[*Document] = markdown.New(markdown.WithGFM())
 ```

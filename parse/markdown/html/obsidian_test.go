@@ -94,7 +94,7 @@ var casesObsidian = []specCase{
 func renderWithOpts(t *testing.T, in string, opts ...markdown.Option) string {
 	t.Helper()
 	var b bytes.Buffer
-	if err := html.Render(&b, markdown.Parse([]byte(in), opts...), html.Unsafe()); err != nil {
+	if err := html.Render(&b, markdown.Parse([]byte(in), opts...), html.WithUnsafe()); err != nil {
 		t.Fatal(err)
 	}
 	return b.String()
@@ -102,7 +102,7 @@ func renderWithOpts(t *testing.T, in string, opts ...markdown.Option) string {
 
 func TestObsidian(t *testing.T) {
 	for _, c := range casesObsidian {
-		if got := renderWithOpts(t, c.In, markdown.Obsidian()); got != c.Want {
+		if got := renderWithOpts(t, c.In, markdown.WithObsidian()); got != c.Want {
 			t.Errorf("%s (pos=%v)\n in: %q\ngot: %q\nwant %q", c.Rule, c.Pos, c.In, got, c.Want)
 		}
 	}
@@ -149,7 +149,7 @@ func TestObsidianInvariance(t *testing.T) {
 			continue
 		}
 		ran++
-		if got := renderWithOpts(t, c.In, markdown.Obsidian()); got != c.Want {
+		if got := renderWithOpts(t, c.In, markdown.WithObsidian()); got != c.Want {
 			t.Errorf("%s: Obsidian changed a document it does not recognize\n in: %q\ngot: %q\nwant %q", c.Rule, c.In, got, c.Want)
 		}
 	}
@@ -158,7 +158,7 @@ func TestObsidianInvariance(t *testing.T) {
 			continue
 		}
 		ran++
-		if got := renderWithOpts(t, c.In, markdown.GFM(), markdown.Obsidian()); got != c.Want {
+		if got := renderWithOpts(t, c.In, markdown.WithGFM(), markdown.WithObsidian()); got != c.Want {
 			t.Errorf("%s: Obsidian changed a GFM document it does not recognize\n in: %q\ngot: %q\nwant %q", c.Rule, c.In, got, c.Want)
 		}
 	}
@@ -180,13 +180,13 @@ func TestObsidianCollisions(t *testing.T) {
 		if got := render(t, c.in); got != c.commonmark {
 			t.Errorf("CommonMark %q = %q, want %q", c.in, got, c.commonmark)
 		}
-		if got := renderWithOpts(t, c.in, markdown.Obsidian()); got != c.obsidian {
+		if got := renderWithOpts(t, c.in, markdown.WithObsidian()); got != c.obsidian {
 			t.Errorf("Obsidian %q = %q, want %q", c.in, got, c.obsidian)
 		}
 	}
 	in := "| a |\n| - |\n| [[P\\|al]] |\n"
 	want := "<table>\n<thead>\n<tr>\n<th>a</th>\n</tr>\n</thead>\n<tbody>\n<tr>\n<td><a class=\"wikilink\" href=\"P\">al</a></td>\n</tr>\n</tbody>\n</table>\n"
-	if got := renderWithOpts(t, in, markdown.GFM(), markdown.Obsidian()); got != want {
+	if got := renderWithOpts(t, in, markdown.WithGFM(), markdown.WithObsidian()); got != want {
 		t.Errorf("GFM+Obsidian %q = %q, want %q", in, got, want)
 	}
 }
@@ -194,7 +194,7 @@ func TestObsidianCollisions(t *testing.T) {
 // TestObsidianRecognizesEveryCase is the converse of the invariance run.
 func TestObsidianRecognizesEveryCase(t *testing.T) {
 	for _, c := range casesObsidian {
-		if render(t, c.In) != renderWithOpts(t, c.In, markdown.Obsidian()) && !markdown.ObsidianExtension().Recognizes([]byte(c.In)) {
+		if render(t, c.In) != renderWithOpts(t, c.In, markdown.WithObsidian()) && !markdown.ObsidianExtension().Recognizes([]byte(c.In)) {
 			t.Errorf("%s: %q reads differently under Obsidian but is not recognized", c.Rule, c.In)
 		}
 	}
@@ -204,7 +204,7 @@ func TestObsidianRecognizesEveryCase(t *testing.T) {
 // a wikilink's Target, a tag's name, and a callout's type and fold.
 func TestObsidianTree(t *testing.T) {
 	src := []byte("---\r\ntitle: x\r\n---\r\n> [!Warn]- T\n> [[Page#H|al]] #a/b\n")
-	d := markdown.Parse(src, markdown.Obsidian())
+	d := markdown.Parse(src, markdown.WithObsidian())
 	fm := d.Root.FirstChild
 	if fm.Kind != markdown.KindFrontmatter || string(fm.Literal) != "title: x\r\n" || string(src[fm.Span.Start:fm.Span.End]) != "---\r\ntitle: x\r\n---" {
 		t.Fatalf("frontmatter %s %q spans %q", fm.Kind, fm.Literal, src[fm.Span.Start:fm.Span.End])

@@ -78,7 +78,7 @@ func (m *markdownMetadata) prepare(lines []string) {
 		}
 	}
 	src := []byte(source)
-	doc := markdown.Parse(src, markdown.GFM(), markdown.Obsidian())
+	doc := markdown.Parse(src, markdown.WithGFM(), markdown.WithObsidian())
 	var walk func(*markdown.Node)
 	walk = func(n *markdown.Node) {
 		switch n.Kind {

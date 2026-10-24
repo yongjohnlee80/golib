@@ -22,7 +22,7 @@ type specCase struct {
 func render(t *testing.T, in string) string {
 	t.Helper()
 	var b bytes.Buffer
-	if err := html.Render(&b, markdown.Parse([]byte(in)), html.Unsafe()); err != nil {
+	if err := html.Render(&b, markdown.Parse([]byte(in)), html.WithUnsafe()); err != nil {
 		t.Fatal(err)
 	}
 	return b.String()

@@ -39,8 +39,8 @@ func ObsidianExtension() Extension {
 	return Extension{Name: "obsidian", Recognizes: obsidianRecognizes, enable: func(c *config) { c.obsidian = true }}
 }
 
-// Obsidian enables the Obsidian syntax.
-func Obsidian() Option { return ObsidianExtension().Option() }
+// WithObsidian enables the Obsidian syntax.
+func WithObsidian() Option { return ObsidianExtension().Option() }
 
 // obsidianRecognizes is true when src starts with "---" (frontmatter) or has "[[" (a wikilink or
 // an embed), "[!" (a callout) or a '#' followed by a byte a tag may hold.

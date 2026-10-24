@@ -28,7 +28,7 @@ func TestASlabNodeNeverMoves(t *testing.T) {
 
 // Parses made at once by one parser value share no node, and none keeps its slab after Parse.
 func TestParsesAtOnceShareNoNode(t *testing.T) {
-	parser := New(GFM(), Obsidian())
+	parser := New(WithGFM(), WithObsidian())
 	docs := make([]*Document, 24)
 	var wg sync.WaitGroup
 	for i := range docs {

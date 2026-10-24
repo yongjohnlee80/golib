@@ -28,7 +28,7 @@ func TestOversizedTableKeepsHeadersAndBoundedSourceSpans(t *testing.T) {
 		fmt.Fprintf(&src, "| https://example.org/%04d/%s | %s |\n", i, strings.Repeat("abcdef1234", 10), strings.Repeat("id", 50))
 	}
 	text := src.String()
-	chunks := Markdown(markdown.Parse([]byte(text), markdown.GFM()), "Records", 0)
+	chunks := Markdown(markdown.Parse([]byte(text), markdown.WithGFM()), "Records", 0)
 	if len(chunks) < 3 {
 		t.Fatalf("oversized table produced %d chunks", len(chunks))
 	}
@@ -62,7 +62,7 @@ func TestLongCodeAndListRespectSectionBudget(t *testing.T) {
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			src := "# Heading\n\n" + tc.body
-			cs := Markdown(markdown.Parse([]byte(src), markdown.GFM()), "Heading", 128)
+			cs := Markdown(markdown.Parse([]byte(src), markdown.WithGFM()), "Heading", 128)
 			if len(cs) < 2 {
 				t.Fatalf("oversize %s did not split", tc.name)
 			}
@@ -81,7 +81,7 @@ func TestLongCodeAndListRespectSectionBudget(t *testing.T) {
 
 func TestLongTableHeaderCannotMakeAnOversizedChunk(t *testing.T) {
 	text := "# Heading\n\n| " + strings.Repeat("headerid", 180) + " | Value |\n|---|---|\n" + strings.Repeat("| long row | value |\n", 40)
-	for _, c := range Markdown(markdown.Parse([]byte(text), markdown.GFM()), "Heading", 128) {
+	for _, c := range Markdown(markdown.Parse([]byte(text), markdown.WithGFM()), "Heading", 128) {
 		if n := estimated(c); n > 128 {
 			t.Errorf("chunk %d has %d tokens", c.Ord, n)
 		}
@@ -90,12 +90,12 @@ func TestLongTableHeaderCannotMakeAnOversizedChunk(t *testing.T) {
 
 func TestTitleOnlyAndHeaderOnlyTableStayBounded(t *testing.T) {
 	title := strings.Repeat("long title with many words ", 80)
-	cs := Markdown(markdown.Parse(nil, markdown.GFM()), title, 128)
+	cs := Markdown(markdown.Parse(nil, markdown.WithGFM()), title, 128)
 	if len(cs) != 1 || cs[0].Body != "" || Tokens([]byte(cs[0].Breadcrumb)) > 128 {
 		t.Fatalf("empty note with long title: %+v", cs)
 	}
 	table := "# Title\n\n| First | Second |\n|---|---|\n"
-	cs = Markdown(markdown.Parse([]byte(table), markdown.GFM()), "Title", 128)
+	cs = Markdown(markdown.Parse([]byte(table), markdown.WithGFM()), "Title", 128)
 	if len(cs) != 1 || !strings.Contains(cs[0].Body, "| First | Second |") {
 		t.Fatalf("header-only table: %+v", cs)
 	}
@@ -105,7 +105,7 @@ func TestTitleOnlyAndHeaderOnlyTableStayBounded(t *testing.T) {
 // frontmatter left out, ordinals from 0.
 func TestMarkdownSectionsAndBreadcrumbs(t *testing.T) {
 	src := "---\ntitle: Guide\n---\n\n# Guide\n\nIntro words.\n\n## Storage\n\nOne file.\n\n[r]: https://x\n\n### Durability\n\nThe log.\n"
-	cs := Markdown(markdown.Parse([]byte(src), markdown.GFM(), markdown.Obsidian()), "Guide", 0)
+	cs := Markdown(markdown.Parse([]byte(src), markdown.WithGFM(), markdown.WithObsidian()), "Guide", 0)
 	if got, want := crumbsOf(cs), []string{"Guide", "Guide > Storage", "Guide > Storage > Durability"}; !reflect.DeepEqual(got, want) {
 		t.Fatalf("breadcrumbs = %q, want %q", got, want)
 	}
@@ -212,7 +212,7 @@ func TestInvalidYAMLIsPlainText(t *testing.T) {
 
 func TestReadMeta(t *testing.T) {
 	parse := func(s string) *markdown.Document {
-		return markdown.Parse([]byte(s), markdown.GFM(), markdown.Obsidian())
+		return markdown.Parse([]byte(s), markdown.WithGFM(), markdown.WithObsidian())
 	}
 	m := ReadMeta(parse("---\ntitle: Guide\ntags: [Design, '#core']\naliases: arch\n---\n\n# Other\n\nText #Inline\n"), "x/guide.md")
 	if m.Title != "Guide" || !reflect.DeepEqual(m.Tags, []string{"core", "design", "inline"}) || !reflect.DeepEqual(m.Aliases, []string{"arch"}) {
@@ -264,7 +264,7 @@ func TestChunkers(t *testing.T) {
 	md := []byte("---\ntitle: Guide\n---\n\n## Storage\n\nOne file.\n")
 	c, _ := r.For("notes/guide.md")
 	got, _ := c.Chunk(search.Doc{Path: "notes/guide.md", Text: md})
-	if want := Markdown(markdown.Parse(md, markdown.GFM(), markdown.Obsidian()), "Guide", 0); !reflect.DeepEqual(got, want) {
+	if want := Markdown(markdown.Parse(md, markdown.WithGFM(), markdown.WithObsidian()), "Guide", 0); !reflect.DeepEqual(got, want) {
 		t.Errorf("Markdown: %+v, want %+v", got, want)
 	}
 	got, _ = c.Chunk(search.Doc{Path: "notes/guide.md", Title: "Named", Text: md, Tokens: 128})

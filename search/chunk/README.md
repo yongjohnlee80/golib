@@ -15,7 +15,7 @@ import "github.com/yongjohnlee80/golib/search/chunk"
 ## Example
 
 ```go
-doc := markdown.Parse(src, markdown.GFM(), markdown.Obsidian())
+doc := markdown.Parse(src, markdown.WithGFM(), markdown.WithObsidian())
 meta := chunk.ReadMeta(doc, "guides/storage.md") // title, tags, aliases, frontmatter as JSON
 for _, c := range chunk.Markdown(doc, meta.Title, 512) {
 	fmt.Println(c.Ord, c.Breadcrumb, c.ByteStart, c.ByteEnd)

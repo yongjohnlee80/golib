@@ -131,7 +131,7 @@ var casesGFM = []specCase{
 func renderGFM(t *testing.T, in string) string {
 	t.Helper()
 	var b bytes.Buffer
-	if err := html.Render(&b, markdown.Parse([]byte(in), markdown.GFM()), html.Unsafe()); err != nil {
+	if err := html.Render(&b, markdown.Parse([]byte(in), markdown.WithGFM()), html.WithUnsafe()); err != nil {
 		t.Fatal(err)
 	}
 	return b.String()
