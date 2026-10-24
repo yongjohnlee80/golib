@@ -578,3 +578,33 @@ func TestATabStripsWindowControlsAreTheTitleBarsDots(t *testing.T) {
 		t.Errorf("a strip without controls painted %d dots", len(got))
 	}
 }
+
+// A strip with no tab yet, as the terminal's before its first shell, still shows its controls'
+// dots: nothing else on the bar is a box, and the controls are what closes it.
+func TestAnEmptyTabStripStillPaintsItsWindowControls(t *testing.T) {
+	tabs := widget.NewTerminalTabs()
+	tabs.SetWindowButtons(true)
+	if n := len(tabs.TabSpans()); n != 0 {
+		t.Fatalf("an empty strip has %d spans", n)
+	}
+	if n := len(tabs.TabWindowControls()); n != 2 {
+		t.Fatalf("%d controls; want _ and x", n)
+	}
+	view, _, ok := paintTabs(tabs)
+	if !ok {
+		t.Fatal("no view")
+	}
+	var got []color.NRGBA
+	for _, p := range paintUnder(t, view, overView{cols: 20, rows: 1, covered: func(int, int) bool { return false }}).Calls {
+		if p.Op == "FillEllipse" {
+			got = append(got, p.Brush.Color)
+		}
+	}
+	if want := []color.NRGBA{WindowControlColor(widget.WindowMinimize), WindowControlColor(widget.WindowClose)}; !slices.Equal(got, want) {
+		t.Errorf("an empty strip painted dots %v; want %v", got, want)
+	}
+	plain, _, _ := paintTabs(&fakeTabs{})
+	if calls := paintUnder(t, plain, overView{cols: 20, rows: 1, covered: func(int, int) bool { return false }}).Calls; len(calls) != 0 {
+		t.Errorf("an empty strip without controls painted %+v; want nothing, as before", calls)
+	}
+}

@@ -529,7 +529,11 @@ func paintTabs(comp tui.Component) (View, tui.NativeScope, bool) {
 		cols, _ := CanvasCells(c)
 		cs := c.CellSize()
 		spans := tabSpans()
-		if cols <= 0 || len(spans) == 0 {
+		var controls []widget.TabControl
+		if wc, ok := comp.(widget.TabWindowController); ok {
+			controls = wc.TabWindowControls()
+		}
+		if cols <= 0 || len(spans) == 0 && len(controls) == 0 { // a strip with no tabs still has its controls
 			return
 		}
 		if fill, ok := panelBar(comp); ok { // on a panel's title bar: the panel's own colour
@@ -584,9 +588,7 @@ func paintTabs(comp tui.Component) (View, tui.NativeScope, bool) {
 			c.FillRect(Rect{X: x, Y: cs.H * 0.2, W: 1 / px, H: cs.H * 0.6}, Solid(Mix(bg, fg, 0.55)))
 		}
 		c.PaintCells(CellRect{W: cols, H: 1}, true)
-		if wc, ok := comp.(widget.TabWindowController); ok {
-			paintTabControls(c, wc.TabWindowControls(), cols)
-		}
+		paintTabControls(c, controls, cols)
 	}), tui.ScopeChrome, true
 }
 
