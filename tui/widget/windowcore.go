@@ -58,6 +58,13 @@ type WindowGesture interface {
 	GestureLost(op WindowOperation)
 }
 
+// WindowChangeHandler is a target told each operation its window completes, the WindowChangedEvent
+// the core publishes: after the owner's WithWindowChanged and before the bus. A target that commits
+// what a gesture staged (a tile manager's) commits here, whoever built the window's core.
+type WindowChangeHandler interface {
+	WindowChanged(WindowChangedEvent)
+}
+
 // WindowState is a value snapshot of configuration and live state, not config.
 type WindowState struct {
 	Move, Resize, Maximize, Minimize, Close bool
@@ -76,6 +83,7 @@ type WindowCore struct {
 	dismissal                               WindowDismissal
 	handles                                 WindowHandles
 	gesture                                 WindowGesture
+	changeHandler                           WindowChangeHandler
 	collector                               WindowCollector
 	moveBinding, resizeBinding              windowBinding
 	handle                                  Handle
@@ -88,6 +96,9 @@ type WindowCore struct {
 	onClose                                 func() bool
 	ctx                                     *tui.Context
 	content                                 tui.Component
+	bound                                   any  // the target bind was given, and
+	boundExplicit                           bool // whether it was explicit: Retarget(nil) returns here
+	retarget                                any  // Retarget's target, kept across a rebind; nil for none
 	pointerFrame                            func(tui.Point) tui.Point
 	owner                                   tui.NodeID
 	minimized, closed, busy                 bool
@@ -158,20 +169,8 @@ func (c *WindowCore) bind(ctx *tui.Context, content tui.Component, target any, e
 	}
 	c.ctx, c.content, c.owner = ctx, content, ctx.ID()
 	c.closed, c.minimized, c.drag = false, false, nil
-	c.pointerFrame = nil
-	needsTarget := c.move || c.resize || c.maximize || c.minimize || (c.close && c.onClose == nil) || c.workArea != nil
-	if !explicit && needsTarget {
-		if parent := ctx.Ancestor(func(v tui.Component) bool { _, ok := v.(WindowTargetProvider); return ok }); parent != nil {
-			target, c.pointerFrame = parent.(WindowTargetProvider).WindowTargetFor(c, ctx)
-		}
-	}
-	c.geometry, _ = target.(WindowGeometry)
-	c.zoom, _ = target.(WindowZoom)
-	c.visibility, _ = target.(WindowVisibility)
-	c.dismissal, _ = target.(WindowDismissal)
-	c.handles, _ = target.(WindowHandles)
-	c.gesture, _ = target.(WindowGesture)
-	if reason := c.bindError(explicit); reason != "" {
+	c.bound, c.boundExplicit = target, explicit
+	if reason := c.probe(); reason != "" {
 		panic(fatalOf("widget: WindowCore.Bind", reason, "supply the target facets required by enabled capabilities"))
 	}
 	owner := c.owner
@@ -184,6 +183,49 @@ func (c *WindowCore) bind(ctx *tui.Context, content tui.Component, target any, e
 			c.notifyObservers()
 		}
 	})
+	c.notifyObservers()
+}
+
+// probe takes the target's facets: Retarget's target when there is one, else the target bind was
+// given, or, when that was not explicit, the enclosing provider's (the Float's own placement). It
+// returns why the facets cannot serve the enabled capabilities, "" when they can.
+func (c *WindowCore) probe() string {
+	target, explicit := c.bound, c.boundExplicit
+	if c.retarget != nil {
+		target, explicit = c.retarget, true
+	}
+	c.pointerFrame = nil
+	needsTarget := c.move || c.resize || c.maximize || c.minimize || (c.close && c.onClose == nil) || c.workArea != nil
+	if !explicit && needsTarget {
+		if parent := c.ctx.Ancestor(func(v tui.Component) bool { _, ok := v.(WindowTargetProvider); return ok }); parent != nil {
+			target, c.pointerFrame = parent.(WindowTargetProvider).WindowTargetFor(c, c.ctx)
+		}
+	}
+	c.geometry, _ = target.(WindowGeometry)
+	c.zoom, _ = target.(WindowZoom)
+	c.visibility, _ = target.(WindowVisibility)
+	c.dismissal, _ = target.(WindowDismissal)
+	c.handles, _ = target.(WindowHandles)
+	c.gesture, _ = target.(WindowGesture)
+	c.changeHandler, _ = target.(WindowChangeHandler)
+	// a work area reserves part of a provider's area; a retargeted window's target owns its geometry
+	return c.bindError(explicit && c.retarget == nil)
+}
+
+// Retarget gives the core another target and probes it again, as Bind does: geometry, zoom,
+// visibility, dismissal, handles, gesture and change handler. A drag in flight is cancelled first, its checkpoint
+// restoring what it changed. The window's state (minimized, closed) is kept. The target holds across
+// an unmount and a remount, until Retarget(nil) gives back the target Bind found or was given. Before
+// the core is bound, the next Bind takes it.
+func (c *WindowCore) Retarget(target any) {
+	c.cancelDrag()
+	c.retarget = target
+	if !c.live() {
+		return
+	}
+	if reason := c.probe(); reason != "" {
+		panic(fatalOf("widget: WindowCore.Retarget", reason, "supply the target facets required by enabled capabilities"))
+	}
 	c.notifyObservers()
 }
 
@@ -267,6 +309,9 @@ func (c *WindowCore) publishWindowChanged(op WindowOperation, ctx *tui.Context, 
 	}
 	if c.onChanged != nil {
 		c.onChanged(e)
+	}
+	if c.changeHandler != nil {
+		c.changeHandler.WindowChanged(e)
 	}
 	ctx.Bus().Publish(e)
 	c.notifyObservers()
