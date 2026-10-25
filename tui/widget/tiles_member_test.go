@@ -536,3 +536,41 @@ func TestAMinimizedMemberReleasedStaysHiddenUntilRestored(t *testing.T) {
 		t.Fatalf("restored after its release: the member at (%d,%d) %d wide, want its own (20,3) 12 wide:\n%s", x, y, w, r.h.tb.String())
 	}
 }
+
+// A member released while its own border drag holds the pointer (a narrower window no longer fits
+// it): the release runs in the commit phase, where ending that drag is legal, so nothing panics and
+// the drag ends. The pointer is free: the other member's border drags at once, and the released
+// member's late motion and release move nothing.
+func TestAMemberReleasedDuringItsDragEndsTheDrag(t *testing.T) {
+	tiles := widget.NewTiles()
+	tiles.Add("page", widget.NewText("page"), widget.TilePlace{Edge: tui.DockCenter, Min: 10})
+	a := newMember("AA", widget.AtRect(tui.Rect{X: 2, Y: 6, W: 8, H: 3}), widget.Left)
+	b := newMember("BB", widget.AtRect(tui.Rect{X: 12, Y: 6, W: 8, H: 3}), widget.Right)
+	tiles.AddMember("a", a, widget.TilePlace{Edge: tui.DockLeft, Size: 25, Min: 10}, true)
+	tiles.AddMember("b", b, widget.TilePlace{Edge: tui.DockRight, Size: 25, Min: 10}, true)
+	r := startTiles(t, 40, 10, tiles, tiles, map[string]*member{"a": a, "b": b})
+	if !r.governed("a") || !r.governed("b") {
+		t.Fatal("40 wide fits both (10 + 10 + the page's 10)")
+	}
+	r.h.inject(tui.MouseEvent{Kind: tui.MousePress, Button: tui.MouseRight, Mods: tui.ModAlt, X: 31, Y: 4})
+	r.h.inject(tui.MouseEvent{Kind: tui.MouseMotion, Button: tui.MouseRight, Mods: tui.ModAlt, X: 27, Y: 4})
+	r.h.settle()
+	r.h.tb.InjectResize(25, 10)
+	r.h.settle()
+	if !r.governed("a") || r.governed("b") {
+		t.Fatalf("25 wide: a governed %v, b governed %v; want b, the most recently tiled, released", r.governed("a"), r.governed("b"))
+	}
+	r.h.inject(tui.MouseEvent{Kind: tui.MouseMotion, Button: tui.MouseRight, Mods: tui.ModAlt, X: 20, Y: 4},
+		tui.MouseEvent{Kind: tui.MouseRelease, Button: tui.MouseRight, Mods: tui.ModAlt, X: 20, Y: 4})
+	r.h.settle()
+	if x, y, w := boxAt(r.h, "BB"); x != 12 || y != 6 || w != 8 {
+		t.Fatalf("released, b at (%d,%d) %d wide, want its own (12,6) 8 wide, unmoved by its old drag:\n%s", x, y, w, r.h.tb.String())
+	}
+	r.h.inject(tui.MouseEvent{Kind: tui.MousePress, Button: tui.MouseRight, Mods: tui.ModAlt, X: 9, Y: 4},
+		tui.MouseEvent{Kind: tui.MouseMotion, Button: tui.MouseRight, Mods: tui.ModAlt, X: 14, Y: 4},
+		tui.MouseEvent{Kind: tui.MouseRelease, Button: tui.MouseRight, Mods: tui.ModAlt, X: 14, Y: 4})
+	r.h.settle()
+	if _, _, w := boxAt(r.h, "AA"); w != 15 {
+		t.Fatalf("after the release, a's border dragged to column 14: a %d wide, want 15 (the pointer was free):\n%s", w, r.h.tb.String())
+	}
+}

@@ -90,6 +90,12 @@ dirty layout, so layout and commit alternate until they settle, bounded at eight
 passes — exhaustion is a fatal, because silently rendering the eighth attempt
 would hide a feedback loop forever.
 
+A commit callback may end a pointer capture (`ReleasePointer`), as an input
+handler or an `App.Update` callback may: a side effect that retargets or
+re-anchors a window (a tile manager governing or releasing one) ends the drag
+holding the pointer. It may not take one: `CapturePointer` stays a handler's
+own. `Layout` and `Render` may do neither.
+
 ### Interpretation: what happens to an event at each node
 
 The two lanes above are **transport**. Once they converge, an event is offered

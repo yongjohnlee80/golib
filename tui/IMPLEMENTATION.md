@@ -187,14 +187,15 @@ reads this section and fails on a write to an App field in a file no entry namin
   active scope as routing is. Held by: TestHover_Clears, TestHover_TrapCeiling, the TestToolTip_
   cells.
 - **Delivery phase.** `phase` (`handlerPhase`). Loop. Written by the marks around Init, Layout,
-  Render and an Update (`app_tree.go`, `app_layout.go`, `app_render.go`, `app.go`), and by
+  Render, an Update and the commit phase (`app_tree.go`, `app_layout.go`, `app_render.go`, `app.go`,
+  `commit.go`; the commit's mark admits ending a capture, never taking one), and by
   `enterDelivery`/`leaveDelivery` around each handler (`action.go`, `app_routing.go`), which save
   and restore the outer delivery, so a nested one cannot leave it described by the wrong node or
   input. An action's provenance is recorded here and only read back (`ForwardAction`). Held by:
   TestProvenanceIsTheRuntimesToRecord,
   TestForwardActionCannotBorrowAnOuterInvocationFromARawHandler,
   TestAContainedActionPanicLeavesThePhaseBalanced, TestOneNodesInitCannotSetAnothersDefaults,
-  TestReleasePointerInsideLayoutPanics.
+  TestReleasePointerInsideLayoutPanics, TestTheCommitPhaseMayEndACaptureButNotTakeOne.
 - **The frame.** `size`, `renderDirty`, `layoutDirty`, `framePending`, `lastFrame`, `frames`,
   `reveal`, `commits`, `layingOut`. Loop. Written in `app.go` (`invalidate`, `maybeFrame`,
   `presentFrame`, `settleLayout`), `app_layout.go`, `commit.go` (`AfterLayout`, the commit phase),
