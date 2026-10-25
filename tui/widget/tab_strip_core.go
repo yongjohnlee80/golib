@@ -124,6 +124,11 @@ func (s *tabStrip) add(at tui.Point) {
 	}
 }
 
+// menuAt is the point a strip's menu (≡, +, a right press) opens at for column x: on the strip's
+// own row, since the popup places its panel below the point it is given, so the menu's first row is
+// the row right under the strip.
+func menuAt(x int) tui.Point { return tui.Point{X: x} }
+
 // openMenu opens the menu for tab id at at: SetMenu's, else the host's callback.
 func (s *tabStrip) openMenu(id string, at tui.Point) {
 	if s.menuRows == nil {
@@ -611,10 +616,10 @@ func (s *tabStrip) key(e tui.KeyEvent) bool {
 	case stripNone:
 		return false
 	case stripAdd:
-		s.add(tui.Point{X: s.addX(), Y: 1})
+		s.add(menuAt(s.addX()))
 		return true
 	case stripMenu:
-		s.openMenu(s.owner.stripActive(), tui.Point{X: s.tabX(s.owner.stripActive()), Y: 1})
+		s.openMenu(s.owner.stripActive(), menuAt(s.tabX(s.owner.stripActive())))
 		return true
 	}
 	tabs := s.owner.stripTabs()
@@ -647,7 +652,7 @@ func (s *tabStrip) press(e tui.MouseEvent) bool {
 		case c.kind == cellTab && e.Button == tui.MouseLeft:
 			s.owner.stripChoose(c.id)
 		case c.kind == cellTab && e.Button == tui.MouseRight && s.hasMenu():
-			s.openMenu(c.id, tui.Point{X: e.X, Y: 1})
+			s.openMenu(c.id, menuAt(e.X))
 		case c.kind == cellTab:
 		case c.kind == cellPrev && e.Button == tui.MouseLeft:
 			if s.first > 0 {
@@ -658,9 +663,9 @@ func (s *tabStrip) press(e tui.MouseEvent) bool {
 				s.scroll(1)
 			}
 		case c.kind == cellAdd && e.Button == tui.MouseLeft:
-			s.add(tui.Point{X: c.x, Y: 1})
+			s.add(menuAt(c.x))
 		case c.kind == cellMenu && e.Button == tui.MouseLeft:
-			s.openMenu(s.owner.stripActive(), tui.Point{X: c.x, Y: 1})
+			s.openMenu(s.owner.stripActive(), menuAt(c.x))
 		case c.kind == cellControl && e.Button == tui.MouseLeft:
 			if s.onWindow != nil {
 				s.onWindow(c.op)
@@ -671,7 +676,7 @@ func (s *tabStrip) press(e tui.MouseEvent) bool {
 		return true
 	}
 	if e.Button == tui.MouseRight && s.menuRows != nil {
-		s.openMenu(s.owner.stripActive(), tui.Point{X: e.X, Y: 1})
+		s.openMenu(s.owner.stripActive(), menuAt(e.X))
 		return true
 	}
 	return false

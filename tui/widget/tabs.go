@@ -35,6 +35,8 @@ import (
 //     - Focused Bar Motions: When the tab bar holds focus, '[' and ']' or Left/Right
 //     arrow keys switch tabs incrementally.
 //     - Direct Mouse Clicks: Clicking any tab label on row 0 immediately activates it.
+//     - The Bar's Menu ([Tabs.SetMenu]): ≡ on the bar, or a right press on a tab or on
+//     the bar's blank, opens the host's rows for that tab under the bar.
 //
 // # Layout & Component Stack Hierarchy
 //
@@ -213,6 +215,43 @@ func (t *Tabs) Add(label string, content tui.Component) {
 // Active returns the active tab index.
 func (t *Tabs) Active() int { return t.active }
 
+// TabsMenuAction is a row of the bar's menu: when the row is chosen, Run runs with the index of the
+// tab the menu was opened for (SetMenu).
+type TabsMenuAction struct {
+	ID  tui.ActionID
+	Run func(i int)
+}
+
+// ActionID implements tui.Action.
+func (a TabsMenuAction) ActionID() tui.ActionID { return a.ID }
+
+func (a TabsMenuAction) stripRun() func(string) {
+	if a.Run == nil {
+		return nil
+	}
+	return func(id string) {
+		if i, err := strconv.Atoi(id); err == nil {
+			a.Run(i)
+		}
+	}
+}
+
+// SetMenu gives the bar a menu, opened over it (it needs an OverlayHost above it) by ≡ and by a
+// right press on a tab or on the bar's blank: build returns its rows for the tab it opens for (the
+// active one off a tab), each time it opens. A row's action is a
+// TabsMenuAction; a row with children is a submenu. nil unsets it.
+func (t *Tabs) SetMenu(build func(i int) []MenuItemModel) {
+	t.strip.menuRows = nil
+	if build != nil {
+		t.strip.menuRows = func(id string) []MenuItemModel {
+			i, _ := strconv.Atoi(id) // the strip's ids are Tabs' indices (stripTabs)
+			return build(i)
+		}
+	}
+	t.RequestLayout()
+	t.MarkDirty()
+}
+
 // listChildren feeds the package's focus walk (active content only).
 func (t *Tabs) listChildren() []tui.Component {
 	return []tui.Component{t.tabs[t.active].comp}
@@ -285,7 +324,13 @@ func (t *Tabs) HandleEvent(ev tui.Event) bool {
 		return true
 
 	case tui.MouseEvent:
-		if t.noBar || e.Kind != tui.MousePress || e.Button != tui.MouseLeft || e.Y != 0 {
+		if t.noBar || e.Kind != tui.MousePress || e.Y != 0 {
+			return false
+		}
+		if e.Button == tui.MouseRight && t.strip.hasMenu() {
+			return t.strip.press(e) // the bar's menu (SetMenu), over the tab pressed
+		}
+		if e.Button != tui.MouseLeft {
 			return false
 		}
 		t.strip.press(e)

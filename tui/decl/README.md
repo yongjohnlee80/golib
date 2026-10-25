@@ -97,7 +97,7 @@ change at runtime, which is what makes it bindable to a source.
 | `ComboBox` | `textRole`, `valueRole`, `placeholderText`, `maxWidth` (default 40 cells) | `model`, `currentIndex` | `currentIndex`, `currentValue` | `activated(index)` | — |
 | `TableView` | golib's `cellCursor`, `sortable` (see below), `delegate` (a row cursor's cells: a `Text` template with a text and an optional colour, no id, handlers or children) | `model`, `currentIndex`; with a cell cursor (`cellCursor: true`), golib's `rowNumbers` (each row's number in a gutter), `copyFormat` (`"tsv"`, the default, or `"csv"`: what `y` copies), `rowCursor` (the cursor covers its whole row; `r` toggles it, and `y` then copies the row), `orderBy` (the sort as ORDER BY text), `filter` (the rows shown, as WHERE text) and `contextMenu` (a right-click menu of the host's rows) (see below) | `currentIndex`; with a cell cursor (`cellCursor: true`), golib's `orderBy`, `orderByError`, `filter` and `filterError` | `activated(index)`, `currentIndexChanged(index)`, golib's `contextMenuRequested(index, x, y)`, golib's `orderByChanged(orderBy)` (see below) | — |
 | `TableViewColumn` | `role`, `title`, `width`, `elideMode` | — | — | — | — |
-| `TabView` | palette (the bar: `window`/`windowText` behind the titles, `button`/`buttonText` for each, `highlight`/`highlightedText` for the current one) | `currentIndex`, `windowButtons` (golib's: `_`, `+` and `x` side by side at the bar's right end, the title bar's minimize, maximize and close; default false) | `currentIndex`, `count` | `currentIndexChanged(index)`, `minimizeRequested` (`_`), `maximizeRequested` (`+`), `closeRequested` (`x`) | — |
+| `TabView` | palette (the bar: `window`/`windowText` behind the titles, `button`/`buttonText` for each, `highlight`/`highlightedText` for the current one) | `currentIndex`, `windowButtons` (golib's: `_`, `+` and `x` side by side at the bar's right end, the title bar's minimize, maximize and close; default false) | `currentIndex`, `count` | `currentIndexChanged(index)`, `minimizeRequested` (`_`), `maximizeRequested` (`+`), `closeRequested` (`x`) | the bar's menu: `SetMenu(func(i int) []widget.MenuItemModel)` on the node `Find` returns, from Go (≡ and a right press on a tab open it; a row's action is a `widget.TabsMenuAction`) |
 | `Tab` | `title`; one child, its content | — | — | — | — |
 | `TreeView` | `textRole`, `badgeRole`, `delegate` (each node's row: a `Text` template, as a TableView's) | `model` (a tree model) | — | `activated(index)`, `expanded(index)`, `currentIndexChanged(index)` — an `Index` | `toggleExpanded(index)`, `setCurrentIndex(index)` |
 | `FileDialog` | `title`, `helpText`, `dim`, `fileMode`, `preview`, palette | `currentFolder`, `selectedFile`, `source` (golib's: a `widget.FileSource` the host binds, listed in place of the program's files; a rebinding lists it afresh) | — | `accepted(selectedFile)`, `rejected`, `closed` | `open()`, `close()` |
@@ -218,7 +218,9 @@ current one's content. A Tab's content is made when it is first current and
 kept, so what was typed in a tab is still there when a handler reads it from
 another; a Tab that is not current is not laid out, painted or focused.
 Ctrl+PageUp and Ctrl+PageDown change tabs from inside the view; with the bar
-focused, ←/→ and `[` `]` do, and so does a click on a title.
+focused, ←/→ and `[` `]` do, and so does a click on a title. A host can give the bar
+a menu from Go (`SetMenu` on the node `Find` returns): ≡ shows on the bar, and it
+and a right press on a tab open the host's rows for that tab, under the bar.
 
 ```qml
 TabView { id: settings
