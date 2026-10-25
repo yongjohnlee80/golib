@@ -157,8 +157,9 @@ func (h *OverlayHost) raiseTopmost() {
 
 // Raise moves an attached Float to the top of the ordinary layers: above every other panel and
 // popup, and still beneath the open dialogs (a Modal with its scrim, a shown modal Float) and the
-// topmost floats. A non-modal Float raises itself when the keyboard enters it, so the panel being
-// typed into is the one drawn on top (Qt's QWidget::raise on activation). A shown modal Float is
+// topmost floats. A Float raises itself when it is shown, so a window that opens comes forward, and a
+// non-modal one again when the keyboard enters it, so the panel being typed into is the one drawn
+// on top (Qt's QWidget::raise on activation). A shown modal Float is
 // an open dialog: raising one moves it above the other dialogs, as showing it did. A topmost Float
 // is above everything already, and a Float not attached here is left alone.
 //
