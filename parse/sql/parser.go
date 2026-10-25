@@ -29,28 +29,19 @@ import (
 //
 // The zero value is usable and handles the lexical syntax common to the major
 // engines. Build one with [New] and the options for the extensions a
-// particular engine adds; the fields below are the older way to set them.
+// particular engine adds.
 type SQL struct {
 	// Backticks treats `like this` as a quoted identifier, as MySQL does.
 	// Engines that instead read a backtick as ordinary text leave it off.
-	//
-	// Deprecated: configure with [Backticks] and [New]. The field remains for existing
-	// callers, which are moving to the options.
-	Backticks bool
+	backticks bool
 	// DollarQuotes treats $$…$$ and $tag$…$tag$ as string literals, as
 	// PostgreSQL does for function bodies. Without it a dollar sign is
 	// ordinary text, and a function body full of semicolons would be split
 	// into pieces.
-	//
-	// Deprecated: configure with [DollarQuotes] and [New]. The field remains for existing
-	// callers, which are moving to the options.
-	DollarQuotes bool
+	dollarQuotes bool
 	// NestedBlockComments allows /* … /* … */ … */ to nest, as PostgreSQL
 	// does. Without it the first */ closes the comment.
-	//
-	// Deprecated: configure with [NestedBlockComments] and [New]. The field remains for
-	// existing callers, which are moving to the options.
-	NestedBlockComments bool
+	nestedBlockComments bool
 	// EStringEscapes treats a string written E'…' as one in which a backslash
 	// escapes the next character, as PostgreSQL does.
 	//
@@ -58,10 +49,7 @@ type SQL struct {
 	// standard reading in which a backslash is just a character, so a Windows
 	// path or a regular expression ending in one still closes where it should.
 	// Turning this on changes only strings that asked for it by carrying the E.
-	//
-	// Deprecated: configure with [EStringEscapes] and [New]. The field remains for existing
-	// callers, which are moving to the options.
-	EStringEscapes bool
+	eStringEscapes bool
 	// TriggerBodies reads CREATE [TEMP] TRIGGER … BEGIN … END as one
 	// statement, as SQLite does: the semicolons that end the statements of a
 	// trigger's body do not end the CREATE TRIGGER. Without it such a trigger
@@ -73,10 +61,7 @@ type SQL struct {
 	// a semicolon came before that END. Words match without regard to ASCII
 	// case, as SQLite compares keywords (TRıGGER is not TRIGGER); a string, a
 	// quoted identifier or a comment is never one of these words.
-	//
-	// Deprecated: configure with [TriggerBodies] and [New]. The field remains for existing
-	// callers, which are moving to the options.
-	TriggerBodies bool
+	triggerBodies bool
 
 	// The options without a field of their own: MySQL's lexical rules (see [HashComments],
 	// [MySQLDashComments], [BackslashEscapes] and [ExecutableComments]) and SQLite's (see
@@ -250,7 +235,7 @@ func (s SQL) split(src []byte) ([]span, error) {
 	inExec := false           // inside a MySQL /*! … */ whose body is live
 	var execAt parse.Position // where that comment opened
 	feed := func(tok trigToken) {
-		if s.TriggerBodies {
+		if s.triggerBodies {
 			trig = trigNext[trig][tok]
 		}
 	}
@@ -313,7 +298,7 @@ func (s SQL) split(src []byte) ([]span, error) {
 				return nil, err
 			}
 			continue
-		case r == '`' && s.Backticks:
+		case r == '`' && s.backticks:
 			begin(at, pos)
 			feed(trigOther)
 			if err := s.skipQuoted(sc, '`', false, false); err != nil {
@@ -328,7 +313,7 @@ func (s SQL) split(src []byte) ([]span, error) {
 				return nil, err
 			}
 			continue
-		case (r == 'E' || r == 'e') && s.EStringEscapes && s.startsEString(src, at):
+		case (r == 'E' || r == 'e') && s.eStringEscapes && s.startsEString(src, at):
 			begin(at, pos)
 			feed(trigOther)
 			sc.Next()
@@ -336,7 +321,7 @@ func (s SQL) split(src []byte) ([]span, error) {
 				return nil, err
 			}
 			continue
-		case r == '$' && s.DollarQuotes:
+		case r == '$' && s.dollarQuotes:
 			if tag, isTag := s.dollarTag(sc); isTag {
 				begin(at, pos)
 				feed(trigOther)
@@ -355,7 +340,7 @@ func (s SQL) split(src []byte) ([]span, error) {
 			continue
 		case r == ';':
 			sc.Next()
-			if s.TriggerBodies && trigNext[trig][trigSemi] == trigBodySemi {
+			if s.triggerBodies && trigNext[trig][trigSemi] == trigBodySemi {
 				// a statement of the trigger's body ended, not the trigger
 				trig, inBody = trigBodySemi, true
 				continue
@@ -373,7 +358,7 @@ func (s SQL) split(src []byte) ([]span, error) {
 			for c, ok := sc.Peek(); ok && isSQLiteIDRune(c); c, ok = sc.Peek() {
 				sc.Next()
 			}
-			if s.TriggerBodies {
+			if s.triggerBodies {
 				feed(trigWord(string(src[at:sc.Pos().Offset])))
 			}
 			continue
@@ -393,7 +378,7 @@ func (s SQL) split(src []byte) ([]span, error) {
 			Got:  "end of input", Incomplete: true,
 		}
 	}
-	if s.TriggerBodies && inBody && trig != trigEnd {
+	if s.triggerBodies && inBody && trig != trigEnd {
 		return nil, parse.SyntaxError{
 			Format: "sql", Pos: startPos,
 			Want: "END; to close the body of the trigger created here",
@@ -486,7 +471,7 @@ func (s SQL) wordStart(r rune) bool {
 	if s.tclParams {
 		return r == '_' || r >= 0x80 || ('a' <= r && r <= 'z') || ('A' <= r && r <= 'Z')
 	}
-	return s.TriggerBodies && isSQLiteIDRune(r)
+	return s.triggerBodies && isSQLiteIDRune(r)
 }
 
 // skipTclParameter consumes a parameter opened by $, @, : or #, read as SQLite's tokenizer reads
@@ -568,7 +553,7 @@ func (s SQL) skipBlockComment(sc *parse.Scanner) error {
 				Got:  "end of input", Incomplete: true,
 			}
 		}
-		if s.NestedBlockComments && sc.HasPrefix("/*") {
+		if s.nestedBlockComments && sc.HasPrefix("/*") {
 			sc.Take("/*")
 			depth++
 			continue

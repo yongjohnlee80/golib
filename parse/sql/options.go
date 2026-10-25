@@ -19,21 +19,21 @@ func New(opts ...Option) SQL {
 }
 
 // Backticks treats `like this` as a quoted identifier, as MySQL does.
-func Backticks() Option { return func(s *SQL) { s.Backticks = true } }
+func Backticks() Option { return func(s *SQL) { s.backticks = true } }
 
 // DollarQuotes treats $$…$$ and $tag$…$tag$ as string literals, as PostgreSQL does for function
 // bodies, so the semicolons inside a function body do not split it.
-func DollarQuotes() Option { return func(s *SQL) { s.DollarQuotes = true } }
+func DollarQuotes() Option { return func(s *SQL) { s.dollarQuotes = true } }
 
 // NestedBlockComments lets /* … /* … */ … */ nest, as PostgreSQL does.
-func NestedBlockComments() Option { return func(s *SQL) { s.NestedBlockComments = true } }
+func NestedBlockComments() Option { return func(s *SQL) { s.nestedBlockComments = true } }
 
 // EStringEscapes treats a string written E'…' as one in which a backslash escapes the next
 // character, as PostgreSQL does. Only strings carrying the E prefix change.
-func EStringEscapes() Option { return func(s *SQL) { s.EStringEscapes = true } }
+func EStringEscapes() Option { return func(s *SQL) { s.eStringEscapes = true } }
 
 // TriggerBodies reads CREATE [TEMP] TRIGGER … BEGIN … END as one statement, as SQLite does.
-func TriggerBodies() Option { return func(s *SQL) { s.TriggerBodies = true } }
+func TriggerBodies() Option { return func(s *SQL) { s.triggerBodies = true } }
 
 // HashComments reads # to the end of the line as a comment, as MySQL does.
 func HashComments() Option { return func(s *SQL) { s.hashComments = true } }
