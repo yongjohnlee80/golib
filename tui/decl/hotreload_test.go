@@ -3,8 +3,10 @@ package decl_test
 import (
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -28,6 +30,7 @@ type hotDir struct {
 	mu       sync.Mutex
 	reloads  []decl.Result
 	refusals []error
+	polls    atomic.Int64 // the polls looked at, when followPolls counts them
 	// hot are more HotReload options, before run: a test's own polls (ReloadTicks)
 	hot []tuidecl.HotReloadOption
 }
@@ -84,6 +87,60 @@ func (d *hotDir) runWith(setup func(*tuidecl.Program) error, extra ...tuidecl.Pr
 		}, d.hot...)...),
 	}, extra...)
 	return decltest.RunWith(d.t, 40, 6, setup, opts...)
+}
+
+// followPolls feeds the poller a real ticker at tick through ReloadTicks, as its own ticker would,
+// and counts each poll it has looked at, so a reload waited for in vain can say how many polls
+// passed meanwhile. Call it before run.
+func (d *hotDir) followPolls() {
+	ticks, polled, stop := make(chan time.Time), make(chan struct{}), make(chan struct{})
+	d.t.Cleanup(func() { close(stop) }) // registered before run's: it runs once the program has stopped
+	go func() {
+		tk := time.NewTicker(tick)
+		defer tk.Stop()
+		for {
+			select {
+			case <-stop:
+				return
+			case now := <-tk.C:
+				select {
+				case ticks <- now:
+				case <-stop:
+					return
+				}
+			}
+		}
+	}()
+	go func() {
+		for {
+			select {
+			case <-stop:
+				return
+			case <-polled:
+				d.polls.Add(1)
+			}
+		}
+	}()
+	d.hot = append(d.hot, tuidecl.ReloadTicks(ticks, polled))
+}
+
+// waitCounted waits until cond holds for the reloads and refusals counted, and when it never does,
+// fails naming what happened instead: the polls looked at since, the reloads, every refusal, and the
+// screen. So a reload that never came says whether it was refused or never polled.
+func (d *hotDir) waitCounted(s *decltest.Screen, what string, cond func(reloads, refusals int) bool) {
+	d.t.Helper()
+	from := d.polls.Load()
+	deadline := time.Now().Add(decltest.WaitTimeout)
+	for !cond(d.counts()) {
+		if time.Now().After(deadline) {
+			d.mu.Lock()
+			reloads, refusals := len(d.reloads), slices.Clone(d.refusals)
+			d.mu.Unlock()
+			d.t.Fatalf("%s never came: %d polls looked at since, %d reloads in all, refusals %v; the screen:\n%s",
+				what, d.polls.Load()-from, reloads, refusals, s.String())
+		}
+		time.Sleep(5 * time.Millisecond)
+	}
 }
 
 func (d *hotDir) counts() (int, int) {

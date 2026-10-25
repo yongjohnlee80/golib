@@ -251,6 +251,7 @@ func TestHotReloadFollowsTheKeymap(t *testing.T) {
         Text { text: App.tick } } }` // a provider's source: the reload's check must still mount
 	}
 	d := newHotDir(t, layout("demo.save"))
+	d.followPolls()
 	var p *tuidecl.Program
 	n := 0
 	s := d.runWith(func(prog *tuidecl.Program) error { p = prog; return nil },
@@ -264,7 +265,7 @@ func TestHotReloadFollowsTheKeymap(t *testing.T) {
 
 	reloads, _ := d.counts()
 	d.write("keymap.xml", `<mapping><shortcut id="demo.save"><key value="Ctrl+P"/></shortcut></mapping>`)
-	s.WaitFor(t, "the created scheme applied", func(string) bool { r, _ := d.counts(); return r > reloads })
+	d.waitCounted(s, "the created scheme applied", func(r, _ int) bool { return r > reloads })
 	s.Keys(t, ctrl('s'))
 	settle()
 	if strings.Contains(s.String(), "saved 2") {
@@ -275,7 +276,7 @@ func TestHotReloadFollowsTheKeymap(t *testing.T) {
 
 	_, refused := d.counts()
 	d.write("keymap.xml", `<mapping><shortcut id="demo.save"><key valu="Ctrl+P"/></shortcut></mapping>`)
-	s.WaitFor(t, "the broken scheme refused", func(string) bool { _, r := d.counts(); return r > refused })
+	d.waitCounted(s, "the broken scheme refused", func(_, r int) bool { return r > refused })
 	if d.mu.Lock(); !strings.Contains(d.refusals[refused].Error(), "keymap.xml") {
 		t.Errorf("the refusal does not name the scheme: %v", d.refusals[refused])
 	}
@@ -285,9 +286,9 @@ func TestHotReloadFollowsTheKeymap(t *testing.T) {
 
 	d.write("keymap.xml", `<mapping><shortcut id="demo.save"><key value="Ctrl+P"/></shortcut></mapping>`)
 	reloads, refused = d.counts()
-	s.WaitFor(t, "the fixed scheme applied", func(string) bool { r, _ := d.counts(); return r > reloads })
+	d.waitCounted(s, "the fixed scheme applied", func(r, _ int) bool { return r > reloads })
 	d.write("main.qml", layout("demo.nothing"))
-	s.WaitFor(t, "the layout's undeclared keyId refused", func(string) bool { _, r := d.counts(); return r > refused })
+	d.waitCounted(s, "the layout's undeclared keyId refused", func(_, r int) bool { return r > refused })
 	if d.mu.Lock(); !strings.Contains(d.refusals[refused].Error(), `keyId("demo.nothing")`) {
 		t.Errorf("the refusal does not name the keyId: %v", d.refusals[refused])
 	}
@@ -297,12 +298,12 @@ func TestHotReloadFollowsTheKeymap(t *testing.T) {
 
 	reloads, _ = d.counts()
 	d.write("main.qml", layout("demo.save"))
-	s.WaitFor(t, "the good layout applied", func(string) bool { r, _ := d.counts(); return r > reloads })
+	d.waitCounted(s, "the good layout applied", func(r, _ int) bool { return r > reloads })
 	reloads, _ = d.counts()
 	if err := os.Remove(filepath.Join(d.root, "keymap.xml")); err != nil {
 		t.Fatal(err)
 	}
-	s.WaitFor(t, "the deleted scheme followed", func(string) bool { r, _ := d.counts(); return r > reloads })
+	d.waitCounted(s, "the deleted scheme followed", func(r, _ int) bool { return r > reloads })
 	s.Keys(t, ctrl('s'))
 	s.WaitForText(t, "saved 5")
 }
