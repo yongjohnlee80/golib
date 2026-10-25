@@ -345,9 +345,10 @@ func (t *Tiles) settle(size tui.Size) {
 		switch {
 		case on && !tile.governed:
 			tile.governed = true
+			tile.hidden = tile.core().State().Minimized // a window minimized before it tiles stays so
 			tile.gov.Govern(tile.overlayRect, tile.target)
 		case !on && tile.governed:
-			tile.governed = false
+			tile.governed, tile.hidden = false, false // the window's own state is its own again
 			if t.zoomed == tile {
 				t.zoomed = nil
 			}
@@ -852,7 +853,8 @@ func (t *Tiles) dropAt(tile *Tile, p tui.Point) *tileDrop {
 // tileTarget is a tile's window target: geometry, zoom and visibility owned by the manager, and
 // the handle and gesture facets that make the window gestures tiling operations.
 type tileTarget struct {
-	t *Tile
+	t   *Tile
+	own WindowVisibility // a member's own visibility, beneath the tile's: it hides and shows its node
 	// the gesture in progress, from GestureBegan
 	op      WindowOperation
 	border  *tileBorder
@@ -1113,8 +1115,9 @@ func (g *tileTarget) Modal() bool { return false }
 
 func (g *tileTarget) WindowVisible() bool { return !g.t.hidden }
 
-// SetWindowVisible is the primitive the window's minimize and restore apply: layout state only,
-// never a call back into the window. The centre never hides.
+// SetWindowVisible is the primitive the window's minimize and restore apply: layout state, never a
+// call back into the window; for a member, then its own visibility, so its node hides and shows as
+// its tile does. The centre never hides.
 func (g *tileTarget) SetWindowVisible(v bool) bool {
 	m := g.owner()
 	if g.t.hidden == !v || (!v && g.t.place.Edge == tui.DockCenter) {
@@ -1124,9 +1127,15 @@ func (g *tileTarget) SetWindowVisible(v bool) bool {
 		m.zoomed = nil
 	}
 	g.t.hidden = !v
+	if g.own != nil {
+		g.own.SetWindowVisible(v)
+	}
 	m.sync()
 	return true
 }
+
+// setOwnVisibility is a member's own visibility, from its core's retarget (visibilityUnder).
+func (g *tileTarget) setOwnVisibility(v WindowVisibility) { g.own = v }
 
 // ---- the drop preview ----
 

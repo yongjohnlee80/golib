@@ -15,6 +15,7 @@ type member struct {
 	float     *widget.Float
 	mod       *widget.WindowMod
 	own, dock widget.Anchor
+	dock2     *widget.MinimizedWindows // where it goes minimized
 }
 
 func (m *member) Govern(rect func() (tui.Rect, bool), target any) {
@@ -31,9 +32,10 @@ func (m *member) WindowBehavior() *widget.WindowCore { return m.mod.Core() }
 
 // newMember is a window titled title at own, docked at dock while governed without cells.
 func newMember(title string, own, dock widget.Anchor) *member {
+	collector := widget.NewMinimizedWindows()
 	mod := widget.NewWindowMod(widget.NewBox(widget.NewText(""), widget.WithTitle(title)),
-		widget.WithWindowMove(), widget.WithWindowResize(), widget.WithWindowMinimize(widget.NewMinimizedWindows()))
-	return &member{float: widget.NewFloat(mod, widget.WithAnchor(own)), mod: mod, own: own, dock: dock}
+		widget.WithWindowMove(), widget.WithWindowResize(), widget.WithWindowMinimize(collector))
+	return &member{float: widget.NewFloat(mod, widget.WithAnchor(own)), mod: mod, own: own, dock: dock, dock2: collector}
 }
 
 // boxAt is where the box titled title is drawn: its top-left corner and its width; -1s when it is
@@ -241,6 +243,11 @@ func TestAHiddenMemberTakesNoCellsAndStaysGoverned(t *testing.T) {
 	if x, _, w := boxAt(r.h, "PG"); x != 0 || w != 40 {
 		t.Fatalf("the page at %d, %d wide, want the whole manager while the member is hidden:\n%s", x, w, r.h.tb.String())
 	}
+	// its own node is hidden too: nothing of it is drawn in the cells it would dock at (Left: the
+	// middle of column 0), so inside the page's border column 1 is blank on every row
+	if row := overPage(r.h); row >= 0 {
+		t.Fatalf("minimized, something is drawn over the page on row %d:\n%s", row, r.h.tb.String())
+	}
 	r.h.onLoop(func() { a.mod.Core().Restore() })
 	r.h.settle()
 	if x, y, w := boxAt(r.h, "AA"); x != 0 || y != 0 || w != 10 {
@@ -434,5 +441,45 @@ func TestAMembersGesturesCommitThroughItsTile(t *testing.T) {
 	r.h.onLoop(func() { events = append([]widget.TilesChangedEvent(nil), got...) })
 	if len(events) != 2 || events[0].Operation != widget.WindowMinimize || !events[0].Hidden || events[1].Operation != widget.WindowRestore || events[1].Hidden {
 		t.Fatalf("minimize then restore published %+v, want a hidden minimize then a shown restore", events)
+	}
+}
+
+// overPage is the first row inside a whole-width page's border where column 1 is not blank, -1 for
+// none: something drawn over the page's left edge.
+func overPage(h *harness) int {
+	lines := strings.Split(h.tb.String(), "\n")
+	for row := 1; row < len(lines)-2; row++ {
+		if rs := []rune(lines[row]); len(rs) > 1 && rs[1] != ' ' {
+			return row
+		}
+	}
+	return -1
+}
+
+// A minimized member released stays minimized: its node hidden, its window in its collector; a
+// Restore then shows it at its own place, not over its old tile.
+func TestAMinimizedMemberReleasedStaysHiddenUntilRestored(t *testing.T) {
+	tiles := widget.NewTiles()
+	tiles.Add("page", widget.NewBox(widget.NewText(""), widget.WithTitle("PG")), widget.TilePlace{Edge: tui.DockCenter, Min: 5})
+	a := newMember("AA", widget.AtRect(tui.Rect{X: 20, Y: 3, W: 12, H: 4}), widget.Left)
+	tiles.AddMember("a", a, widget.TilePlace{Edge: tui.DockLeft, Size: 25, Min: 5}, true)
+	r := startTiles(t, 40, 10, tiles, tiles, map[string]*member{"a": a})
+	r.h.onLoop(func() { a.mod.Core().Minimize() })
+	r.h.settle()
+	r.h.onLoop(func() { tiles.SetWants("a", false) })
+	r.h.settle()
+	var minimized bool
+	var held int
+	r.h.onLoop(func() { minimized = a.mod.Core().State().Minimized; held = len(a.dock2.Entries()) })
+	if !minimized || held != 1 || r.governed("a") {
+		t.Fatalf("released while minimized: minimized %v, in its collector %d, governed %v; want minimized, held once, released", minimized, held, r.governed("a"))
+	}
+	if row := overPage(r.h); row >= 0 || strings.Contains(r.h.tb.String(), "AA") {
+		t.Fatalf("released while minimized, the member is drawn:\n%s", r.h.tb.String())
+	}
+	r.h.onLoop(func() { a.mod.Core().Restore() })
+	r.h.settle()
+	if x, y, w := boxAt(r.h, "AA"); x != 20 || y != 3 || w != 12 {
+		t.Fatalf("restored after its release: the member at (%d,%d) %d wide, want its own (20,3) 12 wide:\n%s", x, y, w, r.h.tb.String())
 	}
 }

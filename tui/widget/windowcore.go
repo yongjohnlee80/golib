@@ -191,15 +191,21 @@ func (c *WindowCore) bind(ctx *tui.Context, content tui.Component, target any, e
 // returns why the facets cannot serve the enabled capabilities, "" when they can.
 func (c *WindowCore) probe() string {
 	target, explicit := c.bound, c.boundExplicit
-	if c.retarget != nil {
-		target, explicit = c.retarget, true
-	}
 	c.pointerFrame = nil
 	needsTarget := c.move || c.resize || c.maximize || c.minimize || (c.close && c.onClose == nil) || c.workArea != nil
 	if !explicit && needsTarget {
 		if parent := c.ctx.Ancestor(func(v tui.Component) bool { _, ok := v.(WindowTargetProvider); return ok }); parent != nil {
 			target, c.pointerFrame = parent.(WindowTargetProvider).WindowTargetFor(c, c.ctx)
 		}
+	}
+	if c.retarget != nil {
+		// a retarget that places the window over another's layout still hides and shows the
+		// window's own node, through the visibility it would have without it
+		if u, ok := c.retarget.(visibilityUnder); ok {
+			own, _ := target.(WindowVisibility)
+			u.setOwnVisibility(own)
+		}
+		target, explicit, c.pointerFrame = c.retarget, true, nil
 	}
 	c.geometry, _ = target.(WindowGeometry)
 	c.zoom, _ = target.(WindowZoom)
@@ -210,6 +216,12 @@ func (c *WindowCore) probe() string {
 	c.changeHandler, _ = target.(WindowChangeHandler)
 	// a work area reserves part of a provider's area; a retargeted window's target owns its geometry
 	return c.bindError(explicit && c.retarget == nil)
+}
+
+// visibilityUnder is a retarget that composes visibility: told the visibility the window has
+// without it, it applies its own state and then that one, so the window's node hides and shows.
+type visibilityUnder interface {
+	setOwnVisibility(WindowVisibility)
 }
 
 // Retarget gives the core another target and probes it again, as Bind does: geometry, zoom,
