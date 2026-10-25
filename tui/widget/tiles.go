@@ -61,7 +61,8 @@ type TilePlace struct {
 	// maximum, and never under its minimum on that axis. The strips beside the centre on that axis
 	// take the rest; with none, the centre is centred at its maximum. A strip ignores them.
 	MaxW, MaxH int
-	// Minimizable lets it hide (WithTilesCollector's collector lists it); ignored while it is the centre
+	// Minimizable lets it hide (WithTilesCollector's collector lists it); ignored while it is the
+	// manager's own centre Tile (a member's minimizing is its window's)
 	Minimizable bool
 }
 
@@ -579,10 +580,11 @@ func (t *Tiles) axis(size tui.Size, order []*Tile, place func(*Tile) TilePlace, 
 	return strips, over
 }
 
-// centreMinOf is the cells the centre in play keeps on one axis (minOn), 0 with none.
+// centreMinOf is the cells the centre in play keeps on one axis (minOn), 0 with none: a centre that
+// is away (a member minimized or closed) keeps none, so no strip is released for it.
 func centreMinOf(order []*Tile, place func(*Tile) TilePlace, inPlay func(*Tile) bool, horizontal bool) int {
 	for _, tile := range order {
-		if p := place(tile); p.Edge == tui.DockCenter && inPlay(tile) {
+		if p := place(tile); p.Edge == tui.DockCenter && inPlay(tile) && !tile.away() {
 			return minOn(p, horizontal)
 		}
 	}
@@ -725,7 +727,8 @@ func (t *Tiles) SetSize(key string, pct float64) {
 }
 
 // Hide minimizes a tile through its window, the one owner of a tile's hidden state: false for the
-// centre, a tile that isn't minimizable, or one already hidden.
+// manager's own centre Tile, a tile that isn't minimizable, or one already hidden. A member at the
+// centre hides as any member does.
 func (t *Tiles) Hide(key string) bool {
 	tile := t.tile(key)
 	return tile != nil && tile.inPlay() && tile.core().Minimize()
@@ -1265,10 +1268,11 @@ func (g *tileTarget) WindowVisible() bool { return !g.t.hidden }
 
 // SetWindowVisible is the primitive the window's minimize and restore apply: layout state, never a
 // call back into the window; for a member, then its own visibility, so its node hides and shows as
-// its tile does. The centre never hides.
+// its tile does. The manager's own centre Tile never hides; a member at the centre minimizes as any
+// member does, and the strips take its cells.
 func (g *tileTarget) SetWindowVisible(v bool) bool {
 	m := g.owner()
-	if g.t.hidden == !v || (!v && g.t.place.Edge == tui.DockCenter) {
+	if g.t.hidden == !v || (!v && g.t.place.Edge == tui.DockCenter && g.t.gov == nil) {
 		return false
 	}
 	if !v && m.zoomed == g.t {
