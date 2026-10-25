@@ -143,7 +143,8 @@ purpose": a difference in behaviour is a parameter of the shared code, named and
 Each entry: the `App` fields; the goroutine that owns them; the files that write them; the writes
 another concern may make (**Crosses**); the cells that hold the entry through real dispatch (a
 running `App` on a `TestBackend`). Loop-owned state is read and written on the loop goroutine only.
-Every write not listed is a change to this map.
+Every write not listed is a change to this map: `internal/audit`'s TestAppFieldWritersAreTheMapsOwners
+reads this section and fails on a write to an App field in a file no entry naming the field lists.
 
 - **The tree.** `nodes`, `byComp`, `rootNode`, `nextNodeID`, `structural`, `poisoned`, and `root`,
   the component `Run` mounts. Loop. Written in mount and unmount (`app_tree.go`), the panic
@@ -203,8 +204,9 @@ Every write not listed is a change to this map.
   then the tooltip card, then the frame is presented. Held by:
   TestCommitRunsAfterGeometryIsFinalAndBeforeAnyRender,
   TestACallbackThatDirtiesLayoutGetsAnotherPass, TestLayoutAndCommitSettleInsideONEFrame.
-- **Rendering.** `buf`, `rctx`, `native`, `images`, `faces`, `small.quitButton`. Loop. Written in
-  the frame, between `beginFrame` and `presentFrame` (`app.go`, `app_render.go`, `native.go`,
+- **Rendering.** `buf`, `rctx`, `native`, `shape`, `images`, `faces`, `small.quitButton`. Loop.
+  Written in the frame, between `beginFrame` and `presentFrame` (`app.go`, `app_render.go`,
+  `native.go`, `pointershape.go` (the pointer-shape regions, noted as each node paints),
   `graphics.go`, `toosmall.go`, and `tooltip.go`, which records where it drew the card); the face
   table (`face.go`) and `RenderOffscreen`'s face scope (`offscreen.go`). Crosses: `SetTheme`
   replaces `rctx`'s theme.
@@ -212,10 +214,10 @@ Every write not listed is a change to this map.
   `SetTheme` and the `Apply*` calls (`app.go`), `SetGestureRecognizer` (`gesture.go`) and
   `SetMinimumSize` (`toosmall.go`). Held by: TestAContextReadsTheAppsTheme.
 - **The two lanes.** `input`, `inputDrops` (lane A: the intake pump, `app_intake.go`); `queue` (lane
-  B: any goroutine, under its own lock, `program_queue.go`). An `Update` always enqueues, even from
-  the loop, and runs in a later drain before the next frame. Held by: TestUpdateFromHandlerDeferred,
-  TestContextUpdateDropsAnUnmountedOriginatingOwner, TestIntakeKeysNeverDroppedBelowCapacity,
-  TestPostConcurrentNeverBlocks.
+  B: any goroutine, under its own lock, `program_queue.go`). Both are created in `NewApp` (`app.go`).
+  An `Update` always enqueues, even from the loop, and runs in a later drain before the next frame.
+  Held by: TestUpdateFromHandlerDeferred, TestContextUpdateDropsAnUnmountedOriginatingOwner,
+  TestIntakeKeysNeverDroppedBelowCapacity, TestPostConcurrentNeverBlocks.
 - **Tasks.** `async` (`asyncState`), `sem`, `nextTaskID`. Any goroutine, under `async.mu` and
   atomics. Written in `app_tasks.go`; mount and unmount register and drop the node's task context
   (`app_tree.go`); routing counts a dead letter (`app_routing.go`); teardown drains the pool
@@ -227,8 +229,8 @@ Every write not listed is a change to this map.
   the reads still waiting. Held by: TestReadClipboardAnsweredBeforeItsTimeout.
 - **The run.** `ran`, `quit`, `done`, `stopRun`, `runCtx`, `stoppingCalled`. `Run`'s goroutine.
   Written in `Run` and `teardown` (`app.go`).
-- **Fixed at construction.** `cfg`, `backend`, `caps`, `bus`. Written in `NewApp` only. The Bus
-  reaches the App only through its `busLane`.
+- **Fixed at construction.** `cfg`, `backend`, `caps`, `bus`. Written in `NewApp` only (`app.go`).
+  The Bus reaches the App only through its `busLane`.
 
 The lifecycle, and what each step changes:
 
