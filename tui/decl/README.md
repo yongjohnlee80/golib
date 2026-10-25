@@ -829,6 +829,14 @@ FloatWindow { id: editorWindow; label: "Editor"; key: "editor"
     Frame { Editor { focus: true } } }
 ```
 
+A Go program puts a component over the window's content, a find card at its top-right say, with
+`AddAligned(c tui.Component, align tui.Align)` on the node `Program.Find` returns, as
+`tui.Stack.AddAligned` places a layer. It is inside the window and clipped to it, at the window's
+z-order (a floating window over it covers it), and it moves, tiles and minimizes with the window;
+`SetVisible` shows and hides it. The content's own popups (a context menu, a Select, the command
+line) still open over the Window. The component belongs to the node: a reload that rebuilds the
+FloatWindow builds a new node, and the program adds it again.
+
 A component a Go program adds that should open with its Window the same way
 implements `OpensWithWindow` (`OpenWithWindow() error`, idempotent) beside
 `Overlaid`. A component laid out in the Window whose own children open over it, as a

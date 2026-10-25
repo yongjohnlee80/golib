@@ -230,6 +230,42 @@ func TestStackAlignment(t *testing.T) {
 	}
 }
 
+// TestStackFilledLayer: AddFilled's base is laid out with the stack's own constraints: tight here
+// (the App's root), so it takes the whole of them whatever it asks (3 cells, of 10), at the origin;
+// a layer added after it sits over it, loose as before.
+func TestStackFilledLayer(t *testing.T) {
+	t.Parallel()
+	base := &probe{name: "base", pref: Size{W: 3, H: 1}, fill: "a"}
+	pop := &probe{name: "pop", pref: Size{W: 2, H: 1}, fill: "p"}
+	stack := NewStack()
+	stack.AddFilled(base)
+	stack.AddAligned(pop, AlignTopRight)
+	h := startApp(t, stack, 10, 3)
+	want := "aaaaaaaapp\naaaaaaaaaa\naaaaaaaaaa"
+	if got := h.tb.String(); got != want {
+		t.Fatalf("frame:\n%q\nwant\n%q", got, want)
+	}
+}
+
+// TestStackFilledLayerTakesTheStacksOwnConstraints: given loose constraints (aligned in an outer
+// stack), the base measures as it would alone, 4×2, the stack takes that size, and a layer aligned
+// at its top-right sits within it, not at the outer stack's edge.
+func TestStackFilledLayerTakesTheStacksOwnConstraints(t *testing.T) {
+	t.Parallel()
+	base := &probe{name: "base", pref: Size{W: 4, H: 2}, fill: "a"}
+	pop := &probe{name: "pop", pref: Size{W: 2, H: 1}, fill: "p"}
+	inner := NewStack()
+	inner.AddFilled(base)
+	inner.AddAligned(pop, AlignTopRight)
+	outer := NewStack()
+	outer.AddAligned(inner, AlignTopLeft)
+	h := startApp(t, outer, 10, 3)
+	want := "aapp      \naaaa      \n          "
+	if got := h.tb.String(); got != want {
+		t.Fatalf("frame:\n%q\nwant\n%q", got, want)
+	}
+}
+
 // TestConstraintViolationClamped: a child returning a Size
 // outside its Constraints is clamped, siblings are unaffected, and the
 // violation is recorded on the TestBackend with node/type/sizes.

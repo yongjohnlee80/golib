@@ -23,6 +23,7 @@ type stackLayer struct {
 	align     Align
 	hasOffset bool
 	x, y      int
+	fill      bool // the stack's base: laid out with the stack's own constraints (AddFilled)
 }
 
 // Stack provides z-ordered layered layout for floating windows, modals,
@@ -44,8 +45,10 @@ type stackLayer struct {
 //
 // Each layer is sized, placed, painted and hit-tested by these rules:
 //
-//  1. Sizing: All children are laid out with loose constraints up to the stack's
-//     full area (0 <= W <= MaxW, 0 <= H <= MaxH).
+//  1. Sizing: Children are laid out with loose constraints up to the stack's
+//     full area (0 <= W <= MaxW, 0 <= H <= MaxH). A filled one ([Stack.AddFilled]) is
+//     laid out with the stack's own constraints instead, and the stack takes its size:
+//     the other layers sit within it.
 //  2. Positioning: Children are positioned either via [Align] (such as [AlignCenter],
 //     [AlignTopRight], [AlignBottom]) or at an explicit (x, y) offset via [Stack.AddAt].
 //  3. Painting & Z-Order: Children paint bottom-to-top in document order (later children
@@ -94,6 +97,15 @@ func (s *Stack) AddAligned(child Component, align Align) {
 	s.setLayer(child, stackLayer{align: align})
 }
 
+// AddFilled appends the stack's base: a layer laid out with the constraints the stack is given,
+// unchanged, and placed at its origin. The stack takes the size it does, so a content wrapped to
+// carry layers over it measures exactly as it would alone, tight or loose, and the other layers
+// are laid out and aligned within it.
+func (s *Stack) AddFilled(child Component) {
+	s.MultiChild.Add(child)
+	s.layers.set(child, stackLayer{fill: true})
+}
+
 // AddAt appends a layer at an explicit stack-relative offset.
 func (s *Stack) AddAt(child Component, x, y int) {
 	s.MultiChild.Add(child)
@@ -112,10 +124,25 @@ func (s *Stack) setLayer(child Component, l stackLayer) {
 
 func (s *Stack) Layout(c Constraints) Size {
 	w, h := c.MaxW, c.MaxH
+	filled := false
+	for _, it := range s.All() { // the base, with the stack's own constraints: the stack is its size
+		if !s.layers[it].fill {
+			continue
+		}
+		sz := s.Ctx().LayoutChild(it, c)
+		s.Ctx().PlaceChild(it, Rect{W: sz.W, H: sz.H})
+		if !filled {
+			w, h = sz.W, sz.H
+		}
+		w, h, filled = max(w, sz.W), max(h, sz.H), true
+	}
 	maxW, maxH := 0, 0
 	for _, it := range s.All() {
-		sz := s.Ctx().LayoutChild(it, Loose(Size{W: w, H: h}))
 		l := s.layers[it] // zero value = AlignTopLeft
+		if l.fill {
+			continue
+		}
+		sz := s.Ctx().LayoutChild(it, Loose(Size{W: w, H: h}))
 		var x, y int
 		if l.hasOffset {
 			x, y = l.x, l.y
@@ -125,6 +152,9 @@ func (s *Stack) Layout(c Constraints) Size {
 		s.Ctx().PlaceChild(it, Rect{X: x, Y: y, W: sz.W, H: sz.H})
 		maxW = max(maxW, x+sz.W)
 		maxH = max(maxH, y+sz.H)
+	}
+	if filled {
+		return c.Constrain(Size{W: w, H: h})
 	}
 	if w == Unbounded {
 		w = maxW

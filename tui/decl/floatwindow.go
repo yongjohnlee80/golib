@@ -49,6 +49,9 @@ type floatWindowNode struct {
 	emit   func(args ...qml.SpecValue)
 	// tileGovernance is its side of a TileManager's governing it (tilemember.go)
 	tileGovernance
+	// body is the window's content, its base (laid out as it would be alone), and what a program
+	// puts over it (AddAligned)
+	body *tui.Stack
 }
 
 var (
@@ -64,7 +67,9 @@ func buildFloatWindow(b Build) (tui.Component, []string, error) {
 	}
 	n := &floatWindowNode{frac: [4]float64{0, 0, 100, 100}, placed: b.EmitterWith("placed"), emit: b.EmitterWith("changed"),
 		tileGovernance: tileGovernance{govKey: b.ID}}
-	n.mod = widget.NewWindowMod(b.Children[0], c.options(b.WindowCollector, n.windowChanged)...)
+	n.body = tui.NewStack()
+	n.body.AddFilled(b.Children[0])
+	n.mod = widget.NewWindowMod(n.body, c.options(b.WindowCollector, n.windowChanged)...)
 	n.float = widget.NewFloat(n.mod, widget.WithModal(false), widget.WithAnchor(n.anchor()))
 	n.OverlayLayer = NewOverlayLayer(n.float, "a FloatWindow")
 	if b.Overlay != nil {
@@ -78,6 +83,13 @@ func (n *floatWindowNode) OpenWithWindow() error {
 	_, err := n.Open()
 	return err
 }
+
+// AddAligned puts c over the window's content at align, as tui.Stack.AddAligned does: inside the
+// window, clipped to it, at its z-order, so a floating window over it covers it, and it moves,
+// tiles and hides with the window. A Go program reaches it on the node Program.Find returns, and
+// shows and hides c by SetVisible. It belongs to this node: a reload that rebuilds the
+// FloatWindow builds a new one, and c is added to it again.
+func (n *floatWindowNode) AddAligned(c tui.Component, align tui.Align) { n.body.AddAligned(c, align) }
 
 // WindowBehavior is its window's core, for a dock or a taskbar beside it.
 func (n *floatWindowNode) WindowBehavior() *widget.WindowCore { return n.mod.Core() }
