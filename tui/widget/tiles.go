@@ -17,8 +17,8 @@ import (
 //	tiles.Add("results", table, widget.TilePlace{Edge: tui.DockBottom, Edges: []tui.DockEdge{tui.DockBottom, tui.DockTop}, Size: 40, Min: 5, Minimizable: true})
 //
 // The layout is the Dock's rule: edge tiles (strips) take their depth from the remaining rect in
-// declaration order, each its Size percent of the manager across its edge, and the one centre tile
-// takes what is left. It is computed by plan, a pure function, rather than by a tui.Dock, because a
+// declaration order, each its Size percent of the manager across its edge, and the centre tile takes
+// what is left; with no centre tiled, the last strip does. It is computed by plan, a pure function, rather than by a tui.Dock, because a
 // gesture needs the layout a request would give before it is applied (RequestedBounds), and one
 // function serves both.
 //
@@ -29,9 +29,26 @@ import (
 // hides it, its strip going to the tiles beside it; maximize gives it the whole rect. Escape during
 // a drag restores the layout from before it. Nothing ever floats.
 
+// MEMBERS. A manager also tiles windows it does not own (ADR 1792859491 §4.4): a GovernedWindow
+// added with AddMember keeps its own node, in an overlay, and is anchored over its tile while it
+// wants to be tiled and fits. When the tiled set no longer fits, the most recently tiled member is
+// released to its own placement. A member's window is resized by the shared border (Alt-right drag)
+// and never moved on its own. The centre is a role: at most one tile or member fills the remainder,
+// none need, and with nothing tiled the manager lays out and draws nothing.
+
+// GovernedWindow is a window a tile manager places without owning its node. Govern anchors it over
+// rect (widget.AtLive, with a docked fallback: the tile's edge, or a corner for the fill member) and
+// gives its core the tile's target (WindowCore.Retarget); Release gives both back. Its own state
+// (open, minimized, its float rect, content) stays its own.
+type GovernedWindow interface {
+	Govern(rect func() (tui.Rect, bool), target any)
+	Release()
+	WindowBehavior() *WindowCore
+}
+
 // TilePlace is where a tile starts and where it may go.
 type TilePlace struct {
-	Edge  tui.DockEdge   // DockCenter for the centre tile: exactly one, always
+	Edge  tui.DockEdge   // DockCenter for the fill tile: at most one
 	Edges []tui.DockEdge // the edges a re-dock may take; nil: Edge only. DockCenter: it may swap into the centre
 	Size  float64        // requested percent of the manager across Edge; ignored at the centre
 	Min   int            // cells across its edge (a strip), or on both axes (the centre)
@@ -58,6 +75,12 @@ type TilesOption func(*Tiles)
 // there. Without it the manager keeps a private one.
 func WithTilesCollector(c WindowCollector) TilesOption { return func(t *Tiles) { t.collector = c } }
 
+// WithTilesOrigin is the manager's origin in its members' overlay frame, read each time a member is
+// placed: a member is anchored at its tile's rect offset by it. The default is the zero point, a
+// manager at the overlay's origin. A program whose manager sits below other docked content (a decl
+// Window's centre) reports where its layout placed it.
+func WithTilesOrigin(fn func() tui.Point) TilesOption { return func(t *Tiles) { t.origin = fn } }
+
 // WithTilesChanged has fn told each TilesChangedEvent, as well as the bus.
 func WithTilesChanged(fn func(TilesChangedEvent)) TilesOption {
 	return func(t *Tiles) { t.onChanged = fn }
@@ -72,18 +95,26 @@ type Tiles struct {
 	onChanged func(TilesChangedEvent)
 	size      tui.Size // as last laid out
 	preview   *tilePreview
-	pending   *tileOp // the gesture in progress, staged until it completes
+	pending   *tileOp          // the gesture in progress, staged until it completes
+	origin    func() tui.Point // WithTilesOrigin; nil: the zero point
+	wantSeq   int              // the last member tiled's stamp: members tile, and release, in this order
 }
 
 // Tile is one tile: its content in a WindowMod over the manager.
 type Tile struct {
 	key    string
 	owner  *Tiles
-	place  TilePlace // committed: Edge and Size change by a gesture, SetEdge, SetSize or Swap
-	hidden bool      // minimized
-	mod    *WindowMod
+	place  TilePlace  // committed: Edge and Size change by a gesture, SetEdge, SetSize or Swap
+	hidden bool       // minimized
+	mod    *WindowMod // a Tile child's window; nil for a member
 	target *tileTarget
 	rect   tui.Rect // where the last layout placed it, manager-local
+	// a member's: its window, whether it wants to be tiled (its Layout), when it last asked, and
+	// whether it is tiled now
+	gov      GovernedWindow
+	wants    bool
+	wantSeq  int
+	governed bool
 }
 
 // NewTiles builds an empty manager.
@@ -100,24 +131,16 @@ func NewTiles(opts ...TilesOption) *Tiles {
 	return t
 }
 
-// Add appends a tile, before the manager is mounted. A second centre tile is refused.
+// Add appends a tile, before the manager is mounted. A second centre is refused.
 func (t *Tiles) Add(key string, content tui.Component, p TilePlace) *Tile {
 	if t.ctx != nil {
 		panic(fatalOf("widget: Tiles.Add", "manager already mounted", "declare every tile before mounting"))
 	}
-	if p.Edge > tui.DockCenter || slices.ContainsFunc(p.Edges, func(e tui.DockEdge) bool { return e > tui.DockCenter }) {
-		panic(fatalOf("widget: Tiles.Add", "invalid edge", key))
-	}
-	if p.Edge == tui.DockCenter && t.centre() != nil {
-		panic(fatalOf("widget: Tiles.Add", "a second centre tile", "a manager has exactly one centre"))
-	}
-	if t.tile(key) != nil {
-		panic(fatalOf("widget: Tiles.Add", "duplicate tile key", key))
-	}
+	t.admit("widget: Tiles.Add", key, p)
 	tile := &Tile{key: key, owner: t, place: p}
 	tile.target = &tileTarget{t: tile}
 	opts := []WindowModOption{WithWindowTarget(tile.target), WithWindowResize(), WithWindowMove(),
-		WithWindowMaximize(), WithWindowKey(key), WithWindowLabel(key), WithWindowChanged(tile.target.changed)}
+		WithWindowMaximize(), WithWindowKey(key), WithWindowLabel(key)}
 	if p.Minimizable {
 		opts = append(opts, WithWindowMinimize(t.collector))
 	}
@@ -126,10 +149,79 @@ func (t *Tiles) Add(key string, content tui.Component, p TilePlace) *Tile {
 	return tile
 }
 
+// admit refuses a place no tile may take: an invalid edge, a second centre or a key in use.
+func (t *Tiles) admit(op, key string, p TilePlace) {
+	if p.Edge > tui.DockCenter || slices.ContainsFunc(p.Edges, func(e tui.DockEdge) bool { return e > tui.DockCenter }) {
+		panic(fatalOf(op, "invalid edge", key))
+	}
+	if p.Edge == tui.DockCenter && t.centre() != nil {
+		panic(fatalOf(op, "a second centre", "a manager has at most one"))
+	}
+	if t.tile(key) != nil {
+		panic(fatalOf(op, "duplicate tile key", key))
+	}
+}
+
+// AddMember adds a window the manager tiles while it wants to and fits, before or after the mount.
+// p.Edge DockCenter makes it the fill member, whose tile takes the remainder: any number of members,
+// at most one centre among them and the tiles.
+func (t *Tiles) AddMember(key string, w GovernedWindow, p TilePlace, wants bool) *Tile {
+	if nilLike(w) {
+		panic(fatalOf("widget: Tiles.AddMember", "nil window", key))
+	}
+	t.admit("widget: Tiles.AddMember", key, p)
+	tile := &Tile{key: key, owner: t, place: p, gov: w}
+	tile.target = &tileTarget{t: tile}
+	t.tiles = append(t.tiles, tile)
+	t.SetWants(key, wants)
+	return tile
+}
+
+// SetWants is a member's Layout, live: true asks to be tiled, stamping the order it asked in (the
+// most recent is released first when the tiled set no longer fits); false releases it.
+func (t *Tiles) SetWants(key string, wants bool) {
+	tile := t.tile(key)
+	if tile == nil || tile.gov == nil || tile.wants == wants {
+		return
+	}
+	tile.wants = wants
+	if wants {
+		t.wantSeq++
+		tile.wantSeq = t.wantSeq
+	}
+	t.RequestLayout()
+	t.MarkDirty()
+}
+
+// Wants reports whether a member asks to be tiled; Governed whether it is tiled now.
+func (tile *Tile) Wants() bool    { return tile.wants }
+func (tile *Tile) Governed() bool { return tile.governed }
+
+// core is a tile's window behaviour: its WindowMod's, or a member's own.
+func (tile *Tile) core() *WindowCore {
+	if tile.gov != nil {
+		return tile.gov.WindowBehavior()
+	}
+	return tile.mod.Core()
+}
+
+// node is the component a tile's focus lives in: its WindowMod, or a member's window content (nil
+// before the member's window is bound).
+func (tile *Tile) node() tui.Component {
+	if tile.gov != nil {
+		return tile.core().content
+	}
+	return tile.mod
+}
+
+// inPlay reports whether a tile takes part in the layout: a Tile child always, a member while tiled.
+func (tile *Tile) inPlay() bool { return tile.gov == nil || tile.governed }
+
 // Key is the tile's key.
 func (tile *Tile) Key() string { return tile.key }
 
-// Window is the tile's window: its WindowCore drives every gesture, minimize and maximize.
+// Window is a Tile child's window: its WindowCore drives every gesture, minimize and maximize. A
+// member's is its own (nil here).
 func (tile *Tile) Window() *WindowMod { return tile.mod }
 
 // Place is the tile's committed place: its edge and requested size.
@@ -159,16 +251,15 @@ func (t *Tiles) centre() *Tile {
 	return nil
 }
 
-// Init mounts every tile and the drop preview over them.
+// Init mounts every Tile child and the drop preview over them. A member's node is its own.
 func (t *Tiles) Init(ctx *tui.Context) {
-	if t.centre() == nil {
-		panic(fatalOf("widget: Tiles.Init", "no centre tile", "a manager has exactly one centre"))
-	}
 	t.Base.Init(ctx)
 	t.pending = nil
 	for _, tile := range t.tiles {
-		ctx.Mount(tile.mod)
-		tile.mod.SetVisible(t.shown(tile))
+		if tile.mod != nil {
+			ctx.Mount(tile.mod)
+			tile.mod.SetVisible(t.shown(tile))
+		}
 	}
 	ctx.Mount(t.preview) // after the tiles: a parent renders before its children, the last child last
 }
@@ -177,22 +268,25 @@ func (t *Tiles) Init(ctx *tui.Context) {
 func (t *Tiles) listChildren() []tui.Component {
 	var out []tui.Component
 	for _, tile := range t.tiles {
-		if t.shown(tile) {
+		if tile.mod != nil && t.shown(tile) {
 			out = append(out, tile.mod)
 		}
 	}
 	return out
 }
 
-// shown reports whether a tile takes space: not minimized, and the maximized one if any is.
+// shown reports whether a tile takes space: in play, not minimized, and the maximized one if any is.
 func (t *Tiles) shown(tile *Tile) bool {
-	return !tile.hidden && (t.zoomed == nil || t.zoomed == tile)
+	return tile.inPlay() && !tile.hidden && (t.zoomed == nil || t.zoomed == tile)
 }
 
-// sync shows exactly the tiles that take space, and lays out again.
+// sync shows exactly the Tile children that take space, and lays out again. A member shows as its
+// own window does.
 func (t *Tiles) sync() {
 	for _, tile := range t.tiles {
-		tile.mod.SetVisible(t.shown(tile))
+		if tile.mod != nil {
+			tile.mod.SetVisible(t.shown(tile))
+		}
 	}
 	t.RequestLayout()
 	t.MarkDirty()
@@ -203,6 +297,7 @@ func (t *Tiles) sync() {
 func (t *Tiles) Layout(c tui.Constraints) tui.Size {
 	w, h := boundedMax(c.MaxW, c.MinW), boundedMax(c.MaxH, c.MinH)
 	t.size = tui.Size{W: w, H: h}
+	t.settle(t.size)
 	live := t.pending
 	if live != nil && live.resize == nil {
 		live = nil
@@ -210,8 +305,10 @@ func (t *Tiles) Layout(c tui.Constraints) tui.Size {
 	rects := t.plan(t.size, live)
 	for _, tile := range t.tiles {
 		r := rects[tile]
-		t.ctx.LayoutChild(tile.mod, tui.Tight(tui.Size{W: r.W, H: r.H}))
-		t.ctx.PlaceChild(tile.mod, r)
+		if tile.mod != nil {
+			t.ctx.LayoutChild(tile.mod, tui.Tight(tui.Size{W: r.W, H: r.H}))
+			t.ctx.PlaceChild(tile.mod, r)
+		}
 		tile.rect = r
 	}
 	var at tui.Rect
@@ -225,6 +322,66 @@ func (t *Tiles) Layout(c tui.Constraints) tui.Size {
 
 // Render paints nothing: the tiles and the preview paint themselves.
 func (t *Tiles) Render(tui.Surface) {}
+
+// settle tiles the members that fit at size: the wanting ones, earliest asked first, the most
+// recently asked released until the rest fit. A member that comes into the set is governed over its
+// tile, and one that leaves it is released to its own placement.
+func (t *Tiles) settle(size tui.Size) {
+	var set []*Tile
+	for _, tile := range t.tiles {
+		if tile.gov != nil && tile.wants {
+			set = append(set, tile)
+		}
+	}
+	slices.SortFunc(set, func(a, b *Tile) int { return a.wantSeq - b.wantSeq })
+	for len(set) > 0 && !t.fits(size, set) {
+		set = set[:len(set)-1]
+	}
+	for _, tile := range t.tiles {
+		if tile.gov == nil {
+			continue
+		}
+		on := slices.Contains(set, tile)
+		switch {
+		case on && !tile.governed:
+			tile.governed = true
+			tile.gov.Govern(tile.overlayRect, tile.target)
+		case !on && tile.governed:
+			tile.governed = false
+			if t.zoomed == tile {
+				t.zoomed = nil
+			}
+			tile.gov.Release()
+		}
+	}
+}
+
+// overlayRect is a governed member's tile in its overlay's frame, as AtLive reads it: false while
+// it has no cells or is not tiled.
+func (tile *Tile) overlayRect() (tui.Rect, bool) {
+	r := tile.rect
+	if !tile.governed || r.W <= 0 || r.H <= 0 {
+		return tui.Rect{}, false
+	}
+	if o := tile.owner.origin; o != nil {
+		at := o()
+		r.X, r.Y = r.X+at.X, r.Y+at.Y
+	}
+	return r, true
+}
+
+// fits reports whether the tiles in play with set as the tiled members keep, at size, every strip
+// at or above its Min and the centre at or above its Min: solve's first step, the strips giving
+// their cells above Min, is all it may take.
+func (t *Tiles) fits(size tui.Size, set []*Tile) bool {
+	inPlay := func(tile *Tile) bool { return tile.gov == nil || slices.Contains(set, tile) }
+	for _, horizontal := range []bool{true, false} {
+		if _, over := t.axis(size, t.tiles, func(tile *Tile) TilePlace { return tile.place }, inPlay, horizontal); over > 0 {
+			return false
+		}
+	}
+	return true
+}
 
 // plan is where every tile goes in a manager of size, with op's request applied: the strips in
 // declaration order, each its clamped depth from the remaining rect, then the centre. A tile that
@@ -240,11 +397,13 @@ func (t *Tiles) plan(size tui.Size, op *tileOp) map[*Tile]tui.Rect {
 	order := op.order(t.tiles)
 	across := t.solve(size, order, place)
 	rem := full
+	var last *Tile // the last strip placed: it takes the remainder when no centre is tiled
 	for _, tile := range order {
 		p := place(tile)
-		if tile.hidden || p.Edge == tui.DockCenter {
+		if tile.hidden || !tile.inPlay() || p.Edge == tui.DockCenter {
 			continue
 		}
+		last = tile
 		n := across[tile]
 		switch p.Edge {
 		case tui.DockTop:
@@ -261,12 +420,23 @@ func (t *Tiles) plan(size tui.Size, op *tileOp) map[*Tile]tui.Rect {
 			rem.W -= n
 		}
 	}
+	centre := false
 	for _, tile := range order {
-		if place(tile).Edge == tui.DockCenter {
-			out[tile] = rem
+		if place(tile).Edge == tui.DockCenter && tile.inPlay() {
+			out[tile], centre = rem, true
 		}
 	}
+	if !centre && last != nil && !rem.Empty() {
+		out[last] = union(out[last], rem) // the remainder lies along its inner side
+	}
 	return out
+}
+
+// union is the smallest rect holding a and b.
+func union(a, b tui.Rect) tui.Rect {
+	x0, y0 := min(a.X, b.X), min(a.Y, b.Y)
+	x1, y1 := max(a.X+a.W, b.X+b.W), max(a.Y+a.H, b.Y+b.H)
+	return tui.Rect{X: x0, Y: y0, W: x1 - x0, H: y1 - y0}
 }
 
 // solve is each shown strip's depth across its edge. Per axis (left and right strips share the
@@ -278,47 +448,65 @@ func (t *Tiles) plan(size tui.Size, op *tileOp) map[*Tile]tui.Rect {
 // rewritten: a narrow manager does not overwrite a stored size.
 func (t *Tiles) solve(size tui.Size, order []*Tile, place func(*Tile) TilePlace) map[*Tile]int {
 	out := make(map[*Tile]int, len(order))
-	centreMin := 0
-	for _, tile := range order {
-		if place(tile).Edge == tui.DockCenter {
-			centreMin = max(place(tile).Min, 0)
-		}
-	}
+	inPlay := (*Tile).inPlay
 	for _, horizontal := range []bool{true, false} {
-		extent := size.H
-		if horizontal {
-			extent = size.W
+		strips, over := t.axis(size, order, place, inPlay, horizontal)
+		over -= min(max(over, 0), centreMinOf(order, place, inPlay)) // the centre's Min
+		for i := len(strips) - 1; i >= 0 && over > 0; i-- {          // the strips' Min
+			give := min(over, strips[i].cells)
+			strips[i].cells, over = strips[i].cells-give, over-give
 		}
-		var strips []*Tile
-		for _, tile := range order {
-			e := place(tile).Edge
-			if !tile.hidden && e != tui.DockCenter && (e == tui.DockLeft || e == tui.DockRight) == horizontal {
-				strips = append(strips, tile)
-			}
-		}
-		cells := make([]int, len(strips))
-		mins := make([]int, len(strips))
-		over := centreMin - extent
-		for i, tile := range strips {
-			p := place(tile)
-			mins[i] = max(p.Min, 0)
-			cells[i] = max(percentCells(p.Size, extent), mins[i])
-			over += cells[i]
-		}
-		for i := len(cells) - 1; i >= 0 && over > 0; i-- { // the strips' cells above their Min
-			give := min(over, cells[i]-mins[i])
-			cells[i], over = cells[i]-give, over-give
-		}
-		over -= min(max(over, 0), centreMin)               // the centre's Min
-		for i := len(cells) - 1; i >= 0 && over > 0; i-- { // the strips' Min
-			give := min(over, cells[i])
-			cells[i], over = cells[i]-give, over-give
-		}
-		for i, tile := range strips {
-			out[tile] = cells[i]
+		for _, s := range strips {
+			out[s.tile] = s.cells
 		}
 	}
 	return out
+}
+
+// stripCells is a strip's depth across its edge, as solve takes it.
+type stripCells struct {
+	tile  *Tile
+	cells int
+}
+
+// axis is solve's first step on one axis (left and right strips share the width with the centre,
+// top and bottom ones the height): each shown strip in play asks round(Size% of the extent), at least
+// its Min, and gives back its cells above its Min, last-declared first, while the strips and the
+// centre's Min don't fit. over is what is still over after it: more than zero means only taking
+// Mins away fits them (fits reads that as no).
+func (t *Tiles) axis(size tui.Size, order []*Tile, place func(*Tile) TilePlace, inPlay func(*Tile) bool, horizontal bool) ([]stripCells, int) {
+	extent := size.H
+	if horizontal {
+		extent = size.W
+	}
+	var strips []stripCells
+	var mins []int
+	over := centreMinOf(order, place, inPlay) - extent
+	for _, tile := range order {
+		p := place(tile)
+		if tile.hidden || !inPlay(tile) || p.Edge == tui.DockCenter || (p.Edge == tui.DockLeft || p.Edge == tui.DockRight) != horizontal {
+			continue
+		}
+		m := max(p.Min, 0)
+		strips = append(strips, stripCells{tile, max(percentCells(p.Size, extent), m)})
+		mins = append(mins, m)
+		over += strips[len(strips)-1].cells
+	}
+	for i := len(strips) - 1; i >= 0 && over > 0; i-- { // the strips' cells above their Min
+		give := min(over, strips[i].cells-mins[i])
+		strips[i].cells, over = strips[i].cells-give, over-give
+	}
+	return strips, over
+}
+
+// centreMinOf is the Min of the centre in play, 0 with none.
+func centreMinOf(order []*Tile, place func(*Tile) TilePlace, inPlay func(*Tile) bool) int {
+	for _, tile := range order {
+		if p := place(tile); p.Edge == tui.DockCenter && inPlay(tile) {
+			return max(p.Min, 0)
+		}
+	}
+	return 0
 }
 
 // percentCells is pct percent of extent, rounded half up; never negative.
@@ -339,11 +527,12 @@ func (t *Tiles) SetEdge(key string, e tui.DockEdge) bool {
 	return true
 }
 
-// Swap exchanges two tiles' places (edge, size and order): the only way the centre role moves. A
-// hidden tile is not swapped, nor one whose new place its Edges don't allow.
+// Swap exchanges two Tile children's places (edge, size and order): the only way the centre role
+// moves between them. A hidden tile is not swapped, nor one whose new place its Edges don't allow,
+// nor a member: a member keeps its own place.
 func (t *Tiles) Swap(a, b string) bool {
 	ta, tb := t.tile(a), t.tile(b)
-	if ta == nil || tb == nil || ta == tb || ta.hidden || tb.hidden || !allows(ta.place, tb.place.Edge) || !allows(tb.place, ta.place.Edge) {
+	if ta == nil || tb == nil || ta == tb || ta.gov != nil || tb.gov != nil || ta.hidden || tb.hidden || !allows(ta.place, tb.place.Edge) || !allows(tb.place, ta.place.Edge) {
 		return false
 	}
 	t.cancelGesture()
@@ -390,24 +579,24 @@ func (t *Tiles) SetSize(key string, pct float64) {
 // centre, a tile that isn't minimizable, or one already hidden.
 func (t *Tiles) Hide(key string) bool {
 	tile := t.tile(key)
-	return tile != nil && tile.mod.Minimize()
+	return tile != nil && tile.inPlay() && tile.core().Minimize()
 }
 
 // Show restores a hidden tile through its window.
 func (t *Tiles) Show(key string) bool {
 	tile := t.tile(key)
-	return tile != nil && tile.mod.Restore()
+	return tile != nil && tile.inPlay() && tile.core().Restore()
 }
 
 // Maximize gives one tile the whole rect, or Restore gives every tile back its place; both through
 // the tile's window, so the window's state and its event follow.
 func (t *Tiles) Maximize(key string) bool {
 	tile := t.tile(key)
-	return tile != nil && t.zoomed != tile && tile.mod.ToggleMaximize()
+	return tile != nil && tile.inPlay() && t.zoomed != tile && tile.core().ToggleMaximize()
 }
 
 // Restore ends a maximize.
-func (t *Tiles) Restore() bool { return t.zoomed != nil && t.zoomed.mod.ToggleMaximize() }
+func (t *Tiles) Restore() bool { return t.zoomed != nil && t.zoomed.core().ToggleMaximize() }
 
 // Zoomed is the maximized tile, or nil.
 func (t *Tiles) Zoomed() *Tile { return t.zoomed }
@@ -419,7 +608,7 @@ func (t *Tiles) cancelGesture() {
 	}
 	g := t.pending.tile
 	t.pending = nil
-	g.mod.Core().HandleAction(tui.ActionInvocation{Action: WindowDragCancelAction{}, Origin: tui.OriginProgrammatic})
+	g.core().HandleAction(tui.ActionInvocation{Action: WindowDragCancelAction{}, Origin: tui.OriginProgrammatic})
 }
 
 // publish tells the program and the bus.
@@ -623,7 +812,7 @@ func (t *Tiles) extent(side Handle) int {
 // take, the nearer side at a corner and left/right on a tie.
 func (t *Tiles) dropAt(tile *Tile, p tui.Point) *tileDrop {
 	for _, o := range t.tiles {
-		if o != tile && t.shown(o) && o.rect.Contains(p.X, p.Y) && allows(tile.place, o.place.Edge) && allows(o.place, tile.place.Edge) {
+		if o != tile && o.gov == nil && t.shown(o) && o.rect.Contains(p.X, p.Y) && allows(tile.place, o.place.Edge) && allows(o.place, tile.place.Edge) {
 			return &tileDrop{swap: o, rect: o.rect}
 		}
 	}
@@ -823,7 +1012,7 @@ func (g *tileTarget) GestureBegan(op WindowOperation, h Handle, at tui.Point, po
 			return false
 		}
 	case WindowMove:
-		if !pointer {
+		if !pointer || g.t.gov != nil { // a member is never moved on its own: Layout › Float takes it out
 			return false
 		}
 	default:
@@ -859,9 +1048,9 @@ func (g *tileTarget) GestureLost(op WindowOperation) {
 	m.sync()
 }
 
-// changed is the window's completed operation: a gesture's staged effect is committed; a
-// maximize, minimize or restore is reported.
-func (g *tileTarget) changed(e WindowChangedEvent) {
+// WindowChanged is the window's completed operation (WindowChangeHandler), a Tile child's or a
+// member's alike: a gesture's staged effect is committed; a maximize, minimize or restore is reported.
+func (g *tileTarget) WindowChanged(e WindowChangedEvent) {
 	switch e.Operation {
 	case WindowMove, WindowResize:
 		g.commit(e.Operation)
@@ -908,8 +1097,8 @@ func (g *tileTarget) ToggleMaximize() bool {
 		m.zoomed = g.t
 		if ctx := m.ctx; ctx != nil {
 			for _, tile := range m.tiles {
-				if tile != g.t && ctx.FocusWithin(tile.mod) {
-					_ = focusFirst(ctx, g.t.mod)
+				if n, to := tile.node(), g.t.node(); tile != g.t && n != nil && to != nil && ctx.FocusWithin(n) {
+					_ = focusFirst(ctx, to)
 				}
 			}
 		}
