@@ -214,6 +214,7 @@ func (c *WindowCore) resizedBounds(r tui.Rect, dw, dh int, handle Handle) tui.Re
 		if handle.dx() < 0 {
 			limit = max(r.X+r.W-area.X, 0)
 		}
+		limit = capAt(limit, c.maximum.W)
 		width := clampInt(windowCellAdd(r.W, dw), min(c.minimum.W, limit), limit)
 		if handle.dx() < 0 {
 			r.X += r.W - width
@@ -225,6 +226,7 @@ func (c *WindowCore) resizedBounds(r tui.Rect, dw, dh int, handle Handle) tui.Re
 		if handle.dy() < 0 {
 			limit = max(r.Y+r.H-area.Y, 0)
 		}
+		limit = capAt(limit, c.maximum.H)
 		height := clampInt(windowCellAdd(r.H, dh), min(c.minimum.H, limit), limit)
 		if handle.dy() < 0 {
 			r.Y += r.H - height
@@ -232,6 +234,14 @@ func (c *WindowCore) resizedBounds(r tui.Rect, dw, dh int, handle Handle) tui.Re
 		r.H = height
 	}
 	return r
+}
+
+// capAt is limit held to maximum, a window's resize maximum on one axis: zero has none.
+func capAt(limit, maximum int) int {
+	if maximum > 0 {
+		return min(limit, maximum)
+	}
+	return limit
 }
 
 func windowCellAdd(n, d int) int {

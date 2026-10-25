@@ -80,6 +80,7 @@ type WindowCore struct {
 	moveBinding, resizeBinding              windowBinding
 	handle                                  Handle
 	minimum                                 tui.Size
+	maximum                                 tui.Size // zero on an axis without one
 	label, key                              string
 	workArea                                func(tui.Rect) tui.Rect
 	onChanged                               func(WindowChangedEvent)
@@ -113,6 +114,9 @@ func NewWindowCore(opts ...WindowModOption) *WindowCore {
 func (c *WindowCore) configError() string {
 	if c.minimum.W < 0 || c.minimum.H < 0 || c.minimum.W == tui.Unbounded || c.minimum.H == tui.Unbounded {
 		return "window resize minimum must be finite and non-negative"
+	}
+	if c.maximum.W < 0 || c.maximum.H < 0 {
+		return "window resize maximum must be non-negative"
 	}
 	if c.minimize && nilLike(c.collector) {
 		return "minimize requires a collector"
@@ -216,6 +220,14 @@ func (c *WindowCore) State() WindowState {
 	}
 	return s
 }
+
+// SetMaxSize changes the resize maximum (WithWindowMaxSize) live: a later resize stops there. A
+// zero or negative dimension has no maximum. It moves nothing: an owner that holds its placement
+// to the maximum (a FloatWindow's) reads MaxSize as it lays out.
+func (c *WindowCore) SetMaxSize(s tui.Size) { c.maximum = tui.Size{W: max(s.W, 0), H: max(s.H, 0)} }
+
+// MaxSize is the resize maximum; zero on an axis without one.
+func (c *WindowCore) MaxSize() tui.Size { return c.maximum }
 
 // Bounds reports the target's committed owner-local geometry, or zero without it.
 func (c *WindowCore) Bounds() tui.Rect {
