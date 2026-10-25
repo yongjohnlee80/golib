@@ -16,18 +16,20 @@ type Anchor struct {
 	rect       tui.Rect
 	atFraction bool
 	frac       [4]float64 // x, y, w, h: percent of the overlay area
-	live       *liveRect  // AtLive's; a pointer, so Anchors still compare
+	live       *liveRect  // AtLiveIn's; a pointer, so Anchors still compare
 }
 
-// liveRect is AtLive's rectangle, asked for at each placement.
-type liveRect struct{ rect func() (tui.Rect, bool) }
+// liveRect is AtLiveIn's rectangle, asked for at each placement with the area it is placed in.
+type liveRect struct {
+	rect func(area tui.Rect) (tui.Rect, bool)
+}
 
 // resolve is the rectangle a live anchor names now, inside area; ok false when it names none.
 func (a Anchor) resolve(area tui.Rect) (tui.Rect, bool) {
 	if a.live == nil {
 		return tui.Rect{}, false
 	}
-	r, ok := a.live.rect()
+	r, ok := a.live.rect(area)
 	if !ok || r.W <= 0 || r.H <= 0 {
 		return tui.Rect{}, false
 	}
@@ -55,9 +57,16 @@ func AtRect(r tui.Rect) Anchor { return Anchor{atRect: true, rect: r} }
 // Window (a reserving Drawer). rect runs inside Layout and must only read. While it reports false,
 // or an empty rectangle, the float is placed as otherwise places it, whatever kind of anchor that is
 // (an edge, AtRect, AtFraction). A rectangle rect reports wins over otherwise wherever the float is
-// placed or asked where it is. A live-anchored float is docked, not floating: it is where the layout
-// put its rectangle, or where otherwise does.
+// placed or asked where it is. A live-anchored float floats as otherwise does (Float.Floating): over
+// a reserved strip, with an edge for otherwise, it is docked.
 func AtLive(rect func() (tui.Rect, bool), otherwise Anchor) Anchor {
+	return AtLiveIn(func(tui.Rect) (tui.Rect, bool) { return rect() }, otherwise)
+}
+
+// AtLiveIn is AtLive whose rect is given the area the float is placed in, this pass's: a rectangle
+// that is a function of the area (a FloatWindow's percentages, held to its maximum) is reckoned in
+// the area it is placed in, not the one the float last laid out in (Area, committed after layout).
+func AtLiveIn(rect func(area tui.Rect) (tui.Rect, bool), otherwise Anchor) Anchor {
 	otherwise.live = &liveRect{rect: rect}
 	return otherwise
 }
