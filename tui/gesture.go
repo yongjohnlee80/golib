@@ -105,7 +105,7 @@ type GestureRecognizer interface {
 // through to ordinary routing.
 //
 // This is construction-only, so it can never meet a gesture in flight. Use
-// [Context.SetGestureRecognizer] to replace one on a running App, where that
+// [App.SetGestureRecognizer] to replace one on a running App, where that
 // case has to be handled.
 func WithGestureRecognizer(r GestureRecognizer) AppOption {
 	return func(c *appConfig) { c.recognizer = normalizeRecognizer(r) }

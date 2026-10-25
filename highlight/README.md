@@ -35,8 +35,7 @@ for a view that shows whatever file it is given, a file dialog's preview.
 Implementations: `parse/qml.Highlighter()` (QML and its JavaScript) and
 `parse/sql.Highlighter(dialect)` (PostgreSQL, SQLite, MySQL; its
 `Definitions()` names them as KSyntaxHighlighting does, with the fence aliases
-`sql`, `sqlite`, `mysql` and the like, and `parse/languages` includes them;
-`highlight/sql` forwards to it, deprecated). Painters:
+`sql`, `sqlite`, `mysql` and the like, and `parse/languages` includes them). Painters:
 `tui/widget.Editor` (`WithCore(CoreHighlighter(h))`), and `SyntaxHighlighter` in
 [tui/decl](../tui/decl/README.md).
 

@@ -231,7 +231,7 @@ Components and widgets communicate decoupled state changes through the applicati
   - `widget.SelectionChangedEvent`: Selection moved in a list or table (`Owner`, `Index`).
   - `widget.SubmitEvent`: Enter pressed in a `TextInput` (`Owner`, `Value`).
   - `widget.TabChangedEvent`: Active tab switched in `Tabs` (`Owner`, `Index`).
-  - `widget.OverlayDismissedEvent`: a Float, a Modal or an anchored layer closed (`Owner`, `Layer`, `Reason`: `DismissEscape` for Esc, `DismissProgrammatic` for `Float.Hide`, and so on). Backdrop mouse clicks are trapped and consumed by a modal layer, but do not dismiss it. The older `widget.DismissEvent` (`Owner` only) is deprecated and still published by a Float, just before it.
+  - `widget.OverlayDismissedEvent`: a Float, a Modal or an anchored layer closed (`Owner`, `Layer`, `Reason`: `DismissEscape` for Esc, `DismissProgrammatic` for `Float.Hide`, and so on). Backdrop mouse clicks are trapped and consumed by a modal layer, but do not dismiss it.
 
 ### 1. Your own widgets: their callbacks, not the bus
 
