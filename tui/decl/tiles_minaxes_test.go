@@ -55,3 +55,22 @@ func TestAMembersMinimumOnEachAxisIsLiveAndTheCentresBothHold(t *testing.T) {
 		t.Fatal("a change of TileManager.minimumWidth or .edge rebuilt the Drawer")
 	}
 }
+
+// A Tile's own minimumWidth and minimumHeight bindings hold after the manager is built: a wider
+// minimum widens the left strip the page lays out beside, a taller one deepens the bottom strip.
+func TestATilesMinimumOnEachAxisFollowsItsBinding(t *testing.T) {
+	src := `import tui 1.0
+import demo 1.0
+Window { TileManager {
+  Tile { edge: Tui.Left; size: 10; minimumWidth: App.minW; Frame { title: "LEFT"; Text { text: "l" } } }
+  Tile { edge: Tui.Bottom; size: 10; minimumHeight: App.minH; Frame { title: "BOTTOM"; Text { text: "b" } } }
+  Tile { edge: Tui.Center; Frame { title: "PAGE"; Text { text: "p" } } } } }`
+	s := decltest.Run(t, 80, 24, tuidecl.LayoutSource("main.qml", []byte(src)),
+		tuidecl.Singleton("demo", "1.0", "App"), tuidecl.Sources(map[string]any{"App.minW": 10, "App.minH": 3}))
+	titleAt(t, s, "PAGE", 12, 0)
+	titleAt(t, s, "BOTTOM", 12, 21)
+	set(t, s, "App.minW", 30)
+	titleAt(t, s, "PAGE", 32, 0)
+	set(t, s, "App.minH", 6)
+	titleAt(t, s, "BOTTOM", 32, 18)
+}
