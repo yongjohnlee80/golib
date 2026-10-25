@@ -51,7 +51,9 @@ type TilePlace struct {
 	Edge  tui.DockEdge   // DockCenter for the fill tile: at most one
 	Edges []tui.DockEdge // the edges a re-dock may take; nil: Edge only. DockCenter: it may swap into the centre
 	Size  float64        // requested percent of the manager across Edge; ignored at the centre
-	Min   int            // cells across its edge (a strip), or on both axes (the centre)
+	Min   int            // cells across its edge (a strip), or on both axes (the centre), unless MinW or MinH says otherwise
+	MinW  int            // cells across the width: a left or right strip's, and the centre's; 0: Min
+	MinH  int            // cells across the height: a top or bottom strip's, and the centre's; 0: Min
 	// Minimizable lets it hide (WithTilesCollector's collector lists it); ignored while it is the centre
 	Minimizable bool
 }
@@ -484,8 +486,8 @@ func (t *Tiles) solve(size tui.Size, order []*Tile, place func(*Tile) TilePlace)
 	inPlay := (*Tile).inPlay
 	for _, horizontal := range []bool{true, false} {
 		strips, over := t.axis(size, order, place, inPlay, horizontal)
-		over -= min(max(over, 0), centreMinOf(order, place, inPlay)) // the centre's Min
-		for i := len(strips) - 1; i >= 0 && over > 0; i-- {          // the strips' Min
+		over -= min(max(over, 0), centreMinOf(order, place, inPlay, horizontal)) // the centre's Min
+		for i := len(strips) - 1; i >= 0 && over > 0; i-- {                      // the strips' Min
 			give := min(over, strips[i].cells)
 			strips[i].cells, over = strips[i].cells-give, over-give
 		}
@@ -514,13 +516,13 @@ func (t *Tiles) axis(size tui.Size, order []*Tile, place func(*Tile) TilePlace, 
 	}
 	var strips []stripCells
 	var mins []int
-	over := centreMinOf(order, place, inPlay) - extent
+	over := centreMinOf(order, place, inPlay, horizontal) - extent
 	for _, tile := range order {
 		p := place(tile)
 		if tile.away() || !inPlay(tile) || p.Edge == tui.DockCenter || (p.Edge == tui.DockLeft || p.Edge == tui.DockRight) != horizontal {
 			continue
 		}
-		m := max(p.Min, 0)
+		m := minOn(p, horizontal)
 		strips = append(strips, stripCells{tile, max(percentCells(p.Size, extent), m)})
 		mins = append(mins, m)
 		over += strips[len(strips)-1].cells
@@ -532,14 +534,28 @@ func (t *Tiles) axis(size tui.Size, order []*Tile, place func(*Tile) TilePlace, 
 	return strips, over
 }
 
-// centreMinOf is the Min of the centre in play, 0 with none.
-func centreMinOf(order []*Tile, place func(*Tile) TilePlace, inPlay func(*Tile) bool) int {
+// centreMinOf is the cells the centre in play keeps on one axis (minOn), 0 with none.
+func centreMinOf(order []*Tile, place func(*Tile) TilePlace, inPlay func(*Tile) bool, horizontal bool) int {
 	for _, tile := range order {
 		if p := place(tile); p.Edge == tui.DockCenter && inPlay(tile) {
-			return max(p.Min, 0)
+			return minOn(p, horizontal)
 		}
 	}
 	return 0
+}
+
+// minOn is the cells p keeps on one axis: its MinW across the width (horizontal), its MinH across
+// the height, or Min where that one is unset. A strip asks it on its own axis, so a re-dock takes
+// the other one; the centre asks it on each.
+func minOn(p TilePlace, horizontal bool) int {
+	m := p.MinH
+	if horizontal {
+		m = p.MinW
+	}
+	if m <= 0 {
+		m = p.Min
+	}
+	return max(m, 0)
 }
 
 // percentCells is pct percent of extent, rounded half up; never negative.
@@ -594,6 +610,16 @@ func allows(p TilePlace, e tui.DockEdge) bool {
 func (t *Tiles) SetMin(key string, cells int) {
 	if tile := t.tile(key); tile != nil && tile.place.Min != max(cells, 0) {
 		tile.place.Min = max(cells, 0)
+		t.RequestLayout()
+	}
+}
+
+// SetMinSize sets the cells a tile keeps on each axis, its MinW and MinH (0 unset: Min holds there),
+// held at layout as SetMin's is.
+func (t *Tiles) SetMinSize(key string, cells tui.Size) {
+	w, h := max(cells.W, 0), max(cells.H, 0)
+	if tile := t.tile(key); tile != nil && (tile.place.MinW != w || tile.place.MinH != h) {
+		tile.place.MinW, tile.place.MinH = w, h
 		t.RequestLayout()
 	}
 }
@@ -951,7 +977,7 @@ func (g *tileTarget) SetBounds(r tui.Rect) bool {
 
 // Checkpoint restores what a gesture changes, every tile's edge and requested size, the order and
 // the zoom, and drops the staged gesture. A tile's Min is a live constraint, not a placement: one
-// set while a drag is held (SetMin, a minimumSize binding) survives the drag's cancellation.
+// set while a drag is held (SetMin or SetMinSize, a minimum binding) survives the drag's cancellation.
 func (g *tileTarget) Checkpoint() func() {
 	m := g.owner()
 	type placed struct {
