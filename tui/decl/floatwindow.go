@@ -97,6 +97,9 @@ func (n *floatWindowNode) anchor() widget.Anchor {
 }
 
 // Govern anchors it over rect, its tile, and gives its core the tile's target (widget.GovernedWindow).
+// A drag of its own in flight is cancelled by the new anchor (Float.SetAnchor cancels it, its
+// checkpoint restored, before the anchor is set), in the TileManager's commit phase, where ending
+// the drag's capture is legal.
 func (n *floatWindowNode) Govern(rect func() (tui.Rect, bool), target any) {
 	n.govern(rect, target)
 	n.float.SetAnchor(n.anchor())
