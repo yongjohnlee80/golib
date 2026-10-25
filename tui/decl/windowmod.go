@@ -65,17 +65,25 @@ func newWindowModConfig() windowModConfig {
 	return windowModConfig{modifier: tui.ModAlt, moveButton: tui.MouseLeft, resizeButton: tui.MouseRight}
 }
 
-// windowModFields are the window properties a WindowMod and a Drawer share, read into c. Each adds
-// the one that turns resizing on: a WindowMod's resizable, a Drawer's windowResize (its resizable is
-// its grip).
-func windowModFields(c *windowModConfig) map[string]field {
+// windowMotionFields are the window properties every window declaration shares, read into c: its
+// label and key, moving, minimizing, and the drag bindings. Each adds the one that turns resizing
+// on: a WindowMod's and a FloatWindow's resizable, a Drawer's windowResize (its resizable is its
+// grip).
+func windowMotionFields(c *windowModConfig) map[string]field {
 	return map[string]field{
-		"movable":     into(&c.move, boolOf),
-		"maximizable": into(&c.maximize, boolOf), "minimizable": into(&c.minimize, boolOf),
-		"closable": into(&c.close, boolOf), "label": into(&c.label, stringOf), "key": into(&c.key, stringOf),
+		"movable": into(&c.move, boolOf), "minimizable": into(&c.minimize, boolOf),
+		"label": into(&c.label, stringOf), "key": into(&c.key, stringOf),
 		"dragModifier": into(&c.modifier, windowModifierOf),
 		"moveButton":   into(&c.moveButton, windowMouseButtons.read), "resizeButton": into(&c.resizeButton, windowMouseButtons.read),
 	}
+}
+
+// windowModFields are windowMotionFields and maximizing and closing: a WindowMod's and a Drawer's.
+// A FloatWindow has neither (it never closes, and its maximum is its own).
+func windowModFields(c *windowModConfig) map[string]field {
+	fields := windowMotionFields(c)
+	fields["maximizable"], fields["closable"] = into(&c.maximize, boolOf), into(&c.close, boolOf)
+	return fields
 }
 
 // options are the WindowMod options c declares: its label and key, its drag bindings, the
@@ -109,9 +117,13 @@ func windowChangedArgs(e widget.WindowChangedEvent) []qml.SpecValue {
 		numberValue(e.Bounds.W), numberValue(e.Bounds.H), boolValue(e.Maximized), boolValue(e.Minimized)}
 }
 
-func readWindowMod(b Build) (windowModConfig, []string, error) {
+func readWindowMod(b Build) (windowModConfig, []string, error) { return readWindow(b, windowModFields) }
+
+// readWindow reads a window declaration's properties, fieldsOf's and resizable, and refuses what
+// cannot work: minimizing with nowhere to minimize to, and one binding for both drags.
+func readWindow(b Build, fieldsOf func(*windowModConfig) map[string]field) (windowModConfig, []string, error) {
 	c := newWindowModConfig()
-	fields := windowModFields(&c)
+	fields := fieldsOf(&c)
 	fields["resizable"] = into(&c.resize, boolOf)
 	consumed, err := b.ReadProps(fields)
 	if err == nil && c.minimize && b.WindowCollector == nil {
@@ -173,6 +185,21 @@ func windowStep(move bool) Method {
 			return ErrWindowOperationUnavailable
 		}
 		return nil
+	}
+}
+
+// windowMethod makes a WindowMod method (windowInvoke, windowStep) one run on the window a node
+// carries, window reporting it: a Drawer's window controls, a Tile's window, a FloatWindow's. A
+// node with none now refuses it (ErrWindowOperationUnavailable).
+func windowMethod[N any](window func(N) (*widget.WindowMod, error)) func(Method) Method {
+	return func(m Method) Method {
+		return argMethod(func(n N, args []qml.SpecValue) error {
+			w, err := window(n)
+			if err != nil {
+				return err
+			}
+			return m(w, args)
+		})
 	}
 }
 

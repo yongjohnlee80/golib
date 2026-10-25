@@ -247,3 +247,12 @@ type Overlaid interface {
 	tui.Component
 	SetOverlay(host *widget.OverlayHost, afterClose func())
 }
+
+// OpensWithWindow is an [Overlaid] component shown for as long as its Window is: a FloatWindow. The
+// Window calls OpenWithWindow once its overlay host is mounted, at its own Init before the
+// document's `focus: true` is applied (so a nominee inside the component is there to take it), and
+// again whenever a reload arranges its children. It must be idempotent: open, it does nothing.
+type OpensWithWindow interface {
+	Overlaid
+	OpenWithWindow() error
+}

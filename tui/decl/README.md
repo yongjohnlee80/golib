@@ -102,6 +102,7 @@ change at runtime, which is what makes it bindable to a source.
 | `TreeView` | `textRole`, `badgeRole`, `delegate` (each node's row: a `Text` template, as a TableView's) | `model` (a tree model) | — | `activated(index)`, `expanded(index)`, `currentIndexChanged(index)` — an `Index` | `toggleExpanded(index)`, `setCurrentIndex(index)` |
 | `FileDialog` | `title`, `helpText`, `dim`, `fileMode`, `preview`, palette | `currentFolder`, `selectedFile`, `source` (golib's: a `widget.FileSource` the host binds, listed in place of the program's files; a rebinding lists it afresh) | — | `accepted(selectedFile)`, `rejected`, `closed` | `open()`, `close()` |
 | `Drawer` | `modal` (default true), `closeOnQ` (q closes it too; Esc always does: the key commands `tui.drawer.closeOnQ` and `tui.drawer.close`, after its Shortcuts), golib's `resizable` (default false), `windowResize`, `movable` and `moveButton`, and the window controls' `maximizable`, `minimizable`, `closable`, `label`, `key`, `dragModifier` and `resizeButton` (see [Window capability widgets](#window-capability-widgets)); golib's `reserve` (default false: docked and shown, it takes its strip of the Window from the page, between the bars, instead of lying over it; see Reserving Drawers); one child, its content, and any number of Shortcuts; `keyScope` (as the Dialog's) | `edge` (`Tui.Left`, `Right`, `Top`, `Bottom`, or golib's `Center`: floating in the middle, `length` wide and `size` high), `size` (a percentage across the edge), `length` (golib's: a percentage along it, centred; default 100), golib's `minimumSize` (default 10) and `minimumLength` (default 20); a movable Drawer's `floating`, `floatX`, `floatY`, `floatWidth` and `floatHeight` (percentages of the Window) | — | `opened`, `closed`, golib's `resized(size, length)`, a movable Drawer's `placed(x, y, width, height)`, and with window controls `changed(operation, key, x, y, width, height, maximized, minimized)`, as a WindowMod's | `open()`, `close()`, `toggle()`, `resizeBy`, `moveBy`, and with window controls `toggleMaximize()`, `minimize()` and `restore()` |
+| `FloatWindow` | golib's: one child, its content; `movable`, `resizable`, `minimizable` (needs `WithWindowCollector`), `label`, `key`, `dragModifier`, `moveButton`, `resizeButton`; no close and no maximize (see [Window capability widgets](#window-capability-widgets)) | `maximumWidth`, `maximumHeight` (cells; 0, the default: none), `floatX`, `floatY`, `floatWidth`, `floatHeight` (percentages of the Window; default the whole of it) | `minimized` | `placed(x, y, width, height)`, `changed(operation, key, x, y, width, height, maximized, minimized)` | `moveBy`, `resizeBy`, `minimize()`, `restore()` |
 | `TileManager` | golib's: Tiles only, exactly one at `Tui.Center` (see Tiles) | — | — | — | — |
 | `Tile` | golib's, a TileManager's child: one child, its content; `edges` (the edges a re-dock may take, spelt as `panelgeometry`'s and apart by spaces: `"left right"`; `"center"` lets it swap into the centre), `minimizable` (hidden by a dock: WithWindowCollector; never while it is the centre), `key` (default its id) | `edge` (`Tui.Left`, `Right`, `Top`, `Bottom`, or `Center`: the one centre tile), `size` (a percentage across the edge, two decimals kept), `minimumSize` (cells) | — | `resized(size)` (a border it owns moved, from whichever tile the drag began in), `docked(edge)` (re-docked or swapped), `changed(operation, maximized, hidden)` | `show()`, `hide()`, `toggle()`, `toggleMaximize()`, `resizeBy` |
 | `FolderDialog` | `title`, `helpText`, `dim`, `preview`, `keyScope` (as the Dialog's), palette; its children are fields | `currentFolder`, `selectedFolder`, `source` (as the FileDialog's) | — | `accepted(selectedFolder)`, `rejected`, `closed` | `open()`, `close()` |
@@ -219,8 +220,10 @@ kept, so what was typed in a tab is still there when a handler reads it from
 another; a Tab that is not current is not laid out, painted or focused.
 Ctrl+PageUp and Ctrl+PageDown change tabs from inside the view; with the bar
 focused, ←/→ and `[` `]` do, and so does a click on a title. A host can give the bar
-a menu from Go (`SetMenu` on the node `Find` returns): ≡ shows on the bar, and it
-and a right press on a tab open the host's rows for that tab, under the bar.
+a menu from Go: the node `Find` returns implements
+`interface{ SetMenu(func(i int) []widget.MenuItemModel) }`, each row's action a
+`widget.TabsMenuAction`. ≡ shows on the bar, and it and a right press on a tab
+open the host's rows for that tab (its index), under the bar.
 
 ```qml
 TabView { id: settings
@@ -794,6 +797,26 @@ Drawers expose `resizeBy(widthDelta,heightDelta)` as a pointer-independent path;
 it uses the configured inner-corner handle, so right/bottom-pinned panels can grow.
 Applications removing grips should bind resize keys/commands for terminals that
 reserve modifier-click.
+
+**FloatWindow** (golib's) is a window floating over the Window that never closes:
+it opens with its Window and stays for as long as the Window does. It is not
+modal, it claims no keys (Escape is its content's, then the Window's), and focus
+moving into it raises it over the other floats. It floats at `floatX`, `floatY`,
+`floatWidth` and `floatHeight`, percentages of the Window, and `placed` reports
+them where a move or resize ended. `maximumWidth` and `maximumHeight` hold it,
+live: a resize stops there, and so does its placement, so a Window that grows (or
+a maximum that shrinks) never stretches it past them; held, it keeps its centre.
+
+```qml
+FloatWindow { id: editorWindow; label: "Editor"; key: "editor"
+    movable: true; resizable: true; minimizable: true
+    maximumWidth: App.pageWidth
+    Frame { Editor { focus: true } } }
+```
+
+A component a Go program adds that should open with its Window the same way
+implements `OpensWithWindow` (`OpenWithWindow() error`, idempotent) beside
+`Overlaid`.
 
 **Tiles.** A TileManager is a parent whose Tiles share its whole rect, as a tiling window
 manager's windows do; it owns their sizes. Edge tiles take their strips in declaration order, each

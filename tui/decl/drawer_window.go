@@ -1,8 +1,8 @@
 package decl
 
 import (
-	"github.com/yongjohnlee80/golib/parse/qml"
 	"github.com/yongjohnlee80/golib/tui"
+	"github.com/yongjohnlee80/golib/tui/widget"
 )
 
 type drawerWindowTarget struct {
@@ -114,13 +114,11 @@ func (g *drawerWindowTarget) SetWindowVisible(v bool) bool {
 	return true
 }
 
-// drawerWindow is a WindowMod method (windowInvoke, windowStep) run on the WindowMod a Drawer's
-// window controls are, as tileWindow runs one on a Tile's. A Drawer with none refuses it.
-func drawerWindow(m Method) Method {
-	return argMethod(func(n *drawerNode, args []qml.SpecValue) error {
-		if n.windowMods == nil {
-			return ErrWindowOperationUnavailable
-		}
-		return m(n.windowMods, args)
-	})
-}
+// drawerWindow is a WindowMod method run on the WindowMod a Drawer's window controls are. A Drawer
+// with none refuses it.
+var drawerWindow = windowMethod(func(n *drawerNode) (*widget.WindowMod, error) {
+	if n.windowMods == nil {
+		return nil, ErrWindowOperationUnavailable
+	}
+	return n.windowMods, nil
+})

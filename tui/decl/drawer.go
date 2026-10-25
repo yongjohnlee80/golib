@@ -468,13 +468,17 @@ var drawerType = Type{
 
 // drawerFracSetter is the setter of the floating rectangle's i-th percentage.
 func drawerFracSetter(i int) Setter {
-	return setter("a Drawer", func(v qml.SpecValue) (float64, error) {
-		f, err := numberOf(v)
-		if err == nil && (math.IsNaN(f) || math.IsInf(f, 0)) {
-			err = errors.New("a percentage must be a finite number")
-		}
-		return f, err
-	}, func(n *drawerNode, pct float64) { n.setFrac(i, pct) })
+	return setter("a Drawer", windowPercentOf, func(n *drawerNode, pct float64) { n.setFrac(i, pct) })
+}
+
+// windowPercentOf reads a percentage of the Window: a finite number (a floating rectangle's floatX,
+// floatY, floatWidth or floatHeight, a Drawer's or a FloatWindow's).
+func windowPercentOf(v qml.SpecValue) (float64, error) {
+	f, err := numberOf(v)
+	if err == nil && (math.IsNaN(f) || math.IsInf(f, 0)) {
+		err = errors.New("a percentage must be a finite number")
+	}
+	return f, err
 }
 
 // KeyScope is the Drawer's keyScope: the frame is where its Shortcuts fire (tui.KeyScoped).
