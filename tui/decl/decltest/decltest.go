@@ -178,8 +178,30 @@ func (s *Screen) WaitForText(t testing.TB, text string) {
 	s.WaitFor(t, "text "+`"`+text+`"`, func(screen string) bool { return strings.Contains(screen, text) })
 }
 
-// Keys delivers events as the terminal would.
+// Keys delivers events as the terminal would, and returns once the program has dispatched them: a
+// focus move, a capture, or a handler they run there and then has happened when Keys returns, so a
+// read on the program's loop after it sees their effect. A frame drawn after them, or work a
+// handler posts, may come later: wait for it (WaitFor). If the program stops first, Keys returns
+// then. A loop held by the test (a Post still running) never dispatches them, and Keys fails after
+// WaitTimeout saying so; to queue input behind a loop held on purpose, use KeysAsync.
 func (s *Screen) Keys(t testing.TB, evs ...tui.Event) {
+	t.Helper()
+	dispatched, err := s.Backend.InjectFenced(evs...)
+	if err != nil {
+		t.Fatalf("inject: %v", err)
+	}
+	select {
+	case <-dispatched:
+	case <-s.quit:
+	case <-time.After(WaitTimeout):
+		t.Fatalf("the program never dispatched the input within %v: its loop is held (a Post still running, a handler blocked)", WaitTimeout)
+	}
+}
+
+// KeysAsync queues events as the terminal would and returns at once, before the program has
+// dispatched them: for input queued behind a loop the test holds on purpose. A read right after it
+// can see the moment before the input; anything else uses Keys.
+func (s *Screen) KeysAsync(t testing.TB, evs ...tui.Event) {
 	t.Helper()
 	if err := s.Backend.Inject(evs...); err != nil {
 		t.Fatalf("inject: %v", err)

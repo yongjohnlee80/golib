@@ -25,7 +25,8 @@ func TestSaveAsksForAName(t *testing.T) {
 | `Run(t, w, h, opts…) *Screen` | runs the program; a handler error fails t unless the options give an `ErrorSink` |
 | `RunWith(t, w, h, setup, opts…)` | the same, with `setup(program)` between building and running — where a program's main binds its host (finds widgets, loads a file) before the first frame |
 | `Screen.WaitFor(t, what, cond)` / `WaitForText(t, text)` | poll the screen until it shows what you expect |
-| `Screen.Keys(t, evs…)` | deliver key events |
+| `Screen.Keys(t, evs…)` | deliver key or mouse events, and return once the program has dispatched them: a focus move, a capture or a handler they run has happened, so a read after it sees their effect. A frame, or work a handler posts, can come later: wait for it. A loop the test holds never dispatches them, and Keys fails after `WaitTimeout` |
+| `Screen.KeysAsync(t, evs…)` | queue them and return at once, before they're dispatched: only for input behind a loop the test holds on purpose |
 | `Screen.Quit()` | closed when the program stops |
 | `Rune`, `Type`, `Ctrl`, `Alt` | key events |
 | `WaitTimeout` | how long every wait lasts (3s) |

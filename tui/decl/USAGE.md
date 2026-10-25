@@ -1067,7 +1067,9 @@ menu "File": "Save" and "Save As…" both answer to 's' (in en, ko_KR); the firs
 **`decltest.Run` runs the program** on a `tui.NewTestBackend(w, h)` and stops it
 when the test ends. A handler error fails the test unless the options give an
 `ErrorSink` of their own. `Screen.WaitFor`, `WaitForText`, `Keys`, and the key
-constructors `Rune`, `Type`, `Ctrl` and `Alt` cover the rest.
+constructors `Rune`, `Type`, `Ctrl` and `Alt` cover the rest. `Keys` returns once
+the program has dispatched the input, so a read after it sees the input's effect;
+what reaches the screen still comes a frame later, so wait for that.
 
 If a program wraps `NewProgram` in a host of its own, as the example's `New`
 does, the same rules hold by hand: read what reached the screen — "the tree was

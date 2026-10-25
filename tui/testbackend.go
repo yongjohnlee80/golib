@@ -282,6 +282,31 @@ func (b *TestBackend) Inject(evs ...Event) error {
 	return b.injectLocked(evs...)
 }
 
+// InjectFenced is Inject, and a channel the App closes once it has dispatched evs. A fence is
+// queued behind them, and input keeps its order to the loop (the intake holds a resize behind what
+// came before it, and coalesces only motions and precise scrolls with their like), so the App
+// reaches the fence only after every one of evs. A fence the intake drops in an overflow is closed
+// then: what came before it was dispatched or dropped too. The channel stays open if the App stops
+// before reaching the fence, so a waiter watches for the program's end as well.
+func (b *TestBackend) InjectFenced(evs ...Event) (<-chan struct{}, error) {
+	f := inputFence{done: make(chan struct{})}
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	if err := b.injectLocked(append(evs[:len(evs):len(evs)], f)...); err != nil {
+		return nil, err
+	}
+	return f.done, nil
+}
+
+// inputFence is the event InjectFenced queues behind its input. The App passes it on reaching it,
+// before anything else sees it: no component, resolver or trace is told of it.
+type inputFence struct{ done chan struct{} }
+
+func (inputFence) isEvent() {}
+
+// pass closes the fence: everything queued before it is done with.
+func (f inputFence) pass() { close(f.done) }
+
 func (b *TestBackend) injectLocked(evs ...Event) error {
 	if b.stopped {
 		return fmt.Errorf("tui: TestBackend.Inject after Stop (%w)", errs.ErrClosed)
