@@ -52,7 +52,9 @@ func OpenNamed(ctx context.Context, name, dsn string, opts ...Option) (dao.DataC
 		return nil, err
 	}
 	for _, o := range opts {
-		o(cfg)
+		if o != nil {
+			o(cfg)
+		}
 	}
 	// Every connection records the ParameterStatus set the server reports, so a
 	// pinned connection can hand a protocol relay the server's own list.

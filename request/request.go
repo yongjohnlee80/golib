@@ -89,7 +89,9 @@ func Request(params *Params, payload any, opts ...RequestOption) error {
 // and the response-body read. It is otherwise identical to Request.
 func Do(ctx context.Context, params *Params, payload any, opts ...RequestOption) error {
 	for _, opt := range opts {
-		params = opt(params)
+		if opt != nil {
+			params = opt(params)
+		}
 	}
 	var _payload io.Reader
 	var contentType string

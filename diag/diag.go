@@ -99,7 +99,9 @@ func Start(ctx context.Context, dir string, opts ...Option) (*Monitor, error) {
 	}
 	c := config{every: defaultEvery, step: defaultStep, top: defaultTop}
 	for _, o := range opts {
-		o(&c)
+		if o != nil {
+			o(&c)
+		}
 	}
 	c.every = max(c.every, minEvery)
 	if c.step == 0 {

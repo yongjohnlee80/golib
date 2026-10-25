@@ -78,7 +78,9 @@ type Searcher struct {
 func NewSearcher(inner search.Searcher, texts TextSource, source Source, opts ...Option) *Searcher {
 	s := &Searcher{inner: inner, texts: texts, source: source, defaultLimit: DefaultLimit, maxLimit: MaxLimit}
 	for _, o := range opts {
-		o(s)
+		if o != nil {
+			o(s)
+		}
 	}
 	return s
 }

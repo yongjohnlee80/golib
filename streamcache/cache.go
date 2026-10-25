@@ -132,7 +132,9 @@ func New(r io.Reader, opts ...Option) *Cache {
 	}
 	cfg := config{segment: defaultSegmentSize}
 	for _, o := range opts {
-		o(&cfg)
+		if o != nil {
+			o(&cfg)
+		}
 	}
 	return &Cache{r: r, cfg: cfg}
 }

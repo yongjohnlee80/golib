@@ -164,7 +164,9 @@ type Session struct {
 func New(opts ...Option) *Session {
 	c := configuration{words: map[string]highlight.Style{}}
 	for _, opt := range opts {
-		opt(&c)
+		if opt != nil {
+			opt(&c)
+		}
 	}
 	s := &Session{config: c}
 	s.store = states.New(contextKey)

@@ -146,7 +146,9 @@ func NewOllama(ctx context.Context, base, key, name string, client *http.Client,
 	}
 	o := &Ollama{base: strings.TrimRight(base, "/"), client: client, model: Model{Provider: "ollama", Name: name}}
 	for _, opt := range opts {
-		opt(o)
+		if opt != nil {
+			opt(o)
+		}
 	}
 	var tags struct {
 		Models []struct{ Name, Model, Digest string } `json:"models"`

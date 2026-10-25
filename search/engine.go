@@ -81,7 +81,9 @@ func NewEngine[D comparable, V View[D]](st Store[D, V], opts ...Option) *Engine[
 	o := options{k: 60, top: 50, perDoc: 3, limit: 20, maxLimit: 200, linkBoost: 0.1, tagBoost: 1.2}
 	def := o
 	for _, opt := range opts {
-		opt(&o)
+		if opt != nil {
+			opt(&o)
+		}
 	}
 	for _, f := range []struct{ v, def *int }{{&o.k, &def.k}, {&o.top, &def.top}, {&o.perDoc, &def.perDoc}, {&o.limit, &def.limit}, {&o.maxLimit, &def.maxLimit}} {
 		if *f.v <= 0 {

@@ -174,7 +174,9 @@ func NewTEI(ctx context.Context, base, key string, client *http.Client, opts ...
 	}
 	t := &TEI{base: strings.TrimRight(base, "/"), auth: bearer(key), client: client, timeout: DefaultTimeout}
 	for _, o := range opts {
-		o(t)
+		if o != nil {
+			o(t)
+		}
 	}
 	var info struct {
 		ModelID   string                     `json:"model_id"`
@@ -252,7 +254,9 @@ func NewRerankAPI(base, key, model string, client *http.Client, opts ...RerankAP
 	r := &RerankAPI{base: strings.TrimRight(base, "/"), auth: bearer(key), client: client, timeout: DefaultTimeout,
 		model: Model{Provider: "rerank-api", Name: model, MaxBatch: DefaultRerankAPIBatch}}
 	for _, o := range opts {
-		o(r)
+		if o != nil {
+			o(r)
+		}
 	}
 	return r
 }
