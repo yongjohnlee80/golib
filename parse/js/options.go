@@ -29,11 +29,11 @@ func MaxDepth(n int) Option { return func(o *options) { o.maxDepth = n } }
 // NewExpression returns an expression parser configured by opts.
 func NewExpression(opts ...Option) Expression {
 	o := newOptions(opts)
-	return Expression{Dialect: o.dialect, MaxDepth: o.maxDepth}
+	return Expression{lang: o.dialect, maxDepth: o.maxDepth}
 }
 
 // NewStatements returns a statement parser configured by opts.
 func NewStatements(opts ...Option) Statements {
 	o := newOptions(opts)
-	return Statements{Dialect: o.dialect, MaxDepth: o.maxDepth}
+	return Statements{lang: o.dialect, maxDepth: o.maxDepth}
 }
