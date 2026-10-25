@@ -132,6 +132,9 @@ func (h *OverlayHost) Attach(f *Float) {
 		return // already attached: attaching twice is one layer, not two
 	}
 	h.Stack.Add(f)
+	if h.tierOf(f) == tierTiled { // tiled before it was attached: under the floating layers
+		h.Raise(f)
+	}
 	h.raiseTopmost()
 }
 
@@ -157,7 +160,8 @@ func (h *OverlayHost) raiseTopmost() {
 
 // Raise moves an attached Float to the top of the ordinary layers: above every other panel and
 // popup, and still beneath the open dialogs (a Modal with its scrim, a shown modal Float) and the
-// topmost floats. A non-modal Float raises itself when the keyboard enters it, so the panel being
+// topmost floats. A tiled Float (SetTiled) goes to the top of the tiled layers only, still beneath
+// every floating one. A non-modal Float raises itself when the keyboard enters it, so the panel being
 // typed into is the one drawn on top (Qt's QWidget::raise on activation). A shown modal Float is
 // an open dialog: raising one moves it above the other dialogs, as showing it did. A topmost Float
 // is above everything already, and a Float not attached here is left alone.
@@ -169,11 +173,14 @@ func (h *OverlayHost) Raise(f *Float) {
 	if f == nil || !h.hasLayer(f) || slices.Contains(h.topmost, f) {
 		return
 	}
-	if h.tierOf(f) == tierDialog {
+	switch h.tierOf(f) {
+	case tierDialog:
 		h.moveBelow(f, h.isTopmost)
-		return
+	case tierTiled:
+		h.moveBelow(f, h.aboveTiled)
+	default:
+		h.moveBelow(f, h.pinned)
 	}
-	h.moveBelow(f, h.pinned)
 }
 
 // moveBelow moves f directly beneath the lowest layer other than f that ceiling holds, or to the
@@ -198,12 +205,14 @@ func (h *OverlayHost) moveBelow(f *Float, ceiling func(tui.Component) bool) {
 	h.Stack.Move(f, to)
 }
 
-// layerTier is where an overlay layer stacks: above the ordinary layers sit the open dialogs with
-// their scrim, and above those the topmost layers.
+// layerTier is where an overlay layer stacks: the tiled layers lowest, over the base; above them
+// the ordinary layers; above those the open dialogs with their scrim, and above those the topmost
+// layers.
 type layerTier int
 
 const (
-	tierOrdinary layerTier = iota // a panel, a popup, a hidden or non-modal Float
+	tierTiled    layerTier = iota // a tiled Float (SetTiled): a window a tile manager places
+	tierOrdinary                  // a panel, a popup, a hidden or non-modal Float
 	tierDialog                    // an open dialog, its scrim, a shown modal Float
 	tierTopmost                   // a topmost Float (AttachTopmost)
 )
@@ -232,6 +241,20 @@ func (h *OverlayHost) tierOf(layer tui.Component) layerTier {
 
 // pinned reports whether layer stays above the ordinary layers.
 func (h *OverlayHost) pinned(layer tui.Component) bool { return h.tierOf(layer) > tierOrdinary }
+
+// aboveTiled reports whether layer stacks above the tiled layers: any but a tiled one, and never the
+// base, which stays beneath every overlay layer.
+func (h *OverlayHost) aboveTiled(layer tui.Component) bool {
+	return h.tierOf(layer) > tierTiled && !h.isBase(layer)
+}
+
+// isBase reports whether layer is the base, the stack's first.
+func (h *OverlayHost) isBase(layer tui.Component) bool {
+	for _, first := range h.Stack.All() {
+		return first == layer
+	}
+	return false
+}
 
 // isTopmost reports whether layer is one of the topmost layers.
 func (h *OverlayHost) isTopmost(layer tui.Component) bool { return h.tierOf(layer) == tierTopmost }

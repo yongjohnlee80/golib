@@ -117,6 +117,7 @@ type Float struct {
 	scrim        style.Style
 	windowTarget *floatWindowTarget
 	area         tui.Size // the overlay area the float last laid out in
+	tiled        bool     // a tile manager places it: it stacks beneath the floating layers (SetTiled)
 }
 
 var _ tui.Component = (*Float)(nil)
@@ -146,12 +147,27 @@ func WithSizeFraction(wPct, hPct int) FloatOption {
 	return func(f *Float) { f.wPct, f.hPct = clampPct(wPct), clampPct(hPct) }
 }
 
-// overlayTier is a shown modal Float's tier: an open dialog, as a Modal is (tieredLayer).
+// overlayTier is a shown modal Float's tier, an open dialog as a Modal is; a tiled one's, beneath
+// the floating layers; else ordinary (tieredLayer).
 func (f *Float) overlayTier() layerTier {
-	if f.modal && f.shown {
+	switch {
+	case f.modal && f.shown:
 		return tierDialog
+	case f.tiled:
+		return tierTiled
 	}
 	return tierOrdinary
+}
+
+// SetTiled says whether a tile manager places the float: a window over its tile stacks beneath every
+// floating layer, raised (focus, a click) only to the top of the tiled ones, so a tiled page never
+// covers a panel floating over it. Off, it goes to the top of the ordinary layers, as a raise does.
+func (f *Float) SetTiled(on bool) {
+	if f.tiled == on {
+		return
+	}
+	f.tiled = on
+	f.raise()
 }
 
 // WithDimBackground dims (scrims) the cells beneath while shown.

@@ -7,8 +7,9 @@ import (
 
 // TILE MEMBERS — a window a TileManager governs without owning its node (widget.GovernedWindow): a
 // Drawer or a FloatWindow declared in the manager. Its node stays in the overlay. While governed it
-// is anchored live over its tile and its core takes the tile's target; released, it is back at its
-// own place, which governing never touched.
+// is anchored live over its tile, its core takes the tile's target, and its Float stacks beneath the
+// floating windows (Float.SetTiled); released, it is back at its own place, which governing never
+// touched.
 
 // tileMember is a window a TileManager can govern: its tile's key (its id, "" for an anonymous
 // one), and told its tile's edge before it is added, for the docked anchor it falls back to while

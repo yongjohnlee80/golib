@@ -223,6 +223,7 @@ root := widget.NewOverlayHost(mainLayout)
 
 - `Select` projects its open options list onto the **nearest enclosing** overlay host, resolved from the component tree — so two hosts in one application each serve only the widgets inside them.
 - `Float` attaches via `host.Attach(float)` (and detaches via `host.Detach(float)`) and provides toggleable windows (`Show()` / `Hide()`), focus trapping, background scrimming, and Esc-dismissal. It is the **lower-level** primitive: a positioned, trapping layer around arbitrary content.
+- The layers stack in tiers, lowest first: tiled floats, ordinary ones (panels, popups), the open dialogs with their scrim, and the topmost floats (`AttachTopmost`). A non-modal Float raises itself when the keyboard enters it, within its tier. `Float.SetTiled(true)` is a window a tile manager places (a `Tiles` member): it stays beneath every floating layer however it is raised, so a tiled page never covers a panel floating over it; `SetTiled(false)` puts it at the top of the ordinary tier.
 - `Modal` is the **composed dialog** on the same stack — a card with a title, body and role-carrying buttons, plus the lifecycle a dialog needs. Reach for `Modal` when you want a dialog; reach for `Float` when you want a floating layer and intend to supply the behaviour yourself. See [`Modal`](#modal) below.
 
 ---

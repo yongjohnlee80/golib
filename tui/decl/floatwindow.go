@@ -103,6 +103,7 @@ func (n *floatWindowNode) anchor() widget.Anchor {
 func (n *floatWindowNode) Govern(rect func() (tui.Rect, bool), target any) {
 	n.govern(rect, target)
 	n.float.SetAnchor(n.anchor())
+	n.float.SetTiled(true) // under the floating windows, however the keyboard raises it
 	n.mod.Core().Retarget(target)
 }
 
@@ -110,6 +111,7 @@ func (n *floatWindowNode) Govern(rect func() (tui.Rect, bool), target any) {
 func (n *floatWindowNode) Release() {
 	n.release()
 	n.float.SetAnchor(n.anchor())
+	n.float.SetTiled(false)
 	n.mod.Core().Retarget(nil)
 }
 

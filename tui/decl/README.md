@@ -866,7 +866,8 @@ properties; `TileManager.tiled: false` is its Layout › Float. A member is neve
 Alt-right on its shared border resizes its tile, and its own `placed` and `resized` don't fire while
 it's tiled, so its own place is exactly where it goes when released. When the wanting members don't
 fit, the most recently tiled is released first. A closed, never-opened or minimized member takes no
-cells and stays governed. A TileManager with members is a Window's own child, and a reserving Drawer
+cells and stays governed. A tiled member stacks beneath every floating window, however the keyboard
+or a click raises it; released, it is the top floating one. A TileManager with members is a Window's own child, and a reserving Drawer
 can't be one.
 
 ```qml

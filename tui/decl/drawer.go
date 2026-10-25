@@ -204,6 +204,7 @@ func (n *drawerNode) Govern(rect func() (tui.Rect, bool), target any) {
 	n.stopWindowDrag()
 	n.govern(rect, target)
 	n.place()
+	n.float.SetTiled(true) // under the floating windows, however the keyboard raises it
 	n.windowMods.Core().Retarget(target)
 }
 
@@ -220,6 +221,7 @@ func (n *drawerNode) Release() {
 	n.release()
 	n.windowMods.Core().Retarget(nil)
 	n.place()
+	n.float.SetTiled(false)
 }
 
 func (n *drawerNode) windowChanged(e widget.WindowChangedEvent) {
