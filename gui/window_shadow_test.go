@@ -9,7 +9,9 @@ import (
 
 // A floating panel (a Drawer moved off its edge floats AtFraction; one at Tui.Center is centred)
 // gets a soft shadow around its content, under its border; a panel docked at an edge (a Drawer's
-// Left, Right, Top or Bottom) gets none.
+// Left, Right, Top or Bottom) gets none. A live anchor floats as its fallback does: a FloatWindow
+// (AtLiveIn over its percentages, an AtFraction fallback) gets one; a reserving Drawer over its
+// strip (an edge fallback) and a governed tile member (a corner fallback) get none.
 func TestFloatingPanelsGetAShadowAndDockedOnesDoNot(t *testing.T) {
 	cases := []struct {
 		name   string
@@ -22,6 +24,15 @@ func TestFloatingPanelsGetAShadowAndDockedOnesDoNot(t *testing.T) {
 		{"docked left", widget.Left, false},
 		{"docked bottom", widget.Bottom, false},
 		{"maximised", widget.AtFraction(0, 0, 100, 100), false}, // fills its area: no shadow to see
+		{"a FloatWindow, live at its percentages", widget.AtLiveIn(func(a tui.Rect) (tui.Rect, bool) {
+			return tui.Rect{X: a.X + a.W/4, Y: a.Y + 2, W: a.W / 2, H: 5}, true
+		}, widget.AtFraction(25, 20, 50, 50)), true},
+		{"a reserving Drawer, live over its strip", widget.AtLive(func() (tui.Rect, bool) {
+			return tui.Rect{W: 8, H: 10}, true
+		}, widget.Left), false},
+		{"a governed tile member, live over its tile", widget.AtLive(func() (tui.Rect, bool) {
+			return tui.Rect{X: 2, Y: 1, W: 10, H: 6}, true
+		}, widget.TopLeft), false},
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
