@@ -857,7 +857,13 @@ is outlined until the release, and Escape restores the layout. When the minimums
 strips give back their cells above their minimum first, then the centre its own, then the strips
 theirs; the asked sizes come back with the room. A tile's minimum is `minimumSize` on both axes,
 or `minimumWidth` and `minimumHeight` where they are set: a page wants 40 columns but only a few
-rows, and a strip that may re-dock wants columns at the left and rows at the bottom. The centre's
+rows, and a strip that may re-dock wants columns at the left and rows at the bottom. Along its edge,
+a strip is as long as the strips laid out before it leave: a left strip declared after a bottom
+one is that much shorter. Where a left or right strip sets `minimumHeight`, or a top or bottom one
+`minimumWidth`, that is a length it must have along its edge to fit; a set that leaves it shorter
+doesn't fit, and the most recently tiled member is released (`minimumSize` alone is across the edge
+only). A member's `TileManager.edge` never moves to or from `Tui.Center`: that change is refused,
+and a member at the centre is the one declared there. The centre's
 `maximumWidth` and `maximumHeight` cap it: a page as wide as its ruler. The strips beside it on
 that axis take the cells beyond its maximum, the innermost on each side, split between two sides
 so the page stays centred. With a strip on one side only, that strip takes them all and the

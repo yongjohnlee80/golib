@@ -55,8 +55,12 @@ type TilePlace struct {
 	// included, and the percent is kept as it is on any size of manager.
 	Size float64
 	Min  int // cells across its edge (a strip), or on both axes (the centre), unless MinW or MinH says otherwise
-	MinW int // cells across the width: a left or right strip's, and the centre's; 0: Min
-	MinH int // cells across the height: a top or bottom strip's, and the centre's; 0: Min
+	// MinW is the cells kept across the width: a left or right strip's, and the centre's; 0: Min. A
+	// top or bottom strip's is the length it must have along its edge to fit (no fallback to Min).
+	MinW int
+	// MinH is the cells kept across the height: a top or bottom strip's, and the centre's; 0: Min. A
+	// left or right strip's is the length it must have along its edge to fit (no fallback to Min).
+	MinH int
 	// MaxW and MaxH are the most cells the centre takes across the width and the height; 0: no
 	// maximum, and never under its minimum on that axis. The strips beside the centre on that axis
 	// take the rest; with none, the centre is centred at its maximum. A strip ignores them.
@@ -119,12 +123,13 @@ type Tile struct {
 	mod    *WindowMod // a Tile child's window; nil for a member
 	target *tileTarget
 	rect   tui.Rect // where the last layout placed it, manager-local
-	// a member's: its window, whether it wants to be tiled (its Layout), when it last asked, and
-	// whether it is tiled now
+	// a member's: its window, whether it wants to be tiled (its Layout), when it last came into play
+	// (asked, or was brought back), whether it is tiled now, and whether settle last saw it away
 	gov      GovernedWindow
 	wants    bool
 	wantSeq  int
 	governed bool
+	wasAway  bool
 }
 
 // NewTiles builds an empty manager.
@@ -187,8 +192,9 @@ func (t *Tiles) AddMember(key string, w GovernedWindow, p TilePlace, wants bool)
 	return tile
 }
 
-// SetWants is a member's Layout, live: true asks to be tiled, stamping the order it asked in (the
-// most recent is released first when the tiled set no longer fits); false releases it.
+// SetWants is a member's Layout, live: true asks to be tiled, stamping the order it came into play
+// in (the most recent is released first when the tiled set no longer fits; settle stamps it again
+// when the member is brought back from a close or a minimize); false releases it.
 func (t *Tiles) SetWants(key string, wants bool) {
 	tile := t.tile(key)
 	if tile == nil || tile.gov == nil || tile.wants == wants {
@@ -350,17 +356,36 @@ func (t *Tiles) Layout(c tui.Constraints) tui.Size {
 // Render paints nothing: the tiles and the preview paint themselves.
 func (t *Tiles) Render(tui.Surface) {}
 
-// settle decides which members tile at size: the wanting ones, earliest asked first, the most
-// recently asked released until the rest fit. Layout only decides. A member coming into the set is
+// settle decides which members tile at size: the wanting ones, earliest in play first, the most
+// recently in play released until the rest fit. A wanted member comes into play when it asks
+// (SetWants) and again when it is brought back, opened after a close or restored after a minimize:
+// settle sees it away, then present, and stamps it then, so the window just brought back is the one
+// released, and the tiles on the screen keep their places; members back in the same settle keep
+// the order they had among themselves. A Tile child is never in this order.
+// Layout only decides. A member coming into the set is
 // governed over its tile, and one leaving it released to its own placement, in the commit that
 // follows (apply): re-anchoring or retargeting a window whose drag holds the pointer ends that drag,
 // which Layout may not. The layout that commit dirties runs in the same frame.
 func (t *Tiles) settle(size tui.Size) {
-	var set []*Tile
+	var set, back []*Tile
 	for _, tile := range t.tiles {
-		if tile.gov != nil && tile.wants {
+		if tile.gov == nil {
+			continue
+		}
+		away := tile.away()
+		if tile.wants && tile.wasAway && !away {
+			back = append(back, tile)
+		}
+		tile.wasAway = away
+		if tile.wants {
 			set = append(set, tile)
 		}
+	}
+	// brought back: the most recently in play, those back together keeping the order they had
+	slices.SortFunc(back, func(a, b *Tile) int { return a.wantSeq - b.wantSeq })
+	for _, tile := range back {
+		t.wantSeq++
+		tile.wantSeq = t.wantSeq
 	}
 	slices.SortFunc(set, func(a, b *Tile) int { return a.wantSeq - b.wantSeq })
 	for len(set) > 0 && !t.fits(size, set) {
@@ -415,12 +440,28 @@ func (tile *Tile) overlayRect() (tui.Rect, bool) {
 
 // fits reports whether the tiles in play with set as the tiled members keep, at size, every strip
 // at or above its Min and the centre at or above its Min: solve's first step, the strips giving
-// their cells above Min, is all it may take.
+// their cells above Min, is all it may take. A strip must also be as long along its edge as it
+// asks there: a left or right strip its MinH, a top or bottom one its MinW, the explicit field only
+// (Min is across its edge). Its length is what the strips laid out before it leave, read from
+// plan's own carve; nothing shrinks to make room for it.
 func (t *Tiles) fits(size tui.Size, set []*Tile) bool {
 	inPlay := func(tile *Tile) bool { return tile.gov == nil || slices.Contains(set, tile) }
+	place := func(tile *Tile) TilePlace { return tile.place }
 	for _, horizontal := range []bool{true, false} {
-		if _, over := t.axis(size, t.tiles, func(tile *Tile) TilePlace { return tile.place }, inPlay, horizontal); over > 0 {
+		if _, over := t.axis(size, t.tiles, place, inPlay, horizontal); over > 0 {
 			return false
+		}
+	}
+	for tile, r := range carve(tui.Rect{W: size.W, H: size.H}, t.tiles, place, inPlay, t.solve(size, t.tiles, place, inPlay)) {
+		switch p := place(tile); p.Edge {
+		case tui.DockLeft, tui.DockRight:
+			if p.MinH > 0 && r.H < p.MinH {
+				return false
+			}
+		case tui.DockTop, tui.DockBottom:
+			if p.MinW > 0 && r.W < p.MinW {
+				return false
+			}
 		}
 	}
 	return true
@@ -430,20 +471,26 @@ func (t *Tiles) fits(size tui.Size, set []*Tile) bool {
 // declaration order, each its clamped depth from the remaining rect, then the centre. A tile that
 // takes no space (minimized, or not the maximized one) is an empty rect.
 func (t *Tiles) plan(size tui.Size, op *tileOp) map[*Tile]tui.Rect {
-	out := make(map[*Tile]tui.Rect, len(t.tiles))
 	full := tui.Rect{W: size.W, H: size.H}
 	if t.zoomed != nil && !t.zoomed.away() {
-		out[t.zoomed] = full
-		return out
+		return map[*Tile]tui.Rect{t.zoomed: full}
 	}
 	place := func(tile *Tile) TilePlace { return op.placeOf(tile) }
 	order := op.order(t.tiles)
-	across := t.solve(size, order, place)
+	return carve(full, order, place, (*Tile).inPlay, t.solve(size, order, place, (*Tile).inPlay))
+}
+
+// carve is plan's geometry, pure: the strips in play, in order, each its depth across (solve's) from
+// what the strips before it leave, then the centre in what is left, capped and centred. With no
+// centre the last strip takes the remainder. fits reads the same carve, so what it judges is what
+// plan draws.
+func carve(full tui.Rect, order []*Tile, place func(*Tile) TilePlace, inPlay func(*Tile) bool, across map[*Tile]int) map[*Tile]tui.Rect {
+	out := make(map[*Tile]tui.Rect, len(order))
 	rem := full
 	var last *Tile // the last strip placed: it takes the remainder when no centre is tiled
 	for _, tile := range order {
 		p := place(tile)
-		if tile.away() || !tile.inPlay() || p.Edge == tui.DockCenter {
+		if tile.away() || !inPlay(tile) || p.Edge == tui.DockCenter {
 			continue
 		}
 		last = tile
@@ -465,7 +512,7 @@ func (t *Tiles) plan(size tui.Size, op *tileOp) map[*Tile]tui.Rect {
 	}
 	centre := false
 	for _, tile := range order {
-		if p := place(tile); p.Edge == tui.DockCenter && tile.inPlay() && !tile.away() {
+		if p := place(tile); p.Edge == tui.DockCenter && inPlay(tile) && !tile.away() {
 			out[tile], centre = capped(rem, p), true
 		}
 	}
@@ -489,9 +536,8 @@ func union(a, b tui.Rect) tui.Rect {
 // Min; then the strips' Min, last-declared first, down to 0. The centre is the fill, so it gives
 // way before a strip drops below the size its content stays legible at. Requests are never
 // rewritten: a narrow manager does not overwrite a stored size.
-func (t *Tiles) solve(size tui.Size, order []*Tile, place func(*Tile) TilePlace) map[*Tile]int {
+func (t *Tiles) solve(size tui.Size, order []*Tile, place func(*Tile) TilePlace, inPlay func(*Tile) bool) map[*Tile]int {
 	out := make(map[*Tile]int, len(order))
-	inPlay := (*Tile).inPlay
 	for _, horizontal := range []bool{true, false} {
 		strips, over := t.axis(size, order, place, inPlay, horizontal)
 		over -= min(max(over, 0), centreMinOf(order, place, inPlay, horizontal)) // the centre's Min
@@ -646,7 +692,9 @@ func percentCells(pct float64, extent int) int {
 }
 
 // SetEdge re-docks a strip at another of its Edges. The centre never changes edge this way, and
-// no strip becomes the centre: that is a Swap.
+// no strip becomes the centre: that is a Swap, for a Tile. A member never swaps, so its edge never
+// moves to or from DockCenter: SetEdge refuses that change, and a member's centre role is the one it
+// was added with.
 func (t *Tiles) SetEdge(key string, e tui.DockEdge) bool {
 	tile := t.tile(key)
 	if tile == nil || e == tui.DockCenter || tile.place.Edge == tui.DockCenter || tile.place.Edge == e || !allows(tile.place, e) {
