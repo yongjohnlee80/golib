@@ -37,6 +37,9 @@ type reserveSlot struct {
 
 func newReserveSlot(d *drawerNode) *reserveSlot { return &reserveSlot{d: d} }
 
+// placedInDock records the strip for the Drawer's Float (its liveSlot).
+func (s *reserveSlot) placedInDock(r tui.Rect) { s.d.slot = r }
+
 // slotEdge is the Dock edge a slot is pinned to: the Drawer's, or the left for a centred Drawer,
 // which reserves nothing (pinned to the centre, the slot would take the page's place).
 func slotEdge(d *drawerNode) tui.DockEdge {

@@ -109,6 +109,12 @@ func (w *windowNode) openWithWindow() {
 	}
 }
 
+// dockPlaced is a Window's docked child that is told where the Dock placed it, in the frame the
+// Window's overlay shares: what it places over that rectangle is in the overlay.
+type dockPlaced interface {
+	placedInDock(r tui.Rect)
+}
+
 // docked is a child of the Window's dock and the edge it is pinned to.
 type docked struct {
 	comp tui.Component
@@ -141,6 +147,9 @@ func classifyWindowChildren(children []tui.Component, attached []map[string]qml.
 			continue
 		case *menuBarNode:
 			kids.menus = append(kids.menus, c)
+		case OverlayContainer:
+			// laid out, and its own children open over the Window as an Overlaid child does
+			kids.overlaid = append(kids.overlaid, c.OverlaidChildren()...)
 		}
 		var own map[string]qml.SpecValue
 		if i < len(attached) {
@@ -178,11 +187,11 @@ func dockEdgeOf(attached map[string]qml.SpecValue) (tui.DockEdge, bool, error) {
 func (w *windowNode) syncDock(items []docked) {
 	if w.dock == nil {
 		w.dock = tui.NewDock()
-		// layout-safe: the slot's rectangle is recorded for its Drawer's Float, placed after the Dock
-		// in the same pass
+		// layout-safe: what a child's rectangle places (a reserve slot's Drawer, a TileManager's
+		// members) is in the overlay, placed after the Dock in the same pass
 		w.dock.OnPlaced(func(c tui.Component, r tui.Rect) {
-			if s, ok := c.(*reserveSlot); ok {
-				s.d.slot = r
+			if p, ok := c.(dockPlaced); ok {
+				p.placedInDock(r)
 			}
 		})
 		for _, it := range items {

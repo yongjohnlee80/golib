@@ -66,8 +66,9 @@ func (t *Tree) checkAttached(root *qml.SpecNode) error {
 			// An attached property is read by the parent AT CONSTRUCTION, so a
 			// binding on one could never propagate: nothing re-reads it when the
 			// source moves. Refused here rather than accepted and silently
-			// frozen at its first value.
-			if t.isBinding(p.Value) {
+			// frozen at its first value, unless the adapter applies a change of
+			// it to the built node (a live one: its parent takes the change).
+			if t.isBinding(p.Value) && !t.takesChange(sn.Type, p.Name) {
 				return SchemaError{Op: "attach", Detail: p.Name, Pos: p.Value.Pos,
 					Err: fmt.Errorf("%w: %q is read by the parent when it is built, so it "+
 						"cannot be bound to a value that changes", ErrAttached, p.Name)}
@@ -75,6 +76,13 @@ func (t *Tree) checkAttached(root *qml.SpecNode) error {
 		}
 		return nil
 	})
+}
+
+// takesChange reports whether the adapter applies a change of prop to a built node of typeName: its
+// Classifier says PropRuntime. Without that capability no attached property takes one.
+func (t *Tree) takesChange(typeName, prop string) bool {
+	c, ok := t.adapter.(Classifier)
+	return ok && c.ClassifyProperty(typeName, prop) == PropRuntime
 }
 
 // ErrDuplicateID reports two nodes in one document declaring the same `id`.

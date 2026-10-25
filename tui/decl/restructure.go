@@ -240,10 +240,15 @@ func (a *Adapter) ClassifyProperty(typeName, prop string) decl.PropertyKind {
 	if a.contractOf(typeName).ctorProps[prop] {
 		return decl.PropConstructorOnly
 	}
-	// An attached property is read by the PARENT at the parent's construction,
-	// which from this node's side is a constructor-only property: there is no
-	// setter to apply a change through. Whether this parent honours it is a
-	// separate question, answered by CheckAttached during planning.
+	// A live attached property's change goes to the container that honours it
+	// (LiveAttached, Build.OnAttached).
+	if a.isLiveAttached(prop) {
+		return decl.PropRuntime
+	}
+	// Any other attached property is read by the PARENT at the parent's
+	// construction, which from this node's side is a constructor-only property:
+	// there is no setter to apply a change through. Whether this parent honours
+	// it is a separate question, answered by CheckAttached during planning.
 	if a.isAttached(prop) {
 		return decl.PropConstructorOnly
 	}

@@ -67,6 +67,12 @@ func registerStdAttached(r *Registry) {
 	// at the left end (Qt's addWidget), true (the default) at the right (addPermanentWidget).
 	RegisterAttached(r, "StatusBar", "permanent")
 	Honour(r, "StatusBar", "StatusBar")
+	// `TileManager.edge` and the rest are written on a window declared in a TileManager and read by
+	// the manager: where its tile is, and whether it wants to tile. All but edges take a change while
+	// built, so binding one to a preference never rebuilds the window.
+	RegisterAttached(r, tileManagerName, "tiled", "edge", "edges", "size", "minimumSize")
+	LiveAttached(r, tileManagerName, "tiled", "edge", "size", "minimumSize")
+	Honour(r, tileManagerName, tileManagerName)
 }
 
 var dockEdges = enum[tui.DockEdge]{values: map[string]tui.DockEdge{

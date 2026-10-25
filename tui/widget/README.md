@@ -130,7 +130,9 @@ host.Attach(float)
 - **Retarget:** `WindowCore.Retarget(target)` gives a bound core another target
   and probes its facets again, cancelling a drag in flight; the window's state is
   kept, and `Retarget(nil)` gives back the target it had. A tile manager governs
-  a window it does not own this way (`Tiles.AddMember`, a `GovernedWindow`).
+  a window it does not own this way (`Tiles.AddMember`, a `GovernedWindow`). A
+  member minimized, closed or never opened (its own window not shown, or not yet
+  bound) takes no cells and stays governed.
 - **Minimize:** non-modal only, with an explicit collector. Content keeps its
   NodeID, lifetime context, tasks and timers. The model requires no taskbar;
   focus uses ordinary runtime repair, with an optional consumer focus hook.

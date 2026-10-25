@@ -103,7 +103,7 @@ change at runtime, which is what makes it bindable to a source.
 | `FileDialog` | `title`, `helpText`, `dim`, `fileMode`, `preview`, palette | `currentFolder`, `selectedFile`, `source` (golib's: a `widget.FileSource` the host binds, listed in place of the program's files; a rebinding lists it afresh) | — | `accepted(selectedFile)`, `rejected`, `closed` | `open()`, `close()` |
 | `Drawer` | `modal` (default true), `closeOnQ` (q closes it too; Esc always does: the key commands `tui.drawer.closeOnQ` and `tui.drawer.close`, after its Shortcuts), golib's `resizable` (default false), `windowResize`, `movable` and `moveButton`, and the window controls' `maximizable`, `minimizable`, `closable`, `label`, `key`, `dragModifier` and `resizeButton` (see [Window capability widgets](#window-capability-widgets)); golib's `reserve` (default false: docked and shown, it takes its strip of the Window from the page, between the bars, instead of lying over it; see Reserving Drawers); one child, its content, and any number of Shortcuts; `keyScope` (as the Dialog's) | `edge` (`Tui.Left`, `Right`, `Top`, `Bottom`, or golib's `Center`: floating in the middle, `length` wide and `size` high), `size` (a percentage across the edge), `length` (golib's: a percentage along it, centred; default 100), golib's `minimumSize` (default 10) and `minimumLength` (default 20); a movable Drawer's `floating`, `floatX`, `floatY`, `floatWidth` and `floatHeight` (percentages of the Window) | — | `opened`, `closed`, golib's `resized(size, length)`, a movable Drawer's `placed(x, y, width, height)`, and with window controls `changed(operation, key, x, y, width, height, maximized, minimized)`, as a WindowMod's | `open()`, `close()`, `toggle()`, `resizeBy`, `moveBy`, and with window controls `toggleMaximize()`, `minimize()` and `restore()` |
 | `FloatWindow` | golib's: one child, its content; `movable`, `resizable`, `minimizable` (needs `WithWindowCollector`), `label`, `key`, `dragModifier`, `moveButton`, `resizeButton`; no close and no maximize (see [Window capability widgets](#window-capability-widgets)) | `maximumWidth`, `maximumHeight` (cells; 0, the default: none), `floatX`, `floatY`, `floatWidth`, `floatHeight` (percentages of the Window; default the whole of it) | `minimized` | `placed(x, y, width, height)`, `changed(operation, key, x, y, width, height, maximized, minimized)` | `moveBy`, `resizeBy`, `minimize()`, `restore()` |
-| `TileManager` | golib's: Tiles only, exactly one at `Tui.Center` (see Tiles) | — | — | — | — |
+| `TileManager` | golib's: Tiles and windows (a `Drawer`, a `FloatWindow`: members, see Tiles), at most one at `Tui.Center` | — | — | `tileChanged(key, operation, edge, size, tiled)` (a member's completed operation) | — |
 | `Tile` | golib's, a TileManager's child: one child, its content; `edges` (the edges a re-dock may take, spelt as `panelgeometry`'s and apart by spaces: `"left right"`; `"center"` lets it swap into the centre), `minimizable` (hidden by a dock: WithWindowCollector; never while it is the centre), `key` (default its id) | `edge` (`Tui.Left`, `Right`, `Top`, `Bottom`, or `Center`: the one centre tile), `size` (a percentage across the edge, two decimals kept), `minimumSize` (cells) | — | `resized(size)` (a border it owns moved, from whichever tile the drag began in), `docked(edge)` (re-docked or swapped), `changed(operation, maximized, hidden)` | `show()`, `hide()`, `toggle()`, `toggleMaximize()`, `resizeBy` |
 | `FolderDialog` | `title`, `helpText`, `dim`, `preview`, `keyScope` (as the Dialog's), palette; its children are fields | `currentFolder`, `selectedFolder`, `source` (as the FileDialog's) | — | `accepted(selectedFolder)`, `rejected`, `closed` | `open()`, `close()` |
 | `Repeater`, `Instantiator` | `model` | — | — | — | — |
@@ -476,8 +476,19 @@ nearest enclosing one's, read live (an Editor's follows its mode).
 | any child of a `Window` | `Window` | `Dock.edge` | `Tui.Top`, `Tui.Bottom`, `Tui.Left`, `Tui.Right` |
 | a `Button` in a `DialogButtonBox` | `DialogButtonBox` | `DialogButtonBox.buttonRole` | `DialogButtonBox.AcceptRole`, `DialogButtonBox.RejectRole`, `DialogButtonBox.DestructiveRole`, `DialogButtonBox.ActionRole` |
 | a child of a `StatusBar` | `StatusBar` | `StatusBar.permanent` | `true` (the default: at the right end, Qt's `addPermanentWidget`), `false` (at the left end, `addWidget`) |
+| a window in a `TileManager` | `TileManager` | `TileManager.edge`, `.edges`, `.size`, `.minimumSize` (its tile, as a Tile's own), `TileManager.tiled` | an edge (default `Tui.Left`), edge names, a percentage, cells; `true` (the default) or `false` |
 
 A child of a `Window` with no `Dock.edge` fills what the docked ones leave.
+
+An attached property is read by its parent when the parent is built, so a change rebuilds the
+child, except for a **live** one: `TileManager.tiled`, `.edge`, `.size` and `.minimumSize` take a
+change while built, so a bound one moves the tile, or tiles and releases the window, and the window
+keeps its state. A consumer's container declares its own: `LiveAttached(r, schema, names…)` after
+`RegisterAttached`, and its builder registers, per child, where a change goes:
+`b.OnAttached(i, func(prop string, v qml.SpecValue) error { … })`. Such a container splices no child
+in place (it is no `tui.Container`), so a reload that rebuilds a child rebuilds the container with
+it, which registers again. A change under a parent that registered nothing is refused, naming the
+property and the parent.
 
 ### Enums — the `Tui` singleton
 
@@ -816,7 +827,9 @@ FloatWindow { id: editorWindow; label: "Editor"; key: "editor"
 
 A component a Go program adds that should open with its Window the same way
 implements `OpensWithWindow` (`OpenWithWindow() error`, idempotent) beside
-`Overlaid`.
+`Overlaid`. A component laid out in the Window whose own children open over it, as a
+TileManager's windows do, implements `OverlayContainer` (`OverlaidChildren() []Overlaid`): the
+Window gives each its overlay, and opens it with the Window if it does, as its own children.
 
 **Tiles.** A TileManager is a parent whose Tiles share its whole rect, as a tiling window
 manager's windows do; it owns their sizes. Edge tiles take their strips in declaration order, each
@@ -827,7 +840,8 @@ that owns that border raises `resized`. Alt/Option-left drag drops the tile on a
 trade places with (a swap), or near a side of the manager it may take (a re-dock); the landing rect
 is outlined until the release, and Escape restores the layout. When the minimums don't fit, the
 strips give back their cells above `minimumSize` first, then the centre its own, then the strips
-theirs; the asked sizes come back with the room. Nothing floats; a floating panel is a Drawer.
+theirs; the asked sizes come back with the room. With no centre tiled, the last strip takes what is
+left. Nothing floats; a floating panel is a Drawer.
 
 ```qml
 TileManager {
@@ -839,6 +853,27 @@ TileManager {
 ```
 
 `tui.tiles`' `TilePanel` (tui/decl/tiles) is a Tile framed under a `heading`, as `tui.panels`' `Panel` frames a Drawer.
+
+**Members.** A window declared in a TileManager, a `Drawer` with window controls or a
+`FloatWindow`, is a member: its node stays in the Window's overlay, with its own place (a Drawer's
+`edge` and `size`, its floating rectangle), and while it wants to tile and fits, the manager places
+it over a tile and its window takes the tile's moves. Its tile is in its `TileManager.*` attached
+properties; `TileManager.tiled: false` is its Layout › Float. A member is never moved on its own:
+Alt-right on its shared border resizes its tile, and its own `placed` and `resized` don't fire while
+it's tiled, so its own place is exactly where it goes when released. When the wanting members don't
+fit, the most recently tiled is released first. A closed, never-opened or minimized member takes no
+cells and stays governed. A TileManager with members is a Window's own child, and a reserving Drawer
+can't be one.
+
+```qml
+Window { TileManager {
+    Drawer { id: explorer; windowResize: true; modal: false; edge: Tui.Right; size: 30
+             TileManager.edge: Tui.Left; TileManager.size: App.explorerSize; TileManager.tiled: App.explorerTiled
+             Frame { TreeView { … } } }
+    FloatWindow { id: editor; TileManager.edge: Tui.Center; Frame { Editor { focus: true } } }
+    onTileChanged: App.tileChanged(key, operation, edge, size, tiled)
+} }
+```
 
 **Reserving Drawers.** An ordinary Drawer lies over the Window, its bars and its page included.
 `reserve: true` makes a docked, shown one take its strip from the page instead, as a split pane

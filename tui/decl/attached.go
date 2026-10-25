@@ -2,6 +2,7 @@ package decl
 
 import (
 	"fmt"
+	"slices"
 	"sort"
 	"strings"
 	"unicode"
@@ -21,9 +22,11 @@ import (
 // every new container redeclaring every name it accepts, and two containers
 // that honour one schema drifting apart on what its names are.
 
-// attachingSchema is one attached vocabulary: `Dock` and the names under it.
+// attachingSchema is one attached vocabulary: `Dock` and the names under it, and which of them
+// take a change while built (LiveAttached).
 type attachingSchema struct {
 	names map[string]bool
+	live  map[string]bool
 }
 
 // RegisterAttached declares an attaching schema and the members it has.
@@ -40,11 +43,29 @@ func RegisterAttached(r *Registry, schema string, names ...string) {
 	if _, dup := r.attached[schema]; dup {
 		panic("tui/decl.RegisterAttached: " + schema + " is already declared")
 	}
-	s := attachingSchema{names: map[string]bool{}}
+	s := attachingSchema{names: map[string]bool{}, live: map[string]bool{}}
 	for _, n := range names {
 		s.names[n] = true
 	}
 	r.attached[schema] = s
+}
+
+// LiveAttached declares which members of an attaching schema take a change while built:
+// `TileManager.tiled: App.tiled` bound, a change goes to the honouring container, which registered
+// where for each child (Build.OnAttached), rather than rebuilding the child. The others are read at
+// the container's construction only. Naming a schema or a member that was never declared is a
+// programming mistake, as declaring one twice is.
+func LiveAttached(r *Registry, schema string, names ...string) {
+	s, ok := r.attached[schema]
+	if !ok {
+		panic("tui/decl.LiveAttached: no attaching schema named " + schema + "; declare it with RegisterAttached first")
+	}
+	for _, n := range names {
+		if !s.names[n] {
+			panic("tui/decl.LiveAttached: " + schema + " has no member " + n)
+		}
+		s.live[n] = true
+	}
 }
 
 // Honour declares that a container type reads an attaching schema from its
@@ -126,6 +147,12 @@ func (a *Adapter) isAttached(prop string) bool {
 	return a.reg.attached[schema].names[member]
 }
 
+// isLiveAttached reports whether a property is an attached one that takes a change while built.
+func (a *Adapter) isLiveAttached(prop string) bool {
+	schema, member, ok := splitAttached(prop)
+	return ok && a.reg.attached[schema].live[member]
+}
+
 // splitProps separates a node's attached properties from its own.
 //
 // The attached ones belong to the PARENT, so the node's builder never sees
@@ -153,6 +180,41 @@ func (b Build) Attached(i int, prop string) (qml.SpecValue, bool) {
 	}
 	v, ok := b.ChildAttached[i][prop]
 	return v, ok
+}
+
+// AttachedReceiver takes a change of a live attached property (LiveAttached) the child it was
+// registered for carries: its full name ("TileManager.tiled") and its new value.
+type AttachedReceiver func(prop string, v qml.SpecValue) error
+
+// OnAttached registers, for the i-th child, where a change of its live attached properties goes.
+// A container that honours a schema with live members registers one for each child that may carry
+// them. Such a container splices no child in place (it is no tui.Container and no rearranger), so a
+// reload that rebuilds a child rebuilds it too, and it registers again. A builder called directly (a
+// test's) registers nowhere.
+func (b Build) OnAttached(i int, fn AttachedReceiver) {
+	if b.onAttached != nil {
+		b.onAttached(i, fn)
+	}
+}
+
+// applyAttached is Apply for a live attached property: to the receiver the child's container
+// registered, or refused, naming the property and that container.
+func (a *Adapter) applyAttached(node decl.NodeID, b built, app decl.Application) error {
+	if b.receiver == nil {
+		return fmt.Errorf("%s on a %s: its parent %s takes no change of it (declared at %s)",
+			app.Prop, b.typ, a.parentType(node), app.Value.Pos)
+	}
+	return b.receiver(app.Prop, app.Value)
+}
+
+// parentType is the type of node's parent, "nothing" for the root.
+func (a *Adapter) parentType(node decl.NodeID) string {
+	for parent, kids := range a.kids {
+		if slices.Contains(kids, node) {
+			return a.nodes[parent].typ
+		}
+	}
+	return "nothing"
 }
 
 // takeFocus removes QML's `focus` property from a node's own properties and

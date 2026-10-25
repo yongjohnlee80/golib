@@ -84,6 +84,8 @@ type Build struct {
 	// signal the document binds and the builder never asks for is one the
 	// widget does not have, and is refused rather than left never to fire.
 	asked map[string]bool
+	// onAttached keeps a live attached property's receiver on the child's record (OnAttached).
+	onAttached func(i int, fn AttachedReceiver)
 }
 
 // Emitter returns the emitter for a signal, or a harmless no-op when the schema
@@ -235,5 +237,12 @@ func (a *Adapter) newBuild(c decl.Construction, own []qml.SpecProp, attached map
 		services:        a.services,
 		SourceLanguages: a.sourceLanguages,
 		asked:           asked,
+		onAttached: func(i int, fn AttachedReceiver) {
+			if i >= 0 && i < len(c.Children) {
+				child := a.nodes[c.Children[i]]
+				child.receiver = fn
+				a.nodes[c.Children[i]] = child
+			}
+		},
 	}
 }

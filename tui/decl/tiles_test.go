@@ -148,11 +148,10 @@ func TestATileDraggedAcrossRedocks(t *testing.T) {
 	}
 }
 
-// A TileManager has Tiles only, exactly one of them at the centre, and a Tile's edges are edge
-// names.
+// A TileManager has Tiles and windows only, at most one of them at the centre, and a Tile's edges
+// are edge names.
 func TestATileManagerRefusesAWrongShape(t *testing.T) {
 	for name, body := range map[string]string{
-		"no centre":   `Tile { edge: Tui.Left; Text { text: "a" } } Tile { edge: Tui.Right; Text { text: "b" } }`,
 		"two centres": `Tile { edge: Tui.Center; Text { text: "a" } } Tile { edge: Tui.Center; Text { text: "b" } }`,
 		"not a Tile":  `Tile { edge: Tui.Center; Text { text: "a" } } Text { text: "b" }`,
 		"bad edges":   `Tile { edge: Tui.Center; Text { text: "a" } } Tile { edge: Tui.Left; edges: "left sideways"; Text { text: "b" } }`,
