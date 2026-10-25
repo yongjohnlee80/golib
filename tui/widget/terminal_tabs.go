@@ -4,6 +4,7 @@ import (
 	"cmp"
 	"context"
 	"fmt"
+	"os"
 	"sync"
 	"sync/atomic"
 
@@ -477,6 +478,15 @@ func (t *TerminalTabs) SendPaste(id TerminalTabID, text string) error {
 		return err
 	}
 	return e.terminal.SendPaste(text)
+}
+
+// Signal is Terminal.Signal for this exact runtime identity: a closing or removed tab refuses it.
+func (t *TerminalTabs) Signal(id TerminalTabID, sig os.Signal) error {
+	e, err := t.openTab(id)
+	if err != nil {
+		return err
+	}
+	return e.terminal.Signal(sig)
 }
 
 // Remove requests cleanup and returns its generation handle immediately.
