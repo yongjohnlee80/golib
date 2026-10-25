@@ -77,21 +77,15 @@ import (
 //
 // The zero value parses [JavaScript].
 type Expression struct {
-	// Dialect selects the language. The zero value means [JavaScript].
-	//
-	// Deprecated: configure with [WithDialect] and [NewExpression] or [NewStatements]. The
-	// field remains for existing callers, which are moving to the options.
-	Dialect *ExprDialect
+	// lang selects the language. The zero value means [JavaScript].
+	lang *ExprDialect
 
-	// MaxDepth bounds nesting. Zero means [DefaultExprMaxDepth].
+	// maxDepth bounds nesting. Zero means [DefaultExprMaxDepth].
 	//
 	// The parser is recursive and an expression can nest without limit, so a
 	// file from a watcher — or from anywhere less trusted — could otherwise
 	// exhaust the goroutine stack, which cannot be recovered.
-	//
-	// Deprecated: configure with [MaxDepth] and [NewExpression] or [NewStatements]. The field
-	// remains for existing callers, which are moving to the options.
-	MaxDepth int
+	maxDepth int
 }
 
 // DefaultExprMaxDepth is the nesting limit [Expression] applies when MaxDepth is
@@ -103,10 +97,10 @@ const DefaultExprMaxDepth = 64
 func (x Expression) FormatName() string { return x.dialect().Name + "-expression" }
 
 func (x Expression) dialect() *ExprDialect {
-	if x.Dialect == nil {
+	if x.lang == nil {
 		return &JavaScript
 	}
-	return x.Dialect
+	return x.lang
 }
 
 // ExprDialect is the difference between one C-family expression language and
@@ -391,7 +385,7 @@ func (e *Expr) Walk(fn func(*Expr) bool) {
 
 // Parse reads one expression from src and requires that it be the whole of it.
 func (x Expression) Parse(src []byte) (Expr, error) {
-	p := &exprParser{sc: parse.NewScanner(src), max: x.MaxDepth, d: x.dialect()}
+	p := &exprParser{sc: parse.NewScanner(src), max: x.maxDepth, d: x.dialect()}
 	if p.max <= 0 {
 		p.max = DefaultExprMaxDepth
 	}

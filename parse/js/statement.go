@@ -93,31 +93,25 @@ type Statements struct {
 	// The statement grammar itself is not dialect-driven: `let` and `if` are
 	// spelled the same in every C-family language that has them, and the parts
 	// that genuinely differ are the ones this revision does not implement.
-	//
-	// Deprecated: configure with [WithDialect] and [NewExpression] or [NewStatements]. The
-	// field remains for existing callers, which are moving to the options.
-	Dialect *ExprDialect
+	lang *ExprDialect
 
-	// MaxDepth bounds nesting. Zero means [DefaultExprMaxDepth].
+	// maxDepth bounds nesting. Zero means [DefaultExprMaxDepth].
 	//
 	// It is one budget for statements AND the expressions inside them, since
 	// what has to stay bounded is the recursion, and the recursion alternates
 	// between the two. An `else if` chain nests structurally, so a chain longer
 	// than the limit is refused like any other deep nesting.
-	//
-	// Deprecated: configure with [MaxDepth] and [NewExpression] or [NewStatements]. The field
-	// remains for existing callers, which are moving to the options.
-	MaxDepth int
+	maxDepth int
 }
 
 // FormatName implements [parse.Named].
 func (s Statements) FormatName() string { return s.dialect().Name + "-statements" }
 
 func (s Statements) dialect() *ExprDialect {
-	if s.Dialect == nil {
+	if s.lang == nil {
 		return &JavaScript
 	}
-	return s.Dialect
+	return s.lang
 }
 
 // StmtKind classifies a node of the statement tree.
@@ -266,7 +260,7 @@ func (s *Stmt) walk(onStmt func(*Stmt) bool, onExpr func(*Expr) bool) {
 // Parse reads every statement in src.
 func (s Statements) Parse(src []byte) ([]Stmt, error) {
 	sc := parse.NewScanner(src)
-	x := &exprParser{sc: sc, max: s.MaxDepth, d: s.dialect()}
+	x := &exprParser{sc: sc, max: s.maxDepth, d: s.dialect()}
 	if x.max <= 0 {
 		x.max = DefaultExprMaxDepth
 	}
