@@ -33,7 +33,8 @@ import (
 // .maximumHeight (the centre's, so its strips take the rest), and .tiled (default true),
 // its Layout › Tiled. All but
 // edges take a change while built, so a bound one moves the tile, or tiles and releases the window,
-// rather than rebuilding it. tileChanged(key, operation, edge, size, tiled) reports a member's
+// rather than rebuilding it. A member's TileManager.edge never moves to or from Tui.Center: that
+// change is refused, and a member at the centre is the one declared there. tileChanged(key, operation, edge, size, tiled) reports a member's
 // completed operation. A closed or minimized member takes no cells, and stays governed. A Go
 // program asks whether a member is over its tile now with Governed(key) on the node Program.Find
 // returns: a member released for want of room is not, though its TileManager.tiled is true.
