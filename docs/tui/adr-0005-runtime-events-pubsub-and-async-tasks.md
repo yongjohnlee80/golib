@@ -298,7 +298,9 @@ seconds behind and stale keys are the least-bad loss.
 > resize it reached the application instead (about half the time when the two arrived
 > together). A click is hit-tested against the layout it was aimed at, not the next one. The slot
 > is not in the queue, so overflow never drops it: dropping an event queued ahead of it moves it
-> one place forward. Don't restore a resize priority over queued input.
+> one place forward. A superseded resize is never applied, so input queued between it and the
+> newer one is dispatched at the size before both. Don't restore a resize priority over queued
+> input.
 
 > **Promptness invariant (normative).** Intake does **no component work** — it only
 > classifies, coalesces, and enqueues (O(1) per event, no dispatch, no allocation beyond
