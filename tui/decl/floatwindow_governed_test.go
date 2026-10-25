@@ -44,6 +44,22 @@ func runFloatMember(t *testing.T) (*decltest.Screen, *calls) {
 	return s, rec
 }
 
+// innerFloat is the Float the FloatWindow's content is in, read on the loop by fn.
+func innerFloat(t *testing.T, s *decltest.Screen, fn func(f *widget.Float)) {
+	t.Helper()
+	onScreenLoop(t, s, func() {
+		c, _ := s.Program.Find("inner")
+		in, ok := c.(interface{ Context() *tui.Context })
+		if !ok {
+			t.Errorf("inner (%T) has no context", c)
+			return
+		}
+		if f, ok := in.Context().Ancestor(func(v tui.Component) bool { _, ok := v.(*widget.Float); return ok }).(*widget.Float); ok {
+			fn(f)
+		}
+	})
+}
+
 // innerFloating reports whether the Float the FloatWindow's content is in reads floating (the GUI's
 // shadow follows it).
 func innerFloating(t *testing.T, s *decltest.Screen) (on bool) {
@@ -207,26 +223,30 @@ func TestAGovernedFloatWindowsMaximumDoesNotHoldItsTile(t *testing.T) {
 	}
 }
 
-// A member's tile can be left no cells (its minimum 0, the page's the whole Window): the FloatWindow
-// is governed at its docked fallback, its tile's edge, and a live TileManager.edge moves it there.
+// A member's tile can be left no cells (its minimum 0, its size shrunk live to 0): the FloatWindow
+// is governed at its docked fallback, its tile's edge, vertically centred there, at its content's
+// own size (too narrow for its title), and a live TileManager.edge moves it to the new edge. Its
+// place is read from its Float's content rectangle.
 func TestAGovernedFloatWindowWithNoCellsFollowsItsTilesEdge(t *testing.T) {
 	doc := strings.Replace(floatMemberDoc, "TileManager.edge: Tui.Left; TileManager.size: 25; TileManager.minimumSize: 5",
-		`TileManager.edge: App.fwEdge; TileManager.edges: "left right"; TileManager.size: 25; TileManager.minimumSize: 0`, 1)
-	doc = strings.Replace(doc, "Tile { id: pg; edge: Tui.Center;", "Tile { id: pg; edge: Tui.Center; minimumSize: 80;", 1)
+		`TileManager.edge: App.fwEdge; TileManager.edges: "left right"; TileManager.size: App.fwSize; TileManager.minimumSize: 0`, 1)
 	s := decltest.Run(t, 80, 24, tuidecl.LayoutSource("main.qml", []byte(doc)),
 		tuidecl.Singleton("demo", "1.0", "App"),
-		tuidecl.Sources(map[string]any{"App.fwTiled": true, "App.fwEdge": "left"}),
+		tuidecl.Sources(map[string]any{"App.fwTiled": true, "App.fwEdge": "left", "App.fwSize": 25}),
 		tuidecl.Handlers(map[string]decl.HandlerFunc{"App.log": (&calls{}).handler}),
 		tuidecl.AdapterOptions(tuidecl.WithWindowCollector(widget.NewMinimizedWindows())))
-	titleAt(t, s, "PAGE", 2, 0)
-	floatAt := func(what string, ok func(x int) bool) {
+	titleAt(t, s, "FLOAT", 2, 0)
+	floatAt := func(what string, ok func(r tui.Rect) bool) {
 		t.Helper()
-		s.WaitFor(t, what, func(sc string) bool {
-			x, _, found := at(sc, "FLOAT")
-			return found && ok(x)
+		s.WaitFor(t, what, func(string) bool {
+			var r tui.Rect
+			innerFloat(t, s, func(f *widget.Float) { r = f.ContentRect() })
+			return r.W > 0 && ok(r)
 		})
 	}
-	floatAt("docked at its tile's edge, the left", func(x int) bool { return x == 2 })
+	set(t, s, "App.fwSize", 0)
+	titleAt(t, s, "PAGE", 2, 0)
+	floatAt("no cells: docked at its tile's edge, the left, centred", func(r tui.Rect) bool { return r.X == 0 && r.Y > 0 && r.W < 20 })
 	set(t, s, "App.fwEdge", "right")
-	floatAt("docked at its tile's new edge, the right", func(x int) bool { return x > 60 })
+	floatAt("no cells: docked at its tile's new edge, the right", func(r tui.Rect) bool { return r.X+r.W == 80 && r.Y > 0 })
 }
