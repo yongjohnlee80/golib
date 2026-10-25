@@ -848,7 +848,10 @@ manager's windows do; it owns their sizes. Edge tiles take their strips in decla
 its `size` percent of the manager across its edge, and the centre tile takes the rest. A hidden tile
 gives its strip to the tiles beside it; growing one shrinks the tiles across the moved border.
 Alt/Option-right drag anywhere in a tile moves the shared border nearest the press, and the Tile
-that owns that border raises `resized`. Alt/Option-left drag drops the tile on another one it may
+that owns that border raises `resized`. The size it keeps is the depth the strip is drawn at when
+the drag lets go, as a percent of the manager: the width the user saw, including any cells it took
+beyond the centre's maximum. That percent is kept as it is, so a size set on a wide screen opens
+at the same percent on a narrower one. Alt/Option-left drag drops the tile on another one it may
 trade places with (a swap), or near a side of the manager it may take (a re-dock); the landing rect
 is outlined until the release, and Escape restores the layout. When the minimums don't fit, the
 strips give back their cells above their minimum first, then the centre its own, then the strips
