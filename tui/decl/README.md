@@ -877,7 +877,9 @@ Alt-right on its shared border resizes its tile, and its own `placed` and `resiz
 it's tiled, so its own place is exactly where it goes when released. When the wanting members don't
 fit, the most recently tiled is released first. A closed, never-opened or minimized member takes no
 cells and stays governed. A TileManager with members is a Window's own child, and a reserving Drawer
-can't be one.
+can't be one. From Go, the node `Program.Find` returns answers `Governed(key string) bool`, on the
+loop: whether that member is over its tile now. One released for want of room isn't, though its
+`TileManager.tiled` is true; a key that is no member's isn't either.
 
 ```qml
 Window { TileManager {

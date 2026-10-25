@@ -1,6 +1,7 @@
 package decl_test
 
 import (
+	"strings"
 	"testing"
 
 	tuidecl "github.com/yongjohnlee80/golib/tui/decl"
@@ -73,4 +74,55 @@ Window { TileManager {
 	titleAt(t, s, "PAGE", 32, 0)
 	set(t, s, "App.minH", 6)
 	titleAt(t, s, "BOTTOM", 32, 18)
+}
+
+// governed asks the TileManager node Program.Find returns, as a Go program does, whether the member
+// key is over its tile now.
+func governed(t *testing.T, s *decltest.Screen, key string) bool {
+	t.Helper()
+	var on bool
+	onScreenLoop(t, s, func() {
+		c, _ := s.Program.Find("tm")
+		m, ok := c.(interface{ Governed(key string) bool })
+		if !ok {
+			t.Fatalf("the TileManager node %T answers no Governed(key)", c)
+		}
+		on = m.Governed(key)
+	})
+	return on
+}
+
+// Governed is whether a member is over its tile now: opened, it is; released for want of room, it
+// isn't, though it still asks to be tiled; with room again it is. Closed, it stays governed. A Tile
+// and a key that is nothing's are never governed.
+func TestATileManagerAnswersWhetherAMemberIsOverItsTileNow(t *testing.T) {
+	doc := strings.Replace(minAxesDoc, " TileManager {", " TileManager { id: tm", 1)
+	s := decltest.Run(t, 80, 24, tuidecl.LayoutSource("main.qml", []byte(doc)),
+		tuidecl.Singleton("demo", "1.0", "App"),
+		tuidecl.Sources(map[string]any{"App.exEdge": "left", "App.exMinW": 20}),
+		tuidecl.AdapterOptions(tuidecl.WithWindowCollector(widget.NewMinimizedWindows())))
+	s.WaitForText(t, "PAGE")
+	call(t, s, "ex", "open")
+	titleAt(t, s, "PAGE", 22, 0)
+	if !governed(t, s, "ex") {
+		t.Fatal("a member over its tile: Governed false")
+	}
+	set(t, s, "App.exMinW", 50)
+	titleAt(t, s, "EXPLORER", 58, 0) // released for room, at its own place
+	if governed(t, s, "ex") {
+		t.Fatal("a member released for want of room: Governed true")
+	}
+	set(t, s, "App.exMinW", 20)
+	titleAt(t, s, "PAGE", 22, 0)
+	if !governed(t, s, "ex") {
+		t.Fatal("a member tiled again with room: Governed false")
+	}
+	call(t, s, "ex", "close")
+	titleAt(t, s, "PAGE", 2, 0)
+	if !governed(t, s, "ex") {
+		t.Fatal("a closed member: Governed false; it stays governed")
+	}
+	if governed(t, s, "pg") || governed(t, s, "nothing") {
+		t.Fatal("a Tile, or a key that is no member's, is governed")
+	}
 }
