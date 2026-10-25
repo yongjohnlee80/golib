@@ -198,15 +198,14 @@ func (f *Float) ContentRect() tui.Rect {
 // Floating reports whether the float is placed free of the area's edges: centred, or at a
 // rectangle (AtRect, AtFraction: a panel moved or resized off its edge). A float anchored at an
 // edge or a corner is docked there, and a window maximised to its work area (WindowMod) is not
-// floating either, reserved rows or not: it fills where a window may go.
+// floating either, reserved rows or not: it fills where a window may go. A live anchor (AtLive,
+// AtLiveIn) floats as its fallback does: a reserved strip's edge fallback is docked, a
+// FloatWindow's fractions float.
 func (f *Float) Floating() bool {
 	if f.windowTarget != nil && f.windowTarget.Maximized() {
 		return false
 	}
 	a := f.anchor
-	if a.live != nil {
-		return false
-	}
 	return a.atRect || a.atFraction || a.align == tui.AlignCenter
 }
 

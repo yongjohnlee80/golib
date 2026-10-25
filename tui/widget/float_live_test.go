@@ -54,6 +54,37 @@ func TestALiveAnchoredFloatFollowsItsRectangle(t *testing.T) {
 	}
 }
 
+// AtLiveIn's rectangle is reckoned in the area the float is placed in, this pass's: the right half
+// of the screen on the first layout, and of the new screen on the pass that follows a resize.
+func TestAnAtLiveInRectangleIsReckonedInThisPasssArea(t *testing.T) {
+	host := widget.NewOverlayHost(widget.NewButton("base"))
+	half := widget.AtLiveIn(func(area tui.Rect) (tui.Rect, bool) {
+		return tui.Rect{X: area.X + area.W/2, Y: 1, W: area.W / 2, H: 3}, area.W > 0
+	}, widget.Left)
+	f := widget.NewFloat(widget.NewBox(widget.NewButton("in"), widget.WithTitle("P")), widget.WithAnchor(half))
+	host.Attach(f)
+	h := startApp(t, host, 30, 8)
+	defer h.stop()
+	h.onLoop(f.Show)
+	h.settle()
+	col := func() int {
+		for _, line := range strings.Split(h.tb.String(), "\n") {
+			if strings.Contains(line, "P") && strings.Contains(line, "┌") {
+				return len([]rune(line[:strings.Index(line, "┌")]))
+			}
+		}
+		return -1
+	}
+	if got := col(); got != 15 {
+		t.Fatalf("the first layout: the box at column %d, want 15, half of 30:\n%s", got, h.tb.String())
+	}
+	h.tb.InjectResize(40, 8)
+	h.settle()
+	if got := col(); got != 20 {
+		t.Fatalf("after a resize to 40: the box at column %d, want 20, half of the new screen:\n%s", got, h.tb.String())
+	}
+}
+
 // A window in a live-anchored Float (a Float with a window behaviour, laid out on the managed path)
 // is placed at the live rectangle, and a move starts from it, not from the fallback (an AtRect
 // elsewhere): one step right lands a cell right of where the live rectangle put it, the window then
@@ -133,8 +164,30 @@ func TestALiveAnchorWithoutARectangleKeepsItsWholeFallback(t *testing.T) {
 			if x, y, ok := placedAt(h, "FB"); !ok || x != c.x || y != c.y {
 				t.Fatalf("placed at (%d,%d) %v; want the fallback's (%d,%d):\n%s", x, y, ok, c.x, c.y, h.tb.String())
 			}
-			if f.Floating() {
-				t.Fatal("a live-anchored float reports floating")
+			if !f.Floating() {
+				t.Fatal("a live float whose fallback floats (AtRect, AtFraction) reports docked")
+			}
+		})
+	}
+}
+
+// A live anchor floats as its fallback does (Float.Floating): an edge fallback is docked, a Center
+// one floats, as AtRect and AtFraction ones do (above), and a FloatWindow's fractions float.
+func TestALiveAnchorFloatsAsItsFallbackDoes(t *testing.T) {
+	some := func() (tui.Rect, bool) { return tui.Rect{X: 2, Y: 1, W: 10, H: 4}, true }
+	for _, c := range []struct {
+		name     string
+		fallback widget.Anchor
+		floats   bool
+	}{
+		{"Left", widget.Left, false},
+		{"BottomRight", widget.BottomRight, false},
+		{"Center", widget.Center, true},
+	} {
+		t.Run(c.name, func(t *testing.T) {
+			f := widget.NewFloat(widget.NewButton("in"), widget.WithAnchor(widget.AtLive(some, c.fallback)))
+			if f.Floating() != c.floats {
+				t.Fatalf("a live anchor with a %s fallback: Floating %v, want %v", c.name, f.Floating(), c.floats)
 			}
 		})
 	}
