@@ -70,8 +70,8 @@ func registerStdAttached(r *Registry) {
 	// `TileManager.edge` and the rest are written on a window declared in a TileManager and read by
 	// the manager: where its tile is, and whether it wants to tile. All but edges take a change while
 	// built, so binding one to a preference never rebuilds the window.
-	RegisterAttached(r, tileManagerName, "tiled", "edge", "edges", "size", "minimumSize", "minimumWidth", "minimumHeight")
-	LiveAttached(r, tileManagerName, "tiled", "edge", "size", "minimumSize", "minimumWidth", "minimumHeight")
+	RegisterAttached(r, tileManagerName, "tiled", "edge", "edges", "size", "minimumSize", "minimumWidth", "minimumHeight", "maximumWidth", "maximumHeight")
+	LiveAttached(r, tileManagerName, "tiled", "edge", "size", "minimumSize", "minimumWidth", "minimumHeight", "maximumWidth", "maximumHeight")
 	Honour(r, tileManagerName, tileManagerName)
 }
 
