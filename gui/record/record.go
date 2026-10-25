@@ -43,6 +43,10 @@ const (
 	// The replay validates these and skips them: the tui side is not the input
 	// path's to reproduce.
 	StageTui Stage = "tui"
+	// StagePointer: the pointer path, for a pointer-shape report: a pointer event as the window
+	// took it, and each new frame's cursor areas, both in device pixels. The replay validates these
+	// and skips them: the pointer is not the input path's to reproduce.
+	StagePointer Stage = "pointer"
 )
 
 // Record is one entry of a recording.

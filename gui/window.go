@@ -246,6 +246,11 @@ func (b *Backend) readInput(src eventSource, tag event.Tag, m metrics) {
 				b.rec.record(StageIME, "imeState", imeFields(&b.gio.ime))
 			}
 		case pointer.Event:
+			if b.rec.on() {
+				cx, cy := m.cellAt(e.Position.X, e.Position.Y)
+				b.rec.record(StagePointer, "pointer", map[string]any{"kind": e.Kind.String(),
+					"x": e.Position.X, "y": e.Position.Y, "col": cx, "row": cy})
+			}
 			if e.Kind == pointer.Leave {
 				b.q.push(tui.PointerLeaveEvent{}) // nothing in the window is under the pointer
 				continue
@@ -317,11 +322,15 @@ type eventSource interface {
 // is submitted with its background alone: Gio needs valid ops for every FrameEvent.
 func (b *Backend) present(e app.FrameEvent, tag event.Tag, m metrics, fs *fontState) {
 	b.mu.Lock()
-	if b.latest != nil {
+	fresh := b.latest != nil
+	if fresh {
 		b.gio.shown, b.latest = b.latest, nil
 	}
 	f := b.gio.shown
 	b.mu.Unlock()
+	if fresh && b.rec.on() {
+		b.rec.record(StagePointer, "cursors", cursorFields(f.cursors))
+	}
 
 	ops := &b.gio.ops
 	ops.Reset()

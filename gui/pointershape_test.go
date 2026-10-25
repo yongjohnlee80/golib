@@ -1,7 +1,10 @@
 package gui
 
 import (
+	"encoding/json"
+	"fmt"
 	"image"
+	"strings"
 	"testing"
 
 	"github.com/yongjohnlee80/gio/app"
@@ -157,5 +160,65 @@ func TestANativeViewsRegionsAreTheFrameItPainted(t *testing.T) {
 	next = 5
 	if got := frame(); len(got) != 1 || got[0].rect != m.cellRect(5, 0, 2, 1) {
 		t.Fatalf("the frame after: %+v, want column 5, its own paint's, not the one before's 3", got)
+	}
+}
+
+// While recording, a pointer-shape report has what it needs: each new frame's cursor areas, once for
+// the frame however often it is presented, and each pointer event with its cell. The replay knows
+// both, skips them, and the recording still validates.
+func TestARecordingHoldsEachFramesCursorAreasAndThePointer(t *testing.T) {
+	m := metrics{window: image.Pt(64, 64), cell: image.Pt(8, 16), scale: 1, grid: tui.Size{W: 8, H: 4}}
+	ring := newRingRecorder(64)
+	b := NewBackend(WithRecorder(ring))
+	natives := []tui.NativePlacement{{View: shaped(tui.PointerText), Cols: 4, Rows: 2}}
+	b.latest = &frame{m: m, cursors: viewCursors(nil, m, natives, nil)}
+	router := new(input.Router)
+	frameEvent := func() { // as the window's loop runs each frame: its input, then the newest frame
+		b.readInput(router.Source(), &b.gio, m)
+		b.present(app.FrameEvent{Size: m.window, Source: router.Source(), Frame: func(o *op.Ops) { router.Frame(o) }}, &b.gio, m, b.font.load())
+	}
+	frameEvent()
+	frameEvent() // the same frame again: nothing new to record
+	router.Queue(pointer.Event{Kind: pointer.Move, Source: pointer.Mouse, Position: centre(m, 1, 1)})
+	b.readInput(router.Source(), &b.gio, m)
+
+	recs := ring.records()
+	var cursors, pointers []Record
+	for _, r := range recs {
+		switch {
+		case r.Stage == StagePointer && r.Kind == "cursors":
+			cursors = append(cursors, r)
+		case r.Stage == StagePointer && r.Kind == "pointer" && r.Data["kind"] == pointer.Move.String():
+			pointers = append(pointers, r)
+		}
+	}
+	if len(cursors) != 1 {
+		t.Fatalf("%d cursors records for one frame presented twice, want 1", len(cursors))
+	}
+	areas, _ := cursors[0].Data["areas"].([]map[string]any)
+	want := []map[string]any{
+		{"x0": 0, "y0": 0, "x1": 32, "y1": 16, "cursor": pointer.CursorText.String()},
+		{"x0": 0, "y0": 16, "x1": 32, "y1": 32, "cursor": pointer.CursorText.String()},
+	}
+	if fmt.Sprint(areas) != fmt.Sprint(want) {
+		t.Errorf("the frame's areas recorded as %v, want %v", areas, want)
+	}
+	if len(pointers) != 1 || pointers[0].Data["kind"] != pointer.Move.String() || pointers[0].Data["col"] != 1 || pointers[0].Data["row"] != 1 {
+		t.Fatalf("the moves recorded as %v, want one, over cell (1, 1)", pointers)
+	}
+	var jsonl strings.Builder
+	for _, r := range recs {
+		line, err := json.Marshal(r)
+		if err != nil {
+			t.Fatal(err)
+		}
+		jsonl.Write(append(line, '\n'))
+	}
+	decoded, err := decodeRecording([]byte(jsonl.String()))
+	if err != nil {
+		t.Fatalf("the recording does not decode: %v", err)
+	}
+	if err := validateTrace(decoded); err != nil {
+		t.Fatalf("the recording does not validate: %v", err)
 	}
 }

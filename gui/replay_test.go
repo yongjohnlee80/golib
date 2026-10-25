@@ -58,14 +58,15 @@ import (
 // build's recording. The tui stage's kinds are tui.TraceEvent's (TraceKind
 // names), which a host that records the tui's trace maps in.
 var kindOf = map[Stage][]string{
-	StageIn:    kindsOf([]InputEvent{KeyInput{}, TextEdit{}, Composition{}, SelectionSet{}, SnippetAsk{}, FocusChange{}}, eventFields),
-	StageIME:   {"imeState"},
-	StageOut:   {"KeyEvent"},
-	StageCmd:   kindsOf([]TextInputCmd{SnippetReply{}, SelectionTell{}, KeyboardShow{}, KeyboardHide{}, FocusTake{}}, cmdFields),
-	StageDraw:  {"preedit"},
-	StageMeta:  {"dropped"},
-	StageFrame: {"begin", "end"},
-	StageTui:   {"focus", "focus-repair", "mount", "unmount", "key", "scope", "action", "capture"},
+	StageIn:      kindsOf([]InputEvent{KeyInput{}, TextEdit{}, Composition{}, SelectionSet{}, SnippetAsk{}, FocusChange{}}, eventFields),
+	StageIME:     {"imeState"},
+	StageOut:     {"KeyEvent"},
+	StageCmd:     kindsOf([]TextInputCmd{SnippetReply{}, SelectionTell{}, KeyboardShow{}, KeyboardHide{}, FocusTake{}}, cmdFields),
+	StageDraw:    {"preedit"},
+	StageMeta:    {"dropped"},
+	StageFrame:   {"begin", "end"},
+	StageTui:     {"focus", "focus-repair", "mount", "unmount", "key", "scope", "action", "capture"},
+	StagePointer: {"pointer", "cursors"},
 }
 
 // kindsOf is the record kinds the recorder writes for each of vs, through the recorder's own
@@ -246,8 +247,8 @@ func validateTrace(recs []Record) error {
 		if rec.Stage == StageMeta && rec.Kind == "dropped" {
 			return errf("recording dropped %v records under load; re-record (replay needs a complete trace)", rec.Data["n"])
 		}
-		if rec.Stage == StageDraw || rec.Stage == StageTui || (rec.Stage == StageCmd && rec.Kind == "SelectionTell") {
-			continue // a frame's presentation tail or the tui's own trace: neither belongs to the frame rules
+		if rec.Stage == StageDraw || rec.Stage == StageTui || rec.Stage == StagePointer || (rec.Stage == StageCmd && rec.Kind == "SelectionTell") {
+			continue // a frame's presentation tail, the tui's own trace or the pointer path: none belongs to the frame rules
 		}
 		if rec.Stage != StageFrame {
 			if framed && !inside {
