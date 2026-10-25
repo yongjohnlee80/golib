@@ -22,7 +22,7 @@ import "github.com/yongjohnlee80/golib/logger"
 //	│  [Event Classifier]                                             │
 //	│         │                                                       │
 //	│         ├─► ResizeEvent? ──► [ Atomic Slot: Latest-Wins ]       │
-//	│         │                    (Priority 1: Delivered First)      │
+//	│         │                    (Delivered In Its Place)           │
 //	│         │                                                       │
 //	│         ├─► MouseMotion? ──► [ Consecutive Motion Coalesce ]    │
 //	│         │                    (Collapses consecutive moves)      │
@@ -37,7 +37,7 @@ import "github.com/yongjohnlee80/golib/logger"
 //	│    2. Fallback: drop oldest general event                       │
 //	│    3. Log warning & increment inputDrops counter                │
 //	+─────────────────────────────────────────────────────────────────+
-//	             │ (Priority: Atomic Slot > FIFO Queue)
+//	             │ (Order: the queue ahead of the slot, the slot, the rest)
 //	             ▼
 //	+─────────────────────────────────────────────────────────────────+
 //	│                      chan Event (a.input)                       │
@@ -60,11 +60,15 @@ import "github.com/yongjohnlee80/golib/logger"
 //     single reader goroutine (e.g. websocket or terminal reader) never blocks on the
 //     App, even when the App loop is delayed inside a slow component handler.
 //
-//  2. Resize Priority (Latest-Wins Atomic Slot):
-//     ResizeEvent supersedes all queued user input. Geometry changes invalidate
-//     everything behind them, so resizes must not queue behind stale keystrokes.
+//  2. Resize Latest-Wins, Delivered In Its Place (Atomic Slot):
 //     Incoming resizes are captured in a dedicated single-event slot (haveResize),
-//     overwriting previous pending resizes, and are delivered before any FIFO event.
+//     overwriting a resize still waiting there, so a storm is one delivery of the
+//     final size and never a queue of sizes. The slot keeps its place in the
+//     input: the events queued before it (resizeAt of them) are delivered first,
+//     then the resize, then what came after. A key typed while the screen was too
+//     small is held by the too-small screen, and a click is hit-tested against the
+//     layout it was aimed at; a resize delivered ahead of them would hand that key
+//     to the application and that click to another layout.
 //
 //  3. Mouse Motion Coalescing:
 //     Consecutive MouseMotion events at the tail of the FIFO queue are collapsed
@@ -90,13 +94,14 @@ func (a *App) intake() {
 	var pending []Event // bounded FIFO, cap = limit
 	var resize ResizeEvent
 	haveResize := false
+	resizeAt := 0 // the pending events queued before the resize: delivered ahead of it
 
 	for {
 		var out chan<- Event
 		var next Event
 		fromResize := false
 		switch {
-		case haveResize:
+		case haveResize && resizeAt == 0:
 			out, next, fromResize = a.input, resize, true
 		case len(pending) > 0:
 			out, next = a.input, pending[0]
@@ -117,16 +122,19 @@ func (a *App) intake() {
 			}
 			switch e := ev.(type) {
 			case ResizeEvent:
-				// Latest-wins atomic slot — never a queue of sizes.
-				resize, haveResize = e, true
+				// Latest-wins atomic slot — never a queue of sizes — after everything queued now.
+				resize, haveResize, resizeAt = e, true, len(pending)
 			case MouseEvent:
-				if e.Kind == MouseMotion && len(pending) > 0 {
+				// an event collapses into the last queued one only if that one came after the resize
+				// waiting: one before it was aimed at the old size
+				tail := len(pending) > 0 && (!haveResize || resizeAt < len(pending))
+				if e.Kind == MouseMotion && tail {
 					if last, ok := pending[len(pending)-1].(MouseEvent); ok && last.Kind == MouseMotion {
 						pending[len(pending)-1] = e // consecutive motions collapse to the newest
 						continue
 					}
 				}
-				if e.precise() && len(pending) > 0 {
+				if e.precise() && tail {
 					// consecutive precise scrolls at the same place sum: none of the scroll is lost
 					if last, ok := pending[len(pending)-1].(MouseEvent); ok && last.precise() &&
 						last.X == e.X && last.Y == e.Y && last.Mods == e.Mods && last.Source == e.Source {
@@ -135,15 +143,18 @@ func (a *App) intake() {
 						continue
 					}
 				}
-				pending = a.intakeEnqueue(pending, ev, limit)
+				pending, resizeAt = a.intakeEnqueue(pending, ev, limit, resizeAt)
 			default:
-				pending = a.intakeEnqueue(pending, ev, limit)
+				pending, resizeAt = a.intakeEnqueue(pending, ev, limit, resizeAt)
 			}
 
 		case out <- next:
 			if fromResize {
 				haveResize = false
 			} else {
+				if resizeAt > 0 {
+					resizeAt-- // one fewer ahead of the resize waiting
+				}
 				copy(pending, pending[1:])
 				pending[len(pending)-1] = nil
 				pending = pending[:len(pending)-1]
@@ -157,8 +168,10 @@ func (a *App) intake() {
 // the OLDEST MOTION first and only then the oldest event of any kind — at
 // that point the app is seconds behind and stale keys are the least-bad
 // loss. Key presses and paste chunks are never coalesced (each is
-// semantically distinct). Drops are counted and logged via WithLogger.
-func (a *App) intakeEnqueue(pending []Event, ev Event, limit int) []Event {
+// semantically distinct). Drops are counted and logged via WithLogger. resizeAt is how many queued
+// events precede the resize waiting in the slot (0 with none); it is returned one less when the
+// dropped event was one of them. The slot is not in the queue, so it is never the one dropped.
+func (a *App) intakeEnqueue(pending []Event, ev Event, limit, resizeAt int) ([]Event, int) {
 	if len(pending) >= limit {
 		drop := 0 // default: the oldest event
 		for i, p := range pending {
@@ -168,6 +181,9 @@ func (a *App) intakeEnqueue(pending []Event, ev Event, limit int) []Event {
 			}
 		}
 		dropped := pending[drop]
+		if drop < resizeAt {
+			resizeAt--
+		}
 		copy(pending[drop:], pending[drop+1:])
 		pending[len(pending)-1] = nil
 		pending = pending[:len(pending)-1]
@@ -177,7 +193,7 @@ func (a *App) intakeEnqueue(pending []Event, ev Event, limit int) []Event {
 			"dropped_total": n, "cap": limit,
 		})
 	}
-	return append(pending, ev)
+	return append(pending, ev), resizeAt
 }
 
 // eventName names an event for diagnostics without fmt in the hot path: the input queue's

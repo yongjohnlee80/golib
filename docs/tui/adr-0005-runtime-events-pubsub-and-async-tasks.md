@@ -292,6 +292,14 @@ are never coalesced (each is semantically distinct); a full lane under key flood
 the *oldest motion/resize* first and only then oldest keys — at that point the app is
 seconds behind and stale keys are the least-bad loss.
 
+> **The resize keeps its place (2026-10-25).** The latest-wins slot is delivered after the
+> input queued before it and before what came after, never ahead of it. Two reasons. A key typed
+> while the too-small screen showed is that screen's to hold, and delivered after the enlarging
+> resize it reached the application instead (about half the time when the two arrived
+> together). A click is hit-tested against the layout it was aimed at, not the next one. The slot
+> is not in the queue, so overflow never drops it: dropping an event queued ahead of it moves it
+> one place forward. Don't restore a resize priority over queued input.
+
 > **Promptness invariant (normative).** Intake does **no component work** — it only
 > classifies, coalesces, and enqueues (O(1) per event, no dispatch, no allocation beyond
 > the slot). `backend.Events()` is therefore always drained promptly and the backend's
