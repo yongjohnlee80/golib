@@ -223,6 +223,24 @@ func TestAGovernedFloatWindowsMaximumDoesNotHoldItsTile(t *testing.T) {
 	}
 }
 
+// Tiled while a drag of its own is in flight, it is over its tile, and the release of the cancelled
+// drag leaves it there. The TileManager governs in its commit phase, where the drag's capture may
+// end; governed inside its Layout, cancelling the drag would panic.
+func TestAFloatWindowTiledMidDragIsOverItsTile(t *testing.T) {
+	s, _ := runFloatMember(t)
+	set(t, s, "App.fwTiled", false)
+	titleAt(t, s, "FLOAT", 42, 5)
+	s.Keys(t, tui.MouseEvent{Kind: tui.MousePress, Button: tui.MouseLeft, Mods: tui.ModAlt, X: 50, Y: 10},
+		tui.MouseEvent{Kind: tui.MouseMotion, Button: tui.MouseLeft, Mods: tui.ModAlt, X: 55, Y: 12})
+	titleAt(t, s, "FLOAT", 47, 7)
+	set(t, s, "App.fwTiled", true)
+	titleAt(t, s, "FLOAT", 2, 0)
+	s.Keys(t, tui.MouseEvent{Kind: tui.MouseRelease, Button: tui.MouseLeft, Mods: tui.ModAlt, X: 55, Y: 12})
+	onScreenLoop(t, s, func() {})
+	titleAt(t, s, "FLOAT", 2, 0)
+	titleAt(t, s, "PAGE", 22, 0)
+}
+
 // A member's tile can be left no cells (its minimum 0, its size shrunk live to 0): the FloatWindow
 // is governed at its docked fallback, its tile's edge, vertically centred there, at its content's
 // own size (too narrow for its title), and a live TileManager.edge moves it to the new edge. Its
