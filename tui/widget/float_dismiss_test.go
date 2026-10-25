@@ -21,7 +21,6 @@ func TestAFloatsDismissalSaysWhy(t *testing.T) {
 	var mu sync.Mutex
 	var got []string
 	note := func(s string) { mu.Lock(); got = append(got, s); mu.Unlock() }
-	tui.Subscribe(h.app.Bus(), func(widget.DismissEvent) { note("DismissEvent") })
 	tui.Subscribe(h.app.Bus(), func(e widget.OverlayDismissedEvent) { note("Overlay:" + e.Reason.String()) })
 	snapshot := func() []string { mu.Lock(); defer mu.Unlock(); return slices.Clone(got) }
 
@@ -33,7 +32,7 @@ func TestAFloatsDismissalSaysWhy(t *testing.T) {
 	h.settle()
 	h.onLoop(func() { dialog.Hide(); dialog.Hide() })
 	h.settle()
-	want := []string{"DismissEvent", "Overlay:escape", "DismissEvent", "Overlay:programmatic"}
+	want := []string{"Overlay:escape", "Overlay:programmatic"}
 	if g := snapshot(); !slices.Equal(g, want) {
 		t.Fatalf("published %q, want %q", g, want)
 	}

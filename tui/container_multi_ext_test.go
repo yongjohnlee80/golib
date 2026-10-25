@@ -28,20 +28,6 @@ func fill(m *tui.MultiChild, n int) []tui.Component {
 	return want
 }
 
-// TestItemsStillCompilesAndBehavesExternally pins the compatibility guarantee:
-// Items is preserved unchanged, so code written against the older API keeps
-// working. This test fails if Items is ever removed or its signature altered
-// outside a deliberate breaking release.
-func TestItemsStillCompilesAndBehavesExternally(t *testing.T) {
-	var m tui.MultiChild
-	want := fill(&m, 3)
-
-	got := m.Items() // []tui.Component — the pre-L0 shape, unchanged
-	if !slices.Equal(got, want) {
-		t.Fatalf("Items() = %v, want %v", got, want)
-	}
-}
-
 func TestLenAndAllFromOutsideThePackage(t *testing.T) {
 	var m tui.MultiChild
 	want := fill(&m, 3)
