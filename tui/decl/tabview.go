@@ -85,6 +85,11 @@ func buildTabView(b Build) (tui.Component, []string, error) {
 	return n, nil, nil
 }
 
+// SetMenu gives the TabView's bar a menu (widget.Tabs.SetMenu): ≡ and a right press on a tab open
+// build's rows for that tab. It is the host's, through the node Program.Find returns, since a
+// document can't carry the Go function that builds the rows.
+func (n *tabViewNode) SetMenu(build func(i int) []widget.MenuItemModel) { n.tabs.SetMenu(build) }
+
 func (n *tabViewNode) Init(ctx *tui.Context) {
 	n.Base.Init(ctx)
 	ctx.Mount(n.tabs) // it reports a tab change to the TabView itself (WithTabsOnChange)
