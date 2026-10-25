@@ -90,6 +90,10 @@ type pressCounter struct {
 // it, so input and program events are ordered against each other by the order
 // they are drained rather than by which produced them.
 func (a *App) dispatch(ev Event) {
+	if f, ok := ev.(inputFence); ok { // TestBackend.InjectFenced's: every input before it is dispatched
+		f.pass()
+		return
+	}
 	if e, ok := ev.(MouseEvent); ok && e.Source.Ref != nil {
 		ev = a.resolvePointer(e)
 	}

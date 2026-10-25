@@ -181,6 +181,9 @@ func (a *App) intakeEnqueue(pending []Event, ev Event, limit, resizeAt int) ([]E
 			}
 		}
 		dropped := pending[drop]
+		if f, ok := dropped.(inputFence); ok {
+			f.pass() // what came before it was dispatched or dropped too
+		}
 		if drop < resizeAt {
 			resizeAt--
 		}

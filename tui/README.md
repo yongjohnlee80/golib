@@ -227,7 +227,7 @@ changes belong in `Context.AfterLayout`; `Layout` and `Render` remain pure.
 
 `tui.TestBackend` provides a deterministic in-memory terminal simulator designed for headless CI environments:
 
-- Inject key, mouse, and resize events via `tb.Inject(...)`.
+- Inject key, mouse, and resize events via `tb.Inject(...)`. `Inject` only queues them; `tb.InjectFenced(...)` also returns a channel the App closes once it has dispatched them (input and posted work travel separate lanes, so a `Post` after `Inject` can run first).
 - Assert cell grid text and ANSI attributes via `tb.String()` or `tb.Snapshot()`.
 - Validate hardware cursor coordinates via `tb.CursorPos()`.
 - Verify write discipline via `tb.Flushes()` — an idle app emits zero flushes; one state change emits exactly one.
