@@ -230,15 +230,21 @@ func (tile *Tile) Place() TilePlace { return tile.place }
 // Hidden reports whether the tile is minimized.
 func (tile *Tile) Hidden() bool { return tile.hidden }
 
-// away reports whether a tile takes no cells: minimized, or a member whose own window is not shown.
-// That is a closed one, or one never opened, which has no own visibility yet: its core is bound when
-// its node first mounts.
+// away reports whether a tile takes no cells: minimized, or a member whose own window is not shown,
+// judged by that window's visibility whether governed or not. Governed, it is the one its core's
+// retarget handed the tile; not yet, its core's own, which settle's fits reads before the first
+// Govern. A core not bound (a window never opened) has none, and is away.
 func (tile *Tile) away() bool {
 	if tile.hidden || tile.gov == nil {
 		return tile.hidden
 	}
-	own := tile.target.own
-	return own == nil || !own.WindowVisible()
+	var v WindowVisibility
+	if tile.governed {
+		v = tile.target.own
+	} else if c := tile.core(); c != nil && c.live() {
+		v = c.visibility
+	}
+	return v == nil || !v.WindowVisible()
 }
 
 // Tile is the tile by key, or nil.
