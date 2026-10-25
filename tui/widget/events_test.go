@@ -61,9 +61,4 @@ func TestEventsOwnerFieldContract(t *testing.T) {
 	if split.Owner != nodeID {
 		t.Errorf("SplitResizedEvent.Owner = %d, want %d", split.Owner, nodeID)
 	}
-
-	dismiss := widget.DismissEvent{Owner: nodeID}
-	if dismiss.Owner != nodeID {
-		t.Errorf("DismissEvent.Owner = %d, want %d", dismiss.Owner, nodeID)
-	}
 }

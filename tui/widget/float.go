@@ -72,7 +72,7 @@ import (
 //  3. Notification Contract:
 //     Every dismissal publishes an [OverlayDismissedEvent] stamped with the Float's
 //     [tui.NodeID] and its reason: [DismissEscape] for the Escape key, [DismissProgrammatic]
-//     for [Float.Hide]. The deprecated [DismissEvent] is published just before it.
+//     for [Float.Hide].
 //
 // # Usage Examples
 //
@@ -265,11 +265,11 @@ func (f *Float) Show() {
 }
 
 // Hide unmounts the layer (focus restores to the pre-Show node when the
-// float was modal) and emits DismissEvent.
+// float was modal) and publishes its OverlayDismissedEvent.
 func (f *Float) Hide() { f.hide(DismissProgrammatic) }
 
-// hide unmounts the layer and reports why: DismissEvent, then OverlayDismissedEvent with the
-// reason, once each per hide. A Float already hidden publishes nothing.
+// hide unmounts the layer and reports why: OverlayDismissedEvent with the reason, once per
+// hide. A Float already hidden publishes nothing.
 func (f *Float) hide(reason DismissReason) {
 	if !f.shown {
 		return
@@ -280,7 +280,6 @@ func (f *Float) hide(reason DismissReason) {
 	f.ctx.Unmount(layer)
 	f.RequestLayout()
 	owner := f.NodeID()
-	f.publish(DismissEvent{Owner: owner})
 	f.publish(OverlayDismissedEvent{Owner: owner, Reason: reason})
 }
 

@@ -156,12 +156,3 @@ type SplitResizedEvent struct {
 	// is how a restored split lands one cell off.
 	ACells, BCells int
 }
-
-// DismissEvent is emitted by Float when it hides (Esc on a modal, or
-// Float.Hide).
-//
-// Deprecated: it says that a Float closed but not why. Subscribe to
-// [OverlayDismissedEvent], which a Float publishes right after this, with its
-// Reason (DismissEscape, DismissProgrammatic), as Modal and the anchored layers
-// do. DismissEvent is still published, once per hide.
-type DismissEvent struct{ Owner tui.NodeID }
