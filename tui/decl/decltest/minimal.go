@@ -54,6 +54,7 @@ var minimals = map[string]minimal{
 	"FileDialog":       {body: `Text { text: "x" } FileDialog { id: subject; title: "f" }`},
 	"FolderDialog":     {body: `Text { text: "x" } FolderDialog { id: subject; title: "f" }`},
 	"Drawer":           {body: `Text { text: "x" } Drawer { id: subject; Text { text: "y" } }`},
+	"FloatWindow":      {body: `Text { text: "x" } FloatWindow { id: subject; Text { text: "y" } }`},
 	"TileManager":      {body: `TileManager { id: subject; Tile { edge: Tui.Center; Text { text: "x" } } }`},
 	"Tile":             {body: `TileManager { Tile { id: subject; edge: Tui.Center; Text { text: "x" } } }`},
 	"MarkdownRenderer": {body: `Editor { MarkdownRenderer { id: subject } }`},

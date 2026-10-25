@@ -1,7 +1,6 @@
 package decl
 
 import (
-	"errors"
 	"fmt"
 	"math"
 	"strconv"
@@ -171,20 +170,8 @@ func (n *tileNode) toggle() error {
 	return n.hide()
 }
 
-// tileWindow is a Tile's method run on its window, as the WindowMod's own.
-func tileWindow(m Method) Method {
-	return func(c tui.Component, args []qml.SpecValue) error {
-		n, ok := c.(*tileNode)
-		if !ok {
-			return errors.New("not a Tile")
-		}
-		w, err := n.window()
-		if err != nil {
-			return err
-		}
-		return m(w, args)
-	}
-}
+// tileWindow is a WindowMod method run on a Tile's window, as the WindowMod's own.
+var tileWindow = windowMethod((*tileNode).window)
 
 // buildTileManager adds each Tile to a new manager, in declaration order: the order strips take
 // their depth in.

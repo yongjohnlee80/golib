@@ -75,7 +75,7 @@ func stdType(name string) (Type, bool) {
 }
 
 func stdTypes() []Type {
-	return append(append(coreTypes(), appTypes()...), listViewType, comboBoxType, tableViewType, tableViewColumnType, treeViewType, buttonBoxType, drawerType, focusScopeType, tabViewType, tabType, checkBoxType, markdownRendererType, htmlDocumentViewType, windowModType, windowButtonsType, windowTaskbarType, tileManagerType, tileType)
+	return append(append(coreTypes(), appTypes()...), listViewType, comboBoxType, tableViewType, tableViewColumnType, treeViewType, buttonBoxType, drawerType, floatWindowType, focusScopeType, tabViewType, tabType, checkBoxType, markdownRendererType, htmlDocumentViewType, windowModType, windowButtonsType, windowTaskbarType, tileManagerType, tileType)
 }
 
 // tuiEnums is every enum the standard vocabulary accepts. The Tui singleton's

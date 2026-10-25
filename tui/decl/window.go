@@ -51,10 +51,13 @@ type windowNode struct {
 	// terminal's own background wherever no widget paints.
 	color   style.Color
 	colored bool
+
+	// sink is where an OpensWithWindow child's error goes (the adapter's error sink)
+	sink func(error)
 }
 
 func buildWindow(b Build) (tui.Component, []string, error) {
-	w := &windowNode{}
+	w := &windowNode{sink: b.sink}
 	if err := w.arrange(b.Children, b.ChildAttached, b.FocusNominee); err != nil {
 		return nil, nil, fmt.Errorf("%w (at %s)", err, b.Pos)
 	}
@@ -86,7 +89,24 @@ func (w *windowNode) arrange(children []tui.Component, attached []map[string]qml
 	for _, o := range w.overlaid {
 		o.SetOverlay(w.host, w.afterOverlay)
 	}
+	if w.ctx != nil { // a reload's: at construction the host is not mounted yet, and Init opens them
+		w.openWithWindow()
+	}
 	return nil
+}
+
+// openWithWindow opens every overlaid child that is shown for as long as the Window is
+// (OpensWithWindow). Each is idempotent, so a reload opens again only what it added.
+func (w *windowNode) openWithWindow() {
+	for _, o := range w.overlaid {
+		ow, ok := o.(OpensWithWindow)
+		if !ok {
+			continue
+		}
+		if err := ow.OpenWithWindow(); err != nil && w.sink != nil {
+			w.sink(err)
+		}
+	}
 }
 
 // docked is a child of the Window's dock and the edge it is pinned to.
@@ -202,6 +222,9 @@ func (w *windowNode) Init(ctx *tui.Context) {
 		w.applyMinimum()
 	}
 	ctx.Mount(w.host)
+	// what is shown for as long as the Window is opens now, its host mounted, so a `focus: true`
+	// inside it is there for the first layout's restoreFocus
+	w.openWithWindow()
 	// A menu row that ran closes the menu. Focus goes back where the document
 	// said it lives; left on the closed menu, the next keystroke would go
 	// nowhere the user can see.
