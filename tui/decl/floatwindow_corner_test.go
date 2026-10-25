@@ -156,3 +156,47 @@ Window { Text { text: "page" }
 		t.Fatalf("the content laid out with %+v, want the window's rect, tight (about 24×14)", c)
 	}
 }
+
+// A FloatWindow's focus order puts its content before what a program adds over it, so the find card
+// never takes the window's keyboard first: the window's first focus lands in its content (the
+// button, not the card's X), Tab from the content reaches the X while the card shows, and a hidden
+// card's X is never a Tab stop.
+func TestAFloatWindowsContentComesBeforeItsAlignedComponentInFocusOrder(t *testing.T) {
+	doc := `import tui 1.0
+Window { Text { text: "page" }
+ FloatWindow { id: fw; floatX: 25; floatY: 20; floatWidth: 50; floatHeight: 60
+  Frame { title: "FW"; Button { id: one; text: "One" } } } }`
+	s := decltest.Run(t, 80, 24, tuidecl.LayoutSource("main.qml", []byte(doc)))
+	s.WaitForText(t, "One")
+	x := widget.NewButton("X")
+	row := tui.NewFlex(tui.Horizontal)
+	row.Add(widget.NewText("3 of 9 "), x) // wide enough for the box's title
+	card := widget.NewBox(row, widget.WithTitle("CARD"))
+	onScreenLoop(t, s, func() {
+		n, _ := s.Program.Find("fw")
+		n.(interface{ AddAligned(tui.Component, tui.Align) }).AddAligned(card, tui.AlignTopRight)
+	})
+	onScreenLoop(t, s, func() {}) // laid out; not waited on by its drawing, which the order also decides
+	focused := func() (one, xx bool) {
+		onScreenLoop(t, s, func() {
+			b, _ := s.Program.Find("one")
+			one, xx = s.Program.App().FocusWithin(b), s.Program.App().FocusWithin(x)
+		})
+		return one, xx
+	}
+	call(t, s, "fw", "forceActiveFocus")
+	if one, xx := focused(); !one || xx {
+		t.Fatalf("the window's first focus: in its content %v, in the card's X %v; want the content", one, xx)
+	}
+	s.Keys(t, tui.KeyEvent{Kind: tui.KeyPress, Code: tui.KeyTab})
+	s.WaitFor(t, "Tab from the content to the card's X", func(string) bool { _, xx := focused(); return xx })
+	onScreenLoop(t, s, func() { card.SetVisible(false) })
+	call(t, s, "one", "forceActiveFocus")
+	for range 3 {
+		s.Keys(t, tui.KeyEvent{Kind: tui.KeyPress, Code: tui.KeyTab})
+		onScreenLoop(t, s, func() {})
+		if _, xx := focused(); xx {
+			t.Fatal("Tab reached the hidden card's X")
+		}
+	}
+}
