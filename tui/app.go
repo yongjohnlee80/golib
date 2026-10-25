@@ -691,13 +691,16 @@ func (a *App) presentFrame(cursor bool) {
 }
 
 // flush hands the frame's diff to the backend: with the buffer's size to one that asks for it
-// (SizedFlusher), else through Flush.
+// (SizedFlusher), else through Flush, told the size first when it asks to be (FrameSizer).
 func (a *App) flush() {
 	diff := a.buf.diff()
 	var err error
 	if f := a.caps.sized; f != nil {
 		err = f.FlushSized(a.buf.size(), diff)
 	} else {
+		if f := a.caps.framed; f != nil {
+			f.FrameSize(a.buf.size())
+		}
 		err = a.backend.Flush(diff)
 	}
 	if err != nil {
