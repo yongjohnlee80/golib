@@ -351,8 +351,7 @@ func TestTheGuiTableUndoesAndRedoesItsKeptEditByKey(t *testing.T) {
 	}
 }
 
-// gui's Editor chooses its view as the terminal's does (tuiwidget.ViewChooser, EditorView), and the
-// deprecated Mode names read and set the same state.
+// gui's Editor chooses its view as the terminal's does (tuiwidget.ViewChooser, EditorView).
 func TestTheEditorsViewIsTuisEditorView(t *testing.T) {
 	var _ tuiwidget.ViewChooser = (*Editor)(nil)
 	e := NewEditor(WithRenderer(NewMarkdownRenderer()), WithView(tuiwidget.ViewRendered))
@@ -362,13 +361,6 @@ func TestTheEditorsViewIsTuisEditorView(t *testing.T) {
 	e.SetRenderedEnabled(false)
 	if e.View() != tuiwidget.ViewRendered || e.ShownView() != tuiwidget.ViewRaw {
 		t.Errorf("Rendered withheld: view %v, shown %v; want Rendered kept, Raw drawn", e.View(), e.ShownView())
-	}
-	if e.Mode() != e.View() || e.Shown() != e.ShownView() {
-		t.Errorf("Mode %v, Shown %v; want View's %v and ShownView's %v", e.Mode(), e.Shown(), e.View(), e.ShownView())
-	}
-	e.SetMode(Raw)
-	if e.View() != tuiwidget.ViewRaw {
-		t.Errorf("SetMode(Raw): view %v, want Raw", e.View())
 	}
 	if NewEditor(WithView(tuiwidget.ViewRendered)).ShownView() != tuiwidget.ViewRaw {
 		t.Error("Rendered with no renderer or document view is drawn, want Raw")

@@ -1,4 +1,4 @@
-package main
+package web
 
 import (
 	"context"
@@ -7,10 +7,10 @@ import (
 
 	"github.com/yongjohnlee80/golib/tui"
 	"github.com/yongjohnlee80/golib/tui/examples/demoapp"
-	"github.com/yongjohnlee80/golib/tui/web"
 )
 
-// TestCriterion1_SameTreeOnTheWebBackend asserts the SAME-TREE guarantee
+// TestCriterion1_SameTreeOnTheWebBackend asserts the SAME-TREE guarantee (it was webdemo's own
+// test; it drives the Backend as the connection loop does, through its unexported transport)
 // mechanically rather than by inspection.
 //
 // It runs the demo's component tree — the same package the terminal demo runs,
@@ -19,7 +19,7 @@ import (
 // The only difference from the terminal path is the backend handed to
 // tui.NewApp.
 func TestCriterion1_SameTreeOnTheWebBackend(t *testing.T) {
-	backend := web.New()
+	backend := New()
 	quit := func() {}
 
 	// Identical to webdemo's factory, and identical to the terminal demo's
@@ -33,8 +33,8 @@ func TestCriterion1_SameTreeOnTheWebBackend(t *testing.T) {
 	go func() { done <- app.Run(ctx) }()
 
 	// A client attaches with measured metrics, which is what releases Start.
-	if err := backend.Attach(web.Hello{
-		Cols: 80, Rows: 24, Metrics: web.Metrics{CellW: 8, CellH: 16},
+	if err := backend.attach(Hello{
+		Cols: 80, Rows: 24, Metrics: Metrics{CellW: 8, CellH: 16},
 	}); err != nil {
 		t.Fatal(err)
 	}
@@ -62,11 +62,11 @@ func TestCriterion1_SameTreeOnTheWebBackend(t *testing.T) {
 	if painted == 0 {
 		t.Error("the frame is entirely blank — the component tree drew nothing")
 	}
-	backend.AckFrame(frame.Rev)
+	backend.ackFrame(frame.Rev)
 
 	// It accepts input and repaints. Tab cycles the panes, which the demo's own
 	// interaction script exercises against TestBackend.
-	if err := backend.Submit(tui.KeyEvent{Kind: tui.KeyPress, Code: tui.KeyTab}); err != nil {
+	if err := backend.submit(tui.KeyEvent{Kind: tui.KeyPress, Code: tui.KeyTab}); err != nil {
 		t.Fatal(err)
 	}
 	repaint, ok := waitFrame(t, backend, 5*time.Second)
@@ -76,10 +76,10 @@ func TestCriterion1_SameTreeOnTheWebBackend(t *testing.T) {
 	// Acknowledged, because only one frame is in flight at a time — leaving this
 	// unacked blocks every later frame, which is the design working rather than
 	// a fault.
-	backend.AckFrame(repaint.Rev)
+	backend.ackFrame(repaint.Rev)
 
 	// It handles a resize, and the next frame matches the new size.
-	if err := backend.Resize(100, 30); err != nil {
+	if err := backend.resize(100, 30, Metrics{}); err != nil {
 		t.Fatal(err)
 	}
 	deadline := time.Now().Add(5 * time.Second)
@@ -88,7 +88,7 @@ func TestCriterion1_SameTreeOnTheWebBackend(t *testing.T) {
 		if !ok {
 			t.Fatal("no frame after the resize")
 		}
-		backend.AckFrame(fr.Rev)
+		backend.ackFrame(fr.Rev)
 		if fr.W == 100 && fr.H == 30 {
 			break
 		}
@@ -113,14 +113,14 @@ func TestCriterion1_SameTreeOnTheWebBackend(t *testing.T) {
 }
 
 // waitFrame polls for the next frame the backend has ready.
-func waitFrame(t *testing.T, b *web.Backend, within time.Duration) (web.Frame, bool) {
+func waitFrame(t *testing.T, b *Backend, within time.Duration) (Frame, bool) {
 	t.Helper()
 	deadline := time.Now().Add(within)
 	for time.Now().Before(deadline) {
-		if fr, ok := b.NextFrame(); ok {
+		if fr, ok := b.nextFrame(); ok {
 			return fr, true
 		}
 		time.Sleep(2 * time.Millisecond)
 	}
-	return web.Frame{}, false
+	return Frame{}, false
 }

@@ -192,18 +192,6 @@ func TestPanelNativeBar(t *testing.T) {
 	}
 }
 
-// A panel no longer collapses to its title bar: Minimizable is deprecated and does nothing, so a
-// panel given only it shows no minimize control, and its bar shows no "[_]" to click.
-func TestMinimizableAloneShowsNoMinimizeControl(t *testing.T) {
-	h := startPanel(t, tui.Rect{X: 2, Y: 2, W: 30, H: 6}, gw.Minimizable())
-	if strings.Contains(h.row(2), "[_]") {
-		t.Errorf("a panel given only the deprecated Minimizable shows a minimize control: %q", h.row(2))
-	}
-	h.mouse(tui.MousePress, 2+30-3+1, 2)
-	h.mouse(tui.MouseRelease, 2+30-3+1, 2)
-	h.until("the panel still whole", func() bool { return h.bounds() == tui.Rect{X: 2, Y: 2, W: 30, H: 6} })
-}
-
 func TestPanelBoundsWhileMaximized(t *testing.T) {
 	h := startPanel(t, tui.Rect{X: 2, Y: 2, W: 30, H: 6}, gw.WithMaximizable())
 	h.mouse(tui.MousePress, 2+30-3+1, 2)
