@@ -203,20 +203,21 @@ func TestAMembersLivePropertiesHoldAcrossAReloadThatRebuildsIt(t *testing.T) {
 	titleAt(t, s, "EXPLORER", 2, 0)
 }
 
-// A TileManager refuses a member it cannot govern: a Drawer without window controls (it has no
-// window), a reserving Drawer, one sized by a grip, two at the centre among its Tiles and windows, and a Tile carrying a
-// window's TileManager.* place.
+// A TileManager refuses a member it cannot govern, each for its own reason: a Drawer without window
+// controls (it has no window), a reserving Drawer, one sized by a grip, two at the centre among its
+// Tiles and windows, and a Tile carrying a window's TileManager.* place.
 func TestATileManagerRefusesAMemberItCannotGovern(t *testing.T) {
-	for name, body := range map[string]string{
-		"no window":  `Drawer { Frame { title: "d" } } Tile { edge: Tui.Center; Text { text: "p" } }`,
-		"reserve":    `Drawer { windowResize: true; reserve: true; Frame { title: "d" } } Tile { edge: Tui.Center; Text { text: "p" } }`,
-		"grip":       `Drawer { movable: true; resizable: true; Frame { title: "d" } } Tile { edge: Tui.Center; Text { text: "p" } }`,
-		"two centre": `Drawer { windowResize: true; TileManager.edge: Tui.Center; Frame { title: "d" } } Tile { edge: Tui.Center; Text { text: "p" } }`,
-		"tile place": `Tile { edge: Tui.Left; TileManager.size: 30; Text { text: "l" } } Tile { edge: Tui.Center; Text { text: "p" } }`,
+	for name, c := range map[string]struct{ body, why string }{
+		"no window":  {`Drawer { Frame { title: "d"; Text { text: "d" } } } Tile { edge: Tui.Center; Text { text: "p" } }`, "has no window"},
+		"reserve":    {`Drawer { windowResize: true; reserve: true; Frame { title: "d"; Text { text: "d" } } } Tile { edge: Tui.Center; Text { text: "p" } }`, "no reserve"},
+		"grip":       {`Drawer { movable: true; resizable: true; Frame { title: "d"; Text { text: "d" } } } Tile { edge: Tui.Center; Text { text: "p" } }`, "resizable's grip"},
+		"two centre": {`Drawer { windowResize: true; TileManager.edge: Tui.Center; Frame { title: "d"; Text { text: "d" } } } Tile { edge: Tui.Center; Text { text: "p" } }`, "at most one child at Tui.Center"},
+		"tile place": {`Tile { edge: Tui.Left; TileManager.size: 30; Text { text: "l" } } Tile { edge: Tui.Center; Text { text: "p" } }`, "is a window's"},
 	} {
-		src := "import tui 1.0\nWindow { TileManager { " + body + " } }"
-		if err := tuidecl.Check(tuidecl.LayoutSource("main.qml", []byte(src))); err == nil {
-			t.Errorf("%s: built", name)
+		src := "import tui 1.0\nWindow { TileManager { " + c.body + " } }"
+		err := tuidecl.Check(tuidecl.LayoutSource("main.qml", []byte(src)))
+		if err == nil || !strings.Contains(err.Error(), c.why) {
+			t.Errorf("%s: %v, want refused because it %q", name, err, c.why)
 		}
 	}
 }

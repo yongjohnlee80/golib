@@ -16,9 +16,11 @@ type member struct {
 	mod       *widget.WindowMod
 	own, dock widget.Anchor
 	dock2     *widget.MinimizedWindows // where it goes minimized
+	governs   int                      // how many times it was governed
 }
 
 func (m *member) Govern(rect func() (tui.Rect, bool), target any) {
+	m.governs++
 	m.float.SetAnchor(widget.AtLive(rect, m.dock))
 	m.mod.Core().Retarget(target)
 }
@@ -155,6 +157,57 @@ func TestTheMostRecentlyTiledMemberIsReleasedWhenTheSetNoLongerFits(t *testing.T
 				t.Fatal("widened to 40, both tile again")
 			}
 		})
+	}
+}
+
+// Two shown members that don't fit together, both asking at once: the later is never governed, not
+// even for a frame. Before its first Govern a member's visibility is its own window's, so the set
+// settle tests holds both, and only the earlier tiles.
+func TestAShownMemberThatDoesNotFitIsNeverGoverned(t *testing.T) {
+	tiles := widget.NewTiles()
+	tiles.Add("page", widget.NewText("page"), widget.TilePlace{Edge: tui.DockCenter, Min: 10})
+	a := newMember("AA", widget.AtRect(tui.Rect{X: 2, Y: 6, W: 8, H: 3}), widget.Left)
+	b := newMember("BB", widget.AtRect(tui.Rect{X: 12, Y: 6, W: 8, H: 3}), widget.Right)
+	tiles.AddMember("a", a, widget.TilePlace{Edge: tui.DockLeft, Size: 25, Min: 10}, false)
+	tiles.AddMember("b", b, widget.TilePlace{Edge: tui.DockRight, Size: 25, Min: 10}, false)
+	r := startTiles(t, 25, 10, tiles, tiles, map[string]*member{"a": a, "b": b})
+	r.h.onLoop(func() {
+		tiles.SetWants("a", true)
+		tiles.SetWants("b", true)
+	})
+	r.h.settle()
+	if !r.governed("a") || r.governed("b") || b.governs != 0 {
+		t.Fatalf("25 wide fits one: a governed %v, b governed %v and governed %d times; want only a, b never", r.governed("a"), r.governed("b"), b.governs)
+	}
+}
+
+// A member closed (its node unmounted) and released keeps the facet its core last probed, the tile's;
+// asked to tile again while still closed, it is away, so it is governed and takes no cells, rather
+// than counted as shown by that stale facet and released for want of room.
+func TestAClosedMemberAskingToTileAgainIsGovernedWhileAway(t *testing.T) {
+	tiles := widget.NewTiles()
+	tiles.Add("page", widget.NewText("page"), widget.TilePlace{Edge: tui.DockCenter, Min: 10})
+	a := newMember("AA", widget.AtRect(tui.Rect{X: 2, Y: 6, W: 8, H: 3}), widget.Left)
+	b := newMember("BB", widget.AtRect(tui.Rect{X: 12, Y: 6, W: 8, H: 3}), widget.Right)
+	tiles.AddMember("a", a, widget.TilePlace{Edge: tui.DockLeft, Size: 25, Min: 10}, false)
+	tiles.AddMember("b", b, widget.TilePlace{Edge: tui.DockRight, Size: 25, Min: 10}, true)
+	r := startTiles(t, 25, 10, tiles, tiles, map[string]*member{"a": a, "b": b})
+	if !r.governed("b") {
+		t.Fatal("b alone fits 25 wide")
+	}
+	r.h.onLoop(func() { b.float.Hide() })
+	r.h.settle()
+	r.h.onLoop(func() { tiles.SetWants("b", false) })
+	r.h.settle()
+	r.h.onLoop(func() { tiles.SetWants("a", true) })
+	r.h.settle()
+	if !r.governed("a") {
+		t.Fatal("a fits 25 wide beside a closed b")
+	}
+	r.h.onLoop(func() { tiles.SetWants("b", true) })
+	r.h.settle()
+	if !r.governed("a") || !r.governed("b") {
+		t.Fatalf("b, closed, asks to tile again: a governed %v, b governed %v; want both, b away", r.governed("a"), r.governed("b"))
 	}
 }
 
