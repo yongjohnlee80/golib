@@ -29,6 +29,11 @@ import (
 //
 // placed(x, y, width, height) reports its percentages where a move or resize ended, for a host to
 // keep; changed is the WindowMod's.
+//
+// A tile manager may govern it (widget.GovernedWindow): anchored over its tile, its core given the
+// tile's target, so a resize moves the tile's shared border and a move is refused. Its percentages,
+// maximum and placed are its own floating state, untouched while governed: Release puts it back at
+// them.
 
 // floatWindowNode is a FloatWindow: its content in a WindowMod, in a non-modal Float on the
 // Window's overlay (OverlayLayer). Its geometry is the Float's own window target, which the
@@ -42,11 +47,14 @@ type floatWindowNode struct {
 	frac   [4]float64
 	placed func(args ...qml.SpecValue)
 	emit   func(args ...qml.SpecValue)
+	// tileGovernance is its side of a TileManager's governing it (tilemember.go)
+	tileGovernance
 }
 
 var (
 	_ OpensWithWindow = (*floatWindowNode)(nil)
 	_ windowBehaver   = (*floatWindowNode)(nil)
+	_ tileMember      = (*floatWindowNode)(nil)
 )
 
 func buildFloatWindow(b Build) (tui.Component, []string, error) {
@@ -54,7 +62,8 @@ func buildFloatWindow(b Build) (tui.Component, []string, error) {
 	if err != nil {
 		return nil, nil, err
 	}
-	n := &floatWindowNode{frac: [4]float64{0, 0, 100, 100}, placed: b.EmitterWith("placed"), emit: b.EmitterWith("changed")}
+	n := &floatWindowNode{frac: [4]float64{0, 0, 100, 100}, placed: b.EmitterWith("placed"), emit: b.EmitterWith("changed"),
+		tileGovernance: tileGovernance{govKey: b.ID}}
 	n.mod = widget.NewWindowMod(b.Children[0], c.options(b.WindowCollector, n.windowChanged)...)
 	n.float = widget.NewFloat(n.mod, widget.WithModal(false), widget.WithAnchor(n.anchor()))
 	n.OverlayLayer = NewOverlayLayer(n.float, "a FloatWindow")
@@ -76,10 +85,38 @@ func (n *floatWindowNode) WindowBehavior() *widget.WindowCore { return n.mod.Cor
 // onScreen is what forceActiveFocus focuses into: its window, over the Window.
 func (n *floatWindowNode) onScreen() tui.Component { return n.mod }
 
-// anchor is where the Float places it: its percentages of the area it is placed in, held to its
-// maximum (inArea), else, with no area yet, the percentages themselves.
+// anchor is where the Float places it. Governed, it is over its tile, as the tile composes it (no
+// maximum), docked at its tile's edge while the tile has no cells (governedAnchor): a governed window
+// never floats. Otherwise it is at its percentages of the area it is placed in, held to its maximum
+// (inArea), else, with no area yet, the percentages themselves.
 func (n *floatWindowNode) anchor() widget.Anchor {
+	if n.governed() {
+		return n.governedAnchor()
+	}
 	return widget.AtLiveIn(n.inArea, widget.AtFraction(n.frac[0], n.frac[1], n.frac[2], n.frac[3]))
+}
+
+// Govern anchors it over rect, its tile, and gives its core the tile's target (widget.GovernedWindow).
+func (n *floatWindowNode) Govern(rect func() (tui.Rect, bool), target any) {
+	n.govern(rect, target)
+	n.float.SetAnchor(n.anchor())
+	n.mod.Core().Retarget(target)
+}
+
+// Release gives it back its own placement, at its percentages, and its core the Float's target.
+func (n *floatWindowNode) Release() {
+	n.release()
+	n.float.SetAnchor(n.anchor())
+	n.mod.Core().Retarget(nil)
+}
+
+// setTileEdge is the TileManager's: its tile is at e, live, so a governed window docks at the new
+// edge while its tile has no cells.
+func (n *floatWindowNode) setTileEdge(e tui.DockEdge) {
+	n.tileGovernance.setTileEdge(e)
+	if n.governed() {
+		n.float.SetAnchor(n.anchor())
+	}
 }
 
 // inArea is its rectangle in area: its percentages, each side held to the maximum and centred on
@@ -97,9 +134,10 @@ func (n *floatWindowNode) inArea(area tui.Rect) (tui.Rect, bool) {
 }
 
 // windowChanged keeps where a move or resize ended as its percentages, and anchors there again: the
-// drag left the Float at the cells it reached.
+// drag left the Float at the cells it reached. Governed, the operation was the tile's (a shared
+// border's, committed by the tile's target), not its floating state's: it only reports it.
 func (n *floatWindowNode) windowChanged(e widget.WindowChangedEvent) {
-	if e.Operation == widget.WindowMove || e.Operation == widget.WindowResize {
+	if !n.governed() && (e.Operation == widget.WindowMove || e.Operation == widget.WindowResize) {
 		a := n.float.Area()
 		x, y, w, h := widget.FractionOf(e.Bounds, tui.Rect{W: a.W, H: a.H})
 		n.frac = [4]float64{x, y, w, h}

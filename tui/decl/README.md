@@ -817,6 +817,10 @@ moving into it raises it over the other floats. It floats at `floatX`, `floatY`,
 them where a move or resize ended. `maximumWidth` and `maximumHeight` hold it,
 live: a resize stops there, and so does its placement, so a Window that grows (or
 a maximum that shrinks) never stretches it past them; held, it keeps its centre.
+Declared in a TileManager it is a member (see Members): tiled, it is docked over
+its tile, which sizes it (`maximumWidth` and `maximumHeight` hold only its own
+placement), and its percentages and `placed` stay its own floating state,
+untouched, so `TileManager.tiled: false` puts it back exactly where it floated.
 
 ```qml
 FloatWindow { id: editorWindow; label: "Editor"; key: "editor"
