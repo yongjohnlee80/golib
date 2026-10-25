@@ -88,6 +88,15 @@ type CursorColorSetter interface {
 	SetCursorColor(c CellColor, set bool)
 }
 
+// A FRAME'S SIZE. Two capabilities give a backend the size a frame was laid out at, the App's cell
+// buffer for it; the App asserts both once (backendCaps) and uses one per flush:
+//   - SizedFlusher, for a backend whose apply needs the size and the diff as one call (a renderer
+//     whose screen is not a terminal's, as gui's is): FlushSized replaces Flush.
+//   - FrameSizer, for one that keeps Flush and only needs to be told: FrameSize, then Flush.
+//
+// SizedFlusher takes precedence: a backend with both gets FlushSized alone, never FrameSize then
+// Flush.
+
 // SizedFlusher is a Backend that is handed each frame's size with its diff: one whose screen is
 // not a terminal's (a plugin sending its frames to a host, say), and so must know the geometry a
 // diff was drawn at. A resize can reach such a backend before the App has drawn at the new size; the
@@ -101,6 +110,16 @@ type CursorColorSetter interface {
 // to be kept.
 type SizedFlusher interface {
 	FlushSized(size Size, diff []CellUpdate) error
+}
+
+// FrameSizer is a Backend that is told each frame's size just before that frame's Flush: the App's
+// cell buffer for it, the size the diff was laid out at. It is told beside Flush, never instead of
+// it, so a wrapper that embeds such a backend and overrides Flush still sees every frame.
+// TestBackend uses it to drop a frame drawn for a grid InjectResize has replaced, as a terminal
+// clips a frame drawn for its old size. A backend that is also a SizedFlusher is never told: it gets
+// FlushSized alone.
+type FrameSizer interface {
+	FrameSize(size Size)
 }
 
 // ViolationRecorder is a Backend that is told of every constraint violation: a component's Layout
@@ -287,6 +306,7 @@ func (a *App) Capabilities() Capabilities { return a.backend.Capabilities() }
 // place. A nil field is a capability the backend lacks.
 type backendCaps struct {
 	sized       SizedFlusher
+	framed      FrameSizer
 	cursorColor CursorColorSetter
 	graphics    GraphicsBackend
 	violations  ViolationRecorder
@@ -303,6 +323,7 @@ type backendCaps struct {
 func capsOf(b Backend) backendCaps {
 	var c backendCaps
 	c.sized, _ = b.(SizedFlusher)
+	c.framed, _ = b.(FrameSizer)
 	c.cursorColor, _ = b.(CursorColorSetter)
 	c.graphics, _ = b.(GraphicsBackend)
 	c.violations, _ = b.(ViolationRecorder)

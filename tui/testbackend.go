@@ -54,6 +54,10 @@ type TestBackend struct {
 	shown  map[uint32]ImagePlacement
 
 	flushes int
+	// frame is the size the App said the next Flush's frame was laid out for (FrameSize), and
+	// framed whether it said so since the last Flush
+	frame  Size
+	framed bool
 
 	clipboard []byte // last WriteClipboard payload (tui.ClipboardWriter)
 	// clipReads are the ReadClipboard reads held for the test to answer, oldest first;
@@ -376,6 +380,21 @@ func (b *TestBackend) CursorColor() (c CellColor, ok bool) {
 	return b.cur.Color, b.cur.Colored
 }
 
+var _ FrameSizer = (*TestBackend)(nil)
+
+// FrameSize implements FrameSizer: the size the App laid the next Flush's frame out for. A frame for
+// a size the grid no longer has is dropped by that Flush. InjectResize replaced the grid while the
+// frame was on its way (the resize waits in the intake behind the input queued before it), and a
+// real terminal clips a frame drawn for its old size; the resize's own frame repaints the grid
+// whole. This mirrors that clipping and silences nothing: a frame for the grid's size is applied,
+// and an update outside the grid still panics. Told beside Flush, never instead of it, it leaves a
+// wrapper's own Flush in the path.
+func (b *TestBackend) FrameSize(size Size) {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	b.frame, b.framed = size, true
+}
+
 // Flush implements Backend: applies the diff to the grid structurally (byte
 // economy is a term-emitter concern), records the latched cursor state as
 // applied, and increments the flush counter. A width-2 head update covers
@@ -384,6 +403,11 @@ func (b *TestBackend) CursorColor() (c CellColor, ok bool) {
 func (b *TestBackend) Flush(diff []CellUpdate) error {
 	b.mu.Lock()
 	defer b.mu.Unlock()
+	if stale := b.framed && (b.frame.W != b.w || b.frame.H != b.h); stale {
+		b.framed = false
+		return nil // laid out for a grid InjectResize has replaced: dropped, as a terminal clips it
+	}
+	b.framed = false
 	if b.shown == nil {
 		b.shown = map[uint32]ImagePlacement{}
 	}
