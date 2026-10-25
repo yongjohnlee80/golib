@@ -33,7 +33,9 @@ import (
 // its Layout › Tiled. All but
 // edges take a change while built, so a bound one moves the tile, or tiles and releases the window,
 // rather than rebuilding it. tileChanged(key, operation, edge, size, tiled) reports a member's
-// completed operation. A closed or minimized member takes no cells, and stays governed.
+// completed operation. A closed or minimized member takes no cells, and stays governed. A Go
+// program asks whether a member is over its tile now with Governed(key) on the node Program.Find
+// returns: a member released for want of room is not, though its TileManager.tiled is true.
 //
 //	TileManager {
 //	    Drawer { id: explorer; windowResize: true; TileManager.edge: Tui.Left; TileManager.size: 25
@@ -278,6 +280,15 @@ var (
 func (m *tileManagerNode) OverlaidChildren() []Overlaid { return m.members }
 
 func (m *tileManagerNode) placedInDock(r tui.Rect) { m.origin = tui.Point{X: r.X, Y: r.Y} }
+
+// Governed reports whether the member key is over its tile now: false for one the manager released
+// for want of room (its TileManager.tiled still true) or that asks not to be tiled, and for a key
+// that is no member's (a Tile's included). A closed or minimized member stays governed. A Go
+// program asks it on the node Program.Find returns, on the loop.
+func (m *tileManagerNode) Governed(key string) bool {
+	tile := m.tiles.Tile(key)
+	return tile != nil && tile.Governed()
+}
 
 // allowedIn: a manager with members is the Window's own child, the one place its members' overlay
 // and their frame (the Dock's) are known.
