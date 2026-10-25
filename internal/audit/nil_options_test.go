@@ -15,25 +15,16 @@ import (
 // A constructor skips a nil option: a caller building its options conditionally ([]XOption{a,
 // maybeB()}) passes nil where one does not apply, and a constructor that calls it panics far from
 // the line that chose it. So every loop over a variadic ...XOption parameter calls the option only
-// inside `if o != nil`.
-//
-// It covers the tree the tui architecture epic audited and owns: tui/, gui/ and parse/markdown/.
-// The rest of golib was not part of that work; widening the guard there is its own change.
+// inside `if o != nil`, across the whole module.
 //
 // WHAT IT CANNOT SEE: an option called through another variable (fn := o; fn(x)), or a loop over a
 // slice copied from the parameter. It is a syntax check on the loop's own value, which is how every
 // constructor here is written.
 
-// nilOptionScope is the guarded tree, as repository-relative path prefixes.
-var nilOptionScope = []string{"tui/", "gui/", "parse/markdown/"}
-
 func TestConstructorsSkipANilOption(t *testing.T) {
 	root := repoRoot(t)
 	var found []string
 	for _, pf := range parseTree(t, root) {
-		if !inNilOptionScope(pf.rel) {
-			continue
-		}
 		for _, pos := range unguardedOptionCalls(pf.fset, pf.file) {
 			found = append(found, fmt.Sprintf("%s:%d", pf.rel, pos.Line))
 		}
@@ -43,15 +34,6 @@ func TestConstructorsSkipANilOption(t *testing.T) {
 		t.Errorf("%d loops call an option without skipping nil (wrap the call in `if o != nil`):\n  %s",
 			len(found), strings.Join(found, "\n  "))
 	}
-}
-
-func inNilOptionScope(rel string) bool {
-	for _, p := range nilOptionScope {
-		if strings.HasPrefix(rel, p) {
-			return true
-		}
-	}
-	return false
 }
 
 // unguardedOptionCalls is every call of a loop value ranging over a variadic ...XOption parameter

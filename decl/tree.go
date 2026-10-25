@@ -249,7 +249,9 @@ func New(a Adapter, opts ...Option) *Tree {
 		nodes:    make(map[NodeID]*node),
 	}
 	for _, o := range opts {
-		o(t)
+		if o != nil {
+			o(t)
+		}
 	}
 	// An adapter's qualified vocabulary is fixed, so it is read once here
 	// rather than consulted on every resolution.

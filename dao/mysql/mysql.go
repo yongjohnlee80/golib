@@ -69,7 +69,9 @@ func OpenHooked(ctx context.Context, name, dsn string, hook dao.ConnectHook,
 		return nil, err
 	}
 	for _, o := range opts {
-		o(db)
+		if o != nil {
+			o(db)
+		}
 	}
 	if err := db.PingContext(ctx); err != nil {
 		_ = db.Close()

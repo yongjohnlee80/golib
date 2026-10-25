@@ -28,7 +28,9 @@ func WithClearMode(m ClearMode) BindOption {
 func Bind[T any](body []byte, opts ...BindOption) (*Patch[T], error) {
 	cfg := bindConfig{mode: ClearOnNull}
 	for _, o := range opts {
-		o(&cfg)
+		if o != nil {
+			o(&cfg)
+		}
 	}
 	pl := planFor[T]() // panics if T declares a ClearKey field or pointer embed
 	p := &Patch[T]{

@@ -39,7 +39,9 @@ func Ledger(table string) Option { return func(r *Runner) { r.ledger = table } }
 func New(fsys fs.FS, opts ...Option) *Runner {
 	r := &Runner{fsys: fsys, ledger: DefaultLedger}
 	for _, o := range opts {
-		o(r)
+		if o != nil {
+			o(r)
+		}
 	}
 	return r
 }

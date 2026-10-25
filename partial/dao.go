@@ -44,7 +44,9 @@ func ApplyRules[R any, C ~string, ID any, T any](
 ) (dao.DAO[R, C, ID], error) {
 	var cfg applyConfig
 	for _, o := range opts {
-		o(&cfg)
+		if o != nil {
+			o(&cfg)
+		}
 	}
 	rules, err := p.Rules()
 	if err != nil {

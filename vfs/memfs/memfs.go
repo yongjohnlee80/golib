@@ -52,7 +52,9 @@ func WithClock(now func() time.Time) Option { return func(f *FS) { f.now = now }
 func New(opts ...Option) *FS {
 	f := &FS{nodes: map[string]*node{}, watchers: map[*watcher]struct{}{}, now: time.Now}
 	for _, o := range opts {
-		o(f)
+		if o != nil {
+			o(f)
+		}
 	}
 	f.seq++
 	f.nodes["."] = &node{dir: true, perm: 0o755, mod: f.now(), ver: f.seq}

@@ -88,7 +88,9 @@ type Lexer struct{ cfg lexerConfig }
 func New(opts ...Option) *Lexer {
 	var cfg lexerConfig
 	for _, o := range opts {
-		o(&cfg)
+		if o != nil {
+			o(&cfg)
+		}
 	}
 	return &Lexer{cfg: cfg}
 }
