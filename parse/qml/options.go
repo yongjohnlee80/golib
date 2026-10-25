@@ -18,8 +18,8 @@ func New(opts ...Option) QML {
 
 // MaxDepth bounds node nesting. Without it, or with n <= 0, the parser applies
 // [DefaultQMLMaxDepth].
-func MaxDepth(n int) Option { return func(q *QML) { q.MaxDepth = n } }
+func MaxDepth(n int) Option { return func(q *QML) { q.maxDepth = n } }
 
 // WithName names the source in every position of the tree and its errors, as in
 // "QuitDialog.qml:3:5".
-func WithName(file string) Option { return func(q *QML) { q.File = file } }
+func WithName(file string) Option { return func(q *QML) { q.file = file } }

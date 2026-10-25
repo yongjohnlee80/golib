@@ -5,9 +5,9 @@ import (
 	"testing"
 )
 
-func TestNew_MatchesTheLegacyFields(t *testing.T) {
+func TestNew_SetsItsOwnFields(t *testing.T) {
 	t.Parallel()
-	if got, want := New(MaxDepth(5), WithName("Quit.qml"), nil), (QML{MaxDepth: 5, File: "Quit.qml"}); got != want {
+	if got, want := New(MaxDepth(5), WithName("Quit.qml"), nil), (QML{maxDepth: 5, file: "Quit.qml"}); got != want {
 		t.Errorf("New = %+v, want %+v", got, want)
 	}
 	if got := New(); got != (QML{}) {

@@ -61,24 +61,18 @@ import (
 //
 // The zero value is usable.
 type QML struct {
-	// MaxDepth bounds node nesting. Zero means [DefaultQMLMaxDepth].
+	// maxDepth bounds node nesting. Zero means [DefaultQMLMaxDepth].
 	//
 	// A schema is usually hand-written and shallow, but this parser is
 	// recursive and a reload path may be handed a file that a watcher caught
 	// mid-write or that arrived from somewhere less trusted. A depth bound
 	// turns a stack overflow — which takes the process down and cannot be
 	// recovered — into an ordinary [parse.SyntaxError] the caller can show.
-	//
-	// Deprecated: configure with [MaxDepth] and [New]. The field remains for existing callers,
-	// which are moving to the options.
-	MaxDepth int
-	// File names the source for diagnostics, and is carried by every position
+	maxDepth int
+	// file names the source for diagnostics, and is carried by every position
 	// in the tree: "QuitDialog.qml:3:5" rather than a bare 3:5 once a screen
 	// is made of several files.
-	//
-	// Deprecated: configure with [WithName] and [New]. The field remains for existing callers,
-	// which are moving to the options.
-	File string
+	file string
 }
 
 // DefaultQMLMaxDepth is the nesting limit QML applies when MaxDepth is zero.
@@ -341,8 +335,8 @@ type SpecTree struct {
 // "wrong" and hold the last good tree instead of flashing an error on every
 // save.
 func (q QML) Parse(src []byte) (SpecTree, error) {
-	sc := parse.NewFileScanner(q.File, src)
-	p := &qmlParser{sc: sc, maxDepth: q.MaxDepth}
+	sc := parse.NewFileScanner(q.file, src)
+	p := &qmlParser{sc: sc, maxDepth: q.maxDepth}
 	if p.maxDepth <= 0 {
 		p.maxDepth = DefaultQMLMaxDepth
 	}
