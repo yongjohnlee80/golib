@@ -879,7 +879,11 @@ fit, the most recently tiled is released first. A closed, never-opened or minimi
 cells and stays governed. A TileManager with members is a Window's own child, and a reserving Drawer
 can't be one. From Go, the node `Program.Find` returns answers `Governed(key string) bool`, on the
 loop: whether that member is over its tile now. One released for want of room isn't, though its
-`TileManager.tiled` is true; a key that is no member's isn't either.
+`TileManager.tiled` is true; a key that is no member's isn't either. A `FloatWindow`'s and a
+`Drawer`'s node answers `ScreenRect() (tui.Rect, bool)`: where its window is drawn, in the
+Window's frame (the screen's), tiled or floating alike, and false while it isn't on screen (closed,
+minimized, or not yet laid out). A window core's own `Bounds` is in its target's frame instead: a
+tile's is its manager's, a Float's the overlay's.
 
 ```qml
 Window { TileManager {
