@@ -150,7 +150,7 @@ func TestMoveByFloatsTheDrawer(t *testing.T) {
 func TestADrawerNotMovableIgnoresTheMoveDrag(t *testing.T) {
 	doc := strings.Replace(floatDoc, "movable: true; ", "", 1)
 	s, placed, _ := runFloat(t, doc, false)
-	x0, y0 := panelAt(s)
+	r0 := windowRect(t, s, "d")
 	s.Keys(t, tui.MouseEvent{Kind: tui.MousePress, Button: tui.MouseLeft, Mods: tui.ModAlt, X: 5, Y: 10},
 		tui.MouseEvent{Kind: tui.MouseMotion, Button: tui.MouseLeft, X: 35, Y: 10},
 		tui.MouseEvent{Kind: tui.MouseRelease, Button: tui.MouseLeft, X: 35, Y: 10})
@@ -159,8 +159,8 @@ func TestADrawerNotMovableIgnoresTheMoveDrag(t *testing.T) {
 			t.Error("moveBy moved a Drawer that is not movable")
 		}
 	})
-	if x, y := panelAt(s); x != x0 || y != y0 || len(placed.all()) != 0 {
-		t.Errorf("moved to %d,%d (from %d,%d), placed %v", x, y, x0, y0, raws(placed))
+	if r := windowRect(t, s, "d"); r != r0 || len(placed.all()) != 0 {
+		t.Errorf("moved to %+v (from %+v), placed %v", r, r0, raws(placed))
 	}
 }
 

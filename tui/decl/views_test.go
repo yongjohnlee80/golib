@@ -690,7 +690,6 @@ func TestAListViewCursorFollowsItsRecord(t *testing.T) {
 	s := runModelDoc(t, `ListView { model: App.people; textRole: "name"; onActivated: App.use(index) }`, m, rec)
 	s.WaitForText(t, "bob")
 	s.Keys(t, tui.KeyEvent{Kind: tui.KeyPress, Code: tui.KeyTab}, tui.KeyEvent{Kind: tui.KeyPress, Code: tui.KeyDown})
-	onScreenLoop(t, s, func() {}) // the Down lands
 	onScreenLoop(t, s, func() { m.Insert(0, tuidecl.Row{"key": "z", "name": "zed"}) })
 	s.WaitForText(t, "zed")
 	s.Keys(t, tui.KeyEvent{Kind: tui.KeyPress, Code: tui.KeyEnter})
