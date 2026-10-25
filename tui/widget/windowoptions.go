@@ -78,3 +78,7 @@ func WithWindowResizeHandle(h Handle) WindowModOption { return func(c *WindowCor
 // WithWindowMinSize sets the resize minimum before the placement owner's ceiling.
 // The containing area still wins when it is smaller than this requested minimum.
 func WithWindowMinSize(s tui.Size) WindowModOption { return func(c *WindowCore) { c.minimum = s } }
+
+// WithWindowMaxSize sets the resize maximum, as WithWindowMinSize sets the minimum: a resize stops
+// there. A zero dimension has no maximum; the containing area still wins when it is smaller.
+func WithWindowMaxSize(s tui.Size) WindowModOption { return func(c *WindowCore) { c.maximum = s } }
