@@ -83,9 +83,14 @@ type drawerNode struct {
 	reserve bool
 	slot    tui.Rect
 	onEdge  func(tui.DockEdge) // the Window's: the strip follows a new edge
+	// a TileManager's member: while governed it is over its tile (tilemember.go)
+	tileGovernance
 }
 
-var _ Overlaid = (*drawerNode)(nil)
+var (
+	_ Overlaid   = (*drawerNode)(nil)
+	_ tileMember = (*drawerNode)(nil)
+)
 
 // defaultDrawerSize is a Drawer's size when its document gives none: a third of the Window.
 const defaultDrawerSize = 33
@@ -120,7 +125,8 @@ func buildDrawer(b Build) (tui.Component, []string, error) {
 	n := &drawerNode{edge: tui.DockLeft, size: defaultDrawerSize, length: 100, opened: b.Emitter("opened"), closed: b.Emitter("closed"),
 		content: content, shortcuts: shortcuts, keyScope: keyScope, resizable: resizable || windowResize, minSize: 10, minLength: 10, resized: b.EmitterWith("resized"),
 		windowResize: windowResize, windowConfig: wc, windowCollector: b.WindowCollector, modal: modal, closeOnQ: closeOnQ, windowEmit: b.EmitterWith("changed"),
-		movable: movable, frac: [4]float64{25, 25, 50, 50}, placed: b.EmitterWith("placed"), reserve: reserve}
+		movable: movable, frac: [4]float64{25, 25, 50, 50}, placed: b.EmitterWith("placed"), reserve: reserve,
+		tileGovernance: tileGovernance{govKey: b.ID}}
 	if n.resizable { // a drag stops a resizable panel short of a sliver along its edge
 		n.minLength = 20
 	}
@@ -191,7 +197,36 @@ func (n *drawerNode) WindowBehavior() *widget.WindowCore {
 	return n.windowMods.Core()
 }
 
+// Govern implements widget.GovernedWindow: its TileManager places the Drawer over its tile, and its
+// window takes the tile's target. Its own edge, size, length and floating rectangle are untouched, so
+// Release puts it back exactly where it was.
+func (n *drawerNode) Govern(rect func() (tui.Rect, bool), target any) {
+	n.stopWindowDrag()
+	n.govern(rect, target)
+	n.place()
+	n.windowMods.Core().Retarget(target)
+}
+
+// setTileEdge is the TileManager's: its tile is at e now, and governed it falls back docked there.
+func (n *drawerNode) setTileEdge(e tui.DockEdge) {
+	n.tileGovernance.setTileEdge(e)
+	if n.governed() {
+		n.place()
+	}
+}
+
+// Release implements widget.GovernedWindow: the Drawer is its own again, at its own place.
+func (n *drawerNode) Release() {
+	n.release()
+	n.windowMods.Core().Retarget(nil)
+	n.place()
+}
+
 func (n *drawerNode) windowChanged(e widget.WindowChangedEvent) {
+	if n.governed() { // its TileManager owns its geometry: its own place is kept for Release
+		n.windowEmit(windowChangedArgs(e)...)
+		return
+	}
 	switch {
 	case n.movable && (e.Operation == widget.WindowMove || e.Operation == widget.WindowResize):
 		// a movable Drawer floats where a move or resize ended, as percentages of the Window: the
@@ -247,6 +282,9 @@ func (n *drawerNode) setEdge(e tui.DockEdge) {
 			n.frame.Remove(n.grip)
 		}
 		n.frame.Add(n.wrapped())
+		if n.governed() { // a new window: its core takes the tile's target, as the one it replaces did
+			n.windowMods.Core().Retarget(n.govTarget)
+		}
 	}
 	n.place()
 }

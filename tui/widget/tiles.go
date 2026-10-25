@@ -230,6 +230,17 @@ func (tile *Tile) Place() TilePlace { return tile.place }
 // Hidden reports whether the tile is minimized.
 func (tile *Tile) Hidden() bool { return tile.hidden }
 
+// away reports whether a tile takes no cells: minimized, or a member whose own window is not shown.
+// That is a closed one, or one never opened, which has no own visibility yet: its core is bound when
+// its node first mounts.
+func (tile *Tile) away() bool {
+	if tile.hidden || tile.gov == nil {
+		return tile.hidden
+	}
+	own := tile.target.own
+	return own == nil || !own.WindowVisible()
+}
+
 // Tile is the tile by key, or nil.
 func (t *Tiles) Tile(key string) *Tile { return t.tile(key) }
 
@@ -275,9 +286,9 @@ func (t *Tiles) listChildren() []tui.Component {
 	return out
 }
 
-// shown reports whether a tile takes space: in play, not minimized, and the maximized one if any is.
+// shown reports whether a tile takes space: in play, not away, and the maximized one if any is.
 func (t *Tiles) shown(tile *Tile) bool {
-	return tile.inPlay() && !tile.hidden && (t.zoomed == nil || t.zoomed == tile)
+	return tile.inPlay() && !tile.away() && (t.zoomed == nil || t.zoomed == tile)
 }
 
 // sync shows exactly the Tile children that take space, and lays out again. A member shows as its
@@ -390,7 +401,7 @@ func (t *Tiles) fits(size tui.Size, set []*Tile) bool {
 func (t *Tiles) plan(size tui.Size, op *tileOp) map[*Tile]tui.Rect {
 	out := make(map[*Tile]tui.Rect, len(t.tiles))
 	full := tui.Rect{W: size.W, H: size.H}
-	if t.zoomed != nil && !t.zoomed.hidden {
+	if t.zoomed != nil && !t.zoomed.away() {
 		out[t.zoomed] = full
 		return out
 	}
@@ -401,7 +412,7 @@ func (t *Tiles) plan(size tui.Size, op *tileOp) map[*Tile]tui.Rect {
 	var last *Tile // the last strip placed: it takes the remainder when no centre is tiled
 	for _, tile := range order {
 		p := place(tile)
-		if tile.hidden || !tile.inPlay() || p.Edge == tui.DockCenter {
+		if tile.away() || !tile.inPlay() || p.Edge == tui.DockCenter {
 			continue
 		}
 		last = tile
@@ -423,7 +434,7 @@ func (t *Tiles) plan(size tui.Size, op *tileOp) map[*Tile]tui.Rect {
 	}
 	centre := false
 	for _, tile := range order {
-		if place(tile).Edge == tui.DockCenter && tile.inPlay() {
+		if place(tile).Edge == tui.DockCenter && tile.inPlay() && !tile.away() {
 			out[tile], centre = rem, true
 		}
 	}
@@ -485,7 +496,7 @@ func (t *Tiles) axis(size tui.Size, order []*Tile, place func(*Tile) TilePlace, 
 	over := centreMinOf(order, place, inPlay) - extent
 	for _, tile := range order {
 		p := place(tile)
-		if tile.hidden || !inPlay(tile) || p.Edge == tui.DockCenter || (p.Edge == tui.DockLeft || p.Edge == tui.DockRight) != horizontal {
+		if tile.away() || !inPlay(tile) || p.Edge == tui.DockCenter || (p.Edge == tui.DockLeft || p.Edge == tui.DockRight) != horizontal {
 			continue
 		}
 		m := max(p.Min, 0)

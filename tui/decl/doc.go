@@ -88,6 +88,7 @@
 //	Capability          Method(s)                         Purpose
 //	──────────────────  ────────────────────────────────  ──────────────────────────────────────────
 //	[Overlaid]          SetOverlay(host, afterClose)      Opens over the Window: a popup, a prompt.
+//	[OverlayContainer]  OverlaidChildren()                Laid out; its children open over the Window.
 //	[DeclarationOnly]   DeclarationOnly()                 A declaration never on screen; no focus.
 //	[HostObject]        HostObject()                      A host value [Value] passes as an object.
 //	[ItemModel]         RowCount, Data, Key, Subscribe …  A list or table's rows, for its views.

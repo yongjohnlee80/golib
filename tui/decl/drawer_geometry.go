@@ -41,8 +41,13 @@ func (n *drawerNode) percentOf(sz, win tui.Size) (size, length int) {
 // resizable Drawer's Float is sized by its content, which the frame sizes from size and length, so
 // a drag can change them. A floating Drawer is at its percentages of the Window, and a move or
 // resize in progress at the rectangle it would take; maximized, it is docked and the frame fills
-// the Window.
+// the Window. Governed by a TileManager, it is over its tile.
 func (n *drawerNode) place() {
+	if n.governed() {
+		n.float.SetAnchor(n.governedAnchor())
+		n.float.SetSizeFraction(0, 0)
+		return
+	}
 	if n.movable && !n.windowTarget.maximized {
 		switch {
 		case n.windowTarget.moving != nil:
@@ -90,20 +95,7 @@ func (n *drawerNode) place() {
 func (n *drawerNode) placeAnchor() { n.float.SetAnchor(n.edgeAnchor()) }
 
 // edgeAnchor is the Float's anchor at the Drawer's edge.
-func (n *drawerNode) edgeAnchor() widget.Anchor {
-	switch n.edge {
-	case tui.DockRight:
-		return widget.Right
-	case tui.DockTop:
-		return widget.Top
-	case tui.DockBottom:
-		return widget.Bottom
-	case tui.DockCenter:
-		return widget.Center
-	default:
-		return widget.Left
-	}
-}
+func (n *drawerNode) edgeAnchor() widget.Anchor { return edgeAnchorOf(n.edge, widget.Center) }
 
 // reserving reports whether the Drawer takes its strip of the Window from the page now: reserve set,
 // at an edge, open, docked, and not minimized. Maximized it keeps the strip, so the page beneath
@@ -164,10 +156,15 @@ func (n *drawerNode) panelSize(viewport tui.Size) tui.Size {
 	return n.cells(size, length, viewport)
 }
 
-// sizedByFloat reports whether the Float sized the panel and the frame only fills it: over its strip
+// sizedByFloat reports whether the Float sized the panel and the frame only fills it: over its tile
+// while it has cells, over its strip
 // (the Window's Dock sized it, a drag in progress included), or a movable Drawer floating or being
 // moved (the Float's AtFraction or AtRect).
 func (n *drawerNode) sizedByFloat() bool {
+	if n.governed() {
+		_, tiled := n.gov()
+		return tiled
+	}
 	if n.windowTarget.moving == nil {
 		if _, over := n.liveSlot(); over {
 			return true

@@ -256,3 +256,13 @@ type OpensWithWindow interface {
 	Overlaid
 	OpenWithWindow() error
 }
+
+// OverlayContainer is a component laid out in the Window whose children open over it: a
+// TileManager, whose windows stay in the overlay while it places them. The Window collects
+// OverlaidChildren beside its own [Overlaid] children, each time it arranges them, so each gets its
+// overlay, opens with the Window if it does ([OpensWithWindow]), and gives the keyboard back by the
+// same rules.
+type OverlayContainer interface {
+	tui.Component
+	OverlaidChildren() []Overlaid
+}

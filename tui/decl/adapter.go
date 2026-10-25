@@ -356,6 +356,9 @@ type built struct {
 	nominee tui.Component
 	// pos is where the schema declared it.
 	pos parse.Position
+	// receiver is where its container takes a change of its live attached properties
+	// (Build.OnAttached); nil when none registered one.
+	receiver AttachedReceiver
 }
 
 // Create implements decl.Adapter.
@@ -530,6 +533,9 @@ func (a *Adapter) Apply(app decl.Application) error {
 	}
 	if u, ok := universalOf(app.Prop); ok && u.set != nil {
 		return u.set(a, b, app.Node, app.Prop, app.Value)
+	}
+	if a.isLiveAttached(app.Prop) {
+		return a.applyAttached(app.Node, b, app)
 	}
 	set, ok := a.contractOf(b.typ).setters[app.Prop]
 	if !ok {
