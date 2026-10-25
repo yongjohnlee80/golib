@@ -50,10 +50,13 @@ type GovernedWindow interface {
 type TilePlace struct {
 	Edge  tui.DockEdge   // DockCenter for the fill tile: at most one
 	Edges []tui.DockEdge // the edges a re-dock may take; nil: Edge only. DockCenter: it may swap into the centre
-	Size  float64        // requested percent of the manager across Edge; ignored at the centre
-	Min   int            // cells across its edge (a strip), or on both axes (the centre), unless MinW or MinH says otherwise
-	MinW  int            // cells across the width: a left or right strip's, and the centre's; 0: Min
-	MinH  int            // cells across the height: a top or bottom strip's, and the centre's; 0: Min
+	// Size is the requested percent of the manager across Edge; ignored at the centre. A border drag
+	// stores the depth the strip is drawn at when it lets go, cells taken beyond the centre's maximum
+	// included, and the percent is kept as it is on any size of manager.
+	Size float64
+	Min  int // cells across its edge (a strip), or on both axes (the centre), unless MinW or MinH says otherwise
+	MinW int // cells across the width: a left or right strip's, and the centre's; 0: Min
+	MinH int // cells across the height: a top or bottom strip's, and the centre's; 0: Min
 	// MaxW and MaxH are the most cells the centre takes across the width and the height; 0: no
 	// maximum, and never under its minimum on that axis. The strips beside the centre on that axis
 	// take the rest; with none, the centre is centred at its maximum. A strip ignores them.
@@ -712,7 +715,7 @@ func (t *Tiles) SetMaxSize(key string, cells tui.Size) {
 }
 
 // SetSize sets a strip's requested size, a percent of the manager across its edge: kept as asked,
-// clamped only where laid out.
+// clamped only where laid out. A border drag stores the strip's drawn depth (TilePlace.Size).
 func (t *Tiles) SetSize(key string, pct float64) {
 	if tile := t.tile(key); tile != nil && tile.place.Size != pct && !math.IsNaN(pct) {
 		t.cancelGesture()
