@@ -174,7 +174,9 @@ Window { Text { text: "page" }
 	card := widget.NewBox(row, widget.WithTitle("CARD"))
 	onScreenLoop(t, s, func() {
 		n, _ := s.Program.Find("fw")
-		n.(interface{ AddAligned(tui.Component, tui.Align) }).AddAligned(card, tui.AlignTopRight)
+		n.(interface {
+			AddAligned(tui.Component, tui.Align)
+		}).AddAligned(card, tui.AlignTopRight)
 	})
 	onScreenLoop(t, s, func() {}) // laid out; not waited on by its drawing, which the order also decides
 	focused := func() (one, xx bool) {
