@@ -235,10 +235,10 @@ func (f *Float) SetSizeFraction(wPct, hPct int) {
 	f.RequestLayout()
 }
 
-// Show mounts the float's layer onto its Stack position (loop goroutine).
-// A modal Show seeds focus into the first focusable widget of the child
-// subtree; hiding restores the previous focus via the runtime's scope
-// stack.
+// Show mounts the float's layer onto its Stack position (loop goroutine) and raises it: a window
+// that opens comes forward (OverlayHost.Raise), modal or not. A modal Show seeds focus into the
+// first focusable widget of the child subtree; hiding restores the previous focus via the
+// runtime's scope stack. A non-modal Show leaves the keyboard where it is.
 func (f *Float) Show() {
 	if f.ctx == nil {
 		panic(errs.Fatal{Op: "widget", Rule: "Float.Show before mount — attach the Float to an OverlayHost (host.Attach) or a Stack layer first"})
@@ -250,11 +250,12 @@ func (f *Float) Show() {
 	f.ctx.Mount(f.layer)
 	f.shown = true
 	f.RequestLayout()
+	// A window that opens comes forward, whenever it was attached: an open dialog above the panels
+	// and the dialogs open before it, as a Modal's Open puts it; a panel above the panels, beneath
+	// the dialogs. A panel raised since this one was attached would otherwise cover it, and a
+	// non-modal one does not take the keyboard to raise itself.
+	f.raise()
 	if f.modal {
-		// An open dialog: above the panels and the dialogs open before it, as a Modal's Open
-		// puts it, whenever this Float was attached. A panel raised since it was attached would
-		// otherwise cover the dialog that holds the keyboard.
-		f.raise()
 		if !focusFirst(f.layer.Context(), f.child) {
 			// No focusable content: the layer itself is the trap's tab stop (trapFallback), so
 			// keys (Esc!) stay inside the modal.
