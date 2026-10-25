@@ -124,7 +124,13 @@ host.Attach(float)
   `WindowGesture` is told each drag and step before it applies
   (`GestureBegan`), decides at release whether it completed (`GestureChanged`,
   in place of the rect comparison), and is told of a lost capture
-  (`GestureLost`). `Tiles` uses both; a target without them is unchanged.
+  (`GestureLost`). `WindowChangeHandler` is told each operation the window
+  completes, after the owner's `WithWindowChanged`. `Tiles` uses all three; a
+  target without them is unchanged.
+- **Retarget:** `WindowCore.Retarget(target)` gives a bound core another target
+  and probes its facets again, cancelling a drag in flight; the window's state is
+  kept, and `Retarget(nil)` gives back the target it had. A tile manager governs
+  a window it does not own this way (`Tiles.AddMember`, a `GovernedWindow`).
 - **Minimize:** non-modal only, with an explicit collector. Content keeps its
   NodeID, lifetime context, tasks and timers. The model requires no taskbar;
   focus uses ordinary runtime repair, with an optional consumer focus hook.
