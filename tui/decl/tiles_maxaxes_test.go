@@ -139,3 +139,36 @@ func TestTheCentresMaximumDoesNotDecideWhatFits(t *testing.T) {
 		t.Fatalf("the released agent isn't drawn at its own place:\n%s", s.String())
 	}
 }
+
+// A Tile at the centre takes its own maximumWidth and maximumHeight, live: 40 wide, centred in 80;
+// then 60; then 10 rows high, centred in 24.
+func TestATileAtTheCentreTakesItsOwnMaximumsLive(t *testing.T) {
+	doc := `import tui 1.0
+import demo 1.0
+Window {
+ TileManager {
+  Tile { id: pg; edge: Tui.Center; maximumWidth: App.pgW; maximumHeight: App.pgH; Frame { title: "PAGE"; Text { text: "p" } } }
+ }
+}`
+	s := decltest.Run(t, 80, 24, tuidecl.LayoutSource("main.qml", []byte(doc)),
+		tuidecl.Singleton("demo", "1.0", "App"),
+		tuidecl.Sources(map[string]any{"App.pgW": 40, "App.pgH": 0}))
+	titleAt(t, s, "PAGE", 22, 0)
+	set(t, s, "App.pgW", 60)
+	titleAt(t, s, "PAGE", 12, 0)
+	set(t, s, "App.pgH", 10)
+	titleAt(t, s, "PAGE", 12, 7)
+}
+
+// A member at the centre takes its TileManager.maximumHeight live, as its maximumWidth: 12 rows high,
+// centred in 24.
+func TestAMemberAtTheCentreTakesItsMaximumHeightLive(t *testing.T) {
+	doc := strings.Replace(maxAxesDoc, "TileManager.maximumWidth: App.pageW;", "TileManager.maximumWidth: App.pageW; TileManager.maximumHeight: App.pageH;", 1)
+	s := decltest.Run(t, 80, 24, tuidecl.LayoutSource("main.qml", []byte(doc)),
+		tuidecl.Singleton("demo", "1.0", "App"),
+		tuidecl.Sources(map[string]any{"App.pageW": 40, "App.pageH": 0, "App.pageMinW": 5, "App.agTiled": true, "App.agMinW": 5, "App.exTiled": true}),
+		tuidecl.AdapterOptions(tuidecl.WithWindowCollector(widget.NewMinimizedWindows())))
+	waitScreenRect(t, s, "pg", tui.Rect{X: 20, Y: 0, W: 40, H: 24})
+	set(t, s, "App.pageH", 12)
+	waitScreenRect(t, s, "pg", tui.Rect{X: 20, Y: 6, W: 40, H: 12})
+}

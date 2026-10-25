@@ -40,3 +40,37 @@ func TestATilePlacesNonFiniteMinimumIsRefused(t *testing.T) {
 		}
 	}
 }
+
+// A Tile's maximumWidth and maximumHeight set before its manager is built are its place's own, as its
+// minimums are; a negative one is 0, and one that is not finite changes nothing.
+func TestATilesAxisMaximumsBeforeItsManagerAreItsPlaces(t *testing.T) {
+	n := &tileNode{}
+	n.setMaximumWidth(40)
+	n.setMaximumHeight(12)
+	if n.place.MaxW != 40 || n.place.MaxH != 12 {
+		t.Fatalf("set before the manager: MaxW %d, MaxH %d; want 40 and 12", n.place.MaxW, n.place.MaxH)
+	}
+	for _, x := range []float64{math.NaN(), math.Inf(1), math.Inf(-1)} {
+		n.setMaximumWidth(x)
+		n.setMaximumHeight(x)
+	}
+	if n.place.MaxW != 40 || n.place.MaxH != 12 {
+		t.Fatalf("after non-finite maximums: MaxW %d, MaxH %d; want 40 and 12 kept", n.place.MaxW, n.place.MaxH)
+	}
+	n.setMaximumWidth(-3)
+	if n.place.MaxW != 0 {
+		t.Fatalf("a negative maximumWidth: MaxW %d; want 0, no maximum", n.place.MaxW)
+	}
+}
+
+// A place whose maximum on either axis is not finite is refused, as a minimum is.
+func TestATilePlacesNonFiniteMaximumIsRefused(t *testing.T) {
+	for name, s := range map[string]tilePlaceSpec{
+		"maximumWidth NaN":   {maxW: math.NaN()},
+		"maximumHeight -Inf": {maxH: math.Inf(-1)},
+	} {
+		if _, err := s.done("a Tile"); err == nil || !strings.Contains(err.Error(), "finite") {
+			t.Errorf("%s: %v; want it refused as not finite", name, err)
+		}
+	}
+}
