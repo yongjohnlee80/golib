@@ -350,7 +350,7 @@ func destroyer[W any](release func(W)) func(tui.Component) {
 
 // ---------------------------------------------------------------- builders
 
-// Field reads one constructor property into a builder's local. [ReadProps]
+// Field reads one constructor property into a builder's local. [Build.ReadProps]
 // takes a table of them; StringField and its siblings make one.
 type Field func(qml.SpecValue) error
 

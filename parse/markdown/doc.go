@@ -26,8 +26,8 @@
 //
 // # Extensions
 //
-// Without options the parser is CommonMark exactly. [GFM] adds GitHub Flavored Markdown 0.29
-// (tables, task list items, strikethrough, extended autolinks); [Obsidian] adds frontmatter,
+// Without options the parser is CommonMark exactly. [WithGFM] adds GitHub Flavored Markdown 0.29
+// (tables, task list items, strikethrough, extended autolinks); [WithObsidian] adds frontmatter,
 // wikilinks, embeds, tags and callouts. Both hook into the two phases rather than fork them.
 // An extension re-reads some valid CommonMark (a pipe table was a paragraph), so what is promised
 // is narrower: on a source its [Extension.Recognizes] rejects, the tree is the same with the

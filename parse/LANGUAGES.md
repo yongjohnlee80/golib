@@ -68,4 +68,5 @@ func Definition() highlight.Definition {
 3. A golden of the old behaviour, captured from the code before it moves, holds both paths to it.
 4. The old path is removed only in a later release that says so.
 
-`highlight/sql` → `parse/sql` is the worked example.
+`parse/sql` is the worked example: its highlighter moved from `highlight`'s tree, forwarded there
+until v0.8.0 removed the old path.

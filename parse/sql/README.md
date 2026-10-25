@@ -135,8 +135,8 @@ fence aliases `sql`, `postgresql`, `postgres`, `psql`, `pgsql`, `sqlite`, `mysql
 and `parse/languages` composes them. Each document gets a highlighter of its own
 (`SourceFactory`). `Highlighter(dialect)` is one on its own.
 
-The highlighter moved here from `highlight/sql`, which forwards to this package, deprecated, and
-returns what it always did. A golden captured from `highlight/sql` before the move holds both.
+The highlighter moved here from `highlight`'s tree; the old import path forwarded to this package
+until v0.8.0 removed it. A golden captured before the move holds this package to what it returned.
 
 ## Numbers are a Form, not a Run
 
