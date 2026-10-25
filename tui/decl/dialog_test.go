@@ -169,9 +169,6 @@ func TestADialogsShortcutsAreLiveWhileItIsOpen(t *testing.T) {
 		tuidecl.Handlers(map[string]decl.HandlerFunc{"App.copy": func([]qml.SpecValue) error { fired++; return nil }}))
 	s.WaitForText(t, "under")
 	s.Keys(t, decltest.Rune('y'))
-	// Keys and posted work travel different lanes: give the key time to land.
-	time.Sleep(50 * time.Millisecond)
-	onScreenLoop(t, s, func() {})
 	if fired != 0 {
 		t.Fatal("a dialog's shortcut fired while the dialog was closed")
 	}
@@ -182,8 +179,6 @@ func TestADialogsShortcutsAreLiveWhileItIsOpen(t *testing.T) {
 	})
 	s.WaitForText(t, "┌ V ")
 	s.Keys(t, decltest.Rune('y'))
-	time.Sleep(50 * time.Millisecond)
-	onScreenLoop(t, s, func() {})
 	if fired != 1 {
 		t.Fatalf("the dialog's shortcut fired %d times while open, want 1", fired)
 	}

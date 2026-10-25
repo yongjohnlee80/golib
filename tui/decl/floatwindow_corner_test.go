@@ -196,7 +196,6 @@ Window { Text { text: "page" }
 	call(t, s, "one", "forceActiveFocus")
 	for range 3 {
 		s.Keys(t, tui.KeyEvent{Kind: tui.KeyPress, Code: tui.KeyTab})
-		onScreenLoop(t, s, func() {})
 		if _, xx := focused(); xx {
 			t.Fatal("Tab reached the hidden card's X")
 		}

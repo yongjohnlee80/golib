@@ -117,7 +117,6 @@ func TestMenuRowsFromAModelHonourVisibleAndEnabled(t *testing.T) {
 	}
 	enter := tui.KeyEvent{Kind: tui.KeyPress, Code: tui.KeyEnter}
 	s.Keys(t, enter) // on "Zoom out", disabled — or moved past it to Exit
-	onScreenLoop(t, s, func() {})
 	for _, v := range rec.all() {
 		if v.Raw == "view.zoom_out" {
 			t.Errorf("a disabled row was triggered")

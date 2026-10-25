@@ -235,8 +235,11 @@ func TestAFloatWindowTiledMidDragIsOverItsTile(t *testing.T) {
 	titleAt(t, s, "FLOAT", 47, 7)
 	set(t, s, "App.fwTiled", true)
 	titleAt(t, s, "FLOAT", 2, 0)
+	tile := windowRect(t, s, "fw")
 	s.Keys(t, tui.MouseEvent{Kind: tui.MouseRelease, Button: tui.MouseLeft, Mods: tui.ModAlt, X: 55, Y: 12})
-	onScreenLoop(t, s, func() {})
+	if got := windowRect(t, s, "fw"); got != tile {
+		t.Fatalf("the release of the cancelled drag moved it off its tile: %+v, want %+v", got, tile)
+	}
 	titleAt(t, s, "FLOAT", 2, 0)
 	titleAt(t, s, "PAGE", 22, 0)
 }
