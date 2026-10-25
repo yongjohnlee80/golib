@@ -4,11 +4,37 @@ import (
 	"fmt"
 	"os"
 
+	"github.com/yongjohnlee80/golib/errs"
+
 	"github.com/yongjohnlee80/golib/tui/pty"
 )
 
 // The Terminal's process supervision: starting its program (one generation at a time), stopping
 // and shutting down, the exit and the output it ingests.
+
+// TerminalSignaler is a [TerminalProcess] that can signal its program's process group. *pty.PTY
+// is one; a process that is not cannot be signalled.
+type TerminalSignaler interface {
+	Signal(sig os.Signal) error
+}
+
+// ErrTerminalSignalUnsupported means the Terminal's process is no [TerminalSignaler].
+var ErrTerminalSignalUnsupported = errs.Sentinel(errs.ErrUnsupported, "terminal process cannot be signalled")
+
+// Signal sends sig to the running program's process group, as kill -SIG -pgid does: SIGCONT resumes
+// a program that stopped itself, such as a CLI suspended by its own Ctrl+Z with no shell to fg it.
+// It refuses with ErrTerminalNotRunning when no program is running, and with
+// ErrTerminalSignalUnsupported when the process cannot be signalled. On the UI loop.
+func (t *Terminal) Signal(sig os.Signal) error {
+	if !t.Running() {
+		return ErrTerminalNotRunning
+	}
+	s, ok := t.proc.(TerminalSignaler)
+	if !ok {
+		return ErrTerminalSignalUnsupported
+	}
+	return s.Signal(sig)
+}
 
 // Start runs the program, unless it is running. Before the mount it runs
 // once the Terminal is mounted. After an exit it starts a new one, below
