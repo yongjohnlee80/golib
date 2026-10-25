@@ -169,3 +169,64 @@ func TestAGovernedFloatWindowMinimizedStaysHiddenUntilRestored(t *testing.T) {
 	call(t, s, "fw", "restore")
 	titleAt(t, s, "FLOAT", 42, 5)
 }
+
+// A governed FloatWindow's maximum doesn't hold its tile: the tile composition sizes it (D2). With
+// maximumWidth 15 below its 20-cell tile, Alt-right on the shared border widens the tile to 40, with
+// no jump to the maximum on the first step, and resizeBy widens it further. Released, its own resize
+// is held to the maximum again.
+func TestAGovernedFloatWindowsMaximumDoesNotHoldItsTile(t *testing.T) {
+	doc := strings.Replace(floatMemberDoc, "floatHeight: 50", "floatHeight: 50; maximumWidth: 15", 1)
+	rec := &calls{}
+	s := decltest.Run(t, 80, 24, tuidecl.LayoutSource("main.qml", []byte(doc)),
+		tuidecl.Singleton("demo", "1.0", "App"),
+		tuidecl.Sources(map[string]any{"App.fwTiled": true}),
+		tuidecl.Handlers(map[string]decl.HandlerFunc{"App.log": rec.handler}),
+		tuidecl.AdapterOptions(tuidecl.WithWindowCollector(widget.NewMinimizedWindows())))
+	titleAt(t, s, "PAGE", 22, 0)
+	altDrag(t, s, tui.MouseRight, 19, 10, 31, 10)
+	titleAt(t, s, "PAGE", 34, 0)
+	s.WaitFor(t, "tileChanged for the resize", func(string) bool {
+		return slices.Contains(rec.all(), "tile fw resize left 40 true")
+	})
+	onScreenLoop(t, s, func() {
+		if err := s.Program.Call("fw", "resizeBy", 8, 0); err != nil {
+			t.Error(err)
+		}
+	})
+	titleAt(t, s, "PAGE", 42, 0)
+	set(t, s, "App.fwTiled", false)
+	titleAt(t, s, "FLOAT", 50, 5) // its own 32 cells held to 15, centred where they were
+	onScreenLoop(t, s, func() {
+		if err := s.Program.Call("fw", "resizeBy", 20, 0); err != nil {
+			t.Error(err)
+		}
+	})
+	onScreenLoop(t, s, func() {})
+	if got := windowRect(t, s, "fw"); got.W != 15 {
+		t.Fatalf("released, a resize 20 wider: %+v, want held at its maximum, 15", got)
+	}
+}
+
+// A member's tile can be left no cells (its minimum 0, the page's the whole Window): the FloatWindow
+// is governed at its docked fallback, its tile's edge, and a live TileManager.edge moves it there.
+func TestAGovernedFloatWindowWithNoCellsFollowsItsTilesEdge(t *testing.T) {
+	doc := strings.Replace(floatMemberDoc, "TileManager.edge: Tui.Left; TileManager.size: 25; TileManager.minimumSize: 5",
+		`TileManager.edge: App.fwEdge; TileManager.edges: "left right"; TileManager.size: 25; TileManager.minimumSize: 0`, 1)
+	doc = strings.Replace(doc, "Tile { id: pg; edge: Tui.Center;", "Tile { id: pg; edge: Tui.Center; minimumSize: 80;", 1)
+	s := decltest.Run(t, 80, 24, tuidecl.LayoutSource("main.qml", []byte(doc)),
+		tuidecl.Singleton("demo", "1.0", "App"),
+		tuidecl.Sources(map[string]any{"App.fwTiled": true, "App.fwEdge": "left"}),
+		tuidecl.Handlers(map[string]decl.HandlerFunc{"App.log": (&calls{}).handler}),
+		tuidecl.AdapterOptions(tuidecl.WithWindowCollector(widget.NewMinimizedWindows())))
+	titleAt(t, s, "PAGE", 2, 0)
+	floatAt := func(what string, ok func(x int) bool) {
+		t.Helper()
+		s.WaitFor(t, what, func(sc string) bool {
+			x, _, found := at(sc, "FLOAT")
+			return found && ok(x)
+		})
+	}
+	floatAt("docked at its tile's edge, the left", func(x int) bool { return x == 2 })
+	set(t, s, "App.fwEdge", "right")
+	floatAt("docked at its tile's new edge, the right", func(x int) bool { return x > 60 })
+}

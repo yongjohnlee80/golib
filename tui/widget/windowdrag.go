@@ -214,7 +214,7 @@ func (c *WindowCore) resizedBounds(r tui.Rect, dw, dh int, handle Handle) tui.Re
 		if handle.dx() < 0 {
 			limit = max(r.X+r.W-area.X, 0)
 		}
-		limit = capAt(limit, c.maximum.W)
+		limit = capAt(limit, c.resizeMax().W)
 		width := clampInt(windowCellAdd(r.W, dw), min(c.minimum.W, limit), limit)
 		if handle.dx() < 0 {
 			r.X += r.W - width
@@ -226,7 +226,7 @@ func (c *WindowCore) resizedBounds(r tui.Rect, dw, dh int, handle Handle) tui.Re
 		if handle.dy() < 0 {
 			limit = max(r.Y+r.H-area.Y, 0)
 		}
-		limit = capAt(limit, c.maximum.H)
+		limit = capAt(limit, c.resizeMax().H)
 		height := clampInt(windowCellAdd(r.H, dh), min(c.minimum.H, limit), limit)
 		if handle.dy() < 0 {
 			r.Y += r.H - height
@@ -234,6 +234,16 @@ func (c *WindowCore) resizedBounds(r tui.Rect, dw, dh int, handle Handle) tui.Re
 		r.H = height
 	}
 	return r
+}
+
+// resizeMax is the maximum a resize stops at: the core's own (WithWindowMaxSize), and none while it is
+// retargeted, since a retarget's target owns the window's geometry (a tile's shared border, which the
+// tile composition sizes), as it owns its work area.
+func (c *WindowCore) resizeMax() tui.Size {
+	if c.retarget != nil {
+		return tui.Size{}
+	}
+	return c.maximum
 }
 
 // capAt is limit held to maximum, a window's resize maximum on one axis: zero has none.

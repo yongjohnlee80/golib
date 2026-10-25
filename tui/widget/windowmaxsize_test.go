@@ -58,3 +58,33 @@ func TestANegativeWindowMaximumIsRefused(t *testing.T) {
 	}()
 	widget.NewWindowCore(widget.WithWindowResize(), widget.WithWindowMaxSize(tui.Size{W: -1}))
 }
+
+// A retargeted core's target owns its geometry (a tile's shared border), so a resize then is not held
+// to the window's maximum; Retarget(nil) gives the window its own target and holds it again.
+func TestARetargetedResizeIsNotHeldToTheWindowsMaximum(t *testing.T) {
+	w := widget.NewWindowMod(widget.NewEditor(), widget.WithWindowResize(), widget.WithWindowMaxSize(tui.Size{W: 16, H: 7}))
+	f := widget.NewFloat(w, widget.WithAnchor(widget.AtRect(tui.Rect{X: 2, Y: 2, W: 12, H: 5})))
+	host := widget.NewOverlayHost(widget.NewText("base"))
+	host.Attach(f)
+	h := startApp(t, host, 50, 20)
+	h.onLoop(f.Show)
+	h.settle()
+
+	tile := &fixedTarget{r: tui.Rect{W: 10, H: 5}, visible: true}
+	h.onLoop(func() {
+		w.Core().Retarget(tile)
+		w.ResizeBy(20, 0)
+	})
+	if len(tile.asked) == 0 || tile.asked[len(tile.asked)-1].W != 30 {
+		t.Fatalf("retargeted, a resize 20 wider asked the target for %+v, want 30 wide: the target owns the geometry", tile.asked)
+	}
+
+	h.onLoop(func() {
+		w.Core().Retarget(nil)
+		w.ResizeBy(20, 0)
+	})
+	h.settle()
+	if got := windowBounds(h, w); got.W != 16 {
+		t.Fatalf("given back its own target, a resize 20 wider: %+v, want held at 16", got)
+	}
+}

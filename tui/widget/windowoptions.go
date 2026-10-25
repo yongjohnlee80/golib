@@ -80,5 +80,6 @@ func WithWindowResizeHandle(h Handle) WindowModOption { return func(c *WindowCor
 func WithWindowMinSize(s tui.Size) WindowModOption { return func(c *WindowCore) { c.minimum = s } }
 
 // WithWindowMaxSize sets the resize maximum, as WithWindowMinSize sets the minimum: a resize stops
-// there. A zero dimension has no maximum; the containing area still wins when it is smaller.
+// there. A zero dimension has no maximum; the containing area still wins when it is smaller. A
+// retargeted core's target owns its geometry, so a resize then is not held to it (Retarget).
 func WithWindowMaxSize(s tui.Size) WindowModOption { return func(c *WindowCore) { c.maximum = s } }

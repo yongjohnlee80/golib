@@ -277,7 +277,9 @@ func (c *WindowCore) State() WindowState {
 
 // SetMaxSize changes the resize maximum (WithWindowMaxSize) live: a later resize stops there. A
 // zero or negative dimension has no maximum. It moves nothing: an owner that holds its placement
-// to the maximum (a FloatWindow's) reads MaxSize as it lays out.
+// to the maximum (a FloatWindow's) reads MaxSize as it lays out. While the core is retargeted
+// (Retarget), the target owns the geometry and a resize is not held to it; Retarget(nil) holds it
+// again.
 func (c *WindowCore) SetMaxSize(s tui.Size) { c.maximum = tui.Size{W: max(s.W, 0), H: max(s.H, 0)} }
 
 // MaxSize is the resize maximum; zero on an axis without one.
