@@ -506,8 +506,8 @@ func (t *Tiles) solve(size tui.Size, order []*Tile, place func(*Tile) TilePlace)
 // giveExcess gives the cells the centre would take beyond its maximum on one axis (maxCells, 0 for
 // none) to the strips beside it there: the innermost strip on each side, the last declared at that
 // edge, as the strips are laid out from the edges in. Two sides split it, the odd cell to the right
-// or the bottom, so the centre stays centred. With no strip on the axis the centre keeps the cells,
-// and plan centres it at its maximum.
+// or the bottom, so the centre stays centred; one side takes it all, and the centre sits against the
+// far edge. With no strip on the axis the centre keeps the cells, and plan centres it at its maximum.
 func giveExcess(strips []stripCells, place func(*Tile) TilePlace, maxCells int, size tui.Size, horizontal bool) {
 	if maxCells <= 0 {
 		return
