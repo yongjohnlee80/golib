@@ -54,6 +54,10 @@ type TilePlace struct {
 	Min   int            // cells across its edge (a strip), or on both axes (the centre), unless MinW or MinH says otherwise
 	MinW  int            // cells across the width: a left or right strip's, and the centre's; 0: Min
 	MinH  int            // cells across the height: a top or bottom strip's, and the centre's; 0: Min
+	// MaxW and MaxH are the most cells the centre takes across the width and the height; 0: no
+	// maximum, and never under its minimum on that axis. The strips beside the centre on that axis
+	// take the rest; with none, the centre is centred at its maximum. A strip ignores them.
+	MaxW, MaxH int
 	// Minimizable lets it hide (WithTilesCollector's collector lists it); ignored while it is the centre
 	Minimizable bool
 }
@@ -457,8 +461,8 @@ func (t *Tiles) plan(size tui.Size, op *tileOp) map[*Tile]tui.Rect {
 	}
 	centre := false
 	for _, tile := range order {
-		if place(tile).Edge == tui.DockCenter && tile.inPlay() && !tile.away() {
-			out[tile], centre = rem, true
+		if p := place(tile); p.Edge == tui.DockCenter && tile.inPlay() && !tile.away() {
+			out[tile], centre = capped(rem, p), true
 		}
 	}
 	if !centre && last != nil && !rem.Empty() {
@@ -491,11 +495,49 @@ func (t *Tiles) solve(size tui.Size, order []*Tile, place func(*Tile) TilePlace)
 			give := min(over, strips[i].cells)
 			strips[i].cells, over = strips[i].cells-give, over-give
 		}
+		giveExcess(strips, place, centreMaxOf(order, place, inPlay, horizontal), size, horizontal)
 		for _, s := range strips {
 			out[s.tile] = s.cells
 		}
 	}
 	return out
+}
+
+// giveExcess gives the cells the centre would take beyond its maximum on one axis (maxCells, 0 for
+// none) to the strips beside it there: the innermost strip on each side, the last declared at that
+// edge, as the strips are laid out from the edges in. Two sides split it, the odd cell to the right
+// or the bottom, so the centre stays centred. With no strip on the axis the centre keeps the cells,
+// and plan centres it at its maximum.
+func giveExcess(strips []stripCells, place func(*Tile) TilePlace, maxCells int, size tui.Size, horizontal bool) {
+	if maxCells <= 0 {
+		return
+	}
+	centre := size.H
+	near, far := tui.DockTop, tui.DockBottom
+	if horizontal {
+		centre, near, far = size.W, tui.DockLeft, tui.DockRight
+	}
+	lo, hi := -1, -1 // the innermost strip at each edge of the axis
+	for i, s := range strips {
+		centre -= s.cells
+		switch place(s.tile).Edge {
+		case near:
+			lo = i
+		case far:
+			hi = i
+		}
+	}
+	excess := centre - maxCells
+	switch {
+	case excess <= 0:
+	case lo >= 0 && hi >= 0:
+		strips[lo].cells += excess / 2
+		strips[hi].cells += excess - excess/2
+	case lo >= 0:
+		strips[lo].cells += excess
+	case hi >= 0:
+		strips[hi].cells += excess
+	}
 }
 
 // stripCells is a strip's depth across its edge, as solve takes it.
@@ -542,6 +584,41 @@ func centreMinOf(order []*Tile, place func(*Tile) TilePlace, inPlay func(*Tile) 
 		}
 	}
 	return 0
+}
+
+// centreMaxOf is the most cells the centre in play takes on one axis (maxOn), 0 with none.
+func centreMaxOf(order []*Tile, place func(*Tile) TilePlace, inPlay func(*Tile) bool, horizontal bool) int {
+	for _, tile := range order {
+		if p := place(tile); p.Edge == tui.DockCenter && inPlay(tile) && !tile.away() {
+			return maxOn(p, horizontal)
+		}
+	}
+	return 0
+}
+
+// maxOn is the most cells the centre at p takes on one axis: its MaxW across the width (horizontal),
+// its MaxH across the height; 0 for no maximum, and never under what it keeps there (minOn).
+func maxOn(p TilePlace, horizontal bool) int {
+	m := p.MaxH
+	if horizontal {
+		m = p.MaxW
+	}
+	if m <= 0 {
+		return 0
+	}
+	return max(m, minOn(p, horizontal))
+}
+
+// capped is r at most the centre's maximum on each axis, centred in r: what is left beside it is
+// the manager's own background, no tile's.
+func capped(r tui.Rect, p TilePlace) tui.Rect {
+	if m := maxOn(p, true); m > 0 && r.W > m {
+		r.X, r.W = r.X+(r.W-m)/2, m
+	}
+	if m := maxOn(p, false); m > 0 && r.H > m {
+		r.Y, r.H = r.Y+(r.H-m)/2, m
+	}
+	return r
 }
 
 // minOn is the cells p keeps on one axis: its MinW across the width (horizontal), its MinH across
@@ -620,6 +697,16 @@ func (t *Tiles) SetMinSize(key string, cells tui.Size) {
 	w, h := max(cells.W, 0), max(cells.H, 0)
 	if tile := t.tile(key); tile != nil && (tile.place.MinW != w || tile.place.MinH != h) {
 		tile.place.MinW, tile.place.MinH = w, h
+		t.RequestLayout()
+	}
+}
+
+// SetMaxSize sets the most cells the centre takes on each axis, its MaxW and MaxH (0: no maximum),
+// held at layout: the strips beside it take the rest.
+func (t *Tiles) SetMaxSize(key string, cells tui.Size) {
+	w, h := max(cells.W, 0), max(cells.H, 0)
+	if tile := t.tile(key); tile != nil && (tile.place.MaxW != w || tile.place.MaxH != h) {
+		tile.place.MaxW, tile.place.MaxH = w, h
 		t.RequestLayout()
 	}
 }

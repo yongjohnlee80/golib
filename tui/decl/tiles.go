@@ -29,7 +29,8 @@ import (
 // A window declared in it (a Drawer, a FloatWindow) is a member (tilemember.go): its node stays in
 // the Window's overlay, and while it wants to and fits the manager places it over a tile. Its tile
 // is in its TileManager.* attached properties, the Tile's own names: TileManager.edge (default
-// Tui.Left), .edges, .size, .minimumSize, .minimumWidth, .minimumHeight, and .tiled (default true),
+// Tui.Left), .edges, .size, .minimumSize, .minimumWidth, .minimumHeight, .maximumWidth,
+// .maximumHeight (the centre's, so its strips take the rest), and .tiled (default true),
 // its Layout › Tiled. All but
 // edges take a change while built, so a bound one moves the tile, or tiles and releases the window,
 // rather than rebuilding it. tileChanged(key, operation, edge, size, tiled) reports a member's
@@ -77,11 +78,12 @@ func buildTile(b Build) (tui.Component, []string, error) {
 // tilePlaceSpec is a tile's place as a document writes it: a Tile's own edge, edges, size and
 // minimums, or a member's TileManager.* attached ones, read by the same fields. minimumSize is the
 // cells kept on both axes; minimumWidth and minimumHeight, each 0 for unset, the cells on one
-// (TilePlace's Min, MinW and MinH).
+// (TilePlace's Min, MinW and MinH); maximumWidth and maximumHeight, each 0 for none, the most the
+// centre takes on one (MaxW and MaxH).
 type tilePlaceSpec struct {
-	place                     widget.TilePlace
-	edges                     string
-	size, minimum, minW, minH float64
+	place                                 widget.TilePlace
+	edges                                 string
+	size, minimum, minW, minH, maxW, maxH float64
 }
 
 func (s *tilePlaceSpec) fields() map[string]field {
@@ -89,12 +91,14 @@ func (s *tilePlaceSpec) fields() map[string]field {
 		"edge": into(&s.place.Edge, drawerEdges.read), "edges": into(&s.edges, stringOf),
 		"size": into(&s.size, numberOf), "minimumSize": into(&s.minimum, numberOf),
 		"minimumWidth": into(&s.minW, numberOf), "minimumHeight": into(&s.minH, numberOf),
+		"maximumWidth": into(&s.maxW, numberOf), "maximumHeight": into(&s.maxH, numberOf),
 	}
 }
 
 // specOf is a place as its fields hold it, for a live change to be read over.
 func specOf(p widget.TilePlace) tilePlaceSpec {
-	return tilePlaceSpec{place: p, size: p.Size, minimum: float64(p.Min), minW: float64(p.MinW), minH: float64(p.MinH)}
+	return tilePlaceSpec{place: p, size: p.Size, minimum: float64(p.Min), minW: float64(p.MinW), minH: float64(p.MinH),
+		maxW: float64(p.MaxW), maxH: float64(p.MaxH)}
 }
 
 // done is the place read: its edges parsed, its size and minimum finite and at least 0. who names
@@ -104,11 +108,12 @@ func (s *tilePlaceSpec) done(who string) (widget.TilePlace, error) {
 	if s.place.Edges, err = tileEdges(s.edges); err != nil {
 		return widget.TilePlace{}, fmt.Errorf("%s: %w", who, err)
 	}
-	if !finite(s.size) || !finite(s.minimum) || !finite(s.minW) || !finite(s.minH) {
-		return widget.TilePlace{}, fmt.Errorf("%s: size and the minimums are finite numbers", who)
+	if !finite(s.size) || !finite(s.minimum) || !finite(s.minW) || !finite(s.minH) || !finite(s.maxW) || !finite(s.maxH) {
+		return widget.TilePlace{}, fmt.Errorf("%s: size, the minimums and the maximums are finite numbers", who)
 	}
 	s.place.Size, s.place.Min = max(s.size, 0), max(int(s.minimum), 0)
 	s.place.MinW, s.place.MinH = max(int(s.minW), 0), max(int(s.minH), 0)
+	s.place.MaxW, s.place.MaxH = max(int(s.maxW), 0), max(int(s.maxH), 0)
 	return s.place, nil
 }
 
@@ -212,6 +217,31 @@ func (n *tileNode) setMinimumAxis(cells float64, horizontal bool) {
 		return
 	}
 	n.tiles.SetMinSize(n.key, tui.Size{W: p.MinW, H: p.MinH})
+}
+
+func (n *tileNode) setMaximumWidth(cells float64)  { n.setMaximumAxis(cells, true) }
+func (n *tileNode) setMaximumHeight(cells float64) { n.setMaximumAxis(cells, false) }
+
+// setMaximumAxis is maximumWidth's or maximumHeight's setter: the most cells the centre takes on that
+// axis, 0 for none.
+func (n *tileNode) setMaximumAxis(cells float64, horizontal bool) {
+	if !finite(cells) {
+		return
+	}
+	p := n.place
+	if n.tiles != nil {
+		p = n.tiles.Tile(n.key).Place()
+	}
+	if horizontal {
+		p.MaxW = max(int(cells), 0)
+	} else {
+		p.MaxH = max(int(cells), 0)
+	}
+	if n.tiles == nil {
+		n.place = p
+		return
+	}
+	n.tiles.SetMaxSize(n.key, tui.Size{W: p.MaxW, H: p.MaxH})
 }
 
 func (n *tileNode) window() (*widget.WindowMod, error) {
@@ -440,6 +470,8 @@ func (n *tileManagerNode) memberSet(key string, w tileMember, prop string, v qml
 		n.tiles.SetMin(key, place.Min)
 	case "minimumWidth", "minimumHeight":
 		n.tiles.SetMinSize(key, tui.Size{W: place.MinW, H: place.MinH})
+	case "maximumWidth", "maximumHeight":
+		n.tiles.SetMaxSize(key, tui.Size{W: place.MaxW, H: place.MaxH})
 	}
 	return nil
 }
@@ -485,6 +517,8 @@ var tileType = Type{
 		"minimumSize":   setter("a Tile", numberOf, (*tileNode).setMinimumSize),
 		"minimumWidth":  setter("a Tile", numberOf, (*tileNode).setMinimumWidth),
 		"minimumHeight": setter("a Tile", numberOf, (*tileNode).setMinimumHeight),
+		"maximumWidth":  setter("a Tile", numberOf, (*tileNode).setMaximumWidth),
+		"maximumHeight": setter("a Tile", numberOf, (*tileNode).setMaximumHeight),
 	},
 	Methods: map[string]Method{
 		"show":           NoArgMethod((*tileNode).show),
