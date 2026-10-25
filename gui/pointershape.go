@@ -172,6 +172,16 @@ func appendCursorArea(dst []cursorArea, m metrics, r tui.Rect, c pointer.Cursor)
 	return append(dst, cursorArea{rect: dev, cursor: c})
 }
 
+// cursorFields is a frame's cursor areas as a recording holds them: each one's rect, in device
+// pixels, and its cursor.
+func cursorFields(areas []cursorArea) map[string]any {
+	out := make([]map[string]any, len(areas))
+	for i, a := range areas {
+		out[i] = map[string]any{"x0": a.rect.Min.X, "y0": a.rect.Min.Y, "x1": a.rect.Max.X, "y1": a.rect.Max.Y, "cursor": a.cursor.String()}
+	}
+	return map[string]any{"areas": out}
+}
+
 // addCursors puts the frame's cursor areas over the window, after its input area: Gio takes the
 // cursor of the topmost area under the pointer, and a pass-through area sits above the input
 // area without taking its events. Under it, the input area's default would hide every one.

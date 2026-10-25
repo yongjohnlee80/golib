@@ -20,7 +20,8 @@ const (
 )
 
 // TerminalViews makes the views of one panel's terminals, all at one scale: pass Make to
-// tuiwidget.TerminalTabs.SetTerminalViews. Loop goroutine.
+// tuiwidget.TerminalTabs.SetTerminalViews. Each view is an I-beam over the terminal, as an editor
+// is. Loop goroutine.
 type TerminalViews struct {
 	scale float32
 	views []*terminalView
@@ -79,7 +80,12 @@ type terminalView struct {
 var (
 	_ tuiwidget.TerminalView = (*terminalView)(nil)
 	_ gui.CaretView          = (*terminalView)(nil)
+	_ gui.PointerShapeView   = (*terminalView)(nil)
 )
+
+// PointerShape is the I-beam over the whole view: a terminal takes text, as an editor does. Its tab
+// strip and its controls are cells beside the view, and keep the arrow.
+func (v *terminalView) PointerShape() tui.PointerShape { return tui.PointerText }
 
 // cellPx is the view's cell in logical pixels: the measured one, or before it the window's cell
 // (ctx.CellPixels) at the scale, as the Editor guesses its mono font before its first Paint.

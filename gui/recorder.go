@@ -60,6 +60,8 @@ const (
 	// StageTui: the tui's own trace, mapped into the same file by a host that
 	// records one. The replay validates these and skips them.
 	StageTui = record.StageTui
+	// StagePointer: a pointer event as the window took it, and each new frame's cursor areas.
+	StagePointer = record.StagePointer
 )
 
 // inputRecorder is the input path's recorder (nil records nothing) and the next record's number.
