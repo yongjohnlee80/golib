@@ -1427,3 +1427,59 @@ func TestReleaseDiagnosticNamesHandleAction(t *testing.T) {
 			fatal.Rule)
 	}
 }
+
+// commitReleaser is a dragger that, armed, registers a commit callback on its next layout, which
+// ends its own capture (release) or tries to take one (capture), recording a Fatal it raises.
+type commitReleaser struct {
+	dragger
+	arm, capture atomic.Bool
+	ran, fatal   atomic.Bool
+}
+
+func (c *commitReleaser) Layout(cs Constraints) Size {
+	if c.arm.Load() && c.ctx != nil {
+		c.ctx.AfterLayout("commit-capture", func() {
+			c.ran.Store(true)
+			op := c.ctx.ReleasePointer
+			if c.capture.Load() {
+				op = func() { c.ctx.CapturePointer() }
+			}
+			if fatalFrom(op) != nil {
+				c.fatal.Store(true)
+			}
+		})
+	}
+	return c.dragger.Layout(cs)
+}
+
+// The commit phase may end a capture, as a handler or an Update may: a geometry-derived side effect
+// that retargets or re-anchors a window ends the drag that holds the pointer. It may not take one:
+// CapturePointer stays a handler's own.
+func TestTheCommitPhaseMayEndACaptureButNotTakeOne(t *testing.T) {
+	for _, capture := range []bool{false, true} {
+		root := &counter{size: Size{W: 20, H: 4}}
+		owner := &commitReleaser{dragger: dragger{size: Size{W: 10, H: 4}}}
+		root.Add(owner)
+		h := startApp(t, root, 20, 4)
+		h.sync()
+		startDrag(t, h, &owner.dragger, 2, 1)
+		owner.capture.Store(capture)
+		// armed from an Update, the frame then rendered by the loop on its own, outside any Update:
+		// an Update is a legal phase already, and a commit run inside one would prove nothing
+		h.onLoop(func() {
+			owner.arm.Store(true)
+			h.app.byComp[owner].ctx.RequestLayout()
+		})
+		waitFor(t, "the commit callback ran", func() bool { return owner.ran.Load() })
+		h.sync()
+		var held NodeID
+		h.onLoop(func() { held = h.app.capture.captureOwner })
+		h.wait()
+		switch {
+		case !capture && (owner.fatal.Load() || held != 0):
+			t.Errorf("ReleasePointer in a commit callback: fatal %v, capture still held %v; want it legal and released", owner.fatal.Load(), held != 0)
+		case capture && !owner.fatal.Load():
+			t.Error("CapturePointer in a commit callback raised no errs.Fatal; taking a capture stays a handler's")
+		}
+	}
+}

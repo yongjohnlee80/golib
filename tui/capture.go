@@ -244,8 +244,12 @@ func (c *Context) HasPointerCapture() bool {
 // goroutine, where touching loop-owned capture state is a data race rather than
 // merely a contract breach.
 //
-// An input handler — HandleEvent or HandleAction — or an Update callback is
-// the whole legal set. The commit phase joins it when that layer exists.
+// An input handler (HandleEvent or HandleAction), an Update callback, or the
+// commit phase is the whole legal set. Commit is where a geometry-derived side
+// effect runs, and one may retarget or re-anchor a window whose drag holds the
+// pointer: a tile manager governing or releasing a member, say. Ending that
+// drag must be legal there. Taking a capture is not: CapturePointer stays a
+// handler's own.
 //
 // Layout and Render VETO regardless of what encloses them. They are always
 // reached from somewhere — usually an Update or a handler — so treating the
@@ -259,12 +263,12 @@ func (a *App) assertReleasablePhase(op string) {
 			Rule: "illegal inside Layout or Render, which must not mutate dispatch state",
 		})
 	}
-	if a.phase.handlerNode != 0 || a.phase.updateDepth > 0 {
+	if a.phase.handlerNode != 0 || a.phase.updateDepth > 0 || a.phase.inCommit {
 		return
 	}
 	panic(errs.Fatal{
 		Op:   fmt.Sprintf("tui: Context.%s", op),
-		Rule: "legal only from a component's HandleEvent or HandleAction, or an App.Update callback",
+		Rule: "legal only from a component's HandleEvent or HandleAction, an App.Update callback, or the commit phase",
 	})
 }
 

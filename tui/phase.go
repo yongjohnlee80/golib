@@ -49,6 +49,11 @@ type handlerPhase struct {
 	// Init and any callback reached outside an Update both slipped through a
 	// Layout/Render-only check.
 	updateDepth int
+
+	// inCommit marks the commit phase (commit.go): geometry final, before render. It may end a
+	// capture, as a handler or an Update may: a geometry-derived side effect that retargets or
+	// re-anchors a window ends the drag that holds the pointer. Taking a capture stays a handler's.
+	inCommit bool
 }
 
 // delivery is the marks a handler's delivery sets: whose handler runs, whose action delivery it is

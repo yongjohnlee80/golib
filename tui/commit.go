@@ -111,6 +111,9 @@ func (c *Context) AfterLayout(key CommitKey, fn func()) {
 func (a *App) runCommitPhase() {
 	pending := a.commits
 	a.commits = nil
+	was := a.phase.inCommit
+	a.phase.inCommit = true
+	defer func() { a.phase.inCommit = was }()
 	for _, rec := range pending {
 		if n := a.nodes[rec.owner]; n == nil || !n.mounted {
 			continue

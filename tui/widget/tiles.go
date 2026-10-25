@@ -340,9 +340,11 @@ func (t *Tiles) Layout(c tui.Constraints) tui.Size {
 // Render paints nothing: the tiles and the preview paint themselves.
 func (t *Tiles) Render(tui.Surface) {}
 
-// settle tiles the members that fit at size: the wanting ones, earliest asked first, the most
-// recently asked released until the rest fit. A member that comes into the set is governed over its
-// tile, and one that leaves it is released to its own placement.
+// settle decides which members tile at size: the wanting ones, earliest asked first, the most
+// recently asked released until the rest fit. Layout only decides. A member coming into the set is
+// governed over its tile, and one leaving it released to its own placement, in the commit that
+// follows (apply): re-anchoring or retargeting a window whose drag holds the pointer ends that drag,
+// which Layout may not. The layout that commit dirties runs in the same frame.
 func (t *Tiles) settle(size tui.Size) {
 	var set []*Tile
 	for _, tile := range t.tiles {
@@ -354,6 +356,17 @@ func (t *Tiles) settle(size tui.Size) {
 	for len(set) > 0 && !t.fits(size, set) {
 		set = set[:len(set)-1]
 	}
+	for _, tile := range t.tiles {
+		if tile.gov != nil && slices.Contains(set, tile) != tile.governed {
+			t.ctx.AfterLayout("settle", func() { t.apply(set) })
+			return
+		}
+	}
+}
+
+// apply governs the members of set not governed yet and releases the governed ones outside it, then
+// lays the manager out again with them.
+func (t *Tiles) apply(set []*Tile) {
 	for _, tile := range t.tiles {
 		if tile.gov == nil {
 			continue
@@ -372,6 +385,8 @@ func (t *Tiles) settle(size tui.Size) {
 			tile.gov.Release()
 		}
 	}
+	t.RequestLayout()
+	t.MarkDirty()
 }
 
 // overlayRect is a governed member's tile in its overlay's frame, as AtLive reads it: false while
