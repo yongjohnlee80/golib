@@ -29,7 +29,7 @@ import (
 // hides it, its strip going to the tiles beside it; maximize gives it the whole rect. Escape during
 // a drag restores the layout from before it. Nothing ever floats.
 
-// MEMBERS. A manager also tiles windows it does not own (ADR 1792859491 §4.4): a GovernedWindow
+// MEMBERS. A manager also tiles windows it does not own: a GovernedWindow
 // added with AddMember keeps its own node, in an overlay, and is anchored over its tile while it
 // wants to be tiled and fits. When the tiled set no longer fits, the most recently tiled member is
 // released to its own placement. A member's window is resized by the shared border (Alt-right drag)
