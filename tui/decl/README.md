@@ -857,8 +857,9 @@ or `minimumWidth` and `minimumHeight` where they are set: a page wants 40 column
 rows, and a strip that may re-dock wants columns at the left and rows at the bottom. The centre's
 `maximumWidth` and `maximumHeight` cap it: a page as wide as its ruler. The strips beside it on
 that axis take the cells beyond its maximum, the innermost on each side, split between two sides
-so the page stays centred; with no strip there, the centre is centred at its maximum, and the
-cells either side of it are the manager's own background, no tile's. The minimums alone decide
+so the page stays centred. With a strip on one side only, that strip takes them all and the
+page sits against the far edge; with no strip there, the centre is centred at its maximum, and
+the cells either side of it are the manager's own background, no tile's. The minimums alone decide
 what fits. With no centre tiled, the last strip takes what is
 left. Nothing floats; a floating panel is a Drawer.
 
