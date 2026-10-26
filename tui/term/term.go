@@ -26,6 +26,7 @@ type Backend struct {
 	inFile, outFile *os.File
 	input           io.Reader
 	output          io.Writer
+	erase           byte // the tty's erase character, read once at start (eraseByte); 0 for none
 
 	caps tui.Capabilities
 
@@ -147,6 +148,7 @@ func (b *Backend) Start(ctx context.Context) error {
 func (b *Backend) start(ctx context.Context) error {
 	// 1. Raw mode; on Windows additionally stdout VT processing.
 	if b.inFile != nil {
+		b.erase = eraseByte(b.inFile) // the tty's own, before raw mode: what its Backspace sends
 		restore, err := makeRaw(b.inFile)
 		if err != nil {
 			return err

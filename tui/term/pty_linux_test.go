@@ -21,6 +21,8 @@ import (
 	"time"
 
 	"golang.org/x/sys/unix"
+
+	"github.com/yongjohnlee80/golib/tui"
 )
 
 // openBlockingPTY opens a real pty pair: master pollable (for
@@ -223,5 +225,67 @@ func TestStopUnblocksAnOpenFileTTYReader(t *testing.T) {
 		}
 	case <-time.After(5 * time.Second):
 		t.Fatal("Stop hung: the os.OpenFile tty was made blocking under the reader")
+	}
+}
+
+// The Backend reads the tty's own erase character before raw mode: a pty whose erase is ^H gets
+// Backspace for a lone 0x08, and one whose erase is DEL gets Ctrl+H.
+func TestTheBackendReadsTheTTYsEraseCharacter(t *testing.T) {
+	for _, c := range []struct {
+		erase byte
+		want  tui.KeyEvent
+	}{
+		{0x08, tui.KeyEvent{Code: tui.KeyBackspace}},
+		{0x7f, tui.KeyEvent{Code: 'h', Mods: tui.ModCtrl}},
+	} {
+		master, slave := openBlockingPTY(t)
+		tio, err := unix.IoctlGetTermios(int(slave.Fd()), unix.TCGETS)
+		if err != nil {
+			t.Fatalf("TCGETS: %v", err)
+		}
+		tio.Cc[unix.VERASE] = c.erase
+		if err := unix.IoctlSetTermios(int(slave.Fd()), unix.TCSETS, tio); err != nil {
+			t.Fatalf("TCSETS: %v", err)
+		}
+		go func() {
+			buf := make([]byte, 4096)
+			for {
+				if _, err := master.Read(buf); err != nil {
+					return
+				}
+			}
+		}()
+		b, err := Open(WithTTY(slave, slave), WithProbeTimeout(50*time.Millisecond), WithoutAltScreen())
+		if err != nil {
+			t.Fatalf("Open: %v", err)
+		}
+		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		if err := b.Start(ctx); err != nil {
+			cancel()
+			t.Fatalf("Start: %v", err)
+		}
+		if _, err := master.Write([]byte{0x08}); err != nil {
+			t.Fatalf("master write: %v", err)
+		}
+		var got tui.KeyEvent
+	wait:
+		for {
+			select {
+			case ev := <-b.Events():
+				if k, ok := ev.(tui.KeyEvent); ok {
+					got = k
+					break wait
+				}
+			case <-ctx.Done():
+				t.Fatalf("erase %#x: no key for 0x08", c.erase)
+			}
+		}
+		cancel()
+		if err := b.Stop(); err != nil {
+			t.Errorf("Stop: %v", err)
+		}
+		if got.Code != c.want.Code || got.Mods != c.want.Mods {
+			t.Errorf("erase %#x: 0x08 decoded as %#v, want %#v", c.erase, got, c.want)
+		}
 	}
 }

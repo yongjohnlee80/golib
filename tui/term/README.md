@@ -83,6 +83,12 @@ speak VT into stdin, so there is no second input path.
   `1 + bitmask` modifier encoding, Alt as ESC prefix, Ctrl as `byte & 0x1F`.
   A lone ESC is held `WithEscTimeout` (default 35ms) and delivered as the
   Escape key if no continuation arrives — disabled entirely under kitty.
+  A lone `^H` (0x08) is Ctrl+H, unless the tty's erase character (`stty
+  erase`, read once before raw mode) is `^H`: that terminal's Backspace sends
+  it, so it is Backspace, and Ctrl+H is unreachable without kitty. A
+  terminal whose Backspace is DEL but whose Ctrl+Backspace sends `^H` (VTE,
+  Windows Terminal) still reads that as Ctrl+H. Windows has no termios, so its
+  decode is unchanged.
 - **Mouse**: SGR encoding only (`?1002` + `?1006`) — press, release, drag
   motion, wheel, with shift/alt/ctrl bits. Motion reports the held button when
   the protocol supplies one. The driver only normalizes input; the App owns
