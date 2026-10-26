@@ -363,6 +363,10 @@ var ErrTerminalNotRunning = errs.Sentinel(errs.ErrPrecondition, "terminal is not
 // ErrTerminalInputFull means the bounded input queue cannot accept this whole send.
 var ErrTerminalInputFull = errs.Sentinel(errs.ErrPrecondition, "terminal input queue is full")
 
+// ErrTerminalPasteUnbracketed is SendBracketedPaste refused: the program has not asked for
+// bracketed paste (mode 2004), so the text would arrive as keys.
+var ErrTerminalPasteUnbracketed = errs.Sentinel(errs.ErrPrecondition, "the program does not take bracketed pastes")
+
 // TerminalInputLimit bounds queued and in-flight input bytes per process.
 const TerminalInputLimit = 1 << 20
 
