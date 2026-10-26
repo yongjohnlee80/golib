@@ -464,10 +464,19 @@ func (t *Terminal) HandleEvent(ev tui.Event) bool {
 			return t.normal.key(t, e)
 		}
 		if t.isHostKey(e) {
-			// the host's: none of it is sent. A Ctrl+\ waiting for its second key is sent as
-			// itself, so it cannot complete with the key after (Ctrl+\ F11 Ctrl+n is no Normal
-			// mode). The press goes on to the Window's keys; a held key's repeats are swallowed, so
-			// the host acts once per press.
+			// the host's: none of it is sent, and the press goes on to the Window's keys; a held
+			// key's repeats are swallowed, so the host acts once per press. After Ctrl+\ a host
+			// key's press is the program's instead, sent as the key alone: the one way a program
+			// still gets a key its host keeps (Ctrl+\ Ctrl+L clears a shell the host moves on
+			// Ctrl+L). A host key with no encoding here (Ctrl+comma has no legacy byte) sends the
+			// Ctrl+\ as itself and goes on, so it cannot complete with the key after.
+			if t.prefix && e.Kind == tui.KeyPress {
+				if b := encodeKey(e, t.scr.Modes()); b != nil {
+					t.prefix = false
+					t.send(b)
+					return true
+				}
+			}
 			t.flushPrefix()
 			return e.Kind == tui.KeyRepeat
 		}
