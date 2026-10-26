@@ -9,6 +9,7 @@ type WindowMod struct {
 	Base
 	child tui.Component
 	core  *WindowCore
+	size  tui.Size // as Layout last laid it out: the frame BeginFrameDrag and FrameShapes measure
 }
 
 // NewWindowMod wraps content in independently optional window capabilities.
@@ -37,6 +38,7 @@ func (w *WindowMod) Init(ctx *tui.Context) {
 func (w *WindowMod) Layout(c tui.Constraints) tui.Size {
 	s := w.ctx.LayoutChild(w.child, c)
 	w.ctx.PlaceChild(w.child, tui.Rect{W: s.W, H: s.H})
+	w.size = s
 	return s
 }
 
@@ -58,6 +60,18 @@ func (w *WindowMod) HandleAction(inv tui.ActionInvocation) bool { return w.core.
 
 // HandleEvent continues a captured drag and handles involuntary capture loss.
 func (w *WindowMod) HandleEvent(ev tui.Event) bool { return w.core.HandleEvent(ev) }
+
+// HandleUnclaimedPress takes a press on its frame that nothing in it wanted
+// (tui.UnclaimedPressHandler): a plain drag there moves or resizes it (WindowCore.BeginFrameDrag).
+func (w *WindowMod) HandleUnclaimedPress(e tui.MouseEvent) bool {
+	return w.core.BeginFrameDrag(e, w.size)
+}
+
+// SubtreePointerShapes is its frame's resize arrows (tui.SubtreePointerShaper): its content's Box
+// paints the frame, so they're asked after the content paints.
+func (w *WindowMod) SubtreePointerShapes(dst []tui.PointerRegion) []tui.PointerRegion {
+	return w.core.FrameShapes(dst, w.size)
+}
 
 // MoveBy moves through the target's placement policy, from application code.
 func (w *WindowMod) MoveBy(dx, dy int) bool { return w.core.MoveBy(dx, dy) }

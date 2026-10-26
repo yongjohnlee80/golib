@@ -358,8 +358,9 @@ func (b *Backend) Err() error { return b.q.reason() }
 // Capabilities reports the terminal-compatible capabilities supported by the native window backend.
 //
 // It reports [tui.ProfileTrueColor], full Kitty keyboard protocol support, bracketed paste,
-// hardware mouse tracking, native vector view embedding, and image support. Protocol-specific
-// terminal control modes (such as SyncOutput, InBandResize, and Undercurl) are reported as false.
+// hardware mouse tracking, native vector view embedding, plain drags on a window's frame, and image
+// support. Protocol-specific terminal control modes (such as SyncOutput, InBandResize, and
+// Undercurl) are reported as false.
 func (b *Backend) Capabilities() tui.Capabilities {
 	t := b.cfg.theme
 	return tui.Capabilities{
@@ -368,6 +369,7 @@ func (b *Backend) Capabilities() tui.Capabilities {
 		BracketedPaste: true,
 		Mouse:          tui.TriYes,
 		NativeViews:    true,
+		FrameDrag:      true,
 		KittyGraphics:  tui.TriYes,
 		DarkBackground: t.dark(),
 		DefaultFG:      probed(t.FG),

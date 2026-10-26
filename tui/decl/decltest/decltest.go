@@ -109,7 +109,14 @@ func Run(t testing.TB, width, height int, opts ...tuidecl.ProgramOption) *Screen
 // before Run, so it may touch widgets directly; its error fails the test.
 func RunWith(t testing.TB, width, height int, setup func(*tuidecl.Program) error, opts ...tuidecl.ProgramOption) *Screen {
 	t.Helper()
-	s := &Screen{Backend: tui.NewTestBackend(width, height), quit: make(chan struct{})}
+	return RunOn(t, tui.NewTestBackend(width, height), setup, opts...)
+}
+
+// RunOn is RunWith on a backend the test made: one reporting a backend's capabilities
+// (tui.WithTestCapabilities), as gui's window does, say.
+func RunOn(t testing.TB, backend *tui.TestBackend, setup func(*tuidecl.Program) error, opts ...tuidecl.ProgramOption) *Screen {
+	t.Helper()
+	s := &Screen{Backend: backend, quit: make(chan struct{})}
 	all := append([]tuidecl.ProgramOption{
 		tuidecl.ErrorSink(func(err error) { t.Errorf("handler error: %v", err) }),
 	}, opts...)

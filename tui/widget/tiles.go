@@ -25,9 +25,10 @@ import (
 // Each tile is a window: its content is wrapped in a WindowMod whose target is the manager, so the
 // window gestures are tiling operations. Alt-right drag moves the shared border nearest the press
 // (the strip that owns it is resized), Alt-left drag drops the tile on another tile (a swap) or near
-// a side of the manager (a re-dock), with the landing rect outlined until the release; minimize
-// hides it, its strip going to the tiles beside it; maximize gives it the whole rect. Escape during
-// a drag restores the layout from before it. Nothing ever floats.
+// a side of the manager (a re-dock), with the landing rect outlined until the release. On a
+// FrameDrag backend a plain drag on the tile's frame does the same (WindowCore.BeginFrameDrag).
+// Minimize hides it, its strip going to the tiles beside it; maximize gives it the whole rect.
+// Escape during a drag restores the layout from before it. Nothing ever floats.
 
 // MEMBERS. A manager also tiles windows it does not own: a GovernedWindow
 // added with AddMember keeps its own node, in an overlay, and is anchored over its tile while it
