@@ -780,7 +780,12 @@ WindowMod {
 }
 ```
 
-Default gestures are Alt/Option-left for move and Alt/Option-right for resize.
+Default gestures are Alt/Option-left for move and Alt/Option-right for resize. On a backend
+declaring `Capabilities.FrameDrag` (golib/gui's window; a terminal declares none) a plain left press
+on the window's frame, one its content declines, works too: the title row moves the window, the
+left and right sides, the bottom and the two bottom corners resize it from there, and a double-click
+on the title row toggles maximize where the window has it. The resizable sides show their resize
+arrows. A FloatWindow, a Drawer, a WindowMod and a Tile all take it (`WindowCore.BeginFrameDrag`).
 `Tui.Alt`, `Tui.Option`, `Tui.Control`, `Tui.Shift` and `Tui.NoModifier` select
 single modifiers; `WindowMod` flags combine with `|`. Capabilities and bindings
 are construction properties. `changed` supplies operation, key, x, y, width,
@@ -853,9 +858,12 @@ the drag lets go, as a percent of the manager: the width the user saw, including
 beyond the centre's maximum. That percent is kept as it is, so a size set on a wide screen opens
 at the same percent on a narrower one. Alt/Option-left drag drops the tile on another one it may
 trade places with (a swap), or near a side of the manager it may take (a re-dock); the landing rect
-is outlined until the release, and Escape restores the layout. When the minimums don't fit, the
-strips give back their cells above their minimum first, then the centre its own, then the strips
-theirs; the asked sizes come back with the room. A tile's minimum is `minimumSize` on both axes,
+is outlined until the release, and Escape restores the layout. In the GUI a plain left drag on a
+tile's frame does the same (its title row as Alt-left, a side or the bottom as Alt-right on that
+border, a side the tile doesn't share doing nothing); a member's title row never moves it. When
+the minimums don't fit, the strips give back their cells above their minimum first, then the
+centre its own, then the strips theirs; the asked sizes come back with the room. A tile's
+minimum is `minimumSize` on both axes,
 or `minimumWidth` and `minimumHeight` where they are set: a page wants 40 columns but only a few
 rows, and a strip that may re-dock wants columns at the left and rows at the bottom. Along its edge,
 a strip is as long as the strips laid out before it leave: a left strip declared after a bottom
@@ -928,7 +936,8 @@ Window {
 ```
 
 `movable: true` lets a Drawer leave its edge: Alt/Option-left drag (`moveButton`,
-which must differ from `resizeButton`) and `moveBy(dx,dy)` move it. While a move or
+which must differ from `resizeButton`), in the GUI a plain drag on its title row too, and
+`moveBy(dx,dy)` move it. While a move or
 resize is in progress the panel shows where it goes; when it ends, the Drawer floats
 at that rectangle, kept as percentages of the Window (to a hundredth of a percent, so a
 one-cell step on a wide Window is kept) so a resize of the Window keeps it in proportion,
@@ -1010,7 +1019,8 @@ mounts the layout, the layout under each alternative module (the theme it does
 not import), and each component no document uses yet — imported module or not —
 and reports every problem. Package [`decltest`](decltest/) wraps it for `go test` —
 `decltest.Check(t, opts…)` — and runs a program on a test backend:
-`decltest.Run(t, w, h, opts…)`. `CheckLanguages(opts…)` (`decltest.CheckLanguages(t,
+`decltest.Run(t, w, h, opts…)`, or `decltest.RunOn(t, backend, setup, opts…)` on a test backend
+of its own (one reporting gui's capabilities, say). `CheckLanguages(opts…)` (`decltest.CheckLanguages(t,
 opts…)`) is the language walk: every language the catalogs hold, golib's and the program's,
 judged for messages English lacks, markers on another letter than English's, and menu rows
 of one level sharing a key. `CheckKeymap(opts…)` (`decltest.CheckKeymap(t, opts…)`) is the key-map

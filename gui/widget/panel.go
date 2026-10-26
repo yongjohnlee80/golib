@@ -162,7 +162,8 @@ func WithMaximizable() PanelOption { return func(p *Panel) { p.maximizable = tru
 func WithBarStyle(st style.Style) PanelOption { return func(p *Panel) { p.barSt = st } }
 
 // WithWindowCapabilities supplies independent, presentation-free window options.
-// Move/resize use configurable Alt/Option drag. Minimizing is one of them:
+// Move/resize use configurable Alt/Option drag, and a plain drag on the title bar or a border
+// (WindowCore.BeginFrameDrag). Minimizing is one of them:
 // tuiwidget.WithWindowMinimize(collector) shows the minimize control, which hands
 // the panel to the collector (a taskbar or a dock) until it is restored.
 func WithWindowCapabilities(opts ...tuiwidget.WindowModOption) PanelOption {
@@ -291,7 +292,7 @@ func (p *Panel) Render(s tui.Surface) {
 	}
 }
 
-// HandleEvent takes the title bar's clicks and drags, and the edges' resizing drags.
+// HandleEvent takes the title bar's control clicks; the frame's drags are HandleUnclaimedPress's.
 func (p *Panel) HandleEvent(ev tui.Event) bool {
 	if p.behavior.HandleEvent(ev) {
 		return true
@@ -305,9 +306,8 @@ func (p *Panel) HandleEvent(ev tui.Event) bool {
 	return false
 }
 
-// mouse handles mouse events for panel title bar controls, dragging, and resizing.
+// mouse handles mouse events for the panel's title bar controls: their hover, press and release.
 func (p *Panel) mouse(m tui.MouseEvent) bool {
-	inFloat := p.float != nil && !p.behavior.State().Maximized
 	switch m.Kind {
 	case tui.MouseMotion:
 		if m.Y == 0 {
@@ -328,42 +328,27 @@ func (p *Panel) mouse(m tui.MouseEvent) bool {
 		if m.Button != tui.MouseLeft {
 			return false
 		}
-		if m.Y == 0 && p.controlAt(m.X) != noControl {
-			return true // the control acts on release, as a button does
-		}
-		if m.Y == 0 && m.Count == 2 && p.behavior.State().Maximize {
-			p.act(maximizeControl)
-			return true
-		}
-		op, handle, matched := tuiwidget.WindowResize, tuiwidget.HandleBottomRight, true
-		switch {
-		case p.resizable && inFloat && m.X == p.w-1 && m.Y == p.h-1:
-		case p.resizable && inFloat && m.X == p.w-1 && m.Y > 0:
-			handle = tuiwidget.HandleRight
-		case p.resizable && inFloat && m.Y == p.h-1:
-			handle = tuiwidget.HandleBottom
-		case p.movable && inFloat && m.Y == 0:
-			op = tuiwidget.WindowMove
-		default:
-			matched = false
-		}
-		return matched && p.behavior.BeginPointerDrag(op, m, handle)
+		return m.Y == 0 && p.controlAt(m.X) != noControl // the control acts on release, as a button does
 	}
 	return false
 }
 
-// PointerShapes is a floating, resizable panel's resize arrows, over the cells a press resizes
-// from (mouse): its right column, its bottom row and the corner between them. The title row,
-// which moves it and holds its controls, keeps the arrow.
-func (p *Panel) PointerShapes(dst []tui.PointerRegion) []tui.PointerRegion {
-	if !p.resizable || p.float == nil || p.behavior.State().Maximized || p.w < 2 || p.h < 2 {
+// HandleUnclaimedPress takes a press on its frame that nothing in it wanted
+// (tui.UnclaimedPressHandler): the rule every window shares, its title moving it and its sides and
+// bottom resizing it (WindowCore.BeginFrameDrag), while it floats.
+func (p *Panel) HandleUnclaimedPress(m tui.MouseEvent) bool {
+	return p.float != nil && p.behavior.BeginFrameDrag(m, tui.Size{W: p.w, H: p.h})
+}
+
+// SubtreePointerShapes is a floating panel's resize arrows (tui.SubtreePointerShaper), over the
+// frame cells a press resizes from (WindowCore.FrameShapes): its sides, its bottom row and its two
+// bottom corners, over its content's cells too. The title row, which moves it and holds its
+// controls, keeps the arrow.
+func (p *Panel) SubtreePointerShapes(dst []tui.PointerRegion) []tui.PointerRegion {
+	if p.float == nil {
 		return dst
 	}
-	return append(dst,
-		tui.PointerRegion{Rect: tui.Rect{X: p.w - 1, Y: 1, W: 1, H: p.h - 2}, Shape: tui.PointerResizeEW},
-		tui.PointerRegion{Rect: tui.Rect{Y: p.h - 1, W: p.w - 1, H: 1}, Shape: tui.PointerResizeNS},
-		tui.PointerRegion{Rect: tui.Rect{X: p.w - 1, Y: p.h - 1, W: 1, H: 1}, Shape: tui.PointerResizeNWSE},
-	)
+	return p.behavior.FrameShapes(dst, tui.Size{W: p.w, H: p.h})
 }
 
 // ResolvePointerPress delegates configured Alt/Option gestures to shared behavior.

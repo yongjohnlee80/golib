@@ -106,7 +106,11 @@ host.Attach(float)
 // Place widget.NewWindowTaskbar(model) in the application's layout if wanted.
 ```
 
-- **Move/resize:** Alt/Option-left/right drag, only for enabled capabilities.
+- **Move/resize:** Alt/Option-left/right drag, only for enabled capabilities. On a
+  `Capabilities.FrameDrag` backend (golib/gui) a plain left press on the frame its content
+  declines works too: row 0 moves, the sides, the bottom and the bottom corners resize, a
+  double-click on row 0 toggles maximize (`WindowCore.BeginFrameDrag`), and the resizable
+  sides show resize arrows (`FrameShapes`, a `tui.SubtreePointerShaper`).
   There is no move/resize UI. Both bindings are construction options. A desktop
   or terminal may consume a modifier gesture; the library does not rewrite its
   configuration. Keyboard resolvers can return `WindowMoveByAction` or
@@ -155,7 +159,8 @@ cores on the same Float.
 ### Compatibility and input changes
 
 GUI Panel's legacy `Movable` and `Resizable` options also enable configurable
-Alt/Option drag over content. A title-bar or acquired window drag focuses the
+Alt/Option drag over content. Its plain title and border drags are the shared frame rule
+(`BeginFrameDrag`, on gui's backend), which adds its left side and bottom-left corner. A title-bar or acquired window drag focuses the
 content; ordinary unmatched right presses do not. Legacy collapse remains distinct
 from collector minimize and restores at a moved collapsed row's new location.
 

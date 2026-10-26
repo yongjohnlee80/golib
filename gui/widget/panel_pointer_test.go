@@ -7,16 +7,18 @@ import (
 	"github.com/yongjohnlee80/golib/tui"
 )
 
-// A floating, resizable panel's right column, bottom row and corner are its resize arrows, as
-// its presses resize from there; a panel that doesn't resize has none.
+// A floating, resizable panel's sides, bottom row and bottom corners are its resize arrows, as its
+// presses resize from there (WindowCore.FrameShapes); a panel that doesn't resize has none.
 func TestAFloatingPanelsEdgesAreResizeArrows(t *testing.T) {
 	at := tui.Rect{X: 2, Y: 2, W: 24, H: 6}
 	h := startPanel(t, at, gw.WithResizable())
 	var got []tui.PointerRegion
-	h.onLoop(func() { got = h.panel.PointerShapes(nil) })
+	h.onLoop(func() { got = h.panel.SubtreePointerShapes(nil) })
 	want := []tui.PointerRegion{
+		{Rect: tui.Rect{X: 0, Y: 1, W: 1, H: at.H - 2}, Shape: tui.PointerResizeEW},
 		{Rect: tui.Rect{X: at.W - 1, Y: 1, W: 1, H: at.H - 2}, Shape: tui.PointerResizeEW},
-		{Rect: tui.Rect{Y: at.H - 1, W: at.W - 1, H: 1}, Shape: tui.PointerResizeNS},
+		{Rect: tui.Rect{X: 1, Y: at.H - 1, W: at.W - 2, H: 1}, Shape: tui.PointerResizeNS},
+		{Rect: tui.Rect{X: 0, Y: at.H - 1, W: 1, H: 1}, Shape: tui.PointerResizeNESW},
 		{Rect: tui.Rect{X: at.W - 1, Y: at.H - 1, W: 1, H: 1}, Shape: tui.PointerResizeNWSE},
 	}
 	if len(got) != len(want) {
@@ -29,7 +31,7 @@ func TestAFloatingPanelsEdgesAreResizeArrows(t *testing.T) {
 	}
 
 	fixed := startPanel(t, at)
-	fixed.onLoop(func() { got = fixed.panel.PointerShapes(nil) })
+	fixed.onLoop(func() { got = fixed.panel.SubtreePointerShapes(nil) })
 	if len(got) != 0 {
 		t.Errorf("a panel that doesn't resize: %+v", got)
 	}

@@ -47,7 +47,13 @@ func (p *pipeHost) Flush(diff []tui.CellUpdate) error {
 
 func startPipe(t *testing.T, root tui.Component, w, h int) *pipeHost {
 	t.Helper()
-	p := &pipeHost{TestBackend: tui.NewTestBackend(w, h, tui.WithTestCapabilities(tui.Capabilities{NativeViews: true})),
+	return startPipeOn(t, root, w, h, tui.Capabilities{NativeViews: true})
+}
+
+// startPipeOn is startPipe on a TestBackend reporting caps.
+func startPipeOn(t *testing.T, root tui.Component, w, h int, caps tui.Capabilities) *pipeHost {
+	t.Helper()
+	p := &pipeHost{TestBackend: tui.NewTestBackend(w, h, tui.WithTestCapabilities(caps)),
 		h: gui.NewHeadlessFrames(w, h)}
 	p.app = tui.NewApp(root, tui.WithBackend(p), tui.WithMinFrameInterval(0))
 	ctx, cancel := context.WithCancel(context.Background())

@@ -21,7 +21,14 @@ type panelHarness struct {
 	panel *gw.Panel
 }
 
+// startPanel is startPanelOn gui's own capabilities: a plain drag on the frame moves and resizes.
 func startPanel(t *testing.T, at tui.Rect, opts ...gw.PanelOption) *panelHarness {
+	t.Helper()
+	return startPanelOn(t, tui.Capabilities{FrameDrag: true}, at, opts...)
+}
+
+// startPanelOn floats a panel titled Notes at at, over a background, on a backend reporting caps.
+func startPanelOn(t *testing.T, caps tui.Capabilities, at tui.Rect, opts ...gw.PanelOption) *panelHarness {
 	t.Helper()
 	panel := gw.NewPanel(widget.NewText("content"), append([]gw.PanelOption{gw.WithTitle("Notes")}, opts...)...)
 	float := widget.NewFloat(panel)
@@ -29,7 +36,7 @@ func startPanel(t *testing.T, at tui.Rect, opts ...gw.PanelOption) *panelHarness
 	bg.AddAt(widget.NewText("background"), 0, 0)
 	bg.AddAt(widget.NewText("under the panel"), 5, 4)
 	host := widget.NewOverlayHost(bg)
-	tb := tui.NewTestBackend(60, 20)
+	tb := tui.NewTestBackend(60, 20, tui.WithTestCapabilities(caps))
 	app := tui.NewApp(host, tui.WithBackend(tb))
 	ctx, cancel := context.WithCancel(context.Background())
 	t.Cleanup(cancel)
@@ -97,6 +104,23 @@ func TestPanelMovesByItsTitleBar(t *testing.T) {
 	h.mouse(tui.MouseRelease, 17, 4)
 	h.until("the move", func() bool { return h.bounds() == tui.Rect{X: 9, Y: 4, W: 24, H: 6} })
 	h.until("the title on its new row", func() bool { return strings.Contains(h.row(4), "Notes") })
+}
+
+// On a terminal (no Capabilities.FrameDrag) a plain press on the title or a border does nothing:
+// a terminal's window keeps the Alt chord alone.
+func TestAPanelOnATerminalTakesNoPlainFrameDrag(t *testing.T) {
+	at := tui.Rect{X: 2, Y: 2, W: 24, H: 6}
+	h := startPanelOn(t, tui.Capabilities{}, at, gw.WithMovable(), gw.WithResizable())
+	h.mouse(tui.MousePress, 10, 2)
+	h.mouse(tui.MouseMotion, 15, 4)
+	h.mouse(tui.MouseRelease, 15, 4)
+	h.mouse(tui.MousePress, 2+24-1, 2+6-1)
+	h.mouse(tui.MouseMotion, 2+24+3, 2+6+2)
+	h.mouse(tui.MouseRelease, 2+24+3, 2+6+2)
+	time.Sleep(50 * time.Millisecond)
+	if b := h.bounds(); b != at {
+		t.Fatalf("a plain drag on a terminal moved or resized the panel to %+v", b)
+	}
 }
 
 func TestPanelResizesByItsCorner(t *testing.T) {

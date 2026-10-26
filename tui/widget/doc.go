@@ -76,7 +76,10 @@
 // maximize, minimize and close behavior. [WindowCore] is the same behavior for a
 // GUI view. Neither creates chrome. Alt/Option-left moves and Alt/Option-right
 // resizes; consumers replace the modifier/button bindings through options. Both
-// gestures are capability-gated and draw no grip.
+// gestures are capability-gated and draw no grip. On a backend declaring
+// [tui.Capabilities].FrameDrag a plain left press on the frame its content declines
+// moves the window from row 0 and resizes it from a side, the bottom or a bottom
+// corner ([WindowCore.BeginFrameDrag]).
 //
 // [WindowButtons] and [WindowTaskbar] are separate optional presentations.
 // [MinimizedWindows] is a caller-owned, presentation-free collector. Non-modal

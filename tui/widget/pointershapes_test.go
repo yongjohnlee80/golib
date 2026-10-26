@@ -42,7 +42,13 @@ func (b *shapeHost) at(x, y int) tui.PointerShape {
 // runShaped runs root on a shape host, and waits for its first shaped frame.
 func runShaped(t *testing.T, root tui.Component, w, h int) *shapeHost {
 	t.Helper()
-	sh := &shapeHost{TestBackend: tui.NewTestBackend(w, h)}
+	return runShapedOn(t, root, w, h, tui.Capabilities{})
+}
+
+// runShapedOn is runShaped on a host reporting caps.
+func runShapedOn(t *testing.T, root tui.Component, w, h int, caps tui.Capabilities) *shapeHost {
+	t.Helper()
+	sh := &shapeHost{TestBackend: tui.NewTestBackend(w, h, tui.WithTestCapabilities(caps))}
 	app := tui.NewApp(root, tui.WithBackend(sh), tui.WithMinFrameInterval(0))
 	sh.app = app
 	ctx, cancel := context.WithCancel(context.Background())
