@@ -450,3 +450,41 @@ func TestTerminalTabsModelessScrollAndOnModeReachEveryTab(t *testing.T) {
 		t.Errorf("modes reported %v, want %v", seen, want)
 	}
 }
+
+// SetMode reaches the tab named, and reports it to SetOnMode with that tab's identity; Normal mode
+// for a tab with no program is ErrTerminalModeUnavailable, and an unknown tab ErrTerminalTabUnknown.
+func TestTerminalTabsSetATabsMode(t *testing.T) {
+	tabs := NewTerminalTabs()
+	p := newResultProc()
+	defer close(p.release)
+	a := addTestTerminal(t, tabs, "agent", p)
+	idle, _ := tabs.Add("unstarted")
+	var heard []TerminalMode
+	tabs.SetOnMode(func(id TerminalTabID, m TerminalMode) {
+		if id == a {
+			heard = append(heard, m)
+		}
+	})
+	h := startAppInternal(t, tabs, 40, 8)
+	defer h.stopInternal()
+	h.onLoopInternal(func() {
+		if err := tabs.Start(a); err != nil {
+			t.Fatal(err)
+		}
+		if err := tabs.SetMode(a, TerminalNormal); err != nil || pickTerminal(tabs, a).Mode() != TerminalNormal {
+			t.Errorf("SetMode(Normal): %v, in %v", err, pickTerminal(tabs, a).Mode())
+		}
+		if err := tabs.SetMode(a, TerminalInput); err != nil || pickTerminal(tabs, a).Mode() != TerminalInput {
+			t.Errorf("SetMode(Input): %v, in %v", err, pickTerminal(tabs, a).Mode())
+		}
+		if err := tabs.SetMode(idle, TerminalNormal); !errors.Is(err, ErrTerminalModeUnavailable) {
+			t.Errorf("Normal mode for a tab with no program: %v", err)
+		}
+		if err := tabs.SetMode("nope", TerminalInput); !errors.Is(err, ErrTerminalTabUnknown) {
+			t.Errorf("an unknown tab: %v", err)
+		}
+	})
+	if len(heard) != 2 || heard[0] != TerminalNormal || heard[1] != TerminalInput {
+		t.Errorf("SetOnMode heard %v for the tab, want Normal then Input", heard)
+	}
+}

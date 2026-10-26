@@ -303,6 +303,17 @@ func pressMatches(match func(tui.KeyEvent) bool, e tui.KeyEvent) bool {
 
 // toggleMode is the mode key: normal mode back to input, input mode into normal mode while a
 // program runs (Ctrl+\ Ctrl+n's condition). A Ctrl+\ waiting for its second key is sent as itself.
+// SetMode puts the Terminal in m, as its mode key does: TerminalInput sends the keys to the
+// program, TerminalNormal moves a cursor over its scrollback. Normal mode needs a running program,
+// as the mode key's does: SetMode(TerminalNormal) on a Terminal with none changes nothing and
+// reports false. A host puts a Terminal in input mode when the user arrives to type in it.
+func (t *Terminal) SetMode(m TerminalMode) bool {
+	if m == t.mode {
+		return true
+	}
+	return t.toggleMode() // two modes: the other one
+}
+
 func (t *Terminal) toggleMode() bool {
 	if t.mode == TerminalNormal {
 		t.setMode(TerminalInput)

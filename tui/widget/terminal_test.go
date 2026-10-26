@@ -301,6 +301,30 @@ func TestTerminalSendsAHostKeyAfterThePrefix(t *testing.T) {
 	}
 }
 
+// SetMode is the mode key's choice, by name: Normal, then Input again, each reported done; the mode
+// it is in already is done too. Normal mode with no program is refused, and changes nothing.
+func TestTerminalSetsItsMode(t *testing.T) {
+	f := startTerm(t, 20, 4)
+	var normal, input, same bool
+	f.h.onLoop(func() { normal = f.term.SetMode(widget.TerminalNormal) })
+	if m := f.mode(); !normal || m != widget.TerminalNormal {
+		t.Fatalf("SetMode(Normal): %v, in %v", normal, m)
+	}
+	f.h.onLoop(func() {
+		input = f.term.SetMode(widget.TerminalInput)
+		same = f.term.SetMode(widget.TerminalInput)
+	})
+	if m := f.mode(); !input || !same || m != widget.TerminalInput {
+		t.Fatalf("SetMode(Input): %v, again %v, in %v", input, same, m)
+	}
+	f.h.inject(key('q'))
+	f.waitSent("q")
+	idle := widget.NewTerminal()
+	if idle.SetMode(widget.TerminalNormal) || idle.Mode() != widget.TerminalInput {
+		t.Errorf("a Terminal with no program took Normal mode: %v", idle.Mode())
+	}
+}
+
 func TestTerminalPastes(t *testing.T) {
 	f := startTerm(t, 20, 4)
 	f.h.inject(tui.PasteEvent{Text: "a\nb"})

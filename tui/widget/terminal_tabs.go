@@ -24,6 +24,8 @@ var (
 	ErrTerminalTabUnknown    = errs.Sentinel(errs.ErrPrecondition, "unknown or removed terminal tab")
 	ErrTerminalTabClosing    = errs.Sentinel(errs.ErrPrecondition, "terminal tab is closing")
 	ErrTerminalTabsUnmounted = errs.Sentinel(errs.ErrPrecondition, "terminal tabs must be mounted to start a process")
+	// ErrTerminalModeUnavailable is a mode the tab cannot take now: normal mode with no program.
+	ErrTerminalModeUnavailable = errs.Sentinel(errs.ErrPrecondition, "terminal tab cannot take that mode: no program is running")
 )
 
 // TerminalTab describes an instance without exposing its process or widget.
@@ -478,6 +480,20 @@ func (t *TerminalTabs) SendPaste(id TerminalTabID, text string) error {
 		return err
 	}
 	return e.terminal.SendPaste(text)
+}
+
+// SetMode is Terminal.SetMode for this exact runtime identity: a closing or removed tab refuses it
+// with its error, and a mode the Terminal cannot take (Normal with no program) with
+// ErrTerminalModeUnavailable.
+func (t *TerminalTabs) SetMode(id TerminalTabID, m TerminalMode) error {
+	e, err := t.openTab(id)
+	if err != nil {
+		return err
+	}
+	if !e.terminal.SetMode(m) {
+		return ErrTerminalModeUnavailable
+	}
+	return nil
 }
 
 // Signal is Terminal.Signal for this exact runtime identity: a closing or removed tab refuses it.
