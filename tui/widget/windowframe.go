@@ -63,6 +63,11 @@ func (c *WindowCore) frameSide(h Handle, p tui.Point) (Handle, bool) {
 		return h, true
 	}
 	got, ok := c.handles.HandleAt(c.pointerPosition(p))
+	return frameSideOf(h, got, ok)
+}
+
+// frameSideOf is frameSide's choice from what HandleAt named for the press: got, or nothing (!ok).
+func frameSideOf(h, got Handle, ok bool) (Handle, bool) {
 	switch {
 	case !ok:
 		return 0, false
@@ -80,7 +85,7 @@ func (c *WindowCore) FrameShapes(dst []tui.PointerRegion, size tui.Size) []tui.P
 	if !c.frameDrag() || !c.resize || c.minimized || c.State().Maximized || size.W < 2 || size.H < 2 {
 		return dst
 	}
-	for _, f := range [...]struct {
+	frame := [...]struct {
 		h Handle
 		r tui.Rect
 	}{
@@ -89,13 +94,43 @@ func (c *WindowCore) FrameShapes(dst []tui.PointerRegion, size tui.Size) []tui.P
 		{HandleBottom, tui.Rect{X: 1, Y: size.H - 1, W: size.W - 2, H: 1}},
 		{HandleBottomLeft, tui.Rect{X: 0, Y: size.H - 1, W: 1, H: 1}},
 		{HandleBottomRight, tui.Rect{X: size.W - 1, Y: size.H - 1, W: 1, H: 1}},
-	} {
-		if f.r.Empty() {
-			continue
+	}
+	var hits [len(frame)]handleHit
+	switch hs := c.handles.(type) {
+	case nil:
+		for i := range hits {
+			hits[i] = handleHit{frame[i].h, true}
 		}
-		if h, ok := c.frameSide(f.h, tui.Point{X: f.r.X, Y: f.r.Y}); ok {
-			dst = append(dst, tui.PointerRegion{Rect: f.r, Shape: h.pointerShape()}) // a tile's corner shows its side's arrow
+	case windowHandlesAt: // one reading of the target's layout for all five
+		var ps [len(frame)]tui.Point
+		for i, f := range frame {
+			ps[i] = c.pointerPosition(tui.Point{X: f.r.X, Y: f.r.Y})
+		}
+		hs.handlesAt(ps[:], hits[:])
+		for i := range hits {
+			hits[i].h, hits[i].ok = frameSideOf(frame[i].h, hits[i].h, hits[i].ok)
+		}
+	default:
+		for i, f := range frame {
+			hits[i].h, hits[i].ok = c.frameSide(f.h, tui.Point{X: f.r.X, Y: f.r.Y})
+		}
+	}
+	for i, f := range frame {
+		if !f.r.Empty() && hits[i].ok {
+			dst = append(dst, tui.PointerRegion{Rect: f.r, Shape: hits[i].h.pointerShape()}) // a tile's corner shows its side's arrow
 		}
 	}
 	return dst
+}
+
+// handleHit is what a target's HandleAt named for one point.
+type handleHit struct {
+	h  Handle
+	ok bool
+}
+
+// windowHandlesAt is a WindowHandles that answers several points from one reading of its layout
+// (a tile manager's target).
+type windowHandlesAt interface {
+	handlesAt(ps []tui.Point, out []handleHit)
 }

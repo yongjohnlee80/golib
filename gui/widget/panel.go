@@ -306,7 +306,8 @@ func (p *Panel) HandleEvent(ev tui.Event) bool {
 	return false
 }
 
-// mouse handles mouse events for the panel's title bar controls: their hover, press and release.
+// mouse handles mouse events for the panel's title bar: its controls' hover, press and release, and
+// a double-click on it, which maximizes or restores a maximizable panel.
 func (p *Panel) mouse(m tui.MouseEvent) bool {
 	switch m.Kind {
 	case tui.MouseMotion:
@@ -328,7 +329,14 @@ func (p *Panel) mouse(m tui.MouseEvent) bool {
 		if m.Button != tui.MouseLeft {
 			return false
 		}
-		return m.Y == 0 && p.controlAt(m.X) != noControl // the control acts on release, as a button does
+		if m.Y == 0 && p.controlAt(m.X) != noControl {
+			return true // the control acts on release, as a button does
+		}
+		if m.Y == 0 && m.Count == 2 && p.behavior.State().Maximize {
+			p.act(maximizeControl) // its title bar's own, on every backend: the frame's rule is the drags
+			return true
+		}
+		return false
 	}
 	return false
 }
