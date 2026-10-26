@@ -123,6 +123,33 @@ func TestAPanelOnATerminalTakesNoPlainFrameDrag(t *testing.T) {
 	}
 }
 
+// A double-click on the title bar maximizes a maximizable panel and restores it, on a terminal's
+// backend as on gui's: it is the title bar's own, not one of the frame's drags.
+func TestAPanelsTitleDoubleClickMaximizesOnEveryBackend(t *testing.T) {
+	for _, caps := range []tui.Capabilities{{}, {FrameDrag: true}} {
+		h := startPanelOn(t, caps, tui.Rect{X: 2, Y: 2, W: 24, H: 6}, gw.WithMaximizable())
+		doubleClick := func(x, y int) {
+			for _, e := range []tui.MouseEvent{
+				{Kind: tui.MousePress, Button: tui.MouseLeft, X: x, Y: y, Count: 1},
+				{Kind: tui.MouseRelease, Button: tui.MouseLeft, X: x, Y: y},
+				{Kind: tui.MousePress, Button: tui.MouseLeft, X: x, Y: y, Count: 2},
+				{Kind: tui.MouseRelease, Button: tui.MouseLeft, X: x, Y: y},
+			} {
+				if err := h.tb.Inject(e); err != nil {
+					t.Fatal(err)
+				}
+			}
+		}
+		maximized := func() (m bool) { h.onLoop(func() { m = h.panel.Maximized() }); return m }
+		doubleClick(6, 2)
+		h.until("maximized", maximized)
+		// the press goes where the screen shows the bar: maximized, it is the first row once drawn
+		h.until("the maximized bar drawn", func() bool { return strings.Contains(h.row(0), "Notes") })
+		doubleClick(6, 0)
+		h.until("restored", func() bool { return !maximized() })
+	}
+}
+
 func TestPanelResizesByItsCorner(t *testing.T) {
 	h := startPanel(t, tui.Rect{X: 2, Y: 2, W: 24, H: 6}, gw.WithResizable())
 	h.mouse(tui.MousePress, 2+24-1, 2+6-1)

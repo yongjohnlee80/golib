@@ -1144,9 +1144,25 @@ func (g *tileTarget) Checkpoint() func() {
 // strip's declaration order.
 func (g *tileTarget) HandleAt(p tui.Point) (Handle, bool) {
 	m := g.owner()
+	return g.nearestShared(p, m.sharedBorders(g.t, m.placedRects()))
+}
+
+// handlesAt is HandleAt for each of ps, from one reading of the shared borders: a frame's arrows
+// ask for five points each frame (WindowCore.FrameShapes).
+func (g *tileTarget) handlesAt(ps []tui.Point, out []handleHit) {
+	m := g.owner()
+	borders := m.sharedBorders(g.t, m.placedRects())
+	for i, p := range ps {
+		out[i].h, out[i].ok = g.nearestShared(p, borders)
+	}
+}
+
+// nearestShared is the shared border of borders nearest p: HandleAt's choice.
+func (g *tileTarget) nearestShared(p tui.Point, borders []tileBorder) (Handle, bool) {
+	m := g.owner()
 	best, bestDist, bestRank := Handle(0), math.MaxInt, math.MaxInt
 	found := false
-	for _, b := range m.sharedBorders(g.t, m.placedRects()) {
+	for _, b := range borders {
 		line := sideOf(g.t.rect, b.side)
 		dist := p.Y - line
 		vertical := b.side == HandleLeft || b.side == HandleRight
