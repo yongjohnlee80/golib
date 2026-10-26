@@ -234,8 +234,8 @@ func TestTerminalLeavesItsHostKeysToTheHost(t *testing.T) {
 }
 
 // A host key's repeats are swallowed, not sent and not handed on (the host acts once per press),
-// and its release is nobody's; a Ctrl+\ waiting for its second key is sent as itself at a host
-// key, so the key after cannot complete it: Ctrl+\ F11 Ctrl+n sends ^\ and ^N and stays in input.
+// and its release is nobody's; after a Ctrl+\ a host key is the program's, sent alone, so the key
+// after cannot complete the prefix: Ctrl+\ F11 Ctrl+n sends F11 and ^N and stays in input.
 func TestTerminalHostKeyRepeatsAndAPendingPrefix(t *testing.T) {
 	f := startTerm(t, 20, 4)
 	// press-only, as decl's hostKeys (a Shortcut sequence) matches: the Terminal judges a repeat by its press
@@ -257,9 +257,47 @@ func TestTerminalHostKeyRepeatsAndAPendingPrefix(t *testing.T) {
 		t.Fatalf("sent %q: a host key's press, repeat or release reached the program", got)
 	}
 	f.h.inject(ctrl('\\'), key(tui.KeyF11), ctrl('n'))
-	f.waitSent("a\x1c\x0e")
+	f.waitSent("a\x1b[23~\x0e")
 	if m := f.mode(); m != widget.TerminalInput {
 		t.Errorf("Ctrl+\\ F11 Ctrl+n left input mode: %v", m)
+	}
+}
+
+// Ctrl+\ then a host key sends the key alone, a program's way to a key its host keeps: Ctrl+\
+// Ctrl+L sends ^L, and nothing goes on to the host; the next Ctrl+L is the host's again. A host key
+// with no encoding (Ctrl+comma has no legacy byte) sends the Ctrl+\ as itself and goes on.
+func TestTerminalSendsAHostKeyAfterThePrefix(t *testing.T) {
+	f := startTerm(t, 20, 4)
+	f.h.onLoop(func() {
+		f.term.SetHostKeys(func(k tui.KeyEvent) bool {
+			return k.Kind == tui.KeyPress && k.Mods == tui.ModCtrl && (k.Code == 'l' || k.Code == ',')
+		})
+	})
+	var prefix, sent, again bool
+	f.h.onLoop(func() {
+		prefix = f.term.HandleEvent(ctrl('\\'))
+		sent = f.term.HandleEvent(ctrl('l'))
+		again = f.term.HandleEvent(ctrl('l'))
+	})
+	if !prefix || !sent || again {
+		t.Errorf("Ctrl+\\ consumed %v, Ctrl+L after it %v (want the program's), Ctrl+L again %v (want the host's)", prefix, sent, again)
+	}
+	f.h.inject(key('z'))
+	f.waitSent("\x0cz")
+	if got := f.proc().sent(); got != "\x0cz" {
+		t.Fatalf("sent %q, want ^L once, then z", got)
+	}
+	var comma bool
+	f.h.onLoop(func() {
+		f.term.HandleEvent(ctrl('\\'))
+		comma = f.term.HandleEvent(ctrl(','))
+	})
+	if comma {
+		t.Error("a host key with no encoding was consumed after Ctrl+\\")
+	}
+	f.waitSent("\x0cz\x1c")
+	if m := f.mode(); m != widget.TerminalInput {
+		t.Errorf("the prefix and a host key left input mode: %v", m)
 	}
 }
 
