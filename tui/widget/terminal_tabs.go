@@ -482,6 +482,16 @@ func (t *TerminalTabs) SendPaste(id TerminalTabID, text string) error {
 	return e.terminal.SendPaste(text)
 }
 
+// SendBracketedPaste is Terminal.SendBracketedPaste for this exact runtime identity, refused as
+// SendText is.
+func (t *TerminalTabs) SendBracketedPaste(id TerminalTabID, text string) error {
+	e, err := t.openTab(id)
+	if err != nil {
+		return err
+	}
+	return e.terminal.SendBracketedPaste(text)
+}
+
 // SetMode is Terminal.SetMode for this exact runtime identity: a closing or removed tab refuses it
 // with its error, and a mode the Terminal cannot take (Normal with no program) with
 // ErrTerminalModeUnavailable.

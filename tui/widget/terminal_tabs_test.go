@@ -391,18 +391,98 @@ func TestTerminalInputBudgetIncludesInflightAndRejectsWholeSend(t *testing.T) {
 	}
 }
 
-// SendPaste reaches a running tab by its identity, and is refused as SendText is: an unknown tab, a
-// stopped one.
+// SendPaste and SendBracketedPaste reach a running tab by its identity, and are refused as SendText
+// is: an unknown tab, a stopped one.
 func TestTerminalTabsSendAPasteByIdentity(t *testing.T) {
 	tabs := NewTerminalTabs()
 	p := newResultProc()
 	defer close(p.release)
 	a := addTestTerminal(t, tabs, "a", p)
-	if err := tabs.SendPaste("nope", "x"); !errors.Is(err, ErrTerminalTabUnknown) {
-		t.Errorf("an unknown tab: %v", err)
+	for name, send := range map[string]func(TerminalTabID, string) error{"SendPaste": tabs.SendPaste, "SendBracketedPaste": tabs.SendBracketedPaste} {
+		if err := send("nope", "x"); !errors.Is(err, ErrTerminalTabUnknown) {
+			t.Errorf("%s to an unknown tab: %v", name, err)
+		}
+		if err := send(a, "x"); !errors.Is(err, ErrTerminalNotRunning) {
+			t.Errorf("%s to a tab not started: %v", name, err)
+		}
 	}
-	if err := tabs.SendPaste(a, "x"); !errors.Is(err, ErrTerminalNotRunning) {
-		t.Errorf("a tab not started: %v", err)
+}
+
+// sentProc is a resultProc that keeps every byte the terminal sends it.
+type sentProc struct {
+	*resultProc
+	mu   sync.Mutex
+	sent strings.Builder
+}
+
+func (p *sentProc) Write(b []byte) (int, error) {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	return p.sent.Write(b)
+}
+
+func (p *sentProc) got() string { p.mu.Lock(); defer p.mu.Unlock(); return p.sent.String() }
+
+// SendBracketedPaste reaches the tab it names, never the one selected: two running tabs, both
+// taking bracketed pastes, the neighbour selected; the target's program gets exactly the framed
+// paste, the neighbour's nothing.
+func TestTerminalTabsSendABracketedPasteToTheTabItNames(t *testing.T) {
+	tabs := NewTerminalTabs()
+	target, neighbour := &sentProc{resultProc: newResultProc()}, &sentProc{resultProc: newResultProc()}
+	defer close(target.release)
+	defer close(neighbour.release)
+	add := func(label string, p *sentProc) TerminalTabID {
+		id, err := tabs.Add(label, WithStarter(func(pty.Cmd) (TerminalProcess, error) { return p, nil }))
+		if err != nil {
+			t.Fatal(err)
+		}
+		return id
+	}
+	a, b := add("target", target), add("neighbour", neighbour)
+	h := startAppInternal(t, tabs, 40, 8)
+	defer h.stopInternal()
+	h.onLoopInternal(func() {
+		for _, id := range []TerminalTabID{a, b} {
+			if err := tabs.Start(id); err != nil {
+				t.Error(err)
+			}
+		}
+	})
+	for _, p := range []*sentProc{target, neighbour} {
+		if _, err := io.WriteString(p.w, "\x1b[?2004h"); err != nil {
+			t.Fatal(err)
+		}
+	}
+	bracketed := func() bool {
+		ok := false
+		h.onLoopInternal(func() {
+			ok = pickTerminal(tabs, a).scr.Modes().BracketedPaste && pickTerminal(tabs, b).scr.Modes().BracketedPaste
+		})
+		return ok
+	}
+	for deadline := time.Now().Add(5 * time.Second); !bracketed(); time.Sleep(5 * time.Millisecond) {
+		if time.Now().After(deadline) {
+			t.Fatal("the programs never took bracketed paste")
+		}
+	}
+	var err error
+	h.onLoopInternal(func() {
+		if err = tabs.Select(b); err == nil {
+			err = tabs.SendBracketedPaste(a, "1y\nz")
+		}
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := "\x1b[200~1y\nz\x1b[201~"
+	for deadline := time.Now().Add(5 * time.Second); target.got() != want; time.Sleep(5 * time.Millisecond) {
+		if time.Now().After(deadline) {
+			t.Fatalf("the target got %q, want %q", target.got(), want)
+		}
+	}
+	h.syncInternal()
+	if got := neighbour.got(); got != "" {
+		t.Errorf("the neighbour, selected, got %q", got)
 	}
 }
 

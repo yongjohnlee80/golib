@@ -2,6 +2,7 @@ package widget_test
 
 import (
 	"bytes"
+	"errors"
 	"fmt"
 	"io"
 	"strings"
@@ -353,6 +354,28 @@ func TestTerminalSendsAPaste(t *testing.T) {
 	f.waitSent("\x1b[200~c\nde\x1b[201~")
 	send("x\x1b[20\x1b[201~1~y")
 	f.waitSent("\x1b[200~xy\x1b[201~")
+}
+
+// SendBracketedPaste sends nothing to a program that has not asked for bracketed paste, and is
+// refused; once it has, the text goes bracketed, as SendPaste's does.
+func TestTerminalSendsABracketedPasteOnly(t *testing.T) {
+	f := startTerm(t, 20, 4)
+	var err error
+	f.h.onLoop(func() { err = f.term.SendBracketedPaste("1y") })
+	if !errors.Is(err, widget.ErrTerminalPasteUnbracketed) {
+		t.Fatalf("an unbracketed program's paste: %v, want ErrTerminalPasteUnbracketed", err)
+	}
+	f.h.inject(key('z'))
+	f.waitSent("z")
+	if got := f.proc().sent(); got != "z" {
+		t.Fatalf("sent %q: the refused paste reached the program", got)
+	}
+	f.output("\x1b[?2004h")
+	f.h.onLoop(func() { err = f.term.SendBracketedPaste("1y") })
+	if err != nil {
+		t.Fatal(err)
+	}
+	f.waitSent("z\x1b[200~1y\x1b[201~")
 }
 
 func TestTerminalPrefixWaysOut(t *testing.T) {

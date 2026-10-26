@@ -48,6 +48,22 @@ func (t *Terminal) SendPaste(text string) error {
 	return t.in.offer(b)
 }
 
+// SendBracketedPaste is SendPaste only as a bracketed paste: a program that has not asked for one
+// (mode 2004) is refused with ErrTerminalPasteUnbracketed, and nothing is sent. It is the safe
+// default for any text the user did not type (a host's notice to an agent): that text never arrives
+// as keys a prompt could take one by one. SendPaste stays for the user's own pastes, which go as
+// keys to a program without the mode, as a terminal's paste does. The mode is read and the paste
+// queued in one call, on the UI loop.
+func (t *Terminal) SendBracketedPaste(text string) error {
+	if !t.Running() {
+		return ErrTerminalNotRunning
+	}
+	if !t.scr.Modes().BracketedPaste {
+		return ErrTerminalPasteUnbracketed
+	}
+	return t.SendPaste(text)
+}
+
 func isCtrl(k tui.KeyEvent, r rune) bool {
 	return k.Mods.Chord()&^tui.ModShift == tui.ModCtrl && (k.Code == r || k.Code == r-'a'+'A')
 }
