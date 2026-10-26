@@ -78,6 +78,9 @@ func (a *App) renderNode(n *node, s Surface) {
 	if subtree {
 		a.native.styledDepth--
 	}
+	if a.buf.stamping {
+		a.noteSubtreeShapes(n, a.buf.order) // the subtree's last order: over its descendants' cells
+	}
 	if native >= 0 {
 		a.native.natives[native].End = a.buf.order
 	}

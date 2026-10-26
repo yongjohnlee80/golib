@@ -40,6 +40,15 @@ type PointerShaper interface {
 	PointerShapes(dst []PointerRegion) []PointerRegion
 }
 
+// SubtreePointerShaper is a component that shapes the pointer over cells its own descendants paint,
+// a window's frame drawn by its content's Box among them. SubtreePointerShapes is asked after its
+// subtree paints, at the subtree's last paint order. So its regions show over that subtree, under
+// anything painted after it (a dialog, a window above), and a later region still wins where two
+// overlap.
+type SubtreePointerShaper interface {
+	SubtreePointerShapes(dst []PointerRegion) []PointerRegion
+}
+
 // PointerShapePlacement is one run of cells on a row, in absolute cells, that shapes the pointer.
 // Layer is its node's paint order, as NativePlacement's is.
 type PointerShapePlacement struct {
@@ -75,8 +84,22 @@ func (a *App) noteShapes(n *node, order uint32) {
 	if !ok || a.caps.shapes == nil || n.visRect.Empty() {
 		return
 	}
-	a.shape.local = sh.PointerShapes(a.shape.local[:0])
-	for _, r := range a.shape.local {
+	a.noteRegions(n, sh.PointerShapes(a.shape.local[:0]), order)
+}
+
+// noteSubtreeShapes is noteShapes for a SubtreePointerShaper, asked once n's subtree has painted.
+func (a *App) noteSubtreeShapes(n *node, order uint32) {
+	sh, ok := n.comp.(SubtreePointerShaper)
+	if !ok || a.caps.shapes == nil || n.visRect.Empty() {
+		return
+	}
+	a.noteRegions(n, sh.SubtreePointerShapes(a.shape.local[:0]), order)
+}
+
+// noteRegions notes regions, in n's frame, at order: each cut to n's visible cells.
+func (a *App) noteRegions(n *node, regions []PointerRegion, order uint32) {
+	a.shape.local = regions
+	for _, r := range regions {
 		abs := r.Rect.Translate(n.absRect.X, n.absRect.Y).Intersect(n.visRect)
 		if abs.Empty() || r.Shape == PointerDefault {
 			continue

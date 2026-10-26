@@ -15,6 +15,16 @@ type PointerPressResolver interface {
 	ResolvePointerPress(MouseEvent) (Action, bool)
 }
 
+// UnclaimedPressHandler is a component that takes a primary press only when nothing else does: no
+// node on the press's path consumed it (a HandleEvent or a resolver), and the gesture recogniser
+// didn't take it for the Activatable it landed on. HandleUnclaimedPress is asked last, innermost
+// first along the same path, with e in the component's frame, and runs as its own handler, so it
+// may capture the pointer. A window takes the plain drags on its frame here: a control painted on
+// the frame keeps its click.
+type UnclaimedPressHandler interface {
+	HandleUnclaimedPress(e MouseEvent) bool
+}
+
 // CaptureEscapeResolver resolves the cancel key (the tui.CancelCapture command, Esc by default) on
 // the pointer-capture owner before focused content sees it. It is consulted only while capture is
 // held, and only for an event the runtime matched as that command, so a resolver does not test the

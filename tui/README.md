@@ -124,7 +124,14 @@ which is why most widgets only ever implement `HandleEvent`.
 
 After the bounded walk, an unconsumed primary press on an opted-in control is
 offered to the **gesture recogniser**, which may take the pointer and later
-produce an `ActivateAction`.
+produce an `ActivateAction`. A primary press the recogniser doesn't take either
+is then **unclaimed**: each `UnclaimedPressHandler` on the same path is asked,
+innermost first, until one takes it. So a press goes, in order, to the path's
+nodes, then the recogniser, then the unclaimed handlers; a right or middle
+press, a motion and a release are never unclaimed. `HandleUnclaimedPress` runs
+as its node's own handler, so it may take the pointer. A window takes the plain
+drags on its frame there (`widget.WindowCore.BeginFrameDrag`), so a control on
+the frame keeps its click.
 
 What a **held capture** does with an event depends on who owns it:
 

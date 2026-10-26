@@ -273,14 +273,19 @@ func (a *App) dispatchMouse(e MouseEvent) {
 		e.Count = a.pressOrdinal(e, target)
 	}
 	consumed := target != nil && a.bubbleWithin(target, ceiling, e) // the keyboard path's ceiling
-	// STEP 6 — the gesture recogniser, last and only on what nobody wanted.
+	// STEP 6 — the gesture recogniser, only on what nobody on the path wanted.
 	//
 	// It sees a primary press ONLY after every node on the path has declined
 	// it, so a widget that handles its own presses is never second-guessed;
 	// the recogniser exists for the ones that would rather describe what
 	// they do than when they were clicked.
-	if !consumed && target != nil && e.Kind == MousePress && e.Button == MouseLeft {
-		a.offerToRecognizer(target, e)
+	//
+	// STEP 7 — the unclaimed press: a primary press that neither the path nor the recogniser took
+	// goes to the path's UnclaimedPressHandlers, innermost first, until one takes it. Last, so a
+	// window's frame (its plain drags) never preempts a control painted on it. Primary presses only:
+	// the recogniser sees no other, so no other could be one it would have wanted.
+	if !consumed && target != nil && e.Kind == MousePress && e.Button == MouseLeft && !a.offerToRecognizer(target, e) {
+		a.offerUnclaimed(target, ceiling, e)
 	}
 }
 
@@ -334,8 +339,8 @@ func (a *App) pressFocus(target *node) bool {
 }
 
 // offerToRecognizer gives a primary press nobody consumed to the gesture recogniser, when target
-// opted in.
-func (a *App) offerToRecognizer(target *node, e MouseEvent) {
+// opted in, and reports whether it took the press.
+func (a *App) offerToRecognizer(target *node, e MouseEvent) bool {
 	// An OPTED-IN target, which means two things: it implements
 	// Activatable, and its effective pointer policy allows the mouse.
 	//
@@ -354,11 +359,35 @@ func (a *App) offerToRecognizer(target *node, e MouseEvent) {
 	// pointer event in between — the same harm as engaging on a
 	// component that is not Activatable at all.
 	if _, activatable := target.comp.(Activatable); !activatable || !activationAvailable(target) {
-		return
+		return false
 	}
 	if r := a.recognizerFor(); r != nil && effectivePointerPolicy(target) != PointerDisabled {
-		a.runRecognizer(r, target, e.localTo(target.absRect))
+		return a.runRecognizer(r, target, e.localTo(target.absRect))
 	}
+	return false
+}
+
+// offerUnclaimed gives a primary press that neither the path nor the recogniser took to the
+// path's UnclaimedPressHandlers, innermost first, until one takes it.
+func (a *App) offerUnclaimed(target, ceiling *node, e MouseEvent) {
+	for m := range pathTo(target, ceiling) {
+		h, ok := m.comp.(UnclaimedPressHandler)
+		if !ok || effectivePointerPolicy(m) == PointerDisabled {
+			continue
+		}
+		if a.deliverUnclaimed(m, h, e.localTo(m.absRect)) {
+			a.traceRouted(e, target, m.id)
+			return
+		}
+	}
+}
+
+// deliverUnclaimed runs n's HandleUnclaimedPress as n's own handler, as deliverTo runs its
+// HandleEvent: it may capture the pointer.
+func (a *App) deliverUnclaimed(n *node, h UnclaimedPressHandler, e MouseEvent) (handled bool) {
+	defer a.phase.leaveDelivery(a.phase.enterDelivery(delivery{node: n.id, origin: a.phase.handlerOrigin, source: a.phase.handlerSource}))
+	defer a.contain("event", n, &handled)
+	return h.HandleUnclaimedPress(e)
 }
 
 // dispatchFocusEvent delivers a terminal focus change (mode 1004) to the focused component and the
