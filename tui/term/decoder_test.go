@@ -361,3 +361,29 @@ func TestDecodeEscResolution(t *testing.T) {
 		t.Fatalf("got %#v want %#v", out, want)
 	}
 }
+
+// A tty whose erase character is ^H sends it for Backspace: there a lone 0x08 is Backspace, and
+// Ctrl+H is unreachable in legacy encoding. With DEL as erase, or none known, 0x08 is Ctrl+H.
+// Kitty's CSI u keys say which key was pressed, whatever the erase character.
+func TestDecodeTheEraseCharacter(t *testing.T) {
+	for _, c := range []struct {
+		name  string
+		erase byte
+		input string
+		want  tui.Event
+	}{
+		{"^H erase: 0x08 is Backspace", 0x08, "\x08", key(tui.KeyBackspace, 0)},
+		{"^H erase: DEL is Backspace too", 0x08, "\x7f", key(tui.KeyBackspace, 0)},
+		{"DEL erase: 0x08 is Ctrl+H", 0x7f, "\x08", key('h', tui.ModCtrl)},
+		{"no erase known: 0x08 is Ctrl+H", 0, "\x08", key('h', tui.ModCtrl)},
+		{"^H erase, kitty: Ctrl+H is Ctrl+H", 0x08, "\x1b[104;5u", key('h', tui.ModCtrl)},
+		{"^H erase, kitty: Backspace is Backspace", 0x08, "\x1b[127u", key(tui.KeyBackspace, 0)},
+	} {
+		var out []tui.Event
+		d := &decoder{emit: func(ev tui.Event) { out = append(out, ev) }, erase: c.erase}
+		d.feedBytes([]byte(c.input))
+		if len(out) != 1 || !reflect.DeepEqual(out[0], c.want) {
+			t.Errorf("%s: %#v, want %#v", c.name, out, c.want)
+		}
+	}
+}

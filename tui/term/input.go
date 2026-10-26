@@ -82,6 +82,7 @@ func (b *Backend) decodeLoop(readCh <-chan []byte) {
 		probe:      b.probeReply,
 		onFocusIn:  func() { size.check(b, false) }, // focus-in re-check
 		optionFold: b.cfg.optionFold,
+		erase:      b.erase,
 	}
 	var esc escTimer
 	lastRead := time.Now()

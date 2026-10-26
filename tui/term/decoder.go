@@ -58,6 +58,9 @@ type decoder struct {
 	// Alt+letter (WithOptionFold).
 	optionFold bool
 
+	// erase is the tty's erase character (Backend.erase): with ^H, a lone 0x08 is Backspace.
+	erase byte
+
 	// Bracketed-paste capture. While pasting, bytes bypass
 	// the parser entirely and are captured literally until the exact
 	// ESC [ 2 0 1 ~ terminator — a CSI 200~ opener inside an unterminated
@@ -169,7 +172,7 @@ func (d *decoder) handle(a *vtparse.Action) {
 		d.key(tui.KeyEvent{Code: a.Rune, Mods: mods, Text: text})
 	case vtparse.Execute:
 		d.ss3 = false
-		if ev, ok := ctrlKey(a.Byte); ok {
+		if ev, ok := ctrlKey(a.Byte, d.erase); ok {
 			d.emit(ev)
 		}
 	case vtparse.Esc:
@@ -209,8 +212,14 @@ func (d *decoder) apcDispatch(a *vtparse.Action) {
 // ctrlKey decodes a C0 control byte (plus DEL) into its legacy key meaning.
 // The known-unfixable legacy collisions — Ctrl+I = Tab, Ctrl+M = Enter,
 // Ctrl+[ = ESC, no key release — are inherent to this encoding and are
-// exactly what kitty mode removes.
-func ctrlKey(b byte) (tui.KeyEvent, bool) {
+// exactly what kitty mode removes. A terminal whose Backspace sends ^H says
+// so in its erase character: there 0x08 is Backspace, and Ctrl+H is
+// unreachable without kitty mode, as for readline and vim. Ctrl+Backspace
+// sent as ^H by a terminal whose erase is DEL still reads as Ctrl+H.
+func ctrlKey(b, erase byte) (tui.KeyEvent, bool) {
+	if b == 0x08 && erase == 0x08 {
+		return tui.KeyEvent{Code: tui.KeyBackspace}, true
+	}
 	if k, ok := xterm.C0Key(b); ok {
 		return tui.KeyEvent{Code: k}, true
 	}
