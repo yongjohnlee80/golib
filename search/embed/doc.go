@@ -7,6 +7,11 @@
 //   - OpenAI-Compatible ([NewOpenAI]): Standard /v1/embeddings endpoint integration for
 //     cloud models using standard net/http with zero SDK dependencies.
 //
+// # Setting a Model Up
+//
+// [Pull] has an Ollama server pull a model with its progress; [Catalog] is the measured cards of
+// the models known so far, and [Card.Fits] says whether one runs on a [Budget]'s GPU or CPU.
+//
 // # Resilient Batch Ingestion
 //
 // When upstream embedding providers reject large text batches (due to token length limits,

@@ -278,17 +278,31 @@ func checked(vecs [][]float32, n, dims int) ([][]float32, error) {
 // call sends one JSON request and decodes the JSON answer; any status but 200 is an error quoting
 // the start of the body.
 func call(ctx context.Context, client *http.Client, method, url string, header http.Header, in, out any) error {
+	resp, err := send(ctx, client, method, url, header, in)
+	if err != nil {
+		return err
+	}
+	defer resp.Body.Close()
+	if err := json.NewDecoder(resp.Body).Decode(out); err != nil {
+		return fmt.Errorf("embed: %s %s: decoding the answer: %w", method, url, err)
+	}
+	return nil
+}
+
+// send sends one JSON request and answers the response of a 200, its body for the caller to read
+// and close; any other status is an error quoting the start of the body, typed as call's are.
+func send(ctx context.Context, client *http.Client, method, url string, header http.Header, in any) (*http.Response, error) {
 	var body io.Reader
 	if in != nil {
 		b, err := json.Marshal(in)
 		if err != nil {
-			return err
+			return nil, err
 		}
 		body = bytes.NewReader(b)
 	}
 	req, err := http.NewRequestWithContext(ctx, method, url, body)
 	if err != nil {
-		return err
+		return nil, err
 	}
 	for k, v := range header {
 		req.Header[k] = v
@@ -299,12 +313,12 @@ func call(ctx context.Context, client *http.Client, method, url string, header h
 	resp, err := client.Do(req)
 	if err != nil {
 		if ctx.Err() == context.Canceled {
-			return fmt.Errorf("embed: %s %s: %w", method, url, err) // the caller gave up: not the provider
+			return nil, fmt.Errorf("embed: %s %s: %w", method, url, err) // the caller gave up: not the provider
 		}
-		return fmt.Errorf("%w: %s %s: %w", ErrUnreachable, method, url, err)
+		return nil, fmt.Errorf("%w: %s %s: %w", ErrUnreachable, method, url, err)
 	}
-	defer resp.Body.Close()
 	if resp.StatusCode != http.StatusOK {
+		defer resp.Body.Close()
 		b, err := io.ReadAll(io.LimitReader(resp.Body, maxErrorBody))
 		if err != nil {
 			b = nil
@@ -312,18 +326,15 @@ func call(ctx context.Context, client *http.Client, method, url string, header h
 		msg := fmt.Sprintf("embed: %s %s: %s: %s", method, url, resp.Status, strings.TrimSpace(string(b)))
 		switch resp.StatusCode {
 		case http.StatusBadRequest, http.StatusRequestEntityTooLarge, http.StatusUnprocessableEntity:
-			return fmt.Errorf("%w: %s", ErrRejected, msg)
+			return nil, fmt.Errorf("%w: %s", ErrRejected, msg)
 		case http.StatusTooManyRequests:
-			return fmt.Errorf("%w: %s", ErrRateLimited, msg)
+			return nil, fmt.Errorf("%w: %s", ErrRateLimited, msg)
 		case http.StatusUnauthorized, http.StatusForbidden:
-			return fmt.Errorf("%w: %s", ErrUnauthorized, msg)
+			return nil, fmt.Errorf("%w: %s", ErrUnauthorized, msg)
 		}
-		return errors.New(msg)
+		return nil, errors.New(msg)
 	}
-	if err := json.NewDecoder(resp.Body).Decode(out); err != nil {
-		return fmt.Errorf("embed: %s %s: decoding the answer: %w", method, url, err)
-	}
-	return nil
+	return resp, nil
 }
 
 // Models are the models a provider offers, by name, sorted: an Ollama server's installed ones,
