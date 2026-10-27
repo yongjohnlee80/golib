@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"image/color"
 	"io"
+	"slices"
 	"strings"
 
 	"github.com/yongjohnlee80/golib/errs"
@@ -179,6 +180,10 @@ var (
 	passedMarkConfig = union(passedMark, names("color", "fill", "opacity", "strokeWidth", "size", "filled", "point", "line",
 		"shape", "binSpacing", "continuousBandSize", "discreteBandSize", "thickness", "width", "height"))
 )
+
+// scaleTypes are the scale types drawn: a scale's type is checked against this table (readScale),
+// and Subset reads it. Any other (log, pow, sqrt, a quantize, …) is unsupported.
+var scaleTypes = names("linear", "time", "utc", "band", "point", "ordinal")
 
 func names(s ...string) map[string]bool {
 	m := make(map[string]bool, len(s))
@@ -699,32 +704,51 @@ func (c *chart) readEncoding(m map[string]json.RawMessage, params map[string]par
 		if err != nil {
 			return err
 		}
-		switch k {
-		case "x":
-			c.x, err = readChannel(def, "x", params)
-		case "y":
-			c.y, err = readChannel(def, "y", params)
-		case "color", "fill":
-			if c.color != nil {
-				return unsupported("both color and fill")
-			}
-			c.color, err = readChannel(def, k, params)
-		case "shape":
-			c.shape, err = readChannel(def, "shape", params)
-		case "opacity":
-			var o float32
-			if len(def) != 1 || def["value"] == nil || number(def["value"], &o, 0, 1) != nil {
-				return unsupported("opacity other than one value")
-			}
-			c.opacity = &o
-		default:
+		read, ok := channels[k]
+		if !ok {
 			return unsupported("the %q channel", k)
 		}
-		if err != nil {
+		if err := read(c, k, def, params); err != nil {
 			return err
 		}
 	}
 	return nil
+}
+
+// channels are the encoding channels a chart draws, by name, each with its reader: readEncoding
+// dispatches from this table, and Subset reads it. Any other channel is unsupported.
+var channels = map[string]func(c *chart, name string, def map[string]json.RawMessage, params map[string]param) error{
+	"x": func(c *chart, name string, def map[string]json.RawMessage, params map[string]param) (err error) {
+		c.x, err = readChannel(def, name, params)
+		return err
+	},
+	"y": func(c *chart, name string, def map[string]json.RawMessage, params map[string]param) (err error) {
+		c.y, err = readChannel(def, name, params)
+		return err
+	},
+	"color": readColorChannel,
+	"fill":  readColorChannel,
+	"shape": func(c *chart, name string, def map[string]json.RawMessage, params map[string]param) (err error) {
+		c.shape, err = readChannel(def, name, params)
+		return err
+	},
+	"opacity": func(c *chart, _ string, def map[string]json.RawMessage, _ map[string]param) error {
+		var o float32
+		if len(def) != 1 || def["value"] == nil || number(def["value"], &o, 0, 1) != nil {
+			return unsupported("opacity other than one value")
+		}
+		c.opacity = &o
+		return nil
+	},
+}
+
+// readColorChannel reads color or fill, the same channel by two names: one of them, not both.
+func readColorChannel(c *chart, name string, def map[string]json.RawMessage, params map[string]param) (err error) {
+	if c.color != nil {
+		return unsupported("both color and fill")
+	}
+	c.color, err = readChannel(def, name, params)
+	return err
 }
 
 // resolve is a channel's definition as the page first draws it. A condition on a selection holds
@@ -836,19 +860,11 @@ func readChannel(m map[string]json.RawMessage, name string, params map[string]pa
 		case k == "type":
 			var t string
 			_ = json.Unmarshal(v, &t)
-			switch t {
-			case "nominal":
-				ch.typ = typeNominal
-			case "ordinal":
-				ch.typ = typeOrdinal
-			case "quantitative":
-				ch.typ = typeQuantitative
-			case "temporal":
-				ch.typ = typeTemporal
-			default:
+			i := slices.Index(fieldTypeNames[:], t)
+			if i < 0 {
 				return nil, unsupported("%s's type %s", name, v)
 			}
-			typed = true
+			ch.typ, typed = fieldType(i), true
 		case k == "aggregate":
 			a, ok := aggregateOp(v)
 			if !ok {
@@ -968,9 +984,7 @@ func (ch *channel) readScale(raw json.RawMessage, name string) error {
 		case k == "type":
 			var t string
 			_ = json.Unmarshal(v, &t)
-			switch t {
-			case "linear", "time", "utc", "band", "point", "ordinal":
-			default:
+			if !scaleTypes[t] {
 				return unsupported("%s's scale type %s", name, v)
 			}
 		default:
@@ -1164,18 +1178,18 @@ const (
 	aggMax    aggregation = "max"
 )
 
+// aggregates are the aggregate operations drawn, by the name a spec gives: aggregateOp reads by
+// this table, and Subset reads it. average is Vega-Lite's alias of mean.
+var aggregates = map[string]aggregation{"count": aggCount, "sum": aggSum, "mean": aggMean, "average": aggMean,
+	"median": aggMedian, "min": aggMin, "max": aggMax}
+
 // aggregateOp is an aggregate operation, as an encoding's aggregate and a sort's op both name one:
-// count, sum, mean (or its alias average), median, min or max.
+// one of aggregates.
 func aggregateOp(raw json.RawMessage) (aggregation, bool) {
 	var a string
 	_ = json.Unmarshal(raw, &a)
-	switch op := aggregation(a); op {
-	case aggCount, aggSum, aggMean, aggMedian, aggMin, aggMax:
-		return op, true
-	case "average": // Vega-Lite's alias of mean
-		return aggMean, true
-	}
-	return aggNone, false
+	op, ok := aggregates[a]
+	return op, ok
 }
 
 // readTitle reads a channel's or its guide's title: null hides it, a string sets it. false for
@@ -1201,9 +1215,12 @@ func cssColor(s string) (color.NRGBA, bool) {
 	return csscolor.Parse(s, color.NRGBA{})
 }
 
-func (t fieldType) String() string {
-	return [...]string{"nominal", "ordinal", "quantitative", "temporal"}[t]
-}
+// fieldTypeNames are the field types drawn, by their Vega-Lite names: a channel's type is read by
+// this table (readChannel), and Subset reads it. Any other type is unsupported.
+var fieldTypeNames = [...]string{typeNominal: "nominal", typeOrdinal: "ordinal", typeQuantitative: "quantitative",
+	typeTemporal: "temporal"}
+
+func (t fieldType) String() string { return fieldTypeNames[t] }
 
 // decodeNumbers decodes one JSON value from r into v, its numbers as json.Number: a spec keeps a
 // number's text, so 0.1 and an integer past 2^53 read as written.

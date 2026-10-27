@@ -54,6 +54,19 @@ type layer func(ctx context.Context, d pm.Diagram, width float32, th Theme, m gu
 // layers are the diagram types drawn, by kind; each type's file registers its own.
 var layers = map[pm.Kind]layer{}
 
+// Kinds are the diagram kinds Lay draws, in Kind order, each with its header keywords: the kinds
+// mermaid.Parse reads (mermaid.Kinds) that a layer here lays out. A diagram of any other kind is
+// mermaid.ErrUnsupported.
+func Kinds() []pm.KindInfo {
+	var out []pm.KindInfo
+	for _, k := range pm.Kinds() {
+		if _, ok := layers[k.Kind]; ok {
+			out = append(out, k)
+		}
+	}
+	return out
+}
+
 // Lay parses src and lays it out for width (a wider diagram is scaled to fit), measuring with m.
 // A diagram golib does not draw is mermaid.ErrUnsupported, and one over a limit
 // mermaid.ErrTooLarge (both for a fallback); a malformed one is a *mermaid.SyntaxError.

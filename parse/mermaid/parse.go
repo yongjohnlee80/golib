@@ -158,27 +158,48 @@ func (p *parser) parse() (Diagram, error) {
 	if err != nil {
 		return nil, err
 	}
-	switch kw {
-	case "flowchart", "graph":
-		return p.flowchart(rest, restOff)
-	case "sequenceDiagram":
-		return p.sequence(rest, restOff)
-	case "classDiagram", "classDiagram-v2":
-		return p.class(rest, restOff)
-	case "stateDiagram", "stateDiagram-v2":
-		return p.state(rest, restOff)
-	case "erDiagram":
-		return p.er(rest, restOff)
-	case "journey":
-		return p.journey(rest, restOff)
-	case "mindmap":
-		return p.mindmap(rest, restOff)
-	case "timeline":
-		return p.timeline(rest, restOff)
-	case "requirementDiagram":
-		return p.requirement(rest, restOff)
+	for _, k := range kinds {
+		if slices.Contains(k.keywords, kw) {
+			return k.parse(p, rest, restOff)
+		}
 	}
 	return nil, fmt.Errorf("%w: %q diagrams", ErrUnsupported, kw)
+}
+
+// kinds are the diagram kinds parsed, in Kind order: each with the header keywords that start one
+// and its parser. parse dispatches from this table and Kinds reads it, so what is parsed and what
+// is said to be cannot disagree.
+var kinds = []struct {
+	kind     Kind
+	keywords []string
+	parse    func(p *parser, rest string, restOff int) (Diagram, error)
+}{
+	{Flowchart, []string{"flowchart", "graph"}, (*parser).flowchart},
+	{Sequence, []string{"sequenceDiagram"}, (*parser).sequence},
+	{State, []string{"stateDiagram", "stateDiagram-v2"}, (*parser).state},
+	{Class, []string{"classDiagram", "classDiagram-v2"}, (*parser).class},
+	{ER, []string{"erDiagram"}, (*parser).er},
+	{Journey, []string{"journey"}, (*parser).journey},
+	{Mindmap, []string{"mindmap"}, (*parser).mindmap},
+	{Timeline, []string{"timeline"}, (*parser).timeline},
+	{Requirement, []string{"requirementDiagram"}, (*parser).requirement},
+}
+
+// KindInfo is a diagram kind Parse reads, and the header keywords that start one ("flowchart" and
+// "graph" for Flowchart).
+type KindInfo struct {
+	Kind     Kind
+	Keywords []string
+}
+
+// Kinds are the diagram kinds Parse reads, in Kind order, each with its header keywords: the
+// table Parse dispatches from. A diagram of any other kind is ErrUnsupported.
+func Kinds() []KindInfo {
+	out := make([]KindInfo, len(kinds))
+	for i, k := range kinds {
+		out[i] = KindInfo{Kind: k.kind, Keywords: slices.Clone(k.keywords)}
+	}
+	return out
 }
 
 // done is a parse's answer: an unsupported construct first (the diagram is another renderer's,
