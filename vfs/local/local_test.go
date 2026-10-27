@@ -450,3 +450,42 @@ func TestReadDirHidesTemps(t *testing.T) {
 		t.Fatalf("Walk yielded a temp file: %s", buf.String())
 	}
 }
+
+// TestOpenRefusesAFileThatIsNotRegular: a FIFO is refused at once, not after a writer comes (an open
+// for reading waits for one), and a regular file beside it still opens. The answer is waited for
+// in a goroutine, so a blocking Open fails the cell instead of hanging the package.
+func TestOpenRefusesAFileThatIsNotRegular(t *testing.T) {
+	f, dir := newLocal(t)
+	if err := unix.Mkfifo(filepath.Join(dir, "pipe"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	mustWrite(t, f, "file", "data")
+	done := make(chan error, 1)
+	go func() {
+		rc, err := f.Open(bg, "pipe", 0)
+		if err == nil {
+			rc.Close()
+		}
+		done <- err
+	}()
+	select {
+	case err := <-done:
+		if !errors.Is(err, errs.ErrInvalidArgument) {
+			t.Errorf("Open of a FIFO: %v, want ErrInvalidArgument", err)
+		}
+	case <-time.After(5 * time.Second):
+		// unblock the open, so the goroutine and the package can finish
+		if w, err := os.OpenFile(filepath.Join(dir, "pipe"), os.O_WRONLY|unix.O_NONBLOCK, 0); err == nil {
+			w.Close()
+		}
+		t.Fatal("Open of a FIFO waited for a writer")
+	}
+	rc, err := f.Open(bg, "file", 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer rc.Close()
+	if b, err := io.ReadAll(rc); err != nil || string(b) != "data" {
+		t.Errorf("the regular file read %q, %v", b, err)
+	}
+}
