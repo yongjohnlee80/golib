@@ -24,9 +24,12 @@ type SubsetInfo struct {
 	// MaxRows, MaxBands and MaxSeries are the limits: the rows of data, a discrete axis's
 	// categories, a colour's series. A spec past one is ErrTooLarge.
 	MaxRows, MaxBands, MaxSeries int
-	// Passed are the keys read and passed over, which change only how a chart looks or behaves in a
-	// browser, by where they sit: "top", "mark", "channel", "encoding", "scale", "axis", "legend",
-	// "title", "config", "mark config" and "select" (a selection param's).
+	// Passed are the reader's admitted-key sets, by where they sit: "top", "mark", "channel",
+	// "encoding", "scale", "axis", "legend", "title", "config", "mark config" and "select" (a
+	// selection param's). A key in a set is taken there, where any other key not drawn is
+	// ErrUnsupported. Most of them change only how a chart looks or behaves in a browser and are
+	// ignored, but some are read: a title's text and subtitle, and a selection's type. So a key
+	// listed here is not promised to be browser-only.
 	Passed map[string][]string
 }
 
