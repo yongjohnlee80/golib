@@ -15,6 +15,12 @@ and **pinned by fd**, and the temp file is created, committed and cleaned up rel
 base names only. A concurrent rename of the directory, or a symlink swapped in on its path, cannot
 split the temp file from its commit or move either outside the root.
 
+## Reads
+
+`Open` opens only a regular file. A directory, a FIFO, a socket or a device is refused, and a FIFO
+without waiting for a writer: the open is non-blocking, and the file it opened is the one checked
+and streamed, so a name swapped for a FIFO after a caller looked at it cannot stall the read.
+
 ## Writes
 
 1. condition check under a per-name lock (exact among callers of this `FS`);

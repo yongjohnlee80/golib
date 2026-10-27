@@ -12,6 +12,8 @@ import (
 	"slices"
 	"sync"
 
+	"golang.org/x/sys/unix"
+
 	"github.com/yongjohnlee80/golib/errs"
 	"github.com/yongjohnlee80/golib/logger"
 	"github.com/yongjohnlee80/golib/vfs"
@@ -20,6 +22,7 @@ import (
 var (
 	errClosed    = errs.Sentinel(errs.ErrClosed, "local: closed")
 	errIsDir     = errs.Sentinel(errs.ErrInvalidArgument, "local: is a directory")
+	errIrregular = errs.Sentinel(errs.ErrInvalidArgument, "local: not a regular file")
 	errIsSymlink = errs.Sentinel(errs.ErrUnsupported, "local: writing through a symlink")
 	errNotDir    = errs.Sentinel(errs.ErrInvalidArgument, "local: not a directory")
 )
@@ -172,7 +175,8 @@ func (f *FS) ReadDir(ctx context.Context, name string) ([]vfs.FileInfo, error) {
 	return out, nil
 }
 
-// Open streams the file at name from offset.
+// Open streams the file at name from offset. Only a regular file opens: a directory, a FIFO, a
+// socket or a device is refused (a FIFO without waiting for a writer).
 func (f *FS) Open(ctx context.Context, name string, offset int64) (io.ReadCloser, error) {
 	if err := f.enter(ctx, "open", name, false); err != nil {
 		return nil, err
@@ -182,7 +186,10 @@ func (f *FS) Open(ctx context.Context, name string, offset int64) (io.ReadCloser
 		return nil, &fs.PathError{Op: "open", Path: name,
 			Err: errs.Wrap(errs.ErrInvalidArgument, "negative offset %d", offset)}
 	}
-	file, err := f.root.Open(name)
+	// O_NONBLOCK: opening a FIFO for reading waits for a writer, and with it the open returns at
+	// once, to be refused below. The file opened is the one checked: no path is looked up twice.
+	// A regular file reads the same either way.
+	file, err := f.root.OpenFile(name, os.O_RDONLY|unix.O_NONBLOCK, 0)
 	if err != nil {
 		return nil, err
 	}
@@ -194,6 +201,10 @@ func (f *FS) Open(ctx context.Context, name string, offset int64) (io.ReadCloser
 	if st.IsDir() {
 		file.Close()
 		return nil, &fs.PathError{Op: "open", Path: name, Err: errIsDir}
+	}
+	if !st.Mode().IsRegular() {
+		file.Close()
+		return nil, &fs.PathError{Op: "open", Path: name, Err: errIrregular}
 	}
 	if offset > 0 {
 		if _, err := file.Seek(offset, io.SeekStart); err != nil {
