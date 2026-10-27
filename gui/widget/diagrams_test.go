@@ -76,11 +76,23 @@ func TestAWithdrawnRequestHearsNothing(t *testing.T) {
 	}
 }
 
-type fakeFallback struct{ asked atomic.Int32 }
+type fakeFallback struct {
+	asked    atomic.Int32
+	declined atomic.Pointer[error] // the last request's Declined
+}
 
-func (f *fakeFallback) Diagram(context.Context, DiagramRequest, func()) DiagramAnswer {
+func (f *fakeFallback) Diagram(_ context.Context, req DiagramRequest, _ func()) DiagramAnswer {
 	f.asked.Add(1)
+	f.declined.Store(&req.Declined)
 	return DiagramAnswer{State: Pending}
+}
+
+// lastDeclined is the Declined of the last request the fallback was asked.
+func (f *fakeFallback) lastDeclined() error {
+	if p := f.declined.Load(); p != nil {
+		return *p
+	}
+	return nil
 }
 
 // What native declines (another type, another language) is the fallback's; a malformed flowchart

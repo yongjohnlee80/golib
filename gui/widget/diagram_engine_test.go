@@ -3,6 +3,7 @@ package widget
 import (
 	"context"
 	"errors"
+	"strings"
 	"sync/atomic"
 	"testing"
 
@@ -79,6 +80,36 @@ func TestAHostEnginesDeclinesReachTheFallback(t *testing.T) {
 	}
 	if ans := settled(t, Diagrams(fb, &engineFake{langs: []string{"graphviz"}, err: errBroken}), req); ans.State != Declined || fb.asked.Load() != 1 {
 		t.Errorf("failed: %v, fallback asked %d times; want Declined, the fallback not asked", ans.State, fb.asked.Load())
+	}
+}
+
+// The fallback is told why it was asked: the error the engine declined the block with, a chart
+// outside vegalite's subset by vegalite's own words; nil for a language no engine lays out.
+func TestTheFallbackIsToldWhyItWasDeclined(t *testing.T) {
+	fb := &fakeFallback{}
+	req := DiagramRequest{Lang: "graphviz", Src: "a -> b", Width: 300, Scale: 1}
+	settled(t, Diagrams(fb, &engineFake{langs: []string{"graphviz"}, err: errNotDrawn}), req)
+	if got := fb.lastDeclined(); !errors.Is(got, errNotDrawn) {
+		t.Errorf("declined by the engine: the fallback was told %v, want %v", got, errNotDrawn)
+	}
+
+	_, release := gui.AcquireMeasurer(1)
+	release()
+	fb = &fakeFallback{}
+	rule := `{"layer":[{"data":{"values":[{"d":"2026-10-01","v":1},{"d":"2026-10-02","v":2}]},"mark":"line",` +
+		`"encoding":{"x":{"field":"d","type":"temporal"},"y":{"field":"v","type":"quantitative"}}},` +
+		`{"data":{"values":[{"v":1.5,"s":"lvl"}]},"mark":"rule",` +
+		`"encoding":{"y":{"field":"v","type":"quantitative"},"color":{"field":"s","type":"nominal"}}}]}`
+	settled(t, Diagrams(fb), DiagramRequest{Lang: "vega-lite", Src: rule, Width: 600, Scale: 1, Theme: diagramTheme})
+	if got := fb.lastDeclined(); got == nil || !strings.Contains(got.Error(), "a rule coloured by a field") {
+		t.Errorf("a chart outside vegalite's subset: the fallback was told %v, want vegalite's reason", got)
+	}
+
+	fb = &fakeFallback{}
+	// no engine: the fallback answers at once (never settled, whose fake never calls ready)
+	Diagrams(fb).Diagram(context.Background(), DiagramRequest{Lang: "plantuml", Src: "@startuml", Width: 300, Scale: 1}, func() {})
+	if fb.asked.Load() != 1 || fb.lastDeclined() != nil {
+		t.Errorf("a language no engine draws: asked %d, told %v; want asked once, told nothing", fb.asked.Load(), fb.lastDeclined())
 	}
 }
 

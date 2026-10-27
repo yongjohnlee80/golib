@@ -70,6 +70,10 @@ type DiagramRequest struct {
 	Width     float32
 	Scale     float32
 	Theme     Theme
+	// Declined is why golib's engine handed the block to the fallback: the error it declined it
+	// with (vegalite's ErrUnsupported "a rule coloured by a field", say), for a fallback that says
+	// why it draws what it draws. nil when no engine of golib's lays the language out.
+	Declined error
 }
 
 // diagramFonts is th with its fonts' families as fonts resolves them: "" is the window's prose,

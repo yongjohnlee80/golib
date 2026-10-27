@@ -248,6 +248,7 @@ func (d *diagrams) answer(ctx context.Context, req DiagramRequest, ready func(),
 		return DiagramAnswer{State: Ready, Pic: pic, Size: size}
 	}
 	if e.Declines(r.err) {
+		req.Declined = r.err
 		return d.fall(ctx, req, ready)
 	}
 	return DiagramAnswer{State: Declined}
