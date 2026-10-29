@@ -3,6 +3,7 @@ package vector
 import (
 	"cmp"
 	"errors"
+	"math"
 	"math/rand/v2"
 	"reflect"
 	"slices"
@@ -101,6 +102,54 @@ func TestAFetchMayKeepItsWindow(t *testing.T) {
 	}
 	if !reflect.DeepEqual(kept, [][]int64{{1, 2}, {3, 4}, {5}}) {
 		t.Fatalf("the windows fetch kept: %v", kept)
+	}
+}
+
+// TestAWindowLargerThanTheOrder: a window far larger than the order (math.MaxInt included) takes
+// what the order has, in one fetch, and none at all from an empty order or for n of 0 or less. An
+// eager window of the window's size would not fit in memory, or in a slice.
+func TestAWindowLargerThanTheOrder(t *testing.T) {
+	less := func(a, b int64) bool { return a < b }
+	for _, tc := range []struct {
+		name      string
+		order     []int64
+		window, n int
+		fetches   [][]int64
+	}{
+		{"one key, max window", []int64{7}, math.MaxInt, 1, [][]int64{{7}}},
+		{"short order, max window", []int64{1, 2, 3}, math.MaxInt, 10, [][]int64{{1, 2, 3}}},
+		{"short order, past the cap", []int64{1, 2, 3}, windowCap * 4, 2, [][]int64{{1, 2, 3}}},
+		{"empty order", nil, math.MaxInt, 5, nil},
+		{"none wanted", []int64{1, 2}, math.MaxInt, 0, nil},
+		{"fewer than none wanted", []int64{1, 2}, math.MaxInt, -1, nil},
+	} {
+		for _, run := range []struct {
+			name string
+			two  func(fetch func([]int64) ([]Vec[int64], error)) ([]Vec[int64], error)
+		}{
+			{"TwoStage", func(f func([]int64) ([]Vec[int64], error)) ([]Vec[int64], error) {
+				return TwoStage(tc.order, nil, tc.window, tc.n, f, less)
+			}},
+			{"TwoStageSeq", func(f func([]int64) ([]Vec[int64], error)) ([]Vec[int64], error) {
+				return TwoStageSeq(slices.Values(tc.order), nil, tc.window, tc.n, f, less)
+			}},
+		} {
+			var fetched [][]int64
+			got, err := run.two(func(ids []int64) ([]Vec[int64], error) {
+				fetched = append(fetched, slices.Clone(ids))
+				out := make([]Vec[int64], len(ids))
+				for i, id := range ids {
+					out[i] = Vec[int64]{Item: id}
+				}
+				return out, nil
+			})
+			if err != nil || !reflect.DeepEqual(fetched, tc.fetches) {
+				t.Errorf("%s, %s: fetched %v (%v), want %v", tc.name, run.name, fetched, err, tc.fetches)
+			}
+			if want := min(len(tc.order), max(tc.n, 0)); len(got) != want {
+				t.Errorf("%s, %s: %d results, want %d", tc.name, run.name, len(got), want)
+			}
+		}
 	}
 }
 

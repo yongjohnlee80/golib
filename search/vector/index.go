@@ -228,16 +228,22 @@ func TwoStage[C, T any](order []C, q []float32, window, n int, fetch func(ids []
 	return TwoStageSeq(slices.Values(order), q, window, n, fetch, less)
 }
 
+// windowCap is the most keys a window is made to hold before it has them; past it, the window grows
+// as its keys come.
+const windowCap = 1024
+
 // TwoStageSeq is TwoStage over an order taken as it is made (NearestSeq): it takes the order's keys
 // only as far as the windows it needs, so the rest is never ordered.
 func TwoStageSeq[C, T any](order iter.Seq[C], q []float32, window, n int, fetch func(ids []C) ([]Vec[T], error), less func(a, b T) bool) ([]Vec[T], error) {
 	window = max(window, 1)
 	var valid []Vec[T]
-	ids := make([]C, 0, window)
+	// ids is the window being filled, made when its first key comes and grown as keys come: a window
+	// far larger than the order costs only the keys there are
+	var ids []C
 	// take fetches one window; it reports whether the scan goes on
 	take := func() (bool, error) {
 		got, err := fetch(ids)
-		ids = make([]C, 0, window) // fetch may keep the window it was handed, as it could keep TwoStage's
+		ids = nil // fetch may keep the window it was handed, as it could keep TwoStage's
 		if errors.Is(err, SkipRest) {
 			return false, nil
 		}
@@ -253,6 +259,9 @@ func TwoStageSeq[C, T any](order iter.Seq[C], q []float32, window, n int, fetch 
 	more := n > 0
 	if more {
 		for c := range order {
+			if ids == nil {
+				ids = make([]C, 0, min(window, windowCap))
+			}
 			ids = append(ids, c)
 			if len(ids) < window {
 				continue
