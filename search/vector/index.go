@@ -27,6 +27,7 @@ type Index[D comparable, C any] struct {
 	// whole index for a one-document save. Next keeps seed, so a document stays in its shard.
 	seed   maphash.Seed
 	shards [shardCount]map[D][]Code[C]
+	n      int // the codes in all shards, so a query sizes its scores once
 }
 
 // shardCount is how many shards an Index's documents are spread over.
@@ -45,6 +46,7 @@ func NewIndex[D comparable, C any](model string, watermark int64, codes map[D][]
 			x.shards[i] = map[D][]Code[C]{}
 		}
 		x.shards[i][d] = cs
+		x.n += len(cs)
 	}
 	return x
 }
@@ -61,7 +63,7 @@ func (x *Index[D, C]) Watermark() int64 { return x.watermark }
 // that changes no code still publishes cheaply. fresh and watermark must come from one committed
 // read snapshot.
 func (x *Index[D, C]) Next(watermark int64, changed []D, fresh map[D][]Code[C]) *Index[D, C] {
-	next := &Index[D, C]{model: x.model, watermark: watermark, seed: x.seed, shards: x.shards}
+	next := &Index[D, C]{model: x.model, watermark: watermark, seed: x.seed, shards: x.shards, n: x.n}
 	if len(changed) == 0 && len(fresh) == 0 {
 		return next
 	}
@@ -81,10 +83,14 @@ func (x *Index[D, C]) Next(watermark int64, changed []D, fresh map[D][]Code[C]) 
 		return next.shards[i]
 	}
 	for _, d := range changed {
-		delete(shard(d), d)
+		m := shard(d)
+		next.n -= len(m[d])
+		delete(m, d)
 	}
 	for d, cs := range fresh {
-		shard(d)[d] = cs
+		m := shard(d)
+		next.n += len(cs) - len(m[d])
+		m[d] = cs
 	}
 	return next
 }
@@ -96,6 +102,15 @@ func (x *Index[D, C]) Next(watermark int64, changed []D, fresh map[D][]Code[C]) 
 // usable.
 func (x *Index[D, C]) Usable(model string, watermark int64) bool {
 	return x != nil && x.model == model && x.watermark == watermark
+}
+
+// Len is how many codes the index holds.
+func (x *Index[D, C]) Len() int { return x.n }
+
+// NearestSeq is the package's NearestSeq over the index's codes, with its scores sized once for
+// the codes it holds.
+func (x *Index[D, C]) NearestSeq(q []uint64, cmpChunk func(a, b C) int) iter.Seq[C] {
+	return nearestSeq(x.Codes(), x.n, q, cmpChunk)
 }
 
 // Codes is every code in the index, in no set order.
@@ -142,11 +157,16 @@ func Nearest[C any](codes iter.Seq[Code[C]], q []uint64, cmpChunk func(a, b C) i
 // rather than a sort of all N; TwoStageSeq takes only the windows it needs. Taking all of it yields
 // what Nearest returns. The sequence can be ranged over once.
 func NearestSeq[C any](codes iter.Seq[Code[C]], q []uint64, cmpChunk func(a, b C) int) iter.Seq[C] {
+	return nearestSeq(codes, 0, q, cmpChunk)
+}
+
+// nearestSeq is NearestSeq with room for size codes made at once (0: grown as they come).
+func nearestSeq[C any](codes iter.Seq[Code[C]], size int, q []uint64, cmpChunk func(a, b C) int) iter.Seq[C] {
 	type scored struct {
 		chunk C
 		dist  int
 	}
-	var h []scored
+	h := make([]scored, 0, size)
 	for c := range codes {
 		h = append(h, scored{c.Chunk, Hamming(c.Bits, q)})
 	}
