@@ -75,6 +75,10 @@ type Measurer interface {
 // A scale keeps at most [measurerMax] measurers, made as they are first needed and kept for the
 // process: each one's shaper sets up its fonts once. With all of them leased, AcquireMeasurer
 // waits for a release. Measuring is CPU work, so more at once would not finish sooner.
+//
+// It is for worker goroutines. Never call it on a UI loop: it can wait there for as long as a
+// worker's layout takes (a large diagram, say), and the window stalls meanwhile. Code that measures
+// on the loop keeps a [TextShaper] of its own ([NewTextShaper]), made once and used only there.
 func AcquireMeasurer(scale float32) (m Measurer, release func()) {
 	if scale <= 0 {
 		scale = 1
