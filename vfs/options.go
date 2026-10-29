@@ -3,6 +3,7 @@ package vfs
 import (
 	"io/fs"
 	"strings"
+	"time"
 )
 
 // WriteOption configures a write (WriteFile, WriteFileIf, CreateExclusive, Copy).
@@ -36,6 +37,22 @@ type WatchConfig struct {
 	Recursive bool
 	// Skip reports a directory to leave out, with everything under it; nil skips nothing.
 	Skip func(dir string) bool
+	// PollBackoff is the longest a [Poll] waits between listings once nothing changes: each
+	// listing that finds no change doubles the wait, up to it, and a change or a failed listing
+	// brings it back to the interval. Zero, or not more than the interval: every interval, as
+	// always. A native [Watcher] ignores it.
+	PollBackoff time.Duration
+
+	// after is the clock Poll waits on (time.After when nil): a test's, to see every wait asked for
+	after func(time.Duration) <-chan time.Time
+}
+
+// PollBackoff lets a [Poll] of a tree that holds still list it less and less often, down to once
+// every max, and back to every interval as soon as a listing finds a change. A large tree polled
+// because the system's watches ran out (inotify's max_user_watches, say) then costs a listing every
+// max while idle, not every interval. A change is seen within max of when it was made.
+func PollBackoff(max time.Duration) WatchOption {
+	return func(c *WatchConfig) { c.PollBackoff = max }
 }
 
 // Recursive watches the whole tree under dir, including directories created later.

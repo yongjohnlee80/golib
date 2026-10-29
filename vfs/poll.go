@@ -18,7 +18,8 @@ import (
 // OpOverflow for dir and the next successful listing becomes the new baseline.
 //
 // The goroutine ends and the channel closes when ctx ends. Cost: one ReadDir (or Walk, with
-// [Recursive]) per interval; [SkipDirs] prunes that walk, so a skipped subtree costs nothing.
+// [Recursive]) per interval; [SkipDirs] prunes that walk, so a skipped subtree costs nothing, and
+// [PollBackoff] stretches the interval while nothing changes.
 func Poll(ctx context.Context, fsys FS, dir string, interval time.Duration, opts ...WatchOption) (<-chan Event, error) {
 	if interval <= 0 {
 		return nil, errs.Wrap(errs.ErrInvalidArgument, "vfs.Poll: interval must be positive, got %v", interval)
@@ -29,10 +30,13 @@ func Poll(ctx context.Context, fsys FS, dir string, interval time.Duration, opts
 		return nil, err
 	}
 	out := make(chan Event, 64)
+	after := cfg.after
+	if after == nil {
+		after = time.After
+	}
 	go func() {
 		defer close(out)
-		t := time.NewTicker(interval)
-		defer t.Stop()
+		wait := interval
 		send := func(ev Event) bool {
 			select {
 			case out <- ev:
@@ -45,8 +49,9 @@ func Poll(ctx context.Context, fsys FS, dir string, interval time.Duration, opts
 			select {
 			case <-ctx.Done():
 				return
-			case <-t.C:
+			case <-after(wait):
 			}
+			changed := false
 			next, err := snapshot(ctx, fsys, dir, cfg)
 			if err != nil {
 				if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
@@ -56,6 +61,7 @@ func Poll(ctx context.Context, fsys FS, dir string, interval time.Duration, opts
 					return
 				}
 				base = nil // the next good listing becomes the baseline
+				wait = interval
 				continue
 			}
 			if base != nil {
@@ -63,10 +69,12 @@ func Poll(ctx context.Context, fsys FS, dir string, interval time.Duration, opts
 					old, ok := base[p]
 					switch {
 					case !ok:
+						changed = true
 						if !send(Event{Path: p, Op: OpCreate}) {
 							return
 						}
 					case old != v:
+						changed = true
 						if !send(Event{Path: p, Op: OpWrite}) {
 							return
 						}
@@ -74,6 +82,7 @@ func Poll(ctx context.Context, fsys FS, dir string, interval time.Duration, opts
 				}
 				for p := range base {
 					if _, ok := next[p]; !ok {
+						changed = true
 						if !send(Event{Path: p, Op: OpRemove}) {
 							return
 						}
@@ -81,6 +90,12 @@ func Poll(ctx context.Context, fsys FS, dir string, interval time.Duration, opts
 				}
 			}
 			base = next
+			switch {
+			case changed || cfg.PollBackoff <= interval:
+				wait = interval
+			default:
+				wait = min(wait*2, cfg.PollBackoff)
+			}
 		}
 	}()
 	return out, nil
