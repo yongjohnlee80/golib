@@ -44,11 +44,11 @@ func TestCoveredCellsReplayWhileTheirRowsHold(t *testing.T) {
 func TestACoveredRecordingIsRedrawnWhenARowUnderItChanges(t *testing.T) {
 	r, g, m, natives := coveredSetup()
 	first := coveredFrame(t, r, g, m, natives)
-	g.apply([]tui.CellUpdate{{X: 0, Y: 0, Cell: tui.Cell{Content: "x", Width: 1}}}) // row 0: not covered
+	g.apply([]tui.CellUpdate{{X: 0, Y: 0, Cell: tui.Cell{Content: "x", Width: 1}}}) // outside the covered rows (2 and 3)
 	if again := coveredFrame(t, r, g, m, natives); again != first {
 		t.Fatal("a change outside the covered rows made a new recording")
 	}
-	g.apply([]tui.CellUpdate{{X: 4, Y: 3, Cell: tui.Cell{Content: "y", Width: 1}}}) // row 3: covered
+	g.apply([]tui.CellUpdate{{X: 4, Y: 3, Cell: tui.Cell{Content: "y", Width: 1}}}) // under the dialog, in its second row
 	redrawn := coveredFrame(t, r, g, m, natives)
 	if redrawn == first {
 		t.Fatal("a cell written under the dialog kept the old recording: it would show the old cell")
