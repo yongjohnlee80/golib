@@ -59,6 +59,9 @@ type Program struct {
 	// mounted is the followed files as the mount read them: what hot reload
 	// compares each poll against first. See snapshotOf.
 	mounted snapshot
+	// hashes is the follow loop's memory of the followed files, so a poll reads only those that
+	// changed (hotreload.go)
+	hashes fileHashes
 	// liveLayout is the last successfully applied in-memory source, used by HotReload for LayoutSource.
 	// It belongs to the UI loop; the poller reads only the immutable cfg and followed files.
 	liveLayout []byte
@@ -333,7 +336,7 @@ func NewProgram(opts ...ProgramOption) (*Program, error) {
 	// the screen is still being built — is then a change the first poll sees.
 	var mounted snapshot
 	if c.hot != nil {
-		mounted = snapshotOf(c)
+		mounted = snapshotOf(c, nil)
 		if c.layoutFS != nil {
 			mounted["layout:"+c.layoutFile] = sha256.Sum256(c.layout)
 		}

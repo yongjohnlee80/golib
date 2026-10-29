@@ -119,13 +119,67 @@ func (a snapshot) equal(b snapshot) bool {
 
 // snapshot reads every followed file. A file that cannot be read now — being
 // replaced, say — is recorded as missing, which is a change like any other.
-func (p *Program) snapshot() snapshot { return snapshotOf(p.cfg) }
+func (p *Program) snapshot() snapshot { return snapshotOf(p.cfg, &p.hashes) }
 
-func snapshotOf(c programConfig) snapshot {
+// rehashEvery is how often, in polls, every followed file is read and hashed again whatever its
+// size and modification time say: an edit that keeps the size within the file system's time
+// resolution would otherwise go unseen.
+const rehashEvery = 8
+
+// fileHashes is the follow loop's memory of each followed file: its size, modification time and
+// hash when last read. Only that loop's goroutine uses it.
+type fileHashes struct {
+	seen  map[string]fileStamp
+	polls int
+}
+
+type fileStamp struct {
+	size int64
+	mod  time.Time
+	sum  [sha256.Size]byte
+}
+
+// sum is file's hash, read and hashed again only when its size or modification time changed, or
+// on every rehashEvery-th poll. A file system that reports no modification time (embedded or in
+// memory) is read every time. h nil reads every file. The error is ReadFile's.
+func (h *fileHashes) sum(fsys fs.FS, file, key string) ([sha256.Size]byte, error) {
+	var st fs.FileInfo
+	if h != nil && h.polls%rehashEvery != 0 {
+		if info, err := fs.Stat(fsys, file); err == nil && !info.ModTime().IsZero() {
+			st = info
+			if s, ok := h.seen[key]; ok && s.size == info.Size() && s.mod.Equal(info.ModTime()) {
+				return s.sum, nil
+			}
+		}
+	}
+	src, err := fs.ReadFile(fsys, file)
+	if err != nil {
+		return [sha256.Size]byte{}, err
+	}
+	sum := sha256.Sum256(src)
+	if h != nil {
+		if st == nil {
+			st, _ = fs.Stat(fsys, file)
+		}
+		if st != nil && !st.ModTime().IsZero() {
+			if h.seen == nil {
+				h.seen = map[string]fileStamp{}
+			}
+			h.seen[key] = fileStamp{size: st.Size(), mod: st.ModTime(), sum: sum}
+		}
+	}
+	return sum, nil
+}
+
+func snapshotOf(c programConfig, h *fileHashes) snapshot {
+	if h != nil {
+		defer func() { h.polls++ }()
+	}
 	out := snapshot{}
 	if c.layoutFS != nil {
-		if src, err := fs.ReadFile(c.layoutFS, c.layoutFile); err == nil {
-			out["layout:"+c.layoutFile] = sha256.Sum256(src)
+		k := "layout:" + c.layoutFile
+		if sum, err := h.sum(c.layoutFS, c.layoutFile, k); err == nil {
+			out[k] = sum
 		}
 	}
 	for i, w := range c.watched {
@@ -138,8 +192,9 @@ func snapshotOf(c programConfig) snapshot {
 				continue
 			}
 			file := path.Join(w.dir, e.Name())
-			if src, err := fs.ReadFile(w.fsys, file); err == nil {
-				out[fmt.Sprintf("%d:%s", i, file)] = sha256.Sum256(src)
+			k := fmt.Sprintf("%d:%s", i, file)
+			if sum, err := h.sum(w.fsys, file, k); err == nil {
+				out[k] = sum
 			}
 		}
 	}
@@ -148,9 +203,9 @@ func snapshotOf(c programConfig) snapshot {
 	// follows refuses it rather than reading it as absent.
 	for i, f := range c.keymapFiles {
 		k := fmt.Sprintf("keymap%d:%s", i, f.file)
-		switch src, err := fs.ReadFile(f.fsys, f.file); {
+		switch sum, err := h.sum(f.fsys, f.file, k); {
 		case err == nil:
-			out[k] = sha256.Sum256(src)
+			out[k] = sum
 		case !errors.Is(err, fs.ErrNotExist):
 			out[k] = sha256.Sum256([]byte("unreadable: " + err.Error()))
 		}
@@ -167,8 +222,9 @@ func snapshotOf(c programConfig) snapshot {
 				continue
 			}
 			file := path.Join(t.dir, name)
-			if src, err := fs.ReadFile(t.fsys, file); err == nil {
-				out[fmt.Sprintf("i18n%d:%s", i, file)] = sha256.Sum256(src)
+			k := fmt.Sprintf("i18n%d:%s", i, file)
+			if sum, err := h.sum(t.fsys, file, k); err == nil {
+				out[k] = sum
 			}
 		}
 	}
