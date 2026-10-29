@@ -186,6 +186,16 @@ func (e *Editor) Register() (text string, linewise bool)
 
 Undo is a bounded snapshot stack (64 entries) of whole-buffer states
 pushed per atomic edit group, with a redo stack cleared on new edits.
+
+> **Amended 2026-10-30 (golib scalability audit GP-2; design approved by
+> Jarvis):** the stack no longer copies the buffer. Each group keeps the
+> cursor, marks and revision before it, and the changes that take its text
+> back, which the line primitives hand it as they change the lines. A group
+> costs the lines its edits replaced, not the document: at 1M lines a
+> whole-buffer copy was ~16 MB of string headers per group, up to ~1 GB for
+> the 64. What undo and redo restore is unchanged: the same groups, the same
+> texts, the same mark and cursor movement. It rests on the line primitives
+> being the lines' only writers, which `internal/audit` enforces.
 **Group boundaries (r3 — one rule, no overlap):** an Insert-mode session
 from entry to exit is ONE group, and a bracketed paste DURING Insert
 stays inside that group (paste is Insert input); each Normal-mode edit —
