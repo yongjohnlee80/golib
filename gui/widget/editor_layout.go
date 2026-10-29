@@ -53,6 +53,11 @@ type laidBlock struct {
 	colors []color.NRGBA // Raw: the line's cluster colours
 	text   string        // Raw: the line's text
 	stale  bool          // Relayout: laid out again when next drawn; its height stands in until then
+	// trimmed: far from the view, its lines (their paragraphs and shaped glyphs) were let go
+	// (trimFar). It is laid out again when next needed; its height stands in until then, and paraW,
+	// its widest paragraph, keeps the sideways scroll's range.
+	trimmed bool
+	paraW   float32
 }
 
 // newPixelLayout instantiates a new high-resolution pixel layout manager for e,
@@ -125,6 +130,7 @@ func (l *pixelLayout) scrollX(dx float32) bool {
 		if lb == nil {
 			continue
 		}
+		widest = max(widest, lb.paraW)
 		for _, ll := range lb.bl.Lines {
 			widest = max(widest, ll.Para.Width)
 		}
@@ -358,10 +364,10 @@ func (l *pixelLayout) lay(i int, frame *tuiwidget.HighlightFrame) *laidBlock {
 	// false, a cursor moving there re-lays nothing either.
 	inside := cl >= b.From && cl < b.To && l.typing()
 	if l.e.ShownView() == tuiwidget.ViewRendered && l.e.render != nil {
-		if lb := l.laid[i]; lb != nil && !lb.stale && lb.width == l.width && lb.inside == inside {
+		if lb := l.laid[i]; lb != nil && !lb.stale && !lb.trimmed && lb.width == l.width && lb.inside == inside {
 			return lb
 		}
-		if was := l.laid[i]; was != nil && was.stale {
+		if was := l.laid[i]; was != nil && (was.stale || was.trimmed) {
 			l.relaid = true // its height may change, whenever it is drawn: then, not only on Relayout's next paint
 		}
 		lb := &laidBlock{inside: inside, width: l.width}
@@ -376,7 +382,7 @@ func (l *pixelLayout) lay(i int, frame *tuiwidget.HighlightFrame) *laidBlock {
 	} else if lb := l.laid[i]; lb != nil {
 		colors = lb.colors
 	}
-	if lb := l.laid[i]; lb != nil && lb.width == l.width && lb.text == text && sameColors(lb.colors, colors) {
+	if lb := l.laid[i]; lb != nil && !lb.trimmed && lb.width == l.width && lb.text == text && sameColors(lb.colors, colors) {
 		return lb
 	}
 	var colorAt func(int) color.NRGBA
@@ -570,4 +576,30 @@ func byteOfCluster(s string, i int) int {
 		i--
 	}
 	return off
+}
+
+// trimKeep is how far beyond the view, in view heights above and below it, laid-out blocks keep
+// their lines.
+const trimKeep = 2
+
+// trimFar lets go of the lines of blocks laid out more than trimKeep view heights above or below
+// the view: their paragraphs hold shaped glyphs, and a long note scrolled through, or several open
+// in editors, otherwise kept every block it ever drew. A trimmed block keeps its height, so the
+// scroll and the blocks' tops don't move, and is laid out again when drawn or asked about.
+func (l *pixelLayout) trimFar(viewH float32) {
+	if viewH <= 0 {
+		return
+	}
+	lo, hi := l.scroll-trimKeep*viewH, l.scroll+(trimKeep+1)*viewH
+	var y float32
+	for i, lb := range l.laid {
+		h := l.heightOf(i)
+		if lb != nil && !lb.trimmed && len(lb.bl.Lines) > 0 && (y+h < lo || y > hi) {
+			for _, ll := range lb.bl.Lines {
+				lb.paraW = max(lb.paraW, ll.Para.Width)
+			}
+			lb.bl.Lines, lb.trimmed = nil, true
+		}
+		y += h
+	}
 }

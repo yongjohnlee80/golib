@@ -459,6 +459,7 @@ func (v bodyView) Paint(c gui.Canvas) {
 		}
 		y += lb.bl.Height
 	}
+	l.trimFar(h)
 	// a stale block laid out again shorter than it was (Relayout), on this paint or an earlier one's
 	// Reveal, can leave the scroll past the text's end
 	if l.relaid {
