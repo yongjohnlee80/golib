@@ -126,7 +126,58 @@ func (r *renderer) composite(ops *op.Ops, g *grid, m metrics, natives []tui.Nati
 			r.drawImage(ops, *p.image)
 		}
 		for _, c := range p.covered {
-			r.paintCells(ops, g, CellRect{X: c.X, Y: c.Y, W: c.W, H: c.H}, false)
+			r.coveredCells(ops, g, CellRect{X: c.X, Y: c.Y, W: c.W, H: c.H})
+		}
+	}
+}
+
+// coveredRecording is the cells of one covered rect, recorded once: gens are its rows' rowGen
+// when it was drawn, and used the last frame that replayed it.
+type coveredRecording struct {
+	gens []uint64
+	call op.CallOp
+	cost int
+	used uint64
+}
+
+// coveredCells draws the cells in cr over a native view or an image, as paintCells does, from a
+// recording kept while none of cr's rows was re-recorded. Every frame draws these cells again
+// over the views beneath them, so a frame that changed nothing under them (a plugin's surface
+// animating beside a dialog, say) replays the recording: golib draws no span again, and gio finds
+// the same ops and paths. A row re-recorded since, or new metrics or a new layout (which re-record
+// every row), make a new recording. Without frameParts's row gens (a renderer used directly), it
+// draws the cells as paintCells does.
+func (r *renderer) coveredCells(ops *op.Ops, g *grid, cr CellRect) {
+	y0, y1 := max(cr.Y, 0), min(cr.Y+cr.H, g.h)
+	if len(r.rowGen) != g.h || y0 >= y1 {
+		r.paintCells(ops, g, cr, false)
+		return
+	}
+	gens := r.rowGen[y0:y1]
+	e := r.covered[cr]
+	if e == nil || !slices.Equal(e.gens, gens) {
+		rops := new(op.Ops)
+		rec := op.Record(rops)
+		start := walkNow()
+		r.paintCells(rops, g, cr, false)
+		e = &coveredRecording{gens: slices.Clone(gens), call: rec.Stop(), cost: walkNow() - start}
+		if r.covered == nil {
+			r.covered = map[CellRect]*coveredRecording{}
+		}
+		r.covered[cr] = e
+	} else {
+		countReplay(e.cost)
+	}
+	e.used = r.frameNo
+	e.call.Add(ops)
+}
+
+// dropUnusedCovered forgets the covered recordings this frame didn't replay: their dialog moved or
+// closed, and a recording kept for a rect no longer drawn would only hold its ops.
+func (r *renderer) dropUnusedCovered() {
+	for k, e := range r.covered {
+		if e.used != r.frameNo {
+			delete(r.covered, k)
 		}
 	}
 }
