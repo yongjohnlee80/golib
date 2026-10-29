@@ -18,13 +18,13 @@ func TestAReleasedMeasurerIsReused(t *testing.T) {
 	}
 }
 
-// TestAScaleMakesAtMostMeasurerMax: with measurerMax leased, the next acquire waits for a release
-// and then takes the released measurer; no more than measurerMax are ever made.
+// TestAScaleMakesAtMostMeasurerMax: with MaxMeasurers leased, the next acquire waits for a release
+// and then takes the released measurer; no more than MaxMeasurers are ever made.
 func TestAScaleMakesAtMostMeasurerMax(t *testing.T) {
 	const scale = 3.5
 	var releases []func()
 	seen := map[*measurer]bool{}
-	for range measurerMax {
+	for range MaxMeasurers {
 		m, release := AcquireMeasurer(scale)
 		seen[m.(*measurer)] = true
 		releases = append(releases, release)
@@ -37,7 +37,7 @@ func TestAScaleMakesAtMostMeasurerMax(t *testing.T) {
 	}()
 	select {
 	case <-got:
-		t.Fatalf("an acquire past measurerMax (%d) did not wait", measurerMax)
+		t.Fatalf("an acquire past MaxMeasurers (%d) did not wait", MaxMeasurers)
 	case <-time.After(50 * time.Millisecond):
 	}
 	releases[0]()
@@ -55,8 +55,8 @@ func TestAScaleMakesAtMostMeasurerMax(t *testing.T) {
 	measurers.mu.Lock()
 	made := measurers.pools[scale].made
 	measurers.mu.Unlock()
-	if made != measurerMax {
-		t.Fatalf("made %d measurers, want %d", made, measurerMax)
+	if made != MaxMeasurers {
+		t.Fatalf("made %d measurers, want %d", made, MaxMeasurers)
 	}
 }
 

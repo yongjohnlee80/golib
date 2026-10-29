@@ -31,10 +31,10 @@ const LineHeight = 1.2
 //	                               │
 //	       1. Acquire:             ▼ AcquireMeasurer(scale)
 //	┌─────────────────────────────────────────────────────────────┐
-//	│            A bounded pool by scale (measurerMax)            │
+//	│           A bounded pool by scale (MaxMeasurers)            │
 //	│  - Reuses pre-warmed [TextShaper] instances, held strongly  │
 //	│  - Each shaper sets up its fonts once, not after every GC   │
-//	│  - Waits for a release once measurerMax are leased          │
+//	│  - Waits for a release once MaxMeasurers are leased         │
 //	└──────────────────────────────┬──────────────────────────────┘
 //	                               │
 //	       2. Measure/Wrap:        ▼ Measurer.Measure(s, f) / Wrap(s, f, w)
@@ -72,7 +72,7 @@ type Measurer interface {
 //   - release: cleanup callback that returns m to the internal scale pool. The caller MUST invoke
 //     release when finished; a second call does nothing.
 //
-// A scale keeps at most [measurerMax] measurers, made as they are first needed and kept for the
+// A scale keeps at most [MaxMeasurers] measurers, made as they are first needed and kept for the
 // process: each one's shaper sets up its fonts once. With all of them leased, AcquireMeasurer
 // waits for a release. Measuring is CPU work, so more at once would not finish sooner.
 //
@@ -90,7 +90,7 @@ func AcquireMeasurer(scale float32) (m Measurer, release func()) {
 		p.cond.L = &measurers.mu
 		measurers.pools[scale] = p
 	}
-	for len(p.idle) == 0 && p.made >= measurerMax {
+	for len(p.idle) == 0 && p.made >= MaxMeasurers {
 		p.cond.Wait()
 	}
 	var mm *measurer
@@ -114,10 +114,10 @@ func AcquireMeasurer(scale float32) (m Measurer, release func()) {
 	}
 }
 
-// measurerMax is how many measurers a scale keeps, leased and idle together. A sync.Pool dropped
+// MaxMeasurers is how many measurers a scale keeps, leased and idle together. A sync.Pool dropped
 // its idle ones at each garbage collection, and a document of 30 charts laid out at once made 30:
 // AutoDoc made 76 text shapers in 6 minutes that way, each loading its own font state.
-const measurerMax = 4
+const MaxMeasurers = 4
 
 // measurerPool is one scale's measurers: made counts every one made, idle are those not leased.
 type measurerPool struct {
