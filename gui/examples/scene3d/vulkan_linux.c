@@ -61,6 +61,13 @@ struct s3d_target {
 	int fd;
 	int exported; // released to the foreign queue family after each render
 	VkDeviceSize offset, pitch; // a read-back target's layout
+	// A read-back target renders into an OPTIMAL image in device memory and copies it into this
+	// host-visible buffer, w*h*4 bytes tightly packed: rendering straight into a LINEAR image in
+	// host memory is not something every GPU does (NVIDIA loses the device).
+	VkBuffer readBuf;
+	VkDeviceMemory readMem;
+	void *readMap;     // readMem, mapped for the target's life
+	int readCoherent;  // else invalidated before each read
 };
 
 static int fail(char *err, int errlen, const char *fmt, ...) {
@@ -685,38 +692,65 @@ int s3d_readback_new(s3d *s, int w, int h, int fmt, s3d_target **out, char *err,
 		.mipLevels = 1,
 		.arrayLayers = 1,
 		.samples = VK_SAMPLE_COUNT_1_BIT,
-		.tiling = VK_IMAGE_TILING_LINEAR,
-		.usage = VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT,
+		.tiling = VK_IMAGE_TILING_OPTIMAL,
+		.usage = VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT | VK_IMAGE_USAGE_TRANSFER_SRC_BIT,
 		.sharingMode = VK_SHARING_MODE_EXCLUSIVE,
 		.initialLayout = VK_IMAGE_LAYOUT_UNDEFINED,
 	};
 	CHECK(vkCreateImage(s->dev, &ici, NULL, &t->img), "vkCreateImage (read-back)");
 	VkMemoryRequirements req;
 	vkGetImageMemoryRequirements(s->dev, t->img, &req);
-	int mt = memType(s, req.memoryTypeBits, VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT);
-	if (mt < 0 || (s->mem.memoryTypes[mt].propertyFlags & (VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT)) !=
-		(VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT)) {
-		return fail(err, errlen, "no host-coherent memory for a linear image");
-	}
+	int mt = memType(s, req.memoryTypeBits, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT);
+	if (mt < 0) mt = memType(s, req.memoryTypeBits, 0);
+	if (mt < 0) return fail(err, errlen, "no memory type for a read-back image");
 	VkMemoryAllocateInfo mai = {.sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO, .allocationSize = req.size, .memoryTypeIndex = (uint32_t)mt};
-	CHECK(vkAllocateMemory(s->dev, &mai, NULL, &t->mem), "vkAllocateMemory (read-back)");
+	CHECK(vkAllocateMemory(s->dev, &mai, NULL, &t->mem), "vkAllocateMemory (read-back image)");
 	CHECK(vkBindImageMemory(s->dev, t->img, t->mem, 0), "vkBindImageMemory (read-back)");
-	VkImageSubresource sub = {.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT};
-	VkSubresourceLayout lay;
-	vkGetImageSubresourceLayout(s->dev, t->img, &sub, &lay);
-	t->offset = lay.offset;
-	t->pitch = lay.rowPitch;
+
+	VkBufferCreateInfo bci = {
+		.sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO,
+		.size = (VkDeviceSize)w * (VkDeviceSize)h * 4,
+		.usage = VK_BUFFER_USAGE_TRANSFER_DST_BIT,
+		.sharingMode = VK_SHARING_MODE_EXCLUSIVE,
+	};
+	CHECK(vkCreateBuffer(s->dev, &bci, NULL, &t->readBuf), "vkCreateBuffer (read-back)");
+	VkMemoryRequirements breq;
+	vkGetBufferMemoryRequirements(s->dev, t->readBuf, &breq);
+	// The CPU reads every byte of this buffer each frame, so it wants CACHED host memory: an
+	// uncached (write-combined) mapping reads at a few hundred MB/s, about 20 ms for a card-sized
+	// frame. Coherent is preferred; a non-coherent one is invalidated before each read.
+	int bt = -1;
+	VkMemoryPropertyFlags prefs[] = {
+		VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_CACHED_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT,
+		VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_CACHED_BIT,
+		VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT,
+	};
+	for (int i = 0; i < 3 && bt < 0; i++) {
+		for (uint32_t k = 0; k < s->mem.memoryTypeCount; k++) {
+			if ((breq.memoryTypeBits & (1u << k)) && (s->mem.memoryTypes[k].propertyFlags & prefs[i]) == prefs[i]) {
+				bt = (int)k;
+				break;
+			}
+		}
+	}
+	if (bt < 0) return fail(err, errlen, "no host-visible memory for the read-back buffer");
+	t->readCoherent = (s->mem.memoryTypes[bt].propertyFlags & VK_MEMORY_PROPERTY_HOST_COHERENT_BIT) != 0;
+	VkMemoryAllocateInfo bai = {.sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO, .allocationSize = breq.size, .memoryTypeIndex = (uint32_t)bt};
+	CHECK(vkAllocateMemory(s->dev, &bai, NULL, &t->readMem), "vkAllocateMemory (read-back buffer)");
+	CHECK(vkBindBufferMemory(s->dev, t->readBuf, t->readMem, 0), "vkBindBufferMemory (read-back)");
+	CHECK(vkMapMemory(s->dev, t->readMem, 0, VK_WHOLE_SIZE, 0, &t->readMap), "vkMapMemory (read-back)");
+	t->offset = 0;
+	t->pitch = (VkDeviceSize)w * 4;
 	return attachments(s, t, f, err, errlen);
 }
 
 int s3d_read(s3d *s, s3d_target *t, uint8_t *dst, char *err, int errlen) {
-	if (t->exported) return fail(err, errlen, "an exported target is the window's to read");
-	void *p;
-	CHECK(vkMapMemory(s->dev, t->mem, 0, VK_WHOLE_SIZE, 0, &p), "vkMapMemory (read-back)");
-	for (int y = 0; y < t->h; y++) {
-		memcpy(dst + (size_t)y * t->w * 4, (uint8_t *)p + t->offset + (size_t)y * t->pitch, (size_t)t->w * 4);
+	if (t->exported || !t->readMap) return fail(err, errlen, "an exported target is the window's to read");
+	if (!t->readCoherent) {
+		VkMappedMemoryRange r = {.sType = VK_STRUCTURE_TYPE_MAPPED_MEMORY_RANGE, .memory = t->readMem, .offset = 0, .size = VK_WHOLE_SIZE};
+		CHECK(vkInvalidateMappedMemoryRanges(s->dev, 1, &r), "vkInvalidateMappedMemoryRanges (read-back)");
 	}
-	vkUnmapMemory(s->dev, t->mem);
+	memcpy(dst, t->readMap, (size_t)t->w * (size_t)t->h * 4);
 	return 0;
 }
 
@@ -755,22 +789,59 @@ static void recDraw(s3d *s, VkCommandBuffer cb, void *arg) {
 	vkCmdPushConstants(cb, s->layout, VK_SHADER_STAGE_VERTEX_BIT, 0, 128, d->draws + 32);
 	vkCmdDraw(cb, s->crateCount, 1, s->crateFirst, 0);
 	vkCmdEndRenderPass(cb);
-	// Hand the image to the window: the release half of the ownership transfer its importer
-	// acquires (from the foreign family, in GENERAL). A read-back target stays this queue's, and
-	// the host reads it.
-	VkImageMemoryBarrier release = {
+	if (t->exported) {
+		// Hand the image to the window: the release half of the ownership transfer its importer
+		// acquires (from the foreign family, in GENERAL).
+		VkImageMemoryBarrier release = {
+			.sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER,
+			.srcAccessMask = VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT,
+			.dstAccessMask = 0,
+			.oldLayout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL,
+			.newLayout = VK_IMAGE_LAYOUT_GENERAL,
+			.srcQueueFamilyIndex = s->family,
+			.dstQueueFamilyIndex = s->foreign ? VK_QUEUE_FAMILY_FOREIGN_EXT : VK_QUEUE_FAMILY_EXTERNAL,
+			.image = t->img,
+			.subresourceRange = {VK_IMAGE_ASPECT_COLOR_BIT, 0, 1, 0, 1},
+		};
+		vkCmdPipelineBarrier(cb, VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT, VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT,
+			0, 0, NULL, 0, NULL, 1, &release);
+		return;
+	}
+	// A read-back target: copy the image into its host-visible buffer, which the host then reads.
+	VkImageMemoryBarrier toCopy = {
 		.sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER,
 		.srcAccessMask = VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT,
-		.dstAccessMask = t->exported ? 0 : VK_ACCESS_HOST_READ_BIT,
+		.dstAccessMask = VK_ACCESS_TRANSFER_READ_BIT,
 		.oldLayout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL,
-		.newLayout = VK_IMAGE_LAYOUT_GENERAL,
-		.srcQueueFamilyIndex = t->exported ? s->family : VK_QUEUE_FAMILY_IGNORED,
-		.dstQueueFamilyIndex = !t->exported ? VK_QUEUE_FAMILY_IGNORED : s->foreign ? VK_QUEUE_FAMILY_FOREIGN_EXT : VK_QUEUE_FAMILY_EXTERNAL,
+		.newLayout = VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,
+		.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
+		.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
 		.image = t->img,
 		.subresourceRange = {VK_IMAGE_ASPECT_COLOR_BIT, 0, 1, 0, 1},
 	};
-	vkCmdPipelineBarrier(cb, VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT,
-		t->exported ? VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT : VK_PIPELINE_STAGE_HOST_BIT, 0, 0, NULL, 0, NULL, 1, &release);
+	vkCmdPipelineBarrier(cb, VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT, VK_PIPELINE_STAGE_TRANSFER_BIT,
+		0, 0, NULL, 0, NULL, 1, &toCopy);
+	VkBufferImageCopy region = {
+		.bufferOffset = 0,
+		.bufferRowLength = 0, // tightly packed
+		.bufferImageHeight = 0,
+		.imageSubresource = {VK_IMAGE_ASPECT_COLOR_BIT, 0, 0, 1},
+		.imageOffset = {0, 0, 0},
+		.imageExtent = {(uint32_t)t->w, (uint32_t)t->h, 1},
+	};
+	vkCmdCopyImageToBuffer(cb, t->img, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL, t->readBuf, 1, &region);
+	VkBufferMemoryBarrier toHost = {
+		.sType = VK_STRUCTURE_TYPE_BUFFER_MEMORY_BARRIER,
+		.srcAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT,
+		.dstAccessMask = VK_ACCESS_HOST_READ_BIT,
+		.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
+		.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
+		.buffer = t->readBuf,
+		.offset = 0,
+		.size = VK_WHOLE_SIZE,
+	};
+	vkCmdPipelineBarrier(cb, VK_PIPELINE_STAGE_TRANSFER_BIT, VK_PIPELINE_STAGE_HOST_BIT,
+		0, 0, NULL, 1, &toHost, 0, NULL);
 }
 
 int s3d_render(s3d *s, s3d_target *t, const float *draws, char *err, int errlen) {
@@ -787,6 +858,9 @@ void s3d_target_free(s3d *s, s3d_target *t) {
 	if (t->view) vkDestroyImageView(s->dev, t->view, NULL);
 	if (t->img) vkDestroyImage(s->dev, t->img, NULL);
 	if (t->mem) vkFreeMemory(s->dev, t->mem, NULL);
+	if (t->readMap) vkUnmapMemory(s->dev, t->readMem);
+	if (t->readBuf) vkDestroyBuffer(s->dev, t->readBuf, NULL);
+	if (t->readMem) vkFreeMemory(s->dev, t->readMem, NULL);
 	if (t->fd >= 0) close(t->fd);
 	free(t);
 }
