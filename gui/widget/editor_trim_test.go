@@ -37,8 +37,19 @@ func TestBlocksFarFromTheViewLetGoOfTheirLines(t *testing.T) {
 	if got := l.heightOf(0); got != h0 {
 		t.Fatalf("a trimmed block's height is %v, it was laid out %v tall: the blocks below it would move", got, h0)
 	}
-	if last := l.laid[len(l.laid)-1]; last == nil || last.trimmed {
-		t.Fatal("the last block, in view, was trimmed")
+	// the blocks this paint drew (their tops in the view) keep their lines; the scroll was set from
+	// estimated heights, so which blocks those are is read back, not assumed
+	inView := 0
+	for i := range l.laid {
+		if top := l.topOf(i); top >= l.scroll && top < l.scroll+400 {
+			inView++
+			if lb := l.laid[i]; lb == nil || lb.trimmed || len(lb.bl.Lines) == 0 {
+				t.Fatalf("block %d, in view, has no lines", i)
+			}
+		}
+	}
+	if inView == 0 {
+		t.Fatal("no block was in view at the note's end")
 	}
 
 	l.scroll = 0
