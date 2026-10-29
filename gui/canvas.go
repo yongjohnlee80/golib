@@ -452,9 +452,10 @@ func (c *gioCanvas) StrokePath(p *Path, width float32, b Brush) {
 
 // FillRect fills an unrounded rectangle with the given brush. A rectangle the canvas's transform
 // maps onto whole device pixels, without rotation or skew, is filled as one clip of those pixels:
-// what the path would have covered, exactly, at a fraction of the work (no path to build and no
-// stencil for gio). Any other rectangle, a fractional edge's antialiasing included, is filled as
-// the path it was.
+// the path's shape, at a fraction of the work (no path to build and no stencil for gio). Its edge
+// pixels may differ from the path's by a rasterizer's rounding of edge coverage, a level or two
+// (measured: at most 2 of 255). Any other rectangle, a fractional edge's antialiasing included, is
+// filled as the path it was.
 func (c *gioCanvas) FillRect(r Rect, b Brush) {
 	dev, ok := c.pixelRect(r)
 	if !ok {

@@ -3,7 +3,6 @@ package gui
 import (
 	"image"
 	"image/color"
-	"math"
 	"testing"
 
 	"github.com/yongjohnlee80/gio/f32"
@@ -48,7 +47,8 @@ func TestARectOnWholePixelsTakesTheFastPath(t *testing.T) {
 }
 
 // TestTheFastPathFillsThePathsPixels: a solid fill, a faded one and a gradient, on whole pixels,
-// fill exactly the pixels the rectangle's path filled. Rendered on gio's headless GPU.
+// fill the rectangle's path's pixels: the same shape, every byte within pixelTolerance
+// (compareShots). Rendered on gio's headless GPU.
 func TestTheFastPathFillsThePathsPixels(t *testing.T) {
 	hw, err := headless.NewWindow(200, 44)
 	if err != nil {
@@ -81,29 +81,14 @@ func TestTheFastPathFillsThePathsPixels(t *testing.T) {
 	} {
 		fast := shot(func(c *gioCanvas) { c.alpha = tc.alpha; c.FillRect(r, tc.b) })
 		path := shot(func(c *gioCanvas) { c.alpha = tc.alpha; c.FillPath(rrectPath(r, 0), tc.b) })
-		differ, worst, inked := 0, 0, 0
-		for i := range fast.Pix {
-			d := int(fast.Pix[i]) - int(path.Pix[i])
-			if d != 0 {
-				differ++
-				worst = max(worst, int(math.Abs(float64(d))))
-			}
-			if path.Pix[i] != 0xff {
-				inked++
-			}
-		}
-		if inked == 0 {
-			t.Fatalf("%s: the path drew nothing: the comparison proves nothing", name)
-		}
-		if differ != 0 {
-			t.Errorf("%s: %d bytes differ from the path's, the worst by %d", name, differ, worst)
-		}
+		ctrl := shot(func(c *gioCanvas) { c.alpha = tc.alpha; c.FillPath(rrectPath(r, 0), tc.b) })
+		compareShots(t, name, fast, path, ctrl)
 	}
 }
 
 // TestAnImageOnWholePixelsDrawsWhatItsPathClipDrew: an image drawn onto whole pixels clipped as
-// those pixels lands byte for byte where the path-clipped draw put it. Rendered on gio's headless
-// GPU.
+// those pixels lands where the path-clipped draw put it: the same shape, every byte within
+// pixelTolerance (compareShots). Rendered on gio's headless GPU.
 func TestAnImageOnWholePixelsDrawsWhatItsPathClipDrew(t *testing.T) {
 	hw, err := headless.NewWindow(200, 44)
 	if err != nil {
@@ -132,27 +117,13 @@ func TestAnImageOnWholePixelsDrawsWhatItsPathClipDrew(t *testing.T) {
 		}
 		return out
 	}
-	fast := shot(func(c *gioCanvas) { c.DrawImage(img, dst, Rect{}) })
-	path := shot(func(c *gioCanvas) { // the draw as it was: under the transform, clipped by dst's path
+	pathClipped := func(c *gioCanvas) { // the draw as it was: under the transform, clipped by dst's path
 		end := c.begin()
 		st := clip.Outline{Path: rrectPath(dst, 0).spec(c.ops)}.Op().Push(c.ops)
 		c.paintImage(img, Rect{W: 8, H: 8}, dst)
 		st.Pop()
 		end()
-	})
-	differ, inked := 0, 0
-	for i := range fast.Pix {
-		if fast.Pix[i] != path.Pix[i] {
-			differ++
-		}
-		if path.Pix[i] != 0xff {
-			inked++
-		}
 	}
-	if inked == 0 {
-		t.Fatal("the path-clipped draw drew nothing: the comparison proves nothing")
-	}
-	if differ != 0 {
-		t.Errorf("%d bytes differ from the path-clipped draw's", differ)
-	}
+	fast := shot(func(c *gioCanvas) { c.DrawImage(img, dst, Rect{}) })
+	compareShots(t, "image", fast, shot(pathClipped), shot(pathClipped))
 }

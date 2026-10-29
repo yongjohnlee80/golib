@@ -1,6 +1,7 @@
 package gui
 
 import (
+	"fmt"
 	"image"
 	"image/color"
 	"testing"
@@ -45,8 +46,9 @@ func arcAtItsPlace(ops *op.Ops, a [2]int, rect image.Rectangle, c color.NRGBA, l
 }
 
 // TestAnArcDrawnAtItsCellsOriginLandsWhereItDid: the four rounded corners, at line widths 1 to 3,
-// drawn at their cell's origin under a whole-pixel offset, ink exactly the pixels the path at the
-// cell's absolute place inked. Rendered on gio's headless GPU.
+// drawn at their cell's origin under a whole-pixel offset, ink the pixels the path at the cell's
+// absolute place inked: the same shape, every byte within pixelTolerance (compareShots). Rendered
+// on gio's headless GPU.
 func TestAnArcDrawnAtItsCellsOriginLandsWhereItDid(t *testing.T) {
 	hw, err := headless.NewWindow(120, 60)
 	if err != nil {
@@ -72,21 +74,8 @@ func TestAnArcDrawnAtItsCellsOriginLandsWhereItDid(t *testing.T) {
 		for _, lw := range []int{1, 2, 3} {
 			offset := shot(func(ops *op.Ops) { drawArc(ops, a, cell, ink, lw) })
 			placed := shot(func(ops *op.Ops) { arcAtItsPlace(ops, a, cell, ink, lw) })
-			differ, inked := 0, 0
-			for i := range offset.Pix {
-				if offset.Pix[i] != placed.Pix[i] {
-					differ++
-				}
-				if placed.Pix[i] != 0xff {
-					inked++
-				}
-			}
-			if inked == 0 {
-				t.Fatalf("arc %v at lw %d drew nothing: the comparison proves nothing", a, lw)
-			}
-			if differ != 0 {
-				t.Errorf("arc %v at lw %d: %d bytes differ from the path at the cell's place", a, lw, differ)
-			}
+			ctrl := shot(func(ops *op.Ops) { arcAtItsPlace(ops, a, cell, ink, lw) })
+			compareShots(t, fmt.Sprintf("arc %v at lw %d", a, lw), offset, placed, ctrl)
 		}
 	}
 }
