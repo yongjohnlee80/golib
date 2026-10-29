@@ -10,6 +10,7 @@ import (
 	"github.com/yongjohnlee80/gio/font/gofont"
 	"github.com/yongjohnlee80/gio/gpu/headless"
 	"github.com/yongjohnlee80/gio/op"
+	"github.com/yongjohnlee80/gio/op/clip"
 	"github.com/yongjohnlee80/gio/op/paint"
 	"github.com/yongjohnlee80/gio/text"
 	"github.com/yongjohnlee80/golib/tui"
@@ -97,5 +98,61 @@ func TestTheFastPathFillsThePathsPixels(t *testing.T) {
 		if differ != 0 {
 			t.Errorf("%s: %d bytes differ from the path's, the worst by %d", name, differ, worst)
 		}
+	}
+}
+
+// TestAnImageOnWholePixelsDrawsWhatItsPathClipDrew: an image drawn onto whole pixels clipped as
+// those pixels lands byte for byte where the path-clipped draw put it. Rendered on gio's headless
+// GPU.
+func TestAnImageOnWholePixelsDrawsWhatItsPathClipDrew(t *testing.T) {
+	hw, err := headless.NewWindow(200, 44)
+	if err != nil {
+		t.Skipf("no headless GPU here: %v", err)
+	}
+	defer hw.Release()
+	src := image.NewRGBA(image.Rect(0, 0, 8, 8))
+	for y := range 8 {
+		for x := range 8 {
+			src.Set(x, y, color.NRGBA{R: uint8(x * 32), G: uint8(y * 32), B: 0x80, A: 0xff})
+		}
+	}
+	img := NewImage(src)
+	dst := Rect{X: 21, Y: 5, W: 40, H: 30}
+	shot := func(draw func(c *gioCanvas)) *image.RGBA {
+		ops := new(op.Ops)
+		paint.Fill(ops, color.NRGBA{R: 0xff, G: 0xff, B: 0xff, A: 0xff})
+		c, _ := fillRectCanvas(ops, 1)
+		draw(c)
+		if err := hw.Frame(ops); err != nil {
+			t.Fatal(err)
+		}
+		out := image.NewRGBA(image.Rect(0, 0, 200, 44))
+		if err := hw.Screenshot(out); err != nil {
+			t.Fatal(err)
+		}
+		return out
+	}
+	fast := shot(func(c *gioCanvas) { c.DrawImage(img, dst, Rect{}) })
+	path := shot(func(c *gioCanvas) { // the draw as it was: under the transform, clipped by dst's path
+		end := c.begin()
+		st := clip.Outline{Path: rrectPath(dst, 0).spec(c.ops)}.Op().Push(c.ops)
+		c.paintImage(img, Rect{W: 8, H: 8}, dst)
+		st.Pop()
+		end()
+	})
+	differ, inked := 0, 0
+	for i := range fast.Pix {
+		if fast.Pix[i] != path.Pix[i] {
+			differ++
+		}
+		if path.Pix[i] != 0xff {
+			inked++
+		}
+	}
+	if inked == 0 {
+		t.Fatal("the path-clipped draw drew nothing: the comparison proves nothing")
+	}
+	if differ != 0 {
+		t.Errorf("%d bytes differ from the path-clipped draw's", differ)
 	}
 }

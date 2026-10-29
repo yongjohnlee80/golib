@@ -537,17 +537,32 @@ func (c *gioCanvas) DrawImage(img *Image, dst, src Rect) {
 	if src.W <= 0 || src.H <= 0 {
 		src = Rect{W: float32(img.size.X), H: float32(img.size.Y)}
 	}
+	// dst on whole device pixels clips as those pixels, as FillRect does; any other dst clips as
+	// its path, under the canvas's transform
+	if dev, ok := c.pixelRect(dst); ok {
+		p := pushPaint(c.ops, dev.Intersect(c.clip), c.alpha)
+		s := c.m.scale
+		p.transform(c.ops, f32.Affine2D{}.Scale(f32.Point{}, f32.Pt(s, s)).Offset(c.origin).Mul(c.xform))
+		c.paintImage(img, src, dst)
+		p.pop()
+		return
+	}
 	end := c.begin()
 	countClip()
+	st := clip.Outline{Path: rrectPath(dst, 0).spec(c.ops)}.Op().Push(c.ops)
+	c.paintImage(img, src, dst)
+	st.Pop()
+	end()
+}
+
+// paintImage paints img's src onto dst under the canvas's transform, inside the clip pushed.
+func (c *gioCanvas) paintImage(img *Image, src, dst Rect) {
 	countTransform()
 	countImage()
-	st := clip.Outline{Path: rrectPath(dst, 0).spec(c.ops)}.Op().Push(c.ops)
 	tr := op.Affine(imageAffine(src, dst)).Push(c.ops)
 	img.op.Add(c.ops)
 	paint.PaintOp{}.Add(c.ops)
 	tr.Pop()
-	st.Pop()
-	end()
 }
 
 // imageAffine maps an image's src onto dst: src's corner to dst's, scaled to its size.
