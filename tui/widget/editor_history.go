@@ -71,7 +71,9 @@ func (c *EditorCore) notifyEdited() {
 	c.changed()
 	c.reveal()
 	c.markDirty()
-	c.publish(ChangeEvent{Owner: c.nodeID(), Value: c.buf.value()})
+	if publishChange(c.ctx, c.nodeID(), c.buf.value) {
+		c.changeValues++
+	}
 	if c.onChange != nil {
 		c.onChange()
 	}

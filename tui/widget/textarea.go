@@ -72,6 +72,8 @@ import (
 type TextArea struct {
 	Base
 	textBuffer
+	// changeValues counts the ChangeEvent values built (publishChange): tests read it
+	changeValues int
 
 	wrap WrapMode
 	top  int // first visible logical line
@@ -174,7 +176,9 @@ func (t *TextArea) edited() {
 	t.desired = -1
 	t.ensureVisible()
 	t.MarkDirty()
-	t.publish(ChangeEvent{Owner: t.NodeID(), Value: t.Value()})
+	if publishChange(t.ctx, t.NodeID(), t.Value) {
+		t.changeValues++
+	}
 }
 
 // moveTo moves the cursor, managing the selection anchor.
