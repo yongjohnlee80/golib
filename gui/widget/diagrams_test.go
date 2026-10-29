@@ -38,16 +38,25 @@ func waitFor(t *testing.T, what string, cond func() bool) {
 // A flowchart is Pending, then ready is called once, and asking again is Ready with the laid
 // diagram: the cache's. Two blocks asking for the same diagram both hear of it, once each.
 func TestDiagramsLayAFlowchartOnceForEveryWaiter(t *testing.T) {
-	_, release := gui.AcquireMeasurer(1) // the first shaper loads its fonts: slow under -race, not what is tested
-	release()
 	d := Diagrams(nil)
 	req := flowReq("flowchart TB\n  A --> B")
+	req.Scale = 2.5 // a scale of its own: holding its measurers holds no other test's jobs
+	// Hold every measurer of the scale, so the job waits in AcquireMeasurer until the second asker
+	// has joined it. Without this, a job with a warm measurer can finish between the two asks, and
+	// the second gets the cached answer instead of joining.
+	held := make([]func(), gui.MaxMeasurers)
+	for i := range held {
+		_, held[i] = gui.AcquireMeasurer(req.Scale)
+	}
 	var a, b atomic.Int32
 	if ans := d.Diagram(context.Background(), req, func() { a.Add(1) }); ans.State != Pending || ans.Size.H <= 0 {
 		t.Fatalf("first answer %+v, want Pending with an estimate", ans)
 	}
 	if ans := d.Diagram(context.Background(), req, func() { b.Add(1) }); ans.State != Pending {
 		t.Fatalf("second asker got %v, want Pending (joining the job)", ans.State)
+	}
+	for _, release := range held {
+		release()
 	}
 	waitFor(t, "both waiters' ready", func() bool { return a.Load() == 1 && b.Load() == 1 })
 	ans := d.Diagram(context.Background(), req, func() { t.Error("a cached answer called ready") })
