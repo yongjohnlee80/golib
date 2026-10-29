@@ -171,7 +171,8 @@ func TestPublishLatestDeliversTheLastValue(t *testing.T) {
 }
 
 // TestLatestRefusesKeysItCannotHold: a nil key, an uncomparable one (a slice, or a struct holding
-// one), a nil fn and a nil value panic at the call, with errs.Fatal, before anything is queued.
+// one), a nil fn, a nil value and a nil bus panic at the call, with errs.Fatal, before anything is
+// queued.
 func TestLatestRefusesKeysItCannotHold(t *testing.T) {
 	t.Parallel()
 	root := &probe{name: "root", pref: Size{W: 4, H: 2}}
@@ -185,6 +186,7 @@ func TestLatestRefusesKeysItCannotHold(t *testing.T) {
 		{"update, slice key", func() { h.app.UpdateLatest([]int{1}, func() {}) }},
 		{"update, struct key holding a slice", func() { h.app.UpdateLatest(holder{}, func() {}) }},
 		{"update, nil fn", func() { h.app.UpdateLatest("k", nil) }},
+		{"publish, nil bus", func() { var b *Bus; b.PublishLatest("k", fooMsg{}) }},
 		{"publish, nil key", func() { h.app.Bus().PublishLatest(nil, fooMsg{}) }},
 		{"publish, map key", func() { h.app.Bus().PublishLatest(map[int]int{}, fooMsg{}) }},
 		{"publish, nil value", func() { h.app.Bus().PublishLatest("k", nil) }},
