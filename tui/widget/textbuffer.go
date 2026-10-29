@@ -320,7 +320,7 @@ func (b *textBuffer) deleteRegion(lo, hi taPos) {
 	if r := recorder(b.bufferText); r != nil {
 		r.record(undoOp{lo: lo.ln, n: 1, old: slices.Clone(b.textLines[lo.ln : hi.ln+1])})
 	}
-	b.textLines = append(b.textLines[:lo.ln], append([]string{joined}, b.textLines[hi.ln+1:]...)...)
+	b.textLines = slices.Replace(b.textLines, lo.ln, hi.ln+1, joined) // in place: no copy of the lines below
 	b.ln, b.col = lo.ln, min(lo.col, len(clusters(joined)))
 	b.anchor = nil
 }
@@ -371,7 +371,7 @@ func (b *textBuffer) insertText(text string) {
 		newLines = append(newLines, parts[1:len(parts)-1]...)
 		lastPart := parts[len(parts)-1]
 		newLines = append(newLines, lastPart+tail)
-		b.textLines = append(b.textLines[:b.ln], append(newLines, b.textLines[b.ln+1:]...)...)
+		b.textLines = slices.Replace(b.textLines, b.ln, b.ln+1, newLines...) // in place, growing as append does
 		// the lines below move down, then the split line's marks after the cursor follow its tail
 		b.log.splice(b.ln+1, 0, len(parts)-1)
 		b.log.move(b.ln, b.col, b.ln+len(parts)-1, len(clusters(lastPart)), false)
