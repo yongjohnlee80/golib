@@ -108,3 +108,24 @@ func BenchmarkNearestSeqThenTwoStageSeq(b *testing.B) {
 		}
 	}
 }
+
+// BenchmarkIndexNearestSeqThenTwoStageSeq is the same query through Index.NearestSeq, which sizes
+// its scores once.
+func BenchmarkIndexNearestSeqThenTwoStageSeq(b *testing.B) {
+	x := NewIndex("m", 1, benchCodes(100_000, 20_000))
+	q := benchQuery()
+	qf := make([]float32, 1024)
+	fetch := func(ids []int64) ([]Vec[int64], error) {
+		out := make([]Vec[int64], len(ids))
+		for i, id := range ids {
+			out[i] = Vec[int64]{Item: id, F32: qf}
+		}
+		return out, nil
+	}
+	b.ReportAllocs()
+	for b.Loop() {
+		if _, err := TwoStageSeq(x.NearestSeq(q, cmp.Compare[int64]), qf, 200, 10, fetch, func(a, b int64) bool { return a < b }); err != nil {
+			b.Fatal(err)
+		}
+	}
+}

@@ -126,3 +126,29 @@ func TestNextCopiesOnlyTheShardsItChanges(t *testing.T) {
 		t.Fatalf("the changed document's codes in the next index: %v", got)
 	}
 }
+
+// TestLenFollowsTheCodes: an index's Len is its codes' count after NewIndex and after Next, a
+// document dropped, added, or replaced by fresh codes whether or not it is listed as changed.
+func TestLenFollowsTheCodes(t *testing.T) {
+	x := NewIndex("m", 1, tiedCodes(300))
+	if x.Len() != 300 || len(slices.Collect(x.Codes())) != 300 {
+		t.Fatalf("NewIndex: Len %d, codes %d", x.Len(), len(slices.Collect(x.Codes())))
+	}
+	two := []Code[int64]{{Chunk: 1001, Bits: []uint64{1}}, {Chunk: 1002, Bits: []uint64{2}}}
+	y := x.Next(2, []int{0, 1}, map[int][]Code[int64]{1: two, 2: two, 999: two})
+	if got := len(slices.Collect(y.Codes())); y.Len() != got {
+		t.Fatalf("Next: Len %d, but %d codes", y.Len(), got)
+	}
+	if x.Len() != 300 {
+		t.Fatalf("Next changed the old index's Len to %d", x.Len())
+	}
+}
+
+// TestIndexNearestSeqIsNearestSeq: the method orders the index's codes as the function does.
+func TestIndexNearestSeqIsNearestSeq(t *testing.T) {
+	x := NewIndex("m", 1, tiedCodes(400))
+	q := []uint64{0b1001}
+	if got, want := slices.Collect(x.NearestSeq(q, cmp.Compare[int64])), slices.Collect(NearestSeq(x.Codes(), q, cmp.Compare[int64])); !reflect.DeepEqual(got, want) {
+		t.Fatal("Index.NearestSeq's order differs from NearestSeq's")
+	}
+}
