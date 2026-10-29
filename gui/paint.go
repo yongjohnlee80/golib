@@ -62,7 +62,13 @@ type renderer struct {
 	pageBGSet bool
 	rows      []op.CallOp
 	rowCost   []int // each row macro's ops (gui_opcount; zero otherwise)
-	firstCost int   // the last frameParts' first segment's ops (gui_opcount)
+	// rowGen is each row's recording: a row re-recorded takes the next gen, so a recording that
+	// drew rows y0..y1 is current while their gens are the ones it drew (coveredCells).
+	rowGen    []uint64
+	gen       uint64
+	frameNo   uint64
+	covered   map[CellRect]*coveredRecording // the cells drawn over native views and images, by rect
+	firstCost int                            // the last frameParts' first segment's ops (gui_opcount)
 	// glyphs is cleared with the row cache when the font size or the window's face changes. It
 	// holds one entry per (cluster, bold, italic, face) drawn since: bounded by the faces in the
 	// table (at most tui's maxCellFaces) times the clusters actually on screen, not by frames.
@@ -148,14 +154,19 @@ func (r *renderer) frameParts(g *grid, m metrics, cur cursorState, natives []tui
 		r.m = m
 		r.rows = make([]op.CallOp, g.h)
 		r.rowCost = make([]int, g.h)
+		r.rowGen = make([]uint64, g.h)
+		clear(r.covered)
 		g.touchAll()
 	}
+	r.frameNo++
 	changed := false
 	for y := range g.h {
 		if g.dirty[y] {
 			start := walkNow()
 			r.rows[y] = r.recordRow(g, y)
 			r.rowCost[y] = walkNow() - start
+			r.gen++
+			r.rowGen[y] = r.gen
 			g.dirty[y] = false
 			changed = true
 		}
@@ -172,6 +183,7 @@ func (r *renderer) frameParts(g *grid, m metrics, cur cursorState, natives []tui
 		countReplay(r.rowCost[i])
 	}
 	r.composite(ops, g, m, natives, images)
+	r.dropUnusedCovered()
 	if cur.visible {
 		r.drawCursor(ops, g, cur, focused)
 	}
