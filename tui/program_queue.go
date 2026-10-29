@@ -19,6 +19,10 @@ type programItem struct {
 	ev Event
 	fn func()
 
+	// latest is a coalescing call's slot (App.UpdateLatest, Bus.PublishLatest), set in place of
+	// fn: the closure to run is the cell's fn when the batch runs, the last one its key was given.
+	latest *latestCell
+
 	// isUpdate marks a closure that came from App.Update, as opposed to one
 	// lane B merely carries — a Bus delivery, for instance. The phases in which
 	// a component may mutate loop-owned state are named ones, and travelling on
@@ -26,6 +30,10 @@ type programItem struct {
 	// needs such a mutation has to enqueue an Update of its own.
 	isUpdate bool
 }
+
+// latestCell is the one queued slot of a pending coalescing key: a later call for the key, while
+// the slot waits in the queue, replaces fn and appends nothing.
+type latestCell struct{ fn func() }
 
 // programQueue is Lane B of the two-lane event architecture: it carries internal
 // program events from any goroutine — App.Post events, App.Update closures,
@@ -108,12 +116,22 @@ type programItem struct {
 //     warnings at exponential doublings starting at 64 items. If configured via
 //     WithEventQueueLimit, exceeding the ceiling triggers an immediate fail-loud
 //     panic to catch runaway goroutines before system memory is exhausted.
+//
+//  6. Latest-Wins Keys (App.UpdateLatest, Bus.PublishLatest):
+//     A coalescing call for a key that already has a slot waiting in q.items
+//     replaces that slot's closure and appends nothing, so a producer of newest
+//     values holds one slot per key however fast it calls. The slot keeps the
+//     first call's place in the order. drain clears the key map with the swap: a
+//     call after it, a handler's in the batch included, takes a slot in the next
+//     batch (invariant 3 holds, and a key runs at most once per batch).
 type programQueue struct {
 	mu    sync.Mutex
 	items []programItem
 	spare []programItem // last drained batch, recycled as the next append target
 
 	wake chan struct{} // cap 1; non-blocking send on every push
+
+	latest map[any]*latestCell // the coalescing keys with a slot waiting in items
 
 	limit     int // 0 = unlimited; exceeding panics (WithEventQueueLimit)
 	nextHW    int // next pending count that logs a high-water entry
@@ -135,21 +153,51 @@ func (q *programQueue) init(limit int, log logger.Logger) {
 // into WithEventQueueLimit and the ceiling is exceeded.
 func (q *programQueue) push(it programItem) {
 	q.mu.Lock()
+	n, logHW, overLimit := q.appendLocked(it)
+	q.mu.Unlock()
+	q.pushed(n, logHW, overLimit)
+}
+
+// pushLatest enqueues fn under key, or, while key has a slot waiting, makes fn that slot's
+// closure and appends nothing: a replacing call adds no item, so it counts toward neither the
+// high-water log nor WithEventQueueLimit. key is the caller's, already checked comparable and
+// namespaced. Safe from any goroutine; never blocks.
+func (q *programQueue) pushLatest(key any, fn func(), isUpdate bool) {
+	q.mu.Lock()
+	if c, ok := q.latest[key]; ok {
+		c.fn = fn // the slot is not drained yet: the loop reads fn only after the drain that takes it
+		q.mu.Unlock()
+		return // its push already woke the loop
+	}
+	if q.latest == nil {
+		q.latest = make(map[any]*latestCell)
+	}
+	c := &latestCell{fn: fn}
+	q.latest[key] = c
+	n, logHW, overLimit := q.appendLocked(programItem{latest: c, isUpdate: isUpdate})
+	q.mu.Unlock()
+	q.pushed(n, logHW, overLimit)
+}
+
+// appendLocked appends it and keeps the watermarks (q.mu held). It reports the pending count, and
+// whether it crossed a high-water mark or the ceiling, for pushed to act on outside the lock.
+func (q *programQueue) appendLocked(it programItem) (n int, logHW, overLimit bool) {
 	q.items = append(q.items, it)
-	n := len(q.items)
+	n = len(q.items)
 	if n > q.highWater {
 		q.highWater = n
 	}
-	logHW := false
 	if n >= q.nextHW {
 		logHW = true
 		for n >= q.nextHW {
 			q.nextHW *= 2
 		}
 	}
-	overLimit := q.limit > 0 && n > q.limit
-	q.mu.Unlock()
+	return n, logHW, q.limit > 0 && n > q.limit
+}
 
+// pushed logs, enforces the ceiling and wakes the loop after an append, outside the lock.
+func (q *programQueue) pushed(n int, logHW, overLimit bool) {
 	if logHW {
 		logger.Warning(q.log, nil, map[string]any{
 			"tui": "program event queue high water", "pending": n,
@@ -180,6 +228,7 @@ func (q *programQueue) drain() []programItem {
 	batch := q.items
 	q.items = q.spare[:0]
 	q.spare = batch
+	clear(q.latest) // the batch's slots go with it: the next call for a key takes a new one
 	q.mu.Unlock()
 	return batch
 }
@@ -194,3 +243,6 @@ func (q *programQueue) pending() int {
 // enqueue posts fn to the program lane as a plain lane-B closure, not an Update: the Bus's
 // delivery (busLane).
 func (a *App) enqueue(fn func()) { a.queue.push(programItem{fn: fn}) }
+
+// enqueueLatest posts fn under key as a plain lane-B closure, latest wins: Bus.PublishLatest's.
+func (a *App) enqueueLatest(key any, fn func()) { a.queue.pushLatest(key, fn, false) }

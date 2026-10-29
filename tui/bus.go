@@ -94,6 +94,8 @@ type subscription struct {
 type busLane interface {
 	// enqueue posts fn to the program lane; safe from any goroutine, never blocks.
 	enqueue(fn func())
+	// enqueueLatest posts fn under key, replacing a pending one's fn (App.UpdateLatest's lane).
+	enqueueLatest(key any, fn func())
 	// contain is the handler boundary. It recovers, so it must be the deferred call itself.
 	contain(phase string, n *node, handled *bool)
 }
@@ -183,6 +185,29 @@ func (b *Bus) Publish(v any) {
 		panic(errs.Fatal{Op: "tui: Bus.Publish", Rule: "nil value"})
 	}
 	b.lane.enqueue(func() { b.deliver(v) })
+}
+
+// PublishLatest is Publish for a value only its newest matters of: while a PublishLatest for key
+// waits in the program lane, another replaces its value instead of queueing one more delivery, so
+// the lane holds one per pending key however fast the producer publishes. Subscribers get the
+// last value published under key, once. A replacing call adds nothing to the lane: it counts
+// toward neither the high-water log nor WithEventQueueLimit.
+//
+// ORDER: the delivery happens in the place of the FIRST pending PublishLatest for key, with the
+// LAST value; so unlike Publish, it may come before deliveries published between the two calls.
+// Once the delivery's batch is taken, the next call for key queues anew, for the next batch.
+// Keys are compared with ==, apart from App.UpdateLatest's; one key may carry values of any type,
+// each delivered to its own type's subscribers. A nil or uncomparable key, or a nil value, panics
+// here. Safe from any goroutine; never blocks.
+func (b *Bus) PublishLatest(key, v any) {
+	if b == nil {
+		panic(errs.Fatal{Op: "tui: Bus.PublishLatest", Rule: "nil bus"})
+	}
+	if v == nil {
+		panic(errs.Fatal{Op: "tui: Bus.PublishLatest", Rule: "nil value"})
+	}
+	checkLatestKey("tui: Bus.PublishLatest", key)
+	b.lane.enqueueLatest(publishKey{key}, func() { b.deliver(v) })
 }
 
 // deliver runs on the loop goroutine: snapshot the handler slice for v's

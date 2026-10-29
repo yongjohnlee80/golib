@@ -261,6 +261,8 @@ for {
 > `HandleEvent`, bus handlers, and queued closures execute **only** there. The only
 > operations legal from other goroutines are `App.Post`, `App.Update`, `App.Go`,
 > `Bus.Publish`, and `Context.Post`/`Context.Go` — all of which enqueue and return.
+> (`App.UpdateLatest` and `Bus.PublishLatest`, added by the §2.4 amendment, enqueue and
+> return too.)
 
 The API is shaped to make violation hard (Go cannot make it impossible — ADR-0001 §3):
 no exported runtime state is reachable without going through the queue; `Context`'s
@@ -351,6 +353,23 @@ func (a *App) Update(fn func())
 > argument, with zero dependency on runtime stack-header format and no special
 > "sometimes-inline" ordering rule to teach. The in-handler idiom is direct mutation,
 > documented in `tui/doc.go` alongside the invariant (§2.3).
+
+> **Amended 2026-10-30 (golib scalability audit GP-1; design approved by Jarvis):
+> latest-wins keys, opt-in.** A producer that only needs its newest closure or value run
+> (a progress value, a refresh signal, a stats tick) grew lane B one item a call while
+> the loop was slow; the only bound, `WithEventQueueLimit`, panics in the producer.
+> `App.UpdateLatest(key, fn)` and `Bus.PublishLatest(key, v)` are added; `Post`,
+> `Update`, `Publish` and `WithEventQueueLimit` are unchanged, so the never-drop rule
+> above holds for them. While a call for a key has a slot waiting in lane B, another
+> call for the key replaces that slot's fn or value and appends nothing: one slot per
+> pending key. The slot keeps the **first** call's place, and runs the **last** fn, so
+> these two calls give up lane B's per-producer order for their keys, which is why they
+> are opt-in and say so. The drain clears the key map with the swap, so a call after it
+> (a handler's in the batch included) queues for the next batch: the livelock rule holds,
+> and a key runs at most once a batch. A replacing call adds no item, so it counts toward
+> neither the high-water log nor the ceiling. `UpdateLatest` closures run as Updates and
+> `PublishLatest` ones as bus deliveries; the two have separate key spaces, and a nil or
+> uncomparable key panics at the call (`errs.Fatal`).
 
 ### 2.5 The concrete `Event` set
 
