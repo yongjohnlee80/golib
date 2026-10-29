@@ -205,6 +205,33 @@ func TestAVFSPreviewIsReadOffTheLoop(t *testing.T) {
 	}
 }
 
+// TestAVFSPreviewShownBeforeItsMountIsReadAtTheMount: Show on a preview not yet mounted has no
+// loop to read a VFS file off, so it reads nothing and says loading; once mounted, the preview
+// reads the file off the loop, and shows it when the read is let through.
+func TestAVFSPreviewShownBeforeItsMountIsReadAtTheMount(t *testing.T) {
+	g := newGated(t, vfsFiles)
+	p := widget.NewFilePreview(widget.FilePaneStyles{}, false)
+	shown := make(chan struct{})
+	go func() {
+		p.Show(widget.FileSource{VFS: g, Root: "vfs://"}, "a/x.txt", false)
+		close(shown)
+	}()
+	select {
+	case <-shown:
+	case <-time.After(5 * time.Second):
+		t.Fatal("Show on an unmounted preview waited on the source's read")
+	}
+	if n := g.started.Load(); n != 0 {
+		t.Fatalf("Show read the source %d times before the mount", n)
+	}
+	h := startApp(t, p, 60, 10)
+	defer h.stop()
+	h.shows("(loading")
+	h.waitFor("the read at the mount", func() bool { return g.started.Load() == 1 })
+	g.release("file:a/x.txt")
+	h.shows("x body")
+}
+
 // TestTheOpenViewFilters: `/` opens the filter, typing narrows the rows (`..`
 // stays), Enter returns to the list with the filter kept, and Esc clears it.
 // A new folder clears it too.

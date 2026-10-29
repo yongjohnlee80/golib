@@ -50,6 +50,15 @@ type FilePreview struct {
 	// stopRead cancels the read in flight: a folder row or a source read on
 	// the loop, shown at once, stops it rather than leaving it to finish
 	stopRead context.CancelFunc
+	// unread is an async source's file shown before the mount, with no loop to read it off yet:
+	// Init reads it, as a FileList lists its folder at Init
+	unread *previewWant
+}
+
+// previewWant is a file an async source is to preview.
+type previewWant struct {
+	src  FileSource
+	path string
 }
 
 // NewFilePreview builds an empty preview, dressed like the panes beside it.
@@ -68,10 +77,13 @@ func NewFilePreview(st FilePaneStyles, styled bool) *FilePreview {
 	return p
 }
 
-// Init mounts the frame.
+// Init mounts the frame, and reads off the loop a file an async source was asked to show before it.
 func (p *FilePreview) Init(ctx *tui.Context) {
 	p.Base.Init(ctx)
 	ctx.Mount(p.box)
+	if w := p.unread; w != nil {
+		p.Show(w.src, w.path, false)
+	}
 }
 
 // Layout fills what it is given.
@@ -121,15 +133,23 @@ type preview struct {
 //
 // An async source (VFS, or an Async fs.FS) is read off the loop: the preview
 // says it is loading until the text arrives, and a newer Show stops the read in
-// flight, or drops its answer when it cannot be stopped.
+// flight, or drops its answer when it cannot be stopped. Shown before the preview
+// is mounted, it says it is loading, and reads at the mount.
 func (p *FilePreview) Show(src FileSource, path string, folder bool) {
 	src = src.or()
 	ctx := p.Context()
 	p.stop()
-	if !src.async() || folder || ctx == nil {
+	p.unread = nil
+	if !src.async() || folder {
 		p.reading = false
 		text, note, arg := previewOf(context.Background(), src, path, folder)
 		p.put(path, text, note, arg)
+		return
+	}
+	if ctx == nil {
+		p.reading = false
+		p.unread = &previewWant{src, path}
+		p.put(path, "", tui.Msg("tui.files.loading"), "")
 		return
 	}
 	p.reading = true
