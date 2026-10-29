@@ -61,7 +61,7 @@ struct s3d_target {
 	int fd;
 	int exported; // released to the foreign queue family after each render
 	VkDeviceSize offset, pitch; // a read-back target's layout
-	// A read-back target renders into an OPTIMAL image in device memory and copies it into this
+	// A read-back target renders into a local OPTIMAL image (localImage) and copies it into this
 	// host-visible buffer, w*h*4 bytes tightly packed: rendering straight into a LINEAR image in
 	// host memory is not something every GPU does (NVIDIA loses the device).
 	VkBuffer readBuf;
@@ -575,16 +575,19 @@ static int pipeline(s3d *s, VkFormat fmt, char *err, int errlen) {
 	return 0;
 }
 
-// attachments makes t's colour view, its depth image and its framebuffer.
+// attachments makes t's colour view (unless it has one: localImage made a read-back target's),
+// its depth image and its framebuffer.
 static int attachments(s3d *s, s3d_target *t, VkFormat f, char *err, int errlen) {
-	VkImageViewCreateInfo vci = {
-		.sType = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO,
-		.image = t->img,
-		.viewType = VK_IMAGE_VIEW_TYPE_2D,
-		.format = f,
-		.subresourceRange = {VK_IMAGE_ASPECT_COLOR_BIT, 0, 1, 0, 1},
-	};
-	CHECK(vkCreateImageView(s->dev, &vci, NULL, &t->view), "vkCreateImageView (target)");
+	if (!t->view) {
+		VkImageViewCreateInfo vci = {
+			.sType = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO,
+			.image = t->img,
+			.viewType = VK_IMAGE_VIEW_TYPE_2D,
+			.format = f,
+			.subresourceRange = {VK_IMAGE_ASPECT_COLOR_BIT, 0, 1, 0, 1},
+		};
+		CHECK(vkCreateImageView(s->dev, &vci, NULL, &t->view), "vkCreateImageView (target)");
+	}
 	if (localImage(s, t->w, t->h, VK_FORMAT_D32_SFLOAT, VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT, VK_IMAGE_ASPECT_DEPTH_BIT,
 		&t->depth, &t->depthMem, &t->depthView, err, errlen)) return -1;
 	VkImageView views[2] = {t->view, t->depthView};
@@ -684,28 +687,9 @@ int s3d_readback_new(s3d *s, int w, int h, int fmt, s3d_target **out, char *err,
 	s3d_target *t = calloc(1, sizeof *t);
 	*out = t;
 	t->w = w, t->h = h, t->fd = -1;
-	VkImageCreateInfo ici = {
-		.sType = VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO,
-		.imageType = VK_IMAGE_TYPE_2D,
-		.format = f,
-		.extent = {(uint32_t)w, (uint32_t)h, 1},
-		.mipLevels = 1,
-		.arrayLayers = 1,
-		.samples = VK_SAMPLE_COUNT_1_BIT,
-		.tiling = VK_IMAGE_TILING_OPTIMAL,
-		.usage = VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT | VK_IMAGE_USAGE_TRANSFER_SRC_BIT,
-		.sharingMode = VK_SHARING_MODE_EXCLUSIVE,
-		.initialLayout = VK_IMAGE_LAYOUT_UNDEFINED,
-	};
-	CHECK(vkCreateImage(s->dev, &ici, NULL, &t->img), "vkCreateImage (read-back)");
-	VkMemoryRequirements req;
-	vkGetImageMemoryRequirements(s->dev, t->img, &req);
-	int mt = memType(s, req.memoryTypeBits, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT);
-	if (mt < 0) mt = memType(s, req.memoryTypeBits, 0);
-	if (mt < 0) return fail(err, errlen, "no memory type for a read-back image");
-	VkMemoryAllocateInfo mai = {.sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO, .allocationSize = req.size, .memoryTypeIndex = (uint32_t)mt};
-	CHECK(vkAllocateMemory(s->dev, &mai, NULL, &t->mem), "vkAllocateMemory (read-back image)");
-	CHECK(vkBindImageMemory(s->dev, t->img, t->mem, 0), "vkBindImageMemory (read-back)");
+	// the colour image is an ordinary local one; its copy into readBuf is what the host reads
+	if (localImage(s, w, h, f, VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT | VK_IMAGE_USAGE_TRANSFER_SRC_BIT, VK_IMAGE_ASPECT_COLOR_BIT,
+		&t->img, &t->mem, &t->view, err, errlen)) return -1;
 
 	VkBufferCreateInfo bci = {
 		.sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO,

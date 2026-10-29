@@ -34,14 +34,20 @@ int s3d_modifiers(s3d *s, int fmt, uint64_t *mods, int max);
 // s3d_target_new makes a w×h image of fmt the device renders into and exports, with one of
 // mods (the driver picks). Returns 0, or -1 with err set.
 int s3d_target_new(s3d *s, int w, int h, int fmt, const uint64_t *mods, int nmods, s3d_target **out, s3d_export *ex, char *err, int errlen);
-// s3d_readback_new makes a w×h LINEAR image of fmt in host-visible memory, not exported: a
-// target whose pixels s3d_read copies out, to check the rendering where no device exports.
+// s3d_readback_new makes a w×h target of fmt that is not exported, whose pixels s3d_read copies
+// out: an OPTIMAL image in device-local memory where there is some, which each s3d_render copies
+// into a host-visible buffer (cached where there is such memory) mapped for the target's life.
+// It checks the rendering where no device exports, and on any GPU.
 int s3d_readback_new(s3d *s, int w, int h, int fmt, s3d_target **out, char *err, int errlen);
-// s3d_read copies a read-back target's rows into dst (w*4 bytes a row). Returns 0, or -1.
+// s3d_read copies a read-back target's last render into dst (w*4 bytes a row, tightly packed),
+// invalidating the buffer first when its memory is not host-coherent. Call it after s3d_render,
+// which has waited for the copy. Returns 0, or -1.
 int s3d_read(s3d *s, s3d_target *t, uint8_t *dst, char *err, int errlen);
 // s3d_render draws the scene into t and waits for it: draws[0..31] is the floor's mvp and model,
-// draws[32..63] the crate's. The image is left released to the foreign queue family, in the
-// GENERAL layout. Returns 0, or -1 with err set.
+// draws[32..63] the crate's. An exported target's image is left released to the foreign queue
+// family, in the GENERAL layout, for the window to acquire. A read-back target's image stays on
+// this queue, in TRANSFER_SRC_OPTIMAL, its pixels copied into its host buffer and visible to the
+// host. Returns 0, or -1 with err set.
 int s3d_render(s3d *s, s3d_target *t, const float *draws, char *err, int errlen);
 void s3d_target_free(s3d *s, s3d_target *t);
 void s3d_free(s3d *s);
