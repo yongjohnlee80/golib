@@ -1,6 +1,8 @@
 package tui
 
 import (
+	"strings"
+
 	"github.com/yongjohnlee80/golib/tui/internal/grapheme"
 	"github.com/yongjohnlee80/golib/tui/style"
 )
@@ -100,12 +102,46 @@ func newRootSurface(buf *buffer, ctx *renderContext) *bufSurface {
 	}
 }
 
-// firstCluster returns the first grapheme cluster of s ("" when s is empty).
+// firstCluster returns the first grapheme cluster of s ("" when s is empty), as a cell may hold it:
+// visible, never a control (Shown).
 func firstCluster(s string) string {
 	for c := range grapheme.Clusters(s) {
-		return c
+		return Shown(c)
 	}
 	return ""
+}
+
+// Shown is cluster with every control character in it replaced by its visible form: what a cell
+// holds, and what the terminal emitter writes, so a terminal draws it and never obeys it. A cell's
+// content goes to the terminal as it is, so a control in it would be obeyed, not drawn: ESC opens a
+// sequence (ESC]52 writes the clipboard, ESC[ moves the cursor), a C1 control is one by itself in
+// 8-bit terminals. Each C0 control is its Control Picture (U+2400 + c: ESC is ␛), DEL is ␡, and a
+// C1 control or a byte that is not UTF-8, which have no picture, is U+FFFD.
+func Shown(cluster string) string {
+	clean := true
+	for i := 0; i < len(cluster); i++ {
+		if c := cluster[i]; c < 0x20 || c == 0x7f || c >= 0x80 {
+			clean = false
+			break
+		}
+	}
+	if clean {
+		return cluster // plain ASCII, the common case: nothing to look at
+	}
+	var b strings.Builder
+	for _, r := range strings.ToValidUTF8(cluster, "\uFFFD") {
+		switch {
+		case r < 0x20:
+			b.WriteRune(0x2400 + r)
+		case r == 0x7f:
+			b.WriteRune(0x2421)
+		case r >= 0x80 && r < 0xa0:
+			b.WriteRune(0xFFFD)
+		default:
+			b.WriteRune(r)
+		}
+	}
+	return b.String()
 }
 
 // measure returns the cell width (1 or 2) of cluster under the surface's

@@ -1,8 +1,10 @@
 package widget
 
 import (
+	"bytes"
 	"strconv"
 	"strings"
+	"unicode/utf8"
 
 	"github.com/yongjohnlee80/golib/tui/style"
 )
@@ -154,7 +156,7 @@ func (p *sgrInterp) feed(b []byte, emit func(sgrEvent)) {
 	var run []byte
 	flush := func() {
 		if len(run) > 0 {
-			emit(sgrEvent{kind: sgrText, text: string(run), st: p.st})
+			emit(sgrEvent{kind: sgrText, text: withoutC1(run), st: p.st})
 			run = run[:0]
 		}
 	}
@@ -322,3 +324,24 @@ func extendedColor(rest []int) (style.Color, int, bool) {
 	}
 	return style.Color{}, len(rest), false
 }
+
+// withoutC1 is run as text with its C1 controls (U+0080–U+009F) dropped, as the C0 ones are: a C1
+// control is a sequence by itself (U+009B is CSI), never text to draw. Bytes that are not UTF-8
+// stay: a rune split across two chunks completes in the next, and a cell shows any byte left
+// invalid as U+FFFD.
+func withoutC1(run []byte) string {
+	if !bytes.ContainsFunc(run, isC1) {
+		return string(run)
+	}
+	var b strings.Builder
+	for len(run) > 0 {
+		r, n := utf8.DecodeRune(run)
+		if !(r != utf8.RuneError && isC1(r)) {
+			b.Write(run[:n])
+		}
+		run = run[n:]
+	}
+	return b.String()
+}
+
+func isC1(r rune) bool { return r >= 0x80 && r < 0xa0 }
