@@ -103,7 +103,7 @@ func (e *emitter) emitCells(diff []tui.CellUpdate, unicodeCore bool) {
 			e.lastAttrs = u.Cell.Attrs
 			e.attrsKnown = true
 		}
-		content := u.Cell.Content
+		content := tui.Shown(u.Cell.Content) // a control in a cell is drawn, never obeyed
 		if content == "" {
 			content = " "
 		}
