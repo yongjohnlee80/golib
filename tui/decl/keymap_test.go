@@ -284,8 +284,8 @@ func TestHotReloadFollowsTheKeymap(t *testing.T) {
 	s.Keys(t, ctrl('p'))
 	s.WaitForText(t, "saved 3")
 
+	reloads, refused = d.counts() // before the write: a poll may apply it before the next line runs
 	d.write("keymap.xml", `<mapping><shortcut id="demo.save"><key value="Ctrl+P"/></shortcut></mapping>`)
-	reloads, refused = d.counts()
 	d.waitCounted(s, "the fixed scheme applied", func(r, _ int) bool { return r > reloads })
 	d.write("main.qml", layout("demo.nothing"))
 	d.waitCounted(s, "the layout's undeclared keyId refused", func(_, r int) bool { return r > refused })
