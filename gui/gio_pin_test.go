@@ -27,8 +27,10 @@ import (
 // v0.1.5 (2026-10-29) leaves io/input/key.go, app/ime.go, app/os_wayland.go and app/os_macos.go
 // unchanged; in app/window.go it only moves the "sync/atomic" import into the standard group and
 // moves CustomRenderer's doc comment back onto it. Its changes are the renderer's (gpu/, the
-// Vulkan buffer pool and the content-keyed path cache) and text/'s path-cache budget.
-const verifiedGio = "v0.1.5"
+// Vulkan buffer pool and the content-keyed path cache) and text/'s path-cache budget. v0.1.6
+// (2026-10-29) changes gpu/ only (the vertex scratch given back, frame ops cleared at reset): no
+// input-method source, and nothing under app/ or io/.
+const verifiedGio = "v0.1.6"
 
 // The module requires exactly the Gio release the input-method handling was verified against.
 func TestGioIsTheVersionTheIMEContractWasVerifiedAgainst(t *testing.T) {
