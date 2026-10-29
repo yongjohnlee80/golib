@@ -89,17 +89,21 @@ func (b *editorBody) Render(s tui.Surface) {
 		if i >= b.e.core.LineCount() {
 			break
 		}
-		x := 0
+		// ci is c's cluster index: counted here, not found again from the line's start for each
+		// cluster (which made a long line quadratic, on every frame), and the cluster drawn even
+		// where the surface's width of an ambiguous character differs from tui.StringWidth's
+		x, ci := 0, 0
 		for c := range tui.Graphemes(b.e.core.LineAt(i)) {
 			if x >= sz.W {
 				break
 			}
 			st := b.e.page
-			if b.e.core.Highlighted(i, clusterAt(b.e.core.LineAt(i), x), b.focused) {
+			if b.e.core.Highlighted(i, ci, b.focused) {
 				st = st.Reverse(true)
 			}
 			s.SetCell(x, y, c, st)
 			x += max(s.StringWidth(c), 1)
+			ci++
 		}
 	}
 }
