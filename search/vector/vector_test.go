@@ -62,7 +62,7 @@ func TestIndexNext(t *testing.T) {
 	if !reflect.DeepEqual(sorted(codesOf(y)), []int64{1, 2, 9}) {
 		t.Errorf("b changed to nothing, c added: %v", codesOf(y))
 	}
-	if &y.docs["a"][0] != &keep[0] {
+	if &y.shards[y.shardOf("a")]["a"][0] != &keep[0] {
 		t.Error("an unchanged document's codes were copied, not shared")
 	}
 	if !reflect.DeepEqual(sorted(codesOf(x)), []int64{1, 2, 3}) || x.Watermark() != 5 {
