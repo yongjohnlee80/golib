@@ -145,8 +145,10 @@
 // The ONLY operations legal from other goroutines are:
 //   - [App.Post] and [Context.Post] (enqueue an event)
 //   - [App.Update] and [Context.Update] (enqueue a closure)
+//   - [App.UpdateLatest] (enqueue a closure, or replace a pending one for the same key)
 //   - [App.Go] and [Context.Go] (schedule bounded background tasks)
 //   - [Bus.Publish] (enqueue a typed broadcast event)
+//   - [Bus.PublishLatest] (enqueue one, or replace a pending one for the same key)
 //
 // All of these methods are thread-safe, non-blocking, and return immediately.
 // [App.SetTheme] follows the same rule: it queues the App-owned theme swap on

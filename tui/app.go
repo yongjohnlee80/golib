@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"reflect"
 	"runtime/debug"
 	"sync/atomic"
 	"time"
@@ -198,6 +199,45 @@ func (a *App) Update(fn func()) {
 		panic(errs.Fatal{Op: "tui: App.Update", Rule: "nil func"})
 	}
 	a.queue.push(programItem{fn: fn, isUpdate: true})
+}
+
+// UpdateLatest is Update for a producer that only needs its newest fn run: a progress value, a
+// "refresh from the source" signal, a stats tick. While a call for key waits in the program lane,
+// another call for the same key replaces its fn instead of queueing one more, so the lane holds
+// one closure per pending key however fast the producer calls and however slow the loop is. A
+// replacing call adds nothing to the lane: it counts toward neither the high-water log nor
+// WithEventQueueLimit.
+//
+// ORDER: the closure runs in the place of the FIRST pending call for key, with the LAST fn. So
+// unlike Update, it may run before work the same goroutine queued between the two calls (a Post,
+// an Update). Use it only where the newest fn alone is right whenever it runs.
+//
+// Once the loop takes the closure's batch, the next call for key queues anew, for the next batch,
+// a call from a handler in the batch included: a key runs at most once a batch. Keys are compared
+// with ==, apart from Bus.PublishLatest's; a nil or uncomparable key, or a nil fn, panics here.
+// Safe from any goroutine; never blocks.
+func (a *App) UpdateLatest(key any, fn func()) {
+	if fn == nil {
+		panic(errs.Fatal{Op: "tui: App.UpdateLatest", Rule: "nil func"})
+	}
+	checkLatestKey("tui: App.UpdateLatest", key)
+	a.queue.pushLatest(updateKey{key}, fn, true)
+}
+
+// updateKey and publishKey keep App.UpdateLatest's keys apart from Bus.PublishLatest's.
+type (
+	updateKey  struct{ k any }
+	publishKey struct{ k any }
+)
+
+// checkLatestKey refuses a key the lane's map could not hold: nil, or one == would panic on.
+func checkLatestKey(op string, key any) {
+	if key == nil {
+		panic(errs.Fatal{Op: op, Rule: "nil key"})
+	}
+	if !reflect.ValueOf(key).Comparable() {
+		panic(errs.Fatal{Op: op, Rule: fmt.Sprintf("uncomparable key %T", key)})
+	}
 }
 
 // SetTheme schedules an application-wide theme change on the loop goroutine.
@@ -480,6 +520,9 @@ func (a *App) loop(ctx context.Context) error {
 // posted events, bus deliveries, task results.
 func (a *App) drainProgramLane() {
 	for _, it := range a.queue.drain() {
+		if it.latest != nil {
+			it.fn = it.latest.fn // the last fn its key was given before the drain
+		}
 		if it.fn != nil {
 			if it.isUpdate {
 				a.runUpdate(it.fn)

@@ -218,6 +218,7 @@ central event loop:
 2. **Lane B (Program)**:
    - Carries application-driven signals: completed `ctx.Go` tasks, `Bus.Publish` events, and user-posted closures via `App.Update`.
    - By default, Lane B has an unlimited queue (`eventQueueLimit == 0`) and never drops events. If an optional ceiling is configured via `WithEventQueueLimit(n)`, exceeding the limit triggers an immediate fail-loud panic rather than silently dropping events.
+   - A producer that only needs its newest value seen (progress, a refresh signal) can use `App.UpdateLatest(key, fn)` or `Bus.PublishLatest(key, v)` instead: while a call for the key waits in the lane, the next one replaces it, so the lane holds one closure per key however fast the producer calls. The replaced closure is dropped, and the key's closure runs where its first waiting call was queued, so use these only where the newest value alone is right.
 3. **Queue Capacity Isolation vs Serialized Dispatch**:
    - Independent queue capacities prevent Lane B from exhausting Lane A's queue buffer (and vice versa).
    - However, the event loop itself runs on a **single goroutine**: when Lane B has events, `drainProgramLane` processes the captured batch. Draining a very large or slow batch can temporarily delay the next Lane A selection. Keep event handlers and closures fast!
