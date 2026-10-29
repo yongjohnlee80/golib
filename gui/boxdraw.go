@@ -199,23 +199,28 @@ func armRects(a arms, rect image.Rectangle, lw int) []image.Rectangle {
 //   - c: stroke color.
 //   - lw: stroke line width in pixels.
 func drawArc(ops *op.Ops, a [2]int, rect image.Rectangle, c color.NRGBA, lw int) {
-	cx := float32(rect.Min.X) + float32(rect.Dx()/2) + 0.5*float32(lw%2)
-	cy := float32(rect.Min.Y) + float32(rect.Dy()/2) + 0.5*float32(lw%2)
-	rad := float32(min(rect.Dx(), rect.Dy())) / 2
+	// The path is built at the cell's own origin and placed with a whole-pixel offset: every corner
+	// of one cell size is then the same path, which gio's path cache finds again in any cell and on
+	// any frame, where a path at the cell's absolute place was new for each.
+	w, h := rect.Dx(), rect.Dy()
+	cx := float32(w/2) + 0.5*float32(lw%2)
+	cy := float32(h/2) + 0.5*float32(lw%2)
+	rad := float32(min(w, h)) / 2
 	end := func(arm int) (edge, near f32.Point) {
 		switch arm {
 		case 0:
-			return f32.Pt(cx, float32(rect.Min.Y)), f32.Pt(cx, cy-rad)
+			return f32.Pt(cx, 0), f32.Pt(cx, cy-rad)
 		case 1:
-			return f32.Pt(float32(rect.Max.X), cy), f32.Pt(cx+rad, cy)
+			return f32.Pt(float32(w), cy), f32.Pt(cx+rad, cy)
 		case 2:
-			return f32.Pt(cx, float32(rect.Max.Y)), f32.Pt(cx, cy+rad)
+			return f32.Pt(cx, float32(h)), f32.Pt(cx, cy+rad)
 		default:
-			return f32.Pt(float32(rect.Min.X), cy), f32.Pt(cx-rad, cy)
+			return f32.Pt(0, cy), f32.Pt(cx-rad, cy)
 		}
 	}
 	e0, n0 := end(a[0])
 	e1, n1 := end(a[1])
+	at := op.Offset(rect.Min).Push(ops)
 	var p clip.Path
 	p.Begin(ops)
 	p.MoveTo(e0)
@@ -226,6 +231,7 @@ func drawArc(ops *op.Ops, a [2]int, rect image.Rectangle, c color.NRGBA, lw int)
 	paint.ColorOp{Color: c}.Add(ops)
 	paint.PaintOp{}.Add(ops)
 	st.Pop()
+	at.Pop()
 }
 
 // drawBlock renders Unicode block elements (U+2580 through U+2595).
