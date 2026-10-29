@@ -222,6 +222,16 @@ func (b *Base) publish(v any) {
 	}
 }
 
+// publishChange publishes a ChangeEvent for owner on ctx's bus, building its value only when a
+// ChangeEvent subscriber exists (see ChangeEvent); it reports whether it built it.
+func publishChange(ctx *tui.Context, owner tui.NodeID, value func() string) bool {
+	if ctx == nil || !tui.HasSubscribers[ChangeEvent](ctx.Bus()) {
+		return false
+	}
+	ctx.Bus().Publish(ChangeEvent{Owner: owner, Value: value()})
+	return true
+}
+
 // focused reports whether this widget's node currently holds focus.
 func (b *Base) focused() bool { return b.ctx != nil && b.ctx.Focused() }
 

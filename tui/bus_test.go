@@ -220,3 +220,32 @@ func TestBusNilGuards(t *testing.T) {
 		})
 	})
 }
+
+// TestHasSubscribersAnswersForNow: false on a nil bus and for a type nobody subscribed to, true
+// from a subscription until its cancel returns, and still true while another subscription of the
+// type lives.
+func TestHasSubscribersAnswersForNow(t *testing.T) {
+	t.Parallel()
+	if HasSubscribers[fooMsg](nil) {
+		t.Fatal("a nil bus has subscribers")
+	}
+	root := &probe{name: "root", pref: Size{W: 4, H: 2}}
+	h := startApp(t, root, 4, 2)
+	b := h.app.Bus()
+	if HasSubscribers[fooMsg](b) {
+		t.Fatal("subscribers before any subscription")
+	}
+	first := Subscribe(b, func(fooMsg) {})
+	second := Subscribe(b, func(fooMsg) {})
+	if !HasSubscribers[fooMsg](b) || HasSubscribers[barMsg](b) {
+		t.Fatal("the answer is not by exact type")
+	}
+	first()
+	if !HasSubscribers[fooMsg](b) {
+		t.Fatal("one cancel of two left none")
+	}
+	second()
+	if HasSubscribers[fooMsg](b) {
+		t.Fatal("subscribers after every cancel returned")
+	}
+}

@@ -90,9 +90,15 @@ type MacroStoppedEvent struct {
 	Err      error
 }
 
-// ChangeEvent is emitted by TextInput and TextArea whenever the value
-// changes through user input — coalesced per input event (one event per
+// ChangeEvent is emitted by TextInput, TextArea and EditorCore whenever the
+// value changes through user input — coalesced per input event (one event per
 // paste, not per rune).
+//
+// It is published only while the bus has a ChangeEvent subscriber
+// ([tui.HasSubscribers]): Value is the widget's whole text, which an editor
+// would otherwise join on every keystroke for no one. So a subscription made
+// after an edit, before the program lane drains, does not receive that edit's
+// event; subscribe before the edits you follow.
 type ChangeEvent struct {
 	Owner tui.NodeID
 	Value string

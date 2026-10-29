@@ -140,6 +140,22 @@ func Subscribe[T any](b *Bus, fn func(T)) (cancel func()) {
 	}
 }
 
+// HasSubscribers reports whether b has a live subscription for exactly T: a cheap query, so a
+// publisher can skip building an event nobody would receive (an editor's ChangeEvent carries its
+// whole text). A cancelled subscription no longer counts once its cancel returns.
+//
+// It answers for now. A subscription made after a publish that was skipped does not receive that
+// event, where a published one would still have reached it before the lane drained.
+func HasSubscribers[T any](b *Bus) bool {
+	if b == nil {
+		return false
+	}
+	t := reflect.TypeOf((*T)(nil)).Elem()
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	return len(b.subs[t]) > 0
+}
+
 // SubscribeScoped binds a bus subscription to the component's mounted lifetime.
 // When the component unmounts, the subscription is automatically cancelled via
 // Context.OnUnmount, preventing memory leaks and stale event delivery. This is
