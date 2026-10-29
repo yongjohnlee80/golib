@@ -84,7 +84,8 @@ import (
 //     (passwords, tokens) deleted during editing are never leaked to external clipboards.
 //
 //  5. Bounded Undo Ring with Edit Grouping:
-//     The undo history is ring-bounded ([editHistoryCap] = 64 snapshots). Continuous
+//     The undo history is ring-bounded ([editHistoryCap] = 64 groups, each holding only the
+//     lines its edits replaced, not a copy of the text). Continuous
 //     typing in Insert mode is batched into a single undo transaction, so a single 'u'
 //     in Normal mode reverts the entire insert session.
 //

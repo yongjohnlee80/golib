@@ -475,7 +475,7 @@ binds them to) undo and redo in the table as in the text.
 
 #### `Editor`
 
-Embedded modal Vim-like editor featuring Normal, Insert, Replace, and Visual modes (characters, lines and blocks), a data-driven keymap, Vim's registers (named, numbered, small-delete and clipboard; blockwise from a Visual block), bounded undo ring (64 snapshots), and escape chord support ("jk"):
+Embedded modal Vim-like editor featuring Normal, Insert, Replace, and Visual modes (characters, lines and blocks), a data-driven keymap, Vim's registers (named, numbered, small-delete and clipboard; blockwise from a Visual block), bounded undo ring (64 edit groups, each keeping only the lines it replaced), and escape chord support ("jk"):
 
 ```go
 editor := widget.NewEditor(widget.WithCore(

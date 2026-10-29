@@ -52,8 +52,8 @@ type textBuffer struct {
 // cursor over the same document shares.
 type bufferText struct {
 	// textLines are the document's lines. Only this file assigns them, through the line primitives
-	// (setLine, insertLines, removeLines, replaceLines, setLines) and setValue; internal/audit holds
-	// every other file to it.
+	// (setLine, insertLines, removeLines, replaceLines, deleteRegion, insertText) and setValue;
+	// internal/audit holds every other file to it, and this file's writes to those functions.
 	textLines []string
 	// changedFrom is the first line any change has touched since the owner
 	// last took it (takeChanged): what a line-by-line consumer — the
@@ -66,6 +66,34 @@ type bufferText struct {
 	// own, as touchFrom is a function: the buffer's changes record themselves without a call on the
 	// receiver that an embedder's override would not see.
 	log editLog
+	// undoRec, when set (a Buffer's text: its editHistory), is handed every change the line
+	// primitives make, as the change that takes it back. Undo is built from these alone, so it is
+	// right only while the primitives are the lines' only writers: internal/audit's line-primitives
+	// guard holds them to it.
+	undoRec lineRecorder
+}
+
+// lineRecorder keeps what takes a document's line changes back: an editHistory.
+type lineRecorder interface {
+	// recording reports whether it wants the next change; the primitives copy nothing otherwise.
+	recording() bool
+	// record takes one change back: put op.old in place of lines [op.lo, op.lo+op.n).
+	record(op undoOp)
+}
+
+// undoOp takes one change to the lines back: old goes in place of lines [lo, lo+n), the n the
+// change put there. A change within one line is one line for one; an insert has no old lines.
+type undoOp struct {
+	lo, n int
+	old   []string
+}
+
+// recorder is t's undo recorder when it wants a change, else nil: the primitives' one check.
+func recorder(t *bufferText) lineRecorder {
+	if t.undoRec != nil && t.undoRec.recording() {
+		return t.undoRec
+	}
+	return nil
 }
 
 // lineEdit is one change to the buffer's line structure, as Vim's mark_adjust and mark_col_adjust
@@ -150,12 +178,18 @@ func (b *textBuffer) takeChanged() int {
 // setLine replaces line ln's text: a change within one line, so nothing is logged (marks keep their
 // columns, as Vim's do).
 func (b *textBuffer) setLine(ln int, s string) {
+	if r := recorder(b.bufferText); r != nil {
+		r.record(undoOp{lo: ln, n: 1, old: []string{b.textLines[ln]}})
+	}
 	b.textLines[ln] = s
 	touchFrom(&b.changedFrom, ln)
 }
 
 // insertLines puts ls before line at (at len(lines): after the last).
 func (b *textBuffer) insertLines(at int, ls ...string) {
+	if r := recorder(b.bufferText); r != nil && len(ls) > 0 {
+		r.record(undoOp{lo: at, n: len(ls)})
+	}
 	b.textLines = slices.Insert(b.textLines, at, ls...)
 	touchFrom(&b.changedFrom, at)
 	b.log.splice(at, 0, len(ls))
@@ -163,6 +197,13 @@ func (b *textBuffer) insertLines(at int, ls ...string) {
 
 // removeLines removes lines [lo, hi). Removing every line leaves one empty line, a document's least.
 func (b *textBuffer) removeLines(lo, hi int) {
+	if r := recorder(b.bufferText); r != nil && hi > lo {
+		n := 0
+		if lo == 0 && hi >= len(b.textLines) {
+			n = 1 // the empty line left
+		}
+		r.record(undoOp{lo: lo, n: n, old: slices.Clone(b.textLines[lo:min(hi, len(b.textLines))])})
+	}
 	if lo == 0 && hi >= len(b.textLines) {
 		b.textLines = []string{""}
 		touchFrom(&b.changedFrom, 0)
@@ -176,16 +217,12 @@ func (b *textBuffer) removeLines(lo, hi int) {
 
 // replaceLines puts ls in place of lines [lo, hi).
 func (b *textBuffer) replaceLines(lo, hi int, ls ...string) {
+	if r := recorder(b.bufferText); r != nil && (hi > lo || len(ls) > 0) {
+		r.record(undoOp{lo: lo, n: len(ls), old: slices.Clone(b.textLines[lo:hi])})
+	}
 	b.textLines = slices.Replace(b.textLines, lo, hi, ls...)
 	touchFrom(&b.changedFrom, lo)
 	b.log.splice(lo, hi-lo, len(ls))
-}
-
-// setLines makes ls the lines whole, logging nothing: a snapshot restored (undo), whose caller
-// decides what the log says about it.
-func (b *textBuffer) setLines(ls []string) {
-	b.textLines = ls
-	touchFrom(&b.changedFrom, 0)
 }
 
 // taPos is a place in a text: line ln, cluster column col.
@@ -220,7 +257,11 @@ func (b *textBuffer) value() string { return strings.Join(b.textLines, "\n") }
 // selection cleared, sticky column reset.
 func (b *textBuffer) setValue(s string) {
 	s = strings.ReplaceAll(strings.ReplaceAll(s, "\r\n", "\n"), "\r", "\n")
-	b.textLines = strings.Split(s, "\n")
+	ls := strings.Split(s, "\n")
+	if r := recorder(b.bufferText); r != nil {
+		r.record(undoOp{lo: 0, n: len(ls), old: slices.Clone(b.textLines)})
+	}
+	b.textLines = ls
 	touchFrom(&b.changedFrom, 0)
 	b.log.reset()
 	b.ln = len(b.textLines) - 1
@@ -276,6 +317,9 @@ func (b *textBuffer) deleteRegion(lo, hi taPos) {
 		b.log.move(hi.ln, hi.col, lo.ln, lo.col, true)
 		b.log.splice(lo.ln+1, hi.ln-lo.ln, 0)
 	}
+	if r := recorder(b.bufferText); r != nil {
+		r.record(undoOp{lo: lo.ln, n: 1, old: slices.Clone(b.textLines[lo.ln : hi.ln+1])})
+	}
 	b.textLines = append(b.textLines[:lo.ln], append([]string{joined}, b.textLines[hi.ln+1:]...)...)
 	b.ln, b.col = lo.ln, min(lo.col, len(clusters(joined)))
 	b.anchor = nil
@@ -311,6 +355,9 @@ func (b *textBuffer) insertText(text string) {
 	cs := b.lineClusters(b.ln)
 	head := strings.Join(cs[:b.col], "")
 	tail := strings.Join(cs[b.col:], "")
+	if r := recorder(b.bufferText); r != nil {
+		r.record(undoOp{lo: b.ln, n: len(parts), old: []string{b.textLines[b.ln]}})
+	}
 	if len(parts) == 1 {
 		b.textLines[b.ln] = head + parts[0] + tail
 		// The inserted text may COMBINE with the cluster before the cursor.

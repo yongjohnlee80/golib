@@ -1,10 +1,11 @@
 package widget
 
-// snapshot is the core's text and cursor, for its history (edithistory.go).
+import "slices"
+
+// snapshot is the core's cursor, revision and marks, for a new group of its history
+// (edithistory.go): its changes come in from the line primitives as the group's edits are made.
 func (c *EditorCore) snapshot() textSnap {
-	lines := make([]string, len(c.buf.textLines))
-	copy(lines, c.buf.textLines)
-	return textSnap{lines: lines, ln: c.buf.ln, col: c.buf.col, rev: c.rev, marks: c.marks}
+	return textSnap{ln: c.buf.ln, col: c.buf.col, rev: c.rev, marks: c.marks}
 }
 
 // beginGroup starts an undo group before an edit: every Normal-mode edit is one group; an
@@ -16,6 +17,7 @@ func (c *EditorCore) beginGroup() { c.hist.begin(c.snapshot, c.keys.mode == Mode
 func (c *EditorCore) doUndo() {
 	if s, ok := c.hist.stepBack(c.snapshot); ok {
 		c.restore(s)
+		c.hist.settle()
 	}
 }
 
@@ -23,13 +25,17 @@ func (c *EditorCore) doUndo() {
 func (c *EditorCore) doRedo() {
 	if s, ok := c.hist.stepForward(c.snapshot); ok {
 		c.restore(s)
+		c.hist.settle()
 	}
 }
 
-// restore resets the buffer content and cursor coordinates from a snapshot.
+// restore applies a group: its changes take the text back (or forward), and the cursor, marks and
+// revision become the group's. The changes are made to the lines they span, as one replace, which
+// the history takes in as the group for the other way.
 func (c *EditorCore) restore(s textSnap) {
 	b := &c.buf
-	blk := changedBlock(b.textLines, s.lines)
+	lo, hi, span := replayed(b.textLines, s.ops)
+	blk := changedBlock(b.textLines, lo, hi, span)
 	c.marks.apply(blk)
 	for _, o := range c.editors { // the other editors showing the buffer, and the places left in it, move as the marks
 		if o != c {
@@ -39,8 +45,10 @@ func (c *EditorCore) restore(s textSnap) {
 	for ed, p := range c.places {
 		c.places[ed] = followPlace(p, blk)
 	}
-	b.setLines(s.lines)
-	b.log.take() // the snapshot is the text whole: what was logged since describes no edit of it
+	if hi > lo || len(span) > 0 {
+		b.replaceLines(lo, hi, span...)
+	}
+	b.log.take() // the marks and cursors moved by blk: what the replace logged describes no edit
 	c.marks.restore(s.marks)
 	b.ln = max(0, min(s.ln, len(b.textLines)-1))
 	b.col = s.col
@@ -79,20 +87,70 @@ func (c *EditorCore) notifyEdited() {
 	}
 }
 
+// replayed is what applying ops last first makes of lines, as a replace: lines [lo, hi) become
+// span. Only the lines the ops reach are copied and changed; lines itself is not.
+func replayed(lines []string, ops []undoOp) (lo, hi int, span []string) {
+	if len(ops) == 0 {
+		return 0, 0, nil
+	}
+	// the lines the ops reach, as they are applied: [lo, end) in the text as it then is, and grow,
+	// the lines they have added so far
+	lo, end, grow := -1, 0, 0
+	for i := len(ops) - 1; i >= 0; i-- {
+		op := ops[i]
+		at, del, ins := op.lo, op.n, len(op.old)
+		if lo < 0 {
+			lo, end = at, at+ins
+		} else {
+			switch {
+			case end >= at+del:
+				end += ins - del
+			case end > at:
+				end = at + ins
+			}
+			lo, end = min(lo, at), max(end, at+ins)
+		}
+		grow += ins - del
+	}
+	hi = end - grow
+	span = slices.Clone(lines[lo:hi])
+	for i := len(ops) - 1; i >= 0; i-- {
+		op := ops[i]
+		span = slices.Replace(span, op.lo-lo, op.lo-lo+op.n, op.old...)
+	}
+	return lo, hi, span
+}
+
 // changedBlock is the splice an undo or a redo makes, as Vim's u_undoredo adjusts marks for it:
 // the lines between the texts' common first and last lines, replaced. Vim moves marks only when the
 // block's size changes, erasing those in it; a block of the same size keeps them, so then the
 // splice is empty.
-func changedBlock(from, to []string) lineEdit {
-	pre := 0
-	for pre < len(from) && pre < len(to) && from[pre] == to[pre] {
+//
+// The texts are from and from with lines [lo, hi) replaced by span. Lines outside [lo, hi) are the
+// same in both, so the common first lines run at least to lo and the common last ones at least
+// over from[hi:]: the scan starts there, and the block is what comparing the two texts whole would
+// give, though only the lines between are compared.
+func changedBlock(from []string, lo, hi int, span []string) lineEdit {
+	toLen := len(from) - (hi - lo) + len(span)
+	to := func(i int) string {
+		switch {
+		case i < lo:
+			return from[i]
+		case i < lo+len(span):
+			return span[i-lo]
+		default:
+			return from[i-len(span)+(hi-lo)]
+		}
+	}
+	pre := lo
+	for pre < len(from) && pre < toLen && from[pre] == to(pre) {
 		pre++
 	}
-	suf := 0
-	for suf < len(from)-pre && suf < len(to)-pre && from[len(from)-1-suf] == to[len(to)-1-suf] {
+	suf := min(len(from)-hi, len(from)-pre, toLen-pre)
+	for suf < len(from)-pre && suf < toLen-pre && from[len(from)-1-suf] == to(toLen-1-suf) {
 		suf++
 	}
-	del, ins := len(from)-pre-suf, len(to)-pre-suf
+	del, ins := len(from)-pre-suf, toLen-pre-suf
 	if del == ins {
 		return lineEdit{}
 	}

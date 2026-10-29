@@ -78,6 +78,7 @@ func newBufferState() *bufferState {
 		findPlain: map[*EditorCore]bool{},
 	}
 	s.text.log.on = true // the marks and the other editors' cursors follow the line structure's changes
+	s.text.undoRec = &s.hist
 	return s
 }
 
