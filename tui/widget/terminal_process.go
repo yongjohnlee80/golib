@@ -76,6 +76,7 @@ func (t *Terminal) Start() error {
 	t.gen++
 	gen := t.gen
 	t.proc = proc
+	t.resizer = &ptyResizer{proc: proc}
 	t.running, t.exited = true, false
 	t.in = newInputQueue(proc)
 	t.wr = newBufWriter(func(b []byte) {

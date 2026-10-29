@@ -173,7 +173,8 @@ type Terminal struct {
 	off  tui.Offscreen // where Render draws for the view
 
 	proc      TerminalProcess
-	procMu    sync.Mutex // guards the lifecycle records and shutdown handle
+	resizer   *ptyResizer // hands proc its sizes, in order, off the loop
+	procMu    sync.Mutex  // guards the lifecycle records and shutdown handle
 	lifecycle *TerminalStopResult
 	lifetimes []*TerminalStopResult // active/closing/error generations; completed successes are pruned at Start
 	shutdown  *TerminalShutdownResult
@@ -426,8 +427,7 @@ func (t *Terminal) resize(rows, cols int) {
 	t.rows, t.cols = rows, cols
 	t.scr.Resize(rows, cols)
 	if t.running {
-		proc := t.proc
-		go proc.Resize(rows, cols)
+		t.resizer.resize(rows, cols)
 	}
 	t.normal.clamp(t)
 	t.MarkDirty()
