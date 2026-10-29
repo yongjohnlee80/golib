@@ -450,8 +450,49 @@ func (c *gioCanvas) StrokePath(p *Path, width float32, b Brush) {
 	end()
 }
 
-// FillRect fills an unrounded rectangle with the given brush.
-func (c *gioCanvas) FillRect(r Rect, b Brush) { c.FillPath(rrectPath(r, 0), b) }
+// FillRect fills an unrounded rectangle with the given brush. A rectangle the canvas's transform
+// maps onto whole device pixels, without rotation or skew, is filled as one clip of those pixels:
+// what the path would have covered, exactly, at a fraction of the work (no path to build and no
+// stencil for gio). Any other rectangle, a fractional edge's antialiasing included, is filled as
+// the path it was.
+func (c *gioCanvas) FillRect(r Rect, b Brush) {
+	dev, ok := c.pixelRect(r)
+	if !ok {
+		c.FillPath(rrectPath(r, 0), b)
+		return
+	}
+	p := pushPaint(c.ops, dev.Intersect(c.clip), c.alpha)
+	if b.Gradient != nil { // its stops are in the canvas's coordinates
+		s := c.m.scale
+		p.transform(c.ops, f32.Affine2D{}.Scale(f32.Point{}, f32.Pt(s, s)).Offset(c.origin).Mul(c.xform))
+	}
+	countFill()
+	c.fill(b)
+	p.pop()
+}
+
+// pixelRect is r in device pixels when the canvas's transform maps it exactly onto whole pixels,
+// with no rotation or skew; ok is false otherwise, and for an empty r.
+func (c *gioCanvas) pixelRect(r Rect) (image.Rectangle, bool) {
+	if r.W <= 0 || r.H <= 0 {
+		return image.Rectangle{}, false
+	}
+	s := c.m.scale
+	m := f32.Affine2D{}.Scale(f32.Point{}, f32.Pt(s, s)).Offset(c.origin).Mul(c.xform)
+	if _, hx, _, hy, _, _ := m.Elems(); hx != 0 || hy != 0 {
+		return image.Rectangle{}, false
+	}
+	a, b := m.Transform(f32.Pt(r.X, r.Y)), m.Transform(f32.Pt(r.X+r.W, r.Y+r.H))
+	var px [4]int
+	for i, v := range [4]float32{min(a.X, b.X), min(a.Y, b.Y), max(a.X, b.X), max(a.Y, b.Y)} {
+		n := float32(math.Round(float64(v)))
+		if d := v - n; d > 1.0/256 || d < -1.0/256 {
+			return image.Rectangle{}, false
+		}
+		px[i] = int(n)
+	}
+	return image.Rect(px[0], px[1], px[2], px[3]), true
+}
 
 // FillRRect fills a rounded rectangle with the specified corner radius and brush.
 func (c *gioCanvas) FillRRect(r Rect, radius float32, b Brush) { c.FillPath(rrectPath(r, radius), b) }
