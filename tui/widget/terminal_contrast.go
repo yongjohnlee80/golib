@@ -22,6 +22,12 @@ func (t *Terminal) SetMinimumContrast(ratio float64) {
 // contrastKey is a foreground on a background, for the cache.
 type contrastKey struct{ fg, bg style.Color }
 
+// maxContrastEntries bounds the cache, as tui's style resolver bounds its own: a program's pairs
+// are a few dozen, but one that paints in truecolor gradients makes a new pair per cell, and the
+// cache lives as long as the Terminal. Past it the whole map is flushed, cheap and rare, rather
+// than an eviction order kept.
+const maxContrastEntries = 1024
+
 // legible is fg raised to the minimum contrast against bg, or fg itself when it reads, the
 // minimum is off, or either colour is unknown (a token, the terminal's default).
 func (t *Terminal) legible(fg, bg style.Color) style.Color {
@@ -33,6 +39,9 @@ func (t *Terminal) legible(fg, bg style.Color) style.Color {
 		return c
 	}
 	out := style.Legible(fg, bg, t.minContrast)
+	if len(t.contrastCache) >= maxContrastEntries {
+		clear(t.contrastCache)
+	}
 	if t.contrastCache == nil {
 		t.contrastCache = map[contrastKey]style.Color{}
 	}

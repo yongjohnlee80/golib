@@ -41,3 +41,23 @@ func TestTerminalRaisesWashedOutColours(t *testing.T) {
 		t.Errorf("blue on a dark cell raised to %v: ratio %.2f, want 4.5", fg, r)
 	}
 }
+
+// A program that paints a new colour pair per cell, as a truecolor gradient does, keeps the
+// contrast cache within maxContrastEntries, and every colour still comes back raised.
+func TestTerminalContrastCacheIsBounded(t *testing.T) {
+	page := style.RGB(0xf4, 0xf1, 0xe8)
+	term := NewTerminal()
+	term.SetMinimumContrast(4.5)
+	most := 0
+	for i := range 4 * maxContrastEntries {
+		fg := style.RGB(uint8(0xc0+i%64), uint8(0xc0+i/64%64), 0x80) // washed out on the page
+		got := term.legible(fg, page)
+		if r, _ := style.ContrastRatio(got, page); r < 4.5 {
+			t.Fatalf("pair %d raised to %v: ratio %.2f, want 4.5", i, got, r)
+		}
+		most = max(most, len(term.contrastCache))
+	}
+	if most > maxContrastEntries {
+		t.Fatalf("the cache held %d pairs, want at most %d", most, maxContrastEntries)
+	}
+}
