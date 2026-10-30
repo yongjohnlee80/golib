@@ -119,9 +119,7 @@ func TestNothingPublishesOrMutatesFromLayoutOrRender(t *testing.T) {
 			if !pureMethods[methodName(name)] {
 				continue
 			}
-			for _, f := range p.reachableForbidden(name) {
-				findings = append(findings, f)
-			}
+			findings = append(findings, p.reachableForbidden(name)...)
 		}
 	}
 	sort.Strings(findings)
@@ -293,8 +291,7 @@ type callSite struct {
 // literals — see the header for why that is deliberate rather than an omission.
 func directCalls(fd *ast.FuncDecl) []callSite {
 	var out []callSite
-	var visit func(n ast.Node) bool
-	visit = func(n ast.Node) bool {
+	visit := func(n ast.Node) bool {
 		switch t := n.(type) {
 		case *ast.FuncLit:
 			return false // a deferred callback, not part of this phase

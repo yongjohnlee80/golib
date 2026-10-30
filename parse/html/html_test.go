@@ -188,8 +188,7 @@ func TestFlattenedKeepsWhatEncloses(t *testing.T) {
 		t.Fatalf("tree depth %d, want %d", depth, DefaultLimits.MaxDepth)
 	}
 	var secret, after *Node
-	var find func(n *Node)
-	find = func(n *Node) {
+	find := func(n *Node) {
 		for _, c := range n.Children {
 			if c.Kind == Text && c.Data == "secret" {
 				secret = c

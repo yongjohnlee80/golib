@@ -73,7 +73,7 @@ var pickerType = tuidecl.Type{
 	Signals: map[string][]string{"picked": {"choice"}},
 }
 
-func extended(t *testing.T, src string, extra ...tuidecl.Type) (*decl.Tree, *tuidecl.Adapter, error, *[]string) {
+func extended(t *testing.T, src string, extra ...tuidecl.Type) (*decl.Tree, *tuidecl.Adapter, *[]string, error) {
 	t.Helper()
 	var sunk []string
 	a := tuidecl.New(tuidecl.StdRegistry(), append(tuidecl.StdProperties(),
@@ -96,7 +96,7 @@ func extended(t *testing.T, src string, extra ...tuidecl.Type) (*decl.Tree, *tui
 		t.Fatal(err)
 	}
 	_ = sunk
-	return tr, a, tr.Mount(spec), &picked
+	return tr, a, &picked, tr.Mount(spec)
 }
 
 func TestACustomWidgetBindsAndIsCalledByID(t *testing.T) {
@@ -104,7 +104,7 @@ func TestACustomWidgetBindsAndIsCalledByID(t *testing.T) {
 		" Gauge { id: cpu; start: 1; label: \"CPU\"; value: cpu_ }\n" +
 		" Button { id: go; text: \"reset\"; onClicked: cpu.reset() }\n}"
 	src = strings.Replace(src, "cpu_", "cpu", 1) // the source named cpu, the node cpu
-	_, _, err, _ := extended(t, src)
+	_, _, _, err := extended(t, src)
 	// The id `cpu` spells the source `cpu`: ambiguous, and refused.
 	if !errors.Is(err, decl.ErrAmbiguousName) {
 		t.Fatalf("an id spelling a source: err = %v, want ErrAmbiguousName", err)
@@ -112,7 +112,7 @@ func TestACustomWidgetBindsAndIsCalledByID(t *testing.T) {
 
 	src = strings.Replace(src, "id: cpu;", "id: meter;", 1)
 	src = strings.Replace(src, "cpu.reset()", "meter.reset()", 1)
-	tr, a, err, _ := extended(t, src)
+	tr, a, _, err := extended(t, src)
 	if err != nil {
 		t.Fatalf("mount: %v", err)
 	}
@@ -135,7 +135,7 @@ func TestACustomWidgetBindsAndIsCalledByID(t *testing.T) {
 
 // A constructor property a custom widget reads with StringField arrives as written.
 func TestACustomWidgetReadsAConstructorString(t *testing.T) {
-	tr, a, err, _ := extended(t, "import tui 1.0\nGauge { start: 3; unit: \"%\"; label: \"disk\" }")
+	tr, a, _, err := extended(t, "import tui 1.0\nGauge { start: 3; unit: \"%\"; label: \"disk\" }")
 	if err != nil {
 		t.Fatalf("mount: %v", err)
 	}
@@ -145,7 +145,7 @@ func TestACustomWidgetReadsAConstructorString(t *testing.T) {
 }
 
 func TestACustomSignalPassesItsParameter(t *testing.T) {
-	tr, a, err, picked := extended(t, "Picker { id: p; onPicked: choose(choice) }")
+	tr, a, picked, err := extended(t, "Picker { id: p; onPicked: choose(choice) }")
 	if err != nil {
 		t.Fatalf("mount: %v", err)
 	}
@@ -166,7 +166,7 @@ func TestACustomWidgetIsRefusedLikeABuiltIn(t *testing.T) {
 		`Gauge { colour: "red" }`:                                      "colour",
 		"Flex {\n Gauge { id: g }\n Button { onClicked: g.spin() }\n}": "the methods forceActiveFocus, reset",
 	} {
-		_, _, err, _ := extended(t, src)
+		_, _, _, err := extended(t, src)
 		if err == nil || !strings.Contains(err.Error(), want) {
 			t.Errorf("%s: err = %v, want %q", src, err, want)
 		}
@@ -176,7 +176,7 @@ func TestACustomWidgetIsRefusedLikeABuiltIn(t *testing.T) {
 // TestAnInstanceIsTheHostsWidgetPlacedOnce.
 func TestAnInstanceIsTheHostsWidgetPlacedOnce(t *testing.T) {
 	mine := widget.NewText("host-built")
-	tr, a, err, _ := extended(t, "Flex {\n Preview { }\n}", tuidecl.Instance("Preview", mine))
+	tr, a, _, err := extended(t, "Flex {\n Preview { }\n}", tuidecl.Instance("Preview", mine))
 	if err != nil {
 		t.Fatalf("mount: %v", err)
 	}
@@ -185,7 +185,7 @@ func TestAnInstanceIsTheHostsWidgetPlacedOnce(t *testing.T) {
 	waitFor(t, func() bool { return strings.Contains(be.String(), "host-built") })
 
 	// Placed twice: refused, by name and position.
-	_, _, err, _ = extended(t, "Flex {\n Solo { }\n Solo { }\n}", tuidecl.Instance("Solo", widget.NewText("x")))
+	_, _, _, err = extended(t, "Flex {\n Solo { }\n Solo { }\n}", tuidecl.Instance("Solo", widget.NewText("x")))
 	if err == nil || !strings.Contains(err.Error(), "Solo is the host's one Solo") {
 		t.Fatalf("placing an Instance twice: err = %v, want it refused by name", err)
 	}
@@ -206,7 +206,7 @@ func TestADestroyHookRunsWithTheWidget(t *testing.T) {
 	held := gaugeType
 	held.Name = "Held"
 	held.Destroyed = func(c tui.Component) { gone = append(gone, c) }
-	tr, a, err, _ := extended(t, "Flex {\n Held { id: h }\n}", held)
+	tr, a, _, err := extended(t, "Flex {\n Held { id: h }\n}", held)
 	if err != nil {
 		t.Fatalf("mount: %v", err)
 	}
