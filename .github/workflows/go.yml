@@ -113,6 +113,28 @@ jobs:
       - name: test
         run: go test -race -count=2 -timeout 10m ./...
 
+  # The dao suites against real servers: PostgreSQL 18 with pgvector (two-phase commit on) and
+  # MySQL 8.4, with the integration tag. Without them every database test skips, and the 10
+  # integration-tagged files had stopped compiling with nobody the wiser. The script fails on a
+  # skip that names a service it provides, so a server that never came up cannot pass as green.
+  integration:
+    name: dao integration (PostgreSQL, MySQL)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      - name: dao against PostgreSQL 18 + pgvector and MySQL 8.4
+        run: .github/scripts/integration.sh
+
+      - name: the full log
+        if: always()
+        run: cat integration.log
+
   # golib/gui on macOS: the Metal paths only compile on a Mac. examples/scene3d's Metal producer
   # renders into IOSurfaces that a headless Metal window draws without a copy, checked against the
   # CPU's picture.
