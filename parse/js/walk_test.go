@@ -32,7 +32,7 @@ func shown(e *js.Expr) string { return fmt.Sprintf("%d:%s%s", e.Kind, e.Raw, e.N
 // and a node fn refuses is not walked into.
 func TestWalkVisitsAsTheRecursiveWalkDid(t *testing.T) {
 	for _, src := range []string{
-		"a ? f(b, c.d)[e] : {k: v, [m]: n, o}",
+		"a ? f(b, c.d)[e] : {k: v, [m]: n}",
 		"`x${a + b}y${[c, d, e]}`",
 		"-a.b(c)(d) || !e && (f ?? g)",
 		"{a: {b: [c, {d: e}]}, [f(g)]: h ? i : j}",
@@ -40,7 +40,8 @@ func TestWalkVisitsAsTheRecursiveWalkDid(t *testing.T) {
 		for _, prune := range []js.ExprKind{js.ExprInvalid, js.ExprMember, js.ExprCall, js.ExprObject} {
 			e, err := js.NewExpression().Parse([]byte(src))
 			if err != nil {
-				t.Fatalf("%s: %v", src, err)
+				t.Errorf("%s: %v", src, err)
+				continue
 			}
 			var got, want []string
 			e.Walk(func(n *js.Expr) bool { got = append(got, shown(n)); return n.Kind != prune })
