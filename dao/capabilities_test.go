@@ -26,6 +26,9 @@ type caps struct {
 	upserter bool
 	lastID   bool
 	local    bool // LocalSetter
+	typedVec bool // TypedVectorDistancer
+	rowLock  bool // RowLocker
+	keysIn   bool // ArrayKeyer
 }
 
 func probe(d dao.Dialect) caps {
@@ -36,6 +39,9 @@ func probe(d dao.Dialect) caps {
 	_, c.upserter = d.(dao.Upserter)
 	_, c.lastID = d.(dao.LastInsertIDReader)
 	_, c.local = d.(dao.LocalSetter)
+	_, c.typedVec = d.(dao.TypedVectorDistancer)
+	_, c.rowLock = d.(dao.RowLocker)
+	_, c.keysIn = d.(dao.ArrayKeyer)
 	return c
 }
 
@@ -53,7 +59,8 @@ func TestCapabilityProbes(t *testing.T) {
 		d    dao.Dialect
 		want caps
 	}{
-		{"postgres", postgres.PostgresDialect{}, caps{returner: true, copier: true, twoPhase: true, upserter: true, local: true}},
+		{"postgres", postgres.PostgresDialect{}, caps{returner: true, copier: true, twoPhase: true, upserter: true, local: true,
+			typedVec: true, rowLock: true, keysIn: true}},
 		{"mysql", mysql.MysqlDialect{}, caps{upserter: true, lastID: true}},
 		{"sqlite", sqlite.SqliteDialect{}, caps{returner: true, upserter: true}},
 		{"generic", dao.GenericDialect{}, caps{}},

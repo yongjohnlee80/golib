@@ -211,7 +211,13 @@ func (t *pinnedTx) ExecContext(ctx context.Context, q string, args ...any) (dao.
 	if t.isClosed() {
 		return nil, fmt.Errorf("postgres: %w: exec", dao.ErrTransactionClosed)
 	}
-	release, err := t.p.beginPrivate()
+	return t.p.execPrivate(ctx, q, args)
+}
+
+// execPrivate is ExecContext's body on p's wire, inside a transaction or outside one (the index
+// lifecycle's session statements).
+func (p *pinnedConn) execPrivate(ctx context.Context, q string, args []any) (dao.Result, error) {
+	release, err := p.beginPrivate()
 	if err != nil {
 		return nil, err
 	}
@@ -221,7 +227,7 @@ func (t *pinnedTx) ExecContext(ctx context.Context, q string, args ...any) (dao.
 	}
 
 	if len(args) == 0 {
-		tag, srvErr, _, err := t.p.execSimpleLocked(ctx, q)
+		tag, srvErr, _, err := p.execSimpleLocked(ctx, q)
 		if err != nil {
 			return nil, err
 		}
@@ -231,7 +237,7 @@ func (t *pinnedTx) ExecContext(ctx context.Context, q string, args ...any) (dao.
 		return pgxResult{tag: pgconn.NewCommandTag(tag)}, nil
 	}
 
-	seq := &privateSequence{p: t.p}
+	seq := &privateSequence{p: p}
 	if err := seq.prepare(ctx, q, args); err != nil {
 		return nil, err
 	}
@@ -261,7 +267,12 @@ func (t *pinnedTx) QueryContext(ctx context.Context, q string, args ...any) (dao
 	if t.isClosed() {
 		return nil, fmt.Errorf("postgres: %w: query", dao.ErrTransactionClosed)
 	}
-	release, err := t.p.beginPrivate()
+	return t.p.queryPrivate(ctx, q, args)
+}
+
+// queryPrivate is QueryContext's body on p's wire, inside a transaction or outside one.
+func (p *pinnedConn) queryPrivate(ctx context.Context, q string, args []any) (dao.Rows, error) {
+	release, err := p.beginPrivate()
 	if err != nil {
 		return nil, err
 	}
@@ -269,7 +280,7 @@ func (t *pinnedTx) QueryContext(ctx context.Context, q string, args ...any) (dao
 		release()
 		return nil, err
 	}
-	seq := &privateSequence{p: t.p}
+	seq := &privateSequence{p: p}
 	if err := seq.prepare(ctx, q, args); err != nil {
 		release()
 		return nil, err
