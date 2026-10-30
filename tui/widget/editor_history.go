@@ -17,7 +17,6 @@ func (c *EditorCore) beginGroup() { c.hist.begin(c.snapshot, c.keys.mode == Mode
 func (c *EditorCore) doUndo() {
 	if s, ok := c.hist.stepBack(c.snapshot); ok {
 		c.restore(s)
-		c.hist.settle()
 	}
 }
 
@@ -25,13 +24,14 @@ func (c *EditorCore) doUndo() {
 func (c *EditorCore) doRedo() {
 	if s, ok := c.hist.stepForward(c.snapshot); ok {
 		c.restore(s)
-		c.hist.settle()
 	}
 }
 
 // restore applies a group: its changes take the text back (or forward), and the cursor, marks and
 // revision become the group's. The changes are made to the lines they span, as one replace, which
-// the history takes in as the group for the other way.
+// the history takes in as the group for the other way, and that recording ends (settle) as soon as
+// the replace is made: what follows notifies listeners, and a listener's own edit (CoreOnChange
+// inserting, say) begins a group of its own, which must take that edit in.
 func (c *EditorCore) restore(s textSnap) {
 	b := &c.buf
 	lo, hi, span := replayed(b.textLines, s.ops)
@@ -48,6 +48,7 @@ func (c *EditorCore) restore(s textSnap) {
 	if hi > lo || len(span) > 0 {
 		b.replaceLines(lo, hi, span...)
 	}
+	c.hist.settle()
 	b.log.take() // the marks and cursors moved by blk: what the replace logged describes no edit
 	c.marks.restore(s.marks)
 	b.ln = max(0, min(s.ln, len(b.textLines)-1))

@@ -163,3 +163,30 @@ func TestAnEditOutsideAGroupIsUndoneAndRedoneAsWithSnapshots(t *testing.T) {
 		t.Fatalf("the undo after the redo gave %q, want the text the redo left, %q", got, withStray)
 	}
 }
+
+// TestAnEditInAChangeCallbackDuringUndoIsItsOwnStep: a CoreOnChange listener that edits while an
+// undo notifies it begins a group of its own, and the next undo takes that edit back. The undo's
+// recording ends before listeners hear of it; ended after, the listener's edit went into the
+// undo's group and the next undo left it in place. Zen's probe on golib #530, as a cell.
+func TestAnEditInAChangeCallbackDuringUndoIsItsOwnStep(t *testing.T) {
+	var c *EditorCore
+	armed := false
+	c = NewEditorCore(CoreModal(true), CoreInitialText("abc"), CoreOnChange(func() {
+		if armed {
+			armed = false
+			if _, err := c.Insert(TextPos{}, "Z"); err != nil {
+				t.Errorf("the listener's insert: %v", err)
+			}
+		}
+	}))
+	revFeed(c, "x") // "bc"
+	armed = true
+	revFeed(c, "u") // "abc", then the listener makes it "Zabc"
+	if got := c.Value(); got != "Zabc" {
+		t.Fatalf("after the undo and the listener's insert: %q, want Zabc", got)
+	}
+	revFeed(c, "u")
+	if got := c.Value(); got != "abc" {
+		t.Fatalf("an undo after the listener's insert: %q, want abc (the insert taken back)", got)
+	}
+}
