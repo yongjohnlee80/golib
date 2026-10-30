@@ -16,7 +16,7 @@ func TestPinnedConn_ASessionStateCommandIsNotRecycled(t *testing.T) {
 	t.Parallel()
 	for tag, destroyed := range map[string]bool{
 		"SET": true, "RESET": true, "DISCARD ALL": true, "PREPARE": true, "DEALLOCATE ALL": true,
-		"LISTEN": true, "UNLISTEN": true,
+		"LISTEN": true, "UNLISTEN": true, "DECLARE CURSOR": true,
 		"SELECT 1": false, "INSERT 0 1": false, "SAVEPOINT": false, "COMMIT": false, "SETUP": false,
 	} {
 		for _, release := range []bool{true, false} {

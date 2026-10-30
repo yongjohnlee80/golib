@@ -111,6 +111,13 @@ func SupportsSessionPinning(conn dao.DataConn) bool {
 // typed entry point a consumer calls instead of asserting the interface itself, mirroring
 // [dao.BeginConnTx]: a miss is an error the caller handles, never a panic and never a
 // silent fallback to the pool.
+//
+// A member a command left session state on is destroyed at Release, not recycled: SET,
+// RESET, DISCARD, PREPARE, DEALLOCATE, LISTEN, UNLISTEN, and DECLARE (a cursor WITH HOLD
+// outlives its transaction), by their command tags. State a command's tag does not name is
+// the borrower's to know: a function that changes the session (set_config with is_local
+// false, pg_advisory_lock) or a temporary object (CREATE TEMP) leaves it, so a borrower
+// that uses one must Destroy the member ([Destroyer]), not Release it.
 func PinSessionConn(ctx context.Context, conn dao.DataConn) (PinnedConn, error) {
 	sp, ok := conn.(SessionPinner)
 	if !ok {
@@ -573,11 +580,12 @@ func (p *pinnedConn) Release(_ context.Context) error {
 
 // sessionStateTag reports whether a CommandComplete tag names a command that leaves state on the
 // session past its own statement: SET (SET ROLE and SET SESSION AUTHORIZATION included), RESET,
-// DISCARD, PREPARE, DEALLOCATE, LISTEN and UNLISTEN.
+// DISCARD, PREPARE, DEALLOCATE, LISTEN, UNLISTEN and DECLARE (DECLARE CURSOR: one WITH HOLD
+// outlives its transaction).
 func sessionStateTag(tag string) bool {
 	verb, _, _ := strings.Cut(tag, " ")
 	switch verb {
-	case "SET", "RESET", "DISCARD", "PREPARE", "DEALLOCATE", "LISTEN", "UNLISTEN":
+	case "SET", "RESET", "DISCARD", "PREPARE", "DEALLOCATE", "LISTEN", "UNLISTEN", "DECLARE":
 		return true
 	}
 	return false
