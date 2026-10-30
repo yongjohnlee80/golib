@@ -148,6 +148,8 @@ func TestDo_DenyPrivateRefusesThisHostsNetwork(t *testing.T) {
 		"255.255.255.255:80", "224.0.0.1:80",
 		"[::1]:80", "[::]:80", "[fe80::1]:80", "[fd00::1]:80", "[ff02::1]:80", "[::a9fe:a9fe]:80", "[2001:0:4136:e378::1]:80",
 		"[::ffff:10.0.0.1]:80", "[64:ff9b::a9fe:a9fe]:80", "[64:ff9b::7f00:1]:80", "[64:ff9b:1:a9fe:a9:fe00::]:80",
+		// 192.0.0.8 under the /48's layout; read with the u octet in place of its third, 192.0.1.0, public
+		"[64:ff9b:1:c000:100:800::]:80",
 		"[2002:a9fe:a9fe::1]:80", "[2002:0a00:0001::1]:80",
 	} {
 		if err := refusePrivate("tcp", addr, nil); !errors.Is(err, ErrPrivateAddress) {
