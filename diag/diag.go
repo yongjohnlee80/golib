@@ -117,6 +117,9 @@ func Start(ctx context.Context, dir string, opts ...Option) (*Monitor, error) {
 	if err := os.MkdirAll(abs, 0o700); err != nil {
 		return nil, fmt.Errorf("diag: %w", err)
 	}
+	if err := checkDir(abs); err != nil {
+		return nil, err
+	}
 	lock, err := lockDir(filepath.Join(abs, lockName))
 	if err != nil {
 		return nil, err
@@ -137,7 +140,7 @@ func Start(ctx context.Context, dir string, opts ...Option) (*Monitor, error) {
 			return fail(err)
 		}
 	}
-	f, err := os.OpenFile(filepath.Join(abs, samplesName), os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0o600)
+	f, err := os.OpenFile(filepath.Join(abs, samplesName), os.O_CREATE|os.O_APPEND|os.O_WRONLY|noFollow, 0o600)
 	if err != nil {
 		return fail(fmt.Errorf("diag: %w", err))
 	}

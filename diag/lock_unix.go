@@ -15,7 +15,7 @@ type dirLock struct{ f *os.File }
 
 // lockDir takes path's lock, or refuses: another monitor owns the directory.
 func lockDir(path string) (*dirLock, error) {
-	f, err := os.OpenFile(path, os.O_CREATE|os.O_RDWR, 0o600)
+	f, err := os.OpenFile(path, os.O_CREATE|os.O_RDWR|noFollow, 0o600)
 	if err != nil {
 		return nil, fmt.Errorf("diag: %w", err)
 	}

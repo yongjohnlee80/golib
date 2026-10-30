@@ -14,7 +14,11 @@ if ok {
 }
 ```
 
-A monitor owns its directory until `Close`: a second `Start` there is refused. It writes:
+A monitor owns its directory until `Close`: a second `Start` there is refused. On unix the directory
+must be the user's own and not writable by group or others (a 0755 one passes), and not a symlink:
+whoever could write it could swap the files the monitor opens by name in it. Those files are opened
+without following a symlink, and the socket is bound in a private directory, made 0600, and only
+then moved into place. It writes:
 
 | File | What | Contains |
 | --- | --- | --- |
