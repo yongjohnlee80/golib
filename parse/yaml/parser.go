@@ -66,7 +66,7 @@ func newParser(src []byte, cfg config) (*parser, error) {
 	if bad := firstUnprintable(utf); bad >= 0 {
 		return p, &Error{Pos: position(utf, lineStarts(utf), bad), Msg: "a character YAML does not allow (not c-printable)"}
 	}
-	p.s = scanner{src: utf}
+	p.s = scanner{src: utf, maxFlow: cfg.maxDepth}
 	return p, nil
 }
 

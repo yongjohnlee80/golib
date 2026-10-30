@@ -73,6 +73,7 @@ type scanner struct {
 	indent           int
 	indents          []int
 	flowLevel        int
+	maxFlow          int // the parser's MaxDepth: no flow collection nests more deeply (0: none set)
 	simpleKeyAllowed bool
 	simpleKeys       []simpleKey
 
@@ -397,7 +398,9 @@ func (s *scanner) staleSimpleKeys() error {
 	for i := range s.simpleKeys {
 		k := &s.simpleKeys[i]
 		inFlowMapping := i > 0 && i <= len(s.flowKinds) && s.flowKinds[i-1]
-		if k.possible && !inFlowMapping && (k.mark.line < s.line || k.mark.off+1024 < s.i) {
+		// an implicit key is at most 1024 characters, in a flow mapping too (YAML 1.2 §7.4.2): a key
+		// there may span lines, but never holds the scanner's lookahead past that
+		if k.possible && (!inFlowMapping && k.mark.line < s.line || k.mark.off+1024 < s.i) {
 			if k.required {
 				return s.errorf(k.mark, "could not find the expected ':' of an implicit key")
 			}
@@ -508,6 +511,11 @@ func (s *scanner) fetchDocumentIndicator(start bool) error {
 }
 
 func (s *scanner) fetchFlowCollectionStart(kind tokenKind) error {
+	// each level holds a simple key every token looks at (staleSimpleKeys): bounded as the parser's
+	// depth is, refused before it grows past it, rather than scanned on with every level held
+	if s.maxFlow > 0 && s.flowLevel >= s.maxFlow {
+		return s.errorf(s.mark(), "flow collections nest more deeply than the parser's bound ("+itoa(s.maxFlow)+")")
+	}
 	if err := s.saveSimpleKey(); err != nil {
 		return err
 	}

@@ -115,10 +115,12 @@ func attribute(b []byte, i int) int {
 }
 
 // rawHTML returns the length of inline raw HTML at the start of b: a tag, a comment, a processing
-// instruction, a declaration or a CDATA section.
+// instruction, a declaration or a CDATA section. find(from, closer) is the offset in b of the next
+// closer at or after from, -1 for none: the parser's cached search (nextIndex), so a paragraph of
+// openers with no closer is scanned once, not once per opener.
 //
 // https://spec.commonmark.org/0.31.2/#raw-html
-func rawHTML(b []byte) int {
+func rawHTML(b []byte, find func(from int, closer string) int) int {
 	if n := htmlTag(b); n > 0 {
 		return n
 	}
@@ -128,20 +130,20 @@ func rawHTML(b []byte) int {
 	case bytes.HasPrefix(b, []byte("<!--->")):
 		return 6
 	case bytes.HasPrefix(b, []byte("<!--")):
-		if e := bytes.Index(b[4:], []byte("-->")); e >= 0 {
-			return 4 + e + 3
+		if e := find(4, "-->"); e >= 0 {
+			return e + 3
 		}
 	case bytes.HasPrefix(b, []byte("<?")):
-		if e := bytes.Index(b[2:], []byte("?>")); e >= 0 {
-			return 2 + e + 2
+		if e := find(2, "?>"); e >= 0 {
+			return e + 2
 		}
 	case bytes.HasPrefix(b, []byte("<![CDATA[")):
-		if e := bytes.Index(b[9:], []byte("]]>")); e >= 0 {
-			return 9 + e + 3
+		if e := find(9, "]]>"); e >= 0 {
+			return e + 3
 		}
 	case len(b) > 2 && b[1] == '!' && isASCIIAlpha(b[2]):
-		if e := bytes.IndexByte(b[2:], '>'); e >= 0 {
-			return 2 + e + 1
+		if e := find(2, ">"); e >= 0 {
+			return e + 1
 		}
 	}
 	return 0
