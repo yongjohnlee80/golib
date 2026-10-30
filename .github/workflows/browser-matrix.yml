@@ -7,7 +7,8 @@
 name: browser matrix
 
 # Pull requests merge into canary and run no CI (each has its VM43 gate and review); CI runs on
-# each merge into canary, and on the milestone pull request that merges canary into main.
+# each merge into canary, and on the release pull request into main: a release/YYYY-MM-DD branch,
+# canary rebased onto main, merged by rebase, after which canary is reset to main.
 on:
   push:
     branches: [canary]
@@ -23,17 +24,17 @@ permissions:
 # Every repository of the account shares one pool of concurrent jobs, so CI runs only where it is
 # read. A canary run is never cancelled: merges come faster than a run takes, so cancelling would
 # never let one finish. A newer merge waits instead, and of the waiting runs only the newest is
-# kept, so the run that starts next covers every merge since. A newer push to the milestone pull
+# kept, so the run that starts next covers every merge since. A newer push to the release pull
 # request cancels that pull request's older run.
 concurrency:
   group: ${{ github.workflow }}-${{ github.event_name == 'pull_request' && github.event.pull_request.number || github.ref }}
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
-  # A pull request runs CI only when it is the milestone one, canary into main: any other into main
-  # starts the workflow, but every job is skipped and holds no runner.
+  # A pull request runs CI only when it is the release one into main (from canary or a release/
+  # branch): any other into main starts the workflow, but every job is skipped and holds no runner.
   matrix:
-    if: github.event_name == 'push' || github.head_ref == 'canary'
+    if: github.event_name == 'push' || (github.head_ref == 'canary' || startsWith(github.head_ref, 'release/'))
     name: ${{ matrix.browser }}
     runs-on: ubuntu-latest
     strategy:
@@ -84,7 +85,7 @@ jobs:
     name: browser matrix (required)
     runs-on: ubuntu-latest
     needs: matrix
-    if: always() && (github.event_name == 'push' || github.head_ref == 'canary')
+    if: always() && (github.event_name == 'push' || (github.head_ref == 'canary' || startsWith(github.head_ref, 'release/')))
     steps:
       - name: verify every engine passed
         run: |
