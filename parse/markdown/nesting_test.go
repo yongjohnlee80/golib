@@ -69,6 +69,20 @@ func TestMaxNestingKeepsTheExcessAsText(t *testing.T) {
 	if d := depth(emph); d > 5+2 { // the paragraph, and the levels within it
 		t.Errorf("seven '*' pairs under MaxNesting(5): depth %d, want at most 7", d)
 	}
+	// a start counted where it lands, not under the block it closes or the list it joins
+	for src, want := range map[string]struct {
+		kind markdown.Kind
+		n    int
+	}{
+		">>>> a\n>>>>> b":                 {markdown.KindBlockQuote, 5}, // a paragraph interrupted at depth 4
+		">>> a\n>>> - b":                  {markdown.KindList, 1},       // a list interrupting a paragraph at depth 3
+		"> - - a\n>   - b":                {markdown.KindItem, 3},       // an item joining the deepest list
+		">>>> | a |\n>>>> | - |\n>>>>> b": {markdown.KindBlockQuote, 5}, // a table at depth 5, closed by a quote
+	} {
+		if n, _ := count(markdown.Parse([]byte(src), five, markdown.WithGFM()), want.kind); n != want.n {
+			t.Errorf("%q under MaxNesting(5): %d of kind %v, want %d", src, n, want.kind, want.n)
+		}
+	}
 	images := markdown.Parse([]byte(strings.Repeat("![", 7)+"x"+strings.Repeat("](u)", 7)), five)
 	if n, _ := count(images, markdown.KindImage); n != 5 {
 		t.Errorf("seven nested images under MaxNesting(5): %d images, want 5", n)
