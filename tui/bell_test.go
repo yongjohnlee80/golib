@@ -9,7 +9,10 @@ type plainBackend struct{ Backend }
 func TestTheBellReachesABackendWithOne(t *testing.T) {
 	h := startApp(t, NewFlex(Vertical), 10, 2)
 	var rang bool
-	h.onLoop(func() { rang = h.app.Bell() && h.app.Bell() })
+	h.onLoop(func() {
+		first := h.app.Bell()
+		rang = h.app.Bell() && first // two calls, two rings: never one call read twice
+	})
 	if !rang || h.tb.Bells() != 2 {
 		t.Fatalf("Bell answered %v, the backend rang %d times; want two rings", rang, h.tb.Bells())
 	}
