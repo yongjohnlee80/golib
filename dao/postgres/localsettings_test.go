@@ -36,7 +36,7 @@ func TestCheckLocalSetting(t *testing.T) {
 		{HNSWMaxScanTuples(1), true},
 		{HNSWMaxScanTuples(2147483647), true},
 		{HNSWMaxScanTuples(0), false},
-		{HNSWMaxScanTuples(2147483648), false},
+		{dao.LocalSetting{Name: "hnsw.max_scan_tuples", Value: "2147483648"}, false}, // past an int32: by hand, so 386 builds
 		{HNSWScanMemMultiplier(1), true},
 		{HNSWScanMemMultiplier(1.5), true},
 		{HNSWScanMemMultiplier(1000), true},
