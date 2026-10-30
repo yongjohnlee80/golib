@@ -30,7 +30,7 @@ import (
 )
 
 // Types are TextField and Popup, for [tuidecl.Types] or [tuidecl.WithTypes].
-func Types() []tuidecl.Type { return []tuidecl.Type{TextField, Popup} }
+func Types() []tuidecl.Type { return []tuidecl.Type{TextField, TextArea, Popup} }
 
 // ---------------------------------------------------------------- TextField
 
@@ -139,6 +139,73 @@ func buildTextField(b tuidecl.Build) (tui.Component, []string, error) {
 		opts = append(opts, widget.WithMask('•'))
 	}
 	return widget.NewTextInput(opts...), consumed, nil
+}
+
+// ---------------------------------------------------------------- TextArea
+
+// WrapMode is TextArea's wrapMode enumeration, spelled as Qt spells it: `wrapMode: TextEdit.WordWrap`.
+var WrapMode = tuidecl.Enum{Scope: "TextEdit", Values: []string{"NoWrap", "WordWrap"}}
+
+// TextArea is Qt Quick Controls' multi-line text area, over widget.TextArea:
+//
+//	text             the value; set it, bind it — typing does not write back
+//	placeholderText  shown while the value is empty
+//	wrapMode         TextEdit.NoWrap (the default, as Qt's) or TextEdit.WordWrap
+//	clear()          empty it
+//
+// Enter breaks the line and Tab moves the focus on, so its value is read where the input ends: a
+// dialog's accept or a Shortcut's handler reads it by id, `onAccepted: App.reply(reply.text)`.
+//
+// It wears `base` and `text` for the area, `highlight`/`highlightedText` for a selection.
+var TextArea = tuidecl.Type{
+	Name: "TextArea", Children: tuidecl.NoChildren(),
+	Build: buildTextArea,
+	Ctor:  []string{"placeholderText", "wrapMode"},
+	Setters: map[string]tuidecl.Setter{
+		"text": tuidecl.StringSetter((*widget.TextArea).SetValue),
+	},
+	Methods: map[string]tuidecl.Method{
+		"clear": tuidecl.NoArgMethod(func(t *widget.TextArea) error { t.SetValue(""); return nil }),
+	},
+	// What a handler reads by id when it runs: `App.reply(reply.text)`.
+	Getters: map[string]tuidecl.Getter{
+		"text": tuidecl.StringGetter((*widget.TextArea).Value),
+	},
+	Enums: []tuidecl.Enum{WrapMode},
+	Restyle: tuidecl.Restyler(func(ta *widget.TextArea, p tuidecl.Palette) {
+		base, _ := p.Color(tuidecl.RoleBase)
+		st := widget.TextInputStyles{Text: p.Look(tuidecl.RoleBase, tuidecl.RoleText)}
+		if _, ok := p.Color(tuidecl.RoleBase); ok {
+			st.Placeholder = style.New().Background(base)
+		}
+		if _, ok := p.Color(tuidecl.RoleHighlight); ok {
+			st.Selection = p.Look(tuidecl.RoleHighlight, tuidecl.RoleHighlightedText).Reverse(false)
+		}
+		ta.WithStyles(st)
+	}),
+}
+
+func buildTextArea(b tuidecl.Build) (tui.Component, []string, error) {
+	var placeholder tuidecl.UIText
+	var wrap string
+	consumed, err := b.ReadProps(map[string]tuidecl.Field{
+		"placeholderText": tuidecl.UITextField(&placeholder),
+		"wrapMode":        tuidecl.EnumField(&wrap, WrapMode),
+	})
+	if err != nil {
+		return nil, nil, err
+	}
+	var opts []widget.TextAreaOption
+	switch {
+	case placeholder.IsMessage():
+		opts = append(opts, widget.WithTextAreaPlaceholderMessage(placeholder.Message))
+	case placeholder.Plain != "":
+		opts = append(opts, widget.WithTextAreaPlaceholder(placeholder.Plain))
+	}
+	if wrap == "WordWrap" {
+		opts = append(opts, widget.WithWrap(widget.WrapSoft))
+	}
+	return widget.NewTextArea(opts...), consumed, nil
 }
 
 // ---------------------------------------------------------------- Popup
