@@ -5,6 +5,7 @@ import (
 	"encoding/csv"
 	"fmt"
 	"reflect"
+	"strings"
 	"time"
 
 	"github.com/yongjohnlee80/golib/errs"
@@ -144,7 +145,11 @@ func writeCSV[T any](wr *writer[T], name string, rows []T) error {
 			if _, ok := csvColumn(val.Type().Field(i)); !ok {
 				continue
 			}
-			record = append(record, fmt.Sprintf("%v", val.Field(i).Interface()))
+			cell := fmt.Sprintf("%v", val.Field(i).Interface())
+			if wr.cfg.formulaGuard {
+				cell = guardFormula(cell)
+			}
+			record = append(record, cell)
 		}
 
 		if err = w.Write(record); err != nil {
@@ -153,4 +158,12 @@ func writeCSV[T any](wr *writer[T], name string, rows []T) error {
 	}
 
 	return nil
+}
+
+// guardFormula is cell behind a single quote when a spreadsheet would read it as a formula.
+func guardFormula(cell string) string {
+	if cell != "" && strings.ContainsRune("=+-@\t\r", rune(cell[0])) {
+		return "'" + cell
+	}
+	return cell
 }

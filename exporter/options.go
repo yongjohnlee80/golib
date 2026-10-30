@@ -9,10 +9,11 @@ import (
 
 // config holds the file-writer settings shared by the CSV and JSON exporters.
 type config struct {
-	dir        string
-	opener     func(name string) (io.WriteCloser, error)
-	batchSize  uint64
-	maxWriters int
+	dir          string
+	opener       func(name string) (io.WriteCloser, error)
+	batchSize    uint64
+	maxWriters   int
+	formulaGuard bool
 }
 
 // Option configures a file-writing exporter (CSV, JSON).
@@ -49,6 +50,14 @@ func WithMaxWriters(n int) Option {
 	}
 }
 
+// WithFormulaGuard makes the CSV exporter write a cell that starts with =, +, -, @, a tab or a
+// carriage return behind a single quote, so a spreadsheet shows it as text and never runs it as a
+// formula: for an export of values someone else typed (a CSV opened in Excel or Sheets). The JSON
+// exporter is unaffected.
+func WithFormulaGuard() Option {
+	return func(c *config) { c.formulaGuard = true }
+}
+
 func newConfig(opts []Option) config {
 	c := config{dir: ".", maxWriters: 4}
 	for _, opt := range opts {
@@ -59,12 +68,14 @@ func newConfig(opts []Option) config {
 	return c
 }
 
-// open creates the write target for one batch file.
+// open creates the write target for one batch file: a new file, never one already there. A batch
+// name holds its timestamp and number, so an existing file is a collision or something put there
+// (a symlink to another file), and either is refused rather than written through.
 func (c config) open(name string) (io.WriteCloser, error) {
 	if c.opener != nil {
 		return c.opener(name)
 	}
-	return os.Create(filepath.Join(c.dir, name))
+	return os.OpenFile(filepath.Join(c.dir, name), os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0o644)
 }
 
 // sanitizeDescription makes a description safe for use in a file name.
