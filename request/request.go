@@ -97,12 +97,67 @@ func refusePrivate(_, address string, _ syscall.RawConn) error {
 	if err != nil {
 		return fmt.Errorf("%w: %s", ErrPrivateAddress, address)
 	}
-	a := ap.Addr().Unmap()
-	if a.IsLoopback() || a.IsPrivate() || a.IsLinkLocalUnicast() || a.IsLinkLocalMulticast() ||
-		a.IsInterfaceLocalMulticast() || a.IsMulticast() || a.IsUnspecified() {
-		return fmt.Errorf("%w: %s", ErrPrivateAddress, a)
+	if a := ap.Addr(); nonPublic(a) {
+		return fmt.Errorf("%w: %s", ErrPrivateAddress, a.Unmap())
 	}
 	return nil
+}
+
+// deniedPrefixes are the non-public ranges netip's predicates do not name: carrier-grade NAT (a
+// cloud's metadata service among them), "this network", the IETF and benchmarking blocks, the
+// reserved 240/4 and broadcast, IPv4-compatible IPv6 and Teredo. NAT64 and 6to4 addresses carry an
+// IPv4 one, checked in its own right (embeddedIPv4).
+var deniedPrefixes = []netip.Prefix{
+	netip.MustParsePrefix("0.0.0.0/8"),
+	netip.MustParsePrefix("100.64.0.0/10"),
+	netip.MustParsePrefix("192.0.0.0/24"),
+	netip.MustParsePrefix("198.18.0.0/15"),
+	netip.MustParsePrefix("240.0.0.0/4"),
+	netip.MustParsePrefix("::/96"),
+	netip.MustParsePrefix("2001::/32"),
+}
+
+// nonPublic reports whether a is an address no request from a stranger's URL should reach: this
+// host's or its network's (loopback, private, link-local, a denied range), a multicast or
+// unspecified one, or one that carries such an IPv4 address.
+func nonPublic(a netip.Addr) bool {
+	a = a.Unmap()
+	if a.IsLoopback() || a.IsPrivate() || a.IsLinkLocalUnicast() || a.IsLinkLocalMulticast() ||
+		a.IsInterfaceLocalMulticast() || a.IsMulticast() || a.IsUnspecified() {
+		return true
+	}
+	for _, p := range deniedPrefixes {
+		if p.Contains(a) {
+			return true
+		}
+	}
+	if v4, ok := embeddedIPv4(a); ok {
+		return nonPublic(v4)
+	}
+	return false
+}
+
+// The IPv6 prefixes that carry an IPv4 address: NAT64's well-known and local-use prefixes (RFC
+// 6052, RFC 8215), dialled through a NAT64 gateway to that IPv4 address, and 6to4 (RFC 3056).
+var (
+	nat64      = netip.MustParsePrefix("64:ff9b::/96")
+	nat64Local = netip.MustParsePrefix("64:ff9b:1::/48")
+	sixToFour  = netip.MustParsePrefix("2002::/16")
+)
+
+// embeddedIPv4 is the IPv4 address a NAT64 or 6to4 address carries.
+func embeddedIPv4(a netip.Addr) (netip.Addr, bool) {
+	b := a.As16()
+	switch {
+	case nat64.Contains(a):
+		return netip.AddrFrom4([4]byte{b[12], b[13], b[14], b[15]}), true
+	case nat64Local.Contains(a):
+		// a /48 prefix: the IPv4 address is octets 6 and 7, then 9 and 10, around the reserved u octet
+		return netip.AddrFrom4([4]byte{b[6], b[7], b[9], b[10]}), true
+	case sixToFour.Contains(a):
+		return netip.AddrFrom4([4]byte{b[2], b[3], b[4], b[5]}), true
+	}
+	return netip.Addr{}, false
 }
 
 // keptAcrossOrigins are the headers a redirect to another origin keeps. Every other header the
