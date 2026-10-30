@@ -163,7 +163,12 @@ private unnamed extended sequence (or a simple `Query` for a no-arg `Exec`) that
 cleans up its own unnamed objects. `Release` returns a quiescent, transaction-
 closed member to the pool; `Discard` is the unconditional terminal that closes
 the physical connection whenever safe reuse cannot be proven — so a poisoned or
-mid-flight member is never recycled dirty. `Discard` judges reuse from **wire
+mid-flight member is never recycled dirty. Nor is one on which a command left
+**session state** (a `SET` or `RESET`, `PREPARE` or `DEALLOCATE`, `LISTEN` or
+`UNLISTEN`, a `DISCARD`): every face reads its command tags, and `Release` or
+`Discard` then closes that member so the pool destroys it, rather than handing
+the next borrower a search_path, a role or a prepared name it never asked for.
+`Release` still succeeds; the cost is a reconnect. `Discard` judges reuse from **wire
 mechanics alone**, which is all a driver can see; a consumer that knows the
 *session* is unfit (a reset the server refused, sanitation it could not prove)
 asserts the optional `Destroyer` capability and calls `Destroy()`, which poisons,
