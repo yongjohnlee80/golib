@@ -9,6 +9,7 @@ import (
 	"net"
 	"net/http"
 	"os"
+	"path/filepath"
 	"runtime/pprof"
 	"strconv"
 	"strings"
@@ -42,14 +43,31 @@ func serveSocket(path string) (*socketServer, error) {
 	if err := clearStale(path); err != nil {
 		return nil, err
 	}
-	ln, err := net.Listen("unix", path)
+	// Bound inside a fresh 0700 directory, made 0600, and only then renamed into place: a socket
+	// bound at path directly is reachable, under a loose umask, until its chmod lands. A process-wide
+	// umask would race every other goroutine creating a file.
+	tmp, err := os.MkdirTemp(filepath.Dir(path), ".s")
+	if err != nil {
+		return nil, fmt.Errorf("diag: %w", err)
+	}
+	defer os.Remove(tmp)
+	bound := filepath.Join(tmp, "s")
+	if len(bound) > maxSocketPath {
+		return nil, fmt.Errorf("diag: the socket path %s is %d bytes, over the %d a unix socket allows: choose a shorter directory", bound, len(bound), maxSocketPath)
+	}
+	ln, err := net.Listen("unix", bound)
 	if err != nil {
 		return nil, fmt.Errorf("diag: %w", err)
 	}
 	ln.(*net.UnixListener).SetUnlinkOnClose(false) // close removes it, under the lock
-	if err := os.Chmod(path, 0o600); err != nil {  // before Serve: only the user connects
+	if err := os.Chmod(bound, 0o600); err != nil { // before Serve: only the user connects
 		ln.Close()
-		os.Remove(path)
+		os.Remove(bound)
+		return nil, fmt.Errorf("diag: %w", err)
+	}
+	if err := os.Rename(bound, path); err != nil {
+		ln.Close()
+		os.Remove(bound)
 		return nil, fmt.Errorf("diag: %w", err)
 	}
 	s := &socketServer{path: path, ln: ln, stop: make(chan struct{})}
