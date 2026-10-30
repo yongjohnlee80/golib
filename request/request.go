@@ -7,9 +7,12 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"net"
 	"net/http"
+	"net/netip"
 	"net/url"
 	"strings"
+	"syscall"
 	"time"
 )
 
@@ -58,15 +61,71 @@ type Params struct {
 	// MaxResponseSize overrides the maximum allowed response body size in bytes.
 	// 0 uses [MaxResponseBodySize] (10 MB); -1 allows unlimited reading.
 	MaxResponseSize int64
+
+	// DenyPrivate refuses to connect to a loopback, private, link-local, multicast or unspecified
+	// address, checked on the address each connection actually dials (a redirect's included), so
+	// a URL from someone else cannot reach this host's own network. No proxy is used with it: a
+	// proxy would dial the target where the check cannot see it. See [DenyPrivateAddresses].
+	DenyPrivate bool
 }
 
 // ErrResponseTooLarge reports a response body exceeding the configured
 // MaxResponseSize / MaxResponseBodySize limit. Compare with errors.Is.
 var ErrResponseTooLarge = errors.New("request: response body exceeds maximum size")
 
-// defaultTransport is a shared transport that enables connection pooling
-// across requests.
-var defaultTransport = &http.Transport{}
+// defaultTransport is the shared, pooling transport: http.DefaultTransport's settings, so a dial,
+// a TLS handshake and an idle connection are bounded, and HTTP(S)_PROXY from the environment is
+// honoured.
+var defaultTransport = http.DefaultTransport.(*http.Transport).Clone()
+
+// guardedTransport is defaultTransport's, without a proxy, refusing a non-public address
+// (Params.DenyPrivate).
+var guardedTransport = func() *http.Transport {
+	t := defaultTransport.Clone()
+	t.Proxy = nil
+	d := &net.Dialer{Timeout: 30 * time.Second, KeepAlive: 30 * time.Second, Control: refusePrivate}
+	t.DialContext = d.DialContext
+	return t
+}()
+
+// ErrPrivateAddress is a DenyPrivate request's refusal to connect to a non-public address.
+var ErrPrivateAddress = errors.New("request: refused to connect to a non-public address")
+
+// refusePrivate is the dial check of DenyPrivate: it sees the resolved address being connected to.
+func refusePrivate(_, address string, _ syscall.RawConn) error {
+	ap, err := netip.ParseAddrPort(address)
+	if err != nil {
+		return fmt.Errorf("%w: %s", ErrPrivateAddress, address)
+	}
+	a := ap.Addr().Unmap()
+	if a.IsLoopback() || a.IsPrivate() || a.IsLinkLocalUnicast() || a.IsLinkLocalMulticast() ||
+		a.IsInterfaceLocalMulticast() || a.IsMulticast() || a.IsUnspecified() {
+		return fmt.Errorf("%w: %s", ErrPrivateAddress, a)
+	}
+	return nil
+}
+
+// keptAcrossOrigins are the headers a redirect to another origin keeps. Every other header the
+// caller set (Authorization, a Cookie, an X-API-Key, any custom credential) is dropped: the stdlib
+// drops only Authorization, Cookie and WWW-Authenticate, and only for another domain, so a custom
+// key followed a redirect anywhere.
+var keptAcrossOrigins = map[string]bool{"Accept": true, "Accept-Language": true, "Content-Type": true, "User-Agent": true}
+
+// checkRedirect follows at most 10 redirects, as the stdlib does, and strips the caller's headers
+// but keptAcrossOrigins from a hop to another origin (scheme, host or port) than the request's own.
+func checkRedirect(req *http.Request, via []*http.Request) error {
+	if len(via) >= 10 {
+		return errors.New("request: stopped after 10 redirects")
+	}
+	if from := via[0].URL; !strings.EqualFold(req.URL.Scheme, from.Scheme) || !strings.EqualFold(req.URL.Host, from.Host) {
+		for k := range req.Header {
+			if !keptAcrossOrigins[http.CanonicalHeaderKey(k)] {
+				req.Header.Del(k)
+			}
+		}
+	}
+	return nil
+}
 
 // CustomPayload allows payload objects to declare their own Content-Type header
 // alongside the payload data stream (for example, [FormWriter]).
@@ -127,9 +186,14 @@ func Do(ctx context.Context, params *Params, payload any, opts ...RequestOption)
 		timeout = 0 // http.Client treats zero as no timeout
 	}
 
+	transport := defaultTransport
+	if params.DenyPrivate {
+		transport = guardedTransport
+	}
 	client := &http.Client{
-		Timeout:   timeout,
-		Transport: defaultTransport,
+		Timeout:       timeout,
+		Transport:     transport,
+		CheckRedirect: checkRedirect,
 	}
 	req, err := http.NewRequestWithContext(ctx, params.Method, params.Url, _payload)
 	if err != nil {

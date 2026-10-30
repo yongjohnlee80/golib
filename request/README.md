@@ -77,7 +77,20 @@ p := &request.Params{Method: "GET", Url: u, Timeout: 30 * time.Second}
 ```
 
 Requests share a package-global `http.Transport`, so connection pooling and
-keep-alive work across calls automatically.
+keep-alive work across calls automatically. It has the standard library
+default's settings: dial, TLS-handshake and idle-connection timeouts, and
+`HTTP(S)_PROXY` from the environment.
+
+A redirect is followed at most 10 times. One to another origin (scheme, host or
+port) keeps only the caller's `Accept`, `Accept-Language`, `Content-Type` and
+`User-Agent`; every other header the caller set (`Authorization`, Basic auth, an
+`X-API-Key`, any custom credential) is dropped, so a credential never follows a
+redirect off its origin.
+
+For a URL that came from someone else, `DenyPrivateAddresses()` refuses to
+connect to a loopback, private, link-local, multicast or unspecified address,
+checked on the address each connection dials (a redirect's included), with no
+proxy.
 
 ## Payload types
 
