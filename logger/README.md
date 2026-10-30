@@ -31,7 +31,8 @@ golib packages will accept.
 `Severity` is a string with six constants, ordered least-to-most severe:
 `SeverityDebug`, `SeverityInfo`, `SeverityNotice`, `SeverityWarning`,
 `SeverityError`, `SeverityCritical`. `InList(list, s)` tests membership (parity
-with monstercat's helper).
+with monstercat's helper). `ParseSeverity(name)` reads one from a flag or
+setting, in any case (`debug`, `Warning`), and refuses any other name.
 
 ## Implementations
 
