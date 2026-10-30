@@ -152,6 +152,11 @@ by hand.
   against a dummy credential built with the *same* parameters, so "no such user"
   cannot be told from "wrong password" by timing. A corrupt stored credential or
   a broken store reports to the operator and rejects uniformly outward.
+- **Hashing is bounded.** Each verification holds the credential's memory (64 MiB
+  under the default) while it runs, and is reachable before anyone has
+  authenticated, so a `password.Factor` hashes at most `MaxConcurrent` at once
+  (default `GOMAXPROCS`). A Verify past the bound waits for a slot or its ctx, on
+  the dummy path as on the real one.
 - **Per-subject lockout needs a declared capability.** `auth.Throttle` requires
   the wrapped factor to implement `auth.Claimant` — naming the principal an
   attempt targets *before* verifying — or an explicit `SubjectClaim`, or
