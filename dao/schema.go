@@ -320,8 +320,11 @@ func (s *Schema[R, C, K, ID]) acquire(opts []QueryOption) queryConfig {
 // as an invalid query config does.
 func (s *Schema[R, C, K, ID]) newDAO(qc queryConfig, tx *Transaction) *queryDAO[R, C, K, ID] {
 	d := &queryDAO[R, C, K, ID]{schema: s, conn: s.conn, tx: tx,
-		hooks: qc.hooks, ctxv: qc.ctx, explicitCtx: qc.explicitCtx, local: qc.local}
+		hooks: qc.hooks, ctxv: qc.ctx, explicitCtx: qc.explicitCtx, local: qc.local, lock: qc.rowLock}
 	if err := checkLocalSettings(s.dialect, qc.local); err != nil {
+		d.fail(err)
+	}
+	if err := checkRowLock(s.dialect, qc.rowLock, qc.rowLockSet); err != nil {
 		d.fail(err)
 	}
 	return d
