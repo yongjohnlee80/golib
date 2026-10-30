@@ -267,7 +267,7 @@ func TestFlushWideCellDiscipline(t *testing.T) {
 func TestFlushRiskyClusterReanchor(t *testing.T) {
 	// Without mode 2027 the cursor is re-anchored absolutely
 	// after a risky (ZWJ) cluster; with 2027 the advance is trusted.
-	farmer := "\U0001F9D1‍\U0001F33E" // 🧑‍🌾
+	farmer := "\U0001F9D1\u200d\U0001F33E" // 🧑‍🌾
 
 	b, w := flushBackend(tui.Capabilities{}) // no UnicodeCore
 	err := b.Flush([]tui.CellUpdate{
@@ -303,11 +303,11 @@ func TestRiskyCluster(t *testing.T) {
 		{"a", false},
 		{"世", false}, // single-rune wide CJK: never risky
 		{"🎉", false},
-		{"\U0001F9D1‍\U0001F33E", true}, // ZWJ
-		{"1️⃣", true},                   // VS16 keycap
-		{"✂︎", true},                    // VS15
-		{"\U0001F1E6\U0001F1FA", true},  // RI pair (flag)
-		{"é", false},                   // plain combining accent: not risky
+		{"\U0001F9D1\u200d\U0001F33E", true}, // ZWJ
+		{"1️⃣", true},                        // VS16 keycap
+		{"✂︎", true},                         // VS15
+		{"\U0001F1E6\U0001F1FA", true},       // RI pair (flag)
+		{"é", false},                        // plain combining accent: not risky
 	}
 	for _, tc := range cases {
 		if got := riskyCluster(tc.s); got != tc.want {

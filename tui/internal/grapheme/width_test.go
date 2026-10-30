@@ -20,11 +20,11 @@ func TestClusterWidth(t *testing.T) {
 		{"combining acute", "é", 1},     // e + U+0301
 		{"stacked combining", "á̈", 1},  // a + U+0301 + U+0308
 		{"lone combining mark", "́", 0}, // degenerate cluster
-		{"lone zwj", "‍", 0},
-		{"lone zwnj", "‌", 0},
-		{"zwsp", "​", 0}, // default-ignorable
-		{"zwj farmer", "\U0001F9D1‍\U0001F33E", 2},
-		{"zwj family", "\U0001F469‍\U0001F469‍\U0001F466", 2},
+		{"lone zwj", "\u200d", 0},
+		{"lone zwnj", "\u200c", 0},
+		{"zwsp", "\u200b", 0}, // default-ignorable
+		{"zwj farmer", "\U0001F9D1\u200d\U0001F33E", 2},
+		{"zwj family", "\U0001F469\u200d\U0001F469\u200d\U0001F466", 2},
 		{"flag KR", "\U0001F1F0\U0001F1F7", 2},
 		{"flag AU", "\U0001F1E6\U0001F1FA", 2},
 		{"emoji presentation default", "\U0001F600", 2}, // 😀
@@ -79,7 +79,7 @@ func TestStringWidth(t *testing.T) {
 		{"cjk", "世界", 4},
 		{"mixed cjk ascii", "Go言語", 6},
 		{"combining", "café", 4}, // café with combining acute
-		{"zwj emoji in text", "a\U0001F9D1‍\U0001F33Eb", 4},
+		{"zwj emoji in text", "a\U0001F9D1\u200d\U0001F33Eb", 4},
 		{"flags", "\U0001F1F0\U0001F1F7\U0001F1E6\U0001F1FA", 4}, // two flags
 		{"vs16 in text", "x❤️y", 4},
 		{"vs15 in text", "x☂︎y", 3},
