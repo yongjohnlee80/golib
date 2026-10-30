@@ -25,3 +25,17 @@ func TestTheEmitterWritesNoControlFromACell(t *testing.T) {
 		t.Errorf("the frame does not draw the cells: %q", got)
 	}
 }
+
+// TestAShownControlKeepsThePen: a cell holding CR LF is written as one column, so the cell after it
+// follows with no move between: the pen is where the terminal's cursor is.
+func TestAShownControlKeepsThePen(t *testing.T) {
+	e := newEmitter(false)
+	diff := []tui.CellUpdate{
+		{X: 0, Y: 0, Cell: tui.Cell{Content: "\r\n", Width: 1}},
+		{X: 1, Y: 0, Cell: tui.Cell{Content: "x", Width: 1}},
+	}
+	got := string(e.frame(tui.Capabilities{}, diff, tui.CursorState{}, true, nil))
+	if !strings.Contains(got, "\u2424x") || strings.Contains(got, "\r") || strings.Contains(got, "\n") {
+		t.Errorf("CR LF and the cell after it: %q, want ␤x written together", got)
+	}
+}

@@ -2,6 +2,7 @@ package tui
 
 import (
 	"strings"
+	"unicode/utf8"
 
 	"github.com/yongjohnlee80/golib/tui/internal/grapheme"
 	"github.com/yongjohnlee80/golib/tui/style"
@@ -111,12 +112,13 @@ func firstCluster(s string) string {
 	return ""
 }
 
-// Shown is cluster with every control character in it replaced by its visible form: what a cell
-// holds, and what the terminal emitter writes, so a terminal draws it and never obeys it. A cell's
-// content goes to the terminal as it is, so a control in it would be obeyed, not drawn: ESC opens a
-// sequence (ESC]52 writes the clipboard, ESC[ moves the cursor), a C1 control is one by itself in
-// 8-bit terminals. Each C0 control is its Control Picture (U+2400 + c: ESC is ␛), DEL is ␡, and a
-// C1 control or a byte that is not UTF-8, which have no picture, is U+FFFD.
+// Shown is cluster as a cell may hold it, drawable and never a control: what a cell holds, and
+// what the terminal emitter writes, so a terminal draws it and never obeys it. A cell's content goes
+// to the terminal as it is, so a control in it would be obeyed (ESC opens a sequence, ESC]52 writes
+// the clipboard, a C1 control is one by itself in 8-bit terminals). A cluster with one in it is one
+// visible rune, one column wide, as the cell it fills: a C0 control is its Control Picture (U+2400 +
+// c: ESC is ␛), DEL is ␡, CR LF (one cluster) is ␤, and anything else holding a control or a byte
+// that is not UTF-8 (a C1 control, which has no picture) is U+FFFD.
 func Shown(cluster string) string {
 	clean := true
 	for i := 0; i < len(cluster); i++ {
@@ -128,21 +130,28 @@ func Shown(cluster string) string {
 	if clean {
 		return cluster // plain ASCII, the common case: nothing to look at
 	}
-	var b strings.Builder
-	for _, r := range strings.ToValidUTF8(cluster, "\uFFFD") {
+	if !utf8.ValidString(cluster) {
+		return "\uFFFD"
+	}
+	if !strings.ContainsFunc(cluster, isControl) {
+		return cluster // text: wide, combined, or any other script, as it is
+	}
+	if cluster == "\r\n" {
+		return "\u2424"
+	}
+	if r, n := utf8.DecodeRuneInString(cluster); n == len(cluster) {
 		switch {
 		case r < 0x20:
-			b.WriteRune(0x2400 + r)
+			return string(0x2400 + r)
 		case r == 0x7f:
-			b.WriteRune(0x2421)
-		case r >= 0x80 && r < 0xa0:
-			b.WriteRune(0xFFFD)
-		default:
-			b.WriteRune(r)
+			return "\u2421"
 		}
 	}
-	return b.String()
+	return "\uFFFD"
 }
+
+// isControl reports a C0 control, DEL or a C1 control.
+func isControl(r rune) bool { return r < 0x20 || r == 0x7f || r >= 0x80 && r < 0xa0 }
 
 // measure returns the cell width (1 or 2) of cluster under the surface's
 // policy. A cluster of only zero-width runes (a lone combining mark or ZWJ
