@@ -8,7 +8,8 @@
 name: go
 
 # Pull requests merge into canary and run no CI (each has its VM43 gate and review); CI runs on
-# each merge into canary, and on the milestone pull request that merges canary into main.
+# each merge into canary, and on the release pull request into main: a release/YYYY-MM-DD branch,
+# canary rebased onto main, merged by rebase, after which canary is reset to main.
 on:
   push:
     branches: [canary]
@@ -21,17 +22,17 @@ permissions:
 # Every repository of the account shares one pool of concurrent jobs, so CI runs only where it is
 # read. A canary run is never cancelled: merges come faster than a run takes, so cancelling would
 # never let one finish. A newer merge waits instead, and of the waiting runs only the newest is
-# kept, so the run that starts next covers every merge since. A newer push to the milestone pull
+# kept, so the run that starts next covers every merge since. A newer push to the release pull
 # request cancels that pull request's older run.
 concurrency:
   group: ${{ github.workflow }}-${{ github.event_name == 'pull_request' && github.event.pull_request.number || github.ref }}
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
-  # A pull request runs CI only when it is the milestone one, canary into main: any other into main
-  # starts the workflow, but every job is skipped and holds no runner.
+  # A pull request runs CI only when it is the release one into main (from canary or a release/
+  # branch): any other into main starts the workflow, but every job is skipped and holds no runner.
   check:
-    if: github.event_name == 'push' || github.head_ref == 'canary'
+    if: github.event_name == 'push' || (github.head_ref == 'canary' || startsWith(github.head_ref, 'release/'))
     name: build, vet, test
     runs-on: ubuntu-latest
     steps:
@@ -84,7 +85,7 @@ jobs:
 
   # golib/gui: its own module, on Gio, with cgo. The root job never compiles it.
   gui:
-    if: github.event_name == 'push' || github.head_ref == 'canary'
+    if: github.event_name == 'push' || (github.head_ref == 'canary' || startsWith(github.head_ref, 'release/'))
     name: gui (Gio, cgo)
     runs-on: ubuntu-latest
     defaults:
@@ -132,7 +133,7 @@ jobs:
   # integration-tagged files had stopped compiling with nobody the wiser. The script fails on a
   # skip that names a service it provides, so a server that never came up cannot pass as green.
   integration:
-    if: github.event_name == 'push' || github.head_ref == 'canary'
+    if: github.event_name == 'push' || (github.head_ref == 'canary' || startsWith(github.head_ref, 'release/'))
     name: dao integration (PostgreSQL, MySQL)
     runs-on: ubuntu-latest
     steps:
@@ -154,7 +155,7 @@ jobs:
   # commit's golib, as gui is: its go.mod requires an older release, so a break would show only
   # when that requirement is raised. The integration tests need a GCP project and stay tagged out.
   bigquery:
-    if: github.event_name == 'push' || github.head_ref == 'canary'
+    if: github.event_name == 'push' || (github.head_ref == 'canary' || startsWith(github.head_ref, 'release/'))
     name: dao/bigquery
     runs-on: ubuntu-latest
     defaults:
@@ -186,7 +187,7 @@ jobs:
   # govulncheck reports only vulnerabilities golib's code can reach, so every finding is one to
   # fix, by raising the dependency or the toolchain.
   lint:
-    if: github.event_name == 'push' || github.head_ref == 'canary'
+    if: github.event_name == 'push' || (github.head_ref == 'canary' || startsWith(github.head_ref, 'release/'))
     name: staticcheck, govulncheck
     runs-on: ubuntu-latest
     env:
@@ -220,7 +221,7 @@ jobs:
           (cd gui && go work init . .. && staticcheck ./...; status=$?; rm -f go.work go.work.sum; exit $status)
           (cd dao/bigquery && go work init . ../.. && staticcheck ./...; status=$?; rm -f go.work go.work.sum; exit $status)
 
-      # On the milestone pull request into main, each module against the versions its go.mod requires:
+      # On the release pull request into main, each module against the versions its go.mod requires:
       # what a consumer would build. On canary, gui and dao/bigquery may use golib API that is not
       # tagged yet (gui's go.mod is raised only after the golib tag), so there they are checked
       # against this commit's golib, as the staticcheck step builds them.
@@ -242,7 +243,7 @@ jobs:
   # renders into IOSurfaces that a headless Metal window draws without a copy, checked against the
   # CPU's picture.
   gui-macos:
-    if: github.event_name == 'push' || github.head_ref == 'canary'
+    if: github.event_name == 'push' || (github.head_ref == 'canary' || startsWith(github.head_ref, 'release/'))
     name: gui (macOS, Metal)
     runs-on: macos-latest
     defaults:
@@ -271,7 +272,7 @@ jobs:
   # vfs/local watches with FSEvents on macOS, through cgo (ADR golib-vfs-0002): the Linux runner above
   # can only vet the cgo-less darwin build, so the watch itself is built and tested here, on a Mac.
   macos:
-    if: github.event_name == 'push' || github.head_ref == 'canary'
+    if: github.event_name == 'push' || (github.head_ref == 'canary' || startsWith(github.head_ref, 'release/'))
     name: macOS (cgo, vfs)
     runs-on: macos-latest
     steps:
@@ -297,9 +298,9 @@ jobs:
   # An API report, information only (README, "Versioning and stability"): apidiff on each module
   # from the merge base to this commit, written to the run's summary. While golib is alpha it never
   # fails; at public promotion it becomes the gate for "breaking means a minor". The base is the
-  # previous canary commit on a push, and main on the milestone pull request.
+  # previous canary commit on a push, and main on the release pull request.
   apidiff:
-    if: github.event_name == 'push' || github.head_ref == 'canary'
+    if: github.event_name == 'push' || (github.head_ref == 'canary' || startsWith(github.head_ref, 'release/'))
     name: API report (information only)
     runs-on: ubuntu-latest
     continue-on-error: true
@@ -371,7 +372,7 @@ jobs:
 
   coverage:
     name: coverage policy
-    if: github.event_name == 'pull_request' && github.head_ref == 'canary'
+    if: github.event_name == 'pull_request' && (github.head_ref == 'canary' || startsWith(github.head_ref, 'release/'))
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -443,7 +444,7 @@ jobs:
     if: >-
       always() &&
       github.event_name == 'pull_request' &&
-      github.head_ref == 'canary' &&
+      (github.head_ref == 'canary' || startsWith(github.head_ref, 'release/')) &&
       github.event.pull_request.head.repo.full_name == github.repository
     needs: coverage
     runs-on: ubuntu-latest
