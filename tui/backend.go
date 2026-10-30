@@ -318,6 +318,7 @@ type backendCaps struct {
 	metrics     CellMetrics
 	clipW       ClipboardWriter
 	clipR       ClipboardReader
+	bell        Beller
 	natives     NativeHost
 	styler      NativeStyler
 	shapes      PointerShapeHost
@@ -335,6 +336,7 @@ func capsOf(b Backend) backendCaps {
 	c.metrics, _ = b.(CellMetrics)
 	c.clipW, _ = b.(ClipboardWriter)
 	c.clipR, _ = b.(ClipboardReader)
+	c.bell, _ = b.(Beller)
 	c.natives, _ = b.(NativeHost)
 	c.styler, _ = b.(NativeStyler)
 	c.shapes, _ = b.(PointerShapeHost)
