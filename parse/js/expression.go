@@ -369,24 +369,73 @@ type ExprProperty struct {
 // otherwise get subtly wrong.
 func (e *Expr) Walk(fn func(*Expr) bool) {
 	// an explicit stack, not recursion: a left-deep chain (a.b.c…, a+b+c…) is as deep as it is
-	// long, and the parser builds it in a loop that spends no depth budget
-	stack := []*Expr{e}
+	// long, and the parser builds it in a loop that spends no depth budget. A frame reads each child
+	// only when the walk reaches it, as the recursive walk read them: a visitor that rewrites a
+	// node's later children (its Right, an Arg, a Prop) is walked into what it wrote.
+	type frame struct {
+		n    *Expr
+		next walkStep
+		i    int // the next Arg; in the Props, a Prop's key at 2i and its value at 2i+1
+		of   int // the Args or Props, counted as the walk reaches them, as a range counts them
+	}
+	if e == nil || !fn(e) {
+		return
+	}
+	stack := []frame{{n: e}}
 	for len(stack) > 0 {
-		n := stack[len(stack)-1]
-		stack = stack[:len(stack)-1]
-		if n == nil || !fn(n) {
+		f := &stack[len(stack)-1]
+		var c *Expr
+		switch f.next {
+		case walkLeft:
+			c, f.next = f.n.Left, walkRight
+		case walkRight:
+			c, f.next = f.n.Right, walkAlt
+		case walkAlt:
+			c, f.next = f.n.Alt, walkArgs
+		case walkArgs:
+			f.of, f.i, f.next = len(f.n.Args), 0, walkArg
 			continue
+		case walkArg:
+			if f.i == f.of {
+				f.next = walkProps
+				continue
+			}
+			c = &f.n.Args[f.i]
+			f.i++
+		case walkProps:
+			f.of, f.i, f.next = len(f.n.Props), 0, walkProp
+			continue
+		default: // walkProp
+			if f.i == 2*f.of {
+				stack = stack[:len(stack)-1]
+				continue
+			}
+			if p := &f.n.Props[f.i/2]; f.i%2 == 0 {
+				c = p.KeyExpr
+			} else {
+				c = &p.Value
+			}
+			f.i++
 		}
-		// pushed last to first, so they are visited in the order the recursive walk visited them
-		for i := len(n.Props) - 1; i >= 0; i-- {
-			stack = append(stack, &n.Props[i].Value, n.Props[i].KeyExpr)
+		if c != nil && fn(c) {
+			stack = append(stack, frame{n: c})
 		}
-		for i := len(n.Args) - 1; i >= 0; i-- {
-			stack = append(stack, &n.Args[i])
-		}
-		stack = append(stack, n.Alt, n.Right, n.Left)
 	}
 }
+
+// walkStep is where a frame of Walk is in its node's children, in the order the recursive walk took
+// them.
+type walkStep uint8
+
+const (
+	walkLeft walkStep = iota
+	walkRight
+	walkAlt
+	walkArgs // counts the Args
+	walkArg
+	walkProps // counts the Props
+	walkProp
+)
 
 // Parse reads one expression from src and requires that it be the whole of it.
 func (x Expression) Parse(src []byte) (Expr, error) {
