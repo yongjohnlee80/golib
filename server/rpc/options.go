@@ -28,6 +28,9 @@ type config struct {
 	maxConcurrent   int
 	gate            Gate
 	attach          func(nc net.Conn) any
+	handshake       time.Duration
+	idle            time.Duration
+	maxConns        int
 }
 
 // Option configures a Server.
@@ -97,6 +100,28 @@ func MaxMessageBytes(n int64) Option {
 // R4). Must be positive; New panics otherwise.
 func MaxConcurrent(n int) Option {
 	return func(c *config) { c.maxConcurrent = n }
+}
+
+// HandshakeTimeout bounds how long a connection may go, from accept, before its first request is
+// admitted by the [Gate] and served without error: the handshake, by the gate's own convention
+// (default 10s). Past it the connection is closed; a peer that connects and says nothing, or only
+// fails its handshake, holds no connection for longer. It applies only with a WithGate (without
+// one there is no handshake to wait for) and covers a TLS handshake too. 0 disables it.
+func HandshakeTimeout(d time.Duration) Option {
+	return func(c *config) { c.handshake = d }
+}
+
+// IdleTimeout closes a connection d after its last frame and its last finished request, with none
+// in flight (default 0: never). A connection is long-lived by design (an editor's session sits idle between
+// calls, and the client has no keepalive), so this is for a server whose clients reconnect.
+func IdleTimeout(d time.Duration) Option {
+	return func(c *config) { c.idle = d }
+}
+
+// MaxConns bounds the connections served at once (default 256). One past it is closed as it is
+// accepted, before anything of it is read, and logged.
+func MaxConns(n int) Option {
+	return func(c *config) { c.maxConns = n }
 }
 
 // WithGate installs the pre-dispatch gate.
