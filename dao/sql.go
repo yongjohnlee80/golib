@@ -11,7 +11,8 @@ import (
 // are added by.
 type builder struct {
 	dialect  Dialect
-	distinct bool // SELECT DISTINCT, for buildSelect
+	distinct bool   // SELECT DISTINCT, for buildSelect
+	lock     string // a row lock's clause (WithRowLock), appended by buildSelect
 	sb       strings.Builder
 	args     []any
 	n        int // next placeholder index (1-based for $n dialects)
@@ -104,6 +105,7 @@ func (b *builder) buildSelect(table string, cols []string, joins []joinClause,
 		b.sb.WriteString(" OFFSET ")
 		b.sb.WriteString(b.ph(clampInt64(*offset)))
 	}
+	b.sb.WriteString(b.lock)
 	return b.sb.String()
 }
 

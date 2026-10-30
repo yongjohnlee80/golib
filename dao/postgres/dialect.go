@@ -144,3 +144,17 @@ func (PostgresDialect) TransactionalDDL() bool { return true }
 // advisory lock, released at commit or rollback. The key is fixed, the same
 // for every golib runner.
 func (PostgresDialect) DeployLock() string { return "SELECT pg_advisory_xact_lock(7234985120937465)" }
+
+var _ dao.RowLocker = PostgresDialect{}
+
+// RowLockClause implements dao.RowLocker: " FOR UPDATE OF <name>" (or FOR SHARE), where name is
+// table's last, unqualified part, quoted: PostgreSQL resolves OF against the FROM item, and
+// refuses a qualified name there. dao never aliases the schema's table, so the name is the FROM
+// item's.
+func (d PostgresDialect) RowLockClause(l dao.RowLock, table string) string {
+	name := table
+	if i := strings.LastIndexByte(table, '.'); i >= 0 {
+		name = table[i+1:]
+	}
+	return " " + l.String() + " OF " + d.QuoteIdent(name)
+}

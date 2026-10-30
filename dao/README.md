@@ -671,6 +671,47 @@ chunks := dao.New(conn, …, dao.SortParam[…](ByNearest, dao.Distance(dao.T("e
 near, err := chunks.DAO().OrderBy(dao.AscBy(ByNearest, postgres.Vector(q))).Limit(10).Select(…)
 ```
 
+### A typed distance, for an expression index (`DistanceAs`)
+
+An HNSW index covers a column of fixed dimensions. When the column is an untyped `vector`
+(models of several sizes in one table), the index is over a cast, `(vec::vector(768))`, and only
+an `ORDER BY` of that same expression can use it. `dao.DistanceAs` orders by the cast column
+against the cast query vector. The dialect's `TypedVectorDistancer.VectorCast` is the one
+rendering of the cast, for the query and for `postgres.HNSWIndexElement`'s index alike:
+
+```go
+t := dao.VectorType{Kind: dao.VectorFloat32, Dims: 768} // or VectorFloat16: halfvec
+dao.SortParam[…](ByNearest, dao.DistanceAs(dao.C("vec"), dao.Cosine, t))
+// PostgreSQL: ("vec"::vector(768)) <=> $1::vector(768)
+```
+
+The type is the declared key's; a consumer with several sizes declares a key, or a schema, per
+type. A type past the engine's limits fails the key's queries with `ErrUnsupported` (and
+`ErrInvalidArgument`), never the declaration.
+
+### Locking reads (`WithRowLock`)
+
+`dao.WithRowLock(dao.LockForUpdate)` (or `LockForShare`) makes `Get`, `Select` and `Iterate` lock
+the rows they read of the schema's own table, never a joined one, until the transaction ends:
+PostgreSQL's `FOR UPDATE OF <table>`. It needs a transaction (`ErrRowLockNeedsTx` otherwise).
+`Exists`, `Count`, `CountDistinct`, `SelectDistinct`, the writes and `Batch` refuse it
+(`ErrUnsupported`), as does every dialect but PostgreSQL. Every refusal comes before anything is
+sent.
+
+### Composite keys bound as arrays (`KeysIn`)
+
+`dao.KeysIn` matches rows whose columns, together, equal one of a set of keys, with one bound
+array per column however many keys there are:
+
+```go
+d.WithPredicate(dao.KeysIn([]dao.KeyColumn{{Col: "c.doc", Elem: dao.ArrayInt64}, {Col: "c.ord", Elem: dao.ArrayInt32}}, keys))
+// PostgreSQL: (c.doc, c.ord) IN (SELECT * FROM unnest($1::bigint[], $2::integer[]))
+```
+
+Empty keys match nothing. A key of the wrong width or a value of the wrong type is
+`ErrInvalidArgument`, and a dialect without `ArrayKeyer` is `ErrUnsupported`, both before
+anything is sent.
+
 ### Settings for one statement (`WithLocalSettings`)
 
 An HNSW search with a filter needs settings in force for its own statement:
