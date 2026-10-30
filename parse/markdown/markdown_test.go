@@ -230,14 +230,23 @@ func linearFamilies() []linearFamily {
 // each kept; a timing spans at least 20ms (timeBoth). A family over the bound is measured again, twice at most, and fails only when every
 // measurement is over: a super-linear family is over every time, a burst of load on a shared machine
 // is not.
+//
+// A family that parses the small input in more than budget, in each of three tries, fails before
+// any of that: a linear family parses 200k bytes in milliseconds, and a quadratic one takes seconds
+// there and many times that at 4n, so it is caught by one parse rather than timed until the test's
+// deadline.
 func TestLinearTime(t *testing.T) {
 	if testing.Short() || raceEnabled {
 		t.Skip("timing measurement: not under -short, nor under -race's instrumentation")
 	}
-	const n, k, bound = 200_000, 4, 7.75
+	const n, k, bound, budget = 200_000, 4, 7.75, 250 * time.Millisecond
 	for _, f := range linearFamilies() {
 		t.Run(f.name, func(t *testing.T) {
 			small, large := []byte(f.gen(n)), []byte(f.gen(k*n))
+			if d := onceBest(small, f.opts, budget); d > budget {
+				t.Errorf("%d bytes took %v in each of 3 parses, past the %v a linear parse needs — not linear", len(small), d, budget)
+				return
+			}
 			var ratios []float64
 			for attempt := 0; attempt < 3; attempt++ {
 				ts, tl := timeBoth(small, large, f.opts)
@@ -252,6 +261,20 @@ func TestLinearTime(t *testing.T) {
 			}
 		})
 	}
+}
+
+// onceBest is the quickest of up to three single parses of src, stopping at the first within budget.
+func onceBest(src []byte, opts []markdown.Option, budget time.Duration) time.Duration {
+	best := time.Duration(1<<63 - 1)
+	for range 3 {
+		runtime.GC()
+		start := time.Now()
+		markdown.Parse(src, opts...)
+		if best = min(best, time.Since(start)); best <= budget {
+			break
+		}
+	}
+	return best
 }
 
 // timeBoth is the best of two timings of small and of large, interleaved, the garbage of each
