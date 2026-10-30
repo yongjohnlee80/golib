@@ -2,7 +2,6 @@ package markdown_test
 
 import (
 	"bytes"
-	"math"
 	"runtime"
 	"slices"
 	"sort"
@@ -232,27 +231,26 @@ func linearFamilies() []linearFamily {
 // measurement is over: a super-linear family is over every time, a burst of load on a shared machine
 // is not.
 //
-// A family whose small input parses more than slower times as long as a plain input of the same
-// size, in each of three tries, fails before any of that: a quadratic family is caught by one
-// parse rather than timed until the test's deadline. The plain input (controlInput) is parsed
-// between the family's parses, so load on a shared machine slows both and leaves the multiple; a
-// fixed time would not: a linear family is not uniformly fast, and the slowest (deep-block-quotes)
-// took about 200ms a parse unloaded and past 250ms under load. slower sits between the slowest
-// linear family's multiple, about 95, and the old n-squared link walks', about 700 and more (1.5s
-// and 4.8s a parse against the plain input's 2ms), with about 2.6 times room on either side.
+// A family whose small input parses more than slow times as long as plain paragraphs of the same
+// size (controlInput, timed between its parses) is measured at a tenth of n and 4n instead. A
+// quadratic family takes seconds a parse at n, so timed there it ran to the test's deadline; at a
+// tenth it still takes about 16 times longer at 4n, in milliseconds, and fails on the ratio. The
+// multiple only routes: the verdict is always the family's own ratio, which load meets at both
+// sizes alike. A fixed time, or a bound on the multiple itself, was not load-invariant: the slowest
+// linear family (deep-block-quotes) is about 80 to 95 times the plain input, and under a CPU hog an
+// old n-squared link walk fell as low as 300.
 func TestLinearTime(t *testing.T) {
 	if testing.Short() || raceEnabled {
 		t.Skip("timing measurement: not under -short, nor under -race's instrumentation")
 	}
-	const n, k, bound, slower = 200_000, 4, 7.75, 250.0
+	const n, k, bound, slow = 200_000, 4, 7.75, 20.0
 	plain := []byte(controlInput(n))
 	for _, f := range linearFamilies() {
 		t.Run(f.name, func(t *testing.T) {
 			small, large := []byte(f.gen(n)), []byte(f.gen(k*n))
-			m := againstControl(small, plain, f.opts, slower)
-			if m > slower {
-				t.Errorf("%d bytes took %.0fx a plain input's time in each of 3 parses, past the %vx a linear family takes — not linear", len(small), m, slower)
-				return
+			m := againstControl(small, plain, f.opts)
+			if m > slow {
+				small, large = []byte(f.gen(n/10)), []byte(f.gen(k*n/10))
 			}
 			var ratios []float64
 			for attempt := 0; attempt < 3; attempt++ {
@@ -277,22 +275,15 @@ func controlInput(n int) string {
 	return strings.Repeat(p, n/len(p))
 }
 
-// againstControl is the least of up to three multiples of a single parse of src over a parse of
-// plain (timed per parse, as timeBoth times), stopping at the first within limit. Each try times
-// src and then plain, so a burst of load meets both; src is parsed once, so a quadratic one costs
-// one parse a try, not a 20ms window.
-func againstControl(src, plain []byte, opts []markdown.Option, limit float64) float64 {
-	least := math.Inf(1)
-	for range 3 {
-		runtime.GC()
-		start := time.Now()
-		markdown.Parse(src, opts...)
-		ts := time.Since(start)
-		if least = min(least, float64(ts)/float64(max(perParse(plain, opts), time.Microsecond))); least <= limit {
-			break
-		}
-	}
-	return least
+// againstControl is how many times a parse of plain one parse of src takes, plain timed just after
+// it per parse (as timeBoth times). src is parsed once, so a quadratic one costs one parse, not a
+// 20ms window; one measurement is enough, as it only routes (TestLinearTime).
+func againstControl(src, plain []byte, opts []markdown.Option) float64 {
+	runtime.GC()
+	start := time.Now()
+	markdown.Parse(src, opts...)
+	ts := time.Since(start)
+	return float64(ts) / float64(max(perParse(plain, opts), time.Microsecond))
 }
 
 // perParse is the time per parse of src, parsed again until 20ms have passed, its garbage collected
