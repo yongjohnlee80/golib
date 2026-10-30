@@ -33,3 +33,22 @@ func TestRank(t *testing.T) {
 		t.Errorf("rank(unknown) = %d, want -1", rank(Severity("Bogus")))
 	}
 }
+
+func TestParseSeverityNamesTheSixInAnyCase(t *testing.T) {
+	t.Parallel()
+
+	for in, want := range map[string]Severity{
+		"debug": SeverityDebug, "Info": SeverityInfo, "NOTICE": SeverityNotice,
+		" warning ": SeverityWarning, "error": SeverityError, "Critical": SeverityCritical,
+	} {
+		got, err := ParseSeverity(in)
+		if err != nil || got != want {
+			t.Errorf("ParseSeverity(%q) = %q, %v; want %q", in, got, err, want)
+		}
+	}
+	for _, bad := range []string{"", "warn", "fatal", "Debugx"} {
+		if got, err := ParseSeverity(bad); err == nil || got != "" {
+			t.Errorf("ParseSeverity(%q) = %q, %v; want an error and no severity", bad, got, err)
+		}
+	}
+}

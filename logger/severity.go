@@ -1,5 +1,10 @@
 package logger
 
+import (
+	"fmt"
+	"strings"
+)
+
 // Severity classifies a log record. The values match monstercat/golib/logger.Severity
 // and ddex-sftp's logger, so records bridge between them losslessly.
 type Severity string
@@ -48,6 +53,20 @@ func rank(s Severity) int {
 		return r
 	}
 	return -1
+}
+
+// ParseSeverity is the severity named s, one of the six known ones in any case
+// ("debug", "Warning", "ERROR"), surrounding spaces ignored: for a log-level flag
+// or setting, which [WithMinLevel] then applies. Any other name is an error that
+// lists the six.
+func ParseSeverity(s string) (Severity, error) {
+	t := strings.TrimSpace(s)
+	for _, known := range []Severity{SeverityDebug, SeverityInfo, SeverityNotice, SeverityWarning, SeverityError, SeverityCritical} {
+		if strings.EqualFold(t, string(known)) {
+			return known, nil
+		}
+	}
+	return "", fmt.Errorf("logger: unknown severity %q: want debug, info, notice, warning, error or critical", s)
 }
 
 // InList reports whether needle is present in haystack (parity with
