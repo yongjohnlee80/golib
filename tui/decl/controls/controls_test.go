@@ -378,3 +378,23 @@ func TestTheCompletionsSetterRefusesWhatItIsNotGiven(t *testing.T) {
 		t.Errorf("an object that is not a model: %v", err)
 	}
 }
+
+const areaDoc = "import tui 1.0\nimport demo 1.0\nWindow {\n" +
+	" TextArea { id: reply; focus: true; placeholderText: \"your reply\"; wrapMode: TextEdit.WordWrap }\n" +
+	" Shortcut { sequence: \"Ctrl+S\"; onActivated: App.run(reply.text) } }"
+
+// A TextArea takes several lines, Enter breaking the line, shows its placeholder while empty, and a
+// handler reads what was typed by id, newlines kept.
+func TestATextAreaTakesLinesAHandlerReads(t *testing.T) {
+	rec := &recorder{}
+	s := runQML(t, areaDoc, rec)
+	s.WaitForText(t, "your reply")
+	typing := append(decltest.Type("hello"), tui.KeyEvent{Kind: tui.KeyPress, Code: tui.KeyEnter})
+	s.Keys(t, append(typing, decltest.Type("world")...)...)
+	s.WaitForText(t, "world")
+	s.Keys(t, decltest.Ctrl('s'))
+	waitFor(t, "the handler", func() bool { return len(rec.got("run")) == 1 })
+	if got := rec.got("run")[0]; got != "hello\nworld" {
+		t.Fatalf("the handler read %q, want the two lines typed", got)
+	}
+}

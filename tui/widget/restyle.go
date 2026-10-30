@@ -52,6 +52,13 @@ func (t *TextInput) WithStyles(st TextInputStyles) *TextInput {
 	return t
 }
 
+// WithStyles replaces the text area's looks: each slot given over golib's own.
+func (t *TextArea) WithStyles(st TextInputStyles) *TextArea {
+	t.styles = st.over(defaultTextInputStyles())
+	t.MarkDirty()
+	return t
+}
+
 // WithBarStyle replaces the bar's base style; the zero value restores the
 // panel tokens.
 func (s *StatusBar) WithBarStyle(st style.Style) *StatusBar {

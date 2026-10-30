@@ -340,6 +340,22 @@ func TestButtonFieldAndScrollbarAreNotThePanelsColour(t *testing.T) {
 			t.Fatalf("the field's fill %+v; want its own %v", rc.Calls, sepiaBG)
 		}
 	})
+	t.Run("text area", func(t *testing.T) {
+		if NativeStyle().painterFor(widget.NewTextArea()) == nil {
+			t.Fatal("the native style has no painter for a text area")
+		}
+		view, _, ok := paintTextArea(widget.NewTextArea())
+		if !ok {
+			t.Fatal("no view")
+		}
+		rc := paintUnder(t, view, overView{cols: 10, rows: 3, covered: at(0)})
+		if rc.Calls[0].Op != "FillRect" || rc.Calls[0].Brush.Color != sepiaBG {
+			t.Fatalf("the area's fill %+v; want its own %v", rc.Calls, sepiaBG)
+		}
+		if last := rc.Calls[len(rc.Calls)-1]; last.Op != "StrokeRRect" {
+			t.Fatalf("the area's border %+v; want it drawn last, over the cells", rc.Calls)
+		}
+	})
 	t.Run("scroll bar", func(t *testing.T) {
 		view, _, ok := paintScrollbar(&fakeScroller{view: 3, content: 10})
 		if !ok {
