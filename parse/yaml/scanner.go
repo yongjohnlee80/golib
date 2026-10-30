@@ -55,6 +55,7 @@ type simpleKey struct {
 	possible, required bool
 	tokenNumber        int
 	mark               mark
+	chars              int  // the scanner's chars at the key's start
 	tabbed             bool // started on a line whose indentation held a tab
 }
 
@@ -63,6 +64,7 @@ type simpleKey struct {
 type scanner struct {
 	src    []byte
 	i      int
+	chars  int // characters consumed: an implicit key's 1024 are characters, not bytes
 	line   int
 	col    int
 	tokens []token
@@ -124,6 +126,7 @@ func (s *scanner) mark() mark { return mark{s.i, s.line, s.col} }
 // advance consumes one character that is not a line break.
 func (s *scanner) advance() {
 	s.i += charLen(s.src[s.i:])
+	s.chars++
 	s.col++
 }
 
@@ -131,8 +134,10 @@ func (s *scanner) advance() {
 func (s *scanner) skipBreak() {
 	if s.at(0) == '\r' && s.at(1) == '\n' {
 		s.i += 2
+		s.chars += 2
 	} else {
 		s.i++
+		s.chars++
 	}
 	s.line++
 	s.col = 0
@@ -352,6 +357,7 @@ func (s *scanner) scanToNextToken() error {
 	for {
 		if s.col == 0 && s.at(0) == 0xEF && s.at(1) == 0xBB && s.at(2) == 0xBF {
 			s.i += 3 // a byte order mark before a document
+			s.chars++
 		}
 		for s.at(0) == ' ' || s.at(0) == '\t' {
 			if s.at(0) == '\t' {
@@ -400,7 +406,7 @@ func (s *scanner) staleSimpleKeys() error {
 		inFlowMapping := i > 0 && i <= len(s.flowKinds) && s.flowKinds[i-1]
 		// an implicit key is at most 1024 characters, in a flow mapping too, as YAML 1.2 says: a key
 		// there may span lines, but never holds the scanner's lookahead past that
-		if k.possible && (!inFlowMapping && k.mark.line < s.line || k.mark.off+1024 < s.i) {
+		if k.possible && (!inFlowMapping && k.mark.line < s.line || s.chars-k.chars > 1024) {
 			if k.required {
 				return s.errorf(k.mark, "could not find the expected ':' of an implicit key")
 			}
@@ -417,7 +423,7 @@ func (s *scanner) saveSimpleKey() error {
 			return err
 		}
 		s.simpleKeys[len(s.simpleKeys)-1] = simpleKey{possible: true, required: required,
-			tokenNumber: s.parsed + len(s.tokens) - s.head, mark: s.mark(), tabbed: s.tabIndent}
+			tokenNumber: s.parsed + len(s.tokens) - s.head, mark: s.mark(), chars: s.chars, tabbed: s.tabIndent}
 	}
 	return nil
 }

@@ -175,6 +175,8 @@ func linearFamilies() []linearFamily {
 		"unclosed-html-decls":    func(n int) string { return strings.Repeat("a <!A", n/5) },
 		// open brackets under many links: each link deactivates the openers below it once
 		"open-brackets-then-links": func(n int) string { return strings.Repeat("[", n/2) + strings.Repeat("[a](b) ", n/14) },
+		// open image openers under many links: no link passes the image openers again
+		"open-images-then-links": func(n int) string { return strings.Repeat("![", n/4) + strings.Repeat("[a](b) ", n/14) },
 	}
 	gfmFamilies := map[string]func(n int) string{
 		"gfm-tilde-runs":      func(n int) string { return strings.Repeat("~~a", n/3) },

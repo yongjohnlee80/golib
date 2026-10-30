@@ -353,4 +353,14 @@ func TestAFlowKeyHoldsTheScannerToItsBounds(t *testing.T) {
 	if _, err := yaml.Parse([]byte("{" + strings.Repeat("k", 2000) + ": v}")); err == nil {
 		t.Error("a 2000-character implicit flow key parsed")
 	}
+	// characters, not bytes: 1000 three-byte characters are a key, in flow and in block
+	wide := strings.Repeat("\u3042", 1000)
+	for _, doc := range []string{"{" + wide + ": v}", wide + ": v\n"} {
+		if _, err := yaml.Parse([]byte(doc)); err != nil {
+			t.Errorf("a 1000-character key of three-byte characters (%.12q…): %v", doc, err)
+		}
+	}
+	if _, err := yaml.Parse([]byte("{" + strings.Repeat("\u3042", 1100) + ": v}")); err == nil {
+		t.Error("an 1100-character implicit flow key parsed")
+	}
 }
