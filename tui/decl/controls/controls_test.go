@@ -418,3 +418,63 @@ func TestATextAreaTakesLinesAHandlerReads(t *testing.T) {
 		t.Fatalf("the handler read %q, want the two lines typed", got)
 	}
 }
+
+// clear() empties a TextArea, and a TextField, as Qt's do: a handler then reads "".
+func TestClearEmptiesATextAreaAndATextField(t *testing.T) {
+	for name, field := range map[string]string{
+		"TextArea":  `TextArea { id: f; focus: true }`,
+		"TextField": `TextField { id: f; focus: true }`,
+	} {
+		t.Run(name, func(t *testing.T) {
+			rec := &recorder{}
+			s := runQML(t, "import tui 1.0\nimport demo 1.0\nWindow {\n "+field+"\n"+
+				" Shortcut { sequence: \"Ctrl+K\"; onActivated: f.clear() }\n"+
+				" Shortcut { sequence: \"Ctrl+S\"; onActivated: App.run(f.text) } }", rec)
+			s.Keys(t, decltest.Type("draft")...)
+			s.WaitForText(t, "draft")
+			s.Keys(t, decltest.Ctrl('k'), decltest.Ctrl('s'))
+			waitFor(t, "the handler", func() bool { return len(rec.got("run")) == 1 })
+			if got := rec.got("run")[0]; got != "" {
+				t.Fatalf("after clear() the handler read %q, want nothing", got)
+			}
+		})
+	}
+}
+
+// A TextArea's placeholder may be a catalog message (qsTrId): with no catalog, its id shows.
+func TestATextAreaTakesAMessageAsItsPlaceholder(t *testing.T) {
+	s := runQML(t, "import tui 1.0\nWindow { TextArea { placeholderText: qsTrId(\"demo.reply.hint\") } }", &recorder{})
+	s.WaitForText(t, "demo.reply.hint")
+}
+
+// A wrapMode outside the enum refuses the declaration, naming the property.
+func TestATextAreaRefusesAnUnknownWrapMode(t *testing.T) {
+	a := tuidecl.New(tuidecl.StdRegistry(), append(tuidecl.StdProperties(),
+		tuidecl.WithErrorSink(func(error) {}), tuidecl.WithTypes(controls.Types()...))...)
+	tr := decl.New(a)
+	spec, err := qml.QML{}.Parse([]byte("import tui 1.0\nTextArea { wrapMode: TextEdit.Sideways }"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := tr.Mount(spec); err == nil || !strings.Contains(err.Error(), "wrapMode") {
+		t.Fatalf("mount: %v, want a refusal naming wrapMode", err)
+	}
+}
+
+// The selection is drawn in the palette's highlight when the palette has one.
+func TestATextAreasSelectionWearsTheHighlight(t *testing.T) {
+	green := tui.CellColor{Kind: tui.CellColorANSI, Index: 2}
+	s := runQML(t, "import tui 1.0\nWindow { palette.highlight: \"green\"; palette.highlightedText: \"black\"\n"+
+		" TextArea { focus: true; text: \"abcd\" } }", &recorder{})
+	s.WaitForText(t, "abcd")
+	shiftLeft := tui.KeyEvent{Kind: tui.KeyPress, Code: tui.KeyLeft, Mods: tui.ModShift}
+	s.Keys(t, tui.KeyEvent{Kind: tui.KeyPress, Code: tui.KeyEnd}, shiftLeft, shiftLeft)
+	s.WaitFor(t, "a selected cell on green", func(string) bool {
+		for _, c := range s.Backend.Snapshot()[0] {
+			if c.Attrs.BG == green {
+				return true
+			}
+		}
+		return false
+	})
+}
