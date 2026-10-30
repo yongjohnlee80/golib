@@ -77,20 +77,6 @@ func (v *View) String() (string, error) {
 	return string(b), err
 }
 
-// segmentFor finds the held segment covering off. v.mu must be held.
-//
-// NOT on a hot path: AppendTo and viewReader walk held with a cursor. Kept for
-// the single-segment lookups where a scan over a handful of entries is clearer
-// than an index.
-func (v *View) segmentFor(off int64) *segment {
-	for _, s := range v.held {
-		if s.covers(off) {
-			return s
-		}
-	}
-	return nil
-}
-
 // Close releases the span. It is idempotent: releasing twice is a no-op rather
 // than a double-decrement that would let a live segment be recycled.
 func (v *View) Close() error {

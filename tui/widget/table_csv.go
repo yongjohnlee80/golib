@@ -612,14 +612,6 @@ func (t *TableCSV) DeleteField(at int) bool {
 	return t.CommitCells(TableCellsOp{DeleteFields: []int{at}})
 }
 
-func (t *TableCSV) recordPtrs() []*csvRecord {
-	out := make([]*csvRecord, len(t.records))
-	for i := range t.records {
-		out[i] = &t.records[i]
-	}
-	return out
-}
-
 // SetAlign is refused: CSV has no alignment.
 func (t *TableCSV) SetAlign(int, style.Align) bool { return false }
 

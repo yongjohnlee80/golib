@@ -10,7 +10,6 @@ type blockState struct {
 	segs          []seg  // where content came from, for mapping inline spans back to the source
 	fenceLen      int
 	fenceOffset   int // columns of indent before the opening fence
-	startedBlank  bool
 }
 
 // seg records that content[at : at+pad+n] is pad spaces (the remainder of a partly consumed tab)

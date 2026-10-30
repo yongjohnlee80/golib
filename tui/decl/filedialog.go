@@ -4,7 +4,6 @@ import (
 	"fmt"
 	"slices"
 
-	"github.com/yongjohnlee80/golib/highlight"
 	"github.com/yongjohnlee80/golib/parse/qml"
 	"github.com/yongjohnlee80/golib/tui"
 	"github.com/yongjohnlee80/golib/tui/widget"
@@ -239,15 +238,6 @@ func (d *dialogNode) setFolder(dir string) {
 	if d.chooser != nil && dir != "" {
 		d.chooser.SetDir(dir)
 	}
-}
-
-// highlighterFor is the highlighter a previewed file's name calls for, nil for
-// none.
-func (d *dialogNode) highlighterFor(name string) highlight.Highlighter {
-	if def, ok := d.highlighters.DefinitionForFileName(name); ok {
-		return def.NewSource(d.highlighters).Highlighter
-	}
-	return nil
 }
 
 // fileDialogType is the FileDialog type.

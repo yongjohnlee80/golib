@@ -330,12 +330,3 @@ func TestWS_DependencyIsolation(t *testing.T) {
 		t.Error("server core packages must not depend on the websocket library")
 	}
 }
-
-// errorsAs is a tiny local wrapper to avoid importing errors just for one call.
-func errorsAs(err error, target *websocket.CloseError) bool {
-	ce, ok := err.(websocket.CloseError)
-	if ok {
-		*target = ce
-	}
-	return ok
-}

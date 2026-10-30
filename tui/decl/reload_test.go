@@ -591,11 +591,6 @@ func TestTheStructuralGuardsRefuseRatherThanPanic(t *testing.T) {
 	}
 }
 
-func countKids(t *testing.T, a *tuidecl.Adapter, id decl.NodeID) int {
-	t.Helper()
-	return len(containerKids(t, a, id))
-}
-
 func containerKids(t *testing.T, a *tuidecl.Adapter, id decl.NodeID) []tui.Component {
 	t.Helper()
 	c, ok := a.Component(id)
