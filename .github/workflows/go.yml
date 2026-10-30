@@ -19,11 +19,13 @@ permissions:
   contents: read
 
 # Every repository of the account shares one pool of concurrent jobs, so CI runs only where it is
-# read: a newer merge into canary cancels the older canary run (the newer tree holds it), and a
-# newer push to the milestone pull request cancels that pull request's older run.
+# read. A canary run is never cancelled: merges come faster than a run takes, so cancelling would
+# never let one finish. A newer merge waits instead, and of the waiting runs only the newest is
+# kept, so the run that starts next covers every merge since. A newer push to the milestone pull
+# request cancels that pull request's older run.
 concurrency:
   group: ${{ github.workflow }}-${{ github.event_name == 'pull_request' && github.event.pull_request.number || github.ref }}
-  cancel-in-progress: true
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
   # A pull request runs CI only when it is the milestone one, canary into main: any other into main
