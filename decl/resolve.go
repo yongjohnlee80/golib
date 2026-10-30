@@ -358,8 +358,6 @@ func (t *Tree) lookupRef(v qml.SpecValue, at NodeID) (Injected, string, error) {
 	if len(path) == 0 {
 		path = splitDots(v.Raw)
 	}
-	name := v.Raw
-
 	canon, reason := t.canonical(path)
 	switch reason {
 	case nameQualifierEmpty:
@@ -372,7 +370,8 @@ func (t *Tree) lookupRef(v qml.SpecValue, at NodeID) (Injected, string, error) {
 			"%q is exported by the %q module; add `import %s` to use it",
 			path[0], mod, mod))
 	}
-	path, name = canon, joinDots(canon)
+	path = canon
+	name := joinDots(canon)
 
 	if in, ok := t.lookupName(name); ok {
 		return in, name, nil

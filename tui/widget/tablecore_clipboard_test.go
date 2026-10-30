@@ -91,7 +91,7 @@ func TestASystemPasteIsABlock(t *testing.T) {
 	if want := "a,b\nx,y\nz,w\n"; core.Value() != want {
 		t.Fatalf("%q, want %q", core.Value(), want)
 	}
-	c, _, core, _ = csvTable(text)
+	c, _, _, _ = csvTable(text)
 	if !c.Paste("\"two\nlines\"") || c.Cell(0, 0) != "two\nlines" {
 		t.Fatalf("a quoted cell: %q", c.Cell(0, 0))
 	}

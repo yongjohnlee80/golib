@@ -193,6 +193,7 @@ func TestPlan_Hardening(t *testing.T) {
 	assertPanics(t, "clearkey field", ClearKey, func() { planFor[clearKeyField]() })
 
 	// plan is cached: same pointer across calls.
+	//lint:ignore SA4000 the two calls are the point: the plan is cached, so both return one pointer
 	if planFor[release]() != planFor[release]() {
 		t.Errorf("planFor not cached")
 	}

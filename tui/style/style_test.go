@@ -273,6 +273,7 @@ func TestColorSpecFlattening(t *testing.T) {
 	}
 
 	// Token-carrying styles built through identical chains stay comparable.
+	//lint:ignore SA4000 two identical chains must build styles that compare equal: that is what is tested
 	if New().Foreground(TokenPrimary) != New().Foreground(TokenPrimary) {
 		t.Fatal("token-flattened styles are not ==")
 	}
