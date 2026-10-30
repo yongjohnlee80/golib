@@ -356,6 +356,34 @@ func TestButtonFieldAndScrollbarAreNotThePanelsColour(t *testing.T) {
 			t.Fatalf("the area's border %+v; want it drawn last, over the cells", rc.Calls)
 		}
 	})
+	t.Run("text area with its first row covered", func(t *testing.T) {
+		view, _, _ := paintTextArea(widget.NewTextArea())
+		rc := paintUnder(t, view, overView{cols: 10, rows: 3, covered: func(_, row int) bool { return row == 0 }})
+		if len(rc.Calls) == 0 || rc.Calls[0].Op != "FillRect" || rc.Calls[0].Brush.Color != sepiaBG {
+			t.Fatalf("the area under a panel over its first row %+v; want its open rows painted, in its own %v", rc.Calls, sepiaBG)
+		}
+	})
+	t.Run("text area's placeholder", func(t *testing.T) {
+		// the placeholder's cells, from (0, 0), wear a muted accent: the area's frame is the area's
+		// own colour, read from a cell past them
+		accent := color.NRGBA{R: 0xc0, G: 0x30, B: 0x20, A: 0xff}
+		ta := widget.NewTextArea(widget.WithTextAreaPlaceholder("say"))
+		ta.Layout(tui.Tight(tui.Size{W: 10, H: 3}))
+		view, _, _ := paintTextArea(ta)
+		rc := paintUnder(t, view, overView{cols: 10, rows: 3, covered: func(int, int) bool { return false },
+			own: func(col, row int) (color.NRGBA, color.NRGBA) {
+				if row == 0 && col < 3 {
+					return accent, accent
+				}
+				return sepiaFG, sepiaBG
+			}})
+		if len(rc.Calls) == 0 || rc.Calls[0].Op != "FillRect" || rc.Calls[0].Brush.Color != sepiaBG {
+			t.Fatalf("the area's fill %+v; want its own %v, not the placeholder's", rc.Calls, sepiaBG)
+		}
+		if last := rc.Calls[len(rc.Calls)-1]; last.Op != "StrokeRRect" || last.Brush.Color != alpha(sepiaFG, 0.3) {
+			t.Fatalf("the area's border %+v; want in its own %v", last, sepiaFG)
+		}
+	})
 	t.Run("scroll bar", func(t *testing.T) {
 		view, _, ok := paintScrollbar(&fakeScroller{view: 3, content: 10})
 		if !ok {

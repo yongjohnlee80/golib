@@ -359,62 +359,114 @@ func (t *TextArea) Cursor() (int, int, bool) {
 	return caretAt(t.textLines, t.view(), t.top, t.left, t.ln, t.col, t.cellsAt(t.ln, t.col))
 }
 
-// Render paints the viewport, the selection fill, and the scroll indicator.
+// Render paints the viewport, the selection fill, and the scroll indicator. Every cell wears the
+// area's own text style first, so the cells past a line's end and below the last line are the
+// area's, never its parent's.
 func (t *TextArea) Render(s tui.Surface) {
 	sz := s.Size()
 	if sz.W <= 0 || sz.H <= 0 {
 		return
 	}
-	w := t.wrapWidth()
-	if len(t.textLines) == 1 && t.textLines[0] == "" {
-		if ph := t.placeholder.inLanguage(&t.Base); ph != "" {
-			drawText(s, 0, 0, truncate(ph, w, s.StringWidth), t.styles.Placeholder)
-		}
+	s.Fill(tui.Rect{W: sz.W, H: sz.H}, " ", t.styles.Text)
+	if ph, ok := t.shownPlaceholder(s.StringWidth); ok {
+		drawText(s, 0, 0, ph, t.styles.Placeholder)
 		return
 	}
 	selLo, selHi, hasSel := t.selection()
-	paintCluster := func(x, y int, cl string, ln, col int) {
+	t.eachDrawn(sz.H, s.StringWidth, func(x, y int, cl string, ln, col int) {
 		st := t.styles.Text
-		if hasSel && t.focused() &&
-			(taPos{ln, col}).in(selLo, selHi) {
+		if hasSel && t.focused() && (taPos{ln, col}).in(selLo, selHi) {
 			st = t.styles.Selection.Inherit(st)
 		}
 		s.SetCell(x, y, cl, st)
+	})
+	if t.scrollable() {
+		paintScrollIndicator(s, sz.W-1, sz.H, t.top, wrapMaxTop(t.textLines, t.view()))
 	}
+}
+
+// shownPlaceholder is the placeholder as Render draws it, at (0, 0): ok only while the area is
+// empty and has one.
+func (t *TextArea) shownPlaceholder(measure func(string) int) (string, bool) {
+	if len(t.textLines) != 1 || t.textLines[0] != "" {
+		return "", false
+	}
+	ph := truncate(t.placeholder.inLanguage(&t.Base), t.wrapWidth(), measure)
+	return ph, ph != ""
+}
+
+// eachDrawn walks the clusters Render draws in a viewport rows high: each one's cell and its line
+// and cluster index. Render and SelectionCells share it, so a host's selection cells are the
+// drawn ones.
+func (t *TextArea) eachDrawn(rows int, measure func(string) int, fn func(x, y int, cl string, ln, col int)) {
+	w := t.wrapWidth()
 	y := 0
-	for ln := t.top; ln < len(t.textLines) && y < sz.H; ln++ {
+	for ln := t.top; ln < len(t.textLines) && y < rows; ln++ {
 		cs := t.lineClusters(ln)
 		if t.wrap == WrapNone {
 			x := -t.left
 			for col, cl := range cs {
-				cw := s.StringWidth(cl)
+				cw := measure(cl)
 				if x+cw > w {
 					break
 				}
 				if x >= 0 {
-					paintCluster(x, y, cl, ln, col)
+					fn(x, y, cl, ln, col)
 				}
 				x += cw
 			}
 			y++
 			continue
 		}
-		// WrapSoft: paint each wrapped row by cluster range.
-		for _, r := range wrapRanges(cs, w, s.StringWidth) {
-			if y >= sz.H {
+		// WrapSoft: each wrapped row by cluster range.
+		for _, r := range wrapRanges(cs, w, measure) {
+			if y >= rows {
 				break
 			}
 			x := 0
 			for col := r[0]; col < r[1]; col++ {
-				paintCluster(x, y, cs[col], ln, col)
-				x += s.StringWidth(cs[col])
+				fn(x, y, cs[col], ln, col)
+				x += measure(cs[col])
 			}
 			y++
 		}
 	}
-	if t.scrollable() {
-		paintScrollIndicator(s, sz.W-1, sz.H, t.top, wrapMaxTop(t.textLines, t.view()))
+}
+
+// SelectionCells implements tui.SelectionCells: one rect per row the selection is drawn on, over
+// the selected clusters' cells; none while the area is unfocused, as Render draws none.
+func (t *TextArea) SelectionCells() ([]tui.Rect, bool) {
+	lo, hi, ok := t.selection()
+	if !ok || !t.focused() || t.w <= 0 || t.h <= 0 {
+		return nil, false
 	}
+	var out []tui.Rect
+	t.eachDrawn(t.h, t.measure, func(x, y int, cl string, ln, col int) {
+		if !(taPos{ln, col}).in(lo, hi) {
+			return
+		}
+		cw := t.measure(cl)
+		if n := len(out); n > 0 && out[n-1].Y == y && out[n-1].X+out[n-1].W == x {
+			out[n-1].W += cw
+			return
+		}
+		out = append(out, tui.Rect{X: x, Y: y, W: cw, H: 1})
+	})
+	return out, len(out) > 0
+}
+
+// PlaceholderCells is the cells the placeholder is drawn over, in the area's own frame, as
+// SelectionCells reports the selection's, so a host that paints the area natively (gui) can tell
+// them from the area's own: one rect on row 0, ok only while the placeholder shows.
+func (t *TextArea) PlaceholderCells() ([]tui.Rect, bool) {
+	if t.w <= 0 || t.h <= 0 {
+		return nil, false
+	}
+	ph, ok := t.shownPlaceholder(t.measure)
+	if !ok {
+		return nil, false
+	}
+	return []tui.Rect{{W: t.measure(ph), H: 1}}, true
 }
 
 // view is the layout state the shared soft-wrap geometry needs. It is the
