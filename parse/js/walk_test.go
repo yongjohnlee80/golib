@@ -53,53 +53,63 @@ func TestWalkVisitsAsTheRecursiveWalkDid(t *testing.T) {
 }
 
 // TestWalkIsWalkedIntoWhatAVisitorRewrote: Walk is for rewriting too, so a node's later children
-// are read when the walk reaches them: a visitor that replaces a later sibling (a Right, an Arg, a
-// Prop's value) is walked into the replacement, never the node it replaced.
+// are read when the walk reaches them: a visitor at a that replaces a later sibling (a Right, or the
+// Args or Props rebound to a fresh slice, or an element of them rewritten in place) is walked into
+// the replacement c, never the node it replaced, as the recursive walk was.
 func TestWalkIsWalkedIntoWhatAVisitorRewrote(t *testing.T) {
 	id := func(s string) js.Expr { return js.Expr{Kind: js.ExprIdent, Raw: s} }
-	for name, build := range map[string]func() (*js.Expr, func(*js.Expr)){
-		"a Right": func() (*js.Expr, func(*js.Expr)) {
-			a, b := id("a"), id("b")
+	prop := func(k string, v js.Expr) js.ExprProperty { return js.ExprProperty{Key: k, Value: v} }
+	cases := []struct {
+		name  string
+		build func() (*js.Expr, func(*js.Expr))
+	}{
+		{"a Right replaced", func() (*js.Expr, func(*js.Expr)) {
+			a, b, c := id("a"), id("b"), id("c")
 			root := &js.Expr{Kind: js.ExprBinary, Left: &a, Right: &b}
-			c := id("c")
-			return root, func(n *js.Expr) {
-				if n.Raw == "a" {
-					root.Right = &c
-				}
-			}
-		},
-		"an Arg": func() (*js.Expr, func(*js.Expr)) {
+			return root, func(*js.Expr) { root.Right = &c }
+		}},
+		{"the Args rebound", func() (*js.Expr, func(*js.Expr)) {
 			root := &js.Expr{Kind: js.ExprArray, Args: []js.Expr{id("a"), id("b")}}
-			return root, func(n *js.Expr) {
-				if n.Raw == "a" {
-					root.Args[1] = id("c")
+			return root, func(*js.Expr) { root.Args = []js.Expr{id("a"), id("c")} }
+		}},
+		{"an Arg rewritten in place", func() (*js.Expr, func(*js.Expr)) {
+			root := &js.Expr{Kind: js.ExprArray, Args: []js.Expr{id("a"), id("b")}}
+			return root, func(*js.Expr) { root.Args[1] = id("c") }
+		}},
+		{"the Props rebound", func() (*js.Expr, func(*js.Expr)) {
+			root := &js.Expr{Kind: js.ExprObject, Props: []js.ExprProperty{prop("x", id("a")), prop("y", id("b"))}}
+			return root, func(*js.Expr) { root.Props = []js.ExprProperty{prop("x", id("a")), prop("y", id("c"))} }
+		}},
+		{"a Prop's value rewritten in place", func() (*js.Expr, func(*js.Expr)) {
+			root := &js.Expr{Kind: js.ExprObject, Props: []js.ExprProperty{prop("x", id("a")), prop("y", id("b"))}}
+			return root, func(*js.Expr) { root.Props[1].Value = id("c") }
+		}},
+	}
+	walkers := []struct {
+		name string
+		walk func(*js.Expr, func(*js.Expr) bool)
+	}{
+		{"Walk", func(e *js.Expr, fn func(*js.Expr) bool) { e.Walk(fn) }},
+		{"recursive", recursiveWalk},
+	}
+	for _, c := range cases {
+		for _, w := range walkers {
+			t.Run(c.name+"/"+w.name, func(t *testing.T) {
+				root, rewrite := c.build()
+				var raws []string
+				w.walk(root, func(n *js.Expr) bool {
+					if n.Raw == "a" {
+						rewrite(n)
+					}
+					if n.Raw != "" {
+						raws = append(raws, n.Raw)
+					}
+					return true
+				})
+				if want := []string{"a", "c"}; !slices.Equal(raws, want) {
+					t.Errorf("visited %v, want %v", raws, want)
 				}
-			}
-		},
-		"a Prop's value": func() (*js.Expr, func(*js.Expr)) {
-			root := &js.Expr{Kind: js.ExprObject, Props: []js.ExprProperty{{Key: "x", Value: id("a")}, {Key: "y", Value: id("b")}}}
-			return root, func(n *js.Expr) {
-				if n.Raw == "a" {
-					root.Props[1].Value = id("c")
-				}
-			}
-		},
-	} {
-		for walker, walk := range map[string]func(*js.Expr, func(*js.Expr) bool){
-			"Walk": func(e *js.Expr, fn func(*js.Expr) bool) { e.Walk(fn) }, "the recursive walk": recursiveWalk,
-		} {
-			root, rewrite := build()
-			var raws []string
-			walk(root, func(n *js.Expr) bool {
-				rewrite(n)
-				if n.Raw != "" {
-					raws = append(raws, n.Raw)
-				}
-				return true
 			})
-			if want := []string{"a", "c"}; !slices.Equal(raws, want) {
-				t.Errorf("%s rewritten, %s visited %v, want %v", name, walker, raws, want)
-			}
 		}
 	}
 }
