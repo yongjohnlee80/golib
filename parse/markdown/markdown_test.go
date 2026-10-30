@@ -2,6 +2,7 @@ package markdown_test
 
 import (
 	"bytes"
+	"math"
 	"runtime"
 	"slices"
 	"sort"
@@ -231,20 +232,26 @@ func linearFamilies() []linearFamily {
 // measurement is over: a super-linear family is over every time, a burst of load on a shared machine
 // is not.
 //
-// A family that parses the small input in more than budget, in each of three tries, fails before
-// any of that: a linear family parses 200k bytes in milliseconds, and a quadratic one takes seconds
-// there and many times that at 4n, so it is caught by one parse rather than timed until the test's
-// deadline.
+// A family whose small input parses more than slower times as long as a plain input of the same
+// size, in each of three tries, fails before any of that: a quadratic family is caught by one
+// parse rather than timed until the test's deadline. The plain input (controlInput) is parsed
+// between the family's parses, so load on a shared machine slows both and leaves the multiple; a
+// fixed time would not: a linear family is not uniformly fast, and the slowest (deep-block-quotes)
+// took about 200ms a parse unloaded and past 250ms under load. slower sits between the slowest
+// linear family's multiple, about 95, and the old n-squared link walks', about 700 and more (1.5s
+// and 4.8s a parse against the plain input's 2ms), with about 2.6 times room on either side.
 func TestLinearTime(t *testing.T) {
 	if testing.Short() || raceEnabled {
 		t.Skip("timing measurement: not under -short, nor under -race's instrumentation")
 	}
-	const n, k, bound, budget = 200_000, 4, 7.75, 250 * time.Millisecond
+	const n, k, bound, slower = 200_000, 4, 7.75, 250.0
+	plain := []byte(controlInput(n))
 	for _, f := range linearFamilies() {
 		t.Run(f.name, func(t *testing.T) {
 			small, large := []byte(f.gen(n)), []byte(f.gen(k*n))
-			if d := onceBest(small, f.opts, budget); d > budget {
-				t.Errorf("%d bytes took %v in each of 3 parses, past the %v a linear parse needs — not linear", len(small), d, budget)
+			m := againstControl(small, plain, f.opts, slower)
+			if m > slower {
+				t.Errorf("%d bytes took %.0fx a plain input's time in each of 3 parses, past the %vx a linear family takes — not linear", len(small), m, slower)
 				return
 			}
 			var ratios []float64
@@ -255,7 +262,7 @@ func TestLinearTime(t *testing.T) {
 					break
 				}
 			}
-			t.Logf("%7d bytes, %8d bytes, ratios %.1f", len(small), len(large), ratios)
+			t.Logf("%7d bytes, %8d bytes, ratios %.1f, %.0fx the plain input", len(small), len(large), ratios, m)
 			if len(ratios) == 3 && slices.Min(ratios) > bound {
 				t.Errorf("%dx the input took %.1fx the time in each of %d measurements — not linear", k, ratios, len(ratios))
 			}
@@ -263,39 +270,52 @@ func TestLinearTime(t *testing.T) {
 	}
 }
 
-// onceBest is the quickest of up to three single parses of src, stopping at the first within budget.
-func onceBest(src []byte, opts []markdown.Option, budget time.Duration) time.Duration {
-	best := time.Duration(1<<63 - 1)
+// controlInput is about n bytes of plain paragraphs: a known-linear input, parsed in one pass by
+// every option set, that TestLinearTime judges a family's time against.
+func controlInput(n int) string {
+	const p = "A plain paragraph of words, nothing nested.\n\n"
+	return strings.Repeat(p, n/len(p))
+}
+
+// againstControl is the least of up to three multiples of a single parse of src over a parse of
+// plain (timed per parse, as timeBoth times), stopping at the first within limit. Each try times
+// src and then plain, so a burst of load meets both; src is parsed once, so a quadratic one costs
+// one parse a try, not a 20ms window.
+func againstControl(src, plain []byte, opts []markdown.Option, limit float64) float64 {
+	least := math.Inf(1)
 	for range 3 {
 		runtime.GC()
 		start := time.Now()
 		markdown.Parse(src, opts...)
-		if best = min(best, time.Since(start)); best <= budget {
+		ts := time.Since(start)
+		if least = min(least, float64(ts)/float64(max(perParse(plain, opts), time.Microsecond))); least <= limit {
 			break
 		}
 	}
-	return best
+	return least
 }
 
-// timeBoth is the best of two timings of small and of large, interleaved, the garbage of each
-// collected outside the timing. A timing parses its input again until 20ms have passed and is the
-// time per parse: a family that parses 200k bytes in under a millisecond would otherwise be timed
-// over a few scheduler slices, and one slice lost to another process would double it.
-func timeBoth(small, large []byte, opts []markdown.Option) (ts, tl time.Duration) {
+// perParse is the time per parse of src, parsed again until 20ms have passed, its garbage collected
+// first: a parse of a few hundred microseconds would otherwise be timed over a few scheduler
+// slices, and one slice lost to another process would double it.
+func perParse(src []byte, opts []markdown.Option) time.Duration {
 	const window = 20 * time.Millisecond
-	perParse := func(src []byte) time.Duration {
-		runtime.GC()
-		start, n := time.Now(), 0
-		for n == 0 || time.Since(start) < window {
-			markdown.Parse(src, opts...)
-			n++
-		}
-		return time.Since(start) / time.Duration(n)
+	runtime.GC()
+	start, n := time.Now(), 0
+	for n == 0 || time.Since(start) < window {
+		markdown.Parse(src, opts...)
+		n++
 	}
+	return time.Since(start) / time.Duration(n)
+}
+
+// timeBoth is the best of two timings of small and of large, interleaved, each the time per parse
+// (perParse).
+func timeBoth(small, large []byte, opts []markdown.Option) (ts, tl time.Duration) {
 	ts, tl = time.Duration(1<<63-1), time.Duration(1<<63-1)
 	for range 2 {
-		ts = min(ts, perParse(small))
-		tl = min(tl, perParse(large))
+		ts = min(ts, perParse(small, opts))
+		tl = min(tl, perParse(large, opts))
 	}
 	return ts, tl
 }

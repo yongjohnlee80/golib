@@ -146,8 +146,9 @@ Obsidian's block ids (`^id` at a line's end), footnotes, `%%comments%%`, `==high
 - **Robustness.** `FuzzParse` holds the span invariants and renders, with each combination of
   extensions. Adversarial families (`[` nested 500,000 deep, delimiter runs of every length mod 3, deep
   quotes and lists, unclosed link destinations and wikilinks, trailing parentheses after an autolink,
-  and more) are timed at n and 10n and must scale by about 10×, not 100×. Only the families measured are
-  claimed to be linear.
+  and more) are timed at n and 4n and must scale by at most 7.75× (a quadratic one takes about 16×), and
+  a family that parses its n bytes more than 250 times as slowly as plain paragraphs of the same size
+  fails at once, on one parse. Only the families measured are claimed to be linear.
 - **Allocation.** A parse places its nodes in chunks (8 nodes at first, doubling to 1,024), so a document
   of n nodes costs a few dozen allocations rather than n, and its tree lies together in memory. The
   values of the kinds that always carry them (a heading's level, a link's destination, …) are chunked
