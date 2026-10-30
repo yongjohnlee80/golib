@@ -334,3 +334,23 @@ func TestParserResolvesNothing(t *testing.T) {
 		}
 	}
 }
+
+// TestAFlowKeyHoldsTheScannerToItsBounds: flow collections nest no deeper than MaxDepth, refused by
+// the scanner as it meets the level past it, so no level beyond is held for every token to look at;
+// and an implicit key in a flow mapping is at most 1024 characters (YAML 1.2 §7.4.2), so a key with
+// no ':' never holds the scanner's lookahead to the end of the input (GS-3).
+func TestAFlowKeyHoldsTheScannerToItsBounds(t *testing.T) {
+	deep := strings.Repeat("{a: ", 6) + "b" + strings.Repeat("}", 6)
+	if _, err := yaml.Parse([]byte(deep), yaml.MaxDepth(5)); err == nil || !strings.Contains(err.Error(), "nest more deeply") {
+		t.Errorf("six flow levels under MaxDepth(5): %v", err)
+	}
+	if _, err := yaml.Parse([]byte(deep), yaml.MaxDepth(6)); err != nil {
+		t.Errorf("six flow levels under MaxDepth(6): %v", err)
+	}
+	if _, err := yaml.Parse([]byte("{" + strings.Repeat("k", 1000) + ": v}")); err != nil {
+		t.Errorf("a 1000-character flow key: %v", err)
+	}
+	if _, err := yaml.Parse([]byte("{" + strings.Repeat("k", 2000) + ": v}")); err == nil {
+		t.Error("a 2000-character implicit flow key parsed")
+	}
+}

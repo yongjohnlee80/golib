@@ -68,9 +68,31 @@ type inlineParser struct {
 	tickIdx map[int]int   // per length, the first run not yet behind the scan
 
 	wikiClose, wikiLine, wikiOpen nextIndex // Obsidian: the next "]]", line ending and "[["
+	// raw HTML's closers: the next "-->", "?>", "]]>" and ">" (rawHTML)
+	htmlComment, htmlPI, htmlCDATA, htmlDecl nextIndex
 }
 
 func (p *inlineParser) srcAt(off int) int { return mapOffset(p.segs, off) }
+
+// htmlCloser is rawHTML's find at the scan's position: the offset from p.pos of the next closer at
+// or after from, -1 for none, each closer's search cached as the scan moves on.
+func (p *inlineParser) htmlCloser(from int, closer string) int {
+	var x *nextIndex
+	switch closer {
+	case "-->":
+		x = &p.htmlComment
+	case "?>":
+		x = &p.htmlPI
+	case "]]>":
+		x = &p.htmlCDATA
+	default:
+		x = &p.htmlDecl
+	}
+	if i := x.next(p.text, p.pos+from, closer); i >= 0 {
+		return i - p.pos
+	}
+	return -1
+}
 
 func (p *inlineParser) parse() {
 	for p.pos < len(p.text) {
@@ -434,7 +456,7 @@ func (p *inlineParser) angle() {
 		p.pos += n
 		return
 	}
-	if n := rawHTML(rest); n > 0 {
+	if n := rawHTML(rest, p.htmlCloser); n > 0 {
 		node := p.doc.nodes.new(Node{Kind: KindRawHTML, Span: Span{p.srcAt(p.pos), p.srcAt(p.pos + n)},
 			Literal: append([]byte(nil), rest[:n]...)})
 		p.parent.AppendChild(node)

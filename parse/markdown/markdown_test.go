@@ -168,6 +168,11 @@ func linearFamilies() []linearFamily {
 		"many-definitions":       func(n int) string { return strings.Repeat("[a]: /u\n", n/8) },
 		"interrupted-paragraphs": func(n int) string { return strings.Repeat("a\n***\n", n/6) },
 		"long-paragraph-lines":   func(n int) string { return strings.Repeat("word ", n/10) + "\n" + strings.Repeat("x\n", n/4) },
+		// raw HTML openers whose closer never comes: each search is the paragraph's one (GS-2)
+		"unclosed-html-comments": func(n int) string { return strings.Repeat("a <!--", n/6) },
+		"unclosed-html-pis":      func(n int) string { return strings.Repeat("a <?", n/4) },
+		"unclosed-html-cdata":    func(n int) string { return strings.Repeat("a <![CDATA[", n/11) },
+		"unclosed-html-decls":    func(n int) string { return strings.Repeat("a <!A", n/5) },
 	}
 	gfmFamilies := map[string]func(n int) string{
 		"gfm-tilde-runs":      func(n int) string { return strings.Repeat("~~a", n/3) },
