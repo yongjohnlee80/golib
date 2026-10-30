@@ -39,15 +39,3 @@ func choose(want string, caps extimage.Caps) (producer, error) {
 	}
 	return nil, fmt.Errorf("scene3d: no producer %q here (auto, cpu, %s)", want, gpuProducerName)
 }
-
-// pathOf is how caps draws a frame like d: "zero-copy", "copy", or "refused".
-func pathOf(caps extimage.Caps, d extimage.Desc) string {
-	t, ok := caps.Match(d)
-	switch {
-	case !ok:
-		return "refused"
-	case t.Path == extimage.PathZeroCopy:
-		return "zero-copy"
-	}
-	return "copy"
-}

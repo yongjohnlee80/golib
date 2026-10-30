@@ -278,10 +278,9 @@ func justify(how flexAlign, left float32, n int) (start, between float32) {
 // gridTrack is a column as grid-template-columns gives it: a length, a share of what is left (fr),
 // or minmax() of the two.
 type gridTrack struct {
-	min    float32 // px
-	fr     float32 // 0: a fixed track, its min
-	fixed  bool
-	repeat int // as written in repeat(): >0 a count, -1 auto-fill, -2 auto-fit; the tracks follow
+	min   float32 // px
+	fr    float32 // 0: a fixed track, its min
+	fixed bool
 }
 
 // gridColumns is the columns' widths in width for n items, from a grid-template-columns value.

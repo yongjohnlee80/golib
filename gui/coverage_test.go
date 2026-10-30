@@ -57,7 +57,7 @@ func TestARuneTheTypefaceLacksNamesAnInstalledFamilyThatHasIt(t *testing.T) {
 func TestATypefaceThatHasEveryRuneIsLeftAsItIs(t *testing.T) {
 	withInstalled(t, map[string]string{"otherfont": "aé─"})
 	s := newTestShaper()
-	for _, str := range []string{"plain ASCII", "café ─", "é ‍️", ""} {
+	for _, str := range []string{"plain ASCII", "café ─", "é \u200d️", ""} {
 		if got := covered(s, "Go Mono", str); got != "Go Mono" {
 			t.Errorf("covered(%q) = %q; Go Mono has these runes", str, got)
 		}

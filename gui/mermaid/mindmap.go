@@ -53,7 +53,8 @@ func layMindmap(ctx context.Context, d pm.Diagram, width float32, th Theme, m gu
 			return nil, err
 		}
 		nf := f
-		fill, stroke := th.NodeFill, th.NodeStroke
+		var fill color.NRGBA // every case below sets it
+		stroke := th.NodeStroke
 		own, tinted := color.NRGBA{}, false
 		if th.Tint != nil {
 			own, tinted = th.Tint(n.ID)
