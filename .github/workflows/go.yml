@@ -325,14 +325,18 @@ jobs:
             exit 0
           fi
           base=$(git merge-base "$BEFORE" HEAD)
-          git worktree add --detach "$RUNNER_TEMP/base" "$base"
+          if ! git worktree add --detach "$RUNNER_TEMP/base" "$base"; then
+            say "The base commit $base could not be checked out: no report."
+            exit 0
+          fi
           say "## API changes $(git rev-parse --short "$base")..$(git rev-parse --short HEAD)"
-          # gui builds against the same commit's golib in each tree, as its own job does
+          # the nested modules load against the same commit's golib in each tree, as their own jobs do
           for tree in . "$RUNNER_TEMP/base"; do
             if [ -f "$tree/gui/go.mod" ]; then (cd "$tree/gui" && go work init . ..); fi
+            if [ -f "$tree/dao/bigquery/go.mod" ]; then (cd "$tree/dao/bigquery" && go work init . ../..); fi
           done
           for mod in . gui dao/bigquery; do
-            path=$(cd "$mod" && go list -m)
+            path=$(cd "$mod" && GOWORK=off go list -m) # a workspace would list every module in it
             say "### $path"
             if [ ! -f "$RUNNER_TEMP/base/$mod/go.mod" ]; then
               say "A new module: nothing to compare."
@@ -343,8 +347,9 @@ jobs:
               say "The base did not load:"; say '```'; cat "$RUNNER_TEMP/base.log" >> "$GITHUB_STEP_SUMMARY"; say '```'
               continue
             fi
-            if ! (cd "$mod" && apidiff -m "$export_file" "$path") > "$RUNNER_TEMP/diff.txt" 2>&1; then
-              say "apidiff failed:"
+            # stdout is the report; stderr carries notices (internal packages skipped), shown on failure
+            if ! (cd "$mod" && apidiff -m "$export_file" "$path") > "$RUNNER_TEMP/diff.txt" 2> "$RUNNER_TEMP/diff.err"; then
+              say "apidiff failed:"; say '```'; cat "$RUNNER_TEMP/diff.err" >> "$GITHUB_STEP_SUMMARY"; say '```'
             fi
             if [ -s "$RUNNER_TEMP/diff.txt" ]; then
               say '```'; cat "$RUNNER_TEMP/diff.txt" >> "$GITHUB_STEP_SUMMARY"; say '```'
