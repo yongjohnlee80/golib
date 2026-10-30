@@ -135,6 +135,83 @@ jobs:
         if: always()
         run: cat integration.log
 
+  # golib/dao/bigquery: its own module (the GCP SDK), which no other job compiles. Against this
+  # commit's golib, as gui is: its go.mod requires an older release, so a break would show only
+  # when that requirement is raised. The integration tests need a GCP project and stay tagged out.
+  bigquery:
+    name: dao/bigquery
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: dao/bigquery
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: dao/bigquery/go.mod
+          cache: true
+          cache-dependency-path: dao/bigquery/go.sum
+
+      - name: use this commit's golib
+        run: go work init . ../..
+
+      - name: build
+        run: go build ./...
+
+      - name: vet
+        run: go vet ./...
+
+      - name: test
+        run: go test -race -count=2 -timeout 10m ./...
+
+  # Static analysis and known vulnerabilities, for each of the three modules. Pinned tools, so a
+  # new release cannot turn main red on its own: raise a pin in a PR that fixes what it reports.
+  # staticcheck reads staticcheck.conf (the default checks, less what it says, with why).
+  # govulncheck reports only vulnerabilities golib's code can reach, so every finding is one to
+  # fix, by raising the dependency or the toolchain.
+  lint:
+    name: staticcheck, govulncheck
+    runs-on: ubuntu-latest
+    env:
+      STATICCHECK_VERSION: "2025.1.1"
+      GOVULNCHECK_VERSION: "v1.9.0"
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      # staticcheck type-checks gui with cgo, so it needs Gio's headers as the gui job does.
+      - name: Gio's Linux libraries
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libwayland-dev libx11-dev libx11-xcb-dev libxkbcommon-x11-dev \
+            libgles2-mesa-dev libegl1-mesa-dev libffi-dev libxcursor-dev libvulkan-dev
+
+      - name: install the tools
+        run: |
+          go install honnef.co/go/tools/cmd/staticcheck@"$STATICCHECK_VERSION"
+          go install golang.org/x/vuln/cmd/govulncheck@"$GOVULNCHECK_VERSION"
+
+      - name: staticcheck (golib)
+        run: staticcheck ./...
+
+      # against this commit's golib, as the gui and bigquery jobs build them
+      - name: staticcheck (gui, dao/bigquery)
+        run: |
+          (cd gui && go work init . .. && staticcheck ./...; status=$?; rm -f go.work go.work.sum; exit $status)
+          (cd dao/bigquery && go work init . ../.. && staticcheck ./...; status=$?; rm -f go.work go.work.sum; exit $status)
+
+      # each module against the versions its go.mod requires: what a consumer would build
+      - name: govulncheck
+        run: |
+          govulncheck ./...
+          (cd gui && govulncheck ./...)
+          (cd dao/bigquery && govulncheck ./...)
+
   # golib/gui on macOS: the Metal paths only compile on a Mac. examples/scene3d's Metal producer
   # renders into IOSurfaces that a headless Metal window draws without a copy, checked against the
   # CPU's picture.
