@@ -450,7 +450,9 @@ reserves its cells blank; the runtime places the image, places it again when the
 PNG changes, and deletes it when the `Image` is hidden or goes. On a terminal without images the
 cells stay blank, so a host shows its fallback there instead. `widget.RasterizeSVG` and
 `widget.RasterizeHTML` make a PNG with optional tools found at runtime (`rsvg-convert`, a headless
-Chromium or Chrome), offline and bounded.
+Chromium or Chrome), offline and bounded. A page cannot reach the network (WebRTC included) or this
+host's other files: it is given a content policy admitting only inline scripts and styles and `data:`
+and `blob:` subresources, and a `Page` with `NoScripts` runs none.
 A terminal refuses an image wider or taller than `widget.MaxImagePixels` (10000, kitty's and
 Ghostty's limit), and shows nothing. A scrollable `Image` shows a taller PNG, such as a long page from
 `widget.RasterizeHTMLPage`, as strips: `widget.SplitPNG` cuts them off the UI thread, and
