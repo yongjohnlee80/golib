@@ -1,6 +1,6 @@
 module github.com/yongjohnlee80/golib/gui
 
-go 1.26.9
+go 1.26.10
 
 require (
 	github.com/yongjohnlee80/golib v0.8.14
@@ -16,9 +16,9 @@ require (
 	gioui.org/shader v1.0.9 // indirect
 	github.com/godbus/dbus/v5 v5.2.2 // indirect
 	golang.org/x/exp/shiny v0.0.0-20250408133849-7e4ce0ab07d0 // indirect
-	golang.org/x/net v0.58.0 // indirect
-	golang.org/x/sys v0.47.0 // indirect
-	golang.org/x/text v0.41.0 // indirect
+	golang.org/x/net v0.60.0 // indirect
+	golang.org/x/sys v0.48.0 // indirect
+	golang.org/x/text v0.42.0 // indirect
 )
 
 // A nested module so a TUI-only golib user never resolves Gio or cgo (ADR 1791330692 §4.1).
