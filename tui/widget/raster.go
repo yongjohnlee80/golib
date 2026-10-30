@@ -95,11 +95,14 @@ func RasterizeSVG(ctx context.Context, svg []byte, width int) ([]byte, error) {
 
 // RasterizeHTML renders html in a headless browser at width × height pixels and returns the
 // viewport as a PNG, once the page's scripts have settled (a diagram drawn by a script is drawn). The page cannot reach the network: every host resolves nowhere and every
-// request goes to a proxy that is not there. A page that needs the network renders without it.
-// The browser's own sandbox always stays on: where it cannot run (a system that forbids user
-// namespaces), the browser refuses, the error says so, and the host shows its fallback.
+// request goes to a proxy that is not there, and WebRTC sends nothing past it. A page that needs
+// the network renders without it. Nor can it reach this host's files: it is loaded from one, and
+// its content policy (pagePolicy) admits only inline scripts and styles and data: and blob:
+// subresources, so an <img> or <script> naming another file draws nothing. The browser's own
+// sandbox always stays on: where it cannot run (a system that forbids user namespaces), the
+// browser refuses, the error says so, and the host shows its fallback.
 func RasterizeHTML(ctx context.Context, html []byte, width, height int) ([]byte, error) {
-	return rasterizeHTML(ctx, html, clampPixels(width), clampPixels(height), 1)
+	return rasterizeHTML(ctx, html, clampPixels(width), clampPixels(height), 1, false)
 }
 
 // MaxPageHeight is the tallest, and MaxPageWidth the widest, a page RasterizeHTMLPage renders, in
@@ -123,6 +126,9 @@ type Page struct {
 	Scale                       float64
 	Wide                        bool
 	Background                  string
+	// NoScripts renders the page with its scripts off, for a page that needs none (a document,
+	// not a diagram a script draws): nothing it carries runs.
+	NoScripts bool
 }
 
 // RasterizeHTMLPage renders the whole of html as a PNG, for an Image that scrolls (see Page).
@@ -156,7 +162,7 @@ func RasterizeHTMLPage(ctx context.Context, html []byte, p Page) ([]byte, error)
 	html = withEndMarker(html)
 	minH := max(1, min(p.MinHeight, height))
 	render := func(h int) (image.Image, error) {
-		b, err := rasterizeHTML(ctx, html, int(float64(window)/scale), int(float64(h)/scale), scale)
+		b, err := rasterizeHTML(ctx, html, int(float64(window)/scale), int(float64(h)/scale), scale, p.NoScripts)
 		if err != nil {
 			return nil, err
 		}
@@ -297,8 +303,9 @@ func cutPage(img image.Image, minW, minH, end int, found bool, background string
 	return b.Bytes(), nil
 }
 
-// rasterizeHTML renders html in a window width × height (the browser's own pixels) at scale.
-func rasterizeHTML(ctx context.Context, html []byte, width, height int, scale float64) ([]byte, error) {
+// rasterizeHTML renders html in a window width × height (the browser's own pixels) at scale, its
+// scripts off with noScripts.
+func rasterizeHTML(ctx context.Context, html []byte, width, height int, scale float64, noScripts bool) ([]byte, error) {
 	tool, ok := HTMLRasterizer()
 	if !ok {
 		return nil, fmt.Errorf("%w: chromium or google-chrome", ErrNoRasterizer)
@@ -312,7 +319,7 @@ func rasterizeHTML(ctx context.Context, html []byte, width, height int, scale fl
 	}
 	defer os.RemoveAll(dir)
 	page, out := filepath.Join(dir, "page.html"), filepath.Join(dir, "page.png")
-	if err := os.WriteFile(page, html, 0o600); err != nil {
+	if err := os.WriteFile(page, withPolicy(html, noScripts), 0o600); err != nil {
 		return nil, err
 	}
 	release, err := browserSlot(ctx)
@@ -322,16 +329,22 @@ func rasterizeHTML(ctx context.Context, html []byte, width, height int, scale fl
 	defer release()
 	ctx, cancel := context.WithTimeout(ctx, RasterTimeout)
 	defer cancel()
-	cmd := exec.CommandContext(ctx, tool,
+	args := []string{
 		"--headless=new", "--disable-gpu", "--hide-scrollbars", "--mute-audio", "--no-first-run",
 		"--disable-extensions", "--disable-background-networking", "--disable-sync", "--disable-default-apps",
 		"--proxy-server=127.0.0.1:9", "--proxy-bypass-list=<-loopback>", "--host-resolver-rules=MAP * ~NOTFOUND",
-		"--user-data-dir="+filepath.Join(dir, "profile"),
+		// WebRTC's UDP goes around a proxy unless told not to: none is sent but through it
+		"--force-webrtc-ip-handling-policy=disable_non_proxied_udp",
+		"--user-data-dir=" + filepath.Join(dir, "profile"),
 		// virtual time runs on until the page is idle (its scripts done) or the budget is spent
 		"--virtual-time-budget=10000",
-		"--force-device-scale-factor="+strconv.FormatFloat(scale, 'f', -1, 64),
-		"--window-size="+strconv.Itoa(width)+","+strconv.Itoa(height),
-		"--screenshot="+out, "file://"+page)
+		"--force-device-scale-factor=" + strconv.FormatFloat(scale, 'f', -1, 64),
+		"--window-size=" + strconv.Itoa(width) + "," + strconv.Itoa(height),
+	}
+	if noScripts {
+		args = append(args, "--blink-settings=scriptEnabled=false")
+	}
+	cmd := exec.CommandContext(ctx, tool, append(args, "--screenshot="+out, "file://"+page)...)
 	if _, err := runBounded(cmd); err != nil {
 		return nil, err
 	}
@@ -384,4 +397,33 @@ func (l *limitWriter) Write(p []byte) (int, error) {
 		l.n -= k
 	}
 	return len(p), nil
+}
+
+// pagePolicy is the content policy every rasterized page is given, ahead of any of its own (a
+// browser enforces each): inline scripts and styles, and data: and blob: subresources, nothing
+// else. The page is loaded from a file, so without it an <img>, a <script> or a stylesheet could
+// name any other file on this host and draw it into the screenshot. scripts is the script-src: none
+// for a NoScripts page.
+const pagePolicy = "default-src 'none'; script-src %s; style-src 'unsafe-inline' data: blob:; " +
+	"img-src data: blob:; font-src data: blob:; media-src data: blob:; worker-src blob:"
+
+// withPolicy is html with pagePolicy in a meta element at its start, after a leading doctype (one
+// placed before the doctype would put the page in quirks mode).
+func withPolicy(html []byte, noScripts bool) []byte {
+	scripts := "'unsafe-inline' 'unsafe-eval' data: blob:"
+	if noScripts {
+		scripts = "'none'"
+	}
+	meta := `<meta http-equiv="Content-Security-Policy" content="` + fmt.Sprintf(pagePolicy, scripts) + `">`
+	at := 0
+	rest := bytes.TrimLeft(bytes.TrimPrefix(html, []byte("\xef\xbb\xbf")), " \t\r\n")
+	if len(rest) >= 9 && bytes.EqualFold(rest[:9], []byte("<!doctype")) {
+		if end := bytes.IndexByte(rest, '>'); end >= 0 {
+			at = len(html) - len(rest) + end + 1
+		}
+	}
+	out := make([]byte, 0, len(html)+len(meta))
+	out = append(out, html[:at]...)
+	out = append(out, meta...)
+	return append(out, html[at:]...)
 }
