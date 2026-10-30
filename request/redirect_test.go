@@ -43,7 +43,9 @@ func redirectTo(t *testing.T, target string) *httptest.Server {
 			w.Header().Set("X-Seen-Key", r.Header.Get("X-Api-Key"))
 			return
 		}
-		http.Redirect(w, r, target, http.StatusFound)
+		// 307: a redirect that keeps the request's body, so its body headers are copied and the
+		// policy alone decides what crosses (a 302 makes a GET without them)
+		http.Redirect(w, r, target, http.StatusTemporaryRedirect)
 	}))
 	t.Cleanup(s.Close)
 	return s
