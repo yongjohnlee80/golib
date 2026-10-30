@@ -58,15 +58,6 @@ func openPG(t *testing.T, opts ...Option) *pgxConn {
 	return pc
 }
 
-// mustExec runs a statement outside any transaction, failing the test on error.
-func mustExec(t *testing.T, c dao.DataConn, sql string) {
-	t.Helper()
-
-	if _, err := c.ExecContext(context.Background(), sql); err != nil {
-		t.Fatalf("exec %q: %v", sql, err)
-	}
-}
-
 // scalar reads one string from ex (a pool or a transaction).
 func scalar(t *testing.T, ex dao.Querier, sql string) string {
 	t.Helper()
