@@ -87,6 +87,7 @@ func TestStash_SingleClaim(t *testing.T) {
 	if StashFromContext(context.Background()) != nil {
 		t.Error("a context with no login request must yield no stash")
 	}
+	//lint:ignore SA1012 a nil context is the case under test
 	if StashFromContext(nil) != nil {
 		t.Error("a nil context must yield no stash")
 	}
