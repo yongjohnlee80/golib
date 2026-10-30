@@ -76,9 +76,12 @@ func (c crossing) row() string { return c.from + "\t" + c.owner + "\t" + c.name 
 // files it read.
 func widgetCrossings(t *testing.T, root string) ([]crossing, int) {
 	t.Helper()
+	// one platform for every host: the ledger is the linux build's, so macOS (whose build compiles
+	// other files) checks the same files against the same rows
+	platform := append(os.Environ(), "GOOS=linux", "GOARCH=amd64", "CGO_ENABLED=0")
 	exports := map[string]string{}
 	cmd := exec.Command("go", "list", "-deps", "-export", "-f", "{{.ImportPath}}\t{{.Export}}", "./tui/widget")
-	cmd.Dir = root
+	cmd.Dir, cmd.Env = root, platform
 	out, err := cmd.Output()
 	if err != nil {
 		t.Fatalf("go list -export ./tui/widget: %v", err)
@@ -88,9 +91,9 @@ func widgetCrossings(t *testing.T, root string) ([]crossing, int) {
 			exports[path] = file
 		}
 	}
-	// the files the build compiles for this platform (build constraints applied), tests excluded
+	// the files the build compiles for that platform (build constraints applied), tests excluded
 	cmd = exec.Command("go", "list", "-f", "{{range .GoFiles}}{{.}}\n{{end}}", "./tui/widget")
-	cmd.Dir = root
+	cmd.Dir, cmd.Env = root, platform
 	listed, err := cmd.Output()
 	if err != nil {
 		t.Fatalf("go list ./tui/widget: %v", err)
