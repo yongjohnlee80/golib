@@ -70,6 +70,7 @@ They could have been bash scripts or custom CI linters. They are standard Go tes
 | **Nil Options** | `nil_options_test.go` | Asserts that across the whole module every loop over a variadic `...XOption` parameter calls the option only inside `if o != nil`; detector: an unguarded call and an `else` branch are flagged, a guarded one, a nested one and a loop over another type are not | None | Standard |
 | **App Field Writers** | `app_writers_test.go` | Asserts every write to an App field in package `tui` (assignment, increment, range assignment, `delete`/`clear`, address taken, keyed field in an App literal) lands in a file that `tui/IMPLEMENTATION.md`'s map of the App's state lists for that field, and that every App field is in the map; it reads the map itself. Positive control: the scan must find at least 100 writes; detector: a planted unlisted write is reported | None (Reads `tui/IMPLEMENTATION.md`) | Standard |
 | **Comments-Only Check** | `commentsonly_test.go` | Asserts that a comment migration modified zero executable Go code by AST-stripping comments and comparing byte-for-byte against a base revision | None (Compares git tree) | `COMMENTS_ONLY_BASE=<rev>` (Opt-in) |
+| **Driver Reach** | `driver_reach_test.go` | Asserts only `dao/sqlite`, `dao/postgres` and `dao/mysql` import a database driver, and only packages under `dao` import a `dao/<engine>` package, so a consumer that imports no engine builds no driver; a positive control sees each engine import its driver | — | — |
 
 ---
 
@@ -273,6 +274,7 @@ go test ./internal/audit/ -run TestPromotionSelfCalls
 | `<pkg> imports testing: a tui binary would link package testing` | Production tui code took a `*testing.T` or imported a test helper | Take a small interface (`Helper()`, `Errorf`) that `*testing.T` satisfies, or move the helper into a test-only package and name it in `tuiTestHelpers`. |
 | `<file> writes .textLines directly` | An editor change wrote the lines without the line primitives | Call `setLine`, `insertLines`, `removeLines`, `replaceLines` or `setLines` in `textbuffer.go`, which touch and log the change. |
 | `N file(s) had their CODE changed by a comments-only change` | A comment migration tool accidentally edited executable Go syntax | Inspect `git diff` for deleted commas, altered parens, or truncated lines. Restore code to byte-identical state. |
+| `<pkg> imports the database driver <driver>` / `<pkg> imports dao/<engine>, outside dao` | A package outside the engine adapters reached for a driver, or a non-dao package imported an engine | Move the use behind the dao interfaces, or into the engine's package: a consumer must choose an engine by importing it |
 
 ---
 

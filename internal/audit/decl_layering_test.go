@@ -104,6 +104,15 @@ func TestDeclLayeringGuardCanSeeTheForbiddenPackages(t *testing.T) {
 // import anything, and it is not part of what a consumer links.
 func moduleImportGraph(t *testing.T, root string) map[string][]string {
 	t.Helper()
+	return packageImports(t, root, func(imp string) bool {
+		return imp == modulePath || strings.HasPrefix(imp, modulePath+"/")
+	})
+}
+
+// packageImports maps each package under root (named by its directory under this
+// module's path) to the imports of its non-test files that keep accepts.
+func packageImports(t *testing.T, root string, keep func(imp string) bool) map[string][]string {
+	t.Helper()
 	graph := map[string]map[string]bool{}
 	fset := token.NewFileSet()
 
@@ -139,8 +148,7 @@ func moduleImportGraph(t *testing.T, root string) map[string][]string {
 			graph[pkg] = map[string]bool{}
 		}
 		for _, spec := range f.Imports {
-			imp := strings.Trim(spec.Path.Value, `"`)
-			if imp == modulePath || strings.HasPrefix(imp, modulePath+"/") {
+			if imp := strings.Trim(spec.Path.Value, `"`); keep(imp) {
 				graph[pkg][imp] = true
 			}
 		}
