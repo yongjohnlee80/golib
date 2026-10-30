@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"net"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/yongjohnlee80/golib/server"
@@ -87,6 +88,14 @@ type conn struct {
 	admitMu  sync.Mutex
 	draining bool
 	inflight sync.WaitGroup
+	busy     atomic.Int64 // admitted requests not yet finished (IdleTimeout)
+
+	// Read deadlines other than Drain's are set through readDeadline, under admitMu and never once
+	// draining, so none can undo Drain's. pending is the handshake bound still armed; lastActive
+	// the last frame read or request finished, and idled the idle close, for IdleTimeout.
+	pending    atomic.Bool
+	lastActive atomic.Int64
+	idled      atomic.Bool
 
 	// workDone is closed by serveConn — the signal's single owner — once the
 	// read loop has exited AND every admitted handler has finished. Drain
@@ -126,7 +135,17 @@ func (c *conn) admit() bool {
 		return false
 	}
 	c.inflight.Add(1)
+	c.busy.Add(1)
 	return true
+}
+
+// readDeadline sets the read deadline to t, unless Drain has begun: Drain's deadline is the last.
+func (c *conn) readDeadline(t time.Time) {
+	c.admitMu.Lock()
+	defer c.admitMu.Unlock()
+	if !c.draining {
+		_ = c.raw.SetReadDeadline(t)
+	}
 }
 
 // isDraining reports whether Drain has begun.

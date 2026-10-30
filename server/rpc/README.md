@@ -58,6 +58,14 @@ err := srv.Run(ctx) // serves until ctx cancels, then drains politely
   observed when a slot frees). Responses serialize through a per-connection
   write lock and always echo the request's msgid; ordering across
   concurrent requests is not guaranteed (msgid matching is the contract).
+- **Connections.** At most `MaxConns` (default 256) are served at once; one
+  past it is closed as it is accepted. With a `WithGate`, a connection must
+  complete its handshake (a request the gate admits that succeeds) within
+  `HandshakeTimeout` (default 10s, which covers a TLS handshake too) or it is
+  closed, so a peer that connects and says nothing holds no place. Once
+  handshaken, a connection may idle: it is long-lived by design. `IdleTimeout`
+  (off by default) closes one that has had no frame and no request in flight for
+  that long, for a server whose clients reconnect.
 - **Contexts.** Each handler's ctx derives from a connection-scoped context
   cancelled when the connection ends for ANY reason — peer disconnect,
   drain, or `Shutdown`. Honor it: a handler waiting on `ctx.Done()` always
@@ -94,8 +102,9 @@ err := srv.Run(ctx) // serves until ctx cancels, then drains politely
   clean `io.EOF` between frames logs as a normal close. Unexpected
   responses (this server issues no requests in v1) drop with a log line.
 - **Construction.** `New` validates options up front: nil codec,
-  non-positive `MaxConcurrent`/`MaxMessageBytes`/`DrainTimeout` panic at
-  construction rather than misbehaving per connection.
+  non-positive `MaxConcurrent`/`MaxMessageBytes`/`DrainTimeout`/`MaxConns`,
+  and a negative `HandshakeTimeout` or `IdleTimeout`, panic at construction
+  rather than misbehaving per connection.
 
 ## Client
 

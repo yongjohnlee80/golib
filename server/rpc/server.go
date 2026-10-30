@@ -8,6 +8,7 @@ import (
 	"net"
 	"os"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/yongjohnlee80/golib/logger"
@@ -23,6 +24,8 @@ type Server struct {
 
 	mu       sync.RWMutex
 	handlers map[string]Handler
+
+	conns atomic.Int64 // connections being served (MaxConns)
 }
 
 // compile-time: Server satisfies the lifecycle contract.
@@ -59,6 +62,8 @@ func New(codec Codec, opts ...Option) *Server {
 		drainTimeout:    10 * time.Second,
 		maxMessageBytes: 16 << 20,
 		maxConcurrent:   8,
+		handshake:       10 * time.Second,
+		maxConns:        256,
 	}
 	for _, o := range opts {
 		if o != nil {
@@ -73,6 +78,12 @@ func New(codec Codec, opts ...Option) *Server {
 	}
 	if cfg.drainTimeout <= 0 {
 		panic(fmt.Sprintf("rpc.New: DrainTimeout must be positive, got %v", cfg.drainTimeout))
+	}
+	if cfg.maxConns <= 0 {
+		panic(fmt.Sprintf("rpc.New: MaxConns must be positive, got %d", cfg.maxConns))
+	}
+	if cfg.handshake < 0 || cfg.idle < 0 {
+		panic(fmt.Sprintf("rpc.New: HandshakeTimeout and IdleTimeout must not be negative, got %v and %v", cfg.handshake, cfg.idle))
 	}
 	if cfg.logger == nil {
 		cfg.logger = logger.Nop{}
@@ -138,7 +149,56 @@ func (s *Server) serveConn(ctx context.Context, nc net.Conn) {
 		c.inflight.Wait() // let them flush their final replies
 		close(c.workDone) // Drain's completion signal
 	}()
+	defer s.conns.Add(-1)
+	if s.conns.Add(1) > int64(s.cfg.maxConns) {
+		s.cfg.logger.Log(logger.SeverityWarning, map[string]any{
+			"server": "rpc", "event": "connection refused: at MaxConns",
+			"remote": c.sess.Peer().String(), "max": s.cfg.maxConns,
+		})
+		return
+	}
+	if s.cfg.gate != nil && s.cfg.handshake > 0 {
+		c.pending.Store(true)
+		c.readDeadline(time.Now().Add(s.cfg.handshake))
+	}
+	if s.cfg.idle > 0 {
+		defer s.watchIdle(c)()
+	}
 	s.readLoop(connCtx, c)
+}
+
+// watchIdle closes c once it has been IdleTimeout since its last frame and its last finished
+// request, with none in flight, and answers the stop to call when the read loop ends.
+//
+// NOTE: a timer, not a polling loop: it wakes when c could first be idle, and again no earlier than
+// its last frame or its in-flight work allows.
+func (s *Server) watchIdle(c *conn) (stop func()) {
+	d := s.cfg.idle
+	c.lastActive.Store(time.Now().UnixNano())
+	var mu sync.Mutex
+	var t *time.Timer
+	check := func() {
+		mu.Lock()
+		defer mu.Unlock()
+		if c.busy.Load() > 0 {
+			t.Reset(d)
+			return
+		}
+		if since := time.Since(time.Unix(0, c.lastActive.Load())); since < d {
+			t.Reset(d - since)
+			return
+		}
+		c.idled.Store(true)
+		c.readDeadline(time.Now())
+	}
+	mu.Lock()
+	t = time.AfterFunc(d, check)
+	mu.Unlock()
+	return func() {
+		mu.Lock()
+		defer mu.Unlock()
+		t.Stop()
+	}
 }
 
 func (s *Server) readLoop(ctx context.Context, c *conn) {
@@ -163,6 +223,7 @@ func (s *Server) readLoop(ctx context.Context, c *conn) {
 			s.logReadEnd(c, err)
 			return
 		}
+		c.lastActive.Store(time.Now().UnixNano())
 		switch m.Kind {
 		case KindRequest, KindNotification:
 			if s.cfg.gate != nil {
@@ -179,7 +240,12 @@ func (s *Server) readLoop(ctx context.Context, c *conn) {
 				return
 			}
 			go func(m *Message) {
-				defer func() { c.inflight.Done(); release() }()
+				defer func() {
+					c.lastActive.Store(time.Now().UnixNano()) // idle counts from the request's end
+					c.busy.Add(-1)
+					c.inflight.Done()
+					release()
+				}()
 				s.dispatchTask(ctx, c, m)
 			}(m)
 		case KindResponse:
@@ -264,6 +330,9 @@ func (s *Server) dispatch(ctx context.Context, c *conn, m *Message) {
 			Peer: c.sess.Peer(), Session: c.sess,
 		})
 	}()
+	if err == nil && m.Kind == KindRequest && c.pending.CompareAndSwap(true, false) {
+		c.readDeadline(time.Time{}) // the handshake is done: the connection may idle now
+	}
 
 	// Untyped errors are logged with full detail but cross the wire only as
 	// a generic internal error (deny-before-disclose).
@@ -330,6 +399,16 @@ func (s *Server) logReadEnd(c *conn, err error) {
 	payload := map[string]any{
 		"server": "rpc", "event": "connection closed",
 		"remote": c.sess.Peer().String(),
+	}
+	switch {
+	case isDeadline(err) && c.pending.Load() && !c.isDraining():
+		payload["event"] = "connection closed: no handshake within HandshakeTimeout"
+		s.cfg.logger.Log(logger.SeverityWarning, payload)
+		return
+	case isDeadline(err) && c.idled.Load():
+		payload["event"] = "connection closed: idle for IdleTimeout"
+		s.cfg.logger.Log(logger.SeverityInfo, payload)
+		return
 	}
 	if errors.Is(err, io.EOF) || c.isDraining() || errors.Is(err, net.ErrClosed) || isDeadline(err) {
 		s.cfg.logger.Log(logger.SeverityInfo, payload)
