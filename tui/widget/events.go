@@ -96,9 +96,12 @@ type MacroStoppedEvent struct {
 //
 // It is published only while the bus has a ChangeEvent subscriber
 // ([tui.HasSubscribers]): Value is the widget's whole text, which an editor
-// would otherwise join on every keystroke for no one. So a subscription made
-// after an edit, before the program lane drains, does not receive that edit's
-// event; subscribe before the edits you follow.
+// would otherwise join on every keystroke for no one. So when an edit finds no
+// subscriber at all, its publish is skipped, and a subscription made after it,
+// before the program lane drains, does not receive that edit's event. When a
+// subscriber already existed, the edit's event is queued, and a later
+// subscriber still receives it at delivery. Subscribe before the edits you
+// follow.
 type ChangeEvent struct {
 	Owner tui.NodeID
 	Value string
