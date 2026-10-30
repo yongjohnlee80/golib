@@ -32,6 +32,15 @@ func TestTheFormulaGuardQuotesWhatASpreadsheetWouldRun(t *testing.T) {
 			t.Errorf("guard %v:\n got %q\nwant %q", guard, got, want)
 		}
 	}
+	// every documented lead is quoted, and only a lead: a cell with one later, or none, is as it was
+	for cell, want := range map[string]string{
+		"=1": "'=1", "+1": "'+1", "-1": "'-1", "@x": "'@x", "\tx": "'\tx", "\rx": "'\rx",
+		"": "", "1": "1", "a=1": "a=1", " =1": " =1", "x\t": "x\t",
+	} {
+		if got := guardFormula(cell); got != want {
+			t.Errorf("guardFormula(%q) = %q, want %q", cell, got, want)
+		}
+	}
 }
 
 // TestABatchFileIsNeverWrittenThrough: a batch file is created new; a name already there (a file,
