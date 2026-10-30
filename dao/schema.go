@@ -315,13 +315,24 @@ func (s *Schema[R, C, K, ID]) acquire(opts []QueryOption) queryConfig {
 	return qc
 }
 
+// newDAO is every acquisition's DAO: qc's hooks, context and local settings,
+// on tx (nil for the pool). Local settings the dialect refuses fail the DAO,
+// as an invalid query config does.
+func (s *Schema[R, C, K, ID]) newDAO(qc queryConfig, tx *Transaction) *queryDAO[R, C, K, ID] {
+	d := &queryDAO[R, C, K, ID]{schema: s, conn: s.conn, tx: tx,
+		hooks: qc.hooks, ctxv: qc.ctx, explicitCtx: qc.explicitCtx, local: qc.local}
+	if err := checkLocalSettings(s.dialect, qc.local); err != nil {
+		d.fail(err)
+	}
+	return d
+}
+
 // DAO returns a fresh, query-scoped DAO on the connection pool (autocommit).
 // [Schema.On] with a nil transaction returns the same thing, which is
 // what lets a helper take an executor parameter and pass it straight through.
 func (s *Schema[R, C, K, ID]) DAO(opts ...QueryOption) DAO[R, C, ID] {
 	qc := s.acquire(opts)
-	return &queryDAO[R, C, K, ID]{schema: s, conn: s.conn,
-		hooks: qc.hooks, ctxv: qc.ctx, explicitCtx: qc.explicitCtx}
+	return s.newDAO(qc, nil)
 }
 
 // On returns a fresh, query-scoped DAO bound to a transaction. Every statement on
@@ -347,8 +358,7 @@ func (s *Schema[R, C, K, ID]) DAO(opts ...QueryOption) DAO[R, C, ID] {
 // branches it picks between are already the same call.
 func (s *Schema[R, C, K, ID]) On(tx *Transaction, opts ...QueryOption) DAO[R, C, ID] {
 	qc := s.acquire(opts)
-	d := &queryDAO[R, C, K, ID]{schema: s, conn: s.conn, tx: tx,
-		hooks: qc.hooks, ctxv: qc.ctx, explicitCtx: qc.explicitCtx}
+	d := s.newDAO(qc, tx)
 	if tx != nil && !d.explicitCtx {
 		d.ctxv = tx.ctx
 	}
@@ -361,8 +371,7 @@ func (s *Schema[R, C, K, ID]) On(tx *Transaction, opts ...QueryOption) DAO[R, C,
 // WithQueryContext option outranks ctx.
 func (s *Schema[R, C, K, ID]) OnCtx(ctx context.Context, opts ...QueryOption) DAO[R, C, ID] {
 	qc := s.acquire(opts)
-	d := &queryDAO[R, C, K, ID]{schema: s, conn: s.conn, tx: txFromContext(ctx),
-		hooks: qc.hooks, ctxv: qc.ctx, explicitCtx: qc.explicitCtx}
+	d := s.newDAO(qc, txFromContext(ctx))
 	if d.ctxv == nil {
 		d.ctxv = ctx
 	}

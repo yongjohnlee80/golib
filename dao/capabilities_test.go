@@ -25,6 +25,7 @@ type caps struct {
 	twoPhase bool
 	upserter bool
 	lastID   bool
+	local    bool // LocalSetter
 }
 
 func probe(d dao.Dialect) caps {
@@ -34,6 +35,7 @@ func probe(d dao.Dialect) caps {
 	_, c.twoPhase = d.(dao.TwoPhaser)
 	_, c.upserter = d.(dao.Upserter)
 	_, c.lastID = d.(dao.LastInsertIDReader)
+	_, c.local = d.(dao.LocalSetter)
 	return c
 }
 
@@ -51,7 +53,7 @@ func TestCapabilityProbes(t *testing.T) {
 		d    dao.Dialect
 		want caps
 	}{
-		{"postgres", postgres.PostgresDialect{}, caps{returner: true, copier: true, twoPhase: true, upserter: true}},
+		{"postgres", postgres.PostgresDialect{}, caps{returner: true, copier: true, twoPhase: true, upserter: true, local: true}},
 		{"mysql", mysql.MysqlDialect{}, caps{upserter: true, lastID: true}},
 		{"sqlite", sqlite.SqliteDialect{}, caps{returner: true, upserter: true}},
 		{"generic", dao.GenericDialect{}, caps{}},

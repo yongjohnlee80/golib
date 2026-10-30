@@ -671,6 +671,48 @@ chunks := dao.New(conn, …, dao.SortParam[…](ByNearest, dao.Distance(dao.T("e
 near, err := chunks.DAO().OrderBy(dao.AscBy(ByNearest, postgres.Vector(q))).Limit(10).Select(…)
 ```
 
+### Settings for one statement (`WithLocalSettings`)
+
+An HNSW search with a filter needs settings in force for its own statement:
+pgvector's scan budgets and `plan_cache_mode`. `dao.WithLocalSettings` sets them
+on the statement's own transaction and connection, immediately before it, and
+puts each name's previous value back once the statement is done (for `Iterate`,
+when its rows close). A later statement of the transaction, this DAO's or any
+other's, sees the transaction's own values.
+
+```go
+err := dao.RunTx(ctx, func(tx *dao.Transaction) error {
+    near, err := chunks.On(tx, dao.WithLocalSettings(
+        postgres.HNSWIterativeScan("relaxed_order"),
+        postgres.HNSWEfSearch(400),
+        postgres.PlanCacheMode("force_custom_plan"),
+    )).OrderBy(dao.AscBy(ByNearest, postgres.Vector(q))).Limit(10).Select(…)
+    …
+})
+```
+
+- **It costs two round trips per optioned statement**: one statement reads the
+  previous values and makes the settings, one puts them back. A DAO without the
+  option sends neither. Names and values are bound in both, never spliced.
+- **On a transaction only.** A pool DAO (`DAO()`, `On(nil)`, `Use(nil)`) answers
+  `ErrLocalSettingsNeedTx` (wrapping `errs.ErrPrecondition`) from every verb: a
+  pool statement runs in a transaction of its own, which no setting sent before
+  it could reach.
+- **An allowlist, per dialect.** The dialect implements `dao.LocalSetter`;
+  PostgreSQL's names are in [dao/postgres](postgres/README.md). A name off the
+  list, a value outside its domain, an empty name or a name given twice fail
+  the DAO with `ErrInvalidArgument`; a dialect without the capability, with
+  `ErrUnsupported`; `Batch` refuses the option with `ErrUnsupported`. Every
+  refusal comes before anything is sent.
+- **Hooks see both statements** as statements of their own (`OpLocalSettings`,
+  `OpLocalRestore`), in the order they reach the server: the settings, the
+  statement, the restore.
+- **Failures.** A restore that fails fails the verb with its error, in the
+  error's chain, and the caller gets none of the result. After a statement that
+  fails nothing more is sent; the settings end with the transaction (commit,
+  rollback, or a rolled-back savepoint), so none outlives it or reaches the
+  next user of a pooled connection.
+
 ## Schema scripts (`dao/deploy`)
 
 A product's schema is numbered SQL scripts, one directory per engine, named
