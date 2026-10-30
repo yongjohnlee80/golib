@@ -173,6 +173,8 @@ func linearFamilies() []linearFamily {
 		"unclosed-html-pis":      func(n int) string { return strings.Repeat("a <?", n/4) },
 		"unclosed-html-cdata":    func(n int) string { return strings.Repeat("a <![CDATA[", n/11) },
 		"unclosed-html-decls":    func(n int) string { return strings.Repeat("a <!A", n/5) },
+		// open brackets under many links: each link deactivates the openers below it once (GS-4)
+		"open-brackets-then-links": func(n int) string { return strings.Repeat("[", n/2) + strings.Repeat("[a](b) ", n/14) },
 	}
 	gfmFamilies := map[string]func(n int) string{
 		"gfm-tilde-runs":      func(n int) string { return strings.Repeat("~~a", n/3) },
@@ -189,14 +191,15 @@ func linearFamilies() []linearFamily {
 		"gfm-unclosed-bracket": func(n int) string { return "[" + strings.Repeat("www.a.b ", n/8) },
 	}
 	obsidianFamilies := map[string]func(n int) string{
-		"obs-unclosed-wikilinks": func(n int) string { return strings.Repeat("[[a", n/3) },
-		"obs-nested-openers":     func(n int) string { return strings.Repeat("[[a", n/6) + strings.Repeat("]]", n/6) },
-		"obs-wikilinks":          func(n int) string { return strings.Repeat("[[P#H|a]] ", n/10) },
-		"obs-embeds-in-brackets": func(n int) string { return strings.Repeat("[x ![[i]] ", n/10) },
-		"obs-tags":               func(n int) string { return strings.Repeat("#t/a-b ", n/7) },
-		"obs-digit-tags":         func(n int) string { return strings.Repeat("#123 ", n/5) },
-		"obs-callouts":           func(n int) string { return strings.Repeat("> [!note]- T\n> a\n\n", n/18) },
-		"obs-unclosed-front":     func(n int) string { return "---\n" + strings.Repeat("a: b\n", n/5) },
+		"obs-open-brackets-then-wikilinks": func(n int) string { return strings.Repeat("[", n/2) + strings.Repeat("[[a]] ", n/12) },
+		"obs-unclosed-wikilinks":           func(n int) string { return strings.Repeat("[[a", n/3) },
+		"obs-nested-openers":               func(n int) string { return strings.Repeat("[[a", n/6) + strings.Repeat("]]", n/6) },
+		"obs-wikilinks":                    func(n int) string { return strings.Repeat("[[P#H|a]] ", n/10) },
+		"obs-embeds-in-brackets":           func(n int) string { return strings.Repeat("[x ![[i]] ", n/10) },
+		"obs-tags":                         func(n int) string { return strings.Repeat("#t/a-b ", n/7) },
+		"obs-digit-tags":                   func(n int) string { return strings.Repeat("#123 ", n/5) },
+		"obs-callouts":                     func(n int) string { return strings.Repeat("> [!note]- T\n> a\n\n", n/18) },
+		"obs-unclosed-front":               func(n int) string { return "---\n" + strings.Repeat("a: b\n", n/5) },
 	}
 	var out []linearFamily
 	add := func(suffix string, opts []markdown.Option, m map[string]func(int) string) {
