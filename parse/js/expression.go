@@ -368,18 +368,23 @@ type ExprProperty struct {
 // tree whose shape varies by Kind is exactly the thing each of them would
 // otherwise get subtly wrong.
 func (e *Expr) Walk(fn func(*Expr) bool) {
-	if e == nil || !fn(e) {
-		return
-	}
-	e.Left.Walk(fn)
-	e.Right.Walk(fn)
-	e.Alt.Walk(fn)
-	for i := range e.Args {
-		e.Args[i].Walk(fn)
-	}
-	for i := range e.Props {
-		e.Props[i].KeyExpr.Walk(fn)
-		e.Props[i].Value.Walk(fn)
+	// an explicit stack, not recursion: a left-deep chain (a.b.c…, a+b+c…) is as deep as it is
+	// long, and the parser builds it in a loop that spends no depth budget (GS-19)
+	stack := []*Expr{e}
+	for len(stack) > 0 {
+		n := stack[len(stack)-1]
+		stack = stack[:len(stack)-1]
+		if n == nil || !fn(n) {
+			continue
+		}
+		// pushed last to first, so they are visited in the order the recursive walk visited them
+		for i := len(n.Props) - 1; i >= 0; i-- {
+			stack = append(stack, &n.Props[i].Value, n.Props[i].KeyExpr)
+		}
+		for i := len(n.Args) - 1; i >= 0; i-- {
+			stack = append(stack, &n.Args[i])
+		}
+		stack = append(stack, n.Alt, n.Right, n.Left)
 	}
 }
 
