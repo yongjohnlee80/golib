@@ -347,6 +347,13 @@ func TestAFlowKeyHoldsTheScannerToItsBounds(t *testing.T) {
 	if _, err := yaml.Parse([]byte(deep), yaml.MaxDepth(6)); err != nil {
 		t.Errorf("six flow levels under MaxDepth(6): %v", err)
 	}
+	// openers that never close: no ':' resolves their keys, so the scanner reads on ahead of the
+	// parser, which never sees the level past its bound; the scanner's own bound refuses it
+	for _, open := range []string{strings.Repeat("[", 6), "{" + strings.Repeat("[", 5), strings.Repeat("{", 6) + "a"} {
+		if _, err := yaml.Parse([]byte(open), yaml.MaxDepth(5)); err == nil || !strings.Contains(err.Error(), "flow collections nest more deeply") {
+			t.Errorf("%q under MaxDepth(5): %v, want the scanner's flow bound", open, err)
+		}
+	}
 	if _, err := yaml.Parse([]byte("{" + strings.Repeat("k", 1000) + ": v}")); err != nil {
 		t.Errorf("a 1000-character flow key: %v", err)
 	}
