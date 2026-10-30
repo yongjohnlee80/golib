@@ -124,19 +124,6 @@ func caseOf(op Action) func(string) string {
 	return toggleCase
 }
 
-// caseOpOf is the case operator the g prefix's second key names, or ActUnbound.
-func caseOpOf(code rune) Action {
-	switch code {
-	case '~':
-		return ActCaseToggleOp
-	case 'u':
-		return ActLowerOp
-	case 'U':
-		return ActUpperOp
-	}
-	return ActUnbound
-}
-
 // applyCase runs case operator op over r, the cursor at its start.
 func (c *EditorCore) applyCase(op Action, r opRange) {
 	b := &c.buf

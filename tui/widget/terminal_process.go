@@ -188,10 +188,6 @@ func (t *Terminal) endWithApp() {
 	t.ShutdownWithResult()
 }
 
-func (t *Terminal) stop() {
-	t.StopWithResult()
-}
-
 func (t *Terminal) exitWith(code int) {
 	t.running, t.exited, t.exitCode = false, true, code
 	t.wr.close()

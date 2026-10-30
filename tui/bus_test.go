@@ -13,7 +13,7 @@ import (
 )
 
 type fooMsg struct{ n int }
-type barMsg struct{ s string }
+type barMsg struct{}
 
 // TestBusTypedDispatch: Subscribe[Foo] receives only Foo publishes, on the
 // loop goroutine, in subscription order; Publish from a non-loop goroutine

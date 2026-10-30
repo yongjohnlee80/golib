@@ -156,12 +156,6 @@ func (t *TextArea) cellsAt(ln, col int) int {
 	return t.textBuffer.cellsAt(ln, col, t.measure)
 }
 
-// colForCells returns the cluster column in line ln closest to the cell
-// offset cells (for sticky vertical movement).
-func (t *TextArea) colForCells(ln, cells int) int {
-	return t.textBuffer.colForCells(ln, cells, t.measure)
-}
-
 // insert places text at the cursor (replacing any selection) as one atomic
 // edit; newlines split lines. Emits one ChangeEvent.
 func (t *TextArea) insert(text string) {
@@ -342,9 +336,6 @@ func (t *TextArea) PointerShapes(dst []tui.PointerRegion) []tui.PointerRegion {
 // scrollable reports whether content exceeds the viewport vertically.
 func (t *TextArea) scrollable() bool { return wrapScrollable(t.textLines, t.view()) }
 
-// rowsOfLine is the wrapped visual height of line i at the current width.
-func (t *TextArea) rowsOfLine(i int) int { return wrapRowsOfLine(t.textLines, i, t.view()) }
-
 // ensureVisible adjusts top/left so the cursor stays inside the viewport
 // (using the last layout size).
 func (t *TextArea) ensureVisible() {
@@ -362,12 +353,6 @@ func (t *TextArea) Layout(c tui.Constraints) tui.Size {
 // Cursor implements tui.CursorReporter (viewport-local insertion point).
 func (t *TextArea) Cursor() (int, int, bool) {
 	return caretAt(t.textLines, t.view(), t.top, t.left, t.ln, t.col, t.cellsAt(t.ln, t.col))
-}
-
-// wrapPos locates cluster column col inside line ln's wrapped rows: the row
-// index and the cell offset within that row.
-func (t *TextArea) wrapPos(ln, col int) (row, x int) {
-	return wrapPosOf(t.textLines, ln, col, t.view())
 }
 
 // Render paints the viewport, the selection fill, and the scroll indicator.

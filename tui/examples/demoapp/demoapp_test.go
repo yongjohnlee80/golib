@@ -67,17 +67,6 @@ func (g *gate) sync() {
 	}
 }
 
-func (g *gate) onLoop(fn func()) {
-	g.t.Helper()
-	done := make(chan struct{})
-	g.app.Update(func() { fn(); close(done) })
-	select {
-	case <-done:
-	case <-time.After(3 * time.Second):
-		g.t.Fatalf("loop did not run Update within 3s")
-	}
-}
-
 func (g *gate) inject(evs ...tui.Event) {
 	g.t.Helper()
 	if err := g.tb.Inject(evs...); err != nil {
@@ -122,13 +111,6 @@ func (g *gate) want(step, sub string) {
 	g.t.Helper()
 	if !g.contains(sub) {
 		g.t.Fatalf("%s: grid does not contain %q:\n%s", step, sub, g.tb.String())
-	}
-}
-
-func (g *gate) wantNot(step, sub string) {
-	g.t.Helper()
-	if g.contains(sub) {
-		g.t.Fatalf("%s: grid unexpectedly contains %q:\n%s", step, sub, g.tb.String())
 	}
 }
 
