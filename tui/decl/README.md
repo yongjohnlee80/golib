@@ -638,8 +638,8 @@ keeps the choice: the next document that can render is drawn Rendered with no ke
 **The property is `view`, not `mode`, on purpose.** The Editor already has a `modeChanged`
 signal, and it reports the **Vim** mode (Normal, Insert, Visual). QML reads a property `x` and a
 signal `xChanged` as one pair, so a `mode` property would make `onModeChanged` look like the view
-switching. Do not rename `view` to `mode`, and do not read `modeChanged` as the view (Johno,
-2026-10-08; ADR 1791385086 §4.8).
+switching. Do not rename `view` to `mode`, and do not read `modeChanged` as the view (decided
+2026-10-08).
 
 `MarkdownRenderer` is a renderer spec: plain data the document declares, which a terminal build
 parses without Gio. A consumer's own renderer is a spec type of its own, implementing

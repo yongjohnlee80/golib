@@ -7,8 +7,8 @@ import (
 
 var _ tuiwidget.EditorFoldLayout = (*pixelLayout)(nil)
 
-// THE EDITOR'S FOLDS — tui/widget's EditorFoldLayout, answered from the Rendered view's laid blocks
-// (ADR 1792414684): a fold is a run of a block's lines with nothing of theirs drawn, a diagram's
+// THE EDITOR'S FOLDS — tui/widget's EditorFoldLayout, answered from the Rendered view's laid blocks:
+// a fold is a run of a block's lines with nothing of theirs drawn, a diagram's
 // picture or hidden metadata, where the caret has no place. While text is typed the cursor's block
 // is laid raw (typing), so nothing folds; the Raw view folds nothing. The body draws the cursor's
 // fold (foldRect), and Reveal scrolls to it.

@@ -58,7 +58,7 @@ func TestTheEditorsKeyTablesMatchTheirFixtures(t *testing.T) {
 	checkActions(t, acts.String())
 }
 
-// editingCommandIDs are the commands ADR 1792624213 adds: each keyset's Insert editing commands,
+// editingCommandIDs are the commands the one key system adds: each keyset's Insert editing commands,
 // less the actions Nano and Standard already bind in Insert (Home, End and the Page keys, early).
 func editingCommandIDs() map[string]bool {
 	ids := map[string]bool{}

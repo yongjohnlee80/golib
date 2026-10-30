@@ -11,7 +11,7 @@ import (
 	"github.com/yongjohnlee80/golib/tui/widget"
 )
 
-// TILES — golib's tile manager (widget.Tiles, ADR 1792525673) as a document writes it: a
+// TILES — golib's tile manager (widget.Tiles) as a document writes it: a
 // TileManager whose children are Tiles. The tiles share the manager's whole rect; it owns their
 // sizes. Alt-right drag in a tile moves the shared border nearest the press, Alt-left drag re-docks
 // it or swaps it with another, a dock hides and shows it (WithWindowCollector), and nothing floats.

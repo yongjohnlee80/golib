@@ -145,7 +145,7 @@ import (
 //
 // # Core and view
 //
-// Editor is an [EditorCore] and its cell layout (ADR 1791385086): the core holds the text, the
+// Editor is an [EditorCore] and its cell layout: the core holds the text, the
 // modes, the keys and undo; the Editor lays it out in cells, hit-tests the pointer, scrolls, and
 // paints. [Editor.Core] hands the core to code that drives it apart from this view, and is the one
 // way to reach its behaviour (its text, cursor, modes, keys, registers and undo); [WithCore] is the

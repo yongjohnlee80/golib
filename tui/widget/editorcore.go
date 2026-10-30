@@ -13,7 +13,7 @@ import (
 	"github.com/yongjohnlee80/golib/tui/keymap"
 )
 
-// EDITOR CORE — the Editor's behaviour, apart from any view of it (ADR 1791385086).
+// EDITOR CORE — the Editor's behaviour, apart from any view of it.
 //
 // EditorCore is the text, the cursor, the modes and the keys, undo and the register, the visual
 // selection and the highlighting: everything an editor does, and nothing of how it is drawn. A

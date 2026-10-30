@@ -1,7 +1,7 @@
 package widget
 
 // FOLDS — runs of lines a layout draws as one: a rendered block with none of its source drawn (a
-// diagram's picture), or hidden (metadata). Vim's closed folds (ADR 1792414684), kept by the layout,
+// diagram's picture), or hidden (metadata). Vim's closed folds, kept by the layout,
 // which opens them while text is typed. Over a fold, Normal and Visual mode behave as Vim's
 // fold-behavior says: a vertical move counts it as one row and lands on its first line, in its
 // first column; an operator takes it whole. A hidden fold is no row: a move passes it. The core asks

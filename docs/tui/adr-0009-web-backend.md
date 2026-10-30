@@ -694,7 +694,7 @@ So `tui/web` ships [`web.SSO`], and it is the **supported** way to consume the
 seam. A consumer supplies only what is genuinely theirs — how to allocate, and how
 to release — and each obligation is structural rather than documented:
 
-> **Amended (ADR 1792586203, amendment 5; golib #434):** `Options()` and `MaxPendingLogins`
+> **Amended (golib #434):** `Options()` and `MaxPendingLogins`
 > are gone. An explicit `web.Admission` (`NewAdmission(AdmissionCap(n), AdmissionHold(d))`) is
 > built first and handed to each part: the SSO attaches to it (`SSOConfig.Admission`), which
 > wires both hooks and makes the park hold the Admission's cap, and the Manager takes it
