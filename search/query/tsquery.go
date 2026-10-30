@@ -22,7 +22,15 @@ var tsLexeme = strings.NewReplacer(`\`, `\\`, `'`, `''`)
 //
 //	TSQuery([]Term{{Text: "rock&roll"}, {Text: "gui", Prefix: true}})
 //	// 'rock&roll' & 'gui':*
-func TSQuery(terms []Term) (string, error) {
+func TSQuery(terms []Term) (string, error) { return tsJoin(terms, " & ") }
+
+// TSQueryAny is TSQuery with any one term enough to match: the lexemes joined
+// by " | ". Ranked (ts_rank), a row holding more of the terms still comes
+// first, so it is the fallback for a query whose every term no row holds. No
+// terms is [ErrNoTerms].
+func TSQueryAny(terms []Term) (string, error) { return tsJoin(terms, " | ") }
+
+func tsJoin(terms []Term, op string) (string, error) {
 	if len(terms) == 0 {
 		return "", ErrNoTerms
 	}
@@ -34,5 +42,5 @@ func TSQuery(terms []Term) (string, error) {
 		}
 		parts[i] = p
 	}
-	return strings.Join(parts, " & "), nil
+	return strings.Join(parts, op), nil
 }
