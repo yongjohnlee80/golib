@@ -304,7 +304,7 @@ func TestPanelTitleTrailingSitsAtTheRight(t *testing.T) {
 // either side of it sit side by side. The panel's own painter gave it a cell of its own, a blank
 // column inside the title that its measured width had not counted.
 func TestAPanelTitleGivesAZeroWidthClusterNoColumn(t *testing.T) {
-	panel := gw.NewPanel(widget.NewText("content"), gw.WithTitle("Ab​Cd"))
+	panel := gw.NewPanel(widget.NewText("content"), gw.WithTitle("Ab\u200bCd"))
 	float := widget.NewFloat(panel)
 	host := widget.NewOverlayHost(widget.NewText("background"))
 	tb := tui.NewTestBackend(60, 20)
