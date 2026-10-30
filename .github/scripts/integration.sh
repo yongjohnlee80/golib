@@ -8,39 +8,12 @@
 # server without two-phase commit, FAILS this gate. Skips for other reasons are listed, not fatal.
 set -euo pipefail
 
-prefix="golib-it-$$"
-pg="$prefix-pg" my="$prefix-mysql"
-pg_port="${GOLIB_IT_PG_PORT:-55432}" my_port="${GOLIB_IT_MYSQL_PORT:-53306}"
 log="${GOLIB_IT_LOG:-integration.log}"
 
-cleanup() { docker rm -f "$pg" "$my" >/dev/null 2>&1 || true; }
-trap cleanup EXIT
-
-# max_prepared_transactions > 0 for the two-phase commit tests; postgres defaults it to 0.
-docker run -d --name "$pg" -e POSTGRES_PASSWORD=golib -e POSTGRES_DB=golib \
-  -p "127.0.0.1:$pg_port:5432" pgvector/pgvector:pg18 \
-  postgres -c max_prepared_transactions=10 >/dev/null
-docker run -d --name "$my" -e MYSQL_ROOT_PASSWORD=golib -e MYSQL_DATABASE=golib \
-  -p "127.0.0.1:$my_port:3306" mysql:8.4 >/dev/null
-
-# wait_for <what> <command...>: until two minutes of wall time have passed (each try's own time
-# included), then fail with the server's own log
-wait_for() {
-  local what=$1; shift
-  local deadline=$((SECONDS + 120))
-  while [ "$SECONDS" -lt "$deadline" ]; do
-    if timeout 10 "$@" >/dev/null 2>&1; then echo "$what is up"; return 0; fi
-    sleep 1
-  done
-  echo "::error::$what did not come up within 120s"
-  docker logs "${what}" 2>&1 | tail -30
-  return 1
-}
-wait_for "$pg" docker exec "$pg" pg_isready -U postgres -d golib
-wait_for "$my" docker exec "$my" mysql -uroot -pgolib -e 'SELECT 1' golib
-
-export TEST_PGURL="postgres://postgres:golib@127.0.0.1:$pg_port/golib?sslmode=disable"
-export TEST_MYSQL_DSN="root:golib@tcp(127.0.0.1:$my_port)/golib?parseTime=true"
+# the two servers (databases.sh, which the coverage job also starts them with)
+. "$(dirname "$0")/databases.sh"
+trap databases_down EXIT
+databases_up
 
 set +e
 # GOLIB_IT_GO runs go elsewhere (a container with the module's toolchain, on the host network),

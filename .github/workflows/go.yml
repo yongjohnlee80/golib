@@ -390,16 +390,22 @@ jobs:
           go-version-file: go.mod
           cache: true
 
+      # dao/postgres and dao/mysql's cells skip with no server, so without these the policy measures
+      # those packages with their database paths unrun, at head and base alike: the integration
+      # job's databases, for both runs, with its tag
+      - name: start the databases
+        run: .github/scripts/databases.sh
+
       - name: generate head coverage
         run: >-
-          go test -count=1 -timeout 20m -covermode=atomic
+          go test -tags integration -count=1 -timeout 20m -covermode=atomic
           -coverpkg=./... -coverprofile="$RUNNER_TEMP/coverage-head.out" ./...
 
       - name: generate base coverage
         run: |
           git worktree add --detach "$RUNNER_TEMP/coverage-base" "$BASE_SHA"
           cd "$RUNNER_TEMP/coverage-base"
-          go test -count=1 -timeout 20m -covermode=atomic \
+          go test -tags integration -count=1 -timeout 20m -covermode=atomic \
             -coverpkg=./... -coverprofile="$RUNNER_TEMP/coverage-base.out" ./...
 
       # gui/ is a nested module (Gio, cgo): the root module's profile can never contain its files,
