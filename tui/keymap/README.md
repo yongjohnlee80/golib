@@ -5,8 +5,6 @@ Every key golib acts on is a **command**: an id, a scope and its default keys, d
 schemes layered on them, validated once and immutable; the App holds one, and every widget asks its
 Context which of its commands a key is (`Context.KeyCommand`).
 
-Design: ADR 1792255248 (KB `adrs/1792255248-golib-tui-overridable-key-maps.md`).
-
 ## A scheme
 
 Qt Creator's keyboard-mapping scheme, in a `.xml` file:

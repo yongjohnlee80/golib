@@ -108,8 +108,7 @@ apt install libwayland-dev libx11-dev libx11-xcb-dev libxkbcommon-x11-dev \
 ## Status
 
 Linux (Wayland, X11) and macOS. v0.2.0 adds pixel-root panes, raw keys, and
-streams of frames, canvases and mutable images (ADR 1792306654, which amends
-ADR 1791330692). Not yet: a native view spanning panes, and layer caching.
+streams of frames, canvases and mutable images. Not yet: a native view spanning panes, and layer caching.
 Accessibility: Gio's semantic operations have no desktop consumer yet, so the
 window has no screen-reader support.
 

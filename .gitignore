@@ -18,3 +18,7 @@ tui/examples/*/bin/
 # Test binaries `go test -c` or a profiling run (-cpuprofile) leaves in the
 # package directory.
 *.test
+
+# Editor and tool logs. An nvim.log once reached the repository with a runtime path and a PID in
+# it; a log is a machine's, never source.
+*.log

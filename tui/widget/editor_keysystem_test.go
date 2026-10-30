@@ -7,7 +7,7 @@ import (
 	"github.com/yongjohnlee80/golib/tui/widget"
 )
 
-// The editor's one key system (ADR 1792624213), through HandleKey: where a binding runs is its
+// The editor's one key system, through HandleKey: where a binding runs is its
 // declaration's phase, a modified key reaches its bare key's editing command with the modifiers as
 // qualifiers, and a pending key's sub-scope is looked up first.
 

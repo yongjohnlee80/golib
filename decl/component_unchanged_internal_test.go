@@ -12,7 +12,7 @@ import (
 	"github.com/yongjohnlee80/golib/parse/qml"
 )
 
-// component_unchanged_internal_test.go holds expand to ADR 1791761080's first
+// component_unchanged_internal_test.go holds expand to the component-properties design's first
 // promise: a document whose components declare nothing expands to the same
 // tree it did before components could declare anything. expandBefore is
 // expand and merge as they were at golib 890f002, frozen here as the
