@@ -283,11 +283,19 @@ func call(ctx context.Context, client *http.Client, method, url string, header h
 		return err
 	}
 	defer resp.Body.Close()
-	if err := json.NewDecoder(resp.Body).Decode(out); err != nil {
+	body := &io.LimitedReader{R: resp.Body, N: maxAnswer + 1}
+	if err := json.NewDecoder(body).Decode(out); err != nil {
+		if body.N <= 0 {
+			return fmt.Errorf("embed: %s %s: the answer is over %d bytes", method, url, maxAnswer)
+		}
 		return fmt.Errorf("embed: %s %s: decoding the answer: %w", method, url, err)
 	}
 	return nil
 }
+
+// maxAnswer is the most of a provider's answer read: a batch's vectors with room to spare, never
+// whatever a provider (or something posing as one) sends.
+var maxAnswer int64 = 64 << 20 // a var: a cell lowers it rather than send 64 MiB
 
 // send sends one JSON request and answers the response of a 200, its body for the caller to read
 // and close; any other status is an error quoting the start of the body, typed as call's are.

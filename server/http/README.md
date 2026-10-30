@@ -41,7 +41,7 @@ means "no timeout" explicitly.
 
 | Option | Default | Effect |
 |---|---|---|
-| `Addr(a)` | `:8080` | listen address |
+| `Addr(a)` | `127.0.0.1:8080` | listen address. The default is this host's loopback only; a service others reach (in a container, on a LAN) passes its own, `Addr(":8080")` for every interface |
 | `ReadTimeout(d)` | 15s | max time to read the whole request |
 | `ReadHeaderTimeout(d)` | 5s | header read cap (Slowloris guard) |
 | `WriteTimeout(d)` | 15s | end-of-headers to end-of-response |

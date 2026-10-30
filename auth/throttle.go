@@ -362,8 +362,15 @@ func peerAddress(r *Request) string {
 		return ""
 	}
 	// The address without the port: a port changes per connection, so keying on
-	// it would give an attacker a fresh counter for every attempt.
-	return r.Peer.Addr().Unmap().String()
+	// it would give an attacker a fresh counter for every attempt. An IPv6 peer is
+	// keyed by its /64, for the same reason: one subscriber holds a whole /64.
+	addr := r.Peer.Addr().Unmap()
+	if addr.Is6() {
+		if p, err := addr.Prefix(64); err == nil {
+			return p.String()
+		}
+	}
+	return addr.String()
 }
 
 var _ Factor = (*Throttle)(nil)

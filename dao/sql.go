@@ -1,6 +1,9 @@
 package dao
 
-import "strings"
+import (
+	"math"
+	"strings"
+)
 
 // builder renders SQL text and collects its bind arguments against a [Dialect].
 // It is the core's minimal, zero-dependency SQL builder. This file currently
@@ -95,11 +98,11 @@ func (b *builder) buildSelect(table string, cols []string, joins []joinClause,
 	}
 	if limit != nil {
 		b.sb.WriteString(" LIMIT ")
-		b.sb.WriteString(b.ph(int64(*limit))) // int64: portable across drivers (pgx won't encode uint64)
+		b.sb.WriteString(b.ph(clampInt64(*limit))) // int64: portable across drivers (pgx won't encode uint64)
 	}
 	if offset != nil {
 		b.sb.WriteString(" OFFSET ")
-		b.sb.WriteString(b.ph(int64(*offset)))
+		b.sb.WriteString(b.ph(clampInt64(*offset)))
 	}
 	return b.sb.String()
 }
@@ -306,4 +309,13 @@ func (b *builder) buildBatchInsert(table string, cols []string, matrix [][]any, 
 		b.sb.WriteString(suffix)
 	}
 	return b.sb.String()
+}
+
+// clampInt64 is n as an int64 bind: past math.MaxInt64 it is math.MaxInt64, where a plain
+// conversion would wrap to a negative LIMIT or OFFSET that a driver rejects or reads otherwise.
+func clampInt64(n uint64) int64 {
+	if n > math.MaxInt64 {
+		return math.MaxInt64
+	}
+	return int64(n)
 }
