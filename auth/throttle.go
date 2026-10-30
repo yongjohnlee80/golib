@@ -6,6 +6,7 @@ import (
 	"encoding/base64"
 	"errors"
 	"fmt"
+	"net/netip"
 	"time"
 )
 
@@ -361,10 +362,18 @@ func peerAddress(r *Request) string {
 	if r == nil || !r.Peer.IsValid() {
 		return ""
 	}
-	// The address without the port: a port changes per connection, so keying on
-	// it would give an attacker a fresh counter for every attempt. An IPv6 peer is
-	// keyed by its /64, for the same reason: one subscriber holds a whole /64.
-	addr := r.Peer.Addr().Unmap()
+	return PeerKey(r.Peer.Addr())
+}
+
+// PeerKey is the key a per-address limit counts addr under: IPv4 (an IPv4-mapped IPv6 address
+// included) as the address, and IPv6 by its /64, since one subscriber holds a whole /64 and
+// keying on the full address would give it a fresh counter for every attempt. A port is never
+// part of it, for the same reason. An invalid addr is "".
+func PeerKey(addr netip.Addr) string {
+	if !addr.IsValid() {
+		return ""
+	}
+	addr = addr.Unmap()
 	if addr.Is6() {
 		if p, err := addr.Prefix(64); err == nil {
 			return p.String()

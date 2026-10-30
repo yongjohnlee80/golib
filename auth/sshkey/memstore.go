@@ -37,7 +37,12 @@ func (s *MemStore) Put(id string, rec ChallengeRecord) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	if len(s.recs) >= s.max {
-		s.sweepLocked(time.Now())
+		// at the issuer's clock, the new record's issue time: what has expired by then goes
+		now := rec.IssuedAt
+		if now.IsZero() {
+			now = time.Now()
+		}
+		s.sweepLocked(now)
 		if len(s.recs) >= s.max {
 			return ErrFull
 		}

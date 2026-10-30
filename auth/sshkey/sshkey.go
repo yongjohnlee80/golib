@@ -41,7 +41,9 @@ import (
 	"encoding/base64"
 	"encoding/pem"
 	"fmt"
+	"net/netip"
 	"strings"
+	"sync"
 	"time"
 
 	"golang.org/x/crypto/ssh"
@@ -158,6 +160,7 @@ type settings struct {
 	sigKey    string
 	chalKey   string
 	idKey     string
+	perAddr   int
 }
 
 // Namespace sets the SSHSIG namespace — the domain separation that stops a
@@ -168,6 +171,17 @@ func Namespace(ns string) Option { return func(s *settings) { s.namespace = ns }
 // Clock overrides the time source, for tests.
 func Clock(fn func() time.Time) Option { return func(s *settings) { s.now = fn } }
 
+// ChallengesPerAddress bounds how many unexpired challenges [Challenger.IssueFrom] gives one address
+// (default 8; an IPv6 address counts by its /64, as [auth.PeerKey] keys it). Past it, IssueFrom
+// refuses with ErrTooManyChallenges and the store is never asked. n <= 0 keeps the default.
+func ChallengesPerAddress(n int) Option {
+	return func(s *settings) {
+		if n > 0 {
+			s.perAddr = n
+		}
+	}
+}
+
 // CredentialKeys sets the auth.Request credential keys the signature, challenge
 // id, and claimed identity are read from. Defaults "ssh-signature",
 // "ssh-challenge", "ssh-identity".
@@ -176,7 +190,7 @@ func CredentialKeys(signature, challenge, identity string) Option {
 }
 
 func resolve(opts []Option) settings {
-	s := settings{now: time.Now, sigKey: "ssh-signature", chalKey: "ssh-challenge", idKey: "ssh-identity"}
+	s := settings{now: time.Now, sigKey: "ssh-signature", chalKey: "ssh-challenge", idKey: "ssh-identity", perAddr: 8}
 	for _, o := range opts {
 		if o != nil {
 			o(&s)
@@ -473,11 +487,24 @@ type ChallengeStore interface {
 	Consume(id string, now time.Time) (ChallengeRecord, error)
 }
 
+// ErrTooManyChallenges is IssueFrom's refusal of an address already holding its
+// ChallengesPerAddress unexpired challenges.
+var ErrTooManyChallenges = errTooMany{}
+
+type errTooMany struct{}
+
+func (errTooMany) Error() string { return "sshkey: too many outstanding challenges for this address" }
+
 // Challenger issues challenges into a store.
 type Challenger struct {
 	store ChallengeStore
 	now   func() time.Time
 	ttl   time.Duration
+
+	perAddr int
+	mu      sync.Mutex
+	issued  map[string][]time.Time // per auth.PeerKey, the expiries of what IssueFrom gave it
+	sweepAt int                    // len(issued) at which every key's expired entries are dropped
 }
 
 // NewChallenger builds an issuer. ttl bounds how long a challenge may be
@@ -487,11 +514,77 @@ func NewChallenger(store ChallengeStore, ttl time.Duration, opts ...Option) *Cha
 	if ttl <= 0 {
 		ttl = 2 * time.Minute
 	}
-	return &Challenger{store: store, now: s.now, ttl: ttl}
+	return &Challenger{store: store, now: s.now, ttl: ttl, perAddr: s.perAddr, issued: map[string][]time.Time{}, sweepAt: 64}
 }
 
 // Issue mints a challenge bound to b.
+//
+// Issuing is reachable before anyone authenticates, and Issue counts nothing per caller: one
+// address can take every slot a bounded store has (MemStore refuses at capacity), and everyone
+// after it is refused. Serving callers from the network, use [Challenger.IssueFrom] with the
+// transport's own peer address, or bound the endpoint per address yourself.
 func (c *Challenger) Issue(b Binding) (Challenge, error) {
+	return c.issue(b, c.now())
+}
+
+// IssueFrom mints a challenge bound to b for peer, the transport's own view of the caller (never a
+// forwarded header): an address already holding ChallengesPerAddress unexpired challenges is
+// refused with ErrTooManyChallenges before the store is asked, so one address cannot fill it.
+// Consuming a challenge does not return its count early; it is counted until it expires.
+func (c *Challenger) IssueFrom(peer netip.Addr, b Binding) (Challenge, error) {
+	key, now := auth.PeerKey(peer), c.now()
+	expires := now.Add(c.ttl)
+	c.mu.Lock()
+	if len(c.issued) >= c.sweepAt {
+		for k, es := range c.issued {
+			if live := unexpired(es, now); len(live) > 0 {
+				c.issued[k] = live
+			} else {
+				delete(c.issued, k)
+			}
+		}
+		c.sweepAt = max(64, 2*len(c.issued))
+	}
+	live := unexpired(c.issued[key], now)
+	if len(live) >= c.perAddr {
+		c.issued[key] = live
+		c.mu.Unlock()
+		return Challenge{}, ErrTooManyChallenges
+	}
+	c.issued[key] = append(live, expires)
+	c.mu.Unlock()
+	ch, err := c.issue(b, now)
+	if err != nil {
+		c.uncount(key, expires) // not issued, so not counted
+	}
+	return ch, err
+}
+
+// uncount drops one expiry of key's, the one IssueFrom counted for a challenge it did not issue.
+func (c *Challenger) uncount(key string, expires time.Time) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	es := c.issued[key]
+	for i := len(es) - 1; i >= 0; i-- {
+		if es[i].Equal(expires) {
+			c.issued[key] = append(es[:i], es[i+1:]...)
+			return
+		}
+	}
+}
+
+// unexpired is the expiries in es still after now, in es's own storage.
+func unexpired(es []time.Time, now time.Time) []time.Time {
+	live := es[:0]
+	for _, e := range es {
+		if e.After(now) {
+			live = append(live, e)
+		}
+	}
+	return live
+}
+
+func (c *Challenger) issue(b Binding, now time.Time) (Challenge, error) {
 	var nonce [32]byte
 	if _, err := rand.Read(nonce[:]); err != nil {
 		return Challenge{}, err
@@ -501,7 +594,6 @@ func (c *Challenger) Issue(b Binding) (Challenge, error) {
 		return Challenge{}, err
 	}
 	id := base64.RawURLEncoding.EncodeToString(idb[:])
-	now := c.now()
 	rec := ChallengeRecord{Nonce: nonce[:], Binding: b, IssuedAt: now, Expires: now.Add(c.ttl)}
 	if err := c.store.Put(id, rec); err != nil {
 		return Challenge{}, err

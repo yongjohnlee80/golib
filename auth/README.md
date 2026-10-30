@@ -115,6 +115,12 @@ by hand.
   binding cannot be swapped after signing. A signature made for another
   namespace (a git signing flow, say) will not verify here, which is tested
   against real `ssh-keygen` output.
+- **Issuing a challenge is pre-auth, so it is bounded per address.**
+  `Challenger.IssueFrom(peer, binding)` gives one address (an IPv6 one by its
+  /64, as `auth.PeerKey` keys it) at most `ChallengesPerAddress` unexpired
+  challenges (default 8), refused before the store is asked, so one caller
+  cannot fill a bounded store. `Issue` counts nothing per caller; serving the
+  network, use `IssueFrom` with the transport's own peer address.
 - **The signature check is delegated to OpenSSH, not reimplemented.**
   `sshkey.OpenSSH` runs `ssh-keygen -Y verify`, so the format's reference
   implementation decides — and `allowed_signers` validity windows and
