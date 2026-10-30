@@ -276,6 +276,10 @@ func (s *Split) Cells() (a, b int, ok bool) { return s.aCells, s.bCells, s.sized
 // effective ratio is whatever the next layout reaches against the min sizes and
 // the cells actually available, and the commit that follows reports it — so a
 // caller cannot observe a ratio the screen does not have.
+//
+// A ratio outside (0, 1), or NaN, panics: it is the caller's arithmetic, as
+// WithRatio's is. A ratio read from a file or a user (a saved layout) is data:
+// check it before passing it here.
 func (s *Split) SetRatio(r float64) {
 	if r <= 0 || r >= 1 || math.IsNaN(r) {
 		panic(errs.Fatal{Op: "widget: SetRatio", Rule: fmt.Sprintf("ratio %v outside (0, 1)", r)})
