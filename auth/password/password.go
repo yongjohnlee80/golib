@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"runtime"
 	"time"
 
 	"github.com/yongjohnlee80/golib/auth"
@@ -40,6 +41,7 @@ type Factor struct {
 	pwKey  string
 	now    func() time.Time
 	onErr  func(error)
+	slots  chan struct{} // one per verification hashing at once (MaxConcurrent)
 }
 
 // Option configures a Factor.
@@ -58,6 +60,19 @@ func CredentialKeys(subject, pw string) Option {
 
 // Clock overrides the time source, for tests.
 func Clock(fn func() time.Time) Option { return func(f *Factor) { f.now = fn } }
+
+// MaxConcurrent bounds how many verifications hash at once (default runtime.GOMAXPROCS). Each
+// costs the stored credential's memory (64 MiB under [Default]) for as long as it runs, and a
+// Verify is reachable before anyone has authenticated, so without a bound the memory a server
+// spends is chosen by whoever sends the requests. A Verify past the bound waits for a slot, or for
+// its ctx; the dummy path waits the same as the real one. n <= 0 keeps the default.
+func MaxConcurrent(n int) Option {
+	return func(f *Factor) {
+		if n > 0 {
+			f.slots = make(chan struct{}, n)
+		}
+	}
+}
 
 // OnError receives non-fatal problems that must not fail an authentication: a
 // failed rehash, a corrupt stored credential. It never receives a password.
@@ -81,6 +96,9 @@ func New(store Store, opts ...Option) (*Factor, error) {
 	}
 	if f.hasher == nil {
 		return nil, fmt.Errorf("password.New: Hash(nil) — pass a Hasher or omit the option (%w)", errs.ErrInvalidArgument)
+	}
+	if f.slots == nil {
+		f.slots = make(chan struct{}, runtime.GOMAXPROCS(0))
 	}
 	throwaway, err := randomSalt(32)
 	if err != nil {
@@ -127,6 +145,13 @@ func (f *Factor) Verify(ctx context.Context, r *auth.Request) (auth.Contribution
 	}
 
 	encoded, lookupErr := f.store.Lookup(ctx, subject)
+	// A slot for the hashing, either path's: taken after the lookup, so a slow store holds none.
+	select {
+	case f.slots <- struct{}{}:
+		defer func() { <-f.slots }()
+	case <-ctx.Done():
+		return auth.Contribution{}, ctx.Err()
+	}
 	if lookupErr != nil || encoded == "" {
 		// Same work, same shape, same outward error as a wrong password.
 		_ = Verify(f.dummy, presented)

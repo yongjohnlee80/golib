@@ -26,8 +26,9 @@ type Argon2id struct {
 //
 // Note what this costs: every verification — INCLUDING a failed one, and
 // including the dummy hash performed for an unknown subject — allocates 64 MiB
-// and holds it for the duration. Unauthenticated attempt volume times 64 MiB is
-// the number to bound, which is the throttle's job, not this package's. A
+// and holds it for the duration. A [Factor] bounds how many run at once
+// ([MaxConcurrent], default GOMAXPROCS), so its peak is that many times 64 MiB;
+// the attempt volume over time is still the throttle's to bound. A
 // memory-constrained server should select [Interactive] deliberately rather than
 // discover this under load.
 func Default() Argon2id {
