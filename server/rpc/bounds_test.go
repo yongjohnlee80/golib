@@ -126,15 +126,16 @@ func TestRPC_MaxConnsClosesOnePastTheCap(t *testing.T) {
 }
 
 // TestRPC_IdleTimeoutSparesABusyConnection: IdleTimeout closes a connection that reads nothing for
-// it while nothing of its is in flight, and spares one whose request is still running, or that
-// keeps sending.
+// it while nothing of its is in flight, and spares one whose request is still running, one just
+// after its request ends (idle counts from the end, not the request's frame), and one that keeps
+// sending, frames that dispatch nothing included (a stray response).
 func TestRPC_IdleTimeoutSparesABusyConnection(t *testing.T) {
 	t.Parallel()
 	const idle = 300 * time.Millisecond
 	s := newEchoServer(t, rpc.IdleTimeout(idle))
 	s.Handle("slow", func(ctx context.Context, _ *rpc.Request) (any, error) {
 		select {
-		case <-time.After(3 * idle):
+		case <-time.After(3*idle - idle/6): // ends just before the watchdog's third look
 		case <-ctx.Done():
 			return nil, ctx.Err()
 		}
@@ -146,15 +147,19 @@ func TestRPC_IdleTimeoutSparesABusyConnection(t *testing.T) {
 	if id, errVal, result := busy.recvResponse(); id != 1 || errVal != nil || result != "done" {
 		t.Errorf("a request running past IdleTimeout: %v %#v %v, want it answered", id, errVal, result)
 	}
-	if err := served(busy, 2); err != nil { // idle counts from the request's end, not its frame
-		t.Errorf("the busy connection, just after its request: %v", err)
+	// counted from the request's frame it would be idle by the watchdog's next look; counted from
+	// its end it is not
+	time.Sleep(idle / 3)
+	if err := served(busy, 2); err != nil {
+		t.Errorf("the busy connection, a moment after its request: %v", err)
 	}
 	chatty := dial(t, s.Addr()) // dialled now: it sends from its first moment on
 	for i := range 6 {
-		if err := served(chatty, int64(i+1)); err != nil {
-			t.Fatalf("a connection sending every %v: %v", idle/3, err)
-		}
+		chatty.send([]any{int64(1), int64(i), nil, nil}) // a response: read, dispatched to nothing
 		time.Sleep(idle / 3)
+	}
+	if err := served(chatty, 99); err != nil {
+		t.Errorf("a connection sending only stray responses, every %v: %v", idle/3, err)
 	}
 	if err := closedWithin(quiet, 3*time.Second); err != nil {
 		t.Errorf("an idle connection past IdleTimeout: %v", err)
