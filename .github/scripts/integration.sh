@@ -23,11 +23,13 @@ docker run -d --name "$pg" -e POSTGRES_PASSWORD=golib -e POSTGRES_DB=golib \
 docker run -d --name "$my" -e MYSQL_ROOT_PASSWORD=golib -e MYSQL_DATABASE=golib \
   -p "127.0.0.1:$my_port:3306" mysql:8.4 >/dev/null
 
-# wait_for <what> <command...>: up to two minutes, then fail with the server's own log
+# wait_for <what> <command...>: until two minutes of wall time have passed (each try's own time
+# included), then fail with the server's own log
 wait_for() {
   local what=$1; shift
-  for _ in $(seq 120); do
-    if "$@" >/dev/null 2>&1; then echo "$what is up"; return 0; fi
+  local deadline=$((SECONDS + 120))
+  while [ "$SECONDS" -lt "$deadline" ]; do
+    if timeout 10 "$@" >/dev/null 2>&1; then echo "$what is up"; return 0; fi
     sleep 1
   done
   echo "::error::$what did not come up within 120s"
