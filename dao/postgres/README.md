@@ -168,7 +168,12 @@ mid-flight member is never recycled dirty. Nor is one on which a command left
 `UNLISTEN`, a `DISCARD`): every face reads its command tags, and `Release` or
 `Discard` then closes that member so the pool destroys it, rather than handing
 the next borrower a search_path, a role or a prepared name it never asked for.
-`Release` still succeeds; the cost is a reconnect. `Discard` judges reuse from **wire
+`Release` still succeeds; the cost is a reconnect. `DECLARE` counts too (a cursor
+`WITH HOLD` outlives its transaction). What no command tag names is the
+borrower's to know: a session-changing function (`set_config(…, false)`,
+`pg_advisory_lock`) or a temporary object (`CREATE TEMP …`) leaves state the tags
+cannot see, so a borrower that uses one must `Destroy` the member, not `Release`
+it. `Discard` judges reuse from **wire
 mechanics alone**, which is all a driver can see; a consumer that knows the
 *session* is unfit (a reset the server refused, sanitation it could not prove)
 asserts the optional `Destroyer` capability and calls `Destroy()`, which poisons,
