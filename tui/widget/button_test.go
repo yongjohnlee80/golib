@@ -721,7 +721,7 @@ func TestLabelWidthFollowsGraphemeClustersNotRunes(t *testing.T) {
 		{"ascii", "OK", 2},
 		{"cjk wide", "確定", 4},
 		{"combining mark", "é", 1},
-		{"zwj emoji", "\U0001F468‍\U0001F4BB", 2},
+		{"zwj emoji", "\U0001F468\u200d\U0001F4BB", 2},
 		{"mixed", "a確", 3},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
