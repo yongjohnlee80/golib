@@ -50,6 +50,7 @@ type bracket struct {
 	active       bool
 	bracketAfter bool
 	prev         *bracket
+	link         *bracket // the nearest link opener at or below this one, past any image's
 }
 
 type inlineParser struct {
@@ -327,8 +328,14 @@ func (p *inlineParser) openBracket(image bool, width int) {
 	if p.brackets != nil {
 		p.brackets.bracketAfter = true
 	}
-	p.brackets = &bracket{node: node, image: image, pos: p.pos, prevDelim: p.delims,
-		active: true, prev: p.brackets}
+	b := &bracket{node: node, image: image, pos: p.pos, prevDelim: p.delims, active: true, prev: p.brackets}
+	switch {
+	case !image:
+		b.link = b
+	case p.brackets != nil:
+		b.link = p.brackets.link
+	}
+	p.brackets = b
 }
 
 // closeBracket tries to make a link or image of the nearest open bracket: an inline link, then a full,
@@ -400,17 +407,18 @@ func (p *inlineParser) closeBracket() {
 }
 
 // deactivateLinks marks every link opener below the scan inactive, since links may not contain
-// links. A link opener already inactive was marked by an earlier link, with every one below it, so
-// the walk stops there (as cmark's does): each opener is marked once, not once per link after it.
+// links. It steps from link opener to link opener (bracket.link), past the image openers between
+// them, and stops at one already inactive, which an earlier link marked with every one below it:
+// each opener is marked once, and no image opener is passed again by the links after it.
 func (p *inlineParser) deactivateLinks() {
-	for b := p.brackets; b != nil; b = b.prev {
-		if b.image {
-			continue
-		}
-		if !b.active {
-			return
-		}
+	if p.brackets == nil {
+		return
+	}
+	for b := p.brackets.link; b != nil && b.active; {
 		b.active = false
+		if b = b.prev; b != nil {
+			b = b.link
+		}
 	}
 }
 
