@@ -130,15 +130,13 @@ func replayed(lines []string, ops []undoOp) (lo, hi int, span []string) {
 // give, though only the lines between are compared.
 func changedBlock(from []string, lo, hi int, span []string) lineEdit {
 	toLen := len(from) - (hi - lo) + len(span)
+	// to is line i of the second text, for i at lo or later: both scans stay there, the first
+	// starting at lo and the second above the first's end
 	to := func(i int) string {
-		switch {
-		case i < lo:
-			return from[i]
-		case i < lo+len(span):
+		if i < lo+len(span) {
 			return span[i-lo]
-		default:
-			return from[i-len(span)+(hi-lo)]
 		}
+		return from[i-len(span)+(hi-lo)]
 	}
 	pre := lo
 	for pre < len(from) && pre < toLen && from[pre] == to(pre) {
