@@ -1,6 +1,10 @@
 package markdown
 
-import "bytes"
+import (
+	"bytes"
+	"cmp"
+	"slices"
+)
 
 // The kinds GitHub Flavored Markdown adds. A table's first row is its header row; the rest are its
 // body. Task list items are KindItem nodes with Checked set, and extended autolinks are KindAutolink.
@@ -453,12 +457,12 @@ func (p *inlineParser) splitEmails(t *Node) *Node {
 }
 
 // lineStartOrBoundary is boundaryBefore for a source offset: true at the start of a line's content,
-// else decided by the byte before it.
+// else decided by the byte before it. The paragraph's lines (segs) are in source order, so the one
+// starting at off is found by a binary search, not a scan: a paragraph of many lines, each an
+// address, would otherwise cost lines times addresses.
 func (p *inlineParser) lineStartOrBoundary(off int) bool {
-	for _, s := range p.segs {
-		if s.src == off {
-			return true
-		}
+	if i, ok := slices.BinarySearchFunc(p.segs, off, func(s seg, off int) int { return cmp.Compare(s.src, off) }); ok && p.segs[i].src == off {
+		return true
 	}
 	return off == 0 || boundaryBefore(p.src, off)
 }

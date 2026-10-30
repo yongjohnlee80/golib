@@ -185,7 +185,10 @@ func linearFamilies() []linearFamily {
 		"gfm-www-runs":        func(n int) string { return strings.Repeat("(www.a.b", n/8) },
 		"gfm-at-signs":        func(n int) string { return strings.Repeat("a.b@", n/4) },
 		"gfm-emails":          func(n int) string { return strings.Repeat("a@b.c ", n/6) },
-		"gfm-table-rows":      func(n int) string { return "| a | b |\n| - | - |\n" + strings.Repeat("| c | `d\\|` |\n", n/14) },
+		// a paragraph of many lines, its addresses each checked against the line starts
+		"gfm-email-lines":       func(n int) string { return strings.Repeat("a@b.c\n", n/6) },
+		"gfm-email-plus-chains": func(n int) string { return strings.Repeat("x\n", n/4) + strings.Repeat("a@b.c+", n/12) },
+		"gfm-table-rows":        func(n int) string { return "| a | b |\n| - | - |\n" + strings.Repeat("| c | `d\\|` |\n", n/14) },
 		"gfm-wide-table": func(n int) string {
 			h := strings.Repeat("a|", n/4)
 			return h + "\n" + strings.Repeat("-|", n/4) + "\n" + h + "\n"

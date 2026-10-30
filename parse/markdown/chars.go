@@ -9,13 +9,18 @@ import (
 type Option func(*config)
 
 type config struct {
-	gfm      bool
-	obsidian bool
-	special  [256]bool // the bytes that end a run of plain text in the inline phase
+	gfm        bool
+	obsidian   bool
+	maxNesting int       // MaxNesting
+	special    [256]bool // the bytes that end a run of plain text in the inline phase
 }
 
 // init completes a config once its options have run.
 func (c *config) init() {
+	if c.maxNesting <= 0 {
+		c.maxNesting = DefaultMaxNesting
+	}
+	c.maxNesting = min(c.maxNesting, 1<<16-2) // a node's height is a uint16, one over included
 	for _, b := range []byte("\n\\`*_[!]<&") {
 		c.special[b] = true
 	}
