@@ -177,6 +177,7 @@ func TestLatestRefusesKeysItCannotHold(t *testing.T) {
 	t.Parallel()
 	root := &probe{name: "root", pref: Size{W: 4, H: 2}}
 	h := startApp(t, root, 4, 2)
+	//lint:ignore U1000 the slice is never read: it is there to make holder uncomparable, the case tested
 	type holder struct{ s []int }
 	for _, tc := range []struct {
 		name string
