@@ -382,17 +382,22 @@ func TestTiesAreDeterministic(t *testing.T) {
 		}
 		return out
 	}
-	var answers [][]string
-	for _, order := range [][]string{{"c", "a", "b"}, {"b", "c", "a"}} {
-		// each in a store of its own, ranked first by the one retriever: the scores differ, so give
-		// every chunk the same rank by putting each alone in its own query
-		var got []string
-		for _, o := range order {
-			s := &fake{lexical: mk(o), state: StateReady}
-			res, _ := NewEngine[key, lexView](lexStore{s}).Search(ctx, Query{Text: "x"})
-			got = append(got, hitsOf(res)...)
+	// Tied hits come out in one order, by path, however they were put in. Fusion scores a chunk by
+	// its rank in each retriever, so a chunk at lexical rank i and semantic rank n+1-i ties its
+	// mirror: a with d, and b with c, below. The two runs give the engine the same ranks with the
+	// lists the other way round, so every score is the same and only the order the hits are put
+	// in differs. (This half of the test, as first written in 80c173a, gave each chunk a store
+	// of its own, where nothing ties, and asserted nothing.)
+	want := []string{"a.md#0 lexical+semantic", "d.md#0 lexical+semantic", "b.md#0 lexical+semantic", "c.md#0 lexical+semantic"}
+	for _, run := range []struct{ lexical, semantic []string }{
+		{[]string{"a", "b", "c", "d"}, []string{"d", "c", "b", "a"}},
+		{[]string{"d", "c", "b", "a"}, []string{"a", "b", "c", "d"}},
+	} {
+		s := &fake{lexical: mk(run.lexical...), semantic: mk(run.semantic...), state: StateReady}
+		res, _ := NewEngine[key, fullView](fullStore{s}, WithQueryEmbedder((&embedder{}).embed)).Search(ctx, Query{Text: "x"})
+		if got := hitsOf(res); !reflect.DeepEqual(got, want) {
+			t.Errorf("lexical %v, semantic %v: %q, want %q (tied pairs by path)", run.lexical, run.semantic, got, want)
 		}
-		answers = append(answers, got)
 	}
 	// equal scores within one result: two documents, each found once at the same rank by a different
 	// retriever
