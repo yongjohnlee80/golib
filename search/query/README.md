@@ -17,6 +17,8 @@ terms, words := query.Terms(`storage OR "x" stor*`)
 // terms: storage, OR, "x", stor (prefix); words (for tag boosts): storage, or, "x", stor
 match := query.FTS5(terms) // "storage" "OR" """x""" "stor"*
 ts, err := query.TSQuery(terms) // 'storage' & 'OR' & '"x"' & 'stor':*   (PostgreSQL; no terms: ErrNoTerms)
+any := query.FTS5Any(terms)      // "storage" OR "OR" OR """x""" OR "stor"*   (any one word; the fallback when no row holds them all)
+tsAny, err := query.TSQueryAny(terms) // 'storage' | 'OR' | '"x"' | 'stor':*
 
 rest, facets, err := query.Facets("type:adr re:x storage", nil, schema)
 // with type declared: rest "re:x storage", facets {type: [adr]}

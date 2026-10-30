@@ -39,7 +39,14 @@ func Terms(q string) (terms []Term, words []string) {
 
 // FTS5 renders terms as an SQLite FTS5 match: each word a quoted phrase, quotes doubled inside,
 // the prefix term followed by '*'. All the words must match. No terms render as "".
-func FTS5(terms []Term) string {
+func FTS5(terms []Term) string { return strings.Join(fts5Phrases(terms), " ") }
+
+// FTS5Any is FTS5 with any one word enough to match: the phrases joined by OR. Ranked by bm25, a
+// row holding more of the words, or rarer ones, still comes first, so it is the fallback for a
+// query whose every word no row holds (a question typed whole). No terms render as "".
+func FTS5Any(terms []Term) string { return strings.Join(fts5Phrases(terms), " OR ") }
+
+func fts5Phrases(terms []Term) []string {
 	parts := make([]string, len(terms))
 	for i, t := range terms {
 		p := `"` + strings.ReplaceAll(t.Text, `"`, `""`) + `"`
@@ -48,7 +55,7 @@ func FTS5(terms []Term) string {
 		}
 		parts[i] = p
 	}
-	return strings.Join(parts, " ")
+	return parts
 }
 
 // Fields declares the fields a query may filter on, and reads a filter's value as its field's

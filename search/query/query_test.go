@@ -42,6 +42,18 @@ func TestFTS5(t *testing.T) {
 	}
 }
 
+// TestFTS5Any: the same phrases as FTS5, joined by OR, so any one word matches; a word that is
+// itself OR stays a quoted phrase, never the operator.
+func TestFTS5Any(t *testing.T) {
+	terms, _ := Terms(`OR storage say"hi" stor*`)
+	if got, want := FTS5Any(terms), `"OR" OR "storage" OR "say""hi""" OR "stor"*`; got != want {
+		t.Errorf("FTS5Any = %s, want %s", got, want)
+	}
+	if got := FTS5Any(nil); got != "" {
+		t.Errorf("FTS5Any(nil) = %q", got)
+	}
+}
+
 // fields declares type (any text) and count (an integer).
 type fields map[string]bool
 
