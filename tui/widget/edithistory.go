@@ -52,11 +52,9 @@ func (h *editHistory) recording() bool {
 }
 
 // record takes in what takes one edit back (lineRecorder): into the group an undo or a redo is
-// applying, else into the top of both stacks.
+// applying, else into the top of both stacks. The primitives call it only once recording said
+// yes, which a disabled history never does.
 func (h *editHistory) record(op undoOp) {
-	if !h.enabled {
-		return
-	}
 	if h.into != nil {
 		h.into.ops = addOp(h.into.ops, op)
 		return
