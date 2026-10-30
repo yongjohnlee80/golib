@@ -168,12 +168,12 @@ func linearFamilies() []linearFamily {
 		"many-definitions":       func(n int) string { return strings.Repeat("[a]: /u\n", n/8) },
 		"interrupted-paragraphs": func(n int) string { return strings.Repeat("a\n***\n", n/6) },
 		"long-paragraph-lines":   func(n int) string { return strings.Repeat("word ", n/10) + "\n" + strings.Repeat("x\n", n/4) },
-		// raw HTML openers whose closer never comes: each search is the paragraph's one (GS-2)
+		// raw HTML openers whose closer never comes: each search is the paragraph's one
 		"unclosed-html-comments": func(n int) string { return strings.Repeat("a <!--", n/6) },
 		"unclosed-html-pis":      func(n int) string { return strings.Repeat("a <?", n/4) },
 		"unclosed-html-cdata":    func(n int) string { return strings.Repeat("a <![CDATA[", n/11) },
 		"unclosed-html-decls":    func(n int) string { return strings.Repeat("a <!A", n/5) },
-		// open brackets under many links: each link deactivates the openers below it once (GS-4)
+		// open brackets under many links: each link deactivates the openers below it once
 		"open-brackets-then-links": func(n int) string { return strings.Repeat("[", n/2) + strings.Repeat("[a](b) ", n/14) },
 	}
 	gfmFamilies := map[string]func(n int) string{

@@ -10,7 +10,7 @@ import (
 )
 
 // TestALongMemberChainProjectsWithoutRecursion: a property's dotted path is read down the chain in
-// a loop and joined once, so a 200,000-link a.b.c… projects under a small stack (GS-5).
+// a loop and joined once, so a 200,000-link a.b.c… projects under a small stack.
 func TestALongMemberChainProjectsWithoutRecursion(t *testing.T) {
 	defer debug.SetMaxStack(debug.SetMaxStack(8 << 20))
 	const n = 200_000

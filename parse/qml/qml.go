@@ -1062,7 +1062,7 @@ func ProjectValue(e *js.Expr) SpecValue { return projectValue(e) }
 // reaches is decided when it runs, so it is not a name anything can resolve
 // ahead of time.
 func dottedPath(e *js.Expr) ([]string, bool) {
-	// down the chain in a loop: a member chain is as deep as it is long (GS-5)
+	// down the chain in a loop: a member chain is as deep as it is long
 	var rev []string
 	for e != nil {
 		switch e.Kind {
