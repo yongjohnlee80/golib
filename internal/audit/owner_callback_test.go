@@ -204,8 +204,7 @@ func TestOwnerCallbacksEndTheOperationOrAreChecked(t *testing.T) {
 			if tail {
 				return
 			}
-			var inspect func(n ast.Node) bool
-			inspect = func(n ast.Node) bool {
+			inspect := func(n ast.Node) bool {
 				switch x := n.(type) {
 				case *ast.FuncLit, *ast.BlockStmt:
 					return false

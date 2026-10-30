@@ -82,8 +82,7 @@ func (p *pagedRows) FetchMore(tuidecl.Index) {
 func TestACellCursorTableViewAsksAFetcherForMoreRows(t *testing.T) {
 	m, rec := &pagedRows{ListModel: tuidecl.NewListModel("name", "n"), total: 300, page: 100}, &recorder{}
 	m.SetColumns(tuidecl.Column{Role: "name", Title: "NAME"}, tuidecl.Column{Role: "n", Title: "N"})
-	var s *decltest.Screen
-	s = decltest.RunWith(t, 40, 8, func(p *tuidecl.Program) error {
+	s := decltest.RunWith(t, 40, 8, func(p *tuidecl.Program) error {
 		m.post = func(fn func()) { p.Post(fn) }
 		if m.pending {
 			p.Post(func() { m.FetchMore(tuidecl.Index{}) })
