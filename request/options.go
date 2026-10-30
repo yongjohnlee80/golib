@@ -14,6 +14,16 @@ const (
 	MULTIPART RequestContentType = "multipart/form-data"
 )
 
+// DenyPrivateAddresses sets Params.DenyPrivate: the request refuses to connect to a loopback,
+// private, link-local, multicast or unspecified address, redirects included. For a URL that came
+// from someone else (a webhook target, a link to fetch).
+func DenyPrivateAddresses() RequestOption {
+	return func(param *Params) *Params {
+		param.DenyPrivate = true
+		return param
+	}
+}
+
 // ContentType configures the HTTP "Content-Type" request header. If the
 // Params.Headers map is not yet initialized, ContentType allocates it.
 func ContentType(contentType RequestContentType) RequestOption {
