@@ -117,13 +117,6 @@ func (f *framer) size() (int, int) {
 	return f.current.w, f.current.h
 }
 
-// pending reports whether a frame is available to send.
-func (f *framer) pending() bool {
-	f.mu.Lock()
-	defer f.mu.Unlock()
-	return f.dirty || f.cursor != f.ackedCursor
-}
-
 // next produces the frame to send, or ok=false when there is nothing to send or
 // a frame is already in flight.
 //

@@ -215,23 +215,6 @@ func (t *Tree) bindingsOfAny(sources map[string]qml.SpecValue) []*binding {
 	return out
 }
 
-// bindingsOf returns the bindings reading a source, in DOCUMENT ORDER.
-//
-// Document order is the only order a schema author can see, which makes it the
-// only defensible one when a fan-out stops part-way.
-func (t *Tree) bindingsOf(source string) []*binding {
-	var out []*binding
-	for _, b := range t.bindings {
-		for _, d := range b.deps {
-			if d == source {
-				out = append(out, b)
-				break
-			}
-		}
-	}
-	return out
-}
-
 // registerBindings records a node's bindings, preserving document order across
 // the whole tree.
 func (t *Tree) registerBindings(bs []*binding) {

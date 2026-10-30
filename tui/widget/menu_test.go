@@ -19,7 +19,7 @@ import (
 )
 
 // saveAction is a distinguishable action for a row.
-type saveAction struct{ id string }
+type saveAction struct{}
 
 func (saveAction) ActionID() tui.ActionID { return "test.save" }
 

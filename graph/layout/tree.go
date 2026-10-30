@@ -36,7 +36,6 @@ type treeBox struct {
 	depth, breadth float32 // the node's extent along each
 	span           float32 // its subtree's breadth
 	at             float32 // its centre's depth, from the root's centre, signed by its side
-	across         float32 // its centre's breadth, from its subtree's start
 	kids           []int
 }
 

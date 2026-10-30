@@ -216,10 +216,6 @@ func (e *Editor) colAtCells(cs []string, from, end, cells int) int {
 	return max(from, end-1)
 }
 
-func (e *Editor) wrapPos(ln, col int) (row, x int) {
-	return wrapPosOf(e.core.buf.textLines, ln, col, e.view())
-}
-
 // width is s's width in the editor's cells: the terminal's measure, a tab tabCells.
 func (e *Editor) width(s string) int { return tabAware(e.measure)(s) }
 

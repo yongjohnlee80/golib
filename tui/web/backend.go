@@ -500,9 +500,6 @@ func (b *Backend) ackFrame(rev uint64) { b.framer.ack(rev) }
 // nextFrame returns the frame to send, if any.
 func (b *Backend) nextFrame() (Frame, bool) { return b.framer.next() }
 
-// pendingFrame reports whether a frame is waiting to go out.
-func (b *Backend) pendingFrame() bool { return b.framer.pending() }
-
 // fail records the transport error that ended the session, then stops.
 func (b *Backend) fail(err error) {
 	if err == nil {
