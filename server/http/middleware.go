@@ -182,14 +182,29 @@ func RequestID() Middleware {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			id := r.Header.Get("X-Request-ID")
-			if id == "" {
-				id = genID()
+			if !validRequestID(id) {
+				id = genID() // a caller's ID is echoed and logged: only a short plain token is
 			}
 			w.Header().Set("X-Request-ID", id)
 			ctx := context.WithValue(r.Context(), ridKey{}, id)
 			next.ServeHTTP(w, r.WithContext(ctx))
 		})
 	}
+}
+
+// validRequestID reports whether id may be kept as a request's ID: 1 to 64 of A-Z, a-z, 0-9, '-'
+// and '_'. Anything else (a newline, a log line's worth of text) is replaced, never echoed.
+func validRequestID(id string) bool {
+	if id == "" || len(id) > 64 {
+		return false
+	}
+	for i := 0; i < len(id); i++ {
+		c := id[i]
+		if !(c >= 'a' && c <= 'z' || c >= 'A' && c <= 'Z' || c >= '0' && c <= '9' || c == '-' || c == '_') {
+			return false
+		}
+	}
+	return true
 }
 
 // RequestIDFrom returns the request ID stored by RequestID, or "" if absent.

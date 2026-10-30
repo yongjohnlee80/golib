@@ -86,7 +86,7 @@ type config struct {
 // the matching timeout option with 0 to disable one explicitly.
 func defaultConfig() *config {
 	return &config{
-		addr:              ":8080",
+		addr:              "127.0.0.1:8080", // this host only: a service for others passes its own Addr
 		readTimeout:       15 * time.Second,
 		readHeaderTimeout: 5 * time.Second, // Slowloris guard
 		writeTimeout:      15 * time.Second,
