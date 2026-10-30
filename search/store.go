@@ -21,6 +21,16 @@ type View[D comparable] interface {
 	Lexical(ctx context.Context, terms []Term, f Filter, n int) ([]Candidate[D], error)
 }
 
+// LexicalAny is a View that can match a query by any one of its terms: the engine's fallback when
+// Lexical finds nothing for a query of more than one term (a question typed whole, whose every
+// word no chunk holds). Without it, such a query finds nothing by words.
+type LexicalAny[D comparable] interface {
+	// LexicalAny is Lexical with any one term enough to match: at most n candidates, best first
+	// (a chunk holding more of the terms, or rarer ones, ranks first), with f applied before the
+	// rank and the limit, ties ordered as Lexical's.
+	LexicalAny(ctx context.Context, terms []Term, f Filter, n int) ([]Candidate[D], error)
+}
+
 // Semantic is a View that searches by meaning. A store without vectors does not implement it.
 type Semantic[D comparable] interface {
 	// Semantic is at most n candidates nearest vec, best first by dot product (vec is normalized),
