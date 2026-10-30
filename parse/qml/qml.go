@@ -5,6 +5,7 @@ import (
 	"github.com/yongjohnlee80/golib/parse/js"
 
 	"fmt"
+	"slices"
 	"strings"
 	"unicode"
 )
@@ -1061,36 +1062,28 @@ func ProjectValue(e *js.Expr) SpecValue { return projectValue(e) }
 // reaches is decided when it runs, so it is not a name anything can resolve
 // ahead of time.
 func dottedPath(e *js.Expr) ([]string, bool) {
-	if e == nil {
-		return nil, false
-	}
-	switch e.Kind {
-	case js.ExprIdent:
-		return []string{e.Raw}, true
-	case js.ExprMember:
-		if e.Computed {
+	// down the chain in a loop: a member chain is as deep as it is long (GS-5)
+	var rev []string
+	for e != nil {
+		switch e.Kind {
+		case js.ExprIdent:
+			rev = append(rev, e.Raw)
+			slices.Reverse(rev)
+			return rev, true
+		case js.ExprMember:
+			if e.Computed {
+				return nil, false
+			}
+			rev = append(rev, e.Name)
+			e = e.Left
+		default:
 			return nil, false
 		}
-		left, ok := dottedPath(e.Left)
-		if !ok {
-			return nil, false
-		}
-		return append(left, e.Name), true
-	default:
-		return nil, false
 	}
+	return nil, false
 }
 
-func joinPath(p []string) string {
-	s := ""
-	for i, seg := range p {
-		if i > 0 {
-			s += "."
-		}
-		s += seg
-	}
-	return s
-}
+func joinPath(p []string) string { return strings.Join(p, ".") }
 
 // The hand-written value grammar that used to live here — refValue, callValue,
 // stringValue and numberValue — is GONE. A property value is a JavaScript
