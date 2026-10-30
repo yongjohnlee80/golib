@@ -5,7 +5,9 @@ import (
 	"errors"
 	"fmt"
 	"net"
+	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/jackc/pgx/v5/pgconn"
@@ -209,6 +211,10 @@ type pinnedConn struct {
 	// drive streaming before the tail, an emitter-error drain, transport outranking
 	// the emitter, and control-tag detection. Nil in production; only tests set it.
 	recv func(context.Context) (pgproto3.BackendMessage, error)
+	// sessionSet records that a command leaving state on the SESSION completed on this
+	// member (sessionStateTag): a SET, a PREPARE, a LISTEN. Release then destroys the member
+	// rather than handing that state to the pool's next borrower.
+	sessionSet atomic.Bool
 	// inEmit is set, under mu, by SimpleQuery for the duration of each emit callback.
 	// It certifies that the goroutine holding wireMu is executing the CONSUMER's code
 	// between two reads — no wire I/O is in flight — which is what lets Discard skip
@@ -274,7 +280,7 @@ func (p *pinnedConn) terminalErrLocked() error {
 // read-timeout-poisoned wire with unread responses, so the decision is made here.
 // Callers hold mu.
 func (p *pinnedConn) reusableLocked() bool {
-	return !p.poisoned && !p.released && !p.txOpen && p.quiescentLocked()
+	return !p.poisoned && !p.released && !p.txOpen && !p.sessionSet.Load() && p.quiescentLocked()
 }
 
 // quiescentLocked reports whether the wire is at the both-tracks-reset, no-private-
@@ -527,6 +533,11 @@ func (p *pinnedConn) BeginSessionTx(ctx context.Context, opts dao.TxOptions) (da
 
 // Release returns the connection to the pool: it refuses while the wire
 // is mid-segment or the transaction is open. Discard is the unconditional counterpart.
+//
+// A member on which a command left session state (a SET or RESET, a PREPARE or DEALLOCATE, a
+// LISTEN or UNLISTEN, a DISCARD) is closed rather than recycled, so the pool destroys it: the
+// next borrower would otherwise inherit a search_path, a role, a prepared name or a
+// subscription it never asked for. Release still succeeds; the cost is one reconnect.
 func (p *pinnedConn) Release(_ context.Context) error {
 	p.mu.Lock()
 	if err := p.terminalErrLocked(); err != nil {
@@ -551,10 +562,25 @@ func (p *pinnedConn) Release(_ context.Context) error {
 	acq := p.acq
 	p.acq = nil
 	p.mu.Unlock()
+	if p.sessionSet.Load() {
+		p.closePhysical() // a closed member is destroyed by the pool, never handed out
+	}
 	if acq != nil {
 		acq.Release()
 	}
 	return nil
+}
+
+// sessionStateTag reports whether a CommandComplete tag names a command that leaves state on the
+// session past its own statement: SET (SET ROLE and SET SESSION AUTHORIZATION included), RESET,
+// DISCARD, PREPARE, DEALLOCATE, LISTEN and UNLISTEN.
+func sessionStateTag(tag string) bool {
+	verb, _, _ := strings.Cut(tag, " ")
+	switch verb {
+	case "SET", "RESET", "DISCARD", "PREPARE", "DEALLOCATE", "LISTEN", "UNLISTEN":
+		return true
+	}
+	return false
 }
 
 // Discard is the idempotent terminal operation: it always relinquishes
@@ -749,10 +775,19 @@ func (p *pinnedConn) writeBuffered(ctx context.Context) error {
 // default handler only closes on FATAL, and on this raw face an ErrorResponse is
 // protocol data either way.
 func (p *pinnedConn) readMessage(ctx context.Context) (pgproto3.BackendMessage, error) {
+	var msg pgproto3.BackendMessage
+	var err error
 	if p.recv != nil {
-		return p.recv(ctx)
+		msg, err = p.recv(ctx)
+	} else {
+		msg, err = p.pgConn.ReceiveMessage(ctx)
 	}
-	return p.pgConn.ReceiveMessage(ctx)
+	// every face reads here, so every completed command is seen: one that leaves session state
+	// marks the member for destruction at Release
+	if cc, ok := msg.(*pgproto3.CommandComplete); ok && sessionStateTag(string(cc.CommandTag)) {
+		p.sessionSet.Store(true)
+	}
+	return msg, err
 }
 
 // drainToReady consumes messages until the terminal ReadyForQuery, which ends every
