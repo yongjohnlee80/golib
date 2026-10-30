@@ -8,7 +8,6 @@ import (
 	"sort"
 	"strconv"
 	"strings"
-	"unicode"
 	"unicode/utf8"
 )
 
@@ -73,7 +72,8 @@ type SQL struct {
 // Statement is one statement from a script, with its source position.
 type Statement struct {
 	// Text is the statement without its terminating semicolon, trimmed of
-	// surrounding whitespace.
+	// surrounding whitespace: ASCII's, as SQL defines it, so a Unicode space
+	// (U+3000, U+00A0) is part of the statement it begins or ends.
 	Text string
 	// Pos is where the statement's first character sits in the original
 	// source, so a caller can report a line number that matches the file.
@@ -111,11 +111,13 @@ func statements(src []byte, spans []span) []Statement {
 	out := make([]Statement, 0, len(spans))
 	for _, sp := range spans {
 		raw := string(src[sp.from:sp.to])
-		text := strings.TrimSpace(raw)
+		// trimmed of the whitespace the splitter skips (isSpace, SQL's own), so Text begins at Pos:
+		// a Unicode space such as U+3000 is no whitespace to SQL, and starts the statement
+		text := strings.TrimFunc(raw, isSpace)
 		if text == "" {
 			continue
 		}
-		lead := len(raw) - len(strings.TrimLeftFunc(raw, unicode.IsSpace))
+		lead := len(raw) - len(strings.TrimLeftFunc(raw, isSpace))
 		end := positionAfter(src, sp.pos, sp.from+lead+len(text))
 		out = append(out, Statement{Text: text, Pos: sp.pos, End: end, Verb: leadingVerb(text)})
 	}
@@ -171,7 +173,7 @@ func (s SQL) Split(src []byte) ([][]byte, error) {
 	}
 	out := make([][]byte, 0, len(spans))
 	for _, sp := range spans {
-		text := bytes.TrimSpace(src[sp.from:sp.to])
+		text := bytes.TrimFunc(src[sp.from:sp.to], isSpace)
 		if len(text) == 0 {
 			continue
 		}
