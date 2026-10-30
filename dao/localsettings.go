@@ -42,6 +42,13 @@ type LocalSetter interface {
 	// for the transaction, names and values bound; a nil value resets the
 	// name to the value it would have with no setting made in the transaction.
 	LocalRestoreSQL(previous []PriorSetting) (string, []any)
+	// AbortsTransaction reports whether err, a statement's error as the driver
+	// gave it, was reported by the server, which then aborts the transaction
+	// (or rolls back the savepoint) and so ends the settings itself: dao sends
+	// no restore after it. Any other failure (a scan, decode or type error on
+	// the client, an error before anything was sent) leaves the transaction
+	// alive, and the restore is sent.
+	AbortsTransaction(err error) bool
 }
 
 // ErrLocalSettingsNeedTx is a verb's answer for a DAO acquired with
@@ -70,8 +77,10 @@ var ErrLocalSettingsNeedTx = fmt.Errorf("dao: WithLocalSettings needs the DAO on
 // errs.ErrInvalidArgument. All three refusals come before anything is sent.
 // [DAO.Batch] refuses the option with ErrUnsupported.
 //
-// Should the restore not run (the statement failed, the restore failed, the
-// context ended), the settings still end with the transaction: commit,
+// The restore runs after every outcome but an error the server reported
+// ([LocalSetter.AbortsTransaction]); a client-side failure is restored. Should
+// the restore not run (the server failed the statement, the restore failed,
+// the context ended), the settings still end with the transaction: commit,
 // rollback, or a rolled-back savepoint. No setting of this option outlives the
 // transaction, so none reaches the next user of a pooled connection.
 func WithLocalSettings(settings ...LocalSetting) QueryOption {
@@ -135,7 +144,7 @@ func (d *queryDAO[R, C, K, ID]) exec(pl *pipeline, q *string, args *[]any) (exec
 	if err := pl.beforeExec(q, args); err != nil {
 		// The settings are in force and the statement will not be sent: put
 		// them back now.
-		return nil, nil, lr.after(true, err)
+		return nil, nil, lr.after(nil, err)
 	}
 	return h, lr, nil
 }
@@ -206,28 +215,41 @@ type localRestore struct {
 	setter LocalSetter
 	h      execQuerier
 	prior  []PriorSetting
-	done   bool
+	ended  bool
 }
 
-// after ends an optioned statement. ok reports that the statement succeeded,
-// its rows (if any) already closed: the restore is then sent, with its own
-// BeforeExec and AfterExec (OpLocalRestore), and its error is joined to err,
-// the verb's answer so far. After a statement that failed nothing is sent:
-// the server has aborted the transaction, or rolled back the savepoint, which
-// ends the settings. On a nil restore (a DAO without the option) it answers
-// err unchanged. It runs once; a second call answers err.
-func (l *localRestore) after(ok bool, err error) error {
-	if l == nil || l.done {
+// after ends an optioned statement, its rows (if any) already closed. stmtErr
+// is the statement's own error as the driver gave it (nil when it succeeded,
+// ErrNoRows included), and err the verb's answer so far. Unless the server
+// reported stmtErr ([LocalSetter.AbortsTransaction]), the restore is sent, with
+// its own BeforeExec and AfterExec (OpLocalRestore), and its error is joined to
+// err. After a server-reported error nothing is sent: the server has aborted
+// the transaction, or rolled back the savepoint, which ends the settings. On a
+// nil restore (a DAO without the option) it answers err unchanged. It runs
+// once; a second call answers err.
+func (l *localRestore) after(stmtErr, err error) error {
+	if l == nil || l.ended {
 		return err
 	}
-	l.done = true
-	if !ok {
+	l.ended = true
+	if stmtErr != nil && l.setter.AbortsTransaction(stmtErr) {
 		return err
 	}
 	if rerr := l.restore(); rerr != nil {
 		return errors.Join(err, rerr)
 	}
 	return err
+}
+
+// done is after for a statement with rows: it closes them first, since the
+// restore runs on their connection. On a nil restore it neither closes the
+// rows (the verb's own Close does) nor sends anything.
+func (l *localRestore) done(rows Rows, stmtErr, err error) error {
+	if l == nil {
+		return err
+	}
+	rows.Close()
+	return l.after(stmtErr, err)
 }
 
 func (l *localRestore) restore() error {

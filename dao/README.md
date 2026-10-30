@@ -708,8 +708,11 @@ err := dao.RunTx(ctx, func(tx *dao.Transaction) error {
   `OpLocalRestore`), in the order they reach the server: the settings, the
   statement, the restore.
 - **Failures.** A restore that fails fails the verb with its error, in the
-  error's chain, and the caller gets none of the result. After a statement that
-  fails nothing more is sent; the settings end with the transaction (commit,
+  error's chain, and the caller gets none of the result. The restore is sent
+  after every outcome but an error the server reported (the dialect's
+  `AbortsTransaction`): a scan, decode or type error on the client leaves the
+  transaction alive, so it is restored. After the server's error nothing more
+  is sent: the transaction is aborted, and the settings end with it (commit,
   rollback, or a rolled-back savepoint), so none outlives it or reaches the
   next user of a pooled connection.
 
