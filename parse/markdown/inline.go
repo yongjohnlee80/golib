@@ -394,13 +394,24 @@ func (p *inlineParser) closeBracket() {
 	opener.node.Unlink()
 	p.brackets = opener.prev
 	if !opener.image {
-		for b := p.brackets; b != nil; b = b.prev {
-			if !b.image {
-				b.active = false // links may not contain links
-			}
-		}
+		p.deactivateLinks()
 	}
 	p.pos = end
+}
+
+// deactivateLinks marks every link opener below the scan inactive, since links may not contain
+// links. A link opener already inactive was marked by an earlier link, with every one below it, so
+// the walk stops there (as cmark's does): each opener is marked once, not once per link after it.
+func (p *inlineParser) deactivateLinks() {
+	for b := p.brackets; b != nil; b = b.prev {
+		if b.image {
+			continue
+		}
+		if !b.active {
+			return
+		}
+		b.active = false
+	}
 }
 
 // inlineLinkTail parses "(destination title)" at i.

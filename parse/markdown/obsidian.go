@@ -207,11 +207,7 @@ func (p *inlineParser) wikilink(embed bool) bool {
 	p.parent.AppendChild(n)
 	p.pos = closeAt + 2
 	if !embed {
-		for b := p.brackets; b != nil; b = b.prev {
-			if !b.image {
-				b.active = false // links may not contain links
-			}
-		}
+		p.deactivateLinks()
 	}
 	return true
 }
