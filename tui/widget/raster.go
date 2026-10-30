@@ -3,6 +3,8 @@ package widget
 import (
 	"bytes"
 	"context"
+	"crypto/rand"
+	"encoding/hex"
 	"errors"
 	"fmt"
 	"image"
@@ -10,6 +12,8 @@ import (
 	"image/draw"
 	"image/png"
 	"io"
+	"net"
+	"net/http"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -96,9 +100,10 @@ func RasterizeSVG(ctx context.Context, svg []byte, width int) ([]byte, error) {
 // RasterizeHTML renders html in a headless browser at width × height pixels and returns the
 // viewport as a PNG, once the page's scripts have settled (a diagram drawn by a script is drawn). The page cannot reach the network: every host resolves nowhere and every
 // request goes to a proxy that is not there, and WebRTC sends nothing past it. A page that needs
-// the network renders without it. Nor can it reach this host's files: it is loaded from one, and
-// its content policy (pagePolicy) admits only inline scripts and styles and data: and blob:
-// subresources, so an <img> or <script> naming another file draws nothing. The browser's own
+// the network renders without it. Nor can it reach this host's files: it is served from a loopback
+// port at a path only the browser is given (servePage), in a sandbox with an opaque origin, from
+// which no file:// navigation, frame or subresource loads, and its content policy (pagePolicy)
+// admits only inline scripts and styles and data: and blob: subresources. The browser's own
 // sandbox always stays on: where it cannot run (a system that forbids user namespaces), the
 // browser refuses, the error says so, and the host shows its fallback.
 func RasterizeHTML(ctx context.Context, html []byte, width, height int) ([]byte, error) {
@@ -318,10 +323,12 @@ func rasterizeHTML(ctx context.Context, html []byte, width, height int, scale fl
 		return nil, err
 	}
 	defer os.RemoveAll(dir)
-	page, out := filepath.Join(dir, "page.html"), filepath.Join(dir, "page.png")
-	if err := os.WriteFile(page, withPolicy(html, noScripts), 0o600); err != nil {
+	out := filepath.Join(dir, "page.png")
+	pageURL, port, stop, err := serve(withPolicy(html, noScripts), noScripts)
+	if err != nil {
 		return nil, err
 	}
+	defer stop()
 	release, err := browserSlot(ctx)
 	if err != nil {
 		return nil, err
@@ -332,7 +339,9 @@ func rasterizeHTML(ctx context.Context, html []byte, width, height int, scale fl
 	args := []string{
 		"--headless=new", "--disable-gpu", "--hide-scrollbars", "--mute-audio", "--no-first-run",
 		"--disable-extensions", "--disable-background-networking", "--disable-sync", "--disable-default-apps",
-		"--proxy-server=127.0.0.1:9", "--proxy-bypass-list=<-loopback>", "--host-resolver-rules=MAP * ~NOTFOUND",
+		// every request goes to a proxy that is not there but the page's own server's: loopback
+		// is not bypassed (<-loopback>), only that port is
+		"--proxy-server=127.0.0.1:9", "--proxy-bypass-list=<-loopback>;127.0.0.1:" + port, "--host-resolver-rules=MAP * ~NOTFOUND",
 		// WebRTC's UDP goes around a proxy unless told not to: none is sent but through it
 		"--force-webrtc-ip-handling-policy=disable_non_proxied_udp",
 		"--user-data-dir=" + filepath.Join(dir, "profile"),
@@ -344,7 +353,7 @@ func rasterizeHTML(ctx context.Context, html []byte, width, height int, scale fl
 	if noScripts {
 		args = append(args, "--blink-settings=scriptEnabled=false")
 	}
-	cmd := exec.CommandContext(ctx, tool, append(args, "--screenshot="+out, "file://"+page)...)
+	cmd := exec.CommandContext(ctx, tool, append(args, "--screenshot="+out, pageURL)...)
 	if _, err := runBounded(cmd); err != nil {
 		return nil, err
 	}
@@ -401,9 +410,9 @@ func (l *limitWriter) Write(p []byte) (int, error) {
 
 // pagePolicy is the content policy every rasterized page is given, ahead of any of its own (a
 // browser enforces each): inline scripts and styles, and data: and blob: subresources, nothing
-// else. The page is loaded from a file, so without it an <img>, a <script> or a stylesheet could
-// name any other file on this host and draw it into the screenshot. scripts is the script-src: none
-// for a NoScripts page.
+// else, so an <img>, a <script> or a stylesheet names nothing it could fetch. It is the inner
+// layer: the page's opaque, sandboxed origin (servePage) is what keeps a navigation off this
+// host's files. scripts is the script-src: none for a NoScripts page.
 const pagePolicy = "default-src 'none'; script-src %s; style-src 'unsafe-inline' data: blob:; " +
 	"img-src data: blob:; font-src data: blob:; media-src data: blob:; worker-src blob:"
 
@@ -426,4 +435,45 @@ func withPolicy(html []byte, noScripts bool) []byte {
 	out = append(out, html[:at]...)
 	out = append(out, meta...)
 	return append(out, html[at:]...)
+}
+
+// serve is servePage; a cell replaces it to see the page the browser is given.
+var serve = servePage
+
+// servePage serves page from a loopback port at a path no one else knows, until stop, and answers
+// its URL and port. The browser loads it from there, not from a file: a page at file:// could
+// navigate to any other file (a script setting location, a meta refresh), and a content policy does
+// not govern navigation. Served over http, its policy also comes as a header with a sandbox, so the
+// page has an opaque origin and Chromium refuses it every file:// navigation, frame and
+// subresource, and every top-level navigation at all. Every other path, and every other method,
+// is not found.
+func servePage(page []byte, noScripts bool) (pageURL, port string, stop func(), err error) {
+	ln, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		return "", "", nil, err
+	}
+	var token [16]byte
+	if _, err := rand.Read(token[:]); err != nil {
+		ln.Close()
+		return "", "", nil, err
+	}
+	path := "/" + hex.EncodeToString(token[:]) + "/page.html"
+	scripts, sandbox := "'unsafe-inline' 'unsafe-eval' data: blob:", "sandbox allow-scripts"
+	if noScripts {
+		scripts, sandbox = "'none'", "sandbox"
+	}
+	policy := fmt.Sprintf(pagePolicy, scripts) + "; " + sandbox
+	srv := &http.Server{ReadHeaderTimeout: 5 * time.Second, Handler: http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != path || (r.Method != http.MethodGet && r.Method != http.MethodHead) {
+			http.NotFound(w, r)
+			return
+		}
+		w.Header().Set("Content-Type", "text/html; charset=utf-8")
+		w.Header().Set("Content-Security-Policy", policy)
+		w.Header().Set("Cache-Control", "no-store")
+		_, _ = w.Write(page)
+	})}
+	go srv.Serve(ln) //nolint:errcheck // Serve's error after Close is http.ErrServerClosed
+	_, port, _ = net.SplitHostPort(ln.Addr().String())
+	return "http://127.0.0.1:" + port + path, port, func() { _ = srv.Close() }, nil
 }
