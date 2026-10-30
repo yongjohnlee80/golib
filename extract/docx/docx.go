@@ -38,11 +38,12 @@ var (
 
 // Default limits applied when [Extractor] fields are zero or unconfigured.
 const (
-	// DefaultMaxEntry bounds the decompressed bytes permitted from a single archive entry (256 MiB).
-	DefaultMaxEntry = 256 << 20
+	// DefaultMaxEntry bounds the decompressed bytes permitted from a single archive entry (32 MiB):
+	// a document's own XML, never its media, which is skipped. A ZIP bomb's entry stops there.
+	DefaultMaxEntry = 32 << 20
 
-	// DefaultMaxTotal bounds the cumulative decompressed bytes across all archive entries read (512 MiB).
-	DefaultMaxTotal = 512 << 20
+	// DefaultMaxTotal bounds the cumulative decompressed bytes across all archive entries read (64 MiB).
+	DefaultMaxTotal = 64 << 20
 
 	// DefaultMaxDepth bounds the maximum XML element nesting depth (256 levels).
 	DefaultMaxDepth = 256

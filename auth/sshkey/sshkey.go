@@ -77,7 +77,9 @@ type Allowed struct {
 //
 // A line that fails to parse is an error, not a skip: silently ignoring an
 // unparsable entry in an allowlist means silently denying someone who should
-// have access, and the operator would never know.
+// have access, and the operator would never know. A line with key options
+// (from=, expiry-time=, …) is an error too: they are not honoured, and dropping
+// them would let the key in where its options say it may not be.
 func ParseAuthorizedKeys(b []byte, subjectOf func(comment string, key ssh.PublicKey) (string, error)) ([]Allowed, error) {
 	if subjectOf == nil {
 		return nil, auth.Reason("sshkey: a subject mapping is required")
@@ -85,12 +87,18 @@ func ParseAuthorizedKeys(b []byte, subjectOf func(comment string, key ssh.Public
 	var out []Allowed
 	rest := b
 	for line := 1; ; line++ {
-		key, comment, _, remaining, err := ssh.ParseAuthorizedKey(rest)
+		key, comment, options, remaining, err := ssh.ParseAuthorizedKey(rest)
 		if err != nil {
 			if onlyBlank(rest) {
 				return out, nil
 			}
 			return nil, fmt.Errorf("sshkey: authorized_keys line %d: %w", line, err)
+		}
+		if len(options) > 0 {
+			// from=, expiry-time= and the rest restrict a key; dropping them silently would let the
+			// key in where the operator said it may not be, so a line with any is refused
+			return nil, errs.Wrap(errs.ErrInvalidArgument, "sshkey: authorized_keys line %d: key options (%s) are not supported: remove them, or the key is unrestricted",
+				line, strings.Join(options, ","))
 		}
 		subject, err := subjectOf(comment, key)
 		if err != nil {

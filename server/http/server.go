@@ -10,6 +10,7 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
+	"path"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -223,9 +224,41 @@ func New(opts ...Option) *Server {
 	return s
 }
 
-// handler folds the global middleware once around the dispatcher.
+// handler folds the global middleware once around the dispatcher, behind canonical: no middleware
+// and no route sees a path that is not canonical.
 func (s *Server) handler() http.Handler {
-	return s.global.Then(http.HandlerFunc(s.dispatch))
+	return canonical(s.global.Then(http.HandlerFunc(s.dispatch)))
+}
+
+// canonical redirects a request whose path is not canonical (a //, a . or .. segment) to the one
+// it names, as net/http's ServeMux does: the router reads /admin//keys as /admin/keys, so a check
+// keyed on the path as written (a middleware's prefix, a proxy's rule) would see a path the route
+// does not. 308 keeps the method and the body; the query is kept.
+func canonical(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if c := cleanPath(r.URL.Path); c != r.URL.Path {
+			u := *r.URL
+			u.Path, u.RawPath = c, ""
+			http.Redirect(w, r, u.RequestURI(), http.StatusPermanentRedirect)
+			return
+		}
+		next.ServeHTTP(w, r)
+	})
+}
+
+// cleanPath is p canonical: rooted, with no empty, . or .. segment, and its trailing slash kept.
+func cleanPath(p string) string {
+	if p == "" {
+		return "/"
+	}
+	if p[0] != '/' {
+		p = "/" + p
+	}
+	np := path.Clean(p)
+	if p[len(p)-1] == '/' && np != "/" {
+		np += "/"
+	}
+	return np
 }
 
 // dispatch matches the request and invokes the (group/route-wrapped) handler, or
