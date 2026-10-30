@@ -199,15 +199,15 @@ func TestSSO_ClaimIsSingleUse(t *testing.T) {
 	t.Parallel()
 	s, released, _, _ := ssoFor(t, 4, time.Minute)
 	u := &upstream{id: "a"}
-	if err := s.hold("h1", u); err != nil {
+	if err := s.hold("h1", testSubject, u); err != nil {
 		t.Fatal(err)
 	}
 
-	got, ok := s.Claim(&SessionInfo{Handoff: "h1"})
+	got, ok := s.Claim(&SessionInfo{Handoff: "h1", Identity: testIdentity})
 	if !ok || got != u {
 		t.Fatalf("Claim = %v %v", got, ok)
 	}
-	if _, ok := s.Claim(&SessionInfo{Handoff: "h1"}); ok {
+	if _, ok := s.Claim(&SessionInfo{Handoff: "h1", Identity: testIdentity}); ok {
 		t.Error("a second Claim succeeded — two sessions would share one upstream session")
 	}
 	// A claimed entry is NOT released: the session owns it now, and releasing here
@@ -216,7 +216,7 @@ func TestSSO_ClaimIsSingleUse(t *testing.T) {
 		t.Errorf("a claimed entry was released: %v", *released)
 	}
 	// An attach with no login parks nothing, which is normal, not an error.
-	if _, ok := s.Claim(&SessionInfo{Handoff: ""}); ok {
+	if _, ok := s.Claim(&SessionInfo{Handoff: "", Identity: testIdentity}); ok {
 		t.Error("an attach with no handoff claimed something")
 	}
 	if _, ok := s.Claim(nil); ok {
@@ -228,7 +228,7 @@ func TestSSO_ReleaseIsIdempotent(t *testing.T) {
 	t.Parallel()
 	s, released, _, _ := ssoFor(t, 4, time.Minute)
 	u := &upstream{id: "a"}
-	if err := s.hold("h1", u); err != nil {
+	if err := s.hold("h1", testSubject, u); err != nil {
 		t.Fatal(err)
 	}
 	s.Release("h1", ReattachedExisting)
@@ -256,7 +256,7 @@ func TestSSO_ExpirySweeps(t *testing.T) {
 	t.Parallel()
 	s, released, _, now := ssoFor(t, 4, time.Minute)
 	abandoned := &upstream{id: "abandoned"}
-	if err := s.hold("h1", abandoned); err != nil {
+	if err := s.hold("h1", testSubject, abandoned); err != nil {
 		t.Fatal(err)
 	}
 
@@ -284,15 +284,15 @@ func TestSSO_HoldSweepsFirst(t *testing.T) {
 	t.Parallel()
 	s, _, _, now := ssoFor(t, 2, time.Minute)
 	old1, old2 := &upstream{id: "1"}, &upstream{id: "2"}
-	if err := s.hold("h1", old1); err != nil {
+	if err := s.hold("h1", testSubject, old1); err != nil {
 		t.Fatal(err)
 	}
-	if err := s.hold("h2", old2); err != nil {
+	if err := s.hold("h2", testSubject, old2); err != nil {
 		t.Fatal(err)
 	}
 	// The park is full. Without a sweep, the next login would be refused forever.
 	*now = now.Add(2 * time.Minute)
-	if err := s.hold("h3", &upstream{id: "3"}); err != nil {
+	if err := s.hold("h3", testSubject, &upstream{id: "3"}); err != nil {
 		t.Fatalf("hold after expiry: %v — a full park of abandoned logins must not "+
 			"block new ones until someone remembers to sweep", err)
 	}
@@ -308,16 +308,16 @@ func TestSSO_HoldSweepsFirst(t *testing.T) {
 func TestSSO_CapacityIsEnforced(t *testing.T) {
 	t.Parallel()
 	s, _, _, _ := ssoFor(t, 2, time.Minute)
-	if err := s.hold("h1", &upstream{id: "1"}); err != nil {
+	if err := s.hold("h1", testSubject, &upstream{id: "1"}); err != nil {
 		t.Fatal(err)
 	}
-	if err := s.hold("h2", &upstream{id: "2"}); err != nil {
+	if err := s.hold("h2", testSubject, &upstream{id: "2"}); err != nil {
 		t.Fatal(err)
 	}
-	if err := s.hold("h3", &upstream{id: "3"}); !errors.Is(err, ErrPendingLogins) {
+	if err := s.hold("h3", testSubject, &upstream{id: "3"}); !errors.Is(err, ErrPendingLogins) {
 		t.Errorf("err = %v, want ErrPendingLogins", err)
 	}
-	if err := s.hold("", &upstream{id: "x"}); err == nil {
+	if err := s.hold("", testSubject, &upstream{id: "x"}); err == nil {
 		t.Error("an empty handoff was accepted")
 	}
 }
@@ -330,7 +330,7 @@ func TestSSO_CloseReleasesEverything(t *testing.T) {
 	for i := range 5 {
 		u := &upstream{id: string(rune('a' + i))}
 		held = append(held, u)
-		if err := s.hold("h"+u.id, u); err != nil {
+		if err := s.hold("h"+u.id, testSubject, u); err != nil {
 			t.Fatal(err)
 		}
 	}
@@ -347,7 +347,7 @@ func TestSSO_CloseReleasesEverything(t *testing.T) {
 		t.Errorf("%d releases, want 5", len(*released))
 	}
 	// After Close, nothing new is accepted.
-	if err := s.hold("late", &upstream{id: "late"}); !errors.Is(err, ErrStopped) {
+	if err := s.hold("late", testSubject, &upstream{id: "late"}); !errors.Is(err, ErrStopped) {
 		t.Errorf("hold after Close = %v, want ErrStopped", err)
 	}
 }
@@ -368,7 +368,7 @@ func TestSSO_ReleaseDoesNotHoldTheLock(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := s.hold("h1", 1); err != nil {
+	if err := s.hold("h1", testSubject, 1); err != nil {
 		t.Fatal(err)
 	}
 
@@ -376,7 +376,7 @@ func TestSSO_ReleaseDoesNotHoldTheLock(t *testing.T) {
 	<-blocked
 	// While the cleanup is blocked, other park operations must still work.
 	done := make(chan error, 1)
-	go func() { done <- s.hold("h2", 2) }()
+	go func() { done <- s.hold("h2", testSubject, 2) }()
 	select {
 	case err := <-done:
 		if err != nil {
@@ -468,7 +468,7 @@ func TestSSO_ClaimTakesPrecedenceOverProvision(t *testing.T) {
 		t.Fatal(err)
 	}
 	parked := &upstream{id: "from-login"}
-	if err := s.hold("h1", parked); err != nil {
+	if err := s.hold("h1", testSubject, parked); err != nil {
 		t.Fatal(err)
 	}
 
@@ -677,7 +677,7 @@ func TestAdmission_AnUnusedHandoffIsReleasedThroughThePark(t *testing.T) {
 	if !adm.gate.enter() || !adm.gate.hold("k", adm.deadline()) {
 		t.Fatal("no reservation")
 	}
-	if err := s.hold("k", &upstream{id: "a"}); err != nil {
+	if err := s.hold("k", testSubject, &upstream{id: "a"}); err != nil {
 		t.Fatal(err)
 	}
 	m.releaseHandoff("k", AttachFailed)
@@ -707,3 +707,8 @@ func TestAdmission_HoldCoversTheParksTTL(t *testing.T) {
 		t.Errorf("with a 10m park the hold is %s, want 10m", got)
 	}
 }
+
+// testSubject parks the SSO cells' state, and testIdentity is its attach.
+const testSubject = "alice"
+
+var testIdentity = &auth.Identity{Subject: testSubject}

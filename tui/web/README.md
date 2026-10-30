@@ -110,7 +110,8 @@ factor in that position.
   client can.
 - **The pre-auth waiting room is bounded.** `MaxSessions` bounds only what exists
   after a successful hello, so `MaxPending` plus a hello deadline bound what does
-  not.
+  not. `MaxSessionsPerSubject` (off by default) caps one subject within it, so one
+  principal cannot hold every session.
 - **Session takeover is refused.** One connection per session; a second live
   attach is `ErrSessionBusy`. Two browsers sharing a grid, a cursor and an event
   stream is a different product.
@@ -445,6 +446,7 @@ So the obligations are structural:
 | one reservation, one entry | `CommitPark` is **single-use** — a second or recursive call returns false rather than publishing twice or deadlocking — refuses a nil publisher, and is retired when the **hook** returns, not when the request does |
 | nothing outstanding after `Close` | `Close` **waits** for in-flight `Provision` calls; one that finishes late releases its own value |
 | one session per login | `Claim` removes as it hands over |
+| a park is its login's | an entry keeps the login's **subject**; `Claim` hands it only to an attach as that subject, and any other (or no) `Identity` gets nothing and leaves it to its owner, so `Session` provisions that attach its own state. A login with no subject parks nothing |
 | release when the session ends | `Factory` **defers** it — panics included, because `Manager` contains an App panic |
 | no path allocates twice | `Session` claims *or* provisions, never both |
 | no app sees a nil upstream | a nil `Provision` refuses the session |

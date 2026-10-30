@@ -87,6 +87,7 @@ type Manager struct {
 	factory  AppFactory
 	log      logger.Logger
 	maxSess  int
+	maxSubj  int // one subject's sessions (MaxSessionsPerSubject); 0 is no cap of its own
 	idle     time.Duration
 	now      func() time.Time
 	newID    func() string
@@ -118,6 +119,18 @@ func MaxSessions(n int) ManagerOption {
 	return func(m *Manager) {
 		if n > 0 {
 			m.maxSess = n
+		}
+	}
+}
+
+// MaxSessionsPerSubject caps one subject's concurrent sessions, within MaxSessions (default: no
+// cap of its own). Without it one subject can hold every session the Manager allows, and the users
+// after it are refused at MaxSessions; with it, a subject past n is refused (ErrSessionLimit) and
+// the rest of the cap stays for others. n <= 0 leaves it off.
+func MaxSessionsPerSubject(n int) ManagerOption {
+	return func(m *Manager) {
+		if n > 0 {
+			m.maxSubj = n
 		}
 	}
 }
@@ -445,7 +458,7 @@ func (m *Manager) register(id *auth.Identity, peer string) (*Session, context.Co
 		return nil, nil, ErrStopped
 	}
 	m.evictLocked(m.now())
-	if len(m.sessions) >= m.maxSess {
+	if len(m.sessions) >= m.maxSess || m.maxSubj > 0 && m.sessionsOfLocked(id.Subject) >= m.maxSubj {
 		return nil, nil, ErrSessionLimit // audited by create, with mu released
 	}
 	sid := m.newID()
@@ -470,6 +483,17 @@ func (m *Manager) register(id *auth.Identity, peer string) (*Session, context.Co
 	}
 	m.sessions[sid] = s
 	return s, runCtx, nil
+}
+
+// sessionsOfLocked counts subject's sessions. Called with mu held.
+func (m *Manager) sessionsOfLocked(subject string) int {
+	n := 0
+	for _, s := range m.sessions {
+		if s.subject == subject {
+			n++
+		}
+	}
+	return n
 }
 
 // abortUnstarted tears down a registered session whose App goroutine never started, so the
