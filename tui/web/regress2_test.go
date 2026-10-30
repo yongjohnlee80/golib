@@ -443,6 +443,7 @@ func TestRegress2_AttemptCorrelationNegativeControl(t *testing.T) {
 func TestGate(t *testing.T) {
 	t.Parallel()
 	g := newGate(2)
+	//lint:ignore SA4000 enter takes a slot each call: the two calls take two
 	if !g.enter() || !g.enter() {
 		t.Fatal("the first two slots must be available")
 	}
@@ -460,6 +461,7 @@ func TestGate(t *testing.T) {
 	if g.pending() != 0 {
 		t.Errorf("pending = %d, want 0", g.pending())
 	}
+	//lint:ignore SA4000 enter takes a slot each call: the two calls take two
 	if !g.enter() || !g.enter() {
 		t.Error("the gate lost its capacity")
 	}

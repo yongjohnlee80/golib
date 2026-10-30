@@ -611,7 +611,8 @@ func (p *pinnedConn) relinquish(forceDestroy bool) {
 	// design and will stop at its next terminal check rather than read again.
 	if !holderInEmit {
 		p.wireMu.Lock()
-		p.wireMu.Unlock() //nolint:staticcheck // intentional barrier, see above
+		//lint:ignore SA2001 an intentional barrier: it waits out a wire op in flight (see above)
+		p.wireMu.Unlock()
 	}
 	if !reusable {
 		// Close the physical connection (best-effort Terminate, bounded) so the pool's

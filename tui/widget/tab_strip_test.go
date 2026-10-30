@@ -301,7 +301,7 @@ func TestATabStripFitsItsLabelsToItsRoom(t *testing.T) {
 		return h.tb.String(), spans, got
 	}
 
-	row, spans, got := look()
+	row, _, got := look()
 	if !strings.Contains(row, "a-rather-long-name-02.md") || strings.Contains(row, "←") || len(got) != 0 {
 		t.Fatalf("wide: want every label whole, no arrows, fit never asked; fit asked %v:\n%s", got, row)
 	}
@@ -310,7 +310,7 @@ func TestATabStripFitsItsLabelsToItsRoom(t *testing.T) {
 	if !waitInternal(h, func() bool { return strings.Contains(h.tb.String(), "<===") }) {
 		t.Fatalf("narrower: the labels were not cut by fit:\n%s", h.tb.String())
 	}
-	row, spans, got = look()
+	row, spans, got := look()
 	if strings.Contains(row, "←") || len(spans) != 3 || !slices.Contains(got, 17) || slices.ContainsFunc(got, func(w int) bool { return w != 17 }) {
 		t.Fatalf("narrower: want 3 tabs cut by fit to 19 cells (17 and their padding), no arrows; spans %v, fit asked %v:\n%s", spans, got, row)
 	}

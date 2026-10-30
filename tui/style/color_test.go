@@ -57,6 +57,7 @@ func TestColorConstructors(t *testing.T) {
 	}
 
 	// Comparability: same construction, same value.
+	//lint:ignore SA4000 two constructions of one Color must compare equal: that is what is tested
 	if ANSI(3) != ANSI(3) || RGB(1, 2, 3) != RGB(1, 2, 3) {
 		t.Error("identically-constructed Colors are not ==")
 	}
