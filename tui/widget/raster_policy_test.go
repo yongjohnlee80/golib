@@ -3,6 +3,8 @@ package widget
 import (
 	"bytes"
 	"context"
+	"os"
+	"path/filepath"
 	"runtime"
 	"strings"
 	"testing"
@@ -57,5 +59,29 @@ func TestEveryPageCarriesThePolicy(t *testing.T) {
 				t.Errorf("%q, NoScripts %v: policy %q", tc.html, noScripts, got)
 			}
 		}
+	}
+}
+
+// TestTheBrowserIsGivenThePageWithItsPolicy: the page the browser loads is the caller's HTML with
+// the policy at its start, the one withPolicy makes, not the HTML as passed.
+func TestTheBrowserIsGivenThePageWithItsPolicy(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("shell scripts as tools")
+	}
+	shot := band(t, 40, 120, append([]rows{{0, 10, black}}, signature(50)...)...)
+	seen := filepath.Join(t.TempDir(), "page")
+	fakeTool(t, &htmlTools, `for a in "$@"; do case "$a" in --screenshot=*) out="${a#--screenshot=}";; file://*) page="${a#file://}";; esac; done
+cp "$page" "`+seen+`"; cp "`+shot+`" "$out"
+`)
+	html := "<!DOCTYPE html><body><img src=\"file:///etc/hostname\"></body>"
+	if _, err := RasterizeHTMLPage(context.Background(), []byte(html), Page{Width: 40, MinHeight: 20}); err != nil {
+		t.Fatal(err)
+	}
+	got, err := os.ReadFile(seen)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !bytes.HasPrefix(got, []byte(`<!DOCTYPE html><meta http-equiv="Content-Security-Policy" content="default-src 'none'; `)) {
+		t.Errorf("the page the browser loaded: %.120q, want the policy after its doctype", got)
 	}
 }
