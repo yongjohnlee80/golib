@@ -15,6 +15,13 @@ on:
 permissions:
   contents: read
 
+# A newer push to a pull request cancels that pull request's older runs: only the head's run is
+# read, and every repository of the account shares one pool of concurrent jobs. A push to main is
+# grouped by its own commit, so it always runs to the end.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event_name == 'pull_request' && github.event.pull_request.number || github.sha }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
 jobs:
   check:
     name: build, vet, test
