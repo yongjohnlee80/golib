@@ -37,6 +37,17 @@ func (lsDialect) LocalSettingsSQL(ss []LocalSetting) (string, []any) {
 	return "SETTINGS", args
 }
 
+// serverErr is an error the fake server reported; lsDialect says it aborts
+// the transaction, as PostgreSQL's ErrorResponse does.
+type serverErr struct{ msg string }
+
+func (e serverErr) Error() string { return e.msg }
+
+func (lsDialect) AbortsTransaction(err error) bool {
+	var s serverErr
+	return errors.As(err, &s)
+}
+
 func (lsDialect) LocalRestoreSQL(ps []PriorSetting) (string, []any) {
 	var args []any
 	for _, p := range ps {
@@ -56,7 +67,22 @@ type lsConn struct {
 	log     []string
 	prior   []any            // the settings statement's row: priors, then the set_config columns
 	fail    map[string]error // statement kind → its error
+	scanErr error            // every verb row's Scan fails with it (a client-side error)
 	restore []any            // the restore's arguments, as sent
+}
+
+// lsRows fails Scan with scanErr, as a driver does for a destination of the
+// wrong type.
+type lsRows struct {
+	*fakeRows
+	scanErr error
+}
+
+func (r lsRows) Scan(dest ...any) error {
+	if r.scanErr != nil {
+		return r.scanErr
+	}
+	return r.fakeRows.Scan(dest...)
 }
 
 func kindOf(q string) string {
@@ -87,6 +113,9 @@ func (c *lsConn) query(where, q string, args []any) (Rows, error) {
 	c.log = append(c.log, where+" "+k)
 	if err := c.fail[k]; err != nil {
 		return nil, err
+	}
+	if k != "SETTINGS" {
+		return lsRows{c.rowsFor(k), c.scanErr}, nil
 	}
 	return c.rowsFor(k), nil
 }
@@ -179,10 +208,8 @@ func lsVerbs(early bool) map[Op]func(DAO[*artist, artistField, string]) error {
 					return it.Close()
 				}
 			}
-			if err := it.Err(); err != nil {
-				return err
-			}
-			return it.Close()
+			err = it.Err()
+			return errors.Join(err, it.Close())
 		},
 	}
 }
@@ -323,13 +350,13 @@ func TestLocalSettings_BatchRefuses(t *testing.T) {
 	}
 }
 
-// After a statement that fails, nothing more is sent: the transaction is
-// aborted, which ends the settings.
+// After a statement the server failed, nothing more is sent: the transaction
+// is aborted, which ends the settings.
 func TestLocalSettings_AFailedStatementSendsNoRestore(t *testing.T) {
 	for op, run := range lsVerbs(false) {
 		t.Run(string(op), func(t *testing.T) {
 			c := newLS()
-			stmtErr := errors.New("server: statement failed")
+			stmtErr := serverErr{"server: statement failed"}
 			c.fail = map[string]error{verbStatement(op): stmtErr}
 			err := run(buildSchema(c).On(Begin(context.Background()), WithLocalSettings(LocalSetting{"a", "1"})))
 			if !errors.Is(err, stmtErr) {
@@ -404,5 +431,40 @@ func TestLocalSettings_ARefusedStatementIsRestored(t *testing.T) {
 		"before select", "before local-restore", "tx RESTORE", "after local-restore"}
 	if !slices.Equal(c.log, want) {
 		t.Fatalf("got  %q\nwant %q", c.log, want)
+	}
+}
+
+// A failure on the client (an argument the driver could not send, a row it
+// could not scan) leaves the transaction alive: the restore is sent, and the
+// verb answers the failure.
+func TestLocalSettings_AClientSideFailureIsRestored(t *testing.T) {
+	clientErr := errors.New("client: cannot encode or scan")
+	for op, run := range lsVerbs(false) {
+		t.Run(string(op)+"/statement", func(t *testing.T) {
+			c := newLS()
+			c.fail = map[string]error{verbStatement(op): clientErr}
+			err := run(buildSchema(c).On(Begin(context.Background()), WithLocalSettings(LocalSetting{"a", "1"})))
+			if !errors.Is(err, clientErr) {
+				t.Fatalf("err = %v, want the client's error", err)
+			}
+			if !slices.Contains(c.log, "tx RESTORE") {
+				t.Fatalf("no restore after a client-side failure: %q", c.log)
+			}
+		})
+		switch op {
+		case OpUpdate, OpUpsert, OpDelete:
+			continue // an Exec has no rows to scan
+		}
+		t.Run(string(op)+"/scan", func(t *testing.T) {
+			c := newLS()
+			c.scanErr = clientErr
+			err := run(buildSchema(c).On(Begin(context.Background()), WithLocalSettings(LocalSetting{"a", "1"})))
+			if !errors.Is(err, clientErr) {
+				t.Fatalf("err = %v, want the scan's error", err)
+			}
+			if !slices.Contains(c.log, "tx RESTORE") {
+				t.Fatalf("no restore after a scan error: %q", c.log)
+			}
+		})
 	}
 }

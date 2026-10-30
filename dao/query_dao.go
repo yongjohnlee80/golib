@@ -386,28 +386,22 @@ func (d *queryDAO[R, C, K, ID]) Get(cols ...C) (R, error) {
 	}
 	rows, qerr := h.QueryContext(d.ctx(), q, args...)
 	if qerr != nil {
-		return zero, pl.finish(0, -1, d.schema.translate(qerr))
+		return zero, lr.after(qerr, pl.finish(0, -1, d.schema.translate(qerr)))
 	}
 	defer rows.Close()
 	if !rows.Next() {
 		if rerr := rows.Err(); rerr != nil {
-			return zero, pl.finish(0, -1, d.schema.translate(rerr))
+			return zero, lr.done(rows, rerr, pl.finish(0, -1, d.schema.translate(rerr)))
 		}
-		err := pl.finish(0, -1, ErrNoRows)
-		if lr != nil {
-			rows.Close()
-			err = lr.after(true, err)
-		}
-		return zero, err
+		return zero, lr.done(rows, nil, pl.finish(0, -1, ErrNoRows))
 	}
 	r, serr := scanRow(d.schema.newRow, plan, rows)
 	if serr != nil {
-		return zero, pl.finish(0, -1, d.schema.translate(serr))
+		return zero, lr.done(rows, serr, pl.finish(0, -1, d.schema.translate(serr)))
 	}
 	err = pl.finish(1, -1, nil)
 	if lr != nil {
-		rows.Close()
-		if err = lr.after(true, err); err != nil {
+		if err = lr.done(rows, nil, err); err != nil {
 			return zero, err
 		}
 	}
@@ -435,24 +429,19 @@ func (d *queryDAO[R, C, K, ID]) Select(cols ...C) ([]R, error) {
 	}
 	rows, qerr := h.QueryContext(d.ctx(), q, args...)
 	if qerr != nil {
-		return nil, pl.finish(0, -1, d.schema.translate(qerr))
+		return nil, lr.after(qerr, pl.finish(0, -1, d.schema.translate(qerr)))
 	}
 	defer rows.Close()
 	var out []R
 	for rows.Next() {
 		r, serr := scanRow(d.schema.newRow, plan, rows)
 		if serr != nil {
-			return nil, pl.finish(len(out), -1, d.schema.translate(serr))
+			return nil, lr.done(rows, serr, pl.finish(len(out), -1, d.schema.translate(serr)))
 		}
 		out = append(out, r)
 	}
 	rerr := rows.Err()
-	ferr := pl.finish(len(out), -1, d.schema.translate(rerr))
-	if rerr == nil && lr != nil {
-		rows.Close()
-		ferr = lr.after(true, ferr)
-	}
-	if ferr != nil {
+	if ferr := lr.done(rows, rerr, pl.finish(len(out), -1, d.schema.translate(rerr))); ferr != nil {
 		return nil, ferr
 	}
 	return out, nil
@@ -479,13 +468,13 @@ func (d *queryDAO[R, C, K, ID]) Iterate(cols ...C) (Iterator[R], error) {
 	}
 	rows, qerr := h.QueryContext(d.ctx(), q, args...)
 	if qerr != nil {
-		return nil, pl.finish(-1, -1, d.schema.translate(qerr))
+		return nil, lr.after(qerr, pl.finish(-1, -1, d.schema.translate(qerr)))
 	}
 	// Execution-only AfterExec: consumption/scan errors surface
 	// through the iterator untransformed by hooks.
 	if ferr := pl.finish(-1, -1, nil); ferr != nil {
 		rows.Close()
-		return nil, lr.after(true, ferr)
+		return nil, lr.after(nil, ferr)
 	}
 	return &rowsIterator[R]{rows: rows, plan: plan, newR: d.schema.newRow, translate: d.schema.translate, local: lr}, nil
 }
@@ -507,15 +496,15 @@ func (d *queryDAO[R, C, K, ID]) Exists() (bool, error) {
 	}
 	rows, err := h.QueryContext(d.ctx(), q, args...)
 	if err != nil {
-		return false, pl.finish(0, -1, d.schema.translate(err))
+		return false, lr.after(err, pl.finish(0, -1, d.schema.translate(err)))
 	}
 	var exists bool
 	if serr := scanScalar(rows, &exists); serr != nil {
-		return false, pl.finish(0, -1, d.schema.translate(serr))
+		return false, lr.after(serr, pl.finish(0, -1, d.schema.translate(serr)))
 	}
 	err = pl.finish(1, -1, nil)
 	if lr != nil {
-		if err = lr.after(true, err); err != nil {
+		if err = lr.after(nil, err); err != nil {
 			return false, err
 		}
 	}
@@ -539,15 +528,15 @@ func (d *queryDAO[R, C, K, ID]) Count() (uint64, error) {
 	}
 	rows, err := h.QueryContext(d.ctx(), q, args...)
 	if err != nil {
-		return 0, pl.finish(0, -1, d.schema.translate(err))
+		return 0, lr.after(err, pl.finish(0, -1, d.schema.translate(err)))
 	}
 	var n uint64
 	if serr := scanScalar(rows, &n); serr != nil {
-		return 0, pl.finish(0, -1, d.schema.translate(serr))
+		return 0, lr.after(serr, pl.finish(0, -1, d.schema.translate(serr)))
 	}
 	err = pl.finish(1, -1, nil)
 	if lr != nil {
-		if err = lr.after(true, err); err != nil {
+		if err = lr.after(nil, err); err != nil {
 			return 0, err
 		}
 	}
@@ -576,15 +565,15 @@ func (d *queryDAO[R, C, K, ID]) CountDistinct(field C) (uint64, error) {
 	}
 	rows, err := h.QueryContext(d.ctx(), q, args...)
 	if err != nil {
-		return 0, pl.finish(0, -1, d.schema.translate(err))
+		return 0, lr.after(err, pl.finish(0, -1, d.schema.translate(err)))
 	}
 	var n uint64
 	if serr := scanScalar(rows, &n); serr != nil {
-		return 0, pl.finish(0, -1, d.schema.translate(serr))
+		return 0, lr.after(serr, pl.finish(0, -1, d.schema.translate(serr)))
 	}
 	err = pl.finish(1, -1, nil)
 	if lr != nil {
-		if err = lr.after(true, err); err != nil {
+		if err = lr.after(nil, err); err != nil {
 			return 0, err
 		}
 	}
@@ -633,15 +622,15 @@ func (d *queryDAO[R, C, K, ID]) Insert() (ID, error) {
 	if returning {
 		rows, err := h.QueryContext(d.ctx(), q, args...)
 		if err != nil {
-			return zero, pl.finish(0, -1, d.schema.translate(err))
+			return zero, lr.after(err, pl.finish(0, -1, d.schema.translate(err)))
 		}
 		var id ID
 		if serr := scanScalar(rows, &id); serr != nil {
-			return zero, pl.finish(0, -1, d.schema.translate(serr))
+			return zero, lr.after(serr, pl.finish(0, -1, d.schema.translate(serr)))
 		}
 		err = pl.finish(1, -1, nil)
 		if lr != nil {
-			if err = lr.after(true, err); err != nil {
+			if err = lr.after(nil, err); err != nil {
 				return zero, err
 			}
 		}
@@ -649,9 +638,9 @@ func (d *queryDAO[R, C, K, ID]) Insert() (ID, error) {
 	}
 	res, err := h.ExecContext(d.ctx(), q, args...)
 	if err != nil {
-		return zero, pl.finish(0, -1, d.schema.translate(err))
+		return zero, lr.after(err, pl.finish(0, -1, d.schema.translate(err)))
 	}
-	if ferr := lr.after(true, pl.finish(0, affectedOf(res), nil)); ferr != nil {
+	if ferr := lr.after(nil, pl.finish(0, affectedOf(res), nil)); ferr != nil {
 		return zero, ferr
 	}
 	// No RETURNING. An engine whose INSERT result carries the generated id
@@ -724,7 +713,7 @@ func (d *queryDAO[R, C, K, ID]) update() (int64, error) {
 	}
 	res, err := h.ExecContext(d.ctx(), q, args...)
 	n := affectedOf(res)
-	return n, lr.after(err == nil, pl.finish(0, n, d.schema.translate(err)))
+	return n, lr.after(err, pl.finish(0, n, d.schema.translate(err)))
 }
 
 // UpsertOnly implements [SelectiveUpserter]: Upsert, updating only fields on
@@ -795,7 +784,7 @@ func (d *queryDAO[R, C, K, ID]) Upsert() error {
 		return xerr
 	}
 	res, err := h.ExecContext(d.ctx(), q, args...)
-	return lr.after(err == nil, pl.finish(0, affectedOf(res), d.schema.translate(err)))
+	return lr.after(err, pl.finish(0, affectedOf(res), d.schema.translate(err)))
 }
 
 func (d *queryDAO[R, C, K, ID]) Delete() error {
@@ -817,7 +806,7 @@ func (d *queryDAO[R, C, K, ID]) Delete() error {
 		return xerr
 	}
 	res, err := h.ExecContext(d.ctx(), q, args...)
-	return lr.after(err == nil, pl.finish(0, affectedOf(res), d.schema.translate(err)))
+	return lr.after(err, pl.finish(0, affectedOf(res), d.schema.translate(err)))
 }
 
 func (d *queryDAO[R, C, K, ID]) Batch() BatchWriter[R, C] {

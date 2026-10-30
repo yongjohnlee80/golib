@@ -1,6 +1,7 @@
 package postgres
 
 import (
+	"errors"
 	"fmt"
 	"maps"
 	"math"
@@ -8,6 +9,7 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/yongjohnlee80/golib/dao"
 	"github.com/yongjohnlee80/golib/errs"
 )
@@ -145,4 +147,13 @@ func (PostgresDialect) LocalRestoreSQL(previous []dao.PriorSetting) (string, []a
 		args = append(args, p.Name, v)
 	}
 	return "SELECT " + strings.Join(set, ", "), args
+}
+
+// AbortsTransaction implements dao.LocalSetter: an error the server reported
+// (an ErrorResponse, *pgconn.PgError) aborts PostgreSQL's transaction, which
+// ends the settings; any other (a scan or decode error, an argument pgx could
+// not encode) left the transaction alive, so the settings are restored.
+func (PostgresDialect) AbortsTransaction(err error) bool {
+	var pg *pgconn.PgError
+	return errors.As(err, &pg)
 }
