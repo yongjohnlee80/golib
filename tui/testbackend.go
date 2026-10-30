@@ -60,6 +60,7 @@ type TestBackend struct {
 	framed bool
 
 	clipboard []byte // last WriteClipboard payload (tui.ClipboardWriter)
+	bells     int    // how many times Bell rang (tui.Beller)
 	// clipReads are the ReadClipboard reads held for the test to answer, oldest first;
 	// clipUnsupported refuses every read at once, as a terminal does.
 	clipReads       []*heldClipRead
@@ -86,6 +87,24 @@ func (b *TestBackend) Clipboard() []byte {
 	b.mu.Lock()
 	defer b.mu.Unlock()
 	return append([]byte(nil), b.clipboard...)
+}
+
+// Bell implements Beller: counts the rings, for Bells.
+func (b *TestBackend) Bell() error {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	if b.stopped {
+		return fmt.Errorf("tui: TestBackend.Bell after Stop (%w)", errs.ErrClosed)
+	}
+	b.bells++
+	return nil
+}
+
+// Bells is how many times Bell rang.
+func (b *TestBackend) Bells() int {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	return b.bells
 }
 
 // heldClipRead is one read the test has yet to answer.

@@ -358,6 +358,15 @@ func (b *Backend) write(p []byte) error {
 	return b.writeAll(p)
 }
 
+// Bell sounds the terminal's bell (tui.Beller): one BEL, in a write of its own, which the write
+// lock keeps out of any frame's.
+func (b *Backend) Bell() error {
+	if b.stopped.Load() {
+		return ErrClosed
+	}
+	return b.write([]byte{'\a'})
+}
+
 // WriteClipboard sets the system clipboard via OSC 52 (tui.ClipboardWriter).
 // The terminal itself performs the copy, so this works over SSH and inside
 // multiplexers/editor terminals that pass OSC 52 through. Terminals commonly
