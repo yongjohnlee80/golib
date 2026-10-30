@@ -8,7 +8,9 @@ import (
 	"slices"
 	"sort"
 	"strings"
+	"unicode/utf8"
 
+	"github.com/yongjohnlee80/golib/errs"
 	"github.com/yongjohnlee80/golib/tui/style"
 )
 
@@ -71,8 +73,13 @@ type csvRecord struct {
 	from, to int
 }
 
-// NewTableCSV reads core as CSV (comma ',') or TSV ('\t').
+// NewTableCSV reads core as CSV (comma ',') or TSV ('\t'). A delimiter encoding/csv cannot use
+// (a quote, a line break, NUL, an invalid rune) is a programmer error and panics: read with it,
+// every record would fail, and written with it, every edit would write nothing.
 func NewTableCSV(core *EditorCore, comma rune) *TableCSV {
+	if !validDelimiter(comma) {
+		panic(errs.Fatal{Op: "widget.NewTableCSV", Rule: fmt.Sprintf("invalid delimiter %q", comma)})
+	}
 	t := &TableCSV{core: core, comma: comma}
 	t.Sync()
 	return t
@@ -202,9 +209,16 @@ func encodeRecord(comma rune, cells []string) string {
 	var b strings.Builder
 	w := csv.NewWriter(&b)
 	w.Comma = comma
+	// it cannot fail: the delimiter is a valid one (NewTableCSV), and a strings.Builder never refuses a write
 	_ = w.Write(cells)
 	w.Flush()
 	return strings.TrimSuffix(b.String(), "\n")
+}
+
+// validDelimiter reports whether encoding/csv can read and write with r as the delimiter: its own
+// rule, which it does not export.
+func validDelimiter(r rune) bool {
+	return r != 0 && r != '"' && r != '\r' && r != '\n' && utf8.ValidRune(r) && r != utf8.RuneError
 }
 
 // writable is whether an edit may write now: the records read from the core as it is.

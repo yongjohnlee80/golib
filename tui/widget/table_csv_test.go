@@ -4,6 +4,9 @@ import (
 	"slices"
 	"strings"
 	"testing"
+	"unicode/utf8"
+
+	"github.com/yongjohnlee80/golib/errs"
 )
 
 // csvOn is a TableCSV over a core holding text.
@@ -240,5 +243,27 @@ func TestTableCSVInsertsAndDeletesRows(t *testing.T) {
 		}
 	}); !slices.Equal(got, []string{"a", "m", "b"}) {
 		t.Fatalf("fields after: %q", got)
+	}
+}
+
+// TestATableCSVRefusesADelimiterCSVCannotUse: a quote, a line break, NUL or an invalid rune as the
+// delimiter panics at NewTableCSV, where every read would fail and every edit write nothing; the
+// delimiters a document uses are taken.
+func TestATableCSVRefusesADelimiterCSVCannotUse(t *testing.T) {
+	for _, comma := range []rune{'"', '\n', '\r', 0, utf8.RuneError, 0xD800} {
+		func() {
+			defer func() {
+				if _, ok := recover().(errs.Fatal); !ok {
+					t.Errorf("delimiter %q: no errs.Fatal panic", comma)
+				}
+			}()
+			NewTableCSV(NewEditorCore(), comma)
+		}()
+	}
+	for _, comma := range []rune{',', '\t', ';', '|'} {
+		tc := NewTableCSV(NewEditorCore(CoreInitialText("a"+string(comma)+"b")), comma)
+		if got := tc.encode([]string{"x", "y"}); got != "x"+string(comma)+"y" {
+			t.Errorf("delimiter %q: a record encodes as %q", comma, got)
+		}
 	}
 }

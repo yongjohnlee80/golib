@@ -168,3 +168,34 @@ func TestConcurrentReadWrite(t *testing.T) {
 		t.Errorf("ConcurrentReadWrite: got %d, want %d", got, expected)
 	}
 }
+
+// TestAtomicValue_ZeroValueIsUsable: a zero AtomicValue, as a struct field declared and never
+// constructed, holds the zero T: Get, RDo, Update and Do work on it from the start, and Set then
+// replaces it, where each dereferenced a nil snapshot before.
+func TestAtomicValue_ZeroValueIsUsable(t *testing.T) {
+	t.Parallel()
+
+	var a AtomicValue[int]
+	if got := a.Get(); got != 0 {
+		t.Fatalf("zero Get = %d, want 0", got)
+	}
+	a.RDo(func(v int) {
+		if v != 0 {
+			t.Errorf("zero RDo saw %d, want 0", v)
+		}
+	})
+	a.Update(func(v int) int { return v + 2 })
+	a.Do(func(v *int) { *v *= 5 })
+	if got := a.Get(); got != 10 {
+		t.Fatalf("after Update and Do from zero: %d, want 10", got)
+	}
+
+	var s AtomicValue[map[string]int]
+	if got := s.Get(); got != nil {
+		t.Fatalf("zero Get of a map = %v, want nil", got)
+	}
+	s.Do(func(m *map[string]int) { *m = map[string]int{"a": 1} }) // copy on write: a new map
+	if got := s.Get()["a"]; got != 1 {
+		t.Fatalf("Do from zero installed %v", s.Get())
+	}
+}
