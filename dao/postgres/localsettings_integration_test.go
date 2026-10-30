@@ -36,6 +36,8 @@ const (
 	lsIter lsField = "iter"
 	lsEf   lsField = "ef"
 	lsDims lsField = "dims"
+	lsBad  lsField = "bad"
+	lsZero lsField = "zero"
 )
 
 const lsTable = "golib_dao_localset"
@@ -52,6 +54,11 @@ var lsFields = map[lsField]dao.Field[*lsRow]{
 	// Reading a vector loads pgvector's library in the session, which defines
 	// the hnsw.* names (cell 12's second half).
 	lsDims: {Column: "vector_dims('[1,2]'::vector)::text", ReadOnly: true, Scan: func(r *lsRow) any { return &r.Dims }},
+	// text scanned into an int: a client-side scan error, the server's
+	// transaction untouched
+	lsBad: {Column: "'x'::text", ReadOnly: true, Scan: func(r *lsRow) any { return &r.ID }},
+	// a division by zero: an error the server reports, aborting the transaction
+	lsZero: {Column: "(1 / (id - id))::text", ReadOnly: true, Scan: func(r *lsRow) any { return &r.Dims }},
 }
 
 type lsSchema = dao.Schema[*lsRow, lsField, string, int]
@@ -542,5 +549,48 @@ func TestLocalSettings_Live13_AFailedRestoreFailsTheVerb(t *testing.T) {
 	_ = tx.Rollback()
 	if after := read(t, s.On(begin(t))); after.Plan != before.Plan {
 		t.Fatalf("after the rollback plan_cache_mode = %q; want %q", after.Plan, before.Plan)
+	}
+}
+
+// Cell 14. A client-side failure is restored: a destination of the wrong type
+// fails Get's scan, and Iterate's, while the server's transaction goes on, so
+// a later statement of it sees the transaction's own values.
+func TestLocalSettings_Live14_AClientSideFailureIsRestored(t *testing.T) {
+	t.Run("Get", func(t *testing.T) {
+		s, tx := lsTxValues(t)
+		if _, err := s.On(tx, lsOption).Get(lsID, lsBad); err == nil {
+			t.Fatal("Get into an int from text: no error; the cell needs a scan error")
+		}
+		wantTxValues(t, read(t, s.On(tx)))
+	})
+	t.Run("Iterate", func(t *testing.T) {
+		s, tx := lsTxValues(t)
+		it, err := s.On(tx, lsOption).Iterate(lsID, lsBad)
+		if err != nil {
+			t.Fatalf("Iterate: %v", err)
+		}
+		for it.Next() {
+		}
+		if it.Err() == nil {
+			t.Fatal("Iterate into an int from text: no error; the cell needs a scan error")
+		}
+		if err := it.Close(); err != nil {
+			t.Fatalf("Close: %v", err)
+		}
+		wantTxValues(t, read(t, s.On(tx)))
+	})
+}
+
+// Cell 15. After an error the server reports, nothing more is sent: the
+// transaction is aborted, which ends the settings, and a restore could only
+// fail.
+func TestLocalSettings_Live15_AServerErrorSendsNoRestore(t *testing.T) {
+	s, tx := lsTxValues(t)
+	h := newOpHook()
+	if _, err := s.On(tx, dao.WithHooks(h), lsOption).Get(lsID, lsZero); err == nil {
+		t.Fatal("a division by zero: no error; the cell needs the server's")
+	}
+	if slices.Contains(*h.log, "before local-restore") {
+		t.Fatalf("a restore was sent after the server's error: %q", *h.log)
 	}
 }

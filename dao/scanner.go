@@ -121,6 +121,7 @@ type rowsIterator[R any] struct {
 	translate func(error) error
 	cur       R
 	err       error
+	raw       error // err as the driver gave it, before translate: the restore's question
 
 	// local is the WithLocalSettings restore, run on the rows' connection
 	// once the rows close: at the iteration's end, or at an early Close.
@@ -132,17 +133,13 @@ func (it *rowsIterator[R]) Next() bool {
 		return false
 	}
 	if !it.rows.Next() {
-		rerr := it.rows.Err()
-		it.err = it.translate(rerr)
-		if it.local != nil {
-			it.rows.Close()
-			it.err = it.local.after(rerr == nil, it.err)
-		}
+		it.raw = it.rows.Err()
+		it.err = it.local.done(it.rows, it.raw, it.translate(it.raw))
 		return false
 	}
 	r, err := scanRow(it.newR, it.plan, it.rows)
 	if err != nil {
-		it.err = it.translate(err)
+		it.raw, it.err = err, it.translate(err)
 		return false
 	}
 	it.cur = r
@@ -153,15 +150,19 @@ func (it *rowsIterator[R]) Value() R   { return it.cur }
 func (it *rowsIterator[R]) Err() error { return it.err }
 
 // Close closes the rows and, for an iteration with local settings, sends the
-// restore unless the rows failed (a scan or server error, which leaves the
-// settings to end with the transaction). A restore that fails is Close's
-// error. Without local settings it is the rows' Close.
+// restore unless the server reported the rows' error (which ends the settings
+// with the transaction); a scan error on the client is restored. A restore
+// that fails is Close's error. Without local settings it is the rows' Close.
 func (it *rowsIterator[R]) Close() error {
 	cerr := it.rows.Close()
 	if it.local == nil {
 		return cerr
 	}
-	return it.local.after(cerr == nil && it.err == nil, cerr)
+	stmtErr := it.raw
+	if stmtErr == nil {
+		stmtErr = cerr
+	}
+	return it.local.after(stmtErr, cerr)
 }
 
 // defaultNewRow returns a row allocator for R. For a pointer row type *T it
