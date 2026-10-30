@@ -87,6 +87,35 @@ them against the server's `pg_settings`. Values are canonical text (an integer
 in decimal, a number with no exponent). Adding a name needs its domain and a
 cell.
 
+## The index lifecycle (building and retiring an index while running)
+
+For a consumer that builds indexes at run time (AutoDoc's HNSW index per embedding model):
+closed operations over a declared index, which golib renders, quotes and allowlists. Nothing here
+takes SQL text.
+
+- **Declare** an `IndexSpec`:
+  - the table and the name are lowercase identifiers (`^[a-z_][a-z0-9_]{0,62}$`);
+  - the method is `hnsw` or `btree`;
+  - the element comes from `HNSWIndexElement(col, metric, type)` (the same cast `dao.DistanceAs`
+    orders by) or `ColumnElement(col)`;
+  - `WhereEq` holds partial-predicate terms, each value an escape-string literal (`E'…'`) that
+    holds whatever `standard_conforming_strings` is. Control characters are refused.
+- **On a pinned session** (`PinSessionConn`), outside any transaction:
+  - `CreateIndexConcurrently` and `DropIndexConcurrently` (`IF EXISTS`), with explicit
+    `BuildOptions` timeouts (zero is none), so a pool's `statement_timeout` never cuts a build
+    short;
+  - `ReferenceDefinition`: the spec built on an empty temporary copy of the table, to compare
+    with;
+  - `MarkSession`: the session's backend, marked as the lifecycle's.
+
+  These leave session state, so the member is destroyed at `Discard`, never recycled.
+- **From any executor:**
+  - `ReadIndexState`: whether the index exists and is valid, and its canonical definition (access
+    method, expression, operator class, predicate). Compare it with `==`;
+  - `BackendAlive`, `CancelBackend`, `TerminateBackend`, for a `Backend` that `MarkSession`
+    answered only. The pid, the start and the mark must all match, so no other session is ever
+    signalled.
+
 ## Transactions
 
 Single-DB and multi-DB **ordered** transactions work via `dao.RunTx` /

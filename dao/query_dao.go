@@ -24,6 +24,7 @@ type queryDAO[R any, C ~string, K ~string, ID any] struct {
 	hooks       []Hook         // effective hook slice (nil = zero-cost fast path)
 	explicitCtx bool           // ctxv came from WithQueryContext — sticky across Use(tx)
 	local       []LocalSetting // WithLocalSettings, checked at acquisition
+	lock        RowLock        // WithRowLock, checked at acquisition; 0 is none
 
 	q   queryState
 	w   writeState
@@ -53,7 +54,11 @@ func (d *queryDAO[R, C, K, ID]) ctx() context.Context {
 }
 
 func (d *queryDAO[R, C, K, ID]) newBuilder() *builder {
-	return &builder{dialect: d.schema.dialect, distinct: d.q.distinct}
+	b := &builder{dialect: d.schema.dialect, distinct: d.q.distinct}
+	if rl, ok := d.schema.dialect.(RowLocker); ok && d.lock != 0 {
+		b.lock = rl.RowLockClause(d.lock, d.schema.table)
+	}
+	return b
 }
 
 // handle resolves the statement executor: the transaction's TxConn when bound
@@ -380,7 +385,7 @@ func (d *queryDAO[R, C, K, ID]) Get(cols ...C) (R, error) {
 	b := d.newBuilder()
 	q := b.buildSelect(d.schema.table, sqlCols, d.collectJoins(joins), d.q.where, d.q.order, &one, d.q.offset)
 	args := b.args
-	h, lr, xerr := d.exec(pl, &q, &args)
+	h, lr, xerr := d.exec(OpGet, pl, &q, &args)
 	if xerr != nil {
 		return zero, xerr
 	}
@@ -423,7 +428,7 @@ func (d *queryDAO[R, C, K, ID]) Select(cols ...C) ([]R, error) {
 	b := d.newBuilder()
 	q := b.buildSelect(d.schema.table, sqlCols, d.collectJoins(joins), d.q.where, d.q.order, d.q.limit, d.q.offset)
 	args := b.args
-	h, lr, xerr := d.exec(pl, &q, &args)
+	h, lr, xerr := d.exec(OpSelect, pl, &q, &args)
 	if xerr != nil {
 		return nil, xerr
 	}
@@ -462,7 +467,7 @@ func (d *queryDAO[R, C, K, ID]) Iterate(cols ...C) (Iterator[R], error) {
 	b := d.newBuilder()
 	q := b.buildSelect(d.schema.table, sqlCols, d.collectJoins(joins), d.q.where, d.q.order, d.q.limit, d.q.offset)
 	args := b.args
-	h, lr, xerr := d.exec(pl, &q, &args)
+	h, lr, xerr := d.exec(OpIterate, pl, &q, &args)
 	if xerr != nil {
 		return nil, xerr
 	}
@@ -490,7 +495,7 @@ func (d *queryDAO[R, C, K, ID]) Exists() (bool, error) {
 	b := d.newBuilder()
 	q := b.buildExists(d.schema.table, d.collectJoins(nil), d.q.where)
 	args := b.args
-	h, lr, xerr := d.exec(pl, &q, &args)
+	h, lr, xerr := d.exec(OpExists, pl, &q, &args)
 	if xerr != nil {
 		return false, xerr
 	}
@@ -522,7 +527,7 @@ func (d *queryDAO[R, C, K, ID]) Count() (uint64, error) {
 	b := d.newBuilder()
 	q := b.buildCount(d.schema.table, d.collectJoins(nil), d.q.where)
 	args := b.args
-	h, lr, xerr := d.exec(pl, &q, &args)
+	h, lr, xerr := d.exec(OpCount, pl, &q, &args)
 	if xerr != nil {
 		return 0, xerr
 	}
@@ -559,7 +564,7 @@ func (d *queryDAO[R, C, K, ID]) CountDistinct(field C) (uint64, error) {
 	b := d.newBuilder()
 	q := b.buildCountDistinct(d.schema.table, sqlCols[0], d.collectJoins(joins), d.q.where)
 	args := b.args
-	h, lr, xerr := d.exec(pl, &q, &args)
+	h, lr, xerr := d.exec(OpCount, pl, &q, &args)
 	if xerr != nil {
 		return 0, xerr
 	}
@@ -615,7 +620,7 @@ func (d *queryDAO[R, C, K, ID]) Insert() (ID, error) {
 	b := d.newBuilder()
 	q := b.buildInsert(d.schema.table, set, d.schema.idColumn, returning)
 	args := b.args
-	h, lr, xerr := d.exec(pl, &q, &args)
+	h, lr, xerr := d.exec(OpInsert, pl, &q, &args)
 	if xerr != nil {
 		return zero, xerr
 	}
@@ -707,7 +712,7 @@ func (d *queryDAO[R, C, K, ID]) update() (int64, error) {
 	b := d.newBuilder()
 	q := b.buildUpdate(d.schema.table, d.schema.idColumn, set, d.collectJoins(nil), d.q.where)
 	args := b.args
-	h, lr, xerr := d.exec(pl, &q, &args)
+	h, lr, xerr := d.exec(OpUpdate, pl, &q, &args)
 	if xerr != nil {
 		return 0, xerr
 	}
@@ -779,7 +784,7 @@ func (d *queryDAO[R, C, K, ID]) Upsert() error {
 	b := d.newBuilder()
 	q := b.buildUpsert(d.schema.table, set, d.schema.idColumn, false, d.schema.conflict, update)
 	args := b.args
-	h, lr, xerr := d.exec(pl, &q, &args)
+	h, lr, xerr := d.exec(OpUpsert, pl, &q, &args)
 	if xerr != nil {
 		return xerr
 	}
@@ -801,7 +806,7 @@ func (d *queryDAO[R, C, K, ID]) Delete() error {
 	b := d.newBuilder()
 	q := b.buildDelete(d.schema.table, d.schema.idColumn, d.collectJoins(nil), d.q.where)
 	args := b.args
-	h, lr, xerr := d.exec(pl, &q, &args)
+	h, lr, xerr := d.exec(OpDelete, pl, &q, &args)
 	if xerr != nil {
 		return xerr
 	}
@@ -818,6 +823,8 @@ func (d *queryDAO[R, C, K, ID]) Batch() BatchWriter[R, C] {
 	switch {
 	case len(d.local) > 0: // refused: Batch resolves its own executor
 		initErr = fmt.Errorf("%w: Batch with local settings", ErrUnsupported)
+	case d.lock != 0: // a write locks its rows already
+		initErr = fmt.Errorf("%w: Batch with a row lock", ErrUnsupported)
 	case d.tx != nil:
 		tc, err := d.tx.join(d.schema.conn)
 		if err != nil {

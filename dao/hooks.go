@@ -162,6 +162,8 @@ type queryConfig struct {
 	ctx         context.Context
 	explicitCtx bool
 	local       []LocalSetting
+	rowLock     RowLock
+	rowLockSet  bool // WithRowLock was given, so a zero strength is refused, not "none"
 }
 
 // QueryOption configures one DAO instance at acquisition time

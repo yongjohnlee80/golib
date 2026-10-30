@@ -122,7 +122,12 @@ func checkLocalSettings(d Dialect, settings []LocalSetting) error {
 // order is the order statements reach the server: the transaction's executor,
 // the settings statement, then the statement's BeforeExec; the caller runs the
 // answered restore once its statement is done.
-func (d *queryDAO[R, C, K, ID]) exec(pl *pipeline, q *string, args *[]any) (execQuerier, *localRestore, error) {
+func (d *queryDAO[R, C, K, ID]) exec(op Op, pl *pipeline, q *string, args *[]any) (execQuerier, *localRestore, error) {
+	if d.lock != 0 {
+		if err := d.lockable(op); err != nil {
+			return nil, nil, err
+		}
+	}
 	if len(d.local) == 0 {
 		if err := pl.beforeExec(q, args); err != nil {
 			return nil, nil, err
