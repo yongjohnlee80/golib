@@ -40,12 +40,12 @@ func TestClusters(t *testing.T) {
 		// Two precomposed LVT syllables: two clusters.
 		{"hangul syllables split", "각각", []string{"각", "각"}},
 		// 🧑 ZWJ 🌾 (farmer): GB11 joins.
-		{"zwj emoji farmer", "\U0001f9d1‍\U0001f33e", []string{"\U0001f9d1‍\U0001f33e"}},
+		{"zwj emoji farmer", "\U0001f9d1\u200d\U0001f33e", []string{"\U0001f9d1\u200d\U0001f33e"}},
 		// 👩 ZWJ 👩 ZWJ 👦 (family): chained GB11.
-		{"zwj family chain", "\U0001f469‍\U0001f469‍\U0001f466",
-			[]string{"\U0001f469‍\U0001f469‍\U0001f466"}},
+		{"zwj family chain", "\U0001f469\u200d\U0001f469\u200d\U0001f466",
+			[]string{"\U0001f469\u200d\U0001f469\u200d\U0001f466"}},
 		// ZWJ attaches to 'a' (GB9) but GB11 needs a pictographic base, so 🌾 breaks off.
-		{"zwj without pictographic base breaks", "a‍\U0001f33e", []string{"a‍", "\U0001f33e"}},
+		{"zwj without pictographic base breaks", "a\u200d\U0001f33e", []string{"a\u200d", "\U0001f33e"}},
 		// Regional Indicator pair 🇰🇷 (GB12).
 		{"flag pair", "\U0001f1f0\U0001f1f7", []string{"\U0001f1f0\U0001f1f7"}},
 		// Four RIs pair off from the left: 🇰🇷 🇦🇺 (GB12/GB13).
@@ -75,7 +75,7 @@ func TestClusters(t *testing.T) {
 func TestClustersRoundTrip(t *testing.T) {
 	inputs := []string{
 		"", "hello", "é", "\r\n\r\n", "世界",
-		"\U0001f9d1‍\U0001f33e flags \U0001f1f0\U0001f1f7\U0001f1e6\U0001f1fa",
+		"\U0001f9d1\u200d\U0001f33e flags \U0001f1f0\U0001f1f7\U0001f1e6\U0001f1fa",
 		"bad\xff\xfebytes",
 	}
 	for _, in := range inputs {
@@ -162,8 +162,8 @@ var benchCorpora = []struct {
 }{
 	{"ascii", strings.Repeat("The quick brown fox jumps over the lazy dog. ", 20)},
 	{"cjk", strings.Repeat("終端の格子は書記素の幅で揃う。", 30)},
-	{"emoji", strings.Repeat("\U0001f9d1‍\U0001f33e\U0001f1f0\U0001f1f7❤️é ", 40)},
-	{"mixed", strings.Repeat("cell 世界 \U0001f9d1‍\U0001f33e ok é! ", 30)},
+	{"emoji", strings.Repeat("\U0001f9d1\u200d\U0001f33e\U0001f1f0\U0001f1f7❤️é ", 40)},
+	{"mixed", strings.Repeat("cell 世界 \U0001f9d1\u200d\U0001f33e ok é! ", 30)},
 }
 
 func BenchmarkClusters(b *testing.B) {
