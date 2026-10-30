@@ -10,7 +10,7 @@ import (
 
 // TestALongChainIsWalkedWithoutRecursion: a left-deep chain (a.b.c…, a+b+c…) is as deep as it is
 // long, and the parser builds it in a loop, past the depth budget, so Walk must not recurse on it:
-// under a small stack, a 200,000-link chain is walked whole, each node once (GS-19).
+// under a small stack, a 200,000-link chain is walked whole, each node once.
 func TestALongChainIsWalkedWithoutRecursion(t *testing.T) {
 	defer debug.SetMaxStack(debug.SetMaxStack(8 << 20)) // a recursive Walk overflows this, fatally
 	const n = 200_000

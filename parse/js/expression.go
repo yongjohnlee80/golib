@@ -369,7 +369,7 @@ type ExprProperty struct {
 // otherwise get subtly wrong.
 func (e *Expr) Walk(fn func(*Expr) bool) {
 	// an explicit stack, not recursion: a left-deep chain (a.b.c…, a+b+c…) is as deep as it is
-	// long, and the parser builds it in a loop that spends no depth budget (GS-19)
+	// long, and the parser builds it in a loop that spends no depth budget
 	stack := []*Expr{e}
 	for len(stack) > 0 {
 		n := stack[len(stack)-1]

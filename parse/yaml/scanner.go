@@ -398,7 +398,7 @@ func (s *scanner) staleSimpleKeys() error {
 	for i := range s.simpleKeys {
 		k := &s.simpleKeys[i]
 		inFlowMapping := i > 0 && i <= len(s.flowKinds) && s.flowKinds[i-1]
-		// an implicit key is at most 1024 characters, in a flow mapping too (YAML 1.2 §7.4.2): a key
+		// an implicit key is at most 1024 characters, in a flow mapping too, as YAML 1.2 says: a key
 		// there may span lines, but never holds the scanner's lookahead past that
 		if k.possible && (!inFlowMapping && k.mark.line < s.line || k.mark.off+1024 < s.i) {
 			if k.required {
