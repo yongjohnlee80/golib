@@ -293,6 +293,26 @@ func TestTheControlsWearTheirParentsPalette(t *testing.T) {
 	})
 }
 
+// TestATextAreaWearsItsBaseOverEveryCell: a text area in a card wears the card's base over its
+// whole box, past each line's end and below its last line, empty or not, never the card's window.
+func TestATextAreaWearsItsBaseOverEveryCell(t *testing.T) {
+	blue := tui.CellColor{Kind: tui.CellColorANSI, Index: 4}
+	for name, area := range map[string]string{"with text": `TextArea { text: "in the card" }`, "empty": `TextArea { }`} {
+		t.Run(name, func(t *testing.T) {
+			s := runQML(t, "import tui 1.0\nFlex { palette.window: \"red\"; palette.base: \"blue\"; palette.text: \"white\"\n "+area+" }", &recorder{})
+			s.WaitFor(t, "every cell of the area on blue", func(string) bool {
+				snap := s.Backend.Snapshot()
+				for _, at := range [][2]int{{0, 0}, {0, 39}, {3, 0}, {7, 20}} { // row, column
+					if snap[at[0]][at[1]].Attrs.BG != blue {
+						return false
+					}
+				}
+				return true
+			})
+		})
+	}
+}
+
 // TestARefusedPopupLeavesNoLayerOnTheOverlay: the Popup attaches its layer
 // while it is being built; a declaration refused after that (a signal it
 // does not raise) must release it, or every refused mount or reload leaves

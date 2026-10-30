@@ -451,9 +451,13 @@ func paintTextArea(comp tui.Component) (View, tui.NativeScope, bool) {
 	}
 	return ViewFunc(func(c Canvas) {
 		cols, rows := CanvasCells(c)
-		fg, bg, open := openColors(c, 0, endsFirst(max(cols, 1))...)
+		fg, bg, own, open := areaColors(c, ta, cols, rows)
 		if !open {
 			return // wholly covered: the host paints the covering cells
+		}
+		if !own { // every open cell is selected: the cells carry their colours, the frame waits
+			c.PaintCells(CellRect{W: cols, H: rows}, false)
+			return
 		}
 		r := Rect{W: c.Size().W, H: c.Size().H}
 		border, width := alpha(fg, 0.3), float32(1)
@@ -464,6 +468,32 @@ func paintTextArea(comp tui.Component) (View, tui.NativeScope, bool) {
 		c.PaintCells(CellRect{W: cols, H: rows}, false)
 		c.StrokeRRect(r.Inset(width/2), 0, width, Solid(border))
 	}), tui.ScopeSubtree, true
+}
+
+// areaColors are a text area's own colours: its first open cell on any row, each row's end cells
+// first, never one drawn as selected or under the placeholder, which wear their own. open is
+// whether any cell is uncovered; own whether one of those is the area's.
+func areaColors(c Canvas, ta *widget.TextArea, cols, rows int) (fg, bg color.NRGBA, own, open bool) {
+	var other []tui.Rect
+	if rs, ok := ta.SelectionCells(); ok {
+		other = append(other, rs...)
+	}
+	if rs, ok := ta.PlaceholderCells(); ok {
+		other = append(other, rs...)
+	}
+	for y := range max(rows, 1) {
+		for _, x := range endsFirst(max(cols, 1)) {
+			if CellCovered(c, x, y) {
+				continue
+			}
+			open = true
+			if !slices.ContainsFunc(other, func(r tui.Rect) bool { return r.Contains(x, y) }) {
+				fg, bg = c.CellColors(x, y)
+				return fg, bg, true, true
+			}
+		}
+	}
+	return color.NRGBA{}, color.NRGBA{}, false, open
 }
 
 // fieldColors are the field's own colours: its first open cell, the frame's end cells first, and

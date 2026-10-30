@@ -284,6 +284,40 @@ func TestAFieldUnderPanelsIsNotItsSelectionsColour(t *testing.T) {
 	}
 }
 
+// A text area whose selection starts at its first cell (it has no padding) takes its colours from a
+// cell past the selection: the selection's colours are not the area's.
+func TestATextAreaIsNotItsSelectionsColour(t *testing.T) {
+	area := widget.NewTextArea()
+	root := tui.NewFlex(tui.Vertical)
+	root.Add(area)
+	app, sb := styledApp(t, root, 20, 3, NativeStyle())
+	sb.Inject(tui.KeyEvent{Kind: tui.KeyPress, Code: tui.KeyTab})
+	for _, r := range "abc" {
+		sb.Inject(tui.KeyEvent{Kind: tui.KeyPress, Code: r, Text: string(r)})
+	}
+	for range 3 {
+		sb.Inject(tui.KeyEvent{Kind: tui.KeyPress, Code: tui.KeyLeft, Mods: tui.ModShift})
+	}
+	waitUntil(t, "the line selected", func() bool {
+		var ok bool
+		onLoop(t, app, func() { _, ok = area.SelectionCells() })
+		return ok
+	})
+	p := placementOf(t, sb, area.NodeID())
+	r := newRenderer(nil, "Go Mono", DefaultTheme())
+	var selected, own color.NRGBA
+	waitUntil(t, "the selection drawn apart from the area", func() bool {
+		snap := sb.Snapshot()
+		_, selected = r.colors(snap[p.Y][p.X].Attrs)
+		_, own = r.colors(snap[p.Y+1][p.X+p.Cols/2].Attrs)
+		return selected != own
+	})
+	rc := paintOn(t, app, sb, p)
+	if rc.Calls[0].Op != "FillRect" || rc.Calls[0].Brush.Color != own {
+		t.Fatalf("the area filled %+v; want its own %v, not the selection's %v", rc.Calls[0], own, selected)
+	}
+}
+
 // A real declarative CheckBox whose text is bracketed draws "[x] [x] On". With a panel over its own
 // box, the label's "[x]" is not taken for the box: the row is shown as its cells, the text intact.
 func TestACoveredCheckBoxLeavesABracketedLabelText(t *testing.T) {
