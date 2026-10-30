@@ -231,6 +231,28 @@ jail and watches with inotify; [`vfs/memfs`](vfs/memfs/README.md) implements eve
 [`vfs/vfstest`](vfs/vfstest/README.md) is the conformance suite. GCS and SFTP drivers fit the same core.
 → [vfs/README.md](vfs/README.md)
 
+## Versioning and stability
+
+golib is **v0 and alpha**. Its consumers are its maintainer's own projects, and the API moves with
+them:
+
+- **A patch release may change or remove any exported API.** Each release's notes list what broke,
+  under "Breaking:".
+- **A minor release happens only when the maintainer names one**, usually at the end of a body of
+  work.
+- **When an API is replaced but kept** (as during a migration), the old one is marked
+  `// Deprecated:` and names its replacement. While golib is alpha, a later patch may still remove
+  it.
+- **CI reports API changes:** on each merge it runs `apidiff` on every module (the root, `gui`,
+  `dao/bigquery`) against the previous commit, and writes the incompatible and compatible changes
+  to the run's summary. The report is information only: it never fails a build while golib is
+  alpha.
+
+**At public promotion the rules tighten:** a breaking change takes a minor release (v0
+semantics); an API is marked `// Deprecated:` in at least one release before it is removed; a
+patch carries only fixes and additions; and the `apidiff` report becomes the gate for "breaking
+means a minor".
+
 ## Conventions
 
 Development conventions and the project philosophy are maintained alongside the

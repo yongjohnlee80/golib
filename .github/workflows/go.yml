@@ -283,6 +283,76 @@ jobs:
       - name: test tui/pty
         run: go test -race -count=2 -timeout 10m ./tui/pty/...
 
+  # An API report, information only (README, "Versioning and stability"): apidiff on each module
+  # from the merge base to this commit, written to the run's summary. While golib is alpha it never
+  # fails; at public promotion it becomes the gate for "breaking means a minor". The base is the
+  # previous canary commit on a push, and main on the milestone pull request.
+  apidiff:
+    if: github.event_name == 'push' || github.head_ref == 'canary'
+    name: API report (information only)
+    runs-on: ubuntu-latest
+    continue-on-error: true
+    permissions:
+      contents: read
+    env:
+      BEFORE: ${{ github.event_name == 'push' && github.event.before || github.event.pull_request.base.sha }}
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          fetch-depth: 0
+
+      - uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff # v5.6.0
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      # the gui module's packages load with cgo, as its own job builds them
+      - name: Gio's Linux libraries
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libwayland-dev libx11-dev libx11-xcb-dev libxkbcommon-x11-dev \
+            libgles2-mesa-dev libegl1-mesa-dev libffi-dev libxcursor-dev libvulkan-dev
+
+      - name: apidiff
+        run: go install golang.org/x/exp/cmd/apidiff@v0.0.0-20261014143641-f0251eb4aa3e
+
+      - name: report
+        run: |
+          set -u
+          say() { printf '%s\n' "$*" >> "$GITHUB_STEP_SUMMARY"; }
+          if [ -z "$BEFORE" ] || ! git cat-file -e "$BEFORE^{commit}" 2>/dev/null; then
+            say "No base commit to compare against ($BEFORE)."
+            exit 0
+          fi
+          base=$(git merge-base "$BEFORE" HEAD)
+          git worktree add --detach "$RUNNER_TEMP/base" "$base"
+          say "## API changes $(git rev-parse --short "$base")..$(git rev-parse --short HEAD)"
+          # gui builds against the same commit's golib in each tree, as its own job does
+          for tree in . "$RUNNER_TEMP/base"; do
+            if [ -f "$tree/gui/go.mod" ]; then (cd "$tree/gui" && go work init . ..); fi
+          done
+          for mod in . gui dao/bigquery; do
+            path=$(cd "$mod" && go list -m)
+            say "### $path"
+            if [ ! -f "$RUNNER_TEMP/base/$mod/go.mod" ]; then
+              say "A new module: nothing to compare."
+              continue
+            fi
+            export_file="$RUNNER_TEMP/$(printf '%s' "$mod" | tr '/.' '__').export"
+            if ! (cd "$RUNNER_TEMP/base/$mod" && apidiff -m -w "$export_file" "$path") > "$RUNNER_TEMP/base.log" 2>&1; then
+              say "The base did not load:"; say '```'; cat "$RUNNER_TEMP/base.log" >> "$GITHUB_STEP_SUMMARY"; say '```'
+              continue
+            fi
+            if ! (cd "$mod" && apidiff -m "$export_file" "$path") > "$RUNNER_TEMP/diff.txt" 2>&1; then
+              say "apidiff failed:"
+            fi
+            if [ -s "$RUNNER_TEMP/diff.txt" ]; then
+              say '```'; cat "$RUNNER_TEMP/diff.txt" >> "$GITHUB_STEP_SUMMARY"; say '```'
+            else
+              say "No API change."
+            fi
+          done
+
   coverage:
     name: coverage policy
     if: github.event_name == 'pull_request' && github.head_ref == 'canary'
