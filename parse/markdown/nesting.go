@@ -14,8 +14,14 @@ func MaxNesting(n int) Option {
 	return func(c *config) { c.maxNesting = n }
 }
 
-// containerDepth is how many containers hold n, the document's root not counted.
+// containerDepth is how deep a block started under n lands, less one: how many containers hold
+// it, the document's root not counted. A paragraph or a table there is closed by the start, and a
+// list takes an item as its own child or is closed for a new one, so none of them is a level the
+// new block sits under; they are skipped.
 func containerDepth(n *Node) int {
+	for n != nil && (n.Kind == KindParagraph || n.Kind == KindTable || n.Kind == KindList) {
+		n = n.Parent
+	}
 	d := 0
 	for ; n != nil && n.Parent != nil; n = n.Parent {
 		d++
