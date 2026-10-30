@@ -141,7 +141,7 @@ func TestRPC_IdleTimeoutSparesABusyConnection(t *testing.T) {
 		return "done", nil
 	})
 	startServer(t, s)
-	quiet, busy, chatty := dial(t, s.Addr()), dial(t, s.Addr()), dial(t, s.Addr())
+	quiet, busy := dial(t, s.Addr()), dial(t, s.Addr())
 	busy.request(1, "slow")
 	if id, errVal, result := busy.recvResponse(); id != 1 || errVal != nil || result != "done" {
 		t.Errorf("a request running past IdleTimeout: %v %#v %v, want it answered", id, errVal, result)
@@ -149,6 +149,7 @@ func TestRPC_IdleTimeoutSparesABusyConnection(t *testing.T) {
 	if err := served(busy, 2); err != nil { // idle counts from the request's end, not its frame
 		t.Errorf("the busy connection, just after its request: %v", err)
 	}
+	chatty := dial(t, s.Addr()) // dialled now: it sends from its first moment on
 	for i := range 6 {
 		if err := served(chatty, int64(i+1)); err != nil {
 			t.Fatalf("a connection sending every %v: %v", idle/3, err)
