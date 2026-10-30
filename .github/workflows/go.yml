@@ -220,12 +220,23 @@ jobs:
           (cd gui && go work init . .. && staticcheck ./...; status=$?; rm -f go.work go.work.sum; exit $status)
           (cd dao/bigquery && go work init . ../.. && staticcheck ./...; status=$?; rm -f go.work go.work.sum; exit $status)
 
-      # each module against the versions its go.mod requires: what a consumer would build
+      # On the milestone pull request into main, each module against the versions its go.mod requires:
+      # what a consumer would build. On canary, gui and dao/bigquery may use golib API that is not
+      # tagged yet (gui's go.mod is raised only after the golib tag), so there they are checked
+      # against this commit's golib, as the staticcheck step builds them.
       - name: govulncheck
+        env:
+          CONSUMER_VIEW: ${{ github.event_name == 'pull_request' }}
         run: |
           govulncheck ./...
-          (cd gui && govulncheck ./...)
-          (cd dao/bigquery && govulncheck ./...)
+          for m in gui:.. dao/bigquery:../..; do
+            dir=${m%%:*}; root=${m#*:}
+            if [ "$CONSUMER_VIEW" = "true" ]; then
+              (cd "$dir" && govulncheck ./...)
+            else
+              (cd "$dir" && go work init . "$root" && govulncheck ./...; status=$?; rm -f go.work go.work.sum; exit $status)
+            fi
+          done
 
   # golib/gui on macOS: the Metal paths only compile on a Mac. examples/scene3d's Metal producer
   # renders into IOSurfaces that a headless Metal window draws without a copy, checked against the
