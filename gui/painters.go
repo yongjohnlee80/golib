@@ -43,6 +43,7 @@ func NativeStyle() *Style {
 	s.ForRole(tui.RoleComboBox, paintComboBox)
 	s.ForRole(tui.RoleCheckBox, paintCheckBox)
 	s.ForRole(tui.RoleEditableText, paintTextField)
+	s.ForRole(tui.RoleTextArea, paintTextArea)
 	s.ForRole(tui.RoleProgressBar, paintProgress)
 	s.ForRole(tui.RolePageTabList, paintTabs)
 	s.ForRole(tui.RoleList, paintScrollbar)
@@ -437,6 +438,31 @@ func paintTextField(comp tui.Component) (View, tui.NativeScope, bool) {
 		if x0, x1 := selectionSpan(ti); x1 > x0 {
 			c.PaintCells(CellRect{X: x0, W: x1 - x0, H: 1}, false)
 		}
+	}), tui.ScopeSubtree, true
+}
+
+// paintTextArea draws a text area as a text field is drawn, over its whole rectangle: a
+// square-edged field, its border brighter while focused. Its cells are drawn whole over the fill,
+// so a selection keeps tui's colours, and the border over them.
+func paintTextArea(comp tui.Component) (View, tui.NativeScope, bool) {
+	ta, ok := comp.(*widget.TextArea)
+	if !ok {
+		return nil, 0, false
+	}
+	return ViewFunc(func(c Canvas) {
+		cols, rows := CanvasCells(c)
+		fg, bg, open := openColors(c, 0, endsFirst(max(cols, 1))...)
+		if !open {
+			return // wholly covered: the host paints the covering cells
+		}
+		r := Rect{W: c.Size().W, H: c.Size().H}
+		border, width := alpha(fg, 0.3), float32(1)
+		if focusedNode(ta) {
+			border, width = alpha(fg, 0.7), 1.5
+		}
+		c.FillRect(r, Solid(bg))
+		c.PaintCells(CellRect{W: cols, H: rows}, false)
+		c.StrokeRRect(r.Inset(width/2), 0, width, Solid(border))
 	}), tui.ScopeSubtree, true
 }
 

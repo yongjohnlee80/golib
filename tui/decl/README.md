@@ -136,12 +136,15 @@ takes one non-empty string. `Editor.text`, `Tab.title`, `TableViewColumn.title` 
 
 `Repeater`, `Instantiator`, `DelegateChooser` and `DelegateChoice` are the
 engine's, expanded before anything is built, so they have no widget.
-`TextField` and `Popup` are Qt Quick Controls types in the
+`TextField`, `TextArea` and `Popup` are Qt Quick Controls types in the
 [`controls`](controls/) package, which a program adds with
 `tuidecl.Types(controls.Types()...)`: `TextField` (`placeholderText`,
 `echoMode`, golib's `completions` (a model whose rows Tab completes the word
 from); setter and readable `text`; `accepted(text)`, `textEdited(text)`;
-`clear()`) and `Popup` (`modal`, `dim`; `open()`, `close()`). A `MenuItem`'s
+`clear()`), `TextArea` (several lines over `widget.TextArea`: `placeholderText`,
+`wrapMode` (`TextEdit.NoWrap`, the default, or `TextEdit.WordWrap`); setter and
+readable `text`; `clear()`; Enter breaks the line, so a dialog's accept or a
+`Shortcut` reads `text` by id) and `Popup` (`modal`, `dim`; `open()`, `close()`). A `MenuItem`'s
 `toggled` is raised for each change the user's toggle makes to it, a radio
 cleared by its group included, before its `triggered`.
 
