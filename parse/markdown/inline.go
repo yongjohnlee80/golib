@@ -380,7 +380,8 @@ func (p *inlineParser) closeBracket() {
 			end = closePos + 1
 		}
 	}
-	if !matched {
+	if !matched || 1+heightOf(opener.node.Next, nil) > p.cfg.maxNesting {
+		// unmatched, or as deep as MaxNesting: the bracket is text
 		p.brackets = opener.prev
 		p.textRun(closePos, closePos+1)
 		return
@@ -398,6 +399,9 @@ func (p *inlineParser) closeBracket() {
 	}
 	opener.node.InsertBefore(link)
 	p.processEmphasis(opener.prevDelim)
+	// counted again once the emphasis within it is made: each of those is bounded on its own, so a
+	// link holds at most one level more than MaxNesting
+	link.height = uint16(min(1+heightOf(link.FirstChild, nil), 1<<16-1))
 	opener.node.Unlink()
 	p.brackets = opener.prev
 	if !opener.image {
@@ -597,6 +601,17 @@ func (p *inlineParser) processEmphasis(bottom *delim) {
 			closer = next
 			continue
 		}
+		h := 1 + heightOf(opener.node.Next, closer.node)
+		if h > p.cfg.maxNesting {
+			// as deep as MaxNesting: left unmatched, as a pair with no opener is
+			openersBottom[c][o][m], set[c][o][m] = closer.prev, true
+			next := closer.next
+			if !closer.canOpen {
+				p.removeDelim(closer)
+			}
+			closer = next
+			continue
+		}
 		use := 1
 		if closer.num >= 2 && opener.num >= 2 {
 			use = 2
@@ -609,7 +624,7 @@ func (p *inlineParser) processEmphasis(bottom *delim) {
 			kind = KindStrong
 		}
 		on, cn := opener.node, closer.node
-		emph := p.doc.nodes.new(Node{Kind: kind, Span: Span{on.Span.End - use, cn.Span.Start + use}})
+		emph := p.doc.nodes.new(Node{Kind: kind, Span: Span{on.Span.End - use, cn.Span.Start + use}, height: uint16(h)})
 		shrinkEnd(on, use)
 		shrinkStart(cn, use)
 		opener.num -= use

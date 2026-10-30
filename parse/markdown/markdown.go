@@ -96,6 +96,9 @@ type Node struct {
 
 	a   *nodeAttrs  // what only some kinds carry; nil on a node that carries none
 	blk *blockState // parse-time state of an open block; nil once the parse is done
+	// height is how many inline levels an emphasis, strikethrough, link or image node holds,
+	// itself included: what MaxNesting bounds (0 for every other node)
+	height uint16
 }
 
 // nodeAttrs are the values only some kinds of node carry. A node of another kind has none.

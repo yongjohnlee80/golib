@@ -22,6 +22,9 @@ func (p *blockParser) tryStarts(container *Node) (startResult, *Node) {
 	if !p.indented {
 		switch c {
 		case '>':
+			if containerDepth(container) >= p.cfg.maxNesting {
+				break // as deep as MaxNesting: the '>' is the line's content
+			}
 			p.advanceNextNonspace()
 			p.advanceOffset(1, false)
 			if isSpaceOrTab(p.peek(p.offset)) {
@@ -100,7 +103,8 @@ func (p *blockParser) tryStarts(container *Node) (startResult, *Node) {
 		}
 	}
 
-	if !p.indented {
+	// a list item opens a list and an item: as deep as MaxNesting allows two more
+	if !p.indented && containerDepth(container)+2 <= p.cfg.maxNesting {
 		if data, ok := p.listMarker(container); ok {
 			p.closeUnmatched()
 			if p.tip.Kind != KindList || !listMatches(p.tip.List(), data) {

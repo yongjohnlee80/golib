@@ -120,7 +120,10 @@ reading is pinned by a rule and its cases. The ones a user may notice:
   reads it; cmark 0.31.1 decodes references first. Every paragraph line loses its leading
   whitespace, a lazy continuation line's too (cmark keeps it there, which shows inside a code span).
   Unescaped parentheses in a link destination nest at most 32 deep, cmark's limit (the specification
-  permits one).
+  permits one). Block quotes and list items, and emphasis, strikethrough, links and images, nest at
+  most `MaxNesting` deep (default 100): a marker past it stays text in the deepest level allowed, so
+  every walk of a document, here or in a renderer, highlighter or indexer, recurses at most that deep
+  rather than as deep as the input is long, which overflows the stack.
 - **GFM.** The specification's text is followed, which in places is stricter than GitHub's renderer:
   strikethrough takes exactly two tildes (cmark-gfm also accepts one); the domain after `www.` needs a
   period of its own (`www.com` is text); a URL's domain needs a period (`http://localhost` is text); an
