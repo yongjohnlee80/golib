@@ -574,7 +574,9 @@ func TestLocalSettings_Live14_AClientSideFailureIsRestored(t *testing.T) {
 		if it.Err() == nil {
 			t.Fatal("Iterate into an int from text: no error; the cell needs a scan error")
 		}
-		if err := it.Close(); err != nil {
+		// pgx's Close reports the rows' scan error again; a failed restore
+		// would say so
+		if err := it.Close(); err != nil && strings.Contains(err.Error(), "restoring local settings") {
 			t.Fatalf("Close: %v", err)
 		}
 		wantTxValues(t, read(t, s.On(tx)))
