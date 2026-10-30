@@ -113,6 +113,7 @@ type SSO[T any] struct {
 
 type parkedEntry[T any] struct {
 	value   T
+	subject string // the login's: only an attach by the same subject claims it
 	expires time.Time
 	// timer fires the expiry. One per entry rather than a package ticker: an empty
 	// park then costs nothing and a lone abandoned login is still released on time.
@@ -332,14 +333,23 @@ func (s *SSO[T]) releaseValue(v T, r HandoffReason) {
 // derives a perfectly good handoff that was never parked against. The park is the
 // authority, not the handoff string.
 //
+// The park belongs to the subject that logged in, and only an attach authenticated as that subject
+// claims it: an attach by any other principal (another factor that admitted it while it carried
+// someone else's ticket), or with no Identity, gets ok false and leaves the park to its owner. So
+// [SSO.Session] provisions such an attach its own state, never another user's.
+//
 // An entry past its TTL is refused and released rather than handed over.
 func (s *SSO[T]) Claim(info *SessionInfo) (T, bool) {
 	var zero T
-	if info == nil || info.Handoff == "" {
+	if info == nil || info.Handoff == "" || info.Identity == nil {
 		return zero, false
 	}
 	s.mu.Lock()
 	e, ok := s.parked[info.Handoff]
+	if ok && e.subject != info.Identity.Subject {
+		s.mu.Unlock()
+		return zero, false
+	}
 	if ok {
 		// Single-claim: removed as it is handed over, so a repeated call cannot
 		// give two sessions the same upstream state.
@@ -370,7 +380,7 @@ func (s *SSO[T]) Claim(info *SessionInfo) (T, bool) {
 
 // parkLogin is the login hook an attached Admission gives the Handler: it takes what the login's
 // factor stashed into the park, keyed by the handoff, through the Admission's commit.
-func (s *SSO[T]) parkLogin(handoff string, _ *auth.Identity, slot *Stash) error {
+func (s *SSO[T]) parkLogin(handoff string, id *auth.Identity, slot *Stash) error {
 	v, ok := slot.Take().(T)
 	if !ok {
 		// NOTHING WAS STASHED. This is the stock auth/password factor: it
@@ -391,7 +401,12 @@ func (s *SSO[T]) parkLogin(handoff string, _ *auth.Identity, slot *Stash) error 
 			"Provision is configured, so the ticket it would mint could not "+
 			"produce a usable session")
 	}
-	if err := s.hold(handoff, v); err != nil {
+	if id == nil || id.Subject == "" {
+		// a park no attach could claim: refused, as a login without a subject is
+		s.releaseValue(v, LoginFailed)
+		return errs.Wrap(errs.ErrPrecondition, "web: a login with no subject cannot park upstream state")
+	}
+	if err := s.hold(handoff, id.Subject, v); err != nil {
 		// The value is ours now — Take transferred ownership — and the login
 		// is about to fail, so it must not be dropped on the floor.
 		s.releaseValue(v, LoginFailed)
@@ -555,9 +570,9 @@ func (r *ssoRunner[T]) Run(ctx context.Context) error {
 	return app.Run(ctx)
 }
 
-// hold parks a value, sweeping expired entries first so an abandoned login cannot
-// occupy capacity indefinitely.
-func (s *SSO[T]) hold(handoff string, v T) error {
+// hold parks a value for subject's attach, sweeping expired entries first so an abandoned login
+// cannot occupy capacity indefinitely.
+func (s *SSO[T]) hold(handoff, subject string, v T) error {
 	if handoff == "" {
 		return errs.Wrap(errs.ErrInvalidArgument, "web: empty handoff")
 	}
@@ -590,7 +605,7 @@ func (s *SSO[T]) hold(handoff string, v T) error {
 	// armed while the entry is in the map and stopped by whatever removes it, so a
 	// claimed entry never fires and an abandoned one always does.
 	publish := func() {
-		e := parkedEntry[T]{value: v, expires: now.Add(s.ttl)}
+		e := parkedEntry[T]{value: v, subject: subject, expires: now.Add(s.ttl)}
 		e.timer = time.AfterFunc(s.ttl, func() { s.expire(handoff) })
 		s.parked[handoff] = e
 	}

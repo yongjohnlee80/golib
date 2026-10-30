@@ -788,7 +788,7 @@ func TestSSO_ExpiryIsAutomatic(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer s.Close()
-	if err := s.hold("abandoned", &upstream{id: "a"}); err != nil {
+	if err := s.hold("abandoned", testSubject, &upstream{id: "a"}); err != nil {
 		t.Fatal(err)
 	}
 
@@ -814,12 +814,12 @@ func TestSSO_ExpiryIsAutomatic(t *testing.T) {
 func TestSSO_ClaimRefusesAnExpiredEntry(t *testing.T) {
 	t.Parallel()
 	s, released, _, now := ssoFor(t, 4, time.Minute)
-	if err := s.hold("h1", &upstream{id: "a"}); err != nil {
+	if err := s.hold("h1", testSubject, &upstream{id: "a"}); err != nil {
 		t.Fatal(err)
 	}
 	*now = now.Add(2 * time.Minute) // past the TTL, on the test clock
 
-	if _, ok := s.Claim(&SessionInfo{Handoff: "h1"}); ok {
+	if _, ok := s.Claim(&SessionInfo{Handoff: "h1", Identity: testIdentity}); ok {
 		t.Error("Claim handed over an entry past its TTL, so a TTL shorter than the " +
 			"attach ticket's has no effect")
 	}
@@ -1182,7 +1182,7 @@ func TestSSO_EverySettlePath(t *testing.T) {
 
 	cases := map[string]func(t *testing.T, s *SSO[*upstream], handoff string){
 		"claim": func(t *testing.T, s *SSO[*upstream], h string) {
-			if _, ok := s.Claim(&SessionInfo{Handoff: h}); !ok {
+			if _, ok := s.Claim(&SessionInfo{Handoff: h, Identity: testIdentity}); !ok {
 				t.Fatal("the entry was not claimable")
 			}
 		},
@@ -1190,7 +1190,7 @@ func TestSSO_EverySettlePath(t *testing.T) {
 			// Age it on the test clock, then claim: the refusal path must settle too,
 			// or an expired login holds a slot until the gate's own backstop.
 			s.now = func() time.Time { return time.Now().Add(time.Hour) }
-			if _, ok := s.Claim(&SessionInfo{Handoff: h}); ok {
+			if _, ok := s.Claim(&SessionInfo{Handoff: h, Identity: testIdentity}); ok {
 				t.Fatal("an expired entry was handed over")
 			}
 		},
@@ -1225,7 +1225,7 @@ func TestSSO_EverySettlePath(t *testing.T) {
 			if !adm.gate.enter() || !adm.gate.hold("the-handoff", adm.deadline()) {
 				t.Fatal("no reservation for the handoff")
 			}
-			if err := s.hold("the-handoff", &upstream{id: "a"}); err != nil {
+			if err := s.hold("the-handoff", testSubject, &upstream{id: "a"}); err != nil {
 				t.Fatal(err)
 			}
 
@@ -1383,7 +1383,7 @@ func TestSSO_SettleBeforeTheLeaseLeavesNoGhostSlot(t *testing.T) {
 			if !ok {
 				return errors.New("nothing stashed")
 			}
-			if err := sso.hold(handoff, v); err != nil {
+			if err := sso.hold(handoff, testSubject, v); err != nil {
 				return err
 			}
 			// The expiry / Sweep / Close that can land here.
