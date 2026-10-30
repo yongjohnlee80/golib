@@ -129,7 +129,7 @@ not declare the handler leaves a right press unhandled, as before.
 catalogs (`Translations`). These properties take a string or a message: `Text.text`,
 `Button.text`, `CheckBox.text`, `MenuItem.text`, `Menu.title`, `Frame.title`, `StatusBar`'s
 `left`, `center` and `right`, `Dialog`, `FileDialog` and `FolderDialog`'s `title` and
-`helpText`, and `TextField.placeholderText`. A message is shown in the App's language and
+`helpText`, and `TextField` and `TextArea`'s `placeholderText`. A message is shown in the App's language and
 follows `App.SetLanguage` with nothing rebound; a mnemonic keeps English's letter. `qsTrId`
 takes one non-empty string. `Editor.text`, `Tab.title`, `TableViewColumn.title` and
 `ComboBox.placeholderText` take a string only. See [USAGE.md §7c](USAGE.md#7c-languages).
