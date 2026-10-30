@@ -26,7 +26,10 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  # A pull request runs CI only when it is the milestone one, canary into main: any other into main
+  # starts the workflow, but every job is skipped and holds no runner.
   check:
+    if: github.event_name == 'push' || github.head_ref == 'canary'
     name: build, vet, test
     runs-on: ubuntu-latest
     steps:
@@ -79,6 +82,7 @@ jobs:
 
   # golib/gui: its own module, on Gio, with cgo. The root job never compiles it.
   gui:
+    if: github.event_name == 'push' || github.head_ref == 'canary'
     name: gui (Gio, cgo)
     runs-on: ubuntu-latest
     defaults:
@@ -126,6 +130,7 @@ jobs:
   # integration-tagged files had stopped compiling with nobody the wiser. The script fails on a
   # skip that names a service it provides, so a server that never came up cannot pass as green.
   integration:
+    if: github.event_name == 'push' || github.head_ref == 'canary'
     name: dao integration (PostgreSQL, MySQL)
     runs-on: ubuntu-latest
     steps:
@@ -147,6 +152,7 @@ jobs:
   # commit's golib, as gui is: its go.mod requires an older release, so a break would show only
   # when that requirement is raised. The integration tests need a GCP project and stay tagged out.
   bigquery:
+    if: github.event_name == 'push' || github.head_ref == 'canary'
     name: dao/bigquery
     runs-on: ubuntu-latest
     defaults:
@@ -178,6 +184,7 @@ jobs:
   # govulncheck reports only vulnerabilities golib's code can reach, so every finding is one to
   # fix, by raising the dependency or the toolchain.
   lint:
+    if: github.event_name == 'push' || github.head_ref == 'canary'
     name: staticcheck, govulncheck
     runs-on: ubuntu-latest
     env:
@@ -222,6 +229,7 @@ jobs:
   # renders into IOSurfaces that a headless Metal window draws without a copy, checked against the
   # CPU's picture.
   gui-macos:
+    if: github.event_name == 'push' || github.head_ref == 'canary'
     name: gui (macOS, Metal)
     runs-on: macos-latest
     defaults:
@@ -250,6 +258,7 @@ jobs:
   # vfs/local watches with FSEvents on macOS, through cgo (ADR golib-vfs-0002): the Linux runner above
   # can only vet the cgo-less darwin build, so the watch itself is built and tested here, on a Mac.
   macos:
+    if: github.event_name == 'push' || github.head_ref == 'canary'
     name: macOS (cgo, vfs)
     runs-on: macos-latest
     steps:
@@ -274,7 +283,7 @@ jobs:
 
   coverage:
     name: coverage policy
-    if: github.event_name == 'pull_request'
+    if: github.event_name == 'pull_request' && github.head_ref == 'canary'
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -345,6 +354,8 @@ jobs:
     name: coverage PR comment
     if: >-
       always() &&
+      github.event_name == 'pull_request' &&
+      github.head_ref == 'canary' &&
       github.event.pull_request.head.repo.full_name == github.repository
     needs: coverage
     runs-on: ubuntu-latest
