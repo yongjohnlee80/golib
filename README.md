@@ -11,10 +11,20 @@ go get github.com/yongjohnlee80/golib
 
 ## Design principles
 
-- **Zero-dependency core.** Every package imports only the standard library and
-  other golib packages. Third-party dependencies are pushed to leaf subpackages
-  — the `dao` database drivers and `server/ws` — and, when heavy (the GCP SDK),
-  into their own nested module (`dao/bigquery`, and `gui` for Gio and cgo).
+- **Few dependencies, at the leaves.** Most packages import only the standard
+  library and other golib packages. Each third-party dependency is imported
+  directly only by the leaf packages that need it (a package importing one of
+  those leaves still pulls it in):
+  - the `dao` database drivers: `dao/sqlite` (modernc.org/sqlite),
+    `dao/postgres` (pgx), `dao/mysql` (go-sql-driver/mysql);
+  - `server/ws` (coder/websocket);
+  - `auth/password` and `auth/sshkey` (golang.org/x/crypto);
+  - `tui/term`, `tui/pty` and `vfs/local` (golang.org/x/sys, and x/term for
+    `tui/term`);
+  - `parse/markdown` (golang.org/x/text).
+
+  Heavy dependencies get their own nested module: `dao/bigquery` (the GCP SDK),
+  and `gui` (Gio and cgo).
 - **Small, adaptable seams.** Interfaces are minimal (`logger.Logger` is one
   method); consumers bridge their own backends rather than adopting a framework.
 - **Data over code.** Per-entity/per-use differences are declarations, not
