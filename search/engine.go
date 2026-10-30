@@ -24,6 +24,7 @@ type Engine[D comparable, V View[D]] struct {
 	semantic  bool // V is a Semantic
 	signaler  bool // V is a Signaler
 	lister    bool // V is a Lister
+	anyTerm   bool // V is a LexicalAny
 	k         int
 	top       int
 	perDoc    int
@@ -102,6 +103,7 @@ func NewEngine[D comparable, V View[D]](st Store[D, V], opts ...Option) *Engine[
 		semantic: v.Implements(reflect.TypeFor[Semantic[D]]()),
 		signaler: v.Implements(reflect.TypeFor[Signaler[D]]()),
 		lister:   v.Implements(reflect.TypeFor[Lister[D]]()),
+		anyTerm:  v.Implements(reflect.TypeFor[LexicalAny[D]]()),
 		k:        o.k, top: o.top, perDoc: o.perDoc, limit: o.limit, maxLimit: o.maxLimit,
 		linkBoost: o.linkBoost, tagBoost: o.tagBoost,
 	}
@@ -210,6 +212,13 @@ func (e *Engine[D, V]) searchIn(ctx context.Context, res Result, mode Mode, useS
 		if mode != ModeSemantic {
 			if lexical, err = v.Lexical(ctx, terms, f, e.top); err != nil {
 				return err
+			}
+			// no chunk holds every term: any one is enough, the chunks holding most of them first
+			if len(lexical) == 0 && len(terms) > 1 && e.anyTerm {
+				if lexical, err = any(v).(LexicalAny[D]).LexicalAny(ctx, terms, f, e.top); err != nil {
+					return err
+				}
+				res.AnyTerm = len(lexical) > 0
 			}
 		}
 		if useSemantic {

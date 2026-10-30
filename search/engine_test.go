@@ -24,6 +24,8 @@ type fake struct {
 	changed  int // Semantic answers ErrModelChanged this many times first
 	signals  map[key]Signals
 	listed   []Candidate[key]
+	anyTerm  []Candidate[key] // LexicalAny's answer
+	anyCalls atomic.Int32
 
 	mu      sync.Mutex
 	views   int
@@ -605,4 +607,48 @@ func TestConcurrentSearches(t *testing.T) {
 		})
 	}
 	wg.Wait()
+}
+
+// anyView adds LexicalAny to words-only search.
+type anyView struct{ lexView }
+
+func (v anyView) LexicalAny(ctx context.Context, terms []Term, f Filter, n int) ([]Candidate[key], error) {
+	v.s.read(f, terms)
+	v.s.anyCalls.Add(1)
+	return first(v.s.anyTerm, n), nil
+}
+
+type anyStore struct{ *fake }
+
+func (s anyStore) View(ctx context.Context, fn func(anyView) error) error {
+	return s.open(ctx, func() error { return fn(anyView{lexView{s.fake}}) })
+}
+
+// TestAQueryNoChunkHoldsWholeFallsBackToAnyTerm: when Lexical finds nothing for a query of more
+// than one term and the store answers LexicalAny, the engine asks it and says so (AnyTerm); a
+// query some chunk holds whole, a single term, or a store without LexicalAny, never falls back.
+func TestAQueryNoChunkHoldsWholeFallsBackToAnyTerm(t *testing.T) {
+	ctx := context.Background()
+	hit := Candidate[key]{Doc: key{"t", "a"}, Path: "a.md", Snippet: "a"}
+
+	s := &fake{anyTerm: []Candidate[key]{hit}}
+	res, err := NewEngine[key, anyView](anyStore{s}).Search(ctx, Query{Text: "how to configure", Mode: ModeLexical})
+	if err != nil || len(res.Hits) != 1 || res.Hits[0].Path != "a.md" || !res.AnyTerm || s.anyCalls.Load() != 1 {
+		t.Fatalf("no chunk holds every word: %+v, %v, any calls %d; want a.md by any term", res, err, s.anyCalls.Load())
+	}
+
+	s = &fake{anyTerm: []Candidate[key]{hit}}
+	if res, _ := NewEngine[key, anyView](anyStore{s}).Search(ctx, Query{Text: "configure", Mode: ModeLexical}); len(res.Hits) != 0 || res.AnyTerm || s.anyCalls.Load() != 0 {
+		t.Fatalf("a single term fell back: %+v, any calls %d", res, s.anyCalls.Load())
+	}
+
+	s = &fake{lexical: []Candidate[key]{hit}, anyTerm: []Candidate[key]{{Doc: key{"t", "b"}, Path: "b.md"}}}
+	if res, _ := NewEngine[key, anyView](anyStore{s}).Search(ctx, Query{Text: "how to configure", Mode: ModeLexical}); len(res.Hits) != 1 || res.Hits[0].Path != "a.md" || res.AnyTerm || s.anyCalls.Load() != 0 {
+		t.Fatalf("a query held whole fell back: %+v, any calls %d", res, s.anyCalls.Load())
+	}
+
+	s = &fake{anyTerm: []Candidate[key]{hit}}
+	if res, _ := NewEngine[key, lexView](lexStore{s}).Search(ctx, Query{Text: "how to configure", Mode: ModeLexical}); len(res.Hits) != 0 || res.AnyTerm {
+		t.Fatalf("a store without LexicalAny fell back: %+v", res)
+	}
 }

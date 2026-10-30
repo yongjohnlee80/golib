@@ -108,6 +108,9 @@ type Result struct {
 	// Rank is what a re-ranking stage did with the hits (search/rank); the zero value for a search
 	// without one.
 	Rank Ranking
+	// AnyTerm is true when the hits by words matched any one term: no chunk held them all, and the
+	// store answers LexicalAny.
+	AnyTerm bool
 }
 
 // RankState is what a re-ranking stage did for a query.

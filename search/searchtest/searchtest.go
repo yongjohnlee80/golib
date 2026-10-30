@@ -57,6 +57,9 @@ func Run[D comparable, V search.View[D]](t testing.TB, open func(t testing.TB, d
 	if implements[V, search.Lister[D]]() {
 		c.list()
 	}
+	if implements[V, search.LexicalAny[D]]() {
+		c.lexicalAny()
+	}
 	c.snapshot() // last: it changes the store
 }
 
@@ -104,6 +107,41 @@ func (c *checker[D, V]) lexicalOf(what string, words []string, f search.Filter, 
 		return err
 	})
 	return out
+}
+
+// lexicalAny: any one term matches, under the same filters and limit, where Lexical needs them all.
+func (c *checker[D, V]) lexicalAny() {
+	c.t.Helper()
+	anyOf := func(words []string, f search.Filter, n int) []search.Candidate[D] {
+		var out []search.Candidate[D]
+		c.view("lexical any", func(v V) error {
+			var err error
+			out, err = any(v).(search.LexicalAny[D]).LexicalAny(context.Background(), terms(words...), f, n)
+			return err
+		})
+		return out
+	}
+	// zorblax is in 34 chunks and quindle in one more (keep/k1.md's second), none holding both
+	got := anyOf([]string{"zorblax", "quindle"}, search.Filter{}, 100)
+	if len(got) != 35 {
+		c.t.Errorf("searchtest: lexical any: zorblax or quindle found %d chunks, want 35", len(got))
+	}
+	quindle := false
+	for _, h := range got {
+		quindle = quindle || (h.Path == "keep/k1.md" && h.Ord == 1)
+	}
+	if !quindle {
+		c.t.Errorf("searchtest: lexical any: quindle's chunk, keep/k1.md 1, is missing: %v", paths(got))
+	}
+	if got := anyOf([]string{"zorblax", "quindle"}, search.Filter{Paths: []string{"keep"}}, 100); !slices.Equal(sortedPaths(got), []string{"keep/k1.md", "keep/k2.md", "keep/k3.md"}) {
+		c.t.Errorf("searchtest: lexical any: the filter applies first: %v", sortedPaths(got))
+	}
+	if got := anyOf([]string{"zorblax", "quindle"}, search.Filter{}, 5); len(got) != 5 {
+		c.t.Errorf("searchtest: lexical any: n = 5 answered %d", len(got))
+	}
+	if got := anyOf([]string{"nonesuch", "alsonone"}, search.Filter{}, 10); len(got) != 0 {
+		c.t.Errorf("searchtest: lexical any: words no chunk holds matched %v", paths(got))
+	}
 }
 
 func (c *checker[D, V]) lexical() {

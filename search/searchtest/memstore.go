@@ -154,6 +154,17 @@ func candidate(d *memDoc, ord int, snippet string) search.Candidate[int64] {
 
 // Lexical implements search.View.
 func (v *MemView) Lexical(ctx context.Context, terms []search.Term, f search.Filter, n int) ([]search.Candidate[int64], error) {
+	return v.lexical(terms, f, n, true), nil
+}
+
+// LexicalAny implements search.LexicalAny: any one term matches, scored by the share of the
+// chunk's words the terms hit, so a chunk holding more of them ranks first.
+func (v *MemView) LexicalAny(ctx context.Context, terms []search.Term, f search.Filter, n int) ([]search.Candidate[int64], error) {
+	return v.lexical(terms, f, n, false), nil
+}
+
+// lexical is Lexical with every term required, or LexicalAny with any one enough.
+func (v *MemView) lexical(terms []search.Term, f search.Filter, n int, every bool) []search.Candidate[int64] {
 	var all []scored
 	for _, d := range v.st.docs {
 		if !admits(d.doc, f) {
@@ -161,7 +172,7 @@ func (v *MemView) Lexical(ctx context.Context, terms []search.Term, f search.Fil
 		}
 		for ord, body := range d.doc.Chunks {
 			ws := words(body)
-			hits, ok := 0, len(terms) > 0
+			hits, held := 0, 0
 			for _, t := range terms {
 				want := strings.ToLower(t.Text)
 				n := 0
@@ -170,15 +181,17 @@ func (v *MemView) Lexical(ctx context.Context, terms []search.Term, f search.Fil
 						n++
 					}
 				}
-				ok = ok && n > 0
+				if n > 0 {
+					held++
+				}
 				hits += n
 			}
-			if ok {
+			if ok := held > 0 && (!every || held == len(terms)); ok {
 				all = append(all, scored{candidate(d, ord, mark(body, terms)), float64(hits) / float64(len(ws))})
 			}
 		}
 	}
-	return best(all, n), nil
+	return best(all, n)
 }
 
 // mark puts the highlight marks around the words of body the terms match.

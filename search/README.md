@@ -72,6 +72,7 @@ carrying the operations it gates:
 | `Semantic[D]` | `Semantic`, `SemanticState` | the store searches by words only |
 | `Signaler[D]` | `Signals`: in-links and tags | nothing is boosted |
 | `Lister[D]` | `List`: documents by filters alone | a filters-only query is `ErrNoLister` |
+| `LexicalAny[D]` | `LexicalAny`: any one term matches | a query of several words that no chunk holds together finds nothing by words |
 
 `D` is your document key, which the engine only compares for equality. It can be an int64, a UUID,
 or a tenant and id pair. `NewEngine` decides what a store can do once, from the view type's static
@@ -118,7 +119,7 @@ func (v *view) Semantic(ctx context.Context, model string, vec []float32, f sear
 ```
 
 A pgvector store answers `Semantic` with `ORDER BY embedding <=> $1 LIMIT n` instead. Either way, the
-contract is that of the doc comments on `Store`, `View`, `Semantic`, `Signaler` and `Lister`:
+contract is that of the doc comments on `Store`, `View`, `Semantic`, `Signaler`, `Lister` and `LexicalAny`:
 
 - filters apply before each retriever's rank and limit;
 - equal ranks are ordered by path: lexically, then the backend's own stable order; semantically, then
