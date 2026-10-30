@@ -65,7 +65,10 @@ err := srv.Run(ctx) // serves until ctx cancels, then drains politely
   closed, so a peer that connects and says nothing holds no place. Once
   handshaken, a connection may idle: it is long-lived by design. `IdleTimeout`
   (off by default) closes one that has had no frame and no request in flight for
-  that long, for a server whose clients reconnect.
+  that long, for a server whose clients reconnect. `MaxConns` is one pool for
+  every client, and with `IdleTimeout` off a handshaken client keeps its places,
+  so one client can hold them all: where clients are not trusted, set
+  `IdleTimeout`, a smaller cap, or both.
 - **Contexts.** Each handler's ctx derives from a connection-scoped context
   cancelled when the connection ends for ANY reason — peer disconnect,
   drain, or `Shutdown`. Honor it: a handler waiting on `ctx.Done()` always

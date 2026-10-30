@@ -142,12 +142,19 @@ func TestDo_DenyPrivateRefusesThisHostsNetwork(t *testing.T) {
 	if !errors.Is(err, ErrPrivateAddress) {
 		t.Errorf("DenyPrivate, loopback: %v, want ErrPrivateAddress", err)
 	}
-	for _, addr := range []string{"10.0.0.1:80", "192.168.1.1:443", "169.254.169.254:80", "[::1]:80", "[fe80::1]:80", "0.0.0.0:80", "[fd00::1]:80"} {
+	for _, addr := range []string{
+		"127.0.0.1:80", "10.0.0.1:80", "172.16.0.1:80", "192.168.1.1:443", "169.254.169.254:80", "0.0.0.0:80",
+		"0.1.2.3:80", "100.100.100.200:80", "100.64.0.1:80", "192.0.0.8:80", "198.18.0.1:80", "240.0.0.1:80",
+		"255.255.255.255:80", "224.0.0.1:80",
+		"[::1]:80", "[::]:80", "[fe80::1]:80", "[fd00::1]:80", "[ff02::1]:80", "[::a9fe:a9fe]:80", "[2001:0:4136:e378::1]:80",
+		"[::ffff:10.0.0.1]:80", "[64:ff9b::a9fe:a9fe]:80", "[64:ff9b::7f00:1]:80", "[64:ff9b:1:a9fe:a9:fe00::]:80",
+		"[2002:a9fe:a9fe::1]:80", "[2002:0a00:0001::1]:80",
+	} {
 		if err := refusePrivate("tcp", addr, nil); !errors.Is(err, ErrPrivateAddress) {
 			t.Errorf("%s: %v, want refused", addr, err)
 		}
 	}
-	for _, addr := range []string{"93.184.216.34:443", "[2606:2800:220:1::1]:443"} {
+	for _, addr := range []string{"93.184.216.34:443", "8.8.8.8:53", "[2606:2800:220:1::1]:443", "[64:ff9b::808:808]:53", "[2002:808:808::1]:53"} {
 		if err := refusePrivate("tcp", addr, nil); err != nil {
 			t.Errorf("%s, a public address: %v", addr, err)
 		}

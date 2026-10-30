@@ -89,6 +89,8 @@ redirect off its origin.
 
 For a URL that came from someone else, `DenyPrivateAddresses()` refuses to
 connect to a loopback, private, link-local, multicast or unspecified address,
+or one in a reserved or carrier-grade-NAT range (a cloud's metadata service
+among them), or an IPv6 address that carries such an IPv4 one (NAT64, 6to4),
 checked on the address each connection dials (a redirect's included), with no
 proxy.
 
