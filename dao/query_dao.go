@@ -21,8 +21,9 @@ type queryDAO[R any, C ~string, K ~string, ID any] struct {
 	tx     *Transaction
 	ctxv   context.Context
 
-	hooks       []Hook // effective hook slice (nil = zero-cost fast path)
-	explicitCtx bool   // ctxv came from WithQueryContext — sticky across Use(tx)
+	hooks       []Hook         // effective hook slice (nil = zero-cost fast path)
+	explicitCtx bool           // ctxv came from WithQueryContext — sticky across Use(tx)
+	local       []LocalSetting // WithLocalSettings, checked at acquisition
 
 	q   queryState
 	w   writeState
@@ -379,12 +380,9 @@ func (d *queryDAO[R, C, K, ID]) Get(cols ...C) (R, error) {
 	b := d.newBuilder()
 	q := b.buildSelect(d.schema.table, sqlCols, d.collectJoins(joins), d.q.where, d.q.order, &one, d.q.offset)
 	args := b.args
-	if err := pl.beforeExec(&q, &args); err != nil {
-		return zero, err
-	}
-	h, herr := d.handle()
-	if herr != nil {
-		return zero, herr
+	h, lr, xerr := d.exec(pl, &q, &args)
+	if xerr != nil {
+		return zero, xerr
 	}
 	rows, qerr := h.QueryContext(d.ctx(), q, args...)
 	if qerr != nil {
@@ -395,13 +393,25 @@ func (d *queryDAO[R, C, K, ID]) Get(cols ...C) (R, error) {
 		if rerr := rows.Err(); rerr != nil {
 			return zero, pl.finish(0, -1, d.schema.translate(rerr))
 		}
-		return zero, pl.finish(0, -1, ErrNoRows)
+		err := pl.finish(0, -1, ErrNoRows)
+		if lr != nil {
+			rows.Close()
+			err = lr.after(true, err)
+		}
+		return zero, err
 	}
 	r, serr := scanRow(d.schema.newRow, plan, rows)
 	if serr != nil {
 		return zero, pl.finish(0, -1, d.schema.translate(serr))
 	}
-	return r, pl.finish(1, -1, nil)
+	err = pl.finish(1, -1, nil)
+	if lr != nil {
+		rows.Close()
+		if err = lr.after(true, err); err != nil {
+			return zero, err
+		}
+	}
+	return r, err
 }
 
 func (d *queryDAO[R, C, K, ID]) Select(cols ...C) ([]R, error) {
@@ -419,12 +429,9 @@ func (d *queryDAO[R, C, K, ID]) Select(cols ...C) ([]R, error) {
 	b := d.newBuilder()
 	q := b.buildSelect(d.schema.table, sqlCols, d.collectJoins(joins), d.q.where, d.q.order, d.q.limit, d.q.offset)
 	args := b.args
-	if err := pl.beforeExec(&q, &args); err != nil {
-		return nil, err
-	}
-	h, herr := d.handle()
-	if herr != nil {
-		return nil, herr
+	h, lr, xerr := d.exec(pl, &q, &args)
+	if xerr != nil {
+		return nil, xerr
 	}
 	rows, qerr := h.QueryContext(d.ctx(), q, args...)
 	if qerr != nil {
@@ -439,7 +446,13 @@ func (d *queryDAO[R, C, K, ID]) Select(cols ...C) ([]R, error) {
 		}
 		out = append(out, r)
 	}
-	if ferr := pl.finish(len(out), -1, d.schema.translate(rows.Err())); ferr != nil {
+	rerr := rows.Err()
+	ferr := pl.finish(len(out), -1, d.schema.translate(rerr))
+	if rerr == nil && lr != nil {
+		rows.Close()
+		ferr = lr.after(true, ferr)
+	}
+	if ferr != nil {
 		return nil, ferr
 	}
 	return out, nil
@@ -460,12 +473,9 @@ func (d *queryDAO[R, C, K, ID]) Iterate(cols ...C) (Iterator[R], error) {
 	b := d.newBuilder()
 	q := b.buildSelect(d.schema.table, sqlCols, d.collectJoins(joins), d.q.where, d.q.order, d.q.limit, d.q.offset)
 	args := b.args
-	if err := pl.beforeExec(&q, &args); err != nil {
-		return nil, err
-	}
-	h, herr := d.handle()
-	if herr != nil {
-		return nil, herr
+	h, lr, xerr := d.exec(pl, &q, &args)
+	if xerr != nil {
+		return nil, xerr
 	}
 	rows, qerr := h.QueryContext(d.ctx(), q, args...)
 	if qerr != nil {
@@ -475,9 +485,9 @@ func (d *queryDAO[R, C, K, ID]) Iterate(cols ...C) (Iterator[R], error) {
 	// through the iterator untransformed by hooks.
 	if ferr := pl.finish(-1, -1, nil); ferr != nil {
 		rows.Close()
-		return nil, ferr
+		return nil, lr.after(true, ferr)
 	}
-	return &rowsIterator[R]{rows: rows, plan: plan, newR: d.schema.newRow, translate: d.schema.translate}, nil
+	return &rowsIterator[R]{rows: rows, plan: plan, newR: d.schema.newRow, translate: d.schema.translate, local: lr}, nil
 }
 
 func (d *queryDAO[R, C, K, ID]) Exists() (bool, error) {
@@ -491,12 +501,9 @@ func (d *queryDAO[R, C, K, ID]) Exists() (bool, error) {
 	b := d.newBuilder()
 	q := b.buildExists(d.schema.table, d.collectJoins(nil), d.q.where)
 	args := b.args
-	if err := pl.beforeExec(&q, &args); err != nil {
-		return false, err
-	}
-	h, herr := d.handle()
-	if herr != nil {
-		return false, herr
+	h, lr, xerr := d.exec(pl, &q, &args)
+	if xerr != nil {
+		return false, xerr
 	}
 	rows, err := h.QueryContext(d.ctx(), q, args...)
 	if err != nil {
@@ -506,7 +513,13 @@ func (d *queryDAO[R, C, K, ID]) Exists() (bool, error) {
 	if serr := scanScalar(rows, &exists); serr != nil {
 		return false, pl.finish(0, -1, d.schema.translate(serr))
 	}
-	return exists, pl.finish(1, -1, nil)
+	err = pl.finish(1, -1, nil)
+	if lr != nil {
+		if err = lr.after(true, err); err != nil {
+			return false, err
+		}
+	}
+	return exists, err
 }
 
 func (d *queryDAO[R, C, K, ID]) Count() (uint64, error) {
@@ -520,12 +533,9 @@ func (d *queryDAO[R, C, K, ID]) Count() (uint64, error) {
 	b := d.newBuilder()
 	q := b.buildCount(d.schema.table, d.collectJoins(nil), d.q.where)
 	args := b.args
-	if err := pl.beforeExec(&q, &args); err != nil {
-		return 0, err
-	}
-	h, herr := d.handle()
-	if herr != nil {
-		return 0, herr
+	h, lr, xerr := d.exec(pl, &q, &args)
+	if xerr != nil {
+		return 0, xerr
 	}
 	rows, err := h.QueryContext(d.ctx(), q, args...)
 	if err != nil {
@@ -535,7 +545,13 @@ func (d *queryDAO[R, C, K, ID]) Count() (uint64, error) {
 	if serr := scanScalar(rows, &n); serr != nil {
 		return 0, pl.finish(0, -1, d.schema.translate(serr))
 	}
-	return n, pl.finish(1, -1, nil)
+	err = pl.finish(1, -1, nil)
+	if lr != nil {
+		if err = lr.after(true, err); err != nil {
+			return 0, err
+		}
+	}
+	return n, err
 }
 
 // CountDistinct implements [DistinctCounter].
@@ -554,12 +570,9 @@ func (d *queryDAO[R, C, K, ID]) CountDistinct(field C) (uint64, error) {
 	b := d.newBuilder()
 	q := b.buildCountDistinct(d.schema.table, sqlCols[0], d.collectJoins(joins), d.q.where)
 	args := b.args
-	if err := pl.beforeExec(&q, &args); err != nil {
-		return 0, err
-	}
-	h, herr := d.handle()
-	if herr != nil {
-		return 0, herr
+	h, lr, xerr := d.exec(pl, &q, &args)
+	if xerr != nil {
+		return 0, xerr
 	}
 	rows, err := h.QueryContext(d.ctx(), q, args...)
 	if err != nil {
@@ -569,7 +582,13 @@ func (d *queryDAO[R, C, K, ID]) CountDistinct(field C) (uint64, error) {
 	if serr := scanScalar(rows, &n); serr != nil {
 		return 0, pl.finish(0, -1, d.schema.translate(serr))
 	}
-	return n, pl.finish(1, -1, nil)
+	err = pl.finish(1, -1, nil)
+	if lr != nil {
+		if err = lr.after(true, err); err != nil {
+			return 0, err
+		}
+	}
+	return n, err
 }
 
 // refuseIncrement is Insert's and Upsert's check: an [Incr] has no row to add to.
@@ -607,12 +626,9 @@ func (d *queryDAO[R, C, K, ID]) Insert() (ID, error) {
 	b := d.newBuilder()
 	q := b.buildInsert(d.schema.table, set, d.schema.idColumn, returning)
 	args := b.args
-	if err := pl.beforeExec(&q, &args); err != nil {
-		return zero, err
-	}
-	h, herr := d.handle()
-	if herr != nil {
-		return zero, herr
+	h, lr, xerr := d.exec(pl, &q, &args)
+	if xerr != nil {
+		return zero, xerr
 	}
 	if returning {
 		rows, err := h.QueryContext(d.ctx(), q, args...)
@@ -623,13 +639,19 @@ func (d *queryDAO[R, C, K, ID]) Insert() (ID, error) {
 		if serr := scanScalar(rows, &id); serr != nil {
 			return zero, pl.finish(0, -1, d.schema.translate(serr))
 		}
-		return id, pl.finish(1, -1, nil)
+		err = pl.finish(1, -1, nil)
+		if lr != nil {
+			if err = lr.after(true, err); err != nil {
+				return zero, err
+			}
+		}
+		return id, err
 	}
 	res, err := h.ExecContext(d.ctx(), q, args...)
 	if err != nil {
 		return zero, pl.finish(0, -1, d.schema.translate(err))
 	}
-	if ferr := pl.finish(0, affectedOf(res), nil); ferr != nil {
+	if ferr := lr.after(true, pl.finish(0, affectedOf(res), nil)); ferr != nil {
 		return zero, ferr
 	}
 	// No RETURNING. An engine whose INSERT result carries the generated id
@@ -696,16 +718,13 @@ func (d *queryDAO[R, C, K, ID]) update() (int64, error) {
 	b := d.newBuilder()
 	q := b.buildUpdate(d.schema.table, d.schema.idColumn, set, d.collectJoins(nil), d.q.where)
 	args := b.args
-	if err := pl.beforeExec(&q, &args); err != nil {
-		return 0, err
-	}
-	h, herr := d.handle()
-	if herr != nil {
-		return 0, herr
+	h, lr, xerr := d.exec(pl, &q, &args)
+	if xerr != nil {
+		return 0, xerr
 	}
 	res, err := h.ExecContext(d.ctx(), q, args...)
 	n := affectedOf(res)
-	return n, pl.finish(0, n, d.schema.translate(err))
+	return n, lr.after(err == nil, pl.finish(0, n, d.schema.translate(err)))
 }
 
 // UpsertOnly implements [SelectiveUpserter]: Upsert, updating only fields on
@@ -771,15 +790,12 @@ func (d *queryDAO[R, C, K, ID]) Upsert() error {
 	b := d.newBuilder()
 	q := b.buildUpsert(d.schema.table, set, d.schema.idColumn, false, d.schema.conflict, update)
 	args := b.args
-	if err := pl.beforeExec(&q, &args); err != nil {
-		return err
-	}
-	h, herr := d.handle()
-	if herr != nil {
-		return herr
+	h, lr, xerr := d.exec(pl, &q, &args)
+	if xerr != nil {
+		return xerr
 	}
 	res, err := h.ExecContext(d.ctx(), q, args...)
-	return pl.finish(0, affectedOf(res), d.schema.translate(err))
+	return lr.after(err == nil, pl.finish(0, affectedOf(res), d.schema.translate(err)))
 }
 
 func (d *queryDAO[R, C, K, ID]) Delete() error {
@@ -796,15 +812,12 @@ func (d *queryDAO[R, C, K, ID]) Delete() error {
 	b := d.newBuilder()
 	q := b.buildDelete(d.schema.table, d.schema.idColumn, d.collectJoins(nil), d.q.where)
 	args := b.args
-	if err := pl.beforeExec(&q, &args); err != nil {
-		return err
-	}
-	h, herr := d.handle()
-	if herr != nil {
-		return herr
+	h, lr, xerr := d.exec(pl, &q, &args)
+	if xerr != nil {
+		return xerr
 	}
 	res, err := h.ExecContext(d.ctx(), q, args...)
-	return pl.finish(0, affectedOf(res), d.schema.translate(err))
+	return lr.after(err == nil, pl.finish(0, affectedOf(res), d.schema.translate(err)))
 }
 
 func (d *queryDAO[R, C, K, ID]) Batch() BatchWriter[R, C] {
@@ -813,7 +826,10 @@ func (d *queryDAO[R, C, K, ID]) Batch() BatchWriter[R, C] {
 	// why it carries its own test cell.
 	var exec Execer = d.conn
 	var initErr error
-	if d.tx != nil {
+	switch {
+	case len(d.local) > 0: // refused: Batch resolves its own executor
+		initErr = fmt.Errorf("%w: Batch with local settings", ErrUnsupported)
+	case d.tx != nil:
 		tc, err := d.tx.join(d.schema.conn)
 		if err != nil {
 			initErr = err

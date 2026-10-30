@@ -32,6 +32,14 @@ const (
 	// QueryInfo.SQL carries a synthetic descriptor; mutating SQL/Args fails
 	// the flush.
 	OpBatchCopy Op = "batch-copy"
+
+	// OpLocalSettings is the statement [WithLocalSettings] sends before a
+	// statement: it reads each name's value in force and makes the settings.
+	// OpLocalRestore is the one it sends after, putting the values back.
+	// Hooks see both as statements of their own, in the order they reach the
+	// server.
+	OpLocalSettings Op = "local-settings"
+	OpLocalRestore  Op = "local-restore"
 )
 
 // IsWrite reports whether the op mutates data
@@ -153,6 +161,7 @@ type queryConfig struct {
 	skip        map[string]bool
 	ctx         context.Context
 	explicitCtx bool
+	local       []LocalSetting
 }
 
 // QueryOption configures one DAO instance at acquisition time

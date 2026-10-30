@@ -68,6 +68,25 @@ weights placed by each column's class. It does not implement `dao.FullTexter`
 pgvector module is needed; it refuses NaN and infinities, and nil is NULL. COPY's
 binary rows do not carry it: write vectors with INSERT or an upsert.
 
+**Settings for one statement** (`dao.LocalSetter`, for `dao.WithLocalSettings`):
+`set_config(name, value, true)`, the bound form of `SET LOCAL`, after reading each
+name's value in force in a `MATERIALIZED` CTE; the restore puts the read values
+back the same way, a name with none (a pgvector name before the library loads)
+reset. Only these names, each with its domain:
+
+| Name | Domain | Helper |
+|---|---|---|
+| `plan_cache_mode` | `auto`, `force_custom_plan`, `force_generic_plan` | `PlanCacheMode(string)` |
+| `hnsw.iterative_scan` | `off`, `relaxed_order`, `strict_order` | `HNSWIterativeScan(string)` |
+| `hnsw.ef_search` | integer, 1 to 1000 | `HNSWEfSearch(int)` |
+| `hnsw.max_scan_tuples` | integer, 1 to 2147483647 | `HNSWMaxScanTuples(int)` |
+| `hnsw.scan_mem_multiplier` | number, 1 to 1000 | `HNSWScanMemMultiplier(float64)` |
+
+The bounds are pgvector 0.8's and PostgreSQL 16+'s; an integration cell checks
+them against the server's `pg_settings`. Values are canonical text (an integer
+in decimal, a number with no exponent). Adding a name needs its domain and a
+cell.
+
 ## Transactions
 
 Single-DB and multi-DB **ordered** transactions work via `dao.RunTx` /
