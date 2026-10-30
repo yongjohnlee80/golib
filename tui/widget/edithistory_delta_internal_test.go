@@ -167,7 +167,7 @@ func TestAnEditOutsideAGroupIsUndoneAndRedoneAsWithSnapshots(t *testing.T) {
 // TestAnEditInAChangeCallbackDuringUndoIsItsOwnStep: a CoreOnChange listener that edits while an
 // undo notifies it begins a group of its own, and the next undo takes that edit back. The undo's
 // recording ends before listeners hear of it; ended after, the listener's edit went into the
-// undo's group and the next undo left it in place. Zen's probe on golib #530, as a cell.
+// undo's group and the next undo left it in place.
 func TestAnEditInAChangeCallbackDuringUndoIsItsOwnStep(t *testing.T) {
 	var c *EditorCore
 	armed := false
