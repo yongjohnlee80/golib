@@ -48,7 +48,7 @@ func TestABuilderReadingAnUndeclaredPropertyIsRefused(t *testing.T) {
 			return widget.NewText(label), consumed, err
 		},
 	}
-	_, _, err, _ := extended(t, "import tui 1.0\nMeter { label: \"m\" }", meter)
+	_, _, _, err := extended(t, "import tui 1.0\nMeter { label: \"m\" }", meter)
 	if err == nil || !strings.Contains(err.Error(), "Meter") || !strings.Contains(err.Error(), `"unit"`) {
 		t.Fatalf("a builder reading the undeclared unit: %v", err)
 	}

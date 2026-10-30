@@ -32,8 +32,7 @@ func TestOnStoppingRunsOnceOnLoopAfterCaptureLossBeforeUnmount(t *testing.T) {
 				return false
 			}
 			tb := NewTestBackend(4, 2)
-			var app *App
-			app = NewApp(root, WithBackend(tb), WithMinFrameInterval(0), WithOnStopping(nil),
+			app := NewApp(root, WithBackend(tb), WithMinFrameInterval(0), WithOnStopping(nil),
 				WithOnStopping(func() {
 					if goid() != loopID {
 						t.Error("stopping callback left the loop goroutine")

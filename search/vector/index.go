@@ -217,6 +217,8 @@ type Vec[T any] struct {
 
 // SkipRest, returned by a TwoStage fetch, ends the scan without error: no later window can hold a
 // valid item (the filters admit no document at all, say).
+//
+//lint:ignore ST1012 a stop signal, not a failure, named as io/fs's SkipDir and SkipAll are
 var SkipRest = errors.New("vector: skip the rest")
 
 // TwoStage rescores a Hamming order by the float vectors. It hands fetch the order window keys at a

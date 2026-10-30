@@ -125,11 +125,8 @@ func stringList(v any) []string {
 	case nil:
 		return nil
 	case string:
-		var out []string
-		for _, f := range strings.FieldsFunc(x, func(r rune) bool { return r == ',' || r == ' ' }) {
-			out = append(out, f)
-		}
-		return out
+		// appended, so a value with no fields stays nil as the loop left it
+		return append([]string(nil), strings.FieldsFunc(x, func(r rune) bool { return r == ',' || r == ' ' })...)
 	case []any:
 		var out []string
 		for _, e := range x {
