@@ -239,13 +239,14 @@ func linearFamilies() []linearFamily {
 // least 200ms (two of the 100ms periods a CPU quota is enforced in, so a period the process spends
 // throttled is averaged, not the whole timing), so load slows both alike and leaves the multiple; a
 // fixed time does not, since a linear family is not uniformly fast (deep-block-quotes takes about
-// 200ms a parse, past 250ms under load). slower sits between the slowest linear family's multiple,
-// about 95, and the old n-squared link walks', about 520 and more, with room on either side.
+// 200ms a parse, past 250ms under load). slower sits between the slowest linear family's multiple
+// and the old n-squared link walks', measured so, idle and under a CPU hog: at most 74 for a linear
+// family (deep-block-quotes), at least 287 for an old walk; 150 leaves about twice either side.
 func TestLinearTime(t *testing.T) {
 	if testing.Short() || raceEnabled {
 		t.Skip("timing measurement: not under -short, nor under -race's instrumentation")
 	}
-	const n, k, bound, slower = 200_000, 4, 7.75, 250.0
+	const n, k, bound, slower = 200_000, 4, 7.75, 150.0
 	plain := []byte(controlInput(n))
 	for _, f := range linearFamilies() {
 		t.Run(f.name, func(t *testing.T) {

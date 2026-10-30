@@ -147,7 +147,7 @@ Obsidian's block ids (`^id` at a line's end), footnotes, `%%comments%%`, `==high
   extensions. Adversarial families (`[` nested 500,000 deep, delimiter runs of every length mod 3, deep
   quotes and lists, unclosed link destinations and wikilinks, trailing parentheses after an autolink,
   and more) are timed at n and 4n and must scale by at most 7.75× (a quadratic one takes about 16×), and
-  a family more than 250 times as slow as plain paragraphs of the same size, timed alongside it, fails
+  a family more than 150 times as slow as plain paragraphs of the same size, timed alongside it, fails
   at once, so a quadratic one fails in seconds rather than at the test's deadline. Only the families
   measured are claimed to be linear.
 - **Allocation.** A parse places its nodes in chunks (8 nodes at first, doubling to 1,024), so a document
