@@ -303,11 +303,18 @@ remember.
 | --- | --- | --- |
 | `--minimum-changed` | 70 | at least 70% of the blocks the patch touched must be covered |
 | `--maximum-total-regression` | 1 | total coverage may not fall more than 1pp |
-| `--maximum-file-regression` | 1 | **no single file** may fall more than 1pp |
+| `--maximum-file-regression` | 1 | **no file whose code changed** may fall more than 1pp |
 | `--require-changed-files` | — | a patch touching Go files must produce changed-block data |
 
 Reproduce it locally with the **same flags** — a locally-relaxed gate is not a
 rehearsal of the gate that will run.
+
+The per-file limit holds a file whose code the patch touched: a changed line
+inside a head coverage block, or a replaced or deleted line inside a base one.
+A file whose change left every statement alone (comments, whitespace) cannot
+have its coverage moved by the patch, so a difference there is only two runs'
+scheduling; the report marks it "no code changed" and the total limit still
+bounds it.
 
 The per-file limit is the one that catches real gaps, and it is not an
 accounting rule. A file at 100% that grows by a large, less-covered function has

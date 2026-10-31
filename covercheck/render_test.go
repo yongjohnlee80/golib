@@ -49,3 +49,41 @@ func TestRenderersRepresentResult(t *testing.T) {
 }
 
 func floatPointer(value float64) *float64 { return &value }
+
+// TestTheReportSaysAFileHadNoCodeChanged: a modified file whose change touched none of its
+// statements is marked "no code changed" in the text and Markdown reports, so a reader sees why the
+// per-file limit did not hold it; a file whose code changed is not.
+func TestTheReportSaysAFileHadNoCodeChanged(t *testing.T) {
+	t.Parallel()
+	cov := Comparison{Base: Stats{Covered: 2, Total: 2}, Head: Stats{Covered: 1, Total: 2}, Delta: floatPointer(-50), State: EntityExisting}
+	result := NewResult(Report{Mode: ModeSet, Files: []FileReport{
+		{Path: "pkg/comments.go", Kind: ChangeModified, Coverage: cov},
+		{Path: "pkg/code.go", Kind: ChangeModified, Coverage: cov, ChangedBlocks: Stats{Covered: 0, Total: 1}},
+	}}, nil)
+	var text, markdown bytes.Buffer
+	if err := WriteText(&text, result); err != nil {
+		t.Fatal(err)
+	}
+	if err := WriteMarkdown(&markdown, result); err != nil {
+		t.Fatal(err)
+	}
+	line := func(out, path string) string {
+		for _, l := range strings.Split(out, "\n") {
+			if strings.Contains(l, path) {
+				return l
+			}
+		}
+		return ""
+	}
+	for name, out := range map[string]string{"text": text.String(), "markdown": markdown.String()} {
+		if l := line(out, "comments.go"); !strings.Contains(l, "no code changed") {
+			t.Errorf("%s: comments.go's row %q does not say no code changed", name, l)
+		}
+		if l := line(out, "code.go\t"); name == "text" && strings.Contains(l, "no code changed") {
+			t.Errorf("%s: code.go's row %q says no code changed", name, l)
+		}
+		if l := line(out, "`pkg/code.go`"); name == "markdown" && strings.Contains(l, "no code changed") {
+			t.Errorf("%s: code.go's row %q says no code changed", name, l)
+		}
+	}
+}

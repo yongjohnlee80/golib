@@ -18,7 +18,13 @@ go install github.com/yongjohnlee80/golib/cmd/covercheck@latest
 - Statement-weighted total, package, and changed-file comparisons.
 - Changed-block coverage from `git diff --unified=0` head-side ranges.
 - Minimum total/package/file/changed coverage thresholds.
-- Total and per-file regression budgets.
+- Total and per-file regression budgets. The per-file budget holds a file whose
+  code the change touched: a changed line inside one of its head coverage blocks,
+  or a replaced or deleted line inside one of its base blocks. A file whose change
+  left every statement alone (comments, whitespace, declarations) cannot have its
+  coverage moved by the change, so a difference there is two runs' and not the
+  change's; the report marks it "no code changed", and the total budget still
+  bounds it.
 - Regular-expression exclusions and library-level file overrides.
 - Go-parser classification keeps declaration-only files at `N/A` while strict
   mode fails executable changed files missing from the head profile.

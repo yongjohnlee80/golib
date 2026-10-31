@@ -78,7 +78,7 @@ func run(ctx context.Context, args []string, stdout, stderr io.Writer) int {
 	flags.Float64Var(&cfg.minimumFile, "minimum-file", -1, "minimum head coverage percentage for every changed file")
 	flags.Float64Var(&cfg.minimumChanged, "minimum-changed", -1, "minimum coverage percentage across changed blocks")
 	flags.Float64Var(&cfg.maxTotalDrop, "maximum-total-regression", -1, "maximum allowed total decrease in percentage points")
-	flags.Float64Var(&cfg.maxFileDrop, "maximum-file-regression", -1, "maximum allowed decrease per changed file in percentage points")
+	flags.Float64Var(&cfg.maxFileDrop, "maximum-file-regression", -1, "maximum allowed decrease per changed file whose code changed, in percentage points")
 	flags.BoolVar(&cfg.requireChanged, "require-changed-files", false, "fail when a changed production Go file is absent from the head profile")
 	flags.Var(&cfg.excludes, "exclude", "Go regular expression excluding file-level checks; repeatable")
 	if err := flags.Parse(args); err != nil {
