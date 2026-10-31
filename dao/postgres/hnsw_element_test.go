@@ -9,8 +9,8 @@ import (
 	"github.com/yongjohnlee80/golib/errs"
 )
 
-// HNSWElement is the cast column with each metric's operator class, halfvec's when the type is,
-// and refuses a type HNSW cannot index or pgvector has no type for, and a metric outside the
+// HNSWElement is the cast column with each metric's operator class, halfvec's when the type is, up
+// to HNSW's limits inclusive, and refuses a type HNSW cannot index or pgvector has no type for, and a metric outside the
 // constants: ErrInvalidArgument naming why.
 func TestHNSWElementNamesTheOperatorClassOrRefuses(t *testing.T) {
 	f32 := dao.VectorType{Kind: dao.VectorFloat32, Dims: 4}
@@ -23,8 +23,18 @@ func TestHNSWElementNamesTheOperatorClassOrRefuses(t *testing.T) {
 			t.Errorf("%s: %q, %v; want %q", m, got, err, want)
 		}
 	}
-	if got, err := HNSWElement("e", dao.InnerProduct, dao.VectorType{Kind: dao.VectorFloat16, Dims: 3000}); err != nil || got != "((e::halfvec(3000)) halfvec_ip_ops)" {
-		t.Errorf("halfvec(3000): %q, %v", got, err)
+	// HNSW's limits are inclusive: 2,000 dimensions of vector, 4,000 of halfvec, each indexed
+	for _, c := range []struct {
+		t    dao.VectorType
+		want string
+	}{
+		{dao.VectorType{Kind: dao.VectorFloat32, Dims: 2000}, "((e::vector(2000)) vector_ip_ops)"},
+		{dao.VectorType{Kind: dao.VectorFloat16, Dims: 3000}, "((e::halfvec(3000)) halfvec_ip_ops)"},
+		{dao.VectorType{Kind: dao.VectorFloat16, Dims: 4000}, "((e::halfvec(4000)) halfvec_ip_ops)"},
+	} {
+		if got, err := HNSWElement("e", dao.InnerProduct, c.t); err != nil || got != c.want {
+			t.Errorf("%v: %q, %v; want %q", c.t, got, err, c.want)
+		}
 	}
 	for name, c := range map[string]struct {
 		m    dao.Metric
