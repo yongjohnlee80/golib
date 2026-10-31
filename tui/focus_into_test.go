@@ -1,6 +1,7 @@
 package tui
 
 import (
+	"sync/atomic"
 	"testing"
 	"time"
 )
@@ -277,5 +278,57 @@ func TestKeysAfterAFocusIntoReachTheShownField(t *testing.T) {
 	}
 	if string(typed) != "ab" {
 		t.Fatalf("the shown field got %q, want \"ab\"; focus on %d (field %d)", string(typed), focusedID(h), field.nodeID())
+	}
+}
+
+// Keys typed right after the one that grew a control from no cells (a bar a preference had
+// hidden, laid out at zero size) and focused into it reach that control, though no frame runs
+// between them: while a layout is pending, a control the last layout left with no cells is
+// waiting for it, and the deferred focus settles before the next key is routed.
+func TestKeysAfterAFocusIntoReachTheControlGrownThisTurn(t *testing.T) {
+	t.Parallel()
+	var shown atomic.Bool
+	out := newFocusProbe("out", Size{W: 2, H: 1})
+	bar := newFocusProbe("bar", Size{})
+	bar.onLayout = func(_ *probe, c Constraints) Size {
+		if shown.Load() {
+			return c.Constrain(Size{W: 4, H: 1})
+		}
+		return c.Constrain(Size{})
+	}
+	out.onEvent = func(p *probe, ev Event) bool {
+		if k, ok := ev.(KeyEvent); ok && k.Code == '/' {
+			shown.Store(true)
+			bar.ctx.RequestLayout()
+			p.ctx.FocusInto(bar)
+			return true
+		}
+		return false
+	}
+	root := NewFlex(Vertical)
+	root.Add(out, bar)
+	h := startApp(t, root, 8, 8, WithMinFrameInterval(time.Hour))
+	h.onLoop(func() { h.app.repairFocus() })
+	h.sync()
+	if got := focusedID(h); got != out.nodeID() {
+		t.Fatalf("fixture: focus on %d, want out %d", got, out.nodeID())
+	}
+	h.inject(keyEv('/'), keyEv('a'), keyEv('b'))
+	keys := func(p *focusProbe) []rune {
+		var typed []rune
+		for _, ev := range p.recorded() {
+			if k, ok := ev.(KeyEvent); ok {
+				typed = append(typed, k.Code)
+			}
+		}
+		return typed
+	}
+	for deadline := time.Now().Add(3 * time.Second); len(keys(out))+len(keys(bar)) < 3; time.Sleep(time.Millisecond) {
+		if time.Now().After(deadline) {
+			t.Fatalf("the three keys were not all routed: out %q, bar %q", string(keys(out)), string(keys(bar)))
+		}
+	}
+	if got := string(keys(bar)); got != "ab" {
+		t.Fatalf("the grown bar got %q, want \"ab\" (out got %q); focus on %d (bar %d)", got, string(keys(out)), focusedID(h), bar.nodeID())
 	}
 }

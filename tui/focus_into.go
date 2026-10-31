@@ -44,9 +44,12 @@ func (a *App) FocusWithin(comp Component) bool {
 
 // unplacedTargetIn reports whether n's subtree holds a component that takes
 // focus now and is kept from it only by not having been laid out yet: mounted,
-// accepting, under no hidden ancestor, and not measured by the last layout. A
-// node the last layout measured and left with no cells — a pane clipped to
-// nothing — is not waiting for a layout; another would leave it the same.
+// accepting, under no hidden ancestor, and either not measured by the last
+// layout, or left by it with no cells while a layout is pending — a bar shown
+// in this very turn, which the last layout gave none and the next one will. A
+// node left with no cells when no layout is pending — a pane clipped to
+// nothing — is not waiting for one; another would leave it the same. Either way
+// the deferral buys one attempt, after the next layout.
 func (a *App) unplacedTargetIn(n *node) bool {
 	if hiddenWithin(n) {
 		return false
@@ -56,7 +59,7 @@ func (a *App) unplacedTargetIn(n *node) bool {
 		if hidden(n.comp) {
 			return false
 		}
-		if isFocusable(n) && n.mounted && !n.measured {
+		if isFocusable(n) && n.mounted && (!n.measured || a.layoutDirty && n.rect.Empty()) {
 			return true
 		}
 		for _, ch := range n.children {
