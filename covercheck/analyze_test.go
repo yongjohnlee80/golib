@@ -149,3 +149,77 @@ func mustProfileWithMode(t *testing.T, mode string) *Profile {
 	t.Helper()
 	return mustProfile(t, "mode: "+mode+"\nexample.com/p/a.go:1.1,2.2 1 1\n")
 }
+
+// TestACommentChangeIsNoCodeChange: from a diff, a change to a file's comments touches none of its
+// statements (CodeChanged false), a deletion of statements touches the base's (true), and a changed
+// statement the head's (true); the per-file limit then holds only the two whose code changed, though
+// all three lost coverage between the runs.
+func TestACommentChangeIsNoCodeChange(t *testing.T) {
+	t.Parallel()
+	base := mustProfile(t, `mode: set
+example.com/p/pkg/comments.go:3.1,5.2 2 1
+example.com/p/pkg/comments.go:8.1,9.2 1 1
+example.com/p/pkg/deleted.go:3.1,5.2 2 0
+example.com/p/pkg/deleted.go:8.1,9.2 2 1
+example.com/p/pkg/code.go:3.1,5.2 2 1
+example.com/p/pkg/code.go:8.1,9.2 1 1
+`)
+	head := mustProfile(t, `mode: set
+example.com/p/pkg/comments.go:4.1,6.2 2 1
+example.com/p/pkg/comments.go:9.1,10.2 1 0
+example.com/p/pkg/deleted.go:3.1,5.2 2 0
+example.com/p/pkg/code.go:3.1,5.2 2 1
+example.com/p/pkg/code.go:8.1,9.2 1 0
+`)
+	changes, err := ParseUnifiedDiff(strings.NewReader(`diff --git a/pkg/comments.go b/pkg/comments.go
+--- a/pkg/comments.go
++++ b/pkg/comments.go
+@@ -1,0 +2,1 @@
++// a comment, above every statement
+diff --git a/pkg/deleted.go b/pkg/deleted.go
+--- a/pkg/deleted.go
++++ b/pkg/deleted.go
+@@ -8,2 +7,0 @@
+-	covered()
+-	alsoCovered()
+diff --git a/pkg/code.go b/pkg/code.go
+--- a/pkg/code.go
++++ b/pkg/code.go
+@@ -8 +8 @@
+-	old()
++	changed()
+`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	report, err := Analyze(base, head, changes)
+	if err != nil {
+		t.Fatal(err)
+	}
+	files := map[string]FileReport{}
+	for _, f := range report.Files {
+		files[f.Path] = f
+	}
+	for path, want := range map[string]bool{"pkg/comments.go": false, "pkg/deleted.go": true, "pkg/code.go": true} {
+		f := files[path]
+		if f.CodeChanged() != want {
+			t.Errorf("%s: CodeChanged %v (head %#v, base %#v), want %v", path, f.CodeChanged(), f.ChangedBlocks, f.BaseChangedBlocks, want)
+		}
+		if f.Coverage.Delta == nil || *f.Coverage.Delta >= -1 {
+			t.Fatalf("%s: delta %v, want a drop past 1 point (the case the limit is for)", path, f.Coverage.Delta)
+		}
+	}
+	violations, err := Evaluate(report, WithMaximumFileRegression(1))
+	if err != nil {
+		t.Fatal(err)
+	}
+	got := map[string]bool{}
+	for _, v := range violations {
+		if v.Rule == "maximum_file_regression" {
+			got[v.Path] = true
+		}
+	}
+	if len(got) != 2 || !got["pkg/deleted.go"] || !got["pkg/code.go"] {
+		t.Errorf("file regressions %v, want deleted.go and code.go alone (comments.go's code did not change)", got)
+	}
+}

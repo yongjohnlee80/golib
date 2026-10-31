@@ -53,10 +53,13 @@ const (
 
 // FileChange describes one file and its added or modified head-side lines.
 type FileChange struct {
-	OldPath       string        `json:"old_path,omitempty"`
-	NewPath       string        `json:"new_path,omitempty"`
-	Kind          ChangeKind    `json:"kind"`
-	Ranges        []LineRange   `json:"ranges,omitempty"`
+	OldPath string      `json:"old_path,omitempty"`
+	NewPath string      `json:"new_path,omitempty"`
+	Kind    ChangeKind  `json:"kind"`
+	Ranges  []LineRange `json:"ranges,omitempty"`
+	// OldRanges are the base-side lines the hunks replace or delete: a change that only deletes lines
+	// has no head-side range, and what it deleted is found among the base profile's blocks here.
+	OldRanges     []LineRange   `json:"old_ranges,omitempty"`
 	Executability Executability `json:"executability,omitempty"`
 	// ExcludedOn names the platform ("linux/amd64") whose build constraints exclude the head file, so a
 	// profile produced there cannot contain it. Empty when the file builds there or was not inspected.
@@ -135,6 +138,9 @@ func ParseUnifiedDiff(r io.Reader) ([]FileChange, error) {
 			if ok {
 				current.Ranges = append(current.Ranges, rangeValue)
 			}
+			if oldValue, oldOK := parseHunkOldRange(line); oldOK {
+				current.OldRanges = append(current.OldRanges, oldValue)
+			}
 		}
 	}
 	if err := scanner.Err(); err != nil {
@@ -158,6 +164,24 @@ func parseHunkRange(line string) (LineRange, bool, error) {
 		return LineRange{}, false, nil
 	}
 	return LineRange{Start: start, End: start + count - 1}, true, nil
+}
+
+// parseHunkOldRange is a hunk header's base-side range, the lines it replaces or deletes; false for
+// a hunk that only adds (its old count 0). The header is parseHunkRange's, already checked.
+func parseHunkOldRange(line string) (LineRange, bool) {
+	matches := hunkPattern.FindStringSubmatch(line)
+	if matches == nil {
+		return LineRange{}, false
+	}
+	start, _ := strconv.Atoi(matches[1])
+	count := 1
+	if matches[2] != "" {
+		count, _ = strconv.Atoi(matches[2])
+	}
+	if count == 0 {
+		return LineRange{}, false
+	}
+	return LineRange{Start: start, End: start + count - 1}, true
 }
 
 func normalizeDiffPath(value, prefix string) (string, error) {
