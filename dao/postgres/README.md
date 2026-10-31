@@ -99,11 +99,17 @@ takes SQL text.
   - the element comes from `HNSWIndexElement(col, metric, type)` (the same cast `dao.DistanceAs`
     orders by) or `ColumnElement(col)`;
   - `WhereEq` holds partial-predicate terms, each value an escape-string literal (`E'…'`) that
-    holds whatever `standard_conforming_strings` is. Control characters are refused.
+    holds whatever `standard_conforming_strings` is. Control characters are refused;
+  - `M` and `EfConstruction` are an `hnsw` index's build parameters, written `WITH (…)`. Zero is
+    pgvector's default (16 and 64) and writes nothing. Each is checked against pgvector's bounds:
+    m from 2 to 100, ef_construction from 4 to 1000 and at least twice m.
 - **On a pinned session** (`PinSessionConn`), outside any transaction:
   - `CreateIndexConcurrently` and `DropIndexConcurrently` (`IF EXISTS`), with explicit
     `BuildOptions` timeouts (zero is none), so a pool's `statement_timeout` never cuts a build
     short;
+  - `RenameIndex`: the last step of a replacement built under a second name. Build the new index
+    concurrently, drop the old one concurrently (the new one, valid, serves the queries
+    meanwhile), then rename the new one to the old name;
   - `ReferenceDefinition`: the spec built on an empty temporary copy of the table, to compare
     with;
   - `MarkSession`: the session's backend, marked as the lifecycle's.
@@ -111,7 +117,8 @@ takes SQL text.
   These leave session state, so the member is destroyed at `Discard`, never recycled.
 - **From any executor:**
   - `ReadIndexState`: whether the index exists and is valid, and its canonical definition (access
-    method, expression, operator class, predicate). Compare it with `==`;
+    method, expression, operator class, predicate, storage parameters). Compare it with `==`: an
+    index built with other parameters is not the one a spec declares;
   - `BackendAlive`, `CancelBackend`, `TerminateBackend`, for a `Backend` that `MarkSession`
     answered only. The pid, the start and the mark must all match, so no other session is ever
     signalled.

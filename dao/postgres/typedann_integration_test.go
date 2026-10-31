@@ -612,3 +612,67 @@ func TestTypedANN_Live13_ExplicitTimeouts(t *testing.T) {
 		t.Fatalf("after the timed-out build: %+v %v; want an invalid index", st, err)
 	}
 }
+
+// Cell 14. An hnsw spec's build parameters reach the index and its definition: the catalog's
+// options are the spec's, and its reference build reads the same; a spec that sets none reads ""
+// and is not that index, so a consumer comparing with == rebuilds it. The replacement under a
+// second name, then the old one dropped concurrently and the new renamed, leaves one valid index
+// of the first name with the new parameters, which the query uses at every step.
+func TestTypedANN_Live14_TheBuildParameters(t *testing.T) {
+	admin := annSetup(t, "ann_c14", 300, 4)
+	plain := hnswSpec(t, "ann_c14", "ann_c14_hnsw", dao.Cosine, f32x4)
+	buildIndex(t, admin, plain, BuildOptions{})
+	st, err := ReadIndexState(bg(t), admin, "", "ann_c14_hnsw")
+	if err != nil || !st.Valid || st.Def.Options != "" {
+		t.Fatalf("a spec with no parameters: %+v %v; want no options", st, err)
+	}
+	tuned := plain
+	tuned.M, tuned.EfConstruction = 24, 200
+	ref, err := ReferenceDefinition(bg(t), mustPin(t, admin), tuned)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if ref.Options != "ef_construction=200,m=24" {
+		t.Fatalf("the tuned reference's options %q, want ef_construction=200,m=24", ref.Options)
+	}
+	if st.Def == ref {
+		t.Fatal("the plain index reads as the tuned spec's: a consumer would never rebuild it")
+	}
+	uses := func(index string) {
+		t.Helper()
+		plan := explain(t, admin, `SELECT id FROM ann_c14 WHERE model = 'm' ORDER BY (vec::vector(4)) <=> $1::vector(4) LIMIT 5`, []any{"[1,0,0,0]"})
+		if !strings.Contains(plan, index) {
+			t.Fatalf("the query does not use %s:\n%s", index, plan)
+		}
+	}
+	uses("ann_c14_hnsw")
+	next := tuned
+	next.Name = "ann_c14_hnsw_next"
+	buildIndex(t, admin, next, BuildOptions{})
+	p := mustPin(t, admin)
+	if err := DropIndexConcurrently(bg(t), p, "", "ann_c14_hnsw", BuildOptions{}); err != nil {
+		t.Fatal(err)
+	}
+	uses("ann_c14_hnsw_next") // between the drop and the rename, the replacement serves
+	if err := RenameIndex(bg(t), p, "", "ann_c14_hnsw_next", "ann_c14_hnsw", BuildOptions{}); err != nil {
+		t.Fatal(err)
+	}
+	p.Discard()
+	uses("ann_c14_hnsw")
+	st, err = ReadIndexState(bg(t), admin, "", "ann_c14_hnsw")
+	if err != nil || !st.Exists || !st.Valid || st.Def != ref {
+		t.Fatalf("after the swap: %+v %v; want valid, the tuned reference %+v", st, err, ref)
+	}
+	if gone, _ := ReadIndexState(bg(t), admin, "", "ann_c14_hnsw_next"); gone.Exists {
+		t.Fatal("the second name is still there after the rename")
+	}
+	pt := mustPin(t, admin)
+	tx, err := pt.BeginSessionTx(bg(t), dao.TxOptions{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = tx.Rollback() }()
+	if err := RenameIndex(bg(t), pt, "", "ann_c14_hnsw", "ann_c14_x", BuildOptions{}); !errors.Is(err, errs.ErrPrecondition) {
+		t.Errorf("a rename with a transaction open: %v, want ErrPrecondition", err)
+	}
+}

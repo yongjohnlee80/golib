@@ -94,7 +94,19 @@ type IndexSpec struct {
 	Method  string       // "hnsw" or "btree"
 	Element IndexElement // from HNSWIndexElement or ColumnElement
 	WhereEq []EqText     // the partial predicate: each column = a text literal, ANDed
+	// M and EfConstruction are an hnsw index's build parameters (pgvector's m, 2 to 100, and
+	// ef_construction, 4 to 1000 and at least twice m), written WITH (…). Zero is pgvector's
+	// default (16 and 64) and writes nothing, so a spec that sets neither builds as before.
+	M, EfConstruction int
 }
+
+// pgvector's HNSW build parameter defaults and bounds.
+const (
+	hnswDefaultM = 16
+	hnswMaxM     = 100
+	hnswMinEfC   = 4
+	hnswMaxEfC   = 1000
+)
 
 func (s IndexSpec) check() error {
 	if err := checkTable(s.Table); err != nil {
@@ -117,7 +129,48 @@ func (s IndexSpec) check() error {
 			return err
 		}
 	}
+	return s.checkHNSW()
+}
+
+// checkHNSW refuses build parameters on another method, or outside pgvector's bounds: m 2 to 100,
+// ef_construction 4 to 1000 and at least twice m (the default 16 when m is unset).
+func (s IndexSpec) checkHNSW() error {
+	if s.M == 0 && s.EfConstruction == 0 {
+		return nil
+	}
+	switch m := cmpOr(s.M, hnswDefaultM); {
+	case s.Method != "hnsw":
+		return errs.Wrap(errs.ErrInvalidArgument, "postgres: index %s: m and ef_construction are hnsw's, not %s's", s.Name, s.Method)
+	case s.M != 0 && (s.M < 2 || s.M > hnswMaxM):
+		return errs.Wrap(errs.ErrInvalidArgument, "postgres: index %s: m %d, want 2 to %d", s.Name, s.M, hnswMaxM)
+	case s.EfConstruction != 0 && (s.EfConstruction < hnswMinEfC || s.EfConstruction > hnswMaxEfC):
+		return errs.Wrap(errs.ErrInvalidArgument, "postgres: index %s: ef_construction %d, want %d to %d", s.Name, s.EfConstruction, hnswMinEfC, hnswMaxEfC)
+	case s.EfConstruction != 0 && s.EfConstruction < 2*m:
+		return errs.Wrap(errs.ErrInvalidArgument, "postgres: index %s: ef_construction %d is less than twice m (%d)", s.Name, s.EfConstruction, m)
+	}
 	return nil
+}
+
+func cmpOr(v, def int) int {
+	if v != 0 {
+		return v
+	}
+	return def
+}
+
+// withSQL is the spec's WITH (…) for the parameters it sets, "" for none.
+func (s IndexSpec) withSQL() string {
+	var opts []string
+	if s.M != 0 {
+		opts = append(opts, "m = "+strconv.Itoa(s.M))
+	}
+	if s.EfConstruction != 0 {
+		opts = append(opts, "ef_construction = "+strconv.Itoa(s.EfConstruction))
+	}
+	if len(opts) == 0 {
+		return ""
+	}
+	return " WITH (" + strings.Join(opts, ", ") + ")"
 }
 
 // createSQL is the spec's CREATE INDEX on table (its own, or a reference copy's) as name.
@@ -127,7 +180,7 @@ func (s IndexSpec) createSQL(concurrently bool, table, name string) string {
 	if concurrently {
 		b.WriteString("CONCURRENTLY ")
 	}
-	b.WriteString(quoteIdent(name) + " ON " + PostgresDialect{}.QuoteTable(table) + " USING " + s.Method + " " + s.Element.sql)
+	b.WriteString(quoteIdent(name) + " ON " + PostgresDialect{}.QuoteTable(table) + " USING " + s.Method + " " + s.Element.sql + s.withSQL())
 	for i, w := range s.WhereEq {
 		if i == 0 {
 			b.WriteString(" WHERE ")
@@ -238,10 +291,39 @@ func DropIndexConcurrently(ctx context.Context, p PinnedConn, schema, name strin
 	return err
 }
 
+// RenameIndex renames schema.from (from alone, resolved by the search path, when schema is "") to
+// to with ALTER INDEX … RENAME TO on p's session, outside any transaction, after setting o's
+// timeouts: the last step of a replacement built under a second name, once the old index is
+// dropped. The rename is a catalog change only; it holds its lock for that alone.
+func RenameIndex(ctx context.Context, p PinnedConn, schema, from, to string, o BuildOptions) error {
+	if schema != "" {
+		if err := checkIdent("schema", schema); err != nil {
+			return err
+		}
+	}
+	if err := checkIdent("index name", from); err != nil {
+		return err
+	}
+	if err := checkIdent("index name", to); err != nil {
+		return err
+	}
+	pc, err := lifecycleSession(p)
+	if err != nil {
+		return err
+	}
+	if err := setTimeouts(ctx, pc, o); err != nil {
+		return err
+	}
+	_, err = pc.execPrivate(ctx, "ALTER INDEX "+qualified(schema, from)+" RENAME TO "+quoteIdent(to), nil)
+	return err
+}
+
 // IndexDefinition is an index's canonical definition, read from the catalog: its access method,
-// the expression of its first element, that element's operator class, and its predicate ("" for
-// none). Two definitions are the same index when they are ==.
-type IndexDefinition struct{ Method, Expr, OpClass, Predicate string }
+// the expression of its first element, that element's operator class, its predicate ("" for
+// none), and its storage parameters (pg_class.reloptions, sorted and joined by commas, as
+// "ef_construction=200,m=16"; "" for none). Two definitions are the same index when they are ==,
+// so an index built with other parameters is not the one a spec declares.
+type IndexDefinition struct{ Method, Expr, OpClass, Predicate, Options string }
 
 // IndexState is what the catalog says of an index by name.
 type IndexState struct {
@@ -252,7 +334,8 @@ type IndexState struct {
 // indexStateSQL reads an index's validity and canonical tuple by its name, bound: the schema
 // ($1, NULL for the search path) and the name ($2).
 const indexStateSQL = `SELECT i.indisvalid, am.amname, pg_get_indexdef(i.indexrelid, 1, true), oc.opcname,
-       coalesce(pg_get_expr(i.indpred, i.indrelid, true), '')
+       coalesce(pg_get_expr(i.indpred, i.indrelid, true), ''),
+       coalesce((SELECT string_agg(o, ',' ORDER BY o) FROM unnest(c.reloptions) o), '')
   FROM pg_index i
   JOIN pg_class c ON c.oid = i.indexrelid
   JOIN pg_am am ON am.oid = c.relam
@@ -288,7 +371,7 @@ func readIndexState(ctx context.Context, q dao.Querier, schema any, name string)
 		return IndexState{}, rows.Err()
 	}
 	st := IndexState{Exists: true}
-	if err := rows.Scan(&st.Valid, &st.Def.Method, &st.Def.Expr, &st.Def.OpClass, &st.Def.Predicate); err != nil {
+	if err := rows.Scan(&st.Valid, &st.Def.Method, &st.Def.Expr, &st.Def.OpClass, &st.Def.Predicate, &st.Def.Options); err != nil {
 		return IndexState{}, err
 	}
 	return st, rows.Close()

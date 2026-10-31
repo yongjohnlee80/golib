@@ -315,3 +315,71 @@ func TestIndexSpecRendersAndChecks(t *testing.T) {
 		t.Errorf("pid 0: %v", err)
 	}
 }
+
+// TestIndexSpecBuildParameters: an hnsw spec's m and ef_construction are written WITH (…), each
+// only when set, so a spec that sets neither renders as before; outside pgvector's bounds (m 2 to
+// 100, ef_construction 4 to 1000 and at least twice m, or 16's when m is unset), or on another
+// method, the spec is refused before anything is sent. RenameIndex refuses names that are no
+// lowercase identifier the same way.
+func TestIndexSpecBuildParameters(t *testing.T) {
+	el, err := HNSWIndexElement("vec", dao.Cosine, f32x4)
+	if err != nil {
+		t.Fatal(err)
+	}
+	base := IndexSpec{Table: "rag_embedding", Name: "ann", Method: "hnsw", Element: el}
+	head := `CREATE INDEX "ann" ON "rag_embedding" USING hnsw (("vec"::vector(4)) vector_cosine_ops)`
+	for _, c := range []struct {
+		m, efc int
+		with   string
+	}{
+		{0, 0, ""},
+		{0, 200, " WITH (ef_construction = 200)"},
+		{32, 0, " WITH (m = 32)"},
+		{24, 100, " WITH (m = 24, ef_construction = 100)"},
+		{2, 4, " WITH (m = 2, ef_construction = 4)"},
+		{100, 1000, " WITH (m = 100, ef_construction = 1000)"},
+		{0, 32, " WITH (ef_construction = 32)"},
+	} {
+		s := base
+		s.M, s.EfConstruction = c.m, c.efc
+		if err := s.check(); err != nil {
+			t.Errorf("m %d, ef_construction %d: %v", c.m, c.efc, err)
+			continue
+		}
+		if got := s.createSQL(false, s.Table, s.Name); got != head+c.with {
+			t.Errorf("m %d, ef_construction %d:\n got  %s\n want %s", c.m, c.efc, got, head+c.with)
+		}
+	}
+	for name, c := range map[string]struct {
+		method string
+		m, efc int
+	}{
+		"m 1":                                {"hnsw", 1, 0},
+		"m 101":                              {"hnsw", 101, 0},
+		"ef_construction 3":                  {"hnsw", 2, 3},
+		"ef_construction 1001":               {"hnsw", 0, 1001},
+		"ef_construction under twice m":      {"hnsw", 32, 63},
+		"ef_construction under 32 (m unset)": {"hnsw", 0, 31},
+		"a negative m":                       {"hnsw", -1, 0},
+		"btree with m":                       {"btree", 16, 0},
+		"btree with ef_construction":         {"btree", 0, 64},
+	} {
+		s := base
+		s.Method, s.M, s.EfConstruction = c.method, c.m, c.efc
+		if c.method == "btree" {
+			s.Element, _ = ColumnElement("vec")
+		}
+		if err := s.check(); !errors.Is(err, errs.ErrInvalidArgument) {
+			t.Errorf("%s: %v, want ErrInvalidArgument", name, err)
+		}
+	}
+	for name, names := range map[string][3]string{
+		"an upper-case from": {"", "Old", "new"},
+		"a quoted to":        {"", "old", `a"b`},
+		"a bad schema":       {"App", "old", "new"},
+	} {
+		if err := RenameIndex(context.Background(), nil, names[0], names[1], names[2], BuildOptions{}); !errors.Is(err, errs.ErrInvalidArgument) {
+			t.Errorf("RenameIndex, %s: %v, want ErrInvalidArgument", name, err)
+		}
+	}
+}
