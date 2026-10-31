@@ -86,10 +86,36 @@ Origin is enforced same-origin by default; a cross-origin upgrade is refused
 with HTTP 403 (visible to `RequestLogger`). Relax it only deliberately via
 `InsecureAllowOrigins`.
 
+## Client: `DialUnix`
+
+`DialUnix(ctx, path, opts...)` connects to a WebSocket server on a unix socket:
+a local peer's endpoint, such as another program's control socket. It answers
+a `Conn` with the `Session`'s data methods (`Read`, `Write`, `ReadJSON`,
+`WriteJSON`, `Subprotocol`), plus `Close` (the close handshake) and `CloseNow`.
+`ctx` bounds the dial and the handshake alone; the connection outlives it
+until closed. The handshake goes to the socket alone, never through a proxy.
+
+```go
+c, err := ws.DialUnix(ctx, "/run/user/1000/app.sock", ws.DialPath("/ws"))
+if err != nil { return err }
+defer c.CloseNow()
+if err := c.WriteJSON(ctx, req); err != nil { return err }
+err = c.ReadJSON(ctx, &resp)
+```
+
+| Option | Default | Purpose |
+|---|---|---|
+| `DialPath(p)` | `/` | the route the server serves its endpoint at |
+| `DialSubprotocols(...)` | none | the subprotocols offered; the chosen one is `Conn.Subprotocol` |
+| `DialReadLimit(n)` | 1 MiB | per-message cap; oversize closes with `StatusMessageTooBig` |
+
+`CloseStatus(err)` is the close code a read's error carries when the peer
+closed, and -1 otherwise.
+
 ## Concurrency contract
 
-At most one concurrent reader and one concurrent writer per `Session` (the
-protocol's constraint).
+At most one concurrent reader and one concurrent writer per `Session` and per
+`Conn` (the protocol's constraint).
 
 ## License
 
