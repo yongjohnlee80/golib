@@ -54,8 +54,11 @@ type FileReport struct {
 	Kind          ChangeKind `json:"kind"`
 	Coverage      Comparison `json:"coverage"`
 	ChangedBlocks Stats      `json:"changed_blocks"`
-	MissingAtHead bool       `json:"missing_at_head"`
-	ExcludedOn    string     `json:"excluded_on,omitempty"` // see FileChange.ExcludedOn
+	// BaseChangedBlocks are the base profile's blocks the change replaced or deleted (FileChange's
+	// OldRanges): code a deletion took out, which no head block shows.
+	BaseChangedBlocks Stats  `json:"base_changed_blocks"`
+	MissingAtHead     bool   `json:"missing_at_head"`
+	ExcludedOn        string `json:"excluded_on,omitempty"` // see FileChange.ExcludedOn
 }
 
 // PackageReport is the comparison for one Go package directory.
@@ -128,7 +131,18 @@ func analyzeFile(change FileChange, base, head *Profile, baseFiles, headFiles ma
 	if change.Kind != ChangeDeleted {
 		file.ChangedBlocks = intersectStats(head.Files[newPath], change.Ranges)
 	}
+	if change.Kind != ChangeAdded {
+		file.BaseChangedBlocks = intersectStats(base.Files[oldPath], change.OldRanges)
+	}
 	return file
+}
+
+// CodeChanged reports whether the change touched any of the file's statements: a head block in
+// its changed lines, or a base block in the lines it replaced or deleted. A change to comments,
+// whitespace or declarations alone touches none: it cannot move the file's coverage, so a
+// difference there is the runs', not the change's.
+func (f FileReport) CodeChanged() bool {
+	return f.ChangedBlocks.Total > 0 || f.BaseChangedBlocks.Total > 0
 }
 
 func comparePackages(baseFiles, headFiles map[string]Stats) []PackageReport {

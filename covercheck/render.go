@@ -38,11 +38,20 @@ func WriteText(w io.Writer, result Result) error {
 		if file.ExcludedOn != "" {
 			state += ",not built on " + file.ExcludedOn
 		}
+		if noCodeChanged(file) {
+			state += ",no code changed"
+		}
 		if _, err := fmt.Fprintf(w, "%s\t%s\t%s\t%s\t%s\t%s\n", file.Path, formatStats(file.Coverage.Base), formatStats(file.Coverage.Head), formatDelta(file.Coverage.Delta), formatStats(file.ChangedBlocks), state); err != nil {
 			return err
 		}
 	}
 	return writeViolationText(w, result)
+}
+
+// noCodeChanged reports a modified or renamed file whose change touched none of its statements:
+// the per-file regression limit does not hold it (see FileReport.CodeChanged).
+func noCodeChanged(file FileReport) bool {
+	return (file.Kind == ChangeModified || file.Kind == ChangeRenamed) && !file.CodeChanged()
 }
 
 // WriteMarkdown writes a report suitable for a CI job summary.
@@ -67,6 +76,9 @@ func WriteMarkdown(w io.Writer, result Result) error {
 		}
 		if file.ExcludedOn != "" {
 			state += ", not built on " + file.ExcludedOn
+		}
+		if noCodeChanged(file) {
+			state += ", no code changed"
 		}
 		if _, err := fmt.Fprintf(w, "| `%s` | %s | %s | %s | %s | %s |\n", escapeMarkdown(file.Path), formatStats(file.Coverage.Base), formatStats(file.Coverage.Head), formatDelta(file.Coverage.Delta), formatStats(file.ChangedBlocks), state); err != nil {
 			return err

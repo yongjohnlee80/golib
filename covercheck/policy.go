@@ -78,7 +78,9 @@ func WithMaximumTotalRegression(percentagePoints float64) PolicyOption {
 }
 
 // WithMaximumFileRegression permits at most percentagePoints of coverage
-// decrease in each changed file.
+// decrease in each changed file whose code changed (FileReport.CodeChanged): a
+// file whose change touched none of its statements is not held by it, since
+// the change cannot have moved its coverage.
 func WithMaximumFileRegression(percentagePoints float64) PolicyOption {
 	return thresholdPolicyOption("maximum file regression", percentagePoints, func(p *policy, value *float64) { p.maxFileDrop = value })
 }
@@ -204,7 +206,10 @@ func Evaluate(report Report, opts ...PolicyOption) ([]Violation, error) {
 		if fileRules.minimumChanged != nil {
 			violations = appendMinimum(violations, "file", file.Path, "minimum_changed", file.ChangedBlocks, *fileRules.minimumChanged)
 		}
-		if fileRules.maxRegression != nil && file.Coverage.Delta != nil && *file.Coverage.Delta < -*fileRules.maxRegression {
+		// the per-file limit holds a file whose code the change touched; one whose statements it left
+		// alone (comments, whitespace) cannot have its coverage moved by it, and a drop there is two
+		// runs' difference, which the total limit still bounds
+		if fileRules.maxRegression != nil && file.CodeChanged() && file.Coverage.Delta != nil && *file.Coverage.Delta < -*fileRules.maxRegression {
 			violations = append(violations, regressionViolation("file", file.Path, "maximum_file_regression", *file.Coverage.Delta, *fileRules.maxRegression))
 		}
 	}

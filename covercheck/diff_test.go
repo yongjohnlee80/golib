@@ -64,3 +64,35 @@ func TestParseUnifiedDiffQuotedPath(t *testing.T) {
 		t.Fatalf("changes = %#v", changes)
 	}
 }
+
+// TestParseUnifiedDiffKeepsTheOldSide: each hunk's base-side lines are kept, a deletion's included,
+// which has no head-side range; a hunk that only adds has no base side.
+func TestParseUnifiedDiffKeepsTheOldSide(t *testing.T) {
+	t.Parallel()
+	diff := `diff --git a/pkg/a.go b/pkg/a.go
+--- a/pkg/a.go
++++ b/pkg/a.go
+@@ -2,0 +3,2 @@
++one
++two
+@@ -8,2 +9,0 @@
+-gone
+-gone too
+@@ -10 +12 @@
+-old
++new
+`
+	changes, err := ParseUnifiedDiff(strings.NewReader(diff))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(changes) != 1 {
+		t.Fatalf("changes = %d, want 1", len(changes))
+	}
+	if got := changes[0].Ranges; len(got) != 2 || got[0] != (LineRange{Start: 3, End: 4}) || got[1] != (LineRange{Start: 12, End: 12}) {
+		t.Fatalf("head ranges = %#v, want 3-4 and 12 (the deletion has none)", got)
+	}
+	if got := changes[0].OldRanges; len(got) != 2 || got[0] != (LineRange{Start: 8, End: 9}) || got[1] != (LineRange{Start: 10, End: 10}) {
+		t.Fatalf("old ranges = %#v, want 8-9 (the deletion) and 10 (the replaced line), and none for the addition", got)
+	}
+}
