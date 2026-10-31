@@ -23,6 +23,12 @@
 //     reader and one concurrent writer goroutine (the caller must ensure concurrent readers
 //     or writers are not spawned).
 //
+// # Client
+//
+// [DialUnix] connects to a WebSocket server on a unix socket (a local peer's endpoint, such as
+// another program's control socket) and answers a [Conn] with the Session's data methods; its ctx
+// bounds the dial and handshake alone.
+//
 // This is the only golib package importing the WebSocket dependency
 // (github.com/coder/websocket); the server core stays dependency-free.
 package ws
