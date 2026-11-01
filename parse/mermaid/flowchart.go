@@ -470,7 +470,8 @@ var (
 func (p *parser) label(raw string, off int) (string, error) {
 	if len(raw) > MaxLabel {
 		l, _ := p.pos(off)
-		p.unsupported = fmt.Errorf("%w: a label of %d bytes on line %d, more than %d", ErrTooLarge, len(raw), l, MaxLabel)
+		p.unsupported = notDrawn(ErrTooLarge, l, fmt.Sprintf("a label of %d bytes, more than %d", len(raw), MaxLabel),
+			"a label of %d bytes on line %d, more than %d", len(raw), l, MaxLabel)
 		return "", p.unsupported
 	}
 	s := strings.TrimSpace(raw)

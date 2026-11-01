@@ -12,6 +12,7 @@ d, err := mermaid.Parse(src)
 switch {
 case errors.Is(err, mermaid.ErrUnsupported), errors.Is(err, mermaid.ErrTooLarge):
 	// hand it to another renderer
+	var nd *mermaid.NotDrawnError // its Line (0: the type or the whole source) and What
 case err != nil:
 	var se *mermaid.SyntaxError // its Line and Col, to show in place
 }
@@ -32,6 +33,10 @@ this parser claims. When a diagram has both, `ErrUnsupported` wins, because the 
 may read what this one cannot.
 
 A source over 64 KiB (`MaxSource`), or a label over 1 KiB (`MaxLabel`), is `ErrTooLarge`.
+
+Every `ErrUnsupported` and `ErrTooLarge` is a `*NotDrawnError`: `What` was refused and the `Line`
+it is on, 0 for the diagram's type or the whole source, so a checker can point at it as it does
+at a `SyntaxError`. Its text is the error's.
 
 ## The flowchart subset
 

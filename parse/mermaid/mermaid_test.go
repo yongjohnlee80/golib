@@ -180,3 +180,43 @@ func TestNames(t *testing.T) {
 		t.Errorf("SyntaxError text %q", se.Error())
 	}
 }
+
+// TestNotDrawnSaysItsLine: every ErrUnsupported and ErrTooLarge is a *NotDrawnError that says what
+// and on which line (0: the type, or the whole source), still errors.Is its sentinel, and keeps the
+// text it always had; <br> in a label is drawn.
+func TestNotDrawnSaysItsLine(t *testing.T) {
+	long := strings.Repeat("x", mermaid.MaxLabel+1)
+	for _, c := range []struct {
+		src        string
+		sentinel   error
+		line       int
+		what, text string
+	}{
+		{"flowchart LR\n  A-->B\n  C[<job id>]", mermaid.ErrUnsupported, 3, "HTML in a label", "mermaid: not drawn natively: HTML in a label (line 3)"},
+		{"flowchart LR\n  A[fa:fa-twitter for peace]", mermaid.ErrUnsupported, 2, "an icon", "mermaid: not drawn natively: an icon (line 2)"},
+		// unsupported anywhere wins over a syntax error before it, at its own line
+		{"flowchart LR\n  A -->\n  click A call x()", mermaid.ErrUnsupported, 3, "click", "mermaid: not drawn natively: click (line 3)"},
+		{"gantt\n  title x", mermaid.ErrUnsupported, 0, `"gantt" diagrams`, `mermaid: not drawn natively: "gantt" diagrams`},
+		{"---\ntitle: x\n---\nflowchart LR\n  A-->B", mermaid.ErrUnsupported, 1, "front matter", "mermaid: not drawn natively: front matter (line 1)"},
+		{"flowchart LR\n  A-->B\n  A[" + long + "]", mermaid.ErrTooLarge, 3, "a label of 1025 bytes, more than 1024",
+			"mermaid: over a limit: a label of 1025 bytes on line 3, more than 1024"},
+	} {
+		_, err := mermaid.Parse(c.src)
+		var nd *mermaid.NotDrawnError
+		if !errors.As(err, &nd) || !errors.Is(err, c.sentinel) {
+			t.Errorf("%.40q: %v (%T), want a *NotDrawnError that is %v", c.src, err, err, c.sentinel)
+			continue
+		}
+		if nd.Line != c.line || nd.What != c.what || err.Error() != c.text {
+			t.Errorf("%.40q: line %d, what %q, text %q; want line %d, %q, %q", c.src, nd.Line, nd.What, err.Error(), c.line, c.what, c.text)
+		}
+	}
+	big := "flowchart LR\n" + strings.Repeat("A-->B\n", mermaid.MaxSource/6+1)
+	var nd *mermaid.NotDrawnError
+	if _, err := mermaid.Parse(big); !errors.As(err, &nd) || nd.Line != 0 || !errors.Is(err, mermaid.ErrTooLarge) {
+		t.Errorf("a %d-byte source: %v, want a *NotDrawnError of no line that is ErrTooLarge", len(big), err)
+	}
+	if _, err := mermaid.Parse("flowchart LR\n  A[one<br/>two] --> B[three<br>four]"); err != nil {
+		t.Errorf("<br> in a label: %v, want drawn", err)
+	}
+}

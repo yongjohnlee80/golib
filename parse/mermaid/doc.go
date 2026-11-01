@@ -5,7 +5,7 @@
 //	d, err := mermaid.Parse("flowchart LR\n  A[Start] --> B{Ready?}\n  B -->|yes| C([Done])")
 //	switch {
 //	case errors.Is(err, mermaid.ErrUnsupported), errors.Is(err, mermaid.ErrTooLarge):
-//		// another renderer draws it
+//		// another renderer draws it; a *NotDrawnError says what, and on which line
 //	case err != nil:
 //		// a *SyntaxError: show it, with its line
 //	}
