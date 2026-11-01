@@ -164,13 +164,18 @@ func (m *Modal) HandleAction(inv tui.ActionInvocation) bool {
 	// provenance, so the activation is recorded as the keyboard event it was.
 	for _, b := range m.card.buttons {
 		if b != nil && b.Role() == ButtonRoleReject && b.Enabled() {
+			opened := m.opens
 			if ctx := m.Context(); ctx != nil {
 				ctx.ForwardAction(b, tui.ActivateAction{})
 			}
 			// Dismiss even if the button refused: Escape closes the dialog, and
 			// a Cancel handler that declined is not a reason to trap the user.
-			// Idempotent, so a callback that dismissed already costs nothing.
-			m.Dismiss(DismissCancel)
+			// A no-op once the button's answer dismissed it, unless a dismissal
+			// callback opened it again: that dialog is a new one, which this
+			// request never reached, and it stays.
+			if m.opens == opened {
+				m.Dismiss(DismissCancel)
+			}
 			return true
 		}
 	}

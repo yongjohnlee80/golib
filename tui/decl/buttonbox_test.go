@@ -93,6 +93,79 @@ func TestEscapeRejects(t *testing.T) {
 	}
 }
 
+// A rejected handler may open its dialog again ("ask again"): Escape, which
+// presses the RejectRole button, then leaves the reopened dialog open, never
+// closed again by the dismissal that raised rejected.
+func TestARejectedHandlerMayReopenItsDialog(t *testing.T) {
+	again := strings.Replace(unsavedDoc, `  onRejected: App.log("rejected")`,
+		`  onRejected: d.open()
+  onClosed: App.log("closed")`, 1)
+	if again == unsavedDoc {
+		t.Fatal("fixture: the reopening onRejected did not apply")
+	}
+	s, rec := runUnsavedDoc(t, again)
+	s.Keys(t, tui.KeyEvent{Kind: tui.KeyPress, Code: tui.KeyEscape})
+	// the first opening's closed is still raised, once, after its rejected
+	s.WaitFor(t, "the Reject button pressed", func(string) bool { return logged(rec) == "stay,closed" })
+	onScreenLoop(t, s, func() {})
+	// the reopened dialog is open if it answers: closed again, &Save reaches nothing
+	s.Keys(t, decltest.Rune('s'))
+	s.WaitFor(t, "the reopened dialog accepted", func(string) bool { return logged(rec) == "stay,closed,save,accepted,closed" })
+	s.WaitFor(t, "closed by its answer", func(sc string) bool { return !strings.Contains(sc, "┌ unsaved ") })
+}
+
+// Every way out raises closed, once, after its answer: a consumer that marks an
+// answer in accepted or rejected clears the mark in the closed that follows, so
+// an answer never followed by closed would leave the mark set and swallow the
+// next close(). Escape: stay, rejected, closed; Save:
+// save, accepted, closed; Discard: discard, closed; close(): closed alone.
+func TestEveryWayOutRaisesClosedAfterItsAnswer(t *testing.T) {
+	doc := strings.Replace(unsavedDoc, `  onRejected: App.log("rejected")`,
+		`  onRejected: App.log("rejected")
+  onClosed: App.log("closed")`, 1)
+	if doc == unsavedDoc {
+		t.Fatal("fixture: onClosed did not apply")
+	}
+	s, rec := runUnsavedDoc(t, doc)
+	reopen := func() {
+		onScreenLoop(t, s, func() {
+			if err := s.Program.Call("d", "open"); err != nil {
+				t.Error(err)
+			}
+		})
+		s.WaitForText(t, "┌ unsaved ")
+	}
+	want := ""
+	for _, step := range []struct {
+		name string
+		do   func()
+		logs string
+	}{
+		{"Escape", func() { s.Keys(t, tui.KeyEvent{Kind: tui.KeyPress, Code: tui.KeyEscape}) }, "stay,rejected,closed"},
+		{"Save", func() { s.Keys(t, decltest.Rune('s')) }, "save,accepted,closed"},
+		{"Discard", func() { s.Keys(t, decltest.Rune('d')) }, "discard,closed"},
+		{"close()", func() {
+			onScreenLoop(t, s, func() {
+				if err := s.Program.Call("d", "close"); err != nil {
+					t.Error(err)
+				}
+			})
+		}, "closed"},
+	} {
+		if want != "" {
+			reopen()
+			want += ","
+		}
+		want += step.logs
+		step.do()
+		s.WaitFor(t, step.name+" closed", func(sc string) bool { return !strings.Contains(sc, "┌ unsaved ") })
+		onScreenLoop(t, s, func() {})
+		if got := logged(rec); got != want {
+			t.Fatalf("after %s: logged %q, want %q", step.name, got, want)
+		}
+	}
+}
+
 // No default: Enter still presses the focused button, just like Space. A
 // DialogButtonBox's buttons are not auto-defaults for other focused controls.
 func TestEnterPressesFocusedButtonWithoutADefault(t *testing.T) {

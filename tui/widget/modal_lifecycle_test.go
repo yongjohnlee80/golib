@@ -462,6 +462,50 @@ func TestAnOnDismissCallbackMayReopenTheDialog(t *testing.T) {
 	}
 }
 
+// TestAReopenFromTheCancelButtonsDismissalStaysOpen.
+//
+// Escape, or a host dismiss key, presses the Reject button, and the button's own
+// answer dismisses the dialog; a callback may open it again ("ask again", the
+// same reopen as above). The key's fallback dismissal, there for a Cancel that
+// declined, must not then close the dialog the callback opened: that dialog is a
+// new one, which the key never reached.
+func TestAReopenFromTheCancelButtonsDismissalStaysOpen(t *testing.T) {
+	for _, key := range []tui.KeyEvent{
+		{Kind: tui.KeyPress, Code: tui.KeyEscape},
+		{Kind: tui.KeyPress, Code: 'q', Text: "q"},
+	} {
+		var host *widget.OverlayHost
+		var m *widget.Modal
+		var dismissals atomic.Int64
+		var reopenErr error
+		cancel := widget.NewButton("Nope", widget.WithRole(widget.ButtonRoleReject))
+		m = widget.NewModal(widget.NewText("Body"), widget.WithButtons(cancel), widget.WithModalDismissKeys('q'),
+			widget.WithOnDismiss(func(widget.DismissReason) {
+				if dismissals.Add(1) == 1 {
+					reopenErr = m.Open(host)
+				}
+			}))
+		h, hh, _ := modalFixture(t, m, 40, 12)
+		host = hh
+		openOn(t, h, m, host)
+
+		h.inject(key)
+		h.waitFor("dismissed", func() bool { return dismissals.Load() >= 1 })
+		h.settle()
+
+		if reopenErr != nil {
+			t.Fatalf("%q: reopening from the dismissal callback failed: %v", key.Text, reopenErr)
+		}
+		if n := dismissals.Load(); n != 1 {
+			t.Errorf("%q: %d dismissals, want 1: the reopened dialog was dismissed too", key.Text, n)
+		}
+		if !m.IsOpen() {
+			t.Errorf("%q: the dialog reopened by the Cancel button's dismissal was closed again", key.Text)
+		}
+		h.stop()
+	}
+}
+
 // TestOpenMovesFocusBeforeItReturns.
 //
 // A dialog that is mounted and covering the UI while the control underneath
