@@ -31,6 +31,25 @@ func (e *SyntaxError) Error() string {
 	return fmt.Sprintf("mermaid: line %d, column %d: %s", e.Line, e.Col, e.Msg)
 }
 
+// NotDrawnError is every answer of Parse's that is ErrUnsupported or ErrTooLarge (Err, which
+// errors.Is matches): what is outside the subset or past a limit, and the line it is on, so a caller
+// can show it in place, as a SyntaxError's. Line is 1-based, and 0 for what is no one line's: the
+// diagram's type, or the whole source's size. Its text is the error's, as it always was.
+type NotDrawnError struct {
+	Err  error  // ErrUnsupported or ErrTooLarge
+	Line int    // 0: not one line's
+	What string // "HTML in a label", `"gantt" diagrams`, "a label of 1100 bytes, more than 1024"
+	msg  string
+}
+
+func (e *NotDrawnError) Error() string { return e.msg }
+func (e *NotDrawnError) Unwrap() error { return e.Err }
+
+// notDrawn is a NotDrawnError whose text is format's, after its sentinel's.
+func notDrawn(err error, line int, what, format string, args ...any) *NotDrawnError {
+	return &NotDrawnError{Err: err, Line: line, What: what, msg: err.Error() + ": " + fmt.Sprintf(format, args...)}
+}
+
 // Diagram is a parsed diagram; Kind says which model it is.
 type Diagram interface{ Kind() Kind }
 

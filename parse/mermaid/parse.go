@@ -9,10 +9,12 @@ import (
 )
 
 // Parse reads a diagram. ErrUnsupported (errors.Is) is a type or construct golib does not draw;
-// ErrTooLarge a source or label past its limit; a *SyntaxError a diagram that is wrong.
+// ErrTooLarge a source or label past its limit; either is a *NotDrawnError, which says its line;
+// a *SyntaxError a diagram that is wrong.
 func Parse(src string) (Diagram, error) {
 	if len(src) > MaxSource {
-		return nil, fmt.Errorf("%w: %d bytes of source, more than %d", ErrTooLarge, len(src), MaxSource)
+		what := fmt.Sprintf("%d bytes of source, more than %d", len(src), MaxSource)
+		return nil, notDrawn(ErrTooLarge, 0, what, "%s", what)
 	}
 	p := &parser{src: src}
 	p.lineStarts()
@@ -63,7 +65,7 @@ func (p *parser) fail(off int, format string, args ...any) {
 func (p *parser) unsupport(off int, what string) {
 	if p.unsupported == nil {
 		l, _ := p.pos(off)
-		p.unsupported = fmt.Errorf("%w: %s (line %d)", ErrUnsupported, what, l)
+		p.unsupported = notDrawn(ErrUnsupported, l, what, "%s (line %d)", what, l)
 	}
 }
 
@@ -139,7 +141,7 @@ func (p *parser) header() (kw, rest string, restOff int, err error) {
 		switch {
 		case line == "" || strings.HasPrefix(line, "%%"):
 		case line == "---":
-			return "", "", 0, fmt.Errorf("%w: front matter (line 1)", ErrUnsupported)
+			return "", "", 0, notDrawn(ErrUnsupported, 1, "front matter", "front matter (line 1)")
 		default:
 			lead := i + strings.Index(s[i:end], line)
 			kw = line
@@ -163,7 +165,8 @@ func (p *parser) parse() (Diagram, error) {
 			return k.parse(p, rest, restOff)
 		}
 	}
-	return nil, fmt.Errorf("%w: %q diagrams", ErrUnsupported, kw)
+	what := fmt.Sprintf("%q diagrams", kw)
+	return nil, notDrawn(ErrUnsupported, 0, what, "%s", what)
 }
 
 // kinds are the diagram kinds parsed, in Kind order: each with the header keywords that start one
