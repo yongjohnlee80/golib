@@ -49,8 +49,11 @@ type Modal struct {
 	onDismiss                         func(DismissReason)
 	maxWidthPercent, maxHeightPercent int
 
-	host     modalHost
-	open     bool
+	host modalHost
+	open bool
+	// opens counts the successful Opens, so a step that dismisses through a callback can tell the
+	// dialog it reached from one the callback opened again (the dismiss request's fallback)
+	opens    uint64
 	cardRect tui.Rect // where the card was placed at the last layout, in the modal's cells
 	// vimKeys adds h/k and l/j as aliases for the directional keys.
 	vimKeys bool
@@ -361,6 +364,7 @@ func (m *Modal) openOn(h modalHost) error {
 	}
 	m.host = h
 	m.open = true
+	m.opens++
 	// Focus moves in SYNCHRONOUSLY, before Open returns. Deferring it to a
 	// scheduled Update left an interval in which the dialog was mounted and
 	// covering the UI while the control underneath still held focus, so input
