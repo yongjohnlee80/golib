@@ -187,8 +187,8 @@ func (h *OverlayHost) Raise(f *Float) {
 // It reads the order Raise keeps (a Float raises itself when shown and when the keyboard enters
 // it) and the rectangles the last layout gave, so it is the same on every backend.
 func (h *OverlayHost) Covered(f *Float) bool {
-	if f == nil || !f.Visible() || !h.hasLayer(f) {
-		return false // a float set invisible is seen nowhere, so covered nowhere either
+	if f == nil || !seen(f) || !h.hasLayer(f) {
+		return false // a float not drawn (set invisible, or under a hidden ancestor) is covered nowhere
 	}
 	r, above := f.ContentRect(), false // a hidden float's is empty: nothing overlaps it
 	for _, layer := range h.Stack.All() {
@@ -197,7 +197,7 @@ func (h *OverlayHost) Covered(f *Float) bool {
 			continue
 		}
 		g, ok := layer.(*Float)
-		if !above || !ok || h.tierOf(g) != tierOrdinary || !g.Visible() {
+		if !above || !ok || h.tierOf(g) != tierOrdinary || !seen(g) {
 			continue
 		}
 		if !r.Intersect(g.ContentRect()).Empty() {
@@ -205,6 +205,14 @@ func (h *OverlayHost) Covered(f *Float) bool {
 		}
 	}
 	return false
+}
+
+// seen reports whether f is drawn now: mounted, and it and every ancestor visible (Context.Visible).
+// Its own flag alone misses a hidden ancestor, and a float neither shown nor drawn keeps its last
+// rectangle.
+func seen(f *Float) bool {
+	c := f.Context()
+	return c != nil && c.Visible()
 }
 
 // moveBelow moves f directly beneath the lowest layer other than f that ceiling holds, or to the
