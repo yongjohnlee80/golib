@@ -92,6 +92,17 @@ func TestOnlyAShownWindowAboveCovers(t *testing.T) {
 	if covered(t, h, host, a) {
 		t.Fatal("A, hidden, is covered")
 	}
+	h.onLoop(func() { a.Show() })
+	h.settle()
+	if !covered(t, h, host, a) {
+		t.Fatal("A, shown again beneath B, is not covered")
+	}
+	h.onLoop(func() { a.SetVisible(false) }) // shown, but set invisible: its last rectangle is stale
+	h.settle()
+	if covered(t, h, host, a) {
+		t.Fatal("A, shown but set invisible, is covered")
+	}
+	h.onLoop(func() { a.SetVisible(true) })
 
 	stray, _ := panelFloat("stray", tui.Rect{X: 2, Y: 1, W: 20, H: 6})
 	var got bool
