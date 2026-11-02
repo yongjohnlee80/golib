@@ -217,6 +217,13 @@ func (f *Float) raise() {
 	}
 }
 
+// Covered reports whether another panel or window stacked above the float overlaps it
+// (OverlayHost.Covered); false outside an OverlayHost.
+func (f *Float) Covered() bool {
+	h, ok := hostFor[coverReader](f.ctx)
+	return ok && h.Covered(f)
+}
+
 // SetAnchor moves the float's content to another anchor: a drawer that opens from another edge.
 func (f *Float) SetAnchor(a Anchor) {
 	if f.windowTarget != nil {

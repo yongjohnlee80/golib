@@ -60,6 +60,12 @@ type layerRaiser interface {
 	Raise(f *Float)
 }
 
+// coverReader is what a Float asks whether it is covered through (Float.Covered): the host that
+// orders it among the other layers.
+type coverReader interface {
+	Covered(f *Float) bool
+}
+
 // identified is a component that knows its mount's node: everything embedding Base.
 type identified interface {
 	NodeID() tui.NodeID
@@ -70,4 +76,5 @@ var (
 	_ popupHost   = (*OverlayHost)(nil)
 	_ modalHost   = (*OverlayHost)(nil)
 	_ layerRaiser = (*OverlayHost)(nil)
+	_ coverReader = (*OverlayHost)(nil)
 )

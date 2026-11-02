@@ -94,6 +94,10 @@ func (n *floatWindowNode) AddAligned(c tui.Component, align tui.Align) { n.body.
 // WindowBehavior is its window's core, for a dock or a taskbar beside it.
 func (n *floatWindowNode) WindowBehavior() *widget.WindowCore { return n.mod.Core() }
 
+// Covered reports whether another panel or window stacked above the FloatWindow overlaps it
+// (widget.OverlayHost.Covered).
+func (n *floatWindowNode) Covered() bool { return n.float.Covered() }
+
 // onScreen is what forceActiveFocus focuses into: its window, over the Window.
 func (n *floatWindowNode) onScreen() tui.Component { return n.mod }
 
@@ -227,6 +231,7 @@ var floatWindowType = Type{
 		"minimized": getter(func(n *floatWindowNode) (qml.SpecValue, error) {
 			return boolValue(n.mod.Core().State().Minimized), nil
 		}),
+		"covered": getter(func(n *floatWindowNode) (qml.SpecValue, error) { return boolValue(n.Covered()), nil }),
 	},
 	Destroyed: destroyer((*floatWindowNode).Detach),
 }
