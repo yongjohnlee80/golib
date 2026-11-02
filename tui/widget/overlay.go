@@ -187,10 +187,10 @@ func (h *OverlayHost) Raise(f *Float) {
 // It reads the order Raise keeps (a Float raises itself when shown and when the keyboard enters
 // it) and the rectangles the last layout gave, so it is the same on every backend.
 func (h *OverlayHost) Covered(f *Float) bool {
-	if f == nil || !f.Shown() || !h.hasLayer(f) {
+	if f == nil || !h.hasLayer(f) {
 		return false
 	}
-	r, above := f.ContentRect(), false
+	r, above := f.ContentRect(), false // a hidden float's is empty: nothing overlaps it
 	for _, layer := range h.Stack.All() {
 		if layer == tui.Component(f) {
 			above = true
