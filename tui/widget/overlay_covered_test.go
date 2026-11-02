@@ -115,6 +115,35 @@ func TestOnlyAShownWindowAboveCovers(t *testing.T) {
 	}
 }
 
+// TestNothingUnderAHiddenAncestorCoversOrIsCovered: a float's own visible flag isn't what's drawn.
+// With the host itself hidden, neither of two overlapping panels is drawn, so neither is covered,
+// though each one's own flag still says visible.
+func TestNothingUnderAHiddenAncestorCoversOrIsCovered(t *testing.T) {
+	host := widget.NewOverlayHost(widget.NewButton("base"))
+	a, _ := panelFloat("A", tui.Rect{X: 2, Y: 1, W: 20, H: 6})
+	b, _ := panelFloat("B", tui.Rect{X: 12, Y: 4, W: 20, H: 6})
+	host.Attach(a)
+	host.Attach(b)
+	wrap := widget.NewBox(host)
+	h := startApp(t, wrap, 40, 14)
+	defer h.stop()
+	h.onLoop(func() { a.Show(); b.Show() })
+	h.settle()
+	if !covered(t, h, host, a) {
+		t.Fatal("A is not covered by B to begin with")
+	}
+	h.onLoop(func() { host.SetVisible(false) })
+	h.settle()
+	var ownA, ownB bool
+	h.onLoop(func() { ownA, ownB = a.Visible(), b.Visible() })
+	if !ownA || !ownB {
+		t.Fatal("the cell's premise: A's and B's own flags still say visible")
+	}
+	if covered(t, h, host, a) {
+		t.Fatal("A, under a hidden host, is covered")
+	}
+}
+
 // TestADialogOrATopmostFloatDoesNotCover: a shown modal Float and a topmost one over a panel
 // leave it uncovered: the dialog takes the keyboard anyway, and a notification is not a window.
 func TestADialogOrATopmostFloatDoesNotCover(t *testing.T) {
