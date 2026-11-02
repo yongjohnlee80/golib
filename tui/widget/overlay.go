@@ -177,6 +177,36 @@ func (h *OverlayHost) Raise(f *Float) {
 	h.moveBelow(f, h.pinned)
 }
 
+// Covered reports whether f is shown and an ordinary layer stacked above it overlaps it by a cell
+// or more: another shown panel or window, laid out where f is. Shown is not the same as seen once
+// windows overlap, and a toggle that hides what it takes to be in front hides one the user can't
+// see. The open dialogs and the topmost floats don't count: a dialog takes the keyboard anyway,
+// and a notification is not a window. A layer that is not a Float (a menu's level, an anchored
+// popup) is transient and doesn't count either. False for a Float not attached here.
+//
+// It reads the order Raise keeps (a Float raises itself when shown and when the keyboard enters
+// it) and the rectangles the last layout gave, so it is the same on every backend.
+func (h *OverlayHost) Covered(f *Float) bool {
+	if f == nil || !f.Shown() || !h.hasLayer(f) {
+		return false
+	}
+	r, above := f.ContentRect(), false
+	for _, layer := range h.Stack.All() {
+		if layer == tui.Component(f) {
+			above = true
+			continue
+		}
+		g, ok := layer.(*Float)
+		if !above || !ok || h.tierOf(g) != tierOrdinary || !g.Visible() {
+			continue
+		}
+		if !r.Intersect(g.ContentRect()).Empty() {
+			return true
+		}
+	}
+	return false
+}
+
 // moveBelow moves f directly beneath the lowest layer other than f that ceiling holds, or to the
 // top when there is none. f is one of the host's layers (Raise checks it); Stack.Move ignores one
 // that is not.

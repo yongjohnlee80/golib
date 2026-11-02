@@ -197,6 +197,10 @@ func (n *drawerNode) WindowBehavior() *widget.WindowCore {
 	return n.windowMods.Core()
 }
 
+// Covered reports whether another panel or window stacked above the Drawer overlaps it
+// (widget.OverlayHost.Covered): open, but not all in front.
+func (n *drawerNode) Covered() bool { return n.float.Covered() }
+
 // Govern implements widget.GovernedWindow: its TileManager places the Drawer over its tile, and its
 // window takes the tile's target. Its own edge, size, length and floating rectangle are untouched, so
 // Release puts it back exactly where it was.
@@ -500,6 +504,9 @@ var drawerType = Type{
 		"restore":        drawerWindow(windowInvoke(widget.WindowRestoreAction{})),
 		"resizeBy":       drawerWindow(windowStep(false)),
 		"moveBy":         drawerWindow(windowStep(true)),
+	},
+	Getters: map[string]Getter{
+		"covered": getter(func(n *drawerNode) (qml.SpecValue, error) { return boolValue(n.Covered()), nil }),
 	},
 	Destroyed: destroyer((*drawerNode).Detach),
 }
