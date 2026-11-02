@@ -92,7 +92,7 @@ func TestOnlyAShownWindowAboveCovers(t *testing.T) {
 	if covered(t, h, host, a) {
 		t.Fatal("A, hidden, is covered")
 	}
-	h.onLoop(func() { a.Show() })
+	h.onLoop(func() { a.Show(); host.Raise(b) }) // showing raises A: B goes back on top
 	h.settle()
 	if !covered(t, h, host, a) {
 		t.Fatal("A, shown again beneath B, is not covered")
