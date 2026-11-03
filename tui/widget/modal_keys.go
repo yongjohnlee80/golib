@@ -66,11 +66,14 @@ type modalActivateAction struct{ target *Button }
 
 func (modalActivateAction) ActionID() tui.ActionID { return "modal.activate" }
 
-// mnemonicButton is the ENABLED button answering to r, or nil.
+// mnemonicButton is the ENABLED button answering to r, or nil: the dialog's own
+// buttons first, then a shown, enabled Button in its body (a row of tabs above
+// a list, say), whose marked letter reads as a key exactly as the buttons' do.
 //
 // Enabled only: a greyed control does not answer its key, for the same reason
 // it does not answer Enter. The list is validated against two enabled buttons
-// claiming one key, so the first match is the only match.
+// claiming one key, so the first match is the only match; a body Button sharing
+// a dialog button's key loses to it.
 func (m *Modal) mnemonicButton(r rune) *Button {
 	if r == 0 {
 		return nil
@@ -78,6 +81,30 @@ func (m *Modal) mnemonicButton(r rune) *Button {
 	for _, b := range m.card.buttons {
 		if b != nil && b.Enabled() && b.Mnemonic() != 0 &&
 			eqFold(b.Mnemonic(), r) {
+			return b
+		}
+	}
+	return bodyMnemonicButton(m.Context(), m.card.body, r)
+}
+
+// bodyMnemonicButton is the first shown, enabled Button under c answering to r,
+// in the focus walk's order (childrenOf), or nil. A hidden subtree's Buttons
+// (an inactive tab's, a collapsed section's) answer nothing.
+func bodyMnemonicButton(ctx *tui.Context, c tui.Component, r rune) *Button {
+	if c == nil {
+		return nil
+	}
+	if h, ok := c.(tui.Hideable); ok && !h.Visible() {
+		return nil
+	}
+	if b, ok := c.(*Button); ok {
+		if b.Enabled() && b.Mnemonic() != 0 && eqFold(b.Mnemonic(), r) {
+			return b
+		}
+		return nil
+	}
+	for _, ch := range childrenOf(ctx, c) {
+		if b := bodyMnemonicButton(ctx, ch, r); b != nil {
 			return b
 		}
 	}
