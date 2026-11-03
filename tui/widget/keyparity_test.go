@@ -776,3 +776,78 @@ func TestAPanicDetailKeepsANegativeNumber(t *testing.T) {
 		t.Errorf("WithResizeStep(-2) panicked with %+v, want the detail \"got -2\"", f)
 	}
 }
+
+// TestABodyButtonAnswersItsMnemonic: a Button in the dialog's body (a row of tabs above a list)
+// answers its marked letter as the dialog's own buttons do, from whichever control has focus,
+// when that control leaves the key unclaimed. A dialog button sharing the key wins; a disabled
+// body Button answers nothing; and a focused field that types the letter keeps it.
+func TestABodyButtonAnswersItsMnemonic(t *testing.T) {
+	type rig struct {
+		h                *harness
+		tabA, tabB, both atomic.Int64
+		yes              atomic.Int64
+		field            *widget.TextInput
+		b                *widget.Button
+	}
+	open := func(t *testing.T, withField bool) *rig {
+		t.Helper()
+		r := &rig{}
+		a := widget.NewButton("All", widget.WithMnemonic('a'), widget.WithOnActivate(func() { r.tabA.Add(1) }))
+		r.b = widget.NewButton("Unread", widget.WithMnemonic('u'), widget.WithOnActivate(func() { r.tabB.Add(1) }))
+		shared := widget.NewButton("Yonder", widget.WithMnemonic('y'), widget.WithOnActivate(func() { r.both.Add(1) }))
+		var rest tui.Component = shared
+		if withField {
+			r.field = widget.NewTextInput()
+			rest = widget.NewSplit(widget.Horizontal, shared, r.field)
+		}
+		body := widget.NewSplit(widget.Horizontal, a, widget.NewSplit(widget.Horizontal, r.b, rest))
+		yb := widget.NewButton("Yes", widget.WithRole(widget.ButtonRoleAccept), widget.WithMnemonic('y'),
+			widget.WithOnActivate(func() { r.yes.Add(1) }))
+		md := widget.NewModal(body, widget.WithButtons(yb))
+		h, host, _ := modalFixture(t, md, 70, 12)
+		r.h = h
+		openOn(t, h, md, host)
+		return r
+	}
+
+	t.Run("from another body button's focus", func(t *testing.T) {
+		r := open(t, false)
+		defer r.h.stop()
+		pressOn(r.h, 'u') // focus is on All, the body's first control
+		if r.tabB.Load() != 1 || r.tabA.Load() != 0 {
+			t.Errorf("u gave All %d, Unread %d; want Unread once", r.tabA.Load(), r.tabB.Load())
+		}
+	})
+	t.Run("a dialog button sharing the key wins", func(t *testing.T) {
+		r := open(t, false)
+		defer r.h.stop()
+		pressOn(r.h, 'y')
+		if r.yes.Load() != 1 || r.both.Load() != 0 {
+			t.Errorf("y gave Yes %d, the body's Yonder %d; want the dialog's Yes", r.yes.Load(), r.both.Load())
+		}
+	})
+	t.Run("a disabled body button answers nothing", func(t *testing.T) {
+		r := open(t, false)
+		defer r.h.stop()
+		r.h.onLoop(func() { r.b.SetEnabled(false) })
+		r.h.settle()
+		pressOn(r.h, 'u')
+		if r.tabB.Load() != 0 {
+			t.Errorf("a disabled body button answered its mnemonic (%d)", r.tabB.Load())
+		}
+	})
+	t.Run("a focused field keeps the letter it types", func(t *testing.T) {
+		r := open(t, true)
+		defer r.h.stop()
+		r.h.onLoop(func() { r.field.Context().RequestFocus() })
+		r.h.settle()
+		r.h.inject(tui.KeyEvent{Kind: tui.KeyPress, Code: 'u', Text: "u"}) // a typed letter carries its text
+		r.h.settle()
+		r.h.settle()
+		var text string
+		r.h.onLoop(func() { text = r.field.Value() })
+		if r.tabB.Load() != 0 || text != "u" {
+			t.Errorf("u in a focused field: Unread %d, the field %q; want the field to type it", r.tabB.Load(), text)
+		}
+	})
+}
