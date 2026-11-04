@@ -254,3 +254,21 @@ func TestAFlowchartsSelfLoopIsAMarkBesideItsBox(t *testing.T) {
 		t.Errorf("no ↺ beside A %+v: marks %v", r, g.marks)
 	}
 }
+
+// A gap's doglegs share a jog row only where their crossings don't overlap, a cell clear: two that
+// overlap take a row each, and one clear of both shares the first.
+func TestAGapsDoglegsShareJogRowsOnlyClearOfEachOther(t *testing.T) {
+	a := fcTerm{col: 5, node: 1, jog: true, jogCol: 8}   // crosses 5..8
+	b := fcTerm{col: 7, node: 2, jog: true, jogCol: 4}   // crosses 4..7: overlaps a
+	c := fcTerm{col: 12, node: 3, jog: true, jogCol: 11} // crosses 11..12: clear of both
+	rows, n := jogRows([]*fcNet{{bots: []fcTerm{a, b}}, {bots: []fcTerm{c, {col: 2, node: 4}}}})
+	if n != 2 || rows[a] == rows[b] {
+		t.Fatalf("overlapping doglegs: %d rows, a on %d, b on %d; want 2, apart", n, rows[a], rows[b])
+	}
+	if rows[c] != 0 {
+		t.Errorf("a dogleg clear of the others is on row %d, want 0", rows[c])
+	}
+	if _, ok := rows[fcTerm{col: 2, node: 4}]; ok {
+		t.Error("an end with no dogleg was given a jog row")
+	}
+}
