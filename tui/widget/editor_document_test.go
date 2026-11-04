@@ -248,7 +248,7 @@ func TestFocusGivenToAnEditorShowingItsDocumentGoesIntoIt(t *testing.T) {
 		h := startApp(t, sh, 40, 10)
 		h.onLoop(func() { h.app.FocusInto(ed); ed.SetView(widget.ViewRendered) })
 		h.barrier(sh)
-		h.shows("p05")
+		h.shows("p03")
 		h.onLoop(func() { h.app.FocusInto(ed) })
 		h.barrier(sh)
 		var in bool
@@ -256,10 +256,10 @@ func TestFocusGivenToAnEditorShowingItsDocumentGoesIntoIt(t *testing.T) {
 		if !in {
 			t.Fatal("focus given to the editor stayed on it, not in its shown HTMLView")
 		}
-		before := h.rowWith("p05")
+		before := h.rowWith("p03")
 		h.inject(tui.KeyEvent{Kind: tui.KeyPress, Code: tui.KeyDown})
 		h.barrier(sh)
-		h.waitFor("the view scrolled by Down", func() bool { return strings.Contains(h.grid(), "p05") && h.rowWith("p05") < before })
+		h.waitFor("the view scrolled by Down", func() bool { return strings.Contains(h.grid(), "p03") && h.rowWith("p03") < before })
 	})
 	t.Run("table", func(t *testing.T) {
 		h, sh, ed, doc := csvEditor(t, "name,n\nann,1\nbob,2\n")
