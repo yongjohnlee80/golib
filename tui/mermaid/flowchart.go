@@ -621,12 +621,13 @@ func layFlowchart(ctx context.Context, d *pm.FlowchartDiagram, m Measurer) (*Gri
 			if across {
 				lo, hi := toReal(cell{e.lowCol, arrow - 1 - w}), toReal(cell{e.lowCol, arrow - 2})
 				x0, x1 := min(lo.x, hi.x), max(lo.x, hi.x)
-				straight := x1-x0+1 == w
-				for x := x0; x <= x1 && straight; x++ {
-					c := cell{x, lo.y}
-					straight = g.lines[c] == east|west && g.marks[c] == "" && !inBox(c) && !labelled(c) // two edges into one port share their last run: one label on it
+				// the rows kept for it hold only its own straight last run (tracks and jogs are above
+				// them), but two edges into one port share that run: one label on it
+				clear := true
+				for x := x0; x <= x1 && clear; x++ {
+					clear = !labelled(cell{x, lo.y})
 				}
-				if straight {
+				if clear {
 					g.label(x0, lo.y, e.e.Label, m)
 					placed = true
 				}
