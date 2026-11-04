@@ -76,11 +76,15 @@ type EditorCore struct {
 	keys           keyDispatch            // modes and key routing
 	hl             highlightCache         // per-line styles
 	highlightFrame *HighlightFrame
-	autoIndent     bool
-	indentUnit     string
-	indentMarks    IndentMarks
-	layout         EditorLayout // the widget's geometry; set by Bind
-	ctx            *tui.Context // the widget's: publish, clipboard, timers; set by Bind
+	// lastFactory is the source factory this core last set (SetSourceFactory): a buffer it shows
+	// that has no highlighting of its own is given it (show), so the highlighting a host declared
+	// for the editor reaches every buffer the editor shows, not only the one shown when it was set.
+	lastFactory func() highlight.Source
+	autoIndent  bool
+	indentUnit  string
+	indentMarks IndentMarks
+	layout      EditorLayout // the widget's geometry; set by Bind
+	ctx         *tui.Context // the widget's: publish, clipboard, timers; set by Bind
 	// changeValues counts the ChangeEvent values built (publishChange): tests read it
 	changeValues int
 
@@ -515,7 +519,7 @@ func (c *EditorCore) Lines() []string { return append([]string(nil), c.buf.textL
 // afresh.
 func (c *EditorCore) SetHighlighter(h highlight.Highlighter) {
 	c.retireHighlightFrame()
-	c.sourceFactory, c.source = nil, highlight.Source{Highlighter: h}
+	c.sourceFactory, c.source, c.lastFactory = nil, highlight.Source{Highlighter: h}, nil
 	c.hl.text.setHighlighter(h)
 	hostSource(c.bufferState) // the host's highlighter replaced the finds' own
 	c.markDirty()
@@ -528,7 +532,7 @@ func CoreSourceFactory(factory func() highlight.Source) CoreOption {
 
 // SetSourceFactory replaces both source behavior and lexical-state ownership.
 func (c *EditorCore) SetSourceFactory(factory func() highlight.Source) {
-	c.sourceFactory = factory
+	c.sourceFactory, c.lastFactory = factory, factory
 	c.renewSource()
 	c.markDirty()
 }
