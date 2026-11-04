@@ -85,12 +85,13 @@ func randomFlowchart(r *rand.Rand) string {
 //   - no line or mark inside a box, and boxes clear of one another (checkGrid);
 //   - every edge's line is one connected path, from its From box to its To box;
 //   - two edges of different sources and different targets never share a run (a link);
-//   - a line beside a box only ever meets it, at a port, never runs along it;
+//   - a line beside a box only ever meets it, at a port (its line pointing in, or its mark), never
+//     runs along it;
 //   - the same input gives the same drawing.
 func TestTheFlowchartRoutersInvariantsHold(t *testing.T) {
 	for seed := range uint64(300) {
 		src := randomFlowchart(rand.New(rand.NewPCG(seed, 0x5eed)))
-		what := fmt.Sprintf("seed %d:\n%s", seed, src)
+		what := fmt.Sprintf("seed %d:\n%s\ndrawn:\n%s", seed, src, paintFC(t, src))
 		fc, g, routes := layFC(t, src)
 		checkGrid(t, what, g)
 		box := map[string]tui.Rect{}
@@ -171,7 +172,7 @@ func TestTheFlowchartRoutersInvariantsHold(t *testing.T) {
 				default:
 					dx = 1
 				}
-				if d&toward[[2]int{dx, dy}] == 0 {
+				if d&toward[[2]int{dx, dy}] == 0 && g.marks[c] == "" {
 					t.Fatalf("%s a line runs along box %s %+v at %v without meeting it", what, b.ID, r, c)
 				}
 			}
