@@ -1,0 +1,13 @@
+width 20
+> above
+> 
+> ---
+> 
+> below
+
+"above"
+""
+"────────────────────"
+    0-19 fg=border
+""
+"below"

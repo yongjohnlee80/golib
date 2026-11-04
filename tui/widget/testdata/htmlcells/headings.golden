@@ -1,0 +1,34 @@
+width 30
+> # One
+> 
+> ## Two
+> 
+> ### Three
+> 
+> #### Four
+> 
+> ##### Five
+> 
+> ###### Six
+
+"One"
+    0-2 bold fg=primary
+"━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+    0-29 fg=primary
+""
+"Two"
+    0-2 bold fg=primary
+"──────────────────────────────"
+    0-29 fg=border
+""
+"Three"
+    0-4 bold fg=accent
+""
+"Four"
+    0-3 bold fg=fg
+""
+"Five"
+    0-3 bold fg=muted
+""
+"Six"
+    0-2 italic fg=muted

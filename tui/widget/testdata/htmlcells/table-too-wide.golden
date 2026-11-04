@@ -1,0 +1,12 @@
+width 20
+> | Name | Description |
+> | --- | --- |
+> | apple | a long description of it |
+
+"Name │ Description"
+    0-3 bold fg=fg
+    5-5 fg=border
+    7-17 bold fg=fg
+"apple │ a long"
+    6-6 fg=border
+"description of it"

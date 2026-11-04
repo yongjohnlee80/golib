@@ -1,0 +1,11 @@
+width 30
+> > quoted text
+> > > nested quote
+
+"▎ quoted text"
+    0-0 fg=border
+"▎"
+    0-0 fg=border
+"▎ ▎ nested quote"
+    0-0 fg=border
+    2-2 fg=border

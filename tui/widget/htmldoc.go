@@ -19,11 +19,11 @@ import (
 // document's text: a list marker, a table's cell separator, padding. Copying a selection across
 // one gives copy instead (a tab between table cells).
 type hspan struct {
-	text                              string
-	bold, italic, code, under, strike bool
-	link                              string
-	deco                              bool
-	copy                              string
+	text                                    string
+	bold, italic, code, under, strike, mark bool
+	link                                    string
+	deco                                    bool
+	copy                                    string
 }
 
 type hblockKind uint8
@@ -40,21 +40,25 @@ const (
 // table row, with the quotes and list it sits in.
 type hblock struct {
 	kind       hblockKind
-	level      int    // a heading's
-	quote      int    // blockquote and callout depth: a bar each
-	indent     int    // cells a list item's content is indented by
-	marker     string // a list item's, drawn hanging before its first row
-	gap        bool   // a blank row before it
-	src        [2]int // the source bytes it shows (data-src="from-to"); {-1, -1} when unknown
-	table      int    // a row's table, so its columns align with its siblings'
-	cellStarts []int  // a row's: the span each cell starts at
+	level      int      // a heading's
+	quote      int      // blockquote and callout depth: a bar each
+	bars       []string // each quote level's callout type ("" a blockquote's), outermost first
+	title      string   // a callout title's type: the paragraph is its callout's title
+	indent     int      // cells a list item's content is indented by
+	marker     string   // a list item's, drawn hanging before its first row
+	gap        bool     // a blank row before it
+	src        [2]int   // the source bytes it shows (data-src="from-to"); {-1, -1} when unknown
+	table      int      // a row's table, so its columns align with its siblings'
+	cellStarts []int    // a row's: the span each cell starts at
+	align      []byte   // a row's: each cell's alignment, 'l', 'c', 'r' or 0 (none)
+	head       bool     // a row of header cells (th)
 	spans      []hspan
 }
 
 // inlineStyle is the inline formatting in force at a point of the walk.
 type inlineStyle struct {
-	bold, italic, code, under, strike bool
-	link                              string
+	bold, italic, code, under, strike, mark bool
+	link                                    string
 }
 
 type hlist struct {
@@ -69,8 +73,10 @@ type hwalker struct {
 	st       inlineStyle
 	pre      int
 	quote    int
+	bars     []string // the open quotes' callout types, outermost first
 	lists    []hlist
 	marker   string // the next block opened is a list item's first: it takes the marker
+	tight    bool   // the next block opened follows the one before with no blank row (a callout's body its title)
 	firstRow bool   // the next row opened starts its table
 	src      [2]int
 	tables   int
@@ -116,7 +122,7 @@ func (w *hwalker) listIndent() int { return 3 * len(w.lists) }
 // block opens a new block of kind, closing the open one.
 func (w *hwalker) block(kind hblockKind) *hblock {
 	w.close()
-	b := hblock{kind: kind, quote: w.quote, indent: w.listIndent(), src: w.src, gap: true}
+	b := hblock{kind: kind, quote: w.quote, bars: append([]string(nil), w.bars...), indent: w.listIndent(), src: w.src, gap: true}
 	switch {
 	case w.marker != "":
 		// a list follows the block before it after a blank row; its items, and the lists nested
@@ -126,9 +132,10 @@ func (w *hwalker) block(kind hblockKind) *hblock {
 	case len(w.lists) > 0:
 		b.gap = false
 	}
-	if len(w.blocks) == 0 {
+	if len(w.blocks) == 0 || w.tight {
 		b.gap = false
 	}
+	w.tight = false
 	w.blocks = append(w.blocks, b)
 	w.open = kind != hRule
 	return &w.blocks[len(w.blocks)-1]
@@ -179,7 +186,7 @@ func (w *hwalker) owed() string {
 		return ""
 	}
 	b := &w.blocks[len(w.blocks)-1]
-	if last := &b.spans[len(b.spans)-1]; !last.deco && last.link == "" && !last.code && !last.under && !last.strike {
+	if last := &b.spans[len(b.spans)-1]; !last.deco && last.link == "" && !last.code && !last.under && !last.strike && !last.mark {
 		last.text += " "
 		return ""
 	}
@@ -219,12 +226,12 @@ func (w *hwalker) add(sp hspan) {
 	b := w.inline()
 	if !sp.deco {
 		st := w.st
-		sp.bold, sp.italic, sp.code, sp.under, sp.strike, sp.link = st.bold, st.italic, st.code, st.under, st.strike, st.link
+		sp.bold, sp.italic, sp.code, sp.under, sp.strike, sp.mark, sp.link = st.bold, st.italic, st.code, st.under, st.strike, st.mark, st.link
 	}
 	if n := len(b.spans); n > 0 && !sp.deco {
 		last := &b.spans[n-1]
 		if !last.deco && last.bold == sp.bold && last.italic == sp.italic && last.code == sp.code &&
-			last.under == sp.under && last.strike == sp.strike && last.link == sp.link {
+			last.under == sp.under && last.strike == sp.strike && last.mark == sp.mark && last.link == sp.link {
 			last.text += sp.text
 			return
 		}
@@ -306,11 +313,7 @@ func (w *hwalker) node(n *phtml.Node) {
 	case "pre":
 		w.preBlock(n)
 	case "blockquote":
-		w.close()
-		w.quote++
-		w.walk(n)
-		w.close()
-		w.quote--
+		w.quoted("", n)
 	case "div":
 		w.div(n)
 	case "ul", "ol", "menu":
@@ -328,7 +331,7 @@ func (w *hwalker) node(n *phtml.Node) {
 	case "tr":
 		b := w.block(hRow)
 		b.table = w.tables
-		b.gap = w.firstRow
+		b.gap = w.firstRow && len(w.blocks) > 1 // a document that starts with a table starts at its box
 		w.firstRow = false
 		w.walk(n)
 		w.close()
@@ -353,6 +356,7 @@ var inlineTags = map[string]func(*inlineStyle){
 	"code": setCode, "kbd": setCode, "samp": setCode, "tt": setCode,
 	"u": setUnder, "ins": setUnder,
 	"s": setStrike, "del": setStrike, "strike": setStrike,
+	"mark": setMark,
 }
 
 func setBold(s *inlineStyle)   { s.bold = true }
@@ -360,6 +364,7 @@ func setItalic(s *inlineStyle) { s.italic = true }
 func setCode(s *inlineStyle)   { s.code = true }
 func setUnder(s *inlineStyle)  { s.under = true }
 func setStrike(s *inlineStyle) { s.strike = true }
+func setMark(s *inlineStyle)   { s.mark = true }
 
 // preBlock is a <pre>: one block, its whitespace kept.
 func (w *hwalker) preBlock(n *phtml.Node) {
@@ -375,20 +380,35 @@ func (w *hwalker) preBlock(n *phtml.Node) {
 	w.close()
 }
 
-// div is a <div>: a callout reads as a quote, its title as a bold paragraph, any other as a block.
+// quoted walks n one quote level deeper: a blockquote's (kind "") or a callout's, whose bar
+// takes its type's color.
+func (w *hwalker) quoted(kind string, n *phtml.Node) {
+	w.close()
+	w.quote++
+	w.bars = append(w.bars, kind)
+	w.walk(n)
+	w.close()
+	w.quote--
+	w.bars = w.bars[:len(w.bars)-1]
+	w.tight = false // an empty callout's title owes nothing past it
+}
+
+// div is a <div>: a callout reads as a quote, its title as a bold paragraph in its type's color,
+// any other as a block.
 func (w *hwalker) div(n *phtml.Node) {
 	switch {
 	case hasClass(n, "callout"):
-		w.close()
-		w.quote++
-		w.walk(n)
-		w.close()
-		w.quote--
+		kind, _ := n.Attr("data-callout")
+		w.quoted(strings.ToLower(strings.TrimSpace(kind)), n)
 	case hasClass(n, "callout-title"):
-		w.block(hPara)
+		b := w.block(hPara)
+		if len(w.bars) > 0 {
+			b.title = w.bars[len(w.bars)-1]
+		}
 		w.st.bold = true
 		w.walk(n)
 		w.close()
+		w.tight = true // its body follows it, as in the window
 	default:
 		w.close()
 		w.walk(n)
@@ -422,9 +442,16 @@ func (w *hwalker) item(n *phtml.Node) {
 	l := &w.lists[len(w.lists)-1]
 	l.n++
 	l.items++
-	if l.ordered {
+	switch box, checked := taskBox(n); {
+	case box:
+		// a task list item: its checkbox is its marker, in place of the bullet
+		w.marker = "☐"
+		if checked {
+			w.marker = "☑"
+		}
+	case l.ordered:
 		w.marker = strconv.Itoa(l.n) + "."
-	} else {
+	default:
 		w.marker = bullets[(len(w.lists)-1)%len(bullets)]
 	}
 	w.walk(n)
@@ -433,6 +460,36 @@ func (w *hwalker) item(n *phtml.Node) {
 		w.block(hPara)
 	}
 	w.close()
+}
+
+// taskBox reports whether item n is a task list item, a checkbox its first element (in a
+// paragraph of its own, for a loose list), and whether it is checked.
+func taskBox(n *phtml.Node) (box, checked bool) {
+	for c := n; c != nil; {
+		var first *phtml.Node
+		for _, k := range c.Children {
+			if k.Kind == phtml.Text && strings.TrimSpace(k.Data) == "" {
+				continue
+			}
+			first = k
+			break
+		}
+		switch {
+		case first == nil || first.Kind != phtml.StartTag && first.Kind != phtml.SelfClosing:
+			return false, false
+		case first.Name == "input":
+			if t, _ := first.Attr("type"); !strings.EqualFold(t, "checkbox") {
+				return false, false
+			}
+			_, checked = first.Attr("checked")
+			return true, checked
+		case first.Name == "p":
+			c = first
+		default:
+			return false, false
+		}
+	}
+	return false, false
 }
 
 // tableCell is a <td> or <th>: its spans join the row's, after a column rule; outside a row it is
@@ -447,9 +504,22 @@ func (w *hwalker) tableCell(n *phtml.Node) {
 		b.spans = append(b.spans, hspan{text: " │ ", deco: true, copy: "\t"})
 	}
 	b.cellStarts = append(b.cellStarts, len(b.spans))
+	var align byte
+	if v, ok := n.Attr("align"); ok {
+		switch strings.ToLower(strings.TrimSpace(v)) {
+		case "left":
+			align = 'l'
+		case "center":
+			align = 'c'
+		case "right":
+			align = 'r'
+		}
+	}
+	b.align = append(b.align, align)
 	w.space = false
 	if n.Name == "th" {
 		w.st.bold = true
+		b.head = true
 	}
 	w.cell++
 	w.walk(n)
