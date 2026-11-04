@@ -7,8 +7,8 @@ import "github.com/yongjohnlee80/golib/tui"
 // while Rendered is the view drawn and the host has turned it on for the document. Raw is always
 // the text. The view is the editor's child, mounted through its context and laid out in its place;
 // the focus moves into it as it shows and back to the editor as it hides, focus given to the editor
-// while it shows goes on into it, and a key it leaves (the Rendered toggle, however the keymap binds
-// it) bubbles to the editor.
+// while it shows goes on into it, and a key it leaves bubbles to the editor, which answers the
+// Rendered toggle and the jump list's steps (however the keymap binds them).
 //
 // The editor's Mode is its vim mode; Raw and Rendered are its View.
 
@@ -238,11 +238,19 @@ func (e *Editor) layoutDocument(c tui.Constraints) tui.Size {
 }
 
 // documentKey is a key the shown document view left: the Rendered toggle switches back to the text,
-// and nothing else reaches the hidden text.
+// and the jump list's steps (Ctrl+O, Ctrl+I, however the keymap binds them) walk it as from the
+// text, a place in another document or view going to the host. Nothing else reaches the hidden
+// text.
 func (e *Editor) documentKey(k tui.KeyEvent) bool {
-	if act, ok := e.core.ActionOf(k); ok && act == ActToggleRendered && e.canRender() {
+	act, ok := e.core.ActionOf(k)
+	switch {
+	case !ok:
+		return false
+	case act == ActToggleRendered && e.canRender():
 		e.SetView(ViewRaw)
 		return true
+	case act == ActJumpBack || act == ActJumpForward:
+		return e.core.HandleKey(k)
 	}
 	return false
 }

@@ -333,6 +333,7 @@ func (f *Float) ContainsPointer(x, y int) bool { return false }
 type floatLayer struct {
 	Base
 	owner *Float
+	holds bool // the keyboard is inside the layer (non-modal: HandleEvent's raise)
 }
 
 var (
@@ -344,6 +345,7 @@ var (
 // Init mounts the user child under the layer.
 func (l *floatLayer) Init(ctx *tui.Context) {
 	l.Base.Init(ctx)
+	l.holds = false
 	ctx.Mount(l.owner.child)
 }
 
@@ -446,12 +448,20 @@ func (l *floatLayer) Render(s tui.Surface) {
 //
 // A non-modal layer raises its float when the keyboard enters it: a FocusEvent
 // bubbles up from the newly focused node, whether Tab, a click or a program
-// moved it, and the layer is an ancestor of all its content. Observed, never
+// moved it, and the layer is an ancestor of all its content. A move between two
+// nodes inside it (an editor and its document view) is not an entry, and leaves
+// the order as it is: the loss bubbles up first, once the new focus is set, so
+// the layer knows then whether the keyboard stayed inside it. Observed, never
 // consumed, as every container observes focus.
 func (l *floatLayer) HandleEvent(ev tui.Event) bool {
 	if !l.owner.modal {
-		if fe, ok := ev.(tui.FocusEvent); ok && fe.Gained && !fe.Terminal {
-			l.owner.raise()
+		if fe, ok := ev.(tui.FocusEvent); ok && !fe.Terminal {
+			if !fe.Gained {
+				l.holds = l.Context().FocusWithin(l)
+			} else if !l.holds {
+				l.holds = true
+				l.owner.raise()
+			}
 		}
 		return false
 	}

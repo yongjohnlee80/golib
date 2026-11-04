@@ -314,3 +314,38 @@ func TestAFloatClosingOverAShownDocumentFocusesTheView(t *testing.T) {
 		t.Fatalf("the edit through the table after the float closed: %q", v)
 	}
 }
+
+// TestTheJumpListWalksFromAShownDocument: G in the text is a jump; with the table shown, Ctrl+O
+// steps back along the list and Ctrl+I forward again, as from the text, the table staying shown
+// and keeping the focus. Before, the editor dropped both while its view was shown.
+func TestTheJumpListWalksFromAShownDocument(t *testing.T) {
+	h, sh, ed, doc := csvEditor(t, "name,n\nann,1\nbob,2\ncat,3\n")
+	line := func() int {
+		var ln int
+		h.onLoop(func() { ln = ed.Core().Cursor().Line })
+		return ln
+	}
+	h.inject(keyText("G"))
+	h.barrier(sh)
+	if ln := line(); ln != 3 {
+		t.Fatalf("G in the text: line %d, want 3", ln)
+	}
+	h.inject(ctrlEv('t'))
+	h.barrier(sh)
+	h.inject(ctrlEv('o'))
+	h.barrier(sh)
+	if _, s, in := views(h, ed, doc); s != widget.ViewRendered || !in {
+		t.Fatalf("Ctrl+O from the table: drawn %v, table focused %v", s, in)
+	}
+	if ln := line(); ln != 0 {
+		t.Fatalf("Ctrl+O from the table: line %d, want 0, where G jumped from", ln)
+	}
+	h.inject(ctrlEv('i'))
+	h.barrier(sh)
+	if ln := line(); ln != 3 {
+		t.Fatalf("Ctrl+I from the table: line %d, want 3", ln)
+	}
+	if _, s, _ := views(h, ed, doc); s != widget.ViewRendered {
+		t.Fatalf("Ctrl+I from the table: drawn %v", s)
+	}
+}
