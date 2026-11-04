@@ -19,8 +19,9 @@ import (
 // that frame turned, so the router has one case.
 //
 // Tracks are a gap's own: two edges share one only where their horizontal runs don't overlap
-// (the left-edge algorithm), and an edge whose upper end is in a column another's lower end is in
-// takes a track above that one (the vertical-constraint graph), so verticals never run together.
+// (the left-edge algorithm). A lower end in a column another net drops from takes a dogleg beside
+// it (fcTerm), so verticals never run together; the vertical-constraint graph that would otherwise
+// order the tracks then has nothing to order, and can't go round in a cycle.
 // A fan-out keeps one net: the edges a node sends down its port share one track, and split from it
 // (┬ ├ ┤ come from the OR'd masks). A fan-in shares only the target's own port, below its tracks.
 // Crossings are a vertical through another net's track, so they read ┼.
@@ -99,7 +100,25 @@ func (n fcNode) lowPort(back bool, taken map[int]bool, avoid int) int {
 }
 
 // fcTerm is a net's end on a gap's side: a node's port, or a long edge's column (node -1).
-type fcTerm struct{ col, node int }
+//
+// A lower end in a column another net drops from in that gap takes a dogleg: its net's track meets
+// it at a free column beside (jogCol), and it comes down that column to the gap's jog row, the row
+// above its last, crosses on it to its own column, and drops into its node or on past. The other
+// net's vertical ends at its own track, above the jog row, so the two never run together, and no
+// net need be above another (the vertical-constraint graph stays empty).
+type fcTerm struct {
+	col, node int
+	jog       bool
+	jogCol    int
+}
+
+// at is the column t's net's track meets t at: its own, or its dogleg's.
+func (t fcTerm) at() int {
+	if t.jog {
+		return t.jogCol
+	}
+	return t.col
+}
 
 // fcNet is what a gap routes as one: an edge, or the edges a node sends down (or up) its port.
 type fcNet struct {
@@ -248,6 +267,7 @@ func layFlowchart(ctx context.Context, d *pm.FlowchartDiagram, m Measurer) (*Gri
 	// the gaps' nets, and their tracks
 	type gapNets struct{ nets []*fcNet }
 	gaps := make([]gapNets, max(len(ranks)-1, 0))
+	jogs := make([]bool, len(gaps)) // a gap with a dogleg: one more row, its jog row
 	for gi := range gaps {
 		byKey := map[netKey]*fcNet{}
 		var order []netKey
@@ -319,18 +339,37 @@ func layFlowchart(ctx context.Context, d *pm.FlowchartDiagram, m Measurer) (*Gri
 			low[[2]int{n, b}] = c
 			return c
 		}
+		topCols, botCols := map[int]bool{}, map[int]bool{}
+		for _, u := range uppers {
+			topCols[u.col] = true
+		}
 		for k := range edges {
 			e := &edges[k]
 			if !e.drawn || gi < e.lo || gi >= e.hi {
 				continue
 			}
 			_, lower := ends(*e)
+			key := keyOf(k, *e)
 			top, bot := topOf(*e), fcTerm{col: e.cols[gi+1], node: -1}
 			if gi+1 == e.hi {
 				bot = fcTerm{col: lowAt(lower, e.back), node: lower}
 				e.lowCol = bot.col
 			}
-			key := keyOf(k, *e)
+			if slices.ContainsFunc(uppers, func(u upperEnd) bool { return u.col == bot.col && u.key != key }) {
+				for d := 1; ; d++ { // a dogleg: the nearest column no end of the gap is in
+					if c := bot.col - d; !topCols[c] && !botCols[c] {
+						bot.jog, bot.jogCol = true, c
+						break
+					}
+					if c := bot.col + d; !topCols[c] && !botCols[c] {
+						bot.jog, bot.jogCol = true, c
+						break
+					}
+				}
+				botCols[bot.jogCol] = true
+				jogs[gi] = true
+			}
+			botCols[bot.col] = true
 			n := byKey[key]
 			if n == nil {
 				n = &fcNet{track: -1, ends: map[int][2]fcTerm{}}
@@ -353,6 +392,9 @@ func layFlowchart(ctx context.Context, d *pm.FlowchartDiagram, m Measurer) (*Gri
 	gapH := make([]int, len(gaps))
 	for gi := range gaps {
 		gapH[gi] = assignTracks(gaps[gi].nets) + 2
+		if jogs[gi] {
+			gapH[gi]++
+		}
 	}
 
 	// the frame rows: each rank's band, then its gap
@@ -412,6 +454,14 @@ func layFlowchart(ctx context.Context, d *pm.FlowchartDiagram, m Measurer) (*Gri
 			}
 			draw(cell{n.lo, y}, cell{n.hi, y}, n.edges)
 			for _, b := range n.bots {
+				if b.jog { // down its dogleg's column, across the jog row, into its own
+					jogY := bandY[gi+1] - 2
+					by := n.by(b, false)
+					draw(cell{b.jogCol, y}, cell{b.jogCol, jogY}, by)
+					draw(cell{b.jogCol, jogY}, cell{b.col, jogY}, by)
+					draw(cell{b.col, jogY}, cell{b.col, endY(b)}, by)
+					continue
+				}
 				draw(cell{b.col, y}, cell{b.col, endY(b)}, n.by(b, false))
 			}
 		}
@@ -483,7 +533,7 @@ func assignTracks(nets []*fcNet) int {
 	for _, n := range nets {
 		n.lo, n.hi = math.MaxInt, math.MinInt
 		for _, t := range slices.Concat(n.tops, n.bots) {
-			n.lo, n.hi = min(n.lo, t.col), max(n.hi, t.col)
+			n.lo, n.hi = min(n.lo, t.at()), max(n.hi, t.at())
 		}
 		if n.lo < n.hi {
 			turning = append(turning, n)
@@ -499,7 +549,7 @@ func assignTracks(nets []*fcNet) int {
 				continue
 			}
 			for _, t := range p.tops {
-				if slices.ContainsFunc(q.bots, func(b fcTerm) bool { return b.col == t.col }) {
+				if slices.ContainsFunc(q.bots, func(b fcTerm) bool { return b.at() == t.col }) {
 					above[q] = append(above[q], p)
 				}
 			}
