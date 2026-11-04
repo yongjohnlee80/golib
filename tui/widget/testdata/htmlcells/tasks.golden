@@ -1,0 +1,11 @@
+width 30
+> - [ ] to do
+> - [x] done
+> - plain
+
+" ☐ to do"
+    0-2 fg=muted
+" ☑ done"
+    1-1 fg=success
+" • plain"
+    0-2 fg=muted

@@ -1,0 +1,36 @@
+width 34
+> > [!note] A note
+> > its body
+> 
+> > [!warning] Careful
+> > mind it
+> 
+> > [!tip]
+> > a tip
+> 
+> > [!danger] Stop
+> > no
+
+"▎ A note"
+    0-0 fg=primary
+    2-7 bold fg=primary
+"▎ its body"
+    0-0 fg=primary
+""
+"▎ Careful"
+    0-0 fg=warning
+    2-8 bold fg=warning
+"▎ mind it"
+    0-0 fg=warning
+""
+"▎ Tip"
+    0-0 fg=success
+    2-4 bold fg=success
+"▎ a tip"
+    0-0 fg=success
+""
+"▎ Stop"
+    0-0 fg=error
+    2-5 bold fg=error
+"▎ no"
+    0-0 fg=error
