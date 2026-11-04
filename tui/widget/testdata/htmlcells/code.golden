@@ -1,0 +1,26 @@
+width 30
+> run `make all` now
+> 
+> ```go
+> func main() {
+> 	println("hi")
+> }
+> ```
+
+"run make all now"
+    4-11 fg=accent bg=surface
+""
+" func main() {"
+    0-0 fg=muted bg=surface
+    1-13 fg=fg bg=surface
+    14-29 bg=surface
+"     println(\"hi\")"
+    0-0 fg=muted bg=surface
+    1-1 fg=fg bg=surface
+    2-4 fg=muted bg=surface
+    5-17 fg=fg bg=surface
+    18-29 bg=surface
+" }"
+    0-0 fg=muted bg=surface
+    1-1 fg=fg bg=surface
+    2-29 bg=surface

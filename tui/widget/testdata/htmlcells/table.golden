@@ -1,0 +1,30 @@
+width 40
+> | Name | Qty | Note |
+> | :--- | ---: | :---: |
+> | apple | 3 | ripe |
+> | kiwi | 12 | — |
+
+"┌───────┬─────┬──────┐"
+    0-21 fg=border
+"│ Name  │ Qty │ Note │"
+    0-0 fg=border
+    2-5 bold fg=fg
+    8-8 fg=border
+    10-12 bold fg=fg
+    14-14 fg=border
+    16-19 bold fg=fg
+    21-21 fg=border
+"├───────┼─────┼──────┤"
+    0-21 fg=border
+"│ apple │   3 │ ripe │"
+    0-0 fg=border
+    8-8 fg=border
+    14-14 fg=border
+    21-21 fg=border
+"│ kiwi  │  12 │  —   │"
+    0-0 fg=border
+    8-8 fg=border
+    14-14 fg=border
+    21-21 fg=border
+"└───────┴─────┴──────┘"
+    0-21 fg=border

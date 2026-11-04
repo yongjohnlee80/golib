@@ -29,8 +29,8 @@ func mouseAt(kind tui.MouseKind, x, y int) tui.MouseEvent {
 	return tui.MouseEvent{Kind: kind, Button: tui.MouseLeft, X: x, Y: y}
 }
 
-// TestHTMLViewDrawsTheDocument: in cells a heading is bold, a link underlined, a list's marker
-// hangs, and nothing a page hides is drawn.
+// TestHTMLViewDrawsTheDocument: in cells a heading is bold and an h1 ruled off, a link
+// underlined, a list's marker hangs, and nothing a page hides is drawn.
 func TestHTMLViewDrawsTheDocument(t *testing.T) {
 	h, _, _ := mountedHTML(t, 40, 10, `<h1>Title</h1><p>see <a href="b.md">the link</a></p>`+
 		`<ul><li>item</li></ul><script>hidden()</script><p hidden>secret</p>`)
@@ -38,7 +38,8 @@ func TestHTMLViewDrawsTheDocument(t *testing.T) {
 	if a := cellAttrs(h, 0, 0); a.Mask&tui.AttrBold == 0 {
 		t.Errorf("the heading is not bold: %+v", a)
 	}
-	if a := cellAttrs(h, 4, 2); a.Mask&tui.AttrUnderline == 0 {
+	h.wantContains("━━━━")
+	if a := cellAttrs(h, 4, 3); a.Mask&tui.AttrUnderline == 0 { // under the h1's rule and the gap
 		t.Errorf("the link is not underlined: %+v\n%s", a, h.grid())
 	}
 	h.wantContains(" • item")
@@ -48,13 +49,13 @@ func TestHTMLViewDrawsTheDocument(t *testing.T) {
 
 // TestHTMLViewSelectsAndCopies: a drag selects across a paragraph, a list item and a table row,
 // in document order whichever way it goes; Ctrl+C copies the text with a line between blocks and
-// a tab between cells.
+// a tab between cells, never the table's box.
 func TestHTMLViewSelectsAndCopies(t *testing.T) {
 	h, v, sh := mountedHTML(t, 30, 10, `<p>alpha beta</p><ul><li>gamma</li></ul><table><tr><td>c1</td><td>c2</td></tr></table>`)
-	// rows: "alpha beta" / "" / " • gamma" / "" / "c1 │ c2"
-	h.waitFor("drawn", func() bool { return strings.Contains(h.grid(), "c1 │ c2") })
+	// rows: "alpha beta" / "" / " • gamma" / "" / "┌────┬────┐" / "│ c1 │ c2 │" / "└────┴────┘"
+	h.waitFor("drawn", func() bool { return strings.Contains(h.grid(), "│ c1 │ c2 │") })
 	h.inject(mouseAt(tui.MouseRelease, 0, 0)) // a stray release before any press does nothing
-	h.inject(mouseAt(tui.MousePress, 6, 0), mouseAt(tui.MouseMotion, 7, 4), mouseAt(tui.MouseRelease, 7, 4))
+	h.inject(mouseAt(tui.MousePress, 6, 0), mouseAt(tui.MouseMotion, 9, 5), mouseAt(tui.MouseRelease, 9, 5))
 	h.barrier(sh)
 	var got string
 	h.onLoop(func() { got = v.SelectedText() })
@@ -68,7 +69,7 @@ func TestHTMLViewSelectsAndCopies(t *testing.T) {
 	h.waitFor("the clipboard", func() bool { return string(h.tb.Clipboard()) == "beta\ngamma\nc1\tc2" })
 
 	// backwards: the same text
-	h.inject(mouseAt(tui.MousePress, 7, 4), mouseAt(tui.MouseMotion, 6, 0), mouseAt(tui.MouseRelease, 6, 0))
+	h.inject(mouseAt(tui.MousePress, 9, 5), mouseAt(tui.MouseMotion, 6, 0), mouseAt(tui.MouseRelease, 6, 0))
 	h.barrier(sh)
 	h.onLoop(func() { got = v.SelectedText() })
 	if got != "beta\ngamma\nc1\tc2" {

@@ -1,0 +1,25 @@
+width 30
+> - one
+>   - two
+>     - three
+> - four
+> 
+> 1. first
+> 2. second
+>    1. inner
+
+" • one"
+    0-2 fg=muted
+"    ◦ two"
+    0-5 fg=muted
+"       ▪ three"
+    0-8 fg=muted
+" • four"
+    0-2 fg=muted
+""
+"1. first"
+    0-2 fg=muted
+"2. second"
+    0-2 fg=muted
+"   1. inner"
+    0-5 fg=muted
