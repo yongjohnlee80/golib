@@ -240,21 +240,34 @@ func WithDiagrams(d any) HTMLOption {
 // WithDiagramNotice says, in the host's words, that a diagram of kind isn't drawn in the
 // terminal: the cell layout draws what tui/mermaid draws (Kinds) and shows this for any other
 // diagram, never its source. Unset, the line is English.
+//
+// It may be applied after the view is built (as a host does to a view its layout built): the cell
+// layout asks for the words each time it lays out, and setting them lays the page out again.
 func WithDiagramNotice(say func(kind string) string) HTMLOption {
-	return func(v *HTMLView) { v.diagramNotice = say }
+	return func(v *HTMLView) {
+		v.diagramNotice = say
+		if c, ok := v.layout.(*cellHTML); ok && c.src != nil {
+			c.layOut()
+		}
+	}
 }
 
 // NewHTMLView builds an empty view, laid out in cells until a backend binds another layout.
 func NewHTMLView(opts ...HTMLOption) *HTMLView {
 	v := &HTMLView{lastSrc: -1}
 	cells := newCellHTML(v.measure)
+	cells.notice = func(kind string) string { // the view's words when it has some, asked each layout
+		if v.diagramNotice != nil {
+			return v.diagramNotice(kind)
+		}
+		return diagramNotice(kind)
+	}
 	v.layout = cells
 	for _, o := range opts {
 		if o != nil {
 			o(v)
 		}
 	}
-	cells.notice = v.diagramNotice
 	return v
 }
 
