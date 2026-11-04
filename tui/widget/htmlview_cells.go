@@ -13,18 +13,22 @@ import (
 )
 
 // THE CELL LAYOUT — an HTMLView in a terminal: the document's text, wrapped to the widget's
-// width and read-only, one unit a cell. Headings are bold, links underlined, code tinted,
-// preformatted text shaded; quotes and callouts carry a bar, list items a hanging marker, and a
-// table's columns line up when they fit. Images show their alt text.
+// width and read-only, one unit a cell. Headings are bold and told apart by level (h1 and h2 ruled
+// under), links underlined, inline code shaded and tinted, preformatted text shaded and inset;
+// quotes carry a bar, a callout's in its type's color with its title; list items a hanging marker,
+// a task's its checkbox; a table that fits is boxed, its header ruled off and its cells aligned,
+// and one that does not wraps as rows of text. Highlighted text is marked. Images show their alt
+// text.
 
 // hcl is one laid-out grapheme cluster: where it is drawn and which document position it is.
 type hcl struct {
 	text string
 	x, w int
-	pos  DocPos // the boundary before it
-	end  DocPos // the boundary after it
-	sp   *hspan // nil: a deco cluster of the layout's own (a quote bar, a marker, padding)
-	deco bool   // never copied as text (a marker, a separator, padding)
+	pos  DocPos          // the boundary before it
+	end  DocPos          // the boundary after it
+	sp   *hspan          // nil: a deco cluster of the layout's own (a quote bar, a marker, padding)
+	deco bool            // never copied as text (a marker, a separator, padding)
+	fg   style.ColorSpec // a deco cluster's own color (a callout's bar, a heading's rule); nil: its kind's
 }
 
 // hrow is one row of the layout: a blank gap, or a block's wrapped line.
@@ -78,17 +82,31 @@ func (c *cellHTML) SetWidth(w float32) {
 
 func (c *cellHTML) Height() float32 { return float32(len(c.rows)) }
 
-// layOut wraps every block to the width.
+// layOut wraps every block to the width: a table that fits between its box's rules (its top, under
+// its header row, its bottom), h1 and h2 above their rules.
 func (c *cellHTML) layOut() {
 	c.rows, c.tops = c.rows[:0], make([]int, len(c.doc))
 	widths := c.columnWidths()
 	for bi := range c.doc {
 		b := &c.doc[bi]
 		if b.gap {
-			c.rows = append(c.rows, hrow{block: bi})
+			c.rows = append(c.rows, hrow{block: bi, cls: c.gapBars(bi)})
 		}
 		c.tops[bi] = len(c.rows)
-		c.layBlock(bi, b, widths[b.table])
+		cols := widths[b.table]
+		boxed := b.kind == hRow && cols != nil
+		if boxed && c.tableEdge(bi, -1) {
+			c.layBox(bi, b, cols, "┌", "┬", "┐")
+		}
+		c.layBlock(bi, b, cols)
+		switch {
+		case boxed && c.tableEdge(bi, 1):
+			c.layBox(bi, b, cols, "└", "┴", "┘")
+		case boxed && b.head:
+			c.layBox(bi, b, cols, "├", "┼", "┤")
+		case b.kind == hHeading && b.level <= 2:
+			c.layHeadingRule(bi, b)
+		}
 	}
 	if len(c.rows) == 0 {
 		c.rows = append(c.rows, hrow{block: -1})
@@ -121,7 +139,7 @@ func (c *cellHTML) columnWidths() map[int][]int {
 		room[b.table] = c.width - 2*b.quote - b.indent
 	}
 	for t, cols := range natural {
-		sum := 3 * max(len(cols)-1, 0) // the " │ " between cells
+		sum := 4 + 3*max(len(cols)-1, 0) // the box's "│ " and " │", and the " │ " between cells
 		for _, w := range cols {
 			sum += w
 		}
@@ -141,6 +159,74 @@ func (c *cellHTML) cellEnd(b *hblock, ci int) int {
 }
 
 const hruleCluster = "─"
+
+// preTabStop is how many cells apart a preformatted line's tab stops are.
+const preTabStop = 4
+
+// gapBars are the quote bars a gap row before block bi carries: those of the quotes it shares with
+// the block before, so a quote's bar runs on through the blank rows between its blocks.
+func (c *cellHTML) gapBars(bi int) []hcl {
+	if bi == 0 {
+		return nil
+	}
+	b, prev := &c.doc[bi], &c.doc[bi-1]
+	n := 0
+	for n < min(b.quote, prev.quote) && n < len(b.bars) && n < len(prev.bars) && b.bars[n] == prev.bars[n] {
+		n++
+	}
+	var out []hcl
+	at := DocPos{Block: bi}
+	for q := range n {
+		out = append(out, hcl{text: "▎", x: 2 * q, w: 1, pos: at, end: at, deco: true, fg: calloutTone(b.bars[q])})
+	}
+	return out
+}
+
+// tableEdge reports whether row bi is its table's first (dir -1) or last (dir 1).
+func (c *cellHTML) tableEdge(bi, dir int) bool {
+	n := bi + dir
+	return n < 0 || n >= len(c.doc) || c.doc[n].kind != hRow || c.doc[n].table != c.doc[bi].table
+}
+
+// layBox is a rule of row bi's table box: left, the joints between its columns and right, each
+// column's rule as wide as the column and its padding.
+func (c *cellHTML) layBox(bi int, b *hblock, cols []int, left, joint, right string) {
+	row := hrow{block: bi, cls: c.prefix(b, false)}
+	x := 2*b.quote + b.indent
+	at := DocPos{Block: bi}
+	put := func(s string) {
+		row.cls = append(row.cls, hcl{text: s, x: x, w: 1, pos: at, end: at, deco: true, fg: style.TokenBorder})
+		x++
+	}
+	put(left)
+	for ci, w := range cols {
+		if ci > 0 {
+			put(joint)
+		}
+		for range w + 2 {
+			put(hruleCluster)
+		}
+	}
+	put(right)
+	c.rows = append(c.rows, row)
+}
+
+// layHeadingRule is the rule under an h1 (heavy, in the primary color) or an h2 (light, a border's),
+// across the room the heading has.
+func (c *cellHTML) layHeadingRule(bi int, b *hblock) {
+	rule, fg := "━", style.ColorSpec(style.TokenPrimary)
+	if b.level == 2 {
+		rule, fg = hruleCluster, style.TokenBorder
+	}
+	row := hrow{block: bi, cls: c.prefix(b, false)}
+	x := 2*b.quote + b.indent
+	at := DocPos{Block: bi}
+	for range max(c.width-x, 1) {
+		row.cls = append(row.cls, hcl{text: rule, x: x, w: 1, pos: at, end: at, deco: true, fg: fg})
+		x++
+	}
+	c.rows = append(c.rows, row)
+}
 
 // layBlock wraps block bi into rows.
 func (c *cellHTML) layBlock(bi int, b *hblock, cols []int) {
@@ -237,8 +323,12 @@ var diagramTheme = tuimermaid.Theme{
 func (c *cellHTML) prefix(b *hblock, first bool) []hcl {
 	var out []hcl
 	x := 0
-	for range b.quote {
-		out = append(out, hcl{text: "▎", x: x, w: 1, deco: true}, hcl{text: " ", x: x + 1, w: 1, deco: true})
+	for q := range b.quote {
+		kind := ""
+		if q < len(b.bars) {
+			kind = b.bars[q]
+		}
+		out = append(out, hcl{text: "▎", x: x, w: 1, deco: true, fg: calloutTone(kind)}, hcl{text: " ", x: x + 1, w: 1, deco: true})
 		x += 2
 	}
 	if b.indent > 0 {
@@ -252,9 +342,14 @@ func (c *cellHTML) prefix(b *hblock, first bool) []hcl {
 			out = append(out, hcl{text: " ", x: x, w: 1, deco: true})
 			x++
 		}
-		if mark != "" {
-			out = append(out, hcl{text: mark, x: x, w: mw, deco: true})
-			x += mw
+		for g := range tui.Graphemes(mark) { // a cluster a cell, as a Surface draws them ("1." is two)
+			gw := c.measure(g)
+			k := hcl{text: g, x: x, w: gw, deco: true}
+			if g == "☑" {
+				k.fg = style.TokenSuccess
+			}
+			out = append(out, k)
+			x += gw
 		}
 		for x < 2*b.quote+b.indent {
 			out = append(out, hcl{text: " ", x: x, w: 1, deco: true})
@@ -285,7 +380,8 @@ type lineCluster struct {
 }
 
 // blockLines is block bi's clusters, each with its position, split into the lines a hard break
-// ("\n") ends, which wrap on their own. A table row's cells are padded to their columns (cols).
+// ("\n") ends, which wrap on their own. A boxed table row (cols) is edged by its box, its cells
+// padded to their columns as they align, a missing cell blank; a preformatted line is inset a cell.
 func (c *cellHTML) blockLines(bi int, b *hblock, cols []int) [][]lineCluster {
 	var lines [][]lineCluster
 	var line []lineCluster
@@ -294,16 +390,48 @@ func (c *cellHTML) blockLines(bi int, b *hblock, cols []int) [][]lineCluster {
 			line = append(line, lineCluster{text: " ", pos: at, end: at, deco: true})
 		}
 	}
+	edge := func(s string, at DocPos) {
+		for g := range tui.Graphemes(s) {
+			line = append(line, lineCluster{text: g, pos: at, end: at, deco: true})
+		}
+	}
+	boxed := b.kind == hRow && cols != nil
+	width := func(ci int) int {
+		w := 0
+		for _, s := range b.spans[b.cellStarts[ci]:c.cellEnd(b, ci)] {
+			w += c.measure(s.text)
+		}
+		return w
+	}
+	lead := func(ci int) int { // the padding before cell ci's text, as the cell aligns
+		if ci >= len(cols) || ci >= len(b.align) {
+			return 0
+		}
+		switch room := cols[ci] - width(ci); b.align[ci] {
+		case 'r':
+			return room
+		case 'c':
+			return room / 2
+		}
+		return 0
+	}
+	start := DocPos{Block: bi}
+	if boxed {
+		edge("│ ", start)
+		if len(b.cellStarts) > 0 {
+			pad(lead(0), start)
+		}
+	}
+	if b.kind == hPre {
+		pad(1, start)
+	}
+	col := 0 // a preformatted line's column, for its tab stops
 	cell := 0
 	for si := range b.spans {
 		sp := &b.spans[si]
-		if b.kind == hRow && cols != nil && cell+1 < len(b.cellStarts) && si == b.cellStarts[cell+1]-1 {
+		if boxed && cell+1 < len(b.cellStarts) && si == b.cellStarts[cell+1]-1 {
 			// before a separator: pad the cell to its column
-			w := 0
-			for _, s := range b.spans[b.cellStarts[cell]:si] {
-				w += c.measure(s.text)
-			}
-			pad(cols[cell]-w, DocPos{Block: bi, Span: si})
+			pad(cols[cell]-width(cell)-lead(cell), DocPos{Block: bi, Span: si})
 			cell++
 		}
 		off := 0
@@ -313,10 +441,44 @@ func (c *cellHTML) blockLines(bi int, b *hblock, cols []int) [][]lineCluster {
 			if g == "\n" && !sp.deco {
 				lines = append(lines, line)
 				line = nil
+				col = 0
+				if b.kind == hPre {
+					pad(1, at)
+				}
 				continue
 			}
-			line = append(line, lineCluster{text: g, pos: at, end: DocPos{Block: bi, Span: si, Offset: off}, sp: sp, deco: sp.deco})
+			end := DocPos{Block: bi, Span: si, Offset: off}
+			if g == "\t" && b.kind == hPre {
+				// a tab is a space of its text up to the next stop: copied as the tab it is
+				n := preTabStop - col%preTabStop
+				line = append(line, lineCluster{text: " ", pos: at, end: end, sp: sp})
+				pad(n-1, end)
+				col += n
+				continue
+			}
+			col += c.measure(g)
+			line = append(line, lineCluster{text: g, pos: at, end: end, sp: sp, deco: sp.deco})
 		}
+		if boxed && cell > 0 && cell < len(b.cellStarts) && si+1 == b.cellStarts[cell] {
+			pad(lead(cell), DocPos{Block: bi, Span: si + 1})
+		}
+	}
+	if boxed {
+		end := DocPos{Block: bi}
+		if n := len(b.spans); n > 0 {
+			end = DocPos{Block: bi, Span: n - 1, Offset: len(b.spans[n-1].text)}
+		}
+		if last := len(b.cellStarts) - 1; last >= 0 {
+			pad(cols[last]-width(last)-lead(last), end)
+		}
+		if len(b.cellStarts) == 0 && len(cols) > 0 { // a row of no cells: a blank first one
+			pad(cols[0], end)
+		}
+		for ci := max(len(b.cellStarts), 1); ci < len(cols); ci++ { // a row short of cells: blank ones
+			edge(" │ ", end)
+			pad(cols[ci], end)
+		}
+		edge(" │", end)
 	}
 	return append(lines, line)
 }
@@ -551,27 +713,35 @@ func (c *cellHTML) PaintCells(s tui.Surface, top, w int, from, to DocPos) {
 	}
 }
 
-// styleOf is a cluster's style: its span's formatting, its block's, the deco's muted tone.
+// styleOf is a cluster's style: its span's formatting, its block's; a deco's own color, a box
+// rule's border tone, else a muted one.
 func (c *cellHTML) styleOf(r *hrow, k hcl) style.Style {
 	st := style.New().Foreground(style.TokenForeground)
 	if r.rule {
 		return style.New().Foreground(style.TokenBorder)
 	}
 	if k.sp == nil || k.deco {
-		if k.text == "▎" {
-			return style.New().Foreground(style.TokenBorder)
+		deco := style.New().Foreground(style.TokenTextMuted)
+		switch {
+		case k.fg != nil:
+			deco = style.New().Foreground(k.fg)
+		case strings.ContainsAny(k.text, "│┌┬┐├┼┤└┴┘─"):
+			deco = style.New().Foreground(style.TokenBorder)
 		}
-		return style.New().Foreground(style.TokenTextMuted)
+		if r.shade && k.text != "▎" {
+			deco = deco.Background(style.TokenSurface) // a preformatted row's inset and tab stops are shaded too
+		}
+		return deco
 	}
 	b := &c.doc[r.block]
 	if r.shade {
 		st = st.Background(style.TokenSurface)
 	}
 	if b.kind == hHeading {
-		st = st.Bold(true)
-		if b.level <= 2 {
-			st = st.Foreground(style.TokenPrimary)
-		}
+		st = headingStyle(st, b.level)
+	}
+	if b.title != "" {
+		st = st.Foreground(calloutTone(b.title))
 	}
 	sp := k.sp
 	if sp.bold {
@@ -581,7 +751,10 @@ func (c *cellHTML) styleOf(r *hrow, k hcl) style.Style {
 		st = st.Italic(true)
 	}
 	if sp.code && b.kind != hPre {
-		st = st.Foreground(style.TokenAccent)
+		st = st.Foreground(style.TokenAccent).Background(style.TokenSurface)
+	}
+	if sp.mark {
+		st = st.Foreground(style.TokenTextOnWarning).Background(style.TokenWarning)
 	}
 	if sp.under {
 		st = st.Underline(true)
@@ -593,6 +766,43 @@ func (c *cellHTML) styleOf(r *hrow, k hcl) style.Style {
 		st = st.Underline(true).Foreground(style.TokenPrimary)
 	}
 	return st
+}
+
+// headingStyle is a heading's at level: h1 and h2 bold in the primary color (their rules tell
+// them apart), h3 bold in the accent, h4 bold, h5 bold and muted, h6 italic and muted.
+func headingStyle(st style.Style, level int) style.Style {
+	switch level {
+	case 1, 2:
+		return st.Bold(true).Foreground(style.TokenPrimary)
+	case 3:
+		return st.Bold(true).Foreground(style.TokenAccent)
+	case 4:
+		return st.Bold(true)
+	case 5:
+		return st.Bold(true).Foreground(style.TokenTextMuted)
+	}
+	return st.Italic(true).Foreground(style.TokenTextMuted)
+}
+
+// calloutTone is the color of a quote's bar and a callout's title by the callout's type (Obsidian's
+// types and their aliases): a blockquote's ("") a border's; note, info, todo and any type it doesn't
+// know, the primary.
+func calloutTone(kind string) style.ColorSpec {
+	switch kind {
+	case "":
+		return style.TokenBorder
+	case "tip", "hint", "important", "success", "check", "done":
+		return style.TokenSuccess
+	case "warning", "caution", "attention":
+		return style.TokenWarning
+	case "danger", "error", "bug", "failure", "fail", "missing":
+		return style.TokenError
+	case "question", "help", "faq":
+		return style.TokenAccent
+	case "example", "quote", "cite", "abstract", "summary", "tldr":
+		return style.TokenSecondary
+	}
+	return style.TokenPrimary
 }
 
 // selected reports whether cluster k is inside the selection from..to: a cluster of the
