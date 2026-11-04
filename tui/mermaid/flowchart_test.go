@@ -40,7 +40,9 @@ func paintFC(t *testing.T, src string) string {
 
 // A flowchart draws in cells, each case its golden: ranks down (TB, TD), across (LR), up (BT) and
 // back (RL); a fan-out sharing one trunk, a fan-in into one port; K2,2's edges; a long edge passing
-// the ranks between; a decision with a way back up (a cycle); wide labels; and every end.
+// the ranks between; a decision with a way back up (a cycle); wide labels; every end; edge labels
+// beside their lines (TB) and along them (LR); dotted and thick lines, light where they meet
+// others; self-loops; and a label with no room, a footnote.
 func TestAFlowchartDrawsInCells(t *testing.T) {
 	for name, src := range map[string]string{
 		"fc-chain-tb":  "flowchart TB\n  A[Start] --> B[Middle] --> C[End]\n",
@@ -56,6 +58,11 @@ func TestAFlowchartDrawsInCells(t *testing.T) {
 		"fc-wide":      "flowchart LR\n  A[시작] --> B[東京] --> C[end]\n",
 		"fc-ends":      "flowchart TB\n  A --> B\n  A --o C\n  A --x D\n  A --- E\n  F <--> G\n",
 		"fc-invisible": "flowchart TB\n  A --> B\n  A ~~~ C\n",
+		"fc-labels-tb": "flowchart TD\n  Q{Ready?} -->|yes| A[Go]\n  Q -->|no| B[Wait]\n  A -->|done| C[End]\n",
+		"fc-labels-lr": "flowchart LR\n  Q{Ready?} -->|yes| A[Go]\n  Q -->|no| B[Wait]\n  A -->|done| C[End]\n",
+		"fc-styles":    "flowchart TB\n  A -.-> B\n  A ==> C\n  A --> D\n  B -.- E\n  C ==> E\n  D --> E\n",
+		"fc-selfloop":  "flowchart TB\n  A --> A\n  A --> B\n  B -->|again| B\n",
+		"fc-footnote":  "flowchart TB\n  A --> B\n  B -->|back up| A\n",
 	} {
 		t.Run(name, func(t *testing.T) { golden(t, name, paintFC(t, src)) })
 	}
@@ -73,10 +80,15 @@ func randomFlowchart(r *rand.Rand) string {
 	for i := range n {
 		fmt.Fprintf(&b, "  N%d[%s]\n", i, labels[r.IntN(len(labels))])
 	}
+	edgeLabels := []string{"yes", "no", "a label", "東京"}
 	for range r.IntN(2*n) + 1 {
 		i := r.IntN(n - 1)
 		j := i + 1 + r.IntN(n-1-i)
-		fmt.Fprintf(&b, "  N%d --> N%d\n", i, j)
+		if r.IntN(3) == 0 {
+			fmt.Fprintf(&b, "  N%d -->|%s| N%d\n", i, edgeLabels[r.IntN(len(edgeLabels))], j)
+		} else {
+			fmt.Fprintf(&b, "  N%d --> N%d\n", i, j)
+		}
 	}
 	return b.String()
 }
@@ -87,6 +99,8 @@ func randomFlowchart(r *rand.Rand) string {
 //   - two edges of different sources and different targets never share a run (a link);
 //   - a line beside a box only ever meets it, at a port (its line pointing in, or its mark), never
 //     runs along it;
+//   - a label never covers a mark, another label, a turn or a junction: only a straight run of line
+//     (a label along its edge, LR and RL);
 //   - the same input gives the same drawing.
 func TestTheFlowchartRoutersInvariantsHold(t *testing.T) {
 	for seed := range uint64(300) {
@@ -177,20 +191,45 @@ func TestTheFlowchartRoutersInvariantsHold(t *testing.T) {
 				}
 			}
 		}
+		cover := map[cell]string{}
+		for _, tx := range g.texts {
+			for x := tx.x; x < tx.x+tx.w; x++ {
+				c := cell{x, tx.y}
+				if other, ok := cover[c]; ok {
+					t.Fatalf("%s the labels %q and %q overlap at %v", what, other, tx.s, c)
+				}
+				cover[c] = tx.s
+				if g.marks[c] != "" {
+					t.Fatalf("%s the label %q covers the mark %q at %v", what, tx.s, g.marks[c], c)
+				}
+				if d, ok := g.lines[c]; ok && d != east|west {
+					t.Fatalf("%s the label %q covers a turn or a junction (%s) at %v", what, tx.s, lineRune[d], c)
+				}
+			}
+		}
 		if again := paintFC(t, src); again != paintFC(t, src) {
 			t.Fatalf("%s two drawings of one flowchart differ", what)
 		}
 	}
 }
 
-// A flowchart's edge into a node of its own rank, or into itself, isn't routed yet: it's left out,
-// and the rest draws.
-func TestAFlowchartLeavesOutWhatItDoesntRouteYet(t *testing.T) {
+// A self-loop isn't a routed line: it's a ↺ beside its box, and the rest draws.
+func TestAFlowchartsSelfLoopIsAMarkBesideItsBox(t *testing.T) {
 	_, g, routes := layFC(t, "flowchart TB\n  A --> A\n  A --> B\n")
 	if len(routes[0]) != 0 {
-		t.Errorf("the self-loop was routed: %v", routes[0])
+		t.Errorf("the self-loop was routed as a line: %v", routes[0])
 	}
 	if len(routes[1]) == 0 || len(g.Boxes) != 2 {
 		t.Errorf("A→B: %d links, %d boxes", len(routes[1]), len(g.Boxes))
+	}
+	r := g.Boxes[0].Rect
+	var beside bool
+	for c, mk := range g.marks {
+		if mk == "↺" {
+			beside = beside || c.x >= r.X-1 && c.x <= r.X+r.W && c.y >= r.Y-1 && c.y <= r.Y+r.H
+		}
+	}
+	if !beside {
+		t.Errorf("no ↺ beside A %+v: marks %v", r, g.marks)
 	}
 }

@@ -39,9 +39,12 @@ type Grid struct {
 	// is node i. A sequence's start with its participants (Boxes[i] is participant i).
 	Boxes []Box
 	lines map[cell]dirs
-	heavy map[cell]bool   // line cells drawn heavy where they run north–south: a sequence's activations
-	marks map[cell]string // drawn over a line's cell in the line's style: an arrowhead, a dash
-	texts []text          // labels outside any box, in the label's style
+	heavy map[cell]bool // line cells drawn heavy where they run north–south: a sequence's activations
+	// stroke is how a line cell is drawn when every line through it is drawn that way: a flowchart's
+	// dotted and thick edges. A cell where strokes meet (or a light line) is drawn light.
+	stroke map[cell]stroke
+	marks  map[cell]string // drawn over a line's cell in the line's style: an arrowhead, a dash
+	texts  []text          // labels outside any box, in the label's style
 }
 
 // text is a label at a cell, outside any box, w cells wide.
@@ -59,7 +62,7 @@ func (g *Grid) label(x, y int, s string, m Measurer) {
 
 // newGrid is an empty grid.
 func newGrid() *Grid {
-	return &Grid{lines: map[cell]dirs{}, heavy: map[cell]bool{}, marks: map[cell]string{}}
+	return &Grid{lines: map[cell]dirs{}, heavy: map[cell]bool{}, marks: map[cell]string{}, stroke: map[cell]stroke{}}
 }
 
 // Box is a node's outline and label. ID is the model's node ID, so a host maps a selection back.
@@ -121,12 +124,53 @@ var heavyRune = map[dirs]string{
 	north | south | east | west: "╂",
 }
 
+// stroke is a line's drawing: light, dashed (a dotted edge) or thick.
+type stroke uint8
+
+const (
+	strokeLight stroke = iota
+	strokeDashed
+	strokeThick
+)
+
+// dashRune is a dashed line's character where it runs straight; its corners, junctions and ends are
+// drawn light, so a turn still reads.
+var dashRune = map[dirs]string{north | south: "┆", east | west: "┄"}
+
+// thickRune is every dirs value's character in the heavy set.
+var thickRune = [16]string{
+	0:                           " ",
+	north:                       "╹",
+	east:                        "╺",
+	south:                       "╻",
+	west:                        "╸",
+	north | south:               "┃",
+	east | west:                 "━",
+	south | east:                "┏",
+	south | west:                "┓",
+	north | east:                "┗",
+	north | west:                "┛",
+	north | south | east:        "┣",
+	north | south | west:        "┫",
+	south | east | west:         "┳",
+	north | east | west:         "┻",
+	north | south | east | west: "╋",
+}
+
 // lineOf is the character a line cell is painted with.
 func (g *Grid) lineOf(c cell, d dirs) string {
 	if g.heavy[c] {
 		if r, ok := heavyRune[d]; ok {
 			return r
 		}
+	}
+	switch g.stroke[c] {
+	case strokeDashed:
+		if r, ok := dashRune[d]; ok {
+			return r
+		}
+	case strokeThick:
+		return thickRune[d]
 	}
 	return lineRune[d]
 }
@@ -222,17 +266,20 @@ func (g *Grid) settle() {
 		g.Boxes[i].Rect.Y -= minY
 	}
 	shift := func(c cell) cell { return cell{c.x - minX, c.y - minY} }
-	lines, heavy, marks := map[cell]dirs{}, map[cell]bool{}, map[cell]string{}
+	lines, heavy, marks, strokes := map[cell]dirs{}, map[cell]bool{}, map[cell]string{}, map[cell]stroke{}
 	for c, d := range g.lines {
 		lines[shift(c)] = d
 	}
 	for c := range g.heavy {
 		heavy[shift(c)] = true
 	}
+	for c, st := range g.stroke {
+		strokes[shift(c)] = st
+	}
 	for c, m := range g.marks {
 		marks[shift(c)] = m
 	}
-	g.lines, g.heavy, g.marks = lines, heavy, marks
+	g.lines, g.heavy, g.marks, g.stroke = lines, heavy, marks, strokes
 	for i := range g.texts {
 		g.texts[i].x -= minX
 		g.texts[i].y -= minY
