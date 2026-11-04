@@ -198,7 +198,7 @@ func paintBox(s tui.Surface, b Box, x0, y0 int, lines map[cell]dirs, box, label 
 		s.SetCell(right, y, rightSide, box)
 		s.Fill(tui.Rect{X: r.X + 1, Y: y, W: r.W - 2, H: 1}, " ", label)
 	}
-	if b.Stem && b.Form != FormBang && b.Form != FormHexagon {
+	if b.Stem && b.Form != FormBang { // a hexagon's top and bottom are light: a flowchart's decision takes stems
 		cx := b.Rect.X + b.Rect.W/2
 		if lines[cell{cx, b.Rect.Y - 1}]&south != 0 {
 			s.SetCell(x0+cx, r.Y, "┴", box)
