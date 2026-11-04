@@ -17,7 +17,7 @@ import demo 1.0
 Window {
  HTMLView {
   id: page
-  html: "<h1>Hello</h1><p data-src=\"0-9\">see <a href=\"x.md\">the note</a></p><p data-src=\"10-19\">two</p><p data-src=\"20-29\">three</p><p data-src=\"30-39\">four</p>"
+  html: "<h1>Hello</h1><p data-src=\"0-9\">see <a href=\"x.md\">the note</a></p><p data-src=\"10-19\">two</p><p data-src=\"20-29\">three</p><p data-src=\"30-39\">four</p><p data-src=\"40-49\">five</p>"
   onLinkActivated: App.log(href)
   onScrolledTo: App.log(sourceByte)
  }
@@ -28,7 +28,7 @@ Window {
 // scrollToSource scrolls; the host reaches the widget by id.
 func TestAnHTMLViewFromTheDocument(t *testing.T) {
 	rec := &recorder{}
-	s := decltest.Run(t, 30, 4, // the h1, its rule, a gap and the paragraph with the link
+	s := decltest.Run(t, 30, 4, // the h1, its rule, a gap and the paragraph with the link; five lets three reach the top
 		tuidecl.LayoutSource("main.qml", []byte(htmlViewDoc)),
 		tuidecl.Singleton("demo", "1.0", "App"),
 		tuidecl.Handlers(map[string]decl.HandlerFunc{"App.log": rec.handler}))
