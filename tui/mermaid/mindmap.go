@@ -52,8 +52,15 @@ const mindmapLevelSep = 6
 
 // Lay lays d out for painting: ErrUnsupported for a kind not in Kinds.
 func Lay(ctx context.Context, d pm.Diagram, m Measurer) (*Grid, error) {
-	if md, ok := d.(*pm.MindmapDiagram); ok {
-		return LayMindmap(ctx, md, m)
+	switch d := d.(type) {
+	case *pm.MindmapDiagram:
+		return LayMindmap(ctx, d, m)
+	case *pm.TimelineDiagram:
+		return LayTimeline(ctx, d, m)
+	case *pm.JourneyDiagram:
+		return LayJourney(ctx, d, m)
+	case *pm.SequenceDiagram:
+		return LaySequence(ctx, d, m)
 	}
 	return nil, ErrUnsupported
 }
@@ -63,7 +70,7 @@ func Lay(ctx context.Context, d pm.Diagram, m Measurer) (*Grid, error) {
 // by elbows sharing one spine. Every box sits on whole cells, with at least one blank cell between
 // any two. layout.ErrTooLarge comes back as it is, for the host's "too large" notice.
 func LayMindmap(ctx context.Context, d *pm.MindmapDiagram, m Measurer) (*Grid, error) {
-	g := &Grid{lines: map[cell]dirs{}}
+	g := newGrid()
 	if len(d.Nodes) == 0 {
 		return g, nil
 	}
@@ -115,6 +122,12 @@ func (g *Grid) measure() {
 	}
 	for c := range g.lines {
 		g.Size.W, g.Size.H = max(g.Size.W, c.x+1), max(g.Size.H, c.y+1)
+	}
+	for c := range g.marks {
+		g.Size.W, g.Size.H = max(g.Size.W, c.x+1), max(g.Size.H, c.y+1)
+	}
+	for _, t := range g.texts {
+		g.Size.W, g.Size.H = max(g.Size.W, t.x+t.w), max(g.Size.H, t.y+1)
 	}
 }
 
@@ -184,6 +197,15 @@ func paintBox(s tui.Surface, b Box, x0, y0 int, lines map[cell]dirs, box, label 
 		s.SetCell(r.X, y, left, box)
 		s.SetCell(right, y, rightSide, box)
 		s.Fill(tui.Rect{X: r.X + 1, Y: y, W: r.W - 2, H: 1}, " ", label)
+	}
+	if b.Stem && b.Form != FormBang && b.Form != FormHexagon {
+		cx := b.Rect.X + b.Rect.W/2
+		if lines[cell{cx, b.Rect.Y - 1}]&south != 0 {
+			s.SetCell(x0+cx, r.Y, "┴", box)
+		}
+		if lines[cell{cx, b.Rect.Y + b.Rect.H}]&north != 0 {
+			s.SetCell(x0+cx, bottom, "┬", box)
+		}
 	}
 	tui.DrawText(s, r.X+2, mid, b.Label, label)
 }
