@@ -49,6 +49,9 @@ type hblock struct {
 	table      int    // a row's table, so its columns align with its siblings'
 	cellStarts []int  // a row's: the span each cell starts at
 	spans      []hspan
+	// diagram is a <pre class="mermaid">'s source, drawn by the cell layout in cells when it can be
+	// (layDiagram), its text otherwise; "" for any other block.
+	diagram string
 }
 
 // inlineStyle is the inline formatting in force at a point of the walk.
@@ -361,9 +364,15 @@ func setCode(s *inlineStyle)   { s.code = true }
 func setUnder(s *inlineStyle)  { s.under = true }
 func setStrike(s *inlineStyle) { s.strike = true }
 
-// preBlock is a <pre>: one block, its whitespace kept.
+// preBlock is a <pre>: one block, its whitespace kept. A <pre class="mermaid"> keeps its source
+// as the block's diagram too.
 func (w *hwalker) preBlock(n *phtml.Node) {
-	w.block(hPre)
+	b := w.block(hPre)
+	if hasClass(n, "mermaid") {
+		var src strings.Builder
+		preText(n, &src)
+		b.diagram = strings.TrimSpace(src.String())
+	}
 	w.pre++
 	w.walk(n)
 	w.pre--
@@ -456,5 +465,15 @@ func (w *hwalker) tableCell(n *phtml.Node) {
 	w.cell--
 	if n := len(b.spans); n > 0 && !b.spans[n-1].deco {
 		b.spans[n-1].text = strings.TrimRight(b.spans[n-1].text, " ")
+	}
+}
+
+// preText writes n's text, every descendant's, into b: a diagram's source as the page holds it.
+func preText(n *phtml.Node, b *strings.Builder) {
+	for _, c := range n.Children {
+		if c.Kind == phtml.Text {
+			b.WriteString(c.Data)
+		}
+		preText(c, b)
 	}
 }
