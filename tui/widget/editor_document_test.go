@@ -327,8 +327,8 @@ func TestTheJumpListWalksFromAShownDocument(t *testing.T) {
 	}
 	h.inject(keyText("G"))
 	h.barrier(sh)
-	if ln := line(); ln != 3 {
-		t.Fatalf("G in the text: line %d, want 3", ln)
+	if ln := line(); ln != 4 {
+		t.Fatalf("G in the text: line %d, want 4, the empty one after the last row", ln)
 	}
 	h.inject(ctrlEv('t'))
 	h.barrier(sh)
@@ -342,8 +342,8 @@ func TestTheJumpListWalksFromAShownDocument(t *testing.T) {
 	}
 	h.inject(ctrlEv('i'))
 	h.barrier(sh)
-	if ln := line(); ln != 3 {
-		t.Fatalf("Ctrl+I from the table: line %d, want 3", ln)
+	if ln := line(); ln != 4 {
+		t.Fatalf("Ctrl+I from the table: line %d, want 4", ln)
 	}
 	if _, s, _ := views(h, ed, doc); s != widget.ViewRendered {
 		t.Fatalf("Ctrl+I from the table: drawn %v", s)
