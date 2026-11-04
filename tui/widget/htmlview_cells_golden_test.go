@@ -108,15 +108,9 @@ func styleWords(st style.Style) string {
 	return strings.Join(out, " ")
 }
 
-// cellGolden is how markdown src (or, raw, HTML) reads in cells at width: each row's text, then its
-// runs of one style (columns from-to), blanks and default text left out. It measures a cluster by
-// its runes (layCells).
-func cellGolden(t *testing.T, src string, width int, raw bool) string {
-	t.Helper()
-	return cellGoldenMeasured(t, src, width, raw, nil)
-}
-
-// cellGoldenMeasured is cellGolden measured by measure, nil: by runes.
+// cellGoldenMeasured is how markdown src (or, raw, HTML) reads in cells at width: each row's text,
+// then its runs of one style (columns from-to), blanks and default text left out. It measures a
+// cluster by measure, nil: by its runes (layCells).
 func cellGoldenMeasured(t *testing.T, src string, width int, raw bool, measure func(string) int) string {
 	t.Helper()
 	html := bytes.NewBufferString(src)
