@@ -96,4 +96,20 @@ func TestTheCellLayoutDrawsAMindmapAndSaysWhatItDoesnt(t *testing.T) {
 	if got := strings.Join(c.rowTexts(), "\n"); !strings.Contains(got, "▸ 图表未绘制: flowchart") {
 		t.Fatalf("the host's notice wasn't used:\n%s", got)
 	}
+
+	// a view built first, then given the host's words (as AutoDoc does to a view its layout built):
+	// the page is laid out again in them
+	v := NewHTMLView()
+	v.SetHTML([]byte(`<pre class="mermaid">flowchart LR
+  a --> b
+</pre>`))
+	cl := v.layout.(*cellHTML)
+	cl.SetWidth(60)
+	if got := strings.Join(cl.rowTexts(), "\n"); !strings.Contains(got, "▸ flowchart diagram: not drawn in the terminal") {
+		t.Fatalf("before the host's words, the English isn't shown:\n%s", got)
+	}
+	WithDiagramNotice(func(kind string) string { return "图表未绘制: " + kind })(v)
+	if got := strings.Join(cl.rowTexts(), "\n"); !strings.Contains(got, "▸ 图表未绘制: flowchart") {
+		t.Fatalf("words set after the view was built weren't used:\n%s", got)
+	}
 }
