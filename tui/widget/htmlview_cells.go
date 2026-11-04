@@ -55,10 +55,11 @@ type cellHTML struct {
 	// notice says a diagram of a kind not drawn in cells isn't drawn here (WithDiagramNotice);
 	// nil: diagramNotice's English.
 	notice func(kind string) string
+	m      cellMarks // a find's matches (htmlview_marks.go)
 }
 
 func newCellHTML(measure func(string) int) *cellHTML {
-	return &cellHTML{measure: measure, width: 1}
+	return &cellHTML{measure: measure, width: 1, m: cellMarks{cur: -1}}
 }
 
 var _ HTMLLayout = (*cellHTML)(nil)
@@ -68,6 +69,7 @@ func (c *cellHTML) SetSource(src []byte) {
 	c.src = src
 	c.doc = readHTMLDoc(src)
 	c.layOut()
+	c.markAll()
 }
 
 // SetWidth lays the document out again at w cells, when that is a change.
@@ -705,6 +707,9 @@ func (c *cellHTML) PaintCells(s tui.Surface, top, w int, from, to DocPos) {
 				break
 			}
 			st := c.styleOf(r, k)
+			if marked, current := c.markOf(k); marked {
+				st = markStyle.Reverse(current)
+			}
 			if selecting && selected(k, from, to) {
 				st = st.Reverse(true)
 			}
