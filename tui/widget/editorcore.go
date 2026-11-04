@@ -76,10 +76,12 @@ type EditorCore struct {
 	keys           keyDispatch            // modes and key routing
 	hl             highlightCache         // per-line styles
 	highlightFrame *HighlightFrame
-	// lastFactory is the source factory this core last set (SetSourceFactory): a buffer it shows
-	// that has no highlighting of its own is given it (show), so the highlighting a host declared
-	// for the editor reaches every buffer the editor shows, not only the one shown when it was set.
-	lastFactory func() highlight.Source
+	// lastSource is the highlighting this core last set (SetSourceFactory, SetHighlighter), as a
+	// factory, and sourceEpoch counts each time it was set. A buffer it shows that has none of its
+	// own, or the core's of an older epoch, is given it (show): the highlighting a host declared for
+	// the editor reaches every buffer the editor shows, not only the one shown when it was set.
+	lastSource  func() highlight.Source
+	sourceEpoch uint64
 	autoIndent  bool
 	indentUnit  string
 	indentMarks IndentMarks
@@ -519,7 +521,13 @@ func (c *EditorCore) Lines() []string { return append([]string(nil), c.buf.textL
 // afresh.
 func (c *EditorCore) SetHighlighter(h highlight.Highlighter) {
 	c.retireHighlightFrame()
-	c.sourceFactory, c.source, c.lastFactory = nil, highlight.Source{Highlighter: h}, nil
+	c.sourceFactory, c.source = nil, highlight.Source{Highlighter: h}
+	c.lastSource = nil
+	if h != nil {
+		c.lastSource = func() highlight.Source { return highlight.Source{Highlighter: h} }
+	}
+	c.sourceEpoch++
+	c.sourceFrom, c.sourceFromEpoch = c, c.sourceEpoch
 	c.hl.text.setHighlighter(h)
 	hostSource(c.bufferState) // the host's highlighter replaced the finds' own
 	c.markDirty()
@@ -532,7 +540,9 @@ func CoreSourceFactory(factory func() highlight.Source) CoreOption {
 
 // SetSourceFactory replaces both source behavior and lexical-state ownership.
 func (c *EditorCore) SetSourceFactory(factory func() highlight.Source) {
-	c.sourceFactory, c.lastFactory = factory, factory
+	c.sourceFactory, c.lastSource = factory, factory
+	c.sourceEpoch++
+	c.sourceFrom, c.sourceFromEpoch = c, c.sourceEpoch
 	c.renewSource()
 	c.markDirty()
 }
