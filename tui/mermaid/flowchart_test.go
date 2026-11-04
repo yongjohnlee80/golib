@@ -105,111 +105,132 @@ func randomFlowchart(r *rand.Rand) string {
 func TestTheFlowchartRoutersInvariantsHold(t *testing.T) {
 	for seed := range uint64(300) {
 		src := randomFlowchart(rand.New(rand.NewPCG(seed, 0x5eed)))
-		what := fmt.Sprintf("seed %d:\n%s\ndrawn:\n%s", seed, src, paintFC(t, src))
-		fc, g, routes := layFC(t, src)
-		checkGrid(t, what, g)
-		box := map[string]tui.Rect{}
-		for _, b := range g.Boxes {
-			box[b.ID] = b.Rect
+		checkFlowchart(t, fmt.Sprintf("seed %d", seed), src)
+	}
+}
+
+// The invariants hold for the flowcharts that once broke them: a lower end in another net's column
+// where an LR box has one port cell (the dogleg), and two doglegs in one gap whose crossings overlap
+// (a jog row each).
+func TestTheFlowchartRoutersInvariantsHoldWhereTheyBroke(t *testing.T) {
+	for name, src := range map[string]string{
+		"one port cell": "flowchart LR\n  N0[x]\n  N1[a longer label]\n  N2[東京]\n  N3[a]\n  N4[node]\n  N5[a longer label]\n  N6[node]\n" +
+			"  N3 --> N5\n  N3 --> N5\n  N5 --> N6\n  N3 --> N4\n  N5 --> N6\n  N3 --> N6\n  N1 --> N2\n  N1 --> N4\n  N1 --> N5\n",
+		"overlapping jogs": "flowchart RL\n  N0[x]\n  N1[a]\n  N2[東京]\n  N3[node]\n  N4[x]\n  N5[step two]\n  N6[x]\n  N7[東京]\n" +
+			"  N4 --> N5\n  N3 --> N5\n  N1 --> N3\n  N3 --> N7\n  N1 --> N6\n  N5 --> N6\n  N2 --> N7\n  N2 --> N4\n  N4 --> N7\n" +
+			"  N1 --> N7\n  N2 --> N7\n  N4 -->|yes| N7\n  N0 -->|no| N7\n  N4 -->|東京| N5\n  N5 --> N6\n  N0 -->|a label| N6\n",
+	} {
+		checkFlowchart(t, name, src)
+	}
+}
+
+// checkFlowchart lays src out and checks the router's invariants (TestTheFlowchartRoutersInvariantsHold).
+func checkFlowchart(t *testing.T, name, src string) {
+	t.Helper()
+	what := fmt.Sprintf("%s:\n%s\ndrawn:\n%s", name, src, paintFC(t, src))
+	fc, g, routes := layFC(t, src)
+	checkGrid(t, what, g)
+	box := map[string]tui.Rect{}
+	for _, b := range g.Boxes {
+		box[b.ID] = b.Rect
+	}
+	next := func(r tui.Rect, c cell) bool { // c is beside r (not diagonally)
+		inX, inY := c.x >= r.X && c.x < r.X+r.W, c.y >= r.Y && c.y < r.Y+r.H
+		return inX && (c.y == r.Y-1 || c.y == r.Y+r.H) || inY && (c.x == r.X-1 || c.x == r.X+r.W)
+	}
+	for i, e := range fc.Edges {
+		links := routes[i]
+		if len(links) == 0 {
+			t.Fatalf("%s edge %d (%s→%s) was not routed", what, i, e.From, e.To)
 		}
-		next := func(r tui.Rect, c cell) bool { // c is beside r (not diagonally)
-			inX, inY := c.x >= r.X && c.x < r.X+r.W, c.y >= r.Y && c.y < r.Y+r.H
-			return inX && (c.y == r.Y-1 || c.y == r.Y+r.H) || inY && (c.x == r.X-1 || c.x == r.X+r.W)
+		adj := map[cell][]cell{}
+		for _, l := range links {
+			adj[l[0]] = append(adj[l[0]], l[1])
+			adj[l[1]] = append(adj[l[1]], l[0])
 		}
-		for i, e := range fc.Edges {
-			links := routes[i]
-			if len(links) == 0 {
-				t.Fatalf("%s edge %d (%s→%s) was not routed", what, i, e.From, e.To)
-			}
-			adj := map[cell][]cell{}
-			for _, l := range links {
-				adj[l[0]] = append(adj[l[0]], l[1])
-				adj[l[1]] = append(adj[l[1]], l[0])
-			}
-			start := links[0][0]
-			seen := map[cell]bool{start: true}
-			for todo := []cell{start}; len(todo) > 0; {
-				c := todo[0]
-				todo = todo[1:]
-				for _, n := range adj[c] {
-					if !seen[n] {
-						seen[n] = true
-						todo = append(todo, n)
-					}
-				}
-			}
-			if len(seen) != len(adj) {
-				t.Fatalf("%s edge %d (%s→%s) is in pieces: %d of %d cells reached", what, i, e.From, e.To, len(seen), len(adj))
-			}
-			var atFrom, atTo bool
-			for c := range adj {
-				atFrom = atFrom || next(box[e.From], c)
-				atTo = atTo || next(box[e.To], c)
-			}
-			if !atFrom || !atTo {
-				t.Fatalf("%s edge %d (%s→%s) doesn't reach its boxes: from %v, to %v", what, i, e.From, e.To, atFrom, atTo)
-			}
-		}
-		for i, a := range fc.Edges {
-			mine := map[[2]cell]bool{}
-			for _, l := range routes[i] {
-				mine[l] = true
-				mine[[2]cell{l[1], l[0]}] = true
-			}
-			for j := i + 1; j < len(fc.Edges); j++ {
-				b := fc.Edges[j]
-				if a.From == b.From || a.To == b.To {
-					continue
-				}
-				for _, l := range routes[j] {
-					if mine[l] {
-						t.Fatalf("%s edges %s→%s and %s→%s share a run at %v", what, a.From, a.To, b.From, b.To, l)
-					}
+		start := links[0][0]
+		seen := map[cell]bool{start: true}
+		for todo := []cell{start}; len(todo) > 0; {
+			c := todo[0]
+			todo = todo[1:]
+			for _, n := range adj[c] {
+				if !seen[n] {
+					seen[n] = true
+					todo = append(todo, n)
 				}
 			}
 		}
-		toward := map[[2]int]dirs{{0, -1}: south, {0, 1}: north, {-1, 0}: east, {1, 0}: west}
-		for _, b := range g.Boxes {
-			r := b.Rect
-			for c, d := range g.lines {
-				if !next(r, c) {
-					continue
-				}
-				var dx, dy int
-				switch {
-				case c.y == r.Y-1:
-					dy = -1
-				case c.y == r.Y+r.H:
-					dy = 1
-				case c.x == r.X-1:
-					dx = -1
-				default:
-					dx = 1
-				}
-				if d&toward[[2]int{dx, dy}] == 0 && g.marks[c] == "" {
-					t.Fatalf("%s a line runs along box %s %+v at %v without meeting it", what, b.ID, r, c)
+		if len(seen) != len(adj) {
+			t.Fatalf("%s edge %d (%s→%s) is in pieces: %d of %d cells reached", what, i, e.From, e.To, len(seen), len(adj))
+		}
+		var atFrom, atTo bool
+		for c := range adj {
+			atFrom = atFrom || next(box[e.From], c)
+			atTo = atTo || next(box[e.To], c)
+		}
+		if !atFrom || !atTo {
+			t.Fatalf("%s edge %d (%s→%s) doesn't reach its boxes: from %v, to %v", what, i, e.From, e.To, atFrom, atTo)
+		}
+	}
+	for i, a := range fc.Edges {
+		mine := map[[2]cell]bool{}
+		for _, l := range routes[i] {
+			mine[l] = true
+			mine[[2]cell{l[1], l[0]}] = true
+		}
+		for j := i + 1; j < len(fc.Edges); j++ {
+			b := fc.Edges[j]
+			if a.From == b.From || a.To == b.To {
+				continue
+			}
+			for _, l := range routes[j] {
+				if mine[l] {
+					t.Fatalf("%s edges %s→%s and %s→%s share a run at %v", what, a.From, a.To, b.From, b.To, l)
 				}
 			}
 		}
-		cover := map[cell]string{}
-		for _, tx := range g.texts {
-			for x := tx.x; x < tx.x+tx.w; x++ {
-				c := cell{x, tx.y}
-				if other, ok := cover[c]; ok {
-					t.Fatalf("%s the labels %q and %q overlap at %v", what, other, tx.s, c)
-				}
-				cover[c] = tx.s
-				if g.marks[c] != "" {
-					t.Fatalf("%s the label %q covers the mark %q at %v", what, tx.s, g.marks[c], c)
-				}
-				if d, ok := g.lines[c]; ok && d != east|west {
-					t.Fatalf("%s the label %q covers a turn or a junction (%s) at %v", what, tx.s, lineRune[d], c)
-				}
+	}
+	toward := map[[2]int]dirs{{0, -1}: south, {0, 1}: north, {-1, 0}: east, {1, 0}: west}
+	for _, b := range g.Boxes {
+		r := b.Rect
+		for c, d := range g.lines {
+			if !next(r, c) {
+				continue
+			}
+			var dx, dy int
+			switch {
+			case c.y == r.Y-1:
+				dy = -1
+			case c.y == r.Y+r.H:
+				dy = 1
+			case c.x == r.X-1:
+				dx = -1
+			default:
+				dx = 1
+			}
+			if d&toward[[2]int{dx, dy}] == 0 && g.marks[c] == "" {
+				t.Fatalf("%s a line runs along box %s %+v at %v without meeting it", what, b.ID, r, c)
 			}
 		}
-		if again := paintFC(t, src); again != paintFC(t, src) {
-			t.Fatalf("%s two drawings of one flowchart differ", what)
+	}
+	cover := map[cell]string{}
+	for _, tx := range g.texts {
+		for x := tx.x; x < tx.x+tx.w; x++ {
+			c := cell{x, tx.y}
+			if other, ok := cover[c]; ok {
+				t.Fatalf("%s the labels %q and %q overlap at %v", what, other, tx.s, c)
+			}
+			cover[c] = tx.s
+			if g.marks[c] != "" {
+				t.Fatalf("%s the label %q covers the mark %q at %v", what, tx.s, g.marks[c], c)
+			}
+			if d, ok := g.lines[c]; ok && d != east|west {
+				t.Fatalf("%s the label %q covers a turn or a junction (%s) at %v", what, tx.s, lineRune[d], c)
+			}
 		}
+	}
+	if again := paintFC(t, src); again != paintFC(t, src) {
+		t.Fatalf("%s two drawings of one flowchart differ", what)
 	}
 }
 
