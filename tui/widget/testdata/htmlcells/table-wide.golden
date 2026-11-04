@@ -1,0 +1,36 @@
+width 40
+> | 이름 | Qty | 메모 |
+> | :--- | ---: | :---: |
+> | 사과 | 3 | 익음 |
+> | apple | 12 | — |
+> | 東京 | 1 | 駅 |
+
+"┌───────┬─────┬──────┐"
+    0-21 fg=border
+"│ 이름  │ Qty │ 메모 │"
+    0-0 fg=border
+    2-5 bold fg=fg
+    8-8 fg=border
+    10-12 bold fg=fg
+    14-14 fg=border
+    16-19 bold fg=fg
+    21-21 fg=border
+"├───────┼─────┼──────┤"
+    0-21 fg=border
+"│ 사과  │   3 │ 익음 │"
+    0-0 fg=border
+    8-8 fg=border
+    14-14 fg=border
+    21-21 fg=border
+"│ apple │  12 │  —   │"
+    0-0 fg=border
+    8-8 fg=border
+    14-14 fg=border
+    21-21 fg=border
+"│ 東京  │   1 │  駅  │"
+    0-0 fg=border
+    8-8 fg=border
+    14-14 fg=border
+    21-21 fg=border
+"└───────┴─────┴──────┘"
+    0-21 fg=border
