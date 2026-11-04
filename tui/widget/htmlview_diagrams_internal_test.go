@@ -115,7 +115,9 @@ func TestTheCellLayoutDrawsAMindmapAndSaysWhatItDoesnt(t *testing.T) {
 		t.Fatalf("before the host's words, the English isn't shown:\n%s", got)
 	}
 	WithDiagramNotice(func(kind string) string { return "图表未绘制: " + kind })(v)
-	if got := strings.Join(cl.rowTexts(), "\n"); !strings.Contains(got, "▸ 图表未绘制: flowchart") {
+	// a real view measures a CJK cluster two cells wide, so the row text has a gap after each:
+	// read it without spaces
+	if got := strings.Join(cl.rowTexts(), "\n"); !strings.Contains(strings.ReplaceAll(got, " ", ""), "▸图表未绘制:flowchart") {
 		t.Fatalf("words set after the view was built weren't used:\n%s", got)
 	}
 }
