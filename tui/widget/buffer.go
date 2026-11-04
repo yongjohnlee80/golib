@@ -49,7 +49,12 @@ type bufferState struct {
 	hlText        hlText // what the highlighter made of each line (editor_highlight.go)
 	sourceFactory func() highlight.Source
 	source        highlight.Source
-	jumpDoc       string // the document as the jump list knows it (SetJumpDoc, Buffer.SetName)
+	// sourceFrom is the editor whose highlighting the source is (SetSourceFactory, SetHighlighter,
+	// or given at show), at its sourceFromEpoch; nil for the buffer's own (BufferSourceFactory) or
+	// none
+	sourceFrom      *EditorCore
+	sourceFromEpoch uint64
+	jumpDoc         string // the document as the jump list knows it (SetJumpDoc, Buffer.SetName)
 	// plainOn says the highlighter is the finds' own plain one, installed so a find's marks have a
 	// walk to paint on; findPlain, the editors whose active find needs it (needPlain, dropPlain)
 	plainOn   bool

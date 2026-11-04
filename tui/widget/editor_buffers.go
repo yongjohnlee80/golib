@@ -70,10 +70,12 @@ func (c *EditorCore) show(s *bufferState, keep bool) {
 	c.buf.col = c.buf.clampCol(c.buf.ln, p.at.col)
 	c.vAnchor = taPos{}
 	c.hl.text, c.hl.paint = &s.hlText, nil
-	if s.sourceFactory == nil && s.source.Highlighter == nil && c.lastFactory != nil {
-		// a buffer with no highlighting of its own takes the editor's: shown after another under the
-		// same declared definition, it would be drawn plain, as no SetSourceFactory comes for it
-		s.sourceFactory = c.lastFactory
+	// a buffer with no highlighting of its own takes the editor's, as it is now: shown after another
+	// under the same declared definition, it would be drawn plain, as no SetSourceFactory comes for
+	// it; one given the editor's before, under another definition since, takes the current one
+	own := s.sourceFrom == nil && (s.sourceFactory != nil || s.source.Highlighter != nil)
+	if !own && c.sourceEpoch != 0 && (s.sourceFrom != c || s.sourceFromEpoch != c.sourceEpoch) {
+		s.sourceFactory, s.sourceFrom, s.sourceFromEpoch = c.lastSource, c, c.sourceEpoch
 		c.renewSource()
 	}
 	c.hl.paintRevision++
