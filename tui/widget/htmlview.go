@@ -42,6 +42,8 @@ type HTMLView struct {
 	css       string
 	diagrams  any
 	diagramsN uint64 // how many times WithDiagrams set diagrams: a new one's answers are its own
+	// diagramNotice is the cell layout's line for a diagram it doesn't draw (WithDiagramNotice).
+	diagramNotice func(kind string) string
 
 	pressing bool
 	pressAt  [2]float32 // where the left button went down, in the layout's units
@@ -229,20 +231,30 @@ func WithImageResolver(r ImageResolver) HTMLOption { return func(v *HTMLView) { 
 func WithStylesheet(css string) HTMLOption { return func(v *HTMLView) { v.css = css } }
 
 // WithDiagrams gives a pixel layout what draws a page's diagrams (pre class="mermaid"), held
-// opaque here; the cell layout shows a diagram's source.
+// opaque here; the cell layout draws the kinds tui/mermaid draws and says the others aren't drawn
+// (WithDiagramNotice).
 func WithDiagrams(d any) HTMLOption {
 	return func(v *HTMLView) { v.diagrams, v.diagramsN = d, v.diagramsN+1 }
+}
+
+// WithDiagramNotice says, in the host's words, that a diagram of kind isn't drawn in the
+// terminal: the cell layout draws what tui/mermaid draws (Kinds) and shows this for any other
+// diagram, never its source. Unset, the line is English.
+func WithDiagramNotice(say func(kind string) string) HTMLOption {
+	return func(v *HTMLView) { v.diagramNotice = say }
 }
 
 // NewHTMLView builds an empty view, laid out in cells until a backend binds another layout.
 func NewHTMLView(opts ...HTMLOption) *HTMLView {
 	v := &HTMLView{lastSrc: -1}
-	v.layout = newCellHTML(v.measure)
+	cells := newCellHTML(v.measure)
+	v.layout = cells
 	for _, o := range opts {
 		if o != nil {
 			o(v)
 		}
 	}
+	cells.notice = v.diagramNotice
 	return v
 }
 

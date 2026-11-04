@@ -1,10 +1,14 @@
 package widget
 
 import (
+	"context"
 	"math"
 	"strings"
 
+	pm "github.com/yongjohnlee80/golib/parse/mermaid"
 	"github.com/yongjohnlee80/golib/tui"
+	"github.com/yongjohnlee80/golib/tui/internal/grapheme"
+	tuimermaid "github.com/yongjohnlee80/golib/tui/mermaid"
 	"github.com/yongjohnlee80/golib/tui/style"
 )
 
@@ -30,6 +34,10 @@ type hrow struct {
 	cls   []hcl
 	shade bool // a preformatted block's row: shaded across the width
 	rule  bool
+	// grid is a diagram's, drawn in cells across its rows (layDiagram); gridRow is which of its
+	// rows this one is. nil for any other row.
+	grid    *tuimermaid.Grid
+	gridRow int
 }
 
 // cellHTML lays an HTMLView out in cells (HTMLLayout).
@@ -40,6 +48,9 @@ type cellHTML struct {
 	width   int
 	rows    []hrow
 	tops    []int // each block's first row (its gap excluded)
+	// notice says a diagram of a kind not drawn in cells isn't drawn here (WithDiagramNotice);
+	// nil: diagramNotice's English.
+	notice func(kind string) string
 }
 
 func newCellHTML(measure func(string) int) *cellHTML {
@@ -133,6 +144,10 @@ const hruleCluster = "─"
 
 // layBlock wraps block bi into rows.
 func (c *cellHTML) layBlock(bi int, b *hblock, cols []int) {
+	if b.kind == hPre && b.diagram != "" {
+		c.layDiagram(bi, b)
+		return
+	}
 	room := max(c.width-2*b.quote-b.indent, 1)
 	if b.kind == hRule {
 		c.layRule(bi, b, room)
@@ -157,6 +172,56 @@ func (c *cellHTML) layBlock(bi int, b *hblock, cols []int) {
 			c.rows = append(c.rows, row)
 		}
 	}
+}
+
+// measureFunc is a width function as tui/mermaid's Measurer.
+type measureFunc func(string) int
+
+func (f measureFunc) StringWidth(s string) int { return f(s) }
+
+// diagramNotice is what a diagram the terminal doesn't draw shows instead, in English: a host
+// that speaks other languages says it its own way (WithDiagramNotice).
+func diagramNotice(kind string) string {
+	return kind + " diagram: not drawn in the terminal (Raw shows its source)"
+}
+
+// layDiagram lays a <pre class="mermaid"> out: a kind tui/mermaid draws as its grid, one row of
+// the layout per row of the grid; any other kind, one that doesn't parse, or one too large to lay
+// out, as a single muted line saying it isn't drawn here, never its source (Raw shows that).
+func (c *cellHTML) layDiagram(bi int, b *hblock) {
+	kind := "mermaid"
+	if d, err := pm.Parse(b.diagram); err == nil {
+		kind = d.Kind().String()
+		if tuimermaid.Supported(d.Kind()) {
+			if g, err := tuimermaid.Lay(context.Background(), d, measureFunc(c.measure)); err == nil && g.Size.H > 0 {
+				for i := range g.Size.H {
+					c.rows = append(c.rows, hrow{block: bi, first: i == 0, grid: g, gridRow: i})
+				}
+				return
+			}
+		}
+	}
+	say := diagramNotice
+	if c.notice != nil {
+		say = c.notice
+	}
+	row := hrow{block: bi, first: true, cls: c.prefix(b, true)}
+	x := 2*b.quote + b.indent
+	for k := range grapheme.Clusters("▸ " + say(kind)) {
+		w := c.measure(k)
+		row.cls = append(row.cls, hcl{text: k, x: x, w: w, deco: true})
+		x += w
+	}
+	c.rows = append(c.rows, row)
+}
+
+// diagramTheme is a diagram's styles in the cell layout: lines in the border's tone, outlines in
+// the accent, labels as the text.
+var diagramTheme = tuimermaid.Theme{
+	Line:     style.New().Foreground(style.TokenBorder),
+	Box:      style.New().Foreground(style.TokenAccent),
+	Label:    style.New().Foreground(style.TokenForeground),
+	Selected: style.New().Foreground(style.TokenForeground).Reverse(true),
 }
 
 // prefix is the decoration a row of b starts with: a bar and a space per quote level, then the
@@ -447,12 +512,21 @@ func (c *cellHTML) PaintCells(s tui.Surface, top, w int, from, to DocPos) {
 	sz := s.Size()
 	from, to = OrderDocPos(from, to)
 	selecting := from != to
+	var painted *tuimermaid.Grid // the diagram drawn last: each is painted once, from its first row shown
 	for y := 0; y < sz.H; y++ {
 		ri := top + y
 		if ri < 0 || ri >= len(c.rows) {
 			continue
 		}
 		r := &c.rows[ri]
+		if r.grid != nil {
+			if r.grid != painted {
+				painted = r.grid
+				b := &c.doc[r.block]
+				r.grid.Paint(s, 2*b.quote+b.indent, y-r.gridRow, -1, diagramTheme) // the surface clips it
+			}
+			continue
+		}
 		if r.shade {
 			s.Fill(tui.Rect{X: 2 * c.doc[r.block].quote, Y: y, W: max(w-2*c.doc[r.block].quote, 0), H: 1}, " ", style.New().Background(style.TokenSurface))
 		}
