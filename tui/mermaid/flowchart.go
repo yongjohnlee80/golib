@@ -74,6 +74,27 @@ type fcEdge struct {
 	back     bool        // it runs up the ranks: from its lower node to its upper
 	cols     map[int]int // a rank strictly between lo and hi → the column it passes it at
 	drawn    bool        // routed: false for a self-loop, an edge within one rank, an invisible edge
+	lowCol   int         // the column it meets its lower node's top at (lowPort)
+}
+
+// lowPort is the column, on n's top, that edges come down into it at (back false) or leave it up by
+// (back true) in a gap whose upper ends are at the columns in taken: the middle (where the box takes
+// a stem) or the nearest cell of its top beside it, so the box's own port is never in a column an
+// upper end drops from (two boxes stacked in one column would otherwise make the gap's verticals
+// run together), and the two kinds never share one. avoid is the other kind's, -1 for none.
+func (n fcNode) lowPort(back bool, taken map[int]bool, avoid int) int {
+	mid := n.x + n.w/2
+	if back {
+		mid++
+	}
+	for d := 0; d < n.w; d++ {
+		for _, c := range []int{mid - d, mid + d} {
+			if c > n.x && c < n.x+n.w-1 && !taken[c] && c != avoid {
+				return c
+			}
+		}
+	}
+	return mid
 }
 
 // fcTerm is a net's end on a gap's side: a node's port, or a long edge's column (node -1).
@@ -229,20 +250,52 @@ func layFlowchart(ctx context.Context, d *pm.FlowchartDiagram, m Measurer) (*Gri
 	for gi := range gaps {
 		byKey := map[netKey]*fcNet{}
 		var order []netKey
-		for k, e := range edges {
+		ends := func(e fcEdge) (upper, lower int) { // the nodes at its upper and lower rank
+			if e.back {
+				return e.to, e.from
+			}
+			return e.from, e.to
+		}
+		topOf := func(e fcEdge) fcTerm {
+			if gi == e.lo {
+				u, _ := ends(e)
+				return fcTerm{col: nodes[u].port(e.back), node: u}
+			}
+			return fcTerm{col: e.cols[gi], node: -1}
+		}
+		taken := map[int]bool{} // the gap's upper ends' columns
+		for _, e := range edges {
+			if e.drawn && gi >= e.lo && gi < e.hi {
+				taken[topOf(e).col] = true
+			}
+		}
+		low := map[[2]int]int{} // (node, back) → its lower port's column in this gap
+		lowAt := func(n int, back bool) int {
+			b := 0
+			if back {
+				b = 1
+			}
+			if c, ok := low[[2]int{n, b}]; ok {
+				return c
+			}
+			avoid, ok := low[[2]int{n, 1 - b}]
+			if !ok {
+				avoid = -1
+			}
+			c := nodes[n].lowPort(back, taken, avoid)
+			low[[2]int{n, b}] = c
+			return c
+		}
+		for k := range edges {
+			e := &edges[k]
 			if !e.drawn || gi < e.lo || gi >= e.hi {
 				continue
 			}
-			upper, lower := e.from, e.to // the nodes at its upper and lower rank
-			if e.back {
-				upper, lower = e.to, e.from
-			}
-			top, bot := fcTerm{col: e.cols[gi], node: -1}, fcTerm{col: e.cols[gi+1], node: -1}
-			if gi == e.lo {
-				top = fcTerm{col: nodes[upper].port(e.back), node: upper}
-			}
+			_, lower := ends(*e)
+			top, bot := topOf(*e), fcTerm{col: e.cols[gi+1], node: -1}
 			if gi+1 == e.hi {
-				bot = fcTerm{col: nodes[lower].port(e.back), node: lower}
+				bot = fcTerm{col: lowAt(lower, e.back), node: lower}
+				e.lowCol = bot.col
 			}
 			key := netKey{0, k}
 			switch {
@@ -349,19 +402,23 @@ func layFlowchart(ctx context.Context, d *pm.FlowchartDiagram, m Measurer) (*Gri
 		}
 		to, from := nodes[e.to], nodes[e.from]
 		// the To end: a forward edge comes down into its top, a back edge up into its bottom
+		// the cell beside each end's port, in the frame: the lower node's top (its lowCol), the upper
+		// node's bottom (its port); the line there points into the box too, so the box meets it
+		toEnd, fromEnd := cell{e.lowCol, to.y - 1}, cell{from.port(false), from.y + from.h}
+		if e.back {
+			toEnd, fromEnd = cell{to.port(true), to.y + to.h}, cell{e.lowCol, from.y - 1}
+		}
+		into := func(c cell, up bool) { // up: the box is above c in the frame
+			d := frameDir(up, d.Dir)
+			g.lines[toReal(c)] |= d
+		}
+		into(toEnd, e.back)
+		into(fromEnd, !e.back)
 		if mk := endMark(e.e.Head, !e.back, d.Dir); mk != "" {
-			c := cell{to.port(e.back), to.y - 1}
-			if e.back {
-				c.y = to.y + to.h
-			}
-			g.marks[toReal(c)] = mk
+			g.marks[toReal(toEnd)] = mk
 		}
 		if mk := endMark(e.e.Tail, e.back, d.Dir); mk != "" {
-			c := cell{from.port(e.back), from.y + from.h}
-			if e.back {
-				c.y = from.y - 1
-			}
-			g.marks[toReal(c)] = mk
+			g.marks[toReal(fromEnd)] = mk
 		}
 	}
 	// the boxes, turned
@@ -492,6 +549,23 @@ func runLinks(a, b cell) [][2]cell {
 		c = n
 	}
 	return out
+}
+
+// frameDir is the real direction of the frame's north (up) or south, the diagram turned by dir.
+func frameDir(up bool, dir pm.Dir) dirs {
+	north, south := north, south
+	switch dir {
+	case pm.BT:
+		north, south = south, north
+	case pm.LR:
+		north, south = west, east
+	case pm.RL:
+		north, south = east, west
+	}
+	if up {
+		return north
+	}
+	return south
 }
 
 // endMark is the mark an edge's end draws: an arrowhead pointing into its node (down the frame
