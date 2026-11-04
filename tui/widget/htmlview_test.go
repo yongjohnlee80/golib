@@ -316,3 +316,43 @@ func TestHTMLViewCountsTheDiagramsItIsGiven(t *testing.T) {
 		t.Error("a view built with its diagrams counts them once")
 	}
 }
+
+// TestHTMLViewMarkToBringsAMarkIntoView: a match below the view is brought to its top by MarkTo,
+// drawn reversed (the current mark); one already in view leaves the scroll where it is.
+func TestHTMLViewMarkToBringsAMarkIntoView(t *testing.T) {
+	var b strings.Builder
+	for i := range 20 {
+		fmt.Fprintf(&b, "<p>p%02d</p>", i)
+	}
+	b.WriteString("<p>last kestrel</p>")
+	h, v, sh := mountedHTML(t, 30, 4, b.String())
+	h.waitFor("the document drawn", func() bool { return strings.Contains(h.grid(), "p00") })
+	var n int
+	h.onLoop(func() {
+		n = v.SetMarks(func(text string) [][2]int {
+			if i := strings.Index(text, "kestrel"); i >= 0 {
+				return [][2]int{{i, i + len("kestrel")}}
+			}
+			return nil
+		})
+	})
+	if n != 1 {
+		t.Fatalf("SetMarks found %d, want 1", n)
+	}
+	h.wantNotContains("kestrel")
+	h.onLoop(func() { v.MarkTo(0) })
+	h.barrier(sh)
+	h.waitFor("the mark brought into view", func() bool { return strings.Contains(h.grid(), "kestrel") })
+	x := strings.Index(h.row(h.rowWith("kestrel")), "kestrel")
+	if a := cellAttrs(h, x, h.rowWith("kestrel")); a.Mask&tui.AttrReverse == 0 {
+		t.Errorf("the current mark is not drawn reversed: %+v", a)
+	}
+	var y float32
+	h.onLoop(func() { y = v.ScrollY(); v.MarkTo(0) })
+	h.barrier(sh)
+	var y2 float32
+	h.onLoop(func() { y2 = v.ScrollY() })
+	if y2 != y {
+		t.Errorf("MarkTo on a mark in view scrolled from %v to %v", y, y2)
+	}
+}
