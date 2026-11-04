@@ -545,16 +545,17 @@ func layFlowchart(ctx context.Context, d *pm.FlowchartDiagram, m Measurer) (*Gri
 		}
 		return false
 	}
-	occupied := func(c cell) bool {
-		if _, ok := g.lines[c]; ok || inBox(c) || g.marks[c] != "" {
-			return true
-		}
+	labelled := func(c cell) bool {
 		for _, t := range g.texts {
 			if c.y == t.y && c.x >= t.x && c.x < t.x+t.w {
 				return true
 			}
 		}
 		return false
+	}
+	occupied := func(c cell) bool {
+		_, line := g.lines[c]
+		return line || inBox(c) || g.marks[c] != "" || labelled(c)
 	}
 	var notes []fcEdge // labels with no room beside their edge: a footnote each
 	for k, e := range edges {
@@ -597,7 +598,7 @@ func layFlowchart(ctx context.Context, d *pm.FlowchartDiagram, m Measurer) (*Gri
 				straight := x1-x0+1 == w
 				for x := x0; x <= x1 && straight; x++ {
 					c := cell{x, lo.y}
-					straight = g.lines[c] == east|west && g.marks[c] == "" && !inBox(c)
+					straight = g.lines[c] == east|west && g.marks[c] == "" && !inBox(c) && !labelled(c) // two edges into one port share their last run: one label on it
 				}
 				if straight {
 					g.label(x0, lo.y, e.e.Label, m)
