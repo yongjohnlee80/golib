@@ -103,10 +103,11 @@ func (n fcNode) lowPort(back bool, taken map[int]bool, avoid int) int {
 // fcTerm is a net's end on a gap's side: a node's port, or a long edge's column (node -1).
 //
 // A lower end in a column another net drops from in that gap takes a dogleg: its net's track meets
-// it at a free column beside (jogCol), and it comes down that column to the gap's jog row, the row
-// above its last, crosses on it to its own column, and drops into its node or on past. The other
-// net's vertical ends at its own track, above the jog row, so the two never run together, and no
-// net need be above another (the vertical-constraint graph stays empty).
+// it at a free column beside (jogCol), and it comes down that column to a jog row, crosses on it to
+// its own column, and drops into its node or on past. The other net's vertical ends at its own
+// track, above the jog rows, so the two never run together, and no net need be above another (the
+// vertical-constraint graph stays empty). A gap's jogs share its jog rows as nets share tracks:
+// only where their crossings don't overlap (jogRows).
 type fcTerm struct {
 	col, node int
 	jog       bool
@@ -268,7 +269,7 @@ func layFlowchart(ctx context.Context, d *pm.FlowchartDiagram, m Measurer) (*Gri
 	// the gaps' nets, and their tracks
 	type gapNets struct{ nets []*fcNet }
 	gaps := make([]gapNets, max(len(ranks)-1, 0))
-	jogs := make([]bool, len(gaps)) // a gap with a dogleg: one more row, its jog row
+	jogs := make([]bool, len(gaps)) // a gap with a dogleg: it has jog rows
 	for gi := range gaps {
 		byKey := map[netKey]*fcNet{}
 		var order []netKey
@@ -403,11 +404,13 @@ func layFlowchart(ctx context.Context, d *pm.FlowchartDiagram, m Measurer) (*Gri
 		}
 	}
 	gapH := make([]int, len(gaps))
+	jogRow := make([]map[fcTerm]int, len(gaps)) // a gap's jogged ends → their jog row (0 the highest)
+	jogN := make([]int, len(gaps))
 	for gi := range gaps {
-		gapH[gi] = assignTracks(gaps[gi].nets) + 2 + labelRows[gi]
 		if jogs[gi] {
-			gapH[gi]++
+			jogRow[gi], jogN[gi] = jogRows(gaps[gi].nets)
 		}
+		gapH[gi] = assignTracks(gaps[gi].nets) + 2 + labelRows[gi] + jogN[gi]
 	}
 
 	// the frame rows: each rank's band, then its gap
@@ -475,7 +478,7 @@ func layFlowchart(ctx context.Context, d *pm.FlowchartDiagram, m Measurer) (*Gri
 			draw(cell{n.lo, y}, cell{n.hi, y}, n.edges)
 			for _, b := range n.bots {
 				if b.jog { // down its dogleg's column, across the jog row, into its own
-					jogY := bandY[gi+1] - 2 - labelRows[gi]
+					jogY := bandY[gi+1] - 1 - labelRows[gi] - jogN[gi] + jogRow[gi][b]
 					by := n.by(b, false)
 					draw(cell{b.jogCol, y}, cell{b.jogCol, jogY}, by)
 					draw(cell{b.jogCol, jogY}, cell{b.col, jogY}, by)
@@ -719,6 +722,39 @@ func assignTracks(nets []*fcNet) int {
 		track++
 	}
 	return track
+}
+
+// jogRows gives the gap's jogged lower ends their rows, and reports how many there are: two share a
+// row only where their crossings (from jogCol to col) don't overlap, a cell clear (the left-edge
+// algorithm, as tracks).
+func jogRows(nets []*fcNet) (map[fcTerm]int, int) {
+	var jogged []fcTerm
+	for _, n := range nets {
+		for _, b := range n.bots {
+			if b.jog && !slices.Contains(jogged, b) {
+				jogged = append(jogged, b)
+			}
+		}
+	}
+	span := func(t fcTerm) (int, int) { return min(t.col, t.jogCol), max(t.col, t.jogCol) }
+	slices.SortStableFunc(jogged, func(a, b fcTerm) int {
+		al, ah := span(a)
+		bl, bh := span(b)
+		return cmp.Or(cmp.Compare(al, bl), cmp.Compare(ah, bh))
+	})
+	row := map[fcTerm]int{}
+	var ends []int // each row's rightmost column so far
+	for _, t := range jogged {
+		lo, hi := span(t)
+		r := slices.IndexFunc(ends, func(end int) bool { return lo > end+1 })
+		if r < 0 {
+			r = len(ends)
+			ends = append(ends, 0)
+		}
+		ends[r] = hi
+		row[t] = r
+	}
+	return row, len(ends)
 }
 
 // xAt is the polyline's column where it crosses row y (its first point's when it never does).
