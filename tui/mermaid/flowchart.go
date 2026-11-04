@@ -264,18 +264,28 @@ func layFlowchart(ctx context.Context, d *pm.FlowchartDiagram, m Measurer) (*Gri
 			}
 			return fcTerm{col: e.cols[gi], node: -1}
 		}
+		keyOf := func(k int, e fcEdge) netKey { // the net the edge is part of, in this gap
+			switch {
+			case !e.back && gi == e.lo:
+				return netKey{1, e.from} // a fan-out: the node's bottom port
+			case e.back && gi+1 == e.hi:
+				return netKey{2, e.from} // up from the node's top
+			}
+			return netKey{0, k}
+		}
 		type upperEnd struct {
 			col, lower int // its column, and the node its edge comes down to (-1: it goes on past)
 			back       bool
+			key        netKey
 		}
 		var uppers []upperEnd // the gap's upper ends
-		for _, e := range edges {
+		for k, e := range edges {
 			if e.drawn && gi >= e.lo && gi < e.hi {
 				lower := -1
 				if gi+1 == e.hi {
 					_, lower = ends(e)
 				}
-				uppers = append(uppers, upperEnd{topOf(e).col, lower, e.back})
+				uppers = append(uppers, upperEnd{topOf(e).col, lower, e.back, keyOf(k, e)})
 			}
 		}
 		low := map[[2]int]int{} // (node, back) → its lower port's column in this gap
@@ -291,9 +301,17 @@ func layFlowchart(ctx context.Context, d *pm.FlowchartDiagram, m Measurer) (*Gri
 			if !ok {
 				avoid = -1
 			}
-			taken := map[int]bool{} // upper ends whose edges don't come down into this port
+			// the port may keep an upper end's column only when that end's net is the one net coming
+			// into it: with two, each net's column there would have to be above the other's track
+			into := map[netKey]bool{}
 			for _, u := range uppers {
-				if u.lower != n || u.back != back {
+				if u.lower == n && u.back == back {
+					into[u.key] = true
+				}
+			}
+			taken := map[int]bool{}
+			for _, u := range uppers {
+				if len(into) > 1 || !into[u.key] {
 					taken[u.col] = true
 				}
 			}
@@ -312,13 +330,7 @@ func layFlowchart(ctx context.Context, d *pm.FlowchartDiagram, m Measurer) (*Gri
 				bot = fcTerm{col: lowAt(lower, e.back), node: lower}
 				e.lowCol = bot.col
 			}
-			key := netKey{0, k}
-			switch {
-			case !e.back && gi == e.lo:
-				key = netKey{1, e.from} // a fan-out: the node's bottom port
-			case e.back && gi+1 == e.hi:
-				key = netKey{2, e.from} // up from the node's top
-			}
+			key := keyOf(k, *e)
 			n := byKey[key]
 			if n == nil {
 				n = &fcNet{track: -1, ends: map[int][2]fcTerm{}}
