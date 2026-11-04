@@ -5,6 +5,7 @@ import (
 	"context"
 	"math"
 	"slices"
+	"strconv"
 
 	"github.com/yongjohnlee80/golib/graph/layout"
 	pm "github.com/yongjohnlee80/golib/parse/mermaid"
@@ -389,9 +390,21 @@ func layFlowchart(ctx context.Context, d *pm.FlowchartDiagram, m Measurer) (*Gri
 			gaps[gi].nets = append(gaps[gi].nets, byKey[key])
 		}
 	}
+	// a gap a labelled edge ends in keeps room for its label above the arrow row: a row beside the
+	// edge's last drop (TB, BT), or the label's width along it, a cell more for the line (LR, RL)
+	labelRows := make([]int, len(gaps))
+	for _, e := range edges {
+		if e.drawn && !e.back && e.e.Label != "" {
+			rows := 1
+			if across {
+				rows = m.StringWidth(e.e.Label) + 1
+			}
+			labelRows[e.hi-1] = max(labelRows[e.hi-1], rows)
+		}
+	}
 	gapH := make([]int, len(gaps))
 	for gi := range gaps {
-		gapH[gi] = assignTracks(gaps[gi].nets) + 2
+		gapH[gi] = assignTracks(gaps[gi].nets) + 2 + labelRows[gi]
 		if jogs[gi] {
 			gapH[gi]++
 		}
@@ -418,11 +431,18 @@ func layFlowchart(ctx context.Context, d *pm.FlowchartDiagram, m Measurer) (*Gri
 		}
 		return c
 	}
+	strokes := map[cell]uint8{} // each line cell's strokes, a bit each: a cell takes one only if it's alone
+	stroked := func(c cell, k int) { strokes[c] |= 1 << strokeOf(edges[k].e.Line) }
 	draw := func(a, b cell, by []int) {
 		ra, rb := toReal(a), toReal(b)
 		g.run(ra, rb)
+		links := runLinks(ra, rb)
 		for _, k := range by {
-			routes[at[k]] = append(routes[at[k]], runLinks(ra, rb)...)
+			routes[at[k]] = append(routes[at[k]], links...)
+			stroked(ra, k)
+			for _, l := range links {
+				stroked(l[1], k)
+			}
 		}
 	}
 	for gi, gn := range gaps {
@@ -455,7 +475,7 @@ func layFlowchart(ctx context.Context, d *pm.FlowchartDiagram, m Measurer) (*Gri
 			draw(cell{n.lo, y}, cell{n.hi, y}, n.edges)
 			for _, b := range n.bots {
 				if b.jog { // down its dogleg's column, across the jog row, into its own
-					jogY := bandY[gi+1] - 2
+					jogY := bandY[gi+1] - 2 - labelRows[gi]
 					by := n.by(b, false)
 					draw(cell{b.jogCol, y}, cell{b.jogCol, jogY}, by)
 					draw(cell{b.jogCol, jogY}, cell{b.col, jogY}, by)
@@ -473,7 +493,7 @@ func layFlowchart(ctx context.Context, d *pm.FlowchartDiagram, m Measurer) (*Gri
 		}
 	}
 	// its ends: the cell beside each node's port, the mark pointing into the node
-	for _, e := range edges {
+	for k, e := range edges {
 		if !e.drawn {
 			continue
 		}
@@ -493,11 +513,20 @@ func layFlowchart(ctx context.Context, d *pm.FlowchartDiagram, m Measurer) (*Gri
 				return
 			}
 			g.lines[toReal(c)] |= frameDir(up, d.Dir)
+			stroked(toReal(c), k)
 		}
 		end(toEnd, e.back, endMark(e.e.Head, !e.back, d.Dir))
 		end(fromEnd, !e.back, endMark(e.e.Tail, e.back, d.Dir))
 	}
-	// the boxes, turned
+	for c, m := range strokes {
+		switch m {
+		case 1 << strokeDashed:
+			g.stroke[c] = strokeDashed
+		case 1 << strokeThick:
+			g.stroke[c] = strokeThick
+		}
+	}
+	// the boxes, turned (before the labels and loops, which keep clear of them)
 	for i, n := range d.Nodes {
 		f := nodes[i]
 		a, b := toReal(cell{f.x, f.y}), toReal(cell{f.x + f.w - 1, f.y + f.h - 1}) // two opposite corners
@@ -505,6 +534,111 @@ func layFlowchart(ctx context.Context, d *pm.FlowchartDiagram, m Measurer) (*Gri
 		r.Rect.X, r.Rect.Y = min(a.x, b.x), min(a.y, b.y)
 		r.Rect.W, r.Rect.H = max(a.x, b.x)-r.Rect.X+1, max(a.y, b.y)-r.Rect.Y+1
 		g.Boxes = append(g.Boxes, r)
+	}
+	// a self-loop is a ↺ beside its box: the first free of its right, left, top-right and
+	// bottom-right cells
+	inBox := func(c cell) bool {
+		for _, b := range g.Boxes {
+			if c.x >= b.Rect.X && c.x < b.Rect.X+b.Rect.W && c.y >= b.Rect.Y && c.y < b.Rect.Y+b.Rect.H {
+				return true
+			}
+		}
+		return false
+	}
+	occupied := func(c cell) bool {
+		if _, ok := g.lines[c]; ok || inBox(c) || g.marks[c] != "" {
+			return true
+		}
+		for _, t := range g.texts {
+			if c.y == t.y && c.x >= t.x && c.x < t.x+t.w {
+				return true
+			}
+		}
+		return false
+	}
+	var notes []fcEdge // labels with no room beside their edge: a footnote each
+	for k, e := range edges {
+		if e.from != e.to || e.e.Line == pm.Invisible {
+			continue
+		}
+		r := g.Boxes[e.from].Rect
+		for _, c := range []cell{{r.X + r.W, r.Y + r.H/2}, {r.X - 1, r.Y + r.H/2}, {r.X + r.W - 1, r.Y - 1}, {r.X + r.W - 1, r.Y + r.H}} {
+			if !occupied(c) {
+				g.marks[c] = "↺"
+				break
+			}
+		}
+		if e.e.Label != "" {
+			notes = append(notes, edges[k])
+		}
+	}
+	// a label beside its edge's last drop (TB, BT: on the row kept above its arrow, right of it or
+	// else left), or along it (LR, RL: over the straight line kept before its arrow); a footnote when
+	// that has no room, and for an edge back up the ranks
+	room := func(x, y, w int) bool {
+		for i := range w {
+			if occupied(cell{x + i, y}) {
+				return false
+			}
+		}
+		return true
+	}
+	for _, e := range edges {
+		if !e.drawn || e.e.Label == "" {
+			continue
+		}
+		w := m.StringWidth(e.e.Label)
+		placed := false
+		if !e.back {
+			arrow := bandY[e.hi] - 1 // the frame row of its arrow, above its lower node's band
+			if across {
+				lo, hi := toReal(cell{e.lowCol, arrow - 1 - w}), toReal(cell{e.lowCol, arrow - 2})
+				x0, x1 := min(lo.x, hi.x), max(lo.x, hi.x)
+				straight := x1-x0+1 == w
+				for x := x0; x <= x1 && straight; x++ {
+					c := cell{x, lo.y}
+					straight = g.lines[c] == east|west && g.marks[c] == "" && !inBox(c)
+				}
+				if straight {
+					g.label(x0, lo.y, e.e.Label, m)
+					placed = true
+				}
+			} else {
+				c := toReal(cell{e.lowCol, arrow - 1})
+				switch {
+				case room(c.x+1, c.y, w+1):
+					g.label(c.x+2, c.y, e.e.Label, m)
+					placed = true
+				case room(c.x-1-w, c.y, w+1):
+					g.label(c.x-1-w, c.y, e.e.Label, m)
+					placed = true
+				}
+			}
+		}
+		if !placed {
+			notes = append(notes, e)
+		}
+	}
+	// the footnotes: a mark beside each edge's lower end, and a legend under the drawing
+	if len(notes) > 0 {
+		maxY, minX := math.MinInt, math.MaxInt
+		for c := range g.lines {
+			maxY, minX = max(maxY, c.y), min(minX, c.x)
+		}
+		for _, b := range g.Boxes {
+			maxY, minX = max(maxY, b.Rect.Y+b.Rect.H-1), min(minX, b.Rect.X)
+		}
+		for i, e := range notes {
+			mk := footMark(i)
+			r := g.Boxes[e.to].Rect
+			for _, c := range []cell{{r.X + r.W, r.Y - 1}, {r.X - 1, r.Y - 1}, {r.X + r.W, r.Y + r.H}, {r.X - 1, r.Y + r.H}, {r.X + r.W, r.Y}, {r.X - 1, r.Y}} {
+				if !occupied(c) {
+					g.label(c.x, c.y, mk, m)
+					break
+				}
+			}
+			g.label(minX, maxY+2+i, mk+" "+e.e.Label, m)
+		}
 	}
 	before := g.Boxes[0].Rect
 	g.settle()
@@ -625,6 +759,26 @@ func runLinks(a, b cell) [][2]cell {
 		c = n
 	}
 	return out
+}
+
+// footMark is the i-th footnote's mark: ¹ to ⁹, then *10, *11, …
+func footMark(i int) string {
+	sup := []string{"¹", "²", "³", "⁴", "⁵", "⁶", "⁷", "⁸", "⁹"}
+	if i < len(sup) {
+		return sup[i]
+	}
+	return "*" + strconv.Itoa(i+1)
+}
+
+// strokeOf is how an edge's line is drawn.
+func strokeOf(l pm.LineKind) stroke {
+	switch l {
+	case pm.Dotted:
+		return strokeDashed
+	case pm.Thick:
+		return strokeThick
+	}
+	return strokeLight
 }
 
 // frameDir is the real direction of the frame's north (up) or south, the diagram turned by dir.
