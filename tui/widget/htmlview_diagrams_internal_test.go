@@ -67,12 +67,18 @@ func TestTheCellLayoutDrawsAMindmapAndSaysWhatItDoesnt(t *testing.T) {
 	}
 	rows := c.rowTexts()
 	joined := strings.Join(rows, "\n")
-	if !strings.Contains(joined, "▸ flowchart diagram: not drawn in the terminal (Raw shows its source)") {
-		t.Fatalf("no notice for the flowchart:\n%s", joined)
+	flat := strings.Join(strings.Fields(joined), " ") // the notice wraps to the room: read it as one line
+	if !strings.Contains(flat, "▸ flowchart diagram: not drawn in the terminal (Raw shows its source)") {
+		t.Fatalf("no notice for the flowchart, whole:\n%s", joined)
 	}
 	for _, r := range rows {
-		if strings.Contains(r, "not drawn in the terminal") {
+		if strings.Contains(r, "▸ flowchart") {
 			noticeRows++
+		}
+	}
+	for i, r := range rows {
+		if n := len([]rune(r)); n > 60 {
+			t.Fatalf("row %d is %d cells wide, past the 60 the layout has: %q", i, n, r)
 		}
 	}
 	if gridRows != 3 || noticeRows != 1 || strings.Contains(joined, "a --> b") || strings.Contains(joined, "root[Hub]") {
@@ -105,7 +111,7 @@ func TestTheCellLayoutDrawsAMindmapAndSaysWhatItDoesnt(t *testing.T) {
 </pre>`))
 	cl := v.layout.(*cellHTML)
 	cl.SetWidth(60)
-	if got := strings.Join(cl.rowTexts(), "\n"); !strings.Contains(got, "▸ flowchart diagram: not drawn in the terminal") {
+	if got := strings.Join(strings.Fields(strings.Join(cl.rowTexts(), " ")), " "); !strings.Contains(got, "▸ flowchart diagram: not drawn in the terminal") {
 		t.Fatalf("before the host's words, the English isn't shown:\n%s", got)
 	}
 	WithDiagramNotice(func(kind string) string { return "图表未绘制: " + kind })(v)

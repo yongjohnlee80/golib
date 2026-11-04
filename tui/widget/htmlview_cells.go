@@ -187,7 +187,8 @@ func diagramNotice(kind string) string {
 
 // layDiagram lays a <pre class="mermaid"> out: a kind tui/mermaid draws as its grid, one row of
 // the layout per row of the grid; any other kind, one that doesn't parse, or one too large to lay
-// out, as a single muted line saying it isn't drawn here, never its source (Raw shows that).
+// out, as a muted line saying it isn't drawn here, wrapped to the room, never its source (Raw
+// shows that).
 func (c *cellHTML) layDiagram(bi int, b *hblock) {
 	kind := "mermaid"
 	if d, err := pm.Parse(b.diagram); err == nil {
@@ -205,14 +206,21 @@ func (c *cellHTML) layDiagram(bi int, b *hblock) {
 	if c.notice != nil {
 		say = c.notice
 	}
-	row := hrow{block: bi, first: true, cls: c.prefix(b, true)}
-	x := 2*b.quote + b.indent
+	var cs []string
 	for k := range grapheme.Clusters("▸ " + say(kind)) {
-		w := c.measure(k)
-		row.cls = append(row.cls, hcl{text: k, x: x, w: w, deco: true})
-		x += w
+		cs = append(cs, k)
 	}
-	c.rows = append(c.rows, row)
+	room := max(c.width-2*b.quote-b.indent, 1)
+	for i, rr := range wrapRanges(cs, room, c.measure) { // wrapped to the room, as any paragraph
+		row := hrow{block: bi, first: i == 0, cls: c.prefix(b, i == 0)}
+		x := 2*b.quote + b.indent
+		for _, k := range cs[rr[0]:rr[1]] {
+			w := c.measure(k)
+			row.cls = append(row.cls, hcl{text: k, x: x, w: w, deco: true})
+			x += w
+		}
+		c.rows = append(c.rows, row)
+	}
 }
 
 // diagramTheme is a diagram's styles in the cell layout: lines in the border's tone, outlines in
