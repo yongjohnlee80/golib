@@ -6,8 +6,9 @@ import "github.com/yongjohnlee80/golib/tui"
 // view that draws the whole document as one widget (a TableDocument), shown in place of the text
 // while Rendered is the view drawn and the host has turned it on for the document. Raw is always
 // the text. The view is the editor's child, mounted through its context and laid out in its place;
-// the focus moves into it as it shows and back to the editor as it hides, and a key it leaves (the
-// Rendered toggle, however the keymap binds it) bubbles to the editor.
+// the focus moves into it as it shows and back to the editor as it hides, focus given to the editor
+// while it shows goes on into it, and a key it leaves (the Rendered toggle, however the keymap binds
+// it) bubbles to the editor.
 //
 // The editor's Mode is its vim mode; Raw and Rendered are its View.
 
@@ -216,6 +217,15 @@ func (e *Editor) showDocument(on bool) {
 		} else {
 			ctx.FocusInto(e)
 		}
+	}
+}
+
+// focusDocument sends the focus on into the shown document view when the editor itself gains it: a
+// host focusing the editor, or a closing float giving it back to the editor when the view was
+// shown behind the float. A gain inside the view, bubbling here, stays where it is.
+func (e *Editor) focusDocument(f tui.FocusEvent) {
+	if ctx := e.Context(); f.Gained && ctx != nil && ctx.Focused() {
+		ctx.FocusInto(e.doc.Document())
 	}
 }
 

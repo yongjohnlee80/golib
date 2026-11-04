@@ -1,6 +1,7 @@
 package widget_test
 
 import (
+	"fmt"
 	"strings"
 	"testing"
 
@@ -226,4 +227,90 @@ func TestATableDocumentsRightPressActsOnWhatItWasOn(t *testing.T) {
 			t.Errorf("the menu's Yank yanked %q (linewise %v), want the cell pressed, cid", text, linewise)
 		}
 	})
+}
+
+// TestFocusGivenToAnEditorShowingItsDocumentGoesIntoIt: while the document view is shown, focus
+// given to the editor itself (a host focusing it) goes on into the view, and the next key reaches
+// the view: an HTMLView, its own focus stop, scrolls by Down; a TableDocument, focused through the
+// part inside it, edits. Before, the focus stayed on the editor, which drops every key but the
+// Rendered toggle while the view is shown.
+func TestFocusGivenToAnEditorShowingItsDocumentGoesIntoIt(t *testing.T) {
+	t.Run("html", func(t *testing.T) {
+		var text strings.Builder
+		for i := range 30 {
+			fmt.Fprintf(&text, "<p>p%02d</p>\n", i)
+		}
+		ed := widget.NewEditor(widget.WithCore(widget.CoreInitialText(text.String())))
+		v := widget.NewHTMLView()
+		ed.SetDocumentView(v)
+		ed.SetRenderedDocument(true)
+		sh := newShell(ed)
+		h := startApp(t, sh, 40, 10)
+		h.onLoop(func() { h.app.FocusInto(ed); ed.SetView(widget.ViewRendered) })
+		h.barrier(sh)
+		h.shows("p05")
+		h.onLoop(func() { h.app.FocusInto(ed) })
+		h.barrier(sh)
+		var in bool
+		h.onLoop(func() { in = h.app.FocusWithin(v) })
+		if !in {
+			t.Fatal("focus given to the editor stayed on it, not in its shown HTMLView")
+		}
+		before := h.rowWith("p05")
+		h.inject(tui.KeyEvent{Kind: tui.KeyPress, Code: tui.KeyDown})
+		h.barrier(sh)
+		h.waitFor("the view scrolled by Down", func() bool { return strings.Contains(h.grid(), "p05") && h.rowWith("p05") < before })
+	})
+	t.Run("table", func(t *testing.T) {
+		h, sh, ed, doc := csvEditor(t, "name,n\nann,1\nbob,2\n")
+		h.inject(ctrlEv('t'))
+		h.barrier(sh)
+		h.onLoop(func() { h.app.FocusInto(ed) })
+		h.barrier(sh)
+		if _, s, in := views(h, ed, doc); s != widget.ViewRendered || !in {
+			t.Fatalf("focus given to the editor: drawn %v, table focused %v", s, in)
+		}
+		h.inject(keyText("j"), keyText("l"), dtEnter, keyText("0"), dtEnter)
+		h.barrier(sh)
+		if v := ed.Core().Value(); v != "name,n\nann,1\nbob,20\n" {
+			t.Fatalf("the edit through the table after the focus came back: %q", v)
+		}
+	})
+}
+
+// TestAFloatClosingOverAShownDocumentFocusesTheView: a modal float (a picker) opens over the
+// focused editor, the document view is shown behind it, and the float closes: the focus it gives
+// back to the editor goes on into the view, and keys edit through the table. Before, the focus
+// stayed on the editor, as the view was shown while the float held it.
+func TestAFloatClosingOverAShownDocumentFocusesTheView(t *testing.T) {
+	ed := widget.NewEditor(widget.WithCore(widget.CoreInitialText("name,n\nann,1\nbob,2\n")))
+	doc := widget.NewTableDocument(ed.Core(), ',')
+	ed.SetDocumentView(doc)
+	ed.SetRenderedDocument(true)
+	input := widget.NewTextInput()
+	flt := widget.NewFloat(input, widget.WithModal(true))
+	host := widget.NewOverlayHost(ed)
+	host.Attach(flt)
+	sh := newShell(host)
+	h := startApp(t, sh, 40, 10)
+	h.onLoop(func() { h.app.FocusInto(ed) })
+	h.barrier(sh)
+	h.onLoop(flt.Show)
+	h.barrier(sh)
+	var inFloat bool
+	h.onLoop(func() { inFloat = h.app.FocusWithin(input); ed.SetView(widget.ViewRendered) })
+	h.barrier(sh)
+	if !inFloat {
+		t.Fatal("the float did not take the focus")
+	}
+	h.onLoop(flt.Hide)
+	h.barrier(sh)
+	if _, s, in := views(h, ed, doc); s != widget.ViewRendered || !in {
+		t.Fatalf("the float closed: drawn %v, table focused %v", s, in)
+	}
+	h.inject(keyText("j"), keyText("l"), dtEnter, keyText("0"), dtEnter)
+	h.barrier(sh)
+	if v := ed.Core().Value(); v != "name,n\nann,1\nbob,20\n" {
+		t.Fatalf("the edit through the table after the float closed: %q", v)
+	}
 }

@@ -328,8 +328,11 @@ func (e *Editor) CursorShape() tui.CursorShape {
 // position here; everything else is the core's.
 func (e *Editor) HandleEvent(ev tui.Event) bool {
 	if e.doc.Shown() { // a key the document view left; the hidden text takes nothing
-		if k, ok := ev.(tui.KeyEvent); ok {
-			return e.documentKey(k)
+		switch t := ev.(type) {
+		case tui.KeyEvent:
+			return e.documentKey(t)
+		case tui.FocusEvent:
+			e.focusDocument(t)
 		}
 		return false
 	}
