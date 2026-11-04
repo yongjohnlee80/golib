@@ -28,14 +28,14 @@ Window {
 // scrollToSource scrolls; the host reaches the widget by id.
 func TestAnHTMLViewFromTheDocument(t *testing.T) {
 	rec := &recorder{}
-	s := decltest.Run(t, 30, 3,
+	s := decltest.Run(t, 30, 4, // the h1, its rule, a gap and the paragraph with the link
 		tuidecl.LayoutSource("main.qml", []byte(htmlViewDoc)),
 		tuidecl.Singleton("demo", "1.0", "App"),
 		tuidecl.Handlers(map[string]decl.HandlerFunc{"App.log": rec.handler}))
 	s.WaitForText(t, "Hello")
 	s.WaitForText(t, "see the note")
-	s.Keys(t, tui.MouseEvent{Kind: tui.MousePress, Button: tui.MouseLeft, X: 5, Y: 2},
-		tui.MouseEvent{Kind: tui.MouseRelease, Button: tui.MouseLeft, X: 5, Y: 2})
+	s.Keys(t, tui.MouseEvent{Kind: tui.MousePress, Button: tui.MouseLeft, X: 5, Y: 3},
+		tui.MouseEvent{Kind: tui.MouseRelease, Button: tui.MouseLeft, X: 5, Y: 3})
 	s.WaitFor(t, "the link emitted", func(string) bool { return logged(rec) == "x.md" })
 	onScreenLoop(t, s, func() {
 		if err := s.Program.Call("page", "scrollToSource", 20); err != nil {
