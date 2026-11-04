@@ -341,6 +341,13 @@ func layFlowchart(ctx context.Context, d *pm.FlowchartDiagram, m Measurer) (*Gri
 			low[[2]int{n, b}] = c
 			return c
 		}
+		// every end of the gap first, its lower ends' columns all known before any dogleg is placed
+		type gapEnd struct {
+			k        int
+			key      netKey
+			top, bot fcTerm
+		}
+		var gapEnds []gapEnd
 		topCols, botCols := map[int]bool{}, map[int]bool{}
 		for _, u := range uppers {
 			topCols[u.col] = true
@@ -351,27 +358,43 @@ func layFlowchart(ctx context.Context, d *pm.FlowchartDiagram, m Measurer) (*Gri
 				continue
 			}
 			_, lower := ends(*e)
-			key := keyOf(k, *e)
 			top, bot := topOf(*e), fcTerm{col: e.cols[gi+1], node: -1}
 			if gi+1 == e.hi {
 				bot = fcTerm{col: lowAt(lower, e.back), node: lower}
 				e.lowCol = bot.col
 			}
-			if slices.ContainsFunc(uppers, func(u upperEnd) bool { return u.col == bot.col && u.key != key }) {
-				for d := 1; ; d++ { // a dogleg: the nearest column no end of the gap is in
-					if c := bot.col - d; !topCols[c] && !botCols[c] {
-						bot.jog, bot.jogCol = true, c
-						break
-					}
-					if c := bot.col + d; !topCols[c] && !botCols[c] {
-						bot.jog, bot.jogCol = true, c
-						break
+			botCols[bot.col] = true
+			gapEnds = append(gapEnds, gapEnd{k, keyOf(k, *e), top, bot})
+		}
+		// a lower end in another net's column takes a dogleg: the nearest column no end of the gap is
+		// in, one per net and column (a net's two edges into one end share it)
+		jogAt := map[[2]int]int{} // (net, column) → its dogleg's column
+		netIndex := map[netKey]int{}
+		for i := range gapEnds {
+			ge := &gapEnds[i]
+			if !slices.ContainsFunc(uppers, func(u upperEnd) bool { return u.col == ge.bot.col && u.key != ge.key }) {
+				continue
+			}
+			ni, ok := netIndex[ge.key]
+			if !ok {
+				ni = len(netIndex)
+				netIndex[ge.key] = ni
+			}
+			c, ok := jogAt[[2]int{ni, ge.bot.col}]
+			for d := 1; !ok; d++ {
+				for _, cand := range []int{ge.bot.col - d, ge.bot.col + d} {
+					if !ok && !topCols[cand] && !botCols[cand] {
+						c, ok = cand, true
 					}
 				}
-				botCols[bot.jogCol] = true
-				jogs[gi] = true
 			}
-			botCols[bot.col] = true
+			jogAt[[2]int{ni, ge.bot.col}] = c
+			botCols[c] = true
+			ge.bot.jog, ge.bot.jogCol = true, c
+			jogs[gi] = true
+		}
+		for _, ge := range gapEnds {
+			k, key, top, bot := ge.k, ge.key, ge.top, ge.bot
 			n := byKey[key]
 			if n == nil {
 				n = &fcNet{track: -1, ends: map[int][2]fcTerm{}}

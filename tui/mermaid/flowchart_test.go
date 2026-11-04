@@ -110,13 +110,13 @@ func TestTheFlowchartRoutersInvariantsHold(t *testing.T) {
 }
 
 // The invariants hold for the flowcharts that once broke them: a lower end in another net's column
-// where an LR box has one port cell (the dogleg), and two doglegs in one gap whose crossings overlap
-// (a jog row each).
+// where an LR box has one port cell (the dogleg), and a lower end the gap reached after a dogleg had
+// taken its column (every lower end is known before any dogleg is placed).
 func TestTheFlowchartRoutersInvariantsHoldWhereTheyBroke(t *testing.T) {
 	for name, src := range map[string]string{
 		"one port cell": "flowchart LR\n  N0[x]\n  N1[a longer label]\n  N2[東京]\n  N3[a]\n  N4[node]\n  N5[a longer label]\n  N6[node]\n" +
 			"  N3 --> N5\n  N3 --> N5\n  N5 --> N6\n  N3 --> N4\n  N5 --> N6\n  N3 --> N6\n  N1 --> N2\n  N1 --> N4\n  N1 --> N5\n",
-		"overlapping jogs": "flowchart RL\n  N0[x]\n  N1[a]\n  N2[東京]\n  N3[node]\n  N4[x]\n  N5[step two]\n  N6[x]\n  N7[東京]\n" +
+		"a lower end found late": "flowchart RL\n  N0[x]\n  N1[a]\n  N2[東京]\n  N3[node]\n  N4[x]\n  N5[step two]\n  N6[x]\n  N7[東京]\n" +
 			"  N4 --> N5\n  N3 --> N5\n  N1 --> N3\n  N3 --> N7\n  N1 --> N6\n  N5 --> N6\n  N2 --> N7\n  N2 --> N4\n  N4 --> N7\n" +
 			"  N1 --> N7\n  N2 --> N7\n  N4 -->|yes| N7\n  N0 -->|no| N7\n  N4 -->|東京| N5\n  N5 --> N6\n  N0 -->|a label| N6\n",
 	} {
