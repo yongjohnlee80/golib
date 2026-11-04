@@ -36,7 +36,8 @@ func newRecordSurface(w, h int) *recordSurface {
 	return s
 }
 
-// SetCell keeps content's first cluster only, as a Surface does.
+// SetCell keeps content's first cluster only, as a Surface does; a wide one covers the cell after
+// it too, which then holds nothing of its own ("").
 func (s *recordSurface) SetCell(x, y int, content string, st style.Style) {
 	for g := range tui.Graphemes(content) {
 		content = g
@@ -44,6 +45,9 @@ func (s *recordSurface) SetCell(x, y int, content string, st style.Style) {
 	}
 	if x >= 0 && x < s.w && y >= 0 && y < s.h {
 		s.text[y][x], s.style[y][x] = content, st
+		if tui.StringWidth(content) == 2 && x+1 < s.w {
+			s.text[y][x+1], s.style[y][x+1] = "", st
+		}
 	}
 }
 
@@ -105,8 +109,15 @@ func styleWords(st style.Style) string {
 }
 
 // cellGolden is how markdown src (or, raw, HTML) reads in cells at width: each row's text, then its
-// runs of one style (columns from-to), blanks and default text left out.
+// runs of one style (columns from-to), blanks and default text left out. It measures a cluster by
+// its runes (layCells).
 func cellGolden(t *testing.T, src string, width int, raw bool) string {
+	t.Helper()
+	return cellGoldenMeasured(t, src, width, raw, nil)
+}
+
+// cellGoldenMeasured is cellGolden measured by measure, nil: by runes.
+func cellGoldenMeasured(t *testing.T, src string, width int, raw bool, measure func(string) int) string {
 	t.Helper()
 	html := bytes.NewBufferString(src)
 	if !raw {
@@ -115,7 +126,14 @@ func cellGolden(t *testing.T, src string, width int, raw bool) string {
 			t.Fatal(err)
 		}
 	}
-	c := layCells(t, html.String(), width)
+	var c *cellHTML
+	if measure == nil {
+		c = layCells(t, html.String(), width)
+	} else {
+		c = newCellHTML(measure)
+		c.SetSource(html.Bytes())
+		c.SetWidth(float32(width))
+	}
 	s := newRecordSurface(width, len(c.rows))
 	c.PaintCells(s, 0, width, DocPos{}, DocPos{})
 	var b strings.Builder
@@ -164,9 +182,16 @@ func TestCellHTMLGoldens(t *testing.T) {
 		{"rule", 20, "above\n\n---\n\nbelow\n", false},
 		{"emphasis", 40, "**bold** *italic* ~~struck~~ `code`\n", false},
 		{"mark", 30, "<p>a <mark>marked</mark> word</p>", true},
+		// wide clusters, measured as a terminal draws them (tui.StringWidth): the columns and their
+		// box line up by display cells (TestCellHTMLWideTableLinesUp)
+		{"table-wide", 40, "| 이름 | Qty | 메모 |\n| :--- | ---: | :---: |\n| 사과 | 3 | 익음 |\n| apple | 12 | — |\n| 東京 | 1 | 駅 |\n", false},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			got := cellGolden(t, tc.src, tc.width, tc.raw)
+			var measure func(string) int
+			if strings.HasSuffix(tc.name, "-wide") {
+				measure = tui.StringWidth
+			}
+			got := cellGoldenMeasured(t, tc.src, tc.width, tc.raw, measure)
 			path := filepath.Join("testdata", "htmlcells", tc.name+".golden")
 			if *update {
 				if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
@@ -185,5 +210,40 @@ func TestCellHTMLGoldens(t *testing.T) {
 				t.Errorf("%s reads otherwise in cells:\n--- got\n%s\n--- want (%s)\n%s", tc.name, got, path, want)
 			}
 		})
+	}
+}
+
+// TestCellHTMLWideTableLinesUp: a table of wide clusters (Korean, Chinese) beside ASCII, measured
+// by display cells, puts every column rule in the same display column on every row, the box's
+// joints with them.
+func TestCellHTMLWideTableLinesUp(t *testing.T) {
+	var html bytes.Buffer
+	src := "| 이름 | Qty | 메모 |\n| :--- | ---: | :---: |\n| 사과 | 3 | 익음 |\n| apple | 12 | — |\n| 東京 | 1 | 駅 |\n"
+	if err := mdhtml.Render(&html, markdown.Parse([]byte(src), markdown.WithGFM())); err != nil {
+		t.Fatal(err)
+	}
+	c := newCellHTML(tui.StringWidth)
+	c.SetSource(html.Bytes())
+	c.SetWidth(40)
+	var want []int
+	for _, r := range c.rows {
+		var at []int
+		for _, k := range r.cls {
+			if strings.ContainsAny(k.text, "│┌┬┐├┼┤└┴┘") {
+				at = append(at, k.x)
+			}
+		}
+		if len(at) == 0 {
+			continue
+		}
+		if want == nil {
+			want = at
+		}
+		if fmt.Sprint(at) != fmt.Sprint(want) {
+			t.Errorf("a row's rules at columns %v, the first row's at %v", at, want)
+		}
+	}
+	if len(want) != 4 {
+		t.Fatalf("the box has rules at %v, want four: its edges and two joints", want)
 	}
 }
