@@ -451,13 +451,16 @@ func (l *floatLayer) Render(s tui.Surface) {
 // moved it, and the layer is an ancestor of all its content. A move between two
 // nodes inside it (an editor and its document view) is not an entry, and leaves
 // the order as it is: the loss bubbles up first, once the new focus is set, so
-// the layer knows then whether the keyboard stayed inside it. Observed, never
-// consumed, as every container observes focus.
+// the layer knows then whether the keyboard stayed inside it. A loss only ever
+// clears that: a move made while an entry's gain is still on its way up (an
+// editor sending the focus on into its document view as it gains it) is still
+// that entry, and raises. Observed, never consumed, as every container observes
+// focus.
 func (l *floatLayer) HandleEvent(ev tui.Event) bool {
 	if !l.owner.modal {
 		if fe, ok := ev.(tui.FocusEvent); ok && !fe.Terminal {
 			if !fe.Gained {
-				l.holds = l.Context().FocusWithin(l)
+				l.holds = l.holds && l.Context().FocusWithin(l)
 			} else if !l.holds {
 				l.holds = true
 				l.owner.raise()
