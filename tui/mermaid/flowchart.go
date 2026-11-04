@@ -78,10 +78,11 @@ type fcEdge struct {
 }
 
 // lowPort is the column, on n's top, that edges come down into it at (back false) or leave it up by
-// (back true) in a gap whose upper ends are at the columns in taken: the middle (where the box takes
-// a stem) or the nearest cell of its top beside it, so the box's own port is never in a column an
-// upper end drops from (two boxes stacked in one column would otherwise make the gap's verticals
-// run together), and the two kinds never share one. avoid is the other kind's, -1 for none.
+// (back true), in a gap where taken holds the columns of upper ends whose edges go elsewhere: the
+// middle (where the box takes a stem) or the nearest cell of its top beside it. So the port is never
+// in a column another edge drops from (two boxes stacked in one column would otherwise make the
+// gap's verticals run together), while an edge straight down into it keeps its column; and the two
+// kinds never share one. avoid is the other kind's, -1 for none.
 func (n fcNode) lowPort(back bool, taken map[int]bool, avoid int) int {
 	mid := n.x + n.w/2
 	if back {
@@ -263,10 +264,18 @@ func layFlowchart(ctx context.Context, d *pm.FlowchartDiagram, m Measurer) (*Gri
 			}
 			return fcTerm{col: e.cols[gi], node: -1}
 		}
-		taken := map[int]bool{} // the gap's upper ends' columns
+		type upperEnd struct {
+			col, lower int // its column, and the node its edge comes down to (-1: it goes on past)
+			back       bool
+		}
+		var uppers []upperEnd // the gap's upper ends
 		for _, e := range edges {
 			if e.drawn && gi >= e.lo && gi < e.hi {
-				taken[topOf(e).col] = true
+				lower := -1
+				if gi+1 == e.hi {
+					_, lower = ends(e)
+				}
+				uppers = append(uppers, upperEnd{topOf(e).col, lower, e.back})
 			}
 		}
 		low := map[[2]int]int{} // (node, back) → its lower port's column in this gap
@@ -281,6 +290,12 @@ func layFlowchart(ctx context.Context, d *pm.FlowchartDiagram, m Measurer) (*Gri
 			avoid, ok := low[[2]int{n, 1 - b}]
 			if !ok {
 				avoid = -1
+			}
+			taken := map[int]bool{} // upper ends whose edges don't come down into this port
+			for _, u := range uppers {
+				if u.lower != n || u.back != back {
+					taken[u.col] = true
+				}
 			}
 			c := nodes[n].lowPort(back, taken, avoid)
 			low[[2]int{n, b}] = c
@@ -408,18 +423,17 @@ func layFlowchart(ctx context.Context, d *pm.FlowchartDiagram, m Measurer) (*Gri
 		if e.back {
 			toEnd, fromEnd = cell{to.port(true), to.y + to.h}, cell{e.lowCol, from.y - 1}
 		}
-		into := func(c cell, up bool) { // up: the box is above c in the frame
-			d := frameDir(up, d.Dir)
-			g.lines[toReal(c)] |= d
+		// an end with a mark meets its box by the mark, the outline plain under it; one without, by
+		// its line, the outline taking a junction there
+		end := func(c cell, up bool, mk string) { // up: the box is above c in the frame
+			if mk != "" {
+				g.marks[toReal(c)] = mk
+				return
+			}
+			g.lines[toReal(c)] |= frameDir(up, d.Dir)
 		}
-		into(toEnd, e.back)
-		into(fromEnd, !e.back)
-		if mk := endMark(e.e.Head, !e.back, d.Dir); mk != "" {
-			g.marks[toReal(toEnd)] = mk
-		}
-		if mk := endMark(e.e.Tail, e.back, d.Dir); mk != "" {
-			g.marks[toReal(fromEnd)] = mk
-		}
+		end(toEnd, e.back, endMark(e.e.Head, !e.back, d.Dir))
+		end(fromEnd, !e.back, endMark(e.e.Tail, e.back, d.Dir))
 	}
 	// the boxes, turned
 	for i, n := range d.Nodes {
