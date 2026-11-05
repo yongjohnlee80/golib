@@ -176,6 +176,20 @@ type Theme struct {
 	Line, Box, Label, Selected style.Style
 }
 
+// TokenTheme is the diagram theme a cell page paints in: every style on the page's own
+// background (style.PageText), the foregrounds the page's tokens name — edges as the text (a
+// diagram's lines are its content, and the border's tone is under 2:1 on the light themes' pages),
+// outlines in the accent, labels as the text. The page and the Mindmap pane both use it, so the
+// page's background follows the theme by construction, never the terminal's own.
+func TokenTheme() Theme {
+	return Theme{
+		Line:     style.PageText(),
+		Box:      style.PageText().Foreground(style.TokenAccent),
+		Label:    style.PageText(),
+		Selected: style.PageText().Reverse(true),
+	}
+}
+
 // Paint draws g into s with g's (0, 0) at (x0, y0), clipped by s: a host scrolls by moving the
 // origin. selected is a Boxes index, -1 for none: its outline and label take th.Selected.
 func (g *Grid) Paint(s tui.Surface, x0, y0, selected int, th Theme) {
