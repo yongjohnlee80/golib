@@ -1,0 +1,15 @@
+Raw chosen
+  Raw      fg d0d0d0 bg 1c1c1c bold underline
+  |        fg d0d0d0 bg 1c1c1c
+  Rendered fg d0d0d0 bg 1c1c1c
+  text     fg d0d0d0 bg 1c1c1c
+Rendered chosen
+  Raw      fg d0d0d0 bg 1c1c1c
+  |        fg d0d0d0 bg 1c1c1c
+  Rendered fg d0d0d0 bg 1c1c1c bold underline
+  text     fg d0d0d0 bg default bold
+Rendered unavailable
+  Raw      fg d0d0d0 bg 1c1c1c bold underline
+  |        fg d0d0d0 bg 1c1c1c
+  Rendered fg d0d0d0 bg 1c1c1c faint
+  text     fg d0d0d0 bg 1c1c1c

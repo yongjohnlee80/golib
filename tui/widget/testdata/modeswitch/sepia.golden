@@ -1,0 +1,15 @@
+Raw chosen
+  Raw      fg 5b4636 bg e6d9b9 bold underline
+  |        fg 5b4636 bg e6d9b9
+  Rendered fg 5b4636 bg e6d9b9
+  text     fg 5b4636 bg e6d9b9
+Rendered chosen
+  Raw      fg 5b4636 bg e6d9b9
+  |        fg 5b4636 bg e6d9b9
+  Rendered fg 5b4636 bg e6d9b9 bold underline
+  text     fg 5b4636 bg default bold
+Rendered unavailable
+  Raw      fg 5b4636 bg e6d9b9 bold underline
+  |        fg 5b4636 bg e6d9b9
+  Rendered fg 5b4636 bg e6d9b9 faint
+  text     fg 5b4636 bg e6d9b9
