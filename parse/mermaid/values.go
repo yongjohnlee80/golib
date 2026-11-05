@@ -1,15 +1,10 @@
 package mermaid
 
-import (
-	"strconv"
-	"strings"
-)
+import "math"
 
-// VALUES BOTH RENDERERS SHOW, computed here once so the window and the cells agree.
+// VALUES BOTH RENDERERS SHOW, computed here once so the window and the cells agree. Their display
+// (a unit, a format) is the renderers': tui/mermaid writes each once for both.
 
-// Percent is share (0..1) as a percentage, one decimal with a whole ".0" trimmed: "42%", "12.5%",
-// "0%". Every renderer calls it; none rounds a share itself.
-func Percent(share float64) string {
-	s := strconv.FormatFloat(100*share, 'f', 1, 64)
-	return strings.TrimSuffix(s, ".0") + "%"
-}
+// Percent is share (0..1) as a percentage, rounded once to one decimal: 0.125 is 12.5, 1/3 is 33.3.
+// Every renderer shows this number; none rounds a share itself.
+func Percent(share float64) float64 { return math.Round(share*1000) / 10 }
