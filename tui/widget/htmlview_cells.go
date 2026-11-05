@@ -767,7 +767,7 @@ func (c *cellHTML) PaintCells(s tui.Surface, top, w int, from, to DocPos) {
 		if r.grid != nil {
 			if r.grid != painted {
 				painted = r.grid
-				c.paintGrid(s, r, y, w, sz.H)
+				c.paintGrid(s, r, y, sz.H)
 			}
 			continue
 		}
@@ -962,12 +962,13 @@ func (c *cellHTML) ScrollX(_, y, dx float32) bool {
 	return c.panBlock(c.rows[ri].block, int(dx))
 }
 
-// paintGrid paints r's diagram, shown from screen row y down (the surface h rows tall, the page w
-// cells wide), at the block's indent, kept within its room. A wide one is panned by its offset and
+// paintGrid paints r's diagram, shown from screen row y down (the surface h rows tall), at the
+// block's indent, kept within its room on a page the layout's width wide: over and ToolTipAt read
+// that width too, so the grid sits where they say. A wide one is panned by its offset and
 // drawn between its room's edge columns, which hold a « or » on its middle row on screen when more
 // of it lies that way.
-func (c *cellHTML) paintGrid(s tui.Surface, r *hrow, y, w, h int) {
-	w = c.width // the layout's width, as over and ToolTipAt read it: the grid sits where they say
+func (c *cellHTML) paintGrid(s tui.Surface, r *hrow, y, h int) {
+	w := c.width
 	x0, left, right := c.gridPlace(r, w)
 	r.grid.Paint(clipCols{s, left, right}, x0, y-r.gridRow, -1, diagramTheme)
 	over := c.over(r.block)
