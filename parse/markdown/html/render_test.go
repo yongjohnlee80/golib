@@ -23,13 +23,15 @@ func renderWith(t *testing.T, in string, opts ...html.Option) string {
 	return b.String()
 }
 
-// TestSafeDefaultEscapesRawHTML renders the same inputs both ways: the default escapes raw HTML,
-// Unsafe passes it through, and nothing else differs.
+// TestSafeDefaultEscapesRawHTML renders the same inputs both ways: the default escapes raw HTML
+// (leaving its comments out: a browser shows none), Unsafe passes it through, and nothing else
+// differs.
 func TestSafeDefaultEscapesRawHTML(t *testing.T) {
 	for _, c := range []struct{ in, safe, unsafe string }{
 		{"<div>\n*a*\n</div>\n", "&lt;div&gt;\n*a*\n&lt;/div&gt;\n", "<div>\n*a*\n</div>\n"},
 		{"a <b onclick=\"x\">c</b>\n", "<p>a &lt;b onclick=&quot;x&quot;&gt;c&lt;/b&gt;</p>\n", "<p>a <b onclick=\"x\">c</b></p>\n"},
-		{"<!-- c -->\n", "&lt;!-- c --&gt;\n", "<!-- c -->\n"},
+		{"<!-- c -->\n", "", "<!-- c -->\n"},
+		{"a <!-- c --> b\n", "<p>a  b</p>\n", "<p>a <!-- c --> b</p>\n"},
 		{"*a* `<b>`\n", "<p><em>a</em> <code>&lt;b&gt;</code></p>\n", "<p><em>a</em> <code>&lt;b&gt;</code></p>\n"},
 	} {
 		if got := renderWith(t, c.in); got != c.safe {
@@ -37,6 +39,24 @@ func TestSafeDefaultEscapesRawHTML(t *testing.T) {
 		}
 		if got := renderWith(t, c.in, html.WithUnsafe()); got != c.unsafe {
 			t.Errorf("Unsafe Render(%q) = %q, want %q", c.in, got, c.unsafe)
+		}
+	}
+}
+
+// TestSafeDefaultLeavesCommentsOut: the safe default writes no HTML comment, as text or otherwise,
+// since a browser shows none: a managed file's header comment before a heading leaves only the
+// heading; what a comment's block holds after it, and the tags round one, are still written,
+// escaped; and the empty comments a browser reads ("<!-->", "<!--->") and one never closed go too.
+func TestSafeDefaultLeavesCommentsOut(t *testing.T) {
+	for _, c := range []struct{ in, want string }{
+		{"<!-- ─── managed file ───\n     HAND-EDIT FREELY\n     ─── -->\n\n# Task\n", "<h1>Task</h1>\n"},
+		{"<!-- c --> after\n", " after\n"},
+		{"<div><!-- c --></div>\n", "&lt;div&gt;&lt;/div&gt;\n"},
+		{"<div>a<!-->b<!--->c</div>\n", "&lt;div&gt;abc&lt;/div&gt;\n"},
+		{"<div>a <!-- never closed\n", "&lt;div&gt;a \n"},
+	} {
+		if got := renderWith(t, c.in); got != c.want {
+			t.Errorf("default Render(%q) = %q, want %q", c.in, got, c.want)
 		}
 	}
 }
