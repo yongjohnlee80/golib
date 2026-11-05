@@ -214,7 +214,7 @@ func (e *Editor) ResolvePointerPress(m tui.MouseEvent) (tui.Action, bool) {
 	if m.Kind != tui.MousePress || m.Button != tui.MouseLeft || m.Y < 0 || m.Y >= e.headerRows() {
 		return nil, false
 	}
-	v, ok := e.sw.Choice(m.X - (e.rowW - ModeSwitchWidth))
+	v, ok := e.sw.Choice(m.X - e.switchX())
 	if !ok {
 		return nil, false
 	}
@@ -230,6 +230,11 @@ func (e *Editor) HandleAction(inv tui.ActionInvocation) bool {
 	return false
 }
 
+// switchX is the column the switch starts at on its row: at the row's right, or at its left when
+// the editor is narrower than the switch, which then shows as much of itself as fits. Render draws
+// it there, and header and ResolvePointerPress hit-test it there.
+func (e *Editor) switchX() int { return e.rowW - min(ModeSwitchWidth, e.rowW) }
+
 // header is a press on the switch's row: the switch's own, at its cells at the row's right; the
 // rest of the row is no text, so it takes the press and does nothing. The wheel scrolls what is under
 // the row, as anywhere: the text, or the document view shown, given it at its own first row.
@@ -241,7 +246,7 @@ func (e *Editor) header(m tui.MouseEvent) bool {
 		}
 		return e.wheel(m)
 	}
-	x0 := e.rowW - ModeSwitchWidth
+	x0 := e.switchX()
 	if m.X >= x0 {
 		m.X -= x0
 		return e.sw.HandleEvent(m)

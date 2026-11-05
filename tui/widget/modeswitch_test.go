@@ -325,3 +325,28 @@ func TestTheSwitchTakesAPressWithTheFocusElsewhere(t *testing.T) {
 		t.Errorf("a press on Rendered: %v", chosen(h, ed))
 	}
 }
+
+// An editor narrower than the switch shows as much of it as fits, from its left, and a press is hit
+// where it is drawn: on the visible Raw segment it chooses Raw.
+func TestANarrowEditorsSwitchIsHitWhereItIsDrawn(t *testing.T) {
+	ed := widget.NewEditor(widget.WithCore(widget.CoreInitialText("a,b\n1,2\n")), widget.EditorModeSwitch(true))
+	ed.SetDocumentView(widget.NewTableDocument(ed.Core(), ','))
+	ed.SetRenderedDocument(true)
+	ed.SetView(widget.ViewRendered)
+	sh := newShell(ed)
+	const w = 12
+	if w >= widget.ModeSwitchWidth {
+		t.Fatalf("precondition: %d is not narrower than the switch (%d)", w, widget.ModeSwitchWidth)
+	}
+	h := startApp(t, sh, w, 6)
+	defer h.stop()
+	h.barrier(sh)
+	if r := h.row(0); !strings.HasPrefix(r, "[ Raw |") {
+		t.Fatalf("row 0 of a %d-column editor: %q; want the switch from its left", w, r)
+	}
+	h.inject(pressAt(2, 0))
+	h.barrier(sh)
+	if chosen(h, ed) != widget.ViewRaw {
+		t.Errorf("a press on the visible Raw: %v; want Raw", chosen(h, ed))
+	}
+}
