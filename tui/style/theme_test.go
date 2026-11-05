@@ -136,10 +136,10 @@ func TestThemePanics(t *testing.T) {
 	mustPanic(t, "Theme.Color(negative)", func() { NewTheme(ANSI(4)).Color(Token(-1)) })
 }
 
-// TestTokenCount pins the 20-slot vocabulary (11 base + 9 derived) so a
+// TestTokenCount pins the 21-slot vocabulary (11 base + 10 derived) so a
 // token added or removed without revisiting the ADR fails a test.
 func TestTokenCount(t *testing.T) {
-	if numTokens != 20 {
-		t.Fatalf("numTokens = %d, want 20 (11 base + 9 derived, ADR-0006 §2.5 rev 1)", numTokens)
+	if numTokens != 21 {
+		t.Fatalf("numTokens = %d, want 21 (11 base + 10 derived, ADR-0006 §2.5 rev 2)", numTokens)
 	}
 }
