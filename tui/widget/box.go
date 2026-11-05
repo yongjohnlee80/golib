@@ -112,6 +112,11 @@ type Box struct {
 	// maxW caps the box's width, border included; 0 for none (SetMaximumWidth). inL and inR are
 	// the columns the last layout left either side of the capped box, so it is centred.
 	maxW, inL, inR int
+
+	// slot is the control on the title row (SetTitleSlot), nil for none; slotW is the columns the
+	// last layout gave it there, 0 while it is hidden (the box too narrow, or the slot empty).
+	slot  tui.Component
+	slotW int
 }
 
 // SetMaximumWidth caps the box at w columns, border included, centred in what it is given — CSS's
@@ -140,6 +145,7 @@ type boxConfig struct {
 	focusedSt   style.Style
 	focusedSet  bool
 	focusable   bool
+	slot        tui.Component
 }
 
 // BoxOption customizes a Box under construction.
@@ -186,6 +192,9 @@ func WithFocusedStyle(s style.Style) BoxOption {
 	return func(c *boxConfig) { c.focusedSt = s; c.focusedSet = true }
 }
 
+// WithTitleSlot puts c on the box's title row (SetTitleSlot).
+func WithTitleSlot(c tui.Component) BoxOption { return func(cfg *boxConfig) { cfg.slot = c } }
+
 // WithFocusable opts the Box itself into the focus chain (child-less
 // panes). Default false: focus belongs to the child.
 func WithFocusable(v bool) BoxOption { return func(c *boxConfig) { c.focusable = v } }
@@ -212,6 +221,7 @@ func NewBox(child tui.Component, opts ...BoxOption) *Box {
 		titleSt:     style.New().Foreground(style.TokenForeground).Bold(true),
 		statusSt:    style.New().Foreground(style.TokenTextMuted),
 		focusable:   cfg.focusable,
+		slot:        cfg.slot,
 	}
 }
 
@@ -249,6 +259,30 @@ func (x *Box) SetTitleMessage(m tui.Message) {
 	x.RequestLayout()
 }
 
+// SetTitleSlot puts c on the box's top border row: one control (an editor's Raw | Rendered
+// switch, a close ×), one row tall at its own width, right-aligned inside the corners with a
+// border cell after it (at the left end instead when the title is right-aligned). The box owns its
+// rect there: c is a second child, mounted, hit-tested and repainted as any child, and its rect
+// never meets the content child's. The title truncates before it. A box too narrow for both
+// (inner width under c's width + 4), or with no top border, hides c and keeps the title. nil
+// removes the slot.
+func (x *Box) SetTitleSlot(c tui.Component) {
+	if c == x.slot {
+		return
+	}
+	if old := x.slot; old != nil && x.ctx != nil {
+		x.ctx.Unmount(old)
+	}
+	x.slot = c
+	if c != nil && x.ctx != nil {
+		x.ctx.Mount(c)
+	}
+	x.RequestLayout()
+}
+
+// TitleSlot is the control on the title row, nil for none.
+func (x *Box) TitleSlot() tui.Component { return x.slot }
+
 // SetStatus replaces the bottom-border status line. Repaint only.
 func (x *Box) SetStatus(s string) {
 	x.status = s
@@ -261,6 +295,9 @@ func (x *Box) Init(ctx *tui.Context) {
 	x.focusWithin = false
 	if x.child != nil {
 		ctx.Mount(x.child)
+	}
+	if x.slot != nil {
+		ctx.Mount(x.slot)
 	}
 }
 
@@ -300,8 +337,12 @@ func (x *Box) Move(child tui.Component, to int) {
 	}
 }
 
-// Remove unmounts the child and forgets it.
+// Remove unmounts the child (or the title slot) and forgets it.
 func (x *Box) Remove(child tui.Component) {
+	if child != nil && child == x.slot {
+		x.SetTitleSlot(nil)
+		return
+	}
 	if child == nil || x.child != child {
 		return
 	}
@@ -311,11 +352,14 @@ func (x *Box) Remove(child tui.Component) {
 	}
 }
 
-// Children enumerates the single child, if any.
+// Children enumerates the content child, then the title slot, each if any.
 func (x *Box) Children() iter.Seq[tui.Component] {
 	return func(yield func(tui.Component) bool) {
-		if x.child != nil {
-			yield(x.child)
+		if x.child != nil && !yield(x.child) {
+			return
+		}
+		if x.slot != nil {
+			yield(x.slot)
 		}
 	}
 }
@@ -360,14 +404,51 @@ const boxCommitKey tui.CommitKey = "widget.box"
 // frame. Title and status cost zero extra rows: they render inside the
 // border rows.
 func (x *Box) Layout(c tui.Constraints) tui.Size {
+	sz, inL, inR := x.layoutFrame(c)
+	x.placeSlot(sz.W, inL, inR)
+	return sz
+}
+
+// placeSlot lays the title slot out on the top border row of a box w columns wide and places it,
+// or places it nowhere (a zero rect: never hit) while it doesn't fit; the width it took is
+// committed after layout, for Render to truncate the title by.
+func (x *Box) placeSlot(w, inL, inR int) {
+	if x.slot == nil {
+		return
+	}
+	mt, mr, _, ml := x.base.GetMargin()
+	bt, br, _, bl := borderEdgeSizes(x.base)
+	bx, bw := ml+inL, w-ml-mr-inL-inR
+	inner := bw - bl - br
+	sw := 0
+	if bt == 1 && inner > 4 {
+		sw = x.ctx.LayoutChild(x.slot, tui.Constraints{MaxW: inner - 4, MinH: 1, MaxH: 1}).W
+	}
+	if sw <= 0 || inner < sw+4 {
+		x.ctx.PlaceChild(x.slot, tui.Rect{})
+		x.ctx.AfterLayout(boxSlotKey, func() { x.slotW = 0 })
+		return
+	}
+	at := bx + bl + inner - 1 - sw // a border cell between it and the corner
+	if x.titleAlign == style.AlignRight {
+		at = bx + bl + 1
+	}
+	x.ctx.PlaceChild(x.slot, tui.Rect{X: at, Y: mt, W: sw, H: 1})
+	x.ctx.AfterLayout(boxSlotKey, func() { x.slotW = sw })
+}
+
+// boxSlotKey is the title slot's width commit (tui.Context.AfterLayout).
+const boxSlotKey tui.CommitKey = "widget.box.slot"
+
+// layoutFrame is Layout's frame and content child, and the capped box's centring.
+func (x *Box) layoutFrame(c tui.Constraints) (sz tui.Size, inL, inR int) {
 	fh := x.base.GetHorizontalFrameSize()
 	fv := x.base.GetVerticalFrameSize()
 	if x.child == nil {
 		w := boundedMax(c.MaxW, max(c.MinW, fh))
 		h := boundedMax(c.MaxH, max(c.MinH, fv))
-		return c.Constrain(tui.Size{W: w, H: h})
+		return c.Constrain(tui.Size{W: w, H: h}), 0, 0
 	}
-	inL, inR := 0, 0
 	// The insets Render centres a capped box by are committed after layout, so a measure moves
 	// nothing on screen.
 	defer func() { x.ctx.AfterLayout(boxCommitKey, func() { x.inL, x.inR = inL, inR }) }()
@@ -376,19 +457,19 @@ func (x *Box) Layout(c tui.Constraints) tui.Size {
 		extra := c.MaxW - x.maxW
 		inL, inR = extra/2, extra-extra/2
 		cc := tui.Constraints{MinW: x.maxW - fh, MaxW: x.maxW - fh, MinH: max(c.MinH-fv, 0), MaxH: subFrame(c.MaxH, fv)}
-		sz := x.ctx.LayoutChild(x.child, cc)
+		csz := x.ctx.LayoutChild(x.child, cc)
 		ft, _, _, fl := x.frame()
-		x.ctx.PlaceChild(x.child, tui.Rect{X: inL + fl, Y: ft, W: sz.W, H: sz.H})
-		return c.Constrain(tui.Size{W: c.MaxW, H: sz.H + fv})
+		x.ctx.PlaceChild(x.child, tui.Rect{X: inL + fl, Y: ft, W: csz.W, H: csz.H})
+		return c.Constrain(tui.Size{W: c.MaxW, H: csz.H + fv}), inL, inR
 	}
 	cc := tui.Constraints{
 		MinW: max(c.MinW-fh, 0), MaxW: subFrame(c.MaxW, fh),
 		MinH: max(c.MinH-fv, 0), MaxH: subFrame(c.MaxH, fv),
 	}
-	sz := x.ctx.LayoutChild(x.child, cc)
+	csz := x.ctx.LayoutChild(x.child, cc)
 	ft, _, _, fl := x.frame()
-	x.ctx.PlaceChild(x.child, tui.Rect{X: fl, Y: ft, W: sz.W, H: sz.H})
-	return c.Constrain(tui.Size{W: sz.W + fh, H: sz.H + fv})
+	x.ctx.PlaceChild(x.child, tui.Rect{X: fl, Y: ft, W: csz.W, H: csz.H})
+	return c.Constrain(tui.Size{W: csz.W + fh, H: csz.H + fv}), inL, inR
 }
 
 // HandleEvent consumes nothing (bubbling continues); it only observes
@@ -454,8 +535,17 @@ func (x *Box) Render(s tui.Surface) {
 	if fg, ok := st.GetForeground(); ok {
 		titleSt = titleSt.Foreground(fg)
 	}
-	if title := x.title.inLanguage(&x.Base); bt == 1 && title != "" && availW > 0 {
-		x.renderBorderText(s, " "+title+" ", x.titleAlign, titleSt.Inherit(fill), bx+1, by, availW)
+	// the title slot's columns, and a border cell beside them, are the slot's: the title truncates
+	// before them (after them, when it is right-aligned)
+	tx, tw := bx+1, availW
+	if x.slot != nil && x.slotW > 0 {
+		tw -= x.slotW + 1
+		if x.titleAlign == style.AlignRight {
+			tx += x.slotW + 1
+		}
+	}
+	if title := x.title.inLanguage(&x.Base); bt == 1 && title != "" && tw > 0 {
+		x.renderBorderText(s, " "+title+" ", x.titleAlign, titleSt.Inherit(fill), tx, by, tw)
 	}
 	if bb == 1 && x.status != "" && availW > 0 {
 		x.renderBorderText(s, " "+x.status+" ", x.statusAlign, statusSt.Inherit(fill), bx+1, by+bh-1, availW)
