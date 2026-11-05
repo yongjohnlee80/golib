@@ -3,6 +3,7 @@ package widget
 import (
 	"bytes"
 	"math"
+	"slices"
 	"time"
 
 	"github.com/yongjohnlee80/golib/highlight"
@@ -56,6 +57,27 @@ type HTMLView struct {
 	edge     int // -1/+1 while a drag holds the pointer past the top or bottom
 	edgeStop func()
 	theme    *style.Theme // the surface's at the last paint, for a pixel layout's colours
+	// keyset is the keyset the view reads its keys by (FollowKeyset): Vim's printing keys too, or
+	// only the keys that never type. nil: Vim's.
+	keyset func() Keyset
+}
+
+// FollowKeyset makes the view read its keys by the keyset of reports, asked at each key: under
+// Vim it reads j/k, g/G, y, Space, h/l, ] [ and } { too (HTMLViewVimScope); under a modeless one
+// (Standard, Nano) only the keys that never type, so every printing key is its host's, to type. An
+// Editor gives its document view its own keyset this way (SetDocumentView). Until then, or with nil,
+// the view reads Vim's keys.
+func (v *HTMLView) FollowKeyset(of func() Keyset) { v.keyset = of }
+
+// vimKeys reports whether the view reads Vim's printing keys.
+func (v *HTMLView) vimKeys() bool { return v.keyset == nil || v.keyset() == KeysetVim }
+
+// commands is the view's commands in its keyset.
+func (v *HTMLView) commands() []keymap.Command {
+	if v.vimKeys() {
+		return append(slices.Clip(htmlViewCommands), htmlViewVimCommands...)
+	}
+	return htmlViewCommands
 }
 
 // HTMLLayout is what an HTMLView needs from whoever lays it out: the cell layout here, a pixel
@@ -471,11 +493,12 @@ func (v *HTMLView) reportScroll() {
 }
 
 // HandleEvent scrolls by the keys and the wheel, selects by a drag, follows a clicked link, and
-// copies the selection by Ctrl+C or y. The keys: Up/Down or k/j a line, PgUp/PgDn or Space a view,
-// Ctrl+U/Ctrl+D half a view, Home/End or g/G the ends; on a layout that has them, Left/Right or h/l
-// pan a wide block (HTMLLayoutPan), ] and [ go to the next or previous block, } and { to the next or
-// previous heading (HTMLLayoutTravel). A travel or pan key the page can't move by is still read
-// (true): it is a reading key, never one for the parent.
+// copies the selection. The keys, in every keyset: Up/Down a line, PgUp/PgDn a view, Ctrl+U/Ctrl+D
+// half a view, Home/End the ends, Ctrl+C copies; on a layout that has them, Left/Right pan a wide
+// block (HTMLLayoutPan), Alt+Down and Alt+Up go to the next or previous block, Alt+Shift+Down and
+// Alt+Shift+Up to the next or previous heading (HTMLLayoutTravel). Under Vim (FollowKeyset) also
+// k/j, Space, g/G, y, h/l, ] [ and } {; a modeless keyset types those. A travel or pan key the page
+// can't move by is still read (true): it is a reading key, never one for the parent.
 func (v *HTMLView) HandleEvent(ev tui.Event) bool {
 	switch e := ev.(type) {
 	case tui.KeyEvent:
@@ -510,15 +533,42 @@ func (v *HTMLView) HandleEvent(ev tui.Event) bool {
 // keyOf is the HTMLView command e is, if any; Esc is one only with a selection to clear, else it is
 // the parent's.
 func (v *HTMLView) keyOf(e tui.KeyEvent, hasSelection bool) (keymap.Command, bool) {
-	cmd, ok := v.Context().KeyCommand(e, htmlViewCommands...)
+	cmd, ok := v.Context().KeyCommand(e, v.commands()...)
+	if does, vim := htmlViewVimDoes[cmd.ID]; ok && vim {
+		cmd = does // a Vim key does its command of HTMLViewScope
+	}
 	if ok && cmd.ID == HTMLViewClear.ID && !hasSelection {
 		return keymap.Command{}, false
 	}
 	return cmd, ok
 }
 
-func (v *HTMLView) key(e tui.KeyEvent) bool {
+// command is the command e is for this view: one of its keyset's, and, for a pan or travel key, one
+// its layout has (HTMLLayoutPan, HTMLLayoutTravel).
+func (v *HTMLView) command(e tui.KeyEvent) (keymap.Command, bool) {
 	cmd, ok := v.keyOf(e, v.sel[0] != v.sel[1])
+	switch {
+	case !ok:
+		return cmd, false
+	case cmd.ID == HTMLViewLeft.ID || cmd.ID == HTMLViewRight.ID:
+		_, ok = v.layout.(HTMLLayoutPan)
+	case cmd.ID == HTMLViewNextBlock.ID || cmd.ID == HTMLViewPreviousBlock.ID ||
+		cmd.ID == HTMLViewNextHeading.ID || cmd.ID == HTMLViewPreviousHeading.ID:
+		_, ok = v.layout.(HTMLLayoutTravel)
+	}
+	return cmd, ok
+}
+
+// ReadsKey reports whether e is a key the view reads the page by, in its keyset (FollowKeyset): a
+// host that opens its text with every other key (AutoDoc's note page) asks this rather than keeping
+// a list of its own. A copy with nothing selected copies nothing, yet is read.
+func (v *HTMLView) ReadsKey(e tui.KeyEvent) bool {
+	_, ok := v.command(e)
+	return ok
+}
+
+func (v *HTMLView) key(e tui.KeyEvent) bool {
+	cmd, ok := v.command(e)
 	if !ok {
 		return false
 	}
@@ -543,10 +593,7 @@ func (v *HTMLView) key(e tui.KeyEvent) bool {
 	case HTMLViewBottom.ID:
 		v.scrollTo(v.maxScroll())
 	case HTMLViewLeft.ID, HTMLViewRight.ID:
-		p, ok := v.layout.(HTMLLayoutPan)
-		if !ok {
-			return false
-		}
+		p := v.layout.(HTMLLayoutPan) // command has checked it
 		dx := htmlPanStep
 		if cmd.ID == HTMLViewLeft.ID {
 			dx = -dx
@@ -555,10 +602,7 @@ func (v *HTMLView) key(e tui.KeyEvent) bool {
 			v.MarkDirty()
 		}
 	case HTMLViewNextBlock.ID, HTMLViewPreviousBlock.ID, HTMLViewNextHeading.ID, HTMLViewPreviousHeading.ID:
-		tr, ok := v.layout.(HTMLLayoutTravel)
-		if !ok {
-			return false
-		}
+		tr := v.layout.(HTMLLayoutTravel)
 		heading := cmd.ID == HTMLViewNextHeading.ID || cmd.ID == HTMLViewPreviousHeading.ID
 		forward := cmd.ID == HTMLViewNextBlock.ID || cmd.ID == HTMLViewNextHeading.ID
 		if y, ok := travelTo(tr.Starts(heading), v.scrollY, forward); ok {
@@ -597,7 +641,7 @@ func (v *HTMLView) KeyScope() keymap.Scope { return HTMLViewScope }
 
 // KeyBindings is the HTMLView's commands as m binds them (tui.KeyBinder).
 func (v *HTMLView) KeyBindings(m *keymap.Map) []keymap.Binding {
-	return tui.BindingsOf(m, htmlViewCommands...)
+	return tui.BindingsOf(m, v.commands()...)
 }
 
 func (v *HTMLView) mouse(m tui.MouseEvent) bool {
