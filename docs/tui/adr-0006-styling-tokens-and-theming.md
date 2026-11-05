@@ -10,7 +10,7 @@
 > prefix namespaces it against this KB's auto-agents ADR sequence. Navigation hub:
 > golib-tui. Umbrella ADR: golib-tui-0001-overview-and-architecture.
 
-- **Status:** **Accepted** (Johno, 2026-07-08) — revision 1 (Lector r1 `change_requested` → r2 `approved_with_amendments`, all amendments folded).
+- **Status:** **Accepted** (Johno, 2026-07-08) — revision 1 (Lector r1 `change_requested` → r2 `approved_with_amendments`, all amendments folded); revision 2 (2026-11-05, theme pass): `TokenAccentDocument` joins the derived set — the document page's accent, a theme's optional `document.accent` (the menu's accent stays the chrome's; retro's navy page needs its own red).
 - **Date:** 2026-07-08
 - **Reviewed by:** lector, 2026-07-08 — agents/lector/reviews/2026-07-08-golib-tui-adrs-review.md (r1); agents/lector/reviews/2026-07-08-golib-tui-adrs-rereview.md (r2, `approved_with_amendments`)
 - **Module:** github.com/yongjohnlee80/golib
@@ -36,7 +36,11 @@
 > compile-shape prevention documented plus a belt-and-braces panic (§2.4);
 > (6) **Q5**: `Ext`'s O(N²) copy-on-write accepted; `Apply(opts...)` documented as the
 > batching path for multiple extensions (§2.7). §6 questions carry Lector's r1 answers
-> inline.
+> inline. rev 2 (2026-11-05, theme pass): `TokenAccentDocument` joins the derived set —
+> the document page's accent (inline code, h3, question callouts, the diagram theme's
+> outlines), mapped from a theme's optional `document.accent` in the App's token theme
+> and deriving from `TokenAccent` when a theme sets none; retro's navy page reads its
+> own red where the menu's dark one (right for the grey chrome) sits under the 3:1 floor.
 
 > **Self-containment contract.** This ADR is implementable with no prior context beyond
 > the golib conventions (golang, golib) and the sibling ADRs listed under Related.
@@ -439,6 +443,7 @@ const (
     TokenTextOnWarning
     TokenBorder          // default border color (Box and friends, ADR-0007)
     TokenBorderFocused   // border color of the focused panel (ADR-0007 Box focus visuals)
+    TokenAccentDocument  // the document page's accent: a theme's document.accent, else the accent's own (rev 2)
 
     numTokens // internal bound
 )
@@ -468,6 +473,7 @@ documented, deterministic logic — no color math):
 | TextOn* | Background (i.e. inverted text on a colored fill) |
 | Border | Foreground |
 | BorderFocused | Accent |
+| AccentDocument | Accent (rev 2: the page's accent token, when a theme sets no document.accent) |
 
 **Tokens are colors, never attributes (normative).** A `Token` resolves to exactly one
 `Color`; the resolver never attaches SGR attributes on a token's behalf. `TokenTextMuted`
@@ -489,9 +495,11 @@ pipeline's clean color-only downsampling chain (§2.4).
 (https://textual.textualize.io/guide/design/), which requires real color math (HSL
 manipulation) and only produces sensible results for truecolor themes — under G7's
 ANSI-16-first defaults there is nothing to lighten (index 4 has no "10% lighter"). The
-nine derived slots above are the ones ADR-0007's widget set actually consumes (muted
+ten derived slots above are the ones the toolkit actually consumes (muted
 placeholder/status text; readable text on Primary/Secondary/Accent selection fills and
-on status-colored fills; default and focused panel borders); each is one explicit Theme
+on status-colored fills; default and focused panel borders; the document page's own
+accent — a theme's `document.accent` where the menu's accent is the chrome's and both
+surfaces demand their own, rev 2); each is one explicit Theme
 slot a truecolor theme can override with properly computed values if its author wants
 Textual-grade polish. Growing the derived set is an additive, compatible change (new
 `Token` constants before `numTokens` plus a derivation row).
