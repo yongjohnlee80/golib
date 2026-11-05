@@ -823,9 +823,10 @@ func selected(k hcl, from, to DocPos) bool {
 // PAN. A diagram wider than its room is drawn at its own width and scrolled sideways, as the
 // window scrolls a wide box (gui/widget's ScrollX): each wide block has its own offset (pan), the
 // wheel's Shift pans the one under the pointer (ScrollX), and the keys the one nearest the page's
-// top (Pan). Only a wide block moves: text wraps to the room and never scrolls off. A « or » at
-// the block's edge, on its middle row on screen, says more of it lies that way: not ◀ ▶, which a
-// sequence's arrows are drawn with.
+// top (Pan). Only a wide block moves: text wraps to the room and never scrolls off. While a block
+// is wide its room's two edge columns are the marks', the diagram drawn between them, so a mark
+// never covers the diagram: a « or » there, on its middle row on screen, says more of it lies that
+// way (not ◀ ▶, which a sequence's arrows are drawn with).
 
 // htmlPanStep is how far Left/Right (h/l) pan, in cells.
 const htmlPanStep = 8
@@ -833,8 +834,9 @@ const htmlPanStep = 8
 // panMark is the « » marks' style: a diagram's chrome, drawn as its lines are (diagramTheme).
 var panMark = style.New().Foreground(style.TokenForeground)
 
-// over is how much wider than its room block bi's diagram is: 0 for a block that fits, or isn't
-// a diagram drawn in cells.
+// over is how far block bi's diagram pans: how much wider it is than its room less the two edge
+// columns a wide block keeps for its marks; 0 for a block that fits, or isn't a diagram drawn in
+// cells.
 func (c *cellHTML) over(bi int) int {
 	if bi < 0 || bi >= len(c.doc) || bi >= len(c.tops) || c.tops[bi] >= len(c.rows) {
 		return 0
@@ -844,7 +846,11 @@ func (c *cellHTML) over(bi int) int {
 		return 0
 	}
 	b := &c.doc[bi]
-	return max(r.grid.Size.W-(c.width-2*b.quote-b.indent), 0)
+	room := c.width - 2*b.quote - b.indent
+	if r.grid.Size.W <= room {
+		return 0
+	}
+	return r.grid.Size.W - max(room-2, 0)
 }
 
 // offset is block bi's pan, within what it has to show: 0 when it fits.
@@ -886,14 +892,20 @@ func (c *cellHTML) ScrollX(_, y, dx float32) bool {
 }
 
 // paintGrid paints r's diagram, shown from screen row y down (the surface h rows tall, the page w
-// cells wide): at the block's indent, panned by its offset and kept within its room, with a « or »
-// on its middle row on screen when more of it lies that way.
+// cells wide), at the block's indent, kept within its room. A wide one is panned by its offset and
+// drawn between its room's edge columns, which hold a « or » on its middle row on screen when more
+// of it lies that way.
 func (c *cellHTML) paintGrid(s tui.Surface, r *hrow, y, w, h int) {
 	b := &c.doc[r.block]
 	x := 2*b.quote + b.indent
-	off, over := c.offset(r.block), c.over(r.block)
-	r.grid.Paint(clipCols{s, x, w}, x-off, y-r.gridRow, -1, diagramTheme)
-	if over == 0 || w <= x {
+	over := c.over(r.block)
+	if over == 0 {
+		r.grid.Paint(clipCols{s, x, w}, x, y-r.gridRow, -1, diagramTheme)
+		return
+	}
+	off := c.offset(r.block)
+	r.grid.Paint(clipCols{s, x + 1, w - 1}, x+1-off, y-r.gridRow, -1, diagramTheme)
+	if w <= x {
 		return
 	}
 	last := min(y+r.grid.Size.H-r.gridRow, h) - 1
