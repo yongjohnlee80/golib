@@ -226,22 +226,23 @@ type fcEdge struct {
 	cols     map[int]int // a rank strictly between lo and hi → the column it passes it at
 	drawn    bool        // routed: false for a self-loop, an edge within one rank, an invisible edge
 	lowCol   int         // the column it meets its lower node's top at (lowPort)
+	upCol    int         // the column it leaves its upper node's bottom at (its port for its mark)
 }
 
 // lowPort is the column, on n's top, that edges come down into it at (back false) or leave it up by
 // (back true), in a gap where taken holds the columns of upper ends whose edges go elsewhere: the
 // middle (where the box takes a stem) or the nearest cell of its top beside it. So the port is never
 // in a column another edge drops from (two boxes stacked in one column would otherwise make the
-// gap's verticals run together), while an edge straight down into it keeps its column; and the two
-// kinds never share one. avoid is the other kind's, -1 for none.
-func (n fcNode) lowPort(back bool, taken map[int]bool, avoid int) int {
+// gap's verticals run together), while an edge straight down into it keeps its column. taken holds
+// the node's other ports too, so no two share one (kinds, marks).
+func (n fcNode) lowPort(back bool, taken map[int]bool) int {
 	mid := n.x + n.w/2
 	if back {
 		mid++
 	}
 	for d := 0; d < n.w; d++ {
 		for _, c := range []int{mid - d, mid + d} {
-			if c > n.x && c < n.x+n.w-1 && !taken[c] && c != avoid {
+			if c > n.x && c < n.x+n.w-1 && !taken[c] {
 				return c
 			}
 		}
@@ -291,8 +292,28 @@ func (n *fcNet) by(t fcTerm, top bool) []int {
 	return out
 }
 
-// netKey names a gap's net: the edge itself, or the node whose port it leaves by.
-type netKey struct{ kind, n int }
+// netKey names a gap's net: the edge itself, or the node whose port it leaves by and the mark its
+// edges draw there (edges share a port only when they draw one mark at it).
+type netKey struct {
+	kind, n int
+	mark    End
+}
+
+// upperMark is what e draws at its upper node (its tail going down, its head going back up), and
+// lowerMark what it draws at its lower node.
+func (e fcEdge) upperMark() End {
+	if e.back {
+		return e.e.head
+	}
+	return e.e.tail
+}
+
+func (e fcEdge) lowerMark() End {
+	if e.back {
+		return e.e.tail
+	}
+	return e.e.head
+}
 
 // layGraph lays gr out in cells: ranks and order from graph/layout's layered layout, every edge
 // routed between the ranks, its ends marked, its frames drawn round their nodes. It is the one
@@ -386,26 +407,34 @@ func layGraph(ctx context.Context, gr graph, m Measurer) (*Grid, [][][2]cell, er
 			titleRank[f] = frames[f].hi
 		}
 	}
-	// a box whose side meets both an edge coming down the ranks and one going back up them (a cycle
-	// through it) needs a column for each, either side of its middle: as wide as five across the
-	// ranks, whichever way they run (an ordinary box laid across, LR or RL, is only three)
-	sides := make([][2]uint8, len(nodes)) // a node's top's and bottom's kinds: 1 down, 2 back up
+	// a side of a box takes a port for each kind of edge meeting it: down the ranks or back up them
+	// (a cycle through it), and each mark drawn there (a class's inheritances share one, its
+	// composition takes another). Two or more need a column each about its middle: as wide as five
+	// across the ranks for two, a column more for each more, whichever way they run (an ordinary box
+	// laid across, LR or RL, is only three)
+	sides := make([][2]map[netKey]bool, len(nodes)) // a node's top's and bottom's ports: (kind 1 down, 2 back up; mark)
+	side := func(n, s, kind int, mark End) {
+		if sides[n][s] == nil {
+			sides[n][s] = map[netKey]bool{}
+		}
+		sides[n][s][netKey{kind: kind, mark: mark}] = true
+	}
 	for _, e := range edges {
 		rf, rt := nodes[e.from].rank, nodes[e.to].rank
 		if e.from == e.to || rf == rt || e.e.invisible {
 			continue
 		}
 		if rf < rt { // down: out of the upper's bottom, into the lower's top
-			sides[e.from][1] |= 1
-			sides[e.to][0] |= 1
+			side(e.from, 1, 1, e.e.tail)
+			side(e.to, 0, 1, e.e.head)
 		} else { // back up: out of the lower's top, into the upper's bottom
-			sides[e.from][0] |= 2
-			sides[e.to][1] |= 2
+			side(e.from, 0, 2, e.e.tail)
+			side(e.to, 1, 2, e.e.head)
 		}
 	}
 	for i := range nodes {
-		if sides[i][0] == 3 || sides[i][1] == 3 {
-			nodes[i].w = max(nodes[i].w, 5)
+		if ports := max(len(sides[i][0]), len(sides[i][1])); ports >= 2 {
+			nodes[i].w = max(nodes[i].w, ports+3)
 		}
 	}
 	placeColumns(nodes, ranks, frames, res, titleW, titleRank)
@@ -496,25 +525,54 @@ func layGraph(ctx context.Context, gr graph, m Measurer) (*Grid, [][][2]cell, er
 			}
 			return e.from, e.to
 		}
+		// a node's bottom ports in this gap, one per kind and mark: the first of a kind at its port,
+		// another at the nearest of its bottom's cells no port has
+		up, upUsed := map[netKey]int{}, map[int]map[int]bool{}
+		upAt := func(n int, back bool, mark End) int {
+			key := netKey{1, n, mark}
+			if back {
+				key.kind = 2
+			}
+			if c, ok := up[key]; ok {
+				return c
+			}
+			if upUsed[n] == nil {
+				upUsed[n] = map[int]bool{}
+			}
+			nd, start := nodes[n], nodes[n].port(back)
+			c := start
+		search:
+			for d := 0; d < nd.w; d++ {
+				for _, cand := range []int{start - d, start + d} {
+					if cand > nd.x && cand < nd.x+nd.w-1 && !upUsed[n][cand] {
+						c = cand
+						break search
+					}
+				}
+			}
+			up[key], upUsed[n][c] = c, true
+			return c
+		}
 		topOf := func(e fcEdge) fcTerm {
 			if gi == e.lo {
 				u, _ := ends(e)
-				return fcTerm{col: nodes[u].port(e.back), node: u}
+				return fcTerm{col: upAt(u, e.back, e.upperMark()), node: u}
 			}
 			return fcTerm{col: e.cols[gi], node: -1}
 		}
 		keyOf := func(k int, e fcEdge) netKey { // the net the edge is part of, in this gap
 			switch {
 			case !e.back && gi == e.lo:
-				return netKey{1, e.from} // a fan-out: the node's bottom port
+				return netKey{1, e.from, e.e.tail} // a fan-out: the node's bottom port for its mark
 			case e.back && gi+1 == e.hi:
-				return netKey{2, e.from} // up from the node's top
+				return netKey{2, e.from, e.e.tail} // up from the node's top
 			}
-			return netKey{0, k}
+			return netKey{0, k, EndNone}
 		}
 		type upperEnd struct {
 			col, lower int // its column, and the node its edge comes down to (-1: it goes on past)
 			back       bool
+			mark       End // what its edge draws at that node
 			key        netKey
 		}
 		var uppers []upperEnd // the gap's upper ends
@@ -524,27 +582,24 @@ func layGraph(ctx context.Context, gr graph, m Measurer) (*Grid, [][][2]cell, er
 				if gi+1 == e.hi {
 					_, lower = ends(e)
 				}
-				uppers = append(uppers, upperEnd{topOf(e).col, lower, e.back, keyOf(k, e)})
+				uppers = append(uppers, upperEnd{topOf(e).col, lower, e.back, e.lowerMark(), keyOf(k, e)})
 			}
 		}
-		low := map[[2]int]int{} // (node, back) → its lower port's column in this gap
-		lowAt := func(n int, back bool) int {
-			b := 0
+		// a node's top ports in this gap, one per kind and mark (lowPort), none sharing a column
+		low, lowUsed := map[netKey]int{}, map[int]map[int]bool{}
+		lowAt := func(n int, back bool, mark End) int {
+			key := netKey{1, n, mark}
 			if back {
-				b = 1
+				key.kind = 2
 			}
-			if c, ok := low[[2]int{n, b}]; ok {
+			if c, ok := low[key]; ok {
 				return c
-			}
-			avoid, ok := low[[2]int{n, 1 - b}]
-			if !ok {
-				avoid = -1
 			}
 			// the port may keep an upper end's column only when that end's net is the one net coming
 			// into it: with two, each net's column there would have to be above the other's track
 			into := map[netKey]bool{}
 			for _, u := range uppers {
-				if u.lower == n && u.back == back {
+				if u.lower == n && u.back == back && u.mark == mark {
 					into[u.key] = true
 				}
 			}
@@ -554,8 +609,15 @@ func layGraph(ctx context.Context, gr graph, m Measurer) (*Grid, [][][2]cell, er
 					taken[u.col] = true
 				}
 			}
-			c := nodes[n].lowPort(back, taken, avoid)
-			low[[2]int{n, b}] = c
+			for c := range lowUsed[n] {
+				taken[c] = true
+			}
+			c := nodes[n].lowPort(back, taken)
+			low[key] = c
+			if lowUsed[n] == nil {
+				lowUsed[n] = map[int]bool{}
+			}
+			lowUsed[n][c] = true
 			return c
 		}
 		// every end of the gap first, its lower ends' columns all known before any dogleg is placed
@@ -576,8 +638,11 @@ func layGraph(ctx context.Context, gr graph, m Measurer) (*Grid, [][][2]cell, er
 			}
 			_, lower := ends(*e)
 			top, bot := topOf(*e), fcTerm{col: e.cols[gi+1], node: -1}
+			if gi == e.lo {
+				e.upCol = top.col
+			}
 			if gi+1 == e.hi {
-				bot = fcTerm{col: lowAt(lower, e.back), node: lower}
+				bot = fcTerm{col: lowAt(lower, e.back, e.lowerMark()), node: lower}
 				e.lowCol = bot.col
 			}
 			botCols[bot.col] = true
@@ -761,14 +826,14 @@ func layGraph(ctx context.Context, gr graph, m Measurer) (*Grid, [][][2]cell, er
 		}
 	}
 	// endCells are e's ends: the cell beside each end's port, in the frame: the lower node's top (its
-	// lowCol), the upper node's bottom (its port). A forward edge comes down into its To node's top, a
+	// lowCol), the upper node's bottom (its upCol). A forward edge comes down into its To node's top, a
 	// back edge up into its bottom.
 	endCells := func(e fcEdge) (toEnd, fromEnd cell) {
 		to, from := nodes[e.to], nodes[e.from]
 		if e.back {
-			return cell{to.port(true), to.y + to.h}, cell{e.lowCol, from.y - 1}
+			return cell{e.upCol, to.y + to.h}, cell{e.lowCol, from.y - 1}
 		}
-		return cell{e.lowCol, to.y - 1}, cell{from.port(false), from.y + from.h}
+		return cell{e.lowCol, to.y - 1}, cell{e.upCol, from.y + from.h}
 	}
 	// its ends: the cell beside each node's port, the mark pointing into the node
 	for k, e := range edges {

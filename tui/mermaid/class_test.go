@@ -34,6 +34,15 @@ var classCases = map[string]string{
   Order *-- "1..*" LineItem
   LineItem --> Product
 `,
+	"class-mixed-ends": `classDiagram
+  Base <|-- A
+  Base <|-- B
+  Base *-- C
+  Base o-- D
+  D --|> E
+  F --> E
+  G --* E
+`,
 	"class-namespace-note": `classDiagram
   namespace Shapes {
     class Shape {
@@ -82,7 +91,9 @@ func parseClass(t *testing.T, src string) *pm.ClassDiagram {
 
 // Each relation end draws its mark, oriented into its box: inheritance a hollow triangle,
 // composition a filled diamond, aggregation a hollow one, an association an arrowhead; a plain end
-// none. A class's box holds its annotation, name and members, in sections.
+// none. Relations share a port only when they draw one mark there: Animal's two inheritances share
+// one △ (UML's tree), its composition has a ◆ of its own. A class's box holds its annotation, name
+// and members, in sections.
 func TestAClassRelationsEndsAreTheirMarks(t *testing.T) {
 	cd := parseClass(t, classCases["class-basic"])
 	g, err := LayClass(context.Background(), cd, newCells(1, 1))
@@ -93,8 +104,8 @@ func TestAClassRelationsEndsAreTheirMarks(t *testing.T) {
 	for _, mk := range g.marks {
 		count[mk]++
 	}
-	// two inheritances, one composition, one aggregation, one association (dotted)
-	for mk, want := range map[string]int{"△": 2, "◆": 1, "◇": 1} {
+	// two inheritances sharing a port, one composition, one aggregation, one association (dotted)
+	for mk, want := range map[string]int{"△": 1, "◆": 1, "◇": 1} {
 		if count[mk] != want {
 			t.Errorf("%d %s marks, want %d: %v", count[mk], mk, want, count)
 		}

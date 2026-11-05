@@ -331,13 +331,41 @@ func checkGraph(t *testing.T, name string, gr graph) {
 			}
 		}
 	}
-	// no label is lost: each edge's, and each end's, is drawn (as capLabel shows it) or a footnote
+	// every end's mark is drawn beside its own box: none overwritten by another edge's at a shared
+	// port (edges share a port only when they draw one mark there)
+	kindOf := map[string]End{"▼": EndArrow, "▲": EndArrow, "►": EndArrow, "◄": EndArrow, "●": EndDot, "✕": EndCross,
+		"▽": EndTriangle, "△": EndTriangle, "▷": EndTriangle, "◁": EndTriangle, "◆": EndDiamond, "◇": EndDiamondHollow}
+	besideBox := map[[2]int]bool{} // (box, End) marked beside it
+	for c, mk := range g.marks {
+		for bi, b := range g.Boxes {
+			if k, ok := kindOf[mk]; ok && next(b.Rect, c) {
+				besideBox[[2]int{bi, int(k)}] = true
+			}
+		}
+	}
+	for i, e := range gr.edges {
+		if e.from == e.to || e.invisible {
+			continue
+		}
+		for _, end := range []struct {
+			box int
+			e   End
+		}{{e.to, e.head}, {e.from, e.tail}} {
+			if end.e != EndNone && !besideBox[[2]int{end.box, int(end.e)}] {
+				t.Fatalf("%s edge %d (%s→%s): no %d mark beside %s", what, i, id(e.from), id(e.to), end.e, id(end.box))
+			}
+		}
+	}
+	// no label is lost: each edge's, and each end's, is drawn (as capLabel shows it) or a footnote,
+	// a legend row (finish has made each a text: its mark, a space, the label as shown)
 	shown, legend := map[string]int{}, map[string]int{}
 	for _, tx := range g.texts {
 		shown[tx.s]++
-	}
-	for _, n := range g.notes {
-		legend[n.label]++
+		for n := 1; n <= g.foot; n++ {
+			if rest, ok := strings.CutPrefix(tx.s, footMark(n)+" "); ok {
+				legend[strings.TrimLeft(rest, " ")]++
+			}
+		}
 	}
 	for i, e := range gr.edges {
 		if e.invisible {
@@ -351,8 +379,8 @@ func checkGraph(t *testing.T, name string, gr graph) {
 			switch {
 			case shown[sh] > 0:
 				shown[sh]--
-			case legend[s] > 0:
-				legend[s]--
+			case legend[sh] > 0:
+				legend[sh]--
 			default:
 				t.Fatalf("%s edge %d (%s→%s): its label %q is neither drawn nor a footnote", what, i, id(e.from), id(e.to), s)
 			}
