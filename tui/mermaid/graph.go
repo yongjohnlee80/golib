@@ -384,6 +384,28 @@ func layGraph(ctx context.Context, gr graph, m Measurer) (*Grid, [][][2]cell, er
 			titleRank[f] = frames[f].hi
 		}
 	}
+	// a box whose side meets both an edge coming down the ranks and one going back up them (a cycle
+	// through it) needs a column for each, either side of its middle: as wide as five across the
+	// ranks, whichever way they run (an ordinary box laid across, LR or RL, is only three)
+	sides := make([][2]uint8, len(nodes)) // a node's top's and bottom's kinds: 1 down, 2 back up
+	for _, e := range edges {
+		rf, rt := nodes[e.from].rank, nodes[e.to].rank
+		if e.from == e.to || rf == rt || e.e.invisible {
+			continue
+		}
+		if rf < rt { // down: out of the upper's bottom, into the lower's top
+			sides[e.from][1] |= 1
+			sides[e.to][0] |= 1
+		} else { // back up: out of the lower's top, into the upper's bottom
+			sides[e.from][0] |= 2
+			sides[e.to][1] |= 2
+		}
+	}
+	for i := range nodes {
+		if sides[i][0] == 3 || sides[i][1] == 3 {
+			nodes[i].w = max(nodes[i].w, 5)
+		}
+	}
 	placeColumns(nodes, ranks, frames, res, titleW, titleRank)
 	// a frame's rows above its first rank and below its last: a border each, outside those of the
 	// frames inside it that start (or end) on that rank
