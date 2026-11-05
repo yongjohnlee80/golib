@@ -58,8 +58,7 @@ func runMenuFocusDoc(t *testing.T) (*decltest.Screen, *redirector) {
 			"   MenuItem { text: \"&Pane\"; onTriggered: App.openPane() }\n"+
 			"   MenuItem { text: \"&Log\"; onTriggered: App.log() }\n"+
 			"   MenuItem { text: \"&Other\"; onTriggered: App.focusOther() } } }\n"+
-			" Home { id: home; focus: true }\n"+
-			" Spot { id: other }\n"+
+			" Flex { direction: Tui.Vertical\n  Home { id: home; focus: true }\n  Spot { id: other } }\n"+
 			" Drawer { id: pane; modal: false; edge: Tui.Right; size: 30; length: 100\n  Spot { id: inPane } }\n}")),
 		tuidecl.Singleton("demo", "1.0", "App"),
 		tuidecl.Types(
