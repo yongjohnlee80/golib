@@ -315,6 +315,19 @@ func checkGraph(t *testing.T, name string, gr graph) {
 			}
 		}
 	}
+	// no line meets a sectioned box's side on one of its rule rows (laid across, it would read as the
+	// rule run on), nor sets a mark there
+	for _, b := range g.Boxes {
+		row, r := b.Rect.Y, b.Rect
+		for _, sec := range b.Sections[:max(len(b.Sections)-1, 0)] {
+			row += 1 + len(sec)
+			for _, c := range []cell{{r.X - 1, row}, {r.X + r.W, row}} {
+				if d, ok := g.lines[c]; ok && d&(east|west) != 0 || g.marks[c] != "" {
+					t.Fatalf("%s a line meets box %s %+v on its rule row %d, at %v", what, b.ID, r, row, c)
+				}
+			}
+		}
+	}
 	cover := map[cell]string{}
 	for _, tx := range g.texts {
 		for x := tx.x; x < tx.x+tx.w; x++ {

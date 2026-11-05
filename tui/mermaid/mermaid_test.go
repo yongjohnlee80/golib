@@ -195,20 +195,22 @@ func TestAWideLabelsBoxCloses(t *testing.T) {
 	}
 }
 
+// undrawnDiagram is a kind no file registers: every kind the parser reads is drawn, so a kind added
+// to it before it is drawn here is what this stands for.
+type undrawnDiagram struct{}
+
+func (undrawnDiagram) Kind() pm.Kind { return pm.Kind(200) }
+
 // A kind not in Kinds is ErrUnsupported, for the host to show its own way; a flowchart with
 // subgraphs is drawn, each subgraph a frame.
 func TestAKindNotDrawnIsUnsupported(t *testing.T) {
-	d, err := pm.Parse("requirementDiagram\n  requirement R {\n    id: 1\n  }\n")
-	if err != nil {
-		t.Fatal(err)
+	if Supported(undrawnDiagram{}.Kind()) {
+		t.Fatal("a kind no file registers is reported drawn")
 	}
-	if Supported(d.Kind()) {
-		t.Fatal("a requirement diagram is reported drawn")
+	if _, err := Lay(context.Background(), undrawnDiagram{}, newCells(1, 1)); err != ErrUnsupported {
+		t.Fatalf("Lay of a kind not drawn: %v, want ErrUnsupported", err)
 	}
-	if _, err := Lay(context.Background(), d, newCells(1, 1)); err != ErrUnsupported {
-		t.Fatalf("Lay of a requirement diagram: %v, want ErrUnsupported", err)
-	}
-	d, err = pm.Parse("flowchart TB\n  subgraph S [Group]\n    a --> b\n  end\n")
+	d, err := pm.Parse("flowchart TB\n  subgraph S [Group]\n    a --> b\n  end\n")
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -52,16 +52,14 @@ func (g *gridSurface) text() string {
 }
 
 // The Rendered view draws a mind map fence as its diagram, in cells, between the text around it;
-// a kind the terminal doesn't draw (a requirement diagram) is one muted line saying so, never its source; the host's own
-// words replace that line's English.
+// one the terminal doesn't draw (one that doesn't parse: every kind the parser reads is drawn) is one
+// muted line saying so, never its source; the host's own words replace that line's English.
 func TestTheCellLayoutDrawsAMindmapAndSaysWhatItDoesnt(t *testing.T) {
 	html := `<p>before</p><pre class="mermaid">mindmap
   root[Hub]
     a(One)
-</pre><pre class="mermaid">requirementDiagram
-  requirement Shelf {
-    id: 1
-  }
+</pre><pre class="mermaid">notADiagram
+  requirement Shelf
 </pre><p>after</p>`
 	c := layCells(t, html, 60)
 	var gridRows, noticeRows int
@@ -73,11 +71,11 @@ func TestTheCellLayoutDrawsAMindmapAndSaysWhatItDoesnt(t *testing.T) {
 	rows := c.rowTexts()
 	joined := strings.Join(rows, "\n")
 	flat := strings.Join(strings.Fields(joined), " ") // the notice wraps to the room: read it as one line
-	if !strings.Contains(flat, "▸ requirement diagram: not drawn in the terminal (Raw shows its source)") {
-		t.Fatalf("no notice for the requirement diagram, whole:\n%s", joined)
+	if !strings.Contains(flat, "▸ mermaid diagram: not drawn in the terminal (Raw shows its source)") {
+		t.Fatalf("no notice for the diagram, whole:\n%s", joined)
 	}
 	for _, r := range rows {
-		if strings.Contains(r, "▸ requirement") {
+		if strings.Contains(r, "▸ mermaid") {
 			noticeRows++
 		}
 	}
@@ -99,34 +97,30 @@ func TestTheCellLayoutDrawsAMindmapAndSaysWhatItDoesnt(t *testing.T) {
 		}
 	}
 
-	c = layCells(t, `<pre class="mermaid">requirementDiagram
-  requirement Shelf {
-    id: 1
-  }
+	c = layCells(t, `<pre class="mermaid">notADiagram
+  requirement Shelf
 </pre>`, 60)
 	c.notice = func(kind string) string { return "图表未绘制: " + kind }
 	c.layOut()
-	if got := strings.Join(c.rowTexts(), "\n"); !strings.Contains(got, "▸ 图表未绘制: requirement") {
+	if got := strings.Join(c.rowTexts(), "\n"); !strings.Contains(got, "▸ 图表未绘制: mermaid") {
 		t.Fatalf("the host's notice wasn't used:\n%s", got)
 	}
 
 	// a view built first, then given the host's words (as AutoDoc does to a view its layout built):
 	// the page is laid out again in them
 	v := NewHTMLView()
-	v.SetHTML([]byte(`<pre class="mermaid">requirementDiagram
-  requirement Shelf {
-    id: 1
-  }
+	v.SetHTML([]byte(`<pre class="mermaid">notADiagram
+  requirement Shelf
 </pre>`))
 	cl := v.layout.(*cellHTML)
 	cl.SetWidth(60)
-	if got := strings.Join(strings.Fields(strings.Join(cl.rowTexts(), " ")), " "); !strings.Contains(got, "▸ requirement diagram: not drawn in the terminal") {
+	if got := strings.Join(strings.Fields(strings.Join(cl.rowTexts(), " ")), " "); !strings.Contains(got, "▸ mermaid diagram: not drawn in the terminal") {
 		t.Fatalf("before the host's words, the English isn't shown:\n%s", got)
 	}
 	WithDiagramNotice(func(kind string) string { return "图表未绘制: " + kind })(v)
 	// a real view measures a CJK cluster two cells wide, so the row text has a gap after each:
 	// read it without spaces
-	if got := strings.Join(cl.rowTexts(), "\n"); !strings.Contains(strings.ReplaceAll(got, " ", ""), "▸图表未绘制:requirement") {
+	if got := strings.Join(cl.rowTexts(), "\n"); !strings.Contains(strings.ReplaceAll(got, " ", ""), "▸图表未绘制:mermaid") {
 		t.Fatalf("words set after the view was built weren't used:\n%s", got)
 	}
 }
