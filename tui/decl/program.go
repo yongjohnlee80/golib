@@ -75,6 +75,10 @@ type Program struct {
 // SourceLanguages is the same immutable catalog used by declarations and renderers.
 func (p *Program) SourceLanguages() *highlight.Catalog { return p.adapter.sourceLanguages }
 
+// SyntaxStyles are the syntax roles the root Window's palette carries, as the looks a host
+// outside the tree highlights with — a page's code blocks, as the Editor highlights.
+func (p *Program) SyntaxStyles() widget.SyntaxStyles { return p.adapter.SyntaxStyles() }
+
 // ProgramOption configures a Program.
 type ProgramOption func(*programConfig)
 
