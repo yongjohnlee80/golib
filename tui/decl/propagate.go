@@ -175,6 +175,7 @@ func (a *Adapter) refresh(id decl.NodeID) {
 // tokens rather than roles wears (a toast, a resize grip), so it follows the document's theme
 // instead of golib's default. A palette that sets no highlight leaves the App's theme as it is.
 func (a *Adapter) windowTheme(p palette) {
+	a.windowPal = p
 	th, ok := tokenTheme(p)
 	if !ok {
 		return
