@@ -416,7 +416,7 @@ func layGraph(ctx context.Context, gr graph, m Measurer) (*Grid, [][][2]cell, er
 	// (a cycle through it), and each mark and stroke drawn there (a class's inheritances share one,
 	// its composition takes another). Two or more need a column each about its middle: as wide as five
 	// across the ranks for two, a column more for each more, whichever way they run (an ordinary box
-	// laid across, LR or RL, is only three)
+	// laid across, LR or RL, is only three), widening by twos so what it holds stays centred
 	sides := make([][2]map[netKey]bool, len(nodes)) // a node's top's and bottom's ports: (kind 1 down, 2 back up; mark, stroke)
 	side := func(n, s, kind int, mark End, stroke Stroke) {
 		if sides[n][s] == nil {
@@ -439,7 +439,8 @@ func layGraph(ctx context.Context, gr graph, m Measurer) (*Grid, [][][2]cell, er
 	}
 	for i := range nodes {
 		if ports := max(len(sides[i][0]), len(sides[i][1])); ports >= 2 {
-			nodes[i].w = max(nodes[i].w, ports+3)
+			w := max(nodes[i].w, ports+3)
+			nodes[i].w = w + (w-nodes[i].w)%2 // by twos, so what it holds stays centred
 		}
 	}
 	placeColumns(nodes, ranks, frames, res, titleW, titleRank)
