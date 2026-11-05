@@ -105,6 +105,11 @@ const (
 	roleLight Role = "light"
 )
 
+// SyntaxStyles are the syntax roles the root Window's palette carries now, as the looks a
+// highlighter paints with — the same value a SyntaxHighlighter node wears (restyleSyntax), for a
+// host outside the tree: a page's code blocks, as the Editor highlights.
+func (a *Adapter) SyntaxStyles() widget.SyntaxStyles { return a.windowPal.syntaxStyles() }
+
 // SyntaxRole is the role that colours one highlight style: `syntax.keyword`.
 func SyntaxRole(s highlight.Style) Role { return Role(syntaxPrefix + s.String()) }
 

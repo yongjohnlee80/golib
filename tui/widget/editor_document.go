@@ -120,14 +120,22 @@ func (d *DocumentSlot) Show(on bool, text func() []byte) bool {
 	return true
 }
 
+// keysetFollower is a document view that reads its keys by its editor's keyset (HTMLView's
+// FollowKeyset): under Vim the page's printing keys navigate, under a modeless keyset they type.
+type keysetFollower interface{ FollowKeyset(func() Keyset) }
+
 // SetDocumentView gives the editor a Rendered view drawn in place of its text; nil removes it. The
-// old view leaves (its focus, when it had it, back to the editor) and the new one joins hidden.
+// old view leaves (its focus, when it had it, back to the editor) and the new one joins hidden. A
+// view that follows a keyset (keysetFollower) follows the editor's, as it is at each key.
 func (e *Editor) SetDocumentView(v DocumentView) {
 	if v == e.doc.Document() {
 		return
 	}
 	e.showDocument(false)
 	old := e.doc.PutDocument(v)
+	if f, ok := v.(keysetFollower); ok {
+		f.FollowKeyset(e.core.Keyset)
+	}
 	if ctx := e.Context(); ctx != nil {
 		if old != nil {
 			ctx.Unmount(old)
@@ -214,7 +222,7 @@ func (e *Editor) ResolvePointerPress(m tui.MouseEvent) (tui.Action, bool) {
 	if m.Kind != tui.MousePress || m.Button != tui.MouseLeft || m.Y < 0 || m.Y >= e.headerRows() {
 		return nil, false
 	}
-	v, ok := e.sw.Choice(m.X - e.switchX())
+	v, ok := ModeSwitchChoice(e, m.X-e.switchX())
 	if !ok {
 		return nil, false
 	}

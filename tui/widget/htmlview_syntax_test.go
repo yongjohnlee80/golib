@@ -27,7 +27,7 @@ func testCatalog() *highlight.Catalog {
 		}
 		var out []highlight.Span
 		off, open := 0, strings.Index(line, "/*")
-		if open >= 0 && strings.Index(line[open:], "*/") < 0 {
+		if open >= 0 && !strings.Contains(line[open:], "*/") {
 			out = append(out, highlight.Span{Start: open, End: len(line), Style: highlight.Comment})
 			line, st = line[:open], 1
 		}
@@ -167,5 +167,23 @@ func TestTheBlockKeepsItsLanguage(t *testing.T) {
 	c := layCells(t, syntaxDoc, 40)
 	if len(c.doc) == 0 || c.doc[0].lang != "test" {
 		t.Fatalf("the block's language %q", c.doc[0].lang)
+	}
+}
+
+// The option applies when the view is made, before its document — a host's own order — and the
+// document laid after it highlights: the cell layout reads the option's words at lay-out time,
+// as WithDiagramNotice does.
+func TestTheOptionAppliesBeforeTheDocument(t *testing.T) {
+	v := NewHTMLView(WithSyntax(testCatalog(), hostStyles()))
+	v.SetHTML([]byte(syntaxDoc))
+	c := v.layout.(*cellHTML)
+	s := newRecordSurface(c.width, len(c.rows))
+	c.PaintCells(s, 0, c.width, DocPos{}, DocPos{})
+	var b strings.Builder
+	for y := range s.h {
+		b.WriteString(goldenRow(s, y))
+	}
+	if !strings.Contains(b.String(), "fg=accent") {
+		t.Errorf("a document laid into a view made with the option stayed plain:\n%s", b.String())
 	}
 }
