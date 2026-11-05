@@ -315,10 +315,11 @@ func (c *cellHTML) layDiagram(bi int, b *hblock) {
 	}
 }
 
-// diagramTheme is a diagram's styles in the cell layout: lines in the border's tone, outlines in
-// the accent, labels as the text.
+// diagramTheme is a diagram's styles in the cell layout: lines as the text (a diagram's edges are
+// its content: the border's tone, a theme's mid, is under 2:1 on the light themes' pages), outlines
+// in the accent, labels as the text.
 var diagramTheme = tuimermaid.Theme{
-	Line:     style.New().Foreground(style.TokenBorder),
+	Line:     style.New().Foreground(style.TokenForeground),
 	Box:      style.New().Foreground(style.TokenAccent),
 	Label:    style.New().Foreground(style.TokenForeground),
 	Selected: style.New().Foreground(style.TokenForeground).Reverse(true),
