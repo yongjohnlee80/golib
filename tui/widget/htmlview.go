@@ -444,11 +444,14 @@ func (v *HTMLView) ToolTipAt(local tui.Point) (string, tui.Rect) {
 	if ux, uy := v.units(); !ok || ux != 1 || uy != 1 {
 		return "", tui.Rect{}
 	}
-	text, r := l.ToolTipAt(float32(local.X), float32(local.Y)+v.scrollY)
+	// the row painted at the view's top is int(scrollY) (Render): a fractional scroll's half row is
+	// not drawn, so the pointer's row and the region's are counted from there
+	top := float32(int(v.scrollY))
+	text, r := l.ToolTipAt(float32(local.X), top+float32(local.Y))
 	if text == "" {
 		return "", tui.Rect{}
 	}
-	return text, tui.Rect{X: int(r.X), Y: int(r.Y - v.scrollY), W: int(r.W), H: int(r.H)}
+	return text, tui.Rect{X: int(r.X), Y: int(r.Y - top), W: int(r.W), H: int(r.H)}
 }
 
 // docPoint is the document point under a pointer at cell (x, y), inside it at (subX, subY).
