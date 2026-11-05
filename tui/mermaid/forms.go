@@ -76,14 +76,15 @@ var forms = [...]formSpec{
 }
 
 // formSize is a box's size around a label lw cells wide: an outline adds a border and a space
-// each side, and a row above and below. A dot is three cells, its glyph in the middle (so a line
-// meets it at a column of its own, as at a box's port), and a bar five: neither has a label.
+// each side, and a row above and below. A dot is five cells, its glyph in the middle (so the lines
+// meeting it each have a column of its own, as at a box's ports: a way in, one beside it back up),
+// and a bar five: neither has a label.
 func formSize(f Form, lw int) (w, h int) {
 	switch f {
 	case FormText:
 		return max(lw, 1), 1
 	case FormDot, FormEndDot:
-		return 3, 1
+		return 5, 1
 	case FormBar:
 		return 5, 1
 	}
