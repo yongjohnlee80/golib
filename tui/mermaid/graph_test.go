@@ -106,7 +106,7 @@ func randomGraph(r *rand.Rand) graph {
 	dirs := []pm.Dir{pm.TB, pm.LR, pm.BT, pm.RL}
 	labels := []string{"a", "node", "a longer label", "東京", "x"}
 	forms := []Form{FormSquare, FormRounded, FormHexagon, FormDot, FormEndDot, FormBar, FormNote}
-	ends := []End{EndNone, EndArrow, EndDot, EndCross, EndTriangle, EndDiamond, EndDiamondHollow}
+	ends := []End{EndNone, EndArrow, EndDot, EndCross, EndTriangle, EndDiamond, EndDiamondHollow, EndOne, EndZeroOne, EndOneMany, EndZeroMany}
 	gr := graph{dir: dirs[r.IntN(len(dirs))]}
 	for f := range r.IntN(3) {
 		parent := -1

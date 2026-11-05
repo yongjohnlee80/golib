@@ -93,7 +93,7 @@ type gframe struct {
 
 // End is what an edge's end draws at its box: nothing (the line meets the outline, which takes a
 // junction there), an arrowhead, a dot or a cross, a hollow triangle (a class's inheritance or
-// realization), or a filled or hollow diamond (composition, aggregation).
+// realization), a filled or hollow diamond (composition, aggregation), or an entity's crow's foot.
 type End uint8
 
 const (
@@ -104,6 +104,10 @@ const (
 	EndTriangle
 	EndDiamond
 	EndDiamondHollow
+	EndOne      // exactly one: a double bar ╪ across the line
+	EndZeroOne  // zero or one: a bar ┼ at the box, a ○ before it
+	EndOneMany  // one or more: a foot ∧ at the box, a bar ┼ before it
+	EndZeroMany // zero or more: a foot ∧ at the box, a ○ before it
 )
 
 // endMark is the mark end e draws in the cell before its box: oriented into the box, down the frame
@@ -122,6 +126,24 @@ func endMark(e End, down bool, dir pm.Dir) string {
 		return oriented([4]string{"▼", "▲", "►", "◄"}, down, dir)
 	case EndTriangle:
 		return oriented([4]string{"▽", "△", "▷", "◁"}, down, dir)
+	case EndOne:
+		return oriented([4]string{"╪", "╪", "╫", "╫"}, down, dir)
+	case EndZeroOne:
+		return "┼"
+	case EndOneMany, EndZeroMany:
+		return oriented([4]string{"∧", "∨", "<", ">"}, down, dir) // the foot opens toward the box
+	}
+	return ""
+}
+
+// endOuter is what end e draws in the line's next cell out from its box's, for an end that takes two
+// (the crow's feet): "" for one that takes its own alone.
+func endOuter(e End) string {
+	switch e {
+	case EndZeroOne, EndZeroMany:
+		return "○"
+	case EndOneMany:
+		return "┼"
 	}
 	return ""
 }
@@ -461,6 +483,29 @@ func layGraph(ctx context.Context, gr graph, m Measurer) (*Grid, [][][2]cell, er
 		frameTop[frames[f].lo] = max(frameTop[frames[f].lo], topRows[f])
 		frameBot[frames[f].hi] = max(frameBot[frames[f].hi], botRows[f])
 	}
+	// an end that takes two cells keeps the second clear, straight on its own line: a row by its rank,
+	// inside the borders and below the tracks, jogs and labels, which all keep clear of those rows
+	outerTop, outerBot := make([]int, len(ranks)), make([]int, len(ranks))
+	for _, e := range edges {
+		rf, rt := nodes[e.from].rank, nodes[e.to].rank
+		if e.from == e.to || rf == rt || e.e.invisible {
+			continue
+		}
+		upper, lower, ru, rl := e.e.tail, e.e.head, rf, rt
+		if rf > rt {
+			upper, lower, ru, rl = e.e.head, e.e.tail, rt, rf
+		}
+		if endOuter(upper) != "" {
+			outerBot[ru] = 1
+		}
+		if endOuter(lower) != "" {
+			outerTop[rl] = 1
+		}
+	}
+	for r := range ranks {
+		frameTop[r] += outerTop[r]
+		frameBot[r] += outerBot[r]
+	}
 	// a column a line runs down in a gap: never a frame's border or beside one, where the frame is
 	// on both of the gap's ranks
 	besideFrame := func(gi, c int) bool {
@@ -753,8 +798,8 @@ func layGraph(ctx context.Context, gr graph, m Measurer) (*Grid, [][][2]cell, er
 		nodes[i].y = bandY[nodes[i].rank] + (bandH[nodes[i].rank]-nodes[i].h)/2
 	}
 	for f := range frames { // its borders' rows: in the gaps above its first rank and below its last
-		frames[f].top = bandY[frames[f].lo] - 1 - topRows[f]
-		frames[f].bot = bandY[frames[f].hi] + bandH[frames[f].hi] + botRows[f]
+		frames[f].top = bandY[frames[f].lo] - 1 - outerTop[frames[f].lo] - topRows[f]
+		frames[f].bot = bandY[frames[f].hi] + bandH[frames[f].hi] + outerBot[frames[f].hi] + botRows[f]
 	}
 
 	// draw, in the frame, into the grid turned to the diagram's direction
@@ -848,16 +893,24 @@ func layGraph(ctx context.Context, gr graph, m Measurer) (*Grid, [][][2]cell, er
 		toEnd, fromEnd := endCells(e)
 		// an end with a mark meets its box by the mark, the outline plain under it; one without, by
 		// its line, the outline taking a junction there
-		end := func(c cell, up bool, mk string) { // up: the box is above c in the frame
+		end := func(c cell, up bool, mk, outer string) { // up: the box is above c in the frame
 			if mk != "" {
 				g.marks[toReal(c)] = mk
+				if outer != "" { // the line's next cell out
+					if up {
+						c.y++
+					} else {
+						c.y--
+					}
+					g.marks[toReal(c)] = outer
+				}
 				return
 			}
 			g.lines[toReal(c)] |= frameDir(up, gr.dir)
 			stroked(toReal(c), k)
 		}
-		end(toEnd, e.back, endMark(e.e.head, !e.back, gr.dir))
-		end(fromEnd, !e.back, endMark(e.e.tail, e.back, gr.dir))
+		end(toEnd, e.back, endMark(e.e.head, !e.back, gr.dir), endOuter(e.e.head))
+		end(fromEnd, !e.back, endMark(e.e.tail, e.back, gr.dir), endOuter(e.e.tail))
 	}
 	// the frames, turned: a layer under the lines, their titles placed by finish where no line
 	// crosses them (before the labels and loops, which keep clear of them)
