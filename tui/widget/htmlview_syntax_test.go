@@ -11,10 +11,11 @@ import (
 )
 
 // CODE BLOCK SYNTAX HIGHLIGHTING in the cells — the Editor's highlighter (package highlight), the
-// language chosen by the block's language-* class, the colours the host's table or the default
-// gives: no new tokens, no new dependency, a language no definition has stays as it is.
+// language chosen by the block's language-* class, the colours the SAME SyntaxStyles a host gives
+// its Editor (no second mapping: the page's code and the Raw view's agree); an unset style paints
+// as the text's own, a language no definition has stays as it is.
 
-// testCatalog is a two-word language: "kw" a keyword, "lit" a string, a /* comment carrying its
+// testCatalog is a three-word language: "kw" a keyword, "lit" a string, a /* comment carrying its
 // state across lines.
 func testCatalog() *highlight.Catalog {
 	hl := highlight.HighlighterFunc(func(line string, st highlight.State) ([]highlight.Span, highlight.State) {
@@ -52,15 +53,22 @@ func testCatalog() *highlight.Catalog {
 	return highlight.NewRepository(highlight.Definition{Name: "test", Aliases: []string{"tst"}, Highlighter: hl}).Snapshot()
 }
 
-// syntaxGolden is src laid out in cells with the catalog (nil: none) and painted, as a golden
-// says it: each row's text, then its style runs.
-func syntaxGolden(t *testing.T, html string, catalog *highlight.Catalog, colors *[highlight.Styles]style.ColorSpec) string {
+// hostStyles is what a host gives its Editor and its page: keywords the accent, strings the
+// success, comments the muted — the rest unset, painting as the text's own.
+func hostStyles() SyntaxStyles {
+	var st SyntaxStyles
+	st[highlight.Keyword] = style.New().Foreground(style.TokenAccent)
+	st[highlight.String] = style.New().Foreground(style.TokenSuccess)
+	st[highlight.Comment] = style.New().Foreground(style.TokenTextMuted)
+	return st
+}
+
+// syntaxGolden is src laid out in cells with the catalog and styles and painted, as a golden says
+// it: each row's text, then its style runs.
+func syntaxGolden(t *testing.T, html string, catalog *highlight.Catalog, styles SyntaxStyles) string {
 	t.Helper()
 	c := layCells(t, html, 40)
-	c.syntax, c.syntaxColors = catalog, [highlight.Styles]style.ColorSpec{}
-	if colors != nil {
-		c.syntaxColors = *colors
-	}
+	c.syntax, c.syntaxStyles = catalog, styles
 	c.layOut()
 	s := newRecordSurface(c.width, len(c.rows))
 	c.PaintCells(s, 0, c.width, DocPos{}, DocPos{})
@@ -95,59 +103,61 @@ const syntaxDoc = `<pre><code class="language-test">kw lit
 still the comment */ lit
 plain</code></pre>`
 
-// A code block highlights in its language: its words in the styles' colours, a comment carried
-// across lines by the highlighter's state, unmarked text the block's own.
+// A code block highlights in its language: its words in the styles' colours — the same
+// SyntaxStyles the Editor paints with — a comment carried across lines by the highlighter's
+// state, unmarked text the block's own.
 func TestACodeBlockHighlightsInItsLanguage(t *testing.T) {
-	got := syntaxGolden(t, syntaxDoc, testCatalog(), nil)
+	got := syntaxGolden(t, syntaxDoc, testCatalog(), hostStyles())
 	goldenSyntax(t, "syntax-language", got)
 	if !strings.Contains(got, "fg=accent") {
-		t.Error("no keyword colour: the default table maps Keyword to the accent token")
+		t.Error("no keyword colour: the host's styles map Keyword to the accent token")
 	}
 	if !strings.Contains(got, "fg=success") {
-		t.Error("no string colour: the default table maps String to the success token")
+		t.Error("no string colour: the host's styles map String to the success token")
 	}
 }
 
-// The host's table wins: a keyword in its colour, not the default's.
-func TestTheHostsTableWins(t *testing.T) {
-	colors := [highlight.Styles]style.ColorSpec{}
-	colors[highlight.Keyword] = style.TokenError
-	got := syntaxGolden(t, syntaxDoc, testCatalog(), &colors)
+// The host's styles are the only table: an entry a host leaves unset paints as the text's own,
+// exactly as the Editor paints an unset style.
+func TestAnUnsetStyleIsTheTextsOwn(t *testing.T) {
+	var st SyntaxStyles
+	st[highlight.Keyword] = style.New().Foreground(style.TokenError)
+	got := syntaxGolden(t, syntaxDoc, testCatalog(), st)
 	if !strings.Contains(got, "fg=error") {
-		t.Error("no host colour: a keyword should wear the host's table, the error token here")
+		t.Error("no host colour: a keyword should wear the host's style, the error token here")
 	}
-	if strings.Contains(got, "fg=accent") {
-		t.Error("the default keyword colour shows beside the host's table")
+	if strings.Contains(got, "fg=success") || strings.Contains(got, "fg=accent") {
+		t.Errorf("an unset style painted anyway:\n%s", got)
 	}
 }
 
 // Without a catalog there is no highlighting (the red-without-the-change check), a language no
 // definition has stays as it is, and a block without a language too.
 func TestNoCatalogNoDefinitionNoLanguageStaysPlain(t *testing.T) {
-	plain := syntaxGolden(t, syntaxDoc, nil, nil)
+	plain := syntaxGolden(t, syntaxDoc, nil, hostStyles())
 	if strings.Contains(plain, "fg=accent") || strings.Contains(plain, "fg=success") || strings.Contains(plain, "fg=error") {
 		t.Errorf("without a catalog the block coloured:\n%s", plain)
 	}
-	unknown := syntaxGolden(t, `<pre><code class="language-nope">kw lit</code></pre>`, testCatalog(), nil)
+	unknown := syntaxGolden(t, `<pre><code class="language-nope">kw lit</code></pre>`, testCatalog(), hostStyles())
 	if strings.Contains(unknown, "fg=accent") {
 		t.Errorf("a language no definition has coloured:\n%s", unknown)
 	}
-	nolang := syntaxGolden(t, "<pre><code>kw lit</code></pre>", testCatalog(), nil)
+	nolang := syntaxGolden(t, "<pre><code>kw lit</code></pre>", testCatalog(), hostStyles())
 	if strings.Contains(nolang, "fg=accent") {
 		t.Errorf("a block without a language coloured:\n%s", nolang)
 	}
 }
 
 // The class sits on the <code> child of markdown's fences or on the <pre> itself, and an alias
-// names the language as well: all four lay the same colours.
+// names the language as well: all three lay the same colours.
 func TestTheClassAndItsAliasWhereverItSits(t *testing.T) {
-	words := `<pre><code class="language-tst">kw lit</code></pre>`
+	alias := `<pre><code class="language-tst">kw lit</code></pre>`
 	onPre := `<pre class="language-test"><code>kw lit</code></pre>`
-	want := syntaxGolden(t, `<pre><code class="language-test">kw lit</code></pre>`, testCatalog(), nil)
-	if got := syntaxGolden(t, words, testCatalog(), nil); got != want {
+	want := syntaxGolden(t, `<pre><code class="language-test">kw lit</code></pre>`, testCatalog(), hostStyles())
+	if got := syntaxGolden(t, alias, testCatalog(), hostStyles()); got != want {
 		t.Errorf("an alias named it differently:\n%s\nwant\n%s", got, want)
 	}
-	if got := syntaxGolden(t, onPre, testCatalog(), nil); got != want {
+	if got := syntaxGolden(t, onPre, testCatalog(), hostStyles()); got != want {
 		t.Errorf("the class on the pre itself named it differently:\n%s\nwant\n%s", got, want)
 	}
 }
