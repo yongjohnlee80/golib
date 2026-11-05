@@ -71,15 +71,17 @@ func (n gnode) box(ports Port) Box {
 }
 
 // gedge is a line between two nodes (indexes into graph.nodes; from == to is a self-loop): its
-// stroke, what each end draws, its label (on the line, else a footnote), its minimum span in ranks,
-// and whether it is only placed (an invisible edge keeps its ranks, and draws nothing).
+// stroke, what each end draws, its label (on the line, else a footnote), what is written beside each
+// end (a class relation's cardinalities: beside the line at its box, else a footnote), its minimum
+// span in ranks, and whether it is only placed (an invisible edge keeps its ranks, and draws nothing).
 type gedge struct {
-	from, to   int
-	stroke     Stroke
-	head, tail End // the to end's, the from end's
-	label      string
-	minLen     int
-	invisible  bool
+	from, to             int
+	stroke               Stroke
+	head, tail           End // the to end's, the from end's
+	label                string
+	headLabel, tailLabel string // beside the to end, beside the from end
+	minLen               int
+	invisible            bool
 }
 
 // gframe is a frame round its nodes (those whose frame, or a frame inside it, it is): its title on
@@ -642,6 +644,27 @@ func layGraph(ctx context.Context, gr graph, m Measurer) (*Grid, [][][2]cell, er
 			labelRows[e.hi-1] = max(labelRows[e.hi-1], rows)
 		}
 	}
+	// an end's label lies beside its line where it meets its box: on the row beside the box (TB, BT),
+	// or along the line's first or last straight run (LR, RL), which the gap keeps that long: below
+	// the tracks for the lower node's end (with the label's rows), above them for the upper node's
+	tailRows := make([]int, len(gaps))
+	if across {
+		for _, e := range edges {
+			if !e.drawn {
+				continue
+			}
+			upper, lower := e.e.tailLabel, e.e.headLabel // the upper node's end's label, the lower's
+			if e.back {
+				upper, lower = lower, upper
+			}
+			if _, w, _ := capLabel(upper, RoleLabel, m); upper != "" {
+				tailRows[e.lo] = max(tailRows[e.lo], w-1)
+			}
+			if _, w, _ := capLabel(lower, RoleLabel, m); lower != "" {
+				labelRows[e.hi-1] = max(labelRows[e.hi-1], w-1)
+			}
+		}
+	}
 	gapH := make([]int, len(gaps))
 	jogRow := make([]map[fcTerm]int, len(gaps)) // a gap's jogged ends → their jog row (0 the highest)
 	jogN := make([]int, len(gaps))
@@ -649,7 +672,7 @@ func layGraph(ctx context.Context, gr graph, m Measurer) (*Grid, [][][2]cell, er
 		if jogs[gi] {
 			jogRow[gi], jogN[gi] = jogRows(gaps[gi].nets)
 		}
-		gapH[gi] = assignTracks(gaps[gi].nets) + 2 + labelRows[gi] + jogN[gi] + frameBot[gi] + frameTop[gi+1]
+		gapH[gi] = assignTracks(gaps[gi].nets) + 2 + tailRows[gi] + labelRows[gi] + jogN[gi] + frameBot[gi] + frameTop[gi+1]
 	}
 
 	// the frame rows: each rank's band, then its gap
@@ -691,7 +714,7 @@ func layGraph(ctx context.Context, gr graph, m Measurer) (*Grid, [][][2]cell, er
 		}
 	}
 	for gi, gn := range gaps {
-		trackY := bandY[gi] + bandH[gi] + 1 + frameBot[gi] // past the bottom borders of the frames ending above
+		trackY := bandY[gi] + bandH[gi] + 1 + frameBot[gi] + tailRows[gi] // past the bottom borders of the frames ending above, and the upper ends' labels
 		for _, n := range gn.nets {
 			startY := func(t fcTerm) int {
 				if t.node >= 0 {
@@ -737,19 +760,23 @@ func layGraph(ctx context.Context, gr graph, m Measurer) (*Grid, [][][2]cell, er
 			draw(cell{c, bandY[r] - 1}, cell{c, bandY[r] + bandH[r]}, []int{k})
 		}
 	}
+	// endCells are e's ends: the cell beside each end's port, in the frame: the lower node's top (its
+	// lowCol), the upper node's bottom (its port). A forward edge comes down into its To node's top, a
+	// back edge up into its bottom.
+	endCells := func(e fcEdge) (toEnd, fromEnd cell) {
+		to, from := nodes[e.to], nodes[e.from]
+		if e.back {
+			return cell{to.port(true), to.y + to.h}, cell{e.lowCol, from.y - 1}
+		}
+		return cell{e.lowCol, to.y - 1}, cell{from.port(false), from.y + from.h}
+	}
 	// its ends: the cell beside each node's port, the mark pointing into the node
 	for k, e := range edges {
 		if !e.drawn {
 			continue
 		}
-		to, from := nodes[e.to], nodes[e.from]
-		// the To end: a forward edge comes down into its top, a back edge up into its bottom
-		// the cell beside each end's port, in the frame: the lower node's top (its lowCol), the upper
-		// node's bottom (its port); the line there points into the box too, so the box meets it
-		toEnd, fromEnd := cell{e.lowCol, to.y - 1}, cell{from.port(false), from.y + from.h}
-		if e.back {
-			toEnd, fromEnd = cell{to.port(true), to.y + to.h}, cell{e.lowCol, from.y - 1}
-		}
+		// the line at each end points into the box too, so the box meets it
+		toEnd, fromEnd := endCells(e)
 		// an end with a mark meets its box by the mark, the outline plain under it; one without, by
 		// its line, the outline taking a junction there
 		end := func(c cell, up bool, mk string) { // up: the box is above c in the frame
@@ -812,6 +839,15 @@ func layGraph(ctx context.Context, gr graph, m Measurer) (*Grid, [][][2]cell, er
 		return line || inBox(c) || g.marks[c] != "" || labelled(c)
 	}
 	var notes []fcEdge // labels with no room beside their edge: a footnote each
+	// endNote is an end's label with no room beside its end: a footnote, its mark beside the end
+	// (at, in the frame, when beside is set) or else beside the box
+	type endNote struct {
+		s      string
+		node   int
+		at     cell
+		beside bool
+	}
+	var endNotes []endNote
 	for k, e := range edges {
 		if e.from != e.to || e.e.invisible {
 			continue
@@ -825,6 +861,11 @@ func layGraph(ctx context.Context, gr graph, m Measurer) (*Grid, [][][2]cell, er
 		}
 		if e.e.label != "" {
 			notes = append(notes, edges[k])
+		}
+		for _, s := range []string{e.e.tailLabel, e.e.headLabel} {
+			if s != "" {
+				endNotes = append(endNotes, endNote{s, e.from, cell{}, false})
+			}
 		}
 	}
 	// a label beside its edge's last drop (TB, BT: on the row kept above its arrow, right of it or
@@ -875,12 +916,74 @@ func layGraph(ctx context.Context, gr graph, m Measurer) (*Grid, [][][2]cell, er
 			notes = append(notes, e)
 		}
 	}
+	// each end's label beside its line at the box, away from it: on the end's row, a cell clear of
+	// the line, right of it or else left (TB, BT); along the line from the end, in the row beside it,
+	// below or else above (LR, RL)
+	besideEnd := func(c cell, inward int, s string) bool { // inward: the box's way from c, in the frame's rows
+		_, w, _ := capLabel(s, RoleLabel, m)
+		if !across {
+			rc := toReal(c)
+			switch {
+			case room(rc.x+1, rc.y, w+1):
+				g.label(rc.x+2, rc.y, s, m)
+			case room(rc.x-1-w, rc.y, w+1):
+				g.label(rc.x-1-w, rc.y, s, m)
+			default:
+				return false
+			}
+			return true
+		}
+		for _, side := range []int{1, -1} {
+			a, b := toReal(cell{c.x + side, c.y}), toReal(cell{c.x + side, c.y - inward*(w-1)})
+			if x := min(a.x, b.x); room(x, a.y, w) {
+				g.label(x, a.y, s, m)
+				return true
+			}
+		}
+		return false
+	}
+	for _, e := range edges {
+		if !e.drawn {
+			continue
+		}
+		toEnd, fromEnd := endCells(e)
+		in := 1 // the to end's box is below it (a forward edge), the from end's above
+		if e.back {
+			in = -1
+		}
+		for _, end := range []struct {
+			s    string
+			at   cell
+			in   int
+			node int
+		}{{e.e.headLabel, toEnd, in, e.to}, {e.e.tailLabel, fromEnd, -in, e.from}} {
+			if end.s != "" && !besideEnd(end.at, end.in, end.s) {
+				endNotes = append(endNotes, endNote{end.s, end.node, end.at, true})
+			}
+		}
+	}
 	// the footnotes: a mark beside each edge's lower end, its label in the legend finish places under
 	// the drawing
 	for _, e := range notes {
 		mk := g.footnote(e.e.label)
 		r := g.Boxes[e.to].Rect
 		for _, c := range []cell{{r.X + r.W, r.Y - 1}, {r.X - 1, r.Y - 1}, {r.X + r.W, r.Y + r.H}, {r.X - 1, r.Y + r.H}, {r.X + r.W, r.Y}, {r.X - 1, r.Y}} {
+			if !occupied(c) {
+				g.label(c.x, c.y, mk, m)
+				break
+			}
+		}
+	}
+	for _, n := range endNotes {
+		mk := g.footnote(n.s)
+		r := g.Boxes[n.node].Rect
+		var at []cell
+		if n.beside { // beside the end's cell, across the line, then beside the box
+			c := toReal(n.at)
+			at = []cell{{c.x + 1, c.y}, {c.x - 1, c.y}, {c.x, c.y + 1}, {c.x, c.y - 1}}
+		}
+		at = append(at, cell{r.X + r.W, r.Y - 1}, cell{r.X - 1, r.Y - 1}, cell{r.X + r.W, r.Y + r.H}, cell{r.X - 1, r.Y + r.H})
+		for _, c := range at {
 			if !occupied(c) {
 				g.label(c.x, c.y, mk, m)
 				break

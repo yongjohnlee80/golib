@@ -331,6 +331,33 @@ func checkGraph(t *testing.T, name string, gr graph) {
 			}
 		}
 	}
+	// no label is lost: each edge's, and each end's, is drawn (as capLabel shows it) or a footnote
+	shown, legend := map[string]int{}, map[string]int{}
+	for _, tx := range g.texts {
+		shown[tx.s]++
+	}
+	for _, n := range g.notes {
+		legend[n.label]++
+	}
+	for i, e := range gr.edges {
+		if e.invisible {
+			continue
+		}
+		for _, s := range []string{e.label, e.headLabel, e.tailLabel} {
+			if s == "" {
+				continue
+			}
+			sh, _, _ := capLabel(s, RoleLabel, newCells(1, 1))
+			switch {
+			case shown[sh] > 0:
+				shown[sh]--
+			case legend[s] > 0:
+				legend[s]--
+			default:
+				t.Fatalf("%s edge %d (%s→%s): its label %q is neither drawn nor a footnote", what, i, id(e.from), id(e.to), s)
+			}
+		}
+	}
 	if _, _, again := layG(t, gr); again != drawn {
 		t.Fatalf("%s two drawings of one graph differ", what)
 	}

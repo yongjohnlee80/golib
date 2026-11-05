@@ -19,6 +19,7 @@ const (
 	FormDot                 // a state diagram's start: ● alone, no outline, no label
 	FormEndDot              // its end: ◉ alone
 	FormBar                 // a fork or a join: a bar ━━━━━, no label
+	FormNote                // a note: a dashed outline ┌┄┐ ┆ └┄┘, as its dashed tie is drawn
 )
 
 // FormOf is the outline a mind map's shape is drawn with.
@@ -73,6 +74,7 @@ var forms = [...]formSpec{
 	FormDot:     {glyph: "●"},
 	FormEndDot:  {glyph: "◉"},
 	FormBar:     {h: "━"},
+	FormNote:    {"┌", "┐", "└", "┘", "┄", "┆", "┆", PortAll, ""},
 }
 
 // formSize is a box's size around a label lw cells wide: an outline adds a border and a space

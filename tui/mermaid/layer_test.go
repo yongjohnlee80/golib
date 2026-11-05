@@ -12,7 +12,7 @@ import (
 // The kinds drawn are the registry's, in Kind order; a kind registered twice panics; Lay answers
 // ErrUnsupported for a kind not registered, and for a model of another type than its kind's.
 func TestTheKindsAreTheRegistrys(t *testing.T) {
-	if got, want := Kinds(), []pm.Kind{pm.Flowchart, pm.Sequence, pm.Journey, pm.Mindmap, pm.Timeline, pm.Gantt}; !reflect.DeepEqual(got, want) {
+	if got, want := Kinds(), []pm.Kind{pm.Flowchart, pm.Sequence, pm.Class, pm.Journey, pm.Mindmap, pm.Timeline, pm.Gantt}; !reflect.DeepEqual(got, want) {
 		t.Fatalf("Kinds() = %v, want %v", got, want)
 	}
 	func() {
@@ -23,11 +23,11 @@ func TestTheKindsAreTheRegistrys(t *testing.T) {
 		}()
 		register(pm.Mindmap, nil, nil)
 	}()
-	if !Supported(pm.Mindmap) || Supported(pm.Class) {
+	if !Supported(pm.Mindmap) || Supported(pm.ER) {
 		t.Error("Supported")
 	}
-	if _, err := Lay(context.Background(), &pm.ClassDiagram{}, newCells(1, 1)); err != ErrUnsupported {
-		t.Errorf("a class diagram, a kind not registered: %v", err)
+	if _, err := Lay(context.Background(), &pm.ERDiagram{}, newCells(1, 1)); err != ErrUnsupported {
+		t.Errorf("an ER diagram, a kind not registered: %v", err)
 	}
 	if _, err := layAs(LayMindmap)(context.Background(), &pm.TimelineDiagram{}, newCells(1, 1)); err != ErrUnsupported {
 		t.Errorf("a timeline handed to the mind map's layout: %v", err)
