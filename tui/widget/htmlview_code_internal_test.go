@@ -5,6 +5,7 @@ import (
 	"testing"
 
 	"github.com/yongjohnlee80/golib/tui"
+	"github.com/yongjohnlee80/golib/tui/style"
 )
 
 // htmlview_code_internal_test.go: a code block in cells is boxed and never wrapped. A line wider than
@@ -107,8 +108,8 @@ func TestACodeBlockKeepsItsIndentAndItsShadingInside(t *testing.T) {
 				}
 			}
 			for _, x := range []int{left, codeRoom - 1} {
-				if fg, _ := s.style[top+1][x].GetForeground(); fg != codeBoxTone {
-					t.Errorf("the side at column %d wears %v, want the box's tone", x, fg)
+				if got, want := s.style[top+1][x], style.New().Foreground(codeBoxTone); styleWords(got) != styleWords(want) {
+					t.Errorf("the side at column %d wears %q, want the box's tone %q", x, styleWords(got), styleWords(want))
 				}
 			}
 		})
@@ -358,7 +359,7 @@ func TestFindPansAWideCodeBlockToTheCurrentMark(t *testing.T) {
 	s := newRecordSurface(codeRoom, 3)
 	c.PaintCells(s, 0, codeRoom, DocPos{}, DocPos{})
 	navGolden(t, "pan-code-find", surfaceGolden(s))
-	x := strings.Index(s.row(1), "needle")
+	x := len([]rune(s.row(1)[:strings.Index(s.row(1), "needle")])) // in cells: « is two bytes, one cell
 	for i := x; i < x+6; i++ {
 		if rev, _ := s.style[1][i].GetReverse(); !rev {
 			t.Errorf("column %d, on the current mark, isn't drawn as current", i)
