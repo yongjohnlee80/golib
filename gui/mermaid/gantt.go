@@ -53,11 +53,8 @@ func layGantt(ctx context.Context, d pm.Diagram, width float32, th Theme, m gui.
 		}
 	}
 	y := margin
-	var title label
-	if gd.Title != "" {
-		title = newLabel(m, gd.Title, gui.Font{Family: f.Family, Size: em * 1.15, Bold: true}, 0, th.Text)
-		y += title.box.H + em
-	}
+	title, room, _ := titleLabel(m, gd.Title, th)
+	y += room
 
 	start, end, ok := gd.Range()
 	days := float32(1)
