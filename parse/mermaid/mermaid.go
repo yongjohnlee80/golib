@@ -66,10 +66,11 @@ const (
 	Mindmap                     // mindmap
 	Timeline                    // timeline
 	Requirement                 // requirementDiagram
+	Pie                         // pie
 )
 
 var kindNames = [...]string{Flowchart: "flowchart", Sequence: "sequence", State: "state", Class: "class", ER: "er",
-	Journey: "journey", Mindmap: "mindmap", Timeline: "timeline", Requirement: "requirement"}
+	Journey: "journey", Mindmap: "mindmap", Timeline: "timeline", Requirement: "requirement", Pie: "pie"}
 
 func (k Kind) String() string { return enumName(kindNames[:], int(k)) }
 

@@ -161,7 +161,17 @@ type Laid struct {
 	group []laidGroup
 	texts []label
 
+	sectors []laidSector // a pie's wedges, filled before everything else
+
 	labels picture.Labels // the loop's shaping of each label line
+}
+
+// laidSector is one filled wedge of a pie: from a0 to a1 around (cx, cy), radius r, 0 at 12
+// o'clock, clockwise, a0 below a1.
+type laidSector struct {
+	cx, cy, r    float32
+	a0, a1       float32
+	fill, stroke color.NRGBA
 }
 
 // Size is the diagram as Paint draws it.

@@ -85,8 +85,8 @@ func TestWhatIsNotDrawnSaysWhy(t *testing.T) {
 	if _, err := lay(t, "gantt\n  title x", 400); !errors.Is(err, pm.ErrUnsupported) {
 		t.Errorf("a gantt: %v, want ErrUnsupported", err)
 	}
-	if _, err := lay(t, "pie\n  \"a\": 1", 400); !errors.Is(err, pm.ErrUnsupported) {
-		t.Errorf("a pie: %v, want ErrUnsupported", err)
+	if _, err := lay(t, "gitGraph\n  commit id: \"a\"", 400); !errors.Is(err, pm.ErrUnsupported) {
+		t.Errorf("a gitGraph: %v, want ErrUnsupported", err)
 	}
 	var se *pm.SyntaxError
 	if _, err := lay(t, "flowchart TB\n  A[unclosed --> B", 400); !errors.As(err, &se) {

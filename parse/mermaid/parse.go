@@ -186,6 +186,7 @@ var kinds = []struct {
 	{Mindmap, []string{"mindmap"}, (*parser).mindmap},
 	{Timeline, []string{"timeline"}, (*parser).timeline},
 	{Requirement, []string{"requirementDiagram"}, (*parser).requirement},
+	{Pie, []string{"pie"}, (*parser).pie},
 }
 
 // KindInfo is a diagram kind Parse reads, and the header keywords that start one ("flowchart" and

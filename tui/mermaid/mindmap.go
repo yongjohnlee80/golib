@@ -61,6 +61,8 @@ func Lay(ctx context.Context, d pm.Diagram, m Measurer) (*Grid, error) {
 		return LayJourney(ctx, d, m)
 	case *pm.SequenceDiagram:
 		return LaySequence(ctx, d, m)
+	case *pm.PieDiagram:
+		return LayPie(ctx, d, m)
 	}
 	return nil, ErrUnsupported
 }
@@ -124,6 +126,9 @@ func (g *Grid) measure() {
 		g.Size.W, g.Size.H = max(g.Size.W, c.x+1), max(g.Size.H, c.y+1)
 	}
 	for c := range g.marks {
+		g.Size.W, g.Size.H = max(g.Size.W, c.x+1), max(g.Size.H, c.y+1)
+	}
+	for c := range g.fills {
 		g.Size.W, g.Size.H = max(g.Size.W, c.x+1), max(g.Size.H, c.y+1)
 	}
 	for _, t := range g.texts {
