@@ -62,26 +62,25 @@ func TestAStateDiagramDrawsInCells(t *testing.T) {
 	}
 }
 
-// Every transition is drawn, none left out: as many arrowheads as transitions (a self-loop's ↺
-// counts as its own), each state a box with its ID (a host maps a selection back), the composite no
-// box but a frame with its name, a start and an end one cell each.
+// Every transition is drawn, none left out: each has its route (the links layGraph gives it), or is
+// a self-loop (its ↺); each state but a composite is a box with its ID (a host maps a selection
+// back), the composite a frame with its name; a start and an end each paint one glyph, on one row.
+// Counting arrowheads would not do: a fan-in shares its target's port, and one arrowhead.
 func TestEveryStateTransitionIsDrawn(t *testing.T) {
 	for _, src := range []string{stateBasicSrc, stateCompositeSrc, stateFormsSrc} {
-		d, err := pm.Parse(src)
+		sd := mustParse(t, src).(*pm.StateDiagram)
+		gr := stateGraph(sd)
+		_, routes, err := layGraph(context.Background(), gr, newCells(1, 1))
 		if err != nil {
-			t.Fatal(err)
+			t.Fatalf("layGraph: %v", err)
 		}
-		sd := d.(*pm.StateDiagram)
-		g, out := paint(t, src)
-		heads := 0
-		for _, r := range out {
-			if strings.ContainsRune("▼▲►◄", r) {
-				heads++
+		for i, tr := range sd.Transitions { // the graph's first edges, in order
+			if e := gr.edges[i]; len(routes[i]) == 0 && e.from != e.to {
+				t.Errorf("%s --> %s: no route", tr.From, tr.To)
 			}
 		}
-		if heads != len(sd.Transitions) {
-			t.Errorf("%d arrowheads for %d transitions:\n%s", heads, len(sd.Transitions), out)
-		}
+		g, out := paint(t, src)
+		rows := strings.Split(out, "\n")
 		ids := map[string]bool{}
 		for _, b := range g.Boxes {
 			ids[b.ID] = true
@@ -92,14 +91,19 @@ func TestEveryStateTransitionIsDrawn(t *testing.T) {
 			}
 		}
 		for _, b := range g.Boxes {
-			if (b.Form == FormDot || b.Form == FormEndDot) && (b.Rect.W != 1 || b.Rect.H != 1) {
-				t.Errorf("a start or end %+v; want one cell", b.Rect)
+			if b.Form != FormDot && b.Form != FormEndDot {
+				continue
+			}
+			glyph := map[Form]string{FormDot: "●", FormEndDot: "◉"}[b.Form]
+			row := []rune(rows[b.Rect.Y] + strings.Repeat(" ", b.Rect.X+b.Rect.W))
+			if n := strings.Count(string(row[b.Rect.X:b.Rect.X+b.Rect.W]), glyph); b.Rect.H != 1 || n != 1 {
+				t.Errorf("a start or end %+v paints %d %s; want one, on one row", b.Rect, n, glyph)
 			}
 		}
 	}
 	_, out := paint(t, stateCompositeSrc)
-	if !strings.Contains(out, "Busy") {
-		t.Errorf("the composite's name isn't on its frame:\n%s", out)
+	if !strings.Contains(out, "╭─ Busy ") {
+		t.Errorf("the composite's name isn't on its frame's border:\n%s", out)
 	}
 }
 
