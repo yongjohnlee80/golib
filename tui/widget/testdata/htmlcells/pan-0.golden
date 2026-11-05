@@ -1,44 +1,42 @@
 "before"
 ""
-"┌───────┐  ┌─────┐  ┌───────┐"
-    0-8 fg=accent
-    11-17 fg=accent
-    20-28 fg=accent
-"│ Alice │  │ Bob │  │ Carol │"
-    0-0 fg=accent
-    8-8 fg=accent
-    11-11 fg=accent
-    17-17 fg=accent
-    20-20 fg=accent
-    28-28 fg=accent
-"└───┬───┘  └──┬──┘  └───┬───┘"
-    0-8 fg=accent
-    11-17 fg=accent
-    20-28 fg=accent
-"    │         │         │"
-"    │  hello  │         │"
-"    ├────────▶┤         │"
-"    │         │ and on  │"
-"    │         ├────────▶┤    »"
-"    │         │         │  and"
-"    │         │         ├─────"
-"    │         │         │"
-"    │         │         │"
-"    │         │         │"
-"┌───┴───┐  ┌──┴──┐  ┌───┴───┐"
-    0-8 fg=accent
-    11-17 fg=accent
-    20-28 fg=accent
-"│ Alice │  │ Bob │  │ Carol │"
-    0-0 fg=accent
-    8-8 fg=accent
-    11-11 fg=accent
-    17-17 fg=accent
-    20-20 fg=accent
-    28-28 fg=accent
-"└───────┘  └─────┘  └───────┘"
-    0-8 fg=accent
-    11-17 fg=accent
-    20-28 fg=accent
+" ┌───────┐  ┌─────┐  ┌───────"
+    1-9 fg=accent
+    12-18 fg=accent
+    21-28 fg=accent
+" │ Alice │  │ Bob │  │ Carol"
+    1-1 fg=accent
+    9-9 fg=accent
+    12-12 fg=accent
+    18-18 fg=accent
+    21-21 fg=accent
+" └───┬───┘  └──┬──┘  └───┬───"
+    1-9 fg=accent
+    12-18 fg=accent
+    21-28 fg=accent
+"     │         │         │"
+"     │  hello  │         │"
+"     ├────────▶┤         │"
+"     │         │ and on  │"
+"     │         ├────────▶┤   »"
+"     │         │         │  a"
+"     │         │         ├───"
+"     │         │         │"
+"     │         │         │"
+"     │         │         │"
+" ┌───┴───┐  ┌──┴──┐  ┌───┴───"
+    1-9 fg=accent
+    12-18 fg=accent
+    21-28 fg=accent
+" │ Alice │  │ Bob │  │ Carol"
+    1-1 fg=accent
+    9-9 fg=accent
+    12-12 fg=accent
+    18-18 fg=accent
+    21-21 fg=accent
+" └───────┘  └─────┘  └───────"
+    1-9 fg=accent
+    12-18 fg=accent
+    21-28 fg=accent
 ""
 "after"
