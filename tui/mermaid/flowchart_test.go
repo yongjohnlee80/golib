@@ -282,12 +282,12 @@ func checkGraph(t *testing.T, name string, gr graph) {
 		}
 		for j := i + 1; j < len(gr.edges); j++ {
 			b := gr.edges[j]
-			if a.from == b.from || a.to == b.to {
-				continue
-			}
+			// edges from one node (a fan-out) or into one (a fan-in) may share their port's run, and
+			// only when they draw it alike: one stroke (a dashed tie never joins a solid line)
+			shares := a.from == b.from || a.to == b.to
 			for _, l := range routes[j] {
-				if mine[l] {
-					t.Fatalf("%s edges %s→%s and %s→%s share a run at %v", what, id(a.from), id(a.to), id(b.from), id(b.to), l)
+				if mine[l] && (!shares || a.stroke != b.stroke) {
+					t.Fatalf("%s edges %s→%s and %s→%s share a run at %v (strokes %d, %d)", what, id(a.from), id(a.to), id(b.from), id(b.to), l, a.stroke, b.stroke)
 				}
 			}
 		}
