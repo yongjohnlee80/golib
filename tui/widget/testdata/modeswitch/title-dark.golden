@@ -1,0 +1,18 @@
+Raw chosen
+  title    fg d0d0d0 bg default bold
+  Raw      fg d0d0d0 bg default bold underline
+  |        fg d0d0d0 bg default
+  Rendered fg d0d0d0 bg default
+  border   fg 5f87d7 bg default
+Rendered chosen
+  title    fg d0d0d0 bg default bold
+  Raw      fg d0d0d0 bg default
+  |        fg d0d0d0 bg default
+  Rendered fg d0d0d0 bg default bold underline
+  border   fg 5f87d7 bg default
+Rendered unavailable
+  title    fg d0d0d0 bg default bold
+  Raw      fg d0d0d0 bg default bold underline
+  |        fg d0d0d0 bg default
+  Rendered fg d0d0d0 bg default faint
+  border   fg 5f87d7 bg default
