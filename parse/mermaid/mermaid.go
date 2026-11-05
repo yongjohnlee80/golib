@@ -38,7 +38,7 @@ func (e *SyntaxError) Error() string {
 type NotDrawnError struct {
 	Err  error  // ErrUnsupported or ErrTooLarge
 	Line int    // 0: not one line's
-	What string // "HTML in a label", `"gantt" diagrams`, "a label of 1100 bytes, more than 1024"
+	What string // "HTML in a label", `"gitGraph" diagrams`, "a label of 1100 bytes, more than 1024"
 	msg  string
 }
 
@@ -66,10 +66,11 @@ const (
 	Mindmap                     // mindmap
 	Timeline                    // timeline
 	Requirement                 // requirementDiagram
+	Gantt                       // gantt
 )
 
 var kindNames = [...]string{Flowchart: "flowchart", Sequence: "sequence", State: "state", Class: "class", ER: "er",
-	Journey: "journey", Mindmap: "mindmap", Timeline: "timeline", Requirement: "requirement"}
+	Journey: "journey", Mindmap: "mindmap", Timeline: "timeline", Requirement: "requirement", Gantt: "gantt"}
 
 func (k Kind) String() string { return enumName(kindNames[:], int(k)) }
 

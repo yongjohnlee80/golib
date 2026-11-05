@@ -20,10 +20,11 @@ var kindSamples = map[string]string{
 	"mindmap":            "mindmap\n  r\n    a",
 	"timeline":           "timeline\n  2004 : Facebook",
 	"requirementDiagram": "requirementDiagram\n  requirement a {\n  id: 1\n  text: the text\n  }",
+	"gantt":              "gantt\n  dateFormat YYYY-MM-DD\n  a :2026-01-01, 3d",
 }
 
-// Kinds is the table Parse dispatches from: the nine kinds, each with its header keywords, and
-// each keyword's diagram parses as its kind. A kind on no row (a pie, a gantt, a keyword in
+// Kinds is the table Parse dispatches from: every kind, each with its header keywords, and each
+// keyword's diagram parses as its kind. A kind on no row (a pie, a quadrantChart, a keyword in
 // another case) is ErrUnsupported.
 func TestKindsAreWhatParseReads(t *testing.T) {
 	want := []KindInfo{
@@ -36,6 +37,7 @@ func TestKindsAreWhatParseReads(t *testing.T) {
 		{Mindmap, []string{"mindmap"}},
 		{Timeline, []string{"timeline"}},
 		{Requirement, []string{"requirementDiagram"}},
+		{Gantt, []string{"gantt"}},
 	}
 	got := Kinds()
 	if !reflect.DeepEqual(got, want) {
@@ -49,7 +51,7 @@ func TestKindsAreWhatParseReads(t *testing.T) {
 			}
 		}
 	}
-	for _, src := range []string{"pie\n  \"a\": 1", "gantt\n  title T", "quadrantChart\n", "Flowchart LR\n  A --> B"} {
+	for _, src := range []string{"pie\n  \"a\": 1", "quadrantChart\n", "Flowchart LR\n  A --> B"} {
 		if _, err := Parse(src); !errors.Is(err, ErrUnsupported) {
 			t.Errorf("%q: %v; want ErrUnsupported", src, err)
 		}
