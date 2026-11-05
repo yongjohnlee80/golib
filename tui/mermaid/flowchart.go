@@ -278,7 +278,14 @@ func layFlowchart(ctx context.Context, d *pm.FlowchartDiagram, m Measurer) (*Gri
 			_, titleW[f], _ = capLabel(frames[f].title, RoleLabel, m) // as the frame draws it
 		}
 	}
-	placeColumns(nodes, ranks, frames, res, titleW)
+	titleRank := make([]int, len(frames)) // the rank whose edges cross a frame's top border (its title's): TB's first, BT's last
+	for f := range frames {
+		titleRank[f] = frames[f].lo
+		if d.Dir == pm.BT {
+			titleRank[f] = frames[f].hi
+		}
+	}
+	placeColumns(nodes, ranks, frames, res, titleW, titleRank)
 	// a frame's rows above its first rank and below its last: a border each, outside those of the
 	// frames inside it that start (or end) on that rank
 	topRows, botRows := make([]int, len(frames)), make([]int, len(frames))
@@ -1033,8 +1040,9 @@ const (
 // from a box and a cell from its own frame's border; between a box and a border it is outside of,
 // or two frames side by side, there is room for a long edge's column a cell clear of each (the
 // columns beside a border take none: fcFrame.near). A frame is wide enough for its title, where its
-// title runs across it (titleW, 0 for none).
-func placeColumns(nodes []fcNode, ranks [][]int, frames []fcFrame, res layout.Result, titleW []int) {
+// title runs across it (titleW, 0 for none), and on its title's rank (titleRank) its first box or
+// frame keeps clear of the title's run.
+func placeColumns(nodes []fcNode, ranks [][]int, frames []fcFrame, res layout.Result, titleW, titleRank []int) {
 	pos := func(it fcItem) *int {
 		switch it.kind {
 		case fcLeft:
@@ -1055,28 +1063,56 @@ func placeColumns(nodes []fcNode, ranks [][]int, frames []fcFrame, res layout.Re
 		a, b fcItem
 		d    int
 	}
+	// each node's innermost frame (-1: none), and each frame's children: a frame comes after the one
+	// it is in, so a node's last frame in order is its innermost
+	inner := make([]int, len(nodes))
+	for i := range inner {
+		inner[i] = -1
+	}
+	for f, fr := range frames {
+		for _, i := range fr.members {
+			inner[i] = f
+		}
+	}
+	// a rank's order is a tree: the boxes and frames at one level side by side, each frame's own
+	// between its borders, so frames nest or stand apart by construction. Siblings go by where the
+	// layout put their left edge: a box's own, a frame's box's, the same on every rank, so the
+	// constraints the order makes never go round in a cycle.
+	key := func(it fcItem) float64 {
+		if it.kind == fcBox {
+			return float64(res.Nodes[it.i].X) - float64(nodes[it.i].w)/2
+		}
+		return float64(res.Groups[it.i].X)
+	}
 	var seps []sep
 	for r, ids := range ranks {
-		var items []fcItem
+		units := map[int][]fcItem{} // a level's boxes and frames (key: the frame it is in, -1 none)
 		for _, i := range ids {
-			items = append(items, fcItem{fcBox, i, float64(res.Nodes[i].X) - float64(nodes[i].w)/2})
+			units[inner[i]] = append(units[inner[i]], fcItem{fcBox, i, 0})
 		}
 		for f, fr := range frames {
 			if fr.lo <= r && r <= fr.hi {
-				g := res.Groups[f]
-				items = append(items, fcItem{fcLeft, f, float64(g.X)}, fcItem{fcRight, f, float64(g.X + g.W)})
+				units[fr.parent] = append(units[fr.parent], fcItem{fcLeft, f, 0})
 			}
 		}
-		slices.SortStableFunc(items, func(a, b fcItem) int {
-			c := cmp.Or(cmp.Compare(a.at, b.at), cmp.Compare(a.kind, b.kind))
-			if c == 0 && a.kind == b.kind && a.kind != fcBox { // nested borders at one place: the outer
-				if a.kind == fcLeft { // frame's left first, the inner's right first
-					return cmp.Compare(a.i, b.i)
+		var items []fcItem
+		var emit func(level int)
+		emit = func(level int) {
+			us := units[level]
+			slices.SortStableFunc(us, func(a, b fcItem) int {
+				return cmp.Or(cmp.Compare(key(a), key(b)), cmp.Compare(a.kind, b.kind), cmp.Compare(a.i, b.i))
+			})
+			for _, u := range us {
+				if u.kind == fcBox {
+					items = append(items, u)
+					continue
 				}
-				return cmp.Compare(b.i, a.i)
+				items = append(items, u)
+				emit(u.i)
+				items = append(items, fcItem{fcRight, u.i, 0})
 			}
-			return c
-		})
+		}
+		emit(-1)
 		for k := 1; k < len(items); k++ {
 			a, b := items[k-1], items[k]
 			w := 1
@@ -1088,6 +1124,11 @@ func placeColumns(nodes []fcNode, ranks [][]int, frames []fcFrame, res layout.Re
 				{fcLeft, fcBox}: 2, {fcLeft, fcLeft}: 2, {fcLeft, fcRight}: 2,
 				{fcRight, fcRight}: 2, {fcRight, fcBox}: 4, {fcRight, fcLeft}: 4,
 			}[[2]int{a.kind, b.kind}]
+			// on the rank under its title, the first thing in a frame keeps clear of the title's run, so
+			// no line meeting that rank crosses it (╭─ title ─, then the first port)
+			if a.kind == fcLeft && b.kind != fcRight && titleW[a.i] > 0 && r == titleRank[a.i] {
+				d = max(d, titleW[a.i]+4)
+			}
 			seps = append(seps, sep{a, b, d})
 		}
 	}
