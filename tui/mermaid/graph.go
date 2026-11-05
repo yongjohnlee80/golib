@@ -226,6 +226,15 @@ type fcNode struct {
 	rank int
 	x, y int // the frame top-left
 	w, h int // the frame size
+	// rules are a sectioned box's rule rows, as offsets across its frame width: laid across (LR,
+	// RL), a side's cells, which a line never meets (it would read as the rule run on)
+	rules []int
+}
+
+// portCell reports whether column c of n's top or bottom can take a line: inside its corners, and
+// not one of its rules' rows.
+func (n fcNode) portCell(c int) bool {
+	return c > n.x && c < n.x+n.w-1 && !slices.Contains(n.rules, c-n.x)
 }
 
 // port is the frame column of n's ports: its top's and bottom's middle, where its box takes a
@@ -266,7 +275,7 @@ func (n fcNode) lowPort(back bool, taken, own map[int]bool) int {
 	for _, avoid := range []map[int]bool{taken, nil} {
 		for d := 0; d < n.w; d++ {
 			for _, c := range []int{mid - d, mid + d} {
-				if c > n.x && c < n.x+n.w-1 && !avoid[c] && !own[c] {
+				if n.portCell(c) && !avoid[c] && !own[c] {
 					return c
 				}
 			}
@@ -362,6 +371,13 @@ func layGraph(ctx context.Context, gr graph, m Measurer) (*Grid, [][][2]cell, er
 			w, h = h, w
 		}
 		nodes[i].w, nodes[i].h = w, h
+		if across && len(n.sections) > 1 { // its rows down the box: the border, a section's rows, its rule, …
+			row := 0
+			for _, sec := range n.sections[:len(n.sections)-1] {
+				row += 1 + len(sec)
+				nodes[i].rules = append(nodes[i].rules, row)
+			}
+		}
 		in.Nodes = append(in.Nodes, layout.Size{W: float32(w), H: float32(h)})
 	}
 	var edges []fcEdge
@@ -460,7 +476,7 @@ func layGraph(ctx context.Context, gr graph, m Measurer) (*Grid, [][][2]cell, er
 		}
 	}
 	for i := range nodes {
-		if ports := max(len(sides[i][0]), len(sides[i][1])); ports >= 2 {
+		if ports := max(len(sides[i][0]), len(sides[i][1])) + len(nodes[i].rules); ports >= 2 && len(sides[i][0])+len(sides[i][1]) > 0 {
 			w := max(nodes[i].w, ports+3)
 			nodes[i].w = w + (w-nodes[i].w)%2 // by twos, so what it holds stays centred
 		}
@@ -595,7 +611,7 @@ func layGraph(ctx context.Context, gr graph, m Measurer) (*Grid, [][][2]cell, er
 		search:
 			for d := 0; d < nd.w; d++ {
 				for _, cand := range []int{start - d, start + d} {
-					if cand > nd.x && cand < nd.x+nd.w-1 && !upUsed[n][cand] {
+					if nd.portCell(cand) && !upUsed[n][cand] {
 						c = cand
 						break search
 					}
