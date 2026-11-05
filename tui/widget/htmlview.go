@@ -137,7 +137,7 @@ type HTMLLayoutHScroll interface {
 }
 
 // HTMLLayoutPan is a layout with blocks wider than the page that pan sideways (the cell layout's
-// diagrams): Pan pans by dx the wide block nearest the view's top among rows top to top+h-1, and
+// diagrams and code blocks): Pan pans by dx the wide block nearest the view's top among rows top to top+h-1, and
 // reports whether it moved. The view's Left/Right (h/l) are its keys; a layout without it (the
 // window's, which scrolls its wide boxes by the wheel) leaves them to the parent.
 type HTMLLayoutPan interface {

@@ -149,13 +149,19 @@ func TestNoCatalogNoDefinitionNoLanguageStaysPlain(t *testing.T) {
 }
 
 // The class sits on the <code> child of markdown's fences or on the <pre> itself, and an alias
-// names the language as well: all three lay the same colours.
+// names the language as well: all three lay the same colours. (The box's top edge says the name as
+// it was written: an alias's its own.)
 func TestTheClassAndItsAliasWhereverItSits(t *testing.T) {
 	alias := `<pre><code class="language-tst">kw lit</code></pre>`
 	onPre := `<pre class="language-test"><code>kw lit</code></pre>`
 	want := syntaxGolden(t, `<pre><code class="language-test">kw lit</code></pre>`, testCatalog(), hostStyles())
-	if got := syntaxGolden(t, alias, testCatalog(), hostStyles()); got != want {
-		t.Errorf("an alias named it differently:\n%s\nwant\n%s", got, want)
+	lines := func(golden string) string { return golden[strings.Index(golden, `"│`):] } // past the top edge
+	got := syntaxGolden(t, alias, testCatalog(), hostStyles())
+	if lines(got) != lines(want) {
+		t.Errorf("an alias coloured it differently:\n%s\nwant\n%s", got, want)
+	}
+	if !strings.Contains(got, " tst ") || !strings.Contains(want, " test ") {
+		t.Errorf("the top edge doesn't say the name as written:\n%s\nand\n%s", got, want)
 	}
 	if got := syntaxGolden(t, onPre, testCatalog(), hostStyles()); got != want {
 		t.Errorf("the class on the pre itself named it differently:\n%s\nwant\n%s", got, want)
@@ -177,6 +183,7 @@ func TestTheOptionAppliesBeforeTheDocument(t *testing.T) {
 	v := NewHTMLView(WithSyntax(testCatalog(), hostStyles()))
 	v.SetHTML([]byte(syntaxDoc))
 	c := v.layout.(*cellHTML)
+	c.SetWidth(40) // a code line pans: at the view's first width, a cell, none of it would show
 	s := newRecordSurface(c.width, len(c.rows))
 	c.PaintCells(s, 0, c.width, DocPos{}, DocPos{})
 	var b strings.Builder
