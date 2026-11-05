@@ -37,7 +37,8 @@ func LayPie(ctx context.Context, d *pm.PieDiagram, m Measurer) (*Grid, error) {
 		y = 2
 	}
 
-	// the legend: the labels in one column, then the share (and the value)
+	// the legend: each slice's own glyph before its label, as Mermaid's legend puts each slice's
+	// colour square — the key from the pie to the row — then the share (and the value)
 	labelW := 0
 	for _, s := range d.Slices {
 		labelW = max(labelW, m.StringWidth(s.Label))
@@ -47,7 +48,7 @@ func LayPie(ctx context.Context, d *pm.PieDiagram, m Measurer) (*Grid, error) {
 		if total > 0 {
 			share = s.Value / total
 		}
-		row := s.Label + strings.Repeat(" ", max(labelW-m.StringWidth(s.Label), 0)) + "  " + pctCell(share)
+		row := sliceChar(i, len(d.Slices)) + " " + s.Label + strings.Repeat(" ", max(labelW-m.StringWidth(s.Label), 0)) + "  " + pctCell(share)
 		if d.ShowData {
 			row += "  " + strconv.FormatFloat(s.Value, 'f', -1, 64)
 		}
