@@ -229,8 +229,8 @@ func TestATitleSwitchNoFrameHoldsStaysOnTheEditorsRow(t *testing.T) {
 	}
 }
 
-// The title row's switch reads in a sepia page and a dark one: its segments wear the editor's own
-// text colours, as on the editor's row, the chosen segment bold and underlined, an unavailable
+// The title row's switch reads in a sepia page and a dark one: its segments wear the title row's
+// colours (the title's on the row's), the chosen segment bold and underlined, an unavailable
 // Rendered faint, never a colour of its own. A golden per theme.
 func TestTheTitleRowsSwitchReadsInEveryTheme(t *testing.T) {
 	for name, th := range switchThemes {
@@ -268,10 +268,10 @@ func TestTheTitleRowsSwitchReadsInEveryTheme(t *testing.T) {
 			if got != string(want) {
 				t.Errorf("%s differs:\n--- got\n%s--- want\n%s", path, got, want)
 			}
-			// the segments wear the editor's text colours, as its row does
+			// the segments wear the title row's colours: the title's on the row's, no patch of their own
 			cells := h.tb.Snapshot()
-			if text, sw := cells[1][1].Attrs, cells[0][x+2].Attrs; text.FG != sw.FG || text.BG != sw.BG {
-				t.Errorf("the title row's switch colours %+v differ from the text's %+v", sw, text)
+			if title, sw := cells[0][3].Attrs, cells[0][x+2].Attrs; title.FG != sw.FG || title.BG != sw.BG {
+				t.Errorf("the title row's switch colours %+v differ from the title's %+v", sw, title)
 			}
 		})
 	}

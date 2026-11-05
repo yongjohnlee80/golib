@@ -18,11 +18,6 @@ func (e *Editor) Render(s tui.Surface) {
 	if sz.W <= 0 || sz.H <= 0 {
 		return
 	}
-	if e.swTitle && e.switchInFrame() {
-		// on the frame's title row the switch is painted by the frame, after this editor (its title
-		// slot follows its content), in the editor's own text look, as on the editor's row
-		e.sw.SetStyle(e.cells.styles.Text)
-	}
 	if top := e.headerRows(); top > 0 {
 		// the switch's row: blank in the text's look, the switch at its right
 		s.Fill(tui.Rect{W: sz.W, H: top}, " ", e.cells.styles.Text)
