@@ -1,7 +1,7 @@
 # parse/mermaid
 
 Parses Mermaid diagrams into models a native renderer draws: flowcharts (`flowchart` and
-`graph`), sequence, class, state, ER, journey, mindmap, timeline and requirement diagrams. Every
+`graph`), sequence, class, state, ER, journey, mindmap, timeline, requirement and gantt diagrams. Every
 other type is `ErrUnsupported`. Standard
 library only.
 
@@ -21,6 +21,7 @@ case *mermaid.FlowchartDiagram: // Dir, Nodes, Edges, Subgraphs, Classes
 case *mermaid.SequenceDiagram:  // Title, Participants, Steps
 case *mermaid.ClassDiagram, *mermaid.StateDiagram, *mermaid.ERDiagram:
 case *mermaid.JourneyDiagram, *mermaid.MindmapDiagram, *mermaid.TimelineDiagram, *mermaid.RequirementDiagram:
+case *mermaid.GanttDiagram: // Title, AxisFormat, Sections of Tasks with resolved Start and End
 }
 ```
 
@@ -70,6 +71,7 @@ Each has its own model and the same answer: all of it, or `ErrUnsupported`.
 | `timeline` | `title`; `section`s; periods with events on their line or on `: event` lines under them | a direction, `accDescr { }` blocks, HTML in a label |
 | `requirementDiagram` | the six requirement types (`id`, `text`, `risk`, `verifymethod`) and `element`s (`type`, `docref`); every relationship both ways; `direction`; styling | `click`, `linkStyle`, `title`, `accDescr { }` blocks |
 | `erDiagram` | entities, quoted and aliased; attribute blocks (type, name, PK/FK/UK, comment); every cardinality symbol and its word forms; identifying `--` and not `..`; `direction`; styling | `click`, `linkStyle`, `title` and other statements it does not know |
+| `gantt` | `title`; `dateFormat YYYY-MM-DD`; `axisFormat`; `todayMarker off`; `section`s; tasks `Name : [done,active,crit,milestone,] [id,] [start,] end`, where start is a date, `after id …` or the task before's end, and end is a date (exclusive) or a length in whole days or weeks (`3d`, `2w`) | other date formats, times, other length units, `excludes`/`includes`/`weekday`/`weekend`, `inclusiveEndDates`, `tickInterval`, `topAxis`, `displayMode`, `click`/`call`, a today marker, `until`, `after` a task defined later, a first task with no start |
 
 ## The model
 
