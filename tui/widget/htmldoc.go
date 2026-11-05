@@ -56,6 +56,10 @@ type hblock struct {
 	// diagram is a <pre class="mermaid">'s source, drawn by the cell layout in cells when it can be
 	// (layDiagram), its text otherwise; "" for any other block.
 	diagram string
+	// lang is a <pre>'s own or its <code> child's language-* class, minus the prefix: the cell
+	// layout highlights a preformatted block whose language its syntax catalog has a definition
+	// for; "" for none.
+	lang string
 }
 
 // inlineStyle is the inline formatting in force at a point of the walk.
@@ -370,7 +374,8 @@ func setStrike(s *inlineStyle) { s.strike = true }
 func setMark(s *inlineStyle)   { s.mark = true }
 
 // preBlock is a <pre>: one block, its whitespace kept. A <pre class="mermaid"> keeps its source
-// as the block's diagram too.
+// as the block's diagram too; a <pre> or its <code> child naming a language-* class keeps it as
+// the block's language.
 func (w *hwalker) preBlock(n *phtml.Node) {
 	b := w.block(hPre)
 	if hasClass(n, "mermaid") {
@@ -378,6 +383,7 @@ func (w *hwalker) preBlock(n *phtml.Node) {
 		preText(n, &src)
 		b.diagram = strings.TrimSpace(src.String())
 	}
+	b.lang = codeLanguage(n)
 	w.pre++
 	w.walk(n)
 	w.pre--
@@ -387,6 +393,31 @@ func (w *hwalker) preBlock(n *phtml.Node) {
 		last.text = strings.TrimSuffix(last.text, "\n")
 	}
 	w.close()
+}
+
+// codeLanguage is a <pre>'s highlighting language: its own or its first <code> child's language-*
+// class, minus the prefix; "" when neither names one.
+func codeLanguage(pre *phtml.Node) string {
+	if l := classLanguage(pre); l != "" {
+		return l
+	}
+	for _, c := range pre.Children {
+		if c.Name == "code" {
+			return classLanguage(c)
+		}
+	}
+	return ""
+}
+
+// classLanguage is n's language-* class, minus the prefix; "" when it has none.
+func classLanguage(n *phtml.Node) string {
+	v, _ := n.Attr("class")
+	for _, f := range strings.Fields(v) {
+		if l := strings.TrimPrefix(f, "language-"); l != f && l != "" {
+			return l
+		}
+	}
+	return ""
 }
 
 // quoted walks n one quote level deeper: a blockquote's (kind "") or a callout's, whose bar

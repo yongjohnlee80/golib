@@ -5,6 +5,7 @@ import (
 	"math"
 	"strings"
 
+	"github.com/yongjohnlee80/golib/highlight"
 	pm "github.com/yongjohnlee80/golib/parse/mermaid"
 	"github.com/yongjohnlee80/golib/tui"
 	"github.com/yongjohnlee80/golib/tui/internal/grapheme"
@@ -55,7 +56,12 @@ type cellHTML struct {
 	// notice says a diagram of a kind not drawn in cells isn't drawn here (WithDiagramNotice);
 	// nil: diagramNotice's English.
 	notice func(kind string) string
-	m      cellMarks // a find's matches (htmlview_marks.go)
+	// syntax is the languages a preformatted block's language-* class is looked up in
+	// (WithSyntax); nil: no highlighting. syntaxColors says what each highlight style looks like,
+	// the default table below where a host leaves it empty.
+	syntax       *highlight.Catalog
+	syntaxColors [highlight.Styles]style.ColorSpec
+	m            cellMarks // a find's matches (htmlview_marks.go)
 	// pan is how far each wide block (a diagram wider than its room) is scrolled sideways, by its
 	// block index: each its own, as the window's wide boxes are. A new document starts every one at 0.
 	pan map[int]int
@@ -169,6 +175,82 @@ const hruleCluster = "─"
 // preTabStop is how many cells apart a preformatted line's tab stops are.
 const preTabStop = 4
 
+// highlightPre is a preformatted block's highlighting, per line: the spans of the language its
+// language-* class names, when the catalog holds a definition for it, in the byte offsets of
+// each line's own text; nil when it doesn't, so the block stays as it is and a language no
+// definition has too.
+func highlightPre(catalog *highlight.Catalog, lang string, b *hblock) [][]highlight.Span {
+	def, ok := catalog.DefinitionForLanguage(lang)
+	if !ok {
+		return nil
+	}
+	hl := def.Highlighter
+	if def.SourceFactory != nil {
+		hl = def.SourceFactory(catalog).Highlighter
+	}
+	var text strings.Builder
+	for i := range b.spans {
+		text.WriteString(b.spans[i].text)
+	}
+	lines := strings.Split(text.String(), "\n")
+	out := make([][]highlight.Span, len(lines))
+	var st highlight.State
+	for i, l := range lines {
+		out[i], st = hl.HighlightBlock(l, st)
+	}
+	return out
+}
+
+// syntaxAt is the colour of the bytes [from, to) of a highlighted line, the first span covering
+// them; nil when none does, or its style has no colour of its own (Normal: the block's text).
+func syntaxAt(spans []highlight.Span, from, to int, colors [highlight.Styles]style.ColorSpec) style.ColorSpec {
+	for _, s := range spans {
+		if s.End <= from {
+			continue
+		}
+		if s.Start >= to {
+			break
+		}
+		if int(s.Style) < len(colors) {
+			return colors[s.Style]
+		}
+		return nil
+	}
+	return nil
+}
+
+// defaultSyntaxColors is what a highlight style looks like when the host says nothing: existing
+// tokens only, one or two a family — keywords the accent, strings the success, comments the
+// muted — so the light-theme rule holds on every built-in theme without a host wiring anything.
+// Normal and the unset stay nil: the block's own text.
+var defaultSyntaxColors = [highlight.Styles]style.ColorSpec{
+	highlight.Keyword:        style.TokenAccent,
+	highlight.ControlFlow:    style.TokenSecondary,
+	highlight.Function:       style.TokenPrimary,
+	highlight.BuiltIn:        style.TokenBoost,
+	highlight.Extension:      style.TokenBoost,
+	highlight.Preprocessor:   style.TokenTextMuted,
+	highlight.Attribute:      style.TokenTextMuted,
+	highlight.Char:           style.TokenSuccess,
+	highlight.SpecialChar:    style.TokenSuccess,
+	highlight.String:         style.TokenSuccess,
+	highlight.VerbatimString: style.TokenSuccess,
+	highlight.SpecialString:  style.TokenSuccess,
+	highlight.Import:         style.TokenSecondary,
+	highlight.DataType:       style.TokenPrimary,
+	highlight.DecVal:         style.TokenSecondary,
+	highlight.BaseN:          style.TokenSecondary,
+	highlight.Float:          style.TokenSecondary,
+	highlight.Constant:       style.TokenSecondary,
+	highlight.Comment:        style.TokenTextMuted,
+	highlight.Documentation:  style.TokenTextMuted,
+	highlight.Annotation:     style.TokenTextMuted,
+	highlight.RegionMarker:   style.TokenTextMuted,
+	highlight.Warning:        style.TokenWarning,
+	highlight.Alert:          style.TokenWarning,
+	highlight.Error:          style.TokenError,
+}
+
 // gapBars are the quote bars a gap row before block bi carries: those of the quotes it shares with
 // the block before, so a quote's bar runs on through the blank rows between its blocks.
 func (c *cellHTML) gapBars(bi int) []hcl {
@@ -258,7 +340,7 @@ func (c *cellHTML) layBlock(bi int, b *hblock, cols []int) {
 			for i := rr[0]; i < rr[1]; i++ {
 				k := ln[i]
 				w := c.measure(k.text)
-				row.cls = append(row.cls, hcl{text: k.text, x: x, w: w, pos: k.pos, end: k.end, sp: k.sp, deco: k.deco})
+				row.cls = append(row.cls, hcl{text: k.text, x: x, w: w, pos: k.pos, end: k.end, sp: k.sp, deco: k.deco, fg: k.fg})
 				x += w
 			}
 			c.rows = append(c.rows, row)
@@ -384,6 +466,9 @@ type lineCluster struct {
 	pos, end DocPos
 	sp       *hspan
 	deco     bool
+	// fg is the cluster's own colour — a highlighted code cluster's — overriding its span's;
+	// nil: its span's and block's, as before.
+	fg style.ColorSpec
 }
 
 // blockLines is block bi's clusters, each with its position, split into the lines a hard break
@@ -432,7 +517,18 @@ func (c *cellHTML) blockLines(bi int, b *hblock, cols []int) [][]lineCluster {
 	if b.kind == hPre {
 		pad(1, start)
 	}
-	col := 0 // a preformatted line's column, for its tab stops
+	var hl [][]highlight.Span     // a highlighted block's spans, per line; nil: none
+	colors := defaultSyntaxColors // a host's entry wins where it has one, a gap falls to the default
+	for i, host := range c.syntaxColors {
+		if host != nil {
+			colors[i] = host
+		}
+	}
+	if b.kind == hPre && b.lang != "" && c.syntax != nil {
+		hl = highlightPre(c.syntax, b.lang, b)
+	}
+	hlLine, lineOff := 0, 0 // where a highlighted cluster sits: its line, and its byte within it
+	col := 0                // a preformatted line's column, for its tab stops
 	cell := 0
 	for si := range b.spans {
 		sp := &b.spans[si]
@@ -452,19 +548,25 @@ func (c *cellHTML) blockLines(bi int, b *hblock, cols []int) [][]lineCluster {
 				if b.kind == hPre {
 					pad(1, at)
 				}
+				hlLine, lineOff = hlLine+1, 0
 				continue
 			}
 			end := DocPos{Block: bi, Span: si, Offset: off}
+			var fg style.ColorSpec
+			if hl != nil && hlLine < len(hl) {
+				fg = syntaxAt(hl[hlLine], lineOff, lineOff+len(g), colors)
+			}
+			lineOff += len(g)
 			if g == "\t" && b.kind == hPre {
 				// a tab is a space of its text up to the next stop: copied as the tab it is
 				n := preTabStop - col%preTabStop
-				line = append(line, lineCluster{text: " ", pos: at, end: end, sp: sp})
+				line = append(line, lineCluster{text: " ", pos: at, end: end, sp: sp, fg: fg})
 				pad(n-1, end)
 				col += n
 				continue
 			}
 			col += c.measure(g)
-			line = append(line, lineCluster{text: g, pos: at, end: end, sp: sp, deco: sp.deco})
+			line = append(line, lineCluster{text: g, pos: at, end: end, sp: sp, deco: sp.deco, fg: fg})
 		}
 		if boxed && cell > 0 && cell < len(b.cellStarts) && si+1 == b.cellStarts[cell] {
 			pad(lead(cell), DocPos{Block: bi, Span: si + 1})
@@ -773,6 +875,9 @@ func (c *cellHTML) styleOf(r *hrow, k hcl) style.Style {
 	}
 	if sp.link != "" {
 		st = st.Underline(true).Foreground(style.TokenPrimary)
+	}
+	if k.fg != nil {
+		st = st.Foreground(k.fg) // a highlighted code cluster's own colour, over its span's formatting
 	}
 	return st
 }
