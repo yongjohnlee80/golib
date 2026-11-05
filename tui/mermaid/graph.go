@@ -969,8 +969,22 @@ func layGraph(ctx context.Context, gr graph, m Measurer) (*Grid, [][][2]cell, er
 		}
 		return false
 	}
+	// beside a sectioned box's side on a rule row: kept clear, or what is there reads as the rule run on
+	besideRule := func(c cell) bool {
+		for _, b := range g.Boxes {
+			if r := b.Rect; c.x == r.X-1 || c.x == r.X+r.W {
+				row := r.Y
+				for _, sec := range b.Sections[:max(len(b.Sections)-1, 0)] {
+					if row += 1 + len(sec); c.y == row {
+						return true
+					}
+				}
+			}
+		}
+		return false
+	}
 	occupied := func(c cell) bool {
-		if g.onFrame(c) {
+		if g.onFrame(c) || besideRule(c) {
 			return true
 		}
 		_, line := g.lines[c]
