@@ -2,7 +2,6 @@ package mermaid
 
 import (
 	"context"
-	"strings"
 
 	pm "github.com/yongjohnlee80/golib/parse/mermaid"
 )
@@ -59,13 +58,9 @@ func classGraph(d *pm.ClassDiagram) graph {
 		gr.edges = append(gr.edges, gedge{from: from, to: to, stroke: strokeOf(r.Line), head: relEndOf(r.ToEnd),
 			tail: relEndOf(r.FromEnd), label: r.Label, headLabel: r.ToCard, tailLabel: r.FromCard})
 	}
-	for _, n := range d.Notes {
-		note := gnode{form: FormNote, label: n.Text}
-		if lines := strings.Split(n.Text, "\n"); len(lines) > 1 {
-			note.label, note.sections = strings.Join(lines, " "), [][]string{lines}
-		}
-		note.frame = -1
-		gr.nodes = append(gr.nodes, note)
+	for i, n := range d.Notes { // a note's id, label and rows as a state's note's (state.go)
+		gr.nodes = append(gr.nodes, gnode{id: noteID(i), form: FormNote, label: firstLine(n.Text),
+			sections: noteSections(n.Text), frame: -1})
 		if c, ok := index[n.For]; ok && n.For != "" {
 			gr.edges = append(gr.edges, gedge{from: len(gr.nodes) - 1, to: c, stroke: StrokeDashed})
 		}
