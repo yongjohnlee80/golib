@@ -75,9 +75,11 @@ func TestASelfLoopsLabelIsAFootnote(t *testing.T) {
 	if !strings.Contains(drawn, "↺") {
 		t.Errorf("no ↺ beside the box:\n%s", drawn)
 	}
-	if !strings.Contains(drawn, "retry") || len(g.notes) != 1 {
-		t.Errorf("the self-loop's label isn't in the legend (%d rows):\n%s", len(g.notes), drawn)
+	// finish has placed the legend under the drawing: its row is the footnote's mark and the label
+	if !strings.Contains(drawn, "¹ retry") {
+		t.Errorf("the self-loop's label isn't in the legend:\n%s", drawn)
 	}
+	_ = g
 }
 
 // An edge the router can't draw is refused, ErrUnsupported (the host's notice), never dropped: one
