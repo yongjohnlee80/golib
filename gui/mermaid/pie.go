@@ -8,6 +8,7 @@ import (
 
 	"github.com/yongjohnlee80/golib/gui"
 	pm "github.com/yongjohnlee80/golib/parse/mermaid"
+	tuimermaid "github.com/yongjohnlee80/golib/tui/mermaid"
 )
 
 func init() { layers[pm.Pie] = layPie }
@@ -44,9 +45,9 @@ func layPie(ctx context.Context, d pm.Diagram, width float32, th Theme, m gui.Me
 	var labelW, dataW float32
 	for _, s := range pd.Slices {
 		share := float32(s.Share(total))
-		data := pctLabel(share)
+		data := tuimermaid.PercentText(pm.Percent(float64(share)))
 		if pd.ShowData {
-			data = strconv.FormatFloat(s.Value, 'f', -1, 64) + " (" + pctLabel(share) + ")"
+			data = strconv.FormatFloat(s.Value, 'f', -1, 64) + " (" + tuimermaid.PercentText(pm.Percent(float64(share))) + ")"
 		}
 		lb, dt := newLabel(m, s.Label, small, 0, th.Text), newLabel(m, data, small, 0, th.Text)
 		labelW, dataW = max(labelW, lb.box.W), max(dataW, dt.box.W)
@@ -76,7 +77,7 @@ func layPie(ctx context.Context, d pm.Diagram, width float32, th Theme, m gui.Me
 			}
 			fill := sliceColor(th, i, len(pd.Slices))
 			l.sectors = append(l.sectors, laidSector{cx: cx, cy: cy, r: r, a0: a, a1: a1, fill: fill, stroke: th.NodeStroke})
-			if lb := newLabel(m, pctLabel(share), small, 0, readable(th, fill)); share > 0.04 &&
+			if lb := newLabel(m, tuimermaid.PercentText(pm.Percent(float64(share))), small, 0, readable(th, fill)); share > 0.04 &&
 				lb.box.W <= 2*r*0.66*float32(math.Sin(min(float64(share*math.Pi), math.Pi/2))) {
 				mid := (a + a1) / 2
 				l.texts = append(l.texts, lb.at(cx+0.66*r*float32(math.Sin(float64(mid)))-lb.box.W/2,
@@ -143,10 +144,4 @@ func readable(th Theme, fill color.NRGBA) color.NRGBA {
 		return th.Text
 	}
 	return th.Background
-}
-
-// pctLabel is share as Mermaid's percentages: the model's one rounding (parse's Percent), shown
-// whole when it is, one decimal when it is not.
-func pctLabel(share float32) string {
-	return strconv.FormatFloat(pm.Percent(float64(share)), 'f', -1, 64) + "%"
 }

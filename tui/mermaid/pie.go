@@ -35,7 +35,7 @@ func LayPie(ctx context.Context, d *pm.PieDiagram, m Measurer) (*Grid, error) {
 	// the legend: each row its slice's own glyph (the key from the pie to the row), its label, its
 	// share, and its value when the header's showData asks
 	for i, s := range d.Slices {
-		row := legendRow{swatch: sliceChar(i, len(d.Slices)), label: s.Label, cols: []string{pctCell(s.Share(total))}}
+		row := legendRow{swatch: sliceChar(i, len(d.Slices)), label: s.Label, cols: []string{PercentText(pm.Percent(s.Share(total)))}}
 		if d.ShowData {
 			row.cols = append(row.cols, strconv.FormatFloat(s.Value, 'f', -1, 64))
 		}
@@ -89,10 +89,4 @@ func sliceChar(i, n int) string {
 		c = pieChars[2]
 	}
 	return c
-}
-
-// pctCell is share as Mermaid's percentages: the model's one rounding (parse's Percent), shown
-// whole when it is, one decimal when it is not.
-func pctCell(share float64) string {
-	return strconv.FormatFloat(pm.Percent(share), 'f', -1, 64) + "%"
 }
