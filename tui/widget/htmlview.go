@@ -92,6 +92,21 @@ type HTMLLayoutHScroll interface {
 	ScrollX(x, y, dx float32) bool
 }
 
+// HTMLLayoutPan is a layout with blocks wider than the page that pan sideways (the cell layout's
+// diagrams): Pan pans by dx the wide block nearest the view's top among rows top to top+h-1, and
+// reports whether it moved. The view's Left/Right (h/l) are its keys; a layout without it (the
+// window's, which scrolls its wide boxes by the wheel) leaves them to the parent.
+type HTMLLayoutPan interface {
+	Pan(top, h, dx int) bool
+}
+
+// HTMLLayoutTravel is a layout a reader travels by block: Starts is the first row of each block
+// (headings: of each heading), top to bottom, in its units. The view's ] [ and } { are its keys; a
+// layout without it leaves them to the parent.
+type HTMLLayoutTravel interface {
+	Starts(headings bool) []float32
+}
+
 // HTMLLayoutLinks is a layout that tells where its links are: LinkRects appends to dst each link's
 // rects, in the layout's units, that fall between top and bottom. For a cell layout
 // (HTMLLayoutCells) the view shows the pointer's hand over them; a layout a backend paints gives
@@ -434,7 +449,10 @@ func (v *HTMLView) reportScroll() {
 
 // HandleEvent scrolls by the keys and the wheel, selects by a drag, follows a clicked link, and
 // copies the selection by Ctrl+C or y. The keys: Up/Down or k/j a line, PgUp/PgDn or Space a view,
-// Ctrl+U/Ctrl+D half a view, Home/End or g/G the ends.
+// Ctrl+U/Ctrl+D half a view, Home/End or g/G the ends; on a layout that has them, Left/Right or h/l
+// pan a wide block (HTMLLayoutPan), ] and [ go to the next or previous block, } and { to the next or
+// previous heading (HTMLLayoutTravel). A travel or pan key the page can't move by is still read
+// (true): it is a reading key, never one for the parent.
 func (v *HTMLView) HandleEvent(ev tui.Event) bool {
 	switch e := ev.(type) {
 	case tui.KeyEvent:
@@ -501,6 +519,28 @@ func (v *HTMLView) key(e tui.KeyEvent) bool {
 		v.scrollTo(0)
 	case HTMLViewBottom.ID:
 		v.scrollTo(v.maxScroll())
+	case HTMLViewLeft.ID, HTMLViewRight.ID:
+		p, ok := v.layout.(HTMLLayoutPan)
+		if !ok {
+			return false
+		}
+		dx := htmlPanStep
+		if cmd.ID == HTMLViewLeft.ID {
+			dx = -dx
+		}
+		if p.Pan(int(v.scrollY/uy), int(v.viewHeight()/uy), dx) {
+			v.MarkDirty()
+		}
+	case HTMLViewNextBlock.ID, HTMLViewPreviousBlock.ID, HTMLViewNextHeading.ID, HTMLViewPreviousHeading.ID:
+		tr, ok := v.layout.(HTMLLayoutTravel)
+		if !ok {
+			return false
+		}
+		heading := cmd.ID == HTMLViewNextHeading.ID || cmd.ID == HTMLViewPreviousHeading.ID
+		forward := cmd.ID == HTMLViewNextBlock.ID || cmd.ID == HTMLViewNextHeading.ID
+		if y, ok := travelTo(tr.Starts(heading), v.scrollY, forward); ok {
+			v.scrollTo(y)
+		}
 	case HTMLViewCopy.ID:
 		return v.Copy()
 	case HTMLViewClear.ID:
@@ -508,6 +548,25 @@ func (v *HTMLView) key(e tui.KeyEvent) bool {
 		v.MarkDirty()
 	}
 	return true
+}
+
+// travelTo is the start a ] (forward) or [ goes to from the view's top: the first after it, or the
+// last before it; false when there is none, and nothing moves.
+func travelTo(starts []float32, top float32, forward bool) (float32, bool) {
+	if forward {
+		for _, y := range starts {
+			if y > top {
+				return y, true
+			}
+		}
+		return 0, false
+	}
+	for i := len(starts) - 1; i >= 0; i-- {
+		if starts[i] < top {
+			return starts[i], true
+		}
+	}
+	return 0, false
 }
 
 // KeyScope is an HTMLView's key-map scope.
