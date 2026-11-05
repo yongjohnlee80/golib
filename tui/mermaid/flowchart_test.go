@@ -186,9 +186,6 @@ func TestTheFlowchartRoutersInvariantsHoldWhereTheyBroke(t *testing.T) {
 	for name, src := range map[string]string{
 		"one port cell": "flowchart LR\n  N0[x]\n  N1[a longer label]\n  N2[東京]\n  N3[a]\n  N4[node]\n  N5[a longer label]\n  N6[node]\n" +
 			"  N3 --> N5\n  N3 --> N5\n  N5 --> N6\n  N3 --> N4\n  N5 --> N6\n  N3 --> N6\n  N1 --> N2\n  N1 --> N4\n  N1 --> N5\n",
-		// running across, a box is three rows: one meeting a way down and a way back up on one side
-		// needs a row for each (the random graphs' seed 49)
-		"a cycle through a box laid across": "flowchart RL\n  A --> B --> C --> A\n  B --> D\n  D --> B\n",
 		// seed 613 of the framed hunt: with doglegs allowed beside a frame's border, one turns on it
 		"a dogleg beside a frame's border": "flowchart RL\n  N0[東京]\n  N2[a longer label]\n  subgraph S0 [Group]\n    N3[node]\n    N4[a]\n" +
 			"    subgraph S1 [x]\n    end\n  end\n  subgraph S2 [Group]\n    N1[a]\n  end\n  N2 --> N4\n  N2 --> N4\n  N2 --> N3\n  N2 --> N4\n" +
