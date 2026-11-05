@@ -177,6 +177,9 @@ func (r *renderer) block(n *markdown.Node) {
 		r.out.WriteString("</code></pre>")
 		r.cr()
 	case markdown.KindHTMLBlock:
+		if !r.cfg.unsafe && len(bytes.TrimSpace(withoutComments(n.Literal))) == 0 {
+			break // only comments: nothing a browser would show
+		}
 		r.cr()
 		r.raw(n.Literal)
 		r.cr()
@@ -385,12 +388,44 @@ func plainText(w *bytes.Buffer, n *markdown.Node, src []byte) {
 	}
 }
 
+// raw writes raw HTML: as it is under Unsafe; by default escaped, as text, its comments left out (a
+// browser never shows one, and escaped they would read as text).
 func (r *renderer) raw(b []byte) {
 	if r.cfg.unsafe {
 		r.out.Write(b)
 		return
 	}
-	r.escape(b)
+	r.escape(withoutComments(b))
+}
+
+// withoutComments is b with its HTML comments taken out, each from "<!--" to the "-->" that closes
+// it, an unclosed one to b's end ("<!-->" and "<!--->" are empty ones, as a browser reads them).
+func withoutComments(b []byte) []byte {
+	open := []byte("<!--")
+	if !bytes.Contains(b, open) {
+		return b
+	}
+	var out []byte
+	for {
+		i := bytes.Index(b, open)
+		if i < 0 {
+			return append(out, b...)
+		}
+		out = append(out, b[:i]...)
+		rest := b[i+len(open):]
+		switch {
+		case bytes.HasPrefix(rest, []byte(">")):
+			b = rest[1:]
+		case bytes.HasPrefix(rest, []byte("->")):
+			b = rest[2:]
+		default:
+			j := bytes.Index(rest, []byte("-->"))
+			if j < 0 {
+				return out
+			}
+			b = rest[j+3:]
+		}
+	}
 }
 
 // escape writes b with '&', '<', '>' and '"' as entities, and each invalid UTF-8 sequence as U+FFFD,
