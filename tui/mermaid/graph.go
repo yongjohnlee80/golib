@@ -233,17 +233,20 @@ type fcEdge struct {
 // (back true), in a gap where taken holds the columns of upper ends whose edges go elsewhere: the
 // middle (where the box takes a stem) or the nearest cell of its top beside it. So the port is never
 // in a column another edge drops from (two boxes stacked in one column would otherwise make the
-// gap's verticals run together), while an edge straight down into it keeps its column. taken holds
-// the node's other ports too, so no two share one (kinds, marks).
-func (n fcNode) lowPort(back bool, taken map[int]bool) int {
+// gap's verticals run together), while an edge straight down into it keeps its column. own holds
+// the node's other ports, which it never shares (kinds, marks): when every cell of its top is taken,
+// it is in an upper end's column, and the dogleg takes it there.
+func (n fcNode) lowPort(back bool, taken, own map[int]bool) int {
 	mid := n.x + n.w/2
 	if back {
 		mid++
 	}
-	for d := 0; d < n.w; d++ {
-		for _, c := range []int{mid - d, mid + d} {
-			if c > n.x && c < n.x+n.w-1 && !taken[c] {
-				return c
+	for _, avoid := range []map[int]bool{taken, nil} {
+		for d := 0; d < n.w; d++ {
+			for _, c := range []int{mid - d, mid + d} {
+				if c > n.x && c < n.x+n.w-1 && !avoid[c] && !own[c] {
+					return c
+				}
 			}
 		}
 	}
@@ -609,10 +612,7 @@ func layGraph(ctx context.Context, gr graph, m Measurer) (*Grid, [][][2]cell, er
 					taken[u.col] = true
 				}
 			}
-			for c := range lowUsed[n] {
-				taken[c] = true
-			}
-			c := nodes[n].lowPort(back, taken)
+			c := nodes[n].lowPort(back, taken, lowUsed[n])
 			low[key] = c
 			if lowUsed[n] == nil {
 				lowUsed[n] = map[int]bool{}
