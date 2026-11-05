@@ -158,3 +158,27 @@ func TestGanttSyntaxErrors(t *testing.T) {
 		}
 	}
 }
+
+// The axis writes a day in the chart's axisFormat, or %Y-%m-%d; its ticks are a fixed step from
+// the first day, no more of them than asked.
+func TestGanttAxis(t *testing.T) {
+	d := ganttParse(t, "gantt\n  axisFormat %b %e, %a %% %q\n  a :2026-01-01, 60d")
+	day := d.Sections[0].Tasks[0].Start.AddDate(0, 0, 4)
+	if got := d.AxisLabel(day); got != "Jan  5, Mon % %q" {
+		t.Errorf("AxisLabel %q", got)
+	}
+	d.AxisFormat = ""
+	if got := d.AxisLabel(day); got != "2026-01-05" {
+		t.Errorf("default AxisLabel %q", got)
+	}
+	ticks := d.Ticks(6) // 61 days: a 14-day step gives 5
+	if len(ticks) != 5 || ticks[0] != d.Sections[0].Tasks[0].Start || ticks[1].Sub(ticks[0]).Hours() != 14*24 {
+		t.Errorf("Ticks(6) = %v", ticks)
+	}
+	if got := d.Ticks(100); len(got) != 61 { // a day each
+		t.Errorf("Ticks(100): %d ticks, want 61", len(got))
+	}
+	if d.Ticks(0) != nil || (&mermaid.GanttDiagram{}).Ticks(5) != nil {
+		t.Error("Ticks of 0, or of an empty chart, is not nil")
+	}
+}

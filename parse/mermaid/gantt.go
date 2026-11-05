@@ -350,3 +350,77 @@ func ganttID(s string) bool {
 	}
 	return true
 }
+
+// ganttDefaultAxis is the axis format when the chart writes none, as Mermaid's.
+const ganttDefaultAxis = "%Y-%m-%d"
+
+// AxisLabel is day as the chart's axis writes it: AxisFormat's strftime directives (%Y %y %m %d %e
+// %b %B %a %A %j %%), or "%Y-%m-%d" when it has none. Any other directive is written as it is.
+func (d *GanttDiagram) AxisLabel(day time.Time) string {
+	f := d.AxisFormat
+	if f == "" {
+		f = ganttDefaultAxis
+	}
+	var b strings.Builder
+	for i := 0; i < len(f); i++ {
+		if f[i] != '%' || i+1 == len(f) {
+			b.WriteByte(f[i])
+			continue
+		}
+		i++
+		switch f[i] {
+		case 'Y':
+			b.WriteString(day.Format("2006"))
+		case 'y':
+			b.WriteString(day.Format("06"))
+		case 'm':
+			b.WriteString(day.Format("01"))
+		case 'd':
+			b.WriteString(day.Format("02"))
+		case 'e':
+			b.WriteString(day.Format("_2"))
+		case 'b':
+			b.WriteString(day.Format("Jan"))
+		case 'B':
+			b.WriteString(day.Format("January"))
+		case 'a':
+			b.WriteString(day.Format("Mon"))
+		case 'A':
+			b.WriteString(day.Format("Monday"))
+		case 'j':
+			b.WriteString(day.Format("002"))
+		case '%':
+			b.WriteByte('%')
+		default:
+			b.WriteByte('%')
+			b.WriteByte(f[i])
+		}
+	}
+	return b.String()
+}
+
+// ganttSteps are the tick steps Ticks picks from, in days, smallest first.
+var ganttSteps = []int{1, 2, 7, 14, 28, 56, 91, 182, 364}
+
+// Ticks are the days the axis marks: from the chart's first day, at the smallest step (1, 2, 7,
+// 14 or 28 days, and so on) that leaves at most n of them in its Range. nil for a chart with no
+// task, or n < 1.
+func (d *GanttDiagram) Ticks(n int) []time.Time {
+	start, end, ok := d.Range()
+	if !ok || n < 1 {
+		return nil
+	}
+	days := int(end.Sub(start).Hours()/24) + 1
+	step := ganttSteps[len(ganttSteps)-1]
+	for _, s := range ganttSteps {
+		if (days+s-1)/s <= n {
+			step = s
+			break
+		}
+	}
+	var out []time.Time
+	for t := start; !t.After(end) && len(out) < n; t = t.AddDate(0, 0, step) {
+		out = append(out, t)
+	}
+	return out
+}
