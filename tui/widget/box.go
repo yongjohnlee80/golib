@@ -261,8 +261,8 @@ func (x *Box) SetTitleMessage(m tui.Message) {
 
 // SetTitleSlot puts c on the box's top border row: one control (an editor's Raw | Rendered
 // switch, a close ×), one row tall at its own width, right-aligned inside the corners with a
-// border cell after it (at the left end instead when the title is right-aligned). The box owns its
-// rect there: c is a second child, mounted, hit-tested and repainted as any child, and its rect
+// border cell after it (at the left end instead when the title is right-aligned), in the title
+// row's look when it takes a style (SetStyle). The box owns its rect there: c is a second child, mounted, hit-tested and repainted as any child, and its rect
 // never meets the content child's. The title truncates before it. A box too narrow for both
 // (inner width under c's width + 4), or with no top border, hides c and keeps the title. nil
 // removes the slot.
@@ -438,6 +438,9 @@ func (x *Box) placeSlot(w, inL, inR int) {
 	x.ctx.AfterLayout(boxSlotKey, func() { x.slotW = sw })
 }
 
+// slotStyler is a title slot that takes the title row's look (ModeSwitch's SetStyle).
+type slotStyler interface{ SetStyle(style.Style) }
+
 // boxSlotKey is the title slot's width commit (tui.Context.AfterLayout).
 const boxSlotKey tui.CommitKey = "widget.box.slot"
 
@@ -544,6 +547,11 @@ func (x *Box) Render(s tui.Surface) {
 		if x.titleAlign == style.AlignRight {
 			tx += x.slotW + 1
 		}
+	}
+	if sl, ok := x.slot.(slotStyler); ok && x.slotW > 0 {
+		// the slot wears the title row's look: the title's colour on the row's, its own marks over
+		// it (the switch's chosen segment bold); it paints after the box, as every child does
+		sl.SetStyle(titleSt.Bold(false).Inherit(fill))
 	}
 	if title := x.title.inLanguage(&x.Base); bt == 1 && title != "" && tw > 0 {
 		x.renderBorderText(s, " "+title+" ", x.titleAlign, titleSt.Inherit(fill), tx, by, tw)
