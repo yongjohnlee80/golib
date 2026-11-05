@@ -284,3 +284,44 @@ func TestTheWheelOnTheSwitchsRowScrollsWhatIsUnderIt(t *testing.T) {
 		t.Errorf("Rendered: the wheel on the switch's row did not scroll the table:\n%s", after)
 	}
 }
+
+// A press on the switch reaches it with the focus elsewhere: the page shown takes the editor's
+// focus as it arrives, so a press that focused the editor first went nowhere. The switch is resolved
+// before focus moves, as a toolbar's control is, and leaves the focus where it was.
+func TestTheSwitchTakesAPressWithTheFocusElsewhere(t *testing.T) {
+	ed := widget.NewEditor(widget.WithCore(widget.CoreInitialText("name,n\nann,1\n")), widget.EditorModeSwitch(true))
+	ed.SetDocumentView(widget.NewTableDocument(ed.Core(), ','))
+	ed.SetRenderedDocument(true)
+	ed.SetView(widget.ViewRendered)
+	other := widget.NewTextInput()
+	sh := newShell(widget.NewSplit(widget.Horizontal, other, ed))
+	h := startApp(t, sh, 80, 8)
+	defer h.stop()
+	h.onLoop(func() { h.app.FocusInto(other) })
+	h.barrier(sh)
+	x, y := -1, -1
+	for row := range 8 {
+		if i := strings.Index(h.row(row), "[ Raw | Rendered ]"); i >= 0 {
+			x, y = len([]rune(h.row(row)[:i])), row
+			break
+		}
+	}
+	if y < 0 {
+		t.Fatalf("no switch:\n%s", h.grid())
+	}
+	h.inject(pressAt(x+2, y))
+	h.barrier(sh)
+	if chosen(h, ed) != widget.ViewRaw {
+		t.Fatalf("a press on Raw with the focus in another widget: %v; want Raw", chosen(h, ed))
+	}
+	var stays bool
+	h.onLoop(func() { stays = h.app.FocusWithin(other) })
+	if !stays {
+		t.Error("the press on the switch moved the focus")
+	}
+	h.inject(pressAt(x+len(widget.ModeSwitchRaw)+3, y))
+	h.barrier(sh)
+	if chosen(h, ed) != widget.ViewRendered {
+		t.Errorf("a press on Rendered: %v", chosen(h, ed))
+	}
+}

@@ -206,6 +206,30 @@ func (e *Editor) headerRows() int {
 	return 0
 }
 
+// ResolvePointerPress implements tui.PointerPressResolver: a left press on a segment of the switch
+// is the switch's, resolved before the press moves focus, as a toolbar's control is. Focusing the
+// editor first would hand the focus on to a shown document view, and the press would be skipped as
+// focus redirected. The focus stays where it was.
+func (e *Editor) ResolvePointerPress(m tui.MouseEvent) (tui.Action, bool) {
+	if m.Kind != tui.MousePress || m.Button != tui.MouseLeft || m.Y < 0 || m.Y >= e.headerRows() {
+		return nil, false
+	}
+	v, ok := e.sw.Choice(m.X - (e.rowW - ModeSwitchWidth))
+	if !ok {
+		return nil, false
+	}
+	return EditorViewAction{View: v}, true
+}
+
+// HandleAction implements tui.ActionHandler: the switch's choice.
+func (e *Editor) HandleAction(inv tui.ActionInvocation) bool {
+	if a, ok := inv.Action.(EditorViewAction); ok {
+		e.SetView(a.View)
+		return true
+	}
+	return false
+}
+
 // header is a press on the switch's row: the switch's own, at its cells at the row's right; the
 // rest of the row is no text, so it takes the press and does nothing. The wheel scrolls what is under
 // the row, as anywhere: the text, or the document view shown, given it at its own first row.

@@ -71,11 +71,26 @@ func (s *ModeSwitch) HandleEvent(ev tui.Event) bool {
 	if !ok || m.Kind != tui.MousePress || m.Button != tui.MouseLeft || m.Y != 0 {
 		return false
 	}
-	switch {
-	case m.X < len(ModeSwitchRaw):
-		s.of.SetView(ViewRaw)
-	case m.X > len(ModeSwitchRaw) && s.of.RenderAvailable():
-		s.of.SetView(ViewRendered)
+	if v, ok := s.Choice(m.X); ok {
+		s.of.SetView(v)
 	}
 	return true
 }
+
+// Choice is the view a press at column x of the switch chooses: Raw left of the separator,
+// Rendered right of it while it is available; ok is false on the separator and on a faint Rendered.
+func (s *ModeSwitch) Choice(x int) (EditorView, bool) {
+	switch {
+	case x >= 0 && x < len(ModeSwitchRaw):
+		return ViewRaw, true
+	case x > len(ModeSwitchRaw) && x < ModeSwitchWidth && s.of.RenderAvailable():
+		return ViewRendered, true
+	}
+	return ViewRaw, false
+}
+
+// EditorViewAction is a view chosen on an editor's Raw | Rendered switch.
+type EditorViewAction struct{ View EditorView }
+
+// ActionID implements tui.Action.
+func (EditorViewAction) ActionID() tui.ActionID { return "editor.view" }
