@@ -159,6 +159,15 @@ func TestAnEntitysAttributesAreATable(t *testing.T) {
 	}
 }
 
+// A column no row fills takes no room, in the middle of the table too: a comment and no keys.
+func TestAnEmptyAttributeColumnTakesNoRoom(t *testing.T) {
+	gr := erGraph(parseER(t, "erDiagram\n  ITEM {\n    int id \"the id\"\n    string name\n  }\n"), newCells(1, 1))
+	want := fmt.Sprintf("%q", [][]string{{"ITEM"}, {"int     id    the id", "string  name"}})
+	if got := fmt.Sprintf("%q", gr.nodes[0].sections); got != want {
+		t.Errorf("sections %s, want %s", got, want)
+	}
+}
+
 // An identifying relationship is solid, any other dashed.
 func TestARelationshipsStrokeSaysIfItIdentifies(t *testing.T) {
 	gr := erGraph(parseER(t, "erDiagram\n  A ||--|| B : x\n  A ||..|| C : y\n"), newCells(1, 1))
