@@ -61,10 +61,11 @@ func diagramBlock(t *testing.T, c *cellHTML) (bi, row int) {
 	return 0, 0
 }
 
-// A diagram wider than its room is drawn at its own width and pans sideways within the room: at 0
-// it shows its left and a » on its middle row; panned, its columns from the offset on, a « too; at
-// its end (as far as it is wider than the room, and no further) a « only, its last column at the
-// room's edge. The text around it never moves, and a pan past an end moves nothing.
+// A diagram wider than its room is drawn at its own width and pans sideways within the room, the
+// room's two edge columns kept for the marks so a mark never covers the diagram: at 0 it shows its
+// left and a » on its middle row; panned, its columns from the offset on, a « too; at its end (as
+// far as it is wider than the room less those columns, and no further) a « only, its last column
+// beside the right edge. The text around it never moves, and a pan past an end moves nothing.
 func TestAWideDiagramPansWithinItsRoom(t *testing.T) {
 	if w := gridWidth(t, wideSequence); w <= navRoom {
 		t.Fatalf("precondition: the sequence is %d cells wide, not past the room's %d", w, navRoom)
@@ -72,9 +73,10 @@ func TestAWideDiagramPansWithinItsRoom(t *testing.T) {
 	c := layCells(t, "<p>before</p>"+navFence(wideSequence)+"<p>after</p>", navRoom)
 	bi, first := diagramBlock(t, c)
 	g := c.rows[first].grid
-	over := g.Size.W - navRoom
+	inner := navRoom - 2 // the room less its edge columns, the marks' while a block is wide
+	over := g.Size.W - inner
 	if got := c.over(bi); got != over {
-		t.Fatalf("over = %d, want %d (the grid %d wide, the room %d)", got, over, g.Size.W, navRoom)
+		t.Fatalf("over = %d, want %d (the grid %d wide, the room %d less its 2 mark columns)", got, over, g.Size.W, navRoom)
 	}
 	// the grid as it lays out, whole: what each pan must show a window of
 	whole := newRecordSurface(g.Size.W, g.Size.H)
@@ -95,22 +97,23 @@ func TestAWideDiagramPansWithinItsRoom(t *testing.T) {
 		rows := navRows(c, 0, h)
 		for y := range g.Size.H {
 			row := []rune(rows[first+y] + strings.Repeat(" ", navRoom))[:navRoom]
-			want := []rune(strings.Join(whole.text[y], ""))[off : off+navRoom]
+			want := []rune(strings.Join(whole.text[y], ""))[off : off+inner]
+			left, right := ' ', ' ' // the edge columns: blank, but on the middle row a mark where more lies
 			if first+y == mid {
-				switch {
-				case off > 0 && row[0] != '«':
-					t.Errorf("%s: no « at the middle row's left: %q", name, string(row))
-				case off == 0 && row[0] == '«':
-					t.Errorf("%s: a « with nothing to the left: %q", name, string(row))
-				case off < over && row[navRoom-1] != '»':
-					t.Errorf("%s: no » at the middle row's right: %q", name, string(row))
-				case off == over && row[navRoom-1] == '»':
-					t.Errorf("%s: a » with nothing to the right: %q", name, string(row))
+				if off > 0 {
+					left = '«'
 				}
-				row, want = row[1:navRoom-1], want[1:navRoom-1]
+				if off < over {
+					right = '»'
+				}
 			}
-			if string(row) != strings.TrimRight(string(want), " ") && strings.TrimRight(string(row), " ") != strings.TrimRight(string(want), " ") {
-				t.Errorf("%s: diagram row %d = %q, want the grid's columns %d on: %q", name, y, string(row), off, string(want))
+			if row[0] != left || row[navRoom-1] != right {
+				t.Errorf("%s: diagram row %d's edge columns are %q and %q, want %q and %q: %q", name, y, row[0], row[navRoom-1], left, right, string(row))
+			}
+			// between them the grid's columns from the offset on, whole: the cell beside a mark is
+			// the diagram's own, never covered by it
+			if got := row[1 : navRoom-1]; string(got) != string(want) {
+				t.Errorf("%s: diagram row %d between its edges = %q, want the grid's columns %d to %d: %q", name, y, string(got), off, off+inner-1, string(want))
 			}
 		}
 		if got, want := text(rows), text(at0); strings.Join(got, "\n") != strings.Join(want, "\n") {
