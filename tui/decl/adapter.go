@@ -64,6 +64,9 @@ type Adapter struct {
 	// theme is the App's token theme from the root Window's palette (windowTheme), kept for an App
 	// that comes after the palette was read
 	theme *style.Theme
+	// windowPal is the root Window's effective palette (windowTheme): SyntaxStyles answers the
+	// syntax roles it carries, so a host outside the tree highlights as the tree does.
+	windowPal palette
 
 	// nodes is the adapter's own record of what it built. It is keyed by the
 	// engine's NodeID, which is never reused, so an entry can never be confused

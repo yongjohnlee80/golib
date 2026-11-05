@@ -215,6 +215,18 @@ func newLabel(m gui.Measurer, s string, f gui.Font, wrap float32, c color.NRGBA)
 	return label{lines: lines, font: f, color: c, box: gui.Rect{W: sz.W, H: sz.H}}
 }
 
+// titleLabel is a diagram's title as every titled kind draws it (bold, 1.15 times the text), and
+// the room it takes above the diagram, its height and a gap of one em; ok is false with no title.
+// The kind places it, centred once its width is known.
+func titleLabel(m gui.Measurer, s string, th Theme) (lb label, room float32, ok bool) {
+	if s == "" {
+		return label{}, 0, false
+	}
+	em := th.Font.Size
+	lb = newLabel(m, s, gui.Font{Family: th.Font.Family, Size: em * 1.15, Bold: true}, 0, th.Text)
+	return lb, lb.box.H + em, true
+}
+
 // at places a label's box with its top left at x, y.
 func (lb label) at(x, y float32) label {
 	lb.box.X, lb.box.Y = x, y

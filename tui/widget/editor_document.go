@@ -120,14 +120,22 @@ func (d *DocumentSlot) Show(on bool, text func() []byte) bool {
 	return true
 }
 
+// keysetFollower is a document view that reads its keys by its editor's keyset (HTMLView's
+// FollowKeyset): under Vim the page's printing keys navigate, under a modeless keyset they type.
+type keysetFollower interface{ FollowKeyset(func() Keyset) }
+
 // SetDocumentView gives the editor a Rendered view drawn in place of its text; nil removes it. The
-// old view leaves (its focus, when it had it, back to the editor) and the new one joins hidden.
+// old view leaves (its focus, when it had it, back to the editor) and the new one joins hidden. A
+// view that follows a keyset (keysetFollower) follows the editor's, as it is at each key.
 func (e *Editor) SetDocumentView(v DocumentView) {
 	if v == e.doc.Document() {
 		return
 	}
 	e.showDocument(false)
 	old := e.doc.PutDocument(v)
+	if f, ok := v.(keysetFollower); ok {
+		f.FollowKeyset(e.core.Keyset)
+	}
 	if ctx := e.Context(); ctx != nil {
 		if old != nil {
 			ctx.Unmount(old)
@@ -137,6 +145,7 @@ func (e *Editor) SetDocumentView(v DocumentView) {
 		}
 	}
 	e.wireToggle()
+	e.RequestLayout() // the switch's row comes or goes with the document view
 	e.applyView()
 }
 
@@ -175,6 +184,83 @@ func (e *Editor) ShownView() EditorView { return e.doc.Drawn(false) }
 // canRender reports whether the Rendered view is available: a document view turned on, and the
 // Rendered view not withheld. The cell Editor renders nothing itself.
 func (e *Editor) canRender() bool { return e.doc.CanRender(false) }
+
+// RenderAvailable reports whether the Rendered view is available for the document shown: what the
+// Raw | Rendered switch shows faint when it is not.
+func (e *Editor) RenderAvailable() bool { return e.canRender() }
+
+// SetModeSwitch shows the [ Raw | Rendered ] switch (ModeSwitch) on the editor's first row,
+// right-aligned, while the editor has a document view (SetDocumentView), the text or the document
+// view under it; off, or with no document view, the text keeps every row. Off by default.
+func (e *Editor) SetModeSwitch(on bool) {
+	if e.swOn == on {
+		return
+	}
+	e.swOn = on
+	e.RequestLayout()
+	e.MarkDirty()
+}
+
+// ModeSwitch is the editor's [ Raw | Rendered ] switch.
+func (e *Editor) ModeSwitch() *ModeSwitch { return e.sw }
+
+// headerRows is the rows the switch takes at the editor's top: one while it is shown, none
+// otherwise. A Rendered view to switch to is the switch's reason to be there; an editor with none
+// gives no row up.
+func (e *Editor) headerRows() int {
+	if e.swOn && e.doc.Document() != nil {
+		return 1
+	}
+	return 0
+}
+
+// ResolvePointerPress implements tui.PointerPressResolver: a left press on a segment of the switch
+// is the switch's, resolved before the press moves focus, as a toolbar's control is. Focusing the
+// editor first would hand the focus on to a shown document view, and the press would be skipped as
+// focus redirected. The focus stays where it was.
+func (e *Editor) ResolvePointerPress(m tui.MouseEvent) (tui.Action, bool) {
+	if m.Kind != tui.MousePress || m.Button != tui.MouseLeft || m.Y < 0 || m.Y >= e.headerRows() {
+		return nil, false
+	}
+	v, ok := ModeSwitchChoice(e, m.X-e.switchX())
+	if !ok {
+		return nil, false
+	}
+	return EditorViewAction{View: v}, true
+}
+
+// HandleAction implements tui.ActionHandler: the switch's choice.
+func (e *Editor) HandleAction(inv tui.ActionInvocation) bool {
+	if a, ok := inv.Action.(EditorViewAction); ok {
+		e.SetView(a.View)
+		return true
+	}
+	return false
+}
+
+// switchX is the column the switch starts at on its row: at the row's right, or at its left when
+// the editor is narrower than the switch, which then shows as much of itself as fits. Render draws
+// it there, and header and ResolvePointerPress hit-test it there.
+func (e *Editor) switchX() int { return e.rowW - min(ModeSwitchWidth, e.rowW) }
+
+// header is a press on the switch's row: the switch's own, at its cells at the row's right; the
+// rest of the row is no text, so it takes the press and does nothing. The wheel scrolls what is under
+// the row, as anywhere: the text, or the document view shown, given it at its own first row.
+func (e *Editor) header(m tui.MouseEvent) bool {
+	if m.Kind == tui.MouseWheel {
+		if e.doc.Shown() {
+			m.Y = 0 // the view's first row, just under the switch's
+			return e.doc.Document().HandleEvent(m)
+		}
+		return e.wheel(m)
+	}
+	x0 := e.switchX()
+	if m.X >= x0 {
+		m.X -= x0
+		return e.sw.HandleEvent(m)
+	}
+	return m.Kind == tui.MousePress
+}
 
 // wireToggle makes the core's Rendered toggle (ActToggleRendered: Ctrl+T, or what the keymap binds)
 // switch the view while the document can render; otherwise the key is not consumed.
@@ -232,9 +318,15 @@ func (e *Editor) focusDocument(f tui.FocusEvent) {
 // layoutDocument lays the shown document view out over the editor's whole area.
 func (e *Editor) layoutDocument(c tui.Constraints) tui.Size {
 	ctx := e.Context()
+	top := e.headerRows()
+	if top > 0 { // the view under the switch's row
+		c.MaxH = max(c.MaxH-top, 0)
+		c.MinH = max(c.MinH-top, 0)
+	}
 	sz := ctx.LayoutChild(e.doc.Document(), c)
-	ctx.PlaceChild(e.doc.Document(), tui.Rect{W: sz.W, H: sz.H})
-	return sz
+	ctx.PlaceChild(e.doc.Document(), tui.Rect{Y: top, W: sz.W, H: sz.H})
+	e.rowW = sz.W
+	return tui.Size{W: sz.W, H: sz.H + top}
 }
 
 // documentKey is a key the shown document view left: the Rendered toggle switches back to the text,

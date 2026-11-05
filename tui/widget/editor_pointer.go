@@ -175,15 +175,17 @@ func (v editorPointerView) Context() *tui.Context { return v.e.Context() }
 // top or bottom at that row.
 func (v editorPointerView) PointerAt(m tui.MouseEvent) (int, int) {
 	l := &v.e.cells
-	return v.e.posAt(max(m.X-l.gutter, 0), min(max(m.Y, 0), max(l.h-1, 0)))
+	y := m.Y - v.e.headerRows() // the text starts under the switch's row
+	return v.e.posAt(max(m.X-l.gutter, 0), min(max(y, 0), max(l.h-1, 0)))
 }
 
 // PointerEdge is above or below the view; the cell Editor scrolls only by lines.
 func (v editorPointerView) PointerEdge(m tui.MouseEvent) (int, int) {
+	y := m.Y - v.e.headerRows()
 	switch l := &v.e.cells; {
-	case m.Y < 0:
+	case y < 0:
 		return 0, -1
-	case l.h > 0 && m.Y >= l.h:
+	case l.h > 0 && y >= l.h:
 		return 0, 1
 	}
 	return 0, 0

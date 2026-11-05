@@ -5,7 +5,6 @@ import (
 	"image/color"
 	"math"
 	"strconv"
-	"strings"
 
 	"github.com/yongjohnlee80/golib/gui"
 	pm "github.com/yongjohnlee80/golib/parse/mermaid"
@@ -32,10 +31,7 @@ func layPie(ctx context.Context, d pm.Diagram, width float32, th Theme, m gui.Me
 	margin := em
 	r := em * 6
 
-	total := 0.0
-	for _, s := range pd.Slices {
-		total += s.Value
-	}
+	total := pd.Total()
 
 	// the legend's labels: each slice's, and its share (with its value when the header asks)
 	type row struct {
@@ -47,13 +43,10 @@ func layPie(ctx context.Context, d pm.Diagram, width float32, th Theme, m gui.Me
 	var rows []row
 	var labelW, dataW float32
 	for _, s := range pd.Slices {
-		share := float32(0)
-		if total > 0 {
-			share = float32(s.Value / total)
-		}
-		data := pct(share)
+		share := float32(s.Share(total))
+		data := pctLabel(share)
 		if pd.ShowData {
-			data = strconv.FormatFloat(s.Value, 'f', -1, 64) + " (" + pct(share) + ")"
+			data = strconv.FormatFloat(s.Value, 'f', -1, 64) + " (" + pctLabel(share) + ")"
 		}
 		lb, dt := newLabel(m, s.Label, small, 0, th.Text), newLabel(m, data, small, 0, th.Text)
 		labelW, dataW = max(labelW, lb.box.W), max(dataW, dt.box.W)
@@ -66,11 +59,8 @@ func layPie(ctx context.Context, d pm.Diagram, width float32, th Theme, m gui.Me
 	rowH := f.Size * 1.6
 
 	y := margin
-	var title label
-	if pd.Title != "" {
-		title = newLabel(m, pd.Title, gui.Font{Family: f.Family, Size: em * 1.15, Bold: true}, 0, th.Text)
-		y += title.box.H + em*0.8
-	}
+	title, room, _ := titleLabel(m, pd.Title, th)
+	y += room
 	cx := margin + r
 	cy := y + r
 	legendX := cx + r + em
@@ -86,7 +76,7 @@ func layPie(ctx context.Context, d pm.Diagram, width float32, th Theme, m gui.Me
 			}
 			fill := sliceColor(th, i, len(pd.Slices))
 			l.sectors = append(l.sectors, laidSector{cx: cx, cy: cy, r: r, a0: a, a1: a1, fill: fill, stroke: th.NodeStroke})
-			if lb := newLabel(m, pct(share), small, 0, readable(th, fill)); share > 0.04 &&
+			if lb := newLabel(m, pctLabel(share), small, 0, readable(th, fill)); share > 0.04 &&
 				lb.box.W <= 2*r*0.66*float32(math.Sin(min(float64(share*math.Pi), math.Pi/2))) {
 				mid := (a + a1) / 2
 				l.texts = append(l.texts, lb.at(cx+0.66*r*float32(math.Sin(float64(mid)))-lb.box.W/2,
@@ -155,7 +145,8 @@ func readable(th Theme, fill color.NRGBA) color.NRGBA {
 	return th.Background
 }
 
-// pct is share as Mermaid's percentages: whole when it is, one decimal when it is not.
-func pct(share float32) string {
-	return strings.TrimSuffix(strconv.FormatFloat(float64(share*100), 'f', 1, 64), ".0") + "%"
+// pctLabel is share as Mermaid's percentages: the model's one rounding (parse's Percent), shown
+// whole when it is, one decimal when it is not.
+func pctLabel(share float32) string {
+	return strconv.FormatFloat(pm.Percent(float64(share)), 'f', -1, 64) + "%"
 }

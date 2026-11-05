@@ -10,6 +10,7 @@ import (
 	"strings"
 	"unicode/utf8"
 
+	htmlparse "github.com/yongjohnlee80/golib/parse/html"
 	"github.com/yongjohnlee80/golib/parse/markdown"
 )
 
@@ -177,6 +178,9 @@ func (r *renderer) block(n *markdown.Node) {
 		r.out.WriteString("</code></pre>")
 		r.cr()
 	case markdown.KindHTMLBlock:
+		if !r.cfg.unsafe && len(bytes.TrimSpace(withoutComments(n.Literal))) == 0 {
+			break // only comments: nothing a browser would show
+		}
 		r.cr()
 		r.raw(n.Literal)
 		r.cr()
@@ -385,12 +389,37 @@ func plainText(w *bytes.Buffer, n *markdown.Node, src []byte) {
 	}
 }
 
+// raw writes raw HTML: as it is under Unsafe; by default escaped, as text, its comments left out (a
+// browser never shows one, and escaped they would read as text).
 func (r *renderer) raw(b []byte) {
 	if r.cfg.unsafe {
 		r.out.Write(b)
 		return
 	}
-	r.escape(b)
+	r.escape(withoutComments(b))
+}
+
+// withoutComments is b with its HTML comments taken out: the ones HTML's tokenizer reads as
+// comments, so "<!--" in a quoted attribute or in a script's or style's text stays, as the GUI
+// editor's Rendered view reads them (gui/widget/markdown_metadata.go). A bogus comment ("<? … >")
+// is not one written as a comment, and stays.
+func withoutComments(b []byte) []byte {
+	open := []byte("<!--")
+	if !bytes.Contains(b, open) {
+		return b
+	}
+	var out []byte
+	at := 0
+	// Past a tokenizer limit (a tag's attribute count, one value's length), Next stops: the comments
+	// after that point stay in b, escaped by the caller and shown as text, as before. That fails safe.
+	tokens := htmlparse.NewTokenizer(b, htmlparse.Limits{MaxSource: max(len(b), 1)})
+	for tok, ok := tokens.Next(); ok; tok, ok = tokens.Next() {
+		if tok.Kind == htmlparse.Comment && bytes.HasPrefix(b[tok.Span[0]:tok.Span[1]], open) {
+			out = append(out, b[at:tok.Span[0]]...)
+			at = tok.Span[1]
+		}
+	}
+	return append(out, b[at:]...)
 }
 
 // escape writes b with '&', '<', '>' and '"' as entities, and each invalid UTF-8 sequence as U+FFFD,

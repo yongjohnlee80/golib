@@ -62,3 +62,35 @@ func TestKindsAreWhatParseReads(t *testing.T) {
 		t.Error("Kinds answered its table's own slice")
 	}
 }
+
+// A kind registers itself, and a clash panics before it changes anything: a second kind with a
+// registered value, name or keyword fails every test run in init, never ships. The registry is
+// unchanged after each refusal.
+func TestRegisteringAClashPanics(t *testing.T) {
+	before := Kinds()
+	for _, c := range []struct {
+		what     string
+		k        Kind
+		name     string
+		keywords []string
+	}{
+		{"a registered value", Flowchart, "another", []string{"another"}},
+		{"a registered name", 200, "sequence", []string{"another"}},
+		{"a registered keyword", 201, "another", []string{"graph"}},
+	} {
+		func() {
+			defer func() {
+				if recover() == nil {
+					t.Errorf("%s: register did not panic", c.what)
+				}
+			}()
+			register(c.k, c.name, c.keywords, nil)
+		}()
+	}
+	if after := Kinds(); !reflect.DeepEqual(after, before) {
+		t.Errorf("the registry changed after the refusals:\n%v\nwas\n%v", after, before)
+	}
+	if Kind(200).String() != "200" || Flowchart.String() != "flowchart" {
+		t.Errorf("String: %q %q", Kind(200).String(), Flowchart.String())
+	}
+}

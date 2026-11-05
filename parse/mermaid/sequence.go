@@ -5,6 +5,11 @@ import (
 	"strings"
 )
 
+// Sequence is the kind of the diagrams that start with sequenceDiagram.
+const Sequence Kind = 2
+
+func init() { register(Sequence, "sequence", []string{"sequenceDiagram"}, (*parser).sequence) }
+
 // SequenceDiagram is a parsed sequence diagram: its participants, left to right, and its steps,
 // top to bottom.
 type SequenceDiagram struct {

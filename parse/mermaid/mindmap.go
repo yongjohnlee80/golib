@@ -2,6 +2,11 @@ package mermaid
 
 import "strings"
 
+// Mindmap is the kind of the diagrams that start with mindmap.
+const Mindmap Kind = 7
+
+func init() { register(Mindmap, "mindmap", []string{"mindmap"}, (*parser).mindmap) }
+
 // MindmapDiagram is a parsed mind map: its nodes in source order, the root first.
 type MindmapDiagram struct {
 	Nodes []MindNode

@@ -5,6 +5,7 @@ import (
 	"math"
 	"strings"
 
+	"github.com/yongjohnlee80/golib/highlight"
 	pm "github.com/yongjohnlee80/golib/parse/mermaid"
 	"github.com/yongjohnlee80/golib/tui"
 	"github.com/yongjohnlee80/golib/tui/internal/grapheme"
@@ -55,7 +56,15 @@ type cellHTML struct {
 	// notice says a diagram of a kind not drawn in cells isn't drawn here (WithDiagramNotice);
 	// nil: diagramNotice's English.
 	notice func(kind string) string
-	m      cellMarks // a find's matches (htmlview_marks.go)
+	// syntax is the languages a preformatted block's language-* class is looked up in
+	// (WithSyntax); nil: no highlighting. syntaxStyles is what each highlight style looks like,
+	// the same SyntaxStyles a host gives its Editor; an unset entry paints as the text's own.
+	syntax       *highlight.Catalog
+	syntaxStyles SyntaxStyles
+	m            cellMarks // a find's matches (htmlview_marks.go)
+	// pan is how far each wide block (a diagram wider than its room) is scrolled sideways, by its
+	// block index: each its own, as the window's wide boxes are. A new document starts every one at 0.
+	pan map[int]int
 }
 
 func newCellHTML(measure func(string) int) *cellHTML {
@@ -67,6 +76,7 @@ var _ HTMLLayout = (*cellHTML)(nil)
 // SetSource reads a new document and lays it out at the width it has.
 func (c *cellHTML) SetSource(src []byte) {
 	c.src = src
+	c.pan = nil
 	c.doc = readHTMLDoc(src)
 	c.layOut()
 	c.markAll()
@@ -165,6 +175,54 @@ const hruleCluster = "─"
 // preTabStop is how many cells apart a preformatted line's tab stops are.
 const preTabStop = 4
 
+// highlightPre is a preformatted block's highlighting, per line: the spans of the language its
+// language-* class names, when the catalog holds a definition for it, in the byte offsets of
+// each line's own text; nil when it doesn't, so the block stays as it is and a language no
+// definition has too.
+func highlightPre(catalog *highlight.Catalog, lang string, b *hblock) [][]highlight.Span {
+	def, ok := catalog.DefinitionForLanguage(lang)
+	if !ok {
+		return nil
+	}
+	hl := def.Highlighter
+	if def.SourceFactory != nil {
+		hl = def.SourceFactory(catalog).Highlighter
+	}
+	var text strings.Builder
+	for i := range b.spans {
+		text.WriteString(b.spans[i].text)
+	}
+	lines := strings.Split(text.String(), "\n")
+	out := make([][]highlight.Span, len(lines))
+	var st highlight.State
+	for i, l := range lines {
+		out[i], st = hl.HighlightBlock(l, st)
+	}
+	return out
+}
+
+// syntaxAt is the colour of the bytes [from, to) of a highlighted line, the first span covering
+// them, in the styles a host gives its Editor — the same SyntaxStyles, so the page's code and the
+// Raw view's agree. nil when no span covers them, or its style's entry is unset (the text's own,
+// as the Editor paints an unset style).
+func syntaxAt(spans []highlight.Span, from, to int, styles SyntaxStyles) style.ColorSpec {
+	for _, s := range spans {
+		if s.End <= from {
+			continue
+		}
+		if s.Start >= to {
+			break
+		}
+		if int(s.Style) < len(styles) {
+			if fg, ok := styles[s.Style].GetForeground(); ok {
+				return fg
+			}
+		}
+		return nil
+	}
+	return nil
+}
+
 // gapBars are the quote bars a gap row before block bi carries: those of the quotes it shares with
 // the block before, so a quote's bar runs on through the blank rows between its blocks.
 func (c *cellHTML) gapBars(bi int) []hcl {
@@ -254,7 +312,7 @@ func (c *cellHTML) layBlock(bi int, b *hblock, cols []int) {
 			for i := rr[0]; i < rr[1]; i++ {
 				k := ln[i]
 				w := c.measure(k.text)
-				row.cls = append(row.cls, hcl{text: k.text, x: x, w: w, pos: k.pos, end: k.end, sp: k.sp, deco: k.deco})
+				row.cls = append(row.cls, hcl{text: k.text, x: x, w: w, pos: k.pos, end: k.end, sp: k.sp, deco: k.deco, fg: k.fg})
 				x += w
 			}
 			c.rows = append(c.rows, row)
@@ -274,14 +332,14 @@ func diagramNotice(kind string) string {
 }
 
 // layDiagram lays a <pre class="mermaid"> out: a kind tui/mermaid draws as its grid, one row of
-// the layout per row of the grid; any other kind, one that doesn't parse, or one too large to lay
-// out, as a muted line saying it isn't drawn here, wrapped to the room, never its source (Raw
-// shows that).
+// the layout per row of the grid, at its own width (one wider than the room pans sideways: Pan);
+// any other kind, one that doesn't parse, or one too large to lay out, as a muted line saying it
+// isn't drawn here, wrapped to the room, never its source (Raw shows that).
 func (c *cellHTML) layDiagram(bi int, b *hblock) {
 	kind := "mermaid"
 	if d, err := pm.Parse(b.diagram); err == nil {
 		kind = d.Kind().String()
-		if tuimermaid.Supported(d.Kind()) {
+		if tuimermaid.Drawn(d) == nil {
 			if g, err := tuimermaid.Lay(context.Background(), d, measureFunc(c.measure)); err == nil && g.Size.H > 0 {
 				for i := range g.Size.H {
 					c.rows = append(c.rows, hrow{block: bi, first: i == 0, grid: g, gridRow: i})
@@ -311,10 +369,11 @@ func (c *cellHTML) layDiagram(bi int, b *hblock) {
 	}
 }
 
-// diagramTheme is a diagram's styles in the cell layout: lines in the border's tone, outlines in
-// the accent, labels as the text.
+// diagramTheme is a diagram's styles in the cell layout: lines as the text (a diagram's edges are
+// its content: the border's tone, a theme's mid, is under 2:1 on the light themes' pages), outlines
+// in the accent, labels as the text.
 var diagramTheme = tuimermaid.Theme{
-	Line:     style.New().Foreground(style.TokenBorder),
+	Line:     style.New().Foreground(style.TokenForeground),
 	Box:      style.New().Foreground(style.TokenAccent),
 	Label:    style.New().Foreground(style.TokenForeground),
 	Selected: style.New().Foreground(style.TokenForeground).Reverse(true),
@@ -379,6 +438,9 @@ type lineCluster struct {
 	pos, end DocPos
 	sp       *hspan
 	deco     bool
+	// fg is the cluster's own colour — a highlighted code cluster's — overriding its span's;
+	// nil: its span's and block's, as before.
+	fg style.ColorSpec
 }
 
 // blockLines is block bi's clusters, each with its position, split into the lines a hard break
@@ -427,7 +489,12 @@ func (c *cellHTML) blockLines(bi int, b *hblock, cols []int) [][]lineCluster {
 	if b.kind == hPre {
 		pad(1, start)
 	}
-	col := 0 // a preformatted line's column, for its tab stops
+	var hl [][]highlight.Span // a highlighted block's spans, per line; nil: none
+	if b.kind == hPre && b.lang != "" && c.syntax != nil {
+		hl = highlightPre(c.syntax, b.lang, b)
+	}
+	hlLine, lineOff := 0, 0 // where a highlighted cluster sits: its line, and its byte within it
+	col := 0                // a preformatted line's column, for its tab stops
 	cell := 0
 	for si := range b.spans {
 		sp := &b.spans[si]
@@ -447,19 +514,25 @@ func (c *cellHTML) blockLines(bi int, b *hblock, cols []int) [][]lineCluster {
 				if b.kind == hPre {
 					pad(1, at)
 				}
+				hlLine, lineOff = hlLine+1, 0
 				continue
 			}
 			end := DocPos{Block: bi, Span: si, Offset: off}
+			var fg style.ColorSpec
+			if hl != nil && hlLine < len(hl) {
+				fg = syntaxAt(hl[hlLine], lineOff, lineOff+len(g), c.syntaxStyles)
+			}
+			lineOff += len(g)
 			if g == "\t" && b.kind == hPre {
 				// a tab is a space of its text up to the next stop: copied as the tab it is
 				n := preTabStop - col%preTabStop
-				line = append(line, lineCluster{text: " ", pos: at, end: end, sp: sp})
+				line = append(line, lineCluster{text: " ", pos: at, end: end, sp: sp, fg: fg})
 				pad(n-1, end)
 				col += n
 				continue
 			}
 			col += c.measure(g)
-			line = append(line, lineCluster{text: g, pos: at, end: end, sp: sp, deco: sp.deco})
+			line = append(line, lineCluster{text: g, pos: at, end: end, sp: sp, deco: sp.deco, fg: fg})
 		}
 		if boxed && cell > 0 && cell < len(b.cellStarts) && si+1 == b.cellStarts[cell] {
 			pad(lead(cell), DocPos{Block: bi, Span: si + 1})
@@ -694,8 +767,7 @@ func (c *cellHTML) PaintCells(s tui.Surface, top, w int, from, to DocPos) {
 		if r.grid != nil {
 			if r.grid != painted {
 				painted = r.grid
-				b := &c.doc[r.block]
-				r.grid.Paint(s, 2*b.quote+b.indent, y-r.gridRow, -1, diagramTheme) // the surface clips it
+				c.paintGrid(s, r, y, sz.H)
 			}
 			continue
 		}
@@ -770,6 +842,9 @@ func (c *cellHTML) styleOf(r *hrow, k hcl) style.Style {
 	if sp.link != "" {
 		st = st.Underline(true).Foreground(style.TokenPrimary)
 	}
+	if k.fg != nil {
+		st = st.Foreground(k.fg) // a highlighted code cluster's own colour, over its span's formatting
+	}
 	return st
 }
 
@@ -814,4 +889,196 @@ func calloutTone(kind string) style.ColorSpec {
 // document's own spans (a cell separator too, between selected cells), never the layout's padding.
 func selected(k hcl, from, to DocPos) bool {
 	return k.sp != nil && k.pos != k.end && k.pos.Before(to) && from.Before(k.end)
+}
+
+// PAN. A diagram wider than its room is drawn at its own width and scrolled sideways, as the
+// window scrolls a wide box (gui/widget's ScrollX): each wide block has its own offset (pan), the
+// wheel's Shift pans the one under the pointer (ScrollX), and the keys the one nearest the page's
+// top (Pan). Only a wide block moves: text wraps to the room and never scrolls off. While a block
+// is wide its room's two edge columns are the marks', the diagram drawn between them, so a mark
+// never covers the diagram: a « or » there, on its middle row on screen, says more of it lies that
+// way (not ◀ ▶, which a sequence's arrows are drawn with).
+
+// htmlPanStep is how far Left/Right (h/l) pan, in cells.
+const htmlPanStep = 8
+
+// panMark is the « » marks' style: a diagram's chrome, drawn as its lines are (diagramTheme).
+var panMark = style.New().Foreground(style.TokenForeground)
+
+// over is how far block bi's diagram pans: how much wider it is than its room less the two edge
+// columns a wide block keeps for its marks; 0 for a block that fits, or isn't a diagram drawn in
+// cells.
+func (c *cellHTML) over(bi int) int {
+	if bi < 0 || bi >= len(c.doc) || bi >= len(c.tops) || c.tops[bi] >= len(c.rows) {
+		return 0
+	}
+	r := c.rows[c.tops[bi]]
+	if r.grid == nil || r.block != bi {
+		return 0
+	}
+	b := &c.doc[bi]
+	room := c.width - 2*b.quote - b.indent
+	if r.grid.Size.W <= room {
+		return 0
+	}
+	return r.grid.Size.W - max(room-2, 0)
+}
+
+// offset is block bi's pan, within what it has to show: 0 when it fits.
+func (c *cellHTML) offset(bi int) int { return min(max(c.pan[bi], 0), c.over(bi)) }
+
+// panBlock moves block bi's pan by dx cells, kept within it; false when it didn't move.
+func (c *cellHTML) panBlock(bi, dx int) bool {
+	was := c.offset(bi)
+	now := min(max(was+dx, 0), c.over(bi))
+	if now == was {
+		return false
+	}
+	if c.pan == nil {
+		c.pan = map[int]int{}
+	}
+	c.pan[bi] = now
+	return true
+}
+
+// Pan implements HTMLLayoutPan: it pans by dx cells the wide block nearest the page's top among
+// the rows top to top+h-1, the first of them in the page's order (one that starts above the top
+// and shows below it is the nearest); false when none is wide, or it is already at that end.
+func (c *cellHTML) Pan(top, h, dx int) bool {
+	for ri := max(top, 0); ri < min(top+h, len(c.rows)); ri++ {
+		if r := c.rows[ri]; r.grid != nil && c.over(r.block) > 0 {
+			return c.panBlock(r.block, dx)
+		}
+	}
+	return false
+}
+
+// ScrollX implements HTMLLayoutHScroll: a sideways wheel pans the wide block under (x, y).
+func (c *cellHTML) ScrollX(_, y, dx float32) bool {
+	ri := int(y)
+	if ri < 0 || ri >= len(c.rows) || c.rows[ri].grid == nil {
+		return false
+	}
+	return c.panBlock(c.rows[ri].block, int(dx))
+}
+
+// paintGrid paints r's diagram, shown from screen row y down (the surface h rows tall), at the
+// block's indent, kept within its room on a page the layout's width wide: over and ToolTipAt read
+// that width too, so the grid sits where they say. A wide one is panned by its offset and
+// drawn between its room's edge columns, which hold a « or » on its middle row on screen when more
+// of it lies that way.
+func (c *cellHTML) paintGrid(s tui.Surface, r *hrow, y, h int) {
+	w := c.width
+	x0, left, right := c.gridPlace(r, w)
+	r.grid.Paint(clipCols{s, left, right}, x0, y-r.gridRow, -1, diagramTheme)
+	over := c.over(r.block)
+	x := left
+	if over == 0 {
+		return
+	}
+	x-- // the « column, left of the room
+	off := c.offset(r.block)
+	if w <= x {
+		return
+	}
+	last := min(y+r.grid.Size.H-r.gridRow, h) - 1
+	mid := (max(y, 0) + last) / 2
+	if off > 0 {
+		s.SetCell(x, mid, "«", panMark)
+	}
+	if off < over {
+		s.SetCell(w-1, mid, "»", panMark)
+	}
+}
+
+// gridPlace is where row r's diagram sits on a page w cells wide (the layout's width): the column its grid's 0 is
+// painted at (the block's indent, less its pan while it is wide, past the « column), and the
+// columns it is drawn between, left to right-1 (inside the « » columns while it is wide). paintGrid
+// and ToolTipAt both read it, so a hit is where the cell was drawn, panned or not.
+func (c *cellHTML) gridPlace(r *hrow, w int) (x0, left, right int) {
+	b := &c.doc[r.block]
+	x := 2*b.quote + b.indent
+	if c.over(r.block) == 0 {
+		return x, x, w
+	}
+	return x + 1 - c.offset(r.block), x + 1, w - 1
+}
+
+// ToolTipAt implements HTMLLayoutToolTips: over a diagram's capped label, its whole text, and the
+// label's shown cells (within the room, in the layout's rows); "" anywhere else.
+func (c *cellHTML) ToolTipAt(x, y float32) (string, Rect32) {
+	ri, px := int(y), int(x)
+	if y < 0 || x < 0 || ri >= len(c.rows) || c.rows[ri].grid == nil {
+		return "", Rect32{}
+	}
+	r := &c.rows[ri]
+	x0, left, right := c.gridPlace(r, c.width)
+	if px < left || px >= right {
+		return "", Rect32{} // the « » columns, past the room
+	}
+	full, at, ok := r.grid.HitAt(px-x0, r.gridRow)
+	if !ok {
+		return "", Rect32{}
+	}
+	l, rt := max(at.X+x0, left), min(at.X+at.W+x0, right)
+	return full, Rect32{X: float32(l), Y: float32(ri - r.gridRow + at.Y), W: float32(rt - l), H: float32(at.H)}
+}
+
+// clipCols is a surface that draws only columns from to to-1: a panned diagram stays in its room,
+// off its quote bars and the scroll indicator.
+type clipCols struct {
+	tui.Surface
+	from, to int
+}
+
+func (s clipCols) SetCell(x, y int, content string, st style.Style) {
+	if x >= s.from && x < s.to {
+		s.Surface.SetCell(x, y, content, st)
+	}
+}
+
+func (s clipCols) Fill(r tui.Rect, content string, st style.Style) {
+	x0, x1 := max(r.X, s.from), min(r.X+r.W, s.to)
+	if x1 > x0 {
+		s.Surface.Fill(tui.Rect{X: x0, Y: r.Y, W: x1 - x0, H: r.H}, content, st)
+	}
+}
+
+// TRAVEL. ] and [ go to the next or previous block, } and { to the next or previous heading, each
+// bringing its first row to the page's top (HTMLLayoutTravel).
+
+// Starts implements HTMLLayoutTravel: the first row of each block a reader travels by, top to
+// bottom (headings: each heading's). A table is one block, not a block per row; so are a list, and
+// a quote or callout, whatever paragraphs they hold. A heading is always its own.
+func (c *cellHTML) Starts(headings bool) []float32 {
+	var out []float32
+	for bi := range c.doc {
+		b := &c.doc[bi]
+		switch {
+		case headings:
+			if b.kind != hHeading {
+				continue
+			}
+		case bi > 0 && oneTravelBlock(&c.doc[bi-1], b):
+			continue
+		}
+		out = append(out, float32(c.tops[bi]))
+	}
+	return out
+}
+
+// oneTravelBlock reports whether b goes on the block prev is part of, for ] and [: the next row of
+// one table, more of one quote (or callout) or one list. A heading is never part of another.
+func oneTravelBlock(prev, b *hblock) bool {
+	switch {
+	case b.kind == hHeading || prev.kind == hHeading:
+		return false
+	case b.kind == hRow && prev.kind == hRow:
+		return b.table == prev.table
+	case b.quote > 0 && prev.quote > 0:
+		return len(b.bars) > 0 && len(prev.bars) > 0 && b.bars[0] == prev.bars[0]
+	case b.indent > 0 && prev.indent > 0:
+		return true
+	}
+	return false
 }

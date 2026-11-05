@@ -4,11 +4,11 @@ import (
 	"context"
 	"math"
 	"strconv"
-	"strings"
 
-	"github.com/yongjohnlee80/golib/graph/layout"
 	pm "github.com/yongjohnlee80/golib/parse/mermaid"
 )
+
+func init() { register(pm.Pie, layAs(LayPie), nil) }
 
 // pieChars are a slice's fill characters, one density each, cycled: neighbours differ, and so do
 // the first and the last when the count wraps.
@@ -18,41 +18,28 @@ var pieChars = []string{"█", "▓", "▒", "░"}
 const pieDiameter = 16
 
 // LayPie lays a pie out in cells: its circle rastered in filled characters, one density a slice,
-// its legend beside it — the label, its share, and its value when the header's showData asks — the
-// title over all. A pie whose values sum to nothing has no angles: its legend alone, every share
-// zero.
+// its legend under the drawing — each row its slice's own glyph, its capped label, its share as a
+// percentage, and its value when the header's showData asks — the title above. A pie whose
+// values sum to nothing has no angles: its legend alone, every share zero.
 func LayPie(ctx context.Context, d *pm.PieDiagram, m Measurer) (*Grid, error) {
 	if err := ctx.Err(); err != nil {
 		return nil, err
 	}
 	g := newGrid()
-	total := 0.0
-	for _, s := range d.Slices {
-		total += s.Value
-	}
-
+	total := d.Total()
 	y := 0
 	if d.Title != "" {
-		g.label(0, 0, d.Title, m)
-		y = 2
+		y = g.title(d.Title, m) + 1
 	}
 
-	// the legend: each slice's own glyph before its label, as Mermaid's legend puts each slice's
-	// colour square — the key from the pie to the row — then the share (and the value)
-	labelW := 0
-	for _, s := range d.Slices {
-		labelW = max(labelW, m.StringWidth(s.Label))
-	}
+	// the legend: each row its slice's own glyph (the key from the pie to the row), its label, its
+	// share, and its value when the header's showData asks
 	for i, s := range d.Slices {
-		share := 0.0
-		if total > 0 {
-			share = s.Value / total
-		}
-		row := sliceChar(i, len(d.Slices)) + " " + s.Label + strings.Repeat(" ", max(labelW-m.StringWidth(s.Label), 0)) + "  " + pctCell(share)
+		row := legendRow{swatch: sliceChar(i, len(d.Slices)), label: s.Label, cols: []string{pctCell(s.Share(total))}}
 		if d.ShowData {
-			row += "  " + strconv.FormatFloat(s.Value, 'f', -1, 64)
+			row.cols = append(row.cols, strconv.FormatFloat(s.Value, 'f', -1, 64))
 		}
-		g.label(pieDiameter+2, y+i, row, m)
+		g.legend(row)
 	}
 
 	// the circle: one fill character a cell, the slice whose angle holds the cell's own angle
@@ -60,7 +47,7 @@ func LayPie(ctx context.Context, d *pm.PieDiagram, m Measurer) (*Grid, error) {
 		cum := make([]float64, len(d.Slices))
 		var a float64
 		for i, s := range d.Slices {
-			a += s.Value / total
+			a += s.Share(total)
 			cum[i] = a
 		}
 		cum[len(cum)-1] = 1 // the last slice absorbs the steps' rounding
@@ -80,11 +67,7 @@ func LayPie(ctx context.Context, d *pm.PieDiagram, m Measurer) (*Grid, error) {
 		}
 	}
 
-	g.settle()
-	if g.tooLarge() {
-		return nil, layout.ErrTooLarge
-	}
-	return g, nil
+	return g.finish(m)
 }
 
 // angleSlice is the slice whose share holds ang, a fraction of the circle from 12 o'clock.
@@ -108,7 +91,8 @@ func sliceChar(i, n int) string {
 	return c
 }
 
-// pctCell is share as Mermaid's percentages: whole when it is, one decimal when it is not.
+// pctCell is share as Mermaid's percentages: the model's one rounding (parse's Percent), shown
+// whole when it is, one decimal when it is not.
 func pctCell(share float64) string {
-	return strings.TrimSuffix(strconv.FormatFloat(share*100, 'f', 1, 64), ".0") + "%"
+	return strconv.FormatFloat(pm.Percent(share), 'f', -1, 64) + "%"
 }

@@ -7,6 +7,13 @@ import (
 	"strings"
 )
 
+// Requirement is the kind of the diagrams that start with requirementDiagram.
+const Requirement Kind = 9
+
+func init() {
+	register(Requirement, "requirement", []string{"requirementDiagram"}, (*parser).requirement)
+}
+
 // RequirementDiagram is a parsed requirement diagram: requirements and elements, and the
 // relationships between them.
 type RequirementDiagram struct {

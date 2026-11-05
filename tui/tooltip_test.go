@@ -204,3 +204,53 @@ func TestToolTip_KeyboardFocusInsideAToolTipperShowsItsCard(t *testing.T) {
 		return tipShown(h) == id
 	})
 }
+
+// regionProbe is a control whose tooltip depends on where the pointer is over it: two regions on
+// its one row, columns 0-3 and 8-11, each with its own text; none elsewhere.
+type regionProbe struct {
+	focusProbe
+}
+
+func (p *regionProbe) ToolTipAt(local Point) (string, Rect) {
+	switch {
+	case local.Y != 0:
+	case local.X >= 0 && local.X < 4:
+		return "the first region's whole text", Rect{X: 0, Y: 0, W: 4, H: 1}
+	case local.X >= 8 && local.X < 12:
+		return "the second region's whole text", Rect{X: 8, Y: 0, W: 4, H: 1}
+	}
+	return "", Rect{}
+}
+
+// A regioner's card is its region's: resting on one shows its text beside it after the delay, a
+// move to another region of the same control closes it and shows the other's, at the other, and a
+// move off every region closes it.
+func TestToolTip_ARegionersCardFollowsTheRegionUnderThePointer(t *testing.T) {
+	p := &regionProbe{focusProbe: *newFocusProbe("regions", Size{W: 20, H: 1})}
+	root := &box{rects: []Rect{{X: 1, Y: 1, W: 20, H: 1}}}
+	root.Add(p)
+	h := startApp(t, root, 70, 6)
+	region := func() (r Rect) {
+		h.onLoop(func() { r = h.app.hover.tip.region })
+		return r
+	}
+	h.inject(motion(2, 1)) // the first region, at screen column 1+1
+	waitFor(t, "the first region's card", func() bool { return tipShown(h) == p.nodeID() })
+	h.sync()
+	if row := screenRow(h, 2); !strings.Contains(row, "the first region's whole text") || !strings.HasPrefix(row, " ") {
+		t.Fatalf("the first card, under its region at column 1:\n%s", h.tb.String())
+	}
+	if r := region(); r != (Rect{X: 1, Y: 1, W: 4, H: 1}) {
+		t.Errorf("the first card's region %+v, want its screen cells", r)
+	}
+	h.inject(motion(10, 1)) // the second region of the same control
+	waitFor(t, "the second region's card", func() bool {
+		return tipShown(h) == p.nodeID() && region() == Rect{X: 9, Y: 1, W: 4, H: 1}
+	})
+	h.sync()
+	if row := screenRow(h, 2); !strings.Contains(row, "the second region's whole text") {
+		t.Fatalf("the second card:\n%s", h.tb.String())
+	}
+	h.inject(motion(7, 1)) // between the regions: none
+	waitFor(t, "the card closed off every region", func() bool { return tipShown(h) == 0 })
+}

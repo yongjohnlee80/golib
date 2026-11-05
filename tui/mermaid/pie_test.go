@@ -128,9 +128,10 @@ func TestPieWearsTheThemeTokens(t *testing.T) {
 	g.Paint(s, 0, 0, -1, th)
 	fills, legend := 0, 0
 	for c, st := range s.st {
-		want, onPie := th.Box, c[0] < pieDiameter
-		if !onPie {
-			want = th.Label
+		want := th.Label // the legend and the title are texts, wherever they sit
+		_, onPie := g.fills[cell{c[0], c[1]}]
+		if onPie {
+			want = th.Box // the circle's fill cells, wherever the circle sits
 		}
 		if st != want {
 			t.Errorf("cell %v wears %v, want the theme's %v token", c, st, want)

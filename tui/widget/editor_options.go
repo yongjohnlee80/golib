@@ -57,3 +57,7 @@ func normalizeKeyset(ks Keyset) Keyset {
 		return KeysetVim
 	}
 }
+
+// EditorModeSwitch shows the [ Raw | Rendered ] switch on the editor's first row while it has a
+// document view (Editor.SetModeSwitch).
+func EditorModeSwitch(on bool) EditorOption { return func(e *Editor) { e.swOn = on } }

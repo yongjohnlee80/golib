@@ -6,26 +6,24 @@
 // origin the host scrolls. Boxes are outlines around their labels; lines are per-cell direction
 // masks, OR'd where they meet, so a junction (├ ┬ ┼) comes out right with no collision logic.
 // Kinds reports the diagram kinds drawn; a host shows anything else its own way.
+//
+// THE SHARED LAYER: every kind draws through the Grid's layers and builders (the title, capped
+// labels, the legend and footnotes, the axis, the forms), each written once; a kind's file holds
+// only its own layout and registers itself (kind.go). A layer is visited in one place (each, shift),
+// so settling, measuring and painting can't miss one.
 package mermaid
 
 import (
+	"context"
 	"errors"
 	"math"
-	"slices"
 
-	pm "github.com/yongjohnlee80/golib/parse/mermaid"
+	"github.com/yongjohnlee80/golib/graph/layout"
 	"github.com/yongjohnlee80/golib/tui"
-	"github.com/yongjohnlee80/golib/tui/style"
 )
 
 // ErrUnsupported is Lay's answer for a diagram kind it doesn't draw.
 var ErrUnsupported = errors.New("mermaid: this diagram kind is not drawn in cells")
-
-// Kinds reports the diagram kinds this package draws; a host shows any other its own way.
-func Kinds() []pm.Kind { return []pm.Kind{pm.Mindmap, pm.Timeline, pm.Journey, pm.Sequence, pm.Pie} }
-
-// Supported reports whether k is one of Kinds.
-func Supported(k pm.Kind) bool { return slices.Contains(Kinds(), k) }
 
 // Measurer is the one thing a layout needs from a surface: text width in cells. tui.Surface
 // satisfies it; a host measures through its surface, never a package default, so the width
@@ -38,11 +36,17 @@ type Grid struct {
 	// Boxes are the diagram's outlines. A mind map's are its nodes, in the model's order: Boxes[i]
 	// is node i. A sequence's start with its participants (Boxes[i] is participant i).
 	Boxes []Box
-	lines map[cell]dirs   // line cells: the directions that meet in each
-	fills map[cell]string // fill cells: one character each, drawn in the box style before the lines (a pie's slices)
-	heavy map[cell]bool   // line cells drawn heavy where they run north–south: a sequence's activations
-	marks map[cell]string // drawn over a line's cell in the line's style: an arrowhead, a dash
-	texts []text          // labels outside any box, in the label's style
+	lines map[cell]dirs
+	// stroke is a line cell's stroke once finish has resolved it; strokes, the strokes the lines
+	// through each cell were drawn with (addStroke), one bit each.
+	stroke  map[cell]Stroke
+	strokes map[cell]uint8
+	marks   map[cell]string // drawn over a line's cell in the line's style: an arrowhead, a dash
+	fills   map[cell]string // drawn over the marks in the box style: a bar, a slice
+	texts   []text          // labels outside any box, in the label's style
+	notes   []legendRow     // the legend, placed under the drawing by finish
+	foot    int             // footnotes given so far: the next one's number less one
+	hits    []hit           // a capped label's cells and its full text (HitAt)
 }
 
 // text is a label at a cell, outside any box, w cells wide.
@@ -51,27 +55,23 @@ type text struct {
 	s       string
 }
 
-// label puts s at (x, y), measured by m.
-func (g *Grid) label(x, y int, s string, m Measurer) {
-	if s != "" {
-		g.texts = append(g.texts, text{x: x, y: y, w: m.StringWidth(s), s: s})
-	}
-}
-
 // newGrid is an empty grid.
 func newGrid() *Grid {
-	return &Grid{lines: map[cell]dirs{}, fills: map[cell]string{}, heavy: map[cell]bool{}, marks: map[cell]string{}}
+	return &Grid{lines: map[cell]dirs{}, stroke: map[cell]Stroke{}, strokes: map[cell]uint8{},
+		marks: map[cell]string{}, fills: map[cell]string{}}
 }
 
 // Box is a node's outline and label. ID is the model's node ID, so a host maps a selection back.
 type Box struct {
 	ID    string
-	Label string
+	Label string // as the model has it, whole
 	Rect  tui.Rect
 	Form  Form
-	// Stem: a line may meet the outline's top or bottom at its middle column (a sequence's
-	// lifeline), and the outline takes a junction there (┴ ┬).
-	Stem bool
+	// Ports are the sides a line may meet the outline at, chosen by the kind (a mind map's left and
+	// right, a sequence participant's top and bottom); the form says which sides can (forms). A
+	// side takes a junction (┤ ├ ┴ ┬) at any of its cells a line points into.
+	Ports Port
+	shown string // Label as drawn: capped (capLabel)
 }
 
 // Centre is b's middle cell.
@@ -111,6 +111,17 @@ var lineRune = [16]string{
 	north | south | east | west: "┼",
 }
 
+// Stroke is how a line is drawn: light, dashed (a dotted edge), thick, or heavy (an activation's
+// run, light lines meeting it from the side).
+type Stroke uint8
+
+const (
+	StrokeLight Stroke = iota
+	StrokeDashed
+	StrokeThick
+	StrokeHeavy
+)
+
 // heavyRune is the character of a heavy cell that runs north–south (an activation), light lines
 // meeting it from the side; a heavy cell of any other dirs is drawn light.
 var heavyRune = map[dirs]string{
@@ -122,12 +133,60 @@ var heavyRune = map[dirs]string{
 	north | south | east | west: "╂",
 }
 
+// dashRune is a dashed line's character where it runs straight; its corners, junctions and ends are
+// drawn light, so a turn still reads.
+var dashRune = map[dirs]string{north | south: "┆", east | west: "┄"}
+
+// thickRune is every dirs value's character in the heavy set.
+var thickRune = [16]string{
+	0:                           " ",
+	north:                       "╹",
+	east:                        "╺",
+	south:                       "╻",
+	west:                        "╸",
+	north | south:               "┃",
+	east | west:                 "━",
+	south | east:                "┏",
+	south | west:                "┓",
+	north | east:                "┗",
+	north | west:                "┛",
+	north | south | east:        "┣",
+	north | south | west:        "┫",
+	south | east | west:         "┳",
+	north | east | west:         "┻",
+	north | south | east | west: "╋",
+}
+
+// addStroke records that a line drawn with s passes through c. finish resolves each cell: the one
+// stroke when every line through it agrees, else light, so a dashed line never reads as cut and a
+// junction where strokes meet is drawn light, never in mixed glyphs.
+func (g *Grid) addStroke(c cell, s Stroke) { g.strokes[c] |= 1 << s }
+
+// resolveStrokes is finish's: each cell's strokes to its one stroke.
+func (g *Grid) resolveStrokes() {
+	for c, bits := range g.strokes {
+		g.stroke[c] = StrokeLight
+		for s := StrokeDashed; s <= StrokeHeavy; s++ {
+			if bits == 1<<s {
+				g.stroke[c] = s
+			}
+		}
+	}
+}
+
 // lineOf is the character a line cell is painted with.
 func (g *Grid) lineOf(c cell, d dirs) string {
-	if g.heavy[c] {
+	switch g.stroke[c] {
+	case StrokeHeavy:
 		if r, ok := heavyRune[d]; ok {
 			return r
 		}
+	case StrokeDashed:
+		if r, ok := dashRune[d]; ok {
+			return r
+		}
+	case StrokeThick:
+		return thickRune[d]
 	}
 	return lineRune[d]
 }
@@ -171,84 +230,104 @@ func (g *Grid) run(a, b cell) {
 	}
 }
 
-// Theme is the painter's styles: a host derives them from its own palette, so a diagram follows
-// the user's theme.
-type Theme struct {
-	Line, Box, Label, Selected style.Style
-}
-
 // Paint draws g into s with g's (0, 0) at (x0, y0), clipped by s: a host scrolls by moving the
 // origin. selected is a Boxes index, -1 for none: its outline and label take th.Selected.
 func (g *Grid) Paint(s tui.Surface, x0, y0, selected int, th Theme) {
-	// fills first (they are the drawing's ground), then the lines over them, their marks and the
-	// labels, boxes over all: an outline owns its cells
-	for c, f := range g.fills {
-		s.SetCell(x0+c.x, y0+c.y, f, th.Box)
-	}
+	// lines first, then their marks, the fills, the labels and the legend, boxes over all: an outline
+	// owns its cells
 	for c, d := range g.lines {
-		s.SetCell(x0+c.x, y0+c.y, g.lineOf(c, d), th.Line)
+		s.SetCell(x0+c.x, y0+c.y, g.lineOf(c, d), th.Style(ElemLine))
 	}
 	for c, m := range g.marks {
-		s.SetCell(x0+c.x, y0+c.y, m, th.Line)
+		s.SetCell(x0+c.x, y0+c.y, m, th.Style(ElemMark))
+	}
+	for c, f := range g.fills {
+		s.SetCell(x0+c.x, y0+c.y, f, th.Style(ElemFill))
 	}
 	for _, t := range g.texts {
-		tui.DrawText(s, x0+t.x, y0+t.y, t.s, th.Label)
+		tui.DrawText(s, x0+t.x, y0+t.y, t.s, th.Style(ElemText))
 	}
 	for i, b := range g.Boxes {
-		box, label := th.Box, th.Label
+		box, label := th.Style(ElemBox), th.Style(ElemText)
 		if i == selected {
-			box, label = th.Selected, th.Selected
+			box, label = th.Style(ElemSelected), th.Style(ElemSelected)
 		}
 		paintBox(s, b, x0, y0, g.lines, box, label)
 	}
+}
+
+// each visits a cell at each extreme of everything any layer holds: a box's and a text's two
+// corners, every line, mark and fill cell. settle and measure read this one walk, so a layer is
+// added in one place.
+func (g *Grid) each(visit func(x, y int)) {
+	for _, b := range g.Boxes {
+		visit(b.Rect.X, b.Rect.Y)
+		visit(b.Rect.X+b.Rect.W-1, b.Rect.Y+b.Rect.H-1)
+	}
+	for c := range g.lines {
+		visit(c.x, c.y)
+	}
+	for c := range g.marks {
+		visit(c.x, c.y)
+	}
+	for c := range g.fills {
+		visit(c.x, c.y)
+	}
+	for _, t := range g.texts {
+		visit(t.x, t.y)
+		visit(t.x+max(t.w, 1)-1, t.y)
+	}
+}
+
+// shift moves everything by (dx, dy): every layer, and the hover regions with their labels.
+func (g *Grid) shift(dx, dy int) {
+	if dx == 0 && dy == 0 {
+		return
+	}
+	for i := range g.Boxes {
+		g.Boxes[i].Rect.X += dx
+		g.Boxes[i].Rect.Y += dy
+	}
+	move := func(c cell) cell { return cell{c.x + dx, c.y + dy} }
+	g.lines = shiftCells(g.lines, move)
+	g.stroke = shiftCells(g.stroke, move)
+	g.strokes = shiftCells(g.strokes, move)
+	g.marks = shiftCells(g.marks, move)
+	g.fills = shiftCells(g.fills, move)
+	for i := range g.texts {
+		g.texts[i].x += dx
+		g.texts[i].y += dy
+	}
+	for i := range g.hits {
+		g.hits[i].r.X += dx
+		g.hits[i].r.Y += dy
+	}
+}
+
+// shiftCells is a cell layer moved by move.
+func shiftCells[V any](layer map[cell]V, move func(cell) cell) map[cell]V {
+	out := make(map[cell]V, len(layer))
+	for c, v := range layer {
+		out[move(c)] = v
+	}
+	return out
 }
 
 // settle moves everything so the leftmost and topmost cell is at 0, and sets Size: a layout may
 // place a note left of the first lifeline, at a negative column.
 func (g *Grid) settle() {
 	minX, minY := math.MaxInt, math.MaxInt
-	for _, b := range g.Boxes {
-		minX, minY = min(minX, b.Rect.X), min(minY, b.Rect.Y)
-	}
-	for c := range g.lines {
-		minX, minY = min(minX, c.x), min(minY, c.y)
-	}
-	for c := range g.marks {
-		minX, minY = min(minX, c.x), min(minY, c.y)
-	}
-	for c := range g.fills {
-		minX, minY = min(minX, c.x), min(minY, c.y)
-	}
-	for _, t := range g.texts {
-		minX, minY = min(minX, t.x), min(minY, t.y)
-	}
+	g.each(func(x, y int) { minX, minY = min(minX, x), min(minY, y) })
 	if minX == math.MaxInt {
 		return
 	}
-	for i := range g.Boxes {
-		g.Boxes[i].Rect.X -= minX
-		g.Boxes[i].Rect.Y -= minY
-	}
-	shift := func(c cell) cell { return cell{c.x - minX, c.y - minY} }
-	lines, heavy, marks, fills := map[cell]dirs{}, map[cell]bool{}, map[cell]string{}, map[cell]string{}
-	for c, d := range g.lines {
-		lines[shift(c)] = d
-	}
-	for c := range g.heavy {
-		heavy[shift(c)] = true
-	}
-	for c, m := range g.marks {
-		marks[shift(c)] = m
-	}
-	for c, f := range g.fills {
-		fills[shift(c)] = f
-	}
-	g.lines, g.heavy, g.marks, g.fills = lines, heavy, marks, fills
-	for i := range g.texts {
-		g.texts[i].x -= minX
-		g.texts[i].y -= minY
-	}
+	g.shift(-minX, -minY)
 	g.measure()
+}
+
+// measure sets Size to cover every cell of every layer.
+func (g *Grid) measure() {
+	g.each(func(x, y int) { g.Size.W, g.Size.H = max(g.Size.W, x+1), max(g.Size.H, y+1) })
 }
 
 // maxCells bounds a laid-out grid's area: Lay refuses a diagram larger, layout.ErrTooLarge, for
@@ -257,3 +336,25 @@ const maxCells = 1 << 22
 
 // tooLarge reports whether g's area is past maxCells.
 func (g *Grid) tooLarge() bool { return int64(g.Size.W)*int64(g.Size.H) > maxCells }
+
+// guard is every Lay's first step: a model past its kind's bound (n of max) is layout.ErrTooLarge,
+// for the host's "too large" notice, and a cancelled ctx its error.
+func guard(ctx context.Context, n, max int) error {
+	if n > max {
+		return layout.ErrTooLarge
+	}
+	return ctx.Err()
+}
+
+// finish is every Lay's last step: the strokes resolved, everything settled at the origin, the
+// legend placed under the drawing (measured by m), and the size checked (layout.ErrTooLarge past
+// maxCells).
+func (g *Grid) finish(m Measurer) (*Grid, error) {
+	g.resolveStrokes()
+	g.settle()
+	g.placeLegend(m)
+	if g.tooLarge() {
+		return nil, layout.ErrTooLarge
+	}
+	return g, nil
+}

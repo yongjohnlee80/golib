@@ -4,10 +4,11 @@ import (
 	"context"
 	"strconv"
 
-	"github.com/yongjohnlee80/golib/graph/layout"
 	pm "github.com/yongjohnlee80/golib/parse/mermaid"
 	"github.com/yongjohnlee80/golib/tui"
 )
+
+func init() { register(pm.Sequence, layAs(LaySequence), nil) }
 
 // A sequence diagram in cells: each participant boxed at the top and again at the bottom, a
 // lifeline │ between, and the steps down it in source order. A message is a line from the
@@ -40,22 +41,21 @@ var seqHead = map[pm.SeqEnd][2]string{
 func LaySequence(ctx context.Context, d *pm.SequenceDiagram, m Measurer) (*Grid, error) {
 	g := newGrid()
 	n := len(d.Participants)
-	if n > seqMaxParticipants || len(d.Steps) > seqMaxSteps {
-		return nil, layout.ErrTooLarge
+	if err := guard(ctx, n, seqMaxParticipants); err != nil {
+		return nil, err
 	}
-	if err := ctx.Err(); err != nil {
+	if err := guard(ctx, len(d.Steps), seqMaxSteps); err != nil {
 		return nil, err
 	}
 	if n == 0 {
-		g.label(0, 0, d.Title, m)
-		g.settle()
-		return g, nil
+		g.title(d.Title, m)
+		return g.finish(m)
 	}
 	index := make(map[string]int, n)
 	widths := make([]int, n)
 	for i, p := range d.Participants {
 		index[p.ID] = i
-		widths[i], _ = formSize(FormSquare, m.StringWidth(p.Label))
+		widths[i], _ = boxSize(FormSquare, p.Label, m)
 	}
 	of := func(id string) (int, bool) { i, ok := index[id]; return i, ok }
 
@@ -79,7 +79,7 @@ func LaySequence(ctx context.Context, d *pm.SequenceDiagram, m Measurer) (*Grid,
 			}
 		case pm.StepBlock, pm.StepBranch, pm.StepEnd:
 			texts[i] = frameName(st)
-			margin = max(margin, m.StringWidth(texts[i])+seqGap)
+			margin = max(margin, widest(m, texts[i])+seqGap)
 		case pm.StepNote:
 			texts[i] = st.Text
 		}
@@ -97,7 +97,7 @@ func LaySequence(ctx context.Context, d *pm.SequenceDiagram, m Measurer) (*Grid,
 		want(i-1, i, widths[i-1]-widths[i-1]/2+seqGap+widths[i]/2)
 	}
 	for i, st := range d.Steps {
-		lw := m.StringWidth(texts[i])
+		_, lw, _ := capLabel(texts[i], seqRole(st), m)
 		switch st.Kind {
 		case pm.StepMessage:
 			a, okA := of(st.From)
@@ -115,7 +115,7 @@ func LaySequence(ctx context.Context, d *pm.SequenceDiagram, m Measurer) (*Grid,
 			if !okA {
 				continue
 			}
-			w, _ := formSize(FormSquare, lw)
+			w, _ := boxSize(FormSquare, texts[i], m)
 			switch st.Place {
 			case pm.LeftOf:
 				want(a-1, a, w+seqGap+2)
@@ -132,17 +132,14 @@ func LaySequence(ctx context.Context, d *pm.SequenceDiagram, m Measurer) (*Grid,
 		}
 	}
 
-	top := 0
-	if d.Title != "" {
-		g.label(0, 0, d.Title, m)
-		top = 2
-	}
-	boxAt := func(i, y int) Box {
-		return Box{ID: d.Participants[i].ID, Label: d.Participants[i].Label, Form: participantForm(d.Participants[i]), Stem: true,
-			Rect: tui.Rect{X: x[i] - widths[i]/2, Y: y, W: widths[i], H: 3}}
+	top := g.title(d.Title, m)
+	boxAt := func(i, y int) {
+		p := d.Participants[i]
+		g.boxIn(Box{ID: p.ID, Label: p.Label, Form: participantForm(p), Ports: PortAll},
+			tui.Rect{X: x[i] - widths[i]/2, Y: y, W: widths[i], H: 3}, m)
 	}
 	for i := range d.Participants {
-		g.Boxes = append(g.Boxes, boxAt(i, top))
+		boxAt(i, top)
 	}
 
 	// the steps, row by row
@@ -184,15 +181,15 @@ func LaySequence(ctx context.Context, d *pm.SequenceDiagram, m Measurer) (*Grid,
 				continue
 			}
 			if a == b {
-				g.label(x[a]+2, y, texts[i], m)
+				g.labelAs(x[a]+2, y, texts[i], RoleMessage, m)
 				g.selfLoop(x[a], y+1, st)
 				y += 3
 			} else {
 				line := y
 				if texts[i] != "" {
-					lw := m.StringWidth(texts[i])
+					_, lw, _ := capLabel(texts[i], RoleMessage, m)
 					lo, hi := min(x[a], x[b]), max(x[a], x[b])
-					g.label(lo+1+(hi-lo-1-lw)/2, y, texts[i], m)
+					g.labelAs(lo+1+(hi-lo-1-lw)/2, y, texts[i], RoleMessage, m)
 					line = y + 1
 				}
 				g.message(x[a], x[b], line, st, lifelineX)
@@ -209,8 +206,7 @@ func LaySequence(ctx context.Context, d *pm.SequenceDiagram, m Measurer) (*Grid,
 			if !okA {
 				continue
 			}
-			lw := m.StringWidth(texts[i])
-			w, h := formSize(FormSquare, lw)
+			w, h := boxSize(FormSquare, texts[i], m)
 			var r tui.Rect
 			switch st.Place {
 			case pm.LeftOf:
@@ -226,7 +222,7 @@ func LaySequence(ctx context.Context, d *pm.SequenceDiagram, m Measurer) (*Grid,
 				w = max(w, hi-lo+3)
 				r = tui.Rect{X: lo - (w-(hi-lo))/2, Y: y, W: w, H: h}
 			}
-			g.Boxes = append(g.Boxes, Box{Label: texts[i], Rect: r, Form: FormSquare})
+			g.boxIn(Box{Label: texts[i], Form: FormSquare, Ports: PortSides}, r, m)
 			notes = append(notes, r)
 			y += h + 1
 		case pm.StepActivate:
@@ -247,7 +243,7 @@ func LaySequence(ctx context.Context, d *pm.SequenceDiagram, m Measurer) (*Grid,
 		for active[i] > 0 {
 			deactivate(i, bottom-1)
 		}
-		g.Boxes = append(g.Boxes, boxAt(i, bottom))
+		boxAt(i, bottom)
 	}
 
 	// the lifelines, broken where a note covers them, heavy where active
@@ -276,15 +272,19 @@ func LaySequence(ctx context.Context, d *pm.SequenceDiagram, m Measurer) (*Grid,
 		}
 		for _, s := range bars[i] {
 			for row := s.from; row <= s.to; row++ {
-				g.heavy[cell{xi, row}] = true
+				g.addStroke(cell{xi, row}, StrokeHeavy)
 			}
 		}
 	}
-	g.settle()
-	if g.tooLarge() {
-		return nil, layout.ErrTooLarge
+	return g.finish(m)
+}
+
+// seqRole is a step's text's role for its cap: a message's is a message's, any other a label's.
+func seqRole(st pm.Step) Role {
+	if st.Kind == pm.StepMessage {
+		return RoleMessage
 	}
-	return g, nil
+	return RoleLabel
 }
 
 // participantForm is a participant's outline: an actor's rounded, as its stick figure would be.

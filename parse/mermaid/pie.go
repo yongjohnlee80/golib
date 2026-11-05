@@ -7,6 +7,12 @@ import (
 	"strings"
 )
 
+// Pie is the pie kind's value, declared here and registered in init: the registry owns the list,
+// so a new kind edits no shared file.
+const Pie Kind = 10
+
+func init() { register(Pie, "pie", []string{"pie"}, (*parser).pie) }
+
 // PieDiagram is a parsed pie: its title, its slices in source order, and whether the legend shows
 // each slice's value beside its share.
 type PieDiagram struct {
@@ -24,6 +30,24 @@ type PieSlice struct {
 	Label string
 	Value float64
 	Span  [2]int // its statement
+}
+
+// Total is the sum of the pie's slices' values, what both renderers divide by.
+func (d *PieDiagram) Total() float64 {
+	var t float64
+	for _, s := range d.Slices {
+		t += s.Value
+	}
+	return t
+}
+
+// Share is the slice's fraction of total (0..1); 0 when the total is, so a valueless pie's
+// legend shows every share zero and its circle has no angles.
+func (s PieSlice) Share(total float64) float64 {
+	if total == 0 {
+		return 0
+	}
+	return s.Value / total
 }
 
 // pieParser is the parse of one pie. It holds the parser rather than embedding it, so the parser's
