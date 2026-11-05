@@ -161,6 +161,39 @@ func TestACardinalityIsBesideItsEnd(t *testing.T) {
 	}
 }
 
+// A wide cardinality at a fan-out's upper end, laid across (LR, RL), keeps its room along its line
+// before the fan-out's tracks turn: it is drawn beside its class, never a footnote, whichever way
+// the diagram runs across.
+func TestAWideCardinalityAtAFanOutKeepsItsRoomAcross(t *testing.T) {
+	for _, dir := range []string{"LR", "RL"} {
+		cd := parseClass(t, "classDiagram\n  direction "+dir+"\n  Hub \"0..many\" --> Alpha\n  Hub --> Beta\n  Hub --> Gamma\n")
+		g, err := LayClass(context.Background(), cd, newCells(1, 1))
+		if err != nil {
+			t.Fatal(err)
+		}
+		var hub Box
+		for _, b := range g.Boxes {
+			if b.ID == "Hub" {
+				hub = b
+			}
+		}
+		drawn := false
+		for _, tx := range g.texts {
+			if tx.s != "0..many" {
+				continue
+			}
+			r := hub.Rect
+			// in a row beside the box's rows, starting or ending at the cell beside its side
+			drawn = tx.y >= r.Y-1 && tx.y <= r.Y+r.H && (tx.x == r.X+r.W || tx.x+tx.w == r.X)
+		}
+		if !drawn {
+			s := newCells(g.Size.W, g.Size.H)
+			g.Paint(s, 0, 0, -1, Theme{})
+			t.Errorf("%s: the cardinality \"0..many\" isn't beside Hub %+v: %v\n%s", dir, hub.Rect, g.texts, s.String())
+		}
+	}
+}
+
 // A note is a dashed box, tied to the class it's for by a dashed line with no ends; a note on the
 // diagram is a box alone.
 func TestAClassNoteIsADashedBoxTiedByADashedLine(t *testing.T) {
