@@ -53,7 +53,6 @@ func TestTokens(t *testing.T) {
 	}
 }
 
-// A script's content is raw up to its own end tag, whatever it holds; a title's decodes entities.
 // TestCommentEnds: a comment ends where HTML ends it. "<!-->" and "<!--->" are empty comments closed
 // at once, "--!>" closes one as "-->" does (whichever comes first), and one never closed runs to the
 // end of the source. The text after each is its own token.
@@ -85,6 +84,7 @@ func TestCommentEnds(t *testing.T) {
 	}
 }
 
+// A script's content is raw up to its own end tag, whatever it holds; a title's decodes entities.
 func TestRawText(t *testing.T) {
 	got := tokens(t, `<script>if (a < b && c) { s = "<div>"; }</SCRIPT><title>A &amp; B</title>`)
 	if got[1].Kind != Text || got[1].Data != `if (a < b && c) { s = "<div>"; }` {
