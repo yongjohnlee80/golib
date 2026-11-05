@@ -1,0 +1,70 @@
+catppuccin_frappe
+  corner c6d0f5 8.06:1
+  edge   c6d0f5 8.06:1
+  side   c6d0f5 8.06:1
+  name   c6d0f5 8.06:1
+  code   c6d0f5 8.06:1
+  mark   c6d0f5 8.06:1
+dark
+  corner d0d0d0 11.05:1
+  edge   d0d0d0 11.05:1
+  side   d0d0d0 11.05:1
+  name   d0d0d0 11.05:1
+  code   d0d0d0 11.05:1
+  mark   d0d0d0 11.05:1
+kanagawa
+  corner dcd7ba 11.26:1
+  edge   dcd7ba 11.26:1
+  side   dcd7ba 11.26:1
+  name   dcd7ba 11.26:1
+  code   dcd7ba 11.26:1
+  mark   dcd7ba 11.26:1
+light
+  corner 2e2a24 12.75:1
+  edge   2e2a24 12.75:1
+  side   2e2a24 12.75:1
+  name   2e2a24 12.75:1
+  code   2e2a24 12.75:1
+  mark   2e2a24 12.75:1
+mono
+  corner the terminal's own colour
+  edge   the terminal's own colour
+  side   the terminal's own colour
+  name   the terminal's own colour
+  code   the terminal's own colour
+  mark   the terminal's own colour
+nord
+  corner d8dee9 9.25:1
+  edge   d8dee9 9.25:1
+  side   d8dee9 9.25:1
+  name   d8dee9 9.25:1
+  code   d8dee9 9.25:1
+  mark   d8dee9 9.25:1
+retro
+  corner ffff55 15.95:1
+  edge   ffff55 15.95:1
+  side   ffff55 15.95:1
+  name   ffff55 15.95:1
+  code   ffff55 15.95:1
+  mark   ffff55 15.95:1
+sepia
+  corner 5b4636 6.31:1
+  edge   5b4636 6.31:1
+  side   5b4636 6.31:1
+  name   5b4636 6.31:1
+  code   5b4636 6.31:1
+  mark   5b4636 6.31:1
+shades_of_purple
+  corner ffffff 13.22:1
+  edge   ffffff 13.22:1
+  side   ffffff 13.22:1
+  name   ffffff 13.22:1
+  code   ffffff 13.22:1
+  mark   ffffff 13.22:1
+tokyo_night
+  corner c0caf5 10.59:1
+  edge   c0caf5 10.59:1
+  side   c0caf5 10.59:1
+  name   c0caf5 10.59:1
+  code   c0caf5 10.59:1
+  mark   c0caf5 10.59:1

@@ -1,0 +1,8 @@
+"┌──────────────────┐"
+    0-19 fg=muted
+"«789abcdefghijklmno»"
+    1-4 fg=fg bg=surface
+    5-7 reverse fg=fg bg=surface
+    8-18 fg=fg bg=surface
+"└──────────────────┘"
+    0-19 fg=muted

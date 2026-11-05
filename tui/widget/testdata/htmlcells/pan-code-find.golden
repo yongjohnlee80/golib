@@ -1,0 +1,7 @@
+"┌──────────────────┐"
+    0-19 fg=muted
+"«------------needle»"
+    1-12 fg=fg bg=surface
+    13-18 reverse fg=on-warning bg=warning
+"└──────────────────┘"
+    0-19 fg=muted
