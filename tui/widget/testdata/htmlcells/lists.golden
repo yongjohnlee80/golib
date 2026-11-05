@@ -9,17 +9,24 @@ width 30
 >    1. inner
 
 " • one"
-    0-2 fg=muted
+    0-2 fg=muted bg=background
+    3-5 fg=fg bg=background
 "    ◦ two"
-    0-5 fg=muted
+    0-5 fg=muted bg=background
+    6-8 fg=fg bg=background
 "       ▪ three"
-    0-8 fg=muted
+    0-8 fg=muted bg=background
+    9-13 fg=fg bg=background
 " • four"
-    0-2 fg=muted
+    0-2 fg=muted bg=background
+    3-6 fg=fg bg=background
 ""
 "1. first"
-    0-2 fg=muted
+    0-2 fg=muted bg=background
+    3-7 fg=fg bg=background
 "2. second"
-    0-2 fg=muted
+    0-2 fg=muted bg=background
+    3-8 fg=fg bg=background
 "   1. inner"
-    0-5 fg=muted
+    0-5 fg=muted bg=background
+    6-10 fg=fg bg=background

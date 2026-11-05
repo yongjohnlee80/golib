@@ -8,29 +8,31 @@ width 30
 > ```
 
 "run make all now"
+    0-3 fg=fg bg=background
     4-11 fg=accent bg=surface
+    12-15 fg=fg bg=background
 ""
 "┌─ go ───────────────────────┐"
-    0-29 fg=muted
+    0-29 fg=muted bg=background
 "│ func main() {              │"
-    0-0 fg=muted
+    0-0 fg=muted bg=background
     1-1 fg=muted bg=surface
     2-14 fg=fg bg=surface
     15-28 bg=surface
-    29-29 fg=muted
+    29-29 fg=muted bg=background
 "│     println(\"hi\")          │"
-    0-0 fg=muted
+    0-0 fg=muted bg=background
     1-1 fg=muted bg=surface
     2-2 fg=fg bg=surface
     3-5 fg=muted bg=surface
     6-18 fg=fg bg=surface
     19-28 bg=surface
-    29-29 fg=muted
+    29-29 fg=muted bg=background
 "│ }                          │"
-    0-0 fg=muted
+    0-0 fg=muted bg=background
     1-1 fg=muted bg=surface
     2-2 fg=fg bg=surface
     3-28 bg=surface
-    29-29 fg=muted
+    29-29 fg=muted bg=background
 "└────────────────────────────┘"
-    0-29 fg=muted
+    0-29 fg=muted bg=background

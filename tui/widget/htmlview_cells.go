@@ -441,15 +441,9 @@ func (c *cellHTML) layDiagram(bi int, b *hblock) {
 	}
 }
 
-// diagramTheme is a diagram's styles in the cell layout: lines as the text (a diagram's edges are
-// its content: the border's tone, a theme's mid, is under 2:1 on the light themes' pages), outlines
-// in the accent, labels as the text.
-var diagramTheme = tuimermaid.Theme{
-	Line:     style.New().Foreground(style.TokenForeground),
-	Box:      style.New().Foreground(style.TokenAccent),
-	Label:    style.New().Foreground(style.TokenForeground),
-	Selected: style.New().Foreground(style.TokenForeground).Reverse(true),
-}
+// diagramTheme is a diagram's styles in the cell layout: mermaid.TokenTheme's — the page's own
+// tokens, on the page's own background.
+var diagramTheme = tuimermaid.TokenTheme()
 
 // prefix is the decoration a row of b starts with: a bar and a space per quote level, then the
 // indent, with the list marker right-aligned in it on the block's first row.
@@ -919,7 +913,7 @@ func (c *cellHTML) paintCodeSides(s tui.Surface, r *hrow, y, w int) {
 	if left >= w {
 		return
 	}
-	side := style.New().Foreground(codeBoxTone)
+	side := style.PageText().Foreground(codeBoxTone)
 	s.SetCell(left, y, "│", side)
 	if right > left {
 		s.Fill(tui.Rect{X: left + 1, Y: y, W: right - left - 1, H: 1}, " ", style.New().Background(style.TokenSurface))
@@ -948,19 +942,21 @@ func (c *cellHTML) paintCodePanMarks(s tui.Surface, top, w, h int) {
 }
 
 // styleOf is a cluster's style: its span's formatting, its block's; a deco's own color, a box
-// rule's border tone, else a muted one.
+// rule's border tone, else a muted one. Every one starts from the page's own text (style.PageText:
+// the page's background under it, never the terminal's own), so the page's fill shows wherever a
+// cluster is painted.
 func (c *cellHTML) styleOf(r *hrow, k hcl) style.Style {
-	st := style.New().Foreground(style.TokenForeground)
+	st := style.PageText()
 	if r.rule {
-		return style.New().Foreground(style.TokenBorder)
+		return style.PageText().Foreground(style.TokenBorder)
 	}
 	if k.sp == nil || k.deco {
-		deco := style.New().Foreground(style.TokenTextMuted)
+		deco := style.PageText().Foreground(style.TokenTextMuted)
 		switch {
 		case k.fg != nil:
-			deco = style.New().Foreground(k.fg)
+			deco = style.PageText().Foreground(k.fg)
 		case strings.ContainsAny(k.text, "│┌┬┐├┼┤└┴┘─"):
-			deco = style.New().Foreground(style.TokenBorder)
+			deco = style.PageText().Foreground(style.TokenBorder)
 		}
 		if r.shade && k.x > c.codeLeft(r) {
 			deco = deco.Background(style.TokenSurface) // a code line's inset and tab stops are shaded too; its quote bars and indent aren't
@@ -1061,7 +1057,7 @@ func selected(k hcl, from, to DocPos) bool {
 const htmlPanStep = 8
 
 // panMark is the « » marks' style: a wide block's chrome, drawn as a diagram's lines are (diagramTheme).
-var panMark = style.New().Foreground(style.TokenForeground)
+var panMark = style.PageText()
 
 // over is how far block bi pans: how much wider it is than its room less the two edge columns a wide
 // block keeps for its marks; 0 for a block that fits, or isn't a diagram drawn in cells or a code

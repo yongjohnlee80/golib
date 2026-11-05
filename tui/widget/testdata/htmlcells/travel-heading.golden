@@ -1,15 +1,18 @@
 "Two                                    │"
-    0-2 bold fg=primary
+    0-2 bold fg=primary bg=background
     39-39 fg=muted
 "───────────────────────────────────────│"
-    0-38 fg=border
+    0-38 fg=border bg=background
     39-39 fg=muted
 "                                       │"
     39-39 fg=muted
 "para b                                 █"
+    0-5 fg=fg bg=background
     39-39 fg=border
 "                                       │"
     39-39 fg=muted
 "▎ quote 1                              │"
-    0-0 fg=border
+    0-0 fg=border bg=background
+    1-1 fg=muted bg=background
+    2-8 fg=fg bg=background
     39-39 fg=muted

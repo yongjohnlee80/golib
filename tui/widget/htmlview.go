@@ -810,7 +810,7 @@ func (v *HTMLView) Render(s tui.Surface) {
 	cells, ok := v.layout.(HTMLLayoutCells)
 	if !ok {
 		sz := s.Size()
-		s.Fill(tui.Rect{W: sz.W, H: sz.H}, " ", style.New().Foreground(style.TokenForeground).Background(style.TokenBackground))
+		s.Fill(tui.Rect{W: sz.W, H: sz.H}, " ", style.PageText())
 		return
 	}
 	sz := s.Size()

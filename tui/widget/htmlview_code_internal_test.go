@@ -93,7 +93,13 @@ func TestACodeBlockKeepsItsIndentAndItsShadingInside(t *testing.T) {
 			if s.text[top][codeRoom-1] != "┐" || s.text[top+1][codeRoom-1] != "│" || s.text[top+2][codeRoom-1] != "┘" {
 				t.Errorf("the box doesn't end at the page's last column:\n%s", strings.Join(navRows(c, 0, len(c.rows)), "\n"))
 			}
-			shaded := func(x, y int) bool { _, ok := s.style[y][x].GetBackground(); return ok }
+			// shaded is the code's surface; the page's own background, under everything else on the
+			// page, isn't shading
+			shaded := func(x, y int) bool {
+				bg, ok := s.style[y][x].GetBackground()
+				tok, isTok := bg.Token()
+				return ok && isTok && tok == style.TokenSurface
+			}
 			for x := range left + 1 {
 				if shaded(x, top+1) {
 					t.Errorf("column %d, at or before the box's side (%d), is shaded", x, left)
@@ -108,7 +114,7 @@ func TestACodeBlockKeepsItsIndentAndItsShadingInside(t *testing.T) {
 				}
 			}
 			for _, x := range []int{left, codeRoom - 1} {
-				if got, want := s.style[top+1][x], style.New().Foreground(codeBoxTone); styleWords(got) != styleWords(want) {
+				if got, want := s.style[top+1][x], style.PageText().Foreground(codeBoxTone); styleWords(got) != styleWords(want) {
 					t.Errorf("the side at column %d wears %q, want the box's tone %q", x, styleWords(got), styleWords(want))
 				}
 			}

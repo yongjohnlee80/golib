@@ -198,6 +198,15 @@ type Style struct {
 // fluent idiom: style.New().Bold(true).Padding(1, 2).
 func New() Style { return Style{} }
 
+// PageText is a cell page's plain text: the theme's foreground on its own background, so a cell
+// painted with it never shows the terminal's own background where the page's fill should be — a
+// style with no background punches the terminal's colour through, whatever theme is active. The
+// cell page's text styles and the diagram themes derive from this rather than writing their own
+// foreground-only ones: override the foreground, keep the background.
+func PageText() Style {
+	return New().Foreground(TokenForeground).Background(TokenBackground)
+}
+
 func (s Style) isSet(k propKey) bool { return s.props&k != 0 }
 func (s *Style) set(k propKey)       { s.props |= k }  // internal; on the copy
 func (s *Style) unset(k propKey)     { s.props &^= k } // internal; on the copy

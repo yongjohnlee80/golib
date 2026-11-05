@@ -1,29 +1,29 @@
 "┌─ test ───────────────────────────────┐"
-    0-39 fg=muted
+    0-39 fg=muted bg=background
 "│ kw lit                               │"
-    0-0 fg=muted
+    0-0 fg=muted bg=background
     1-1 fg=muted bg=surface
     2-3 fg=accent bg=surface
     4-4 fg=fg bg=surface
     5-7 fg=success bg=surface
     8-38 bg=surface
-    39-39 fg=muted
+    39-39 fg=muted bg=background
 "│ /* a comment                         │"
-    0-0 fg=muted
+    0-0 fg=muted bg=background
     1-13 fg=muted bg=surface
     14-38 bg=surface
-    39-39 fg=muted
+    39-39 fg=muted bg=background
 "│ still the comment */ lit             │"
-    0-0 fg=muted
+    0-0 fg=muted bg=background
     1-21 fg=muted bg=surface
     22-25 fg=fg bg=surface
     26-38 bg=surface
-    39-39 fg=muted
+    39-39 fg=muted bg=background
 "│ plain                                │"
-    0-0 fg=muted
+    0-0 fg=muted bg=background
     1-1 fg=muted bg=surface
     2-6 fg=fg bg=surface
     7-38 bg=surface
-    39-39 fg=muted
+    39-39 fg=muted bg=background
 "└──────────────────────────────────────┘"
-    0-39 fg=muted
+    0-39 fg=muted bg=background

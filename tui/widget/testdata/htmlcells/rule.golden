@@ -6,8 +6,10 @@ width 20
 > below
 
 "above"
+    0-4 fg=fg bg=background
 ""
 "────────────────────"
-    0-19 fg=border
+    0-19 fg=border bg=background
 ""
 "below"
+    0-4 fg=fg bg=background
