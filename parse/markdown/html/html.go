@@ -410,6 +410,8 @@ func withoutComments(b []byte) []byte {
 	}
 	var out []byte
 	at := 0
+	// Past a tokenizer limit (a tag's attribute count, one value's length), Next stops: the comments
+	// after that point stay in b, escaped by the caller and shown as text, as before. That fails safe.
 	tokens := htmlparse.NewTokenizer(b, htmlparse.Limits{MaxSource: max(len(b), 1)})
 	for tok, ok := tokens.Next(); ok; tok, ok = tokens.Next() {
 		if tok.Kind == htmlparse.Comment && bytes.HasPrefix(b[tok.Span[0]:tok.Span[1]], open) {
