@@ -422,7 +422,8 @@ func (x *Box) placeSlot(w, inL, inR int) {
 	inner := bw - bl - br
 	sw := 0
 	if bt == 1 && inner > 4 {
-		sw = x.ctx.LayoutChild(x.slot, tui.Constraints{MaxW: inner - 4, MinH: 1, MaxH: 1}).W
+		// measured with the whole row, so one that doesn't fit is hidden below, never cut
+		sw = x.ctx.LayoutChild(x.slot, tui.Constraints{MaxW: inner, MinH: 1, MaxH: 1}).W
 	}
 	if sw <= 0 || inner < sw+4 {
 		x.ctx.PlaceChild(x.slot, tui.Rect{})
