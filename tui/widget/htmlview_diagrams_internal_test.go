@@ -132,7 +132,7 @@ func TestTheCellLayoutDrawsAMindmapAndSaysWhatItDoesnt(t *testing.T) {
 func TestTheCellLayoutDrawsAFlowchartThatFitsItsRoom(t *testing.T) {
 	const room = 30
 	runes := measureFunc(func(s string) int { return len([]rune(s)) })
-	width := func(src string) int {
+	size := func(src string) tui.Size {
 		t.Helper()
 		d, err := pm.Parse(src)
 		if err != nil {
@@ -142,7 +142,7 @@ func TestTheCellLayoutDrawsAFlowchartThatFitsItsRoom(t *testing.T) {
 		if err != nil {
 			t.Fatalf("%q: %v", src, err)
 		}
-		return g.Size.W
+		return g.Size
 	}
 	laid := func(src string) (*tuimermaid.Grid, string) {
 		t.Helper()
@@ -170,21 +170,22 @@ func TestTheCellLayoutDrawsAFlowchartThatFitsItsRoom(t *testing.T) {
 	}
 
 	across := "flowchart LR\n  A[first step] --> B[second step] --> C[third step]\n"
-	if w := width(across); w <= room {
+	if w := size(across).W; w <= room {
 		t.Fatalf("precondition: the LR chain is %d cells wide, not past the room's %d", w, room)
 	}
-	if w := width(strings.Replace(across, "LR", "TB", 1)); w > room {
-		t.Fatalf("precondition: the chain laid TB is %d cells wide, past the room's %d", w, room)
+	down := size(strings.Replace(across, "LR", "TB", 1))
+	if down.W > room {
+		t.Fatalf("precondition: the chain laid TB is %d cells wide, past the room's %d", down.W, room)
 	}
-	if g, text := laid(across); g == nil || g.Size.W > room || g.Size.H <= g.Size.W {
-		t.Fatalf("the LR chain too wide for the room isn't drawn top to bottom within it: %+v, %s", g, text)
+	if g, text := laid(across); g == nil || g.Size != down {
+		t.Fatalf("the LR chain too wide for the room isn't drawn as it is laid TB (%+v): %+v, %s", down, g, text)
 	}
 
 	for name, src := range map[string]string{
 		"TB":                 "flowchart TB\n  A --> B[a long label one]\n  A --> C[a long label two]\n",
 		"LR, and TB as well": "flowchart LR\n  A[a label as long as the room] --> B[and another one as long]\n  A --> C[and a third one as long]\n",
 	} {
-		if w := width(src); w <= room {
+		if w := size(src).W; w <= room {
 			t.Fatalf("precondition: %s is %d cells wide, not past the room's %d", name, w, room)
 		}
 		if g, text := laid(src); g != nil || !strings.Contains(text, notice) {
