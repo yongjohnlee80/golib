@@ -56,6 +56,9 @@ type cellHTML struct {
 	// nil: diagramNotice's English.
 	notice func(kind string) string
 	m      cellMarks // a find's matches (htmlview_marks.go)
+	// pan is how far each wide block (a diagram wider than its room) is scrolled sideways, by its
+	// block index: each its own, as the window's wide boxes are. A new document starts every one at 0.
+	pan map[int]int
 }
 
 func newCellHTML(measure func(string) int) *cellHTML {
@@ -67,6 +70,7 @@ var _ HTMLLayout = (*cellHTML)(nil)
 // SetSource reads a new document and lays it out at the width it has.
 func (c *cellHTML) SetSource(src []byte) {
 	c.src = src
+	c.pan = nil
 	c.doc = readHTMLDoc(src)
 	c.layOut()
 	c.markAll()
@@ -274,9 +278,9 @@ func diagramNotice(kind string) string {
 }
 
 // layDiagram lays a <pre class="mermaid"> out: a kind tui/mermaid draws as its grid, one row of
-// the layout per row of the grid; any other kind, one that doesn't parse, or one too large to lay
-// out, as a muted line saying it isn't drawn here, wrapped to the room, never its source (Raw
-// shows that).
+// the layout per row of the grid, at its own width (one wider than the room pans sideways: Pan);
+// any other kind, one that doesn't parse, or one too large to lay out, as a muted line saying it
+// isn't drawn here, wrapped to the room, never its source (Raw shows that).
 func (c *cellHTML) layDiagram(bi int, b *hblock) {
 	kind := "mermaid"
 	if d, err := pm.Parse(b.diagram); err == nil {
@@ -694,8 +698,7 @@ func (c *cellHTML) PaintCells(s tui.Surface, top, w int, from, to DocPos) {
 		if r.grid != nil {
 			if r.grid != painted {
 				painted = r.grid
-				b := &c.doc[r.block]
-				r.grid.Paint(s, 2*b.quote+b.indent, y-r.gridRow, -1, diagramTheme) // the surface clips it
+				c.paintGrid(s, r, y, w, sz.H)
 			}
 			continue
 		}
@@ -814,4 +817,148 @@ func calloutTone(kind string) style.ColorSpec {
 // document's own spans (a cell separator too, between selected cells), never the layout's padding.
 func selected(k hcl, from, to DocPos) bool {
 	return k.sp != nil && k.pos != k.end && k.pos.Before(to) && from.Before(k.end)
+}
+
+// PAN. A diagram wider than its room is drawn at its own width and scrolled sideways, as the
+// window scrolls a wide box (gui/widget's ScrollX): each wide block has its own offset (pan), the
+// wheel's Shift pans the one under the pointer (ScrollX), and the keys the one nearest the page's
+// top (Pan). Only a wide block moves: text wraps to the room and never scrolls off. A ◀ or ▶ at
+// the block's edge, on its middle row on screen, says more of it lies that way.
+
+// htmlPanStep is how far Left/Right (h/l) pan, in cells.
+const htmlPanStep = 8
+
+// panMark is the ◀ ▶ marks' style: a diagram's chrome, drawn as its lines are (diagramTheme).
+var panMark = style.New().Foreground(style.TokenForeground)
+
+// over is how much wider than its room block bi's diagram is: 0 for a block that fits, or isn't
+// a diagram drawn in cells.
+func (c *cellHTML) over(bi int) int {
+	if bi < 0 || bi >= len(c.doc) || bi >= len(c.tops) || c.tops[bi] >= len(c.rows) {
+		return 0
+	}
+	r := c.rows[c.tops[bi]]
+	if r.grid == nil || r.block != bi {
+		return 0
+	}
+	b := &c.doc[bi]
+	return max(r.grid.Size.W-(c.width-2*b.quote-b.indent), 0)
+}
+
+// offset is block bi's pan, within what it has to show: 0 when it fits.
+func (c *cellHTML) offset(bi int) int { return min(max(c.pan[bi], 0), c.over(bi)) }
+
+// panBlock moves block bi's pan by dx cells, kept within it; false when it didn't move.
+func (c *cellHTML) panBlock(bi, dx int) bool {
+	was := c.offset(bi)
+	now := min(max(was+dx, 0), c.over(bi))
+	if now == was {
+		return false
+	}
+	if c.pan == nil {
+		c.pan = map[int]int{}
+	}
+	c.pan[bi] = now
+	return true
+}
+
+// Pan implements HTMLLayoutPan: it pans by dx cells the wide block nearest the page's top among
+// the rows top to top+h-1, the first of them in the page's order (one that starts above the top
+// and shows below it is the nearest); false when none is wide, or it is already at that end.
+func (c *cellHTML) Pan(top, h, dx int) bool {
+	for ri := max(top, 0); ri < min(top+h, len(c.rows)); ri++ {
+		if r := c.rows[ri]; r.grid != nil && c.over(r.block) > 0 {
+			return c.panBlock(r.block, dx)
+		}
+	}
+	return false
+}
+
+// ScrollX implements HTMLLayoutHScroll: a sideways wheel pans the wide block under (x, y).
+func (c *cellHTML) ScrollX(_, y, dx float32) bool {
+	ri := int(y)
+	if ri < 0 || ri >= len(c.rows) || c.rows[ri].grid == nil {
+		return false
+	}
+	return c.panBlock(c.rows[ri].block, int(dx))
+}
+
+// paintGrid paints r's diagram, shown from screen row y down (the surface h rows tall, the page w
+// cells wide): at the block's indent, panned by its offset and kept within its room, with a ◀ or ▶
+// on its middle row on screen when more of it lies that way.
+func (c *cellHTML) paintGrid(s tui.Surface, r *hrow, y, w, h int) {
+	b := &c.doc[r.block]
+	x := 2*b.quote + b.indent
+	off, over := c.offset(r.block), c.over(r.block)
+	r.grid.Paint(clipCols{s, x, w}, x-off, y-r.gridRow, -1, diagramTheme)
+	if over == 0 || w <= x {
+		return
+	}
+	last := min(y+r.grid.Size.H-r.gridRow, h) - 1
+	mid := (max(y, 0) + last) / 2
+	if off > 0 {
+		s.SetCell(x, mid, "◀", panMark)
+	}
+	if off < over {
+		s.SetCell(w-1, mid, "▶", panMark)
+	}
+}
+
+// clipCols is a surface that draws only columns from to to-1: a panned diagram stays in its room,
+// off its quote bars and the scroll indicator.
+type clipCols struct {
+	tui.Surface
+	from, to int
+}
+
+func (s clipCols) SetCell(x, y int, content string, st style.Style) {
+	if x >= s.from && x < s.to {
+		s.Surface.SetCell(x, y, content, st)
+	}
+}
+
+func (s clipCols) Fill(r tui.Rect, content string, st style.Style) {
+	x0, x1 := max(r.X, s.from), min(r.X+r.W, s.to)
+	if x1 > x0 {
+		s.Surface.Fill(tui.Rect{X: x0, Y: r.Y, W: x1 - x0, H: r.H}, content, st)
+	}
+}
+
+// TRAVEL. ] and [ go to the next or previous block, } and { to the next or previous heading, each
+// bringing its first row to the page's top (HTMLLayoutTravel).
+
+// Starts implements HTMLLayoutTravel: the first row of each block a reader travels by, top to
+// bottom (headings: each heading's). A table is one block, not a block per row; so are a list, and
+// a quote or callout, whatever paragraphs they hold. A heading is always its own.
+func (c *cellHTML) Starts(headings bool) []float32 {
+	var out []float32
+	for bi := range c.doc {
+		b := &c.doc[bi]
+		switch {
+		case headings:
+			if b.kind != hHeading {
+				continue
+			}
+		case bi > 0 && oneTravelBlock(&c.doc[bi-1], b):
+			continue
+		}
+		out = append(out, float32(c.tops[bi]))
+	}
+	return out
+}
+
+// oneTravelBlock reports whether b goes on the block prev is part of, for ] and [: the next row of
+// one table, more of one quote (or callout) or one list. A heading is never part of another.
+func oneTravelBlock(prev, b *hblock) bool {
+	switch {
+	case b.kind == hHeading || prev.kind == hHeading:
+		return false
+	case b.kind == hRow && prev.kind == hRow:
+		return b.table == prev.table
+	case b.quote > 0 && prev.quote > 0:
+		return len(b.bars) > 0 && len(prev.bars) > 0 && b.bars[0] == prev.bars[0]
+	case b.indent > 0 && prev.indent > 0:
+		return true
+	}
+	return false
 }

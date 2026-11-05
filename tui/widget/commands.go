@@ -477,9 +477,18 @@ var (
 	HTMLViewBottom   = cmd("tui.htmlview.bottom", HTMLViewScope, append(mods("End", anyCombo), "Shift+G")...)
 	HTMLViewCopy     = cmd("tui.htmlview.copy", HTMLViewScope, "Ctrl+C", "Y")
 	HTMLViewClear    = cmd("tui.htmlview.clearSelection", HTMLViewScope, mods("Esc", anyCombo)...) // with a selection
+	// a layout's own (HTMLLayoutPan, HTMLLayoutTravel): a wide block's pan, block and heading travel
+	HTMLViewLeft            = cmd("tui.htmlview.left", HTMLViewScope, "Left", "H")
+	HTMLViewRight           = cmd("tui.htmlview.right", HTMLViewScope, "Right", "L")
+	HTMLViewNextBlock       = cmd("tui.htmlview.nextBlock", HTMLViewScope, "]")
+	HTMLViewPreviousBlock   = cmd("tui.htmlview.previousBlock", HTMLViewScope, "[")
+	HTMLViewNextHeading     = cmd("tui.htmlview.nextHeading", HTMLViewScope, "}")
+	HTMLViewPreviousHeading = cmd("tui.htmlview.previousHeading", HTMLViewScope, "{")
 
 	htmlViewCommands = []keymap.Command{HTMLViewUp, HTMLViewDown, HTMLViewPageUp, HTMLViewPageDown,
-		HTMLViewHalfUp, HTMLViewHalfDown, HTMLViewTop, HTMLViewBottom, HTMLViewCopy, HTMLViewClear}
+		HTMLViewHalfUp, HTMLViewHalfDown, HTMLViewTop, HTMLViewBottom, HTMLViewCopy, HTMLViewClear,
+		HTMLViewLeft, HTMLViewRight, HTMLViewNextBlock, HTMLViewPreviousBlock, HTMLViewNextHeading,
+		HTMLViewPreviousHeading}
 )
 
 // BufferViewScope is a BufferView's keys. The arrows, PgUp, PgDn, Home and End take any modifier, as
