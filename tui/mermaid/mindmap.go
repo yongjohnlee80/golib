@@ -50,7 +50,8 @@ func formSize(f Form, lw int) (w, h int) {
 // for an elbow each side.
 const mindmapLevelSep = 6
 
-// Lay lays d out for painting: ErrUnsupported for a kind not in Kinds.
+// Lay lays d out for painting: ErrUnsupported for a kind not in Kinds, and for a flowchart with
+// subgraphs (their frames aren't drawn yet: its boxes without them would mislead).
 func Lay(ctx context.Context, d pm.Diagram, m Measurer) (*Grid, error) {
 	switch d := d.(type) {
 	case *pm.MindmapDiagram:
@@ -61,6 +62,11 @@ func Lay(ctx context.Context, d pm.Diagram, m Measurer) (*Grid, error) {
 		return LayJourney(ctx, d, m)
 	case *pm.SequenceDiagram:
 		return LaySequence(ctx, d, m)
+	case *pm.FlowchartDiagram:
+		if len(d.Subgraphs) > 0 {
+			return nil, ErrUnsupported
+		}
+		return LayFlowchart(ctx, d, m)
 	}
 	return nil, ErrUnsupported
 }

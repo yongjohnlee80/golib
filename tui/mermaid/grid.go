@@ -22,7 +22,9 @@ import (
 var ErrUnsupported = errors.New("mermaid: this diagram kind is not drawn in cells")
 
 // Kinds reports the diagram kinds this package draws; a host shows any other its own way.
-func Kinds() []pm.Kind { return []pm.Kind{pm.Mindmap, pm.Timeline, pm.Journey, pm.Sequence} }
+func Kinds() []pm.Kind {
+	return []pm.Kind{pm.Mindmap, pm.Timeline, pm.Journey, pm.Sequence, pm.Flowchart}
+}
 
 // Supported reports whether k is one of Kinds.
 func Supported(k pm.Kind) bool { return slices.Contains(Kinds(), k) }

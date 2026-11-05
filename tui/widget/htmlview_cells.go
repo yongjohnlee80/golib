@@ -2,6 +2,7 @@ package widget
 
 import (
 	"context"
+	"errors"
 	"math"
 	"strings"
 
@@ -267,6 +268,9 @@ type measureFunc func(string) int
 
 func (f measureFunc) StringWidth(s string) int { return f(s) }
 
+// errTooWide is a flowchart wider than the room it would be drawn in: it shows the notice.
+var errTooWide = errors.New("diagram wider than the room")
+
 // diagramNotice is what a diagram the terminal doesn't draw shows instead, in English: a host
 // that speaks other languages says it its own way (WithDiagramNotice).
 func diagramNotice(kind string) string {
@@ -274,15 +278,27 @@ func diagramNotice(kind string) string {
 }
 
 // layDiagram lays a <pre class="mermaid"> out: a kind tui/mermaid draws as its grid, one row of
-// the layout per row of the grid; any other kind, one that doesn't parse, or one too large to lay
-// out, as a muted line saying it isn't drawn here, wrapped to the room, never its source (Raw
-// shows that).
+// the layout per row of the grid; any other kind, one that doesn't parse, one too large to lay
+// out, or a flowchart wider than the room (an LR or RL one laid top to bottom first), as a muted
+// line saying it isn't drawn here, wrapped to the room, never its source (Raw shows that).
 func (c *cellHTML) layDiagram(bi int, b *hblock) {
 	kind := "mermaid"
+	room := max(c.width-2*b.quote-b.indent, 1)
 	if d, err := pm.Parse(b.diagram); err == nil {
 		kind = d.Kind().String()
 		if tuimermaid.Supported(d.Kind()) {
-			if g, err := tuimermaid.Lay(context.Background(), d, measureFunc(c.measure)); err == nil && g.Size.H > 0 {
+			g, err := tuimermaid.Lay(context.Background(), d, measureFunc(c.measure))
+			if fc, ok := d.(*pm.FlowchartDiagram); ok && err == nil && g.Size.W > room {
+				g, err = nil, errTooWide
+				if fc.Dir == pm.LR || fc.Dir == pm.RL {
+					down := *fc
+					down.Dir = pm.TB
+					if g2, err2 := tuimermaid.Lay(context.Background(), &down, measureFunc(c.measure)); err2 == nil && g2.Size.W <= room {
+						g, err = g2, nil
+					}
+				}
+			}
+			if err == nil && g.Size.H > 0 {
 				for i := range g.Size.H {
 					c.rows = append(c.rows, hrow{block: bi, first: i == 0, grid: g, gridRow: i})
 				}
@@ -298,7 +314,6 @@ func (c *cellHTML) layDiagram(bi int, b *hblock) {
 	for k := range grapheme.Clusters("▸ " + say(kind)) {
 		cs = append(cs, k)
 	}
-	room := max(c.width-2*b.quote-b.indent, 1)
 	for i, rr := range wrapRanges(cs, room, c.measure) { // wrapped to the room, as any paragraph
 		row := hrow{block: bi, first: i == 0, cls: c.prefix(b, i == 0)}
 		x := 2*b.quote + b.indent

@@ -1,10 +1,13 @@
 package widget
 
 import (
+	"context"
 	"strings"
 	"testing"
 
+	pm "github.com/yongjohnlee80/golib/parse/mermaid"
 	"github.com/yongjohnlee80/golib/tui"
+	tuimermaid "github.com/yongjohnlee80/golib/tui/mermaid"
 	"github.com/yongjohnlee80/golib/tui/style"
 )
 
@@ -49,14 +52,14 @@ func (g *gridSurface) text() string {
 }
 
 // The Rendered view draws a mind map fence as its diagram, in cells, between the text around it;
-// a kind the terminal doesn't draw is one muted line saying so, never its source; the host's own
+// a kind the terminal doesn't draw (a class diagram) is one muted line saying so, never its source; the host's own
 // words replace that line's English.
 func TestTheCellLayoutDrawsAMindmapAndSaysWhatItDoesnt(t *testing.T) {
 	html := `<p>before</p><pre class="mermaid">mindmap
   root[Hub]
     a(One)
-</pre><pre class="mermaid">flowchart LR
-  a --> b
+</pre><pre class="mermaid">classDiagram
+  class Shelf
 </pre><p>after</p>`
 	c := layCells(t, html, 60)
 	var gridRows, noticeRows int
@@ -68,11 +71,11 @@ func TestTheCellLayoutDrawsAMindmapAndSaysWhatItDoesnt(t *testing.T) {
 	rows := c.rowTexts()
 	joined := strings.Join(rows, "\n")
 	flat := strings.Join(strings.Fields(joined), " ") // the notice wraps to the room: read it as one line
-	if !strings.Contains(flat, "▸ flowchart diagram: not drawn in the terminal (Raw shows its source)") {
-		t.Fatalf("no notice for the flowchart, whole:\n%s", joined)
+	if !strings.Contains(flat, "▸ class diagram: not drawn in the terminal (Raw shows its source)") {
+		t.Fatalf("no notice for the class diagram, whole:\n%s", joined)
 	}
 	for _, r := range rows {
-		if strings.Contains(r, "▸ flowchart") {
+		if strings.Contains(r, "▸ class") {
 			noticeRows++
 		}
 	}
@@ -81,7 +84,7 @@ func TestTheCellLayoutDrawsAMindmapAndSaysWhatItDoesnt(t *testing.T) {
 			t.Fatalf("row %d is %d cells wide, past the 60 the layout has: %q", i, n, r)
 		}
 	}
-	if gridRows != 3 || noticeRows != 1 || strings.Contains(joined, "a --> b") || strings.Contains(joined, "root[Hub]") {
+	if gridRows != 3 || noticeRows != 1 || strings.Contains(joined, "class Shelf") || strings.Contains(joined, "root[Hub]") {
 		t.Fatalf("grid rows %d (want 3), notice rows %d (want 1), or a diagram's source shown:\n%s", gridRows, noticeRows, joined)
 	}
 
@@ -94,30 +97,102 @@ func TestTheCellLayoutDrawsAMindmapAndSaysWhatItDoesnt(t *testing.T) {
 		}
 	}
 
-	c = layCells(t, `<pre class="mermaid">flowchart LR
-  a --> b
+	c = layCells(t, `<pre class="mermaid">classDiagram
+  class Shelf
 </pre>`, 60)
 	c.notice = func(kind string) string { return "图表未绘制: " + kind }
 	c.layOut()
-	if got := strings.Join(c.rowTexts(), "\n"); !strings.Contains(got, "▸ 图表未绘制: flowchart") {
+	if got := strings.Join(c.rowTexts(), "\n"); !strings.Contains(got, "▸ 图表未绘制: class") {
 		t.Fatalf("the host's notice wasn't used:\n%s", got)
 	}
 
 	// a view built first, then given the host's words (as AutoDoc does to a view its layout built):
 	// the page is laid out again in them
 	v := NewHTMLView()
-	v.SetHTML([]byte(`<pre class="mermaid">flowchart LR
-  a --> b
+	v.SetHTML([]byte(`<pre class="mermaid">classDiagram
+  class Shelf
 </pre>`))
 	cl := v.layout.(*cellHTML)
 	cl.SetWidth(60)
-	if got := strings.Join(strings.Fields(strings.Join(cl.rowTexts(), " ")), " "); !strings.Contains(got, "▸ flowchart diagram: not drawn in the terminal") {
+	if got := strings.Join(strings.Fields(strings.Join(cl.rowTexts(), " ")), " "); !strings.Contains(got, "▸ class diagram: not drawn in the terminal") {
 		t.Fatalf("before the host's words, the English isn't shown:\n%s", got)
 	}
 	WithDiagramNotice(func(kind string) string { return "图表未绘制: " + kind })(v)
 	// a real view measures a CJK cluster two cells wide, so the row text has a gap after each:
 	// read it without spaces
-	if got := strings.Join(cl.rowTexts(), "\n"); !strings.Contains(strings.ReplaceAll(got, " ", ""), "▸图表未绘制:flowchart") {
+	if got := strings.Join(cl.rowTexts(), "\n"); !strings.Contains(strings.ReplaceAll(got, " ", ""), "▸图表未绘制:class") {
 		t.Fatalf("words set after the view was built weren't used:\n%s", got)
+	}
+}
+
+// The Rendered view draws a flowchart that fits as its diagram. One wider than the room is laid
+// top to bottom when it runs across (LR, RL) and that fits; a flowchart still wider, or one with
+// subgraphs (their frames aren't drawn yet), is the not-drawn notice. Each case's precondition
+// (how wide tui/mermaid lays it) is checked first, so the cell can't pass by its fixtures alone.
+func TestTheCellLayoutDrawsAFlowchartThatFitsItsRoom(t *testing.T) {
+	const room = 30
+	runes := measureFunc(func(s string) int { return len([]rune(s)) })
+	width := func(src string) int {
+		t.Helper()
+		d, err := pm.Parse(src)
+		if err != nil {
+			t.Fatal(err)
+		}
+		g, err := tuimermaid.Lay(context.Background(), d, runes)
+		if err != nil {
+			t.Fatalf("%q: %v", src, err)
+		}
+		return g.Size.W
+	}
+	laid := func(src string) (*tuimermaid.Grid, string) {
+		t.Helper()
+		c := layCells(t, `<pre class="mermaid">`+src+`</pre>`, room)
+		var g *tuimermaid.Grid
+		for _, r := range c.rows {
+			if r.grid != nil {
+				g = r.grid
+			}
+		}
+		return g, strings.Join(strings.Fields(strings.Join(c.rowTexts(), " ")), " ")
+	}
+	notice := "▸ flowchart diagram: not drawn in the terminal (Raw shows its source)"
+
+	small := "flowchart TB\n  A[Start] --> B[End]\n"
+	if g, text := laid(small); g == nil || strings.Contains(text, notice) {
+		t.Fatalf("a flowchart that fits isn't drawn: %s", text)
+	} else {
+		s := newGridSurface(room, g.Size.H)
+		c := layCells(t, `<pre class="mermaid">`+small+`</pre>`, room)
+		c.PaintCells(s, 0, room, DocPos{}, DocPos{})
+		if got := s.text(); !strings.Contains(got, "│ Start │") || !strings.Contains(got, "▼") {
+			t.Fatalf("the flowchart's painted page:\n%s", got)
+		}
+	}
+
+	across := "flowchart LR\n  A[first step] --> B[second step] --> C[third step]\n"
+	if w := width(across); w <= room {
+		t.Fatalf("precondition: the LR chain is %d cells wide, not past the room's %d", w, room)
+	}
+	if w := width(strings.Replace(across, "LR", "TB", 1)); w > room {
+		t.Fatalf("precondition: the chain laid TB is %d cells wide, past the room's %d", w, room)
+	}
+	if g, text := laid(across); g == nil || g.Size.W > room || g.Size.H <= g.Size.W {
+		t.Fatalf("the LR chain too wide for the room isn't drawn top to bottom within it: %+v, %s", g, text)
+	}
+
+	for name, src := range map[string]string{
+		"TB":                 "flowchart TB\n  A --> B[a long label one]\n  A --> C[a long label two]\n",
+		"LR, and TB as well": "flowchart LR\n  A[a label as long as the room] --> B[and another one as long]\n  A --> C[and a third one as long]\n",
+	} {
+		if w := width(src); w <= room {
+			t.Fatalf("precondition: %s is %d cells wide, not past the room's %d", name, w, room)
+		}
+		if g, text := laid(src); g != nil || !strings.Contains(text, notice) {
+			t.Errorf("%s, too wide for the room: drawn %v; want the notice: %s", name, g != nil, text)
+		}
+	}
+
+	if g, text := laid("flowchart TB\n  subgraph S [Group]\n    A --> B\n  end\n"); g != nil || !strings.Contains(text, notice) {
+		t.Errorf("a flowchart with a subgraph: drawn %v; want the notice: %s", g != nil, text)
 	}
 }

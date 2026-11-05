@@ -11,7 +11,7 @@ import (
 	pm "github.com/yongjohnlee80/golib/parse/mermaid"
 )
 
-// A FLOWCHART IN CELLS (prototype; not among Kinds yet). graph/layout's layered layout ranks and
+// A FLOWCHART IN CELLS. graph/layout's layered layout ranks and
 // orders the nodes, in cells; every edge is then routed on the grid between the ranks, channel
 // routing as a chip's wires are: in the gap between two ranks an edge is a vertical from its upper
 // end, a horizontal on a track of the gap, and a vertical to its lower end, two bends at most. A
@@ -27,9 +27,9 @@ import (
 // (┬ ├ ┤ come from the OR'd masks). A fan-in shares only the target's own port, below its tracks.
 // Crossings are a vertical through another net's track, so they read ┼.
 //
-// Not yet (later PRs): edge labels, dotted and thick lines, subgraph frames, self-loops and edges
-// between nodes of one rank (both left out), and the too-wide notice. An edge back up the ranks (a
-// cycle) is routed as any other, by ports beside the forward ones.
+// Not yet: subgraph frames (Lay refuses a flowchart with subgraphs, for the host's notice), and
+// edges between nodes of one rank (left out). An edge back up the ranks (a cycle) is routed as any
+// other, by ports beside the forward ones; a self-loop is a ↺ mark beside its box.
 
 // Frame spacing, in cells: a box's clearance from its neighbours on a rank (room for a long
 // edge's column between them, a cell clear of each), and the first guess at the gap between

@@ -195,17 +195,25 @@ func TestAWideLabelsBoxCloses(t *testing.T) {
 	}
 }
 
-// A kind not in Kinds is ErrUnsupported, for the host to show its own way.
+// A kind not in Kinds is ErrUnsupported, for the host to show its own way; so is a flowchart with
+// subgraphs, whose frames aren't drawn yet.
 func TestAKindNotDrawnIsUnsupported(t *testing.T) {
-	d, err := pm.Parse("flowchart LR\n  a --> b\n")
+	d, err := pm.Parse("classDiagram\n  class A\n")
 	if err != nil {
 		t.Fatal(err)
 	}
 	if Supported(d.Kind()) {
-		t.Fatal("a flowchart is reported drawn")
+		t.Fatal("a class diagram is reported drawn")
 	}
 	if _, err := Lay(context.Background(), d, newCells(1, 1)); err != ErrUnsupported {
-		t.Fatalf("Lay of a flowchart: %v, want ErrUnsupported", err)
+		t.Fatalf("Lay of a class diagram: %v, want ErrUnsupported", err)
+	}
+	d, err = pm.Parse("flowchart TB\n  subgraph S [Group]\n    a --> b\n  end\n")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := Lay(context.Background(), d, newCells(1, 1)); err != ErrUnsupported {
+		t.Fatalf("Lay of a flowchart with a subgraph: %v, want ErrUnsupported", err)
 	}
 }
 
@@ -375,9 +383,11 @@ func TestTheEasyKindsRefuseWhatIsTooLarge(t *testing.T) {
 	}
 }
 
-// Timeline, journey and sequence are drawn: Kinds lists them, and Lay lays each.
+// Timeline, journey, sequence and flowchart (graph too) are drawn: Kinds lists them, and Lay lays
+// each.
 func TestTheEasyKindsAreDrawn(t *testing.T) {
-	for _, src := range []string{"timeline\n  2020 : a\n", "journey\n  section s\n    t: 3: me\n", "sequenceDiagram\n  A->>B: hi\n"} {
+	for _, src := range []string{"timeline\n  2020 : a\n", "journey\n  section s\n    t: 3: me\n", "sequenceDiagram\n  A->>B: hi\n",
+		"flowchart LR\n  a --> b\n", "graph TD\n  a --> b\n"} {
 		d, err := pm.Parse(src)
 		if err != nil {
 			t.Fatal(err)
