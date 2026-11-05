@@ -22,7 +22,7 @@ import (
 var ErrUnsupported = errors.New("mermaid: this diagram kind is not drawn in cells")
 
 // Kinds reports the diagram kinds this package draws; a host shows any other its own way.
-func Kinds() []pm.Kind { return []pm.Kind{pm.Mindmap, pm.Timeline, pm.Journey, pm.Sequence} }
+func Kinds() []pm.Kind { return []pm.Kind{pm.Mindmap, pm.Timeline, pm.Journey, pm.Sequence, pm.Gantt} }
 
 // Supported reports whether k is one of Kinds.
 func Supported(k pm.Kind) bool { return slices.Contains(Kinds(), k) }
@@ -41,6 +41,7 @@ type Grid struct {
 	lines map[cell]dirs
 	heavy map[cell]bool   // line cells drawn heavy where they run north–south: a sequence's activations
 	marks map[cell]string // drawn over a line's cell in the line's style: an arrowhead, a dash
+	fills map[cell]string // drawn over marks in the box style: a gantt task's bar
 	texts []text          // labels outside any box, in the label's style
 }
 
@@ -59,7 +60,7 @@ func (g *Grid) label(x, y int, s string, m Measurer) {
 
 // newGrid is an empty grid.
 func newGrid() *Grid {
-	return &Grid{lines: map[cell]dirs{}, heavy: map[cell]bool{}, marks: map[cell]string{}}
+	return &Grid{lines: map[cell]dirs{}, heavy: map[cell]bool{}, marks: map[cell]string{}, fills: map[cell]string{}}
 }
 
 // Box is a node's outline and label. ID is the model's node ID, so a host maps a selection back.
@@ -186,6 +187,9 @@ func (g *Grid) Paint(s tui.Surface, x0, y0, selected int, th Theme) {
 	for c, m := range g.marks {
 		s.SetCell(x0+c.x, y0+c.y, m, th.Line)
 	}
+	for c, f := range g.fills {
+		s.SetCell(x0+c.x, y0+c.y, f, th.Box)
+	}
 	for _, t := range g.texts {
 		tui.DrawText(s, x0+t.x, y0+t.y, t.s, th.Label)
 	}
@@ -211,6 +215,9 @@ func (g *Grid) settle() {
 	for c := range g.marks {
 		minX, minY = min(minX, c.x), min(minY, c.y)
 	}
+	for c := range g.fills {
+		minX, minY = min(minX, c.x), min(minY, c.y)
+	}
 	for _, t := range g.texts {
 		minX, minY = min(minX, t.x), min(minY, t.y)
 	}
@@ -222,7 +229,7 @@ func (g *Grid) settle() {
 		g.Boxes[i].Rect.Y -= minY
 	}
 	shift := func(c cell) cell { return cell{c.x - minX, c.y - minY} }
-	lines, heavy, marks := map[cell]dirs{}, map[cell]bool{}, map[cell]string{}
+	lines, heavy, marks, fills := map[cell]dirs{}, map[cell]bool{}, map[cell]string{}, map[cell]string{}
 	for c, d := range g.lines {
 		lines[shift(c)] = d
 	}
@@ -232,7 +239,10 @@ func (g *Grid) settle() {
 	for c, m := range g.marks {
 		marks[shift(c)] = m
 	}
-	g.lines, g.heavy, g.marks = lines, heavy, marks
+	for c, f := range g.fills {
+		fills[shift(c)] = f
+	}
+	g.lines, g.heavy, g.marks, g.fills = lines, heavy, marks, fills
 	for i := range g.texts {
 		g.texts[i].x -= minX
 		g.texts[i].y -= minY
