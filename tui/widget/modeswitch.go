@@ -50,9 +50,11 @@ type ModeSwitchShower interface {
 	ModeSwitchShown() bool
 }
 
-// shown reports whether the switch is drawn: always, unless its owner says otherwise.
-func (s *ModeSwitch) shown() bool {
-	if sh, ok := s.of.(ModeSwitchShower); ok {
+// modeSwitchShown reports whether a switch for of is drawn: always, unless of says otherwise. A
+// function of of, not a ModeSwitch method, so an embedder's Layout (gui's title-bar switch) never
+// reads past an override of it.
+func modeSwitchShown(of ModeSwitcher) bool {
+	if sh, ok := of.(ModeSwitchShower); ok {
 		return sh.ModeSwitchShown()
 	}
 	return true
@@ -60,7 +62,7 @@ func (s *ModeSwitch) shown() bool {
 
 // Layout is the control's width on one row; none while its owner hides it (ModeSwitchShower).
 func (s *ModeSwitch) Layout(c tui.Constraints) tui.Size {
-	if !s.shown() {
+	if !modeSwitchShown(s.of) {
 		return c.Constrain(tui.Size{})
 	}
 	return c.Constrain(tui.Size{W: ModeSwitchWidth, H: 1})
