@@ -54,6 +54,37 @@ func TestTokens(t *testing.T) {
 }
 
 // A script's content is raw up to its own end tag, whatever it holds; a title's decodes entities.
+// TestCommentEnds: a comment ends where HTML ends it. "<!-->" and "<!--->" are empty comments closed
+// at once, "--!>" closes one as "-->" does (whichever comes first), and one never closed runs to the
+// end of the source. The text after each is its own token.
+func TestCommentEnds(t *testing.T) {
+	for _, c := range []struct {
+		src, data, span, after string
+	}{
+		{"<!-->x", "", "<!-->", "x"},
+		{"<!--->x", "", "<!--->", "x"},
+		{"<!-- a --!>x", " a ", "<!-- a --!>", "x"},
+		{"<!-- a --!> b -->x", " a ", "<!-- a --!>", " b -->x"},
+		{"<!-- a --> b --!>x", " a ", "<!-- a -->", " b --!>x"},
+		{"<!-- never closed", " never closed", "<!-- never closed", ""},
+		{"<!---->x", "", "<!---->", "x"},
+	} {
+		tz := NewTokenizer([]byte(c.src), Limits{})
+		tok, ok := tz.Next()
+		if !ok || tok.Kind != Comment || tok.Data != c.data || c.src[tok.Span[0]:tok.Span[1]] != c.span {
+			t.Errorf("%q: first token %+v (ok %v), want a comment %q spanning %q", c.src, tok, ok, c.data, c.span)
+			continue
+		}
+		rest := ""
+		for tok, ok := tz.Next(); ok; tok, ok = tz.Next() {
+			rest += c.src[tok.Span[0]:tok.Span[1]]
+		}
+		if rest != c.after {
+			t.Errorf("%q: after the comment %q, want %q", c.src, rest, c.after)
+		}
+	}
+}
+
 func TestRawText(t *testing.T) {
 	got := tokens(t, `<script>if (a < b && c) { s = "<div>"; }</SCRIPT><title>A &amp; B</title>`)
 	if got[1].Kind != Text || got[1].Data != `if (a < b && c) { s = "<div>"; }` {
