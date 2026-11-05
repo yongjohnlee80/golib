@@ -100,6 +100,23 @@ func (g *Grid) boxIn(b Box, r tui.Rect, m Measurer) Box {
 	if capped {
 		g.hits = append(g.hits, hit{r: r, full: b.Label})
 	}
+	if len(b.Sections) > 0 { // each row capped, a capped one revealing itself whole over its own row
+		b.sectionsShown = make([][]string, len(b.Sections))
+		y := r.Y + 1
+		for si, sec := range b.Sections {
+			if si > 0 {
+				y++ // the rule
+			}
+			for _, row := range sec {
+				shown, _, rowCapped := capLabel(row, RoleLabel, m)
+				b.sectionsShown[si] = append(b.sectionsShown[si], shown)
+				if rowCapped {
+					g.hits = append(g.hits, hit{r: tui.Rect{X: r.X, Y: y, W: r.W, H: 1}, full: row})
+				}
+				y++
+			}
+		}
+	}
 	g.Boxes = append(g.Boxes, b)
 	return b
 }

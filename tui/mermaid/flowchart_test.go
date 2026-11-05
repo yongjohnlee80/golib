@@ -197,24 +197,52 @@ func TestTheFlowchartRoutersInvariantsHoldWhereTheyBroke(t *testing.T) {
 	}
 }
 
-// checkFlowchart lays src out and checks the router's invariants (TestTheFlowchartRoutersInvariantsHold).
+// checkFlowchart lays src, a flowchart, out through the router and checks its invariants
+// (checkGraph).
 func checkFlowchart(t *testing.T, name, src string) {
 	t.Helper()
-	what := fmt.Sprintf("%s:\n%s\ndrawn:\n%s", name, src, paintFC(t, src))
-	fc, g, routes := layFC(t, src)
-	checkGrid(t, what, g)
-	box := map[string]tui.Rect{}
-	for _, b := range g.Boxes {
-		box[b.ID] = b.Rect
+	d, err := pm.Parse(src)
+	if err != nil {
+		t.Fatalf("%s: parse: %v", name, err)
 	}
+	fc, ok := d.(*pm.FlowchartDiagram)
+	if !ok {
+		t.Fatalf("%s: not a flowchart: %T", name, d)
+	}
+	checkGraph(t, fmt.Sprintf("%s:\n%s", name, src), flowchartGraph(fc))
+}
+
+// layG lays gr out through the router, and paints it into a surface its own size.
+func layG(t *testing.T, gr graph) (*Grid, [][][2]cell, string) {
+	t.Helper()
+	g, routes, err := layGraph(context.Background(), gr, newCells(1, 1))
+	if err != nil {
+		t.Fatalf("lay: %v", err)
+	}
+	s := newCells(g.Size.W, g.Size.H)
+	g.Paint(s, 0, 0, -1, Theme{})
+	return g, routes, s.String()
+}
+
+// checkGraph lays gr out and checks the router's invariants (TestTheFlowchartRoutersInvariantsHold),
+// and its frames' (checkFrames). Boxes[i] is node i.
+func checkGraph(t *testing.T, name string, gr graph) {
+	t.Helper()
+	g, routes, drawn := layG(t, gr)
+	what := fmt.Sprintf("%s\ndrawn:\n%s", name, drawn)
+	checkGrid(t, what, g)
+	id := func(i int) string { return gr.nodes[i].id }
 	next := func(r tui.Rect, c cell) bool { // c is beside r (not diagonally)
 		inX, inY := c.x >= r.X && c.x < r.X+r.W, c.y >= r.Y && c.y < r.Y+r.H
 		return inX && (c.y == r.Y-1 || c.y == r.Y+r.H) || inY && (c.x == r.X-1 || c.x == r.X+r.W)
 	}
-	for i, e := range fc.Edges {
+	for i, e := range gr.edges {
 		links := routes[i]
+		if e.from == e.to || e.invisible { // a self-loop is a mark, an invisible edge only placed
+			continue
+		}
 		if len(links) == 0 {
-			t.Fatalf("%s edge %d (%s→%s) was not routed", what, i, e.From, e.To)
+			t.Fatalf("%s edge %d (%s→%s) was not routed", what, i, id(e.from), id(e.to))
 		}
 		adj := map[cell][]cell{}
 		for _, l := range links {
@@ -234,31 +262,31 @@ func checkFlowchart(t *testing.T, name, src string) {
 			}
 		}
 		if len(seen) != len(adj) {
-			t.Fatalf("%s edge %d (%s→%s) is in pieces: %d of %d cells reached", what, i, e.From, e.To, len(seen), len(adj))
+			t.Fatalf("%s edge %d (%s→%s) is in pieces: %d of %d cells reached", what, i, id(e.from), id(e.to), len(seen), len(adj))
 		}
 		var atFrom, atTo bool
 		for c := range adj {
-			atFrom = atFrom || next(box[e.From], c)
-			atTo = atTo || next(box[e.To], c)
+			atFrom = atFrom || next(g.Boxes[e.from].Rect, c)
+			atTo = atTo || next(g.Boxes[e.to].Rect, c)
 		}
 		if !atFrom || !atTo {
-			t.Fatalf("%s edge %d (%s→%s) doesn't reach its boxes: from %v, to %v", what, i, e.From, e.To, atFrom, atTo)
+			t.Fatalf("%s edge %d (%s→%s) doesn't reach its boxes: from %v, to %v", what, i, id(e.from), id(e.to), atFrom, atTo)
 		}
 	}
-	for i, a := range fc.Edges {
+	for i, a := range gr.edges {
 		mine := map[[2]cell]bool{}
 		for _, l := range routes[i] {
 			mine[l] = true
 			mine[[2]cell{l[1], l[0]}] = true
 		}
-		for j := i + 1; j < len(fc.Edges); j++ {
-			b := fc.Edges[j]
-			if a.From == b.From || a.To == b.To {
+		for j := i + 1; j < len(gr.edges); j++ {
+			b := gr.edges[j]
+			if a.from == b.from || a.to == b.to {
 				continue
 			}
 			for _, l := range routes[j] {
 				if mine[l] {
-					t.Fatalf("%s edges %s→%s and %s→%s share a run at %v", what, a.From, a.To, b.From, b.To, l)
+					t.Fatalf("%s edges %s→%s and %s→%s share a run at %v", what, id(a.from), id(a.to), id(b.from), id(b.to), l)
 				}
 			}
 		}
@@ -302,13 +330,13 @@ func checkFlowchart(t *testing.T, name, src string) {
 			}
 		}
 	}
-	if again := paintFC(t, src); again != paintFC(t, src) {
-		t.Fatalf("%s two drawings of one flowchart differ", what)
+	if _, _, again := layG(t, gr); again != drawn {
+		t.Fatalf("%s two drawings of one graph differ", what)
 	}
-	checkFrames(t, what, fc, g)
+	checkFrames(t, what, gr, g)
 }
 
-// checkFrames checks a flowchart's frames (vacuous with no subgraphs):
+// checkFrames checks a graph's frames (vacuous with none):
 //   - a frame is inside the grid, and two frames nest (one strictly inside the other) or are apart;
 //   - a node's box is inside each frame its subgraphs make, a free cell inside the border, and any
 //     other box is a cell clear of the frame;
@@ -317,31 +345,28 @@ func checkFlowchart(t *testing.T, name, src string) {
 //   - no mark or label lies on a border;
 //   - a title is on its top or bottom border with no line through it or the space either side,
 //     or its frame carries a footnote mark, the title in the legend.
-func checkFrames(t *testing.T, what string, fc *pm.FlowchartDiagram, g *Grid) {
+func checkFrames(t *testing.T, what string, gr graph, g *Grid) {
 	t.Helper()
-	parentOf := map[string]string{}
-	for _, s := range fc.Subgraphs {
-		parentOf[s.ID] = s.Parent
-	}
-	byTitle := map[string]int{} // a frame by its subgraph: frames are made in fc.Subgraphs' order, non-empty ones
-	fi := 0
-	for _, s := range fc.Subgraphs {
-		members := 0
-		for _, n := range fc.Nodes {
-			for sg, steps := n.Subgraph, 0; sg != "" && steps <= len(fc.Subgraphs); sg, steps = parentOf[sg], steps+1 {
-				if sg == s.ID {
-					members++
-					break
-				}
-			}
+	// a graph frame's index among those placed (one holding a node), as the router numbers them
+	chain := func(f int, visit func(int)) {
+		for steps := 0; f >= 0 && f < len(gr.frames) && steps <= len(gr.frames); f, steps = gr.frames[f].parent, steps+1 {
+			visit(f)
 		}
-		if members > 0 {
-			byTitle[s.ID] = fi
+	}
+	holds := make([]int, len(gr.frames))
+	for _, n := range gr.nodes {
+		chain(n.frame, func(f int) { holds[f]++ })
+	}
+	placed, fi := make([]int, len(gr.frames)), 0
+	for f := range gr.frames {
+		placed[f] = -1
+		if holds[f] > 0 {
+			placed[f] = fi
 			fi++
 		}
 	}
 	if fi != len(g.frames) {
-		t.Fatalf("%s %d frames, want %d (one per subgraph holding a node)", what, len(g.frames), fi)
+		t.Fatalf("%s %d frames, want %d (one per frame holding a node)", what, len(g.frames), fi)
 	}
 	inside := func(a, b tui.Rect) bool { // a strictly inside b's border
 		return a.X > b.X && a.Y > b.Y && a.X+a.W < b.X+b.W && a.Y+a.H < b.Y+b.H
@@ -362,13 +387,8 @@ func checkFrames(t *testing.T, what string, fc *pm.FlowchartDiagram, g *Grid) {
 		}
 	}
 	for bi, b := range g.Boxes {
-		n := fc.Nodes[bi]
 		mine := map[int]bool{}
-		for sg, steps := n.Subgraph, 0; sg != "" && steps <= len(fc.Subgraphs); sg, steps = parentOf[sg], steps+1 {
-			if f, ok := byTitle[sg]; ok {
-				mine[f] = true
-			}
-		}
+		chain(gr.nodes[bi].frame, func(f int) { mine[placed[f]] = true })
 		grown := tui.Rect{X: b.Rect.X - 1, Y: b.Rect.Y - 1, W: b.Rect.W + 2, H: b.Rect.H + 2}
 		for i, f := range g.frames {
 			switch {
