@@ -73,7 +73,7 @@ Plain text, **bold**, *italic*, ` + "`code`" + `, and a [link](docs.md).
 		page.WriteByte('\n')
 	}
 	for _, want := range []string{"A heading", "Plain text", "bold", "code", "link", "a quote", "a list item", "a task",
-		"func main", "go", "LongNameThatRuns", "var b", "child with a long label", "╭", "│", "«", "»", "─"} {
+		"func main", "go", "LongNameThatRuns", "b = 2", "child with a long label", "╭", "│", "«", "»", "─"} {
 		if !strings.Contains(page.String(), want) {
 			t.Errorf("the page doesn't show %q, so the cell didn't check it:\n%s", want, page.String())
 		}
