@@ -241,6 +241,6 @@ func TestThePageReadsInEveryTheme(t *testing.T) {
 				t.Errorf("%s: the %s reads at %.2f:1 on the page, want %.1f at least", name, part.what, ratio, part.least)
 			}
 		}
-		codeBlockGolden(t, "page-audit", table.String())
 	}
+	codeBlockGolden(t, "page-audit", table.String())
 }
