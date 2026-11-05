@@ -43,8 +43,26 @@ func (s *ModeSwitch) SetStyle(base style.Style) { s.base = base }
 // ModeSwitchWidth is the switch's width in cells.
 const ModeSwitchWidth = len(ModeSwitchRaw) + len(ModeSwitchSep) + len(ModeSwitchRendered)
 
-// Layout is the control's width on one row.
+// ModeSwitchShower is a ModeSwitcher that says when its switch is shown at all: the cell Editor's
+// only while it has a document view, as its own row is. A switch placed outside its owner (a
+// frame's title slot) is laid out empty, and so hidden, while it says false.
+type ModeSwitchShower interface {
+	ModeSwitchShown() bool
+}
+
+// shown reports whether the switch is drawn: always, unless its owner says otherwise.
+func (s *ModeSwitch) shown() bool {
+	if sh, ok := s.of.(ModeSwitchShower); ok {
+		return sh.ModeSwitchShown()
+	}
+	return true
+}
+
+// Layout is the control's width on one row; none while its owner hides it (ModeSwitchShower).
 func (s *ModeSwitch) Layout(c tui.Constraints) tui.Size {
+	if !s.shown() {
+		return c.Constrain(tui.Size{})
+	}
 	return c.Constrain(tui.Size{W: ModeSwitchWidth, H: 1})
 }
 
@@ -75,6 +93,34 @@ func (s *ModeSwitch) HandleEvent(ev tui.Event) bool {
 		s.of.SetView(v)
 	}
 	return true
+}
+
+// ModeSwitchSlot is a ModeSwitch mounted on its own, outside its owner: what an owner hands a
+// frame's title slot (widget.Box.SetTitleSlot). It resolves a left press on a segment before the
+// press moves focus, as a toolbar's control does, so the press is never skipped as focus
+// redirected. It is a type of its own, not methods on ModeSwitch, so a widget that embeds ModeSwitch
+// (gui's title-bar switch) keeps its own press handling.
+type ModeSwitchSlot struct{ *ModeSwitch }
+
+// ResolvePointerPress implements tui.PointerPressResolver: the press's segment, as HandleEvent's.
+func (s ModeSwitchSlot) ResolvePointerPress(m tui.MouseEvent) (tui.Action, bool) {
+	if m.Kind != tui.MousePress || m.Button != tui.MouseLeft || m.Y != 0 {
+		return nil, false
+	}
+	v, ok := ModeSwitchChoice(s.of, m.X)
+	if !ok {
+		return nil, false
+	}
+	return EditorViewAction{View: v}, true
+}
+
+// HandleAction implements tui.ActionHandler: the view a resolved press chose.
+func (s ModeSwitchSlot) HandleAction(inv tui.ActionInvocation) bool {
+	if a, ok := inv.Action.(EditorViewAction); ok {
+		s.of.SetView(a.View)
+		return true
+	}
+	return false
 }
 
 // ModeSwitchChoice is the view a press at column x of a switch for of chooses: Raw left of the

@@ -129,6 +129,9 @@ type (
 	// method ending in Enabled reads as a capability predicate to dao's guard
 	renderedEnabler interface{ SetRenderedEnabled(bool) }
 	modeSwitcher    interface{ SetModeSwitch(bool) }
+	// titleModeSwitcher is an editor whose switch can sit on its frame's title row (the cell
+	// Editor); one without (a window's, whose switch is on its title bar) takes modeSwitch as a bool
+	titleModeSwitcher interface{ SetModeSwitchInTitle(bool) }
 )
 
 // EditorSetters are the Editor's behaviour properties, for any editor widget with the methods
@@ -245,9 +248,15 @@ func EditorViewSetters() map[string]Setter {
 		// golib's: whether the Rendered view is available, for the document shown (Markdown's
 		// renderer and a Go file: false).
 		"renderedEnabled": setter("an Editor", boolOf, renderedEnabler.SetRenderedEnabled),
-		// golib's: the [ Raw | Rendered ] switch on the editor's first row while it has a document
-		// view (a window's editor has it on its title bar whatever this says)
-		"modeSwitch": setter("an Editor", boolOf, modeSwitcher.SetModeSwitch),
+		// golib's: the [ Raw | Rendered ] switch while the editor has a document view: "row" (or true)
+		// on its first row, "title" on its Frame's title row (on its first row with no Frame round
+		// it), false for none. A window's editor has it on its title bar whatever this says.
+		"modeSwitch": setter("an Editor", modeSwitchOf, func(e modeSwitcher, at string) {
+			if t, ok := e.(titleModeSwitcher); ok {
+				t.SetModeSwitchInTitle(at == "title")
+			}
+			e.SetModeSwitch(at != "")
+		}),
 	}
 }
 
@@ -314,4 +323,20 @@ func buildEditor(b Build) (tui.Component, []string, error) {
 	e := widget.NewEditor(opts...)
 	d.Attach(e.Core())
 	return e, d.Consumed, nil
+}
+
+// modeSwitchOf reads an Editor's modeSwitch: true or "row" (the editor's first row), "title" (its
+// Frame's title row), false (none, answered ""). Any other value is refused.
+func modeSwitchOf(v qml.SpecValue) (string, error) {
+	if b, err := boolOf(v); err == nil {
+		if b {
+			return "row", nil
+		}
+		return "", nil
+	}
+	s, err := stringOf(v)
+	if err != nil || (s != "row" && s != "title") {
+		return "", fmt.Errorf("want true, false, \"row\" or \"title\"")
+	}
+	return s, nil
 }
