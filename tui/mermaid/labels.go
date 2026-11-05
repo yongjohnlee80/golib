@@ -130,6 +130,37 @@ func widest(m Measurer, ss ...string) int {
 	return w
 }
 
+// Tick is a mark on an axis: its column and the label written over it.
+type Tick struct {
+	X     int
+	Label string
+}
+
+// axis draws an axis w cells wide from column x0: its line on row y+1, a ┬ in it at each tick,
+// and each tick's label on row y over its ┬. It returns the ticks' columns, for gridColumns.
+func (g *Grid) axis(x0, w, y int, ticks []Tick, m Measurer) (cols []int) {
+	g.run(cell{x0, y + 1}, cell{x0 + w - 1, y + 1})
+	for _, t := range ticks {
+		cols = append(cols, t.X)
+		g.label(t.X, y, t.Label, m)
+		g.lines[cell{t.X, y + 1}] |= south
+	}
+	return cols
+}
+
+// gridMark is a grid column's cell: dotted, so a fill drawn over it (a bar) reads above it.
+const gridMark = "┊"
+
+// gridColumns marks the cells under each of cols, rows y0 to y1, with gridMark: a chart's grid,
+// under its axis's ticks. Fills paint over marks, so a bar covers its cells of the grid.
+func (g *Grid) gridColumns(cols []int, y0, y1 int) {
+	for y := y0; y <= y1; y++ {
+		for _, x := range cols {
+			g.marks[cell{x, y}] = gridMark
+		}
+	}
+}
+
 // legendRow is one row of a key under the drawing: a swatch the kind gives (a slice's character, a
 // footnote's mark), its label, and right-aligned columns (a share, then a value when the kind
 // carries one).
