@@ -2,6 +2,7 @@ package mermaid
 
 import (
 	"errors"
+	"fmt"
 	"strconv"
 	"strings"
 	"time"
@@ -13,7 +14,11 @@ const Gantt Kind = 10
 func init() { register(Gantt, "gantt", []string{"gantt"}, (*parser).gantt) }
 
 // GanttDiagram is a parsed gantt chart: its title and its tasks in sections, each task's dates
-// resolved. Dates are days (UTC midnights): the subset reads the YYYY-MM-DD date format only.
+// resolved. Dates are days (UTC midnights): the subset reads the YYYY-MM-DD date format only. A
+// chart spans at most ganttMaxYears; past it, ErrTooLarge.
+//
+// No today line is drawn, so a chart reads the same on every day it is shown: `todayMarker off`
+// is read (it says as much), and any other todayMarker is ErrUnsupported, mermaid.js's to draw.
 type GanttDiagram struct {
 	Title string
 	// AxisFormat is the axis's strftime format as written ("%m-%d"); "" for the renderer's own.
@@ -37,7 +42,7 @@ type GanttTask struct {
 	Name string
 	ID   string // "" when the task names none
 	// Start is the first day; End the day after the last (exclusive), so End-Start is its length.
-	// A milestone's End is its Start.
+	// A milestone keeps both, as Mermaid does (a task after it starts at End); it is drawn at Mid.
 	Start, End time.Time
 	Done       bool // done
 	Active     bool // active
@@ -45,6 +50,10 @@ type GanttTask struct {
 	Milestone  bool // milestone
 	Span       [2]int
 }
+
+// Mid is the middle of t's days: where a milestone is drawn, as Mermaid draws it (Start for one of
+// length 0d).
+func (t GanttTask) Mid() time.Time { return t.Start.Add(t.End.Sub(t.Start) / 2) }
 
 // Range is the days the chart covers: the earliest Start and the latest End of its tasks. ok is
 // false for a chart with no task.
@@ -65,6 +74,10 @@ func (d *GanttDiagram) Range() (start, end time.Time, ok bool) {
 
 // ganttDateFormat is the one date format the subset reads, as dateFormat writes it.
 const ganttDateFormat = "YYYY-MM-DD"
+
+// ganttMaxYears bounds a chart's span, and so a task's length: past it, ErrTooLarge. Every date a
+// renderer subtracts is then well inside time.Duration's range (about 292 years).
+const ganttMaxYears = 100
 
 // ganttParser is the parse of one gantt chart.
 type ganttParser struct {
@@ -89,29 +102,53 @@ func (p *parser) gantt(rest string, restOff int) (Diagram, error) {
 			return p.done(nil)
 		}
 	}
-	if _, _, ok := g.d.Range(); !ok && p.syntax == nil {
-		p.fail(restOff, "a gantt chart needs a task")
+	start, end, ok := g.d.Range()
+	switch {
+	case !ok && p.syntax == nil:
+		// Mermaid draws an empty chart: nothing of this chart's is drawn here
+		p.unsupport(restOff, "a gantt chart with no task")
+	case ok && end.After(start.AddDate(ganttMaxYears, 0, 0)):
+		g.tooLarge(restOff, fmt.Sprintf("a gantt chart spanning more than %d years", ganttMaxYears))
 	}
 	return p.done(g.d)
 }
 
+// tooLarge is the chart's answer for what is past a bound: ErrTooLarge, on off's line.
+func (g *ganttParser) tooLarge(off int, what string) {
+	if g.p.unsupported == nil {
+		l, _ := g.p.pos(off)
+		g.p.unsupported = notDrawn(ErrTooLarge, l, what, "%s (line %d)", what, l)
+	}
+}
+
 // statement is one line: a setting, a section, an accessibility line or a task.
 func (g *ganttParser) statement(st stmt) {
+	if strings.HasPrefix(st.text, "#") {
+		// Mermaid's gantt reads # to the line's end as a comment, there and after a setting
+		g.p.unsupport(st.off, "a gantt # comment")
+		return
+	}
 	w, rest := firstWord(st.text)
 	restOff := st.off + len(st.text) - len(rest)
 	switch w {
 	case "title":
-		if s, err := g.p.label(rest, restOff); err == nil {
+		if s, err := g.p.label(ganttValue(rest), restOff); err == nil {
 			g.d.Title = s
 		}
 		return
 	case "dateFormat":
-		if strings.TrimSpace(rest) != ganttDateFormat {
+		if strings.TrimSpace(ganttValue(rest)) != ganttDateFormat {
 			g.p.unsupport(st.off, "a gantt dateFormat other than "+ganttDateFormat)
 		}
 		return
 	case "axisFormat":
-		g.d.AxisFormat = strings.TrimSpace(rest)
+		f := strings.TrimSpace(ganttValue(rest))
+		if bad := ganttAxisDirective(f); bad != "" {
+			// AxisLabel would write it as it is, where mermaid.js formats it
+			g.p.unsupport(st.off, "the gantt axis directive "+bad)
+			return
+		}
+		g.d.AxisFormat = f
 		return
 	case "todayMarker":
 		// the chart draws no today line, so only "off" says what it shows
@@ -195,7 +232,8 @@ tags:
 	case 3:
 		t.ID, startItem, endItem = items[0], items[1], items[2]
 		if !ganttID(t.ID) {
-			g.p.fail(metaOff, "a task ID is letters, digits, _ and -: %q", t.ID)
+			// Mermaid reads it (a.b, x y): this parse's `after` lists don't
+			g.p.unsupport(metaOff, "a gantt task ID other than letters, digits, _ and -")
 			return
 		}
 	default:
@@ -268,14 +306,18 @@ func (g *ganttParser) start(t *GanttTask, s string, off int) bool {
 }
 
 // end sets t.End from s: a length (`3d`, `2w`) after Start, or a date (the task's end, exclusive).
-// A milestone ends where it starts, whatever its length.
+// A length past ganttMaxYears is ErrTooLarge, checked before it is added.
 func (g *ganttParser) end(t *GanttTask, s string, off int) bool {
 	if n, unit, ok := ganttLength(s); ok {
-		days := n
+		per := 1
 		if unit == 'w' {
-			days = 7 * n
+			per = 7
 		}
-		t.End = t.Start.AddDate(0, 0, days)
+		if n > ganttMaxYears*366/per {
+			g.tooLarge(off, fmt.Sprintf("a gantt task longer than %d years", ganttMaxYears))
+			return false
+		}
+		t.End = t.Start.AddDate(0, 0, n*per)
 	} else {
 		d, err := ganttDate(s)
 		if err != nil {
@@ -287,9 +329,6 @@ func (g *ganttParser) end(t *GanttTask, s string, off int) bool {
 			return false
 		}
 		t.End = d
-	}
-	if t.Milestone {
-		t.End = t.Start
 	}
 	if t.End.Before(t.Start) {
 		g.p.fail(off, "a task that ends before it starts")
@@ -356,11 +395,38 @@ func ganttID(s string) bool {
 	return true
 }
 
+// ganttValue is a setting's value as Mermaid's gantt reads it: up to a # (a comment) or a ;.
+func ganttValue(s string) string {
+	if i := strings.IndexAny(s, "#;"); i >= 0 {
+		return s[:i]
+	}
+	return s
+}
+
+// ganttAxisDirectives are the strftime directives AxisLabel writes, after the %.
+const ganttAxisDirectives = "YymdebBaAj%"
+
+// ganttAxisDirective is f's first directive AxisLabel doesn't write ("%H", "%-d", a % at its end);
+// "" when it writes them all.
+func ganttAxisDirective(f string) string {
+	for i := 0; i < len(f); i++ {
+		if f[i] != '%' {
+			continue
+		}
+		if i+1 == len(f) || !strings.ContainsRune(ganttAxisDirectives, rune(f[i+1])) {
+			return f[i:min(i+2, len(f))]
+		}
+		i++
+	}
+	return ""
+}
+
 // ganttDefaultAxis is the axis format when the chart writes none, as Mermaid's.
 const ganttDefaultAxis = "%Y-%m-%d"
 
 // AxisLabel is day as the chart's axis writes it: AxisFormat's strftime directives (%Y %y %m %d %e
-// %b %B %a %A %j %%), or "%Y-%m-%d" when it has none. Any other directive is written as it is.
+// %b %B %a %A %j %%), or "%Y-%m-%d" when it has none. Parse refuses any other directive; one set
+// on the field by hand is written as it is.
 func (d *GanttDiagram) AxisLabel(day time.Time) string {
 	f := d.AxisFormat
 	if f == "" {
@@ -408,15 +474,16 @@ func (d *GanttDiagram) AxisLabel(day time.Time) string {
 var ganttSteps = []int{1, 2, 7, 14, 28, 56, 91, 182, 364}
 
 // Ticks are the days the axis marks: from the chart's first day, at the smallest step (1, 2, 7,
-// 14 or 28 days, and so on) that leaves at most n of them in its Range. nil for a chart with no
-// task, or n < 1.
+// 14 or 28 days, and so on, then whole multiples of 364) that leaves at most n of them across its
+// whole Range. nil for a chart with no task, or n < 1.
 func (d *GanttDiagram) Ticks(n int) []time.Time {
 	start, end, ok := d.Range()
 	if !ok || n < 1 {
 		return nil
 	}
 	days := int(end.Sub(start).Hours()/24) + 1
-	step := ganttSteps[len(ganttSteps)-1]
+	last := ganttSteps[len(ganttSteps)-1]
+	step := last * ((days + last*n - 1) / (last * n)) // past the table: years enough that n cover it
 	for _, s := range ganttSteps {
 		if (days+s-1)/s <= n {
 			step = s

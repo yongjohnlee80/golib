@@ -200,3 +200,25 @@ func TestAGanttIsDrawnAndRefusesWhatIsTooLarge(t *testing.T) {
 		t.Error("a chart past ganttMaxRows laid out")
 	}
 }
+
+// A milestone with a length is drawn at its days' middle, where Mermaid draws it, and a task after
+// it starts at its end: the ◆ sits halfway along the next task's lead-in, and a crit one's ! is just
+// before the ◆.
+func TestAGanttMilestoneSitsAtItsMiddle(t *testing.T) {
+	g, out := paint(t, "gantt\n  span :s1, 2026-01-01, 40d\n  m :milestone, crit, m1, 2026-01-01, 40d\n  after :after m1, 10d\n")
+	rows := strings.Split(out, "\n")
+	span, _ := ganttRow(t, g, rows, "span")
+	s0, s1 := ganttSpan(span, "█")
+	m, _ := ganttRow(t, g, rows, "m")
+	x, _ := ganttSpan(m, "◆")
+	if mid := (s0 + s1 + 1) / 2; x < mid-1 || x > mid+1 {
+		t.Errorf("the milestone's ◆ at %d; want its days' middle, about %d (its 40 days are %d..%d)", x, mid, s0, s1)
+	}
+	if x < 1 || []rune(m)[x-1] != '!' {
+		t.Errorf("a crit milestone: %q; want ! just before its ◆", m)
+	}
+	after, _ := ganttRow(t, g, rows, "after")
+	if a0, _ := ganttSpan(after, "█"); a0 != s1+1 {
+		t.Errorf("the task after the milestone starts at %d; want its end, %d", a0, s1+1)
+	}
+}

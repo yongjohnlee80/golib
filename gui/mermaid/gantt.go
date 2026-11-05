@@ -123,7 +123,7 @@ func layGantt(ctx context.Context, d pm.Diagram, width float32, th Theme, m gui.
 			if t.Milestone {
 				side := barH * 1.1
 				bar.form = formDiamond
-				bar.box = gui.Rect{X: dayX(t.Start) - side/2, Y: ry + (rowH-side)/2, W: side, H: side}
+				bar.box = gui.Rect{X: dayX(t.Mid()) - side/2, Y: ry + (rowH-side)/2, W: side, H: side}
 			} else {
 				x0, x1 := dayX(t.Start), dayX(t.End)
 				bar.box = gui.Rect{X: x0, Y: ry + (rowH-barH)/2, W: max(x1-x0, em*0.3), H: barH}

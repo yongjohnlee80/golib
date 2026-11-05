@@ -32,7 +32,6 @@ const (
 	ganttDone      = "░"
 	ganttMilestone = "◆"
 	ganttCritMark  = "!"
-	ganttGrid      = "┊"
 )
 
 // ganttMaxRows bounds a chart's rows: past it Lay answers layout.ErrTooLarge.
@@ -77,23 +76,18 @@ func LayGantt(ctx context.Context, d *pm.GanttDiagram, m Measurer) (*Grid, error
 	y := g.title(d.Title, m)
 	// the axis: each tick's date over its ┬, as many as leave a gap after each date
 	labelW := m.StringWidth(d.AxisLabel(start)) + 3
-	ticks := d.Ticks(max(chartW/labelW, 1))
-	axisY := y + 1
-	g.run(cell{chartX, axisY}, cell{chartX + chartW - 1, axisY})
-	var tickCols []int
-	for _, t := range ticks {
-		x := col(t)
-		tickCols = append(tickCols, x)
-		g.label(x, y, d.AxisLabel(t), m)
-		g.lines[cell{x, axisY}] |= south
+	var ticks []Tick
+	for _, t := range d.Ticks(max(chartW/labelW, 1)) {
+		ticks = append(ticks, Tick{X: col(t), Label: d.AxisLabel(t)})
 	}
-	// a ┬ needs a cell under it to point at: the grid's dotted line starts there
-	y = axisY + 1
+	tickCols := g.axis(chartX, chartW, y, ticks, m)
+	// a ┬ needs a cell under it to point at: the grid's dotted columns start there
+	y += 2
+	first := y // the first row under the axis
 
 	for _, s := range d.Sections {
 		if s.Title != "" {
 			g.label(0, y, s.Title, m)
-			g.gridRow(y, tickCols)
 			y++
 		}
 		for _, t := range s.Tasks {
@@ -105,10 +99,10 @@ func LayGantt(ctx context.Context, d *pm.GanttDiagram, m Measurer) (*Grid, error
 				id = t.Name
 			}
 			g.box(Box{ID: id, Label: t.Name, Form: FormText}, 2, y, m)
-			g.gridRow(y, tickCols)
 			x0 := col(t.Start)
 			switch {
 			case t.Milestone:
+				x0 = col(t.Mid()) // a milestone keeps its length; it is drawn at its days' middle
 				g.fills[cell{x0, y}] = ganttMilestone
 			default:
 				glyph := ganttBar
@@ -129,12 +123,6 @@ func LayGantt(ctx context.Context, d *pm.GanttDiagram, m Measurer) (*Grid, error
 			y++
 		}
 	}
+	g.gridColumns(tickCols, first, y-1)
 	return g.finish(m)
-}
-
-// gridRow marks row y's grid cells, under each tick, dotted: a bar painted later covers them.
-func (g *Grid) gridRow(y int, cols []int) {
-	for _, x := range cols {
-		g.marks[cell{x, y}] = ganttGrid
-	}
 }
