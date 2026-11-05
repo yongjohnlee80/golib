@@ -33,7 +33,7 @@ func classLike(dir pm.Dir) graph {
 // The router draws what each kind brings it, each case its golden: a sectioned box (its head
 // centred, a rule between sections) and the class ends (▽ hollow triangle, ◆ and ◇ diamonds) running
 // down and across; a state machine's forms (● start, ◉ end, a ━━━━━ fork bar, a rounded state), and
-// across (the bar ┃ then, a way back into it); and
+// across (the bar ┃ then, a way back into it from a state); and
 // a self-loop's label, a footnote.
 func TestTheRouterDrawsEveryKindsPieces(t *testing.T) {
 	for name, gr := range map[string]graph{
@@ -51,7 +51,7 @@ func TestTheRouterDrawsEveryKindsPieces(t *testing.T) {
 				{id: "A", form: FormRounded, label: "A", frame: -1}, {id: "B", form: FormRounded, label: "B", frame: -1},
 				{id: "end", form: FormEndDot, frame: -1}},
 			edges: []gedge{{from: 0, to: 1, head: EndArrow}, {from: 1, to: 2, head: EndArrow}, {from: 1, to: 3, head: EndArrow},
-				{from: 2, to: 4, head: EndArrow}, {from: 3, to: 4, head: EndArrow}, {from: 4, to: 1, head: EndArrow}},
+				{from: 2, to: 4, head: EndArrow}, {from: 3, to: 4, head: EndArrow}, {from: 3, to: 1, head: EndArrow}},
 		},
 		"graph-selfloop-label": {dir: pm.TB,
 			nodes: []gnode{{id: "A", form: FormRounded, label: "Waiting", frame: -1}, {id: "B", form: FormRounded, label: "Done", frame: -1}},
