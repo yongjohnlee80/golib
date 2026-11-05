@@ -1039,9 +1039,9 @@ const (
 // (the longest path through those constraints, so no further than it must). A box keeps fcNodeSep
 // from a box and a cell from its own frame's border; between a box and a border it is outside of,
 // or two frames side by side, there is room for a long edge's column a cell clear of each (the
-// columns beside a border take none: fcFrame.near). A frame is wide enough for its title, where its
-// title runs across it (titleW, 0 for none), and on its title's rank (titleRank) its first box or
-// frame keeps clear of the title's run.
+// columns beside a border take none: fcFrame.near). Where a frame's title runs across it (titleW, 0
+// for none), its first box or frame on its title's rank (titleRank) keeps clear of the title's run,
+// which leaves the frame wide enough for the title too.
 func placeColumns(nodes []fcNode, ranks [][]int, frames []fcFrame, res layout.Result, titleW, titleRank []int) {
 	pos := func(it fcItem) *int {
 		switch it.kind {
@@ -1130,11 +1130,6 @@ func placeColumns(nodes []fcNode, ranks [][]int, frames []fcFrame, res layout.Re
 				d = max(d, titleW[a.i]+4)
 			}
 			seps = append(seps, sep{a, b, d})
-		}
-	}
-	for f := range frames {
-		if titleW[f] > 0 { // ╭─ title ─╮: its corners, a rule and a space either side
-			seps = append(seps, sep{fcItem{fcLeft, f, 0}, fcItem{fcRight, f, 0}, titleW[f] + 5})
 		}
 	}
 	// the longest path: each pass moves an item only right, so it ends once no constraint moves one,
