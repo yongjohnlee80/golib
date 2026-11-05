@@ -823,13 +823,14 @@ func selected(k hcl, from, to DocPos) bool {
 // PAN. A diagram wider than its room is drawn at its own width and scrolled sideways, as the
 // window scrolls a wide box (gui/widget's ScrollX): each wide block has its own offset (pan), the
 // wheel's Shift pans the one under the pointer (ScrollX), and the keys the one nearest the page's
-// top (Pan). Only a wide block moves: text wraps to the room and never scrolls off. A ◀ or ▶ at
-// the block's edge, on its middle row on screen, says more of it lies that way.
+// top (Pan). Only a wide block moves: text wraps to the room and never scrolls off. A « or » at
+// the block's edge, on its middle row on screen, says more of it lies that way: not ◀ ▶, which a
+// sequence's arrows are drawn with.
 
 // htmlPanStep is how far Left/Right (h/l) pan, in cells.
 const htmlPanStep = 8
 
-// panMark is the ◀ ▶ marks' style: a diagram's chrome, drawn as its lines are (diagramTheme).
+// panMark is the « » marks' style: a diagram's chrome, drawn as its lines are (diagramTheme).
 var panMark = style.New().Foreground(style.TokenForeground)
 
 // over is how much wider than its room block bi's diagram is: 0 for a block that fits, or isn't
@@ -885,7 +886,7 @@ func (c *cellHTML) ScrollX(_, y, dx float32) bool {
 }
 
 // paintGrid paints r's diagram, shown from screen row y down (the surface h rows tall, the page w
-// cells wide): at the block's indent, panned by its offset and kept within its room, with a ◀ or ▶
+// cells wide): at the block's indent, panned by its offset and kept within its room, with a « or »
 // on its middle row on screen when more of it lies that way.
 func (c *cellHTML) paintGrid(s tui.Surface, r *hrow, y, w, h int) {
 	b := &c.doc[r.block]
@@ -898,10 +899,10 @@ func (c *cellHTML) paintGrid(s tui.Surface, r *hrow, y, w, h int) {
 	last := min(y+r.grid.Size.H-r.gridRow, h) - 1
 	mid := (max(y, 0) + last) / 2
 	if off > 0 {
-		s.SetCell(x, mid, "◀", panMark)
+		s.SetCell(x, mid, "«", panMark)
 	}
 	if off < over {
-		s.SetCell(w-1, mid, "▶", panMark)
+		s.SetCell(w-1, mid, "»", panMark)
 	}
 }
 

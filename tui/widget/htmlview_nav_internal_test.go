@@ -62,8 +62,8 @@ func diagramBlock(t *testing.T, c *cellHTML) (bi, row int) {
 }
 
 // A diagram wider than its room is drawn at its own width and pans sideways within the room: at 0
-// it shows its left and a ▶ on its middle row; panned, its columns from the offset on, a ◀ too; at
-// its end (as far as it is wider than the room, and no further) a ◀ only, its last column at the
+// it shows its left and a » on its middle row; panned, its columns from the offset on, a « too; at
+// its end (as far as it is wider than the room, and no further) a « only, its last column at the
 // room's edge. The text around it never moves, and a pan past an end moves nothing.
 func TestAWideDiagramPansWithinItsRoom(t *testing.T) {
 	if w := gridWidth(t, wideSequence); w <= navRoom {
@@ -98,14 +98,14 @@ func TestAWideDiagramPansWithinItsRoom(t *testing.T) {
 			want := []rune(strings.Join(whole.text[y], ""))[off : off+navRoom]
 			if first+y == mid {
 				switch {
-				case off > 0 && row[0] != '◀':
-					t.Errorf("%s: no ◀ at the middle row's left: %q", name, string(row))
-				case off == 0 && row[0] == '◀':
-					t.Errorf("%s: a ◀ with nothing to the left: %q", name, string(row))
-				case off < over && row[navRoom-1] != '▶':
-					t.Errorf("%s: no ▶ at the middle row's right: %q", name, string(row))
-				case off == over && row[navRoom-1] == '▶':
-					t.Errorf("%s: a ▶ with nothing to the right: %q", name, string(row))
+				case off > 0 && row[0] != '«':
+					t.Errorf("%s: no « at the middle row's left: %q", name, string(row))
+				case off == 0 && row[0] == '«':
+					t.Errorf("%s: a « with nothing to the left: %q", name, string(row))
+				case off < over && row[navRoom-1] != '»':
+					t.Errorf("%s: no » at the middle row's right: %q", name, string(row))
+				case off == over && row[navRoom-1] == '»':
+					t.Errorf("%s: a » with nothing to the right: %q", name, string(row))
 				}
 				row, want = row[1:navRoom-1], want[1:navRoom-1]
 			}
@@ -142,7 +142,7 @@ func TestAWideDiagramPansWithinItsRoom(t *testing.T) {
 	if c.over(bi) != 0 || c.Pan(0, len(c.rows), htmlPanStep) {
 		t.Errorf("a diagram that fits: over %d, or it panned", c.over(bi))
 	}
-	if joined := strings.Join(navRows(c, 0, len(c.rows)), "\n"); strings.ContainsAny(joined, "◀▶") {
+	if joined := strings.Join(navRows(c, 0, len(c.rows)), "\n"); strings.ContainsAny(joined, "«»") {
 		t.Errorf("a diagram that fits shows a pan mark:\n%s", joined)
 	}
 }
@@ -292,21 +292,29 @@ func markdownHTML(t *testing.T, md string) string {
 func TestTheTravelKeysGoBlockByBlockAndHeadingByHeading(t *testing.T) {
 	v, c := navView(t, markdownHTML(t, navPage), 40, 4)
 	blocks, headings := c.Starts(false), c.Starts(true)
-	firstRow := func(want string) float32 {
+	firstRowWhere := func(what string, from float32, is func(row string) bool) float32 {
 		t.Helper()
-		for ri := range c.rows {
-			if strings.Contains(navRows(c, ri, 1)[0], want) {
+		for ri := int(from); ri < len(c.rows); ri++ {
+			if is(navRows(c, ri, 1)[0]) {
 				return float32(ri)
 			}
 		}
-		t.Fatalf("no row shows %q", want)
+		t.Fatalf("no row shows %s", what)
 		return 0
+	}
+	firstRow := func(want string) float32 {
+		t.Helper()
+		return firstRowWhere(want, 0, func(row string) bool { return strings.Contains(row, want) })
+	}
+	rule := func(row string) bool { // a row of ─ alone: the h2's rule, or the thematic break after the quote
+		row = strings.TrimRight(strings.TrimSuffix(strings.TrimRight(row, " "), "│"), " ")
+		return row != "" && strings.Trim(row, "─") == ""
 	}
 	// one block each: the h1, a paragraph, the list, the table (its top rule), the h2, a paragraph,
 	// the quote, the rule, three paragraphs
 	tableTop := firstRow("┌")
 	want := []float32{firstRow("One"), firstRow("para a"), firstRow("item 1"), tableTop, firstRow("Two"),
-		firstRow("para b"), firstRow("quote 1"), firstRow("───"), firstRow("para c"), firstRow("para d"), firstRow("para e")}
+		firstRow("para b"), firstRow("quote 1"), firstRowWhere("the rule after the quote", firstRow("quote 1"), rule), firstRow("para c"), firstRow("para d"), firstRow("para e")}
 	if len(blocks) != len(want) {
 		t.Fatalf("blocks start at rows %v, want %v", blocks, want)
 	}
