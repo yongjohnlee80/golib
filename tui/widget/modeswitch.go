@@ -71,18 +71,19 @@ func (s *ModeSwitch) HandleEvent(ev tui.Event) bool {
 	if !ok || m.Kind != tui.MousePress || m.Button != tui.MouseLeft || m.Y != 0 {
 		return false
 	}
-	if v, ok := modeSwitchChoice(s.of, m.X); ok {
+	if v, ok := ModeSwitchChoice(s.of, m.X); ok {
 		s.of.SetView(v)
 	}
 	return true
 }
 
-// modeSwitchChoice is the view a press at column x of a switch for of chooses: Raw left of the
+// ModeSwitchChoice is the view a press at column x of a switch for of chooses: Raw left of the
 // separator, Rendered right of it while of has it available; ok is false on the separator and on a
 // faint Rendered. A function of its inputs, not a ModeSwitch method, so the switch's HandleEvent and
 // the cell Editor's press resolver read the one hit-test, and an embedder's override is never
-// bypassed by a call on the switch's own receiver.
-func modeSwitchChoice(of ModeSwitcher, x int) (EditorView, bool) {
+// bypassed by a call on the switch's own receiver. Exported: the Editor's files read it from outside
+// the switch's own group.
+func ModeSwitchChoice(of ModeSwitcher, x int) (EditorView, bool) {
 	switch {
 	case x >= 0 && x < len(ModeSwitchRaw):
 		return ViewRaw, true
