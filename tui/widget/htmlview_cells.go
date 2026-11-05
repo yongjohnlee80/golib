@@ -50,6 +50,7 @@ type cellHTML struct {
 	src     []byte
 	doc     []hblock
 	width   int
+	paintW  int // the page's width as last painted: where a diagram's cells were drawn (gridPlace)
 	rows    []hrow
 	tops    []int // each block's first row (its gap excluded)
 	// notice says a diagram of a kind not drawn in cells isn't drawn here (WithDiagramNotice);
@@ -285,7 +286,7 @@ func (c *cellHTML) layDiagram(bi int, b *hblock) {
 	kind := "mermaid"
 	if d, err := pm.Parse(b.diagram); err == nil {
 		kind = d.Kind().String()
-		if tuimermaid.Supported(d.Kind()) {
+		if tuimermaid.Drawn(d) == nil {
 			if g, err := tuimermaid.Lay(context.Background(), d, measureFunc(c.measure)); err == nil && g.Size.H > 0 {
 				for i := range g.Size.H {
 					c.rows = append(c.rows, hrow{block: bi, first: i == 0, grid: g, gridRow: i})
@@ -896,15 +897,16 @@ func (c *cellHTML) ScrollX(_, y, dx float32) bool {
 // drawn between its room's edge columns, which hold a « or » on its middle row on screen when more
 // of it lies that way.
 func (c *cellHTML) paintGrid(s tui.Surface, r *hrow, y, w, h int) {
-	b := &c.doc[r.block]
-	x := 2*b.quote + b.indent
+	c.paintW = w
+	x0, left, right := c.gridPlace(r, w)
+	r.grid.Paint(clipCols{s, left, right}, x0, y-r.gridRow, -1, diagramTheme)
 	over := c.over(r.block)
+	x := left
 	if over == 0 {
-		r.grid.Paint(clipCols{s, x, w}, x, y-r.gridRow, -1, diagramTheme)
 		return
 	}
+	x-- // the « column, left of the room
 	off := c.offset(r.block)
-	r.grid.Paint(clipCols{s, x + 1, w - 1}, x+1-off, y-r.gridRow, -1, diagramTheme)
 	if w <= x {
 		return
 	}
@@ -916,6 +918,39 @@ func (c *cellHTML) paintGrid(s tui.Surface, r *hrow, y, w, h int) {
 	if off < over {
 		s.SetCell(w-1, mid, "»", panMark)
 	}
+}
+
+// gridPlace is where row r's diagram sits on a page w cells wide: the column its grid's 0 is
+// painted at (the block's indent, less its pan while it is wide, past the « column), and the
+// columns it is drawn between, left to right-1 (inside the « » columns while it is wide). paintGrid
+// and ToolTipAt both read it, so a hit is where the cell was drawn, panned or not.
+func (c *cellHTML) gridPlace(r *hrow, w int) (x0, left, right int) {
+	b := &c.doc[r.block]
+	x := 2*b.quote + b.indent
+	if c.over(r.block) == 0 {
+		return x, x, w
+	}
+	return x + 1 - c.offset(r.block), x + 1, w - 1
+}
+
+// ToolTipAt implements HTMLLayoutToolTips: over a diagram's capped label, its whole text, and the
+// label's shown cells (within the room, in the layout's rows); "" anywhere else.
+func (c *cellHTML) ToolTipAt(x, y float32) (string, Rect32) {
+	ri, px := int(y), int(x)
+	if y < 0 || x < 0 || ri >= len(c.rows) || c.rows[ri].grid == nil || c.paintW == 0 {
+		return "", Rect32{}
+	}
+	r := &c.rows[ri]
+	x0, left, right := c.gridPlace(r, c.paintW)
+	if px < left || px >= right {
+		return "", Rect32{} // the « » columns, past the room
+	}
+	full, at, ok := r.grid.HitAt(px-x0, r.gridRow)
+	if !ok {
+		return "", Rect32{}
+	}
+	l, rt := max(at.X+x0, left), min(at.X+at.W+x0, right)
+	return full, Rect32{X: float32(l), Y: float32(ri - r.gridRow + at.Y), W: float32(rt - l), H: float32(at.H)}
 }
 
 // clipCols is a surface that draws only columns from to to-1: a panned diagram stays in its room,
