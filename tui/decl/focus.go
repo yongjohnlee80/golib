@@ -41,12 +41,10 @@ type DeclarationOnly interface{ DeclarationOnly() }
 type onScreenAs interface{ onScreen() tui.Component }
 
 // useApp gives the adapter the App its program runs on: what forceActiveFocus
-// moves focus with. The Program calls it once it has built the App.
+// moves focus with. The Program calls it once it has built the App, with the
+// root Window's palette, read before there was an App, as its theme already.
 func (a *Adapter) useApp(app *tui.App) {
 	a.app = app
-	if a.theme != nil { // the root Window's palette, read before there was an App
-		app.SetTheme(a.theme)
-	}
 }
 
 func (a *Adapter) forceActiveFocus(b built, args []qml.SpecValue) error {

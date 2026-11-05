@@ -358,7 +358,13 @@ func NewProgram(opts ...ProgramOption) (*Program, error) {
 	if c.catalogs != nil {
 		appOpts = append(appOpts, tui.WithTranslations(c.catalogs))
 	}
-	app := tui.NewApp(p.root, append(appOpts, c.appOpts...)...)
+	appOpts = append(appOpts, c.appOpts...)
+	if p.adapter.theme != nil {
+		// the root Window's palette, read at the mount: the App starts with it, so its first frame
+		// wears it (one SetTheme queued after would reach only the second)
+		appOpts = append(appOpts, tui.WithTheme(p.adapter.theme))
+	}
+	app := tui.NewApp(p.root, appOpts...)
 	p.adapter.useApp(app)
 	// UNDER THE LOCK, all of it. A provider's goroutine is already running —
 	// it started during the mount — and reads p.app in schedule, so the
