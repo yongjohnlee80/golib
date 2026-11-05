@@ -207,10 +207,15 @@ func (e *Editor) headerRows() int {
 }
 
 // header is a press on the switch's row: the switch's own, at its cells at the row's right; the
-// rest of the row is no text, so it takes the press and does nothing. The wheel scrolls as anywhere.
+// rest of the row is no text, so it takes the press and does nothing. The wheel scrolls what is under
+// the row, as anywhere: the text, or the document view shown, given it at its own first row.
 func (e *Editor) header(m tui.MouseEvent) bool {
 	if m.Kind == tui.MouseWheel {
-		return !e.doc.Shown() && e.wheel(m)
+		if e.doc.Shown() {
+			m.Y = 0 // the view's first row, just under the switch's
+			return e.doc.Document().HandleEvent(m)
+		}
+		return e.wheel(m)
 	}
 	x0 := e.rowW - ModeSwitchWidth
 	if m.X >= x0 {

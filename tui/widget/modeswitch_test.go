@@ -245,3 +245,42 @@ func TestTheModeSwitchReadsInEveryTheme(t *testing.T) {
 		})
 	}
 }
+
+// The wheel on the switch's row scrolls what is under it, as anywhere: the text in Raw, the
+// document view (here the table) when it is shown. A reader scrolling with the pointer near the top
+// does not stall there.
+func TestTheWheelOnTheSwitchsRowScrollsWhatIsUnderIt(t *testing.T) {
+	var csv strings.Builder
+	csv.WriteString("name,n\n")
+	for i := range 40 {
+		fmt.Fprintf(&csv, "row%02d,%d\n", i, i)
+	}
+	ed := widget.NewEditor(widget.WithCore(widget.CoreInitialText(csv.String())), widget.EditorModeSwitch(true))
+	ed.SetDocumentView(widget.NewTableDocument(ed.Core(), ','))
+	ed.SetRenderedDocument(true)
+	sh := newShell(ed)
+	h := startApp(t, sh, 40, 10)
+	defer h.stop()
+	h.onLoop(func() { h.app.FocusInto(ed) })
+	h.barrier(sh)
+	wheel := tui.MouseEvent{Kind: tui.MouseWheel, Button: tui.WheelDown, X: 3, Y: 0}
+
+	before := h.row(1)
+	h.inject(wheel, wheel)
+	h.barrier(sh)
+	if after := h.row(1); after == before || !strings.HasSuffix(h.row(0), "[ Raw | Rendered ]") {
+		t.Errorf("Raw: the wheel on the switch's row left the text at %q (was %q)", after, before)
+	}
+
+	h.inject(ctrlEv('t'))
+	h.barrier(sh)
+	if chosen(h, ed) != widget.ViewRendered {
+		t.Fatal("Ctrl+T did not show the table")
+	}
+	before = h.grid()
+	h.inject(wheel, wheel, wheel)
+	h.barrier(sh)
+	if after := h.grid(); after == before || !strings.HasSuffix(h.row(0), "[ Raw | Rendered ]") {
+		t.Errorf("Rendered: the wheel on the switch's row did not scroll the table:\n%s", after)
+	}
+}
