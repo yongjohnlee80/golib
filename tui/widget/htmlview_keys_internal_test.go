@@ -37,6 +37,19 @@ func oldHTMLViewKey(e tui.KeyEvent, hasSelection bool) string {
 		return "copy"
 	case e.Code == tui.KeyEscape && hasSelection:
 		return "clearSelection"
+	// the layout's own keys (a wide block's pan, travel by block and heading), added with them
+	case e.Code == tui.KeyLeft && plain, e.Code == 'h' && plain:
+		return "left"
+	case e.Code == tui.KeyRight && plain, e.Code == 'l' && plain:
+		return "right"
+	case e.Code == ']' && plain:
+		return "nextBlock"
+	case e.Code == '[' && plain:
+		return "previousBlock"
+	case e.Code == '}' && plain:
+		return "nextHeading"
+	case e.Code == '{' && plain:
+		return "previousHeading"
 	}
 	return ""
 }
