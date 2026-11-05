@@ -50,17 +50,25 @@ type graph struct {
 
 // gnode is a box: its ID (Box.ID, for a host's selection), its outline, and its label, capped.
 type gnode struct {
-	id    string
-	form  Form
-	label string
-	frame int // its innermost frame, -1 none: a frame holds the nodes of the frames inside it too
+	id       string
+	form     Form
+	label    string
+	sections [][]string // its rows by section, drawn in place of the label (Box.Sections); nil: the label
+	frame    int        // its innermost frame, -1 none: a frame holds the nodes of the frames inside it too
 }
 
-// size is n's box's size around its label, capped: what the layout reserves for it.
-func (n gnode) size(m Measurer) (w, h int) { return boxSize(n.form, n.label, m) }
+// size is n's box's size around its label or sections, capped: what the layout reserves for it.
+func (n gnode) size(m Measurer) (w, h int) {
+	if len(n.sections) > 0 {
+		return sectionsSize(n.sections, m)
+	}
+	return boxSize(n.form, n.label, m)
+}
 
 // box is n's Box, its lines meeting it on the sides ports names.
-func (n gnode) box(ports Port) Box { return Box{ID: n.id, Label: n.label, Form: n.form, Ports: ports} }
+func (n gnode) box(ports Port) Box {
+	return Box{ID: n.id, Label: n.label, Form: n.form, Ports: ports, Sections: n.sections}
+}
 
 // gedge is a line between two nodes (indexes into graph.nodes; from == to is a self-loop): its
 // stroke, what each end draws, its label (on the line, else a footnote), its minimum span in ranks,
@@ -300,7 +308,7 @@ func layGraph(ctx context.Context, gr graph, m Measurer) (*Grid, [][][2]cell, er
 	in := layout.Input{Dir: layout.TB, NodeSep: fcNodeSep, RankSep: fcRankSep}
 	for i, n := range gr.nodes {
 		w, h := n.size(m) // capped, as it is drawn
-		if across {
+		if across && !forms[n.form].acrossRanks() {
 			w, h = h, w
 		}
 		nodes[i].w, nodes[i].h = w, h

@@ -73,7 +73,12 @@ type Box struct {
 	// right, a sequence participant's top and bottom); the form says which sides can (forms). A
 	// side takes a junction (┤ ├ ┴ ┬) at any of its cells a line points into.
 	Ports Port
-	shown string // Label as drawn: capped (capLabel)
+	// Sections are a box's rows by section, drawn in place of its label: a class's name, attributes
+	// and methods, a state's name and descriptions. The head section is centred, a rule between
+	// sections; nil: the label alone.
+	Sections      [][]string
+	shown         string     // Label as drawn: capped (capLabel)
+	sectionsShown [][]string // Sections as drawn: each row capped
 }
 
 // Centre is b's middle cell.
