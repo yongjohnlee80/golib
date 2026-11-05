@@ -362,12 +362,16 @@ func TestTheEasyKindsRefuseWhatIsTooLarge(t *testing.T) {
 		sec.Periods = append(sec.Periods, pm.TimelinePeriod{Label: "p", Events: []pm.TimelineEvent{{Text: "e"}}})
 	}
 	boxes.Sections = []pm.TimelineSection{sec}
-	wide := &pm.JourneyDiagram{}
-	js := pm.JourneySection{Name: "s"}
-	for range 1000 {
-		js.Tasks = append(js.Tasks, pm.JourneyTask{Name: strings.Repeat("w", 2000), Score: 3})
+	// an area past maxCells: labels are capped, so the room is a sequence's at its limits, each
+	// participant apart by a message at its cap, and a row or two for each of its steps
+	wide := &pm.SequenceDiagram{}
+	for i := range seqMaxParticipants {
+		wide.Participants = append(wide.Participants, pm.Participant{ID: fmt.Sprint(i), Label: "p"})
 	}
-	wide.Sections = []pm.JourneySection{js}
+	for i := range seqMaxSteps {
+		a := i % (seqMaxParticipants - 1)
+		wide.Steps = append(wide.Steps, pm.Step{Kind: pm.StepMessage, From: fmt.Sprint(a), To: fmt.Sprint(a + 1), Text: strings.Repeat("w", 200)})
+	}
 	for name, d := range map[string]pm.Diagram{"participants": many, "steps": long, "boxes": boxes, "area": wide} {
 		if _, err := Lay(ctx, d, newCells(1, 1)); !errors.Is(err, layout.ErrTooLarge) {
 			t.Errorf("%s: %v, want layout.ErrTooLarge", name, err)
