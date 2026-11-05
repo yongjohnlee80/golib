@@ -1028,19 +1028,24 @@ func layGraph(ctx context.Context, gr graph, m Measurer) (*Grid, [][][2]cell, er
 		}
 	}
 	// the footnotes: a mark beside each edge's lower end, its label in the legend finish places under
-	// the drawing
-	for _, e := range notes {
-		mk := g.footnote(e.e.label)
-		r := g.Boxes[e.to].Rect
-		for _, c := range []cell{{r.X + r.W, r.Y - 1}, {r.X - 1, r.Y - 1}, {r.X + r.W, r.Y + r.H}, {r.X - 1, r.Y + r.H}, {r.X + r.W, r.Y}, {r.X - 1, r.Y}} {
-			if !occupied(c) {
-				g.label(c.x, c.y, mk, m)
-				break
+	// the drawing. A mark (¹, *10) starts at the first of at it has room from, or ends there (a
+	// cell left of a box): never over a line, a box, a mark or a label
+	markAt := func(mk string, at []cell) {
+		w := m.StringWidth(mk)
+		for _, c := range at {
+			for _, x := range []int{c.x, c.x - w + 1} {
+				if room(x, c.y, w) {
+					g.label(x, c.y, mk, m)
+					return
+				}
 			}
 		}
 	}
+	for _, e := range notes {
+		r := g.Boxes[e.to].Rect
+		markAt(g.footnote(e.e.label), []cell{{r.X + r.W, r.Y - 1}, {r.X - 1, r.Y - 1}, {r.X + r.W, r.Y + r.H}, {r.X - 1, r.Y + r.H}, {r.X + r.W, r.Y}, {r.X - 1, r.Y}})
+	}
 	for _, n := range endNotes {
-		mk := g.footnote(n.s)
 		r := g.Boxes[n.node].Rect
 		var at []cell
 		if n.beside { // beside the end's cell, across the line, then beside the box
@@ -1048,12 +1053,7 @@ func layGraph(ctx context.Context, gr graph, m Measurer) (*Grid, [][][2]cell, er
 			at = []cell{{c.x + 1, c.y}, {c.x - 1, c.y}, {c.x, c.y + 1}, {c.x, c.y - 1}}
 		}
 		at = append(at, cell{r.X + r.W, r.Y - 1}, cell{r.X - 1, r.Y - 1}, cell{r.X + r.W, r.Y + r.H}, cell{r.X - 1, r.Y + r.H})
-		for _, c := range at {
-			if !occupied(c) {
-				g.label(c.x, c.y, mk, m)
-				break
-			}
-		}
+		markAt(g.footnote(n.s), at)
 	}
 	before := g.Boxes[0].Rect
 	if _, err := g.finish(m); err != nil {
