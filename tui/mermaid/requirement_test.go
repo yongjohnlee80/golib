@@ -26,12 +26,14 @@ var requirementCases = map[string]string{
     risk: low
     verifymethod: demonstration
   }
-  designConstraint bare
+  designConstraint bare {
+  }
   element page {
     type: web page
     docref: docs/login.md
   }
-  element probe
+  element probe {
+  }
   login - contains -> reset
   page - satisfies -> login
   probe - verifies -> reset
@@ -45,7 +47,8 @@ var requirementCases = map[string]string{
   requirement b {
     id: 2
   }
-  element c
+  element c {
+  }
   a - derives -> b
   c - refines -> b
 `,
@@ -139,7 +142,7 @@ func TestARequirementRelationToNoNodeIsRefused(t *testing.T) {
 
 // One that runs across and is too wide for its room is laid running down (LayWithin).
 func TestAWideRequirementDiagramIsLaidDown(t *testing.T) {
-	rd := parseRequirement(t, "requirementDiagram\n  direction LR\n  element one\n  element two\n  element three\n  element four\n"+
+	rd := parseRequirement(t, "requirementDiagram\n  direction LR\n  element one {\n  }\n  element two {\n  }\n  element three {\n  }\n  element four {\n  }\n"+
 		"  one - traces -> two\n  two - traces -> three\n  three - traces -> four\n")
 	ctx := context.Background()
 	wide, err := Lay(ctx, rd, newCells(1, 1))
@@ -153,7 +156,7 @@ func TestAWideRequirementDiagramIsLaidDown(t *testing.T) {
 	if g.Size.W >= wide.Size.W {
 		t.Errorf("laid within %d: %d wide, not narrower than across (%d)", wide.Size.W-1, g.Size.W, wide.Size.W)
 	}
-	if requirementDown(parseRequirement(t, "requirementDiagram\n  element a\n")) != nil {
+	if requirementDown(parseRequirement(t, "requirementDiagram\n  element a {\n  }\n")) != nil {
 		t.Error("a diagram already running down has a narrower form")
 	}
 }
