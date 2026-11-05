@@ -183,3 +183,22 @@ func TestRemovingASyntaxRoleOnReloadResetsIt(t *testing.T) {
 	reloadScreen(t, s, doc(""))
 	waitFG(t, s, "import", terminalDefault)
 }
+
+// A Program answers the syntax roles its root Window's palette carries, for a host outside the
+// tree that highlights as the Editor does; a window with none answers none, and an unset style
+// paints as the text's own.
+func TestTheProgramAnswersTheWindowsSyntaxStyles(t *testing.T) {
+	s := runSyntax(t, "import tui 1.0\nimport demo 1.0\nimport demo.theme.dark 1.0\n"+
+		"Window { syntax.keyword: Theme.syntax.keyword; syntax.string: Theme.syntax.string\n Text { text: \"x\" } }")
+	st := s.Program.SyntaxStyles()
+	if _, ok := st[highlight.Keyword].GetForeground(); !ok {
+		t.Error("no keyword colour: the window carries Theme.syntax.keyword")
+	}
+	if _, ok := st[highlight.String].GetForeground(); !ok {
+		t.Error("no string colour: the window carries Theme.syntax.string")
+	}
+	s = runSyntax(t, "import tui 1.0\nimport demo 1.0\nWindow { Text { text: \"x\" } }")
+	if _, ok := s.Program.SyntaxStyles()[highlight.Keyword].GetForeground(); ok {
+		t.Error("a window with no syntax roles answered a keyword colour")
+	}
+}
