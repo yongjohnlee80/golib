@@ -12,7 +12,7 @@ import (
 // The kinds drawn are the registry's, in Kind order; a kind registered twice panics; Lay answers
 // ErrUnsupported for a kind not registered, and for a model of another type than its kind's.
 func TestTheKindsAreTheRegistrys(t *testing.T) {
-	if got, want := Kinds(), []pm.Kind{pm.Flowchart, pm.Sequence, pm.State, pm.Class, pm.ER, pm.Journey, pm.Mindmap, pm.Timeline, pm.Requirement, pm.Gantt}; !reflect.DeepEqual(got, want) {
+	if got, want := Kinds(), []pm.Kind{pm.Flowchart, pm.Sequence, pm.State, pm.Class, pm.ER, pm.Journey, pm.Mindmap, pm.Timeline, pm.Requirement, pm.Gantt, pm.Pie}; !reflect.DeepEqual(got, want) {
 		t.Fatalf("Kinds() = %v, want %v", got, want)
 	}
 	func() {
