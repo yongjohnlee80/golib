@@ -163,7 +163,12 @@ type Editor struct {
 	// reveals it only when either changed, so the wheel's scroll stays
 	shown viewMark
 
-	menu    *EditorMenu    // the right-click menu: off unless a consumer turns it on
+	menu *EditorMenu // the right-click menu: off unless a consumer turns it on
+	// sw is the [ Raw | Rendered ] switch, drawn on the editor's first row while swOn and a document
+	// view is set (editor_document.go's headerRows)
+	sw      *ModeSwitch
+	swOn    bool
+	rowW    int            // the editor's width at its last layout: where the switch's cells start
 	pointer *EditorPointer // the press, the drag, and the context menu's keys (editor_pointer.go)
 	cmdline *CommandLine   // the ':' prompt: on unless a consumer turns it off
 }
@@ -267,6 +272,7 @@ func NewEditor(opts ...EditorOption) *Editor {
 	e.menu.SetRows(func() []MenuItemModel { return EditorContextItems(e) })
 	e.cmdline = NewCommandLine(e, e.core)
 	e.cmdline.SetEnabled(true)
+	e.sw = NewModeSwitch(e)
 	for _, o := range opts {
 		if o != nil {
 			o(e)
@@ -327,6 +333,11 @@ func (e *Editor) CursorShape() tui.CursorShape {
 // across modal and modeless editing profiles. The pointer is the view's: it becomes a buffer
 // position here; everything else is the core's.
 func (e *Editor) HandleEvent(ev tui.Event) bool {
+	// a press or the wheel on the switch's row is the row's, over the text or the document view
+	// alike; a drag's motion there stays the text's, so dragging up past the text scrolls it
+	if m, ok := ev.(tui.MouseEvent); ok && m.Y >= 0 && m.Y < e.headerRows() && (m.Kind == tui.MousePress || m.Kind == tui.MouseWheel) {
+		return e.header(m)
+	}
 	if e.doc.Shown() { // a key the document view left; the hidden text takes nothing
 		switch t := ev.(type) {
 		case tui.KeyEvent:
