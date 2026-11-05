@@ -45,24 +45,29 @@ func paintFC(t *testing.T, src string) string {
 // others; self-loops; and a label with no room, a footnote.
 func TestAFlowchartDrawsInCells(t *testing.T) {
 	for name, src := range map[string]string{
-		"fc-chain-tb":  "flowchart TB\n  A[Start] --> B[Middle] --> C[End]\n",
-		"fc-chain-lr":  "flowchart LR\n  A[Start] --> B[Middle] --> C[End]\n",
-		"fc-chain-bt":  "flowchart BT\n  A[Start] --> B[Middle] --> C[End]\n",
-		"fc-chain-rl":  "flowchart RL\n  A[Start] --> B[Middle] --> C[End]\n",
-		"fc-fanout":    "flowchart TB\n  A[Hub] --> B[one]\n  A --> C[two]\n  A --> D[three]\n  A --> E[four]\n",
-		"fc-fanin":     "flowchart TB\n  B[one] --> A[Hub]\n  C[two] --> A\n  D[three] --> A\n  E[four] --> A\n",
-		"fc-k22":       "flowchart TB\n  A[a] --> C[c]\n  A --> D[d]\n  B[b] --> C\n  B --> D\n",
-		"fc-long":      "flowchart TB\n  A --> B --> C --> D\n  A --> D\n",
-		"fc-decision":  "flowchart TD\n  S([Start]) --> Q{Ready?}\n  Q -->|yes| Go[Go]\n  Q -->|no| Wait[Wait]\n  Wait --> Q\n",
-		"fc-cycle":     "flowchart TB\n  A --> B --> C --> A\n",
-		"fc-wide":      "flowchart LR\n  A[시작] --> B[東京] --> C[end]\n",
-		"fc-ends":      "flowchart TB\n  A --> B\n  A --o C\n  A --x D\n  A --- E\n  F <--> G\n",
-		"fc-invisible": "flowchart TB\n  A --> B\n  A ~~~ C\n",
-		"fc-labels-tb": "flowchart TD\n  Q{Ready?} -->|yes| A[Go]\n  Q -->|no| B[Wait]\n  A -->|done| C[End]\n",
-		"fc-labels-lr": "flowchart LR\n  Q{Ready?} -->|yes| A[Go]\n  Q -->|no| B[Wait]\n  A -->|done| C[End]\n",
-		"fc-styles":    "flowchart TB\n  A -.-> B\n  A ==> C\n  A --> D\n  B -.- E\n  C ==> E\n  D --> E\n",
-		"fc-selfloop":  "flowchart TB\n  A --> A\n  A --> B\n  B -->|again| B\n",
-		"fc-footnote":  "flowchart TB\n  A --> B\n  B -->|back up| A\n",
+		"fc-chain-tb":          "flowchart TB\n  A[Start] --> B[Middle] --> C[End]\n",
+		"fc-chain-lr":          "flowchart LR\n  A[Start] --> B[Middle] --> C[End]\n",
+		"fc-chain-bt":          "flowchart BT\n  A[Start] --> B[Middle] --> C[End]\n",
+		"fc-chain-rl":          "flowchart RL\n  A[Start] --> B[Middle] --> C[End]\n",
+		"fc-fanout":            "flowchart TB\n  A[Hub] --> B[one]\n  A --> C[two]\n  A --> D[three]\n  A --> E[four]\n",
+		"fc-fanin":             "flowchart TB\n  B[one] --> A[Hub]\n  C[two] --> A\n  D[three] --> A\n  E[four] --> A\n",
+		"fc-k22":               "flowchart TB\n  A[a] --> C[c]\n  A --> D[d]\n  B[b] --> C\n  B --> D\n",
+		"fc-long":              "flowchart TB\n  A --> B --> C --> D\n  A --> D\n",
+		"fc-decision":          "flowchart TD\n  S([Start]) --> Q{Ready?}\n  Q -->|yes| Go[Go]\n  Q -->|no| Wait[Wait]\n  Wait --> Q\n",
+		"fc-cycle":             "flowchart TB\n  A --> B --> C --> A\n",
+		"fc-wide":              "flowchart LR\n  A[시작] --> B[東京] --> C[end]\n",
+		"fc-ends":              "flowchart TB\n  A --> B\n  A --o C\n  A --x D\n  A --- E\n  F <--> G\n",
+		"fc-invisible":         "flowchart TB\n  A --> B\n  A ~~~ C\n",
+		"fc-labels-tb":         "flowchart TD\n  Q{Ready?} -->|yes| A[Go]\n  Q -->|no| B[Wait]\n  A -->|done| C[End]\n",
+		"fc-labels-lr":         "flowchart LR\n  Q{Ready?} -->|yes| A[Go]\n  Q -->|no| B[Wait]\n  A -->|done| C[End]\n",
+		"fc-styles":            "flowchart TB\n  A -.-> B\n  A ==> C\n  A --> D\n  B -.- E\n  C ==> E\n  D --> E\n",
+		"fc-selfloop":          "flowchart TB\n  A --> A\n  A --> B\n  B -->|again| B\n",
+		"fc-footnote":          "flowchart TB\n  A --> B\n  B -->|back up| A\n",
+		"fc-subgraph":          "flowchart TB\n  A[Start] --> B\n  subgraph S [Group]\n    B[inside] --> C[also]\n  end\n  C --> D[End]\n",
+		"fc-subgraph-nested":   "flowchart TB\n  subgraph O [Outer]\n    A --> B\n    subgraph I [Inner]\n      B --> C\n    end\n  end\n  C --> D\n",
+		"fc-subgraph-lr":       "flowchart LR\n  subgraph S [Group]\n    A --> B\n  end\n  B --> C\n",
+		"fc-subgraphs-side":    "flowchart TB\n  R --> A\n  R --> B\n  subgraph S1 [One]\n    A\n  end\n  subgraph S2 [Two]\n    B\n  end\n",
+		"fc-subgraph-footnote": "flowchart LR\n  subgraph S [a title far too long for its frame]\n    A\n  end\n  A --> B\n",
 	} {
 		t.Run(name, func(t *testing.T) { golden(t, name, paintFC(t, src)) })
 	}
@@ -91,6 +96,69 @@ func randomFlowchart(r *rand.Rand) string {
 		}
 	}
 	return b.String()
+}
+
+// randomFramedFlowchart is randomFlowchart with subgraphs: one to three, a later one nested in an
+// earlier one or not, each node in one of them or none, titles of mixed widths.
+func randomFramedFlowchart(r *rand.Rand) string {
+	dirs := []string{"TB", "LR", "BT", "RL"}
+	labels := []string{"a", "node", "a longer label", "東京", "x", "step two"}
+	titles := []string{"Group", "a longer title", "東京", "x"}
+	var b strings.Builder
+	fmt.Fprintf(&b, "flowchart %s\n", dirs[r.IntN(len(dirs))])
+	n := 2 + r.IntN(9)
+	k := 1 + r.IntN(3)
+	parent := make([]int, k)
+	for s := range k {
+		parent[s] = -1
+		if s > 0 && r.IntN(2) == 0 {
+			parent[s] = r.IntN(s)
+		}
+	}
+	home, label := make([]int, n), make([]string, n)
+	for i := range n {
+		home[i], label[i] = r.IntN(k+1)-1, labels[r.IntN(len(labels))]
+	}
+	for i := range n {
+		if home[i] < 0 {
+			fmt.Fprintf(&b, "  N%d[%s]\n", i, label[i])
+		}
+	}
+	var write func(s int, indent string)
+	write = func(s int, indent string) {
+		fmt.Fprintf(&b, "%ssubgraph S%d [%s]\n", indent, s, titles[r.IntN(len(titles))])
+		for i := range n {
+			if home[i] == s {
+				fmt.Fprintf(&b, "%s  N%d[%s]\n", indent, i, label[i])
+			}
+		}
+		for c := range k {
+			if parent[c] == s {
+				write(c, indent+"  ")
+			}
+		}
+		fmt.Fprintf(&b, "%send\n", indent)
+	}
+	for s := range k {
+		if parent[s] < 0 {
+			write(s, "  ")
+		}
+	}
+	for range r.IntN(2*n) + 1 {
+		i := r.IntN(n - 1)
+		j := i + 1 + r.IntN(n-1-i)
+		fmt.Fprintf(&b, "  N%d --> N%d\n", i, j)
+	}
+	return b.String()
+}
+
+// The router's invariants, and the frames', hold for random flowcharts with subgraphs (nested, side
+// by side, members on any rank) in every direction.
+func TestTheFramesInvariantsHold(t *testing.T) {
+	for seed := range uint64(300) {
+		src := randomFramedFlowchart(rand.New(rand.NewPCG(seed, 0xf4a3e)))
+		checkFlowchart(t, fmt.Sprintf("seed %d", seed), src)
+	}
 }
 
 // The router's invariants hold for random DAGs in every direction:
@@ -231,6 +299,128 @@ func checkFlowchart(t *testing.T, name, src string) {
 	}
 	if again := paintFC(t, src); again != paintFC(t, src) {
 		t.Fatalf("%s two drawings of one flowchart differ", what)
+	}
+	checkFrames(t, what, fc, g)
+}
+
+// checkFrames checks a flowchart's frames (vacuous with no subgraphs):
+//   - a frame is inside the grid, and two frames nest (one strictly inside the other) or are apart;
+//   - a node's box is inside each frame its subgraphs make, a free cell inside the border, and any
+//     other box is a cell clear of the frame;
+//   - a line on a frame's border crosses it, straight (│ over a top or bottom, ─ over a side),
+//     never runs along it and never takes a corner, and a frame is never OR'd into the lines;
+//   - no mark or label lies on a border;
+//   - a title is on its top or bottom border with no line through it or the space either side,
+//     or its frame carries a footnote mark, the title in the legend.
+func checkFrames(t *testing.T, what string, fc *pm.FlowchartDiagram, g *Grid) {
+	t.Helper()
+	parentOf := map[string]string{}
+	for _, s := range fc.Subgraphs {
+		parentOf[s.ID] = s.Parent
+	}
+	byTitle := map[string]int{} // a frame by its subgraph: frames are made in fc.Subgraphs' order, non-empty ones
+	fi := 0
+	for _, s := range fc.Subgraphs {
+		members := 0
+		for _, n := range fc.Nodes {
+			for sg, steps := n.Subgraph, 0; sg != "" && steps <= len(fc.Subgraphs); sg, steps = parentOf[sg], steps+1 {
+				if sg == s.ID {
+					members++
+					break
+				}
+			}
+		}
+		if members > 0 {
+			byTitle[s.ID] = fi
+			fi++
+		}
+	}
+	if fi != len(g.frames) {
+		t.Fatalf("%s %d frames, want %d (one per subgraph holding a node)", what, len(g.frames), fi)
+	}
+	inside := func(a, b tui.Rect) bool { // a strictly inside b's border
+		return a.X > b.X && a.Y > b.Y && a.X+a.W < b.X+b.W && a.Y+a.H < b.Y+b.H
+	}
+	apart := func(a, b tui.Rect) bool {
+		return a.X+a.W <= b.X || b.X+b.W <= a.X || a.Y+a.H <= b.Y || b.Y+b.H <= a.Y
+	}
+	for i, f := range g.frames {
+		r := f.rect
+		if r.X < 0 || r.Y < 0 || r.X+r.W > g.Size.W || r.Y+r.H > g.Size.H {
+			t.Fatalf("%s frame %d %+v outside the grid %+v", what, i, r, g.Size)
+		}
+		for j := i + 1; j < len(g.frames); j++ {
+			o := g.frames[j].rect
+			if !inside(r, o) && !inside(o, r) && !apart(r, o) {
+				t.Fatalf("%s frames %d %+v and %d %+v overlap without nesting", what, i, r, j, o)
+			}
+		}
+	}
+	for bi, b := range g.Boxes {
+		n := fc.Nodes[bi]
+		mine := map[int]bool{}
+		for sg, steps := n.Subgraph, 0; sg != "" && steps <= len(fc.Subgraphs); sg, steps = parentOf[sg], steps+1 {
+			if f, ok := byTitle[sg]; ok {
+				mine[f] = true
+			}
+		}
+		grown := tui.Rect{X: b.Rect.X - 1, Y: b.Rect.Y - 1, W: b.Rect.W + 2, H: b.Rect.H + 2}
+		for i, f := range g.frames {
+			switch {
+			case mine[i] && !inside(grown, f.rect):
+				t.Fatalf("%s box %s %+v isn't a cell inside its frame %d %+v", what, b.ID, b.Rect, i, f.rect)
+			case !mine[i] && !apart(grown, f.rect) && !inside(f.rect, grown):
+				t.Fatalf("%s box %s %+v touches frame %d %+v it isn't in", what, b.ID, b.Rect, i, f.rect)
+			}
+		}
+	}
+	for i, f := range g.frames {
+		r := f.rect
+		for c, d := range g.lines {
+			if !onBorder(r, c) {
+				continue
+			}
+			corner := (c.x == r.X || c.x == r.X+r.W-1) && (c.y == r.Y || c.y == r.Y+r.H-1)
+			topOrBottom := c.y == r.Y || c.y == r.Y+r.H-1
+			switch {
+			case corner:
+				t.Fatalf("%s a line at frame %d's corner %v", what, i, c)
+			case topOrBottom && d != north|south:
+				t.Fatalf("%s a line along frame %d's top or bottom at %v (%s)", what, i, c, lineRune[d])
+			case !topOrBottom && d != east|west:
+				t.Fatalf("%s a line along frame %d's side at %v (%s)", what, i, c, lineRune[d])
+			}
+		}
+		for c, mk := range g.marks {
+			if onBorder(r, c) {
+				t.Fatalf("%s the mark %q on frame %d's border at %v", what, mk, i, c)
+			}
+		}
+		for _, tx := range g.texts {
+			for x := tx.x; x < tx.x+tx.w; x++ {
+				if onBorder(r, cell{x, tx.y}) {
+					t.Fatalf("%s the label %q on frame %d's border at %v", what, tx.s, i, cell{x, tx.y})
+				}
+			}
+		}
+		switch {
+		case f.shown != "":
+			if f.ty != r.Y && f.ty != r.Y+r.H-1 || f.tx < r.X+3 {
+				t.Fatalf("%s frame %d's title at (%d, %d) isn't on its top or bottom border %+v", what, i, f.tx, f.ty, r)
+			}
+			for x := f.tx - 1; x <= f.tx+tui.StringWidth(f.shown); x++ {
+				if _, ok := g.lines[cell{x, f.ty}]; ok {
+					t.Fatalf("%s a line crosses frame %d's title %q at %v", what, i, f.shown, cell{x, f.ty})
+				}
+			}
+		case f.title != "":
+			if f.mark == "" {
+				t.Fatalf("%s frame %d's title %q is neither shown nor a footnote", what, i, f.title)
+			}
+			if _, ok := g.lines[cell{r.X + 1, r.Y}]; ok {
+				t.Fatalf("%s a line crosses frame %d's footnote mark at %v", what, i, cell{r.X + 1, r.Y})
+			}
+		}
 	}
 }
 
