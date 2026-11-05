@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"maps"
+	"reflect"
 	"slices"
 
 	pm "github.com/yongjohnlee80/golib/parse/mermaid"
@@ -51,6 +52,12 @@ func Supported(k pm.Kind) bool { _, ok := kinds[k]; return ok }
 // Drawn is nil when d is drawn in cells: its kind is drawn, and so is this diagram of it (some
 // kinds draw only part of their grammar). ErrUnsupported otherwise, for the host's own rendering.
 func Drawn(d pm.Diagram) error {
+	if d == nil {
+		return ErrUnsupported // a nil model draws nothing, as an unknown kind
+	}
+	if v := reflect.ValueOf(d); v.Kind() == reflect.Pointer && v.IsNil() {
+		return ErrUnsupported // a typed nil (a nil *MindmapDiagram) too: its layout would read it
+	}
 	k, ok := kinds[d.Kind()]
 	if !ok {
 		return ErrUnsupported

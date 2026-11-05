@@ -161,3 +161,33 @@ func TestCappedLabelsDrawInCells(t *testing.T) {
 		})
 	}
 }
+
+// ambiguousWide measures as an ambiguous-wide terminal does: … (East Asian Ambiguous) is two cells.
+type ambiguousWide struct{}
+
+func (ambiguousWide) StringWidth(s string) int {
+	return newCells(1, 1).StringWidth(s) + strings.Count(s, "…")
+}
+
+// The … takes its own width from the cap: under an ambiguous-wide policy it is two cells, so one
+// cell less of the label shows, and the width reported is the width drawn.
+func TestTheEllipsisTakesItsOwnWidth(t *testing.T) {
+	long := strings.Repeat("a", 60)
+	s, w, capped := capLabel(long, RoleLabel, ambiguousWide{})
+	if !capped || s != strings.Repeat("a", caps[RoleLabel]-2)+"…" || w != caps[RoleLabel] || (ambiguousWide{}).StringWidth(s) != w {
+		t.Errorf("ambiguous-wide: %q, %d cells reported, %d measured; want %d a's and …, %d cells", s, w, (ambiguousWide{}).StringWidth(s), caps[RoleLabel]-2, caps[RoleLabel])
+	}
+}
+
+// A nil model is not drawn, untyped or typed: ErrUnsupported, as for a kind not registered, never a
+// panic in its layout.
+func TestANilDiagramIsUnsupported(t *testing.T) {
+	for name, d := range map[string]pm.Diagram{"nil": nil, "typed nil": (*pm.MindmapDiagram)(nil)} {
+		if err := Drawn(d); err != ErrUnsupported {
+			t.Errorf("Drawn(%s) = %v", name, err)
+		}
+		if _, err := Lay(context.Background(), d, newCells(1, 1)); err != ErrUnsupported {
+			t.Errorf("Lay(%s) = %v", name, err)
+		}
+	}
+}

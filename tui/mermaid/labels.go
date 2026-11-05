@@ -23,30 +23,33 @@ var caps = [...]int{
 	RoleMessage: 56,
 }
 
-// ellipsis ends a cut label; it is one cell.
+// ellipsis ends a cut label. It is East Asian Ambiguous, so its width is the Measurer's: one cell,
+// or two under an ambiguous-wide policy.
 const ellipsis = "…"
 
 // capLabel is s cut to its role's cap at a grapheme cluster's edge, with … last when it was cut: a
-// wide cluster that would cross the cap drops whole. w is the shown label's width. A kind measures
-// a label only through it, before layout, so the room a layout reserves is the room drawn.
+// wide cluster that would cross the cap drops whole, and the … takes its own width from the cap.
+// w is the shown label's width. A kind measures a label only through it, before layout, so the
+// room a layout reserves is the room drawn.
 func capLabel(s string, r Role, m Measurer) (shown string, w int, capped bool) {
 	w = m.StringWidth(s)
 	limit := caps[r]
 	if w <= limit {
 		return s, w, false
 	}
+	ew := m.StringWidth(ellipsis)
 	var b strings.Builder
 	used := 0
 	for cl := range tui.Graphemes(s) {
 		cw := m.StringWidth(cl)
-		if used+cw > limit-1 { // the … takes the last cell
+		if used+cw > limit-ew {
 			break
 		}
 		b.WriteString(cl)
 		used += cw
 	}
 	b.WriteString(ellipsis)
-	return b.String(), used + 1, true
+	return b.String(), used + ew, true
 }
 
 // hit is a capped label's cells and its whole text.
