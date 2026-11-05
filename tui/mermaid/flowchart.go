@@ -147,7 +147,7 @@ type netKey struct{ kind, n int }
 
 func init() {
 	register(pm.Flowchart, layAs(LayFlowchart), flowchartDrawn)
-	narrowers[pm.Flowchart] = flowchartDown
+	registerNarrower(pm.Flowchart, flowchartDown)
 }
 
 // flowchartDrawn refuses a flowchart with subgraphs: their frames aren't drawn yet, and its boxes

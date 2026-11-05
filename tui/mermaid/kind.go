@@ -16,6 +16,9 @@ type kind struct {
 	// drawn is ErrUnsupported for a diagram of the kind this package doesn't draw (a flowchart with
 	// subgraphs, until frames land); nil: every diagram of the kind is drawn.
 	drawn func(d pm.Diagram) error
+	// narrow is d in a narrower form, for a room it's too wide for (LayWithin): a flowchart that
+	// runs across, laid running down. nil, or nil from it: none.
+	narrow func(d pm.Diagram) pm.Diagram
 }
 
 // kinds are the kinds drawn, each registered by its own file's init: no list of kinds is kept in
@@ -68,9 +71,14 @@ func Drawn(d pm.Diagram) error {
 	return nil
 }
 
-// narrowers are the kinds that can be laid out narrower than they are written, each set by its own
-// file's init: a flowchart that runs across, laid running down. A kind without one is laid as it is.
-var narrowers = map[pm.Kind]func(pm.Diagram) pm.Diagram{}
+// registerNarrower gives kind k, registered already, its narrower form (kind.narrow): set on the
+// kind's one entry, after register, by the kind's own file. A kind not registered is left alone.
+func registerNarrower(k pm.Kind, narrow func(pm.Diagram) pm.Diagram) {
+	if e, ok := kinds[k]; ok {
+		e.narrow = narrow
+		kinds[k] = e
+	}
+}
 
 // LayWithin is Lay for a room cols wide: a diagram wider than the room is laid again in its kind's
 // narrower form, when it has one, and the narrower of the two is kept. One still wider than the
@@ -80,8 +88,8 @@ func LayWithin(ctx context.Context, d pm.Diagram, m Measurer, cols int) (*Grid, 
 	if err != nil || g.Size.W <= cols {
 		return g, err
 	}
-	narrow, ok := narrowers[d.Kind()]
-	if !ok {
+	narrow := kinds[d.Kind()].narrow
+	if narrow == nil {
 		return g, nil
 	}
 	nd := narrow(d)
