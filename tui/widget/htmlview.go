@@ -278,14 +278,17 @@ func WithDiagramNotice(say func(kind string) string) HTMLOption {
 // style paints as the text's own, as the Editor paints it. A language no definition has stays as
 // it is. Unset, no highlighting at all.
 //
-// It may be applied after the view is built (as WithDiagramNotice does): the cell layout
-// highlights each time it lays out, and setting it lays the page out again.
+// It may be applied when the view is made, before its document, or after it is built (as
+// WithDiagramNotice does): the cell layout highlights each time it lays out, and a change lays the
+// page out again.
 func WithSyntax(catalog *highlight.Catalog, styles SyntaxStyles) HTMLOption {
 	return func(v *HTMLView) {
 		v.syntax, v.syntaxStyles = catalog, styles
-		if c, ok := v.layout.(*cellHTML); ok && c.src != nil {
-			c.syntax, c.syntaxStyles = v.syntax, v.syntaxStyles
-			c.layOut()
+		if c, ok := v.layout.(*cellHTML); ok {
+			c.syntax, c.syntaxStyles = catalog, styles
+			if c.src != nil {
+				c.layOut()
+			}
 		}
 	}
 }
