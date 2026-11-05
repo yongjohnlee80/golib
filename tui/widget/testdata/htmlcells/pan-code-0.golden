@@ -1,0 +1,8 @@
+"┌─ go ─────────────┐"
+    0-19 fg=muted
+"│ 0123456789abcdefg»"
+    0-0 fg=muted
+    1-1 fg=muted bg=surface
+    2-18 fg=fg bg=surface
+"└──────────────────┘"
+    0-19 fg=muted
