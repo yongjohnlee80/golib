@@ -1,0 +1,48 @@
+"before"
+""
+"┐  ┌─────┐  ┌───────┐  ┌──────"
+    0-0 fg=accent
+    3-9 fg=accent
+    12-20 fg=accent
+    23-29 fg=accent
+"│  │ Bob │  │ Carol │  │ Dave"
+    0-0 fg=accent
+    3-3 fg=accent
+    9-9 fg=accent
+    12-12 fg=accent
+    20-20 fg=accent
+    23-23 fg=accent
+"┘  └──┬──┘  └───┬───┘  └───┬──"
+    0-0 fg=accent
+    3-9 fg=accent
+    12-20 fg=accent
+    23-29 fg=accent
+"      │         │          │"
+"ello  │         │          │"
+"─────▶┤         │          │"
+"      │ and on  │          │"
+"«     ├────────▶┤          │ »"
+"      │         │  and on  │"
+"      │         ├─────────▶┤"
+"      │         │          │ t"
+"      │         │          ├──"
+"      │         │          │"
+"┐  ┌──┴──┐  ┌───┴───┐  ┌───┴──"
+    0-0 fg=accent
+    3-9 fg=accent
+    12-20 fg=accent
+    23-29 fg=accent
+"│  │ Bob │  │ Carol │  │ Dave"
+    0-0 fg=accent
+    3-3 fg=accent
+    9-9 fg=accent
+    12-12 fg=accent
+    20-20 fg=accent
+    23-23 fg=accent
+"┘  └─────┘  └───────┘  └──────"
+    0-0 fg=accent
+    3-9 fg=accent
+    12-20 fg=accent
+    23-29 fg=accent
+""
+"after"
