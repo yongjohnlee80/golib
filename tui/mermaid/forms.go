@@ -47,7 +47,8 @@ const (
 )
 
 // formSpec is one outline: its corners and sides, its size around a label, and the sides that can
-// take a junction where a line points in (the heavy and the slanted outlines can't).
+// take a junction where a line points in: none on the heavy outline, and on the hexagon only its
+// light top and bottom (a flowchart's decision takes its edges there), never its < > sides.
 type formSpec struct {
 	tl, tr, bl, br, h, left, right string
 	ports                          Port
@@ -58,7 +59,7 @@ var forms = [...]formSpec{
 	FormText:    {},
 	FormSquare:  {"┌", "┐", "└", "┘", "─", "│", "│", PortAll},
 	FormRounded: {"╭", "╮", "╰", "╯", "─", "│", "│", PortAll},
-	FormHexagon: {"╱", "╲", "╲", "╱", "─", "<", ">", 0},
+	FormHexagon: {"╱", "╲", "╲", "╱", "─", "<", ">", PortTop | PortBottom},
 	FormBang:    {"┏", "┓", "┗", "┛", "━", "┃", "┃", 0},
 }
 

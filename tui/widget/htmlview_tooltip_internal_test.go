@@ -59,4 +59,7 @@ func TestACappedLabelInAPannedDiagramIsHitWhereItIsShown(t *testing.T) {
 	if text, _ := c.ToolTipAt(float32(left-1), float32(first+gy)); text != "" {
 		t.Errorf("the « column has a region: %q", text)
 	}
+	if text, _ := c.ToolTipAt(float32(right), float32(first+gy)); text != "" {
+		t.Errorf("the » column has a region: %q", text)
+	}
 }
