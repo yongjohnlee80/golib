@@ -353,8 +353,14 @@ func (c *cellHTML) layCode(bi int, b *hblock) {
 	c.layCodeEdge(bi, b, false)
 }
 
-// layCodeEdge is the top or bottom edge of a code block's box, in the border's tone, across the room
-// the block has: ┌─ go ───┐ and └───────┘.
+// codeBoxTone is a code block's box's tone: the muted text's, which reads on every theme's page (at
+// least 3:1, measured in tui/decl/themes' testdata/codeblock). TokenBorder, a theme's mid, doesn't: it
+// is under 2:1 on sepia's, and the box is what sets the block off, the shading being the page's own
+// there. Table boxes still wear the border.
+var codeBoxTone style.ColorSpec = style.TokenTextMuted
+
+// layCodeEdge is the top or bottom edge of a code block's box, in its tone, across the room the block
+// has: ┌─ go ───┐ and └───────┘.
 func (c *cellHTML) layCodeEdge(bi int, b *hblock, top bool) {
 	row := hrow{block: bi, first: top, bottom: !top, cls: c.prefix(b, top)}
 	x, right := 2*b.quote+b.indent, c.width-1
@@ -368,20 +374,20 @@ func (c *cellHTML) layCodeEdge(bi int, b *hblock, top bool) {
 	if top {
 		left, corner = "┌", "┐"
 	}
-	put(left, style.TokenBorder)
+	put(left, codeBoxTone)
 	if top && b.lang != "" && c.measure(b.lang)+4 <= right-x { // "─ go ─" before the corner
-		put(hruleCluster, style.TokenBorder)
+		put(hruleCluster, codeBoxTone)
 		put(" ", nil)
 		for g := range tui.Graphemes(b.lang) {
-			put(g, nil) // a deco's own muted tone: read as text, where the border's is a mid one
+			put(g, nil) // a deco's own muted tone
 		}
 		put(" ", nil)
 	}
 	for x < right {
-		put(hruleCluster, style.TokenBorder)
+		put(hruleCluster, codeBoxTone)
 	}
 	if x == right {
-		put(corner, style.TokenBorder)
+		put(corner, codeBoxTone)
 	}
 	c.rows = append(c.rows, row)
 }
@@ -906,14 +912,14 @@ func (c *cellHTML) shownAt(r *hrow, k hcl) (int, bool) {
 	return x, x > c.codeLeft(r) && x+k.w <= c.width-1
 }
 
-// paintCodeSides draws what a code block's line has of its box at screen row y: its sides in the
-// border's tone, the shading between them. The sides stay when the line pans.
+// paintCodeSides draws what a code block's line has of its box at screen row y: its sides in the box's
+// tone, the shading between them. The sides stay when the line pans.
 func (c *cellHTML) paintCodeSides(s tui.Surface, r *hrow, y, w int) {
 	left, right := c.codeLeft(r), min(c.width, w)-1
 	if left >= w {
 		return
 	}
-	side := style.New().Foreground(style.TokenBorder)
+	side := style.New().Foreground(codeBoxTone)
 	s.SetCell(left, y, "│", side)
 	if right > left {
 		s.Fill(tui.Rect{X: left + 1, Y: y, W: right - left - 1, H: 1}, " ", style.New().Background(style.TokenSurface))

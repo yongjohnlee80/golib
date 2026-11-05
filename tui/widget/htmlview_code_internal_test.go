@@ -5,7 +5,6 @@ import (
 	"testing"
 
 	"github.com/yongjohnlee80/golib/tui"
-	"github.com/yongjohnlee80/golib/tui/style"
 )
 
 // htmlview_code_internal_test.go: a code block in cells is boxed and never wrapped. A line wider than
@@ -108,8 +107,8 @@ func TestACodeBlockKeepsItsIndentAndItsShadingInside(t *testing.T) {
 				}
 			}
 			for _, x := range []int{left, codeRoom - 1} {
-				if fg, _ := s.style[top+1][x].GetForeground(); fg != style.ColorSpec(style.TokenBorder) {
-					t.Errorf("the side at column %d wears %v, want the border token", x, fg)
+				if fg, _ := s.style[top+1][x].GetForeground(); fg != codeBoxTone {
+					t.Errorf("the side at column %d wears %v, want the box's tone", x, fg)
 				}
 			}
 		})
