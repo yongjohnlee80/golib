@@ -20,6 +20,7 @@ func TestKindsAreWhatLayDraws(t *testing.T) {
 		pm.ER: "erDiagram\n  CUSTOMER ||--o{ ORDER : places", pm.Journey: "journey\n  section A\n  Make tea: 5: Me",
 		pm.Mindmap: "mindmap\n  r\n    a", pm.Timeline: "timeline\n  2004 : Facebook",
 		pm.Requirement: "requirementDiagram\n  requirement a {\n  id: 1\n  text: the text\n  }",
+		pm.Gantt:       "gantt\n  a :2026-01-01, 3d",
 		pm.Pie:         "pie\n  \"a\": 1",
 	}
 	for _, k := range got {

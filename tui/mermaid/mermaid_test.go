@@ -195,17 +195,27 @@ func TestAWideLabelsBoxCloses(t *testing.T) {
 	}
 }
 
-// A kind not in Kinds is ErrUnsupported, for the host to show its own way.
+// undrawnDiagram is a kind no file registers: every kind the parser reads is drawn, so a kind added
+// to it before it is drawn here is what this stands for.
+type undrawnDiagram struct{}
+
+func (undrawnDiagram) Kind() pm.Kind { return pm.Kind(200) }
+
+// A kind not in Kinds is ErrUnsupported, for the host to show its own way; a flowchart with
+// subgraphs is drawn, each subgraph a frame.
 func TestAKindNotDrawnIsUnsupported(t *testing.T) {
-	d, err := pm.Parse("flowchart LR\n  a --> b\n")
+	if Supported(undrawnDiagram{}.Kind()) {
+		t.Fatal("a kind no file registers is reported drawn")
+	}
+	if _, err := Lay(context.Background(), undrawnDiagram{}, newCells(1, 1)); err != ErrUnsupported {
+		t.Fatalf("Lay of a kind not drawn: %v, want ErrUnsupported", err)
+	}
+	d, err := pm.Parse("flowchart TB\n  subgraph S [Group]\n    a --> b\n  end\n")
 	if err != nil {
 		t.Fatal(err)
 	}
-	if Supported(d.Kind()) {
-		t.Fatal("a flowchart is reported drawn")
-	}
-	if _, err := Lay(context.Background(), d, newCells(1, 1)); err != ErrUnsupported {
-		t.Fatalf("Lay of a flowchart: %v, want ErrUnsupported", err)
+	if g, err := Lay(context.Background(), d, newCells(1, 1)); err != nil || len(g.frames) != 1 {
+		t.Fatalf("Lay of a flowchart with a subgraph: %v, %d frames; want it drawn, one frame", err, len(g.frames))
 	}
 }
 
@@ -379,9 +389,11 @@ func TestTheEasyKindsRefuseWhatIsTooLarge(t *testing.T) {
 	}
 }
 
-// Timeline, journey and sequence are drawn: Kinds lists them, and Lay lays each.
+// Timeline, journey, sequence and flowchart (graph too) are drawn: Kinds lists them, and Lay lays
+// each.
 func TestTheEasyKindsAreDrawn(t *testing.T) {
-	for _, src := range []string{"timeline\n  2020 : a\n", "journey\n  section s\n    t: 3: me\n", "sequenceDiagram\n  A->>B: hi\n"} {
+	for _, src := range []string{"timeline\n  2020 : a\n", "journey\n  section s\n    t: 3: me\n", "sequenceDiagram\n  A->>B: hi\n",
+		"flowchart LR\n  a --> b\n", "graph TD\n  a --> b\n"} {
 		d, err := pm.Parse(src)
 		if err != nil {
 			t.Fatal(err)

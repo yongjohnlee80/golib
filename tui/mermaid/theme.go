@@ -14,6 +14,7 @@ type Element uint8
 
 const (
 	ElemLine     Element = iota // a line and its junctions
+	ElemFrame                   // a frame's border: a subgraph's
 	ElemMark                    // a mark on a line: an arrowhead, a dash, a grid column's ┊
 	ElemFill                    // a filled cell: a bar, a slice
 	ElemText                    // a label outside a box, a title, a legend row, a cap's …
@@ -24,7 +25,7 @@ const (
 // Style is e's style in th.
 func (th Theme) Style(e Element) style.Style {
 	switch e {
-	case ElemLine, ElemMark:
+	case ElemLine, ElemFrame, ElemMark:
 		return th.Line
 	case ElemFill, ElemBox:
 		return th.Box

@@ -100,6 +100,23 @@ func (g *Grid) boxIn(b Box, r tui.Rect, m Measurer) Box {
 	if capped {
 		g.hits = append(g.hits, hit{r: r, full: b.Label})
 	}
+	if len(b.Sections) > 0 { // each row capped, a capped one revealing itself whole over its own row
+		b.sectionsShown = make([][]string, len(b.Sections))
+		y := r.Y + 1
+		for si, sec := range b.Sections {
+			if si > 0 {
+				y++ // the rule
+			}
+			for _, row := range sec {
+				shown, _, rowCapped := capLabel(row, RoleLabel, m)
+				b.sectionsShown[si] = append(b.sectionsShown[si], shown)
+				if rowCapped {
+					g.hits = append(g.hits, hit{r: tui.Rect{X: r.X, Y: y, W: r.W, H: 1}, full: row})
+				}
+				y++
+			}
+		}
+	}
 	g.Boxes = append(g.Boxes, b)
 	return b
 }
@@ -128,6 +145,37 @@ func widest(m Measurer, ss ...string) int {
 		w = max(w, sw)
 	}
 	return w
+}
+
+// Tick is a mark on an axis: its column and the label written over it.
+type Tick struct {
+	X     int
+	Label string
+}
+
+// axis draws an axis w cells wide from column x0: its line on row y+1, a ┬ in it at each tick,
+// and each tick's label on row y over its ┬. It returns the ticks' columns, for gridColumns.
+func (g *Grid) axis(x0, w, y int, ticks []Tick, m Measurer) (cols []int) {
+	g.run(cell{x0, y + 1}, cell{x0 + w - 1, y + 1})
+	for _, t := range ticks {
+		cols = append(cols, t.X)
+		g.label(t.X, y, t.Label, m)
+		g.lines[cell{t.X, y + 1}] |= south
+	}
+	return cols
+}
+
+// gridMark is a grid column's cell: dotted, so a fill drawn over it (a bar) reads above it.
+const gridMark = "┊"
+
+// gridColumns marks the cells under each of cols, rows y0 to y1, with gridMark: a chart's grid,
+// under its axis's ticks. Fills paint over marks, so a bar covers its cells of the grid.
+func (g *Grid) gridColumns(cols []int, y0, y1 int) {
+	for y := y0; y <= y1; y++ {
+		for _, x := range cols {
+			g.marks[cell{x, y}] = gridMark
+		}
+	}
 }
 
 // legendRow is one row of a key under the drawing: a swatch the kind gives (a slice's character, a

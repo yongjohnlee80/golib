@@ -8,8 +8,9 @@ import (
 )
 
 // Pie is the pie kind's value, declared here and registered in init: the registry owns the list,
-// so a new kind edits no shared file.
-const Pie Kind = 10
+// so a new kind edits no shared file. It was the layer's first number (10) until gantt took 10
+// on its merge; 11 is the value the two agreed on then (gantt.go holds 10).
+const Pie Kind = 11
 
 func init() { register(Pie, "pie", []string{"pie"}, (*parser).pie) }
 

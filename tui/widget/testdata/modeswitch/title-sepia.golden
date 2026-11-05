@@ -1,0 +1,18 @@
+Raw chosen
+  title    fg 5b4636 bg default bold
+  Raw      fg 5b4636 bg default bold underline
+  |        fg 5b4636 bg default
+  Rendered fg 5b4636 bg default
+  border   fg 8a7350 bg default
+Rendered chosen
+  title    fg 5b4636 bg default bold
+  Raw      fg 5b4636 bg default
+  |        fg 5b4636 bg default
+  Rendered fg 5b4636 bg default bold underline
+  border   fg 8a7350 bg default
+Rendered unavailable
+  title    fg 5b4636 bg default bold
+  Raw      fg 5b4636 bg default bold underline
+  |        fg 5b4636 bg default
+  Rendered fg 5b4636 bg default faint
+  border   fg 8a7350 bg default

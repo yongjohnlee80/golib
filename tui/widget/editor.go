@@ -168,9 +168,11 @@ type Editor struct {
 	// view is set (editor_document.go's headerRows)
 	sw      *ModeSwitch
 	swOn    bool
-	rowW    int            // the editor's width at its last layout: where the switch's cells start
-	pointer *EditorPointer // the press, the drag, and the context menu's keys (editor_pointer.go)
-	cmdline *CommandLine   // the ':' prompt: on unless a consumer turns it off
+	swTitle bool            // the switch is a frame's, on its title row (SetModeSwitchInTitle)
+	swSlot  *ModeSwitchSlot // the switch as a frame's title slot holds it (TitleSwitch)
+	rowW    int             // the editor's width at its last layout: where the switch's cells start
+	pointer *EditorPointer  // the press, the drag, and the context menu's keys (editor_pointer.go)
+	cmdline *CommandLine    // the ':' prompt: on unless a consumer turns it off
 }
 
 var (

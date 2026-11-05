@@ -332,7 +332,9 @@ func diagramNotice(kind string) string {
 }
 
 // layDiagram lays a <pre class="mermaid"> out: a kind tui/mermaid draws as its grid, one row of
-// the layout per row of the grid, at its own width (one wider than the room pans sideways: Pan);
+// the layout per row of the grid, fitted to the room where its kind can be laid narrower (a
+// flowchart running across, laid running down: LayWithin), else at its own width (one wider than
+// the room pans sideways: Pan);
 // any other kind, one that doesn't parse, or one too large to lay out, as a muted line saying it
 // isn't drawn here, wrapped to the room, never its source (Raw shows that).
 func (c *cellHTML) layDiagram(bi int, b *hblock) {
@@ -340,7 +342,8 @@ func (c *cellHTML) layDiagram(bi int, b *hblock) {
 	if d, err := pm.Parse(b.diagram); err == nil {
 		kind = d.Kind().String()
 		if tuimermaid.Drawn(d) == nil {
-			if g, err := tuimermaid.Lay(context.Background(), d, measureFunc(c.measure)); err == nil && g.Size.H > 0 {
+			room := max(c.width-2*b.quote-b.indent, 1)
+			if g, err := tuimermaid.LayWithin(context.Background(), d, measureFunc(c.measure), room); err == nil && g.Size.H > 0 {
 				for i := range g.Size.H {
 					c.rows = append(c.rows, hrow{block: bi, first: i == 0, grid: g, gridRow: i})
 				}

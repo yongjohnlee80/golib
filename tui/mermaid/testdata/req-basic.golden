@@ -1,0 +1,35 @@
+┌────────────────────────┐
+│       «Element»        │
+│          page          │
+├────────────────────────┤
+│ Type: web page         │
+│ Doc Ref: docs/login.md │
+└────────────┬───────────┘
+             ┆
+             ┆ «satisfies»
+             ▼
+ ┌───────────────────────┐
+ │     «Requirement»     │
+ │         login         │   ┌─────────────────────┐   ┌───────────┐
+ ├───────────────────────┤   │ «Design Constraint» │   │ «Element» │
+ │ ID: 1                 │   │        bare         │   │   probe   │
+ │ Text: a user signs in │   └──────────┬──────────┘   └─────┬─────┘
+ │ Risk: High            │              ┆                    ┆
+ │ Verification: Test    │              ┆                    ┆
+ └───────────────────────┘              ┆                    ┆
+             ●                          ┆                    ┆
+             └─────────────────────────┐┆┌┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┘
+                                       │└┤
+                            «contains» │ ┆ «verifies»
+                                       │ ▼               ¹
+                       ┌───────────────┴────────────────┐
+                       │    «Functional Requirement»    │
+                       │             reset              │
+                       ├────────────────────────────────┤
+                       │ ID: 1.1                        │
+                       │ Text: a user resets a password │
+                       │ Risk: Low                      │
+                       │ Verification: Demonstration    │
+                       └────────────────────────────────┘
+
+¹ «traces»
