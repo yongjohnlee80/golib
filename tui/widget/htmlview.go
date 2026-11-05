@@ -5,6 +5,7 @@ import (
 	"math"
 	"time"
 
+	"github.com/yongjohnlee80/golib/highlight"
 	"github.com/yongjohnlee80/golib/tui"
 	"github.com/yongjohnlee80/golib/tui/keymap"
 	"github.com/yongjohnlee80/golib/tui/style"
@@ -44,6 +45,10 @@ type HTMLView struct {
 	diagramsN uint64 // how many times WithDiagrams set diagrams: a new one's answers are its own
 	// diagramNotice is the cell layout's line for a diagram it doesn't draw (WithDiagramNotice).
 	diagramNotice func(kind string) string
+	// syntax is the languages a preformatted block's language-* class is looked up in, its
+	// colours the table or the cells' default (WithSyntax); nil: no highlighting.
+	syntax       *highlight.Catalog
+	syntaxColors *[highlight.Styles]style.ColorSpec
 
 	pressing bool
 	pressAt  [2]float32 // where the left button went down, in the layout's units
@@ -262,6 +267,26 @@ func WithDiagramNotice(say func(kind string) string) HTMLOption {
 	return func(v *HTMLView) {
 		v.diagramNotice = say
 		if c, ok := v.layout.(*cellHTML); ok && c.src != nil {
+			c.layOut()
+		}
+	}
+}
+
+// WithSyntax highlights a preformatted block's code in the terminal's cells: the languages the
+// catalog holds, looked up by the block's language-* class, painted in colors — each entry a
+// host sets, the default table's where it leaves a gap. A language no definition has stays as it
+// is. Unset, no highlighting at all.
+//
+// It may be applied after the view is built (as WithDiagramNotice does): the cell layout
+// highlights each time it lays out, and setting it lays the page out again.
+func WithSyntax(catalog *highlight.Catalog, colors *[highlight.Styles]style.ColorSpec) HTMLOption {
+	return func(v *HTMLView) {
+		v.syntax, v.syntaxColors = catalog, colors
+		if c, ok := v.layout.(*cellHTML); ok && c.src != nil {
+			c.syntax, c.syntaxColors = v.syntax, [highlight.Styles]style.ColorSpec{}
+			if colors != nil {
+				c.syntaxColors = *colors
+			}
 			c.layOut()
 		}
 	}
