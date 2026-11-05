@@ -5,6 +5,11 @@ import (
 	"strings"
 )
 
+// Journey is the kind of the diagrams that start with journey.
+const Journey Kind = 6
+
+func init() { register(Journey, "journey", []string{"journey"}, (*parser).journey) }
+
 // JourneyDiagram is a parsed user journey: its sections, left to right, each with its tasks, and
 // the actors the tasks name.
 type JourneyDiagram struct {

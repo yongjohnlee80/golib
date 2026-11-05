@@ -53,26 +53,6 @@ func notDrawn(err error, line int, what, format string, args ...any) *NotDrawnEr
 // Diagram is a parsed diagram; Kind says which model it is.
 type Diagram interface{ Kind() Kind }
 
-// Kind is a diagram type.
-type Kind uint8
-
-const (
-	Flowchart   Kind = iota + 1 // flowchart, graph
-	Sequence                    // sequenceDiagram
-	State                       // stateDiagram, stateDiagram-v2
-	Class                       // classDiagram
-	ER                          // erDiagram
-	Journey                     // journey
-	Mindmap                     // mindmap
-	Timeline                    // timeline
-	Requirement                 // requirementDiagram
-)
-
-var kindNames = [...]string{Flowchart: "flowchart", Sequence: "sequence", State: "state", Class: "class", ER: "er",
-	Journey: "journey", Mindmap: "mindmap", Timeline: "timeline", Requirement: "requirement"}
-
-func (k Kind) String() string { return enumName(kindNames[:], int(k)) }
-
 // Dir is the direction a flowchart's ranks run in. The zero Dir is unset: a subgraph without
 // its own direction takes its parent's.
 type Dir uint8
