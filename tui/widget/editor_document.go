@@ -199,16 +199,61 @@ func (e *Editor) SetModeSwitch(on bool) {
 	e.swOn = on
 	e.RequestLayout()
 	e.MarkDirty()
+	e.switchChanged()
+}
+
+// SetModeSwitchInTitle moves the switch (SetModeSwitch) from the editor's first row to its frame's
+// title row: the frame holds ModeSwitch in its title slot (widget.Box.SetTitleSlot; decl's Frame
+// does so for its Editor), and this editor keeps it up to date (its view, whether Rendered is
+// available, whether it has a document view). The switch shows there only while this is on and
+// SetModeSwitch is; otherwise it takes no room on the title row. An editor whose switch no frame
+// holds keeps it on its first row, so the switch is never lost. Off by default.
+func (e *Editor) SetModeSwitchInTitle(on bool) {
+	if e.swTitle == on {
+		return
+	}
+	e.swTitle = on
+	e.RequestLayout()
+	e.MarkDirty()
+	e.switchChanged()
 }
 
 // ModeSwitch is the editor's [ Raw | Rendered ] switch.
 func (e *Editor) ModeSwitch() *ModeSwitch { return e.sw }
 
-// headerRows is the rows the switch takes at the editor's top: one while it is shown, none
-// otherwise. A Rendered view to switch to is the switch's reason to be there; an editor with none
-// gives no row up.
+// TitleSwitch is the switch as a frame's title slot holds it (widget.Box.SetTitleSlot): the one
+// ModeSwitch, mounted on its own, resolving its presses itself. The same component every call.
+func (e *Editor) TitleSwitch() tui.Component {
+	if e.swSlot == nil {
+		e.swSlot = &ModeSwitchSlot{e.sw}
+	}
+	return e.swSlot
+}
+
+// ModeSwitchShown implements ModeSwitchShower, for the switch held in a frame's title slot: shown
+// there while it is on (SetModeSwitch), on the title row (SetModeSwitchInTitle), and the editor has
+// a document view to switch to. Otherwise it takes no room there.
+func (e *Editor) ModeSwitchShown() bool { return e.swOn && e.swTitle && e.doc.Document() != nil }
+
+// switchInFrame reports whether a frame holds the switch: it is mounted, and only a frame mounts
+// it (the editor draws it on its own row unmounted).
+func (e *Editor) switchInFrame() bool { return e.sw.Context() != nil }
+
+// switchChanged is the held switch's update: its view, or whether it is shown at all, has changed.
+// On the editor's own row it repaints with the editor.
+func (e *Editor) switchChanged() {
+	if e.switchInFrame() {
+		e.sw.RequestLayout() // shown or not changes its width
+		e.sw.MarkDirty()
+	}
+}
+
+// headerRows is the rows the switch takes at the editor's top: one while it is shown there, none
+// otherwise: off, on a frame's title row (when a frame holds it), or with no document view. A
+// Rendered view to switch to is the switch's reason to be there; an editor with none gives no row
+// up.
 func (e *Editor) headerRows() int {
-	if e.swOn && e.doc.Document() != nil {
+	if e.swOn && e.doc.Document() != nil && !(e.swTitle && e.switchInFrame()) {
 		return 1
 	}
 	return 0
@@ -286,6 +331,7 @@ func (e *Editor) wireToggle() {
 func (e *Editor) applyView() {
 	e.showDocument(e.ShownView() == ViewRendered)
 	e.MarkDirty()
+	e.switchChanged()
 }
 
 // showDocument shows the document view in place of the text, or the text again, moving the focus

@@ -114,8 +114,17 @@ func buildFrame(b Build) (tui.Component, []string, error) {
 	if title.IsMessage() {
 		box.SetTitleMessage(title.Message)
 	}
+	// an Editor's Raw | Rendered switch has its place on the frame's title row: it shows there while
+	// the Editor's modeSwitch is "title", and takes no room otherwise, so a later modeSwitch moves it
+	if sw, ok := b.Children[0].(titleSwitcher); ok {
+		box.SetTitleSlot(sw.TitleSwitch())
+	}
 	return box, consumed, nil
 }
+
+// titleSwitcher is a frame's child that has a Raw | Rendered switch for its title row: the cell
+// Editor.
+type titleSwitcher interface{ TitleSwitch() tui.Component }
 
 func buildScrollView(b Build) (tui.Component, []string, error) {
 	return widget.NewScrollView(b.Children[0]), nil, nil
