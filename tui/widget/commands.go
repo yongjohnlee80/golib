@@ -511,19 +511,6 @@ var (
 	HTMLViewVimPreviousBlock   = cmd("tui.htmlview.vim.previousBlock", HTMLViewVimScope, "[")
 	HTMLViewVimNextHeading     = cmd("tui.htmlview.vim.nextHeading", HTMLViewVimScope, "}")
 	HTMLViewVimPreviousHeading = cmd("tui.htmlview.vim.previousHeading", HTMLViewVimScope, "{")
-
-	htmlViewVimCommands = []keymap.Command{HTMLViewVimUp, HTMLViewVimDown, HTMLViewVimPageDown,
-		HTMLViewVimTop, HTMLViewVimBottom, HTMLViewVimCopy, HTMLViewVimLeft, HTMLViewVimRight,
-		HTMLViewVimNextBlock, HTMLViewVimPreviousBlock, HTMLViewVimNextHeading, HTMLViewVimPreviousHeading}
-
-	// htmlViewVimDoes is each Vim key's command of HTMLViewScope: the one it does
-	htmlViewVimDoes = map[string]keymap.Command{
-		HTMLViewVimUp.ID: HTMLViewUp, HTMLViewVimDown.ID: HTMLViewDown, HTMLViewVimPageDown.ID: HTMLViewPageDown,
-		HTMLViewVimTop.ID: HTMLViewTop, HTMLViewVimBottom.ID: HTMLViewBottom, HTMLViewVimCopy.ID: HTMLViewCopy,
-		HTMLViewVimLeft.ID: HTMLViewLeft, HTMLViewVimRight.ID: HTMLViewRight,
-		HTMLViewVimNextBlock.ID: HTMLViewNextBlock, HTMLViewVimPreviousBlock.ID: HTMLViewPreviousBlock,
-		HTMLViewVimNextHeading.ID: HTMLViewNextHeading, HTMLViewVimPreviousHeading.ID: HTMLViewPreviousHeading,
-	}
 )
 
 // BufferViewScope is a BufferView's keys. The arrows, PgUp, PgDn, Home and End take any modifier, as

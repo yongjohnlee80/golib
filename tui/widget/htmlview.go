@@ -62,6 +62,23 @@ type HTMLView struct {
 	keyset func() Keyset
 }
 
+// The Vim keyset's printing keys (HTMLViewVimScope), kept with the view that reads them: each is the
+// command of HTMLViewScope it does (htmlViewVimDoes).
+var (
+	htmlViewVimCommands = []keymap.Command{HTMLViewVimUp, HTMLViewVimDown, HTMLViewVimPageDown,
+		HTMLViewVimTop, HTMLViewVimBottom, HTMLViewVimCopy, HTMLViewVimLeft, HTMLViewVimRight,
+		HTMLViewVimNextBlock, HTMLViewVimPreviousBlock, HTMLViewVimNextHeading, HTMLViewVimPreviousHeading}
+
+	// htmlViewVimDoes is each Vim key's command of HTMLViewScope: the one it does
+	htmlViewVimDoes = map[string]keymap.Command{
+		HTMLViewVimUp.ID: HTMLViewUp, HTMLViewVimDown.ID: HTMLViewDown, HTMLViewVimPageDown.ID: HTMLViewPageDown,
+		HTMLViewVimTop.ID: HTMLViewTop, HTMLViewVimBottom.ID: HTMLViewBottom, HTMLViewVimCopy.ID: HTMLViewCopy,
+		HTMLViewVimLeft.ID: HTMLViewLeft, HTMLViewVimRight.ID: HTMLViewRight,
+		HTMLViewVimNextBlock.ID: HTMLViewNextBlock, HTMLViewVimPreviousBlock.ID: HTMLViewPreviousBlock,
+		HTMLViewVimNextHeading.ID: HTMLViewNextHeading, HTMLViewVimPreviousHeading.ID: HTMLViewPreviousHeading,
+	}
+)
+
 // FollowKeyset makes the view read its keys by the keyset of reports, asked at each key: under
 // Vim it reads j/k, g/G, y, Space, h/l, ] [ and } { too (HTMLViewVimScope); under a modeless one
 // (Standard, Nano) only the keys that never type, so every printing key is its host's, to type. An
