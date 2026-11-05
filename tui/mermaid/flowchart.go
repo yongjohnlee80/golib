@@ -5,10 +5,10 @@ import (
 	"context"
 	"math"
 	"slices"
-	"strconv"
 
 	"github.com/yongjohnlee80/golib/graph/layout"
 	pm "github.com/yongjohnlee80/golib/parse/mermaid"
+	"github.com/yongjohnlee80/golib/tui"
 )
 
 // A FLOWCHART IN CELLS. graph/layout's layered layout ranks and
@@ -39,8 +39,8 @@ const (
 	fcRankSep = 4
 )
 
-// formOfShape is the outline a flowchart node's shape is drawn with: the nearest corner set.
-func formOfShape(s pm.Shape) Form {
+// FormOfShape is the outline a flowchart node's shape is drawn with: the nearest corner set.
+func FormOfShape(s pm.Shape) Form {
 	switch s {
 	case pm.Round, pm.Stadium, pm.Circle, pm.DoubleCircle, pm.Cylinder:
 		return FormRounded
@@ -145,6 +145,32 @@ func (n *fcNet) by(t fcTerm, top bool) []int {
 // netKey names a gap's net: the edge itself, or the node whose port it leaves by.
 type netKey struct{ kind, n int }
 
+func init() {
+	register(pm.Flowchart, layAs(LayFlowchart), flowchartDrawn)
+	narrowers[pm.Flowchart] = flowchartDown
+}
+
+// flowchartDrawn refuses a flowchart with subgraphs: their frames aren't drawn yet, and its boxes
+// without them would mislead.
+func flowchartDrawn(d pm.Diagram) error {
+	if fc, ok := d.(*pm.FlowchartDiagram); ok && len(fc.Subgraphs) > 0 {
+		return ErrUnsupported
+	}
+	return nil
+}
+
+// flowchartDown is a flowchart that runs across (LR, RL) as one running down (TB): its narrower
+// form (LayWithin); nil for one already running down.
+func flowchartDown(d pm.Diagram) pm.Diagram {
+	fc, ok := d.(*pm.FlowchartDiagram)
+	if !ok || fc.Dir != pm.LR && fc.Dir != pm.RL {
+		return nil
+	}
+	down := *fc
+	down.Dir = pm.TB
+	return &down
+}
+
 // LayFlowchart lays d out in cells: ranks and order from graph/layout's layered layout, every edge
 // routed between the ranks, its ends marked. layout.ErrTooLarge comes back as it is, for the
 // host's "too large" notice.
@@ -166,7 +192,7 @@ func layFlowchart(ctx context.Context, d *pm.FlowchartDiagram, m Measurer) (*Gri
 	in := layout.Input{Dir: layout.TB, NodeSep: fcNodeSep, RankSep: fcRankSep}
 	for i, n := range d.Nodes {
 		index[n.ID] = i
-		w, h := formSize(formOfShape(n.Shape), m.StringWidth(n.Label))
+		w, h := boxSize(FormOfShape(n.Shape), n.Label, m) // capped, as it is drawn
 		if across {
 			w, h = h, w
 		}
@@ -421,7 +447,8 @@ func layFlowchart(ctx context.Context, d *pm.FlowchartDiagram, m Measurer) (*Gri
 		if e.drawn && !e.back && e.e.Label != "" {
 			rows := 1
 			if across {
-				rows = m.StringWidth(e.e.Label) + 1
+				_, w, _ := capLabel(e.e.Label, RoleLabel, m) // as g.label draws it
+				rows = w + 1
 			}
 			labelRows[e.hi-1] = max(labelRows[e.hi-1], rows)
 		}
@@ -457,8 +484,7 @@ func layFlowchart(ctx context.Context, d *pm.FlowchartDiagram, m Measurer) (*Gri
 		}
 		return c
 	}
-	strokes := map[cell]uint8{} // each line cell's strokes, a bit each: a cell takes one only if it's alone
-	stroked := func(c cell, k int) { strokes[c] |= 1 << strokeOf(edges[k].e.Line) }
+	stroked := func(c cell, k int) { g.addStroke(c, strokeOf(edges[k].e.Line)) } // finish resolves them
 	draw := func(a, b cell, by []int) {
 		ra, rb := toReal(a), toReal(b)
 		g.run(ra, rb)
@@ -544,22 +570,19 @@ func layFlowchart(ctx context.Context, d *pm.FlowchartDiagram, m Measurer) (*Gri
 		end(toEnd, e.back, endMark(e.e.Head, !e.back, d.Dir))
 		end(fromEnd, !e.back, endMark(e.e.Tail, e.back, d.Dir))
 	}
-	for c, m := range strokes {
-		switch m {
-		case 1 << strokeDashed:
-			g.stroke[c] = strokeDashed
-		case 1 << strokeThick:
-			g.stroke[c] = strokeThick
-		}
-	}
 	// the boxes, turned (before the labels and loops, which keep clear of them)
 	for i, n := range d.Nodes {
 		f := nodes[i]
 		a, b := toReal(cell{f.x, f.y}), toReal(cell{f.x + f.w - 1, f.y + f.h - 1}) // two opposite corners
-		r := Box{ID: n.ID, Label: n.Label, Form: formOfShape(n.Shape), Stem: !across}
-		r.Rect.X, r.Rect.Y = min(a.x, b.x), min(a.y, b.y)
-		r.Rect.W, r.Rect.H = max(a.x, b.x)-r.Rect.X+1, max(a.y, b.y)-r.Rect.Y+1
-		g.Boxes = append(g.Boxes, r)
+		// lines meet a box on its top and bottom (TB, BT) or its sides (LR, RL), at any cell of them
+		ports := PortTop | PortBottom
+		if across {
+			ports = PortSides
+		}
+		var r tui.Rect
+		r.X, r.Y = min(a.x, b.x), min(a.y, b.y)
+		r.W, r.H = max(a.x, b.x)-r.X+1, max(a.y, b.y)-r.Y+1
+		g.boxIn(Box{ID: n.ID, Label: n.Label, Form: FormOfShape(n.Shape), Ports: ports}, r, m)
 	}
 	// a self-loop is a ↺ beside its box: the first free of its right, left, top-right and
 	// bottom-right cells
@@ -614,7 +637,7 @@ func layFlowchart(ctx context.Context, d *pm.FlowchartDiagram, m Measurer) (*Gri
 		if !e.drawn || e.e.Label == "" {
 			continue
 		}
-		w := m.StringWidth(e.e.Label)
+		_, w, _ := capLabel(e.e.Label, RoleLabel, m) // as g.label draws it
 		placed := false
 		if !e.back {
 			arrow := bandY[e.hi] - 1 // the frame row of its arrow, above its lower node's band
@@ -647,29 +670,22 @@ func layFlowchart(ctx context.Context, d *pm.FlowchartDiagram, m Measurer) (*Gri
 			notes = append(notes, e)
 		}
 	}
-	// the footnotes: a mark beside each edge's lower end, and a legend under the drawing
-	if len(notes) > 0 {
-		maxY, minX := math.MinInt, math.MaxInt
-		for c := range g.lines {
-			maxY, minX = max(maxY, c.y), min(minX, c.x)
-		}
-		for _, b := range g.Boxes {
-			maxY, minX = max(maxY, b.Rect.Y+b.Rect.H-1), min(minX, b.Rect.X)
-		}
-		for i, e := range notes {
-			mk := footMark(i)
-			r := g.Boxes[e.to].Rect
-			for _, c := range []cell{{r.X + r.W, r.Y - 1}, {r.X - 1, r.Y - 1}, {r.X + r.W, r.Y + r.H}, {r.X - 1, r.Y + r.H}, {r.X + r.W, r.Y}, {r.X - 1, r.Y}} {
-				if !occupied(c) {
-					g.label(c.x, c.y, mk, m)
-					break
-				}
+	// the footnotes: a mark beside each edge's lower end, its label in the legend finish places under
+	// the drawing
+	for _, e := range notes {
+		mk := g.footnote(e.e.Label)
+		r := g.Boxes[e.to].Rect
+		for _, c := range []cell{{r.X + r.W, r.Y - 1}, {r.X - 1, r.Y - 1}, {r.X + r.W, r.Y + r.H}, {r.X - 1, r.Y + r.H}, {r.X + r.W, r.Y}, {r.X - 1, r.Y}} {
+			if !occupied(c) {
+				g.label(c.x, c.y, mk, m)
+				break
 			}
-			g.label(minX, maxY+2+i, mk+" "+e.e.Label, m)
 		}
 	}
 	before := g.Boxes[0].Rect
-	g.settle()
+	if _, err := g.finish(m); err != nil {
+		return nil, nil, err
+	}
 	dx, dy := g.Boxes[0].Rect.X-before.X, g.Boxes[0].Rect.Y-before.Y
 	for i := range routes {
 		for j := range routes[i] {
@@ -678,9 +694,6 @@ func layFlowchart(ctx context.Context, d *pm.FlowchartDiagram, m Measurer) (*Gri
 				routes[i][j][s].y += dy
 			}
 		}
-	}
-	if g.tooLarge() {
-		return nil, nil, layout.ErrTooLarge
 	}
 	return g, routes, nil
 }
@@ -822,24 +835,15 @@ func runLinks(a, b cell) [][2]cell {
 	return out
 }
 
-// footMark is the i-th footnote's mark: ¹ to ⁹, then *10, *11, …
-func footMark(i int) string {
-	sup := []string{"¹", "²", "³", "⁴", "⁵", "⁶", "⁷", "⁸", "⁹"}
-	if i < len(sup) {
-		return sup[i]
-	}
-	return "*" + strconv.Itoa(i+1)
-}
-
 // strokeOf is how an edge's line is drawn.
-func strokeOf(l pm.LineKind) stroke {
+func strokeOf(l pm.LineKind) Stroke {
 	switch l {
 	case pm.Dotted:
-		return strokeDashed
+		return StrokeDashed
 	case pm.Thick:
-		return strokeThick
+		return StrokeThick
 	}
-	return strokeLight
+	return StrokeLight
 }
 
 // frameDir is the real direction of the frame's north (up) or south, the diagram turned by dir.

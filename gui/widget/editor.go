@@ -146,7 +146,7 @@ func NewEditor(opts ...EditorOption) *Editor {
 	}
 	e.layout = newPixelLayout(e)
 	e.body = &editorBody{e: e}
-	e.sw = &modeSwitch{e: e}
+	e.sw = newModeSwitch(e)
 	e.menu = tuiwidget.NewEditorMenu(e.body, e.core)
 	e.pointer = tuiwidget.NewEditorPointer(e.core, e.menu, bodyPointer{e.body})
 	if cfg.rows != nil {
@@ -300,6 +300,15 @@ func (e *Editor) applyShown() {
 // canRender reports whether the Rendered view is available: a renderer or a document view turned
 // on, and not turned off.
 func (e *Editor) canRender() bool { return e.doc.CanRender(e.render != nil) }
+
+// RenderAvailable reports whether the Rendered view is available for the document shown: what the
+// Raw | Rendered switch shows faint when it is not.
+func (e *Editor) RenderAvailable() bool { return e.canRender() }
+
+// SetModeSwitch is the decl `modeSwitch` property, which the cell Editor reads to show its switch
+// on its first row: the window's editor always has its switch on its title bar, so it changes
+// nothing here.
+func (e *Editor) SetModeSwitch(bool) {}
 
 // SetRenderedEnabled says whether this document can be Rendered, keeping the renderer: a host turns
 // it off for a document its renderer does not read (Markdown's renderer and a Go file, say), and
@@ -556,38 +565,23 @@ func (e *Editor) theme(fg, bg color.NRGBA, textPx float32, th *style.Theme, pal 
 	return t
 }
 
-// modeSwitch is the title bar's [ Raw | Rendered ] control.
+// modeSwitch is the title bar's [ Raw | Rendered ] control: tui/widget's ModeSwitch (its cells, its
+// layout and its click, shared with the cell Editor's) drawn natively as a pill.
 type modeSwitch struct {
-	tuiwidget.Base
+	*tuiwidget.ModeSwitch
 	e *Editor
 }
 
+// newModeSwitch is e's switch.
+func newModeSwitch(e *Editor) *modeSwitch {
+	return &modeSwitch{ModeSwitch: tuiwidget.NewModeSwitch(e), e: e}
+}
+
 const (
-	switchRaw      = "[ Raw "
-	switchSep      = "|"
-	switchRendered = " Rendered ]"
+	switchRaw      = tuiwidget.ModeSwitchRaw
+	switchSep      = tuiwidget.ModeSwitchSep
+	switchRendered = tuiwidget.ModeSwitchRendered
 )
-
-// Layout is the control's width on one row.
-func (s *modeSwitch) Layout(c tui.Constraints) tui.Size {
-	return c.Constrain(tui.Size{W: len(switchRaw) + len(switchSep) + len(switchRendered), H: 1})
-}
-
-// Render draws the two segments, the current one bold and underlined; Rendered is faint when it
-// is not available.
-func (s *modeSwitch) Render(sur tui.Surface) {
-	on, off := style.New().Bold(true).Underline(true), style.New()
-	raw, rendered := on, off
-	if s.e.View() == tuiwidget.ViewRendered {
-		raw, rendered = off, on
-	}
-	if !s.e.canRender() {
-		rendered = rendered.Faint(true)
-	}
-	x := tui.DrawText(sur, 0, 0, switchRaw, raw)
-	x = tui.DrawText(sur, x, 0, switchSep, off)
-	tui.DrawText(sur, x, 0, switchRendered, rendered)
-}
 
 // The native switch is a segmented control on the bar: a pill with a hairline border, split at
 // the separator's cell, the current segment filled with a soft tint of the accent and its label
@@ -634,19 +628,4 @@ func (s *modeSwitch) paint(c gui.Canvas) {
 		r := segs[i]
 		c.DrawText(t, gui.Pt(r.X+(r.W-t.Width)/2, r.Y+(h-t.Height)/2), gui.Solid(col))
 	}
-}
-
-// HandleEvent switches the mode on a click of a segment.
-func (s *modeSwitch) HandleEvent(ev tui.Event) bool {
-	m, ok := ev.(tui.MouseEvent)
-	if !ok || m.Kind != tui.MousePress || m.Button != tui.MouseLeft || m.Y != 0 {
-		return false
-	}
-	switch {
-	case m.X < len(switchRaw):
-		s.e.SetView(tuiwidget.ViewRaw)
-	case m.X > len(switchRaw):
-		s.e.SetView(tuiwidget.ViewRendered)
-	}
-	return true
 }

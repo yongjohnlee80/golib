@@ -6,6 +6,11 @@ import (
 	"strings"
 )
 
+// State is the kind of the diagrams that start with stateDiagram or stateDiagram-v2.
+const State Kind = 3
+
+func init() { register(State, "state", []string{"stateDiagram", "stateDiagram-v2"}, (*parser).state) }
+
 // StateKind is what a state is drawn as.
 type StateKind uint8
 

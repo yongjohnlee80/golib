@@ -139,6 +139,15 @@ func (d *TableDocument) Layout(c tui.Constraints) tui.Size {
 // Render paints nothing of its own: the table paints itself.
 func (d *TableDocument) Render(tui.Surface) {}
 
+// HandleEvent hands the wheel to the table: an editor gives the document the wheel turned over a
+// row of its own (its Raw | Rendered switch), where the pointer is over no table cell.
+func (d *TableDocument) HandleEvent(ev tui.Event) bool {
+	if m, ok := ev.(tui.MouseEvent); ok && m.Kind == tui.MouseWheel {
+		return d.table.HandleEvent(m)
+	}
+	return false
+}
+
 // SetVisible shows or hides the table; hidden, an open edit is dropped.
 func (d *TableDocument) SetVisible(v bool) {
 	if !v {

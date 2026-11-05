@@ -5,6 +5,11 @@ import (
 	"strings"
 )
 
+// Timeline is the kind of the diagrams that start with timeline.
+const Timeline Kind = 8
+
+func init() { register(Timeline, "timeline", []string{"timeline"}, (*parser).timeline) }
+
 // TimelineDiagram is a parsed timeline: its title, and its periods in sections, left to right.
 type TimelineDiagram struct {
 	Title string

@@ -8,6 +8,11 @@ import (
 	"unicode/utf8"
 )
 
+// Class is the kind of the diagrams that start with classDiagram or classDiagram-v2.
+const Class Kind = 4
+
+func init() { register(Class, "class", []string{"classDiagram", "classDiagram-v2"}, (*parser).class) }
+
 // ClassDiagram is a parsed class diagram.
 type ClassDiagram struct {
 	Dir        Dir

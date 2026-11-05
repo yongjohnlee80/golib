@@ -137,17 +137,25 @@ func cellGoldenMeasured(t *testing.T, src string, width int, raw bool, measure f
 	}
 	b.WriteString("\n")
 	for y := range s.h {
-		fmt.Fprintf(&b, "%q\n", s.row(y))
-		for x := 0; x < s.w; {
-			d, end := styleWords(s.style[y][x]), x+1
-			for end < s.w && styleWords(s.style[y][end]) == d {
-				end++
-			}
-			if blank := strings.TrimSpace(strings.Join(s.text[y][x:end], "")) == ""; d != "" && d != "fg=fg" && !(blank && !strings.Contains(d, "bg=")) {
-				fmt.Fprintf(&b, "    %d-%d %s\n", x, end-1, d)
-			}
-			x = end
+		b.WriteString(goldenRow(s, y))
+	}
+	return b.String()
+}
+
+// goldenRow is row y of s as a golden says it: its text, then its runs of one style (columns
+// from-to), blanks and default text left out.
+func goldenRow(s *recordSurface, y int) string {
+	var b strings.Builder
+	fmt.Fprintf(&b, "%q\n", s.row(y))
+	for x := 0; x < s.w; {
+		d, end := styleWords(s.style[y][x]), x+1
+		for end < s.w && styleWords(s.style[y][end]) == d {
+			end++
 		}
+		if blank := strings.TrimSpace(strings.Join(s.text[y][x:end], "")) == ""; d != "" && d != "fg=fg" && !(blank && !strings.Contains(d, "bg=")) {
+			fmt.Fprintf(&b, "    %d-%d %s\n", x, end-1, d)
+		}
+		x = end
 	}
 	return b.String()
 }

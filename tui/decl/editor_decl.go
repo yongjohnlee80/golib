@@ -128,6 +128,7 @@ type (
 	// renderedEnabler is not widget's with the view capabilities: an exported interface's
 	// method ending in Enabled reads as a capability predicate to dao's guard
 	renderedEnabler interface{ SetRenderedEnabled(bool) }
+	modeSwitcher    interface{ SetModeSwitch(bool) }
 )
 
 // EditorSetters are the Editor's behaviour properties, for any editor widget with the methods
@@ -244,6 +245,9 @@ func EditorViewSetters() map[string]Setter {
 		// golib's: whether the Rendered view is available, for the document shown (Markdown's
 		// renderer and a Go file: false).
 		"renderedEnabled": setter("an Editor", boolOf, renderedEnabler.SetRenderedEnabled),
+		// golib's: the [ Raw | Rendered ] switch on the editor's first row while it has a document
+		// view (a window's editor has it on its title bar whatever this says)
+		"modeSwitch": setter("an Editor", boolOf, modeSwitcher.SetModeSwitch),
 	}
 }
 

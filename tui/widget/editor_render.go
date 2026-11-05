@@ -15,7 +15,19 @@ import (
 // Render paints the viewport with the visual-selection fill.
 func (e *Editor) Render(s tui.Surface) {
 	sz := s.Size()
-	if sz.W <= 0 || sz.H <= 0 || e.doc.Shown() { // the document view paints itself
+	if sz.W <= 0 || sz.H <= 0 {
+		return
+	}
+	if top := e.headerRows(); top > 0 {
+		// the switch's row: blank in the text's look, the switch at its right
+		s.Fill(tui.Rect{W: sz.W, H: top}, " ", e.cells.styles.Text)
+		x := e.switchX()
+		e.sw.SetStyle(e.cells.styles.Text)
+		e.sw.Render(s.Sub(tui.Rect{X: x, W: sz.W - x, H: 1}))
+		s = s.Sub(tui.Rect{Y: top, W: sz.W, H: sz.H - top})
+		sz = s.Size()
+	}
+	if sz.H <= 0 || e.doc.Shown() { // the document view paints itself
 		return
 	}
 	if g := e.cells.gutter; g > 0 {

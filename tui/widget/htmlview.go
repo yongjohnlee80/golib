@@ -3,8 +3,10 @@ package widget
 import (
 	"bytes"
 	"math"
+	"slices"
 	"time"
 
+	"github.com/yongjohnlee80/golib/highlight"
 	"github.com/yongjohnlee80/golib/tui"
 	"github.com/yongjohnlee80/golib/tui/keymap"
 	"github.com/yongjohnlee80/golib/tui/style"
@@ -44,6 +46,10 @@ type HTMLView struct {
 	diagramsN uint64 // how many times WithDiagrams set diagrams: a new one's answers are its own
 	// diagramNotice is the cell layout's line for a diagram it doesn't draw (WithDiagramNotice).
 	diagramNotice func(kind string) string
+	// syntax is the languages a preformatted block's language-* class is looked up in, its
+	// styles the SyntaxStyles a host gives its Editor (WithSyntax); nil: no highlighting.
+	syntax       *highlight.Catalog
+	syntaxStyles SyntaxStyles
 
 	pressing bool
 	pressAt  [2]float32 // where the left button went down, in the layout's units
@@ -51,6 +57,44 @@ type HTMLView struct {
 	edge     int // -1/+1 while a drag holds the pointer past the top or bottom
 	edgeStop func()
 	theme    *style.Theme // the surface's at the last paint, for a pixel layout's colours
+	// keyset is the keyset the view reads its keys by (FollowKeyset): Vim's printing keys too, or
+	// only the keys that never type. nil: Vim's.
+	keyset func() Keyset
+}
+
+// The Vim keyset's printing keys (HTMLViewVimScope), kept with the view that reads them: each is the
+// command of HTMLViewScope it does (htmlViewVimDoes).
+var (
+	htmlViewVimCommands = []keymap.Command{HTMLViewVimUp, HTMLViewVimDown, HTMLViewVimPageDown,
+		HTMLViewVimTop, HTMLViewVimBottom, HTMLViewVimCopy, HTMLViewVimLeft, HTMLViewVimRight,
+		HTMLViewVimNextBlock, HTMLViewVimPreviousBlock, HTMLViewVimNextHeading, HTMLViewVimPreviousHeading}
+
+	// htmlViewVimDoes is each Vim key's command of HTMLViewScope: the one it does
+	htmlViewVimDoes = map[string]keymap.Command{
+		HTMLViewVimUp.ID: HTMLViewUp, HTMLViewVimDown.ID: HTMLViewDown, HTMLViewVimPageDown.ID: HTMLViewPageDown,
+		HTMLViewVimTop.ID: HTMLViewTop, HTMLViewVimBottom.ID: HTMLViewBottom, HTMLViewVimCopy.ID: HTMLViewCopy,
+		HTMLViewVimLeft.ID: HTMLViewLeft, HTMLViewVimRight.ID: HTMLViewRight,
+		HTMLViewVimNextBlock.ID: HTMLViewNextBlock, HTMLViewVimPreviousBlock.ID: HTMLViewPreviousBlock,
+		HTMLViewVimNextHeading.ID: HTMLViewNextHeading, HTMLViewVimPreviousHeading.ID: HTMLViewPreviousHeading,
+	}
+)
+
+// FollowKeyset makes the view read its keys by the keyset of reports, asked at each key: under
+// Vim it reads j/k, g/G, y, Space, h/l, ] [ and } { too (HTMLViewVimScope); under a modeless one
+// (Standard, Nano) only the keys that never type, so every printing key is its host's, to type. An
+// Editor gives its document view its own keyset this way (SetDocumentView). Until then, or with nil,
+// the view reads Vim's keys.
+func (v *HTMLView) FollowKeyset(of func() Keyset) { v.keyset = of }
+
+// vimKeys reports whether the view reads Vim's printing keys.
+func (v *HTMLView) vimKeys() bool { return v.keyset == nil || v.keyset() == KeysetVim }
+
+// commands is the view's commands in its keyset.
+func (v *HTMLView) commands() []keymap.Command {
+	if v.vimKeys() {
+		return append(slices.Clip(htmlViewCommands), htmlViewVimCommands...)
+	}
+	return htmlViewCommands
 }
 
 // HTMLLayout is what an HTMLView needs from whoever lays it out: the cell layout here, a pixel
@@ -92,6 +136,21 @@ type HTMLLayoutHScroll interface {
 	ScrollX(x, y, dx float32) bool
 }
 
+// HTMLLayoutPan is a layout with blocks wider than the page that pan sideways (the cell layout's
+// diagrams): Pan pans by dx the wide block nearest the view's top among rows top to top+h-1, and
+// reports whether it moved. The view's Left/Right (h/l) are its keys; a layout without it (the
+// window's, which scrolls its wide boxes by the wheel) leaves them to the parent.
+type HTMLLayoutPan interface {
+	Pan(top, h, dx int) bool
+}
+
+// HTMLLayoutTravel is a layout a reader travels by block: Starts is the first row of each block
+// (headings: of each heading), top to bottom, in its units. The view's ] [ and } { are its keys; a
+// layout without it leaves them to the parent.
+type HTMLLayoutTravel interface {
+	Starts(headings bool) []float32
+}
+
 // HTMLLayoutLinks is a layout that tells where its links are: LinkRects appends to dst each link's
 // rects, in the layout's units, that fall between top and bottom. For a cell layout
 // (HTMLLayoutCells) the view shows the pointer's hand over them; a layout a backend paints gives
@@ -105,6 +164,13 @@ type HTMLLayoutLinks interface {
 // acted.
 type HTMLLayoutActivate interface {
 	Activate(x, y float32) bool
+}
+
+// HTMLLayoutToolTips is a layout with text to reveal at a point (a diagram's capped label): its
+// text at (x, y) and the region it is for, in the layout's units; "" for none. The view is then a
+// tui.ToolTipRegioner: the App's tooltip card shows the text beside the region, armed per region.
+type HTMLLayoutToolTips interface {
+	ToolTipAt(x, y float32) (text string, r Rect32)
 }
 
 // HTMLLayoutImages is a layout that keeps the images it loaded: SetImageResolver drops them and
@@ -252,6 +318,27 @@ func WithDiagramNotice(say func(kind string) string) HTMLOption {
 	}
 }
 
+// WithSyntax highlights a preformatted block's code in the terminal's cells: the languages the
+// catalog holds, looked up by the block's language-* class, painted in styles — the same
+// SyntaxStyles a host gives its Editor, so the page's code and the Raw view's agree; an unset
+// style paints as the text's own, as the Editor paints it. A language no definition has stays as
+// it is. Unset, no highlighting at all.
+//
+// It may be applied when the view is made, before its document, or after it is built (as
+// WithDiagramNotice does): the cell layout highlights each time it lays out, and a change lays the
+// page out again.
+func WithSyntax(catalog *highlight.Catalog, styles SyntaxStyles) HTMLOption {
+	return func(v *HTMLView) {
+		v.syntax, v.syntaxStyles = catalog, styles
+		if c, ok := v.layout.(*cellHTML); ok {
+			c.syntax, c.syntaxStyles = catalog, styles
+			if c.src != nil {
+				c.layOut()
+			}
+		}
+	}
+}
+
 // NewHTMLView builds an empty view, laid out in cells until a backend binds another layout.
 func NewHTMLView(opts ...HTMLOption) *HTMLView {
 	v := &HTMLView{lastSrc: -1}
@@ -392,6 +479,23 @@ func (v *HTMLView) units() (float32, float32) {
 	return 1, 1
 }
 
+// ToolTipAt implements tui.ToolTipRegioner for a cell layout with tooltips (HTMLLayoutToolTips): the
+// text at the pointer's cell, and its region in the view's own cells.
+func (v *HTMLView) ToolTipAt(local tui.Point) (string, tui.Rect) {
+	l, ok := v.layout.(HTMLLayoutToolTips)
+	if ux, uy := v.units(); !ok || ux != 1 || uy != 1 {
+		return "", tui.Rect{}
+	}
+	// the row painted at the view's top is int(scrollY) (Render): a fractional scroll's half row is
+	// not drawn, so the pointer's row and the region's are counted from there
+	top := float32(int(v.scrollY))
+	text, r := l.ToolTipAt(float32(local.X), top+float32(local.Y))
+	if text == "" {
+		return "", tui.Rect{}
+	}
+	return text, tui.Rect{X: int(r.X), Y: int(r.Y - top), W: int(r.W), H: int(r.H)}
+}
+
 // docPoint is the document point under a pointer at cell (x, y), inside it at (subX, subY).
 func (v *HTMLView) docPoint(m tui.MouseEvent) (float32, float32) {
 	ux, uy := v.units()
@@ -433,8 +537,12 @@ func (v *HTMLView) reportScroll() {
 }
 
 // HandleEvent scrolls by the keys and the wheel, selects by a drag, follows a clicked link, and
-// copies the selection by Ctrl+C or y. The keys: Up/Down or k/j a line, PgUp/PgDn or Space a view,
-// Ctrl+U/Ctrl+D half a view, Home/End or g/G the ends.
+// copies the selection. The keys, in every keyset: Up/Down a line, PgUp/PgDn a view, Ctrl+U/Ctrl+D
+// half a view, Home/End the ends, Ctrl+C copies; on a layout that has them, Left/Right pan a wide
+// block (HTMLLayoutPan), Alt+Down and Alt+Up go to the next or previous block, Alt+Shift+Down and
+// Alt+Shift+Up to the next or previous heading (HTMLLayoutTravel). Under Vim (FollowKeyset) also
+// k/j, Space, g/G, y, h/l, ] [ and } {; a modeless keyset types those. A travel or pan key the page
+// can't move by is still read (true): it is a reading key, never one for the parent.
 func (v *HTMLView) HandleEvent(ev tui.Event) bool {
 	switch e := ev.(type) {
 	case tui.KeyEvent:
@@ -469,15 +577,42 @@ func (v *HTMLView) HandleEvent(ev tui.Event) bool {
 // keyOf is the HTMLView command e is, if any; Esc is one only with a selection to clear, else it is
 // the parent's.
 func (v *HTMLView) keyOf(e tui.KeyEvent, hasSelection bool) (keymap.Command, bool) {
-	cmd, ok := v.Context().KeyCommand(e, htmlViewCommands...)
+	cmd, ok := v.Context().KeyCommand(e, v.commands()...)
+	if does, vim := htmlViewVimDoes[cmd.ID]; ok && vim {
+		cmd = does // a Vim key does its command of HTMLViewScope
+	}
 	if ok && cmd.ID == HTMLViewClear.ID && !hasSelection {
 		return keymap.Command{}, false
 	}
 	return cmd, ok
 }
 
-func (v *HTMLView) key(e tui.KeyEvent) bool {
+// command is the command e is for this view: one of its keyset's, and, for a pan or travel key, one
+// its layout has (HTMLLayoutPan, HTMLLayoutTravel).
+func (v *HTMLView) command(e tui.KeyEvent) (keymap.Command, bool) {
 	cmd, ok := v.keyOf(e, v.sel[0] != v.sel[1])
+	switch {
+	case !ok:
+		return cmd, false
+	case cmd.ID == HTMLViewLeft.ID || cmd.ID == HTMLViewRight.ID:
+		_, ok = v.layout.(HTMLLayoutPan)
+	case cmd.ID == HTMLViewNextBlock.ID || cmd.ID == HTMLViewPreviousBlock.ID ||
+		cmd.ID == HTMLViewNextHeading.ID || cmd.ID == HTMLViewPreviousHeading.ID:
+		_, ok = v.layout.(HTMLLayoutTravel)
+	}
+	return cmd, ok
+}
+
+// ReadsKey reports whether e is a key the view reads the page by, in its keyset (FollowKeyset): a
+// host that opens its text with every other key (AutoDoc's note page) asks this rather than keeping
+// a list of its own. A copy with nothing selected copies nothing, yet is read.
+func (v *HTMLView) ReadsKey(e tui.KeyEvent) bool {
+	_, ok := v.command(e)
+	return ok
+}
+
+func (v *HTMLView) key(e tui.KeyEvent) bool {
+	cmd, ok := v.command(e)
 	if !ok {
 		return false
 	}
@@ -501,6 +636,22 @@ func (v *HTMLView) key(e tui.KeyEvent) bool {
 		v.scrollTo(0)
 	case HTMLViewBottom.ID:
 		v.scrollTo(v.maxScroll())
+	case HTMLViewLeft.ID, HTMLViewRight.ID:
+		p := v.layout.(HTMLLayoutPan) // command has checked it
+		dx := htmlPanStep
+		if cmd.ID == HTMLViewLeft.ID {
+			dx = -dx
+		}
+		if p.Pan(int(v.scrollY/uy), int(v.viewHeight()/uy), dx) {
+			v.MarkDirty()
+		}
+	case HTMLViewNextBlock.ID, HTMLViewPreviousBlock.ID, HTMLViewNextHeading.ID, HTMLViewPreviousHeading.ID:
+		tr := v.layout.(HTMLLayoutTravel)
+		heading := cmd.ID == HTMLViewNextHeading.ID || cmd.ID == HTMLViewPreviousHeading.ID
+		forward := cmd.ID == HTMLViewNextBlock.ID || cmd.ID == HTMLViewNextHeading.ID
+		if y, ok := travelTo(tr.Starts(heading), v.scrollY, forward); ok {
+			v.scrollTo(y)
+		}
 	case HTMLViewCopy.ID:
 		return v.Copy()
 	case HTMLViewClear.ID:
@@ -510,12 +661,31 @@ func (v *HTMLView) key(e tui.KeyEvent) bool {
 	return true
 }
 
+// travelTo is the start a ] (forward) or [ goes to from the view's top: the first after it, or the
+// last before it; false when there is none, and nothing moves.
+func travelTo(starts []float32, top float32, forward bool) (float32, bool) {
+	if forward {
+		for _, y := range starts {
+			if y > top {
+				return y, true
+			}
+		}
+		return 0, false
+	}
+	for i := len(starts) - 1; i >= 0; i-- {
+		if starts[i] < top {
+			return starts[i], true
+		}
+	}
+	return 0, false
+}
+
 // KeyScope is an HTMLView's key-map scope.
 func (v *HTMLView) KeyScope() keymap.Scope { return HTMLViewScope }
 
 // KeyBindings is the HTMLView's commands as m binds them (tui.KeyBinder).
 func (v *HTMLView) KeyBindings(m *keymap.Map) []keymap.Binding {
-	return tui.BindingsOf(m, htmlViewCommands...)
+	return tui.BindingsOf(m, v.commands()...)
 }
 
 func (v *HTMLView) mouse(m tui.MouseEvent) bool {

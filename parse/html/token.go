@@ -173,11 +173,7 @@ func (t *Tokenizer) markup() (Token, bool) {
 	case len(b) < 2:
 		return Token{}, false
 	case strings.HasPrefix(string(b[:min(len(b), 4)]), "<!--"):
-		end := indexFrom(t.src, "-->", t.pos+4)
-		dataEnd, next := end, end+3
-		if end < 0 {
-			dataEnd, next = len(t.src), len(t.src)
-		}
+		dataEnd, next := commentEnd(t.src, t.pos+4)
 		t.pos = next
 		return Token{Kind: Comment, Data: string(t.src[start+4 : dataEnd]), Span: [2]int{start, next}}, true
 	case b[1] == '!':
@@ -348,6 +344,27 @@ func hasAttr(as []Attr, name string) bool {
 func isLetter(c byte) bool { return c >= 'a' && c <= 'z' || c >= 'A' && c <= 'Z' }
 
 func isSpace(c byte) bool { return c == ' ' || c == '\t' || c == '\n' || c == '\r' || c == '\f' }
+
+// commentEnd reads a comment's end as HTML does, from at (just past "<!--"): its data ends at
+// dataEnd and the token at next. "<!-->" and "<!--->" are empty comments closed at once; otherwise
+// the first "-->" or "--!>" closes it, and an unclosed comment runs to the end of b.
+func commentEnd(b []byte, at int) (dataEnd, next int) {
+	rest := b[min(at, len(b)):]
+	switch {
+	case bytes.HasPrefix(rest, []byte(">")):
+		return at, at + 1
+	case bytes.HasPrefix(rest, []byte("->")):
+		return at, at + 2
+	}
+	end, width := indexFrom(b, "-->", at), 3
+	if bang := indexFrom(b, "--!>", at); bang >= 0 && (end < 0 || bang < end) {
+		end, width = bang, 4
+	}
+	if end < 0 {
+		return len(b), len(b)
+	}
+	return end, end + width
+}
 
 // indexFrom is the index of sep in b at or after from, or -1.
 func indexFrom(b []byte, sep string, from int) int {

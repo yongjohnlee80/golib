@@ -138,13 +138,14 @@ func (e *Editor) Layout(c tui.Constraints) tui.Size {
 		return e.layoutDocument(c)
 	}
 	total := fillW(c)
+	e.rowW = total
 	e.cells.gutter = min(e.gutterWidth(), total-1)
 	e.cells.w = total - e.cells.gutter
-	e.cells.h = fillH(c)
+	e.cells.h = max(fillH(c)-e.headerRows(), 0)
 	if e.shown.moved([2]int{e.core.buf.ln, e.core.buf.col}, [2]int{e.cells.h, e.cells.w}) {
 		e.ensureVisible()
 	}
-	return c.Constrain(tui.Size{W: total, H: e.cells.h})
+	return c.Constrain(tui.Size{W: total, H: e.cells.h + e.headerRows()})
 }
 
 // Cursor implements tui.CursorReporter.
@@ -154,7 +155,7 @@ func (e *Editor) Cursor() (int, int, bool) {
 	if !ok {
 		return 0, 0, false
 	}
-	return l.gutter + x, y, true
+	return l.gutter + x, y + e.headerRows(), true
 }
 
 // posAt inverts the viewport mapping in Cursor(): a viewport cell becomes a

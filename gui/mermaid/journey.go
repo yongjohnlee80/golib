@@ -35,10 +35,9 @@ func layJourney(ctx context.Context, d pm.Diagram, width float32, th Theme, m gu
 	pad := em
 	y := pad
 	var title *label
-	if jd.Title != "" {
-		t := newLabel(m, jd.Title, gui.Font{Family: f.Family, Size: em * 1.15, Bold: true}, 0, th.Text)
+	if t, room, ok := titleLabel(m, jd.Title, th); ok {
 		title = &t
-		y += t.box.H + em
+		y += room
 	}
 
 	// the legend: a dot and a name for each actor, in a column at the left

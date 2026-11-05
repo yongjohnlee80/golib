@@ -272,3 +272,42 @@ func TestAGapsDoglegsShareJogRowsOnlyClearOfEachOther(t *testing.T) {
 		t.Error("an end with no dogleg was given a jog row")
 	}
 }
+
+// LayWithin fits a diagram to its room where its kind can: a flowchart running across (LR) wider
+// than the room is laid running down (TB), the narrower; one that fits is laid as written; and a
+// kind with no narrower form (a sequence) is laid as written however wide, for its host to pan.
+func TestLayWithinFitsAFlowchartRunningAcross(t *testing.T) {
+	ctx, m := context.Background(), newCells(1, 1)
+	lay := func(src string, room int) (*Grid, *Grid) {
+		t.Helper()
+		d, err := pm.Parse(src)
+		if err != nil {
+			t.Fatal(err)
+		}
+		as, err := Lay(ctx, d, m)
+		if err != nil {
+			t.Fatal(err)
+		}
+		within, err := LayWithin(ctx, d, m, room)
+		if err != nil {
+			t.Fatal(err)
+		}
+		return as, within
+	}
+	across := "flowchart LR\n  A[first step] --> B[second step] --> C[third step]\n"
+	as, _ := lay(across, 1000)
+	down, _ := lay(strings.Replace(across, "LR", "TB", 1), 1000)
+	if down.Size.W >= as.Size.W {
+		t.Fatalf("precondition: the chain laid TB (%d wide) is narrower than LR (%d)", down.Size.W, as.Size.W)
+	}
+	if _, within := lay(across, as.Size.W-1); within.Size != down.Size {
+		t.Errorf("the LR chain in a room narrower than it: laid %+v, want it running down, %+v", within.Size, down.Size)
+	}
+	if _, within := lay(across, as.Size.W); within.Size != as.Size {
+		t.Errorf("the LR chain in a room it fits: laid %+v, want it as written, %+v", within.Size, as.Size)
+	}
+	seq := "sequenceDiagram\n  Alice->>Bob: hello\n  Bob->>Carol: and on\n  Carol->>Dave: the end\n"
+	if as, within := lay(seq, 5); within.Size != as.Size {
+		t.Errorf("a sequence (no narrower form) in a room of 5: laid %+v, want it as written, %+v", within.Size, as.Size)
+	}
+}
