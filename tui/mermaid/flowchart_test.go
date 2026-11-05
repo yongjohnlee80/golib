@@ -282,12 +282,12 @@ func checkGraph(t *testing.T, name string, gr graph) {
 		}
 		for j := i + 1; j < len(gr.edges); j++ {
 			b := gr.edges[j]
-			if a.from == b.from || a.to == b.to {
-				continue
-			}
+			// edges from one node (a fan-out) or into one (a fan-in) may share their port's run, and
+			// only when they draw it alike: one stroke (a dashed tie never joins a solid line)
+			shares := a.from == b.from || a.to == b.to
 			for _, l := range routes[j] {
-				if mine[l] {
-					t.Fatalf("%s edges %s→%s and %s→%s share a run at %v", what, id(a.from), id(a.to), id(b.from), id(b.to), l)
+				if mine[l] && (!shares || a.stroke != b.stroke) {
+					t.Fatalf("%s edges %s→%s and %s→%s share a run at %v (strokes %d, %d)", what, id(a.from), id(a.to), id(b.from), id(b.to), l, a.stroke, b.stroke)
 				}
 			}
 		}
@@ -328,6 +328,61 @@ func checkGraph(t *testing.T, name string, gr graph) {
 			}
 			if d, ok := g.lines[c]; ok && d != east|west {
 				t.Fatalf("%s the label %q covers a turn or a junction (%s) at %v", what, tx.s, lineRune[d], c)
+			}
+		}
+	}
+	// every end's mark is drawn beside its own box: none overwritten by another edge's at a shared
+	// port (edges share a port only when they draw one mark there)
+	kindOf := map[string]End{"▼": EndArrow, "▲": EndArrow, "►": EndArrow, "◄": EndArrow, "●": EndDot, "✕": EndCross,
+		"▽": EndTriangle, "△": EndTriangle, "▷": EndTriangle, "◁": EndTriangle, "◆": EndDiamond, "◇": EndDiamondHollow}
+	besideBox := map[[2]int]bool{} // (box, End) marked beside it
+	for c, mk := range g.marks {
+		for bi, b := range g.Boxes {
+			if k, ok := kindOf[mk]; ok && next(b.Rect, c) {
+				besideBox[[2]int{bi, int(k)}] = true
+			}
+		}
+	}
+	for i, e := range gr.edges {
+		if e.from == e.to || e.invisible {
+			continue
+		}
+		for _, end := range []struct {
+			box int
+			e   End
+		}{{e.to, e.head}, {e.from, e.tail}} {
+			if end.e != EndNone && !besideBox[[2]int{end.box, int(end.e)}] {
+				t.Fatalf("%s edge %d (%s→%s): no %d mark beside %s", what, i, id(e.from), id(e.to), end.e, id(end.box))
+			}
+		}
+	}
+	// no label is lost: each edge's, and each end's, is drawn (as capLabel shows it) or a footnote,
+	// a legend row (finish has made each a text: its mark, a space, the label as shown)
+	shown, legend := map[string]int{}, map[string]int{}
+	for _, tx := range g.texts {
+		shown[tx.s]++
+		for n := 1; n <= g.foot; n++ {
+			if rest, ok := strings.CutPrefix(tx.s, footMark(n)+" "); ok {
+				legend[strings.TrimLeft(rest, " ")]++
+			}
+		}
+	}
+	for i, e := range gr.edges {
+		if e.invisible {
+			continue
+		}
+		for _, s := range []string{e.label, e.headLabel, e.tailLabel} {
+			if s == "" {
+				continue
+			}
+			sh, _, _ := capLabel(s, RoleLabel, newCells(1, 1))
+			switch {
+			case shown[sh] > 0:
+				shown[sh]--
+			case legend[sh] > 0:
+				legend[sh]--
+			default:
+				t.Fatalf("%s edge %d (%s→%s): its label %q is neither drawn nor a footnote", what, i, id(e.from), id(e.to), s)
 			}
 		}
 	}

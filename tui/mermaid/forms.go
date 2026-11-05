@@ -19,6 +19,7 @@ const (
 	FormDot                 // a state diagram's start: ● alone, no outline, no label
 	FormEndDot              // its end: ◉ alone
 	FormBar                 // a fork or a join: a bar ━━━━━, no label
+	FormNote                // a note: a dashed outline ┌┄┐ ┆ └┄┘, as its dashed tie is drawn
 )
 
 // FormOf is the outline a mind map's shape is drawn with.
@@ -73,6 +74,7 @@ var forms = [...]formSpec{
 	FormDot:     {glyph: "●"},
 	FormEndDot:  {glyph: "◉"},
 	FormBar:     {h: "━"},
+	FormNote:    {"┌", "┐", "└", "┘", "┄", "┆", "┆", PortAll, ""},
 }
 
 // formSize is a box's size around a label lw cells wide: an outline adds a border and a space
@@ -170,7 +172,8 @@ func paintBox(s tui.Surface, b Box, x0, y0 int, lines map[cell]dirs, box, label 
 		s.Fill(tui.Rect{X: r.X + 1, Y: y, W: r.W - 2, H: 1}, " ", label)
 	}
 	if len(b.Sections) == 0 {
-		tui.DrawText(s, r.X+2, mid, b.drawn(), label)
+		// centred: a box the router widened for its ports has more room than its label's
+		tui.DrawText(s, r.X+(r.W-tui.StringWidth(b.drawn()))/2, mid, b.drawn(), label)
 		return
 	}
 	// a sectioned box: its head section's rows centred, each other's left-aligned, a rule (├──┤)

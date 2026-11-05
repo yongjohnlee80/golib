@@ -28,7 +28,7 @@ import (
 //	╰──────────────────╯
 //	        ◉            an end
 //
-// A note is a box tied to its state by a dashed line with no ends. A fork or a join is a bar, a
+// A note is a dashed box (FormNote) tied to its state by a dashed line with no ends. A fork or a join is a bar, a
 // choice the diamond's outline. Not drawn here, for the host's own rendering (ErrUnsupported): a
 // transition to or from a composite itself, which would end on its frame's border, and anything the
 // router can't route.
@@ -154,8 +154,7 @@ func stateGraph(d *pm.StateDiagram) graph {
 		} else {
 			at = -1
 		}
-		// FormSquare until the forms table has a note's own outline
-		gr.nodes = append(gr.nodes, gnode{id: noteID(i), form: FormSquare, label: firstLine(n.Text),
+		gr.nodes = append(gr.nodes, gnode{id: noteID(i), form: FormNote, label: firstLine(n.Text),
 			sections: noteSections(n.Text), frame: frame})
 		if at < 0 {
 			note = -1

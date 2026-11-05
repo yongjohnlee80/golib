@@ -99,12 +99,13 @@ func TestAnEdgeToNoNodeIsRefused(t *testing.T) {
 }
 
 // randomGraph is a seeded graph with every piece a kind brings: forms (square, rounded, hexagon,
-// dots, bars), sectioned boxes, every End at either end, light, dashed and thick strokes, labels,
-// self-loops, ways back up the ranks, and frames nested or not, in one of the four directions.
+// dots, bars, notes), sectioned boxes, every End at either end, light, dashed and thick strokes,
+// labels on the line and beside either end, self-loops, ways back up the ranks, and frames nested
+// or not, in one of the four directions.
 func randomGraph(r *rand.Rand) graph {
 	dirs := []pm.Dir{pm.TB, pm.LR, pm.BT, pm.RL}
 	labels := []string{"a", "node", "a longer label", "東京", "x"}
-	forms := []Form{FormSquare, FormRounded, FormHexagon, FormDot, FormEndDot, FormBar}
+	forms := []Form{FormSquare, FormRounded, FormHexagon, FormDot, FormEndDot, FormBar, FormNote}
 	ends := []End{EndNone, EndArrow, EndDot, EndCross, EndTriangle, EndDiamond, EndDiamondHollow}
 	gr := graph{dir: dirs[r.IntN(len(dirs))]}
 	for f := range r.IntN(3) {
@@ -138,6 +139,13 @@ func randomGraph(r *rand.Rand) graph {
 		e := gedge{from: i, to: j, stroke: Stroke(r.IntN(3)), head: ends[r.IntN(len(ends))], tail: ends[r.IntN(len(ends))]}
 		if r.IntN(4) == 0 {
 			e.label = labels[r.IntN(len(labels))]
+		}
+		cards := []string{"1", "*", "0..1", "1..*", "many"}
+		if r.IntN(3) == 0 {
+			e.headLabel = cards[r.IntN(len(cards))]
+		}
+		if r.IntN(3) == 0 {
+			e.tailLabel = cards[r.IntN(len(cards))]
 		}
 		gr.edges = append(gr.edges, e)
 	}

@@ -198,15 +198,15 @@ func TestAWideLabelsBoxCloses(t *testing.T) {
 // A kind not in Kinds is ErrUnsupported, for the host to show its own way; a flowchart with
 // subgraphs is drawn, each subgraph a frame.
 func TestAKindNotDrawnIsUnsupported(t *testing.T) {
-	d, err := pm.Parse("classDiagram\n  class A\n")
+	d, err := pm.Parse("erDiagram\n  CUSTOMER ||--o{ ORDER : places\n")
 	if err != nil {
 		t.Fatal(err)
 	}
 	if Supported(d.Kind()) {
-		t.Fatal("a class diagram is reported drawn")
+		t.Fatal("an ER diagram is reported drawn")
 	}
 	if _, err := Lay(context.Background(), d, newCells(1, 1)); err != ErrUnsupported {
-		t.Fatalf("Lay of a class diagram: %v, want ErrUnsupported", err)
+		t.Fatalf("Lay of an ER diagram: %v, want ErrUnsupported", err)
 	}
 	d, err = pm.Parse("flowchart TB\n  subgraph S [Group]\n    a --> b\n  end\n")
 	if err != nil {
