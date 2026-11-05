@@ -18,7 +18,8 @@ type HTMLLayoutMarks interface {
 	// order), none current, and returns how many there are; nil clears them. The layout keeps find
 	// and marks a new document with it.
 	SetMarks(find func(text string) [][2]int) int
-	// SetCurrentMark makes the i-th mark the current one; out of range, none.
+	// SetCurrentMark makes the i-th mark the current one; out of range, none. A wide block pans to
+	// show it.
 	SetCurrentMark(i int)
 	// MarkY is the y of the i-th mark's first row; false when there is no such mark.
 	MarkY(i int) (float32, bool)
@@ -74,6 +75,42 @@ func (c *cellHTML) SetCurrentMark(i int) {
 		i = -1
 	}
 	c.m.cur = i
+	if i >= 0 {
+		c.panToMark(c.m.marks[i])
+	}
+}
+
+// panToMark pans a wide code block so the mark's first row of it shows between the box's sides: its
+// start, when the whole of it can't.
+func (c *cellHTML) panToMark(m markRange) {
+	bi := m.from.Block
+	if c.over(bi) == 0 || bi >= len(c.tops) {
+		return
+	}
+	for ri := c.tops[bi]; ri < len(c.rows) && c.rows[ri].block == bi; ri++ {
+		r := &c.rows[ri]
+		lo, hi := -1, -1
+		for _, k := range r.cls {
+			if k.sp != nil && !k.deco && k.pos.Before(m.to) && m.from.Before(k.end) {
+				if lo < 0 {
+					lo = k.x
+				}
+				hi = k.x + k.w
+			}
+		}
+		if lo < 0 {
+			continue
+		}
+		off := c.offset(bi)
+		if hi-off > c.width-1 { // past the right side
+			off = hi - (c.width - 1)
+		}
+		if first := c.codeLeft(r) + 1; lo-off < first { // before the left side: its inset's cell kept
+			off = lo - first - 1
+		}
+		c.panBlock(bi, off-c.offset(bi))
+		return
+	}
 }
 
 func (c *cellHTML) MarkY(i int) (float32, bool) {
