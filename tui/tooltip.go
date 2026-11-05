@@ -33,6 +33,16 @@ type ToolTipper interface {
 	ToolTip() string
 }
 
+// ToolTipRegioner is a component whose text depends on where the pointer is over it: a page's
+// capped labels, each its own region. ToolTipAt is the text at local (its own coordinates), and the
+// region it is for, local too; "" is none there. The card is armed per region (a move from one
+// region to another closes one card and arms the next) and sits beside the region, not the
+// component. Only the pointer reaches it: keyboard focus shows a ToolTipper's card alone.
+type ToolTipRegioner interface {
+	Component
+	ToolTipAt(local Point) (text string, region Rect)
+}
+
 // toolTipDelay is how long the pointer rests on a control before its card shows.
 // NOTE: debounce: a pointer crossing a control on its way elsewhere must not flash its card.
 const toolTipDelay = 500 * time.Millisecond
@@ -52,9 +62,12 @@ type toolTipState struct {
 	pending func() // cancels the hover timer, nil when none is armed
 	pressed NodeID // the control a press closed the card of: no card again until the pointer leaves
 	rect    Rect   // where the card was last painted, in screen cells
+	region  Rect   // what the card is for, in screen cells: its control's rect, or a regioner's region
+	armed   Rect   // the region the pending timer is for: a move off it re-arms
+	byArea  bool   // the card or its timer is a regioner's: a pointer move may change it
 }
 
-// toolTipTarget is the nearest ToolTipper with text at or above n, or nil.
+// toolTipTarget is the nearest ToolTipper with text at or above n, or nil: keyboard focus's.
 func toolTipTarget(n *node) *node {
 	for ; n != nil; n = n.parent {
 		if t, ok := n.comp.(ToolTipper); ok && t.ToolTip() != "" {
@@ -64,27 +77,80 @@ func toolTipTarget(n *node) *node {
 	return nil
 }
 
+// tipOf is n's tooltip with the pointer at the hover's last position: a regioner's text there and
+// its region, or a ToolTipper's text and n's rect, in screen cells; ok is false for none.
+func (a *App) tipOf(n *node) (text string, region Rect, ok bool) {
+	if r, isRegioner := n.comp.(ToolTipRegioner); isRegioner {
+		p := a.hover.pointer
+		text, local := r.ToolTipAt(Point{X: p.X - n.absRect.X, Y: p.Y - n.absRect.Y})
+		if text != "" {
+			return text, Rect{X: local.X + n.absRect.X, Y: local.Y + n.absRect.Y, W: local.W, H: local.H}, true
+		}
+	}
+	if t, isTipper := n.comp.(ToolTipper); isTipper {
+		if text := t.ToolTip(); text != "" {
+			return text, n.absRect, true
+		}
+	}
+	return "", Rect{}, false
+}
+
+// regioner reports whether n's tooltip is a regioner's: its region, not n, is what a card is for.
+func regioner(n *node) bool {
+	_, ok := n.comp.(ToolTipRegioner)
+	return ok
+}
+
+// hoverTarget is the pointer's tooltip at or above n: the nearest node with one there, its text
+// and region; nil for none.
+func (a *App) hoverTarget(n *node) (*node, string, Rect) {
+	for ; n != nil; n = n.parent {
+		if text, region, ok := a.tipOf(n); ok {
+			return n, text, region
+		}
+	}
+	return nil, "", Rect{}
+}
+
 // toolTipHover follows the hovered node n (nil: none): the card of the control it left closes,
 // and the control it is over arms its own.
 func (a *App) toolTipHover(n *node) {
-	t := toolTipTarget(n)
+	t, _, region := a.hoverTarget(n)
 	if t == nil || t.id != a.hover.tip.pressed {
 		a.hover.tip.pressed = 0
 	}
-	if a.hover.tip.node != 0 && !a.hover.tip.focus && (t == nil || t.id != a.hover.tip.node) {
+	// a regioner's card is its region's; a ToolTipper's, the control's wherever it is
+	same := t != nil && t.id == a.hover.tip.node && (!regioner(t) || region == a.hover.tip.region)
+	if a.hover.tip.node != 0 && !a.hover.tip.focus && !same {
 		a.hideToolTip()
 	}
+	if t != nil && regioner(t) && a.hover.tip.pending != nil && region == a.hover.tip.armed {
+		return // still resting on the region the timer is for
+	}
 	a.cancelToolTipTimer()
-	if t == nil || t.id == a.hover.tip.node || t.id == a.hover.tip.pressed {
+	if t == nil || same || t.id == a.hover.tip.pressed {
 		return
 	}
 	id := t.id
+	a.hover.tip.armed, a.hover.tip.byArea = region, regioner(t)
 	a.hover.tip.pending = a.addDeadline(toolTipDelay, func() {
 		a.hover.tip.pending = nil
-		if n := a.nodes[id]; n != nil && toolTipTarget(a.nodes[a.hover.hovered]) == n {
-			a.showToolTip(n, false)
+		if n := a.nodes[id]; n != nil {
+			if now, _, at := a.hoverTarget(a.nodes[a.hover.hovered]); now == n && (!regioner(n) || at == region) {
+				a.showToolTip(n, false)
+			}
 		}
 	})
+}
+
+// toolTipMove is a pointer motion over the node already hovered: over a regioner, the region under
+// the pointer may be another, which closes the card and arms the next. A motion over a control
+// whose card is its own (a ToolTipper's) changes nothing, as before regions.
+func (a *App) toolTipMove() {
+	n := a.nodes[a.hover.hovered]
+	if t, _, _ := a.hoverTarget(n); t != nil && regioner(t) || a.hover.tip.byArea {
+		a.toolTipHover(n)
+	}
 }
 
 // toolTipFocus follows focus arriving at n: by a key, the card of the nearest ToolTipper at or
@@ -115,7 +181,13 @@ func (a *App) toolTipPress(mouse bool) {
 }
 
 func (a *App) showToolTip(n *node, focus bool) {
-	a.hover.tip.node, a.hover.tip.text, a.hover.tip.focus = n.id, n.comp.(ToolTipper).ToolTip(), focus
+	text, region := "", n.absRect
+	if focus {
+		text = n.comp.(ToolTipper).ToolTip()
+	} else {
+		text, region, _ = a.tipOf(n)
+	}
+	a.hover.tip.node, a.hover.tip.text, a.hover.tip.focus, a.hover.tip.region = n.id, text, focus, region
 	a.invalidate(false)
 }
 
@@ -123,7 +195,7 @@ func (a *App) hideToolTip() {
 	if a.hover.tip.node == 0 {
 		return
 	}
-	a.hover.tip.node, a.hover.tip.text, a.hover.tip.focus, a.hover.tip.rect = 0, "", false, Rect{}
+	a.hover.tip.node, a.hover.tip.text, a.hover.tip.focus, a.hover.tip.rect, a.hover.tip.region = 0, "", false, Rect{}, Rect{}
 	a.invalidate(false)
 }
 
@@ -141,14 +213,21 @@ func (a *App) renderToolTip() {
 		return
 	}
 	n := a.nodes[a.hover.tip.node]
-	t, ok := ToolTipper(nil), false
-	if n != nil {
-		t, ok = n.comp.(ToolTipper)
+	text, region, ok := "", Rect{}, false
+	if n != nil && n.mounted && n.visible() {
+		if a.hover.tip.focus {
+			if t, isTipper := n.comp.(ToolTipper); isTipper {
+				text, region, ok = t.ToolTip(), n.absRect, true
+			}
+		} else {
+			text, region, ok = a.tipOf(n)
+		}
 	}
-	if !ok || !n.mounted || !n.visible() || t.ToolTip() != a.hover.tip.text {
-		a.hover.tip.node, a.hover.tip.text, a.hover.tip.focus, a.hover.tip.rect = 0, "", false, Rect{}
+	if !ok || text != a.hover.tip.text || (regioner(n) && !a.hover.tip.focus && region != a.hover.tip.region) {
+		a.hover.tip.node, a.hover.tip.text, a.hover.tip.focus, a.hover.tip.rect, a.hover.tip.region = 0, "", false, Rect{}, Rect{}
 		return
 	}
+	a.hover.tip.region = region // a control's card follows it as it moves
 	s := newRootSurface(a.buf, a.rctx)
 	lines := wrapToolTip(a.hover.tip.text, min(toolTipWidth, a.size.W-2), s.StringWidth)
 	if len(lines) == 0 {
@@ -158,7 +237,7 @@ func (a *App) renderToolTip() {
 	for _, l := range lines {
 		w = max(w, s.StringWidth(l))
 	}
-	r := placeToolTip(n.absRect, Size{W: w + 2, H: len(lines)}, a.size)
+	r := placeToolTip(a.hover.tip.region, Size{W: w + 2, H: len(lines)}, a.size)
 	a.buf.order++ // after every node: in a window, it covers the native views beneath
 	st := style.New().Foreground(style.TokenForeground).Background(style.TokenPanel)
 	s.Fill(r, " ", st)

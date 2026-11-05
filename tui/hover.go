@@ -39,7 +39,12 @@ func (c *Context) Hovered() bool { return c.node.id != 0 && c.app.hover.hovered 
 // trackHover follows the pointer to the node under it.
 func (a *App) trackHover(e MouseEvent) {
 	a.hover.pointer = Point{X: e.X, Y: e.Y}
-	a.setHovered(a.nodeUnderPointer())
+	n := a.nodeUnderPointer()
+	if n != nil && n.id == a.hover.hovered {
+		a.toolTipMove() // the same node: a regioner's region may have changed
+		return
+	}
+	a.setHovered(n)
 }
 
 // refreshHover re-checks hover at the pointer's last position: after a capture ends, the node
