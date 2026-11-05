@@ -334,12 +334,37 @@ func checkGraph(t *testing.T, name string, gr graph) {
 	// every end's mark is drawn beside its own box: none overwritten by another edge's at a shared
 	// port (edges share a port only when they draw one mark there)
 	kindOf := map[string]End{"▼": EndArrow, "▲": EndArrow, "►": EndArrow, "◄": EndArrow, "●": EndDot, "✕": EndCross,
-		"▽": EndTriangle, "△": EndTriangle, "▷": EndTriangle, "◁": EndTriangle, "◆": EndDiamond, "◇": EndDiamondHollow}
+		"▽": EndTriangle, "△": EndTriangle, "▷": EndTriangle, "◁": EndTriangle, "◆": EndDiamond, "◇": EndDiamondHollow,
+		"╪": EndOne, "╫": EndOne}
 	besideBox := map[[2]int]bool{} // (box, End) marked beside it
 	for c, mk := range g.marks {
 		for bi, b := range g.Boxes {
-			if k, ok := kindOf[mk]; ok && next(b.Rect, c) {
+			if !next(b.Rect, c) {
+				continue
+			}
+			if k, ok := kindOf[mk]; ok {
 				besideBox[[2]int{bi, int(k)}] = true
+			}
+			// a crow's foot is two cells: the one beside the box, and the line's next one out from it
+			out := c
+			switch r := b.Rect; {
+			case c.y == r.Y-1:
+				out.y--
+			case c.y == r.Y+r.H:
+				out.y++
+			case c.x == r.X-1:
+				out.x--
+			default:
+				out.x++
+			}
+			foot := mk == "∧" || mk == "∨" || mk == "<" || mk == ">"
+			switch {
+			case foot && g.marks[out] == "○":
+				besideBox[[2]int{bi, int(EndZeroMany)}] = true
+			case foot && g.marks[out] == "┼":
+				besideBox[[2]int{bi, int(EndOneMany)}] = true
+			case mk == "┼" && g.marks[out] == "○":
+				besideBox[[2]int{bi, int(EndZeroOne)}] = true
 			}
 		}
 	}
