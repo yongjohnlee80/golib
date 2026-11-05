@@ -229,7 +229,7 @@ func layG(t *testing.T, gr graph) (*Grid, [][][2]cell, string) {
 func checkGraph(t *testing.T, name string, gr graph) {
 	t.Helper()
 	g, routes, drawn := layG(t, gr)
-	what := fmt.Sprintf("%s\ndrawn:\n%s", name, drawn)
+	what := fmt.Sprintf("%s\ndrawn:\n%s\n%s", name, drawn, graphDump(gr, g))
 	checkGrid(t, what, g)
 	id := func(i int) string { return gr.nodes[i].id }
 	next := func(r tui.Rect, c cell) bool { // c is beside r (not diagonally)
@@ -525,4 +525,22 @@ func TestLayWithinFitsAFlowchartRunningAcross(t *testing.T) {
 	if as, within := lay(seq, 5); within.Size != as.Size {
 		t.Errorf("a sequence (no narrower form) in a room of 5: laid %+v, want it as written, %+v", within.Size, as.Size)
 	}
+}
+
+// graphDump is gr as laid out in g, for a failing cell: each node's ID, form, frame and box, and each
+// edge's ends, stroke and label.
+func graphDump(gr graph, g *Grid) string {
+	var b strings.Builder
+	fmt.Fprintf(&b, "graph %v:\n", gr.dir)
+	for i, n := range gr.nodes {
+		fmt.Fprintf(&b, "  node %d %s form %d frame %d", i, n.id, n.form, n.frame)
+		if i < len(g.Boxes) {
+			fmt.Fprintf(&b, " box %+v", g.Boxes[i].Rect)
+		}
+		b.WriteString("\n")
+	}
+	for i, e := range gr.edges {
+		fmt.Fprintf(&b, "  edge %d %d→%d head %d tail %d stroke %d label %q\n", i, e.from, e.to, e.head, e.tail, e.stroke, e.label)
+	}
+	return b.String()
 }
