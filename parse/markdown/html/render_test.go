@@ -54,6 +54,13 @@ func TestSafeDefaultLeavesCommentsOut(t *testing.T) {
 		{"<div><!-- c --></div>\n", "&lt;div&gt;&lt;/div&gt;\n"},
 		{"<div>a<!-->b<!--->c</div>\n", "&lt;div&gt;abc&lt;/div&gt;\n"},
 		{"<div>a <!-- never closed\n", "&lt;div&gt;a \n"},
+		{"<div>a <!-- b --!> c</div>\n", "&lt;div&gt;a  c&lt;/div&gt;\n"},
+		// HTML's tokenizer, not a text scan: "<!--" inside a quoted attribute or a script's text is
+		// not a comment, so nothing after it is lost
+		{"<div title=\"a <!-- b\">shown</div>\n", "&lt;div title=&quot;a &lt;!-- b&quot;&gt;shown&lt;/div&gt;\n"},
+		{"<script>\nif (a <!-- b) {}\n</script>\n", "&lt;script&gt;\nif (a &lt;!-- b) {}\n&lt;/script&gt;\n"},
+		// a bogus comment is not one written as a comment: it stays, escaped
+		{"<div><? x ?></div>\n", "&lt;div&gt;&lt;? x ?&gt;&lt;/div&gt;\n"},
 	} {
 		if got := renderWith(t, c.in); got != c.want {
 			t.Errorf("default Render(%q) = %q, want %q", c.in, got, c.want)

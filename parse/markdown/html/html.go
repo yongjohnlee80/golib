@@ -10,6 +10,7 @@ import (
 	"strings"
 	"unicode/utf8"
 
+	htmlparse "github.com/yongjohnlee80/golib/parse/html"
 	"github.com/yongjohnlee80/golib/parse/markdown"
 )
 
@@ -398,34 +399,25 @@ func (r *renderer) raw(b []byte) {
 	r.escape(withoutComments(b))
 }
 
-// withoutComments is b with its HTML comments taken out, each from "<!--" to the "-->" that closes
-// it, an unclosed one to b's end ("<!-->" and "<!--->" are empty ones, as a browser reads them).
+// withoutComments is b with its HTML comments taken out: the ones HTML's tokenizer reads as
+// comments, so "<!--" in a quoted attribute or in a script's or style's text stays, as the GUI
+// editor's Rendered view reads them (gui/widget/markdown_metadata.go). A bogus comment ("<? … >")
+// is not one written as a comment, and stays.
 func withoutComments(b []byte) []byte {
 	open := []byte("<!--")
 	if !bytes.Contains(b, open) {
 		return b
 	}
 	var out []byte
-	for {
-		i := bytes.Index(b, open)
-		if i < 0 {
-			return append(out, b...)
-		}
-		out = append(out, b[:i]...)
-		rest := b[i+len(open):]
-		switch {
-		case bytes.HasPrefix(rest, []byte(">")):
-			b = rest[1:]
-		case bytes.HasPrefix(rest, []byte("->")):
-			b = rest[2:]
-		default:
-			j := bytes.Index(rest, []byte("-->"))
-			if j < 0 {
-				return out
-			}
-			b = rest[j+3:]
+	at := 0
+	tokens := htmlparse.NewTokenizer(b, htmlparse.Limits{MaxSource: max(len(b), 1)})
+	for tok, ok := tokens.Next(); ok; tok, ok = tokens.Next() {
+		if tok.Kind == htmlparse.Comment && bytes.HasPrefix(b[tok.Span[0]:tok.Span[1]], open) {
+			out = append(out, b[at:tok.Span[0]]...)
+			at = tok.Span[1]
 		}
 	}
+	return append(out, b[at:]...)
 }
 
 // escape writes b with '&', '<', '>' and '"' as entities, and each invalid UTF-8 sequence as U+FFFD,
