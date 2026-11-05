@@ -21,9 +21,9 @@ func (e *Editor) Render(s tui.Surface) {
 	if top := e.headerRows(); top > 0 {
 		// the switch's row: blank in the text's look, the switch at its right
 		s.Fill(tui.Rect{W: sz.W, H: top}, " ", e.cells.styles.Text)
-		w := min(ModeSwitchWidth, sz.W)
+		x := e.switchX()
 		e.sw.SetStyle(e.cells.styles.Text)
-		e.sw.Render(s.Sub(tui.Rect{X: sz.W - w, W: w, H: 1}))
+		e.sw.Render(s.Sub(tui.Rect{X: x, W: sz.W - x, H: 1}))
 		s = s.Sub(tui.Rect{Y: top, W: sz.W, H: sz.H - top})
 		sz = s.Size()
 	}
