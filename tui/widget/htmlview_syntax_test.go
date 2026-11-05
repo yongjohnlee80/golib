@@ -27,7 +27,7 @@ func testCatalog() *highlight.Catalog {
 		}
 		var out []highlight.Span
 		off, open := 0, strings.Index(line, "/*")
-		if open >= 0 && strings.Index(line[open:], "*/") < 0 {
+		if open >= 0 && !strings.Contains(line[open:], "*/") {
 			out = append(out, highlight.Span{Start: open, End: len(line), Style: highlight.Comment})
 			line, st = line[:open], 1
 		}
