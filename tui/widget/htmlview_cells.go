@@ -57,10 +57,10 @@ type cellHTML struct {
 	// nil: diagramNotice's English.
 	notice func(kind string) string
 	// syntax is the languages a preformatted block's language-* class is looked up in
-	// (WithSyntax); nil: no highlighting. syntaxColors says what each highlight style looks like,
-	// the default table below where a host leaves it empty.
+	// (WithSyntax); nil: no highlighting. syntaxStyles is what each highlight style looks like,
+	// the same SyntaxStyles a host gives its Editor; an unset entry paints as the text's own.
 	syntax       *highlight.Catalog
-	syntaxColors [highlight.Styles]style.ColorSpec
+	syntaxStyles SyntaxStyles
 	m            cellMarks // a find's matches (htmlview_marks.go)
 	// pan is how far each wide block (a diagram wider than its room) is scrolled sideways, by its
 	// block index: each its own, as the window's wide boxes are. A new document starts every one at 0.
@@ -202,8 +202,10 @@ func highlightPre(catalog *highlight.Catalog, lang string, b *hblock) [][]highli
 }
 
 // syntaxAt is the colour of the bytes [from, to) of a highlighted line, the first span covering
-// them; nil when none does, or its style has no colour of its own (Normal: the block's text).
-func syntaxAt(spans []highlight.Span, from, to int, colors [highlight.Styles]style.ColorSpec) style.ColorSpec {
+// them, in the styles a host gives its Editor — the same SyntaxStyles, so the page's code and the
+// Raw view's agree. nil when no span covers them, or its style's entry is unset (the text's own,
+// as the Editor paints an unset style).
+func syntaxAt(spans []highlight.Span, from, to int, styles SyntaxStyles) style.ColorSpec {
 	for _, s := range spans {
 		if s.End <= from {
 			continue
@@ -211,44 +213,14 @@ func syntaxAt(spans []highlight.Span, from, to int, colors [highlight.Styles]sty
 		if s.Start >= to {
 			break
 		}
-		if int(s.Style) < len(colors) {
-			return colors[s.Style]
+		if int(s.Style) < len(styles) {
+			if fg, ok := styles[s.Style].GetForeground(); ok {
+				return fg
+			}
 		}
 		return nil
 	}
 	return nil
-}
-
-// defaultSyntaxColors is what a highlight style looks like when the host says nothing: existing
-// tokens only, one or two a family — keywords the accent, strings the success, comments the
-// muted — so the light-theme rule holds on every built-in theme without a host wiring anything.
-// Normal and the unset stay nil: the block's own text.
-var defaultSyntaxColors = [highlight.Styles]style.ColorSpec{
-	highlight.Keyword:        style.TokenAccent,
-	highlight.ControlFlow:    style.TokenSecondary,
-	highlight.Function:       style.TokenPrimary,
-	highlight.BuiltIn:        style.TokenBoost,
-	highlight.Extension:      style.TokenBoost,
-	highlight.Preprocessor:   style.TokenTextMuted,
-	highlight.Attribute:      style.TokenTextMuted,
-	highlight.Char:           style.TokenSuccess,
-	highlight.SpecialChar:    style.TokenSuccess,
-	highlight.String:         style.TokenSuccess,
-	highlight.VerbatimString: style.TokenSuccess,
-	highlight.SpecialString:  style.TokenSuccess,
-	highlight.Import:         style.TokenSecondary,
-	highlight.DataType:       style.TokenPrimary,
-	highlight.DecVal:         style.TokenSecondary,
-	highlight.BaseN:          style.TokenSecondary,
-	highlight.Float:          style.TokenSecondary,
-	highlight.Constant:       style.TokenSecondary,
-	highlight.Comment:        style.TokenTextMuted,
-	highlight.Documentation:  style.TokenTextMuted,
-	highlight.Annotation:     style.TokenTextMuted,
-	highlight.RegionMarker:   style.TokenTextMuted,
-	highlight.Warning:        style.TokenWarning,
-	highlight.Alert:          style.TokenWarning,
-	highlight.Error:          style.TokenError,
 }
 
 // gapBars are the quote bars a gap row before block bi carries: those of the quotes it shares with
@@ -517,13 +489,7 @@ func (c *cellHTML) blockLines(bi int, b *hblock, cols []int) [][]lineCluster {
 	if b.kind == hPre {
 		pad(1, start)
 	}
-	var hl [][]highlight.Span     // a highlighted block's spans, per line; nil: none
-	colors := defaultSyntaxColors // a host's entry wins where it has one, a gap falls to the default
-	for i, host := range c.syntaxColors {
-		if host != nil {
-			colors[i] = host
-		}
-	}
+	var hl [][]highlight.Span // a highlighted block's spans, per line; nil: none
 	if b.kind == hPre && b.lang != "" && c.syntax != nil {
 		hl = highlightPre(c.syntax, b.lang, b)
 	}
@@ -554,7 +520,7 @@ func (c *cellHTML) blockLines(bi int, b *hblock, cols []int) [][]lineCluster {
 			end := DocPos{Block: bi, Span: si, Offset: off}
 			var fg style.ColorSpec
 			if hl != nil && hlLine < len(hl) {
-				fg = syntaxAt(hl[hlLine], lineOff, lineOff+len(g), colors)
+				fg = syntaxAt(hl[hlLine], lineOff, lineOff+len(g), c.syntaxStyles)
 			}
 			lineOff += len(g)
 			if g == "\t" && b.kind == hPre {

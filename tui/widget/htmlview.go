@@ -46,9 +46,9 @@ type HTMLView struct {
 	// diagramNotice is the cell layout's line for a diagram it doesn't draw (WithDiagramNotice).
 	diagramNotice func(kind string) string
 	// syntax is the languages a preformatted block's language-* class is looked up in, its
-	// colours the table or the cells' default (WithSyntax); nil: no highlighting.
+	// styles the SyntaxStyles a host gives its Editor (WithSyntax); nil: no highlighting.
 	syntax       *highlight.Catalog
-	syntaxColors *[highlight.Styles]style.ColorSpec
+	syntaxStyles SyntaxStyles
 
 	pressing bool
 	pressAt  [2]float32 // where the left button went down, in the layout's units
@@ -273,20 +273,18 @@ func WithDiagramNotice(say func(kind string) string) HTMLOption {
 }
 
 // WithSyntax highlights a preformatted block's code in the terminal's cells: the languages the
-// catalog holds, looked up by the block's language-* class, painted in colors — each entry a
-// host sets, the default table's where it leaves a gap. A language no definition has stays as it
-// is. Unset, no highlighting at all.
+// catalog holds, looked up by the block's language-* class, painted in styles — the same
+// SyntaxStyles a host gives its Editor, so the page's code and the Raw view's agree; an unset
+// style paints as the text's own, as the Editor paints it. A language no definition has stays as
+// it is. Unset, no highlighting at all.
 //
 // It may be applied after the view is built (as WithDiagramNotice does): the cell layout
 // highlights each time it lays out, and setting it lays the page out again.
-func WithSyntax(catalog *highlight.Catalog, colors *[highlight.Styles]style.ColorSpec) HTMLOption {
+func WithSyntax(catalog *highlight.Catalog, styles SyntaxStyles) HTMLOption {
 	return func(v *HTMLView) {
-		v.syntax, v.syntaxColors = catalog, colors
+		v.syntax, v.syntaxStyles = catalog, styles
 		if c, ok := v.layout.(*cellHTML); ok && c.src != nil {
-			c.syntax, c.syntaxColors = v.syntax, [highlight.Styles]style.ColorSpec{}
-			if colors != nil {
-				c.syntaxColors = *colors
-			}
+			c.syntax, c.syntaxStyles = v.syntax, v.syntaxStyles
 			c.layOut()
 		}
 	}
