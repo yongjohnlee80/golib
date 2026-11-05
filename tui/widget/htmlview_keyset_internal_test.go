@@ -20,7 +20,8 @@ func pageKey(r rune) tui.KeyEvent {
 }
 
 // A page reads its printing keys by its keyset: under Vim each navigates (it is read, and the page
-// keeps it), under Standard and Nano none is read, so each goes on to the host to type, and the
+// keeps it; a copy with nothing selected is read yet does nothing), under Standard and Nano none is
+// read, so each goes on to the host to type, and the
 // keys that never type (the arrows, Alt and an arrow to travel, PgDn, Ctrl+C) are read in all three.
 func TestThePagesPrintingKeysAreVimsOnly(t *testing.T) {
 	page := "<p>top</p>" + navFence(wideSequence) + "<h2>Two</h2><p>after</p>"
@@ -30,7 +31,9 @@ func TestThePagesPrintingKeysAreVimsOnly(t *testing.T) {
 		for _, r := range pagePrinting {
 			e := pageKey(r)
 			reads := v.ReadsKey(e)
-			if handled := v.HandleEvent(e); handled != reads {
+			// a key the page reads is the page's (handled), but a copy with nothing selected, which
+			// copies nothing: it is read, and HandleEvent says it did nothing
+			if handled := v.HandleEvent(e); handled != reads && !(r == 'y' && reads && !handled) {
 				t.Errorf("%v %q: HandleEvent %v but ReadsKey %v", ks, r, handled, reads)
 			}
 			if want := ks == KeysetVim; reads != want {
