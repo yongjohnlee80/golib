@@ -78,10 +78,9 @@ func laySequence(ctx context.Context, d pm.Diagram, width float32, th Theme, m g
 	}
 	pad := em
 	y := pad
-	if sd.Title != "" {
-		t := newLabel(m, sd.Title, gui.Font{Family: th.Font.Family, Size: em * 1.15, Bold: true}, 0, th.Text)
+	if t, room, ok := titleLabel(m, sd.Title, th); ok {
 		s.l.texts = append(s.l.texts, t.at(0, y)) // centred over the diagram below, once its width is known
-		y += t.box.H + em
+		y += room
 	}
 	top := y
 	y += s.boxH + em*1.2
