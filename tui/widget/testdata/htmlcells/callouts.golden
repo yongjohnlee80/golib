@@ -12,25 +12,37 @@ width 34
 > > no
 
 "▎ A note"
-    0-0 fg=primary
-    2-7 bold fg=primary
+    0-0 fg=primary bg=background
+    1-1 fg=muted bg=background
+    2-7 bold fg=primary bg=background
 "▎ its body"
-    0-0 fg=primary
+    0-0 fg=primary bg=background
+    1-1 fg=muted bg=background
+    2-9 fg=fg bg=background
 ""
 "▎ Careful"
-    0-0 fg=warning
-    2-8 bold fg=warning
+    0-0 fg=warning bg=background
+    1-1 fg=muted bg=background
+    2-8 bold fg=warning bg=background
 "▎ mind it"
-    0-0 fg=warning
+    0-0 fg=warning bg=background
+    1-1 fg=muted bg=background
+    2-8 fg=fg bg=background
 ""
 "▎ Tip"
-    0-0 fg=success
-    2-4 bold fg=success
+    0-0 fg=success bg=background
+    1-1 fg=muted bg=background
+    2-4 bold fg=success bg=background
 "▎ a tip"
-    0-0 fg=success
+    0-0 fg=success bg=background
+    1-1 fg=muted bg=background
+    2-6 fg=fg bg=background
 ""
 "▎ Stop"
-    0-0 fg=error
-    2-5 bold fg=error
+    0-0 fg=error bg=background
+    1-1 fg=muted bg=background
+    2-5 bold fg=error bg=background
 "▎ no"
-    0-0 fg=error
+    0-0 fg=error bg=background
+    1-1 fg=muted bg=background
+    2-3 fg=fg bg=background

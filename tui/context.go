@@ -76,6 +76,18 @@ func (c *Context) RequestFocus() { c.app.requestFocus(c.node) }
 // nothing is focused or comp is not mounted.
 func (c *Context) FocusWithin(comp Component) bool { return c.app.FocusWithin(comp) }
 
+// FocusWithinNode is FocusWithin for a node known by its ID (an event's Owner): whether the focused
+// node is it, or under it. False when no node has that ID.
+func (c *Context) FocusWithinNode(id NodeID) bool {
+	n := c.app.nodes[id]
+	return n != nil && withinScope(c.app.nodes[c.app.focus.focused], n)
+}
+
+// FocusPending reports whether a FocusInto is waiting for its target's first layout (a pane shown
+// this turn): the focus has been asked for, and goes there once the pane is placed. A fallback that
+// would move the focus elsewhere first defers to it, since a move would overtake it.
+func (c *Context) FocusPending() bool { return c.app.focus.pendingFocusInto != 0 }
+
 // FocusComponent moves focus to another already-mounted component — the
 // cross-node analogue of RequestFocus, which can only focus the calling node.
 // A controller uses it to hand focus to a specific child (a form field, a

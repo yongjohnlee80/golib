@@ -6,31 +6,64 @@ width 40
 > | 東京 | 1 | 駅 |
 
 "┌───────┬─────┬──────┐"
-    0-21 fg=border
+    0-21 fg=border bg=background
 "│ 이름  │ Qty │ 메모 │"
-    0-0 fg=border
-    2-5 bold fg=fg
-    8-8 fg=border
-    10-12 bold fg=fg
-    14-14 fg=border
-    16-19 bold fg=fg
-    21-21 fg=border
+    0-0 fg=border bg=background
+    1-1 fg=muted bg=background
+    2-5 bold fg=fg bg=background
+    6-7 fg=muted bg=background
+    8-8 fg=border bg=background
+    9-9 fg=muted bg=background
+    10-12 bold fg=fg bg=background
+    13-13 fg=muted bg=background
+    14-14 fg=border bg=background
+    15-15 fg=muted bg=background
+    16-19 bold fg=fg bg=background
+    20-20 fg=muted bg=background
+    21-21 fg=border bg=background
 "├───────┼─────┼──────┤"
-    0-21 fg=border
+    0-21 fg=border bg=background
 "│ 사과  │   3 │ 익음 │"
-    0-0 fg=border
-    8-8 fg=border
-    14-14 fg=border
-    21-21 fg=border
+    0-0 fg=border bg=background
+    1-1 fg=muted bg=background
+    2-5 fg=fg bg=background
+    6-7 fg=muted bg=background
+    8-8 fg=border bg=background
+    9-11 fg=muted bg=background
+    12-12 fg=fg bg=background
+    13-13 fg=muted bg=background
+    14-14 fg=border bg=background
+    15-15 fg=muted bg=background
+    16-19 fg=fg bg=background
+    20-20 fg=muted bg=background
+    21-21 fg=border bg=background
 "│ apple │  12 │  —   │"
-    0-0 fg=border
-    8-8 fg=border
-    14-14 fg=border
-    21-21 fg=border
+    0-0 fg=border bg=background
+    1-1 fg=muted bg=background
+    2-6 fg=fg bg=background
+    7-7 fg=muted bg=background
+    8-8 fg=border bg=background
+    9-10 fg=muted bg=background
+    11-12 fg=fg bg=background
+    13-13 fg=muted bg=background
+    14-14 fg=border bg=background
+    15-16 fg=muted bg=background
+    17-17 fg=fg bg=background
+    18-20 fg=muted bg=background
+    21-21 fg=border bg=background
 "│ 東京  │   1 │  駅  │"
-    0-0 fg=border
-    8-8 fg=border
-    14-14 fg=border
-    21-21 fg=border
+    0-0 fg=border bg=background
+    1-1 fg=muted bg=background
+    2-5 fg=fg bg=background
+    6-7 fg=muted bg=background
+    8-8 fg=border bg=background
+    9-11 fg=muted bg=background
+    12-12 fg=fg bg=background
+    13-13 fg=muted bg=background
+    14-14 fg=border bg=background
+    15-16 fg=muted bg=background
+    17-18 fg=fg bg=background
+    19-20 fg=muted bg=background
+    21-21 fg=border bg=background
 "└───────┴─────┴──────┘"
-    0-21 fg=border
+    0-21 fg=border bg=background

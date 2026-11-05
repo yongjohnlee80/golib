@@ -4,9 +4,16 @@ width 20
 > | apple | a long description of it |
 
 "Name │ Description"
-    0-3 bold fg=fg
-    5-5 fg=border
-    7-17 bold fg=fg
+    0-3 bold fg=fg bg=background
+    4-4 fg=muted bg=background
+    5-5 fg=border bg=background
+    6-6 fg=muted bg=background
+    7-17 bold fg=fg bg=background
 "apple │ a long"
-    6-6 fg=border
+    0-4 fg=fg bg=background
+    5-5 fg=muted bg=background
+    6-6 fg=border bg=background
+    7-7 fg=muted bg=background
+    8-13 fg=fg bg=background
 "description of it"
+    0-16 fg=fg bg=background

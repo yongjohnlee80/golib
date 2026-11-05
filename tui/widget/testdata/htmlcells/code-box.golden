@@ -1,0 +1,18 @@
+"┌─ go ─────────────┐"
+    0-19 fg=muted bg=background
+"│ a := 1           │"
+    0-0 fg=muted bg=background
+    1-1 fg=muted bg=surface
+    2-7 fg=fg bg=surface
+    8-18 bg=surface
+    19-19 fg=muted bg=background
+"│     b()          │"
+    0-0 fg=muted bg=background
+    1-1 fg=muted bg=surface
+    2-2 fg=fg bg=surface
+    3-5 fg=muted bg=surface
+    6-8 fg=fg bg=surface
+    9-18 bg=surface
+    19-19 fg=muted bg=background
+"└──────────────────┘"
+    0-19 fg=muted bg=background

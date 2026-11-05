@@ -3,9 +3,14 @@ width 30
 > > > nested quote
 
 "▎ quoted text"
-    0-0 fg=border
+    0-0 fg=border bg=background
+    1-1 fg=muted bg=background
+    2-12 fg=fg bg=background
 "▎"
-    0-0 fg=border
+    0-0 fg=border bg=background
 "▎ ▎ nested quote"
-    0-0 fg=border
-    2-2 fg=border
+    0-0 fg=border bg=background
+    1-1 fg=muted bg=background
+    2-2 fg=border bg=background
+    3-3 fg=muted bg=background
+    4-15 fg=fg bg=background

@@ -2,4 +2,6 @@ width 30
 > <p>a <mark>marked</mark> word</p>
 
 "a marked word"
+    0-1 fg=fg bg=background
     2-7 fg=on-warning bg=warning
+    8-12 fg=fg bg=background

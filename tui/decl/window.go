@@ -235,10 +235,13 @@ func (w *windowNode) Init(ctx *tui.Context) {
 	// inside it is there for the first layout's restoreFocus
 	w.openWithWindow()
 	// A menu row that ran closes the menu. Focus goes back where the document
-	// said it lives; left on the closed menu, the next keystroke would go
-	// nowhere the user can see.
+	// said it lives, when it was left on the closed menu: the next keystroke
+	// would go nowhere the user can see. A row that took the keyboard, or asked
+	// for it (a pane it opened, its focus waiting for the pane's first layout),
+	// keeps it: restoring then would undo the row (a menu bar's own leave has
+	// already given the keyboard back before its row ran).
 	tui.SubscribeScoped(ctx, func(ev widget.MenuActivatedEvent) {
-		if ev.Handled {
+		if ev.Handled && !ctx.FocusPending() && w.keyboardLeftOn(ev.Owner) {
 			w.restoreFocus()
 		}
 	})
@@ -257,6 +260,12 @@ func (w *windowNode) afterOverlay() {
 		return
 	}
 	w.restoreFocus()
+}
+
+// keyboardLeftOn reports whether the keyboard is still on the menu whose row ran (owner), or on
+// nothing in the Window.
+func (w *windowNode) keyboardLeftOn(owner tui.NodeID) bool {
+	return w.ctx.FocusWithinNode(owner) || !w.ctx.FocusWithin(w)
 }
 
 func (w *windowNode) restoreFocus() {

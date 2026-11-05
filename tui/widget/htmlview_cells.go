@@ -15,7 +15,8 @@ import (
 
 // THE CELL LAYOUT — an HTMLView in a terminal: the document's text, wrapped to the widget's
 // width and read-only, one unit a cell. Headings are bold and told apart by level (h1 and h2 ruled
-// under), links underlined, inline code shaded and tinted, preformatted text shaded and inset;
+// under), links underlined, inline code shaded and tinted, preformatted text boxed, shaded and never
+// wrapped (a line wider than the room pans sideways, as a wide diagram does: see PAN);
 // quotes carry a bar, a callout's in its type's color with its title; list items a hanging marker,
 // a task's its checkbox; a table that fits is boxed, its header ruled off and its cells aligned,
 // and one that does not wraps as rows of text. Highlighted text is marked. Images show their alt
@@ -37,8 +38,10 @@ type hrow struct {
 	block int // the block it belongs to (a gap row: the block after it)
 	first bool
 	cls   []hcl
-	shade bool // a preformatted block's row: shaded across the width
+	shade bool // a code block's line: between its box's sides, shaded, panned (shownAt)
 	rule  bool
+	// bottom is a code block's box's bottom edge: a point on it is the end of the block.
+	bottom bool
 	// grid is a diagram's, drawn in cells across its rows (layDiagram); gridRow is which of its
 	// rows this one is. nil for any other row.
 	grid    *tuimermaid.Grid
@@ -62,9 +65,13 @@ type cellHTML struct {
 	syntax       *highlight.Catalog
 	syntaxStyles SyntaxStyles
 	m            cellMarks // a find's matches (htmlview_marks.go)
-	// pan is how far each wide block (a diagram wider than its room) is scrolled sideways, by its
-	// block index: each its own, as the window's wide boxes are. A new document starts every one at 0.
+	// pan is how far each wide block (a diagram or a code block wider than its room) is scrolled
+	// sideways, by its block index: each its own, as the window's wide boxes are. A new document
+	// starts every one at 0.
 	pan map[int]int
+	// codeW is each code block's width as it is laid out, its widest line with the space either side
+	// of it, by its block index (over).
+	codeW map[int]int
 }
 
 func newCellHTML(measure func(string) int) *cellHTML {
@@ -97,7 +104,7 @@ func (c *cellHTML) Height() float32 { return float32(len(c.rows)) }
 // layOut wraps every block to the width: a table that fits between its box's rules (its top, under
 // its header row, its bottom), h1 and h2 above their rules.
 func (c *cellHTML) layOut() {
-	c.rows, c.tops = c.rows[:0], make([]int, len(c.doc))
+	c.rows, c.tops, c.codeW = c.rows[:0], make([]int, len(c.doc)), map[int]int{}
 	widths := c.columnWidths()
 	for bi := range c.doc {
 		b := &c.doc[bi]
@@ -294,6 +301,10 @@ func (c *cellHTML) layBlock(bi int, b *hblock, cols []int) {
 		c.layDiagram(bi, b)
 		return
 	}
+	if b.kind == hPre {
+		c.layCode(bi, b)
+		return
+	}
 	room := max(c.width-2*b.quote-b.indent, 1)
 	if b.kind == hRule {
 		c.layRule(bi, b, room)
@@ -306,7 +317,7 @@ func (c *cellHTML) layBlock(bi int, b *hblock, cols []int) {
 			cs[i] = k.text
 		}
 		for _, rr := range wrapRanges(cs, room, c.measure) {
-			row := hrow{block: bi, first: firstRow, shade: b.kind == hPre, cls: c.prefix(b, firstRow)}
+			row := hrow{block: bi, first: firstRow, cls: c.prefix(b, firstRow)}
 			firstRow = false
 			x := 2*b.quote + b.indent
 			for i := rr[0]; i < rr[1]; i++ {
@@ -318,6 +329,67 @@ func (c *cellHTML) layBlock(bi int, b *hblock, cols []int) {
 			c.rows = append(c.rows, row)
 		}
 	}
+}
+
+// layCode lays a code block out in a box across its room: a row per line, never wrapped, its clusters
+// at their columns as if the room were wide enough (a wider one pans: shownAt, Pan). The box's top
+// edge carries the language's name, when it has one and it fits.
+func (c *cellHTML) layCode(bi int, b *hblock) {
+	c.layCodeEdge(bi, b, true)
+	first := 2*b.quote + b.indent + 1 // inside the box's left side
+	widest := 0
+	for _, ln := range c.blockLines(bi, b, nil) {
+		row := hrow{block: bi, shade: true, cls: c.prefix(b, false)}
+		x := first
+		for _, k := range ln {
+			w := c.measure(k.text)
+			row.cls = append(row.cls, hcl{text: k.text, x: x, w: w, pos: k.pos, end: k.end, sp: k.sp, deco: k.deco, fg: k.fg})
+			x += w
+		}
+		widest = max(widest, x-first)
+		c.rows = append(c.rows, row)
+	}
+	c.codeW[bi] = widest + 1 // the blockLines inset before its text, a space after
+	c.layCodeEdge(bi, b, false)
+}
+
+// codeBoxTone is a code block's box's tone: the muted text's, which reads on every theme's page (at
+// least 3:1, measured in tui/decl/themes' testdata/codeblock). TokenBorder, a theme's mid, doesn't: it
+// is under 2:1 on sepia's, and the box is what sets the block off, the shading being the page's own
+// there. Table boxes still wear the border.
+var codeBoxTone style.ColorSpec = style.TokenTextMuted
+
+// layCodeEdge is the top or bottom edge of a code block's box, in its tone, across the room the block
+// has: ┌─ go ───┐ and └───────┘.
+func (c *cellHTML) layCodeEdge(bi int, b *hblock, top bool) {
+	row := hrow{block: bi, first: top, bottom: !top, cls: c.prefix(b, top)}
+	x, right := 2*b.quote+b.indent, c.width-1
+	at := DocPos{Block: bi}
+	put := func(s string, fg style.ColorSpec) {
+		w := c.measure(s)
+		row.cls = append(row.cls, hcl{text: s, x: x, w: w, pos: at, end: at, deco: true, fg: fg})
+		x += w
+	}
+	left, corner := "└", "┘"
+	if top {
+		left, corner = "┌", "┐"
+	}
+	put(left, codeBoxTone)
+	if top && b.lang != "" && c.measure(b.lang)+4 <= right-x { // "─ go ─" before the corner
+		put(hruleCluster, codeBoxTone)
+		put(" ", nil)
+		for g := range tui.Graphemes(b.lang) {
+			put(g, nil) // a deco's own muted tone
+		}
+		put(" ", nil)
+	}
+	for x < right {
+		put(hruleCluster, codeBoxTone)
+	}
+	if x == right {
+		put(corner, codeBoxTone)
+	}
+	c.rows = append(c.rows, row)
 }
 
 // measureFunc is a width function as tui/mermaid's Measurer.
@@ -372,15 +444,9 @@ func (c *cellHTML) layDiagram(bi int, b *hblock) {
 	}
 }
 
-// diagramTheme is a diagram's styles in the cell layout: lines as the text (a diagram's edges are
-// its content: the border's tone, a theme's mid, is under 2:1 on the light themes' pages), outlines
-// in the accent, labels as the text.
-var diagramTheme = tuimermaid.Theme{
-	Line:     style.New().Foreground(style.TokenForeground),
-	Box:      style.New().Foreground(style.TokenAccent),
-	Label:    style.New().Foreground(style.TokenForeground),
-	Selected: style.New().Foreground(style.TokenForeground).Reverse(true),
-}
+// diagramTheme is a diagram's styles in the cell layout: mermaid.TokenTheme's — the page's own
+// tokens, on the page's own background.
+var diagramTheme = tuimermaid.TokenTheme()
 
 // prefix is the decoration a row of b starts with: a bar and a space per quote level, then the
 // indent, with the list marker right-aligned in it on the block's first row.
@@ -597,12 +663,25 @@ func (c *cellHTML) At(x, y float32) DocPos {
 	if !r.first && len(r.cls) == 0 || r.block < 0 {
 		return DocPos{Block: max(r.block, 0)}
 	}
+	if r.bottom {
+		return c.blockEnd(r.block)
+	}
 	ts := texty(r)
 	if len(ts) == 0 {
 		if r.first || len(r.cls) == 0 {
 			return DocPos{Block: r.block}
 		}
+		if r.shade { // a blank line of code: its inset's, not a quote bar's before it
+			for _, k := range r.cls {
+				if k.x > c.codeLeft(r) {
+					return k.pos
+				}
+			}
+		}
 		return r.cls[0].pos
+	}
+	if r.shade { // a column on screen as the line's own: within the box's sides, the pan undone
+		x = min(max(x, float32(c.codeLeft(r)+1)), float32(c.width-1)) + float32(c.offset(r.block))
 	}
 	if x < float32(ts[0].x) {
 		return ts[0].pos
@@ -621,11 +700,20 @@ func (c *cellHTML) At(x, y float32) DocPos {
 // endPos is the position after the document's last text.
 func (c *cellHTML) endPos() DocPos {
 	for bi := len(c.doc) - 1; bi >= 0; bi-- {
-		if n := len(c.doc[bi].spans); n > 0 {
-			return DocPos{Block: bi, Span: n - 1, Offset: len(c.doc[bi].spans[n-1].text)}
+		if len(c.doc[bi].spans) > 0 {
+			return c.blockEnd(bi)
 		}
 	}
 	return DocPos{}
+}
+
+// blockEnd is the position after block bi's text.
+func (c *cellHTML) blockEnd(bi int) DocPos {
+	n := len(c.doc[bi].spans)
+	if n == 0 {
+		return DocPos{Block: bi}
+	}
+	return DocPos{Block: bi, Span: n - 1, Offset: len(c.doc[bi].spans[n-1].text)}
 }
 
 // Rects are the cells a selection from..to covers, a rect for each row it touches.
@@ -639,13 +727,14 @@ func (c *cellHTML) Rects(from, to DocPos) []Rect32 {
 		r := &c.rows[ri]
 		x0, x1 := -1, -1
 		for _, k := range r.cls {
-			if !selected(k, from, to) {
+			x, shown := c.shownAt(r, k)
+			if !shown || !selected(k, from, to) {
 				continue
 			}
 			if x0 < 0 {
-				x0 = k.x
+				x0 = x
 			}
-			x1 = k.x + k.w
+			x1 = x + k.w
 		}
 		if x0 >= 0 {
 			out = append(out, Rect32{X: float32(x0), Y: float32(ri), W: float32(x1 - x0), H: 1})
@@ -701,15 +790,19 @@ func (c *cellHTML) LinkRects(top, bottom float32, dst []Rect32) []Rect32 {
 			}
 		}
 		for _, k := range c.rows[y].cls {
+			x, shown := c.shownAt(&c.rows[y], k)
+			if !shown {
+				continue
+			}
 			l := ""
 			if k.sp != nil {
 				l = k.sp.link
 			}
-			if l != link || k.x != end {
+			if l != link || x != end {
 				flush()
-				start, link = k.x, l
+				start, link = x, l
 			}
-			end = k.x + k.w
+			end = x + k.w
 		}
 		flush()
 	}
@@ -721,8 +814,9 @@ func (c *cellHTML) LinkAt(x, y float32) string {
 	if y < 0 || int(y) >= len(c.rows) || x < 0 {
 		return ""
 	}
-	for _, k := range c.rows[int(y)].cls {
-		if k.sp != nil && x >= float32(k.x) && x < float32(k.x+k.w) {
+	r := &c.rows[int(y)]
+	for _, k := range r.cls {
+		if at, shown := c.shownAt(r, k); shown && k.sp != nil && x >= float32(at) && x < float32(at+k.w) {
 			return k.sp.link
 		}
 	}
@@ -775,10 +869,14 @@ func (c *cellHTML) PaintCells(s tui.Surface, top, w int, from, to DocPos) {
 			continue
 		}
 		if r.shade {
-			s.Fill(tui.Rect{X: 2 * c.doc[r.block].quote, Y: y, W: max(w-2*c.doc[r.block].quote, 0), H: 1}, " ", style.New().Background(style.TokenSurface))
+			c.paintCodeSides(s, r, y, w)
 		}
 		for _, k := range r.cls {
-			if k.x+k.w > w {
+			x, shown := c.shownAt(r, k)
+			if !shown {
+				continue
+			}
+			if x+k.w > w {
 				break
 			}
 			st := c.styleOf(r, k)
@@ -788,28 +886,83 @@ func (c *cellHTML) PaintCells(s tui.Surface, top, w int, from, to DocPos) {
 			if selecting && selected(k, from, to) {
 				st = st.Reverse(true)
 			}
-			s.SetCell(k.x, y, k.text, st)
+			s.SetCell(x, y, k.text, st)
+		}
+	}
+	c.paintCodePanMarks(s, top, w, sz.H)
+}
+
+// codeLeft is the column of the left side of the box a code block's row is in.
+func (c *cellHTML) codeLeft(r *hrow) int {
+	b := &c.doc[r.block]
+	return 2*b.quote + b.indent
+}
+
+// shownAt is the column on screen of cluster k of row r, and whether it shows there: a code block's
+// line is shifted by its block's pan and shows only whole between its box's sides, its quote bars and
+// indent where they are; any other row's cluster as it is laid out.
+func (c *cellHTML) shownAt(r *hrow, k hcl) (int, bool) {
+	if !r.shade || k.x < c.codeLeft(r) {
+		return k.x, true
+	}
+	x := k.x - c.offset(r.block)
+	return x, x > c.codeLeft(r) && x+k.w <= c.width-1
+}
+
+// paintCodeSides draws what a code block's line has of its box at screen row y: its sides in the box's
+// tone, the shading between them. The sides stay when the line pans.
+func (c *cellHTML) paintCodeSides(s tui.Surface, r *hrow, y, w int) {
+	left, right := c.codeLeft(r), min(c.width, w)-1
+	if left >= w {
+		return
+	}
+	side := style.PageText().Foreground(codeBoxTone)
+	s.SetCell(left, y, "│", side)
+	if right > left {
+		s.Fill(tui.Rect{X: left + 1, Y: y, W: right - left - 1, H: 1}, " ", style.New().Background(style.TokenSurface))
+		s.SetCell(right, y, "│", side)
+	}
+}
+
+// paintCodePanMarks draws, over the sides of each wide code block on screen, its « and » (paintPanMarks)
+// on its middle line on screen: the box's sides are the columns a wide block keeps for its marks.
+func (c *cellHTML) paintCodePanMarks(s tui.Surface, top, w, h int) {
+	for y := 0; y < h; {
+		first := y
+		ri := top + y
+		if ri < 0 || ri >= len(c.rows) || !c.rows[ri].shade {
+			y++
+			continue
+		}
+		bi := c.rows[ri].block
+		for y < h && top+y < len(c.rows) && c.rows[top+y].shade && c.rows[top+y].block == bi {
+			y++
+		}
+		if over := c.over(bi); over > 0 {
+			paintPanMarks(s, c.codeLeft(&c.rows[ri]), min(c.width, w)-1, (first+y-1)/2, c.offset(bi), over)
 		}
 	}
 }
 
 // styleOf is a cluster's style: its span's formatting, its block's; a deco's own color, a box
-// rule's border tone, else a muted one.
+// rule's border tone, else a muted one. Every one starts from the page's own text (style.PageText:
+// the page's background under it, never the terminal's own), so the page's fill shows wherever a
+// cluster is painted.
 func (c *cellHTML) styleOf(r *hrow, k hcl) style.Style {
-	st := style.New().Foreground(style.TokenForeground)
+	st := style.PageText()
 	if r.rule {
-		return style.New().Foreground(style.TokenBorder)
+		return style.PageText().Foreground(style.TokenBorder)
 	}
 	if k.sp == nil || k.deco {
-		deco := style.New().Foreground(style.TokenTextMuted)
+		deco := style.PageText().Foreground(style.TokenTextMuted)
 		switch {
 		case k.fg != nil:
-			deco = style.New().Foreground(k.fg)
+			deco = style.PageText().Foreground(k.fg)
 		case strings.ContainsAny(k.text, "│┌┬┐├┼┤└┴┘─"):
-			deco = style.New().Foreground(style.TokenBorder)
+			deco = style.PageText().Foreground(style.TokenBorder)
 		}
-		if r.shade && k.text != "▎" {
-			deco = deco.Background(style.TokenSurface) // a preformatted row's inset and tab stops are shaded too
+		if r.shade && k.x > c.codeLeft(r) {
+			deco = deco.Background(style.TokenSurface) // a code line's inset and tab stops are shaded too; its quote bars and indent aren't
 		}
 		return deco
 	}
@@ -894,37 +1047,40 @@ func selected(k hcl, from, to DocPos) bool {
 	return k.sp != nil && k.pos != k.end && k.pos.Before(to) && from.Before(k.end)
 }
 
-// PAN. A diagram wider than its room is drawn at its own width and scrolled sideways, as the
-// window scrolls a wide box (gui/widget's ScrollX): each wide block has its own offset (pan), the
-// wheel's Shift pans the one under the pointer (ScrollX), and the keys the one nearest the page's
-// top (Pan). Only a wide block moves: text wraps to the room and never scrolls off. While a block
-// is wide its room's two edge columns are the marks', the diagram drawn between them, so a mark
-// never covers the diagram: a « or » there, on its middle row on screen, says more of it lies that
-// way (not ◀ ▶, which a sequence's arrows are drawn with).
+// PAN. A diagram or a code block wider than its room is drawn at its own width and scrolled
+// sideways, as the window scrolls a wide box (gui/widget's ScrollX): each wide block has its own
+// offset (pan), the wheel's Shift pans the one under the pointer (ScrollX), and the keys the one
+// nearest the page's top (Pan). Only a wide block moves: text wraps to the room and never scrolls
+// off. While a block is wide its room's two edge columns are the marks', what it draws kept between
+// them, so a mark never covers it: a « or » there, on its middle row on screen, says more of it lies
+// that way (not ◀ ▶, which a sequence's arrows are drawn with). A code block's box's sides are those
+// columns: its sides hold still as its lines pan, and a mark stands in for the side on that one row.
 
 // htmlPanStep is how far Left/Right (h/l) pan, in cells.
 const htmlPanStep = 8
 
-// panMark is the « » marks' style: a diagram's chrome, drawn as its lines are (diagramTheme).
-var panMark = style.New().Foreground(style.TokenForeground)
+// panMark is the « » marks' style: a wide block's chrome, drawn as a diagram's lines are (diagramTheme).
+var panMark = style.PageText()
 
-// over is how far block bi's diagram pans: how much wider it is than its room less the two edge
-// columns a wide block keeps for its marks; 0 for a block that fits, or isn't a diagram drawn in
-// cells.
+// over is how far block bi pans: how much wider it is than its room less the two edge columns a wide
+// block keeps for its marks; 0 for a block that fits, or isn't a diagram drawn in cells or a code
+// block. A diagram fits in the whole room; a code block always has its box's sides, those columns.
 func (c *cellHTML) over(bi int) int {
 	if bi < 0 || bi >= len(c.doc) || bi >= len(c.tops) || c.tops[bi] >= len(c.rows) {
 		return 0
 	}
-	r := c.rows[c.tops[bi]]
-	if r.grid == nil || r.block != bi {
-		return 0
-	}
 	b := &c.doc[bi]
 	room := c.width - 2*b.quote - b.indent
-	if r.grid.Size.W <= room {
+	width, fits := 0, room
+	if w, ok := c.codeW[bi]; ok {
+		width, fits = w, room-2
+	} else if r := c.rows[c.tops[bi]]; r.grid != nil && r.block == bi {
+		width = r.grid.Size.W
+	}
+	if width <= fits {
 		return 0
 	}
-	return r.grid.Size.W - max(room-2, 0)
+	return width - max(room-2, 0)
 }
 
 // offset is block bi's pan, within what it has to show: 0 when it fits.
@@ -949,7 +1105,7 @@ func (c *cellHTML) panBlock(bi, dx int) bool {
 // and shows below it is the nearest); false when none is wide, or it is already at that end.
 func (c *cellHTML) Pan(top, h, dx int) bool {
 	for ri := max(top, 0); ri < min(top+h, len(c.rows)); ri++ {
-		if r := c.rows[ri]; r.grid != nil && c.over(r.block) > 0 {
+		if r := c.rows[ri]; c.over(r.block) > 0 {
 			return c.panBlock(r.block, dx)
 		}
 	}
@@ -959,7 +1115,7 @@ func (c *cellHTML) Pan(top, h, dx int) bool {
 // ScrollX implements HTMLLayoutHScroll: a sideways wheel pans the wide block under (x, y).
 func (c *cellHTML) ScrollX(_, y, dx float32) bool {
 	ri := int(y)
-	if ri < 0 || ri >= len(c.rows) || c.rows[ri].grid == nil {
+	if ri < 0 || ri >= len(c.rows) {
 		return false
 	}
 	return c.panBlock(c.rows[ri].block, int(dx))
@@ -985,12 +1141,17 @@ func (c *cellHTML) paintGrid(s tui.Surface, r *hrow, y, h int) {
 		return
 	}
 	last := min(y+r.grid.Size.H-r.gridRow, h) - 1
-	mid := (max(y, 0) + last) / 2
+	paintPanMarks(s, x, w-1, (max(y, 0)+last)/2, off, over)
+}
+
+// paintPanMarks draws a wide block's marks at row mid of its edge columns left and right: a « when it
+// is panned, a » when more of it lies past its room.
+func paintPanMarks(s tui.Surface, left, right, mid, off, over int) {
 	if off > 0 {
-		s.SetCell(x, mid, "«", panMark)
+		s.SetCell(left, mid, "«", panMark)
 	}
 	if off < over {
-		s.SetCell(w-1, mid, "»", panMark)
+		s.SetCell(right, mid, "»", panMark)
 	}
 }
 
