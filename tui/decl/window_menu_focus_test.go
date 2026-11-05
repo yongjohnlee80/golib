@@ -45,8 +45,8 @@ func (r *redirector) HandleEvent(ev tui.Event) bool {
 }
 
 // runMenuFocusDoc is a Window with a Go menu (Pane: opens a drawer and focuses the field in it;
-// Log: runs, leaving the keyboard alone), a redirecting home with the document's focus, and the
-// drawer. It returns the screen and the home.
+// Log: runs, leaving the keyboard alone; Other: focuses a spot already on screen, at once), a
+// redirecting home with the document's focus, the other spot, and the drawer. It returns the screen and the home.
 func runMenuFocusDoc(t *testing.T) (*decltest.Screen, *redirector) {
 	t.Helper()
 	home := &redirector{inner: &focusSpot{widget.NewText("home")}}
@@ -56,8 +56,10 @@ func runMenuFocusDoc(t *testing.T) (*decltest.Screen, *redirector) {
 		tuidecl.LayoutSource("main.qml", []byte("import tui 1.0\nimport demo 1.0\nWindow {\n"+
 			" MenuBar { Dock.edge: Tui.Top\n  Menu { title: \"&Go\"\n"+
 			"   MenuItem { text: \"&Pane\"; onTriggered: App.openPane() }\n"+
-			"   MenuItem { text: \"&Log\"; onTriggered: App.log() } } }\n"+
+			"   MenuItem { text: \"&Log\"; onTriggered: App.log() }\n"+
+			"   MenuItem { text: \"&Other\"; onTriggered: App.focusOther() } } }\n"+
 			" Home { id: home; focus: true }\n"+
+			" Spot { id: other }\n"+
 			" Drawer { id: pane; modal: false; edge: Tui.Right; size: 30; length: 100\n  Spot { id: inPane } }\n}")),
 		tuidecl.Singleton("demo", "1.0", "App"),
 		tuidecl.Types(
@@ -72,7 +74,8 @@ func runMenuFocusDoc(t *testing.T) (*decltest.Screen, *redirector) {
 				}
 				return call("inPane", "forceActiveFocus")
 			},
-			"App.log": func([]qml.SpecValue) error { return nil },
+			"App.log":        func([]qml.SpecValue) error { return nil },
+			"App.focusOther": func([]qml.SpecValue) error { return call("other", "forceActiveFocus") },
 		}))
 	s.WaitForText(t, "home")
 	return s, home
@@ -118,4 +121,14 @@ func TestAMenuRowThatLeftTheKeyboardGivesItBackHandedOn(t *testing.T) {
 			return s.Program.App().FocusWithin(home) && !home.ctx.Focused() && home.inner.Context().Focused()
 		})
 	})
+}
+
+// A menu row that gives the keyboard at once to something already on screen keeps it there: the
+// Window doesn't take it back after the row (before, it did, and undid the row).
+func TestAMenuRowThatFocusedSomethingAtOnceKeepsIt(t *testing.T) {
+	s, _ := runMenuFocusDoc(t)
+	s.Keys(t, decltest.Alt('g'))
+	s.WaitForText(t, "Other")
+	s.Keys(t, decltest.Rune('o'))
+	s.WaitFor(t, "the other spot has the keyboard", func(string) bool { return menuFocusKeyboardIn(s, "other") })
 }
