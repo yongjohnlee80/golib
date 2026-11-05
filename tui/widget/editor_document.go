@@ -222,7 +222,7 @@ func (e *Editor) ResolvePointerPress(m tui.MouseEvent) (tui.Action, bool) {
 	if m.Kind != tui.MousePress || m.Button != tui.MouseLeft || m.Y < 0 || m.Y >= e.headerRows() {
 		return nil, false
 	}
-	v, ok := modeSwitchChoice(e, m.X-e.switchX())
+	v, ok := ModeSwitchChoice(e, m.X-e.switchX())
 	if !ok {
 		return nil, false
 	}
