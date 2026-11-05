@@ -128,8 +128,8 @@ func TestTheCellLayoutDrawsAMindmapAndSaysWhatItDoesnt(t *testing.T) {
 // The Rendered view draws a flowchart that fits as its diagram, and fits one that doesn't where it
 // can: one wider than the room that runs across (LR, RL) is laid running down (TB). A flowchart
 // still wider is drawn all the same, the narrower of its two layouts, at its own width (the page
-// pans it): never the notice. One with subgraphs (their frames aren't drawn yet) is the not-drawn
-// notice. Each case's precondition (how wide tui/mermaid lays it) is checked first, so the cell
+// pans it): never the notice. One with subgraphs is drawn too, each subgraph framed. Each case's
+// precondition (how wide tui/mermaid lays it) is checked first, so the cell
 // can't pass by its fixtures alone.
 func TestTheCellLayoutDrawsAFlowchartThatFitsItsRoom(t *testing.T) {
 	const room = 30
@@ -201,7 +201,7 @@ func TestTheCellLayoutDrawsAFlowchartThatFitsItsRoom(t *testing.T) {
 		}
 	}
 
-	if g, text := laid("flowchart TB\n  subgraph S [Group]\n    A --> B\n  end\n"); g != nil || !strings.Contains(text, notice) {
-		t.Errorf("a flowchart with a subgraph: drawn %v; want the notice: %s", g != nil, text)
+	if g, text := laid("flowchart TB\n  subgraph S [Group]\n    A --> B\n  end\n"); g == nil || strings.Contains(text, notice) {
+		t.Errorf("a flowchart with a subgraph: drawn %v; want it drawn, framed: %s", g != nil, text)
 	}
 }

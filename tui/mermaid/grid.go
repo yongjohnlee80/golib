@@ -36,7 +36,9 @@ type Grid struct {
 	// Boxes are the diagram's outlines. A mind map's are its nodes, in the model's order: Boxes[i]
 	// is node i. A sequence's start with its participants (Boxes[i] is participant i).
 	Boxes []Box
-	lines map[cell]dirs
+	// frames are drawn under every other layer: a subgraph's outline (frames.go)
+	frames []frame
+	lines  map[cell]dirs
 	// stroke is a line cell's stroke once finish has resolved it; strokes, the strokes the lines
 	// through each cell were drawn with (addStroke), one bit each.
 	stroke  map[cell]Stroke
@@ -233,8 +235,9 @@ func (g *Grid) run(a, b cell) {
 // Paint draws g into s with g's (0, 0) at (x0, y0), clipped by s: a host scrolls by moving the
 // origin. selected is a Boxes index, -1 for none: its outline and label take th.Selected.
 func (g *Grid) Paint(s tui.Surface, x0, y0, selected int, th Theme) {
-	// lines first, then their marks, the fills, the labels and the legend, boxes over all: an outline
-	// owns its cells
+	// frames under all, then the lines (a line crossing a frame draws its own character there), their
+	// marks, the fills, the labels and the legend, boxes over all: an outline owns its cells
+	g.paintFrames(s, x0, y0, th)
 	for c, d := range g.lines {
 		s.SetCell(x0+c.x, y0+c.y, g.lineOf(c, d), th.Style(ElemLine))
 	}
@@ -260,6 +263,10 @@ func (g *Grid) Paint(s tui.Surface, x0, y0, selected int, th Theme) {
 // corners, every line, mark and fill cell. settle and measure read this one walk, so a layer is
 // added in one place.
 func (g *Grid) each(visit func(x, y int)) {
+	for _, f := range g.frames {
+		visit(f.rect.X, f.rect.Y)
+		visit(f.rect.X+f.rect.W-1, f.rect.Y+f.rect.H-1)
+	}
 	for _, b := range g.Boxes {
 		visit(b.Rect.X, b.Rect.Y)
 		visit(b.Rect.X+b.Rect.W-1, b.Rect.Y+b.Rect.H-1)
@@ -287,6 +294,12 @@ func (g *Grid) shift(dx, dy int) {
 	for i := range g.Boxes {
 		g.Boxes[i].Rect.X += dx
 		g.Boxes[i].Rect.Y += dy
+	}
+	for i := range g.frames {
+		g.frames[i].rect.X += dx
+		g.frames[i].rect.Y += dy
+		g.frames[i].tx += dx
+		g.frames[i].ty += dy
 	}
 	move := func(c cell) cell { return cell{c.x + dx, c.y + dy} }
 	g.lines = shiftCells(g.lines, move)
@@ -346,11 +359,12 @@ func guard(ctx context.Context, n, max int) error {
 	return ctx.Err()
 }
 
-// finish is every Lay's last step: the strokes resolved, everything settled at the origin, the
-// legend placed under the drawing (measured by m), and the size checked (layout.ErrTooLarge past
-// maxCells).
+// finish is every Lay's last step: the strokes resolved, the frames' titles placed where no line
+// crosses them, everything settled at the origin, the legend placed under the drawing (measured by
+// m), and the size checked (layout.ErrTooLarge past maxCells).
 func (g *Grid) finish(m Measurer) (*Grid, error) {
 	g.resolveStrokes()
+	g.placeFrameTitles(m)
 	g.settle()
 	g.placeLegend(m)
 	if g.tooLarge() {

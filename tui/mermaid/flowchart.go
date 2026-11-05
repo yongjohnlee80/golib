@@ -27,17 +27,40 @@ import (
 // (┬ ├ ┤ come from the OR'd masks). A fan-in shares only the target's own port, below its tracks.
 // Crossings are a vertical through another net's track, so they read ┼.
 //
-// Not yet: subgraph frames (Lay refuses a flowchart with subgraphs, for the host's notice), and
-// edges between nodes of one rank (left out). An edge back up the ranks (a cycle) is routed as any
-// other, by ports beside the forward ones; a self-loop is a ↺ mark beside its box.
+// A subgraph is a frame round its nodes (and its nested subgraphs'), a layer of its own under the
+// lines: its borders keep to rows of the gaps no track or jog row is on, and to columns no edge runs
+// down, so a line only ever crosses one, straight, drawing its own character there.
+//
+// Not yet: edges between nodes of one rank (left out), and a subgraph's own direction (it is laid
+// in its diagram's). An edge back up the ranks (a cycle) is routed as any other, by ports beside
+// the forward ones.
 
 // Frame spacing, in cells: a box's clearance from its neighbours on a rank (room for a long
-// edge's column between them, a cell clear of each), and the first guess at the gap between
-// ranks (each gap is then as tall as its tracks need).
+// edge's column between them, a cell clear of each), the first guess at the gap between ranks
+// (each gap is then as tall as its tracks need), and the layout's margin round a subgraph's members
+// (its border and a cell inside it).
 const (
-	fcNodeSep = 3
-	fcRankSep = 4
+	fcNodeSep  = 3
+	fcRankSep  = 4
+	fcGroupPad = 2
 )
+
+// fcFrame is a subgraph's frame, in the frame (TB) coordinates the router works in.
+type fcFrame struct {
+	title    string
+	members  []int // its nodes and its nested subgraphs'
+	parent   int   // the frame it is nested in, -1 at top level
+	lo, hi   int   // its first and last rank
+	l, r     int   // its left and right borders' columns
+	top, bot int   // its top and bottom borders' rows
+}
+
+// near reports whether column c is a border of f or beside one: no edge runs down it, so a line
+// meets f's top or bottom only crossing it, and the cell after a corner is always clear (where a
+// title that has no room goes as a footnote mark).
+func (f fcFrame) near(c int) bool { return abs(c-f.l) <= 1 || abs(c-f.r) <= 1 }
+
+func abs(v int) int { return max(v, -v) }
 
 // FormOfShape is the outline a flowchart node's shape is drawn with: the nearest corner set.
 func FormOfShape(s pm.Shape) Form {
@@ -146,17 +169,8 @@ func (n *fcNet) by(t fcTerm, top bool) []int {
 type netKey struct{ kind, n int }
 
 func init() {
-	register(pm.Flowchart, layAs(LayFlowchart), flowchartDrawn)
+	register(pm.Flowchart, layAs(LayFlowchart), nil) // every flowchart: a subgraph is a frame
 	registerNarrower(pm.Flowchart, flowchartDown)
-}
-
-// flowchartDrawn refuses a flowchart with subgraphs: their frames aren't drawn yet, and its boxes
-// without them would mislead.
-func flowchartDrawn(d pm.Diagram) error {
-	if fc, ok := d.(*pm.FlowchartDiagram); ok && len(fc.Subgraphs) > 0 {
-		return ErrUnsupported
-	}
-	return nil
 }
 
 // flowchartDown is a flowchart that runs across (LR, RL) as one running down (TB): its narrower
@@ -212,6 +226,11 @@ func layFlowchart(ctx context.Context, d *pm.FlowchartDiagram, m Measurer) (*Gri
 		edges = append(edges, fcEdge{e: e, from: f, to: t})
 		at = append(at, i)
 	}
+	frames := fcFrames(d)
+	for _, f := range frames {
+		in.Groups = append(in.Groups, f.members)
+	}
+	in.GroupPad = fcGroupPad
 	res, err := layout.Layered(ctx, in, layout.Limits{})
 	if err != nil {
 		return nil, nil, err
@@ -238,17 +257,54 @@ func layFlowchart(ctx context.Context, d *pm.FlowchartDiagram, m Measurer) (*Gri
 		nodes[i].rank = rankOf(float64(p.Y))
 		ranks[nodes[i].rank] = append(ranks[nodes[i].rank], i)
 	}
-	// a rank's boxes in the layout's order, on whole cells, each clear of the one before
+	// a rank's boxes in the layout's order, on whole cells, each clear of the one before and of the
+	// frames' borders; a frame spans its members' ranks
 	bandH := make([]int, len(ranks))
 	for r, ids := range ranks {
 		slices.SortStableFunc(ids, func(a, b int) int { return cmp.Compare(res.Nodes[a].X, res.Nodes[b].X) })
-		next := math.MinInt
 		for _, i := range ids {
-			x := int(math.Round(float64(res.Nodes[i].X) - float64(nodes[i].w)/2))
-			nodes[i].x = max(x, next)
-			next = nodes[i].x + nodes[i].w + fcNodeSep
 			bandH[r] = max(bandH[r], nodes[i].h)
 		}
+	}
+	for f := range frames {
+		frames[f].lo, frames[f].hi = math.MaxInt, math.MinInt
+		for _, i := range frames[f].members {
+			frames[f].lo, frames[f].hi = min(frames[f].lo, nodes[i].rank), max(frames[f].hi, nodes[i].rank)
+		}
+	}
+	titleW := make([]int, len(frames)) // a frame's room for its title across the frame: TB and BT only
+	if !across {
+		for f := range frames {
+			_, titleW[f], _ = capLabel(frames[f].title, RoleLabel, m) // as the frame draws it
+		}
+	}
+	placeColumns(nodes, ranks, frames, res, titleW)
+	// a frame's rows above its first rank and below its last: a border each, outside those of the
+	// frames inside it that start (or end) on that rank
+	topRows, botRows := make([]int, len(frames)), make([]int, len(frames))
+	frameTop, frameBot := make([]int, len(ranks)), make([]int, len(ranks)) // a rank's rows of borders above it, below it
+	for f := len(frames) - 1; f >= 0; f-- {                                // a nested frame comes after the one it is in
+		topRows[f], botRows[f] = max(topRows[f], 1), max(botRows[f], 1)
+		if p := frames[f].parent; p >= 0 {
+			if frames[p].lo == frames[f].lo {
+				topRows[p] = max(topRows[p], topRows[f]+1)
+			}
+			if frames[p].hi == frames[f].hi {
+				botRows[p] = max(botRows[p], botRows[f]+1)
+			}
+		}
+		frameTop[frames[f].lo] = max(frameTop[frames[f].lo], topRows[f])
+		frameBot[frames[f].hi] = max(frameBot[frames[f].hi], botRows[f])
+	}
+	// a column a line runs down in a gap: never a frame's border or beside one, where the frame is
+	// on both of the gap's ranks
+	besideFrame := func(gi, c int) bool {
+		for _, f := range frames {
+			if f.lo <= gi && f.hi > gi && f.near(c) {
+				return true
+			}
+		}
+		return false
 	}
 
 	// each edge's span, and its column on every rank between (where the layout put its dummy,
@@ -263,6 +319,11 @@ func layFlowchart(ctx context.Context, d *pm.FlowchartDiagram, m Measurer) (*Gri
 		}
 		for _, i := range ranks[r] {
 			if c >= nodes[i].x-1 && c <= nodes[i].x+nodes[i].w {
+				return false
+			}
+		}
+		for _, f := range frames { // never down a frame's border, or beside one, on a rank it spans
+			if f.lo <= r && r <= f.hi && f.near(c) {
 				return false
 			}
 		}
@@ -409,7 +470,7 @@ func layFlowchart(ctx context.Context, d *pm.FlowchartDiagram, m Measurer) (*Gri
 			c, ok := jogAt[[2]int{ni, ge.bot.col}]
 			for d := 1; !ok; d++ {
 				for _, cand := range []int{ge.bot.col - d, ge.bot.col + d} {
-					if !ok && !topCols[cand] && !botCols[cand] {
+					if !ok && !topCols[cand] && !botCols[cand] && !besideFrame(gi, cand) {
 						c, ok = cand, true
 					}
 				}
@@ -460,7 +521,7 @@ func layFlowchart(ctx context.Context, d *pm.FlowchartDiagram, m Measurer) (*Gri
 		if jogs[gi] {
 			jogRow[gi], jogN[gi] = jogRows(gaps[gi].nets)
 		}
-		gapH[gi] = assignTracks(gaps[gi].nets) + 2 + labelRows[gi] + jogN[gi]
+		gapH[gi] = assignTracks(gaps[gi].nets) + 2 + labelRows[gi] + jogN[gi] + frameBot[gi] + frameTop[gi+1]
 	}
 
 	// the frame rows: each rank's band, then its gap
@@ -470,6 +531,10 @@ func layFlowchart(ctx context.Context, d *pm.FlowchartDiagram, m Measurer) (*Gri
 	}
 	for i := range nodes {
 		nodes[i].y = bandY[nodes[i].rank] + (bandH[nodes[i].rank]-nodes[i].h)/2
+	}
+	for f := range frames { // its borders' rows: in the gaps above its first rank and below its last
+		frames[f].top = bandY[frames[f].lo] - 1 - topRows[f]
+		frames[f].bot = bandY[frames[f].hi] + bandH[frames[f].hi] + botRows[f]
 	}
 
 	// draw, in the frame, into the grid turned to the diagram's direction
@@ -498,7 +563,7 @@ func layFlowchart(ctx context.Context, d *pm.FlowchartDiagram, m Measurer) (*Gri
 		}
 	}
 	for gi, gn := range gaps {
-		trackY := bandY[gi] + bandH[gi] + 1
+		trackY := bandY[gi] + bandH[gi] + 1 + frameBot[gi] // past the bottom borders of the frames ending above
 		for _, n := range gn.nets {
 			startY := func(t fcTerm) int {
 				if t.node >= 0 {
@@ -527,7 +592,7 @@ func layFlowchart(ctx context.Context, d *pm.FlowchartDiagram, m Measurer) (*Gri
 			draw(cell{n.lo, y}, cell{n.hi, y}, n.edges)
 			for _, b := range n.bots {
 				if b.jog { // down its dogleg's column, across the jog row, into its own
-					jogY := bandY[gi+1] - 1 - labelRows[gi] - jogN[gi] + jogRow[gi][b]
+					jogY := bandY[gi+1] - 1 - frameTop[gi+1] - labelRows[gi] - jogN[gi] + jogRow[gi][b]
 					by := n.by(b, false)
 					draw(cell{b.jogCol, y}, cell{b.jogCol, jogY}, by)
 					draw(cell{b.jogCol, jogY}, cell{b.col, jogY}, by)
@@ -570,6 +635,15 @@ func layFlowchart(ctx context.Context, d *pm.FlowchartDiagram, m Measurer) (*Gri
 		end(toEnd, e.back, endMark(e.e.Head, !e.back, d.Dir))
 		end(fromEnd, !e.back, endMark(e.e.Tail, e.back, d.Dir))
 	}
+	// the frames, turned: a layer under the lines, their titles placed by finish where no line
+	// crosses them (before the labels and loops, which keep clear of them)
+	for _, f := range frames {
+		a, b := toReal(cell{f.l, f.top}), toReal(cell{f.r, f.bot})
+		var r tui.Rect
+		r.X, r.Y = min(a.x, b.x), min(a.y, b.y)
+		r.W, r.H = max(a.x, b.x)-r.X+1, max(a.y, b.y)-r.Y+1
+		g.frame(r, f.title)
+	}
 	// the boxes, turned (before the labels and loops, which keep clear of them)
 	for i, n := range d.Nodes {
 		f := nodes[i]
@@ -603,6 +677,9 @@ func layFlowchart(ctx context.Context, d *pm.FlowchartDiagram, m Measurer) (*Gri
 		return false
 	}
 	occupied := func(c cell) bool {
+		if g.onFrame(c) {
+			return true
+		}
 		_, line := g.lines[c]
 		return line || inBox(c) || g.marks[c] != "" || labelled(c)
 	}
@@ -640,7 +717,7 @@ func layFlowchart(ctx context.Context, d *pm.FlowchartDiagram, m Measurer) (*Gri
 		_, w, _ := capLabel(e.e.Label, RoleLabel, m) // as g.label draws it
 		placed := false
 		if !e.back {
-			arrow := bandY[e.hi] - 1 // the frame row of its arrow, above its lower node's band
+			arrow := bandY[e.hi] - 1 - frameTop[e.hi] // the frame row its label keeps to: above its arrow and the borders of the frames starting there
 			if across {
 				lo, hi := toReal(cell{e.lowCol, arrow - 1 - w}), toReal(cell{e.lowCol, arrow - 2})
 				x0, x1 := min(lo.x, hi.x), max(lo.x, hi.x)
@@ -884,4 +961,152 @@ func endMark(a pm.Arrow, down bool, dir pm.Dir) string {
 		return h[0]
 	}
 	return h[1]
+}
+
+// fcFrames is a frame for each of d's subgraphs that holds a node: its members are its own nodes and
+// its nested subgraphs', so a frame holds the frames inside it; parent is the nearest enclosing
+// subgraph with a frame. A subgraph's own direction is not laid (it is drawn in the diagram's).
+func fcFrames(d *pm.FlowchartDiagram) []fcFrame {
+	parentOf := map[string]string{}
+	for _, s := range d.Subgraphs {
+		parentOf[s.ID] = s.Parent
+	}
+	// within reports whether subgraph sg is id or nested in it, walking at most every subgraph once
+	// (a model built by hand might cycle)
+	within := func(sg, id string) bool {
+		for range len(d.Subgraphs) + 1 {
+			if sg == "" {
+				return false
+			}
+			if sg == id {
+				return true
+			}
+			sg = parentOf[sg]
+		}
+		return false
+	}
+	var frames []fcFrame
+	frameOf := map[string]int{}
+	for _, s := range d.Subgraphs {
+		if _, dup := frameOf[s.ID]; dup {
+			continue
+		}
+		var members []int
+		for i, n := range d.Nodes {
+			if within(n.Subgraph, s.ID) {
+				members = append(members, i)
+			}
+		}
+		if len(members) == 0 {
+			continue
+		}
+		f := fcFrame{title: cmp.Or(s.Title, s.ID), members: members, parent: -1}
+		for up, steps := s.Parent, 0; up != "" && steps <= len(d.Subgraphs); up, steps = parentOf[up], steps+1 {
+			if p, ok := frameOf[up]; ok {
+				f.parent = p
+				break
+			}
+		}
+		frameOf[s.ID] = len(frames)
+		frames = append(frames, f)
+	}
+	return frames
+}
+
+// fcItem is one thing on a rank, left to right: a box (node i) or a frame's left or right border
+// (frame i), at where the layout put its left edge.
+type fcItem struct {
+	kind int // fcLeft, fcBox, fcRight: the order of items the layout put at one place
+	i    int
+	at   float64
+}
+
+const (
+	fcLeft = iota
+	fcBox
+	fcRight
+)
+
+// placeColumns gives every box and frame border its column: where the layout put it, on whole
+// cells, moved right as far as it must be to keep clear of what is before it on every rank it is on
+// (the longest path through those constraints, so no further than it must). A box keeps fcNodeSep
+// from a box and a cell from its own frame's border; between a box and a border it is outside of,
+// or two frames side by side, there is room for a long edge's column a cell clear of each (the
+// columns beside a border take none: fcFrame.near). A frame is wide enough for its title, where its
+// title runs across it (titleW, 0 for none).
+func placeColumns(nodes []fcNode, ranks [][]int, frames []fcFrame, res layout.Result, titleW []int) {
+	pos := func(it fcItem) *int {
+		switch it.kind {
+		case fcLeft:
+			return &frames[it.i].l
+		case fcRight:
+			return &frames[it.i].r
+		}
+		return &nodes[it.i].x
+	}
+	for i := range nodes {
+		nodes[i].x = int(math.Round(float64(res.Nodes[i].X) - float64(nodes[i].w)/2))
+	}
+	for f := range frames {
+		g := res.Groups[f]
+		frames[f].l, frames[f].r = int(math.Round(float64(g.X))), int(math.Round(float64(g.X+g.W)))-1
+	}
+	type sep struct {
+		a, b fcItem
+		d    int
+	}
+	var seps []sep
+	for r, ids := range ranks {
+		var items []fcItem
+		for _, i := range ids {
+			items = append(items, fcItem{fcBox, i, float64(res.Nodes[i].X) - float64(nodes[i].w)/2})
+		}
+		for f, fr := range frames {
+			if fr.lo <= r && r <= fr.hi {
+				g := res.Groups[f]
+				items = append(items, fcItem{fcLeft, f, float64(g.X)}, fcItem{fcRight, f, float64(g.X + g.W)})
+			}
+		}
+		slices.SortStableFunc(items, func(a, b fcItem) int {
+			c := cmp.Or(cmp.Compare(a.at, b.at), cmp.Compare(a.kind, b.kind))
+			if c == 0 && a.kind == b.kind && a.kind != fcBox { // nested borders at one place: the outer
+				if a.kind == fcLeft { // frame's left first, the inner's right first
+					return cmp.Compare(a.i, b.i)
+				}
+				return cmp.Compare(b.i, a.i)
+			}
+			return c
+		})
+		for k := 1; k < len(items); k++ {
+			a, b := items[k-1], items[k]
+			w := 1
+			if a.kind == fcBox {
+				w = nodes[a.i].w
+			}
+			d := map[[2]int]int{
+				{fcBox, fcBox}: w + fcNodeSep, {fcBox, fcRight}: w + 1, {fcBox, fcLeft}: w + 3,
+				{fcLeft, fcBox}: 2, {fcLeft, fcLeft}: 2, {fcLeft, fcRight}: 2,
+				{fcRight, fcRight}: 2, {fcRight, fcBox}: 4, {fcRight, fcLeft}: 4,
+			}[[2]int{a.kind, b.kind}]
+			seps = append(seps, sep{a, b, d})
+		}
+	}
+	for f := range frames {
+		if titleW[f] > 0 { // ╭─ title ─╮: its corners, a rule and a space either side
+			seps = append(seps, sep{fcItem{fcLeft, f, 0}, fcItem{fcRight, f, 0}, titleW[f] + 5})
+		}
+	}
+	// the longest path: each pass moves an item only right, so it ends once no constraint moves one,
+	// at most once per item (the layout's order is the same on every rank, so there is no cycle)
+	for range len(nodes) + 2*len(frames) + 1 {
+		moved := false
+		for _, s := range seps {
+			if pa, pb := pos(s.a), pos(s.b); *pb < *pa+s.d {
+				*pb, moved = *pa+s.d, true
+			}
+		}
+		if !moved {
+			break
+		}
+	}
 }
