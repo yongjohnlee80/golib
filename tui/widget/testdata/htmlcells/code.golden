@@ -8,7 +8,9 @@ width 30
 > ```
 
 "run make all now"
+    0-3 fg=fg bg=background
     4-11 fg=accent bg=surface
+    12-15 fg=fg bg=background
 ""
 " func main() {"
     0-0 fg=muted bg=surface

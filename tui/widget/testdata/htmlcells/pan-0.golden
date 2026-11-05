@@ -1,42 +1,82 @@
 "before"
+    0-5 fg=fg bg=background
 ""
 " ┌───────┐  ┌─────┐  ┌───────"
-    1-9 fg=accent
-    12-18 fg=accent
-    21-28 fg=accent
+    1-9 fg=accent bg=background
+    12-18 fg=accent bg=background
+    21-28 fg=accent bg=background
 " │ Alice │  │ Bob │  │ Carol"
-    1-1 fg=accent
-    9-9 fg=accent
-    12-12 fg=accent
-    18-18 fg=accent
-    21-21 fg=accent
+    1-1 fg=accent bg=background
+    2-8 fg=fg bg=background
+    9-9 fg=accent bg=background
+    12-12 fg=accent bg=background
+    13-17 fg=fg bg=background
+    18-18 fg=accent bg=background
+    21-21 fg=accent bg=background
+    22-28 fg=fg bg=background
 " └───┬───┘  └──┬──┘  └───┬───"
-    1-9 fg=accent
-    12-18 fg=accent
-    21-28 fg=accent
+    1-9 fg=accent bg=background
+    12-18 fg=accent bg=background
+    21-28 fg=accent bg=background
 "     │         │         │"
+    5-5 fg=fg bg=background
+    15-15 fg=fg bg=background
+    25-25 fg=fg bg=background
 "     │  hello  │         │"
+    5-5 fg=fg bg=background
+    8-12 fg=fg bg=background
+    15-15 fg=fg bg=background
+    25-25 fg=fg bg=background
 "     ├────────▶┤         │"
+    5-15 fg=fg bg=background
+    25-25 fg=fg bg=background
 "     │         │ and on  │"
+    5-5 fg=fg bg=background
+    15-15 fg=fg bg=background
+    17-22 fg=fg bg=background
+    25-25 fg=fg bg=background
 "     │         ├────────▶┤   »"
+    5-5 fg=fg bg=background
+    15-25 fg=fg bg=background
+    29-29 fg=fg bg=background
 "     │         │         │  a"
+    5-5 fg=fg bg=background
+    15-15 fg=fg bg=background
+    25-25 fg=fg bg=background
+    28-28 fg=fg bg=background
 "     │         │         ├───"
+    5-5 fg=fg bg=background
+    15-15 fg=fg bg=background
+    25-28 fg=fg bg=background
 "     │         │         │"
+    5-5 fg=fg bg=background
+    15-15 fg=fg bg=background
+    25-25 fg=fg bg=background
 "     │         │         │"
+    5-5 fg=fg bg=background
+    15-15 fg=fg bg=background
+    25-25 fg=fg bg=background
 "     │         │         │"
+    5-5 fg=fg bg=background
+    15-15 fg=fg bg=background
+    25-25 fg=fg bg=background
 " ┌───┴───┐  ┌──┴──┐  ┌───┴───"
-    1-9 fg=accent
-    12-18 fg=accent
-    21-28 fg=accent
+    1-9 fg=accent bg=background
+    12-18 fg=accent bg=background
+    21-28 fg=accent bg=background
 " │ Alice │  │ Bob │  │ Carol"
-    1-1 fg=accent
-    9-9 fg=accent
-    12-12 fg=accent
-    18-18 fg=accent
-    21-21 fg=accent
+    1-1 fg=accent bg=background
+    2-8 fg=fg bg=background
+    9-9 fg=accent bg=background
+    12-12 fg=accent bg=background
+    13-17 fg=fg bg=background
+    18-18 fg=accent bg=background
+    21-21 fg=accent bg=background
+    22-28 fg=fg bg=background
 " └───────┘  └─────┘  └───────"
-    1-9 fg=accent
-    12-18 fg=accent
-    21-28 fg=accent
+    1-9 fg=accent bg=background
+    12-18 fg=accent bg=background
+    21-28 fg=accent bg=background
 ""
 "after"
+    0-4 fg=fg bg=background

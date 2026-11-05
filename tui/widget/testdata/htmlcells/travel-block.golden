@@ -1,15 +1,18 @@
 "para a                                 █"
+    0-5 fg=fg bg=background
     39-39 fg=border
 "                                       │"
     39-39 fg=muted
 " • item 1                              │"
-    0-2 fg=muted
+    0-2 fg=muted bg=background
+    3-8 fg=fg bg=background
     39-39 fg=muted
 " • item 2                              │"
-    0-2 fg=muted
+    0-2 fg=muted bg=background
+    3-8 fg=fg bg=background
     39-39 fg=muted
 "                                       │"
     39-39 fg=muted
 "┌───┬───┐                              │"
-    0-8 fg=border
+    0-8 fg=border bg=background
     39-39 fg=muted

@@ -2,6 +2,9 @@ width 30
 > see [the docs](docs.md) and <https://example.com> too
 
 "see the docs and"
-    4-11 underline fg=primary
+    0-3 fg=fg bg=background
+    4-11 underline fg=primary bg=background
+    12-15 fg=fg bg=background
 "https://example.com too"
-    0-18 underline fg=primary
+    0-18 underline fg=primary bg=background
+    19-22 fg=fg bg=background

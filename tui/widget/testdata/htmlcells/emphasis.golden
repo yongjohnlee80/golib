@@ -2,7 +2,7 @@ width 40
 > **bold** *italic* ~~struck~~ `code`
 
 "bold italic struck code"
-    0-4 bold fg=fg
-    5-11 italic fg=fg
-    12-17 strike fg=fg
+    0-4 bold fg=fg bg=background
+    5-11 italic fg=fg bg=background
+    12-17 strike fg=fg bg=background
     18-22 fg=accent bg=surface
