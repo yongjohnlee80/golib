@@ -1,0 +1,17 @@
+" kw lit"
+    0-0 fg=muted bg=surface
+    1-2 fg=accent bg=surface
+    3-3 fg=fg bg=surface
+    4-6 fg=success bg=surface
+    7-39 bg=surface
+" /* a comment"
+    0-12 fg=muted bg=surface
+    13-39 bg=surface
+" still the comment */ lit"
+    0-20 fg=muted bg=surface
+    21-24 fg=fg bg=surface
+    25-39 bg=surface
+" plain"
+    0-0 fg=muted bg=surface
+    1-5 fg=fg bg=surface
+    6-39 bg=surface
