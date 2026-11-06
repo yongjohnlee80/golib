@@ -1,0 +1,60 @@
+catppuccin_frappe
+  code-box   c6d0f5 8.06:1
+  code       c6d0f5 8.06:1
+  inline     ef9f76 5.80:1
+  table-rule c6d0f5 8.06:1
+  table-side c6d0f5 8.06:1
+dark
+  code-box   d0d0d0 11.05:1
+  code       d0d0d0 11.05:1
+  inline     ffaf5f 9.37:1
+  table-rule d0d0d0 11.05:1
+  table-side d0d0d0 11.05:1
+kanagawa
+  code-box   dcd7ba 11.26:1
+  code       dcd7ba 11.26:1
+  inline     ffa066 8.15:1
+  table-rule dcd7ba 11.26:1
+  table-side dcd7ba 11.26:1
+light
+  code-box   2e2a24 12.75:1
+  code       2e2a24 12.75:1
+  inline     a23a1f 5.94:1
+  table-rule 2e2a24 12.75:1
+  table-side 2e2a24 12.75:1
+mono
+  code-box   the terminal's own colour
+  code       the terminal's own colour
+  inline     the terminal's own colour
+  table-rule the terminal's own colour
+  table-side the terminal's own colour
+nord
+  code-box   d8dee9 9.25:1
+  code       d8dee9 9.25:1
+  inline     ebcb8b 8.00:1
+  table-rule d8dee9 9.25:1
+  table-side d8dee9 9.25:1
+retro
+  code-box   ffff55 15.95:1
+  code       ffff55 15.95:1
+  inline     ff5555 5.42:1
+  table-rule ffff55 15.95:1
+  table-side ffff55 15.95:1
+sepia
+  code-box   5b4636 6.31:1
+  code       5b4636 6.31:1
+  inline     9b3d1f 4.87:1
+  table-rule 5b4636 6.31:1
+  table-side 5b4636 6.31:1
+shades_of_purple
+  code-box   ffffff 13.22:1
+  code       ffffff 13.22:1
+  inline     ff9d00 6.34:1
+  table-rule ffffff 13.22:1
+  table-side ffffff 13.22:1
+tokyo_night
+  code-box   c0caf5 10.59:1
+  code       c0caf5 10.59:1
+  inline     ff9e64 8.40:1
+  table-rule c0caf5 10.59:1
+  table-side c0caf5 10.59:1
