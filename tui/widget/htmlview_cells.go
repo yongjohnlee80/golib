@@ -440,8 +440,12 @@ type chartPicture struct {
 func (p chartPicture) Size() tui.Size                  { return tui.Size{W: p.d.W, H: p.d.H} }
 func (p chartPicture) Paint(s tui.Surface, x0, y0 int) { p.d.Paint(s, x0, y0, p.th) }
 
-// chartTheme is a chart's styles in the cell layout: the page's own tokens.
-func (c *cellHTML) chartTheme() tuivegalite.Theme { return tuivegalite.TokenTheme() }
+// chartTheme is a chart's styles in the cell layout: the page's own, its series in the page's
+// code colours (WithSyntax), which every theme sets; with none, the page's tokens.
+func (c *cellHTML) chartTheme() tuivegalite.Theme {
+	styles := c.syntaxStyles
+	return tuivegalite.ThemeFromSyntax(func(r highlight.Style) style.Style { return styles[r] })
+}
 
 // layDiagram lays a <pre class="mermaid"> out: a kind tui/mermaid draws as its grid, one row of
 // the layout per row of the grid, fitted to the room where its kind can be laid narrower (a
