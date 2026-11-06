@@ -236,7 +236,9 @@ func Providers(ps ...decl.Provider) ProgramOption {
 
 // Themes offers every `.qml` file in dir as a theme module named
 // prefix.<file>: themes/retro.qml as `editor.theme.retro`. Only the one the
-// document imports is read.
+// document imports is read. Every offered theme carries the vocabulary's
+// optional keys ([OptionalPaletteRoles]), filled from their fallback where a
+// file leaves them unset, so a document binds them unconditionally.
 func Themes(fsys fs.FS, dir, prefix, version string) ProgramOption {
 	return func(c *programConfig) {
 		c.watched = append(c.watched, watchedDir{fsys, dir})
@@ -244,6 +246,10 @@ func Themes(fsys fs.FS, dir, prefix, version string) ProgramOption {
 		if err != nil {
 			c.errs = append(c.errs, fmt.Errorf("themes: %w", err))
 			return
+		}
+		fill := make(map[string]string, len(optionalPaletteRoles))
+		for _, r := range optionalPaletteRoles {
+			fill[r.Key] = r.From
 		}
 		for _, e := range entries {
 			if e.IsDir() || path.Ext(e.Name()) != ".qml" {
@@ -253,7 +259,7 @@ func Themes(fsys fs.FS, dir, prefix, version string) ProgramOption {
 			c.offers = append(c.offers, offered{
 				name:    prefix + "." + strings.TrimSuffix(e.Name(), ".qml"),
 				version: version,
-				load:    decl.ValueFile(fsys, file),
+				load:    decl.FillConstants(decl.ValueFile(fsys, file), fill),
 			})
 		}
 	}

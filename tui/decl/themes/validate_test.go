@@ -14,8 +14,29 @@ func TestValidateBuiltInsAndEveryRequiredRole(t *testing.T) {
 			t.Fatal(err)
 		}
 		v, ds := Validate(name+".qml", src)
-		if len(ds) != 0 || len(v) != len(Schema()) {
+		if len(ds) != 0 {
 			t.Fatalf("%s: %v (%d roles)", name, ds, len(v))
+		}
+		// every required role present, and every key beyond the schema one of the optional ones
+		// (a theme may set document.accent: retro does)
+		if len(v) < len(Schema()) {
+			t.Fatalf("%s: %d roles, want at least the schema's %d", name, len(v), len(Schema()))
+		}
+		for key := range v {
+			known := false
+			for _, r := range Schema() {
+				if r.Key == key {
+					known = true
+				}
+			}
+			for _, r := range optionalRoles() {
+				if r.Key == key {
+					known = true
+				}
+			}
+			if !known {
+				t.Errorf("%s: %s is neither a required nor an optional role", name, key)
+			}
 		}
 	}
 	src, _ := fs.ReadFile(FS(), "sepia.qml")
@@ -106,5 +127,70 @@ func TestValidateReportsTheParsersSyntaxPosition(t *testing.T) {
 	}
 	if d := ds[0]; d.Key != "Theme" || d.Pos.File != "unfinished.qml" || d.Pos.Line != line || d.Pos.Column != column || d.Message == "" {
 		t.Errorf("unpositioned syntax failure: %+v", d)
+	}
+}
+
+// An optional role is always in a valid theme's values, from its fallback when the theme leaves it
+// unset (sepia's document accent is its menu's; retro writes its own), and written it is refused
+// malformed or repeated like any other key: a consumer binds it unconditionally, the fallback
+// written once here, never in a consumer.
+func TestOptionalRolesComeFromTheirFallbackAndRefuseBadOnes(t *testing.T) {
+	sepia, err := Values("sepia")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if sepia["document.accent"] != sepia["menu.accent"] {
+		t.Errorf("sepia's document.accent %q, want its fallback, the menu's %q", sepia["document.accent"], sepia["menu.accent"])
+	}
+	retro, err := Values("retro")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if retro["document.accent"] != "#ff5555" {
+		t.Errorf("retro's document.accent %q, want its own #ff5555 (its menu's is %q)", retro["document.accent"], retro["menu.accent"])
+	}
+	src, err := fs.ReadFile(FS(), "sepia.qml")
+	if err != nil {
+		t.Fatal(err)
+	}
+	body := string(src)
+	end := strings.LastIndex(body, "}")
+	for _, c := range []struct {
+		what string
+		src  string
+		want string
+	}{
+		{"malformed", body[:end] + `    document.accent: "notacolour"` + "\n}\n", "notacolour"},
+		{"repeated", body[:end] + `    document.accent: "#ff5555"` + "\n    document.accent: \"#aa0000\"\n}\n", "key is repeated"},
+	} {
+		v, ds := Validate("broken.qml", []byte(c.src))
+		if v != nil {
+			t.Fatalf("%s: invalid theme returned usable values", c.what)
+		}
+		found := false
+		for _, d := range ds {
+			if d.Key == "document.accent" && strings.Contains(d.Message, c.want) {
+				found = true
+			}
+		}
+		if !found {
+			t.Errorf("%s: missing diagnosis on document.accent (%q): %v", c.what, c.want, ds)
+		}
+	}
+}
+
+// Every optional role's From is a required key: the fill reads the source from the file's own
+// values, so a From that were itself optional would fill in map order — one run's answer could
+// differ from another's, and the type says so. This enforces it: the table cannot name a
+// fallback the schema does not require.
+func TestOptionalRolesFallBackToRequiredKeys(t *testing.T) {
+	required := map[string]bool{}
+	for _, r := range Schema() {
+		required[r.Key] = true
+	}
+	for _, r := range optionalRoles() {
+		if !required[r.From] {
+			t.Errorf("%s falls back to %s, which is not a required key", r.Key, r.From)
+		}
 	}
 }

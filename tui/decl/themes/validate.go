@@ -7,6 +7,7 @@ import (
 
 	"github.com/yongjohnlee80/golib/parse"
 	"github.com/yongjohnlee80/golib/parse/qml"
+	tuidecl "github.com/yongjohnlee80/golib/tui/decl"
 	"github.com/yongjohnlee80/golib/tui/style"
 )
 
@@ -17,6 +18,12 @@ type Role struct{ Key, Description string }
 // property the toolkit supports. Every role requires a string accepted by style.ParseColor.
 // The returned slice is a copy; editing it never changes validation's vocabulary.
 func Schema() []Role { return slices.Clone(roles) }
+
+// optionalRoles are the theme-file keys a file MAY leave unset, and the required key each comes
+// from when it does — the palette's vocabulary, read from [tuidecl.OptionalPaletteRoles], where
+// the table is written once, below both consumers: Validate fills the Go map here, and Themes
+// fills the loaded module's singleton, so a consumer binds the key unconditionally.
+func optionalRoles() []tuidecl.OptionalPaletteRole { return tuidecl.OptionalPaletteRoles() }
 
 var roles = []Role{
 	{"app.window", "application chrome background"},
@@ -112,8 +119,11 @@ func Validate(file string, src []byte) (map[string]string, []Diagnostic) {
 	for _, c := range n.Children {
 		add(c.Pos, c.Type, "child objects are not allowed; use grouped colour properties")
 	}
-	known := make(map[string]bool, len(roles))
+	known := make(map[string]bool, len(roles)+len(optionalRoles()))
 	for _, r := range roles {
+		known[r.Key] = true
+	}
+	for _, r := range optionalRoles() {
 		known[r.Key] = true
 	}
 	seen := make(map[string]bool, len(roles))
@@ -143,6 +153,13 @@ func Validate(file string, src []byte) (map[string]string, []Diagnostic) {
 	}
 	if len(ds) != 0 {
 		return nil, ds
+	}
+	for _, r := range optionalRoles() {
+		if !seen[r.Key] {
+			if v, ok := values[r.From]; ok {
+				values[r.Key] = v
+			}
+		}
 	}
 	return values, nil
 }

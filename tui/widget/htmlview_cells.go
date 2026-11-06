@@ -15,8 +15,8 @@ import (
 
 // THE CELL LAYOUT — an HTMLView in a terminal: the document's text, wrapped to the widget's
 // width and read-only, one unit a cell. Headings are bold and told apart by level (h1 and h2 ruled
-// under), links underlined, inline code shaded and tinted, preformatted text boxed, shaded and never
-// wrapped (a line wider than the room pans sideways, as a wide diagram does: see PAN);
+// under), links underlined, inline code tinted in the document's accent, preformatted text boxed
+// and never wrapped (a line wider than the room pans sideways, as a wide diagram does: see PAN);
 // quotes carry a bar, a callout's in its type's color with its title; list items a hanging marker,
 // a task's its checkbox; a table that fits is boxed, its header ruled off and its cells aligned,
 // and one that does not wraps as rows of text. Highlighted text is marked. Images show their alt
@@ -38,7 +38,7 @@ type hrow struct {
 	block int // the block it belongs to (a gap row: the block after it)
 	first bool
 	cls   []hcl
-	shade bool // a code block's line: between its box's sides, shaded, panned (shownAt)
+	shade bool // a code block's line: between its box's sides, the page's fill, panned (shownAt)
 	rule  bool
 	// bottom is a code block's box's bottom edge: a point on it is the end of the block.
 	bottom bool
@@ -256,13 +256,15 @@ func (c *cellHTML) tableEdge(bi, dir int) bool {
 }
 
 // layBox is a rule of row bi's table box: left, the joints between its columns and right, each
-// column's rule as wide as the column and its padding.
+// column's rule as wide as the column and its padding. The box wears the muted text's tone
+// (codeBoxTone): a theme's border, its mid, reads under the 3:1 floor on every built-in theme's
+// page, and a table box is a box on the page like a code block's.
 func (c *cellHTML) layBox(bi int, b *hblock, cols []int, left, joint, right string) {
 	row := hrow{block: bi, cls: c.prefix(b, false)}
 	x := 2*b.quote + b.indent
 	at := DocPos{Block: bi}
 	put := func(s string) {
-		row.cls = append(row.cls, hcl{text: s, x: x, w: 1, pos: at, end: at, deco: true, fg: style.TokenBorder})
+		row.cls = append(row.cls, hcl{text: s, x: x, w: 1, pos: at, end: at, deco: true, fg: codeBoxTone})
 		x++
 	}
 	put(left)
@@ -353,10 +355,10 @@ func (c *cellHTML) layCode(bi int, b *hblock) {
 	c.layCodeEdge(bi, b, false)
 }
 
-// codeBoxTone is a code block's box's tone: the muted text's, which reads on every theme's page (at
+// codeBoxTone is a box on the page's tone: the muted text's, which reads on every theme's page (at
 // least 3:1, measured in tui/decl/themes' testdata/codeblock). TokenBorder, a theme's mid, doesn't: it
-// is under 2:1 on sepia's, and the box is what sets the block off, the shading being the page's own
-// there. Table boxes still wear the border.
+// is under 2:1 on sepia's. A code block's box and a table's both wear it, the box being what sets
+// the block off, the shading being the page's own there.
 var codeBoxTone style.ColorSpec = style.TokenTextMuted
 
 // layCodeEdge is the top or bottom edge of a code block's box, in its tone, across the room the block
@@ -525,7 +527,7 @@ func (c *cellHTML) blockLines(bi int, b *hblock, cols []int) [][]lineCluster {
 	}
 	edge := func(s string, at DocPos) {
 		for g := range tui.Graphemes(s) {
-			line = append(line, lineCluster{text: g, pos: at, end: at, deco: true})
+			line = append(line, lineCluster{text: g, pos: at, end: at, deco: true, fg: codeBoxTone})
 		}
 	}
 	boxed := b.kind == hRow && cols != nil
@@ -910,7 +912,8 @@ func (c *cellHTML) shownAt(r *hrow, k hcl) (int, bool) {
 }
 
 // paintCodeSides draws what a code block's line has of its box at screen row y: its sides in the box's
-// tone, the shading between them. The sides stay when the line pans.
+// tone, the page's own base between them (the page's fill, not a shade: shading is the page's base,
+// invisible by construction). The sides stay when the line pans.
 func (c *cellHTML) paintCodeSides(s tui.Surface, r *hrow, y, w int) {
 	left, right := c.codeLeft(r), min(c.width, w)-1
 	if left >= w {
@@ -919,7 +922,7 @@ func (c *cellHTML) paintCodeSides(s tui.Surface, r *hrow, y, w int) {
 	side := style.PageText().Foreground(codeBoxTone)
 	s.SetCell(left, y, "│", side)
 	if right > left {
-		s.Fill(tui.Rect{X: left + 1, Y: y, W: right - left - 1, H: 1}, " ", style.New().Background(style.TokenSurface))
+		s.Fill(tui.Rect{X: left + 1, Y: y, W: right - left - 1, H: 1}, " ", style.New().Background(style.TokenBackground))
 		s.SetCell(right, y, "│", side)
 	}
 }
@@ -959,17 +962,11 @@ func (c *cellHTML) styleOf(r *hrow, k hcl) style.Style {
 		case k.fg != nil:
 			deco = style.PageText().Foreground(k.fg)
 		case strings.ContainsAny(k.text, "│┌┬┐├┼┤└┴┘─"):
-			deco = style.PageText().Foreground(style.TokenBorder)
-		}
-		if r.shade && k.x > c.codeLeft(r) {
-			deco = deco.Background(style.TokenSurface) // a code line's inset and tab stops are shaded too; its quote bars and indent aren't
+			deco = style.PageText().Foreground(codeBoxTone) // a table's leftover glyphs: its box reads like the code box's
 		}
 		return deco
 	}
 	b := &c.doc[r.block]
-	if r.shade {
-		st = st.Background(style.TokenSurface)
-	}
 	if b.kind == hHeading {
 		st = headingStyle(st, b.level)
 	}
@@ -984,7 +981,9 @@ func (c *cellHTML) styleOf(r *hrow, k hcl) style.Style {
 		st = st.Italic(true)
 	}
 	if sp.code && b.kind != hPre {
-		st = st.Foreground(style.TokenAccent).Background(style.TokenSurface)
+		// inline code is the document's accent alone: shading was TokenSurface, the page's own
+		// base on every real theme, invisible by construction (the box sets a block off, not this)
+		st = st.Foreground(style.TokenAccentDocument)
 	}
 	if sp.mark {
 		st = st.Foreground(style.TokenTextOnWarning).Background(style.TokenWarning)
@@ -1011,7 +1010,7 @@ func headingStyle(st style.Style, level int) style.Style {
 	case 1, 2:
 		return st.Bold(true).Foreground(style.TokenPrimary)
 	case 3:
-		return st.Bold(true).Foreground(style.TokenAccent)
+		return st.Bold(true).Foreground(style.TokenAccentDocument)
 	case 4:
 		return st.Bold(true)
 	case 5:
@@ -1034,7 +1033,7 @@ func calloutTone(kind string) style.ColorSpec {
 	case "danger", "error", "bug", "failure", "fail", "missing":
 		return style.TokenError
 	case "question", "help", "faq":
-		return style.TokenAccent
+		return style.TokenAccentDocument
 	case "example", "quote", "cite", "abstract", "summary", "tldr":
 		return style.TokenSecondary
 	}

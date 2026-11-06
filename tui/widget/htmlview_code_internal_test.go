@@ -70,8 +70,8 @@ func TestACodeBlockWithNoLanguageOrNoRoomHasNoName(t *testing.T) {
 }
 
 // A code block in a quote or a list keeps its indent: the box starts where the block's text would, the
-// quote's bar and the indent outside it and unshaded, the shading only between its sides.
-func TestACodeBlockKeepsItsIndentAndItsShadingInside(t *testing.T) {
+// quote's bar and the indent outside it, and what is between its sides the page's own fill.
+func TestACodeBlockKeepsItsIndentOnThePagesFill(t *testing.T) {
 	for name, html := range map[string]string{
 		"quote": "<blockquote>" + codeDoc("", "x") + "</blockquote>",
 		"list":  "<ul><li><p>item</p>" + codeDoc("", "x") + "</li></ul>",
@@ -93,24 +93,15 @@ func TestACodeBlockKeepsItsIndentAndItsShadingInside(t *testing.T) {
 			if s.text[top][codeRoom-1] != "┐" || s.text[top+1][codeRoom-1] != "│" || s.text[top+2][codeRoom-1] != "┘" {
 				t.Errorf("the box doesn't end at the page's last column:\n%s", strings.Join(navRows(c, 0, len(c.rows)), "\n"))
 			}
-			// shaded is the code's surface; the page's own background, under everything else on the
-			// page, isn't shading
-			shaded := func(x, y int) bool {
-				bg, ok := s.style[y][x].GetBackground()
-				tok, isTok := bg.Token()
-				return ok && isTok && tok == style.TokenSurface
-			}
-			for x := range left + 1 {
-				if shaded(x, top+1) {
-					t.Errorf("column %d, at or before the box's side (%d), is shaded", x, left)
-				}
-			}
-			if shaded(codeRoom-1, top+1) {
-				t.Error("the box's right side is shaded")
-			}
+			// the interior is the page's own fill, not a shade: tokenTheme maps TokenSurface to
+			// the page's base, so the shading the box once drew inside was invisible by
+			// construction; between the sides the page's base is painted, so no cluster punches
+			// the terminal's own colour through
 			for x := left + 1; x < codeRoom-1; x++ {
-				if !shaded(x, top+1) {
-					t.Errorf("column %d, inside the box, isn't shaded", x)
+				bg, ok := s.style[top+1][x].GetBackground()
+				tok, isTok := bg.Token()
+				if !ok || !isTok || tok != style.TokenBackground {
+					t.Errorf("column %d, inside the box, is not on the page's fill (%v)", x, bg)
 				}
 			}
 			for _, x := range []int{left, codeRoom - 1} {
