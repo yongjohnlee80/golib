@@ -30,9 +30,9 @@ func plotOf(rect tui.Rect, cats []string, size int, lo, hi float64, horizontal b
 	}
 }
 
-// drawn is cells as two pictures of rect: the glyphs, and each cell's colour and background, a
+// pictured is cells as two pictures of rect: the glyphs, and each cell's colour and background, a
 // letter a series (a, b, …), '.' the page.
-func drawn(rect tui.Rect, cells []barCell) (glyphs, colours string) {
+func pictured(rect tui.Rect, cells []barCell) (glyphs, colours string) {
 	g, c := make([][]string, rect.H), make([][]string, rect.H)
 	for y := range rect.H {
 		g[y], c[y] = make([]string, rect.W), make([]string, rect.W)
@@ -74,7 +74,7 @@ func across(cats []string, values ...float64) *pv.Layer {
 func TestABarEndsAtItsEighth(t *testing.T) {
 	cats := []string{"n", "s", "e"}
 	rect := tui.Rect{X: 3, Y: 1, W: 20, H: 3}
-	got, _ := drawn(rect, layBars(across(cats, 6.3, 10, 0.06), nil, plotOf(rect, cats, 1, 0, 10, true)))
+	got, _ := pictured(rect, barCells(across(cats, 6.3, 10, 0.06), nil, plotOf(rect, cats, 1, 0, 10, true)))
 	want := strings.Repeat("█", 12) + "▋\n" + strings.Repeat("█", 20) + "\n" + "▏\n"
 	if got != want {
 		t.Errorf("bars:\n%s\nwant:\n%s", got, want)
@@ -86,7 +86,7 @@ func TestEveryBarIsItsValuesEighths(t *testing.T) {
 	rect := tui.Rect{W: 13, H: 1}
 	for k := range 105 {
 		v := float64(k) / 8 // 0 to 13 cells in eighths
-		cells := layBars(across([]string{"x"}, v), nil, plotOf(rect, []string{"x"}, 1, 0, 13, true))
+		cells := barCells(across([]string{"x"}, v), nil, plotOf(rect, []string{"x"}, 1, 0, 13, true))
 		total := 0
 		for _, c := range cells {
 			for n, g := range barsAcross {
@@ -110,7 +110,7 @@ func TestAStackPilesInSeriesOrder(t *testing.T) {
 		{Y: pv.Pos{Str: "x"}, Series: "a", V0: 0, V1: 3.1},
 		{Y: pv.Pos{Str: "x"}, Series: "b", V0: 3.1, V1: 5.3},
 	}}
-	glyphs, colours := drawn(rect, layBars(ly, []string{"a", "b"}, plotOf(rect, []string{"x"}, 1, 0, 10, true)))
+	glyphs, colours := pictured(rect, barCells(ly, []string{"a", "b"}, plotOf(rect, []string{"x"}, 1, 0, 10, true)))
 	if want := "██████▎███▋\n"; glyphs != want {
 		t.Errorf("glyphs %q; want %q", glyphs, want)
 	}
@@ -126,7 +126,7 @@ func TestAVerticalBarRisesInEighths(t *testing.T) {
 		{X: pv.Pos{Str: "p"}, V1: 2.5}, // 2.5 cells: two rows and ▄
 		{X: pv.Pos{Str: "q"}, V1: 4},
 	}}
-	got, _ := drawn(rect, layBars(ly, nil, plotOf(rect, []string{"p", "q"}, 3, 0, 4, false)))
+	got, _ := pictured(rect, barCells(ly, nil, plotOf(rect, []string{"p", "q"}, 3, 0, 4, false)))
 	want := "   ██\n▄▄ ██\n██ ██\n██ ██\n"
 	if got != want {
 		t.Errorf("bars:\n%s\nwant:\n%s", got, want)
@@ -142,7 +142,7 @@ func TestSeriesNotStackedOverlapShorterInFront(t *testing.T) {
 		{X: pv.Pos{Str: "p"}, Series: "b", V1: 1},
 		{X: pv.Pos{Str: "p"}, Series: "a", V1: 2},
 	}}
-	_, colours := drawn(rect, layBars(ly, []string{"a", "b"}, plotOf(rect, []string{"p"}, 4, 0, 2, false)))
+	_, colours := pictured(rect, barCells(ly, []string{"a", "b"}, plotOf(rect, []string{"p"}, 4, 0, 2, false)))
 	if want := "aa aa aa\nbb bb bb\n"; colours != want {
 		t.Errorf("colours %q; want %q", colours, want)
 	}
@@ -158,7 +158,7 @@ func TestANegativeBarRunsBackFromZero(t *testing.T) {
 		{Y: pv.Pos{Str: "p"}, V0: 0, V1: 1.25},
 		{Y: pv.Pos{Str: "h"}, V0: 0, V1: -2.25},
 	}}
-	got, colours := drawn(rect, layBars(ly, nil, plotOf(rect, []string{"m", "p", "h"}, 1, -5, 5, true)))
+	got, colours := pictured(rect, barCells(ly, nil, plotOf(rect, []string{"m", "p", "h"}, 1, -5, 5, true)))
 	want := "     █████\n          ██▌\n     ▌████\n"
 	if got != want {
 		t.Errorf("bars:\n%s\nwant:\n%s", got, want)

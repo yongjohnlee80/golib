@@ -53,8 +53,8 @@ var (
 	barsUp     = [9]string{" ", "▁", "▂", "▃", "▄", "▅", "▆", "▇", "█"}
 )
 
-// layBars draws ly's bars into p: a cell for every cell any bar reaches, sorted by row then column.
-func layBars(ly *pv.Layer, series []string, p barPlot) []barCell {
+// barCells draws ly's bars into p: a cell for every cell any bar reaches, sorted by row then column.
+func barCells(ly *pv.Layer, series []string, p barPlot) []barCell {
 	rank := map[string]int{}
 	for i, s := range series {
 		rank[s] = i
