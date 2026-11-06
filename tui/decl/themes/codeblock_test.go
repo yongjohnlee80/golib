@@ -3,6 +3,7 @@ package themes_test
 import (
 	"flag"
 	"fmt"
+	"io/fs"
 	"os"
 	"path/filepath"
 	"strings"
@@ -151,10 +152,30 @@ func TestThePageReadsInEveryTheme(t *testing.T) {
 			t.Fatal(err)
 		}
 		page := mustColor(t, vals["document.base"])
-		// Validate fills document.accent from menu.accent when a theme writes none, so the
-		// binding is unconditional, as a consumer's is (the fallback written once, in golib)
-		accent := vals["document.accent"]
-		bindings := " palette.mid: Theme.app.mid; palette.accent: Theme.menu.accent; palette.documentAccent: Theme.document.accent"
+		accent := vals["document.accent"] // Validate fills it from menu.accent when a theme writes none
+		// The qml singleton is the parsed file, not the filled map: the engine refuses reading a
+		// member the file lacks, so the documentAccent binding is written only where the file's
+		// document group has the key — the always-present form is jarvis's pending ruling on the loader
+		own, err := fs.ReadFile(FS(), name+".qml")
+		if err != nil {
+			t.Fatal(err)
+		}
+		ownAccent, inDocument := false, false
+		for _, line := range strings.Split(string(own), "\n") {
+			t := strings.TrimSpace(line)
+			switch {
+			case strings.HasPrefix(t, "document {"):
+				inDocument = true
+			case inDocument && t == "}":
+				inDocument = false
+			case inDocument && strings.HasPrefix(t, "accent:"):
+				ownAccent = true
+			}
+		}
+		bindings := " palette.mid: Theme.app.mid; palette.accent: Theme.menu.accent"
+		if ownAccent {
+			bindings += "; palette.documentAccent: Theme.document.accent"
+		}
 		s := decltest.Run(t, 30, 10, tuidecl.LayoutSource("main.qml", []byte("import tui 1.0\nimport tui.theme."+name+" 1.0\n"+
 			"Window { palette.highlight: Theme.document.highlight; palette.base: Theme.document.base; palette.text: Theme.document.text\n"+
 			" palette.window: Theme.document.base; palette.windowText: Theme.document.text"+bindings+"\n"+
