@@ -46,7 +46,11 @@ func layBars(ch *pv.Chart, width int, m Measurer) (*Drawing, bool) {
 	rows, gutter := 0, 0
 	if ly.Horizontal {
 		rows = len(dim.Domain)
-		for _, v := range barValues(ly, func(c string) (int, int, bool) { return 0, 1, true }) {
+		row := func(c string) (int, int, bool) { // a row a category, as the frame will lay them
+			i := slices.Index(dim.Domain, c)
+			return i, 1, i >= 0
+		}
+		for _, v := range barValues(ly, row) {
 			gutter = max(gutter, m.StringWidth(v.s)+1)
 		}
 	}

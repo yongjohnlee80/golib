@@ -159,13 +159,17 @@ func TestTheBarsTierRefusesOtherCharts(t *testing.T) {
 	for name, spec := range map[string]string{
 		"line": `{"mark":"line","data":{"values":[{"x":1,"y":2},{"x":2,"y":3}]},
 			"encoding":{"x":{"field":"x","type":"quantitative"},"y":{"field":"y","type":"quantitative"}}}`,
-		"continuous bars": `{"mark":"bar","data":{"values":[{"x":1,"y":2},{"x":2,"y":3}]},
-			"encoding":{"x":{"field":"x","type":"quantitative"},"y":{"field":"y","type":"quantitative"}}}`,
 		"layered": `{"data":{"values":[{"k":"a","v":1}]},"layer":[{"mark":"bar"},{"mark":"rule"}],
 			"encoding":{"x":{"field":"k","type":"nominal"},"y":{"field":"v","type":"quantitative"}}}`,
 	} {
 		if _, ok := layBars(plotted(t, spec), 40, widths{}); ok {
 			t.Errorf("%s: drawn as bars", name)
 		}
+	}
+	// bars along a continuous axis (a binned or temporal x, were the parser to plot one)
+	continuous := &pv.Chart{X: pv.Axis{Lo: 0, Hi: 10}, Y: pv.Axis{Lo: 0, Hi: 5},
+		Layers: []pv.Layer{{Mark: pv.MarkBar, Data: []pv.Datum{{X: pv.Pos{Num: 2}, V1: 3}}}}}
+	if _, ok := layBars(continuous, 40, widths{}); ok {
+		t.Error("bars along a continuous axis: drawn as bars")
 	}
 }
