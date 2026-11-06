@@ -162,6 +162,7 @@ type Laid struct {
 	texts []label
 
 	sectors []laidSector // a pie's wedges, filled before everything else
+	bands   []laidBand   // a sankey's flows, filled after the wedges, under everything else
 
 	labels picture.Labels // the loop's shaping of each label line
 }
@@ -172,6 +173,14 @@ type laidSector struct {
 	cx, cy, r    float32
 	a0, a1       float32
 	fill, stroke color.NRGBA
+}
+
+// laidBand is one filled flow of a sankey: from x0, between y0a (its top) and y0b, to x1, between
+// y1a and y1b, its edges two S-curves (cubic, their controls halfway across).
+type laidBand struct {
+	x0, y0a, y0b float32
+	x1, y1a, y1b float32
+	fill         color.NRGBA
 }
 
 // Size is the diagram as Paint draws it.
