@@ -876,6 +876,9 @@ func layGraph(ctx context.Context, gr graph, m Measurer) (*Grid, [][][2]cell, er
 			gap := e.hi - 1 // the gap its last drop is in: above the frame its end stops on, for one
 			if lf := e.lowerFrame(); lf >= 0 {
 				gap = frames[lf].lo - 1
+				if across && endOuter(e.lowerMark()) != "" {
+					rows++ // its mark takes two cells there, the label along the line before both
+				}
 			}
 			labelRows[gap] = max(labelRows[gap], rows)
 		}
@@ -1267,6 +1270,9 @@ func layGraph(ctx context.Context, gr graph, m Measurer) (*Grid, [][][2]cell, er
 			col := e.lowCol
 			if lf := e.lowerFrame(); lf >= 0 { // its end stops on a frame: beside its mark, outside the border
 				col, arrow = e.cross[e.lowerEnd()], frames[lf].top
+				if across && endOuter(e.lowerMark()) != "" {
+					arrow-- // a mark of two cells: the label along the line before both
+				}
 			}
 			if across {
 				lo, hi := toReal(cell{col, arrow - 1 - w}), toReal(cell{col, arrow - 2})

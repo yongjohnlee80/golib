@@ -125,12 +125,11 @@ func TestAStateSelfTransitionKeepsItsLabel(t *testing.T) {
 
 // What a transition to or from a composite can't be drawn as, a line ending on the border, is
 // ErrUnsupported (Drawn and Lay), for the host's own rendering, never a picture with it left out:
-// one between a composite and a state inside it (it never crosses the border), one from a composite
-// to itself, one to a composite holding no state. A transition into a composite or out of it is
-// drawn.
+// one from a composite to itself, one to a composite holding no state. (One between a composite and
+// a state inside it, which never crosses the border, the parser refuses already: a state used
+// across composite states.) A transition into a composite or out of it is drawn.
 func TestOnlyATransitionThatCantEndOnACompositesBorderIsRefused(t *testing.T) {
 	for _, src := range []string{
-		"stateDiagram-v2\n  state Busy {\n    [*] --> Slow\n  }\n  Busy --> Slow\n",
 		"stateDiagram-v2\n  state Busy {\n    [*] --> Slow\n  }\n  Busy --> Busy\n",
 		"stateDiagram-v2\n  [*] --> Empty\n  state Empty {\n  }\n",
 	} {
