@@ -36,7 +36,7 @@ func layBraille(ctx context.Context, ch *pv.Chart, m Measurer, room int) (*Drawi
 			return nil, fmt.Errorf("%w: a %v layer is not the Braille tier's", pv.ErrUnsupported, l.Mark)
 		}
 	}
-	f, ok := layFrame(ch, room, 0, m)
+	f, ok := layFrame(ch, room, 0, 0, m)
 	if !ok {
 		return nil, fmt.Errorf("%w: a room of %d cells leaves no plot", pv.ErrUnsupported, room)
 	}

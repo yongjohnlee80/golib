@@ -253,10 +253,14 @@ func ticksFor(a pv.Axis, n, every int) (vals []float64, labels []string) {
 
 // layFrame lays ch's frame in a room width cells wide: the title on top, the legend under the x
 // axis, the y labels as wide as the widest, and gutter columns kept right of the plot for a tier's
-// own labels (a horizontal bar's value). The plot takes what is left; ok is false when the room
-// leaves it under 8 columns (a host shows the table or the notice instead).
-func layFrame(ch *pv.Chart, width, gutter int, m Measurer) (f *frame, ok bool) {
-	ch = niced(ch, plotRows(ch), width)
+// own labels (a horizontal bar's value). The plot is rows tall (a horizontal bar chart's: a row a
+// category), or plotRows' choice for rows ≤ 0; it takes the width that is left, and ok is false
+// when that is under 8 columns (a host shows the table or the notice instead).
+func layFrame(ch *pv.Chart, width, gutter, rows int, m Measurer) (f *frame, ok bool) {
+	if rows <= 0 {
+		rows = plotRows(ch)
+	}
+	ch = niced(ch, rows, width)
 	top := 0
 	titled := []string{}
 	if ch.Title != "" {
@@ -269,7 +273,6 @@ func layFrame(ch *pv.Chart, width, gutter int, m Measurer) (f *frame, ok bool) {
 	if ch.Y.Title != "" && !ch.Y.Off {
 		top++ // the y axis's title, over its labels
 	}
-	rows := plotRows(ch)
 	yVals, yLabels := ticksFor(ch.Y, rows, 2)
 	yw := 0
 	if !ch.Y.Off {

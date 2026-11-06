@@ -51,7 +51,7 @@ func TestARisingLineClimbsAcrossThePlot(t *testing.T) {
 	if !ok {
 		t.Fatal("a 30-column room has no plot")
 	}
-	f, _ := layFrame(lineChart(pv.MarkLine, 3), 30, 0, widths{})
+	f, _ := layFrame(lineChart(pv.MarkLine, 3), 30, 0, 0, widths{})
 	p := f.plot
 	ms := marks(d)
 	cols := map[int]int{} // column → its lowest row (the line's place there)
@@ -92,7 +92,7 @@ func minRow(ms map[[2]int]drawn, x int) int {
 // and leaves the upper blank; a value past the domain is drawn at its end, never outside the plot.
 func TestAnAreaFillsDownToItsBaseline(t *testing.T) {
 	full, _ := lay(lineChart(pv.MarkArea, 4, at(0, 4), at(4, 4)), 20)
-	f, _ := layFrame(lineChart(pv.MarkArea, 4), 20, 0, widths{})
+	f, _ := layFrame(lineChart(pv.MarkArea, 4), 20, 0, 0, widths{})
 	p := f.plot
 	for y := p.Y; y < p.Y+p.H; y++ {
 		for x := p.X; x < p.X+p.W; x++ {
@@ -131,7 +131,7 @@ func TestAStackedAreaFillsFromItsLowerEdge(t *testing.T) {
 	if !ok {
 		t.Fatal("no plot")
 	}
-	f, _ := layFrame(ch, 20, 0, widths{})
+	f, _ := layFrame(ch, 20, 0, 0, widths{})
 	p := f.plot
 	if c := d.cells[[2]int{p.X, p.Y}]; c.series != 1 {
 		t.Errorf("the plot's top row wears series %d, want 1 (high)", c.series)
@@ -152,7 +152,7 @@ func TestARuleIsAWholeCellLineOverTheDots(t *testing.T) {
 		pv.Layer{Mark: pv.MarkRule, Rule: &pv.Rule{Values: []pv.Pos{{Num: 2}}}},
 		pv.Layer{Mark: pv.MarkRule, Rule: &pv.Rule{OnX: true, Values: []pv.Pos{{Num: 2}}}})
 	d, _ := lay(ch, 24)
-	f, _ := layFrame(ch, 24, 0, widths{})
+	f, _ := layFrame(ch, 24, 0, 0, widths{})
 	p := f.plot
 	row, col := -1, -1
 	for at, c := range d.cells {
