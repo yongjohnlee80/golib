@@ -159,8 +159,9 @@ func TestTheBarsTierRefusesOtherCharts(t *testing.T) {
 	for name, spec := range map[string]string{
 		"line": `{"mark":"line","data":{"values":[{"x":1,"y":2},{"x":2,"y":3}]},
 			"encoding":{"x":{"field":"x","type":"quantitative"},"y":{"field":"y","type":"quantitative"}}}`,
-		"layered": `{"data":{"values":[{"k":"a","v":1}]},"layer":[{"mark":"bar"},{"mark":"rule"}],
-			"encoding":{"x":{"field":"k","type":"nominal"},"y":{"field":"v","type":"quantitative"}}}`,
+		"layered": `{"data":{"values":[{"k":"a","v":1},{"k":"b","v":3}]},"layer":[
+			{"mark":"bar","encoding":{"x":{"field":"k","type":"nominal"},"y":{"field":"v","type":"quantitative"}}},
+			{"mark":"rule","encoding":{"y":{"datum":2}}}]}`,
 	} {
 		if _, ok := layBars(plotted(t, spec), 40, widths{}); ok {
 			t.Errorf("%s: drawn as bars", name)
