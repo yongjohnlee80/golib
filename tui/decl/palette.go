@@ -2,6 +2,7 @@ package decl
 
 import (
 	"fmt"
+	"slices"
 	"strings"
 
 	"github.com/yongjohnlee80/golib/highlight"
@@ -109,6 +110,28 @@ const (
 	// that sets none leaves it unset, and the page's accent token derives from the accent's own.
 	roleDocumentAccent Role = "documentAccent"
 )
+
+// OptionalPaletteRole is a theme-file key a file may leave unset, with the required key its value
+// comes from when it does — the palette's vocabulary, written once, below both consumers:
+// themes.Validate fills the Go map a program reads, and Themes fills the loaded module's
+// singleton, so a consumer binds the key unconditionally, whatever a file wrote.
+type OptionalPaletteRole struct {
+	Key  string // the dotted theme key, as a file writes it: "document.accent"
+	From string // the required key its value comes from: "menu.accent"
+	What string // what it colours, for the vocabulary's documentation
+}
+
+// optionalPaletteRoles is the one table; OptionalPaletteRoles reads a copy.
+var optionalPaletteRoles = []OptionalPaletteRole{
+	{"document.accent", "menu.accent", "the document page's accent: inline code, headings' and callouts' accent tones, the diagram accents"},
+}
+
+// OptionalPaletteRoles are the theme-file keys a file may leave unset, each with the required key
+// its value comes from. A theme that writes the key keeps its own value; one that leaves it unset
+// reads the From key's, filled in by the toolkit, never by a consumer.
+func OptionalPaletteRoles() []OptionalPaletteRole {
+	return slices.Clone(optionalPaletteRoles)
+}
 
 // SyntaxStyles are the syntax roles the root Window's palette carries now, as the looks a
 // highlighter paints with — the same value a SyntaxHighlighter node wears (restyleSyntax), for a

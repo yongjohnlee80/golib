@@ -29,7 +29,7 @@ func TestValidateBuiltInsAndEveryRequiredRole(t *testing.T) {
 					known = true
 				}
 			}
-			for _, r := range optionalRoles {
+			for _, r := range optionalRoles() {
 				if r.Key == key {
 					known = true
 				}

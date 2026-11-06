@@ -381,3 +381,36 @@ func TestImportsTheEngineRefusesSayWhy(t *testing.T) {
 		t.Errorf("a component with no name: err = %v, want ErrComponent", err)
 	}
 }
+
+// TestFillConstantsSetsAbsentKeysFromTheirSources: the wrapper fills an absent key from the
+// constant its From names, under each export, and invents nothing — a key the module has keeps
+// its own value, and a source the module lacks leaves the target absent. It moves no files and
+// knows no vocabulary: the fill map names the keys, relative to the export.
+func TestFillConstantsSetsAbsentKeysFromTheirSources(t *testing.T) {
+	src := "Theme {\n document { base: \"navy\" }\n menu { accent: \"red\" }\n own { document.accent: \"own\" }\n}"
+	c, err := decl.FillConstants(decl.ValueModule([]byte(src)), map[string]string{
+		"document.accent": "menu.accent",
+		"document.base":   "menu.accent",
+	})()
+	if err != nil {
+		t.Fatalf("filled module refused: %v", err)
+	}
+	if got := c.Values["Theme.document.accent"].Value.Raw; got != "red" {
+		t.Errorf("Theme.document.accent = %q, want menu's \"red\"", got)
+	}
+	if got := c.Values["Theme.document.base"].Value.Raw; got != "navy" {
+		t.Errorf("a key the module has = %q, want its own \"navy\"", got)
+	}
+	if got := c.Values["Theme.own.document.accent"].Value.Raw; got != "own" {
+		t.Errorf("a nested key the module has = %q, want its own \"own\"", got)
+	}
+	c, err = decl.FillConstants(decl.ValueModule([]byte("Theme { document { base: \"navy\" } }")), map[string]string{
+		"document.accent": "menu.accent",
+	})()
+	if err != nil {
+		t.Fatalf("sourceless module refused: %v", err)
+	}
+	if _, has := c.Values["Theme.document.accent"]; has {
+		t.Error("a source the module lacks: the target was invented anyway")
+	}
+}

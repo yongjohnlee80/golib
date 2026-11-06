@@ -75,3 +75,29 @@ func valueModule(file string, src []byte) (ModuleContents, error) {
 	}
 	return ModuleContents{Exports: []string{root.Type}, Values: values}, nil
 }
+
+// FillConstants wraps load so that, after it runs, every absent constant named in fill is set
+// from the constant its From name gives, when the module has that one: keys are relative to
+// each export, so the same fill serves a module whose singleton is Theme and one whose is
+// Palette. A target the module already has keeps its own value, and a source the module lacks
+// leaves the target absent — the wrapper invents nothing and overrides nothing.
+func FillConstants(load ModuleLoader, fill map[string]string) ModuleLoader {
+	return func() (ModuleContents, error) {
+		c, err := load()
+		if err != nil {
+			return c, err
+		}
+		for _, export := range c.Exports {
+			for to, from := range fill {
+				key, src := export+"."+to, export+"."+from
+				if _, present := c.Values[key]; present {
+					continue
+				}
+				if v, ok := c.Values[src]; ok {
+					c.Values[key] = v
+				}
+			}
+		}
+		return c, nil
+	}
+}
