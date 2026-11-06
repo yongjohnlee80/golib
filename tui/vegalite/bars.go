@@ -1,6 +1,8 @@
 package vegalite
 
 import (
+	"context"
+	"fmt"
 	"math"
 	"slices"
 	"strings"
@@ -22,14 +24,18 @@ import (
 //	north  │██████▊          12.5
 //	south  │███▍▓▓▓▓          7.9     (a stack: ▍ in the first series' colour on the second's)
 
-// layBars lays ch, a chart of one bar layer over a discrete dimension (its categories' bands), in
-// a room width cells wide: horizontal bars a row a category, their values right of the plot;
-// vertical ones up the plot's columns. A room too narrow for the plot, or for a column a category,
-// widens the drawing to what it needs (the host pans it). ok is false for any other chart: another
-// mark, more than one layer, or bars along a continuous axis (the table's).
-func layBars(ch *pv.Chart, width int, m Measurer) (*Drawing, bool) {
+// layBars is the bar tier (Lay tries it first): ch, a chart of one bar layer over a discrete
+// dimension (its categories' bands), in a room cells wide: horizontal bars a row a category, their
+// values right of the plot; vertical ones up the plot's columns. A room too narrow for the plot, or
+// for a column a category, widens the drawing to what it needs (the host pans it). It refuses with
+// pv.ErrUnsupported any other chart (another mark, more than one layer, or bars along a continuous
+// axis), so Lay tries the next tier.
+func layBars(ctx context.Context, ch *pv.Chart, m Measurer, room int) (*Drawing, error) {
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
 	if len(ch.Layers) != 1 || ch.Layers[0].Mark != pv.MarkBar {
-		return nil, false
+		return nil, fmt.Errorf("%w: not a lone bar layer: the bar tier's charts are", pv.ErrUnsupported)
 	}
 	ly := &ch.Layers[0]
 	dim := ch.X
@@ -37,7 +43,7 @@ func layBars(ch *pv.Chart, width int, m Measurer) (*Drawing, bool) {
 		dim = ch.Y
 	}
 	if !dim.Discrete || len(dim.Domain) == 0 {
-		return nil, false
+		return nil, fmt.Errorf("%w: bars along a continuous axis are not the bar tier's", pv.ErrUnsupported)
 	}
 	series := ch.Series
 	if ly.Color != nil { // one colour for every mark
@@ -59,7 +65,7 @@ func layBars(ch *pv.Chart, width int, m Measurer) (*Drawing, bool) {
 		need = max(need, len(dim.Domain))
 	}
 	var f *frame
-	for w := width; ; {
+	for w := room; ; {
 		var ok bool
 		if f, ok = layFrame(ch, frameOpts{Width: w, Gutter: gutter, Rows: rows, Edges: true}, m); ok && f.plot.W >= need {
 			break
@@ -80,7 +86,7 @@ func layBars(ch *pv.Chart, width int, m Measurer) (*Drawing, bool) {
 	for _, v := range barValues(&f.ch.Layers[0], f.YBand) {
 		f.SayRight(v.row, v.s, m)
 	}
-	return f.d, true
+	return f.d, nil
 }
 
 // barPage is the occupant of a cell's part no bar fills: the page.
