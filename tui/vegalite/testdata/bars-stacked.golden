@@ -1,0 +1,26 @@
+q
+Q1 ┤████████████████████████▋█████████▌       42
+Q2 ┤███████████████████▋████████████████▉     45
+Q3 ┤███████▍██████████████████████████▌       42
+   └┬──────┬───────┬────────┬───────┬───────┬
+    0     10      20       30      40      50
+                    Sum of n
+■ east  ■ west
+-- colour
+
+    aaaaaaaaaaaaaaaaaaaaaaaaabbbbbbbbbb
+    aaaaaaaaaaaaaaaaaaaabbbbbbbbbbbbbbbbb
+    aaaaaaaabbbbbbbbbbbbbbbbbbbbbbbbbbb
+
+
+
+
+-- background
+
+    aaaaaaaaaaaaaaaaaaaaaaaabbbbbbbbbb.
+    aaaaaaaaaaaaaaaaaaabbbbbbbbbbbbbbbbb.
+    aaaaaaabbbbbbbbbbbbbbbbbbbbbbbbbbb.
+
+
+
+
