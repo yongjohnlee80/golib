@@ -101,6 +101,16 @@ func TestAQuadrantPointLiesInItsQuadrant(t *testing.T) {
 		for _, tx := range g.texts {
 			all.WriteString(tx.s + "\n")
 		}
+		// every footnote in the legend has its mark on the drawing, beside its point
+		for n := 1; n <= g.foot; n++ {
+			mk, onDrawing := footMark(n), false
+			for _, tx := range g.texts {
+				onDrawing = onDrawing || tx.s == mk
+			}
+			if !onDrawing {
+				t.Errorf("%s: footnote %s is in the legend but not on the drawing", name, mk)
+			}
+		}
 		for _, p := range q.Points {
 			shown, _, _ := capLabel(p.Label, RoleLabel, newCells(1, 1))
 			if !strings.Contains(all.String(), shown) {

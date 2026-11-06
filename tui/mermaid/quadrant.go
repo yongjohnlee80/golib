@@ -110,29 +110,33 @@ func LayQuadrant(ctx context.Context, d *pm.QuadrantDiagram, m Measurer) (*Grid,
 		}
 	}
 
-	// each point's label beside it, right, else left, else a footnote
+	// each point's label beside it: on its row, right then left, a cell clear of it; else the row
+	// above or below, starting beside it (a point on the cross has only those); else a footnote,
+	// its mark in the first of those places it fits
+	beside := func(c cell, w int) (cell, bool) {
+		for _, at := range []struct{ from, y, room, x int }{ // the cells that must be free, and where the label starts
+			{c.x + 1, c.y, w + 1, c.x + 2}, {c.x - 1 - w, c.y, w + 1, c.x - 1 - w},
+			{c.x + 1, c.y - 1, w, c.x + 1}, {c.x + 1, c.y + 1, w, c.x + 1}, {c.x - w, c.y - 1, w, c.x - w}, {c.x - w, c.y + 1, w, c.x - w},
+		} {
+			if free(at.from, at.y, at.room) {
+				return cell{at.x, at.y}, true
+			}
+		}
+		return cell{}, false
+	}
 	var notes []int
 	for i, p := range d.Points {
-		c := at[i]
 		_, w, _ := capLabel(p.Label, RoleLabel, m)
-		switch {
-		case free(c.x+1, c.y, w+1):
-			g.label(c.x+2, c.y, p.Label, m)
-		case free(c.x-1-w, c.y, w+1):
-			g.label(c.x-1-w, c.y, p.Label, m)
-		default:
+		if c, ok := beside(at[i], w); ok {
+			g.label(c.x, c.y, p.Label, m)
+		} else {
 			notes = append(notes, i)
 		}
 	}
-	for _, i := range notes { // a footnote's mark in the first free cell beside the point
+	for _, i := range notes {
 		mk := g.footnote(d.Points[i].Label)
-		mw := m.StringWidth(mk)
-		c := at[i]
-		for _, x := range []int{c.x + 1, c.x - mw} {
-			if free(x, c.y, mw) {
-				g.label(x, c.y, mk, m)
-				break
-			}
+		if c, ok := beside(at[i], m.StringWidth(mk)); ok {
+			g.label(c.x, c.y, mk, m)
 		}
 	}
 
