@@ -116,6 +116,12 @@ func TestAnAreaFillsDownToItsBaseline(t *testing.T) {
 			t.Fatalf("a value past the domain drew above the plot, at %v", at)
 		}
 	}
+	// a line to a value past the domain ends on the plot's top edge, its last column marked there,
+	// rather than leaving the plot (and dropping its end)
+	over, _ := lay(lineChart(pv.MarkLine, 4, at(0, 2), at(4, 9)), 20)
+	if c, ok := over.cells[[2]int{p.X + p.W - 1, p.Y}]; !ok || c.role != RoleMark {
+		t.Fatalf("a line to a value past the domain left the plot's top right empty:\n%s", strings.Join(over.Rows(), "\n"))
+	}
 }
 
 // A stacked area fills from its lower edge (V0), not the axis: the upper series' cells are above
