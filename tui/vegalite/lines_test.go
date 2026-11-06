@@ -6,8 +6,10 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/yongjohnlee80/golib/highlight"
 	pv "github.com/yongjohnlee80/golib/parse/vegalite"
 	"github.com/yongjohnlee80/golib/tui"
+	"github.com/yongjohnlee80/golib/tui/style"
 )
 
 // widths is the measurer the cells use: tui's own grapheme widths.
@@ -209,5 +211,30 @@ func TestBrailleRefusesANarrowRoomAndABar(t *testing.T) {
 		if _, err := layBraille(context.Background(), ch, widths{}, room); !errors.Is(err, pv.ErrUnsupported) {
 			t.Errorf("%s: %v, want ErrUnsupported (Lay tries the next tier)", what, err)
 		}
+	}
+}
+
+// A chart's series take the page's code colours in SeriesRoles' order, each colour once, a role
+// left unset passed over; fewer than two distinct colours keep the tokens' series.
+func TestTheSeriesTakeThePagesCodeColours(t *testing.T) {
+	red, blue := style.RGB(200, 0, 0), style.RGB(0, 0, 200)
+	given := map[highlight.Style]style.Color{highlight.Keyword: red, highlight.String: red, highlight.DecVal: blue}
+	th := ThemeFromSyntax(func(r highlight.Style) style.Style {
+		if c, ok := given[r]; ok {
+			return style.New().Foreground(c)
+		}
+		return style.New()
+	})
+	if len(th.Series) != 2 || th.Series[0] != style.ColorSpec(red) || th.Series[1] != style.ColorSpec(blue) {
+		t.Fatalf("series %v, want red (keyword; the string's red once) then blue (the number)", th.Series)
+	}
+	one := ThemeFromSyntax(func(r highlight.Style) style.Style {
+		if r == highlight.Keyword {
+			return style.New().Foreground(red)
+		}
+		return style.New()
+	})
+	if len(one.Series) != len(TokenTheme().Series) {
+		t.Fatalf("one code colour gave %d series, want the tokens' %d", len(one.Series), len(TokenTheme().Series))
 	}
 }

@@ -2,8 +2,10 @@ package vegalite
 
 import (
 	"math"
+	"slices"
 	"strings"
 
+	"github.com/yongjohnlee80/golib/highlight"
 	pv "github.com/yongjohnlee80/golib/parse/vegalite"
 	"github.com/yongjohnlee80/golib/tui"
 	"github.com/yongjohnlee80/golib/tui/style"
@@ -38,19 +40,40 @@ type Theme struct {
 	Series            []style.ColorSpec
 }
 
-// seriesTokens are the series' colours, from the theme's own tokens so every built-in theme keeps
-// them legible on its page: the document's accent first, then the status colours and the
-// secondary.
-var seriesTokens = []style.Token{style.TokenAccentDocument, style.TokenSuccess, style.TokenWarning,
-	style.TokenError, style.TokenPrimary, style.TokenSecondary}
+// SeriesRoles are the syntax roles whose colours a chart's series take, in order: the page's code
+// colours, which every theme sets and which read on its page (they paint its code blocks), and which
+// are hues apart from one another. A role a theme leaves unset, or sets to another's colour, is
+// passed over.
+var SeriesRoles = []highlight.Style{highlight.Keyword, highlight.String, highlight.DecVal,
+	highlight.Function, highlight.DataType, highlight.Constant, highlight.BuiltIn, highlight.Preprocessor}
 
-// TokenTheme is the chart theme a cell page paints in: every style on the page's own background
-// (style.PageText), as the diagrams' (tui/mermaid TokenTheme).
+// TokenTheme is the chart theme a page paints in when it has no syntax colours to give: every style
+// on the page's own background (style.PageText), as the diagrams' (tui/mermaid TokenTheme), and the
+// series in the tokens every theme sets for the page: the document's accent, the text, the muted
+// text. A host with code colours gives ThemeFromSyntax instead.
 func TokenTheme() Theme {
-	th := Theme{Text: style.PageText(), Axis: style.PageText().Foreground(style.TokenTextMuted),
-		Muted: style.PageText().Foreground(style.TokenTextMuted)}
-	for _, t := range seriesTokens {
-		th.Series = append(th.Series, t)
+	return Theme{Text: style.PageText(), Axis: style.PageText().Foreground(style.TokenTextMuted),
+		Muted:  style.PageText().Foreground(style.TokenTextMuted),
+		Series: []style.ColorSpec{style.TokenAccentDocument, style.TokenForeground, style.TokenTextMuted}}
+}
+
+// ThemeFromSyntax is the chart theme in the page's code colours: syntax gives each highlight role's
+// style (a host's SyntaxStyles), and the series take SeriesRoles' foregrounds in order, each colour
+// once. Fewer than two distinct ones is TokenTheme's series.
+func ThemeFromSyntax(syntax func(highlight.Style) style.Style) Theme {
+	th := TokenTheme()
+	var series []style.ColorSpec
+	var seen []style.Color
+	for _, r := range SeriesRoles {
+		c, ok := syntax(r).GetForeground()
+		if !ok || c.IsDefault() || slices.Contains(seen, c) {
+			continue
+		}
+		seen = append(seen, c)
+		series = append(series, c)
+	}
+	if len(series) >= 2 {
+		th.Series = series
 	}
 	return th
 }
