@@ -156,7 +156,7 @@ func TestThePageReadsInEveryTheme(t *testing.T) {
 		// The qml singleton is the parsed file, not the filled map: the engine refuses reading a
 		// member the file lacks, so the documentAccent binding is written only where the file's
 		// document group has the key — the always-present form is jarvis's pending ruling on the loader
-		own, err := fs.ReadFile(FS(), name+".qml")
+		own, err := fs.ReadFile(themes.FS(), name+".qml")
 		if err != nil {
 			t.Fatal(err)
 		}
