@@ -1,0 +1,73 @@
+{
+  "Title": "Reach and engagement of campaigns",
+  "XAxis": {
+    "Low": "Low Reach",
+    "High": "High Reach"
+  },
+  "YAxis": {
+    "Low": "Low Engagement",
+    "High": "High Engagement"
+  },
+  "Quadrants": [
+    "We should expand",
+    "Need to promote",
+    "Re-evaluate",
+    "May be improved"
+  ],
+  "Points": [
+    {
+      "Label": "Campaign A",
+      "X": 0.9,
+      "Y": 0,
+      "Span": [
+        249,
+        282
+      ]
+    },
+    {
+      "Label": "Campaign B",
+      "X": 0.8,
+      "Y": 0.1,
+      "Span": [
+        285,
+        343
+      ]
+    },
+    {
+      "Label": "Campaign C",
+      "X": 0.7,
+      "Y": 0.2,
+      "Span": [
+        346,
+        418
+      ]
+    },
+    {
+      "Label": "Campaign D",
+      "X": 0.6,
+      "Y": 0.3,
+      "Span": [
+        421,
+        512
+      ]
+    },
+    {
+      "Label": "Campaign E",
+      "X": 0.5,
+      "Y": 0.4,
+      "Span": [
+        515,
+        546
+      ]
+    },
+    {
+      "Label": "Campaign F",
+      "X": 0.4,
+      "Y": 0.5,
+      "Span": [
+        549,
+        595
+      ]
+    }
+  ]
+}

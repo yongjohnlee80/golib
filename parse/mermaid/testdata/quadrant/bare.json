@@ -1,0 +1,37 @@
+{
+  "Title": "",
+  "XAxis": {
+    "Low": "Urgent",
+    "High": ""
+  },
+  "YAxis": {
+    "Low": "Important",
+    "High": ""
+  },
+  "Quadrants": [
+    "",
+    "",
+    "",
+    ""
+  ],
+  "Points": [
+    {
+      "Label": "Origin",
+      "X": 0,
+      "Y": 0,
+      "Span": [
+        117,
+        131
+      ]
+    },
+    {
+      "Label": "Far corner",
+      "X": 1,
+      "Y": 1,
+      "Span": [
+        134,
+        154
+      ]
+    }
+  ]
+}
