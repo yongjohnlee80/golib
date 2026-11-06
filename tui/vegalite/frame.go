@@ -207,6 +207,20 @@ func plotRows(ch *pv.Chart) int {
 	return min(max(int(math.Round(float64(ch.Height)/20)), 6), 20)
 }
 
+// niced is ch with each continuous axis that asks for it (Axis.Nice) widened to nice ends for the
+// ticks it gets here (NiceDomain), so the ticks land on the axis's ends: parse/vegalite plots the
+// data's own range and leaves the rounding to a renderer, whose tick count is its own.
+func niced(ch *pv.Chart, rows, width int) *pv.Chart {
+	c := *ch
+	if c.X.Nice && !c.X.Discrete && !c.X.Temporal {
+		c.X.Lo, c.X.Hi = pv.NiceDomain(c.X.Lo, c.X.Hi, max(width/8, 2))
+	}
+	if c.Y.Nice && !c.Y.Discrete && !c.Y.Temporal {
+		c.Y.Lo, c.Y.Hi = pv.NiceDomain(c.Y.Lo, c.Y.Hi, max(rows/2, 2))
+	}
+	return &c
+}
+
 // ticksFor is an axis's ticks and their labels: a discrete axis its categories; a continuous one
 // its nice ticks, about one every two rows (or eight columns) of n cells.
 func ticksFor(a pv.Axis, n, every int) (vals []float64, labels []string) {
@@ -239,6 +253,7 @@ func ticksFor(a pv.Axis, n, every int) (vals []float64, labels []string) {
 // own labels (a horizontal bar's value). The plot takes what is left; ok is false when the room
 // leaves it under 8 columns (a host shows the table or the notice instead).
 func layFrame(ch *pv.Chart, width, gutter int, m Measurer) (f *frame, ok bool) {
+	ch = niced(ch, plotRows(ch), width)
 	top := 0
 	titled := []string{}
 	if ch.Title != "" {
