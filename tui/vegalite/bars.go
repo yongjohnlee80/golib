@@ -22,6 +22,63 @@ import (
 //	north  │██████▊          12.5
 //	south  │███▍▓▓▓▓          7.9     (a stack: ▍ in the first series' colour on the second's)
 
+// layBars lays ch, a chart of one bar layer over a discrete dimension (its categories' bands), in
+// a room width cells wide: horizontal bars a row a category, their values right of the plot;
+// vertical ones up the plot's columns. A room too narrow for the plot, or for a column a category,
+// widens the drawing to what it needs (the host pans it). ok is false for any other chart: another
+// mark, more than one layer, or bars along a continuous axis (the table's).
+func layBars(ch *pv.Chart, width int, m Measurer) (*Drawing, bool) {
+	if len(ch.Layers) != 1 || ch.Layers[0].Mark != pv.MarkBar {
+		return nil, false
+	}
+	ly := &ch.Layers[0]
+	dim := ch.X
+	if ly.Horizontal {
+		dim = ch.Y
+	}
+	if !dim.Discrete || len(dim.Domain) == 0 {
+		return nil, false
+	}
+	series := ch.Series
+	if ly.Color != nil { // one colour for every mark
+		series = nil
+	}
+	rows, gutter := 0, 0
+	if ly.Horizontal {
+		rows = len(dim.Domain)
+		for _, v := range barValues(ly, func(c string) (int, int, bool) { return 0, 1, true }) {
+			gutter = max(gutter, m.StringWidth(v.s)+1)
+		}
+	}
+	need := 8 // the plot's columns: the frame's least, and a column a category upright
+	if !ly.Horizontal {
+		need = max(need, len(dim.Domain))
+	}
+	var f *frame
+	for w := width; ; {
+		var ok bool
+		if f, ok = layFrameRows(ch, w, gutter, rows, m); ok && f.plot.W >= need {
+			break
+		}
+		short := need
+		if f != nil && ok {
+			short = need - f.plot.W
+		}
+		w += short
+	}
+	plot := barPlot{rect: tui.Rect{W: f.plot.W, H: f.plot.H}, band: f.XBand, at: f.YOffset}
+	if ly.Horizontal {
+		plot.band, plot.at = f.YBand, f.XOffset
+	}
+	for _, c := range barCells(&f.ch.Layers[0], series, plot) {
+		f.mark(Cell{X: c.x, Y: c.y, Glyph: []rune(c.glyph)[0], FG: c.fg, BG: c.bg})
+	}
+	for _, v := range barValues(&f.ch.Layers[0], f.YBand) {
+		f.SayRight(v.row, v.s, m)
+	}
+	return f.d, true
+}
+
 // barPage is the occupant of a cell's part no bar fills: the page.
 const barPage = -1
 
