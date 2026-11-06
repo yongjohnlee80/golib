@@ -52,11 +52,10 @@ func TestATitleElidedAtTheStartNeverSplitsAWideGrapheme(t *testing.T) {
 	const title = "文書/資料/調査/報告書.md  [外部]"
 	for w := 20; w <= 30; w++ {
 		row := titleRow(t, w, title, widget.ElideLeft, false)
-		rs := []rune(row)
 		if !strings.Contains(row, "[外部] ") || !strings.HasPrefix(row, "┌ …") {
 			t.Errorf("width %d: %q; want ┌ … then the title's tail, badge whole", w, row)
 		}
-		for _, r := range rs {
+		for _, r := range row {
 			if r == '�' {
 				t.Errorf("width %d: %q holds a replacement character: a wide grapheme was split", w, row)
 			}
