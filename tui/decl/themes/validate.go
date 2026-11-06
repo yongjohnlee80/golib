@@ -18,10 +18,19 @@ type Role struct{ Key, Description string }
 // The returned slice is a copy; editing it never changes validation's vocabulary.
 func Schema() []Role { return slices.Clone(roles) }
 
-// optionalRoles are colour keys a theme MAY write; absent, the toolkit falls back to a role of its
-// own, named in each one's description. Validate accepts them; Values exposes them when written.
-var optionalRoles = []Role{
-	{"document.accent", "the document page's accent (inline code, headings' and callouts' accent tones, the diagram accents); menu.accent when a theme sets none"},
+// optionalRole is a colour key a theme MAY write, and the required key its value comes from when
+// the theme leaves it unset: Validate fills it in before returning, so every valid theme's map
+// always carries the key and a consumer binds it unconditionally — the fallback written once, in
+// the vocabulary, never in a consumer.
+type optionalRole struct {
+	Role
+	fallback string
+}
+
+// optionalRoles are the colour keys a theme MAY write. Validate accepts them; Values exposes them
+// always, from their fallback when unset.
+var optionalRoles = []optionalRole{
+	{{"document.accent", "the document page's accent (inline code, headings' and callouts' accent tones, the diagram accents)"}, "menu.accent"},
 }
 
 var roles = []Role{
@@ -152,6 +161,13 @@ func Validate(file string, src []byte) (map[string]string, []Diagnostic) {
 	}
 	if len(ds) != 0 {
 		return nil, ds
+	}
+	for _, r := range optionalRoles {
+		if !seen[r.Key] {
+			if v, ok := values[r.fallback]; ok {
+				values[r.Key] = v
+			}
+		}
 	}
 	return values, nil
 }
