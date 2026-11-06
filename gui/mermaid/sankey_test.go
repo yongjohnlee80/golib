@@ -1,7 +1,9 @@
 package mermaid
 
 import (
+	"cmp"
 	"math"
+	"slices"
 	"testing"
 )
 
@@ -37,7 +39,37 @@ func TestASankeyIsLaidOut(t *testing.T) {
 			t.Errorf("%s is %v tall, want %v (%v through it)", name, h, through*scale, through)
 		}
 	}
+	// the bands into a node are stacked down its left edge, edge to edge from its top, and the bands
+	// out of it down its right edge: never two at one place
+	stacked := func(what string, spans [][2]float32, top float32) {
+		t.Helper()
+		slices.SortFunc(spans, func(a, b [2]float32) int { return cmp.Compare(a[0], b[0]) })
+		at := top
+		for _, s := range spans {
+			if math.Abs(float64(s[0]-at)) > 0.01 {
+				t.Errorf("%s: a band starts at %v, want %v (the one before it ends there)", what, s[0], at)
+			}
+			at = s[1]
+		}
+	}
 	links := [][2]string{{"a", "b"}, {"a", "c"}, {"b", "d"}, {"c", "d"}, {"b", "e"}}
+	for _, n := range []string{"a", "b", "d"} {
+		var in, out [][2]float32
+		for i, b := range l.bands {
+			if links[i][1] == n {
+				in = append(in, [2]float32{b.y1a, b.y1b})
+			}
+			if links[i][0] == n {
+				out = append(out, [2]float32{b.y0a, b.y0b})
+			}
+		}
+		if len(in) > 0 {
+			stacked(n+"'s inflows", in, box[n].box.Y)
+		}
+		if len(out) > 0 {
+			stacked(n+"'s outflows", out, box[n].box.Y)
+		}
+	}
 	for i, b := range l.bands {
 		s, d := box[links[i][0]].box, box[links[i][1]].box
 		if b.x0 != s.X+s.W || b.x1 != d.X || b.y0a < s.Y-0.01 || b.y0b > s.Y+s.H+0.01 || b.y1a < d.Y-0.01 || b.y1b > d.Y+d.H+0.01 {
