@@ -134,22 +134,34 @@ func (c *cursor) nodeGroup() []string {
 	}
 }
 
-// node reads one node mention: an id, perhaps a shape with its text, perhaps :::class.
+// node reads one node mention: an id, perhaps a shape with its text, perhaps :::class, and records
+// it in the flowchart.
 func (c *cursor) node() (string, bool) {
 	start := c.i
+	id, label, shape, hasShape, classes, ok := c.shaped()
+	if !ok {
+		return "", false
+	}
+	c.p.mention(id, label, shape, hasShape, classes, [2]int{c.off + start, c.at()})
+	return id, true
+}
+
+// shaped reads an id, perhaps a shape with its text, perhaps :::class, and records nothing: a
+// flowchart's node and a block diagram's block are both written so.
+func (c *cursor) shaped() (id, label string, shape Shape, hasShape bool, classes []string, ok bool) {
 	n := identLen(c.s[c.i:])
 	if n == 0 {
 		c.fail("expected a node id")
-		return "", false
+		return "", "", 0, false, nil, false
 	}
-	id := c.s[c.i : c.i+n]
+	id = c.s[c.i : c.i+n]
 	c.i += n
 	if c.i < len(c.s) && c.s[c.i] == '@' {
 		c.p.unsupport(c.at(), "the @ syntax")
 		c.bad = true
-		return "", false
+		return "", "", 0, false, nil, false
 	}
-	shape, label, hasShape := Rect, id, false
+	shape, label, hasShape = Rect, id, false
 	save := c.i
 	c.skipSpace()
 	for _, sh := range shapes {
@@ -157,14 +169,14 @@ func (c *cursor) node() (string, bool) {
 			continue
 		}
 		textStart := c.i + len(sh.open)
-		raw, close, end, ok := c.shapeText(textStart, sh)
-		if !ok {
-			return "", false
+		raw, close, end, found := c.shapeText(textStart, sh)
+		if !found {
+			return "", "", 0, false, nil, false
 		}
 		lbl, err := c.p.label(raw, c.off+textStart)
 		if err != nil {
 			c.bad = true
-			return "", false
+			return "", "", 0, false, nil, false
 		}
 		shape, label, hasShape = close.shape, lbl, true
 		c.i = end
@@ -173,19 +185,17 @@ func (c *cursor) node() (string, bool) {
 	if !hasShape {
 		c.i = save
 	}
-	var classes []string
 	for strings.HasPrefix(c.s[c.i:], ":::") {
 		c.i += 3
 		k := identLen(c.s[c.i:])
 		if k == 0 {
 			c.fail("::: wants a class name")
-			return "", false
+			return "", "", 0, false, nil, false
 		}
 		classes = append(classes, c.s[c.i:c.i+k])
 		c.i += k
 	}
-	c.p.mention(id, label, shape, hasShape, classes, [2]int{c.off + start, c.at()})
-	return id, true
+	return id, label, shape, hasShape, classes, true
 }
 
 // shapeText finds where sh's text ends: a quoted string then the closer, or the first closer.
