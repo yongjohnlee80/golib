@@ -1,0 +1,47 @@
+                Rainfall
+mm
+100 ┤
+    │▁▁▁▁
+ 80 ┤████
+    │████ ▂▂▂▂▂
+ 60 ┤████ █████ ▄▄▄▄▄
+    │████ █████ █████ ▃▃▃▃▃
+ 40 ┤████ █████ █████ █████ ▅▅▅▅▅
+    │████ █████ █████ █████ █████ ▂▂▂▂▂
+ 20 ┤████ █████ █████ █████ █████ █████
+  0 ┤████ █████ █████ █████ █████ █████
+    └───┬─────┬─────┬────┬─────┬─────┬──
+       Jan   Feb   Mar  Apr   May   Jun
+                      m
+-- colour
+
+
+
+     aaaa
+     aaaa
+     aaaa aaaaa
+     aaaa aaaaa aaaaa
+     aaaa aaaaa aaaaa aaaaa
+     aaaa aaaaa aaaaa aaaaa aaaaa
+     aaaa aaaaa aaaaa aaaaa aaaaa aaaaa
+     aaaa aaaaa aaaaa aaaaa aaaaa aaaaa
+     aaaa aaaaa aaaaa aaaaa aaaaa aaaaa
+
+
+
+-- background
+
+
+
+     ....
+     aaaa
+     aaaa .....
+     aaaa aaaaa .....
+     aaaa aaaaa aaaaa .....
+     aaaa aaaaa aaaaa aaaaa .....
+     aaaa aaaaa aaaaa aaaaa aaaaa .....
+     aaaa aaaaa aaaaa aaaaa aaaaa aaaaa
+     aaaa aaaaa aaaaa aaaaa aaaaa aaaaa
+
+
+

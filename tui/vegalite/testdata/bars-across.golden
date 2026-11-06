@@ -1,0 +1,26 @@
+c
+north ┤████████████████████████████████▏    12.5
+south ┤████████████████████▍                 7.9
+ east ┤████████▎                             3.2
+ west ┤█                                     0.4
+      └┬───────────┬────────────┬──────────
+       0           5           10
+                        v
+-- colour
+
+       aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
+       aaaaaaaaaaaaaaaaaaaaa
+       aaaaaaaaa
+       a
+
+
+
+-- background
+
+       aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa.
+       aaaaaaaaaaaaaaaaaaaa.
+       aaaaaaaa.
+       a
+
+
+
