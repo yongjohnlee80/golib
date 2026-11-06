@@ -1,0 +1,27 @@
+{
+  "Nodes": [
+    "Pumped heat",
+    "Heating and cooling, homes",
+    "Heating and cooling, \"commercial\""
+  ],
+  "Links": [
+    {
+      "Source": 0,
+      "Target": 1,
+      "Value": 193.026,
+      "Span": [
+        13,
+        61
+      ]
+    },
+    {
+      "Source": 0,
+      "Target": 2,
+      "Value": 70.672,
+      "Span": [
+        62,
+        118
+      ]
+    }
+  ]
+}
