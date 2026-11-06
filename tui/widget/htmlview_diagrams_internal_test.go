@@ -151,8 +151,8 @@ func TestTheCellLayoutDrawsAFlowchartThatFitsItsRoom(t *testing.T) {
 		c := layCells(t, `<pre class="mermaid">`+src+`</pre>`, room)
 		var g *tuimermaid.Grid
 		for _, r := range c.rows {
-			if r.grid != nil {
-				g = r.grid
+			if p, ok := r.grid.(mermaidPicture); ok {
+				g = p.g
 			}
 		}
 		return g, strings.Join(strings.Fields(strings.Join(c.rowTexts(), " ")), " ")

@@ -11,6 +11,7 @@ import (
 	"github.com/yongjohnlee80/golib/tui/internal/grapheme"
 	tuimermaid "github.com/yongjohnlee80/golib/tui/mermaid"
 	"github.com/yongjohnlee80/golib/tui/style"
+	tuivegalite "github.com/yongjohnlee80/golib/tui/vegalite"
 )
 
 // THE CELL LAYOUT — an HTMLView in a terminal: the document's text, wrapped to the widget's
@@ -44,7 +45,7 @@ type hrow struct {
 	bottom bool
 	// grid is a diagram's, drawn in cells across its rows (layDiagram); gridRow is which of its
 	// rows this one is. nil for any other row.
-	grid    *tuimermaid.Grid
+	grid    cellPicture
 	gridRow int
 }
 
@@ -402,16 +403,58 @@ func (f measureFunc) StringWidth(s string) int { return f(s) }
 // diagramNotice is what a diagram the terminal doesn't draw shows instead, in English: a host
 // that speaks other languages says it its own way (WithDiagramNotice).
 func diagramNotice(kind string) string {
+	if kind == "vega-lite" {
+		return "vega-lite chart: not drawn in the terminal (Raw shows its source)"
+	}
 	return kind + " diagram: not drawn in the terminal (Raw shows its source)"
 }
+
+// cellPicture is a diagram drawn in cells across its rows: a Mermaid grid, a Vega-Lite chart. The
+// page paints, fits and pans either the same way.
+type cellPicture interface {
+	Size() tui.Size
+	Paint(s tui.Surface, x0, y0 int)
+}
+
+// cellHits is a picture whose capped labels reveal their whole text where the pointer rests
+// (ToolTipAt).
+type cellHits interface {
+	HitAt(x, y int) (full string, r tui.Rect, ok bool)
+}
+
+// mermaidPicture is a Mermaid grid in the diagrams' theme.
+type mermaidPicture struct{ g *tuimermaid.Grid }
+
+func (p mermaidPicture) Size() tui.Size                  { return p.g.Size }
+func (p mermaidPicture) Paint(s tui.Surface, x0, y0 int) { p.g.Paint(s, x0, y0, -1, diagramTheme) }
+func (p mermaidPicture) HitAt(x, y int) (string, tui.Rect, bool) {
+	return p.g.HitAt(x, y)
+}
+
+// chartPicture is a Vega-Lite chart in the theme it was laid in (chartTheme).
+type chartPicture struct {
+	d  *tuivegalite.Drawing
+	th tuivegalite.Theme
+}
+
+func (p chartPicture) Size() tui.Size                  { return tui.Size{W: p.d.W, H: p.d.H} }
+func (p chartPicture) Paint(s tui.Surface, x0, y0 int) { p.d.Paint(s, x0, y0, p.th) }
+
+// chartTheme is a chart's styles in the cell layout: the page's own tokens.
+func (c *cellHTML) chartTheme() tuivegalite.Theme { return tuivegalite.TokenTheme() }
 
 // layDiagram lays a <pre class="mermaid"> out: a kind tui/mermaid draws as its grid, one row of
 // the layout per row of the grid, fitted to the room where its kind can be laid narrower (a
 // flowchart running across, laid running down: LayWithin), else at its own width (one wider than
 // the room pans sideways: Pan);
 // any other kind, one that doesn't parse, or one too large to lay out, as a muted line saying it
-// isn't drawn here, wrapped to the room, never its source (Raw shows that).
+// isn't drawn here, wrapped to the room, never its source (Raw shows that). A <pre
+// class="vega-lite"> is a chart (layChart).
 func (c *cellHTML) layDiagram(bi int, b *hblock) {
+	if b.diagramKind == "vega-lite" {
+		c.layChart(bi, b)
+		return
+	}
 	kind := "mermaid"
 	if d, err := pm.Parse(b.diagram); err == nil {
 		kind = d.Kind().String()
@@ -419,12 +462,34 @@ func (c *cellHTML) layDiagram(bi int, b *hblock) {
 			room := max(c.width-2*b.quote-b.indent, 1)
 			if g, err := tuimermaid.LayWithin(context.Background(), d, measureFunc(c.measure), room); err == nil && g.Size.H > 0 {
 				for i := range g.Size.H {
-					c.rows = append(c.rows, hrow{block: bi, first: i == 0, grid: g, gridRow: i})
+					c.rows = append(c.rows, hrow{block: bi, first: i == 0, grid: mermaidPicture{g}, gridRow: i})
 				}
 				return
 			}
 		}
 	}
+	c.layNotice(bi, b, kind)
+}
+
+// layChart lays a <pre class="vega-lite"> out: drawn by tui/vegalite's first tier that takes it
+// (bars, Braille plots, a table), a row of the layout a row of the drawing, at the room's width
+// where it fits it (one wider pans sideways, as a diagram's grid); a spec outside the subset, one
+// too large, or one that doesn't read, as the notice, never its source nor its data.
+func (c *cellHTML) layChart(bi int, b *hblock) {
+	room := max(c.width-2*b.quote-b.indent, 1)
+	if d, err := tuivegalite.Lay(context.Background(), b.diagram, measureFunc(c.measure), room); err == nil && d.H > 0 {
+		pic := chartPicture{d, c.chartTheme()}
+		for i := range d.H {
+			c.rows = append(c.rows, hrow{block: bi, first: i == 0, grid: pic, gridRow: i})
+		}
+		return
+	}
+	c.layNotice(bi, b, "vega-lite")
+}
+
+// layNotice lays the muted line that says block b's diagram of kind isn't drawn here, wrapped to
+// the room: the host's words (WithDiagramNotice), else English.
+func (c *cellHTML) layNotice(bi int, b *hblock, kind string) {
 	say := diagramNotice
 	if c.notice != nil {
 		say = c.notice
@@ -856,7 +921,7 @@ func (c *cellHTML) PaintCells(s tui.Surface, top, w int, from, to DocPos) {
 	sz := s.Size()
 	from, to = OrderDocPos(from, to)
 	selecting := from != to
-	var painted *tuimermaid.Grid // the diagram drawn last: each is painted once, from its first row shown
+	var painted cellPicture // the diagram drawn last: each is painted once, from its first row shown
 	for y := 0; y < sz.H; y++ {
 		ri := top + y
 		if ri < 0 || ri >= len(c.rows) {
@@ -1074,7 +1139,7 @@ func (c *cellHTML) over(bi int) int {
 	if w, ok := c.codeW[bi]; ok {
 		width, fits = w, room-2
 	} else if r := c.rows[c.tops[bi]]; r.grid != nil && r.block == bi {
-		width = r.grid.Size.W
+		width = r.grid.Size().W
 	}
 	if width <= fits {
 		return 0
@@ -1128,7 +1193,7 @@ func (c *cellHTML) ScrollX(_, y, dx float32) bool {
 func (c *cellHTML) paintGrid(s tui.Surface, r *hrow, y, h int) {
 	w := c.width
 	x0, left, right := c.gridPlace(r, w)
-	r.grid.Paint(clipCols{s, left, right}, x0, y-r.gridRow, -1, diagramTheme)
+	r.grid.Paint(clipCols{s, left, right}, x0, y-r.gridRow)
 	over := c.over(r.block)
 	x := left
 	if over == 0 {
@@ -1139,7 +1204,7 @@ func (c *cellHTML) paintGrid(s tui.Surface, r *hrow, y, h int) {
 	if w <= x {
 		return
 	}
-	last := min(y+r.grid.Size.H-r.gridRow, h) - 1
+	last := min(y+r.grid.Size().H-r.gridRow, h) - 1
 	paintPanMarks(s, x, w-1, (max(y, 0)+last)/2, off, over)
 }
 
@@ -1179,7 +1244,11 @@ func (c *cellHTML) ToolTipAt(x, y float32) (string, Rect32) {
 	if px < left || px >= right {
 		return "", Rect32{} // the « » columns, past the room
 	}
-	full, at, ok := r.grid.HitAt(px-x0, r.gridRow)
+	hits, ok := r.grid.(cellHits)
+	if !ok {
+		return "", Rect32{}
+	}
+	full, at, ok := hits.HitAt(px-x0, r.gridRow)
 	if !ok {
 		return "", Rect32{}
 	}

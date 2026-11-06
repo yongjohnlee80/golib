@@ -53,9 +53,10 @@ type hblock struct {
 	align      []byte   // a row's: each cell's alignment, 'l', 'c', 'r' or 0 (none)
 	head       bool     // a row of header cells (th)
 	spans      []hspan
-	// diagram is a <pre class="mermaid">'s source, drawn by the cell layout in cells when it can be
-	// (layDiagram), its text otherwise; "" for any other block.
-	diagram string
+	// diagram is a <pre class="mermaid">'s or a <pre class="vega-lite">'s source, drawn by the cell
+	// layout in cells when it can be (layDiagram), its text otherwise; "" for any other block.
+	// diagramKind is which: "mermaid" or "vega-lite".
+	diagram, diagramKind string
 	// lang is a <pre>'s own or its <code> child's language-* class, minus the prefix: the cell
 	// layout highlights a preformatted block whose language its syntax catalog has a definition
 	// for; "" for none.
@@ -373,15 +374,18 @@ func setUnder(s *inlineStyle)  { s.under = true }
 func setStrike(s *inlineStyle) { s.strike = true }
 func setMark(s *inlineStyle)   { s.mark = true }
 
-// preBlock is a <pre>: one block, its whitespace kept. A <pre class="mermaid"> keeps its source
-// as the block's diagram too; a <pre> or its <code> child naming a language-* class keeps it as
-// the block's language.
+// preBlock is a <pre>: one block, its whitespace kept. A <pre class="mermaid"> or a <pre
+// class="vega-lite"> keeps its source as the block's diagram too, and which it is; a <pre> or its
+// <code> child naming a language-* class keeps it as the block's language.
 func (w *hwalker) preBlock(n *phtml.Node) {
 	b := w.block(hPre)
-	if hasClass(n, "mermaid") {
-		var src strings.Builder
-		preText(n, &src)
-		b.diagram = strings.TrimSpace(src.String())
+	for _, kind := range []string{"mermaid", "vega-lite"} {
+		if hasClass(n, kind) {
+			var src strings.Builder
+			preText(n, &src)
+			b.diagram, b.diagramKind = strings.TrimSpace(src.String()), kind
+			break
+		}
 	}
 	b.lang = codeLanguage(n)
 	w.pre++
