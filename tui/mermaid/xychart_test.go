@@ -113,3 +113,15 @@ func TestAnXYChartsKeyNamesEverySeries(t *testing.T) {
 		}
 	}
 }
+
+// A value past the declared range is drawn clamped to it: a bar or a point past the top stands at
+// the plot's top, not up into the title's row, and one under the bottom at the floor. The chart is
+// drawn cell for cell as the one whose values sit at the range's ends.
+func TestAnXYValuePastItsRangeIsClamped(t *testing.T) {
+	const head = "xychart-beta\n  title Clamped\n  x-axis [a, b, c]\n  y-axis 0 --> 10\n"
+	_, past := paint(t, head+"  bar [-5, 5, 15]\n  line [-5, 5, 15]\n")
+	_, ends := paint(t, head+"  bar [0, 5, 10]\n  line [0, 5, 10]\n")
+	if past != ends {
+		t.Errorf("values past the range drew otherwise than the range's ends:\n%s\nwant:\n%s", past, ends)
+	}
+}
