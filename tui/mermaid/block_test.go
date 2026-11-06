@@ -2,6 +2,8 @@ package mermaid
 
 import (
 	"context"
+	"fmt"
+	"math/rand/v2"
 	"os"
 	"path/filepath"
 	"strings"
@@ -217,5 +219,74 @@ func TestABlockLinkGoesRoundABlock(t *testing.T) {
 	}
 	if heads != 1 {
 		t.Errorf("%d arrowheads beside e; want 1", heads)
+	}
+}
+
+// The invariants hold for random block diagrams: one to four columns, blocks one or two wide with
+// labels of mixed widths, spaces, a nested group, and links between any two blocks, labelled or
+// not, of every stroke.
+func TestRandomBlockDiagramsHoldTheirInvariants(t *testing.T) {
+	rng := rand.New(rand.NewPCG(7, 11))
+	labels := []string{"", "x", "a node", "a longer label", "日本語"}
+	links := []string{"-->", "---", "-.->", "==>", "<-->", "--o", "--x"}
+	for trial := range 120 {
+		var b strings.Builder
+		b.WriteString("block-beta\n")
+		cols := 1 + rng.IntN(4)
+		fmt.Fprintf(&b, "  columns %d\n", cols)
+		var ids []string
+		item := func(indent string) {
+			if rng.IntN(6) == 0 {
+				b.WriteString(indent + "space\n")
+				return
+			}
+			id := fmt.Sprint("n", len(ids))
+			ids = append(ids, id)
+			b.WriteString(indent + id)
+			if l := labels[rng.IntN(len(labels))]; l != "" {
+				fmt.Fprintf(&b, "[\"%s\"]", l)
+			}
+			if w := 1 + rng.IntN(2); w > 1 {
+				fmt.Fprintf(&b, ":%d", w)
+			}
+			b.WriteString("\n")
+		}
+		for range 1 + rng.IntN(6) {
+			item("  ")
+		}
+		if rng.IntN(2) == 0 {
+			fmt.Fprintf(&b, "  block:g%d\n", trial)
+			for range 1 + rng.IntN(4) {
+				item("    ")
+			}
+			b.WriteString("  end\n")
+		}
+		for range rng.IntN(5) {
+			if len(ids) < 2 {
+				break
+			}
+			from, to := ids[rng.IntN(len(ids))], ids[rng.IntN(len(ids))]
+			if from == to {
+				continue
+			}
+			l := links[rng.IntN(len(links))]
+			if rng.IntN(3) == 0 {
+				fmt.Fprintf(&b, "  %s -- \"%s\" --> %s\n", from, labels[1+rng.IntN(len(labels)-1)], to)
+			} else {
+				fmt.Fprintf(&b, "  %s %s %s\n", from, l, to)
+			}
+		}
+		src := b.String()
+		d, err := pm.Parse(src)
+		if err != nil {
+			t.Fatalf("trial %d: %v\n%s", trial, err, src)
+		}
+		g, err := LayBlock(context.Background(), d.(*pm.BlockDiagram), newCells(1, 1))
+		if err != nil {
+			t.Fatalf("trial %d: %v\n%s", trial, err, src)
+		}
+		what := fmt.Sprintf("trial %d:\n%s", trial, src)
+		checkGrid(t, what, g)
+		checkBlock(t, what, d.(*pm.BlockDiagram), g)
 	}
 }
