@@ -219,9 +219,10 @@ func (d *Drawing) Rows() []string {
 // frame is a chart's frame laid out: the drawing it is in, the plot's rectangle, and the maps a
 // tier draws with.
 type frame struct {
-	d    *Drawing
-	plot Rect
-	ch   *pv.Chart
+	d     *Drawing
+	plot  Rect
+	ch    *pv.Chart
+	edges bool // ticks on cell edges (frameOpts.Edges)
 }
 
 // plotRows is the plot's height in rows a chart gets: its own height in Vega-Lite pixels at about
@@ -274,12 +275,23 @@ func ticksFor(a pv.Axis, n, every int) (vals []float64, labels []string) {
 	return vals, labels
 }
 
-// layFrame lays ch's frame in a room width cells wide: the title on top, the legend under the x
-// axis, the y labels as wide as the widest, and gutter columns kept right of the plot for a tier's
-// own labels (a horizontal bar's value). The plot is rows tall (a horizontal bar chart's: a row a
-// category), or plotRows' choice for rows ≤ 0; it takes the width that is left, and ok is false
-// when that is under 8 columns (a host shows the table or the notice instead).
-func layFrame(ch *pv.Chart, width, gutter, rows int, m Measurer) (f *frame, ok bool) {
+// frameOpts are what a tier asks of its frame.
+type frameOpts struct {
+	Width  int // the room, in cells
+	Gutter int // columns kept right of the plot for the tier's own labels (a horizontal bar's value)
+	Rows   int // the plot's height (a horizontal bar chart's: a row a category); ≤ 0: plotRows'
+	// Edges places a continuous axis's ticks on cell edges, where a measure of that value ends in
+	// whole cells (a bar's height or length): a tick at v on the row whose top edge is v from the
+	// floor. Without it a tick is on the row or column a dot of that value lands in (Braille).
+	Edges bool
+}
+
+// layFrame lays ch's frame as o asks: the title on top, the legend under the x axis, the y labels
+// as wide as the widest, the gutter right of the plot, the plot o.Rows tall. The plot takes the
+// width that is left, and ok is false when that is under 8 columns (a host shows the table or the
+// notice instead).
+func layFrame(ch *pv.Chart, o frameOpts, m Measurer) (f *frame, ok bool) {
+	width, gutter, rows := o.Width, o.Gutter, o.Rows
 	if rows <= 0 {
 		rows = plotRows(ch)
 	}
@@ -323,7 +335,7 @@ func layFrame(ch *pv.Chart, width, gutter, rows int, m Measurer) (f *frame, ok b
 	if legend {
 		below++
 	}
-	f = &frame{ch: ch, plot: Rect{X: left, Y: top, W: plotW, H: rows}}
+	f = &frame{ch: ch, plot: Rect{X: left, Y: top, W: plotW, H: rows}, edges: o.Edges}
 	d := newDrawing(width, top+rows+below)
 	f.d = d
 	for i, t := range titled {
@@ -343,7 +355,7 @@ func layFrame(ch *pv.Chart, width, gutter, rows int, m Measurer) (f *frame, ok b
 			d.put(ax, y, '│', RoleAxis, -1)
 		}
 		for i, v := range yVals {
-			y := top + int(math.Round(f.yCell(v)))
+			y := top + f.yTickRow(v)
 			if ch.Y.Discrete {
 				y = top + int(f.yBand(int(v)))
 			}
@@ -370,7 +382,7 @@ func layFrame(ch *pv.Chart, width, gutter, rows int, m Measurer) (f *frame, ok b
 		}
 		lastEnd := -1
 		for i, v := range xVals {
-			x := left + int(math.Round(f.xCell(pv.Pos{Num: v, Str: labelOf(ch.X, xLabels, i)})))
+			x := left + f.xTickCol(pv.Pos{Num: v, Str: labelOf(ch.X, xLabels, i)})
 			if x < left || x >= width {
 				continue
 			}
@@ -444,6 +456,25 @@ func (f *frame) xCell(p pv.Pos) float64 {
 		return f.band(a, p.Str, w)
 	}
 	return frac(p.Num, a.Lo, a.Hi) * (w - 1)
+}
+
+// yTickRow is the row a y tick at v is drawn on: on edges, the row whose top edge is v from the
+// floor (0 on the bottom row, the axis's top on the top one), as a bar of v fills to; else the row
+// a dot of v lands in.
+func (f *frame) yTickRow(v float64) int {
+	if f.edges {
+		return min(max(f.plot.H-int(math.Round(f.YOffset(v))), 0), f.plot.H-1)
+	}
+	return int(math.Round(f.yCell(v)))
+}
+
+// xTickCol is the column an x tick at p is drawn on: a category's band middle; on edges, the
+// column a bar of that length ends in; else the column a dot of it lands in.
+func (f *frame) xTickCol(p pv.Pos) int {
+	if f.edges && !f.ch.X.Discrete {
+		return min(max(int(math.Round(f.XOffset(p.Num)))-1, 0), f.plot.W-1)
+	}
+	return int(math.Round(f.xCell(p)))
 }
 
 // yCell is a value's row within the plot, 0 (top, the axis's high end) to H−1.

@@ -53,7 +53,7 @@ func TestARisingLineClimbsAcrossThePlot(t *testing.T) {
 	if !ok {
 		t.Fatal("a 30-column room has no plot")
 	}
-	f, _ := layFrame(lineChart(pv.MarkLine, 3), 30, 0, 0, widths{})
+	f, _ := layFrame(lineChart(pv.MarkLine, 3), frameOpts{Width: 30}, widths{})
 	p := f.plot
 	ms := marks(d)
 	cols := map[int]int{} // column → its lowest row (the line's place there)
@@ -94,7 +94,7 @@ func minRow(ms map[[2]int]drawn, x int) int {
 // and leaves the upper blank; a value past the domain is drawn at its end, never outside the plot.
 func TestAnAreaFillsDownToItsBaseline(t *testing.T) {
 	full, _ := lay(lineChart(pv.MarkArea, 4, at(0, 4), at(4, 4)), 20)
-	f, _ := layFrame(lineChart(pv.MarkArea, 4), 20, 0, 0, widths{})
+	f, _ := layFrame(lineChart(pv.MarkArea, 4), frameOpts{Width: 20}, widths{})
 	p := f.plot
 	for y := p.Y; y < p.Y+p.H; y++ {
 		for x := p.X; x < p.X+p.W; x++ {
@@ -116,6 +116,12 @@ func TestAnAreaFillsDownToItsBaseline(t *testing.T) {
 			t.Fatalf("a value past the domain drew above the plot, at %v", at)
 		}
 	}
+	// a line to a value past the domain ends on the plot's top edge, its last column marked there,
+	// rather than leaving the plot (and dropping its end)
+	over, _ := lay(lineChart(pv.MarkLine, 4, at(0, 2), at(4, 9)), 20)
+	if c, ok := over.cells[[2]int{p.X + p.W - 1, p.Y}]; !ok || c.role != RoleMark {
+		t.Fatalf("a line to a value past the domain left the plot's top right empty:\n%s", strings.Join(over.Rows(), "\n"))
+	}
 }
 
 // A stacked area fills from its lower edge (V0), not the axis: the upper series' cells are above
@@ -133,7 +139,7 @@ func TestAStackedAreaFillsFromItsLowerEdge(t *testing.T) {
 	if !ok {
 		t.Fatal("no plot")
 	}
-	f, _ := layFrame(ch, 20, 0, 0, widths{})
+	f, _ := layFrame(ch, frameOpts{Width: 20}, widths{})
 	p := f.plot
 	if c := d.cells[[2]int{p.X, p.Y}]; c.series != 1 {
 		t.Errorf("the plot's top row wears series %d, want 1 (high)", c.series)
@@ -154,7 +160,7 @@ func TestARuleIsAWholeCellLineOverTheDots(t *testing.T) {
 		pv.Layer{Mark: pv.MarkRule, Rule: &pv.Rule{Values: []pv.Pos{{Num: 2}}}},
 		pv.Layer{Mark: pv.MarkRule, Rule: &pv.Rule{OnX: true, Values: []pv.Pos{{Num: 2}}}})
 	d, _ := lay(ch, 24)
-	f, _ := layFrame(ch, 24, 0, 0, widths{})
+	f, _ := layFrame(ch, frameOpts{Width: 24}, widths{})
 	p := f.plot
 	row, col := -1, -1
 	for at, c := range d.cells {
@@ -236,5 +242,29 @@ func TestTheSeriesTakeThePagesCodeColours(t *testing.T) {
 	})
 	if len(one.Series) != len(TokenTheme().Series) {
 		t.Fatalf("one code colour gave %d series, want the tokens' %d", len(one.Series), len(TokenTheme().Series))
+	}
+}
+
+// On cell edges (a bar's frame) a y tick at v sits on the row whose top edge is v from the floor:
+// for 0..100 over 10 rows, 100 on the top row, 0 on the bottom, and the ticks between evenly two
+// rows apart; for dots (Braille) a tick sits where a dot of its value lands.
+func TestTicksSitOnCellEdgesForBarsAndOnDotsForBraille(t *testing.T) {
+	ch := &pv.Chart{X: pv.Axis{Discrete: true, Domain: []string{"a"}}, Y: pv.Axis{Lo: 0, Hi: 100}}
+	f, ok := layFrame(ch, frameOpts{Width: 30, Rows: 10, Edges: true}, widths{})
+	if !ok {
+		t.Fatal("no plot")
+	}
+	want := map[float64]int{100: 0, 80: 2, 60: 4, 40: 6, 20: 8, 0: 9}
+	for v, row := range want {
+		if got := f.yTickRow(v); got != row {
+			t.Errorf("on edges, the tick at %v is on row %d, want %d", v, got, row)
+		}
+	}
+	dots, _ := layFrame(ch, frameOpts{Width: 30, Rows: 10}, widths{})
+	if got := dots.yTickRow(100); got != 0 {
+		t.Errorf("on dots, the tick at 100 is on row %d, want 0", got)
+	}
+	if got := dots.yTickRow(0); got != 9 {
+		t.Errorf("on dots, the tick at 0 is on row %d, want 9", got)
 	}
 }
