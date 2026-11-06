@@ -142,3 +142,25 @@ func TestAnXYValuePastItsRangeIsClampedInTheWindow(t *testing.T) {
 		}
 	}
 }
+
+// A horizontal chart clamps the same way in the window: its bars and dots where the range's ends put
+// them, never past the plot's right edge.
+func TestAHorizontalXYValuePastItsRangeIsClampedInTheWindow(t *testing.T) {
+	const head = "xychart-beta horizontal\n  title Clamped\n  x-axis [a, b, c]\n  y-axis 0 --> 10\n"
+	past, err := lay(t, head+"  bar [-5, 5, 15]\n  line [-5, 5, 15]\n", 2000)
+	if err != nil {
+		t.Fatal(err)
+	}
+	ends, err := lay(t, head+"  bar [0, 5, 10]\n  line [0, 5, 10]\n", 2000)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(past.nodes) != len(ends.nodes) {
+		t.Fatalf("%d nodes; want %d", len(past.nodes), len(ends.nodes))
+	}
+	for i := range past.nodes {
+		if past.nodes[i].box != ends.nodes[i].box {
+			t.Errorf("node %d at %+v; want %+v, as at the range's end", i, past.nodes[i].box, ends.nodes[i].box)
+		}
+	}
+}
