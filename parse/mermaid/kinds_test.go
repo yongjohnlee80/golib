@@ -25,9 +25,11 @@ var kindSamples = map[string]string{
 	"quadrantChart":      "quadrantChart\n  A: [0.5, 0.5]",
 	"xychart-beta":       "xychart-beta\n  bar [1, 2]",
 	"xychart":            "xychart\n  line [1, 2]",
+	"sankey-beta":        "sankey-beta\na,b,1",
+	"sankey":             "sankey\na,b,1",
 }
 
-// Kinds is the table Parse dispatches from: the thirteen kinds, each with its header keywords, and
+// Kinds is the table Parse dispatches from: the fourteen kinds, each with its header keywords, and
 // each keyword's diagram parses as its kind. A kind on no row (a gitGraph, a keyword in another
 // case) is ErrUnsupported.
 func TestKindsAreWhatParseReads(t *testing.T) {
@@ -45,6 +47,7 @@ func TestKindsAreWhatParseReads(t *testing.T) {
 		{Pie, []string{"pie"}},
 		{Quadrant, []string{"quadrantChart"}},
 		{XYChart, []string{"xychart-beta", "xychart"}},
+		{Sankey, []string{"sankey-beta", "sankey"}},
 	}
 	got := Kinds()
 	if !reflect.DeepEqual(got, want) {
