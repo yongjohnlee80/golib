@@ -1,10 +1,8 @@
 package mermaid
 
 import (
-	"errors"
+	"strings"
 	"testing"
-
-	pm "github.com/yongjohnlee80/golib/parse/mermaid"
 )
 
 const xyDocumented = `xychart-beta
@@ -76,10 +74,49 @@ func TestAnXYChartIsLaidOut(t *testing.T) {
 	}
 }
 
-// A horizontal chart is not laid out yet: ErrUnsupported, for the caller's fallback.
-func TestAHorizontalXYChartIsNotLaidOut(t *testing.T) {
-	_, err := lay(t, "xychart-beta horizontal\n  x-axis [a, b]\n  bar [1, 2]", 2000)
-	if !errors.Is(err, pm.ErrUnsupported) {
-		t.Errorf("a horizontal chart: %v, want ErrUnsupported", err)
+// A horizontal chart is laid out turned: a bar a category running right from the value axis, the
+// widest July's, on the band of July's label; every bar starts at one x (the axis).
+func TestAHorizontalXYChartIsLaidOut(t *testing.T) {
+	l, err := lay(t, strings.Replace(xyDocumented, "xychart-beta", "xychart-beta horizontal", 1), 2000)
+	if err != nil {
+		t.Fatal(err)
+	}
+	keyX := float32(1 << 30)
+	var jul label
+	for _, tx := range l.texts {
+		if len(tx.lines) != 1 {
+			continue
+		}
+		switch tx.lines[0] {
+		case "bar 1", "line 2":
+			keyX = min(keyX, tx.box.X-l.th.Font.Size*2)
+		case "jul":
+			jul = tx
+		}
+	}
+	var bars []laidNode
+	for _, n := range l.nodes {
+		if n.form == formRect && n.box.X < keyX {
+			bars = append(bars, n)
+		}
+	}
+	if len(bars) != 12 {
+		t.Fatalf("%d bars; want 12", len(bars))
+	}
+	widest := 0
+	for i, b := range bars {
+		if b.box.X != bars[0].box.X {
+			t.Errorf("bar %d starts at x %v, not the axis's %v", i, b.box.X, bars[0].box.X)
+		}
+		if b.box.W > bars[widest].box.W {
+			widest = i
+		}
+		if b.box.W <= 0 || b.box.H <= 0 {
+			t.Errorf("bar %d is %+v", i, b.box)
+		}
+	}
+	bc, jc := bars[widest].box.Y+bars[widest].box.H/2, jul.box.Y+jul.box.H/2
+	if bc < jc-2 || bc > jc+2 {
+		t.Errorf("the widest bar is centred at y %v, not on jul's band (%v)", bc, jc)
 	}
 }

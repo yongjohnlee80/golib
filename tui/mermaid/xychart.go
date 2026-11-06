@@ -8,7 +8,7 @@ import (
 	pm "github.com/yongjohnlee80/golib/parse/mermaid"
 )
 
-func init() { register(pm.XYChart, layAs(LayXYChart), xychartDrawn) }
+func init() { register(pm.XYChart, layAs(LayXYChart), nil) }
 
 // AN XY CHART IN CELLS: a value axis down the left with five ticks, the x axis along the bottom
 // with a group of columns a point, its label centred under it; each bar a column rising from the
@@ -25,8 +25,9 @@ func init() { register(pm.XYChart, layAs(LayXYChart), xychartDrawn) }
 //	 4000 └───┬───┬───┬───┬───┬───┬──
 //	         jan feb mar apr may jun
 //
-// A horizontal chart (bars running across) is not drawn here yet: ErrUnsupported, for the host's
-// notice.
+// A horizontal chart is the same turned: its categories down the left, its value axis along the
+// bottom, each bar running across in eighths (▏▎▍▌▋▊▉█), each line a mark a category joined by
+// dots (layXYAcross).
 
 // xyPlotH is the plot's height in rows.
 const xyPlotH = 12
@@ -40,16 +41,14 @@ var (
 	xyEighths    = []string{"▁", "▂", "▃", "▄", "▅", "▆", "▇"}
 )
 
+// xyAcrossW is a horizontal chart's plot width in cells.
+const xyAcrossW = 48
+
+// xyLeftEighths are a bar's last cell running across, by its eighths: ▏ one, … ▉ seven.
+var xyLeftEighths = []string{"▏", "▎", "▍", "▌", "▋", "▊", "▉"}
+
 // xyLineDot joins a line's marks.
 const xyLineDot = "·"
-
-// xychartDrawn is ErrUnsupported for a horizontal chart, which cells don't draw yet.
-func xychartDrawn(d pm.Diagram) error {
-	if x, ok := d.(*pm.XYChartDiagram); ok && x.Horizontal {
-		return ErrUnsupported
-	}
-	return nil
-}
 
 // LayXYChart lays an XY chart out in cells.
 func LayXYChart(ctx context.Context, d *pm.XYChartDiagram, m Measurer) (*Grid, error) {
@@ -57,7 +56,7 @@ func LayXYChart(ctx context.Context, d *pm.XYChartDiagram, m Measurer) (*Grid, e
 		return nil, err
 	}
 	if d.Horizontal {
-		return nil, ErrUnsupported
+		return layXYAcross(d, m)
 	}
 	g := newGrid()
 	top := g.title(d.Title, m)
@@ -160,27 +159,7 @@ func LayXYChart(ctx context.Context, d *pm.XYChartDiagram, m Measurer) (*Grid, e
 		l++
 	}
 
-	// the key: each series' glyph and its name, when there is more than one or any is named
-	named := false
-	for _, s := range d.Series {
-		named = named || s.Name != ""
-	}
-	if len(d.Series) > 1 || named {
-		b, l = 0, 0
-		for i, s := range d.Series {
-			name := s.Name
-			if name == "" {
-				name = s.Kind.String() + " " + strconv.Itoa(i+1)
-			}
-			var glyph string
-			if s.Kind == pm.XYBar {
-				glyph, b = xyBarGlyphs[b%len(xyBarGlyphs)], b+1
-			} else {
-				glyph, l = xyLineGlyphs[l%len(xyLineGlyphs)], l+1
-			}
-			g.legend(legendRow{swatch: glyph, label: name})
-		}
-	}
+	xyKey(g, d)
 	return g.finish(m)
 }
 
@@ -222,4 +201,128 @@ func xySteps(a, b cell) []cell {
 		out = append(out, cell{a.x + int(math.Round(float64(dx*k)/float64(n))), a.y + int(math.Round(float64(dy*k)/float64(n)))})
 	}
 	return out
+}
+
+// layXYAcross lays a horizontal XY chart out: its categories' labels right-aligned down the left, a
+// group of rows a category (a row a bar series, one at least) with a blank row between groups; the
+// value axis along the bottom, five ticks with their values under it; each bar running across from
+// the axis, the first bar series in eighths and the others in whole cells, each line a mark a
+// category on its group's middle row, joined by dots. The axes' titles: the categories' over their
+// labels, the values' under the ticks.
+func layXYAcross(d *pm.XYChartDiagram, m Measurer) (*Grid, error) {
+	g := newGrid()
+	top := g.title(d.Title, m)
+	if d.XAxis.Title != "" {
+		g.label(0, top, d.XAxis.Title, m)
+		top += 2
+	}
+	lo, hi := d.ValueRange()
+	n := d.Points()
+	cats := XYCategories(d, n)
+	bars := 0
+	for _, s := range d.Series {
+		if s.Kind == pm.XYBar {
+			bars++
+		}
+	}
+	gh := max(bars, 1) // a group's rows
+	lw := widest(m, cats...)
+	ax := lw + 1 // the axis's column, the plot right of it
+	groupTop := func(i int) int { return top + i*(gh+1) }
+	mid := func(i int) int { return groupTop(i) + (gh-1)/2 }
+	floor := groupTop(n) // the value axis's row, under the last group's gap
+	if n == 0 {
+		floor = top
+	}
+	for i, c := range cats {
+		_, w, _ := capLabel(c, RoleLabel, m)
+		g.label(ax-1-w, mid(i), c, m)
+	}
+	// the axes: down the left from the top to the floor, along the floor, a tick at each fifth
+	g.run(cell{ax, top}, cell{ax, floor})
+	g.run(cell{ax, floor}, cell{ax + xyAcrossW + 1, floor})
+	for k := range xyTicks {
+		x := ax + 1 + int(math.Round(float64(k)*float64(xyAcrossW-1)/(xyTicks-1)))
+		g.lines[cell{x, floor}] |= south
+		s := XYNumber(lo + float64(k)*(hi-lo)/(xyTicks-1))
+		_, w, _ := capLabel(s, RoleLabel, m)
+		g.label(x-w/2, floor+1, s, m)
+	}
+	if d.YAxis.Title != "" {
+		_, w, _ := capLabel(d.YAxis.Title, RoleLabel, m)
+		g.label(ax+1+(xyAcrossW-w)/2, floor+2, d.YAxis.Title, m)
+	}
+	frac := func(v float64) float64 { return min(max((v-lo)/(hi-lo), 0), 1) }
+	// the bars: series j of the bars on row j of each group, running right from the axis
+	b := 0
+	for _, s := range d.Series {
+		if s.Kind != pm.XYBar {
+			continue
+		}
+		glyph := xyBarGlyphs[b%len(xyBarGlyphs)]
+		for i, v := range s.Values {
+			row := groupTop(i) + b
+			eighths := int(math.Round(frac(v) * xyAcrossW * 8))
+			if glyph != "█" {
+				eighths = int(math.Round(frac(v)*xyAcrossW)) * 8
+			}
+			for c := 0; c < eighths/8; c++ {
+				g.fills[cell{ax + 1 + c, row}] = glyph
+			}
+			if rest := eighths % 8; rest > 0 {
+				g.fills[cell{ax + 1 + eighths/8, row}] = xyLeftEighths[rest-1]
+			}
+		}
+		b++
+	}
+	// the lines: a mark a category on its group's middle row, over any bar, joined by dots
+	l := 0
+	for _, s := range d.Series {
+		if s.Kind != pm.XYLine {
+			continue
+		}
+		glyph := xyLineGlyphs[l%len(xyLineGlyphs)]
+		pts := make([]cell, len(s.Values))
+		for i, v := range s.Values {
+			pts[i] = cell{ax + 1 + int(math.Round(frac(v)*(xyAcrossW-1))), mid(i)}
+		}
+		for i := 1; i < len(pts); i++ {
+			for _, c := range xySteps(pts[i-1], pts[i]) {
+				if _, filled := g.fills[c]; !filled && g.marks[c] == "" {
+					g.marks[c] = xyLineDot
+				}
+			}
+		}
+		for _, c := range pts {
+			g.fills[c] = glyph
+		}
+		l++
+	}
+	xyKey(g, d)
+	return g.finish(m)
+}
+
+// xyKey is the key under a chart: each series' glyph and its name, when there is more than one or
+// any is named, an unnamed one by its kind and its place.
+func xyKey(g *Grid, d *pm.XYChartDiagram) {
+	named := false
+	for _, s := range d.Series {
+		named = named || s.Name != ""
+	}
+	if len(d.Series) > 1 || named {
+		b, l := 0, 0
+		for i, s := range d.Series {
+			name := s.Name
+			if name == "" {
+				name = s.Kind.String() + " " + strconv.Itoa(i+1)
+			}
+			var glyph string
+			if s.Kind == pm.XYBar {
+				glyph, b = xyBarGlyphs[b%len(xyBarGlyphs)], b+1
+			} else {
+				glyph, l = xyLineGlyphs[l%len(xyLineGlyphs)], l+1
+			}
+			g.legend(legendRow{swatch: glyph, label: name})
+		}
+	}
 }

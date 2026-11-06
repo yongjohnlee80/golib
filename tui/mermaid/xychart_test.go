@@ -86,21 +86,65 @@ func TestAnXYPointStandsOverItsCategory(t *testing.T) {
 	}
 }
 
-// A horizontal chart isn't drawn in cells: Drawn says ErrUnsupported, for the host's notice.
-func TestAHorizontalXYChartIsNotDrawn(t *testing.T) {
+// A horizontal chart is drawn: Drawn accepts it, and its goldens, the corpus's and one of two bar
+// series and a line, read as the vertical ones turned (categories down the left, values along the
+// bottom).
+func TestAHorizontalXYChartDrawsInCells(t *testing.T) {
 	d, err := pm.Parse(xyCorpus(t, "horizontal"))
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := Drawn(d); err != ErrUnsupported {
-		t.Errorf("Drawn(horizontal) = %v, want ErrUnsupported", err)
+	if err := Drawn(d); err != nil {
+		t.Errorf("Drawn(horizontal) = %v, want it drawn", err)
 	}
-	v, err := pm.Parse(xyCorpus(t, "documented"))
+	for name, src := range map[string]string{
+		"xychart-horizontal": xyCorpus(t, "horizontal"),
+		"xychart-horizontal-mixed": "xychart-beta horizontal\n  title Mixed\n  x-axis Team [north, south, east]\n  y-axis Score 0 --> 10\n" +
+			"  bar \"Q1\" [4, 7.5, 2]\n  bar \"Q2\" [6, 3, 9]\n  line \"Target\" [5, 5, 5]\n",
+	} {
+		t.Run(name, func(t *testing.T) {
+			g, got := paint(t, src)
+			golden(t, name, got)
+			checkGrid(t, name, g)
+		})
+	}
+}
+
+// Laid across, each point stands beside its own category: the documented chart turned, July (the
+// range's top) is the only bar reaching the plot's right edge, on the row of July's label.
+func TestAHorizontalXYPointStandsBesideItsCategory(t *testing.T) {
+	src := strings.Replace(xyCorpus(t, "documented"), "xychart-beta", "xychart-beta horizontal", 1)
+	d, err := pm.Parse(src)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := Drawn(v); err != nil {
-		t.Errorf("Drawn(vertical) = %v, want it drawn", err)
+	g, err := LayXYChart(context.Background(), d.(*pm.XYChartDiagram), newCells(1, 1))
+	if err != nil {
+		t.Fatal(err)
+	}
+	var jul text
+	for _, tx := range g.texts {
+		if tx.s == "jul" {
+			jul = tx
+		}
+	}
+	if jul.s == "" {
+		t.Fatal("no jul label")
+	}
+	right := -1
+	for c, f := range g.fills {
+		if f == "█" && c.x > right {
+			right = c.x
+		}
+	}
+	var rows []int
+	for c, f := range g.fills {
+		if f == "█" && c.x == right {
+			rows = append(rows, c.y)
+		}
+	}
+	if len(rows) != 1 || rows[0] != jul.y {
+		t.Errorf("the bars reaching the right edge (column %d) are on rows %v; want jul's alone (%d)", right, rows, jul.y)
 	}
 }
 
