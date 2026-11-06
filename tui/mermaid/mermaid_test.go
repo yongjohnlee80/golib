@@ -195,17 +195,27 @@ func TestAWideLabelsBoxCloses(t *testing.T) {
 	}
 }
 
-// A kind not in Kinds is ErrUnsupported, for the host to show its own way.
+// undrawnDiagram is a kind no file registers: every kind the parser reads is drawn, so a kind added
+// to it before it is drawn here is what this stands for.
+type undrawnDiagram struct{}
+
+func (undrawnDiagram) Kind() pm.Kind { return pm.Kind(200) }
+
+// A kind not in Kinds is ErrUnsupported, for the host to show its own way; a flowchart with
+// subgraphs is drawn, each subgraph a frame.
 func TestAKindNotDrawnIsUnsupported(t *testing.T) {
-	d, err := pm.Parse("flowchart LR\n  a --> b\n")
+	if Supported(undrawnDiagram{}.Kind()) {
+		t.Fatal("a kind no file registers is reported drawn")
+	}
+	if _, err := Lay(context.Background(), undrawnDiagram{}, newCells(1, 1)); err != ErrUnsupported {
+		t.Fatalf("Lay of a kind not drawn: %v, want ErrUnsupported", err)
+	}
+	d, err := pm.Parse("flowchart TB\n  subgraph S [Group]\n    a --> b\n  end\n")
 	if err != nil {
 		t.Fatal(err)
 	}
-	if Supported(d.Kind()) {
-		t.Fatal("a flowchart is reported drawn")
-	}
-	if _, err := Lay(context.Background(), d, newCells(1, 1)); err != ErrUnsupported {
-		t.Fatalf("Lay of a flowchart: %v, want ErrUnsupported", err)
+	if g, err := Lay(context.Background(), d, newCells(1, 1)); err != nil || len(g.frames) != 1 {
+		t.Fatalf("Lay of a flowchart with a subgraph: %v, %d frames; want it drawn, one frame", err, len(g.frames))
 	}
 }
 
@@ -362,12 +372,16 @@ func TestTheEasyKindsRefuseWhatIsTooLarge(t *testing.T) {
 		sec.Periods = append(sec.Periods, pm.TimelinePeriod{Label: "p", Events: []pm.TimelineEvent{{Text: "e"}}})
 	}
 	boxes.Sections = []pm.TimelineSection{sec}
-	wide := &pm.JourneyDiagram{}
-	js := pm.JourneySection{Name: "s"}
-	for range 1000 {
-		js.Tasks = append(js.Tasks, pm.JourneyTask{Name: strings.Repeat("w", 2000), Score: 3})
+	// an area past maxCells: labels are capped, so the room is a sequence's at its limits, each
+	// participant apart by a message at its cap, and a row or two for each of its steps
+	wide := &pm.SequenceDiagram{}
+	for i := range seqMaxParticipants {
+		wide.Participants = append(wide.Participants, pm.Participant{ID: fmt.Sprint(i), Label: "p"})
 	}
-	wide.Sections = []pm.JourneySection{js}
+	for i := range seqMaxSteps {
+		a := i % (seqMaxParticipants - 1)
+		wide.Steps = append(wide.Steps, pm.Step{Kind: pm.StepMessage, From: fmt.Sprint(a), To: fmt.Sprint(a + 1), Text: strings.Repeat("w", 200)})
+	}
 	for name, d := range map[string]pm.Diagram{"participants": many, "steps": long, "boxes": boxes, "area": wide} {
 		if _, err := Lay(ctx, d, newCells(1, 1)); !errors.Is(err, layout.ErrTooLarge) {
 			t.Errorf("%s: %v, want layout.ErrTooLarge", name, err)
@@ -375,9 +389,11 @@ func TestTheEasyKindsRefuseWhatIsTooLarge(t *testing.T) {
 	}
 }
 
-// Timeline, journey and sequence are drawn: Kinds lists them, and Lay lays each.
+// Timeline, journey, sequence and flowchart (graph too) are drawn: Kinds lists them, and Lay lays
+// each.
 func TestTheEasyKindsAreDrawn(t *testing.T) {
-	for _, src := range []string{"timeline\n  2020 : a\n", "journey\n  section s\n    t: 3: me\n", "sequenceDiagram\n  A->>B: hi\n"} {
+	for _, src := range []string{"timeline\n  2020 : a\n", "journey\n  section s\n    t: 3: me\n", "sequenceDiagram\n  A->>B: hi\n",
+		"flowchart LR\n  a --> b\n", "graph TD\n  a --> b\n"} {
 		d, err := pm.Parse(src)
 		if err != nil {
 			t.Fatal(err)

@@ -73,11 +73,8 @@ func layTimeline(ctx context.Context, d pm.Diagram, width float32, th Theme, m g
 	margin := em
 
 	y := margin
-	var title label
-	if td.Title != "" {
-		title = newLabel(m, td.Title, gui.Font{Family: f.Family, Size: em * 1.15, Bold: true}, 0, th.Text)
-		y += title.box.H + em
-	}
+	title, room, _ := titleLabel(m, td.Title, th)
+	y += room
 	// the sections' heads, when any section has a title
 	var headH float32
 	sectionTitles := map[int]label{}

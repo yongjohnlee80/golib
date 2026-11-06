@@ -20,10 +20,12 @@ var kindSamples = map[string]string{
 	"mindmap":            "mindmap\n  r\n    a",
 	"timeline":           "timeline\n  2004 : Facebook",
 	"requirementDiagram": "requirementDiagram\n  requirement a {\n  id: 1\n  text: the text\n  }",
+	"gantt":              "gantt\n  dateFormat YYYY-MM-DD\n  a :2026-01-01, 3d",
+	"pie":                "pie\n  \"a\": 1",
 }
 
-// Kinds is the table Parse dispatches from: the nine kinds, each with its header keywords, and
-// each keyword's diagram parses as its kind. A kind on no row (a pie, a gantt, a keyword in
+// Kinds is the table Parse dispatches from: the eleven kinds, each with its header keywords, and
+// each keyword's diagram parses as its kind. A kind on no row (a quadrantChart, a keyword in
 // another case) is ErrUnsupported.
 func TestKindsAreWhatParseReads(t *testing.T) {
 	want := []KindInfo{
@@ -36,6 +38,8 @@ func TestKindsAreWhatParseReads(t *testing.T) {
 		{Mindmap, []string{"mindmap"}},
 		{Timeline, []string{"timeline"}},
 		{Requirement, []string{"requirementDiagram"}},
+		{Gantt, []string{"gantt"}},
+		{Pie, []string{"pie"}},
 	}
 	got := Kinds()
 	if !reflect.DeepEqual(got, want) {
@@ -49,7 +53,7 @@ func TestKindsAreWhatParseReads(t *testing.T) {
 			}
 		}
 	}
-	for _, src := range []string{"pie\n  \"a\": 1", "gantt\n  title T", "quadrantChart\n", "Flowchart LR\n  A --> B"} {
+	for _, src := range []string{"quadrantChart\n", "Flowchart LR\n  A --> B"} {
 		if _, err := Parse(src); !errors.Is(err, ErrUnsupported) {
 			t.Errorf("%q: %v; want ErrUnsupported", src, err)
 		}
@@ -58,5 +62,37 @@ func TestKindsAreWhatParseReads(t *testing.T) {
 	got[0].Keywords[0] = "changed"
 	if Kinds()[0].Keywords[0] != "flowchart" {
 		t.Error("Kinds answered its table's own slice")
+	}
+}
+
+// A kind registers itself, and a clash panics before it changes anything: a second kind with a
+// registered value, name or keyword fails every test run in init, never ships. The registry is
+// unchanged after each refusal.
+func TestRegisteringAClashPanics(t *testing.T) {
+	before := Kinds()
+	for _, c := range []struct {
+		what     string
+		k        Kind
+		name     string
+		keywords []string
+	}{
+		{"a registered value", Flowchart, "another", []string{"another"}},
+		{"a registered name", 200, "sequence", []string{"another"}},
+		{"a registered keyword", 201, "another", []string{"graph"}},
+	} {
+		func() {
+			defer func() {
+				if recover() == nil {
+					t.Errorf("%s: register did not panic", c.what)
+				}
+			}()
+			register(c.k, c.name, c.keywords, nil)
+		}()
+	}
+	if after := Kinds(); !reflect.DeepEqual(after, before) {
+		t.Errorf("the registry changed after the refusals:\n%v\nwas\n%v", after, before)
+	}
+	if Kind(200).String() != "200" || Flowchart.String() != "flowchart" {
+		t.Errorf("String: %q %q", Kind(200).String(), Flowchart.String())
 	}
 }

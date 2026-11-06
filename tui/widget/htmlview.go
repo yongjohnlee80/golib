@@ -166,6 +166,13 @@ type HTMLLayoutActivate interface {
 	Activate(x, y float32) bool
 }
 
+// HTMLLayoutToolTips is a layout with text to reveal at a point (a diagram's capped label): its
+// text at (x, y) and the region it is for, in the layout's units; "" for none. The view is then a
+// tui.ToolTipRegioner: the App's tooltip card shows the text beside the region, armed per region.
+type HTMLLayoutToolTips interface {
+	ToolTipAt(x, y float32) (text string, r Rect32)
+}
+
 // HTMLLayoutImages is a layout that keeps the images it loaded: SetImageResolver drops them and
 // their pending loads, since a page's relative src means another file under another resolver.
 type HTMLLayoutImages interface {
@@ -470,6 +477,23 @@ func (v *HTMLView) units() (float32, float32) {
 		}
 	}
 	return 1, 1
+}
+
+// ToolTipAt implements tui.ToolTipRegioner for a cell layout with tooltips (HTMLLayoutToolTips): the
+// text at the pointer's cell, and its region in the view's own cells.
+func (v *HTMLView) ToolTipAt(local tui.Point) (string, tui.Rect) {
+	l, ok := v.layout.(HTMLLayoutToolTips)
+	if ux, uy := v.units(); !ok || ux != 1 || uy != 1 {
+		return "", tui.Rect{}
+	}
+	// the row painted at the view's top is int(scrollY) (Render): a fractional scroll's half row is
+	// not drawn, so the pointer's row and the region's are counted from there
+	top := float32(int(v.scrollY))
+	text, r := l.ToolTipAt(float32(local.X), top+float32(local.Y))
+	if text == "" {
+		return "", tui.Rect{}
+	}
+	return text, tui.Rect{X: int(r.X), Y: int(r.Y - top), W: int(r.W), H: int(r.H)}
 }
 
 // docPoint is the document point under a pointer at cell (x, y), inside it at (subX, subY).

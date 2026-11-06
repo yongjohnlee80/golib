@@ -161,7 +161,17 @@ type Laid struct {
 	group []laidGroup
 	texts []label
 
+	sectors []laidSector // a pie's wedges, filled before everything else
+
 	labels picture.Labels // the loop's shaping of each label line
+}
+
+// laidSector is one filled wedge of a pie: from a0 to a1 around (cx, cy), radius r, 0 at 12
+// o'clock, clockwise, a0 below a1.
+type laidSector struct {
+	cx, cy, r    float32
+	a0, a1       float32
+	fill, stroke color.NRGBA
 }
 
 // Size is the diagram as Paint draws it.
@@ -203,6 +213,18 @@ func newLabel(m gui.Measurer, s string, f gui.Font, wrap float32, c color.NRGBA)
 	}
 	lines, sz := m.Wrap(s, f, wrap)
 	return label{lines: lines, font: f, color: c, box: gui.Rect{W: sz.W, H: sz.H}}
+}
+
+// titleLabel is a diagram's title as every titled kind draws it (bold, 1.15 times the text), and
+// the room it takes above the diagram, its height and a gap of one em; ok is false with no title.
+// The kind places it, centred once its width is known.
+func titleLabel(m gui.Measurer, s string, th Theme) (lb label, room float32, ok bool) {
+	if s == "" {
+		return label{}, 0, false
+	}
+	em := th.Font.Size
+	lb = newLabel(m, s, gui.Font{Family: th.Font.Family, Size: em * 1.15, Bold: true}, 0, th.Text)
+	return lb, lb.box.H + em, true
 }
 
 // at places a label's box with its top left at x, y.

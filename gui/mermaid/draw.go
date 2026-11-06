@@ -29,6 +29,9 @@ import (
 // Text labels are dynamically shaped on the first frame using the canvas text shaper.
 func (l *Laid) Paint(c gui.Canvas) {
 	defer picture.Push(c, l.fit)()
+	for _, s := range l.sectors {
+		l.sector(c, s)
+	}
 	for _, g := range l.group {
 		l.frame(c, g)
 	}

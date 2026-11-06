@@ -9,6 +9,11 @@ import (
 	"unicode/utf8"
 )
 
+// Flowchart is the kind of the diagrams that start with flowchart or graph.
+const Flowchart Kind = 1
+
+func init() { register(Flowchart, "flowchart", []string{"flowchart", "graph"}, (*parser).flowchart) }
+
 // identLen is the length of the node id at the start of s: letters, digits and _, and a - that
 // sits between two of them (node-1) rather than starting a link (A-->B).
 func identLen(s string) int {

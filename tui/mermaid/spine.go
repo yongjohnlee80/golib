@@ -5,10 +5,13 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/yongjohnlee80/golib/graph/layout"
 	pm "github.com/yongjohnlee80/golib/parse/mermaid"
-	"github.com/yongjohnlee80/golib/tui"
 )
+
+func init() {
+	register(pm.Timeline, layAs(LayTimeline), nil)
+	register(pm.Journey, layAs(LayJourney), nil)
+}
 
 // A timeline and a journey are lists down a spine: a column of heading boxes (a timeline's
 // sections and periods, a journey's sections) left of one vertical line, and each heading's items
@@ -46,16 +49,13 @@ func laySpine(ctx context.Context, title string, groups []spineGroup, arrow bool
 			n++
 		}
 	}
-	if n > spineMaxBoxes {
-		return nil, layout.ErrTooLarge
-	}
-	if err := ctx.Err(); err != nil {
+	if err := guard(ctx, n, spineMaxBoxes); err != nil {
 		return nil, err
 	}
 	colW := 0 // the headings' column
 	for _, gr := range groups {
 		if gr.head != nil {
-			w, _ := formSize(gr.head.form, m.StringWidth(gr.head.label))
+			w, _ := boxSize(gr.head.form, gr.head.label, m)
 			colW = max(colW, w)
 		}
 	}
@@ -64,11 +64,7 @@ func laySpine(ctx context.Context, title string, groups []spineGroup, arrow bool
 		spine = 0
 	}
 	itemX := spine + 2 // a cell of line between the spine and an item
-	y := 0
-	if title != "" {
-		g.label(0, 0, title, m)
-		y = 2
-	}
+	y := g.title(title, m)
 	first, last := -1, -1
 	joined := func(row int) {
 		if first < 0 {
@@ -79,9 +75,8 @@ func laySpine(ctx context.Context, title string, groups []spineGroup, arrow bool
 	for _, gr := range groups {
 		top, h := y, 0
 		if gr.head != nil {
-			w, bh := formSize(gr.head.form, m.StringWidth(gr.head.label))
-			r := tui.Rect{X: 0, Y: top, W: w, H: bh}
-			g.Boxes = append(g.Boxes, Box{Label: gr.head.label, Rect: r, Form: gr.head.form})
+			r := g.box(Box{Label: gr.head.label, Form: gr.head.form, Ports: PortSides}, 0, top, m).Rect
+			w, bh := r.W, r.H
 			mid := r.Y + r.H/2
 			g.run(cell{w, mid}, cell{spine, mid})
 			g.lines[cell{w, mid}] |= west // into the heading's side
@@ -90,10 +85,8 @@ func laySpine(ctx context.Context, title string, groups []spineGroup, arrow bool
 		}
 		iy := top
 		for _, it := range gr.items {
-			lw := m.StringWidth(it.label)
-			w, bh := formSize(it.form, lw)
-			r := tui.Rect{X: itemX, Y: iy, W: w, H: bh}
-			g.Boxes = append(g.Boxes, Box{Label: it.label, Rect: r, Form: it.form})
+			r := g.box(Box{Label: it.label, Form: it.form, Ports: PortSides}, itemX, iy, m).Rect
+			w, bh := r.W, r.H
 			mid := r.Y + r.H/2
 			g.run(cell{spine, mid}, cell{itemX - 1, mid})
 			g.lines[cell{itemX - 1, mid}] |= east // into the item's side
@@ -113,11 +106,7 @@ func laySpine(ctx context.Context, title string, groups []spineGroup, arrow bool
 			g.marks[cell{spine, last + 1}] = "▼"
 		}
 	}
-	g.settle()
-	if g.tooLarge() {
-		return nil, layout.ErrTooLarge
-	}
-	return g, nil
+	return g.finish(m)
 }
 
 // LayTimeline lays d out down its time axis: a section's title boxed on the axis, heavy, each

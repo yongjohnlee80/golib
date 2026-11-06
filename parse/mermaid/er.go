@@ -9,6 +9,11 @@ import (
 	"unicode/utf8"
 )
 
+// ER is the kind of the diagrams that start with erDiagram.
+const ER Kind = 5
+
+func init() { register(ER, "er", []string{"erDiagram"}, (*parser).er) }
+
 // ERDiagram is a parsed entity-relationship diagram.
 type ERDiagram struct {
 	Dir           Dir
