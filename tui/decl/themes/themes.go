@@ -74,8 +74,9 @@ func Offer() tuidecl.ProgramOption {
 // shades_of_purple.qml, tokyo_night.qml — to copy from, or to offer under another module name.
 func FS() fs.FS { return files }
 
-// Values are a theme's colours by their dotted names, as its file writes them:
-// "app.window" → "white", "app.inactive.highlight" → "brightblack". It is for
+// Values are a theme's colours by their dotted names, always: "app.window" → "white",
+// "app.inactive.highlight" → "brightblack", and an optional role a theme leaves unset filled
+// from its fallback (document.accent → menu.accent). It is for
 // a program handing the theme to something outside its layout, a plugin
 // drawing in its own window, say; [style.ParseColor] reads each value. An
 // unknown theme, or a file Validate refuses, is an error.

@@ -41,8 +41,7 @@ func TestValidateBuiltInsAndEveryRequiredRole(t *testing.T) {
 	}
 	src, _ := fs.ReadFile(FS(), "sepia.qml")
 	broken := strings.Replace(string(src), `backdrop: "#d4c4a0"`, `unknown: "bad"`, 1)
-	broken = strings.Replace(broken, `window: "#dacca9"`, `window: "not-a-colour"`, 1)
-	v, ds := Validate("custom.qml", []byte(broken))
+	broken = strings.Replace(broken, `window: "#dacca9"`, `window: "not-a-colour"`, 1)	v, ds := Validate("custom.qml", []byte(broken))
 	if v != nil {
 		t.Fatal("invalid theme returned usable values")
 	}
@@ -127,5 +126,54 @@ func TestValidateReportsTheParsersSyntaxPosition(t *testing.T) {
 	}
 	if d := ds[0]; d.Key != "Theme" || d.Pos.File != "unfinished.qml" || d.Pos.Line != line || d.Pos.Column != column || d.Message == "" {
 		t.Errorf("unpositioned syntax failure: %+v", d)
+	}
+}
+
+// An optional role is always in a valid theme's values, from its fallback when the theme leaves it
+// unset (sepia's document accent is its menu's; retro writes its own), and written it is refused
+// malformed or repeated like any other key: a consumer binds it unconditionally, the fallback
+// written once here, never in a consumer.
+func TestOptionalRolesComeFromTheirFallbackAndRefuseBadOnes(t *testing.T) {
+	sepia, err := Values("sepia")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if sepia["document.accent"] != sepia["menu.accent"] {
+		t.Errorf("sepia's document.accent %q, want its fallback, the menu's %q", sepia["document.accent"], sepia["menu.accent"])
+	}
+	retro, err := Values("retro")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if retro["document.accent"] != "#ff5555" {
+		t.Errorf("retro's document.accent %q, want its own #ff5555 (its menu's is %q)", retro["document.accent"], retro["menu.accent"])
+	}
+	src, err := fs.ReadFile(FS(), "sepia.qml")
+	if err != nil {
+		t.Fatal(err)
+	}
+	body := string(src)
+	end := strings.LastIndex(body, "}")
+	for _, c := range []struct {
+		what string
+		src  string
+		want string
+	}{
+		{"malformed", body[:end] + `    document.accent: "notacolour"` + "\n}\n", "notacolour"},
+		{"repeated", body[:end] + `    document.accent: "#ff5555"` + "\n    document.accent: \"#aa0000\"\n}\n", "key is repeated"},
+	} {
+		v, ds := Validate("broken.qml", []byte(c.src))
+		if v != nil {
+			t.Fatalf("%s: invalid theme returned usable values", c.what)
+		}
+		found := false
+		for _, d := range ds {
+			if d.Key == "document.accent" && strings.Contains(d.Message, c.want) {
+				found = true
+			}
+		}
+		if !found {
+			t.Errorf("%s: missing diagnosis on document.accent (%q): %v", c.what, c.want, ds)
+		}
 	}
 }

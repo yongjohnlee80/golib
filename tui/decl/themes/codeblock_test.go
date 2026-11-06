@@ -151,14 +151,10 @@ func TestThePageReadsInEveryTheme(t *testing.T) {
 			t.Fatal(err)
 		}
 		page := mustColor(t, vals["document.base"])
-		accent, hasAccent := vals["document.accent"]
-		if !hasAccent {
-			accent = vals["menu.accent"] // the nine's page accent: the menu's own (the fallback)
-		}
-		bindings := " palette.mid: Theme.app.mid; palette.accent: Theme.menu.accent"
-		if hasAccent {
-			bindings += "; palette.documentAccent: Theme.document.accent"
-		}
+		// Validate fills document.accent from menu.accent when a theme writes none, so the
+		// binding is unconditional, as a consumer's is (the fallback written once, in golib)
+		accent := vals["document.accent"]
+		bindings := " palette.mid: Theme.app.mid; palette.accent: Theme.menu.accent; palette.documentAccent: Theme.document.accent"
 		s := decltest.Run(t, 30, 10, tuidecl.LayoutSource("main.qml", []byte("import tui 1.0\nimport tui.theme."+name+" 1.0\n"+
 			"Window { palette.highlight: Theme.document.highlight; palette.base: Theme.document.base; palette.text: Theme.document.text\n"+
 			" palette.window: Theme.document.base; palette.windowText: Theme.document.text"+bindings+"\n"+
