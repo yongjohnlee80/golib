@@ -30,7 +30,7 @@ type optionalRole struct {
 // optionalRoles are the colour keys a theme MAY write. Validate accepts them; Values exposes them
 // always, from their fallback when unset.
 var optionalRoles = []optionalRole{
-	{{"document.accent", "the document page's accent (inline code, headings' and callouts' accent tones, the diagram accents)"}, "menu.accent"},
+	{Role{"document.accent", "the document page's accent (inline code, headings' and callouts' accent tones, the diagram accents)"}, "menu.accent"},
 }
 
 var roles = []Role{
