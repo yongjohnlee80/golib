@@ -14,10 +14,10 @@ const mixedChart = `{"data":{"values":[{"m":"Jan","v":3,"w":1},{"m":"Feb","v":5,
 // row of it, painted and panned as a diagram's grid; never its source.
 func TestAVegaLitePreIsDrawnAsAChart(t *testing.T) {
 	c := layCells(t, `<p>before</p><pre class="vega-lite">`+mixedChart+`</pre><p>after</p>`, 60)
-	var pic chartPicture
+	var pic *chartPicture
 	n := 0
 	for _, r := range c.rows {
-		if p, ok := r.grid.(chartPicture); ok {
+		if p, ok := r.grid.(*chartPicture); ok {
 			pic, n = p, n+1
 		}
 	}

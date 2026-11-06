@@ -101,6 +101,9 @@ func layTable(_ context.Context, ch *pv.Chart, m Measurer, _ int) (*Drawing, err
 			c.head = s
 			if s == "" {
 				c.head = valAxis.Title
+				if len(marks) > 1 {
+					c.head = l.Title // a layer of its own: its own measure, not the axis's every layer joined
+				}
 			}
 			if len(marks) > 1 {
 				c.head = l.Mark.String() + ": " + c.head
@@ -160,7 +163,7 @@ func layTable(_ context.Context, ch *pv.Chart, m Measurer, _ int) (*Drawing, err
 		for _, v := range l.Rule.Values {
 			at = append(at, dimText(a, v.Num, v.Str))
 		}
-		title := a.Title
+		title := l.Title // the rule's own channel's: a datum's has none, and says its axis
 		if title == "" {
 			title = map[bool]string{true: "x", false: "y"}[l.Rule.OnX]
 		}

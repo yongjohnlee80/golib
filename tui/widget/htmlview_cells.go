@@ -431,14 +431,16 @@ func (p mermaidPicture) HitAt(x, y int) (string, tui.Rect, bool) {
 	return p.g.HitAt(x, y)
 }
 
-// chartPicture is a Vega-Lite chart in the theme it was laid in (chartTheme).
+// chartPicture is a Vega-Lite chart in the theme it was laid in (chartTheme). A row holds it by
+// pointer: its theme's palette is a slice, and the page tells one picture from the next by
+// comparing them.
 type chartPicture struct {
 	d  *tuivegalite.Drawing
 	th tuivegalite.Theme
 }
 
-func (p chartPicture) Size() tui.Size                  { return tui.Size{W: p.d.W, H: p.d.H} }
-func (p chartPicture) Paint(s tui.Surface, x0, y0 int) { p.d.Paint(s, x0, y0, p.th) }
+func (p *chartPicture) Size() tui.Size                  { return tui.Size{W: p.d.W, H: p.d.H} }
+func (p *chartPicture) Paint(s tui.Surface, x0, y0 int) { p.d.Paint(s, x0, y0, p.th) }
 
 // chartTheme is a chart's styles in the cell layout: the page's own, its series in the page's
 // code colours (WithSyntax), which every theme sets; with none, the page's tokens.
@@ -482,7 +484,7 @@ func (c *cellHTML) layDiagram(bi int, b *hblock) {
 func (c *cellHTML) layChart(bi int, b *hblock) {
 	room := max(c.width-2*b.quote-b.indent, 1)
 	if d, err := tuivegalite.Lay(context.Background(), b.diagram, measureFunc(c.measure), room); err == nil && d.H > 0 {
-		pic := chartPicture{d, c.chartTheme()}
+		pic := &chartPicture{d, c.chartTheme()}
 		for i := range d.H {
 			c.rows = append(c.rows, hrow{block: bi, first: i == 0, grid: pic, gridRow: i})
 		}
