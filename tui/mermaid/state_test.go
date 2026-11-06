@@ -123,13 +123,16 @@ func TestAStateSelfTransitionKeepsItsLabel(t *testing.T) {
 	}
 }
 
-// A transition to or from a composite itself would end on its frame's border, which the router
-// doesn't draw: the diagram is ErrUnsupported (Drawn and Lay), for the host's own rendering, never a
-// picture with the transition left out.
-func TestAStateDiagramWithATransitionToACompositeIsNotDrawn(t *testing.T) {
+// What a transition to or from a composite can't be drawn as, a line ending on the border, is
+// ErrUnsupported (Drawn and Lay), for the host's own rendering, never a picture with it left out:
+// one between a composite and a state inside it (it never crosses the border), one from a composite
+// to itself, one to a composite holding no state. A transition into a composite or out of it is
+// drawn.
+func TestOnlyATransitionThatCantEndOnACompositesBorderIsRefused(t *testing.T) {
 	for _, src := range []string{
-		"stateDiagram-v2\n  [*] --> Busy\n  state Busy {\n    [*] --> Slow\n  }\n",
-		"stateDiagram-v2\n  state Busy {\n    [*] --> Slow\n  }\n  Busy --> Done\n",
+		"stateDiagram-v2\n  state Busy {\n    [*] --> Slow\n  }\n  Busy --> Slow\n",
+		"stateDiagram-v2\n  state Busy {\n    [*] --> Slow\n  }\n  Busy --> Busy\n",
+		"stateDiagram-v2\n  [*] --> Empty\n  state Empty {\n  }\n",
 	} {
 		d, err := pm.Parse(src)
 		if err != nil {
@@ -142,8 +145,18 @@ func TestAStateDiagramWithATransitionToACompositeIsNotDrawn(t *testing.T) {
 			t.Errorf("Lay(%q): %v; want ErrUnsupported", src, err)
 		}
 	}
-	if err := Drawn(mustParse(t, stateCompositeSrc)); err != nil {
-		t.Errorf("a composite with its transitions inside it: %v; want it drawn", err)
+	for _, src := range []string{
+		"stateDiagram-v2\n  [*] --> Busy\n  state Busy {\n    [*] --> Slow\n  }\n",
+		"stateDiagram-v2\n  state Busy {\n    [*] --> Slow\n  }\n  Busy --> Done\n",
+		stateCompositeSrc,
+	} {
+		d := mustParse(t, src)
+		if err := Drawn(d); err != nil {
+			t.Errorf("Drawn(%q): %v; want it drawn", src, err)
+		}
+		if _, err := Lay(context.Background(), d, newCells(1, 1)); err != nil {
+			t.Errorf("Lay(%q): %v; want it laid", src, err)
+		}
 	}
 }
 

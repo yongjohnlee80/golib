@@ -12,11 +12,25 @@ type frame struct {
 	shown  string // the title as drawn on a border, capped; "" when it went to the legend
 	tx, ty int    // where shown starts
 	mark   string // the footnote mark after the top-left corner, when the title had no room
+	// meets are the border cells an edge's end stops at (a transition to or from a composite), each
+	// with the way its line leaves the border: a junction there (┴ ┬ ┤ ├), drawn in the frame's
+	// style; 0 for an end whose mark is outside, the border plain. The title keeps clear of them.
+	meets map[cell]dirs
 }
 
 // frame adds a frame round r, titled title (none: ""); finish places the title.
 func (g *Grid) frame(r tui.Rect, title string) {
 	g.frames = append(g.frames, frame{rect: r, title: title})
+}
+
+// meetFrame records that an edge's end stops on frame i's border at c, its line leaving by d (0:
+// the end's mark is outside, and the border is drawn plain there).
+func (g *Grid) meetFrame(i int, c cell, d dirs) {
+	f := &g.frames[i]
+	if f.meets == nil {
+		f.meets = map[cell]dirs{}
+	}
+	f.meets[c] |= d
 }
 
 // onFrame reports whether c is on any frame's border: a kind keeps its labels and marks off them.
@@ -50,7 +64,8 @@ func (g *Grid) placeFrameTitles(m Measurer) {
 		shown, w, capped := capLabel(f.title, RoleLabel, m)
 		crossed := func(x, y int) bool {
 			_, ok := g.lines[cell{x, y}]
-			return ok
+			_, met := f.meets[cell{x, y}]
+			return ok || met
 		}
 		place := func(y int) bool {
 			for x := f.rect.X + 3; x+w <= f.rect.X+f.rect.W-3; x++ {
@@ -96,6 +111,15 @@ func (g *Grid) paintFrames(s tui.Surface, x0, y0 int, th Theme) {
 		s.SetCell(right, top, "╮", line)
 		s.SetCell(left, bottom, "╰", line)
 		s.SetCell(right, bottom, "╯", line)
+		for c, d := range f.meets { // an end with no mark meets the border in a junction
+			along := north | south
+			if c.y == r.Y || c.y == r.Y+r.H-1 {
+				along = east | west
+			}
+			if d != 0 {
+				s.SetCell(x0+c.x, y0+c.y, lineRune[along|d], line)
+			}
+		}
 		if f.shown != "" {
 			tui.DrawText(s, x0+f.tx-1, y0+f.ty, " "+f.shown+" ", text)
 		}
