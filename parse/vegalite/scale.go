@@ -40,9 +40,9 @@ var dateLayouts = []string{
 	"2006-01-02", "2006/01/02", "2006-01", "2006/01", "2006", "Jan 2, 2006", "January 2, 2006", "2 Jan 2006", "Jan 2006", "January 2006",
 }
 
-// timeOf is v as a temporal value, in milliseconds since 1970 UTC: a number is already one, a
+// TimeOf is v as a temporal value, in milliseconds since 1970 UTC: a number is already one, a
 // string is read in dateLayouts (as UTC when it names no zone).
-func timeOf(v any) (float64, bool) {
+func TimeOf(v any) (float64, bool) {
 	if s, ok := v.(string); ok {
 		s = strings.TrimSpace(s)
 		for _, layout := range dateLayouts {
@@ -73,8 +73,8 @@ func textOf(v any) string {
 	return string(b)
 }
 
-// tickStep is d3's tick increment: about n ticks over [lo, hi], at 1, 2 or 5 times a power of ten.
-func tickStep(lo, hi float64, n int) float64 {
+// TickStep is d3's tick increment: about n ticks over [lo, hi], at 1, 2 or 5 times a power of ten.
+func TickStep(lo, hi float64, n int) float64 {
 	span := hi - lo
 	if span <= 0 || n < 1 {
 		return 1
@@ -92,10 +92,10 @@ func tickStep(lo, hi float64, n int) float64 {
 	return p
 }
 
-// niceDomain extends [lo, hi] out to its ticks' step, as d3's nice does.
-func niceDomain(lo, hi float64, n int) (float64, float64) {
+// NiceDomain extends [lo, hi] out to its ticks' step, as d3's nice does.
+func NiceDomain(lo, hi float64, n int) (float64, float64) {
 	for range 3 { // the step of the extended domain can be larger once more
-		step := tickStep(lo, hi, n)
+		step := TickStep(lo, hi, n)
 		nlo, nhi := math.Floor(lo/step)*step, math.Ceil(hi/step)*step
 		if nlo == lo && nhi == hi {
 			break
@@ -105,9 +105,9 @@ func niceDomain(lo, hi float64, n int) (float64, float64) {
 	return lo, hi
 }
 
-// linearTicks are about n ticks in [lo, hi], and the step between them.
-func linearTicks(lo, hi float64, n int) ([]float64, float64) {
-	step := tickStep(lo, hi, n)
+// Ticks are about n ticks in [lo, hi], and the step between them.
+func Ticks(lo, hi float64, n int) ([]float64, float64) {
+	step := TickStep(lo, hi, n)
 	var ticks []float64
 	for i := math.Ceil(lo / step); i*step <= hi+step*1e-9; i++ {
 		v := i * step
@@ -122,8 +122,8 @@ func linearTicks(lo, hi float64, n int) ([]float64, float64) {
 	return ticks, step
 }
 
-// formatNumber is v as an axis labels it: thousands grouped, with as many decimals as step needs.
-func formatNumber(v, step float64) string {
+// FormatNumber is v as an axis labels it: thousands grouped, with as many decimals as step needs.
+func FormatNumber(v, step float64) string {
 	decimals := 0
 	if step > 0 && step < 1 {
 		decimals = int(math.Ceil(-math.Log10(step) - 1e-9))
@@ -148,9 +148,9 @@ func formatNumber(v, step float64) string {
 	return b.String()
 }
 
-// formatPercent is a share (1 is all) as a normalized axis labels it.
-func formatPercent(v, step float64) string {
-	return formatNumber(v*100, step*100) + "%"
+// FormatPercent is a share (1 is all) as a normalized axis labels it.
+func FormatPercent(v, step float64) string {
+	return FormatNumber(v*100, step*100) + "%"
 }
 
 // timeUnit is a calendar unit a time scale's ticks fall on.
@@ -203,7 +203,7 @@ func pickInterval(lo, hi float64, n int) timeInterval {
 			return iv
 		}
 	}
-	years := tickStep(lo/msYear, hi/msYear, n)
+	years := TickStep(lo/msYear, hi/msYear, n)
 	return timeInterval{unitYear, max(int(years), 1), math.Max(years, 1) * msYear}
 }
 
@@ -250,8 +250,8 @@ func step(t time.Time, iv timeInterval) time.Time {
 	return t.AddDate(iv.n, 0, 0)
 }
 
-// timeTicks are about n ticks in [lo, hi] (milliseconds), on the calendar's boundaries.
-func timeTicks(lo, hi float64, n int) []float64 {
+// TimeTicks are about n ticks in [lo, hi] (milliseconds), on the calendar's boundaries.
+func TimeTicks(lo, hi float64, n int) []float64 {
 	iv := pickInterval(lo, hi, n)
 	var ticks []float64
 	for t := floorTo(time.UnixMilli(int64(math.Floor(lo))).UTC(), iv); float64(t.UnixMilli()) <= hi; t = step(t, iv) {
@@ -265,9 +265,9 @@ func timeTicks(lo, hi float64, n int) []float64 {
 	return ticks
 }
 
-// formatTime is a time tick's label, by the coarsest boundary it is on, as d3's multi-scale
+// FormatTime is a time tick's label, by the coarsest boundary it is on, as d3's multi-scale
 // format writes it: a year, a month, a day, a time, or a second.
-func formatTime(ms float64) string {
+func FormatTime(ms float64) string {
 	t := time.UnixMilli(int64(ms)).UTC()
 	switch {
 	case t.Nanosecond() != 0:

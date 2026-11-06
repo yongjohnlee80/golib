@@ -37,13 +37,13 @@ type SubsetInfo struct {
 func Subset() SubsetInfo {
 	sorted := func(m map[string]bool) []string { return slices.Sorted(maps.Keys(m)) }
 	return SubsetInfo{
-		Marks:      slices.Sorted(maps.Keys(markTypes)),
+		Marks:      slices.Sorted(maps.Keys(MarkTypes)),
 		Channels:   slices.Sorted(maps.Keys(channels)),
 		FieldTypes: slices.Sorted(slices.Values(fieldTypeNames[:])),
 		ScaleTypes: sorted(scaleTypes),
 		Aggregates: slices.Sorted(maps.Keys(aggregates)),
 		Layers:     true, // parse reads a top-level layer
-		MaxRows:    maxRows, MaxBands: maxBands, MaxSeries: maxSeries,
+		MaxRows:    MaxRows, MaxBands: MaxBands, MaxSeries: MaxSeries,
 		Passed: map[string][]string{
 			"top": sorted(passedTop), "mark": sorted(passedMark), "channel": sorted(passedChannel),
 			"encoding": sorted(passedEncoding), "scale": sorted(passedScale), "axis": sorted(passedAxis),
