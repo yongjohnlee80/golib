@@ -1,0 +1,37 @@
+{
+  "Title": "Sales Revenue",
+  "Horizontal": true,
+  "XAxis": {
+    "Title": "",
+    "Categories": [
+      "jan",
+      "feb",
+      "mar"
+    ],
+    "Ranged": false,
+    "Min": 0,
+    "Max": 0
+  },
+  "YAxis": {
+    "Title": "Revenue (in $)",
+    "Categories": null,
+    "Ranged": true,
+    "Min": 4000,
+    "Max": 11000
+  },
+  "Series": [
+    {
+      "Kind": "bar",
+      "Name": "",
+      "Values": [
+        5000,
+        6000,
+        7500
+      ],
+      "Span": [
+        124,
+        146
+      ]
+    }
+  ]
+}

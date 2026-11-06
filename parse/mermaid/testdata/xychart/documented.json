@@ -1,0 +1,77 @@
+{
+  "Title": "Sales Revenue",
+  "Horizontal": false,
+  "XAxis": {
+    "Title": "",
+    "Categories": [
+      "jan",
+      "feb",
+      "mar",
+      "apr",
+      "may",
+      "jun",
+      "jul",
+      "aug",
+      "sep",
+      "oct",
+      "nov",
+      "dec"
+    ],
+    "Ranged": false,
+    "Min": 0,
+    "Max": 0
+  },
+  "YAxis": {
+    "Title": "Revenue (in $)",
+    "Categories": null,
+    "Ranged": true,
+    "Min": 4000,
+    "Max": 11000
+  },
+  "Series": [
+    {
+      "Kind": "bar",
+      "Name": "",
+      "Values": [
+        5000,
+        6000,
+        7500,
+        8200,
+        9500,
+        10500,
+        11000,
+        10200,
+        9200,
+        8500,
+        7000,
+        6000
+      ],
+      "Span": [
+        158,
+        237
+      ]
+    },
+    {
+      "Kind": "line",
+      "Name": "",
+      "Values": [
+        5000,
+        6000,
+        7500,
+        8200,
+        9500,
+        10500,
+        11000,
+        10200,
+        9200,
+        8500,
+        7000,
+        6000
+      ],
+      "Span": [
+        242,
+        322
+      ]
+    }
+  ]
+}
