@@ -93,6 +93,9 @@ type text struct {
 
 func newDrawing(w, h int) *Drawing { return &Drawing{W: w, H: h, cells: map[[2]int]drawn{}} }
 
+// Size is the drawing's size in cells: what the page sets aside, and pans when wider.
+func (d *Drawing) Size() tui.Size { return tui.Size{W: d.W, H: d.H} }
+
 func (d *Drawing) put(x, y int, r rune, role Role, series int) {
 	if x < 0 || y < 0 || x >= d.W || y >= d.H {
 		return

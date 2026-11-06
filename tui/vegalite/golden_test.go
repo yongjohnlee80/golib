@@ -59,7 +59,7 @@ func TestBrailleGoldens(t *testing.T) {
 	threshold.Layers = append(threshold.Layers, pv.Layer{Mark: pv.MarkRule, Rule: &pv.Rule{Values: []pv.Pos{{Num: 6}}}})
 	for name, ch := range map[string]*pv.Chart{"braille-two-lines": two, "braille-stacked-area": stacked, "braille-threshold": threshold} {
 		t.Run(name, func(t *testing.T) {
-			d, ok := layBraille(ch, 48, widths{})
+			d, ok := lay(ch, 48)
 			if !ok {
 				t.Fatal("not laid")
 			}

@@ -1,6 +1,8 @@
 package vegalite
 
 import (
+	"context"
+	"errors"
 	"strings"
 	"testing"
 
@@ -24,6 +26,12 @@ func lineChart(mark pv.MarkKind, hi float64, data ...pv.Datum) *pv.Chart {
 
 func at(x, v float64) pv.Datum { return pv.Datum{X: pv.Pos{Num: x}, V1: v} }
 
+// lay is the Braille tier on ch in a room of room cells: its drawing, and whether it drew.
+func lay(ch *pv.Chart, room int) (*Drawing, bool) {
+	d, err := layBraille(context.Background(), ch, widths{}, room)
+	return d, err == nil
+}
+
 // marks are the drawing's mark cells, by row and column within the drawing.
 func marks(d *Drawing) map[[2]int]drawn {
 	out := map[[2]int]drawn{}
@@ -39,7 +47,7 @@ func marks(d *Drawing) map[[2]int]drawn {
 // bottom row, its rightmost on the top, and every column between has a mark; the frame labels the
 // y axis's ends.
 func TestARisingLineClimbsAcrossThePlot(t *testing.T) {
-	d, ok := layBraille(lineChart(pv.MarkLine, 3, at(0, 0), at(1, 1), at(2, 2), at(3, 3)), 30, widths{})
+	d, ok := lay(lineChart(pv.MarkLine, 3, at(0, 0), at(1, 1), at(2, 2), at(3, 3)), 30)
 	if !ok {
 		t.Fatal("a 30-column room has no plot")
 	}
@@ -83,7 +91,7 @@ func minRow(ms map[[2]int]drawn, x int) int {
 // An area at the axis's top fills the whole plot (every cell ⣿); one at half fills its lower half
 // and leaves the upper blank; a value past the domain is drawn at its end, never outside the plot.
 func TestAnAreaFillsDownToItsBaseline(t *testing.T) {
-	full, _ := layBraille(lineChart(pv.MarkArea, 4, at(0, 4), at(4, 4)), 20, widths{})
+	full, _ := lay(lineChart(pv.MarkArea, 4, at(0, 4), at(4, 4)), 20)
 	f, _ := layFrame(lineChart(pv.MarkArea, 4), 20, 0, widths{})
 	p := f.plot
 	for y := p.Y; y < p.Y+p.H; y++ {
@@ -93,14 +101,14 @@ func TestAnAreaFillsDownToItsBaseline(t *testing.T) {
 			}
 		}
 	}
-	half, _ := layBraille(lineChart(pv.MarkArea, 4, at(0, 2), at(4, 2)), 20, widths{})
+	half, _ := lay(lineChart(pv.MarkArea, 4, at(0, 2), at(4, 2)), 20)
 	if c, ok := half.cells[[2]int{p.X, p.Y}]; ok && c.role == RoleMark {
 		t.Errorf("a half area marks the plot's top row:\n%s", strings.Join(half.Rows(), "\n"))
 	}
 	if c := half.cells[[2]int{p.X, p.Y + p.H - 1}]; c.r != '⣿' {
 		t.Errorf("a half area leaves its bottom row %q, want ⣿", c.r)
 	}
-	past, _ := layBraille(lineChart(pv.MarkArea, 4, at(0, 9), at(4, 9)), 20, widths{})
+	past, _ := lay(lineChart(pv.MarkArea, 4, at(0, 9), at(4, 9)), 20)
 	for at := range marks(past) {
 		if at[1] < p.Y {
 			t.Fatalf("a value past the domain drew above the plot, at %v", at)
@@ -119,7 +127,7 @@ func TestAStackedAreaFillsFromItsLowerEdge(t *testing.T) {
 			{X: pv.Pos{Num: 0}, Series: "high", V0: 2, V1: 4}, {X: pv.Pos{Num: 1}, Series: "high", V0: 2, V1: 4},
 		}}},
 	}
-	d, ok := layBraille(ch, 20, widths{})
+	d, ok := lay(ch, 20)
 	if !ok {
 		t.Fatal("no plot")
 	}
@@ -143,7 +151,7 @@ func TestARuleIsAWholeCellLineOverTheDots(t *testing.T) {
 	ch.Layers = append(ch.Layers,
 		pv.Layer{Mark: pv.MarkRule, Rule: &pv.Rule{Values: []pv.Pos{{Num: 2}}}},
 		pv.Layer{Mark: pv.MarkRule, Rule: &pv.Rule{OnX: true, Values: []pv.Pos{{Num: 2}}}})
-	d, _ := layBraille(ch, 24, widths{})
+	d, _ := lay(ch, 24)
 	f, _ := layFrame(ch, 24, 0, widths{})
 	p := f.plot
 	row, col := -1, -1
@@ -173,7 +181,7 @@ func TestAPointIsItsDotAFilledOneFour(t *testing.T) {
 	filled := lineChart(pv.MarkPoint, 4, at(2, 2))
 	filled.Layers[0].Filled = true
 	count := func(ch *pv.Chart) int {
-		d, _ := layBraille(ch, 20, widths{})
+		d, _ := lay(ch, 20)
 		n := 0
 		for _, c := range marks(d) {
 			for b := c.r - brailleBase; b > 0; b &= b - 1 {
@@ -193,10 +201,13 @@ func TestAPointIsItsDotAFilledOneFour(t *testing.T) {
 // A room too narrow for a plot of 8 columns, or a layer this tier doesn't draw (a bar), is not
 // laid: the host shows the table or the notice instead.
 func TestBrailleRefusesANarrowRoomAndABar(t *testing.T) {
-	if _, ok := layBraille(lineChart(pv.MarkLine, 3, at(0, 0)), 9, widths{}); ok {
-		t.Error("a 9-column room was laid")
-	}
-	if _, ok := layBraille(lineChart(pv.MarkBar, 3, at(0, 0)), 40, widths{}); ok {
-		t.Error("a bar layer was laid as Braille")
+	for what, ch := range map[string]*pv.Chart{"a 9-column room": lineChart(pv.MarkLine, 3, at(0, 0)), "a bar layer": lineChart(pv.MarkBar, 3, at(0, 0))} {
+		room := 40
+		if what == "a 9-column room" {
+			room = 9
+		}
+		if _, err := layBraille(context.Background(), ch, widths{}, room); !errors.Is(err, pv.ErrUnsupported) {
+			t.Errorf("%s: %v, want ErrUnsupported (Lay tries the next tier)", what, err)
+		}
 	}
 }

@@ -1,6 +1,8 @@
 package vegalite
 
 import (
+	"context"
+	"fmt"
 	"math"
 	"slices"
 
@@ -22,21 +24,24 @@ func brailleMark(k pv.MarkKind) bool {
 	return false
 }
 
-// layBraille lays ch, every layer of it a line, point, area or rule, in a room width cells wide.
-// ok is false when the room is too narrow for a plot (the frame's) or a layer is another mark (a
-// bar: the bar tier's; a host chooses).
-func layBraille(ch *pv.Chart, width int, m Measurer) (*Drawing, bool) {
+// layBraille is the Braille tier (Lay tries it after the bars): ch, every layer of it a line, point,
+// area or rule, in a room cells wide. It refuses with pv.ErrUnsupported a layer of another mark (a
+// bar: the bar tier's) and a room too narrow for a plot (the frame's), so Lay tries the next tier.
+func layBraille(ctx context.Context, ch *pv.Chart, m Measurer, room int) (*Drawing, error) {
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
 	for _, l := range ch.Layers {
 		if !brailleMark(l.Mark) {
-			return nil, false
+			return nil, fmt.Errorf("%w: a %v layer is not the Braille tier's", pv.ErrUnsupported, l.Mark)
 		}
 	}
-	f, ok := layFrame(ch, width, 0, m)
+	f, ok := layFrame(ch, room, 0, m)
 	if !ok {
-		return nil, false
+		return nil, fmt.Errorf("%w: a room of %d cells leaves no plot", pv.ErrUnsupported, room)
 	}
 	f.drawBraille(ch.Layers)
-	return f.d, true
+	return f.d, nil
 }
 
 // drawBraille plots layers into the frame's plot, in paint order.
