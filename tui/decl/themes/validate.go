@@ -18,6 +18,12 @@ type Role struct{ Key, Description string }
 // The returned slice is a copy; editing it never changes validation's vocabulary.
 func Schema() []Role { return slices.Clone(roles) }
 
+// optionalRoles are colour keys a theme MAY write; absent, the toolkit falls back to a role of its
+// own, named in each one's description. Validate accepts them; Values exposes them when written.
+var optionalRoles = []Role{
+	{"document.accent", "the document page's accent (inline code, headings' and callouts' accent tones, the diagram accents); menu.accent when a theme sets none"},
+}
+
 var roles = []Role{
 	{"app.window", "application chrome background"},
 	{"app.windowText", "application chrome text"},
@@ -112,8 +118,11 @@ func Validate(file string, src []byte) (map[string]string, []Diagnostic) {
 	for _, c := range n.Children {
 		add(c.Pos, c.Type, "child objects are not allowed; use grouped colour properties")
 	}
-	known := make(map[string]bool, len(roles))
+	known := make(map[string]bool, len(roles)+len(optionalRoles))
 	for _, r := range roles {
+		known[r.Key] = true
+	}
+	for _, r := range optionalRoles {
 		known[r.Key] = true
 	}
 	seen := make(map[string]bool, len(roles))

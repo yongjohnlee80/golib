@@ -3,12 +3,13 @@ package style
 import "testing"
 
 // TestThemeDerivationDefaults pins theme DERIVATION:
-// NewTheme(ANSI(4)) yields the documented defaults for all 20 slots (11
-// base + 9 derived, incl. TokenBorder/TokenBorderFocused/
-// TokenTextOnSecondary), and every default token resolves to kindANSI or
-// kindDefault (G7 — no truecolor in the default theme). Token resolution
-// returns a Color only — the API cannot attach SGR attributes on a token's
-// behalf (TokenTextMuted is color-only, by normative rule).
+// NewTheme(ANSI(4)) yields the documented defaults for all 21 slots (11
+// base + 10 derived, incl. TokenBorder/TokenBorderFocused/
+// TokenAccentDocument/TokenTextOnSecondary), and every default token
+// resolves to kindANSI or kindDefault (G7 — no truecolor in the default
+// theme). Token resolution returns a Color only — the API cannot attach
+// SGR attributes on a token's behalf (TokenTextMuted is color-only, by
+// normative rule).
 func TestThemeDerivationDefaults(t *testing.T) {
 	th := NewTheme(ANSI(4))
 	want := map[Token]Color{
@@ -32,6 +33,7 @@ func TestThemeDerivationDefaults(t *testing.T) {
 		TokenTextOnWarning:   Default(), // ← Background
 		TokenBorder:          Default(), // ← Foreground
 		TokenBorderFocused:   ANSI(4),   // ← Accent
+		TokenAccentDocument:  ANSI(4),   // ← Accent
 	}
 	if len(want) != int(numTokens) {
 		t.Fatalf("expectation table has %d slots, want %d — update alongside the token set", len(want), numTokens)
@@ -75,6 +77,7 @@ func TestThemeDerivationCascade(t *testing.T) {
 		{"Panel follows Surface", TokenPanel, ANSI(0)},
 		{"Boost follows Surface", TokenBoost, ANSI(0)},
 		{"BorderFocused follows Accent", TokenBorderFocused, ANSI(5)},
+		{"AccentDocument follows Accent", TokenAccentDocument, ANSI(5)},
 		{"TextMuted follows Foreground", TokenTextMuted, ANSI(7)},
 		{"Border follows Foreground", TokenBorder, ANSI(7)},
 		{"Secondary still follows Primary", TokenSecondary, ANSI(4)},

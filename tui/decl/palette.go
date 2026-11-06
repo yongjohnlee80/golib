@@ -69,6 +69,7 @@ const (
 	RoleInactiveHighlightedText = roleInactiveHighlightText
 	RoleMid                     = roleMid
 	RoleLight                   = roleLight
+	RoleDocumentAccent          = roleDocumentAccent
 )
 
 // Palette is the effective palette a node wears — its own roles over its
@@ -103,6 +104,10 @@ const (
 	// mid and light frame a pane: mid without the keyboard, light with it.
 	roleMid   Role = "mid"
 	roleLight Role = "light"
+	// documentAccent is the accent a document page wears on its own surface — a theme's
+	// document.accent — where the plain accent is the chrome's (a menu's access keys). A layout
+	// that sets none leaves it unset, and the page's accent token derives from the accent's own.
+	roleDocumentAccent Role = "documentAccent"
 )
 
 // SyntaxStyles are the syntax roles the root Window's palette carries now, as the looks a

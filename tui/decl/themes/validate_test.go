@@ -14,8 +14,29 @@ func TestValidateBuiltInsAndEveryRequiredRole(t *testing.T) {
 			t.Fatal(err)
 		}
 		v, ds := Validate(name+".qml", src)
-		if len(ds) != 0 || len(v) != len(Schema()) {
+		if len(ds) != 0 {
 			t.Fatalf("%s: %v (%d roles)", name, ds, len(v))
+		}
+		// every required role present, and every key beyond the schema one of the optional ones
+		// (a theme may set document.accent: retro does)
+		if len(v) < len(Schema()) {
+			t.Fatalf("%s: %d roles, want at least the schema's %d", name, len(v), len(Schema()))
+		}
+		for key := range v {
+			known := false
+			for _, r := range Schema() {
+				if r.Key == key {
+					known = true
+				}
+			}
+			for _, r := range optionalRoles {
+				if r.Key == key {
+					known = true
+				}
+			}
+			if !known {
+				t.Errorf("%s: %s is neither a required nor an optional role", name, key)
+			}
 		}
 	}
 	src, _ := fs.ReadFile(FS(), "sepia.qml")

@@ -29,11 +29,14 @@ Theme {
         highlight: "#00aa00"; highlightedText: "#000000"
         accent: "#aa0000"
     }
-    // A document's surface: the panes' frames and what is in them.
+    // A document's surface: the panes' frames and what is in them. The document's accent is
+    // CGA's light red, the alert's: it reads on the navy page, where menu.accent's dark red
+    // (#aa0000, right on the grey chrome) sits under the 3:1 floor.
     document {
         window: "#000070"; windowText: "#aaaaaa"
         highlight: "#ffffff"; highlightedText: "#000000"
         base: "#000070"; text: "#ffff55"
+        accent: "#ff5555"
         selection: "#00aaaa"; selectedText: "#000000"
         cursor: "#ffff55"; lineNumber: "#5555aa"
     }

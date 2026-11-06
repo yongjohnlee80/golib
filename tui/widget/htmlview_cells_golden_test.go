@@ -72,7 +72,7 @@ var tokenNames = map[style.Token]string{
 	style.TokenPrimary: "primary", style.TokenSecondary: "secondary", style.TokenForeground: "fg",
 	style.TokenBackground: "background", style.TokenSurface: "surface", style.TokenPanel: "panel",
 	style.TokenWarning: "warning", style.TokenError: "error", style.TokenSuccess: "success",
-	style.TokenAccent: "accent", style.TokenBoost: "boost", style.TokenTextMuted: "muted",
+	style.TokenAccent: "accent", style.TokenAccentDocument: "accent-document", style.TokenBoost: "boost", style.TokenTextMuted: "muted",
 	style.TokenTextOnWarning: "on-warning", style.TokenBorder: "border",
 }
 
