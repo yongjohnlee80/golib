@@ -2,10 +2,10 @@ A crowded corner
 
      ┌────────────────────────────────────┬────────────────────────────────────┐
      │             Quick wins             │ Major projects worth planning for  │
-     │                                    │                     ●¹ ● B ● C     │
+     │                                    │                     ● ¹● B ● C     │
 High │                                    │                                    │
      │                                    │                                    │
-     │                                    │                                    │
+     │                                    │Middle                              │
      ├────────────────────────────────────●────────────────────────────────────┤
      │                                    │                                    │
      │                                    │                                    │
@@ -16,4 +16,3 @@ High │                                    │                                 
        Little effort required of the team    A great deal of effort required
 
 ¹ A point with a very long label indeed, longer t…
-² Middle

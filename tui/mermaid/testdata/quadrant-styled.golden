@@ -5,15 +5,12 @@ Reach and engagement of campaigns
                 │                     │                     │
 High Engagement │                     │                     │
                 │                     │                     │
-                │                     │                     │
+                │       Campaign F    │                     │
                 ├─────────────────●───┼─────────────────────┤
-                │     Re-evaluate     ●¹  May be improved   │
-                │                     │   ● Campaign D      │
+                │     Re-evaluate     ●   May be improved   │
+                │           Campaign E│   ● Campaign D      │
  Low Engagement │                     │       ● Campaign C  │
                 │                     │ Campaign B ●        │
                 │                     │     Campaign A ●    │
                 └─────────────────────┴─────────────────────┘
                        Low Reach            High Reach
-
-¹ Campaign E
-² Campaign F
