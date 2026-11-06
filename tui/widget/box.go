@@ -94,6 +94,7 @@ type Box struct {
 
 	title       uiText
 	titleAlign  style.Align
+	titleElide  Elide // where a title too wide for its row loses text: the end (ElideRight) unless set
 	status      string
 	statusAlign style.Align
 
@@ -137,6 +138,7 @@ var (
 type boxConfig struct {
 	title       string
 	titleAlign  style.Align
+	titleElide  Elide
 	status      string
 	statusAlign style.Align
 	border      style.BorderStyle
@@ -192,6 +194,9 @@ func WithFocusedStyle(s style.Style) BoxOption {
 	return func(c *boxConfig) { c.focusedSt = s; c.focusedSet = true }
 }
 
+// WithTitleElide sets where a title too wide for its row loses text (SetTitleElide).
+func WithTitleElide(e Elide) BoxOption { return func(c *boxConfig) { c.titleElide = e } }
+
 // WithTitleSlot puts c on the box's title row (SetTitleSlot).
 func WithTitleSlot(c tui.Component) BoxOption { return func(cfg *boxConfig) { cfg.slot = c } }
 
@@ -212,6 +217,7 @@ func NewBox(child tui.Component, opts ...BoxOption) *Box {
 		child:       child,
 		title:       plainText(cfg.title),
 		titleAlign:  cfg.titleAlign,
+		titleElide:  cfg.titleElide,
 		status:      cfg.status,
 		statusAlign: cfg.statusAlign,
 		base:        boxBase(cfg.st, cfg.border, cfg.borderSet),
@@ -282,6 +288,16 @@ func (x *Box) SetTitleSlot(c tui.Component) {
 
 // TitleSlot is the control on the title row, nil for none.
 func (x *Box) TitleSlot() tui.Component { return x.slot }
+
+// SetTitleElide sets where a title too wide for its row loses text, as Qt's Text.elide: the end
+// (ElideRight, the default), the start (ElideLeft: a path's tail, with the badges a host writes
+// after it, stays whole), the middle, or a path's start at a "/" (ElidePath). Measured in cells by
+// grapheme, as every border text is: a wide grapheme is never split, and "…" marks the cut. A title
+// that fits is drawn as it is. Repaint only.
+func (x *Box) SetTitleElide(e Elide) {
+	x.titleElide = e
+	x.MarkDirty()
+}
 
 // SetStatus replaces the bottom-border status line. Repaint only.
 func (x *Box) SetStatus(s string) {
@@ -554,7 +570,13 @@ func (x *Box) Render(s tui.Surface) {
 		sl.SetStyle(titleSt.Bold(false).Inherit(fill))
 	}
 	if title := x.title.inLanguage(&x.Base); bt == 1 && title != "" && tw > 0 {
-		x.renderBorderText(s, " "+title+" ", x.titleAlign, titleSt.Inherit(fill), tx, by, tw)
+		text := " " + title + " "
+		if x.titleElide != ElideRight && s.StringWidth(text) > tw {
+			// cut where the box was asked, inside the title's padding (the end keeps truncate's
+			// look, unchanged)
+			text = " " + elide(title, max(tw-2, 1), x.titleElide, s.StringWidth) + " "
+		}
+		x.renderBorderText(s, text, x.titleAlign, titleSt.Inherit(fill), tx, by, tw)
 	}
 	if bb == 1 && x.status != "" && availW > 0 {
 		x.renderBorderText(s, " "+x.status+" ", x.statusAlign, statusSt.Inherit(fill), bx+1, by+bh-1, availW)
