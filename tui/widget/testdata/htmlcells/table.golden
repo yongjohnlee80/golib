@@ -5,7 +5,7 @@ width 40
 > | kiwi | 12 | — |
 
 "┌───────┬─────┬──────┐"
-    0-21 fg=border bg=background
+    0-21 fg=muted bg=background
 "│ Name  │ Qty │ Note │"
     0-0 fg=border bg=background
     1-1 fg=muted bg=background
@@ -21,7 +21,7 @@ width 40
     20-20 fg=muted bg=background
     21-21 fg=border bg=background
 "├───────┼─────┼──────┤"
-    0-21 fg=border bg=background
+    0-21 fg=muted bg=background
 "│ apple │   3 │ ripe │"
     0-0 fg=border bg=background
     1-1 fg=muted bg=background
@@ -51,4 +51,4 @@ width 40
     18-20 fg=muted bg=background
     21-21 fg=border bg=background
 "└───────┴─────┴──────┘"
-    0-21 fg=border bg=background
+    0-21 fg=muted bg=background

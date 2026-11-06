@@ -527,7 +527,7 @@ func (c *cellHTML) blockLines(bi int, b *hblock, cols []int) [][]lineCluster {
 	}
 	edge := func(s string, at DocPos) {
 		for g := range tui.Graphemes(s) {
-			line = append(line, lineCluster{text: g, pos: at, end: at, deco: true})
+			line = append(line, lineCluster{text: g, pos: at, end: at, deco: true, fg: codeBoxTone})
 		}
 	}
 	boxed := b.kind == hRow && cols != nil
@@ -962,7 +962,7 @@ func (c *cellHTML) styleOf(r *hrow, k hcl) style.Style {
 		case k.fg != nil:
 			deco = style.PageText().Foreground(k.fg)
 		case strings.ContainsAny(k.text, "│┌┬┐├┼┤└┴┘─"):
-			deco = style.PageText().Foreground(style.TokenBorder)
+			deco = style.PageText().Foreground(codeBoxTone) // a table's leftover glyphs: its box reads like the code box's
 		}
 		return deco
 	}
