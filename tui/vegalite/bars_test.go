@@ -165,3 +165,30 @@ func TestANegativeBarRunsBackFromZero(t *testing.T) {
 		t.Errorf("the half cell's colours: %q; want the page over the bar (.a)", row)
 	}
 }
+
+// Horizontal bars carry their values on the right, by row: each bar's own, a stack's total on its
+// band's row, as many decimals as the value has (up to two), thousands grouped, a minus sign.
+func TestBarsCarryTheirValues(t *testing.T) {
+	band := plotOf(tui.Rect{W: 20, H: 4}, []string{"x", "y"}, 2, 0, 10, true).band
+	plain := across([]string{"x", "y"}, 6.25, 1234)
+	if got := fmt.Sprint(barValues(plain, nil, band)); got != "[{0 6.25} {2 1,234}]" {
+		t.Errorf("plain: %s", got)
+	}
+	stack := &pv.Layer{Mark: pv.MarkBar, Horizontal: true, Stacked: true, Data: []pv.Datum{
+		{Y: pv.Pos{Str: "x"}, Series: "a", V0: 0, V1: 3.1}, {Y: pv.Pos{Str: "x"}, Series: "b", V0: 3.1, V1: 5.3},
+		{Y: pv.Pos{Str: "y"}, Series: "a", V0: 0, V1: -2}, {Y: pv.Pos{Str: "y"}, Series: "b", V0: -2, V1: -2.5},
+	}}
+	if got := fmt.Sprint(barValues(stack, []string{"a", "b"}, band)); got != "[{0 5.3} {2 −2.5}]" {
+		t.Errorf("stacked: %s", got)
+	}
+	side := &pv.Layer{Mark: pv.MarkBar, Horizontal: true, Data: []pv.Datum{
+		{Y: pv.Pos{Str: "x"}, Series: "a", V1: 1}, {Y: pv.Pos{Str: "x"}, Series: "b", V1: 2},
+	}}
+	if got := fmt.Sprint(barValues(side, []string{"a", "b"}, band)); got != "[{0 1} {1 2}]" {
+		t.Errorf("side by side: %s", got)
+	}
+	stack.Normalized = true
+	if got := barValues(stack, []string{"a", "b"}, band); got != nil {
+		t.Errorf("normalized: %v; want none", got)
+	}
+}

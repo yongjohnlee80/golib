@@ -164,3 +164,56 @@ func floorDiv(a, b int) int {
 	}
 	return q
 }
+
+// barValue is a value label in the gutter right of horizontal bars: its row in the plot (from the
+// plot's top) and its text.
+type barValue struct {
+	row int
+	s   string
+}
+
+// barValues are the labels for ly's horizontal bars, by row: a stack's total on its band's row,
+// each series' own value on its own row when not stacked; none for a normalized stack (every total
+// is the whole). A value shows as many decimals as it has, up to two, its thousands grouped.
+func barValues(ly *pv.Layer, series []string, band func(string) (int, int, bool)) []barValue {
+	if !ly.Horizontal || ly.Normalized {
+		return nil
+	}
+	rank := map[string]int{}
+	for i, s := range series {
+		rank[s] = i
+	}
+	n := max(len(series), 1)
+	whole := ly.Stacked || len(series) <= 1
+	sum := map[int]float64{}
+	var rows []int
+	for _, d := range ly.Data {
+		first, size, ok := band(d.Y.Str)
+		if !ok {
+			continue
+		}
+		lo, _ := barThickness(first, size, rank[d.Series], n, whole)
+		if _, seen := sum[lo]; !seen {
+			rows = append(rows, lo)
+		}
+		sum[lo] += d.V1 - d.V0
+	}
+	slices.Sort(rows)
+	out := make([]barValue, 0, len(rows))
+	for _, r := range rows {
+		out = append(out, barValue{r, barNumber(sum[r])})
+	}
+	return out
+}
+
+// barNumber is v with as many decimals as it has, up to two, as an axis groups its thousands.
+func barNumber(v float64) string {
+	step := 1.0
+	for range 2 {
+		if math.Abs(v/step-math.Round(v/step)) < 1e-9 {
+			break
+		}
+		step /= 10
+	}
+	return pv.FormatNumber(math.Round(v/step)*step, step)
+}
