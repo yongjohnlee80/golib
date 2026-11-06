@@ -46,7 +46,7 @@ func TestAStackedBarIsPlottedInDomainThenSeriesOrder(t *testing.T) {
 	if c.Y.Lo != 0 || c.Y.Hi != 6 || c.Y.Discrete {
 		t.Errorf("y %v..%v; want 0..6, the tallest pile", c.Y.Lo, c.Y.Hi)
 	}
-	if c.Y.Title != "Sum of v" || c.X.Title != "c" || c.ColorLegend.Off || c.ColorLegend.Title != "s" {
+	if c.Y.Title != "Sum of v" || c.X.Title != "c" || c.ColorLegend.Off || c.ColorLegend.Title != "s" || c.Layers[0].Title != "Sum of v" {
 		t.Errorf("titles: x %q, y %q, legend %+v; want c, Sum of v, and the legend s", c.X.Title, c.Y.Title, c.ColorLegend)
 	}
 }
@@ -93,7 +93,7 @@ func TestARuleIsALayerOfItsValues(t *testing.T) {
 	c := plot(t, `{"data":{"values":[{"x":1,"y":1,"at":2},{"x":3,"y":2,"at":2},{"x":5,"y":3,"at":4}]},
 		"layer":[{"mark":"point","encoding":{"x":{"field":"x","type":"quantitative"},"y":{"field":"y","type":"quantitative"}}},
 		{"mark":"rule","encoding":{"x":{"field":"at","type":"quantitative"}}}]}`)
-	if len(c.Layers) != 2 || c.Layers[1].Rule == nil || !c.Layers[1].Rule.OnX || c.Layers[1].Data != nil {
+	if len(c.Layers) != 2 || c.Layers[1].Rule == nil || !c.Layers[1].Rule.OnX || c.Layers[1].Data != nil || c.Layers[1].Title != "at" {
 		t.Fatalf("layers %+v; want a point layer, then a rule on x", c.Layers)
 	}
 	var at []float64
@@ -117,5 +117,33 @@ func TestPlotRefusesWhatItDoesNotDraw(t *testing.T) {
 	cancel()
 	if _, err := Plot(ctx, `{"data":{"values":[{"x":1,"y":1}]},"mark":"point","encoding":{"x":{"field":"x","type":"quantitative"},"y":{"field":"y","type":"quantitative"}}}`); !errors.Is(err, context.Canceled) {
 		t.Errorf("a cancelled context: %v; want context.Canceled", err)
+	}
+}
+
+// A horizontal bar's dimension is y: its data in the y axis's order (the first category on top),
+// each category's series in Series' order.
+func TestAHorizontalBarsDataIsInItsYAxissOrder(t *testing.T) {
+	c := plot(t, `{"data":{"values":[{"c":"b","s":"x","v":1},{"c":"a","s":"y","v":2},{"c":"a","s":"x","v":3},{"c":"b","s":"y","v":4}]},
+		"mark":"bar","encoding":{"y":{"field":"c","type":"nominal"},"x":{"field":"v","type":"quantitative"},"color":{"field":"s","type":"nominal"}}}`)
+	l := c.Layers[0]
+	var got []string
+	for _, d := range l.Data {
+		got = append(got, d.Y.Str+d.Series)
+	}
+	if !l.Horizontal || !slices.Equal(c.Y.Domain, []string{"a", "b"}) || !slices.Equal(got, []string{"ax", "ay", "bx", "by"}) {
+		t.Errorf("horizontal %v, y %v, data %v; want a horizontal bar, a then b, each x then y", l.Horizontal, c.Y.Domain, got)
+	}
+}
+
+// Plot leaves a continuous axis's extent as the data's: nicing is the renderer's, to its own
+// ticks (NiceDomain), so a window and a terminal can round it differently.
+func TestPlotLeavesNicingToTheRenderer(t *testing.T) {
+	c := plot(t, `{"data":{"values":[{"x":3,"y":37},{"x":9,"y":12}]},
+		"mark":"point","encoding":{"x":{"field":"x","type":"quantitative","scale":{"zero":false}},"y":{"field":"y","type":"quantitative"}}}`)
+	if c.Y.Lo != 0 || c.Y.Hi != 37 || !c.Y.Nice || c.X.Lo != 3 || c.X.Hi != 9 {
+		t.Errorf("y %v..%v (nice %v), x %v..%v; want y 0..37 to be niced by its renderer, x the data's 3..9", c.Y.Lo, c.Y.Hi, c.Y.Nice, c.X.Lo, c.X.Hi)
+	}
+	if lo, hi := NiceDomain(c.Y.Lo, c.Y.Hi, 5); lo != 0 || hi != 40 {
+		t.Errorf("NiceDomain(0, 37, 5) = %v..%v; want 0..40", lo, hi)
 	}
 }
