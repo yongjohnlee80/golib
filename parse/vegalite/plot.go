@@ -74,7 +74,11 @@ type Axis struct {
 
 // Layer is one mark layer over the chart's scales, or a rule (Rule).
 type Layer struct {
-	Mark        MarkKind
+	Mark MarkKind
+	// Title is the layer's own title on its measure (y, or x for a horizontal bar; a rule's on its
+	// one channel): the channel's title, else Vega-Lite's ("Sum of v"); the axis's is every
+	// layer's joined.
+	Title       string
 	Point       bool            // a line's points drawn too
 	Filled      bool            // a point filled, else a ring
 	Color       *csscolor.Color // every mark this colour; nil: by series
@@ -131,6 +135,7 @@ func (l *Layered) Chart() *Chart {
 			c.Layers = append(c.Layers, l.layer(o, c))
 		case *RulePlan:
 			ly := markOf(o.Layer)
+			ly.Title = AxisTitle(o.Channel)
 			ly.Rule = &Rule{OnX: o.OnX, Values: slices.Clone(o.Vals)}
 			c.Layers = append(c.Layers, ly)
 		}
@@ -165,6 +170,7 @@ func markOf(s *LayerSpec) Layer {
 func (l *Layered) layer(p *Plan, c *Chart) Layer {
 	ly := markOf(p.Layer)
 	ly.Faded, ly.Horizontal, ly.Stacked, ly.Normalized = p.Faded(), p.DimY, p.Stacked, p.Normalize
+	ly.Title = AxisTitle(p.Value())
 	dimAxis, dim := c.X, func(d Datum) Pos { return d.X }
 	if p.DimY {
 		dimAxis, dim = c.Y, func(d Datum) Pos { return d.Y }
