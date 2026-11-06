@@ -127,6 +127,18 @@ func TestAChartsSeriesReadInEveryTheme(t *testing.T) {
 		th, page := themeOf(t, name)
 		fmt.Fprintf(&table, "%s\n", name)
 		var golden strings.Builder
+		var colours []string
+		for i, spec := range th.Series {
+			if c, ok := spec.(style.Color); ok {
+				if r, g, b, rgb := c.RGBValues(); rgb {
+					colours = append(colours, fmt.Sprintf("%d %02x%02x%02x", i, r, g, b))
+				}
+			}
+		}
+		if len(colours) == 0 { // no code colours to give: the page's tokens, the terminal's own
+			fmt.Fprintf(&table, "  the terminal's own colours (the page's tokens)\n")
+		}
+		fmt.Fprintf(&golden, "series: %s\n", strings.Join(colours, ", "))
 		for _, c := range tierCharts {
 			d, err := tuivegalite.Lay(context.Background(), c.src, measure{}, 60)
 			if err != nil {

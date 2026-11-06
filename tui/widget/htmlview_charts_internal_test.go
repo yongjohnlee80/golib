@@ -21,7 +21,10 @@ func TestAVegaLitePreIsDrawnAsAChart(t *testing.T) {
 			pic, n = p, n+1
 		}
 	}
-	if n == 0 || n != pic.Size().H {
+	if n == 0 {
+		t.Fatalf("no row of the layout holds a chart: %v", c.rowTexts())
+	}
+	if n != pic.Size().H {
 		t.Fatalf("%d rows of a chart, its drawing %+v; want a row of the layout a row of it", n, pic.Size())
 	}
 	text := strings.Join(c.rowTexts(), "\n")
