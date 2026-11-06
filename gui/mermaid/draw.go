@@ -32,6 +32,9 @@ func (l *Laid) Paint(c gui.Canvas) {
 	for _, s := range l.sectors {
 		l.sector(c, s)
 	}
+	for _, b := range l.bands {
+		c.FillPath(bandPath(b), gui.Solid(b.fill))
+	}
 	for _, g := range l.group {
 		l.frame(c, g)
 	}
@@ -536,4 +539,15 @@ func dashes(c gui.Drawer, pts []gui.Point, width float32, b gui.Brush, dash floa
 		}
 	}
 	c.StrokePath(p, width, b)
+}
+
+// bandPath is a sankey flow b as a path: its top edge an S-curve from its source to its target, down
+// its target's side, its bottom edge back, and closed up its source's side.
+func bandPath(b laidBand) *gui.Path {
+	mx := (b.x0 + b.x1) / 2
+	return new(gui.Path).MoveTo(gui.Pt(b.x0, b.y0a)).
+		CubeTo(gui.Pt(mx, b.y0a), gui.Pt(mx, b.y1a), gui.Pt(b.x1, b.y1a)).
+		LineTo(gui.Pt(b.x1, b.y1b)).
+		CubeTo(gui.Pt(mx, b.y1b), gui.Pt(mx, b.y0b), gui.Pt(b.x0, b.y0b)).
+		Close()
 }
