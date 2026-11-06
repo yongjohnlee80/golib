@@ -133,15 +133,17 @@ func TestAVerticalBarRisesInEighths(t *testing.T) {
 	}
 }
 
-// Series not stacked stand side by side within their band, in series order.
-func TestSeriesNotStackedStandSideBySide(t *testing.T) {
-	rect := tui.Rect{W: 5, H: 2}
+// Series not stacked overlap on their band, as Vega-Lite overlays them: the longest drawn first and
+// the shorter in front, so each shows its own length: b's 1 in front of a's 2, whatever the data's
+// order.
+func TestSeriesNotStackedOverlapShorterInFront(t *testing.T) {
+	rect := tui.Rect{W: 4, H: 2}
 	ly := &pv.Layer{Mark: pv.MarkBar, Data: []pv.Datum{
 		{X: pv.Pos{Str: "p"}, Series: "b", V1: 1},
 		{X: pv.Pos{Str: "p"}, Series: "a", V1: 2},
 	}}
-	_, colours := drawn(rect, layBars(ly, []string{"a", "b"}, plotOf(rect, []string{"p"}, 5, 0, 2, false)))
-	if want := "aa aa\naa aa bb bb\n"; colours != want {
+	_, colours := drawn(rect, layBars(ly, []string{"a", "b"}, plotOf(rect, []string{"p"}, 4, 0, 2, false)))
+	if want := "aa aa aa\nbb bb bb\n"; colours != want {
 		t.Errorf("colours %q; want %q", colours, want)
 	}
 }
@@ -166,29 +168,30 @@ func TestANegativeBarRunsBackFromZero(t *testing.T) {
 	}
 }
 
-// Horizontal bars carry their values on the right, by row: each bar's own, a stack's total on its
-// band's row, as many decimals as the value has (up to two), thousands grouped, a minus sign.
+// Horizontal bars carry their values on the right, on each band's first row: a bar's own, a stack's
+// total, overlaid bars' each in series order; as many decimals as a value has (up to two), thousands
+// grouped, a minus sign.
 func TestBarsCarryTheirValues(t *testing.T) {
 	band := plotOf(tui.Rect{W: 20, H: 4}, []string{"x", "y"}, 2, 0, 10, true).band
 	plain := across([]string{"x", "y"}, 6.25, 1234)
-	if got := fmt.Sprint(barValues(plain, nil, band)); got != "[{0 6.25} {2 1,234}]" {
+	if got := fmt.Sprint(barValues(plain, band)); got != "[{0 6.25} {2 1,234}]" {
 		t.Errorf("plain: %s", got)
 	}
 	stack := &pv.Layer{Mark: pv.MarkBar, Horizontal: true, Stacked: true, Data: []pv.Datum{
 		{Y: pv.Pos{Str: "x"}, Series: "a", V0: 0, V1: 3.1}, {Y: pv.Pos{Str: "x"}, Series: "b", V0: 3.1, V1: 5.3},
 		{Y: pv.Pos{Str: "y"}, Series: "a", V0: 0, V1: -2}, {Y: pv.Pos{Str: "y"}, Series: "b", V0: -2, V1: -2.5},
 	}}
-	if got := fmt.Sprint(barValues(stack, []string{"a", "b"}, band)); got != "[{0 5.3} {2 −2.5}]" {
+	if got := fmt.Sprint(barValues(stack, band)); got != "[{0 5.3} {2 −2.5}]" {
 		t.Errorf("stacked: %s", got)
 	}
-	side := &pv.Layer{Mark: pv.MarkBar, Horizontal: true, Data: []pv.Datum{
-		{Y: pv.Pos{Str: "x"}, Series: "a", V1: 1}, {Y: pv.Pos{Str: "x"}, Series: "b", V1: 2},
+	over := &pv.Layer{Mark: pv.MarkBar, Horizontal: true, Data: []pv.Datum{
+		{Y: pv.Pos{Str: "x"}, Series: "a", V1: 1}, {Y: pv.Pos{Str: "x"}, Series: "b", V1: 2.5},
 	}}
-	if got := fmt.Sprint(barValues(side, []string{"a", "b"}, band)); got != "[{0 1} {1 2}]" {
-		t.Errorf("side by side: %s", got)
+	if got := fmt.Sprint(barValues(over, band)); got != "[{0 1 / 2.5}]" {
+		t.Errorf("overlaid: %s", got)
 	}
 	stack.Normalized = true
-	if got := barValues(stack, []string{"a", "b"}, band); got != nil {
+	if got := barValues(stack, band); got != nil {
 		t.Errorf("normalized: %v; want none", got)
 	}
 }

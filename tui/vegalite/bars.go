@@ -3,6 +3,7 @@ package vegalite
 import (
 	"math"
 	"slices"
+	"strings"
 
 	pv "github.com/yongjohnlee80/golib/parse/vegalite"
 	"github.com/yongjohnlee80/golib/tui"
@@ -14,8 +15,9 @@ import (
 // ▁▂▃▄▅▆▇█ up. Stacked series pile in the chart's series order from zero, each in its own colour;
 // where two meet inside a cell, the lower one's eighths are drawn in its colour over the upper
 // one's as the cell's background (▍ in a's colour on b's), so a stack reads exact to an eighth.
-// Series not stacked stand side by side within the band, in series order. A negative value runs
-// back from zero the same way.
+// Series not stacked overlap on their band, as Vega-Lite overlays them: the longest drawn first,
+// each shorter one in front of it, so every bar shows its own length. A negative value runs back
+// from zero the same way.
 //
 //	north  │██████▊          12.5
 //	south  │███▍▓▓▓▓          7.9     (a stack: ▍ in the first series' colour on the second's)
@@ -57,9 +59,22 @@ func layBars(ly *pv.Layer, series []string, p barPlot) []barCell {
 	for i, s := range series {
 		rank[s] = i
 	}
-	n := max(len(series), 1)
 	occ := map[[2]int]*eighths{} // by (band cell, measure cell)
-	for _, d := range ly.Data {
+	data := ly.Data
+	if !ly.Stacked && len(series) > 1 { // overlaid: the longest first, the shorter in front
+		data = slices.Clone(data)
+		slices.SortStableFunc(data, func(a, b pv.Datum) int {
+			la, lb := math.Abs(a.V1-a.V0), math.Abs(b.V1-b.V0)
+			switch {
+			case la > lb:
+				return -1
+			case la < lb:
+				return 1
+			}
+			return 0
+		})
+	}
+	for _, d := range data {
 		cat := d.X.Str
 		if ly.Horizontal {
 			cat = d.Y.Str
@@ -69,7 +84,7 @@ func layBars(ly *pv.Layer, series []string, p barPlot) []barCell {
 			continue
 		}
 		s := rank[d.Series]
-		lo, hi := barThickness(first, size, s, n, ly.Stacked || len(series) <= 1)
+		lo, hi := barThickness(first, size)
 		e0, e1 := int(math.Round(p.at(d.V0)*8)), int(math.Round(p.at(d.V1)*8))
 		if e0 > e1 {
 			e0, e1 = e1, e0
@@ -106,21 +121,13 @@ func layBars(ly *pv.Layer, series []string, p barPlot) []barCell {
 	return out
 }
 
-// barThickness is the cells across a band that series s's bar takes, [lo, hi): the band's middle
-// with a cell's gap from the next band when the band is three cells or more; for series not stacked,
-// the series' own share of that, side by side in series order, at least a cell each.
-func barThickness(first, size, s, n int, whole bool) (lo, hi int) {
-	gap := 0
+// barThickness is the cells across a band its bars take, [lo, hi): the band, less a cell's gap
+// before the next band when the band is three cells or more.
+func barThickness(first, size int) (lo, hi int) {
 	if size >= 3 {
-		gap = 1
+		return first, first + size - 1
 	}
-	lo, hi = first, first+size-gap
-	if whole || n <= 1 {
-		return lo, hi
-	}
-	w := max((hi-lo)/n, 1)
-	lo += s * w
-	return lo, lo + w
+	return first, first + size
 }
 
 // cell is how a cell of these eighths draws: the run from the origin's side in its occupant's
@@ -172,36 +179,36 @@ type barValue struct {
 	s   string
 }
 
-// barValues are the labels for ly's horizontal bars, by row: a stack's total on its band's row,
-// each series' own value on its own row when not stacked; none for a normalized stack (every total
-// is the whole). A value shows as many decimals as it has, up to two, its thousands grouped.
-func barValues(ly *pv.Layer, series []string, band func(string) (int, int, bool)) []barValue {
+// barValues are the labels for ly's horizontal bars, on each band's first row: a stack's total, or
+// the bars overlaid there, each its value in series order (Data's order), " / " between; none for a
+// normalized stack (every total is the whole). A value shows as many decimals as it has, up to two,
+// its thousands grouped.
+func barValues(ly *pv.Layer, band func(string) (int, int, bool)) []barValue {
 	if !ly.Horizontal || ly.Normalized {
 		return nil
 	}
-	rank := map[string]int{}
-	for i, s := range series {
-		rank[s] = i
-	}
-	n := max(len(series), 1)
-	whole := ly.Stacked || len(series) <= 1
 	sum := map[int]float64{}
+	each := map[int][]string{}
 	var rows []int
 	for _, d := range ly.Data {
-		first, size, ok := band(d.Y.Str)
+		first, _, ok := band(d.Y.Str)
 		if !ok {
 			continue
 		}
-		lo, _ := barThickness(first, size, rank[d.Series], n, whole)
-		if _, seen := sum[lo]; !seen {
-			rows = append(rows, lo)
+		if _, seen := sum[first]; !seen {
+			rows = append(rows, first)
 		}
-		sum[lo] += d.V1 - d.V0
+		sum[first] += d.V1 - d.V0
+		each[first] = append(each[first], barNumber(d.V1-d.V0))
 	}
 	slices.Sort(rows)
 	out := make([]barValue, 0, len(rows))
 	for _, r := range rows {
-		out = append(out, barValue{r, barNumber(sum[r])})
+		s := barNumber(sum[r])
+		if !ly.Stacked {
+			s = strings.Join(each[r], " / ")
+		}
+		out = append(out, barValue{r, s})
 	}
 	return out
 }
