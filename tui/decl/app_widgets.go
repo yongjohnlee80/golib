@@ -288,6 +288,10 @@ var frameType = Type{Name: "Frame", Children: Exactly(1), Build: buildFrame, Cto
 	"title": textSetter("a Frame", (*widget.Box).SetTitle, (*widget.Box).SetTitleMessage),
 	// golib's: at most this many columns, border included, centred — a page, not the screen
 	"maximumWidth": setter("a Frame", truncOf, (*widget.Box).SetMaximumWidth),
+	// where a title too wide for its row loses text, as Qt's Text.elide: Tui.ElideRight (the
+	// default), Tui.ElideLeft (a path's tail, and the badges after it, stay), Tui.ElideMiddle,
+	// Tui.ElidePath
+	"titleElide": setter("a Frame", elideModes.read, (*widget.Box).SetTitleElide),
 }}
 
 // golib's: a vertical window onto one child taller than itself; the wheel and
