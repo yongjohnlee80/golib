@@ -1,72 +1,155 @@
 {
-  "Title": "Reach and engagement of campaigns",
-  "XAxis": {
-    "Low": "Low Reach",
-    "High": "High Reach"
-  },
-  "YAxis": {
-    "Low": "Low Engagement",
-    "High": "High Engagement"
-  },
-  "Quadrants": [
-    "We should expand",
-    "Need to promote",
-    "Re-evaluate",
-    "May be improved"
+  "Nodes": [
+    "Agricultural 'waste'",
+    "Bio-conversion",
+    "Liquid",
+    "Losses",
+    "Solid",
+    "Gas",
+    "Biofuel imports",
+    "Biomass imports",
+    "Coal imports",
+    "Coal",
+    "Coal reserves",
+    "Electricity grid",
+    "Over generation / exports",
+    "Heating and cooling - homes",
+    "H2 conversion"
   ],
-  "Points": [
+  "Links": [
     {
-      "Label": "Campaign A",
-      "X": 0.3,
-      "Y": 0.6,
+      "Source": 0,
+      "Target": 1,
+      "Value": 124.729,
       "Span": [
-        265,
-        287
+        36,
+        79
       ]
     },
     {
-      "Label": "Campaign B",
-      "X": 0.45,
-      "Y": 0.23,
+      "Source": 1,
+      "Target": 2,
+      "Value": 0.597,
       "Span": [
-        292,
-        316
+        80,
+        107
       ]
     },
     {
-      "Label": "Campaign C",
-      "X": 0.57,
-      "Y": 0.69,
+      "Source": 1,
+      "Target": 3,
+      "Value": 26.862,
       "Span": [
-        321,
-        345
+        108,
+        136
       ]
     },
     {
-      "Label": "Campaign D",
-      "X": 0.78,
-      "Y": 0.34,
+      "Source": 1,
+      "Target": 4,
+      "Value": 280.322,
       "Span": [
-        350,
-        374
+        137,
+        165
       ]
     },
     {
-      "Label": "Campaign E",
-      "X": 0.4,
-      "Y": 0.34,
+      "Source": 1,
+      "Target": 5,
+      "Value": 81.144,
       "Span": [
-        379,
-        403
+        166,
+        191
       ]
     },
     {
-      "Label": "Campaign F",
-      "X": 0.35,
-      "Y": 0.78,
+      "Source": 6,
+      "Target": 2,
+      "Value": 35,
       "Span": [
-        408,
-        432
+        192,
+        217
+      ]
+    },
+    {
+      "Source": 7,
+      "Target": 4,
+      "Value": 35,
+      "Span": [
+        218,
+        242
+      ]
+    },
+    {
+      "Source": 8,
+      "Target": 9,
+      "Value": 11.606,
+      "Span": [
+        243,
+        267
+      ]
+    },
+    {
+      "Source": 10,
+      "Target": 9,
+      "Value": 63.965,
+      "Span": [
+        268,
+        293
+      ]
+    },
+    {
+      "Source": 9,
+      "Target": 4,
+      "Value": 75.571,
+      "Span": [
+        294,
+        311
+      ]
+    },
+    {
+      "Source": 11,
+      "Target": 12,
+      "Value": 104.453,
+      "Span": [
+        312,
+        362
+      ]
+    },
+    {
+      "Source": 11,
+      "Target": 13,
+      "Value": 113.726,
+      "Span": [
+        363,
+        415
+      ]
+    },
+    {
+      "Source": 11,
+      "Target": 14,
+      "Value": 27.14,
+      "Span": [
+        416,
+        452
+      ]
+    },
+    {
+      "Source": 4,
+      "Target": 11,
+      "Value": 200,
+      "Span": [
+        453,
+        479
+      ]
+    },
+    {
+      "Source": 5,
+      "Target": 11,
+      "Value": 60,
+      "Span": [
+        480,
+        503
       ]
     }
   ]
