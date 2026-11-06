@@ -41,7 +41,8 @@ func TestValidateBuiltInsAndEveryRequiredRole(t *testing.T) {
 	}
 	src, _ := fs.ReadFile(FS(), "sepia.qml")
 	broken := strings.Replace(string(src), `backdrop: "#d4c4a0"`, `unknown: "bad"`, 1)
-	broken = strings.Replace(broken, `window: "#dacca9"`, `window: "not-a-colour"`, 1)	v, ds := Validate("custom.qml", []byte(broken))
+	broken = strings.Replace(broken, `window: "#dacca9"`, `window: "not-a-colour"`, 1)
+	v, ds := Validate("custom.qml", []byte(broken))
 	if v != nil {
 		t.Fatal("invalid theme returned usable values")
 	}
