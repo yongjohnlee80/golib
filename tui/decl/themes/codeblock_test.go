@@ -191,9 +191,10 @@ func TestThePageReadsInEveryTheme(t *testing.T) {
 			}
 			return 0, 0, false
 		}
-		// the table's box: the rule row above its header's first cell (the code block's box is first
-		// on screen, so its own corner cannot stand for the table's)
-		tableBox := func() (int, int, bool) {
+		// the table's box: the rule row above its header's first cell, and the side at the
+		// header's own left (the code block's box is first on screen, so its own corner cannot
+		// stand for the table's)
+		tableRule := func() (int, int, bool) {
 			qy, _, ok := find("Q")
 			if !ok || qy < 1 {
 				return 0, 0, false
@@ -202,6 +203,16 @@ func TestThePageReadsInEveryTheme(t *testing.T) {
 				if c.Content == "┌" || c.Content == "─" || c.Content == "┬" {
 					return qy - 1, x, true
 				}
+			}
+			return 0, 0, false
+		}
+		tableSide := func() (int, int, bool) {
+			qy, qx, ok := find("Q")
+			if !ok || qx < 1 {
+				return 0, 0, false
+			}
+			if c := rows[qy][qx-1]; c.Content == "│" {
+				return qy, qx - 1, true
 			}
 			return 0, 0, false
 		}
@@ -215,7 +226,8 @@ func TestThePageReadsInEveryTheme(t *testing.T) {
 			{"code-box", "┌", 3, nil},
 			{"code", "s", 4.5, nil},
 			{"inline", "z", 4.5, nil},
-			{"table-box", "", 3, tableBox},
+			{"table-rule", "", 3, tableRule},
+			{"table-side", "", 3, tableSide},
 		} {
 			y, x, ok := 0, 0, false
 			if part.at != nil {

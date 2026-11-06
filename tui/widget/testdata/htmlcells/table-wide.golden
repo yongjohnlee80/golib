@@ -6,7 +6,7 @@ width 40
 > | 東京 | 1 | 駅 |
 
 "┌───────┬─────┬──────┐"
-    0-21 fg=border bg=background
+    0-21 fg=muted bg=background
 "│ 이름  │ Qty │ 메모 │"
     0-0 fg=border bg=background
     1-1 fg=muted bg=background
@@ -22,7 +22,7 @@ width 40
     20-20 fg=muted bg=background
     21-21 fg=border bg=background
 "├───────┼─────┼──────┤"
-    0-21 fg=border bg=background
+    0-21 fg=muted bg=background
 "│ 사과  │   3 │ 익음 │"
     0-0 fg=border bg=background
     1-1 fg=muted bg=background
@@ -66,4 +66,4 @@ width 40
     19-20 fg=muted bg=background
     21-21 fg=border bg=background
 "└───────┴─────┴──────┘"
-    0-21 fg=border bg=background
+    0-21 fg=muted bg=background

@@ -14,5 +14,5 @@
 "                                       │"
     39-39 fg=muted
 "┌───┬───┐                              │"
-    0-8 fg=border bg=background
+    0-8 fg=muted bg=background
     39-39 fg=muted

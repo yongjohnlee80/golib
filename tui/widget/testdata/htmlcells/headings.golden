@@ -22,7 +22,7 @@ width 30
     0-29 fg=border bg=background
 ""
 "Three"
-    0-4 bold fg=accent bg=background
+    0-4 bold fg=accent-document bg=background
 ""
 "Four"
     0-3 bold fg=fg bg=background

@@ -1,8 +1,7 @@
 "┌──────────────────┐"
     0-19 fg=muted bg=background
 "«------------needle»"
-    0-0 fg=fg bg=background
-    1-12 fg=fg bg=surface
+    0-12 fg=fg bg=background
     13-18 reverse fg=on-warning bg=warning
     19-19 fg=fg bg=background
 "└──────────────────┘"
