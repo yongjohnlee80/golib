@@ -12,14 +12,16 @@ func init() { register(pm.Block, layAs(LayBlock), nil) }
 
 // A BLOCK DIAGRAM IN CELLS: its blocks on the grid the diagram gives, as Mermaid lays them. A grid's
 // columns are as wide as their widest one-column block, a block spanning columns as wide as they are
-// together with the gaps between, every block in a column the column's width, so the grid's edges
-// line up. A group is a frame round its own grid. A space is an empty cell of the grid.
+// together with the gaps between (one wider than that widens them evenly), every block in a column
+// the column's width, so the grid's edges line up. A group is a frame round its own grid. A space is
+// an empty cell of the grid.
 //
 // The grid is fixed, so links are routed over it afterwards: each the cheapest path of cells from a
-// side of its source to a side of its target, around every box, across another link or a frame's
-// border only straight through it, a turn costing more than a step, so a link runs straight where it
-// can. Its arrowhead points into its target; its label sits on its longest straight run when that
-// holds it, else is a footnote. A link with no path is a footnote naming its ends, never dropped.
+// side of its source to a side of its target, leaving and entering the boxes straight, around every
+// box, across another link or a frame's border only straight through it, a turn costing more than
+// a step, so a link runs straight where it can. Its arrowhead points into its target; an end with
+// no mark meets its box in a junction (├). Its label sits beside its longest straight run when that
+// has room, else is a footnote. A link with no path is a footnote naming its ends, never dropped.
 //
 //	┌───────┐    ┌─────────┐
 //	│   a   ├───►│    b    │
@@ -130,9 +132,14 @@ func (b *blockLayout) group(g *pm.BlockGroup) laidGroup {
 		}
 		return w
 	}
-	for _, a := range ats { // a spanning item wider than its columns widens the last of them
+	for _, a := range ats { // a spanning item wider than its columns widens them evenly
 		if d := a.iw - span(a); d > 0 {
-			colW[a.col+a.w-1] += d
+			for k := range a.w {
+				colW[a.col+k] += d / a.w
+				if k < d%a.w {
+					colW[a.col+k]++
+				}
+			}
 		}
 	}
 	w := (cols - 1) * blockColGap
@@ -204,18 +211,22 @@ func (b *blockLayout) route(e pm.Edge) []cell {
 			b.g.lines[c] |= towards(c, path[i+1])
 		}
 	}
+	// an end meets its box's side in a junction (├) unless it draws a mark there (►), as the
+	// router's ends do
 	first, last := path[0], path[len(path)-1]
-	b.g.lines[first] |= towardsRect(first, from)
-	b.g.lines[last] |= towardsRect(last, to)
 	stroke := strokeOf(e.Line)
 	for _, c := range path {
 		b.g.addStroke(c, stroke)
 	}
 	if mk := blockEnd(e.Head, last, to); mk != "" {
 		b.g.marks[last] = mk
+	} else {
+		b.g.lines[last] |= towardsRect(last, to)
 	}
 	if mk := blockEnd(e.Tail, first, from); mk != "" {
 		b.g.marks[first] = mk
+	} else {
+		b.g.lines[first] |= towardsRect(first, from)
 	}
 	return path
 }
@@ -365,32 +376,56 @@ func towardsRect(c cell, r tui.Rect) dirs {
 	return west
 }
 
-// besides are the cells beside r's sides, its corners left out: where a link may start or end, each
-// with its cost, twice its distance from its side's middle, so a link meets a side's middle when it
-// is free.
-func besides(r tui.Rect) map[cell]int {
-	out := map[cell]int{}
-	add := func(c cell, off int) {
-		if old, ok := out[c]; !ok || 2*off < old {
-			out[c] = 2 * off
+// blockSide is a cell beside a box's side where a link may start or end: its cost, twice its
+// distance from the side's middle, so a link meets a side's middle when it is free, and the step
+// leaving the box from it (an index into blockSteps; the step into the box is its opposite).
+type blockSide struct {
+	c          cell
+	cost, away int
+}
+
+// besides are the cells beside r's sides, its corners left out (a side too short for that: its
+// middle), top, bottom, left and right, each side left to right or top to bottom.
+func besides(r tui.Rect) []blockSide {
+	var out []blockSide
+	seen := map[cell]bool{}
+	add := func(c cell, off, away int) {
+		if !seen[c] {
+			seen[c] = true
+			out = append(out, blockSide{c, 2 * off, away})
 		}
 	}
 	cx, cy := r.X+r.W/2, r.Y+r.H/2
-	for x := r.X + 1; x < r.X+r.W-1; x++ {
-		add(cell{x, r.Y - 1}, abs(x-cx))
-		add(cell{x, r.Y + r.H}, abs(x-cx))
-	}
-	for y := r.Y + 1; y < r.Y+r.H-1; y++ {
-		add(cell{r.X - 1, y}, abs(y-cy))
-		add(cell{r.X + r.W, y}, abs(y-cy))
-	}
-	if r.W <= 2 || r.H <= 2 { // too small for a side between corners: the middles
-		for _, c := range []cell{{cx, r.Y - 1}, {cx, r.Y + r.H}, {r.X - 1, cy}, {r.X + r.W, cy}} {
-			add(c, 0)
+	xs, ys := []int{cx}, []int{cy}
+	if r.W > 2 {
+		xs = xs[:0]
+		for x := r.X + 1; x < r.X+r.W-1; x++ {
+			xs = append(xs, x)
 		}
+	}
+	if r.H > 2 {
+		ys = ys[:0]
+		for y := r.Y + 1; y < r.Y+r.H-1; y++ {
+			ys = append(ys, y)
+		}
+	}
+	for _, x := range xs {
+		add(cell{x, r.Y - 1}, abs(x-cx), 0)
+	}
+	for _, x := range xs {
+		add(cell{x, r.Y + r.H}, abs(x-cx), 1)
+	}
+	for _, y := range ys {
+		add(cell{r.X - 1, y}, abs(y-cy), 2)
+	}
+	for _, y := range ys {
+		add(cell{r.X + r.W, y}, abs(y-cy), 3)
 	}
 	return out
 }
+
+// blockOpposite is each step's opposite: north's south, west's east.
+var blockOpposite = [4]int{1, 0, 3, 2}
 
 // path is the cheapest path of cells from beside from to beside to, or nil. A step costs 1, a turn
 // 3 more, crossing another link or a frame's border 2 more, and each end its cell's cost (besides);
@@ -405,21 +440,31 @@ func (b *blockLayout) path(from, to tui.Rect) []cell {
 		w, h = max(w, f.rect.X+f.rect.W+2), max(h, f.rect.Y+f.rect.H+2)
 	}
 	ok := func(c cell) bool { return c.x >= 0 && c.y >= 0 && c.x < w && c.y < h && !b.inBox(c) }
-	goal := besides(to) // the cost of ending at each
-	const done = -2     // the dir of a state that has ended at its cell, its goal cost paid
+	// a state's dir is the step taken into its cell; at a start, 10 plus the step leaving the box,
+	// which the path must take next; done, a path ended at its cell with its end's cost paid
+	const start, done = 10, -2
+	goal := map[cell]blockSide{} // where a path may end, entering the box straight
+	for _, sd := range besides(to) {
+		goal[sd.c] = sd
+	}
 	type state struct {
 		c   cell
-		dir int // the step taken into c, -1 at a start
+		dir int
+	}
+	heading := func(dir int) int { // the way a path runs through its cell
+		if dir >= start {
+			return dir - start
+		}
+		return dir
 	}
 	dist := map[state]int{}
 	prev := map[state]state{}
 	pq := &blockQueue{}
-	starts := besides(from)
-	for c, cost := range starts {
-		if ok(c) && !b.blocked(c, -1) {
-			s := state{c, -1}
-			dist[s] = cost
-			heap.Push(pq, blockItem{s.c, s.dir, cost})
+	for _, sd := range besides(from) {
+		if ok(sd.c) && !b.blocked(sd.c, -1) {
+			s := state{sd.c, start + sd.away}
+			dist[s] = sd.cost
+			heap.Push(pq, blockItem{s.c, s.dir, sd.cost})
 		}
 	}
 	for pq.Len() > 0 {
@@ -432,7 +477,7 @@ func (b *blockLayout) path(from, to tui.Rect) []cell {
 			var path []cell
 			for cur := prev[s]; ; cur = prev[cur] {
 				path = append(path, cur.c)
-				if cur.dir == -1 {
+				if cur.dir >= start {
 					break
 				}
 			}
@@ -441,20 +486,21 @@ func (b *blockLayout) path(from, to tui.Rect) []cell {
 			}
 			return path
 		}
-		if g, end := goal[s.c]; end && ok(s.c) && (s.dir < 0 || !b.straightOnly(s.c)) {
+		if g, end := goal[s.c]; end && heading(s.dir) == blockOpposite[g.away] && (s.dir >= start || !b.straightOnly(s.c)) {
 			ds := state{s.c, done}
-			if old, seen := dist[ds]; !seen || it.cost+g < old {
-				dist[ds], prev[ds] = it.cost+g, s
-				heap.Push(pq, blockItem{s.c, done, it.cost + g})
+			if old, seen := dist[ds]; !seen || it.cost+g.cost < old {
+				dist[ds], prev[ds] = it.cost+g.cost, s
+				heap.Push(pq, blockItem{s.c, done, it.cost + g.cost})
 			}
 		}
 		for d, st := range blockSteps {
 			n := cell{s.c.x + st.dx, s.c.y + st.dy}
-			if !ok(n) || b.blocked(n, d) || s.dir >= 0 && s.dir != d && b.straightOnly(s.c) {
+			turn := heading(s.dir) != d
+			if !ok(n) || b.blocked(n, d) || turn && (s.dir >= start || b.straightOnly(s.c)) {
 				continue
 			}
 			cost := it.cost + 1 + b.crossing(n)
-			if s.dir >= 0 && s.dir != d {
+			if turn {
 				cost += 3
 			}
 			ns := state{n, d}
@@ -522,10 +568,24 @@ type blockItem struct {
 
 type blockQueue []blockItem
 
-func (q blockQueue) Len() int           { return len(q) }
-func (q blockQueue) Less(i, j int) bool { return q[i].cost < q[j].cost }
-func (q blockQueue) Swap(i, j int)      { q[i], q[j] = q[j], q[i] }
-func (q *blockQueue) Push(x any)        { *q = append(*q, x.(blockItem)) }
+func (q blockQueue) Len() int { return len(q) }
+
+// Less is cheapest first, a tie by place and dir, so a layout is the same each time.
+func (q blockQueue) Less(i, j int) bool {
+	a, b := q[i], q[j]
+	switch {
+	case a.cost != b.cost:
+		return a.cost < b.cost
+	case a.c.y != b.c.y:
+		return a.c.y < b.c.y
+	case a.c.x != b.c.x:
+		return a.c.x < b.c.x
+	}
+	return a.dir < b.dir
+}
+
+func (q blockQueue) Swap(i, j int) { q[i], q[j] = q[j], q[i] }
+func (q *blockQueue) Push(x any)   { *q = append(*q, x.(blockItem)) }
 func (q *blockQueue) Pop() any {
 	old := *q
 	it := old[len(old)-1]

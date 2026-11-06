@@ -11,7 +11,7 @@ func init() { layers[pm.Block] = layBlock }
 
 // layBlock lays a block diagram out on the grid it gives, as the cells do (tui/mermaid's LayBlock):
 // a grid's columns as wide as their widest one-column block, a block spanning columns as wide as
-// they are with the gaps between, every block in a column the column's width, a group a frame round
+// they are with the gaps between (one wider widens them evenly), every block in a column the column's width, a group a frame round
 // its own grid, a space an empty cell. Each link is a straight line from its source's outline toward
 // its target's centre, ending at the target's outline, as Mermaid draws them; its label on its middle.
 func layBlock(ctx context.Context, d pm.Diagram, _ float32, th Theme, m gui.Measurer) (*Laid, error) {
@@ -126,9 +126,11 @@ func (b *blockWindow) measure(g *pm.BlockGroup, in int) windowGroup {
 		}
 		return w
 	}
-	for _, a := range ats { // a spanning item wider than its columns widens the last of them
+	for _, a := range ats { // a spanning item wider than its columns widens them evenly
 		if d := a.iw - span(a); d > 0 {
-			colW[a.col+a.w-1] += d
+			for k := range a.w {
+				colW[a.col+k] += d / float32(a.w)
+			}
 		}
 	}
 	w := float32(cols-1) * gap

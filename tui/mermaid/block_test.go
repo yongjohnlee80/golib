@@ -87,6 +87,14 @@ func checkBlock(t *testing.T, what string, d *pm.BlockDiagram, g *Grid) {
 		"►": func(c cell, r tui.Rect) bool { return c.x == r.X-1 && c.y > r.Y && c.y < r.Y+r.H-1 },
 		"◄": func(c cell, r tui.Rect) bool { return c.x == r.X+r.W && c.y > r.Y && c.y < r.Y+r.H-1 },
 	}
+	// an arrowhead is entered straight, its line from the side away from its box alone: no corner
+	// under it, and no junction on the box's side, which a line pointing in would make
+	behind := map[string]dirs{"▼": north, "▲": south, "►": west, "◄": east}
+	for c, mk := range g.marks {
+		if want, ok := behind[mk]; ok && g.lines[c] != want {
+			t.Errorf("%s: the arrowhead %q at %d,%d has lines %04b; want only the one behind it, %04b", what, mk, c.x, c.y, g.lines[c], want)
+		}
+	}
 	for _, e := range d.Edges {
 		if to, ok := rects[e.To]; ok && e.Head == pm.Head { // a link to a group: its frame, not checked here
 			found := false
@@ -288,5 +296,21 @@ func TestRandomBlockDiagramsHoldTheirInvariants(t *testing.T) {
 		what := fmt.Sprintf("trial %d:\n%s", trial, src)
 		checkGrid(t, what, g)
 		checkBlock(t, what, d.(*pm.BlockDiagram), g)
+	}
+}
+
+// A block diagram lays out the same each time: the router's ties are broken by place, never by a
+// map's order.
+func TestABlockDiagramLaysOutTheSameEachTime(t *testing.T) {
+	for _, src := range []string{
+		"block-beta\n  columns 3\n  a b c\n  d e f\n  a --> f\n  c -- \"back\" --> d\n  b --> e\n  e -.-> a\n",
+		blockCorpus(t, "links"),
+	} {
+		_, first := paint(t, src)
+		for range 20 {
+			if _, again := paint(t, src); again != first {
+				t.Fatalf("laid out otherwise:\n%s\nfirst:\n%s", again, first)
+			}
+		}
 	}
 }
