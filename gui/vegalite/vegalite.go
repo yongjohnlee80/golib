@@ -38,7 +38,23 @@ import (
 
 	"github.com/yongjohnlee80/golib/gui"
 	"github.com/yongjohnlee80/golib/gui/internal/picture"
+	pvl "github.com/yongjohnlee80/golib/parse/vegalite"
 )
+
+// The subset and its refusals are parse/vegalite's, which reads and plots a spec: a caller of Lay
+// matches them here as before.
+var (
+	// ErrUnsupported is a spec outside the subset drawn; the error names what.
+	ErrUnsupported = pvl.ErrUnsupported
+	// ErrTooLarge is a spec over a limit: rows, categories or series.
+	ErrTooLarge = pvl.ErrTooLarge
+)
+
+// SubsetInfo is the subset Lay draws (parse/vegalite's).
+type SubsetInfo = pvl.SubsetInfo
+
+// Subset is the subset Lay draws, each list sorted.
+func Subset() SubsetInfo { return pvl.Subset() }
 
 // Theme is what a chart is drawn in: its page, its text (titles and labels), its axes' lines, its
 // grid, its labels' font, and its series' colours (nil: Vega-Lite's tableau10).
@@ -59,11 +75,11 @@ var tableau10 = []color.NRGBA{
 // measuring with m. A spec outside the subset is ErrUnsupported and one over a limit ErrTooLarge
 // (both for a fallback); malformed JSON is the decoder's error.
 func Lay(ctx context.Context, src string, width float32, th Theme, m gui.Measurer) (*Laid, error) {
-	sp, err := parse(src)
+	sp, err := pvl.Parse(src)
 	if err != nil {
 		return nil, err
 	}
-	lp, err := newLayered(sp)
+	lp, err := pvl.NewLayered(sp)
 	if err != nil {
 		return nil, err
 	}

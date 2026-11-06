@@ -5,6 +5,8 @@ import (
 	"reflect"
 	"strings"
 	"testing"
+
+	pvl "github.com/yongjohnlee80/golib/parse/vegalite"
 )
 
 // Subset is the tables Lay checks a spec against: each list is what the reader dispatches from,
@@ -12,7 +14,7 @@ import (
 // The lists are pinned here, and each pinned name is laid: a table entry dropped is both missing
 // from Subset and refused by Lay, since the reader dispatches from the table.
 func TestSubsetIsWhatLayDraws(t *testing.T) {
-	s := Subset()
+	s := pvl.Subset()
 	wantMarks := []string{"area", "bar", "circle", "line", "point", "rule"}
 	wantChannels := []string{"color", "fill", "opacity", "shape", "x", "y"}
 	wantFieldTypes := []string{"nominal", "ordinal", "quantitative", "temporal"}
@@ -29,7 +31,7 @@ func TestSubsetIsWhatLayDraws(t *testing.T) {
 			t.Errorf("Subset's %s: %v, want %v", what, c.got, c.want)
 		}
 	}
-	if !s.Layers || s.MaxRows != maxRows || s.MaxBands != maxBands || s.MaxSeries != maxSeries {
+	if !s.Layers || s.MaxRows != pvl.MaxRows || s.MaxBands != pvl.MaxBands || s.MaxSeries != pvl.MaxSeries {
 		t.Errorf("Subset's layers and limits: %+v", s)
 	}
 
@@ -46,8 +48,8 @@ func TestSubsetIsWhatLayDraws(t *testing.T) {
 	}
 	refuses := func(what, src string) {
 		t.Helper()
-		if _, err := lay(t, src, 400); !errors.Is(err, ErrUnsupported) {
-			t.Errorf("%s: %v; want ErrUnsupported\n%s", what, err, src)
+		if _, err := lay(t, src, 400); !errors.Is(err, pvl.ErrUnsupported) {
+			t.Errorf("%s: %v; want pvl.ErrUnsupported\n%s", what, err, src)
 		}
 	}
 
