@@ -59,7 +59,7 @@ var paletteRoles = func() map[string]Role {
 	out := map[string]Role{}
 	for _, r := range []Role{roleWindow, roleWindowText, roleBase, roleText, roleHighlight,
 		roleHighlightedText, roleAccent, roleButton, roleButtonText, roleInactiveHighlight,
-		roleInactiveHighlightText, roleMid, roleLight} {
+		roleInactiveHighlightText, roleMid, roleLight, roleDocumentAccent} {
 		out[r.prop()] = r
 	}
 	for i := range highlight.Styles {
@@ -196,8 +196,10 @@ func (*windowNode) themesTheApp() {}
 // the base and text the background and foreground, and the page's base the surface and panel
 // too (a menu, a toast, a grip), so text drawn on any of them is the text meant for it; the
 // highlight the primary, the highlighted text on it; the accent, the mid the border, the
-// highlight the focused border. The boost, an overlay's surface (a dialog's scrim), is the page
-// darkened, so what is behind a dialog reads as dimmed. Unset roles keep NewTheme's derivations.
+// highlight the focused border, the document accent (a theme's document.accent, where the plain
+// accent is the chrome's) the page's accent token. The boost, an overlay's surface (a dialog's
+// scrim), is the page darkened, so what is behind a dialog reads as dimmed. Unset roles keep
+// NewTheme's derivations.
 func tokenTheme(p palette) (style.Theme, bool) {
 	primary, ok := p[roleHighlight]
 	if !ok {
@@ -211,6 +213,7 @@ func tokenTheme(p palette) (style.Theme, bool) {
 		{style.TokenBackground, roleBase}, {style.TokenForeground, roleText},
 		{style.TokenSurface, roleBase}, {style.TokenPanel, roleBase},
 		{style.TokenAccent, roleAccent}, {style.TokenBorder, roleMid}, {style.TokenBorderFocused, roleHighlight},
+		{style.TokenAccentDocument, roleDocumentAccent},
 		{style.TokenTextOnPrimary, roleHighlightedText},
 	} {
 		if c, ok := p[m.r]; ok {

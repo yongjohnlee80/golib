@@ -80,8 +80,9 @@ const (
 	TokenTextOnError
 	TokenTextOnSuccess
 	TokenTextOnWarning
-	TokenBorder        // default border color (Box and friends)
-	TokenBorderFocused // border color of the focused panel (Box focus visuals)
+	TokenBorder         // default border color (Box and friends)
+	TokenBorderFocused  // border color of the focused panel (Box focus visuals)
+	TokenAccentDocument // the document page's accent: a theme's document.accent when it has one, else the accent's own
 
 	numTokens // internal bound
 )
@@ -164,7 +165,7 @@ func WithDark(dark bool) ThemeOption {
 // Derivations inspect the slot values after all options have been processed. Therefore,
 // overriding an upstream slot automatically recalculates all unconfigured downstream slots:
 //   - Overriding [TokenPrimary] cascades to [TokenSecondary] and [TokenAccent].
-//   - Overriding [TokenAccent] cascades to [TokenBorderFocused].
+//   - Overriding [TokenAccent] cascades to [TokenAccentDocument] and [TokenBorderFocused].
 //   - Overriding [TokenBackground] cascades to [TokenSurface], [TokenPanel], [TokenBoost], and all [TokenTextOn*] slots.
 //   - Overriding [TokenSurface] cascades to [TokenPanel] and [TokenBoost].
 //   - Overriding [TokenForeground] cascades to [TokenTextMuted] and [TokenBorder].
@@ -232,6 +233,7 @@ func NewTheme(primary Color, opts ...ThemeOption) Theme {
 	derive(TokenTextOnWarning, c[TokenBackground])
 	derive(TokenBorder, c[TokenForeground])
 	derive(TokenBorderFocused, c[TokenAccent])
+	derive(TokenAccentDocument, c[TokenAccent])
 	return b.th
 }
 

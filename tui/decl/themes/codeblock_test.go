@@ -132,3 +132,115 @@ func TestACodeBlockReadsInEveryTheme(t *testing.T) {
 	}
 	codeBlockGolden(t, "contrast", table.String())
 }
+
+// TestThePageReadsInEveryTheme is the theme pass's audit: the page's accent-bearing parts and its
+// boxes, through the real themes, one golden table of their contrast against each theme's page base.
+// Inline code wears the document's accent token (a theme's document.accent, the menu's accent when
+// the theme sets none — retro's navy page reads its own red where the menu's dark one sits under the
+// floor); a table's box wears the code box's muted tone (a theme's border, its mid, reads under 3:1
+// on every built-in page). Text parts must read 4.5:1, boxes 3:1. Mono's colours are the terminal's
+// own: the table says so, and nothing is asserted of them.
+func TestThePageReadsInEveryTheme(t *testing.T) {
+	html := `<pre><code class=\"language-go\">short\nthis line is a good deal wider than the page it is on</code></pre>` +
+		`<p>plain with <code>zq</code> inline</p>` +
+		`<table><tr><th>Qty</th></tr><tr><td>3</td></tr></table>`
+	var table strings.Builder
+	for _, name := range themes.Names() {
+		vals, err := themes.Values(name)
+		if err != nil {
+			t.Fatal(err)
+		}
+		page := mustColor(t, vals["document.base"])
+		accent, hasAccent := vals["document.accent"]
+		if !hasAccent {
+			accent = vals["menu.accent"] // the nine's page accent: the menu's own (the fallback)
+		}
+		bindings := " palette.mid: Theme.app.mid; palette.accent: Theme.menu.accent"
+		if hasAccent {
+			bindings += "; palette.documentAccent: Theme.document.accent"
+		}
+		s := decltest.Run(t, 30, 10, tuidecl.LayoutSource("main.qml", []byte("import tui 1.0\nimport tui.theme."+name+" 1.0\n"+
+			"Window { palette.highlight: Theme.document.highlight; palette.base: Theme.document.base; palette.text: Theme.document.text\n"+
+			" palette.window: Theme.document.base; palette.windowText: Theme.document.text"+bindings+"\n"+
+			" HTMLView { id: page; focus: true; html: \""+html+"\" } }")), themes.Offer())
+		s.WaitForText(t, "zq")
+		// The palette reaches the App after its first frame: useApp queues SetTheme, and Run paints once
+		// before its loop takes the queue. So read the frame that wears it: the inline code in the
+		// theme's accent. A theme whose accent is the terminal's own has none to wait for.
+		if r, g, b, ok := mustColor(t, accent).RGBValues(); ok {
+			want := tui.CellColor{Kind: tui.CellColorRGB, R: r, G: g, B: b}
+			s.WaitFor(t, name+"'s palette on the inline code", func(string) bool {
+				for _, row := range s.Backend.Snapshot() {
+					for _, c := range row {
+						if c.Content == "z" {
+							return c.Attrs.FG == want
+						}
+					}
+				}
+				return false
+			})
+		}
+		rows := s.Backend.Snapshot()
+		find := func(content string) (int, int, bool) {
+			for y, row := range rows {
+				for x, c := range row {
+					if c.Content == content {
+						return y, x, true
+					}
+				}
+			}
+			return 0, 0, false
+		}
+		// the table's box: the rule row above its header's first cell (the code block's box is first
+		// on screen, so its own corner cannot stand for the table's)
+		tableBox := func() (int, int, bool) {
+			qy, _, ok := find("Q")
+			if !ok || qy < 1 {
+				return 0, 0, false
+			}
+			for x, c := range rows[qy-1] {
+				if c.Content == "┌" || c.Content == "─" || c.Content == "┬" {
+					return qy - 1, x, true
+				}
+			}
+			return 0, 0, false
+		}
+		fmt.Fprintf(&table, "%s\n", name)
+		for _, part := range []struct {
+			what  string
+			glyph string
+			least float64
+			at    func() (int, int, bool)
+		}{
+			{"code-box", "┌", 3, nil},
+			{"code", "s", 4.5, nil},
+			{"inline", "z", 4.5, nil},
+			{"table-box", "", 3, tableBox},
+		} {
+			y, x, ok := 0, 0, false
+			if part.at != nil {
+				y, x, ok = part.at()
+			} else {
+				y, x, ok = find(part.glyph)
+			}
+			if !ok {
+				t.Fatalf("%s: no %s on screen", name, part.what)
+			}
+			fg := rows[y][x].Attrs.FG
+			if fg.Kind != tui.CellColorRGB {
+				fmt.Fprintf(&table, "  %-10s the terminal's own colour\n", part.what)
+				continue
+			}
+			ratio, ok := style.ContrastRatio(style.RGB(fg.R, fg.G, fg.B), page)
+			if !ok {
+				fmt.Fprintf(&table, "  %-10s %02x%02x%02x, on the terminal's own page\n", part.what, fg.R, fg.G, fg.B)
+				continue
+			}
+			fmt.Fprintf(&table, "  %-10s %02x%02x%02x %.2f:1\n", part.what, fg.R, fg.G, fg.B, ratio)
+			if ratio < part.least {
+				t.Errorf("%s: the %s reads at %.2f:1 on the page, want %.1f at least", name, part.what, ratio, part.least)
+			}
+		}
+		codeBlockGolden(t, "page-audit", table.String())
+	}
+}

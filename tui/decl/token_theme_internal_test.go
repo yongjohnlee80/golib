@@ -42,3 +42,32 @@ func TestTheTokenThemePairsItsSurfacesAndText(t *testing.T) {
 		t.Errorf("the boost %v is not the page darkened", b)
 	}
 }
+
+// The document accent reaches its token when a palette carries it, and derives from the plain
+// accent when none does (a theme without a document.accent: the page wears the menu's).
+func TestTheTokenThemeReadsTheDocumentAccent(t *testing.T) {
+	base := palette{
+		roleHighlight: style.RGB(0x8a, 0x5a, 0x2b), roleBase: style.RGB(0xe6, 0xd9, 0xb9),
+		roleText: style.RGB(0x5b, 0x46, 0x36), roleAccent: style.RGB(0x9b, 0x3d, 0x1f),
+	}
+	th, ok := tokenTheme(base)
+	if !ok {
+		t.Fatal("no theme")
+	}
+	if c := th.Color(style.TokenAccentDocument); c != th.Color(style.TokenAccent) {
+		t.Errorf("without a document accent the page's accent %v, want the accent's own %v", c, th.Color(style.TokenAccent))
+	}
+	own := style.RGB(0xff, 0x55, 0x55)
+	doc := palette{
+		roleHighlight: style.RGB(0x8a, 0x5a, 0x2b), roleBase: style.RGB(0xe6, 0xd9, 0xb9),
+		roleText: style.RGB(0x5b, 0x46, 0x36), roleAccent: style.RGB(0x9b, 0x3d, 0x1f),
+		roleDocumentAccent: own,
+	}
+	th, _ = tokenTheme(doc)
+	if c := th.Color(style.TokenAccentDocument); c != own {
+		t.Errorf("with a document accent the page's accent %v, want the theme's own %v", c, own)
+	}
+	if c := th.Color(style.TokenAccent); c != style.RGB(0x9b, 0x3d, 0x1f) {
+		t.Errorf("the plain accent %v, want the menu's own, untouched by the document's", c)
+	}
+}
