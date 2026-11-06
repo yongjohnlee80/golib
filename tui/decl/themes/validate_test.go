@@ -178,3 +178,19 @@ func TestOptionalRolesComeFromTheirFallbackAndRefuseBadOnes(t *testing.T) {
 		}
 	}
 }
+
+// Every optional role's From is a required key: the fill reads the source from the file's own
+// values, so a From that were itself optional would fill in map order — one run's answer could
+// differ from another's, and the type says so. This enforces it: the table cannot name a
+// fallback the schema does not require.
+func TestOptionalRolesFallBackToRequiredKeys(t *testing.T) {
+	required := map[string]bool{}
+	for _, r := range Schema() {
+		required[r.Key] = true
+	}
+	for _, r := range optionalRoles() {
+		if !required[r.From] {
+			t.Errorf("%s falls back to %s, which is not a required key", r.Key, r.From)
+		}
+	}
+}
