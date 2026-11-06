@@ -22,8 +22,18 @@ func TestAnXYChartIsLaidOut(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	// the key's chips are a box and a dot too: right of the plot, past the last category's label
+	keyX := float32(1 << 30)
+	for _, tx := range l.texts {
+		if len(tx.lines) == 1 && (tx.lines[0] == "bar 1" || tx.lines[0] == "line 2") {
+			keyX = min(keyX, tx.box.X-l.th.Font.Size*2)
+		}
+	}
 	var bars, dots []laidNode
 	for _, n := range l.nodes {
+		if n.box.X >= keyX {
+			continue
+		}
 		switch n.form {
 		case formRect:
 			bars = append(bars, n)

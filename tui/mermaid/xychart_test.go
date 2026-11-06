@@ -41,8 +41,9 @@ func TestAnXYChartDrawsInCells(t *testing.T) {
 }
 
 // Each point of a series stands over its own category: in the documented chart July's value is the
-// range's top, so the bar's top cell and the line's mark are both in the plot's first row, under
-// nothing, in the column of July's label, and no other column reaches that row.
+// range's top, so its bar fills the plot's first row and the line's mark is on it, in the column of
+// July's label. No other column has a whole cell there (June's 10500 ends in an eighth on that row,
+// as it should: ▁, not █ or a mark).
 func TestAnXYPointStandsOverItsCategory(t *testing.T) {
 	d, err := pm.Parse(xyCorpus(t, "documented"))
 	if err != nil {
@@ -67,9 +68,13 @@ func TestAnXYPointStandsOverItsCategory(t *testing.T) {
 			topRow = c.y
 		}
 	}
+	whole := map[string]bool{"█": true}
+	for _, gl := range xyLineGlyphs {
+		whole[gl] = true
+	}
 	var cols []int
 	for c, f := range g.fills {
-		if c.y == topRow {
+		if c.y == topRow && whole[f] {
 			cols = append(cols, c.x)
 			if c.x < jul.x-1 || c.x > jul.x+jul.w {
 				t.Errorf("a %q reaches the top row at column %d, not over jul (columns %d to %d)", f, c.x, jul.x, jul.x+jul.w-1)
@@ -77,7 +82,7 @@ func TestAnXYPointStandsOverItsCategory(t *testing.T) {
 		}
 	}
 	if len(cols) == 0 {
-		t.Fatal("nothing reaches the plot's top row")
+		t.Fatal("no whole cell on the plot's top row")
 	}
 }
 
