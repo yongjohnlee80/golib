@@ -57,7 +57,7 @@ func layBars(ch *pv.Chart, width int, m Measurer) (*Drawing, bool) {
 	var f *frame
 	for w := width; ; {
 		var ok bool
-		if f, ok = layFrameRows(ch, w, gutter, rows, m); ok && f.plot.W >= need {
+		if f, ok = layFrame(ch, w, gutter, rows, m); ok && f.plot.W >= need {
 			break
 		}
 		short := need
