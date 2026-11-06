@@ -208,11 +208,13 @@ func TestThePageReadsInEveryTheme(t *testing.T) {
 		}
 		tableSide := func() (int, int, bool) {
 			qy, qx, ok := find("Q")
-			if !ok || qx < 1 {
+			if !ok {
 				return 0, 0, false
 			}
-			if c := rows[qy][qx-1]; c.Content == "│" {
-				return qy, qx - 1, true
+			for x := qx - 1; x >= 0; x-- {
+				if rows[qy][x].Content == "│" {
+					return qy, x, true
+				}
 			}
 			return 0, 0, false
 		}
