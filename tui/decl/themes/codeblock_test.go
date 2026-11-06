@@ -8,6 +8,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"testing/fstest"
 
 	"github.com/yongjohnlee80/golib/tui"
 	tuidecl "github.com/yongjohnlee80/golib/tui/decl"
@@ -153,29 +154,10 @@ func TestThePageReadsInEveryTheme(t *testing.T) {
 		}
 		page := mustColor(t, vals["document.base"])
 		accent := vals["document.accent"] // Validate fills it from menu.accent when a theme writes none
-		// The qml singleton is the parsed file, not the filled map: the engine refuses reading a
-		// member the file lacks, so the documentAccent binding is written only where the file's
-		// document group has the key — the always-present form is jarvis's pending ruling on the loader
-		own, err := fs.ReadFile(themes.FS(), name+".qml")
-		if err != nil {
-			t.Fatal(err)
-		}
-		ownAccent, inDocument := false, false
-		for _, line := range strings.Split(string(own), "\n") {
-			t := strings.TrimSpace(line)
-			switch {
-			case strings.HasPrefix(t, "document {"):
-				inDocument = true
-			case inDocument && t == "}":
-				inDocument = false
-			case inDocument && strings.HasPrefix(t, "accent:"):
-				ownAccent = true
-			}
-		}
-		bindings := " palette.mid: Theme.app.mid; palette.accent: Theme.menu.accent"
-		if ownAccent {
-			bindings += "; palette.documentAccent: Theme.document.accent"
-		}
+		// The binding is unconditional, as a consumer's is: Themes fills every offered module's
+		// singleton with the vocabulary's optional keys, so Theme.document.accent resolves for
+		// every theme, written or filled (a theme of the program's own directory included)
+		bindings := " palette.mid: Theme.app.mid; palette.accent: Theme.menu.accent; palette.documentAccent: Theme.document.accent"
 		s := decltest.Run(t, 30, 10, tuidecl.LayoutSource("main.qml", []byte("import tui 1.0\nimport tui.theme."+name+" 1.0\n"+
 			"Window { palette.highlight: Theme.document.highlight; palette.base: Theme.document.base; palette.text: Theme.document.text\n"+
 			" palette.window: Theme.document.base; palette.windowText: Theme.document.text"+bindings+"\n"+
@@ -274,4 +256,39 @@ func TestThePageReadsInEveryTheme(t *testing.T) {
 		}
 	}
 	codeBlockGolden(t, "page-audit", table.String())
+}
+
+// A theme a program offers from its own directory — through Themes, as a program's own themes go
+// (the same wrapper the bundled ones ride) — carries the vocabulary's optional keys filled from
+// their fallback: this one, a copy of sepia with a name of its own and no document.accent, binds
+// Theme.document.accent unconditionally and its page reads sepia's menu accent.
+func TestAOfferedThemeBindsItsOptionalKeysUnconditionally(t *testing.T) {
+	src, err := fs.ReadFile(themes.FS(), "sepia.qml")
+	if err != nil {
+		t.Fatal(err)
+	}
+	sepia, err := themes.Values("sepia")
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := mustColor(t, sepia["menu.accent"])
+	fsys := fstest.MapFS{"mine.qml": {Data: src}}
+	html := `<p>plain with <code>zq</code> inline</p>`
+	s := decltest.Run(t, 30, 6, tuidecl.LayoutSource("main.qml", []byte("import tui 1.0\nimport tui.theme.mine 1.0\n"+
+		"Window { palette.highlight: Theme.document.highlight; palette.base: Theme.document.base; palette.text: Theme.document.text\n"+
+		" palette.accent: Theme.menu.accent; palette.documentAccent: Theme.document.accent\n"+
+		" HTMLView { id: page; focus: true; html: \""+html+"\" } }")),
+		tuidecl.Themes(fsys, ".", "tui.theme", "1.0"))
+	s.WaitForText(t, "zq")
+	s.WaitFor(t, "the offered theme's accent on the inline code", func(string) bool {
+		for _, row := range s.Backend.Snapshot() {
+			for _, c := range row {
+				if c.Content == "z" {
+					r, g, b, ok := want.RGBValues()
+					return ok && c.Attrs.FG.Kind == tui.CellColorRGB && c.Attrs.FG.R == r && c.Attrs.FG.G == g && c.Attrs.FG.B == b
+				}
+			}
+		}
+		return false
+	})
 }

@@ -7,6 +7,7 @@ import (
 
 	"github.com/yongjohnlee80/golib/parse"
 	"github.com/yongjohnlee80/golib/parse/qml"
+	tuidecl "github.com/yongjohnlee80/golib/tui/decl"
 	"github.com/yongjohnlee80/golib/tui/style"
 )
 
@@ -18,20 +19,11 @@ type Role struct{ Key, Description string }
 // The returned slice is a copy; editing it never changes validation's vocabulary.
 func Schema() []Role { return slices.Clone(roles) }
 
-// optionalRole is a colour key a theme MAY write, and the required key its value comes from when
-// the theme leaves it unset: Validate fills it in before returning, so every valid theme's map
-// always carries the key and a consumer binds it unconditionally — the fallback written once, in
-// the vocabulary, never in a consumer.
-type optionalRole struct {
-	Role
-	fallback string
-}
-
-// optionalRoles are the colour keys a theme MAY write. Validate accepts them; Values exposes them
-// always, from their fallback when unset.
-var optionalRoles = []optionalRole{
-	{Role{"document.accent", "the document page's accent (inline code, headings' and callouts' accent tones, the diagram accents)"}, "menu.accent"},
-}
+// optionalRoles are the theme-file keys a file MAY leave unset, and the required key each comes
+// from when it does — the palette's vocabulary, read from [tuidecl.OptionalPaletteRoles], where
+// the table is written once, below both consumers: Validate fills the Go map here, and Themes
+// fills the loaded module's singleton, so a consumer binds the key unconditionally.
+func optionalRoles() []tuidecl.OptionalPaletteRole { return tuidecl.OptionalPaletteRoles() }
 
 var roles = []Role{
 	{"app.window", "application chrome background"},
@@ -127,11 +119,11 @@ func Validate(file string, src []byte) (map[string]string, []Diagnostic) {
 	for _, c := range n.Children {
 		add(c.Pos, c.Type, "child objects are not allowed; use grouped colour properties")
 	}
-	known := make(map[string]bool, len(roles)+len(optionalRoles))
+	known := make(map[string]bool, len(roles)+len(optionalRoles()))
 	for _, r := range roles {
 		known[r.Key] = true
 	}
-	for _, r := range optionalRoles {
+	for _, r := range optionalRoles() {
 		known[r.Key] = true
 	}
 	seen := make(map[string]bool, len(roles))
@@ -162,9 +154,9 @@ func Validate(file string, src []byte) (map[string]string, []Diagnostic) {
 	if len(ds) != 0 {
 		return nil, ds
 	}
-	for _, r := range optionalRoles {
+	for _, r := range optionalRoles() {
 		if !seen[r.Key] {
-			if v, ok := values[r.fallback]; ok {
+			if v, ok := values[r.From]; ok {
 				values[r.Key] = v
 			}
 		}
