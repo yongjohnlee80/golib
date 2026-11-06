@@ -120,3 +120,25 @@ func TestAHorizontalXYChartIsLaidOut(t *testing.T) {
 		t.Errorf("the widest bar is centred at y %v, not on jul's band (%v)", bc, jc)
 	}
 }
+
+// A value past the declared range is laid out clamped to it, its bar and its dot where the range's
+// end would put them, never past the plot into the title.
+func TestAnXYValuePastItsRangeIsClampedInTheWindow(t *testing.T) {
+	const head = "xychart-beta\n  title Clamped\n  x-axis [a, b, c]\n  y-axis 0 --> 10\n"
+	past, err := lay(t, head+"  bar [-5, 5, 15]\n  line [-5, 5, 15]\n", 2000)
+	if err != nil {
+		t.Fatal(err)
+	}
+	ends, err := lay(t, head+"  bar [0, 5, 10]\n  line [0, 5, 10]\n", 2000)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(past.nodes) != len(ends.nodes) {
+		t.Fatalf("%d nodes; want %d", len(past.nodes), len(ends.nodes))
+	}
+	for i := range past.nodes {
+		if past.nodes[i].box != ends.nodes[i].box {
+			t.Errorf("node %d at %+v; want %+v, as at the range's end", i, past.nodes[i].box, ends.nodes[i].box)
+		}
+	}
+}
