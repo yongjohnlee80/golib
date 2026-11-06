@@ -249,8 +249,12 @@ func EditorViewSetters() map[string]Setter {
 		// renderer and a Go file: false).
 		"renderedEnabled": setter("an Editor", boolOf, renderedEnabler.SetRenderedEnabled),
 		// golib's: the [ Raw | Rendered ] switch while the editor has a document view: "row" (or true)
-		// on its first row, "title" on its Frame's title row (on its first row with no Frame round
-		// it), false for none. A window's editor has it on its title bar whatever this says.
+		// on its first row, "title" on its Frame's title row, false for none. The Frame is the
+		// nearest one round the Editor, however deep the Editor sits in it, when it is that Frame's
+		// only Editor; otherwise, or with no Frame round it, the switch stays on the Editor's first
+		// row. The Frame finds its Editor as the document builds it, so an Editor a Loader or a
+		// Repeater adds later stays on its own row. A window's editor has its switch on its title
+		// bar whatever this says.
 		"modeSwitch": setter("an Editor", modeSwitchOf, func(e modeSwitcher, at string) {
 			if t, ok := e.(titleModeSwitcher); ok {
 				t.SetModeSwitchInTitle(at == "title")

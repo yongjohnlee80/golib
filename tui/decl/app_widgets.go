@@ -116,15 +116,50 @@ func buildFrame(b Build) (tui.Component, []string, error) {
 	}
 	// an Editor's Raw | Rendered switch has its place on the frame's title row: it shows there while
 	// the Editor's modeSwitch is "title", and takes no room otherwise, so a later modeSwitch moves it
-	if sw, ok := b.Children[0].(titleSwitcher); ok {
+	if sw, ok := frameEditor(b.Children[0]); ok {
 		box.SetTitleSlot(sw.TitleSwitch())
 	}
 	return box, consumed, nil
 }
 
-// titleSwitcher is a frame's child that has a Raw | Rendered switch for its title row: the cell
+// titleSwitcher is a component with a Raw | Rendered switch for its frame's title row: the cell
 // Editor.
 type titleSwitcher interface{ TitleSwitch() tui.Component }
+
+// frameEditor is the one Editor in a frame's content c that the frame's title row holds the switch
+// of: c itself, or the only titleSwitcher below it, however deep (a page's Frame holds a Flex whose
+// FocusScope holds the Editor). It looks inside built containers, never into a nested frame (a Box:
+// its Editor is that frame's) or into an Editor. ok is false for none, and for two or more: which
+// one's switch the title row shows would be a guess, so each keeps its own row.
+//
+// It reads the tree as built: an Editor added to the content later (a Loader's, a Repeater's) is
+// not found, and keeps its switch on its own row.
+func frameEditor(c tui.Component) (titleSwitcher, bool) {
+	var found []titleSwitcher
+	var walk func(tui.Component)
+	walk = func(c tui.Component) {
+		if len(found) > 1 {
+			return
+		}
+		if sw, ok := c.(titleSwitcher); ok {
+			found = append(found, sw)
+			return
+		}
+		if _, nested := c.(*widget.Box); nested {
+			return
+		}
+		if ct, ok := c.(tui.Container); ok {
+			for child := range ct.Children() {
+				walk(child)
+			}
+		}
+	}
+	walk(c)
+	if len(found) != 1 {
+		return nil, false
+	}
+	return found[0], true
+}
 
 func buildScrollView(b Build) (tui.Component, []string, error) {
 	return widget.NewScrollView(b.Children[0]), nil, nil
