@@ -42,6 +42,17 @@ type CellRow struct {
 	Unnumbered bool
 }
 
+// ShowsNoSource reports whether the row shows none of a source line's clusters: decorations only,
+// or nothing.
+func (r CellRow) ShowsNoSource() bool {
+	for _, c := range r.Cells {
+		if c.Line >= 0 {
+			return false
+		}
+	}
+	return true
+}
+
 // RowCell is one cluster drawn: its text, its width in cells, its look, and the source cluster it
 // shows (Line -1: a decoration, a box's rule or a bullet glyph).
 type RowCell struct {
@@ -217,7 +228,7 @@ func (r *renderedLayout) firstRow(ln int) int {
 // decorations only that open its block (a table's top rule), which stand for no line.
 func (r *renderedLayout) topRow(ln int) int {
 	ri := r.firstRow(ln)
-	for ri > 0 && ri < len(r.rows) && r.rowBlock[ri-1] == r.rowBlock[ri] && r.rows[ri-1].Anchor < 0 && onlyDecorations(r.rows[ri-1].Cells) {
+	for ri > 0 && ri < len(r.rows) && r.rowBlock[ri-1] == r.rowBlock[ri] && r.rows[ri-1].Anchor < 0 && r.rows[ri-1].ShowsNoSource() {
 		ri--
 	}
 	return ri

@@ -207,7 +207,7 @@ func (r *MarkdownCellRenderer) table(lb *mdCellLines, cb *CellBlock, from, end i
 			}
 			deco(&row, " ", lb.th.Text)
 			deco(&row, "│", box)
-			if k == 0 && onlyDecorations(row.Cells) { // a row line of empty cells stands for its line
+			if k == 0 && row.ShowsNoSource() { // a row line of empty cells stands for its line
 				row.Anchor = lns[i]
 			}
 			cb.Rows = append(cb.Rows, row)
@@ -490,7 +490,7 @@ func (lb *mdCellLines) cells(cb *CellBlock, ln int, text string, base int, look 
 			lastSpace = len(row.Cells)
 		}
 	}
-	shown := func() bool { return !onlyDecorations(row.Cells) }
+	shown := func() bool { return !row.ShowsNoSource() }
 	brCol := -1 // the column of the <br> waiting to end its row
 	breakRow := func() {
 		if !shown() {
@@ -529,16 +529,6 @@ func (lb *mdCellLines) cells(cb *CellBlock, ln int, text string, base int, look 
 		row.Anchor = ln
 	}
 	cb.Rows = append(cb.Rows, row)
-}
-
-// onlyDecorations reports whether cells show none of a source line's clusters.
-func onlyDecorations(cells []RowCell) bool {
-	for _, c := range cells {
-		if c.Line >= 0 {
-			return false
-		}
-	}
-	return true
 }
 
 // clusterIndex is the cluster byte off of s starts.
