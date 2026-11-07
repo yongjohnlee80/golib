@@ -49,7 +49,7 @@ func (e *Editor) renderGutter(s tui.Surface) {
 	}
 	s.Fill(tui.Rect{W: l.gutter, H: h}, " ", l.styles.Text)
 	y := 0
-	v := e.view().settled(b.textLines)
+	m := e.rowMap().settled()
 	for ln := l.top; ln < len(b.textLines) && y < h; ln++ {
 		num := fmt.Sprint(ln + 1)
 		st := dim
@@ -57,7 +57,7 @@ func (e *Editor) renderGutter(s tui.Surface) {
 			st = l.styles.Text
 		}
 		drawText(s, l.gutter-gutterGap-len(num), y, num, st)
-		y += max(wrapRowsOfLine(b.textLines, ln, v), 1)
+		y += max(m.rowCount(ln), 1)
 	}
 }
 
@@ -76,6 +76,7 @@ func (e *Editor) renderText(s tui.Surface) {
 	p := &textPaint{e: e, s: s, hlf: e.beginHighlightFrame(), styledLn: -1, markedLn: -1}
 	defer finishHighlightFrame(p.hlf)
 	cellsOf := tabAware(s.StringWidth)
+	m := e.rowMap().measuring(cellsOf) // painted as the surface measures; wrapped to the Editor's width (w)
 	lineFill := func(y, ln int) {
 		// A line-wise highlight covers the WHOLE screen row (S2), text or
 		// not; clusters then paint over the fill.
@@ -105,7 +106,7 @@ func (e *Editor) renderText(s tui.Surface) {
 			y++
 			continue
 		}
-		for _, r := range wrapRanges(cs, w, cellsOf) {
+		for _, r := range m.wrapAt(cs, w) {
 			if y >= sz.H {
 				break
 			}
@@ -121,7 +122,7 @@ func (e *Editor) renderText(s tui.Surface) {
 	}
 	e.renderRuler(s, ends, w)
 	if e.scrollable() {
-		paintScrollIndicator(s, sz.W-1, sz.H, l.top, wrapMaxTop(c.buf.textLines, e.view()))
+		paintScrollIndicator(s, sz.W-1, sz.H, l.top, e.rowMap().maxTop())
 	}
 }
 
