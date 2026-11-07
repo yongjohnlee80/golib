@@ -216,12 +216,38 @@ func TestParserParamOverflowStillConsumes(t *testing.T) {
 
 func TestParserOSCDataCap(t *testing.T) {
 	long := strings.Repeat("x", maxStringData+100)
-	got := parse("\x1b]52;" + long + "\x07")
+	got := parse("\x1b]2;" + long + "\x07")
 	if len(got) != 1 {
 		t.Fatalf("expected one OSC dispatch, got %d", len(got))
 	}
 	if len(got[0]) > maxStringData+20 {
 		t.Fatalf("OSC data not capped: %d bytes", len(got[0]))
+	}
+}
+
+// An OSC 52 string (a clipboard's text, as a terminal answers a read) is kept to MaxClipboardData,
+// far past the usual cap, and no further.
+func TestParserOSC52KeepsAClipboardsText(t *testing.T) {
+	var data []byte
+	run := func(in string) {
+		data = nil
+		var p Parser
+		for i := 0; i < len(in); i++ {
+			p.Feed(in[i], func(a *Action) {
+				if a.Kind == OSC {
+					data = append([]byte(nil), a.Data...)
+				}
+			})
+		}
+	}
+	text := strings.Repeat("QUJD", 30_000) // 120,000 bytes
+	run("\x1b]52;c;" + text + "\x07")
+	if string(data) != "52;c;"+text {
+		t.Fatalf("an OSC 52 of %d bytes dispatched %d; want it whole", len(text)+5, len(data))
+	}
+	run("\x1b]52;c;" + strings.Repeat("x", MaxClipboardData+100) + "\x07")
+	if len(data) != MaxClipboardData {
+		t.Fatalf("an OSC 52 past the cap dispatched %d bytes; want %d", len(data), MaxClipboardData)
 	}
 }
 

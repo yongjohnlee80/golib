@@ -48,6 +48,7 @@ type config struct {
 	altScreen    bool
 	mouse        bool
 	optionFold   bool
+	clipRead     bool
 	env          func(string) (string, bool)
 
 	// sizeFn overrides the fd size query — the harness seam for pty-less
@@ -113,6 +114,17 @@ func WithEscTimeout(d time.Duration) Option {
 // characters, which pass through unchanged.
 func WithOptionFold() Option {
 	return func(c *config) { c.optionFold = true }
+}
+
+// WithClipboardRead lets the backend read the system clipboard through the terminal (OSC 52's
+// query, tui.ClipboardReader): over ssh and in a multiplexer too, where the terminal allows it.
+// Off by default, since many terminals ignore the query (VTE's, xterm's by default), others ask the
+// user first (kitty), and a read then waits for its timeout: off, a read fails at once with
+// tui.ErrClipboardUnsupported, and the cell Editor's "+p puts its register without waiting. On, a
+// read the terminal leaves unanswered until its timeout marks the terminal silent, and the reads
+// after it fail at once in the same way: a terminal that doesn't answer costs one wait a session.
+func WithClipboardRead() Option {
+	return func(c *config) { c.clipRead = true }
 }
 
 // WithoutAltScreen selects inline mode: the alternate screen (?1049) is never

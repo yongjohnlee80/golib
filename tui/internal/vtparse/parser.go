@@ -1,6 +1,9 @@
 package vtparse
 
-import "unicode/utf8"
+import (
+	"bytes"
+	"unicode/utf8"
+)
 
 // This file implements the DEC ANSI parser: a byte-at-a-time,
 // incremental implementation of Paul Flo Williams' state machine
@@ -53,7 +56,14 @@ const (
 	inputSubparams = 4
 	maxParamValue  = 65535
 	maxStringData  = 4096
+	// MaxClipboardData caps an OSC 52 string (a clipboard's text, base64): far above
+	// maxStringData, so a terminal's answer to a clipboard read arrives whole. A string that
+	// reaches it may be cut, and its reader treats it as too large.
+	MaxClipboardData = 1 << 20
 )
+
+// clipboardOSC is an OSC 52 string's start: the clipboard's, which may be large.
+var clipboardOSC = []byte("52;")
 
 // Kind says which fields of an Action are meaningful.
 type Kind uint8
@@ -606,7 +616,11 @@ func (p *Parser) osc(b byte, emit func(*Action)) {
 	case b <= 0x1F:
 		// ignore other C0 inside OSC
 	default:
-		if len(p.data) < maxStringData {
+		limit := maxStringData
+		if len(p.data) >= len(clipboardOSC) && bytes.HasPrefix(p.data, clipboardOSC) {
+			limit = MaxClipboardData
+		}
+		if len(p.data) < limit {
 			p.data = append(p.data, b)
 		}
 	}

@@ -80,6 +80,7 @@ func (b *Backend) decodeLoop(readCh <-chan []byte) {
 	d := &decoder{
 		emit:       b.emitEvent,
 		probe:      b.probeReply,
+		clip:       b.clipboardAnswered,
 		onFocusIn:  func() { size.check(b, false) }, // focus-in re-check
 		optionFold: b.cfg.optionFold,
 		erase:      b.erase,

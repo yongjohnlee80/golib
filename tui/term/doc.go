@@ -53,9 +53,12 @@
 //     for the next Flush.
 //   - [tui.ClipboardWriter]: OSC 52 (WriteClipboard); the terminal performs the copy, so it works
 //     over SSH. An oversized payload keeps its tail.
+//   - [tui.ClipboardReader]: OSC 52's query (ReadClipboard), answered by the terminal where it
+//     allows it, so it too works over SSH; on only with WithClipboardRead, and a terminal that
+//     leaves a read unanswered is not asked again that session.
 //   - [tui.CursorColorSetter]: OSC 12 for an RGB colour, OSC 112 back to the terminal's own.
 //
-// It does not implement [tui.ClipboardReader] or [tui.CellMetrics].
+// It does not implement [tui.CellMetrics].
 //
 // This and tui/pty are the only tui packages that import
 // golang.org/x/sys, and this is the only one that imports golang.org/x/term;

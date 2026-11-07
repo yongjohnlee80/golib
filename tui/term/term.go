@@ -66,6 +66,12 @@ type Backend struct {
 	cmu    sync.Mutex
 	cursor tui.CursorLatch
 	images tui.ImageLatch
+
+	// The clipboard reads waiting for the terminal's answer (clipboard_read.go), oldest first, and
+	// whether the terminal left one unanswered (silent), guarded by clipMu.
+	clipMu   sync.Mutex
+	clipWait []*clipWaiter
+	silent   bool
 }
 
 var (
