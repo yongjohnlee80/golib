@@ -336,6 +336,7 @@ func (e *Editor) applyView() {
 	}
 	e.showDocument(shown == ViewRendered && e.doc.Active()) // only a document view is shown and focused
 	e.laid = [2]*renderedLayout{}
+	e.cells.topIn = 0 // a row offset is the Rendered layout's: a view switch starts its line at the top
 	e.MarkDirty()
 	e.switchChanged()
 }

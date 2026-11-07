@@ -157,3 +157,87 @@ func TestAStructuredRendererEditsLists(t *testing.T) {
 		t.Error("list editing stayed on with a generic renderer")
 	}
 }
+
+// With a renderer and no document view, Ctrl+T (the core's Rendered toggle) flips between the text
+// and the renderer's view, as it does for a document view.
+func TestCtrlTFlipsToTheRenderersView(t *testing.T) {
+	ed := widget.NewEditor(widget.WithCore(widget.CoreInitialText(starText)))
+	sh := newShell(ed)
+	h := startApp(t, sh, 40, 10)
+	h.onLoop(func() {
+		ed.SetRenderer(starRenderer{})
+		h.app.FocusInto(ed)
+	})
+	h.barrier(sh)
+	shown := func() (v widget.EditorView) { h.onLoop(func() { v = ed.ShownView() }); return }
+	if v := shown(); v != widget.ViewRaw {
+		t.Fatalf("before Ctrl+T: %v, want Raw (the choice starts Raw)", v)
+	}
+	h.inject(ctrlEv('t'))
+	h.barrier(sh)
+	if v := shown(); v != widget.ViewRendered {
+		t.Fatalf("Ctrl+T: %v, want Rendered through the renderer", v)
+	}
+	h.inject(ctrlEv('t'))
+	h.barrier(sh)
+	if v := shown(); v != widget.ViewRaw {
+		t.Errorf("Ctrl+T again: %v, want Raw", v)
+	}
+}
+
+// tagRenderer is starRenderer with a slice in it: a value no == compares. The Editor names its
+// renderer by its own count, never by comparing the value, so drawing it again doesn't panic.
+type tagRenderer struct {
+	starRenderer
+	tags []string
+}
+
+func TestAnUncomparableRendererDrawsAgain(t *testing.T) {
+	h, sh, ed := renderedEditor(t, starText, tagRenderer{tags: []string{"x"}})
+	for range 3 {
+		h.onLoop(func() { ed.Core().SetLine(4, 0); ed.MarkDirty() })
+		h.barrier(sh)
+	}
+	if got := strings.TrimRight(h.row(0), " "); got != "Title" {
+		t.Errorf("row 0 = %q, want the rendered heading", got)
+	}
+}
+
+// tallRenderer lays each cluster of a line on a row of its own: one line taller than the view.
+type tallRenderer struct{ starRenderer }
+
+func (tallRenderer) LayOut(b widget.Block, lines []string, _ int, measure func(string) int, _ bool, th widget.CellTheme) widget.CellBlock {
+	var cb widget.CellBlock
+	col := 0
+	for c := range tui.Graphemes(lines[b.From]) {
+		cb.Rows = append(cb.Rows, widget.CellRow{Anchor: -1, Cells: []widget.RowCell{{Text: c, W: measure(c), Style: th.Text, Line: b.From, Col: col}}})
+		col++
+	}
+	if len(cb.Rows) == 0 {
+		cb.Rows = []widget.CellRow{{Anchor: b.From}}
+	}
+	return cb
+}
+
+// A line laid taller than the view scrolls by rows: the caret on its last cluster is revealed on
+// the view's last row, and back on its first, on the first.
+func TestATallLinesLaterRowsAreRevealed(t *testing.T) {
+	h, sh, ed := renderedEditor(t, "abcdefghijklmnop", tallRenderer{})
+	cursor := func() (x, y int, ok bool) { h.onLoop(func() { x, y, ok = ed.Cursor() }); return }
+	h.onLoop(func() { ed.Core().SetLine(0, 15) })
+	h.barrier(sh)
+	if _, y, ok := cursor(); !ok || y != 9 {
+		t.Fatalf("caret on the 16th row: y %d, shown %v; want the view's last row, 9", y, ok)
+	}
+	if got := strings.TrimRight(h.row(9), " "); got != "p" {
+		t.Errorf("the view's last row %q, want p", got)
+	}
+	h.onLoop(func() { ed.Core().SetLine(0, 0) })
+	h.barrier(sh)
+	if _, y, ok := cursor(); !ok || y != 0 {
+		t.Errorf("caret back on the first row: y %d, shown %v; want 0", y, ok)
+	}
+	if got := strings.TrimRight(h.row(0), " "); got != "a" {
+		t.Errorf("the view's first row %q, want a", got)
+	}
+}
