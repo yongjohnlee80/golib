@@ -33,9 +33,6 @@ type TabStrip struct {
 	active   string
 	onSelect func(id string)
 	barColor atomic.Pointer[func() (color.NRGBA, bool)] // SetBarColor; read where a native painter paints
-	// shown, when set, is whether the strip takes room: its owner's say (an Editor's title-row tabs,
-	// Editor.SetTabsInTitle); false lays it out at no width. nil: always.
-	shown func() bool
 }
 
 // SetBarColor gives a native painter the colour to fill the strip's bar with, asked at each paint
@@ -199,9 +196,6 @@ func (t *TabStrip) changed() {
 // Layout is one row, as wide as the tabs, + and ≡ need, within the constraints: narrower, the tabs
 // scroll between < and >.
 func (t *TabStrip) Layout(c tui.Constraints) tui.Size {
-	if t.shown != nil && !t.shown() {
-		return c.Constrain(tui.Size{}) // its owner hides it
-	}
 	w := t.core.width()
 	if c.MaxW != tui.Unbounded {
 		w = min(w, c.MaxW)
