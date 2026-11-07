@@ -374,3 +374,38 @@ func TestATablesCellsReadTheirOwnMarkdown(t *testing.T) {
 		"│ **a │ b** │",
 		"│ c   │ [l  │")
 }
+
+// A table too wide to narrow pans as one, following the caret: its rows are drawn between the
+// view's edge columns, which mark with « and » the sides more of it lies past (on its middle row).
+// A click lands on the cell drawn under it, its pan counted.
+func TestAWideTablePansWithTheCaret(t *testing.T) {
+	row := "|" + strings.Repeat(" abcde |", 9) // column k's text at 2+8k: 73 cells laid, 38 shown
+	h, sh, ed := renderedEditor(t, row+"\n|"+strings.Repeat("---|", 9)+"\n"+row, mdRenderer())
+	edge := func(y int) (left, right rune) {
+		r := []rune(h.row(y))
+		return r[0], r[39]
+	}
+	if l, r := edge(2); l != ' ' || r != '»' {
+		t.Errorf("unpanned, the middle row's edges %q %q, want blank and »:\n%s", l, r, h.grid())
+	}
+	if x, y, ok := caretAt(h, sh, ed, 0, 2); !ok || x != 1 || y != 1 {
+		t.Errorf("caret on the first column's text at (%d, %d) %v, want (1, 1)", x, y, ok)
+	}
+	if x, y, ok := caretAt(h, sh, ed, 0, 70); !ok || x != 38 || y != 1 { // its last column's last cluster
+		t.Errorf("caret on the last column's text at (%d, %d) %v, want (38, 1), the room's last cell:\n%s", x, y, ok, h.grid())
+	}
+	if l, r := edge(2); l != '«' || r != '»' {
+		t.Errorf("panned to the last column, the middle row's edges %q %q, want « and »:\n%s", l, r, h.grid())
+	}
+	if got := []rune(h.row(1))[38]; got != 'e' {
+		t.Errorf("panned, the header's cell under the caret %q, want e:\n%s", got, h.grid())
+	}
+	h.inject(tui.MouseEvent{Kind: tui.MousePress, Button: tui.MouseLeft, X: 34, Y: 3},
+		tui.MouseEvent{Kind: tui.MouseRelease, Button: tui.MouseLeft, X: 34, Y: 3})
+	h.barrier(sh)
+	var ln, col int
+	h.onLoop(func() { ln, col = ed.Core().Line() })
+	if ln != 2 || col != 66 { // x 34 shows cell 66 of the row: the last column's 'a'
+		t.Errorf("a click at x 34 of a body row landed on (%d, %d), want (2, 66)", ln, col)
+	}
+}
