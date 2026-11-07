@@ -3,7 +3,7 @@ module github.com/yongjohnlee80/golib/gui
 go 1.26.10
 
 require (
-	github.com/yongjohnlee80/golib v0.8.33
+	github.com/yongjohnlee80/golib v0.8.35
 	golang.org/x/image v0.45.0
 )
 
@@ -17,7 +17,7 @@ require (
 	github.com/godbus/dbus/v5 v5.2.2 // indirect
 	golang.org/x/exp/shiny v0.0.0-20250408133849-7e4ce0ab07d0 // indirect
 	golang.org/x/net v0.60.0 // indirect
-	golang.org/x/sys v0.48.0 // indirect
+	golang.org/x/sys v0.49.0 // indirect
 	golang.org/x/text v0.42.0 // indirect
 )
 
