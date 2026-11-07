@@ -36,8 +36,11 @@ import (
 // crosses one, straight, drawing its own character there.
 //
 // A self-loop is a ↺ mark beside its box, its label a footnote. An edge back up the ranks (a cycle)
-// is routed as any other, by ports beside the forward ones. Not yet: a frame's own direction (every
-// frame is laid in the graph's), and an edge that ends on a frame rather than a node.
+// is routed as any other, by ports beside the forward ones. An end on a frame rather than a node (a
+// transition to or from a composite state) is laid out to an anchor inside the frame, by a port of
+// its own, and its line is cut where it crosses the frame's border: its top for an end at the
+// lower rank, its bottom for one at the upper, a row kept outside for its mark. Not yet: a frame's
+// own direction (every frame is laid in the graph's).
 
 // graph is a box-and-edge diagram as the router lays it out: what each kind's adapter makes of its
 // own model.
@@ -74,6 +77,12 @@ func (n gnode) box(ports Port) Box {
 // stroke, what each end draws, its label (on the line, else a footnote), what is written beside each
 // end (a class relation's cardinalities: beside the line at its box, else a footnote), its minimum
 // span in ranks, and whether it is only placed (an invisible edge keeps its ranks, and draws nothing).
+//
+// An end can stop on a frame's border rather than at its node (a transition to or from a composite
+// state): toFrame and fromFrame name that frame, its graph.frames index plus one (0: the end meets
+// its node). Its node is then the frame's anchor, a node inside it the edge is laid out to (a
+// composite's start for a way in, its end for a way out); the line stops where it crosses the
+// frame's border, its mark just outside it, or the border taking a junction where it has none.
 type gedge struct {
 	from, to             int
 	stroke               Stroke
@@ -82,6 +91,7 @@ type gedge struct {
 	headLabel, tailLabel string // beside the to end, beside the from end
 	minLen               int
 	invisible            bool
+	toFrame, fromFrame   int // the frame (its index plus one) the end stops on; 0: its node
 }
 
 // gframe is a frame round its nodes (those whose frame, or a frame inside it, it is): its title on
@@ -164,15 +174,15 @@ func oriented(g [4]string, down bool, dir pm.Dir) string {
 
 // graphFrames is gr's frames as the router places them: each with its members (its own nodes and
 // every nested frame's), and the nearest enclosing frame that has any. A frame holding no node has
-// no place, and is left out.
-func graphFrames(gr graph) []fcFrame {
+// no place, and is left out. at is each of gr's frames' index among those placed, -1 for none.
+func graphFrames(gr graph) (placed []fcFrame, at []int) {
 	members := make([][]int, len(gr.frames))
 	for i, n := range gr.nodes {
 		for f, steps := n.frame, 0; f >= 0 && f < len(gr.frames) && steps <= len(gr.frames); f, steps = gr.frames[f].parent, steps+1 {
 			members[f] = append(members[f], i)
 		}
 	}
-	at := make([]int, len(gr.frames)) // a frame's index among those placed, -1 none
+	at = make([]int, len(gr.frames)) // a frame's index among those placed, -1 none
 	for f := range at {
 		at[f] = -1
 	}
@@ -191,7 +201,7 @@ func graphFrames(gr graph) []fcFrame {
 		at[f] = len(out)
 		out = append(out, fcFrame{title: fr.title, members: members[f], parent: parent})
 	}
-	return out
+	return out, at
 }
 
 // Frame spacing, in cells: a box's clearance from its neighbours on a rank (room for a long
@@ -258,7 +268,28 @@ type fcEdge struct {
 	drawn    bool        // routed: false for a self-loop, an edge within one rank, an invisible edge
 	lowCol   int         // the column it meets its lower node's top at (lowPort)
 	upCol    int         // the column it leaves its upper node's bottom at (its port for its mark)
+	// frame is the frame each end stops on, its to end's then its from end's (an index into the
+	// placed frames; -1: the end meets its node), and cross the column its line crosses that frame's
+	// border at, found as it is drawn (-1 until then)
+	frame, cross [2]int
 }
+
+// lowerEnd and upperEnd are the indexes into frame and cross of e's ends at its lower node and its
+// upper node: the to end's (0) and the from end's (1), the other way round for an edge back up.
+func (e fcEdge) lowerEnd() int {
+	if e.back {
+		return 1
+	}
+	return 0
+}
+
+func (e fcEdge) upperEnd() int { return 1 - e.lowerEnd() }
+
+// lowerFrame is the frame e's end at its lower node stops on, its top border crossed (-1 none);
+// upperFrame the frame its end at its upper node stops on, its bottom border crossed.
+func (e fcEdge) lowerFrame() int { return e.frame[e.lowerEnd()] }
+
+func (e fcEdge) upperFrame() int { return e.frame[e.upperEnd()] }
 
 // lowPort is the column, on n's top, that edges come down into it at (back false) or leave it up by
 // (back true), in a gap where taken holds the columns of upper ends whose edges go elsewhere: the
@@ -388,10 +419,67 @@ func layGraph(ctx context.Context, gr graph, m Measurer) (*Grid, [][][2]cell, er
 			return nil, nil, ErrUnsupported // never dropped: the host's notice
 		}
 		in.Edges = append(in.Edges, layout.Edge{From: e.from, To: e.to, MinLen: max(e.minLen, 1)})
-		edges = append(edges, fcEdge{e: e, from: e.from, to: e.to})
+		edges = append(edges, fcEdge{e: e, from: e.from, to: e.to, frame: [2]int{-1, -1}, cross: [2]int{-1, -1}})
 		at = append(at, i)
 	}
-	frames := graphFrames(gr)
+	frames, frameAt := graphFrames(gr)
+	// an end on a frame: the frame placed, its anchor inside it, the edge's other end outside it (or
+	// its line would never cross the border)
+	for k := range edges {
+		e := &edges[k]
+		for j, f := range [2]int{e.e.toFrame, e.e.fromFrame} {
+			if f == 0 {
+				continue
+			}
+			anchor, other := e.to, e.from
+			if j == 1 {
+				anchor, other = other, anchor
+			}
+			if f < 0 || f > len(gr.frames) || frameAt[f-1] < 0 || anchor == other {
+				return nil, nil, ErrUnsupported
+			}
+			fr := frames[frameAt[f-1]]
+			if !slices.Contains(fr.members, anchor) || slices.Contains(fr.members, other) {
+				return nil, nil, ErrUnsupported
+			}
+			e.frame[j] = frameAt[f-1]
+		}
+	}
+	// an end on a frame is laid out with the whole frame past the edge's other end, a way in (its to
+	// end) below it and a way out above it, so its line crosses the frame's top or its bottom. The
+	// edge to the anchor keeps the anchor there; the layout ranks the frame's other members by the
+	// edges among them, so an edge of the layout's alone (none is drawn: they follow the edges the
+	// result's are indexed by) keeps each member nothing inside the frame reaches below the other
+	// end, for a way in, and each that reaches nothing inside it above, for a way out
+	for _, e := range edges {
+		for j, f := range e.frame {
+			if f < 0 {
+				continue
+			}
+			anchor, other := e.to, e.from
+			if j == 1 {
+				anchor, other = other, anchor
+			}
+			members := frames[f].members
+			for _, m := range members {
+				free := m != anchor
+				for _, o := range gr.edges {
+					self, far := o.to, o.from
+					if j == 1 {
+						self, far = far, self
+					}
+					free = free && (self != m || far == m || !slices.Contains(members, far))
+				}
+				switch {
+				case !free:
+				case j == 0:
+					in.Edges = append(in.Edges, layout.Edge{From: other, To: m, MinLen: 1})
+				default:
+					in.Edges = append(in.Edges, layout.Edge{From: m, To: other, MinLen: 1})
+				}
+			}
+		}
+	}
 	for _, f := range frames {
 		in.Groups = append(in.Groups, f.members)
 	}
@@ -437,6 +525,42 @@ func layGraph(ctx context.Context, gr graph, m Measurer) (*Grid, [][][2]cell, er
 			frames[f].lo, frames[f].hi = min(frames[f].lo, nodes[i].rank), max(frames[f].hi, nodes[i].rank)
 		}
 	}
+	// an end on a frame crosses its top (the edge's lower end) or its bottom (its upper end), so the
+	// edge's other end is on a rank above the frame's first or below its last; a frame's border an end
+	// stops on keeps the rows outside it its mark needs (needTop, needBot), clear of tracks and jogs
+	// and of the border of a frame it is nested in
+	needTop, needBot := make([]int, len(frames)), make([]int, len(frames))
+	for k := range edges {
+		e := &edges[k]
+		if e.frame == [2]int{-1, -1} || e.e.invisible {
+			continue
+		}
+		rf, rt := nodes[e.from].rank, nodes[e.to].rank
+		e.back = rf > rt
+		upper, lower := e.from, e.to
+		if e.back {
+			upper, lower = lower, upper
+		}
+		if rf == rt {
+			return nil, nil, ErrUnsupported
+		}
+		lf, uf := e.lowerFrame(), e.upperFrame()
+		if lf >= 0 && nodes[upper].rank >= frames[lf].lo || uf >= 0 && nodes[lower].rank <= frames[uf].hi {
+			return nil, nil, ErrUnsupported
+		}
+		rows := func(mark End) int {
+			if endOuter(mark) != "" {
+				return 2
+			}
+			return 1
+		}
+		if lf >= 0 {
+			needTop[lf] = max(needTop[lf], rows(e.lowerMark()))
+		}
+		if uf >= 0 {
+			needBot[uf] = max(needBot[uf], rows(e.upperMark()))
+		}
+	}
 	titleW := make([]int, len(frames)) // a frame's room for its title across the frame: TB and BT only
 	if !across {
 		for f := range frames {
@@ -467,12 +591,18 @@ func layGraph(ctx context.Context, gr graph, m Measurer) (*Grid, [][][2]cell, er
 		if e.from == e.to || rf == rt || e.e.invisible {
 			continue
 		}
+		own := func(j int) int { // an end on a frame takes a port of its own: its line is cut there
+			if e.frame[j] >= 0 {
+				return 2
+			}
+			return 0
+		}
 		if rf < rt { // down: out of the upper's bottom, into the lower's top
-			side(e.from, 1, 1, e.e.tail, e.e.stroke)
-			side(e.to, 0, 1, e.e.head, e.e.stroke)
+			side(e.from, 1, 1+own(1), e.e.tail, e.e.stroke)
+			side(e.to, 0, 1+own(0), e.e.head, e.e.stroke)
 		} else { // back up: out of the lower's top, into the upper's bottom
-			side(e.from, 0, 2, e.e.tail, e.e.stroke)
-			side(e.to, 1, 2, e.e.head, e.e.stroke)
+			side(e.from, 0, 2+own(1), e.e.tail, e.e.stroke)
+			side(e.to, 1, 2+own(0), e.e.head, e.e.stroke)
 		}
 	}
 	for i := range nodes {
@@ -488,12 +618,12 @@ func layGraph(ctx context.Context, gr graph, m Measurer) (*Grid, [][][2]cell, er
 	frameTop, frameBot := make([]int, len(ranks)), make([]int, len(ranks)) // a rank's rows of borders above it, below it
 	for f := len(frames) - 1; f >= 0; f-- {                                // a nested frame comes after the one it is in
 		topRows[f], botRows[f] = max(topRows[f], 1), max(botRows[f], 1)
-		if p := frames[f].parent; p >= 0 {
+		if p := frames[f].parent; p >= 0 { // and the rows an end stopping on f needs outside it
 			if frames[p].lo == frames[f].lo {
-				topRows[p] = max(topRows[p], topRows[f]+1)
+				topRows[p] = max(topRows[p], topRows[f]+1+needTop[f])
 			}
 			if frames[p].hi == frames[f].hi {
-				botRows[p] = max(botRows[p], botRows[f]+1)
+				botRows[p] = max(botRows[p], botRows[f]+1+needBot[f])
 			}
 		}
 		frameTop[frames[f].lo] = max(frameTop[frames[f].lo], topRows[f])
@@ -511,10 +641,10 @@ func layGraph(ctx context.Context, gr graph, m Measurer) (*Grid, [][][2]cell, er
 		if rf > rt {
 			upper, lower, ru, rl = e.e.head, e.e.tail, rt, rf
 		}
-		if endOuter(upper) != "" {
+		if endOuter(upper) != "" && e.upperFrame() < 0 { // an end on a frame: outside it (needBot)
 			outerBot[ru] = 1
 		}
-		if endOuter(lower) != "" {
+		if endOuter(lower) != "" && e.lowerFrame() < 0 {
 			outerTop[rl] = 1
 		}
 	}
@@ -595,10 +725,13 @@ func layGraph(ctx context.Context, gr graph, m Measurer) (*Grid, [][][2]cell, er
 		// a node's bottom ports in this gap, one per kind, mark and stroke: the first of a kind at its
 		// port, another at the nearest of its bottom's cells no port has
 		up, upUsed := map[netKey]int{}, map[int]map[int]bool{}
-		upAt := func(n int, back bool, mark End, stroke Stroke) int {
+		upAt := func(n int, back, own bool, mark End, stroke Stroke) int {
 			key := netKey{1, n, mark, stroke}
 			if back {
 				key.kind = 2
+			}
+			if own { // an end on a frame: a port no other edge shares, as its line is cut
+				key.kind += 2
 			}
 			if c, ok := up[key]; ok {
 				return c
@@ -623,12 +756,13 @@ func layGraph(ctx context.Context, gr graph, m Measurer) (*Grid, [][][2]cell, er
 		topOf := func(e fcEdge) fcTerm {
 			if gi == e.lo {
 				u, _ := ends(e)
-				return fcTerm{col: upAt(u, e.back, e.upperMark(), e.e.stroke), node: u}
+				return fcTerm{col: upAt(u, e.back, e.upperFrame() >= 0, e.upperMark(), e.e.stroke), node: u}
 			}
 			return fcTerm{col: e.cols[gi], node: -1}
 		}
 		keyOf := func(k int, e fcEdge) netKey { // the net the edge is part of, in this gap
 			switch {
+			case e.frame[1] >= 0: // its from end stops on a frame: a net of its own
 			case !e.back && gi == e.lo:
 				return netKey{1, e.from, e.e.tail, e.e.stroke} // a fan-out: the node's bottom port for its mark and stroke
 			case e.back && gi+1 == e.hi:
@@ -637,8 +771,8 @@ func layGraph(ctx context.Context, gr graph, m Measurer) (*Grid, [][][2]cell, er
 			return netKey{0, k, EndNone, StrokeLight}
 		}
 		type upperEnd struct {
-			col, lower int // its column, and the node its edge comes down to (-1: it goes on past)
-			back       bool
+			col, lower int    // its column, and the node its edge comes down to (-1: it goes on past)
+			back, own  bool   // own: its end there stops on a frame
 			mark       End    // what its edge draws at that node
 			stroke     Stroke // and its line's stroke
 			key        netKey
@@ -650,15 +784,18 @@ func layGraph(ctx context.Context, gr graph, m Measurer) (*Grid, [][][2]cell, er
 				if gi+1 == e.hi {
 					_, lower = ends(e)
 				}
-				uppers = append(uppers, upperEnd{topOf(e).col, lower, e.back, e.lowerMark(), e.e.stroke, keyOf(k, e)})
+				uppers = append(uppers, upperEnd{topOf(e).col, lower, e.back, e.lowerFrame() >= 0, e.lowerMark(), e.e.stroke, keyOf(k, e)})
 			}
 		}
 		// a node's top ports in this gap, one per kind, mark and stroke (lowPort), none sharing a column
 		low, lowUsed := map[netKey]int{}, map[int]map[int]bool{}
-		lowAt := func(n int, back bool, mark End, stroke Stroke) int {
+		lowAt := func(n int, back, own bool, mark End, stroke Stroke) int {
 			key := netKey{1, n, mark, stroke}
 			if back {
 				key.kind = 2
+			}
+			if own {
+				key.kind += 2
 			}
 			if c, ok := low[key]; ok {
 				return c
@@ -667,7 +804,7 @@ func layGraph(ctx context.Context, gr graph, m Measurer) (*Grid, [][][2]cell, er
 			// into it: with two, each net's column there would have to be above the other's track
 			into := map[netKey]bool{}
 			for _, u := range uppers {
-				if u.lower == n && u.back == back && u.mark == mark && u.stroke == stroke {
+				if u.lower == n && u.back == back && u.own == own && u.mark == mark && u.stroke == stroke {
 					into[u.key] = true
 				}
 			}
@@ -707,7 +844,7 @@ func layGraph(ctx context.Context, gr graph, m Measurer) (*Grid, [][][2]cell, er
 				e.upCol = top.col
 			}
 			if gi+1 == e.hi {
-				bot = fcTerm{col: lowAt(lower, e.back, e.lowerMark(), e.e.stroke), node: lower}
+				bot = fcTerm{col: lowAt(lower, e.back, e.lowerFrame() >= 0, e.lowerMark(), e.e.stroke), node: lower}
 				e.lowCol = bot.col
 			}
 			botCols[bot.col] = true
@@ -771,7 +908,14 @@ func layGraph(ctx context.Context, gr graph, m Measurer) (*Grid, [][][2]cell, er
 				_, w, _ := capLabel(e.e.label, RoleLabel, m) // as g.label draws it
 				rows = w + 1
 			}
-			labelRows[e.hi-1] = max(labelRows[e.hi-1], rows)
+			gap := e.hi - 1 // the gap its last drop is in: above the frame its end stops on, for one
+			if lf := e.lowerFrame(); lf >= 0 {
+				gap = frames[lf].lo - 1
+				if across && endOuter(e.lowerMark()) != "" {
+					rows++ // its mark takes two cells there, the label along the line before both
+				}
+			}
+			labelRows[gap] = max(labelRows[gap], rows)
 		}
 	}
 	// an end's label lies beside its line where it meets its box: on the row beside the box (TB, BT),
@@ -793,6 +937,16 @@ func layGraph(ctx context.Context, gr graph, m Measurer) (*Grid, [][][2]cell, er
 			if _, w, _ := capLabel(lower, RoleLabel, m); lower != "" {
 				labelRows[e.hi-1] = max(labelRows[e.hi-1], w-1)
 			}
+		}
+	}
+	// the rows an end stopping on a frame's border needs outside it: above the borders, among the
+	// labels' (clear of tracks and jogs), or below them, before the tracks
+	for f, fr := range frames {
+		if needTop[f] > 0 {
+			labelRows[fr.lo-1] = max(labelRows[fr.lo-1], needTop[f])
+		}
+		if needBot[f] > 0 {
+			tailRows[fr.hi] = max(tailRows[fr.hi], needBot[f])
 		}
 	}
 	gapH := make([]int, len(gaps))
@@ -831,7 +985,7 @@ func layGraph(ctx context.Context, gr graph, m Measurer) (*Grid, [][][2]cell, er
 		return c
 	}
 	stroked := func(c cell, k int) { g.addStroke(c, edges[k].e.stroke) } // finish resolves them
-	draw := func(a, b cell, by []int) {
+	drawRun := func(a, b cell, by []int) {
 		ra, rb := toReal(a), toReal(b)
 		g.run(ra, rb)
 		links := runLinks(ra, rb)
@@ -841,6 +995,74 @@ func layGraph(ctx context.Context, gr graph, m Measurer) (*Grid, [][][2]cell, er
 			for _, l := range links {
 				stroked(l[1], k)
 			}
+		}
+	}
+	// an edge whose end stops on a frame is cut at that frame's border: none of its line is drawn on
+	// it or inside it, and cross records the column it crosses there, which must be the border its end
+	// stops on (the frame's top for its lower end, its bottom for its upper end), once. A line that
+	// crosses it anywhere else, or a run other edges share that reaches into it, is cutOff: the edge
+	// isn't drawn as it was laid out, and the diagram is refused (ErrUnsupported), never misdrawn.
+	inFrame := func(f int, c cell) bool {
+		fr := frames[f]
+		return c.x >= fr.l && c.x <= fr.r && c.y >= fr.top && c.y <= fr.bot
+	}
+	cutOff := false
+	draw := func(a, b cell, by []int) {
+		cells := runCells(a, b)
+		inside := func(k int, c cell) int { // the end of edge k whose frame c is in, -1 none
+			for j, f := range edges[k].frame {
+				if f >= 0 && inFrame(f, c) {
+					return j
+				}
+			}
+			return -1
+		}
+		if len(by) != 1 {
+			for _, k := range by {
+				for _, c := range cells {
+					cutOff = cutOff || inside(k, c) >= 0
+				}
+			}
+			drawRun(a, b, by)
+			return
+		}
+		k := by[0]
+		e := &edges[k]
+		if e.frame == [2]int{-1, -1} {
+			drawRun(a, b, by)
+			return
+		}
+		for i := 1; i < len(cells); i++ {
+			out, in := cells[i-1], cells[i]
+			if (inside(k, out) >= 0) == (inside(k, in) >= 0) {
+				continue
+			}
+			if inside(k, out) >= 0 {
+				out, in = in, out
+			}
+			j := inside(k, in)
+			fr := frames[e.frame[j]]
+			want := in.y == fr.top && out.y == fr.top-1
+			if j == e.upperEnd() {
+				want = in.y == fr.bot && out.y == fr.bot+1
+			}
+			if !want || in.x != out.x || e.cross[j] >= 0 && e.cross[j] != in.x {
+				cutOff = true
+			}
+			e.cross[j] = in.x
+		}
+		for i := 0; i < len(cells); i++ { // each piece outside the frames
+			if inside(k, cells[i]) >= 0 {
+				continue
+			}
+			j := i
+			for j+1 < len(cells) && inside(k, cells[j+1]) < 0 {
+				j++
+			}
+			if j > i {
+				drawRun(cells[i], cells[j], by)
+			}
+			i = j
 		}
 	}
 	for gi, gn := range gaps {
@@ -890,15 +1112,36 @@ func layGraph(ctx context.Context, gr graph, m Measurer) (*Grid, [][][2]cell, er
 			draw(cell{c, bandY[r] - 1}, cell{c, bandY[r] + bandH[r]}, []int{k})
 		}
 	}
+	for _, e := range edges {
+		for j, f := range e.frame {
+			cutOff = cutOff || e.drawn && f >= 0 && e.cross[j] < 0 // it never reached the border
+		}
+	}
+	if cutOff {
+		return nil, nil, ErrUnsupported
+	}
 	// endCells are e's ends: the cell beside each end's port, in the frame: the lower node's top (its
 	// lowCol), the upper node's bottom (its upCol). A forward edge comes down into its To node's top, a
 	// back edge up into its bottom.
 	endCells := func(e fcEdge) (toEnd, fromEnd cell) {
 		to, from := nodes[e.to], nodes[e.from]
 		if e.back {
-			return cell{e.upCol, to.y + to.h}, cell{e.lowCol, from.y - 1}
+			toEnd, fromEnd = cell{e.upCol, to.y + to.h}, cell{e.lowCol, from.y - 1}
+		} else {
+			toEnd, fromEnd = cell{e.lowCol, to.y - 1}, cell{e.upCol, from.y + from.h}
 		}
-		return cell{e.lowCol, to.y - 1}, cell{e.upCol, from.y + from.h}
+		// an end on a frame: the cell outside the border where its line crosses it
+		ends := [2]*cell{&toEnd, &fromEnd}
+		for j, f := range e.frame {
+			switch {
+			case f < 0:
+			case j == e.lowerEnd():
+				*ends[j] = cell{e.cross[j], frames[f].top - 1}
+			default:
+				*ends[j] = cell{e.cross[j], frames[f].bot + 1}
+			}
+		}
+		return toEnd, fromEnd
 	}
 	// its ends: the cell beside each node's port, the mark pointing into the node
 	for k, e := range edges {
@@ -930,12 +1173,32 @@ func layGraph(ctx context.Context, gr graph, m Measurer) (*Grid, [][][2]cell, er
 	}
 	// the frames, turned: a layer under the lines, their titles placed by finish where no line
 	// crosses them (before the labels and loops, which keep clear of them)
+	base := len(g.frames)
 	for _, f := range frames {
 		a, b := toReal(cell{f.l, f.top}), toReal(cell{f.r, f.bot})
 		var r tui.Rect
 		r.X, r.Y = min(a.x, b.x), min(a.y, b.y)
 		r.W, r.H = max(a.x, b.x)-r.X+1, max(a.y, b.y)-r.Y+1
 		g.frame(r, f.title)
+	}
+	// where an end stops on a frame's border: the title keeps clear of it, and an end with no mark
+	// meets the border in a junction, as a line meets a box's outline
+	for _, e := range edges {
+		for j, f := range e.frame {
+			if f < 0 || !e.drawn {
+				continue
+			}
+			lower := j == e.lowerEnd()
+			c, mark := cell{e.cross[j], frames[f].top}, e.lowerMark()
+			if !lower {
+				c, mark = cell{e.cross[j], frames[f].bot}, e.upperMark()
+			}
+			var d dirs
+			if mark == EndNone {
+				d = frameDir(lower, gr.dir) // toward the line: up the frame from its top, down from its bottom
+			}
+			g.meetFrame(base+f, toReal(c), d)
+		}
 	}
 	// the boxes, turned (before the labels and loops, which keep clear of them)
 	for i, n := range gr.nodes {
@@ -1039,21 +1302,29 @@ func layGraph(ctx context.Context, gr graph, m Measurer) (*Grid, [][][2]cell, er
 		placed := false
 		if !e.back {
 			arrow := bandY[e.hi] - 1 - frameTop[e.hi] // the frame row its label keeps to: above its arrow and the borders of the frames starting there
+			col := e.lowCol
+			if lf := e.lowerFrame(); lf >= 0 { // its end stops on a frame: beside its mark, outside the border
+				col, arrow = e.cross[e.lowerEnd()], frames[lf].top
+				if across && endOuter(e.lowerMark()) != "" {
+					arrow-- // a mark of two cells: the label along the line before both
+				}
+			}
 			if across {
-				lo, hi := toReal(cell{e.lowCol, arrow - 1 - w}), toReal(cell{e.lowCol, arrow - 2})
+				lo, hi := toReal(cell{col, arrow - 1 - w}), toReal(cell{col, arrow - 2})
 				x0, x1 := min(lo.x, hi.x), max(lo.x, hi.x)
 				// the rows kept for it hold only its own straight last run (tracks and jogs are above
-				// them), but two edges into one port share that run: one label on it
+				// them), but two edges into one port share that run: one label on it; never on a
+				// frame's border (an end stopping on a frame nested in another starting on its rank)
 				clear := true
 				for x := x0; x <= x1 && clear; x++ {
-					clear = !labelled(cell{x, lo.y})
+					clear = !labelled(cell{x, lo.y}) && !g.onFrame(cell{x, lo.y})
 				}
 				if clear {
 					g.label(x0, lo.y, e.e.label, m)
 					placed = true
 				}
 			} else {
-				c := toReal(cell{e.lowCol, arrow - 1})
+				c := toReal(cell{col, arrow - 1})
 				switch {
 				case room(c.x+1, c.y, w+1):
 					g.label(c.x+2, c.y, e.e.label, m)
@@ -1130,7 +1401,13 @@ func layGraph(ctx context.Context, gr graph, m Measurer) (*Grid, [][][2]cell, er
 	}
 	for _, e := range notes {
 		r := g.Boxes[e.to].Rect
-		markAt(g.footnote(e.e.label), []cell{{r.X + r.W, r.Y - 1}, {r.X - 1, r.Y - 1}, {r.X + r.W, r.Y + r.H}, {r.X - 1, r.Y + r.H}, {r.X + r.W, r.Y}, {r.X - 1, r.Y}})
+		var at []cell
+		if e.frame[0] >= 0 { // its to end stops on a frame: the mark beside that end first
+			toEnd, _ := endCells(e)
+			c := toReal(toEnd)
+			at = []cell{{c.x + 1, c.y}, {c.x - 1, c.y}, {c.x + 2, c.y}, {c.x - 2, c.y}}
+		}
+		markAt(g.footnote(e.e.label), append(at, cell{r.X + r.W, r.Y - 1}, cell{r.X - 1, r.Y - 1}, cell{r.X + r.W, r.Y + r.H}, cell{r.X - 1, r.Y + r.H}, cell{r.X + r.W, r.Y}, cell{r.X - 1, r.Y}))
 	}
 	for _, n := range endNotes {
 		r := g.Boxes[n.node].Rect
@@ -1437,4 +1714,23 @@ func placeColumns(nodes []fcNode, ranks [][]int, frames []fcFrame, res layout.Re
 			break
 		}
 	}
+}
+
+// runCells is the straight run from a to b, both included, as Grid.run lines it.
+func runCells(a, b cell) []cell {
+	out := []cell{a}
+	for c := a; c != b; {
+		switch {
+		case c.x < b.x:
+			c.x++
+		case c.x > b.x:
+			c.x--
+		case c.y < b.y:
+			c.y++
+		default:
+			c.y--
+		}
+		out = append(out, c)
+	}
+	return out
 }

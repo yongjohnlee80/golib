@@ -237,6 +237,18 @@ func checkGraph(t *testing.T, name string, gr graph) {
 		inX, inY := c.x >= r.X && c.x < r.X+r.W, c.y >= r.Y && c.y < r.Y+r.H
 		return inX && (c.y == r.Y-1 || c.y == r.Y+r.H) || inY && (c.x == r.X-1 || c.x == r.X+r.W)
 	}
+	// an end's outline: its box's, or the frame's it stops on (gedge's toFrame, fromFrame)
+	_, placed := graphFrames(gr)
+	endRect := func(e gedge, to bool) tui.Rect {
+		n, f := e.from, e.fromFrame
+		if to {
+			n, f = e.to, e.toFrame
+		}
+		if f > 0 {
+			return g.frames[placed[f-1]].rect
+		}
+		return g.Boxes[n].Rect
+	}
 	for i, e := range gr.edges {
 		links := routes[i]
 		if e.from == e.to || e.invisible { // a self-loop is a mark, an invisible edge only placed
@@ -267,8 +279,20 @@ func checkGraph(t *testing.T, name string, gr graph) {
 		}
 		var atFrom, atTo bool
 		for c := range adj {
-			atFrom = atFrom || next(g.Boxes[e.from].Rect, c)
-			atTo = atTo || next(g.Boxes[e.to].Rect, c)
+			atFrom = atFrom || next(endRect(e, false), c)
+			atTo = atTo || next(endRect(e, true), c)
+		}
+		// an end on a frame stops at its border: none of its line on the border or inside it
+		for _, f := range []int{e.toFrame, e.fromFrame} {
+			if f == 0 {
+				continue
+			}
+			r := g.frames[placed[f-1]].rect
+			for c := range adj {
+				if c.x >= r.X && c.x < r.X+r.W && c.y >= r.Y && c.y < r.Y+r.H {
+					t.Fatalf("%s edge %d (%s→%s) runs on or into the frame %+v its end stops on, at %v", what, i, id(e.from), id(e.to), r, c)
+				}
+			}
 		}
 		if !atFrom || !atTo {
 			t.Fatalf("%s edge %d (%s→%s) doesn't reach its boxes: from %v, to %v", what, i, id(e.from), id(e.to), atFrom, atTo)
@@ -349,10 +373,18 @@ func checkGraph(t *testing.T, name string, gr graph) {
 	kindOf := map[string]End{"▼": EndArrow, "▲": EndArrow, "►": EndArrow, "◄": EndArrow, "●": EndDot, "✕": EndCross,
 		"▽": EndTriangle, "△": EndTriangle, "▷": EndTriangle, "◁": EndTriangle, "◆": EndDiamond, "◇": EndDiamondHollow,
 		"╪": EndOne, "╫": EndOne}
-	besideBox := map[[2]int]bool{} // (box, End) marked beside it
+	// (outline, End) marked beside it: a box's index, or a frame's less one (-1 - its index)
+	besideBox := map[[2]int]bool{}
+	outlines := map[int]tui.Rect{}
+	for bi, b := range g.Boxes {
+		outlines[bi] = b.Rect
+	}
+	for fi, f := range g.frames {
+		outlines[-1-fi] = f.rect
+	}
 	for c, mk := range g.marks {
-		for bi, b := range g.Boxes {
-			if !next(b.Rect, c) {
+		for bi, rect := range outlines {
+			if !next(rect, c) {
 				continue
 			}
 			if k, ok := kindOf[mk]; ok {
@@ -360,7 +392,7 @@ func checkGraph(t *testing.T, name string, gr graph) {
 			}
 			// a crow's foot is two cells: the one beside the box, and the line's next one out from it
 			out := c
-			switch r := b.Rect; {
+			switch r := rect; {
 			case c.y == r.Y-1:
 				out.y--
 			case c.y == r.Y+r.H:
@@ -386,11 +418,15 @@ func checkGraph(t *testing.T, name string, gr graph) {
 			continue
 		}
 		for _, end := range []struct {
-			box int
-			e   End
-		}{{e.to, e.head}, {e.from, e.tail}} {
-			if end.e != EndNone && !besideBox[[2]int{end.box, int(end.e)}] {
-				t.Fatalf("%s edge %d (%s→%s): no %d mark beside %s", what, i, id(e.from), id(e.to), end.e, id(end.box))
+			box, frame int
+			e          End
+		}{{e.to, e.toFrame, e.head}, {e.from, e.fromFrame, e.tail}} {
+			outline := end.box
+			if end.frame > 0 {
+				outline = -1 - placed[end.frame-1]
+			}
+			if end.e != EndNone && !besideBox[[2]int{outline, int(end.e)}] {
+				t.Fatalf("%s edge %d (%s→%s): no %d mark beside %s (frame %d)", what, i, id(e.from), id(e.to), end.e, id(end.box), end.frame)
 			}
 		}
 	}
@@ -530,6 +566,9 @@ func checkFrames(t *testing.T, what string, gr graph, g *Grid) {
 			for x := f.tx - 1; x <= f.tx+tui.StringWidth(f.shown); x++ {
 				if _, ok := g.lines[cell{x, f.ty}]; ok {
 					t.Fatalf("%s a line crosses frame %d's title %q at %v", what, i, f.shown, cell{x, f.ty})
+				}
+				if _, ok := f.meets[cell{x, f.ty}]; ok {
+					t.Fatalf("%s an edge's end stops on frame %d's title %q at %v", what, i, f.shown, cell{x, f.ty})
 				}
 			}
 		case f.title != "":

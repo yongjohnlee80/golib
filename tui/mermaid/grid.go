@@ -300,13 +300,16 @@ func (g *Grid) shift(dx, dy int) {
 		g.Boxes[i].Rect.X += dx
 		g.Boxes[i].Rect.Y += dy
 	}
+	move := func(c cell) cell { return cell{c.x + dx, c.y + dy} }
 	for i := range g.frames {
 		g.frames[i].rect.X += dx
 		g.frames[i].rect.Y += dy
 		g.frames[i].tx += dx
 		g.frames[i].ty += dy
+		if g.frames[i].meets != nil {
+			g.frames[i].meets = shiftCells(g.frames[i].meets, move)
+		}
 	}
-	move := func(c cell) cell { return cell{c.x + dx, c.y + dy} }
 	g.lines = shiftCells(g.lines, move)
 	g.stroke = shiftCells(g.stroke, move)
 	g.strokes = shiftCells(g.strokes, move)
