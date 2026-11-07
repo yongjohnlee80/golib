@@ -8,6 +8,7 @@ import (
 	"github.com/yongjohnlee80/golib/gui"
 	"github.com/yongjohnlee80/golib/gui/flow"
 	"github.com/yongjohnlee80/golib/highlight"
+	tuiwidget "github.com/yongjohnlee80/golib/tui/widget"
 )
 
 var (
@@ -163,8 +164,8 @@ func TestUnclosedFrontmatterRunsToTheEnd(t *testing.T) {
 	if !NewMarkdownRenderer().InCode(strings.Split(doc, "\n"), 2) {
 		t.Error("list editing allowed in unclosed frontmatter")
 	}
-	if end, closed := frontmatterEnd(strings.Split(doc, "\n")); end != 3 || closed {
-		t.Errorf("frontmatterEnd = %d, %v; want 3, false", end, closed)
+	if end, closed := tuiwidget.MarkdownFrontmatterEnd(strings.Split(doc, "\n")); end != 3 || closed {
+		t.Errorf("MarkdownFrontmatterEnd = %d, %v; want 3, false", end, closed)
 	}
 }
 
@@ -244,7 +245,7 @@ func TestTableIsAGrid(t *testing.T) {
 // Not a table: a pipe line without a delimiter row, or a delimiter with another cell count.
 func TestNotATable(t *testing.T) {
 	for _, doc := range []string{"a | b\nplain", "| a | b |\n|---|\n| c | d |", "a | b"} {
-		if n := tableEnd(strings.Split(doc, "\n"), 0); n != 0 {
+		if n := tuiwidget.MarkdownTableEnd(strings.Split(doc, "\n"), 0); n != 0 {
 			t.Errorf("%q read as a table to line %d", doc, n)
 		}
 	}
@@ -284,11 +285,11 @@ func TestTableEndsAsGFMReadsIt(t *testing.T) {
 		{"| a | b |\n| - | - |\n| c | d |\n- item | x", 3},         // and a list item
 		{"| a | b |\n| - | - |\n| c | d |\n```\ncode | x\n```", 3}, // and a fence
 	} {
-		if got := tableEnd(strings.Split(tc.doc, "\n"), 0); got != tc.want {
+		if got := tuiwidget.MarkdownTableEnd(strings.Split(tc.doc, "\n"), 0); got != tc.want {
 			t.Errorf("%q: table to line %d, want %d", tc.doc, got, tc.want)
 		}
 	}
-	if n := tableEnd([]string{"- a | b", "| - | - |"}, 0); n != 0 {
+	if n := tuiwidget.MarkdownTableEnd([]string{"- a | b", "| - | - |"}, 0); n != 0 {
 		t.Errorf("a list item read as a table's header (to line %d)", n)
 	}
 }

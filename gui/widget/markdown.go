@@ -43,11 +43,11 @@ import (
 // and embedded vector diagrams. When the user positions the caret within a block, that block
 // seamlessly reveals its raw markdown syntax for editing.
 type MarkdownRenderer struct {
-	h1           float32
-	diagrams     Diagrammer
-	languages    *highlight.Catalog
-	hideMetadata bool
-	metadata     markdownMetadata
+	tuiwidget.MarkdownBlocks // Blocks, InCode, InTable, ReflowFrom: the split both editors share
+
+	h1        float32
+	diagrams  Diagrammer
+	languages *highlight.Catalog
 }
 
 // MarkdownOption sets up a MarkdownRenderer.
@@ -79,16 +79,7 @@ func WithHeadingScale(h1 float32) MarkdownOption {
 // WithHideMetadata omits closed frontmatter and HTML comments from the reading view, without
 // changing source positions. A block being edited still reveals its source, as other Markdown
 // blocks do; Raw mode always shows the original buffer. Incomplete frontmatter stays visible.
-func WithHideMetadata() MarkdownOption { return func(r *MarkdownRenderer) { r.hideMetadata = true } }
-
-// ReflowFrom includes earlier lines whose metadata presentation changed in the last source
-// update. Repeated Blocks calls for that same source keep the answer (InCode also calls Blocks).
-func (r *MarkdownRenderer) ReflowFrom(changedLine int) int {
-	if r.hideMetadata && r.metadata.changed >= 0 {
-		return min(changedLine, r.metadata.changed)
-	}
-	return changedLine
-}
+func WithHideMetadata() MarkdownOption { return func(r *MarkdownRenderer) { r.HideMetadata = true } }
 
 // WithDiagrams draws a fenced block a Diagrammer answers Ready for (a mermaid or vega-lite fence)
 // as its picture. Without one, or until it answers, the block is drawn as code.
@@ -133,66 +124,22 @@ func openFence(line string) (fence, bool) {
 // closes reports whether line closes f (markdown.FenceCloses).
 func (f fence) closes(line string) bool { return markdown.FenceCloses(line, f.ch, f.n) }
 
-// Blocks are the fenced code blocks, each a block of its lines (an unclosed one runs to the end),
-// and every other line alone.
-func (r *MarkdownRenderer) Blocks(lines []string, from, to int) []Block {
-	if r.hideMetadata {
-		r.metadata.prepare(lines)
-	}
-	var out []Block
-	front, _ := frontmatterEnd(lines)
-	for i := 0; i < len(lines); {
-		end := i + 1
-		if i == 0 && front > 0 {
-			end = front
-		} else if r.hideMetadata && r.metadata.hidden[i] {
-			for end < len(lines) && r.metadata.hidden[end] {
-				end++
-			}
-		} else if r.hideMetadata && r.metadata.continued[i] {
-			// The prefix is a comment begun on an earlier line, not a Markdown block opener.
-		} else if f, ok := openFence(lines[i]); ok {
-			for end < len(lines) && !f.closes(lines[end]) {
-				end++
-			}
-			end = min(end+1, len(lines))
-		} else if n := tableEnd(lines, i); n > 0 {
-			end = n
-		} else if startsIndentedCode(lines, i) {
-			// an indented code block: it cannot interrupt a paragraph, so it starts at the top or
-			// after a blank line, and runs while lines stay indented or blank, its trailing
-			// blanks left out
-			for end < len(lines) && (indentedCode(lines[end]) || isBlank(lines[end])) {
-				end++
-			}
-			for end > i+1 && isBlank(lines[end-1]) {
-				end--
-			}
-		}
-		if end > from && i < to {
-			out = append(out, Block{From: max(i, from), To: min(end, to)})
-		}
-		i = end
-	}
-	return out
-}
-
 // LayOut lays block b out.
 func (r *MarkdownRenderer) LayOut(b Block, lines []string, width float32, cursorInside bool, t *gui.TextShaper, th Theme, host DiagramHost) BlockLayout {
 	code := flow.Options{Width: width, WhiteSpace: flow.PreWrap, Color: th.Text, LineHeight: codeLineHeight}
-	if front, closed := frontmatterEnd(lines); b.From == 0 && front > 0 {
-		if r.hideMetadata && closed && !cursorInside {
+	if front, closed := tuiwidget.MarkdownFrontmatterEnd(lines); b.From == 0 && front > 0 {
+		if r.HideMetadata && closed && !cursorInside {
 			return BlockLayout{}
 		}
 		return r.layFrontmatter(b, lines, closed, code, cursorInside, t, th)
 	}
-	if r.hideMetadata && r.metadata.hidden[b.From] {
+	if r.HideMetadata && r.Meta.Hidden(b.From) {
 		if !cursorInside {
 			return BlockLayout{}
 		}
 		return r.layIndented(b, lines, code, t, th)
 	}
-	if r.hideMetadata && r.metadata.continued[b.From] {
+	if r.HideMetadata && r.Meta.Continued(b.From) {
 		if cursorInside {
 			spans := rawSpans(b.From, lines[b.From], th.Mono, nil)
 			p := flow.Lay(spans, code, t)
@@ -205,10 +152,10 @@ func (r *MarkdownRenderer) LayOut(b Block, lines []string, width float32, cursor
 	if f, ok := openFence(lines[b.From]); ok {
 		return r.layFence(b, f, lines, code, cursorInside, t, th, host)
 	}
-	if tableEnd(lines, b.From) > 0 {
+	if tuiwidget.MarkdownTableEnd(lines, b.From) > 0 {
 		return r.layTable(b, lines, width, cursorInside, t, th)
 	}
-	if startsIndentedCode(lines, b.From) {
+	if tuiwidget.MarkdownStartsIndentedCode(lines, b.From) {
 		return r.layIndented(b, lines, code, t, th)
 	}
 	ln := b.From
@@ -248,8 +195,8 @@ func (r *MarkdownRenderer) layLine(lines []string, ln int, width float32, t *gui
 		body[i].Col += clusters(line[:off])
 	}
 	spans = append(spans, body...)
-	if r.hideMetadata {
-		spans = r.metadata.mask(spans, ln)
+	if r.HideMetadata {
+		spans = metaMask(&r.Meta, spans, ln)
 	}
 	if hang > 0 {
 		opts.Left += em * 0.3
@@ -310,40 +257,8 @@ func isRule(lines []string, ln int) bool {
 	return s[0] != '-' || ln == 0 || isBlank(lines[ln-1])
 }
 
-// quoteDepth reads a line's blockquote marks: how many '>' (each with the space after it) before
-// its text, and where the text starts.
-func quoteDepth(line string) (depth, off int) {
-	i := 0
-	for i < len(line) && i < 3 && line[i] == ' ' {
-		i++
-	}
-	for i < len(line) && line[i] == '>' {
-		depth++
-		i++
-		if i < len(line) && line[i] == ' ' {
-			i++
-		}
-	}
-	if depth == 0 {
-		return 0, 0
-	}
-	return depth, i
-}
-
-// frontmatterEnd is where a document's frontmatter ends, past its closing line, as the Raw
-// view's highlighter reads it: a "---" first line, closed by "---" or "...". Unclosed (while it
-// is being written), it runs to the end. 0: none.
-func frontmatterEnd(lines []string) (end int, closed bool) {
-	if len(lines) == 0 || !markdown.FrontmatterOpens(lines[0]) {
-		return 0, false
-	}
-	for k := 1; k < len(lines); k++ {
-		if markdown.FrontmatterCloses(lines[k]) {
-			return k + 1, true
-		}
-	}
-	return len(lines), false
-}
+// quoteDepth reads a line's blockquote marks (tui/widget's MarkdownQuoteDepth).
+func quoteDepth(line string) (depth, off int) { return tuiwidget.MarkdownQuoteDepth(line) }
 
 // layFrontmatter lays frontmatter out as a quiet block: its keys and values small, monospace,
 // its "---" lines hidden off the cursor.
@@ -473,21 +388,6 @@ func (r *MarkdownRenderer) layIndented(b Block, lines []string, opts flow.Option
 	return bl
 }
 
-// InCode reports whether line ln is inside a code block, fenced or indented, as the renderer
-// lays the lines out: there "- x" is code, not a list item.
-func (r *MarkdownRenderer) InCode(lines []string, ln int) bool {
-	if front, _ := frontmatterEnd(lines); ln < front {
-		return true
-	}
-	for _, b := range r.Blocks(lines, 0, len(lines)) { // the whole document: a block's From is its start
-		if b.From <= ln && ln < b.To {
-			_, fenced := openFence(lines[b.From])
-			return fenced || startsIndentedCode(lines, b.From)
-		}
-	}
-	return false
-}
-
 // fenceSpans draw a fence line off the cursor: its fence characters hidden, an info string
 // muted. The line keeps its clusters, so the caret still maps onto it.
 func fenceSpans(ln int, line string, font gui.Font, th Theme) []flow.Span {
@@ -503,38 +403,10 @@ func fenceSpans(ln int, line string, font gui.Font, th Theme) []flow.Span {
 	return spans
 }
 
-// startsIndentedCode reports whether line i starts an indented code block: indented as code, at
-// the top or after a blank line, and not inside a list, where indentation nests an item or
-// continues one.
-func startsIndentedCode(lines []string, i int) bool {
-	if !indentedCode(lines[i]) || (i > 0 && !isBlank(lines[i-1])) {
-		return false
-	}
-	for j := i - 1; j >= 0; j-- {
-		switch {
-		case isBlank(lines[j]):
-		case isListItem(lines[j]):
-			return false
-		case lines[j][0] == ' ' || lines[j][0] == '\t':
-		default:
-			return true
-		}
-	}
-	return true
-}
-
 // isListItem reports whether the line begins with a valid Markdown list item marker.
 func isListItem(line string) bool {
 	_, _, ok := tuiwidget.MarkdownListItem(line)
 	return ok
-}
-
-// indentedCode reports a line indented as code: four spaces or a tab before any text.
-func indentedCode(line string) bool {
-	if isBlank(line) {
-		return false
-	}
-	return strings.HasPrefix(line, "\t") || strings.HasPrefix(line, "    ")
 }
 
 // isBlank reports whether the line contains only whitespace characters.
