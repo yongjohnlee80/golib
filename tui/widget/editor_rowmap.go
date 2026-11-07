@@ -65,7 +65,7 @@ func (m rowMap) maxTop() int {
 	if m.r != nil { // the first line whose first row leaves the last row on the view's last
 		bottom := len(m.r.rows) - m.v.h
 		for ln := range m.lines {
-			if m.r.firstRow(ln) >= bottom {
+			if m.r.topRow(ln) >= bottom {
 				return ln
 			}
 		}
@@ -138,7 +138,7 @@ func (m rowMap) colAt(ln, row, x int) int {
 func (m rowMap) visible(top, h int) (first, last int) {
 	if m.r != nil {
 		first = max(0, min(top, len(m.lines)-1))
-		end := m.r.firstRow(first) + m.in + h
+		end := m.r.topRow(first) + m.in + h
 		last = first
 		for ln := first; ln < len(m.lines); ln++ {
 			if rs := m.r.lineRows[ln]; len(rs) > 0 {
@@ -171,7 +171,7 @@ func (m rowMap) lowestTop(top, ln, h int) int {
 			last = rs[len(rs)-1]
 		}
 		t := ln
-		for t > top && last-m.r.firstRow(t-1) < h {
+		for t > top && last-m.r.topRow(t-1) < h {
 			t--
 		}
 		return t
@@ -196,7 +196,7 @@ func (m rowMap) reveal(top, left, ln, cx int) (int, int) {
 func (m rowMap) caret(top, left, ln, col, cx int) (x, y int, ok bool) {
 	if m.r != nil {
 		ri, x := m.r.caret(ln, col)
-		y = ri - (m.r.firstRow(top) + m.in)
+		y = ri - (m.r.topRow(top) + m.in)
 		if y < 0 || (m.v.h > 0 && y >= m.v.h) {
 			return 0, 0, false
 		}
@@ -212,7 +212,7 @@ func (m rowMap) caret(top, left, ln, col, cx int) (x, y int, ok bool) {
 func (m rowMap) hit(top, left, x, y int, colAt func(cs []string, from, end, cells int) int, lastCol func(ln int) int) (ln, col int) {
 	lastLn := len(m.lines) - 1
 	if m.r != nil {
-		return m.r.hit(m.r.firstRow(top)+m.in+max(y, 0), max(x, 0))
+		return m.r.hit(m.r.topRow(top)+m.in+max(y, 0), max(x, 0))
 	}
 	if m.v.wrap == WrapNone {
 		ln = min(top+max(y, 0), lastLn)

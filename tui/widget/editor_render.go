@@ -238,7 +238,7 @@ func tabAware(measure func(string) int) func(string) int {
 func (e *Editor) renderRendered(s tui.Surface, m rowMap) {
 	sz := s.Size()
 	l, c, r := &e.cells, e.core, m.r
-	first := r.firstRow(l.top) + l.topIn
+	first := r.topRow(l.top) + l.topIn
 	for y := 0; y < sz.H && first+y < len(r.rows); y++ {
 		x := 0
 		for _, cl := range r.rows[first+y].Cells {
@@ -262,7 +262,7 @@ func (e *Editor) renderRendered(s tui.Surface, m rowMap) {
 // an unnumbered one (a box's rule); the cursor's line in the text's colour.
 func (e *Editor) renderRenderedGutter(s tui.Surface, r *renderedLayout, dim style.Style) {
 	l, b := &e.cells, &e.core.buf
-	first := r.firstRow(l.top) + l.topIn
+	first := r.topRow(l.top) + l.topIn
 	for y := 0; y < s.Size().H && first+y < len(r.rows); y++ {
 		ri := first + y
 		ln := r.lineOfRow(ri)
