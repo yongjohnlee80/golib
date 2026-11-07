@@ -33,6 +33,12 @@ type MarkdownBlocks struct {
 // frontmatter, tables, indented code blocks, runs of hidden metadata, and every other line alone;
 // those overlapping [from, to), clipped to it.
 func (m *MarkdownBlocks) Blocks(lines []string, from, to int) []Block {
+	return splitMarkdown(m, lines, from, to)
+}
+
+// splitMarkdown is m's split, a function so that InCode and InTable name the split they read: an
+// embedder's own Blocks (a renderer that splits differently) never reaches them.
+func splitMarkdown(m *MarkdownBlocks, lines []string, from, to int) []Block {
 	if m.HideMetadata {
 		m.Meta.Prepare(lines)
 	}
@@ -89,7 +95,7 @@ func (m *MarkdownBlocks) InCode(lines []string, ln int) bool {
 	if front, _ := MarkdownFrontmatterEnd(lines); ln < front {
 		return true
 	}
-	for _, b := range m.Blocks(lines, 0, len(lines)) { // the whole document: a block's From is its start
+	for _, b := range splitMarkdown(m, lines, 0, len(lines)) { // the whole document: a block's From is its start
 		if b.From <= ln && ln < b.To {
 			_, fenced := mdOpenFence(lines[b.From])
 			return fenced || MarkdownStartsIndentedCode(lines, b.From)
@@ -101,7 +107,7 @@ func (m *MarkdownBlocks) InCode(lines []string, ln int) bool {
 // InTable reports whether line ln is a row of a table: its source is not a list, whatever it
 // starts with.
 func (m *MarkdownBlocks) InTable(lines []string, ln int) bool {
-	for _, b := range m.Blocks(lines, 0, len(lines)) {
+	for _, b := range splitMarkdown(m, lines, 0, len(lines)) {
 		if b.From <= ln && ln < b.To {
 			return MarkdownTableEnd(lines, b.From) > 0
 		}
