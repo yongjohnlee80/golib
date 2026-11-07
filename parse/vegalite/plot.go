@@ -10,8 +10,8 @@ import (
 )
 
 // THE PLOT: a spec read (Parse) and plotted (NewLayered) as a renderer reads it, every layer's data
-// on its channels after aggregate, stack and sort, on the shared scales. gui/vegalite lays this out
-// in a window; tui/vegalite in cells.
+// on its channels after aggregate, stack and sort, on the shared scales. chart/vegalite lays this out
+// as shapes (a window paints them, an export writes them as SVG); tui/vegalite in cells.
 
 // Plot reads src, a Vega-Lite spec, and plots it. A spec outside the subset is ErrUnsupported
 // (wrapped with what), one over a limit ErrTooLarge; malformed JSON is the decoder's error.
