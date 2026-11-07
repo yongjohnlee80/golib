@@ -59,6 +59,12 @@ func (r *MarkdownCellRenderer) LayOut(b Block, lines []string, width int, measur
 		// closed frontmatter, hidden: no row of its own (a fold)
 	case r.HideMetadata && r.Meta.Hidden(b.From):
 		// a run of comments, hidden: no row
+	case r.HideMetadata && r.Meta.Continued(b.From):
+		// a line going on from a comment, as gui's: prose under its mask, whatever it starts like (a
+		// fence, a table, a list item inside the comment is none)
+		for ln := b.From; ln < b.To; ln++ {
+			r.line(&lb, &cb, ln, lines[ln])
+		}
 	default:
 		if f, ok := mdOpenFence(lines[b.From]); ok {
 			r.fenced(&lb, &cb, b, lines, f)
@@ -341,9 +347,21 @@ func (r *MarkdownCellRenderer) line(lb *mdCellLines, cb *CellBlock, ln int, line
 		cb.Rows = append(cb.Rows, CellRow{Anchor: ln})
 		return
 	}
+	var mask []bool
+	if r.HideMetadata {
+		mask, _ = r.Meta.HiddenClusters(ln)
+	}
+	masked := func(end int) bool { // whether a cluster before byte end is metadata: no prefix of the line's
+		for i := range min(clusterIndex(line, end), len(mask)) {
+			if mask[i] {
+				return true
+			}
+		}
+		return false
+	}
 	var lead, cont []RowCell // drawn before the line's text, and before each later row of it
 	start := 0               // the byte the text starts at
-	if indent, marker, ok := MarkdownListItem(line); ok {
+	if indent, marker, ok := MarkdownListItem(line); ok && !masked(len(indent)+len(marker)) {
 		col := 0
 		for _, c := range indent {
 			lead = append(lead, lb.cell(string(c), lb.th.Text, ln, col))
@@ -367,7 +385,7 @@ func (r *MarkdownCellRenderer) line(lb *mdCellLines, cb *CellBlock, ln int, line
 			}
 		}
 		start = len(indent) + len(marker)
-	} else if depth, off := MarkdownQuoteDepth(line); depth > 0 {
+	} else if depth, off := MarkdownQuoteDepth(line); depth > 0 && !masked(off) {
 		at := 0 // past the marks read so far
 		for range depth {
 			at += strings.IndexByte(line[at:], '>')
@@ -380,10 +398,6 @@ func (r *MarkdownCellRenderer) line(lb *mdCellLines, cb *CellBlock, ln int, line
 	}
 	text := line[start:]
 	attrs, _ := MarkdownLineAttrs(text)
-	var mask []bool
-	if r.HideMetadata {
-		mask, _ = r.Meta.HiddenClusters(ln)
-	}
 	lb.cells(cb, ln, text, clusterIndex(line, start), func(off int) style.Style { return lb.styleOf(attrs[off]) }, func(off, col int) bool {
 		return attrs[off].Hidden || attrs[off].Br > 0 || (col < len(mask) && mask[col])
 	}, func(off, col int) int {
