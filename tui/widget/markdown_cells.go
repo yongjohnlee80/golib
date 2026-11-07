@@ -219,9 +219,9 @@ func (lb *mdCellLines) cells(cb *CellBlock, ln int, text string, base int, look 
 	off, col := 0, base
 	for c := range tui.Graphemes(text) {
 		if hidden == nil || !hidden(off, col) {
-			cw := max(lb.measure(c), 1)
+			cw, shown := max(lb.measure(c), 1), c // the editor's measure counts a tab as its cells
 			if c == "\t" {
-				cw = tabCells
+				shown = " " // drawn blank, as wide as the measure says
 			}
 			if w+cw > lb.width && len(row.Cells) > 0 {
 				carry := []RowCell(nil)
@@ -235,7 +235,7 @@ func (lb *mdCellLines) cells(cb *CellBlock, ln int, text string, base int, look 
 					w += rc.W
 				}
 			}
-			row.Cells = append(row.Cells, RowCell{Text: c, W: cw, Style: look(off), Line: ln, Col: col})
+			row.Cells = append(row.Cells, RowCell{Text: shown, W: cw, Style: look(off), Line: ln, Col: col})
 			w += cw
 			if c == " " {
 				lastSpace = len(row.Cells)

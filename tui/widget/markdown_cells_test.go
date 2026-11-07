@@ -44,6 +44,13 @@ func TestMarkdownHidesWhatTheReaderSkips(t *testing.T) {
 	wantRows(t, h, "body", "after", "go", "fmt.Println()", "end")
 }
 
+// A tab in a code block is blank cells, as many as the editor gives a tab: never a tab character
+// on the screen.
+func TestMarkdownTabIsBlankCells(t *testing.T) {
+	h, _, _ := renderedEditor(t, "```\na\tb\n```", mdRenderer())
+	wantRows(t, h, "a    b")
+}
+
 // The caret on a hidden mark sits on the next shown cell; typing reveals the line's source, and Esc
 // renders it again; Enter on a list item continues the list.
 func TestMarkdownCellsAreEditable(t *testing.T) {
