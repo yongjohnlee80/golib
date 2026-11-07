@@ -229,7 +229,7 @@ func TestATallLinesLaterRowsAreRevealed(t *testing.T) {
 	if _, y, ok := cursor(); !ok || y != 9 {
 		t.Fatalf("caret on the 16th row: y %d, shown %v; want the view's last row, 9", y, ok)
 	}
-	if got := strings.TrimRight(h.row(9), " "); got != "p" {
+	if got := strings.TrimRight(h.row(9)[:39], " "); got != "p" { // the last column is the scroll indicator
 		t.Errorf("the view's last row %q, want p", got)
 	}
 	h.onLoop(func() { ed.Core().SetLine(0, 0) })
@@ -237,7 +237,7 @@ func TestATallLinesLaterRowsAreRevealed(t *testing.T) {
 	if _, y, ok := cursor(); !ok || y != 0 {
 		t.Errorf("caret back on the first row: y %d, shown %v; want 0", y, ok)
 	}
-	if got := strings.TrimRight(h.row(0), " "); got != "a" {
+	if got := strings.TrimRight(h.row(0)[:39], " "); got != "a" { // the last column is the scroll indicator
 		t.Errorf("the view's first row %q, want a", got)
 	}
 }
