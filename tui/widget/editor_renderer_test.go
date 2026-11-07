@@ -151,10 +151,11 @@ func (r *blockStar) InCode(lines []string, ln int) bool  { return r.md.InCode(li
 func (r *blockStar) InTable(lines []string, ln int) bool { return r.md.InTable(lines, ln) }
 
 // A Markdown renderer's list editing skips code and a table's rows: Enter on "- x" there opens a
-// plain line; on a prose item it continues the list. The table's row has no outer pipes (GFM reads
-// it as a row), so it would parse as an item but for the table.
+// plain line; on a prose item it continues the list. The table's row has no outer pipes and is
+// indented four spaces, so it starts no block and the table holds it (an unindented "- c | d" is a
+// list item that ends the table); it would parse as an item but for the table.
 func TestARenderedListSkipsCodeAndTableRows(t *testing.T) {
-	const doc = "```\n- code\n```\n\n| - a | b |\n|---|---|\n- c | d\n\n- item"
+	const doc = "```\n- code\n```\n\n| - a | b |\n|---|---|\n    - c | d\n\n- item"
 	enterAtEnd := func(ln int) string {
 		h, sh, ed := renderedEditor(t, doc, &blockStar{})
 		h.onLoop(func() { ed.Core().SetLine(ln, 0) })
@@ -163,14 +164,19 @@ func TestARenderedListSkipsCodeAndTableRows(t *testing.T) {
 		return ed.Core().Value()
 	}
 	lines := strings.Split(doc, "\n")
+	var md widget.MarkdownBlocks // the row's premise: the table holds it, it is no pipe-bounded row, and it reads as an item
+	_, bounded := widget.MarkdownTableCells(lines[6])
+	if _, _, item := widget.MarkdownListItem(lines[6]); !md.InTable(lines, 6) || bounded || !item {
+		t.Fatalf("%q: in the table %v, a pipe-bounded row %v, an item %v; want true, false, true", lines[6], md.InTable(lines, 6), bounded, item)
+	}
 	opened := func(ln int) string { // doc with an empty line after line ln
 		return strings.Join(append(append(append([]string{}, lines[:ln+1]...), ""), lines[ln+1:]...), "\n")
 	}
 	if got := enterAtEnd(1); got != opened(1) {
 		t.Errorf("Enter on \"- code\" in a fenced block:\n%s\nwant a plain line", got)
 	}
-	if got := enterAtEnd(6); got != opened(6) {
-		t.Errorf("Enter on a table's row without outer pipes \"- c | d\":\n%s\nwant a plain line", got)
+	if got := strings.Split(enterAtEnd(6), "\n"); len(got) != len(lines)+1 || strings.TrimSpace(got[7]) != "" {
+		t.Errorf("Enter on a table's row without outer pipes \"    - c | d\":\n%s\nwant a plain line after it", strings.Join(got, "\n"))
 	}
 	if got := enterAtEnd(8); got != doc+"\n- " {
 		t.Errorf("Enter on a prose item:\n%s\nwant the list continued", got)
