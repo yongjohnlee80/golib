@@ -138,8 +138,9 @@ func besideRect(r tui.Rect, c cell) bool {
 
 // The router's invariants hold with ends on frames: random graphs (every piece any kind brings, in
 // every direction) with some ends moved from a node onto a frame it is in that the edge's other
-// end isn't (checkGraph: the line stops beside the frame, never on it or inside it, its mark beside
-// it). One the router can't draw that way is refused, never misdrawn; most are drawn.
+// end isn't, the node being an anchor as an adapter picks one (checkGraph: the line stops beside
+// the frame, never on it or inside it, its mark beside it). One the router can't draw that way is
+// refused, never misdrawn; most are drawn.
 func TestTheRoutersInvariantsHoldWithEndsOnFrames(t *testing.T) {
 	var drawn, refused int
 	for seed := range uint64(300) {
@@ -161,10 +162,25 @@ func TestTheRoutersInvariantsHoldWithEndsOnFrames(t *testing.T) {
 			for _, end := range []struct {
 				n, other int
 				f        *int
-			}{{e.to, e.from, &e.toFrame}, {e.from, e.to, &e.fromFrame}} {
-				var outer []int // the frames n is in that the other end isn't
+				in       bool // a way in (the to end): n is reached from outside the frame
+			}{{e.to, e.from, &e.toFrame, true}, {e.from, e.to, &e.fromFrame, false}} {
+				// the frames n is in that the other end isn't, where n is an anchor as an adapter
+				// picks one (gedge): a way in to a node no edge from inside the frame reaches (a
+				// composite's start), a way out from one no edge leaves for inside it (its end)
+				var outer []int
 				for _, f := range chain(end.n) {
-					if !slices.Contains(chain(end.other), f) {
+					if slices.Contains(chain(end.other), f) {
+						continue
+					}
+					free := true
+					for _, o := range gr.edges {
+						self, far := o.to, o.from
+						if !end.in {
+							self, far = far, self
+						}
+						free = free && (self != end.n || far == end.n || !slices.Contains(chain(far), f))
+					}
+					if free {
 						outer = append(outer, f)
 					}
 				}
