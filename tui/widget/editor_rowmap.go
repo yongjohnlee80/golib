@@ -16,6 +16,7 @@ type rowMap struct {
 	v     wrapView
 	r     *renderedLayout // the Editor's own Rendered view, laid out; nil for the Raw view
 	in    int             // the Rendered view's rows of the top line above the view (cellLayout.topIn)
+	pan   map[int]int     // the Rendered view's wide blocks' pans (cellLayout.pan)
 }
 
 // rowMap is the map over the Editor's lines in its view, measuring as the Editor does.
@@ -27,9 +28,32 @@ func (e *Editor) rowMap() rowMap {
 		if m.v.h > 0 && len(r.rows) > m.v.h && w > 1 {
 			r = e.renderedRows(w - 1) // the scroll indicator takes the last column
 		}
-		m.r, m.in = r, e.cells.topIn
+		m.r, m.in, m.pan = r, e.cells.topIn, e.cells.pan
 	}
 	return m
+}
+
+// content is the cells block bi's rows are drawn in, from x0, w wide: the room, or for a block wider
+// than the room (a table that can't narrow) the room less its two edge columns, which hold its marks.
+func (m rowMap) content(bi int) (x0, w int) {
+	room := m.width()
+	if bi < len(m.r.blockW) && m.r.blockW[bi] > room && room > 2 {
+		return 1, room - 2
+	}
+	return 0, room
+}
+
+// maxPan is how far block bi pans, in cells: 0 for a block that fits.
+func (m rowMap) maxPan(bi int) int {
+	if x0, w := m.content(bi); x0 > 0 {
+		return max(m.r.blockW[bi]-w, 0)
+	}
+	return 0
+}
+
+// panOf is block bi's pan, within what it has to show.
+func (m rowMap) panOf(bi int) int {
+	return min(max(m.pan[m.r.blocks[bi].From], 0), m.maxPan(bi))
 }
 
 // measuring is m, measuring with measure: a painter measures with its surface.
@@ -200,6 +224,13 @@ func (m rowMap) caret(top, left, ln, col, cx int) (x, y int, ok bool) {
 		if y < 0 || (m.v.h > 0 && y >= m.v.h) {
 			return 0, 0, false
 		}
+		if ri < len(m.r.rowBlock) {
+			bi := m.r.rowBlock[ri]
+			x0, w := m.content(bi)
+			if x = x0 + x - m.panOf(bi); m.maxPan(bi) > 0 && (x < x0 || x >= x0+w) {
+				return 0, 0, false // panned out of the room
+			}
+		}
 		return x, y, true
 	}
 	return caretAt(m.lines, m.v, top, left, ln, col, cx)
@@ -212,7 +243,13 @@ func (m rowMap) caret(top, left, ln, col, cx int) (x, y int, ok bool) {
 func (m rowMap) hit(top, left, x, y int, colAt func(cs []string, from, end, cells int) int, lastCol func(ln int) int) (ln, col int) {
 	lastLn := len(m.lines) - 1
 	if m.r != nil {
-		return m.r.hit(m.r.topRow(top)+m.in+max(y, 0), max(x, 0))
+		ri := m.r.topRow(top) + m.in + max(y, 0)
+		if r := min(ri, len(m.r.rowBlock)-1); r >= 0 { // a wide block's cell under x: its pan counted
+			bi := m.r.rowBlock[r]
+			x0, _ := m.content(bi)
+			x = x - x0 + m.panOf(bi)
+		}
+		return m.r.hit(ri, max(x, 0))
 	}
 	if m.v.wrap == WrapNone {
 		ln = min(top+max(y, 0), lastLn)

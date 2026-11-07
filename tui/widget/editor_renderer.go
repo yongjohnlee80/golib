@@ -166,6 +166,7 @@ type renderedLayout struct {
 	lineRows [][]int
 	blockOf  []int // each line's block, into blocks
 	rowBlock []int // each row's block, into blocks
+	blockW   []int // each block's width as laid out: wider than the room, it pans
 }
 
 // renderedRows is the Editor's Rendered layout at width, laid again only when something it depends
@@ -187,6 +188,7 @@ func (e *Editor) renderedRows(width int) *renderedLayout {
 	for bi, b := range r.blocks {
 		typing := key.typing >= b.From && key.typing < b.To
 		cb := e.render.LayOut(b, lines, width, e.width, typing, key.theme)
+		r.blockW = append(r.blockW, cb.Width)
 		for ln := b.From; ln < b.To && ln < len(lines); ln++ {
 			r.blockOf[ln] = bi
 		}
