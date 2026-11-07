@@ -1,0 +1,83 @@
+catppuccin_frappe
+  bars    series 0  ca9ee6 5.60:1
+  bars    series 1  a6d189 7.10:1
+  bars    series 2  ef9f76 5.80:1
+  bars    series 3  8caaee 5.34:1
+  braille series 0  ca9ee6 5.60:1
+  braille series 1  a6d189 7.10:1
+  braille series 2  ef9f76 5.80:1
+  braille series 3  8caaee 5.34:1
+dark
+  bars    series 0  87afd7 7.42:1
+  bars    series 1  d7af87 8.42:1
+  bars    series 2  afd7ff 11.35:1
+  bars    series 3  d7d787 11.33:1
+  braille series 0  87afd7 7.42:1
+  braille series 1  d7af87 8.42:1
+  braille series 2  afd7ff 11.35:1
+  braille series 3  d7d787 11.33:1
+kanagawa
+  bars    series 0  957fb8 4.67:1
+  bars    series 1  98bb6c 7.52:1
+  bars    series 2  d27e99 5.59:1
+  bars    series 3  7e9cd8 5.94:1
+  braille series 0  957fb8 4.67:1
+  braille series 1  98bb6c 7.52:1
+  braille series 2  d27e99 5.59:1
+  braille series 3  7e9cd8 5.94:1
+light
+  bars    series 0  1f4e8c 7.43:1
+  bars    series 1  9c2f1f 6.61:1
+  bars    series 2  1f5a8c 6.47:1
+  bars    series 3  7a5200 6.19:1
+  braille series 0  1f4e8c 7.43:1
+  braille series 1  9c2f1f 6.61:1
+  braille series 2  1f5a8c 6.47:1
+  braille series 3  7a5200 6.19:1
+mono
+  the terminal's own colours (the page's tokens)
+nord
+  bars    series 0  81a1c1 4.64:1
+  bars    series 1  a3be8c 6.13:1
+  bars    series 2  b48ead 4.41:1
+  bars    series 3  88c0d0 6.24:1
+  braille series 0  81a1c1 4.64:1
+  braille series 1  a3be8c 6.13:1
+  braille series 2  b48ead 4.41:1
+  braille series 3  88c0d0 6.24:1
+retro
+  bars    series 0  ffffff 17.02:1
+  bars    series 1  ff55ff 6.48:1
+  bars    series 2  55ffff 13.89:1
+  bars    series 3  ffff55 15.95:1
+  braille series 0  ffffff 17.02:1
+  braille series 1  ff55ff 6.48:1
+  braille series 2  55ffff 13.89:1
+  braille series 3  ffff55 15.95:1
+sepia
+  bars    series 0  7c3f12 5.82:1
+  bars    series 1  8f3b2a 5.30:1
+  bars    series 2  2f5e6b 5.11:1
+  bars    series 3  6b5200 5.29:1
+  braille series 0  7c3f12 5.82:1
+  braille series 1  8f3b2a 5.30:1
+  braille series 2  2f5e6b 5.11:1
+  braille series 3  6b5200 5.29:1
+shades_of_purple
+  bars    series 0  ff9d00 6.34:1
+  bars    series 1  a5ff90 10.90:1
+  bars    series 2  ff628c 4.65:1
+  bars    series 3  fad000 8.87:1
+  braille series 0  ff9d00 6.34:1
+  braille series 1  a5ff90 10.90:1
+  braille series 2  ff628c 4.65:1
+  braille series 3  fad000 8.87:1
+tokyo_night
+  bars    series 0  9d7cd8 5.13:1
+  bars    series 1  9ece6a 9.35:1
+  bars    series 2  ff9e64 8.40:1
+  bars    series 3  7aa2f7 6.79:1
+  braille series 0  9d7cd8 5.13:1
+  braille series 1  9ece6a 9.35:1
+  braille series 2  ff9e64 8.40:1
+  braille series 3  7aa2f7 6.79:1

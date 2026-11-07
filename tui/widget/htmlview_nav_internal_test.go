@@ -72,7 +72,7 @@ func TestAWideDiagramPansWithinItsRoom(t *testing.T) {
 	}
 	c := layCells(t, "<p>before</p>"+navFence(wideSequence)+"<p>after</p>", navRoom)
 	bi, first := diagramBlock(t, c)
-	g := c.rows[first].grid
+	g := c.rows[first].grid.(mermaidPicture).g
 	inner := navRoom - 2 // the room less its edge columns, the marks' while a block is wide
 	over := g.Size.W - inner
 	if got := c.over(bi); got != over {
@@ -160,7 +160,7 @@ func TestAPannedDiagramStaysInItsRoom(t *testing.T) {
 		t.Fatalf("precondition: the diagram is in a quote (%d) and wide (%d)", b.quote, c.over(bi))
 	}
 	c.Pan(0, len(c.rows), htmlPanStep)
-	g := c.rows[first].grid
+	g := c.rows[first].grid.(mermaidPicture).g
 	s := newRecordSurface(navRoom+5, len(c.rows))
 	for y := range s.h {
 		for x := range s.w {
@@ -212,7 +212,7 @@ func TestThePanKeysPanTheWideBlockNearestTheTop(t *testing.T) {
 	var blocks, starts, ends []int
 	for ri, r := range c.rows {
 		if r.grid != nil && (ri == 0 || c.rows[ri-1].grid != r.grid) {
-			blocks, starts, ends = append(blocks, r.block), append(starts, ri), append(ends, ri+r.grid.Size.H-1)
+			blocks, starts, ends = append(blocks, r.block), append(starts, ri), append(ends, ri+r.grid.Size().H-1)
 		}
 	}
 	if len(blocks) != 2 || c.over(blocks[0]) == 0 || c.over(blocks[1]) == 0 {
