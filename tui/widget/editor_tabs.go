@@ -14,7 +14,7 @@ import "github.com/yongjohnlee80/golib/tui"
 func (e *Editor) Tabs() *TabStrip {
 	if e.tabs == nil {
 		e.tabs = NewTabStrip()
-		e.tabs.shown = func() bool { return e.tabsTitle } // a frame's title row holds it only while on
+		e.tabs.SetVisible(e.tabsTitle) // a frame's title row shows it only while on
 	}
 	return e.tabs
 }
@@ -27,9 +27,8 @@ func (e *Editor) SetTabsInTitle(on bool) {
 		return
 	}
 	e.tabsTitle = on
-	if e.tabs != nil && e.tabs.Context() != nil {
-		e.tabs.RequestLayout() // shown or not changes its width
-		e.tabs.MarkDirty()
+	if e.tabs != nil {
+		e.tabs.SetVisible(on) // hidden, it takes no room on the row (tui/visibility.go)
 	}
 }
 
@@ -37,7 +36,7 @@ func (e *Editor) SetTabsInTitle(on bool) {
 func (e *Editor) TabsInTitle() bool { return e.tabsTitle }
 
 // TitleTabs is the strip as a frame's title row holds it (widget.Box.SetTitleLeading): Tabs itself,
-// as wide as its tabs need while SetTabsInTitle is on, and no width while it is off. The strip
-// decides its width itself (TabStrip.shown), not a wrapper round it: a type embedding TabStrip would
-// make it an embeddable base, whose own calls an embedder's methods could bypass.
+// as wide as its tabs need while SetTabsInTitle is on, and hidden (no width) while it is off: the
+// strip's own visibility (Base.SetVisible), not a wrapper round it, since a type embedding TabStrip
+// would make it an embeddable base, whose own calls an embedder's methods could bypass.
 func (e *Editor) TitleTabs() tui.Component { return e.Tabs() }
