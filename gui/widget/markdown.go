@@ -9,7 +9,6 @@ import (
 	"github.com/yongjohnlee80/golib/highlight"
 	"github.com/yongjohnlee80/golib/parse/languages"
 	"github.com/yongjohnlee80/golib/parse/markdown"
-	mdhtml "github.com/yongjohnlee80/golib/parse/markdown/html"
 	"github.com/yongjohnlee80/golib/tui"
 	tuiwidget "github.com/yongjohnlee80/golib/tui/widget"
 )
@@ -412,14 +411,9 @@ func isListItem(line string) bool {
 // isBlank reports whether the line contains only whitespace characters.
 func isBlank(line string) bool { return strings.TrimSpace(line) == "" }
 
-// mdAttr is how one byte of a line is drawn.
-type mdAttr struct {
-	hidden                           bool
-	bold, italic, code, strike, link bool
-	wiki, tag                        bool // an Obsidian [[wikilink]] or ![[embed]]; a #tag
-	heading                          int
-	br                               int // a bare <br>'s bytes, hidden, a line break after them: its start plus one (0: none), so two in a row stay two
-}
+// mdAttr is how one byte of a line is drawn: tui/widget's MarkdownAttr, which both editors read a
+// line's Markdown into.
+type mdAttr = tuiwidget.MarkdownAttr
 
 // lineSpans are a line's spans with its Markdown drawn: the marks hidden, the rest styled. level
 // is the line's heading level, 0 for none.
@@ -430,86 +424,9 @@ func (r *MarkdownRenderer) lineSpans(ln int, line string, th Theme) ([]flow.Span
 	if indent, marker, ok := tuiwidget.MarkdownListItem(line); ok {
 		return r.listSpans(ln, line, indent, marker, th), 0
 	}
-	src := []byte(line)
-	doc := markdown.Parse(src, markdown.WithGFM(), markdown.WithObsidian())
-	attrs := make([]mdAttr, len(src))
-	level := 0
-	var walk func(n *markdown.Node)
-	walk = func(n *markdown.Node) {
-		switch n.Kind {
-		case markdown.KindHeading:
-			level = n.Level()
-			for i := n.Span.Start; i < n.Span.End; i++ {
-				attrs[i].heading = n.Level()
-			}
-			if n.FirstChild == nil {
-				hide(attrs, n.Span.Start, n.Span.End)
-			} else {
-				hide(attrs, n.Span.Start, n.FirstChild.Span.Start)
-				if tail := line[n.LastChild.Span.End:n.Span.End]; strings.Trim(tail, "# ") == "" {
-					hide(attrs, n.LastChild.Span.End, n.Span.End)
-				}
-			}
-		case markdown.KindEmph:
-			markRange(attrs, n.Span.Start, n.Span.End, n, func(a *mdAttr) { a.italic = true })
-		case markdown.KindStrong:
-			markRange(attrs, n.Span.Start, n.Span.End, n, func(a *mdAttr) { a.bold = true })
-		case markdown.KindStrikethrough:
-			markRange(attrs, n.Span.Start, n.Span.End, n, func(a *mdAttr) { a.strike = true })
-		case markdown.KindLink:
-			markRange(attrs, n.Span.Start, n.Span.End, n, func(a *mdAttr) { a.link = true })
-		case markdown.KindWikilink, markdown.KindEmbed:
-			// its one child is what it shows (the alias, else the target): the brackets and a
-			// target behind an alias are hidden
-			markRange(attrs, n.Span.Start, n.Span.End, n, func(a *mdAttr) { a.wiki = true })
-		case markdown.KindTag:
-			for i := n.Span.Start; i < n.Span.End; i++ {
-				attrs[i].tag = true
-			}
-		case markdown.KindText:
-			// a backslash escape draws the character it escapes, as CommonMark renders it: its
-			// backslash is a mark, hidden off the cursor. Where the parser takes no escapes, the
-			// backslashes are text: a code span's, and an autolink's, whose Literal is only its
-			// decoded entities
-			if n.Literal != nil && (n.Parent == nil || n.Parent.Kind != markdown.KindAutolink) {
-				for i := n.Span.Start; i+1 < n.Span.End; i++ {
-					if src[i] == '\\' && isASCIIPunct(src[i+1]) {
-						hide(attrs, i, i+1)
-						i++
-					}
-				}
-			}
-		case markdown.KindRawHTML:
-			// a bare <br> is the line break it is, as the HTML renderer writes it (html.BareBr);
-			// any other raw HTML is drawn as written, as before
-			if mdhtml.BareBr(n.Literal) {
-				hide(attrs, n.Span.Start, n.Span.End)
-				for i := max(n.Span.Start, 0); i < min(n.Span.End, len(attrs)); i++ {
-					attrs[i].br = n.Span.Start + 1
-				}
-			}
-		case markdown.KindCodeSpan:
-			s, e := n.Span.Start, n.Span.End
-			open := 0
-			for s+open < e && src[s+open] == '`' {
-				open++
-			}
-			hide(attrs, s, s+open)
-			hide(attrs, max(e-open, s+open), e)
-			for i := s + open; i < e-open; i++ {
-				attrs[i].code = true
-			}
-		}
-		for c := n.FirstChild; c != nil; c = c.Next {
-			walk(c)
-		}
-	}
-	walk(doc.Root)
+	attrs, level := tuiwidget.MarkdownLineAttrs(line)
 	return r.spansOf(ln, line, attrs, th), level
 }
-
-// bullets are the bullet glyphs by nesting level, the deepest repeating.
-var bullets = [...]string{"•", "◦", "▪"}
 
 // listSpans draw a list item off the cursor: its indentation as room, a bullet as a bullet glyph
 // for its level (a number kept as written), and its text as any line's, read without the
@@ -523,17 +440,9 @@ func (r *MarkdownRenderer) listSpans(ln int, line, indent, marker string, th The
 	col := len(indent) // indentation and markers are one byte a cluster
 	bullet := strings.TrimRight(marker, " ")
 	if strings.ContainsRune("-*+", rune(marker[0])) {
-		level := 0
-		for _, c := range indent {
-			level++
-			if c == '\t' {
-				level += 3
-			}
-		}
-		level = (level / 2) % len(bullets)
 		bf := th.Prose
 		bf.Size *= 1.15
-		spans = append(spans, flow.Span{Text: bullets[level], Font: bf, Color: or(th.Marker, th.Muted), Line: ln, Col: col})
+		spans = append(spans, flow.Span{Text: tuiwidget.MarkdownBullet(indent), Font: bf, Color: or(th.Marker, th.Muted), Line: ln, Col: col})
 		bullet = bullet[1:]
 		col++
 	}
@@ -553,35 +462,6 @@ func (r *MarkdownRenderer) listSpans(ln int, line, indent, marker string, th The
 		spans = append(spans, body...)
 	}
 	return spans
-}
-
-// markRange styles a node's content bytes with set, and hides its own marks: the bytes of its
-// span that none of its children cover.
-func markRange(attrs []mdAttr, start, end int, n *markdown.Node, set func(*mdAttr)) {
-	covered := make([]bool, end-start)
-	for c := n.FirstChild; c != nil; c = c.Next {
-		for i := max(c.Span.Start, start); i < min(c.Span.End, end); i++ {
-			covered[i-start] = true
-		}
-	}
-	for i := start; i < end; i++ {
-		set(&attrs[i])
-		if !covered[i-start] {
-			attrs[i].hidden = true
-		}
-	}
-}
-
-// isASCIIPunct reports whether c is ASCII punctuation: what a backslash escapes.
-func isASCIIPunct(c byte) bool {
-	return strings.IndexByte("!\"#$%&'()*+,-./:;<=>?@[\\]^_`{|}~", c) >= 0
-}
-
-// hide marks a range of byte attributes as hidden in Rendered mode.
-func hide(attrs []mdAttr, start, end int) {
-	for i := max(start, 0); i < min(end, len(attrs)); i++ {
-		attrs[i].hidden = true
-	}
 }
 
 // spansOf groups a line's clusters into spans by their drawing, each cluster taking its first
@@ -611,37 +491,37 @@ func (r *MarkdownRenderer) spansOf(ln int, line string, attrs []mdAttr, th Theme
 // span is text drawn as a says.
 func (r *MarkdownRenderer) span(text string, a mdAttr, ln, col int, th Theme) flow.Span {
 	f := th.Prose
-	sp := flow.Span{Text: text, Line: ln, Col: col, Hidden: a.hidden, Break: a.br > 0}
-	if a.heading > 0 {
-		f.Size *= r.h1 - (r.h1-1)*float32(a.heading-1)/5
+	sp := flow.Span{Text: text, Line: ln, Col: col, Hidden: a.Hidden, Break: a.Br > 0}
+	if a.Heading > 0 {
+		f.Size *= r.h1 - (r.h1-1)*float32(a.Heading-1)/5
 		f.Bold = true
 	}
-	if a.code {
+	if a.Code {
 		size := f.Size * 0.9
 		f = th.Mono
 		f.Size = size
 		sp.Background = th.CodeBackground
 	}
-	f.Bold = f.Bold || a.bold
-	f.Italic = a.italic
-	sp.Strike = a.strike
+	f.Bold = f.Bold || a.Bold
+	f.Italic = a.Italic
+	sp.Strike = a.Strike
 	// the Raw view's colours: the innermost construct's, a link's over all
 	switch {
-	case a.link:
+	case a.Link:
 		sp.Color, sp.Underline = or(th.Link, th.Accent), true
-	case a.wiki:
+	case a.Wiki:
 		sp.Color, sp.Underline = or(th.Wiki, or(th.Link, th.Accent)), true
-	case a.tag:
+	case a.Tag:
 		sp.Color = th.Tag
-	case a.code:
+	case a.Code:
 		sp.Color = th.Code
-	case a.heading > 0:
+	case a.Heading > 0:
 		sp.Color = th.Heading
-	case a.bold:
+	case a.Bold:
 		sp.Color = th.Strong
-	case a.italic:
+	case a.Italic:
 		sp.Color = th.Emph
-	case a.strike:
+	case a.Strike:
 		sp.Color = th.Quiet
 	}
 	sp.Font = f
