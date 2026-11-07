@@ -1,9 +1,14 @@
 package widget
 
-import "slices"
+import (
+	"slices"
 
-// A table's columns at a width: the HTML page's and the Markdown cell renderer's tables narrow their
-// columns by one rule.
+	"github.com/yongjohnlee80/golib/tui"
+	"github.com/yongjohnlee80/golib/tui/style"
+)
+
+// A wide block at a width: the HTML page's and the Markdown cell renderer's tables narrow their
+// columns by one rule, and a block still wider than its room is marked by one rule as it pans.
 
 // tableMinColumn is the narrowest a column of a table wider than its room is narrowed to: a column
 // narrower than that by nature keeps its width; below it a cell's text breaks into slivers, and the
@@ -46,4 +51,16 @@ func FitColumns(natural []int, avail int) []int {
 		}
 	}
 	return out
+}
+
+// PaintPanMarks draws a wide block's marks at row mid of its edge columns left and right, in st: a «
+// when it is panned (off > 0), a » when more of it lies past its room (off < over). The HTML page's
+// wide blocks and the Editor's Rendered view's mark their pans alike.
+func PaintPanMarks(s tui.Surface, left, right, mid, off, over int, st style.Style) {
+	if off > 0 {
+		s.SetCell(left, mid, "«", st)
+	}
+	if off < over {
+		s.SetCell(right, mid, "»", st)
+	}
 }
