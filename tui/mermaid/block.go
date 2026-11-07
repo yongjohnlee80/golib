@@ -32,10 +32,12 @@ func init() { register(pm.Block, layAs(LayBlock), nil) }
 //	│   c   │
 //	└───────┘
 
-// The gaps between a grid's columns and between its rows: room for links to pass.
+// The gaps between a grid's columns and between its rows: room for links to pass, a lane clear of
+// the boxes' sides in each, so a link running through a gap leaves those sides to the links that
+// meet them.
 const (
 	blockColGap = 4
-	blockRowGap = 2
+	blockRowGap = 3
 )
 
 // LayBlock lays a block diagram out in cells.
@@ -428,7 +430,8 @@ func besides(r tui.Rect) []blockSide {
 var blockOpposite = [4]int{1, 0, 3, 2}
 
 // path is the cheapest path of cells from beside from to beside to, or nil. A step costs 1, a turn
-// 3 more, crossing another link or a frame's border 2 more, and each end its cell's cost (besides);
+// 3 more, crossing another link or a frame's border 2 more, running beside a box's side (not at an
+// end) 1 more, and each end its cell's cost (besides);
 // it never enters a box or a mark, runs along or turns on another link, runs along or turns on a
 // frame's border, or ends on a crossing.
 func (b *blockLayout) path(from, to tui.Rect) []cell {
@@ -500,6 +503,9 @@ func (b *blockLayout) path(from, to tui.Rect) []cell {
 				continue
 			}
 			cost := it.cost + 1 + b.crossing(n)
+			if _, end := goal[n]; !end && b.besideBox(n) {
+				cost++ // a gap's lane, not a box's side
+			}
 			if turn {
 				cost += 3
 			}
@@ -539,6 +545,16 @@ func (b *blockLayout) blocked(c cell, d int) bool {
 		horizontal := c.y == f.rect.Y || c.y == f.rect.Y+f.rect.H-1
 		st := blockSteps[d]
 		if vertical && horizontal || vertical && st.dx == 0 || horizontal && st.dy == 0 {
+			return true
+		}
+	}
+	return false
+}
+
+// besideBox reports whether c touches a box's side: a cell a link meeting that box may need.
+func (b *blockLayout) besideBox(c cell) bool {
+	for _, st := range blockSteps {
+		if b.inBox(cell{c.x + st.dx, c.y + st.dy}) {
 			return true
 		}
 	}
