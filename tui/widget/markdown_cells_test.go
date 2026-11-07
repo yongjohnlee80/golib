@@ -313,13 +313,39 @@ func TestATablesTopRuleShowsWithItsHeader(t *testing.T) {
 	if got := top(); got != "H" {
 		t.Errorf("back on the heading, the view's first row %q, want H", got)
 	}
+
+	// scrolled (2 Ctrl-d) so a table's top rule is the view's first row, the view starts at the
+	// table's first line: H goes there, and the view stays
+	h, sh, ed = renderedEditor(t, "before\n\n| a | b |\n|---|---|\n| c | d |\n"+strings.Repeat("\nline", 20), mdRenderer())
+	h.inject(keyText("2"), tui.KeyEvent{Kind: tui.KeyPress, Code: 'd', Mods: tui.ModCtrl}, keyText("H"))
+	h.barrier(sh)
+	var ln int
+	h.onLoop(func() { ln, _ = ed.Core().Line() })
+	if ln != 2 || top() != "┌───┬───┐" {
+		t.Errorf("2 Ctrl-d then H: the cursor on line %d, the view's first row %q; want line 2 under the table's top rule:\n%s", ln, top(), h.grid())
+	}
 }
 
-// A table cell hides what the reader skips, as prose does: an inline comment (HideMetadata).
+// A table cell hides what the reader skips, as prose does: an inline comment (HideMetadata), the
+// text around it kept; a comment across two cells hides a <br> in it too, which breaks nothing. In
+// prose, a comment going on to the next line hides a <br> there as well.
 func TestATablesCellsHideTheirMetadata(t *testing.T) {
-	h, _, _ := renderedEditor(t, "| a <!-- note --> | b |\n|---|---|\n| d | e |", mdRenderer())
-	if g := h.grid(); strings.Contains(g, "<!--") || strings.Contains(g, "note") {
+	h, _, _ := renderedEditor(t, "| a <!-- note --> | b |\n|---|---|\n| d | e |\n| f <!-- | <br> -->g | h |", mdRenderer())
+	g := h.grid()
+	if strings.Contains(g, "<!--") || strings.Contains(g, "note") || strings.Contains(g, "-->") || strings.Contains(g, "<br>") {
 		t.Errorf("a cell's comment is drawn:\n%s", g)
+	}
+	got := rows(h, 7)
+	if !strings.HasPrefix(got[1], "│ a") || !strings.HasSuffix(got[1], "│ b │") {
+		t.Errorf("the header row %q: want a, its comment hidden, then b", got[1])
+	}
+	if !strings.HasPrefix(got[3], "│ d") || !strings.HasPrefix(got[4], "│ f") || !strings.Contains(got[4], "│ g") || !strings.HasPrefix(got[5], "└") {
+		t.Errorf("the body: want d's row, then f and g on one row (the <br> in the comment breaking nothing), then the bottom rule:\n%s", g)
+	}
+
+	p, _, _ := renderedEditor(t, "a <!-- x\n<br> --> b", mdRenderer())
+	if got := rows(p, 3); !strings.Contains(got[1], "b") || got[2] != "" {
+		t.Errorf("a comment's <br> on the next line broke it: rows %q, want b on the second row", got)
 	}
 }
 
@@ -327,9 +353,9 @@ func TestATablesCellsHideTheirMetadata(t *testing.T) {
 // next cell's first line beside the first; a click there lands on it; a line left empty between two
 // <br>s is a row of its line, which the caret (and gj) reaches.
 func TestATableCellsLinesKeepTheirSource(t *testing.T) {
-	// "| x<br>y | zz |": x at 2, y at 7, zz at 11; "| a<br><br>b<br> | c |": a at 2, the second <br>
-	// at 7; the trailing <br> opens no line
-	h, sh, ed := renderedEditor(t, "| x<br>y | zz |\n|---|---|\n| a<br><br>b<br> | c |", mdRenderer())
+	// "| x<br>**y** | zz |": x at 2, the hidden ** at 7, y at 9, zz at 15, its end 19; "| a<br><br>b<br>
+	// | c |": a at 2, the second <br> at 7; the trailing <br> opens no line
+	h, sh, ed := renderedEditor(t, "| x<br>**y** | zz |\n|---|---|\n| a<br><br>b<br> | c |", mdRenderer())
 	wantRows(t, h,
 		"┌───┬────┐",
 		"│ x │ zz │",
@@ -339,8 +365,14 @@ func TestATableCellsLinesKeepTheirSource(t *testing.T) {
 		"│   │    │",
 		"│ b │    │",
 		"└───┴────┘")
-	if x, y, ok := caretAt(h, sh, ed, 0, 7); !ok || x != 2 || y != 2 {
-		t.Errorf("caret on y, the first cell's second line: (%d, %d) %v, want (2, 2)", x, y, ok)
+	for _, c := range []struct{ col, x, y int }{
+		{9, 2, 2},  // y, the first cell's second line: not zz beside x
+		{7, 2, 2},  // the ** hidden before y: the next shown cluster, y
+		{19, 8, 1}, // the line's end: past zz, on the row before y's
+	} {
+		if x, y, ok := caretAt(h, sh, ed, 0, c.col); !ok || x != c.x || y != c.y {
+			t.Errorf("caret on (0, %d): (%d, %d) %v, want (%d, %d)", c.col, x, y, ok, c.x, c.y)
+		}
 	}
 	if x, y, ok := caretAt(h, sh, ed, 2, 7); !ok || x != 2 || y != 5 {
 		t.Errorf("caret on the <br> that ends the empty line: (%d, %d) %v, want (2, 5)", x, y, ok)
@@ -352,8 +384,8 @@ func TestATableCellsLinesKeepTheirSource(t *testing.T) {
 		h.onLoop(func() { ln, col = ed.Core().Line() })
 		return
 	}
-	if ln, col := click(2, 2); ln != 0 || col != 7 {
-		t.Errorf("a click on y landed on (%d, %d), want (0, 7)", ln, col)
+	if ln, col := click(2, 2); ln != 0 || col != 9 {
+		t.Errorf("a click on y landed on (%d, %d), want (0, 9)", ln, col)
 	}
 	caretAt(h, sh, ed, 2, 2)
 	h.inject(keyText("g"), keyText("j"))
