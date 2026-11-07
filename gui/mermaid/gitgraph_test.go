@@ -88,3 +88,31 @@ func TestAGitGraphFollowsItsDirection(t *testing.T) {
 		t.Error("no layer for gitGraph")
 	}
 }
+
+// TB (and BT) write a commit's tag and id beside it, right of its lane's line, never over the line
+// that runs along the lane through the dot.
+func TestAGitGraphsLabelsSitBesideAVerticalLane(t *testing.T) {
+	l, err := lay(t, "gitGraph TB:\n  commit tag: \"v1.0.0\" id: \"base\"\n  commit", 2000)
+	if err != nil {
+		t.Fatal(err)
+	}
+	dot := l.nodes[0].box
+	lineX := dot.X + dot.W/2
+	var tagBox *laidNode
+	for i := range l.nodes {
+		if l.nodes[i].form == formRound {
+			tagBox = &l.nodes[i]
+		}
+	}
+	if tagBox == nil {
+		t.Fatal("no tag box")
+	}
+	if tagBox.box.X <= lineX {
+		t.Errorf("the tag's box from x %v crosses the lane's line at %v", tagBox.box.X, lineX)
+	}
+	for _, tx := range l.texts {
+		if len(tx.lines) > 0 && tx.lines[0] == "base" && tx.box.X <= tagBox.box.X+tagBox.box.W {
+			t.Errorf("the id at x %v is not right of the tag's box (ends %v)", tx.box.X, tagBox.box.X+tagBox.box.W)
+		}
+	}
+}

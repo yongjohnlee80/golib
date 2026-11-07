@@ -28,6 +28,7 @@ func TestAGitGraphDrawsInCells(t *testing.T) {
 		"gitgraph-tb":         "gitGraph TB:\n  commit id: \"A\"\n  branch b\n  commit\n  checkout main\n  merge b",
 		"gitgraph-bt":         "gitGraph BT:\n  commit\n  branch b\n  commit\n  checkout main\n  commit",
 		"gitgraph-cherry":     "gitGraph\n  commit id: \"A\"\n  branch b\n  commit id: \"B\"\n  checkout main\n  cherry-pick id: \"B\"",
+		"gitgraph-tb-tags":    "gitGraph TB:\n  commit tag: \"v1.0.0-long\" id: \"base\"\n  branch feature\n  commit\n  checkout main\n  merge feature tag: \"v2\"",
 	}
 	for name, src := range cases {
 		t.Run(name, func(t *testing.T) {
