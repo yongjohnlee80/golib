@@ -445,6 +445,41 @@ func layGraph(ctx context.Context, gr graph, m Measurer) (*Grid, [][][2]cell, er
 			e.frame[j] = frameAt[f-1]
 		}
 	}
+	// an end on a frame is laid out with the whole frame past the edge's other end, a way in (its to
+	// end) below it and a way out above it, so its line crosses the frame's top or its bottom. The
+	// edge to the anchor keeps the anchor there; the layout ranks the frame's other members by the
+	// edges among them, so an edge of the layout's alone (none is drawn: they follow the edges the
+	// result's are indexed by) keeps each member nothing inside the frame reaches below the other
+	// end, for a way in, and each that reaches nothing inside it above, for a way out
+	for _, e := range edges {
+		for j, f := range e.frame {
+			if f < 0 {
+				continue
+			}
+			anchor, other := e.to, e.from
+			if j == 1 {
+				anchor, other = other, anchor
+			}
+			members := frames[f].members
+			for _, m := range members {
+				free := m != anchor
+				for _, o := range gr.edges {
+					self, far := o.to, o.from
+					if j == 1 {
+						self, far = far, self
+					}
+					free = free && (self != m || far == m || !slices.Contains(members, far))
+				}
+				switch {
+				case !free:
+				case j == 0:
+					in.Edges = append(in.Edges, layout.Edge{From: other, To: m, MinLen: 1})
+				default:
+					in.Edges = append(in.Edges, layout.Edge{From: m, To: other, MinLen: 1})
+				}
+			}
+		}
+	}
 	for _, f := range frames {
 		in.Groups = append(in.Groups, f.members)
 	}
