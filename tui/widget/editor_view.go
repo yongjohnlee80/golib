@@ -46,18 +46,10 @@ func (l *cellLayout) PageLines() int { return max(l.h, 1) }
 // VisibleLines is the lines from the top one to the last whose first row is in the view: the top
 // line always starts at the view's first row, so it is never partly off.
 func (l *cellLayout) VisibleLines() (first, last int) {
-	lines := l.ed.core.buf.textLines
 	if l.h <= 0 {
 		return l.ed.core.buf.ln, l.ed.core.buf.ln
 	}
-	v := l.ed.view().settled(lines)
-	first = max(0, min(l.top, len(lines)-1))
-	last, rows := first, 0
-	for i := first; i < len(lines) && rows < l.h; i++ {
-		last = i
-		rows += wrapRowsOfLine(lines, i, v)
-	}
-	return first, last
+	return l.ed.rowMap().visible(l.top, l.h)
 }
 
 // ScrollLines moves the top line by delta, down no further than the top that shows the last
@@ -67,7 +59,7 @@ func (l *cellLayout) ScrollLines(delta int) {
 	if l.h <= 0 {
 		return
 	}
-	bottom := lowestTop(lines, 0, len(lines)-1, l.h, l.ed.view())
+	bottom := l.ed.rowMap().lowestTop(0, len(lines)-1, l.h)
 	l.top = max(0, min(l.top+delta, max(bottom, l.top)))
 	l.ed.MarkDirty()
 }
@@ -76,27 +68,13 @@ func (l *cellLayout) ScrollLines(delta int) {
 func (l *cellLayout) Measure(s string) int { return l.ed.width(s) }
 
 // RowCount, RowOf and ColAt are the display rows the Editor wraps lines into (EditorRowLayout):
-// gj and gk move by them. RowOf is the wrap's own mapping (wrapPosOf), so a break space the wrap
+// gj and gk move by them, through the row map. RowOf is the wrap's own mapping, so a break space the wrap
 // consumed is at the end of the row before it, as drawn.
 func (l *cellLayout) RowCount(line int) int { return l.ed.rowsOfLine(line) }
 
-func (l *cellLayout) RowOf(line, col int) (row, x int) {
-	lines, v := l.ed.core.buf.textLines, l.ed.view()
-	if v.wrap == WrapNone {
-		return 0, cellsBefore(clusters(lines[line]), col, v.measure)
-	}
-	return wrapPosOf(lines, line, col, v)
-}
+func (l *cellLayout) RowOf(line, col int) (row, x int) { return l.ed.rowMap().rowOf(line, col) }
 
-func (l *cellLayout) ColAt(line, row, x int) int {
-	lines, v := l.ed.core.buf.textLines, l.ed.view()
-	cs := clusters(lines[line])
-	rows := [][2]int{{0, len(cs)}}
-	if v.wrap != WrapNone {
-		rows = wrapRanges(cs, v.usableWidth(lines), v.measure)
-	}
-	return colInRow(cs, rows, max(0, min(row, len(rows)-1)), x, v.measure)
-}
+func (l *cellLayout) ColAt(line, row, x int) int { return l.ed.rowMap().colAt(line, row, x) }
 
 // Changed repaints, and lays out again when the line count's digits move the gutter's width.
 func (l *cellLayout) Changed(int) {
@@ -106,7 +84,7 @@ func (l *cellLayout) Changed(int) {
 	l.ed.MarkDirty()
 }
 
-func (e *Editor) wrapWidth() int { return wrapUsableWidth(e.core.buf.textLines, e.view()) }
+func (e *Editor) wrapWidth() int { return e.rowMap().width() }
 
 // PointerShapes is the I-beam over the text, where a press puts the caret: the gutter and the
 // scroll indicator keep the arrow. A rendered document, which paints in the text's place, gives
@@ -118,9 +96,9 @@ func (e *Editor) PointerShapes(dst []tui.PointerRegion) []tui.PointerRegion {
 	return append(dst, tui.PointerRegion{Rect: tui.Rect{X: e.cells.gutter, W: e.wrapWidth(), H: e.cells.h}, Shape: tui.PointerText})
 }
 
-func (e *Editor) scrollable() bool { return wrapScrollable(e.core.buf.textLines, e.view()) }
+func (e *Editor) scrollable() bool { return e.rowMap().scrollable() }
 
-func (e *Editor) rowsOfLine(i int) int { return wrapRowsOfLine(e.core.buf.textLines, i, e.view()) }
+func (e *Editor) rowsOfLine(i int) int { return e.rowMap().rowCount(i) }
 
 // ensureVisible scrolls the cursor into the viewport.
 func (e *Editor) ensureVisible() { e.reveal(e.core.buf.ln, e.core.buf.col) }
@@ -128,7 +106,7 @@ func (e *Editor) ensureVisible() { e.reveal(e.core.buf.ln, e.core.buf.col) }
 // reveal scrolls (ln, col) into the viewport.
 func (e *Editor) reveal(ln, col int) {
 	l := &e.cells
-	l.top, l.left = revealCaret(e.core.buf.textLines, e.view(), l.top, l.left, ln, e.core.buf.cellsAt(ln, col, e.width))
+	l.top, l.left = e.rowMap().reveal(l.top, l.left, ln, e.core.buf.cellsAt(ln, col, e.width))
 }
 
 // Layout is greedy on both axes. The gutter, when the numbers show, takes its columns from the
@@ -151,7 +129,7 @@ func (e *Editor) Layout(c tui.Constraints) tui.Size {
 // Cursor implements tui.CursorReporter.
 func (e *Editor) Cursor() (int, int, bool) {
 	l, b := &e.cells, &e.core.buf
-	x, y, ok := caretAt(b.textLines, e.view(), l.top, l.left, b.ln, b.col, b.cellsAt(b.ln, b.col, e.width))
+	x, y, ok := e.rowMap().caret(l.top, l.left, b.ln, b.col, b.cellsAt(b.ln, b.col, e.width))
 	if !ok {
 		return 0, 0, false
 	}
@@ -171,32 +149,7 @@ func (e *Editor) posAt(x, y int) (ln, col int) {
 	if len(b.textLines) == 0 {
 		return 0, 0
 	}
-	lastLn := len(b.textLines) - 1
-
-	if l.wrap == WrapNone {
-		ln = min(l.top+max(y, 0), lastLn)
-		cs := b.lineClusters(ln)
-		return ln, e.colAtCells(cs, 0, len(cs), l.left+max(x, 0))
-	}
-
-	// WrapSoft: walk the same wrap computation the renderer used, rather than
-	// dividing by width — one logical line spans several visual rows.
-	remaining := max(y, 0)
-	v := e.view().settled(b.textLines)
-	for i := l.top; i <= lastLn; i++ {
-		rows := wrapRowsOfLine(b.textLines, i, v)
-		if remaining < rows || i == lastLn {
-			cs := b.lineClusters(i)
-			ranges := wrapRanges(cs, v.usable, e.width)
-			r := ranges[min(remaining, len(ranges)-1)]
-			// Bounded to THIS row: wrapRanges is [start,end), and a word-wrapped
-			// row can be shorter than the viewport, so an unbounded scan would run
-			// through its blank tail into clusters painted on the NEXT visual row.
-			return i, e.colAtCells(cs, r[0], r[1], max(x, 0))
-		}
-		remaining -= rows
-	}
-	return lastLn, e.core.normalMax(lastLn)
+	return e.rowMap().hit(l.top, l.left, x, y, e.colAtCells, e.core.normalMax)
 }
 
 // colAtCells walks clusters in [from,end), accumulating measured cell widths, and
