@@ -21,7 +21,7 @@ func TestACappedLabelInAPannedDiagramIsHitWhereItIsShown(t *testing.T) {
 	if c.over(bi) == 0 {
 		t.Fatalf("precondition: the diagram fits its room (%d)", navRoom)
 	}
-	g := c.rows[first].grid.(mermaidPicture).g
+	g := c.rows[first].grid.(*mermaidPicture).g
 	var gx, gy, gw int
 	found := false
 	for y := 0; y < g.Size.H && !found; y++ {

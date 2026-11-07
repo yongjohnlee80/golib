@@ -17,10 +17,11 @@ var pieChars = []string{"█", "▓", "▒", "░"}
 // pieDiameter is the pie's circle, in cells.
 const pieDiameter = 16
 
-// LayPie lays a pie out in cells: its circle rastered in filled characters, one density a slice,
-// its legend under the drawing — each row its slice's own glyph, its capped label, its share as a
-// percentage, and its value when the header's showData asks — the title above. A pie whose
-// values sum to nothing has no angles: its legend alone, every share zero.
+// LayPie lays a pie out in cells: its circle rastered in filled characters, a slice in its series'
+// colour (Theme.Series) and its own density, its legend under the drawing — each row its slice's
+// glyph in its slice's colour, its capped label, its share as a percentage, and its value when the
+// header's showData asks — the title above. A pie whose values sum to nothing has no angles: its
+// legend alone, every share zero.
 func LayPie(ctx context.Context, d *pm.PieDiagram, m Measurer) (*Grid, error) {
 	if err := ctx.Err(); err != nil {
 		return nil, err
@@ -35,7 +36,7 @@ func LayPie(ctx context.Context, d *pm.PieDiagram, m Measurer) (*Grid, error) {
 	// the legend: each row its slice's own glyph (the key from the pie to the row), its label, its
 	// share, and its value when the header's showData asks
 	for i, s := range d.Slices {
-		row := legendRow{swatch: sliceChar(i, len(d.Slices)), label: s.Label, cols: []string{PercentText(pm.Percent(s.Share(total)))}}
+		row := legendRow{swatch: sliceChar(i, len(d.Slices)), label: s.Label, cols: []string{PercentText(pm.Percent(s.Share(total)))}, series: i + 1}
 		if d.ShowData {
 			row.cols = append(row.cols, strconv.FormatFloat(s.Value, 'f', -1, 64))
 		}
@@ -62,7 +63,8 @@ func LayPie(ctx context.Context, d *pm.PieDiagram, m Measurer) (*Grid, error) {
 				if ang < 0 {
 					ang += 2 * math.Pi
 				}
-				g.fills[cell{x: cx, y: y + cy}] = sliceChar(angleSlice(cum, ang), len(d.Slices))
+				i := angleSlice(cum, ang)
+				g.fills[cell{x: cx, y: y + cy}], g.series[cell{x: cx, y: y + cy}] = sliceChar(i, len(d.Slices)), i+1
 			}
 		}
 	}

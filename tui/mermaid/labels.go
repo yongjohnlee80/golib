@@ -185,6 +185,7 @@ type legendRow struct {
 	swatch string
 	label  string
 	cols   []string
+	series int // the swatch's series, its index plus one: drawn as a fill in its colour; 0 none
 }
 
 // legend adds rows to the key finish places under the drawing. Rows draw in the order given, and a
@@ -243,9 +244,18 @@ func (g *Grid) placeLegend(ms Measurer) {
 	}
 	for ri, r := range g.notes {
 		var b strings.Builder
-		b.WriteString(r.swatch + strings.Repeat(" ", sw-m(r.swatch)))
-		if sw > 0 {
-			b.WriteString(" ")
+		x := 0
+		if r.series > 0 { // a series' swatch is a fill in its colour, its text starting past it
+			for gr := range tui.Graphemes(r.swatch) {
+				g.fills[cell{x: x, y: y}], g.series[cell{x: x, y: y}] = gr, r.series
+				x += m(gr)
+			}
+			x = labelX
+		} else {
+			b.WriteString(r.swatch + strings.Repeat(" ", sw-m(r.swatch)))
+			if sw > 0 {
+				b.WriteString(" ")
+			}
 		}
 		b.WriteString(labels[ri] + strings.Repeat(" ", lw-m(labels[ri])))
 		if full[ri] {
@@ -255,7 +265,7 @@ func (g *Grid) placeLegend(ms Measurer) {
 			b.WriteString("  " + strings.Repeat(" ", colW[i]-m(c)) + c)
 		}
 		line := strings.TrimRight(b.String(), " ")
-		g.texts = append(g.texts, text{x: 0, y: y, w: m(line), s: line})
+		g.texts = append(g.texts, text{x: x, y: y, w: m(line), s: line})
 		y++
 	}
 	g.notes = nil

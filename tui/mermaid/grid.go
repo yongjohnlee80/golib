@@ -45,6 +45,7 @@ type Grid struct {
 	strokes map[cell]uint8
 	marks   map[cell]string // drawn over a line's cell in the line's style: an arrowhead, a dash
 	fills   map[cell]string // drawn over the marks in the box style: a bar, a slice
+	series  map[cell]int    // a fill's series, its index plus one: drawn in its colour (Theme.Series)
 	texts   []text          // labels outside any box, in the label's style
 	notes   []legendRow     // the legend, placed under the drawing by finish
 	foot    int             // footnotes given so far: the next one's number less one
@@ -60,7 +61,7 @@ type text struct {
 // newGrid is an empty grid.
 func newGrid() *Grid {
 	return &Grid{lines: map[cell]dirs{}, stroke: map[cell]Stroke{}, strokes: map[cell]uint8{},
-		marks: map[cell]string{}, fills: map[cell]string{}}
+		marks: map[cell]string{}, fills: map[cell]string{}, series: map[cell]int{}}
 }
 
 // Box is a node's outline and label. ID is the model's node ID, so a host maps a selection back.
@@ -250,7 +251,7 @@ func (g *Grid) Paint(s tui.Surface, x0, y0, selected int, th Theme) {
 		s.SetCell(x0+c.x, y0+c.y, m, th.Style(ElemMark))
 	}
 	for c, f := range g.fills {
-		s.SetCell(x0+c.x, y0+c.y, f, th.Style(ElemFill))
+		s.SetCell(x0+c.x, y0+c.y, f, th.seriesStyle(g.series[c]))
 	}
 	for _, t := range g.texts {
 		tui.DrawText(s, x0+t.x, y0+t.y, t.s, th.Style(ElemText))
@@ -315,6 +316,7 @@ func (g *Grid) shift(dx, dy int) {
 	g.strokes = shiftCells(g.strokes, move)
 	g.marks = shiftCells(g.marks, move)
 	g.fills = shiftCells(g.fills, move)
+	g.series = shiftCells(g.series, move)
 	for i := range g.texts {
 		g.texts[i].x += dx
 		g.texts[i].y += dy

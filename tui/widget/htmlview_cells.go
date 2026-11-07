@@ -502,12 +502,17 @@ type cellHits interface {
 	HitAt(x, y int) (full string, r tui.Rect, ok bool)
 }
 
-// mermaidPicture is a Mermaid grid in the diagrams' theme.
-type mermaidPicture struct{ g *tuimermaid.Grid }
+// mermaidPicture is a Mermaid grid in the theme it was laid in (diagramStyles). A row holds it by
+// pointer, as a chart: its theme's series are a slice, and the page tells one picture from the next
+// by comparing them.
+type mermaidPicture struct {
+	g  *tuimermaid.Grid
+	th tuimermaid.Theme
+}
 
-func (p mermaidPicture) Size() tui.Size                  { return p.g.Size }
-func (p mermaidPicture) Paint(s tui.Surface, x0, y0 int) { p.g.Paint(s, x0, y0, -1, diagramTheme) }
-func (p mermaidPicture) HitAt(x, y int) (string, tui.Rect, bool) {
+func (p *mermaidPicture) Size() tui.Size                  { return p.g.Size }
+func (p *mermaidPicture) Paint(s tui.Surface, x0, y0 int) { p.g.Paint(s, x0, y0, -1, p.th) }
+func (p *mermaidPicture) HitAt(x, y int) (string, tui.Rect, bool) {
 	return p.g.HitAt(x, y)
 }
 
@@ -547,8 +552,9 @@ func (c *cellHTML) layDiagram(bi int, b *hblock) {
 		if tuimermaid.Drawn(d) == nil {
 			room := max(c.width-2*b.quote-b.indent, 1)
 			if g, err := tuimermaid.LayWithin(context.Background(), d, measureFunc(c.measure), room); err == nil && g.Size.H > 0 {
+				pic := &mermaidPicture{g: g, th: c.diagramStyles()}
 				for i := range g.Size.H {
-					c.rows = append(c.rows, hrow{block: bi, first: i == 0, grid: mermaidPicture{g}, gridRow: i})
+					c.rows = append(c.rows, hrow{block: bi, first: i == 0, grid: pic, gridRow: i})
 				}
 				return
 			}
@@ -600,6 +606,15 @@ func (c *cellHTML) layNotice(bi int, b *hblock, kind string) {
 // diagramTheme is a diagram's styles in the cell layout: mermaid.TokenTheme's — the page's own
 // tokens, on the page's own background.
 var diagramTheme = tuimermaid.TokenTheme()
+
+// diagramStyles is a diagram's theme on this page: diagramTheme, its series the page's charts'
+// (chartTheme), so a pie's slices and a chart's series take the same colours, the page's code
+// colours where it has them.
+func (c *cellHTML) diagramStyles() tuimermaid.Theme {
+	th := diagramTheme
+	th.Series = c.chartTheme().Series
+	return th
+}
 
 // prefix is the decoration a row of b starts with: a bar and a space per quote level, then the
 // indent, with the list marker right-aligned in it on the block's first row.

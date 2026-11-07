@@ -3,9 +3,13 @@ package mermaid
 import "github.com/yongjohnlee80/golib/tui/style"
 
 // Theme is the painter's styles: a host derives them from its own palette, so a diagram follows
-// the user's theme.
+// the user's theme. Series are the colours a kind's series take (a pie's slices, and each slice's
+// legend swatch), in order, cycled: a host gives its charts' series (tui/vegalite's
+// ThemeFromSyntax), so a pie and a chart on one page agree. None: a series fill takes the Box
+// style, its densities alone telling the series apart.
 type Theme struct {
 	Line, Box, Label, Selected style.Style
+	Series                     []style.ColorSpec
 }
 
 // TokenTheme is the diagram theme a cell page paints in: every style on the page's own
@@ -35,6 +39,16 @@ const (
 	ElemBox                     // a box's outline
 	ElemSelected                // the selected box's outline and label
 )
+
+// seriesStyle is series n's style (its index plus one) for a fill: the Box style in the series'
+// colour, cycled; n 0, or a theme without series, the Box style.
+func (th Theme) seriesStyle(n int) style.Style {
+	st := th.Style(ElemFill)
+	if n > 0 && len(th.Series) > 0 {
+		st = st.Foreground(th.Series[(n-1)%len(th.Series)])
+	}
+	return st
+}
 
 // Style is e's style in th.
 func (th Theme) Style(e Element) style.Style {
