@@ -3,6 +3,7 @@ package vegalite
 import (
 	"context"
 	"errors"
+	"github.com/yongjohnlee80/golib/tui/braille"
 	"strings"
 	"testing"
 
@@ -192,7 +193,7 @@ func TestAPointIsItsDotAFilledOneFour(t *testing.T) {
 		d, _ := lay(ch, 20)
 		n := 0
 		for _, c := range marks(d) {
-			for b := c.r - brailleBase; b > 0; b &= b - 1 {
+			for b := c.r - braille.Blank; b > 0; b &= b - 1 {
 				n++
 			}
 		}

@@ -7,6 +7,7 @@ import (
 	"slices"
 
 	pv "github.com/yongjohnlee80/golib/parse/vegalite"
+	"github.com/yongjohnlee80/golib/tui/braille"
 )
 
 // THE BRAILLE TIER — line, point and area charts plotted in dots inside the frame's plot: a line
@@ -46,7 +47,7 @@ func layBraille(ctx context.Context, ch *pv.Chart, m Measurer, room int) (*Drawi
 
 // drawBraille plots layers into the frame's plot, in paint order.
 func (f *frame) drawBraille(layers []pv.Layer) {
-	c := newCanvas(f.plot.W, f.plot.H)
+	c := braille.New(f.plot.W, f.plot.H)
 	for _, l := range layers {
 		switch l.Mark {
 		case pv.MarkArea:
@@ -62,9 +63,9 @@ func (f *frame) drawBraille(layers []pv.Layer) {
 			f.rules(c, l)
 		}
 	}
-	for y := range c.h {
-		for x := range c.w {
-			if r, s := c.at(x, y); r != ' ' {
+	for y := range c.H() {
+		for x := range c.W() {
+			if r, s := c.At(x, y); r != ' ' {
 				f.mark(Cell{X: x, Y: y, Glyph: r, FG: s, BG: -1})
 			}
 		}
@@ -141,37 +142,37 @@ func (f *frame) bySeries(l pv.Layer) [][]pv.Datum {
 }
 
 // lines joins each series' consecutive points.
-func (f *frame) lines(c *canvas, l pv.Layer) {
+func (f *frame) lines(c *braille.Canvas, l pv.Layer) {
 	for _, ds := range f.bySeries(l) {
 		for i := range ds {
 			s := f.seriesOf(ds[i], l)
 			x1, y1 := f.dot(ds[i], l, ds[i].V1)
 			if i == 0 {
-				c.set(x1, y1, s) // a series of one point still shows
+				c.Set(x1, y1, s) // a series of one point still shows
 				continue
 			}
 			x0, y0 := f.dot(ds[i-1], l, ds[i-1].V1)
-			c.line(x0, y0, x1, y1, s)
+			c.Line(x0, y0, x1, y1, s)
 		}
 	}
 }
 
 // areas fills each series from its line to its baseline, column by column, both edges
 // interpolated between consecutive points: a stacked area fills from its lower edge (V0).
-func (f *frame) areas(c *canvas, l pv.Layer) {
+func (f *frame) areas(c *braille.Canvas, l pv.Layer) {
 	for _, ds := range f.bySeries(l) {
 		for i := range ds {
 			s := f.seriesOf(ds[i], l)
 			xa, ta := f.dot(ds[i], l, ds[i].V1)
 			_, ba := f.dot(ds[i], l, ds[i].V0)
 			if i == 0 {
-				c.fillDown(xa, ta, ba, s)
+				c.FillDown(xa, ta, ba, s)
 				continue
 			}
 			xp, tp := f.dot(ds[i-1], l, ds[i-1].V1)
 			_, bp := f.dot(ds[i-1], l, ds[i-1].V0)
 			if xa == xp {
-				c.fillDown(xa, min(ta, tp), max(ba, bp), s)
+				c.FillDown(xa, min(ta, tp), max(ba, bp), s)
 				continue
 			}
 			step := sign(xa - xp)
@@ -179,43 +180,43 @@ func (f *frame) areas(c *canvas, l pv.Layer) {
 				t := float64(x-xp) / float64(xa-xp)
 				top := int(math.Round(float64(tp) + t*float64(ta-tp)))
 				base := int(math.Round(float64(bp) + t*float64(ba-bp)))
-				c.fillDown(x, top, base, s)
+				c.FillDown(x, top, base, s)
 			}
 		}
 	}
 }
 
 // points sets each datum's dot: a filled point 2×2.
-func (f *frame) points(c *canvas, l pv.Layer) {
+func (f *frame) points(c *braille.Canvas, l pv.Layer) {
 	for _, d := range l.Data {
 		s := f.seriesOf(d, l)
 		x, y := f.dot(d, l, d.V1)
-		c.set(x, y, s)
+		c.Set(x, y, s)
 		if l.Filled {
-			c.set(x+1, y, s)
-			c.set(x, y+1, s)
-			c.set(x+1, y+1, s)
+			c.Set(x+1, y, s)
+			c.Set(x, y+1, s)
+			c.Set(x+1, y+1, s)
 		}
 	}
 }
 
 // rules draws each of a rule layer's values as a whole-cell line across the plot: │ at an x value,
 // ─ at a y value.
-func (f *frame) rules(c *canvas, l pv.Layer) {
+func (f *frame) rules(c *braille.Canvas, l pv.Layer) {
 	if l.Rule == nil {
 		return
 	}
 	for _, v := range l.Rule.Values {
 		if l.Rule.OnX {
 			x := f.dimDotX(v) / 2
-			for y := range c.h {
-				c.rule(x, y, '│', 0)
+			for y := range c.H() {
+				c.Rule(x, y, '│', 0)
 			}
 			continue
 		}
 		y := f.ruleRow(v)
-		for x := range c.w {
-			c.rule(x, y, '─', 0)
+		for x := range c.W() {
+			c.Rule(x, y, '─', 0)
 		}
 	}
 }
@@ -226,4 +227,15 @@ func (f *frame) ruleRow(v pv.Pos) int {
 		return int(math.Floor(f.band(f.ch.Y, v.Str, float64(f.plot.H))))
 	}
 	return int(math.Round((1 - frac(v.Num, f.ch.Y.Lo, f.ch.Y.Hi)) * float64(f.plot.H-1)))
+}
+
+// sign is v's sign: 1, -1 or 0.
+func sign(v int) int {
+	switch {
+	case v > 0:
+		return 1
+	case v < 0:
+		return -1
+	}
+	return 0
 }
