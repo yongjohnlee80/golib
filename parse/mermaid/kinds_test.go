@@ -29,10 +29,11 @@ var kindSamples = map[string]string{
 	"sankey":             "sankey\na,b,1",
 	"block-beta":         "block-beta\n  a b",
 	"block":              "block\n  a b",
+	"gitGraph":           "gitGraph\n  commit",
 }
 
-// Kinds is the table Parse dispatches from: the fifteen kinds, each with its header keywords, and
-// each keyword's diagram parses as its kind. A kind on no row (a gitGraph, a keyword in another
+// Kinds is the table Parse dispatches from: the sixteen kinds, each with its header keywords, and
+// each keyword's diagram parses as its kind. A kind on no row (a kanban, a keyword in another
 // case) is ErrUnsupported.
 func TestKindsAreWhatParseReads(t *testing.T) {
 	want := []KindInfo{
@@ -51,6 +52,7 @@ func TestKindsAreWhatParseReads(t *testing.T) {
 		{XYChart, []string{"xychart-beta", "xychart"}},
 		{Sankey, []string{"sankey-beta", "sankey"}},
 		{Block, []string{"block-beta", "block"}},
+		{GitGraph, []string{"gitGraph"}},
 	}
 	got := Kinds()
 	if !reflect.DeepEqual(got, want) {
@@ -64,7 +66,7 @@ func TestKindsAreWhatParseReads(t *testing.T) {
 			}
 		}
 	}
-	for _, src := range []string{"gitGraph\n  commit\n", "Flowchart LR\n  A --> B"} {
+	for _, src := range []string{"kanban\n  todo\n", "Flowchart LR\n  A --> B"} {
 		if _, err := Parse(src); !errors.Is(err, ErrUnsupported) {
 			t.Errorf("%q: %v; want ErrUnsupported", src, err)
 		}
