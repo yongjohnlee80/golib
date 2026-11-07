@@ -213,3 +213,39 @@ func TestSourceSpans(t *testing.T) {
 		t.Errorf("SourceSpans changed more than its attributes:\n%s\nvs\n%s", stripped, plain.String())
 	}
 }
+
+// TestSafeDefaultWritesABareBrAsABreak: a bare <br> — <br>, <br/> or <br />, in any case, inline
+// or alone on its line, a table cell's included — is the line break it is under the safe default;
+// a <br> with an attribute stays escaped, and so does every other tag (<script>, <img>). Unsafe
+// passes each through as written.
+func TestSafeDefaultWritesABareBrAsABreak(t *testing.T) {
+	for _, c := range []struct{ in, safe string }{
+		{"a<br>b\n", "<p>a<br />b</p>\n"},
+		{"a<br/>b\n", "<p>a<br />b</p>\n"},
+		{"a<br />b\n", "<p>a<br />b</p>\n"},
+		{"a<BR>b\n", "<p>a<br />b</p>\n"},
+		{"a<br class=x>b\n", "<p>a&lt;br class=x&gt;b</p>\n"},
+		{"a<br onclick=\"x\"/>b\n", "<p>a&lt;br onclick=&quot;x&quot;/&gt;b</p>\n"},
+		{"a<script>x</script>b\n", "<p>a&lt;script&gt;x&lt;/script&gt;b</p>\n"},
+		{"a <img src=x onerror=y> b\n", "<p>a &lt;img src=x onerror=y&gt; b</p>\n"},
+		{"a<brx>b\n", "<p>a&lt;brx&gt;b</p>\n"},
+	} {
+		if got := renderWith(t, c.in); got != c.safe {
+			t.Errorf("default Render(%q) = %q, want %q", c.in, got, c.safe)
+		}
+		if got, want := renderWith(t, c.in, html.WithUnsafe()), "<p>"+strings.TrimSuffix(c.in, "\n")+"</p>\n"; got != want {
+			t.Errorf("Unsafe Render(%q) = %q, want it as written %q", c.in, got, want)
+		}
+	}
+	if got := renderWith(t, "<br>\n"); !strings.Contains(got, "<br />") || strings.Contains(got, "&lt;") {
+		t.Errorf("a <br> alone on its line renders %q, want the break", got)
+	}
+	var b bytes.Buffer
+	src := "| Step | Notes |\n| --- | --- |\n| one | first line<br>second line |\n"
+	if err := html.Render(&b, markdown.Parse([]byte(src), markdown.WithGFM())); err != nil {
+		t.Fatal(err)
+	}
+	if got := b.String(); !strings.Contains(got, "<td>first line<br />second line</td>") {
+		t.Errorf("a table cell's <br> renders %q, want the break in its cell", got)
+	}
+}
