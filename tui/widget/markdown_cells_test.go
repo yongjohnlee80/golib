@@ -70,15 +70,22 @@ func TestMarkdownCellsAreEditable(t *testing.T) {
 	}
 }
 
-// Prose wraps at the width before the word that would cross it: no word is cut.
+// Prose wraps at the width before the word that would cross it: no word is cut. Six-cell words do
+// not divide the 40-cell view, so a wrap by cells alone would cut one.
 func TestMarkdownProseWrapsAtWords(t *testing.T) {
-	h, _, _ := renderedEditor(t, strings.Repeat("word ", 12), mdRenderer())
-	for _, r := range rows(h, 2) {
-		if strings.HasPrefix(r, "ord") || strings.HasSuffix(r, " w") || len(r) > 40 {
-			t.Errorf("row %q: cut inside a word, or wider than the view", r)
+	h, _, _ := renderedEditor(t, strings.Repeat("words ", 10), mdRenderer())
+	got := rows(h, 2)
+	for _, r := range got {
+		if len(r) > 40 {
+			t.Errorf("row %q: wider than the view", r)
+		}
+		for _, w := range strings.Fields(r) {
+			if w != "words" {
+				t.Errorf("row %q: a word cut (%q)", r, w)
+			}
 		}
 	}
-	if got := rows(h, 2); got[1] == "" {
+	if got[1] == "" {
 		t.Errorf("60 cells of prose in a 40-cell view drew one row: %q", got)
 	}
 }
