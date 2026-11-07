@@ -14,7 +14,7 @@ import (
 )
 
 // htmlview_tables_internal_test.go: a table wider than its room is boxed all the same, its columns
-// narrowed (fitColumns) and its cells' text wrapped in them (layRow); one whose columns can't narrow
+// narrowed (FitColumns) and its cells' text wrapped in them (layRow); one whose columns can't narrow
 // to tableMinColumn is drawn at its own width and pans, its rows as one (Johno, 2026-11-07: wrap,
 // pan as the fallback).
 
@@ -35,8 +35,8 @@ func TestFitColumnsNarrowsTheWidestFirst(t *testing.T) {
 		{[]int{30, 30, 30, 30}, 16, []int{4, 4, 4, 4}},
 		{nil, 10, nil},
 	} {
-		if got := fitColumns(tc.natural, tc.avail); !slices.Equal(got, tc.want) {
-			t.Errorf("fitColumns(%v, %d) = %v, want %v", tc.natural, tc.avail, got, tc.want)
+		if got := FitColumns(tc.natural, tc.avail); !slices.Equal(got, tc.want) {
+			t.Errorf("FitColumns(%v, %d) = %v, want %v", tc.natural, tc.avail, got, tc.want)
 		}
 	}
 }
