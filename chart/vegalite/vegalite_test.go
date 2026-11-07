@@ -13,7 +13,6 @@ import (
 	"testing"
 	"time"
 
-	"github.com/yongjohnlee80/golib/gui"
 	pvl "github.com/yongjohnlee80/golib/parse/vegalite"
 )
 
@@ -22,14 +21,12 @@ var testTheme = Theme{
 	Text:       color.NRGBA{R: 0x20, G: 0x20, B: 0x20, A: 0xff},
 	Axis:       color.NRGBA{R: 0x88, G: 0x88, B: 0x88, A: 0xff},
 	Grid:       color.NRGBA{R: 0xdd, G: 0xdd, B: 0xdd, A: 0xff},
-	Font:       gui.Font{Size: 11},
+	Font:       Font{Size: 11},
 }
 
 func lay(t *testing.T, src string, width float32) (*Laid, error) {
 	t.Helper()
-	m, release := gui.AcquireMeasurer(1)
-	defer release()
-	return Lay(context.Background(), src, width, testTheme, m)
+	return Lay(context.Background(), src, width, testTheme, ApproxMeasure)
 }
 
 func mustLay(t *testing.T, src string, width float32) *Laid {
@@ -347,7 +344,7 @@ func TestALineFollowsItsSeriesInXOrder(t *testing.T) {
 	if !slices.Contains(texts, "Day") || !slices.Contains(texts, "Jan 07") || slices.Contains(texts, "Jan 14") {
 		t.Errorf("labels %v: want the title Day and every other week from Jan 07", texts)
 	}
-	var below []gui.Rect // the x axis's labels: under the plot, upright never
+	var below []Rect // the x axis's labels: under the plot, upright never
 	for _, it := range l.of(itemText) {
 		if strings.HasPrefix(it.text, "Jan ") || strings.HasPrefix(it.text, "Feb ") {
 			below = append(below, it.rect)
@@ -539,60 +536,6 @@ func TestCosmeticKeysArePassedOver(t *testing.T) {
 	}
 }
 
-// Paint draws every label as text, an upright one turned, and every shape in a path: a run of
-// one colour in one path, so a scatter of many points is one call, not one a point.
-func TestPaintBatchesItsShapes(t *testing.T) {
-	l := mustLay(t, lineSpec, 2000)
-	rc := gui.NewRecordingCanvas(gui.Size{W: 2000, H: 1000}, gui.Size{W: 8, H: 16})
-	l.Paint(rc)
-	count := map[string]int{}
-	for _, c := range rc.Calls {
-		count[c.Op]++
-	}
-	if count["DrawText"] != len(l.of(itemText)) {
-		t.Errorf("%d texts drawn, %d laid", count["DrawText"], len(l.of(itemText)))
-	}
-	up := 0
-	for _, it := range l.of(itemText) {
-		if it.up {
-			up++
-		}
-	}
-	if up == 0 || count["PushTransform"] != up {
-		t.Errorf("%d transforms pushed for %d upright labels", count["PushTransform"], up)
-	}
-	shapes := len(l.items) - len(l.of(itemText))
-	if paths := count["StrokePath"] + count["FillPath"]; paths == 0 || paths >= shapes {
-		t.Errorf("%d paths for %d shapes: not batched", paths, shapes)
-	}
-	var rows strings.Builder
-	for i := range 2000 {
-		if i > 0 {
-			rows.WriteString(",")
-		}
-		fmt.Fprintf(&rows, `{"x":%d,"y":%d}`, i, (i*7919)%1000)
-	}
-	l = mustLay(t, `{"data":{"values":[`+rows.String()+`]},"mark":"point","encoding":{"x":{"field":"x","type":"quantitative"},"y":{"field":"y","type":"quantitative"}}}`, 800)
-	rc = gui.NewRecordingCanvas(gui.Size{W: 800, H: 800}, gui.Size{W: 8, H: 16})
-	l.Paint(rc)
-	strokes := 0
-	for _, c := range rc.Calls {
-		if c.Op == "StrokePath" {
-			strokes++
-		}
-	}
-	if len(l.of(itemRing)) != 2000 || strokes > 10 {
-		t.Errorf("%d rings stroked in %d calls, want a handful", len(l.of(itemRing)), strokes)
-	}
-	for _, it := range l.items {
-		for _, v := range []float32{it.rect.X, it.rect.Y, it.rect.W, it.rect.H} {
-			if math.IsNaN(float64(v)) || math.IsInf(float64(v), 0) {
-				t.Fatalf("an item at %+v", it)
-			}
-		}
-	}
-}
-
 // An empty chart, or one of a single value, still lays out: no NaN, no division by zero.
 func TestDegenerateDataLaysOut(t *testing.T) {
 	for _, spec := range []string{
@@ -601,7 +544,7 @@ func TestDegenerateDataLaysOut(t *testing.T) {
 	} {
 		l := mustLay(t, spec, 600)
 		for _, it := range l.items {
-			for _, p := range append(it.pts, gui.Pt(it.rect.X, it.rect.Y), gui.Pt(it.rect.W, it.rect.H)) {
+			for _, p := range append(it.pts, Pt(it.rect.X, it.rect.Y), Pt(it.rect.W, it.rect.H)) {
 				if math.IsNaN(float64(p.X)) || math.IsNaN(float64(p.Y)) {
 					t.Fatalf("%s: an item at %+v", spec, it)
 				}
@@ -964,9 +907,7 @@ func TestATinyDashThroughLayEnds(t *testing.T) {
 	defer cancel()
 	done := make(chan error, 1)
 	go func() {
-		m, release := gui.AcquireMeasurer(1)
-		defer release()
-		_, err := Lay(ctx, spec, 600, testTheme, m)
+		_, err := Lay(ctx, spec, 600, testTheme, ApproxMeasure)
 		done <- err
 	}()
 	select {
@@ -980,7 +921,7 @@ func TestATinyDashThroughLayEnds(t *testing.T) {
 	cancelled, stop := context.WithCancel(context.Background())
 	stop()
 	b := &builder{ctx: cancelled, unit: 1}
-	b.stroke(testTheme.Text, 1, []float32{4, 3}, gui.Pt(0, 0), gui.Pt(0, 600))
+	b.stroke(testTheme.Text, 1, []float32{4, 3}, Pt(0, 0), Pt(0, 600))
 	if len(b.items) != 0 {
 		t.Errorf("a cancelled layout cut %d dashes", len(b.items))
 	}
@@ -1186,8 +1127,8 @@ func TestPointsTakeVegasSymbols(t *testing.T) {
 	// the default range's third is triangle-up: one corner, its apex, on top
 	l := mustLay(t, fmt.Sprintf(spec, `"shape":{"field":"k","type":"nominal","legend":null}`), 2000)
 	tri := l.of(itemFill)[0].pts
-	top := slices.MinFunc(tri, func(a, b gui.Point) int { return cmp.Compare(a.Y, b.Y) })
-	if n := len(slices.DeleteFunc(slices.Clone(tri), func(p gui.Point) bool { return p.Y != top.Y })); n != 1 {
+	top := slices.MinFunc(tri, func(a, b Point) int { return cmp.Compare(a.Y, b.Y) })
+	if n := len(slices.DeleteFunc(slices.Clone(tri), func(p Point) bool { return p.Y != top.Y })); n != 1 {
 		t.Errorf("triangle-up %v: %d corners on top, want its apex alone", tri, n)
 	}
 	l = mustLay(t, strings.Replace(fmt.Sprintf(spec, `"shape":{"value":"square"}`), `"filled":true`, `"filled":false`, 1), 2000)
@@ -1294,7 +1235,7 @@ func TestTwoLegendsStack(t *testing.T) {
 	spec := `{"data":{"values":[{"x":1,"y":1,"g":"g1","k":"k1"},{"x":2,"y":2,"g":"g2","k":"k2"}]},"mark":"point",
 		"encoding":{"x":{"field":"x","type":"quantitative"},"y":{"field":"y","type":"quantitative"},
 		"color":{"field":"g","type":"nominal"},"shape":{"field":"k","type":"nominal"}}}`
-	at := map[string]gui.Rect{}
+	at := map[string]Rect{}
 	for _, it := range mustLay(t, spec, 2000).of(itemText) {
 		at[it.text] = it.rect
 	}

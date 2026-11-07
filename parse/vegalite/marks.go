@@ -8,7 +8,7 @@ import (
 // MARKS — what each mark kind checks and scales, defined once and registered in marks: adding a
 // mark is one definition and its registration, not an edit to every switch over the kinds.
 // markTypes names the Vega-Lite types that draw each kind. How a kind is drawn is the drawing
-// package's (gui/vegalite's, tui/vegalite's).
+// package's (chart/vegalite's, tui/vegalite's).
 
 // markDef is how a mark kind is read and scaled.
 type markDef struct {

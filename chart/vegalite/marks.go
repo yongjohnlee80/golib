@@ -5,7 +5,6 @@ import (
 	"math"
 	"slices"
 
-	"github.com/yongjohnlee80/golib/gui"
 	pvl "github.com/yongjohnlee80/golib/parse/vegalite"
 )
 
@@ -38,7 +37,7 @@ func init() {
 func init() { marks[pvl.MarkPoint] = markDef{draw: (*builder).points, swatch: pointSwatch} }
 
 // paint draws layer o on the plot: a mark layer by its kind's drawing, a rule across the plot.
-func paint(o pvl.LayerPlan, b *builder, xs, ys *scale, plot gui.Rect) {
+func paint(o pvl.LayerPlan, b *builder, xs, ys *scale, plot Rect) {
 	switch o := o.(type) {
 	case *pvl.Plan:
 		b.p = o
@@ -66,9 +65,9 @@ func (b *builder) bars(xs, ys *scale, alpha float32) {
 		if !p.Stacked {
 			v0 = valS.px(math.Min(math.Max(0, valS.a.Lo), valS.a.Hi)) // from zero, or the domain's end nearer it
 		}
-		r := gui.Rect{X: at, Y: min(v0, v1), W: dimS.band, H: float32(math.Abs(float64(v1 - v0)))}
+		r := Rect{X: at, Y: min(v0, v1), W: dimS.band, H: float32(math.Abs(float64(v1 - v0)))}
 		if p.DimY {
-			r = gui.Rect{X: min(v0, v1), Y: at, W: float32(math.Abs(float64(v1 - v0))), H: dimS.band}
+			r = Rect{X: min(v0, v1), Y: at, W: float32(math.Abs(float64(v1 - v0))), H: dimS.band}
 		}
 		b.add(item{kind: itemRect, rect: r, color: fade(b.colorOf(d.Series), alpha)})
 	}
@@ -82,9 +81,9 @@ func (b *builder) lines(xs, ys *scale, alpha float32, area bool) {
 			continue
 		}
 		col := fade(b.colorOf(s.name), alpha)
-		top := make([]gui.Point, len(s.data))
+		top := make([]Point, len(s.data))
 		for i, d := range s.data {
-			top[i] = gui.Pt(xs.centre(d.X), ys.px(d.V1))
+			top[i] = Pt(xs.centre(d.X), ys.px(d.V1))
 		}
 		if area {
 			pts := slices.Clone(top)
@@ -93,7 +92,7 @@ func (b *builder) lines(xs, ys *scale, alpha float32, area bool) {
 				if !p.Stacked {
 					v0 = math.Min(math.Max(0, ys.a.Lo), ys.a.Hi)
 				}
-				pts = append(pts, gui.Pt(top[i].X, ys.px(v0)))
+				pts = append(pts, Pt(top[i].X, ys.px(v0)))
 			}
 			b.add(item{kind: itemFill, pts: pts, color: col})
 			continue
@@ -114,13 +113,13 @@ func (b *builder) lines(xs, ys *scale, alpha float32, area bool) {
 func (b *builder) points(xs, ys *scale, alpha float32) {
 	p := b.p
 	for _, d := range p.Data {
-		b.symbol(gui.Pt(xs.centre(d.X), ys.centre(d.Y)), b.symbolOf(d.Shape), b.radius(), fade(b.colorOf(d.Series), alpha), p.Layer.Mark.Filled)
+		b.symbol(Pt(xs.centre(d.X), ys.centre(d.Y)), b.symbolOf(d.Shape), b.radius(), fade(b.colorOf(d.Series), alpha), p.Layer.Mark.Filled)
 	}
 }
 
 // lineSwatch is a line's legend swatch: a stroke.
 func lineSwatch(b *builder, _ string, x, cy, sw float32, col color.NRGBA) {
-	b.line(col, 2*b.unit, gui.Pt(x, cy), gui.Pt(x+sw, cy))
+	b.line(col, 2*b.unit, Pt(x, cy), Pt(x+sw, cy))
 }
 
 // pointSwatch is a point's legend swatch: a circle, or the layer's constant shape, or the shape
@@ -130,5 +129,5 @@ func pointSwatch(b *builder, series string, x, cy, sw float32, col color.NRGBA) 
 	if sh := b.p.Layer.Shape; sh != nil && (sh.Shape != "" || sh.Field == b.p.Layer.Color.Field) {
 		sym = b.symbolOf(series)
 	}
-	b.symbol(gui.Pt(x+sw/2, cy), sym, sw/2.5, col, b.p.Layer.Mark.Filled)
+	b.symbol(Pt(x+sw/2, cy), sym, sw/2.5, col, b.p.Layer.Mark.Filled)
 }
