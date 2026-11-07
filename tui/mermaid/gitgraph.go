@@ -62,9 +62,10 @@ func GitLanes(d *pm.GitGraphDiagram) []int {
 // lane's series colour (Theme.Series). The lanes and the parents' lines are box-drawing lines: a
 // branch's first commit turns off its parent's step, and a merge runs along the merged lane to the
 // merge's step and turns into it, so the junctions show where branches leave and join. LR puts a
-// commit's tag on the row above its lane and the id given in the source on the row below; TB and
-// BT put them beside the commit. A step is wide enough that no label reaches the next commit's
-// column, where another branch's line may pass.
+// commit's tag on the row above its lane and the id given in the source on the row below, a step
+// wide enough that no label reaches the next commit's column, where another branch's line may
+// pass; TB and BT write them on the row after the commit, beside its lane, the lanes wide enough
+// that a label ends before the next lane's line.
 func LayGitGraph(ctx context.Context, d *pm.GitGraphDiagram, m Measurer) (*Grid, error) {
 	if err := ctx.Err(); err != nil {
 		return nil, err
@@ -76,21 +77,29 @@ func LayGitGraph(ctx context.Context, d *pm.GitGraphDiagram, m Measurer) (*Grid,
 
 	// the step: the widest tag or id, and a gap, so labels never meet the neighbouring columns
 	step := 4
-	nameW := 0
+	nameW, sideW := 0, 0 // sideW: the widest label beside a commit (TB, BT)
 	for _, b := range d.Branches {
 		_, w, _ := capLabel(b.Name, RoleLabel, m)
 		nameW = max(nameW, w)
 	}
 	for _, c := range d.Commits {
+		if vertical {
+			if s := gitSideLabel(c); s != "" {
+				_, w, _ := capLabel(s, RoleLabel, m)
+				sideW = max(sideW, w)
+			}
+			continue
+		}
 		for _, s := range []string{c.Tag, c.ID} {
 			if s != "" {
 				_, w, _ := capLabel(s, RoleLabel, m)
-				if !vertical {
-					step = max(step, w+2)
-				}
+				step = max(step, w+2)
 			}
 		}
 	}
+	// a vertical lane is wide enough for its name and for the labels beside its commits, which
+	// start two cells right of the lane and must end before the next lane's line
+	laneW := max(nameW, sideW+2) + 3
 	// at is a commit's cell: step s on lane l
 	at := func(s, l int) cell {
 		if vertical {
@@ -98,7 +107,7 @@ func LayGitGraph(ctx context.Context, d *pm.GitGraphDiagram, m Measurer) (*Grid,
 			if d.Dir == pm.BT {
 				t = 2 * (n - 1 - s)
 			}
-			return cell{x: 2 + l*(nameW+3), y: t}
+			return cell{x: 2 + l*laneW, y: t}
 		}
 		return cell{x: nameW + 2 + s*step + step/2, y: 1 + l*3}
 	}
@@ -138,14 +147,15 @@ func LayGitGraph(ctx context.Context, d *pm.GitGraphDiagram, m Measurer) (*Grid,
 	for i, c := range d.Commits {
 		p := at(i, lanes[c.Branch])
 		g.fills[p], g.series[p] = gitGlyph(c), lanes[c.Branch]+1
-		for k, s := range []string{c.Tag, c.ID} {
-			if s == "" {
-				continue
-			}
-			_, w, _ := capLabel(s, RoleLabel, m)
-			if vertical {
-				g.label(p.x+2, p.y+k, s, m)
-			} else {
+		if vertical {
+			// on the row after the commit: its own row may carry a branch leaving it sideways
+			g.label(p.x+2, p.y+1, gitSideLabel(c), m)
+		} else {
+			for k, s := range []string{c.Tag, c.ID} {
+				if s == "" {
+					continue
+				}
+				_, w, _ := capLabel(s, RoleLabel, m)
 				g.label(p.x-w/2, p.y-1+2*k, s, m)
 			}
 		}
@@ -166,6 +176,17 @@ func LayGitGraph(ctx context.Context, d *pm.GitGraphDiagram, m Measurer) (*Grid,
 		}
 	}
 	return g.finish(m)
+}
+
+// gitSideLabel is what TB and BT write beside a commit: its tag and its id, one line.
+func gitSideLabel(c pm.GitCommit) string {
+	switch {
+	case c.Tag != "" && c.ID != "":
+		return c.Tag + " " + c.ID
+	case c.Tag != "":
+		return c.Tag
+	}
+	return c.ID
 }
 
 // gitCommitName is how the legend names commit i: its id, its tag, or its place on its branch.

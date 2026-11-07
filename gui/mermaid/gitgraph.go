@@ -47,16 +47,27 @@ func layGitGraph(ctx context.Context, d pm.Diagram, _ float32, th Theme, m gui.M
 	tags := make([]*label, len(gd.Commits))
 	ids := make([]*label, len(gd.Commits))
 	for i, c := range gd.Commits {
+		var side float32 // TB, BT: the labels' width beside the dot
 		if c.Tag != "" {
 			t := newLabel(m, c.Tag, small, 0, th.Text)
 			tags[i] = &t
 			step = max(step, t.box.W+em)
+			side += t.box.W + em
 		}
 		if c.ID != "" {
 			t := newLabel(m, c.ID, small, 0, th.Text)
 			ids[i] = &t
 			step = max(step, t.box.W+em)
+			side += t.box.W + em*0.4
 		}
+		if vertical {
+			// the labels sit right of the dot, so a lane is as wide as them; along the time axis,
+			// a step only needs a line's height
+			laneGap = max(laneGap, dot+side+em*1.5)
+		}
+	}
+	if vertical {
+		step = em * 2.4
 	}
 	steps := len(gd.Commits)
 	timeStart := margin + nameRoom + em
@@ -143,12 +154,22 @@ func layGitGraph(ctx context.Context, d pm.Diagram, _ float32, th Theme, m gui.M
 				laidEdge{pts: []gui.Point{{X: box.X + dot*0.75, Y: box.Y + dot*0.25}, {X: box.X + dot*0.25, Y: box.Y + dot*0.75}}, color: fill})
 		}
 		l.nodes = append(l.nodes, n)
+		x := p.X + dot // TB, BT: the next label's left, right of the dot (off the lane's line)
 		if t := tags[i]; t != nil {
-			l.nodes = append(l.nodes, laidNode{form: formRound, box: gui.Rect{X: p.X - t.box.W/2 - em*0.3, Y: p.Y - dot - t.box.H - em*0.2, W: t.box.W + em*0.6, H: t.box.H + em*0.2},
-				fill: th.NodeFill, stroke: th.NodeStroke, width: 1, label: t.at(p.X-t.box.W/2, p.Y-dot-t.box.H-em*0.1)})
+			tx, ty := p.X-t.box.W/2, p.Y-dot-t.box.H-em*0.1 // LR: over the dot
+			if vertical {
+				tx, ty = x+em*0.3, p.Y-t.box.H/2
+				x += t.box.W + em
+			}
+			l.nodes = append(l.nodes, laidNode{form: formRound, box: gui.Rect{X: tx - em*0.3, Y: ty - em*0.1, W: t.box.W + em*0.6, H: t.box.H + em*0.2},
+				fill: th.NodeFill, stroke: th.NodeStroke, width: 1, label: t.at(tx, ty)})
 		}
 		if id := ids[i]; id != nil {
-			l.texts = append(l.texts, id.at(p.X-id.box.W/2, p.Y+dot))
+			if vertical {
+				l.texts = append(l.texts, id.at(x+em*0.4, p.Y-id.box.H/2))
+			} else {
+				l.texts = append(l.texts, id.at(p.X-id.box.W/2, p.Y+dot))
+			}
 		}
 	}
 	// the names, at each lane's start
