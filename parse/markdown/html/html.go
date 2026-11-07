@@ -181,7 +181,7 @@ func (r *renderer) block(n *markdown.Node) {
 		if !r.cfg.unsafe && len(bytes.TrimSpace(withoutComments(n.Literal))) == 0 {
 			break // only comments: nothing a browser would show
 		}
-		if !r.cfg.unsafe && bareBr(bytes.TrimSpace(n.Literal)) {
+		if !r.cfg.unsafe && BareBr(bytes.TrimSpace(n.Literal)) {
 			r.cr()
 			r.out.WriteString("<br />") // a <br> alone on its line: the break, as inline
 			r.cr()
@@ -355,7 +355,7 @@ func (r *renderer) inline(n *markdown.Node) {
 		}
 		r.out.WriteString(" />")
 	case markdown.KindRawHTML:
-		if !r.cfg.unsafe && bareBr(n.Literal) {
+		if !r.cfg.unsafe && BareBr(n.Literal) {
 			r.out.WriteString("<br />") // a line break, the one raw tag the safe renderer writes
 			break
 		}
@@ -399,11 +399,12 @@ func plainText(w *bytes.Buffer, n *markdown.Node, src []byte) {
 	}
 }
 
-// bareBr reports whether b is a line break written as HTML with no attributes: <br>, <br/> or
+// BareBr reports whether b is a line break written as HTML with no attributes: <br>, <br/> or
 // <br />, in any case, spaces before the slash. The safe renderer writes it as the break it is: it
 // is the one way a GFM table's cell breaks a line, and it carries no URL, script or style. A <br>
-// with an attribute, and every other tag, stays escaped (raw).
-func bareBr(b []byte) bool {
+// with an attribute, and every other tag, stays escaped (raw). An editor's live view that draws
+// Markdown itself reads a <br> by it too, so every view agrees (gui/widget's Rendered view).
+func BareBr(b []byte) bool {
 	if len(b) < 4 || b[0] != '<' || b[len(b)-1] != '>' || !bytes.EqualFold(b[1:3], []byte("br")) {
 		return false
 	}
