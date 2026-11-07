@@ -25,6 +25,7 @@ func TestKindsAreWhatLayDraws(t *testing.T) {
 		pm.Quadrant:    "quadrantChart\n  A: [0.5, 0.5]",
 		pm.XYChart:     "xychart-beta\n  bar [1, 2]",
 		pm.Sankey:      "sankey-beta\na,b,1",
+		pm.Block:       "block-beta\n  a b\n  a --> b",
 	}
 	for _, k := range got {
 		if _, err := lay(t, samples[k.Kind], 600); err != nil {

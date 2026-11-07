@@ -1,0 +1,196 @@
+{
+  "Root": {
+    "Columns": 3,
+    "Items": [
+      {
+        "ID": "a",
+        "Label": "a",
+        "Shape": "rect",
+        "Width": 3,
+        "Space": false,
+        "Group": null,
+        "Span": [
+          25,
+          28
+        ]
+      },
+      {
+        "ID": "group1",
+        "Label": "",
+        "Shape": "rect",
+        "Width": 2,
+        "Space": false,
+        "Group": {
+          "Columns": 2,
+          "Items": [
+            {
+              "ID": "h",
+              "Label": "h",
+              "Shape": "rect",
+              "Width": 1,
+              "Space": false,
+              "Group": null,
+              "Span": [
+                64,
+                65
+              ]
+            },
+            {
+              "ID": "i",
+              "Label": "i",
+              "Shape": "rect",
+              "Width": 1,
+              "Space": false,
+              "Group": null,
+              "Span": [
+                66,
+                67
+              ]
+            },
+            {
+              "ID": "j",
+              "Label": "j",
+              "Shape": "rect",
+              "Width": 1,
+              "Space": false,
+              "Group": null,
+              "Span": [
+                68,
+                69
+              ]
+            },
+            {
+              "ID": "k",
+              "Label": "k",
+              "Shape": "rect",
+              "Width": 1,
+              "Space": false,
+              "Group": null,
+              "Span": [
+                70,
+                71
+              ]
+            }
+          ]
+        },
+        "Span": [
+          31,
+          45
+        ]
+      },
+      {
+        "ID": "g",
+        "Label": "g",
+        "Shape": "rect",
+        "Width": 1,
+        "Space": false,
+        "Group": null,
+        "Span": [
+          80,
+          81
+        ]
+      },
+      {
+        "ID": "group2",
+        "Label": "",
+        "Shape": "rect",
+        "Width": 3,
+        "Space": false,
+        "Group": {
+          "Columns": 0,
+          "Items": [
+            {
+              "ID": "l",
+              "Label": "l",
+              "Shape": "rect",
+              "Width": 1,
+              "Space": false,
+              "Group": null,
+              "Span": [
+                133,
+                134
+              ]
+            },
+            {
+              "ID": "m",
+              "Label": "m",
+              "Shape": "rect",
+              "Width": 1,
+              "Space": false,
+              "Group": null,
+              "Span": [
+                135,
+                136
+              ]
+            },
+            {
+              "ID": "n",
+              "Label": "n",
+              "Shape": "rect",
+              "Width": 1,
+              "Space": false,
+              "Group": null,
+              "Span": [
+                137,
+                138
+              ]
+            },
+            {
+              "ID": "o",
+              "Label": "o",
+              "Shape": "rect",
+              "Width": 1,
+              "Space": false,
+              "Group": null,
+              "Span": [
+                139,
+                140
+              ]
+            },
+            {
+              "ID": "p",
+              "Label": "p",
+              "Shape": "rect",
+              "Width": 1,
+              "Space": false,
+              "Group": null,
+              "Span": [
+                141,
+                142
+              ]
+            },
+            {
+              "ID": "q",
+              "Label": "q",
+              "Shape": "rect",
+              "Width": 1,
+              "Space": false,
+              "Group": null,
+              "Span": [
+                143,
+                144
+              ]
+            },
+            {
+              "ID": "r",
+              "Label": "r",
+              "Shape": "rect",
+              "Width": 1,
+              "Space": false,
+              "Group": null,
+              "Span": [
+                145,
+                146
+              ]
+            }
+          ]
+        },
+        "Span": [
+          84,
+          98
+        ]
+      }
+    ]
+  },
+  "Edges": null
+}

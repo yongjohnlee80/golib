@@ -1,0 +1,107 @@
+{
+  "Root": {
+    "Columns": 3,
+    "Items": [
+      {
+        "ID": "a",
+        "Label": "a",
+        "Shape": "rect",
+        "Width": 1,
+        "Space": false,
+        "Group": null,
+        "Span": [
+          25,
+          26
+        ]
+      },
+      {
+        "ID": "",
+        "Label": "",
+        "Shape": "rect",
+        "Width": 1,
+        "Space": true,
+        "Group": null,
+        "Span": [
+          27,
+          32
+        ]
+      },
+      {
+        "ID": "b",
+        "Label": "b",
+        "Shape": "rect",
+        "Width": 1,
+        "Space": false,
+        "Group": null,
+        "Span": [
+          33,
+          34
+        ]
+      },
+      {
+        "ID": "c",
+        "Label": "round",
+        "Shape": "round",
+        "Width": 1,
+        "Space": false,
+        "Group": null,
+        "Span": [
+          37,
+          47
+        ]
+      },
+      {
+        "ID": "d",
+        "Label": "store",
+        "Shape": "cylinder",
+        "Width": 1,
+        "Space": false,
+        "Group": null,
+        "Span": [
+          48,
+          60
+        ]
+      },
+      {
+        "ID": "e",
+        "Label": "choice",
+        "Shape": "diamond",
+        "Width": 1,
+        "Space": false,
+        "Group": null,
+        "Span": [
+          61,
+          72
+        ]
+      }
+    ]
+  },
+  "Edges": [
+    {
+      "From": "a",
+      "To": "b",
+      "Label": "",
+      "Line": "solid",
+      "Head": "arrow",
+      "Tail": "none",
+      "MinLen": 0,
+      "Span": [
+        77,
+        82
+      ]
+    },
+    {
+      "From": "c",
+      "To": "e",
+      "Label": "text",
+      "Line": "solid",
+      "Head": "arrow",
+      "Tail": "none",
+      "MinLen": 0,
+      "Span": [
+        87,
+        102
+      ]
+    }
+  ]
+}

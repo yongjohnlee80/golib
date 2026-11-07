@@ -1,0 +1,56 @@
+{
+  "Root": {
+    "Columns": 3,
+    "Items": [
+      {
+        "ID": "a",
+        "Label": "A label",
+        "Shape": "rect",
+        "Width": 1,
+        "Space": false,
+        "Group": null,
+        "Span": [
+          25,
+          37
+        ]
+      },
+      {
+        "ID": "b",
+        "Label": "b",
+        "Shape": "rect",
+        "Width": 2,
+        "Space": false,
+        "Group": null,
+        "Span": [
+          38,
+          41
+        ]
+      },
+      {
+        "ID": "c",
+        "Label": "c",
+        "Shape": "rect",
+        "Width": 2,
+        "Space": false,
+        "Group": null,
+        "Span": [
+          42,
+          45
+        ]
+      },
+      {
+        "ID": "d",
+        "Label": "d",
+        "Shape": "rect",
+        "Width": 1,
+        "Space": false,
+        "Group": null,
+        "Span": [
+          46,
+          47
+        ]
+      }
+    ]
+  },
+  "Edges": null
+}
