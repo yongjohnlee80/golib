@@ -48,6 +48,10 @@ type decoder struct {
 	emit  func(tui.Event)
 	probe func(probeReply)
 
+	// clip, when set, takes the terminal's answer to a clipboard read (OSC 52): its payload after
+	// "52;", the selection then the base64 text, cut when it reached vtparse.MaxClipboardData.
+	clip func(payload []byte)
+
 	// onFocusIn, when set, fires after a terminal focus-in event — the
 	// backend uses it for the opportunistic size re-check.
 	onFocusIn func()
@@ -447,6 +451,12 @@ func (d *decoder) privReply(a *vtparse.Action) {
 }
 
 func (d *decoder) oscDispatch(a *vtparse.Action) {
+	if p, ok := bytes.CutPrefix(a.Data, []byte("52;")); ok {
+		if d.clip != nil {
+			d.clip(p)
+		}
+		return
+	}
 	if d.probe == nil {
 		return
 	}
