@@ -154,6 +154,7 @@ type renderedLayout struct {
 	rows     []CellRow
 	lineRows [][]int
 	blockOf  []int // each line's block, into blocks
+	rowBlock []int // each row's block, into blocks
 }
 
 // renderedRows is the Editor's Rendered layout at width, laid again only when something it depends
@@ -180,7 +181,7 @@ func (e *Editor) renderedRows(width int) *renderedLayout {
 		}
 		for _, row := range cb.Rows {
 			ri := len(r.rows)
-			r.rows = append(r.rows, row)
+			r.rows, r.rowBlock = append(r.rows, row), append(r.rowBlock, bi)
 			seen := -1
 			for _, c := range row.Cells {
 				if c.Line >= 0 && c.Line < len(lines) && c.Line != seen {
@@ -212,6 +213,16 @@ func (r *renderedLayout) firstRow(ln int) int {
 	return max(len(r.rows)-1, 0)
 }
 
+// topRow is the row line ln starts at as the view's top: its first row, or before it the rows of
+// decorations only that open its block (a table's top rule), which stand for no line.
+func (r *renderedLayout) topRow(ln int) int {
+	ri := r.firstRow(ln)
+	for ri > 0 && ri < len(r.rows) && r.rowBlock[ri-1] == r.rowBlock[ri] && r.rows[ri-1].Anchor < 0 && onlyDecorations(r.rows[ri-1].Cells) {
+		ri--
+	}
+	return ri
+}
+
 // atRow is the top line and the rows of it above the view that put display row start at the
 // view's top.
 func (r *renderedLayout) atRow(start int) (top, in int) {
@@ -220,10 +231,10 @@ func (r *renderedLayout) atRow(start int) (top, in int) {
 	}
 	start = min(start, len(r.rows)-1)
 	top = r.lineOfRow(start)
-	for top > 0 && r.firstRow(top) > start { // a decoration row before its line's first: the line before
+	for top > 0 && r.topRow(top) > start { // a decoration row before its line's top: the line before
 		top--
 	}
-	return top, max(start-r.firstRow(top), 0)
+	return top, max(start-r.topRow(top), 0)
 }
 
 // lineOfRow is the source line row ri belongs to: the first line with a cell on it, its Anchor, or

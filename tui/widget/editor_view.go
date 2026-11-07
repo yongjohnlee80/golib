@@ -63,7 +63,7 @@ func (l *cellLayout) ScrollLines(delta int) {
 		return
 	}
 	if m := l.ed.rowMap(); m.r != nil { // the Rendered view scrolls by rows, so a tall line scrolls too
-		start := m.r.firstRow(l.top) + l.topIn + delta
+		start := m.r.topRow(l.top) + l.topIn + delta
 		l.top, l.topIn = m.r.atRow(max(0, min(start, len(m.r.rows)-l.h)))
 		l.ed.MarkDirty()
 		return
@@ -120,10 +120,13 @@ func (e *Editor) reveal(ln, col int) {
 			return
 		}
 		row, _ := m.r.caret(ln, col)
-		start := m.r.firstRow(l.top) + l.topIn
+		start := m.r.topRow(l.top) + l.topIn
 		switch {
 		case row < start:
 			start = row
+			if row == m.r.firstRow(ln) { // its block's opening rows (a table's top rule) with it
+				start = m.r.topRow(ln)
+			}
 		case row >= start+l.h:
 			start = row - l.h + 1
 		}

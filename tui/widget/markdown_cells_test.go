@@ -284,3 +284,22 @@ func TestATableTooWideToNarrowKeepsItsWidth(t *testing.T) {
 		t.Errorf("a nine-column table in 40 cells: Width %d, want its natural %d", cb.Width, want)
 	}
 }
+
+// A table's top rule shows with its header at the view's top: from the start, and when the caret
+// comes back up to the header from below the view.
+func TestATablesTopRuleShowsWithItsHeader(t *testing.T) {
+	h, sh, ed := renderedEditor(t, "| a | b |\n|---|---|\n| c | d |"+strings.Repeat("\nline", 20), mdRenderer())
+	top := func() string { // the text area's first row: the last column is the scroll indicator's
+		return strings.TrimRight(string([]rune(h.row(0))[:39]), " ")
+	}
+	if got := top(); got != "┌───┬───┐" {
+		t.Errorf("the view's first row %q, want the table's top rule", got)
+	}
+	caretAt(h, sh, ed, 22, 0)
+	if x, y, ok := caretAt(h, sh, ed, 0, 2); !ok || x != 2 || y != 1 {
+		t.Errorf("caret back on the header at (%d, %d) %v, want (2, 1) under the top rule:\n%s", x, y, ok, h.grid())
+	}
+	if got := top(); got != "┌───┬───┐" {
+		t.Errorf("back on the header, the view's first row %q, want the table's top rule", got)
+	}
+}
