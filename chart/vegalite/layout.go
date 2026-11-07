@@ -7,7 +7,6 @@ import (
 	"slices"
 	"sort"
 
-	"github.com/yongjohnlee80/golib/gui"
 	pvl "github.com/yongjohnlee80/golib/parse/vegalite"
 )
 
@@ -24,10 +23,10 @@ type builder struct {
 	l     *pvl.Layered
 	p     *pvl.Plan
 	th    Theme
-	m     gui.Measurer
+	m     Measure
 	unit  float32
 	lh    float32 // a label's line height
-	bold  gui.Font
+	bold  Font
 	items []item
 }
 
@@ -118,33 +117,32 @@ func (s *scale) setCategories(length float32) {
 }
 
 // textW is s's width in f.
-func (b *builder) textW(s string, f gui.Font) float32 {
+func (b *builder) textW(s string, f Font) float32 {
 	if s == "" {
 		return 0
 	}
-	ms := b.m.Measure(s, f)
-	return ms.Width()
+	return b.m(s, f)
 }
 
 func (b *builder) add(it item) { b.items = append(b.items, it) }
 
 // text adds a label in r.
-func (b *builder) text(s string, f gui.Font, r gui.Rect, align int8, up bool, c color.NRGBA) {
+func (b *builder) text(s string, f Font, r Rect, align int8, up bool, c color.NRGBA) {
 	if s != "" {
 		b.add(item{kind: itemText, text: s, font: f, rect: r, align: align, up: up, color: c})
 	}
 }
 
 // line adds a polyline.
-func (b *builder) line(c color.NRGBA, width float32, pts ...gui.Point) {
+func (b *builder) line(c color.NRGBA, width float32, pts ...Point) {
 	b.add(item{kind: itemLine, pts: pts, color: c, width: width})
 }
 
 // build lays l out for width: the base layer's axes and the first colour layer's legend, over the
 // shared scales, and every layer's marks in order.
-func build(ctx context.Context, l *pvl.Layered, width float32, th Theme, m gui.Measurer) *Laid {
+func build(ctx context.Context, l *pvl.Layered, width float32, th Theme, m Measure) *Laid {
 	p := l.Base
-	b := &builder{ctx: ctx, l: l, p: p, th: th, m: m, unit: th.Font.Size / 11, lh: th.Font.Size * gui.LineHeight}
+	b := &builder{ctx: ctx, l: l, p: p, th: th, m: m, unit: th.Font.Size / 11, lh: th.Font.Size * LineHeight}
 	b.bold = th.Font
 	b.bold.Bold = true
 	u, lh := b.unit, b.lh
@@ -275,7 +273,7 @@ func build(ctx context.Context, l *pvl.Layered, width float32, th Theme, m gui.M
 	titleFont := b.bold
 	titleFont.Size *= 13.0 / 11
 	if sp.Title != "" {
-		top += titleFont.Size*gui.LineHeight + 2*pad
+		top += titleFont.Size*LineHeight + 2*pad
 	}
 	if sp.Subtitle != "" {
 		top += lh + pad
@@ -283,7 +281,7 @@ func build(ctx context.Context, l *pvl.Layered, width float32, th Theme, m gui.M
 			top += pad
 		}
 	}
-	plot := gui.Rect{X: left, Y: top, W: plotW, H: plotH}
+	plot := Rect{X: left, Y: top, W: plotW, H: plotH}
 	xs.from, xs.to = plot.X, plot.X+plot.W
 	ys.from, ys.to = plot.Y+plot.H, plot.Y // y grows upward
 
@@ -298,15 +296,15 @@ func build(ctx context.Context, l *pvl.Layered, width float32, th Theme, m gui.M
 	if legend {
 		right = plot.X + plot.W + 4*pad + legendW + pad
 	}
-	size := gui.Size{W: right, H: max(bottom, plot.Y+legendH) + pad}
+	size := Size{W: right, H: max(bottom, plot.Y+legendH) + pad}
 
 	subY := pad
 	if sp.Title != "" {
-		b.text(sp.Title, titleFont, gui.Rect{X: 0, Y: pad, W: size.W, H: titleFont.Size * gui.LineHeight}, 0, false, th.Text)
-		subY += titleFont.Size*gui.LineHeight + pad/2
+		b.text(sp.Title, titleFont, Rect{X: 0, Y: pad, W: size.W, H: titleFont.Size * LineHeight}, 0, false, th.Text)
+		subY += titleFont.Size*LineHeight + pad/2
 	}
 	if sp.Subtitle != "" { // under the title, quieter: Vega-Lite's subtitle
-		b.text(sp.Subtitle, th.Font, gui.Rect{X: 0, Y: subY, W: size.W, H: lh}, 0, false, th.Axis)
+		b.text(sp.Subtitle, th.Font, Rect{X: 0, Y: subY, W: size.W, H: lh}, 0, false, th.Axis)
 	}
 	b.grid(xs, ys, plot)
 	for _, o := range l.Order {
@@ -321,15 +319,15 @@ func build(ctx context.Context, l *pvl.Layered, width float32, th Theme, m gui.M
 	}
 	if colorLegend {
 		b.p = lp
-		b.legend(legendTitle, gui.Pt(plot.X+plot.W+4*pad, plot.Y))
+		b.legend(legendTitle, Pt(plot.X+plot.W+4*pad, plot.Y))
 		b.p = p
 	}
 	if shapeLegend {
 		b.p = sp2
-		b.shapeLegend(shapeTitle, gui.Pt(plot.X+plot.W+4*pad, plot.Y+shapeTop))
+		b.shapeLegend(shapeTitle, Pt(plot.X+plot.W+4*pad, plot.Y+shapeTop))
 		b.p = p
 	}
-	return &Laid{size: size, items: b.items, ops: batch(b.items)}
+	return &Laid{size: size, items: b.items}
 }
 
 // labels are a scale's tick labels: its categories, or its ticks' text.
@@ -345,18 +343,18 @@ func (s *scale) labels() []string {
 }
 
 // grid draws each axis's gridlines across the plot, under the marks.
-func (b *builder) grid(xs, ys *scale, plot gui.Rect) {
+func (b *builder) grid(xs, ys *scale, plot Rect) {
 	c := b.p.Layer
 	if pvl.GridOn(c.X, xs.a) {
 		for _, v := range xs.ticks {
 			x := xs.px(v)
-			b.line(b.th.Grid, b.unit, gui.Pt(x, plot.Y), gui.Pt(x, plot.Y+plot.H))
+			b.line(b.th.Grid, b.unit, Pt(x, plot.Y), Pt(x, plot.Y+plot.H))
 		}
 	}
 	if pvl.GridOn(c.Y, ys.a) {
 		for _, v := range ys.ticks {
 			y := ys.px(v)
-			b.line(b.th.Grid, b.unit, gui.Pt(plot.X, y), gui.Pt(plot.X+plot.W, y))
+			b.line(b.th.Grid, b.unit, Pt(plot.X, y), Pt(plot.X+plot.W, y))
 		}
 	}
 }
@@ -394,7 +392,7 @@ func parity(spans [][2]float32, gap float32) []bool {
 
 // yAxis draws the y axis: its line and ticks, its labels right-aligned to the ticks (thinned where
 // they would overlap), and its title, upright.
-func (b *builder) yAxis(ys *scale, labels []string, labelW float32, title string, plot gui.Rect) {
+func (b *builder) yAxis(ys *scale, labels []string, labelW float32, title string, plot Rect) {
 	th, u, lh := b.th, b.unit, b.lh
 	tick, pad := 5*u, 4*u
 	at := make([]float32, len(labels))
@@ -412,26 +410,26 @@ func (b *builder) yAxis(ys *scale, labels []string, labelW float32, title string
 			spans[i] = [2]float32{at[i] - lh/2, at[i] + lh/2}
 		}
 	}
-	b.line(th.Axis, u, gui.Pt(plot.X, plot.Y), gui.Pt(plot.X, plot.Y+plot.H))
+	b.line(th.Axis, u, Pt(plot.X, plot.Y), Pt(plot.X, plot.Y+plot.H))
 	for _, y := range at {
-		b.line(th.Axis, u, gui.Pt(plot.X-tick, y), gui.Pt(plot.X, y))
+		b.line(th.Axis, u, Pt(plot.X-tick, y), Pt(plot.X, y))
 	}
 	shown := parity(spans, 0)
 	for i, s := range labels {
 		if shown[i] {
-			b.text(s, th.Font, gui.Rect{X: plot.X - tick - pad - labelW, Y: at[i] - lh/2, W: labelW, H: lh}, 1, false, th.Text)
+			b.text(s, th.Font, Rect{X: plot.X - tick - pad - labelW, Y: at[i] - lh/2, W: labelW, H: lh}, 1, false, th.Text)
 		}
 	}
 	if title != "" {
 		w := b.textW(title, b.bold)
 		x := plot.X - tick - pad - labelW - pad - lh
-		b.text(title, b.bold, gui.Rect{X: x, Y: plot.Y + plot.H/2 - w/2, W: lh, H: w}, 0, true, th.Text)
+		b.text(title, b.bold, Rect{X: x, Y: plot.Y + plot.H/2 - w/2, W: lh, H: w}, 0, true, th.Text)
 	}
 }
 
 // xAxis draws the x axis: its line and ticks, its labels (upright, reading up to the tick, when a
 // category's are too wide; thinned where they would overlap), and its title.
-func (b *builder) xAxis(xs *scale, labels []string, up bool, labelH float32, title string, plot gui.Rect) {
+func (b *builder) xAxis(xs *scale, labels []string, up bool, labelH float32, title string, plot Rect) {
 	th, u, lh := b.th, b.unit, b.lh
 	tick, pad := 5*u, 4*u
 	y0 := plot.Y + plot.H
@@ -451,22 +449,22 @@ func (b *builder) xAxis(xs *scale, labels []string, up bool, labelH float32, tit
 		}
 		spans[i] = [2]float32{at[i] - half, at[i] + half}
 	}
-	b.line(th.Axis, u, gui.Pt(plot.X, y0), gui.Pt(plot.X+plot.W, y0))
+	b.line(th.Axis, u, Pt(plot.X, y0), Pt(plot.X+plot.W, y0))
 	for _, x := range at {
-		b.line(th.Axis, u, gui.Pt(x, y0), gui.Pt(x, y0+tick))
+		b.line(th.Axis, u, Pt(x, y0), Pt(x, y0+tick))
 	}
 	shown := parity(spans, 2*u)
 	for i, s := range labels {
 		switch {
 		case !shown[i]:
 		case up:
-			b.text(s, th.Font, gui.Rect{X: at[i] - lh/2, Y: y0 + tick + pad, W: lh, H: widths[i]}, 0, true, th.Text)
+			b.text(s, th.Font, Rect{X: at[i] - lh/2, Y: y0 + tick + pad, W: lh, H: widths[i]}, 0, true, th.Text)
 		default:
-			b.text(s, th.Font, gui.Rect{X: at[i] - widths[i]/2, Y: y0 + tick + pad, W: widths[i], H: lh}, 0, false, th.Text)
+			b.text(s, th.Font, Rect{X: at[i] - widths[i]/2, Y: y0 + tick + pad, W: widths[i], H: lh}, 0, false, th.Text)
 		}
 	}
 	if title != "" {
-		b.text(title, b.bold, gui.Rect{X: plot.X, Y: y0 + tick + pad + labelH + pad, W: plot.W, H: lh}, 0, false, th.Text)
+		b.text(title, b.bold, Rect{X: plot.X, Y: y0 + tick + pad + labelH + pad, W: plot.W, H: lh}, 0, false, th.Text)
 	}
 }
 
@@ -534,7 +532,7 @@ func (b *builder) symbolOf(shape string) string {
 
 // symbol adds a point drawn as one of Vega's symbols, r half its bounding box's side, filled or
 // outlined. A circle is the dot's.
-func (b *builder) symbol(at gui.Point, name string, r float32, c color.NRGBA, filled bool) {
+func (b *builder) symbol(at Point, name string, r float32, c color.NRGBA, filled bool) {
 	pts := symbolPoints(name, r)
 	if pts == nil {
 		b.dot(at, r, c, filled)
@@ -553,25 +551,25 @@ func (b *builder) symbol(at gui.Point, name string, r float32, c color.NRGBA, fi
 
 // symbolPoints is a Vega symbol's outline about the origin, r half its bounding box's side, as
 // vega-scenegraph draws it; nil for a circle.
-func symbolPoints(name string, r float32) []gui.Point {
+func symbolPoints(name string, r float32) []Point {
 	h := float32(math.Sqrt(3)/2) * r // a triangle's half height
 	s := r / 2.5                     // a cross's half arm width
-	var pts []gui.Point
+	var pts []Point
 	switch name {
 	case "square":
-		pts = []gui.Point{{X: -r, Y: -r}, {X: r, Y: -r}, {X: r, Y: r}, {X: -r, Y: r}}
+		pts = []Point{{X: -r, Y: -r}, {X: r, Y: -r}, {X: r, Y: r}, {X: -r, Y: r}}
 	case "diamond":
-		pts = []gui.Point{{X: -r, Y: 0}, {X: 0, Y: -r}, {X: r, Y: 0}, {X: 0, Y: r}}
+		pts = []Point{{X: -r, Y: 0}, {X: 0, Y: -r}, {X: r, Y: 0}, {X: 0, Y: r}}
 	case "triangle-up":
-		pts = []gui.Point{{X: 0, Y: -h}, {X: -r, Y: h}, {X: r, Y: h}}
+		pts = []Point{{X: 0, Y: -h}, {X: -r, Y: h}, {X: r, Y: h}}
 	case "triangle-down":
-		pts = []gui.Point{{X: 0, Y: h}, {X: -r, Y: -h}, {X: r, Y: -h}}
+		pts = []Point{{X: 0, Y: h}, {X: -r, Y: -h}, {X: r, Y: -h}}
 	case "triangle-right":
-		pts = []gui.Point{{X: h, Y: 0}, {X: -h, Y: -r}, {X: -h, Y: r}}
+		pts = []Point{{X: h, Y: 0}, {X: -h, Y: -r}, {X: -h, Y: r}}
 	case "triangle-left":
-		pts = []gui.Point{{X: -h, Y: 0}, {X: h, Y: -r}, {X: h, Y: r}}
+		pts = []Point{{X: -h, Y: 0}, {X: h, Y: -r}, {X: h, Y: r}}
 	case "cross":
-		pts = []gui.Point{{X: -r, Y: -s}, {X: -r, Y: s}, {X: -s, Y: s}, {X: -s, Y: r}, {X: s, Y: r}, {X: s, Y: s},
+		pts = []Point{{X: -r, Y: -s}, {X: -r, Y: s}, {X: -s, Y: s}, {X: -s, Y: r}, {X: s, Y: r}, {X: s, Y: s},
 			{X: r, Y: s}, {X: r, Y: -s}, {X: s, Y: -s}, {X: s, Y: -r}, {X: -s, Y: -r}, {X: -s, Y: -s}}
 	}
 	return clockwise(pts)
@@ -580,7 +578,7 @@ func symbolPoints(name string, r float32) []gui.Point {
 // clockwise is pts wound clockwise on the screen, reversed if need be: a run of one colour is one
 // path, filled by the non-zero rule, so where two symbols wound opposite ways overlapped, they
 // would cancel to a hole.
-func clockwise(pts []gui.Point) []gui.Point {
+func clockwise(pts []Point) []Point {
 	var area float32
 	for i, p := range pts {
 		q := pts[(i+1)%len(pts)]
@@ -594,9 +592,9 @@ func clockwise(pts []gui.Point) []gui.Point {
 
 // shapeLegend draws the shape's legend with its top left at at: its title, then each shape's
 // symbol, in the axes' colour, and its label.
-func (b *builder) shapeLegend(title string, at gui.Point) {
+func (b *builder) shapeLegend(title string, at Point) {
 	b.legendEntries(title, b.l.Shapes, at, func(s string, x, cy, sw float32) {
-		b.symbol(gui.Pt(x+sw/2, cy), b.symbolOf(s), sw/2.5, b.th.Axis, b.p.Layer.Mark.Filled)
+		b.symbol(Pt(x+sw/2, cy), b.symbolOf(s), sw/2.5, b.th.Axis, b.p.Layer.Mark.Filled)
 	})
 }
 
@@ -617,25 +615,25 @@ func (b *builder) legendSize(title string, entries []string) (w, h float32) {
 
 // legendEntries draws a legend with its top left at at, in legendSize's box: its title, then each
 // entry's swatch (swatch draws it at x, centred on cy, sw across) and its label.
-func (b *builder) legendEntries(title string, entries []string, at gui.Point, swatch func(s string, x, cy, sw float32)) {
+func (b *builder) legendEntries(title string, entries []string, at Point, swatch func(s string, x, cy, sw float32)) {
 	th, lh := b.th, b.lh
 	pad := 4 * b.unit
 	y := at.Y
 	if title != "" {
-		b.text(title, b.bold, gui.Rect{X: at.X, Y: y, W: b.textW(title, b.bold), H: lh}, -1, false, th.Text)
+		b.text(title, b.bold, Rect{X: at.X, Y: y, W: b.textW(title, b.bold), H: lh}, -1, false, th.Text)
 		y += lh + pad
 	}
 	sw := th.Font.Size * 0.8
 	for _, s := range entries {
 		swatch(s, at.X, y+lh/2, sw)
-		b.text(s, th.Font, gui.Rect{X: at.X + lh + pad, Y: y, W: b.textW(s, th.Font), H: lh}, -1, false, th.Text)
+		b.text(s, th.Font, Rect{X: at.X + lh + pad, Y: y, W: b.textW(s, th.Font), H: lh}, -1, false, th.Text)
 		y += lh
 	}
 }
 
 // dot adds a point: a filled circle, or a ring.
-func (b *builder) dot(at gui.Point, r float32, c color.NRGBA, filled bool) {
-	box := gui.Rect{X: at.X - r, Y: at.Y - r, W: 2 * r, H: 2 * r}
+func (b *builder) dot(at Point, r float32, c color.NRGBA, filled bool) {
+	box := Rect{X: at.X - r, Y: at.Y - r, W: 2 * r, H: 2 * r}
 	if filled {
 		b.add(item{kind: itemDot, rect: box, color: c})
 		return
@@ -678,21 +676,21 @@ func (b *builder) seriesData(xs *scale) []series {
 
 // legend draws the colour's legend with its top left at at: its title, then a swatch and a label
 // a series. A line's swatch is a stroke, a point's a circle, a bar's or an area's a square.
-func (b *builder) legend(title string, at gui.Point) {
+func (b *builder) legend(title string, at Point) {
 	b.legendEntries(title, b.l.Series, at, func(s string, x, cy, sw float32) {
 		col := b.colorOf(s)
 		if swatch := marks[b.p.Layer.Mark.Kind].swatch; swatch != nil {
 			swatch(b, s, x, cy, sw, col)
 			return
 		}
-		b.add(item{kind: itemRect, rect: gui.Rect{X: x, Y: cy - sw/2, W: sw, H: sw}, color: col})
+		b.add(item{kind: itemRect, rect: Rect{X: x, Y: cy - sw/2, W: sw, H: sw}, color: col})
 	})
 }
 
 // rule draws a rule layer: a line across the plot at each of its values, in its colour (the
 // mark's, the colour channel's value, or Vega-Lite's default, the palette's first), width
 // (Vega-Lite's 1 by default) and dashes.
-func (b *builder) rule(r *pvl.RulePlan, xs, ys *scale, plot gui.Rect) {
+func (b *builder) rule(r *pvl.RulePlan, xs, ys *scale, plot Rect) {
 	c := r.Layer
 	fixed, ok := c.FixedColor()
 	col := color.NRGBA(fixed)
@@ -707,17 +705,17 @@ func (b *builder) rule(r *pvl.RulePlan, xs, ys *scale, plot gui.Rect) {
 	for _, v := range r.Vals {
 		if r.OnX {
 			x := xs.centre(v)
-			b.stroke(fade(col, alpha), width, c.Mark.Dash, gui.Pt(x, plot.Y), gui.Pt(x, plot.Y+plot.H))
+			b.stroke(fade(col, alpha), width, c.Mark.Dash, Pt(x, plot.Y), Pt(x, plot.Y+plot.H))
 		} else {
 			y := ys.centre(v)
-			b.stroke(fade(col, alpha), width, c.Mark.Dash, gui.Pt(plot.X, y), gui.Pt(plot.X+plot.W, y))
+			b.stroke(fade(col, alpha), width, c.Mark.Dash, Pt(plot.X, y), Pt(plot.X+plot.W, y))
 		}
 	}
 }
 
 // stroke adds a polyline, dashed by dash (Vega-Lite's strokeDash, on and off lengths in its
 // pixels) when it is set.
-func (b *builder) stroke(c color.NRGBA, width float32, dash []float32, pts ...gui.Point) {
+func (b *builder) stroke(c color.NRGBA, width float32, dash []float32, pts ...Point) {
 	if b.ctx.Err() != nil { // abandoned: no more cutting
 		return
 	}
@@ -729,7 +727,7 @@ func (b *builder) stroke(c color.NRGBA, width float32, dash []float32, pts ...gu
 	for i, d := range dash {
 		pattern[i] = d * b.unit
 	}
-	for _, run := range gui.Dash(pts, pattern) {
+	for _, run := range Dash(pts, pattern) {
 		b.line(c, width, run...)
 	}
 }

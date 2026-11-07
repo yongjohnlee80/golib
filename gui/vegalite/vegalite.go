@@ -1,32 +1,9 @@
 // Package vegalite draws a subset of Vega-Lite charts natively on a [gui.Canvas], as gui/mermaid
 // draws Mermaid diagrams: Lay reads a spec and lays it out, off the loop, and the [Laid] it gives
-// paints on the loop.
-//
-// The subset:
-//
-//   - marks: bar, line, point (and circle), area, and rule (a line across the plot at each value of
-//     its one position channel);
-//   - data: inline values, an array of objects;
-//   - encodings: x and y (quantitative, nominal, ordinal or temporal fields, a measure aggregated
-//     by count, sum, mean, median, min or max, or a rule's datum or aggregate), color (a nominal field, or one
-//     colour, its scale's range a list of colours), shape (a point's nominal field, or one of Vega's
-//     symbols, its range a list of them) and opacity (one value);
-//   - sorting: a discrete axis by its values, a list, the other axis, or another field's aggregate;
-//   - layers: each a mark of its own over the spec's data and encoding, on shared scales;
-//   - drawing: linear, time, band and point scales with their axes and grid, a legend for the
-//     colour and one for the shape, the title and its subtitle, and a bar's or an area's series
-//     stacked as Vega-Lite stacks them.
-//
-// A chart is drawn as the page first shows it, a still: a variable param is its initial value (a
-// slider bound to it is the page's, not drawn), a selection is empty, and a condition on it is
-// resolved so ("empty": false resolves the other way). A datum may name a variable param
-// ({"expr": "budget"}); any other expression is unsupported.
-//
-// Anything else that changes what a chart says (a transform, a log scale, a binned or time-unit
-// field, another channel, a test, a selection with an initial value) is [ErrUnsupported], so the
-// caller can fall back, as it does for a Mermaid diagram type golib does not draw. A chart is
-// drawn at Vega-Lite's proportions, scaled by the theme's font to Vega-Lite's 11-pixel labels, and
-// a chart wider than the width asked is scaled down to it.
+// paints on the loop. The layout is chart/vegalite's, which needs no drawing backend (a build
+// without the GUI writes the same chart as SVG with it); this package measures its labels with
+// the window's shaper and paints its marks. Its package doc lists the subset drawn: anything
+// outside it is [ErrUnsupported], so the caller can fall back.
 package vegalite
 
 import (
@@ -36,25 +13,25 @@ import (
 
 	"github.com/yongjohnlee80/gio/f32"
 
+	cv "github.com/yongjohnlee80/golib/chart/vegalite"
 	"github.com/yongjohnlee80/golib/gui"
 	"github.com/yongjohnlee80/golib/gui/internal/picture"
-	pvl "github.com/yongjohnlee80/golib/parse/vegalite"
 )
 
-// The subset and its refusals are parse/vegalite's, which reads and plots a spec: a caller of Lay
-// matches them here as before.
+// The subset and its refusals are chart/vegalite's (parse/vegalite's): a caller of Lay matches
+// them here as before.
 var (
 	// ErrUnsupported is a spec outside the subset drawn; the error names what.
-	ErrUnsupported = pvl.ErrUnsupported
+	ErrUnsupported = cv.ErrUnsupported
 	// ErrTooLarge is a spec over a limit: rows, categories or series.
-	ErrTooLarge = pvl.ErrTooLarge
+	ErrTooLarge = cv.ErrTooLarge
 )
 
-// SubsetInfo is the subset Lay draws (parse/vegalite's).
-type SubsetInfo = pvl.SubsetInfo
+// SubsetInfo is the subset Lay draws.
+type SubsetInfo = cv.SubsetInfo
 
 // Subset is the subset Lay draws, each list sorted.
-func Subset() SubsetInfo { return pvl.Subset() }
+func Subset() SubsetInfo { return cv.Subset() }
 
 // Theme is what a chart is drawn in: its page, its text (titles and labels), its axes' lines, its
 // grid, its labels' font, and its series' colours (nil: Vega-Lite's tableau10).
@@ -64,86 +41,34 @@ type Theme struct {
 	Palette                      []color.NRGBA
 }
 
-// tableau10 is Vega-Lite's categorical scheme, its default for a nominal colour.
-var tableau10 = []color.NRGBA{
-	{0x4c, 0x78, 0xa8, 0xff}, {0xf5, 0x85, 0x18, 0xff}, {0xe4, 0x57, 0x56, 0xff}, {0x72, 0xb7, 0xb2, 0xff},
-	{0x54, 0xa2, 0x4b, 0xff}, {0xee, 0xca, 0x3b, 0xff}, {0xb2, 0x79, 0xa2, 0xff}, {0xff, 0x9d, 0xa6, 0xff},
-	{0x9d, 0x75, 0x5d, 0xff}, {0xba, 0xb0, 0xac, 0xff},
-}
-
 // Lay reads src, a Vega-Lite spec, and lays it out for width (a wider chart is scaled to fit),
 // measuring with m. A spec outside the subset is ErrUnsupported and one over a limit ErrTooLarge
 // (both for a fallback); malformed JSON is the decoder's error.
 func Lay(ctx context.Context, src string, width float32, th Theme, m gui.Measurer) (*Laid, error) {
-	sp, err := pvl.Parse(src)
+	measure := func(s string, f cv.Font) float32 { return m.Measure(s, gui.Font(f)).Width() }
+	c, err := cv.Lay(ctx, src, width, cv.Theme{
+		Background: th.Background, Text: th.Text, Axis: th.Axis, Grid: th.Grid,
+		Font: cv.Font(th.Font), Palette: th.Palette,
+	}, measure)
 	if err != nil {
 		return nil, err
 	}
-	lp, err := pvl.NewLayered(sp)
-	if err != nil {
-		return nil, err
-	}
-	if err := ctx.Err(); err != nil {
-		return nil, err
-	}
-	if th.Font.Size <= 0 {
-		th.Font.Size = 11
-	}
-	if len(th.Palette) == 0 {
-		th.Palette = tableau10
-	}
-	l := build(ctx, lp, width, th, m)
-	if err := ctx.Err(); err != nil { // abandoned mid-layout: what was laid is not the chart
-		return nil, err
-	}
-	l.fitTo(width)
-	return l, nil
+	return &Laid{chart: c, ops: batch(c.Marks())}, nil
 }
 
-// Laid is a chart laid out: shapes and labels, plain values, in the order they paint, and the
-// draw calls they batch into. It is safe to share between widgets; only Paint, on the loop, keeps
-// anything (the labels it shapes).
+// Laid is a chart laid out (chart/vegalite's) and the draw calls its marks batch into. It is safe
+// to share between widgets; only Paint, on the loop, keeps anything (the labels it shapes).
 type Laid struct {
-	size  gui.Size // as drawn, after the fit
-	fit   float32  // the scale that fits the chart to the width asked; 1 when it fits
-	items []item
-	ops   []paintOp
-
+	chart  *cv.Laid
+	ops    []paintOp
 	labels picture.Labels
 }
 
-// itemKind is what an item draws.
-type itemKind uint8
-
-const (
-	itemRect itemKind = iota // a filled rectangle: a bar, a swatch
-	itemFill                 // a filled polygon: an area
-	itemLine                 // a stroked polyline: a line, an axis, a tick, a gridline
-	itemDot                  // a filled circle in rect
-	itemRing                 // a stroked circle in rect
-	itemText                 // a label
-)
-
-// item is one thing drawn. A label is drawn in rect (measured there), at its left, centre or
-// right (align -1, 0, 1); an upright label (up) fills rect turned a quarter left, reading upward
-// from its bottom.
-type item struct {
-	kind  itemKind
-	rect  gui.Rect
-	pts   []gui.Point
-	color color.NRGBA
-	width float32
-	text  string
-	font  gui.Font
-	align int8
-	up    bool
-}
-
 // Size is the chart as Paint draws it.
-func (l *Laid) Size() gui.Size { return l.size }
+func (l *Laid) Size() gui.Size { return gui.Size(l.chart.Size()) }
 
-// fitTo sets the fit that scales a chart wider than width down to it.
-func (l *Laid) fitTo(width float32) { l.size, l.fit = picture.FitTo(l.size, width) }
+// SVG is the chart as a standalone <svg> element, written without a canvas (chart/vegalite's).
+func (l *Laid) SVG() []byte { return l.chart.SVG() }
 
 // paintOp is one draw call: a path filled or stroked (every shape of a run of one colour, and
 // width, in it), or a label.
@@ -152,45 +77,54 @@ type paintOp struct {
 	path   *gui.Path // nil: the label
 	color  color.NRGBA
 	width  float32
-	label  item
+	label  cv.Mark
 }
 
-// batch makes items' draw calls: a run of shapes filled, or stroked, in one colour (and width) is
+// batch makes marks' draw calls: a run of shapes filled, or stroked, in one colour (and width) is
 // one path, so a thousand points cost one call, not a thousand. Order is kept: only neighbours
 // join.
-func batch(items []item) []paintOp {
+func batch(marks []cv.Mark) []paintOp {
 	var ops []paintOp
-	for _, it := range items {
-		if it.kind == itemText {
+	for _, it := range marks {
+		if it.Kind == cv.MarkText {
 			ops = append(ops, paintOp{label: it})
 			continue
 		}
-		stroke := it.kind == itemLine || it.kind == itemRing
+		stroke := it.Kind == cv.MarkLine || it.Kind == cv.MarkRing
 		var op *paintOp
-		if n := len(ops); n > 0 && ops[n-1].path != nil && ops[n-1].stroke == stroke && ops[n-1].color == it.color && ops[n-1].width == it.width {
+		if n := len(ops); n > 0 && ops[n-1].path != nil && ops[n-1].stroke == stroke && ops[n-1].color == it.Color && ops[n-1].width == it.Width {
 			op = &ops[n-1]
 		} else {
-			ops = append(ops, paintOp{stroke: stroke, path: new(gui.Path), color: it.color, width: it.width})
+			ops = append(ops, paintOp{stroke: stroke, path: new(gui.Path), color: it.Color, width: it.Width})
 			op = &ops[len(ops)-1]
 		}
-		switch it.kind {
-		case itemRect:
-			r := it.rect
+		switch it.Kind {
+		case cv.MarkRect:
+			r := it.Rect
 			op.path.Polyline([]gui.Point{{X: r.X, Y: r.Y}, {X: r.X + r.W, Y: r.Y}, {X: r.X + r.W, Y: r.Y + r.H}, {X: r.X, Y: r.Y + r.H}}, true)
-		case itemFill:
-			op.path.Polyline(it.pts, true)
-		case itemLine:
-			op.path.Polyline(it.pts, false)
-		case itemDot, itemRing:
-			op.path.Ellipse(it.rect)
+		case cv.MarkFill:
+			op.path.Polyline(points(it.Points), true)
+		case cv.MarkLine:
+			op.path.Polyline(points(it.Points), false)
+		case cv.MarkDot, cv.MarkRing:
+			op.path.Ellipse(gui.Rect(it.Rect))
 		}
 	}
 	return ops
 }
 
+// points are a mark's points as gui's.
+func points(pts []cv.Point) []gui.Point {
+	out := make([]gui.Point, len(pts))
+	for i, p := range pts {
+		out[i] = gui.Point(p)
+	}
+	return out
+}
+
 // Paint draws the chart on c with its top left at (0, 0).
 func (l *Laid) Paint(c gui.Canvas) {
-	defer picture.Push(c, l.fit)()
+	defer picture.Push(c, l.chart.Fit())()
 	for _, op := range l.ops {
 		switch {
 		case op.path == nil:
@@ -204,22 +138,22 @@ func (l *Laid) Paint(c gui.Canvas) {
 }
 
 // text draws a label: shaped once, then placed in its box, or turned upright about its corner.
-func (l *Laid) text(c gui.Canvas, it item) {
-	t := l.labels.Shape(c, it.text, it.font)
-	r := it.rect
-	if it.up {
+func (l *Laid) text(c gui.Canvas, it cv.Mark) {
+	t := l.labels.Shape(c, it.Text, gui.Font(it.Font))
+	r := it.Rect
+	if it.Up {
 		at := gui.Pt(r.X+r.W/2, r.Y+r.H) // the box's bottom middle: where the text starts, upright
 		c.PushTransform(f32.Affine2D{}.Rotate(f32.Pt(at.X, at.Y), -math.Pi/2))
-		c.DrawText(t, gui.Pt(at.X, at.Y-t.Height/2), gui.Solid(it.color))
+		c.DrawText(t, gui.Pt(at.X, at.Y-t.Height/2), gui.Solid(it.Color))
 		c.Pop()
 		return
 	}
 	x := r.X
-	switch it.align {
+	switch it.Align {
 	case 0:
 		x += (r.W - t.Width) / 2
 	case 1:
 		x += r.W - t.Width
 	}
-	c.DrawText(t, gui.Pt(x, r.Y+(r.H-t.Height)/2), gui.Solid(it.color))
+	c.DrawText(t, gui.Pt(x, r.Y+(r.H-t.Height)/2), gui.Solid(it.Color))
 }
