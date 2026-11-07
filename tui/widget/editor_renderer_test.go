@@ -151,9 +151,10 @@ func (r *blockStar) InCode(lines []string, ln int) bool  { return r.md.InCode(li
 func (r *blockStar) InTable(lines []string, ln int) bool { return r.md.InTable(lines, ln) }
 
 // A Markdown renderer's list editing skips code and a table's rows: Enter on "- x" there opens a
-// plain line; on a prose item it continues the list.
+// plain line; on a prose item it continues the list. The table's row has no outer pipes (GFM reads
+// it as a row), so it would parse as an item but for the table.
 func TestARenderedListSkipsCodeAndTableRows(t *testing.T) {
-	const doc = "```\n- code\n```\n\n| - a | b |\n|---|---|\n| - c | d |\n\n- item"
+	const doc = "```\n- code\n```\n\n| - a | b |\n|---|---|\n- c | d\n\n- item"
 	enterAtEnd := func(ln int) string {
 		h, sh, ed := renderedEditor(t, doc, &blockStar{})
 		h.onLoop(func() { ed.Core().SetLine(ln, 0) })
@@ -169,7 +170,7 @@ func TestARenderedListSkipsCodeAndTableRows(t *testing.T) {
 		t.Errorf("Enter on \"- code\" in a fenced block:\n%s\nwant a plain line", got)
 	}
 	if got := enterAtEnd(6); got != opened(6) {
-		t.Errorf("Enter on a table row \"| - c | d |\":\n%s\nwant a plain line", got)
+		t.Errorf("Enter on a table's row without outer pipes \"- c | d\":\n%s\nwant a plain line", got)
 	}
 	if got := enterAtEnd(8); got != doc+"\n- " {
 		t.Errorf("Enter on a prose item:\n%s\nwant the list continued", got)
