@@ -167,9 +167,13 @@ func TestMarkdownPrefixesKeepTheirSource(t *testing.T) {
 		}
 	}
 
-	narrow, _, _ := mdEditorAt(t, "   - x", 3, 6)
+	narrow, nsh, ned := mdEditorAt(t, "   - x", 3, 6)
 	if !strings.Contains(narrow.grid(), "x") {
 		t.Errorf("an item whose prefix is wider than the view hid its text:\n%s", narrow.grid())
+	}
+	// its indent fills the first row, so its marker (column 3) starts the next, inside the room
+	if x, y, ok := caretAt(narrow, nsh, ned, 0, 3); !ok || x != 0 || y != 1 {
+		t.Errorf("caret on the marker of an item whose prefix is wider than the view: (%d, %d) %v, want (0, 1)\n%s", x, y, ok, narrow.grid())
 	}
 }
 
