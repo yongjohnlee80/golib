@@ -193,6 +193,7 @@ func (b *Backend) start(ctx context.Context) error {
 	if err != nil {
 		return err
 	}
+	caps.FrameDrag = b.cfg.frameDrag // the host's choice, not the terminal's (WithFrameDrag)
 	b.caps = caps
 
 	// 5. Negotiated mode enablement — one write.

@@ -278,9 +278,10 @@ type Capabilities struct {
 	// native.go), so a component that reports one may paint only its background beneath it.
 	NativeViews bool
 
-	// FrameDrag: the backend's pointer is a window system's (golib/gui), so a window takes plain
-	// drags on its frame: its title row moves it, its side and bottom borders resize it
-	// (widget.WindowCore.BeginFrameDrag). A terminal leaves it false and keeps the Alt chord.
+	// FrameDrag: a window takes plain drags on its frame: its title row moves it, its side and
+	// bottom borders resize it (widget.WindowCore.BeginFrameDrag). A window system's backend
+	// (golib/gui) sets it; a terminal's only where its host asks (term.WithFrameDrag), else it keeps
+	// the Alt chord alone.
 	FrameDrag bool
 
 	// DarkBackground derives from the OSC 11 reply (relative luminance of

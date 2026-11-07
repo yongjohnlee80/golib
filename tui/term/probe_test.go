@@ -397,3 +397,23 @@ func TestProbeResultReadsAsCapabilities(t *testing.T) {
 		t.Errorf("caps %+v: want mouse no (?1006 answered 0), truecolor, graphics yes, a light background", c)
 	}
 }
+
+// WithFrameDrag reports the backend's windows as taking plain frame drags, whatever the terminal
+// answered; without it they keep the Alt chord alone.
+func TestWithFrameDragIsReportedAsACapability(t *testing.T) {
+	for _, on := range []bool{true, false} {
+		var opts []Option
+		if on {
+			opts = append(opts, WithFrameDrag())
+		}
+		s := newScript(t, opts...)
+		s.respond(fullModernReplies)
+		if err := s.start(t.Context()); err != nil {
+			t.Fatal(err)
+		}
+		if got := s.b.Capabilities().FrameDrag; got != on {
+			t.Errorf("WithFrameDrag %v: Capabilities().FrameDrag %v", on, got)
+		}
+		_ = s.b.Stop()
+	}
+}
