@@ -1,0 +1,47 @@
+v
+10 ┤█████████████
+   │█████████████
+ 8 ┤█████████████ █████████████
+   │█████████████ █████████████
+ 6 ┤█████████████ █████████████
+   │█████████████ █████████████
+ 4 ┤█████████████ █████████████
+   │█████████████ █████████████
+ 2 ┤█████████████ █████████████
+ 0 ┤█████████████ █████████████
+   └───────┬─────────────┬──────
+           a             b
+                 k
+■ done  ■ plan
+-- colour
+
+    bbbbbbbbbbbbb
+    bbbbbbbbbbbbb
+    bbbbbbbbbbbbb aaaaaaaaaaaaa
+    aaaaaaaaaaaaa aaaaaaaaaaaaa
+    aaaaaaaaaaaaa bbbbbbbbbbbbb
+    aaaaaaaaaaaaa bbbbbbbbbbbbb
+    aaaaaaaaaaaaa bbbbbbbbbbbbb
+    aaaaaaaaaaaaa bbbbbbbbbbbbb
+    aaaaaaaaaaaaa bbbbbbbbbbbbb
+    aaaaaaaaaaaaa bbbbbbbbbbbbb
+
+
+
+
+-- background
+
+    bbbbbbbbbbbbb
+    bbbbbbbbbbbbb
+    bbbbbbbbbbbbb aaaaaaaaaaaaa
+    aaaaaaaaaaaaa aaaaaaaaaaaaa
+    aaaaaaaaaaaaa bbbbbbbbbbbbb
+    aaaaaaaaaaaaa bbbbbbbbbbbbb
+    aaaaaaaaaaaaa bbbbbbbbbbbbb
+    aaaaaaaaaaaaa bbbbbbbbbbbbb
+    aaaaaaaaaaaaa bbbbbbbbbbbbb
+    aaaaaaaaaaaaa bbbbbbbbbbbbb
+
+
+
+
