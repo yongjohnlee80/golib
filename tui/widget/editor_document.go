@@ -331,7 +331,7 @@ func (e *Editor) wireToggle() {
 func (e *Editor) applyView() {
 	shown := e.ShownView()
 	if e.render != nil { // a host's own list editing, with no renderer of the Editor's, is the host's
-		_, md := e.render.(markdownStructure) // only a structured renderer edits lists, and only drawing the text
+		_, md := e.render.(MarkdownStructure) // only a structured renderer edits lists, and only drawing the text
 		e.core.SetListEditing(shown == ViewRendered && md && !e.doc.Active())
 	}
 	e.showDocument(shown == ViewRendered && e.doc.Active()) // only a document view is shown and focused
