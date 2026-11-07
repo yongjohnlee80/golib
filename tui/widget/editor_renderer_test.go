@@ -101,10 +101,15 @@ func TestTheRenderedCaretFollowsTheSource(t *testing.T) {
 	if x, y, ok := cursor(); !ok || x != 0 || y != 1 {
 		t.Errorf("caret on a hidden star at (%d, %d) %v, want the next shown cell, (0, 1)", x, y, ok)
 	}
-	h.onLoop(func() { ed.Core().SetLine(1, 7) }) // 'd' of bold: cells b o l d at 0..3
+	h.onLoop(func() { ed.Core().SetLine(1, 5) }) // 'd' (col 5): the cells b o l d at 0..3
 	h.barrier(sh)
 	if x, _, _ := cursor(); x != 3 {
 		t.Errorf("caret on 'd' at x %d, want 3", x)
+	}
+	h.onLoop(func() { ed.Core().SetLine(1, 7) }) // the closing '*' (col 7), hidden: the space after it, x 4
+	h.barrier(sh)
+	if x, _, _ := cursor(); x != 4 {
+		t.Errorf("caret on a closing hidden star at x %d, want the space after it, 4", x)
 	}
 	h.onLoop(func() { ed.Core().SetLine(2, 0) })
 	h.inject(keyText("j"))
