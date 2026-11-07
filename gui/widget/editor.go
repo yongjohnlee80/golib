@@ -538,9 +538,10 @@ func (e *Editor) theme(fg, bg color.NRGBA, textPx float32, th *style.Theme, pal 
 		k  highlight.Style
 		to *color.NRGBA
 	}{
-		{highlight.Keyword, &t.Heading}, {highlight.DataType, &t.Strong}, {highlight.Attribute, &t.Emph},
-		{highlight.String, &t.Code}, {highlight.Import, &t.Link}, {highlight.Operator, &t.Marker},
-		{highlight.Comment, &t.Quiet}, {highlight.Function, &t.Wiki}, {highlight.Constant, &t.Tag},
+		// the roles both editors read their Rendered looks by (tui/widget's)
+		{tuiwidget.MarkdownHeadingStyle, &t.Heading}, {tuiwidget.MarkdownStrongStyle, &t.Strong}, {tuiwidget.MarkdownEmphStyle, &t.Emph},
+		{tuiwidget.MarkdownCodeStyle, &t.Code}, {tuiwidget.MarkdownLinkStyle, &t.Link}, {tuiwidget.MarkdownMarkerStyle, &t.Marker},
+		{tuiwidget.MarkdownQuietStyle, &t.Quiet}, {tuiwidget.MarkdownWikiStyle, &t.Wiki}, {tuiwidget.MarkdownTagStyle, &t.Tag},
 	} {
 		if st, ok := e.core.SyntaxStyle(s.k); ok {
 			if fg, set := st.GetForeground(); set {
