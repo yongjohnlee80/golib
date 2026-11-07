@@ -1,11 +1,8 @@
 package widget
 
 import (
-	"strings"
-
 	"github.com/yongjohnlee80/golib/gui"
 	"github.com/yongjohnlee80/golib/gui/flow"
-	"github.com/yongjohnlee80/golib/parse/markdown"
 	"github.com/yongjohnlee80/golib/tui/style"
 	tuiwidget "github.com/yongjohnlee80/golib/tui/widget"
 )
@@ -41,16 +38,7 @@ type cell struct{ from, to int }
 
 // gfmRow is line with the outer pipes GFM lets a row leave out put back, and the bytes put before
 // it: the line as the parser reads a row.
-func gfmRow(line string) (row string, shift int) {
-	t := strings.TrimRight(line, " \t")
-	if !strings.HasPrefix(strings.TrimLeft(t, " \t"), "|") {
-		line, shift = "|"+line, 1
-	}
-	if !strings.HasSuffix(t, "|") || strings.HasSuffix(t, "\\|") {
-		line += "|" // no closing pipe, or an escaped one: the row's text runs to its end
-	}
-	return line, shift
-}
+func gfmRow(line string) (row string, shift int) { return tuiwidget.MarkdownGFMRow(line) }
 
 // tableCells splits a row into its cells at its unescaped pipes, the outer ones optional.
 func tableCells(line string) []cell {
@@ -73,55 +61,6 @@ func tableCells(line string) []cell {
 func delimiterAligns(line string) ([]style.Align, bool) {
 	row, _ := gfmRow(line)
 	return tuiwidget.MarkdownDelimiterAligns(row)
-}
-
-// tableEnd is where a table starting at line i ends, past its last row, as GFM reads one: a
-// header row with a pipe, a delimiter row with as many cells, then body rows until a blank line
-// or the start of another block (a heading, a quote, a fence, a rule, a list item), a row with no
-// pipe included. 0: no table there.
-func tableEnd(lines []string, i int) int {
-	if i+1 >= len(lines) || !strings.Contains(lines[i], "|") || indentedCode(lines[i]) || startsBlock(lines[i]) {
-		return 0
-	}
-	aligns, ok := delimiterAligns(lines[i+1])
-	if !ok || len(aligns) != len(tableCells(lines[i])) {
-		return 0
-	}
-	end := i + 2
-	for end < len(lines) && !isBlank(lines[end]) && !startsBlock(lines[end]) {
-		end++
-	}
-	return end
-}
-
-// startsBlock reports a line that starts a block of its own, which ends a table: a heading, a
-// quote, a fence, a thematic break or a list item.
-func startsBlock(line string) bool {
-	s := strings.TrimLeft(line, " ")
-	if len(line)-len(s) > 3 {
-		return false
-	}
-	if _, ok := openFence(line); ok {
-		return true
-	}
-	if d, _ := quoteDepth(line); d > 0 {
-		return true
-	}
-	if n := len(s) - len(strings.TrimLeft(s, "#")); n >= 1 && n <= 6 && (n == len(s) || s[n] == ' ') {
-		return true
-	}
-	return markdown.ThematicBreak(strings.TrimSpace(line)) || isListItem(line)
-}
-
-// InTable reports whether line ln is a row of a table: its source is not a list, whatever it
-// starts with.
-func (r *MarkdownRenderer) InTable(lines []string, ln int) bool {
-	for _, b := range r.Blocks(lines, 0, len(lines)) {
-		if b.From <= ln && ln < b.To {
-			return tableEnd(lines, b.From) > 0
-		}
-	}
-	return false
 }
 
 // layTable lays a table out: its source when the cursor is in it, else a grid.
@@ -174,8 +113,8 @@ func (r *MarkdownRenderer) layTable(b Block, lines []string, width float32, insi
 						spans[k].Font.Bold = true
 					}
 				}
-				if r.hideMetadata {
-					spans = r.metadata.mask(spans, ln)
+				if r.HideMetadata {
+					spans = metaMask(&r.Meta, spans, ln)
 				}
 				for _, sp := range spans {
 					if !sp.Hidden {
