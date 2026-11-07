@@ -24,6 +24,7 @@ type hspan struct {
 	link                                    string
 	deco                                    bool
 	copy                                    string
+	img                                     string // an <img>'s src: the span is its alt text
 }
 
 type hblockKind uint8
@@ -61,7 +62,14 @@ type hblock struct {
 	// layout highlights a preformatted block whose language its syntax catalog has a definition
 	// for; "" for none.
 	lang string
+	// image is a paragraph that holds one <img> and nothing else: the cell layout draws the image
+	// there when the terminal draws images and it loads (layImage), its spans (the alt text)
+	// otherwise. nil for any other block.
+	image *himage
 }
+
+// himage is a block's lone image: its src and its alt text.
+type himage struct{ src, alt string }
 
 // inlineStyle is the inline formatting in force at a point of the walk.
 type inlineStyle struct {
@@ -102,7 +110,28 @@ func readHTMLDoc(src []byte) []hblock {
 	w := &hwalker{src: [2]int{-1, -1}}
 	w.walk(doc)
 	w.close()
+	for i := range w.blocks {
+		w.blocks[i].image = loneImage(&w.blocks[i])
+	}
 	return w.blocks
+}
+
+// loneImage is b's image when b is a paragraph of one <img> and nothing else but space; nil
+// otherwise (an image in running text stays its alt text).
+func loneImage(b *hblock) *himage {
+	if b.kind != hPara {
+		return nil
+	}
+	var im *himage
+	for _, sp := range b.spans {
+		switch {
+		case sp.img != "" && im == nil:
+			im = &himage{src: sp.img, alt: strings.TrimSpace(sp.text)}
+		case sp.img != "" || strings.TrimSpace(sp.text) != "":
+			return nil
+		}
+	}
+	return im
 }
 
 // dataSrc reads an element's source bytes, as parse/markdown/html writes them (SourceSpanAttr).
@@ -236,7 +265,7 @@ func (w *hwalker) add(sp hspan) {
 		st := w.st
 		sp.bold, sp.italic, sp.code, sp.under, sp.strike, sp.mark, sp.link = st.bold, st.italic, st.code, st.under, st.strike, st.mark, st.link
 	}
-	if n := len(b.spans); n > 0 && !sp.deco {
+	if n := len(b.spans); n > 0 && !sp.deco && sp.img == "" && b.spans[n-1].img == "" { // an image's span stays its own
 		last := &b.spans[n-1]
 		if !last.deco && last.bold == sp.bold && last.italic == sp.italic && last.code == sp.code &&
 			last.under == sp.under && last.strike == sp.strike && last.mark == sp.mark && last.link == sp.link {
@@ -307,7 +336,8 @@ func (w *hwalker) node(n *phtml.Node) {
 			alt = "image"
 		}
 		w.st.italic = true
-		w.add(hspan{text: w.owed() + "[" + alt + "]"})
+		src, _ := n.Attr("src")
+		w.add(hspan{text: w.owed() + "[" + alt + "]", img: strings.TrimSpace(src)})
 	case "a":
 		if href, ok := n.Attr("href"); ok {
 			w.st.link = href

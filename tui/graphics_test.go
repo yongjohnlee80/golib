@@ -1,6 +1,9 @@
 package tui
 
 import (
+	"bytes"
+	"image"
+	"image/png"
 	"reflect"
 	"testing"
 	"time"
@@ -60,4 +63,47 @@ func TestTheAppPlacesAndDeletesImages(t *testing.T) {
 		c.ctx.MarkDirty()
 	})
 	h.waitImages(map[uint32]ImagePlacement{})
+}
+
+// pictured is a probe that reports several images, each over cells of its own (ImagesReporter).
+type pictured struct {
+	*probe
+	imgs []PlacedImage
+}
+
+func (c *pictured) PlacedImages(dst []PlacedImage) []PlacedImage { return append(dst, c.imgs...) }
+
+// tinyPNG is a w × h PNG.
+func tinyPNG(t *testing.T, w, h int) []byte {
+	t.Helper()
+	var b bytes.Buffer
+	if err := png.Encode(&b, image.NewGray(image.Rect(0, 0, w, h))); err != nil {
+		t.Fatal(err)
+	}
+	return b.Bytes()
+}
+
+// An ImagesReporter's images are each placed over their own cells, from the component's origin:
+// one wholly inside as it is, one running past the component's bottom cut to the cells that show
+// and cropped to the same part of its picture, one wholly outside not at all; one the reporter
+// stops reporting is deleted, the others kept.
+func TestTheAppPlacesAReportersImagesEachOverItsOwnCells(t *testing.T) {
+	pic := tinyPNG(t, 40, 40)
+	c := &pictured{probe: &probe{name: "page"}, imgs: []PlacedImage{
+		{Image: Image{ID: 81, PNG: pic, Version: 1}, At: Rect{X: 2, Y: 1, W: 4, H: 2}},
+		{Image: Image{ID: 82, PNG: pic, Version: 1}, At: Rect{X: 0, Y: 4, W: 10, H: 4}}, // half below the bottom
+		{Image: Image{ID: 83, PNG: pic, Version: 1}, At: Rect{X: 0, Y: 9, W: 10, H: 2}}, // wholly below it
+	}}
+	h := startApp(t, c, 20, 6)
+	h.waitImages(map[uint32]ImagePlacement{
+		81: {Image: c.imgs[0].Image, X: 2, Y: 1, Cols: 4, Rows: 2},
+		82: {Image: Image{ID: 82, PNG: pic, Version: 1, Clip: Rect{X: 0, Y: 0, W: 40, H: 20}}, X: 0, Y: 4, Cols: 10, Rows: 2},
+	})
+	h.onLoop(func() {
+		c.imgs = c.imgs[1:]
+		c.ctx.MarkDirty()
+	})
+	h.waitImages(map[uint32]ImagePlacement{
+		82: {Image: Image{ID: 82, PNG: pic, Version: 1, Clip: Rect{X: 0, Y: 0, W: 40, H: 20}}, X: 0, Y: 4, Cols: 10, Rows: 2},
+	})
 }
