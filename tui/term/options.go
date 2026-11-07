@@ -49,6 +49,7 @@ type config struct {
 	mouse        bool
 	optionFold   bool
 	clipRead     bool
+	frameDrag    bool
 	env          func(string) (string, bool)
 
 	// sizeFn overrides the fd size query — the harness seam for pty-less
@@ -125,6 +126,15 @@ func WithOptionFold() Option {
 // after it fail at once in the same way: a terminal that doesn't answer costs one wait a session.
 func WithClipboardRead() Option {
 	return func(c *config) { c.clipRead = true }
+}
+
+// WithFrameDrag reports the backend as one whose windows take plain drags on their frames
+// (tui.Capabilities.FrameDrag), as golib/gui's do: a drawer's or a window's title row moves it, its
+// side and bottom borders resize it (widget.WindowCore.BeginFrameDrag), with no Alt chord. A
+// control on the frame keeps its click: only a press nothing on the frame wanted begins a drag.
+// Off by default, where the Alt chord alone moves and resizes.
+func WithFrameDrag() Option {
+	return func(c *config) { c.frameDrag = true }
 }
 
 // WithoutAltScreen selects inline mode: the alternate screen (?1049) is never

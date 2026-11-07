@@ -7,8 +7,8 @@ import "github.com/yongjohnlee80/golib/tui"
 // right columns, the bottom row and the two bottom corners resize it. A second press on row 0
 // toggles maximize where the window has it. It reports false for a press that isn't its own. The
 // owner calls it only for a press nothing in it wanted (tui.UnclaimedPressHandler), so a control on
-// the frame keeps its click. Only on a backend declaring Capabilities.FrameDrag: a terminal keeps
-// the Alt chord alone.
+// the frame keeps its click. Only on a backend declaring Capabilities.FrameDrag: a window system's,
+// or a terminal whose host asks (term.WithFrameDrag); any other keeps the Alt chord alone.
 func (c *WindowCore) BeginFrameDrag(e tui.MouseEvent, size tui.Size) bool {
 	if e.Kind != tui.MousePress || e.Button != tui.MouseLeft || e.Mods.Chord() != 0 || !c.frameDrag() {
 		return false
