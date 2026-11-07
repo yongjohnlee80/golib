@@ -26,6 +26,7 @@ import (
 type imagePlacements struct {
 	frameImages []ImagePlacement
 	placed      map[uint32]ImagePlacement
+	reported    []PlacedImage // an ImagesReporter's images, a buffer noteImage reuses
 }
 
 // Image is a raster image a component shows over its cells: PNG bytes, the id the component keeps
@@ -44,6 +45,22 @@ type Image struct {
 type ImageReporter interface {
 	Component
 	Image() (img Image, ok bool)
+}
+
+// ImagesReporter is a component that shows several images, each over cells of its own: a page's
+// pictures among its text. At is each image's cells, from the component's origin; a part outside
+// the component's visible cells is cut off, as a reporter's partly hidden image is, and an image
+// wholly outside shows none. Each image keeps its own ID. Consulted after each frame's paint, for
+// a component that is visible; dst is a slice to append to, which the App reuses.
+type ImagesReporter interface {
+	Component
+	PlacedImages(dst []PlacedImage) []PlacedImage
+}
+
+// PlacedImage is one image of an ImagesReporter, over the cells At of the component.
+type PlacedImage struct {
+	Image
+	At Rect
 }
 
 // ImagePlacement is an image placed on the screen, over the cells X, Y to X+Cols, Y+Rows.
@@ -70,21 +87,37 @@ var imageIDs atomic.Uint32
 // NewImageID is an image id no other in this process has.
 func NewImageID() uint32 { return 1000 + imageIDs.Add(1) }
 
-// noteImage records a visible reporter's image during the paint.
+// noteImage records a visible reporter's image, or a reporter's images, during the paint.
 func (a *App) noteImage(n *node) {
+	if ir, ok := n.comp.(ImagesReporter); ok {
+		a.images.reported = ir.PlacedImages(a.images.reported[:0])
+		for _, p := range a.images.reported {
+			a.noteImageAt(n, p.Image, p.At.Translate(n.absRect.X, n.absRect.Y))
+		}
+		return
+	}
 	ir, ok := n.comp.(ImageReporter)
 	if !ok {
 		return
 	}
 	img, ok := ir.Image()
-	if !ok || img.ID == 0 || len(img.PNG) == 0 {
+	if !ok {
 		return
 	}
-	r := n.visRect // the part that shows: the screen and every ancestor cut it
+	a.noteImageAt(n, img, n.absRect)
+}
+
+// noteImageAt records img over whole, screen cells of node n: the part of it n's visible cells
+// show, cropped to the same part of the picture.
+func (a *App) noteImageAt(n *node, img Image, whole Rect) {
+	if img.ID == 0 || len(img.PNG) == 0 {
+		return
+	}
+	r := whole.Intersect(n.visRect) // the part that shows: the screen and every ancestor cut it
 	if r.Empty() {
 		return // not placed: applyImages deletes it, and places it again when it shows again
 	}
-	if r != n.absRect {
+	if r != whole {
 		// partly hidden (scrolled out of a ScrollView, or past the screen's edge): show the same
 		// part of the picture, cropped through its source rect
 		src := img.Clip
@@ -95,7 +128,7 @@ func (a *App) noteImage(n *node) {
 			}
 			src = Rect{W: cfg.Width, H: cfg.Height}
 		}
-		img.Clip = cropTo(src, n.absRect, r) // never empty: r and src are not, and it rounds outward
+		img.Clip = cropTo(src, whole, r) // never empty: r and src are not, and it rounds outward
 	}
 	p := ImagePlacement{Image: img, X: r.X, Y: r.Y, Cols: r.W, Rows: r.H}
 	if a.buf.stamping {
