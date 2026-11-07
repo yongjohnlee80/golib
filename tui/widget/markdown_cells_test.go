@@ -347,6 +347,14 @@ func TestATablesCellsHideTheirMetadata(t *testing.T) {
 	if got := rows(p, 3); !strings.Contains(got[1], "b") || got[2] != "" {
 		t.Errorf("a comment's <br> on the next line broke it: rows %q, want b on the second row", got)
 	}
+
+	// a line going on from a comment is prose under its mask, whatever it starts like: a fence or a
+	// list item inside the comment is none, and what follows the comment shows
+	c, _, _ := renderedEditor(t, "<!--\n```ignored --> kept\n\n<!--\n- item --> after", mdRenderer())
+	g = c.grid()
+	if !strings.Contains(g, "kept") || !strings.Contains(g, "after") || strings.Contains(g, "ignored") || strings.Contains(g, "item") || strings.Contains(g, "•") {
+		t.Errorf("a comment's carried line drawn as what it looks like, or its tail lost:\n%s", g)
+	}
 }
 
 // A cell's later lines keep their source: the caret on a cell's second line sits there, not on the
