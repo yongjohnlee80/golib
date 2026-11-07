@@ -3,44 +3,13 @@ package mermaid
 import (
 	"context"
 	"image/color"
-	"slices"
 
 	"github.com/yongjohnlee80/golib/gui"
 	pm "github.com/yongjohnlee80/golib/parse/mermaid"
+	tuimermaid "github.com/yongjohnlee80/golib/tui/mermaid"
 )
 
 func init() { layers[pm.GitGraph] = layGitGraph }
-
-// gitLanes is each branch's lane, by branch index: branches with an order first, by it, then the
-// rest in the order they were made, main always first, as Mermaid places them.
-func gitLanes(d *pm.GitGraphDiagram) []int {
-	idx := make([]int, len(d.Branches))
-	for i := range idx {
-		idx[i] = i
-	}
-	key := func(i int) (int, int) {
-		switch {
-		case i == 0:
-			return 0, 0
-		case d.Branches[i].Order >= 0:
-			return 1, d.Branches[i].Order
-		}
-		return 2, i
-	}
-	slices.SortStableFunc(idx, func(a, b int) int {
-		ga, oa := key(a)
-		gb, ob := key(b)
-		if ga != gb {
-			return ga - gb
-		}
-		return oa - ob
-	})
-	lane := make([]int, len(d.Branches))
-	for l, b := range idx {
-		lane[b] = l
-	}
-	return lane
-}
 
 // layGitGraph lays a gitGraph out: a lane per branch, its name at the lane's start, and a step per
 // commit along the time axis (across, LR; down, TB; up, BT), in source order. A commit is a dot on
@@ -61,7 +30,7 @@ func layGitGraph(ctx context.Context, d pm.Diagram, _ float32, th Theme, m gui.M
 	l := &Laid{th: th}
 	margin, step, laneGap, dot := em, em*3, em*3, em*0.9
 
-	lanes := gitLanes(gd)
+	lanes := tuimermaid.GitLanes(gd)
 	vertical := gd.Dir == pm.TB || gd.Dir == pm.BT
 	// the branches' names, at each lane's start
 	names := make([]label, len(gd.Branches))
