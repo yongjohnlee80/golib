@@ -1,0 +1,84 @@
+width 60
+> | Layer | Change | File(s) |
+> |---|---|---|
+> | SQL | `pg_trgm` extension + `user_lexicon` table + `app.search_term` view + `UNIQUE(search_term_id)` + GIN trigram index | new migration `migrations/000123_add_search_term.sql` |
+> | API | parse the query, score each match, merge the top N | `search.go` (`Search`) |
+> | CRON | schedule `RefreshSearchTerms` | `cron_jobs` row |
+
+"┌───────┬─────────────────────────┬────────────────────────┐"
+    0-59 fg=muted bg=background
+"│ Layer │ Change                  │ File(s)                │"
+    0-1 fg=muted bg=background
+    2-6 bold fg=fg bg=background
+    7-9 fg=muted bg=background
+    10-15 bold fg=fg bg=background
+    16-35 fg=muted bg=background
+    36-42 bold fg=fg bg=background
+    43-59 fg=muted bg=background
+"├───────┼─────────────────────────┼────────────────────────┤"
+    0-59 fg=muted bg=background
+"│ SQL   │ pg_trgm extension +     │ new migration          │"
+    0-1 fg=muted bg=background
+    2-4 fg=fg bg=background
+    5-9 fg=muted bg=background
+    10-16 fg=accent-document bg=background
+    17-28 fg=fg bg=background
+    29-35 fg=muted bg=background
+    36-48 fg=fg bg=background
+    49-59 fg=muted bg=background
+"│       │ user_lexicon table +    │ migrations/000123_add_ │"
+    0-9 fg=muted bg=background
+    10-21 fg=accent-document bg=background
+    22-29 fg=fg bg=background
+    30-35 fg=muted bg=background
+    36-57 fg=accent-document bg=background
+    58-59 fg=muted bg=background
+"│       │ app.search_term view +  │ search_term.sql        │"
+    0-9 fg=muted bg=background
+    10-24 fg=accent-document bg=background
+    25-31 fg=fg bg=background
+    32-35 fg=muted bg=background
+    36-50 fg=accent-document bg=background
+    51-59 fg=muted bg=background
+"│       │ UNIQUE(search_term_id)  │                        │"
+    0-9 fg=muted bg=background
+    10-31 fg=accent-document bg=background
+    32-59 fg=muted bg=background
+"│       │ + GIN trigram index     │                        │"
+    0-9 fg=muted bg=background
+    10-28 fg=fg bg=background
+    29-59 fg=muted bg=background
+"│ API   │ parse the query, score  │ search.go (Search)     │"
+    0-1 fg=muted bg=background
+    2-4 fg=fg bg=background
+    5-9 fg=muted bg=background
+    10-31 fg=fg bg=background
+    32-35 fg=muted bg=background
+    36-44 fg=accent-document bg=background
+    45-46 fg=fg bg=background
+    47-52 fg=accent-document bg=background
+    53-53 fg=fg bg=background
+    54-59 fg=muted bg=background
+"│       │ each match, merge the   │                        │"
+    0-9 fg=muted bg=background
+    10-30 fg=fg bg=background
+    31-59 fg=muted bg=background
+"│       │ top N                   │                        │"
+    0-9 fg=muted bg=background
+    10-14 fg=fg bg=background
+    15-59 fg=muted bg=background
+"│ CRON  │ schedule                │ cron_jobs row          │"
+    0-1 fg=muted bg=background
+    2-5 fg=fg bg=background
+    6-9 fg=muted bg=background
+    10-17 fg=fg bg=background
+    18-35 fg=muted bg=background
+    36-44 fg=accent-document bg=background
+    45-48 fg=fg bg=background
+    49-59 fg=muted bg=background
+"│       │ RefreshSearchTerms      │                        │"
+    0-9 fg=muted bg=background
+    10-27 fg=accent-document bg=background
+    28-59 fg=muted bg=background
+"└───────┴─────────────────────────┴────────────────────────┘"
+    0-59 fg=muted bg=background

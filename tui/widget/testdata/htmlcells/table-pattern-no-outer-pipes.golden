@@ -1,0 +1,23 @@
+width 60
+> A | B
+> --- | ---
+> 1 | 2
+
+"┌───┬───┐"
+    0-8 fg=muted bg=background
+"│ A │ B │"
+    0-1 fg=muted bg=background
+    2-2 bold fg=fg bg=background
+    3-5 fg=muted bg=background
+    6-6 bold fg=fg bg=background
+    7-8 fg=muted bg=background
+"├───┼───┤"
+    0-8 fg=muted bg=background
+"│ 1 │ 2 │"
+    0-1 fg=muted bg=background
+    2-2 fg=fg bg=background
+    3-5 fg=muted bg=background
+    6-6 fg=fg bg=background
+    7-8 fg=muted bg=background
+"└───┴───┘"
+    0-8 fg=muted bg=background

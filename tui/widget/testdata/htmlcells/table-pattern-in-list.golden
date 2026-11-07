@@ -1,0 +1,29 @@
+width 60
+> - an item
+> 
+>   | A | B |
+>   | --- | --- |
+>   | 1 | 2 |
+
+" • an item"
+    0-2 fg=muted bg=background
+    3-9 fg=fg bg=background
+""
+"   ┌───┬───┐"
+    0-11 fg=muted bg=background
+"   │ A │ B │"
+    0-4 fg=muted bg=background
+    5-5 bold fg=fg bg=background
+    6-8 fg=muted bg=background
+    9-9 bold fg=fg bg=background
+    10-11 fg=muted bg=background
+"   ├───┼───┤"
+    0-11 fg=muted bg=background
+"   │ 1 │ 2 │"
+    0-4 fg=muted bg=background
+    5-5 fg=fg bg=background
+    6-8 fg=muted bg=background
+    9-9 fg=fg bg=background
+    10-11 fg=muted bg=background
+"   └───┴───┘"
+    0-11 fg=muted bg=background
