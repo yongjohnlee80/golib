@@ -150,8 +150,9 @@ func layGitGraph(ctx context.Context, d pm.Diagram, _ float32, th Theme, m gui.M
 		case c.Type == pm.GitReverse:
 			n = laidNode{form: formCircle, box: box, fill: th.Background, stroke: fill, width: 2}
 			l.edges = append(l.edges,
-				laidEdge{pts: []gui.Point{{X: box.X + dot*0.25, Y: box.Y + dot*0.25}, {X: box.X + dot*0.75, Y: box.Y + dot*0.75}}, color: fill},
-				laidEdge{pts: []gui.Point{{X: box.X + dot*0.75, Y: box.Y + dot*0.25}, {X: box.X + dot*0.25, Y: box.Y + dot*0.75}}, color: fill})
+				// over the nodes: drawn before them, the ring's fill would cover the cross
+				laidEdge{pts: []gui.Point{{X: box.X + dot*0.25, Y: box.Y + dot*0.25}, {X: box.X + dot*0.75, Y: box.Y + dot*0.75}}, color: fill, over: true},
+				laidEdge{pts: []gui.Point{{X: box.X + dot*0.75, Y: box.Y + dot*0.25}, {X: box.X + dot*0.25, Y: box.Y + dot*0.75}}, color: fill, over: true})
 		}
 		l.nodes = append(l.nodes, n)
 		x := p.X + dot // TB, BT: the next label's left, right of the dot (off the lane's line)

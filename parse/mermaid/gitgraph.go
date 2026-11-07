@@ -169,7 +169,11 @@ func (g *gitGraphParser) attrs(s string, off int, keys ...string) (gitAttrs, boo
 			out[key] = gitAttr{value: text, off: voff}
 		} else {
 			raw, _ = firstWord(v)
-			out[key] = gitAttr{value: raw, off: voff}
+			text, err := g.p.label(raw, voff) // a bare value is held to the same limits as a quoted one
+			if err != nil {
+				return nil, false
+			}
+			out[key] = gitAttr{value: text, off: voff}
 		}
 		s, off = v[len(raw):], voff+len(raw)
 	}
@@ -203,7 +207,11 @@ func (g *gitGraphParser) name(s string, off int) (string, string, int, bool) {
 		g.p.fail(off, "a branch name is missing")
 		return "", "", 0, false
 	}
-	return w, rest, off + len(s) - len(rest), true
+	text, err := g.p.label(w, off) // a bare name is held to the same limits as a quoted one
+	if err != nil {
+		return "", "", 0, false
+	}
+	return text, rest, off + len(s) - len(rest), true
 }
 
 // commitType reads a type: attribute.
@@ -323,6 +331,9 @@ func (g *gitGraphParser) merge(st stmt, rest string, restOff int) {
 	case g.heads[b] < 0:
 		g.p.fail(restOff, "the branch %q has no commits to merge", name)
 		return
+	case g.heads[g.current] < 0: // Mermaid refuses it too: a merge commit needs the current head
+		g.p.fail(restOff, "the current branch has no commits to merge %q into", name)
+		return
 	case g.heads[b] == g.heads[g.current]:
 		g.p.fail(restOff, "the branch %q has nothing the current branch hasn't", name)
 		return
@@ -350,6 +361,9 @@ func (g *gitGraphParser) cherryPick(st stmt, rest string, restOff int) {
 	}
 	src, found := g.ids[id.value]
 	switch {
+	case g.heads[g.current] < 0: // Mermaid refuses it too: the copy goes after the current head
+		g.p.fail(restOff, "the current branch has no commits to cherry-pick onto")
+		return
 	case !found:
 		g.p.fail(id.off, "no commit has the id %q", id.value)
 		return
