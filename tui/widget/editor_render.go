@@ -48,6 +48,10 @@ func (e *Editor) renderGutter(s tui.Surface) {
 		dim = l.styles.Text.Foreground(l.numberColor)
 	}
 	s.Fill(tui.Rect{W: l.gutter, H: h}, " ", l.styles.Text)
+	if r := e.rowMap().r; r != nil {
+		e.renderRenderedGutter(s, r, dim)
+		return
+	}
 	y := 0
 	m := e.rowMap().settled()
 	for ln := l.top; ln < len(b.textLines) && y < h; ln++ {
@@ -72,6 +76,10 @@ func (e *Editor) renderText(s tui.Surface) {
 	// base behind a TextEdit): the cells past each line's text match the
 	// cells under it, whatever the editor sits on.
 	s.Fill(tui.Rect{W: sz.W, H: sz.H}, " ", l.styles.Text)
+	if m := e.rowMap(); m.r != nil {
+		e.renderRendered(s, m)
+		return
+	}
 	w := e.wrapWidth()
 	p := &textPaint{e: e, s: s, hlf: e.beginHighlightFrame(), styledLn: -1, markedLn: -1}
 	defer finishHighlightFrame(p.hlf)
@@ -222,5 +230,50 @@ func tabAware(measure func(string) int) func(string) int {
 			return measure(s)
 		}
 		return measure(strings.ReplaceAll(s, "\t", "")) + n*tabCells
+	}
+}
+
+// renderRendered paints the Editor's own Rendered view: its laid rows from the top line's first, each
+// cell in its renderer's look, a source cell in the selection's over it when selected.
+func (e *Editor) renderRendered(s tui.Surface, m rowMap) {
+	sz := s.Size()
+	l, c, r := &e.cells, e.core, m.r
+	first := r.firstRow(l.top)
+	for y := 0; y < sz.H && first+y < len(r.rows); y++ {
+		x := 0
+		for _, cl := range r.rows[first+y].Cells {
+			st := cl.Style
+			if cl.Line >= 0 && c.Highlighted(cl.Line, cl.Col, e.focused()) {
+				st = l.styles.Selection.Inherit(st)
+			}
+			if x >= sz.W {
+				break
+			}
+			s.SetCell(x, y, cl.Text, st)
+			x += max(cl.W, 1)
+		}
+	}
+	if m.scrollable() {
+		paintScrollIndicator(s, sz.W-1, sz.H, first, max(len(r.rows)-sz.H, 0))
+	}
+}
+
+// renderRenderedGutter numbers each Rendered row that starts its line (its line's first row), never
+// an unnumbered one (a box's rule); the cursor's line in the text's colour.
+func (e *Editor) renderRenderedGutter(s tui.Surface, r *renderedLayout, dim style.Style) {
+	l, b := &e.cells, &e.core.buf
+	first := r.firstRow(l.top)
+	for y := 0; y < s.Size().H && first+y < len(r.rows); y++ {
+		ri := first + y
+		ln := r.lineOfRow(ri)
+		if rs := r.lineRows[ln]; r.rows[ri].Unnumbered || len(rs) == 0 || rs[0] != ri {
+			continue
+		}
+		num := fmt.Sprint(ln + 1)
+		st := dim
+		if ln == b.ln {
+			st = l.styles.Text
+		}
+		drawText(s, l.gutter-gutterGap-len(num), y, num, st)
 	}
 }
