@@ -21,7 +21,9 @@ type cellLayout struct {
 	// can lay one line out taller than the view, so it scrolls by rows. 0 in the Raw view.
 	topIn int
 	left  int
-	w, h  int // the text's area: the gutter's columns are not in w
+	// pan is how far each block wider than the Rendered view is panned, in cells, by its first line.
+	pan  map[int]int
+	w, h int // the text's area: the gutter's columns are not in w
 
 	// numbers shows each line's number in a gutter at the left; gutter is the columns it took at
 	// the last layout (0 without numbers)
@@ -132,6 +134,23 @@ func (e *Editor) reveal(ln, col int) {
 		}
 		l.top, l.topIn = m.r.atRow(start)
 		l.left = 0
+		if row < len(m.r.rowBlock) { // a wide block pans until the caret's cell shows
+			if bi := m.r.rowBlock[row]; m.maxPan(bi) > 0 {
+				_, cx := m.r.caret(ln, col)
+				_, w := m.content(bi)
+				off := m.panOf(bi)
+				switch {
+				case cx < off:
+					off = cx
+				case cx >= off+w:
+					off = cx - w + 1
+				}
+				if l.pan == nil {
+					l.pan = map[int]int{}
+				}
+				l.pan[m.r.blocks[bi].From] = off
+			}
+		}
 		return
 	}
 	l.top, l.left = e.rowMap().reveal(l.top, l.left, ln, e.core.buf.cellsAt(ln, col, e.width))

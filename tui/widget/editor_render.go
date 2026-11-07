@@ -239,19 +239,41 @@ func (e *Editor) renderRendered(s tui.Surface, m rowMap) {
 	sz := s.Size()
 	l, c, r := &e.cells, e.core, m.r
 	first := r.topRow(l.top) + l.topIn
+	shown := map[int][2]int{} // each wide block's first and last row on the view, for its marks
 	for y := 0; y < sz.H && first+y < len(r.rows); y++ {
-		x := 0
-		for _, cl := range r.rows[first+y].Cells {
+		ri := first + y
+		bi := r.rowBlock[ri]
+		x0, w := m.content(bi)
+		off, cx := m.panOf(bi), 0
+		for _, cl := range r.rows[ri].Cells {
+			cw := max(cl.W, 1)
+			x := x0 + cx - off
+			if cx += cw; x < x0 {
+				continue // panned off to the left: a wide cluster cut there too
+			}
+			if x >= sz.W || (m.maxPan(bi) > 0 && x+cw > x0+w) {
+				break // past the room, or a wide block's right edge column
+			}
 			st := cl.Style
 			if cl.Line >= 0 && c.Highlighted(cl.Line, cl.Col, e.focused()) {
 				st = l.styles.Selection.Inherit(st)
 			}
-			if x >= sz.W {
-				break
-			}
 			s.SetCell(x, y, cl.Text, st)
-			x += max(cl.W, 1)
 		}
+		if m.maxPan(bi) > 0 {
+			ys, ok := shown[bi]
+			if !ok {
+				ys[0] = y
+			}
+			ys[1] = y
+			shown[bi] = ys
+		}
+	}
+	th := e.cellTheme()
+	mark := th.Syntax[MarkdownQuietStyle].Inherit(th.Text)
+	for bi, ys := range shown {
+		x0, w := m.content(bi)
+		PaintPanMarks(s, x0-1, x0+w, (ys[0]+ys[1])/2, m.panOf(bi), m.maxPan(bi), mark)
 	}
 	if m.scrollable() {
 		paintScrollIndicator(s, sz.W-1, sz.H, first, max(len(r.rows)-sz.H, 0))

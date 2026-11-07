@@ -1120,7 +1120,7 @@ func (c *cellHTML) paintCodeSides(s tui.Surface, r *hrow, y, w int) {
 	}
 }
 
-// paintCodePanMarks draws, over the sides of each wide code block on screen, its « and » (paintPanMarks)
+// paintCodePanMarks draws, over the sides of each wide code block on screen, its « and » (PaintPanMarks)
 // on its middle line on screen: the box's sides are the columns a wide block keeps for its marks. A
 // wide table's are its room's edge columns, on the middle of its lines on screen.
 func (c *cellHTML) paintCodePanMarks(s tui.Surface, top, w, h int) {
@@ -1138,7 +1138,7 @@ func (c *cellHTML) paintCodePanMarks(s tui.Surface, top, w, h int) {
 			y++
 		}
 		if over := c.over(bi); over > 0 {
-			paintPanMarks(s, c.codeLeft(&c.rows[ri]), min(c.width, w)-1, (first+y-1)/2, c.offset(bi), over)
+			PaintPanMarks(s, c.codeLeft(&c.rows[ri]), min(c.width, w)-1, (first+y-1)/2, c.offset(bi), over, panMark)
 		}
 	}
 }
@@ -1348,18 +1348,7 @@ func (c *cellHTML) paintGrid(s tui.Surface, r *hrow, y, h int) {
 		return
 	}
 	last := min(y+r.grid.Size().H-r.gridRow, h) - 1
-	paintPanMarks(s, x, w-1, (max(y, 0)+last)/2, off, over)
-}
-
-// paintPanMarks draws a wide block's marks at row mid of its edge columns left and right: a « when it
-// is panned, a » when more of it lies past its room.
-func paintPanMarks(s tui.Surface, left, right, mid, off, over int) {
-	if off > 0 {
-		s.SetCell(left, mid, "«", panMark)
-	}
-	if off < over {
-		s.SetCell(right, mid, "»", panMark)
-	}
+	PaintPanMarks(s, x, w-1, (max(y, 0)+last)/2, off, over, panMark)
 }
 
 // gridPlace is where row r's diagram sits on a page w cells wide (the layout's width): the column its grid's 0 is
