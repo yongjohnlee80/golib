@@ -3,7 +3,6 @@ package widget
 import (
 	"context"
 	"math"
-	"slices"
 	"strings"
 
 	"github.com/yongjohnlee80/golib/highlight"
@@ -76,7 +75,7 @@ type cellHTML struct {
 	// codeW is each code block's width as it is laid out, its widest line with the space either side
 	// of it, by its block index (over).
 	codeW map[int]int
-	// wide is each row block of a table too wide to narrow (fitColumns), by its block index: the
+	// wide is each row block of a table too wide to narrow (FitColumns), by its block index: the
 	// table's first row block, under which its rows pan as one (panKey); wideW is that table's width
 	// as laid out, its box included, by its first row block (over).
 	wide, wideW map[int]int
@@ -169,7 +168,7 @@ func (c *cellHTML) layOut() {
 }
 
 // columnWidths are each table's column widths, in cells: its columns' natural widths when they fit
-// side by side at the width, else narrowed to it (fitColumns). A table whose columns can't narrow
+// side by side at the width, else narrowed to it (FitColumns). A table whose columns can't narrow
 // that far keeps its natural widths and is wide: drawn at its own width, it pans.
 func (c *cellHTML) columnWidths() (out map[int][]int, wide map[int]bool) {
 	out, wide = map[int][]int{}, map[int]bool{}
@@ -204,56 +203,13 @@ func (c *cellHTML) columnWidths() (out map[int][]int, wide map[int]bool) {
 			continue
 		}
 		natural := sum - 4 - 3*max(len(cols)-1, 0)
-		if fit := fitColumns(cols, room[t]-(sum-natural)); fit != nil {
+		if fit := FitColumns(cols, room[t]-(sum-natural)); fit != nil {
 			out[t] = fit
 		} else {
 			out[t], wide[t] = cols, true
 		}
 	}
 	return out, wide
-}
-
-// tableMinColumn is the narrowest a column of a table wider than its room is narrowed to: a column
-// narrower than that by nature keeps its width; below it a cell's text breaks into slivers, and the
-// table is drawn at its own width and pans instead.
-const tableMinColumn = 4
-
-// fitColumns narrows a table's natural column widths to fit avail cells: the widest are capped at one
-// width, as wide as avail allows, the narrower keeping theirs, and the cells the cap leaves over go
-// to the capped columns, one each from the left. nil when the columns can't narrow to
-// tableMinColumn.
-func fitColumns(natural []int, avail int) []int {
-	if len(natural) == 0 {
-		return nil
-	}
-	capped := func(limit int) int {
-		sum := 0
-		for _, w := range natural {
-			sum += min(w, limit)
-		}
-		return sum
-	}
-	lo, hi := tableMinColumn, max(slices.Max(natural), tableMinColumn)
-	if capped(lo) > avail {
-		return nil
-	}
-	for lo < hi { // the widest cap that fits
-		mid := (lo + hi + 1) / 2
-		if capped(mid) <= avail {
-			lo = mid
-		} else {
-			hi = mid - 1
-		}
-	}
-	out, left := make([]int, len(natural)), avail-capped(lo)
-	for i, w := range natural {
-		out[i] = min(w, lo)
-		if w > lo && left > 0 {
-			out[i]++
-			left--
-		}
-	}
-	return out
 }
 
 // cellEnd is the span past cell ci of row b (its separator, or the row's end).
@@ -1286,7 +1242,7 @@ func selected(k hcl, from, to DocPos) bool {
 	return k.sp != nil && k.pos != k.end && k.pos.Before(to) && from.Before(k.end)
 }
 
-// PAN. A diagram or a code block wider than its room, or a table too wide to narrow (fitColumns), is
+// PAN. A diagram or a code block wider than its room, or a table too wide to narrow (FitColumns), is
 // drawn at its own width and scrolled sideways, as the window scrolls a wide box (gui/widget's
 // ScrollX): each wide block has its own offset (pan), a table's rows one between them (panKey),
 // the wheel's Shift pans the one under the pointer (ScrollX), and the keys the one
