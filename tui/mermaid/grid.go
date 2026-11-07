@@ -257,7 +257,7 @@ func (g *Grid) Paint(s tui.Surface, x0, y0, selected int, th Theme) {
 		tui.DrawText(s, x0+t.x, y0+t.y, t.s, th.Style(ElemText))
 	}
 	for i, b := range g.Boxes {
-		box, label := th.Style(ElemBox), th.Style(ElemText)
+		box, label := th.boxStyle(b), th.Style(ElemText)
 		if i == selected {
 			box, label = th.Style(ElemSelected), th.Style(ElemSelected)
 		}

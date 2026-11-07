@@ -10,6 +10,22 @@ import "github.com/yongjohnlee80/golib/tui/style"
 type Theme struct {
 	Line, Box, Label, Selected style.Style
 	Series                     []style.ColorSpec
+	// Tint is a box's own outline colour, by its Box.ID, in place of the Box style's: a caller that
+	// colours nodes by what they are (a mind map's documents by their group), as gui/mermaid's
+	// Theme.Tint does. nil, or false for a box, keeps the Box style; the selected box keeps
+	// Selected, and a label keeps the Label style.
+	Tint func(id string) (style.ColorSpec, bool)
+}
+
+// boxStyle is box b's outline style: the Box style, in its Tint's colour when it has one.
+func (th Theme) boxStyle(b Box) style.Style {
+	st := th.Style(ElemBox)
+	if th.Tint != nil {
+		if c, ok := th.Tint(b.ID); ok {
+			st = st.Foreground(c)
+		}
+	}
+	return st
 }
 
 // TokenTheme is the diagram theme a cell page paints in: every style on the page's own
