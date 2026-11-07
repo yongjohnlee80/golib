@@ -15,6 +15,7 @@ type rowMap struct {
 	lines []string
 	v     wrapView
 	r     *renderedLayout // the Editor's own Rendered view, laid out; nil for the Raw view
+	in    int             // the Rendered view's rows of the top line above the view (cellLayout.topIn)
 }
 
 // rowMap is the map over the Editor's lines in its view, measuring as the Editor does.
@@ -26,7 +27,7 @@ func (e *Editor) rowMap() rowMap {
 		if m.v.h > 0 && len(r.rows) > m.v.h && w > 1 {
 			r = e.renderedRows(w - 1) // the scroll indicator takes the last column
 		}
-		m.r = r
+		m.r, m.in = r, e.cells.topIn
 	}
 	return m
 }
@@ -137,7 +138,7 @@ func (m rowMap) colAt(ln, row, x int) int {
 func (m rowMap) visible(top, h int) (first, last int) {
 	if m.r != nil {
 		first = max(0, min(top, len(m.lines)-1))
-		end := m.r.firstRow(first) + h
+		end := m.r.firstRow(first) + m.in + h
 		last = first
 		for ln := first; ln < len(m.lines); ln++ {
 			if rs := m.r.lineRows[ln]; len(rs) > 0 {
@@ -195,7 +196,7 @@ func (m rowMap) reveal(top, left, ln, cx int) (int, int) {
 func (m rowMap) caret(top, left, ln, col, cx int) (x, y int, ok bool) {
 	if m.r != nil {
 		ri, x := m.r.caret(ln, col)
-		y = ri - m.r.firstRow(top)
+		y = ri - (m.r.firstRow(top) + m.in)
 		if y < 0 || (m.v.h > 0 && y >= m.v.h) {
 			return 0, 0, false
 		}
@@ -211,7 +212,7 @@ func (m rowMap) caret(top, left, ln, col, cx int) (x, y int, ok bool) {
 func (m rowMap) hit(top, left, x, y int, colAt func(cs []string, from, end, cells int) int, lastCol func(ln int) int) (ln, col int) {
 	lastLn := len(m.lines) - 1
 	if m.r != nil {
-		return m.r.hit(m.r.firstRow(top)+max(y, 0), max(x, 0))
+		return m.r.hit(m.r.firstRow(top)+m.in+max(y, 0), max(x, 0))
 	}
 	if m.v.wrap == WrapNone {
 		ln = min(top+max(y, 0), lastLn)

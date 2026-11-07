@@ -74,7 +74,10 @@ func (e *Editor) SetRenderer(r CellRenderer) {
 		e.core.SetListEditingWhere(nil)
 		e.core.SetListEditing(false)
 	}
-	e.render = r
+	e.render, e.renderGen = r, e.renderGen+1
+	if r != nil {
+		e.wireToggle() // Ctrl+T (the core's Rendered toggle) flips to the renderer's view too
+	}
 	if md, ok := r.(markdownStructure); ok {
 		e.core.SetListEditingWhere(listWhere(e.core, md))
 	}
@@ -132,7 +135,7 @@ func (e *Editor) cellTheme() CellTheme {
 // renderedKey is everything a Rendered layout depends on: the text, the width, the measure's
 // owner, the block being typed in, and the look.
 type renderedKey struct {
-	render CellRenderer
+	gen    uint64 // the renderer set (SetRenderer): a renderer itself may not be comparable
 	rev    uint64
 	width  int
 	typing int // the line being typed on, -1 when no text is typed
@@ -154,7 +157,7 @@ type renderedLayout struct {
 func (e *Editor) renderedRows(width int) *renderedLayout {
 	l := &e.cells
 	lines := e.core.buf.textLines
-	key := renderedKey{render: e.render, rev: e.core.Revision(), width: width, typing: -1, theme: e.cellTheme()}
+	key := renderedKey{gen: e.renderGen, rev: e.core.Revision(), width: width, typing: -1, theme: e.cellTheme()}
 	if l.typing() {
 		key.typing = e.core.buf.ln
 	}
@@ -203,6 +206,20 @@ func (r *renderedLayout) firstRow(ln int) int {
 		}
 	}
 	return max(len(r.rows)-1, 0)
+}
+
+// atRow is the top line and the rows of it above the view that put display row start at the
+// view's top.
+func (r *renderedLayout) atRow(start int) (top, in int) {
+	if len(r.rows) == 0 || start <= 0 {
+		return 0, 0
+	}
+	start = min(start, len(r.rows)-1)
+	top = r.lineOfRow(start)
+	for top > 0 && r.firstRow(top) > start { // a decoration row before its line's first: the line before
+		top--
+	}
+	return top, max(start-r.firstRow(top), 0)
 }
 
 // lineOfRow is the source line row ri belongs to: the first line with a cell on it, its Anchor, or

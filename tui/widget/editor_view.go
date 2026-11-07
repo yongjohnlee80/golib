@@ -17,8 +17,11 @@ type cellLayout struct {
 	// viewport (same discipline as TextArea)
 	wrap WrapMode
 	top  int
-	left int
-	w, h int // the text's area: the gutter's columns are not in w
+	// topIn is how many of the top line's rows are above the view: the Editor's own Rendered view
+	// can lay one line out taller than the view, so it scrolls by rows. 0 in the Raw view.
+	topIn int
+	left  int
+	w, h  int // the text's area: the gutter's columns are not in w
 
 	// numbers shows each line's number in a gutter at the left; gutter is the columns it took at
 	// the last layout (0 without numbers)
@@ -59,8 +62,14 @@ func (l *cellLayout) ScrollLines(delta int) {
 	if l.h <= 0 {
 		return
 	}
+	if m := l.ed.rowMap(); m.r != nil { // the Rendered view scrolls by rows, so a tall line scrolls too
+		start := m.r.firstRow(l.top) + l.topIn + delta
+		l.top, l.topIn = m.r.atRow(max(0, min(start, len(m.r.rows)-l.h)))
+		l.ed.MarkDirty()
+		return
+	}
 	bottom := l.ed.rowMap().lowestTop(0, len(lines)-1, l.h)
-	l.top = max(0, min(l.top+delta, max(bottom, l.top)))
+	l.top, l.topIn = max(0, min(l.top+delta, max(bottom, l.top))), 0
 	l.ed.MarkDirty()
 }
 
@@ -106,7 +115,24 @@ func (e *Editor) ensureVisible() { e.reveal(e.core.buf.ln, e.core.buf.col) }
 // reveal scrolls (ln, col) into the viewport.
 func (e *Editor) reveal(ln, col int) {
 	l := &e.cells
+	if m := e.rowMap(); m.r != nil { // by rows: the caret's own row, however tall its line
+		if l.h <= 0 {
+			return
+		}
+		row, _ := m.r.caret(ln, col)
+		start := m.r.firstRow(l.top) + l.topIn
+		switch {
+		case row < start:
+			start = row
+		case row >= start+l.h:
+			start = row - l.h + 1
+		}
+		l.top, l.topIn = m.r.atRow(start)
+		l.left = 0
+		return
+	}
 	l.top, l.left = e.rowMap().reveal(l.top, l.left, ln, e.core.buf.cellsAt(ln, col, e.width))
+	l.topIn = 0
 }
 
 // Layout is greedy on both axes. The gutter, when the numbers show, takes its columns from the

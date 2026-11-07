@@ -159,6 +159,7 @@ type Editor struct {
 	docToggle bool               // the core's Rendered toggle is wired (wireToggle)
 	cells     cellLayout         // the geometry, in cells: implements EditorLayout
 	render    CellRenderer       // the Editor's own Rendered view, nil for none (editor_renderer.go)
+	renderGen uint64             // bumped by SetRenderer: the layout's key names the renderer by it
 	laid      [2]*renderedLayout // the text through render at two widths (with and without the scroll indicator's column), kept until what they depend on changes
 	keepPlace bool               // a text set keeps the reader's place (SetKeepPlace, ReplaceValue)
 	// shown is the cursor and viewport Layout last kept the cursor in view for: a layout pass
@@ -295,7 +296,7 @@ func NewEditor(opts ...EditorOption) *Editor {
 // cursor and command state reset, content is replaced, and undo/redo history
 // is CLEARED. The register is preserved.
 func (e *Editor) SetValue(s string) {
-	e.cells.top, e.cells.left = 0, 0 // a new document starts at its top
+	e.cells.top, e.cells.topIn, e.cells.left = 0, 0, 0 // a new document starts at its top
 	e.core.SetValue(s)
 }
 
@@ -312,7 +313,7 @@ func (e *Editor) ReplaceValue(s string) {
 	at, top, left := e.core.Cursor(), e.cells.top, e.cells.left
 	e.core.SetValue(s)
 	e.core.SetCursor(at)
-	e.cells.top, e.cells.left = min(top, max(e.core.LineCount()-1, 0)), left
+	e.cells.top, e.cells.topIn, e.cells.left = min(top, max(e.core.LineCount()-1, 0)), 0, left
 }
 
 // AcceptsFocus implements tui.Focusable.
