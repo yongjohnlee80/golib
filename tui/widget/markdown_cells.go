@@ -29,8 +29,9 @@ const (
 // strong, code spans, links, wikilinks and tags with their marks hidden and every other cluster
 // kept where its source is; a list item's marker as its bullet; a quote's mark as a bar; a code
 // block's lines in the code look; frontmatter and comments hidden (HideMetadata). A block being
-// typed in is laid as its source. Tables, diagrams and images are drawn as their source (later
-// steps draw them).
+// typed in is laid as its source. A table is boxed, its columns narrowed to the width (FitColumns),
+// or, too many to narrow, laid at their own widths. Diagrams and images are drawn as their source
+// (later steps draw them).
 type MarkdownCellRenderer struct {
 	MarkdownBlocks
 	// Languages highlights a fenced block in its info string's language, as gui's Markdown
@@ -61,14 +62,16 @@ func (r *MarkdownCellRenderer) LayOut(b Block, lines []string, width int, measur
 	default:
 		if f, ok := mdOpenFence(lines[b.From]); ok {
 			r.fenced(&lb, &cb, b, lines, f)
-		} else if MarkdownTableEnd(lines, b.From) > 0 || MarkdownStartsIndentedCode(lines, b.From) {
-			code := MarkdownStartsIndentedCode(lines, b.From)
+		} else if end := MarkdownTableEnd(lines, b.From); end > 0 {
+			end = min(end, b.To)
+			r.table(&lb, &cb, b.From, end, lines)
+			for ln := end; ln < b.To; ln++ {
+				r.line(&lb, &cb, ln, lines[ln])
+			}
+		} else if MarkdownStartsIndentedCode(lines, b.From) {
+			code := lb.role(MarkdownCodeStyle)
 			for ln := b.From; ln < b.To; ln++ {
-				st := th.Text
-				if code {
-					st = lb.role(MarkdownCodeStyle)
-				}
-				lb.source(&cb, ln, lines[ln], func(int) style.Style { return st })
+				lb.source(&cb, ln, lines[ln], func(int) style.Style { return code })
 			}
 		} else {
 			for ln := b.From; ln < b.To; ln++ {
@@ -84,6 +87,185 @@ func (r *MarkdownCellRenderer) LayOut(b Block, lines []string, width int, measur
 		cb.Width = max(cb.Width, w)
 	}
 	return cb
+}
+
+// tableCell is one shown cluster of a table's cell, and the source text it measures by.
+type tableCell struct {
+	RowCell
+	src string
+}
+
+// table lays the GFM table on lines [from, end) boxed: its header row, the rule its delimiter row
+// stands for (that line's row), its body rows. Each cell shows its Markdown, aligned as the
+// delimiter says and wrapped in its column, a bare <br> breaking it. The columns are narrowed to the
+// width by FitColumns or, too many to narrow, laid at their natural widths: the block is then wider
+// than the width.
+func (r *MarkdownCellRenderer) table(lb *mdCellLines, cb *CellBlock, from, end int, lines []string) {
+	delim, _ := MarkdownGFMRow(lines[from+1])
+	aligns, _ := MarkdownDelimiterAligns(delim)
+	n := len(aligns)
+	var rows [][][][]tableCell // per row line (the header first): per column, its <br> segments
+	var lns []int
+	natural := make([]int, n)
+	for ln := from; ln < end; ln++ {
+		if ln == from+1 {
+			continue
+		}
+		cells := lb.tableRow(ln, lines[ln], n, ln == from)
+		for ci, segs := range cells {
+			for _, seg := range segs {
+				w := 0
+				for _, c := range seg {
+					w += c.W
+				}
+				natural[ci] = max(natural[ci], w)
+			}
+		}
+		rows, lns = append(rows, cells), append(lns, ln)
+	}
+	cols, frame := natural, 4+3*max(n-1, 0) // the box's "│ " and " │", and " │ " between cells
+	sum := frame
+	for _, w := range natural {
+		sum += w
+	}
+	if sum > lb.width {
+		if fit := FitColumns(natural, lb.width-frame); fit != nil {
+			cols = fit
+		}
+	}
+	box := lb.role(MarkdownQuietStyle)
+	deco := func(row *CellRow, s string, st style.Style) {
+		row.Cells = append(row.Cells, RowCell{Text: s, W: 1, Style: st, Line: -1})
+	}
+	rule := func(left, joint, right string, anchor int) {
+		row := CellRow{Anchor: anchor, Unnumbered: anchor < 0}
+		deco(&row, left, box)
+		for ci, w := range cols {
+			if ci > 0 {
+				deco(&row, joint, box)
+			}
+			for range w + 2 {
+				deco(&row, "─", box)
+			}
+		}
+		deco(&row, right, box)
+		cb.Rows = append(cb.Rows, row)
+	}
+	rule("┌", "┬", "┐", -1)
+	for i, cells := range rows {
+		lined := make([][][]RowCell, n) // each column's display lines: its segments wrapped to it
+		h := 1
+		for ci := range n {
+			for _, seg := range cells[ci] {
+				srcs := make([]string, len(seg))
+				for k, c := range seg {
+					srcs[k] = c.src
+				}
+				for _, rr := range wrapRanges(srcs, cols[ci], lb.measure) {
+					var line []RowCell
+					for _, c := range seg[rr[0]:rr[1]] {
+						line = append(line, c.RowCell)
+					}
+					lined[ci] = append(lined[ci], line)
+				}
+			}
+			h = max(h, len(lined[ci]))
+		}
+		for k := range h {
+			row := CellRow{Anchor: -1}
+			deco(&row, "│", box)
+			deco(&row, " ", lb.th.Text)
+			for ci := range n {
+				if ci > 0 {
+					deco(&row, " ", lb.th.Text)
+					deco(&row, "│", box)
+					deco(&row, " ", lb.th.Text)
+				}
+				var line []RowCell
+				if k < len(lined[ci]) {
+					line = lined[ci][k]
+				}
+				pad := cols[ci]
+				for _, c := range line {
+					pad -= c.W
+				}
+				pad = max(pad, 0)
+				left := 0
+				switch aligns[ci] {
+				case style.AlignRight:
+					left = pad
+				case style.AlignCenter:
+					left = pad / 2
+				}
+				for range left {
+					deco(&row, " ", lb.th.Text)
+				}
+				row.Cells = append(row.Cells, line...)
+				for range pad - left {
+					deco(&row, " ", lb.th.Text)
+				}
+			}
+			deco(&row, " ", lb.th.Text)
+			deco(&row, "│", box)
+			if k == 0 && onlyDecorations(row.Cells) { // a row line of empty cells stands for its line
+				row.Anchor = lns[i]
+			}
+			cb.Rows = append(cb.Rows, row)
+		}
+		if i == 0 {
+			rule("├", "┼", "┤", from+1) // the delimiter row's
+		}
+	}
+	rule("└", "┴", "┘", -1)
+}
+
+// tableRow is line ln's cells, n of them (a missing one empty, one past n dropped): each its
+// clusters not hidden, in their look (a header's bold), in the segments a bare <br> ends.
+func (lb *mdCellLines) tableRow(ln int, line string, n int, head bool) [][][]tableCell {
+	row, shift := MarkdownGFMRow(line)
+	spans, _ := MarkdownTableCells(row)
+	attrs, _ := MarkdownLineAttrs(line)
+	var cs []string
+	var offs []int
+	off := 0
+	for c := range tui.Graphemes(row) {
+		cs, offs = append(cs, c), append(offs, off)
+		off += len(c)
+	}
+	out := make([][][]tableCell, n)
+	for ci := range out {
+		out[ci] = [][]tableCell{nil}
+	}
+	for ci, sp := range spans {
+		if ci >= n {
+			break
+		}
+		lastBr := 0
+		for k := sp[0]; k < sp[1]; k++ {
+			at := offs[k] - shift // the byte in line; the pipes MarkdownGFMRow added are none of its
+			if at < 0 || at >= len(line) {
+				continue
+			}
+			a := attrs[at]
+			if a.Br > 0 {
+				if a.Br != lastBr { // a <br>'s first byte: two in a row are two
+					lastBr = a.Br
+					out[ci] = append(out[ci], nil)
+				}
+				continue
+			}
+			if a.Hidden {
+				continue
+			}
+			st := lb.styleOf(a)
+			if head {
+				st = st.Bold(true)
+			}
+			segs := out[ci]
+			segs[len(segs)-1] = append(segs[len(segs)-1], tableCell{lb.cell(cs[k], st, ln, k-shift), cs[k]})
+		}
+	}
+	return out
 }
 
 // frontmatterHidden reports whether lines open with closed frontmatter the view hides.

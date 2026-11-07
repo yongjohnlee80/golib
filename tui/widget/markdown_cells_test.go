@@ -230,3 +230,57 @@ func TestMarkdownCodeIsHighlightedInItsLanguage(t *testing.T) {
 		}
 	}
 }
+
+// A table is boxed: its header row, the rule its delimiter row stands for, its body rows, each cell
+// aligned as the delimiter says, with its Markdown drawn. Every cell keeps its source: the caret on
+// a cell's text sits on it, and on the delimiter row, on its rule.
+func TestMarkdownTablesAreBoxed(t *testing.T) {
+	h, sh, ed := renderedEditor(t, "| a | **b** |\n|:--|--:|\n| ccc | ddd |\nee | f", mdRenderer())
+	wantRows(t, h,
+		"┌─────┬─────┐",
+		"│ a   │   b │",
+		"├─────┼─────┤",
+		"│ ccc │ ddd │",
+		"│ ee  │   f │",
+		"└─────┴─────┘")
+	// the last row has no outer pipes: its columns are its own, not the pipe GFM reads before it
+	for _, c := range []struct{ ln, col, x, y int }{{0, 8, 10, 1}, {1, 0, 0, 2}, {2, 2, 2, 3}, {2, 8, 8, 3}, {3, 1, 3, 4}, {3, 5, 10, 4}} {
+		if x, y, ok := caretAt(h, sh, ed, c.ln, c.col); !ok || x != c.x || y != c.y {
+			t.Errorf("caret on (%d, %d) at (%d, %d) %v, want (%d, %d)", c.ln, c.col, x, y, ok, c.x, c.y)
+		}
+	}
+}
+
+// A table wider than the view narrows its columns to fit (FitColumns), its cells' text wrapped in
+// them; a bare <br> breaks a cell's text.
+func TestMarkdownTableColumnsNarrowToTheView(t *testing.T) {
+	long := "alpha beta gamma delta epsilon zeta"
+	h, _, _ := renderedEditor(t, "| "+long+" | "+long+" |\n|---|---|\n| x<br>y | z |", mdRenderer())
+	got := rows(h, 10)
+	if !strings.HasSuffix(got[0], "┐") || len([]rune(got[0])) > 40 {
+		t.Errorf("the table's top %q: want it closed inside the 40-cell view", got[0])
+	}
+	if !strings.Contains(h.grid(), "zeta") {
+		t.Errorf("a narrowed cell lost its text:\n%s", h.grid())
+	}
+	at := -1
+	for y, r := range got {
+		if strings.HasPrefix(r, "│ x ") {
+			at = y
+		}
+	}
+	if at < 0 || !strings.HasPrefix(got[at+1], "│ y ") {
+		t.Errorf("x<br>y: want x and y on two rows of their cell:\n%s", h.grid())
+	}
+}
+
+// A table whose columns can't narrow to fit is laid at its natural widths: the block is wider than
+// the width.
+func TestATableTooWideToNarrowKeepsItsWidth(t *testing.T) {
+	row := "|" + strings.Repeat(" abcde |", 9)
+	lines := []string{row, "|" + strings.Repeat("---|", 9), row}
+	cb := (&widget.MarkdownCellRenderer{}).LayOut(widget.Block{From: 0, To: len(lines)}, lines, 40, func(string) int { return 1 }, false, widget.CellTheme{})
+	if want := 4 + 3*8 + 5*9; cb.Width != want {
+		t.Errorf("a nine-column table in 40 cells: Width %d, want its natural %d", cb.Width, want)
+	}
+}
