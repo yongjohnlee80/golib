@@ -14,6 +14,7 @@ import "github.com/yongjohnlee80/golib/tui"
 func (e *Editor) Tabs() *TabStrip {
 	if e.tabs == nil {
 		e.tabs = NewTabStrip()
+		e.tabs.shown = func() bool { return e.tabsTitle } // a frame's title row holds it only while on
 	}
 	return e.tabs
 }
@@ -26,36 +27,17 @@ func (e *Editor) SetTabsInTitle(on bool) {
 		return
 	}
 	e.tabsTitle = on
-	if e.tabsSlot != nil {
-		e.tabsSlot.RequestLayout() // shown or not changes its width
-		e.tabsSlot.MarkDirty()
+	if e.tabs != nil && e.tabs.Context() != nil {
+		e.tabs.RequestLayout() // shown or not changes its width
+		e.tabs.MarkDirty()
 	}
 }
 
 // TabsInTitle reports whether the editor's tabs show on its frame's title row (SetTabsInTitle).
 func (e *Editor) TabsInTitle() bool { return e.tabsTitle }
 
-// TitleTabs is the strip as a frame's title row holds it (widget.Box.SetTitleLeading): Tabs, as
-// wide as its tabs need while SetTabsInTitle is on, and no width while it is off. The same
-// component every call.
-func (e *Editor) TitleTabs() tui.Component {
-	if e.tabsSlot == nil {
-		e.tabsSlot = &TabStripSlot{TabStrip: e.Tabs(), shown: func() bool { return e.tabsTitle }}
-	}
-	return e.tabsSlot
-}
-
-// TabStripSlot is a TabStrip on a frame's title row for its owner: the strip's own drawing and
-// presses, and no width while its owner hides it.
-type TabStripSlot struct {
-	*TabStrip
-	shown func() bool
-}
-
-// Layout is the strip's, or none while its owner hides it.
-func (s *TabStripSlot) Layout(c tui.Constraints) tui.Size {
-	if !s.shown() {
-		return c.Constrain(tui.Size{})
-	}
-	return s.TabStrip.Layout(c)
-}
+// TitleTabs is the strip as a frame's title row holds it (widget.Box.SetTitleLeading): Tabs itself,
+// as wide as its tabs need while SetTabsInTitle is on, and no width while it is off. The strip
+// decides its width itself (TabStrip.shown), not a wrapper round it: a type embedding TabStrip would
+// make it an embeddable base, whose own calls an embedder's methods could bypass.
+func (e *Editor) TitleTabs() tui.Component { return e.Tabs() }

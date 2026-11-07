@@ -189,7 +189,9 @@ func TestTheLeadingControlIsABoxChild(t *testing.T) {
 	if box.TitleLeading() != nil {
 		t.Error("Remove left the leading control")
 	}
-	if ed.TitleTabs() != ed.TitleTabs() || ed.Tabs() != ed.Tabs() {
+	t1, t2 := ed.TitleTabs(), ed.TitleTabs()
+	s1, s2 := ed.Tabs(), ed.Tabs()
+	if t1 != t2 || s1 != s2 {
 		t.Error("TitleTabs or Tabs is a new component each call")
 	}
 }
