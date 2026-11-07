@@ -229,7 +229,10 @@ func TestATallLinesLaterRowsAreRevealed(t *testing.T) {
 	if _, y, ok := cursor(); !ok || y != 9 {
 		t.Fatalf("caret on the 16th row: y %d, shown %v; want the view's last row, 9", y, ok)
 	}
-	if got := strings.TrimRight(h.row(9)[:39], " "); got != "p" { // the last column is the scroll indicator
+	if r := []rune(h.row(9)); len(r) != 40 || r[39] != '█' { // a 16-row line in 10 rows: the indicator's thumb
+		t.Errorf("row 9's last column: %q, want the scroll indicator's thumb █", h.row(9))
+	}
+	if got := strings.TrimRight(h.row(9)[:39], " "); got != "p" { // the text area, left of the indicator
 		t.Errorf("the view's last row %q, want p", got)
 	}
 	h.onLoop(func() { ed.Core().SetLine(0, 0) })
@@ -237,7 +240,10 @@ func TestATallLinesLaterRowsAreRevealed(t *testing.T) {
 	if _, y, ok := cursor(); !ok || y != 0 {
 		t.Errorf("caret back on the first row: y %d, shown %v; want 0", y, ok)
 	}
-	if got := strings.TrimRight(h.row(0)[:39], " "); got != "a" { // the last column is the scroll indicator
+	if r := []rune(h.row(0)); len(r) != 40 || r[39] != '█' { // a 16-row line in 10 rows: the indicator's thumb
+		t.Errorf("row 0's last column: %q, want the scroll indicator's thumb █", h.row(0))
+	}
+	if got := strings.TrimRight(h.row(0)[:39], " "); got != "a" { // the text area, left of the indicator
 		t.Errorf("the view's first row %q, want a", got)
 	}
 }
