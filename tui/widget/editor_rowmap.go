@@ -7,7 +7,8 @@ package widget
 //
 // It draws the Raw view: each line its wrapped rows (WrapSoft), or one row scrolled sideways by
 // the window's left (WrapNone), by the soft-wrap geometry Editor and TextArea share (textbuffer.go).
-// A Rendered view drawn by the Editor itself lays blocks here instead (ADR 1794046174 §4.3).
+// A Rendered view the Editor draws itself lays its blocks out here too, so every one of those
+// questions keeps one answer.
 
 // rowMap is the Editor's lines in a view: the lines, and the view's size, wrap and measure.
 type rowMap struct {
