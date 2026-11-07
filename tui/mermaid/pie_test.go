@@ -147,3 +147,63 @@ func TestPieWearsTheThemeTokens(t *testing.T) {
 		t.Errorf("fills %d, legend %d; want both drawn", fills, legend)
 	}
 }
+
+// A slice and its legend swatch wear its series' colour (Theme.Series), slice by slice: every fill
+// cell of the circle is its slice's colour, each legend row's swatch its slice's, and the slices'
+// colours differ. With more slices than series the colours cycle, the densities still apart.
+func TestAPieSliceAndItsSwatchWearItsSeries(t *testing.T) {
+	red, green, blue := style.RGB(200, 40, 40), style.RGB(40, 160, 40), style.RGB(40, 40, 200)
+	th := Theme{Box: style.New().Foreground(style.TokenAccent), Label: style.New().Foreground(style.TokenForeground),
+		Series: []style.ColorSpec{red, green, blue}}
+	g, _ := paint(t, "pie\n  \"Dogs\" : 386\n  \"Cats\" : 85\n  \"Rats\" : 15\n")
+	s := &styleCells{cells: newCells(g.Size.W, g.Size.H), st: map[[2]int]style.Style{}}
+	g.Paint(s, 0, 0, -1, th)
+	glyphs := map[string]int{} // a slice's glyph, its index
+	for i := range 3 {
+		glyphs[sliceChar(i, 3)] = i
+	}
+	colour := func(c cell) style.Color {
+		fg, _ := s.st[[2]int{c.x, c.y}].GetForeground()
+		return fg
+	}
+	want := []style.Color{red, green, blue}
+	seen := map[int]int{}
+	for c, glyph := range g.fills {
+		i, ok := glyphs[glyph]
+		if !ok {
+			t.Fatalf("cell %v holds %q, no slice's glyph", c, glyph)
+		}
+		if got := colour(c); got != want[i] {
+			t.Errorf("cell %v (slice %d's %q) wears %v, want its series' %v", c, i, glyph, got, want[i])
+		}
+		seen[i]++
+	}
+	// the legend's swatches: each row's first cell, its slice's glyph in its slice's colour
+	rows := 0
+	for _, txt := range g.texts {
+		for i, label := range []string{"Dogs", "Cats", "Rats"} {
+			if !strings.Contains(txt.s, label) {
+				continue
+			}
+			sw := cell{x: txt.x, y: txt.y}
+			if g.fills[sw] != sliceChar(i, 3) || colour(sw) != want[i] {
+				t.Errorf("%s's swatch is %q in %v, want %q in its slice's %v", label, g.fills[sw], colour(sw), sliceChar(i, 3), want[i])
+			}
+			rows++
+		}
+	}
+	if rows != 3 || seen[0] == 0 || seen[1] == 0 || seen[2] == 0 {
+		t.Fatalf("legend rows %d, slice cells %v: want three of each", rows, seen)
+	}
+
+	// six slices, three colours: neighbours still differ, by colour or by density
+	g, _ = paint(t, "pie\n  \"a\": 1\n  \"b\": 1\n  \"c\": 1\n  \"d\": 1\n  \"e\": 1\n  \"f\": 1\n")
+	s = &styleCells{cells: newCells(g.Size.W, g.Size.H), st: map[[2]int]style.Style{}}
+	g.Paint(s, 0, 0, -1, th)
+	for i := range 6 {
+		j := (i + 1) % 6
+		if want[i%3] == want[j%3] && sliceChar(i, 6) == sliceChar(j, 6) {
+			t.Errorf("slices %d and %d share their colour and their density", i, j)
+		}
+	}
+}

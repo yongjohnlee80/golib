@@ -185,6 +185,7 @@ type legendRow struct {
 	swatch string
 	label  string
 	cols   []string
+	series int // the swatch's series, its index plus one: drawn as a fill in its colour; 0 none
 }
 
 // legend adds rows to the key finish places under the drawing. Rows draw in the order given, and a
@@ -243,7 +244,16 @@ func (g *Grid) placeLegend(ms Measurer) {
 	}
 	for ri, r := range g.notes {
 		var b strings.Builder
-		b.WriteString(r.swatch + strings.Repeat(" ", sw-m(r.swatch)))
+		if r.series > 0 { // a series' swatch is a fill in its colour, its cells blank in the text
+			x := 0
+			for gr := range tui.Graphemes(r.swatch) {
+				g.fills[cell{x: x, y: y}], g.series[cell{x: x, y: y}] = gr, r.series
+				x += m(gr)
+			}
+			b.WriteString(strings.Repeat(" ", sw))
+		} else {
+			b.WriteString(r.swatch + strings.Repeat(" ", sw-m(r.swatch)))
+		}
 		if sw > 0 {
 			b.WriteString(" ")
 		}

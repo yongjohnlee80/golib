@@ -1,8 +1,12 @@
 package widget
 
 import (
+	"slices"
 	"strings"
 	"testing"
+
+	"github.com/yongjohnlee80/golib/highlight"
+	"github.com/yongjohnlee80/golib/tui/style"
 )
 
 // mixedChart is a bar under a line: no tier but the table draws it.
@@ -60,5 +64,52 @@ func TestAVegaLiteSpecOutsideTheSubsetIsTheNotice(t *testing.T) {
 		if got := strings.Join(strings.Fields(strings.Join(c.rowTexts(), " ")), " "); got != "▸ <vega-lite>" {
 			t.Errorf("%s: with the host's words, %q; want ▸ <vega-lite>", src, got)
 		}
+	}
+}
+
+// A pie on the page wears the page's chart series: its picture's theme is the diagrams' with the
+// series a chart on the page takes (chartTheme, the page's code colours), so its slices are those
+// colours, the first slice the first series'.
+func TestAPiesSlicesWearThePagesChartSeries(t *testing.T) {
+	c := newCellHTML(func(s string) int { return len([]rune(s)) })
+	var styles SyntaxStyles
+	styles[highlight.Keyword] = style.New().Foreground(style.RGB(200, 40, 40))
+	styles[highlight.String] = style.New().Foreground(style.RGB(40, 160, 40))
+	styles[highlight.DecVal] = style.New().Foreground(style.RGB(40, 40, 200))
+	c.syntaxStyles = styles
+	c.SetSource([]byte(`<pre class="mermaid">pie
+  "Dogs" : 386
+  "Cats" : 85
+  "Rats" : 15</pre>`))
+	c.SetWidth(60)
+	var pic *mermaidPicture
+	for _, r := range c.rows {
+		if p, ok := r.grid.(*mermaidPicture); ok {
+			pic = p
+		}
+	}
+	if pic == nil {
+		t.Fatalf("no row holds the pie: %v", c.rowTexts())
+	}
+	want := c.chartTheme().Series
+	if len(want) < 3 || !slices.Equal(pic.th.Series, want) {
+		t.Fatalf("the pie's series are %v, want the page's chart series %v", pic.th.Series, want)
+	}
+	s := newRecordSurface(60, len(c.rows))
+	c.PaintCells(s, 0, 60, DocPos{}, DocPos{})
+	found := false
+	for y := range len(c.rows) {
+		for x := range 60 {
+			if s.text[y][x] == "█" { // the first slice's density
+				fg, _ := s.style[y][x].GetForeground()
+				if fg != want[0] {
+					t.Fatalf("the first slice's cell (%d,%d) wears %v, want the first series' %v", x, y, fg, want[0])
+				}
+				found = true
+			}
+		}
+	}
+	if !found {
+		t.Fatal("no cell of the first slice was painted")
 	}
 }
