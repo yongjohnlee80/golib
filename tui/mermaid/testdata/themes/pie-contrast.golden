@@ -1,0 +1,40 @@
+catppuccin_frappe
+  slice 0  ca9ee6 5.60:1
+  slice 1  a6d189 7.10:1
+  slice 2  ef9f76 5.80:1
+dark
+  slice 0  87afd7 7.42:1
+  slice 1  d7af87 8.42:1
+  slice 2  afd7ff 11.35:1
+kanagawa
+  slice 0  957fb8 4.67:1
+  slice 1  98bb6c 7.52:1
+  slice 2  d27e99 5.59:1
+light
+  slice 0  1f4e8c 7.43:1
+  slice 1  9c2f1f 6.61:1
+  slice 2  1f5a8c 6.47:1
+mono
+  slice 0  the terminal's own colour (the page's tokens)
+  slice 1  the terminal's own colour (the page's tokens)
+  slice 2  the terminal's own colour (the page's tokens)
+nord
+  slice 0  81a1c1 4.64:1
+  slice 1  a3be8c 6.13:1
+  slice 2  b48ead 4.41:1
+retro
+  slice 0  ffffff 17.02:1
+  slice 1  ff55ff 6.48:1
+  slice 2  55ffff 13.89:1
+sepia
+  slice 0  7c3f12 5.82:1
+  slice 1  8f3b2a 5.30:1
+  slice 2  2f5e6b 5.11:1
+shades_of_purple
+  slice 0  ff9d00 6.34:1
+  slice 1  a5ff90 10.90:1
+  slice 2  ff628c 4.65:1
+tokyo_night
+  slice 0  9d7cd8 5.13:1
+  slice 1  9ece6a 9.35:1
+  slice 2  ff9e64 8.40:1
