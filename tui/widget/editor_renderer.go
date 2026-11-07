@@ -58,10 +58,11 @@ type CellTheme struct {
 	Syntax SyntaxStyles
 }
 
-// markdownStructure is a renderer that knows where its document's code and tables are: the Editor
+// MarkdownStructure is a renderer that knows where its document's code and tables are: an editor
 // runs list editing in its Rendered view outside code, and on a table's lines only where they are
-// not rows. MarkdownBlocks is one, and so is a renderer that embeds it.
-type markdownStructure interface {
+// not rows. MarkdownBlocks is one, and so is a renderer that embeds it; gui's StructureRenderer
+// has the same two methods.
+type MarkdownStructure interface {
 	InCode(lines []string, ln int) bool
 	InTable(lines []string, ln int) bool
 }
@@ -78,8 +79,8 @@ func (e *Editor) SetRenderer(r CellRenderer) {
 	if r != nil {
 		e.wireToggle() // Ctrl+T (the core's Rendered toggle) flips to the renderer's view too
 	}
-	if md, ok := r.(markdownStructure); ok {
-		e.core.SetListEditingWhere(listWhere(e.core, md))
+	if md, ok := r.(MarkdownStructure); ok {
+		e.core.SetListEditingWhere(MarkdownListWhere(e.core, md))
 	}
 	e.applyView()
 }
@@ -87,10 +88,12 @@ func (e *Editor) SetRenderer(r CellRenderer) {
 // Renderer is the Editor's own renderer, nil for none.
 func (e *Editor) Renderer() CellRenderer { return e.render }
 
-// listWhere is the lines a Markdown renderer's list editing applies on: outside code, and on a
-// table's lines only where they are not rows. A row GFM reads without both outer pipes is a row
-// too, so its "- x" is not an item.
-func listWhere(c *EditorCore, md markdownStructure) func(ln int) bool {
+// MarkdownListWhere is the lines a Markdown editor's list editing applies on (SetListEditingWhere):
+// outside code, where "- x" is code, and on a table's lines only where they are not rows. A table's
+// row is a row: the table keys (CoreTableEditing) run on the rows they read, the ones with both
+// outer pipes, which no list item starts with; a row GFM reads without them takes neither, so its
+// "- x" is not an item either. Both editors, the cell one and gui's, edit lists by it.
+func MarkdownListWhere(c *EditorCore, md MarkdownStructure) func(ln int) bool {
 	return func(ln int) bool {
 		lines := c.Lines()
 		if md.InCode(lines, ln) {
@@ -300,23 +303,29 @@ func (r *renderedLayout) hit(ri, x int) (ln, col int) {
 	}
 	ri = max(0, min(ri, len(r.rows)-1))
 	cells := r.rows[ri].Cells
-	at, under := 0, -1
+	// each cell's span [from, to] in cells; x past the row's end is held to its last cell
+	best, bestD := -1, 0
+	at := 0
 	for i, c := range cells {
-		if x < at+max(c.W, 1) {
-			under = i
-			break
-		}
+		from, to := at, at+max(c.W, 1)-1
 		at += c.W
-	}
-	if under < 0 {
-		under = len(cells) - 1 // past the row's end: its last cell
-	}
-	for d := 0; under >= 0 && d < len(cells); d++ {
-		for _, i := range []int{under - d, under + d} {
-			if i >= 0 && i < len(cells) && cells[i].Line >= 0 {
-				return cells[i].Line, cells[i].Col
-			}
+		d := 0
+		switch {
+		case x < from:
+			d = from - x
+		case x > to && i < len(cells)-1:
+			d = x - to
 		}
+		if c.Line < 0 {
+			continue
+		}
+		// the nearest source cell by measured distance; a true tie takes the left one (the first)
+		if best < 0 || d < bestD {
+			best, bestD = i, d
+		}
+	}
+	if best >= 0 {
+		return cells[best].Line, cells[best].Col
 	}
 	if a := r.rows[ri].Anchor; a >= 0 {
 		return a, 0

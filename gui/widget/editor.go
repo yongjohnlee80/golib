@@ -180,22 +180,10 @@ func NewEditor(opts ...EditorOption) *Editor {
 		e.toggleMode()
 		return true
 	})
-	// list and table editing are for the prose and its tables: a code block's "- x" is code. A
-	// table's row is a row: the table keys (CoreTableEditing) run on the rows they read, the ones
-	// with both outer pipes, which no list item starts with; a row GFM reads without them takes
-	// neither, so its "- x" is not an item either.
+	// list and table editing are for the prose and its tables, as the cell editor's: one owner of
+	// which lines take them (tui/widget's MarkdownListWhere)
 	if md, ok := e.render.(StructureRenderer); ok {
-		e.core.SetListEditingWhere(func(ln int) bool {
-			lines := e.core.Lines()
-			if md.InCode(lines, ln) {
-				return false
-			}
-			if !md.InTable(lines, ln) {
-				return true
-			}
-			_, row := tuiwidget.MarkdownTableCells(lines[ln])
-			return row
-		})
+		e.core.SetListEditingWhere(tuiwidget.MarkdownListWhere(e.core, md))
 	}
 	e.SetView(cfg.view)
 	return e
