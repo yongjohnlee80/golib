@@ -33,6 +33,9 @@ const (
 // steps draw them).
 type MarkdownCellRenderer struct {
 	MarkdownBlocks
+	// Languages highlights a fenced block in its info string's language, as gui's Markdown
+	// renderer and the HTML page do; nil: code in the code look only.
+	Languages *highlight.Catalog
 }
 
 var (
@@ -47,8 +50,9 @@ func (r *MarkdownCellRenderer) LayOut(b Block, lines []string, width int, measur
 	lb := mdCellLines{width: width, measure: measure, th: th}
 	switch {
 	case typing:
+		text := func(int) style.Style { return th.Text }
 		for ln := b.From; ln < b.To; ln++ {
-			lb.source(&cb, ln, lines[ln], th.Text)
+			lb.source(&cb, ln, lines[ln], text)
 		}
 	case b.From == 0 && r.frontmatterHidden(lines):
 		// closed frontmatter, hidden: no row of its own (a fold)
@@ -64,7 +68,7 @@ func (r *MarkdownCellRenderer) LayOut(b Block, lines []string, width int, measur
 				if code {
 					st = lb.role(MarkdownCodeStyle)
 				}
-				lb.source(&cb, ln, lines[ln], st)
+				lb.source(&cb, ln, lines[ln], func(int) style.Style { return st })
 			}
 		} else {
 			for ln := b.From; ln < b.To; ln++ {
@@ -89,36 +93,57 @@ func (r *MarkdownCellRenderer) frontmatterHidden(lines []string) bool {
 }
 
 // fenced lays a fenced code block: its opening fence as its info string, muted (no row when it has
-// none), its lines in the code look, its closing fence no row.
+// none), its lines in the code look, highlighted in the info string's language when Languages has
+// it (its state carried from line to line), its closing fence no row.
 func (r *MarkdownCellRenderer) fenced(lb *mdCellLines, cb *CellBlock, b Block, lines []string, f mdFence) {
 	open := lines[b.From]
 	lead := len(open) - len(strings.TrimLeft(open, " "))
-	info := strings.TrimSpace(open[lead+f.n:])
+	rest := open[lead+f.n:]
+	info := strings.TrimSpace(rest)
 	if info != "" {
-		col := clusterIndex(open, strings.Index(open[lead+f.n:], info)+lead+f.n)
-		lb.cells(cb, b.From, open[strings.Index(open, info):], col, func(int) style.Style { return lb.role(MarkdownQuietStyle) }, nil)
+		at := lead + f.n + strings.Index(rest, info) // the info string's own bytes, after the fence's
+		muted := func(int) style.Style { return lb.role(MarkdownQuietStyle) }
+		lb.cells(cb, b.From, open[at:at+len(info)], clusterIndex(open, at), muted, nil, nil, nil, nil)
 	}
+	var hl highlight.Highlighter
+	if words := strings.Fields(info); len(words) > 0 {
+		if d, ok := r.Languages.DefinitionForLanguage(words[0]); ok && !d.DocumentAdapter {
+			hl = d.NewSource(r.Languages).Highlighter
+		}
+	}
+	code := lb.role(MarkdownCodeStyle)
+	var state highlight.State
 	for ln := b.From + 1; ln < b.To; ln++ {
-		if ln == b.To-1 && markdown.FenceCloses(lines[ln], f.ch, f.n) {
+		line := lines[ln]
+		if ln == b.To-1 && markdown.FenceCloses(line, f.ch, f.n) {
 			break // the closing fence: no row
 		}
-		lb.source(cb, ln, lines[ln], lb.role(MarkdownCodeStyle))
+		if hl == nil {
+			lb.source(cb, ln, line, func(int) style.Style { return code })
+			continue
+		}
+		// the fence's indentation is not the code's, as gui's fenced block reads it
+		offset := min(len(line)-len(strings.TrimLeft(line, " ")), lead)
+		spans, next := hl.HighlightBlock(line[offset:], state)
+		spans, state = append([]highlight.Span(nil), spans...), next
+		lb.source(cb, ln, line, func(off int) style.Style { return lb.syntax(spans, off-offset, code) })
 	}
 }
 
-// line lays one prose line: a list item's marker as its bullet, a quote's marks as a bar, an empty
-// line as its own row, and the rest with its Markdown drawn.
+// line lays one prose line: a list item's marker as its bullet, its later rows hung under its text;
+// a quote's marks as bars, on every row; an empty line as its own row; and the rest with its
+// Markdown drawn.
 func (r *MarkdownCellRenderer) line(lb *mdCellLines, cb *CellBlock, ln int, line string) {
 	if strings.TrimSpace(line) == "" {
 		cb.Rows = append(cb.Rows, CellRow{Anchor: ln})
 		return
 	}
-	var lead []RowCell // drawn before the line's text: indentation, a bullet, a bar
-	start := 0         // the byte the text starts at
+	var lead, cont []RowCell // drawn before the line's text, and before each later row of it
+	start := 0               // the byte the text starts at
 	if indent, marker, ok := MarkdownListItem(line); ok {
 		col := 0
 		for _, c := range indent {
-			lead = append(lead, RowCell{Text: string(c), W: max(lb.measure(string(c)), 1), Style: lb.th.Text, Line: ln, Col: col})
+			lead = append(lead, lb.cell(string(c), lb.th.Text, ln, col))
 			col++
 		}
 		glyph := strings.TrimRight(marker, " ")
@@ -126,17 +151,27 @@ func (r *MarkdownCellRenderer) line(lb *mdCellLines, cb *CellBlock, ln int, line
 			glyph = MarkdownBullet(indent) + glyph[1:]
 		}
 		for c := range tui.Graphemes(glyph) {
-			lead = append(lead, RowCell{Text: c, W: max(lb.measure(c), 1), Style: lb.role(MarkdownMarkerStyle), Line: ln, Col: col})
+			lead = append(lead, lb.cell(c, lb.role(MarkdownMarkerStyle), ln, col))
 			col++
 		}
 		for range len(marker) - len(strings.TrimRight(marker, " ")) {
-			lead = append(lead, RowCell{Text: " ", W: 1, Style: lb.th.Text, Line: ln, Col: col})
+			lead = append(lead, lb.cell(" ", lb.th.Text, ln, col))
 			col++
+		}
+		for _, c := range lead { // the hanging indent: as wide as the item's lead
+			for range c.W {
+				cont = append(cont, RowCell{Text: " ", W: 1, Style: lb.th.Text, Line: -1})
+			}
 		}
 		start = len(indent) + len(marker)
 	} else if depth, off := MarkdownQuoteDepth(line); depth > 0 {
-		for i := range depth {
-			lead = append(lead, RowCell{Text: "│", W: 1, Style: lb.role(MarkdownMarkerStyle), Line: ln, Col: clusterIndex(line, strings.IndexByte(line[i:], '>')+i)}, RowCell{Text: " ", W: 1, Style: lb.th.Text, Line: -1})
+		at := 0 // past the marks read so far
+		for range depth {
+			at += strings.IndexByte(line[at:], '>')
+			bar := lb.role(MarkdownMarkerStyle)
+			lead = append(lead, RowCell{Text: "│", W: 1, Style: bar, Line: ln, Col: clusterIndex(line, at)}, RowCell{Text: " ", W: 1, Style: lb.th.Text, Line: -1})
+			cont = append(cont, RowCell{Text: "│", W: 1, Style: bar, Line: -1}, RowCell{Text: " ", W: 1, Style: lb.th.Text, Line: -1})
+			at++
 		}
 		start = off
 	}
@@ -146,10 +181,9 @@ func (r *MarkdownCellRenderer) line(lb *mdCellLines, cb *CellBlock, ln int, line
 	if r.HideMetadata {
 		mask, _ = r.Meta.HiddenClusters(ln)
 	}
-	base := clusterIndex(line, start)
-	lb.cells(cb, ln, text, base, func(off int) style.Style { return lb.styleOf(attrs[off]) }, func(off, col int) bool {
+	lb.cells(cb, ln, text, clusterIndex(line, start), func(off int) style.Style { return lb.styleOf(attrs[off]) }, func(off, col int) bool {
 		return attrs[off].Hidden || attrs[off].Br > 0 || (col < len(mask) && mask[col])
-	}, lead...)
+	}, func(off int) int { return attrs[off].Br }, lead, cont)
 }
 
 // mdCellLines lays text into rows of cells at a width.
@@ -162,6 +196,33 @@ type mdCellLines struct {
 // role is a Markdown construct's look: its syntax style over the text's.
 func (lb *mdCellLines) role(k highlight.Style) style.Style {
 	return lb.th.Syntax[k].Inherit(lb.th.Text)
+}
+
+// syntax is the look of the byte at off of a highlighted line: its span's syntax style over base,
+// base where no span covers it.
+func (lb *mdCellLines) syntax(spans []highlight.Span, off int, base style.Style) style.Style {
+	for _, sp := range spans {
+		if off < sp.Start {
+			break
+		}
+		if off < sp.End {
+			if int(sp.Style) < len(lb.th.Syntax) {
+				return lb.th.Syntax[sp.Style].Inherit(base)
+			}
+			break
+		}
+	}
+	return base
+}
+
+// cell is source cluster c of line ln at col, in st: a tab drawn as blank cells, as many as the
+// editor's measure gives it, never a tab on the screen.
+func (lb *mdCellLines) cell(c string, st style.Style, ln, col int) RowCell {
+	shown := c
+	if c == "\t" {
+		shown = " "
+	}
+	return RowCell{Text: shown, W: max(lb.measure(c), 1), Style: st, Line: ln, Col: col}
 }
 
 // styleOf is a byte's look by its attributes: the innermost construct's colour, as the Raw view's.
@@ -197,54 +258,92 @@ func (lb *mdCellLines) styleOf(a MarkdownAttr) style.Style {
 	return st
 }
 
-// source lays a line as it is, in st, wrapped.
-func (lb *mdCellLines) source(cb *CellBlock, ln int, line string, st style.Style) {
+// source lays a line as it is, each byte in look(off), wrapped.
+func (lb *mdCellLines) source(cb *CellBlock, ln int, line string, look func(off int) style.Style) {
 	if line == "" {
 		cb.Rows = append(cb.Rows, CellRow{Anchor: ln})
 		return
 	}
-	lb.cells(cb, ln, line, 0, func(int) style.Style { return st }, nil)
+	lb.cells(cb, ln, line, 0, look, nil, nil, nil, nil)
 }
 
 // cells lays text (a line's, from its cluster base) as rows: lead first, then each cluster not
-// hidden, in its look, wrapped at the width before the word that would cross it (or inside a word
-// wider than the row). A line with no cell shown is a row of its own (its Anchor).
-func (lb *mdCellLines) cells(cb *CellBlock, ln int, text string, base int, look func(off int) style.Style, hidden func(off, col int) bool, lead ...RowCell) {
-	row := CellRow{Anchor: -1, Cells: lead}
-	w := 0
-	for _, c := range lead {
-		w += c.W
+// hidden, in its look, wrapped at the width before the word that would cross it (or inside a word,
+// or a lead, wider than the row); each later row starts with cont (a hanging indent, a quote's
+// bars) when it leaves room. A bare <br> (brk: its id at a byte, 0 none) ends its row; a row it
+// leaves with nothing of the line's shown holds the <br>, a blank cell, so the caret has a place on
+// it. The line's first row, with no cell of its own shown, is its Anchor's.
+func (lb *mdCellLines) cells(cb *CellBlock, ln int, text string, base int, look func(off int) style.Style, hidden func(off, col int) bool, brk func(off int) int, lead, cont []RowCell) {
+	contW := 0
+	for _, c := range cont {
+		contW += c.W
 	}
+	if contW >= lb.width {
+		cont, contW = nil, 0
+	}
+	first := len(cb.Rows)
+	row := CellRow{Anchor: -1}
+	w, from := 0, 0 // the row's width, and where its own cells start (past cont)
 	lastSpace := -1 // the index in row.Cells after the last space: where a wrap may break
-	off, col := 0, base
+	next := func(carry []RowCell) {
+		cb.Rows = append(cb.Rows, row)
+		row = CellRow{Anchor: -1, Cells: append(append([]RowCell(nil), cont...), carry...)}
+		w, from, lastSpace = contW, len(cont), -1
+		for _, c := range carry {
+			w += c.W
+		}
+	}
+	put := func(c RowCell, space bool) {
+		if w+c.W > lb.width && len(row.Cells) > from {
+			var carry []RowCell
+			if !space && lastSpace > from && lastSpace < len(row.Cells) {
+				carry = append(carry, row.Cells[lastSpace:]...)
+				row.Cells = row.Cells[:lastSpace]
+			}
+			next(carry)
+		}
+		row.Cells = append(row.Cells, c)
+		w += c.W
+		if space {
+			lastSpace = len(row.Cells)
+		}
+	}
+	shown := func() bool { return !onlyDecorations(row.Cells) }
+	brCol := -1 // the column of the <br> waiting to end its row
+	breakRow := func() {
+		if !shown() {
+			row.Cells = append(row.Cells, RowCell{Text: " ", W: 1, Style: lb.th.Text, Line: ln, Col: brCol})
+		}
+		next(nil)
+	}
+	for _, c := range lead {
+		put(c, false)
+	}
+	off, col, lastBr := 0, base, 0
 	for c := range tui.Graphemes(text) {
+		if brk != nil {
+			if id := brk(off); id > 0 && id != lastBr { // a <br>'s first byte: two in a row are two
+				lastBr = id
+				if brCol >= 0 {
+					breakRow()
+				}
+				brCol = col
+			}
+		}
 		if hidden == nil || !hidden(off, col) {
-			cw, shown := max(lb.measure(c), 1), c // the editor's measure counts a tab as its cells
-			if c == "\t" {
-				shown = " " // drawn blank, as wide as the measure says
+			if brCol >= 0 {
+				breakRow()
+				brCol = -1
 			}
-			if w+cw > lb.width && len(row.Cells) > 0 {
-				carry := []RowCell(nil)
-				if lastSpace > 0 && lastSpace < len(row.Cells) && c != " " {
-					carry = append(carry, row.Cells[lastSpace:]...)
-					row.Cells = row.Cells[:lastSpace]
-				}
-				cb.Rows = append(cb.Rows, row)
-				row, w, lastSpace = CellRow{Anchor: -1, Cells: carry}, 0, -1
-				for _, rc := range carry {
-					w += rc.W
-				}
-			}
-			row.Cells = append(row.Cells, RowCell{Text: shown, W: cw, Style: look(off), Line: ln, Col: col})
-			w += cw
-			if c == " " {
-				lastSpace = len(row.Cells)
-			}
+			put(lb.cell(c, look(off), ln, col), c == " ")
 		}
 		off += len(c)
 		col++
 	}
-	if len(row.Cells) == 0 || onlyDecorations(row.Cells) {
+	if brCol >= 0 && !shown() { // a trailing <br><br>: the empty row the last one leaves
+		row.Cells = append(row.Cells, RowCell{Text: " ", W: 1, Style: lb.th.Text, Line: ln, Col: brCol})
+	}
+	if len(cb.Rows) == first && !shown() {
 		row.Anchor = ln
 	}
 	cb.Rows = append(cb.Rows, row)
