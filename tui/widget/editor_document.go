@@ -179,11 +179,11 @@ func (e *Editor) SetView(v EditorView) {
 func (e *Editor) View() EditorView { return e.doc.Chosen() }
 
 // ShownView is the view drawn now.
-func (e *Editor) ShownView() EditorView { return e.doc.Drawn(false) }
+func (e *Editor) ShownView() EditorView { return e.doc.Drawn(e.render != nil) }
 
-// canRender reports whether the Rendered view is available: a document view turned on, and the
-// Rendered view not withheld. The cell Editor renders nothing itself.
-func (e *Editor) canRender() bool { return e.doc.CanRender(false) }
+// canRender reports whether the Rendered view is available: a document view turned on or a renderer
+// of the Editor's own (SetRenderer), and the Rendered view not withheld.
+func (e *Editor) canRender() bool { return e.doc.CanRender(e.render != nil) }
 
 // RenderAvailable reports whether the Rendered view is available for the document shown: what the
 // Raw | Rendered switch shows faint when it is not.
@@ -233,7 +233,7 @@ func (e *Editor) TitleSwitch() tui.Component {
 // ModeSwitchShown implements ModeSwitchShower, for the switch held in a frame's title slot: shown
 // there while it is on (SetModeSwitch), on the title row (SetModeSwitchInTitle), and the editor has
 // a document view to switch to. Otherwise it takes no room there.
-func (e *Editor) ModeSwitchShown() bool { return e.swOn && e.swTitle && e.doc.Document() != nil }
+func (e *Editor) ModeSwitchShown() bool { return e.swOn && e.swTitle && e.hasRendered() }
 
 // switchInFrame reports whether a frame holds the switch: it is mounted, and only a frame mounts
 // it (the editor draws it on its own row unmounted).
@@ -253,7 +253,7 @@ func (e *Editor) switchChanged() {
 // Rendered view to switch to is the switch's reason to be there; an editor with none gives no row
 // up.
 func (e *Editor) headerRows() int {
-	if e.swOn && e.doc.Document() != nil && !(e.swTitle && e.switchInFrame()) {
+	if e.swOn && e.hasRendered() && !(e.swTitle && e.switchInFrame()) {
 		return 1
 	}
 	return 0
@@ -329,7 +329,13 @@ func (e *Editor) wireToggle() {
 
 // applyView shows the document view, or the text, as ShownView says.
 func (e *Editor) applyView() {
-	e.showDocument(e.ShownView() == ViewRendered)
+	shown := e.ShownView()
+	if e.render != nil { // a host's own list editing, with no renderer of the Editor's, is the host's
+		_, md := e.render.(markdownStructure) // only a structured renderer edits lists, and only drawing the text
+		e.core.SetListEditing(shown == ViewRendered && md && !e.doc.Active())
+	}
+	e.showDocument(shown == ViewRendered && e.doc.Active()) // only a document view is shown and focused
+	e.laid = [2]*renderedLayout{}
 	e.MarkDirty()
 	e.switchChanged()
 }

@@ -154,11 +154,13 @@ import (
 // ([Editor.CommandLine]) and the right-click menu ([Editor.ContextMenu]).
 type Editor struct {
 	Base
-	core      *EditorCore  // the behaviour; a field, never embedded
-	doc       DocumentSlot // a Rendered view drawn in place of the text (editor_document.go)
-	docToggle bool         // the core's Rendered toggle is wired (wireToggle)
-	cells     cellLayout   // the geometry, in cells: implements EditorLayout
-	keepPlace bool         // a text set keeps the reader's place (SetKeepPlace, ReplaceValue)
+	core      *EditorCore        // the behaviour; a field, never embedded
+	doc       DocumentSlot       // a Rendered view drawn in place of the text (editor_document.go)
+	docToggle bool               // the core's Rendered toggle is wired (wireToggle)
+	cells     cellLayout         // the geometry, in cells: implements EditorLayout
+	render    CellRenderer       // the Editor's own Rendered view, nil for none (editor_renderer.go)
+	laid      [2]*renderedLayout // the text through render at two widths (with and without the scroll indicator's column), kept until what they depend on changes
+	keepPlace bool               // a text set keeps the reader's place (SetKeepPlace, ReplaceValue)
 	// shown is the cursor and viewport Layout last kept the cursor in view for: a layout pass
 	// reveals it only when either changed, so the wheel's scroll stays
 	shown viewMark
