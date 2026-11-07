@@ -3,13 +3,37 @@ width 20
 > | --- | --- |
 > | apple | a long description of it |
 
-"Name │ Description"
-    0-3 bold fg=fg bg=background
-    4-6 fg=muted bg=background
-    7-17 bold fg=fg bg=background
-"apple │ a long"
-    0-4 fg=fg bg=background
-    5-7 fg=muted bg=background
-    8-13 fg=fg bg=background
-"description of it"
-    0-16 fg=fg bg=background
+"┌───────┬──────────┐"
+    0-19 fg=muted bg=background
+"│ Name  │ Descript │"
+    0-1 fg=muted bg=background
+    2-5 bold fg=fg bg=background
+    6-9 fg=muted bg=background
+    10-17 bold fg=fg bg=background
+    18-19 fg=muted bg=background
+"│       │ ion      │"
+    0-9 fg=muted bg=background
+    10-12 bold fg=fg bg=background
+    13-19 fg=muted bg=background
+"├───────┼──────────┤"
+    0-19 fg=muted bg=background
+"│ apple │ a long   │"
+    0-1 fg=muted bg=background
+    2-6 fg=fg bg=background
+    7-9 fg=muted bg=background
+    10-15 fg=fg bg=background
+    16-19 fg=muted bg=background
+"│       │ descript │"
+    0-9 fg=muted bg=background
+    10-17 fg=fg bg=background
+    18-19 fg=muted bg=background
+"│       │ ion of   │"
+    0-9 fg=muted bg=background
+    10-15 fg=fg bg=background
+    16-19 fg=muted bg=background
+"│       │ it       │"
+    0-9 fg=muted bg=background
+    10-11 fg=fg bg=background
+    12-19 fg=muted bg=background
+"└───────┴──────────┘"
+    0-19 fg=muted bg=background

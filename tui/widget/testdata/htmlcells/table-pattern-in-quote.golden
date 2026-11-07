@@ -1,0 +1,28 @@
+width 60
+> > | A | B |
+> > | --- | --- |
+> > | 1 | 2 |
+
+"▎ ┌───┬───┐"
+    0-0 fg=border bg=background
+    1-10 fg=muted bg=background
+"▎ │ A │ B │"
+    0-0 fg=border bg=background
+    1-3 fg=muted bg=background
+    4-4 bold fg=fg bg=background
+    5-7 fg=muted bg=background
+    8-8 bold fg=fg bg=background
+    9-10 fg=muted bg=background
+"▎ ├───┼───┤"
+    0-0 fg=border bg=background
+    1-10 fg=muted bg=background
+"▎ │ 1 │ 2 │"
+    0-0 fg=border bg=background
+    1-3 fg=muted bg=background
+    4-4 fg=fg bg=background
+    5-7 fg=muted bg=background
+    8-8 fg=fg bg=background
+    9-10 fg=muted bg=background
+"▎ └───┴───┘"
+    0-0 fg=border bg=background
+    1-10 fg=muted bg=background

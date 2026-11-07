@@ -1,0 +1,30 @@
+width 60
+> | Op | Meaning |
+> | --- | --- |
+> | `a \| b` | a or b |
+> | x \| y | either |
+
+"┌───────┬─────────┐"
+    0-18 fg=muted bg=background
+"│ Op    │ Meaning │"
+    0-1 fg=muted bg=background
+    2-3 bold fg=fg bg=background
+    4-9 fg=muted bg=background
+    10-16 bold fg=fg bg=background
+    17-18 fg=muted bg=background
+"├───────┼─────────┤"
+    0-18 fg=muted bg=background
+"│ a | b │ a or b  │"
+    0-1 fg=muted bg=background
+    2-6 fg=accent-document bg=background
+    7-9 fg=muted bg=background
+    10-15 fg=fg bg=background
+    16-18 fg=muted bg=background
+"│ x | y │ either  │"
+    0-1 fg=muted bg=background
+    2-6 fg=fg bg=background
+    7-9 fg=muted bg=background
+    10-15 fg=fg bg=background
+    16-18 fg=muted bg=background
+"└───────┴─────────┘"
+    0-18 fg=muted bg=background

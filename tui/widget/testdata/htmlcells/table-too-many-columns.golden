@@ -1,0 +1,24 @@
+width 20
+> | one | two | three | four | five |
+> | --- | --- | --- | --- | --- |
+> | alpha | bravo | charlie | delta | echo |
+
+" ┌───────┬───────┬─"
+    1-18 fg=muted bg=background
+" │ one   │ two   │"
+    1-2 fg=muted bg=background
+    3-5 bold fg=fg bg=background
+    6-10 fg=muted bg=background
+    11-13 bold fg=fg bg=background
+    14-18 fg=muted bg=background
+" ├───────┼───────┼─»"
+    1-18 fg=muted bg=background
+    19-19 fg=fg bg=background
+" │ alpha │ bravo │"
+    1-2 fg=muted bg=background
+    3-7 fg=fg bg=background
+    8-10 fg=muted bg=background
+    11-15 fg=fg bg=background
+    16-18 fg=muted bg=background
+" └───────┴───────┴─"
+    1-18 fg=muted bg=background

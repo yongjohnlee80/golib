@@ -1,0 +1,23 @@
+width 60
+> | Doc | Where |
+> | --- | --- |
+> | [the spec](spec.md) | <https://example.com> |
+
+"┌──────────┬─────────────────────┐"
+    0-33 fg=muted bg=background
+"│ Doc      │ Where               │"
+    0-1 fg=muted bg=background
+    2-4 bold fg=fg bg=background
+    5-12 fg=muted bg=background
+    13-17 bold fg=fg bg=background
+    18-33 fg=muted bg=background
+"├──────────┼─────────────────────┤"
+    0-33 fg=muted bg=background
+"│ the spec │ https://example.com │"
+    0-1 fg=muted bg=background
+    2-9 underline fg=primary bg=background
+    10-12 fg=muted bg=background
+    13-31 underline fg=primary bg=background
+    32-33 fg=muted bg=background
+"└──────────┴─────────────────────┘"
+    0-33 fg=muted bg=background

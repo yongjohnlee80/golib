@@ -1,0 +1,30 @@
+width 60
+> | Constant | Value |
+> | --- | --- |
+> | `maxQueryLen` | 256 |
+> | `matchThreshold` | 0.45 |
+
+"┌────────────────┬───────┐"
+    0-25 fg=muted bg=background
+"│ Constant       │ Value │"
+    0-1 fg=muted bg=background
+    2-9 bold fg=fg bg=background
+    10-18 fg=muted bg=background
+    19-23 bold fg=fg bg=background
+    24-25 fg=muted bg=background
+"├────────────────┼───────┤"
+    0-25 fg=muted bg=background
+"│ maxQueryLen    │ 256   │"
+    0-1 fg=muted bg=background
+    2-12 fg=accent-document bg=background
+    13-18 fg=muted bg=background
+    19-21 fg=fg bg=background
+    22-25 fg=muted bg=background
+"│ matchThreshold │ 0.45  │"
+    0-1 fg=muted bg=background
+    2-15 fg=accent-document bg=background
+    16-18 fg=muted bg=background
+    19-22 fg=fg bg=background
+    23-25 fg=muted bg=background
+"└────────────────┴───────┘"
+    0-25 fg=muted bg=background
