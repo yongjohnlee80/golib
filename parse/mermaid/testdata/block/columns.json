@@ -1,0 +1,80 @@
+{
+  "Root": {
+    "Columns": 3,
+    "Items": [
+      {
+        "ID": "a",
+        "Label": "a",
+        "Shape": "rect",
+        "Width": 1,
+        "Space": false,
+        "Group": null,
+        "Span": [
+          25,
+          26
+        ]
+      },
+      {
+        "ID": "b",
+        "Label": "b",
+        "Shape": "rect",
+        "Width": 1,
+        "Space": false,
+        "Group": null,
+        "Span": [
+          27,
+          28
+        ]
+      },
+      {
+        "ID": "c",
+        "Label": "c",
+        "Shape": "rect",
+        "Width": 1,
+        "Space": false,
+        "Group": null,
+        "Span": [
+          29,
+          30
+        ]
+      },
+      {
+        "ID": "d",
+        "Label": "d",
+        "Shape": "rect",
+        "Width": 1,
+        "Space": false,
+        "Group": null,
+        "Span": [
+          33,
+          34
+        ]
+      },
+      {
+        "ID": "e",
+        "Label": "e",
+        "Shape": "rect",
+        "Width": 1,
+        "Space": false,
+        "Group": null,
+        "Span": [
+          35,
+          36
+        ]
+      },
+      {
+        "ID": "f",
+        "Label": "f",
+        "Shape": "rect",
+        "Width": 1,
+        "Space": false,
+        "Group": null,
+        "Span": [
+          37,
+          38
+        ]
+      }
+    ]
+  },
+  "Edges": null
+}
