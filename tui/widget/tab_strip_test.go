@@ -456,3 +456,36 @@ func TestDrawingATabStripStoresNothing(t *testing.T) {
 		t.Errorf("after the layout the strip does not show tab 11:\n%s", got)
 	}
 }
+
+// TestAnActiveTabWhoseLabelGrowsIsShownWhole: the active tab, revealed while its label was short
+// (a buffer opened before its file's name arrives), grows; the window scrolls again so it ends
+// within the row, not cut at →. A scroll with < and > is left alone while the label stays as it is.
+func TestAnActiveTabWhoseLabelGrowsIsShownWhole(t *testing.T) {
+	tabsWith := func(last string) []StripTab {
+		var tabs []StripTab
+		for i := range 5 {
+			tabs = append(tabs, StripTab{ID: fmt.Sprint(i), Label: fmt.Sprintf("tab-%d", i)})
+		}
+		return append(tabs, StripTab{ID: "5", Label: last})
+	}
+	strip := NewTabStrip()
+	strip.SetTabs(tabsWith("x"))
+	strip.SetActive("5")
+	strip.SetActions(func() {}, nil)
+	strip.SetMenu(func(string) []MenuItemModel { return nil })
+	h := startAppInternal(t, strip, 40, 1)
+	defer h.stopInternal()
+	h.syncInternal()
+	long := "a-rather-long-name.md"
+	h.onLoopInternal(func() { strip.SetTabs(tabsWith(long)) }) // the label grows; the active tab stays
+	if !waitInternal(h, func() bool { return strings.Contains(h.tb.String(), long) }) {
+		t.Fatalf("the active tab's grown label %q is not shown whole:\n%s", long, h.tb.String())
+	}
+	var spans []TabSpan
+	h.onLoopInternal(func() { spans = strip.TabSpans() })
+	for _, sp := range spans {
+		if sp.X+sp.W > 40 {
+			t.Fatalf("span %+v passes the row's 40 cells:\n%s", sp, h.tb.String())
+		}
+	}
+}

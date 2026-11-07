@@ -58,9 +58,12 @@ type tabStrip struct {
 	// avail, first and revealed are stored after layout (commitWindow), and by a scroll: the row's
 	// width as laid out (0 before the first layout: room for every tab), the first tab shown while the
 	// tabs overflow the row (< and > scroll it), and the active tab the window last scrolled to show
-	avail    int
-	first    int
-	revealed string
+	// and its width then (revealedW: a label that grows after, as a buffer's does when its file's name
+	// arrives, is shown again whole)
+	avail     int
+	first     int
+	revealed  string
+	revealedW int
 }
 
 // stripKind is what a stretch of the row is.
@@ -422,13 +425,14 @@ func fitFrom(widths []int, room int) int {
 // the row and, while they do, the window over them, room cells wide from first, and the active tab
 // it reveals.
 type stripView struct {
-	tabs     []stripTab
-	labels   []string
-	widths   []int
-	overflow bool
-	room     int
-	first    int
-	revealed string
+	tabs      []stripTab
+	labels    []string
+	widths    []int
+	overflow  bool
+	room      int
+	first     int
+	revealed  string
+	revealedW int
 }
 
 // view is the row as drawn now, from the stored window, storing nothing.
@@ -447,19 +451,23 @@ func (s *tabStrip) view() stripView {
 	}
 	v.overflow = true
 	v.room = max(s.avail-s.tail()-8, 1) // the window: the row less < and > and their cells
-	v.first, v.revealed = s.window(tabs, v.widths, v.room)
+	v.first, v.revealed, v.revealedW = s.window(tabs, v.widths, v.room)
 	return v
 }
 
 // window is the stored window, room cells wide, scrolled to show the active tab when it changed
-// since the window last showed it, and kept among the tabs: first is kept from layout to layout,
+// since the window last showed it, or its width did (its label grew or shrank: a cut at the window's
+// edge would hide its end), and kept among the tabs: first is kept from layout to layout,
 // so a row grown wider, or tabs closed at the end, would leave it later than it need be, and the
 // cells it frees empty before >.
-func (s *tabStrip) window(tabs []stripTab, widths []int, room int) (first int, revealed string) {
-	first, revealed = min(s.first, max(len(tabs)-1, 0)), s.revealed
-	if active := s.owner.stripActive(); active != revealed {
+func (s *tabStrip) window(tabs []stripTab, widths []int, room int) (first int, revealed string, revealedW int) {
+	first, revealed, revealedW = min(s.first, max(len(tabs)-1, 0)), s.revealed, s.revealedW
+	active := s.owner.stripActive()
+	at := slices.IndexFunc(tabs, func(tb stripTab) bool { return tb.id == active })
+	if active != revealed || (at >= 0 && widths[at] != revealedW) {
 		revealed = active
-		if at := slices.IndexFunc(tabs, func(tb stripTab) bool { return tb.id == active }); at >= 0 {
+		if at >= 0 {
+			revealedW = widths[at]
 			first = min(first, at)
 			// forward until the active tab ends within the window
 			for first < at {
@@ -474,7 +482,7 @@ func (s *tabStrip) window(tabs []stripTab, widths []int, room int) (first int, r
 			}
 		}
 	}
-	return min(first, fitFrom(widths, room)), revealed
+	return min(first, fitFrom(widths, room)), revealed, revealedW
 }
 
 // tabWindowCommitKey is a tab row's window commit (tui.Context.AfterLayout), the same for every
@@ -486,13 +494,13 @@ const tabWindowCommitKey tui.CommitKey = "tab-window"
 func (s *tabStrip) commitWindow(avail int) {
 	s.avail = avail
 	v := s.view()
-	s.first, s.revealed = v.first, v.revealed
+	s.first, s.revealed, s.revealedW = v.first, v.revealed, v.revealedW
 }
 
 // scroll moves the window as shown by delta tabs, kept among them, and repaints.
 func (s *tabStrip) scroll(delta int) {
 	v := s.view()
-	s.first, s.revealed = max(min(v.first+delta, len(v.tabs)-1), 0), v.revealed
+	s.first, s.revealed, s.revealedW = max(min(v.first+delta, len(v.tabs)-1), 0), v.revealed, v.revealedW
 	s.base.MarkDirty()
 }
 
