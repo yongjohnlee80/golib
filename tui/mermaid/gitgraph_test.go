@@ -96,15 +96,15 @@ func bitsOf(d dirs) int {
 	return n
 }
 
-// The lanes: main first, then the branches given an order, by it, then the rest as they were made,
-// as Mermaid places them; both renderers lane by it.
+// The lanes, as Mermaid places them: by order, a branch with none taking 0.<its index>, so c (0.3)
+// and d (0.4) come before b (order 1) and a (order 3); main 0. Both renderers lane by it.
 func TestGitLanesFollowTheOrders(t *testing.T) {
 	d := mustParse(t, "gitGraph\n  commit\n  branch a order: 3\n  branch b order: 1\n  branch c\n  branch d\n").(*pm.GitGraphDiagram)
 	got := GitLanes(d)
-	want := []int{0, 2, 1, 3, 4} // main, a, b, c, d by branch index
+	want := []int{0, 4, 3, 1, 2} // main, a, b, c, d by branch index: main, c, d, b, a
 	for i := range want {
 		if got[i] != want[i] {
-			t.Fatalf("lanes %v, want %v (main, then b by order 1, a by 3, then c and d as made)", got, want)
+			t.Fatalf("lanes %v, want %v (main 0, c 0.3, d 0.4, b 1, a 3)", got, want)
 		}
 	}
 }

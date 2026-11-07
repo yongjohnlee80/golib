@@ -3,6 +3,8 @@ package mermaid
 import (
 	"testing"
 
+	"github.com/yongjohnlee80/golib/gui"
+
 	pm "github.com/yongjohnlee80/golib/parse/mermaid"
 )
 
@@ -114,5 +116,34 @@ func TestAGitGraphsLabelsSitBesideAVerticalLane(t *testing.T) {
 		if len(tx.lines) > 0 && tx.lines[0] == "base" && tx.box.X <= tagBox.box.X+tagBox.box.W {
 			t.Errorf("the id at x %v is not right of the tag's box (ends %v)", tx.box.X, tagBox.box.X+tagBox.box.W)
 		}
+	}
+}
+
+// A REVERSE commit's cross is painted after its ring: the ring's fill would hide a cross drawn
+// under it. On a recording canvas, after the ring's fill (its last ellipse) come its outline's
+// stroke and then the cross's two: three strokes, where a cross drawn under the ring leaves one.
+func TestAReverseCommitsCrossIsPaintedOverItsRing(t *testing.T) {
+	l, err := lay(t, "gitGraph\n  commit type: REVERSE", 2000)
+	if err != nil {
+		t.Fatal(err)
+	}
+	rc := gui.NewRecordingCanvas(l.Size(), gui.Size{W: 8, H: 16})
+	l.Paint(rc)
+	lastEllipse, strokesAfter := -1, 0
+	for i, c := range rc.Calls {
+		if c.Op == "FillEllipse" {
+			lastEllipse = i
+		}
+	}
+	if lastEllipse < 0 {
+		t.Fatalf("no ellipse painted: %v", rc.Calls)
+	}
+	for _, c := range rc.Calls[lastEllipse+1:] {
+		if c.Op == "StrokePath" {
+			strokesAfter++
+		}
+	}
+	if strokesAfter != 3 {
+		t.Errorf("%d strokes after the ring's fill, want 3 (its outline, then the cross's two)", strokesAfter)
 	}
 }

@@ -1,6 +1,7 @@
 package mermaid
 
 import (
+	"cmp"
 	"context"
 	"slices"
 	"strconv"
@@ -26,30 +27,26 @@ func gitGlyph(c pm.GitCommit) string {
 	return "●"
 }
 
-// GitLanes is each branch's lane: branches with an order first, by it, then the rest in the
-// order they were made, main always first, as Mermaid places them. Both renderers lane a gitGraph by it.
+// GitLanes is each branch's lane, as Mermaid places them: by order, a branch with none taking
+// 0.<its index> (the number Mermaid parses from those digits, so the fifth branch's 0.4 sorts before
+// one given order 1, and the eleventh's 0.10 before the third's 0.2), main 0, ties as made. Both
+// renderers lane a gitGraph by it.
 func GitLanes(d *pm.GitGraphDiagram) []int {
 	idx := make([]int, len(d.Branches))
 	for i := range idx {
 		idx[i] = i
 	}
-	key := func(i int) (int, int) {
+	key := func(i int) float64 {
 		switch {
-		case i == 0:
-			return 0, 0
+		case i == 0 && d.Branches[0].Order < 0:
+			return 0
 		case d.Branches[i].Order >= 0:
-			return 1, d.Branches[i].Order
+			return float64(d.Branches[i].Order)
 		}
-		return 2, i
+		k, _ := strconv.ParseFloat("0."+strconv.Itoa(i), 64)
+		return k
 	}
-	slices.SortStableFunc(idx, func(a, b int) int {
-		ga, oa := key(a)
-		gb, ob := key(b)
-		if ga != gb {
-			return ga - gb
-		}
-		return oa - ob
-	})
+	slices.SortStableFunc(idx, func(a, b int) int { return cmp.Compare(key(a), key(b)) })
 	lane := make([]int, len(d.Branches))
 	for l, b := range idx {
 		lane[b] = l

@@ -148,6 +148,8 @@ func TestGitGraphSyntaxErrors(t *testing.T) {
 		{"gitGraph RL:\n  commit", "after gitGraph"},
 		{"gitGraph\n  commit id \"x\"", "key: value"},
 		{"gitGraph\n  commit id: \"x", "not closed"},
+		{"gitGraph\n  branch dev\n  commit id: \"A\"\n  checkout main\n  merge dev", "no commits to merge \"dev\" into"},
+		{"gitGraph\n  branch dev\n  commit id: \"A\"\n  checkout main\n  cherry-pick id: \"A\"", "no commits to cherry-pick onto"},
 	} {
 		_, err := mermaid.Parse(c.src)
 		var se *mermaid.SyntaxError
@@ -181,5 +183,19 @@ func TestGitGraphSpans(t *testing.T) {
 	}
 	if s := g.Branches[1].Span; src[s[0]:s[1]] != "branch b" {
 		t.Errorf("branch span %q", src[s[0]:s[1]])
+	}
+}
+
+// A bare name, id or tag is held to the label limit as a quoted one is: past it, ErrTooLarge.
+func TestGitGraphBareValuesAreLimited(t *testing.T) {
+	long := strings.Repeat("x", mermaid.MaxLabel+1)
+	for _, src := range []string{
+		"gitGraph\n  branch " + long,
+		"gitGraph\n  commit id: " + long,
+		"gitGraph\n  commit tag: " + long,
+	} {
+		if _, err := mermaid.Parse(src); !errors.Is(err, mermaid.ErrTooLarge) {
+			t.Errorf("a bare value of %d bytes: %v, want ErrTooLarge", len(long), err)
+		}
 	}
 }
