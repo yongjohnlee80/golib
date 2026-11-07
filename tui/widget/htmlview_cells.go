@@ -73,10 +73,17 @@ type cellHTML struct {
 	// codeW is each code block's width as it is laid out, its widest line with the space either side
 	// of it, by its block index (over).
 	codeW map[int]int
+	// imgs are the page's images, loaded for a terminal that draws them (htmlview_cellimages.go);
+	// laidDrawn is whether the last layout could draw them; imageIDs each laid image's placement
+	// id; shownImages the pictures the last paint showed, where (HTMLView.PlacedImages).
+	imgs        *cellImages
+	laidDrawn   bool
+	imageIDs    map[cellImageKey]uint32
+	shownImages []shownImage
 }
 
 func newCellHTML(measure func(string) int) *cellHTML {
-	return &cellHTML{measure: measure, width: 1, m: cellMarks{cur: -1}}
+	return &cellHTML{measure: measure, width: 1, m: cellMarks{cur: -1}, imageIDs: map[cellImageKey]uint32{}}
 }
 
 var _ HTMLLayout = (*cellHTML)(nil)
@@ -106,6 +113,7 @@ func (c *cellHTML) Height() float32 { return float32(len(c.rows)) }
 // its header row, its bottom), h1 and h2 above their rules.
 func (c *cellHTML) layOut() {
 	c.rows, c.tops, c.codeW = c.rows[:0], make([]int, len(c.doc)), map[int]int{}
+	c.laidDrawn = c.imgs.drawn()
 	widths := c.columnWidths()
 	for bi := range c.doc {
 		b := &c.doc[bi]
@@ -118,7 +126,9 @@ func (c *cellHTML) layOut() {
 		if boxed && c.tableEdge(bi, -1) {
 			c.layBox(bi, b, cols, "┌", "┬", "┐")
 		}
-		c.layBlock(bi, b, cols)
+		if !c.layImage(bi, b) {
+			c.layBlock(bi, b, cols)
+		}
 		switch {
 		case boxed && c.tableEdge(bi, 1):
 			c.layBox(bi, b, cols, "└", "┴", "┘")
@@ -928,6 +938,7 @@ func (c *cellHTML) PaintCells(s tui.Surface, top, w int, from, to DocPos) {
 	from, to = OrderDocPos(from, to)
 	selecting := from != to
 	var painted cellPicture // the diagram drawn last: each is painted once, from its first row shown
+	c.shownImages = c.shownImages[:0]
 	for y := 0; y < sz.H; y++ {
 		ri := top + y
 		if ri < 0 || ri >= len(c.rows) {
@@ -938,6 +949,10 @@ func (c *cellHTML) PaintCells(s tui.Surface, top, w int, from, to DocPos) {
 			if r.grid != painted {
 				painted = r.grid
 				c.paintGrid(s, r, y, sz.H)
+				if pic, ok := r.grid.(*imagePicture); ok {
+					x0, _, _ := c.gridPlace(r, w)
+					c.shownImages = append(c.shownImages, shownImage{pic, x0, y - r.gridRow})
+				}
 			}
 			continue
 		}

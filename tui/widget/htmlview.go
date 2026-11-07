@@ -343,6 +343,7 @@ func WithSyntax(catalog *highlight.Catalog, styles SyntaxStyles) HTMLOption {
 func NewHTMLView(opts ...HTMLOption) *HTMLView {
 	v := &HTMLView{lastSrc: -1}
 	cells := newCellHTML(v.measure)
+	cells.imgs = newCellImages(v)
 	cells.notice = func(kind string) string { // the view's words when it has some, asked each layout
 		if v.diagramNotice != nil {
 			return v.diagramNotice(kind)
@@ -790,6 +791,9 @@ func (v *HTMLView) endDrag() {
 func (v *HTMLView) Layout(c tui.Constraints) tui.Size {
 	v.w = fillW(c)
 	v.h = fillH(c)
+	if c, ok := v.layout.(*cellHTML); ok && c.src != nil && c.imgs.drawn() != c.laidDrawn {
+		c.layOut() // mounted on a terminal that draws images since it was laid out: its pictures now
+	}
 	if cells, ok := v.layout.(HTMLLayoutCells); ok {
 		cells.SetWidth(float32(v.w))
 		if cells.Height() > float32(v.h) && v.w > 1 {
