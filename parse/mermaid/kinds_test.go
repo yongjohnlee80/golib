@@ -22,11 +22,16 @@ var kindSamples = map[string]string{
 	"requirementDiagram": "requirementDiagram\n  requirement a {\n  id: 1\n  text: the text\n  }",
 	"gantt":              "gantt\n  dateFormat YYYY-MM-DD\n  a :2026-01-01, 3d",
 	"pie":                "pie\n  \"a\": 1",
+	"quadrantChart":      "quadrantChart\n  A: [0.5, 0.5]",
+	"xychart-beta":       "xychart-beta\n  bar [1, 2]",
+	"xychart":            "xychart\n  line [1, 2]",
+	"sankey-beta":        "sankey-beta\na,b,1",
+	"sankey":             "sankey\na,b,1",
 }
 
-// Kinds is the table Parse dispatches from: the eleven kinds, each with its header keywords, and
-// each keyword's diagram parses as its kind. A kind on no row (a quadrantChart, a keyword in
-// another case) is ErrUnsupported.
+// Kinds is the table Parse dispatches from: the fourteen kinds, each with its header keywords, and
+// each keyword's diagram parses as its kind. A kind on no row (a gitGraph, a keyword in another
+// case) is ErrUnsupported.
 func TestKindsAreWhatParseReads(t *testing.T) {
 	want := []KindInfo{
 		{Flowchart, []string{"flowchart", "graph"}},
@@ -40,6 +45,9 @@ func TestKindsAreWhatParseReads(t *testing.T) {
 		{Requirement, []string{"requirementDiagram"}},
 		{Gantt, []string{"gantt"}},
 		{Pie, []string{"pie"}},
+		{Quadrant, []string{"quadrantChart"}},
+		{XYChart, []string{"xychart-beta", "xychart"}},
+		{Sankey, []string{"sankey-beta", "sankey"}},
 	}
 	got := Kinds()
 	if !reflect.DeepEqual(got, want) {
@@ -53,7 +61,7 @@ func TestKindsAreWhatParseReads(t *testing.T) {
 			}
 		}
 	}
-	for _, src := range []string{"quadrantChart\n", "Flowchart LR\n  A --> B"} {
+	for _, src := range []string{"gitGraph\n  commit\n", "Flowchart LR\n  A --> B"} {
 		if _, err := Parse(src); !errors.Is(err, ErrUnsupported) {
 			t.Errorf("%q: %v; want ErrUnsupported", src, err)
 		}

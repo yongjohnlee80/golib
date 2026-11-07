@@ -6,9 +6,9 @@ import (
 	"math"
 	"slices"
 	"sort"
-	"strings"
 
 	"github.com/yongjohnlee80/golib/gui"
+	pvl "github.com/yongjohnlee80/golib/parse/vegalite"
 )
 
 // LAYOUT. A chart is its title over its plot, the y axis left of the plot, the x axis under it,
@@ -21,8 +21,8 @@ import (
 // each layer's in turn for the marks.
 type builder struct {
 	ctx   context.Context // cancelled: stroke adds nothing more, and Lay answers the error
-	l     *layered
-	p     *plan
+	l     *pvl.Layered
+	p     *pvl.Plan
 	th    Theme
 	m     gui.Measurer
 	unit  float32
@@ -33,7 +33,7 @@ type builder struct {
 
 // scale maps one position channel's values to pixels along the plot: [from, to] on screen.
 type scale struct {
-	a        *axisPlan
+	a        *pvl.AxisPlan
 	from, to float32
 	ticks    []float64
 	step     float64 // the ticks' step: a linear scale's, for its labels
@@ -46,14 +46,14 @@ type scale struct {
 // px is v (a continuous value) on the scale, kept within the plot.
 func (s *scale) px(v float64) float32 {
 	a := s.a
-	t := float32((v - a.lo) / (a.hi - a.lo))
+	t := float32((v - a.Lo) / (a.Hi - a.Lo))
 	t = min(max(t, 0), 1)
 	return s.from + t*(s.to-s.from)
 }
 
 // at is category v's position: its band's start, or its point.
 func (s *scale) at(v string) float32 {
-	i := slices.Index(s.a.domain, v)
+	i := slices.Index(s.a.Domain, v)
 	if s.from > s.to { // y: the first category on top
 		return s.to + s.first + float32(i)*s.stepPx
 	}
@@ -61,25 +61,25 @@ func (s *scale) at(v string) float32 {
 }
 
 // centre is a datum's position on the scale: a category's centre, or a value's.
-func (s *scale) centre(v pos) float32 {
-	if s.a.discrete {
-		if s.a.band {
-			return s.at(v.str) + s.band/2
+func (s *scale) centre(v pvl.Pos) float32 {
+	if s.a.Discrete {
+		if s.a.Band {
+			return s.at(v.Str) + s.band/2
 		}
-		return s.at(v.str)
+		return s.at(v.Str)
 	}
-	return s.px(v.num)
+	return s.px(v.Num)
 }
 
 // label is a tick's text.
 func (s *scale) label(v float64) string {
 	switch {
-	case s.a.temporal:
-		return formatTime(v)
+	case s.a.Temporal:
+		return pvl.FormatTime(v)
 	case s.percent:
-		return formatPercent(v, s.step)
+		return pvl.FormatPercent(v, s.step)
 	}
-	return formatNumber(v, s.step)
+	return pvl.FormatNumber(v, s.step)
 }
 
 // tickCount is Vega-Lite's: one a 40 pixels of the axis, at least 2.
@@ -91,21 +91,21 @@ func tickCount(length, unit float32) int {
 func (s *scale) setTicks(length, unit float32) {
 	a := s.a
 	n := tickCount(length, unit)
-	if a.temporal {
-		s.ticks = timeTicks(a.lo, a.hi, n)
+	if a.Temporal {
+		s.ticks = pvl.TimeTicks(a.Lo, a.Hi, n)
 		return
 	}
-	if a.nice {
-		a.lo, a.hi = niceDomain(a.lo, a.hi, n)
+	if a.Nice {
+		a.Lo, a.Hi = pvl.NiceDomain(a.Lo, a.Hi, n)
 	}
-	s.ticks, s.step = linearTicks(a.lo, a.hi, n)
+	s.ticks, s.step = pvl.Ticks(a.Lo, a.Hi, n)
 }
 
 // setCategories places a discrete scale's categories along length: bands with Vega-Lite's padding
 // (0.1 inside, 0.05 out), or points half a step in from each end.
 func (s *scale) setCategories(length float32) {
-	n := float32(max(len(s.a.domain), 1))
-	if s.a.band {
+	n := float32(max(len(s.a.Domain), 1))
+	if s.a.Band {
 		const inner, outer = 0.1, 0.05
 		s.stepPx = length / (n - inner + 2*outer)
 		s.band = s.stepPx * (1 - inner)
@@ -140,70 +140,55 @@ func (b *builder) line(c color.NRGBA, width float32, pts ...gui.Point) {
 	b.add(item{kind: itemLine, pts: pts, color: c, width: width})
 }
 
-// axisTitle is a channel's title: its own, or its field's, as Vega-Lite words an aggregate's.
-func axisTitle(ch *channel) string {
-	switch {
-	case ch.noTitle:
-		return ""
-	case ch.title != nil:
-		return *ch.title
-	case ch.aggregate == aggCount:
-		return "Count of Records"
-	case ch.aggregate != aggNone:
-		return map[aggregation]string{aggSum: "Sum", aggMean: "Mean", aggMedian: "Median", aggMin: "Min", aggMax: "Max"}[ch.aggregate] + " of " + ch.field
-	}
-	return ch.field
-}
-
 // build lays l out for width: the base layer's axes and the first colour layer's legend, over the
 // shared scales, and every layer's marks in order.
-func build(ctx context.Context, l *layered, width float32, th Theme, m gui.Measurer) *Laid {
-	p := l.base
+func build(ctx context.Context, l *pvl.Layered, width float32, th Theme, m gui.Measurer) *Laid {
+	p := l.Base
 	b := &builder{ctx: ctx, l: l, p: p, th: th, m: m, unit: th.Font.Size / 11, lh: th.Font.Size * gui.LineHeight}
 	b.bold = th.Font
 	b.bold.Bold = true
 	u, lh := b.unit, b.lh
-	c, sp := p.c, l.sp
+	c, sp := p.Layer, l.Spec
 	tick, pad := 5*u, 4*u
 
-	xs, ys := &scale{a: &l.xs}, &scale{a: &l.ys}
-	xs.percent = p.normalize && p.dimY
-	ys.percent = p.normalize && !p.dimY
+	xs, ys := &scale{a: &l.Xs}, &scale{a: &l.Ys}
+	xs.percent = p.Normalize && p.DimY
+	ys.percent = p.Normalize && !p.DimY
 
 	// the legend: its title and entries, to the right of the plot
 	var legendW, legendH float32
-	var lp *plan // the layer the legend is of: the first coloured by a field
-	for _, o := range l.order {
-		if q, ok := o.axisLayer(); ok && q.c.color != nil && q.c.color.value == nil {
+	var lp *pvl.Plan // the layer the legend is of: the first coloured by a field
+	for _, o := range l.Order {
+		if q, ok := o.AxisLayer(); ok && q.Layer.Color != nil && q.Layer.Color.Value == nil {
 			lp = q
 			break
 		}
 	}
-	colorLegend := lp != nil && !lp.c.color.noAxis && len(l.series) > 0
+	colorLegend := lp != nil && !lp.Layer.Color.NoAxis && len(l.Series) > 0
 	legendTitle := ""
 	if colorLegend {
-		legendTitle = axisTitle(lp.c.color)
-		legendW, legendH = b.legendSize(legendTitle, l.series)
+		legendTitle = pvl.AxisTitle(lp.Layer.Color)
+		legendW, legendH = b.legendSize(legendTitle, l.Series)
 	}
 	// the shape's legend, under the colour's
-	var sp2 *plan // the layer the shape legend is of: the first shaped by a field
-	for _, o := range l.order {
-		if q, ok := o.axisLayer(); ok && q.c.shape != nil && q.c.shape.shape == "" {
+	var sp2 *pvl.Plan // the layer the shape legend is of: the first shaped by a field
+	for _, o := range l.Order {
+		if q, ok := o.AxisLayer(); ok && q.Layer.Shape != nil && q.Layer.Shape.Shape == "" {
 			sp2 = q
 			break
 		}
 	}
 	// a shape by the colour's field shares its legend, as Vega-Lite merges them
-	shapeLegend := sp2 != nil && !sp2.c.shape.noAxis && len(l.shapes) > 0 &&
-		!(colorLegend && sp2 == lp && sp2.c.shape.field == lp.c.color.field)
+	shapeLegend := sp2 != nil && !sp2.Layer.Shape.NoAxis && len(l.Shapes) > 0 &&
+		!(colorLegend && sp2 == lp && sp2.Layer.Shape.Field == lp.Layer.Color.Field)
 	shapeTitle := ""
 	var shapeTop float32 // the shape legend's top, below the colour legend's
 	if shapeLegend {
 		if colorLegend {
 			shapeTop = legendH + 2*pad
 		}
-		shapeTitle = axisTitle(sp2.c.shape)
-		w, h := b.legendSize(shapeTitle, l.shapes)
+		shapeTitle = pvl.AxisTitle(sp2.Layer.Shape)
+		w, h := b.legendSize(shapeTitle, l.Shapes)
 		legendW, legendH = max(legendW, w), shapeTop+h
 	}
 	legend := colorLegend || shapeLegend
@@ -211,17 +196,17 @@ func build(ctx context.Context, l *layered, width float32, th Theme, m gui.Measu
 	// the plot's height, then the y axis's labels and their width
 	plotH := 200 * u
 	switch {
-	case sp.height > 0:
-		plotH = sp.height * u
-	case l.ys.discrete:
-		plotH = 20 * u * float32(max(len(l.ys.domain), 1))
+	case sp.Height > 0:
+		plotH = sp.Height * u
+	case l.Ys.Discrete:
+		plotH = 20 * u * float32(max(len(l.Ys.Domain), 1))
 	}
-	if l.ys.discrete {
+	if l.Ys.Discrete {
 		ys.setCategories(plotH)
 	} else {
 		ys.setTicks(plotH, u)
 	}
-	yAxis := !c.y.noAxis
+	yAxis := !c.Y.NoAxis
 	var yLabelW float32
 	yLabels := ys.labels()
 	if yAxis {
@@ -231,7 +216,7 @@ func build(ctx context.Context, l *layered, width float32, th Theme, m gui.Measu
 	}
 	yTitle := ""
 	if yAxis {
-		yTitle = b.sharedTitle(func(c *chart) *channel { return c.y })
+		yTitle = b.l.SharedTitle(func(c *pvl.LayerSpec) *pvl.Channel { return c.Y })
 	}
 	left := pad
 	if yAxis {
@@ -244,23 +229,23 @@ func build(ctx context.Context, l *layered, width float32, th Theme, m gui.Measu
 	// the plot's width: Vega-Lite's, the spec's, or what is left of the width asked
 	plotW := 200 * u
 	switch {
-	case sp.containerW && width > 0:
+	case sp.ContainerW && width > 0:
 		gap := float32(0)
 		if legend {
 			gap = 4*pad + legendW
 		}
 		plotW = max(width-left-gap-2*pad, 20*u)
-	case sp.width > 0:
-		plotW = sp.width * u
-	case l.xs.discrete:
-		plotW = 20 * u * float32(max(len(l.xs.domain), 1))
+	case sp.Width > 0:
+		plotW = sp.Width * u
+	case l.Xs.Discrete:
+		plotW = 20 * u * float32(max(len(l.Xs.Domain), 1))
 	}
-	if l.xs.discrete {
+	if l.Xs.Discrete {
 		xs.setCategories(plotW)
 	} else {
 		xs.setTicks(plotW, u)
 	}
-	xAxis := !c.x.noAxis
+	xAxis := !c.X.NoAxis
 	xLabels := xs.labels()
 	up := false // a discrete axis's labels upright when any is wider than its category
 	var xLabelH, lastHalf float32
@@ -268,7 +253,7 @@ func build(ctx context.Context, l *layered, width float32, th Theme, m gui.Measu
 		xLabelH = lh
 		for _, s := range xLabels {
 			w := b.textW(s, th.Font)
-			if l.xs.discrete && w > xs.stepPx-2*u {
+			if l.Xs.Discrete && w > xs.stepPx-2*u {
 				up = true
 			}
 			xLabelH = max(xLabelH, w)
@@ -276,25 +261,25 @@ func build(ctx context.Context, l *layered, width float32, th Theme, m gui.Measu
 		if !up {
 			xLabelH = lh
 		}
-		if len(xLabels) > 0 && !l.xs.discrete {
+		if len(xLabels) > 0 && !l.Xs.Discrete {
 			lastHalf = b.textW(xLabels[len(xLabels)-1], th.Font) / 2
 		}
 	}
 	xTitle := ""
 	if xAxis {
-		xTitle = b.sharedTitle(func(c *chart) *channel { return c.x })
+		xTitle = b.l.SharedTitle(func(c *pvl.LayerSpec) *pvl.Channel { return c.X })
 	}
 
 	// the title over it all
 	top := lh / 2 // room for the top y label's upper half
 	titleFont := b.bold
 	titleFont.Size *= 13.0 / 11
-	if sp.title != "" {
+	if sp.Title != "" {
 		top += titleFont.Size*gui.LineHeight + 2*pad
 	}
-	if sp.subtitle != "" {
+	if sp.Subtitle != "" {
 		top += lh + pad
-		if sp.title == "" {
+		if sp.Title == "" {
 			top += pad
 		}
 	}
@@ -316,16 +301,16 @@ func build(ctx context.Context, l *layered, width float32, th Theme, m gui.Measu
 	size := gui.Size{W: right, H: max(bottom, plot.Y+legendH) + pad}
 
 	subY := pad
-	if sp.title != "" {
-		b.text(sp.title, titleFont, gui.Rect{X: 0, Y: pad, W: size.W, H: titleFont.Size * gui.LineHeight}, 0, false, th.Text)
+	if sp.Title != "" {
+		b.text(sp.Title, titleFont, gui.Rect{X: 0, Y: pad, W: size.W, H: titleFont.Size * gui.LineHeight}, 0, false, th.Text)
 		subY += titleFont.Size*gui.LineHeight + pad/2
 	}
-	if sp.subtitle != "" { // under the title, quieter: Vega-Lite's subtitle
-		b.text(sp.subtitle, th.Font, gui.Rect{X: 0, Y: subY, W: size.W, H: lh}, 0, false, th.Axis)
+	if sp.Subtitle != "" { // under the title, quieter: Vega-Lite's subtitle
+		b.text(sp.Subtitle, th.Font, gui.Rect{X: 0, Y: subY, W: size.W, H: lh}, 0, false, th.Axis)
 	}
 	b.grid(xs, ys, plot)
-	for _, o := range l.order {
-		o.paint(b, xs, ys, plot)
+	for _, o := range l.Order {
+		paint(o, b, xs, ys, plot)
 	}
 	b.p = p
 	if yAxis {
@@ -347,28 +332,10 @@ func build(ctx context.Context, l *layered, width float32, th Theme, m gui.Measu
 	return &Laid{size: size, items: b.items, ops: batch(b.items)}
 }
 
-// sharedTitle is a shared axis's title: the base layer's own, or, as Vega-Lite merges them, every
-// mark layer's default title on it, each once, joined ("n, t").
-func (b *builder) sharedTitle(of func(*chart) *channel) string {
-	base := of(b.l.base.c)
-	if base.title != nil || base.noTitle {
-		return axisTitle(base)
-	}
-	var titles []string
-	for _, o := range b.l.order {
-		if q, ok := o.axisLayer(); ok {
-			if t := axisTitle(of(q.c)); t != "" && !slices.Contains(titles, t) {
-				titles = append(titles, t)
-			}
-		}
-	}
-	return strings.Join(titles, ", ")
-}
-
 // labels are a scale's tick labels: its categories, or its ticks' text.
 func (s *scale) labels() []string {
-	if s.a.discrete {
-		return s.a.domain
+	if s.a.Discrete {
+		return s.a.Domain
 	}
 	out := make([]string, len(s.ticks))
 	for i, v := range s.ticks {
@@ -377,27 +344,16 @@ func (s *scale) labels() []string {
 	return out
 }
 
-// gridOn is whether a channel's axis draws its grid: a continuous one's by default.
-func gridOn(ch *channel, a *axisPlan) bool {
-	if ch.noAxis {
-		return false
-	}
-	if ch.grid != nil {
-		return *ch.grid
-	}
-	return !a.discrete
-}
-
 // grid draws each axis's gridlines across the plot, under the marks.
 func (b *builder) grid(xs, ys *scale, plot gui.Rect) {
-	c := b.p.c
-	if gridOn(c.x, xs.a) {
+	c := b.p.Layer
+	if pvl.GridOn(c.X, xs.a) {
 		for _, v := range xs.ticks {
 			x := xs.px(v)
 			b.line(b.th.Grid, b.unit, gui.Pt(x, plot.Y), gui.Pt(x, plot.Y+plot.H))
 		}
 	}
-	if gridOn(c.y, ys.a) {
+	if pvl.GridOn(c.Y, ys.a) {
 		for _, v := range ys.ticks {
 			y := ys.px(v)
 			b.line(b.th.Grid, b.unit, gui.Pt(plot.X, y), gui.Pt(plot.X+plot.W, y))
@@ -444,14 +400,14 @@ func (b *builder) yAxis(ys *scale, labels []string, labelW float32, title string
 	at := make([]float32, len(labels))
 	spans := make([][2]float32, len(labels))
 	for i, s := range labels {
-		if ys.a.discrete {
-			at[i] = ys.centre(pos{str: s})
+		if ys.a.Discrete {
+			at[i] = ys.centre(pvl.Pos{Str: s})
 		} else {
 			at[i] = ys.px(ys.ticks[i])
 		}
 		spans[i] = [2]float32{-at[i] - lh/2, -at[i] + lh/2} // bottom to top: the first tick lowest
 	}
-	if ys.a.discrete { // a category's labels run top down
+	if ys.a.Discrete { // a category's labels run top down
 		for i := range spans {
 			spans[i] = [2]float32{at[i] - lh/2, at[i] + lh/2}
 		}
@@ -483,8 +439,8 @@ func (b *builder) xAxis(xs *scale, labels []string, up bool, labelH float32, tit
 	widths := make([]float32, len(labels))
 	spans := make([][2]float32, len(labels))
 	for i, s := range labels {
-		if xs.a.discrete {
-			at[i] = xs.centre(pos{str: s})
+		if xs.a.Discrete {
+			at[i] = xs.centre(pvl.Pos{Str: s})
 		} else {
 			at[i] = xs.px(xs.ticks[i])
 		}
@@ -516,25 +472,28 @@ func (b *builder) xAxis(xs *scale, labels []string, up bool, labelH float32, tit
 
 // colorOf is a series' colour: the mark's, the colour channel's value, or the palette's.
 func (b *builder) colorOf(series string) color.NRGBA {
-	if col, ok := b.p.c.fixedColor(); ok {
-		return col
+	if col, ok := b.p.Layer.FixedColor(); ok {
+		return color.NRGBA(col)
 	}
-	i := max(slices.Index(b.l.series, series), 0) // the shared colour domain: a series is one colour in every layer
+	i := max(slices.Index(b.l.Series, series), 0) // the shared colour domain: a series is one colour in every layer
 	palette := b.th.Palette
-	if b.l.colors != nil { // the scale's range, cycling as Vega's ordinal scale does
-		palette = b.l.colors
+	if b.l.Colors != nil { // the scale's range, cycling as Vega's ordinal scale does
+		palette = make([]color.NRGBA, len(b.l.Colors))
+		for i, c := range b.l.Colors {
+			palette[i] = color.NRGBA(c)
+		}
 	}
 	return palette[i%len(palette)]
 }
 
 // opacity is a mark's: the opacity channel's, the mark's, or Vega-Lite's default (0.7 where the
-// kind fades, markDef.faded: for points, and for bars or areas overlaid by series).
+// kind fades, Plan.Faded: for points, and for bars or areas overlaid by series).
 func (b *builder) opacity() float32 {
 	p := b.p
-	if a, ok := p.c.fixedOpacity(); ok {
+	if a, ok := p.Layer.FixedOpacity(); ok {
 		return a
 	}
-	if faded := marks[p.c.mark.kind].faded; faded != nil && faded(p) {
+	if p.Faded() {
 		return 0.7
 	}
 	return 1
@@ -550,8 +509,8 @@ func fade(c color.NRGBA, a float32) color.NRGBA {
 // default 30 square pixels), as Vega sizes its symbols.
 func (b *builder) radius() float32 {
 	area := float32(30)
-	if b.p.c.mark.size > 0 {
-		area = b.p.c.mark.size
+	if b.p.Layer.Mark.Size > 0 {
+		area = b.p.Layer.Mark.Size
 	}
 	return float32(math.Sqrt(float64(area))) / 2 * b.unit
 }
@@ -559,18 +518,18 @@ func (b *builder) radius() float32 {
 // symbolOf is a point's symbol: the shape channel's one, or its field's value's (the scale's range,
 // or Vega's symbols, in the shared domain's order, cycling), or a circle.
 func (b *builder) symbolOf(shape string) string {
-	sh := b.p.c.shape
+	sh := b.p.Layer.Shape
 	switch {
 	case sh == nil:
 		return "circle"
-	case sh.shape != "":
-		return sh.shape
+	case sh.Shape != "":
+		return sh.Shape
 	}
-	syms := defaultShapes
-	if b.l.symbs != nil {
-		syms = b.l.symbs
+	syms := pvl.DefaultShapes
+	if b.l.Symbols != nil {
+		syms = b.l.Symbols
 	}
-	return syms[max(slices.Index(b.l.shapes, shape), 0)%len(syms)]
+	return syms[max(slices.Index(b.l.Shapes, shape), 0)%len(syms)]
 }
 
 // symbol adds a point drawn as one of Vega's symbols, r half its bounding box's side, filled or
@@ -636,8 +595,8 @@ func clockwise(pts []gui.Point) []gui.Point {
 // shapeLegend draws the shape's legend with its top left at at: its title, then each shape's
 // symbol, in the axes' colour, and its label.
 func (b *builder) shapeLegend(title string, at gui.Point) {
-	b.legendEntries(title, b.l.shapes, at, func(s string, x, cy, sw float32) {
-		b.symbol(gui.Pt(x+sw/2, cy), b.symbolOf(s), sw/2.5, b.th.Axis, b.p.c.mark.filled)
+	b.legendEntries(title, b.l.Shapes, at, func(s string, x, cy, sw float32) {
+		b.symbol(gui.Pt(x+sw/2, cy), b.symbolOf(s), sw/2.5, b.th.Axis, b.p.Layer.Mark.Filled)
 	})
 }
 
@@ -687,14 +646,14 @@ func (b *builder) dot(at gui.Point, r float32, c color.NRGBA, filled bool) {
 // series is one series' data, in x's order.
 type series struct {
 	name string
-	data []datum
+	data []pvl.Datum
 }
 
 // seriesData splits the data by series, in the colour's order, each sorted by x: a line is drawn
 // through its points from left to right, as Vega-Lite sorts it.
 func (b *builder) seriesData(xs *scale) []series {
 	p := b.p
-	names := p.series
+	names := p.Series
 	if names == nil {
 		names = []string{""}
 	}
@@ -704,14 +663,14 @@ func (b *builder) seriesData(xs *scale) []series {
 		out[i].name = n
 		idx[n] = i
 	}
-	for _, d := range p.data {
-		if i, ok := idx[d.series]; ok {
+	for _, d := range p.Data {
+		if i, ok := idx[d.Series]; ok {
 			out[i].data = append(out[i].data, d)
 		}
 	}
 	for i := range out {
 		sort.SliceStable(out[i].data, func(a, c int) bool {
-			return xs.centre(out[i].data[a].x) < xs.centre(out[i].data[c].x)
+			return xs.centre(out[i].data[a].X) < xs.centre(out[i].data[c].X)
 		})
 	}
 	return out
@@ -720,9 +679,9 @@ func (b *builder) seriesData(xs *scale) []series {
 // legend draws the colour's legend with its top left at at: its title, then a swatch and a label
 // a series. A line's swatch is a stroke, a point's a circle, a bar's or an area's a square.
 func (b *builder) legend(title string, at gui.Point) {
-	b.legendEntries(title, b.l.series, at, func(s string, x, cy, sw float32) {
+	b.legendEntries(title, b.l.Series, at, func(s string, x, cy, sw float32) {
 		col := b.colorOf(s)
-		if swatch := marks[b.p.c.mark.kind].swatch; swatch != nil {
+		if swatch := marks[b.p.Layer.Mark.Kind].swatch; swatch != nil {
 			swatch(b, s, x, cy, sw, col)
 			return
 		}
@@ -730,59 +689,28 @@ func (b *builder) legend(title string, at gui.Point) {
 	})
 }
 
-// fixedColor is the colour c's marks are given outright: the mark's own, then the colour
-// channel's value. false: a field colours them, or nothing does.
-func (c *chart) fixedColor() (color.NRGBA, bool) {
-	switch {
-	case c.mark.color != nil:
-		return *c.mark.color, true
-	case c.color != nil && c.color.value != nil:
-		return *c.color.value, true
-	}
-	return color.NRGBA{}, false
-}
-
-// fixedOpacity is the opacity c's marks are given outright: the opacity channel's value, then the
-// mark's own. false: neither is set, and the layer's default applies.
-func (c *chart) fixedOpacity() (float32, bool) {
-	switch {
-	case c.opacity != nil:
-		return *c.opacity, true
-	case c.mark.opacity > 0:
-		return c.mark.opacity, true
-	}
-	return 0, false
-}
-
-// strokeWidth is c's stroke width in units: the mark's, else def (a line's 2, a rule's 1).
-func (c *chart) strokeWidth(def float32) float32 {
-	if c.mark.strokeWidth > 0 {
-		return c.mark.strokeWidth
-	}
-	return def
-}
-
 // rule draws a rule layer: a line across the plot at each of its values, in its colour (the
 // mark's, the colour channel's value, or Vega-Lite's default, the palette's first), width
 // (Vega-Lite's 1 by default) and dashes.
-func (b *builder) rule(r *rulePlan, xs, ys *scale, plot gui.Rect) {
-	c := r.c
-	col, ok := c.fixedColor()
+func (b *builder) rule(r *pvl.RulePlan, xs, ys *scale, plot gui.Rect) {
+	c := r.Layer
+	fixed, ok := c.FixedColor()
+	col := color.NRGBA(fixed)
 	if !ok {
 		col = b.th.Palette[0]
 	}
-	alpha, ok := c.fixedOpacity()
+	alpha, ok := c.FixedOpacity()
 	if !ok {
 		alpha = 1
 	}
-	width := c.strokeWidth(1) * b.unit
-	for _, v := range r.vals {
-		if r.onX {
+	width := c.StrokeWidth(1) * b.unit
+	for _, v := range r.Vals {
+		if r.OnX {
 			x := xs.centre(v)
-			b.stroke(fade(col, alpha), width, c.mark.dash, gui.Pt(x, plot.Y), gui.Pt(x, plot.Y+plot.H))
+			b.stroke(fade(col, alpha), width, c.Mark.Dash, gui.Pt(x, plot.Y), gui.Pt(x, plot.Y+plot.H))
 		} else {
 			y := ys.centre(v)
-			b.stroke(fade(col, alpha), width, c.mark.dash, gui.Pt(plot.X, y), gui.Pt(plot.X+plot.W, y))
+			b.stroke(fade(col, alpha), width, c.Mark.Dash, gui.Pt(plot.X, y), gui.Pt(plot.X+plot.W, y))
 		}
 	}
 }

@@ -14,6 +14,7 @@ import (
 	"time"
 
 	"github.com/yongjohnlee80/golib/gui"
+	pvl "github.com/yongjohnlee80/golib/parse/vegalite"
 )
 
 var testTheme = Theme{
@@ -125,18 +126,18 @@ func TestABarChartIsLaidOut(t *testing.T) {
 
 // The y axis of a bar chart is niced: 0 to 60 by tens for values up to 55, its labels the ticks'.
 func TestTheValueAxisIsNiced(t *testing.T) {
-	c, err := parse(barSpec)
+	c, err := pvl.Parse(barSpec)
 	if err != nil {
 		t.Fatal(err)
 	}
-	p, err := newPlan(c.layers[0])
+	p, err := pvl.NewPlan(c.Layers[0])
 	if err != nil {
 		t.Fatal(err)
 	}
-	s := &scale{a: &p.ys}
+	s := &scale{a: &p.Ys}
 	s.setTicks(200, 1)
-	if p.ys.lo != 0 || p.ys.hi != 60 || !slices.Equal(s.labels(), []string{"0", "10", "20", "30", "40", "50", "60"}) {
-		t.Errorf("domain [%v, %v], labels %v; want [0, 60] by tens", p.ys.lo, p.ys.hi, s.labels())
+	if p.Ys.Lo != 0 || p.Ys.Hi != 60 || !slices.Equal(s.labels(), []string{"0", "10", "20", "30", "40", "50", "60"}) {
+		t.Errorf("domain [%v, %v], labels %v; want [0, 60] by tens", p.Ys.Lo, p.Ys.Hi, s.labels())
 	}
 }
 
@@ -145,17 +146,17 @@ func TestAnAggregateGroupsByCategory(t *testing.T) {
 	rows := `[{"k":"x","v":1},{"k":"x","v":3},{"k":"y","v":10},{"k":"y","v":null}]`
 	for op, want := range map[string][]float64{"sum": {4, 10}, "mean": {2, 10}, "count": {2, 2}, "max": {3, 10}, "median": {2, 10}} {
 		spec := `{"data":{"values":` + rows + `},"mark":"bar","encoding":{"x":{"field":"k","type":"nominal"},"y":{"aggregate":"` + op + `","field":"v","type":"quantitative"}}}`
-		c, err := parse(spec)
+		c, err := pvl.Parse(spec)
 		if err != nil {
 			t.Fatal(err)
 		}
-		p, err := newPlan(c.layers[0])
+		p, err := pvl.NewPlan(c.Layers[0])
 		if err != nil {
 			t.Fatalf("%s: %v", op, err)
 		}
 		var got []float64
-		for _, d := range p.data {
-			got = append(got, d.v1)
+		for _, d := range p.Data {
+			got = append(got, d.V1)
 		}
 		if !slices.Equal(got, want) {
 			t.Errorf("%s: %v, want %v", op, got, want)
@@ -279,22 +280,22 @@ func TestCategoriesSort(t *testing.T) {
 		`["C","A"]`:    {"C", "A", "B"},
 		`null`:         {"B", "C", "A"},
 	} {
-		c, err := parse(`{"data":` + data + `,"mark":"bar","encoding":{"x":{"field":"a","type":"nominal","sort":` + sort + `},"y":{"field":"b","type":"quantitative"}}}`)
+		c, err := pvl.Parse(`{"data":` + data + `,"mark":"bar","encoding":{"x":{"field":"a","type":"nominal","sort":` + sort + `},"y":{"field":"b","type":"quantitative"}}}`)
 		if err != nil {
 			t.Fatal(err)
 		}
-		p, err := newPlan(c.layers[0])
+		p, err := pvl.NewPlan(c.Layers[0])
 		if err != nil {
 			t.Fatal(err)
 		}
-		if !slices.Equal(p.xs.domain, want) {
-			t.Errorf("sort %s: %v, want %v", sort, p.xs.domain, want)
+		if !slices.Equal(p.Xs.Domain, want) {
+			t.Errorf("sort %s: %v, want %v", sort, p.Xs.Domain, want)
 		}
 	}
-	c, _ := parse(`{"data":{"values":[{"a":"10","b":1},{"a":"9","b":1},{"a":"x","b":1}]},"mark":"bar","encoding":{"x":{"field":"a","type":"ordinal"},"y":{"field":"b","type":"quantitative"}}}`)
-	p, _ := newPlan(c.layers[0])
-	if !slices.Equal(p.xs.domain, []string{"9", "10", "x"}) {
-		t.Errorf("ascending %v, want numbers as numbers, then text", p.xs.domain)
+	c, _ := pvl.Parse(`{"data":{"values":[{"a":"10","b":1},{"a":"9","b":1},{"a":"x","b":1}]},"mark":"bar","encoding":{"x":{"field":"a","type":"ordinal"},"y":{"field":"b","type":"quantitative"}}}`)
+	p, _ := pvl.NewPlan(c.Layers[0])
+	if !slices.Equal(p.Xs.Domain, []string{"9", "10", "x"}) {
+		t.Errorf("ascending %v, want numbers as numbers, then text", p.Xs.Domain)
 	}
 }
 
@@ -498,23 +499,23 @@ func TestSpecsOutsideTheSubsetDecline(t *testing.T) {
 		"a legend sorted":  `{` + strings.Replace(ok, `"encoding":{`, `"encoding":{"color":{"field":"a","type":"nominal","sort":{"field":"b"}},`, 1) + `,"mark":"bar"}`,
 		"a subtitle list":  `{` + ok + `,"mark":"bar","title":{"text":"t","subtitle":[1,2]}}`,
 	} {
-		if _, err := lay(t, spec, 600); !errors.Is(err, ErrUnsupported) {
-			t.Errorf("%s: %v, want ErrUnsupported", name, err)
+		if _, err := lay(t, spec, 600); !errors.Is(err, pvl.ErrUnsupported) {
+			t.Errorf("%s: %v, want pvl.ErrUnsupported", name, err)
 		}
 	}
 	var rows strings.Builder
 	rows.WriteString(`{"mark":"point","data":{"values":[`)
-	for i := range maxRows + 1 {
+	for i := range pvl.MaxRows + 1 {
 		if i > 0 {
 			rows.WriteString(",")
 		}
 		rows.WriteString(`{"a":1}`)
 	}
 	rows.WriteString(`]}}`)
-	if _, err := lay(t, rows.String(), 600); !errors.Is(err, ErrTooLarge) {
-		t.Errorf("%d rows: %v, want ErrTooLarge", maxRows+1, err)
+	if _, err := lay(t, rows.String(), 600); !errors.Is(err, pvl.ErrTooLarge) {
+		t.Errorf("%d rows: %v, want pvl.ErrTooLarge", pvl.MaxRows+1, err)
 	}
-	if _, err := lay(t, `{"mark": "bar",`, 600); err == nil || errors.Is(err, ErrUnsupported) || errors.Is(err, ErrTooLarge) {
+	if _, err := lay(t, `{"mark": "bar",`, 600); err == nil || errors.Is(err, pvl.ErrUnsupported) || errors.Is(err, pvl.ErrTooLarge) {
 		t.Errorf("malformed JSON: %v, want the decoder's error", err)
 	}
 }
@@ -617,23 +618,23 @@ func TestLinearTicks(t *testing.T) {
 		n      int
 		step   float64
 	}{{0, 55, 5, 10}, {0, 1, 5, 0.2}, {0, 1000, 10, 100}, {-3, 3, 6, 1}, {0, 0.07, 7, 0.01}} {
-		if got := tickStep(c.lo, c.hi, c.n); math.Abs(got-c.step) > 1e-12 {
+		if got := pvl.TickStep(c.lo, c.hi, c.n); math.Abs(got-c.step) > 1e-12 {
 			t.Errorf("tickStep(%v, %v, %d) = %v, want %v", c.lo, c.hi, c.n, got, c.step)
 		}
 	}
-	if lo, hi := niceDomain(3, 97, 5); lo != 0 || hi != 100 {
+	if lo, hi := pvl.NiceDomain(3, 97, 5); lo != 0 || hi != 100 {
 		t.Errorf("niceDomain(3, 97) = %v, %v", lo, hi)
 	}
-	ticks, step := linearTicks(0, 1, 5)
-	if len(ticks) != 6 || formatNumber(ticks[3], step) != "0.6" {
+	ticks, step := pvl.Ticks(0, 1, 5)
+	if len(ticks) != 6 || pvl.FormatNumber(ticks[3], step) != "0.6" {
 		t.Errorf("ticks %v step %v", ticks, step)
 	}
 	for v, want := range map[float64]string{1234567: "1,234,567", -1500: "−1,500", 0: "0", 999: "999"} {
-		if got := formatNumber(v, 100); got != want {
+		if got := pvl.FormatNumber(v, 100); got != want {
 			t.Errorf("formatNumber(%v) = %q, want %q", v, got, want)
 		}
 	}
-	if got := formatPercent(0.25, 0.05); got != "25%" {
+	if got := pvl.FormatPercent(0.25, 0.05); got != "25%" {
 		t.Errorf("formatPercent = %q", got)
 	}
 }
@@ -642,22 +643,22 @@ func TestLinearTicks(t *testing.T) {
 // labelled by the coarsest boundary it is on.
 func TestTimeTicks(t *testing.T) {
 	ms := func(s string) float64 {
-		v, ok := timeOf(s)
+		v, ok := pvl.TimeOf(s)
 		if !ok {
 			t.Fatalf("timeOf(%q)", s)
 		}
 		return v
 	}
 	var labels []string
-	for _, v := range timeTicks(ms("2024-01-01"), ms("2024-12-31"), 5) {
-		labels = append(labels, formatTime(v))
+	for _, v := range pvl.TimeTicks(ms("2024-01-01"), ms("2024-12-31"), 5) {
+		labels = append(labels, pvl.FormatTime(v))
 	}
 	if !slices.Equal(labels, []string{"2024", "Apr", "Jul", "Oct"}) {
 		t.Errorf("a year's ticks %v, want quarters", labels)
 	}
 	labels = nil
-	for _, v := range timeTicks(ms("2024-03-04"), ms("2024-03-09"), 5) {
-		labels = append(labels, formatTime(v))
+	for _, v := range pvl.TimeTicks(ms("2024-03-04"), ms("2024-03-09"), 5) {
+		labels = append(labels, pvl.FormatTime(v))
 	}
 	if !slices.Equal(labels, []string{"Mar 04", "Mar 05", "Mar 06", "Mar 07", "Mar 08", "Mar 09"}) {
 		t.Errorf("a week's ticks %v, want days", labels)
@@ -672,7 +673,7 @@ func TestTimeTicks(t *testing.T) {
 			t.Errorf("timeOf(%q) = %v, want %v", in, got, want)
 		}
 	}
-	if v, ok := timeOf(float64(1700)); !ok || v != 1700 {
+	if v, ok := pvl.TimeOf(float64(1700)); !ok || v != 1700 {
 		t.Errorf("a number is milliseconds: %v %v", v, ok)
 	}
 }
@@ -681,22 +682,22 @@ func TestTimeTicks(t *testing.T) {
 // creeps in from an unstacked mark's base; a bar's measure keeps zero by default.
 func TestZeroFalseIsTheDatasExtent(t *testing.T) {
 	for _, mark := range []string{"line", "point"} {
-		c, err := parse(`{"data":{"values":[{"x":1,"y":99},{"x":2,"y":100}]},"mark":"` + mark + `",
+		c, err := pvl.Parse(`{"data":{"values":[{"x":1,"y":99},{"x":2,"y":100}]},"mark":"` + mark + `",
 			"encoding":{"x":{"field":"x","type":"quantitative"},"y":{"field":"y","type":"quantitative","scale":{"zero":false}}}}`)
 		if err != nil {
 			t.Fatal(err)
 		}
-		p, err := newPlan(c.layers[0])
+		p, err := pvl.NewPlan(c.Layers[0])
 		if err != nil {
 			t.Fatal(err)
 		}
-		if p.ys.lo != 99 || p.ys.hi != 100 {
-			t.Errorf("%s: y domain [%v, %v], want [99, 100]", mark, p.ys.lo, p.ys.hi)
+		if p.Ys.Lo != 99 || p.Ys.Hi != 100 {
+			t.Errorf("%s: y domain [%v, %v], want [99, 100]", mark, p.Ys.Lo, p.Ys.Hi)
 		}
 	}
-	c, _ := parse(`{"data":{"values":[{"x":"a","y":99}]},"mark":"bar","encoding":{"x":{"field":"x","type":"nominal"},"y":{"field":"y","type":"quantitative"}}}`)
-	if p, _ := newPlan(c.layers[0]); p.ys.lo != 0 {
-		t.Errorf("a bar's measure from %v, want zero", p.ys.lo)
+	c, _ := pvl.Parse(`{"data":{"values":[{"x":"a","y":99}]},"mark":"bar","encoding":{"x":{"field":"x","type":"nominal"},"y":{"field":"y","type":"quantitative"}}}`)
+	if p, _ := pvl.NewPlan(c.Layers[0]); p.Ys.Lo != 0 {
+		t.Errorf("a bar's measure from %v, want zero", p.Ys.Lo)
 	}
 }
 
@@ -769,13 +770,13 @@ func TestALayeredChartIsDrawnAsItsFirstState(t *testing.T) {
 		t.Fatalf("%d rule dashes, want a dashed line", len(dashes))
 	}
 	x := dashes[0].pts[0].X
-	sp, _ := parse(bundleSpec)
-	lp, err := newLayered(sp)
+	sp, _ := pvl.Parse(bundleSpec)
+	lp, err := pvl.NewLayered(sp)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if lp.xs.lo != 0 || lp.xs.hi < 5165 {
-		t.Errorf("x domain [%v, %v], want 0 to past 5165", lp.xs.lo, lp.xs.hi)
+	if lp.Xs.Lo != 0 || lp.Xs.Hi < 5165 {
+		t.Errorf("x domain [%v, %v], want 0 to past 5165", lp.Xs.Lo, lp.Xs.Hi)
 	}
 	var widest item // the 5165 KB bar spans 0 to 5165 on x: 500 is at about a tenth of it
 	for _, b := range bars {
@@ -813,16 +814,16 @@ func TestLayersShareTheirScales(t *testing.T) {
 		"layer":[
 			{"mark":"bar","encoding":{"y":{"field":"n","type":"quantitative"}}},
 			{"mark":"line","encoding":{"y":{"field":"t","type":"quantitative"}}}]}`
-	sp, err := parse(spec)
+	sp, err := pvl.Parse(spec)
 	if err != nil {
 		t.Fatal(err)
 	}
-	lp, err := newLayered(sp)
+	lp, err := pvl.NewLayered(sp)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if lp.ys.hi < 12 || !slices.Equal(lp.xs.domain, []string{"a", "b"}) {
-		t.Fatalf("y up to %v, x %v: want both layers' values", lp.ys.hi, lp.xs.domain)
+	if lp.Ys.Hi < 12 || !slices.Equal(lp.Xs.Domain, []string{"a", "b"}) {
+		t.Fatalf("y up to %v, x %v: want both layers' values", lp.Ys.Hi, lp.Xs.Domain)
 	}
 	l := mustLay(t, spec, 900)
 	if !slices.Contains(l.texts(), "n, t") {
@@ -874,16 +875,16 @@ func TestRulesByFieldAndByDatum(t *testing.T) {
 		t.Errorf("%d x rules (want 2: at 2 and 4) and %d y rules (want 1)", red, green)
 	}
 	// a rule beyond the data widens the shared domain to reach it
-	sp, err := parse(strings.Replace(spec, `"datum":2.5`, `"datum":20`, 1))
+	sp, err := pvl.Parse(strings.Replace(spec, `"datum":2.5`, `"datum":20`, 1))
 	if err != nil {
 		t.Fatal(err)
 	}
-	lp, err := newLayered(sp)
+	lp, err := pvl.NewLayered(sp)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if lp.ys.hi < 20 {
-		t.Errorf("y domain up to %v, want the rule at 20 within it", lp.ys.hi)
+	if lp.Ys.Hi < 20 {
+		t.Errorf("y domain up to %v, want the rule at 20 within it", lp.Ys.Hi)
 	}
 }
 
@@ -892,17 +893,17 @@ func TestAMeanRule(t *testing.T) {
 	spec := `{"data":{"values":[{"m":"a","n":2},{"m":"b","n":4},{"m":"c","n":9}]},
 		"layer":[{"mark":"bar","encoding":{"x":{"field":"m","type":"nominal"},"y":{"field":"n","type":"quantitative"}}},
 		{"mark":{"type":"rule","color":"red"},"encoding":{"y":{"aggregate":"mean","field":"n"}}}]}`
-	sp, err := parse(spec)
+	sp, err := pvl.Parse(spec)
 	if err != nil {
 		t.Fatal(err)
 	}
-	lp, err := newLayered(sp)
+	lp, err := pvl.NewLayered(sp)
 	if err != nil {
 		t.Fatal(err)
 	}
-	r := lp.order[1].(*rulePlan)
-	if len(r.vals) != 1 || r.vals[0].num != 5 {
-		t.Fatalf("the mean rule's values %v, want one at 5", r.vals)
+	r := lp.Order[1].(*pvl.RulePlan)
+	if len(r.Vals) != 1 || r.Vals[0].Num != 5 {
+		t.Fatalf("the mean rule's values %v, want one at 5", r.Vals)
 	}
 	l := mustLay(t, spec, 900)
 	var rule []item
@@ -940,13 +941,13 @@ func TestParamsOutsideTheStillDecline(t *testing.T) {
 		if spec == base {
 			t.Fatalf("%s: the replacement found nothing", name)
 		}
-		if _, err := lay(t, spec, 900); !errors.Is(err, ErrUnsupported) {
-			t.Errorf("%s: %v, want ErrUnsupported", name, err)
+		if _, err := lay(t, spec, 900); !errors.Is(err, pvl.ErrUnsupported) {
+			t.Errorf("%s: %v, want pvl.ErrUnsupported", name, err)
 		}
 	}
 	rules := `{"data":{"values":[{"a":1}]},"mark":"rule","encoding":{"x":{"field":"a","type":"quantitative"}}}`
-	if _, err := lay(t, rules, 900); !errors.Is(err, ErrUnsupported) {
-		t.Errorf("a chart of rules alone: %v, want ErrUnsupported", err)
+	if _, err := lay(t, rules, 900); !errors.Is(err, pvl.ErrUnsupported) {
+		t.Errorf("a chart of rules alone: %v, want pvl.ErrUnsupported", err)
 	}
 	if _, err := lay(t, bundleSpec, 900); err != nil {
 		t.Fatalf("the base spec: %v", err)
@@ -1049,16 +1050,16 @@ func TestCategoriesSortByAField(t *testing.T) {
 		{`{"field":"o"}`, `,"color":{"field":"s","type":"nominal"}`, []string{"C", "B", "A"}}, // stacked: sum
 		{`{"field":"o","order":null}`, "", []string{"C", "A", "B"}},
 	} {
-		sp, err := parse(`{"data":` + rows + `,"mark":"bar","encoding":{"x":{"field":"a","type":"ordinal","sort":` + c.sort + `},"y":{"field":"b","type":"quantitative"}` + c.color + `}}`)
+		sp, err := pvl.Parse(`{"data":` + rows + `,"mark":"bar","encoding":{"x":{"field":"a","type":"ordinal","sort":` + c.sort + `},"y":{"field":"b","type":"quantitative"}` + c.color + `}}`)
 		if err != nil {
 			t.Fatal(err)
 		}
-		p, err := newPlan(sp.layers[0])
+		p, err := pvl.NewPlan(sp.Layers[0])
 		if err != nil {
 			t.Fatal(err)
 		}
-		if !slices.Equal(p.xs.domain, c.want) {
-			t.Errorf("sort %s%s: %v, want %v", c.sort, c.color, p.xs.domain, c.want)
+		if !slices.Equal(p.Xs.Domain, c.want) {
+			t.Errorf("sort %s%s: %v, want %v", c.sort, c.color, p.Xs.Domain, c.want)
 		}
 	}
 }
@@ -1133,12 +1134,12 @@ func TestAColourRangeColoursTheSeries(t *testing.T) {
 		"y":{"field":"y","type":"quantitative"},"shape":{"field":"k","type":"nominal","scale":{"range":%q}}}}`
 	mustLay(t, fmt.Sprintf(shapes, "symbol"), 2000)
 	for _, named := range []string{"category", "diverging"} {
-		if _, err := lay(t, fmt.Sprintf(shapes, named), 2000); !errors.Is(err, ErrUnsupported) {
-			t.Errorf("a shape's range %q: %v, want ErrUnsupported", named, err)
+		if _, err := lay(t, fmt.Sprintf(shapes, named), 2000); !errors.Is(err, pvl.ErrUnsupported) {
+			t.Errorf("a shape's range %q: %v, want pvl.ErrUnsupported", named, err)
 		}
 	}
-	if _, err := lay(t, strings.Replace(spec, `"range":["#2e9e6a","#d64545"]`, `"range":"diverging"`, 1), 2000); !errors.Is(err, ErrUnsupported) {
-		t.Errorf("a colour's range %q: %v, want ErrUnsupported", "diverging", err)
+	if _, err := lay(t, strings.Replace(spec, `"range":["#2e9e6a","#d64545"]`, `"range":"diverging"`, 1), 2000); !errors.Is(err, pvl.ErrUnsupported) {
+		t.Errorf("a colour's range %q: %v, want pvl.ErrUnsupported", "diverging", err)
 	}
 }
 
@@ -1340,8 +1341,8 @@ const vm43Spec = `{
 }`
 
 func TestAFilteredTextLayerStillDeclines(t *testing.T) {
-	if _, err := lay(t, vm43Spec, 600); !errors.Is(err, ErrUnsupported) {
-		t.Errorf("%v, want ErrUnsupported", err)
+	if _, err := lay(t, vm43Spec, 600); !errors.Is(err, pvl.ErrUnsupported) {
+		t.Errorf("%v, want pvl.ErrUnsupported", err)
 	}
 	// its bars alone draw: the subtitle and the range are in the subset
 	var sp map[string]any

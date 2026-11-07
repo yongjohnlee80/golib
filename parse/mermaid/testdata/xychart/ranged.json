@@ -1,0 +1,68 @@
+{
+  "Title": "",
+  "Horizontal": false,
+  "XAxis": {
+    "Title": "Day",
+    "Categories": null,
+    "Ranged": true,
+    "Min": 1,
+    "Max": 7
+  },
+  "YAxis": {
+    "Title": "Temperature",
+    "Categories": null,
+    "Ranged": false,
+    "Min": 0,
+    "Max": 0
+  },
+  "Series": [
+    {
+      "Kind": "line",
+      "Name": "Seoul",
+      "Values": [
+        3,
+        5,
+        4.5,
+        -1,
+        0,
+        2.25,
+        6
+      ],
+      "Span": [
+        60,
+        100
+      ]
+    },
+    {
+      "Kind": "line",
+      "Name": "Busan",
+      "Values": [
+        8,
+        9,
+        9.5,
+        7,
+        6,
+        8,
+        10
+      ],
+      "Span": [
+        105,
+        142
+      ]
+    },
+    {
+      "Kind": "bar",
+      "Name": "Rain",
+      "Values": [
+        0,
+        2,
+        0,
+        1.5
+      ],
+      "Span": [
+        147,
+        172
+      ]
+    }
+  ]
+}
