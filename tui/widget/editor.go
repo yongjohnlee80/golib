@@ -170,10 +170,10 @@ type Editor struct {
 	swOn    bool
 	swTitle bool            // the switch is a frame's, on its title row (SetModeSwitchInTitle)
 	swSlot  *ModeSwitchSlot // the switch as a frame's title slot holds it (TitleSwitch)
-	// tabs is the host's strip for the frame's title row (Tabs, TitleTabs), made when first asked
-	// for; tabsTitle shows it there (SetTabsInTitle)
+	// tabs is the host's strip for the frame's bottom border (Tabs, FrameTabs), made when first
+	// asked for; tabsFrame shows it there (SetTabsInFrame)
 	tabs      *TabStrip
-	tabsTitle bool
+	tabsFrame bool
 	rowW      int            // the editor's width at its last layout: where the switch's cells start
 	pointer   *EditorPointer // the press, the drag, and the context menu's keys (editor_pointer.go)
 	cmdline   *CommandLine   // the ':' prompt: on unless a consumer turns it off

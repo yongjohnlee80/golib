@@ -337,7 +337,7 @@ func restyleFrame(c tui.Component, p palette) {
 	c.(*widget.Box).WithStyle(st).WithFocusedStyle(focused)
 }
 
-// restyleEditor gives the Editor the palette's looks, and its title-row tabs (Editor.Tabs)
+// restyleEditor gives the Editor the palette's looks, and its frame's tabs (Editor.Tabs)
 // TerminalTabs's: the bar in window, a tab in button, the active one in highlight.
 func restyleEditor(c tui.Component, p palette) {
 	st, _ := p.editorStyles()
