@@ -118,6 +118,11 @@ func buildFrame(b Build) (tui.Component, []string, error) {
 	// the Editor's modeSwitch is "title", and takes no room otherwise, so a later modeSwitch moves it
 	if sw, ok := frameEditor(b.Children[0]); ok {
 		box.SetTitleSlot(sw.TitleSwitch())
+		// and its tabs at the row's left: shown while the Editor's titleTabs is true and the host
+		// gives it tabs, no room otherwise
+		if tt, ok := sw.(titleTabber); ok {
+			box.SetTitleLeading(tt.TitleTabs())
+		}
 	}
 	return box, consumed, nil
 }
@@ -125,6 +130,9 @@ func buildFrame(b Build) (tui.Component, []string, error) {
 // titleSwitcher is a component with a Raw | Rendered switch for its frame's title row: the cell
 // Editor.
 type titleSwitcher interface{ TitleSwitch() tui.Component }
+
+// titleTabber is a frame's Editor with tabs for its title row's left: the cell Editor.
+type titleTabber interface{ TitleTabs() tui.Component }
 
 // frameEditor is the one Editor in a frame's content c that the frame's title row holds the switch
 // of: c itself, or the only titleSwitcher below it, however deep (a page's Frame holds a Flex whose
