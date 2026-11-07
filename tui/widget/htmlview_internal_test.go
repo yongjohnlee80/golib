@@ -138,8 +138,8 @@ func (c *cellHTML) rowTexts() []string {
 }
 
 // TestCellHTMLRows: the cell layout wraps at the width, rules an h1 off, hangs list markers and
-// wrapped lines under the text, bars quotes, wraps a table too wide for its box as rows of text and
-// rules a rule.
+// wrapped lines under the text, bars quotes, lays a table too wide to narrow at its own width (it
+// pans: its rows here as laid out, cut at the width) and rules a rule.
 func TestCellHTMLRows(t *testing.T) {
 	c := layCells(t, `<h1>Title</h1><p>one two three four five</p><ul><li>a long item here</li></ul>`+
 		`<table><tr><td>k</td><td>value</td></tr><tr><td>longer</td><td>v</td></tr></table>`+
@@ -154,8 +154,10 @@ func TestCellHTMLRows(t *testing.T) {
 		" • a long", // the wrap breaks before a word that fills the row to its last cell
 		"   item here",
 		"",
-		"k │ value", // 18 cells boxed, 14 wide: the rows wrap as text
-		"longer │ v",
+		"┌────────┬────", // 18 cells boxed; two columns of tableMinColumn need 15, the room is 14: it pans
+		"│ k      │ val",
+		"│ longer │ v",
+		"└────────┴────",
 		"",
 		"▎ quoted text",
 		"",

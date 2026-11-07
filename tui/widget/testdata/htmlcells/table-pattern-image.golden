@@ -1,0 +1,23 @@
+width 60
+> | Icon | Name |
+> | --- | --- |
+> | ![logo](logo.png) | the logo |
+
+"┌────────┬──────────┐"
+    0-20 fg=muted bg=background
+"│ Icon   │ Name     │"
+    0-1 fg=muted bg=background
+    2-5 bold fg=fg bg=background
+    6-10 fg=muted bg=background
+    11-14 bold fg=fg bg=background
+    15-20 fg=muted bg=background
+"├────────┼──────────┤"
+    0-20 fg=muted bg=background
+"│ [logo] │ the logo │"
+    0-1 fg=muted bg=background
+    2-7 italic fg=fg bg=background
+    8-10 fg=muted bg=background
+    11-18 fg=fg bg=background
+    19-20 fg=muted bg=background
+"└────────┴──────────┘"
+    0-20 fg=muted bg=background

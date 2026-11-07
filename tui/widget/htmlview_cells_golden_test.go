@@ -162,7 +162,8 @@ func goldenRow(s *recordSurface, y int) string {
 
 // TestCellHTMLGoldens: each element reads in cells the way it does in the window (golden per
 // element, testdata/htmlcells; -update rewrites them): a table boxed, its header ruled off and its
-// cells aligned, one too wide wrapped as rows; headings told apart by level; links underlined;
+// cells aligned, one wider than its room boxed with its columns narrowed and its cells wrapped in
+// them, one whose columns can't narrow that far wrapped as rows; headings told apart by level; links underlined;
 // inline code and code blocks set off; quotes barred, a callout's bar and title in its type's
 // color; list markers by depth, a task's checkbox; rules, emphasis, strike and highlight.
 func TestCellHTMLGoldens(t *testing.T) {
@@ -174,6 +175,21 @@ func TestCellHTMLGoldens(t *testing.T) {
 	}{
 		{"table", 40, "| Name | Qty | Note |\n| :--- | ---: | :---: |\n| apple | 3 | ripe |\n| kiwi | 12 | — |\n", false},
 		{"table-too-wide", 20, "| Name | Description |\n| --- | --- |\n| apple | a long description of it |\n", false},
+		{"table-wrapped", 60, "| Layer | Change | File(s) |\n|---|---|---|\n| SQL | `pg_trgm` extension + `user_lexicon` table + `app.search_term` view + `UNIQUE(search_term_id)` + GIN trigram index | new migration `migrations/000123_add_search_term.sql` |\n| API | parse the query, score each match, merge the top N | `search.go` (`Search`) |\n| CRON | schedule `RefreshSearchTerms` | `cron_jobs` row |\n", false},
+		{"table-too-many-columns", 20, "| one | two | three | four | five |\n| --- | --- | --- | --- | --- |\n| alpha | bravo | charlie | delta | echo |\n", false},
+		// the patterns the knowledge bases' tables hold, each at a width it fits: an escaped pipe in a
+		// cell, inline code, a line break, a link, a cell short or long of the header's columns,
+		// alignment of each kind, a table in a list item and one in a quote, an image
+		{"table-pattern-escaped-pipe", 60, "| Op | Meaning |\n| --- | --- |\n| `a \\| b` | a or b |\n| x \\| y | either |\n", false},
+		{"table-pattern-inline-code", 60, "| Constant | Value |\n| --- | --- |\n| `maxQueryLen` | 256 |\n| `matchThreshold` | 0.45 |\n", false},
+		{"table-pattern-br", 60, "| Step | Notes |\n| --- | --- |\n| one | first line<br>second line |\n| two | single |\n", false},
+		{"table-pattern-link", 60, "| Doc | Where |\n| --- | --- |\n| [the spec](spec.md) | <https://example.com> |\n", false},
+		{"table-pattern-ragged", 60, "| A | B | C |\n| --- | --- | --- |\n| 1 | 2 |\n| 1 | 2 | 3 | 4 |\n", false},
+		{"table-pattern-alignment", 60, "| Left | Centre | Right | None |\n| :--- | :---: | ---: | --- |\n| a | b | c | d |\n| longer | longer | longer | longer |\n", false},
+		{"table-pattern-in-list", 60, "- an item\n\n  | A | B |\n  | --- | --- |\n  | 1 | 2 |\n", false},
+		{"table-pattern-in-quote", 60, "> | A | B |\n> | --- | --- |\n> | 1 | 2 |\n", false},
+		{"table-pattern-no-outer-pipes", 60, "A | B\n--- | ---\n1 | 2\n", false},
+		{"table-pattern-image", 60, "| Icon | Name |\n| --- | --- |\n| ![logo](logo.png) | the logo |\n", false},
 		{"headings", 30, "# One\n\n## Two\n\n### Three\n\n#### Four\n\n##### Five\n\n###### Six\n", false},
 		{"link", 30, "see [the docs](docs.md) and <https://example.com> too\n", false},
 		{"code", 30, "run `make all` now\n\n```go\nfunc main() {\n\tprintln(\"hi\")\n}\n```\n", false},

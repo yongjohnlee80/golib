@@ -80,8 +80,8 @@ func (c *cellHTML) SetCurrentMark(i int) {
 	}
 }
 
-// panToMark pans a wide code block so the mark's first row of it shows between the box's sides: its
-// start, when the whole of it can't.
+// panToMark pans a wide code block so the mark's first row of it shows between the box's sides, or a
+// wide table so it shows between the mark columns: its start, when the whole of it can't.
 func (c *cellHTML) panToMark(m markRange) {
 	bi := m.from.Block
 	if c.over(bi) == 0 || bi >= len(c.tops) {
@@ -101,12 +101,16 @@ func (c *cellHTML) panToMark(m markRange) {
 		if lo < 0 {
 			continue
 		}
-		off := c.offset(bi)
-		if hi-off > c.width-1 { // past the right side
-			off = hi - (c.width - 1)
+		shift := 0 // a wide table's line is drawn a column right, past the « column (shownAt)
+		if r.pans {
+			shift = 1
 		}
-		if first := c.codeLeft(r) + 1; lo-off < first { // before the left side: its inset's cell kept
-			off = lo - first - 1
+		off := c.offset(bi)
+		if hi+shift-off > c.width-1 { // past the right side
+			off = hi + shift - (c.width - 1)
+		}
+		if first := c.codeLeft(r) + 1; lo+shift-off < first { // before the left side: its inset's cell kept
+			off = lo + shift - first - 1
 		}
 		c.panBlock(bi, off-c.offset(bi))
 		return

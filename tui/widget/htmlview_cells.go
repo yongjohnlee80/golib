@@ -3,6 +3,7 @@ package widget
 import (
 	"context"
 	"math"
+	"slices"
 	"strings"
 
 	"github.com/yongjohnlee80/golib/highlight"
@@ -19,9 +20,10 @@ import (
 // under), links underlined, inline code tinted in the document's accent, preformatted text boxed
 // and never wrapped (a line wider than the room pans sideways, as a wide diagram does: see PAN);
 // quotes carry a bar, a callout's in its type's color with its title; list items a hanging marker,
-// a task's its checkbox; a table that fits is boxed, its header ruled off and its cells aligned,
-// and one that does not wraps as rows of text. Highlighted text is marked. Images show their alt
-// text.
+// a task's its checkbox; a table is boxed, its header ruled off and its cells aligned, its columns
+// narrowed to the room when it is wider and its cells' text wrapped in them (a table whose columns
+// can't narrow to tableMinColumn is drawn at its own width and pans: see PAN). Highlighted text is
+// marked. Images show their alt text.
 
 // hcl is one laid-out grapheme cluster: where it is drawn and which document position it is.
 type hcl struct {
@@ -40,6 +42,7 @@ type hrow struct {
 	first bool
 	cls   []hcl
 	shade bool // a code block's line: between its box's sides, the page's fill, panned (shownAt)
+	pans  bool // a wide table's line, its box's too: panned with the table's other lines (shownAt)
 	rule  bool
 	// bottom is a code block's box's bottom edge: a point on it is the end of the block.
 	bottom bool
@@ -73,6 +76,10 @@ type cellHTML struct {
 	// codeW is each code block's width as it is laid out, its widest line with the space either side
 	// of it, by its block index (over).
 	codeW map[int]int
+	// wide is each row block of a table too wide to narrow (fitColumns), by its block index: the
+	// table's first row block, under which its rows pan as one (panKey); wideW is that table's width
+	// as laid out, its box included, by its first row block (over).
+	wide, wideW map[int]int
 }
 
 func newCellHTML(measure func(string) int) *cellHTML {
@@ -102,11 +109,13 @@ func (c *cellHTML) SetWidth(w float32) {
 
 func (c *cellHTML) Height() float32 { return float32(len(c.rows)) }
 
-// layOut wraps every block to the width: a table that fits between its box's rules (its top, under
-// its header row, its bottom), h1 and h2 above their rules.
+// layOut wraps every block to the width: a table between its box's rules (its top, under its header
+// row, its bottom), h1 and h2 above their rules.
 func (c *cellHTML) layOut() {
 	c.rows, c.tops, c.codeW = c.rows[:0], make([]int, len(c.doc)), map[int]int{}
-	widths := c.columnWidths()
+	c.wide, c.wideW = map[int]int{}, map[int]int{}
+	widths, wide := c.columnWidths()
+	firstRow := map[int]int{} // each table's first row block
 	for bi := range c.doc {
 		b := &c.doc[bi]
 		if b.gap {
@@ -115,6 +124,17 @@ func (c *cellHTML) layOut() {
 		c.tops[bi] = len(c.rows)
 		cols := widths[b.table]
 		boxed := b.kind == hRow && cols != nil
+		if boxed && wide[b.table] {
+			first, ok := firstRow[b.table]
+			if !ok {
+				first, firstRow[b.table] = bi, bi
+				c.wideW[bi] = 4 + 3*(len(cols)-1)
+				for _, w := range cols {
+					c.wideW[bi] += w
+				}
+			}
+			c.wide[bi] = first
+		}
 		if boxed && c.tableEdge(bi, -1) {
 			c.layBox(bi, b, cols, "┌", "┬", "┐")
 		}
@@ -127,16 +147,22 @@ func (c *cellHTML) layOut() {
 		case b.kind == hHeading && b.level <= 2:
 			c.layHeadingRule(bi, b)
 		}
+		if _, ok := c.wide[bi]; ok {
+			for ri := c.tops[bi]; ri < len(c.rows); ri++ {
+				c.rows[ri].pans = true
+			}
+		}
 	}
 	if len(c.rows) == 0 {
 		c.rows = append(c.rows, hrow{block: -1})
 	}
 }
 
-// columnWidths are each table's column widths, in cells, when its columns fit side by side at
-// the width; a table that does not fit gets none, and its rows wrap as text.
-func (c *cellHTML) columnWidths() map[int][]int {
-	out := map[int][]int{}
+// columnWidths are each table's column widths, in cells: its columns' natural widths when they fit
+// side by side at the width, else narrowed to it (fitColumns). A table whose columns can't narrow
+// that far keeps its natural widths and is wide: drawn at its own width, it pans.
+func (c *cellHTML) columnWidths() (out map[int][]int, wide map[int]bool) {
+	out, wide = map[int][]int{}, map[int]bool{}
 	natural := map[int][]int{}
 	room := map[int]int{}
 	for bi := range c.doc {
@@ -165,6 +191,56 @@ func (c *cellHTML) columnWidths() map[int][]int {
 		}
 		if sum <= room[t] {
 			out[t] = cols
+			continue
+		}
+		natural := sum - 4 - 3*max(len(cols)-1, 0)
+		if fit := fitColumns(cols, room[t]-(sum-natural)); fit != nil {
+			out[t] = fit
+		} else {
+			out[t], wide[t] = cols, true
+		}
+	}
+	return out, wide
+}
+
+// tableMinColumn is the narrowest a column of a table wider than its room is narrowed to: a column
+// narrower than that by nature keeps its width; below it a cell's text breaks into slivers, and the
+// table is drawn at its own width and pans instead.
+const tableMinColumn = 4
+
+// fitColumns narrows a table's natural column widths to fit avail cells: the widest are capped at one
+// width, as wide as avail allows, the narrower keeping theirs, and the cells the cap leaves over go
+// to the capped columns, one each from the left. nil when the columns can't narrow to
+// tableMinColumn.
+func fitColumns(natural []int, avail int) []int {
+	if len(natural) == 0 {
+		return nil
+	}
+	capped := func(limit int) int {
+		sum := 0
+		for _, w := range natural {
+			sum += min(w, limit)
+		}
+		return sum
+	}
+	lo, hi := tableMinColumn, max(slices.Max(natural), tableMinColumn)
+	if capped(lo) > avail {
+		return nil
+	}
+	for lo < hi { // the widest cap that fits
+		mid := (lo + hi + 1) / 2
+		if capped(mid) <= avail {
+			lo = mid
+		} else {
+			hi = mid - 1
+		}
+	}
+	out, left := make([]int, len(natural)), avail-capped(lo)
+	for i, w := range natural {
+		out[i] = min(w, lo)
+		if w > lo && left > 0 {
+			out[i]++
+			left--
 		}
 	}
 	return out
@@ -313,8 +389,12 @@ func (c *cellHTML) layBlock(bi int, b *hblock, cols []int) {
 		c.layRule(bi, b, room)
 		return
 	}
+	if b.kind == hRow && cols != nil {
+		c.layRow(bi, b, cols)
+		return
+	}
 	firstRow := true
-	for _, ln := range c.blockLines(bi, b, cols) {
+	for _, ln := range c.blockLines(bi, b) {
 		cs := make([]string, len(ln))
 		for i, k := range ln {
 			cs[i] = k.text
@@ -341,7 +421,7 @@ func (c *cellHTML) layCode(bi int, b *hblock) {
 	c.layCodeEdge(bi, b, true)
 	first := 2*b.quote + b.indent + 1 // inside the box's left side
 	widest := 0
-	for _, ln := range c.blockLines(bi, b, nil) {
+	for _, ln := range c.blockLines(bi, b) {
 		row := hrow{block: bi, shade: true, cls: c.prefix(b, false)}
 		x := first
 		for _, k := range ln {
@@ -601,9 +681,9 @@ type lineCluster struct {
 }
 
 // blockLines is block bi's clusters, each with its position, split into the lines a hard break
-// ("\n") ends, which wrap on their own. A boxed table row (cols) is edged by its box, its cells
-// padded to their columns as they align, a missing cell blank; a preformatted line is inset a cell.
-func (c *cellHTML) blockLines(bi int, b *hblock, cols []int) [][]lineCluster {
+// ("\n") ends, which wrap on their own; a preformatted line is inset a cell. A boxed table row is
+// layRow's.
+func (c *cellHTML) blockLines(bi int, b *hblock) [][]lineCluster {
 	var lines [][]lineCluster
 	var line []lineCluster
 	pad := func(n int, at DocPos) {
@@ -611,38 +691,7 @@ func (c *cellHTML) blockLines(bi int, b *hblock, cols []int) [][]lineCluster {
 			line = append(line, lineCluster{text: " ", pos: at, end: at, deco: true})
 		}
 	}
-	edge := func(s string, at DocPos) {
-		for g := range tui.Graphemes(s) {
-			line = append(line, lineCluster{text: g, pos: at, end: at, deco: true, fg: codeBoxTone})
-		}
-	}
-	boxed := b.kind == hRow && cols != nil
-	width := func(ci int) int {
-		w := 0
-		for _, s := range b.spans[b.cellStarts[ci]:c.cellEnd(b, ci)] {
-			w += c.measure(s.text)
-		}
-		return w
-	}
-	lead := func(ci int) int { // the padding before cell ci's text, as the cell aligns
-		if ci >= len(cols) || ci >= len(b.align) {
-			return 0
-		}
-		switch room := cols[ci] - width(ci); b.align[ci] {
-		case 'r':
-			return room
-		case 'c':
-			return room / 2
-		}
-		return 0
-	}
 	start := DocPos{Block: bi}
-	if boxed {
-		edge("│ ", start)
-		if len(b.cellStarts) > 0 {
-			pad(lead(0), start)
-		}
-	}
 	if b.kind == hPre {
 		pad(1, start)
 	}
@@ -652,14 +701,8 @@ func (c *cellHTML) blockLines(bi int, b *hblock, cols []int) [][]lineCluster {
 	}
 	hlLine, lineOff := 0, 0 // where a highlighted cluster sits: its line, and its byte within it
 	col := 0                // a preformatted line's column, for its tab stops
-	cell := 0
 	for si := range b.spans {
 		sp := &b.spans[si]
-		if boxed && cell+1 < len(b.cellStarts) && si == b.cellStarts[cell+1]-1 {
-			// before a separator: pad the cell to its column
-			pad(cols[cell]-width(cell)-lead(cell), DocPos{Block: bi, Span: si})
-			cell++
-		}
 		off := 0
 		for g := range tui.Graphemes(sp.text) {
 			at := DocPos{Block: bi, Span: si, Offset: off}
@@ -691,28 +734,113 @@ func (c *cellHTML) blockLines(bi int, b *hblock, cols []int) [][]lineCluster {
 			col += c.measure(g)
 			line = append(line, lineCluster{text: g, pos: at, end: end, sp: sp, deco: sp.deco, fg: fg})
 		}
-		if boxed && cell > 0 && cell < len(b.cellStarts) && si+1 == b.cellStarts[cell] {
-			pad(lead(cell), DocPos{Block: bi, Span: si + 1})
-		}
-	}
-	if boxed {
-		end := DocPos{Block: bi}
-		if n := len(b.spans); n > 0 {
-			end = DocPos{Block: bi, Span: n - 1, Offset: len(b.spans[n-1].text)}
-		}
-		if last := len(b.cellStarts) - 1; last >= 0 {
-			pad(cols[last]-width(last)-lead(last), end)
-		}
-		if len(b.cellStarts) == 0 && len(cols) > 0 { // a row of no cells: a blank first one
-			pad(cols[0], end)
-		}
-		for ci := max(len(b.cellStarts), 1); ci < len(cols); ci++ { // a row short of cells: blank ones
-			edge(" │ ", end)
-			pad(cols[ci], end)
-		}
-		edge(" │", end)
 	}
 	return append(lines, line)
+}
+
+// layRow lays a boxed table row out at its table's column widths: each cell's text broken at its
+// hard breaks and wrapped to its column, the row as tall as its tallest cell. Each of its lines is
+// edged by the box, its cells padded to their columns as they align, a missing cell (or a cell's
+// line past its last) blank. The first line's column rules are the row's own separators (copied as
+// a tab); a later line's are the box's. A row whose cells fit their columns is one line.
+func (c *cellHTML) layRow(bi int, b *hblock, cols []int) {
+	end := DocPos{Block: bi} // the row's end, where its trailing padding sits
+	if n := len(b.spans); n > 0 {
+		end = DocPos{Block: bi, Span: n - 1, Offset: len(b.spans[n-1].text)}
+	}
+	cells, height := make([][][]lineCluster, len(cols)), 1
+	for ci := range min(len(cols), len(b.cellStarts)) {
+		var cur []lineCluster
+		flush := func() {
+			cs := make([]string, len(cur))
+			for i, k := range cur {
+				cs[i] = k.text
+			}
+			for _, rr := range wrapRanges(cs, cols[ci], c.measure) {
+				cells[ci] = append(cells[ci], cur[rr[0]:rr[1]])
+			}
+			cur = nil
+		}
+		for si := b.cellStarts[ci]; si < c.cellEnd(b, ci); si++ {
+			sp := &b.spans[si]
+			off := 0
+			for g := range tui.Graphemes(sp.text) {
+				at := DocPos{Block: bi, Span: si, Offset: off}
+				off += len(g)
+				if g == "\n" && !sp.deco {
+					flush()
+					continue
+				}
+				cur = append(cur, lineCluster{text: g, pos: at, end: DocPos{Block: bi, Span: si, Offset: off}, sp: sp, deco: sp.deco})
+			}
+		}
+		flush()
+		height = max(height, len(cells[ci]))
+	}
+	for k := range height {
+		var line []lineCluster
+		pad := func(n int, at DocPos) {
+			for range n {
+				line = append(line, lineCluster{text: " ", pos: at, end: at, deco: true})
+			}
+		}
+		edge := func(s string, at DocPos) {
+			for g := range tui.Graphemes(s) {
+				line = append(line, lineCluster{text: g, pos: at, end: at, deco: true, fg: codeBoxTone})
+			}
+		}
+		edge("│ ", DocPos{Block: bi})
+		for ci, colW := range cols {
+			if ci > 0 {
+				if k == 0 && ci < len(b.cellStarts) {
+					sep := b.cellStarts[ci] - 1
+					sp := &b.spans[sep]
+					off := 0
+					for g := range tui.Graphemes(sp.text) {
+						at := DocPos{Block: bi, Span: sep, Offset: off}
+						off += len(g)
+						line = append(line, lineCluster{text: g, pos: at, end: DocPos{Block: bi, Span: sep, Offset: off}, sp: sp, deco: sp.deco})
+					}
+				} else {
+					edge(" │ ", end)
+				}
+			}
+			var part []lineCluster
+			if k < len(cells[ci]) {
+				part = cells[ci][k]
+			}
+			w := 0
+			for _, cl := range part {
+				w += c.measure(cl.text)
+			}
+			lead, trail := 0, end // the padding before the text, as the cell aligns; where the rest sits
+			if ci < len(b.cellStarts) {
+				if ci < len(b.align) {
+					switch b.align[ci] {
+					case 'r':
+						lead = colW - w
+					case 'c':
+						lead = (colW - w) / 2
+					}
+				}
+				if ci+1 < len(b.cellStarts) {
+					trail = DocPos{Block: bi, Span: b.cellStarts[ci+1] - 1}
+				}
+				pad(lead, DocPos{Block: bi, Span: b.cellStarts[ci]})
+			}
+			line = append(line, part...)
+			pad(colW-w-lead, trail)
+		}
+		edge(" │", end)
+		row := hrow{block: bi, first: k == 0, cls: c.prefix(b, k == 0)}
+		x := 2*b.quote + b.indent
+		for _, cl := range line {
+			w := c.measure(cl.text)
+			row.cls = append(row.cls, hcl{text: cl.text, x: x, w: w, pos: cl.pos, end: cl.end, sp: cl.sp, deco: cl.deco, fg: cl.fg})
+			x += w
+		}
+		c.rows = append(c.rows, row)
+	}
 }
 
 // rowAt is the row at y, clamped to the document.
@@ -770,6 +898,9 @@ func (c *cellHTML) At(x, y float32) DocPos {
 	}
 	if r.shade { // a column on screen as the line's own: within the box's sides, the pan undone
 		x = min(max(x, float32(c.codeLeft(r)+1)), float32(c.width-1)) + float32(c.offset(r.block))
+	}
+	if r.pans { // a wide table's line: within the mark columns, its shift and pan undone (shownAt)
+		x = min(max(x, float32(c.codeLeft(r)+1)), float32(c.width-1)) + float32(c.offset(r.block)) - 1
 	}
 	if x < float32(ts[0].x) {
 		return ts[0].pos
@@ -987,13 +1118,18 @@ func (c *cellHTML) codeLeft(r *hrow) int {
 }
 
 // shownAt is the column on screen of cluster k of row r, and whether it shows there: a code block's
-// line is shifted by its block's pan and shows only whole between its box's sides, its quote bars and
-// indent where they are; any other row's cluster as it is laid out.
+// line is shifted by its block's pan and shows only whole between its box's sides; a wide table's
+// line is moved a column right, past the « column, shifted by its table's pan and shows only whole
+// between the mark columns; their quote bars and indent where they are; any other row's cluster as
+// it is laid out.
 func (c *cellHTML) shownAt(r *hrow, k hcl) (int, bool) {
-	if !r.shade || k.x < c.codeLeft(r) {
+	if !(r.shade || r.pans) || k.x < c.codeLeft(r) {
 		return k.x, true
 	}
 	x := k.x - c.offset(r.block)
+	if r.pans {
+		x++
+	}
 	return x, x > c.codeLeft(r) && x+k.w <= c.width-1
 }
 
@@ -1014,17 +1150,20 @@ func (c *cellHTML) paintCodeSides(s tui.Surface, r *hrow, y, w int) {
 }
 
 // paintCodePanMarks draws, over the sides of each wide code block on screen, its « and » (paintPanMarks)
-// on its middle line on screen: the box's sides are the columns a wide block keeps for its marks.
+// on its middle line on screen: the box's sides are the columns a wide block keeps for its marks. A
+// wide table's are its room's edge columns, on the middle of its lines on screen.
 func (c *cellHTML) paintCodePanMarks(s tui.Surface, top, w, h int) {
+	panned := func(r *hrow) bool { return r.shade || r.pans }
 	for y := 0; y < h; {
 		first := y
 		ri := top + y
-		if ri < 0 || ri >= len(c.rows) || !c.rows[ri].shade {
+		if ri < 0 || ri >= len(c.rows) || !panned(&c.rows[ri]) {
 			y++
 			continue
 		}
 		bi := c.rows[ri].block
-		for y < h && top+y < len(c.rows) && c.rows[top+y].shade && c.rows[top+y].block == bi {
+		key := c.panKey(bi)
+		for y < h && top+y < len(c.rows) && panned(&c.rows[top+y]) && c.panKey(c.rows[top+y].block) == key {
 			y++
 		}
 		if over := c.over(bi); over > 0 {
@@ -1132,9 +1271,10 @@ func selected(k hcl, from, to DocPos) bool {
 	return k.sp != nil && k.pos != k.end && k.pos.Before(to) && from.Before(k.end)
 }
 
-// PAN. A diagram or a code block wider than its room is drawn at its own width and scrolled
-// sideways, as the window scrolls a wide box (gui/widget's ScrollX): each wide block has its own
-// offset (pan), the wheel's Shift pans the one under the pointer (ScrollX), and the keys the one
+// PAN. A diagram or a code block wider than its room, or a table too wide to narrow (fitColumns), is
+// drawn at its own width and scrolled sideways, as the window scrolls a wide box (gui/widget's
+// ScrollX): each wide block has its own offset (pan), a table's rows one between them (panKey),
+// the wheel's Shift pans the one under the pointer (ScrollX), and the keys the one
 // nearest the page's top (Pan). Only a wide block moves: text wraps to the room and never scrolls
 // off. While a block is wide its room's two edge columns are the marks', what it draws kept between
 // them, so a mark never covers it: a « or » there, on its middle row on screen, says more of it lies
@@ -1157,7 +1297,9 @@ func (c *cellHTML) over(bi int) int {
 	b := &c.doc[bi]
 	room := c.width - 2*b.quote - b.indent
 	width, fits := 0, room
-	if w, ok := c.codeW[bi]; ok {
+	if first, ok := c.wide[bi]; ok { // a wide table, between its room's mark columns
+		width, fits = c.wideW[first], room-2
+	} else if w, ok := c.codeW[bi]; ok {
 		width, fits = w, room-2
 	} else if r := c.rows[c.tops[bi]]; r.grid != nil && r.block == bi {
 		width = r.grid.Size().W
@@ -1169,7 +1311,16 @@ func (c *cellHTML) over(bi int) int {
 }
 
 // offset is block bi's pan, within what it has to show: 0 when it fits.
-func (c *cellHTML) offset(bi int) int { return min(max(c.pan[bi], 0), c.over(bi)) }
+func (c *cellHTML) offset(bi int) int { return min(max(c.pan[c.panKey(bi)], 0), c.over(bi)) }
+
+// panKey is the block whose pan block bi's is: a wide table's first row block for each of its
+// rows, which pan as one; any other block its own.
+func (c *cellHTML) panKey(bi int) int {
+	if first, ok := c.wide[bi]; ok {
+		return first
+	}
+	return bi
+}
 
 // panBlock moves block bi's pan by dx cells, kept within it; false when it didn't move.
 func (c *cellHTML) panBlock(bi, dx int) bool {
@@ -1181,7 +1332,7 @@ func (c *cellHTML) panBlock(bi, dx int) bool {
 	if c.pan == nil {
 		c.pan = map[int]int{}
 	}
-	c.pan[bi] = now
+	c.pan[c.panKey(bi)] = now
 	return true
 }
 

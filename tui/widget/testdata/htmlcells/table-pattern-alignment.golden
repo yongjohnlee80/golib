@@ -1,0 +1,42 @@
+width 60
+> | Left | Centre | Right | None |
+> | :--- | :---: | ---: | --- |
+> | a | b | c | d |
+> | longer | longer | longer | longer |
+
+"┌────────┬────────┬────────┬────────┐"
+    0-36 fg=muted bg=background
+"│ Left   │ Centre │  Right │ None   │"
+    0-1 fg=muted bg=background
+    2-5 bold fg=fg bg=background
+    6-10 fg=muted bg=background
+    11-16 bold fg=fg bg=background
+    17-20 fg=muted bg=background
+    21-25 bold fg=fg bg=background
+    26-28 fg=muted bg=background
+    29-32 bold fg=fg bg=background
+    33-36 fg=muted bg=background
+"├────────┼────────┼────────┼────────┤"
+    0-36 fg=muted bg=background
+"│ a      │   b    │      c │ d      │"
+    0-1 fg=muted bg=background
+    2-2 fg=fg bg=background
+    3-12 fg=muted bg=background
+    13-13 fg=fg bg=background
+    14-24 fg=muted bg=background
+    25-25 fg=fg bg=background
+    26-28 fg=muted bg=background
+    29-29 fg=fg bg=background
+    30-36 fg=muted bg=background
+"│ longer │ longer │ longer │ longer │"
+    0-1 fg=muted bg=background
+    2-7 fg=fg bg=background
+    8-10 fg=muted bg=background
+    11-16 fg=fg bg=background
+    17-19 fg=muted bg=background
+    20-25 fg=fg bg=background
+    26-28 fg=muted bg=background
+    29-34 fg=fg bg=background
+    35-36 fg=muted bg=background
+"└────────┴────────┴────────┴────────┘"
+    0-36 fg=muted bg=background
