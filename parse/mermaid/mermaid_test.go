@@ -128,7 +128,7 @@ func TestUnsupported(t *testing.T) {
 		"sequenceDiagram\n  box Aqua Team\n  participant A\n  end",
 		"stateDiagram-v2\n  state A {\n  a\n  --\n  b\n  }",
 		"classDiagram\n  A <|-- B\n  click A call x()",
-		"gitGraph\n  commit id: \"a\"",
+		"kanban\n  todo",
 		"gantt\n  excludes weekends\n  a :2026-01-01, 3d",
 		"flowchart-elk TD\n  A-->B",
 		"---\ntitle: x\n---\nflowchart LR\n  A-->B",
@@ -196,7 +196,7 @@ func TestNotDrawnSaysItsLine(t *testing.T) {
 		{"flowchart LR\n  A[fa:fa-twitter for peace]", mermaid.ErrUnsupported, 2, "an icon", "mermaid: not drawn natively: an icon (line 2)"},
 		// unsupported anywhere wins over a syntax error before it, at its own line
 		{"flowchart LR\n  A -->\n  click A call x()", mermaid.ErrUnsupported, 3, "click", "mermaid: not drawn natively: click (line 3)"},
-		{"gitGraph\n  commit", mermaid.ErrUnsupported, 0, `"gitGraph" diagrams`, `mermaid: not drawn natively: "gitGraph" diagrams`},
+		{"kanban\n  todo", mermaid.ErrUnsupported, 0, `"kanban" diagrams`, `mermaid: not drawn natively: "kanban" diagrams`},
 		{"---\ntitle: x\n---\nflowchart LR\n  A-->B", mermaid.ErrUnsupported, 1, "front matter", "mermaid: not drawn natively: front matter (line 1)"},
 		{"flowchart LR\n  A-->B\n  A[" + long + "]", mermaid.ErrTooLarge, 3, "a label of 1025 bytes, more than 1024",
 			"mermaid: over a limit: a label of 1025 bytes on line 3, more than 1024"},

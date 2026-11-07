@@ -85,8 +85,8 @@ func TestWhatIsNotDrawnSaysWhy(t *testing.T) {
 	if _, err := lay(t, "gantt\n  excludes weekends\n  a :2026-01-01, 1d", 400); !errors.Is(err, pm.ErrUnsupported) {
 		t.Errorf("a gantt outside the subset: %v, want ErrUnsupported", err)
 	}
-	if _, err := lay(t, "gitGraph\n  commit id: \"a\"", 400); !errors.Is(err, pm.ErrUnsupported) {
-		t.Errorf("a gitGraph: %v, want ErrUnsupported", err)
+	if _, err := lay(t, "kanban\n  todo", 400); !errors.Is(err, pm.ErrUnsupported) {
+		t.Errorf("a kanban: %v, want ErrUnsupported", err)
 	}
 	var se *pm.SyntaxError
 	if _, err := lay(t, "flowchart TB\n  A[unclosed --> B", 400); !errors.As(err, &se) {
