@@ -534,6 +534,11 @@ func (x *Box) placeLead(w, inL, inR, sw int) {
 }
 
 // boxLeadKey is the title row's leading control's width commit (tui.Context.AfterLayout).
+
+// minTitleBesideLead is the least room a title is drawn in beside a leading control: its padding
+// and one cell of it before the ellipsis. With less, as tabs that fill a narrow row leave it, the
+// title is not drawn, rather than drawn as a lone "…".
+const minTitleBesideLead = 4
 const boxLeadKey tui.CommitKey = "widget.box.lead"
 
 // slotStyler is a title slot that takes the title row's look (ModeSwitch's SetStyle).
@@ -651,6 +656,9 @@ func (x *Box) Render(s tui.Surface) {
 	if x.lead != nil && x.leadW > 0 {
 		tw -= x.leadW + 1
 		tx += x.leadW + 1
+		if tw < minTitleBesideLead {
+			tw = 0 // too little left to read: the row is the control's and the border's
+		}
 	}
 	if sl, ok := x.slot.(slotStyler); ok && x.slotW > 0 {
 		// the slot wears the title row's look: the title's colour on the row's, its own marks over
