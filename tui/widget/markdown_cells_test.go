@@ -302,4 +302,14 @@ func TestATablesTopRuleShowsWithItsHeader(t *testing.T) {
 	if got := top(); got != "┌───┬───┐" {
 		t.Errorf("back on the header, the view's first row %q, want the table's top rule", got)
 	}
+
+	// a heading right after a table starts the view itself: the table's bottom rule is not its
+	h, sh, ed = renderedEditor(t, "| a | b |\n|---|---|\n| c | d |\n# H"+strings.Repeat("\nline", 20), mdRenderer())
+	caretAt(h, sh, ed, 23, 0)
+	if x, y, ok := caretAt(h, sh, ed, 3, 2); !ok || x != 0 || y != 0 {
+		t.Errorf("caret back on the heading at (%d, %d) %v, want (0, 0), the view's top:\n%s", x, y, ok, h.grid())
+	}
+	if got := top(); got != "H" {
+		t.Errorf("back on the heading, the view's first row %q, want H", got)
+	}
 }
