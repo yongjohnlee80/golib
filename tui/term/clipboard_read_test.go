@@ -5,6 +5,7 @@ import (
 	"errors"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/yongjohnlee80/golib/tui"
 	"github.com/yongjohnlee80/golib/tui/internal/vtparse"
@@ -144,5 +145,67 @@ func TestAnAnsweredReadLeavesTheTerminalAnswering(t *testing.T) {
 	_ = b.Stop()
 	if _, err := b.ReadClipboard(func(string, error) {}); err != ErrClosed {
 		t.Fatalf("a read after Stop: %v; want ErrClosed", err)
+	}
+}
+
+// hookWriter is a terminal's input as the backend writes to it, through hook: one that answers
+// while the query is being written, and a write that may then fail.
+type hookWriter struct{ hook func() error }
+
+func (w *hookWriter) Write(p []byte) (int, error) {
+	if err := w.hook(); err != nil {
+		return 0, err
+	}
+	return len(p), nil
+}
+
+// An answer that comes while the query is still being written: a write that then fails returns its
+// error and the read is never answered, nor is the terminal marked silent; one that succeeds gives
+// the read that answer, once.
+func TestAnAnswerDuringTheQuerysWrite(t *testing.T) {
+	failed := errors.New("the terminal went away")
+	for _, c := range []struct {
+		name string
+		err  error
+	}{{"the write fails", failed}, {"the write succeeds", nil}} {
+		t.Run(c.name, func(t *testing.T) {
+			w := &hookWriter{}
+			b := newHarness(strings.NewReader(""), w, WithEnv(noEnv), WithClipboardRead())
+			d := &decoder{emit: func(tui.Event) {}, clip: b.clipboardAnswered}
+			w.hook = func() error { d.feedBytes([]byte(osc52("early", "\x07"))); return c.err }
+			got := make(chan answered, 2)
+			_, err := b.ReadClipboard(func(text string, err error) { got <- answered{text, err} })
+			if c.err != nil {
+				if !errors.Is(err, failed) {
+					t.Fatalf("a read whose query couldn't be written: %v; want the write's error", err)
+				}
+				select {
+				case a := <-got:
+					t.Fatalf("a read that returned an error was answered: %+v", a)
+				case <-time.After(200 * time.Millisecond):
+				}
+				w.hook = func() error { return nil }
+				if _, err := b.ReadClipboard(func(string, error) {}); err != nil {
+					t.Fatalf("a read after a failed write: %v; want it asked (a failed write is not a silent terminal)", err)
+				}
+				return
+			}
+			if err != nil {
+				t.Fatalf("ReadClipboard: %v", err)
+			}
+			select {
+			case a := <-got:
+				if a != (answered{"early", nil}) {
+					t.Fatalf("answered %+v; want the answer that came during the write", a)
+				}
+			case <-time.After(5 * time.Second):
+				t.Fatal("the answer that came during the write was never given")
+			}
+			select {
+			case a := <-got:
+				t.Fatalf("answered twice: %+v", a)
+			case <-time.After(100 * time.Millisecond):
+			}
+		})
 	}
 }
