@@ -254,6 +254,9 @@ func (lb *mdCellLines) tableRow(ln int, line string, n int, head bool, mask []bo
 			if at := offs[k] - shift; at < 0 || at >= len(line) { // a pipe MarkdownGFMRow added
 				continue
 			}
+			if k-shift < len(mask) && mask[k-shift] { // hidden metadata first: a <br> in a comment breaks nothing
+				continue
+			}
 			a := attrs[offs[k]-offs[sp[0]]]
 			if a.Br > 0 {
 				if a.Br != lastBr { // a <br>'s first byte: two in a row are two
@@ -262,7 +265,7 @@ func (lb *mdCellLines) tableRow(ln int, line string, n int, head bool, mask []bo
 				}
 				continue
 			}
-			if a.Hidden || (k-shift < len(mask) && mask[k-shift]) {
+			if a.Hidden {
 				continue
 			}
 			st := lb.styleOf(a)
@@ -383,7 +386,12 @@ func (r *MarkdownCellRenderer) line(lb *mdCellLines, cb *CellBlock, ln int, line
 	}
 	lb.cells(cb, ln, text, clusterIndex(line, start), func(off int) style.Style { return lb.styleOf(attrs[off]) }, func(off, col int) bool {
 		return attrs[off].Hidden || attrs[off].Br > 0 || (col < len(mask) && mask[col])
-	}, func(off int) int { return attrs[off].Br }, lead, cont)
+	}, func(off, col int) int {
+		if col < len(mask) && mask[col] { // hidden metadata: a <br> in a comment breaks nothing
+			return 0
+		}
+		return attrs[off].Br
+	}, lead, cont)
 }
 
 // mdCellLines lays text into rows of cells at a width.
@@ -470,10 +478,10 @@ func (lb *mdCellLines) source(cb *CellBlock, ln int, line string, look func(off 
 // cells lays text (a line's, from its cluster base) as rows: lead first, then each cluster not
 // hidden, in its look, wrapped at the width before the word that would cross it (or inside a word,
 // or a lead, wider than the row); each later row starts with cont (a hanging indent, a quote's
-// bars) when it leaves room. A bare <br> (brk: its id at a byte, 0 none) ends its row; a row it
+// bars) when it leaves room. A bare <br> (brk: its id at a byte and column, 0 none) ends its row; a row it
 // leaves with nothing of the line's shown holds the <br>, a blank cell, so the caret has a place on
 // it. The line's first row, with no cell of its own shown, is its Anchor's.
-func (lb *mdCellLines) cells(cb *CellBlock, ln int, text string, base int, look func(off int) style.Style, hidden func(off, col int) bool, brk func(off int) int, lead, cont []RowCell) {
+func (lb *mdCellLines) cells(cb *CellBlock, ln int, text string, base int, look func(off int) style.Style, hidden func(off, col int) bool, brk func(off, col int) int, lead, cont []RowCell) {
 	contW := 0
 	for _, c := range cont {
 		contW += c.W
@@ -522,7 +530,7 @@ func (lb *mdCellLines) cells(cb *CellBlock, ln int, text string, base int, look 
 	off, col, lastBr := 0, base, 0
 	for c := range tui.Graphemes(text) {
 		if brk != nil {
-			if id := brk(off); id > 0 && id != lastBr { // a <br>'s first byte: two in a row are two
+			if id := brk(off, col); id > 0 && id != lastBr { // a <br>'s first byte: two in a row are two
 				lastBr = id
 				if brCol >= 0 {
 					breakRow()
