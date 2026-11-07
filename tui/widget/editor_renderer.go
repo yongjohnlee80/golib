@@ -135,7 +135,8 @@ func (e *Editor) cellTheme() CellTheme {
 // renderedKey is everything a Rendered layout depends on: the text, the width, the measure's
 // owner, the block being typed in, and the look.
 type renderedKey struct {
-	gen    uint64 // the renderer set (SetRenderer): a renderer itself may not be comparable
+	gen    uint64  // the renderer set (SetRenderer): a renderer itself may not be comparable
+	buf    *Buffer // the buffer shown: revisions are a buffer's own, two buffers may share one
 	rev    uint64
 	width  int
 	typing int // the line being typed on, -1 when no text is typed
@@ -157,7 +158,7 @@ type renderedLayout struct {
 func (e *Editor) renderedRows(width int) *renderedLayout {
 	l := &e.cells
 	lines := e.core.buf.textLines
-	key := renderedKey{gen: e.renderGen, rev: e.core.Revision(), width: width, typing: -1, theme: e.cellTheme()}
+	key := renderedKey{gen: e.renderGen, buf: e.core.Buffer(), rev: e.core.Revision(), width: width, typing: -1, theme: e.cellTheme()}
 	if l.typing() {
 		key.typing = e.core.buf.ln
 	}

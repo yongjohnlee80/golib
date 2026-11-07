@@ -241,3 +241,24 @@ func TestATallLinesLaterRowsAreRevealed(t *testing.T) {
 		t.Errorf("the view's first row %q, want a", got)
 	}
 }
+
+// Two buffers at the same revision are not the same text: the layout is the shown buffer's. A, then
+// B (both unedited, both at revision 0), then A again each draw their own rows.
+func TestTheRenderedLayoutIsTheShownBuffers(t *testing.T) {
+	h, sh, ed := renderedEditor(t, "# Alpha", starRenderer{})
+	a := ed.Core().Buffer()
+	b := widget.NewBuffer(widget.BufferText("# Beta"))
+	if a.Revision() != b.Revision() {
+		t.Fatalf("the control needs equal revisions: %d and %d", a.Revision(), b.Revision())
+	}
+	for _, step := range []struct {
+		buf  *widget.Buffer
+		want string
+	}{{a, "Alpha"}, {b, "Beta"}, {a, "Alpha"}} {
+		h.onLoop(func() { ed.Core().SetBuffer(step.buf) })
+		h.barrier(sh)
+		if got := strings.TrimRight(h.row(0), " "); got != step.want {
+			t.Errorf("showing %q's buffer: row 0 = %q", step.want, got)
+		}
+	}
+}
