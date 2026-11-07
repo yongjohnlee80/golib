@@ -254,3 +254,21 @@ func TestATableTooWideToNarrowPansAsOne(t *testing.T) {
 		t.Fatalf("panned to its end, its box's top ends in %q, want ┐: %q", got, strings.Join(s.text[rows[0]], ""))
 	}
 }
+
+// TestABrInATableCellBreaksItsLine: a <br> in a table cell (the safe renderer's line break) is a
+// line of its own in its column, the row two lines tall, its other cells blank on the second.
+func TestABrInATableCellBreaksItsLine(t *testing.T) {
+	c := layTable(t, "| Step | Notes |\n| --- | --- |\n| one | first line<br>second line |\n", 60)
+	var lines []string
+	for _, r := range c.rows {
+		if t := rowText(r); strings.Contains(t, "line") {
+			lines = append(lines, t)
+		}
+	}
+	if len(lines) != 2 || !strings.Contains(lines[0], "│ one  │ first line") || !strings.Contains(lines[1], "│      │ second line") {
+		t.Fatalf("the row reads %q, want its cell's two lines, the first cell blank on the second", lines)
+	}
+	if strings.Contains(strings.Join(lines, ""), "<br") {
+		t.Fatalf("the <br> is drawn as text: %q", lines)
+	}
+}
