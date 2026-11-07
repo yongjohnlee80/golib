@@ -326,3 +326,47 @@ func TestARowWithoutOuterPipesReadsItsCells(t *testing.T) {
 		t.Errorf("a delimiter row without outer pipes: %v %v", a, ok)
 	}
 }
+
+// A bare <br> in the Rendered view is the line break the HTML views draw (html.BareBr): off the
+// cursor, a paragraph's text after it is on the next line and the <br> itself is hidden; a table
+// cell's breaks the cell, its row a line taller. A <br> with an attribute, and any other tag, are
+// drawn as written, on one line.
+func TestABareBrBreaksTheRenderedLine(t *testing.T) {
+	visible := func(bl BlockLayout) (lines int, text string) {
+		for _, ll := range bl.Lines {
+			for _, l := range ll.Para.Lines {
+				shown := ""
+				for _, f := range l.Frags {
+					if !ll.Spans[f.Span].Hidden {
+						shown += ll.Spans[f.Span].Text[f.From:f.To]
+					}
+				}
+				if strings.TrimSpace(shown) != "" {
+					lines++
+					text += shown + "\n"
+				}
+			}
+		}
+		return lines, text
+	}
+	for _, br := range []string{"<br>", "<br/>", "<br />", "<BR>"} {
+		n, text := visible(layTableAt(t, "first"+br+"second", 600))
+		if n != 2 || strings.Contains(text, "<") {
+			t.Errorf("%q: %d lines %q, want first and second on two lines, the tag hidden", br, n, text)
+		}
+	}
+	for _, kept := range []string{"<br class=x>", "<b>"} {
+		n, text := visible(layTableAt(t, "first"+kept+"second", 600))
+		if n != 1 || !strings.Contains(text, kept) {
+			t.Errorf("%q: %d lines %q, want it drawn as written, one line", kept, n, text)
+		}
+	}
+	plainRow := layTableAt(t, "| Step | Notes |\n|---|---|\n| one | first line second line |", 600)
+	broken := layTableAt(t, "| Step | Notes |\n|---|---|\n| one | first line<br>second line |", 600)
+	if broken.Height <= plainRow.Height {
+		t.Errorf("a cell's <br> leaves the table %v tall, the same row without it %v: want a line taller", broken.Height, plainRow.Height)
+	}
+	if _, text := visible(broken); strings.Contains(text, "<br>") || !strings.Contains(text, "second line") {
+		t.Errorf("the table reads %q: want its cell's two lines, the tag hidden", text)
+	}
+}

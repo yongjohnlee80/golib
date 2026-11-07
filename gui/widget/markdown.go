@@ -9,6 +9,7 @@ import (
 	"github.com/yongjohnlee80/golib/highlight"
 	"github.com/yongjohnlee80/golib/parse/languages"
 	"github.com/yongjohnlee80/golib/parse/markdown"
+	mdhtml "github.com/yongjohnlee80/golib/parse/markdown/html"
 	"github.com/yongjohnlee80/golib/tui"
 	tuiwidget "github.com/yongjohnlee80/golib/tui/widget"
 )
@@ -545,6 +546,7 @@ type mdAttr struct {
 	bold, italic, code, strike, link bool
 	wiki, tag                        bool // an Obsidian [[wikilink]] or ![[embed]]; a #tag
 	heading                          int
+	br                               int // a bare <br>'s bytes, hidden, a line break after them: its start plus one (0: none), so two in a row stay two
 }
 
 // lineSpans are a line's spans with its Markdown drawn: the marks hidden, the rest styled. level
@@ -603,6 +605,15 @@ func (r *MarkdownRenderer) lineSpans(ln int, line string, th Theme) ([]flow.Span
 						hide(attrs, i, i+1)
 						i++
 					}
+				}
+			}
+		case markdown.KindRawHTML:
+			// a bare <br> is the line break it is, as the HTML renderer writes it (html.BareBr);
+			// any other raw HTML is drawn as written, as before
+			if mdhtml.BareBr(n.Literal) {
+				hide(attrs, n.Span.Start, n.Span.End)
+				for i := max(n.Span.Start, 0); i < min(n.Span.End, len(attrs)); i++ {
+					attrs[i].br = n.Span.Start + 1
 				}
 			}
 		case markdown.KindCodeSpan:
@@ -728,7 +739,7 @@ func (r *MarkdownRenderer) spansOf(ln int, line string, attrs []mdAttr, th Theme
 // span is text drawn as a says.
 func (r *MarkdownRenderer) span(text string, a mdAttr, ln, col int, th Theme) flow.Span {
 	f := th.Prose
-	sp := flow.Span{Text: text, Line: ln, Col: col, Hidden: a.hidden}
+	sp := flow.Span{Text: text, Line: ln, Col: col, Hidden: a.hidden, Break: a.br > 0}
 	if a.heading > 0 {
 		f.Size *= r.h1 - (r.h1-1)*float32(a.heading-1)/5
 		f.Bold = true

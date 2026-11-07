@@ -329,3 +329,34 @@ func TestALeadingMinusEndingItsSpanStaysWithTheNextSpan(t *testing.T) {
 		t.Fatalf("%d lines starting at (span, byte) %v, want 2, the second at (0, %d): the minus", len(p.Lines), starts, len("x "))
 	}
 }
+
+// A Break span ends its line, in every WhiteSpace mode, with no '\n' in any text: the text after it
+// starts the next line, its own clusters (hidden, a <br> as written) keep their positions on the
+// line it ends, and two Break spans in a row leave an empty line between.
+func TestABreakSpanEndsItsLine(t *testing.T) {
+	br := plain("<br>")
+	br.Hidden, br.Break = true, true
+	for _, ws := range []flow.WhiteSpace{flow.Normal, flow.Pre, flow.PreWrap} {
+		p := flow.Lay([]flow.Span{plain("first"), br, plain("second")}, flow.Options{WhiteSpace: ws}, shaper())
+		if len(p.Lines) != 2 {
+			t.Fatalf("WhiteSpace %d: %d lines, want 2: the break's and the text after it", ws, len(p.Lines))
+		}
+		if l := p.Lines[1]; len(l.Frags) == 0 || l.Frags[0].Span != 2 || l.Frags[0].X != 0 {
+			t.Fatalf("WhiteSpace %d: the second line starts %+v, want span 2 at its start", ws, l.Frags)
+		}
+		on := false // the break's clusters, placed on the first line
+		for _, f := range p.Lines[0].Frags {
+			on = on || f.Span == 1
+		}
+		if !on {
+			t.Fatalf("WhiteSpace %d: the break span's clusters are on no line: %+v", ws, p.Lines[0].Frags)
+		}
+		if c0, c1 := p.Caret(flow.Pos{Span: 1, Offset: 0}), p.Caret(flow.Pos{Span: 2, Offset: 0}); c1.Y <= c0.Y {
+			t.Fatalf("WhiteSpace %d: the text after the break is at y %v, not below the break's %v", ws, c1.Y, c0.Y)
+		}
+	}
+	p := flow.Lay([]flow.Span{plain("a"), br, br, plain("b")}, flow.Options{}, shaper())
+	if len(p.Lines) != 3 {
+		t.Fatalf("two breaks in a row: %d lines, want 3", len(p.Lines))
+	}
+}

@@ -65,6 +65,10 @@ type Span struct {
 	// LetterSpacing is added after each cluster, as CSS's letter-spacing; 0: none. A spaced span's
 	// clusters are drawn one by one at their places.
 	LetterSpacing float32
+	// Break ends the line after the span, as a '\n' in Pre does, whatever the WhiteSpace: a
+	// Hidden span that stands for a line break in its source (a <br>) keeps its clusters'
+	// positions on the line it ends, and the text after it starts the next.
+	Break bool
 }
 
 // Atom is an inline box: W wide, H tall, its baseline Baseline below its top.
@@ -290,6 +294,10 @@ func split(spans []Span, ws WhiteSpace) []piece {
 				lastSpace = false
 				i = j
 			}
+		}
+		if sp.Break { // a hard break after the span, of no bytes: its clusters stay where they are
+			out = append(out, piece{kind: newline, span: si, from: len(s), to: len(s)})
+			lastSpace = true
 		}
 	}
 	// Words that follow each other with no space (across spans, or after a CJK or '-' cut) form
