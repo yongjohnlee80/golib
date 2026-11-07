@@ -242,6 +242,11 @@ func (r *renderedLayout) atRow(start int) (top, in int) {
 	}
 	start = min(start, len(r.rows)-1)
 	top = r.lineOfRow(start)
+	if start < len(r.rowBlock) { // a block's opening rows (a table's top rule) are its first line's
+		if ln := r.blocks[r.rowBlock[start]].From; ln > top && r.topRow(ln) <= start {
+			top = ln
+		}
+	}
 	for top > 0 && r.topRow(top) > start { // a decoration row before its line's top: the line before
 		top--
 	}
@@ -278,42 +283,40 @@ func (r *renderedLayout) sourcelessRun(ln int) (from, to int) {
 	return from, to
 }
 
-// cellAt is the cell of (ln, col) on row ri and the x it starts at: the cell showing the cluster,
-// else the first shown cluster of ln after col on the row; ok false when the row shows none of ln
-// at or after col.
-func (r *renderedLayout) cellAt(ri, ln, col int) (x int, ok bool) {
-	at := 0
-	for _, c := range r.rows[ri].Cells {
-		if c.Line == ln && c.Col >= col {
-			return at, true
-		}
-		at += c.W
-	}
-	return 0, false
-}
-
-// caret is (ln, col)'s display row and x: the row showing the cluster (or, concealed, the next
-// shown one of ln), else past the line's last cell on its last row; an Anchor row's start; a
-// folded line's next row's start.
+// caret is (ln, col)'s display row and x: the cell showing the cluster, on whichever of ln's rows
+// shows it; concealed, the cell of the next shown cluster of ln, the one with the smallest column
+// after col on any of ln's rows (not the first in the rows' order: a table cell's second line comes
+// after the next cell's first); past ln's last shown cluster, the cell after it; a line showing none
+// (an Anchor row), its first row's start; a folded line, its next row's start.
 func (r *renderedLayout) caret(ln, col int) (row, x int) {
 	if ln < 0 || ln >= len(r.lineRows) || len(r.lineRows[ln]) == 0 {
 		return r.firstRow(ln), 0
 	}
 	rs := r.lineRows[ln]
+	next, nextCol := -1, 0  // the next shown cluster at or after col: its row
+	last, lastCol := -1, -1 // ln's last shown cluster: its row
+	nextX, lastEnd := 0, 0
 	for _, ri := range rs {
-		if x, ok := r.cellAt(ri, ln, col); ok {
-			return ri, x
+		at := 0
+		for _, c := range r.rows[ri].Cells {
+			if c.Line == ln {
+				if c.Col >= col && (next < 0 || c.Col < nextCol) {
+					next, nextCol, nextX = ri, c.Col, at
+				}
+				if c.Col > lastCol {
+					last, lastCol, lastEnd = ri, c.Col, at+c.W
+				}
+			}
+			at += c.W
 		}
 	}
-	last := rs[len(rs)-1]
-	end := 0
-	for _, c := range r.rows[last].Cells {
-		end += c.W
-		if c.Line == ln {
-			x = end // past ln's last cell
-		}
+	switch {
+	case next >= 0:
+		return next, nextX
+	case last >= 0:
+		return last, lastEnd
 	}
-	return last, x
+	return rs[0], 0
 }
 
 // hit is the source under cell x of display row ri: the cluster whose cells hold x; a decoration

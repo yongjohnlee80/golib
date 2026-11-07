@@ -65,3 +65,33 @@ func TestADecorationHitsTheNearestSourceCellByCells(t *testing.T) {
 		}
 	}
 }
+
+// The view's top on a block's opening row (a table's top rule) is the block's first line, none of
+// it above the view: not the line before, a row of it above.
+func TestABlocksOpeningRowStartsItsFirstLine(t *testing.T) {
+	deco := []RowCell{{Text: "┌", W: 1, Line: -1}}
+	r := &renderedLayout{
+		blocks:  []Block{{0, 1}, {1, 2}, {2, 5}},
+		blockOf: []int{0, 1, 2, 2, 2},
+		rows: []CellRow{
+			{Anchor: -1, Cells: []RowCell{{Text: "b", W: 1, Line: 0, Col: 0}}},
+			{Anchor: 1},
+			{Anchor: -1, Cells: deco, Unnumbered: true},
+			{Anchor: -1, Cells: []RowCell{{Text: "a", W: 1, Line: 2, Col: 2}}},
+			{Anchor: 3, Cells: deco},
+			{Anchor: -1, Cells: []RowCell{{Text: "c", W: 1, Line: 4, Col: 2}}},
+			{Anchor: -1, Cells: deco, Unnumbered: true},
+		},
+		lineRows: [][]int{{0}, {1}, {3}, {4}, {5}},
+		rowBlock: []int{0, 1, 2, 2, 2, 2, 2},
+	}
+	if top, in := r.atRow(2); top != 2 || in != 0 {
+		t.Errorf("atRow on the table's top rule = (%d, %d), want (2, 0): its first line, from its top", top, in)
+	}
+	if top, in := r.atRow(3); top != 2 || in != 1 {
+		t.Errorf("atRow on the header = (%d, %d), want (2, 1)", top, in)
+	}
+	if top, in := r.atRow(1); top != 1 || in != 0 {
+		t.Errorf("atRow on the blank line = (%d, %d), want (1, 0)", top, in)
+	}
+}

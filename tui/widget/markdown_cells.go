@@ -111,7 +111,11 @@ func (r *MarkdownCellRenderer) table(lb *mdCellLines, cb *CellBlock, from, end i
 		if ln == from+1 {
 			continue
 		}
-		cells := lb.tableRow(ln, lines[ln], n, ln == from)
+		var mask []bool
+		if r.HideMetadata {
+			mask, _ = r.Meta.HiddenClusters(ln)
+		}
+		cells := lb.tableRow(ln, lines[ln], n, ln == from, mask)
 		for ci, segs := range cells {
 			for _, seg := range segs {
 				w := 0
@@ -220,11 +224,12 @@ func (r *MarkdownCellRenderer) table(lb *mdCellLines, cb *CellBlock, from, end i
 }
 
 // tableRow is line ln's cells, n of them (a missing one empty, one past n dropped): each its
-// clusters not hidden, in their look (a header's bold), in the segments a bare <br> ends.
-func (lb *mdCellLines) tableRow(ln int, line string, n int, head bool) [][][]tableCell {
+// clusters not hidden (by their Markdown, or by mask: hidden metadata), in their look (a header's
+// bold), in the lines a bare <br> ends. A trailing <br> opens no line; a line left empty between two
+// holds the <br> that ends it, a blank cell, so the caret has a place on it.
+func (lb *mdCellLines) tableRow(ln int, line string, n int, head bool, mask []bool) [][][]tableCell {
 	row, shift := MarkdownGFMRow(line)
 	spans, _ := MarkdownTableCells(row)
-	attrs, _ := MarkdownLineAttrs(line)
 	var cs []string
 	var offs []int
 	off := 0
@@ -232,29 +237,32 @@ func (lb *mdCellLines) tableRow(ln int, line string, n int, head bool) [][][]tab
 		cs, offs = append(cs, c), append(offs, off)
 		off += len(c)
 	}
+	offs = append(offs, off) // past the last cluster: a cell's end
 	out := make([][][]tableCell, n)
+	brs := make([][]int, n) // each cell's lines: the column of the <br> that begins it (-1: the first)
 	for ci := range out {
-		out[ci] = [][]tableCell{nil}
+		out[ci], brs[ci] = [][]tableCell{nil}, []int{-1}
 	}
 	for ci, sp := range spans {
 		if ci >= n {
 			break
 		}
+		// each cell's Markdown is its own, as GFM and gui's tables read it: "**a | b**" is no span
+		attrs, _ := MarkdownLineAttrs(row[offs[sp[0]]:offs[sp[1]]])
 		lastBr := 0
 		for k := sp[0]; k < sp[1]; k++ {
-			at := offs[k] - shift // the byte in line; the pipes MarkdownGFMRow added are none of its
-			if at < 0 || at >= len(line) {
+			if at := offs[k] - shift; at < 0 || at >= len(line) { // a pipe MarkdownGFMRow added
 				continue
 			}
-			a := attrs[at]
+			a := attrs[offs[k]-offs[sp[0]]]
 			if a.Br > 0 {
 				if a.Br != lastBr { // a <br>'s first byte: two in a row are two
 					lastBr = a.Br
-					out[ci] = append(out[ci], nil)
+					out[ci], brs[ci] = append(out[ci], nil), append(brs[ci], k-shift)
 				}
 				continue
 			}
-			if a.Hidden {
+			if a.Hidden || (k-shift < len(mask) && mask[k-shift]) {
 				continue
 			}
 			st := lb.styleOf(a)
@@ -263,6 +271,16 @@ func (lb *mdCellLines) tableRow(ln int, line string, n int, head bool) [][][]tab
 			}
 			segs := out[ci]
 			segs[len(segs)-1] = append(segs[len(segs)-1], tableCell{lb.cell(cs[k], st, ln, k-shift), cs[k]})
+		}
+	}
+	for ci, segs := range out {
+		for s := range segs {
+			if len(segs[s]) == 0 && s+1 < len(segs) { // a line a <br> ends, with nothing shown on it
+				segs[s] = []tableCell{{RowCell{Text: " ", W: 1, Style: lb.th.Text, Line: ln, Col: brs[ci][s+1]}, " "}}
+			}
+		}
+		if k := len(segs); k > 1 && len(segs[k-1]) == 0 {
+			out[ci] = segs[:k-1]
 		}
 	}
 	return out

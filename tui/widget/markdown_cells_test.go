@@ -5,6 +5,7 @@ import (
 	"testing"
 
 	"github.com/yongjohnlee80/golib/highlight"
+	"github.com/yongjohnlee80/golib/tui"
 	"github.com/yongjohnlee80/golib/tui/style"
 	"github.com/yongjohnlee80/golib/tui/widget"
 )
@@ -312,4 +313,64 @@ func TestATablesTopRuleShowsWithItsHeader(t *testing.T) {
 	if got := top(); got != "H" {
 		t.Errorf("back on the heading, the view's first row %q, want H", got)
 	}
+}
+
+// A table cell hides what the reader skips, as prose does: an inline comment (HideMetadata).
+func TestATablesCellsHideTheirMetadata(t *testing.T) {
+	h, _, _ := renderedEditor(t, "| a <!-- note --> | b |\n|---|---|\n| d | e |", mdRenderer())
+	if g := h.grid(); strings.Contains(g, "<!--") || strings.Contains(g, "note") {
+		t.Errorf("a cell's comment is drawn:\n%s", g)
+	}
+}
+
+// A cell's later lines keep their source: the caret on a cell's second line sits there, not on the
+// next cell's first line beside the first; a click there lands on it; a line left empty between two
+// <br>s is a row of its line, which the caret (and gj) reaches.
+func TestATableCellsLinesKeepTheirSource(t *testing.T) {
+	// "| x<br>y | zz |": x at 2, y at 7, zz at 11; "| a<br><br>b<br> | c |": a at 2, the second <br>
+	// at 7; the trailing <br> opens no line
+	h, sh, ed := renderedEditor(t, "| x<br>y | zz |\n|---|---|\n| a<br><br>b<br> | c |", mdRenderer())
+	wantRows(t, h,
+		"┌───┬────┐",
+		"│ x │ zz │",
+		"│ y │    │",
+		"├───┼────┤",
+		"│ a │ c  │",
+		"│   │    │",
+		"│ b │    │",
+		"└───┴────┘")
+	if x, y, ok := caretAt(h, sh, ed, 0, 7); !ok || x != 2 || y != 2 {
+		t.Errorf("caret on y, the first cell's second line: (%d, %d) %v, want (2, 2)", x, y, ok)
+	}
+	if x, y, ok := caretAt(h, sh, ed, 2, 7); !ok || x != 2 || y != 5 {
+		t.Errorf("caret on the <br> that ends the empty line: (%d, %d) %v, want (2, 5)", x, y, ok)
+	}
+	click := func(x, y int) (ln, col int) {
+		h.inject(tui.MouseEvent{Kind: tui.MousePress, Button: tui.MouseLeft, X: x, Y: y},
+			tui.MouseEvent{Kind: tui.MouseRelease, Button: tui.MouseLeft, X: x, Y: y})
+		h.barrier(sh)
+		h.onLoop(func() { ln, col = ed.Core().Line() })
+		return
+	}
+	if ln, col := click(2, 2); ln != 0 || col != 7 {
+		t.Errorf("a click on y landed on (%d, %d), want (0, 7)", ln, col)
+	}
+	caretAt(h, sh, ed, 2, 2)
+	h.inject(keyText("g"), keyText("j"))
+	h.barrier(sh)
+	if x, y, ok := func() (x, y int, ok bool) { h.onLoop(func() { x, y, ok = ed.Cursor() }); return }(); !ok || y != 5 {
+		t.Errorf("gj from a's row went to (%d, %d) %v, want the empty line's row 5", x, y, ok)
+	}
+}
+
+// A cell's Markdown is its own, as GFM reads a table: "**a" and "b**" in two cells are literal
+// stars, not one strong span across the pipe; in one cell, "**c**" is strong, its stars hidden.
+func TestATablesCellsReadTheirOwnMarkdown(t *testing.T) {
+	h, _, _ := renderedEditor(t, "| h | i |\n|---|---|\n| **a | b** |\n| **c** | [l | m](u) |", mdRenderer())
+	wantRows(t, h,
+		"┌─────┬─────┐",
+		"│ h   │ i   │",
+		"├─────┼─────┤",
+		"│ **a │ b** │",
+		"│ c   │ [l  │")
 }
