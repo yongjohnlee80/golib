@@ -4,27 +4,31 @@ width 60
 > | one | first line<br>second line |
 > | two | single |
 
-"┌──────┬───────────────────────────┐"
-    0-35 fg=muted bg=background
-"│ Step │ Notes                     │"
+"┌──────┬────────────────────────┐"
+    0-32 fg=muted bg=background
+"│ Step │ Notes                  │"
     0-1 fg=muted bg=background
     2-5 bold fg=fg bg=background
     6-8 fg=muted bg=background
     9-13 bold fg=fg bg=background
-    14-35 fg=muted bg=background
-"├──────┼───────────────────────────┤"
-    0-35 fg=muted bg=background
-"│ one  │ first line<br>second line │"
+    14-32 fg=muted bg=background
+"├──────┼────────────────────────┤"
+    0-32 fg=muted bg=background
+"│ one  │ first line             │"
     0-1 fg=muted bg=background
     2-4 fg=fg bg=background
     5-8 fg=muted bg=background
-    9-33 fg=fg bg=background
-    34-35 fg=muted bg=background
-"│ two  │ single                    │"
+    9-18 fg=fg bg=background
+    19-32 fg=muted bg=background
+"│      │ second line            │"
+    0-8 fg=muted bg=background
+    9-19 fg=fg bg=background
+    20-32 fg=muted bg=background
+"│ two  │ single                 │"
     0-1 fg=muted bg=background
     2-4 fg=fg bg=background
     5-8 fg=muted bg=background
     9-14 fg=fg bg=background
-    15-35 fg=muted bg=background
-"└──────┴───────────────────────────┘"
-    0-35 fg=muted bg=background
+    15-32 fg=muted bg=background
+"└──────┴────────────────────────┘"
+    0-32 fg=muted bg=background
