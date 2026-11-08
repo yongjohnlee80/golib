@@ -75,8 +75,14 @@ func editingCommandIDs() map[string]bool {
 	return ids
 }
 
+// laterCommandIDs are the commands added after the editing ones: Vim's z prefix (zh, zl), in Normal
+// and Visual.
+func laterCommandIDs() map[string]bool {
+	return map[string]bool{"tui.editor.vim.normal.scrollPrefix": true, "tui.editor.vim.visual.scrollPrefix": true}
+}
+
 // checkCommands holds EditorCommands to the fixture: every recorded line, unchanged and in order,
-// with only the editing commands added among them.
+// with only the editing commands, and the later ones, added among them.
 func checkCommands(t *testing.T, got string) {
 	t.Helper()
 	path := filepath.Join("testdata", "editorkeys", "commands.txt")
@@ -100,13 +106,15 @@ func checkCommands(t *testing.T, got string) {
 	if i < len(old) {
 		t.Fatalf("commands.txt line %d is gone or changed: %q", i+1, old[i])
 	}
-	if wantAdded := editingCommandIDs(); !maps.Equal(added, wantAdded) {
-		t.Fatalf("commands added: %v; want exactly the editing commands %v", slices.Sorted(maps.Keys(added)), slices.Sorted(maps.Keys(wantAdded)))
+	wantAdded := editingCommandIDs()
+	maps.Copy(wantAdded, laterCommandIDs())
+	if !maps.Equal(added, wantAdded) {
+		t.Fatalf("commands added: %v; want exactly the editing and later commands %v", slices.Sorted(maps.Keys(added)), slices.Sorted(maps.Keys(wantAdded)))
 	}
 }
 
 // checkActions holds the Actions to the fixture: every recorded value and name unchanged, and only
-// the editing actions appended after them.
+// the editing actions appended after them, then ScrollPrefix (Vim's z).
 func checkActions(t *testing.T, got string) {
 	t.Helper()
 	if *updateKeyFixtures {
@@ -120,8 +128,8 @@ func checkActions(t *testing.T, got string) {
 	if !ok || old != "" {
 		t.Fatalf("an existing Action changed its value or name:\n%s", firstDiff(string(want), got))
 	}
-	if rest != fmt.Sprintf("%d\tInsertTab\n%d\tNewline\n%d\tBackspace\n%d\tDeleteForward\n",
-		ActInsertTab, ActNewline, ActBackspace, ActDeleteForward) {
+	if rest != fmt.Sprintf("%d\tInsertTab\n%d\tNewline\n%d\tBackspace\n%d\tDeleteForward\n%d\tScrollPrefix\n",
+		ActInsertTab, ActNewline, ActBackspace, ActDeleteForward, ActScrollPrefix) {
 		t.Fatalf("Actions appended after the recorded ones:\n%s", rest)
 	}
 }

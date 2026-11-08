@@ -28,6 +28,7 @@
 0 119 ctrl=false alt=false super=false shift=false	WordForward
 0 120 ctrl=false alt=false super=false shift=false	DeleteChar
 0 121 ctrl=false alt=false super=false shift=false	YankPrefix
+0 122 ctrl=false alt=false super=false shift=false	ScrollPrefix
 0 123 ctrl=false alt=false super=false shift=false	ParaBack
 0 125 ctrl=false alt=false super=false shift=false	ParaForward
 0 126 ctrl=false alt=false super=false shift=false	ToggleCase
@@ -116,6 +117,7 @@
 2 119 ctrl=false alt=false super=false shift=false	WordForward
 2 120 ctrl=false alt=false super=false shift=false	VisualDelete
 2 121 ctrl=false alt=false super=false shift=false	VisualYank
+2 122 ctrl=false alt=false super=false shift=false	ScrollPrefix
 2 123 ctrl=false alt=false super=false shift=false	ParaBack
 2 125 ctrl=false alt=false super=false shift=false	ParaForward
 2 126 ctrl=false alt=false super=false shift=false	VisualToggleCase
