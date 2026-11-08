@@ -200,6 +200,9 @@ func (v editorPointerView) PointerInert(m tui.MouseEvent) bool {
 	return v.e.scrollable() && max(m.X-v.e.cells.gutter, 0) >= v.e.wrapWidth()
 }
 
+// wheelPan is a sideways wheel step's pan, in cells: the HTML page's.
+const wheelPan = 3
+
 // wheel scrolls by whole LOGICAL lines in both wrap modes, as the keys scroll (cellLayout.ScrollLines),
 // and consumes the event. The wheel scrolls the viewport and never moves the caret, so a reader
 // can scroll while a caret stays where they left it.
@@ -209,8 +212,20 @@ func (v editorPointerView) PointerInert(m tui.MouseEvent) bool {
 // rows are deliberately not the unit — the viewport stores a logical-line origin
 // only (top/left), so an intra-line offset is not representable without new
 // state and new invariants across render, Cursor, ensureVisible, click inversion
-// and clamping. That is deferred to its own ADR.
+// and clamping. That is deferred to its own ADR. In the Rendered view a sideways step (WheelLeft,
+// WheelRight, or Shift with the wheel) pans the wide block under the pointer, else the cursor's.
 func (e *Editor) wheel(m tui.MouseEvent) bool {
+	shift := m.Mods&tui.ModShift != 0
+	if m.Kind == tui.MouseWheel && e.rendered() { // sideways (a wheel's, or Shift's): the wide block under the pointer, else the cursor's, pans
+		switch {
+		case m.Button == tui.WheelLeft, m.Button == tui.WheelUp && shift:
+			e.cells.panBlock(m.Y-e.headerRows(), -wheelPan)
+			return true
+		case m.Button == tui.WheelRight, m.Button == tui.WheelDown && shift:
+			e.cells.panBlock(m.Y-e.headerRows(), wheelPan)
+			return true
+		}
+	}
 	switch {
 	case m.Kind == tui.MouseWheel && m.Button == tui.WheelUp:
 		e.cells.ScrollLines(-1)
