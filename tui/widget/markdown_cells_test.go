@@ -438,6 +438,19 @@ func TestAPresentationChangeRevealsTheCaret(t *testing.T) {
 	h.inject(dtEsc)
 	h.barrier(sh)
 	shown("after Esc")
+	// i and a click queued behind it, before a frame: the click lands on the source revealed for i
+	caretAt(h, sh, ed, 2, len(line)-3)
+	h.inject(keyText("i"), tui.MouseEvent{Kind: tui.MousePress, Button: tui.MouseLeft, X: 5, Y: 1},
+		tui.MouseEvent{Kind: tui.MouseRelease, Button: tui.MouseLeft, X: 5, Y: 1})
+	h.barrier(sh)
+	var x, y int
+	var ok bool
+	h.onLoop(func() { x, y, ok = ed.Cursor() })
+	if !ok || x != 5 || y != 1 {
+		t.Errorf("i then a click at (5, 1) before a frame: the caret at (%d, %d) %v, want the clicked cell:\n%s", x, y, ok, h.grid())
+	}
+	h.inject(dtEsc)
+	h.barrier(sh)
 	h.inject(tui.KeyEvent{Kind: tui.KeyPress, Code: 't', Mods: tui.ModCtrl})
 	h.barrier(sh)
 	shown("after Ctrl+T")

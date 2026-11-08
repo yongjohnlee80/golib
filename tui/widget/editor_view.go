@@ -155,10 +155,11 @@ func (e *Editor) presentation() [2]int {
 
 // represent asks for a layout when the presentation changed (Insert entered or left on a rendered
 // block, the view switched): a mode's change only repaints, and Layout is where the view is revealed
-// for the rows laid anew.
+// for the rows laid anew. The layout settles before the next input is routed, so a click queued
+// behind the key lands on the revealed rows, not on the new rows under the old offset.
 func (e *Editor) represent() {
-	if e.presentation() != e.presented {
-		e.RequestLayout()
+	if ctx := e.Context(); ctx != nil && e.presentation() != e.presented {
+		ctx.SettleBeforeInput()
 	}
 }
 
