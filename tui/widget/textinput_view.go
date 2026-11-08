@@ -19,7 +19,7 @@ func (t *TextInput) renderCluster(cl string) string {
 
 // cellAt is the display offset (cells) of cluster index i in painted form.
 func (t *TextInput) cellAt(i int) int {
-	return txt.CellsBefore(t.clusters(), i, func(cl string) int { return t.measure(t.renderCluster(cl)) })
+	return txt.CellsBefore(t.clusters(), i, func(cl string) int { return t.Measure(t.renderCluster(cl)) })
 }
 
 // ensureVisible adjusts the horizontal scroll so the cursor cell is inside
@@ -99,7 +99,7 @@ func (t *TextInput) Render(s tui.Surface) {
 	selLo, selHi, hasSel := t.selection()
 	x := t.eachVisible(inner, s.StringWidth, func(i int, cl string, x int) {
 		st := base
-		if hasSel && t.focused() && i >= selLo && i < selHi {
+		if hasSel && t.Focused() && i >= selLo && i < selHi {
 			st = t.styles.Selection.Inherit(base)
 		}
 		s.SetCell(pad+x, 0, cl, st)
@@ -137,16 +137,16 @@ var _ tui.SelectionCells = (*TextInput)(nil)
 // unfocused, as Render then draws none.
 func (t *TextInput) SelectionCells() ([]tui.Rect, bool) {
 	lo, hi, ok := t.selection()
-	if !ok || !t.focused() || t.width <= 0 {
+	if !ok || !t.Focused() || t.width <= 0 {
 		return nil, false
 	}
 	x0, x1 := -1, -1
-	t.eachVisible(t.width, t.measure, func(i int, cl string, x int) {
+	t.eachVisible(t.width, t.Measure, func(i int, cl string, x int) {
 		if i >= lo && i < hi {
 			if x0 < 0 {
 				x0 = x
 			}
-			x1 = x + t.measure(cl)
+			x1 = x + t.Measure(cl)
 		}
 	})
 	if x0 < 0 {

@@ -14,7 +14,7 @@ import (
 // All text measurement across package widget is strictly policy-aware:
 //   - Render paths measure cells using [tui.Surface.StringWidth].
 //   - Layout, hit-testing, scrolling, wrapping, and cursor paths measure cells using
-//     [Base.measure] (which delegates to [tui.Context.StringWidth]).
+//     the widget's Base.Measure (which delegates to [tui.Context.StringWidth]).
 //
 // Both routes resolve against the application's active [tui.WidthPolicy] (e.g. WidthPolicyAmbiguousWide).
 // The free utility functions declared here take an explicit measure function parameter rather than
@@ -39,7 +39,7 @@ const Ellipsis = "…"
 
 // Truncate fits s into w cells, replacing the overflow with an ellipsis.
 // measure is the caller's width function (Surface.StringWidth in Render,
-// Base.measure — the App width policy — elsewhere).
+// Base.Measure — the App width policy — elsewhere).
 func Truncate(s string, w int, measure func(string) int) string {
 	if w <= 0 {
 		return ""

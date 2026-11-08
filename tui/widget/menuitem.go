@@ -201,9 +201,9 @@ func (m *MenuItem) state() RowState {
 	// focus, it is never Open (it has no children to open), and Focused carries
 	// the same fact as Selected here rather than being about a surrounding Menu.
 	return RowState{
-		Selected: m.focused(),
+		Selected: m.Focused(),
 		Armed:    m.armed,
-		Focused:  m.focused(),
+		Focused:  m.Focused(),
 	}
 }
 
@@ -220,12 +220,12 @@ func (m *MenuItem) view() RowView {
 // Layout sizes the item to its content: a mark column for a check or radio, the
 // label, a gap, and the accelerator.
 func (m *MenuItem) Layout(cs tui.Constraints) tui.Size {
-	w := m.measure(m.label) + 2
+	w := m.Measure(m.label) + 2
 	if m.kind == ItemKindCheck || m.kind == ItemKindRadio {
 		w += 2
 	}
 	if m.accel != "" {
-		w += 2 + m.measure(m.accel)
+		w += 2 + m.Measure(m.accel)
 	}
 	return cs.Constrain(tui.Size{W: w, H: 1})
 }
@@ -258,7 +258,7 @@ func (m *MenuItem) Render(s tui.Surface) {
 	if m.accel == "" {
 		return
 	}
-	ax := sz.W - 1 - m.measure(m.accel)
+	ax := sz.W - 1 - m.Measure(m.accel)
 	if ax <= x {
 		return // no room without overwriting the label
 	}

@@ -247,7 +247,7 @@ func (v *BufferView) setFollow(fl bool) {
 		return
 	}
 	v.follow = fl
-	v.publish(FollowTailChangedEvent{Owner: v.NodeID(), Following: fl})
+	v.Publish(FollowTailChangedEvent{Owner: v.NodeID(), Following: fl})
 }
 
 // contentWidth is the wrap width (minus the indicator column when
@@ -262,7 +262,7 @@ func (v *BufferView) contentWidth() int {
 
 // rowsOf is the wrapped height of live line i at the current width.
 func (v *BufferView) rowsOf(i int) int {
-	return len(txt.WrapRanges(txt.Clusters(v.line(i).text()), v.contentWidth(), v.measure))
+	return len(txt.WrapRanges(txt.Clusters(v.line(i).text()), v.contentWidth(), v.Measure))
 }
 
 // text joins a line's spans.
@@ -293,7 +293,7 @@ func (v *BufferView) recount() {
 		total := 0
 		for i := 0; i < v.LineCount(); i++ {
 			v.rowStart = append(v.rowStart, total)
-			total += len(txt.WrapRanges(txt.Clusters(v.line(i).text()), w, v.measure))
+			total += len(txt.WrapRanges(txt.Clusters(v.line(i).text()), w, v.Measure))
 		}
 		return total
 	}

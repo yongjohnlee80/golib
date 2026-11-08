@@ -584,7 +584,7 @@ func (x *Box) HandleEvent(ev tui.Event) bool {
 // paintStyle is the effective style for this frame: focused merge over base
 // when focus is within (Inherit semantics —).
 func (x *Box) paintStyle() style.Style {
-	if x.focusWithin || x.focused() {
+	if x.focusWithin || x.Focused() {
 		return x.focusedSt.Inherit(x.base)
 	}
 	return x.base

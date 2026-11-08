@@ -325,7 +325,7 @@ func (l *List[T]) SetContextMenu(on bool) { l.contextMenu = on }
 
 // requestMenu emits ContextMenuEvent for row i (-1: none) at at, in the list's own cells.
 func (l *List[T]) requestMenu(i int, at tui.Point) {
-	l.publish(ContextMenuEvent{Owner: l.NodeID(), Index: i, At: at})
+	l.Publish(ContextMenuEvent{Owner: l.NodeID(), Index: i, At: at})
 	if l.onMenu != nil {
 		l.onMenu(i, at)
 	}
@@ -445,7 +445,7 @@ func (l *List[T]) moveCursor(i int) {
 	l.ensureVisible()
 	l.MarkDirty()
 	if !l.multi {
-		l.publish(SelectionChangedEvent{Owner: l.NodeID(), Index: i, Label: l.render(l.src.Item(i))})
+		l.Publish(SelectionChangedEvent{Owner: l.NodeID(), Index: i, Label: l.render(l.src.Item(i))})
 	}
 	// last: the owner may replace the rows from here, so nothing of them is read after it
 	if l.onCursor != nil {
@@ -459,7 +459,7 @@ func (l *List[T]) activate() {
 		return
 	}
 	i := l.cursor
-	l.publish(ActivateEvent{Owner: l.NodeID(), Index: i})
+	l.Publish(ActivateEvent{Owner: l.NodeID(), Index: i})
 	if l.onActivate != nil {
 		l.onActivate(i) // last, as onCursor is
 	}
@@ -592,7 +592,7 @@ func (l *List[T]) rowStyle(i int) style.Style {
 	case i == l.cursor && selected && l.multi:
 		return l.styles.CursorSelected.Inherit(l.styles.SelectedRow).Inherit(l.styles.Row)
 	case i == l.cursor:
-		return l.styles.cursorLook(l.focused()).Inherit(l.styles.Row)
+		return l.styles.cursorLook(l.Focused()).Inherit(l.styles.Row)
 	case selected:
 		return l.styles.SelectedRow.Inherit(l.styles.Row)
 	default:

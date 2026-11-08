@@ -156,7 +156,7 @@ func (s *StatusBar) SetCenterMessage(m tui.Message, st ...style.Style) {
 func (s *StatusBar) SetRightMessage(m tui.Message, st ...style.Style) { s.setMessage(&s.right, m, st) }
 
 func (s *StatusBar) setMessage(seg *segment, m tui.Message, st []style.Style) {
-	setSegment(seg, s.translate(m), st)
+	setSegment(seg, s.Translate(m), st)
 	seg.msg = m
 	s.RequestLayout()
 }
@@ -240,7 +240,7 @@ func (s *StatusBar) Children() iter.Seq[tui.Component] {
 func (s *StatusBar) Layout(c tui.Constraints) tui.Size {
 	for _, seg := range []*segment{&s.left, &s.center, &s.right} {
 		if seg.msg != (tui.Message{}) {
-			seg.text = s.translate(seg.msg)
+			seg.text = s.Translate(seg.msg)
 		}
 	}
 	sz := c.Constrain(tui.Size{W: kit.BoundedMax(c.MaxW, c.MinW), H: 1})

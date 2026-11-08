@@ -91,7 +91,7 @@ func (e *Editor) renderText(s tui.Surface) {
 	lineFill := func(y, ln int) {
 		// A line-wise highlight covers the WHOLE screen row (S2), text or
 		// not; clusters then paint over the fill.
-		if c.keys.mode == ModeVisualLine && (e.focused() || c.vPinned) && c.Selected(ln, 0) {
+		if c.keys.mode == ModeVisualLine && (e.Focused() || c.vPinned) && c.Selected(ln, 0) {
 			s.Fill(tui.Rect{X: 0, Y: y, W: w, H: 1}, " ", l.styles.Selection.Inherit(l.styles.Text))
 		}
 	}
@@ -188,7 +188,7 @@ func (p *textPaint) style(ln, col int) style.Style {
 			st = sst.Inherit(st)
 		}
 	}
-	if c.Highlighted(ln, col, e.focused()) {
+	if c.Highlighted(ln, col, e.Focused()) {
 		st = e.cells.styles.Selection.Inherit(st)
 	}
 	return st
@@ -198,7 +198,7 @@ func (p *textPaint) style(ln, col int) style.Style {
 func (p *textPaint) cluster(x, y int, cl string, ln, col int) {
 	e := p.e
 	if ln != p.markedLn {
-		p.marked, p.markedLn = e.core.IndentMarked(ln, e.focused()), ln
+		p.marked, p.markedLn = e.core.IndentMarked(ln, e.Focused()), ln
 	}
 	st := p.style(ln, col)
 	// A tab is tabCells blank cells, the first an arrow when it is marked indentation.
@@ -274,7 +274,7 @@ func (e *Editor) renderRendered(s tui.Surface, m rowMap) {
 			st := onPage(cl.Style, l.styles.Text)
 			if cl.Line >= 0 {
 				st = marked(cl.Line, cl.Col, st)
-				if c.Highlighted(cl.Line, cl.Col, e.focused()) {
+				if c.Highlighted(cl.Line, cl.Col, e.Focused()) {
 					st = l.styles.Selection.Inherit(st)
 				}
 			}

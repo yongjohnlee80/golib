@@ -272,7 +272,7 @@ func (t *Table[T]) renderRow(item T) string {
 		if i > 0 {
 			row += "  "
 		}
-		row += fitCell(c.Cell(item), t.widths[i], c.Elide, style.AlignLeft, t.measure)
+		row += fitCell(c.Cell(item), t.widths[i], c.Elide, style.AlignLeft, t.Measure)
 	}
 	return row
 }

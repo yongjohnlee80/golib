@@ -288,7 +288,7 @@ func (f *Float) hide(reason DismissReason) {
 	f.ctx.Unmount(layer)
 	f.RequestLayout()
 	owner := f.NodeID()
-	f.publish(OverlayDismissedEvent{Owner: owner, Reason: reason})
+	f.Publish(OverlayDismissedEvent{Owner: owner, Reason: reason})
 }
 
 // Init re-arms hidden state on (re)mount. Re-entrant.

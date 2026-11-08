@@ -52,14 +52,14 @@ func (c *completionList) Layout(cs tui.Constraints) tui.Size {
 	if w == tui.Unbounded {
 		w = 0
 		for _, r := range c.rows {
-			w = max(w, c.measure(r))
+			w = max(w, c.Measure(r))
 		}
-		w = max(w, c.measure(c.msg))
+		w = max(w, c.Measure(c.msg))
 	}
 	h := min(len(c.rows), completionRows)
 	switch {
 	case c.msg != "":
-		h = len(kit.WrapLine(c.msg, max(w, 1), c.measure))
+		h = len(kit.WrapLine(c.msg, max(w, 1), c.Measure))
 	case h > 0:
 		h += 2 // the frame
 		if cs.MaxW == tui.Unbounded {
