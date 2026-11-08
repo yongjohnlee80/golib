@@ -440,3 +440,10 @@ func (e *Editor) KeyBindings(m *keymap.Map) []keymap.Binding {
 	}
 	return append(out, e.core.keyBindings(m)...)
 }
+
+// WithStyles replaces the editor's looks: each slot given over golib's own.
+func (e *Editor) WithStyles(st TextInputStyles) *Editor {
+	e.cells.styles = st.over(defaultTextInputStyles())
+	e.MarkDirty()
+	return e
+}

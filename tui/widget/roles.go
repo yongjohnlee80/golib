@@ -20,11 +20,7 @@ func (r *Resizable) AccessibleRole() tui.AccessibleRole   { return tui.RoleSplit
 func (m *Modal) AccessibleRole() tui.AccessibleRole       { return tui.RoleDialog }
 func (t *Toasts) AccessibleRole() tui.AccessibleRole      { return tui.RoleNotification }
 func (l *List[T]) AccessibleRole() tui.AccessibleRole     { return tui.RoleList }
-func (t *Table[T]) AccessibleRole() tui.AccessibleRole    { return tui.RoleTable }
-func (t *Tree) AccessibleRole() tui.AccessibleRole        { return tui.RoleTree }
 func (t *Text) AccessibleRole() tui.AccessibleRole        { return tui.RoleStaticText }
-func (m *Image) AccessibleRole() tui.AccessibleRole       { return tui.RoleImage }
-func (t *Terminal) AccessibleRole() tui.AccessibleRole    { return tui.RoleTerminal }
 func (f *Float) AccessibleRole() tui.AccessibleRole       { return tui.RoleWindow }
 
 var (

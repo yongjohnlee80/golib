@@ -357,3 +357,9 @@ func (t *Table[T]) HandleEvent(ev tui.Event) bool {
 	}
 	return t.list.HandleEvent(ev)
 }
+
+// ScrollState implements tui.Scroller, in rows; the header row is not counted.
+func (t *Table[T]) ScrollState() (offset, viewport, content int) { return t.list.ScrollState() }
+
+// AccessibleRole is the table's accessible role (tui.RoleReporter, roles.go).
+func (t *Table[T]) AccessibleRole() tui.AccessibleRole { return tui.RoleTable }

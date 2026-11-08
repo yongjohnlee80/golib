@@ -38,13 +38,6 @@ func (x *Box) WithFocusedStyle(st style.Style) *Box {
 	return x
 }
 
-// WithStyles replaces the editor's looks: each slot given over golib's own.
-func (e *Editor) WithStyles(st TextInputStyles) *Editor {
-	e.cells.styles = st.over(defaultTextInputStyles())
-	e.MarkDirty()
-	return e
-}
-
 // WithStyles replaces the input's looks: each slot given over golib's own.
 func (t *TextInput) WithStyles(st TextInputStyles) *TextInput {
 	t.styles = st.over(defaultTextInputStyles())
@@ -87,75 +80,4 @@ func (b *MenuBar) WithStyle(s *MenuStyle) *MenuBar {
 	b.menu.WithStyle(s)
 	b.MarkDirty()
 	return b
-}
-
-// WithStyles replaces the looks of every part of the view — the list, the
-// preview, each pane's frame and the gap between them. The zero value restores
-// golib's own.
-func (v *FileOpenView) WithStyles(st FilePaneStyles) *FileOpenView {
-	styled := st != (FilePaneStyles{})
-	v.cfg.st, v.cfg.styled = st, styled
-	v.list.withStyles(st, styled)
-	text := TextInputStyles{}
-	if styled {
-		text.Text = st.Surface
-	}
-	v.path.input.WithStyles(text)
-	stylePane(v.path.pane, st, styled)
-	if v.preview != nil {
-		v.preview.withStyles(st, styled)
-	}
-	if sp, ok := v.root.(*Split); ok {
-		gap := style.Style{}
-		if styled {
-			gap = st.Gap
-		}
-		sp.WithDividerStyle(gap)
-	}
-	return v
-}
-
-// WithStyles replaces the looks of every part of the view: the name field and
-// its frame, and the listing under it.
-func (v *FileSaveView) WithStyles(st FilePaneStyles) *FileSaveView {
-	styled := st != (FilePaneStyles{})
-	v.cfg.st, v.cfg.styled = st, styled
-	text := TextInputStyles{}
-	if styled {
-		text.Text = st.Surface
-	}
-	v.name.WithStyles(text)
-	stylePane(v.namePane, st, styled)
-	v.listing.WithStyles(st)
-	return v
-}
-
-// WithStyles restyles a folder view: its listing, path field included. A
-// host's own fields dress themselves.
-func (v *FileFolderView) WithStyles(st FilePaneStyles) *FileFolderView {
-	v.cfg.st, v.cfg.styled = st, st != (FilePaneStyles{})
-	v.listing.WithStyles(st)
-	return v
-}
-
-// withStyles restyles the list's rows and its frame, as NewFileList styles
-// them.
-func (l *FileList) withStyles(st FilePaneStyles, styled bool) {
-	l.st, l.styled = st, styled
-	l.list.styles = defaultListStyles()
-	if styled {
-		l.list.SetStyles(fileListStyles(st))
-	}
-	l.list.MarkDirty()
-	stylePane(l.box, st, styled)
-}
-
-// withStyles restyles the preview's text and its frame.
-func (p *FilePreview) withStyles(st FilePaneStyles, styled bool) {
-	text := TextInputStyles{}
-	if styled {
-		text.Text = st.Surface
-	}
-	p.view.WithStyles(text)
-	stylePane(p.box, st, styled)
 }
