@@ -78,10 +78,8 @@ func insidePoly(p gui.Point, pts []gui.Point) bool {
 // A block arrow's label lies inside its arrow, not only its box: a long label on an arrow pointing
 // up, down or both ways along a column, a label of three lines on one pointing right, left or both
 // ways along a row, and a narrow label of eight lines on one pointing down a column a wide block
-// widens (its head a third of its length, not half its breadth: a length sized as a horizontal
-// arrow's would leave a label taller than about twice its width plus its margins reaching past the
-// head's sides), each whole inside the polygon drawn. Laid out at its width and fitted into a
-// narrow one.
+// widens, where its head is a third of its length rather than half its breadth; each whole inside
+// the polygon drawn. Laid out at its width and fitted into a narrow one.
 func TestABlockArrowsLabelIsInsideItsArrow(t *testing.T) {
 	src := "block-beta\n  columns 3\n" +
 		"  w[\"a block wide enough to widen its column well past its arrow\"] space space\n" +
