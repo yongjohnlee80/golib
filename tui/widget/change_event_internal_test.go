@@ -7,6 +7,7 @@ import (
 	"testing"
 
 	"github.com/yongjohnlee80/golib/tui"
+	"github.com/yongjohnlee80/golib/tui/widget/internal/widgettest"
 )
 
 // changeLog collects the ChangeEvent values a subscriber received.
@@ -29,8 +30,8 @@ func (l *changeLog) values() []string {
 // build none, and the queued event is not delivered to it.
 func TestAnEditorBuildsItsChangeValueOnlyForASubscriber(t *testing.T) {
 	ed := NewEditor()
-	h := startAppInternal(t, ed, 40, 6)
-	defer h.stopInternal()
+	h := widgettest.StartApp(t, ed, 40, 6)
+	defer h.Stop()
 	c := ed.Core()
 	insert := func(s string) {
 		if _, err := c.Insert(TextPos{}, s); err != nil {
@@ -38,25 +39,25 @@ func TestAnEditorBuildsItsChangeValueOnlyForASubscriber(t *testing.T) {
 		}
 	}
 
-	h.onLoopInternal(func() { insert("a"); insert("b"); insert("c") })
+	h.OnLoop(func() { insert("a"); insert("b"); insert("c") })
 	if c.changeValues != 0 {
 		t.Fatalf("with no subscriber, edits built %d change values, want 0", c.changeValues)
 	}
 
 	var log changeLog
-	cancel := tui.Subscribe(h.app.Bus(), log.add)
-	h.onLoopInternal(func() { insert("d") })
-	h.syncInternal()
+	cancel := tui.Subscribe(h.App.Bus(), log.add)
+	h.OnLoop(func() { insert("d") })
+	h.Sync()
 	if c.changeValues != 1 || !slices.Equal(log.values(), []string{"dcba"}) {
 		t.Fatalf("with a subscriber: %d values built, received %q; want 1 and [dcba]", c.changeValues, log.values())
 	}
 
-	h.onLoopInternal(func() {
+	h.OnLoop(func() {
 		insert("e") // built, its event queued on the lane
 		cancel()    // mid-lane: before that event is delivered
 		insert("f")
 	})
-	h.syncInternal()
+	h.Sync()
 	if c.changeValues != 2 {
 		t.Fatalf("after the cancel: %d values built in all, want 2 (the edit before it only)", c.changeValues)
 	}
@@ -69,16 +70,16 @@ func TestAnEditorBuildsItsChangeValueOnlyForASubscriber(t *testing.T) {
 // its whole text too.
 func TestATextAreaBuildsItsChangeValueOnlyForASubscriber(t *testing.T) {
 	ta := NewTextArea()
-	h := startAppInternal(t, ta, 40, 6)
-	defer h.stopInternal()
-	h.onLoopInternal(func() { ta.InsertText("one\ntwo") })
+	h := widgettest.StartApp(t, ta, 40, 6)
+	defer h.Stop()
+	h.OnLoop(func() { ta.InsertText("one\ntwo") })
 	if ta.changeValues != 0 {
 		t.Fatalf("with no subscriber, an insert built %d change values, want 0", ta.changeValues)
 	}
 	var log changeLog
-	defer tui.Subscribe(h.app.Bus(), log.add)()
-	h.onLoopInternal(func() { ta.InsertText("!") })
-	h.syncInternal()
+	defer tui.Subscribe(h.App.Bus(), log.add)()
+	h.OnLoop(func() { ta.InsertText("!") })
+	h.Sync()
 	if ta.changeValues != 1 || !slices.Equal(log.values(), []string{"one\ntwo!"}) {
 		t.Fatalf("with a subscriber: %d values built, received %q; want 1 and [one\\ntwo!]", ta.changeValues, log.values())
 	}

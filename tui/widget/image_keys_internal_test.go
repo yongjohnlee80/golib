@@ -6,6 +6,7 @@ import (
 	"testing"
 
 	"github.com/yongjohnlee80/golib/tui"
+	"github.com/yongjohnlee80/golib/tui/widget/internal/widgettest"
 )
 
 // oldScrollStep is scrollStep's key decision before commands, verbatim but for the wheel, which is
@@ -47,10 +48,12 @@ func stepName(dx, dy int, ok bool) string {
 
 func TestImageKeysMatchTheOldHandlerWithNoMap(t *testing.T) {
 	const rows, height = 7, 300
-	keyGridDiff(t, "Image",
+	widgettest.KeyGridDiff(t, "Image",
 		func(e tui.KeyEvent) string { return stepName(oldScrollStep(e, rows, height)) },
-		func(e tui.KeyEvent) string { return stepName(scrollStep(noKeymap, e, rows, height)) },
-		func(e tui.KeyEvent) string { return cmp.Or(hyperOrMeta(e), shiftSpentOnPrintable(e)) })
+		func(e tui.KeyEvent) string { return stepName(scrollStep(widgettest.NoKeymap, e, rows, height)) },
+		func(e tui.KeyEvent) string {
+			return cmp.Or(widgettest.HyperOrMeta(e), widgettest.ShiftSpentOnPrintable(e))
+		})
 }
 
 // oldEscCloses is the Float's and the popup's Esc test before commands, verbatim.
@@ -63,12 +66,12 @@ func oldEscCloses(e tui.KeyEvent) string {
 
 func TestFloatAndPopupEscMatchTheOldTestWithNoMap(t *testing.T) {
 	l, p := &floatLayer{}, &PopupLayer{}
-	keyGridDiff(t, "Float", oldEscCloses, func(e tui.KeyEvent) string {
+	widgettest.KeyGridDiff(t, "Float", oldEscCloses, func(e tui.KeyEvent) string {
 		_, ok := l.Context().KeyCommand(e, FloatClose)
 		return map[bool]string{true: "close"}[ok]
-	}, hyperOrMeta)
-	keyGridDiff(t, "popup", oldEscCloses, func(e tui.KeyEvent) string {
+	}, widgettest.HyperOrMeta)
+	widgettest.KeyGridDiff(t, "popup", oldEscCloses, func(e tui.KeyEvent) string {
 		_, ok := p.Context().KeyCommand(e, PopupClose)
 		return map[bool]string{true: "close"}[ok]
-	}, hyperOrMeta)
+	}, widgettest.HyperOrMeta)
 }

@@ -11,6 +11,7 @@ import (
 
 	"github.com/yongjohnlee80/golib/tui"
 	"github.com/yongjohnlee80/golib/tui/style"
+	"github.com/yongjohnlee80/golib/tui/widget/internal/widgettest"
 )
 
 // rowsPicture is a picture of its rows of text.
@@ -126,28 +127,28 @@ func (l *heldLay) await(t *testing.T, c chan string, want, what string) {
 }
 
 // pictureEditor is a Rendered Markdown Editor on a running App at w×h, laying its pictures with lay.
-func pictureEditor(t *testing.T, text string, lay *heldLay, w, h int) (*Editor, *internalHarness) {
+func pictureEditor(t *testing.T, text string, lay *heldLay, w, h int) (*Editor, *widgettest.Harness) {
 	t.Helper()
 	e := NewEditor(WithCore(CoreInitialText(text)))
 	e.layPicture = lay.lay
 	e.SetRenderer(&MarkdownCellRenderer{MarkdownBlocks: MarkdownBlocks{HideMetadata: true}})
 	e.SetView(ViewRendered)
-	ih := startAppInternal(t, e, w, h)
-	t.Cleanup(ih.stopInternal)
+	ih := widgettest.StartApp(t, e, w, h)
+	t.Cleanup(ih.Stop)
 	t.Cleanup(lay.releaseAll) // runs first (cleanups run last-in first-out): the App stops with no task held
-	ih.syncInternal()
+	ih.Sync()
 	return e, ih
 }
 
 // waitGrid waits for the screen to satisfy ok.
-func waitGrid(t *testing.T, ih *internalHarness, what string, ok func(string) bool) {
+func waitGrid(t *testing.T, ih *widgettest.Harness, what string, ok func(string) bool) {
 	t.Helper()
 	deadline := time.Now().Add(3 * time.Second)
-	for !ok(ih.tb.String()) {
+	for !ok(ih.TB.String()) {
 		if time.Now().After(deadline) {
-			t.Fatalf("timed out waiting for %s:\n%s", what, ih.tb.String())
+			t.Fatalf("timed out waiting for %s:\n%s", what, ih.TB.String())
 		}
-		ih.syncInternal()
+		ih.Sync()
 		time.Sleep(time.Millisecond)
 	}
 }
@@ -158,14 +159,14 @@ func TestAPictureIsItsBuffersOwn(t *testing.T) {
 	lay := newHeldLay()
 	e, ih := pictureEditor(t, "```mermaid\nA\n```\nafter", lay, 40, 10)
 	lay.await(t, lay.started, "A", "request")
-	ih.onLoopInternal(func() { e.Core().SetBuffer(NewBuffer(BufferText("```mermaid\nB\n```\nafter"))) })
+	ih.OnLoop(func() { e.Core().SetBuffer(NewBuffer(BufferText("```mermaid\nB\n```\nafter"))) })
 	lay.await(t, lay.cancelled, "A", "stop")
 	lay.await(t, lay.started, "B", "request")
 	lay.answer("A", rowsPicture{"AAAA"}) // A's late answer
-	ih.syncInternal()
+	ih.Sync()
 	time.Sleep(50 * time.Millisecond)
-	ih.syncInternal()
-	if g := ih.tb.String(); strings.Contains(g, "AAAA") {
+	ih.Sync()
+	if g := ih.TB.String(); strings.Contains(g, "AAAA") {
 		t.Fatalf("the other buffer's picture shown:\n%s", g)
 	}
 	lay.answer("B", rowsPicture{"BBBB"})
@@ -174,7 +175,7 @@ func TestAPictureIsItsBuffersOwn(t *testing.T) {
 	lay2 := newHeldLay()
 	e2, ih2 := pictureEditor(t, "```mermaid\nC\n```", lay2, 40, 10)
 	lay2.await(t, lay2.started, "C", "request")
-	ih2.onLoopInternal(func() { e2.SetView(ViewRaw) })
+	ih2.OnLoop(func() { e2.SetView(ViewRaw) })
 	lay2.await(t, lay2.cancelled, "C", "stop on a view switch")
 
 	// A's picture drawn, then another buffer with another fence at the same place: while B's lays, B
@@ -184,11 +185,11 @@ func TestAPictureIsItsBuffersOwn(t *testing.T) {
 	lay3.await(t, lay3.started, "D", "request")
 	lay3.answer("D", rowsPicture{"DDDD"})
 	waitGrid(t, ih3, "D's picture", func(g string) bool { return strings.Contains(g, "DDDD") })
-	ih3.onLoopInternal(func() { e3.Core().SetBuffer(NewBuffer(BufferText("```mermaid\nE\n```\nafter"))) })
+	ih3.OnLoop(func() { e3.Core().SetBuffer(NewBuffer(BufferText("```mermaid\nE\n```\nafter"))) })
 	lay3.await(t, lay3.started, "E", "request")
 	// the switched frame painted: E's source, its language row (a picture has none)
 	waitGrid(t, ih3, "the other buffer's source", func(g string) bool { return strings.Contains(g, "mermaid") })
-	if g := ih3.tb.String(); strings.Contains(g, "DDDD") || !strings.Contains(g, "E") {
+	if g := ih3.TB.String(); strings.Contains(g, "DDDD") || !strings.Contains(g, "E") {
 		t.Errorf("while the other buffer's picture lays, want its source, not the first buffer's picture:\n%s", g)
 	}
 }
@@ -202,26 +203,26 @@ func TestAPicturesArrivalKeepsTheView(t *testing.T) {
 	e, ih := pictureEditor(t, long, lay, 40, 10)
 	src := strings.Repeat("x ", 300)
 	lay.await(t, lay.started, src, "request")
-	ih.onLoopInternal(func() { e.cells.ScrollLines(12) }) // inside the source's long line, the cursor above the view
-	ih.syncInternal()
+	ih.OnLoop(func() { e.cells.ScrollLines(12) }) // inside the source's long line, the cursor above the view
+	ih.Sync()
 	lay.answer(src, rowsPicture{"PIC0", "PIC1"})
 	waitGrid(t, ih, "the picture", func(g string) bool { return strings.Contains(g, "PIC") })
-	if row0 := strings.Split(ih.tb.String(), "\n")[0]; !strings.HasPrefix(row0, "PIC1") {
+	if row0 := strings.Split(ih.TB.String(), "\n")[0]; !strings.HasPrefix(row0, "PIC1") {
 		t.Errorf("scrolled into the fence's source, the view's first row after the picture %q, want PIC1 (its block's last row)", row0)
 	}
 
 	lay2 := newHeldLay()
 	e2, ih2 := pictureEditor(t, long, lay2, 40, 10)
 	lay2.await(t, lay2.started, src, "request")
-	ih2.onLoopInternal(func() { e2.Core().SetLine(1, 590) }) // the cursor deep in the source, on the view
-	ih2.syncInternal()
+	ih2.OnLoop(func() { e2.Core().SetLine(1, 590) }) // the cursor deep in the source, on the view
+	ih2.Sync()
 	lay2.answer(src, rowsPicture{"PIC0", "PIC1"})
 	waitGrid(t, ih2, "the picture", func(g string) bool { return strings.Contains(g, "PIC") })
 	var ok bool
 	var y int
-	ih2.onLoopInternal(func() { _, y, ok = e2.Cursor() })
-	if row := strings.Split(ih2.tb.String(), "\n"); !ok || !strings.HasPrefix(row[y], "PIC0") {
-		t.Errorf("the cursor on the view before the picture: after it, shown %v on row %d, want on the picture's first row:\n%s", ok, y, ih2.tb.String())
+	ih2.OnLoop(func() { _, y, ok = e2.Cursor() })
+	if row := strings.Split(ih2.TB.String(), "\n"); !ok || !strings.HasPrefix(row[y], "PIC0") {
+		t.Errorf("the cursor on the view before the picture: after it, shown %v on row %d, want on the picture's first row:\n%s", ok, y, ih2.TB.String())
 	}
 }
 
@@ -236,33 +237,33 @@ func TestAPicturesFenceIsOneVisibleFold(t *testing.T) {
 	lay.await(t, lay.started, "A\nB", "request")
 	lay.answer("A\nB", rowsPicture{"PIC0", "PIC1"})
 	waitGrid(t, ih, "the picture", func(g string) bool { return strings.Contains(g, "PIC1") })
-	if rows := strings.Split(ih.tb.String(), "\n"); strings.Contains(ih.tb.String(), "mermaid") || !strings.HasPrefix(rows[1], "PIC0") {
-		t.Errorf("want the picture alone where its fence is, no language row:\n%s", ih.tb.String())
+	if rows := strings.Split(ih.TB.String(), "\n"); strings.Contains(ih.TB.String(), "mermaid") || !strings.HasPrefix(rows[1], "PIC0") {
+		t.Errorf("want the picture alone where its fence is, no language row:\n%s", ih.TB.String())
 	}
 	for ln := 1; ln <= 4; ln++ {
 		var from, to int
 		var hidden, ok bool
-		ih.onLoopInternal(func() { from, to, hidden, ok = e.cells.FoldOf(ln) })
+		ih.OnLoop(func() { from, to, hidden, ok = e.cells.FoldOf(ln) })
 		if !ok || from != 1 || to != 5 || hidden {
 			t.Errorf("FoldOf(%d) = [%d, %d) hidden %v ok %v, want [1, 5) shown", ln, from, to, hidden, ok)
 		}
 	}
 	var x, y int
 	var shown bool
-	ih.onLoopInternal(func() { e.Core().SetLine(3, 0); x, y, shown = e.Cursor() })
+	ih.OnLoop(func() { e.Core().SetLine(3, 0); x, y, shown = e.Cursor() })
 	if !shown || x != 0 || y != 1 {
 		t.Errorf("the caret on the fence's body at (%d, %d) %v, want the picture's first row (0, 1)", x, y, shown)
 	}
-	ih.onLoopInternal(func() { e.Core().SetLine(5, 0) })
+	ih.OnLoop(func() { e.Core().SetLine(5, 0) })
 	// the picture's second row: no source of its own; the click is the fence's first line, not the
 	// line before the picture
-	if err := ih.tb.Inject(tui.MouseEvent{Kind: tui.MousePress, Button: tui.MouseLeft, X: 2, Y: 2},
+	if err := ih.TB.Inject(tui.MouseEvent{Kind: tui.MousePress, Button: tui.MouseLeft, X: 2, Y: 2},
 		tui.MouseEvent{Kind: tui.MouseRelease, Button: tui.MouseLeft, X: 2, Y: 2}); err != nil {
 		t.Fatal(err)
 	}
 	var ln int
 	for deadline := time.Now().Add(3 * time.Second); ; { // the click routed (input and Updates are separate lanes)
-		ih.onLoopInternal(func() { ln, _ = e.Core().Line() })
+		ih.OnLoop(func() { ln, _ = e.Core().Line() })
 		if ln != 5 || time.Now().After(deadline) {
 			break
 		}
@@ -272,7 +273,7 @@ func TestAPicturesFenceIsOneVisibleFold(t *testing.T) {
 		t.Errorf("a click on the picture landed on line %d, want the fence's first, 1", ln)
 	}
 	var v string
-	ih.onLoopInternal(func() {
+	ih.OnLoop(func() {
 		e.Core().SetLine(3, 0)
 		e.Core().HandleKey(tui.KeyEvent{Kind: tui.KeyPress, Code: 'd'})
 		e.Core().HandleKey(tui.KeyEvent{Kind: tui.KeyPress, Code: 'd'})
@@ -281,7 +282,7 @@ func TestAPicturesFenceIsOneVisibleFold(t *testing.T) {
 	if v != "before\nafter" {
 		t.Errorf("dd on the picture left %q, want the prose after it", v)
 	}
-	ih.onLoopInternal(func() {
+	ih.OnLoop(func() {
 		e.Core().HandleKey(tui.KeyEvent{Kind: tui.KeyPress, Code: 'u'})
 		v = e.Core().Value()
 	})
@@ -297,17 +298,17 @@ func TestAnEditStopsItsFencesPicture(t *testing.T) {
 	e, ih := pictureEditor(t, "```mermaid\nA\n```\nafter", lay, 40, 10)
 	lay.await(t, lay.started, "A", "request")
 	key := func(c rune) { e.Core().HandleKey(tui.KeyEvent{Kind: tui.KeyPress, Code: c, Text: string(c)}) } // Text: Insert types it
-	ih.onLoopInternal(func() {
+	ih.OnLoop(func() {
 		e.Core().SetLine(1, 0)
 		key('i')
 		key('X') // typing in the fence: its block is its source, so no picture is asked for
 	})
 	lay.await(t, lay.cancelled, "A", "stop on an edit")
 	lay.answer("A", rowsPicture{"AAAA"}) // A's late answer
-	ih.onLoopInternal(func() { e.Core().HandleKey(tui.KeyEvent{Kind: tui.KeyPress, Code: tui.KeyEscape}) })
+	ih.OnLoop(func() { e.Core().HandleKey(tui.KeyEvent{Kind: tui.KeyPress, Code: tui.KeyEscape}) })
 	lay.await(t, lay.started, "XA", "request of the edited fence")
-	ih.syncInternal()
-	if g := ih.tb.String(); strings.Contains(g, "AAAA") {
+	ih.Sync()
+	if g := ih.TB.String(); strings.Contains(g, "AAAA") {
 		t.Fatalf("the edited fence drawn with its old source's picture:\n%s", g)
 	}
 	lay.answer("XA", rowsPicture{"XXXX"})
@@ -326,11 +327,11 @@ func TestPicturesArrivingTogetherKeepTheReveal(t *testing.T) {
 	lay.await(t, lay.started, "T", "request")
 	// on the view, a few rows under the first fence; laid out, so the view has taken the cursor where
 	// it is (a move alone repaints: its layout would otherwise reveal the cursor whatever the pictures)
-	ih.onLoopInternal(func() { e.Core().SetLine(6, 0); e.RequestLayout() })
-	ih.syncInternal()
+	ih.OnLoop(func() { e.Core().SetLine(6, 0); e.RequestLayout() })
+	ih.Sync()
 	var on bool
 	var seen [2]int
-	ih.onLoopInternal(func() { _, _, on = e.Cursor(); seen = e.shown.Cursor })
+	ih.OnLoop(func() { _, _, on = e.Cursor(); seen = e.shown.Cursor })
 	if !on || seen != [2]int{6, 0} {
 		t.Fatalf("precondition: the cursor on the view (%v) and laid out there (%v), want true and [6 0]", on, seen)
 	}
@@ -338,7 +339,7 @@ func TestPicturesArrivingTogetherKeepTheReveal(t *testing.T) {
 	for i := range tall {
 		tall[i] = "TALL"
 	}
-	ih.onLoopInternal(func() {
+	ih.OnLoop(func() {
 		// every pending request answered at once, before a layout: the first fence's first (its tall
 		// picture pushes the cursor off the view), then the rest
 		var ats []pictureAt
@@ -354,22 +355,22 @@ func TestPicturesArrivingTogetherKeepTheReveal(t *testing.T) {
 	})
 	waitGrid(t, ih, "the pictures drawn", func(g string) bool { return strings.Contains(g, "TALL") })
 	var ok bool
-	ih.onLoopInternal(func() { _, _, ok = e.Cursor() })
+	ih.OnLoop(func() { _, _, ok = e.Cursor() })
 	if !ok {
-		t.Errorf("two pictures before one layout: the cursor, on the view before them, is off it after:\n%s", ih.tb.String())
+		t.Errorf("two pictures before one layout: the cursor, on the view before them, is off it after:\n%s", ih.TB.String())
 	}
 }
 
 // startAppHeld is startAppInternal with every frame after the first held back an hour: input is
 // routed with no frame between it and what came before it.
-func startAppHeld(t *testing.T, root tui.Component, w, h int) *internalHarness {
+func startAppHeld(t *testing.T, root tui.Component, w, h int) *widgettest.Harness {
 	t.Helper()
 	tb := tui.NewTestBackend(w, h)
 	app := tui.NewApp(root, tui.WithBackend(tb), tui.WithMinFrameInterval(time.Hour))
 	ctx, cancel := context.WithCancel(context.Background())
-	ih := &internalHarness{t: t, app: app, tb: tb, res: make(chan error, 1), cxl: cancel}
-	go func() { ih.res <- app.Run(ctx) }()
-	ih.syncInternal()
+	ih := &widgettest.Harness{T: t, App: app, TB: tb, Done: make(chan error, 1), Cancel: cancel}
+	go func() { ih.Done <- app.Run(ctx) }()
+	ih.Sync()
 	return ih
 }
 
@@ -386,16 +387,16 @@ func TestAPicturesArrivalSettlesBeforeTheNextInput(t *testing.T) {
 	e.SetView(ViewRendered)
 	e.Core().SetLine(1, 590) // deep in the long line: the first frame reveals it, rows into the fence
 	ih := startAppHeld(t, e, 40, 10)
-	t.Cleanup(ih.stopInternal)
+	t.Cleanup(ih.Stop)
 	t.Cleanup(lay.releaseAll)
 	lay.await(t, lay.started, src, "request")
 	var gen uint64
-	ih.onLoopInternal(func() { gen = e.picGen })
+	ih.OnLoop(func() { gen = e.picGen })
 	lay.answer(src, rowsPicture{"PIC0", "PIC1"})
 	deadline := time.Now().Add(3 * time.Second)
 	for { // the picture handled on the loop (a frame stays held)
 		var now uint64
-		ih.onLoopInternal(func() { now = e.picGen })
+		ih.OnLoop(func() { now = e.picGen })
 		if now != gen {
 			break
 		}
@@ -404,13 +405,13 @@ func TestAPicturesArrivalSettlesBeforeTheNextInput(t *testing.T) {
 		}
 		time.Sleep(time.Millisecond)
 	}
-	if err := ih.tb.Inject(tui.MouseEvent{Kind: tui.MousePress, Button: tui.MouseLeft, X: 1, Y: 0},
+	if err := ih.TB.Inject(tui.MouseEvent{Kind: tui.MousePress, Button: tui.MouseLeft, X: 1, Y: 0},
 		tui.MouseEvent{Kind: tui.MouseRelease, Button: tui.MouseLeft, X: 1, Y: 0}); err != nil {
 		t.Fatal(err)
 	}
 	var ln int
 	for deadline := time.Now().Add(3 * time.Second); ; { // the click routed (input and Updates are separate lanes)
-		ih.onLoopInternal(func() { ln, _ = e.Core().Line() })
+		ih.OnLoop(func() { ln, _ = e.Core().Line() })
 		if ln != 1 || time.Now().After(deadline) {
 			break
 		}
@@ -435,7 +436,7 @@ func TestAPicturesArrivalIsItsOwnersAlone(t *testing.T) {
 	e.SetView(ViewRendered)
 	e.Core().SetLine(1, 590)
 	ih := startAppHeld(t, e, 40, 10)
-	t.Cleanup(ih.stopInternal)
+	t.Cleanup(ih.Stop)
 	t.Cleanup(lay.releaseAll)
 	lay.await(t, lay.started, src, "request")
 	arrive := func() { // every pending request answered, through the Editor's handling
@@ -446,7 +447,7 @@ func TestAPicturesArrivalIsItsOwnersAlone(t *testing.T) {
 		}
 	}
 	var seenOff bool
-	ih.onLoopInternal(func() {
+	ih.OnLoop(func() {
 		e.cells.ScrollLines(-50) // A's view to the top: its cursor, deep in the source, off it
 		_, _, on := e.Cursor()
 		seenOff = !on
@@ -459,16 +460,16 @@ func TestAPicturesArrivalIsItsOwnersAlone(t *testing.T) {
 	if !seenOff {
 		t.Fatal("precondition: A's cursor was on the view when its picture arrived")
 	}
-	if err := ih.tb.Inject(tui.MouseEvent{Kind: tui.MouseMotion, X: 30, Y: 9}); err != nil { // input: the held layout settles before it
+	if err := ih.TB.Inject(tui.MouseEvent{Kind: tui.MouseMotion, X: 30, Y: 9}); err != nil { // input: the held layout settles before it
 		t.Fatal(err)
 	}
 	var settled bool
 	for deadline := time.Now().Add(3 * time.Second); !settled && time.Now().Before(deadline); {
-		ih.onLoopInternal(func() { settled = !e.picArrived })
+		ih.OnLoop(func() { settled = !e.picArrived })
 		time.Sleep(time.Millisecond)
 	}
 	var ok bool
-	ih.onLoopInternal(func() { _, _, ok = e.Cursor() })
+	ih.OnLoop(func() { _, _, ok = e.Cursor() })
 	if !settled || !ok {
 		t.Errorf("B's picture arrived with B's cursor on the view: after the layout, settled %v, the cursor shown %v (A's snapshot inherited?)", settled, ok)
 	}

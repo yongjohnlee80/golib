@@ -4,6 +4,7 @@ import (
 	"testing"
 
 	"github.com/yongjohnlee80/golib/tui"
+	"github.com/yongjohnlee80/golib/tui/widget/internal/widgettest"
 )
 
 // A trapping overlay's own node is a focus stop only while its content holds nothing focusable,
@@ -17,10 +18,10 @@ func TestATrappingOverlaysFallbackStopFollowsItsContent(t *testing.T) {
 	base := NewButton("base")
 	host := NewOverlayHost(NewBox(base))
 	host.Attach(f)
-	ih := startAppInternal(t, host, 40, 10)
-	defer ih.stopInternal()
+	ih := widgettest.StartApp(t, host, 40, 10)
+	defer ih.Stop()
 
-	ih.onLoopInternal(func() {
+	ih.OnLoop(func() {
 		f.Show()
 		if !f.layer.AcceptsFocus() {
 			t.Error("a modal Float whose only control is disabled: its layer refuses focus, so the trap has no stop")
@@ -44,7 +45,7 @@ func TestATrappingOverlaysFallbackStopFollowsItsContent(t *testing.T) {
 		f.Hide()
 	})
 
-	ih.onLoopInternal(func() {
+	ih.OnLoop(func() {
 		p, err := host.OpenPopupAt("t", base, NewBox(popupBtn), tui.Point{}, nil)
 		if err != nil {
 			t.Fatalf("openPopupAt: %v", err)

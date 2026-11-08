@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/yongjohnlee80/golib/tui"
+	"github.com/yongjohnlee80/golib/tui/widget/internal/widgettest"
 )
 
 // A widget's SetToolTip, before mount and after: hovered, it shows its card; the same text again
@@ -13,35 +14,35 @@ import (
 func TestBaseToolTipShowsAndAChangeClosesIt(t *testing.T) {
 	label := NewText("the prose font")
 	label.SetToolTip("the Rendered view and the HTML preview") // before mount
-	h := startAppInternal(t, label, 60, 4)
-	defer h.stopInternal()
+	h := widgettest.StartApp(t, label, 60, 4)
+	defer h.Stop()
 	shown := func(want bool) bool {
 		for range 300 {
-			h.syncInternal()
-			if strings.Contains(h.tb.String(), "the Rendered view") == want {
+			h.Sync()
+			if strings.Contains(h.TB.String(), "the Rendered view") == want {
 				return true
 			}
 			time.Sleep(10 * time.Millisecond)
 		}
 		return false
 	}
-	if err := h.tb.Inject(tui.MouseEvent{Kind: tui.MouseMotion, X: 2, Y: 0}); err != nil {
+	if err := h.TB.Inject(tui.MouseEvent{Kind: tui.MouseMotion, X: 2, Y: 0}); err != nil {
 		t.Fatal(err)
 	}
 	if !shown(true) {
-		t.Fatalf("no card on hover:\n%s", h.tb.String())
+		t.Fatalf("no card on hover:\n%s", h.TB.String())
 	}
-	h.onLoopInternal(func() { label.SetToolTip("the Rendered view and the HTML preview") })
+	h.OnLoop(func() { label.SetToolTip("the Rendered view and the HTML preview") })
 	time.Sleep(50 * time.Millisecond)
 	if !shown(true) {
 		t.Fatal("the same text again closed the card")
 	}
-	h.onLoopInternal(func() { label.SetToolTip("changed") })
+	h.OnLoop(func() { label.SetToolTip("changed") })
 	if !shown(false) {
-		t.Fatalf("a new text left the old card:\n%s", h.tb.String())
+		t.Fatalf("a new text left the old card:\n%s", h.TB.String())
 	}
 	var tip string
-	h.onLoopInternal(func() { tip = label.ToolTip() })
+	h.OnLoop(func() { tip = label.ToolTip() })
 	if tip != "changed" {
 		t.Errorf("ToolTip() = %q", tip)
 	}
