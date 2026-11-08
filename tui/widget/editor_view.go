@@ -90,7 +90,8 @@ func (l *cellLayout) RowOf(line, col int) (row, x int) { return l.ed.rowMap().ro
 func (l *cellLayout) ColAt(line, row, x int) int { return l.ed.rowMap().colAt(line, row, x) }
 
 // Changed repaints, and lays out again when the line count's digits move the gutter's width.
-func (l *cellLayout) Changed(int) {
+func (l *cellLayout) Changed(from int) {
+	l.ed.picturesTouched(from) // a picture laying for a block the edit touched is not taken
 	if l.numbers && l.ed.gutterWidth() != l.gutter {
 		l.ed.RequestLayout() // the lines' count has another number of digits: the gutter's width moves
 	}
