@@ -156,10 +156,10 @@ func TestAReadOnlyCoreRefusesEditingKeysAndMoves(t *testing.T) {
 	}
 }
 
-// With the g prefix moved to z, the goLine command's key completes gg: zg goes to the first line,
-// and zz does not.
+// With the g prefix moved to ! (a key Vim's Normal leaves unbound here; z is the z prefix's), the
+// goLine command's key completes gg: !g goes to the first line, and !! does not.
 func TestGGFollowsTheGoLineCommand(t *testing.T) {
-	m := mustKeymap(t, `<mapping><shortcut id="tui.editor.vim.normal.goPrefix"><key value="Z"/></shortcut></mapping>`)
+	m := mustKeymap(t, `<mapping><shortcut id="tui.editor.vim.normal.goPrefix"><key value="!"/></shortcut></mapping>`)
 	h, e, sh := mountedEditor(t, m, widget.WithCore(widget.CoreInitialText("one\ntwo\nthree")))
 	defer h.stop()
 	line := func() int {
@@ -167,15 +167,15 @@ func TestGGFollowsTheGoLineCommand(t *testing.T) {
 		h.onLoop(func() { l = e.Core().Cursor().Line })
 		return l
 	}
-	h.inject(ch('j'), ch('j'), ch('z'), ch('z'))
+	h.inject(ch('j'), ch('j'), ch('!'), ch('!'))
 	h.barrier(sh)
 	if got := line(); got != 2 {
-		t.Fatalf("zz moved to line %d; want it to do nothing", got)
+		t.Fatalf("!! moved to line %d; want it to do nothing", got)
 	}
-	h.inject(ch('z'), ch('g'))
+	h.inject(ch('!'), ch('g'))
 	h.barrier(sh)
 	if got := line(); got != 0 {
-		t.Fatalf("zg left line %d; want the first", got)
+		t.Fatalf("!g left line %d; want the first", got)
 	}
 }
 
