@@ -1,8 +1,14 @@
 package widget
 
 import (
+	"bytes"
 	"context"
+	"encoding/base64"
+	"errors"
+	"io"
 	"strings"
+	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -106,4 +112,101 @@ func TestAnImageIsPlacedInTheEditorAndGoesWithItsView(t *testing.T) {
 	}
 	r.onLoop(func() { r.e.SetView(ViewRaw) })
 	r.waitFor("the picture taken off in Raw", func(_ string, imgs map[uint32]tui.ImagePlacement) bool { return len(imgs) == 0 })
+}
+
+// An image scrolled partly above the view is placed from its rows above the view on, which the App
+// cuts to the rows that show: 80 × 128 pixels is 10 × 8 cells; scrolled three rows into it, the
+// five rows of it on the view show the same part of the image, over blank rows, the text after it
+// below.
+func TestAnImageScrolledPartlyOffIsCropped(t *testing.T) {
+	r := runImageEditor(t, "before\n\n![tall]("+pngURI(t, 80, 128)+")\n\nafter"+strings.Repeat("\n\nmore", 4), 40, 8, kitty)
+	var first int
+	r.waitFor("the picture placed", func(_ string, imgs map[uint32]tui.ImagePlacement) bool {
+		if len(imgs) != 1 {
+			return false
+		}
+		first = onlyPlacement(imgs).Y
+		return true
+	})
+	r.onLoop(func() { r.e.cells.ScrollLines(first + 3) })
+	r.waitFor("the picture cut", func(_ string, imgs map[uint32]tui.ImagePlacement) bool {
+		pl := onlyPlacement(imgs)
+		return len(imgs) == 1 && pl.Y == 0 && pl.Rows == 5 && pl.Cols == 10 && pl.Clip == tui.Rect{X: 0, Y: 48, W: 80, H: 80}
+	})
+	sc := strings.Split(r.tb.String(), "\n")
+	for y, l := range sc[:5] {
+		if strings.TrimSpace(l) != "" {
+			t.Fatalf("row %d of the picture shows %q:\n%s", y, l, r.tb.String())
+		}
+	}
+	if s := r.tb.String(); strings.Contains(s, "before") || lineOf(s, "after") < 5 {
+		t.Fatalf("scrolled into the picture, want its rows on top and the text after it below:\n%s", s)
+	}
+}
+
+// heldImages is a resolver of each note's images: p.png the note's own picture, at once; s.png held
+// for note A until released (a load still running when the note is switched), at once for B.
+type heldImages struct {
+	note    atomic.Value // "A" or "B": the note shown, read when a load starts
+	release chan struct{}
+	pngs    map[string]string // note + src → the PNG's data: URI
+}
+
+func (h *heldImages) resolve(ctx context.Context, src string) (io.ReadCloser, error) {
+	note := h.note.Load().(string)
+	if note == "A" && src == "s.png" {
+		select {
+		case <-h.release:
+		case <-ctx.Done():
+			return nil, ctx.Err()
+		}
+	}
+	uri, ok := h.pngs[note+src]
+	if !ok {
+		return nil, errors.New("no such image")
+	}
+	b, err := base64.StdEncoding.DecodeString(strings.TrimPrefix(uri, "data:image/png;base64,"))
+	return io.NopCloser(bytes.NewReader(b)), err
+}
+
+// An image is its buffer's: another note shown (SetBuffer) lays its own images, the same src read
+// again (another note's p.png is another file), and a load of the first note's still running when
+// it was switched, answered late, places nothing: only the shown note's images are placed.
+func TestAnImageIsItsBuffersOwn(t *testing.T) {
+	h := &heldImages{release: make(chan struct{}), pngs: map[string]string{
+		"Ap.png": pngURI(t, 80, 32), // 10 × 2
+		"As.png": pngURI(t, 80, 64), // 10 × 4
+		"Bp.png": pngURI(t, 40, 48), // 5 × 3
+		"Bs.png": pngURI(t, 16, 16), // 2 × 1
+	}}
+	h.note.Store("A")
+	note := func(n string) string { return "![p](p.png)\n\n![s](s.png)\n\nnote " + n }
+	r := runImageEditor(t, note("A"), 40, 16, kitty)
+	var once sync.Once
+	t.Cleanup(func() { once.Do(func() { close(h.release) }) }) // before the App stops: a held load let go
+	r.onLoop(func() { r.e.SetImages(h.resolve) })
+	r.waitFor("note A's picture", func(sc string, imgs map[uint32]tui.ImagePlacement) bool {
+		pl := onlyPlacement(imgs)
+		return len(imgs) == 1 && pl.Cols == 10 && pl.Rows == 2 && strings.Contains(sc, "note A")
+	})
+	r.onLoop(func() {
+		h.note.Store("B")
+		r.e.Core().SetBuffer(NewBuffer(BufferText(note("B"))))
+	})
+	only := func(sc string, imgs map[uint32]tui.ImagePlacement) bool {
+		var p, s bool
+		for _, pl := range imgs {
+			p = p || pl.Cols == 5 && pl.Rows == 3
+			s = s || pl.Cols == 2 && pl.Rows == 1
+		}
+		return len(imgs) == 2 && p && s && strings.Contains(sc, "note B") && !strings.Contains(sc, "note A")
+	}
+	r.waitFor("note B's own pictures", only)
+	once.Do(func() { close(h.release) }) // note A's s.png answers now
+	time.Sleep(50 * time.Millisecond)
+	r.onLoop(func() {})
+	r.onLoop(func() {})
+	if sc, imgs := r.tb.String(), r.tb.Images(); !only(sc, imgs) {
+		t.Fatalf("after note A's late load: images %+v, want only note B's (5 × 3 and 2 × 1):\n%s", imgs, sc)
+	}
 }
