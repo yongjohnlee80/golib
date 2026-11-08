@@ -2,6 +2,7 @@ package mermaid_test
 
 import (
 	"errors"
+	"strings"
 	"testing"
 
 	"github.com/yongjohnlee80/golib/parse/mermaid"
@@ -48,9 +49,14 @@ func TestEveryKindTakesItsFrontMattersTitle(t *testing.T) {
 // a plain one ends at a comment; a title the diagram's own body names wins over its front matter's.
 func TestAFrontMatterTitlesForms(t *testing.T) {
 	for title, want := range map[string]string{
-		`"A: quoted \"title\""`: `A: quoted "title"`,
-		`'it''s planned'`:       "it's planned",
-		"Plain words # a note":  "Plain words",
+		`"A: quoted \"title\""`:                  `A: quoted "title"`,
+		`'it''s planned'`:                        "it's planned",
+		"Plain words # a note":                   "Plain words",
+		"Plain#hash":                             "Plain#hash", // a # inside a word is no comment
+		`"A # B" # a note`:                       "A # B",      // a # inside the quotes is the title's
+		`"Plan" # a note`:                        "Plan",
+		`'it''s' # a note`:                       "it's",
+		`"tab\tesc\e caf\u00e9 \x41 \U0001F600"`: "tab\tesc\x1b café A 😀", // YAML's escapes, not Go's
 	} {
 		d, err := mermaid.Parse(front(title) + "flowchart LR\n  A --> B")
 		if err != nil || mermaid.TitleOf(d) != want {
@@ -74,5 +80,28 @@ func TestAFrontMattersErrorsKeepTheirLines(t *testing.T) {
 	_, err = mermaid.Parse(front("x") + "flowchart LR\n  A[open --> B")
 	if !errors.As(err, &se) || se.Line != 9 {
 		t.Fatalf("a malformed flowchart after front matter: %v; want its own line, 9", err)
+	}
+}
+
+// A title that is no YAML scalar (a quote left open, an escape YAML doesn't have, text after the
+// closing quote) is a SyntaxError at its line; one longer than MaxLabel is ErrTooLarge at its line,
+// as a label in the diagram's body is, and one MaxLabel long is read.
+func TestAFrontMatterTitleIsAScalarOfALabelsLength(t *testing.T) {
+	for _, title := range []string{`"open`, `'open`, `"bad \q escape"`, `"Plan" trailing`, `'Plan' trailing`} {
+		_, err := mermaid.Parse("---\nconfig:\n  theme: base\ntitle: " + title + "\n---\nflowchart LR\n  A --> B")
+		var se *mermaid.SyntaxError
+		if !errors.As(err, &se) || se.Line != 4 {
+			t.Errorf("title: %s: %v; want a SyntaxError at its line, 4", title, err)
+		}
+	}
+	long := strings.Repeat("x", mermaid.MaxLabel+1)
+	_, err := mermaid.Parse("---\ntitle: " + long + "\n---\nflowchart LR\n  A --> B")
+	var nd *mermaid.NotDrawnError
+	if !errors.As(err, &nd) || !errors.Is(err, mermaid.ErrTooLarge) || nd.Line != 2 {
+		t.Errorf("a title of %d bytes: %v; want ErrTooLarge at its line, 2", len(long), err)
+	}
+	d, err := mermaid.Parse("---\ntitle: " + long[1:] + "\n---\nflowchart LR\n  A --> B")
+	if err != nil || len(mermaid.TitleOf(d)) != mermaid.MaxLabel {
+		t.Errorf("a title of MaxLabel bytes: %v; want it read", err)
 	}
 }
