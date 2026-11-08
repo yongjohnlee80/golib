@@ -1,0 +1,171 @@
+package widget
+
+import (
+	"strings"
+
+	"github.com/yongjohnlee80/golib/tui"
+	"github.com/yongjohnlee80/golib/tui/style"
+)
+
+// Text measurement utilities and layout helpers shared across package widget.
+//
+// # Architectural Model: Policy-Aware Measurement
+//
+// All text measurement across package widget is strictly policy-aware:
+//   - Render paths measure cells using [tui.Surface.StringWidth].
+//   - Layout, hit-testing, scrolling, wrapping, and cursor paths measure cells using
+//     [Base.measure] (which delegates to [tui.Context.StringWidth]).
+//
+// Both routes resolve against the application's active [tui.WidthPolicy] (e.g. WidthPolicyAmbiguousWide).
+// The free utility functions declared here take an explicit measure function parameter rather than
+// capturing a global fallback, ensuring that paint and geometry never diverge under CJK or emoji runes.
+//
+// # Architectural Invariants
+//
+//  1. Mandatory Measurement Injection: Utility functions calculating cell extents ([txt.CellsBefore],
+//     [truncate], [wrapLine]) must accept an explicit `measure func(string) int`. No path may
+//     silently invoke an unconfigured package-level width default.
+//  2. Grapheme Cluster Integrity: String splitting relies exclusively on UAX #29 grapheme boundaries
+//     via [tui.Graphemes]. Code points forming a single user-perceived character (such as flag sequences
+//     or skin-tone modifiers) are never bisected.
+//  3. Ellipsis Bound: Truncation never exceeds the requested maximum cell width `w`. When `w <= 0`,
+//     an empty string is returned; when `w == 1`, only the single ellipsis glyph "…" is produced.
+//
+// # Concurrency Model
+//
+//   - Stateless Functions: All helpers in textutil.go are pure, stateless functions safe for
+//     concurrent execution from any goroutine provided the passed measure function is thread-safe.
+const ellipsis = "…"
+
+// truncate fits s into w cells, replacing the overflow with an ellipsis.
+// measure is the caller's width function (Surface.StringWidth in Render,
+// Base.measure — the App width policy — elsewhere).
+func truncate(s string, w int, measure func(string) int) string {
+	if w <= 0 {
+		return ""
+	}
+	if measure(s) <= w {
+		return s
+	}
+	if w == 1 {
+		return ellipsis
+	}
+	var sb strings.Builder
+	used := 0
+	for c := range tui.Graphemes(s) {
+		cw := measure(c)
+		if used+cw > w-1 {
+			break
+		}
+		sb.WriteString(c)
+		used += cw
+	}
+	sb.WriteString(ellipsis)
+	return sb.String()
+}
+
+// wrapLine soft-wraps one line (no newlines) into rows of at most w cells,
+// breaking at spaces when possible and mid-word otherwise. A "" line yields
+// one empty row.
+func wrapLine(s string, w int, measure func(string) int) []string {
+	if w <= 0 {
+		return []string{""}
+	}
+	if measure(s) <= w {
+		return []string{s}
+	}
+	var rows []string
+	var row strings.Builder
+	rowW := 0
+	lastSpace := -1 // byte offset in row of the last breakable space
+	lastSpaceW := 0 // row width up to (excluding) that space
+	for c := range tui.Graphemes(s) {
+		cw := measure(c)
+		if rowW+cw > w && rowW > 0 {
+			if lastSpace >= 0 && lastSpace < row.Len() {
+				full := row.String()
+				rows = append(rows, full[:lastSpace])
+				rest := strings.TrimPrefix(full[lastSpace:], " ")
+				row.Reset()
+				row.WriteString(rest)
+				rowW = rowW - lastSpaceW - 1
+				if rowW < 0 {
+					rowW = measure(rest)
+				}
+			} else {
+				rows = append(rows, row.String())
+				row.Reset()
+				rowW = 0
+			}
+			lastSpace = -1
+			if c == " " && row.Len() == 0 {
+				continue // never start a row with the break space
+			}
+		}
+		if c == " " {
+			lastSpace = row.Len()
+			lastSpaceW = rowW
+		}
+		row.WriteString(c)
+		rowW += cw
+	}
+	rows = append(rows, row.String())
+	return rows
+}
+
+// drawText paints s cluster by cluster at (x, y), stopping at the surface's
+// nominal width. It returns the x position after the last painted cell.
+func drawText(sur tui.Surface, x, y int, s string, st style.Style) int {
+	w := sur.Size().W
+	for c := range tui.Graphemes(s) {
+		cw := sur.StringWidth(c)
+		if x+cw > w {
+			break
+		}
+		sur.SetCell(x, y, c, st)
+		x += cw
+	}
+	return x
+}
+
+// paintScrollIndicator paints the minimal per-widget scroll indicator
+// column (chrome, not a widget): a proportional thumb at column x over h rows,
+// for a viewport whose first visible unit is top, of the tops from 0 to maxTop
+// it can take.
+//
+// maxTop is the SCROLL RANGE, Qt's QScrollBar::maximum: the top at which the
+// last unit is on screen, not the unit count. The thumb is on the top row at
+// top 0 and on the bottom row at maxTop, so a view scrolled to its end shows
+// the thumb at the end. A top past maxTop (a wheel scrolling past the last
+// line) keeps it there.
+func paintScrollIndicator(s tui.Surface, x, h, top, maxTop int) {
+	if h <= 0 || maxTop < 0 {
+		return
+	}
+	track := style.New().Foreground(style.TokenTextMuted).Faint(true)
+	s.Fill(tui.Rect{X: x, Y: 0, W: 1, H: h}, "│", track)
+	denom := max(maxTop, 1)
+	ty := min(max(top, 0), denom) * (h - 1) / denom
+	s.SetCell(x, ty, "█", style.New().Foreground(style.TokenBorder))
+}
+
+// matchFold reports whether label holds q, case folded: the one filter rule for what a user types to
+// narrow a list (a Select's options, a FileList's entries). An empty q matches every label.
+func matchFold(label, q string) bool {
+	return q == "" || strings.Contains(strings.ToLower(label), strings.ToLower(q))
+}
+
+// padAligned is s in a column w cells wide, measured by measure, placed as a says.
+func padAligned(s string, w int, a style.Align, measure func(string) int) string {
+	gap := max(w-measure(s), 0)
+	switch a {
+	case style.AlignRight:
+		return strings.Repeat(" ", gap) + s
+	case style.AlignCenter:
+		return strings.Repeat(" ", gap/2) + s + strings.Repeat(" ", gap-gap/2)
+	}
+	return s + strings.Repeat(" ", gap)
+}
+
+// orderSpace reports whether b is ASCII white space: a space, a tab, a newline or a carriage return.
+func orderSpace(b byte) bool { return b == ' ' || b == '\t' || b == '\n' || b == '\r' }

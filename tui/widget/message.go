@@ -1,7 +1,6 @@
 package widget
 
 import (
-	"strings"
 	"sync"
 
 	"github.com/yongjohnlee80/golib/tui"
@@ -28,10 +27,6 @@ func englishText(m tui.Message) string {
 	}
 	return m.ID
 }
-
-// withArg fills a message's "%1" with a, as Qt's QString::arg does. A message is translated
-// whole and then filled, so no language ever sees its sentence assembled from fragments.
-func withArg(text, a string) string { return strings.ReplaceAll(text, "%1", a) }
 
 // uiText is a text a widget shows: plain text, shown as it is, or a catalog message, resolved when
 // read in the language of the moment. A widget holds one per text and reads it (text) where it
