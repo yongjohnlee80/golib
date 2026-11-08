@@ -491,9 +491,9 @@ func TestAMermaidFenceIsDrawnAsItsPicture(t *testing.T) {
 func TestAVegaLiteFenceIsDrawnAsItsChart(t *testing.T) {
 	spec := `{"mark":"bar","data":{"values":[{"k":"Apples","v":3},{"k":"Pears","v":5}]},` +
 		`"encoding":{"x":{"field":"k","type":"nominal"},"y":{"field":"v","type":"quantitative"}}}`
-	h, _, _ := renderedEditor(t, "```vega-lite\n"+spec+"\n```", mdRenderer())
-	h.waitFor("the chart in place of its spec", func() bool {
-		g := h.grid()
-		return strings.Contains(g, "Apples") && strings.Contains(g, "Pears") && !strings.Contains(g, `"mark"`)
-	})
+	h, _, _ := mdEditorAt(t, "```vega-lite\n"+spec+"\n```", 40, 30) // tall enough for the chart's labels under its axis
+	h.waitFor("the chart in place of its spec", func() bool { return !strings.Contains(h.grid(), `"mark"`) })
+	if g := h.grid(); !strings.Contains(g, "Apples") || !strings.Contains(g, "Pears") || !strings.Contains(g, "█") {
+		t.Errorf("the chart drawn without its bars or labels:\n%s", g)
+	}
 }
