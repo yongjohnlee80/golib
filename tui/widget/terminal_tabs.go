@@ -211,8 +211,8 @@ func (t *TerminalTabs) Add(label string, options ...TerminalOption) (TerminalTab
 		t.active = id
 	}
 	terminal.SetVisible(t.active == id)
-	if t.ctx != nil && t.ctx.Mounted() {
-		t.ctx.Mount(terminal)
+	if t.Context() != nil && t.Context().Mounted() {
+		t.Context().Mount(terminal)
 	}
 	t.changed()
 	return id, nil
@@ -438,11 +438,11 @@ func (t *TerminalTabs) Select(id TerminalTabID) error {
 	for _, page := range t.entries {
 		page.terminal.SetVisible(page == e && page.closing == nil)
 	}
-	if t.ctx != nil && t.ctx.Mounted() {
+	if t.Context() != nil && t.Context().Mounted() {
 		if e.closing == nil {
-			t.ctx.FocusComponent(e.terminal)
+			t.Context().FocusComponent(e.terminal)
 		} else {
-			t.ctx.RequestFocus()
+			t.Context().RequestFocus()
 		}
 	}
 	t.changed()
@@ -456,7 +456,7 @@ func (t *TerminalTabs) Start(id TerminalTabID) error {
 	if err != nil {
 		return err
 	}
-	if t.ctx == nil || !t.ctx.Mounted() {
+	if t.Context() == nil || !t.Context().Mounted() {
 		return ErrTerminalTabsUnmounted
 	}
 	err = e.terminal.Start()
@@ -532,8 +532,8 @@ func (t *TerminalTabs) Remove(id TerminalTabID) (*TerminalTabRemovalResult, erro
 	last := e.terminal.StopWithResult()
 	e.closing = &TerminalTabRemovalResult{last: last, owner: e.terminal.ShutdownWithResult()}
 	e.terminal.SetVisible(false)
-	if t.ctx != nil && t.ctx.Mounted() && t.ctx.FocusWithin(e.terminal) {
-		t.ctx.RequestFocus()
+	if t.Context() != nil && t.Context().Mounted() && t.Context().FocusWithin(e.terminal) {
+		t.Context().RequestFocus()
 	}
 	r := e.closing
 	finish := func(err error) {
@@ -555,7 +555,7 @@ func (t *TerminalTabs) Remove(id TerminalTabID) (*TerminalTabRemovalResult, erro
 	case <-r.Done():
 		finish(r.Wait(context.Background()))
 	default:
-		app := t.ctx.App() // a real started process always has an App
+		app := t.Context().App() // a real started process always has an App
 		go func() {
 			err := r.Wait(context.Background())
 			app.Update(func() { finish(err) })
@@ -581,10 +581,10 @@ func (t *TerminalTabs) ForceRemove(id TerminalTabID) error {
 }
 
 func (t *TerminalTabs) detach(e *terminalTab) {
-	hadFocus := t.ctx != nil && t.ctx.Mounted() && t.ctx.FocusWithin(e.terminal)
+	hadFocus := t.Context() != nil && t.Context().Mounted() && t.Context().FocusWithin(e.terminal)
 	e.terminal.SetTerminalView(nil) // its view told Detached: a closed tab's view posts nothing more
-	if t.ctx != nil && t.ctx.Mounted() {
-		t.ctx.Unmount(e.terminal)
+	if t.Context() != nil && t.Context().Mounted() {
+		t.Context().Unmount(e.terminal)
 	}
 	for i, page := range t.entries {
 		if page == e {
@@ -601,9 +601,9 @@ func (t *TerminalTabs) detach(e *terminalTab) {
 	}
 	if hadFocus {
 		if active, err := t.find(t.active); err == nil && active.closing == nil {
-			t.ctx.FocusComponent(active.terminal)
+			t.Context().FocusComponent(active.terminal)
 		} else {
-			t.ctx.RequestFocus()
+			t.Context().RequestFocus()
 		}
 	}
 	if e.closing != nil {
@@ -677,12 +677,12 @@ func (t *TerminalTabs) SetDefaultLook(look style.Style) {
 
 func (t *TerminalTabs) Layout(c tui.Constraints) tui.Size {
 	w, h := kit.FillW(c), kit.FillH(c)
-	if t.ctx != nil { // narrower than its tabs, the strip scrolls them between < and >
-		t.ctx.AfterLayout(kit.TabWindowCommitKey, func() { t.strip.CommitWindow(w) })
+	if t.Context() != nil { // narrower than its tabs, the strip scrolls them between < and >
+		t.Context().AfterLayout(kit.TabWindowCommitKey, func() { t.strip.CommitWindow(w) })
 	}
 	if e, err := t.find(t.active); err == nil && e.closing == nil && h > 1 {
-		t.ctx.LayoutChild(e.terminal, tui.Tight(tui.Size{W: w, H: h - 1}))
-		t.ctx.PlaceChild(e.terminal, tui.Rect{Y: 1, W: w, H: h - 1})
+		t.Context().LayoutChild(e.terminal, tui.Tight(tui.Size{W: w, H: h - 1}))
+		t.Context().PlaceChild(e.terminal, tui.Rect{Y: 1, W: w, H: h - 1})
 	}
 	return c.Constrain(tui.Size{W: w, H: h})
 }
