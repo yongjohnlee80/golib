@@ -270,7 +270,7 @@ func (e *Editor) renderRendered(s tui.Surface, m rowMap) {
 			if x >= sz.W || (m.maxPan(bi) > 0 && x+cw > x0+w) {
 				break // past the room, or a wide block's right edge column
 			}
-			st := cl.Style
+			st := onPage(cl.Style, l.styles.Text)
 			if cl.Line >= 0 {
 				st = marked(cl.Line, cl.Col, st)
 				if c.Highlighted(cl.Line, cl.Col, e.focused()) {
@@ -324,4 +324,22 @@ func (e *Editor) renderRenderedGutter(s tui.Surface, r *renderedLayout, dim styl
 		}
 		drawText(s, l.gutter-gutterGap-len(num), y, num, st)
 	}
+}
+
+// onPage is a Rendered cell's style st drawn on the page: a colour st leaves unset (a picture's
+// blank cell sets none) is the page's own, as the fill under the cell, never the terminal's
+// default. Only the two colours: st's attributes stay its own, so a page style's bold or italic
+// never reaches a picture.
+func onPage(st, page style.Style) style.Style {
+	if _, ok := st.GetBackground(); !ok {
+		if bg, ok := page.GetBackground(); ok {
+			st = st.Background(bg)
+		}
+	}
+	if _, ok := st.GetForeground(); !ok {
+		if fg, ok := page.GetForeground(); ok {
+			st = st.Foreground(fg)
+		}
+	}
+	return st
 }
