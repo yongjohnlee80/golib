@@ -52,8 +52,9 @@ type MarkdownCellRenderer struct {
 	// other Markdown (a notice) as its words, the line a fold, its source while typed in. nil, or
 	// not ok: the line is an image's, as without it. Any line that is only an image is one, as for
 	// images: the lines around it don't matter.
-	// It is called on the loop as the view is laid, once per such line and pass: a host caches its
-	// files.
+	// It is called on the loop as the view is laid, twice per such line and pass (the block's stamp,
+	// then its layout when laid): a host caches its files. A file that changes is read at the next
+	// pass: an edit, or the host's Editor.RelayRendered.
 	Embeds func(src string) (md string, ok bool)
 	// langSeen is the Languages the stamps were last taken with, langGen bumped when it is another
 	// (BlockContext).

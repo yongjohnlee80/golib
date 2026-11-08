@@ -93,6 +93,15 @@ type MarkdownStructure interface {
 	InTable(lines []string, ln int) bool
 }
 
+// RelayRendered has the Rendered view laid again at its next draw: each block's stamp
+// (CellBlockContext) is taken again, and only a block whose stamp changed is laid anew. A host calls
+// it when something a renderer reads beyond the text may have changed: a file a line embeds
+// (MarkdownCellRenderer.Embeds), which no edit of the text tells the Editor of.
+func (e *Editor) RelayRendered() {
+	e.relayGen++
+	e.MarkDirty()
+}
+
 // SetRenderer draws the Editor's Rendered view through r; nil: the Editor renders nothing itself
 // (a document view, if one is set, is its Rendered view). A structured renderer's list editing
 // replaces any earlier renderer's, and the view drawn is worked out again at once.
@@ -177,6 +186,7 @@ type renderedKey struct {
 	typing int // the line being typed on, -1 when no text is typed
 	theme  CellTheme
 	pics   uint64          // the pictures laid (picGen): one arriving lays its block again
+	relay  uint64          // the host's asks (RelayRendered): each block's stamp taken again
 	policy tui.WidthPolicy // the measure's: unmounted, the default; mounted, the App's
 }
 
@@ -204,7 +214,7 @@ type renderedLayout struct {
 func (e *Editor) renderedRows(width int) *renderedLayout {
 	l := &e.cells
 	lines := e.core.buf.textLines
-	key := renderedKey{gen: e.renderGen, buf: e.core.Buffer(), rev: e.core.Revision(), width: width, typing: -1, theme: e.cellTheme(), pics: e.picGen}
+	key := renderedKey{gen: e.renderGen, buf: e.core.Buffer(), rev: e.core.Revision(), width: width, typing: -1, theme: e.cellTheme(), pics: e.picGen, relay: e.relayGen}
 	if ctx := e.Context(); ctx != nil {
 		key.policy = ctx.WidthPolicy()
 	}
