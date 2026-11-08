@@ -314,5 +314,5 @@ func (e *Editor) width(s string) int { return tabAware(e.measure)(s) }
 // view is the layout state the shared soft-wrap geometry needs. It is the
 // only place this widget's viewport is handed to textBuffer.
 func (e *Editor) view() wrapView {
-	return wrapView{w: e.cells.w, h: e.cells.h, wrap: e.cells.wrap, measure: e.width}
+	return wrapView{w: e.cells.w, h: e.cells.h, wrap: e.cells.wrap != WrapNone, measure: e.width}
 }

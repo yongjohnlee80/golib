@@ -137,7 +137,7 @@ func (m rowMap) rowCount(ln int) int {
 // ranges are line ln's rows, each its clusters [from, to) of cs (ln's clusters): one row of them
 // all unwrapped.
 func (m rowMap) ranges(cs []string) [][2]int {
-	if m.v.wrap == WrapNone {
+	if !m.v.wrap {
 		return [][2]int{{0, len(cs)}}
 	}
 	return wrapRanges(cs, m.v.usableWidth(m.lines), m.v.measure)
@@ -159,7 +159,7 @@ func (m rowMap) rowOf(ln, col int) (row, x int) {
 		}
 		return 0, x
 	}
-	if m.v.wrap == WrapNone {
+	if !m.v.wrap {
 		return 0, cellsBefore(clusters(m.lines[ln]), col, m.v.measure)
 	}
 	return wrapPosOf(m.lines, ln, col, m.v)
@@ -277,7 +277,7 @@ func (m rowMap) hit(top, left, x, y int, colAt func(cs []string, from, end, cell
 		x = m.ofView(min(ri, len(m.r.rows)-1), x) // a wide block's cell under x: its pan counted
 		return m.r.hit(ri, max(x, 0))
 	}
-	if m.v.wrap == WrapNone {
+	if !m.v.wrap {
 		ln = min(top+max(y, 0), lastLn)
 		cs := clusters(m.lines[ln])
 		return ln, colAt(cs, 0, len(cs), left+max(x, 0))
