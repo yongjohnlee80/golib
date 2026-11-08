@@ -100,7 +100,11 @@ func (b *blockWindow) measure(g *pm.BlockGroup, in int) windowGroup {
 			a.iw, a.ih = em*2, em*2
 		default:
 			a.lb = newLabel(b.m, it.Label, b.th.Font, wrapAt, b.th.Text)
-			a.iw, a.ih = nodeSize(it.Shape, gui.Size{W: a.lb.box.W, H: a.lb.box.H}, em)
+			if it.Arrow != pm.ArrowNone {
+				a.iw, a.ih = arrowSize(it.Arrow, gui.Size{W: a.lb.box.W, H: a.lb.box.H}, em)
+			} else {
+				a.iw, a.ih = nodeSize(it.Shape, gui.Size{W: a.lb.box.W, H: a.lb.box.H}, em)
+			}
 		}
 		ats[i] = a
 		col += w
@@ -164,7 +168,11 @@ func (b *blockWindow) measure(g *pm.BlockGroup, in int) windowGroup {
 			default:
 				box := gui.Rect{X: x, Y: y + (rowH[a.row]-a.ih)/2, W: span(a), H: a.ih}
 				lb := a.lb.at(box.X+(box.W-a.lb.box.W)/2, box.Y+(box.H-a.lb.box.H)/2)
-				b.l.nodes = append(b.l.nodes, laidNode{id: it.ID, form: shapeForm[it.Shape], box: box,
+				f := shapeForm[it.Shape]
+				if it.Arrow != pm.ArrowNone {
+					f = arrowForm[it.Arrow]
+				}
+				b.l.nodes = append(b.l.nodes, laidNode{id: it.ID, form: f, box: box,
 					fill: b.th.NodeFill, stroke: b.th.NodeStroke, width: 1.2, label: lb})
 				b.boxes[it.ID], b.group[it.ID] = box, in
 			}
@@ -191,3 +199,19 @@ func toward(r gui.Rect, p gui.Point) gui.Point {
 }
 
 func abs32(v float32) float32 { return max(v, -v) }
+
+// arrowSize is a block arrow's box for a label of text: big enough that the label, centred in the
+// box, lies inside the arrow's shaft (arrowPoly), with a margin, whatever its grid cell adds. The
+// shaft is half the box's breadth, so the breadth is twice the label's across and its margins; a
+// head is at most half the breadth and a third of the length. Across a horizontal arrow's row the
+// box keeps its breadth, so its length leaves the centred label clear of a head of half that
+// breadth at each end; a vertical arrow's breadth is its column's, which may be wider than asked,
+// so its length is three times the label's and its margins, clear of a head of a third.
+func arrowSize(d pm.BlockArrow, text gui.Size, em float32) (w, h float32) {
+	along, across := em*0.5, em*0.3
+	if d == pm.ArrowUp || d == pm.ArrowDown || d == pm.ArrowY {
+		return 2 * (text.W + 2*across), 3 * (text.H + 2*along)
+	}
+	breadth := 2 * (text.H + 2*across)
+	return text.W + breadth + 2*along, breadth
+}

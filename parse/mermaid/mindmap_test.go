@@ -117,12 +117,30 @@ func TestMindmapErrors(t *testing.T) {
 		}
 	}
 	for _, src := range []string{
-		"mindmap\n  a\n    b\n    ::icon(fa fa-book)",
 		"mindmap\n  a\n    b:::urgent",
 		"mindmap\n  a\n    b[<b>bold</b>]",
 	} {
 		if _, err := mermaid.Parse(src); !errors.Is(err, mermaid.ErrUnsupported) {
 			t.Errorf("%q: %v, want ErrUnsupported", src, err)
+		}
+	}
+}
+
+// An ::icon(...) line is the node above it's icon, its classes as written: read, not refused, the
+// node keeping its text; one before any node, or without its closing ), is a SyntaxError.
+func TestAMindmapIconIsReadOntoItsNode(t *testing.T) {
+	d, err := mermaid.Parse("mindmap\n  root((Plan))\n    ::icon(fa fa-book)\n    Read\n      ::icon( mdi mdi-check )")
+	if err != nil {
+		t.Fatal(err)
+	}
+	nodes := d.(*mermaid.MindmapDiagram).Nodes
+	if len(nodes) != 2 || nodes[0].Icon != "fa fa-book" || nodes[1].Icon != "mdi mdi-check" || nodes[0].Label != "Plan" || nodes[1].Label != "Read" {
+		t.Fatalf("nodes %+v; want Plan with fa fa-book and Read with mdi mdi-check", nodes)
+	}
+	for _, src := range []string{"mindmap\n  ::icon(fa fa-book)", "mindmap\n  root\n    ::icon(fa fa-book"} {
+		var se *mermaid.SyntaxError
+		if _, err := mermaid.Parse(src); !errors.As(err, &se) {
+			t.Errorf("%q: %v; want a SyntaxError", src, err)
 		}
 	}
 }

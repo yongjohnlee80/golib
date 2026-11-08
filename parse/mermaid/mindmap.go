@@ -23,6 +23,10 @@ type MindNode struct {
 	Shape  MindShape
 	Parent int // the parent's index in Nodes; -1 for the root
 	Span   [2]int
+	// Icon is the node's ::icon(...) line, its classes as written ("fa fa-book", "mdi mdi-skull"):
+	// read, and not drawn, since an icon font's glyphs are in neither golib's fonts nor a terminal's
+	// cells; the node is drawn with its text. "" for none.
+	Icon string
 }
 
 // MindShape is a mind map node's outline.
@@ -102,7 +106,7 @@ func (m *mindmapParser) line(raw string, off int) {
 	at := off + len(text) - len(t)
 	switch {
 	case strings.HasPrefix(t, "::icon("):
-		m.p.unsupport(at, "icons")
+		m.icon(t, at)
 		return
 	case strings.Contains(t, ":::"):
 		m.p.unsupport(at, "classes")
@@ -125,6 +129,20 @@ func (m *mindmapParser) line(raw string, off int) {
 	}
 	m.stack = append(m.stack, mindmapOpen{indent, len(m.d.Nodes)})
 	m.d.Nodes = append(m.d.Nodes, MindNode{ID: id, Label: label, Shape: shape, Parent: parent, Span: [2]int{at, at + len(t)}})
+}
+
+// icon reads an ::icon(...) line onto the node above it, its classes as written.
+func (m *mindmapParser) icon(t string, at int) {
+	inner, ok := strings.CutPrefix(t, "::icon(")
+	if !ok || !strings.HasSuffix(inner, ")") {
+		m.p.fail(at, "an icon wants its closing ): %q", t)
+		return
+	}
+	if len(m.d.Nodes) == 0 {
+		m.p.fail(at, "an icon before any node")
+		return
+	}
+	m.d.Nodes[len(m.d.Nodes)-1].Icon = strings.TrimSpace(strings.TrimSuffix(inner, ")"))
 }
 
 // node reads a node's text: an id and a shape's delimiters round its label, or text alone, which

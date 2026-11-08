@@ -171,6 +171,15 @@ func paintBox(s tui.Surface, b Box, x0, y0 int, lines map[cell]dirs, box, label 
 		s.SetCell(right, y, rightSide, box)
 		s.Fill(tui.Rect{X: r.X + 1, Y: y, W: r.W - 2, H: 1}, " ", label)
 	}
+	for _, h := range [...]struct {
+		side Port
+		x, y int
+		head string
+	}{{PortRight, right, mid, "▶"}, {PortLeft, r.X, mid, "◀"}, {PortTop, r.X + r.W/2, r.Y, "▲"}, {PortBottom, r.X + r.W/2, bottom, "▼"}} {
+		if b.Heads&h.side != 0 { // a block arrow's head, over its side's middle
+			s.SetCell(h.x, h.y, h.head, box)
+		}
+	}
 	if len(b.Sections) == 0 {
 		// centred: a box the router widened for its ports has more room than its label's
 		tui.DrawText(s, r.X+(r.W-tui.StringWidth(b.drawn()))/2, mid, b.drawn(), label)

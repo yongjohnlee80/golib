@@ -41,7 +41,32 @@ type BlockItem struct {
 	Space bool
 	Group *BlockGroup
 	Span  [2]int // its mention
+	// Arrow is a block arrow's direction (id<["label"]>(right)): the block drawn as an arrow
+	// pointing that way; ArrowNone for any other block.
+	Arrow BlockArrow
 }
+
+// BlockArrow is the way a block arrow points: one side, or both of an axis (x, y).
+type BlockArrow uint8
+
+const (
+	ArrowNone BlockArrow = iota
+	ArrowRight
+	ArrowLeft
+	ArrowUp
+	ArrowDown
+	ArrowX // left and right
+	ArrowY // up and down
+)
+
+var blockArrowNames = map[string]BlockArrow{"right": ArrowRight, "left": ArrowLeft, "up": ArrowUp,
+	"down": ArrowDown, "x": ArrowX, "y": ArrowY}
+
+var blockArrowStrings = [...]string{ArrowNone: "none", ArrowRight: "right", ArrowLeft: "left", ArrowUp: "up",
+	ArrowDown: "down", ArrowX: "x", ArrowY: "y"}
+
+func (a BlockArrow) String() string               { return enumName(blockArrowStrings[:], int(a)) }
+func (a BlockArrow) MarshalText() ([]byte, error) { return []byte(a.String()), nil }
 
 // blockParser is the parse of one block diagram: the groups open, innermost last.
 type blockParser struct {
@@ -54,7 +79,7 @@ type blockParser struct {
 
 // block parses a block diagram: its header takes nothing. Each line is `columns`, a group's
 // `block` … `end`, a classDef, class or style (read, not drawn), a link between blocks, or a row of
-// items. A block arrow is not read (ErrUnsupported). A link to a block that isn't there, an `end`
+// items, a block arrow among them (id<["label"]>(right|left|up|down|x|y)). A link to a block that isn't there, an `end`
 // with no group open, a group left open and a width that isn't a number above 0 are syntax errors.
 func (p *parser) block(rest string, restOff int) (Diagram, error) {
 	t := &blockParser{p: p, d: &BlockDiagram{}, ids: map[string]bool{}}
@@ -110,8 +135,6 @@ func (t *blockParser) statement(st stmt) {
 		// styles: read, not drawn
 	case w == "accTitle:" || w == "accDescr:":
 		// accessibility text: nothing drawn
-	case strings.Contains(st.text, "<[") && strings.Contains(st.text, "]>"):
-		t.p.unsupport(st.off, "a block arrow")
 	case blockLinked(st.text):
 		t.links = append(t.links, st)
 	default:
@@ -150,6 +173,56 @@ func (t *blockParser) openGroup(w, rest string, st stmt) {
 	t.open = append(t.open, g.Items[len(g.Items)-1].Group)
 }
 
+// arrow reads a block arrow at the cursor, id<["label"]>(dir), into it.
+func (t *blockParser) arrow(c *cursor, it *BlockItem) bool {
+	start := c.i
+	n := identLen(c.s[c.i:])
+	id := c.s[c.i : c.i+n]
+	c.i += n + len("<[")
+	// a quoted label runs to its closing quote, whatever it holds (]> too), as a shape's does
+	// (cursor.shapeText); an unquoted one to the first ]>
+	end := strings.Index(c.s[c.i:], "]>")
+	if strings.HasPrefix(c.s[c.i:], `"`) {
+		q := strings.IndexByte(c.s[c.i+1:], '"')
+		if q < 0 {
+			c.fail("a quoted label is not closed")
+			return false
+		}
+		end = 1 + q + 1
+		if !strings.HasPrefix(c.s[c.i+end:], "]>") {
+			end = -1
+		}
+	}
+	if end < 0 {
+		c.fail("a block arrow wants its closing ]>")
+		return false
+	}
+	label, err := c.p.label(c.s[c.i:c.i+end], c.off+c.i)
+	if err != nil {
+		c.bad = true
+		return false
+	}
+	c.i += end + len("]>")
+	if !strings.HasPrefix(c.s[c.i:], "(") {
+		c.fail("a block arrow wants its direction: (right), (left), (up), (down), (x) or (y)")
+		return false
+	}
+	close := strings.IndexByte(c.s[c.i:], ')')
+	dir, ok := blockArrowNames[strings.TrimSpace(c.s[c.i+1:c.i+max(close, 1)])]
+	if close < 0 || !ok {
+		c.fail("a block arrow's direction is right, left, up, down, x or y")
+		return false
+	}
+	c.i += close + 1
+	if t.ids[id] {
+		t.p.fail(c.off+start, "block %q is defined twice", id)
+		return false
+	}
+	t.ids[id] = true
+	it.ID, it.Label, it.Shape, it.Arrow = id, label, Rect, dir
+	return true
+}
+
 // row reads a row's items: `id`, `id["label"]` (any of a flowchart's shapes), each perhaps `:width`,
 // and `space` or `space:width`, separated by spaces.
 func (t *blockParser) row(st stmt) {
@@ -164,6 +237,10 @@ func (t *blockParser) row(st stmt) {
 		if w, _ := firstWord(c.s[c.i:]); w == "space" || strings.HasPrefix(w, "space:") {
 			it.Space = true
 			c.i += len("space")
+		} else if n := identLen(c.s[c.i:]); n > 0 && strings.HasPrefix(c.s[c.i+n:], "<[") {
+			if !t.arrow(c, &it) {
+				return
+			}
 		} else {
 			id, label, shape, _, _, ok := c.shaped()
 			if !ok {

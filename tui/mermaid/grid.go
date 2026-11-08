@@ -74,6 +74,9 @@ type Box struct {
 	// right, a sequence participant's top and bottom); the form says which sides can (forms). A
 	// side takes a junction (┤ ├ ┴ ┬) at any of its cells a line points into.
 	Ports Port
+	// Heads are the sides drawn as an arrowhead (▶ ◀ ▲ ▼ at the side's middle): a block arrow's,
+	// pointing its way (both sides of an axis for x and y); none for any other box.
+	Heads Port
 	// Sections are a box's rows by section, drawn in place of its label: a class's name, attributes
 	// and methods, a state's name and descriptions. The head section is centred, a rule between
 	// sections; nil: the label alone.

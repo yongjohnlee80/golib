@@ -255,6 +255,8 @@ func paintForm(c gui.Drawer, n laidNode, em float32) {
 		}
 	case formDiamond:
 		poly(gui.Pt(cx, y0), gui.Pt(x1, cy), gui.Pt(cx, y1), gui.Pt(x0, cy))
+	case formArrowRight, formArrowLeft, formArrowUp, formArrowDown, formArrowX, formArrowY:
+		poly(arrowPoly(n.form, b)...)
 	case formHexagon:
 		s := b.H / 4
 		poly(gui.Pt(x0+s, y0), gui.Pt(x1-s, y0), gui.Pt(x1, cy), gui.Pt(x1-s, y1), gui.Pt(x0+s, y1), gui.Pt(x0, cy))
@@ -550,4 +552,45 @@ func bandPath(b laidBand) *gui.Path {
 		LineTo(gui.Pt(b.x1, b.y1b)).
 		CubeTo(gui.Pt(mx, b.y1b), gui.Pt(mx, b.y0b), gui.Pt(b.x0, b.y0b)).
 		Close()
+}
+
+// arrowPoly is a block arrow's outline in b: a body a half of b across, and a head (both heads for
+// x and y) as deep as a third of b along it at most, pointing the form's way.
+func arrowPoly(f form, b gui.Rect) []gui.Point {
+	horizontal := f == formArrowRight || f == formArrowLeft || f == formArrowX
+	// lay it out pointing right (or both ways), in (along, across) terms, then map to b
+	length, breadth := b.W, b.H
+	if !horizontal {
+		length, breadth = b.H, b.W
+	}
+	head := min(breadth/2, length/3)
+	q := breadth / 4
+	front := f == formArrowRight || f == formArrowDown || f == formArrowX || f == formArrowY
+	back := f == formArrowLeft || f == formArrowUp || f == formArrowX || f == formArrowY
+	a0, a1 := float32(0), length
+	if back {
+		a0 = head
+	}
+	if front {
+		a1 = length - head
+	}
+	var pts [][2]float32 // along, across
+	pts = append(pts, [2]float32{a0, q})
+	pts = append(pts, [2]float32{a1, q})
+	if front {
+		pts = append(pts, [2]float32{a1, 0}, [2]float32{length, breadth / 2}, [2]float32{a1, breadth})
+	}
+	pts = append(pts, [2]float32{a1, breadth - q}, [2]float32{a0, breadth - q})
+	if back {
+		pts = append(pts, [2]float32{a0, breadth}, [2]float32{0, breadth / 2}, [2]float32{a0, 0})
+	}
+	out := make([]gui.Point, len(pts))
+	for i, p := range pts {
+		if horizontal {
+			out[i] = gui.Pt(b.X+p[0], b.Y+p[1])
+		} else {
+			out[i] = gui.Pt(b.X+p[1], b.Y+p[0])
+		}
+	}
+	return out
 }

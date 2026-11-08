@@ -10,6 +10,10 @@ import (
 
 func init() { register(pm.Block, layAs(LayBlock), nil) }
 
+// arrowHeads are the sides a block arrow's box draws as heads, by the way it points.
+var arrowHeads = [...]Port{pm.ArrowRight: PortRight, pm.ArrowLeft: PortLeft, pm.ArrowUp: PortTop,
+	pm.ArrowDown: PortBottom, pm.ArrowX: PortLeft | PortRight, pm.ArrowY: PortTop | PortBottom}
+
 // A BLOCK DIAGRAM IN CELLS: its blocks on the grid the diagram gives, as Mermaid lays them. A grid's
 // columns are as wide as their widest one-column block, a block spanning columns as wide as they are
 // together with the gaps between (one wider than that widens them evenly), every block in a column
@@ -174,7 +178,7 @@ func (b *blockLayout) group(g *pm.BlockGroup) laidGroup {
 			case it.Space:
 			default:
 				r := tui.Rect{X: x, Y: y + (rowH[a.row]-a.ih)/2, W: span(a), H: a.ih}
-				b.g.boxIn(Box{ID: it.ID, Label: it.Label, Form: FormOfShape(it.Shape), Ports: PortAll}, r, b.m)
+				b.g.boxIn(Box{ID: it.ID, Label: it.Label, Form: FormOfShape(it.Shape), Ports: PortAll, Heads: arrowHeads[it.Arrow]}, r, b.m)
 				b.rects[it.ID] = r
 				b.boxes = append(b.boxes, r)
 			}
