@@ -185,6 +185,9 @@ type Editor struct {
 	shownImages []shownPicture
 	// layPicture lays a picture off the loop: LayCellPicture when nil (a test lays its own).
 	layPicture func(ctx context.Context, lang, src string, measure func(string) int, cols int, syntax SyntaxStyles) (CellPicture, error)
+	// taskDone, when set, sees each task's result as it is taken, before it is handled (a test's
+	// fence: a result that changes nothing has arrived).
+	taskDone func(tui.TaskResult)
 	// presented is the presentation the viewport was last revealed for (presentation): a change of
 	// it reveals the cursor again, though the cursor stayed.
 	presented [2]int
@@ -369,6 +372,9 @@ func (e *Editor) HandleEvent(ev tui.Event) bool {
 	// alike; a drag's motion there stays the text's, so dragging up past the text scrolls it
 	if m, ok := ev.(tui.MouseEvent); ok && m.Y >= 0 && m.Y < e.headerRows() && (m.Kind == tui.MousePress || m.Kind == tui.MouseWheel) {
 		return e.header(m)
+	}
+	if r, ok := ev.(tui.TaskResult); ok && e.taskDone != nil {
+		e.taskDone(r)
 	}
 	if r, ok := ev.(tui.TaskResult); ok && (e.pictureDone(r) || e.imageDone(r)) { // a picture or an image: its blocks again,
 		if ctx := e.Context(); ctx != nil { // settled before the next input, so a click lands on them
