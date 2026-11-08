@@ -393,7 +393,7 @@ func TestPaintKeepsEachFragmentsBackgroundWithItsText(t *testing.T) {
 	if got := order(func(c gui.Canvas, p *flow.Para) {
 		p.PaintBackgrounds(c, gui.Pt(0, 0), spans)
 		p.PaintText(c, gui.Pt(0, 0), spans)
-	}); got != "chip chip text text" {
-		t.Errorf("PaintBackgrounds then PaintText: %q, want chip chip text text", got)
+	}); got != "chip chip text" { // the two texts drawn one after the other collapse to one
+		t.Errorf("PaintBackgrounds then PaintText: %q, want every chip, then the text (chip chip text)", got)
 	}
 }
