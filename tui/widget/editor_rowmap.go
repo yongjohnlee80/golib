@@ -22,6 +22,9 @@ type rowMap struct {
 // rowMap is the map over the Editor's lines in its view, measuring as the Editor does.
 func (e *Editor) rowMap() rowMap {
 	m := rowMap{lines: e.core.buf.textLines, v: e.view()}
+	if b := e.core.Buffer(); e.cells.panBuf != b { // a pan is its buffer's blocks': another buffer starts with none
+		e.cells.pan, e.cells.panBuf = nil, b
+	}
 	if e.rendered() {
 		w := max(m.v.w, 1)
 		r := e.renderedRows(w)
@@ -34,21 +37,46 @@ func (e *Editor) rowMap() rowMap {
 }
 
 // content is the cells block bi's rows are drawn in, from x0, w wide: the room, or for a block wider
-// than the room (a table that can't narrow) the room less its two edge columns, which hold its marks.
+// than the room (a table that can't narrow) the room less its two edge columns, which hold its marks
+// when the room has a cell between them; a room of one or two cells is all content, with no marks.
 func (m rowMap) content(bi int) (x0, w int) {
-	room := m.width()
-	if bi < len(m.r.blockW) && m.r.blockW[bi] > room && room > 2 {
+	room := max(m.width(), 1)
+	if m.wide(bi) && room > 2 {
 		return 1, room - 2
 	}
 	return 0, room
 }
 
+// wide reports whether block bi is wider than the room: it pans.
+func (m rowMap) wide(bi int) bool { return bi < len(m.r.blockW) && m.r.blockW[bi] > m.width() }
+
 // maxPan is how far block bi pans, in cells: 0 for a block that fits.
 func (m rowMap) maxPan(bi int) int {
-	if x0, w := m.content(bi); x0 > 0 {
-		return max(m.r.blockW[bi]-w, 0)
+	if !m.wide(bi) {
+		return 0
 	}
-	return 0
+	_, w := m.content(bi)
+	return max(m.r.blockW[bi]-w, 0)
+}
+
+// onView is cell x of row ri as the view has it: its block's content start, less its pan.
+func (m rowMap) onView(ri, x int) int {
+	if ri < 0 || ri >= len(m.r.rowBlock) {
+		return x
+	}
+	bi := m.r.rowBlock[ri]
+	x0, _ := m.content(bi)
+	return x0 + x - m.panOf(bi)
+}
+
+// ofView is the cell of row ri the view shows at x: onView's inverse.
+func (m rowMap) ofView(ri, x int) int {
+	if ri < 0 || ri >= len(m.r.rowBlock) {
+		return x
+	}
+	bi := m.r.rowBlock[ri]
+	x0, _ := m.content(bi)
+	return x - x0 + m.panOf(bi)
 }
 
 // panOf is block bi's pan, within what it has to show.
@@ -123,6 +151,7 @@ func (m rowMap) wrapAt(cs []string, w int) [][2]int { return wrapRanges(cs, w, m
 func (m rowMap) rowOf(ln, col int) (row, x int) {
 	if m.r != nil {
 		ri, x := m.r.caret(ln, col)
+		x = m.onView(ri, x) // the x the view shows it at: gj and gk keep it, across blocks panned apart
 		for k, r := range m.r.lineRows[ln] {
 			if r == ri {
 				return k, x
@@ -143,7 +172,8 @@ func (m rowMap) colAt(ln, row, x int) int {
 		if len(rs) == 0 {
 			return 0
 		}
-		hl, col := m.r.hit(rs[max(0, min(row, len(rs)-1))], x)
+		ri := rs[max(0, min(row, len(rs)-1))]
+		hl, col := m.r.hit(ri, max(m.ofView(ri, x), 0))
 		switch {
 		case hl == ln:
 			return col
@@ -227,7 +257,7 @@ func (m rowMap) caret(top, left, ln, col, cx int) (x, y int, ok bool) {
 		if ri < len(m.r.rowBlock) {
 			bi := m.r.rowBlock[ri]
 			x0, w := m.content(bi)
-			if x = x0 + x - m.panOf(bi); m.maxPan(bi) > 0 && (x < x0 || x >= x0+w) {
+			if x = m.onView(ri, x); m.maxPan(bi) > 0 && (x < x0 || x >= x0+w) {
 				return 0, 0, false // panned out of the room
 			}
 		}
@@ -244,11 +274,7 @@ func (m rowMap) hit(top, left, x, y int, colAt func(cs []string, from, end, cell
 	lastLn := len(m.lines) - 1
 	if m.r != nil {
 		ri := m.r.topRow(top) + m.in + max(y, 0)
-		if r := min(ri, len(m.r.rowBlock)-1); r >= 0 { // a wide block's cell under x: its pan counted
-			bi := m.r.rowBlock[r]
-			x0, _ := m.content(bi)
-			x = x - x0 + m.panOf(bi)
-		}
+		x = m.ofView(min(ri, len(m.r.rows)-1), x) // a wide block's cell under x: its pan counted
 		return m.r.hit(ri, max(x, 0))
 	}
 	if m.v.wrap == WrapNone {

@@ -506,3 +506,78 @@ func TestAWideTablePansWithTheCaret(t *testing.T) {
 		t.Errorf("a click at x 34 of a body row landed on (%d, %d), want (2, 66)", ln, col)
 	}
 }
+
+// wideTable is a nine-column table, 73 cells laid: column k's text at 2+8k of each row, as on screen.
+func wideTable() string {
+	row := "|" + strings.Repeat(" abcde |", 9)
+	return row + "\n|" + strings.Repeat("---|", 9) + "\n" + row
+}
+
+// A pan is its buffer's: another buffer shown (SetBuffer, no view toggle) opens with its blocks
+// unpanned, though the first buffer's block at the same lines was panned and is not the caret's.
+func TestAPanIsItsBuffersOwn(t *testing.T) {
+	doc := wideTable() + "\n\n" + wideTable() // the second table's lines 4–6; 11 rows, so a 39-cell room
+	h, sh, ed := renderedEditor(t, doc, mdRenderer())
+	caretAt(h, sh, ed, 4, 70)                          // pans the second table
+	caretAt(h, sh, ed, 0, 2)                           // back on the first: the second keeps its pan
+	edge := func() rune { return []rune(h.row(7))[0] } // the second table's middle row on the view
+	if got := edge(); got != '«' {
+		t.Fatalf("precondition: the second table's edge %q, want « (panned):\n%s", got, h.grid())
+	}
+	b := widget.NewBuffer(widget.BufferText(doc))
+	h.onLoop(func() { ed.Core().SetBuffer(b) })
+	h.barrier(sh)
+	if got := edge(); got != ' ' {
+		t.Errorf("another buffer's second table opened panned (%q):\n%s", got, h.grid())
+	}
+}
+
+// gj and gk keep the column the view shows, across blocks panned apart: from the first table's last
+// column (panned, at x 37) down to the second (unpanned), to the cell the view shows at x 37, and back.
+func TestGjKeepsTheViewsColumnAcrossPannedBlocks(t *testing.T) {
+	h, sh, ed := renderedEditor(t, wideTable()+"\n\n"+wideTable(), mdRenderer())
+	at := func() (ln, col int) { h.onLoop(func() { ln, col = ed.Core().Line() }); return }
+	if x, _, ok := caretAt(h, sh, ed, 2, 70); !ok || x != 37 {
+		t.Fatalf("precondition: the first table's last column at x %d %v, want 37 (panned)", x, ok)
+	}
+	h.inject(keyText("g"), keyText("j"), keyText("g"), keyText("j"))
+	h.barrier(sh)
+	if ln, col := at(); ln != 4 || col != 36 { // cell 36 shows at x 37 in the unpanned table: its 'c'
+		t.Errorf("gj gj from (2, 70) went to (%d, %d), want (4, 36)", ln, col)
+	}
+	h.inject(keyText("g"), keyText("k"), keyText("g"), keyText("k"))
+	h.barrier(sh)
+	if ln, col := at(); ln != 2 || col != 70 {
+		t.Errorf("gk gk back went to (%d, %d), want (2, 70)", ln, col)
+	}
+}
+
+// A room of one, two or three cells (or two, its third the scroll indicator's) still pans: the far
+// column's last letter is reached by the caret, drawn where it says, and a click there lands on it.
+func TestANarrowRoomStillPans(t *testing.T) {
+	for _, c := range []struct {
+		name string
+		text string
+		w    int
+	}{
+		{"1 cell", wideTable(), 1}, {"2 cells", wideTable(), 2}, {"3 cells", wideTable(), 3},
+		{"3 cells, one the scroll indicator's", wideTable() + strings.Repeat("\nline", 20), 3},
+	} {
+		h, sh, ed := mdEditorAt(t, c.text, c.w, 10)
+		x, y, ok := caretAt(h, sh, ed, 0, 70)
+		if !ok || x < 0 || x >= c.w || y != 1 {
+			t.Errorf("%s: caret on the last letter at (%d, %d) %v, want on the header row inside the view", c.name, x, y, ok)
+			continue
+		}
+		if got := []rune(h.row(1))[x]; got != 'e' {
+			t.Errorf("%s: the cell under the caret %q, want e:\n%s", c.name, got, h.grid())
+		}
+		// the body row shows the same cells (the block pans as one): a click there at x is its last letter
+		h.inject(tui.MouseEvent{Kind: tui.MousePress, Button: tui.MouseLeft, X: x, Y: 3},
+			tui.MouseEvent{Kind: tui.MouseRelease, Button: tui.MouseLeft, X: x, Y: 3})
+		h.barrier(sh)
+		if ln, col := func() (ln, col int) { h.onLoop(func() { ln, col = ed.Core().Line() }); return }(); ln != 2 || col != 70 {
+			t.Errorf("%s: a click on the body row at x %d landed on (%d, %d), want (2, 70)", c.name, x, ln, col)
+		}
+	}
+}

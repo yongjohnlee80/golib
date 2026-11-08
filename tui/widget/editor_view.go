@@ -22,8 +22,10 @@ type cellLayout struct {
 	topIn int
 	left  int
 	// pan is how far each block wider than the Rendered view is panned, in cells, by its first line.
-	pan  map[int]int
-	w, h int // the text's area: the gutter's columns are not in w
+	pan map[int]int
+	// panBuf is the buffer the pans are of: another shown buffer drops them (rowMap).
+	panBuf *Buffer
+	w, h   int // the text's area: the gutter's columns are not in w
 
 	// numbers shows each line's number in a gutter at the left; gutter is the columns it took at
 	// the last layout (0 without numbers)
