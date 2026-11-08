@@ -37,7 +37,7 @@ type tabStrip struct {
 	onClose  func(id string)                 // a tab's ×: nil draws none (TabStrip.SetOnClose)
 	menuRows func(id string) []MenuItemModel // the strip's own menu (SetMenu)
 	addRows  func() []MenuItemModel          // what + offers (SetAddMenu)
-	menuOpen *popupLayer
+	menuOpen *PopupLayer
 	// windowOps are the window controls at the row's right end, in their order (SetWindowButtons):
 	// none by default; onWindow runs the one pressed
 	windowOps []WindowOperation
@@ -130,12 +130,12 @@ func (s *tabStrip) openMenu(id string, at tui.Point) {
 // window around the strip (a Drawer's toggleMaximize) is refused inside it.
 func (s *tabStrip) popMenu(id string, items []MenuItemModel, at tui.Point) {
 	ctx := s.base.ctx
-	host, ok := kit.HostFor[popupHost](ctx)
+	host, ok := kit.HostFor[PopupHost](ctx)
 	if !ok || len(items) == 0 {
 		return
 	}
 	s.closeMenu()
-	var layer *popupLayer
+	var layer *PopupLayer
 	var chosen func(string)
 	menu := NewMenu(WithMenuVimNavigation(true), WithActionExecutor(func(inv tui.ActionInvocation) bool {
 		act, ok := inv.Action.(stripAction)
@@ -143,14 +143,14 @@ func (s *tabStrip) popMenu(id string, items []MenuItemModel, at tui.Point) {
 			return false
 		}
 		chosen = act.stripRun()
-		layer.requestClose(DismissAccept)
+		layer.RequestClose(DismissAccept)
 		return true
 	}))
 	if err := menu.SetModel(items); err != nil {
 		return
 	}
 	box := NewBox(menu, WithStyle(style.New().Background(style.TokenPanel)))
-	l, err := host.openPopupAt(LayerID(fmt.Sprintf("%s.menu.%d", s.layer, ctx.ID())), s.anchor, box, at, func(reason DismissReason) {
+	l, err := host.OpenPopupAt(LayerID(fmt.Sprintf("%s.menu.%d", s.layer, ctx.ID())), s.anchor, box, at, func(reason DismissReason) {
 		if s.menuOpen == layer {
 			s.menuOpen = nil
 		}
@@ -168,7 +168,7 @@ func (s *tabStrip) popMenu(id string, items []MenuItemModel, at tui.Point) {
 func (s *tabStrip) closeMenu() {
 	if l := s.menuOpen; l != nil {
 		s.menuOpen = nil
-		l.close(DismissProgrammatic)
+		l.Close(DismissProgrammatic)
 	}
 }
 
@@ -362,7 +362,7 @@ func (s *tabStrip) row() []stripCell {
 				used += w + 1
 			}
 			if w := room - used - 1; w >= 2 { // the tab before, cut from its start, then a cell
-				label := elide(labels[fit-1], w, ElideLeft, s.base.Measure)
+				label := ElideText(labels[fit-1], w, ElideLeft, s.base.Measure)
 				out = append(out, stripCell{kind: kit.CellTab, id: tabs[fit-1].ID, label: label, x: x, w: w, close: s.closeShown(label)})
 				x += w + 1
 			}

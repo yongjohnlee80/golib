@@ -368,7 +368,7 @@ func (t *Table[T]) AccessibleRole() tui.AccessibleRole { return tui.RoleTable }
 // mode says, then padded and placed as a says. The one cell fitter for tables, so a CJK or emoji
 // cell takes exactly its column, and the next column starts where the header put it.
 func fitCell(s string, w int, mode Elide, a style.Align, measure func(string) int) string {
-	return kit.PadAligned(elide(s, w, mode, measure), w, a, measure)
+	return kit.PadAligned(ElideText(s, w, mode, measure), w, a, measure)
 }
 
 // The interfaces it answers, held at compile time (core declares them).

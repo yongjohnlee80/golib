@@ -65,11 +65,12 @@ const (
 	writerChunk  = 32 << 10
 )
 
-// bufWriter is the separate any-goroutine handle behind BufferView.Writer,
+// BufferWriter is the separate any-goroutine handle behind BufferView.Writer,
 // and behind the Terminal's program output. writeMu serializes whole Write
 // calls (order = acquisition order); mu guards the byte budget and closed
-// flag.
-type bufWriter struct {
+// flag. golib's components draw through it; a widget outside golib rarely needs it. The Terminal
+// writes its program's output through one.
+type BufferWriter struct {
 	sink func([]byte) // runs only inside app.Update closures (loop)
 
 	writeMu sync.Mutex
@@ -93,25 +94,26 @@ type bufWriter struct {
 	budget int
 }
 
-// newBufWriter returns a closed handle that, once bound, delivers each chunk
-// to sink on the loop goroutine.
-func newBufWriter(sink func([]byte)) *bufWriter {
-	w := &bufWriter{sink: sink, closed: true, budget: writerBudget}
+// NewBufferWriter returns a closed handle that, once bound, delivers each chunk
+// to sink on the loop goroutine. golib's components draw through it; a widget outside golib rarely
+// needs it.
+func NewBufferWriter(sink func([]byte)) *BufferWriter {
+	w := &BufferWriter{sink: sink, closed: true, budget: writerBudget}
 	w.cond = sync.NewCond(&w.mu)
 	return w
 }
 
-// bind opens the handle against the owning App (called from Init, loop
+// Bind opens the handle against the owning App (called from Init, loop
 // goroutine).
-func (w *bufWriter) bind(app *tui.App) {
+func (w *BufferWriter) Bind(app *tui.App) {
 	w.mu.Lock()
 	w.app = app
 	w.closed = false
 	w.mu.Unlock()
 }
 
-// close marks the handle closed and wakes blocked writers (unmount hook).
-func (w *bufWriter) close() {
+// Close marks the handle closed and wakes blocked writers (unmount hook).
+func (w *BufferWriter) Close() {
 	w.mu.Lock()
 	w.closed = true
 	w.cond.Broadcast()
@@ -119,7 +121,7 @@ func (w *bufWriter) close() {
 }
 
 // release returns quota after the loop ingests a chunk.
-func (w *bufWriter) release(n int) {
+func (w *BufferWriter) release(n int) {
 	w.mu.Lock()
 	w.pending -= n
 	w.cond.Broadcast()
@@ -129,7 +131,7 @@ func (w *bufWriter) release(n int) {
 // Write implements io.Writer per the handle contract: any-goroutine,
 // bounded pending bytes (blocks when the loop lags), ordered, ErrClosed
 // after unmount.
-func (w *bufWriter) Write(p []byte) (int, error) {
+func (w *BufferWriter) Write(p []byte) (int, error) {
 	w.writeMu.Lock()
 	defer w.writeMu.Unlock()
 	total := 0

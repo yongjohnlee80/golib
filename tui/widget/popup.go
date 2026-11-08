@@ -34,17 +34,18 @@ type fillPolicy struct{}
 
 func (fillPolicy) Place(_, viewport tui.Rect, _ tui.Size, _ Placement) tui.Rect { return viewport }
 
-// openPopupAt opens panel at point at, in owner's local frame, as layer id.
+// OpenPopupAt opens panel at point at, in owner's local frame, as layer id.
 //
 // onClosed runs once when the layer leaves the tree, however it left: a row
 // chosen, Escape, a press outside, the owner unmounted (anchor lost), or a
-// replacement under the same id.
-func (h *OverlayHost) openPopupAt(id LayerID, owner ContextOwner, panel tui.Component, at tui.Point, onClosed func(DismissReason)) (*popupLayer, error) {
-	ctx := ownerContext(owner)
+// replacement under the same id. golib's components draw through it; a widget outside golib rarely
+// needs it.
+func (h *OverlayHost) OpenPopupAt(id LayerID, owner ContextOwner, panel tui.Component, at tui.Point, onClosed func(DismissReason)) (*PopupLayer, error) {
+	ctx := OwnerContext(owner)
 	if ctx == nil {
 		return nil, ErrAnchorUnusable
 	}
-	p := &popupLayer{host: h, id: id, panel: panel, at: at, onClosed: onClosed,
+	p := &PopupLayer{host: h, id: id, panel: panel, at: at, onClosed: onClosed,
 		reason: DismissProgrammatic}
 	spec := AnchorSpec{Ref: ctx.NodeAnchor(), Pref: Placement{Side: PlacementBelow, Align: PlacementAlignStart}}
 	if err := h.OpenAnchored(id, p, spec, fillPolicy{}); err != nil {
@@ -58,9 +59,10 @@ func (h *OverlayHost) openPopupAt(id LayerID, owner ContextOwner, panel tui.Comp
 	return p, nil
 }
 
-// popupLayer fills its host: the backdrop is transparent, and the panel sits
-// at the anchored point, flipped or clamped to stay on screen.
-type popupLayer struct {
+// PopupLayer fills its host: the backdrop is transparent, and the panel sits
+// at the anchored point, flipped or clamped to stay on screen. golib's components draw through it;
+// a widget outside golib rarely needs it.
+type PopupLayer struct {
 	Base
 	host     *OverlayHost
 	id       LayerID
@@ -75,12 +77,12 @@ type popupLayer struct {
 }
 
 var (
-	_ tui.Focusable  = (*popupLayer)(nil)
-	_ tui.FocusScope = (*popupLayer)(nil)
-	_ anchorReceiver = (*popupLayer)(nil)
+	_ tui.Focusable  = (*PopupLayer)(nil)
+	_ tui.FocusScope = (*PopupLayer)(nil)
+	_ anchorReceiver = (*PopupLayer)(nil)
 )
 
-func (p *popupLayer) Init(ctx *tui.Context) {
+func (p *PopupLayer) Init(ctx *tui.Context) {
 	p.Base.Init(ctx)
 	ctx.Mount(p.panel)
 	ctx.OnUnmount(func() {
@@ -94,14 +96,14 @@ func (p *popupLayer) Init(ctx *tui.Context) {
 
 // AcceptsFocus is the fallback for a panel with nothing focusable now (trapFallback): the layer
 // itself holds focus, so Escape still reaches it, and is no Tab stop beside the panel's controls.
-func (p *popupLayer) AcceptsFocus() bool { return trapFallback(p.Context(), p.panel) }
+func (p *PopupLayer) AcceptsFocus() bool { return trapFallback(p.Context(), p.panel) }
 
 // TrapsFocus keeps Tab inside the panel while it is open.
-func (p *popupLayer) TrapsFocus() bool { return true }
+func (p *PopupLayer) TrapsFocus() bool { return true }
 
-func (p *popupLayer) receiveAnchor(anchor tui.Rect) { p.anchor = anchor }
+func (p *PopupLayer) receiveAnchor(anchor tui.Rect) { p.anchor = anchor }
 
-func (p *popupLayer) Layout(c tui.Constraints) tui.Size {
+func (p *PopupLayer) Layout(c tui.Constraints) tui.Size {
 	w := kit.BoundedMax(c.MaxW, c.MinW)
 	h := kit.BoundedMax(c.MaxH, c.MinH)
 	view := tui.Rect{X: 0, Y: 0, W: w, H: h}
@@ -123,11 +125,11 @@ func (p *popupLayer) Layout(c tui.Constraints) tui.Size {
 // popupCloseCommitKey is the layer's deferred close (tui.Context.AfterLayout).
 const popupCloseCommitKey tui.CommitKey = "widget.popup.close"
 
-func (p *popupLayer) Render(tui.Surface) {} // transparent: only the panel paints
+func (p *PopupLayer) Render(tui.Surface) {} // transparent: only the panel paints
 
-// requestClose closes the layer after the current dispatch, for a caller
+// RequestClose closes the layer after the current dispatch, for a caller
 // running inside the panel.
-func (p *popupLayer) requestClose(reason DismissReason) {
+func (p *PopupLayer) RequestClose(reason DismissReason) {
 	if p.closing {
 		return
 	}
@@ -136,28 +138,28 @@ func (p *popupLayer) requestClose(reason DismissReason) {
 	p.Context().SettleBeforeInput()
 }
 
-// close removes the layer now, for a caller that is the layer itself.
-func (p *popupLayer) close(reason DismissReason) {
+// Close removes the layer now, for a caller that is the layer itself.
+func (p *PopupLayer) Close(reason DismissReason) {
 	p.reason = reason
 	p.host.CloseAnchored(p.id, reason)
 }
 
 // KeyScope is an anchored popup's key-map scope.
-func (p *popupLayer) KeyScope() keymap.Scope { return PopupScope }
+func (p *PopupLayer) KeyScope() keymap.Scope { return PopupScope }
 
 // KeyBindings is the popup's Esc as m binds it (tui.KeyBinder).
-func (p *popupLayer) KeyBindings(m *keymap.Map) []keymap.Binding {
+func (p *PopupLayer) KeyBindings(m *keymap.Map) []keymap.Binding {
 	return tui.BindingsOf(m, PopupClose)
 }
 
 // HandleEvent is the light dismissal: Escape, or a press outside the panel.
 // Everything the panel does not consume stops here, so nothing underneath
 // reacts to the input that was meant for the menu.
-func (p *popupLayer) HandleEvent(ev tui.Event) bool {
+func (p *PopupLayer) HandleEvent(ev tui.Event) bool {
 	switch e := ev.(type) {
 	case tui.KeyEvent:
 		if _, ok := p.Context().KeyCommand(e, PopupClose); ok {
-			p.close(DismissEscape)
+			p.Close(DismissEscape)
 			return true
 		}
 	case tui.MouseEvent:
@@ -172,7 +174,7 @@ func (p *popupLayer) HandleEvent(ev tui.Event) bool {
 			return true
 		}
 		if e.Kind == tui.MousePress && !p.rect.Contains(e.X, e.Y) {
-			p.close(DismissCancel)
+			p.Close(DismissCancel)
 		}
 		return true
 	}

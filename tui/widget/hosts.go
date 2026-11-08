@@ -20,16 +20,18 @@ type anchorHost interface {
 	CloseAnchored(id LayerID, reason DismissReason)
 }
 
-// popupHost is what a widget needs from the nearest OverlayHost to open a popup at a point.
-type popupHost interface {
-	openPopupAt(id LayerID, owner ContextOwner, panel tui.Component, at tui.Point, onClosed func(DismissReason)) (*popupLayer, error)
+// PopupHost is what a widget needs from the nearest OverlayHost to open a popup at a point. golib's
+// components draw through it; a widget outside golib rarely needs it. OverlayHost is one.
+type PopupHost interface {
+	OpenPopupAt(id LayerID, owner ContextOwner, panel tui.Component, at tui.Point, onClosed func(DismissReason)) (*PopupLayer, error)
 	CloseAnchored(id LayerID, reason DismissReason)
 }
 
-// modalHost is what a Modal opens on and is dismissed through: the host performs the transition,
+// ModalHost is what a Modal opens on and is dismissed through: the host performs the transition,
 // since dismissing a dialog that is not on top closes the ones above it first. The CommandLine
-// opens its prompt dialog on it.
-type modalHost interface {
+// opens its prompt dialog on it. Its methods are unexported, so only this package's OverlayHost is
+// one; golib's components draw through it; a widget outside golib rarely needs it.
+type ModalHost interface {
 	openModal(m *Modal) error
 	dismissModal(m *Modal, reason DismissReason)
 	restyleScrim(owner *Modal, s *ModalStyle)
@@ -55,8 +57,8 @@ type identified interface {
 
 var (
 	_ anchorHost  = (*OverlayHost)(nil)
-	_ popupHost   = (*OverlayHost)(nil)
-	_ modalHost   = (*OverlayHost)(nil)
+	_ PopupHost   = (*OverlayHost)(nil)
+	_ ModalHost   = (*OverlayHost)(nil)
 	_ layerRaiser = (*OverlayHost)(nil)
 	_ coverReader = (*OverlayHost)(nil)
 )

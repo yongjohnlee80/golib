@@ -275,7 +275,7 @@ func (c *TableCore) fieldKey(k tui.KeyEvent) bool {
 	if c.literal {
 		c.literal = false
 		if k.Code == tui.KeyTab && k.Mods == 0 {
-			e.Field.insert("\t")
+			e.Field.InsertText("\t")
 			c.repaint()
 			return true
 		}
@@ -294,7 +294,7 @@ func (c *TableCore) fieldKey(k tui.KeyEvent) bool {
 	case TableFieldPrevCell.ID:
 		c.KeepEdit(0, -1)
 	case TableFieldNewline.ID:
-		e.Field.insert("\n")
+		e.Field.InsertText("\n")
 		c.repaint()
 	case TableFieldDrop.ID:
 		c.DropEdit()
@@ -311,7 +311,7 @@ func (c *TableCore) Paste(text string) bool {
 		rows, err := pastedRows(text)
 		return err == nil && len(rows) > 0 && c.PasteCells(rows, TablePasteBlock, false)
 	}
-	c.editing.Field.insert(text)
+	c.editing.Field.InsertText(text)
 	c.repaint()
 	return true
 }

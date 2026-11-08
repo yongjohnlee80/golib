@@ -650,7 +650,7 @@ func (x *Box) Render(s tui.Surface) {
 		if x.titleElide != ElideRight && s.StringWidth(text) > tw {
 			// cut where the box was asked, inside the title's padding (the end keeps truncate's
 			// look, unchanged)
-			text = " " + elide(title, max(tw-2, 1), x.titleElide, s.StringWidth) + " "
+			text = " " + ElideText(title, max(tw-2, 1), x.titleElide, s.StringWidth) + " "
 		}
 		x.renderBorderText(s, text, x.titleAlign, titleSt.Inherit(fill), tx, by, tw)
 	}

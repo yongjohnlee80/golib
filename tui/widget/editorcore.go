@@ -94,7 +94,7 @@ type EditorCore struct {
 	indentMarks IndentMarks
 	layout      EditorLayout // the widget's geometry; set by Bind
 	ctx         *tui.Context // the widget's: publish, clipboard, timers; set by Bind
-	// changeValues counts the ChangeEvent values built (publishChange): tests read it
+	// changeValues counts the ChangeEvent values built (PublishChange): tests read it
 	changeValues int
 
 	vAnchor txt.Pos // the Visual anchor (where the selection started)

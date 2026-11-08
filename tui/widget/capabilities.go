@@ -56,8 +56,9 @@ type ContextOwner interface {
 	Context() *tui.Context
 }
 
-// ownerContext is o's Context; nil for a nil o, or before it is mounted.
-func ownerContext(o ContextOwner) *tui.Context {
+// OwnerContext is o's Context; nil for a nil o, or before it is mounted. golib's components draw
+// through it; a widget outside golib rarely needs it.
+func OwnerContext(o ContextOwner) *tui.Context {
 	if o == nil {
 		return nil
 	}

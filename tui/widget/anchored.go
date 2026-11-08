@@ -381,7 +381,7 @@ func (h *OverlayHost) placeAnchored(ctx *tui.Context, viewport tui.Rect) (lost [
 		// A layer that places its OWN content at the anchor is told where the
 		// anchor is first, in this host's frame — the one frame in which the
 		// anchor resolves correctly, because the host is the anchor owner's
-		// ancestor and the layer is only its sibling (popupLayer).
+		// ancestor and the layer is only its sibling (PopupLayer).
 		if rc, ok := al.comp.(anchorReceiver); ok {
 			rc.receiveAnchor(anchor)
 		}

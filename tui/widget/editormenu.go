@@ -17,7 +17,7 @@ import (
 type EditorMenu struct {
 	on    bool
 	build func() []MenuItemModel // nil: CoreContextItems(core)
-	open  *popupLayer            // the shown popup, nil when closed
+	open  *PopupLayer            // the shown popup, nil when closed
 	owner ContextOwner           // the widget it opens over, under that widget's OverlayHost
 	core  *EditorCore            // the stock rows' target
 }
@@ -51,11 +51,11 @@ func (m *EditorMenu) OpenAt(at tui.Point) bool {
 	if !m.on {
 		return false
 	}
-	ctx := ownerContext(m.owner)
+	ctx := OwnerContext(m.owner)
 	if ctx == nil {
 		return false
 	}
-	host, ok := kit.HostFor[popupHost](ctx)
+	host, ok := kit.HostFor[PopupHost](ctx)
 	if !ok {
 		return false
 	}
@@ -71,7 +71,7 @@ func (m *EditorMenu) OpenAt(at tui.Point) bool {
 	}
 	m.Close()
 
-	var layer *popupLayer
+	var layer *PopupLayer
 	var chosen func()
 	// h j k l move as the arrows do: an editor's menu is opened from an editor, often a Vim one,
 	// and a row's own mnemonic still wins over them (WithMenuVimNavigation). A chosen row runs
@@ -83,7 +83,7 @@ func (m *EditorMenu) OpenAt(at tui.Point) bool {
 			return false
 		}
 		chosen = run
-		layer.requestClose(DismissAccept)
+		layer.RequestClose(DismissAccept)
 		return true
 	}))
 	if err := menu.SetModel(items); err != nil {
@@ -93,7 +93,7 @@ func (m *EditorMenu) OpenAt(at tui.Point) bool {
 	// the box on the menu's own surface: a bare one's border cells kept the terminal's default
 	// background, a band of it around the menu in a window
 	box := NewBox(menu, WithStyle(style.New().Background(style.TokenPanel)))
-	l, err := host.openPopupAt(id, m.owner, box, at, func(reason DismissReason) {
+	l, err := host.OpenPopupAt(id, m.owner, box, at, func(reason DismissReason) {
 		if m.open == layer {
 			m.open = nil
 		}
@@ -134,7 +134,7 @@ func (m *EditorMenu) Close() {
 		return
 	}
 	m.open = nil
-	l.close(DismissProgrammatic)
+	l.Close(DismissProgrammatic)
 }
 
 // IsOpen reports whether the menu is showing.

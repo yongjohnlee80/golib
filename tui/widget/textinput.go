@@ -196,7 +196,7 @@ func (t *TextInput) edited() {
 	t.verr, t.walk = nil, nil
 	t.ensureVisible()
 	t.MarkDirty()
-	publishChange(t.ctx, t.NodeID(), t.Value)
+	PublishChange(t.ctx, t.NodeID(), t.Value)
 	if t.onEdit != nil {
 		t.onEdit(t.Value())
 	}

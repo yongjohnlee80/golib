@@ -45,7 +45,7 @@ func TestATrappingOverlaysFallbackStopFollowsItsContent(t *testing.T) {
 	})
 
 	ih.onLoopInternal(func() {
-		p, err := host.openPopupAt("t", base, NewBox(popupBtn), tui.Point{}, nil)
+		p, err := host.OpenPopupAt("t", base, NewBox(popupBtn), tui.Point{}, nil)
 		if err != nil {
 			t.Fatalf("openPopupAt: %v", err)
 		}

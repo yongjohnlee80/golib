@@ -71,13 +71,13 @@ func TestATextAreaBuildsItsChangeValueOnlyForASubscriber(t *testing.T) {
 	ta := NewTextArea()
 	h := startAppInternal(t, ta, 40, 6)
 	defer h.stopInternal()
-	h.onLoopInternal(func() { ta.insert("one\ntwo") })
+	h.onLoopInternal(func() { ta.InsertText("one\ntwo") })
 	if ta.changeValues != 0 {
 		t.Fatalf("with no subscriber, an insert built %d change values, want 0", ta.changeValues)
 	}
 	var log changeLog
 	defer tui.Subscribe(h.app.Bus(), log.add)()
-	h.onLoopInternal(func() { ta.insert("!") })
+	h.onLoopInternal(func() { ta.InsertText("!") })
 	h.syncInternal()
 	if ta.changeValues != 1 || !slices.Equal(log.values(), []string{"one\ntwo!"}) {
 		t.Fatalf("with a subscriber: %d values built, received %q; want 1 and [one\\ntwo!]", ta.changeValues, log.values())

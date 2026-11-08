@@ -44,11 +44,11 @@ type TerminalStopResult struct {
 	startErr   error
 	proc       TerminalProcess
 	input      *inputQueue
-	bridge     *bufWriter
+	bridge     *BufferWriter
 	once       sync.Once
 }
 
-func newTerminalStopResult(proc TerminalProcess, generation int, input *inputQueue, bridge *bufWriter) *TerminalStopResult {
+func newTerminalStopResult(proc TerminalProcess, generation int, input *inputQueue, bridge *BufferWriter) *TerminalStopResult {
 	return &TerminalStopResult{completion: terminalCompletion{done: make(chan struct{})},
 		proc: proc, generation: generation, started: true, input: input, bridge: bridge}
 }
@@ -139,7 +139,7 @@ func joinTerminalCleanup(generations []*TerminalStopResult) *TerminalShutdownRes
 			// These immutable per-generation references are safe after App.Done,
 			// including while decl destroys the Terminal on its own goroutine.
 			generation.input.close()
-			generation.bridge.close()
+			generation.bridge.Close()
 			generation.cleanup(nil)
 		}
 		// Request every cleanup before waiting: a stalled old generation must

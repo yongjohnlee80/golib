@@ -211,7 +211,7 @@ func (t *DataTable) SetMenuOpener(o MenuOpener) {
 	if kit.NilLike(o) {
 		o = nil
 	}
-	if t.menu != nil && !sameOpener(t.menu, o) {
+	if t.menu != nil && !SameMenu(t.menu, o) {
 		t.menu.Close()
 	}
 	t.menu = o
@@ -625,7 +625,7 @@ func (t *DataTable) handleMouse(e tui.MouseEvent) bool {
 		return t.handleWheel(e, p)
 	case e.Kind == tui.MousePress && e.Button == tui.MouseLeft:
 		return t.handlePress(e)
-	case e.Kind == tui.MousePress && e.Button == tui.MouseRight && t.menu != nil && menuOn(t.menu):
+	case e.Kind == tui.MousePress && e.Button == tui.MouseRight && t.menu != nil && MenuWouldOpen(t.menu):
 		return t.handleMenuPress(e)
 	case t.core.Dragging() && (e.Kind == tui.MouseMotion && e.Button == tui.MouseLeft || e.Kind == tui.MouseRelease):
 		return t.handleDrag(e)
