@@ -122,7 +122,7 @@ var (
 func NewTextInput(opts ...TextInputOption) *TextInput {
 	t := &TextInput{
 		buf:    txt.NewBuffer(),
-		styles: defaultTextInputStyles(),
+		styles: DefaultTextInputStyles(),
 	}
 	for _, o := range opts {
 		if o != nil {

@@ -307,7 +307,7 @@ func (e *Editor) gutterWidth() int {
 // or customize capabilities and styles.
 func NewEditor(opts ...EditorOption) *Editor {
 	e := &Editor{core: newEditorCore()}
-	e.cells = cellLayout{ed: e, wrap: WrapNone, styles: defaultTextInputStyles()}
+	e.cells = cellLayout{ed: e, wrap: WrapNone, styles: DefaultTextInputStyles()}
 	e.core.Bind(nil, &e.cells)
 	e.menu = NewEditorMenu(e, e.core)
 	e.pointer = NewEditorPointer(e.core, e.menu, editorPointerView{e})
@@ -444,7 +444,7 @@ func (e *Editor) KeyBindings(m *keymap.Map) []keymap.Binding {
 
 // WithStyles replaces the editor's looks: each slot given over golib's own.
 func (e *Editor) WithStyles(st TextInputStyles) *Editor {
-	e.cells.styles = st.over(defaultTextInputStyles())
+	e.cells.styles = st.Over(DefaultTextInputStyles())
 	e.MarkDirty()
 	return e
 }

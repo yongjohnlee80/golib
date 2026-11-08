@@ -40,14 +40,14 @@ func (x *Box) WithFocusedStyle(st style.Style) *Box {
 
 // WithStyles replaces the input's looks: each slot given over golib's own.
 func (t *TextInput) WithStyles(st TextInputStyles) *TextInput {
-	t.styles = st.over(defaultTextInputStyles())
+	t.styles = st.Over(DefaultTextInputStyles())
 	t.MarkDirty()
 	return t
 }
 
 // WithStyles replaces the text area's looks: each slot given over golib's own.
 func (t *TextArea) WithStyles(st TextInputStyles) *TextArea {
-	t.styles = st.over(defaultTextInputStyles())
+	t.styles = st.Over(DefaultTextInputStyles())
 	t.MarkDirty()
 	return t
 }

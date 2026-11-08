@@ -25,7 +25,7 @@ func WithRuler(col int) EditorOption { return func(e *Editor) { e.cells.ruler = 
 // WithEditorStyles overrides the style hooks (TextInput slots); zero fields keep defaults.
 func WithEditorStyles(st TextInputStyles) EditorOption {
 	return func(e *Editor) {
-		e.cells.styles = st.over(e.cells.styles)
+		e.cells.styles = st.Over(e.cells.styles)
 	}
 }
 

@@ -546,7 +546,7 @@ func WithRoots(roots ...*TreeNode) TreeOption {
 // WithTreeStyles overrides the row styles (List slots).
 func WithTreeStyles(st ListStyles) TreeOption {
 	return func(t *Tree) {
-		t.styles = st.over(t.styles)
+		t.styles = st.Over(t.styles)
 	}
 }
 
@@ -660,7 +660,7 @@ func (t *Tree) SetRoots(roots ...*TreeNode) {
 // has no multi-selection, so it paints Row, CursorRow and CursorBlurred, and
 // SelectedRow and CursorSelected have no row to apply to.
 func (t *Tree) SetStyles(st ListStyles) {
-	t.styles = st.over(t.styles)
+	t.styles = st.Over(t.styles)
 	t.MarkDirty()
 }
 
@@ -670,7 +670,7 @@ func defaultTreeStyles() ListStyles { return ListStyles{CursorRow: style.New().R
 // ResetStyles replaces the Tree's looks from its defaults, so a removed QML
 // palette role does not leave the previously resolved color on a live view.
 func (t *Tree) ResetStyles(st ListStyles) {
-	t.styles = st.over(defaultTreeStyles())
+	t.styles = st.Over(defaultTreeStyles())
 	t.MarkDirty()
 }
 
@@ -1223,7 +1223,7 @@ func (t *Tree) Render(s tui.Surface) {
 		// The cursor remains visible without focus. A caller that names a blurred look can
 		// distinguish panes; otherwise the cursor look stays, including under a delegating wrapper.
 		if i == cursor {
-			st = t.styles.cursorLook(t.Focused()).Inherit(st)
+			st = t.styles.CursorLook(t.Focused()).Inherit(st)
 		}
 		return st
 	}
