@@ -1,6 +1,7 @@
 package widget
 
 import (
+	"regexp"
 	"strings"
 
 	"github.com/yongjohnlee80/golib/highlight"
@@ -32,7 +33,8 @@ const (
 // typed in is laid as its source. A table is boxed, its columns narrowed to the width (FitColumns),
 // or, too many to narrow, laid at their own widths. A mermaid or vega-lite fence is its picture, laid
 // by the Editor (SetPictureHost), its fences no rows: the source until it is laid, or when it can't be.
-// Images are drawn as their source (a later step draws them).
+// An image-only paragraph is its image on a terminal that draws images, laid by the Editor
+// (SetImageHost): its text (the alt text) until it loads, and wherever it can't be drawn.
 type MarkdownCellRenderer struct {
 	MarkdownBlocks
 	// Languages highlights a fenced block in its info string's language, as gui's Markdown
@@ -41,7 +43,14 @@ type MarkdownCellRenderer struct {
 	// pictures lays a mermaid or vega-lite fence's picture: the Editor drawing through the renderer
 	// (SetPictureHost). Without one, such a fence is code.
 	pictures CellPictureHost
+	// images lays an image-only paragraph's image: the Editor (SetImageHost). Without one, or until
+	// it loads, the paragraph is its text.
+	images CellImageHost
 }
+
+// SetImageHost is where the renderer's images are laid: the Editor sets itself when the renderer is
+// set (Editor.SetRenderer).
+func (r *MarkdownCellRenderer) SetImageHost(h CellImageHost) { r.images = h }
 
 // SetPictureHost is where the renderer's pictures are laid: the Editor sets itself when the renderer
 // is set (Editor.SetRenderer).
@@ -87,6 +96,8 @@ func (r *MarkdownCellRenderer) LayOut(b Block, lines []string, width int, measur
 			for ln := b.From; ln < b.To; ln++ {
 				lb.source(&cb, ln, lines[ln], func(int) style.Style { return code })
 			}
+		} else if p, ok := r.image(b, lines, lb.width); ok { // an image-only paragraph: the image's rows, the paragraph a fold
+			cb.Rows, cb.Picture = append(cb.Rows, pictureRows(p, lb.measure)...), p
 		} else {
 			for ln := b.From; ln < b.To; ln++ {
 				r.line(&lb, &cb, ln, lines[ln])
@@ -323,7 +334,7 @@ func (r *MarkdownCellRenderer) fenced(lb *mdCellLines, cb *CellBlock, b Block, l
 			end--
 		}
 		if p, ok := r.pictures.Picture(b, lang, strings.Join(lines[b.From+1:end], "\n"), lb.width); ok {
-			cb.Rows = append(cb.Rows, pictureRows(p, lb.measure)...)
+			cb.Rows, cb.Picture = append(cb.Rows, pictureRows(p, lb.measure)...), p
 			return
 		}
 	}
@@ -355,6 +366,22 @@ func (r *MarkdownCellRenderer) fenced(lb *mdCellLines, cb *CellBlock, b Block, l
 		spans, state = append([]highlight.Span(nil), spans...), next
 		lb.source(cb, ln, line, func(off int) style.Style { return lb.syntax(spans, off-offset, code) })
 	}
+}
+
+// mdImageOnly is a paragraph that is one image and nothing else: ![alt](src), a title allowed.
+var mdImageOnly = regexp.MustCompile(`^!\[[^\]]*\]\(\s*(<[^>]*>|[^\s)]+)(?:\s+"[^"]*")?\s*\)$`)
+
+// image is block b's image, when it is a one-line paragraph of one image and the host has it laid;
+// ok false otherwise (the paragraph is laid as its text, its alt text).
+func (r *MarkdownCellRenderer) image(b Block, lines []string, width int) (CellPicture, bool) {
+	if r.images == nil || b.To-b.From != 1 {
+		return nil, false
+	}
+	m := mdImageOnly.FindStringSubmatch(strings.TrimSpace(lines[b.From]))
+	if m == nil {
+		return nil, false
+	}
+	return r.images.Image(b, strings.TrimSuffix(strings.TrimPrefix(m[1], "<"), ">"), width)
 }
 
 // pictureLang is the picture a fence's info string names: "mermaid", or "vega-lite" (or vegalite);

@@ -96,20 +96,26 @@ func (e *Editor) pictureDone(r tui.TaskResult) bool {
 		if !s.pending || s.task != r.ID {
 			continue
 		}
-		if !e.picArrived { // the first picture since the view was laid: is the cursor on it, before the rows change?
-			_, _, e.picReveal = e.Cursor()
-			e.picArrived = true
-		}
+		e.arrived()
 		s.pending, s.stop = false, nil
 		if p, ok := r.Value.(CellPicture); ok && r.Err == nil {
 			s.pic = p
 		} else {
 			s.failed = true
 		}
-		e.picGen++ // a key of the layout: its blocks are laid again with it
 		return true
 	}
 	return false
+}
+
+// arrived marks a picture or an image arriving: the first since the view was laid takes whether the
+// cursor is on the view, before the rows change; picGen, a key of the layout, lays the blocks again.
+func (e *Editor) arrived() {
+	if !e.picArrived { // the first picture since the view was laid: is the cursor on it, before the rows change?
+		_, _, e.picReveal = e.Cursor()
+		e.picArrived = true
+	}
+	e.picGen++
 }
 
 // dropPictures forgets every block's picture and stops its request: another view, renderer or
@@ -121,6 +127,7 @@ func (e *Editor) dropPictures() {
 		}
 	}
 	e.pics = nil
+	e.dropImages()
 	e.picGen++
 	e.picArrived, e.picReveal = false, false // an arrival's snapshot is its slots' owner's: the next owner takes its own
 }

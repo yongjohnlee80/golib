@@ -7,6 +7,7 @@ import (
 	"github.com/yongjohnlee80/golib/tui"
 	"github.com/yongjohnlee80/golib/tui/keymap"
 	"github.com/yongjohnlee80/golib/tui/style"
+	"github.com/yongjohnlee80/golib/tui/widget/internal/cellimages"
 )
 
 // Editor provides an embedded, configurable multi-line text editor designed for
@@ -176,6 +177,12 @@ type Editor struct {
 	picBuf     *Buffer
 	picArrived bool
 	picReveal  bool
+	// imgs loads the Rendered view's images (editor_images.go) through resolve; imageIDs each laid
+	// image's placement id; shownImages the images the last paint showed, where (PlacedImages).
+	imgs        *cellimages.Loader
+	resolve     ImageResolver
+	imageIDs    map[imageAt]uint32
+	shownImages []shownPicture
 	// layPicture lays a picture off the loop: LayCellPicture when nil (a test lays its own).
 	layPicture func(ctx context.Context, lang, src string, measure func(string) int, cols int, syntax SyntaxStyles) (CellPicture, error)
 	// presented is the presentation the viewport was last revealed for (presentation): a change of
@@ -363,7 +370,7 @@ func (e *Editor) HandleEvent(ev tui.Event) bool {
 	if m, ok := ev.(tui.MouseEvent); ok && m.Y >= 0 && m.Y < e.headerRows() && (m.Kind == tui.MousePress || m.Kind == tui.MouseWheel) {
 		return e.header(m)
 	}
-	if r, ok := ev.(tui.TaskResult); ok && e.pictureDone(r) { // a picture laid: its blocks again,
+	if r, ok := ev.(tui.TaskResult); ok && (e.pictureDone(r) || e.imageDone(r)) { // a picture or an image: its blocks again,
 		if ctx := e.Context(); ctx != nil { // settled before the next input, so a click lands on them
 			ctx.SettleBeforeInput()
 		}

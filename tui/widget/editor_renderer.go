@@ -31,6 +31,9 @@ type CellRenderer interface {
 type CellBlock struct {
 	Rows  []CellRow
 	Width int
+	// Picture is the picture the block is drawn as, its Rows its cells, when it is one (a diagram, an
+	// image): the Editor reports an image's place on the view by it.
+	Picture CellPicture
 }
 
 // CellRow is one display row. Anchor is the source line it stands for when it shows none of that
@@ -95,6 +98,9 @@ func (e *Editor) SetRenderer(r CellRenderer) {
 	}
 	if p, ok := r.(interface{ SetPictureHost(CellPictureHost) }); ok { // a renderer that draws pictures lays them here
 		p.SetPictureHost(e)
+	}
+	if p, ok := r.(interface{ SetImageHost(CellImageHost) }); ok { // and one that draws images
+		p.SetImageHost(e)
 	}
 	e.applyView()
 }
@@ -168,10 +174,11 @@ type renderedLayout struct {
 	blocks   []Block
 	rows     []CellRow
 	lineRows [][]int
-	blockOf  []int // each line's block, into blocks
-	rowBlock []int // each row's block, into blocks
-	blockW   []int // each block's width as laid out: wider than the room, it pans
-	blockRow []int // each block's first row, -1 for none
+	blockOf  []int         // each line's block, into blocks
+	rowBlock []int         // each row's block, into blocks
+	blockW   []int         // each block's width as laid out: wider than the room, it pans
+	blockRow []int         // each block's first row, -1 for none
+	blockPic []CellPicture // each block's picture, nil for none (CellBlock.Picture)
 }
 
 // renderedRows is the Editor's Rendered layout at width, laid again only when something it depends
@@ -199,6 +206,7 @@ func (e *Editor) renderedRows(width int) *renderedLayout {
 			first = len(r.rows)
 		}
 		r.blockRow = append(r.blockRow, first)
+		r.blockPic = append(r.blockPic, cb.Picture)
 		for ln := b.From; ln < b.To && ln < len(lines); ln++ {
 			r.blockOf[ln] = bi
 		}
