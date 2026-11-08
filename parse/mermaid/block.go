@@ -60,6 +60,12 @@ const (
 var blockArrowNames = map[string]BlockArrow{"right": ArrowRight, "left": ArrowLeft, "up": ArrowUp,
 	"down": ArrowDown, "x": ArrowX, "y": ArrowY}
 
+var blockArrowStrings = [...]string{ArrowNone: "none", ArrowRight: "right", ArrowLeft: "left", ArrowUp: "up",
+	ArrowDown: "down", ArrowX: "x", ArrowY: "y"}
+
+func (a BlockArrow) String() string               { return enumName(blockArrowStrings[:], int(a)) }
+func (a BlockArrow) MarshalText() ([]byte, error) { return []byte(a.String()), nil }
+
 // blockParser is the parse of one block diagram: the groups open, innermost last.
 type blockParser struct {
 	p     *parser
