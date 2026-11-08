@@ -414,3 +414,31 @@ func TestATablesCellsReadTheirOwnMarkdown(t *testing.T) {
 		"│ **a │ b** │",
 		"│ c   │ [l  │")
 }
+
+// Entering Insert on a tall table lays its block as its source, fewer rows than the rendered table:
+// the view is revealed again for the caret where it was, though it didn't move (no blank view);
+// and so after Esc, and after Ctrl+T to the Raw view.
+func TestAPresentationChangeRevealsTheCaret(t *testing.T) {
+	a, b := strings.Repeat("alpha ", 83), strings.Repeat("omega ", 83) // two ~500-cell cells
+	line := "| " + a + "| " + b + "|"
+	h, sh, ed := mdEditorAt(t, "| h | i |\n|---|---|\n"+line, 40, 4)
+	shown := func(what string) {
+		t.Helper()
+		var ok bool
+		h.onLoop(func() { _, _, ok = ed.Cursor() })
+		if !ok {
+			t.Errorf("%s: the caret is off the view:\n%s", what, h.grid())
+		}
+	}
+	caretAt(h, sh, ed, 2, len(line)-3) // the last cell's last letter, deep in the rendered table
+	shown("in Normal, on the last cell's last letter")
+	h.inject(keyText("i"))
+	h.barrier(sh)
+	shown("after i, before any text")
+	h.inject(dtEsc)
+	h.barrier(sh)
+	shown("after Esc")
+	h.inject(tui.KeyEvent{Kind: tui.KeyPress, Code: 't', Mods: tui.ModCtrl})
+	h.barrier(sh)
+	shown("after Ctrl+T")
+}

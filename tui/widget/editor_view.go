@@ -138,6 +138,21 @@ func (e *Editor) reveal(ln, col int) {
 	l.topIn = 0
 }
 
+// presentation is what the text is drawn as: its own Rendered layout or not, and the line laid as
+// its source while text is typed (-1: none). Entering Insert on a tall rendered block, or Ctrl+T,
+// lays the cursor's rows anew with the cursor where it was, so the view is revealed for them again;
+// a wheel's scroll changes neither, so it stays.
+func (e *Editor) presentation() [2]int {
+	p := [2]int{0, -1}
+	if e.rendered() {
+		p[0] = 1
+		if e.cells.typing() {
+			p[1] = e.core.buf.ln
+		}
+	}
+	return p
+}
+
 // Layout is greedy on both axes. The gutter, when the numbers show, takes its columns from the
 // text's area, never all of it.
 func (e *Editor) Layout(c tui.Constraints) tui.Size {
@@ -149,7 +164,9 @@ func (e *Editor) Layout(c tui.Constraints) tui.Size {
 	e.cells.gutter = min(e.gutterWidth(), total-1)
 	e.cells.w = total - e.cells.gutter
 	e.cells.h = max(fillH(c)-e.headerRows(), 0)
-	if e.shown.moved([2]int{e.core.buf.ln, e.core.buf.col}, [2]int{e.cells.h, e.cells.w}) {
+	moved := e.shown.moved([2]int{e.core.buf.ln, e.core.buf.col}, [2]int{e.cells.h, e.cells.w})
+	if p := e.presentation(); moved || p != e.presented {
+		e.presented = p
 		e.ensureVisible()
 	}
 	return c.Constrain(tui.Size{W: total, H: e.cells.h + e.headerRows()})
