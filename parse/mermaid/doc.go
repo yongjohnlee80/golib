@@ -22,12 +22,16 @@
 // both forms; chains and &; subgraphs with a title and their own direction; classDef, class,
 // ::: and style; %% comments; quoted labels, Markdown-string labels (as plain text), entity
 // codes and <br>. Outside it, and so ErrUnsupported: click, linkStyle, Font Awesome icons, the
-// @{ } shape and edge-id syntax, front matter, links to a subgraph, and other HTML in labels.
+// @{ } shape and edge-id syntax, links to a subgraph, and other HTML in labels.
 // Each other type has its own subset, in its file; a type with none is ErrUnsupported.
 //
 // Read and not drawn, by design: a mind map node's ::icon(...) is read onto it (MindNode.Icon)
 // and the node is drawn with its text alone, since an icon font's glyphs are in neither golib's
 // fonts nor a terminal's cells. A block arrow (id<["label"]>(right)) is read and drawn as an arrow.
+//
+// Every type reads a front matter block (frontmatter.go): its title: is the diagram's title
+// (TitleOf; a title the diagram's body names wins), and config: and its other keys are passed over,
+// as %%{init}%% directives are, since they style mermaid.js's own drawing.
 //
 // Standard library only.
 package mermaid

@@ -21,7 +21,11 @@ type cellLayout struct {
 	// can lay one line out taller than the view, so it scrolls by rows. 0 in the Raw view.
 	topIn int
 	left  int
-	w, h  int // the text's area: the gutter's columns are not in w
+	// pan is how far each block wider than the Rendered view is panned, in cells, by its first line.
+	pan map[int]int
+	// panBuf is the buffer the pans are of: another shown buffer drops them (rowMap).
+	panBuf *Buffer
+	w, h   int // the text's area: the gutter's columns are not in w
 
 	// numbers shows each line's number in a gutter at the left; gutter is the columns it took at
 	// the last layout (0 without numbers)
@@ -63,7 +67,7 @@ func (l *cellLayout) ScrollLines(delta int) {
 		return
 	}
 	if m := l.ed.rowMap(); m.r != nil { // the Rendered view scrolls by rows, so a tall line scrolls too
-		start := m.r.firstRow(l.top) + l.topIn + delta
+		start := m.r.topRow(l.top) + l.topIn + delta
 		l.top, l.topIn = m.r.atRow(max(0, min(start, len(m.r.rows)-l.h)))
 		l.ed.MarkDirty()
 		return
@@ -86,7 +90,8 @@ func (l *cellLayout) RowOf(line, col int) (row, x int) { return l.ed.rowMap().ro
 func (l *cellLayout) ColAt(line, row, x int) int { return l.ed.rowMap().colAt(line, row, x) }
 
 // Changed repaints, and lays out again when the line count's digits move the gutter's width.
-func (l *cellLayout) Changed(int) {
+func (l *cellLayout) Changed(from int) {
+	l.ed.picturesTouched(from) // a picture laying for a block the edit touched is not taken
 	if l.numbers && l.ed.gutterWidth() != l.gutter {
 		l.ed.RequestLayout() // the lines' count has another number of digits: the gutter's width moves
 	}
@@ -120,19 +125,85 @@ func (e *Editor) reveal(ln, col int) {
 			return
 		}
 		row, _ := m.r.caret(ln, col)
-		start := m.r.firstRow(l.top) + l.topIn
+		start := m.r.topRow(l.top) + l.topIn
 		switch {
 		case row < start:
 			start = row
+			if row == m.r.firstRow(ln) { // its block's opening rows (a table's top rule) with it
+				start = m.r.topRow(ln)
+			}
 		case row >= start+l.h:
 			start = row - l.h + 1
 		}
 		l.top, l.topIn = m.r.atRow(start)
 		l.left = 0
+		if row < len(m.r.rowBlock) { // a wide block pans until the caret's cell shows
+			if bi := m.r.rowBlock[row]; m.maxPan(bi) > 0 {
+				_, cx := m.r.caret(ln, col)
+				_, w := m.content(bi)
+				off := m.panOf(bi)
+				switch {
+				case cx < off:
+					off = cx
+				case cx >= off+w:
+					off = cx - w + 1
+				}
+				if l.pan == nil {
+					l.pan = map[int]int{}
+				}
+				l.pan[m.r.blocks[bi].From] = off
+			}
+		}
 		return
 	}
 	l.top, l.left = e.rowMap().reveal(l.top, l.left, ln, e.core.buf.cellsAt(ln, col, e.width))
 	l.topIn = 0
+}
+
+// keepTopLine keeps the view's top line when the Rendered rows changed under it (a picture laid):
+// the rows of it above the view are clamped to the rows its block has now, so the view never starts
+// past them.
+func (e *Editor) keepTopLine() {
+	l := &e.cells
+	m := e.rowMap()
+	if m.r == nil || len(m.r.rows) == 0 {
+		l.topIn = 0
+		return
+	}
+	start := min(m.r.topRow(l.top), len(m.r.rows)-1)
+	end := len(m.r.rows) // past the top's block's last row
+	for ri := start; ri < len(m.r.rows); ri++ {
+		if m.r.rowBlock[ri] != m.r.rowBlock[start] {
+			end = ri
+			break
+		}
+	}
+	l.topIn = max(min(l.topIn, end-1-start), 0)
+}
+
+// presentation is what the text is drawn as: its own Rendered layout or not, and the line laid as
+// its source while text is typed (-1: none). Entering Insert on a tall rendered block, or Ctrl+T,
+// lays the cursor's rows anew with the cursor where it was, so the view is revealed for them again;
+// a wheel's scroll changes neither, so it stays.
+func (e *Editor) presentation() [2]int {
+	p := [2]int{0, -1}
+	if e.rendered() {
+		p[0] = 1
+		if e.cells.typing() {
+			p[1] = e.core.buf.ln
+		}
+	}
+	return p
+}
+
+// represent asks for a layout when the presentation changed (Insert entered or left on a rendered
+// block, the view switched): a mode's change only repaints, and Layout is where the view is revealed
+// for the rows laid anew. The layout settles before the next input is routed, so a click queued
+// behind the key lands on the revealed rows, not on the new rows under the old offset.
+func (e *Editor) represent() {
+	if ctx := e.Context(); ctx != nil && e.presentation() != e.presented {
+		ctx.SettleBeforeInput()
+	}
 }
 
 // Layout is greedy on both axes. The gutter, when the numbers show, takes its columns from the
@@ -146,7 +217,14 @@ func (e *Editor) Layout(c tui.Constraints) tui.Size {
 	e.cells.gutter = min(e.gutterWidth(), total-1)
 	e.cells.w = total - e.cells.gutter
 	e.cells.h = max(fillH(c)-e.headerRows(), 0)
-	if e.shown.moved([2]int{e.core.buf.ln, e.core.buf.col}, [2]int{e.cells.h, e.cells.w}) {
+	moved := e.shown.moved([2]int{e.core.buf.ln, e.core.buf.col}, [2]int{e.cells.h, e.cells.w})
+	pics := e.picArrived // a picture arrived: the rows changed under the view
+	if pics {
+		e.picArrived = false
+		e.keepTopLine()
+	}
+	if p := e.presentation(); moved || p != e.presented || pics && e.picReveal {
+		e.presented = p
 		e.ensureVisible()
 	}
 	return c.Constrain(tui.Size{W: total, H: e.cells.h + e.headerRows()})

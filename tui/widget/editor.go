@@ -1,6 +1,7 @@
 package widget
 
 import (
+	"context"
 	"fmt"
 
 	"github.com/yongjohnlee80/golib/tui"
@@ -165,6 +166,21 @@ type Editor struct {
 	// shown is the cursor and viewport Layout last kept the cursor in view for: a layout pass
 	// reveals it only when either changed, so the wheel's scroll stays
 	shown viewMark
+	// pics are the Rendered view's pictures, by their block's first line and width
+	// (editor_pictures.go); picGen counts their changes, a key of the layout.
+	pics   map[pictureAt]*pictureSlot
+	picGen uint64
+	// picBuf is the buffer the pictures are of. picArrived is set by the first picture to arrive
+	// since the last layout, which took then whether the cursor was on the view (picReveal); the
+	// layout consumes both. A slot's drop changes picGen but is no arrival.
+	picBuf     *Buffer
+	picArrived bool
+	picReveal  bool
+	// layPicture lays a picture off the loop: LayCellPicture when nil (a test lays its own).
+	layPicture func(ctx context.Context, lang, src string, measure func(string) int, cols int, syntax SyntaxStyles) (CellPicture, error)
+	// presented is the presentation the viewport was last revealed for (presentation): a change of
+	// it reveals the cursor again, though the cursor stayed.
+	presented [2]int
 
 	menu *EditorMenu // the right-click menu: off unless a consumer turns it on
 	// sw is the [ Raw | Rendered ] switch, drawn on the editor's first row while swOn and a document
@@ -347,6 +363,13 @@ func (e *Editor) HandleEvent(ev tui.Event) bool {
 	if m, ok := ev.(tui.MouseEvent); ok && m.Y >= 0 && m.Y < e.headerRows() && (m.Kind == tui.MousePress || m.Kind == tui.MouseWheel) {
 		return e.header(m)
 	}
+	if r, ok := ev.(tui.TaskResult); ok && e.pictureDone(r) { // a picture laid: its blocks again,
+		if ctx := e.Context(); ctx != nil { // settled before the next input, so a click lands on them
+			ctx.SettleBeforeInput()
+		}
+		e.MarkDirty()
+		return true
+	}
 	if e.doc.Shown() { // a key the document view left; the hidden text takes nothing
 		switch t := ev.(type) {
 		case tui.KeyEvent:
@@ -370,12 +393,16 @@ func (e *Editor) HandleEvent(ev tui.Event) bool {
 		return false // focus events are informational; let them bubble
 	case tui.TickEvent:
 		// the drag's auto-scroll, else the chord timeout
-		return e.pointer.HandleEvent(t) || e.core.HandleTick()
+		handled := e.pointer.HandleEvent(t) || e.core.HandleTick()
+		e.represent()
+		return handled
 	case tui.KeyEvent:
 		if e.pointer.MenuKey(t) { // the menu at the caret; off-screen, the key bubbles, the core untouched
 			return e.pointer.OpenMenu()
 		}
-		return e.core.HandleKey(t)
+		handled := e.core.HandleKey(t)
+		e.represent()
+		return handled
 	}
 	return false
 }

@@ -29,14 +29,23 @@ const (
 // strong, code spans, links, wikilinks and tags with their marks hidden and every other cluster
 // kept where its source is; a list item's marker as its bullet; a quote's mark as a bar; a code
 // block's lines in the code look; frontmatter and comments hidden (HideMetadata). A block being
-// typed in is laid as its source. Tables, diagrams and images are drawn as their source (later
-// steps draw them).
+// typed in is laid as its source. A table is boxed, its columns narrowed to the width (FitColumns),
+// or, too many to narrow, laid at their own widths. A mermaid or vega-lite fence is its picture, laid
+// by the Editor (SetPictureHost), its fences no rows: the source until it is laid, or when it can't be.
+// Images are drawn as their source (a later step draws them).
 type MarkdownCellRenderer struct {
 	MarkdownBlocks
 	// Languages highlights a fenced block in its info string's language, as gui's Markdown
 	// renderer and the HTML page do; nil: code in the code look only.
 	Languages *highlight.Catalog
+	// pictures lays a mermaid or vega-lite fence's picture: the Editor drawing through the renderer
+	// (SetPictureHost). Without one, such a fence is code.
+	pictures CellPictureHost
 }
+
+// SetPictureHost is where the renderer's pictures are laid: the Editor sets itself when the renderer
+// is set (Editor.SetRenderer).
+func (r *MarkdownCellRenderer) SetPictureHost(h CellPictureHost) { r.pictures = h }
 
 var (
 	_ CellRenderer      = (*MarkdownCellRenderer)(nil)
@@ -58,17 +67,25 @@ func (r *MarkdownCellRenderer) LayOut(b Block, lines []string, width int, measur
 		// closed frontmatter, hidden: no row of its own (a fold)
 	case r.HideMetadata && r.Meta.Hidden(b.From):
 		// a run of comments, hidden: no row
+	case r.HideMetadata && r.Meta.Continued(b.From):
+		// a line going on from a comment, as gui's: prose under its mask, whatever it starts like (a
+		// fence, a table, a list item inside the comment is none)
+		for ln := b.From; ln < b.To; ln++ {
+			r.line(&lb, &cb, ln, lines[ln])
+		}
 	default:
 		if f, ok := mdOpenFence(lines[b.From]); ok {
 			r.fenced(&lb, &cb, b, lines, f)
-		} else if MarkdownTableEnd(lines, b.From) > 0 || MarkdownStartsIndentedCode(lines, b.From) {
-			code := MarkdownStartsIndentedCode(lines, b.From)
+		} else if end := MarkdownTableEnd(lines, b.From); end > 0 {
+			end = min(end, b.To)
+			r.table(&lb, &cb, b.From, end, lines)
+			for ln := end; ln < b.To; ln++ {
+				r.line(&lb, &cb, ln, lines[ln])
+			}
+		} else if MarkdownStartsIndentedCode(lines, b.From) {
+			code := lb.role(MarkdownCodeStyle)
 			for ln := b.From; ln < b.To; ln++ {
-				st := th.Text
-				if code {
-					st = lb.role(MarkdownCodeStyle)
-				}
-				lb.source(&cb, ln, lines[ln], func(int) style.Style { return st })
+				lb.source(&cb, ln, lines[ln], func(int) style.Style { return code })
 			}
 		} else {
 			for ln := b.From; ln < b.To; ln++ {
@@ -86,6 +103,206 @@ func (r *MarkdownCellRenderer) LayOut(b Block, lines []string, width int, measur
 	return cb
 }
 
+// tableCell is one shown cluster of a table's cell, and the source text it measures by.
+type tableCell struct {
+	RowCell
+	src string
+}
+
+// table lays the GFM table on lines [from, end) boxed: its header row, the rule its delimiter row
+// stands for (that line's row), its body rows. Each cell shows its Markdown, aligned as the
+// delimiter says and wrapped in its column, a bare <br> breaking it. The columns are narrowed to the
+// width by FitColumns or, too many to narrow, laid at their natural widths: the block is then wider
+// than the width.
+func (r *MarkdownCellRenderer) table(lb *mdCellLines, cb *CellBlock, from, end int, lines []string) {
+	delim, _ := MarkdownGFMRow(lines[from+1])
+	aligns, _ := MarkdownDelimiterAligns(delim)
+	n := len(aligns)
+	var rows [][][][]tableCell // per row line (the header first): per column, its <br> segments
+	var lns []int
+	natural := make([]int, n)
+	for ln := from; ln < end; ln++ {
+		if ln == from+1 {
+			continue
+		}
+		var mask []bool
+		if r.HideMetadata {
+			mask, _ = r.Meta.HiddenClusters(ln)
+		}
+		cells := lb.tableRow(ln, lines[ln], n, ln == from, mask)
+		for ci, segs := range cells {
+			for _, seg := range segs {
+				w := 0
+				for _, c := range seg {
+					w += c.W
+				}
+				natural[ci] = max(natural[ci], w)
+			}
+		}
+		rows, lns = append(rows, cells), append(lns, ln)
+	}
+	cols, frame := natural, 4+3*max(n-1, 0) // the box's "│ " and " │", and " │ " between cells
+	sum := frame
+	for _, w := range natural {
+		sum += w
+	}
+	if sum > lb.width {
+		if fit := FitColumns(natural, lb.width-frame); fit != nil {
+			cols = fit
+		}
+	}
+	box := lb.role(MarkdownQuietStyle)
+	deco := func(row *CellRow, s string, st style.Style) {
+		row.Cells = append(row.Cells, RowCell{Text: s, W: 1, Style: st, Line: -1})
+	}
+	rule := func(left, joint, right string, anchor int) {
+		row := CellRow{Anchor: anchor, Unnumbered: anchor < 0}
+		deco(&row, left, box)
+		for ci, w := range cols {
+			if ci > 0 {
+				deco(&row, joint, box)
+			}
+			for range w + 2 {
+				deco(&row, "─", box)
+			}
+		}
+		deco(&row, right, box)
+		cb.Rows = append(cb.Rows, row)
+	}
+	rule("┌", "┬", "┐", -1)
+	for i, cells := range rows {
+		lined := make([][][]RowCell, n) // each column's display lines: its segments wrapped to it
+		h := 1
+		for ci := range n {
+			for _, seg := range cells[ci] {
+				srcs := make([]string, len(seg))
+				for k, c := range seg {
+					srcs[k] = c.src
+				}
+				for _, rr := range wrapRanges(srcs, cols[ci], lb.measure) {
+					var line []RowCell
+					for _, c := range seg[rr[0]:rr[1]] {
+						line = append(line, c.RowCell)
+					}
+					lined[ci] = append(lined[ci], line)
+				}
+			}
+			h = max(h, len(lined[ci]))
+		}
+		for k := range h {
+			row := CellRow{Anchor: -1}
+			deco(&row, "│", box)
+			deco(&row, " ", lb.th.Text)
+			for ci := range n {
+				if ci > 0 {
+					deco(&row, " ", lb.th.Text)
+					deco(&row, "│", box)
+					deco(&row, " ", lb.th.Text)
+				}
+				var line []RowCell
+				if k < len(lined[ci]) {
+					line = lined[ci][k]
+				}
+				pad := cols[ci]
+				for _, c := range line {
+					pad -= c.W
+				}
+				pad = max(pad, 0)
+				left := 0
+				switch aligns[ci] {
+				case style.AlignRight:
+					left = pad
+				case style.AlignCenter:
+					left = pad / 2
+				}
+				for range left {
+					deco(&row, " ", lb.th.Text)
+				}
+				row.Cells = append(row.Cells, line...)
+				for range pad - left {
+					deco(&row, " ", lb.th.Text)
+				}
+			}
+			deco(&row, " ", lb.th.Text)
+			deco(&row, "│", box)
+			if k == 0 && row.ShowsNoSource() { // a row line of empty cells stands for its line
+				row.Anchor = lns[i]
+			}
+			cb.Rows = append(cb.Rows, row)
+		}
+		if i == 0 {
+			rule("├", "┼", "┤", from+1) // the delimiter row's
+		}
+	}
+	rule("└", "┴", "┘", -1)
+}
+
+// tableRow is line ln's cells, n of them (a missing one empty, one past n dropped): each its
+// clusters not hidden (by their Markdown, or by mask: hidden metadata), in their look (a header's
+// bold), in the lines a bare <br> ends. A trailing <br> opens no line; a line left empty between two
+// holds the <br> that ends it, a blank cell, so the caret has a place on it.
+func (lb *mdCellLines) tableRow(ln int, line string, n int, head bool, mask []bool) [][][]tableCell {
+	row, shift := MarkdownGFMRow(line)
+	spans, _ := MarkdownTableCells(row)
+	var cs []string
+	var offs []int
+	off := 0
+	for c := range tui.Graphemes(row) {
+		cs, offs = append(cs, c), append(offs, off)
+		off += len(c)
+	}
+	offs = append(offs, off) // past the last cluster: a cell's end
+	out := make([][][]tableCell, n)
+	brs := make([][]int, n) // each cell's lines: the column of the <br> that begins it (-1: the first)
+	for ci := range out {
+		out[ci], brs[ci] = [][]tableCell{nil}, []int{-1}
+	}
+	for ci, sp := range spans {
+		if ci >= n {
+			break
+		}
+		// each cell's Markdown is its own, as GFM and gui's tables read it: "**a | b**" is no span
+		attrs, _ := MarkdownLineAttrs(row[offs[sp[0]]:offs[sp[1]]])
+		lastBr := 0
+		for k := sp[0]; k < sp[1]; k++ {
+			if at := offs[k] - shift; at < 0 || at >= len(line) { // a pipe MarkdownGFMRow added
+				continue
+			}
+			if k-shift < len(mask) && mask[k-shift] { // hidden metadata first: a <br> in a comment breaks nothing
+				continue
+			}
+			a := attrs[offs[k]-offs[sp[0]]]
+			if a.Br > 0 {
+				if a.Br != lastBr { // a <br>'s first byte: two in a row are two
+					lastBr = a.Br
+					out[ci], brs[ci] = append(out[ci], nil), append(brs[ci], k-shift)
+				}
+				continue
+			}
+			if a.Hidden {
+				continue
+			}
+			st := lb.styleOf(a)
+			if head {
+				st = st.Bold(true)
+			}
+			segs := out[ci]
+			segs[len(segs)-1] = append(segs[len(segs)-1], tableCell{lb.cell(cs[k], st, ln, k-shift), cs[k]})
+		}
+	}
+	for ci, segs := range out {
+		for s := range segs {
+			if len(segs[s]) == 0 && s+1 < len(segs) { // a line a <br> ends, with nothing shown on it
+				segs[s] = []tableCell{{RowCell{Text: " ", W: 1, Style: lb.th.Text, Line: ln, Col: brs[ci][s+1]}, " "}}
+			}
+		}
+		if k := len(segs); k > 1 && len(segs[k-1]) == 0 {
+			out[ci] = segs[:k-1]
+		}
+	}
+	return out
+}
+
 // frontmatterHidden reports whether lines open with closed frontmatter the view hides.
 func (r *MarkdownCellRenderer) frontmatterHidden(lines []string) bool {
 	_, closed := MarkdownFrontmatterEnd(lines)
@@ -100,6 +317,16 @@ func (r *MarkdownCellRenderer) fenced(lb *mdCellLines, cb *CellBlock, b Block, l
 	lead := len(open) - len(strings.TrimLeft(open, " "))
 	rest := open[lead+f.n:]
 	info := strings.TrimSpace(rest)
+	if lang := pictureLang(info); lang != "" && r.pictures != nil { // a diagram or a chart: its picture, its fence none
+		end := b.To
+		if end-1 > b.From && markdown.FenceCloses(lines[end-1], f.ch, f.n) {
+			end--
+		}
+		if p, ok := r.pictures.Picture(b, lang, strings.Join(lines[b.From+1:end], "\n"), lb.width); ok {
+			cb.Rows = append(cb.Rows, pictureRows(p, lb.measure)...)
+			return
+		}
+	}
 	if info != "" {
 		at := lead + f.n + strings.Index(rest, info) // the info string's own bytes, after the fence's
 		muted := func(int) style.Style { return lb.role(MarkdownQuietStyle) }
@@ -130,6 +357,22 @@ func (r *MarkdownCellRenderer) fenced(lb *mdCellLines, cb *CellBlock, b Block, l
 	}
 }
 
+// pictureLang is the picture a fence's info string names: "mermaid", or "vega-lite" (or vegalite);
+// "" for none.
+func pictureLang(info string) string {
+	words := strings.Fields(info)
+	if len(words) == 0 {
+		return ""
+	}
+	switch strings.ToLower(words[0]) {
+	case "mermaid":
+		return "mermaid"
+	case "vega-lite", "vegalite":
+		return "vega-lite"
+	}
+	return ""
+}
+
 // line lays one prose line: a list item's marker as its bullet, its later rows hung under its text;
 // a quote's marks as bars, on every row; an empty line as its own row; and the rest with its
 // Markdown drawn.
@@ -138,9 +381,21 @@ func (r *MarkdownCellRenderer) line(lb *mdCellLines, cb *CellBlock, ln int, line
 		cb.Rows = append(cb.Rows, CellRow{Anchor: ln})
 		return
 	}
+	var mask []bool
+	if r.HideMetadata {
+		mask, _ = r.Meta.HiddenClusters(ln)
+	}
+	masked := func(end int) bool { // whether a cluster before byte end is metadata: no prefix of the line's
+		for i := range min(clusterIndex(line, end), len(mask)) {
+			if mask[i] {
+				return true
+			}
+		}
+		return false
+	}
 	var lead, cont []RowCell // drawn before the line's text, and before each later row of it
 	start := 0               // the byte the text starts at
-	if indent, marker, ok := MarkdownListItem(line); ok {
+	if indent, marker, ok := MarkdownListItem(line); ok && !masked(len(indent)+len(marker)) {
 		col := 0
 		for _, c := range indent {
 			lead = append(lead, lb.cell(string(c), lb.th.Text, ln, col))
@@ -164,7 +419,7 @@ func (r *MarkdownCellRenderer) line(lb *mdCellLines, cb *CellBlock, ln int, line
 			}
 		}
 		start = len(indent) + len(marker)
-	} else if depth, off := MarkdownQuoteDepth(line); depth > 0 {
+	} else if depth, off := MarkdownQuoteDepth(line); depth > 0 && !masked(off) {
 		at := 0 // past the marks read so far
 		for range depth {
 			at += strings.IndexByte(line[at:], '>')
@@ -177,13 +432,14 @@ func (r *MarkdownCellRenderer) line(lb *mdCellLines, cb *CellBlock, ln int, line
 	}
 	text := line[start:]
 	attrs, _ := MarkdownLineAttrs(text)
-	var mask []bool
-	if r.HideMetadata {
-		mask, _ = r.Meta.HiddenClusters(ln)
-	}
 	lb.cells(cb, ln, text, clusterIndex(line, start), func(off int) style.Style { return lb.styleOf(attrs[off]) }, func(off, col int) bool {
 		return attrs[off].Hidden || attrs[off].Br > 0 || (col < len(mask) && mask[col])
-	}, func(off int) int { return attrs[off].Br }, lead, cont)
+	}, func(off, col int) int {
+		if col < len(mask) && mask[col] { // hidden metadata: a <br> in a comment breaks nothing
+			return 0
+		}
+		return attrs[off].Br
+	}, lead, cont)
 }
 
 // mdCellLines lays text into rows of cells at a width.
@@ -270,10 +526,10 @@ func (lb *mdCellLines) source(cb *CellBlock, ln int, line string, look func(off 
 // cells lays text (a line's, from its cluster base) as rows: lead first, then each cluster not
 // hidden, in its look, wrapped at the width before the word that would cross it (or inside a word,
 // or a lead, wider than the row); each later row starts with cont (a hanging indent, a quote's
-// bars) when it leaves room. A bare <br> (brk: its id at a byte, 0 none) ends its row; a row it
+// bars) when it leaves room. A bare <br> (brk: its id at a byte and column, 0 none) ends its row; a row it
 // leaves with nothing of the line's shown holds the <br>, a blank cell, so the caret has a place on
 // it. The line's first row, with no cell of its own shown, is its Anchor's.
-func (lb *mdCellLines) cells(cb *CellBlock, ln int, text string, base int, look func(off int) style.Style, hidden func(off, col int) bool, brk func(off int) int, lead, cont []RowCell) {
+func (lb *mdCellLines) cells(cb *CellBlock, ln int, text string, base int, look func(off int) style.Style, hidden func(off, col int) bool, brk func(off, col int) int, lead, cont []RowCell) {
 	contW := 0
 	for _, c := range cont {
 		contW += c.W
@@ -308,7 +564,7 @@ func (lb *mdCellLines) cells(cb *CellBlock, ln int, text string, base int, look 
 			lastSpace = len(row.Cells)
 		}
 	}
-	shown := func() bool { return !onlyDecorations(row.Cells) }
+	shown := func() bool { return !row.ShowsNoSource() }
 	brCol := -1 // the column of the <br> waiting to end its row
 	breakRow := func() {
 		if !shown() {
@@ -322,7 +578,7 @@ func (lb *mdCellLines) cells(cb *CellBlock, ln int, text string, base int, look 
 	off, col, lastBr := 0, base, 0
 	for c := range tui.Graphemes(text) {
 		if brk != nil {
-			if id := brk(off); id > 0 && id != lastBr { // a <br>'s first byte: two in a row are two
+			if id := brk(off, col); id > 0 && id != lastBr { // a <br>'s first byte: two in a row are two
 				lastBr = id
 				if brCol >= 0 {
 					breakRow()
@@ -347,16 +603,6 @@ func (lb *mdCellLines) cells(cb *CellBlock, ln int, text string, base int, look 
 		row.Anchor = ln
 	}
 	cb.Rows = append(cb.Rows, row)
-}
-
-// onlyDecorations reports whether cells show none of a source line's clusters.
-func onlyDecorations(cells []RowCell) bool {
-	for _, c := range cells {
-		if c.Line >= 0 {
-			return false
-		}
-	}
-	return true
 }
 
 // clusterIndex is the cluster byte off of s starts.

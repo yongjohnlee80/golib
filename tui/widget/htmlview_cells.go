@@ -3,14 +3,12 @@ package widget
 import (
 	"context"
 	"math"
-	"slices"
 	"strings"
 
 	"github.com/yongjohnlee80/golib/highlight"
 	pm "github.com/yongjohnlee80/golib/parse/mermaid"
 	"github.com/yongjohnlee80/golib/tui"
 	"github.com/yongjohnlee80/golib/tui/internal/grapheme"
-	tuimermaid "github.com/yongjohnlee80/golib/tui/mermaid"
 	"github.com/yongjohnlee80/golib/tui/style"
 	tuivegalite "github.com/yongjohnlee80/golib/tui/vegalite"
 )
@@ -48,7 +46,7 @@ type hrow struct {
 	bottom bool
 	// grid is a diagram's, drawn in cells across its rows (layDiagram); gridRow is which of its
 	// rows this one is. nil for any other row.
-	grid    cellPicture
+	grid    CellPicture
 	gridRow int
 }
 
@@ -76,7 +74,7 @@ type cellHTML struct {
 	// codeW is each code block's width as it is laid out, its widest line with the space either side
 	// of it, by its block index (over).
 	codeW map[int]int
-	// wide is each row block of a table too wide to narrow (fitColumns), by its block index: the
+	// wide is each row block of a table too wide to narrow (FitColumns), by its block index: the
 	// table's first row block, under which its rows pan as one (panKey); wideW is that table's width
 	// as laid out, its box included, by its first row block (over).
 	wide, wideW map[int]int
@@ -169,7 +167,7 @@ func (c *cellHTML) layOut() {
 }
 
 // columnWidths are each table's column widths, in cells: its columns' natural widths when they fit
-// side by side at the width, else narrowed to it (fitColumns). A table whose columns can't narrow
+// side by side at the width, else narrowed to it (FitColumns). A table whose columns can't narrow
 // that far keeps its natural widths and is wide: drawn at its own width, it pans.
 func (c *cellHTML) columnWidths() (out map[int][]int, wide map[int]bool) {
 	out, wide = map[int][]int{}, map[int]bool{}
@@ -204,56 +202,13 @@ func (c *cellHTML) columnWidths() (out map[int][]int, wide map[int]bool) {
 			continue
 		}
 		natural := sum - 4 - 3*max(len(cols)-1, 0)
-		if fit := fitColumns(cols, room[t]-(sum-natural)); fit != nil {
+		if fit := FitColumns(cols, room[t]-(sum-natural)); fit != nil {
 			out[t] = fit
 		} else {
 			out[t], wide[t] = cols, true
 		}
 	}
 	return out, wide
-}
-
-// tableMinColumn is the narrowest a column of a table wider than its room is narrowed to: a column
-// narrower than that by nature keeps its width; below it a cell's text breaks into slivers, and the
-// table is drawn at its own width and pans instead.
-const tableMinColumn = 4
-
-// fitColumns narrows a table's natural column widths to fit avail cells: the widest are capped at one
-// width, as wide as avail allows, the narrower keeping theirs, and the cells the cap leaves over go
-// to the capped columns, one each from the left. nil when the columns can't narrow to
-// tableMinColumn.
-func fitColumns(natural []int, avail int) []int {
-	if len(natural) == 0 {
-		return nil
-	}
-	capped := func(limit int) int {
-		sum := 0
-		for _, w := range natural {
-			sum += min(w, limit)
-		}
-		return sum
-	}
-	lo, hi := tableMinColumn, max(slices.Max(natural), tableMinColumn)
-	if capped(lo) > avail {
-		return nil
-	}
-	for lo < hi { // the widest cap that fits
-		mid := (lo + hi + 1) / 2
-		if capped(mid) <= avail {
-			lo = mid
-		} else {
-			hi = mid - 1
-		}
-	}
-	out, left := make([]int, len(natural)), avail-capped(lo)
-	for i, w := range natural {
-		out[i] = min(w, lo)
-		if w > lo && left > 0 {
-			out[i]++
-			left--
-		}
-	}
-	return out
 }
 
 // cellEnd is the span past cell ci of row b (its separator, or the row's end).
@@ -485,11 +440,6 @@ func (c *cellHTML) layCodeEdge(bi int, b *hblock, top bool) {
 	c.rows = append(c.rows, row)
 }
 
-// measureFunc is a width function as tui/mermaid's Measurer.
-type measureFunc func(string) int
-
-func (f measureFunc) StringWidth(s string) int { return f(s) }
-
 // diagramNotice is what a diagram the terminal doesn't draw shows instead, in English: a host
 // that speaks other languages says it its own way (WithDiagramNotice).
 func diagramNotice(kind string) string {
@@ -499,49 +449,17 @@ func diagramNotice(kind string) string {
 	return kind + " diagram: not drawn in the terminal (Raw shows its source)"
 }
 
-// cellPicture is a diagram drawn in cells across its rows: a Mermaid grid, a Vega-Lite chart. The
-// page paints, fits and pans either the same way.
-type cellPicture interface {
-	Size() tui.Size
-	Paint(s tui.Surface, x0, y0 int)
-}
-
 // cellHits is a picture whose capped labels reveal their whole text where the pointer rests
 // (ToolTipAt).
 type cellHits interface {
 	HitAt(x, y int) (full string, r tui.Rect, ok bool)
 }
 
-// mermaidPicture is a Mermaid grid in the theme it was laid in (diagramStyles). A row holds it by
-// pointer, as a chart: its theme's series are a slice, and the page tells one picture from the next
-// by comparing them.
-type mermaidPicture struct {
-	g  *tuimermaid.Grid
-	th tuimermaid.Theme
-}
-
-func (p *mermaidPicture) Size() tui.Size                  { return p.g.Size }
-func (p *mermaidPicture) Paint(s tui.Surface, x0, y0 int) { p.g.Paint(s, x0, y0, -1, p.th) }
-func (p *mermaidPicture) HitAt(x, y int) (string, tui.Rect, bool) {
-	return p.g.HitAt(x, y)
-}
-
-// chartPicture is a Vega-Lite chart in the theme it was laid in (chartTheme). A row holds it by
-// pointer: its theme's palette is a slice, and the page tells one picture from the next by
-// comparing them.
-type chartPicture struct {
-	d  *tuivegalite.Drawing
-	th tuivegalite.Theme
-}
-
-func (p *chartPicture) Size() tui.Size                  { return tui.Size{W: p.d.W, H: p.d.H} }
-func (p *chartPicture) Paint(s tui.Surface, x0, y0 int) { p.d.Paint(s, x0, y0, p.th) }
-
-// chartTheme is a chart's styles in the cell layout: the page's own, its series in the page's
-// code colours (WithSyntax), which every theme sets; with none, the page's tokens.
+// chartTheme is a chart's styles in the cell layout: the page's own, its series in the page's code
+// colours (WithSyntax), which every theme sets; with none, the page's tokens (CellPictureThemes).
 func (c *cellHTML) chartTheme() tuivegalite.Theme {
-	styles := c.syntaxStyles
-	return tuivegalite.ThemeFromSyntax(func(r highlight.Style) style.Style { return styles[r] })
+	_, chart := CellPictureThemes(c.syntaxStyles)
+	return chart
 }
 
 // layDiagram lays a <pre class="mermaid"> out: a kind tui/mermaid draws as its grid, one row of
@@ -559,16 +477,13 @@ func (c *cellHTML) layDiagram(bi int, b *hblock) {
 	kind := "mermaid"
 	if d, err := pm.Parse(b.diagram); err == nil {
 		kind = d.Kind().String()
-		if tuimermaid.Drawn(d) == nil {
-			room := max(c.width-2*b.quote-b.indent, 1)
-			if g, err := tuimermaid.LayWithin(context.Background(), d, measureFunc(c.measure), room); err == nil && g.Size.H > 0 {
-				pic := &mermaidPicture{g: g, th: c.diagramStyles()}
-				for i := range g.Size.H {
-					c.rows = append(c.rows, hrow{block: bi, first: i == 0, grid: pic, gridRow: i})
-				}
-				return
-			}
+	}
+	room := max(c.width-2*b.quote-b.indent, 1)
+	if pic, err := LayCellPicture(context.Background(), "mermaid", b.diagram, c.measure, room, c.syntaxStyles); err == nil {
+		for i := range pic.Size().H {
+			c.rows = append(c.rows, hrow{block: bi, first: i == 0, grid: pic, gridRow: i})
 		}
+		return
 	}
 	c.layNotice(bi, b, kind)
 }
@@ -579,9 +494,8 @@ func (c *cellHTML) layDiagram(bi int, b *hblock) {
 // too large, or one that doesn't read, as the notice, never its source nor its data.
 func (c *cellHTML) layChart(bi int, b *hblock) {
 	room := max(c.width-2*b.quote-b.indent, 1)
-	if d, err := tuivegalite.Lay(context.Background(), b.diagram, measureFunc(c.measure), room); err == nil && d.H > 0 {
-		pic := &chartPicture{d, c.chartTheme()}
-		for i := range d.H {
+	if pic, err := LayCellPicture(context.Background(), "vega-lite", b.diagram, c.measure, room, c.syntaxStyles); err == nil {
+		for i := range pic.Size().H {
 			c.rows = append(c.rows, hrow{block: bi, first: i == 0, grid: pic, gridRow: i})
 		}
 		return
@@ -611,19 +525,6 @@ func (c *cellHTML) layNotice(bi int, b *hblock, kind string) {
 		}
 		c.rows = append(c.rows, row)
 	}
-}
-
-// diagramTheme is a diagram's styles in the cell layout: mermaid.TokenTheme's — the page's own
-// tokens, on the page's own background.
-var diagramTheme = tuimermaid.TokenTheme()
-
-// diagramStyles is a diagram's theme on this page: diagramTheme, its series the page's charts'
-// (chartTheme), so a pie's slices and a chart's series take the same colours, the page's code
-// colours where it has them.
-func (c *cellHTML) diagramStyles() tuimermaid.Theme {
-	th := diagramTheme
-	th.Series = c.chartTheme().Series
-	return th
 }
 
 // prefix is the decoration a row of b starts with: a bar and a space per quote level, then the
@@ -1083,7 +984,7 @@ func (c *cellHTML) PaintCells(s tui.Surface, top, w int, from, to DocPos) {
 	sz := s.Size()
 	from, to = OrderDocPos(from, to)
 	selecting := from != to
-	var painted cellPicture // the diagram drawn last: each is painted once, from its first row shown
+	var painted CellPicture // the diagram drawn last: each is painted once, from its first row shown
 	c.shownImages = c.shownImages[:0]
 	for y := 0; y < sz.H; y++ {
 		ri := top + y
@@ -1164,7 +1065,7 @@ func (c *cellHTML) paintCodeSides(s tui.Surface, r *hrow, y, w int) {
 	}
 }
 
-// paintCodePanMarks draws, over the sides of each wide code block on screen, its « and » (paintPanMarks)
+// paintCodePanMarks draws, over the sides of each wide code block on screen, its « and » (PaintPanMarks)
 // on its middle line on screen: the box's sides are the columns a wide block keeps for its marks. A
 // wide table's are its room's edge columns, on the middle of its lines on screen.
 func (c *cellHTML) paintCodePanMarks(s tui.Surface, top, w, h int) {
@@ -1182,7 +1083,7 @@ func (c *cellHTML) paintCodePanMarks(s tui.Surface, top, w, h int) {
 			y++
 		}
 		if over := c.over(bi); over > 0 {
-			paintPanMarks(s, c.codeLeft(&c.rows[ri]), min(c.width, w)-1, (first+y-1)/2, c.offset(bi), over)
+			PaintPanMarks(s, c.codeLeft(&c.rows[ri]), min(c.width, w)-1, (first+y-1)/2, c.offset(bi), over, panMark)
 		}
 	}
 }
@@ -1286,7 +1187,7 @@ func selected(k hcl, from, to DocPos) bool {
 	return k.sp != nil && k.pos != k.end && k.pos.Before(to) && from.Before(k.end)
 }
 
-// PAN. A diagram or a code block wider than its room, or a table too wide to narrow (fitColumns), is
+// PAN. A diagram or a code block wider than its room, or a table too wide to narrow (FitColumns), is
 // drawn at its own width and scrolled sideways, as the window scrolls a wide box (gui/widget's
 // ScrollX): each wide block has its own offset (pan), a table's rows one between them (panKey),
 // the wheel's Shift pans the one under the pointer (ScrollX), and the keys the one
@@ -1392,18 +1293,7 @@ func (c *cellHTML) paintGrid(s tui.Surface, r *hrow, y, h int) {
 		return
 	}
 	last := min(y+r.grid.Size().H-r.gridRow, h) - 1
-	paintPanMarks(s, x, w-1, (max(y, 0)+last)/2, off, over)
-}
-
-// paintPanMarks draws a wide block's marks at row mid of its edge columns left and right: a « when it
-// is panned, a » when more of it lies past its room.
-func paintPanMarks(s tui.Surface, left, right, mid, off, over int) {
-	if off > 0 {
-		s.SetCell(left, mid, "«", panMark)
-	}
-	if off < over {
-		s.SetCell(right, mid, "»", panMark)
-	}
+	PaintPanMarks(s, x, w-1, (max(y, 0)+last)/2, off, over, panMark)
 }
 
 // gridPlace is where row r's diagram sits on a page w cells wide (the layout's width): the column its grid's 0 is

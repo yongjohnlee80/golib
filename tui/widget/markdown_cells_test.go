@@ -5,6 +5,7 @@ import (
 	"testing"
 
 	"github.com/yongjohnlee80/golib/highlight"
+	"github.com/yongjohnlee80/golib/tui"
 	"github.com/yongjohnlee80/golib/tui/style"
 	"github.com/yongjohnlee80/golib/tui/widget"
 )
@@ -228,5 +229,383 @@ func TestMarkdownCodeIsHighlightedInItsLanguage(t *testing.T) {
 		if got := fg(c.row, c.cell); got != c.want {
 			t.Errorf("%s (row %d, cell %d): %v, want %v", c.what, c.row, c.cell, got, c.want)
 		}
+	}
+}
+
+// A table is boxed: its header row, the rule its delimiter row stands for, its body rows, each cell
+// aligned as the delimiter says, with its Markdown drawn. Every cell keeps its source: the caret on
+// a cell's text sits on it, and on the delimiter row, on its rule.
+func TestMarkdownTablesAreBoxed(t *testing.T) {
+	h, sh, ed := renderedEditor(t, "| a | **b** |\n|:--|--:|\n| ccc | ddd |\nee | f", mdRenderer())
+	wantRows(t, h,
+		"┌─────┬─────┐",
+		"│ a   │   b │",
+		"├─────┼─────┤",
+		"│ ccc │ ddd │",
+		"│ ee  │   f │",
+		"└─────┴─────┘")
+	// the last row has no outer pipes: its columns are its own, not the pipe GFM reads before it
+	for _, c := range []struct{ ln, col, x, y int }{{0, 8, 10, 1}, {1, 0, 0, 2}, {2, 2, 2, 3}, {2, 8, 8, 3}, {3, 1, 3, 4}, {3, 5, 10, 4}} {
+		if x, y, ok := caretAt(h, sh, ed, c.ln, c.col); !ok || x != c.x || y != c.y {
+			t.Errorf("caret on (%d, %d) at (%d, %d) %v, want (%d, %d)", c.ln, c.col, x, y, ok, c.x, c.y)
+		}
+	}
+}
+
+// A table wider than the view narrows its columns to fit (FitColumns), its cells' text wrapped in
+// them; a bare <br> breaks a cell's text.
+func TestMarkdownTableColumnsNarrowToTheView(t *testing.T) {
+	long := "alpha beta gamma delta epsilon zeta"
+	h, _, _ := renderedEditor(t, "| "+long+" | "+long+" |\n|---|---|\n| x<br>y | z |", mdRenderer())
+	got := rows(h, 10)
+	if !strings.HasSuffix(got[0], "┐") || len([]rune(got[0])) > 40 {
+		t.Errorf("the table's top %q: want it closed inside the 40-cell view", got[0])
+	}
+	if !strings.Contains(h.grid(), "zeta") {
+		t.Errorf("a narrowed cell lost its text:\n%s", h.grid())
+	}
+	at := -1
+	for y, r := range got {
+		if strings.HasPrefix(r, "│ x ") {
+			at = y
+		}
+	}
+	if at < 0 || !strings.HasPrefix(got[at+1], "│ y ") {
+		t.Errorf("x<br>y: want x and y on two rows of their cell:\n%s", h.grid())
+	}
+}
+
+// A table whose columns can't narrow to fit is laid at its natural widths: the block is wider than
+// the width.
+func TestATableTooWideToNarrowKeepsItsWidth(t *testing.T) {
+	row := "|" + strings.Repeat(" abcde |", 9)
+	lines := []string{row, "|" + strings.Repeat("---|", 9), row}
+	cb := (&widget.MarkdownCellRenderer{}).LayOut(widget.Block{From: 0, To: len(lines)}, lines, 40, func(string) int { return 1 }, false, widget.CellTheme{})
+	if want := 4 + 3*8 + 5*9; cb.Width != want {
+		t.Errorf("a nine-column table in 40 cells: Width %d, want its natural %d", cb.Width, want)
+	}
+}
+
+// A table's top rule shows with its header at the view's top: from the start, and when the caret
+// comes back up to the header from below the view.
+func TestATablesTopRuleShowsWithItsHeader(t *testing.T) {
+	h, sh, ed := renderedEditor(t, "| a | b |\n|---|---|\n| c | d |\n"+strings.Repeat("\nline", 20), mdRenderer()) // a blank line ends the table
+	top := func() string {                                                                                         // the text area's first row: the last column is the scroll indicator's
+		return strings.TrimRight(string([]rune(h.row(0))[:39]), " ")
+	}
+	if got := top(); got != "┌───┬───┐" {
+		t.Errorf("the view's first row %q, want the table's top rule", got)
+	}
+	caretAt(h, sh, ed, 23, 0)
+	if x, y, ok := caretAt(h, sh, ed, 0, 2); !ok || x != 2 || y != 1 {
+		t.Errorf("caret back on the header at (%d, %d) %v, want (2, 1) under the top rule:\n%s", x, y, ok, h.grid())
+	}
+	if got := top(); got != "┌───┬───┐" {
+		t.Errorf("back on the header, the view's first row %q, want the table's top rule", got)
+	}
+
+	// a heading right after a table starts the view itself: the table's bottom rule is not its
+	h, sh, ed = renderedEditor(t, "| a | b |\n|---|---|\n| c | d |\n# H"+strings.Repeat("\nline", 20), mdRenderer())
+	caretAt(h, sh, ed, 23, 0)
+	if x, y, ok := caretAt(h, sh, ed, 3, 2); !ok || x != 0 || y != 0 {
+		t.Errorf("caret back on the heading at (%d, %d) %v, want (0, 0), the view's top:\n%s", x, y, ok, h.grid())
+	}
+	if got := top(); got != "H" {
+		t.Errorf("back on the heading, the view's first row %q, want H", got)
+	}
+
+	// scrolled (2 Ctrl-d) so a table's top rule is the view's first row, the view starts at the
+	// table's first line: H goes there, and the view stays
+	h, sh, ed = renderedEditor(t, "before\n\n| a | b |\n|---|---|\n| c | d |\n"+strings.Repeat("\nline", 20), mdRenderer())
+	h.inject(keyText("2"), tui.KeyEvent{Kind: tui.KeyPress, Code: 'd', Mods: tui.ModCtrl}, keyText("H"))
+	h.barrier(sh)
+	var ln int
+	h.onLoop(func() { ln, _ = ed.Core().Line() })
+	if ln != 2 || top() != "┌───┬───┐" {
+		t.Errorf("2 Ctrl-d then H: the cursor on line %d, the view's first row %q; want line 2 under the table's top rule:\n%s", ln, top(), h.grid())
+	}
+}
+
+// A table cell hides what the reader skips, as prose does: an inline comment (HideMetadata), the
+// text around it kept, a <br> inside it breaking nothing. (A "<!--" closed in the next cell is no
+// comment: GFM splits the cells before reading them, so it is text, as gui's table draws it.) In
+// prose, a comment going on to the next line hides a <br> there.
+func TestATablesCellsHideTheirMetadata(t *testing.T) {
+	h, _, _ := renderedEditor(t, "| a <!-- note --> | b |\n|---|---|\n| d | e |\n| f <!-- <br> -->g | h |", mdRenderer())
+	g := h.grid()
+	if strings.Contains(g, "<!--") || strings.Contains(g, "note") || strings.Contains(g, "-->") || strings.Contains(g, "<br>") {
+		t.Errorf("a cell's comment is drawn:\n%s", g)
+	}
+	got := rows(h, 7)
+	if !strings.HasPrefix(got[1], "│ a") || !strings.HasSuffix(got[1], "│ b │") {
+		t.Errorf("the header row %q: want a, its comment hidden, then b", got[1])
+	}
+	if !strings.HasPrefix(got[3], "│ d") || !strings.HasPrefix(got[4], "│ f") || !strings.Contains(got[4], "g │ h") || !strings.HasPrefix(got[5], "└") {
+		t.Errorf("the body: want d's row, then f and g in one cell's row (the <br> in the comment breaking nothing), then the bottom rule:\n%s", g)
+	}
+
+	p, _, _ := renderedEditor(t, "a <!-- x\n<br> --> b", mdRenderer())
+	if got := rows(p, 3); !strings.Contains(got[1], "b") || got[2] != "" {
+		t.Errorf("a comment's <br> on the next line broke it: rows %q, want b on the second row", got)
+	}
+
+	// a line going on from a comment is prose under its mask, whatever it starts like: a fence or a
+	// list item inside the comment is none, and what follows the comment shows
+	c, _, _ := renderedEditor(t, "<!--\n```ignored --> kept\n\n<!--\n- item --> after", mdRenderer())
+	g = c.grid()
+	if !strings.Contains(g, "kept") || !strings.Contains(g, "after") || strings.Contains(g, "ignored") || strings.Contains(g, "item") || strings.Contains(g, "•") {
+		t.Errorf("a comment's carried line drawn as what it looks like, or its tail lost:\n%s", g)
+	}
+}
+
+// A cell's later lines keep their source: the caret on a cell's second line sits there, not on the
+// next cell's first line beside the first; a click there lands on it; a line left empty between two
+// <br>s is a row of its line, which the caret (and gj) reaches.
+func TestATableCellsLinesKeepTheirSource(t *testing.T) {
+	// "| x<br>**y** | zz |": x at 2, the hidden ** at 7, y at 9, zz at 15, its end 19; "| a<br><br>b<br>
+	// | c |": a at 2, the second <br> at 7; the trailing <br> opens no line
+	h, sh, ed := renderedEditor(t, "| x<br>**y** | zz |\n|---|---|\n| a<br><br>b<br> | c |", mdRenderer())
+	wantRows(t, h,
+		"┌───┬────┐",
+		"│ x │ zz │",
+		"│ y │    │",
+		"├───┼────┤",
+		"│ a │ c  │",
+		"│   │    │",
+		"│ b │    │",
+		"└───┴────┘")
+	for _, c := range []struct{ col, x, y int }{
+		{9, 2, 2},  // y, the first cell's second line: not zz beside x
+		{7, 2, 2},  // the ** hidden before y: the next shown cluster, y
+		{19, 8, 1}, // the line's end: past zz, on the row before y's
+	} {
+		if x, y, ok := caretAt(h, sh, ed, 0, c.col); !ok || x != c.x || y != c.y {
+			t.Errorf("caret on (0, %d): (%d, %d) %v, want (%d, %d)", c.col, x, y, ok, c.x, c.y)
+		}
+	}
+	if x, y, ok := caretAt(h, sh, ed, 2, 7); !ok || x != 2 || y != 5 {
+		t.Errorf("caret on the <br> that ends the empty line: (%d, %d) %v, want (2, 5)", x, y, ok)
+	}
+	click := func(x, y int) (ln, col int) {
+		h.inject(tui.MouseEvent{Kind: tui.MousePress, Button: tui.MouseLeft, X: x, Y: y},
+			tui.MouseEvent{Kind: tui.MouseRelease, Button: tui.MouseLeft, X: x, Y: y})
+		h.barrier(sh)
+		h.onLoop(func() { ln, col = ed.Core().Line() })
+		return
+	}
+	if ln, col := click(2, 2); ln != 0 || col != 9 {
+		t.Errorf("a click on y landed on (%d, %d), want (0, 9)", ln, col)
+	}
+	caretAt(h, sh, ed, 2, 2)
+	h.inject(keyText("g"), keyText("j"))
+	h.barrier(sh)
+	if x, y, ok := func() (x, y int, ok bool) { h.onLoop(func() { x, y, ok = ed.Cursor() }); return }(); !ok || y != 5 {
+		t.Errorf("gj from a's row went to (%d, %d) %v, want the empty line's row 5", x, y, ok)
+	}
+}
+
+// A cell's Markdown is its own, as GFM reads a table: "**a" and "b**" in two cells are literal
+// stars, not one strong span across the pipe; in one cell, "**c**" is strong, its stars hidden.
+func TestATablesCellsReadTheirOwnMarkdown(t *testing.T) {
+	h, _, _ := renderedEditor(t, "| h | i |\n|---|---|\n| **a | b** |\n| **c** | [l | m](u) |", mdRenderer())
+	wantRows(t, h,
+		"┌─────┬─────┐",
+		"│ h   │ i   │",
+		"├─────┼─────┤",
+		"│ **a │ b** │",
+		"│ c   │ [l  │")
+}
+
+// Entering Insert on a tall table lays its block as its source, fewer rows than the rendered table:
+// the view is revealed again for the caret where it was, though it didn't move (no blank view);
+// and so after Esc, and after Ctrl+T to the Raw view.
+func TestAPresentationChangeRevealsTheCaret(t *testing.T) {
+	a, b := strings.Repeat("alpha ", 83), strings.Repeat("omega ", 83) // two ~500-cell cells
+	line := "| " + a + "| " + b + "|"
+	h, sh, ed := mdEditorAt(t, "| h | i |\n|---|---|\n"+line, 40, 4)
+	shown := func(what string) {
+		t.Helper()
+		var ok bool
+		h.onLoop(func() { _, _, ok = ed.Cursor() })
+		if !ok {
+			t.Errorf("%s: the caret is off the view:\n%s", what, h.grid())
+		}
+	}
+	caretAt(h, sh, ed, 2, len(line)-3) // the last cell's last letter, deep in the rendered table
+	shown("in Normal, on the last cell's last letter")
+	h.inject(keyText("i"))
+	h.barrier(sh)
+	shown("after i, before any text")
+	h.inject(dtEsc)
+	h.barrier(sh)
+	shown("after Esc")
+	// i and a click queued behind it, before a frame, land where the click lands after i's frame:
+	// the source position the revealed rows show there, not the one under the old offset
+	clickAfterI := func(burst bool) (ln, col int) {
+		h, sh, ed := mdEditorAt(t, "| h | i |\n|---|---|\n"+line, 40, 4)
+		caretAt(h, sh, ed, 2, 302) // mid first cell: ~20 rows down the rendered table, ~9 in its source
+		press := tui.MouseEvent{Kind: tui.MousePress, Button: tui.MouseLeft, X: 5, Y: 1}
+		release := tui.MouseEvent{Kind: tui.MouseRelease, Button: tui.MouseLeft, X: 5, Y: 1}
+		if burst {
+			h.inject(keyText("i"), press, release)
+		} else {
+			h.inject(keyText("i"))
+			h.barrier(sh)
+			h.inject(press, release)
+		}
+		h.barrier(sh)
+		h.onLoop(func() { ln, col = ed.Core().Line() })
+		return
+	}
+	// the loop picks the next input or a frame at random when both are ready, so an unfenced click
+	// lands right about half the time: eight bursts, each a fresh editor, must all land as the settled one
+	l1, c1 := clickAfterI(false)
+	for try := range 8 {
+		if l2, c2 := clickAfterI(true); l2 != l1 || c2 != c1 {
+			t.Errorf("try %d: i then a click at (5, 1) before a frame landed on (%d, %d); after i's frame, on (%d, %d)", try, l2, c2, l1, c1)
+		}
+	}
+	h.inject(dtEsc)
+	h.barrier(sh)
+	h.inject(tui.KeyEvent{Kind: tui.KeyPress, Code: 't', Mods: tui.ModCtrl})
+	h.barrier(sh)
+	shown("after Ctrl+T")
+}
+
+// A table too wide to narrow pans as one, following the caret: its rows are drawn between the
+// view's edge columns, which mark with « and » the sides more of it lies past (on its middle row).
+// A click lands on the cell drawn under it, its pan counted.
+func TestAWideTablePansWithTheCaret(t *testing.T) {
+	row := "|" + strings.Repeat(" abcde |", 9) // column k's text at 2+8k: 73 cells laid, 38 shown
+	h, sh, ed := renderedEditor(t, row+"\n|"+strings.Repeat("---|", 9)+"\n"+row, mdRenderer())
+	edge := func(y int) (left, right rune) {
+		r := []rune(h.row(y))
+		return r[0], r[39]
+	}
+	if l, r := edge(2); l != ' ' || r != '»' {
+		t.Errorf("unpanned, the middle row's edges %q %q, want blank and »:\n%s", l, r, h.grid())
+	}
+	if x, y, ok := caretAt(h, sh, ed, 0, 2); !ok || x != 3 || y != 1 { // unpanned: the content's 1 + the cell's 2
+		t.Errorf("caret on the first column's text at (%d, %d) %v, want (3, 1)", x, y, ok)
+	}
+	if x, y, ok := caretAt(h, sh, ed, 0, 70); !ok || x != 38 || y != 1 { // its last column's last cluster
+		t.Errorf("caret on the last column's text at (%d, %d) %v, want (38, 1), the room's last cell:\n%s", x, y, ok, h.grid())
+	}
+	if l, r := edge(2); l != '«' || r != '»' {
+		t.Errorf("panned to the last column, the middle row's edges %q %q, want « and »:\n%s", l, r, h.grid())
+	}
+	if got := []rune(h.row(1))[38]; got != 'e' {
+		t.Errorf("panned, the header's cell under the caret %q, want e:\n%s", got, h.grid())
+	}
+	h.inject(tui.MouseEvent{Kind: tui.MousePress, Button: tui.MouseLeft, X: 34, Y: 3},
+		tui.MouseEvent{Kind: tui.MouseRelease, Button: tui.MouseLeft, X: 34, Y: 3})
+	h.barrier(sh)
+	var ln, col int
+	h.onLoop(func() { ln, col = ed.Core().Line() })
+	if ln != 2 || col != 66 { // x 34 shows cell 66 of the row: the last column's 'a'
+		t.Errorf("a click at x 34 of a body row landed on (%d, %d), want (2, 66)", ln, col)
+	}
+}
+
+// wideTable is a nine-column table, 73 cells laid: column k's text at 2+8k of each row, as on screen.
+func wideTable() string {
+	row := "|" + strings.Repeat(" abcde |", 9)
+	return row + "\n|" + strings.Repeat("---|", 9) + "\n" + row
+}
+
+// A pan is its buffer's: another buffer shown (SetBuffer, no view toggle) opens with its blocks
+// unpanned, though the first buffer's block at the same lines was panned and is not the caret's.
+func TestAPanIsItsBuffersOwn(t *testing.T) {
+	doc := wideTable() + "\n\n" + wideTable() // the second table's lines 4–6; 11 rows, so a 39-cell room
+	h, sh, ed := renderedEditor(t, doc, mdRenderer())
+	caretAt(h, sh, ed, 4, 70)                          // pans the second table
+	caretAt(h, sh, ed, 0, 2)                           // back on the first: the second keeps its pan
+	edge := func() rune { return []rune(h.row(7))[0] } // the second table's middle row on the view
+	if got := edge(); got != '«' {
+		t.Fatalf("precondition: the second table's edge %q, want « (panned):\n%s", got, h.grid())
+	}
+	b := widget.NewBuffer(widget.BufferText(doc))
+	h.onLoop(func() { ed.Core().SetBuffer(b) })
+	h.barrier(sh)
+	if got := edge(); got != ' ' {
+		t.Errorf("another buffer's second table opened panned (%q):\n%s", got, h.grid())
+	}
+}
+
+// gj and gk keep the column the view shows, across blocks panned apart: from the first table's last
+// column (panned, at x 37) down to the second (unpanned), to the cell the view shows at x 37, and back.
+func TestGjKeepsTheViewsColumnAcrossPannedBlocks(t *testing.T) {
+	h, sh, ed := renderedEditor(t, wideTable()+"\n\n"+wideTable(), mdRenderer())
+	at := func() (ln, col int) { h.onLoop(func() { ln, col = ed.Core().Line() }); return }
+	if x, _, ok := caretAt(h, sh, ed, 2, 70); !ok || x != 37 {
+		t.Fatalf("precondition: the first table's last column at x %d %v, want 37 (panned)", x, ok)
+	}
+	h.inject(keyText("g"), keyText("j"), keyText("g"), keyText("j"))
+	h.barrier(sh)
+	if ln, col := at(); ln != 4 || col != 36 { // cell 36 shows at x 37 in the unpanned table: its 'c'
+		t.Errorf("gj gj from (2, 70) went to (%d, %d), want (4, 36)", ln, col)
+	}
+	h.inject(keyText("g"), keyText("k"), keyText("g"), keyText("k"))
+	h.barrier(sh)
+	if ln, col := at(); ln != 2 || col != 70 {
+		t.Errorf("gk gk back went to (%d, %d), want (2, 70)", ln, col)
+	}
+}
+
+// A room of one, two or three cells (or two, its third the scroll indicator's; or one in a note taller
+// than the view, where the indicator would take the only column, so it isn't drawn) still pans: the
+// far column's last letter is reached by the caret, drawn where it says, and a click there lands on it.
+func TestANarrowRoomStillPans(t *testing.T) {
+	for _, c := range []struct {
+		name string
+		text string
+		w    int
+	}{
+		{"1 cell", wideTable(), 1}, {"2 cells", wideTable(), 2}, {"3 cells", wideTable(), 3},
+		{"3 cells, one the scroll indicator's", wideTable() + strings.Repeat("\nline", 20), 3},
+		{"1 cell, the note taller than the view (no room for the scroll indicator)", wideTable() + strings.Repeat("\nline", 20), 1},
+	} {
+		h, sh, ed := mdEditorAt(t, c.text, c.w, 10)
+		x, y, ok := caretAt(h, sh, ed, 0, 70)
+		if !ok || x < 0 || x >= c.w || y != 1 {
+			t.Errorf("%s: caret on the last letter at (%d, %d) %v, want on the header row inside the view", c.name, x, y, ok)
+			continue
+		}
+		if got := []rune(h.row(1))[x]; got != 'e' {
+			t.Errorf("%s: the cell under the caret %q, want e:\n%s", c.name, got, h.grid())
+		}
+		// the body row shows the same cells (the block pans as one): a click there at x is its last letter
+		h.inject(tui.MouseEvent{Kind: tui.MousePress, Button: tui.MouseLeft, X: x, Y: 3},
+			tui.MouseEvent{Kind: tui.MouseRelease, Button: tui.MouseLeft, X: x, Y: 3})
+		h.barrier(sh)
+		if ln, col := func() (ln, col int) { h.onLoop(func() { ln, col = ed.Core().Line() }); return }(); ln != 2 || col != 70 {
+			t.Errorf("%s: a click on the body row at x %d landed on (%d, %d), want (2, 70)", c.name, x, ln, col)
+		}
+	}
+}
+
+// A mermaid fence is its picture, laid off the loop: its source until the picture comes, then the
+// diagram's rows in its place, its fences no rows, the text after it kept. The note scrolls, so the
+// view lays it at both its widths (its scroll indicator's column in and out): each keeps its own.
+func TestAMermaidFenceIsDrawnAsItsPicture(t *testing.T) {
+	h, _, _ := renderedEditor(t, "```mermaid\nflowchart LR\n  Alpha --> Beta\n```\nafter"+strings.Repeat("\nline", 20), mdRenderer())
+	h.waitFor("the diagram in place of its source", func() bool {
+		g := h.grid()
+		return strings.Contains(g, "Alpha") && strings.Contains(g, "Beta") && !strings.Contains(g, "flowchart") && !strings.Contains(g, "```")
+	})
+	g := h.grid()
+	if !strings.ContainsAny(g, "┌╭") || !strings.Contains(g, "after") {
+		t.Errorf("want the diagram's boxes, then the text after it:\n%s", g)
+	}
+}
+
+// A vega-lite fence is its chart, laid off the loop, its labels drawn.
+func TestAVegaLiteFenceIsDrawnAsItsChart(t *testing.T) {
+	spec := `{"mark":"bar","data":{"values":[{"k":"Apples","v":3},{"k":"Pears","v":5}]},` +
+		`"encoding":{"x":{"field":"k","type":"nominal"},"y":{"field":"v","type":"quantitative"}}}`
+	h, _, _ := mdEditorAt(t, "```vega-lite\n"+spec+"\n```", 40, 30) // tall enough for the chart's labels under its axis
+	h.waitFor("the chart in place of its spec", func() bool { return !strings.Contains(h.grid(), `"mark"`) })
+	if g := h.grid(); !strings.Contains(g, "Apples") || !strings.Contains(g, "Pears") || !strings.Contains(g, "█") {
+		t.Errorf("the chart drawn without its bars or labels:\n%s", g)
 	}
 }

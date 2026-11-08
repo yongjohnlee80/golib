@@ -137,6 +137,19 @@ func (g *Grid) title(s string, m Measurer) (y int) {
 	return 2
 }
 
+// titleAbove puts s above a grid already laid out, as the shared title row does for the kinds that
+// lay one: everything moved down two rows, s at the top left; the size grows to hold it. A blank s
+// adds nothing.
+func (g *Grid) titleAbove(s string, m Measurer) {
+	if s == "" {
+		return
+	}
+	g.shift(0, 2)
+	g.title(s, m)
+	_, w, _ := capLabel(s, RoleLabel, m)
+	g.Size = tui.Size{W: max(g.Size.W, w), H: g.Size.H + 2}
+}
+
 // widest is the widest of ss in cells, each capped as a label: a column's width.
 func widest(m Measurer, ss ...string) int {
 	w := 0

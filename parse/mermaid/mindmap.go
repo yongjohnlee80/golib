@@ -9,6 +9,8 @@ func init() { register(Mindmap, "mindmap", []string{"mindmap"}, (*parser).mindma
 
 // MindmapDiagram is a parsed mind map: its nodes in source order, the root first.
 type MindmapDiagram struct {
+	// Title is the front matter's title (front matter's title:), drawn above the diagram; "" for none.
+	Title string
 	Nodes []MindNode
 }
 

@@ -42,6 +42,17 @@ type CellRow struct {
 	Unnumbered bool
 }
 
+// ShowsNoSource reports whether the row shows none of a source line's clusters: decorations only,
+// or nothing.
+func (r CellRow) ShowsNoSource() bool {
+	for _, c := range r.Cells {
+		if c.Line >= 0 {
+			return false
+		}
+	}
+	return true
+}
+
 // RowCell is one cluster drawn: its text, its width in cells, its look, and the source cluster it
 // shows (Line -1: a decoration, a box's rule or a bullet glyph).
 type RowCell struct {
@@ -81,6 +92,9 @@ func (e *Editor) SetRenderer(r CellRenderer) {
 	}
 	if md, ok := r.(MarkdownStructure); ok {
 		e.core.SetListEditingWhere(MarkdownListWhere(e.core, md))
+	}
+	if p, ok := r.(interface{ SetPictureHost(CellPictureHost) }); ok { // a renderer that draws pictures lays them here
+		p.SetPictureHost(e)
 	}
 	e.applyView()
 }
@@ -144,6 +158,7 @@ type renderedKey struct {
 	width  int
 	typing int // the line being typed on, -1 when no text is typed
 	theme  CellTheme
+	pics   uint64 // the pictures laid (picGen): one arriving lays its block again
 }
 
 // renderedLayout is the Editor's text through its renderer: the display rows in order, and each
@@ -154,6 +169,9 @@ type renderedLayout struct {
 	rows     []CellRow
 	lineRows [][]int
 	blockOf  []int // each line's block, into blocks
+	rowBlock []int // each row's block, into blocks
+	blockW   []int // each block's width as laid out: wider than the room, it pans
+	blockRow []int // each block's first row, -1 for none
 }
 
 // renderedRows is the Editor's Rendered layout at width, laid again only when something it depends
@@ -161,7 +179,7 @@ type renderedLayout struct {
 func (e *Editor) renderedRows(width int) *renderedLayout {
 	l := &e.cells
 	lines := e.core.buf.textLines
-	key := renderedKey{gen: e.renderGen, buf: e.core.Buffer(), rev: e.core.Revision(), width: width, typing: -1, theme: e.cellTheme()}
+	key := renderedKey{gen: e.renderGen, buf: e.core.Buffer(), rev: e.core.Revision(), width: width, typing: -1, theme: e.cellTheme(), pics: e.picGen}
 	if l.typing() {
 		key.typing = e.core.buf.ln
 	}
@@ -175,12 +193,18 @@ func (e *Editor) renderedRows(width int) *renderedLayout {
 	for bi, b := range r.blocks {
 		typing := key.typing >= b.From && key.typing < b.To
 		cb := e.render.LayOut(b, lines, width, e.width, typing, key.theme)
+		r.blockW = append(r.blockW, cb.Width)
+		first := -1
+		if len(cb.Rows) > 0 {
+			first = len(r.rows)
+		}
+		r.blockRow = append(r.blockRow, first)
 		for ln := b.From; ln < b.To && ln < len(lines); ln++ {
 			r.blockOf[ln] = bi
 		}
 		for _, row := range cb.Rows {
 			ri := len(r.rows)
-			r.rows = append(r.rows, row)
+			r.rows, r.rowBlock = append(r.rows, row), append(r.rowBlock, bi)
 			seen := -1
 			for _, c := range row.Cells {
 				if c.Line >= 0 && c.Line < len(lines) && c.Line != seen {
@@ -201,15 +225,31 @@ func (e *Editor) renderedRows(width int) *renderedLayout {
 	return r
 }
 
-// firstRow is line ln's first display row; a line with none (folded) takes the next line's that has
+// firstRow is line ln's first display row; a line of a block drawn with no row of a line's (a
+// picture) takes the block's first row; any other line with none (folded) the next line's that has
 // one, or the last row.
 func (r *renderedLayout) firstRow(ln int) int {
+	if ln >= 0 && ln < len(r.lineRows) && len(r.lineRows[ln]) == 0 {
+		if from, to := r.sourcelessRun(ln); r.picture(ln, from, to) {
+			return r.blockRow[r.blockOf[ln]]
+		}
+	}
 	for i := max(ln, 0); i < len(r.lineRows); i++ {
 		if rs := r.lineRows[i]; len(rs) > 0 {
 			return rs[0]
 		}
 	}
 	return max(len(r.rows)-1, 0)
+}
+
+// topRow is the row line ln starts at as the view's top: its first row, or before it the rows of
+// decorations only that open its block (a table's top rule), which stand for no line.
+func (r *renderedLayout) topRow(ln int) int {
+	ri := r.firstRow(ln)
+	for ri > 0 && ri < len(r.rows) && r.rowBlock[ri-1] == r.rowBlock[ri] && r.rows[ri-1].Anchor < 0 && r.rows[ri-1].ShowsNoSource() {
+		ri--
+	}
+	return ri
 }
 
 // atRow is the top line and the rows of it above the view that put display row start at the
@@ -220,10 +260,15 @@ func (r *renderedLayout) atRow(start int) (top, in int) {
 	}
 	start = min(start, len(r.rows)-1)
 	top = r.lineOfRow(start)
-	for top > 0 && r.firstRow(top) > start { // a decoration row before its line's first: the line before
+	if start < len(r.rowBlock) { // a block's opening rows (a table's top rule) are its first line's
+		if ln := r.blocks[r.rowBlock[start]].From; ln > top && r.topRow(ln) <= start {
+			top = ln
+		}
+	}
+	for top > 0 && r.topRow(top) > start { // a decoration row before its line's top: the line before
 		top--
 	}
-	return top, max(start-r.firstRow(top), 0)
+	return top, max(start-r.topRow(top), 0)
 }
 
 // lineOfRow is the source line row ri belongs to: the first line with a cell on it, its Anchor, or
@@ -256,42 +301,40 @@ func (r *renderedLayout) sourcelessRun(ln int) (from, to int) {
 	return from, to
 }
 
-// cellAt is the cell of (ln, col) on row ri and the x it starts at: the cell showing the cluster,
-// else the first shown cluster of ln after col on the row; ok false when the row shows none of ln
-// at or after col.
-func (r *renderedLayout) cellAt(ri, ln, col int) (x int, ok bool) {
-	at := 0
-	for _, c := range r.rows[ri].Cells {
-		if c.Line == ln && c.Col >= col {
-			return at, true
-		}
-		at += c.W
-	}
-	return 0, false
-}
-
-// caret is (ln, col)'s display row and x: the row showing the cluster (or, concealed, the next
-// shown one of ln), else past the line's last cell on its last row; an Anchor row's start; a
-// folded line's next row's start.
+// caret is (ln, col)'s display row and x: the cell showing the cluster, on whichever of ln's rows
+// shows it; concealed, the cell of the next shown cluster of ln, the one with the smallest column
+// after col on any of ln's rows (not the first in the rows' order: a table cell's second line comes
+// after the next cell's first); past ln's last shown cluster, the cell after it; a line showing none
+// (an Anchor row), its first row's start; a folded line, its next row's start.
 func (r *renderedLayout) caret(ln, col int) (row, x int) {
 	if ln < 0 || ln >= len(r.lineRows) || len(r.lineRows[ln]) == 0 {
 		return r.firstRow(ln), 0
 	}
 	rs := r.lineRows[ln]
+	next, nextCol := -1, 0  // the next shown cluster at or after col: its row
+	last, lastCol := -1, -1 // ln's last shown cluster: its row
+	nextX, lastEnd := 0, 0
 	for _, ri := range rs {
-		if x, ok := r.cellAt(ri, ln, col); ok {
-			return ri, x
+		at := 0
+		for _, c := range r.rows[ri].Cells {
+			if c.Line == ln {
+				if c.Col >= col && (next < 0 || c.Col < nextCol) {
+					next, nextCol, nextX = ri, c.Col, at
+				}
+				if c.Col > lastCol {
+					last, lastCol, lastEnd = ri, c.Col, at+c.W
+				}
+			}
+			at += c.W
 		}
 	}
-	last := rs[len(rs)-1]
-	end := 0
-	for _, c := range r.rows[last].Cells {
-		end += c.W
-		if c.Line == ln {
-			x = end // past ln's last cell
-		}
+	switch {
+	case next >= 0:
+		return next, nextX
+	case last >= 0:
+		return last, lastEnd
 	}
-	return last, x
+	return rs[0], 0
 }
 
 // hit is the source under cell x of display row ri: the cluster whose cells hold x; a decoration
@@ -330,6 +373,15 @@ func (r *renderedLayout) hit(ri, x int) (ln, col int) {
 	if a := r.rows[ri].Anchor; a >= 0 {
 		return a, 0
 	}
+	if ri < len(r.rowBlock) { // a row of decorations only: its block's line before it, else its first line
+		bi := r.rowBlock[ri]
+		for i := ri - 1; i >= 0 && r.rowBlock[i] == bi; i-- {
+			if !r.rows[i].ShowsNoSource() || r.rows[i].Anchor >= 0 {
+				return r.lineOfRow(i), 0
+			}
+		}
+		return r.blocks[bi].From, 0
+	}
 	return r.lineOfRow(ri), 0
 }
 
@@ -348,5 +400,15 @@ func (l *cellLayout) FoldOf(line int) (from, to int, hidden, ok bool) {
 		return 0, 0, false, false
 	}
 	from, to = r.sourcelessRun(line)
-	return from, to, true, true
+	return from, to, !r.picture(line, from, to), true // a picture's whole fence is a fold that shows
+}
+
+// picture reports whether line's run of lines with no row, [from, to), is its whole block, drawn with
+// rows none of which is a line's: a picture in place of its fence.
+func (r *renderedLayout) picture(line, from, to int) bool {
+	if line < 0 || line >= len(r.blockOf) || r.blockOf[line] >= len(r.blockRow) {
+		return false
+	}
+	bi := r.blockOf[line]
+	return r.blocks[bi].From == from && r.blocks[bi].To == to && r.blockRow[bi] >= 0
 }

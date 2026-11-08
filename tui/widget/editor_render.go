@@ -238,22 +238,45 @@ func tabAware(measure func(string) int) func(string) int {
 func (e *Editor) renderRendered(s tui.Surface, m rowMap) {
 	sz := s.Size()
 	l, c, r := &e.cells, e.core, m.r
-	first := r.firstRow(l.top) + l.topIn
+	first := r.topRow(l.top) + l.topIn
+	shown := map[int][2]int{} // each wide block's first and last row on the view, for its marks
 	for y := 0; y < sz.H && first+y < len(r.rows); y++ {
-		x := 0
-		for _, cl := range r.rows[first+y].Cells {
+		ri := first + y
+		bi := r.rowBlock[ri]
+		x0, w := m.content(bi)
+		off, cx := m.panOf(bi), 0
+		for _, cl := range r.rows[ri].Cells {
+			cw := max(cl.W, 1)
+			x := x0 + cx - off
+			if cx += cw; x < x0 {
+				continue // panned off to the left: a wide cluster cut there too
+			}
+			if x >= sz.W || (m.maxPan(bi) > 0 && x+cw > x0+w) {
+				break // past the room, or a wide block's right edge column
+			}
 			st := cl.Style
 			if cl.Line >= 0 && c.Highlighted(cl.Line, cl.Col, e.focused()) {
 				st = l.styles.Selection.Inherit(st)
 			}
-			if x >= sz.W {
-				break
-			}
 			s.SetCell(x, y, cl.Text, st)
-			x += max(cl.W, 1)
+		}
+		if m.maxPan(bi) > 0 {
+			ys, ok := shown[bi]
+			if !ok {
+				ys[0] = y
+			}
+			ys[1] = y
+			shown[bi] = ys
 		}
 	}
-	if m.scrollable() {
+	th := e.cellTheme()
+	mark := th.Syntax[MarkdownQuietStyle].Inherit(th.Text)
+	for bi, ys := range shown {
+		if x0, w := m.content(bi); x0 > 0 { // a room too narrow for its edge columns has no marks
+			PaintPanMarks(s, x0-1, x0+w, (ys[0]+ys[1])/2, m.panOf(bi), m.maxPan(bi), mark)
+		}
+	}
+	if m.scrollable() && m.width() < sz.W { // only in the column the layout left it: a one-cell view is all text
 		paintScrollIndicator(s, sz.W-1, sz.H, first, max(len(r.rows)-sz.H, 0))
 	}
 }
@@ -262,7 +285,7 @@ func (e *Editor) renderRendered(s tui.Surface, m rowMap) {
 // an unnumbered one (a box's rule); the cursor's line in the text's colour.
 func (e *Editor) renderRenderedGutter(s tui.Surface, r *renderedLayout, dim style.Style) {
 	l, b := &e.cells, &e.core.buf
-	first := r.firstRow(l.top) + l.topIn
+	first := r.topRow(l.top) + l.topIn
 	for y := 0; y < s.Size().H && first+y < len(r.rows); y++ {
 		ri := first + y
 		ln := r.lineOfRow(ri)
