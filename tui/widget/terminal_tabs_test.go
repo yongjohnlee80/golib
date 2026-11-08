@@ -52,7 +52,7 @@ func TestTerminalTabsCreateSelectAndHideNeverStartOrReplaceInstances(t *testing.
 		if err := tabs.Start(b); err != nil {
 			t.Error(err)
 		}
-		if !tabs.ctx.FocusWithin(pickTerminal(tabs, b)) {
+		if !tabs.Context().FocusWithin(pickTerminal(tabs, b)) {
 			t.Error("selection focus escaped its parent")
 		}
 		switcher.Select(1)
@@ -111,7 +111,7 @@ func TestTerminalTabsRemovalRetainsErrorsAndRejectsClosingAndStaleTargets(t *tes
 		if err := tabs.Select(a); err != nil {
 			t.Error(err)
 		}
-		if tabs.ctx.FocusWithin(pickTerminal(tabs, a)) {
+		if tabs.Context().FocusWithin(pickTerminal(tabs, a)) {
 			t.Error("closing process still receives input focus")
 		}
 	})
@@ -288,17 +288,17 @@ func TestTerminalTabsKeyboardSelectionAndFailedStartAreExplicit(t *testing.T) {
 	h := startAppInternal(t, tabs, 40, 8)
 	defer h.stopInternal()
 	h.onLoopInternal(func() {
-		tabs.ctx.RequestFocus()
+		tabs.Context().RequestFocus()
 		tabs.HandleEvent(tui.KeyEvent{Kind: tui.KeyPress, Code: tui.KeyPageDown, Mods: tui.ModCtrl})
 		if tabs.Active() != b {
 			t.Error("subtree next did not change selection")
 		}
-		tabs.ctx.RequestFocus()
+		tabs.Context().RequestFocus()
 		tabs.HandleEvent(tui.KeyEvent{Kind: tui.KeyPress, Code: tui.KeyLeft})
 		if tabs.Active() != a || starts != 0 {
 			t.Error("bar navigation started a process")
 		}
-		tabs.ctx.RequestFocus()
+		tabs.Context().RequestFocus()
 		tabs.HandleEvent(tui.KeyEvent{Kind: tui.KeyPress, Code: '+', Text: "+"})
 		if adds != 1 {
 			t.Error("keyboard plus did not request addition")
