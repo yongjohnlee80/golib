@@ -1,7 +1,9 @@
 package widget
 
 import (
+	"cmp"
 	"context"
+	"slices"
 	"strings"
 	"sync"
 	"testing"
@@ -42,8 +44,9 @@ type heldLay struct {
 
 // heldPicture is a source's answer: pic, once done is closed.
 type heldPicture struct {
-	done chan struct{}
-	pic  CellPicture
+	done   chan struct{}
+	pic    CellPicture
+	closed bool
 }
 
 func newHeldLay() *heldLay {
@@ -62,8 +65,24 @@ func (l *heldLay) of(src string) *heldPicture {
 // answer releases src's requests with pic.
 func (l *heldLay) answer(src string, pic CellPicture) {
 	h := l.of(src)
-	h.pic = pic
-	close(h.done)
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	if !h.closed {
+		h.pic, h.closed = pic, true
+		close(h.done)
+	}
+}
+
+// releaseAll answers every request still held (with no picture), so no task outlives its test.
+func (l *heldLay) releaseAll() {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	for _, h := range l.held {
+		if !h.closed {
+			h.closed = true
+			close(h.done)
+		}
+	}
 }
 
 func (l *heldLay) lay(ctx context.Context, _, src string, _ func(string) int, _ int, _ SyntaxStyles) (CellPicture, error) {
@@ -75,6 +94,9 @@ func (l *heldLay) lay(ctx context.Context, _, src string, _ func(string) int, _ 
 	case <-h.done:
 	}
 	<-h.done // answers even when cancelled: a late result the Editor must not take
+	if h.pic == nil {
+		return nil, ErrNoCellPicture // released by releaseAll: no picture
+	}
 	return h.pic, nil
 }
 
@@ -101,6 +123,7 @@ func pictureEditor(t *testing.T, text string, lay *heldLay, w, h int) (*Editor, 
 	e.SetView(ViewRendered)
 	ih := startAppInternal(t, e, w, h)
 	t.Cleanup(ih.stopInternal)
+	t.Cleanup(lay.releaseAll) // runs first (cleanups run last-in first-out): the App stops with no task held
 	ih.syncInternal()
 	return e, ih
 }
@@ -231,5 +254,63 @@ func TestAPicturesFenceIsOneVisibleFold(t *testing.T) {
 	})
 	if v != doc {
 		t.Errorf("u after dd: %q, want the note back", v)
+	}
+}
+
+// An edit touching a fence whose picture is laying stops the request (its late answer is not
+// taken), and the edited fence asks again once it is drawn rendered.
+func TestAnEditStopsItsFencesPicture(t *testing.T) {
+	lay := newHeldLay()
+	e, ih := pictureEditor(t, "```mermaid\nA\n```\nafter", lay, 40, 10)
+	lay.await(t, lay.started, "A", "request")
+	key := func(c rune) { e.Core().HandleKey(tui.KeyEvent{Kind: tui.KeyPress, Code: c}) }
+	ih.onLoopInternal(func() {
+		e.Core().SetLine(1, 0)
+		key('i')
+		key('X') // typing in the fence: its block is its source, so no picture is asked for
+	})
+	lay.await(t, lay.cancelled, "A", "stop on an edit")
+	lay.answer("A", rowsPicture{"AAAA"}) // A's late answer
+	ih.onLoopInternal(func() { e.Core().HandleKey(tui.KeyEvent{Kind: tui.KeyPress, Code: tui.KeyEscape}) })
+	lay.await(t, lay.started, "XA", "request of the edited fence")
+	ih.syncInternal()
+	if g := ih.tb.String(); strings.Contains(g, "AAAA") {
+		t.Fatalf("the edited fence drawn with its old source's picture:\n%s", g)
+	}
+	lay.answer("XA", rowsPicture{"XXXX"})
+	waitGrid(t, ih, "the edited fence's picture", func(g string) bool { return strings.Contains(g, "XXXX") })
+}
+
+// Two pictures arriving before one layout: whether the cursor was on the view is taken before the
+// first changes the rows, and kept through the second, so the cursor is revealed though the second
+// arrives when the rows under the view have changed and it is off it.
+func TestPicturesArrivingTogetherKeepTheReveal(t *testing.T) {
+	src := strings.Repeat("x ", 300)
+	doc := "```mermaid\n" + src + "\n```\nmid\n```mermaid\nB\n```\nafter" + strings.Repeat("\nline", 20)
+	lay := newHeldLay()
+	e, ih := pictureEditor(t, doc, lay, 40, 10)
+	lay.await(t, lay.started, src, "request")
+	lay.await(t, lay.started, "B", "request")
+	ih.onLoopInternal(func() { e.Core().SetLine(1, 590) }) // the cursor deep in the long source, on the view
+	ih.syncInternal()
+	ih.onLoopInternal(func() {
+		// every pending request answered at once, before a layout: the long fence's first (it changes
+		// the rows under the cursor), then the rest
+		var ats []pictureAt
+		for at, s := range e.pics {
+			if s.pending {
+				ats = append(ats, at)
+			}
+		}
+		slices.SortFunc(ats, func(a, b pictureAt) int { return cmp.Or(a.from-b.from, a.cols-b.cols) })
+		for _, at := range ats {
+			e.pictureDone(tui.TaskResult{ID: e.pics[at].task, Value: rowsPicture{"PIC0", "PIC1"}})
+		}
+	})
+	ih.syncInternal()
+	var ok bool
+	ih.onLoopInternal(func() { _, _, ok = e.Cursor() })
+	if !ok {
+		t.Errorf("two pictures before one layout: the cursor, on the view before them, is off it after:\n%s", ih.tb.String())
 	}
 }

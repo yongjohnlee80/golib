@@ -42,6 +42,7 @@ type pictureSlot struct {
 	task    tui.TaskID
 	pending bool
 	stop    context.CancelFunc
+	to      int         // past the block's last line when it was asked for: an edit before it touches it
 	pic     CellPicture // the last laid: shown while the next lays
 	failed  bool        // the key's lay failed: no picture
 }
@@ -69,7 +70,7 @@ func (e *Editor) Picture(b Block, lang, src string, cols int) (CellPicture, bool
 		if s.stop != nil {
 			s.stop()
 		}
-		s.key, s.failed, s.pending = k, false, true
+		s.key, s.failed, s.pending, s.to = k, false, true, b.To
 		policy := ctx.WidthPolicy() // measured off the loop as the loop measures
 		measure := func(t string) int { return tui.StringWidthPolicy(t, policy) }
 		lay := e.layPicture
@@ -95,14 +96,16 @@ func (e *Editor) pictureDone(r tui.TaskResult) bool {
 		if !s.pending || s.task != r.ID {
 			continue
 		}
+		if e.picLaid == e.picGen { // the first picture since the view was laid: is the cursor on it, before the rows change?
+			_, _, e.picReveal = e.Cursor()
+		}
 		s.pending, s.stop = false, nil
 		if p, ok := r.Value.(CellPicture); ok && r.Err == nil {
 			s.pic = p
 		} else {
 			s.failed = true
 		}
-		_, _, e.picReveal = e.Cursor() // the cursor on the view now: on it after the rows change too
-		e.picGen++                     // a key of the layout: its blocks are laid again with it
+		e.picGen++ // a key of the layout: its blocks are laid again with it
 		return true
 	}
 	return false
@@ -118,6 +121,20 @@ func (e *Editor) dropPictures() {
 	}
 	e.pics = nil
 	e.picGen++
+}
+
+// picturesTouched stops the requests an edit from line from touches, those of a block ending after
+// it (its source changed, or its place): their results are not taken, and the block asks again when
+// it is laid rendered.
+func (e *Editor) picturesTouched(from int) {
+	for _, s := range e.pics {
+		if s.pending && s.to > from {
+			if s.stop != nil {
+				s.stop()
+			}
+			s.pending, s.stop, s.key = false, nil, pictureKey{}
+		}
+	}
 }
 
 // picturesOfShownBuffer drops the slots when another buffer is shown: a picture, and a request in
