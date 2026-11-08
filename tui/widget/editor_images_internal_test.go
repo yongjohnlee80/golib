@@ -147,7 +147,9 @@ func TestAnImageScrolledPartlyOffIsCropped(t *testing.T) {
 // heldImages is a resolver of each note's images: p.png the note's own picture, at once; s.png held
 // for note A until released (a load still running when the note is switched), at once for B.
 type heldImages struct {
-	note    atomic.Value // "A" or "B": the note shown, read when a load starts
+	note    atomic.Value  // "A" or "B": the note shown, read when a load starts
+	started chan struct{} // closed when note A's s.png load is in the resolver
+	once    sync.Once
 	release chan struct{}
 	pngs    map[string]string // note + src → the PNG's data: URI
 }
@@ -155,6 +157,7 @@ type heldImages struct {
 func (h *heldImages) resolve(ctx context.Context, src string) (io.ReadCloser, error) {
 	note := h.note.Load().(string)
 	if note == "A" && src == "s.png" {
+		h.once.Do(func() { close(h.started) })
 		select {
 		case <-h.release:
 		case <-ctx.Done():
@@ -173,7 +176,7 @@ func (h *heldImages) resolve(ctx context.Context, src string) (io.ReadCloser, er
 // again (another note's p.png is another file), and a load of the first note's still running when
 // it was switched, answered late, places nothing: only the shown note's images are placed.
 func TestAnImageIsItsBuffersOwn(t *testing.T) {
-	h := &heldImages{release: make(chan struct{}), pngs: map[string]string{
+	h := &heldImages{started: make(chan struct{}), release: make(chan struct{}), pngs: map[string]string{
 		"Ap.png": pngURI(t, 80, 32), // 10 × 2
 		"As.png": pngURI(t, 80, 64), // 10 × 4
 		"Bp.png": pngURI(t, 40, 48), // 5 × 3
@@ -189,7 +192,27 @@ func TestAnImageIsItsBuffersOwn(t *testing.T) {
 		pl := onlyPlacement(imgs)
 		return len(imgs) == 1 && pl.Cols == 10 && pl.Rows == 2 && strings.Contains(sc, "note A")
 	})
+	select { // note A's s.png is loading: its load runs on across the switch
+	case <-h.started:
+	case <-time.After(5 * time.Second):
+		t.Fatal("note A's s.png never began to load")
+	}
+	stale := make(chan struct{})
 	r.onLoop(func() {
+		var id tui.TaskID
+		for tid, src := range r.e.imgs.Tasks() {
+			if src == "s.png" {
+				id = tid
+			}
+		}
+		if id == 0 {
+			t.Error("no load of note A's s.png in flight")
+		}
+		r.e.taskDone = func(res tui.TaskResult) {
+			if res.ID == id {
+				close(stale)
+			}
+		}
 		h.note.Store("B")
 		r.e.Core().SetBuffer(NewBuffer(BufferText(note("B"))))
 	})
@@ -203,9 +226,14 @@ func TestAnImageIsItsBuffersOwn(t *testing.T) {
 	}
 	r.waitFor("note B's own pictures", only)
 	once.Do(func() { close(h.release) }) // note A's s.png answers now
-	time.Sleep(50 * time.Millisecond)
-	r.onLoop(func() {})
-	r.onLoop(func() {})
+	select {                             // its result taken by the Editor
+	case <-stale:
+	case <-time.After(5 * time.Second):
+		t.Fatal("note A's late load never came back")
+	}
+	flushes := r.tb.Flushes()
+	r.onLoop(func() { r.e.MarkDirty() }) // a frame painted after the late result was handled
+	r.waitFor("a frame after the late load", func(string, map[uint32]tui.ImagePlacement) bool { return r.tb.Flushes() > flushes })
 	if sc, imgs := r.tb.String(), r.tb.Images(); !only(sc, imgs) {
 		t.Fatalf("after note A's late load: images %+v, want only note B's (5 × 3 and 2 × 1):\n%s", imgs, sc)
 	}

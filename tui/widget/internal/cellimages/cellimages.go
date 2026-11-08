@@ -121,6 +121,15 @@ func (m *Loader) Entry(src string) *Image {
 	return e
 }
 
+// Tasks is the loads in flight, each one's src by its task (a copy).
+func (m *Loader) Tasks() map[tui.TaskID]string {
+	out := make(map[tui.TaskID]string, len(m.tasks))
+	for id, src := range m.tasks {
+		out[id] = src
+	}
+	return out
+}
+
 // Reset drops every image and every load in flight: another resolver reads a src as another file.
 func (m *Loader) Reset() {
 	m.entries = map[string]*Image{}
