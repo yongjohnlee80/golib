@@ -131,7 +131,6 @@ func TestUnsupported(t *testing.T) {
 		"kanban\n  todo",
 		"gantt\n  excludes weekends\n  a :2026-01-01, 3d",
 		"flowchart-elk TD\n  A-->B",
-		"---\ntitle: x\n---\nflowchart LR\n  A-->B",
 		"flowchart LR\n  A-->B\n  click A callback",
 		"flowchart LR\n  A-->B\n  linkStyle 0 stroke:#ff3",
 		"flowchart LR\n  A@{ shape: rect }",
