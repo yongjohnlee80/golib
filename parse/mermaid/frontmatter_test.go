@@ -83,11 +83,13 @@ func TestAFrontMattersErrorsKeepTheirLines(t *testing.T) {
 	}
 }
 
-// A title that is no YAML scalar (a quote left open, an escape YAML doesn't have, text after the
-// closing quote) is a SyntaxError at its line; one longer than MaxLabel is ErrTooLarge at its line,
-// as a label in the diagram's body is, and one MaxLabel long is read.
+// A title that is no YAML scalar (a quote left open, an escape YAML doesn't have or a \u or \U one
+// that is no Unicode scalar value, text after the closing quote) is a SyntaxError at its line; one
+// longer than MaxLabel as written, its quotes and escapes counted and a comment after it not, is
+// ErrTooLarge at its line, as a label in the diagram's body is, and one MaxLabel long is read.
 func TestAFrontMatterTitleIsAScalarOfALabelsLength(t *testing.T) {
-	for _, title := range []string{`"open`, `'open`, `"bad \q escape"`, `"Plan" trailing`, `'Plan' trailing`} {
+	for _, title := range []string{`"open`, `'open`, `"bad \q escape"`, `"Plan" trailing`, `'Plan' trailing`,
+		`"\uD800"`, `"\uDFFF"`, `"\U00110000"`, `"\UFFFFFFFF"`} {
 		_, err := mermaid.Parse("---\nconfig:\n  theme: base\ntitle: " + title + "\n---\nflowchart LR\n  A --> B")
 		var se *mermaid.SyntaxError
 		if !errors.As(err, &se) || se.Line != 4 {
@@ -103,5 +105,39 @@ func TestAFrontMatterTitleIsAScalarOfALabelsLength(t *testing.T) {
 	d, err := mermaid.Parse("---\ntitle: " + long[1:] + "\n---\nflowchart LR\n  A --> B")
 	if err != nil || len(mermaid.TitleOf(d)) != mermaid.MaxLabel {
 		t.Errorf("a title of MaxLabel bytes: %v; want it read", err)
+	}
+	// a \u escape that is a scalar value is read, U+FFFD's own and the last one's included
+	for title, want := range map[string]string{`"\uFFFD"`: "\uFFFD", `"\U0010FFFF"`: "\U0010FFFF", `"\u00e9t\u00e9"`: "été"} {
+		d, err := mermaid.Parse("---\ntitle: " + title + "\n---\nflowchart LR\n  A --> B")
+		if err != nil || mermaid.TitleOf(d) != want {
+			t.Errorf("title: %s: %q, %v; want %q", title, mermaid.TitleOf(d), err, want)
+		}
+	}
+	// the bound is on the title as written: a quoted one's quotes and escapes count, a comment after
+	// it doesn't
+	x := func(n int) string { return strings.Repeat("x", n) }
+	esc := func(n int) string { return strings.Repeat(`\u0041`, n) }
+	for _, c := range []struct {
+		title string
+		read  string // "" for ErrTooLarge
+	}{
+		{`"` + x(mermaid.MaxLabel-2) + `"`, x(mermaid.MaxLabel - 2)},
+		{`"` + x(mermaid.MaxLabel-1) + `"`, ""},
+		{`'` + x(mermaid.MaxLabel-2) + `'`, x(mermaid.MaxLabel - 2)},
+		{`'` + x(mermaid.MaxLabel-1) + `'`, ""},
+		{`"` + esc(170) + "xx" + `"`, strings.Repeat("A", 170) + "xx"}, // 1024 written
+		{`"` + esc(170) + "xxx" + `"`, ""},                             // 1025 written, 173 read
+		{`"` + esc(200) + `"`, ""},                                     // 1202 written, 200 read
+		{`"` + x(mermaid.MaxLabel-2) + `"  # a comment after it`, x(mermaid.MaxLabel - 2)},
+		{x(mermaid.MaxLabel) + " # a comment after it", x(mermaid.MaxLabel)},
+	} {
+		d, err := mermaid.Parse("---\ntitle: " + c.title + "\n---\nflowchart LR\n  A --> B")
+		var nd *mermaid.NotDrawnError
+		switch {
+		case c.read == "" && (!errors.As(err, &nd) || !errors.Is(err, mermaid.ErrTooLarge) || nd.Line != 2):
+			t.Errorf("a title of %d bytes as written: %v; want ErrTooLarge at its line, 2", len(c.title), err)
+		case c.read != "" && (err != nil || mermaid.TitleOf(d) != c.read):
+			t.Errorf("a title of %d bytes as written: %v; want it read as %d bytes", len(c.title), err, len(c.read))
+		}
 	}
 }
