@@ -276,7 +276,7 @@ func (e *Editor) renderRendered(s tui.Surface, m rowMap) {
 			PaintPanMarks(s, x0-1, x0+w, (ys[0]+ys[1])/2, m.panOf(bi), m.maxPan(bi), mark)
 		}
 	}
-	if m.scrollable() {
+	if m.scrollable() && m.width() < sz.W { // only in the column the layout left it: a one-cell view is all text
 		paintScrollIndicator(s, sz.W-1, sz.H, first, max(len(r.rows)-sz.H, 0))
 	}
 }
