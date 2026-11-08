@@ -160,11 +160,11 @@ var (
 type TabSpan struct{ X, W int }
 
 // TabSpans are the tabs' labels on the bar, in order, where a press selects them.
-func (t *Tabs) TabSpans() []TabSpan { return t.strip.spans() }
+func (t *Tabs) TabSpans() []TabSpan { return t.strip.Spans() }
 
 // ActiveTabIndex is the active tab's place among TabSpans, -1 when it is not shown: with the bar
 // overflowing, the spans hold the tabs in view and the < and > around them, so it is not Active.
-func (t *Tabs) ActiveTabIndex() int { return t.strip.activeIndex() }
+func (t *Tabs) ActiveTabIndex() int { return t.strip.ActiveIndex() }
 
 // TabSpanner is a tab strip as a native painter reads it: the stretches its row draws (TabSpans)
 // and the active tab's place among them (-1 when it is not shown). Tabs, TabStrip and TerminalTabs
@@ -194,14 +194,14 @@ var (
 // SetWindowButtons shows _, + and x at the bar's right end, side by side as the title bar's, or takes
 // them off (the default, none): a panel's own minimize, maximize and close. A press runs SetOnWindowButton's function with the control's
 // WindowOperation.
-func (t *Tabs) SetWindowButtons(on bool) { t.strip.setWindowButtons(on) }
+func (t *Tabs) SetWindowButtons(on bool) { t.strip.SetWindowButtons(on) }
 
 // SetOnWindowButton is what a press on a window control does (SetWindowButtons): fn with its
 // operation, WindowMinimize, WindowMaximize or WindowClose. nil does nothing.
-func (t *Tabs) SetOnWindowButton(fn func(WindowOperation)) { t.strip.onWindow = fn }
+func (t *Tabs) SetOnWindowButton(fn func(WindowOperation)) { t.strip.OnWindow = fn }
 
 // TabWindowControls are the window controls on the bar, as drawn now.
-func (t *Tabs) TabWindowControls() []TabControl { return t.strip.controlSpans() }
+func (t *Tabs) TabWindowControls() []TabControl { return t.strip.ControlSpans() }
 
 var (
 	_ TabSpanner = (*Tabs)(nil)

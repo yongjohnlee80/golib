@@ -299,8 +299,8 @@ func (t *Tiles) Init(ctx *tui.Context) {
 	ctx.Mount(t.preview) // after the tiles: a parent renders before its children, the last child last
 }
 
-// listChildren is the focus walk's view: only the tiles on screen.
-func (t *Tiles) listChildren() []tui.Component {
+// ListChildren is the focus walk's view: only the tiles on screen.
+func (t *Tiles) ListChildren() []tui.Component {
 	var out []tui.Component
 	for _, tile := range t.tiles {
 		if tile.mod != nil && t.shown(tile) {

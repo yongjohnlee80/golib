@@ -29,7 +29,7 @@ type StripTab struct {
 // shows.
 type TabStrip struct {
 	Base
-	core     tabStrip
+	core     StripCore
 	tabs     []StripTab
 	active   string
 	onSelect func(id string)
@@ -59,12 +59,12 @@ func (t *TabStrip) BarColor() (color.NRGBA, bool) {
 // NewTabStrip is an empty strip.
 func NewTabStrip() *TabStrip {
 	t := &TabStrip{}
-	t.core = tabStrip{base: &t.Base, anchor: t, layer: "tabstrip", owner: t}
-	t.core.bar, t.core.tab, t.core.selected = kit.DefaultTabsStyles()
+	t.core = StripCore{OwnerBase: &t.Base, Anchor: t, Layer: "tabstrip", Owner: t}
+	t.core.Bar, t.core.Tab, t.core.Selected = kit.DefaultTabsStyles()
 	return t
 }
 
-func (t *TabStrip) stripTabs() []kit.StripTab {
+func (t *TabStrip) StripTabs() []kit.StripTab {
 	out := make([]kit.StripTab, len(t.tabs))
 	for i, tb := range t.tabs {
 		out[i] = kit.StripTab{ID: tb.ID, Label: kit.CellLabel(tb.Label)}
@@ -72,8 +72,8 @@ func (t *TabStrip) stripTabs() []kit.StripTab {
 	return out
 }
 
-func (t *TabStrip) stripActive() string   { return t.active }
-func (t *TabStrip) stripChoose(id string) { t.choose(id) }
+func (t *TabStrip) StripActive() string   { return t.active }
+func (t *TabStrip) StripChoose(id string) { t.choose(id) }
 
 // SetTabs replaces the tabs, in order. The active tab stays active if it is still among them.
 func (t *TabStrip) SetTabs(tabs []StripTab) {
@@ -104,7 +104,7 @@ func (t *TabStrip) Active() string { return t.active }
 
 // ActiveTabIndex is the active tab's place among TabSpans, or -1 when it is not shown (the
 // tabs overflow the strip, and it is out of the window).
-func (t *TabStrip) ActiveTabIndex() int { return t.core.activeIndex() }
+func (t *TabStrip) ActiveTabIndex() int { return t.core.ActiveIndex() }
 
 // SetMaxTabWidth caps a tab at cells, its padding included, its label's end cut to an ellipsis;
 // 0 for no cap. A strip narrower than its tabs scrolls them between < and >, whatever the cap.
@@ -128,7 +128,7 @@ func (t *TabStrip) SetOnSelect(fn func(id string)) { t.onSelect = fn }
 
 // SetActions sets + and the right-press menu to the host's callbacks, as TerminalTabs's do.
 func (t *TabStrip) SetActions(add func(), menu func(id string)) {
-	t.core.onAdd, t.core.onMenu = add, menu
+	t.core.OnAdd, t.core.OnMenu = add, menu
 	t.changed()
 }
 
@@ -144,26 +144,26 @@ func (t *TabStrip) SetOnClose(fn func(id string)) {
 // strip's blank (it needs an OverlayHost above it): build returns its rows for the tab it opens for
 // (the active one off a tab; "" with none). A row's action is a TabStripMenuAction. nil unsets it.
 func (t *TabStrip) SetMenu(build func(id string) []MenuItemModel) {
-	t.core.menuRows = build
+	t.core.MenuRows = build
 	t.changed()
 }
 
 // SetAddMenu makes + open a menu instead of SetActions' add callback; its rows' actions are
 // TabStripMenuActions, run with "". nil unsets it.
 func (t *TabStrip) SetAddMenu(build func() []MenuItemModel) {
-	t.core.addRows = build
+	t.core.AddRows = build
 	t.changed()
 }
 
 // MenuOpen reports whether the strip's own menu is showing.
-func (t *TabStrip) MenuOpen() bool { return t.core.menuOpen != nil }
+func (t *TabStrip) MenuOpen() bool { return t.core.MenuOpen != nil }
 
 // TabSpans are the tabs', +'s and ≡'s cells on the strip, in order.
-func (t *TabStrip) TabSpans() []TabSpan { return t.core.spans() }
+func (t *TabStrip) TabSpans() []TabSpan { return t.core.Spans() }
 
 // SetStyles sets the strip's looks: its blank, a tab, and the active tab.
 func (t *TabStrip) SetStyles(bar, tab, selected style.Style) {
-	t.core.bar, t.core.tab, t.core.selected = kit.TabsStyles(bar, tab, selected)
+	t.core.Bar, t.core.Tab, t.core.Selected = kit.TabsStyles(bar, tab, selected)
 	t.MarkDirty()
 }
 
@@ -203,14 +203,14 @@ func (t *TabStrip) Layout(c tui.Constraints) tui.Size {
 	}
 	sz := c.Constrain(tui.Size{W: w, H: 1})
 	if ctx := t.Context(); ctx != nil { // a measure before mount commits nothing
-		ctx.AfterLayout(kit.TabWindowCommitKey, func() { t.core.commitWindow(sz.W) })
+		ctx.AfterLayout(kit.TabWindowCommitKey, func() { t.core.CommitWindow(sz.W) })
 	}
 	return sz
 }
 
 func (t *TabStrip) Render(s tui.Surface) {
 	if w := s.Size().W; w > 0 && s.Size().H > 0 {
-		t.core.render(s, w)
+		t.core.Render(s, w)
 	}
 }
 
@@ -219,10 +219,10 @@ func (t *TabStrip) KeyScope() keymap.Scope { return TabStripScope }
 
 // KeyBindings is the strip's commands as m binds them (tui.KeyBinder).
 func (t *TabStrip) KeyBindings(m *keymap.Map) []keymap.Binding {
-	return tui.BindingsOf(m, tabStripCommands...)
+	return tui.BindingsOf(m, TabStripCommands...)
 }
 
 func (t *TabStrip) HandleEvent(ev tui.Event) bool {
 	e, ok := ev.(tui.MouseEvent)
-	return ok && e.Kind == tui.MousePress && e.Y == 0 && t.core.press(e)
+	return ok && e.Kind == tui.MousePress && e.Y == 0 && t.core.Press(e)
 }

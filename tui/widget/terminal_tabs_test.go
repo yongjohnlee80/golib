@@ -129,7 +129,7 @@ func TestTerminalTabsRemovalRetainsErrorsAndRejectsClosingAndStaleTargets(t *tes
 		if err := tabs.ForceRemove(a); err != nil {
 			t.Error(err)
 		}
-		if tabs.Active() != "" || len(tabs.listChildren()) != 0 {
+		if tabs.Active() != "" || len(tabs.ListChildren()) != 0 {
 			t.Error("last removal did not produce an empty container")
 		}
 		if err := tabs.SendText(a, "stale"); !errors.Is(err, ErrTerminalTabUnknown) {

@@ -65,10 +65,11 @@ func OwnerContext(o ContextOwner) *tui.Context {
 	return o.Context()
 }
 
-// childLister lets non-Container widgets expose their children to
-// focusFirst's walk (Split, Tabs).
-type childLister interface {
-	listChildren() []tui.Component
+// ChildLister lets non-Container widgets expose their children to
+// focusFirst's walk (Split, Tabs, Tiles, TerminalTabs). A composite of your own
+// that is not a Container lists its children with it, so focus can reach them.
+type ChildLister interface {
+	ListChildren() []tui.Component
 }
 
 // firstFocusable is the first component of c's subtree, in document order,
@@ -105,8 +106,8 @@ func firstFocusable(ctx *tui.Context, c tui.Component) tui.Component {
 // (which honours zoom and the active tab), a Container's, else the tree's.
 func childrenOf(ctx *tui.Context, c tui.Component) []tui.Component {
 	switch ct := c.(type) {
-	case childLister:
-		return ct.listChildren()
+	case ChildLister:
+		return ct.ListChildren()
 	case tui.Container:
 		var out []tui.Component
 		for ch := range ct.Children() {

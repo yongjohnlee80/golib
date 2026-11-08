@@ -15,35 +15,38 @@ import (
 // tabStrip is that row; its owner keeps the tabs and says which is active, and is told what the
 // user chose.
 
-// stripOwner is a strip's owner (TabStrip, TerminalTabs, Tabs): it keeps the tabs, says which is
-// active, and is told which one the user chose.
-type stripOwner interface {
-	stripTabs() []kit.StripTab // the tabs, in order
-	stripActive() string       // the active tab's id; "" for none
-	stripChoose(id string)     // a tab chosen by a click or a key
+// StripOwner is a strip's owner (TabStrip, TerminalTabs, Tabs): it keeps the tabs, says which is
+// active, and is told which one the user chose. golib's components draw through it; a widget outside golib rarely needs it.
+type StripOwner interface {
+	StripTabs() []kit.StripTab // the tabs, in order
+	StripActive() string       // the active tab's id; "" for none
+	StripChoose(id string)     // a tab chosen by a click or a key
 }
 
-// tabStrip is the strip's state and its drawing and input, shared by its owners.
-type tabStrip struct {
-	base   *Base        // the owner's: its context, measure and focus
-	anchor ContextOwner // the owner: what the menus open over
-	layer  string       // the menus' layer id prefix
+// StripCore is the strip Tabs, TabStrip and TerminalTabs share: its state, and its drawing and
+// input. golib's components draw through it; a widget outside golib rarely needs it. It is exported while TerminalTabs, a widget of the terminal's,
+// draws through it; once that draws through the public TabStrip it is unexported again, so a
+// widget outside golib should not build on it.
+type StripCore struct {
+	OwnerBase *Base        // the owner's: its context, measure and focus
+	Anchor    ContextOwner // the owner: what the menus open over
+	Layer     string       // the menus' layer id prefix
 
-	bar, tab, selected style.Style
+	Bar, Tab, Selected style.Style
 	markFocus          bool // the selected tab is underlined while the owner has focus (Tabs)
 
-	onAdd    func()
-	onMenu   func(id string)
+	OnAdd    func()
+	OnMenu   func(id string)
 	onClose  func(id string)                 // a tab's ×: nil draws none (TabStrip.SetOnClose)
-	menuRows func(id string) []MenuItemModel // the strip's own menu (SetMenu)
-	addRows  func() []MenuItemModel          // what + offers (SetAddMenu)
-	menuOpen *PopupLayer
+	MenuRows func(id string) []MenuItemModel // the strip's own menu (SetMenu)
+	AddRows  func() []MenuItemModel          // what + offers (SetAddMenu)
+	MenuOpen *PopupLayer
 	// windowOps are the window controls at the row's right end, in their order (SetWindowButtons):
 	// none by default; onWindow runs the one pressed
 	windowOps []WindowOperation
-	onWindow  func(WindowOperation)
+	OnWindow  func(WindowOperation)
 
-	owner stripOwner // keeps the tabs, says which is active, and is told what the user chose
+	Owner StripOwner // keeps the tabs, says which is active, and is told what the user chose
 
 	maxLabel int // a tab's widest, in cells, its padding included; 0 for no cap (TabStrip.SetMaxTabWidth)
 	// SetLabelFit's: the narrowest a tab is cut to, padding included, and the host's cut
@@ -60,22 +63,22 @@ type tabStrip struct {
 	revealedW int
 }
 
-// stripCell is a stretch of the row as drawn: what it is, the tab's id, its text, where it starts
-// and its width, in cells.
-type stripCell struct {
-	kind  kit.StripKind
+// StripCell is a stretch of the row as drawn: what it is, the tab's id, its text, where it starts
+// and its width, in cells. StripCore's Row answers them; golib's components draw through it; a widget outside golib rarely needs it.
+type StripCell struct {
+	Kind  kit.StripKind
 	id    string
-	label string
-	x, w  int
+	Label string
+	X, w  int
 	close bool            // a tab whose × is drawn whole: a press on it closes the tab
 	op    WindowOperation // a window control's
 }
 
-// stripAction is a strip menu row's action: what runs, with the tab the menu opened for; nil for a
-// row that runs nothing.
-type stripAction interface {
+// StripAction is a strip menu row's action: what runs, with the tab the menu opened for; nil for a
+// row that runs nothing. golib's components draw through it; a widget outside golib rarely needs it.
+type StripAction interface {
 	tui.Action
-	stripRun() func(id string)
+	StripRun() func(id string)
 }
 
 // TabStripMenuAction is a row of a TabStrip's menus: when the row is chosen, Run runs with the tab
@@ -88,24 +91,24 @@ type TabStripMenuAction struct {
 // ActionID implements tui.Action.
 func (a TabStripMenuAction) ActionID() tui.ActionID { return a.ID }
 
-func (a TabStripMenuAction) stripRun() func(string) { return a.Run }
+func (a TabStripMenuAction) StripRun() func(string) { return a.Run }
 
-func (s *tabStrip) hasMenu() bool { return s.menuRows != nil || s.onMenu != nil }
+func (s *StripCore) hasMenu() bool { return s.MenuRows != nil || s.OnMenu != nil }
 
 // menuShown is whether ≡ is on the strip: the strip's own menu always, with no tab too; the host's
 // callback only for a tab.
-func (s *tabStrip) menuShown() bool {
-	return s.menuRows != nil || s.onMenu != nil && s.owner.stripActive() != ""
+func (s *StripCore) menuShown() bool {
+	return s.MenuRows != nil || s.OnMenu != nil && s.Owner.StripActive() != ""
 }
 
-func (s *tabStrip) hasAdd() bool { return s.addRows != nil || s.onAdd != nil }
+func (s *StripCore) hasAdd() bool { return s.AddRows != nil || s.OnAdd != nil }
 
 // add is + chosen at at, in the owner's frame: SetAddMenu's menu, else the host's callback.
-func (s *tabStrip) add(at tui.Point) {
-	if s.addRows != nil {
-		s.popMenu("", s.addRows(), at)
-	} else if s.onAdd != nil {
-		s.onAdd()
+func (s *StripCore) add(at tui.Point) {
+	if s.AddRows != nil {
+		s.popMenu("", s.AddRows(), at)
+	} else if s.OnAdd != nil {
+		s.OnAdd()
 	}
 }
 
@@ -114,35 +117,35 @@ func (s *tabStrip) add(at tui.Point) {
 // the row right under the strip.
 func menuAt(x int) tui.Point { return tui.Point{X: x} }
 
-// openMenu opens the menu for tab id at at: SetMenu's, else the host's callback.
-func (s *tabStrip) openMenu(id string, at tui.Point) {
-	if s.menuRows == nil {
-		if s.onMenu != nil {
-			s.onMenu(id)
+// OpenMenu opens the menu for tab id at at: SetMenu's, else the host's callback.
+func (s *StripCore) OpenMenu(id string, at tui.Point) {
+	if s.MenuRows == nil {
+		if s.OnMenu != nil {
+			s.OnMenu(id)
 		}
 		return
 	}
-	s.popMenu(id, s.menuRows(id), at)
+	s.popMenu(id, s.MenuRows(id), at)
 }
 
 // popMenu shows items over the strip at at, a chosen row's action run with id once the menu has
 // gone: the menu's layer traps the input scope while it is open, and an action that acts on a
 // window around the strip (a Drawer's toggleMaximize) is refused inside it.
-func (s *tabStrip) popMenu(id string, items []MenuItemModel, at tui.Point) {
-	ctx := s.base.ctx
+func (s *StripCore) popMenu(id string, items []MenuItemModel, at tui.Point) {
+	ctx := s.OwnerBase.ctx
 	host, ok := kit.HostFor[PopupHost](ctx)
 	if !ok || len(items) == 0 {
 		return
 	}
-	s.closeMenu()
+	s.CloseMenu()
 	var layer *PopupLayer
 	var chosen func(string)
 	menu := NewMenu(WithMenuVimNavigation(true), WithActionExecutor(func(inv tui.ActionInvocation) bool {
-		act, ok := inv.Action.(stripAction)
-		if !ok || act.stripRun() == nil || layer == nil {
+		act, ok := inv.Action.(StripAction)
+		if !ok || act.StripRun() == nil || layer == nil {
 			return false
 		}
-		chosen = act.stripRun()
+		chosen = act.StripRun()
 		layer.RequestClose(DismissAccept)
 		return true
 	}))
@@ -150,9 +153,9 @@ func (s *tabStrip) popMenu(id string, items []MenuItemModel, at tui.Point) {
 		return
 	}
 	box := NewBox(menu, WithStyle(style.New().Background(style.TokenPanel)))
-	l, err := host.OpenPopupAt(LayerID(fmt.Sprintf("%s.menu.%d", s.layer, ctx.ID())), s.anchor, box, at, func(reason DismissReason) {
-		if s.menuOpen == layer {
-			s.menuOpen = nil
+	l, err := host.OpenPopupAt(LayerID(fmt.Sprintf("%s.menu.%d", s.Layer, ctx.ID())), s.Anchor, box, at, func(reason DismissReason) {
+		if s.MenuOpen == layer {
+			s.MenuOpen = nil
 		}
 		if run := chosen; run != nil && reason == DismissAccept {
 			chosen = nil
@@ -162,38 +165,39 @@ func (s *tabStrip) popMenu(id string, items []MenuItemModel, at tui.Point) {
 	if err != nil {
 		return
 	}
-	layer, s.menuOpen = l, l
+	layer, s.MenuOpen = l, l
 }
 
-func (s *tabStrip) closeMenu() {
-	if l := s.menuOpen; l != nil {
-		s.menuOpen = nil
+// CloseMenu closes the strip's menu, when one is open (OpenMenu), as the program closes it.
+func (s *StripCore) CloseMenu() {
+	if l := s.MenuOpen; l != nil {
+		s.MenuOpen = nil
 		l.Close(DismissProgrammatic)
 	}
 }
 
 // label is tb's label as drawn now: cut to the tabs' cap (capNow), after a × when the tabs close.
-func (s *tabStrip) label(tb kit.StripTab) string { return s.labelAt(tb, s.capNow()) }
+func (s *StripCore) label(tb kit.StripTab) string { return s.labelAt(tb, s.capNow()) }
 
 // capNow is a tab's widest now, its padding included: SetLabelFit's, as the tabs fit the row
 // (fitTabs), or SetMaxTabWidth's; 0 for none.
-func (s *tabStrip) capNow() int {
+func (s *StripCore) capNow() int {
 	if s.fit != nil {
-		return s.fitTabs(s.owner.stripTabs())
+		return s.fitTabs(s.Owner.StripTabs())
 	}
 	return s.maxLabel
 }
 
 // labelAt is tb's label cut to limit cells: by the host's fit (SetLabelFit), else its end cut to an
 // ellipsis; then after a × when the tabs close (onClose), outside the limit.
-func (s *tabStrip) labelAt(tb kit.StripTab, limit int) string {
+func (s *StripCore) labelAt(tb kit.StripTab, limit int) string {
 	l := tb.Label
-	if limit > 0 && s.base.Measure(l) > limit {
+	if limit > 0 && s.OwnerBase.Measure(l) > limit {
 		if s.fit != nil {
 			l = kit.CellLabel(s.fit(tb.ID, limit-2)) // 2: the padding
 		}
-		if s.base.Measure(l) > limit { // no fit, or one wider than asked
-			l = kit.Truncate(strings.TrimRight(l, " "), limit-1, s.base.Measure) + " "
+		if s.OwnerBase.Measure(l) > limit { // no fit, or one wider than asked
+			l = kit.Truncate(strings.TrimRight(l, " "), limit-1, s.OwnerBase.Measure) + " "
 		}
 	}
 	if s.onClose != nil {
@@ -204,17 +208,17 @@ func (s *tabStrip) labelAt(tb kit.StripTab, limit int) string {
 
 // fitTabs is the cap SetLabelFit's tabs take in avail cells: none while they all fit whole, else the
 // widest at which they do, never under fitMin; fitMin when even that does not, and they scroll.
-func (s *tabStrip) fitTabs(tabs []kit.StripTab) int {
+func (s *StripCore) fitTabs(tabs []kit.StripTab) int {
 	if s.avail <= 0 || len(tabs) == 0 {
 		return 0
 	}
 	mark := 0
 	if s.onClose != nil {
-		mark = s.base.Measure(closeMark)
+		mark = s.OwnerBase.Measure(closeMark)
 	}
 	full, widest := make([]int, len(tabs)), 0
 	for i, tb := range tabs {
-		full[i] = s.base.Measure(tb.Label)
+		full[i] = s.OwnerBase.Measure(tb.Label)
 		widest = max(widest, full[i])
 	}
 	fits := func(limit int) bool {
@@ -246,8 +250,8 @@ func (s *tabStrip) fitTabs(tabs []kit.StripTab) int {
 
 // closeShown is whether label, as drawn (cut at the window's edge or not), shows its × whole: a
 // tab cut to " …" has no × to press.
-func (s *tabStrip) closeShown(label string) bool {
-	return s.onClose != nil && strings.HasPrefix(label, closeMark) && s.base.Measure(label) > s.base.Measure(closeMark)
+func (s *StripCore) closeShown(label string) bool {
+	return s.onClose != nil && strings.HasPrefix(label, closeMark) && s.OwnerBase.Measure(label) > s.OwnerBase.Measure(closeMark)
 }
 
 // the strip's own glyphs: a tab's close mark, before its padded label (" × name "), the cells a
@@ -259,7 +263,7 @@ const (
 )
 
 // tail is the cells + and ≡ take at the row's end, each followed by a cell.
-func (s *tabStrip) tail() int {
+func (s *StripCore) tail() int {
 	w := 0
 	if s.hasAdd() {
 		w += 4
@@ -280,39 +284,39 @@ var stripControls = []WindowOperation{WindowMinimize, WindowMaximize, WindowClos
 
 // controlsWidth is the window controls' cells: a cell before them, then each side by side; none
 // without them.
-func (s *tabStrip) controlsWidth() int {
+func (s *StripCore) controlsWidth() int {
 	if len(s.windowOps) == 0 {
 		return 0
 	}
 	return 1 + stripControlCells*len(s.windowOps)
 }
 
-// setWindowButtons shows _, + and x at the row's right end, or none.
-func (s *tabStrip) setWindowButtons(on bool) {
+// SetWindowButtons shows _, + and x at the row's right end, or none.
+func (s *StripCore) SetWindowButtons(on bool) {
 	s.windowOps = nil
 	if on {
 		s.windowOps = slices.Clone(stripControls)
 	}
-	s.base.MarkDirty()
+	s.OwnerBase.MarkDirty()
 }
 
 // controlCells are the window controls from x at the earliest: right-aligned in the row as laid out
 // (avail), else after the rest of it.
-func (s *tabStrip) controlCells(x int) []stripCell {
+func (s *StripCore) controlCells(x int) []StripCell {
 	start := max(x, s.avail-s.controlsWidth()+1)
-	out := make([]stripCell, len(s.windowOps))
+	out := make([]StripCell, len(s.windowOps))
 	for i, op := range s.windowOps {
-		out[i] = stripCell{kind: kit.CellControl, op: op, label: " " + windowControlLabels[op] + " ", x: start + stripControlCells*i, w: stripControlCells}
+		out[i] = StripCell{Kind: kit.CellControl, op: op, Label: " " + windowControlLabels[op] + " ", X: start + stripControlCells*i, w: stripControlCells}
 	}
 	return out
 }
 
-// controlSpans are the window controls as a native painter reads them (TabWindowController).
-func (s *tabStrip) controlSpans() []TabControl {
+// ControlSpans are the window controls as a native painter reads them (TabWindowController).
+func (s *StripCore) ControlSpans() []TabControl {
 	var out []TabControl
-	for _, c := range s.row() {
-		if c.kind == kit.CellControl {
-			out = append(out, TabControl{X: c.x, W: c.w, Op: c.op})
+	for _, c := range s.Row() {
+		if c.Kind == kit.CellControl {
+			out = append(out, TabControl{X: c.X, W: c.w, Op: c.op})
 		}
 	}
 	return out
@@ -320,19 +324,19 @@ func (s *tabStrip) controlSpans() []TabControl {
 
 // width is the strip's natural width: every tab, + and ≡, each followed by a cell. A strip that
 // fits its tabs to its room (SetLabelFit) asks for them whole.
-func (s *tabStrip) width() int {
+func (s *StripCore) width() int {
 	limit := s.maxLabel
 	if s.fit != nil {
 		limit = 0
 	}
 	w := s.tail()
-	for _, tb := range s.owner.stripTabs() {
-		w += s.base.Measure(s.labelAt(tb, limit)) + 1
+	for _, tb := range s.Owner.StripTabs() {
+		w += s.OwnerBase.Measure(s.labelAt(tb, limit)) + 1
 	}
 	return max(w-1, 0)
 }
 
-// row is the strip as drawn in avail cells. When every tab fits, the tabs, then + and ≡. When they
+// Row is the strip as drawn in avail cells. When every tab fits, the tabs, then + and ≡. When they
 // do not, < and > hold a window of the tabs between them, from first, and + and ≡ keep their place
 // after: the window scrolls to show the active tab when it changes, and < and > scroll it freely.
 // A window that shows the last tab is packed against >: it starts no later than the first tab from
@@ -341,19 +345,19 @@ func (s *tabStrip) width() int {
 //
 // It is a read: Render, a press and the spans all draw it. The window it shows is view's, and is
 // stored only after layout (commitWindow) or by a scroll.
-func (s *tabStrip) row() []stripCell {
+func (s *StripCore) Row() []StripCell {
 	v := s.view()
 	tabs, labels, widths := v.tabs, v.labels, v.widths
-	var out []stripCell
+	var out []StripCell
 	x := 0
 	if !v.overflow {
 		for i, tb := range tabs {
-			out = append(out, stripCell{kind: kit.CellTab, id: tb.ID, label: labels[i], x: x, w: widths[i], close: s.closeShown(labels[i])})
+			out = append(out, StripCell{Kind: kit.CellTab, id: tb.ID, Label: labels[i], X: x, w: widths[i], close: s.closeShown(labels[i])})
 			x += widths[i] + 1
 		}
 	} else {
 		room, fit := v.room, fitFrom(widths, v.room)
-		out = append(out, stripCell{kind: kit.CellPrev, label: prevLabel, w: s.base.Measure(prevLabel)})
+		out = append(out, StripCell{Kind: kit.CellPrev, Label: prevLabel, w: s.OwnerBase.Measure(prevLabel)})
 		x = 4
 		end := x + room
 		if v.first == fit && fit > 0 {
@@ -362,8 +366,8 @@ func (s *tabStrip) row() []stripCell {
 				used += w + 1
 			}
 			if w := room - used - 1; w >= 2 { // the tab before, cut from its start, then a cell
-				label := ElideText(labels[fit-1], w, ElideLeft, s.base.Measure)
-				out = append(out, stripCell{kind: kit.CellTab, id: tabs[fit-1].ID, label: label, x: x, w: w, close: s.closeShown(label)})
+				label := ElideText(labels[fit-1], w, ElideLeft, s.OwnerBase.Measure)
+				out = append(out, StripCell{Kind: kit.CellTab, id: tabs[fit-1].ID, Label: label, X: x, w: w, close: s.closeShown(label)})
 				x += w + 1
 			}
 		}
@@ -371,21 +375,21 @@ func (s *tabStrip) row() []stripCell {
 			label, w := labels[i], widths[i]
 			if x+w > end { // the last one shown, cut at the window's edge
 				w = end - x
-				label = kit.Truncate(label, w, s.base.Measure)
+				label = kit.Truncate(label, w, s.OwnerBase.Measure)
 			}
-			out = append(out, stripCell{kind: kit.CellTab, id: tabs[i].ID, label: label, x: x, w: w, close: s.closeShown(label)})
+			out = append(out, StripCell{Kind: kit.CellTab, id: tabs[i].ID, Label: label, X: x, w: w, close: s.closeShown(label)})
 			x += w + 1
 		}
 		x = end + 1 // > keeps its place, however full the window
-		out = append(out, stripCell{kind: kit.CellNext, label: nextLabel, x: x, w: s.base.Measure(nextLabel)})
+		out = append(out, StripCell{Kind: kit.CellNext, Label: nextLabel, X: x, w: s.OwnerBase.Measure(nextLabel)})
 		x += 4
 	}
 	if s.hasAdd() {
-		out = append(out, stripCell{kind: kit.CellAdd, label: " + ", x: x, w: 3})
+		out = append(out, StripCell{Kind: kit.CellAdd, Label: " + ", X: x, w: 3})
 		x += 4
 	}
 	if s.menuShown() {
-		out = append(out, stripCell{kind: kit.CellMenu, label: " ≡ ", x: x, w: 3})
+		out = append(out, StripCell{Kind: kit.CellMenu, Label: " ≡ ", X: x, w: 3})
 		x += 4
 	}
 	return append(out, s.controlCells(x)...)
@@ -418,14 +422,14 @@ type stripView struct {
 }
 
 // view is the row as drawn now, from the stored window, storing nothing.
-func (s *tabStrip) view() stripView {
-	tabs := s.owner.stripTabs()
+func (s *StripCore) view() stripView {
+	tabs := s.Owner.StripTabs()
 	limit := s.capNow()
 	v := stripView{tabs: tabs, labels: make([]string, len(tabs)), widths: make([]int, len(tabs))}
 	natural := s.tail()
 	for i, tb := range tabs {
 		v.labels[i] = s.labelAt(tb, limit)
-		v.widths[i] = s.base.Measure(v.labels[i])
+		v.widths[i] = s.OwnerBase.Measure(v.labels[i])
 		natural += v.widths[i] + 1
 	}
 	if s.avail <= 0 || natural-1 <= s.avail || len(tabs) == 0 {
@@ -442,9 +446,9 @@ func (s *tabStrip) view() stripView {
 // edge would hide its end), and kept among the tabs: first is kept from layout to layout,
 // so a row grown wider, or tabs closed at the end, would leave it later than it need be, and the
 // cells it frees empty before >.
-func (s *tabStrip) window(tabs []kit.StripTab, widths []int, room int) (first int, revealed string, revealedW int) {
+func (s *StripCore) window(tabs []kit.StripTab, widths []int, room int) (first int, revealed string, revealedW int) {
 	first, revealed, revealedW = min(s.first, max(len(tabs)-1, 0)), s.revealed, s.revealedW
-	active := s.owner.stripActive()
+	active := s.Owner.StripActive()
 	at := slices.IndexFunc(tabs, func(tb kit.StripTab) bool { return tb.ID == active })
 	if active != revealed || (at >= 0 && widths[at] != revealedW) {
 		revealed = active
@@ -467,95 +471,95 @@ func (s *tabStrip) window(tabs []kit.StripTab, widths []int, room int) (first in
 	return min(first, fitFrom(widths, room)), revealed, revealedW
 }
 
-// commitWindow stores the window the row shows in avail cells: the strip's owner calls it after
+// CommitWindow stores the window the row shows in avail cells: the strip's owner calls it after
 // layout (tui.Context.AfterLayout), with the width it was laid out in.
-func (s *tabStrip) commitWindow(avail int) {
+func (s *StripCore) CommitWindow(avail int) {
 	s.avail = avail
 	v := s.view()
 	s.first, s.revealed, s.revealedW = v.first, v.revealed, v.revealedW
 }
 
 // scroll moves the window as shown by delta tabs, kept among them, and repaints.
-func (s *tabStrip) scroll(delta int) {
+func (s *StripCore) scroll(delta int) {
 	v := s.view()
 	s.first, s.revealed, s.revealedW = max(min(v.first+delta, len(v.tabs)-1), 0), v.revealed, v.revealedW
-	s.base.MarkDirty()
+	s.OwnerBase.MarkDirty()
 }
 
 // lastShown is whether the window shows the last tab.
-func (s *tabStrip) lastShown(row []stripCell) bool {
-	tabs := s.owner.stripTabs()
+func (s *StripCore) lastShown(row []StripCell) bool {
+	tabs := s.Owner.StripTabs()
 	for i := len(row) - 1; i >= 0; i-- {
-		if row[i].kind == kit.CellTab {
-			return len(tabs) > 0 && row[i].id == tabs[len(tabs)-1].ID && s.base.Measure(s.label(tabs[len(tabs)-1])) == row[i].w
+		if row[i].Kind == kit.CellTab {
+			return len(tabs) > 0 && row[i].id == tabs[len(tabs)-1].ID && s.OwnerBase.Measure(s.label(tabs[len(tabs)-1])) == row[i].w
 		}
 	}
 	return true
 }
 
-// addX is where + starts.
-func (s *tabStrip) addX() int {
-	for _, c := range s.row() {
-		if c.kind == kit.CellAdd {
-			return c.x
+// AddX is where + starts.
+func (s *StripCore) AddX() int {
+	for _, c := range s.Row() {
+		if c.Kind == kit.CellAdd {
+			return c.X
 		}
 	}
 	return 0
 }
 
-// tabX is where tab id's label starts; 0 when it is not shown.
-func (s *tabStrip) tabX(id string) int {
-	for _, c := range s.row() {
-		if c.kind == kit.CellTab && c.id == id {
-			return c.x
+// TabX is where tab id's label starts; 0 when it is not shown.
+func (s *StripCore) TabX(id string) int {
+	for _, c := range s.Row() {
+		if c.Kind == kit.CellTab && c.id == id {
+			return c.X
 		}
 	}
 	return 0
 }
 
 // tabIndex is the active tab's place among the tabs, or -1.
-func (s *tabStrip) tabIndex() int {
-	active := s.owner.stripActive()
-	return slices.IndexFunc(s.owner.stripTabs(), func(tb kit.StripTab) bool { return tb.ID == active })
+func (s *StripCore) tabIndex() int {
+	active := s.Owner.StripActive()
+	return slices.IndexFunc(s.Owner.StripTabs(), func(tb kit.StripTab) bool { return tb.ID == active })
 }
 
-// activeIndex is the active tab's place among the spans, or -1 when it is not shown.
-func (s *tabStrip) activeIndex() int {
-	active := s.owner.stripActive()
-	return slices.IndexFunc(s.row(), func(c stripCell) bool { return c.kind == kit.CellTab && c.id == active })
+// ActiveIndex is the active tab's place among the spans, or -1 when it is not shown.
+func (s *StripCore) ActiveIndex() int {
+	active := s.Owner.StripActive()
+	return slices.IndexFunc(s.Row(), func(c StripCell) bool { return c.Kind == kit.CellTab && c.id == active })
 }
 
-// spans are the row's stretches, in order: the tabs shown, < and > around them while they
+// Spans are the row's stretches, in order: the tabs shown, < and > around them while they
 // overflow, + and ≡.
-func (s *tabStrip) spans() []TabSpan {
+func (s *StripCore) Spans() []TabSpan {
 	var spans []TabSpan
-	for _, c := range s.row() {
-		if c.kind != kit.CellControl { // the window controls are their own (controlSpans), not tabs to box
-			spans = append(spans, TabSpan{X: c.x, W: c.w})
+	for _, c := range s.Row() {
+		if c.Kind != kit.CellControl { // the window controls are their own (controlSpans), not tabs to box
+			spans = append(spans, TabSpan{X: c.X, W: c.w})
 		}
 	}
 	return spans
 }
 
-// render draws the row on row 0 of sur, w cells wide.
-func (s *tabStrip) render(sur tui.Surface, w int) {
-	sur.Fill(tui.Rect{W: w, H: 1}, " ", s.bar)
-	active := s.owner.stripActive()
-	for _, c := range s.row() {
-		if c.x >= w {
+// Render draws the row on row 0 of sur, w cells wide.
+func (s *StripCore) Render(sur tui.Surface, w int) {
+	sur.Fill(tui.Rect{W: w, H: 1}, " ", s.Bar)
+	active := s.Owner.StripActive()
+	for _, c := range s.Row() {
+		if c.X >= w {
 			break
 		}
-		st := s.tab
-		if c.kind == kit.CellControl {
-			st = style.New().Foreground(windowControlTokens[c.op]).Inherit(s.bar)
+		st := s.Tab
+		if c.Kind == kit.CellControl {
+			st = style.New().Foreground(windowControlTokens[c.op]).Inherit(s.Bar)
 		}
-		if c.kind == kit.CellTab && c.id == active {
-			st = s.selected
-			if s.markFocus && s.base.Focused() {
+		if c.Kind == kit.CellTab && c.id == active {
+			st = s.Selected
+			if s.markFocus && s.OwnerBase.Focused() {
 				st = style.New().Underline(true).Inherit(st)
 			}
 		}
-		kit.DrawText(sur, c.x, 0, kit.Truncate(c.label, w-c.x, sur.StringWidth), st)
+		kit.DrawText(sur, c.X, 0, kit.Truncate(c.Label, w-c.X, sur.StringWidth), st)
 	}
 }
 
@@ -572,8 +576,8 @@ const (
 
 // keyOf is what e does to the strip (TabStripScope): + and Enter on the focused strip, when it has
 // something to add and a menu; Ctrl+PgUp/PgDn, and ←/→ and [/] on the focused strip, a step.
-func (s *tabStrip) keyOf(e tui.KeyEvent, focused, hasAdd, menuShown bool) stripKey {
-	cmd, ok := s.base.Context().KeyCommand(e, tabStripCommands...)
+func (s *StripCore) keyOf(e tui.KeyEvent, focused, hasAdd, menuShown bool) stripKey {
+	cmd, ok := s.OwnerBase.Context().KeyCommand(e, TabStripCommands...)
 	switch {
 	case !ok:
 		return stripNone
@@ -595,20 +599,20 @@ func (s *tabStrip) keyOf(e tui.KeyEvent, focused, hasAdd, menuShown bool) stripK
 	return stripNone
 }
 
-// key acts on the strip's keys.
-func (s *tabStrip) key(e tui.KeyEvent) bool {
-	k := s.keyOf(e, s.base.Focused(), s.hasAdd(), s.menuShown())
+// Key acts on the strip's keys.
+func (s *StripCore) Key(e tui.KeyEvent) bool {
+	k := s.keyOf(e, s.OwnerBase.Focused(), s.hasAdd(), s.menuShown())
 	switch k {
 	case stripNone:
 		return false
 	case stripAdd:
-		s.add(menuAt(s.addX()))
+		s.add(menuAt(s.AddX()))
 		return true
 	case stripMenu:
-		s.openMenu(s.owner.stripActive(), menuAt(s.tabX(s.owner.stripActive())))
+		s.OpenMenu(s.Owner.StripActive(), menuAt(s.TabX(s.Owner.StripActive())))
 		return true
 	}
-	tabs := s.owner.stripTabs()
+	tabs := s.Owner.StripTabs()
 	if len(tabs) == 0 {
 		return false
 	}
@@ -617,52 +621,52 @@ func (s *tabStrip) key(e tui.KeyEvent) bool {
 		delta = -1
 	}
 	if i := s.tabIndex(); i >= 0 {
-		s.owner.stripChoose(tabs[(i+delta+len(tabs))%len(tabs)].ID)
+		s.Owner.StripChoose(tabs[(i+delta+len(tabs))%len(tabs)].ID)
 		return true
 	}
 	return false
 }
 
-// press is a press on row 0 at x: a left press on a tab's × closes it (onClose), elsewhere on the
+// Press is a press on row 0 at x: a left press on a tab's × closes it (onClose), elsewhere on the
 // tab chooses it, and a right one opens its menu; ← and → scroll the window; + and ≡ open theirs;
 // a right press elsewhere on the row opens the strip's menu for the active tab, where it was.
-func (s *tabStrip) press(e tui.MouseEvent) bool {
-	row := s.row()
+func (s *StripCore) Press(e tui.MouseEvent) bool {
+	row := s.Row()
 	for _, c := range row {
-		if e.X < c.x || e.X >= c.x+c.w {
+		if e.X < c.X || e.X >= c.X+c.w {
 			continue
 		}
 		switch {
-		case c.kind == kit.CellTab && e.Button == tui.MouseLeft && c.close && e.X < c.x+s.base.Measure(closeMark):
+		case c.Kind == kit.CellTab && e.Button == tui.MouseLeft && c.close && e.X < c.X+s.OwnerBase.Measure(closeMark):
 			s.onClose(c.id) // the tab's ×: closed, not chosen
-		case c.kind == kit.CellTab && e.Button == tui.MouseLeft:
-			s.owner.stripChoose(c.id)
-		case c.kind == kit.CellTab && e.Button == tui.MouseRight && s.hasMenu():
-			s.openMenu(c.id, menuAt(e.X))
-		case c.kind == kit.CellTab:
-		case c.kind == kit.CellPrev && e.Button == tui.MouseLeft:
+		case c.Kind == kit.CellTab && e.Button == tui.MouseLeft:
+			s.Owner.StripChoose(c.id)
+		case c.Kind == kit.CellTab && e.Button == tui.MouseRight && s.hasMenu():
+			s.OpenMenu(c.id, menuAt(e.X))
+		case c.Kind == kit.CellTab:
+		case c.Kind == kit.CellPrev && e.Button == tui.MouseLeft:
 			if s.first > 0 {
 				s.scroll(-1)
 			}
-		case c.kind == kit.CellNext && e.Button == tui.MouseLeft:
+		case c.Kind == kit.CellNext && e.Button == tui.MouseLeft:
 			if !s.lastShown(row) {
 				s.scroll(1)
 			}
-		case c.kind == kit.CellAdd && e.Button == tui.MouseLeft:
-			s.add(menuAt(c.x))
-		case c.kind == kit.CellMenu && e.Button == tui.MouseLeft:
-			s.openMenu(s.owner.stripActive(), menuAt(c.x))
-		case c.kind == kit.CellControl && e.Button == tui.MouseLeft:
-			if s.onWindow != nil {
-				s.onWindow(c.op)
+		case c.Kind == kit.CellAdd && e.Button == tui.MouseLeft:
+			s.add(menuAt(c.X))
+		case c.Kind == kit.CellMenu && e.Button == tui.MouseLeft:
+			s.OpenMenu(s.Owner.StripActive(), menuAt(c.X))
+		case c.Kind == kit.CellControl && e.Button == tui.MouseLeft:
+			if s.OnWindow != nil {
+				s.OnWindow(c.op)
 			}
 		default:
 			continue
 		}
 		return true
 	}
-	if e.Button == tui.MouseRight && s.menuRows != nil {
-		s.openMenu(s.owner.stripActive(), menuAt(e.X))
+	if e.Button == tui.MouseRight && s.MenuRows != nil {
+		s.OpenMenu(s.Owner.StripActive(), menuAt(e.X))
 		return true
 	}
 	return false
