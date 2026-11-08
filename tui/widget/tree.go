@@ -1196,8 +1196,8 @@ func (t *Tree) Layout(c tui.Constraints) tui.Size {
 	if t.shown.Moved([2]int{t.cursor}, [2]int{t.h}) {
 		t.ensureVisible()
 	}
-	if t.selectionDue && t.ctx != nil {
-		t.ctx.AfterLayout(treeSelectionKey, t.noteSelection)
+	if t.selectionDue && t.Context() != nil {
+		t.Context().AfterLayout(treeSelectionKey, t.noteSelection)
 	}
 	return c.Constrain(tui.Size{W: t.w, H: t.h})
 }
