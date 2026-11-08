@@ -5,6 +5,7 @@ import (
 
 	"github.com/yongjohnlee80/golib/tui"
 	"github.com/yongjohnlee80/golib/tui/style"
+	"github.com/yongjohnlee80/golib/tui/widget/internal/kit"
 )
 
 // Progress Bar & Indeterminate Spinner Animation Architecture
@@ -75,7 +76,7 @@ type ProgressBar struct {
 	frames        []string // spinner frames; nil = sweeping block
 	interval      time.Duration
 	phase         int
-	anim          ticker
+	anim          kit.Ticker
 
 	filled style.Style
 	empty  style.Style
@@ -127,7 +128,7 @@ func NewProgressBar(opts ...ProgressBarOption) *ProgressBar {
 // state.
 func (p *ProgressBar) Init(ctx *tui.Context) {
 	p.Base.Init(ctx)
-	p.anim.forget()
+	p.anim.Forget()
 	if p.indeterminate {
 		p.startAnim()
 	}
@@ -154,13 +155,13 @@ func (p *ProgressBar) SetIndeterminate() {
 	p.MarkDirty()
 }
 
-func (p *ProgressBar) startAnim() { p.anim.start(p.ctx, p.interval) }
+func (p *ProgressBar) startAnim() { p.anim.Start(p.ctx, p.interval) }
 
-func (p *ProgressBar) stopAnim() { p.anim.halt() }
+func (p *ProgressBar) stopAnim() { p.anim.Halt() }
 
 // HandleEvent consumes this bar's animation ticks.
 func (p *ProgressBar) HandleEvent(ev tui.Event) bool {
-	if tickOf(ev, p.NodeID()) {
+	if kit.TickOf(ev, p.NodeID()) {
 		p.phase++
 		p.MarkDirty()
 		return true
@@ -173,7 +174,7 @@ func (p *ProgressBar) Layout(c tui.Constraints) tui.Size {
 	if p.frames != nil {
 		return c.Constrain(tui.Size{W: 1, H: 1})
 	}
-	return c.Constrain(tui.Size{W: boundedMax(c.MaxW, c.MinW), H: 1})
+	return c.Constrain(tui.Size{W: kit.BoundedMax(c.MaxW, c.MinW), H: 1})
 }
 
 // split is a determinate bar's fill in w cells: its full cells, and the eighths of the partial

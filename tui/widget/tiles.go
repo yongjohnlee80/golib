@@ -6,6 +6,7 @@ import (
 
 	"github.com/yongjohnlee80/golib/tui"
 	"github.com/yongjohnlee80/golib/tui/style"
+	"github.com/yongjohnlee80/golib/tui/widget/internal/kit"
 )
 
 // TILES — a container whose tiles share its whole rect, as a tiling window manager's do (ADR
@@ -150,7 +151,7 @@ func NewTiles(opts ...TilesOption) *Tiles {
 // Add appends a tile, before the manager is mounted. A second centre is refused.
 func (t *Tiles) Add(key string, content tui.Component, p TilePlace) *Tile {
 	if t.ctx != nil {
-		panic(fatalOf("widget: Tiles.Add", "manager already mounted", "declare every tile before mounting"))
+		panic(kit.FatalOf("widget: Tiles.Add", "manager already mounted", "declare every tile before mounting"))
 	}
 	t.admit("widget: Tiles.Add", key, p)
 	tile := &Tile{key: key, owner: t, place: p}
@@ -168,13 +169,13 @@ func (t *Tiles) Add(key string, content tui.Component, p TilePlace) *Tile {
 // admit refuses a place no tile may take: an invalid edge, a second centre or a key in use.
 func (t *Tiles) admit(op, key string, p TilePlace) {
 	if p.Edge > tui.DockCenter || slices.ContainsFunc(p.Edges, func(e tui.DockEdge) bool { return e > tui.DockCenter }) {
-		panic(fatalOf(op, "invalid edge", key))
+		panic(kit.FatalOf(op, "invalid edge", key))
 	}
 	if p.Edge == tui.DockCenter && t.centre() != nil {
-		panic(fatalOf(op, "a second centre", "a manager has at most one"))
+		panic(kit.FatalOf(op, "a second centre", "a manager has at most one"))
 	}
 	if t.tile(key) != nil {
-		panic(fatalOf(op, "duplicate tile key", key))
+		panic(kit.FatalOf(op, "duplicate tile key", key))
 	}
 }
 
@@ -182,8 +183,8 @@ func (t *Tiles) admit(op, key string, p TilePlace) {
 // p.Edge DockCenter makes it the fill member, whose tile takes the remainder: any number of members,
 // at most one centre among them and the tiles.
 func (t *Tiles) AddMember(key string, w GovernedWindow, p TilePlace, wants bool) *Tile {
-	if nilLike(w) {
-		panic(fatalOf("widget: Tiles.AddMember", "nil window", key))
+	if kit.NilLike(w) {
+		panic(kit.FatalOf("widget: Tiles.AddMember", "nil window", key))
 	}
 	t.admit("widget: Tiles.AddMember", key, p)
 	tile := &Tile{key: key, owner: t, place: p, gov: w}
@@ -329,7 +330,7 @@ func (t *Tiles) sync() {
 // Layout places every tile where plan puts it. A staged resize is laid out live, so the border
 // follows the pointer; a staged drop is only outlined, and moves nothing until it completes.
 func (t *Tiles) Layout(c tui.Constraints) tui.Size {
-	w, h := boundedMax(c.MaxW, c.MinW), boundedMax(c.MaxH, c.MinH)
+	w, h := kit.BoundedMax(c.MaxW, c.MinW), kit.BoundedMax(c.MaxH, c.MinH)
 	t.size = tui.Size{W: w, H: h}
 	t.settle(t.size)
 	live := t.pending

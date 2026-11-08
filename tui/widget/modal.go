@@ -344,7 +344,7 @@ func (m *Modal) Open(h *OverlayHost) error {
 }
 
 // openOn is Open on any modal host: the CommandLine opens its prompt dialog on the host it found
-// (hostFor[modalHost]).
+// (kit.HostFor[modalHost]).
 func (m *Modal) openOn(h modalHost) error {
 	if m.open {
 		return ErrModalAlreadyOpen

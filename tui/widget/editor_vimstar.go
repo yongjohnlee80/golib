@@ -1,6 +1,10 @@
 package widget
 
-import "strings"
+import (
+	"strings"
+
+	"github.com/yongjohnlee80/golib/tui/widget/internal/kit"
+)
 
 // VIM * AND # — the word under the cursor, found again: * on, # back, g* and g# without word
 // boundaries (Vim's nv_ident, src/normal.c). The word is the keyword under or after the cursor on
@@ -31,7 +35,7 @@ func (c *EditorCore) SetFindHost(host func(FindRequest) bool) { c.findHost = hos
 // blank. ok is false on a line with neither.
 func (c *EditorCore) identUnderCursor() (word string, at int, ok bool) {
 	cs := c.buf.LineClusters(c.buf.Ln)
-	class := func(i int) int { return wordClass(cs[i], false) }
+	class := func(i int) int { return kit.WordClass(cs[i], false) }
 	for pass := 0; pass < 2; pass++ { // 0: a keyword; 1: any non-blank text
 		col := min(c.buf.Col, len(cs))
 		for col < len(cs) {

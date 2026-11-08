@@ -9,6 +9,7 @@ import (
 	"github.com/yongjohnlee80/golib/tui"
 	tuikey "github.com/yongjohnlee80/golib/tui/key"
 	"github.com/yongjohnlee80/golib/tui/keymap"
+	"github.com/yongjohnlee80/golib/tui/widget/internal/kit"
 )
 
 // THE EDITOR'S KEY COMMANDS. Each keyset's binding class is a scope of its own,
@@ -22,7 +23,7 @@ import (
 // command (d, g, f, ", m), so a key map can move the prefix.
 
 // EditorContextMenu opens the editor's context menu, in every keyset and mode.
-var EditorContextMenu = cmd("tui.editor.contextMenu", "tui.editor", "Shift+F10", "Menu")
+var EditorContextMenu = kit.Cmd("tui.editor.contextMenu", "tui.editor", "Shift+F10", "Menu")
 
 // editorScope is the scope of one keyset's binding class.
 func editorScope(ks Keyset, class EditorMode) keymap.Scope {
@@ -227,9 +228,9 @@ func (c *EditorCore) keyBindings(m *keymap.Map) []keymap.Binding {
 // last it gathers: it reads every package's commands, so it goes to tui/widget itself when the
 // widgets are packages of their own.
 func KeyCommands() []keymap.Command {
-	out := append(slices.Clone(tui.Commands()), declared...)
+	out := append(slices.Clone(tui.Commands()), kit.Declared...)
 	for _, c := range EditorCommands() {
-		if c.ID != EditorContextMenu.ID { // declared through cmd already
+		if c.ID != EditorContextMenu.ID { // declared through kit.Cmd already
 			out = append(out, c)
 		}
 	}

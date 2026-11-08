@@ -8,6 +8,7 @@ import (
 	"github.com/yongjohnlee80/golib/tui"
 	"github.com/yongjohnlee80/golib/tui/keymap"
 	"github.com/yongjohnlee80/golib/tui/style"
+	"github.com/yongjohnlee80/golib/tui/widget/internal/kit"
 	txt "github.com/yongjohnlee80/golib/tui/widget/internal/text"
 )
 
@@ -207,7 +208,7 @@ func (t *DataTable) SetMenu(m *EditorMenu) {
 // it is on (an Enabled() bool of its own, when it has one), after what was pressed is selected; closed when the table is given another. nil takes it
 // away, and a right press then goes on to the ancestors.
 func (t *DataTable) SetMenuOpener(o MenuOpener) {
-	if nilLike(o) {
+	if kit.NilLike(o) {
 		o = nil
 	}
 	if t.menu != nil && !sameOpener(t.menu, o) {
@@ -320,7 +321,7 @@ func (t *DataTable) drawRules(s tui.Surface, digits int) {
 	vertical, horizontal := t.rules()
 	if sz.H > tableRuleRow {
 		w := max(s.StringWidth(horizontal), 1) // a border's Top may be wider than a cell
-		drawText(s, 0, tableRuleRow, strings.Repeat(horizontal, sz.W/w), t.styles.Header)
+		kit.DrawText(s, 0, tableRuleRow, strings.Repeat(horizontal, sz.W/w), t.styles.Header)
 	}
 	x := ruleX(digits)
 	if digits <= 0 || x >= sz.W {
@@ -331,7 +332,7 @@ func (t *DataTable) drawRules(s tui.Surface, digits int) {
 		if y == tableRuleRow {
 			glyph = ruleJunction(vertical, horizontal)
 		}
-		drawText(s, x, y, glyph, t.styles.Header)
+		kit.DrawText(s, x, y, glyph, t.styles.Header)
 	}
 }
 
@@ -378,8 +379,8 @@ func (t *DataTable) fits(from, to int) bool {
 
 // Layout fills the space it is given; offered unbounded height it asks for a header and its rows.
 func (t *DataTable) Layout(c tui.Constraints) tui.Size {
-	w := fillW(c)
-	h := boundedMax(c.MaxH, max(c.MinH, tableHeaderRows+max(t.core.DrawnRows(), 1)))
+	w := kit.FillW(c)
+	h := kit.BoundedMax(c.MaxH, max(c.MinH, tableHeaderRows+max(t.core.DrawnRows(), 1)))
 	if w != t.w || h != t.h {
 		// a new size keeps the cursor in sight; the same size keeps the wheel's scroll. A bound
 		// layout keeps it in sight at its own size, which is in its units.
@@ -411,7 +412,7 @@ func (t *DataTable) Render(s tui.Surface) {
 	t.drawRules(s, digits)
 	if t.core.DrawnRows() == 0 {
 		if sz.H > tableHeaderRows {
-			drawText(s, gutter, tableHeaderRows, truncate(t.emptyText, max(sz.W-gutter, 0), s.StringWidth), t.styles.Empty)
+			kit.DrawText(s, gutter, tableHeaderRows, kit.Truncate(t.emptyText, max(sz.W-gutter, 0), s.StringWidth), t.styles.Empty)
 		}
 		return
 	}
@@ -437,7 +438,7 @@ func (t *DataTable) renderHeader(s tui.Surface, fields []TableField, spans []col
 	w := s.Size().W
 	for _, sp := range spans {
 		if sp.col == len(fields) { // the edge field
-			drawText(s, sp.x, 0, truncate(" + ", w-sp.x, s.StringWidth), t.styles.Empty)
+			kit.DrawText(s, sp.x, 0, kit.Truncate(" + ", w-sp.x, s.StringWidth), t.styles.Empty)
 			continue
 		}
 		title := fields[sp.col].Title
@@ -447,7 +448,7 @@ func (t *DataTable) renderHeader(s tui.Surface, fields []TableField, spans []col
 		if note := t.core.HeaderNote(sp.col); note != "" {
 			title += " " + note
 		}
-		drawText(s, sp.x, 0, fitCell(title, min(sp.w, w-sp.x), ElideRight, style.AlignLeft, s.StringWidth), t.styles.Header)
+		kit.DrawText(s, sp.x, 0, fitCell(title, min(sp.w, w-sp.x), ElideRight, style.AlignLeft, s.StringWidth), t.styles.Header)
 	}
 }
 
@@ -459,13 +460,13 @@ func (t *DataTable) renderRow(s tui.Surface, y, row, digits int, fields []TableF
 	w := s.Size().W
 	if digits > 0 {
 		n := strconv.Itoa(row + 1)
-		drawText(s, 0, y, truncate(strings.Repeat(" ", max(digits-len(n), 0))+n, w, s.StringWidth), t.styles.Header)
+		kit.DrawText(s, 0, y, kit.Truncate(strings.Repeat(" ", max(digits-len(n), 0))+n, w, s.StringWidth), t.styles.Header)
 	}
 	for _, sp := range spans {
 		cw := min(sp.w, w-sp.x)
 		if sp.col == len(fields) { // the edge field: the cursor's, when it is there
 			if row == cur.Row && cur.Col == sp.col {
-				drawText(s, sp.x, y, strings.Repeat(" ", cw), cursor.Inherit(t.styles.Cell))
+				kit.DrawText(s, sp.x, y, strings.Repeat(" ", cw), cursor.Inherit(t.styles.Cell))
 			}
 			continue
 		}
@@ -477,7 +478,7 @@ func (t *DataTable) renderRow(s tui.Surface, y, row, digits int, fields []TableF
 			st = t.styles.Selected.Inherit(st)
 		}
 		text := tableCellLine(t.core.Cell(row, sp.col))
-		drawText(s, sp.x, y, fitCell(text, cw, ElideRight, fields[sp.col].Align, s.StringWidth), st)
+		kit.DrawText(s, sp.x, y, fitCell(text, cw, ElideRight, fields[sp.col].Align, s.StringWidth), st)
 	}
 }
 
@@ -487,14 +488,14 @@ func (t *DataTable) drawBlankRow(s tui.Surface, y int, kind TableRowKind, row, g
 	cur TablePos, cursor style.Style) {
 	sz := s.Size()
 	if kind == TableRowEdge && gutter > 0 {
-		drawText(s, 0, y, truncate(padAligned("+", t.core.RowNumberDigits(), style.AlignRight, s.StringWidth), sz.W, s.StringWidth), t.styles.Empty)
+		kit.DrawText(s, 0, y, kit.Truncate(kit.PadAligned("+", t.core.RowNumberDigits(), style.AlignRight, s.StringWidth), sz.W, s.StringWidth), t.styles.Empty)
 	}
 	if kind != TableRowEdge || row != cur.Row {
 		return
 	}
 	for _, sp := range t.spans(sz.W, true) {
 		if sp.col == cur.Col {
-			drawText(s, sp.x, y, strings.Repeat(" ", min(sp.w, sz.W-sp.x)), cursor.Inherit(t.styles.Cell))
+			kit.DrawText(s, sp.x, y, strings.Repeat(" ", min(sp.w, sz.W-sp.x)), cursor.Inherit(t.styles.Cell))
 		}
 	}
 }
@@ -522,7 +523,7 @@ func (t *DataTable) drawField(s tui.Surface, gutter int, fields []TableField) {
 	s.Fill(f.rect, " ", st)
 	sub := s.Sub(f.rect)
 	for i := range f.rect.H {
-		drawText(sub, 0, i, fromCell(f.lines[f.top+i], f.left, s.StringWidth), st)
+		kit.DrawText(sub, 0, i, fromCell(f.lines[f.top+i], f.left, s.StringWidth), st)
 	}
 }
 
@@ -648,14 +649,14 @@ func (t *DataTable) handleWheel(e tui.MouseEvent, p TableLayoutPointer) bool {
 		t.core.ScrollFields(n)
 		return true
 	case vertical:
-		step := tableWheelRows
+		step := kit.TableWheelRows
 		if e.Button == tui.WheelUp {
 			step = -step
 		}
 		if t.bound() {
 			p.ScrollRows(step)
 		} else {
-			t.top = clampTop(t.top+step, t.core.Len(), t.bodyRows())
+			t.top = kit.ClampTop(t.top+step, t.core.Len(), t.bodyRows())
 		}
 		t.MarkDirty()
 		return true

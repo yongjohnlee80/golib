@@ -5,6 +5,7 @@ import (
 
 	"github.com/yongjohnlee80/golib/tui"
 	"github.com/yongjohnlee80/golib/tui/style"
+	"github.com/yongjohnlee80/golib/tui/widget/internal/kit"
 )
 
 // THE EDITOR'S RIGHT-CLICK MENU, AS A MODULE.
@@ -54,7 +55,7 @@ func (m *EditorMenu) OpenAt(at tui.Point) bool {
 	if ctx == nil {
 		return false
 	}
-	host, ok := hostFor[popupHost](ctx)
+	host, ok := kit.HostFor[popupHost](ctx)
 	if !ok {
 		return false
 	}

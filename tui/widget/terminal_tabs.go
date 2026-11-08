@@ -12,6 +12,7 @@ import (
 	"github.com/yongjohnlee80/golib/tui"
 	"github.com/yongjohnlee80/golib/tui/keymap"
 	"github.com/yongjohnlee80/golib/tui/style"
+	"github.com/yongjohnlee80/golib/tui/widget/internal/kit"
 )
 
 // TerminalTabID is an opaque runtime identity, unrelated to a label or QML id.
@@ -93,14 +94,14 @@ type TerminalTabs struct {
 func NewTerminalTabs() *TerminalTabs {
 	t := &TerminalTabs{}
 	t.strip = tabStrip{base: &t.Base, anchor: t, layer: "terminaltabs", owner: t}
-	t.strip.bar, t.strip.tab, t.strip.selected = defaultTabsStyles()
+	t.strip.bar, t.strip.tab, t.strip.selected = kit.DefaultTabsStyles()
 	return t
 }
 
-func (t *TerminalTabs) stripTabs() []stripTab {
-	out := make([]stripTab, len(t.entries))
+func (t *TerminalTabs) stripTabs() []kit.StripTab {
+	out := make([]kit.StripTab, len(t.entries))
 	for i, e := range t.entries {
-		out[i] = stripTab{id: string(e.id), label: terminalTabLabel(e)}
+		out[i] = kit.StripTab{ID: string(e.id), Label: terminalTabLabel(e)}
 	}
 	return out
 }
@@ -664,7 +665,7 @@ func (t *TerminalTabs) listChildren() []tui.Component {
 
 // SetStyles and SetDefaultLook preserve palette changes across existing and new tabs.
 func (t *TerminalTabs) SetStyles(bar, tab, selected style.Style) {
-	t.strip.bar, t.strip.tab, t.strip.selected = tabsStyles(bar, tab, selected)
+	t.strip.bar, t.strip.tab, t.strip.selected = kit.TabsStyles(bar, tab, selected)
 	t.MarkDirty()
 }
 func (t *TerminalTabs) SetDefaultLook(look style.Style) {
@@ -675,9 +676,9 @@ func (t *TerminalTabs) SetDefaultLook(look style.Style) {
 }
 
 func (t *TerminalTabs) Layout(c tui.Constraints) tui.Size {
-	w, h := fillW(c), fillH(c)
+	w, h := kit.FillW(c), kit.FillH(c)
 	if t.ctx != nil { // narrower than its tabs, the strip scrolls them between < and >
-		t.ctx.AfterLayout(tabWindowCommitKey, func() { t.strip.commitWindow(w) })
+		t.ctx.AfterLayout(kit.TabWindowCommitKey, func() { t.strip.commitWindow(w) })
 	}
 	if e, err := t.find(t.active); err == nil && e.closing == nil && h > 1 {
 		t.ctx.LayoutChild(e.terminal, tui.Tight(tui.Size{W: w, H: h - 1}))
@@ -693,7 +694,7 @@ func terminalTabLabel(e *terminalTab) string {
 	} else if e.closing != nil {
 		label += " …"
 	}
-	return cellLabel(label)
+	return kit.CellLabel(label)
 }
 
 func (t *TerminalTabs) Render(s tui.Surface) {
@@ -713,7 +714,7 @@ func (t *TerminalTabs) Render(s tui.Surface) {
 			message = "Closing terminal…"
 		}
 		if message != "" {
-			drawText(s, 0, 1, truncate(message, w, s.StringWidth), t.strip.tab)
+			kit.DrawText(s, 0, 1, kit.Truncate(message, w, s.StringWidth), t.strip.tab)
 		}
 	}
 }
@@ -762,7 +763,7 @@ func (t *TerminalTabs) renderNormalHint(s tui.Surface, w int) {
 	}
 	used, end := 0, w // the hint sits between the tabs' cells and the window controls, if any
 	for _, c := range t.strip.row() {
-		if c.kind == cellControl {
+		if c.kind == kit.CellControl {
 			end = min(end, c.x-1)
 			continue
 		}
@@ -772,8 +773,8 @@ func (t *TerminalTabs) renderNormalHint(s tui.Surface, w int) {
 	if room < 4 {
 		return
 	}
-	text := truncate(t.normalHint, room, s.StringWidth)
-	drawText(s, end-s.StringWidth(text), 0, text, t.strip.tab)
+	text := kit.Truncate(t.normalHint, room, s.StringWidth)
+	kit.DrawText(s, end-s.StringWidth(text), 0, text, t.strip.tab)
 }
 
 // SetWindowButtons shows _, + and x at the strip's right end, side by side as the title bar's, or

@@ -5,6 +5,7 @@ import (
 	"slices"
 
 	"github.com/yongjohnlee80/golib/tui"
+	"github.com/yongjohnlee80/golib/tui/widget/internal/kit"
 	txt "github.com/yongjohnlee80/golib/tui/widget/internal/text"
 )
 
@@ -53,21 +54,21 @@ func (v *levelView) place(rows []MenuItemModel, sel ItemID, h int) int {
 	at := slices.IndexFunc(vis, func(i int) bool { return rows[i].ID == sel })
 	moved := v.shown.Moved([2]int{at}, [2]int{h})
 	if at >= 0 && (moved || sel != v.sel) {
-		v.top = revealRow(v.top, at, h)
+		v.top = kit.RevealRow(v.top, at, h)
 		v.sel = sel
 	}
-	v.top = clampTop(v.top, len(vis), h)
+	v.top = kit.ClampTop(v.top, len(vis), h)
 	return v.top
 }
 
 // wheel scrolls the window a notch over rows, in the lines the last layout gave them; the selection
 // stays where it is, as a List's cursor does.
 func (v *levelView) wheel(up bool, rows []MenuItemModel) {
-	step := listWheelRows
+	step := kit.ListWheelRows
 	if up {
 		step = -step
 	}
-	v.top = clampTop(v.top+step, len(visibleRows(rows)), v.h)
+	v.top = kit.ClampTop(v.top+step, len(visibleRows(rows)), v.h)
 }
 
 // isWheel reports whether ev is a wheel notch, and whether it is up.
@@ -83,7 +84,7 @@ func isWheel(ev tui.Event) (up, ok bool) {
 // rows overflow them.
 func (v *levelView) paintIndicator(s tui.Surface, rows []MenuItemModel, x, y, h int) {
 	if n := len(visibleRows(rows)); n > h && h > 0 {
-		paintScrollIndicator(s.Sub(tui.Rect{X: x, Y: y, W: 1, H: h}), 0, h, v.top, n-h)
+		kit.PaintScrollIndicator(s.Sub(tui.Rect{X: x, Y: y, W: 1, H: h}), 0, h, v.top, n-h)
 	}
 }
 
@@ -390,7 +391,7 @@ func (m *Menu) declareRows(ctx *tui.Context, rows []MenuItemModel, top int, area
 	}
 }
 
-// paintRows draws each visible row from the top'th on into its line of area, starting and stopping
+// kit.PaintRows draws each visible row from the top'th on into its line of area, starting and stopping
 // where declareRows does so that what is painted and what is addressable are one set of rows rather
 // than two.
 func (m *Menu) paintRows(s tui.Surface, rows []MenuItemModel, top int, area tui.Rect) {
@@ -553,7 +554,7 @@ func (m *Menu) Render(s tui.Surface) {
 // state, and a Menu can legitimately be re-parented between one open and the
 // next.
 func (m *Menu) host() anchorHost {
-	h, _ := hostFor[anchorHost](m.Context())
+	h, _ := kit.HostFor[anchorHost](m.Context())
 	return h
 }
 

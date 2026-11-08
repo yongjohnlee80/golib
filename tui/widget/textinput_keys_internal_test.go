@@ -5,6 +5,7 @@ import (
 	"testing"
 
 	"github.com/yongjohnlee80/golib/tui"
+	"github.com/yongjohnlee80/golib/tui/widget/internal/kit"
 	txt "github.com/yongjohnlee80/golib/tui/widget/internal/text"
 )
 
@@ -118,7 +119,7 @@ func oldInputKey(t *TextInput, e tui.KeyEvent) bool {
 	}
 
 	// Printable text (never Tab — focus traversal is framework-owned).
-	if e.Text != "" && e.Mods&nonTextMods == 0 && e.Code != tui.KeyTab {
+	if e.Text != "" && e.Mods&kit.NonTextMods == 0 && e.Code != tui.KeyTab {
 		t.insert(e.Text)
 		return true
 	}

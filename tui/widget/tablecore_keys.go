@@ -2,6 +2,7 @@ package widget
 
 import (
 	"github.com/yongjohnlee80/golib/tui"
+	"github.com/yongjohnlee80/golib/tui/widget/internal/kit"
 )
 
 // THE KEYS — vim's grammar over a grid: a count, the g prefix, the y and d doubles, then the
@@ -45,7 +46,7 @@ func (c *TableCore) HandleKey(k tui.KeyEvent) bool {
 	if c.takeCount(k) {
 		return true
 	}
-	if c.pendingG && isKey(k, c.ctx.Keymap().KeysOf(tableGoLine)...) {
+	if c.pendingG && kit.IsKey(k, c.ctx.Keymap().KeysOf(tableGoLine)...) {
 		// g's grammar: the goLine command after it is [count]gg, wherever a map moved either key
 		row := max(c.count, 1) - 1
 		c.dropPending()
@@ -85,8 +86,8 @@ func (c *TableCore) HandleKey(k tui.KeyEvent) bool {
 
 // takeCount takes a count's digit. It reports whether it took the key.
 func (c *TableCore) takeCount(k tui.KeyEvent) bool {
-	d, ok := countDigit(k)
-	if !ok || !addCount(&c.count, d, tableCountMax) {
+	d, ok := kit.CountDigit(k)
+	if !ok || !kit.AddCount(&c.count, d, tableCountMax) {
 		return false
 	}
 	c.pendingG, c.yanked = false, false

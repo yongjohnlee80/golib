@@ -11,6 +11,7 @@ import (
 	"github.com/yongjohnlee80/golib/tui/keymap"
 	"github.com/yongjohnlee80/golib/tui/style"
 	"github.com/yongjohnlee80/golib/tui/widget/internal/cellimages"
+	"github.com/yongjohnlee80/golib/tui/widget/internal/kit"
 )
 
 // HTMLView shows an HTML document: read-only, scrollable, its text selectable and copied by
@@ -790,8 +791,8 @@ func (v *HTMLView) endDrag() {
 // Layout is greedy on both axes. The cell layout is laid out at the width, a column narrower when
 // the document is taller than the view, for the scroll indicator.
 func (v *HTMLView) Layout(c tui.Constraints) tui.Size {
-	v.w = fillW(c)
-	v.h = fillH(c)
+	v.w = kit.FillW(c)
+	v.h = kit.FillH(c)
 	if c, ok := v.layout.(*cellHTML); ok && c.src != nil && c.imgs.Drawn() != c.laidDrawn {
 		c.layOut() // mounted on a terminal that draws images since it was laid out: its pictures now
 	}
@@ -851,7 +852,7 @@ func (v *HTMLView) Render(s tui.Surface) {
 	rows := int(cells.Height())
 	if rows > sz.H {
 		w--
-		paintScrollIndicator(s, sz.W-1, sz.H, top, rows-sz.H)
+		kit.PaintScrollIndicator(s, sz.W-1, sz.H, top, rows-sz.H)
 	}
 	cells.PaintCells(s, top, w, v.sel[0], v.sel[1])
 }

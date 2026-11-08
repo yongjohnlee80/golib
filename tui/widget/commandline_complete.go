@@ -1,6 +1,10 @@
 package widget
 
-import "strings"
+import (
+	"strings"
+
+	"github.com/yongjohnlee80/golib/tui/widget/internal/kit"
+)
 
 // THE COMMAND LINE'S COMPLETION: Tab completes the verb from the core's Commands, then its
 // arguments from the command's own completer, offering the candidates in the dropdown.
@@ -43,7 +47,7 @@ func (l *CommandLine) complete(back bool) {
 			return
 		}
 	}
-	l.comp.at = walkStep(l.comp.at, len(l.comp.cands), back)
+	l.comp.at = kit.WalkStep(l.comp.at, len(l.comp.cands), back)
 	l.list.choose(l.comp.at)
 	l.setField(l.comp.head + l.comp.cands[l.comp.at])
 }
@@ -63,7 +67,7 @@ func (l *CommandLine) offer(c completion, once string) bool {
 	}
 	l.list.set(c.rows, -1)
 	typed := strings.TrimPrefix(c.typed, c.head)
-	if p := commonPrefix(c.cands, typed); p != typed {
+	if p := kit.CommonPrefix(c.cands, typed); p != typed {
 		l.setField(c.head + p)
 		return false
 	}

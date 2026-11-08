@@ -5,6 +5,7 @@ import (
 
 	"github.com/yongjohnlee80/golib/tui"
 	"github.com/yongjohnlee80/golib/tui/internal/grapheme"
+	"github.com/yongjohnlee80/golib/tui/widget/internal/kit"
 )
 
 // RESIZE IS A WRAPPER, NOT A PER-WIDGET CAPABILITY.
@@ -253,7 +254,7 @@ type Resizable struct {
 	// drag is the pointer gesture in progress, nil when there is none, and
 	// gripCtx is the handle that took the capture for it — only the node whose
 	// handler took a capture may release it.
-	drag pointerDrag[resizeDrag] // the grip gesture; its ctx is the grip that took the pointer
+	drag kit.PointerDrag[resizeDrag] // the grip gesture; its ctx is the grip that took the pointer
 	// onEnd hears a drag that ended (not one cancelled), with the size it asked for last.
 	onEnd func(tui.Size)
 }
@@ -264,7 +265,7 @@ type ResizableOption func(*Resizable)
 // NewResizable wraps child in a resizable box.
 func NewResizable(child tui.Component, opts ...ResizableOption) *Resizable {
 	if child == nil {
-		panic(fatalOf("widget: NewResizable", "nil child",
+		panic(kit.FatalOf("widget: NewResizable", "nil child",
 			"a wrapper with nothing to size has no behaviour to offer"))
 	}
 	r := &Resizable{
@@ -346,12 +347,12 @@ func WithMaxSize(s tui.Size) ResizableOption {
 // checkMinAxis rejects a minimum that is negative or unbounded.
 func checkMinAxis(op, axis string, v int) {
 	if v == tui.Unbounded {
-		panic(fatalOf("widget: "+op,
+		panic(kit.FatalOf("widget: "+op,
 			"Unbounded is legal for a MAXIMUM only; a minimum must be a real size",
 			axis))
 	}
 	if v < 0 {
-		panic(fatalOf("widget: "+op, "a negative minimum is not a smaller box",
+		panic(kit.FatalOf("widget: "+op, "a negative minimum is not a smaller box",
 			fmt.Sprintf("%s = %d", axis, v)))
 	}
 }
@@ -361,7 +362,7 @@ func checkMinAxis(op, axis string, v int) {
 // not in checkMinAxis.
 func checkMaxAxis(op, axis string, v int) {
 	if v != tui.Unbounded && v < 0 {
-		panic(fatalOf("widget: "+op, "a negative maximum bounds nothing",
+		panic(kit.FatalOf("widget: "+op, "a negative maximum bounds nothing",
 			fmt.Sprintf("%s = %d", axis, v)))
 	}
 }
@@ -379,7 +380,7 @@ func WithHandles(h ...Handle) ResizableOption {
 	return func(r *Resizable) {
 		for _, one := range h {
 			if !one.resizes() {
-				panic(fatalOf("widget: WithHandles",
+				panic(kit.FatalOf("widget: WithHandles",
 					"a Resizable takes edge and corner handles; a divider belongs to Split",
 					fmt.Sprintf("%v", one)))
 			}
@@ -439,12 +440,12 @@ func checkGlyph(op, what, g string) {
 		n++
 	}
 	if n != 1 {
-		panic(fatalOf("widget: "+op,
+		panic(kit.FatalOf("widget: "+op,
 			"the "+what+" glyph must be exactly one grapheme cluster",
 			fmt.Sprintf("%q is %d clusters", g, n)))
 	}
 	if w := grapheme.StringWidth(g, false); w < 1 || w > 2 {
-		panic(fatalOf("widget: "+op,
+		panic(kit.FatalOf("widget: "+op,
 			"the "+what+" glyph must occupy one or two cells; a zero-width cluster is "+
 				"placed and hit-tested but paints nothing",
 			fmt.Sprintf("%q measures %d", g, w)))
@@ -505,7 +506,7 @@ func (r *Resizable) WithPointerPolicy(p tui.PointerPolicy) *Resizable {
 func (r *Resizable) SizeMode() SizeMode { return r.mode }
 
 // Dragging reports whether a grip is being dragged.
-func (r *Resizable) Dragging() bool { return r.drag.on }
+func (r *Resizable) Dragging() bool { return r.drag.On }
 
 // Size is the EFFECTIVE size — what is on screen, as stored by the last commit.
 // Before the first layout it is the zero Size, because nothing has been

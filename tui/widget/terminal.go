@@ -11,6 +11,7 @@ import (
 	"github.com/yongjohnlee80/golib/tui/pty"
 	"github.com/yongjohnlee80/golib/tui/style"
 	"github.com/yongjohnlee80/golib/tui/vt"
+	"github.com/yongjohnlee80/golib/tui/widget/internal/kit"
 )
 
 // TerminalMode is where a Terminal's keys go.
@@ -399,8 +400,8 @@ func (t *Terminal) flushPrefix() {
 // the program after layout. With a view, that size is the view's cells for
 // the area placed (TerminalView.Cells), so the one resize registered is it.
 func (t *Terminal) Layout(c tui.Constraints) tui.Size {
-	t.w = fillW(c)
-	t.h = fillH(c)
+	t.w = kit.FillW(c)
+	t.h = kit.FillH(c)
 	w, h := t.w, t.h
 	if t.view != nil {
 		w, h = t.view.Cells(t.w, t.h)

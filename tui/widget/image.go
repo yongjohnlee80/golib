@@ -12,6 +12,7 @@ import (
 	"github.com/yongjohnlee80/golib/tui"
 	"github.com/yongjohnlee80/golib/tui/keymap"
 	"github.com/yongjohnlee80/golib/tui/style"
+	"github.com/yongjohnlee80/golib/tui/widget/internal/kit"
 )
 
 // Image shows a PNG over the cells it is given, on a terminal that draws images (kitty's graphics
@@ -43,7 +44,7 @@ type Image struct {
 	Base
 	id   uint32
 	st   imageState
-	drag pointerDrag[imagePan] // a left-button drag panning a scrollable Image
+	drag kit.PointerDrag[imagePan] // a left-button drag panning a scrollable Image
 
 	load imageLoading // the spinner shown while a host renders the PNG
 }
@@ -53,16 +54,16 @@ type Image struct {
 type imageLoading struct {
 	on    bool
 	text  string
-	frame int    // the spinner's frame
-	spin  ticker // the spinner's timer
+	frame int        // the spinner's frame
+	spin  kit.Ticker // the spinner's timer
 }
 
 // tick runs the spinner's timer while it loads and ctx mounts the Image, and stops it otherwise.
 func (l *imageLoading) tick(ctx *tui.Context) {
 	if l.on && ctx != nil {
-		l.spin.start(ctx, spinnerEvery)
+		l.spin.Start(ctx, spinnerEvery)
 	} else {
-		l.spin.halt()
+		l.spin.Halt()
 	}
 }
 
@@ -95,7 +96,7 @@ func (m *Image) Loading() bool { return m.load.on }
 // Init starts the spinner of an Image told to load before it was mounted.
 func (m *Image) Init(ctx *tui.Context) {
 	m.Base.Init(ctx)
-	m.load.spin.forget()
+	m.load.spin.Forget()
 	m.load.tick(ctx)
 }
 
@@ -429,7 +430,7 @@ func (m *Image) HasImage() bool { return len(m.st.png) > 0 }
 // SetScrollable sets whether the Image scrolls; see SCROLLABLE.
 func (m *Image) SetScrollable(on bool) {
 	if !on {
-		m.drag.end() // a drag the Image no longer scrolls for lets the pointer go
+		m.drag.End() // a drag the Image no longer scrolls for lets the pointer go
 	}
 	m.st.setScrollable(on)
 	m.MarkDirty()
@@ -467,18 +468,18 @@ func (m *Image) KeyBindings(km *keymap.Map) []keymap.Binding {
 }
 
 func (m *Image) HandleEvent(ev tui.Event) bool {
-	if tickOf(ev, m.NodeID()) && m.load.on {
+	if kit.TickOf(ev, m.NodeID()) && m.load.on {
 		m.load.frame = (m.load.frame + 1) % len(spinner)
 		m.MarkDirty()
 		return true
 	}
 	// a drag's end is the drag's, scrollable or not: the pointer it captured is let go
-	if _, ok := ev.(tui.PointerCaptureLostEvent); ok && m.drag.on {
-		m.drag.lost()
+	if _, ok := ev.(tui.PointerCaptureLostEvent); ok && m.drag.On {
+		m.drag.Lost()
 		return true
 	}
-	if e, ok := ev.(tui.MouseEvent); ok && e.Kind == tui.MouseRelease && m.drag.on {
-		m.drag.end()
+	if e, ok := ev.(tui.MouseEvent); ok && e.Kind == tui.MouseRelease && m.drag.On {
+		m.drag.End()
 		return true
 	}
 	if !m.st.scrollable {
@@ -505,17 +506,17 @@ func (m *Image) HandleEvent(ev tui.Event) bool {
 // pan is a left-button drag over a scrollable Image: the press begins it, motion moves the corner
 // shown by the pointer's travel since the press, and the release ends it. taken: the event was the
 // pan's; moved: the corner changed.
-func pan(d *pointerDrag[imagePan], e tui.MouseEvent, v *imageView, ctx *tui.Context) (taken, moved bool) {
+func pan(d *kit.PointerDrag[imagePan], e tui.MouseEvent, v *imageView, ctx *tui.Context) (taken, moved bool) {
 	switch {
 	case e.Kind == tui.MousePress && e.Button == tui.MouseLeft:
-		d.begin(imagePan{x: e.X, y: e.Y, left: v.left, top: v.top})
-		d.capture(ctx)
+		d.Begin(imagePan{x: e.X, y: e.Y, left: v.left, top: v.top})
+		d.Capture(ctx)
 		return true, false
-	case e.Kind == tui.MouseMotion && d.on:
-		p := d.start
+	case e.Kind == tui.MouseMotion && d.On:
+		p := d.Start
 		return true, v.to(p.left-(e.X-p.x)*CellPixelsW, p.top-(e.Y-p.y)*CellPixelsH)
-	case e.Kind == tui.MouseRelease && d.on:
-		d.end()
+	case e.Kind == tui.MouseRelease && d.On:
+		d.End()
 		return true, false
 	}
 	return false, false
@@ -523,7 +524,7 @@ func pan(d *pointerDrag[imagePan], e tui.MouseEvent, v *imageView, ctx *tui.Cont
 
 // Layout takes every cell offered, and the view takes them after layout (imageState.setCells).
 func (m *Image) Layout(c tui.Constraints) tui.Size {
-	sz := c.Constrain(tui.Size{W: boundedMax(c.MaxW, c.MinW), H: boundedMax(c.MaxH, c.MinH)})
+	sz := c.Constrain(tui.Size{W: kit.BoundedMax(c.MaxW, c.MinW), H: kit.BoundedMax(c.MaxH, c.MinH)})
 	if ctx := m.Context(); ctx != nil { // a measure before mount commits nothing
 		ctx.AfterLayout("image-cells", func() { m.st.setCells(sz) })
 	}
@@ -561,7 +562,7 @@ func (m *Image) Render(s tui.Surface) {
 		text = "loading…"
 	}
 	line := spinner[m.load.frame] + " " + text
-	drawText(s, max((sz.W-s.StringWidth(line))/2, 0), sz.H/2, line, page)
+	kit.DrawText(s, max((sz.W-s.StringWidth(line))/2, 0), sz.H/2, line, page)
 }
 
 // Image implements tui.ImageReporter.

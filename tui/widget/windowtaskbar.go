@@ -1,6 +1,9 @@
 package widget
 
-import "github.com/yongjohnlee80/golib/tui"
+import (
+	"github.com/yongjohnlee80/golib/tui"
+	"github.com/yongjohnlee80/golib/tui/widget/internal/kit"
+)
 
 // WindowTaskbar is an optional keyboard/pointer restore UI over MinimizedWindows.
 // Model observation schedules an owner-bound update; it never removes the activating
@@ -31,8 +34,8 @@ func WithWindowTaskbarStyle(st *ButtonStyle) WindowTaskbarOption {
 // NewWindowTaskbar constructs a presentation over an explicitly supplied model: a
 // *MinimizedWindows, or any collector's read side (WindowEntries).
 func NewWindowTaskbar(model WindowEntries, opts ...WindowTaskbarOption) *WindowTaskbar {
-	if nilLike(model) {
-		panic(fatalOf("widget: NewWindowTaskbar", "nil collector model", "a taskbar presents a caller-owned collector"))
+	if kit.NilLike(model) {
+		panic(kit.FatalOf("widget: NewWindowTaskbar", "nil collector model", "a taskbar presents a caller-owned collector"))
 	}
 	w := &WindowTaskbar{model: model, buttons: make(map[tui.NodeID]*Button)}
 	w.Label("WindowTaskbar")

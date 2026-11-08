@@ -8,6 +8,7 @@ import (
 	"github.com/yongjohnlee80/golib/tui"
 	"github.com/yongjohnlee80/golib/tui/keymap"
 	"github.com/yongjohnlee80/golib/tui/style"
+	"github.com/yongjohnlee80/golib/tui/widget/internal/kit"
 	txt "github.com/yongjohnlee80/golib/tui/widget/internal/text"
 )
 
@@ -413,7 +414,7 @@ type Tree struct {
 	// presses pairs a double-click by node. Pointer identity, not the id
 	// string: a host may render the same id under two parents (autodb does, for
 	// a connection attached to two workspaces).
-	presses pressPairer[*TreeNode]
+	presses kit.PressPairer[*TreeNode]
 	// on tells the Tree's owner at once (WithTreeOnCursor and its siblings); each runs last at its
 	// site, after the bus event is published, so an owner may change the tree from one.
 	on     treeCallbacks
@@ -923,7 +924,7 @@ func (t *Tree) expandNode(n *TreeNode) (live bool) {
 // expanded reports n opened, on the bus and then to the owner. request: its children were asked for
 // (the ExpandRequestEvent is already published), and the owner's request callback runs first, as
 // the bus delivers the two events.
-// It reports whether the roots survived the owner's callbacks (pressPairer's epoch: SetRoots
+// It reports whether the roots survived the owner's callbacks (kit.PressPairer's epoch: SetRoots
 // starts a new one); each callback is made only while they have.
 func (t *Tree) expanded(n *TreeNode, request bool) (live bool) {
 	gen := n.gen
@@ -1100,11 +1101,11 @@ func (t *Tree) handleKey(e tui.KeyEvent) bool {
 func (t *Tree) handleMouse(e tui.MouseEvent) bool {
 	if e.Kind == tui.MouseWheel && (e.Button == tui.WheelUp || e.Button == tui.WheelDown) {
 		// the wheel scrolls the rows and leaves the cursor where it is, as List's
-		d := listWheelRows
+		d := kit.ListWheelRows
 		if e.Button == tui.WheelUp {
 			d = -d
 		}
-		t.top = clampTop(t.top+d, len(t.flatten()), t.h)
+		t.top = kit.ClampTop(t.top+d, len(t.flatten()), t.h)
 		t.MarkDirty()
 		return true
 	}
@@ -1137,7 +1138,7 @@ func (t *Tree) handleMouse(e tui.MouseEvent) bool {
 	// expand. Hosts wanting folder-opens-on-double-click do it in their own
 	// handler, where the node grammar is known.
 	//
-	// A pair is on the same NODE (pressPairer), and never on the EXPANDER,
+	// A pair is on the same NODE (kit.PressPairer), and never on the EXPANDER,
 	// whose press already toggles — activating there too would make one gesture
 	// both change expansion and activate. A double-click on the expander simply
 	// toggles twice.
@@ -1182,7 +1183,7 @@ func (t *Tree) moveCursor(delta, total int) {
 	t.MarkDirty()
 }
 
-func (t *Tree) ensureVisible() { t.top = revealRow(t.top, t.cursor, t.h) }
+func (t *Tree) ensureVisible() { t.top = kit.RevealRow(t.top, t.cursor, t.h) }
 
 // --- layout & render -----------------------------------------------------------
 
@@ -1190,8 +1191,8 @@ func (t *Tree) ensureVisible() { t.top = revealRow(t.top, t.cursor, t.h) }
 // Layout fills the height it is given. Offered an unbounded one, it asks for
 // its visible rows — its content, as a Qt view's implicit height is.
 func (t *Tree) Layout(c tui.Constraints) tui.Size {
-	t.w = fillW(c)
-	t.h = boundedMax(c.MaxH, max(c.MinH, len(t.flatten()), 1))
+	t.w = kit.FillW(c)
+	t.h = kit.BoundedMax(c.MaxH, max(c.MinH, len(t.flatten()), 1))
 	if t.shown.Moved([2]int{t.cursor}, [2]int{t.h}) {
 		t.ensureVisible()
 	}
@@ -1213,7 +1214,7 @@ func (t *Tree) Render(s tui.Surface) {
 	s.Fill(tui.Rect{W: sz.W, H: sz.H}, " ", t.styles.Row)
 	rows := t.flatten()
 	cursor := min(t.cursor, len(rows)-1) // read, not stored: Render is pure
-	w, scrollable := rowsWidth(sz.W, sz.H, len(rows))
+	w, scrollable := kit.RowsWidth(sz.W, sz.H, len(rows))
 	styleOf := func(i int) style.Style {
 		st := t.styles.Row
 		if n := rows[i].node; n.hasSt {
@@ -1226,12 +1227,12 @@ func (t *Tree) Render(s tui.Surface) {
 		}
 		return st
 	}
-	paintRows(s, t.top, len(rows), w, styleOf, func(s tui.Surface, i, y, w int, st style.Style) {
+	kit.PaintRows(s, t.top, len(rows), w, styleOf, func(s tui.Surface, i, y, w int, st style.Style) {
 		s.SetCell(0, y, "", st) // ensure the row participates even when empty
-		drawText(s, 0, y, truncate(t.rowText(rows[i]), w, s.StringWidth), st)
+		kit.DrawText(s, 0, y, kit.Truncate(t.rowText(rows[i]), w, s.StringWidth), st)
 	})
 	if scrollable {
-		paintScrollIndicator(s, sz.W-1, sz.H, t.top, len(rows)-sz.H)
+		kit.PaintScrollIndicator(s, sz.W-1, sz.H, t.top, len(rows)-sz.H)
 	}
 }
 

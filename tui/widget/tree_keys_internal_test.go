@@ -4,6 +4,7 @@ import (
 	"testing"
 
 	"github.com/yongjohnlee80/golib/tui"
+	"github.com/yongjohnlee80/golib/tui/widget/internal/kit"
 )
 
 // oldTreeKey is Tree.handleKey's key decision at golib 6a0b271 for a tree with rows, verbatim but for
@@ -12,7 +13,7 @@ func oldTreeKey(e tui.KeyEvent) string {
 	if e.Kind == tui.KeyRelease {
 		return ""
 	}
-	if e.Mods&nonTextMods != 0 {
+	if e.Mods&kit.NonTextMods != 0 {
 		return ""
 	}
 	code := e.Code

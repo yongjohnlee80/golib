@@ -1,6 +1,9 @@
 package widget
 
-import "github.com/yongjohnlee80/golib/tui/style"
+import (
+	"github.com/yongjohnlee80/golib/tui/style"
+	"github.com/yongjohnlee80/golib/tui/widget/internal/kit"
+)
 
 // THE TEXT WIDGETS' LOOKS: the style slots TextInput, TextArea and the Editor share, their defaults,
 // and the one merge of an option's slots over them.
@@ -9,7 +12,7 @@ import "github.com/yongjohnlee80/golib/tui/style"
 // fields inherit the defaults.
 type TextInputStyles struct {
 	Text        style.Style // value text (default: theme foreground)
-	Placeholder style.Style // default: mutedPlaceholder, TokenTextMuted and faint
+	Placeholder style.Style // default: kit.MutedPlaceholder, TokenTextMuted and faint
 	Selection   style.Style // default: inverted, no accent
 	Error       style.Style // value text in the failed-validation state
 }
@@ -29,7 +32,7 @@ func (s TextInputStyles) over(base TextInputStyles) TextInputStyles {
 // the Editor's alike.
 func defaultTextInputStyles() TextInputStyles {
 	return TextInputStyles{
-		Placeholder: mutedPlaceholder(),
+		Placeholder: kit.MutedPlaceholder(),
 		Selection:   style.New().Reverse(true),
 		Error:       style.New().Foreground(style.TokenError),
 	}

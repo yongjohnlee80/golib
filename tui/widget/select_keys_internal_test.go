@@ -5,11 +5,12 @@ import (
 	"testing"
 
 	"github.com/yongjohnlee80/golib/tui"
+	"github.com/yongjohnlee80/golib/tui/widget/internal/kit"
 )
 
 // oldSelectOpens is the closed Select's key decision before commands, verbatim but for its effect.
 func oldSelectOpens(e tui.KeyEvent) string {
-	if e.Kind == tui.KeyRelease || e.Mods&nonTextMods != 0 {
+	if e.Kind == tui.KeyRelease || e.Mods&kit.NonTextMods != 0 {
 		return ""
 	}
 	switch e.Code {
@@ -63,7 +64,7 @@ func oldPopupKey(e tui.KeyEvent, filterOn bool) string {
 	case tui.KeyBackspace:
 		return "backspace"
 	}
-	if filterOn && e.Text != "" && e.Mods&nonTextMods == 0 && e.Code != tui.KeyTab {
+	if filterOn && e.Text != "" && e.Mods&kit.NonTextMods == 0 && e.Code != tui.KeyTab {
 		return "type"
 	}
 	return ""

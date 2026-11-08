@@ -4,6 +4,8 @@ import (
 	"fmt"
 	"strconv"
 	"strings"
+
+	"github.com/yongjohnlee80/golib/tui/widget/internal/kit"
 )
 
 // AN ORDER BY BAR'S TEXT — the sort a user types over a table's loaded rows, in SQL's words:
@@ -96,7 +98,7 @@ func (p *orderParser) fail(at int, format string, args ...any) error {
 }
 
 func (p *orderParser) space() {
-	for p.i < len(p.text) && orderSpace(p.text[p.i]) {
+	for p.i < len(p.text) && kit.OrderSpace(p.text[p.i]) {
 		p.i++
 	}
 }
@@ -104,7 +106,7 @@ func (p *orderParser) space() {
 // word is the bare token at p.i, without moving.
 func (p *orderParser) word() string {
 	j := p.i
-	for j < len(p.text) && !orderSpace(p.text[j]) && p.text[j] != ',' {
+	for j < len(p.text) && !kit.OrderSpace(p.text[j]) && p.text[j] != ',' {
 		j++
 	}
 	return p.text[p.i:j]
@@ -146,7 +148,7 @@ func (p *orderParser) key() (TableSortKey, error) {
 func (p *orderParser) field() (name string, quoted bool, err error) {
 	start := p.i
 	if p.text[p.i] != '"' {
-		for p.i < len(p.text) && !orderSpace(p.text[p.i]) && p.text[p.i] != ',' && p.text[p.i] != '"' {
+		for p.i < len(p.text) && !kit.OrderSpace(p.text[p.i]) && p.text[p.i] != ',' && p.text[p.i] != '"' {
 			p.i++
 		}
 		return p.text[start:p.i], false, nil

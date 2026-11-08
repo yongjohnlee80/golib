@@ -8,6 +8,7 @@ import (
 	"github.com/yongjohnlee80/golib/tui"
 	"github.com/yongjohnlee80/golib/tui/style"
 	"github.com/yongjohnlee80/golib/tui/widget/internal/cellimages"
+	"github.com/yongjohnlee80/golib/tui/widget/internal/kit"
 )
 
 // THE EDITOR'S PAINT: the gutter, then the text with its selection, tabs, indentation marks, ruler
@@ -62,7 +63,7 @@ func (e *Editor) renderGutter(s tui.Surface) {
 		if ln == b.Ln {
 			st = l.styles.Text
 		}
-		drawText(s, l.gutter-gutterGap-len(num), y, num, st)
+		kit.DrawText(s, l.gutter-gutterGap-len(num), y, num, st)
 		y += max(m.rowCount(ln), 1)
 	}
 }
@@ -132,7 +133,7 @@ func (e *Editor) renderText(s tui.Surface) {
 	}
 	e.renderRuler(s, ends, w)
 	if e.scrollable() {
-		paintScrollIndicator(s, sz.W-1, sz.H, l.top, e.rowMap().maxTop())
+		kit.PaintScrollIndicator(s, sz.W-1, sz.H, l.top, e.rowMap().maxTop())
 	}
 }
 
@@ -302,7 +303,7 @@ func (e *Editor) renderRendered(s tui.Surface, m rowMap) {
 		}
 	}
 	if m.scrollable() && m.width() < sz.W { // only in the column the layout left it: a one-cell view is all text
-		paintScrollIndicator(s, sz.W-1, sz.H, first, max(len(r.rows)-sz.H, 0))
+		kit.PaintScrollIndicator(s, sz.W-1, sz.H, first, max(len(r.rows)-sz.H, 0))
 	}
 }
 
@@ -322,7 +323,7 @@ func (e *Editor) renderRenderedGutter(s tui.Surface, r *renderedLayout, dim styl
 		if ln == b.Ln {
 			st = l.styles.Text
 		}
-		drawText(s, l.gutter-gutterGap-len(num), y, num, st)
+		kit.DrawText(s, l.gutter-gutterGap-len(num), y, num, st)
 	}
 }
 

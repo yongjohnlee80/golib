@@ -3,6 +3,7 @@ package widget
 import (
 	"github.com/yongjohnlee80/golib/tui"
 	tuikey "github.com/yongjohnlee80/golib/tui/key"
+	"github.com/yongjohnlee80/golib/tui/widget/internal/kit"
 	txt "github.com/yongjohnlee80/golib/tui/widget/internal/text"
 )
 
@@ -246,7 +247,7 @@ func (c *EditorCore) resolveInsert(k tui.KeyEvent) insertKey {
 			}
 		}
 	}
-	r.text = k.Text != "" && k.Mods&nonTextMods == 0 && k.Code != tui.KeyTab
+	r.text = k.Text != "" && k.Mods&kit.NonTextMods == 0 && k.Code != tui.KeyTab
 	return r
 }
 
@@ -452,7 +453,7 @@ func (c *EditorCore) hookChord(k tui.KeyEvent) (KeyChord, bool) {
 		return KeyChord{}, false
 	}
 	code := k.Code
-	if k.Text != "" && k.Mods&nonTextMods == 0 {
+	if k.Text != "" && k.Mods&kit.NonTextMods == 0 {
 		code = []rune(k.Text)[0]
 	}
 	return KeyChord{Mode: modeClass(c.keys.mode), Code: code, Ctrl: k.Mods&tui.ModCtrl != 0}, true

@@ -4,6 +4,7 @@ import (
 	"reflect"
 	"testing"
 
+	"github.com/yongjohnlee80/golib/tui/widget/internal/kit"
 	txt "github.com/yongjohnlee80/golib/tui/widget/internal/text"
 )
 
@@ -26,23 +27,23 @@ func TestTextUtilClustersAndCellsBefore(t *testing.T) {
 }
 
 func TestTextUtilTruncate(t *testing.T) {
-	if got := truncate("short", 10, runeWidth); got != "short" {
+	if got := kit.Truncate("short", 10, runeWidth); got != "short" {
 		t.Errorf("truncate short: %q", got)
 	}
-	if got := truncate("a very long string", 6, runeWidth); got != "a ver…" {
+	if got := kit.Truncate("a very long string", 6, runeWidth); got != "a ver…" {
 		t.Errorf("truncate long: %q, want %q", got, "a ver…")
 	}
-	if got := truncate("hello", 1, runeWidth); got != "…" {
+	if got := kit.Truncate("hello", 1, runeWidth); got != "…" {
 		t.Errorf("truncate w=1: %q, want %q", got, "…")
 	}
-	if got := truncate("hello", 0, runeWidth); got != "" {
+	if got := kit.Truncate("hello", 0, runeWidth); got != "" {
 		t.Errorf("truncate w=0: %q, want \"\"", got)
 	}
 }
 
 func TestTextUtilWrapLineAndRanges(t *testing.T) {
 	s := "alpha beta gamma"
-	rows := wrapLine(s, 6, runeWidth)
+	rows := kit.WrapLine(s, 6, runeWidth)
 	wantRows := []string{"alpha", "beta", "gamma"}
 	if !reflect.DeepEqual(rows, wantRows) {
 		t.Errorf("wrapLine(%q, 6) = %v, want %v", s, rows, wantRows)

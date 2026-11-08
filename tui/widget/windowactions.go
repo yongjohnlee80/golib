@@ -1,6 +1,9 @@
 package widget
 
-import "github.com/yongjohnlee80/golib/tui"
+import (
+	"github.com/yongjohnlee80/golib/tui"
+	"github.com/yongjohnlee80/golib/tui/widget/internal/kit"
+)
 
 // WindowOperation identifies the completed operation, independent of its control.
 type WindowOperation uint8
@@ -112,7 +115,7 @@ type WindowCloseAction struct{}
 func (WindowCloseAction) ActionID() tui.ActionID { return "window.close" }
 
 func (c *WindowCore) applyAction(action tui.Action) bool {
-	if nilLike(action) {
+	if kit.NilLike(action) {
 		return false
 	}
 	switch a := actionValue(action).(type) {

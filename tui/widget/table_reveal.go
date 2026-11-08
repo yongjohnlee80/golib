@@ -1,5 +1,9 @@
 package widget
 
+import (
+	"github.com/yongjohnlee80/golib/tui/widget/internal/kit"
+)
+
 // A TABLE'S REVEAL — the scroll that brings a cell into sight, for any table view: DataTable's
 // cells and a native table's pixels alike, each with its own measure of what fits.
 
@@ -7,7 +11,7 @@ package widget
 // within the count rows (rows gone leave no blank below the last), then moved just far enough, up
 // or down, and never above row 0.
 func TableRevealRow(top, row, count, body int) int {
-	return revealRow(clampTop(top, count, body), row, body)
+	return kit.RevealRow(kit.ClampTop(top, count, body), row, body)
 }
 
 // TableRevealField is the first field shown once field col shows whole: left moved back to col when

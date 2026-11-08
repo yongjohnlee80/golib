@@ -8,6 +8,7 @@ import (
 	"github.com/yongjohnlee80/golib/errs"
 	"github.com/yongjohnlee80/golib/tui"
 	"github.com/yongjohnlee80/golib/tui/style"
+	"github.com/yongjohnlee80/golib/tui/widget/internal/kit"
 )
 
 // Status Bar & Triple-Segment Dock Chrome Architecture
@@ -242,7 +243,7 @@ func (s *StatusBar) Layout(c tui.Constraints) tui.Size {
 			seg.text = s.translate(seg.msg)
 		}
 	}
-	sz := c.Constrain(tui.Size{W: boundedMax(c.MaxW, c.MinW), H: 1})
+	sz := c.Constrain(tui.Size{W: kit.BoundedMax(c.MaxW, c.MinW), H: 1})
 	// right to left: the last added sits at the end
 	x := sz.W
 	for i := len(s.items) - 1; i >= 0; i-- {
@@ -312,20 +313,20 @@ func (s *StatusBar) Render(sur tui.Surface) {
 	}
 
 	// Right first: it survives longest.
-	rt := truncate(s.right.text, w, sur.StringWidth)
+	rt := kit.Truncate(s.right.text, w, sur.StringWidth)
 	rw := sur.StringWidth(rt)
 	if rt != "" {
-		drawText(sur, w-rw, 0, rt, s.segStyle(s.right))
+		kit.DrawText(sur, w-rw, 0, rt, s.segStyle(s.right))
 	}
 	// Left in what remains (one-cell gap before right).
 	lAvail := w - rw
 	if rw > 0 {
 		lAvail--
 	}
-	lt := truncate(s.left.text, max(lAvail, 0), sur.StringWidth)
+	lt := kit.Truncate(s.left.text, max(lAvail, 0), sur.StringWidth)
 	lw := sur.StringWidth(lt)
 	if lt != "" {
-		drawText(sur, 0, 0, lt, s.segStyle(s.left))
+		kit.DrawText(sur, 0, 0, lt, s.segStyle(s.left))
 	}
 	// Center in the gap between left and right, truncated first.
 	lo := lw
@@ -340,14 +341,14 @@ func (s *StatusBar) Render(sur tui.Surface) {
 	if cAvail <= 0 || s.center.text == "" {
 		return
 	}
-	ct := truncate(s.center.text, cAvail, sur.StringWidth)
+	ct := kit.Truncate(s.center.text, cAvail, sur.StringWidth)
 	cw := sur.StringWidth(ct)
 	cx := lo + (cAvail-cw)/2
 	// Center within the whole bar when it fits there without overlap.
 	if ideal := (w - cw) / 2; ideal >= lo && ideal+cw <= hi {
 		cx = ideal
 	}
-	drawText(sur, cx, 0, ct, s.segStyle(s.center))
+	kit.DrawText(sur, cx, 0, ct, s.segStyle(s.center))
 }
 
 // statusBarCommitKey is the StatusBar's placed segments commit (tui.Context.AfterLayout).

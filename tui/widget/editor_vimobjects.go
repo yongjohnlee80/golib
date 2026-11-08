@@ -3,6 +3,7 @@ package widget
 import (
 	"strings"
 
+	"github.com/yongjohnlee80/golib/tui/widget/internal/kit"
 	txt "github.com/yongjohnlee80/golib/tui/widget/internal/text"
 )
 
@@ -56,9 +57,9 @@ func (c *EditorCore) wordObject(inner, big bool, count int) (opRange, bool) {
 	type run struct{ from, to, cls int } // [from, to)
 	var runs []run
 	for i := 0; i < len(cs); {
-		k := wordClass(cs[i], big)
+		k := kit.WordClass(cs[i], big)
 		j := i + 1
-		for j < len(cs) && wordClass(cs[j], big) == k {
+		for j < len(cs) && kit.WordClass(cs[j], big) == k {
 			j++
 		}
 		runs = append(runs, run{i, j, k})
@@ -151,12 +152,12 @@ func (c *EditorCore) quoteObject(inner bool, q string) (opRange, bool) {
 		return opRange{lo: txt.Pos{Ln: ln, Col: open + 1}, hiEx: txt.Pos{Ln: ln, Col: close}}, true
 	}
 	lo, hi := open, close+1
-	if hi < len(cs) && isWS(cs[hi]) {
-		for hi < len(cs) && isWS(cs[hi]) {
+	if hi < len(cs) && kit.IsWS(cs[hi]) {
+		for hi < len(cs) && kit.IsWS(cs[hi]) {
 			hi++
 		}
 	} else {
-		for lo > 0 && isWS(cs[lo-1]) {
+		for lo > 0 && kit.IsWS(cs[lo-1]) {
 			lo--
 		}
 	}

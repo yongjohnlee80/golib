@@ -3,6 +3,7 @@ package widget
 import (
 	"github.com/yongjohnlee80/golib/tui"
 	"github.com/yongjohnlee80/golib/tui/style"
+	"github.com/yongjohnlee80/golib/tui/widget/internal/kit"
 	txt "github.com/yongjohnlee80/golib/tui/widget/internal/text"
 )
 
@@ -247,11 +248,11 @@ func (e *Editor) Layout(c tui.Constraints) tui.Size {
 	if e.doc.Shown() {
 		return e.layoutDocument(c)
 	}
-	total := fillW(c)
+	total := kit.FillW(c)
 	e.rowW = total
 	e.cells.gutter = min(e.gutterWidth(), total-1)
 	e.cells.w = total - e.cells.gutter
-	e.cells.h = max(fillH(c)-e.headerRows(), 0)
+	e.cells.h = max(kit.FillH(c)-e.headerRows(), 0)
 	moved := e.shown.Moved([2]int{e.core.buf.Ln, e.core.buf.Col}, [2]int{e.cells.h, e.cells.w})
 	pics := e.picArrived // a picture arrived: the rows changed under the view
 	if pics {

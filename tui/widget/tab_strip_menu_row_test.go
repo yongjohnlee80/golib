@@ -5,6 +5,7 @@ import (
 	"testing"
 
 	"github.com/yongjohnlee80/golib/tui"
+	"github.com/yongjohnlee80/golib/tui/widget/internal/kit"
 )
 
 // Every tab strip's menu opens on the row right under the strip: its ≡, its + and a right press
@@ -46,14 +47,14 @@ func TestEveryStripsMenuOpensRightUnderTheStrip(t *testing.T) {
 			k := build()
 			h := startAppInternal(t, NewOverlayHost(k.root), 40, 8)
 			defer h.stopInternal()
-			cells := map[stripKind]int{}
+			cells := map[kit.StripKind]int{}
 			tab := -1
 			h.onLoopInternal(func() {
 				for _, c := range k.core.row() {
 					if _, ok := cells[c.kind]; !ok {
 						cells[c.kind] = c.x
 					}
-					if c.kind == cellTab && tab < 0 {
+					if c.kind == kit.CellTab && tab < 0 {
 						tab = c.x
 					}
 				}
@@ -84,12 +85,12 @@ func TestEveryStripsMenuOpensRightUnderTheStrip(t *testing.T) {
 					t.Fatalf("%s: Escape left the menu open", how)
 				}
 			}
-			menu, ok := cells[cellMenu]
+			menu, ok := cells[kit.CellMenu]
 			if !ok {
 				t.Fatalf("no ≡ on the strip: %v", k.core.row())
 			}
 			opens("≡", tui.Point{X: menu + 1}, tui.MouseLeft, "Menu")
-			if add, ok := cells[cellAdd]; ok {
+			if add, ok := cells[kit.CellAdd]; ok {
 				opens("+", tui.Point{X: add + 1}, tui.MouseLeft, "Add")
 			}
 			if k.blank {
@@ -118,7 +119,7 @@ func TestATabsMenuRowRunsWithItsTabsIndex(t *testing.T) {
 	beta := -1
 	h.onLoopInternal(func() {
 		for _, c := range tabs.strip.row() {
-			if c.kind == cellTab && c.id == "1" {
+			if c.kind == kit.CellTab && c.id == "1" {
 				beta = c.x
 			}
 		}

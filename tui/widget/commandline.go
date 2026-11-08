@@ -6,6 +6,7 @@ import (
 	"github.com/yongjohnlee80/golib/tui"
 	"github.com/yongjohnlee80/golib/tui/keymap"
 	"github.com/yongjohnlee80/golib/tui/style"
+	"github.com/yongjohnlee80/golib/tui/widget/internal/kit"
 )
 
 // THE EDITOR'S ':' PROMPT, AS A MODULE.
@@ -79,7 +80,7 @@ func (l *CommandLine) host() (modalHost, bool) {
 	if ctx == nil {
 		return nil, false
 	}
-	return hostFor[modalHost](ctx)
+	return kit.HostFor[modalHost](ctx)
 }
 
 // Open opens the prompt with initial in its field. It reports false, and ':' bubbles on, when it
@@ -107,7 +108,7 @@ func (l *CommandLine) open(initial string, failed error) bool {
 	l.field = NewTextInput(WithInitialValue(initial),
 		WithTextInputStyles(TextInputStyles{
 			Text:        field,
-			Placeholder: mutedPlaceholder().Background(style.TokenSurface),
+			Placeholder: kit.MutedPlaceholder().Background(style.TokenSurface),
 			Selection:   style.New().Reverse(true),
 			Error:       field.Foreground(style.TokenError),
 		}),

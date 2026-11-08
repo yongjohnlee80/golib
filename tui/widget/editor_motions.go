@@ -3,34 +3,35 @@ package widget
 import (
 	"strings"
 
+	"github.com/yongjohnlee80/golib/tui/widget/internal/kit"
 	txt "github.com/yongjohnlee80/golib/tui/widget/internal/text"
 )
 
 // bufferWords is a buffer as the word motions read it.
 type bufferWords struct{ b *txt.Buffer }
 
-func (w bufferWords) lineCount() int              { return len(w.b.Lines) }
-func (w bufferWords) lineClusters(i int) []string { return w.b.LineClusters(i) }
+func (w bufferWords) LineCount() int              { return len(w.b.Lines) }
+func (w bufferWords) LineClusters(i int) []string { return w.b.LineClusters(i) }
 
-func (c *EditorCore) walker(big bool) *wordWalker {
-	return newWordWalker(bufferWords{&c.buf}, c.buf.Ln, c.buf.Col, big)
+func (c *EditorCore) walker(big bool) *kit.WordWalker {
+	return kit.NewWordWalker(bufferWords{&c.buf}, c.buf.Ln, c.buf.Col, big)
 }
 
 // wordForward is w (W with big), as Vim's fwd_word: past the cursor's run, then past blanks to
 // the next run's start, stopping on an empty line. At the text's end it rests there.
-func (c *EditorCore) wordForward(big bool) (int, int) { return wordForwardFrom(c.walker(big)) }
+func (c *EditorCore) wordForward(big bool) (int, int) { return kit.WordForwardFrom(c.walker(big)) }
 
 // wordBack is b (B with big), as Vim's bck_word: back past blanks, stopping on an empty line, then
 // to the start of the run there.
-func (c *EditorCore) wordBack(big bool) (int, int) { return wordBackFrom(c.walker(big)) }
+func (c *EditorCore) wordBack(big bool) (int, int) { return kit.WordBackFrom(c.walker(big)) }
 
 // wordEnd is e (E with big), as Vim's end_word: one step, then past blanks (empty lines too), then
 // to the end of the run there, which is the cursor's own when it goes on.
-func (c *EditorCore) wordEnd(big bool) (int, int) { return wordEndFrom(c.walker(big)) }
+func (c *EditorCore) wordEnd(big bool) (int, int) { return kit.WordEndFrom(c.walker(big)) }
 
 // wordEndBack is ge (gE with big), as Vim's bckend_word: back past the cursor's run, then past
 // blanks to the end of the previous run, stopping on an empty line.
-func (c *EditorCore) wordEndBack(big bool) (int, int) { return wordEndBackFrom(c.walker(big)) }
+func (c *EditorCore) wordEndBack(big bool) (int, int) { return kit.WordEndBackFrom(c.walker(big)) }
 
 // paraForward/paraBack: next/previous blank-line boundary.
 func (c *EditorCore) paraForward(count int) int {

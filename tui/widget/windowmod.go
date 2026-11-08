@@ -1,6 +1,9 @@
 package widget
 
-import "github.com/yongjohnlee80/golib/tui"
+import (
+	"github.com/yongjohnlee80/golib/tui"
+	"github.com/yongjohnlee80/golib/tui/widget/internal/kit"
+)
 
 // WindowMod gives unchanged content optional window operations without supplying
 // any appearance. Its default target is its enclosing Float; docked layouts can
@@ -14,8 +17,8 @@ type WindowMod struct {
 
 // NewWindowMod wraps content in independently optional window capabilities.
 func NewWindowMod(content tui.Component, opts ...WindowModOption) *WindowMod {
-	if nilLike(content) {
-		panic(fatalOf("widget: NewWindowMod", "nil content", "a window capability wraps content"))
+	if kit.NilLike(content) {
+		panic(kit.FatalOf("widget: NewWindowMod", "nil content", "a window capability wraps content"))
 	}
 	return &WindowMod{child: content, core: NewWindowCore(opts...)}
 }

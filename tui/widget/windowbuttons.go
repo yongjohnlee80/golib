@@ -5,6 +5,7 @@ import (
 
 	"github.com/yongjohnlee80/golib/tui"
 	"github.com/yongjohnlee80/golib/tui/style"
+	"github.com/yongjohnlee80/golib/tui/widget/internal/kit"
 )
 
 // WindowButtons is an optional right-aligned row of ordinary close, maximize,
@@ -63,7 +64,7 @@ func WithWindowButtonStyle(op WindowOperation, st *ButtonStyle) WindowButtonsOpt
 // places the row in its frame; behavior and its bindings remain in core.
 func NewWindowButtons(core *WindowCore, opts ...WindowButtonsOption) *WindowButtons {
 	if core == nil {
-		panic(fatalOf("widget: NewWindowButtons", "nil core", "controls need a window behavior target"))
+		panic(kit.FatalOf("widget: NewWindowButtons", "nil core", "controls need a window behavior target"))
 	}
 	w := &WindowButtons{core: core, styles: make(map[WindowOperation]*ButtonStyle), labels: maps.Clone(windowControlLabels)}
 	w.Label("WindowButtons")

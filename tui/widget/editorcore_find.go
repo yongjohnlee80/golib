@@ -4,6 +4,7 @@ import (
 	"strings"
 
 	"github.com/yongjohnlee80/golib/highlight"
+	"github.com/yongjohnlee80/golib/tui/widget/internal/kit"
 	txt "github.com/yongjohnlee80/golib/tui/widget/internal/text"
 )
 
@@ -29,7 +30,7 @@ type FindOptions struct {
 
 // IsKeyword reports a keyword cluster, as Vim's \< and \> and its w motions see one: a letter, a
 // digit or _, a CJK script's character, or an emoji (Vim's utf_class of 2 or more).
-func IsKeyword(cluster string) bool { return wordClass(cluster, false) >= 2 }
+func IsKeyword(cluster string) bool { return kit.WordClass(cluster, false) >= 2 }
 
 // findState is the active find.
 type findState struct {
@@ -360,10 +361,10 @@ func (c *EditorCore) escapeFind() bool {
 // wordStarts reports a whole-word match's start at hay[i]: none needed when the term begins with a
 // non-keyword; else the line's start, or a class change from the cluster before.
 func wordStarts(hay []string, i int, first string) bool {
-	return !IsKeyword(first) || i == 0 || wordClass(hay[i-1], false) != wordClass(hay[i], false)
+	return !IsKeyword(first) || i == 0 || kit.WordClass(hay[i-1], false) != kit.WordClass(hay[i], false)
 }
 
 // wordEnds reports a whole-word match's end before hay[end], as wordStarts does its start.
 func wordEnds(hay []string, end int, last string) bool {
-	return !IsKeyword(last) || end == len(hay) || wordClass(hay[end], false) != wordClass(hay[end-1], false)
+	return !IsKeyword(last) || end == len(hay) || kit.WordClass(hay[end], false) != kit.WordClass(hay[end-1], false)
 }

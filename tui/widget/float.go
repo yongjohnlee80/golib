@@ -5,6 +5,7 @@ import (
 	"github.com/yongjohnlee80/golib/tui"
 	"github.com/yongjohnlee80/golib/tui/keymap"
 	"github.com/yongjohnlee80/golib/tui/style"
+	"github.com/yongjohnlee80/golib/tui/widget/internal/kit"
 )
 
 // Floating Window, Modal Dialog & Overlay Presentation Architecture
@@ -212,7 +213,7 @@ func (f *Float) Floating() bool {
 // raise moves the float to the top of its OverlayHost's ordinary layers (OverlayHost.Raise), or
 // above the open dialogs when it is a shown modal one; a no-op outside an OverlayHost.
 func (f *Float) raise() {
-	if h, ok := hostFor[layerRaiser](f.ctx); ok {
+	if h, ok := kit.HostFor[layerRaiser](f.ctx); ok {
 		h.Raise(f)
 	}
 }
@@ -220,7 +221,7 @@ func (f *Float) raise() {
 // Covered reports whether another panel or window stacked above the float overlaps it
 // (OverlayHost.Covered); false outside an OverlayHost.
 func (f *Float) Covered() bool {
-	h, ok := hostFor[coverReader](f.ctx)
+	h, ok := kit.HostFor[coverReader](f.ctx)
 	return ok && h.Covered(f)
 }
 
@@ -310,8 +311,8 @@ func (f *Float) Layout(c tui.Constraints) tui.Size {
 	if !f.shown {
 		return c.Constrain(tui.Size{W: 0, H: 0})
 	}
-	w := boundedMax(c.MaxW, c.MinW)
-	h := boundedMax(c.MaxH, c.MinH)
+	w := kit.BoundedMax(c.MaxW, c.MinW)
+	h := kit.BoundedMax(c.MaxH, c.MinH)
 	area := tui.Size{W: w, H: h}
 	f.ctx.AfterLayout(floatAreaCommitKey, func() { f.area = area }) // Area's: committed, so a measure moves nothing
 	f.ctx.LayoutChild(f.layer, tui.Tight(area))
@@ -375,8 +376,8 @@ func (l *floatLayer) FocusableByDesign() bool { return l.owner.modal }
 // Layout places the child per the owner's anchor (Float.place); a bound window places it in its
 // work area (layoutManaged).
 func (l *floatLayer) Layout(c tui.Constraints) tui.Size {
-	w := boundedMax(c.MaxW, c.MinW)
-	h := boundedMax(c.MaxH, c.MinH)
+	w := kit.BoundedMax(c.MaxW, c.MinW)
+	h := kit.BoundedMax(c.MaxH, c.MinH)
 	if l.owner.windowTarget != nil {
 		return l.layoutManaged(c, w, h)
 	}

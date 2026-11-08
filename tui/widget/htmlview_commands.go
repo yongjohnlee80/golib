@@ -1,8 +1,11 @@
 package widget
 
-import "github.com/yongjohnlee80/golib/tui/keymap"
+import (
+	"github.com/yongjohnlee80/golib/tui/keymap"
+	"github.com/yongjohnlee80/golib/tui/widget/internal/kit"
+)
 
-// An HTMLView's key commands (commands.go declares cmd and the shared helpers).
+// An HTMLView's key commands (declared through internal/kit's Cmd and its helpers).
 
 // HTMLViewScope is an HTMLView's keys in every keyset: keys that never type. The arrows (but Alt's,
 // which travel), PgUp, PgDn, Home, End and Esc take any modifier, as its handler did.
@@ -16,23 +19,23 @@ const (
 )
 
 var (
-	HTMLViewUp       = cmd("tui.htmlview.up", HTMLViewScope, mods("Up", noAlt)...)
-	HTMLViewDown     = cmd("tui.htmlview.down", HTMLViewScope, mods("Down", noAlt)...)
-	HTMLViewPageUp   = cmd("tui.htmlview.pageUp", HTMLViewScope, mods("PgUp", anyCombo)...)
-	HTMLViewPageDown = cmd("tui.htmlview.pageDown", HTMLViewScope, mods("PgDown", anyCombo)...)
-	HTMLViewHalfUp   = cmd("tui.htmlview.halfUp", HTMLViewScope, "Ctrl+U")
-	HTMLViewHalfDown = cmd("tui.htmlview.halfDown", HTMLViewScope, "Ctrl+D")
-	HTMLViewTop      = cmd("tui.htmlview.top", HTMLViewScope, mods("Home", anyCombo)...)
-	HTMLViewBottom   = cmd("tui.htmlview.bottom", HTMLViewScope, mods("End", anyCombo)...)
-	HTMLViewCopy     = cmd("tui.htmlview.copy", HTMLViewScope, "Ctrl+C")
-	HTMLViewClear    = cmd("tui.htmlview.clearSelection", HTMLViewScope, mods("Esc", anyCombo)...) // with a selection
+	HTMLViewUp       = kit.Cmd("tui.htmlview.up", HTMLViewScope, kit.Mods("Up", noAlt)...)
+	HTMLViewDown     = kit.Cmd("tui.htmlview.down", HTMLViewScope, kit.Mods("Down", noAlt)...)
+	HTMLViewPageUp   = kit.Cmd("tui.htmlview.pageUp", HTMLViewScope, kit.Mods("PgUp", kit.AnyCombo)...)
+	HTMLViewPageDown = kit.Cmd("tui.htmlview.pageDown", HTMLViewScope, kit.Mods("PgDown", kit.AnyCombo)...)
+	HTMLViewHalfUp   = kit.Cmd("tui.htmlview.halfUp", HTMLViewScope, "Ctrl+U")
+	HTMLViewHalfDown = kit.Cmd("tui.htmlview.halfDown", HTMLViewScope, "Ctrl+D")
+	HTMLViewTop      = kit.Cmd("tui.htmlview.top", HTMLViewScope, kit.Mods("Home", kit.AnyCombo)...)
+	HTMLViewBottom   = kit.Cmd("tui.htmlview.bottom", HTMLViewScope, kit.Mods("End", kit.AnyCombo)...)
+	HTMLViewCopy     = kit.Cmd("tui.htmlview.copy", HTMLViewScope, "Ctrl+C")
+	HTMLViewClear    = kit.Cmd("tui.htmlview.clearSelection", HTMLViewScope, kit.Mods("Esc", kit.AnyCombo)...) // with a selection
 	// a layout's own (HTMLLayoutPan, HTMLLayoutTravel): a wide block's pan, block and heading travel
-	HTMLViewLeft            = cmd("tui.htmlview.left", HTMLViewScope, "Left")
-	HTMLViewRight           = cmd("tui.htmlview.right", HTMLViewScope, "Right")
-	HTMLViewNextBlock       = cmd("tui.htmlview.nextBlock", HTMLViewScope, "Alt+Down")
-	HTMLViewPreviousBlock   = cmd("tui.htmlview.previousBlock", HTMLViewScope, "Alt+Up")
-	HTMLViewNextHeading     = cmd("tui.htmlview.nextHeading", HTMLViewScope, "Alt+Shift+Down")
-	HTMLViewPreviousHeading = cmd("tui.htmlview.previousHeading", HTMLViewScope, "Alt+Shift+Up")
+	HTMLViewLeft            = kit.Cmd("tui.htmlview.left", HTMLViewScope, "Left")
+	HTMLViewRight           = kit.Cmd("tui.htmlview.right", HTMLViewScope, "Right")
+	HTMLViewNextBlock       = kit.Cmd("tui.htmlview.nextBlock", HTMLViewScope, "Alt+Down")
+	HTMLViewPreviousBlock   = kit.Cmd("tui.htmlview.previousBlock", HTMLViewScope, "Alt+Up")
+	HTMLViewNextHeading     = kit.Cmd("tui.htmlview.nextHeading", HTMLViewScope, "Alt+Shift+Down")
+	HTMLViewPreviousHeading = kit.Cmd("tui.htmlview.previousHeading", HTMLViewScope, "Alt+Shift+Up")
 
 	htmlViewCommands = []keymap.Command{HTMLViewUp, HTMLViewDown, HTMLViewPageUp, HTMLViewPageDown,
 		HTMLViewHalfUp, HTMLViewHalfDown, HTMLViewTop, HTMLViewBottom, HTMLViewCopy, HTMLViewClear,
@@ -40,18 +43,18 @@ var (
 		HTMLViewPreviousHeading}
 
 	// the Vim keyset's printing keys, each the command of HTMLViewScope it does (htmlViewVimDoes)
-	HTMLViewVimUp              = cmd("tui.htmlview.vim.up", HTMLViewVimScope, "K")
-	HTMLViewVimDown            = cmd("tui.htmlview.vim.down", HTMLViewVimScope, "J")
-	HTMLViewVimPageDown        = cmd("tui.htmlview.vim.pageDown", HTMLViewVimScope, "Space")
-	HTMLViewVimTop             = cmd("tui.htmlview.vim.top", HTMLViewVimScope, "G")
-	HTMLViewVimBottom          = cmd("tui.htmlview.vim.bottom", HTMLViewVimScope, "Shift+G")
-	HTMLViewVimCopy            = cmd("tui.htmlview.vim.copy", HTMLViewVimScope, "Y")
-	HTMLViewVimLeft            = cmd("tui.htmlview.vim.left", HTMLViewVimScope, "H")
-	HTMLViewVimRight           = cmd("tui.htmlview.vim.right", HTMLViewVimScope, "L")
-	HTMLViewVimNextBlock       = cmd("tui.htmlview.vim.nextBlock", HTMLViewVimScope, "]")
-	HTMLViewVimPreviousBlock   = cmd("tui.htmlview.vim.previousBlock", HTMLViewVimScope, "[")
-	HTMLViewVimNextHeading     = cmd("tui.htmlview.vim.nextHeading", HTMLViewVimScope, "}")
-	HTMLViewVimPreviousHeading = cmd("tui.htmlview.vim.previousHeading", HTMLViewVimScope, "{")
+	HTMLViewVimUp              = kit.Cmd("tui.htmlview.vim.up", HTMLViewVimScope, "K")
+	HTMLViewVimDown            = kit.Cmd("tui.htmlview.vim.down", HTMLViewVimScope, "J")
+	HTMLViewVimPageDown        = kit.Cmd("tui.htmlview.vim.pageDown", HTMLViewVimScope, "Space")
+	HTMLViewVimTop             = kit.Cmd("tui.htmlview.vim.top", HTMLViewVimScope, "G")
+	HTMLViewVimBottom          = kit.Cmd("tui.htmlview.vim.bottom", HTMLViewVimScope, "Shift+G")
+	HTMLViewVimCopy            = kit.Cmd("tui.htmlview.vim.copy", HTMLViewVimScope, "Y")
+	HTMLViewVimLeft            = kit.Cmd("tui.htmlview.vim.left", HTMLViewVimScope, "H")
+	HTMLViewVimRight           = kit.Cmd("tui.htmlview.vim.right", HTMLViewVimScope, "L")
+	HTMLViewVimNextBlock       = kit.Cmd("tui.htmlview.vim.nextBlock", HTMLViewVimScope, "]")
+	HTMLViewVimPreviousBlock   = kit.Cmd("tui.htmlview.vim.previousBlock", HTMLViewVimScope, "[")
+	HTMLViewVimNextHeading     = kit.Cmd("tui.htmlview.vim.nextHeading", HTMLViewVimScope, "}")
+	HTMLViewVimPreviousHeading = kit.Cmd("tui.htmlview.vim.previousHeading", HTMLViewVimScope, "{")
 )
 
 // noAlt keeps a key's forms without Alt: Alt+Left and Alt+Right are the page's own.

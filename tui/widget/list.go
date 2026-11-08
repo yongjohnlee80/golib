@@ -6,6 +6,7 @@ import (
 	"github.com/yongjohnlee80/golib/tui"
 	"github.com/yongjohnlee80/golib/tui/keymap"
 	"github.com/yongjohnlee80/golib/tui/style"
+	"github.com/yongjohnlee80/golib/tui/widget/internal/kit"
 	txt "github.com/yongjohnlee80/golib/tui/widget/internal/text"
 )
 
@@ -80,7 +81,7 @@ func SliceSource[T any](items []T) ListSource[T] { return sliceSource[T](items) 
 //  4. Mouse & Double-Click Identity Protection:
 //     Clicking selects a row, mouse wheel scrolls the viewport, and double-clicking
 //     publishes [ActivateEvent]. Double-click pairing verifies logical row identity
-//     (pressPairer) rather than screen cells, ensuring scrolling between presses
+//     (kit.PressPairer) rather than screen cells, ensuring scrolling between presses
 //     never triggers an accidental double-click activation on a different row.
 //
 // # Layout & Virtualization Geometry
@@ -152,7 +153,7 @@ type List[T any] struct {
 	// An index identifies a row only WITHIN ONE SOURCE EPOCH. Replacing or
 	// reordering the source makes the same integer mean something else, so it is
 	// reset on every source change.
-	presses pressPairer[int]
+	presses kit.PressPairer[int]
 	w, h    int
 
 	rowPointer tui.PointerShape // the pointer over the rows (SetRowPointerShape); the default: none
@@ -421,14 +422,14 @@ func (l *List[T]) clamp() {
 	if l.count == 0 {
 		l.cursor = 0
 	}
-	l.top = clampTop(l.top, l.count, l.viewRows())
+	l.top = kit.ClampTop(l.top, l.count, l.viewRows())
 }
 
 // viewRows is the number of content rows in the viewport.
 func (l *List[T]) viewRows() int { return max(l.h, 0) }
 
 // ensureVisible scrolls the viewport to keep the cursor inside it.
-func (l *List[T]) ensureVisible() { l.top = revealRow(l.top, l.cursor, l.viewRows()) }
+func (l *List[T]) ensureVisible() { l.top = kit.RevealRow(l.top, l.cursor, l.viewRows()) }
 
 // moveCursor moves the cursor to i (clamped), tells the owner (WithListOnCursor),
 // and emits SelectionChangedEvent in single-select mode.
@@ -537,7 +538,7 @@ func (l *List[T]) HandleEvent(ev tui.Event) bool {
 				return true
 			}
 			// Timing and cell come from the App; the row is List's, and gone if the owner told of
-			// the move replaced the rows (pressPairer).
+			// the move replaced the rows (kit.PressPairer).
 			if _, paired := l.presses.Press(e.Count, idx, func() { l.moveCursor(idx) }); paired {
 				l.activate()
 			}
@@ -554,11 +555,11 @@ func (l *List[T]) HandleEvent(ev tui.Event) bool {
 			}
 			return true
 		case e.Kind == tui.MouseWheel && (e.Button == tui.WheelUp || e.Button == tui.WheelDown):
-			step := listWheelRows
+			step := kit.ListWheelRows
 			if e.Button == tui.WheelUp {
 				step = -step
 			}
-			l.top = clampTop(l.top+step, l.count, l.viewRows())
+			l.top = kit.ClampTop(l.top+step, l.count, l.viewRows())
 			l.MarkDirty()
 			return true
 		}
@@ -572,8 +573,8 @@ func (l *List[T]) HandleEvent(ev tui.Event) bool {
 // Layout fills the height it is given. Offered an unbounded one, it asks for
 // its rows — its content, as a Qt view's implicit height is — at least one.
 func (l *List[T]) Layout(c tui.Constraints) tui.Size {
-	l.w = fillW(c)
-	l.h = boundedMax(c.MaxH, max(c.MinH, l.count, 1))
+	l.w = kit.FillW(c)
+	l.h = kit.BoundedMax(c.MaxH, max(c.MinH, l.count, 1))
 	if l.shown.Moved([2]int{l.cursor}, [2]int{l.h}) {
 		l.ensureVisible()
 	}
@@ -620,22 +621,22 @@ func (l *List[T]) Render(s tui.Surface) {
 	if count == 0 {
 		if empty := l.emptyText.inLanguage(&l.Base); empty != "" {
 			muted := style.New().Foreground(style.TokenTextMuted).Italic(true)
-			drawText(s, 0, 0, truncate(empty, sz.W, s.StringWidth), muted)
+			kit.DrawText(s, 0, 0, kit.Truncate(empty, sz.W, s.StringWidth), muted)
 		}
 		return
 	}
-	contentW, scrollable := rowsWidth(sz.W, sz.H, count)
-	paintRows(s, min(l.top, count), count, contentW, l.rowStyle, func(s tui.Surface, i, y, w int, st style.Style) {
+	contentW, scrollable := kit.RowsWidth(sz.W, sz.H, count)
+	kit.PaintRows(s, min(l.top, count), count, contentW, l.rowStyle, func(s tui.Surface, i, y, w int, st style.Style) {
 		item := l.src.Item(i)
 		if l.paint != nil {
 			_, selected := l.sel[i]
 			l.paint(s, y, w, item, st, i == l.cursor || selected)
 		} else {
-			drawText(s, 0, y, truncate(l.render(item), w, s.StringWidth), st)
+			kit.DrawText(s, 0, y, kit.Truncate(l.render(item), w, s.StringWidth), st)
 		}
 	})
 	if scrollable {
-		paintScrollIndicator(s, sz.W-1, sz.H, l.top, count-sz.H)
+		kit.PaintScrollIndicator(s, sz.W-1, sz.H, l.top, count-sz.H)
 	}
 }
 
@@ -654,7 +655,7 @@ func (l *List[T]) PointerShapes(dst []tui.PointerRegion) []tui.PointerRegion {
 	if l.rowPointer == tui.PointerDefault || count == 0 || l.w <= 0 || l.h <= 0 {
 		return dst
 	}
-	w, _ := rowsWidth(l.w, l.h, count)
+	w, _ := kit.RowsWidth(l.w, l.h, count)
 	rows := min(count-min(l.top, count), l.h)
 	return append(dst, tui.PointerRegion{Rect: tui.Rect{W: w, H: rows}, Shape: l.rowPointer})
 }

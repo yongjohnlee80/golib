@@ -7,6 +7,7 @@ import (
 	"slices"
 
 	"github.com/yongjohnlee80/golib/tui"
+	"github.com/yongjohnlee80/golib/tui/widget/internal/kit"
 )
 
 // ANCHORED OVERLAY LAYERS.
@@ -312,7 +313,7 @@ func (h *OverlayHost) mountLayer(layer tui.Component) (err error) {
 // the panic naming either. The host stores a policy for LATER, so the boundary
 // that stores it is the only place that can still name what went wrong.
 func policyOr(p AnchorPolicy) AnchorPolicy {
-	if nilLike(p) {
+	if kit.NilLike(p) {
 		return FlipClipPolicy{}
 	}
 	return p

@@ -1,6 +1,9 @@
 package widget
 
-import "github.com/yongjohnlee80/golib/tui"
+import (
+	"github.com/yongjohnlee80/golib/tui"
+	"github.com/yongjohnlee80/golib/tui/widget/internal/kit"
+)
 
 // WindowGeometry is the placement owner's geometry, in one owner-local frame.
 // Checkpoint restores the requested policy, including anchors and proportions.
@@ -117,7 +120,7 @@ func NewWindowCore(opts ...WindowModOption) *WindowCore {
 		}
 	}
 	if reason := c.configError(); reason != "" {
-		panic(fatalOf("widget: NewWindowCore", reason, "configure capabilities before mounting"))
+		panic(kit.FatalOf("widget: NewWindowCore", reason, "configure capabilities before mounting"))
 	}
 	return c
 }
@@ -129,10 +132,10 @@ func (c *WindowCore) configError() string {
 	if c.maximum.W < 0 || c.maximum.H < 0 {
 		return "window resize maximum must be non-negative"
 	}
-	if c.minimize && nilLike(c.collector) {
+	if c.minimize && kit.NilLike(c.collector) {
 		return "minimize requires a collector"
 	}
-	if c.customTarget && nilLike(c.target) {
+	if c.customTarget && kit.NilLike(c.target) {
 		return "nil window target"
 	}
 	if c.handlerSet && c.onClose == nil {
@@ -165,13 +168,13 @@ func (c *WindowCore) BindTarget(ctx *tui.Context, content tui.Component, target 
 
 func (c *WindowCore) bind(ctx *tui.Context, content tui.Component, target any, explicit bool) {
 	if c.live() && c.ctx != ctx {
-		panic(fatalOf("widget: WindowCore.Bind", "core already bound to another live node", "one event receiver owns a behavior core"))
+		panic(kit.FatalOf("widget: WindowCore.Bind", "core already bound to another live node", "one event receiver owns a behavior core"))
 	}
 	c.ctx, c.content, c.owner = ctx, content, ctx.ID()
 	c.closed, c.minimized, c.drag = false, false, nil
 	c.bound, c.boundExplicit = target, explicit
 	if reason := c.probe(); reason != "" {
-		panic(fatalOf("widget: WindowCore.Bind", reason, "supply the target facets required by enabled capabilities"))
+		panic(kit.FatalOf("widget: WindowCore.Bind", reason, "supply the target facets required by enabled capabilities"))
 	}
 	owner := c.owner
 	ctx.OnUnmount(func() {
@@ -236,22 +239,22 @@ func (c *WindowCore) Retarget(target any) {
 		return
 	}
 	if reason := c.probe(); reason != "" {
-		panic(fatalOf("widget: WindowCore.Retarget", reason, "supply the target facets required by enabled capabilities"))
+		panic(kit.FatalOf("widget: WindowCore.Retarget", reason, "supply the target facets required by enabled capabilities"))
 	}
 	c.notifyObservers()
 }
 
 func (c *WindowCore) bindError(explicit bool) string {
-	if (c.move || c.resize) && nilLike(c.geometry) {
+	if (c.move || c.resize) && kit.NilLike(c.geometry) {
 		return "movement/resize requires window geometry"
 	}
-	if c.maximize && nilLike(c.zoom) {
+	if c.maximize && kit.NilLike(c.zoom) {
 		return "maximize requires a zoom target"
 	}
-	if c.minimize && (nilLike(c.visibility) || c.visibility.Modal()) {
+	if c.minimize && (kit.NilLike(c.visibility) || c.visibility.Modal()) {
 		return "collector minimize requires a non-modal visibility target"
 	}
-	if c.close && c.onClose == nil && nilLike(c.dismissal) {
+	if c.close && c.onClose == nil && kit.NilLike(c.dismissal) {
 		return "close requires a target dismissal or owner handler"
 	}
 	if explicit && c.workArea != nil {

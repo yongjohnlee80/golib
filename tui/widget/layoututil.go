@@ -17,8 +17,8 @@ import (
 //	Incoming Constraint Axis (e.g. MaxW)
 //	           │
 //	           ├── Is Max == tui.Unbounded?
-//	           │   ├── YES: boundedMax -> return Min (intrinsic size)
-//	           │   └── NO:  boundedMax -> return Max (greedy fill)
+//	           │   ├── YES: kit.BoundedMax -> return Min (intrinsic size)
+//	           │   └── NO:  kit.BoundedMax -> return Max (greedy fill)
 //	           │
 //	           └── SubFrame(Max, frameSize)
 //	               ├── Max == Unbounded -> return Unbounded
@@ -27,7 +27,7 @@ import (
 // # Architectural Invariants
 //
 //  1. Unbounded Axis Safety: When a constraint axis is [tui.Unbounded], greedy widgets must never
-//     return Unbounded as their concrete layout dimension; [boundedMax] resolves to the intrinsic
+//     return Unbounded as their concrete layout dimension; [kit.BoundedMax] resolves to the intrinsic
 //     minimum extent (`minV`), guaranteeing bounded geometry.
 //  2. Frame Underflow Clamp: Subtracting border and padding frames via [subFrame] clamps at zero,
 //     preventing negative width or height constraints from reaching child components when the
