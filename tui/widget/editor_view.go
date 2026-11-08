@@ -311,7 +311,7 @@ func (e *Editor) colAtCells(cs []string, from, end, cells int) int {
 }
 
 // width is s's width in the editor's cells: the terminal's measure, a tab tabCells.
-func (e *Editor) width(s string) int { return tabAware(e.measure)(s) }
+func (e *Editor) width(s string) int { return tabAware(e.Measure)(s) }
 
 // view is the layout state the shared soft-wrap geometry needs. It is the
 // only place this widget's viewport is handed to txt.Buffer.

@@ -188,12 +188,12 @@ func (s *tabStrip) capNow() int {
 // ellipsis; then after a × when the tabs close (onClose), outside the limit.
 func (s *tabStrip) labelAt(tb kit.StripTab, limit int) string {
 	l := tb.Label
-	if limit > 0 && s.base.measure(l) > limit {
+	if limit > 0 && s.base.Measure(l) > limit {
 		if s.fit != nil {
 			l = kit.CellLabel(s.fit(tb.ID, limit-2)) // 2: the padding
 		}
-		if s.base.measure(l) > limit { // no fit, or one wider than asked
-			l = kit.Truncate(strings.TrimRight(l, " "), limit-1, s.base.measure) + " "
+		if s.base.Measure(l) > limit { // no fit, or one wider than asked
+			l = kit.Truncate(strings.TrimRight(l, " "), limit-1, s.base.Measure) + " "
 		}
 	}
 	if s.onClose != nil {
@@ -210,11 +210,11 @@ func (s *tabStrip) fitTabs(tabs []kit.StripTab) int {
 	}
 	mark := 0
 	if s.onClose != nil {
-		mark = s.base.measure(closeMark)
+		mark = s.base.Measure(closeMark)
 	}
 	full, widest := make([]int, len(tabs)), 0
 	for i, tb := range tabs {
-		full[i] = s.base.measure(tb.Label)
+		full[i] = s.base.Measure(tb.Label)
 		widest = max(widest, full[i])
 	}
 	fits := func(limit int) bool {
@@ -247,7 +247,7 @@ func (s *tabStrip) fitTabs(tabs []kit.StripTab) int {
 // closeShown is whether label, as drawn (cut at the window's edge or not), shows its × whole: a
 // tab cut to " …" has no × to press.
 func (s *tabStrip) closeShown(label string) bool {
-	return s.onClose != nil && strings.HasPrefix(label, closeMark) && s.base.measure(label) > s.base.measure(closeMark)
+	return s.onClose != nil && strings.HasPrefix(label, closeMark) && s.base.Measure(label) > s.base.Measure(closeMark)
 }
 
 // the strip's own glyphs: a tab's close mark, before its padded label (" × name "), the cells a
@@ -327,7 +327,7 @@ func (s *tabStrip) width() int {
 	}
 	w := s.tail()
 	for _, tb := range s.owner.stripTabs() {
-		w += s.base.measure(s.labelAt(tb, limit)) + 1
+		w += s.base.Measure(s.labelAt(tb, limit)) + 1
 	}
 	return max(w-1, 0)
 }
@@ -353,7 +353,7 @@ func (s *tabStrip) row() []stripCell {
 		}
 	} else {
 		room, fit := v.room, fitFrom(widths, v.room)
-		out = append(out, stripCell{kind: kit.CellPrev, label: prevLabel, w: s.base.measure(prevLabel)})
+		out = append(out, stripCell{kind: kit.CellPrev, label: prevLabel, w: s.base.Measure(prevLabel)})
 		x = 4
 		end := x + room
 		if v.first == fit && fit > 0 {
@@ -362,7 +362,7 @@ func (s *tabStrip) row() []stripCell {
 				used += w + 1
 			}
 			if w := room - used - 1; w >= 2 { // the tab before, cut from its start, then a cell
-				label := elide(labels[fit-1], w, ElideLeft, s.base.measure)
+				label := elide(labels[fit-1], w, ElideLeft, s.base.Measure)
 				out = append(out, stripCell{kind: kit.CellTab, id: tabs[fit-1].ID, label: label, x: x, w: w, close: s.closeShown(label)})
 				x += w + 1
 			}
@@ -371,13 +371,13 @@ func (s *tabStrip) row() []stripCell {
 			label, w := labels[i], widths[i]
 			if x+w > end { // the last one shown, cut at the window's edge
 				w = end - x
-				label = kit.Truncate(label, w, s.base.measure)
+				label = kit.Truncate(label, w, s.base.Measure)
 			}
 			out = append(out, stripCell{kind: kit.CellTab, id: tabs[i].ID, label: label, x: x, w: w, close: s.closeShown(label)})
 			x += w + 1
 		}
 		x = end + 1 // > keeps its place, however full the window
-		out = append(out, stripCell{kind: kit.CellNext, label: nextLabel, x: x, w: s.base.measure(nextLabel)})
+		out = append(out, stripCell{kind: kit.CellNext, label: nextLabel, x: x, w: s.base.Measure(nextLabel)})
 		x += 4
 	}
 	if s.hasAdd() {
@@ -425,7 +425,7 @@ func (s *tabStrip) view() stripView {
 	natural := s.tail()
 	for i, tb := range tabs {
 		v.labels[i] = s.labelAt(tb, limit)
-		v.widths[i] = s.base.measure(v.labels[i])
+		v.widths[i] = s.base.Measure(v.labels[i])
 		natural += v.widths[i] + 1
 	}
 	if s.avail <= 0 || natural-1 <= s.avail || len(tabs) == 0 {
@@ -487,7 +487,7 @@ func (s *tabStrip) lastShown(row []stripCell) bool {
 	tabs := s.owner.stripTabs()
 	for i := len(row) - 1; i >= 0; i-- {
 		if row[i].kind == kit.CellTab {
-			return len(tabs) > 0 && row[i].id == tabs[len(tabs)-1].ID && s.base.measure(s.label(tabs[len(tabs)-1])) == row[i].w
+			return len(tabs) > 0 && row[i].id == tabs[len(tabs)-1].ID && s.base.Measure(s.label(tabs[len(tabs)-1])) == row[i].w
 		}
 	}
 	return true
@@ -551,7 +551,7 @@ func (s *tabStrip) render(sur tui.Surface, w int) {
 		}
 		if c.kind == kit.CellTab && c.id == active {
 			st = s.selected
-			if s.markFocus && s.base.focused() {
+			if s.markFocus && s.base.Focused() {
 				st = style.New().Underline(true).Inherit(st)
 			}
 		}
@@ -597,7 +597,7 @@ func (s *tabStrip) keyOf(e tui.KeyEvent, focused, hasAdd, menuShown bool) stripK
 
 // key acts on the strip's keys.
 func (s *tabStrip) key(e tui.KeyEvent) bool {
-	k := s.keyOf(e, s.base.focused(), s.hasAdd(), s.menuShown())
+	k := s.keyOf(e, s.base.Focused(), s.hasAdd(), s.menuShown())
 	switch k {
 	case stripNone:
 		return false
@@ -633,7 +633,7 @@ func (s *tabStrip) press(e tui.MouseEvent) bool {
 			continue
 		}
 		switch {
-		case c.kind == kit.CellTab && e.Button == tui.MouseLeft && c.close && e.X < c.x+s.base.measure(closeMark):
+		case c.kind == kit.CellTab && e.Button == tui.MouseLeft && c.close && e.X < c.x+s.base.Measure(closeMark):
 			s.onClose(c.id) // the tab's ×: closed, not chosen
 		case c.kind == kit.CellTab && e.Button == tui.MouseLeft:
 			s.owner.stripChoose(c.id)

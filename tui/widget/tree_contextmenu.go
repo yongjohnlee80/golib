@@ -53,7 +53,7 @@ func (t *Tree) menuPress(e tui.MouseEvent) bool {
 
 // requestMenu emits ContextMenuEvent for n at row i (nil and -1: none), at at, then tells the owner.
 func (t *Tree) requestMenu(n *TreeNode, i int, at tui.Point) {
-	t.publish(ContextMenuEvent{Owner: t.NodeID(), Index: i, At: at})
+	t.Publish(ContextMenuEvent{Owner: t.NodeID(), Index: i, At: at})
 	if t.on.menu != nil {
 		t.on.menu(n, at)
 	}

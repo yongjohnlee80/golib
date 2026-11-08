@@ -296,7 +296,7 @@ func (b *Button) SetLabelMessage(m tui.Message) {
 		return
 	}
 	b.labelMsg = m
-	b.applyText(b.translate(m))
+	b.applyText(b.Translate(m))
 	b.RequestLayout()
 }
 
@@ -418,7 +418,7 @@ func (b *Button) ActivationAvailable() bool { return b.enabled }
 // State reports the look that applies right now, by the toolkit's one
 // precedence rule.
 func (b *Button) State() WidgetState {
-	return resolveWidgetState(!b.enabled, b.armed, b.focused())
+	return resolveWidgetState(!b.enabled, b.armed, b.Focused())
 }
 
 // Init installs the button's own key bindings as its DEFAULT resolver layer, so
@@ -460,20 +460,20 @@ func (b *Button) Layout(cs tui.Constraints) tui.Size {
 	// Resolved here, never in Render: a language change always lays the tree out again, so
 	// the text measured now is the text painted.
 	if b.labelMsg != (tui.Message{}) {
-		b.applyText(b.translate(b.labelMsg))
+		b.applyText(b.Translate(b.labelMsg))
 	}
 	// measure, not a rune count. A rune count is wrong in three separate ways:
 	// a CJK ideograph occupies two columns, a combining mark occupies none, and
-	// an emoji ZWJ sequence is many runes in one cell. Base.measure asks the
+	// an emoji ZWJ sequence is many runes in one cell. Base.Measure asks the
 	// mounted Context for the active width policy, so layout agrees with what
 	// the backend will actually draw.
 	// The DECORATED form, because that is the string Render paints. Measuring
 	// the bare label here would size the button two cells short of its own
 	// brackets and clip the closing one.
 	if d := b.decorated(); d != b.label {
-		return cs.Constrain(tui.Size{W: b.measure(d), H: 1})
+		return cs.Constrain(tui.Size{W: b.Measure(d), H: 1})
 	}
-	return cs.Constrain(tui.Size{W: b.measure(b.label) + 2, H: 1})
+	return cs.Constrain(tui.Size{W: b.Measure(b.label) + 2, H: 1})
 }
 
 // decorated is the label as it is painted: "[ Save ]" by default, or the bare

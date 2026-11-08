@@ -161,7 +161,7 @@ func (p *menuPopup) Layout(cs tui.Constraints) tui.Size {
 	// opening row has a longer name than anything inside it would drop its own
 	// title for want of two cells.
 	if t := p.titleText(); t != "" {
-		w = max(w, p.owner.measure(t)+2) // a space either side of the name
+		w = max(w, p.owner.Measure(t)+2) // a space either side of the name
 	}
 	// A FLOOR, so a cascade of short categories does not read as a row of
 	// differently-sized boxes. It raises a narrow level; it never shrinks a

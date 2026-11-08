@@ -40,7 +40,7 @@ func oldInputKey(t *TextInput, e tui.KeyEvent) bool {
 		if t.onSubmit != nil {
 			t.onSubmit(t.Value())
 		}
-		t.publish(SubmitEvent{Owner: t.NodeID(), Value: t.Value()})
+		t.Publish(SubmitEvent{Owner: t.NodeID(), Value: t.Value()})
 		// NOT CONSUMED, as QLineEdit ignores Return after emitting accepted:
 		// Enter goes on to the parent, so a field in a dialog lets the dialog
 		// answer with its default button. A value the validator refuses (above)

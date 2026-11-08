@@ -27,7 +27,7 @@ func (c *modalCard) Layout(cs tui.Constraints) tui.Size {
 		// and never more than the host has. It is a width, not a clip: the
 		// help line and the title still fit, as they do on a card sized to
 		// its content.
-		want := max(c.width-frame, c.measure(footer), c.measure(title))
+		want := max(c.width-frame, c.Measure(footer), c.Measure(title))
 		inner.W = min(want, inner.W)
 	}
 
@@ -38,7 +38,7 @@ func (c *modalCard) Layout(cs tui.Constraints) tui.Size {
 	rows := c.cardRowsFor(pad, btnH, footer)
 	footW := 0
 	if footer != "" {
-		footW = c.measure(footer)
+		footW = c.Measure(footer)
 	}
 
 	// THE QUESTION AND ITS ANSWERS BEFORE ANYTHING ELSE. A card taller than
@@ -76,7 +76,7 @@ func (c *modalCard) Layout(cs tui.Constraints) tui.Size {
 	if rows.footLine == 0 {
 		footW = 0
 	}
-	contentW := min(max(bodyW, btnW, footW, c.measure(title)), inner.W)
+	contentW := min(max(bodyW, btnW, footW, c.Measure(title)), inner.W)
 	if c.width > 0 {
 		contentW = inner.W
 	}

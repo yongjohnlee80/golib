@@ -284,7 +284,7 @@ func (t *Tabs) Select(i int) {
 	}
 	t.RequestLayout()
 	t.MarkDirty()
-	t.publish(TabChangedEvent{Owner: t.NodeID(), Index: i, Label: t.tabs[i].label})
+	t.Publish(TabChangedEvent{Owner: t.NodeID(), Index: i, Label: t.tabs[i].label})
 	if t.onChange != nil {
 		t.onChange(i) // last: the owner may change the tabs
 	}
@@ -300,7 +300,7 @@ func (t *Tabs) cycle(delta int) {
 func (t *Tabs) HandleEvent(ev tui.Event) bool {
 	switch e := ev.(type) {
 	case tui.KeyEvent:
-		d := t.keyDelta(e, t.focused())
+		d := t.keyDelta(e, t.Focused())
 		if d == 0 {
 			return false
 		}

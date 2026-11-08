@@ -180,7 +180,7 @@ func (t *Text) lines() []string {
 // Truncate reports one line; Wrap reports the wrapped height.
 func (t *Text) Layout(c tui.Constraints) tui.Size {
 	if t.mode == Truncate {
-		w := t.measure(t.lines()[0])
+		w := t.Measure(t.lines()[0])
 		if c.MaxW != tui.Unbounded {
 			w = min(w, c.MaxW)
 		}
@@ -192,14 +192,14 @@ func (t *Text) Layout(c tui.Constraints) tui.Size {
 	// the screen around three short lines.
 	w := 0
 	for _, ln := range t.lines() {
-		w = max(w, t.measure(ln))
+		w = max(w, t.Measure(ln))
 	}
 	if c.MaxW != tui.Unbounded {
 		w = min(w, c.MaxW)
 	}
 	h := 0
 	for _, ln := range t.lines() {
-		h += len(tui.WrapText(ln, w, t.measure))
+		h += len(tui.WrapText(ln, w, t.Measure))
 	}
 	return c.Constrain(tui.Size{W: w, H: max(h, 1)})
 }

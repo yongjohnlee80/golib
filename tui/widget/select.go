@@ -356,7 +356,7 @@ func (s *Select[T]) openPopup() {
 		return
 	}
 	s.open, s.popup, s.layer, s.chosen = true, panel, layer, -1
-	s.publish(OpenedEvent{Owner: s.NodeID()})
+	s.Publish(OpenedEvent{Owner: s.NodeID()})
 	s.MarkDirty()
 }
 
@@ -375,7 +375,7 @@ func (s *Select[T]) closePopup(reason DismissReason) {
 func (s *Select[T]) popupClosed(DismissReason) {
 	chosen := s.chosen
 	s.open, s.popup, s.layer, s.chosen = false, nil, nil, -1
-	s.publish(ClosedEvent{Owner: s.NodeID()})
+	s.Publish(ClosedEvent{Owner: s.NodeID()})
 	s.MarkDirty()
 	if chosen >= 0 && s.onChange != nil {
 		s.onChange(chosen)
@@ -387,7 +387,7 @@ func (s *Select[T]) popupClosed(DismissReason) {
 func (s *Select[T]) commit(i int) {
 	if i >= 0 && i < len(s.items) {
 		s.selected = i
-		s.publish(SelectionChangedEvent{Owner: s.NodeID(), Index: i, Label: s.items[i].Label})
+		s.Publish(SelectionChangedEvent{Owner: s.NodeID(), Index: i, Label: s.items[i].Label})
 		s.chosen = i
 	}
 	s.closePopup(DismissAccept)
@@ -439,7 +439,7 @@ func (s *Select[T]) Layout(c tui.Constraints) tui.Size {
 	}
 	w := s.fixedW
 	if w == 0 {
-		w = min(max(max(s.longestLabel(), s.measure(s.placeholder))+3, 6), s.maxW)
+		w = min(max(max(s.longestLabel(), s.Measure(s.placeholder))+3, 6), s.maxW)
 	}
 	sz := c.Constrain(tui.Size{W: w, H: 1})
 	s.fieldW = min(w, sz.W)
@@ -448,13 +448,13 @@ func (s *Select[T]) Layout(c tui.Constraints) tui.Size {
 
 // errorText is the field's report of a failed load, in the App's language.
 func (s *Select[T]) errorText() string {
-	return kit.WithArg(s.translate(tui.Msg("tui.select.error")), s.loadErr.Error())
+	return kit.WithArg(s.Translate(tui.Msg("tui.select.error")), s.loadErr.Error())
 }
 
 func (s *Select[T]) longestLabel() int {
 	w := 0
 	for _, it := range s.items {
-		w = max(w, s.measure(it.Label))
+		w = max(w, s.Measure(it.Label))
 	}
 	return w
 }
@@ -574,7 +574,7 @@ func (p *selectPanel[T]) Layout(c tui.Constraints) tui.Size {
 	h := kit.BoundedMax(c.MaxH, c.MinH)
 	labelW := max(p.owner.longestLabel(), 8)
 	if p.owner.filterOn {
-		labelW = max(labelW, p.owner.measure(p.filter)+2)
+		labelW = max(labelW, p.owner.Measure(p.filter)+2)
 	}
 	pw := min(max(labelW+2, p.owner.fieldW), w)
 	rows := max(len(p.matches), 1)

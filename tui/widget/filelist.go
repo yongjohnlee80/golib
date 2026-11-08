@@ -336,7 +336,7 @@ func (l *FileList) Enter() bool {
 }
 
 // Hint is the keys the list answers to, for a footer, in the App's language.
-func (l *FileList) Hint() string { return l.translate(l.HintMessage()) }
+func (l *FileList) Hint() string { return l.Translate(l.HintMessage()) }
 
 // HintMessage is [FileList.Hint] as a catalog message, for a footer that follows the
 // language by itself.
@@ -492,9 +492,9 @@ func (l *FileList) fitTitle() {
 	title := l.title
 	switch {
 	case l.loading != "":
-		title = kit.WithArg(l.translate(tui.Msg("tui.files.titleLoading")), title)
+		title = kit.WithArg(l.Translate(tui.Msg("tui.files.titleLoading")), title)
 	case l.unreadable:
-		title = kit.WithArg(l.translate(tui.Msg("tui.files.titleCannotRead")), title)
+		title = kit.WithArg(l.Translate(tui.Msg("tui.files.titleCannotRead")), title)
 	}
 	// The border's two corners, and a space either side of the title.
 	room := l.width - 4

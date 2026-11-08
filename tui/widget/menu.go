@@ -323,7 +323,7 @@ func (m *Menu) resolveLabelsIn(items []MenuItemModel) {
 	for i := range items {
 		it := &items[i]
 		if it.LabelMsg != (tui.Message{}) {
-			label, key, idx := tui.ParseMnemonic(m.translate(it.LabelMsg))
+			label, key, idx := tui.ParseMnemonic(m.Translate(it.LabelMsg))
 			it.Label, it.Hotkey, it.HotkeyIdx = label, key, max(idx, 0)
 		}
 		if it.AccelCommand != "" {

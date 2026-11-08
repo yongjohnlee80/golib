@@ -630,9 +630,9 @@ func (m *Menu) levelOpenFor(id ItemID) bool {
 // gutter is the check column: a dropdown with any checkable row gives every row one, so the
 // labels line up, as Qt's do; a bar's row has its own when it is checkable.
 func (m *Menu) rowWidth(it MenuItemModel, marker, gutter bool) int {
-	w := m.measure(it.Label) + 2
+	w := m.Measure(it.Label) + 2
 	if it.Accel != "" {
-		w += 2 + m.measure(it.Accel)
+		w += 2 + m.Measure(it.Accel)
 	}
 	if marker && it.Kind == ItemKindSubmenu {
 		w += 2
@@ -689,7 +689,7 @@ func (m *Menu) paintRow(s tui.Surface, it MenuItemModel, r tui.Rect, st RowState
 	}
 	x = m.paintLabel(s, it, x, r.Y, base, rowLit(viewOf(it), st))
 	if it.Accel != "" {
-		ax := r.X + r.W - 1 - m.measure(it.Accel)
+		ax := r.X + r.W - 1 - m.Measure(it.Accel)
 		if ax > x {
 			m.paintText(s, it.Accel, ax, r.Y, m.style.Accel())
 		}

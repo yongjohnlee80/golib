@@ -102,7 +102,7 @@ func (t *TextInput) replaceWord(start int, s string) {
 // hint is what the field draws after its text while it has the keys: the rest of the first choice
 // when it begins with the word typed, then the other choices; during Tab's walk, the others.
 func (t *TextInput) hint() string {
-	if t.completer == nil || !t.focused() || t.cursor() != t.length() || t.mask != 0 {
+	if t.completer == nil || !t.Focused() || t.cursor() != t.length() || t.mask != 0 {
 		return ""
 	}
 	if _, _, sel := t.selection(); sel {

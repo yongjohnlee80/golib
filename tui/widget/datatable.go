@@ -287,9 +287,6 @@ func (t *DataTable) ScrollState() (offset, viewport, content int) {
 
 var _ tui.Scroller = (*DataTable)(nil)
 
-// Measure implements TableLayout.
-func (t *DataTable) Measure(s string) int { return t.measure(s) }
-
 // Changed implements TableLayout.
 func (t *DataTable) Changed() { t.MarkDirty() }
 
@@ -591,7 +588,7 @@ func (t *DataTable) Cursor() (int, int, bool) {
 	if t.bound() {
 		return 0, 0, false // a bound layout places its own field
 	}
-	f, ok := t.fieldPlace(tui.Size{W: t.w, H: t.h}, t.gutter(), t.core.Fields(), t.measure)
+	f, ok := t.fieldPlace(tui.Size{W: t.w, H: t.h}, t.gutter(), t.core.Fields(), t.Measure)
 	return f.caret.X, f.caret.Y, ok
 }
 

@@ -61,7 +61,7 @@ in the same change. Never add a second copy "for now".
 
 | Mechanism | Its one home |
 |---|---|
-| Text width, cells, graphemes | `tui.StringWidth` / `Surface.StringWidth`; `Base.measure` outside Render |
+| Text width, cells, graphemes | `tui.StringWidth` / `Surface.StringWidth`; `Base.Measure` outside Render |
 | A backend's latched cursor and images | `tui.CursorLatch` and `tui.ImageLatch` (`backend.go`), held as fields under the backend's own lock; a backend filters what it cannot show before it latches |
 | CR/LF and paste normalization | `tui.NormalizeNewlines` (`clipboard.go`), and `tui.NewPasteEvent` for a backend's paste, called at every entry |
 | Painting and wrapping text | `tui.DrawText` / `tui.WrapText` (`textpaint.go`): a zero-width cluster takes no column, and a cluster that does not fit whole is not painted |
@@ -289,7 +289,7 @@ The lifecycle, and what each step changes:
   - `internal/audit/owner_callback_test.go` enforces the positional shapes; the callback-replacement
     tests, the behaviour.
 - **The bus is for app-wide listeners only:** an `XEvent` with `Owner tui.NodeID` first, published
-  through `Base.publish`. Never both a callback and a bus event for the same fact to the same
+  through `Base.Publish`. Never both a callback and a bus event for the same fact to the same
   listener; never subscribe app-wide to hear your own child.
 - **An edit notification reports user edits only** (`ChangeEvent`, `WithOnEdit`): a programmatic
   `SetValue` never fires it. Every other notification — an operation's result, a state change, a

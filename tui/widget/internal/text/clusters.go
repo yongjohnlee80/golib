@@ -15,7 +15,7 @@ func Clusters(s string) []string {
 }
 
 // CellsBefore is the display width of cs[:i] under the caller's measure
-// (Surface.StringWidth in Render, Base.measure elsewhere).
+// (Surface.StringWidth in Render, Base.Measure elsewhere).
 func CellsBefore(cs []string, i int, measure func(string) int) int {
 	w := 0
 	for j := 0; j < i && j < len(cs); j++ {
