@@ -380,3 +380,56 @@ func TestAPicturesArrivalSettlesBeforeTheNextInput(t *testing.T) {
 		t.Errorf("a click on the view's first row right after the picture landed on line %d, want 0 (the picture's fence)", ln)
 	}
 }
+
+// An arrival's snapshot is its owner's: a picture of buffer A arrives with A's cursor off the view,
+// then buffer B (same text, the cursor at the same place, on the view) is shown and its picture
+// arrives, all before one layout (frames held). B's arrival takes its own snapshot, so its cursor
+// is revealed on the picture: A's is not inherited.
+func TestAPicturesArrivalIsItsOwnersAlone(t *testing.T) {
+	src := strings.Repeat("x ", 300)
+	doc := "```mermaid\n" + src + "\n```\nafter" + strings.Repeat("\nline", 20)
+	e := NewEditor(WithCore(CoreInitialText(doc)))
+	lay := newHeldLay()
+	e.layPicture = lay.lay
+	e.SetRenderer(&MarkdownCellRenderer{MarkdownBlocks: MarkdownBlocks{HideMetadata: true}})
+	e.SetView(ViewRendered)
+	e.Core().SetLine(1, 590)
+	ih := startAppHeld(t, e, 40, 10)
+	t.Cleanup(ih.stopInternal)
+	t.Cleanup(lay.releaseAll)
+	lay.await(t, lay.started, src, "request")
+	arrive := func() { // every pending request answered, through the Editor's handling
+		for _, s := range e.pics {
+			if s.pending {
+				e.HandleEvent(tui.TaskResult{Owner: e.Context().ID(), ID: s.task, Value: rowsPicture{"PIC0", "PIC1"}})
+			}
+		}
+	}
+	var seenOff bool
+	ih.onLoopInternal(func() {
+		e.cells.ScrollLines(-50) // A's view to the top: its cursor, deep in the source, off it
+		_, _, on := e.Cursor()
+		seenOff = !on
+		arrive() // A's picture, with A's cursor off the view
+		e.Core().SetBuffer(NewBuffer(BufferText(doc)))
+		e.Core().SetLine(1, 590) // B's cursor where A's was, revealed on the view
+		e.Cursor()               // lays B's rows: B's picture asked for
+		arrive()                 // B's picture, before any layout
+	})
+	if !seenOff {
+		t.Fatal("precondition: A's cursor was on the view when its picture arrived")
+	}
+	if err := ih.tb.Inject(tui.MouseEvent{Kind: tui.MouseMotion, X: 30, Y: 9}); err != nil { // input: the held layout settles before it
+		t.Fatal(err)
+	}
+	var settled bool
+	for deadline := time.Now().Add(3 * time.Second); !settled && time.Now().Before(deadline); {
+		ih.onLoopInternal(func() { settled = !e.picArrived })
+		time.Sleep(time.Millisecond)
+	}
+	var ok bool
+	ih.onLoopInternal(func() { _, _, ok = e.Cursor() })
+	if !settled || !ok {
+		t.Errorf("B's picture arrived with B's cursor on the view: after the layout, settled %v, the cursor shown %v (A's snapshot inherited?)", settled, ok)
+	}
+}

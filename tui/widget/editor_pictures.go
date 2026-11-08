@@ -122,6 +122,7 @@ func (e *Editor) dropPictures() {
 	}
 	e.pics = nil
 	e.picGen++
+	e.picArrived, e.picReveal = false, false // an arrival's snapshot is its slots' owner's: the next owner takes its own
 }
 
 // picturesTouched stops the requests an edit from line from touches, those of a block ending after
