@@ -11,9 +11,10 @@ import (
 // is only read, never added to, so one Set serves every widget.
 var toolkitCatalogs = sync.OnceValue(i18n.Toolkit)
 
-// translate is m in the App's language once the widget is mounted. Before that there is no
-// App to ask, so it is golib's English for one of golib's own ids, and the id otherwise.
-func (b *Base) translate(m tui.Message) string {
+// Translate is m in the App's language once the widget is mounted. Before that there is no
+// App to ask, so it is golib's English for one of golib's own ids, and the id otherwise. A
+// widget of your own that embeds Base shows its catalog text through it.
+func (b *Base) Translate(m tui.Message) string {
 	if b.ctx != nil {
 		return b.ctx.Translate(m)
 	}
@@ -47,7 +48,7 @@ func messageText(m tui.Message) uiText { return uiText{msg: m} }
 // mount).
 func (u uiText) inLanguage(b *Base) string {
 	if u.msg != (tui.Message{}) {
-		return b.translate(u.msg)
+		return b.Translate(u.msg)
 	}
 	return u.plain
 }

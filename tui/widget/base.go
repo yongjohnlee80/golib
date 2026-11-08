@@ -80,7 +80,7 @@ import "github.com/yongjohnlee80/golib/tui"
 //     no-ops before mount (when ctx is nil), allowing option functions and constructors to
 //     invoke mutating setters without requiring defensive nil checks.
 //  3. Unified Policy-Aware Measurement: Outside of Render (which draws into a Surface), all
-//     width, wrapping, and cursor calculations must route through [Base.measure], delegating to
+//     width, wrapping, and cursor calculations must route through [Base.Measure], delegating to
 //     [tui.Context.StringWidth] so terminal ambiguous-width policies remain perfectly coherent.
 //  4. Promoted Focus Dispatch: [Base.focusSelf] uses the outer widget's [tui.Context] to request
 //     focus for the outer node ID, powering recursive container traversal ([focusFirst]).
@@ -198,14 +198,15 @@ func (b *Base) RequestLayout() {
 // continues. Widgets override what they need.
 func (b *Base) HandleEvent(ev tui.Event) bool { return false }
 
-// measure is the policy-aware text width every widget MUST use for layout,
+// Measure is the policy-aware text width every widget MUST use for layout,
 // cursor, scroll, wrap-recount, and hit-test math OUTSIDE Render — it routes
 // through Context.StringWidth, so the App's width policy (WithWidthPolicy)
 // governs geometry exactly as Surface.StringWidth governs
 // paint. Before the first mount (ctx nil, e.g. a setter measuring at
 // construction) it falls back to the default policy, matching a Surface
-// under WidthPolicyDefault.
-func (b *Base) measure(s string) int {
+// under WidthPolicyDefault. A widget of your own that embeds Base measures
+// with it wherever it works out widths outside Render.
+func (b *Base) Measure(s string) int {
 	if b.ctx != nil {
 		return b.ctx.StringWidth(s)
 	}
@@ -214,9 +215,10 @@ func (b *Base) measure(s string) int {
 
 // --- unexported plumbing shared by the package's widgets ---
 
-// publish enqueues v on the App bus (enqueue-only;). No-op
-// before mount.
-func (b *Base) publish(v any) {
+// Publish enqueues v on the App bus (enqueue-only): an event the widget emits,
+// such as an ActivateEvent. No-op before mount. A widget of your own that embeds
+// Base publishes its events with it.
+func (b *Base) Publish(v any) {
 	if b.ctx != nil {
 		b.ctx.Bus().Publish(v)
 	}
@@ -232,8 +234,10 @@ func publishChange(ctx *tui.Context, owner tui.NodeID, value func() string) bool
 	return true
 }
 
-// focused reports whether this widget's node currently holds focus.
-func (b *Base) focused() bool { return b.ctx != nil && b.ctx.Focused() }
+// Focused reports whether this widget's node currently holds focus. A widget of
+// your own that embeds Base reads it to draw its focused look; one that delegates
+// focus to an inner widget (FileList, FilePreview) answers for that one instead.
+func (b *Base) Focused() bool { return b.ctx != nil && b.ctx.Focused() }
 
 // focusSelf asks the focus manager to focus this widget and reports whether
 // it took focus. It is the hook behind focusFirst: because Base carries the

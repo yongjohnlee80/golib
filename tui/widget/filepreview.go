@@ -230,14 +230,14 @@ func (p *FilePreview) Focused() bool {
 }
 
 // Hint is the keys the preview answers to, for a footer, in the App's language.
-func (p *FilePreview) Hint() string { return p.translate(p.HintMessage()) }
+func (p *FilePreview) Hint() string { return p.Translate(p.HintMessage()) }
 
 // HintMessage is [FilePreview.Hint] as a catalog message, for a footer that follows the
 // language by itself.
 func (p *FilePreview) HintMessage() tui.Message { return tui.Msg("tui.files.hint.preview") }
 
 // noteText is the note in the App's language, its argument filled in.
-func (p *FilePreview) noteText() string { return kit.WithArg(p.translate(p.note), p.noteArg) }
+func (p *FilePreview) noteText() string { return kit.WithArg(p.Translate(p.note), p.noteArg) }
 
 // previewOf is what a preview shows for a path: the file's text, or a note about it (a
 // folder, a binary file) with the note's argument.

@@ -916,7 +916,7 @@ func (t *Tree) expandNode(n *TreeNode) (live bool) {
 	t.MarkDirty()
 	request := t.known == nil || !t.known(n, n.gen) || !n.loaded
 	if request {
-		t.publish(ExpandRequestEvent{Owner: t.NodeID(), Node: n, Gen: n.gen})
+		t.Publish(ExpandRequestEvent{Owner: t.NodeID(), Node: n, Gen: n.gen})
 	}
 	return t.expanded(n, request)
 }
@@ -928,7 +928,7 @@ func (t *Tree) expandNode(n *TreeNode) (live bool) {
 // starts a new one); each callback is made only while they have.
 func (t *Tree) expanded(n *TreeNode, request bool) (live bool) {
 	gen := n.gen
-	t.publish(ExpandEvent{Owner: t.NodeID(), Node: n})
+	t.Publish(ExpandEvent{Owner: t.NodeID(), Node: n})
 	if request && t.on.expandRequest != nil && !t.presses.Survives(func() { t.on.expandRequest(n, gen) }) {
 		return false
 	}
@@ -952,7 +952,7 @@ func (t *Tree) collapseNode(n *TreeNode) {
 	}
 	t.rowsChanged()
 	t.MarkDirty()
-	t.publish(CollapseEvent{Owner: t.NodeID(), Node: n})
+	t.Publish(CollapseEvent{Owner: t.NodeID(), Node: n})
 }
 
 // HandleEvent implements the navigation contract.
@@ -1001,7 +1001,7 @@ func (t *Tree) noteSelection() {
 		return
 	}
 	t.selected = node
-	t.publish(SelectionChangedEvent{Owner: t.NodeID(), Index: t.cursor, Label: node.label})
+	t.Publish(SelectionChangedEvent{Owner: t.NodeID(), Index: t.cursor, Label: node.label})
 	if t.on.cursor != nil {
 		t.on.cursor(node)
 	}
@@ -1009,7 +1009,7 @@ func (t *Tree) noteSelection() {
 
 // activate reports the row at index idx activated: on the bus, then to the owner.
 func (t *Tree) activate(idx int) {
-	t.publish(ActivateEvent{Owner: t.NodeID(), Index: idx})
+	t.Publish(ActivateEvent{Owner: t.NodeID(), Index: idx})
 	if rows := t.flatten(); t.on.activate != nil && idx >= 0 && idx < len(rows) {
 		t.on.activate(rows[idx].node)
 	}
@@ -1223,7 +1223,7 @@ func (t *Tree) Render(s tui.Surface) {
 		// The cursor remains visible without focus. A caller that names a blurred look can
 		// distinguish panes; otherwise the cursor look stays, including under a delegating wrapper.
 		if i == cursor {
-			st = t.styles.cursorLook(t.focused()).Inherit(st)
+			st = t.styles.cursorLook(t.Focused()).Inherit(st)
 		}
 		return st
 	}

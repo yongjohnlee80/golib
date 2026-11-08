@@ -820,7 +820,7 @@ func (t *Tiles) publishChange(tile *Tile, by *Tile, op WindowOperation) {
 	if t.onChanged != nil {
 		t.onChanged(e)
 	}
-	t.publish(e)
+	t.Publish(e)
 }
 
 // ---- a gesture: staged until its window says it completed ----

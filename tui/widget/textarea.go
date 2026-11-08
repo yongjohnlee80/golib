@@ -157,7 +157,7 @@ func (t *TextArea) Caret() (line, col int) { return t.buf.Ln, t.buf.Col }
 
 // cellsAt is the display offset (cells) of (ln, col).
 func (t *TextArea) cellsAt(ln, col int) int {
-	return t.buf.CellsAt(ln, col, t.measure)
+	return t.buf.CellsAt(ln, col, t.Measure)
 }
 
 // insert places text at the cursor (replacing any selection) as one atomic
@@ -186,7 +186,7 @@ func (t *TextArea) moveTo(ln, col int, extend bool) {
 
 // vertical moves the cursor by delta lines keeping the sticky column.
 func (t *TextArea) vertical(delta int, extend bool) {
-	ln, col := t.buf.VerticalTarget(delta, t.measure)
+	ln, col := t.buf.VerticalTarget(delta, t.Measure)
 	d := t.buf.Desired
 	t.moveTo(ln, col, extend)
 	t.buf.Desired = d // moveTo clears nothing here, but keep it explicit
@@ -377,7 +377,7 @@ func (t *TextArea) Render(s tui.Surface) {
 	selLo, selHi, hasSel := t.buf.Selection()
 	t.eachDrawn(sz.H, s.StringWidth, func(x, y int, cl string, ln, col int) {
 		st := t.styles.Text
-		if hasSel && t.focused() && (txt.Pos{Ln: ln, Col: col}).In(selLo, selHi) {
+		if hasSel && t.Focused() && (txt.Pos{Ln: ln, Col: col}).In(selLo, selHi) {
 			st = t.styles.Selection.Inherit(st)
 		}
 		s.SetCell(x, y, cl, st)
@@ -439,15 +439,15 @@ func (t *TextArea) eachDrawn(rows int, measure func(string) int, fn func(x, y in
 // the selected clusters' cells; none while the area is unfocused, as Render draws none.
 func (t *TextArea) SelectionCells() ([]tui.Rect, bool) {
 	lo, hi, ok := t.buf.Selection()
-	if !ok || !t.focused() || t.w <= 0 || t.h <= 0 {
+	if !ok || !t.Focused() || t.w <= 0 || t.h <= 0 {
 		return nil, false
 	}
 	var out []tui.Rect
-	t.eachDrawn(t.h, t.measure, func(x, y int, cl string, ln, col int) {
+	t.eachDrawn(t.h, t.Measure, func(x, y int, cl string, ln, col int) {
 		if !(txt.Pos{Ln: ln, Col: col}).In(lo, hi) {
 			return
 		}
-		cw := t.measure(cl)
+		cw := t.Measure(cl)
 		if n := len(out); n > 0 && out[n-1].Y == y && out[n-1].X+out[n-1].W == x {
 			out[n-1].W += cw
 			return
@@ -464,15 +464,15 @@ func (t *TextArea) PlaceholderCells() ([]tui.Rect, bool) {
 	if t.w <= 0 || t.h <= 0 {
 		return nil, false
 	}
-	ph, ok := t.shownPlaceholder(t.measure)
+	ph, ok := t.shownPlaceholder(t.Measure)
 	if !ok {
 		return nil, false
 	}
-	return []tui.Rect{{W: t.measure(ph), H: 1}}, true
+	return []tui.Rect{{W: t.Measure(ph), H: 1}}, true
 }
 
 // view is the layout state the shared soft-wrap geometry needs. It is the
 // only place this widget's viewport is handed to txt.Buffer.
 func (t *TextArea) view() txt.WrapView {
-	return txt.WrapView{W: t.w, H: t.h, Wrap: t.wrap != WrapNone, Measure: t.measure}
+	return txt.WrapView{W: t.w, H: t.h, Wrap: t.wrap != WrapNone, Measure: t.Measure}
 }

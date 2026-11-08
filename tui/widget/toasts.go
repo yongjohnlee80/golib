@@ -335,11 +335,11 @@ func age(d time.Duration) string {
 func (t *Toasts) box(it *toastItem, maxW int) (w int, lines []string) {
 	inner := max(min(t.width, maxW)-4, 1) // border and a column of padding each side
 	for _, para := range strings.Split(it.Text, "\n") {
-		lines = append(lines, kit.WrapLine(para, inner, t.measure)...)
+		lines = append(lines, kit.WrapLine(para, inner, t.Measure)...)
 	}
-	wide := t.measure(age(t.now().Sub(it.At))) + 4 // the age in the top border
+	wide := t.Measure(age(t.now().Sub(it.At))) + 4 // the age in the top border
 	for _, l := range lines {
-		wide = max(wide, t.measure(l))
+		wide = max(wide, t.Measure(l))
 	}
 	return min(wide, inner) + 4, lines
 }
@@ -411,7 +411,7 @@ func (t *Toasts) paint(s tui.Surface, x, y, w int, lines []string, when string) 
 	s.Fill(tui.Rect{X: x, Y: y, W: w, H: h}, " ", t.st)
 	kit.DrawFrame(s, tui.Rect{X: x, Y: y, W: w, H: h}, t.muted, style.BorderRounded)
 	label := " " + when + " "
-	if lw := t.measure(label); lw+3 <= w {
+	if lw := t.Measure(label); lw+3 <= w {
 		kit.DrawText(s, x+w-2-lw, y, label, t.muted)
 	}
 	for i, l := range lines {

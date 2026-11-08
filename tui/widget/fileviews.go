@@ -562,7 +562,7 @@ func (v *FileOpenView) PreviewText() string {
 }
 
 // Hint is the keys the part with the keyboard answers to, in the App's language.
-func (v *FileOpenView) Hint() string { return v.translate(v.HintMessage()) }
+func (v *FileOpenView) Hint() string { return v.Translate(v.HintMessage()) }
 
 // HintMessage is [FileOpenView.Hint] as a catalog message, for a footer that follows the
 // language by itself. Each footer is one whole message, never assembled from translated
@@ -831,7 +831,7 @@ func (v *FileSaveView) SetPreviewSourceHighlighting(catalog *highlight.Catalog, 
 }
 
 // Hint is the keys the part with the keyboard answers to, in the App's language.
-func (v *FileSaveView) Hint() string { return v.translate(v.HintMessage()) }
+func (v *FileSaveView) Hint() string { return v.Translate(v.HintMessage()) }
 
 // HintMessage is [FileSaveView.Hint] as a catalog message, as [FileOpenView.HintMessage].
 func (v *FileSaveView) HintMessage() tui.Message {
@@ -1082,7 +1082,7 @@ func (v *FileFolderView) SetPreviewSourceHighlighting(catalog *highlight.Catalog
 }
 
 // Hint is the keys the part with the keyboard answers to, in the App's language.
-func (v *FileFolderView) Hint() string { return v.translate(v.HintMessage()) }
+func (v *FileFolderView) Hint() string { return v.Translate(v.HintMessage()) }
 
 // HintMessage is [FileFolderView.Hint] as a catalog message, as [FileOpenView.HintMessage].
 func (v *FileFolderView) HintMessage() tui.Message {

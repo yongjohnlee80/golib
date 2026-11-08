@@ -362,7 +362,7 @@ func (s *Split) Zoom(p SplitPane) {
 	}
 	s.RequestLayout()
 	s.MarkDirty()
-	s.publish(SplitZoomEvent{Owner: s.NodeID(), Pane: p})
+	s.Publish(SplitZoomEvent{Owner: s.NodeID(), Pane: p})
 }
 
 // listChildren feeds the package's focus walk, honoring zoom: a hidden
@@ -497,7 +497,7 @@ func (s *Split) commit(avail, a, b int) {
 	if first {
 		return
 	}
-	s.publish(SplitResizedEvent{Owner: s.NodeID(), Ratio: eff, ACells: a, BCells: b})
+	s.Publish(SplitResizedEvent{Owner: s.NodeID(), Ratio: eff, ACells: a, BCells: b})
 }
 
 // commitZoomed records that there is no divider this frame.

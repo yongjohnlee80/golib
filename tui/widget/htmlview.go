@@ -344,7 +344,7 @@ func WithSyntax(catalog *highlight.Catalog, styles SyntaxStyles) HTMLOption {
 // NewHTMLView builds an empty view, laid out in cells until a backend binds another layout.
 func NewHTMLView(opts ...HTMLOption) *HTMLView {
 	v := &HTMLView{lastSrc: -1}
-	cells := newCellHTML(v.measure)
+	cells := newCellHTML(v.Measure)
 	cells.imgs = cellimages.New(pageImages{v})
 	cells.notice = func(kind string) string { // the view's words when it has some, asked each layout
 		if v.diagramNotice != nil {
