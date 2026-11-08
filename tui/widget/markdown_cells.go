@@ -46,6 +46,10 @@ type MarkdownCellRenderer struct {
 	// images lays an image-only paragraph's image: the Editor (SetImageHost). Without one, or until
 	// it loads, the paragraph is its text.
 	images CellImageHost
+	// langSeen is the Languages the stamps were last taken with, langGen bumped when it is another
+	// (BlockContext).
+	langSeen *highlight.Catalog
+	langGen  uint64
 }
 
 // SetImageHost is where the renderer's images are laid: the Editor sets itself when the renderer is
@@ -66,37 +70,36 @@ func (r *MarkdownCellRenderer) LayOut(b Block, lines []string, width int, measur
 	width = max(width, 1)
 	var cb CellBlock
 	lb := mdCellLines{width: width, measure: measure, th: th}
+	kind, tableEnd := r.kind(b, lines)
 	switch {
 	case typing:
 		text := func(int) style.Style { return th.Text }
 		for ln := b.From; ln < b.To; ln++ {
 			lb.source(&cb, ln, lines[ln], text)
 		}
-	case b.From == 0 && r.frontmatterHidden(lines):
-		// closed frontmatter, hidden: no row of its own (a fold)
-	case r.HideMetadata && r.Meta.Hidden(b.From):
-		// a run of comments, hidden: no row
-	case r.HideMetadata && r.Meta.Continued(b.From):
+	case kind == mdFrontmatterHidden, kind == mdCommentHidden:
+		// closed frontmatter, or a run of comments, hidden: no row of its own (a fold)
+	case kind == mdCommentContinued:
 		// a line going on from a comment, as gui's: prose under its mask, whatever it starts like (a
 		// fence, a table, a list item inside the comment is none)
 		for ln := b.From; ln < b.To; ln++ {
 			r.line(&lb, &cb, ln, lines[ln])
 		}
+	case kind == mdFenced:
+		f, _ := mdOpenFence(lines[b.From])
+		r.fenced(&lb, &cb, b, lines, f)
+	case kind == mdTable:
+		r.table(&lb, &cb, b.From, tableEnd, lines)
+		for ln := tableEnd; ln < b.To; ln++ {
+			r.line(&lb, &cb, ln, lines[ln])
+		}
+	case kind == mdIndentedCode:
+		code := lb.role(MarkdownCodeStyle)
+		for ln := b.From; ln < b.To; ln++ {
+			lb.source(&cb, ln, lines[ln], func(int) style.Style { return code })
+		}
 	default:
-		if f, ok := mdOpenFence(lines[b.From]); ok {
-			r.fenced(&lb, &cb, b, lines, f)
-		} else if end := MarkdownTableEnd(lines, b.From); end > 0 {
-			end = min(end, b.To)
-			r.table(&lb, &cb, b.From, end, lines)
-			for ln := end; ln < b.To; ln++ {
-				r.line(&lb, &cb, ln, lines[ln])
-			}
-		} else if MarkdownStartsIndentedCode(lines, b.From) {
-			code := lb.role(MarkdownCodeStyle)
-			for ln := b.From; ln < b.To; ln++ {
-				lb.source(&cb, ln, lines[ln], func(int) style.Style { return code })
-			}
-		} else if p, ok := r.image(b, lines, lb.width); ok { // an image-only paragraph: the image's rows, the paragraph a fold
+		if p, ok := r.image(b, lines, lb.width); kind == mdImage && ok { // an image-only paragraph: the image's rows, the paragraph a fold
 			cb.Rows, cb.Picture = append(cb.Rows, pictureRows(p, lb.measure)...), p
 		} else {
 			for ln := b.From; ln < b.To; ln++ {
@@ -112,6 +115,86 @@ func (r *MarkdownCellRenderer) LayOut(b Block, lines []string, width int, measur
 		cb.Width = max(cb.Width, w)
 	}
 	return cb
+}
+
+// mdBlockKind is what a block is laid as, but for typing: one classifier (kind) both LayOut and
+// BlockContext read, so a block's stamp changes whenever what it is laid as does.
+type mdBlockKind uint8
+
+const (
+	mdProse             mdBlockKind = iota
+	mdFrontmatterHidden             // closed frontmatter, hidden: no row
+	mdCommentHidden                 // a run of comments, hidden: no row
+	mdCommentContinued              // lines going on from a comment begun above: prose under its mask
+	mdFenced                        // a fenced code block, or a picture's fence
+	mdTable                         // a GFM table, its end at tableEnd
+	mdIndentedCode                  // an indented code block
+	mdImage                         // a one-line paragraph of one image: its image, when laid
+)
+
+// kind classifies block b as LayOut lays it (typing aside), reading the lines around it where that
+// decides it: the frontmatter's close, a comment begun above, a list above an indented line.
+func (r *MarkdownCellRenderer) kind(b Block, lines []string) (k mdBlockKind, tableEnd int) {
+	switch {
+	case b.From == 0 && r.frontmatterHidden(lines):
+		return mdFrontmatterHidden, 0
+	case r.HideMetadata && r.Meta.Hidden(b.From):
+		return mdCommentHidden, 0
+	case r.HideMetadata && r.Meta.Continued(b.From):
+		return mdCommentContinued, 0
+	}
+	if _, ok := mdOpenFence(lines[b.From]); ok {
+		return mdFenced, 0
+	}
+	if end := MarkdownTableEnd(lines, b.From); end > 0 {
+		return mdTable, min(end, b.To)
+	}
+	if MarkdownStartsIndentedCode(lines, b.From) {
+		return mdIndentedCode, 0
+	}
+	if b.To-b.From == 1 && mdImageOnly.MatchString(strings.TrimSpace(lines[b.From])) {
+		return mdImage, 0
+	}
+	return mdProse, 0
+}
+
+// BlockContext implements CellBlockContext: block b's kind, its lines' metadata masks, and the
+// renderer's settings, all its LayOut reads beyond its lines' text.
+func (r *MarkdownCellRenderer) BlockContext(b Block, lines []string) uint64 {
+	if r.Languages != r.langSeen { // another catalog highlights the fences another way
+		r.langSeen, r.langGen = r.Languages, r.langGen+1
+	}
+	k, end := r.kind(b, lines)
+	h := stampOf(uint64(k), uint64(end), boolBit(r.HideMetadata), boolBit(r.pictures != nil), boolBit(r.images != nil), r.langGen)
+	if r.HideMetadata {
+		for ln := b.From; ln < b.To; ln++ {
+			mask, ok := r.Meta.HiddenClusters(ln)
+			h = stampOf(h, uint64(ln-b.From), boolBit(ok), uint64(len(mask)))
+			for _, m := range mask {
+				h = stampOf(h, boolBit(m))
+			}
+		}
+	}
+	return h
+}
+
+// stampOf folds vs into a stamp (FNV-1a over each value's bytes).
+func stampOf(vs ...uint64) uint64 {
+	h := uint64(14695981039346656037)
+	for _, v := range vs {
+		for range 8 {
+			h = (h ^ (v & 0xff)) * 1099511628211
+			v >>= 8
+		}
+	}
+	return h
+}
+
+func boolBit(b bool) uint64 {
+	if b {
+		return 1
+	}
+	return 0
 }
 
 // tableCell is one shown cluster of a table's cell, and the source text it measures by.

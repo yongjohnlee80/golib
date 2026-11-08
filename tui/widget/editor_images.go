@@ -52,6 +52,7 @@ func (h editorImages) Failed(string, error) {} // the paragraph stays its alt te
 
 // Image implements CellImageHost.
 func (e *Editor) Image(b Block, src string, cols int) (CellPicture, bool) {
+	e.layAsked = true
 	e.picturesOfShownBuffer() // images are the shown buffer's, as pictures are: bound before a load starts
 	if e.imgs == nil {
 		e.imgs = cellimages.New(editorImages{e})
