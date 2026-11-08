@@ -338,3 +338,26 @@ func TestWidgetCoreReachesNoComponent(t *testing.T) {
 			"component hand it in through an interface or a callback core owns:\n  %s", len(rows), strings.Join(rows, "\n  "))
 	}
 }
+
+// widgetComponentLinks are the crossings one component may make into another's unexported names:
+// the editor's Markdown tables sort by the table's order. Each is the editor's, so the split can
+// extract the table before the editor and no two components import each other.
+var widgetComponentLinks = map[[2]string]bool{{"editor", "table"}: true}
+
+// TestWidgetComponentsReachOnlyDown holds the second step of the split: a component uses another
+// component's unexported names only along widgetComponentLinks, so the components can be extracted
+// in an order with no import cycle (core, then files, terminal, htmlview and table, then the
+// editor).
+func TestWidgetComponentsReachOnlyDown(t *testing.T) {
+	found, _ := widgetCrossings(t, repoRoot(t))
+	var rows []string
+	for _, c := range found {
+		if c.from != "core" && c.owner != "core" && !widgetComponentLinks[[2]string{c.from, c.owner}] {
+			rows = append(rows, c.row())
+		}
+	}
+	if len(rows) > 0 {
+		t.Errorf("a component uses %d unexported name(s) of another it may not import; move the code to "+
+			"core, or let the owner export it:\n  %s", len(rows), strings.Join(rows, "\n  "))
+	}
+}
