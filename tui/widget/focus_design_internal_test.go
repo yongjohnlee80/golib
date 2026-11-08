@@ -12,14 +12,10 @@ import (
 // would claim the capability and deny it, and read as focusable by design.
 func TestNeverFocusableWidgetsDoNotClaimFocusable(t *testing.T) {
 	for name, c := range map[string]tui.Component{
-		"FileList":     (*FileList)(nil),
-		"FilePreview":  (*FilePreview)(nil),
-		"FileOpenView": (*FileOpenView)(nil),
-		"FileSaveView": (*FileSaveView)(nil),
-		"MenuBar":      (*MenuBar)(nil),
-		"menuPopup":    (*menuPopup)(nil),
-		"modalCard":    (*modalCard)(nil),
-		"Scrim":        (*Scrim)(nil),
+		"MenuBar":   (*MenuBar)(nil),
+		"menuPopup": (*menuPopup)(nil),
+		"modalCard": (*modalCard)(nil),
+		"Scrim":     (*Scrim)(nil),
 	} {
 		if _, ok := c.(tui.Focusable); ok {
 			t.Errorf("%s implements tui.Focusable, but is never a focus stop", name)

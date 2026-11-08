@@ -10,9 +10,9 @@ import (
 )
 
 // Every tab strip's menu opens on the row right under the strip: its ≡, its + and a right press
-// on it, for each strip kind (a TabStrip, a TerminalTabs, a Tabs). The menu's panel is placed at
-// row 1, its border drawn there and its first row under it, with no empty row between the panel
-// and the strip.
+// on it, for each of core's strip kinds (a TabStrip, a Tabs; TerminalTabs' is the terminal's test).
+// The menu's panel is placed at row 1, its border drawn there and its first row under it, with no
+// empty row between the panel and the strip.
 func TestEveryStripsMenuOpensRightUnderTheStrip(t *testing.T) {
 	rows := func(label string) []MenuItemModel {
 		return []MenuItemModel{NewCommand("row", label, TabStripMenuAction{ID: "row"})}
@@ -31,12 +31,6 @@ func TestEveryStripsMenuOpensRightUnderTheStrip(t *testing.T) {
 			s.SetAddMenu(func() []MenuItemModel { return rows("Add") })
 			return strip{s, &s.core, false} // as wide as its cells: no blank
 		},
-		"TerminalTabs": func() strip {
-			s := NewTerminalTabs()
-			s.SetMenu(func(TerminalTabID) []MenuItemModel { return rows("Menu") })
-			s.SetAddMenu(func() []MenuItemModel { return rows("Add") })
-			return strip{s, &s.strip, true}
-		},
 		"Tabs": func() strip {
 			s := NewTabs(WithTab("alpha", NewText("one")), WithTab("beta", NewText("two")))
 			s.SetMenu(func(int) []MenuItemModel { return rows("Menu") })
@@ -48,60 +42,27 @@ func TestEveryStripsMenuOpensRightUnderTheStrip(t *testing.T) {
 			k := build()
 			h := widgettest.StartApp(t, NewOverlayHost(k.root), 40, 8)
 			defer h.Stop()
-			cells := map[kit.StripKind]int{}
-			tab := -1
-			h.OnLoop(func() {
-				for _, c := range k.core.Row() {
-					if _, ok := cells[c.Kind]; !ok {
-						cells[c.Kind] = c.X
-					}
-					if c.Kind == kit.CellTab && tab < 0 {
-						tab = c.X
-					}
-				}
-			})
-			opens := func(how string, at tui.Point, button tui.MouseButton, label string) {
-				t.Helper()
-				if err := h.TB.Inject(tui.MouseEvent{Kind: tui.MousePress, Button: button, X: at.X, Y: at.Y}); err != nil {
-					t.Fatal(err)
-				}
-				drawn := widgettest.Wait(h, func() bool {
-					lines := strings.Split(h.TB.String(), "\n")
-					return k.core.MenuOpen != nil && len(lines) > 2 && strings.Contains(lines[1], "┌") && strings.Contains(lines[2], label)
-				})
-				var top int
-				h.OnLoop(func() {
-					if k.core.MenuOpen != nil {
-						top = k.core.MenuOpen.rect.Y
-					}
-				})
-				if !drawn || top != 1 {
-					t.Fatalf("%s: the menu's panel is at row %d, want 1, right under the strip (drawn there: %v):\n%s",
-						how, top, drawn, h.TB.String())
-				}
-				if err := h.TB.Inject(tui.KeyEvent{Kind: tui.KeyPress, Code: tui.KeyEscape}); err != nil {
-					t.Fatal(err)
-				}
-				if !widgettest.Wait(h, func() bool { return k.core.MenuOpen == nil }) {
-					t.Fatalf("%s: Escape left the menu open", how)
-				}
-			}
-			menu, ok := cells[kit.CellMenu]
-			if !ok {
-				t.Fatalf("no ≡ on the strip: %v", k.core.Row())
-			}
-			opens("≡", tui.Point{X: menu + 1}, tui.MouseLeft, "Menu")
-			if add, ok := cells[kit.CellAdd]; ok {
-				opens("+", tui.Point{X: add + 1}, tui.MouseLeft, "Add")
-			}
-			if k.blank {
-				opens("a right press on the blank", tui.Point{X: 38}, tui.MouseRight, "Menu")
-			}
-			if tab >= 0 {
-				opens("a right press on a tab", tui.Point{X: tab + 1}, tui.MouseRight, "Menu")
-			}
+			m := widgettest.StripMenu{Cells: map[kit.StripKind]int{}, Tab: -1, Blank: k.blank,
+				Open: func() bool { return k.core.MenuOpen != nil }}
+			h.OnLoop(func() { m.Cells, m.Tab = stripCellsOf(k.core) })
+			widgettest.MenuOpensUnderTheStrip(t, h, m, "Menu", "Add")
 		})
 	}
+}
+
+// stripCellsOf is where each kind of stretch first starts on s's row, and the first tab's start
+// (-1 for none), as MenuOpensUnderTheStrip presses them.
+func stripCellsOf(s *StripCore) (map[kit.StripKind]int, int) {
+	cells, tab := map[kit.StripKind]int{}, -1
+	for _, c := range s.Row() {
+		if _, ok := cells[c.Kind]; !ok {
+			cells[c.Kind] = c.X
+		}
+		if c.Kind == kit.CellTab && tab < 0 {
+			tab = c.X
+		}
+	}
+	return cells, tab
 }
 
 // A Tabs bar's menu row runs with the index of the tab it was opened for; a row with no Run does
