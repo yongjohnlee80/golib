@@ -112,7 +112,7 @@ func layParsed(ctx context.Context, d pm.Diagram, width float32, th Theme, m gui
 	if lay == nil {
 		return nil, fmt.Errorf("%w: %v diagrams", pm.ErrUnsupported, d.Kind())
 	}
-	l, err := lay(ctx, d, width, th, m)
+	l, err := withTitle(ctx, d, width, th, m, lay) // its front matter's title above, where it draws none
 	if err != nil {
 		return nil, err
 	}

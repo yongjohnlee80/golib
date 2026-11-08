@@ -16,6 +16,8 @@ func init() { register(ER, "er", []string{"erDiagram"}, (*parser).er) }
 
 // ERDiagram is a parsed entity-relationship diagram.
 type ERDiagram struct {
+	// Title is the front matter's title (front matter's title:), drawn above the diagram; "" for none.
+	Title         string
 	Dir           Dir
 	Entities      []Entity       // in order of first mention
 	Relationships []Relationship // in source order

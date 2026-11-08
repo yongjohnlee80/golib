@@ -33,6 +33,8 @@ func (k StateKind) MarshalText() ([]byte, error) { return []byte(k.String()), ni
 // transition and note belongs to exactly one scope, and a transition joins two states of the
 // scope it is written in (Mermaid draws none across composites).
 type StateDiagram struct {
+	// Title is the front matter's title (front matter's title:), drawn above the diagram; "" for none.
+	Title       string
 	Dir         Dir
 	States      []StateNode // in order of first mention; each scope's start and end included
 	Transitions []Transition
