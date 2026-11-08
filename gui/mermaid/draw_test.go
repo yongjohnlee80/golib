@@ -14,7 +14,7 @@ func TestEveryPrimitivePaints(t *testing.T) {
 	lb := func(s string) label { return newLabel(m, s, testTheme.Font, 0, testTheme.Text) }
 	l := &Laid{th: testTheme, size: gui.Size{W: 900, H: 600}, fit: 1}
 	x := float32(10)
-	for f := formRect; f <= formFace; f++ {
+	for f := formRect; f <= formLast; f++ {
 		box := gui.Rect{X: x, Y: 10, W: 40, H: 60}
 		n := laidNode{form: f, box: box, fill: testTheme.NodeFill, stroke: testTheme.NodeStroke, width: 1.2, label: lb("n").centredIn(box)}
 		if f == formRect {
@@ -47,11 +47,11 @@ func TestEveryPrimitivePaints(t *testing.T) {
 	}
 	// a label per box (formNone's too) and the compartment, a head label per end, the group's
 	// title and its divider's label, the free text
-	want := int(formFace-formRect+1) + 1 + int(endZeroMany-endNone+1) + 2 + 1
+	want := int(formLast-formRect+1) + 1 + int(endZeroMany-endNone+1) + 2 + 1
 	if texts != want {
 		t.Errorf("%d texts drawn, want %d", texts, want)
 	}
-	if paths < int(formFace-formRect)+int(endZeroMany-endNone) {
+	if paths < int(formLast-formRect)+int(endZeroMany-endNone) {
 		t.Errorf("only %d paths drawn", paths)
 	}
 }

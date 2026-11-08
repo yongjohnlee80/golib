@@ -164,7 +164,11 @@ func (b *blockWindow) measure(g *pm.BlockGroup, in int) windowGroup {
 			default:
 				box := gui.Rect{X: x, Y: y + (rowH[a.row]-a.ih)/2, W: span(a), H: a.ih}
 				lb := a.lb.at(box.X+(box.W-a.lb.box.W)/2, box.Y+(box.H-a.lb.box.H)/2)
-				b.l.nodes = append(b.l.nodes, laidNode{id: it.ID, form: shapeForm[it.Shape], box: box,
+				f := shapeForm[it.Shape]
+				if it.Arrow != pm.ArrowNone {
+					f = arrowForm[it.Arrow]
+				}
+				b.l.nodes = append(b.l.nodes, laidNode{id: it.ID, form: f, box: box,
 					fill: b.th.NodeFill, stroke: b.th.NodeStroke, width: 1.2, label: lb})
 				b.boxes[it.ID], b.group[it.ID] = box, in
 			}

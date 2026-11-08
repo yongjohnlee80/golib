@@ -90,18 +90,21 @@ func TestBlockItemsGroupsAndLinks(t *testing.T) {
 }
 
 // What a block diagram refuses: a link to no block, a block defined twice, a width not above 0, an
-// end with no group open, a group left open, and columns that aren't a number; a block arrow is a
-// construct it doesn't read (ErrUnsupported, the host's fallback).
+// end with no group open, a group left open, and columns that aren't a number; a block arrow
+// without its ]> or its direction, or with a direction it doesn't know.
 func TestBlockRefusals(t *testing.T) {
 	for src, want := range map[string]string{
-		"block-beta\n  a\n  a --> b\n":        `a link to "b", which is no block`,
-		"block-beta\n  a a\n":                 `block "a" is defined twice`,
-		"block-beta\n  a:0\n":                 "a block's width wants a number above 0",
-		"block-beta\n  end\n":                 "end with no block group open",
-		"block-beta\n  block:g\n    a\n":      "a block group is not closed",
-		"block-beta\n  columns two\n":         `columns wants a number above 0, or auto: "two"`,
-		"block-beta\n  a\n  b[\"x\"] --> a\n": `a link's end names a block`,
-		"block-beta extra\n  a\n":             `unexpected "extra" after block`,
+		"block-beta\n  a\n  a --> b\n":             `a link to "b", which is no block`,
+		"block-beta\n  a a\n":                      `block "a" is defined twice`,
+		"block-beta\n  a:0\n":                      "a block's width wants a number above 0",
+		"block-beta\n  end\n":                      "end with no block group open",
+		"block-beta\n  block:g\n    a\n":           "a block group is not closed",
+		"block-beta\n  columns two\n":              `columns wants a number above 0, or auto: "two"`,
+		"block-beta\n  a\n  b[\"x\"] --> a\n":      `a link's end names a block`,
+		"block-beta extra\n  a\n":                  `unexpected "extra" after block`,
+		"block-beta\n  go<[\"next\"(right)\n":      "a block arrow wants its closing ]>",
+		"block-beta\n  go<[\"next\"]>\n":           "a block arrow wants its direction",
+		"block-beta\n  go<[\"next\"]>(sideways)\n": "a block arrow's direction is right, left, up, down, x or y",
 	} {
 		_, err := mermaid.Parse(src)
 		var se *mermaid.SyntaxError
@@ -109,7 +112,31 @@ func TestBlockRefusals(t *testing.T) {
 			t.Errorf("%q: %v; want a syntax error saying %q", src, err, want)
 		}
 	}
-	if _, err := mermaid.Parse("block-beta\n  arrow<[\"next\"]>(right)\n"); !errors.Is(err, mermaid.ErrUnsupported) {
-		t.Errorf("a block arrow: %v, want ErrUnsupported", err)
+}
+
+// A block arrow is a block of its row, drawn pointing its way: each direction read, its label
+// unquoted, a width after it, and the blocks around it in their places.
+func TestBlockArrowsAreRead(t *testing.T) {
+	d, err := mermaid.Parse("block-beta\n  columns 4\n  a go<[\"Next step\"]>(right):2 b\n  up<[\"&nbsp;\"]>(up) l<[\"back\"]>(left) x<[\"both\"]>(x) y<[\"both\"]>(y) dn<[\"down\"]>(down)\n")
+	if err != nil {
+		t.Fatal(err)
+	}
+	items := d.(*mermaid.BlockDiagram).Root.Items
+	want := []struct {
+		id    string
+		arrow mermaid.BlockArrow
+		width int
+	}{{"a", mermaid.ArrowNone, 1}, {"go", mermaid.ArrowRight, 2}, {"b", mermaid.ArrowNone, 1}, {"up", mermaid.ArrowUp, 1},
+		{"l", mermaid.ArrowLeft, 1}, {"x", mermaid.ArrowX, 1}, {"y", mermaid.ArrowY, 1}, {"dn", mermaid.ArrowDown, 1}}
+	if len(items) != len(want) {
+		t.Fatalf("%d items, want %d: %+v", len(items), len(want), items)
+	}
+	for i, w := range want {
+		if it := items[i]; it.ID != w.id || it.Arrow != w.arrow || it.Width != w.width {
+			t.Errorf("item %d: %+v; want %s pointing %d, %d wide", i, it, w.id, w.arrow, w.width)
+		}
+	}
+	if items[1].Label != "Next step" {
+		t.Errorf("the arrow's label %q; want it unquoted", items[1].Label)
 	}
 }

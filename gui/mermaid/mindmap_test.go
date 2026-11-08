@@ -2,7 +2,6 @@ package mermaid
 
 import (
 	"context"
-	"errors"
 	"image/color"
 	"reflect"
 	"slices"
@@ -141,8 +140,8 @@ func TestAMindmapEmptyNarrowAndDeclined(t *testing.T) {
 	if l, err = lay(t, mindmapExample, 300); err != nil || l.Size().W != 300 || l.fit >= 1 {
 		t.Errorf("narrow: size %+v fit %v err %v", l.Size(), l.fit, err)
 	}
-	if _, err := lay(t, "mindmap\n  a\n    b\n    ::icon(fa fa-book)", 400); !errors.Is(err, pm.ErrUnsupported) {
-		t.Errorf("an icon: %v, want ErrUnsupported", err)
+	if _, err := lay(t, "mindmap\n  a\n    b\n    ::icon(fa fa-book)", 400); err != nil {
+		t.Errorf("a node with an icon: %v; want it drawn with its text", err)
 	}
 }
 

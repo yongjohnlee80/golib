@@ -332,7 +332,19 @@ const (
 	formEnd   // a ring round a filled dot: its end
 	formNone  // no outline: the label alone
 	formFace  // a face for a score (mood): smiling, neutral or frowning; a journey task's
+	// a block arrow, pointing its way: a body and a head (both heads for x and y)
+	formArrowRight
+	formArrowLeft
+	formArrowUp
+	formArrowDown
+	formArrowX
+	formArrowY
+	formLast = formArrowY
 )
+
+// arrowForm is a block arrow's form, by the way it points; formRect for a block that is none.
+var arrowForm = [...]form{pm.ArrowNone: formRect, pm.ArrowRight: formArrowRight, pm.ArrowLeft: formArrowLeft,
+	pm.ArrowUp: formArrowUp, pm.ArrowDown: formArrowDown, pm.ArrowX: formArrowX, pm.ArrowY: formArrowY}
 
 // laidNode is a box: its form, filled and outlined, its label centred in it, and compartments
 // under a divider each (a class's members, an entity's attributes).
