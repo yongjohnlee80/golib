@@ -4,6 +4,7 @@ import (
 	"slices"
 
 	"github.com/yongjohnlee80/golib/highlight"
+	"github.com/yongjohnlee80/golib/tui"
 	"github.com/yongjohnlee80/golib/tui/style"
 )
 
@@ -175,7 +176,8 @@ type renderedKey struct {
 	width  int
 	typing int // the line being typed on, -1 when no text is typed
 	theme  CellTheme
-	pics   uint64 // the pictures laid (picGen): one arriving lays its block again
+	pics   uint64          // the pictures laid (picGen): one arriving lays its block again
+	policy tui.WidthPolicy // the measure's: unmounted, the default; mounted, the App's
 }
 
 // renderedLayout is the Editor's text through its renderer: the display rows in order, and each
@@ -203,6 +205,9 @@ func (e *Editor) renderedRows(width int) *renderedLayout {
 	l := &e.cells
 	lines := e.core.buf.textLines
 	key := renderedKey{gen: e.renderGen, buf: e.core.Buffer(), rev: e.core.Revision(), width: width, typing: -1, theme: e.cellTheme(), pics: e.picGen}
+	if ctx := e.Context(); ctx != nil {
+		key.policy = ctx.WidthPolicy()
+	}
 	if l.typing() {
 		key.typing = e.core.buf.ln
 	}
@@ -265,7 +270,7 @@ func (e *Editor) renderedRows(width int) *renderedLayout {
 }
 
 // keeps finds, for a block of r, the block of an earlier layout laid from the same lines: one at the
-// same width, renderer, buffer and look, the block wholly in the lines before the first that
+// same width, renderer, buffer, look and width policy, the block wholly in the lines before the first that
 // changed at its bounds, or wholly in those after the last at its bounds less the lines' count
 // change (delta). nil: none, the block is laid. Only a renderer that stamps its blocks keeps any.
 func (r *renderedLayout) keeps(laid [2]*renderedLayout, stamped bool) func(b Block) (prev *renderedLayout, oi, delta int) {
@@ -275,7 +280,7 @@ func (r *renderedLayout) keeps(laid [2]*renderedLayout, stamped bool) func(b Blo
 	}
 	var prev *renderedLayout
 	for _, o := range laid {
-		if o != nil && o.key.gen == r.key.gen && o.key.buf == r.key.buf && o.key.width == r.key.width && o.key.theme == r.key.theme {
+		if o != nil && o.key.gen == r.key.gen && o.key.buf == r.key.buf && o.key.width == r.key.width && o.key.theme == r.key.theme && o.key.policy == r.key.policy {
 			prev = o
 			break
 		}
