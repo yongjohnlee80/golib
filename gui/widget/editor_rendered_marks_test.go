@@ -76,3 +76,69 @@ func TestTheWindowsRenderedViewMarksEveryMatch(t *testing.T) {
 		}
 	}
 }
+
+// A find's tints sit between a line's own marks and the selection: a match in a table's header is
+// tinted over the header's opaque background, not under it, and the current match's selection is
+// laid over its tint, as the terminal lays the selection over its marks. On a sepia page and on a
+// dark one.
+func TestTheWindowsMarksSitBetweenTheBlockAndTheSelection(t *testing.T) {
+	h := startEditor(t, 60, 10, WithRenderer(NewMarkdownRenderer()),
+		WithCore(tuiwidget.CoreInitialText("| alpha | b |\n| --- | --- |\n| c | d |\n\nalpha beta")))
+	red := color.NRGBA{R: 200, A: 0x66}
+	var st tuiwidget.SyntaxStyles
+	st[highlight.Alert] = style.New().Foreground(style.RGB(200, 0, 0))
+	h.onLoop(func() {
+		h.e.core.SetSyntaxStyles(st)
+		h.e.SetView(tuiwidget.ViewRendered)
+		h.e.core.SetFind("alpha", tuiwidget.FindOptions{})
+		h.e.core.SetCurrentMatch(tuiwidget.TextRange{From: tuiwidget.TextPos{Line: 4}, To: tuiwidget.TextPos{Line: 4, Col: 5}})
+	})
+	covers := func(a, b gui.Rect) bool {
+		const e = 0.5
+		return a.X <= b.X+e && a.Y <= b.Y+e && a.X+a.W >= b.X+b.W-e && a.Y+a.H >= b.Y+b.H-e
+	}
+	for _, page := range []struct {
+		name    string
+		ink, bg color.NRGBA
+	}{
+		{"sepia", color.NRGBA{R: 0x30, G: 0x28, B: 0x20, A: 0xff}, color.NRGBA{R: 0xe8, G: 0xdc, B: 0xc0, A: 0xff}},
+		{"dark", color.NRGBA{R: 0xd0, G: 0xd0, B: 0xd0, A: 0xff}, color.NRGBA{R: 0x1c, G: 0x1c, B: 0x1c, A: 0xff}},
+	} {
+		var calls []gui.PaintCall
+		var sel color.NRGBA
+		h.onLoop(func() {
+			rc := gui.NewRecordingCanvas(gui.Size{W: float32(h.e.body.w) * cellW, H: float32(h.e.body.h) * cellH}, h.cell)
+			rc.Colors = func(int, int) (color.NRGBA, color.NRGBA) { return page.ink, page.bg }
+			v, _ := h.e.body.NativeView()
+			v.(gui.View).Paint(rc)
+			calls, sel = rc.Calls, selColor(h.e.layout.th)
+		})
+		var tints []int
+		for i, c := range calls {
+			if c.Op == "FillRect" && c.Brush.Color == red {
+				tints = append(tints, i)
+			}
+		}
+		if len(tints) != 2 {
+			t.Fatalf("%s: %d red tints, want two (the header's alpha and the prose's)", page.name, len(tints))
+		}
+		selected := false
+		for _, i := range tints {
+			for _, c := range calls[i+1:] {
+				if c.Op != "FillRect" || !covers(c.Rect, calls[i].Rect) {
+					continue
+				}
+				if c.Brush.Color == sel {
+					selected = true // the current match's selection, over its tint
+					continue
+				}
+				if c.Brush.Color.A == 0xff {
+					t.Errorf("%s: an opaque fill %v at %+v is laid over the tint at %+v", page.name, c.Brush.Color, c.Rect, calls[i].Rect)
+				}
+			}
+		}
+		if !selected {
+			t.Errorf("%s: no selection laid over the current match's tint", page.name)
+		}
+	}
+}
