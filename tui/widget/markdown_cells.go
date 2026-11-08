@@ -159,13 +159,14 @@ func (r *MarkdownCellRenderer) kind(b Block, lines []string) (k mdBlockKind, tab
 }
 
 // BlockContext implements CellBlockContext: block b's kind, its lines' metadata masks, and the
-// renderer's settings, all its LayOut reads beyond its lines' text.
+// renderer's settings, all its LayOut reads beyond its lines' text; each relative to b.From, so a
+// block moved by lines added above it keeps its stamp.
 func (r *MarkdownCellRenderer) BlockContext(b Block, lines []string) uint64 {
 	if r.Languages != r.langSeen { // another catalog highlights the fences another way
 		r.langSeen, r.langGen = r.Languages, r.langGen+1
 	}
 	k, end := r.kind(b, lines)
-	h := stampOf(uint64(k), uint64(end), boolBit(r.HideMetadata), boolBit(r.pictures != nil), boolBit(r.images != nil), r.langGen)
+	h := stampOf(uint64(k), uint64(max(end-b.From, 0)), boolBit(r.HideMetadata), boolBit(r.pictures != nil), boolBit(r.images != nil), r.langGen)
 	if r.HideMetadata {
 		for ln := b.From; ln < b.To; ln++ {
 			mask, ok := r.Meta.HiddenClusters(ln)
