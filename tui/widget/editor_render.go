@@ -7,6 +7,7 @@ import (
 	"github.com/yongjohnlee80/golib/highlight"
 	"github.com/yongjohnlee80/golib/tui"
 	"github.com/yongjohnlee80/golib/tui/style"
+	"github.com/yongjohnlee80/golib/tui/widget/internal/cellimages"
 )
 
 // THE EDITOR'S PAINT: the gutter, then the text with its selection, tabs, indentation marks, ruler
@@ -14,6 +15,7 @@ import (
 
 // Render paints the viewport with the visual-selection fill.
 func (e *Editor) Render(s tui.Surface) {
+	e.shownImages = e.shownImages[:0] // the Rendered view's paint reports the images it shows; any other none
 	sz := s.Size()
 	if sz.W <= 0 || sz.H <= 0 {
 		return
@@ -259,6 +261,12 @@ func (e *Editor) renderRendered(s tui.Surface, m rowMap) {
 				st = l.styles.Selection.Inherit(st)
 			}
 			s.SetCell(x, y, cl.Text, st)
+		}
+		if pic, ok := r.blockPic[bi].(*cellimages.Picture); ok && (y == 0 || r.rowBlock[ri-1] != bi) {
+			// an image, from its first row on the view: its top left cell in the Editor, rows of it above
+			// the view counted (the App crops)
+			x0, _ := m.content(bi)
+			e.shownImages = append(e.shownImages, shownPicture{pic, e.cells.gutter + x0 - m.panOf(bi), e.headerRows() + y - (ri - r.blockRow[bi])})
 		}
 		if m.maxPan(bi) > 0 {
 			ys, ok := shown[bi]
