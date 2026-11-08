@@ -787,3 +787,9 @@ func (t *TerminalTabs) SetOnWindowButton(fn func(WindowOperation)) { t.strip.onW
 
 // TabWindowControls are the window controls on the strip, as drawn now.
 func (t *TerminalTabs) TabWindowControls() []TabControl { return t.strip.controlSpans() }
+
+// The interfaces it answers, held at compile time (core declares them).
+var (
+	_ TabWindowController = (*TerminalTabs)(nil)
+	_ TabSpanner          = (*TerminalTabs)(nil)
+)

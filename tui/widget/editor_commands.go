@@ -221,3 +221,17 @@ func (c *EditorCore) keyBindings(m *keymap.Map) []keymap.Binding {
 	slices.SortFunc(out, func(a, b keymap.Binding) int { return strings.Compare(a.Command.ID, b.Command.ID) })
 	return out
 }
+
+// KeyCommands is every key command golib declares: the runtime's and every widget's, for keymap.Build.
+// (Commands is the Editor command line's registry; these are keys.) It sits with the editor's, the
+// last it gathers: it reads every package's commands, so it goes to tui/widget itself when the
+// widgets are packages of their own.
+func KeyCommands() []keymap.Command {
+	out := append(slices.Clone(tui.Commands()), declared...)
+	for _, c := range EditorCommands() {
+		if c.ID != EditorContextMenu.ID { // declared through cmd already
+			out = append(out, c)
+		}
+	}
+	return out
+}

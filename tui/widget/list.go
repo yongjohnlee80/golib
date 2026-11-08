@@ -312,8 +312,6 @@ type RowStyler interface {
 
 var (
 	_ RowStyler = (*List[int])(nil)
-	_ RowStyler = (*Table[int])(nil)
-	_ RowStyler = (*Tree)(nil)
 )
 
 // SetContextMenu turns the row context-menu request on or off. On, a right press on a row moves
