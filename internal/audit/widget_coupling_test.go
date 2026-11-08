@@ -349,6 +349,26 @@ func TestWidgetCoreReachesNoComponent(t *testing.T) {
 // extract the table before the editor and no two components import each other.
 var widgetComponentLinks = map[[2]string]bool{{"editor", "table"}: true}
 
+// TestWidgetComponentsUseOnlyCoresExportedAPI holds the step before core is extracted: no component
+// uses an unexported name of core's, so with core a package of its own each component compiles
+// against what core exports. What core shares only with golib's own widgets lives in
+// tui/widget/internal (kit, text) instead.
+func TestWidgetComponentsUseOnlyCoresExportedAPI(t *testing.T) {
+	found, _ := widgetCrossings(t, repoRoot(t))
+	var rows []string
+	for _, c := range found {
+		if c.owner == "core" {
+			rows = append(rows, c.row())
+		}
+	}
+	if len(rows) > 0 {
+		t.Errorf("components use %d unexported name(s) of core's; once core is its own package they "+
+			"will not compile. Export it from core with a doc comment saying when a widget outside golib "+
+			"uses it, or move it to tui/widget/internal/kit if it needs none of core's public types:\n  %s",
+			len(rows), strings.Join(rows, "\n  "))
+	}
+}
+
 // TestWidgetComponentsReachOnlyDown holds the second step of the split: a component uses another
 // component's unexported names only along widgetComponentLinks, so the components can be extracted
 // in an order with no import cycle (core, then files, terminal, htmlview and table, then the
