@@ -66,6 +66,10 @@ func (c *Context) SettleBeforeInput() {
 	c.app.invalidate(true)
 }
 
+// WidthPolicy is the App's width policy, the one StringWidth measures by: a task off the loop takes
+// it here and measures with StringWidthPolicy as the loop would.
+func (c *Context) WidthPolicy() WidthPolicy { return c.app.widthPolicy() }
+
 // RequestFocus asks the focus manager to focus this node. Ignored unless
 // the component implements Focusable and accepts focus.
 func (c *Context) RequestFocus() { c.app.requestFocus(c.node) }

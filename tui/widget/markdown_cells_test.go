@@ -467,3 +467,29 @@ func TestAPresentationChangeRevealsTheCaret(t *testing.T) {
 	h.barrier(sh)
 	shown("after Ctrl+T")
 }
+
+// A mermaid fence is its picture, laid off the loop: its source until the picture comes, then the
+// diagram's rows in its place, its fences no rows, the text after it kept. The note scrolls, so the
+// view lays it at both its widths (its scroll indicator's column in and out): each keeps its own.
+func TestAMermaidFenceIsDrawnAsItsPicture(t *testing.T) {
+	h, _, _ := renderedEditor(t, "```mermaid\nflowchart LR\n  Alpha --> Beta\n```\nafter"+strings.Repeat("\nline", 20), mdRenderer())
+	h.waitFor("the diagram in place of its source", func() bool {
+		g := h.grid()
+		return strings.Contains(g, "Alpha") && strings.Contains(g, "Beta") && !strings.Contains(g, "flowchart") && !strings.Contains(g, "```")
+	})
+	g := h.grid()
+	if !strings.ContainsAny(g, "┌╭") || !strings.Contains(g, "after") {
+		t.Errorf("want the diagram's boxes, then the text after it:\n%s", g)
+	}
+}
+
+// A vega-lite fence is its chart, laid off the loop, its labels drawn.
+func TestAVegaLiteFenceIsDrawnAsItsChart(t *testing.T) {
+	spec := `{"mark":"bar","data":{"values":[{"k":"Apples","v":3},{"k":"Pears","v":5}]},` +
+		`"encoding":{"x":{"field":"k","type":"nominal"},"y":{"field":"v","type":"quantitative"}}}`
+	h, _, _ := renderedEditor(t, "```vega-lite\n"+spec+"\n```", mdRenderer())
+	h.waitFor("the chart in place of its spec", func() bool {
+		g := h.grid()
+		return strings.Contains(g, "Apples") && strings.Contains(g, "Pears") && !strings.Contains(g, `"mark"`)
+	})
+}
