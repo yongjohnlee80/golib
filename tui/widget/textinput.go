@@ -221,9 +221,6 @@ func (t *TextInput) wordRight() int {
 	return i
 }
 
-// modMask are the modifiers that veto text insertion.
-const nonTextMods = tui.ModCtrl | tui.ModAlt | tui.ModSuper | tui.ModHyper | tui.ModMeta
-
 // HandleEvent implements the key contract.
 func (t *TextInput) HandleEvent(ev tui.Event) bool {
 	switch e := ev.(type) {

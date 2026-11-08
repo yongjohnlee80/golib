@@ -40,21 +40,6 @@ import (
 //   - Stateless Functions: All helpers in layoututil.go are pure, stateless functions safe for
 //     concurrent invocation across any goroutine.
 
-// boundedMax resolves a constraint axis for greedy widgets: the max when
-// bounded, else the min (a greedy widget asked for its intrinsic extent on
-// an unbounded axis must not answer Unbounded).
-func boundedMax(maxV, minV int) int {
-	if maxV == tui.Unbounded {
-		return minV
-	}
-	return maxV
-}
-
-// fillW and fillH are the extent a greedy widget takes on each axis: all it is offered, or, offered
-// an unbounded axis, its minimum, at least one cell.
-func fillW(c tui.Constraints) int { return boundedMax(c.MaxW, max(c.MinW, 1)) }
-func fillH(c tui.Constraints) int { return boundedMax(c.MaxH, max(c.MinH, 1)) }
-
 // clampPct is a percentage kept within 0 to 100, the one rule every percent option applies.
 func clampPct(p int) int { return min(max(p, 0), 100) }
 
@@ -84,9 +69,3 @@ func actionValue(a tui.Action) tui.Action {
 	}
 	return a
 }
-
-// nilLike is the runtime's rule for an absent value (tui.NilLike): nil, or a typed nil. A nil
-// *myAction and an AnchorPolicyFunc(nil) both satisfy their interface with a live type descriptor,
-// so they pass an == nil check and then panic on call, in a layout pass or a consumer's executor,
-// with nothing naming what supplied them. The seams this package owns refuse them by that one rule.
-func nilLike(v any) bool { return tui.NilLike(v) }

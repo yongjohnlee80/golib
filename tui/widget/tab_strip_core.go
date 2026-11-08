@@ -22,13 +22,6 @@ type stripOwner interface {
 	stripChoose(id string) // a tab chosen by a click or a key
 }
 
-// stripTab is one tab as the strip draws it: its id, and its label as drawn (cellLabel's padding
-// and any status mark included).
-type stripTab struct {
-	id    string
-	label string
-}
-
 // tabStrip is the strip's state and its drawing and input, shared by its owners.
 type tabStrip struct {
 	base   *Base        // the owner's: its context, measure and focus
@@ -65,18 +58,6 @@ type tabStrip struct {
 	revealed  string
 	revealedW int
 }
-
-// stripKind is what a stretch of the row is.
-type stripKind uint8
-
-const (
-	cellTab     stripKind = iota // a tab
-	cellPrev                     // ←, the tabs before the window
-	cellNext                     // →, the tabs after it
-	cellAdd                      // +
-	cellMenu                     // ≡
-	cellControl                  // a window control at the row's right end (SetWindowButtons)
-)
 
 // stripCell is a stretch of the row as drawn: what it is, the tab's id, its text, where it starts
 // and its width, in cells.
@@ -484,10 +465,6 @@ func (s *tabStrip) window(tabs []stripTab, widths []int, room int) (first int, r
 	}
 	return min(first, fitFrom(widths, room)), revealed, revealedW
 }
-
-// tabWindowCommitKey is a tab row's window commit (tui.Context.AfterLayout), the same for every
-// owner of a strip: TabStrip, Tabs and TerminalTabs.
-const tabWindowCommitKey tui.CommitKey = "tab-window"
 
 // commitWindow stores the window the row shows in avail cells: the strip's owner calls it after
 // layout (tui.Context.AfterLayout), with the width it was laid out in.

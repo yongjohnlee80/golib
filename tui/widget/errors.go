@@ -15,11 +15,6 @@ func tuiFatal(op, rule string, got int) error {
 	return fatalOf(op, rule, "got "+strconv.Itoa(got))
 }
 
-// fatalOf builds the package's standard construction panic value.
-func fatalOf(op, rule, detail string) error {
-	return errs.Fatal{Op: op, Rule: rule, Detail: detail}
-}
-
 // checkButtonList is the CONSTRUCTION adapter over validateButtonList.
 //
 // A panic rather than a silent precedence rule: with two defaults, Enter would
