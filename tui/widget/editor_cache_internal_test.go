@@ -200,43 +200,45 @@ func TestACommentClosedLaterLaysTheLineItBeganOnAgain(t *testing.T) {
 	}
 }
 
-// Two edits before one layout, list editing's InCode and InTable asked between them (a Batch: no
-// layout until it ends), are laid as the text they leave: a comment's close typed on its last line,
-// then taken off again.
+// Two edits before one layout, list editing's InCode and InTable asked after each (a Batch: no
+// layout until it ends): a comment's close typed, which hides text on the line it began on, then a
+// word on a later line, whose Prepare says nothing earlier changed. The line the comment began on is
+// laid again under its new mask, as a fresh layout lays it; and the inverse, the close taken off.
 func TestTwoEditsBeforeOneLayoutAreLaidAsTheTextTheyLeave(t *testing.T) {
 	e, c := cacheEditor(t, "a <!-- b\nc\nd\n\nafter")
-	c.laid = nil
-	err := e.core.Batch(func() error {
-		if _, err := e.core.Insert(TextPos{Line: 2, Col: 1}, " -->"); err != nil {
-			return err
+	for _, step := range []struct {
+		what  string
+		close func() error
+	}{
+		{"the close typed", func() error { _, err := e.core.Insert(TextPos{Line: 2, Col: 1}, " -->"); return err }},
+		{"the close taken off", func() error {
+			return e.core.Delete(TextRange{From: TextPos{Line: 2, Col: 1}, To: TextPos{Line: 2, Col: 5}})
+		}},
+	} {
+		e.renderedRows(cacheWidth) // the layout the batch's is laid from
+		c.laid = nil
+		err := e.core.Batch(func() error {
+			if err := step.close(); err != nil {
+				return err
+			}
+			c.InCode(e.core.buf.textLines, 4)
+			if _, err := e.core.Insert(TextPos{Line: 4, Col: 5}, "!"); err != nil { // "after!": no comment's
+				return err
+			}
+			c.InTable(e.core.buf.textLines, 4)
+			if len(c.laid) != 0 {
+				t.Errorf("%s: laid %v between the edits, want no layout until the batch ends", step.what, c.laid)
+			}
+			return nil
+		})
+		if err != nil {
+			t.Fatal(err)
 		}
-		c.InCode(e.core.buf.textLines, 4) // the comment closed, prepared
-		if err := e.core.Delete(TextRange{From: TextPos{Line: 2, Col: 1}, To: TextPos{Line: 2, Col: 5}}); err != nil {
-			return err
+		if laid := relaid(e, c); !slices.Contains(laid, Block{From: 0, To: 1}) {
+			t.Fatalf("%s, then a later word: laid %v, want the line the comment begins on, [0, 1), again", step.what, laid)
 		}
-		c.InTable(e.core.buf.textLines, 4) // open again, prepared: the last Prepare saw no change
-		if len(c.laid) != 0 {
-			t.Errorf("laid %v between the edits, want no layout until the batch ends", c.laid)
-		}
-		return nil
-	})
-	if err != nil {
-		t.Fatal(err)
+		sameAsFresh(t, e, step.what+", then a later word")
 	}
-	sameAsFresh(t, e, "two edits, the close typed and taken off")
-	if _, err := e.core.Insert(TextPos{Line: 2, Col: 1}, " -->"); err != nil {
-		t.Fatal(err)
-	}
-	err = e.core.Batch(func() error {
-		c.InCode(e.core.buf.textLines, 4)
-		_, err := e.core.Insert(TextPos{Line: 4, Col: 5}, "!")
-		c.InTable(e.core.buf.textLines, 4)
-		return err
-	})
-	if err != nil {
-		t.Fatal(err)
-	}
-	sameAsFresh(t, e, "the close typed, laid at another width only, then another edit")
 }
 
 // The block typed in is laid as its source, and moving to another block while typing lays both
