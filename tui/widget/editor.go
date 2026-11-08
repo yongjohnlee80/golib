@@ -1,6 +1,7 @@
 package widget
 
 import (
+	"context"
 	"fmt"
 
 	"github.com/yongjohnlee80/golib/tui"
@@ -169,6 +170,13 @@ type Editor struct {
 	// (editor_pictures.go); picGen counts their changes, a key of the layout.
 	pics   map[pictureAt]*pictureSlot
 	picGen uint64
+	// picBuf is the buffer the pictures are of; picLaid the picGen the viewport was last laid for;
+	// picReveal whether the cursor was on the view when the last picture arrived.
+	picBuf    *Buffer
+	picLaid   uint64
+	picReveal bool
+	// layPicture lays a picture off the loop: LayCellPicture when nil (a test lays its own).
+	layPicture func(ctx context.Context, lang, src string, measure func(string) int, cols int, syntax SyntaxStyles) (CellPicture, error)
 	// presented is the presentation the viewport was last revealed for (presentation): a change of
 	// it reveals the cursor again, though the cursor stayed.
 	presented [2]int
@@ -354,8 +362,10 @@ func (e *Editor) HandleEvent(ev tui.Event) bool {
 	if m, ok := ev.(tui.MouseEvent); ok && m.Y >= 0 && m.Y < e.headerRows() && (m.Kind == tui.MousePress || m.Kind == tui.MouseWheel) {
 		return e.header(m)
 	}
-	if r, ok := ev.(tui.TaskResult); ok && e.pictureDone(r) { // a picture laid: its blocks again
-		e.RequestLayout()
+	if r, ok := ev.(tui.TaskResult); ok && e.pictureDone(r) { // a picture laid: its blocks again,
+		if ctx := e.Context(); ctx != nil { // settled before the next input, so a click lands on them
+			ctx.SettleBeforeInput()
+		}
 		e.MarkDirty()
 		return true
 	}

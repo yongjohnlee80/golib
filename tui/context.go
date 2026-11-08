@@ -66,6 +66,19 @@ func (c *Context) SettleBeforeInput() {
 	c.app.invalidate(true)
 }
 
+// GoStoppable is Go, and a stop: calling it cancels the task's context, for an owner that stops
+// wanting a result before the task is replaced (Exclusive) or the owner unmounted, as those do.
+func (c *Context) GoStoppable(task Task, opts ...TaskOption) (TaskID, context.CancelFunc) {
+	own, stop := context.WithCancel(context.Background())
+	id := c.Go(func(t context.Context) (any, error) {
+		ctx, cancel := context.WithCancel(t)
+		defer cancel()
+		defer context.AfterFunc(own, cancel)()
+		return task(ctx)
+	}, opts...)
+	return id, stop
+}
+
 // WidthPolicy is the App's width policy, the one StringWidth measures by: a task off the loop takes
 // it here and measures with StringWidthPolicy as the loop would.
 func (c *Context) WidthPolicy() WidthPolicy { return c.app.widthPolicy() }
