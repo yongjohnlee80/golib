@@ -232,9 +232,14 @@ func TestAPicturesFenceIsOneVisibleFold(t *testing.T) {
 		tui.MouseEvent{Kind: tui.MouseRelease, Button: tui.MouseLeft, X: 2, Y: 1}); err != nil {
 		t.Fatal(err)
 	}
-	ih.syncInternal()
 	var ln int
-	ih.onLoopInternal(func() { ln, _ = e.Core().Line() })
+	for deadline := time.Now().Add(3 * time.Second); ; { // the click routed (input and Updates are separate lanes)
+		ih.onLoopInternal(func() { ln, _ = e.Core().Line() })
+		if ln != 4 || time.Now().After(deadline) {
+			break
+		}
+		time.Sleep(time.Millisecond)
+	}
 	if ln != 0 {
 		t.Errorf("a click on the picture landed on line %d, want the fence's first, 0", ln)
 	}
