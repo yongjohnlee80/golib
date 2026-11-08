@@ -268,7 +268,7 @@ func TestAnEditStopsItsFencesPicture(t *testing.T) {
 	lay := newHeldLay()
 	e, ih := pictureEditor(t, "```mermaid\nA\n```\nafter", lay, 40, 10)
 	lay.await(t, lay.started, "A", "request")
-	key := func(c rune) { e.Core().HandleKey(tui.KeyEvent{Kind: tui.KeyPress, Code: c}) }
+	key := func(c rune) { e.Core().HandleKey(tui.KeyEvent{Kind: tui.KeyPress, Code: c, Text: string(c)}) } // Text: Insert types it
 	ih.onLoopInternal(func() {
 		e.Core().SetLine(1, 0)
 		key('i')
