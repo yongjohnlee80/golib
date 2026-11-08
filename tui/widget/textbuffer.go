@@ -445,11 +445,11 @@ func (b *textBuffer) wordRight() (int, int) {
 }
 
 // wrapView is the layout state the soft-wrap geometry needs, which lives on the
-// widget rather than on the buffer: the viewport size, the wrap mode, and the
+// widget rather than on the buffer: the viewport size, whether lines soft-wrap, and the
 // active measure func.
 type wrapView struct {
 	w, h    int
-	wrap    WrapMode
+	wrap    bool // lines soft-wrap (WrapSoft); else they scroll sideways (WrapNone)
 	measure func(string) int
 	// usable is the width text wraps to, once worked out (settled): it
 	// depends on whether the whole text overflows the viewport, so finding
@@ -461,7 +461,7 @@ type wrapView struct {
 // settled is v with its usable width worked out once, for a caller about to
 // wrap several lines of the same text at the same size.
 func (v wrapView) settled(lines []string) wrapView {
-	if v.wrap != WrapNone && v.usable == 0 {
+	if v.wrap && v.usable == 0 {
 		v.usable = wrapUsableWidth(lines, v)
 	}
 	return v
@@ -492,7 +492,7 @@ func wrapScrollable(lines []string, v wrapView) bool {
 	if v.h <= 0 {
 		return false
 	}
-	if v.wrap == WrapNone {
+	if !v.wrap {
 		return len(lines) > v.h
 	}
 	rows := 0
@@ -513,7 +513,7 @@ func wrapMaxTop(lines []string, v wrapView) int {
 	if v.h <= 0 || len(lines) == 0 {
 		return 0
 	}
-	if v.wrap == WrapNone {
+	if !v.wrap {
 		return max(len(lines)-v.h, 0)
 	}
 	w := wrapUsableWidth(lines, v)
@@ -560,7 +560,7 @@ func lowestTop(lines []string, top, ln, h int, v wrapView) int {
 
 // wrapRowsOfLine is how many screen rows logical line i occupies.
 func wrapRowsOfLine(lines []string, i int, v wrapView) int {
-	if v.wrap == WrapNone {
+	if !v.wrap {
 		return 1
 	}
 	return len(wrapRanges(clusters(lines[i]), v.usableWidth(lines), v.measure))
@@ -614,7 +614,7 @@ func revealCaret(lines []string, v wrapView, top, left, ln, cx int) (int, int) {
 	top = min(top, ln)
 	top = lowestTop(lines, top, ln, v.h, v)
 	top = max(0, min(top, len(lines)-1))
-	if v.wrap != WrapNone {
+	if v.wrap {
 		return top, 0
 	}
 	w := wrapUsableWidth(lines, v)
@@ -632,7 +632,7 @@ func caretAt(lines []string, v wrapView, top, left, ln, col, cx int) (x, y int, 
 	if ln < top {
 		return 0, 0, false
 	}
-	if v.wrap == WrapNone {
+	if !v.wrap {
 		x, y = cx-left, ln-top
 		if y >= v.h && v.h > 0 {
 			return 0, 0, false

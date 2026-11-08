@@ -39,7 +39,7 @@ func TestLowestTopAgreesWithTheStepwiseSearch(t *testing.T) {
 			}
 			lines[i] = b.String()
 		}
-		v := wrapView{w: 2 + rng.Intn(30), h: 1 + rng.Intn(12), wrap: WrapSoft, measure: tui.StringWidth}
+		v := wrapView{w: 2 + rng.Intn(30), h: 1 + rng.Intn(12), wrap: true, measure: tui.StringWidth}
 		ln := rng.Intn(n)
 		top := rng.Intn(ln + 1)
 		if got, want := lowestTop(lines, top, ln, v.h, v), oldTop(lines, top, ln, v.h, v); got != want {
@@ -52,7 +52,7 @@ func TestLowestTopAgreesWithTheStepwiseSearch(t *testing.T) {
 // again for every line.
 func TestASettledViewKeepsItsWidth(t *testing.T) {
 	lines := []string{strings.Repeat("word ", 40), "short"}
-	v := wrapView{w: 20, h: 1, wrap: WrapSoft, measure: tui.StringWidth}
+	v := wrapView{w: 20, h: 1, wrap: true, measure: tui.StringWidth}
 	s := v.settled(lines)
 	if s.usable != wrapUsableWidth(lines, v) {
 		t.Fatalf("settled width %d, want %d", s.usable, wrapUsableWidth(lines, v))
@@ -60,7 +60,7 @@ func TestASettledViewKeepsItsWidth(t *testing.T) {
 	if wrapRowsOfLine(lines, 0, s) != wrapRowsOfLine(lines, 0, v) {
 		t.Error("a settled view wraps differently")
 	}
-	none := wrapView{w: 20, h: 1, wrap: WrapNone, measure: tui.StringWidth}.settled(lines)
+	none := wrapView{w: 20, h: 1, wrap: false, measure: tui.StringWidth}.settled(lines)
 	if none.usable != 0 || wrapRowsOfLine(lines, 0, none) != 1 {
 		t.Errorf("unwrapped: usable %d, rows %d", none.usable, wrapRowsOfLine(lines, 0, none))
 	}

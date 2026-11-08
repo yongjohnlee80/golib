@@ -472,5 +472,5 @@ func (t *TextArea) PlaceholderCells() ([]tui.Rect, bool) {
 // view is the layout state the shared soft-wrap geometry needs. It is the
 // only place this widget's viewport is handed to textBuffer.
 func (t *TextArea) view() wrapView {
-	return wrapView{w: t.w, h: t.h, wrap: t.wrap, measure: t.measure}
+	return wrapView{w: t.w, h: t.h, wrap: t.wrap != WrapNone, measure: t.measure}
 }
