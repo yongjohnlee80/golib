@@ -354,12 +354,8 @@ func TestTerminalInputWriterEndsWithTheApp(t *testing.T) {
 func TestTerminalBlockedReaderEndsWithTheApp(t *testing.T) {
 	p := newFloodProc()
 	term, h, stop := mountTerminal(t, p)
-	h.OnLoop(func() {
-		term.wr.mu.Lock()
-		term.wr.budget = 1 // the first chunk fills it
-		term.wr.mu.Unlock()
-	})
-	time.Sleep(50 * time.Millisecond) // let output flow through a turn or two
+	h.OnLoop(func() { term.wr.SetBudget(1) }) // the first chunk fills it
+	time.Sleep(50 * time.Millisecond)         // let output flow through a turn or two
 	stop()
 	pumpsGone(t, term)
 }
