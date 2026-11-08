@@ -457,9 +457,13 @@ func TestAPresentationChangeRevealsTheCaret(t *testing.T) {
 		h.onLoop(func() { ln, col = ed.Core().Line() })
 		return
 	}
+	// the loop picks the next input or a frame at random when both are ready, so an unfenced click
+	// lands right about half the time: eight bursts, each a fresh editor, must all land as the settled one
 	l1, c1 := clickAfterI(false)
-	if l2, c2 := clickAfterI(true); l2 != l1 || c2 != c1 {
-		t.Errorf("i then a click at (5, 1) before a frame landed on (%d, %d); after i's frame, on (%d, %d)", l2, c2, l1, c1)
+	for try := range 8 {
+		if l2, c2 := clickAfterI(true); l2 != l1 || c2 != c1 {
+			t.Errorf("try %d: i then a click at (5, 1) before a frame landed on (%d, %d); after i's frame, on (%d, %d)", try, l2, c2, l1, c1)
+		}
 	}
 	h.inject(dtEsc)
 	h.barrier(sh)
