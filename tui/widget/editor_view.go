@@ -218,9 +218,9 @@ func (e *Editor) Layout(c tui.Constraints) tui.Size {
 	e.cells.w = total - e.cells.gutter
 	e.cells.h = max(fillH(c)-e.headerRows(), 0)
 	moved := e.shown.moved([2]int{e.core.buf.ln, e.core.buf.col}, [2]int{e.cells.h, e.cells.w})
-	pics := e.picLaid != e.picGen // a picture laid: the rows changed under the view
+	pics := e.picArrived // a picture arrived: the rows changed under the view
 	if pics {
-		e.picLaid = e.picGen
+		e.picArrived = false
 		e.keepTopLine()
 	}
 	if p := e.presentation(); moved || p != e.presented || pics && e.picReveal {
