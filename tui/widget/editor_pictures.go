@@ -96,8 +96,9 @@ func (e *Editor) pictureDone(r tui.TaskResult) bool {
 		if !s.pending || s.task != r.ID {
 			continue
 		}
-		if e.picLaid == e.picGen { // the first picture since the view was laid: is the cursor on it, before the rows change?
+		if !e.picArrived { // the first picture since the view was laid: is the cursor on it, before the rows change?
 			_, _, e.picReveal = e.Cursor()
+			e.picArrived = true
 		}
 		s.pending, s.stop = false, nil
 		if p, ok := r.Value.(CellPicture); ok && r.Err == nil {

@@ -170,11 +170,12 @@ type Editor struct {
 	// (editor_pictures.go); picGen counts their changes, a key of the layout.
 	pics   map[pictureAt]*pictureSlot
 	picGen uint64
-	// picBuf is the buffer the pictures are of; picLaid the picGen the viewport was last laid for;
-	// picReveal whether the cursor was on the view when the last picture arrived.
-	picBuf    *Buffer
-	picLaid   uint64
-	picReveal bool
+	// picBuf is the buffer the pictures are of. picArrived is set by the first picture to arrive
+	// since the last layout, which took then whether the cursor was on the view (picReveal); the
+	// layout consumes both. A slot's drop changes picGen but is no arrival.
+	picBuf     *Buffer
+	picArrived bool
+	picReveal  bool
 	// layPicture lays a picture off the loop: LayCellPicture when nil (a test lays its own).
 	layPicture func(ctx context.Context, lang, src string, measure func(string) int, cols int, syntax SyntaxStyles) (CellPicture, error)
 	// presented is the presentation the viewport was last revealed for (presentation): a change of
