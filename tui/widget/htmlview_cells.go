@@ -11,6 +11,7 @@ import (
 	"github.com/yongjohnlee80/golib/tui/internal/grapheme"
 	"github.com/yongjohnlee80/golib/tui/style"
 	tuivegalite "github.com/yongjohnlee80/golib/tui/vegalite"
+	"github.com/yongjohnlee80/golib/tui/widget/internal/cellimages"
 )
 
 // THE CELL LAYOUT — an HTMLView in a terminal: the document's text, wrapped to the widget's
@@ -81,7 +82,7 @@ type cellHTML struct {
 	// imgs are the page's images, loaded for a terminal that draws them (htmlview_cellimages.go);
 	// laidDrawn is whether the last layout could draw them; imageIDs each laid image's placement
 	// id; shownImages the pictures the last paint showed, where (HTMLView.PlacedImages).
-	imgs        *cellImages
+	imgs        *cellimages.Loader
 	laidDrawn   bool
 	imageIDs    map[cellImageKey]uint32
 	shownImages []shownImage
@@ -119,7 +120,7 @@ func (c *cellHTML) Height() float32 { return float32(len(c.rows)) }
 func (c *cellHTML) layOut() {
 	c.rows, c.tops, c.codeW = c.rows[:0], make([]int, len(c.doc)), map[int]int{}
 	c.wide, c.wideW = map[int]int{}, map[int]int{}
-	c.laidDrawn = c.imgs.drawn()
+	c.laidDrawn = c.imgs.Drawn()
 	widths, wide := c.columnWidths()
 	firstRow := map[int]int{} // each table's first row block
 	for bi := range c.doc {
@@ -996,7 +997,7 @@ func (c *cellHTML) PaintCells(s tui.Surface, top, w int, from, to DocPos) {
 			if r.grid != painted {
 				painted = r.grid
 				c.paintGrid(s, r, y, sz.H)
-				if pic, ok := r.grid.(*imagePicture); ok {
+				if pic, ok := r.grid.(*cellimages.Picture); ok {
 					x0, _, _ := c.gridPlace(r, w)
 					c.shownImages = append(c.shownImages, shownImage{pic, x0, y - r.gridRow})
 				}

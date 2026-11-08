@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/yongjohnlee80/golib/tui"
+	"github.com/yongjohnlee80/golib/tui/widget/internal/cellimages"
 )
 
 // pngURI is a data: URI of a w × h PNG.
@@ -172,7 +173,7 @@ func TestImageCellsKeepTheShape(t *testing.T) {
 		{80, 1600, 40, 4, 40},
 		{1, 1, 40, 1, 1},
 	} {
-		if cols, rows := imageCells(c.w, c.h, c.room, 8, 16); cols != c.cols || rows != c.rows {
+		if cols, rows := cellimages.Cells(c.w, c.h, c.room, 8, 16); cols != c.cols || rows != c.rows {
 			t.Errorf("%d × %d in %d: %d × %d; want %d × %d", c.w, c.h, c.room, cols, rows, c.cols, c.rows)
 		}
 	}

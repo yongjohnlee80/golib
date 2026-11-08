@@ -10,6 +10,7 @@ import (
 	"github.com/yongjohnlee80/golib/tui"
 	"github.com/yongjohnlee80/golib/tui/keymap"
 	"github.com/yongjohnlee80/golib/tui/style"
+	"github.com/yongjohnlee80/golib/tui/widget/internal/cellimages"
 )
 
 // HTMLView shows an HTML document: read-only, scrollable, its text selectable and copied by
@@ -343,7 +344,7 @@ func WithSyntax(catalog *highlight.Catalog, styles SyntaxStyles) HTMLOption {
 func NewHTMLView(opts ...HTMLOption) *HTMLView {
 	v := &HTMLView{lastSrc: -1}
 	cells := newCellHTML(v.measure)
-	cells.imgs = newCellImages(v)
+	cells.imgs = cellimages.New(pageImages{v})
 	cells.notice = func(kind string) string { // the view's words when it has some, asked each layout
 		if v.diagramNotice != nil {
 			return v.diagramNotice(kind)
@@ -791,7 +792,7 @@ func (v *HTMLView) endDrag() {
 func (v *HTMLView) Layout(c tui.Constraints) tui.Size {
 	v.w = fillW(c)
 	v.h = fillH(c)
-	if c, ok := v.layout.(*cellHTML); ok && c.src != nil && c.imgs.drawn() != c.laidDrawn {
+	if c, ok := v.layout.(*cellHTML); ok && c.src != nil && c.imgs.Drawn() != c.laidDrawn {
 		c.layOut() // mounted on a terminal that draws images since it was laid out: its pictures now
 	}
 	if cells, ok := v.layout.(HTMLLayoutCells); ok {
