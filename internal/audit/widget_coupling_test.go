@@ -43,12 +43,11 @@ const (
 // the longest prefix winning; a file no prefix names is core's. A prefix says
 // where the file belongs when the package splits, not only what its name reads.
 var widgetGroups = map[string]string{
-	// EditorCore, the Editor, its views and the vim grammar; the command line, buffers, key grammar,
-	// jump list, undo history and registers.
+	// EditorCore, the Editor, its views and the vim grammar; the command line, buffers, jump list,
+	// undo history and registers.
 	"editor":       "editor",
 	"commandline":  "editor",
 	"buffer":       "editor",
-	"keygrammar":   "editor",
 	"jumplist":     "editor",
 	"edithistory":  "editor",
 	"editregister": "editor",
@@ -64,6 +63,8 @@ var widgetGroups = map[string]string{
 	"bufferview": "core",
 	// The mark a scrolled view keeps: List, Tree, the menus and the editor use it.
 	"viewmark": "core",
+	// The count grammar TableCore and EditorCore share: what digit a count is typed with, how it grows.
+	"keygrammar": "core",
 	// The table and the data table, their sources and CSV.
 	"table":     "table",
 	"datatable": "table",
@@ -311,7 +312,7 @@ func TestWidgetGroupsAssignByLongestPrefix(t *testing.T) {
 		"menu.go": "core", "textinput.go": "core", "tabs.go": "core",
 		// the files a prefix places by what they are, not by the shorter prefix their name extends
 		"buffer.go": "editor", "bufferview.go": "core", "bufferview_writer.go": "core",
-		"textbuffer.go": "core", "viewmark.go": "core", "table.go": "table", "table_text.go": "editor",
+		"textbuffer.go": "core", "viewmark.go": "core", "keygrammar.go": "core", "table.go": "table", "table_text.go": "editor",
 		"markdown_cells.go": "editor", "cell_pictures.go": "editor",
 	} {
 		if got := widgetGroupOf(base); got != want {

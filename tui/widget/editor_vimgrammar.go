@@ -491,3 +491,6 @@ func (c *EditorCore) takeCountDigit(k tui.KeyEvent) bool {
 	}
 	return true
 }
+
+// editorCountMax bounds a count typed in the editor.
+const editorCountMax = 1_000_000
