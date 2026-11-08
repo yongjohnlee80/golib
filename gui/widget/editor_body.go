@@ -410,11 +410,13 @@ func (v bodyView) Paint(c gui.Canvas) {
 		for _, ll := range lb.bl.Lines {
 			at := gui.Pt(-l.left, oy+ll.Y)
 			// under the text, lowest first: the line's own marks (a quote's bar, a table header's
-			// background), the core's overlay (a find's every match, the host's marks, in Rendered as the
-			// text's highlighting shows them in Raw), then the selection and the current match over both
+			// background) and its spans' backgrounds (an inline code span's chip), the core's overlay (a
+			// find's every match, the host's marks, in Rendered as the text's highlighting shows them in
+			// Raw), then the selection and the current match over all of them; the glyphs over the lot
 			for _, m := range ll.Marks {
 				tc.FillRect(gui.Rect{X: at.X + m.Rect.X, Y: at.Y + m.Rect.Y, W: m.Rect.W, H: m.Rect.H}, gui.Solid(m.Color))
 			}
+			ll.Para.PaintBackgrounds(tc, at, ll.Spans)
 			if rendered {
 				for _, m := range overlayMarks(e.core, ll, tint) {
 					tc.FillRect(gui.Rect{X: at.X + m.Rect.X, Y: at.Y + m.Rect.Y, W: m.Rect.W, H: m.Rect.H}, gui.Solid(m.Color))
@@ -423,7 +425,7 @@ func (v bodyView) Paint(c gui.Canvas) {
 			for _, r := range selection(e.core, ll, visualLine, l.width, b.focused) {
 				tc.FillRect(gui.Rect{X: at.X + r.X, Y: at.Y + r.Y, W: r.W, H: r.H}, gui.Solid(sel))
 			}
-			ll.Para.Paint(tc, at, ll.Spans)
+			ll.Para.PaintText(tc, at, ll.Spans)
 			if e.ShownView() == tuiwidget.ViewRaw {
 				paintIndentMarks(tc, e.core, ll, at, b.focused, l.monoFont(), mix(th.Muted, bg, 0.5))
 			}
