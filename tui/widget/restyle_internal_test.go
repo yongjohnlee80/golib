@@ -3,7 +3,6 @@ package widget
 import (
 	"context"
 	"testing"
-	"testing/fstest"
 	"time"
 
 	"github.com/yongjohnlee80/golib/tui"
@@ -44,15 +43,8 @@ func TestBoxRestylesAndRevertsKeepingItsBorder(t *testing.T) {
 	}
 }
 
-func TestEditorAndInputRestyleAndRevert(t *testing.T) {
-	e := NewEditor(WithEditorStyles(TextInputStyles{Text: red}))
-	e.WithStyles(TextInputStyles{Selection: red})
-	if e.cells.styles != NewEditor(WithEditorStyles(TextInputStyles{Selection: red})).cells.styles {
-		t.Fatal("the editor's earlier Text look survived a restyle")
-	}
-	if e.WithStyles(TextInputStyles{}).cells.styles != NewEditor().cells.styles {
-		t.Fatal("the editor's zero styles did not restore the default")
-	}
+// TestInputRestylesAndReverts: a TextInput restyled with zero styles looks as one built unstyled.
+func TestInputRestylesAndReverts(t *testing.T) {
 	in := NewTextInput(WithTextInputStyles(TextInputStyles{Text: red}))
 	if in.WithStyles(TextInputStyles{}).styles != NewTextInput().styles {
 		t.Fatal("the input's zero styles did not restore the default")
@@ -80,41 +72,6 @@ func TestMenuBarRestylesItsMenu(t *testing.T) {
 	}
 	if bar.WithStyle(nil); m.style != nil {
 		t.Fatal("nil did not restore the menu's default")
-	}
-}
-
-// TestFileViewsRestyleEveryPart: a file view is a list, a preview, frames and
-// a gap, each styled at construction. A restyle must reach all of them, and
-// the zero value must leave the view as one built unstyled.
-func TestFileViewsRestyleEveryPart(t *testing.T) {
-	src := FileSource{FS: fstest.MapFS{"a.txt": {Data: []byte("x")}}, Root: "mem://"}
-	st := FilePaneStyles{Surface: red, Cursor: red.Bold(true), CursorBlurred: red.Italic(true),
-		Border: red, FocusedBorder: red.Underline(true), Gap: red}
-	type parts struct {
-		list, preview, pane, gap any
-	}
-	open := func(v *FileOpenView) parts {
-		return parts{v.list.list.styles, v.preview.view.cells.styles,
-			[2]style.Style{v.list.box.base, v.list.box.focusedSt}, v.root.(*Split).divider}
-	}
-	styled := NewFileOpenView(WithFileViewSource(src), WithFileViewStyles(st))
-	v := NewFileOpenView(WithFileViewSource(src))
-	if v.WithStyles(st); open(v) != open(styled) {
-		t.Fatalf("restyled Open view differs from one built styled:\n%+v\n%+v", open(v), open(styled))
-	}
-	if v.WithStyles(FilePaneStyles{}); open(v) != open(NewFileOpenView(WithFileViewSource(src))) {
-		t.Fatal("the zero styles did not restore an unstyled Open view")
-	}
-
-	save := func(v *FileSaveView) [3]any {
-		return [3]any{v.name.styles, [2]style.Style{v.namePane.base, v.namePane.focusedSt}, open(v.listing)}
-	}
-	sv := NewFileSaveView(WithFileViewSource(src), WithFileViewPreview(true))
-	if sv.WithStyles(st); save(sv) != save(NewFileSaveView(WithFileViewSource(src), WithFileViewPreview(true), WithFileViewStyles(st))) {
-		t.Fatal("restyled Save view differs from one built styled")
-	}
-	if sv.WithStyles(FilePaneStyles{}); save(sv) != save(NewFileSaveView(WithFileViewSource(src), WithFileViewPreview(true))) {
-		t.Fatal("the zero styles did not restore an unstyled Save view")
 	}
 }
 

@@ -103,6 +103,14 @@ func NewBufferWriter(sink func([]byte)) *BufferWriter {
 	return w
 }
 
+// SetBudget sets how many bytes may be pending before Write blocks (writerBudget by default): a
+// test proves the blocking contract at a small size with it, which golib's components draw through.
+func (w *BufferWriter) SetBudget(n int) {
+	w.mu.Lock()
+	w.budget = n
+	w.mu.Unlock()
+}
+
 // Bind opens the handle against the owning App (called from Init, loop
 // goroutine).
 func (w *BufferWriter) Bind(app *tui.App) {

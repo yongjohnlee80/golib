@@ -2,6 +2,8 @@ package widgettest
 
 import (
 	"context"
+	"slices"
+	"sync"
 	"testing"
 	"time"
 
@@ -69,5 +71,29 @@ func Wait(h *Harness, cond func() bool) bool {
 		}
 		time.Sleep(10 * time.Millisecond)
 	}
+	return false
+}
+
+// Log collects the values a bus subscriber received, safe from any goroutine: a test subscribes
+// with a func that adds what it wants of each event, and reads them back with Values.
+type Log[T any] struct {
+	mu  sync.Mutex
+	got []T
+}
+
+// Add records v.
+func (l *Log[T]) Add(v T) { l.mu.Lock(); l.got = append(l.got, v); l.mu.Unlock() }
+
+// Values is what was added, in order.
+func (l *Log[T]) Values() []T {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	return slices.Clone(l.got)
+}
+
+// Panics reports whether fn panics.
+func Panics(fn func()) (did bool) {
+	defer func() { did = recover() != nil }()
+	fn()
 	return false
 }
