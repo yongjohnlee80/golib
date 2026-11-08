@@ -61,6 +61,7 @@ func TestAWidePicturePansWithZhAndZl(t *testing.T) {
 	waitShown(t, ih, "zh: one back", "34")
 	zKeys(ih, e, "50zl")
 	waitShown(t, ih, "50zl: clamped at 22", "23")
+	storedPan(t, ih, e, 22) // kept clamped, so zh moves at once
 	zKeys(ih, e, "jk")
 	ih.syncInternal()
 	if got := shownFrom(ih); got != "23" {
@@ -68,6 +69,17 @@ func TestAWidePicturePansWithZhAndZl(t *testing.T) {
 	}
 	zKeys(ih, e, "99zh")
 	waitShown(t, ih, "99zh: clamped at 0", "01")
+	storedPan(t, ih, e, 0)
+}
+
+// storedPan fails unless the picture's pan, as kept (by its block's first line, 0), is want.
+func storedPan(t *testing.T, ih *internalHarness, e *Editor, want int) {
+	t.Helper()
+	var got int
+	ih.onLoopInternal(func() { got = e.cells.pan[0] })
+	if got != want {
+		t.Errorf("the pan kept is %d, want %d (clamped to what the picture has to show)", got, want)
+	}
 }
 
 // Shift with the wheel, or a sideways wheel, pans the wide block under the pointer three cells
