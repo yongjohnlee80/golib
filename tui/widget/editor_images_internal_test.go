@@ -133,10 +133,10 @@ func TestAnImageScrolledPartlyOffIsCropped(t *testing.T) {
 		pl := onlyPlacement(imgs)
 		return len(imgs) == 1 && pl.Y == 0 && pl.Rows == 5 && pl.Cols == 10 && pl.Clip == tui.Rect{X: 0, Y: 48, W: 80, H: 80}
 	})
-	sc := strings.Split(r.tb.String(), "\n")
-	for y, l := range sc[:5] {
-		if strings.TrimSpace(l) != "" {
-			t.Fatalf("row %d of the picture shows %q:\n%s", y, l, r.tb.String())
+	pl := onlyPlacement(r.tb.Images())
+	for y, l := range strings.Split(r.tb.String(), "\n")[:pl.Rows] { // the picture's own cells: the scroll indicator's column is not its
+		if cells := []rune(l)[pl.X : pl.X+pl.Cols]; strings.TrimSpace(string(cells)) != "" {
+			t.Fatalf("row %d of the picture shows %q:\n%s", y, string(cells), r.tb.String())
 		}
 	}
 	if s := r.tb.String(); strings.Contains(s, "before") || lineOf(s, "after") < 5 {
