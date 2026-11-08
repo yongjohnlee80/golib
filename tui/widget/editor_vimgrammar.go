@@ -57,7 +57,9 @@ func (c *EditorCore) handleCommandKey(k tui.KeyEvent) bool {
 
 	// A key after g that the g sub-scope did not take (pendingSubScope): the prefix and any operator
 	// go, and the key is processed as any key is.
-	if c.keys.pendingAct != ActUnbound {
+	if c.keys.pendingAct == ActScrollPrefix {
+		c.keys.pendingAct, c.keys.pendingCount = ActUnbound, 0 // a key the z sub-scope does not bind: the prefix goes
+	} else if c.keys.pendingAct != ActUnbound {
 		c.completeGoPrefix(goNone, kc) // a key the g sub-scope does not bind: the prefix goes
 	}
 
@@ -139,6 +141,12 @@ func (c *EditorCore) commandAction(act Action, kc KeyChord, count int, hadCount 
 		return true
 	case ActGoPrefix:
 		c.armGoPrefix(count, hadCount)
+		return true
+	case ActScrollPrefix:
+		c.keys.pendingAct, c.keys.pendingCount = ActScrollPrefix, 0 // a count before it is the scroll's (3zl)
+		if hadCount {
+			c.keys.pendingCount = count
+		}
 		return true
 	case ActGoBottom:
 		c.goToLine(hadCount, count, true) // [count]G
@@ -272,6 +280,18 @@ func (c *EditorCore) completeGoPrefix(g goKey, kc KeyChord) (done, handled bool)
 // whether the sub-scope took the key, handled whether it is consumed; a key it does not bind goes
 // on as any key does.
 func (c *EditorCore) pendingSubScope(k tui.KeyEvent) (done, handled bool) {
+	if c.keys.pendingAct == ActScrollPrefix {
+		z, ok := c.scrollKeyOf(k)
+		if !ok {
+			return false, false
+		}
+		n := max(c.keys.pendingCount, 1)
+		c.keys.pendingAct, c.keys.pendingCount = ActUnbound, 0
+		if s, ok := c.layout.(EditorSideScroller); ok {
+			s.ScrollColumns(z * n)
+		}
+		return true, true
+	}
 	if c.keys.pendingAct != ActUnbound {
 		g := c.goKeyOf(k)
 		if g == goNone {

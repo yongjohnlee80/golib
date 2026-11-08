@@ -146,6 +146,7 @@ func vimDecls() keyDecls {
 		mv(ch('['), ActParaBack)
 		mv(ch('G'), ActGoBottom)
 		mv(ch('g'), ActGoPrefix)
+		mv(ch('z'), ActScrollPrefix)
 		mv(ctrl('b'), ActPageUp)
 		mv(ch(tui.KeyPageUp), ActPageUp)
 		mv(ctrl('f'), ActPageDown)

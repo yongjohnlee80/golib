@@ -13,8 +13,29 @@ import (
 
 const (
 	vimGScope      keymap.Scope = "tui.editor.vim.g"
+	vimZScope      keymap.Scope = "tui.editor.vim.z"
 	vimObjectScope keymap.Scope = "tui.editor.vim.object"
 )
+
+// vimZCommands are the z prefix's second keys: the view scrolled sideways, a column a count (zh
+// left, zl right), in a view that scrolls so (EditorSideScroller).
+var vimZCommands = []struct {
+	cmd keymap.Command
+	dir int
+}{
+	{cmd("tui.editor.vim.z.left", vimZScope, "H"), -1},
+	{cmd("tui.editor.vim.z.right", vimZScope, "L"), 1},
+}
+
+// scrollKeyOf is the z command k is: its direction.
+func (c *EditorCore) scrollKeyOf(k tui.KeyEvent) (dir int, ok bool) {
+	for _, z := range vimZCommands {
+		if isKey(k, c.keys.builtFrom.KeysOf(z.cmd)...) {
+			return z.dir, true
+		}
+	}
+	return 0, false
+}
 
 // goKey is what a key after an armed g does.
 type goKey int
