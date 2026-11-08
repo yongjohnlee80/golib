@@ -3,6 +3,8 @@ package widget
 import (
 	"strings"
 	"unicode/utf8"
+
+	txt "github.com/yongjohnlee80/golib/tui/widget/internal/text"
 )
 
 // COMPLETION — a TextInput that offers what the word before its cursor may become. Tab takes it
@@ -58,7 +60,7 @@ func (t *TextInput) offered() (start int, items []string) {
 	if len(items) == 0 || b < 0 || b > at {
 		return 0, nil
 	}
-	return len(clusters(value[:b])), items
+	return len(txt.Clusters(value[:b])), items
 }
 
 // walkStep is Tab's next place in a walk through n candidates from at (-1 before the first):
@@ -106,8 +108,8 @@ func (t *TextInput) complete(back bool) bool {
 // Tab's walk.
 func (t *TextInput) replaceWord(start int, s string) {
 	walk := t.walk
-	t.buf.anchor = &taPos{col: start} // the word typed, whatever was selected
-	t.buf.insertText(sanitizeLine(s))
+	t.buf.Anchor = &txt.Pos{Col: start} // the word typed, whatever was selected
+	t.buf.InsertText(sanitizeLine(s))
 	t.edited()
 	t.walk = walk
 }

@@ -9,6 +9,7 @@ import (
 	"github.com/yongjohnlee80/golib/tui"
 	"github.com/yongjohnlee80/golib/tui/keymap"
 	"github.com/yongjohnlee80/golib/tui/style"
+	txt "github.com/yongjohnlee80/golib/tui/widget/internal/text"
 )
 
 // BufferView provides a high-performance, append-oriented log pager and terminal output
@@ -260,7 +261,7 @@ func (v *BufferView) contentWidth() int {
 
 // rowsOf is the wrapped height of live line i at the current width.
 func (v *BufferView) rowsOf(i int) int {
-	return len(wrapRanges(clusters(v.line(i).text()), v.contentWidth(), v.measure))
+	return len(txt.WrapRanges(txt.Clusters(v.line(i).text()), v.contentWidth(), v.measure))
 }
 
 // text joins a line's spans.
@@ -291,7 +292,7 @@ func (v *BufferView) recount() {
 		total := 0
 		for i := 0; i < v.LineCount(); i++ {
 			v.rowStart = append(v.rowStart, total)
-			total += len(wrapRanges(clusters(v.line(i).text()), w, v.measure))
+			total += len(txt.WrapRanges(txt.Clusters(v.line(i).text()), w, v.measure))
 		}
 		return total
 	}
@@ -499,7 +500,7 @@ func (v *BufferView) paintLine(s tui.Surface, ln *bline, yOff, w int) int {
 			sts = append(sts, st)
 		}
 	}
-	ranges := wrapRanges(cls, w, s.StringWidth)
+	ranges := txt.WrapRanges(cls, w, s.StringWidth)
 	h := s.Size().H
 	for r, rr := range ranges {
 		y := yOff + r

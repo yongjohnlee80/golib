@@ -4,6 +4,7 @@ import (
 	"strings"
 
 	"github.com/yongjohnlee80/golib/highlight"
+	txt "github.com/yongjohnlee80/golib/tui/widget/internal/text"
 )
 
 // FIND AND REPLACE — editor core functions over the text, in buffer positions.
@@ -51,7 +52,7 @@ func matchesIn(line string, term []string, o FindOptions) [][2]int {
 	if len(term) == 0 {
 		return nil
 	}
-	hay := clusters(line)
+	hay := txt.Clusters(line)
 	fold := o.IgnoreCase
 	var out [][2]int
 	for i := 0; i+len(term) <= len(hay); i++ {
@@ -75,9 +76,9 @@ func matchesIn(line string, term []string, o FindOptions) [][2]int {
 
 // FindAll is every match of term in the text, in order. Backward and Wrap do not apply.
 func (c *EditorCore) FindAll(term string, o FindOptions) []TextRange {
-	t := clusters(term)
+	t := txt.Clusters(term)
 	var out []TextRange
-	for ln, line := range c.buf.textLines {
+	for ln, line := range c.buf.Lines {
 		for _, m := range matchesIn(line, t, o) {
 			out = append(out, TextRange{From: TextPos{ln, m[0]}, To: TextPos{ln, m[1]}})
 		}
@@ -95,10 +96,10 @@ func (c *EditorCore) Find(term string, from TextPos, o FindOptions) (TextRange, 
 	}
 	at := c.clampPos(from)
 	after := func(r TextRange) bool {
-		return r.From.Line > at.ln || (r.From.Line == at.ln && r.From.Col > at.col)
+		return r.From.Line > at.Ln || (r.From.Line == at.Ln && r.From.Col > at.Col)
 	}
 	before := func(r TextRange) bool {
-		return r.From.Line < at.ln || (r.From.Line == at.ln && r.From.Col < at.col)
+		return r.From.Line < at.Ln || (r.From.Line == at.Ln && r.From.Col < at.Col)
 	}
 	if !o.Backward {
 		for _, r := range all {
@@ -149,10 +150,10 @@ func (c *EditorCore) ReplaceAll(term, with string, o FindOptions) (int, error) {
 // view) lays these over its own cells, so a find marks every match there as it does in the text.
 // nil when there is no overlay, or no line ln.
 func (c *EditorCore) OverlayStyles(ln int) []highlight.Style {
-	if c.hl.overlay == nil || ln < 0 || ln >= len(c.buf.textLines) {
+	if c.hl.overlay == nil || ln < 0 || ln >= len(c.buf.Lines) {
 		return nil
 	}
-	return c.hl.paintEntry(hlLine{text: c.buf.textLines[ln]})
+	return c.hl.paintEntry(hlLine{text: c.buf.Lines[ln]})
 }
 
 // SetFind makes term the active find, or clears it with "": its matches are marked, and n and N
@@ -193,7 +194,7 @@ func (c *EditorCore) FindNext(back bool) bool {
 // one a find is on, so the user sees which. An empty r clears it; SetFind clears it too.
 func (c *EditorCore) SetCurrentMatch(r TextRange) {
 	lo, hi := c.clampRange(r)
-	c.find.cur = TextRange{From: TextPos{lo.ln, lo.col}, To: TextPos{hi.ln, hi.col}}
+	c.find.cur = TextRange{From: TextPos{lo.Ln, lo.Col}, To: TextPos{hi.Ln, hi.Col}}
 	c.find.curOn = lo != hi
 	c.markDirty()
 }
@@ -206,8 +207,8 @@ func (c *EditorCore) inCurrentMatch(ln, col int) bool {
 		return false
 	}
 	r := c.find.cur
-	lo, hi := taPos{r.From.Line, r.From.Col}, taPos{r.To.Line, r.To.Col}
-	return (taPos{ln, col}).in(lo, hi)
+	lo, hi := txt.Pos{Ln: r.From.Line, Col: r.From.Col}, txt.Pos{Ln: r.To.Line, Col: r.To.Col}
+	return (txt.Pos{Ln: ln, Col: col}).In(lo, hi)
 }
 
 // findOverlay is the host's overlay with the active find's marks over it.
@@ -216,7 +217,7 @@ func (c *EditorCore) findOverlay() highlight.Overlay {
 	if c.find.term == "" {
 		return host
 	}
-	term, opts := clusters(c.find.term), c.find.opts
+	term, opts := txt.Clusters(c.find.term), c.find.opts
 	return func(line string, semantic []highlight.Span) []highlight.Span {
 		spans := semantic
 		if host != nil {
@@ -233,7 +234,7 @@ func markMatches(line string, spans []highlight.Span, term []string, o FindOptio
 		return spans
 	}
 	// byte offset of each cluster boundary
-	cs := clusters(line)
+	cs := txt.Clusters(line)
 	at := make([]int, len(cs)+1)
 	for i, s := range cs {
 		at[i+1] = at[i] + len(s)
@@ -281,17 +282,17 @@ type ReplaceSession struct {
 // StartReplace begins a replace session at the first match in the document, selected; ok is
 // false when there is none.
 func (c *EditorCore) StartReplace(term, with string, o FindOptions) (*ReplaceSession, bool) {
-	s := &ReplaceSession{c: c, term: clusters(term), with: with, o: o}
-	s.seek(taPos{}, true)
+	s := &ReplaceSession{c: c, term: txt.Clusters(term), with: with, o: o}
+	s.seek(txt.Pos{}, true)
 	return s, s.ok
 }
 
 // seek selects the first match at or after `at`, or ends the session.
-func (s *ReplaceSession) seek(at taPos, inclusive bool) {
+func (s *ReplaceSession) seek(at txt.Pos, inclusive bool) {
 	s.ok = false
-	for ln := at.ln; ln < len(s.c.buf.textLines); ln++ {
-		for _, m := range matchesIn(s.c.buf.textLines[ln], s.term, s.o) {
-			if ln == at.ln && (m[0] < at.col || (!inclusive && m[0] == at.col)) {
+	for ln := at.Ln; ln < len(s.c.buf.Lines); ln++ {
+		for _, m := range matchesIn(s.c.buf.Lines[ln], s.term, s.o) {
+			if ln == at.Ln && (m[0] < at.Col || (!inclusive && m[0] == at.Col)) {
 				continue
 			}
 			s.cur, s.ok = TextRange{From: TextPos{ln, m[0]}, To: TextPos{ln, m[1]}}, true

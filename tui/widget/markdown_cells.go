@@ -8,6 +8,7 @@ import (
 	"github.com/yongjohnlee80/golib/parse/markdown"
 	"github.com/yongjohnlee80/golib/tui"
 	"github.com/yongjohnlee80/golib/tui/style"
+	txt "github.com/yongjohnlee80/golib/tui/widget/internal/text"
 )
 
 // The syntax styles a Markdown highlighter gives each construct, which a Rendered view's looks
@@ -291,7 +292,7 @@ func (r *MarkdownCellRenderer) table(lb *mdCellLines, cb *CellBlock, from, end i
 				for k, c := range seg {
 					srcs[k] = c.src
 				}
-				for _, rr := range wrapRanges(srcs, cols[ci], lb.measure) {
+				for _, rr := range txt.WrapRanges(srcs, cols[ci], lb.measure) {
 					var line []RowCell
 					for _, c := range seg[rr[0]:rr[1]] {
 						line = append(line, c.RowCell)

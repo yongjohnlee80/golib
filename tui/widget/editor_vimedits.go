@@ -5,6 +5,7 @@ import (
 	"unicode"
 
 	"github.com/yongjohnlee80/golib/indent"
+	txt "github.com/yongjohnlee80/golib/tui/widget/internal/text"
 )
 
 // VIM EDITS — r{char}, J and gJ, ~, and the case and indent operators (g~ gu gU, > <) that M2's
@@ -15,20 +16,20 @@ import (
 // count left: nothing changes.
 func (c *EditorCore) replaceChars(char string, count int) {
 	b := &c.buf
-	cs := b.lineClusters(b.ln)
-	if b.col+count > len(cs) {
+	cs := b.LineClusters(b.Ln)
+	if b.Col+count > len(cs) {
 		return
 	}
 	c.beginGroup()
-	lo, hi := taPos{b.ln, b.col}, taPos{b.ln, b.col + count}
-	b.deleteRegion(lo, hi)
-	b.ln, b.col = lo.ln, lo.col
-	b.anchor = nil
+	lo, hi := txt.Pos{Ln: b.Ln, Col: b.Col}, txt.Pos{Ln: b.Ln, Col: b.Col + count}
+	b.DeleteRegion(lo, hi)
+	b.Ln, b.Col = lo.Ln, lo.Col
+	b.Anchor = nil
 	if char == "\n" {
-		b.insertText("\n")
+		b.InsertText("\n")
 	} else {
-		b.insertText(strings.Repeat(char, count))
-		b.col--
+		b.InsertText(strings.Repeat(char, count))
+		b.Col--
 	}
 	c.clampNormal()
 	c.edited()
@@ -41,34 +42,34 @@ func (c *EditorCore) replaceChars(char string, count int) {
 // the last join.
 func (c *EditorCore) joinLines(count int, raw bool) {
 	b := &c.buf
-	n := min(max(count, 2)-1, len(b.textLines)-1-b.ln)
+	n := min(max(count, 2)-1, len(b.Lines)-1-b.Ln)
 	if n <= 0 {
 		return
 	}
 	c.beginGroup()
-	cur := b.textLines[b.ln]
+	cur := b.Lines[b.Ln]
 	at := 0
 	for i := 1; i <= n; i++ {
-		next := b.textLines[b.ln+i]
+		next := b.Lines[b.Ln+i]
 		cut := 0
 		sep := ""
 		if !raw {
 			trimmed := strings.TrimLeft(next, " \t")
-			cut = len(clusters(next)) - len(clusters(trimmed))
+			cut = len(txt.Clusters(next)) - len(txt.Clusters(trimmed))
 			next = trimmed
 			if cur != "" && !strings.HasSuffix(cur, " ") && !strings.HasSuffix(cur, "\t") && next != "" && !strings.HasPrefix(next, ")") {
 				sep = " "
 			}
 		}
-		at = len(clusters(cur))
+		at = len(txt.Clusters(cur))
 		// the joined line's marks move onto this one, where its text now starts (Vim's do_join)
-		b.log.move(b.ln+i, cut, b.ln, len(clusters(cur+sep)), true)
+		b.Log.Move(b.Ln+i, cut, b.Ln, len(txt.Clusters(cur+sep)), true)
 		cur += sep + next
 	}
-	b.setLine(b.ln, cur)
-	b.removeLines(b.ln+1, b.ln+n+1) // after the joined lines' moves, logged above
-	b.col = at
-	b.anchor = nil
+	b.SetLine(b.Ln, cur)
+	b.RemoveLines(b.Ln+1, b.Ln+n+1) // after the joined lines' moves, logged above
+	b.Col = at
+	b.Anchor = nil
 	c.clampNormal()
 	c.edited()
 }
@@ -77,26 +78,26 @@ func (c *EditorCore) joinLines(count int, raw bool) {
 // (on the line's last when they reach its end).
 func (c *EditorCore) toggleCaseChars(count int) {
 	b := &c.buf
-	cs := b.lineClusters(b.ln)
-	if b.col >= len(cs) {
+	cs := b.LineClusters(b.Ln)
+	if b.Col >= len(cs) {
 		return
 	}
-	end := min(b.col+count, len(cs))
+	end := min(b.Col+count, len(cs))
 	c.beginGroup()
-	c.replaceRegion(taPos{b.ln, b.col}, taPos{b.ln, end}, toggleCase(strings.Join(cs[b.col:end], "")))
-	b.col = min(end, len(cs)-1)
+	c.replaceRegion(txt.Pos{Ln: b.Ln, Col: b.Col}, txt.Pos{Ln: b.Ln, Col: end}, toggleCase(strings.Join(cs[b.Col:end], "")))
+	b.Col = min(end, len(cs)-1)
 	c.clampNormal()
 	c.edited()
 }
 
 // replaceRegion puts text in place of [lo, hiEx), the cursor at lo.
-func (c *EditorCore) replaceRegion(lo, hiEx taPos, text string) {
+func (c *EditorCore) replaceRegion(lo, hiEx txt.Pos, text string) {
 	b := &c.buf
-	b.deleteRegion(lo, hiEx)
-	b.ln, b.col = lo.ln, lo.col
-	b.anchor = nil
-	b.insertText(text)
-	b.ln, b.col = lo.ln, lo.col
+	b.DeleteRegion(lo, hiEx)
+	b.Ln, b.Col = lo.Ln, lo.Col
+	b.Anchor = nil
+	b.InsertText(text)
+	b.Ln, b.Col = lo.Ln, lo.Col
 }
 
 // The case transforms, rune by rune: a cluster's combining marks are runes that have no case,
@@ -130,12 +131,12 @@ func (c *EditorCore) applyCase(op Action, r opRange) {
 	f := caseOf(op)
 	c.beginGroup()
 	if r.lines {
-		for i := r.lo.ln; i <= r.hiEx.ln; i++ {
-			b.setLine(i, f(b.textLines[i]))
+		for i := r.lo.Ln; i <= r.hiEx.Ln; i++ {
+			b.SetLine(i, f(b.Lines[i]))
 		}
-		b.ln = r.lo.ln
+		b.Ln = r.lo.Ln
 	} else {
-		c.replaceRegion(r.lo, r.hiEx, f(b.textIn(r.lo, r.hiEx)))
+		c.replaceRegion(r.lo, r.hiEx, f(b.TextIn(r.lo, r.hiEx)))
 	}
 	c.clampNormal()
 	c.edited()
@@ -149,14 +150,14 @@ func (c *EditorCore) applyShift(dir int, r opRange) { c.applyShiftN(dir, r, 1) }
 // applyShiftN is applyShift by n units (Visual's 3>).
 func (c *EditorCore) applyShiftN(dir int, r opRange, n int) {
 	b := &c.buf
-	last := r.hiEx.ln
+	last := r.hiEx.Ln
 	unit := strings.Repeat(c.shiftUnit(), max(n, 1))
 	c.beginGroup()
-	for i := r.lo.ln; i <= last; i++ {
-		b.setLine(i, shiftLine(b.textLines[i], unit, dir))
+	for i := r.lo.Ln; i <= last; i++ {
+		b.SetLine(i, shiftLine(b.Lines[i], unit, dir))
 	}
-	b.ln, b.col = r.lo.ln, c.firstNonBlank(r.lo.ln)
-	b.anchor = nil
+	b.Ln, b.Col = r.lo.Ln, c.firstNonBlank(r.lo.Ln)
+	b.Anchor = nil
 	c.clampNormal()
 	c.edited()
 }
@@ -167,7 +168,7 @@ func (c *EditorCore) shiftUnit() string {
 	if c.indentUnit != "" {
 		return c.indentUnit
 	}
-	for _, l := range c.buf.textLines {
+	for _, l := range c.buf.Lines {
 		if lead := indent.Leading(l); lead != "" && strings.TrimSpace(l) != "" {
 			return lead
 		}

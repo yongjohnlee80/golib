@@ -57,12 +57,8 @@ var widgetGroups = map[string]string{
 	"cell":     "editor",
 	// A Markdown table in an EditorCore's buffer, edited as a TableSource: the editor's tables.
 	"table_text": "editor",
-	// The text model TextInput, TextArea and the editor all edit: core, below the editor.
-	"textbuffer": "core",
 	// BufferView, the scrolling log view: no editor buffer, though it shares the "buffer" prefix.
 	"bufferview": "core",
-	// The mark a scrolled view keeps: List, Tree, the menus and the editor use it.
-	"viewmark": "core",
 	// The count grammar TableCore and EditorCore share: what digit a count is typed with, how it grows.
 	"keygrammar": "core",
 	// The table and the data table, their sources and CSV.
@@ -312,7 +308,7 @@ func TestWidgetGroupsAssignByLongestPrefix(t *testing.T) {
 		"menu.go": "core", "textinput.go": "core", "tabs.go": "core",
 		// the files a prefix places by what they are, not by the shorter prefix their name extends
 		"buffer.go": "editor", "bufferview.go": "core", "bufferview_writer.go": "core",
-		"textbuffer.go": "core", "viewmark.go": "core", "keygrammar.go": "core", "table.go": "table", "table_text.go": "editor",
+		"keygrammar.go": "core", "table.go": "table", "table_text.go": "editor",
 		"markdown_cells.go": "editor", "cell_pictures.go": "editor",
 	} {
 		if got := widgetGroupOf(base); got != want {

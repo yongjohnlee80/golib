@@ -8,6 +8,7 @@ import (
 	"github.com/yongjohnlee80/golib/tui"
 	"github.com/yongjohnlee80/golib/tui/keymap"
 	"github.com/yongjohnlee80/golib/tui/style"
+	txt "github.com/yongjohnlee80/golib/tui/widget/internal/text"
 )
 
 // DATA TABLE — the terminal view of a TableCore: a header (the titles over a rule), then the rows
@@ -561,7 +562,7 @@ func (t *DataTable) fieldPlace(sz tui.Size, gutter int, fields []TableField, mea
 	ln = min(ln, len(lines)-1)
 	h := min(len(lines), sz.H-y)
 	top := max(ln-h+1, 0)
-	cs := clusters(lines[ln])
+	cs := txt.Clusters(lines[ln])
 	caretX := measure(strings.Join(cs[:min(col, len(cs))], ""))
 	left := max(caretX-w+1, 0) // the caret kept in sight
 	return openField{
@@ -574,9 +575,9 @@ func (t *DataTable) fieldPlace(sz tui.Size, gutter int, fields []TableField, mea
 // fromCell is line from cell off on: the clusters before it dropped.
 func fromCell(line string, off int, width func(string) int) string {
 	at := 0
-	for i, cl := range clusters(line) {
+	for i, cl := range txt.Clusters(line) {
 		if at >= off {
-			return strings.Join(clusters(line)[i:], "")
+			return strings.Join(txt.Clusters(line)[i:], "")
 		}
 		at += width(cl)
 	}

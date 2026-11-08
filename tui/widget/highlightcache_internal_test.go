@@ -5,6 +5,7 @@ import (
 	"testing"
 
 	"github.com/yongjohnlee80/golib/highlight"
+	txt "github.com/yongjohnlee80/golib/tui/widget/internal/text"
 )
 
 // A highlightCache works over any text it is given: a line is highlighted again only when it or
@@ -16,7 +17,7 @@ func TestHighlightCacheStandsAlone(t *testing.T) {
 		return []highlight.Span{{Start: 0, End: len(line), Style: highlight.Keyword}}, in
 	})}}
 	text := []string{"a", "b", "c"}
-	unchanged := func() int { return noChange }
+	unchanged := func() int { return txt.NoChange }
 	f, behind := c.text.beginFrame(text, 0, unchanged)
 	for ln := range text {
 		c.highlighted(text, 0, ln, f)

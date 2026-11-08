@@ -12,6 +12,7 @@ import (
 	"github.com/yongjohnlee80/golib/tui/style"
 	tuivegalite "github.com/yongjohnlee80/golib/tui/vegalite"
 	"github.com/yongjohnlee80/golib/tui/widget/internal/cellimages"
+	txt "github.com/yongjohnlee80/golib/tui/widget/internal/text"
 )
 
 // THE CELL LAYOUT — an HTMLView in a terminal: the document's text, wrapped to the widget's
@@ -365,7 +366,7 @@ func (c *cellHTML) layBlock(bi int, b *hblock, cols []int) {
 		for i, k := range ln {
 			cs[i] = k.text
 		}
-		for _, rr := range wrapRanges(cs, room, c.measure) {
+		for _, rr := range txt.WrapRanges(cs, room, c.measure) {
 			row := hrow{block: bi, first: firstRow, cls: c.prefix(b, firstRow)}
 			firstRow = false
 			x := 2*b.quote + b.indent
@@ -516,7 +517,7 @@ func (c *cellHTML) layNotice(bi int, b *hblock, kind string) {
 		cs = append(cs, k)
 	}
 	room := max(c.width-2*b.quote-b.indent, 1)
-	for i, rr := range wrapRanges(cs, room, c.measure) { // wrapped to the room, as any paragraph
+	for i, rr := range txt.WrapRanges(cs, room, c.measure) { // wrapped to the room, as any paragraph
 		row := hrow{block: bi, first: i == 0, cls: c.prefix(b, i == 0)}
 		x := 2*b.quote + b.indent
 		for _, k := range cs[rr[0]:rr[1]] {
@@ -668,7 +669,7 @@ func (c *cellHTML) layRow(bi int, b *hblock, cols []int) {
 			for i, k := range cur {
 				cs[i] = k.text
 			}
-			for _, rr := range wrapRanges(cs, cols[ci], c.measure) {
+			for _, rr := range txt.WrapRanges(cs, cols[ci], c.measure) {
 				cells[ci] = append(cells[ci], cur[rr[0]:rr[1]])
 			}
 			cur = nil

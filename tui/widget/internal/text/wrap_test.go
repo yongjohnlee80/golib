@@ -1,9 +1,9 @@
-package widget
+package text
 
 import "testing"
 
-// wrapScrollable decides whether a scrollbar column is showing, which
-// wrapUsableWidth then subtracts — so it moves every wrapped line by a cell
+// WrapScrollable decides whether a scrollbar column is showing, which
+// WrapUsableWidth then subtracts — so it moves every wrapped line by a cell
 // when it is wrong.
 //
 // It had NO coverage. Mutating both of its branches left the whole widget suite
@@ -17,10 +17,10 @@ func TestWrapScrollable(t *testing.T) {
 
 	t.Run("WrapNone counts logical lines against the height", func(t *testing.T) {
 		lines := []string{"a", "b", "c"}
-		if wrapScrollable(lines, wrapView{w: 10, h: 3, wrap: false, measure: one}) {
+		if WrapScrollable(lines, WrapView{W: 10, H: 3, Wrap: false, Measure: one}) {
 			t.Error("three lines in three rows must not scroll")
 		}
-		if !wrapScrollable(lines, wrapView{w: 10, h: 2, wrap: false, measure: one}) {
+		if !WrapScrollable(lines, WrapView{W: 10, H: 2, Wrap: false, Measure: one}) {
 			t.Error("three lines in two rows must scroll")
 		}
 	})
@@ -29,21 +29,21 @@ func TestWrapScrollable(t *testing.T) {
 		// One logical line of six cells wraps to three rows at width 2 — the
 		// count uses w-1, because a scrollbar is the thing being decided.
 		lines := []string{"abcdef"}
-		if !wrapScrollable(lines, wrapView{w: 3, h: 2, wrap: true, measure: one}) {
+		if !WrapScrollable(lines, WrapView{W: 3, H: 2, Wrap: true, Measure: one}) {
 			t.Error("one line wrapping to three rows must scroll a two-row viewport")
 		}
-		if wrapScrollable(lines, wrapView{w: 3, h: 3, wrap: true, measure: one}) {
+		if WrapScrollable(lines, WrapView{W: 3, H: 3, Wrap: true, Measure: one}) {
 			t.Error("three wrapped rows in a three-row viewport must not scroll")
 		}
 		// The same content does NOT scroll unwrapped. Asserting only the wrapped
 		// arm would pass for a function that ignored the mode entirely.
-		if wrapScrollable(lines, wrapView{w: 3, h: 2, wrap: false, measure: one}) {
+		if WrapScrollable(lines, WrapView{W: 3, H: 2, Wrap: false, Measure: one}) {
 			t.Error("a single logical line must not scroll a two-row viewport unwrapped")
 		}
 	})
 
 	t.Run("a zero height never scrolls", func(t *testing.T) {
-		if wrapScrollable([]string{"a", "b"}, wrapView{w: 10, h: 0, wrap: true, measure: one}) {
+		if WrapScrollable([]string{"a", "b"}, WrapView{W: 10, H: 0, Wrap: true, Measure: one}) {
 			t.Error("an unlaid-out widget must not report a scrollbar")
 		}
 	})

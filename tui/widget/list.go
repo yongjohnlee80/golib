@@ -6,6 +6,7 @@ import (
 	"github.com/yongjohnlee80/golib/tui"
 	"github.com/yongjohnlee80/golib/tui/keymap"
 	"github.com/yongjohnlee80/golib/tui/style"
+	txt "github.com/yongjohnlee80/golib/tui/widget/internal/text"
 )
 
 // ListSource is the data seam List renders through.
@@ -143,7 +144,7 @@ type List[T any] struct {
 	top    int
 	// shown is the cursor and viewport height Layout last kept the cursor in view for: a layout
 	// pass reveals the cursor only when either changed, so the wheel's scroll stays
-	shown viewMark
+	shown txt.ViewMark
 	count int // Len() as last told (SetSource, RefreshSource); handlers and Layout use it, Render only bounds by it
 	// presses pairs a double-click by LOGICAL row, so a pair straddling a
 	// viewport scroll cannot activate a different row.
@@ -575,7 +576,7 @@ func (l *List[T]) HandleEvent(ev tui.Event) bool {
 func (l *List[T]) Layout(c tui.Constraints) tui.Size {
 	l.w = fillW(c)
 	l.h = boundedMax(c.MaxH, max(c.MinH, l.count, 1))
-	if l.shown.moved([2]int{l.cursor}, [2]int{l.h}) {
+	if l.shown.Moved([2]int{l.cursor}, [2]int{l.h}) {
 		l.ensureVisible()
 	}
 	l.clamp()

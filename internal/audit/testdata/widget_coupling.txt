@@ -1,63 +1,25 @@
-# tui/widget's coupling: each unexported name, method or field one group of
-# files uses and another group declares (widget_coupling_test.go assigns the
-# groups by file name).
-#
-#   using group <TAB> owning group <TAB> name <TAB> kind
-#
-# The work list for splitting tui/widget into core and its components: a row
-# goes when its use is decoupled (an interface core owns, a callback, an export).
-# This list may only SHRINK. Empty is the destination.
-#
-# Regenerate: GOLIB_WIDGET_COUPLING_UPDATE=1 go test -run TestWidgetCoupling ./internal/audit/
 editor	core	Base.focused	method
 editor	core	Base.measure	method
 editor	core	Modal.openOn	method
 editor	core	TextInputStyles.over	method
 editor	core	addCount	func
-editor	core	bufferText	type
-editor	core	bufferText.changedFrom	field
-editor	core	bufferText.log	field
-editor	core	bufferText.textLines	field
-editor	core	bufferText.undoRec	field
-editor	core	caretAt	func
-editor	core	cellsBefore	func
-editor	core	clusters	func
 editor	core	cmd	func
 editor	core	cmdlineCommands	var
 editor	core	cmdlineReplaceCommands	var
-editor	core	colInRow	func
 editor	core	commonPrefix	func
 editor	core	countDigit	func
 editor	core	defaultTextInputStyles	func
 editor	core	drawFrame	func
 editor	core	drawText	func
-editor	core	editLog.move	method
-editor	core	editLog.on	field
-editor	core	editLog.take	method
 editor	core	fillH	func
 editor	core	fillW	func
 editor	core	hostFor	func
 editor	core	isKey	func
 editor	core	isWS	func
-editor	core	lineEdit	type
-editor	core	lineEdit.all	field
-editor	core	lineEdit.at	field
-editor	core	lineEdit.cut	field
-editor	core	lineEdit.del	field
-editor	core	lineEdit.from	field
-editor	core	lineEdit.ins	field
-editor	core	lineEdit.ln	field
-editor	core	lineEdit.move	field
-editor	core	lineEdit.reset	field
-editor	core	lineEdit.to	field
-editor	core	lowestTop	func
 editor	core	modalHost	type
 editor	core	mutedPlaceholder	func
-editor	core	newBufferText	func
 editor	core	newWordWalker	func
-editor	core	noChange	const
 editor	core	nonTextMods	const
-editor	core	ordered	func
 editor	core	ownerContext	func
 editor	core	padAligned	func
 editor	core	paintScrollIndicator	func
@@ -67,44 +29,7 @@ editor	core	popupLayer	type
 editor	core	popupLayer.close	method
 editor	core	popupLayer.requestClose	method
 editor	core	publishChange	func
-editor	core	revealCaret	func
-editor	core	taPos	type
-editor	core	taPos.col	field
-editor	core	taPos.in	method
-editor	core	taPos.less	method
-editor	core	taPos.ln	field
-editor	core	textBuffer	type
-editor	core	textBuffer.anchor	field
-editor	core	textBuffer.backspaceRegion	method
-editor	core	textBuffer.bufferText	field
-editor	core	textBuffer.cellsAt	method
-editor	core	textBuffer.clampCol	method
-editor	core	textBuffer.col	field
-editor	core	textBuffer.colForCells	method
-editor	core	textBuffer.deleteRegion	method
-editor	core	textBuffer.desired	field
-editor	core	textBuffer.forwardRegion	method
-editor	core	textBuffer.insertLines	method
-editor	core	textBuffer.insertText	method
-editor	core	textBuffer.lineClusters	method
-editor	core	textBuffer.ln	field
-editor	core	textBuffer.moveCursor	method
-editor	core	textBuffer.removeLines	method
-editor	core	textBuffer.replaceLines	method
-editor	core	textBuffer.selection	method
-editor	core	textBuffer.setLine	method
-editor	core	textBuffer.setValue	method
-editor	core	textBuffer.takeChanged	method
-editor	core	textBuffer.textIn	method
-editor	core	textBuffer.touch	method
-editor	core	textBuffer.value	method
 editor	core	truncate	func
-editor	core	undoOp	type
-editor	core	undoOp.lo	field
-editor	core	undoOp.n	field
-editor	core	undoOp.old	field
-editor	core	viewMark	type
-editor	core	viewMark.moved	method
 editor	core	walkStep	func
 editor	core	wordBackFrom	func
 editor	core	wordClass	func
@@ -113,20 +38,6 @@ editor	core	wordEndFrom	func
 editor	core	wordForwardFrom	func
 editor	core	wordWalker	type
 editor	core	wrapLine	func
-editor	core	wrapMaxTop	func
-editor	core	wrapPosOf	func
-editor	core	wrapRanges	func
-editor	core	wrapRowsOfLine	func
-editor	core	wrapScrollable	func
-editor	core	wrapUsableWidth	func
-editor	core	wrapView	type
-editor	core	wrapView.h	field
-editor	core	wrapView.measure	field
-editor	core	wrapView.settled	method
-editor	core	wrapView.usable	field
-editor	core	wrapView.usableWidth	method
-editor	core	wrapView.w	field
-editor	core	wrapView.wrap	field
 editor	table	compareCells	func
 files	core	Base.ctx	field
 files	core	Base.focused	method
@@ -155,8 +66,6 @@ files	core	rowsEpoch.advance	method
 files	core	rowsWidth	func
 files	core	treeCommands	var
 files	core	truncate	func
-files	core	viewMark	type
-files	core	viewMark.moved	method
 files	core	withArg	func
 htmlview	core	Base.measure	method
 htmlview	core	boundedMax	func
@@ -178,7 +87,6 @@ htmlview	core	ticker	type
 htmlview	core	ticker.forget	method
 htmlview	core	ticker.halt	method
 htmlview	core	ticker.start	method
-htmlview	core	wrapRanges	func
 table	core	Base.measure	method
 table	core	List.paint	field
 table	core	List.render	field
@@ -186,7 +94,6 @@ table	core	TextArea.insert	method
 table	core	addCount	func
 table	core	boundedMax	func
 table	core	clampTop	func
-table	core	clusters	func
 table	core	completeStop	func
 table	core	countDigit	func
 table	core	drawText	func

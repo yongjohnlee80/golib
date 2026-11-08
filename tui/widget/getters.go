@@ -54,13 +54,13 @@ func (t *TextInput) Masked() bool { return t.mask != 0 }
 func (t *TextInput) Mask() rune { return t.mask }
 
 // CursorPos is the cursor as a logical line and a cluster within it.
-func (t *TextArea) CursorPos() (line, cluster int) { return t.ln, t.col }
+func (t *TextArea) CursorPos() (line, cluster int) { return t.buf.Ln, t.buf.Col }
 
 // Selection is the selected span from its start to its end, each a line and a cluster; ok is
 // false with nothing selected.
 func (t *TextArea) Selection() (fromLine, fromCluster, toLine, toCluster int, ok bool) {
-	lo, hi, ok := t.selection()
-	return lo.ln, lo.col, hi.ln, hi.col, ok
+	lo, hi, ok := t.buf.Selection()
+	return lo.Ln, lo.Col, hi.Ln, hi.Col, ok
 }
 
 // Scroll is the first visible logical line and, unwrapped only, the cells scrolled off the left.

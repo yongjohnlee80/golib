@@ -1,6 +1,9 @@
 package widget
 
-import "github.com/yongjohnlee80/golib/indent"
+import (
+	"github.com/yongjohnlee80/golib/indent"
+	txt "github.com/yongjohnlee80/golib/tui/widget/internal/text"
+)
 
 // IndentMarks selects which lines show their indentation: each leading space drawn as a dimmed
 // "·" and each leading tab as a dimmed "→", as Vim's listchars does, so the indentation of the
@@ -42,7 +45,7 @@ func (c *EditorCore) IndentMarked(ln int, focused bool) int {
 	switch c.indentMarks {
 	case IndentMarksAll:
 	case IndentMarksCursorLine:
-		if !focused || ln != c.buf.ln {
+		if !focused || ln != c.buf.Ln {
 			return 0
 		}
 	default:
@@ -51,7 +54,7 @@ func (c *EditorCore) IndentMarked(ln int, focused bool) int {
 	line := c.LineAt(ln)
 	lead := len(indent.Leading(line))
 	n, off := 0, 0
-	for _, cl := range clusters(line) {
+	for _, cl := range txt.Clusters(line) {
 		if off >= lead {
 			break
 		}

@@ -1,11 +1,15 @@
 package widget
 
+import (
+	txt "github.com/yongjohnlee80/golib/tui/widget/internal/text"
+)
+
 // EDIT HISTORY — undo and redo for a text widget: at most editHistoryCap edit groups, each the
 // cursor, marks and revision before it and the changes that take its text back. A group left open
 // (an Insert session) takes in every edit until it is closed, so a session undoes as one step.
 //
 // No group copies the text. Each holds only what the line primitives handed it as they changed
-// the lines (textbuffer.go's undoOp, through bufferText.undoRec): a group costs the lines its
+// the lines (txt.UndoOp, through txt.Doc.UndoRec): a group costs the lines its
 // edits replaced, not the document. The texts the stacks stand for are as a whole-text snapshot
 // would keep them:
 //   - the undo stack's top takes the text now back to the text before the last group; each group
@@ -23,7 +27,7 @@ package widget
 // textSnap is an edit group: the cursor, marks and revision as they were before it, and the
 // changes that take the text back there.
 type textSnap struct {
-	ops     []undoOp // in the order made: applied last first
+	ops     []txt.UndoOp // in the order made: applied last first
 	ln, col int
 	rev     uint64  // the text's revision: undoing to the saved text reads as unmodified
 	marks   markSet // the marks when the group began: undo and redo bring them back
@@ -46,15 +50,15 @@ type editHistory struct {
 	into *textSnap
 }
 
-// recording reports whether an edit now has a group to go into (lineRecorder).
-func (h *editHistory) recording() bool {
+// Recording reports whether an edit now has a group to go into (txt.LineRecorder).
+func (h *editHistory) Recording() bool {
 	return h.enabled && (h.into != nil || len(h.undo) > 0 || len(h.redo) > 0)
 }
 
-// record takes in what takes one edit back (lineRecorder): into the group an undo or a redo is
+// Record takes in what takes one edit back (txt.LineRecorder): into the group an undo or a redo is
 // applying, else into the top of both stacks. The primitives call it only once recording said
 // yes, which a disabled history never does.
-func (h *editHistory) record(op undoOp) {
+func (h *editHistory) Record(op txt.UndoOp) {
 	if h.into != nil {
 		h.into.ops = addOp(h.into.ops, op)
 		return
@@ -71,10 +75,10 @@ func (h *editHistory) record(op undoOp) {
 // that keeps the line count within the lines the last one put there (a keystroke on the line the
 // last keystroke made) is taken back with it, so a session of typing keeps one old line, not one
 // per key.
-func addOp(ops []undoOp, op undoOp) []undoOp {
+func addOp(ops []txt.UndoOp, op txt.UndoOp) []txt.UndoOp {
 	if n := len(ops); n > 0 {
 		last := ops[n-1]
-		if op.n == len(op.old) && op.lo >= last.lo && op.lo+op.n <= last.lo+last.n {
+		if op.N == len(op.Old) && op.Lo >= last.Lo && op.Lo+op.N <= last.Lo+last.N {
 			return ops
 		}
 	}

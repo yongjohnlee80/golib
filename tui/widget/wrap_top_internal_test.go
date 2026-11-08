@@ -6,16 +6,17 @@ import (
 	"testing"
 
 	"github.com/yongjohnlee80/golib/tui"
+	txt "github.com/yongjohnlee80/golib/tui/widget/internal/text"
 )
 
-// oldTop is the scroll-top search the editor used before lowestTop: from
+// oldTop is the scroll-top search the editor used before txt.LowestTop: from
 // top, step down until the rows from there to ln fit in h. Kept as the
-// oracle lowestTop must agree with.
-func oldTop(lines []string, top, ln, h int, v wrapView) int {
+// oracle txt.LowestTop must agree with.
+func oldTop(lines []string, top, ln, h int, v txt.WrapView) int {
 	for top < ln {
 		rows := 0
 		for i := top; i <= ln && rows <= h; i++ {
-			rows += wrapRowsOfLine(lines, i, v)
+			rows += txt.WrapRowsOfLine(lines, i, v)
 		}
 		if rows <= h {
 			break
@@ -39,11 +40,11 @@ func TestLowestTopAgreesWithTheStepwiseSearch(t *testing.T) {
 			}
 			lines[i] = b.String()
 		}
-		v := wrapView{w: 2 + rng.Intn(30), h: 1 + rng.Intn(12), wrap: true, measure: tui.StringWidth}
+		v := txt.WrapView{W: 2 + rng.Intn(30), H: 1 + rng.Intn(12), Wrap: true, Measure: tui.StringWidth}
 		ln := rng.Intn(n)
 		top := rng.Intn(ln + 1)
-		if got, want := lowestTop(lines, top, ln, v.h, v), oldTop(lines, top, ln, v.h, v); got != want {
-			t.Fatalf("trial %d: lowestTop = %d, the stepwise search %d (top %d, ln %d, %dx%d)", trial, got, want, top, ln, v.w, v.h)
+		if got, want := txt.LowestTop(lines, top, ln, v.H, v), oldTop(lines, top, ln, v.H, v); got != want {
+			t.Fatalf("trial %d: lowestTop = %d, the stepwise search %d (top %d, ln %d, %dx%d)", trial, got, want, top, ln, v.W, v.H)
 		}
 	}
 }
@@ -52,17 +53,17 @@ func TestLowestTopAgreesWithTheStepwiseSearch(t *testing.T) {
 // again for every line.
 func TestASettledViewKeepsItsWidth(t *testing.T) {
 	lines := []string{strings.Repeat("word ", 40), "short"}
-	v := wrapView{w: 20, h: 1, wrap: true, measure: tui.StringWidth}
-	s := v.settled(lines)
-	if s.usable != wrapUsableWidth(lines, v) {
-		t.Fatalf("settled width %d, want %d", s.usable, wrapUsableWidth(lines, v))
+	v := txt.WrapView{W: 20, H: 1, Wrap: true, Measure: tui.StringWidth}
+	s := v.Settled(lines)
+	if s.Usable != txt.WrapUsableWidth(lines, v) {
+		t.Fatalf("settled width %d, want %d", s.Usable, txt.WrapUsableWidth(lines, v))
 	}
-	if wrapRowsOfLine(lines, 0, s) != wrapRowsOfLine(lines, 0, v) {
+	if txt.WrapRowsOfLine(lines, 0, s) != txt.WrapRowsOfLine(lines, 0, v) {
 		t.Error("a settled view wraps differently")
 	}
-	none := wrapView{w: 20, h: 1, wrap: false, measure: tui.StringWidth}.settled(lines)
-	if none.usable != 0 || wrapRowsOfLine(lines, 0, none) != 1 {
-		t.Errorf("unwrapped: usable %d, rows %d", none.usable, wrapRowsOfLine(lines, 0, none))
+	none := txt.WrapView{W: 20, H: 1, Wrap: false, Measure: tui.StringWidth}.Settled(lines)
+	if none.Usable != 0 || txt.WrapRowsOfLine(lines, 0, none) != 1 {
+		t.Errorf("unwrapped: usable %d, rows %d", none.Usable, txt.WrapRowsOfLine(lines, 0, none))
 	}
 }
 
@@ -72,15 +73,15 @@ func TestATextAreaCursorCountsWrappedRowsAbove(t *testing.T) {
 	ta := NewTextArea(WithWrap(WrapSoft))
 	ta.SetValue("one two three four five six\nseven\neight nine ten eleven twelve")
 	ta.Layout(tui.Constraints{MaxW: 10, MaxH: 6})
-	ta.ln, ta.col, ta.top = 1, 2, 0
-	v := ta.view().settled(ta.textLines)
+	ta.buf.Ln, ta.buf.Col, ta.top = 1, 2, 0
+	v := ta.view().Settled(ta.buf.Lines)
 	_, y, ok := ta.Cursor()
-	if want := wrapRowsOfLine(ta.textLines, 0, v); !ok || y != want {
+	if want := txt.WrapRowsOfLine(ta.buf.Lines, 0, v); !ok || y != want {
 		t.Fatalf("cursor on line 1 at y=%d ok=%v, want y=%d (the first line's rows)", y, ok, want)
 	}
 	// The third line's last character sits below the first two lines' rows
 	// plus its own wrapped rows: past the 6-row viewport.
-	ta.ln, ta.col = 2, len(clusters(ta.textLines[2]))
+	ta.buf.Ln, ta.buf.Col = 2, len(txt.Clusters(ta.buf.Lines[2]))
 	if _, y, ok := ta.Cursor(); ok {
 		t.Errorf("a cursor below a 6-row viewport is shown at y=%d", y)
 	}

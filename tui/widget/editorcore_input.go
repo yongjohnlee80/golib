@@ -3,6 +3,7 @@ package widget
 import (
 	"github.com/yongjohnlee80/golib/tui"
 	tuikey "github.com/yongjohnlee80/golib/tui/key"
+	txt "github.com/yongjohnlee80/golib/tui/widget/internal/text"
 )
 
 // THE CORE'S INPUT. A widget hands its EditorCore the input it does not keep for itself: keys,
@@ -15,7 +16,7 @@ import (
 // host's leader menu), Esc in Normal mode with nothing pending, an Alt or Super chord no key map
 // binds. Its keys are the editor's commands (EditorCommands), as the App's key map binds them.
 func (c *EditorCore) HandleKey(k tui.KeyEvent) bool {
-	ln, col := c.buf.ln, c.buf.col
+	ln, col := c.buf.Ln, c.buf.Col
 	defer c.cursorMoved(ln, col)
 	if k.Kind == tui.KeyRelease {
 		return false
@@ -70,7 +71,7 @@ func (c *EditorCore) settleRegister() {
 // HandlePaste inserts pasted text as one atomic edit. In Visual it replaces the selection. A
 // read-only core consumes and refuses it.
 func (c *EditorCore) HandlePaste(text string) bool {
-	ln, col := c.buf.ln, c.buf.col
+	ln, col := c.buf.Ln, c.buf.Col
 	defer c.cursorMoved(ln, col)
 	if c.readOnly {
 		return true // a viewer never mutates (bracketed paste included)
@@ -83,7 +84,7 @@ func (c *EditorCore) HandlePaste(text string) bool {
 		// a Visual paste replaces the selection (never silently discard the selection boundary)
 		s.remove()
 		c.setMode(ModeNormal)
-		b.insertText(text)
+		b.InsertText(text)
 		c.clampNormal()
 		c.edited()
 		return true
@@ -93,11 +94,11 @@ func (c *EditorCore) HandlePaste(text string) bool {
 		if c.replace != nil {
 			c.replaceText(text) // Replace overwrites, a paste too
 		} else {
-			b.insertText(text) // one atomic literal insertion
+			b.InsertText(text) // one atomic literal insertion
 		}
 		c.dotPastedText(text)
 	default:
-		b.insertText(text) // one atomic literal insertion
+		b.InsertText(text) // one atomic literal insertion
 		if c.keys.mode != ModeInsert {
 			c.clampNormal()
 		}
@@ -110,7 +111,7 @@ func (c *EditorCore) HandlePaste(text string) bool {
 // HandleTick is the escape chord's timeout (the tick the core asked for): the held rune is
 // committed as an insertion.
 func (c *EditorCore) HandleTick() bool {
-	ln, col := c.buf.ln, c.buf.col
+	ln, col := c.buf.Ln, c.buf.Col
 	defer c.cursorMoved(ln, col)
 	c.keys.chordCancel = nil // fired: nothing left to cancel
 	c.settlePendingRune()    // typed: what the tick committed is text, not the chord
@@ -121,7 +122,7 @@ func (c *EditorCore) HandleTick() bool {
 // EVERY partial command: a pending count and a double-key prefix must not survive a focus
 // round-trip.
 func (c *EditorCore) FocusLost() {
-	ln, col := c.buf.ln, c.buf.col
+	ln, col := c.buf.Ln, c.buf.Col
 	defer c.cursorMoved(ln, col)
 	c.settlePendingRune()
 	c.hist.close()
@@ -134,7 +135,7 @@ func (c *EditorCore) FocusLost() {
 // against the clicked place), and Visual exits. Then the caret moves there, and a drag selection
 // may start from it (DragTo); nothing is selected until the pointer moves.
 func (c *EditorCore) PressAt(line, col int) bool {
-	was, wasCol := c.buf.ln, c.buf.col
+	was, wasCol := c.buf.Ln, c.buf.Col
 	defer c.cursorMoved(was, wasCol)
 	b := &c.buf
 	// ---- the command boundary, in this order ----
@@ -159,20 +160,20 @@ func (c *EditorCore) PressAt(line, col int) bool {
 		} else {
 			c.setMode(ModeInsert)
 		}
-		c.vAnchor = taPos{}
+		c.vAnchor = txt.Pos{}
 	}
 
-	b.ln, b.col = line, col
+	b.Ln, b.Col = line, col
 	if c.keys.mode != ModeInsert {
 		c.clampNormal()
 	}
-	b.desired = -1
+	b.Desired = -1
 	c.replaceRestart() // a press moved the cursor: Replace starts a new stack there
 	c.reveal()
 	c.markDirty()
 	if c.canSelect {
 		c.dragging = true
-		c.dragFrom = taPos{ln: b.ln, col: min(b.col, c.normalMax(b.ln))}
+		c.dragFrom = txt.Pos{Ln: b.Ln, Col: min(b.Col, c.normalMax(b.Ln))}
 	}
 	c.oneShotSettle() // a press is Ctrl-o's command
 	return true
@@ -188,18 +189,18 @@ func (c *EditorCore) DragTo(line, col int) {
 	if !c.dragging {
 		return
 	}
-	was, wasCol := c.buf.ln, c.buf.col
+	was, wasCol := c.buf.Ln, c.buf.Col
 	defer c.cursorMoved(was, wasCol)
 	if c.keys.mode != ModeVisual {
-		if line == c.dragFrom.ln && col == c.dragFrom.col {
+		if line == c.dragFrom.Ln && col == c.dragFrom.Col {
 			return // not moved off the pressed position yet: still a click
 		}
 		c.vAnchor = c.dragFrom
 		c.setMode(ModeVisual)
 	}
-	c.buf.ln, c.buf.col = line, col
+	c.buf.Ln, c.buf.Col = line, col
 	c.clampNormal()
-	c.buf.desired = -1
+	c.buf.Desired = -1
 	c.reveal()
 	c.markDirty()
 }
@@ -408,20 +409,20 @@ func (c *EditorCore) execInsertEdit(act Action, k tui.KeyEvent) bool {
 	switch act {
 	case ActInsertTab:
 		c.beginGroup()
-		b.insertText("\t")
+		b.InsertText("\t")
 		c.edited()
 	case ActNewline:
 		c.beginGroup()
 		c.insertIndentedNewline()
 		c.edited()
 	case ActBackspace, ActDeleteForward:
-		region := b.forwardRegion
+		region := b.ForwardRegion
 		if act == ActBackspace {
-			region = b.backspaceRegion
+			region = b.BackspaceRegion
 		}
 		if lo, hi, ok := region(); ok {
 			c.beginGroup()
-			b.deleteRegion(lo, hi)
+			b.DeleteRegion(lo, hi)
 			c.edited()
 		}
 	case ActEscape:
@@ -430,8 +431,8 @@ func (c *EditorCore) execInsertEdit(act Action, k tui.KeyEvent) bool {
 			c.exitInsert()
 			return true
 		}
-		if c.vAnchor != (taPos{}) {
-			c.vAnchor = taPos{}
+		if c.vAnchor != (txt.Pos{}) {
+			c.vAnchor = txt.Pos{}
 			c.markDirty()
 			return true
 		}

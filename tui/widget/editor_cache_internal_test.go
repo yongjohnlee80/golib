@@ -66,10 +66,10 @@ func relaid(e *Editor, c *countingRenderer) []Block {
 func sameAsFresh(t *testing.T, e *Editor, what string) {
 	t.Helper()
 	got := e.renderedRows(cacheWidth)
-	f, _ := cacheEditor(t, strings.Join(e.core.buf.textLines, "\n"))
+	f, _ := cacheEditor(t, strings.Join(e.core.buf.Lines, "\n"))
 	if e.cells.typing() {
 		f.core.setMode(ModeInsert)
-		f.core.SetLine(e.core.buf.ln, 0)
+		f.core.SetLine(e.core.buf.Ln, 0)
 	}
 	want := f.renderedRows(cacheWidth)
 	if !reflect.DeepEqual(got.rows, want.rows) {
@@ -86,7 +86,7 @@ func sameAsFresh(t *testing.T, e *Editor, what string) {
 			}
 		}
 	}
-	for ln := range e.core.buf.textLines {
+	for ln := range e.core.buf.Lines {
 		gr, gx := got.caret(ln, 0)
 		if wr, wx := want.caret(ln, 0); gr != wr || gx != wx {
 			t.Fatalf("%s: caret of line %d (%d, %d), a fresh layout's (%d, %d)", what, ln, gr, gx, wr, wx)
@@ -141,11 +141,11 @@ func bigNote() string {
 // them) moved a line down; the layout is the one a fresh Editor lays, caret and hit agreeing.
 func TestAnEditLaysOnlyItsOwnBlockAgain(t *testing.T) {
 	e, c := cacheEditor(t, bigNote())
-	if n := len(e.core.buf.textLines); n < 5000 {
+	if n := len(e.core.buf.Lines); n < 5000 {
 		t.Fatalf("the note has %d lines, want 5,000", n)
 	}
-	ln := len(e.core.buf.textLines) / 2 // about the middle: the next paragraph's line
-	for !strings.HasPrefix(e.core.buf.textLines[ln], "Some") {
+	ln := len(e.core.buf.Lines) / 2 // about the middle: the next paragraph's line
+	for !strings.HasPrefix(e.core.buf.Lines[ln], "Some") {
 		ln++
 	}
 	if _, err := e.core.Insert(TextPos{Line: ln, Col: 5}, "more "); err != nil {
@@ -155,7 +155,7 @@ func TestAnEditLaysOnlyItsOwnBlockAgain(t *testing.T) {
 		t.Fatalf("a word typed at line %d laid %d blocks again (%v), want its own one", ln, len(laid), laid[:min(len(laid), 4)])
 	}
 	sameAsFresh(t, e, "a word typed")
-	if _, err := e.core.Insert(TextPos{Line: ln, Col: len(e.core.buf.textLines[ln])}, "\nand a second line."); err != nil {
+	if _, err := e.core.Insert(TextPos{Line: ln, Col: len(e.core.buf.Lines[ln])}, "\nand a second line."); err != nil {
 		t.Fatal(err)
 	}
 	if laid := relaid(e, c); len(laid) != 1 || laid[0] != (Block{From: ln + 1, To: ln + 2}) {
@@ -221,11 +221,11 @@ func TestTwoEditsBeforeOneLayoutAreLaidAsTheTextTheyLeave(t *testing.T) {
 			if err := step.close(); err != nil {
 				return err
 			}
-			c.InCode(e.core.buf.textLines, 4)
+			c.InCode(e.core.buf.Lines, 4)
 			if _, err := e.core.Insert(TextPos{Line: 4, Col: 5}, "!"); err != nil { // "after!": no comment's
 				return err
 			}
-			c.InTable(e.core.buf.textLines, 4)
+			c.InTable(e.core.buf.Lines, 4)
 			if len(c.laid) != 0 {
 				t.Errorf("%s: laid %v between the edits, want no layout until the batch ends", step.what, c.laid)
 			}

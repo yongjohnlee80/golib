@@ -5,6 +5,7 @@ import (
 	"strings"
 
 	"github.com/yongjohnlee80/golib/tui"
+	txt "github.com/yongjohnlee80/golib/tui/widget/internal/text"
 )
 
 // VIM VISUAL BLOCK — Ctrl-v: the lines from the anchor's to the cursor's, and the display cells
@@ -34,18 +35,18 @@ type vblock struct {
 // visualBlock is the block the anchor and the cursor make.
 func (c *EditorCore) visualBlock() vblock {
 	b := &c.buf
-	a, p := c.vAnchor, taPos{b.ln, b.col}
+	a, p := c.vAnchor, txt.Pos{Ln: b.Ln, Col: b.Col}
 	al, ar := c.cellSpan(a)
 	pl, pr := c.cellSpan(p)
-	return vblock{lo: min(a.ln, p.ln), hi: max(a.ln, p.ln), left: min(al, pl), right: max(ar, pr),
-		toEnd: b.desired == blockToEnd}
+	return vblock{lo: min(a.Ln, p.Ln), hi: max(a.Ln, p.Ln), left: min(al, pl), right: max(ar, pr),
+		toEnd: b.Desired == blockToEnd}
 }
 
 // cellSpan is the cells [from, to) of the cluster at p; past a line's end, the one cell there.
-func (c *EditorCore) cellSpan(p taPos) (from, to int) {
-	cs := c.buf.lineClusters(p.ln)
-	col := min(p.col, len(cs))
-	from = cellsBefore(cs, col, blockCells)
+func (c *EditorCore) cellSpan(p txt.Pos) (from, to int) {
+	cs := c.buf.LineClusters(p.Ln)
+	col := min(p.Col, len(cs))
+	from = txt.CellsBefore(cs, col, blockCells)
 	w := 1
 	if col < len(cs) {
 		w = max(blockCells(cs[col]), 1)
@@ -144,7 +145,7 @@ func (c *EditorCore) blockPieces(v vblock) (pieces []string, width int) {
 		width = 0
 	}
 	for ln := v.lo; ln <= v.hi; ln++ {
-		p := v.line(c.buf.lineClusters(ln)).piece()
+		p := v.line(c.buf.LineClusters(ln)).piece()
 		pieces = append(pieces, p)
 		if v.toEnd {
 			width = max(width, blockCells(p))
@@ -157,9 +158,9 @@ func (c *EditorCore) blockPieces(v vblock) (pieces []string, width int) {
 // once the line's straddling cluster is split, or the line's end when it is short.
 func (c *EditorCore) blockTopLeft(v vblock) {
 	b := &c.buf
-	l := v.line(b.lineClusters(v.lo))
-	b.ln, b.col = v.lo, l.from
-	b.desired = -1
+	l := v.line(b.LineClusters(v.lo))
+	b.Ln, b.Col = v.lo, l.from
+	b.Desired = -1
 	c.clampNormal()
 }
 
@@ -185,8 +186,8 @@ func (c *EditorCore) blockDelete(v vblock) {
 func (c *EditorCore) blockRemove(v vblock) {
 	b := &c.buf
 	for ln := v.lo; ln <= v.hi; ln++ {
-		if l := v.line(b.lineClusters(ln)); l.from < l.to {
-			b.setLine(ln, l.deleted())
+		if l := v.line(b.LineClusters(ln)); l.from < l.to {
+			b.SetLine(ln, l.deleted())
 		}
 	}
 	c.blockTopLeftAfterDelete(v)
@@ -196,13 +197,13 @@ func (c *EditorCore) blockRemove(v vblock) {
 // straddling cluster left.
 func (c *EditorCore) blockTopLeftAfterDelete(v vblock) {
 	b := &c.buf
-	cs := b.lineClusters(v.lo)
-	b.ln, b.col = v.lo, b.colForCells(v.lo, v.left, blockCells)
-	if b.col > len(cs) {
-		b.col = len(cs)
+	cs := b.LineClusters(v.lo)
+	b.Ln, b.Col = v.lo, b.ColForCells(v.lo, v.left, blockCells)
+	if b.Col > len(cs) {
+		b.Col = len(cs)
 	}
-	b.desired = -1
-	b.anchor = nil
+	b.Desired = -1
+	b.Anchor = nil
 	c.clampNormal()
 }
 
@@ -213,12 +214,12 @@ func (c *EditorCore) blockReplace(v vblock, char string) {
 	cw := max(blockCells(char), 1)
 	c.beginGroup()
 	for ln := v.lo; ln <= v.hi; ln++ {
-		l := v.line(b.lineClusters(ln))
+		l := v.line(b.LineClusters(ln))
 		if l.from == l.to {
 			continue
 		}
 		in := min(l.width, l.rightCel) - l.leftCell
-		b.setLine(ln, strings.Join(l.cs[:l.from], "")+spaces(l.startOut)+strings.Repeat(char, in/cw)+
+		b.SetLine(ln, strings.Join(l.cs[:l.from], "")+spaces(l.startOut)+strings.Repeat(char, in/cw)+
 			spaces(in%cw)+spaces(l.endOut)+strings.Join(l.cs[l.to:], ""))
 	}
 	c.blockTopLeftAfterDelete(v)
@@ -231,11 +232,11 @@ func (c *EditorCore) blockCase(v vblock, op Action) {
 	f := caseOf(op)
 	c.beginGroup()
 	for ln := v.lo; ln <= v.hi; ln++ {
-		l := v.line(b.lineClusters(ln))
+		l := v.line(b.LineClusters(ln))
 		if l.inFrom >= l.inTo {
 			continue
 		}
-		b.setLine(ln, strings.Join(l.cs[:l.inFrom], "")+f(strings.Join(l.cs[l.inFrom:l.inTo], ""))+
+		b.SetLine(ln, strings.Join(l.cs[:l.inFrom], "")+f(strings.Join(l.cs[l.inFrom:l.inTo], ""))+
 			strings.Join(l.cs[l.inTo:], ""))
 	}
 	c.blockTopLeft(v)
@@ -250,8 +251,8 @@ func (c *EditorCore) blockShift(v vblock, dir, n int) {
 	unit := strings.Repeat(c.shiftUnit(), max(n, 1))
 	c.beginGroup()
 	for ln := v.lo; ln <= v.hi; ln++ {
-		before, after := splitAt(b.lineClusters(ln), v.left, false)
-		b.setLine(ln, before+shiftLine(after, unit, dir))
+		before, after := splitAt(b.LineClusters(ln), v.left, false)
+		b.SetLine(ln, before+shiftLine(after, unit, dir))
 	}
 	c.blockTopLeft(v)
 	c.edited()
@@ -261,10 +262,10 @@ func (c *EditorCore) blockShift(v vblock, dir, n int) {
 func (c *EditorCore) blockOther() {
 	b := &c.buf
 	ac, _ := c.cellSpan(c.vAnchor)
-	pc, _ := c.cellSpan(taPos{b.ln, b.col})
-	b.col = b.colForCells(b.ln, ac, blockCells)
-	c.vAnchor.col = b.colForCells(c.vAnchor.ln, pc, blockCells)
-	b.desired = -1
+	pc, _ := c.cellSpan(txt.Pos{Ln: b.Ln, Col: b.Col})
+	b.Col = b.ColForCells(b.Ln, ac, blockCells)
+	c.vAnchor.Col = b.ColForCells(c.vAnchor.Ln, pc, blockCells)
+	b.Desired = -1
 	c.reveal()
 	c.markDirty()
 }
@@ -279,21 +280,21 @@ func (c *EditorCore) blockPut(e regEntry, after bool, count int) {
 	b := &c.buf
 	pieces := strings.Split(e.text, "\n")
 	count = max(count, 1)
-	cs := b.lineClusters(b.ln)
-	at := min(b.col, len(cs))
-	col := cellsBefore(cs, at, blockCells)
+	cs := b.LineClusters(b.Ln)
+	at := min(b.Col, len(cs))
+	col := txt.CellsBefore(cs, at, blockCells)
 	if after && at < len(cs) {
 		col += blockCells(cs[at])
 	}
-	top := b.ln
+	top := b.Ln
 	c.beginGroup()
 	topCol := 0
 	for i, p := range pieces {
 		ln := top + i
-		if ln >= len(b.textLines) {
-			b.insertLines(ln, "")
+		if ln >= len(b.Lines) {
+			b.InsertLines(ln, "")
 		}
-		before, rest, short := putSplit(b.lineClusters(ln), col)
+		before, rest, short := putSplit(b.LineClusters(ln), col)
 		pad := spaces(e.width - blockCells(p))
 		var mid strings.Builder
 		for j := range count {
@@ -302,13 +303,13 @@ func (c *EditorCore) blockPut(e regEntry, after bool, count int) {
 				mid.WriteString(pad)
 			}
 		}
-		b.setLine(ln, before+mid.String()+rest)
+		b.SetLine(ln, before+mid.String()+rest)
 		if i == 0 {
-			topCol = len(clusters(before))
+			topCol = len(txt.Clusters(before))
 		}
 	}
-	b.ln, b.col = top, topCol
-	b.desired = -1
+	b.Ln, b.Col = top, topCol
+	b.Desired = -1
 	c.clampNormal()
 	c.edited()
 }
@@ -349,25 +350,25 @@ type blockInsert struct {
 func (c *EditorCore) blockStartInsert(v vblock, appending bool) {
 	b := &c.buf
 	bi := &blockInsert{at: v.left, last: v.hi}
-	first := v.line(b.lineClusters(v.lo))
-	b.ln = v.lo
+	first := v.line(b.LineClusters(v.lo))
+	b.Ln = v.lo
 	padded := false
 	switch {
 	case appending && v.toEnd:
-		bi.at, b.col = -1, len(first.cs)
+		bi.at, b.Col = -1, len(first.cs)
 	case appending:
 		bi.at, bi.pad = v.right, true
 		if first.width < v.right {
 			c.beginGroup() // the padding, and what is typed after it, are one step
-			b.setLine(v.lo, b.textLines[v.lo]+spaces(v.right-first.width))
-			b.col = len(b.lineClusters(v.lo))
+			b.SetLine(v.lo, b.Lines[v.lo]+spaces(v.right-first.width))
+			b.Col = len(b.LineClusters(v.lo))
 			padded = true
 			c.edited()
 		} else {
-			b.col = first.to // after a straddling cluster, as Vim's first line has it
+			b.Col = first.to // after a straddling cluster, as Vim's first line has it
 		}
 	default:
-		b.col = first.from
+		b.Col = first.from
 	}
 	c.enterBlockInsert(bi, padded)
 }
@@ -383,13 +384,13 @@ func (c *EditorCore) blockChange(v vblock) {
 // began this step already (c's delete, A's padding), which what is typed, and its copies, join.
 func (c *EditorCore) enterBlockInsert(bi *blockInsert, began bool) {
 	b := &c.buf
-	b.anchor = nil
-	c.vAnchor = taPos{}
+	b.Anchor = nil
+	c.vAnchor = txt.Pos{}
 	c.enterInsert()
 	if began {
 		c.hist.keepOpen()
 	}
-	bi.ln, bi.col, bi.n = b.ln, b.col, len(b.lineClusters(b.ln))
+	bi.ln, bi.col, bi.n = b.Ln, b.Col, len(b.LineClusters(b.Ln))
 	c.blockIns = bi
 	c.reveal()
 	c.markDirty()
@@ -402,26 +403,26 @@ func (c *EditorCore) blockInsertDone() {
 	bi := c.blockIns
 	c.blockIns = nil
 	b := &c.buf
-	if bi == nil || b.ln != bi.ln || bi.ln >= len(b.textLines) {
+	if bi == nil || b.Ln != bi.ln || bi.ln >= len(b.Lines) {
 		return
 	}
-	cs := b.lineClusters(bi.ln)
+	cs := b.LineClusters(bi.ln)
 	grown := len(cs) - bi.n
 	if grown <= 0 || bi.col+grown > len(cs) {
 		return
 	}
 	text := strings.Join(cs[bi.col:bi.col+grown], "")
-	for ln := bi.ln + 1; ln <= min(bi.last, len(b.textLines)-1); ln++ {
-		lcs := b.lineClusters(ln)
+	for ln := bi.ln + 1; ln <= min(bi.last, len(b.Lines)-1); ln++ {
+		lcs := b.LineClusters(ln)
 		if bi.at < 0 {
-			b.setLine(ln, b.textLines[ln]+text)
+			b.SetLine(ln, b.Lines[ln]+text)
 			continue
 		}
 		before, after := splitAt(lcs, bi.at, bi.pad)
 		if !bi.pad && blockCells(before) < bi.at {
 			continue
 		}
-		b.setLine(ln, before+text+after)
+		b.SetLine(ln, before+text+after)
 	}
 	c.edited()
 }

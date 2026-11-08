@@ -30,7 +30,7 @@ type charFind struct {
 
 // firstNonBlank is line ln's first non-blank cluster, or its last when it has none (0 when empty).
 func (c *EditorCore) firstNonBlank(ln int) int {
-	cs := c.buf.lineClusters(ln)
+	cs := c.buf.LineClusters(ln)
 	for i, cl := range cs {
 		if !isWS(cl) {
 			return i
@@ -41,9 +41,9 @@ func (c *EditorCore) firstNonBlank(ln int) int {
 
 // toLine moves the cursor to line ln's first non-blank, keeping no sticky column.
 func (c *EditorCore) toLine(ln int) {
-	ln = max(0, min(ln, len(c.buf.textLines)-1))
-	c.buf.desired = -1
-	c.buf.moveCursor(ln, c.firstNonBlank(ln), false)
+	ln = max(0, min(ln, len(c.buf.Lines)-1))
+	c.buf.Desired = -1
+	c.buf.MoveCursor(ln, c.firstNonBlank(ln), false)
 	c.clampNormal()
 	c.reveal()
 	c.markDirty()
@@ -52,7 +52,7 @@ func (c *EditorCore) toLine(ln int) {
 // leftWrapPos is where Backspace lands: count clusters left, from a line's start onto the previous
 // line's last.
 func (c *EditorCore) leftWrapPos(count int) (int, int) {
-	ln, col := c.buf.ln, c.buf.col
+	ln, col := c.buf.Ln, c.buf.Col
 	for range count {
 		switch {
 		case col > 0:
@@ -68,8 +68,8 @@ func (c *EditorCore) leftWrapPos(count int) (int, int) {
 // leftWrap is Backspace: the cursor to leftWrapPos.
 func (c *EditorCore) leftWrap(count int) {
 	ln, col := c.leftWrapPos(count)
-	c.buf.desired = -1
-	c.buf.moveCursor(ln, col, false)
+	c.buf.Desired = -1
+	c.buf.MoveCursor(ln, col, false)
 	c.clampNormal()
 	c.reveal()
 	c.markDirty()
@@ -81,8 +81,8 @@ func (c *EditorCore) findChar(f charFind, count int, repeat bool) {
 	if !ok {
 		return
 	}
-	c.buf.desired = -1
-	c.buf.moveCursor(c.buf.ln, found, false)
+	c.buf.Desired = -1
+	c.buf.MoveCursor(c.buf.Ln, found, false)
 	c.clampNormal()
 	c.reveal()
 	c.markDirty()
@@ -92,8 +92,8 @@ func (c *EditorCore) findChar(f charFind, count int, repeat bool) {
 // forward or back, one short for till. A repeat of a till (; after t) starts past the adjacent
 // match, so it moves on rather than standing still. ok is false with no such match.
 func (c *EditorCore) findCharPos(f charFind, count int, repeat bool) (int, bool) {
-	cs := c.buf.lineClusters(c.buf.ln)
-	col, step := c.buf.col, 1
+	cs := c.buf.LineClusters(c.buf.Ln)
+	col, step := c.buf.Col, 1
 	if !f.forward {
 		step = -1
 	}
@@ -136,8 +136,8 @@ func (c *EditorCore) matchPair() {
 		return
 	}
 	c.setJumpMark()
-	c.buf.desired = -1
-	c.buf.moveCursor(ln, col, false)
+	c.buf.Desired = -1
+	c.buf.MoveCursor(ln, col, false)
 	c.clampNormal()
 	c.reveal()
 	c.markDirty()
@@ -147,9 +147,9 @@ func (c *EditorCore) matchPair() {
 // the line, to its partner, counting nesting across lines. ok is false with no bracket, or no
 // partner.
 func (c *EditorCore) matchPairPos() (int, int, bool) {
-	ln, cs := c.buf.ln, c.buf.lineClusters(c.buf.ln)
+	ln, cs := c.buf.Ln, c.buf.LineClusters(c.buf.Ln)
 	at := -1
-	for i := c.buf.col; i < len(cs); i++ {
+	for i := c.buf.Col; i < len(cs); i++ {
 		if _, ok := brackets[cs[i]]; ok {
 			at = i
 			break
@@ -163,7 +163,7 @@ func (c *EditorCore) matchPairPos() (int, int, bool) {
 	depth := 0
 	l, i := ln, at
 	for {
-		cl := c.buf.lineClusters(l)
+		cl := c.buf.LineClusters(l)
 		if i >= 0 && i < len(cl) {
 			switch cl[i] {
 			case open:
@@ -177,8 +177,8 @@ func (c *EditorCore) matchPairPos() (int, int, bool) {
 		}
 		if b.forward {
 			i++
-			for i >= len(c.buf.lineClusters(l)) {
-				if l == len(c.buf.textLines)-1 {
+			for i >= len(c.buf.LineClusters(l)) {
+				if l == len(c.buf.Lines)-1 {
 					return 0, 0, false
 				}
 				l, i = l+1, 0
@@ -190,7 +190,7 @@ func (c *EditorCore) matchPairPos() (int, int, bool) {
 					return 0, 0, false
 				}
 				l--
-				i = len(c.buf.lineClusters(l)) - 1
+				i = len(c.buf.LineClusters(l)) - 1
 			}
 		}
 	}
@@ -200,7 +200,7 @@ func (c *EditorCore) matchPairPos() (int, int, bool) {
 // 100 lands past the last line, which toLine clamps to it.
 func (c *EditorCore) percentLine(n int) {
 	c.setJumpMark()
-	c.toLine((n*len(c.buf.textLines)+99)/100 - 1)
+	c.toLine((n*len(c.buf.Lines)+99)/100 - 1)
 }
 
 // viewLine is H M L: the cursor to viewLinePos. Without a viewport the key is consumed and
@@ -243,7 +243,7 @@ func (c *EditorCore) halfPage(down, hadCount bool, count int) {
 		vp.ScrollLines(n)
 	}
 	ln, col := c.lineTarget(n) // keeps the sticky column in desired; a fold is a row
-	c.buf.moveCursor(ln, col, false)
+	c.buf.MoveCursor(ln, col, false)
 	c.clampNormal()
 	c.reveal()
 	c.markDirty()

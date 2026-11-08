@@ -4,6 +4,7 @@ import (
 	"strings"
 
 	"github.com/yongjohnlee80/golib/tui"
+	txt "github.com/yongjohnlee80/golib/tui/widget/internal/text"
 )
 
 // TABLE EDITING — a Markdown table's cells walked with Tab, in Insert mode, when on
@@ -26,8 +27,8 @@ func CoreTableEditing(on bool) CoreOption { return func(c *EditorCore) { c.table
 // SetTableEditing turns table editing on or off; off drops a cell's selection.
 func (c *EditorCore) SetTableEditing(on bool) {
 	c.tableEditing = on
-	if !on && c.buf.anchor != nil {
-		c.buf.anchor = nil
+	if !on && c.buf.Anchor != nil {
+		c.buf.Anchor = nil
 		c.markDirty()
 	}
 }
@@ -37,10 +38,10 @@ func (c *EditorCore) TableEditing() bool { return c.tableEditing }
 
 // tableRow reports whether line ln is a table row table editing applies on.
 func (c *EditorCore) tableRow(ln int) ([][2]int, bool) {
-	if ln < 0 || ln >= len(c.buf.textLines) || (c.listWhere != nil && !c.listWhere(ln)) {
+	if ln < 0 || ln >= len(c.buf.Lines) || (c.listWhere != nil && !c.listWhere(ln)) {
 		return nil, false
 	}
-	return tableCells(c.buf.textLines[ln])
+	return tableCells(c.buf.Lines[ln])
 }
 
 // tableKey handles an Insert-mode key for table editing, reporting whether it did.
@@ -49,14 +50,14 @@ func (c *EditorCore) tableKey(k tui.KeyEvent, r insertKey) bool {
 	if !c.tableEditing || c.readOnly {
 		return false
 	}
-	if b.anchor != nil {
+	if b.Anchor != nil {
 		switch {
 		case r.act == ActBackspace || r.act == ActDeleteForward:
-			lo, hi, ok := b.selection()
-			b.anchor = nil
+			lo, hi, ok := b.Selection()
+			b.Anchor = nil
 			if ok {
 				c.beginGroup()
-				b.deleteRegion(lo, hi)
+				b.DeleteRegion(lo, hi)
 				c.edited()
 			}
 			return true
@@ -65,7 +66,7 @@ func (c *EditorCore) tableKey(k tui.KeyEvent, r insertKey) bool {
 		case k.Text != "" && k.Mods&^tui.ModShift == 0:
 			return false // typed: insertText replaces the selection
 		default:
-			b.anchor = nil // any other key: the selection goes, the key does what it does
+			b.Anchor = nil // any other key: the selection goes, the key does what it does
 			c.markDirty()
 			return false
 		}
@@ -73,17 +74,17 @@ func (c *EditorCore) tableKey(k tui.KeyEvent, r insertKey) bool {
 	if r.act != ActInsertTab || r.qual&^tui.ModShift != 0 {
 		return false
 	}
-	cells, ok := c.tableRow(b.ln)
+	cells, ok := c.tableRow(b.Ln)
 	if !ok {
 		return false
 	}
 	back := r.qual&tui.ModShift != 0
-	at := cellAt(cells, b.col)
-	if b.anchor != nil {
-		at = cellAt(cells, min(b.anchor.col, b.col))
+	at := cellAt(cells, b.Col)
+	if b.Anchor != nil {
+		at = cellAt(cells, min(b.Anchor.Col, b.Col))
 	}
-	b.anchor = nil
-	ln, i := b.ln, at
+	b.Anchor = nil
+	ln, i := b.Ln, at
 	for {
 		if back {
 			i--
@@ -97,7 +98,7 @@ func (c *EditorCore) tableKey(k tui.KeyEvent, r insertKey) bool {
 		if back {
 			next = ln - 1
 		}
-		for next >= 0 && next < len(b.textLines) && isDelimiterRow(b.textLines[next]) {
+		for next >= 0 && next < len(b.Lines) && isDelimiterRow(b.Lines[next]) {
 			if back {
 				next--
 			} else {
@@ -140,9 +141,9 @@ func cellAt(cells [][2]int, col int) int {
 func (c *EditorCore) selectCell(ln int, cell [2]int) {
 	b := &c.buf
 	c.hist.close()
-	b.ln, b.col, b.desired = ln, cell[1], -1
+	b.Ln, b.Col, b.Desired = ln, cell[1], -1
 	if cell[1] > cell[0] {
-		b.anchor = &taPos{ln: ln, col: cell[0]}
+		b.Anchor = &txt.Pos{Ln: ln, Col: cell[0]}
 	}
 	c.reveal()
 	c.markDirty()
@@ -152,15 +153,15 @@ func (c *EditorCore) selectCell(ln int, cell [2]int) {
 func (c *EditorCore) addTableRow(ln, n int) {
 	b := &c.buf
 	c.beginGroup()
-	b.ln, b.col, b.anchor = ln, len(b.lineClusters(ln)), nil
-	b.insertText("\n|" + strings.Repeat("   |", n))
+	b.Ln, b.Col, b.Anchor = ln, len(b.LineClusters(ln)), nil
+	b.InsertText("\n|" + strings.Repeat("   |", n))
 	c.edited()
-	b.col = 2 // after "| "
+	b.Col = 2 // after "| "
 	c.reveal()
 }
 
 // inCellSelection reports whether (ln, col) is inside a table cell's selection.
 func (c *EditorCore) inCellSelection(ln, col int) bool {
-	lo, hi, ok := c.buf.selection()
-	return ok && c.tableEditing && (taPos{ln, col}).in(lo, hi)
+	lo, hi, ok := c.buf.Selection()
+	return ok && c.tableEditing && (txt.Pos{Ln: ln, Col: col}).In(lo, hi)
 }

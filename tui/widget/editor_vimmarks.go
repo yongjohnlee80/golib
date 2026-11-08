@@ -1,18 +1,22 @@
 package widget
 
+import (
+	txt "github.com/yongjohnlee80/golib/tui/widget/internal/text"
+)
+
 // VIM MARKS — m{a–z} sets a mark at the cursor; '{a–z} goes to its line's first non-blank
 // (linewise), `{a–z} to its exact place (exclusive); '' and `` go to where the last jump left. Each
 // is an operator's motion too (d'a, y`a). Marks follow the text as Vim's do: the buffer logs every
-// change to its line structure (textbuffer.go lineEdit) and the marks replay the log after each
+// change to its line structure (internal/text/buffer.go txt.LineEdit) and the marks replay the log after each
 // edit, so a mark on a removed line is gone, one below an inserted or removed line moves, and a
 // split or join carries the marks on the moving text along (Vim's mark_adjust, mark_col_adjust).
 // Undo and redo bring back the marks a change moved or erased (Vim's u_undoredo).
 
 // markSet is a buffer's marks: a–z, and the previous jump's place.
 type markSet struct {
-	pos     [26]taPos
+	pos     [26]txt.Pos
 	set     [26]bool
-	prev    taPos
+	prev    txt.Pos
 	prevSet bool
 }
 
@@ -21,23 +25,23 @@ func isMarkName(name rune) bool { return name >= 'a' && name <= 'z' }
 
 // get is mark name's place: a–z, or ' and ` for the previous jump's. ok is false for a mark not set,
 // or erased with its line.
-func (m *markSet) get(name rune) (taPos, bool) {
+func (m *markSet) get(name rune) (txt.Pos, bool) {
 	switch {
 	case isMarkName(name):
 		return m.pos[name-'a'], m.set[name-'a']
 	case name == '\'' || name == '`':
 		return m.prev, m.prevSet
 	}
-	return taPos{}, false
+	return txt.Pos{}, false
 }
 
 // apply moves the marks with one change to the line structure.
-func (m *markSet) apply(e lineEdit) {
-	if e.reset {
+func (m *markSet) apply(e txt.LineEdit) {
+	if e.Reset {
 		*m = markSet{}
 		return
 	}
-	adjust := func(p *taPos, set *bool) {
+	adjust := func(p *txt.Pos, set *bool) {
 		if *set && followPos(p, e) {
 			*set = false // its line was removed
 		}
@@ -63,7 +67,7 @@ func (m *markSet) restore(was markSet) {
 // a ReplaceFollowing's saved cursor. edited runs it after every change.
 func (c *EditorCore) followEdits() {
 	s := c.bufferState
-	for _, e := range c.buf.log.take() {
+	for _, e := range c.buf.Log.Take() {
 		c.marks.apply(e)
 		c.jumpsFollow(e)
 		for _, o := range s.editors {
@@ -82,26 +86,26 @@ func (c *EditorCore) followEdits() {
 
 // setJumpMark records the cursor as the previous jump's place, before a jump (the ' and ` marks
 // go back to it): G, gg, %, N%, H M L, n N, a mark's jump, :N.
-func (c *EditorCore) setJumpMark() { c.jumpedFrom(taPos{c.buf.ln, c.buf.col}) }
+func (c *EditorCore) setJumpMark() { c.jumpedFrom(txt.Pos{Ln: c.buf.Ln, Col: c.buf.Col}) }
 
 // jumpedFrom records from as the place a jump leaves: the ' and ` marks, and the jump list
 // (editor_jumps.go).
-func (c *EditorCore) jumpedFrom(from taPos) {
+func (c *EditorCore) jumpedFrom(from txt.Pos) {
 	c.marks.prev, c.marks.prevSet = from, true
 	c.jumpList().Push(c.jumpPos(from))
 }
 
 // markTarget is where mark name sends the cursor: its line's first non-blank for ' (linewise), its
 // place for ` (exclusive), the column kept inside the line. ok is false for a mark not set.
-func (c *EditorCore) markTarget(name rune, exact bool) (to taPos, kind motionKind, ok bool) {
+func (c *EditorCore) markTarget(name rune, exact bool) (to txt.Pos, kind motionKind, ok bool) {
 	p, ok := c.marks.get(name)
-	if !ok || p.ln >= len(c.buf.textLines) {
-		return taPos{}, exclusive, false
+	if !ok || p.Ln >= len(c.buf.Lines) {
+		return txt.Pos{}, exclusive, false
 	}
 	if !exact {
-		return taPos{p.ln, c.firstNonBlank(p.ln)}, linewise, true
+		return txt.Pos{Ln: p.Ln, Col: c.firstNonBlank(p.Ln)}, linewise, true
 	}
-	return taPos{p.ln, c.buf.clampCol(p.ln, p.col)}, exclusive, true
+	return txt.Pos{Ln: p.Ln, Col: c.buf.ClampCol(p.Ln, p.Col)}, exclusive, true
 }
 
 // markKey completes an armed m, ' or ` with the key's text: m sets the mark; ' and ` jump to it, or
@@ -110,7 +114,7 @@ func (c *EditorCore) markTarget(name rune, exact bool) (to taPos, kind motionKin
 func (c *EditorCore) markKey(armed Action, name rune) {
 	if armed == ActMarkSet {
 		if isMarkName(name) {
-			c.marks.pos[name-'a'], c.marks.set[name-'a'] = taPos{c.buf.ln, c.buf.col}, true
+			c.marks.pos[name-'a'], c.marks.set[name-'a'] = txt.Pos{Ln: c.buf.Ln, Col: c.buf.Col}, true
 		}
 		return
 	}
@@ -126,10 +130,10 @@ func (c *EditorCore) markKey(armed Action, name rune) {
 		c.opRegOne = false
 		return
 	}
-	from := taPos{c.buf.ln, c.buf.col}
+	from := txt.Pos{Ln: c.buf.Ln, Col: c.buf.Col}
 	c.hist.close()
-	c.buf.desired = -1
-	c.buf.moveCursor(to.ln, to.col, false)
+	c.buf.Desired = -1
+	c.buf.MoveCursor(to.Ln, to.Col, false)
 	c.jumpedFrom(from) // '' and `` return here, and Ctrl+O
 	c.clampNormal()
 	c.reveal()

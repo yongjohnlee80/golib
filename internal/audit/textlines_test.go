@@ -17,46 +17,54 @@ import (
 // and log what it did to the line structure (marks, other editors over a shared buffer). About
 // twenty sites once wrote the lines directly and repeated that bookkeeping by hand, and a site that
 // forgot left marks and cursors on the wrong lines with nothing to say so. The bookkeeping now
-// lives in textbuffer.go's line primitives, and this guard keeps it there: no other non-test file
-// in tui/widget assigns to bufferText.textLines, whole or by index.
+// lives in the text model's line primitives (tui/widget/internal/text/buffer.go), and this guard
+// keeps it there: no other non-test file in tui/widget or the packages under it assigns to
+// Doc.Lines, whole or by index.
 //
 // Undo rests on it too: an editor's history keeps no copy of the text, only what each primitive
-// hands it to take its change back (bufferText.undoRec), so a write past the primitives would be
-// a change undo cannot take back. Inside textbuffer.go, the writes must sit in the primitives
-// themselves (textLinesWriters).
+// hands it to take its change back (Doc.UndoRec), so a write past the primitives would be a change
+// undo cannot take back. Inside buffer.go, the writes must sit in the primitives themselves
+// (textLinesWriters).
 
 const (
-	textLinesField = "textLines"
-	textLinesHome  = "textbuffer.go"
+	textLinesField = "Lines"
+	textLinesHome  = "internal/text/buffer.go" // relative to tui/widget
 )
 
 // textLinesWriters are the functions in textLinesHome that may write the lines: the primitives,
 // each of which hands undo its change before it makes it.
 var textLinesWriters = map[string]bool{
-	"setLine": true, "insertLines": true, "removeLines": true, "replaceLines": true, "setValue": true,
-	"deleteRegion": true, "insertText": true, // a region's delete and a typed text's insert
+	"SetLine": true, "InsertLines": true, "RemoveLines": true, "ReplaceLines": true, "SetValue": true,
+	"DeleteRegion": true, "InsertText": true, // a region's delete and a typed text's insert
 }
 
 // textLineWrite is one assignment to the lines: where, and the function it is in ("" outside one).
 type textLineWrite struct{ at, fn string }
 
-// textLinesWrites is every assignment to a .textLines selector (x.textLines = …, x.textLines[i] =
-// …, x.textLines[i] += …) in tui/widget's non-test files, by file.
+// textLinesWrites is every assignment to a .Lines selector (x.Lines = …, x.Lines[i] = …,
+// x.Lines[i] += …) in the non-test files of tui/widget and the packages under it, by file (its
+// path from tui/widget).
 func textLinesWrites(t *testing.T, root string) map[string][]textLineWrite {
 	t.Helper()
 	dir := filepath.Join(root, "tui", "widget")
-	entries, err := os.ReadDir(dir)
+	var names []string
+	err := filepath.WalkDir(dir, func(path string, d os.DirEntry, err error) error {
+		if err != nil {
+			return err
+		}
+		if !d.IsDir() && strings.HasSuffix(path, ".go") && !strings.HasSuffix(path, "_test.go") {
+			rel, _ := filepath.Rel(dir, path)
+			names = append(names, filepath.ToSlash(rel))
+		}
+		return nil
+	})
 	if err != nil {
 		t.Fatalf("reading tui/widget: %v", err)
 	}
 	fset := token.NewFileSet()
 	out := map[string][]textLineWrite{}
-	for _, e := range entries {
-		name := e.Name()
-		if !strings.HasSuffix(name, ".go") || strings.HasSuffix(name, "_test.go") {
-			continue
-		}
-		f, err := parser.ParseFile(fset, filepath.Join(dir, name), nil, 0)
+	for _, name := range names {
+		f, err := parser.ParseFile(fset, filepath.Join(dir, filepath.FromSlash(name)), nil, 0)
 		if err != nil {
 			continue // the build reports it first
 		}
@@ -111,8 +119,8 @@ func TestOnlyTheLinePrimitivesWriteTheLines(t *testing.T) {
 	}
 	for _, f := range files {
 		for _, w := range writes[f] {
-			t.Errorf("%s writes .%s directly: use the line primitives in %s (setLine, insertLines, "+
-				"removeLines, replaceLines, setValue, deleteRegion, insertText), which touch and log the "+
+			t.Errorf("%s writes .%s directly: use the line primitives in %s (SetLine, InsertLines, "+
+				"RemoveLines, ReplaceLines, SetValue, DeleteRegion, InsertText), which touch and log the "+
 				"change and hand undo what takes it back", w.at, textLinesField, textLinesHome)
 		}
 	}

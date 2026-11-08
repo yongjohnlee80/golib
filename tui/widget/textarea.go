@@ -5,6 +5,7 @@ import (
 
 	"github.com/yongjohnlee80/golib/tui"
 	"github.com/yongjohnlee80/golib/tui/keymap"
+	txt "github.com/yongjohnlee80/golib/tui/widget/internal/text"
 )
 
 // TextArea provides an interactive multi-line text editor suitable for commit messages,
@@ -12,7 +13,7 @@ import (
 //
 // # Buffer & Viewport Model
 //
-// TextArea embeds [textBuffer] for line-and-cluster addressing, paired with a viewport window:
+// TextArea keeps a text buffer (buf) for line-and-cluster addressing, paired with a viewport window:
 //
 //	┌──────────────────────────────────────────────────────────┐
 //	│ Viewport Window (w=58, h=6)                              │
@@ -71,7 +72,7 @@ import (
 //	queryInput.SetValue("SELECT id, name, created_at\nFROM users\nWHERE active = true;")
 type TextArea struct {
 	Base
-	textBuffer
+	buf txt.Buffer
 	// changeValues counts the ChangeEvent values built (publishChange): tests read it
 	changeValues int
 
@@ -123,9 +124,9 @@ func WithTextAreaStyles(st TextInputStyles) TextAreaOption {
 // NewTextArea builds an empty editor.
 func NewTextArea(opts ...TextAreaOption) *TextArea {
 	t := &TextArea{
-		textBuffer: newTextBuffer(),
-		wrap:       WrapNone,
-		styles:     defaultTextInputStyles(),
+		buf:    txt.NewBuffer(),
+		wrap:   WrapNone,
+		styles: defaultTextInputStyles(),
 	}
 	for _, o := range opts {
 		if o != nil {
@@ -136,12 +137,12 @@ func NewTextArea(opts ...TextAreaOption) *TextArea {
 }
 
 // Value returns the buffer joined with newlines.
-func (t *TextArea) Value() string { return t.value() }
+func (t *TextArea) Value() string { return t.buf.Value() }
 
 // SetValue replaces the buffer (cursor to the end, selection cleared).
 // No ChangeEvent — the event reports user edits.
 func (t *TextArea) SetValue(s string) {
-	t.setValue(s)
+	t.buf.SetValue(s)
 	t.ensureVisible()
 	t.MarkDirty()
 }
@@ -151,23 +152,23 @@ func (t *TextArea) AcceptsFocus() bool { return true }
 
 // Caret is the caret's logical line and its column in grapheme clusters, for a view that draws the
 // field itself (a table's open cell, in cells or in pixels).
-func (t *TextArea) Caret() (line, col int) { return t.ln, t.col }
+func (t *TextArea) Caret() (line, col int) { return t.buf.Ln, t.buf.Col }
 
 // cellsAt is the display offset (cells) of (ln, col).
 func (t *TextArea) cellsAt(ln, col int) int {
-	return t.textBuffer.cellsAt(ln, col, t.measure)
+	return t.buf.CellsAt(ln, col, t.measure)
 }
 
 // insert places text at the cursor (replacing any selection) as one atomic
 // edit; newlines split lines. Emits one ChangeEvent.
 func (t *TextArea) insert(text string) {
-	t.insertText(text)
+	t.buf.InsertText(text)
 	t.edited()
 }
 
 func (t *TextArea) edited() {
-	t.anchor = nil
-	t.desired = -1
+	t.buf.Anchor = nil
+	t.buf.Desired = -1
 	t.ensureVisible()
 	t.MarkDirty()
 	if publishChange(t.ctx, t.NodeID(), t.Value) {
@@ -177,17 +178,17 @@ func (t *TextArea) edited() {
 
 // moveTo moves the cursor, managing the selection anchor.
 func (t *TextArea) moveTo(ln, col int, extend bool) {
-	t.moveCursor(ln, col, extend)
+	t.buf.MoveCursor(ln, col, extend)
 	t.ensureVisible()
 	t.MarkDirty()
 }
 
 // vertical moves the cursor by delta lines keeping the sticky column.
 func (t *TextArea) vertical(delta int, extend bool) {
-	ln, col := t.verticalTarget(delta, t.measure)
-	d := t.desired
+	ln, col := t.buf.VerticalTarget(delta, t.measure)
+	d := t.buf.Desired
 	t.moveTo(ln, col, extend)
-	t.desired = d // moveTo clears nothing here, but keep it explicit
+	t.buf.Desired = d // moveTo clears nothing here, but keep it explicit
 }
 
 // HandleEvent implements the key contract.
@@ -244,32 +245,32 @@ func (t *TextArea) handleKey(e tui.KeyEvent) bool {
 	case TextAreaNewline.ID:
 		t.insert("\n") // newline — no submit event (Q5)
 	case TextAreaBackspace.ID, TextAreaDelete.ID:
-		lo, hi, ok := t.selection()
+		lo, hi, ok := t.buf.Selection()
 		switch {
 		case ok:
 		case id == TextAreaBackspace.ID:
-			lo, hi, ok = t.backspaceRegion()
+			lo, hi, ok = t.buf.BackspaceRegion()
 		default:
-			lo, hi, ok = t.forwardRegion()
+			lo, hi, ok = t.buf.ForwardRegion()
 		}
 		if ok {
-			t.deleteRegion(lo, hi)
+			t.buf.DeleteRegion(lo, hi)
 			t.edited()
 		}
 	case TextAreaLineStart.ID:
-		t.desired = -1
-		t.moveTo(t.ln, 0, false)
+		t.buf.Desired = -1
+		t.moveTo(t.buf.Ln, 0, false)
 	case TextAreaLineEnd.ID:
-		t.desired = -1
-		t.moveTo(t.ln, len(t.lineClusters(t.ln)), false)
+		t.buf.Desired = -1
+		t.moveTo(t.buf.Ln, len(t.buf.LineClusters(t.buf.Ln)), false)
 	case TextAreaKillLine.ID:
-		if t.col > 0 {
-			t.deleteRegion(taPos{t.ln, 0}, taPos{t.ln, t.col})
+		if t.buf.Col > 0 {
+			t.buf.DeleteRegion(txt.Pos{Ln: t.buf.Ln, Col: 0}, txt.Pos{Ln: t.buf.Ln, Col: t.buf.Col})
 			t.edited()
 		}
 	case TextAreaKillWord.ID:
-		if ln, col := t.wordLeft(); ln == t.ln && col < t.col {
-			t.deleteRegion(taPos{ln, col}, taPos{t.ln, t.col})
+		if ln, col := t.buf.WordLeft(); ln == t.buf.Ln && col < t.buf.Col {
+			t.buf.DeleteRegion(txt.Pos{Ln: ln, Col: col}, txt.Pos{Ln: t.buf.Ln, Col: t.buf.Col})
 			t.edited()
 		}
 	}
@@ -280,30 +281,30 @@ func (t *TextArea) handleKey(e tui.KeyEvent) bool {
 func (t *TextArea) handleMove(id string, shift bool) {
 	switch id {
 	case TextAreaLeft.ID, TextAreaSelectLeft.ID, TextAreaWordLeft.ID, TextAreaSelectWordLeft.ID:
-		t.desired = -1
+		t.buf.Desired = -1
 		switch {
 		case id == TextAreaWordLeft.ID || id == TextAreaSelectWordLeft.ID:
-			ln, col := t.wordLeft()
+			ln, col := t.buf.WordLeft()
 			t.moveTo(ln, col, shift)
-		case t.col > 0:
-			t.moveTo(t.ln, t.col-1, shift)
-		case t.ln > 0:
-			t.moveTo(t.ln-1, len(t.lineClusters(t.ln-1)), shift)
+		case t.buf.Col > 0:
+			t.moveTo(t.buf.Ln, t.buf.Col-1, shift)
+		case t.buf.Ln > 0:
+			t.moveTo(t.buf.Ln-1, len(t.buf.LineClusters(t.buf.Ln-1)), shift)
 		default:
 			t.moveTo(0, 0, shift)
 		}
 	case TextAreaRight.ID, TextAreaSelectRight.ID, TextAreaWordRight.ID, TextAreaSelectWordRight.ID:
-		t.desired = -1
+		t.buf.Desired = -1
 		switch {
 		case id == TextAreaWordRight.ID || id == TextAreaSelectWordRight.ID:
-			ln, col := t.wordRight()
+			ln, col := t.buf.WordRight()
 			t.moveTo(ln, col, shift)
-		case t.col < len(t.lineClusters(t.ln)):
-			t.moveTo(t.ln, t.col+1, shift)
-		case t.ln < len(t.textLines)-1:
-			t.moveTo(t.ln+1, 0, shift)
+		case t.buf.Col < len(t.buf.LineClusters(t.buf.Ln)):
+			t.moveTo(t.buf.Ln, t.buf.Col+1, shift)
+		case t.buf.Ln < len(t.buf.Lines)-1:
+			t.moveTo(t.buf.Ln+1, 0, shift)
 		default:
-			t.moveTo(t.ln, t.col, shift)
+			t.moveTo(t.buf.Ln, t.buf.Col, shift)
 		}
 	case TextAreaUp.ID, TextAreaSelectUp.ID:
 		t.vertical(-1, shift)
@@ -314,23 +315,23 @@ func (t *TextArea) handleMove(id string, shift bool) {
 	case TextAreaPageDown.ID, TextAreaSelectPageDown.ID:
 		t.vertical(max(t.h, 1), shift)
 	case TextAreaHome.ID, TextAreaSelectHome.ID:
-		t.desired = -1
-		t.moveTo(t.ln, 0, shift)
+		t.buf.Desired = -1
+		t.moveTo(t.buf.Ln, 0, shift)
 	case TextAreaStart.ID, TextAreaSelectStart.ID:
-		t.desired = -1
+		t.buf.Desired = -1
 		t.moveTo(0, 0, shift)
 	case TextAreaEnd.ID, TextAreaSelectEnd.ID:
-		t.desired = -1
-		t.moveTo(t.ln, len(t.lineClusters(t.ln)), shift)
+		t.buf.Desired = -1
+		t.moveTo(t.buf.Ln, len(t.buf.LineClusters(t.buf.Ln)), shift)
 	case TextAreaFinish.ID, TextAreaSelectFinish.ID:
-		t.desired = -1
-		t.moveTo(len(t.textLines)-1, len(t.lineClusters(len(t.textLines)-1)), shift)
+		t.buf.Desired = -1
+		t.moveTo(len(t.buf.Lines)-1, len(t.buf.LineClusters(len(t.buf.Lines)-1)), shift)
 	}
 }
 
 // wrapWidth is the content width available for text (minus the scroll
 // indicator column when one is painted).
-func (t *TextArea) wrapWidth() int { return wrapUsableWidth(t.textLines, t.view()) }
+func (t *TextArea) wrapWidth() int { return txt.WrapUsableWidth(t.buf.Lines, t.view()) }
 
 // PointerShapes is the I-beam over the text: the scroll indicator keeps the arrow.
 func (t *TextArea) PointerShapes(dst []tui.PointerRegion) []tui.PointerRegion {
@@ -338,12 +339,12 @@ func (t *TextArea) PointerShapes(dst []tui.PointerRegion) []tui.PointerRegion {
 }
 
 // scrollable reports whether content exceeds the viewport vertically.
-func (t *TextArea) scrollable() bool { return wrapScrollable(t.textLines, t.view()) }
+func (t *TextArea) scrollable() bool { return txt.WrapScrollable(t.buf.Lines, t.view()) }
 
 // ensureVisible adjusts top/left so the cursor stays inside the viewport
 // (using the last layout size).
 func (t *TextArea) ensureVisible() {
-	t.top, t.left = revealCaret(t.textLines, t.view(), t.top, t.left, t.ln, t.cellsAt(t.ln, t.col))
+	t.top, t.left = txt.RevealCaret(t.buf.Lines, t.view(), t.top, t.left, t.buf.Ln, t.cellsAt(t.buf.Ln, t.buf.Col))
 }
 
 // Layout is greedy on both axes.
@@ -356,7 +357,7 @@ func (t *TextArea) Layout(c tui.Constraints) tui.Size {
 
 // Cursor implements tui.CursorReporter (viewport-local insertion point).
 func (t *TextArea) Cursor() (int, int, bool) {
-	return caretAt(t.textLines, t.view(), t.top, t.left, t.ln, t.col, t.cellsAt(t.ln, t.col))
+	return txt.CaretAt(t.buf.Lines, t.view(), t.top, t.left, t.buf.Ln, t.buf.Col, t.cellsAt(t.buf.Ln, t.buf.Col))
 }
 
 // Render paints the viewport, the selection fill, and the scroll indicator. Every cell wears the
@@ -372,23 +373,23 @@ func (t *TextArea) Render(s tui.Surface) {
 		drawText(s, 0, 0, ph, t.styles.Placeholder)
 		return
 	}
-	selLo, selHi, hasSel := t.selection()
+	selLo, selHi, hasSel := t.buf.Selection()
 	t.eachDrawn(sz.H, s.StringWidth, func(x, y int, cl string, ln, col int) {
 		st := t.styles.Text
-		if hasSel && t.focused() && (taPos{ln, col}).in(selLo, selHi) {
+		if hasSel && t.focused() && (txt.Pos{Ln: ln, Col: col}).In(selLo, selHi) {
 			st = t.styles.Selection.Inherit(st)
 		}
 		s.SetCell(x, y, cl, st)
 	})
 	if t.scrollable() {
-		paintScrollIndicator(s, sz.W-1, sz.H, t.top, wrapMaxTop(t.textLines, t.view()))
+		paintScrollIndicator(s, sz.W-1, sz.H, t.top, txt.WrapMaxTop(t.buf.Lines, t.view()))
 	}
 }
 
 // shownPlaceholder is the placeholder as Render draws it, at (0, 0): ok only while the area is
 // empty and has one.
 func (t *TextArea) shownPlaceholder(measure func(string) int) (string, bool) {
-	if len(t.textLines) != 1 || t.textLines[0] != "" {
+	if len(t.buf.Lines) != 1 || t.buf.Lines[0] != "" {
 		return "", false
 	}
 	ph := truncate(t.placeholder.inLanguage(&t.Base), t.wrapWidth(), measure)
@@ -401,8 +402,8 @@ func (t *TextArea) shownPlaceholder(measure func(string) int) (string, bool) {
 func (t *TextArea) eachDrawn(rows int, measure func(string) int, fn func(x, y int, cl string, ln, col int)) {
 	w := t.wrapWidth()
 	y := 0
-	for ln := t.top; ln < len(t.textLines) && y < rows; ln++ {
-		cs := t.lineClusters(ln)
+	for ln := t.top; ln < len(t.buf.Lines) && y < rows; ln++ {
+		cs := t.buf.LineClusters(ln)
 		if t.wrap == WrapNone {
 			x := -t.left
 			for col, cl := range cs {
@@ -419,7 +420,7 @@ func (t *TextArea) eachDrawn(rows int, measure func(string) int, fn func(x, y in
 			continue
 		}
 		// WrapSoft: each wrapped row by cluster range.
-		for _, r := range wrapRanges(cs, w, measure) {
+		for _, r := range txt.WrapRanges(cs, w, measure) {
 			if y >= rows {
 				break
 			}
@@ -436,13 +437,13 @@ func (t *TextArea) eachDrawn(rows int, measure func(string) int, fn func(x, y in
 // SelectionCells implements tui.SelectionCells: one rect per row the selection is drawn on, over
 // the selected clusters' cells; none while the area is unfocused, as Render draws none.
 func (t *TextArea) SelectionCells() ([]tui.Rect, bool) {
-	lo, hi, ok := t.selection()
+	lo, hi, ok := t.buf.Selection()
 	if !ok || !t.focused() || t.w <= 0 || t.h <= 0 {
 		return nil, false
 	}
 	var out []tui.Rect
 	t.eachDrawn(t.h, t.measure, func(x, y int, cl string, ln, col int) {
-		if !(taPos{ln, col}).in(lo, hi) {
+		if !(txt.Pos{Ln: ln, Col: col}).In(lo, hi) {
 			return
 		}
 		cw := t.measure(cl)
@@ -470,7 +471,7 @@ func (t *TextArea) PlaceholderCells() ([]tui.Rect, bool) {
 }
 
 // view is the layout state the shared soft-wrap geometry needs. It is the
-// only place this widget's viewport is handed to textBuffer.
-func (t *TextArea) view() wrapView {
-	return wrapView{w: t.w, h: t.h, wrap: t.wrap != WrapNone, measure: t.measure}
+// only place this widget's viewport is handed to txt.Buffer.
+func (t *TextArea) view() txt.WrapView {
+	return txt.WrapView{W: t.w, H: t.h, Wrap: t.wrap != WrapNone, Measure: t.measure}
 }

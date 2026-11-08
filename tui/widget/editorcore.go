@@ -11,6 +11,7 @@ import (
 	"github.com/yongjohnlee80/golib/tui"
 	tuikey "github.com/yongjohnlee80/golib/tui/key"
 	"github.com/yongjohnlee80/golib/tui/keymap"
+	txt "github.com/yongjohnlee80/golib/tui/widget/internal/text"
 )
 
 // EDITOR CORE — the Editor's behaviour, apart from any view of it.
@@ -29,7 +30,7 @@ import (
 //
 //	EditorCore
 //	├── *bufferState        the shown buffer: its text, undo, marks, revision, highlighting (buffer.go)
-//	├── buf  textBuffer     the cursor over the shown buffer's text, the sticky column (textbuffer.go)
+//	├── buf  txt.Buffer     the cursor over the shown buffer's text, the sticky column (internal/text/buffer.go)
 //	├── reg  editRegister   the unnamed register and the yank policy (editregister.go)
 //	├── keys keyDispatch    the mode, the keymap, the input pending between keys (editorkeys.go)
 //	├── hl   highlightCache the shown buffer's lines painted in this editor's looks (editor_highlight.go)
@@ -63,10 +64,10 @@ type EditorSideScroller interface {
 type EditorCore struct {
 	*bufferState                          // the shown buffer's, data only (buffer.go)
 	placed         map[*bufferState]bool  // the buffers holding a place of this editor's (SetBuffer, Detach)
-	buf            textBuffer             // the cursor over the shown buffer's text
+	buf            txt.Buffer             // the cursor over the shown buffer's text
 	dot            dotRecorder            // the change . repeats, and the one being recorded
 	opRegOne       bool                   // the operator's motion is one whose delete Vim keeps in register 1 (regOneMotion)
-	insStart       taPos                  // where this Insert began (editor_viminsert.go)
+	insStart       txt.Pos                // where this Insert began (editor_viminsert.go)
 	oneShot        insertOneShot          // Insert's Ctrl-o (editor_vimoneshot.go)
 	blockIns       *blockInsert           // a block's I, A or c waiting for its Insert to end (editor_vimblock.go)
 	findHost       func(FindRequest) bool // * and #'s host, when it keeps its own find (editor_vimstar.go)
@@ -96,7 +97,7 @@ type EditorCore struct {
 	// changeValues counts the ChangeEvent values built (publishChange): tests read it
 	changeValues int
 
-	vAnchor taPos // the Visual anchor (where the selection started)
+	vAnchor txt.Pos // the Visual anchor (where the selection started)
 	// vEOL says the Visual selection Select made ends with its last line's break: the cursor sits
 	// just past that line's last cluster, and the break is selected (a range ending at a line's
 	// start). Any change of mode ends it.
@@ -127,7 +128,7 @@ type EditorCore struct {
 
 	// dragging is a pointer drag selecting from dragFrom, in buffer positions.
 	dragging bool
-	dragFrom taPos
+	dragFrom txt.Pos
 
 	// following is ReplaceFollowing's, while its edit runs: the cursor it keeps with the text
 	following *selfFollow
@@ -159,7 +160,7 @@ func newEditorCore() *EditorCore {
 	c := &EditorCore{
 		bufferState: s,
 		placed:      map[*bufferState]bool{},
-		buf:         textBuffer{bufferText: s.text, desired: -1},
+		buf:         txt.Buffer{Doc: s.text, Desired: -1},
 		hl:          highlightCache{text: &s.hlText},
 		keys:        newKeyDispatch(),
 		canSelect:   true,
@@ -199,7 +200,7 @@ func NewEditorCore(opts ...CoreOption) *EditorCore {
 func (c *EditorCore) Bind(ctx *tui.Context, l EditorLayout) {
 	c.ctx, c.layout = ctx, l
 	// A layout just bound lays out every line: what changed before is the highlighter's alone.
-	c.hlFrom = min(c.hlFrom, c.buf.takeChanged())
+	c.hlFrom = min(c.hlFrom, c.buf.TakeChanged())
 }
 
 // --- options ---------------------------------------------------------------
@@ -225,9 +226,9 @@ func CoreSyntaxStyles(st SyntaxStyles) CoreOption { return func(c *EditorCore) {
 // an empty undo history.
 func CoreInitialText(s string) CoreOption {
 	return func(c *EditorCore) {
-		c.buf.setValue(s)
+		c.buf.SetValue(s)
 		c.followEdits() // its reset now, or the first edit would take it for a later one
-		c.buf.ln, c.buf.col = 0, 0
+		c.buf.Ln, c.buf.Col = 0, 0
 	}
 }
 
@@ -371,13 +372,13 @@ func (c *EditorCore) nodeID() tui.NodeID {
 // changed tells the layout the first line changed since it was last told, and keeps that line for
 // the highlighter too.
 func (c *EditorCore) changed() {
-	from := c.buf.takeChanged()
-	if from == noChange {
+	from := c.buf.TakeChanged()
+	if from == txt.NoChange {
 		return
 	}
 	c.hlFrom = min(c.hlFrom, from)
 	if c.layout != nil {
-		c.layout.Changed(min(from, max(len(c.buf.textLines)-1, 0)))
+		c.layout.Changed(min(from, max(len(c.buf.Lines)-1, 0)))
 	}
 	for _, o := range c.editors {
 		if o != c {
@@ -386,18 +387,18 @@ func (c *EditorCore) changed() {
 	}
 }
 
-// takeHighlightChanged is the first line changed since the highlighter last asked, noChange for
+// takeHighlightChanged is the first line changed since the highlighter last asked, txt.NoChange for
 // none. It leaves the buffer's mark for changed() to notify the layout after the edit.
 func (c *EditorCore) takeHighlightChanged() int {
-	ln := min(c.hlFrom, c.buf.changedFrom)
-	c.hlFrom = noChange
+	ln := min(c.hlFrom, c.buf.ChangedFrom)
+	c.hlFrom = txt.NoChange
 	return ln
 }
 
 // reveal brings the cursor into view.
 func (c *EditorCore) reveal() {
 	if c.layout != nil {
-		c.layout.Reveal(c.buf.ln, c.buf.col)
+		c.layout.Reveal(c.buf.Ln, c.buf.Col)
 	}
 }
 
@@ -419,7 +420,7 @@ func (c *EditorCore) pageLines() int {
 
 // cursorMoved tells onCursorMove when the cursor is no longer at (ln, col).
 func (c *EditorCore) cursorMoved(ln, col int) {
-	moved := c.buf.ln != ln || c.buf.col != col
+	moved := c.buf.Ln != ln || c.buf.Col != col
 	if moved && !c.rowSticky.kept {
 		c.rowSticky.ok = false // any move but gj and gk ends their x, as Vim's curswant
 	}
@@ -432,24 +433,24 @@ func (c *EditorCore) cursorMoved(ln, col int) {
 // --- the document ------------------------------------------------------------
 
 // Value returns the buffer joined with newlines.
-func (c *EditorCore) Value() string { return c.buf.value() }
+func (c *EditorCore) Value() string { return c.buf.Value() }
 
 // SetValue is a document-boundary operation: pending input settles, the core returns to Normal
 // mode (or Insert mode if modeless), cursor and command state reset, content is replaced, and
 // undo/redo history is CLEARED. The register is preserved.
 func (c *EditorCore) SetValue(s string) {
-	ln, col := c.buf.ln, c.buf.col
+	ln, col := c.buf.Ln, c.buf.Col
 	defer c.cursorMoved(ln, col)
 	c.resetInput()
 	c.hist.reset()
-	c.buf.setValue(s)
+	c.buf.SetValue(s)
 	c.followEdits()         // a new document: no marks
 	c.rev = c.newRevision() // a new document, unmodified: the text it was given is its saved state
 	c.savedRev = c.rev
 	if c.sourceFactory != nil {
 		c.renewSource()
 	}
-	c.buf.ln, c.buf.col = 0, 0
+	c.buf.Ln, c.buf.Col = 0, 0
 	if c.keys.modal {
 		c.setMode(ModeNormal)
 	} else {
@@ -488,16 +489,16 @@ func (c *EditorCore) SetReadOnly(v bool) {
 }
 
 // Line reports the cursor position (0-based).
-func (c *EditorCore) Line() (row, col int) { return c.buf.ln, c.buf.col }
+func (c *EditorCore) Line() (row, col int) { return c.buf.Ln, c.buf.Col }
 
 // SetLine moves the cursor to row/col (both clamped to the document) and reveals it. Pending input
 // settles first; the mode is left alone.
 func (c *EditorCore) SetLine(row, col int) {
-	ln, was := c.buf.ln, c.buf.col
+	ln, was := c.buf.Ln, c.buf.Col
 	defer c.cursorMoved(ln, was)
 	c.settlePendingRune()
-	c.buf.ln = max(0, min(row, len(c.buf.textLines)-1))
-	c.buf.col = max(0, col)
+	c.buf.Ln = max(0, min(row, len(c.buf.Lines)-1))
+	c.buf.Col = max(0, col)
 	if c.keys.modal {
 		c.clampNormal()
 	}
@@ -510,9 +511,9 @@ func (c *EditorCore) SetLine(row, col int) {
 // reveals it, as SetLine does. A position past the end is the end.
 func (c *EditorCore) SetCursorPosition(pos int) {
 	pos = max(pos, 0)
-	for row, line := range c.buf.textLines {
-		n := len(clusters(line))
-		if pos <= n || row == len(c.buf.textLines)-1 {
+	for row, line := range c.buf.Lines {
+		n := len(txt.Clusters(line))
+		if pos <= n || row == len(c.buf.Lines)-1 {
 			c.SetLine(row, min(pos, n))
 			return
 		}
@@ -521,7 +522,7 @@ func (c *EditorCore) SetCursorPosition(pos int) {
 }
 
 // Lines returns a snapshot of the document's lines.
-func (c *EditorCore) Lines() []string { return append([]string(nil), c.buf.textLines...) }
+func (c *EditorCore) Lines() []string { return append([]string(nil), c.buf.Lines...) }
 
 // SetHighlighter replaces the highlighter; nil turns highlighting off. Every line is highlighted
 // afresh.
@@ -628,7 +629,7 @@ func (c *EditorCore) SetKeyset(ks Keyset) {
 	c.resetInput()
 	c.dot = dotRecorder{} // a change recorded under another profile is not this one's to repeat
 	c.hist.close()
-	c.buf.anchor, c.vAnchor = nil, taPos{}
+	c.buf.Anchor, c.vAnchor = nil, txt.Pos{}
 	c.keys.applyKeyset(ks, c.liveKeymap())
 	if c.keys.modal {
 		c.setMode(ModeNormal)
@@ -636,7 +637,7 @@ func (c *EditorCore) SetKeyset(ks Keyset) {
 	} else {
 		c.setMode(ModeInsert)
 	}
-	c.buf.desired = -1
+	c.buf.Desired = -1
 	c.reveal()
 	c.markDirty()
 	c.noteKeyScope()
@@ -792,28 +793,28 @@ func (c *EditorCore) setMode(m EditorMode) {
 
 // normalMax is the max Normal-mode column of line ln (cursor ON a grapheme).
 func (c *EditorCore) normalMax(ln int) int {
-	return max(0, len(c.buf.lineClusters(ln))-1)
+	return max(0, len(c.buf.LineClusters(ln))-1)
 }
 
 // lastCol is the furthest column a motion reaches on line ln: past the last grapheme in Insert,
 // where text is typed there, and on it otherwise (normalMax).
 func (c *EditorCore) lastCol(ln int) int {
 	if c.keys.mode == ModeInsert {
-		return len(c.buf.lineClusters(ln))
+		return len(c.buf.LineClusters(ln))
 	}
 	return c.normalMax(ln)
 }
 
 // clampNormal enforces the Normal/Visual cursor invariant.
 func (c *EditorCore) clampNormal() {
-	c.buf.col = min(c.buf.col, c.normalMax(c.buf.ln))
+	c.buf.Col = min(c.buf.Col, c.normalMax(c.buf.Ln))
 }
 
 func (c *EditorCore) enterInsert() {
 	c.keys.count, c.keys.pendingAct = 0, ActUnbound
 	c.hist.close() // group opens lazily on the first mutation
 	c.setMode(ModeInsert)
-	c.insStart = taPos{c.buf.ln, c.buf.col} // where Ctrl-w and Ctrl-u stop once (editor_viminsert.go)
+	c.insStart = txt.Pos{Ln: c.buf.Ln, Col: c.buf.Col} // where Ctrl-w and Ctrl-u stop once (editor_viminsert.go)
 }
 
 // exitInsert implements Insert→Normal in modal mode: cursor one cluster left, clamped. In
@@ -826,10 +827,10 @@ func (c *EditorCore) exitInsert() {
 	c.replaceDone()     // R with a count: the text again, as many times more
 	c.dotInsertEnded()
 	c.hist.close()
-	c.buf.anchor = nil // a table cell's selection is Insert mode's
-	c.buf.col = max(0, c.buf.col-1)
+	c.buf.Anchor = nil // a table cell's selection is Insert mode's
+	c.buf.Col = max(0, c.buf.Col-1)
 	c.clampNormal()
-	c.buf.desired = -1
+	c.buf.Desired = -1
 	c.setMode(ModeNormal)
 	c.reveal()
 	c.markDirty()
@@ -838,7 +839,7 @@ func (c *EditorCore) exitInsert() {
 // exitVisual clears the selection anchor and leaves visual mode: to Normal when modal, to Insert
 // when modeless.
 func (c *EditorCore) exitVisual() {
-	c.buf.anchor = nil
+	c.buf.Anchor = nil
 	if c.keys.modal {
 		c.setMode(ModeNormal)
 		c.clampNormal()
@@ -858,7 +859,7 @@ func (c *EditorCore) settlePendingRune() {
 		return
 	}
 	c.beginGroup()
-	c.buf.insertText(string(r))
+	c.buf.InsertText(string(r))
 	c.edited()
 	c.dotTypedText(string(r))
 }
@@ -870,7 +871,7 @@ func (c *EditorCore) typeText(s string) {
 		return
 	}
 	c.beginGroup()
-	c.buf.insertText(s)
+	c.buf.InsertText(s)
 	if strings.ContainsAny(s, "})] \t") {
 		c.alignClosing()
 	}
@@ -980,24 +981,24 @@ func (c *EditorCore) execInsertEntry(act Action, count int) bool {
 		c.enterInsert()
 		return true
 	case ActAppend:
-		if len(b.lineClusters(b.ln)) > 0 {
-			b.col++
+		if len(b.LineClusters(b.Ln)) > 0 {
+			b.Col++
 		}
 		c.enterInsert()
 		return true
 	case ActInsertLineStart:
-		b.col = 0
+		b.Col = 0
 		c.enterInsert()
 		return true
 	case ActAppendLineEnd:
-		b.col = len(b.lineClusters(b.ln))
+		b.Col = len(b.LineClusters(b.Ln))
 		c.enterInsert()
 		return true
 	case ActOpenBelow:
 		c.beginGroup()
-		prefix := c.indentDecision(indent.OpenBelow, len(b.textLines[b.ln])).Prefix
-		b.insertLines(b.ln+1, prefix)
-		b.ln, b.col = b.ln+1, len(clusters(prefix))
+		prefix := c.indentDecision(indent.OpenBelow, len(b.Lines[b.Ln])).Prefix
+		b.InsertLines(b.Ln+1, prefix)
+		b.Ln, b.Col = b.Ln+1, len(txt.Clusters(prefix))
 		c.enterInsert()
 		c.hist.keepOpen() // the open-line already began this group
 		c.edited()
@@ -1005,8 +1006,8 @@ func (c *EditorCore) execInsertEntry(act Action, count int) bool {
 	case ActOpenAbove:
 		c.beginGroup()
 		prefix := c.indentDecision(indent.OpenAbove, 0).Prefix
-		b.insertLines(b.ln, prefix)
-		b.col = len(clusters(prefix))
+		b.InsertLines(b.Ln, prefix)
+		b.Col = len(txt.Clusters(prefix))
 		c.enterInsert()
 		c.hist.keepOpen()
 		c.edited()
@@ -1022,31 +1023,31 @@ func (c *EditorCore) execEdit(act Action, count int) bool {
 	b := &c.buf
 	switch act {
 	case ActDeleteChar:
-		if c.inFold(b.ln) { // x is dl, which takes a fold whole (Vim's fold-behavior)
-			c.runOp(ActDeletePrefix, taPos{b.ln, b.col + 1}, exclusive)
+		if c.inFold(b.Ln) { // x is dl, which takes a fold whole (Vim's fold-behavior)
+			c.runOp(ActDeletePrefix, txt.Pos{Ln: b.Ln, Col: b.Col + 1}, exclusive)
 			return true
 		}
-		cs := b.lineClusters(b.ln)
+		cs := b.LineClusters(b.Ln)
 		if len(cs) == 0 {
 			return true
 		}
-		n := min(count, len(cs)-b.col)
+		n := min(count, len(cs)-b.Col)
 		c.beginGroup()
-		c.regDelete(strings.Join(cs[b.col:b.col+n], ""), false)
-		b.deleteRegion(taPos{b.ln, b.col}, taPos{b.ln, b.col + n})
+		c.regDelete(strings.Join(cs[b.Col:b.Col+n], ""), false)
+		b.DeleteRegion(txt.Pos{Ln: b.Ln, Col: b.Col}, txt.Pos{Ln: b.Ln, Col: b.Col + n})
 		c.clampNormal()
 		c.edited()
 		return true
 	case ActDeleteToEnd:
-		if c.inFold(b.ln) { // D is d$, which takes a fold whole
-			c.runOp(ActDeletePrefix, taPos{b.ln, b.col + 1}, exclusive)
+		if c.inFold(b.Ln) { // D is d$, which takes a fold whole
+			c.runOp(ActDeletePrefix, txt.Pos{Ln: b.Ln, Col: b.Col + 1}, exclusive)
 			return true
 		}
-		cs := b.lineClusters(b.ln)
-		if b.col < len(cs) {
+		cs := b.LineClusters(b.Ln)
+		if b.Col < len(cs) {
 			c.beginGroup()
-			c.regDelete(strings.Join(cs[b.col:], ""), false)
-			b.deleteRegion(taPos{b.ln, b.col}, taPos{b.ln, len(cs)})
+			c.regDelete(strings.Join(cs[b.Col:], ""), false)
+			b.DeleteRegion(txt.Pos{Ln: b.Ln, Col: b.Col}, txt.Pos{Ln: b.Ln, Col: len(cs)})
 			c.clampNormal()
 			c.edited()
 		}
@@ -1061,8 +1062,8 @@ func (c *EditorCore) execEdit(act Action, count int) bool {
 		}
 		return true
 	case ActSubstChar: // s: c over count characters, Insert on an empty line
-		n := len(b.lineClusters(b.ln))
-		c.runOp(ActChangePrefix, taPos{b.ln, min(b.col+count, n)}, exclusive)
+		n := len(b.LineClusters(b.Ln))
+		c.runOp(ActChangePrefix, txt.Pos{Ln: b.Ln, Col: min(b.Col+count, n)}, exclusive)
 		return true
 	case ActJoin:
 		c.joinLines(count, false)
@@ -1074,7 +1075,7 @@ func (c *EditorCore) execEdit(act Action, count int) bool {
 		c.toggleCaseChars(count)
 		return true
 	case ActSubstLine: // S: cc
-		c.runOp(ActChangePrefix, taPos{min(b.ln+count-1, len(b.textLines)-1), 0}, linewise)
+		c.runOp(ActChangePrefix, txt.Pos{Ln: min(b.Ln+count-1, len(b.Lines)-1), Col: 0}, linewise)
 		return true
 	case ActPasteAfter:
 		c.pasteRegister(true, count)
@@ -1108,7 +1109,7 @@ func (c *EditorCore) execVisual(act Action, count int) bool {
 		case ModeVisualLine, ModeVisualBlock:
 			c.setMode(ModeVisual)
 		default:
-			c.vAnchor = taPos{ln: b.ln, col: b.col}
+			c.vAnchor = txt.Pos{Ln: b.Ln, Col: b.Col}
 			c.setMode(ModeVisual)
 		}
 		return true
@@ -1122,7 +1123,7 @@ func (c *EditorCore) execVisual(act Action, count int) bool {
 		case ModeVisual, ModeVisualLine:
 			c.setMode(ModeVisualBlock)
 		default:
-			c.vAnchor = taPos{ln: b.ln, col: b.col}
+			c.vAnchor = txt.Pos{Ln: b.Ln, Col: b.Col}
 			c.setMode(ModeVisualBlock)
 		}
 		return true
@@ -1136,7 +1137,7 @@ func (c *EditorCore) execVisual(act Action, count int) bool {
 		case ModeVisual, ModeVisualBlock:
 			c.setMode(ModeVisualLine)
 		default:
-			c.vAnchor = taPos{ln: b.ln, col: b.col}
+			c.vAnchor = txt.Pos{Ln: b.Ln, Col: b.Col}
 			c.setMode(ModeVisualLine)
 		}
 		return true
@@ -1196,7 +1197,7 @@ func (c *EditorCore) execOther(act Action, count int) bool {
 		if c.visual() {
 			return c.execAction(ActVisualDelete, count)
 		}
-		c.deleteLines(b.ln, b.ln)
+		c.deleteLines(b.Ln, b.Ln)
 		return true
 
 	case ActCopy:
@@ -1209,8 +1210,8 @@ func (c *EditorCore) execOther(act Action, count int) bool {
 		if c.visual() {
 			return c.execAction(ActVisualYank, count)
 		}
-		if b.ln < len(b.textLines) {
-			c.regYank(b.textLines[b.ln], true)
+		if b.Ln < len(b.Lines) {
+			c.regYank(b.Lines[b.Ln], true)
 		}
 		return true
 
@@ -1229,7 +1230,7 @@ func (c *EditorCore) execOther(act Action, count int) bool {
 
 	case ActFindNext, ActFindPrev:
 		// with no active find the key bubbles: an application may have its own n
-		from := taPos{b.ln, b.col}
+		from := txt.Pos{Ln: b.Ln, Col: b.Col}
 		found := c.FindNext(act == ActFindPrev)
 		if found {
 			c.jumpedFrom(from) // n and N are jumps
@@ -1245,13 +1246,13 @@ func (c *EditorCore) execOther(act Action, count int) bool {
 		return c.toggleRendered()
 
 	case ActSelectAll:
-		if !c.canSelect || len(b.textLines) == 0 {
+		if !c.canSelect || len(b.Lines) == 0 {
 			return true
 		}
-		c.vAnchor = taPos{ln: 0, col: 0}
-		lastLn := len(b.textLines) - 1
-		b.ln = lastLn
-		b.col = max(0, len(b.lineClusters(lastLn))-1)
+		c.vAnchor = txt.Pos{Ln: 0, Col: 0}
+		lastLn := len(b.Lines) - 1
+		b.Ln = lastLn
+		b.Col = max(0, len(b.LineClusters(lastLn))-1)
 		c.setMode(ModeVisual)
 		return true
 	}

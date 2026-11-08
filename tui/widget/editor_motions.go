@@ -2,16 +2,18 @@ package widget
 
 import (
 	"strings"
+
+	txt "github.com/yongjohnlee80/golib/tui/widget/internal/text"
 )
 
 // bufferWords is a buffer as the word motions read it.
-type bufferWords struct{ b *textBuffer }
+type bufferWords struct{ b *txt.Buffer }
 
-func (w bufferWords) lineCount() int              { return len(w.b.textLines) }
-func (w bufferWords) lineClusters(i int) []string { return w.b.lineClusters(i) }
+func (w bufferWords) lineCount() int              { return len(w.b.Lines) }
+func (w bufferWords) lineClusters(i int) []string { return w.b.LineClusters(i) }
 
 func (c *EditorCore) walker(big bool) *wordWalker {
-	return newWordWalker(bufferWords{&c.buf}, c.buf.ln, c.buf.col, big)
+	return newWordWalker(bufferWords{&c.buf}, c.buf.Ln, c.buf.Col, big)
 }
 
 // wordForward is w (W with big), as Vim's fwd_word: past the cursor's run, then past blanks to
@@ -32,22 +34,22 @@ func (c *EditorCore) wordEndBack(big bool) (int, int) { return wordEndBackFrom(c
 
 // paraForward/paraBack: next/previous blank-line boundary.
 func (c *EditorCore) paraForward(count int) int {
-	ln := c.buf.ln
+	ln := c.buf.Ln
 	for ; count > 0; count-- {
 		i := ln + 1
-		for i < len(c.buf.textLines) && strings.TrimSpace(c.buf.textLines[i]) != "" {
+		for i < len(c.buf.Lines) && strings.TrimSpace(c.buf.Lines[i]) != "" {
 			i++
 		}
-		ln = min(i, len(c.buf.textLines)-1)
+		ln = min(i, len(c.buf.Lines)-1)
 	}
 	return ln
 }
 
 func (c *EditorCore) paraBack(count int) int {
-	ln := c.buf.ln
+	ln := c.buf.Ln
 	for ; count > 0; count-- {
 		i := ln - 1
-		for i > 0 && strings.TrimSpace(c.buf.textLines[i]) != "" {
+		for i > 0 && strings.TrimSpace(c.buf.Lines[i]) != "" {
 			i--
 		}
 		ln = max(i, 0)
@@ -63,7 +65,7 @@ func (c *EditorCore) move(act Action, count int) {
 	// selection anchor stays nil so insertText never sees a stray region.
 	const extend = false
 	apply := func(ln, col int) {
-		c.buf.moveCursor(ln, col, extend)
+		c.buf.MoveCursor(ln, col, extend)
 		if c.keys.mode != ModeInsert {
 			c.clampNormal()
 		}
@@ -72,42 +74,42 @@ func (c *EditorCore) move(act Action, count int) {
 	}
 	switch act {
 	case ActLeft:
-		apply(c.buf.ln, c.buf.col-count)
-		c.buf.desired = -1
+		apply(c.buf.Ln, c.buf.Col-count)
+		c.buf.Desired = -1
 	case ActRight:
-		apply(c.buf.ln, min(c.buf.col+count, c.lastCol(c.buf.ln)))
-		c.buf.desired = -1
+		apply(c.buf.Ln, min(c.buf.Col+count, c.lastCol(c.buf.Ln)))
+		c.buf.Desired = -1
 	case ActDown, ActUp:
 		delta := count
 		if act == ActUp {
 			delta = -count
 		}
 		ln, col := c.lineTarget(delta)
-		d := c.buf.desired
+		d := c.buf.Desired
 		apply(ln, col)
-		c.buf.desired = d
+		c.buf.Desired = d
 	case ActPageDown, ActPageUp:
 		delta := c.pageLines() * count
 		if act == ActPageUp {
 			delta = -delta
 		}
 		ln, col := c.lineTarget(delta)
-		d := c.buf.desired
+		d := c.buf.Desired
 		apply(ln, col)
-		c.buf.desired = d
+		c.buf.Desired = d
 	case ActLineStart:
-		c.buf.desired = -1
-		apply(c.buf.ln, 0)
+		c.buf.Desired = -1
+		apply(c.buf.Ln, 0)
 	case ActLineEnd:
-		c.buf.desired = -1
+		c.buf.Desired = -1
 		c.oneShot.end = c.oneShot.on // Ctrl-o $: Insert resumes past the end
-		apply(c.buf.ln, c.lastCol(c.buf.ln))
+		apply(c.buf.Ln, c.lastCol(c.buf.Ln))
 		if c.keys.mode == ModeVisualBlock {
-			c.buf.desired = blockToEnd // the block runs to every line's end, through j and k
+			c.buf.Desired = blockToEnd // the block runs to every line's end, through j and k
 		}
 	case ActWordForward, ActWORDForward, ActWordBack, ActWORDBack, ActWordEnd, ActWORDEnd,
 		ActWordEndBack, ActWORDEndBack:
-		c.buf.desired = -1
+		c.buf.Desired = -1
 		step, big := c.wordForward, act == ActWORDForward
 		switch act {
 		case ActWordBack, ActWORDBack:
@@ -119,27 +121,27 @@ func (c *EditorCore) move(act Action, count int) {
 		}
 		for range count {
 			ln, col := step(big)
-			c.buf.moveCursor(ln, col, false)
+			c.buf.MoveCursor(ln, col, false)
 		}
 		c.clampNormal()
 		c.reveal()
 		c.markDirty()
 	case ActParaForward:
-		c.buf.desired = -1
+		c.buf.Desired = -1
 		apply(c.paraForward(count), 0)
 	case ActParaBack:
-		c.buf.desired = -1
+		c.buf.Desired = -1
 		apply(c.paraBack(count), 0)
 	case ActSentenceForward, ActSentenceBack:
-		c.buf.desired = -1
+		c.buf.Desired = -1
 		p := c.sentenceTarget(act == ActSentenceForward, count)
-		apply(p.ln, p.col)
+		apply(p.Ln, p.Col)
 	case ActLineDownFirst:
-		c.toLine(c.buf.ln + count)
+		c.toLine(c.buf.Ln + count)
 	case ActLineUpFirst:
-		c.toLine(c.buf.ln - count)
+		c.toLine(c.buf.Ln - count)
 	case ActFirstNonBlank:
-		c.toLine(c.buf.ln)
+		c.toLine(c.buf.Ln)
 	case ActLeftWrap:
 		c.leftWrap(count)
 	case ActFindCharRepeat, ActFindCharReverse:
@@ -160,15 +162,15 @@ func (c *EditorCore) move(act Action, count int) {
 // to the bottom.
 func (c *EditorCore) goToLine(hadCount bool, count int, bottom bool) {
 	c.setJumpMark()
-	c.buf.desired = -1
+	c.buf.Desired = -1
 	ln := 0
 	switch {
 	case hadCount:
-		ln = min(count-1, len(c.buf.textLines)-1)
+		ln = min(count-1, len(c.buf.Lines)-1)
 	case bottom:
-		ln = len(c.buf.textLines) - 1
+		ln = len(c.buf.Lines) - 1
 	}
-	c.buf.moveCursor(ln, 0, false)
+	c.buf.MoveCursor(ln, 0, false)
 	c.clampNormal()
 	c.reveal()
 	c.markDirty()

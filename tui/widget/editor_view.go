@@ -3,6 +3,7 @@ package widget
 import (
 	"github.com/yongjohnlee80/golib/tui"
 	"github.com/yongjohnlee80/golib/tui/style"
+	txt "github.com/yongjohnlee80/golib/tui/widget/internal/text"
 )
 
 // THE EDITOR'S VIEW: its viewport and where text lands in it — the layout the core asks about
@@ -54,7 +55,7 @@ func (l *cellLayout) PageLines() int { return max(l.h, 1) }
 // line always starts at the view's first row, so it is never partly off.
 func (l *cellLayout) VisibleLines() (first, last int) {
 	if l.h <= 0 {
-		return l.ed.core.buf.ln, l.ed.core.buf.ln
+		return l.ed.core.buf.Ln, l.ed.core.buf.Ln
 	}
 	return l.ed.rowMap().visible(l.top, l.h)
 }
@@ -62,7 +63,7 @@ func (l *cellLayout) VisibleLines() (first, last int) {
 // ScrollLines moves the top line by delta, down no further than the top that shows the last
 // line at the view's bottom.
 func (l *cellLayout) ScrollLines(delta int) {
-	lines := l.ed.core.buf.textLines
+	lines := l.ed.core.buf.Lines
 	if l.h <= 0 {
 		return
 	}
@@ -115,7 +116,7 @@ func (e *Editor) scrollable() bool { return e.rowMap().scrollable() }
 func (e *Editor) rowsOfLine(i int) int { return e.rowMap().rowCount(i) }
 
 // ensureVisible scrolls the cursor into the viewport.
-func (e *Editor) ensureVisible() { e.reveal(e.core.buf.ln, e.core.buf.col) }
+func (e *Editor) ensureVisible() { e.reveal(e.core.buf.Ln, e.core.buf.Col) }
 
 // reveal scrolls (ln, col) into the viewport.
 func (e *Editor) reveal(ln, col int) {
@@ -156,7 +157,7 @@ func (e *Editor) reveal(ln, col int) {
 		}
 		return
 	}
-	l.top, l.left = e.rowMap().reveal(l.top, l.left, ln, e.core.buf.cellsAt(ln, col, e.width))
+	l.top, l.left = e.rowMap().reveal(l.top, l.left, ln, e.core.buf.CellsAt(ln, col, e.width))
 	l.topIn = 0
 }
 
@@ -175,7 +176,7 @@ func (l *cellLayout) panBlock(y, n int) bool {
 	if ri := m.r.topRow(l.top) + m.in + y; y >= 0 && ri < len(m.r.rowBlock) {
 		bi = m.r.rowBlock[ri]
 	}
-	if ln := l.ed.core.buf.ln; (bi < 0 || m.maxPan(bi) == 0) && ln < len(m.r.blockOf) {
+	if ln := l.ed.core.buf.Ln; (bi < 0 || m.maxPan(bi) == 0) && ln < len(m.r.blockOf) {
 		bi = m.r.blockOf[ln]
 	}
 	if bi < 0 || m.maxPan(bi) == 0 {
@@ -224,7 +225,7 @@ func (e *Editor) presentation() [2]int {
 	if e.rendered() {
 		p[0] = 1
 		if e.cells.typing() {
-			p[1] = e.core.buf.ln
+			p[1] = e.core.buf.Ln
 		}
 	}
 	return p
@@ -251,7 +252,7 @@ func (e *Editor) Layout(c tui.Constraints) tui.Size {
 	e.cells.gutter = min(e.gutterWidth(), total-1)
 	e.cells.w = total - e.cells.gutter
 	e.cells.h = max(fillH(c)-e.headerRows(), 0)
-	moved := e.shown.moved([2]int{e.core.buf.ln, e.core.buf.col}, [2]int{e.cells.h, e.cells.w})
+	moved := e.shown.Moved([2]int{e.core.buf.Ln, e.core.buf.Col}, [2]int{e.cells.h, e.cells.w})
 	pics := e.picArrived // a picture arrived: the rows changed under the view
 	if pics {
 		e.picArrived = false
@@ -267,7 +268,7 @@ func (e *Editor) Layout(c tui.Constraints) tui.Size {
 // Cursor implements tui.CursorReporter.
 func (e *Editor) Cursor() (int, int, bool) {
 	l, b := &e.cells, &e.core.buf
-	x, y, ok := e.rowMap().caret(l.top, l.left, b.ln, b.col, b.cellsAt(b.ln, b.col, e.width))
+	x, y, ok := e.rowMap().caret(l.top, l.left, b.Ln, b.Col, b.CellsAt(b.Ln, b.Col, e.width))
 	if !ok {
 		return 0, 0, false
 	}
@@ -284,7 +285,7 @@ func (e *Editor) Cursor() (int, int, bool) {
 // instead of counting cells.
 func (e *Editor) posAt(x, y int) (ln, col int) {
 	l, b := &e.cells, &e.core.buf
-	if len(b.textLines) == 0 {
+	if len(b.Lines) == 0 {
 		return 0, 0
 	}
 	return e.rowMap().hit(l.top, l.left, x, y, e.colAtCells, e.core.normalMax)
@@ -312,7 +313,7 @@ func (e *Editor) colAtCells(cs []string, from, end, cells int) int {
 func (e *Editor) width(s string) int { return tabAware(e.measure)(s) }
 
 // view is the layout state the shared soft-wrap geometry needs. It is the
-// only place this widget's viewport is handed to textBuffer.
-func (e *Editor) view() wrapView {
-	return wrapView{w: e.cells.w, h: e.cells.h, wrap: e.cells.wrap != WrapNone, measure: e.width}
+// only place this widget's viewport is handed to txt.Buffer.
+func (e *Editor) view() txt.WrapView {
+	return txt.WrapView{W: e.cells.w, H: e.cells.h, Wrap: e.cells.wrap != WrapNone, Measure: e.width}
 }

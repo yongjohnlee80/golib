@@ -5,6 +5,7 @@ import (
 	"testing"
 
 	"github.com/yongjohnlee80/golib/tui"
+	txt "github.com/yongjohnlee80/golib/tui/widget/internal/text"
 )
 
 // oldInputKey is TextInput.handleKey at golib 6a0b271, verbatim but for its receiver and its reads
@@ -149,8 +150,8 @@ func TestTextInputKeysMatchTheOldHandlerWithNoMap(t *testing.T) {
 	}{
 		{"empty", nil, func(*TextInput) {}},
 		{"words, cursor at the end", []TextInputOption{WithInitialValue("hello big world")}, func(*TextInput) {}},
-		{"words, cursor mid", []TextInputOption{WithInitialValue("hello big world")}, func(t *TextInput) { t.buf.col = 7 }},
-		{"a selection", []TextInputOption{WithInitialValue("hello big world")}, func(t *TextInput) { t.buf.col, t.buf.anchor = 9, &taPos{col: 6} }},
+		{"words, cursor mid", []TextInputOption{WithInitialValue("hello big world")}, func(t *TextInput) { t.buf.Col = 7 }},
+		{"a selection", []TextInputOption{WithInitialValue("hello big world")}, func(t *TextInput) { t.buf.Col, t.buf.Anchor = 9, &txt.Pos{Col: 6} }},
 		{"a completer", []TextInputOption{WithInitialValue("al"), WithCompleter(completer)}, func(*TextInput) {}},
 		{"a refusing validator", []TextInputOption{WithInitialValue("x"), WithValidate(func(string) error { return fmt.Errorf("no") })}, func(*TextInput) {}},
 	} {

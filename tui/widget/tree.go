@@ -8,6 +8,7 @@ import (
 	"github.com/yongjohnlee80/golib/tui"
 	"github.com/yongjohnlee80/golib/tui/keymap"
 	"github.com/yongjohnlee80/golib/tui/style"
+	txt "github.com/yongjohnlee80/golib/tui/widget/internal/text"
 )
 
 // TreeNode represents a single node in a hierarchical [Tree] explorer.
@@ -418,7 +419,7 @@ type Tree struct {
 	on     treeCallbacks
 	cursor int
 	top    int
-	shown  viewMark // as List's: Layout reveals the cursor only when it or the height changed
+	shown  txt.ViewMark // as List's: Layout reveals the cursor only when it or the height changed
 	w, h   int
 	indent int
 	styles ListStyles
@@ -1191,7 +1192,7 @@ func (t *Tree) ensureVisible() { t.top = revealRow(t.top, t.cursor, t.h) }
 func (t *Tree) Layout(c tui.Constraints) tui.Size {
 	t.w = fillW(c)
 	t.h = boundedMax(c.MaxH, max(c.MinH, len(t.flatten()), 1))
-	if t.shown.moved([2]int{t.cursor}, [2]int{t.h}) {
+	if t.shown.Moved([2]int{t.cursor}, [2]int{t.h}) {
 		t.ensureVisible()
 	}
 	if t.selectionDue && t.ctx != nil {

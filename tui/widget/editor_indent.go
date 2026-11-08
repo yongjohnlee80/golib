@@ -5,10 +5,11 @@ import (
 
 	"github.com/yongjohnlee80/golib/highlight"
 	"github.com/yongjohnlee80/golib/indent"
+	txt "github.com/yongjohnlee80/golib/tui/widget/internal/text"
 )
 
 func (c *EditorCore) indentDecision(op indent.Operation, column int) indent.Decision {
-	line := c.buf.textLines[c.buf.ln]
+	line := c.buf.Lines[c.buf.Ln]
 	d := indent.Decision{}
 	if !c.autoIndent || c.readOnly {
 		return d
@@ -17,10 +18,10 @@ func (c *EditorCore) indentDecision(op indent.Operation, column int) indent.Deci
 	if c.source.Indenter == nil {
 		return d
 	}
-	known, incoming := c.buf.ln == 0, highlight.State(0)
-	valid := c.hl.text.verifiedFrom(c.buf.textLines, c.takeHighlightChanged)
-	if c.buf.ln > 0 && valid >= c.buf.ln && len(c.hl.text.lines) >= c.buf.ln {
-		known, incoming = true, c.hl.text.lines[c.buf.ln-1].out
+	known, incoming := c.buf.Ln == 0, highlight.State(0)
+	valid := c.hl.text.verifiedFrom(c.buf.Lines, c.takeHighlightChanged)
+	if c.buf.Ln > 0 && valid >= c.buf.Ln && len(c.hl.text.lines) >= c.buf.Ln {
+		known, incoming = true, c.hl.text.lines[c.buf.Ln-1].out
 	}
 	if c.source.States != nil {
 		c.source.States.Retain(incoming)
@@ -35,8 +36,8 @@ func (c *EditorCore) indentDecision(op indent.Operation, column int) indent.Deci
 }
 
 func (c *EditorCore) byteColumn() int {
-	cs := c.buf.lineClusters(c.buf.ln)
-	return len(strings.Join(cs[:min(c.buf.col, len(cs))], ""))
+	cs := c.buf.LineClusters(c.buf.Ln)
+	return len(strings.Join(cs[:min(c.buf.Col, len(cs))], ""))
 }
 
 func (c *EditorCore) insertIndentedNewline() {
@@ -45,18 +46,18 @@ func (c *EditorCore) insertIndentedNewline() {
 	d := c.indentDecision(indent.Newline, c.byteColumn())
 	text := "\n" + d.Prefix
 	if d.SplitClosing {
-		right := b.textLines[b.ln][c.byteColumn():]
+		right := b.Lines[b.Ln][c.byteColumn():]
 		spaces := len(indent.Leading(right))
 		if spaces > 0 {
-			b.deleteRegion(taPos{b.ln, b.col}, taPos{b.ln, b.col + spaces})
+			b.DeleteRegion(txt.Pos{Ln: b.Ln, Col: b.Col}, txt.Pos{Ln: b.Ln, Col: b.Col + spaces})
 		}
 		text += "\n" + d.ClosingPrefix
 	}
-	b.insertText(text)
+	b.InsertText(text)
 	if d.SplitClosing {
-		b.ln--
-		b.col = len(clusters(d.Prefix))
-		b.desired = -1
+		b.Ln--
+		b.Col = len(txt.Clusters(d.Prefix))
+		b.Desired = -1
 	}
 }
 
@@ -65,11 +66,11 @@ func (c *EditorCore) alignClosing() {
 		return
 	}
 	b := &c.buf
-	old := indent.Leading(b.textLines[b.ln])
+	old := indent.Leading(b.Lines[b.Ln])
 	d := c.indentDecision(indent.Closing, c.byteColumn())
 	if old == d.Prefix {
 		return
 	}
-	b.setLine(b.ln, d.Prefix+b.textLines[b.ln][len(old):])
-	b.col = max(0, b.col+len(clusters(d.Prefix))-len(clusters(old)))
+	b.SetLine(b.Ln, d.Prefix+b.Lines[b.Ln][len(old):])
+	b.Col = max(0, b.Col+len(txt.Clusters(d.Prefix))-len(txt.Clusters(old)))
 }

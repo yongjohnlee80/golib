@@ -56,13 +56,13 @@ func (c *EditorCore) insertOneShotStart() bool {
 	b := &c.buf
 	c.dotInsertEnded()
 	c.hist.close()
-	b.anchor = nil   // a table cell's selection is Insert mode's
+	b.Anchor = nil   // a table cell's selection is Insert mode's
 	c.blockIns = nil // a block's I or A ends here, its text on the first line only
-	c.oneShot = insertOneShot{on: true, ln: b.ln, depth: c.keyDepth, replace: c.replace != nil}
-	if n := len(b.lineClusters(b.ln)); n > 0 && b.col >= n {
-		b.col, c.oneShot.eol = n-1, true
+	c.oneShot = insertOneShot{on: true, ln: b.Ln, depth: c.keyDepth, replace: c.replace != nil}
+	if n := len(b.LineClusters(b.Ln)); n > 0 && b.Col >= n {
+		b.Col, c.oneShot.eol = n-1, true
 	}
-	b.desired = -1
+	b.Desired = -1
 	c.setMode(ModeNormal)
 	c.reveal()
 	c.markDirty()
@@ -100,20 +100,20 @@ func (c *EditorCore) oneShotResume() {
 	o := c.oneShot
 	c.oneShot = insertOneShot{}
 	b := &c.buf
-	if n := len(b.lineClusters(b.ln)); n > 0 && b.col == n-1 && ((o.eol && b.ln == o.ln) || o.end) {
-		b.col = n
+	if n := len(b.LineClusters(b.Ln)); n > 0 && b.Col == n-1 && ((o.eol && b.Ln == o.ln) || o.end) {
+		b.Col = n
 	}
 	resume := tui.KeyEvent{Code: 'i', Text: "i"}
 	if o.replace {
 		resume = tui.KeyEvent{Code: 'R', Text: "R"}
-		c.replace = &replaceState{ln: b.ln, col: b.col, count: 1}
+		c.replace = &replaceState{ln: b.Ln, col: b.Col, count: 1}
 	}
 	if !c.dot.replaying {
 		c.dot = dotRecorder{on: true, inInsert: true, rev: c.rev, last: c.dot.last,
 			atoms: []dotAtom{{kind: dotKey, key: resume}}}
 	}
 	c.enterInsert()
-	b.desired = -1
+	b.Desired = -1
 	c.reveal()
 	c.markDirty()
 }

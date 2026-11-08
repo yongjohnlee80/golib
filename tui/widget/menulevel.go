@@ -5,6 +5,7 @@ import (
 	"slices"
 
 	"github.com/yongjohnlee80/golib/tui"
+	txt "github.com/yongjohnlee80/golib/tui/widget/internal/text"
 )
 
 // LEVELS AND GEOMETRY.
@@ -37,9 +38,9 @@ type menuPopup struct {
 // shown. A row outside the window is neither painted nor declared, so the selection the keys move
 // to has to be inside it, or it would be a row nobody can see and no submenu can anchor to.
 type levelView struct {
-	top, h int      // the first row shown, and the lines the last layout gave the rows
-	sel    ItemID   // the selection last revealed: a new one is revealed wherever it sits
-	shown  viewMark // the selection's place and the height last revealed, as List's cursor
+	top, h int          // the first row shown, and the lines the last layout gave the rows
+	sel    ItemID       // the selection last revealed: a new one is revealed wherever it sits
+	shown  txt.ViewMark // the selection's place and the height last revealed, as List's cursor
 }
 
 // place is the first of rows' visible rows shown in h lines: moved to reveal sel when sel is one of
@@ -50,7 +51,7 @@ func (v *levelView) place(rows []MenuItemModel, sel ItemID, h int) int {
 	v.h = h
 	vis := visibleRows(rows)
 	at := slices.IndexFunc(vis, func(i int) bool { return rows[i].ID == sel })
-	moved := v.shown.moved([2]int{at}, [2]int{h})
+	moved := v.shown.Moved([2]int{at}, [2]int{h})
 	if at >= 0 && (moved || sel != v.sel) {
 		v.top = revealRow(v.top, at, h)
 		v.sel = sel

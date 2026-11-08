@@ -56,10 +56,10 @@ func (e *Editor) renderGutter(s tui.Surface) {
 	}
 	y := 0
 	m := e.rowMap().settled()
-	for ln := l.top; ln < len(b.textLines) && y < h; ln++ {
+	for ln := l.top; ln < len(b.Lines) && y < h; ln++ {
 		num := fmt.Sprint(ln + 1)
 		st := dim
-		if ln == b.ln {
+		if ln == b.Ln {
 			st = l.styles.Text
 		}
 		drawText(s, l.gutter-gutterGap-len(num), y, num, st)
@@ -97,8 +97,8 @@ func (e *Editor) renderText(s tui.Surface) {
 	// ends is where each screen row's text ends, for the ruler
 	ends := make([]int, sz.H)
 	y := 0
-	for ln := l.top; ln < len(c.buf.textLines) && y < sz.H; ln++ {
-		cs := c.buf.lineClusters(ln)
+	for ln := l.top; ln < len(c.buf.Lines) && y < sz.H; ln++ {
+		cs := c.buf.LineClusters(ln)
 		if l.wrap == WrapNone {
 			lineFill(y, ln)
 			x := -l.left
@@ -319,7 +319,7 @@ func (e *Editor) renderRenderedGutter(s tui.Surface, r *renderedLayout, dim styl
 		}
 		num := fmt.Sprint(ln + 1)
 		st := dim
-		if ln == b.ln {
+		if ln == b.Ln {
 			st = l.styles.Text
 		}
 		drawText(s, l.gutter-gutterGap-len(num), y, num, st)
