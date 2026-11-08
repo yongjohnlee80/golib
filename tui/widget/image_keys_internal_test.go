@@ -62,7 +62,7 @@ func oldEscCloses(e tui.KeyEvent) string {
 }
 
 func TestFloatAndPopupEscMatchTheOldTestWithNoMap(t *testing.T) {
-	l, p := &floatLayer{}, &popupLayer{}
+	l, p := &floatLayer{}, &PopupLayer{}
 	keyGridDiff(t, "Float", oldEscCloses, func(e tui.KeyEvent) string {
 		_, ok := l.Context().KeyCommand(e, FloatClose)
 		return map[bool]string{true: "close"}[ok]

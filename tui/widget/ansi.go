@@ -53,7 +53,7 @@ import (
 //  1. Pure Loop-Goroutine Concurrency Contract:
 //     sgrInterp is strictly loop-goroutine-owned and stateful. It is called from the
 //     main application loop during [BufferView.ingest] and contains no locks.
-//     Thread-safe ingestion from background goroutines is handled by [bufWriter].
+//     Thread-safe ingestion from background goroutines is handled by [BufferWriter].
 //  2. Bounded Memory Invariant:
 //     The pending escape buffer never exceeds [maxEscape] (128 bytes). Sequences
 //     exceeding this limit reset parser mode to [escNone] and discard accumulated bytes.

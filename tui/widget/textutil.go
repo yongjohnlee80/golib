@@ -23,8 +23,10 @@ const (
 	ElidePath
 )
 
-// elide fits s into w cells, dropping what does not fit where mode says.
-func elide(s string, w int, mode Elide, measure func(string) int) string {
+// ElideText fits s into w cells, dropping what does not fit where mode says (Elide): an ellipsis
+// (…) takes the place of the end, the start, the middle, or a path's start up to a "/"; ElideNone
+// cuts at the edge with none. A widget of your own fits a label into its cells with it.
+func ElideText(s string, w int, mode Elide, measure func(string) int) string {
 	if w <= 0 {
 		return ""
 	}

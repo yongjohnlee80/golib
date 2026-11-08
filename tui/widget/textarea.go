@@ -160,9 +160,10 @@ func (t *TextArea) cellsAt(ln, col int) int {
 	return t.buf.CellsAt(ln, col, t.Measure)
 }
 
-// insert places text at the cursor (replacing any selection) as one atomic
-// edit; newlines split lines. Emits one ChangeEvent.
-func (t *TextArea) insert(text string) {
+// InsertText places text at the cursor (replacing any selection) as one atomic
+// edit; newlines split lines. Emits one ChangeEvent. A view of your own that edits through a
+// TextArea (a table's open cell) types with it.
+func (t *TextArea) InsertText(text string) {
 	t.buf.InsertText(text)
 	t.edited()
 }
@@ -172,7 +173,7 @@ func (t *TextArea) edited() {
 	t.buf.Desired = -1
 	t.ensureVisible()
 	t.MarkDirty()
-	if publishChange(t.ctx, t.NodeID(), t.Value) {
+	if PublishChange(t.ctx, t.NodeID(), t.Value) {
 		t.changeValues++
 	}
 }
@@ -196,7 +197,7 @@ func (t *TextArea) vertical(delta int, extend bool) {
 func (t *TextArea) HandleEvent(ev tui.Event) bool {
 	switch e := ev.(type) {
 	case tui.PasteEvent:
-		t.insert(e.Text)
+		t.InsertText(e.Text)
 		return true
 	case tui.KeyEvent:
 		return t.handleKey(e)
@@ -224,7 +225,7 @@ func (t *TextArea) handleKey(e tui.KeyEvent) bool {
 	cmd, ok := t.keyCommand(e)
 	if !ok {
 		if e.Text != "" && e.Mods&kit.NonTextMods == 0 && e.Code != tui.KeyTab {
-			t.insert(e.Text)
+			t.InsertText(e.Text)
 			return true
 		}
 		return false
@@ -244,7 +245,7 @@ func (t *TextArea) handleKey(e tui.KeyEvent) bool {
 	}
 	switch id {
 	case TextAreaNewline.ID:
-		t.insert("\n") // newline — no submit event (Q5)
+		t.InsertText("\n") // newline — no submit event (Q5)
 	case TextAreaBackspace.ID, TextAreaDelete.ID:
 		lo, hi, ok := t.buf.Selection()
 		switch {

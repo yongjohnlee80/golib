@@ -103,7 +103,7 @@ type BufferView struct {
 	w, h      int
 
 	alive bool
-	wr    *bufWriter
+	wr    *BufferWriter
 
 	textSt style.Style
 }
@@ -157,7 +157,7 @@ func NewBufferView(opts ...BufferViewOption) *BufferView {
 		}
 	}
 	v.interp.passthrough = v.passthrough
-	v.wr = newBufWriter(func(b []byte) {
+	v.wr = NewBufferWriter(func(b []byte) {
 		if v.alive {
 			v.ingest(b)
 		}
@@ -170,10 +170,10 @@ func NewBufferView(opts ...BufferViewOption) *BufferView {
 func (v *BufferView) Init(ctx *tui.Context) {
 	v.Base.Init(ctx)
 	v.alive = true
-	v.wr.bind(ctx.App())
+	v.wr.Bind(ctx.App())
 	ctx.OnUnmount(func() {
 		v.alive = false
-		v.wr.close()
+		v.wr.Close()
 	})
 }
 

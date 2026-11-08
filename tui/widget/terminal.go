@@ -180,7 +180,7 @@ type Terminal struct {
 	lifetimes []*TerminalStopResult // active/closing/error generations; completed successes are pruned at Start
 	shutdown  *TerminalShutdownResult
 	gen       int // the program's generation: output and exits of older ones are dropped
-	wr        *bufWriter
+	wr        *BufferWriter
 	in        *inputQueue
 	pumps     sync.WaitGroup
 	running   bool

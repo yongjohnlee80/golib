@@ -92,10 +92,10 @@ func TestTextUtilElide(t *testing.T) {
 		{"shared/adrs/0206-store.md", 25, ElidePath, path},
 		{"日本語メモ", 6, ElideMiddle, "日…モ"}, // 5 cells: 本 or メ would make 7
 	} {
-		if got := elide(c.s, c.w, c.mode, cells); got != c.want {
+		if got := ElideText(c.s, c.w, c.mode, cells); got != c.want {
 			t.Errorf("elide(%q, %d, %d) = %q, want %q", c.s, c.w, c.mode, got, c.want)
 		}
-		if cells(elide(c.s, c.w, c.mode, cells)) > max(c.w, 0) {
+		if cells(ElideText(c.s, c.w, c.mode, cells)) > max(c.w, 0) {
 			t.Errorf("elide(%q, %d, %d) is wider than %d", c.s, c.w, c.mode, c.w)
 		}
 	}
