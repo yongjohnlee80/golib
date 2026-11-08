@@ -1,9 +1,9 @@
-package widget
+package text
 
 import "github.com/yongjohnlee80/golib/tui"
 
-// clusters splits s into grapheme clusters (UAX #29 via tui.Graphemes).
-func clusters(s string) []string {
+// Clusters splits s into grapheme clusters (UAX #29 via tui.Graphemes).
+func Clusters(s string) []string {
 	if s == "" {
 		return nil
 	}
@@ -14,9 +14,9 @@ func clusters(s string) []string {
 	return out
 }
 
-// cellsBefore is the display width of cs[:i] under the caller's measure
+// CellsBefore is the display width of cs[:i] under the caller's measure
 // (Surface.StringWidth in Render, Base.measure elsewhere).
-func cellsBefore(cs []string, i int, measure func(string) int) int {
+func CellsBefore(cs []string, i int, measure func(string) int) int {
 	w := 0
 	for j := 0; j < i && j < len(cs); j++ {
 		w += measure(cs[j])
@@ -24,11 +24,11 @@ func cellsBefore(cs []string, i int, measure func(string) int) int {
 	return w
 }
 
-// wrapRanges wraps a cluster slice into rows of at most w cells, breaking
+// WrapRanges wraps a cluster slice into rows of at most w cells, breaking
 // at spaces when possible and mid-word otherwise. It returns [start, end)
 // cluster index ranges per row; the single break space between two
 // word-wrapped rows belongs to no row. Empty input yields one empty row.
-func wrapRanges(cs []string, w int, measure func(string) int) [][2]int {
+func WrapRanges(cs []string, w int, measure func(string) int) [][2]int {
 	if len(cs) == 0 || w <= 0 {
 		return [][2]int{{0, len(cs)}}
 	}

@@ -8,6 +8,7 @@ import (
 	htmlparse "github.com/yongjohnlee80/golib/parse/html"
 	"github.com/yongjohnlee80/golib/parse/markdown"
 	"github.com/yongjohnlee80/golib/tui"
+	txt "github.com/yongjohnlee80/golib/tui/widget/internal/text"
 )
 
 // MARKDOWN BLOCKS — how a Markdown buffer's lines split into the blocks a Rendered view lays out,
@@ -308,7 +309,7 @@ func (m *MarkdownMetadata) Prepare(lines []string) {
 				m.changed = -1
 				for ln := first; ln <= last; ln++ {
 					if m.hidden[ln] {
-						mask := make([]bool, len(clusters(lines[ln])))
+						mask := make([]bool, len(txt.Clusters(lines[ln])))
 						for i := range mask {
 							mask[i] = true
 						}

@@ -15,16 +15,3 @@ tui/container_multi.go	MultiChild.remove -> indexOf
 tui/container_multi.go	MultiChild.Remove -> remove
 tui/stack.go	Stack.AddAligned -> setLayer
 tui/stack.go	Stack.AddAt -> setLayer
-tui/widget/textbuffer.go	textBuffer.cellsAt -> lineClusters
-tui/widget/textbuffer.go	textBuffer.clampCol -> lineClusters
-tui/widget/textbuffer.go	textBuffer.colForCells -> lineClusters
-tui/widget/textbuffer.go	textBuffer.deleteRegion -> lineClusters
-tui/widget/textbuffer.go	textBuffer.insertText -> deleteRegion
-tui/widget/textbuffer.go	textBuffer.insertText -> lineClusters
-tui/widget/textbuffer.go	textBuffer.insertText -> selection
-tui/widget/textbuffer.go	textBuffer.moveCursor -> clampCol
-tui/widget/textbuffer.go	textBuffer.textIn -> lineClusters
-tui/widget/textbuffer.go	textBuffer.verticalTarget -> cellsAt
-tui/widget/textbuffer.go	textBuffer.verticalTarget -> colForCells
-tui/widget/textbuffer.go	textBuffer.wordLeft -> lineClusters
-tui/widget/textbuffer.go	textBuffer.wordRight -> lineClusters

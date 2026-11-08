@@ -4,6 +4,7 @@ import (
 	"strings"
 
 	"github.com/yongjohnlee80/golib/highlight"
+	txt "github.com/yongjohnlee80/golib/tui/widget/internal/text"
 )
 
 // BUFFERS — an open document, apart from the editors that show it.
@@ -14,14 +15,14 @@ import (
 // buffer at a time (SetBuffer) and keeps its own cursor in each buffer it has shown, as a place.
 //
 //	Buffer ──► bufferState ◄──────── EditorCore (embeds the shown buffer's, by pointer)
-//	             ├── text *bufferText ◄── EditorCore.buf (a textBuffer: a cursor over it)
+//	             ├── text *txt.Doc ◄── EditorCore.buf (a txt.Buffer: a cursor over it)
 //	             ├── hist, marks, rev, savedRev, revs, hlFrom, source, sourceFactory, jumpDoc
 //	             ├── hlText           ◄── EditorCore.hl.text (the editor paints its own styles)
 //	             ├── editors          the editors that show it now
 //	             └── places           where each editor that has shown it left its cursor
 //
-// bufferState and bufferText are data only, with no methods: an EditorCore embeds the shown
-// buffer's bufferState, and its textBuffer embeds the text, so c.hist, c.marks, c.rev and c.buf.textLines
+// bufferState and txt.Doc are data only, with no methods: an EditorCore embeds the shown
+// buffer's bufferState, and its txt.Buffer embeds the text, so c.hist, c.marks, c.rev and c.buf.Lines
 // read as they did when the core held them itself, and no method is ever promoted.
 //
 // An edit made through any editor is logged once in the buffer, and followEdits drains it once:
@@ -36,7 +37,7 @@ import (
 // shows the buffer.
 type bufferState struct {
 	handle *Buffer // the one Buffer that is this state's: what EditorCore.Buffer returns
-	text   *bufferText
+	text   *txt.Doc
 	hist   editHistory // undo/redo
 	// marks is a–z and the previous jump's place: Vim's are per buffer
 	marks markSet
@@ -67,7 +68,7 @@ type bufferState struct {
 
 // place is an editor's cursor in a buffer it is not showing: restored by SetBuffer, moved by edits.
 type place struct {
-	at      taPos
+	at      txt.Pos
 	desired int // the sticky column, -1 unset
 	top     int // the first line the editor showed (EditorViewport.VisibleLines); 0 without one
 }
@@ -75,15 +76,15 @@ type place struct {
 // newBufferState is an empty document: one empty line, undo on, its edits logged.
 func newBufferState() *bufferState {
 	s := &bufferState{
-		text:   newBufferText(),
+		text:   txt.NewDoc(),
 		hist:   editHistory{enabled: true},
-		hlFrom: noChange,
+		hlFrom: txt.NoChange,
 		places: map[*EditorCore]place{},
 
 		findPlain: map[*EditorCore]bool{},
 	}
-	s.text.log.on = true // the marks and the other editors' cursors follow the line structure's changes
-	s.text.undoRec = &s.hist
+	s.text.Log.On = true // the marks and the other editors' cursors follow the line structure's changes
+	s.text.UndoRec = &s.hist
 	return s
 }
 
@@ -116,9 +117,9 @@ func NewBuffer(opts ...BufferOption) *Buffer {
 // BufferText seeds the buffer's text, normalizing newlines: unmodified, with no undo history.
 func BufferText(text string) BufferOption {
 	return func(b *Buffer) {
-		cur := textBuffer{bufferText: b.s.text}
-		cur.setValue(text)
-		b.s.text.log.take() // a document's first text is no edit for anything to follow
+		cur := txt.Buffer{Doc: b.s.text}
+		cur.SetValue(text)
+		b.s.text.Log.Take() // a document's first text is no edit for anything to follow
 	}
 }
 
@@ -140,7 +141,7 @@ func BufferSourceFactory(factory func() highlight.Source) BufferOption {
 func BufferName(doc string) BufferOption { return func(b *Buffer) { b.s.jumpDoc = doc } }
 
 // Value returns the text, lines joined with newlines.
-func (b *Buffer) Value() string { return strings.Join(b.s.text.textLines, "\n") }
+func (b *Buffer) Value() string { return strings.Join(b.s.text.Lines, "\n") }
 
 // Modified reports whether the text differs from the saved revision (MarkSaved).
 func (b *Buffer) Modified() bool { return b.s.rev != b.s.savedRev }
@@ -163,18 +164,18 @@ func (b *Buffer) Shown() bool { return len(b.s.editors) > 0 }
 
 // followPos moves p with one change to the line structure. gone reports that p's line was removed
 // (or the document replaced): a mark is then erased, and a cursor moves instead (followCursorPos).
-func followPos(p *taPos, e lineEdit) (gone bool) {
+func followPos(p *txt.Pos, e txt.LineEdit) (gone bool) {
 	switch {
-	case e.reset:
+	case e.Reset:
 		return true
-	case e.move:
-		if p.ln == e.from && (e.all || p.col >= e.cut) {
-			p.ln, p.col = e.to, e.at+max(p.col-e.cut, 0)
+	case e.Move:
+		if p.Ln == e.From && (e.All || p.Col >= e.Cut) {
+			p.Ln, p.Col = e.To, e.At+max(p.Col-e.Cut, 0)
 		}
-	case p.ln >= e.ln && p.ln < e.ln+e.del:
+	case p.Ln >= e.Ln && p.Ln < e.Ln+e.Del:
 		return true
-	case p.ln >= e.ln+e.del:
-		p.ln += e.ins - e.del
+	case p.Ln >= e.Ln+e.Del:
+		p.Ln += e.Ins - e.Del
 	}
 	return false
 }
@@ -182,43 +183,43 @@ func followPos(p *taPos, e lineEdit) (gone bool) {
 // followCursorPos moves a cursor-like position with one change: as followPos, except that a cursor
 // on a removed line goes to the start of the first line after the change (the line that took the
 // removed lines' place), and a replaced document puts it at the start.
-func followCursorPos(p *taPos, e lineEdit) {
+func followCursorPos(p *txt.Pos, e txt.LineEdit) {
 	if !followPos(p, e) {
 		return
 	}
-	if e.reset {
-		*p = taPos{}
+	if e.Reset {
+		*p = txt.Pos{}
 		return
 	}
-	p.ln, p.col = e.ln+e.ins, 0 // clamped into the text by whoever shows it next
+	p.Ln, p.Col = e.Ln+e.Ins, 0 // clamped into the text by whoever shows it next
 }
 
 // followEditor moves another editor's cursor, its Visual anchor and its first shown line with a
 // change it did not make.
-func followEditor(o *EditorCore, e lineEdit) {
-	at := taPos{o.buf.ln, o.buf.col}
+func followEditor(o *EditorCore, e txt.LineEdit) {
+	at := txt.Pos{Ln: o.buf.Ln, Col: o.buf.Col}
 	followCursorPos(&at, e)
-	o.buf.ln, o.buf.col = at.ln, at.col
-	if o.buf.anchor != nil {
-		followCursorPos(o.buf.anchor, e)
+	o.buf.Ln, o.buf.Col = at.Ln, at.Col
+	if o.buf.Anchor != nil {
+		followCursorPos(o.buf.Anchor, e)
 	}
 	followCursorPos(&o.vAnchor, e)
 	if v, ok := o.layout.(EditorViewport); ok {
 		first, _ := v.VisibleLines()
-		top := taPos{ln: first}
+		top := txt.Pos{Ln: first}
 		followCursorPos(&top, e)
-		if d := top.ln - first; d != 0 {
+		if d := top.Ln - first; d != 0 {
 			v.ScrollLines(d) // the same text stays at the top of the view
 		}
 	}
 }
 
 // followPlace moves an editor's place in a buffer it is not showing.
-func followPlace(p place, e lineEdit) place {
+func followPlace(p place, e txt.LineEdit) place {
 	followCursorPos(&p.at, e)
-	top := taPos{ln: p.top}
+	top := txt.Pos{Ln: p.top}
 	followCursorPos(&top, e)
-	p.top = top.ln
+	p.top = top.Ln
 	return p
 }
 

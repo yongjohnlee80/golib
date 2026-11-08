@@ -4,24 +4,25 @@ import (
 	"strings"
 
 	"github.com/yongjohnlee80/golib/tui"
+	txt "github.com/yongjohnlee80/golib/tui/widget/internal/text"
 )
 
 // visualRange returns the INCLUSIVE charwise selection as an exclusive
 // [lo, hiEx) buffer region.
-func (c *EditorCore) visualRange() (lo, hiEx taPos) {
-	a, b := ordered(c.vAnchor, taPos{ln: c.buf.ln, col: c.buf.col})
-	n := len(c.buf.lineClusters(b.ln))
-	if (c.vEOL && b.col >= n || n == 0) && b.ln+1 < len(c.buf.textLines) {
+func (c *EditorCore) visualRange() (lo, hiEx txt.Pos) {
+	a, b := txt.Ordered(c.vAnchor, txt.Pos{Ln: c.buf.Ln, Col: c.buf.Col})
+	n := len(c.buf.LineClusters(b.Ln))
+	if (c.vEOL && b.Col >= n || n == 0) && b.Ln+1 < len(c.buf.Lines) {
 		// the line's break is selected: Select's, or an empty line's, as Vim's inclusive Visual
 		// takes the break of an empty line it ends on
-		return a, taPos{ln: b.ln + 1}
+		return a, txt.Pos{Ln: b.Ln + 1}
 	}
-	return a, taPos{ln: b.ln, col: min(b.col+1, n)}
+	return a, txt.Pos{Ln: b.Ln, Col: min(b.Col+1, n)}
 }
 
 // visualLines returns the inclusive line span of a line-wise selection.
 func (c *EditorCore) visualLines() (lo, hi int) {
-	lo, hi = c.vAnchor.ln, c.buf.ln
+	lo, hi = c.vAnchor.Ln, c.buf.Ln
 	if lo > hi {
 		lo, hi = hi, lo
 	}
@@ -205,11 +206,11 @@ func (c *EditorCore) deleteEntry(e regEntry, lines bool) {
 // deleteLines removes [lo, hi] inclusive into the register (linewise).
 func (c *EditorCore) deleteLines(lo, hi int) {
 	c.beginGroup()
-	c.regDelete(strings.Join(c.buf.textLines[lo:hi+1], "\n"), true)
-	c.buf.removeLines(lo, hi+1) // every line gone leaves one empty line
-	c.buf.ln = min(lo, len(c.buf.textLines)-1)
-	c.buf.col = 0
-	c.buf.anchor = nil
+	c.regDelete(strings.Join(c.buf.Lines[lo:hi+1], "\n"), true)
+	c.buf.RemoveLines(lo, hi+1) // every line gone leaves one empty line
+	c.buf.Ln = min(lo, len(c.buf.Lines)-1)
+	c.buf.Col = 0
+	c.buf.Anchor = nil
 	c.clampNormal()
 	c.edited()
 }
@@ -239,7 +240,7 @@ func (c *EditorCore) putEntry(e regEntry, after bool, count int) {
 	count = max(count, 1)
 	c.beginGroup()
 	if linewise {
-		at := c.buf.ln
+		at := c.buf.Ln
 		if from, to, _, ok := c.foldLayout().FoldOf(at); ok { // around a fold, as Vim puts
 			at = from
 			if after {
@@ -249,17 +250,17 @@ func (c *EditorCore) putEntry(e regEntry, after bool, count int) {
 			at++
 		}
 		newLines := strings.Split(strings.Repeat(text+"\n", count-1)+text, "\n")
-		c.buf.insertLines(at, newLines...)
-		c.buf.ln, c.buf.col = at, 0
+		c.buf.InsertLines(at, newLines...)
+		c.buf.Ln, c.buf.Col = at, 0
 	} else {
-		col := c.buf.col
-		if after && len(c.buf.lineClusters(c.buf.ln)) > 0 {
+		col := c.buf.Col
+		if after && len(c.buf.LineClusters(c.buf.Ln)) > 0 {
 			col++
 		}
-		c.buf.col = c.buf.clampCol(c.buf.ln, col)
-		c.buf.insertText(strings.Repeat(text, count))
+		c.buf.Col = c.buf.ClampCol(c.buf.Ln, col)
+		c.buf.InsertText(strings.Repeat(text, count))
 		// vim leaves the cursor ON the last pasted cluster.
-		c.buf.col = max(0, c.buf.col-1)
+		c.buf.Col = max(0, c.buf.Col-1)
 		c.clampNormal()
 	}
 	c.edited()
@@ -288,7 +289,7 @@ func (c *EditorCore) readClipboardPut(reg rune, after bool, count int) bool {
 	if c.ctx == nil || c.dot.replaying || c.macro.playing > 0 {
 		return false
 	}
-	p := clipPut{reg: reg, after: after, count: count, rev: c.rev, ln: c.buf.ln, col: c.buf.col}
+	p := clipPut{reg: reg, after: after, count: count, rev: c.rev, ln: c.buf.Ln, col: c.buf.Col}
 	if c.dot.on && !c.dot.inInsert {
 		p.keys = append([]dotAtom(nil), c.dot.atoms...)
 	}
@@ -314,10 +315,10 @@ func (c *EditorCore) clipboardAnswered(read tui.ClipboardRead, text string, err 
 		return
 	}
 	c.clipPut = nil
-	if c.rev != p.rev || c.buf.ln != p.ln || c.buf.col != p.col || c.readOnly {
+	if c.rev != p.rev || c.buf.Ln != p.ln || c.buf.Col != p.col || c.readOnly {
 		return
 	}
-	ln, col := c.buf.ln, c.buf.col
+	ln, col := c.buf.Ln, c.buf.Col
 	defer c.cursorMoved(ln, col)
 	e, _ := c.reg.get(p.reg)
 	if err == nil {

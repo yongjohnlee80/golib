@@ -1,6 +1,9 @@
 package widget
 
-import "github.com/yongjohnlee80/golib/tui"
+import (
+	"github.com/yongjohnlee80/golib/tui"
+	txt "github.com/yongjohnlee80/golib/tui/widget/internal/text"
+)
 
 // THE TEXTINPUT'S VIEW: the one-row viewport, its horizontal scroll, the caret cell and the paint,
 // a mask's rune standing in for every cluster.
@@ -15,7 +18,7 @@ func (t *TextInput) renderCluster(cl string) string {
 
 // cellAt is the display offset (cells) of cluster index i in painted form.
 func (t *TextInput) cellAt(i int) int {
-	return cellsBefore(t.clusters(), i, func(cl string) int { return t.measure(t.renderCluster(cl)) })
+	return txt.CellsBefore(t.clusters(), i, func(cl string) int { return t.measure(t.renderCluster(cl)) })
 }
 
 // ensureVisible adjusts the horizontal scroll so the cursor cell is inside

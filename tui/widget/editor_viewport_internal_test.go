@@ -5,6 +5,7 @@ import (
 	"testing"
 
 	"github.com/yongjohnlee80/golib/tui"
+	txt "github.com/yongjohnlee80/golib/tui/widget/internal/text"
 )
 
 // viewportEditor is a soft-wrapped Editor laid out 10 cells wide and h rows tall, over lines of 3,
@@ -14,9 +15,9 @@ func viewportEditor(t *testing.T, h int) *Editor {
 	text := strings.Repeat("a", 25) + "\nb\n" + strings.Repeat("c", 15) + "\nd\ne"
 	e := NewEditor(WithCore(CoreInitialText(text)), WithEditorWrap(WrapSoft))
 	e.Layout(tui.Constraints{MaxW: 10, MaxH: h})
-	v := e.view().settled(e.core.buf.textLines)
+	v := e.view().Settled(e.core.buf.Lines)
 	for i, want := range []int{3, 1, 2, 1, 1} {
-		if got := wrapRowsOfLine(e.core.buf.textLines, i, v); got != want {
+		if got := txt.WrapRowsOfLine(e.core.buf.Lines, i, v); got != want {
 			t.Fatalf("the fixture's line %d takes %d rows, want %d", i, got, want)
 		}
 	}
@@ -48,7 +49,7 @@ func TestCellLayoutVisibleLinesCountWrappedRows(t *testing.T) {
 		t.Fatalf("4 rows: %v, want [0 1]", got)
 	}
 	e.cells.h = 0
-	e.core.buf.ln = 3
+	e.core.buf.Ln = 3
 	if got := shownLines(e); got != [2]int{3, 3} {
 		t.Fatalf("before a layout: %v, want the cursor's line", got)
 	}

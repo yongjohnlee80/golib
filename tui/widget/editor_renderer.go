@@ -213,13 +213,13 @@ type renderedLayout struct {
 // on changed (its key).
 func (e *Editor) renderedRows(width int) *renderedLayout {
 	l := &e.cells
-	lines := e.core.buf.textLines
+	lines := e.core.buf.Lines
 	key := renderedKey{gen: e.renderGen, buf: e.core.Buffer(), rev: e.core.Revision(), width: width, typing: -1, theme: e.cellTheme(), pics: e.picGen, relay: e.relayGen}
 	if ctx := e.Context(); ctx != nil {
 		key.policy = ctx.WidthPolicy()
 	}
 	if l.typing() {
-		key.typing = e.core.buf.ln
+		key.typing = e.core.buf.Ln
 	}
 	for _, r := range e.laid {
 		if r != nil && r.key == key {

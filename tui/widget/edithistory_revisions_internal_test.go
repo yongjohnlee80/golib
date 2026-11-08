@@ -71,7 +71,7 @@ func TestUndoRestoresEachRevisionsText(t *testing.T) {
 		for range 300 {
 			step = revSteps[r.IntN(len(revSteps))]
 			if step == "api" {
-				ln := r.IntN(len(c.buf.textLines))
+				ln := r.IntN(len(c.buf.Lines))
 				if r.IntN(2) == 0 {
 					_, _ = c.Insert(TextPos{Line: ln}, words[r.IntN(len(words))]+"\n")
 				} else {

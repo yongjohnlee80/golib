@@ -31,7 +31,7 @@ func TestSetKeysetSettlesHeldChordRune(t *testing.T) {
 	if e.core.keys.pendingRune != 'j' {
 		t.Fatalf("pendingRune = %q, want 'j' — the fixture never armed the chord", e.core.keys.pendingRune)
 	}
-	if got := e.core.buf.value(); got != "ab" {
+	if got := e.core.buf.Value(); got != "ab" {
 		t.Fatalf("value = %q, want %q while the rune is held", got, "ab")
 	}
 
@@ -40,7 +40,7 @@ func TestSetKeysetSettlesHeldChordRune(t *testing.T) {
 	if e.core.keys.pendingRune != 0 {
 		t.Errorf("pendingRune = %q, want 0 — the chord outlived its profile", e.core.keys.pendingRune)
 	}
-	if got := e.core.buf.value(); got != "abj" {
+	if got := e.core.buf.Value(); got != "abj" {
 		t.Errorf("value = %q, want %q — the held rune was dropped instead of settled", got, "abj")
 	}
 }
@@ -67,7 +67,7 @@ func TestSetKeysetCountDroppedOnSwitchKeptOnNoOp(t *testing.T) {
 	// And the next Vim command counts once, not three times.
 	e.Core().SetKeyset(KeysetVim)
 	pressRune(e, 'x')
-	if got := e.core.buf.value(); got != "bcdef" {
+	if got := e.core.buf.Value(); got != "bcdef" {
 		t.Errorf("value = %q, want %q — `x` acted on a count nobody typed", got, "bcdef")
 	}
 }
@@ -88,11 +88,11 @@ func TestSetKeysetDropsOperatorPrefix(t *testing.T) {
 
 	e.Core().SetKeyset(KeysetVim)
 	pressRune(e, 'd') // a FRESH prefix, not the completion of the old one
-	if got := e.core.buf.value(); got != "one\ntwo" {
+	if got := e.core.buf.Value(); got != "one\ntwo" {
 		t.Errorf("value = %q, want both lines — the stale prefix completed a dd", got)
 	}
 	pressRune(e, 'd')
-	if got := e.core.buf.value(); got != "two" {
+	if got := e.core.buf.Value(); got != "two" {
 		t.Errorf("value = %q, want %q — a fresh dd did not delete the line", got, "two")
 	}
 }

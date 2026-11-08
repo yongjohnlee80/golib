@@ -12,6 +12,7 @@ import (
 
 	"github.com/yongjohnlee80/golib/errs"
 	"github.com/yongjohnlee80/golib/tui/style"
+	txt "github.com/yongjohnlee80/golib/tui/widget/internal/text"
 )
 
 // TABLE CSV — a CSV or TSV document in an EditorCore as a TableSource, a
@@ -571,7 +572,7 @@ func prevRecord(all []recordWrite, i int) *csvRecord {
 // with no line ending) a line's end, so off is never inside a cluster.
 func (t *TableCSV) posOf(off int) TextPos {
 	line := sort.Search(len(t.starts), func(i int) bool { return t.starts[i] > off }) - 1
-	return TextPos{Line: line, Col: len(clusters(t.text[t.starts[line]:off]))}
+	return TextPos{Line: line, Col: len(txt.Clusters(t.text[t.starts[line]:off]))}
 }
 
 // SetCell sets a cell; row -1 is a field's title.

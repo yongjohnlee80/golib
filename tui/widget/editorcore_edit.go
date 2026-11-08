@@ -4,6 +4,7 @@ import (
 	"io"
 
 	"github.com/yongjohnlee80/golib/errs"
+	txt "github.com/yongjohnlee80/golib/tui/widget/internal/text"
 )
 
 // THE EDITOR CORE FUNCTIONS — what a host, a script or an agent edits a document through.
@@ -44,18 +45,18 @@ func (c *EditorCore) newRevision() uint64 {
 }
 
 // clampPos keeps p inside the text.
-func (c *EditorCore) clampPos(p TextPos) taPos {
-	ln := max(0, min(p.Line, len(c.buf.textLines)-1))
-	return taPos{ln: ln, col: c.buf.clampCol(ln, p.Col)}
+func (c *EditorCore) clampPos(p TextPos) txt.Pos {
+	ln := max(0, min(p.Line, len(c.buf.Lines)-1))
+	return txt.Pos{Ln: ln, Col: c.buf.ClampCol(ln, p.Col)}
 }
 
 // clampRange orders and clamps r.
-func (c *EditorCore) clampRange(r TextRange) (lo, hi taPos) {
-	return ordered(c.clampPos(r.From), c.clampPos(r.To))
+func (c *EditorCore) clampRange(r TextRange) (lo, hi txt.Pos) {
+	return txt.Ordered(c.clampPos(r.From), c.clampPos(r.To))
 }
 
 // Cursor is the cursor's position.
-func (c *EditorCore) Cursor() TextPos { return TextPos{Line: c.buf.ln, Col: c.buf.col} }
+func (c *EditorCore) Cursor() TextPos { return TextPos{Line: c.buf.Ln, Col: c.buf.Col} }
 
 // SetCursor moves the cursor to p, clamped, and reveals it, as SetLine does.
 func (c *EditorCore) SetCursor(p TextPos) { c.SetLine(p.Line, p.Col) }
@@ -63,7 +64,7 @@ func (c *EditorCore) SetCursor(p TextPos) { c.SetLine(p.Line, p.Col) }
 // TextIn is the text of r, line breaks as "\n".
 func (c *EditorCore) TextIn(r TextRange) string {
 	lo, hi := c.clampRange(r)
-	return c.buf.textIn(lo, hi)
+	return c.buf.TextIn(lo, hi)
 }
 
 // Select shows r as the selection: the Visual selection, exactly [r.From, r.To). A range that ends
@@ -79,16 +80,16 @@ func (c *EditorCore) Select(r TextRange) {
 	// the Visual selection includes the cluster under the cursor: end on the one before hi, or,
 	// for a range ending at a line's start, on the previous line's break
 	end, eol := hi, false
-	if end.col > 0 {
-		end.col--
+	if end.Col > 0 {
+		end.Col--
 	} else {
-		end.ln--
-		end.col, eol = len(c.buf.lineClusters(end.ln)), true
+		end.Ln--
+		end.Col, eol = len(c.buf.LineClusters(end.Ln)), true
 	}
-	ln, col := c.buf.ln, c.buf.col
+	ln, col := c.buf.Ln, c.buf.Col
 	defer c.cursorMoved(ln, col)
 	c.vAnchor = lo
-	c.buf.ln, c.buf.col = end.ln, end.col
+	c.buf.Ln, c.buf.Col = end.Ln, end.Col
 	c.setMode(ModeVisual)
 	c.vEOL, c.vPinned = eol, true
 	c.reveal()
@@ -139,8 +140,8 @@ func (c *EditorCore) Insert(p TextPos, text string) (TextPos, error) {
 		return p, err
 	}
 	at := c.clampPos(p)
-	c.buf.ln, c.buf.col, c.buf.anchor = at.ln, at.col, nil
-	c.buf.insertText(text)
+	c.buf.Ln, c.buf.Col, c.buf.Anchor = at.Ln, at.Col, nil
+	c.buf.InsertText(text)
 	end := c.Cursor()
 	c.endEdit()
 	return end, nil
@@ -152,7 +153,7 @@ func (c *EditorCore) Delete(r TextRange) error {
 		return err
 	}
 	lo, hi := c.clampRange(r)
-	c.buf.deleteRegion(lo, hi)
+	c.buf.DeleteRegion(lo, hi)
 	c.endEdit()
 	return nil
 }
@@ -163,8 +164,8 @@ func (c *EditorCore) Replace(r TextRange, text string) (TextPos, error) {
 		return r.From, err
 	}
 	lo, hi := c.clampRange(r)
-	c.buf.deleteRegion(lo, hi)
-	c.buf.insertText(text)
+	c.buf.DeleteRegion(lo, hi)
+	c.buf.InsertText(text)
 	end := c.Cursor()
 	c.endEdit()
 	return end, nil
@@ -201,7 +202,7 @@ func (c *EditorCore) ReadFrom(r io.Reader) (int64, error) {
 // file is written. It is io.WriterTo.
 func (c *EditorCore) WriteTo(w io.Writer) (int64, error) {
 	var n int64
-	for i, line := range c.buf.textLines {
+	for i, line := range c.buf.Lines {
 		if i > 0 {
 			line = "\n" + line
 		}

@@ -1,6 +1,10 @@
 package widget
 
-import "strings"
+import (
+	"strings"
+
+	txt "github.com/yongjohnlee80/golib/tui/widget/internal/text"
+)
 
 // VIM VISUAL OPERATORS — beyond y and d, Visual's c (and s), r{c}, ~ u U, > and <, I and A, and o,
 // over the selection (characters, or whole lines in Visual line), with M2's and M3's operators, so
@@ -28,7 +32,7 @@ type visualRedo struct {
 func (c *EditorCore) visualOpRange() opRange {
 	if c.keys.mode == ModeVisualLine {
 		lo, hi := c.visualLines()
-		return opRange{lo: taPos{lo, 0}, hiEx: taPos{hi, 0}, lines: true}
+		return opRange{lo: txt.Pos{Ln: lo, Col: 0}, hiEx: txt.Pos{Ln: hi, Col: 0}, lines: true}
 	}
 	lo, hiEx := c.visualRange()
 	return opRange{lo: lo, hiEx: hiEx}
@@ -46,13 +50,13 @@ func (c *EditorCore) visualOp(op Action, count int, char string) {
 		return
 	}
 	r := c.wholeFolds(c.visualOpRange())
-	redo := visualRedo{op: op, lines: r.lines, nLine: r.hiEx.ln - r.lo.ln + 1, count: count, char: char}
+	redo := visualRedo{op: op, lines: r.lines, nLine: r.hiEx.Ln - r.lo.Ln + 1, count: count, char: char}
 	switch {
 	case r.lines:
-	case r.lo.ln == r.hiEx.ln:
-		redo.cols = r.hiEx.col - r.lo.col
+	case r.lo.Ln == r.hiEx.Ln:
+		redo.cols = r.hiEx.Col - r.lo.Col
 	default:
-		redo.cols = r.hiEx.col
+		redo.cols = r.hiEx.Col
 	}
 	c.exitVisual()
 	c.recordVisual(redo, func() { c.visualApply(op, r, count, char) })
@@ -80,7 +84,7 @@ func (c *EditorCore) recordVisual(redo visualRedo, apply func()) {
 
 // visualApply runs a Visual operator over r, the cursor at its start.
 func (c *EditorCore) visualApply(op Action, r opRange, count int, char string) {
-	c.buf.ln, c.buf.col = r.lo.ln, r.lo.col
+	c.buf.Ln, c.buf.Col = r.lo.Ln, r.lo.Col
 	switch op {
 	case ActVisualDelete:
 		c.applyOp(ActDeletePrefix, r)
@@ -100,15 +104,15 @@ func (c *EditorCore) visualApply(op Action, r opRange, count int, char string) {
 		c.replaceSelection(r, char)
 	case ActVisualInsert, ActVisualAppend:
 		b := &c.buf
-		last := r.hiEx.ln
-		if !r.lines && r.hiEx.col == 0 && last > r.lo.ln {
+		last := r.hiEx.Ln
+		if !r.lines && r.hiEx.Col == 0 && last > r.lo.Ln {
 			last-- // the break before it was selected, not the line
 		}
-		b.ln, b.col = r.lo.ln, 0
+		b.Ln, b.Col = r.lo.Ln, 0
 		if op == ActVisualAppend {
-			b.ln, b.col = last, len(b.lineClusters(last))
+			b.Ln, b.Col = last, len(b.LineClusters(last))
 		}
-		b.desired = -1
+		b.Desired = -1
 		c.enterInsert()
 		c.reveal()
 		c.markDirty()
@@ -143,20 +147,20 @@ func (c *EditorCore) blockApply(op Action, v vblock, count int, char string) {
 // the cursor, cut to the text.
 func (c *EditorCore) visualReplay(v visualRedo) {
 	b := &c.buf
-	last := min(b.ln+v.nLine-1, len(b.textLines)-1)
+	last := min(b.Ln+v.nLine-1, len(b.Lines)-1)
 	if v.block {
-		left, _ := c.cellSpan(taPos{b.ln, b.col})
-		c.blockApply(v.op, vblock{lo: b.ln, hi: last, left: left, right: left + v.cols, toEnd: v.toEnd}, v.count, v.char)
+		left, _ := c.cellSpan(txt.Pos{Ln: b.Ln, Col: b.Col})
+		c.blockApply(v.op, vblock{lo: b.Ln, hi: last, left: left, right: left + v.cols, toEnd: v.toEnd}, v.count, v.char)
 		return
 	}
-	r := opRange{lo: taPos{b.ln, b.col}}
+	r := opRange{lo: txt.Pos{Ln: b.Ln, Col: b.Col}}
 	switch {
 	case v.lines:
-		r = opRange{lo: taPos{b.ln, 0}, hiEx: taPos{last, 0}, lines: true}
+		r = opRange{lo: txt.Pos{Ln: b.Ln, Col: 0}, hiEx: txt.Pos{Ln: last, Col: 0}, lines: true}
 	case v.nLine == 1:
-		r.hiEx = taPos{b.ln, min(b.col+v.cols, len(b.lineClusters(b.ln)))}
+		r.hiEx = txt.Pos{Ln: b.Ln, Col: min(b.Col+v.cols, len(b.LineClusters(b.Ln)))}
 	default:
-		r.hiEx = taPos{last, min(v.cols, len(b.lineClusters(last)))}
+		r.hiEx = txt.Pos{Ln: last, Col: min(v.cols, len(b.LineClusters(last)))}
 	}
 	if !r.lines && r.hiEx == r.lo {
 		return
@@ -168,23 +172,23 @@ func (c *EditorCore) visualReplay(v visualRedo) {
 func (c *EditorCore) replaceSelection(r opRange, char string) {
 	b := &c.buf
 	c.beginGroup()
-	for ln := r.lo.ln; ln <= r.hiEx.ln; ln++ {
-		cs := b.lineClusters(ln)
+	for ln := r.lo.Ln; ln <= r.hiEx.Ln; ln++ {
+		cs := b.LineClusters(ln)
 		from, to := 0, len(cs)
 		if !r.lines {
-			if ln == r.lo.ln {
-				from = min(r.lo.col, len(cs))
+			if ln == r.lo.Ln {
+				from = min(r.lo.Col, len(cs))
 			}
-			if ln == r.hiEx.ln {
-				to = min(r.hiEx.col, len(cs))
+			if ln == r.hiEx.Ln {
+				to = min(r.hiEx.Col, len(cs))
 			}
 		}
 		if from < to {
-			b.setLine(ln, strings.Join(cs[:from], "")+strings.Repeat(char, to-from)+strings.Join(cs[to:], ""))
+			b.SetLine(ln, strings.Join(cs[:from], "")+strings.Repeat(char, to-from)+strings.Join(cs[to:], ""))
 		}
 	}
-	b.ln, b.col = r.lo.ln, r.lo.col
-	b.anchor = nil
+	b.Ln, b.Col = r.lo.Ln, r.lo.Col
+	b.Anchor = nil
 	c.clampNormal()
 	c.edited()
 }
@@ -193,10 +197,10 @@ func (c *EditorCore) replaceSelection(r opRange, char string) {
 // cursor was.
 func (c *EditorCore) visualOther() {
 	b := &c.buf
-	at := taPos{b.ln, b.col}
-	b.ln, b.col = c.vAnchor.ln, c.vAnchor.col
+	at := txt.Pos{Ln: b.Ln, Col: b.Col}
+	b.Ln, b.Col = c.vAnchor.Ln, c.vAnchor.Col
 	c.vAnchor = at
-	b.desired = -1
+	b.Desired = -1
 	c.reveal()
 	c.markDirty()
 }

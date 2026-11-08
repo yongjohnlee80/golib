@@ -443,12 +443,15 @@ this was fixed.
 ### The ledger
 
 `testdata/promotion_selfcalls.txt`, one line per distinct
-`file <TAB> Base.caller -> callee`. Currently 20 keys covering 24 call sites
-(one caller can reach the same sibling more than once):
+`file <TAB> Base.caller -> callee`. Currently 7 keys (one caller can reach the
+same sibling more than once):
 
 - `tui/container_multi.go` — 5
 - `tui/stack.go` — 2
-- `tui/widget/textbuffer.go` — 13
+
+The text model's buffer had 13 more while TextArea embedded it. TextArea now keeps
+it as a named field (`tui/widget/internal/text`), so nothing embeds it and it is
+no base.
 
 None is live. The ledger is mechanically exact: a line whose site is gone fails the test, so reductions must be recorded in the same change. Under code-review policy, the allowlist may only **shrink**.
 

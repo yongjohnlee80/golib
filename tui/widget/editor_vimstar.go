@@ -30,10 +30,10 @@ func (c *EditorCore) SetFindHost(host func(FindRequest) bool) { c.findHost = hos
 // start stops at any class change; the keyword's end is where its class changes, a run's at a
 // blank. ok is false on a line with neither.
 func (c *EditorCore) identUnderCursor() (word string, at int, ok bool) {
-	cs := c.buf.lineClusters(c.buf.ln)
+	cs := c.buf.LineClusters(c.buf.Ln)
 	class := func(i int) int { return wordClass(cs[i], false) }
 	for pass := 0; pass < 2; pass++ { // 0: a keyword; 1: any non-blank text
-		col := min(c.buf.col, len(cs))
+		col := min(c.buf.Col, len(cs))
 		for col < len(cs) {
 			if k := class(col); k != 0 && (pass == 1 || k != 1) {
 				break
@@ -64,7 +64,7 @@ func (c *EditorCore) starSearch(back, whole bool, count int) {
 	}
 	c.hist.close()
 	c.setJumpMark()
-	c.buf.col, c.buf.desired = at, -1
+	c.buf.Col, c.buf.Desired = at, -1
 	req := FindRequest{Term: word, Options: FindOptions{WholeWord: whole}, Backward: back, Count: max(count, 1)}
 	if c.findHost != nil && c.findHost(req) {
 		return

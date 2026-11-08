@@ -1,11 +1,15 @@
 package widget
 
-import "slices"
+import (
+	"slices"
+
+	txt "github.com/yongjohnlee80/golib/tui/widget/internal/text"
+)
 
 // snapshot is the core's cursor, revision and marks, for a new group of its history
 // (edithistory.go): its changes come in from the line primitives as the group's edits are made.
 func (c *EditorCore) snapshot() textSnap {
-	return textSnap{ln: c.buf.ln, col: c.buf.col, rev: c.rev, marks: c.marks}
+	return textSnap{ln: c.buf.Ln, col: c.buf.Col, rev: c.rev, marks: c.marks}
 }
 
 // beginGroup starts an undo group before an edit: every Normal-mode edit is one group; an
@@ -34,8 +38,8 @@ func (c *EditorCore) doRedo() {
 // inserting, say) begins a group of its own, which must take that edit in.
 func (c *EditorCore) restore(s textSnap) {
 	b := &c.buf
-	lo, hi, span := replayed(b.textLines, s.ops)
-	blk := changedBlock(b.textLines, lo, hi, span)
+	lo, hi, span := replayed(b.Lines, s.ops)
+	blk := changedBlock(b.Lines, lo, hi, span)
 	c.marks.apply(blk)
 	for _, o := range c.editors { // the other editors showing the buffer, and the places left in it, move as the marks
 		if o != c {
@@ -46,14 +50,14 @@ func (c *EditorCore) restore(s textSnap) {
 		c.places[ed] = followPlace(p, blk)
 	}
 	if hi > lo || len(span) > 0 {
-		b.replaceLines(lo, hi, span...)
+		b.ReplaceLines(lo, hi, span...)
 	}
 	c.hist.settle()
-	b.log.take() // the marks and cursors moved by blk: what the replace logged describes no edit
+	b.Log.Take() // the marks and cursors moved by blk: what the replace logged describes no edit
 	c.marks.restore(s.marks)
-	b.ln = max(0, min(s.ln, len(b.textLines)-1))
-	b.col = s.col
-	b.anchor = nil
+	b.Ln = max(0, min(s.ln, len(b.Lines)-1))
+	b.Col = s.col
+	b.Anchor = nil
 	if c.keys.modal {
 		c.clampNormal()
 	}
@@ -76,11 +80,11 @@ func (c *EditorCore) edited() {
 
 // notifyEdited tells the layout, the highlighter and the listeners that the text changed.
 func (c *EditorCore) notifyEdited() {
-	c.buf.desired = -1
+	c.buf.Desired = -1
 	c.changed()
 	c.reveal()
 	c.markDirty()
-	if publishChange(c.ctx, c.nodeID(), c.buf.value) {
+	if publishChange(c.ctx, c.nodeID(), c.buf.Value) {
 		c.changeValues++
 	}
 	if c.onChange != nil {
@@ -90,7 +94,7 @@ func (c *EditorCore) notifyEdited() {
 
 // replayed is what applying ops last first makes of lines, as a replace: lines [lo, hi) become
 // span. Only the lines the ops reach are copied and changed; lines itself is not.
-func replayed(lines []string, ops []undoOp) (lo, hi int, span []string) {
+func replayed(lines []string, ops []txt.UndoOp) (lo, hi int, span []string) {
 	if len(ops) == 0 {
 		return 0, 0, nil
 	}
@@ -99,7 +103,7 @@ func replayed(lines []string, ops []undoOp) (lo, hi int, span []string) {
 	lo, end, grow := -1, 0, 0
 	for i := len(ops) - 1; i >= 0; i-- {
 		op := ops[i]
-		at, del, ins := op.lo, op.n, len(op.old)
+		at, del, ins := op.Lo, op.N, len(op.Old)
 		if lo < 0 {
 			lo, end = at, at+ins
 		} else {
@@ -117,7 +121,7 @@ func replayed(lines []string, ops []undoOp) (lo, hi int, span []string) {
 	span = slices.Clone(lines[lo:hi])
 	for i := len(ops) - 1; i >= 0; i-- {
 		op := ops[i]
-		span = slices.Replace(span, op.lo-lo, op.lo-lo+op.n, op.old...)
+		span = slices.Replace(span, op.Lo-lo, op.Lo-lo+op.N, op.Old...)
 	}
 	return lo, hi, span
 }
@@ -131,7 +135,7 @@ func replayed(lines []string, ops []undoOp) (lo, hi int, span []string) {
 // same in both, so the common first lines run at least to lo and the common last ones at least
 // over from[hi:]: the scan starts there, and the block is what comparing the two texts whole would
 // give, though only the lines between are compared.
-func changedBlock(from []string, lo, hi int, span []string) lineEdit {
+func changedBlock(from []string, lo, hi int, span []string) txt.LineEdit {
 	toLen := len(from) - (hi - lo) + len(span)
 	// to is line i of the second text, for i at lo or later: both scans stay there, the first
 	// starting at lo and the second above the first's end
@@ -151,7 +155,7 @@ func changedBlock(from []string, lo, hi int, span []string) lineEdit {
 	}
 	del, ins := len(from)-pre-suf, toLen-pre-suf
 	if del == ins {
-		return lineEdit{}
+		return txt.LineEdit{}
 	}
-	return lineEdit{ln: pre, del: del, ins: ins}
+	return txt.LineEdit{Ln: pre, Del: del, Ins: ins}
 }

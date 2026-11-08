@@ -22,7 +22,7 @@ import (
 //
 // # Architectural Invariants
 //
-//  1. Mandatory Measurement Injection: Utility functions calculating cell extents ([cellsBefore],
+//  1. Mandatory Measurement Injection: Utility functions calculating cell extents ([txt.CellsBefore],
 //     [truncate], [wrapLine]) must accept an explicit `measure func(string) int`. No path may
 //     silently invoke an unconfigured package-level width default.
 //  2. Grapheme Cluster Integrity: String splitting relies exclusively on UAX #29 grapheme boundaries

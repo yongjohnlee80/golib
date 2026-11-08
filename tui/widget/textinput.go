@@ -5,6 +5,7 @@ import (
 
 	"github.com/yongjohnlee80/golib/tui"
 	"github.com/yongjohnlee80/golib/tui/keymap"
+	txt "github.com/yongjohnlee80/golib/tui/widget/internal/text"
 )
 
 // Single-Line Text Input & Form Field Architecture
@@ -17,7 +18,7 @@ import (
 // # Subsystem Role & Responsibilities
 //
 //  1. Grapheme Cluster Integrity: Values are stored and addressed as Unicode Standard
-//     Annex #29 extended grapheme clusters, in a one-line textBuffer, the editor's own.
+//     Annex #29 extended grapheme clusters, in a one-line txt.Buffer, the editor's own.
 //     Multi-byte runes, emoji zwj sequences, and combining accents never suffer midpoint
 //     truncation or splitting; a combining mark typed after a letter joins it.
 //  2. IME & Hardware Cursor Integration: Implements [tui.CursorReporter]. While focused,
@@ -93,7 +94,7 @@ type TextInput struct {
 	Base
 	// buf is the value: one sanitized line, its cursor and selection anchor in clusters (line 0,
 	// col). The editor's buffer, so a TextInput composes graphemes as the Editor does.
-	buf    textBuffer
+	buf    txt.Buffer
 	scroll int // cells scrolled off the left edge
 	width  int // last layout width (viewport cells, inside the padding)
 	pad    int // cells inside each end: 1 where a native field frames the text, else 0
@@ -119,7 +120,7 @@ var (
 // NewTextInput builds an empty single-line editor.
 func NewTextInput(opts ...TextInputOption) *TextInput {
 	t := &TextInput{
-		buf:    newTextBuffer(),
+		buf:    txt.NewBuffer(),
 		styles: defaultTextInputStyles(),
 	}
 	for _, o := range opts {
@@ -131,19 +132,19 @@ func NewTextInput(opts ...TextInputOption) *TextInput {
 }
 
 // Value returns the raw value (unmasked).
-func (t *TextInput) Value() string { return t.buf.value() }
+func (t *TextInput) Value() string { return t.buf.Value() }
 
 // clusters is the value as grapheme clusters; cursor and length are the cursor's cluster index and
 // their count.
-func (t *TextInput) clusters() []string { return t.buf.lineClusters(0) }
-func (t *TextInput) cursor() int        { return t.buf.col }
+func (t *TextInput) clusters() []string { return t.buf.LineClusters(0) }
+func (t *TextInput) cursor() int        { return t.buf.Col }
 func (t *TextInput) length() int        { return len(t.clusters()) }
 
 // SetValue replaces the value programmatically (loop goroutine): cursor to
 // the end, selection and validation error cleared. No ChangeEvent — the
 // event reports user edits.
 func (t *TextInput) SetValue(s string) {
-	t.buf.setValue(sanitizeLine(s))
+	t.buf.SetValue(sanitizeLine(s))
 	t.verr = nil
 	t.walk = nil
 	t.ensureVisible()
@@ -174,17 +175,17 @@ func sanitizeLine(s string) string {
 // selection returns the selected cluster range [lo, hi), ok=false when no
 // selection exists.
 func (t *TextInput) selection() (lo, hi int, ok bool) {
-	l, h, ok := t.buf.selection()
-	return l.col, h.col, ok
+	l, h, ok := t.buf.Selection()
+	return l.Col, h.Col, ok
 }
 
 // deleteRange removes clusters [lo, hi) and moves the cursor to lo.
-func (t *TextInput) deleteRange(lo, hi int) { t.buf.deleteRegion(taPos{col: lo}, taPos{col: hi}) }
+func (t *TextInput) deleteRange(lo, hi int) { t.buf.DeleteRegion(txt.Pos{Col: lo}, txt.Pos{Col: hi}) }
 
 // insert places text at the cursor (replacing any selection) as one atomic
 // edit, then emits ChangeEvent.
 func (t *TextInput) insert(text string) {
-	t.buf.insertText(sanitizeLine(text))
+	t.buf.InsertText(sanitizeLine(text))
 	t.edited()
 }
 
@@ -203,7 +204,7 @@ func (t *TextInput) edited() {
 // moveTo moves the cursor, extending the selection when extend is set and
 // clearing it otherwise.
 func (t *TextInput) moveTo(i int, extend bool) {
-	t.buf.moveCursor(0, i, extend)
+	t.buf.MoveCursor(0, i, extend)
 	t.walk = nil
 	t.ensureVisible()
 	t.MarkDirty()
@@ -211,12 +212,12 @@ func (t *TextInput) moveTo(i int, extend bool) {
 
 // wordLeft/wordRight are readline-style word hops (spaces, then non-spaces).
 func (t *TextInput) wordLeft() int {
-	_, i := t.buf.wordLeft()
+	_, i := t.buf.WordLeft()
 	return i
 }
 
 func (t *TextInput) wordRight() int {
-	_, i := t.buf.wordRight()
+	_, i := t.buf.WordRight()
 	return i
 }
 

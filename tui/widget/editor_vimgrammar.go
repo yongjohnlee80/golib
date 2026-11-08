@@ -1,6 +1,9 @@
 package widget
 
-import "github.com/yongjohnlee80/golib/tui"
+import (
+	"github.com/yongjohnlee80/golib/tui"
+	txt "github.com/yongjohnlee80/golib/tui/widget/internal/text"
+)
 
 // THE VIM KEY GRAMMAR: a key in Normal or Visual mode, read as Vim reads it. handleCommandKey runs
 // its stages in order: Esc, then the key an armed command waits on (f t F T, r, a text object, a
@@ -321,7 +324,7 @@ func (c *EditorCore) armObject(around bool) {
 // runLines runs op over n lines from the caret's, linewise: the doubled form (dd, 3yy, g~g~).
 func (c *EditorCore) runLines(op Action, n int) {
 	b := &c.buf
-	c.runOp(op, taPos{min(b.ln+n-1, len(b.textLines)-1), 0}, linewise)
+	c.runOp(op, txt.Pos{Ln: min(b.Ln+n-1, len(b.Lines)-1), Col: 0}, linewise)
 }
 
 // armOperator arms op, kc its chord; a count typed before it multiplies the motion's (2d3w).

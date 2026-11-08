@@ -8,6 +8,7 @@ import (
 	"github.com/yongjohnlee80/golib/tui/keymap"
 	"github.com/yongjohnlee80/golib/tui/style"
 	"github.com/yongjohnlee80/golib/tui/widget/internal/cellimages"
+	txt "github.com/yongjohnlee80/golib/tui/widget/internal/text"
 )
 
 // Editor provides an embedded, configurable multi-line text editor designed for
@@ -166,7 +167,7 @@ type Editor struct {
 	keepPlace bool               // a text set keeps the reader's place (SetKeepPlace, ReplaceValue)
 	// shown is the cursor and viewport Layout last kept the cursor in view for: a layout pass
 	// reveals it only when either changed, so the wheel's scroll stays
-	shown viewMark
+	shown txt.ViewMark
 	// pics are the Rendered view's pictures, by their block's first line and width
 	// (editor_pictures.go); picGen counts their changes, a key of the layout.
 	pics   map[pictureAt]*pictureSlot
@@ -297,7 +298,7 @@ func (e *Editor) gutterWidth() int {
 	if !e.cells.numbers {
 		return 0
 	}
-	return max(len(fmt.Sprint(len(e.core.buf.textLines))), 4) + gutterGap
+	return max(len(fmt.Sprint(len(e.core.buf.Lines))), 4) + gutterGap
 }
 
 // NewEditor builds an empty editor initialized with the default Vim keymap,

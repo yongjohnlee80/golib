@@ -1,6 +1,10 @@
 package widget
 
-import "strings"
+import (
+	"strings"
+
+	txt "github.com/yongjohnlee80/golib/tui/widget/internal/text"
+)
 
 // VIM SENTENCES — ( and ) move by sentence, and is and as select sentences, as Vim's findsent and
 // current_sent (src/textobject.c) have them. A sentence ends at '.', '!' or '?', followed by any
@@ -20,19 +24,19 @@ type sentWalk struct {
 }
 
 func (c *EditorCore) sentWalk() *sentWalk {
-	w := &sentWalk{lines: make([][]string, len(c.buf.textLines))}
-	for i, l := range c.buf.textLines {
+	w := &sentWalk{lines: make([][]string, len(c.buf.Lines))}
+	for i, l := range c.buf.Lines {
 		if strings.TrimSpace(l) != "" {
-			w.lines[i] = clusters(l)
+			w.lines[i] = txt.Clusters(l)
 		}
 	}
 	return w
 }
 
 // at is the cluster at p; "" at a line's end (Vim's NUL).
-func (w *sentWalk) at(p taPos) string {
-	if p.col < len(w.lines[p.ln]) {
-		return w.lines[p.ln][p.col]
+func (w *sentWalk) at(p txt.Pos) string {
+	if p.Col < len(w.lines[p.Ln]) {
+		return w.lines[p.Ln][p.Col]
 	}
 	return ""
 }
@@ -41,47 +45,47 @@ func (w *sentWalk) empty(ln int) bool { return len(w.lines[ln]) == 0 }
 
 // inc is Vim's inc: 0 moved within the line, 2 moved onto its end, 1 to the next line, -1 at the
 // text's end.
-func (w *sentWalk) inc(p *taPos) int {
-	if p.col < len(w.lines[p.ln]) {
-		p.col++
-		if p.col < len(w.lines[p.ln]) {
+func (w *sentWalk) inc(p *txt.Pos) int {
+	if p.Col < len(w.lines[p.Ln]) {
+		p.Col++
+		if p.Col < len(w.lines[p.Ln]) {
 			return 0
 		}
 		return 2
 	}
-	if p.ln < len(w.lines)-1 {
-		p.ln, p.col = p.ln+1, 0
+	if p.Ln < len(w.lines)-1 {
+		p.Ln, p.Col = p.Ln+1, 0
 		return 1
 	}
 	return -1
 }
 
 // dec is Vim's dec: 0 within the line, 1 to the previous line's end, -1 at the text's start.
-func (w *sentWalk) dec(p *taPos) int {
-	if p.col > 0 {
-		p.col--
+func (w *sentWalk) dec(p *txt.Pos) int {
+	if p.Col > 0 {
+		p.Col--
 		return 0
 	}
-	if p.ln > 0 {
-		p.ln--
-		p.col = len(w.lines[p.ln])
+	if p.Ln > 0 {
+		p.Ln--
+		p.Col = len(w.lines[p.Ln])
 		return 1
 	}
 	return -1
 }
 
 // incl and decl step over a line's end position, except an empty line's.
-func (w *sentWalk) incl(p *taPos) int {
+func (w *sentWalk) incl(p *txt.Pos) int {
 	r := w.inc(p)
-	if r >= 1 && p.col > 0 {
+	if r >= 1 && p.Col > 0 {
 		r = w.inc(p)
 	}
 	return r
 }
 
-func (w *sentWalk) decl(p *taPos) int {
+func (w *sentWalk) decl(p *txt.Pos) int {
 	r := w.dec(p)
-	if r == 1 && p.col > 0 {
+	if r == 1 && p.Col > 0 {
 		r = w.dec(p)
 	}
 	return r
@@ -91,7 +95,7 @@ func isBlankChar(s string) bool { return s == " " || s == "\t" }
 
 // findSent is Vim's findsent: from p, count sentences forward or back. ok is false when the
 // count ran out of text (Vim's FAIL); p is then where the walk stopped.
-func (w *sentWalk) findSent(p taPos, forward bool, count int) (taPos, bool) {
+func (w *sentWalk) findSent(p txt.Pos, forward bool, count int) (txt.Pos, bool) {
 	step := w.decl
 	if forward {
 		step = w.incl
@@ -121,7 +125,7 @@ func (w *sentWalk) findSent(p taPos, forward bool, count int) (taPos, bool) {
 					break
 				}
 				t := p
-				if w.decl(&t) == -1 || (w.empty(t.ln) && forward) {
+				if w.decl(&t) == -1 || (w.empty(t.Ln) && forward) {
 					break
 				}
 				if foundDot {
@@ -139,12 +143,12 @@ func (w *sentWalk) findSent(p taPos, forward bool, count int) (taPos, bool) {
 			}
 		}
 		{
-			start := p.ln
+			start := p.Ln
 			for { // find the end of the sentence
 				ch := w.at(p)
 				if ch == "" { // an empty line (a paragraph's boundary), or a line's end
-					if !forward && p.ln != start {
-						p.ln, p.col = p.ln+1, 0
+					if !forward && p.Ln != start {
+						p.Ln, p.Col = p.Ln+1, 0
 					}
 					break
 				}
@@ -196,7 +200,7 @@ func (w *sentWalk) findSent(p taPos, forward bool, count int) (taPos, bool) {
 }
 
 // firstBlank is Vim's find_first_blank: back over the blanks before p, to the first of them.
-func (w *sentWalk) firstBlank(p *taPos) {
+func (w *sentWalk) firstBlank(p *txt.Pos) {
 	for w.decl(p) != -1 {
 		if !isBlankChar(w.at(*p)) {
 			w.incl(p)
@@ -206,7 +210,7 @@ func (w *sentWalk) firstBlank(p *taPos) {
 }
 
 // sentForward is Vim's findsent_forward: count sentences on, the cursor at the last one's end.
-func (w *sentWalk) sentForward(p taPos, count int, atStart bool) taPos {
+func (w *sentWalk) sentForward(p txt.Pos, count int, atStart bool) txt.Pos {
 	for ; count > 0; count-- {
 		p, _ = w.findSent(p, true, 1)
 		if atStart {
@@ -223,9 +227,9 @@ func (w *sentWalk) sentForward(p taPos, count int, atStart bool) taPos {
 // sentenceTarget is ( or ): the count'th sentence start back or on. Past the last sentence ) stops
 // at the text's last character; a count that runs out of text before its last sentence moves
 // nothing, as Vim's findsent FAIL leaves the cursor (and nv_brace beeps).
-func (c *EditorCore) sentenceTarget(forward bool, count int) taPos {
+func (c *EditorCore) sentenceTarget(forward bool, count int) txt.Pos {
 	w := c.sentWalk()
-	at := taPos{c.buf.ln, c.buf.col}
+	at := txt.Pos{Ln: c.buf.Ln, Col: c.buf.Col}
 	p, ok := w.findSent(at, forward, max(count, 1))
 	if !ok {
 		return at
@@ -234,9 +238,9 @@ func (c *EditorCore) sentenceTarget(forward bool, count int) taPos {
 }
 
 // clampSentPos puts a walk's position on the text: past a line's last cluster is its last.
-func (c *EditorCore) clampSentPos(p taPos) taPos {
-	p.ln = max(0, min(p.ln, len(c.buf.textLines)-1))
-	p.col = max(0, min(p.col, len(c.buf.lineClusters(p.ln))))
+func (c *EditorCore) clampSentPos(p txt.Pos) txt.Pos {
+	p.Ln = max(0, min(p.Ln, len(c.buf.Lines)-1))
+	p.Col = max(0, min(p.Col, len(c.buf.LineClusters(p.Ln))))
 	return p
 }
 
@@ -244,7 +248,7 @@ func (c *EditorCore) clampSentPos(p taPos) taPos {
 // Visual selection: from start to last (inclusive, Visual's cursor), or to end, exclusive, for an
 // operator; incl says the sentence ends the text, so end couldn't step past last. In Visual, a
 // selection that came out empty extends instead (stuck reports it: Vim's goto extend).
-func (w *sentWalk) sentObject(cursor taPos, inner bool, count int) (start, last, end taPos, incl, stuck bool, pos taPos) {
+func (w *sentWalk) sentObject(cursor txt.Pos, inner bool, count int) (start, last, end txt.Pos, incl, stuck bool, pos txt.Pos) {
 	start, pos = cursor, cursor
 	cur, _ := w.findSent(cursor, true, 1) // the next sentence's start
 	for isBlankChar(w.at(pos)) {
@@ -289,11 +293,11 @@ func (w *sentWalk) sentObject(cursor taPos, inner bool, count int) (start, last,
 // on (or back, when it is at the selection's start) by count sentences, as Vim's current_sent's
 // extend does. start is where the cursor was, cur the next sentence's start from it, pos the walk
 // position carried from the caller.
-func (w *sentWalk) sentExtend(start, cur, pos, anchor taPos, inner bool, count int) taPos {
-	if start.less(anchor) { // the cursor at the selection's start: extend back
+func (w *sentWalk) sentExtend(start, cur, pos, anchor txt.Pos, inner bool, count int) txt.Pos {
+	if start.Less(anchor) { // the cursor at the selection's start: extend back
 		atStart := true
 		w.decl(&pos)
-		for pos.less(cur) {
+		for pos.Less(cur) {
 			if !isBlankChar(w.at(pos)) {
 				atStart = false
 				break
@@ -326,7 +330,7 @@ func (w *sentWalk) sentExtend(start, cur, pos, anchor taPos, inner bool, count i
 	atStart := true
 	if pos != cur { // not just before a sentence
 		atStart = false
-		for pos.less(cur) {
+		for pos.Less(cur) {
 			if !isBlankChar(w.at(pos)) {
 				atStart = true
 				break
@@ -349,7 +353,7 @@ func (w *sentWalk) sentExtend(start, cur, pos, anchor taPos, inner bool, count i
 // extended. ok is false when there is nothing to take.
 func (c *EditorCore) sentenceObject(inner bool, count int) (opRange, bool) {
 	w := c.sentWalk()
-	cursor := taPos{c.buf.ln, c.buf.col}
+	cursor := txt.Pos{Ln: c.buf.Ln, Col: c.buf.Col}
 	count = max(count, 1)
 	visual := c.keys.mode == ModeVisual || c.keys.mode == ModeVisualLine || c.keys.mode == ModeVisualBlock
 	if visual && c.vAnchor != cursor {
@@ -382,9 +386,9 @@ func (c *EditorCore) sentenceObject(inner bool, count int) (opRange, bool) {
 }
 
 // setVisualCursor puts the Visual cursor at p.
-func (c *EditorCore) setVisualCursor(p taPos) {
-	c.buf.ln, c.buf.col = p.ln, p.col
-	c.buf.desired = -1
+func (c *EditorCore) setVisualCursor(p txt.Pos) {
+	c.buf.Ln, c.buf.Col = p.Ln, p.Col
+	c.buf.Desired = -1
 	c.reveal()
 	c.markDirty()
 }

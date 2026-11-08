@@ -5,11 +5,13 @@ import (
 	"slices"
 	"strings"
 	"testing"
+
+	txt "github.com/yongjohnlee80/golib/tui/widget/internal/text"
 )
 
 // changedBlockWhole is changedBlock over two texts whole, as undo computed it when it kept a copy
 // of the text: the reference changedBlock must give from only the lines between.
-func changedBlockWhole(from, to []string) lineEdit {
+func changedBlockWhole(from, to []string) txt.LineEdit {
 	pre := 0
 	for pre < len(from) && pre < len(to) && from[pre] == to[pre] {
 		pre++
@@ -20,9 +22,9 @@ func changedBlockWhole(from, to []string) lineEdit {
 	}
 	del, ins := len(from)-pre-suf, len(to)-pre-suf
 	if del == ins {
-		return lineEdit{}
+		return txt.LineEdit{}
 	}
-	return lineEdit{ln: pre, del: del, ins: ins}
+	return txt.LineEdit{Ln: pre, Del: del, Ins: ins}
 }
 
 // TestChangedBlockOverASpanIsTheWholeTextsBlock: for random texts of three letters' lines (so
@@ -50,12 +52,12 @@ func TestChangedBlockOverASpanIsTheWholeTextsBlock(t *testing.T) {
 }
 
 // recordingBuffer is a text whose primitives hand their changes to a history with one group open.
-func recordingBuffer(text string) (*textBuffer, *editHistory) {
-	b := newTextBuffer()
-	b.setValue(text)
+func recordingBuffer(text string) (*txt.Buffer, *editHistory) {
+	b := txt.NewBuffer()
+	b.SetValue(text)
 	h := &editHistory{enabled: true}
 	h.begin(func() textSnap { return textSnap{} }, true)
-	b.undoRec = h
+	b.UndoRec = h
 	return &b, h
 }
 
@@ -69,30 +71,30 @@ func TestReplayedTakesEveryPrimitiveBack(t *testing.T) {
 		start := strings.Join([]string{word(), word(), word(), word()}, "\n")
 		b, h := recordingBuffer(start)
 		for range 1 + r.IntN(12) {
-			n := len(b.textLines)
+			n := len(b.Lines)
 			switch r.IntN(6) {
 			case 0:
-				b.setLine(r.IntN(n), word())
+				b.SetLine(r.IntN(n), word())
 			case 1:
-				b.insertLines(r.IntN(n+1), word(), word())
+				b.InsertLines(r.IntN(n+1), word(), word())
 			case 2:
 				lo := r.IntN(n)
-				b.removeLines(lo, lo+1+r.IntN(n-lo))
+				b.RemoveLines(lo, lo+1+r.IntN(n-lo))
 			case 3:
 				lo := r.IntN(n + 1)
-				b.replaceLines(lo, lo+r.IntN(n-lo+1), word())
+				b.ReplaceLines(lo, lo+r.IntN(n-lo+1), word())
 			case 4:
-				b.removeLines(0, n) // the whole text: one empty line left
+				b.RemoveLines(0, n) // the whole text: one empty line left
 			case 5:
 				if r.IntN(4) == 0 {
-					b.setValue(word() + "\n" + word())
+					b.SetValue(word() + "\n" + word())
 				}
 			}
 		}
-		lo, hi, span := replayed(b.textLines, h.undo[0].ops)
-		if got := strings.Join(slices.Concat(b.textLines[:lo], span, b.textLines[hi:]), "\n"); got != start {
+		lo, hi, span := replayed(b.Lines, h.undo[0].ops)
+		if got := strings.Join(slices.Concat(b.Lines[:lo], span, b.Lines[hi:]), "\n"); got != start {
 			t.Fatalf("case %d: the changes took %q back to %q, want %q (ops %+v)",
-				i, b.value(), got, start, h.undo[0].ops)
+				i, b.Value(), got, start, h.undo[0].ops)
 		}
 	}
 }
@@ -101,14 +103,14 @@ func TestReplayedTakesEveryPrimitiveBack(t *testing.T) {
 // there keeps that change's old lines alone, not one copy of the line per key.
 func TestTypingOnALineKeepsOneOldLine(t *testing.T) {
 	b, h := recordingBuffer("first\nsecond")
-	b.replaceLines(1, 2, "", "") // Enter at the end of a line: the line and a new one
+	b.ReplaceLines(1, 2, "", "") // Enter at the end of a line: the line and a new one
 	for i := range 500 {
-		b.setLine(2, strings.Repeat("x", i+1))
+		b.SetLine(2, strings.Repeat("x", i+1))
 	}
 	if ops := h.undo[0].ops; len(ops) != 1 {
 		t.Fatalf("500 keystrokes kept %d changes, want the one that made the lines: %+v", len(ops), ops)
 	}
-	b.setLine(0, "elsewhere") // a line the first change did not put there
+	b.SetLine(0, "elsewhere") // a line the first change did not put there
 	if ops := h.undo[0].ops; len(ops) != 2 {
 		t.Fatalf("a change outside the lines made was folded in: %d changes", len(ops))
 	}
@@ -134,7 +136,7 @@ func BenchmarkUndoGroupsOnALargeText(b *testing.B) {
 	kept := 0
 	for _, g := range c.hist.undo {
 		for _, op := range g.ops {
-			for _, l := range op.old {
+			for _, l := range op.Old {
 				kept += len(l)
 			}
 		}
@@ -151,7 +153,7 @@ func TestAnEditOutsideAGroupIsUndoneAndRedoneAsWithSnapshots(t *testing.T) {
 	revFeed(c, "ddjx") // two groups: "two\nhree" before any undo
 	beforeUndo := c.Value()
 	c.doUndo() // "two\nthree"
-	c.buf.setLine(0, "stray")
+	c.buf.SetLine(0, "stray")
 	c.edited()
 	withStray := c.Value()
 	c.doRedo()

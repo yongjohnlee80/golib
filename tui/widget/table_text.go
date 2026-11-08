@@ -6,6 +6,7 @@ import (
 
 	"github.com/yongjohnlee80/golib/tui"
 	"github.com/yongjohnlee80/golib/tui/style"
+	txt "github.com/yongjohnlee80/golib/tui/widget/internal/text"
 )
 
 // TABLE TEXT — a Markdown table in an EditorCore's buffer as a TableSource and a TableEditor, so a
@@ -20,7 +21,7 @@ func tableCells(line string) (cells [][2]int, ok bool) {
 	if len(t) < 2 || t[0] != '|' || t[len(t)-1] != '|' {
 		return nil, false
 	}
-	cs := clusters(line)
+	cs := txt.Clusters(line)
 	var pipes []int
 	for i, cl := range cs {
 		if cl == "|" && (i == 0 || cs[i-1] != "\\") {
@@ -56,7 +57,7 @@ func MarkdownDelimiterAligns(line string) (aligns []style.Align, ok bool) {
 	if !isDelimiterRow(line) {
 		return nil, false
 	}
-	cs := clusters(line)
+	cs := txt.Clusters(line)
 	cells, _ := tableCells(line)
 	for _, c := range cells {
 		aligns = append(aligns, delimiterAlign(strings.Join(cs[c[0]:c[1]], "")))
@@ -113,7 +114,7 @@ func (t *TableText) Lines() (top, end int) { return t.top, t.end }
 // cellTexts is line ln's cells as text.
 func (t *TableText) cellTexts(ln int) []string {
 	line := t.core.LineAt(ln)
-	cs := clusters(line)
+	cs := txt.Clusters(line)
 	cells, _ := tableCells(line)
 	out := make([]string, len(cells))
 	for i, c := range cells {
@@ -199,7 +200,7 @@ func (t *TableText) write(d tableData) bool {
 		lines = append(lines, line(row, aligns))
 	}
 	last := t.core.LineAt(t.end)
-	r := TextRange{From: TextPos{Line: t.top}, To: TextPos{Line: t.end, Col: len(clusters(last))}}
+	r := TextRange{From: TextPos{Line: t.top}, To: TextPos{Line: t.end, Col: len(txt.Clusters(last))}}
 	err := t.core.Batch(func() error {
 		_, err := t.core.Replace(r, strings.Join(lines, "\n"))
 		return err

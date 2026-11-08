@@ -4,6 +4,7 @@ import (
 	"strings"
 
 	"github.com/yongjohnlee80/golib/tui"
+	txt "github.com/yongjohnlee80/golib/tui/widget/internal/text"
 )
 
 // VIM REPLACE MODE — R: typed clusters overwrite the text, as Vim's Replace mode has them (its
@@ -50,7 +51,7 @@ type replaceKeyed struct {
 // enterReplace is R, count times.
 func (c *EditorCore) enterReplace(count int) {
 	b := &c.buf
-	c.replace = &replaceState{ln: b.ln, col: b.col, count: max(count, 1)}
+	c.replace = &replaceState{ln: b.Ln, col: b.Col, count: max(count, 1)}
 	c.enterInsert()
 	c.reveal()
 	c.markDirty()
@@ -64,21 +65,21 @@ func (c *EditorCore) replaceText(s string) {
 		r.keys = append(r.keys, replaceKeyed{text: s})
 	}
 	c.beginGroup()
-	for _, cl := range clusters(strings.ReplaceAll(s, "\r\n", "\n")) {
+	for _, cl := range txt.Clusters(strings.ReplaceAll(s, "\r\n", "\n")) {
 		if cl == "\n" {
-			b.insertText("\n")
+			b.InsertText("\n")
 			r.stack = append(r.stack, replaceEntry{kind: replBreak})
 			continue
 		}
-		cs := b.lineClusters(b.ln)
-		if b.col >= len(cs) {
-			b.insertText(cl)
+		cs := b.LineClusters(b.Ln)
+		if b.Col >= len(cs) {
+			b.InsertText(cl)
 			r.stack = append(r.stack, replaceEntry{kind: replAppended})
 			continue
 		}
-		r.stack = append(r.stack, replaceEntry{kind: replOverwrote, orig: cs[b.col]})
-		b.setLine(b.ln, strings.Join(cs[:b.col], "")+cl+strings.Join(cs[b.col+1:], ""))
-		b.col++
+		r.stack = append(r.stack, replaceEntry{kind: replOverwrote, orig: cs[b.Col]})
+		b.SetLine(b.Ln, strings.Join(cs[:b.Col], "")+cl+strings.Join(cs[b.Col+1:], ""))
+		b.Col++
 	}
 	c.edited()
 }
@@ -92,9 +93,9 @@ func (c *EditorCore) replaceBackspace() {
 		r.keys = append(r.keys, replaceKeyed{back: true})
 	}
 	if len(r.stack) == 0 {
-		if b.col > 0 {
-			b.col--
-			b.desired = -1
+		if b.Col > 0 {
+			b.Col--
+			b.Desired = -1
 			c.markDirty()
 		}
 		return
@@ -104,17 +105,17 @@ func (c *EditorCore) replaceBackspace() {
 	c.beginGroup()
 	switch e.kind {
 	case replBreak:
-		if b.col == 0 && b.ln > 0 {
-			b.deleteRegion(taPos{b.ln - 1, len(b.lineClusters(b.ln - 1))}, taPos{b.ln, 0})
+		if b.Col == 0 && b.Ln > 0 {
+			b.DeleteRegion(txt.Pos{Ln: b.Ln - 1, Col: len(b.LineClusters(b.Ln - 1))}, txt.Pos{Ln: b.Ln, Col: 0})
 		}
 	case replAppended:
-		if b.col > 0 {
-			b.deleteRegion(taPos{b.ln, b.col - 1}, taPos{b.ln, b.col})
+		if b.Col > 0 {
+			b.DeleteRegion(txt.Pos{Ln: b.Ln, Col: b.Col - 1}, txt.Pos{Ln: b.Ln, Col: b.Col})
 		}
 	default:
-		if cs := b.lineClusters(b.ln); b.col > 0 && b.col <= len(cs) {
-			b.setLine(b.ln, strings.Join(cs[:b.col-1], "")+e.orig+strings.Join(cs[b.col:], ""))
-			b.col--
+		if cs := b.LineClusters(b.Ln); b.Col > 0 && b.Col <= len(cs) {
+			b.SetLine(b.Ln, strings.Join(cs[:b.Col-1], "")+e.orig+strings.Join(cs[b.Col:], ""))
+			b.Col--
 		}
 	}
 	c.edited()
@@ -124,7 +125,7 @@ func (c *EditorCore) replaceBackspace() {
 // longer goes back past here, and the count is spent.
 func (c *EditorCore) replaceRestart() {
 	if r := c.replace; r != nil {
-		r.stack, r.keys, r.ln, r.col, r.count = nil, nil, c.buf.ln, c.buf.col, 1
+		r.stack, r.keys, r.ln, r.col, r.count = nil, nil, c.buf.Ln, c.buf.Col, 1
 	}
 }
 

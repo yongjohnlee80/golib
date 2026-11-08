@@ -1,5 +1,9 @@
 package widget
 
+import (
+	txt "github.com/yongjohnlee80/golib/tui/widget/internal/text"
+)
+
 // FOLDS — runs of lines a layout draws as one: a rendered block with none of its source drawn (a
 // diagram's picture), or hidden (metadata). Vim's closed folds, kept by the layout,
 // which opens them while text is typed. Over a fold, Normal and Visual mode behave as Vim's
@@ -31,7 +35,7 @@ func (c *EditorCore) foldLayout() EditorFoldLayout {
 // way: the text's end, or only hidden lines beyond it.
 func (c *EditorCore) lineStep(ln int, down bool) (int, bool) {
 	fl := c.foldLayout()
-	last := len(c.buf.textLines) - 1
+	last := len(c.buf.Lines) - 1
 	edge := func(from, to int) int {
 		if down {
 			return to - 1
@@ -79,18 +83,18 @@ func (c *EditorCore) rowsFrom(ln, n int, down bool) (to int, moved bool) {
 // where Vim draws a fold's cursor.
 func (c *EditorCore) lineTarget(delta int) (ln, col int) {
 	b := &c.buf
-	if b.desired < 0 {
-		b.desired = b.cellsAt(b.ln, b.col, c.measure)
+	if b.Desired < 0 {
+		b.Desired = b.CellsAt(b.Ln, b.Col, c.measure)
 	}
 	n := delta
 	if n < 0 {
 		n = -n
 	}
-	ln, _ = c.rowsFrom(b.ln, n, delta > 0)
+	ln, _ = c.rowsFrom(b.Ln, n, delta > 0)
 	if _, _, _, folded := c.foldLayout().FoldOf(ln); folded {
 		return ln, 0
 	}
-	return ln, b.colForCells(ln, b.desired, c.measure)
+	return ln, b.ColForCells(ln, b.Desired, c.measure)
 }
 
 // inFold reports whether line ln is in a fold.
@@ -103,8 +107,8 @@ func (c *EditorCore) inFold(ln int) bool {
 // becomes linewise, as Vim's operators take a closed fold whole.
 func (c *EditorCore) wholeFolds(r opRange) opRange {
 	fl := c.foldLayout()
-	lo, hi := r.lo.ln, r.hiEx.ln
-	if !r.lines && r.hiEx.col == 0 && hi > lo {
+	lo, hi := r.lo.Ln, r.hiEx.Ln
+	if !r.lines && r.hiEx.Col == 0 && hi > lo {
 		hi-- // the range ends with the line break before hiEx: hiEx's line is not in it
 	}
 	from, _, _, loIn := fl.FoldOf(lo)
@@ -118,5 +122,5 @@ func (c *EditorCore) wholeFolds(r opRange) opRange {
 	if hiIn {
 		hi = to - 1
 	}
-	return opRange{lo: taPos{lo, 0}, hiEx: taPos{hi, 0}, lines: true}
+	return opRange{lo: txt.Pos{Ln: lo, Col: 0}, hiEx: txt.Pos{Ln: hi, Col: 0}, lines: true}
 }

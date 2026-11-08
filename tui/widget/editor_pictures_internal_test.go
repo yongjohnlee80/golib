@@ -330,7 +330,7 @@ func TestPicturesArrivingTogetherKeepTheReveal(t *testing.T) {
 	ih.syncInternal()
 	var on bool
 	var seen [2]int
-	ih.onLoopInternal(func() { _, _, on = e.Cursor(); seen = e.shown.cursor })
+	ih.onLoopInternal(func() { _, _, on = e.Cursor(); seen = e.shown.Cursor })
 	if !on || seen != [2]int{6, 0} {
 		t.Fatalf("precondition: the cursor on the view (%v) and laid out there (%v), want true and [6 0]", on, seen)
 	}

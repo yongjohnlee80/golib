@@ -5,6 +5,7 @@ import (
 
 	"github.com/yongjohnlee80/golib/highlight"
 	"github.com/yongjohnlee80/golib/tui/style"
+	txt "github.com/yongjohnlee80/golib/tui/widget/internal/text"
 )
 
 // SYNTAX HIGHLIGHTING — Qt's QSyntaxHighlighter, on the Editor.
@@ -50,7 +51,7 @@ type hlText struct {
 	// valid is how many leading lines of the cache are VERIFIED: each entry's text is its line's,
 	// and its starting state the one before it hands down. The walk starts there, not at line 0,
 	// so a frame's work is what changed and what is on screen, never the file's length. A change
-	// to the text pulls it back to the first line changed (textBuffer.touch); a new highlighter
+	// to the text pulls it back to the first line changed (txt.Buffer.Touch); a new highlighter
 	// clears it.
 	valid int
 	// examined counts the lines the walk has looked at, for a test to hold a frame's work to what
@@ -318,7 +319,7 @@ func (c *highlightCache) paintEntry(entry hlLine) []highlight.Style {
 		end = s.End
 	}
 	spans = valid
-	cs := clusters(entry.text)
+	cs := txt.Clusters(entry.text)
 	styles := make([]highlight.Style, len(cs))
 	byteAt := 0
 	si := 0

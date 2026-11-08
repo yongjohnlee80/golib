@@ -83,7 +83,7 @@ in the same change. Never add a second copy "for now".
 | A popup: a panel over the host, closed by Esc or a press outside, trapping focus | `popupLayer` (`popup.go`, opened with `openPopupAt`): EditorMenu's menu, the tab strip's menu, and Select's options (`selectPanel`) |
 | Floating placement (rect, percent, clamp) | `Float.place` / `fixedRect`; the managed (WindowMod) layout adds only its work area and maximize |
 | Text viewport (scroll, reveal, caret placement, paint loop) | one text viewport shared by TextInput, TextArea, Editor, CommandLine |
-| Buffer edits | the line primitives in `textbuffer.go` (`setLine`, `insertLines`, `removeLines`, `replaceLines`, `setLines`); no other file writes `.textLines` (internal/audit) |
+| Buffer edits | the line primitives in `widget/internal/text/buffer.go` (`SetLine`, `InsertLines`, `RemoveLines`, `ReplaceLines`, `SetValue`, `DeleteRegion`, `InsertText`); no other file writes `.Lines` (internal/audit) |
 | Pointer policy, focus state, publishing | `widget.Base` |
 | A widget's shown text, plain or a catalog message | `uiText` (`plainText`, `messageText`, `inLanguage`) in `widget/message.go`, read where it is measured and painted, never resolved into a field in Layout |
 | Fatal construction errors | `fatalOf` → `errs.Fatal` |

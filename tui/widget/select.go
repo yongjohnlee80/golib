@@ -7,6 +7,7 @@ import (
 	"github.com/yongjohnlee80/golib/tui"
 	"github.com/yongjohnlee80/golib/tui/keymap"
 	"github.com/yongjohnlee80/golib/tui/style"
+	txt "github.com/yongjohnlee80/golib/tui/widget/internal/text"
 )
 
 // SelectItem pairs a display label with a typed value.
@@ -668,7 +669,7 @@ func (p *selectPanel[T]) HandleEvent(ev tui.Event) bool {
 			p.moveHi(len(p.matches))
 		case popupBackspace:
 			if p.owner.filterOn && p.filter != "" {
-				cs := clusters(p.filter)
+				cs := txt.Clusters(p.filter)
 				p.filter = strings.Join(cs[:len(cs)-1], "")
 				p.refilter()
 			}

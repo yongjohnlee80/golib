@@ -7,6 +7,7 @@ import (
 	"github.com/yongjohnlee80/golib/parse/markdown"
 
 	"github.com/yongjohnlee80/golib/tui"
+	txt "github.com/yongjohnlee80/golib/tui/widget/internal/text"
 )
 
 // LIST EDITING — a Markdown list as a writer's editor keeps it, in Insert mode, when on
@@ -94,50 +95,50 @@ func (it listItem) next() string {
 // listKey handles an Insert-mode key on a list item, reporting whether it did.
 func (c *EditorCore) listKey(_ tui.KeyEvent, r insertKey) bool {
 	b := &c.buf
-	if !c.listEditing || c.readOnly || c.vAnchor != (taPos{}) || b.anchor != nil {
+	if !c.listEditing || c.readOnly || c.vAnchor != (txt.Pos{}) || b.Anchor != nil {
 		return false
 	}
 	if r.qual&^tui.ModShift != 0 || (r.qual&tui.ModShift != 0 && r.act != ActInsertTab) {
 		return false
 	}
-	line := b.textLines[b.ln]
+	line := b.Lines[b.Ln]
 	it, ok := readListItem(line)
-	if !ok || (c.listWhere != nil && !c.listWhere(b.ln)) {
+	if !ok || (c.listWhere != nil && !c.listWhere(b.Ln)) {
 		return false
 	}
 	start := len(it.indent) + len(it.marker) // in clusters: both are ASCII or tabs
 	switch r.act {
 	case ActNewline:
-		if b.col < start {
+		if b.Col < start {
 			return false
 		}
 		c.beginGroup()
 		if strings.TrimSpace(line[start:]) == "" {
-			b.deleteRegion(taPos{b.ln, 0}, taPos{b.ln, len(b.lineClusters(b.ln))})
+			b.DeleteRegion(txt.Pos{Ln: b.Ln, Col: 0}, txt.Pos{Ln: b.Ln, Col: len(b.LineClusters(b.Ln))})
 		} else {
-			b.insertText("\n" + it.indent + it.next())
+			b.InsertText("\n" + it.indent + it.next())
 		}
 		c.edited()
 		return true
 	case ActBackspace:
-		if b.col != start {
+		if b.Col != start {
 			return false
 		}
 		c.beginGroup()
-		b.deleteRegion(taPos{b.ln, len(it.indent)}, taPos{b.ln, start})
+		b.DeleteRegion(txt.Pos{Ln: b.Ln, Col: len(it.indent)}, txt.Pos{Ln: b.Ln, Col: start})
 		c.edited()
 		return true
 	case ActInsertTab:
-		col := b.col
+		col := b.Col
 		c.beginGroup()
 		if r.qual&tui.ModShift == 0 {
 			unit := strings.Repeat(" ", it.unit)
 			if strings.HasPrefix(it.indent, "\t") {
 				unit = "\t"
 			}
-			b.col = 0
-			b.insertText(unit)
-			b.col = col + len(unit)
+			b.Col = 0
+			b.InsertText(unit)
+			b.Col = col + len(unit)
 		} else {
 			n := 0
 			for n < len(it.indent) && n < it.unit && it.indent[n] == ' ' {
@@ -149,10 +150,10 @@ func (c *EditorCore) listKey(_ tui.KeyEvent, r insertKey) bool {
 			if n == 0 {
 				return true
 			}
-			b.deleteRegion(taPos{b.ln, 0}, taPos{b.ln, n})
-			b.col = max(col-n, 0)
+			b.DeleteRegion(txt.Pos{Ln: b.Ln, Col: 0}, txt.Pos{Ln: b.Ln, Col: n})
+			b.Col = max(col-n, 0)
 		}
-		b.touch(b.ln)
+		b.Touch(b.Ln)
 		c.edited()
 		return true
 	}

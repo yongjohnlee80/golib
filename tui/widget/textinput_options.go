@@ -65,7 +65,7 @@ func WithOnEdit(fn func(string)) TextInputOption {
 
 // WithInitialValue sets the starting value (cursor at the end).
 func WithInitialValue(s string) TextInputOption {
-	return func(t *TextInput) { t.buf.setValue(sanitizeLine(s)) }
+	return func(t *TextInput) { t.buf.SetValue(sanitizeLine(s)) }
 }
 
 // WithTextInputStyles overrides the style hooks; zero fields keep defaults.

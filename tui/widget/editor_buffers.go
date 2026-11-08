@@ -1,6 +1,10 @@
 package widget
 
-import "slices"
+import (
+	"slices"
+
+	txt "github.com/yongjohnlee80/golib/tui/widget/internal/text"
+)
 
 // THE SHOWN BUFFER — which Buffer an editor shows, and how it changes (buffer.go).
 //
@@ -28,7 +32,7 @@ func (c *EditorCore) SetBuffer(b *Buffer) {
 	if b == nil || b.s == c.bufferState {
 		return
 	}
-	ln, col := c.buf.ln, c.buf.col
+	ln, col := c.buf.Ln, c.buf.Col
 	defer c.cursorMoved(ln, col)
 	c.resetInput()
 	// a recording never spans two buffers, so . never compares one buffer's revision with another's
@@ -65,10 +69,10 @@ func (c *EditorCore) show(s *bufferState, keep bool) {
 	if !seen {
 		p.desired = -1 // the first time here: line 1, no sticky column
 	}
-	c.buf = textBuffer{bufferText: s.text, desired: p.desired}
-	c.buf.ln = max(0, min(p.at.ln, len(s.text.textLines)-1))
-	c.buf.col = c.buf.clampCol(c.buf.ln, p.at.col)
-	c.vAnchor = taPos{}
+	c.buf = txt.Buffer{Doc: s.text, Desired: p.desired}
+	c.buf.Ln = max(0, min(p.at.Ln, len(s.text.Lines)-1))
+	c.buf.Col = c.buf.ClampCol(c.buf.Ln, p.at.Col)
+	c.vAnchor = txt.Pos{}
 	c.hl.text, c.hl.paint = &s.hlText, nil
 	// a buffer with no highlighting of its own takes the editor's, as it is now: shown after another
 	// under the same declared definition, it would be drawn plain, as no SetSourceFactory comes for
@@ -116,7 +120,7 @@ func (c *EditorCore) leave(keep bool) {
 		if v, ok := c.layout.(EditorViewport); ok {
 			top, _ = v.VisibleLines()
 		}
-		s.places[c] = place{at: taPos{c.buf.ln, c.buf.col}, desired: c.buf.desired, top: top}
+		s.places[c] = place{at: txt.Pos{Ln: c.buf.Ln, Col: c.buf.Col}, desired: c.buf.Desired, top: top}
 		c.placed[s] = true
 	}
 	dropPlain(s, c)
@@ -125,13 +129,13 @@ func (c *EditorCore) leave(keep bool) {
 // otherEdited is an edit to the shown buffer made through another editor, from line from on: this
 // editor's cursor is kept in the text (followEdits moved it), and its layout and paint follow.
 func (c *EditorCore) otherEdited(from int) {
-	c.buf.ln = max(0, min(c.buf.ln, len(c.buf.textLines)-1))
-	c.buf.col = c.buf.clampCol(c.buf.ln, c.buf.col)
+	c.buf.Ln = max(0, min(c.buf.Ln, len(c.buf.Lines)-1))
+	c.buf.Col = c.buf.ClampCol(c.buf.Ln, c.buf.Col)
 	if c.keys.modal && c.keys.mode == ModeNormal {
 		c.clampNormal()
 	}
 	if c.layout != nil {
-		c.layout.Changed(min(from, max(len(c.buf.textLines)-1, 0)))
+		c.layout.Changed(min(from, max(len(c.buf.Lines)-1, 0)))
 	}
 	c.markDirty()
 }
@@ -141,7 +145,7 @@ func (c *EditorCore) otherEdited(from int) {
 // editor's would, instead of landing at the replacement's end. A selection is left, as any edit
 // leaves it.
 func (c *EditorCore) ReplaceFollowing(r TextRange, text string) error {
-	f := &selfFollow{at: taPos{c.buf.ln, c.buf.col}}
+	f := &selfFollow{at: txt.Pos{Ln: c.buf.Ln, Col: c.buf.Col}}
 	if v, ok := c.layout.(EditorViewport); ok {
 		f.top, _ = v.VisibleLines()
 		f.view = v
@@ -152,8 +156,8 @@ func (c *EditorCore) ReplaceFollowing(r TextRange, text string) error {
 	if err != nil {
 		return err
 	}
-	c.buf.ln = max(0, min(f.at.ln, len(c.buf.textLines)-1))
-	c.buf.col = c.buf.clampCol(c.buf.ln, f.at.col)
+	c.buf.Ln = max(0, min(f.at.Ln, len(c.buf.Lines)-1))
+	c.buf.Col = c.buf.ClampCol(c.buf.Ln, f.at.Col)
 	if c.keys.modal && c.keys.mode == ModeNormal {
 		c.clampNormal()
 	}
@@ -170,15 +174,15 @@ func (c *EditorCore) ReplaceFollowing(r TextRange, text string) error {
 // selfFollow is ReplaceFollowing's: the editor's own cursor and first shown line, as they were,
 // moved by the edit's logged changes (followEdits).
 type selfFollow struct {
-	at   taPos
+	at   txt.Pos
 	top  int
 	view EditorViewport
 }
 
 // follow moves the saved cursor and top with one change.
-func (f *selfFollow) follow(e lineEdit) {
+func (f *selfFollow) follow(e txt.LineEdit) {
 	followCursorPos(&f.at, e)
-	t := taPos{ln: f.top}
+	t := txt.Pos{Ln: f.top}
 	followCursorPos(&t, e)
-	f.top = t.ln
+	f.top = t.Ln
 }

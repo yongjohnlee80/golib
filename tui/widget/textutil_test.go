@@ -3,6 +3,8 @@ package widget
 import (
 	"reflect"
 	"testing"
+
+	txt "github.com/yongjohnlee80/golib/tui/widget/internal/text"
 )
 
 func runeWidth(s string) int {
@@ -11,14 +13,14 @@ func runeWidth(s string) int {
 
 func TestTextUtilClustersAndCellsBefore(t *testing.T) {
 	s := "hello"
-	cs := clusters(s)
+	cs := txt.Clusters(s)
 	if !reflect.DeepEqual(cs, []string{"h", "e", "l", "l", "o"}) {
 		t.Errorf("clusters(%q) = %v", s, cs)
 	}
-	if got := cellsBefore(cs, 3, runeWidth); got != 3 {
+	if got := txt.CellsBefore(cs, 3, runeWidth); got != 3 {
 		t.Errorf("cellsBefore = %d, want 3", got)
 	}
-	if got := clusters(""); got != nil {
+	if got := txt.Clusters(""); got != nil {
 		t.Errorf("clusters(\"\") = %v, want nil", got)
 	}
 }
@@ -46,8 +48,8 @@ func TestTextUtilWrapLineAndRanges(t *testing.T) {
 		t.Errorf("wrapLine(%q, 6) = %v, want %v", s, rows, wantRows)
 	}
 
-	cs := clusters(s)
-	ranges := wrapRanges(cs, 6, runeWidth)
+	cs := txt.Clusters(s)
+	ranges := txt.WrapRanges(cs, 6, runeWidth)
 	if len(ranges) != 3 {
 		t.Fatalf("wrapRanges len = %d, want 3: %v", len(ranges), ranges)
 	}

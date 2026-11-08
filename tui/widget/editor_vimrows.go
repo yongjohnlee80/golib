@@ -1,5 +1,9 @@
 package widget
 
+import (
+	txt "github.com/yongjohnlee80/golib/tui/widget/internal/text"
+)
+
 // VIM gj AND gk — down and up by display row in wrapped text, keeping the x within the row, as
 // Vim's nv_screengo (src/normal.c). The layout knows the rows (EditorRowLayout); one without it has
 // a row per line. As an operator's motion they are charwise and exclusive, not linewise as j and
@@ -24,11 +28,11 @@ type lineRows struct{ c *EditorCore }
 
 func (r lineRows) RowCount(int) int { return 1 }
 func (r lineRows) RowOf(line, col int) (int, int) {
-	return 0, r.c.buf.cellsAt(line, col, r.c.measure)
+	return 0, r.c.buf.CellsAt(line, col, r.c.measure)
 }
 func (r lineRows) ColAt(line, _, x int) int {
-	cs := r.c.buf.lineClusters(line)
-	return min(r.c.buf.colForCells(line, x, r.c.measure), max(len(cs)-1, 0))
+	cs := r.c.buf.LineClusters(line)
+	return min(r.c.buf.ColForCells(line, x, r.c.measure), max(len(cs)-1, 0))
 }
 
 func (c *EditorCore) rowLayout() EditorRowLayout {
@@ -42,19 +46,19 @@ func (c *EditorCore) rowLayout() EditorRowLayout {
 // move, for cursorMoved), and only where they left it (at), against a move from outside a key.
 type rowSticky struct {
 	x    int
-	at   taPos
+	at   txt.Pos
 	ok   bool
 	kept bool
 }
 
 // rowTarget is count display rows down (gj) or up (gk) from the cursor, at the kept x; moved is
 // false at the text's first or last row.
-func (c *EditorCore) rowTarget(down bool, count int) (to taPos, moved bool) {
+func (c *EditorCore) rowTarget(down bool, count int) (to txt.Pos, moved bool) {
 	b := &c.buf
 	rl := c.rowLayout()
-	ln := b.ln
-	row, x := rl.RowOf(ln, b.col)
-	if s := c.rowSticky; s.ok && s.at == (taPos{b.ln, b.col}) {
+	ln := b.Ln
+	row, x := rl.RowOf(ln, b.Col)
+	if s := c.rowSticky; s.ok && s.at == (txt.Pos{Ln: b.Ln, Col: b.Col}) {
 		x = s.x
 	}
 	for range max(count, 1) {
@@ -75,9 +79,9 @@ func (c *EditorCore) rowTarget(down bool, count int) (to taPos, moved bool) {
 		}
 		moved = true
 	}
-	to = taPos{ln, rl.ColAt(ln, row, x)}
+	to = txt.Pos{Ln: ln, Col: rl.ColAt(ln, row, x)}
 	if c.inFold(ln) {
-		to.col = 0 // a fold's cursor is in its first column, as j's (lineTarget)
+		to.Col = 0 // a fold's cursor is in its first column, as j's (lineTarget)
 	}
 	c.rowSticky = rowSticky{x: x, at: to, ok: true}
 	return to, moved
@@ -91,12 +95,12 @@ func (c *EditorCore) rowMove(down bool, count int) {
 		return
 	}
 	c.hist.close()
-	b.ln, b.col = to.ln, to.col
-	b.desired = -1
+	b.Ln, b.Col = to.Ln, to.Col
+	b.Desired = -1
 	if c.keys.mode == ModeNormal {
 		c.clampNormal()
 	}
-	c.rowSticky.at, c.rowSticky.kept = taPos{b.ln, b.col}, true
+	c.rowSticky.at, c.rowSticky.kept = txt.Pos{Ln: b.Ln, Col: b.Col}, true
 	c.reveal()
 	c.markDirty()
 }
