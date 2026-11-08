@@ -175,7 +175,8 @@ func TestAPictureIsItsBuffersOwn(t *testing.T) {
 	waitGrid(t, ih3, "D's picture", func(g string) bool { return strings.Contains(g, "DDDD") })
 	ih3.onLoopInternal(func() { e3.Core().SetBuffer(NewBuffer(BufferText("```mermaid\nE\n```\nafter"))) })
 	lay3.await(t, lay3.started, "E", "request")
-	ih3.syncInternal()
+	// the switched frame painted: E's source, its language row (a picture has none)
+	waitGrid(t, ih3, "the other buffer's source", func(g string) bool { return strings.Contains(g, "mermaid") })
 	if g := ih3.tb.String(); strings.Contains(g, "DDDD") || !strings.Contains(g, "E") {
 		t.Errorf("while the other buffer's picture lays, want its source, not the first buffer's picture:\n%s", g)
 	}
