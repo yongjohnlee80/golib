@@ -30,14 +30,22 @@ const (
 // kept where its source is; a list item's marker as its bullet; a quote's mark as a bar; a code
 // block's lines in the code look; frontmatter and comments hidden (HideMetadata). A block being
 // typed in is laid as its source. A table is boxed, its columns narrowed to the width (FitColumns),
-// or, too many to narrow, laid at their own widths. Diagrams and images are drawn as their source
-// (later steps draw them).
+// or, too many to narrow, laid at their own widths. A mermaid or vega-lite fence is its picture, laid
+// by the Editor (SetPictureHost), its fences no rows: the source until it is laid, or when it can't be.
+// Images are drawn as their source (a later step draws them).
 type MarkdownCellRenderer struct {
 	MarkdownBlocks
 	// Languages highlights a fenced block in its info string's language, as gui's Markdown
 	// renderer and the HTML page do; nil: code in the code look only.
 	Languages *highlight.Catalog
+	// pictures lays a mermaid or vega-lite fence's picture: the Editor drawing through the renderer
+	// (SetPictureHost). Without one, such a fence is code.
+	pictures CellPictureHost
 }
+
+// SetPictureHost is where the renderer's pictures are laid: the Editor sets itself when the renderer
+// is set (Editor.SetRenderer).
+func (r *MarkdownCellRenderer) SetPictureHost(h CellPictureHost) { r.pictures = h }
 
 var (
 	_ CellRenderer      = (*MarkdownCellRenderer)(nil)
@@ -314,6 +322,16 @@ func (r *MarkdownCellRenderer) fenced(lb *mdCellLines, cb *CellBlock, b Block, l
 		muted := func(int) style.Style { return lb.role(MarkdownQuietStyle) }
 		lb.cells(cb, b.From, open[at:at+len(info)], clusterIndex(open, at), muted, nil, nil, nil, nil)
 	}
+	if lang := pictureLang(info); lang != "" && r.pictures != nil { // a diagram or a chart: its picture, its fences none
+		end := b.To
+		if end-1 > b.From && markdown.FenceCloses(lines[end-1], f.ch, f.n) {
+			end--
+		}
+		if p, ok := r.pictures.Picture(b, lang, strings.Join(lines[b.From+1:end], "\n"), lb.width); ok {
+			cb.Rows = append(cb.Rows, pictureRows(p, lb.measure)...)
+			return
+		}
+	}
 	var hl highlight.Highlighter
 	if words := strings.Fields(info); len(words) > 0 {
 		if d, ok := r.Languages.DefinitionForLanguage(words[0]); ok && !d.DocumentAdapter {
@@ -337,6 +355,22 @@ func (r *MarkdownCellRenderer) fenced(lb *mdCellLines, cb *CellBlock, b Block, l
 		spans, state = append([]highlight.Span(nil), spans...), next
 		lb.source(cb, ln, line, func(off int) style.Style { return lb.syntax(spans, off-offset, code) })
 	}
+}
+
+// pictureLang is the picture a fence's info string names: "mermaid", or "vega-lite" (or vegalite);
+// "" for none.
+func pictureLang(info string) string {
+	words := strings.Fields(info)
+	if len(words) == 0 {
+		return ""
+	}
+	switch strings.ToLower(words[0]) {
+	case "mermaid":
+		return "mermaid"
+	case "vega-lite", "vegalite":
+		return "vega-lite"
+	}
+	return ""
 }
 
 // line lays one prose line: a list item's marker as its bullet, its later rows hung under its text;

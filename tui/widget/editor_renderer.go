@@ -93,6 +93,9 @@ func (e *Editor) SetRenderer(r CellRenderer) {
 	if md, ok := r.(MarkdownStructure); ok {
 		e.core.SetListEditingWhere(MarkdownListWhere(e.core, md))
 	}
+	if p, ok := r.(interface{ SetPictureHost(CellPictureHost) }); ok { // a renderer that draws pictures lays them here
+		p.SetPictureHost(e)
+	}
 	e.applyView()
 }
 
@@ -155,6 +158,7 @@ type renderedKey struct {
 	width  int
 	typing int // the line being typed on, -1 when no text is typed
 	theme  CellTheme
+	pics   uint64 // the pictures laid (picGen): one arriving lays its block again
 }
 
 // renderedLayout is the Editor's text through its renderer: the display rows in order, and each
@@ -174,7 +178,7 @@ type renderedLayout struct {
 func (e *Editor) renderedRows(width int) *renderedLayout {
 	l := &e.cells
 	lines := e.core.buf.textLines
-	key := renderedKey{gen: e.renderGen, buf: e.core.Buffer(), rev: e.core.Revision(), width: width, typing: -1, theme: e.cellTheme()}
+	key := renderedKey{gen: e.renderGen, buf: e.core.Buffer(), rev: e.core.Revision(), width: width, typing: -1, theme: e.cellTheme(), pics: e.picGen}
 	if l.typing() {
 		key.typing = e.core.buf.ln
 	}
