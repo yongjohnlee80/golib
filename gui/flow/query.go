@@ -28,77 +28,91 @@ import (
 //
 // Paint renders the laid-out paragraph onto canvas c with its top-left origin at position at.
 // The provided spans slice specifies the styles and color palettes; passing updated spans allows
-// an application to restyle or tint text without re-executing paragraph line layout. It is
-// PaintBackgrounds then PaintText: a caller that lays something between a span's background and
-// its glyphs (an editor's selection, a find's marks) calls the two itself.
+// an application to restyle or tint text without re-executing paragraph line layout. Each fragment
+// is painted whole, its background then its text, in reading order. A caller that lays something
+// between the backgrounds and the text (an editor's selection, a find's marks) calls
+// PaintBackgrounds and PaintText instead.
 func (p *Para) Paint(c gui.Canvas, at gui.Point, spans []Span) {
-	p.PaintBackgrounds(c, at, spans)
-	p.PaintText(c, at, spans)
+	p.each(spans, func(l *Line, f *Frag, sp Span) {
+		p.paintBackground(c, at, l, f, sp)
+		p.paintText(c, at, l, f, sp)
+	})
 }
 
-// PaintBackgrounds paints the spans' backgrounds (an inline code span's chip), each around its
-// glyphs, not its line: a tall line's chip is not a column.
+// PaintBackgrounds paints every fragment's background (an inline code span's chip), and nothing else.
 func (p *Para) PaintBackgrounds(c gui.Canvas, at gui.Point, spans []Span) {
-	for _, l := range p.Lines {
-		for _, f := range l.Frags {
-			sp := spans[f.Span]
-			if sp.Hidden || sp.Background.A == 0 || f.W <= 0 {
-				continue
+	p.each(spans, func(l *Line, f *Frag, sp Span) { p.paintBackground(c, at, l, f, sp) })
+}
+
+// PaintText paints every fragment's glyphs, atoms, underlines and strikes, over whatever lies under
+// them, and no background.
+func (p *Para) PaintText(c gui.Canvas, at gui.Point, spans []Span) {
+	p.each(spans, func(l *Line, f *Frag, sp Span) { p.paintText(c, at, l, f, sp) })
+}
+
+// each calls fn for each shown fragment, in reading order, with its line and span.
+func (p *Para) each(spans []Span, fn func(l *Line, f *Frag, sp Span)) {
+	for li := range p.Lines {
+		l := &p.Lines[li]
+		for fi := range l.Frags {
+			f := &l.Frags[fi]
+			if sp := spans[f.Span]; !sp.Hidden {
+				fn(l, f, sp)
 			}
-			x, top := at.X+f.X, at.Y+l.Y
-			// a plain rectangle: a rounded one is a path, and a page of code spans as paths made
-			// every frame slow
-			pad := sp.Font.Size * 0.18
-			chip := gui.Rect{X: x - pad/2, Y: at.Y + l.Baseline - f.ascent - pad/2, W: f.W + pad, H: sp.Font.Size*1.15 + pad}
-			if f.ascent == 0 {
-				chip = gui.Rect{X: x, Y: top, W: f.W, H: l.H}
-			}
-			c.FillRect(chip, gui.Solid(sp.Background))
 		}
 	}
 }
 
-// PaintText paints the spans' glyphs, atoms, underlines and strikes, over whatever lies under them.
-func (p *Para) PaintText(c gui.Canvas, at gui.Point, spans []Span) {
-	for _, l := range p.Lines {
-		for _, f := range l.Frags {
-			sp := spans[f.Span]
-			if sp.Hidden {
-				continue
-			}
-			x := at.X + f.X
-			if sp.Atom != nil {
-				if sp.Atom.Paint != nil {
-					sp.Atom.Paint(c.Sub(gui.Rect{X: x, Y: at.Y + l.Baseline - sp.Atom.Baseline, W: sp.Atom.W, H: sp.Atom.H}))
-				}
-				continue
-			}
-			col := sp.Color
-			if col.A == 0 {
-				col = p.opts.Color
-			}
-			base := at.Y + l.Baseline
-			if f.Layout != nil {
-				c.DrawText(f.Layout, gui.Pt(x, base-f.Layout.Ascent), gui.Solid(col))
-			}
-			for k, g := range f.glyphs {
-				if g != nil {
-					c.DrawText(g, gui.Pt(x+f.xs[k], base-g.Ascent), gui.Solid(col))
-				}
-			}
-			for k, r := range f.runs {
-				if r != nil {
-					c.DrawText(r, gui.Pt(x+f.xs[f.runEdge[k]], base-r.Ascent), gui.Solid(col))
-				}
-			}
-			thick := max(1, sp.Font.Size/14)
-			if sp.Underline {
-				c.FillRect(gui.Rect{X: x, Y: base + thick, W: f.W, H: thick}, gui.Solid(col))
-			}
-			if sp.Strike {
-				c.FillRect(gui.Rect{X: x, Y: base - f.ascent*0.35, W: f.W, H: thick}, gui.Solid(col))
-			}
+// paintBackground paints fragment f's background: a chip around its glyphs, not its line (a tall
+// line's chip is not a column).
+func (p *Para) paintBackground(c gui.Canvas, at gui.Point, l *Line, f *Frag, sp Span) {
+	if sp.Background.A == 0 || f.W <= 0 {
+		return
+	}
+	x, top := at.X+f.X, at.Y+l.Y
+	// a plain rectangle: a rounded one is a path, and a page of code spans as paths made every
+	// frame slow
+	pad := sp.Font.Size * 0.18
+	chip := gui.Rect{X: x - pad/2, Y: at.Y + l.Baseline - f.ascent - pad/2, W: f.W + pad, H: sp.Font.Size*1.15 + pad}
+	if f.ascent == 0 {
+		chip = gui.Rect{X: x, Y: top, W: f.W, H: l.H}
+	}
+	c.FillRect(chip, gui.Solid(sp.Background))
+}
+
+// paintText paints fragment f's glyphs (or its atom), its underline and its strike.
+func (p *Para) paintText(c gui.Canvas, at gui.Point, l *Line, f *Frag, sp Span) {
+	x := at.X + f.X
+	if sp.Atom != nil {
+		if sp.Atom.Paint != nil {
+			sp.Atom.Paint(c.Sub(gui.Rect{X: x, Y: at.Y + l.Baseline - sp.Atom.Baseline, W: sp.Atom.W, H: sp.Atom.H}))
 		}
+		return
+	}
+	col := sp.Color
+	if col.A == 0 {
+		col = p.opts.Color
+	}
+	base := at.Y + l.Baseline
+	if f.Layout != nil {
+		c.DrawText(f.Layout, gui.Pt(x, base-f.Layout.Ascent), gui.Solid(col))
+	}
+	for k, g := range f.glyphs {
+		if g != nil {
+			c.DrawText(g, gui.Pt(x+f.xs[k], base-g.Ascent), gui.Solid(col))
+		}
+	}
+	for k, r := range f.runs {
+		if r != nil {
+			c.DrawText(r, gui.Pt(x+f.xs[f.runEdge[k]], base-r.Ascent), gui.Solid(col))
+		}
+	}
+	thick := max(1, sp.Font.Size/14)
+	if sp.Underline {
+		c.FillRect(gui.Rect{X: x, Y: base + thick, W: f.W, H: thick}, gui.Solid(col))
+	}
+	if sp.Strike {
+		c.FillRect(gui.Rect{X: x, Y: base - f.ascent*0.35, W: f.W, H: thick}, gui.Solid(col))
 	}
 }
 

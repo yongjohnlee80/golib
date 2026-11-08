@@ -95,9 +95,9 @@ func TestTheWindowsMarksSitBetweenTheBlockAndTheSelection(t *testing.T) {
 		h.e.core.SetFind("alpha", tuiwidget.FindOptions{})
 		h.e.core.SetCurrentMatch(tuiwidget.TextRange{From: tuiwidget.TextPos{Line: 4}, To: tuiwidget.TextPos{Line: 4, Col: 5}})
 	})
-	covers := func(a, b gui.Rect) bool {
+	overlaps := func(a, b gui.Rect) bool { // by more than an edge
 		const e = 0.5
-		return a.X <= b.X+e && a.Y <= b.Y+e && a.X+a.W >= b.X+b.W-e && a.Y+a.H >= b.Y+b.H-e
+		return a.X < b.X+b.W-e && b.X < a.X+a.W-e && a.Y < b.Y+b.H-e && b.Y < a.Y+a.H-e
 	}
 	for _, page := range []struct {
 		name    string
@@ -124,8 +124,14 @@ func TestTheWindowsMarksSitBetweenTheBlockAndTheSelection(t *testing.T) {
 		if len(tints) != 3 {
 			t.Fatalf("%s: %d red tints, want three (the header's alpha, the prose's, the code span's)", page.name, len(tints))
 		}
-		selected := false
+		selected, under := false, 0
 		for _, i := range tints {
+			// a background of the block's own under the tint: the header's, or the code span's chip
+			if slices.ContainsFunc(calls[:i], func(c gui.PaintCall) bool {
+				return c.Op == "FillRect" && c.Brush.Color.A == 0xff && c.Brush.Color != page.bg && c.Brush.Color != sel && overlaps(c.Rect, calls[i].Rect)
+			}) {
+				under++
+			}
 			tint := calls[i].Rect
 			if !slices.ContainsFunc(calls[i+1:], func(c gui.PaintCall) bool {
 				return c.Op == "DrawText" && c.Rect.X < tint.X+tint.W && tint.X < c.Rect.X+c.Rect.W && c.Rect.Y < tint.Y+tint.H && tint.Y < c.Rect.Y+c.Rect.H
@@ -133,7 +139,7 @@ func TestTheWindowsMarksSitBetweenTheBlockAndTheSelection(t *testing.T) {
 				t.Errorf("%s: no text drawn after the tint at %+v: the glyphs must lie over it", page.name, calls[i].Rect)
 			}
 			for _, c := range calls[i+1:] {
-				if c.Op != "FillRect" || !covers(c.Rect, calls[i].Rect) {
+				if c.Op != "FillRect" || !overlaps(c.Rect, calls[i].Rect) {
 					continue
 				}
 				if c.Brush.Color == sel {
@@ -147,6 +153,9 @@ func TestTheWindowsMarksSitBetweenTheBlockAndTheSelection(t *testing.T) {
 		}
 		if !selected {
 			t.Errorf("%s: no selection laid over the current match's tint", page.name)
+		}
+		if under != 2 {
+			t.Errorf("%s: %d tints lie over a background of their block's, want 2 (the header's and the code chip's)", page.name, under)
 		}
 	}
 }
