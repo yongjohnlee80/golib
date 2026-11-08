@@ -46,6 +46,15 @@ type MarkdownCellRenderer struct {
 	// images lays an image-only paragraph's image: the Editor (SetImageHost). Without one, or until
 	// it loads, the paragraph is its text.
 	images CellImageHost
+	// Embeds resolves the src of an image-only line to the Markdown its file stands for, when the
+	// file is text a note embeds: a mermaid or vega-lite fence, or a GFM table. Such a line is drawn
+	// as that: the fence's picture (its line's text until the picture comes), the table boxed, or
+	// other Markdown (a notice) as its words, the line a fold, its source while typed in. nil, or
+	// not ok: the line is an image's, as without it. Any line that is only an image is one, as for
+	// images: the lines around it don't matter.
+	// It is called on the loop as the view is laid, once per such line and pass: a host caches its
+	// files.
+	Embeds func(src string) (md string, ok bool)
 	// langSeen is the Languages the stamps were last taken with, langGen bumped when it is another
 	// (BlockContext).
 	langSeen *highlight.Catalog
@@ -99,6 +108,9 @@ func (r *MarkdownCellRenderer) LayOut(b Block, lines []string, width int, measur
 			lb.source(&cb, ln, lines[ln], func(int) style.Style { return code })
 		}
 	default:
+		if kind == mdImage && r.embedded(&lb, &cb, b, lines) {
+			break // a file the line embeds, drawn
+		}
 		if p, ok := r.image(b, lines, lb.width); kind == mdImage && ok { // an image-only paragraph: the image's rows, the paragraph a fold
 			cb.Rows, cb.Picture = append(cb.Rows, pictureRows(p, lb.measure)...), p
 		} else {
@@ -167,6 +179,10 @@ func (r *MarkdownCellRenderer) BlockContext(b Block, lines []string) uint64 {
 	}
 	k, end := r.kind(b, lines)
 	h := stampOf(uint64(k), uint64(max(end-b.From, 0)), boolBit(r.HideMetadata), boolBit(r.pictures != nil), boolBit(r.images != nil), r.langGen)
+	if k == mdImage && r.Embeds != nil { // what the line embeds: a file changed, or come, lays it again
+		md, ok := r.embedOf(b, lines)
+		h = stampOf(h, boolBit(ok), textStamp(md))
+	}
 	if r.HideMetadata {
 		for ln := b.From; ln < b.To; ln++ {
 			mask, ok := r.Meta.HiddenClusters(ln)
@@ -452,20 +468,118 @@ func (r *MarkdownCellRenderer) fenced(lb *mdCellLines, cb *CellBlock, b Block, l
 	}
 }
 
+// imageSrc is the src of block b when it is a one-line paragraph of one image, its <> taken off.
+func imageSrc(b Block, lines []string) (string, bool) {
+	if b.To-b.From != 1 {
+		return "", false
+	}
+	m := mdImageOnly.FindStringSubmatch(strings.TrimSpace(lines[b.From]))
+	if m == nil {
+		return "", false
+	}
+	return strings.TrimSuffix(strings.TrimPrefix(m[1], "<"), ">"), true
+}
+
+// embedOf is the Markdown block b's file stands for, when b is an image-only line whose src Embeds
+// resolves.
+func (r *MarkdownCellRenderer) embedOf(b Block, lines []string) (string, bool) {
+	if r.Embeds == nil {
+		return "", false
+	}
+	src, ok := imageSrc(b, lines)
+	if !ok {
+		return "", false
+	}
+	return r.Embeds(src)
+}
+
+// embedded lays block b, an image-only line, as the file it embeds, when Embeds resolves it: a
+// mermaid or vega-lite fence as its picture (the line's own text while none is laid), a GFM table
+// boxed, every cell a decoration, so the line is a fold. false: not an embed this renderer draws.
+func (r *MarkdownCellRenderer) embedded(lb *mdCellLines, cb *CellBlock, b Block, lines []string) bool {
+	md, ok := r.embedOf(b, lines)
+	if !ok {
+		return false
+	}
+	in := strings.Split(strings.TrimRight(md, "\n"), "\n")
+	if f, ok := mdOpenFence(in[0]); ok {
+		open := strings.TrimLeft(in[0], " ")
+		lang := pictureLang(strings.TrimSpace(open[f.n:]))
+		if lang == "" {
+			return false
+		}
+		end := len(in)
+		if end-1 > 0 && markdown.FenceCloses(in[end-1], f.ch, f.n) {
+			end--
+		}
+		if r.pictures != nil {
+			if p, ok := r.pictures.Picture(b, lang, strings.Join(in[1:end], "\n"), lb.width); ok {
+				cb.Rows, cb.Picture = append(cb.Rows, pictureRows(p, lb.measure)...), p
+				return true
+			}
+		}
+		r.line(lb, cb, b.From, lines[b.From]) // until its picture comes, or where none can be: the line
+		return true
+	}
+	if end := MarkdownTableEnd(in, 0); end > 0 {
+		var tb CellBlock
+		(&MarkdownCellRenderer{}).table(lb, &tb, 0, end, in) // the file's lines: no metadata of the note's
+		cb.Rows = append(cb.Rows, decorations(tb.Rows)...)
+		r.notice(lb, cb, in[end:]) // the embed's note under its table (how many rows more)
+		return true
+	}
+	r.notice(lb, cb, in) // a notice in the drawing's place (a file too large to draw)
+	return true
+}
+
+// notice lays lines, an embed's words in its drawing's place or under it, muted, each a decoration.
+func (r *MarkdownCellRenderer) notice(lb *mdCellLines, cb *CellBlock, lines []string) {
+	quiet := func(int) style.Style { return lb.role(MarkdownQuietStyle) }
+	for _, line := range lines {
+		if strings.TrimSpace(line) == "" {
+			continue
+		}
+		var nb CellBlock
+		lb.cells(&nb, -1, line, 0, quiet, nil, nil, nil, nil)
+		cb.Rows = append(cb.Rows, decorations(nb.Rows)...)
+	}
+}
+
+// decorations are rows whose cells show none of the note's source: an embedded file's, so the line
+// that embeds it is a fold.
+func decorations(rows []CellRow) []CellRow {
+	for i := range rows {
+		rows[i].Anchor = -1
+		for j := range rows[i].Cells {
+			rows[i].Cells[j].Line = -1
+		}
+	}
+	return rows
+}
+
+// textStamp folds s into a stamp.
+func textStamp(s string) uint64 {
+	h := uint64(14695981039346656037)
+	for i := 0; i < len(s); i++ {
+		h = (h ^ uint64(s[i])) * 1099511628211
+	}
+	return h
+}
+
 // mdImageOnly is a paragraph that is one image and nothing else: ![alt](src), a title allowed.
 var mdImageOnly = regexp.MustCompile(`^!\[[^\]]*\]\(\s*(<[^>]*>|[^\s)]+)(?:\s+"[^"]*")?\s*\)$`)
 
 // image is block b's image, when it is a one-line paragraph of one image and the host has it laid;
 // ok false otherwise (the paragraph is laid as its text, its alt text).
 func (r *MarkdownCellRenderer) image(b Block, lines []string, width int) (CellPicture, bool) {
-	if r.images == nil || b.To-b.From != 1 {
+	if r.images == nil {
 		return nil, false
 	}
-	m := mdImageOnly.FindStringSubmatch(strings.TrimSpace(lines[b.From]))
-	if m == nil {
+	src, ok := imageSrc(b, lines)
+	if !ok {
 		return nil, false
 	}
-	return r.images.Image(b, strings.TrimSuffix(strings.TrimPrefix(m[1], "<"), ">"), width)
+	return r.images.Image(b, src, width)
 }
 
 // pictureLang is the picture a fence's info string names: "mermaid", or "vega-lite" (or vegalite);
