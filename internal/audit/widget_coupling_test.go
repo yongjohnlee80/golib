@@ -319,3 +319,21 @@ func TestWidgetGroupsAssignByLongestPrefix(t *testing.T) {
 		}
 	}
 }
+
+// TestWidgetCoreReachesNoComponent holds the first step of the split: core uses
+// no component's unexported name, so core can become a package the components
+// import. The ledger already stops any crossing from growing; this names the
+// one direction that must stay empty.
+func TestWidgetCoreReachesNoComponent(t *testing.T) {
+	found, _ := widgetCrossings(t, repoRoot(t))
+	var rows []string
+	for _, c := range found {
+		if c.from == "core" {
+			rows = append(rows, c.row())
+		}
+	}
+	if len(rows) > 0 {
+		t.Errorf("core uses %d unexported name(s) of a component; give core the code it needs, or let the "+
+			"component hand it in through an interface or a callback core owns:\n  %s", len(rows), strings.Join(rows, "\n  "))
+	}
+}
