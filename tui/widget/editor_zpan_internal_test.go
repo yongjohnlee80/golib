@@ -61,7 +61,7 @@ func TestAWidePicturePansWithZhAndZl(t *testing.T) {
 	waitShown(t, ih, "zh: one back", "34")
 	zKeys(ih, e, "50zl")
 	waitShown(t, ih, "50zl: clamped at 22", "23")
-	storedPan(t, ih, e, 22) // kept clamped, so zh moves at once
+	storedPan(t, ih, e, 22) // the offset stored stays within what the picture has to show (0 to 22)
 	zKeys(ih, e, "jk")
 	ih.syncInternal()
 	if got := shownFrom(ih); got != "23" {
