@@ -105,10 +105,11 @@ func cacheRowText(r CellRow) string {
 	return b.String()
 }
 
-// bigNote is a 5,000-line note: paragraphs, headings, list items and code, in blocks of four lines.
+// bigNote is a 5,000-line note: headings, list items, code and paragraphs, each with a blank line
+// after it.
 func bigNote() string {
 	var b strings.Builder
-	for i := range 1250 {
+	for i := range 2500 {
 		switch i % 4 {
 		case 0:
 			fmt.Fprintf(&b, "# Part %d\n\n", i)
@@ -124,14 +125,15 @@ func bigNote() string {
 }
 
 // On a 5,000-line note, an edit that changes no block's kind lays only its own block again: a word
-// typed into a paragraph in the middle, and a line added to it (the blocks after it moved a line
-// down), each lay one block; the layout is the one a fresh Editor lays, caret and hit agreeing.
+// typed into a paragraph's line in the middle lays that line's block, and a line added after it (a
+// prose line is a block of its own) lays only the new line's, the blocks after it moved a line down;
+// the layout is the one a fresh Editor lays, caret and hit agreeing.
 func TestAnEditLaysOnlyItsOwnBlockAgain(t *testing.T) {
 	e, c := cacheEditor(t, bigNote())
 	if n := len(e.core.buf.textLines); n < 5000 {
 		t.Fatalf("the note has %d lines, want 5,000", n)
 	}
-	ln := 2*1250/2 + 1 // a paragraph's line ("Some *words* of paragraph 627.")
+	ln := 2500 // about the middle: the next paragraph's line ("Some *words* of paragraph 1251.")
 	for !strings.HasPrefix(e.core.buf.textLines[ln], "Some") {
 		ln++
 	}
@@ -145,8 +147,8 @@ func TestAnEditLaysOnlyItsOwnBlockAgain(t *testing.T) {
 	if _, err := e.core.Insert(TextPos{Line: ln, Col: len(e.core.buf.textLines[ln])}, "\nand a second line."); err != nil {
 		t.Fatal(err)
 	}
-	if laid := relaid(e, c); len(laid) != 1 || laid[0] != (Block{From: ln, To: ln + 2}) {
-		t.Fatalf("a line added to the paragraph at %d laid %d blocks again (%v), want its own one", ln, len(laid), laid[:min(len(laid), 4)])
+	if laid := relaid(e, c); len(laid) != 1 || laid[0] != (Block{From: ln + 1, To: ln + 2}) {
+		t.Fatalf("a line added after line %d laid %d blocks again (%v), want only the new line's", ln, len(laid), laid[:min(len(laid), 4)])
 	}
 	sameAsFresh(t, e, "a line added")
 	if laid := relaid(e, c); len(laid) != 0 { // nothing changed: the whole layout kept
