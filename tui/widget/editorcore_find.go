@@ -143,6 +143,18 @@ func (c *EditorCore) ReplaceAll(term, with string, o FindOptions) (int, error) {
 	return len(all), nil
 }
 
+// OverlayStyles is line ln's clusters as the overlay alone styles them: the host's marks
+// (SetHighlightOverlay) and the active find's, highlight.Normal where it marks nothing, with no
+// highlighter's styles beneath. A view that draws the text its own way (the cell Editor's Rendered
+// view) lays these over its own cells, so a find marks every match there as it does in the text.
+// nil when there is no overlay, or no line ln.
+func (c *EditorCore) OverlayStyles(ln int) []highlight.Style {
+	if c.hl.overlay == nil || ln < 0 || ln >= len(c.buf.textLines) {
+		return nil
+	}
+	return c.hl.paintEntry(hlLine{text: c.buf.textLines[ln]})
+}
+
 // SetFind makes term the active find, or clears it with "": its matches are marked, and n and N
 // step through them. Backward and Wrap in o are ignored: n always goes forward and N back, both
 // wrapping.
