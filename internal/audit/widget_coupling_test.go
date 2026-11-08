@@ -104,6 +104,13 @@ func (c crossing) row() string { return c.from + "\t" + c.owner + "\t" + c.name 
 // files it read.
 func widgetCrossings(t *testing.T, root string) ([]crossing, int) {
 	t.Helper()
+	return widgetUses(t, root, false)
+}
+
+// widgetUses is widgetCrossings with exported names too when exported: every name one group uses
+// and another declares.
+func widgetUses(t *testing.T, root string, exported bool) ([]crossing, int) {
+	t.Helper()
 	// one platform for every host: the ledger is the linux build's, so macOS (whose build compiles
 	// other files) checks the same files against the same rows
 	platform := append(os.Environ(), "GOOS=linux", "GOARCH=amd64", "CGO_ENABLED=0")
@@ -163,7 +170,7 @@ func widgetCrossings(t *testing.T, root string) ([]crossing, int) {
 	}
 	seen := map[crossing]bool{}
 	for id, obj := range info.Uses {
-		if obj.Pkg() != pkg || obj.Exported() || !obj.Pos().IsValid() {
+		if obj.Pkg() != pkg || obj.Exported() && !exported || !obj.Pos().IsValid() {
 			continue
 		}
 		name, kind, ok := widgetObject(obj, fieldOf)
@@ -318,11 +325,11 @@ func TestWidgetGroupsAssignByLongestPrefix(t *testing.T) {
 }
 
 // TestWidgetCoreReachesNoComponent holds the first step of the split: core uses
-// no component's unexported name, so core can become a package the components
-// import. The ledger already stops any crossing from growing; this names the
-// one direction that must stay empty.
+// no name a component declares, unexported or exported, so core can become a
+// package the components import. The ledger already stops any unexported
+// crossing from growing; this names the one direction that must stay empty.
 func TestWidgetCoreReachesNoComponent(t *testing.T) {
-	found, _ := widgetCrossings(t, repoRoot(t))
+	found, _ := widgetUses(t, repoRoot(t), true)
 	var rows []string
 	for _, c := range found {
 		if c.from == "core" {
@@ -330,8 +337,10 @@ func TestWidgetCoreReachesNoComponent(t *testing.T) {
 		}
 	}
 	if len(rows) > 0 {
-		t.Errorf("core uses %d unexported name(s) of a component; give core the code it needs, or let the "+
-			"component hand it in through an interface or a callback core owns:\n  %s", len(rows), strings.Join(rows, "\n  "))
+		t.Errorf("core uses %d name(s) a component declares, exported or not: core would import the component "+
+			"once each is a package. Give core the code it needs, let the component hand it in through an "+
+			"interface or a callback core owns, or move a check of the component (var _ I = (*T)(nil)) to "+
+			"its file:\n  %s", len(rows), strings.Join(rows, "\n  "))
 	}
 }
 

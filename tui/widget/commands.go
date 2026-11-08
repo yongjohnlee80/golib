@@ -421,15 +421,3 @@ var (
 	DrawerClose    = cmd("tui.drawer.close", DrawerScope, "Esc")
 	DrawerCloseOnQ = cmd("tui.drawer.closeOnQ", DrawerScope, "Q") // with closeOnQ
 )
-
-// KeyCommands is every key command golib declares: the runtime's and every widget's, for keymap.Build.
-// (Commands is the Editor command line's registry; these are keys.)
-func KeyCommands() []keymap.Command {
-	out := append(slices.Clone(tui.Commands()), declared...)
-	for _, c := range EditorCommands() {
-		if c.ID != EditorContextMenu.ID { // declared through cmd already
-			out = append(out, c)
-		}
-	}
-	return out
-}

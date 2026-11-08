@@ -7,6 +7,7 @@ editor	core	anyCombo	var
 editor	core	cmd	func
 editor	core	commonPrefix	func
 editor	core	countDigit	func
+editor	core	declared	var
 editor	core	defaultTextInputStyles	func
 editor	core	drawFrame	func
 editor	core	drawText	func

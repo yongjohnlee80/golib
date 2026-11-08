@@ -370,3 +370,10 @@ func (t *Table[T]) AccessibleRole() tui.AccessibleRole { return tui.RoleTable }
 func fitCell(s string, w int, mode Elide, a style.Align, measure func(string) int) string {
 	return padAligned(elide(s, w, mode, measure), w, a, measure)
 }
+
+// The interfaces it answers, held at compile time (core declares them).
+var (
+	_ tui.RoleReporter = (*Table[string])(nil)
+	_ tui.Scroller     = (*Table[int])(nil)
+	_ RowStyler        = (*Table[int])(nil)
+)

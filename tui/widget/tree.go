@@ -1272,3 +1272,10 @@ func (t *Tree) ScrollState() (offset, viewport, content int) {
 
 // AccessibleRole is the tree's accessible role (tui.RoleReporter, roles.go).
 func (t *Tree) AccessibleRole() tui.AccessibleRole { return tui.RoleTree }
+
+// The interfaces it answers, held at compile time (core declares them).
+var (
+	_ tui.RoleReporter = (*Tree)(nil)
+	_ tui.Scroller     = (*Tree)(nil)
+	_ RowStyler        = (*Tree)(nil)
+)

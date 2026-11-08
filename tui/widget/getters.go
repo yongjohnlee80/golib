@@ -153,8 +153,6 @@ func (v *BufferView) ScrollState() (offset, viewport, content int) {
 var (
 	_ tui.HoverObserver = (*Button)(nil)
 	_ tui.Scroller      = (*List[int])(nil)
-	_ tui.Scroller      = (*Table[int])(nil)
-	_ tui.Scroller      = (*Tree)(nil)
 	_ tui.Scroller      = (*BufferView)(nil)
 )
 
@@ -191,7 +189,6 @@ type TabWindowController interface {
 
 var (
 	_ TabWindowController = (*Tabs)(nil)
-	_ TabWindowController = (*TerminalTabs)(nil)
 )
 
 // SetWindowButtons shows _, + and x at the bar's right end, side by side as the title bar's, or takes
@@ -209,7 +206,6 @@ func (t *Tabs) TabWindowControls() []TabControl { return t.strip.controlSpans() 
 var (
 	_ TabSpanner = (*Tabs)(nil)
 	_ TabSpanner = (*TabStrip)(nil)
-	_ TabSpanner = (*TerminalTabs)(nil)
 )
 
 // CardRect is where the dialog's card was placed at the last layout, in the modal's cells.

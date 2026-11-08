@@ -571,3 +571,8 @@ var _ tui.ImageReporter = (*Image)(nil)
 
 // AccessibleRole is the image's accessible role (tui.RoleReporter, roles.go).
 func (m *Image) AccessibleRole() tui.AccessibleRole { return tui.RoleImage }
+
+// The interfaces it answers, held at compile time (core declares them).
+var (
+	_ tui.RoleReporter = (*Image)(nil)
+)

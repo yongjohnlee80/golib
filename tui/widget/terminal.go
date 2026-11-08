@@ -624,3 +624,8 @@ func (t *Terminal) TerminalView() TerminalView { return t.view }
 
 // AccessibleRole is the terminal's accessible role (tui.RoleReporter, roles.go).
 func (t *Terminal) AccessibleRole() tui.AccessibleRole { return tui.RoleTerminal }
+
+// The interfaces it answers, held at compile time (core declares them).
+var (
+	_ tui.RoleReporter = (*Terminal)(nil)
+)
