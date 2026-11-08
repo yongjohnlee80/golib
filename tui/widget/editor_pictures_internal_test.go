@@ -165,6 +165,20 @@ func TestAPictureIsItsBuffersOwn(t *testing.T) {
 	lay2.await(t, lay2.started, "C", "request")
 	ih2.onLoopInternal(func() { e2.SetView(ViewRaw) })
 	lay2.await(t, lay2.cancelled, "C", "stop on a view switch")
+
+	// A's picture drawn, then another buffer with another fence at the same place: while B's lays, B
+	// shows its source, never A's picture (the slot's last picture is its buffer's)
+	lay3 := newHeldLay()
+	e3, ih3 := pictureEditor(t, "```mermaid\nD\n```\nafter", lay3, 40, 10)
+	lay3.await(t, lay3.started, "D", "request")
+	lay3.answer("D", rowsPicture{"DDDD"})
+	waitGrid(t, ih3, "D's picture", func(g string) bool { return strings.Contains(g, "DDDD") })
+	ih3.onLoopInternal(func() { e3.Core().SetBuffer(NewBuffer(BufferText("```mermaid\nE\n```\nafter"))) })
+	lay3.await(t, lay3.started, "E", "request")
+	ih3.syncInternal()
+	if g := ih3.tb.String(); strings.Contains(g, "DDDD") || !strings.Contains(g, "E") {
+		t.Errorf("while the other buffer's picture lays, want its source, not the first buffer's picture:\n%s", g)
+	}
 }
 
 // A picture arriving changes the rows under the view: with the cursor off the view (scrolled away),
@@ -204,53 +218,55 @@ func TestAPicturesArrivalKeepsTheView(t *testing.T) {
 // a click on the picture its first line; dd takes the whole fence, the prose after it kept, and u
 // brings it back.
 func TestAPicturesFenceIsOneVisibleFold(t *testing.T) {
-	const doc = "```mermaid\nA\nB\n```\nafter"
+	const doc = "before\n```mermaid\nA\nB\n```\nafter" // the fence on lines 1–4, a line before it
 	lay := newHeldLay()
 	e, ih := pictureEditor(t, doc, lay, 40, 10)
 	lay.await(t, lay.started, "A\nB", "request")
 	lay.answer("A\nB", rowsPicture{"PIC0", "PIC1"})
 	waitGrid(t, ih, "the picture", func(g string) bool { return strings.Contains(g, "PIC1") })
-	if g := ih.tb.String(); strings.Contains(g, "mermaid") || !strings.HasPrefix(g, "PIC0") {
-		t.Errorf("want the picture alone where its fence is, no language row:\n%s", g)
+	if rows := strings.Split(ih.tb.String(), "\n"); strings.Contains(ih.tb.String(), "mermaid") || !strings.HasPrefix(rows[1], "PIC0") {
+		t.Errorf("want the picture alone where its fence is, no language row:\n%s", ih.tb.String())
 	}
-	for ln := range 4 {
+	for ln := 1; ln <= 4; ln++ {
 		var from, to int
 		var hidden, ok bool
 		ih.onLoopInternal(func() { from, to, hidden, ok = e.cells.FoldOf(ln) })
-		if !ok || from != 0 || to != 4 || hidden {
-			t.Errorf("FoldOf(%d) = [%d, %d) hidden %v ok %v, want [0, 4) shown", ln, from, to, hidden, ok)
+		if !ok || from != 1 || to != 5 || hidden {
+			t.Errorf("FoldOf(%d) = [%d, %d) hidden %v ok %v, want [1, 5) shown", ln, from, to, hidden, ok)
 		}
 	}
 	var x, y int
 	var shown bool
-	ih.onLoopInternal(func() { e.Core().SetLine(2, 0); x, y, shown = e.Cursor() })
-	if !shown || x != 0 || y != 0 {
-		t.Errorf("the caret on the fence's body at (%d, %d) %v, want the picture's first row (0, 0)", x, y, shown)
+	ih.onLoopInternal(func() { e.Core().SetLine(3, 0); x, y, shown = e.Cursor() })
+	if !shown || x != 0 || y != 1 {
+		t.Errorf("the caret on the fence's body at (%d, %d) %v, want the picture's first row (0, 1)", x, y, shown)
 	}
-	ih.onLoopInternal(func() { e.Core().SetLine(4, 0) })
-	if err := ih.tb.Inject(tui.MouseEvent{Kind: tui.MousePress, Button: tui.MouseLeft, X: 2, Y: 1},
-		tui.MouseEvent{Kind: tui.MouseRelease, Button: tui.MouseLeft, X: 2, Y: 1}); err != nil {
+	ih.onLoopInternal(func() { e.Core().SetLine(5, 0) })
+	// the picture's second row: no source of its own; the click is the fence's first line, not the
+	// line before the picture
+	if err := ih.tb.Inject(tui.MouseEvent{Kind: tui.MousePress, Button: tui.MouseLeft, X: 2, Y: 2},
+		tui.MouseEvent{Kind: tui.MouseRelease, Button: tui.MouseLeft, X: 2, Y: 2}); err != nil {
 		t.Fatal(err)
 	}
 	var ln int
 	for deadline := time.Now().Add(3 * time.Second); ; { // the click routed (input and Updates are separate lanes)
 		ih.onLoopInternal(func() { ln, _ = e.Core().Line() })
-		if ln != 4 || time.Now().After(deadline) {
+		if ln != 5 || time.Now().After(deadline) {
 			break
 		}
 		time.Sleep(time.Millisecond)
 	}
-	if ln != 0 {
-		t.Errorf("a click on the picture landed on line %d, want the fence's first, 0", ln)
+	if ln != 1 {
+		t.Errorf("a click on the picture landed on line %d, want the fence's first, 1", ln)
 	}
 	var v string
 	ih.onLoopInternal(func() {
-		e.Core().SetLine(2, 0)
+		e.Core().SetLine(3, 0)
 		e.Core().HandleKey(tui.KeyEvent{Kind: tui.KeyPress, Code: 'd'})
 		e.Core().HandleKey(tui.KeyEvent{Kind: tui.KeyPress, Code: 'd'})
 		v = e.Core().Value()
 	})
-	if v != "after" {
+	if v != "before\nafter" {
 		t.Errorf("dd on the picture left %q, want the prose after it", v)
 	}
 	ih.onLoopInternal(func() {
@@ -287,20 +303,29 @@ func TestAnEditStopsItsFencesPicture(t *testing.T) {
 }
 
 // Two pictures arriving before one layout: whether the cursor was on the view is taken before the
-// first changes the rows, and kept through the second, so the cursor is revealed though the second
-// arrives when the rows under the view have changed and it is off it.
+// first changes the rows, and kept through the rest. A short fence becomes a tall picture, pushing
+// the cursor (in the prose after it, on the view) off it; a later result, taken then, would see it
+// off: the cursor must be revealed all the same.
 func TestPicturesArrivingTogetherKeepTheReveal(t *testing.T) {
-	src := strings.Repeat("x ", 300)
-	doc := "```mermaid\n" + src + "\n```\nmid\n```mermaid\nB\n```\nafter" + strings.Repeat("\nline", 20)
+	doc := "```mermaid\nS\n```\nl3\nl4\nl5\nl6\nl7\n```mermaid\nT\n```\nend" + strings.Repeat("\nline", 10)
 	lay := newHeldLay()
 	e, ih := pictureEditor(t, doc, lay, 40, 10)
-	lay.await(t, lay.started, src, "request")
-	lay.await(t, lay.started, "B", "request")
-	ih.onLoopInternal(func() { e.Core().SetLine(1, 590) }) // the cursor deep in the long source, on the view
+	lay.await(t, lay.started, "S", "request")
+	lay.await(t, lay.started, "T", "request")
+	ih.onLoopInternal(func() { e.Core().SetLine(6, 0) }) // on the view, a few rows under the first fence
 	ih.syncInternal()
+	var on bool
+	ih.onLoopInternal(func() { _, _, on = e.Cursor() })
+	if !on {
+		t.Fatal("precondition: the cursor off the view before the pictures")
+	}
+	tall := make(rowsPicture, 15)
+	for i := range tall {
+		tall[i] = "TALL"
+	}
 	ih.onLoopInternal(func() {
-		// every pending request answered at once, before a layout: the long fence's first (it changes
-		// the rows under the cursor), then the rest
+		// every pending request answered at once, before a layout: the first fence's first (its tall
+		// picture pushes the cursor off the view), then the rest
 		var ats []pictureAt
 		for at, s := range e.pics {
 			if s.pending {
@@ -309,10 +334,10 @@ func TestPicturesArrivingTogetherKeepTheReveal(t *testing.T) {
 		}
 		slices.SortFunc(ats, func(a, b pictureAt) int { return cmp.Or(a.from-b.from, a.cols-b.cols) })
 		for _, at := range ats { // through the Editor's own handling, as the loop delivers them
-			e.HandleEvent(tui.TaskResult{Owner: e.Context().ID(), ID: e.pics[at].task, Value: rowsPicture{"PIC0", "PIC1"}})
+			e.HandleEvent(tui.TaskResult{Owner: e.Context().ID(), ID: e.pics[at].task, Value: tall})
 		}
 	})
-	waitGrid(t, ih, "the pictures drawn", func(g string) bool { return strings.Contains(g, "PIC") })
+	waitGrid(t, ih, "the pictures drawn", func(g string) bool { return strings.Contains(g, "TALL") })
 	var ok bool
 	ih.onLoopInternal(func() { _, _, ok = e.Cursor() })
 	if !ok {
