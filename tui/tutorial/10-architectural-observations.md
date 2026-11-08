@@ -41,7 +41,7 @@ If a background task or external goroutine pushes a massive burst of closures or
 ## 2. Pre-Mount BufferView Write Rejection
 
 ### The Deficit
-`BufferView.Writer()` provides an `io.Writer` interface via `*bufWriter` designed for logging and stream capture. However, writes made before the `BufferView` is mounted into an active component tree (`Init(ctx)`) or after it is unmounted fail immediately with `widget.ErrClosed`:
+`BufferView.Writer()` provides an `io.Writer` interface via `*BufferWriter` designed for logging and stream capture. However, writes made before the `BufferView` is mounted into an active component tree (`Init(ctx)`) or after it is unmounted fail immediately with `widget.ErrClosed`:
 
 ```go
 func (v *BufferView) Writer() io.Writer { return v.wr }

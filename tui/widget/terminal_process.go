@@ -79,12 +79,12 @@ func (t *Terminal) Start() error {
 	t.resizer = &ptyResizer{proc: proc}
 	t.running, t.exited = true, false
 	t.in = newInputQueue(proc)
-	t.wr = newBufWriter(func(b []byte) {
+	t.wr = NewBufferWriter(func(b []byte) {
 		if gen == t.gen { // hidden or not: the screen keeps taking output
 			t.ingest(b)
 		}
 	})
-	t.wr.bind(ctx.App())
+	t.wr.Bind(ctx.App())
 	lifecycle := newTerminalStopResult(proc, gen, t.in, t.wr)
 	t.procMu.Lock()
 	kept := t.lifetimes[:0]
@@ -147,7 +147,7 @@ func (t *Terminal) StopWithResult() *TerminalStopResult {
 	}
 	t.gen++ // output/exit callbacks are invalidated, not the result's immutable generation
 	t.running = false
-	t.wr.close()
+	t.wr.Close()
 	r.cleanup(t.in.finish())
 	t.MarkDirty()
 	return r
@@ -190,7 +190,7 @@ func (t *Terminal) endWithApp() {
 
 func (t *Terminal) exitWith(code int) {
 	t.running, t.exited, t.exitCode = false, true, code
-	t.wr.close()
+	t.wr.Close()
 	t.in.close()
 	t.procMu.Lock()
 	r := t.lifecycle

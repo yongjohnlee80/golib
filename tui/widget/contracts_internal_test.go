@@ -22,7 +22,7 @@ func TestAMenuWithNoOwnerDoesNotOpen(t *testing.T) {
 	m := NewEditorMenu(nil, nil)
 	m.SetEnabled(true)
 	m.SetRows(func() []MenuItemModel { return []MenuItemModel{NewCommand("x", "X", CoreMenuAction{ID: "x"})} })
-	if ownerContext(nil) != nil || m.OpenAt(tui.Point{}) {
+	if OwnerContext(nil) != nil || m.OpenAt(tui.Point{}) {
 		t.Error("a menu with no owner opened")
 	}
 }

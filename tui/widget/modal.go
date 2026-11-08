@@ -49,7 +49,7 @@ type Modal struct {
 	onDismiss                         func(DismissReason)
 	maxWidthPercent, maxHeightPercent int
 
-	host modalHost
+	host ModalHost
 	open bool
 	// opens counts the successful Opens, so a step that dismisses through a callback can tell the
 	// dialog it reached from one the callback opened again (the dismiss request's fallback)
@@ -340,12 +340,13 @@ func (m *Modal) Open(h *OverlayHost) error {
 	if h == nil {
 		return ErrNilOverlayHost
 	}
-	return m.openOn(h)
+	return m.OpenOn(h)
 }
 
-// openOn is Open on any modal host: the CommandLine opens its prompt dialog on the host it found
-// (kit.HostFor[modalHost]).
-func (m *Modal) openOn(h modalHost) error {
+// OpenOn is Open on any modal host: the CommandLine opens its prompt dialog on the host it found
+// (kit.HostFor[ModalHost]). golib's components draw through it; a widget outside golib rarely needs
+// it.
+func (m *Modal) OpenOn(h ModalHost) error {
 	if m.open {
 		return ErrModalAlreadyOpen
 	}

@@ -26,10 +26,11 @@ type MenuOpener interface {
 	Close()
 }
 
-// sameOpener reports whether a and b are the one menu. MenuOpener asks nothing of an implementation's
+// SameMenu reports whether a and b are the one menu. MenuOpener asks nothing of an implementation's
 // comparability (a named slice satisfies it), so the values are compared only when they are of one
-// type and comparable as they stand; any other pair is two menus, never a panic.
-func sameOpener(a, b MenuOpener) bool {
+// type and comparable as they stand; any other pair is two menus, never a panic. golib's components
+// draw through it; a widget outside golib rarely needs it.
+func SameMenu(a, b MenuOpener) bool {
 	if a == nil || b == nil {
 		return a == nil && b == nil
 	}
@@ -37,8 +38,9 @@ func sameOpener(a, b MenuOpener) bool {
 	return va.Type() == vb.Type() && va.Comparable() && va.Equal(vb)
 }
 
-// menuOn reports whether m would open: a menu that reports Enabled is asked, any other is on.
-func menuOn(m MenuOpener) bool {
+// MenuWouldOpen reports whether m would open: a menu that reports Enabled is asked, any other is on. A
+// view of your own that opens a MenuOpener asks it before it takes the right press.
+func MenuWouldOpen(m MenuOpener) bool {
 	if e, ok := m.(interface{ Enabled() bool }); ok {
 		return e.Enabled()
 	}

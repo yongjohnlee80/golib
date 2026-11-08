@@ -503,7 +503,7 @@ func (l *FileList) fitTitle() {
 		measure = ctx.StringWidth
 	}
 	if l.width > 0 && room > 1 {
-		title = elide(title, room, ElidePath, measure)
+		title = ElideText(title, room, ElidePath, measure)
 	}
 	l.box.SetTitle(title)
 }

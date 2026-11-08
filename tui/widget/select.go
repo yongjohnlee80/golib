@@ -115,7 +115,7 @@ type Select[T any] struct {
 	open  bool
 	armed bool
 	popup *selectPanel[T] // the open options; nil while closed
-	layer *popupLayer     // the popup holding them
+	layer *PopupLayer     // the popup holding them
 	// chosen is a commit's option, reported to onChange once the popup has gone; -1 for none
 	chosen int
 
@@ -346,12 +346,12 @@ func (s *Select[T]) openPopup() {
 		return
 	}
 	ctx := s.Context()
-	host, ok := kit.HostFor[popupHost](ctx)
+	host, ok := kit.HostFor[PopupHost](ctx)
 	if !ok {
 		return // nothing can hold the popup; opening would be a lie
 	}
 	panel := &selectPanel[T]{owner: s}
-	layer, err := host.openPopupAt(LayerID(fmt.Sprintf("select.options.%d", ctx.ID())), s, panel, tui.Point{}, s.popupClosed)
+	layer, err := host.OpenPopupAt(LayerID(fmt.Sprintf("select.options.%d", ctx.ID())), s, panel, tui.Point{}, s.popupClosed)
 	if err != nil {
 		return
 	}
@@ -366,7 +366,7 @@ func (s *Select[T]) closePopup(reason DismissReason) {
 	if !s.open || s.layer == nil {
 		return
 	}
-	s.layer.requestClose(reason)
+	s.layer.RequestClose(reason)
 }
 
 // popupClosed is the popup gone, however it went (a commit, Esc, a press outside, the field

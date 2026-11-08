@@ -26,7 +26,7 @@ func TestTheFloatAndPopupLayersScopesAndBindings(t *testing.T) {
 			t.Errorf("modal %v: bindings %v", modal, got)
 		}
 	}
-	p := &popupLayer{}
+	p := &PopupLayer{}
 	if p.KeyScope() != PopupScope {
 		t.Errorf("popup scope %q", p.KeyScope())
 	}
