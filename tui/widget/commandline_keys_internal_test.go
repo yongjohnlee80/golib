@@ -4,6 +4,7 @@ import (
 	"testing"
 
 	"github.com/yongjohnlee80/golib/tui"
+	"github.com/yongjohnlee80/golib/tui/widget/internal/widgettest"
 )
 
 // oldCmdlineKey is CommandLine.keys' decision before commands, verbatim but for its effect, named, and
@@ -43,21 +44,21 @@ func presses(f func(tui.KeyEvent) string) func(tui.KeyEvent) string {
 
 func TestCommandLineKeysMatchTheOldHandlerWithNoMap(t *testing.T) {
 	for _, dropdown := range []bool{false, true} {
-		keyGridDiff(t, map[bool]string{false: "CommandLine", true: "CommandLine, dropdown open"}[dropdown],
+		widgettest.KeyGridDiff(t, map[bool]string{false: "CommandLine", true: "CommandLine, dropdown open"}[dropdown],
 			presses(func(e tui.KeyEvent) string { return oldCmdlineKey(e, dropdown) }),
 			presses(func(e tui.KeyEvent) string {
-				back, ok := cmdlineStep(noKeymap, e, dropdown)
+				back, ok := cmdlineStep(widgettest.NoKeymap, e, dropdown)
 				if !ok {
 					return ""
 				}
 				return map[bool]string{false: "next", true: "back"}[back]
 			}),
-			hyperOrMeta)
+			widgettest.HyperOrMeta)
 	}
-	keyGridDiff(t, "CommandLine replace question",
+	widgettest.KeyGridDiff(t, "CommandLine replace question",
 		presses(oldReplaceKey),
-		presses(func(e tui.KeyEvent) string { return replaceAnswer(noKeymap, e).String() }),
-		hyperOrMeta)
+		presses(func(e tui.KeyEvent) string { return replaceAnswer(widgettest.NoKeymap, e).String() }),
+		widgettest.HyperOrMeta)
 }
 
 // A replaceChoice past the answers says "unknown", never panicking.

@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/yongjohnlee80/golib/tui/pty"
+	"github.com/yongjohnlee80/golib/tui/widget/internal/widgettest"
 )
 
 // signalProc is a resultProc that can be signalled, keeping each signal it is sent.
@@ -82,29 +83,29 @@ func TestATerminalsSIGCONTResumesAProgramThatStoppedItself(t *testing.T) {
 	}
 	marker := "sigcell-" + strconv.FormatInt(time.Now().UnixNano(), 36)
 	term := NewTerminal(WithCommand("/bin/sh", "-c", "echo before; kill -STOP $$; echo resumed; exec sleep 30", marker))
-	h := startAppInternal(t, term, 30, 6)
-	defer h.stopInternal()
-	h.onLoopInternal(func() {
+	h := widgettest.StartApp(t, term, 30, 6)
+	defer h.Stop()
+	h.OnLoop(func() {
 		if err := term.Start(); err != nil {
 			t.Fatal(err)
 		}
 	})
 	var pid int
-	if !waitInternal(h, func() bool { pid = pidOf(marker); return pid > 0 && stopped(pid) }) {
+	if !widgettest.Wait(h, func() bool { pid = pidOf(marker); return pid > 0 && stopped(pid) }) {
 		t.Fatalf("the program never stopped itself (pid %d): the cell observes nothing", pid)
 	}
-	if !waitInternal(h, func() bool { return strings.Contains(vtText(term), "before") }) {
+	if !widgettest.Wait(h, func() bool { return strings.Contains(vtText(term), "before") }) {
 		t.Fatalf("the program's output never showed; the screen:\n%s", vtText(term))
 	}
 	if strings.Contains(vtText(term), "resumed") {
 		t.Fatal("resumed before any SIGCONT: the cell observes nothing")
 	}
 	var serr error
-	h.onLoopInternal(func() { serr = term.Signal(syscall.SIGCONT) })
+	h.OnLoop(func() { serr = term.Signal(syscall.SIGCONT) })
 	if serr != nil {
 		t.Fatalf("Signal(SIGCONT): %v", serr)
 	}
-	if !waitInternal(h, func() bool { return strings.Contains(vtText(term), "resumed") }) {
+	if !widgettest.Wait(h, func() bool { return strings.Contains(vtText(term), "resumed") }) {
 		t.Fatalf("the program did not resume; the screen:\n%s", vtText(term))
 	}
 }
@@ -116,11 +117,11 @@ func TestASignalWithNoProgramRunningIsRefused(t *testing.T) {
 	close(p.release)
 	term, h, _ := mountTerminal(t, p)
 	p.end() // the program exits
-	if !waitInternal(h, func() bool { return !term.Running() }) {
+	if !widgettest.Wait(h, func() bool { return !term.Running() }) {
 		t.Fatal("the program never ended")
 	}
 	var err error
-	h.onLoopInternal(func() { err = term.Signal(syscall.SIGCONT) })
+	h.OnLoop(func() { err = term.Signal(syscall.SIGCONT) })
 	if !errors.Is(err, ErrTerminalNotRunning) {
 		t.Fatalf("Signal after the exit: %v, want ErrTerminalNotRunning", err)
 	}
@@ -139,7 +140,7 @@ func TestASignalReachesOnlyAProcessThatCanTakeIt(t *testing.T) {
 	close(plain.release)
 	term, h, _ := mountTerminal(t, plain)
 	var err error
-	h.onLoopInternal(func() { err = term.Signal(syscall.SIGCONT) })
+	h.OnLoop(func() { err = term.Signal(syscall.SIGCONT) })
 	if !errors.Is(err, ErrTerminalSignalUnsupported) {
 		t.Fatalf("a process with no Signal: %v, want ErrTerminalSignalUnsupported", err)
 	}
@@ -147,7 +148,7 @@ func TestASignalReachesOnlyAProcessThatCanTakeIt(t *testing.T) {
 	sp := &signalProc{resultProc: newResultProc()}
 	close(sp.release)
 	term2, h2, _ := mountTerminal(t, sp)
-	h2.onLoopInternal(func() { err = term2.Signal(syscall.SIGCONT) })
+	h2.OnLoop(func() { err = term2.Signal(syscall.SIGCONT) })
 	if err != nil || len(sp.signals()) != 1 || sp.signals()[0] != syscall.SIGCONT {
 		t.Fatalf("a signalling process: err %v, sent %v; want SIGCONT once", err, sp.signals())
 	}
@@ -167,10 +168,10 @@ func TestATabsSignalReachesTheTabItNames(t *testing.T) {
 	close(a.release)
 	close(b.release)
 	ida, idb := add("a", a), add("b", b)
-	h := startAppInternal(t, tabs, 40, 8)
-	defer h.stopInternal()
+	h := widgettest.StartApp(t, tabs, 40, 8)
+	defer h.Stop()
 	var err error
-	h.onLoopInternal(func() {
+	h.OnLoop(func() {
 		for _, id := range []TerminalTabID{ida, idb} {
 			if err := tabs.Start(id); err != nil {
 				t.Fatal(err)
@@ -185,7 +186,7 @@ func TestATabsSignalReachesTheTabItNames(t *testing.T) {
 		t.Fatalf("Signal(b) with a active: err %v, a got %v, b got %v; want b alone, once", err, a.signals(), b.signals())
 	}
 	var r *TerminalTabRemovalResult
-	h.onLoopInternal(func() { r, err = tabs.Remove(idb) })
+	h.OnLoop(func() { r, err = tabs.Remove(idb) })
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -194,7 +195,7 @@ func TestATabsSignalReachesTheTabItNames(t *testing.T) {
 	if err := r.Wait(ctx); err != nil {
 		t.Fatal(err)
 	}
-	h.onLoopInternal(func() { err = tabs.Signal(idb, syscall.SIGCONT) })
+	h.OnLoop(func() { err = tabs.Signal(idb, syscall.SIGCONT) })
 	if err == nil || len(b.signals()) != 1 {
 		t.Fatalf("Signal on a removed tab: err %v, b got %v; want it refused", err, b.signals())
 	}

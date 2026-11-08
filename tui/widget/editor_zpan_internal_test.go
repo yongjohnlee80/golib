@@ -5,12 +5,13 @@ import (
 	"testing"
 
 	"github.com/yongjohnlee80/golib/tui"
+	"github.com/yongjohnlee80/golib/tui/widget/internal/widgettest"
 )
 
 // widePicture is a mermaid fence whose picture is 60 cells wide, its rows "0123456789" six times,
 // and a line after it: in a 40-cell view it is laid at its width, its content 38 cells between its
 // two mark columns, so it pans 0 to 22.
-func widePicture(t *testing.T) (*Editor, *internalHarness) {
+func widePicture(t *testing.T) (*Editor, *widgettest.Harness) {
 	t.Helper()
 	lay := newHeldLay()
 	e, ih := pictureEditor(t, "```mermaid\nW\n```\nafter", lay, 40, 8)
@@ -22,8 +23,8 @@ func widePicture(t *testing.T) (*Editor, *internalHarness) {
 }
 
 // shownFrom is the picture's first row from its content's first cell (after the left mark column).
-func shownFrom(ih *internalHarness) string {
-	r := []rune(strings.Split(ih.tb.String(), "\n")[0])
+func shownFrom(ih *widgettest.Harness) string {
+	r := []rune(strings.Split(ih.TB.String(), "\n")[0])
 	if len(r) < 3 {
 		return ""
 	}
@@ -31,8 +32,8 @@ func shownFrom(ih *internalHarness) string {
 }
 
 // zKeys types keys into e on the loop, one KeyEvent each.
-func zKeys(ih *internalHarness, e *Editor, keys string) {
-	ih.onLoopInternal(func() {
+func zKeys(ih *widgettest.Harness, e *Editor, keys string) {
+	ih.OnLoop(func() {
 		for _, k := range keys {
 			e.HandleEvent(tui.KeyEvent{Code: k, Text: string(k)})
 		}
@@ -40,7 +41,7 @@ func zKeys(ih *internalHarness, e *Editor, keys string) {
 }
 
 // waitShown waits for the picture's first row to start at want (two digits: the pan's).
-func waitShown(t *testing.T, ih *internalHarness, what, want string) {
+func waitShown(t *testing.T, ih *widgettest.Harness, what, want string) {
 	t.Helper()
 	waitGrid(t, ih, what, func(string) bool { return shownFrom(ih) == want })
 }
@@ -51,7 +52,7 @@ func waitShown(t *testing.T, ih *internalHarness, what, want string) {
 func TestAWidePicturePansWithZhAndZl(t *testing.T) {
 	e, ih := widePicture(t)
 	if got := shownFrom(ih); got != "01" {
-		t.Fatalf("unpanned, the picture starts %q, want 01:\n%s", got, ih.tb.String())
+		t.Fatalf("unpanned, the picture starts %q, want 01:\n%s", got, ih.TB.String())
 	}
 	zKeys(ih, e, "zl")
 	waitShown(t, ih, "zl: a cell", "12")
@@ -63,9 +64,9 @@ func TestAWidePicturePansWithZhAndZl(t *testing.T) {
 	waitShown(t, ih, "50zl: clamped at 22", "23")
 	storedPan(t, ih, e, 22) // the offset stored stays within what the picture has to show (0 to 22)
 	zKeys(ih, e, "jk")
-	ih.syncInternal()
+	ih.Sync()
 	if got := shownFrom(ih); got != "23" {
-		t.Errorf("the cursor off the picture and back: it starts %q, want the pan kept (23):\n%s", got, ih.tb.String())
+		t.Errorf("the cursor off the picture and back: it starts %q, want the pan kept (23):\n%s", got, ih.TB.String())
 	}
 	zKeys(ih, e, "99zh")
 	waitShown(t, ih, "99zh: clamped at 0", "01")
@@ -73,10 +74,10 @@ func TestAWidePicturePansWithZhAndZl(t *testing.T) {
 }
 
 // storedPan fails unless the picture's pan, as kept (by its block's first line, 0), is want.
-func storedPan(t *testing.T, ih *internalHarness, e *Editor, want int) {
+func storedPan(t *testing.T, ih *widgettest.Harness, e *Editor, want int) {
 	t.Helper()
 	var got int
-	ih.onLoopInternal(func() { got = e.cells.pan[0] })
+	ih.OnLoop(func() { got = e.cells.pan[0] })
 	if got != want {
 		t.Errorf("the pan kept is %d, want %d (clamped to what the picture has to show)", got, want)
 	}
@@ -93,14 +94,14 @@ func TestAWidePicturePansWithShiftAndTheWheel(t *testing.T) {
 	lay.answer("V", rowsPicture{letters})
 	waitGrid(t, ih, "both pictures", func(g string) bool { return strings.Contains(g, "01234567") && strings.Contains(g, "abcdefgh") })
 	from := func(y int) string { // row y from its content's first cell
-		r := []rune(strings.Split(ih.tb.String(), "\n")[y])
+		r := []rune(strings.Split(ih.TB.String(), "\n")[y])
 		if len(r) < 3 {
 			return ""
 		}
 		return string(r[1:3])
 	}
 	wheel := func(b tui.MouseButton, mods tui.Mods, y int) {
-		ih.onLoopInternal(func() { e.HandleEvent(tui.MouseEvent{Kind: tui.MouseWheel, Button: b, Mods: mods, X: 5, Y: y}) })
+		ih.OnLoop(func() { e.HandleEvent(tui.MouseEvent{Kind: tui.MouseWheel, Button: b, Mods: mods, X: 5, Y: y}) })
 	}
 	shown := func(what, w, v string) {
 		t.Helper()

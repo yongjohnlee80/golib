@@ -7,6 +7,7 @@ import (
 	"github.com/yongjohnlee80/golib/highlight"
 	"github.com/yongjohnlee80/golib/tui"
 	"github.com/yongjohnlee80/golib/tui/style"
+	"github.com/yongjohnlee80/golib/tui/widget/internal/widgettest"
 )
 
 // The Rendered view lays the core's overlay over its cells, as the text's paint does: a find marks
@@ -19,12 +20,12 @@ func TestTheRenderedViewMarksEveryMatch(t *testing.T) {
 	e.core.SetSyntaxStyles(st)
 	e.SetRenderer(&MarkdownCellRenderer{MarkdownBlocks: MarkdownBlocks{HideMetadata: true}})
 	e.SetView(ViewRendered)
-	ih := startAppInternal(t, e, 40, 6)
-	t.Cleanup(ih.stopInternal)
-	ih.syncInternal()
+	ih := widgettest.StartApp(t, e, 40, 6)
+	t.Cleanup(ih.Stop)
+	ih.Sync()
 	// the looks of the row's three words, by their first cells
 	words := func() (a1, b, a2 tui.CellAttrs, ok bool) {
-		for _, row := range ih.tb.Snapshot() {
+		for _, row := range ih.TB.Snapshot() {
 			var text strings.Builder
 			for _, c := range row {
 				text.WriteString(c.Content)
@@ -39,15 +40,15 @@ func TestTheRenderedViewMarksEveryMatch(t *testing.T) {
 	}
 	a1, b, a2, ok := words()
 	if !ok || a1 != b || a2 != b {
-		t.Fatalf("with no find, the words look alike (%v): %+v %+v %+v\n%s", ok, a1, b, a2, ih.tb.String())
+		t.Fatalf("with no find, the words look alike (%v): %+v %+v %+v\n%s", ok, a1, b, a2, ih.TB.String())
 	}
 	plain := b
-	ih.onLoopInternal(func() { e.core.SetFind("alpha", FindOptions{}) })
+	ih.OnLoop(func() { e.core.SetFind("alpha", FindOptions{}) })
 	waitGrid(t, ih, "both matches marked", func(string) bool {
 		a1, b, a2, ok := words()
 		return ok && a1 != plain && a2 == a1 && b == plain
 	})
-	ih.onLoopInternal(func() {
+	ih.OnLoop(func() {
 		e.core.SetHighlightOverlay(func(line string, spans []highlight.Span) []highlight.Span {
 			if i := strings.Index(line, "beta"); i >= 0 {
 				spans = append(spans, highlight.Span{Start: i, End: i + len("beta"), Style: highlight.Keyword})

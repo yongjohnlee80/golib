@@ -4,6 +4,7 @@ import (
 	"testing"
 
 	"github.com/yongjohnlee80/golib/tui"
+	"github.com/yongjohnlee80/golib/tui/widget/internal/widgettest"
 )
 
 // A Float has one window behaviour owner: a second core asking for its target while the first
@@ -15,13 +16,13 @@ func TestAFloatHasOneWindowOwnerAndItsPointMapFollowsTheOwner(t *testing.T) {
 	f := NewFloat(NewBox(mod)) // the box's frame lays the owner out off the Float's origin
 	host := NewOverlayHost(NewBox(NewButton("base")))
 	host.Attach(f)
-	ih := startAppInternal(t, host, 40, 10)
-	defer ih.stopInternal()
+	ih := widgettest.StartApp(t, host, 40, 10)
+	defer ih.Stop()
 
-	ih.onLoopInternal(func() {
+	ih.OnLoop(func() {
 		f.Show()
 	})
-	ih.onLoopInternal(func() {
+	ih.OnLoop(func() {
 		if f.windowTarget == nil || f.windowTarget.core != mod.Core() || !mod.Core().live() {
 			t.Fatalf("the WindowMod's live core is not the Float's owner: %+v", f.windowTarget)
 		}

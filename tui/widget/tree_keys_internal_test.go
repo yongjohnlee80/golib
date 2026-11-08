@@ -5,6 +5,7 @@ import (
 
 	"github.com/yongjohnlee80/golib/tui"
 	"github.com/yongjohnlee80/golib/tui/widget/internal/kit"
+	"github.com/yongjohnlee80/golib/tui/widget/internal/widgettest"
 )
 
 // oldTreeKey is Tree.handleKey's key decision at golib 6a0b271 for a tree with rows, verbatim but for
@@ -51,7 +52,7 @@ var treeOp = map[string]string{
 
 func TestTreeKeysMatchTheOldHandlerWithNoMap(t *testing.T) {
 	tr := &Tree{}
-	keyGridDiff(t, "Tree", oldTreeKey,
+	widgettest.KeyGridDiff(t, "Tree", oldTreeKey,
 		func(e tui.KeyEvent) string {
 			cmd, ok := tr.keyCommand(e)
 			if !ok {
@@ -59,7 +60,7 @@ func TestTreeKeysMatchTheOldHandlerWithNoMap(t *testing.T) {
 			}
 			return treeOp[cmd.ID]
 		},
-		noTextShiftedPrintable)
+		widgettest.NoTextShiftedPrintable)
 }
 
 func TestEveryTreeCommandIsNamed(t *testing.T) {

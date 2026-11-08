@@ -7,6 +7,7 @@ import (
 
 	"github.com/yongjohnlee80/golib/tui"
 	"github.com/yongjohnlee80/golib/tui/widget/internal/kit"
+	"github.com/yongjohnlee80/golib/tui/widget/internal/widgettest"
 )
 
 // oldFileViewKey is FileOpenView's key tests before commands — pathKey, filterKey, then movePart, in
@@ -60,13 +61,13 @@ func fileViewDeviation(e tui.KeyEvent) string {
 	case e.Mods&tui.LockMods != 0 && (e.Code == '/' || e.Mods&tui.ModCtrl != 0):
 		return "a lock bit no longer stops / or a Ctrl move"
 	}
-	return cmp.Or(hyperOrMeta(e), shiftSpentOnPrintable(e), ctrlShiftLetter(e), capitalWithModifier(e),
-		textlessCharacter(e))
+	return cmp.Or(widgettest.HyperOrMeta(e), widgettest.ShiftSpentOnPrintable(e), ctrlShiftLetter(e), widgettest.CapitalWithModifier(e),
+		widgettest.TextlessCharacter(e))
 }
 
 func TestFileViewKeysMatchTheOldHandlerWithNoMap(t *testing.T) {
 	v := &FileOpenView{}
-	keyGridDiff(t, "FileOpenView", oldFileViewKey,
+	widgettest.KeyGridDiff(t, "FileOpenView", oldFileViewKey,
 		func(e tui.KeyEvent) string {
 			cmd, ok := v.Context().KeyCommand(e, fileViewCommands...)
 			if !ok {

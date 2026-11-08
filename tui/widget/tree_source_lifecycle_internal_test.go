@@ -4,6 +4,7 @@ import (
 	"testing"
 
 	"github.com/yongjohnlee80/golib/tui"
+	"github.com/yongjohnlee80/golib/tui/widget/internal/widgettest"
 )
 
 // leaves is a root set of leaves, one per label.
@@ -21,18 +22,18 @@ func TestATreeEmptiedThenGivenRootsActsOnThem(t *testing.T) {
 	var acts []string
 	tr := NewTree(WithRoots(leaves("a", "b", "c")...),
 		WithTreeOnActivate(func(n *TreeNode) { acts = append(acts, n.ID()) }))
-	pressKey(tr, tui.KeyDown, tui.KeyDown, tui.KeyEnter)
+	widgettest.PressKey(tr, tui.KeyDown, tui.KeyDown, tui.KeyEnter)
 	if len(acts) != 1 || acts[0] != "c" {
 		t.Fatalf("the control: Down, Down, Enter activated %v, want [c]", acts)
 	}
 	tr.SetRoots()
-	pressKey(tr, tui.KeyEnter, tui.KeyDown, tui.KeyEnter)
+	widgettest.PressKey(tr, tui.KeyEnter, tui.KeyDown, tui.KeyEnter)
 	if len(acts) != 1 || len(tr.VisibleRows()) != 0 {
 		t.Fatalf("an empty tree: activations %v, rows %v", acts[1:], tr.VisibleRows())
 	}
 	tr.SetRoots(leaves("x", "y")...)
-	pressKey(tr, tui.KeyEnter)
-	pressKey(tr, tui.KeyDown, tui.KeyEnter)
+	widgettest.PressKey(tr, tui.KeyEnter)
+	widgettest.PressKey(tr, tui.KeyDown, tui.KeyEnter)
 	if got := acts[1:]; len(got) != 2 || got[0] != "x" || got[1] != "y" {
 		t.Errorf("given x and y: Enter, then Down and Enter activated %v, want [x y]", got)
 	}
@@ -54,13 +55,13 @@ func TestATreeActivationThatReplacesTheRootsLeavesTheNewRows(t *testing.T) {
 			}
 		}),
 		WithTreeOnCursor(func(n *TreeNode) { told = append(told, n.ID()) }))
-	pressKey(tr, tui.KeyDown)
+	widgettest.PressKey(tr, tui.KeyDown)
 	told = nil
-	pressKey(tr, tui.KeyEnter)
+	widgettest.PressKey(tr, tui.KeyEnter)
 	if rows := tr.VisibleRows(); len(rows) != 2 || rows[0].ID() != "new-a" {
 		t.Fatalf("after the activation replaced the roots, rows %v", rows)
 	}
-	pressKey(tr, tui.KeyEnter)
+	widgettest.PressKey(tr, tui.KeyEnter)
 	if len(acts) != 2 || acts[0] != "old-b" || acts[1] != "new-a" {
 		t.Errorf("activations %v, want [old-b new-a]", acts)
 	}
@@ -118,7 +119,7 @@ func TestATreeExpandRequestThatReplacesTheRootsAsksNothingMore(t *testing.T) {
 		WithTreeOnExpand(func(n *TreeNode) { expanded = append(expanded, n.ID()) }),
 		WithTreeOnCursor(func(n *TreeNode) { told = append(told, n.ID()) }))
 	told = nil
-	pressKey(tr, tui.KeyRight)
+	widgettest.PressKey(tr, tui.KeyRight)
 	old.SetChildren(asked, leaves("late"))
 	rows := tr.VisibleRows()
 	if !replaced || len(rows) != 1 || rows[0].ID() != "new" {

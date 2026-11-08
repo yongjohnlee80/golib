@@ -9,23 +9,11 @@ import (
 
 	"github.com/yongjohnlee80/golib/tui"
 	"github.com/yongjohnlee80/golib/tui/widget/internal/kit"
+	"github.com/yongjohnlee80/golib/tui/widget/internal/widgettest"
 )
 
 // tab_strip_test.go: TabStrip, the strip TerminalTabs draws, alone: the host's tabs and active one,
 // a press choosing a tab, and its menus and + as TerminalTabs's.
-
-// waitInternal polls cond on the loop: injected events and the loop's Updates are unordered.
-func waitInternal(h *internalHarness, cond func() bool) bool {
-	var ok bool
-	for range 300 {
-		h.onLoopInternal(func() { ok = cond() })
-		if ok {
-			return true
-		}
-		time.Sleep(10 * time.Millisecond)
-	}
-	return false
-}
 
 // TestATabStripShowsTheHostsTabsAndChoosesByAPress: the strip draws the tabs it is given and marks
 // the active one; a left press on another makes it active and tells the host; the active tab
@@ -36,41 +24,41 @@ func TestATabStripShowsTheHostsTabsAndChoosesByAPress(t *testing.T) {
 	strip.SetActive("a")
 	var chosen []string
 	strip.SetOnSelect(func(id string) { chosen = append(chosen, id) })
-	h := startAppInternal(t, strip, 40, 1)
-	defer h.stopInternal()
-	h.syncInternal()
-	if got := h.tb.String(); !strings.Contains(got, " alpha ") || !strings.Contains(got, " beta ") {
+	h := widgettest.StartApp(t, strip, 40, 1)
+	defer h.Stop()
+	h.Sync()
+	if got := h.TB.String(); !strings.Contains(got, " alpha ") || !strings.Contains(got, " beta ") {
 		t.Fatalf("the strip:\n%s", got)
 	}
 	var spans []TabSpan
 	var active int
-	h.onLoopInternal(func() { spans, active = strip.TabSpans(), strip.ActiveTabIndex() })
+	h.OnLoop(func() { spans, active = strip.TabSpans(), strip.ActiveTabIndex() })
 	if len(spans) != 2 || spans[1].X != len(" alpha ")+1 || active != 0 {
 		t.Fatalf("spans %v, active %d: want two tabs, beta after alpha's cell, alpha active", spans, active)
 	}
 
-	if err := h.tb.Inject(tui.MouseEvent{Kind: tui.MousePress, Button: tui.MouseLeft, X: spans[1].X + 1, Y: 0}); err != nil {
+	if err := h.TB.Inject(tui.MouseEvent{Kind: tui.MousePress, Button: tui.MouseLeft, X: spans[1].X + 1, Y: 0}); err != nil {
 		t.Fatal(err)
 	}
-	if !waitInternal(h, func() bool { return strip.Active() == "b" }) || len(chosen) != 1 || chosen[0] != "b" {
+	if !widgettest.Wait(h, func() bool { return strip.Active() == "b" }) || len(chosen) != 1 || chosen[0] != "b" {
 		t.Fatalf("a press on beta: active %q, chosen %v", strip.Active(), chosen)
 	}
 
-	h.onLoopInternal(func() {
+	h.OnLoop(func() {
 		strip.SetTabs([]StripTab{{"c", "gamma"}, {"b", "beta"}})
 		active = strip.ActiveTabIndex()
 	})
 	if active != 1 {
 		t.Fatalf("beta still there: active at %d, want 1", active)
 	}
-	h.onLoopInternal(func() {
+	h.OnLoop(func() {
 		strip.SetTabs([]StripTab{{"c", "gamma"}})
 		active = strip.ActiveTabIndex()
 	})
 	if active != -1 || strip.Active() != "" {
 		t.Fatalf("beta gone: active %q at %d, want none", strip.Active(), active)
 	}
-	h.onLoopInternal(func() { strip.SetActive("nowhere") })
+	h.OnLoop(func() { strip.SetActive("nowhere") })
 	if strip.Active() != "" || len(chosen) != 1 {
 		t.Fatalf("SetActive of no tab: %q; chosen %v (SetActive tells no one)", strip.Active(), chosen)
 	}
@@ -90,56 +78,56 @@ func TestATabStripOpensItsMenusAsTerminalTabsDoes(t *testing.T) {
 	strip.SetAddMenu(func() []MenuItemModel {
 		return []MenuItemModel{NewCommand("new", "New", TabStripMenuAction{ID: "new", Run: func(id string) { ran = append(ran, "new:"+id) }})}
 	})
-	h := startAppInternal(t, NewOverlayHost(strip), 40, 8)
-	defer h.stopInternal()
-	h.syncInternal()
+	h := widgettest.StartApp(t, NewOverlayHost(strip), 40, 8)
+	defer h.Stop()
+	h.Sync()
 	var spans []TabSpan
-	h.onLoopInternal(func() { spans = strip.TabSpans() })
+	h.OnLoop(func() { spans = strip.TabSpans() })
 	if len(spans) != 4 {
 		t.Fatalf("spans %v: want two tabs, + and ≡", spans)
 	}
-	menuOpen := func(want bool) bool { return waitInternal(h, func() bool { return strip.MenuOpen() == want }) }
+	menuOpen := func(want bool) bool { return widgettest.Wait(h, func() bool { return strip.MenuOpen() == want }) }
 
-	if err := h.tb.Inject(tui.MouseEvent{Kind: tui.MousePress, Button: tui.MouseRight, X: spans[1].X + 1, Y: 0}); err != nil {
+	if err := h.TB.Inject(tui.MouseEvent{Kind: tui.MousePress, Button: tui.MouseRight, X: spans[1].X + 1, Y: 0}); err != nil {
 		t.Fatal(err)
 	}
 	if !menuOpen(true) {
-		t.Fatalf("a right press on beta opened no menu:\n%s", h.tb.String())
+		t.Fatalf("a right press on beta opened no menu:\n%s", h.TB.String())
 	}
-	if err := h.tb.Inject(tui.KeyEvent{Kind: tui.KeyPress, Code: tui.KeyEnter}); err != nil {
+	if err := h.TB.Inject(tui.KeyEvent{Kind: tui.KeyPress, Code: tui.KeyEnter}); err != nil {
 		t.Fatal(err)
 	}
-	if !menuOpen(false) || !waitInternal(h, func() bool { return len(ran) == 1 }) || ran[0] != "close:b" {
+	if !menuOpen(false) || !widgettest.Wait(h, func() bool { return len(ran) == 1 }) || ran[0] != "close:b" {
 		t.Fatalf("Close from beta's menu ran %v", ran)
 	}
-	if err := h.tb.Inject(tui.MouseEvent{Kind: tui.MousePress, Button: tui.MouseLeft, X: spans[2].X + 1, Y: 0}); err != nil {
+	if err := h.TB.Inject(tui.MouseEvent{Kind: tui.MousePress, Button: tui.MouseLeft, X: spans[2].X + 1, Y: 0}); err != nil {
 		t.Fatal(err)
 	}
 	if !menuOpen(true) {
-		t.Fatalf("a press on + opened no menu:\n%s", h.tb.String())
+		t.Fatalf("a press on + opened no menu:\n%s", h.TB.String())
 	}
-	if err := h.tb.Inject(tui.KeyEvent{Kind: tui.KeyPress, Code: tui.KeyEnter}); err != nil {
+	if err := h.TB.Inject(tui.KeyEvent{Kind: tui.KeyPress, Code: tui.KeyEnter}); err != nil {
 		t.Fatal(err)
 	}
-	if !waitInternal(h, func() bool { return len(ran) == 2 }) || ran[1] != "new:" {
+	if !widgettest.Wait(h, func() bool { return len(ran) == 2 }) || ran[1] != "new:" {
 		t.Fatalf("New from +'s menu ran %v", ran)
 	}
 
 	var added int
 	var asked []string
-	h.onLoopInternal(func() {
+	h.OnLoop(func() {
 		strip.SetMenu(nil)
 		strip.SetAddMenu(nil)
 		strip.SetActions(func() { added++ }, func(id string) { asked = append(asked, id) })
 		spans = strip.TabSpans()
 	})
-	if err := h.tb.Inject(tui.MouseEvent{Kind: tui.MousePress, Button: tui.MouseRight, X: spans[0].X + 1, Y: 0}); err != nil {
+	if err := h.TB.Inject(tui.MouseEvent{Kind: tui.MousePress, Button: tui.MouseRight, X: spans[0].X + 1, Y: 0}); err != nil {
 		t.Fatal(err)
 	}
-	if err := h.tb.Inject(tui.MouseEvent{Kind: tui.MousePress, Button: tui.MouseLeft, X: spans[2].X + 1, Y: 0}); err != nil {
+	if err := h.TB.Inject(tui.MouseEvent{Kind: tui.MousePress, Button: tui.MouseLeft, X: spans[2].X + 1, Y: 0}); err != nil {
 		t.Fatal(err)
 	}
-	if !waitInternal(h, func() bool { return added == 1 && len(asked) == 1 }) || asked[0] != "a" {
+	if !widgettest.Wait(h, func() bool { return added == 1 && len(asked) == 1 }) || asked[0] != "a" {
 		t.Fatalf("the host's callbacks: added %d, menu asked for %v", added, asked)
 	}
 }
@@ -178,38 +166,38 @@ func TestATabStripNarrowerThanItsTabsScrollsThem(t *testing.T) {
 	strip.SetActive("0")
 	strip.SetActions(func() {}, nil)
 	strip.SetMenu(func(string) []MenuItemModel { return nil })
-	h := startAppInternal(t, strip, 30, 1)
-	defer h.stopInternal()
-	h.syncInternal()
+	h := widgettest.StartApp(t, strip, 30, 1)
+	defer h.Stop()
+	h.Sync()
 	var spans []TabSpan
 	var active int
-	look := func() { h.onLoopInternal(func() { spans, active = strip.TabSpans(), strip.ActiveTabIndex() }) }
+	look := func() { h.OnLoop(func() { spans, active = strip.TabSpans(), strip.ActiveTabIndex() }) }
 	look()
 	n := len(spans)
 	if n < 5 || spans[0].X != 0 || spans[n-1].X+spans[n-1].W > 30 || active != 1 {
 		t.Fatalf("spans %v, active at %d: want <, the window from tab-0 (active), >, + and ≡ within 30 cells", spans, active)
 	}
-	if got := h.tb.String(); !strings.Contains(got, " ← ") || !strings.Contains(got, " → ") || !strings.Contains(got, " + ") || !strings.Contains(got, " ≡ ") {
+	if got := h.TB.String(); !strings.Contains(got, " ← ") || !strings.Contains(got, " → ") || !strings.Contains(got, " + ") || !strings.Contains(got, " ≡ ") {
 		t.Fatalf("the strip:\n%s", got)
 	}
 	press := func(x int) {
 		t.Helper()
-		if err := h.tb.Inject(tui.MouseEvent{Kind: tui.MousePress, Button: tui.MouseLeft, X: x, Y: 0}); err != nil {
+		if err := h.TB.Inject(tui.MouseEvent{Kind: tui.MousePress, Button: tui.MouseLeft, X: x, Y: 0}); err != nil {
 			t.Fatal(err)
 		}
 	}
 	next := spans[n-3] // →, before + and ≡
 	press(next.X + 1)
-	if !waitInternal(h, func() bool { return strip.ActiveTabIndex() == -1 }) {
-		t.Fatalf("> did not scroll tab-0 out of the window:\n%s", h.tb.String())
+	if !widgettest.Wait(h, func() bool { return strip.ActiveTabIndex() == -1 }) {
+		t.Fatalf("> did not scroll tab-0 out of the window:\n%s", h.TB.String())
 	}
 	press(1) // ←
-	if !waitInternal(h, func() bool { return strip.ActiveTabIndex() == 1 }) {
-		t.Fatalf("< did not scroll back to tab-0:\n%s", h.tb.String())
+	if !widgettest.Wait(h, func() bool { return strip.ActiveTabIndex() == 1 }) {
+		t.Fatalf("< did not scroll back to tab-0:\n%s", h.TB.String())
 	}
-	h.onLoopInternal(func() { strip.SetActive("5") })
-	if !waitInternal(h, func() bool { i := strip.ActiveTabIndex(); return i > 0 }) || !strings.Contains(h.tb.String(), "tab-5") {
-		t.Fatalf("tab-5 made active is not shown:\n%s", h.tb.String())
+	h.OnLoop(func() { strip.SetActive("5") })
+	if !widgettest.Wait(h, func() bool { i := strip.ActiveTabIndex(); return i > 0 }) || !strings.Contains(h.TB.String(), "tab-5") {
+		t.Fatalf("tab-5 made active is not shown:\n%s", h.TB.String())
 	}
 }
 
@@ -226,50 +214,50 @@ func TestAScrolledTabStripLeavesNoGapBeforeItsArrow(t *testing.T) {
 		return tabs
 	}
 	// packed: the last tab ends one cell before →, and every span is within the row
-	packed := func(t *testing.T, strip *TabStrip, w int, last string, h *internalHarness) {
+	packed := func(t *testing.T, strip *TabStrip, w int, last string, h *widgettest.Harness) {
 		t.Helper()
 		var spans []TabSpan
 		var row []StripCell
-		h.onLoopInternal(func() { spans, row = strip.TabSpans(), strip.core.Row() })
+		h.OnLoop(func() { spans, row = strip.TabSpans(), strip.core.Row() })
 		next := slices.IndexFunc(row, func(c StripCell) bool { return c.Kind == kit.CellNext })
 		if next < 1 || row[next-1].Kind != kit.CellTab || row[next-1].id != last {
-			t.Fatalf("the cell before → is %+v, want the last tab %s:\n%s", row[max(next-1, 0)], last, h.tb.String())
+			t.Fatalf("the cell before → is %+v, want the last tab %s:\n%s", row[max(next-1, 0)], last, h.TB.String())
 		}
 		if end := spans[next-1].X + spans[next-1].W; end+1 != spans[next].X {
-			t.Fatalf("the last tab ends at %d and → starts at %d: a gap of %d cells:\n%s", end, spans[next].X, spans[next].X-end-1, h.tb.String())
+			t.Fatalf("the last tab ends at %d and → starts at %d: a gap of %d cells:\n%s", end, spans[next].X, spans[next].X-end-1, h.TB.String())
 		}
 		if spans[len(spans)-1].X+spans[len(spans)-1].W > w {
 			t.Fatalf("spans %v pass the row's %d cells", spans, w)
 		}
 	}
-	start := func(t *testing.T, n, w int) (*TabStrip, *internalHarness) {
+	start := func(t *testing.T, n, w int) (*TabStrip, *widgettest.Harness) {
 		strip := NewTabStrip()
 		strip.SetTabs(tabsOf(n))
 		strip.SetActive(fmt.Sprint(n - 1)) // the last: the window scrolls to show it
 		strip.SetActions(func() {}, nil)
 		strip.SetMenu(func(string) []MenuItemModel { return nil })
-		h := startAppInternal(t, strip, w, 1)
-		h.syncInternal()
+		h := widgettest.StartApp(t, strip, w, 1)
+		h.Sync()
 		return strip, h
 	}
 
 	t.Run("the row grown wider", func(t *testing.T) {
 		strip, h := start(t, 9, 64)
-		defer h.stopInternal()
+		defer h.Stop()
 		packed(t, strip, 64, "8", h)
-		h.tb.InjectResize(90, 1)
-		if !waitInternal(h, func() bool { return strings.Contains(h.tb.String(), "untitled 4") }) {
-			t.Fatalf("the window did not take more tabs once wider:\n%s", h.tb.String())
+		h.TB.InjectResize(90, 1)
+		if !widgettest.Wait(h, func() bool { return strings.Contains(h.TB.String(), "untitled 4") }) {
+			t.Fatalf("the window did not take more tabs once wider:\n%s", h.TB.String())
 		}
 		packed(t, strip, 90, "8", h)
 	})
 	t.Run("tabs closed at the end", func(t *testing.T) {
 		strip, h := start(t, 9, 64)
-		defer h.stopInternal()
-		h.onLoopInternal(func() { strip.SetTabs(tabsOf(7)); strip.SetActive("6") })
-		h.syncInternal()
+		defer h.Stop()
+		h.OnLoop(func() { strip.SetTabs(tabsOf(7)); strip.SetActive("6") })
+		h.Sync()
 		packed(t, strip, 64, "6", h)
-		if got := h.tb.String(); !strings.Contains(got, "…") {
+		if got := h.TB.String(); !strings.Contains(got, "…") {
 			t.Fatalf("no tab cut from its start into the cells left over:\n%s", got)
 		}
 	})
@@ -292,24 +280,24 @@ func TestATabStripFitsItsLabelsToItsRoom(t *testing.T) {
 		asked = append(asked, w)
 		return "<" + strings.Repeat("=", w-2) + ">" // fills w cells: what the strip draws is the host's
 	})
-	h := startAppInternal(t, strip, 120, 1)
-	defer h.stopInternal()
-	h.syncInternal()
+	h := widgettest.StartApp(t, strip, 120, 1)
+	defer h.Stop()
+	h.Sync()
 	look := func() (string, []TabSpan, []int) {
 		var spans []TabSpan
 		var got []int
-		h.onLoopInternal(func() { spans, got = strip.TabSpans(), append([]int(nil), asked...); asked = asked[:0] })
-		return h.tb.String(), spans, got
+		h.OnLoop(func() { spans, got = strip.TabSpans(), append([]int(nil), asked...); asked = asked[:0] })
+		return h.TB.String(), spans, got
 	}
 
 	row, _, got := look()
 	if !strings.Contains(row, "a-rather-long-name-02.md") || strings.Contains(row, "←") || len(got) != 0 {
 		t.Fatalf("wide: want every label whole, no arrows, fit never asked; fit asked %v:\n%s", got, row)
 	}
-	h.tb.InjectResize(60, 1) // 3 tabs of 19 cells and 2 between: 59
+	h.TB.InjectResize(60, 1) // 3 tabs of 19 cells and 2 between: 59
 	// the fitted labels drawn: a resize first blanks the grid, so an absent label proves nothing
-	if !waitInternal(h, func() bool { return strings.Contains(h.tb.String(), "<===") }) {
-		t.Fatalf("narrower: the labels were not cut by fit:\n%s", h.tb.String())
+	if !widgettest.Wait(h, func() bool { return strings.Contains(h.TB.String(), "<===") }) {
+		t.Fatalf("narrower: the labels were not cut by fit:\n%s", h.TB.String())
 	}
 	row, spans, got := look()
 	if strings.Contains(row, "←") || len(spans) != 3 || !slices.Contains(got, 17) || slices.ContainsFunc(got, func(w int) bool { return w != 17 }) {
@@ -320,17 +308,17 @@ func TestATabStripFitsItsLabelsToItsRoom(t *testing.T) {
 			t.Fatalf("narrower: a tab %d cells wide, want 19 (the widest that fits); spans %v", sp.W, spans)
 		}
 	}
-	h.tb.InjectResize(30, 1) // even 12 cells a tab overflows: cut to 12, and the strip scrolls
-	if !waitInternal(h, func() bool { return strings.Contains(h.tb.String(), "←") }) {
-		t.Fatalf("narrowest: no arrows:\n%s", h.tb.String())
+	h.TB.InjectResize(30, 1) // even 12 cells a tab overflows: cut to 12, and the strip scrolls
+	if !widgettest.Wait(h, func() bool { return strings.Contains(h.TB.String(), "←") }) {
+		t.Fatalf("narrowest: no arrows:\n%s", h.TB.String())
 	}
 	row, _, got = look()
 	if !slices.Contains(got, 10) || slices.ContainsFunc(got, func(w int) bool { return w != 10 }) {
 		t.Fatalf("narrowest: fit asked %v, want 10 (12 less padding):\n%s", got, row)
 	}
-	h.tb.InjectResize(120, 1) // wide again: the strip asks for its tabs whole, not as last cut
-	if !waitInternal(h, func() bool { return strings.Contains(h.tb.String(), "a-rather-long-name-02.md") }) {
-		t.Fatalf("wide again: the labels stayed cut:\n%s", h.tb.String())
+	h.TB.InjectResize(120, 1) // wide again: the strip asks for its tabs whole, not as last cut
+	if !widgettest.Wait(h, func() bool { return strings.Contains(h.TB.String(), "a-rather-long-name-02.md") }) {
+		t.Fatalf("wide again: the labels stayed cut:\n%s", h.TB.String())
 	}
 }
 
@@ -340,15 +328,15 @@ func TestATabStripCapsATabsWidth(t *testing.T) {
 	strip := NewTabStrip()
 	strip.SetTabs([]StripTab{{"a", "a-very-long-file-name.md"}, {"b", "b.md"}})
 	strip.SetMaxTabWidth(10)
-	h := startAppInternal(t, strip, 60, 1)
-	defer h.stopInternal()
-	h.syncInternal()
+	h := widgettest.StartApp(t, strip, 60, 1)
+	defer h.Stop()
+	h.Sync()
 	var spans []TabSpan
-	h.onLoopInternal(func() { spans = strip.TabSpans() })
+	h.OnLoop(func() { spans = strip.TabSpans() })
 	if len(spans) != 2 || spans[0].W != 10 || spans[1].W != len(" b.md ") {
 		t.Fatalf("spans %v: want the long tab capped at 10 cells, the short one whole", spans)
 	}
-	if got := h.tb.String(); !strings.Contains(got, "…") || strings.Contains(got, "file-name") || !strings.Contains(got, " b.md ") {
+	if got := h.TB.String(); !strings.Contains(got, "…") || strings.Contains(got, "file-name") || !strings.Contains(got, " b.md ") {
 		t.Fatalf("the strip:\n%s", got)
 	}
 }
@@ -364,34 +352,34 @@ func TestATabStripsCloseMark(t *testing.T) {
 	var closed, chosen []string
 	strip.SetOnClose(func(id string) { closed = append(closed, id) })
 	strip.SetOnSelect(func(id string) { chosen = append(chosen, id) })
-	h := startAppInternal(t, strip, 60, 1)
-	defer h.stopInternal()
-	h.syncInternal()
-	if got := h.tb.String(); !strings.Contains(got, " × alpha ") || !strings.Contains(got, " × a-name-") {
+	h := widgettest.StartApp(t, strip, 60, 1)
+	defer h.Stop()
+	h.Sync()
+	if got := h.TB.String(); !strings.Contains(got, " × alpha ") || !strings.Contains(got, " × a-name-") {
 		t.Fatalf("the strip:\n%s", got)
 	}
 	var spans []TabSpan
-	h.onLoopInternal(func() { spans = strip.TabSpans() })
+	h.OnLoop(func() { spans = strip.TabSpans() })
 	if len(spans) != 2 || spans[1].W != 2+10 {
 		t.Fatalf("spans %v: want the capped tab 10 cells, its × 2 more", spans)
 	}
 	press := func(x int) {
 		t.Helper()
-		if err := h.tb.Inject(tui.MouseEvent{Kind: tui.MousePress, Button: tui.MouseLeft, X: x, Y: 0}); err != nil {
+		if err := h.TB.Inject(tui.MouseEvent{Kind: tui.MousePress, Button: tui.MouseLeft, X: x, Y: 0}); err != nil {
 			t.Fatal(err)
 		}
 	}
 	press(spans[1].X + 1) // b's ×
-	if !waitInternal(h, func() bool { return len(closed) == 1 }) || closed[0] != "b" || len(chosen) != 0 {
+	if !widgettest.Wait(h, func() bool { return len(closed) == 1 }) || closed[0] != "b" || len(chosen) != 0 {
 		t.Fatalf("a press on b's ×: closed %v, chosen %v", closed, chosen)
 	}
 	press(spans[1].X + 4) // b's name
-	if !waitInternal(h, func() bool { return len(chosen) == 1 }) || chosen[0] != "b" || len(closed) != 1 {
+	if !widgettest.Wait(h, func() bool { return len(chosen) == 1 }) || chosen[0] != "b" || len(closed) != 1 {
 		t.Fatalf("a press on b's name: closed %v, chosen %v", closed, chosen)
 	}
-	h.onLoopInternal(func() { strip.SetOnClose(nil) })
-	h.syncInternal()
-	if got := h.tb.String(); strings.Contains(got, "×") {
+	h.OnLoop(func() { strip.SetOnClose(nil) })
+	h.Sync()
+	if got := h.TB.String(); strings.Contains(got, "×") {
 		t.Fatalf("SetOnClose(nil) left a ×:\n%s", got)
 	}
 }
@@ -404,22 +392,22 @@ func TestACutTabsHiddenCloseMarkDoesNotClose(t *testing.T) {
 	strip.SetActive("a")
 	var closed []string
 	strip.SetOnClose(func(id string) { closed = append(closed, id) })
-	h := startAppInternal(t, strip, 10, 1) // room for ← and → and two cells: a cut to " …"
-	defer h.stopInternal()
-	h.syncInternal()
+	h := widgettest.StartApp(t, strip, 10, 1) // room for ← and → and two cells: a cut to " …"
+	defer h.Stop()
+	h.Sync()
 	var spans []TabSpan
-	h.onLoopInternal(func() { spans = strip.TabSpans() })
+	h.OnLoop(func() { spans = strip.TabSpans() })
 	if len(spans) < 3 {
 		t.Fatalf("spans %v: want ←, a cut tab and →", spans)
 	}
-	if err := h.tb.Inject(tui.MouseEvent{Kind: tui.MousePress, Button: tui.MouseLeft, X: spans[1].X, Y: 0}); err != nil {
+	if err := h.TB.Inject(tui.MouseEvent{Kind: tui.MousePress, Button: tui.MouseLeft, X: spans[1].X, Y: 0}); err != nil {
 		t.Fatal(err)
 	}
-	h.syncInternal()
+	h.Sync()
 	time.Sleep(50 * time.Millisecond)
-	h.syncInternal()
+	h.Sync()
 	if len(closed) != 0 {
-		t.Fatalf("a press on a tab cut to %q closed %v", h.tb.String(), closed)
+		t.Fatalf("a press on a tab cut to %q closed %v", h.TB.String(), closed)
 	}
 }
 
@@ -434,12 +422,12 @@ func TestDrawingATabStripStoresNothing(t *testing.T) {
 	}
 	strip.SetTabs(tabs)
 	strip.SetActive("0")
-	h := startAppInternal(t, strip, 30, 1)
-	defer h.stopInternal()
-	h.syncInternal()
+	h := widgettest.StartApp(t, strip, 30, 1)
+	defer h.Stop()
+	h.Sync()
 	var before, after [2]any
 	var shown bool
-	h.onLoopInternal(func() {
+	h.OnLoop(func() {
 		strip.SetActive("11") // a layout is asked for, not run
 		s := &strip.core
 		before = [2]any{s.first, s.revealed}
@@ -452,8 +440,8 @@ func TestDrawingATabStripStoresNothing(t *testing.T) {
 	if before != after {
 		t.Errorf("drawing the row stored first, revealed: %v -> %v", before, after)
 	}
-	h.syncInternal()
-	if got := h.tb.String(); !strings.Contains(got, "11") {
+	h.Sync()
+	if got := h.TB.String(); !strings.Contains(got, "11") {
 		t.Errorf("after the layout the strip does not show tab 11:\n%s", got)
 	}
 }
@@ -474,19 +462,19 @@ func TestAnActiveTabWhoseLabelGrowsIsShownWhole(t *testing.T) {
 	strip.SetActive("5")
 	strip.SetActions(func() {}, nil)
 	strip.SetMenu(func(string) []MenuItemModel { return nil })
-	h := startAppInternal(t, strip, 40, 1)
-	defer h.stopInternal()
-	h.syncInternal()
+	h := widgettest.StartApp(t, strip, 40, 1)
+	defer h.Stop()
+	h.Sync()
 	long := "a-rather-long-name.md"
-	h.onLoopInternal(func() { strip.SetTabs(tabsWith(long)) }) // the label grows; the active tab stays
-	if !waitInternal(h, func() bool { return strings.Contains(h.tb.String(), long) }) {
-		t.Fatalf("the active tab's grown label %q is not shown whole:\n%s", long, h.tb.String())
+	h.OnLoop(func() { strip.SetTabs(tabsWith(long)) }) // the label grows; the active tab stays
+	if !widgettest.Wait(h, func() bool { return strings.Contains(h.TB.String(), long) }) {
+		t.Fatalf("the active tab's grown label %q is not shown whole:\n%s", long, h.TB.String())
 	}
 	var spans []TabSpan
-	h.onLoopInternal(func() { spans = strip.TabSpans() })
+	h.OnLoop(func() { spans = strip.TabSpans() })
 	for _, sp := range spans {
 		if sp.X+sp.W > 40 {
-			t.Fatalf("span %+v passes the row's 40 cells:\n%s", sp, h.tb.String())
+			t.Fatalf("span %+v passes the row's 40 cells:\n%s", sp, h.TB.String())
 		}
 	}
 }

@@ -5,6 +5,7 @@ import (
 	"testing"
 
 	"github.com/yongjohnlee80/golib/tui"
+	"github.com/yongjohnlee80/golib/tui/widget/internal/widgettest"
 )
 
 // oldBufferViewKey is BufferView's key decision before commands, verbatim but for its effects, which
@@ -37,7 +38,7 @@ func oldBufferViewKey(e tui.KeyEvent) string {
 
 func TestBufferViewKeysMatchTheOldHandlerWithNoMap(t *testing.T) {
 	v := &BufferView{}
-	keyGridDiff(t, "BufferView", oldBufferViewKey,
+	widgettest.KeyGridDiff(t, "BufferView", oldBufferViewKey,
 		func(e tui.KeyEvent) string {
 			cmd, ok := v.Context().KeyCommand(e, bufferViewCommands...)
 			if !ok {
@@ -45,5 +46,5 @@ func TestBufferViewKeysMatchTheOldHandlerWithNoMap(t *testing.T) {
 			}
 			return strings.TrimPrefix(cmd.ID, "tui.bufferview.")
 		},
-		hyperOrMeta)
+		widgettest.HyperOrMeta)
 }

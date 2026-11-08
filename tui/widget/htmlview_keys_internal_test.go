@@ -6,6 +6,7 @@ import (
 	"testing"
 
 	"github.com/yongjohnlee80/golib/tui"
+	"github.com/yongjohnlee80/golib/tui/widget/internal/widgettest"
 )
 
 // oldHTMLViewKey is HTMLView.key's decision before commands, verbatim but for its effects, which are
@@ -82,7 +83,7 @@ func TestHTMLViewKeysMatchTheOldHandlerWithNoMap(t *testing.T) {
 		v.FollowKeyset(func() Keyset { return ks })
 		for _, sel := range []bool{false, true} {
 			name := map[bool]string{false: "HTMLView, ", true: "HTMLView selecting, "}[sel] + ks.String()
-			keyGridDiff(t, name,
+			widgettest.KeyGridDiff(t, name,
 				func(e tui.KeyEvent) string { return oldHTMLViewKey(e, sel, ks == KeysetVim) },
 				func(e tui.KeyEvent) string {
 					cmd, ok := v.keyOf(e, sel)
@@ -92,7 +93,7 @@ func TestHTMLViewKeysMatchTheOldHandlerWithNoMap(t *testing.T) {
 					return strings.TrimPrefix(cmd.ID, "tui.htmlview.")
 				},
 				func(e tui.KeyEvent) string {
-					return cmp.Or(hyperOrMeta(e), shiftSpentOnPrintable(e), ctrlShiftLetter(e))
+					return cmp.Or(widgettest.HyperOrMeta(e), widgettest.ShiftSpentOnPrintable(e), ctrlShiftLetter(e))
 				})
 		}
 	}
