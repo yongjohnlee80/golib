@@ -15,6 +15,9 @@ import (
 // key, the Shift form is a default too.
 //
 // A label's mnemonic (&File, a button's underlined letter) is not a command and cannot be rebound.
+//
+// This file declares cmd, the helpers commands are written with, and core's widgets' commands. A
+// component's own are in its <component>_commands.go (table_commands.go, terminal_commands.go, …).
 
 // cmd declares one command.
 func cmd(id string, scope keymap.Scope, keys ...string) keymap.Command {
@@ -23,8 +26,9 @@ func cmd(id string, scope keymap.Scope, keys ...string) keymap.Command {
 	return c
 }
 
-// declared is every key command a widget declares through cmd, in declaration order. KeyCommands
-// lists them, so a new widget's commands are in keymap.Build without another list to edit.
+// declared is every key command a widget declares through cmd, in the order the package initializes
+// them (its files by name). KeyCommands lists them, so a new widget's commands are in keymap.Build
+// without another list to edit.
 var declared []keymap.Command
 
 // isKey reports whether e is one of keys, by the one matching model (key.Of, then its candidates). A
@@ -45,14 +49,6 @@ func isKey(e tui.KeyEvent, keys ...tuikey.Seq) bool {
 	}
 	return false
 }
-
-// The literal continuations: g after g, and Ctrl+\ after the Terminal's prefix, which sends it.
-var (
-	literalG         = tuikey.MustParse("G")
-	literalE         = tuikey.MustParse("E")
-	literalShiftE    = tuikey.MustParse("Shift+E")
-	literalCtrlSlash = tuikey.MustParse("Ctrl+\\", "Ctrl+Shift+\\")
-)
 
 // with is each text and its Shift form, for a functional key the old handlers took either way.
 func with(texts ...string) []string {
@@ -81,84 +77,6 @@ var (
 
 	listCommands = []keymap.Command{ListMenu, ListUp, ListDown, ListTop, ListBottom, ListPageUp,
 		ListPageDown, ListHome, ListEnd, ListActivate, ListToggle}
-)
-
-// TreeScope is a Tree's keys.
-const TreeScope keymap.Scope = "tui.tree"
-
-var (
-	TreeDown     = cmd("tui.tree.down", TreeScope, append(with("Down"), "J")...)
-	TreeUp       = cmd("tui.tree.up", TreeScope, append(with("Up"), "K")...)
-	TreePageDown = cmd("tui.tree.pageDown", TreeScope, with("PgDown")...)
-	TreePageUp   = cmd("tui.tree.pageUp", TreeScope, with("PgUp")...)
-	TreeFirst    = cmd("tui.tree.first", TreeScope, append(with("Home"), "G")...)
-	TreeLast     = cmd("tui.tree.last", TreeScope, append(with("End"), "Shift+G")...)
-	TreeExpand   = cmd("tui.tree.expand", TreeScope, append(with("Right"), "L")...)  // a leaf activates; an open branch steps in
-	TreeCollapse = cmd("tui.tree.collapse", TreeScope, append(with("Left"), "H")...) // a closed node steps to its parent
-	TreeActivate = cmd("tui.tree.activate", TreeScope, with("Enter")...)
-
-	treeCommands = []keymap.Command{TreeDown, TreeUp, TreePageDown, TreePageUp, TreeFirst, TreeLast,
-		TreeExpand, TreeCollapse, TreeActivate}
-)
-
-// TableScope is a table's keys (TableCore: DataTable, and the GUI's table).
-const TableScope keymap.Scope = "tui.table"
-
-// The table's keys are a small grammar, as an editor's: a count ([count]j), and g waiting for its
-// second g. The digits are that grammar, not commands; the first key of every command, the g prefix's
-// included, is a command.
-var (
-	TableUp          = cmd("tui.table.up", TableScope, append(with("Up"), "K")...)
-	TableDown        = cmd("tui.table.down", TableScope, append(with("Down"), "J")...)
-	TableLeft        = cmd("tui.table.left", TableScope, append(with("Left"), "H")...)
-	TableRight       = cmd("tui.table.right", TableScope, append(with("Right"), "L")...)
-	TableFieldNext   = cmd("tui.table.fieldNext", TableScope, "W")
-	TableFieldPrev   = cmd("tui.table.fieldPrev", TableScope, "B")
-	TablePageUp      = cmd("tui.table.pageUp", TableScope, with("PgUp")...)
-	TablePageDown    = cmd("tui.table.pageDown", TableScope, with("PgDown")...)
-	TableGoPrefix    = cmd("tui.table.goPrefix", TableScope, "G")   // g, then g: the first row ([count]gg: row count)
-	TableLast        = cmd("tui.table.last", TableScope, "Shift+G") // [count]G: row count
-	TableFieldFirst  = cmd("tui.table.fieldFirst", TableScope, append(with("Home"), "0")...)
-	TableFieldLast   = cmd("tui.table.fieldLast", TableScope, append(with("End"), "$")...)
-	TableVisual      = cmd("tui.table.selectCells", TableScope, "V")
-	TableVisualRows  = cmd("tui.table.selectRows", TableScope, "Shift+V")
-	TableVisualBlock = cmd("tui.table.selectBlock", TableScope, "Ctrl+V")
-	TableEscape      = cmd("tui.table.escape", TableScope, with("Esc")...)
-	TableYank        = cmd("tui.table.yank", TableScope, "Y")      // y copies; y again copies the row
-	TableRowCursor   = cmd("tui.table.rowCursor", TableScope, "R") // the cursor between its cell and its row
-	TableSort        = cmd("tui.table.sort", TableScope, "S")
-	TableActivate    = cmd("tui.table.activate", TableScope, with("Enter")...) // on an editable source: edit the cell
-	// An editable source's: open the cell's field, a new row below, delete the
-	// row (d, then d), empty the cell.
-	TableEditCell  = cmd("tui.table.edit", TableScope, "I", "F2")
-	TableOpenRow   = cmd("tui.table.openRow", TableScope, "O")
-	TableDeleteRow = cmd("tui.table.deleteRow", TableScope, "D") // d, then d
-	TableClearCell = cmd("tui.table.clearCell", TableScope, "X", "Delete")
-	// p and P paste the register after and before; O opens a row above, as o below.
-	TablePasteAfter   = cmd("tui.table.pasteAfter", TableScope, "P")
-	TablePasteBefore  = cmd("tui.table.pasteBefore", TableScope, "Shift+P")
-	TableOpenRowAbove = cmd("tui.table.openRowAbove", TableScope, "Shift+O")
-
-	tableCommands = []keymap.Command{TableUp, TableDown, TableLeft, TableRight, TableFieldNext,
-		TableFieldPrev, TablePageUp, TablePageDown, TableGoPrefix, TableLast, TableFieldFirst,
-		TableFieldLast, TableVisual, TableVisualRows, TableVisualBlock, TableEscape, TableYank,
-		TableRowCursor, TableSort, TableActivate, TableEditCell, TableOpenRow, TableDeleteRow, TableClearCell,
-		TablePasteAfter, TablePasteBefore, TableOpenRowAbove}
-)
-
-// TableFieldScope is the keys of a table cell's open field (TableEdit), before its TextArea's.
-const TableFieldScope keymap.Scope = "tui.tableField"
-
-var (
-	TableFieldKeep     = cmd("tui.tableField.keep", TableFieldScope, "Enter") // keep, and move down
-	TableFieldNewline  = cmd("tui.tableField.newline", TableFieldScope, "Alt+Enter", "Shift+Enter")
-	TableFieldNextCell = cmd("tui.tableField.next", TableFieldScope, "Tab")           // keep, and move right
-	TableFieldPrevCell = cmd("tui.tableField.previous", TableFieldScope, "Shift+Tab") // keep, and move left
-	TableFieldDrop     = cmd("tui.tableField.drop", TableFieldScope, "Esc")
-	TableFieldLiteral  = cmd("tui.tableField.literal", TableFieldScope, "Ctrl+V") // then Tab: a tab in the value
-
-	tableFieldCommands = []keymap.Command{TableFieldKeep, TableFieldNewline, TableFieldNextCell,
-		TableFieldPrevCell, TableFieldDrop, TableFieldLiteral}
 )
 
 // InputScope is a TextInput's keys.
@@ -419,7 +337,6 @@ var (
 	textKey  = func(shift, ctrl, _ bool) bool { return !shift && ctrl }
 	textSel  = func(shift, ctrl, _ bool) bool { return shift && ctrl }
 	anyCombo = func(bool, bool, bool) bool { return true }
-	noAlt    = func(_, _, alt bool) bool { return !alt }
 
 	TextAreaNewline         = cmd("tui.textarea.newline", TextAreaScope, mods("Enter", anyCombo)...)
 	TextAreaBackspace       = cmd("tui.textarea.backspace", TextAreaScope, mods("Backspace", anyCombo)...)
@@ -463,56 +380,6 @@ var (
 		TextAreaLineStart, TextAreaLineEnd, TextAreaKillLine, TextAreaKillWord}
 )
 
-// HTMLViewScope is an HTMLView's keys in every keyset: keys that never type. The arrows (but Alt's,
-// which travel), PgUp, PgDn, Home, End and Esc take any modifier, as its handler did.
-// HTMLViewVimScope is the printing keys a Vim keyset reads the page by as well (j/k, g/G, y, Space,
-// h/l, ] [ and } {): a modeless keyset (Standard, Nano) types them instead, so its host opens the
-// text with them (the Editor's keysets, each its own scope, as tui.editor.vim and
-// tui.editor.standard are).
-const (
-	HTMLViewScope    keymap.Scope = "tui.htmlview"
-	HTMLViewVimScope keymap.Scope = "tui.htmlview.vim"
-)
-
-var (
-	HTMLViewUp       = cmd("tui.htmlview.up", HTMLViewScope, mods("Up", noAlt)...)
-	HTMLViewDown     = cmd("tui.htmlview.down", HTMLViewScope, mods("Down", noAlt)...)
-	HTMLViewPageUp   = cmd("tui.htmlview.pageUp", HTMLViewScope, mods("PgUp", anyCombo)...)
-	HTMLViewPageDown = cmd("tui.htmlview.pageDown", HTMLViewScope, mods("PgDown", anyCombo)...)
-	HTMLViewHalfUp   = cmd("tui.htmlview.halfUp", HTMLViewScope, "Ctrl+U")
-	HTMLViewHalfDown = cmd("tui.htmlview.halfDown", HTMLViewScope, "Ctrl+D")
-	HTMLViewTop      = cmd("tui.htmlview.top", HTMLViewScope, mods("Home", anyCombo)...)
-	HTMLViewBottom   = cmd("tui.htmlview.bottom", HTMLViewScope, mods("End", anyCombo)...)
-	HTMLViewCopy     = cmd("tui.htmlview.copy", HTMLViewScope, "Ctrl+C")
-	HTMLViewClear    = cmd("tui.htmlview.clearSelection", HTMLViewScope, mods("Esc", anyCombo)...) // with a selection
-	// a layout's own (HTMLLayoutPan, HTMLLayoutTravel): a wide block's pan, block and heading travel
-	HTMLViewLeft            = cmd("tui.htmlview.left", HTMLViewScope, "Left")
-	HTMLViewRight           = cmd("tui.htmlview.right", HTMLViewScope, "Right")
-	HTMLViewNextBlock       = cmd("tui.htmlview.nextBlock", HTMLViewScope, "Alt+Down")
-	HTMLViewPreviousBlock   = cmd("tui.htmlview.previousBlock", HTMLViewScope, "Alt+Up")
-	HTMLViewNextHeading     = cmd("tui.htmlview.nextHeading", HTMLViewScope, "Alt+Shift+Down")
-	HTMLViewPreviousHeading = cmd("tui.htmlview.previousHeading", HTMLViewScope, "Alt+Shift+Up")
-
-	htmlViewCommands = []keymap.Command{HTMLViewUp, HTMLViewDown, HTMLViewPageUp, HTMLViewPageDown,
-		HTMLViewHalfUp, HTMLViewHalfDown, HTMLViewTop, HTMLViewBottom, HTMLViewCopy, HTMLViewClear,
-		HTMLViewLeft, HTMLViewRight, HTMLViewNextBlock, HTMLViewPreviousBlock, HTMLViewNextHeading,
-		HTMLViewPreviousHeading}
-
-	// the Vim keyset's printing keys, each the command of HTMLViewScope it does (htmlViewVimDoes)
-	HTMLViewVimUp              = cmd("tui.htmlview.vim.up", HTMLViewVimScope, "K")
-	HTMLViewVimDown            = cmd("tui.htmlview.vim.down", HTMLViewVimScope, "J")
-	HTMLViewVimPageDown        = cmd("tui.htmlview.vim.pageDown", HTMLViewVimScope, "Space")
-	HTMLViewVimTop             = cmd("tui.htmlview.vim.top", HTMLViewVimScope, "G")
-	HTMLViewVimBottom          = cmd("tui.htmlview.vim.bottom", HTMLViewVimScope, "Shift+G")
-	HTMLViewVimCopy            = cmd("tui.htmlview.vim.copy", HTMLViewVimScope, "Y")
-	HTMLViewVimLeft            = cmd("tui.htmlview.vim.left", HTMLViewVimScope, "H")
-	HTMLViewVimRight           = cmd("tui.htmlview.vim.right", HTMLViewVimScope, "L")
-	HTMLViewVimNextBlock       = cmd("tui.htmlview.vim.nextBlock", HTMLViewVimScope, "]")
-	HTMLViewVimPreviousBlock   = cmd("tui.htmlview.vim.previousBlock", HTMLViewVimScope, "[")
-	HTMLViewVimNextHeading     = cmd("tui.htmlview.vim.nextHeading", HTMLViewVimScope, "}")
-	HTMLViewVimPreviousHeading = cmd("tui.htmlview.vim.previousHeading", HTMLViewVimScope, "{")
-)
-
 // BufferViewScope is a BufferView's keys. The arrows, PgUp, PgDn, Home and End take any modifier, as
 // its handler did; Y takes none.
 const BufferViewScope keymap.Scope = "tui.bufferview"
@@ -530,118 +397,6 @@ var (
 		BufferViewPageDown, BufferViewTop, BufferViewBottom, BufferViewCopy}
 )
 
-// FileViewScope is a file chooser's own keys, heard as they bubble up from its parts. Each acts only
-// where it belongs: ~ and / in the listing, Enter in the filter field, Esc in the path field or with a
-// filter to clear, and Ctrl and h, j, k or l among the parts.
-const FileViewScope keymap.Scope = "tui.fileview"
-
-var (
-	FileViewHome       = cmd("tui.fileview.home", FileViewScope, "~")                              // the path field, ~/ written
-	FileViewFilter     = cmd("tui.fileview.filter", FileViewScope, "/")                            // the filter field
-	FileViewFilterDone = cmd("tui.fileview.filterDone", FileViewScope, mods("Enter", anyCombo)...) // back to the listing, the filter kept
-	FileViewCancel     = cmd("tui.fileview.cancel", FileViewScope, mods("Esc", anyCombo)...)       // the path field's folder put back, else the filter cleared
-	FileViewPartDown   = cmd("tui.fileview.partDown", FileViewScope, "Ctrl+J")
-	FileViewPartUp     = cmd("tui.fileview.partUp", FileViewScope, "Ctrl+K")
-	FileViewPreview    = cmd("tui.fileview.preview", FileViewScope, "Ctrl+L")
-	FileViewBack       = cmd("tui.fileview.back", FileViewScope, "Ctrl+H") // from the preview
-
-	fileViewCommands = []keymap.Command{FileViewHome, FileViewFilter, FileViewFilterDone, FileViewCancel,
-		FileViewPartDown, FileViewPartUp, FileViewPreview, FileViewBack}
-)
-
-// CommandLineScope is the command-line prompt's own keys: Tab and Shift+Tab complete, and with the
-// candidates' dropdown open, Down and Up move through it as they do. Each with any other modifier too.
-const CommandLineScope keymap.Scope = "tui.cmdline"
-
-var (
-	noShift   = func(shift, _, _ bool) bool { return !shift }
-	withShift = func(shift, _, _ bool) bool { return shift }
-
-	CmdlineComplete     = cmd("tui.cmdline.complete", CommandLineScope, mods("Tab", noShift)...)
-	CmdlineCompletePrev = cmd("tui.cmdline.completePrev", CommandLineScope, mods("Tab", withShift)...)
-	CmdlineNext         = cmd("tui.cmdline.next", CommandLineScope, mods("Down", anyCombo)...) // the dropdown open
-	CmdlinePrev         = cmd("tui.cmdline.prev", CommandLineScope, mods("Up", anyCombo)...)
-
-	cmdlineCommands = []keymap.Command{CmdlineComplete, CmdlineCompletePrev, CmdlineNext, CmdlinePrev}
-)
-
-// CommandLineReplaceScope is the keys of a command's replace question (:s with c): Y, N and Q, either
-// case, with any modifier, as its handler took them.
-const CommandLineReplaceScope keymap.Scope = "tui.cmdline.replace"
-
-var (
-	CmdlineReplaceYes  = cmd("tui.cmdline.replace.yes", CommandLineReplaceScope, mods("Y", anyCombo)...)
-	CmdlineReplaceNo   = cmd("tui.cmdline.replace.no", CommandLineReplaceScope, mods("N", anyCombo)...)
-	CmdlineReplaceQuit = cmd("tui.cmdline.replace.quit", CommandLineReplaceScope, mods("Q", anyCombo)...)
-
-	cmdlineReplaceCommands = []keymap.Command{CmdlineReplaceYes, CmdlineReplaceNo, CmdlineReplaceQuit}
-)
-
-// TerminalScope is a Terminal's own keys in input mode, where every other key is the program's: the
-// escape prefix (Ctrl+\, then Ctrl+n for normal mode or Ctrl+\ to send it; the key after it is its
-// grammar, not a command), Esc into normal mode with WithVimKeys outside a full-screen program, and,
-// once the program has exited, Enter or i to start one again.
-const TerminalScope keymap.Scope = "tui.terminal"
-
-var (
-	TerminalPrefix   = cmd("tui.terminal.prefix", TerminalScope, "Ctrl+\\", "Ctrl+Shift+\\")
-	TerminalToNormal = cmd("tui.terminal.normalMode", TerminalScope, "Esc")
-	TerminalRestart  = cmd("tui.terminal.restart", TerminalScope, append(mods("Enter", anyCombo), "I")...)
-
-	terminalCommands = []keymap.Command{TerminalPrefix, TerminalToNormal, TerminalRestart}
-)
-
-// TerminalNormalScope is a Terminal's normal mode: moving through its scrollback, selecting and
-// searching, as Vim reads the keys. The key after g is its grammar (g again: the first line).
-const TerminalNormalScope keymap.Scope = "tui.terminal.normal"
-
-var (
-	TermHalfUp     = cmd("tui.terminal.normal.halfUp", TerminalNormalScope, "Ctrl+U")
-	TermHalfDown   = cmd("tui.terminal.normal.halfDown", TerminalNormalScope, "Ctrl+D")
-	TermPageUp     = cmd("tui.terminal.normal.pageUp", TerminalNormalScope, "Ctrl+B", "PgUp", "Shift+PgUp")
-	TermPageDown   = cmd("tui.terminal.normal.pageDown", TerminalNormalScope, "Ctrl+F", "PgDown", "Shift+PgDown")
-	TermCancel     = cmd("tui.terminal.normal.cancel", TerminalNormalScope, "Esc", "Shift+Esc") // a selection or g; else the host's
-	TermInput      = cmd("tui.terminal.normal.input", TerminalNormalScope, "I", "A", "Enter", "Shift+Enter")
-	TermLeft       = cmd("tui.terminal.normal.left", TerminalNormalScope, "H", "Left", "Shift+Left")
-	TermRight      = cmd("tui.terminal.normal.right", TerminalNormalScope, "L", "Right", "Shift+Right")
-	TermDown       = cmd("tui.terminal.normal.down", TerminalNormalScope, "J", "Down", "Shift+Down")
-	TermUp         = cmd("tui.terminal.normal.up", TerminalNormalScope, "K", "Up", "Shift+Up")
-	TermLineStart  = cmd("tui.terminal.normal.lineStart", TerminalNormalScope, "0", "Home", "Shift+Home")
-	TermLineEnd    = cmd("tui.terminal.normal.lineEnd", TerminalNormalScope, "$", "End", "Shift+End")
-	TermWord       = cmd("tui.terminal.normal.wordForward", TerminalNormalScope, "W")
-	TermWordBack   = cmd("tui.terminal.normal.wordBackward", TerminalNormalScope, "B")
-	TermWordEnd    = cmd("tui.terminal.normal.wordEnd", TerminalNormalScope, "E")
-	TermWORD       = cmd("tui.terminal.normal.WORDForward", TerminalNormalScope, "Shift+W")
-	TermWORDBack   = cmd("tui.terminal.normal.WORDBackward", TerminalNormalScope, "Shift+B")
-	TermWORDEnd    = cmd("tui.terminal.normal.WORDEnd", TerminalNormalScope, "Shift+E")
-	TermGoPrefix   = cmd("tui.terminal.normal.goPrefix", TerminalNormalScope, "G") // then G: the first line; E, Shift+E: ge, gE
-	TermBottom     = cmd("tui.terminal.normal.bottom", TerminalNormalScope, "Shift+G")
-	TermVisual     = cmd("tui.terminal.normal.visual", TerminalNormalScope, "V")
-	TermVisualLine = cmd("tui.terminal.normal.visualLine", TerminalNormalScope, "Shift+V")
-	TermYank       = cmd("tui.terminal.normal.yank", TerminalNormalScope, "Y") // the selection
-	TermSearch     = cmd("tui.terminal.normal.search", TerminalNormalScope, "/")
-	TermSearchBack = cmd("tui.terminal.normal.searchBackward", TerminalNormalScope, "?")
-	TermNext       = cmd("tui.terminal.normal.next", TerminalNormalScope, "N")
-	TermPrev       = cmd("tui.terminal.normal.prev", TerminalNormalScope, "Shift+N")
-
-	terminalNormalCommands = []keymap.Command{TermHalfUp, TermHalfDown, TermPageUp, TermPageDown,
-		TermCancel, TermInput, TermLeft, TermRight, TermDown, TermUp, TermLineStart, TermLineEnd, TermWord,
-		TermWordBack, TermWordEnd, TermWORD, TermWORDBack, TermWORDEnd, TermGoPrefix, TermBottom, TermVisual, TermVisualLine, TermYank,
-		TermSearch, TermSearchBack, TermNext, TermPrev}
-)
-
-// TerminalSearchScope is a Terminal's search line in normal mode: it takes every key while open; typed
-// text is not a command.
-const TerminalSearchScope keymap.Scope = "tui.terminal.search"
-
-var (
-	TermSearchClose     = cmd("tui.terminal.search.close", TerminalSearchScope, mods("Esc", anyCombo)...)
-	TermSearchRun       = cmd("tui.terminal.search.run", TerminalSearchScope, mods("Enter", anyCombo)...)
-	TermSearchBackspace = cmd("tui.terminal.search.backspace", TerminalSearchScope, mods("Backspace", anyCombo)...)
-
-	terminalSearchCommands = []keymap.Command{TermSearchClose, TermSearchRun, TermSearchBackspace}
-)
-
 // FloatScope is a modal Float's keys: Esc hides it.
 const FloatScope keymap.Scope = "tui.float"
 
@@ -653,23 +408,6 @@ const PopupScope keymap.Scope = "tui.popup"
 
 // PopupClose dismisses an anchored popup.
 var PopupClose = cmd("tui.popup.close", PopupScope, "Esc")
-
-// ImageScope is a scrollable Image's keys.
-const ImageScope keymap.Scope = "tui.image"
-
-var (
-	ImageDown     = cmd("tui.image.down", ImageScope, "Down", "J")
-	ImageUp       = cmd("tui.image.up", ImageScope, "Up", "K")
-	ImageRight    = cmd("tui.image.right", ImageScope, "Right", "L")
-	ImageLeft     = cmd("tui.image.left", ImageScope, "Left", "H")
-	ImagePageDown = cmd("tui.image.pageDown", ImageScope, "PgDown", "]", "Space")
-	ImagePageUp   = cmd("tui.image.pageUp", ImageScope, "PgUp", "[")
-	ImageBottom   = cmd("tui.image.bottom", ImageScope, "End", "Shift+G")
-	ImageTop      = cmd("tui.image.top", ImageScope, "Home", "G")
-
-	imageCommands = []keymap.Command{ImageDown, ImageUp, ImageRight, ImageLeft, ImagePageDown, ImagePageUp,
-		ImageBottom, ImageTop}
-)
 
 // WindowMenu opens and leaves the window's menu bar (a declarative Window's): F10, as a desktop's
 // toolkit binds it. It is not a mnemonic; a category's Alt+letter is.

@@ -363,3 +363,10 @@ func (t *Table[T]) ScrollState() (offset, viewport, content int) { return t.list
 
 // AccessibleRole is the table's accessible role (tui.RoleReporter, roles.go).
 func (t *Table[T]) AccessibleRole() tui.AccessibleRole { return tui.RoleTable }
+
+// fitCell is s fitted to a column w cells wide, as measure counts cells: elided past the width as
+// mode says, then padded and placed as a says. The one cell fitter for tables, so a CJK or emoji
+// cell takes exactly its column, and the next column starts where the header put it.
+func fitCell(s string, w int, mode Elide, a style.Align, measure func(string) int) string {
+	return padAligned(elide(s, w, mode, measure), w, a, measure)
+}
