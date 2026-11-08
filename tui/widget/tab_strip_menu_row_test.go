@@ -18,7 +18,7 @@ func TestEveryStripsMenuOpensRightUnderTheStrip(t *testing.T) {
 	}
 	type strip struct {
 		root  tui.Component
-		core  *tabStrip
+		core  *StripCore
 		blank bool // it is wider than its cells, so a right press on its blank opens the menu
 	}
 	kinds := map[string]func() strip{
@@ -50,12 +50,12 @@ func TestEveryStripsMenuOpensRightUnderTheStrip(t *testing.T) {
 			cells := map[kit.StripKind]int{}
 			tab := -1
 			h.onLoopInternal(func() {
-				for _, c := range k.core.row() {
-					if _, ok := cells[c.kind]; !ok {
-						cells[c.kind] = c.x
+				for _, c := range k.core.Row() {
+					if _, ok := cells[c.Kind]; !ok {
+						cells[c.Kind] = c.X
 					}
-					if c.kind == kit.CellTab && tab < 0 {
-						tab = c.x
+					if c.Kind == kit.CellTab && tab < 0 {
+						tab = c.X
 					}
 				}
 			})
@@ -66,12 +66,12 @@ func TestEveryStripsMenuOpensRightUnderTheStrip(t *testing.T) {
 				}
 				drawn := waitInternal(h, func() bool {
 					lines := strings.Split(h.tb.String(), "\n")
-					return k.core.menuOpen != nil && len(lines) > 2 && strings.Contains(lines[1], "┌") && strings.Contains(lines[2], label)
+					return k.core.MenuOpen != nil && len(lines) > 2 && strings.Contains(lines[1], "┌") && strings.Contains(lines[2], label)
 				})
 				var top int
 				h.onLoopInternal(func() {
-					if k.core.menuOpen != nil {
-						top = k.core.menuOpen.rect.Y
+					if k.core.MenuOpen != nil {
+						top = k.core.MenuOpen.rect.Y
 					}
 				})
 				if !drawn || top != 1 {
@@ -81,13 +81,13 @@ func TestEveryStripsMenuOpensRightUnderTheStrip(t *testing.T) {
 				if err := h.tb.Inject(tui.KeyEvent{Kind: tui.KeyPress, Code: tui.KeyEscape}); err != nil {
 					t.Fatal(err)
 				}
-				if !waitInternal(h, func() bool { return k.core.menuOpen == nil }) {
+				if !waitInternal(h, func() bool { return k.core.MenuOpen == nil }) {
 					t.Fatalf("%s: Escape left the menu open", how)
 				}
 			}
 			menu, ok := cells[kit.CellMenu]
 			if !ok {
-				t.Fatalf("no ≡ on the strip: %v", k.core.row())
+				t.Fatalf("no ≡ on the strip: %v", k.core.Row())
 			}
 			opens("≡", tui.Point{X: menu + 1}, tui.MouseLeft, "Menu")
 			if add, ok := cells[kit.CellAdd]; ok {
@@ -118,9 +118,9 @@ func TestATabsMenuRowRunsWithItsTabsIndex(t *testing.T) {
 	defer h.stopInternal()
 	beta := -1
 	h.onLoopInternal(func() {
-		for _, c := range tabs.strip.row() {
-			if c.kind == kit.CellTab && c.id == "1" {
-				beta = c.x
+		for _, c := range tabs.strip.Row() {
+			if c.Kind == kit.CellTab && c.id == "1" {
+				beta = c.X
 			}
 		}
 	})
@@ -129,7 +129,7 @@ func TestATabsMenuRowRunsWithItsTabsIndex(t *testing.T) {
 		if err := h.tb.Inject(tui.MouseEvent{Kind: tui.MousePress, Button: tui.MouseRight, X: beta + 1, Y: 0}); err != nil {
 			t.Fatal(err)
 		}
-		if !waitInternal(h, func() bool { return tabs.strip.menuOpen != nil }) {
+		if !waitInternal(h, func() bool { return tabs.strip.MenuOpen != nil }) {
 			t.Fatalf("a right press on beta opened no menu:\n%s", h.tb.String())
 		}
 	}
@@ -155,7 +155,7 @@ func TestATabsMenuRowRunsWithItsTabsIndex(t *testing.T) {
 	}
 
 	h.onLoopInternal(func() {
-		tabs.strip.closeMenu()
+		tabs.strip.CloseMenu()
 		tabs.SetMenu(nil)
 	})
 	var taken bool

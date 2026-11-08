@@ -99,7 +99,7 @@ func stripDeviation(e tui.KeyEvent) string {
 }
 
 func TestTabStripKeysMatchTheOldHandlerWithNoMap(t *testing.T) {
-	s := &tabStrip{base: &Base{}}
+	s := &StripCore{OwnerBase: &Base{}}
 	for _, focused := range []bool{false, true} {
 		for _, hasAdd := range []bool{false, true} {
 			for _, menuShown := range []bool{false, true} {

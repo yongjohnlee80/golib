@@ -229,10 +229,10 @@ func TestAScrolledTabStripLeavesNoGapBeforeItsArrow(t *testing.T) {
 	packed := func(t *testing.T, strip *TabStrip, w int, last string, h *internalHarness) {
 		t.Helper()
 		var spans []TabSpan
-		var row []stripCell
-		h.onLoopInternal(func() { spans, row = strip.TabSpans(), strip.core.row() })
-		next := slices.IndexFunc(row, func(c stripCell) bool { return c.kind == kit.CellNext })
-		if next < 1 || row[next-1].kind != kit.CellTab || row[next-1].id != last {
+		var row []StripCell
+		h.onLoopInternal(func() { spans, row = strip.TabSpans(), strip.core.Row() })
+		next := slices.IndexFunc(row, func(c StripCell) bool { return c.Kind == kit.CellNext })
+		if next < 1 || row[next-1].Kind != kit.CellTab || row[next-1].id != last {
 			t.Fatalf("the cell before → is %+v, want the last tab %s:\n%s", row[max(next-1, 0)], last, h.tb.String())
 		}
 		if end := spans[next-1].X + spans[next-1].W; end+1 != spans[next].X {
@@ -443,7 +443,7 @@ func TestDrawingATabStripStoresNothing(t *testing.T) {
 		strip.SetActive("11") // a layout is asked for, not run
 		s := &strip.core
 		before = [2]any{s.first, s.revealed}
-		shown = slices.ContainsFunc(s.row(), func(c stripCell) bool { return c.kind == kit.CellTab && c.id == "11" })
+		shown = slices.ContainsFunc(s.Row(), func(c StripCell) bool { return c.Kind == kit.CellTab && c.id == "11" })
 		after = [2]any{s.first, s.revealed}
 	})
 	if !shown {
