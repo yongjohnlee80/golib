@@ -165,6 +165,10 @@ type Editor struct {
 	// shown is the cursor and viewport Layout last kept the cursor in view for: a layout pass
 	// reveals it only when either changed, so the wheel's scroll stays
 	shown viewMark
+	// pics are the Rendered view's pictures, by their block's first line and width
+	// (editor_pictures.go); picGen counts their changes, a key of the layout.
+	pics   map[pictureAt]*pictureSlot
+	picGen uint64
 	// presented is the presentation the viewport was last revealed for (presentation): a change of
 	// it reveals the cursor again, though the cursor stayed.
 	presented [2]int
@@ -349,6 +353,11 @@ func (e *Editor) HandleEvent(ev tui.Event) bool {
 	// alike; a drag's motion there stays the text's, so dragging up past the text scrolls it
 	if m, ok := ev.(tui.MouseEvent); ok && m.Y >= 0 && m.Y < e.headerRows() && (m.Kind == tui.MousePress || m.Kind == tui.MouseWheel) {
 		return e.header(m)
+	}
+	if r, ok := ev.(tui.TaskResult); ok && e.pictureDone(r) { // a picture laid: its blocks again
+		e.RequestLayout()
+		e.MarkDirty()
+		return true
 	}
 	if e.doc.Shown() { // a key the document view left; the hidden text takes nothing
 		switch t := ev.(type) {

@@ -9,7 +9,6 @@ import (
 	pm "github.com/yongjohnlee80/golib/parse/mermaid"
 	"github.com/yongjohnlee80/golib/tui"
 	"github.com/yongjohnlee80/golib/tui/internal/grapheme"
-	tuimermaid "github.com/yongjohnlee80/golib/tui/mermaid"
 	"github.com/yongjohnlee80/golib/tui/style"
 	tuivegalite "github.com/yongjohnlee80/golib/tui/vegalite"
 )
@@ -47,7 +46,7 @@ type hrow struct {
 	bottom bool
 	// grid is a diagram's, drawn in cells across its rows (layDiagram); gridRow is which of its
 	// rows this one is. nil for any other row.
-	grid    cellPicture
+	grid    CellPicture
 	gridRow int
 }
 
@@ -441,11 +440,6 @@ func (c *cellHTML) layCodeEdge(bi int, b *hblock, top bool) {
 	c.rows = append(c.rows, row)
 }
 
-// measureFunc is a width function as tui/mermaid's Measurer.
-type measureFunc func(string) int
-
-func (f measureFunc) StringWidth(s string) int { return f(s) }
-
 // diagramNotice is what a diagram the terminal doesn't draw shows instead, in English: a host
 // that speaks other languages says it its own way (WithDiagramNotice).
 func diagramNotice(kind string) string {
@@ -455,49 +449,17 @@ func diagramNotice(kind string) string {
 	return kind + " diagram: not drawn in the terminal (Raw shows its source)"
 }
 
-// cellPicture is a diagram drawn in cells across its rows: a Mermaid grid, a Vega-Lite chart. The
-// page paints, fits and pans either the same way.
-type cellPicture interface {
-	Size() tui.Size
-	Paint(s tui.Surface, x0, y0 int)
-}
-
 // cellHits is a picture whose capped labels reveal their whole text where the pointer rests
 // (ToolTipAt).
 type cellHits interface {
 	HitAt(x, y int) (full string, r tui.Rect, ok bool)
 }
 
-// mermaidPicture is a Mermaid grid in the theme it was laid in (diagramStyles). A row holds it by
-// pointer, as a chart: its theme's series are a slice, and the page tells one picture from the next
-// by comparing them.
-type mermaidPicture struct {
-	g  *tuimermaid.Grid
-	th tuimermaid.Theme
-}
-
-func (p *mermaidPicture) Size() tui.Size                  { return p.g.Size }
-func (p *mermaidPicture) Paint(s tui.Surface, x0, y0 int) { p.g.Paint(s, x0, y0, -1, p.th) }
-func (p *mermaidPicture) HitAt(x, y int) (string, tui.Rect, bool) {
-	return p.g.HitAt(x, y)
-}
-
-// chartPicture is a Vega-Lite chart in the theme it was laid in (chartTheme). A row holds it by
-// pointer: its theme's palette is a slice, and the page tells one picture from the next by
-// comparing them.
-type chartPicture struct {
-	d  *tuivegalite.Drawing
-	th tuivegalite.Theme
-}
-
-func (p *chartPicture) Size() tui.Size                  { return tui.Size{W: p.d.W, H: p.d.H} }
-func (p *chartPicture) Paint(s tui.Surface, x0, y0 int) { p.d.Paint(s, x0, y0, p.th) }
-
-// chartTheme is a chart's styles in the cell layout: the page's own, its series in the page's
-// code colours (WithSyntax), which every theme sets; with none, the page's tokens.
+// chartTheme is a chart's styles in the cell layout: the page's own, its series in the page's code
+// colours (WithSyntax), which every theme sets; with none, the page's tokens (CellPictureThemes).
 func (c *cellHTML) chartTheme() tuivegalite.Theme {
-	styles := c.syntaxStyles
-	return tuivegalite.ThemeFromSyntax(func(r highlight.Style) style.Style { return styles[r] })
+	_, chart := CellPictureThemes(c.syntaxStyles)
+	return chart
 }
 
 // layDiagram lays a <pre class="mermaid"> out: a kind tui/mermaid draws as its grid, one row of
@@ -515,16 +477,13 @@ func (c *cellHTML) layDiagram(bi int, b *hblock) {
 	kind := "mermaid"
 	if d, err := pm.Parse(b.diagram); err == nil {
 		kind = d.Kind().String()
-		if tuimermaid.Drawn(d) == nil {
-			room := max(c.width-2*b.quote-b.indent, 1)
-			if g, err := tuimermaid.LayWithin(context.Background(), d, measureFunc(c.measure), room); err == nil && g.Size.H > 0 {
-				pic := &mermaidPicture{g: g, th: c.diagramStyles()}
-				for i := range g.Size.H {
-					c.rows = append(c.rows, hrow{block: bi, first: i == 0, grid: pic, gridRow: i})
-				}
-				return
-			}
+	}
+	room := max(c.width-2*b.quote-b.indent, 1)
+	if pic, err := LayCellPicture(context.Background(), "mermaid", b.diagram, c.measure, room, c.syntaxStyles); err == nil {
+		for i := range pic.Size().H {
+			c.rows = append(c.rows, hrow{block: bi, first: i == 0, grid: pic, gridRow: i})
 		}
+		return
 	}
 	c.layNotice(bi, b, kind)
 }
@@ -535,9 +494,8 @@ func (c *cellHTML) layDiagram(bi int, b *hblock) {
 // too large, or one that doesn't read, as the notice, never its source nor its data.
 func (c *cellHTML) layChart(bi int, b *hblock) {
 	room := max(c.width-2*b.quote-b.indent, 1)
-	if d, err := tuivegalite.Lay(context.Background(), b.diagram, measureFunc(c.measure), room); err == nil && d.H > 0 {
-		pic := &chartPicture{d, c.chartTheme()}
-		for i := range d.H {
+	if pic, err := LayCellPicture(context.Background(), "vega-lite", b.diagram, c.measure, room, c.syntaxStyles); err == nil {
+		for i := range pic.Size().H {
 			c.rows = append(c.rows, hrow{block: bi, first: i == 0, grid: pic, gridRow: i})
 		}
 		return
@@ -567,19 +525,6 @@ func (c *cellHTML) layNotice(bi int, b *hblock, kind string) {
 		}
 		c.rows = append(c.rows, row)
 	}
-}
-
-// diagramTheme is a diagram's styles in the cell layout: mermaid.TokenTheme's — the page's own
-// tokens, on the page's own background.
-var diagramTheme = tuimermaid.TokenTheme()
-
-// diagramStyles is a diagram's theme on this page: diagramTheme, its series the page's charts'
-// (chartTheme), so a pie's slices and a chart's series take the same colours, the page's code
-// colours where it has them.
-func (c *cellHTML) diagramStyles() tuimermaid.Theme {
-	th := diagramTheme
-	th.Series = c.chartTheme().Series
-	return th
 }
 
 // prefix is the decoration a row of b starts with: a bar and a space per quote level, then the
@@ -1039,7 +984,7 @@ func (c *cellHTML) PaintCells(s tui.Surface, top, w int, from, to DocPos) {
 	sz := s.Size()
 	from, to = OrderDocPos(from, to)
 	selecting := from != to
-	var painted cellPicture // the diagram drawn last: each is painted once, from its first row shown
+	var painted CellPicture // the diagram drawn last: each is painted once, from its first row shown
 	c.shownImages = c.shownImages[:0]
 	for y := 0; y < sz.H; y++ {
 		ri := top + y

@@ -1,6 +1,10 @@
 package widget
 
-import "testing"
+import (
+	"testing"
+
+	"github.com/yongjohnlee80/golib/tui"
+)
 
 // A Rendered layout's caret and hit agree both ways: every source cell's hit is its cluster, and the
 // caret of that cluster is the cell where it starts (a W-2 cluster's second cell gives its first). A
@@ -93,5 +97,37 @@ func TestABlocksOpeningRowStartsItsFirstLine(t *testing.T) {
 	}
 	if top, in := r.atRow(1); top != 1 || in != 0 {
 		t.Errorf("atRow on the blank line = (%d, %d), want (1, 0)", top, in)
+	}
+}
+
+// fakePicture is a picture by name.
+type fakePicture string
+
+func (fakePicture) Size() tui.Size              { return tui.Size{W: 1, H: 1} }
+func (fakePicture) Paint(tui.Surface, int, int) {}
+
+// A picture's lay is taken only as its slot's current request: a request since replaced is
+// dropped (the block neither drawn with it nor laid again), the current one kept and the layout laid
+// again; a failed one leaves no picture; after the slots are dropped (a view switch, a renderer, a
+// buffer) no result is taken.
+func TestAPicturesStaleLayIsDropped(t *testing.T) {
+	e := NewEditor()
+	at := pictureAt{from: 3, cols: 40}
+	e.pics = map[pictureAt]*pictureSlot{at: {task: 7, pending: true, pic: fakePicture("old")}}
+	gen := e.picGen
+	if e.pictureDone(tui.TaskResult{ID: 5, Value: fakePicture("A")}) || e.pics[at].pic != fakePicture("old") || e.picGen != gen {
+		t.Errorf("a replaced request's picture was taken: %v, picGen %d", e.pics[at].pic, e.picGen)
+	}
+	if !e.pictureDone(tui.TaskResult{ID: 7, Value: fakePicture("B")}) || e.pics[at].pic != fakePicture("B") || e.picGen == gen || e.pics[at].pending {
+		t.Errorf("the current request's picture: %v, pending %v, picGen %d", e.pics[at].pic, e.pics[at].pending, e.picGen)
+	}
+	e.pics[at].task, e.pics[at].pending = 9, true
+	if !e.pictureDone(tui.TaskResult{ID: 9, Err: ErrNoCellPicture}) || !e.pics[at].failed {
+		t.Error("a failed lay left the block a picture")
+	}
+	e.pics[at].task, e.pics[at].pending = 11, true
+	e.dropPictures()
+	if e.pictureDone(tui.TaskResult{ID: 11, Value: fakePicture("C")}) {
+		t.Error("a lay taken after the slots were dropped")
 	}
 }
