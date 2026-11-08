@@ -118,7 +118,7 @@ func WithTextAreaPlaceholderMessage(m tui.Message) TextAreaOption {
 // zero fields keep defaults).
 func WithTextAreaStyles(st TextInputStyles) TextAreaOption {
 	return func(t *TextArea) {
-		t.styles = st.over(t.styles)
+		t.styles = st.Over(t.styles)
 	}
 }
 
@@ -127,7 +127,7 @@ func NewTextArea(opts ...TextAreaOption) *TextArea {
 	t := &TextArea{
 		buf:    txt.NewBuffer(),
 		wrap:   WrapNone,
-		styles: defaultTextInputStyles(),
+		styles: DefaultTextInputStyles(),
 	}
 	for _, o := range opts {
 		if o != nil {

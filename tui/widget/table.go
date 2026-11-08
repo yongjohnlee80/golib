@@ -147,11 +147,10 @@ type StyledCell struct {
 func (t *Table[T]) SetCellPresenter(fn func(T, int) StyledCell) {
 	t.present = fn
 	if fn == nil {
-		t.list.paint = nil
+		t.list.SetRowPainter(nil)
 	} else {
-		t.list.paint = t.paintRow
+		t.list.SetRowPainter(t.paintRow)
 	}
-	t.list.MarkDirty()
 }
 
 func (t *Table[T]) paintRow(s tui.Surface, y, width int, item T, rowStyle style.Style, marked bool) {
@@ -197,7 +196,7 @@ func NewTable[T any](cols []TableColumn[T], opts ...ListOption[T]) *Table[T] {
 	// otherwise silently replace the column renderer — producing column
 	// headers above rows drawn some other way (autodb M6: a history
 	// table that showed the raw script under every header).
-	t.list.render = t.renderRow
+	t.list.SetRowText(t.renderRow)
 	t.widths = make([]int, len(cols))
 	return t
 }

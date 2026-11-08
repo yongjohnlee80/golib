@@ -17,9 +17,10 @@ type TextInputStyles struct {
 	Error       style.Style // value text in the failed-validation state
 }
 
-// over is s laid over base, slot by slot: each set property of s wins, and base fills the rest. The
-// one merge of the text widgets' looks (TextInput, TextArea, Editor).
-func (s TextInputStyles) over(base TextInputStyles) TextInputStyles {
+// Over is s laid over base, slot by slot: each set property of s wins, and base fills the rest. The
+// one merge of the text widgets' looks (TextInput, TextArea, Editor); a text field of your own
+// styled by TextInputStyles merges a caller's styles over its own with it.
+func (s TextInputStyles) Over(base TextInputStyles) TextInputStyles {
 	return TextInputStyles{
 		Text:        s.Text.Inherit(base.Text),
 		Placeholder: s.Placeholder.Inherit(base.Placeholder),
@@ -28,9 +29,9 @@ func (s TextInputStyles) over(base TextInputStyles) TextInputStyles {
 	}
 }
 
-// defaultTextInputStyles are a text widget's looks before any option: TextInput's, TextArea's and
-// the Editor's alike.
-func defaultTextInputStyles() TextInputStyles {
+// DefaultTextInputStyles are a text widget's looks before any option: TextInput's, TextArea's and
+// the Editor's alike. A text field of your own starts from them, to look like golib's.
+func DefaultTextInputStyles() TextInputStyles {
 	return TextInputStyles{
 		Placeholder: kit.MutedPlaceholder(),
 		Selection:   style.New().Reverse(true),
