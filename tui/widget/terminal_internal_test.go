@@ -11,6 +11,7 @@ import (
 	"github.com/yongjohnlee80/golib/tui"
 	"github.com/yongjohnlee80/golib/tui/pty"
 	"github.com/yongjohnlee80/golib/tui/vt"
+	"github.com/yongjohnlee80/golib/tui/widget/internal/widgettest"
 )
 
 // slowProc is a program whose hang-up takes as long as the test says: Close
@@ -48,13 +49,13 @@ func (p *slowProc) Close() error {
 
 // mountTerminal runs a Terminal over proc; stop ends the app (once, whether
 // the test or its cleanup calls it).
-func mountTerminal(t *testing.T, proc TerminalProcess) (term *Terminal, h *internalHarness, stop func()) {
+func mountTerminal(t *testing.T, proc TerminalProcess) (term *Terminal, h *widgettest.Harness, stop func()) {
 	t.Helper()
 	term = NewTerminal(WithStarter(func(pty.Cmd) (TerminalProcess, error) { return proc, nil }))
-	h = startAppInternal(t, term, 20, 4)
-	stop = sync.OnceFunc(h.stopInternal)
+	h = widgettest.StartApp(t, term, 20, 4)
+	stop = sync.OnceFunc(h.Stop)
 	t.Cleanup(stop)
-	h.onLoopInternal(func() {
+	h.OnLoop(func() {
 		if err := term.Start(); err != nil {
 			t.Fatal(err)
 		}
@@ -81,7 +82,7 @@ func TestTerminalReaderEndsOnStop(t *testing.T) {
 	p := newSlowProc()
 	close(p.release)
 	term, h, _ := mountTerminal(t, p)
-	h.onLoopInternal(term.Stop)
+	h.OnLoop(term.Stop)
 	pumpsGone(t, term)
 }
 
@@ -90,9 +91,9 @@ func TestTerminalReaderEndsOnExit(t *testing.T) {
 	term, h, _ := mountTerminal(t, p)
 	p.end()
 	pumpsGone(t, term)
-	h.syncInternal()
+	h.Sync()
 	var running bool
-	h.onLoopInternal(func() { running = term.Running() })
+	h.OnLoop(func() { running = term.Running() })
 	if running {
 		t.Error("still running after the exit")
 	}
@@ -112,9 +113,9 @@ func TestTerminalStopNeverBlocksTheLoop(t *testing.T) {
 	p := newSlowProc()
 	term, h, _ := mountTerminal(t, p)
 	start := time.Now()
-	h.onLoopInternal(term.Stop)
+	h.OnLoop(term.Stop)
 	for range 5 {
-		h.syncInternal() // the loop still turns
+		h.Sync() // the loop still turns
 	}
 	if d := time.Since(start); d > time.Second {
 		t.Fatalf("the loop stalled %v behind the hang-up", d)
@@ -353,7 +354,7 @@ func TestTerminalInputWriterEndsWithTheApp(t *testing.T) {
 func TestTerminalBlockedReaderEndsWithTheApp(t *testing.T) {
 	p := newFloodProc()
 	term, h, stop := mountTerminal(t, p)
-	h.onLoopInternal(func() {
+	h.OnLoop(func() {
 		term.wr.mu.Lock()
 		term.wr.budget = 1 // the first chunk fills it
 		term.wr.mu.Unlock()

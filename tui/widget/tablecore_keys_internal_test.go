@@ -8,6 +8,7 @@ import (
 
 	"github.com/yongjohnlee80/golib/tui"
 	"github.com/yongjohnlee80/golib/tui/widget/internal/kit"
+	"github.com/yongjohnlee80/golib/tui/widget/internal/widgettest"
 )
 
 // oldTableKey is TableCore.HandleKey at golib 6a0b271, verbatim: the oracle of the no-map
@@ -158,8 +159,8 @@ func TestTableKeysMatchTheOldHandlerWithNoMap(t *testing.T) {
 						return tableEffect(c, ret, copies, acts)
 					}
 				}
-				keyGridDiff(t, fmt.Sprintf("Table (%s, sortable %v, activates %v)", st.name, sortable, activates),
-					run(oldTableKey), run((*TableCore).HandleKey), noTextShiftedPrintable)
+				widgettest.KeyGridDiff(t, fmt.Sprintf("Table (%s, sortable %v, activates %v)", st.name, sortable, activates),
+					run(oldTableKey), run((*TableCore).HandleKey), widgettest.NoTextShiftedPrintable)
 			}
 		}
 	}

@@ -5,6 +5,7 @@ import (
 	"testing"
 
 	"github.com/yongjohnlee80/golib/tui"
+	"github.com/yongjohnlee80/golib/tui/widget/internal/widgettest"
 )
 
 // oldMenuKey is Menu.resolveKey at golib 6a0b271, verbatim but for its receiver, and oldVimDirection
@@ -98,10 +99,10 @@ func TestMenuKeysMatchTheOldResolverWithNoMap(t *testing.T) {
 				}
 				m.horizontal, m.selected = horizontal, selected
 				show := func(a tui.Action, ok bool) string { return fmt.Sprintf("%v %#v", ok, a) }
-				keyGridDiff(t, fmt.Sprintf("Menu (horizontal %v, vim %v, selected %q)", horizontal, vim, selected),
+				widgettest.KeyGridDiff(t, fmt.Sprintf("Menu (horizontal %v, vim %v, selected %q)", horizontal, vim, selected),
 					func(e tui.KeyEvent) string { return show(oldMenuKey(m, e)) },
 					func(e tui.KeyEvent) string { return show(m.resolveKey(e)) },
-					shiftSpentOnText)
+					widgettest.ShiftSpentOnText)
 			}
 		}
 	}

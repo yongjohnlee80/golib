@@ -6,60 +6,10 @@ package widget
 // idempotent and safe during teardown.
 
 import (
-	"context"
 	"testing"
-	"time"
 
-	"github.com/yongjohnlee80/golib/tui"
+	"github.com/yongjohnlee80/golib/tui/widget/internal/widgettest"
 )
-
-// internalHarness runs an App from INSIDE the package. It is deliberately
-// minimal — App.Update is both the way onto the loop and the way to wait for
-// it, so nothing else is needed — rather than a copy of the external harness,
-// whose input injection and trace barriers no test here uses.
-type internalHarness struct {
-	t   *testing.T
-	app *tui.App
-	tb  *tui.TestBackend
-	res chan error
-	cxl context.CancelFunc
-}
-
-func startAppInternal(t *testing.T, root tui.Component, w, h int) *internalHarness {
-	t.Helper()
-	tb := tui.NewTestBackend(w, h)
-	app := tui.NewApp(root, tui.WithBackend(tb), tui.WithMinFrameInterval(0))
-	ctx, cancel := context.WithCancel(context.Background())
-	ih := &internalHarness{t: t, app: app, tb: tb, res: make(chan error, 1), cxl: cancel}
-	go func() { ih.res <- app.Run(ctx) }()
-	ih.syncInternal()
-	return ih
-}
-
-func (h *internalHarness) stopInternal() {
-	h.cxl()
-	select {
-	case <-h.res:
-	case <-time.After(5 * time.Second):
-		h.t.Error("app did not shut down within 5s")
-	}
-}
-
-// onLoopInternal runs fn on the loop goroutine and waits for it.
-func (h *internalHarness) onLoopInternal(fn func()) {
-	h.t.Helper()
-	done := make(chan struct{})
-	h.app.Update(func() { fn(); close(done) })
-	select {
-	case <-done:
-	case <-time.After(3 * time.Second):
-		h.t.Fatal("loop did not run Update within 3s")
-	}
-}
-
-// syncInternal drains one round-trip through the loop. Two calls drain a bus
-// publish and the work its subscriber enqueues, because Publish is enqueue-only.
-func (h *internalHarness) syncInternal() { h.onLoopInternal(func() {}) }
 
 // TestARefusedAnchoredOpenChangesNothing.
 //
@@ -70,16 +20,16 @@ func (h *internalHarness) syncInternal() { h.onLoopInternal(func() {}) }
 func TestARefusedAnchoredOpenChangesNothing(t *testing.T) {
 	base := NewButton("base")
 	host := NewOverlayHost(base)
-	h := startAppInternal(t, host, 20, 6)
-	defer h.stopInternal()
+	h := widgettest.StartApp(t, host, 20, 6)
+	defer h.Stop()
 
 	before := host.Stack.Len()
 	var err error
-	h.onLoopInternal(func() {
+	h.OnLoop(func() {
 		// The zero AnchorRef names no owner, so the host must refuse it.
 		err = host.OpenAnchored("p", NewText("x"), AnchorSpec{}, nil)
 	})
-	h.syncInternal()
+	h.Sync()
 
 	if err == nil {
 		t.Fatal("OpenAnchored accepted the zero AnchorRef")
@@ -89,7 +39,7 @@ func TestARefusedAnchoredOpenChangesNothing(t *testing.T) {
 			got, before)
 	}
 	n := 0
-	h.onLoopInternal(func() {
+	h.OnLoop(func() {
 		for range host.AnchoredLayers() {
 			n++
 		}

@@ -6,6 +6,7 @@ import (
 
 	"github.com/yongjohnlee80/golib/tui"
 	"github.com/yongjohnlee80/golib/tui/widget/internal/kit"
+	"github.com/yongjohnlee80/golib/tui/widget/internal/widgettest"
 )
 
 // Every tab strip's menu opens on the row right under the strip: its ≡, its + and a right press
@@ -45,11 +46,11 @@ func TestEveryStripsMenuOpensRightUnderTheStrip(t *testing.T) {
 	for name, build := range kinds {
 		t.Run(name, func(t *testing.T) {
 			k := build()
-			h := startAppInternal(t, NewOverlayHost(k.root), 40, 8)
-			defer h.stopInternal()
+			h := widgettest.StartApp(t, NewOverlayHost(k.root), 40, 8)
+			defer h.Stop()
 			cells := map[kit.StripKind]int{}
 			tab := -1
-			h.onLoopInternal(func() {
+			h.OnLoop(func() {
 				for _, c := range k.core.Row() {
 					if _, ok := cells[c.Kind]; !ok {
 						cells[c.Kind] = c.X
@@ -61,27 +62,27 @@ func TestEveryStripsMenuOpensRightUnderTheStrip(t *testing.T) {
 			})
 			opens := func(how string, at tui.Point, button tui.MouseButton, label string) {
 				t.Helper()
-				if err := h.tb.Inject(tui.MouseEvent{Kind: tui.MousePress, Button: button, X: at.X, Y: at.Y}); err != nil {
+				if err := h.TB.Inject(tui.MouseEvent{Kind: tui.MousePress, Button: button, X: at.X, Y: at.Y}); err != nil {
 					t.Fatal(err)
 				}
-				drawn := waitInternal(h, func() bool {
-					lines := strings.Split(h.tb.String(), "\n")
+				drawn := widgettest.Wait(h, func() bool {
+					lines := strings.Split(h.TB.String(), "\n")
 					return k.core.MenuOpen != nil && len(lines) > 2 && strings.Contains(lines[1], "┌") && strings.Contains(lines[2], label)
 				})
 				var top int
-				h.onLoopInternal(func() {
+				h.OnLoop(func() {
 					if k.core.MenuOpen != nil {
 						top = k.core.MenuOpen.rect.Y
 					}
 				})
 				if !drawn || top != 1 {
 					t.Fatalf("%s: the menu's panel is at row %d, want 1, right under the strip (drawn there: %v):\n%s",
-						how, top, drawn, h.tb.String())
+						how, top, drawn, h.TB.String())
 				}
-				if err := h.tb.Inject(tui.KeyEvent{Kind: tui.KeyPress, Code: tui.KeyEscape}); err != nil {
+				if err := h.TB.Inject(tui.KeyEvent{Kind: tui.KeyPress, Code: tui.KeyEscape}); err != nil {
 					t.Fatal(err)
 				}
-				if !waitInternal(h, func() bool { return k.core.MenuOpen == nil }) {
+				if !widgettest.Wait(h, func() bool { return k.core.MenuOpen == nil }) {
 					t.Fatalf("%s: Escape left the menu open", how)
 				}
 			}
@@ -114,10 +115,10 @@ func TestATabsMenuRowRunsWithItsTabsIndex(t *testing.T) {
 			NewCommand("idle", "Idle", TabsMenuAction{ID: "idle"}),
 		}
 	})
-	h := startAppInternal(t, NewOverlayHost(tabs), 40, 8)
-	defer h.stopInternal()
+	h := widgettest.StartApp(t, NewOverlayHost(tabs), 40, 8)
+	defer h.Stop()
 	beta := -1
-	h.onLoopInternal(func() {
+	h.OnLoop(func() {
 		for _, c := range tabs.strip.Row() {
 			if c.Kind == kit.CellTab && c.id == "1" {
 				beta = c.X
@@ -126,18 +127,18 @@ func TestATabsMenuRowRunsWithItsTabsIndex(t *testing.T) {
 	})
 	open := func() {
 		t.Helper()
-		if err := h.tb.Inject(tui.MouseEvent{Kind: tui.MousePress, Button: tui.MouseRight, X: beta + 1, Y: 0}); err != nil {
+		if err := h.TB.Inject(tui.MouseEvent{Kind: tui.MousePress, Button: tui.MouseRight, X: beta + 1, Y: 0}); err != nil {
 			t.Fatal(err)
 		}
-		if !waitInternal(h, func() bool { return tabs.strip.MenuOpen != nil }) {
-			t.Fatalf("a right press on beta opened no menu:\n%s", h.tb.String())
+		if !widgettest.Wait(h, func() bool { return tabs.strip.MenuOpen != nil }) {
+			t.Fatalf("a right press on beta opened no menu:\n%s", h.TB.String())
 		}
 	}
 	open()
-	if err := h.tb.Inject(tui.KeyEvent{Kind: tui.KeyPress, Code: tui.KeyEnter}); err != nil {
+	if err := h.TB.Inject(tui.KeyEvent{Kind: tui.KeyPress, Code: tui.KeyEnter}); err != nil {
 		t.Fatal(err)
 	}
-	if !waitInternal(h, func() bool { return len(ran) == 1 }) {
+	if !widgettest.Wait(h, func() bool { return len(ran) == 1 }) {
 		t.Fatal("Go ran nothing")
 	}
 	if i := <-ran; i != 1 {
@@ -145,27 +146,27 @@ func TestATabsMenuRowRunsWithItsTabsIndex(t *testing.T) {
 	}
 
 	open()
-	if err := h.tb.Inject(tui.KeyEvent{Kind: tui.KeyPress, Code: tui.KeyDown}, tui.KeyEvent{Kind: tui.KeyPress, Code: tui.KeyEnter}); err != nil {
+	if err := h.TB.Inject(tui.KeyEvent{Kind: tui.KeyPress, Code: tui.KeyDown}, tui.KeyEvent{Kind: tui.KeyPress, Code: tui.KeyEnter}); err != nil {
 		t.Fatal(err)
 	}
-	h.syncInternal()
-	h.syncInternal()
+	h.Sync()
+	h.Sync()
 	if len(ran) != 0 {
 		t.Fatalf("Idle, with no Run, ran %d", <-ran)
 	}
 
-	h.onLoopInternal(func() {
+	h.OnLoop(func() {
 		tabs.strip.CloseMenu()
 		tabs.SetMenu(nil)
 	})
 	var taken bool
-	h.onLoopInternal(func() {
+	h.OnLoop(func() {
 		taken = tabs.HandleEvent(tui.MouseEvent{Kind: tui.MousePress, Button: tui.MouseRight, X: beta + 1, Y: 0})
 	})
 	if taken {
 		t.Fatal("with no menu, a right press on a tab was taken")
 	}
-	if !waitInternal(h, func() bool { return !strings.Contains(h.tb.String(), "≡") }) {
-		t.Fatalf("with no menu, ≡ still shows:\n%s", h.tb.String())
+	if !widgettest.Wait(h, func() bool { return !strings.Contains(h.TB.String(), "≡") }) {
+		t.Fatalf("with no menu, ≡ still shows:\n%s", h.TB.String())
 	}
 }

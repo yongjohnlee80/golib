@@ -5,6 +5,7 @@ import (
 	"testing"
 
 	"github.com/yongjohnlee80/golib/tui"
+	"github.com/yongjohnlee80/golib/tui/widget/internal/widgettest"
 )
 
 // oldTabsKey is Tabs.HandleEvent's key decision before commands, verbatim but for its effects, which
@@ -38,7 +39,7 @@ var deltaName = map[int]string{-1: "prev", 0: "", 1: "next"}
 func TestTabsKeysMatchTheOldHandlerWithNoMap(t *testing.T) {
 	tb := &Tabs{}
 	for _, focused := range []bool{false, true} {
-		keyGridDiff(t, map[bool]string{false: "Tabs, content focused", true: "Tabs, bar focused"}[focused],
+		widgettest.KeyGridDiff(t, map[bool]string{false: "Tabs, content focused", true: "Tabs, bar focused"}[focused],
 			func(e tui.KeyEvent) string { return oldTabsKey(e, focused) },
 			func(e tui.KeyEvent) string { return deltaName[tb.keyDelta(e, focused)] },
 			tabsDeviation)
@@ -48,7 +49,7 @@ func TestTabsKeysMatchTheOldHandlerWithNoMap(t *testing.T) {
 // tabsDeviation names what the key map changes on purpose for Tabs: Hyper or Meta held, and Shift
 // spent on the bracket it typed.
 func tabsDeviation(e tui.KeyEvent) string {
-	return cmp.Or(shiftSpentOnPrintable(e), hyperOrMeta(e))
+	return cmp.Or(widgettest.ShiftSpentOnPrintable(e), widgettest.HyperOrMeta(e))
 }
 
 // oldStripKey is tabStrip.key's decision before commands, verbatim but for its effects and for the
@@ -95,7 +96,7 @@ func stripDeviation(e tui.KeyEvent) string {
 	if e.Code == '+' && e.Text == "" && e.Mods.Chord() == 0 {
 		return "a + with no text reads its code"
 	}
-	return cmp.Or(shiftSpentOnPrintable(e), hyperOrMeta(e))
+	return cmp.Or(widgettest.ShiftSpentOnPrintable(e), widgettest.HyperOrMeta(e))
 }
 
 func TestTabStripKeysMatchTheOldHandlerWithNoMap(t *testing.T) {
@@ -103,7 +104,7 @@ func TestTabStripKeysMatchTheOldHandlerWithNoMap(t *testing.T) {
 	for _, focused := range []bool{false, true} {
 		for _, hasAdd := range []bool{false, true} {
 			for _, menuShown := range []bool{false, true} {
-				keyGridDiff(t, "TabStrip",
+				widgettest.KeyGridDiff(t, "TabStrip",
 					func(e tui.KeyEvent) string { return oldStripKey(e, focused, hasAdd, menuShown) },
 					func(e tui.KeyEvent) string { return stripKeyName[s.keyOf(e, focused, hasAdd, menuShown)] },
 					stripDeviation)

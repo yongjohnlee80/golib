@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/yongjohnlee80/golib/tui/pty"
+	"github.com/yongjohnlee80/golib/tui/widget/internal/widgettest"
 )
 
 type resultProc struct {
@@ -76,7 +77,7 @@ func TestTerminalStopResultSharesCleanupAndRetainsErrors(t *testing.T) {
 			}
 			term, h, stop := mountTerminal(t, p)
 			var r, repeated *TerminalStopResult
-			h.onLoopInternal(func() { r = term.StopWithResult(); repeated = term.StopWithResult() })
+			h.OnLoop(func() { r = term.StopWithResult(); repeated = term.StopWithResult() })
 			if r != repeated || !r.Started() || r.Generation() == 0 {
 				t.Fatal("stop lost its immutable generation handle")
 			}
@@ -144,7 +145,7 @@ func TestTerminalNaturalExitAndAppEndShareTheStartHandle(t *testing.T) {
 	p.code = 7
 	term, h, stop := mountTerminal(t, p)
 	var r *TerminalStopResult
-	h.onLoopInternal(func() { r = term.CleanupResult() })
+	h.OnLoop(func() { r = term.CleanupResult() })
 	p.end() // natural exit requests cleanup before posting the UI notification
 	awaitResultEvent(t, p.entered)
 	stop() // race shutdown against an already-closing natural exit
@@ -177,14 +178,14 @@ func TestTerminalStopCancelsPremountStartAndDistinguishesFailedStart(t *testing.
 	if r.Started() || r.StartError() != nil || r.Generation() != 0 || waitTerminalResult(t, r) != nil {
 		t.Fatal("never-started result is not explicit")
 	}
-	h := startAppInternal(t, term, 20, 4)
-	stop := sync.OnceFunc(h.stopInternal)
+	h := widgettest.StartApp(t, term, 20, 4)
+	stop := sync.OnceFunc(h.Stop)
 	defer stop()
-	h.syncInternal()
+	h.Sync()
 	if starts.Load() != 0 {
 		t.Fatal("mount revived a cancelled pending Start")
 	}
-	h.onLoopInternal(func() {
+	h.OnLoop(func() {
 		if err := term.Start(); !errors.Is(err, failure) {
 			t.Errorf("start failure %v", err)
 		}
@@ -205,18 +206,18 @@ func TestTerminalRestartDoesNotReplaceOldCleanupAndShutdownJoinsBoth(t *testing.
 		}
 		return second, nil
 	}))
-	h := startAppInternal(t, term, 20, 4)
-	stop := sync.OnceFunc(h.stopInternal)
+	h := widgettest.StartApp(t, term, 20, 4)
+	stop := sync.OnceFunc(h.Stop)
 	defer stop()
 	var old, current *TerminalStopResult
-	h.onLoopInternal(func() {
+	h.OnLoop(func() {
 		if err := term.Start(); err != nil {
 			t.Error(err)
 		}
 		old = term.StopWithResult()
 	})
 	awaitResultEvent(t, first.entered)
-	h.onLoopInternal(func() {
+	h.OnLoop(func() {
 		if err := term.Start(); err != nil {
 			t.Error(err)
 		}
@@ -229,8 +230,8 @@ func TestTerminalRestartDoesNotReplaceOldCleanupAndShutdownJoinsBoth(t *testing.
 	if err := waitTerminalResult(t, old); err != nil {
 		t.Fatal(err)
 	}
-	h.syncInternal()
-	h.onLoopInternal(func() {
+	h.Sync()
+	h.OnLoop(func() {
 		if !term.Running() || term.CleanupResult() != current {
 			t.Error("old completion stopped the new generation")
 		}
@@ -264,17 +265,17 @@ func TestTerminalShutdownRequestsNewCleanupBeforeOldCloseFinishes(t *testing.T) 
 		}
 		return second, nil
 	}))
-	h := startAppInternal(t, term, 20, 4)
-	stop := sync.OnceFunc(h.stopInternal)
+	h := widgettest.StartApp(t, term, 20, 4)
+	stop := sync.OnceFunc(h.Stop)
 	defer stop()
-	h.onLoopInternal(func() {
+	h.OnLoop(func() {
 		if err := term.Start(); err != nil {
 			t.Error(err)
 		}
 		term.StopWithResult()
 	})
 	awaitResultEvent(t, first.entered)
-	h.onLoopInternal(func() {
+	h.OnLoop(func() {
 		if err := term.Start(); err != nil {
 			t.Error(err)
 		}

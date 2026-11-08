@@ -5,6 +5,7 @@ import (
 	"testing"
 
 	"github.com/yongjohnlee80/golib/tui"
+	"github.com/yongjohnlee80/golib/tui/widget/internal/widgettest"
 )
 
 // oldModalKey is Modal.keys and oldActivateKeys the Button's activateKeys at golib 6a0b271, verbatim
@@ -82,10 +83,10 @@ func TestModalKeysMatchTheOldResolverWithNoMap(t *testing.T) {
 					t.Fatal(err)
 				}
 				show := func(a tui.Action, ok bool) string { return fmt.Sprintf("%v %#v", ok, a) }
-				keyGridDiff(t, fmt.Sprintf("Modal (vim %v, dismiss %q, default %v)", vim, dismiss, withDefault),
+				widgettest.KeyGridDiff(t, fmt.Sprintf("Modal (vim %v, dismiss %q, default %v)", vim, dismiss, withDefault),
 					func(e tui.KeyEvent) string { return show(oldModalKey(m, e)) },
 					func(e tui.KeyEvent) string { return show(m.keys(e)) },
-					noTextShiftedPrintable)
+					widgettest.NoTextShiftedPrintable)
 			}
 		}
 	}
@@ -93,8 +94,8 @@ func TestModalKeysMatchTheOldResolverWithNoMap(t *testing.T) {
 
 func TestButtonActivationMatchesTheOldResolverWithNoMap(t *testing.T) {
 	show := func(a tui.Action, ok bool) string { return fmt.Sprintf("%v %#v", ok, a) }
-	keyGridDiff(t, "Button",
+	widgettest.KeyGridDiff(t, "Button",
 		func(e tui.KeyEvent) string { return show(oldActivateKeys(e)) },
-		func(e tui.KeyEvent) string { return show(activateKeys(noKeymap, e)) },
-		shiftSpentOnText)
+		func(e tui.KeyEvent) string { return show(activateKeys(widgettest.NoKeymap, e)) },
+		widgettest.ShiftSpentOnText)
 }

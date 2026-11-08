@@ -11,6 +11,7 @@ import (
 
 	"github.com/yongjohnlee80/golib/tui"
 	"github.com/yongjohnlee80/golib/tui/pty"
+	"github.com/yongjohnlee80/golib/tui/widget/internal/widgettest"
 )
 
 func addTestTerminal(t *testing.T, tabs *TerminalTabs, label string, p *resultProc) TerminalTabID {
@@ -35,9 +36,9 @@ func TestTerminalTabsCreateSelectAndHideNeverStartOrReplaceInstances(t *testing.
 		t.Fatalf("pre-mount start: %v", err)
 	}
 	switcher := NewTabs(WithTab("terminals", tabs), WithTab("other", NewText("other")))
-	h := startAppInternal(t, switcher, 40, 8)
-	defer h.stopInternal()
-	h.onLoopInternal(func() {
+	h := widgettest.StartApp(t, switcher, 40, 8)
+	defer h.Stop()
+	h.OnLoop(func() {
 		if err := tabs.Select(b); err != nil {
 			t.Error(err)
 		}
@@ -65,7 +66,7 @@ func TestTerminalTabsCreateSelectAndHideNeverStartOrReplaceInstances(t *testing.
 	if _, err := io.WriteString(p1.w, "hidden output\r\n"); err != nil {
 		t.Fatal(err)
 	}
-	h.onLoopInternal(func() {
+	h.OnLoop(func() {
 		switcher.Select(0)
 		if tabs.Active() != b {
 			t.Error("remount changed selected identity")
@@ -87,10 +88,10 @@ func TestTerminalTabsRemovalRetainsErrorsAndRejectsClosingAndStaleTargets(t *tes
 	want := errors.New("hangup failed")
 	p.closeErr = want
 	a := addTestTerminal(t, tabs, "agent", p)
-	h := startAppInternal(t, tabs, 40, 8)
-	defer h.stopInternal()
+	h := widgettest.StartApp(t, tabs, 40, 8)
+	defer h.Stop()
 	var first, again *TerminalTabRemovalResult
-	h.onLoopInternal(func() {
+	h.OnLoop(func() {
 		if err := tabs.Start(a); err != nil {
 			t.Error(err)
 		}
@@ -122,7 +123,7 @@ func TestTerminalTabsRemovalRetainsErrorsAndRejectsClosingAndStaleTargets(t *tes
 	if err := first.Wait(ctxWait); !errors.Is(err, want) {
 		t.Fatalf("cleanup failure: %v", err)
 	}
-	h.onLoopInternal(func() {
+	h.OnLoop(func() {
 		if len(tabs.Tabs()) != 1 {
 			t.Error("failed cleanup dropped its tab")
 		}
@@ -151,10 +152,10 @@ func TestTerminalTabsShutdownRequestsAllCleanupAndSurvivesEndedLoop(t *testing.T
 	tabs := NewTerminalTabs()
 	p1, p2 := newResultProc(), newResultProc()
 	a, b := addTestTerminal(t, tabs, "one", p1), addTestTerminal(t, tabs, "two", p2)
-	h := startAppInternal(t, tabs, 40, 8)
-	stop := sync.OnceFunc(h.stopInternal)
+	h := widgettest.StartApp(t, tabs, 40, 8)
+	stop := sync.OnceFunc(h.Stop)
 	defer stop()
-	h.onLoopInternal(func() {
+	h.OnLoop(func() {
 		if err := tabs.Start(a); err != nil {
 			t.Error(err)
 		}
@@ -190,9 +191,9 @@ func TestTerminalTabsNeverStartedRemovalAndDistinctStripTargets(t *testing.T) {
 	tabs.SetActions(func() { added++ }, func(id TerminalTabID) { menu = id })
 	a, _ := tabs.Add("one")
 	b, _ := tabs.Add("two")
-	h := startAppInternal(t, tabs, 40, 8)
-	defer h.stopInternal()
-	h.onLoopInternal(func() {
+	h := widgettest.StartApp(t, tabs, 40, 8)
+	defer h.Stop()
+	h.OnLoop(func() {
 		tabs.HandleEvent(tui.MouseEvent{Kind: tui.MousePress, Button: tui.MouseRight, X: 7})
 		if menu != b || tabs.Active() != a {
 			t.Error("menu target selected or addressed the wrong page")
@@ -236,9 +237,9 @@ func TestTerminalTabsRemovalJoinsOlderGenerationsAfterRestart(t *testing.T) {
 		}
 		return p2, nil
 	}))
-	h := startAppInternal(t, tabs, 60, 8)
-	defer h.stopInternal()
-	h.onLoopInternal(func() {
+	h := widgettest.StartApp(t, tabs, 60, 8)
+	defer h.Stop()
+	h.OnLoop(func() {
 		if err := tabs.Start(id); err != nil {
 			t.Error(err)
 		}
@@ -246,9 +247,9 @@ func TestTerminalTabsRemovalJoinsOlderGenerationsAfterRestart(t *testing.T) {
 	p1.end()
 	awaitResultEvent(t, p1.entered)
 	pumpsGone(t, pickTerminal(tabs, id))
-	h.syncInternal()
+	h.Sync()
 	var r *TerminalTabRemovalResult
-	h.onLoopInternal(func() {
+	h.OnLoop(func() {
 		if err := tabs.Start(id); err != nil {
 			t.Error(err)
 		}
@@ -271,7 +272,7 @@ func TestTerminalTabsRemovalJoinsOlderGenerationsAfterRestart(t *testing.T) {
 	if err := r.Wait(ctx); !errors.Is(err, want) {
 		t.Fatalf("older failure was discarded: %v", err)
 	}
-	h.onLoopInternal(func() {
+	h.OnLoop(func() {
 		if len(tabs.Tabs()) != 1 {
 			t.Error("older failed generation allowed confirmed removal")
 		}
@@ -285,9 +286,9 @@ func TestTerminalTabsKeyboardSelectionAndFailedStartAreExplicit(t *testing.T) {
 	a, _ := tabs.Add("bad", WithStarter(func(pty.Cmd) (TerminalProcess, error) { starts++; return nil, want }))
 	b, _ := tabs.Add("unstarted")
 	tabs.SetActions(func() { adds++ }, nil)
-	h := startAppInternal(t, tabs, 40, 8)
-	defer h.stopInternal()
-	h.onLoopInternal(func() {
+	h := widgettest.StartApp(t, tabs, 40, 8)
+	defer h.Stop()
+	h.OnLoop(func() {
 		tabs.Context().RequestFocus()
 		tabs.HandleEvent(tui.KeyEvent{Kind: tui.KeyPress, Code: tui.KeyPageDown, Mods: tui.ModCtrl})
 		if tabs.Active() != b {
@@ -330,11 +331,11 @@ func TestTerminalTabsDestroyedOwnerSuppressesLateExitAndChangeCallbacks(t *testi
 	exits, changes, beforeShutdown := 0, 0, 0
 	tabs.SetOnChanged(func() { changes++ })
 	id, _ := tabs.Add("owner", WithStarter(func(pty.Cmd) (TerminalProcess, error) { return p, nil }), WithOnExit(func(int) { exits++ }))
-	h := startAppInternal(t, tabs, 40, 8)
-	defer h.stopInternal()
+	h := widgettest.StartApp(t, tabs, 40, 8)
+	defer h.Stop()
 	var terminal *Terminal
 	var shutdown *TerminalShutdownResult
-	h.onLoopInternal(func() {
+	h.OnLoop(func() {
 		if err := tabs.Start(id); err != nil {
 			t.Error(err)
 		}
@@ -348,8 +349,8 @@ func TestTerminalTabsDestroyedOwnerSuppressesLateExitAndChangeCallbacks(t *testi
 	awaitResultEvent(t, p.entered)
 	close(p.release)
 	pumpsGone(t, terminal) // the output reader has posted its exit to the loop
-	h.syncInternal()
-	h.onLoopInternal(func() {
+	h.Sync()
+	h.OnLoop(func() {
 		if exits != 0 || changes != beforeShutdown {
 			t.Errorf("destroyed owner received callbacks: exits=%d changes=%d want=%d", exits, changes, beforeShutdown)
 		}
@@ -439,9 +440,9 @@ func TestTerminalTabsSendABracketedPasteToTheTabItNames(t *testing.T) {
 		return id
 	}
 	a, b := add("target", target), add("neighbour", neighbour)
-	h := startAppInternal(t, tabs, 40, 8)
-	defer h.stopInternal()
-	h.onLoopInternal(func() {
+	h := widgettest.StartApp(t, tabs, 40, 8)
+	defer h.Stop()
+	h.OnLoop(func() {
 		for _, id := range []TerminalTabID{a, b} {
 			if err := tabs.Start(id); err != nil {
 				t.Error(err)
@@ -455,7 +456,7 @@ func TestTerminalTabsSendABracketedPasteToTheTabItNames(t *testing.T) {
 	}
 	bracketed := func() bool {
 		ok := false
-		h.onLoopInternal(func() {
+		h.OnLoop(func() {
 			ok = pickTerminal(tabs, a).scr.Modes().BracketedPaste && pickTerminal(tabs, b).scr.Modes().BracketedPaste
 		})
 		return ok
@@ -466,7 +467,7 @@ func TestTerminalTabsSendABracketedPasteToTheTabItNames(t *testing.T) {
 		}
 	}
 	var err error
-	h.onLoopInternal(func() {
+	h.OnLoop(func() {
 		if err = tabs.Select(b); err == nil {
 			err = tabs.SendBracketedPaste(a, "1y\nz")
 		}
@@ -480,7 +481,7 @@ func TestTerminalTabsSendABracketedPasteToTheTabItNames(t *testing.T) {
 			t.Fatalf("the target got %q, want %q", target.got(), want)
 		}
 	}
-	h.syncInternal()
+	h.Sync()
 	if got := neighbour.got(); got != "" {
 		t.Errorf("the neighbour, selected, got %q", got)
 	}
@@ -545,9 +546,9 @@ func TestTerminalTabsSetATabsMode(t *testing.T) {
 			heard = append(heard, m)
 		}
 	})
-	h := startAppInternal(t, tabs, 40, 8)
-	defer h.stopInternal()
-	h.onLoopInternal(func() {
+	h := widgettest.StartApp(t, tabs, 40, 8)
+	defer h.Stop()
+	h.OnLoop(func() {
 		if err := tabs.Start(a); err != nil {
 			t.Fatal(err)
 		}

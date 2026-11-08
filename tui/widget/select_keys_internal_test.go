@@ -6,6 +6,7 @@ import (
 
 	"github.com/yongjohnlee80/golib/tui"
 	"github.com/yongjohnlee80/golib/tui/widget/internal/kit"
+	"github.com/yongjohnlee80/golib/tui/widget/internal/widgettest"
 )
 
 // oldSelectOpens is the closed Select's key decision before commands, verbatim but for its effect.
@@ -22,10 +23,12 @@ func oldSelectOpens(e tui.KeyEvent) string {
 
 func TestSelectKeysMatchTheOldHandlerWithNoMap(t *testing.T) {
 	s := &Select[string]{}
-	keyGridDiff(t, "Select",
+	widgettest.KeyGridDiff(t, "Select",
 		oldSelectOpens,
 		func(e tui.KeyEvent) string { return map[bool]string{true: "open"}[s.opens(e)] },
-		func(e tui.KeyEvent) string { return cmp.Or(hyperOrMeta(e), shiftSpentOnPrintable(e)) })
+		func(e tui.KeyEvent) string {
+			return cmp.Or(widgettest.HyperOrMeta(e), widgettest.ShiftSpentOnPrintable(e))
+		})
 }
 
 // oldPopupKey is the open options' key decision before commands, verbatim but for its effects, which
@@ -77,7 +80,7 @@ var popupKeyName = map[popupKey]string{popupNone: "", popupClose: "close", popup
 func TestSelectPopupKeysMatchTheOldHandlerWithNoMap(t *testing.T) {
 	p := &selectPanel[string]{}
 	for _, filterOn := range []bool{false, true} {
-		keyGridDiff(t, map[bool]string{false: "Select options", true: "Select options, filtering"}[filterOn],
+		widgettest.KeyGridDiff(t, map[bool]string{false: "Select options", true: "Select options, filtering"}[filterOn],
 			func(e tui.KeyEvent) string { return oldPopupKey(e, filterOn) },
 			func(e tui.KeyEvent) string { return popupKeyName[p.keyOf(e, filterOn)] },
 			popupDeviation)
@@ -95,5 +98,5 @@ func popupDeviation(e tui.KeyEvent) string {
 	case (e.Code == 'j' || e.Code == 'k') && (e.Text == "J" || e.Text == "K"):
 		return "a typed capital J or K is not j or k"
 	}
-	return hyperOrMeta(e)
+	return widgettest.HyperOrMeta(e)
 }

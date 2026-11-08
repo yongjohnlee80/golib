@@ -5,6 +5,7 @@ import (
 
 	"github.com/yongjohnlee80/golib/tui"
 	"github.com/yongjohnlee80/golib/tui/widget/internal/kit"
+	"github.com/yongjohnlee80/golib/tui/widget/internal/widgettest"
 )
 
 // oldListKey is List.HandleEvent's key handling at golib 6a0b271, verbatim but for its effects, which
@@ -76,7 +77,7 @@ func TestListKeysMatchTheOldHandlerWithNoMap(t *testing.T) {
 		for _, multi := range []bool{false, true} {
 			l := NewList(WithItems([]string{"a", "b"}, func(s string) string { return s }))
 			l.contextMenu, l.multi = contextMenu, multi
-			keyGridDiff(t, "List",
+			widgettest.KeyGridDiff(t, "List",
 				func(e tui.KeyEvent) string { return oldListKey(e, contextMenu, multi) },
 				func(e tui.KeyEvent) string {
 					cmd, ok := l.keyCommand(e)
@@ -85,7 +86,7 @@ func TestListKeysMatchTheOldHandlerWithNoMap(t *testing.T) {
 					}
 					return listOp[cmd.ID]
 				},
-				noTextShiftedPrintable)
+				widgettest.NoTextShiftedPrintable)
 		}
 	}
 }

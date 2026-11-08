@@ -7,6 +7,7 @@ import (
 	"testing"
 
 	"github.com/yongjohnlee80/golib/tui"
+	"github.com/yongjohnlee80/golib/tui/widget/internal/widgettest"
 )
 
 // THE EDITOR'S CROSS-VERSION DIFFERENTIAL. The Editor's input code is too large
@@ -80,8 +81,8 @@ func editorGridLine(st gridState, e tui.KeyEvent) string {
 func TestEditorKeyGridRecord(t *testing.T) {
 	var b strings.Builder
 	for _, st := range editorGridStates {
-		for _, e := range keyGrid() {
-			fmt.Fprintf(&b, "%s\t%s\t%s\n", st.name, describeKey(e), editorGridLine(st, e))
+		for _, e := range widgettest.KeyGrid() {
+			fmt.Fprintf(&b, "%s\t%s\t%s\n", st.name, widgettest.DescribeKey(e), editorGridLine(st, e))
 		}
 	}
 	out := os.Getenv("EDITOR_GRID_OUT")
@@ -101,8 +102,8 @@ func TestEditorKeyGridRecord(t *testing.T) {
 //     both lower-case a Ctrl letter), is that letter's Ctrl chord: Nano's Ctrl+K cuts on it.
 func editorGridDeviation(e tui.KeyEvent) string {
 	switch {
-	case noTextShiftedPrintable(e) != "":
-		return noTextShiftedPrintable(e)
+	case widgettest.NoTextShiftedPrintable(e) != "":
+		return widgettest.NoTextShiftedPrintable(e)
 	case e.Text == "" && e.Mods&tui.ModCtrl != 0 && e.Code >= 'A' && e.Code <= 'Z':
 		return "a capital letter with Ctrl and no text, which no backend sends, is its Ctrl chord"
 	}
@@ -128,8 +129,8 @@ func TestEditorKeyGridCompare(t *testing.T) {
 		t.Fatalf("recordings of %d and %d lines", len(oldLines), len(newLines))
 	}
 	events := map[string]tui.KeyEvent{}
-	for _, e := range keyGrid() {
-		events[describeKey(e)] = e
+	for _, e := range widgettest.KeyGrid() {
+		events[widgettest.DescribeKey(e)] = e
 	}
 	same, deviated := 0, 0
 	for i := range oldLines {

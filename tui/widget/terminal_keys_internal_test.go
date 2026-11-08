@@ -8,6 +8,7 @@ import (
 
 	"github.com/yongjohnlee80/golib/tui"
 	"github.com/yongjohnlee80/golib/tui/widget/internal/kit"
+	"github.com/yongjohnlee80/golib/tui/widget/internal/widgettest"
 )
 
 // oldInputAct is Terminal.inputKey's decision before commands, verbatim but for its effects, named as
@@ -48,14 +49,14 @@ func terminalInputDeviation(e tui.KeyEvent) string {
 	case e.Code == 'i' && e.Text == "" && e.Mods.Chord() == 0:
 		return "an i with no text reads its code"
 	}
-	return hyperOrMeta(e)
+	return widgettest.HyperOrMeta(e)
 }
 
 func TestTerminalInputKeysMatchTheOldHandlerWithNoMap(t *testing.T) {
 	for st := range 32 {
 		running, exited, prefix, vimKeys, alt := st&1 != 0, st&2 != 0, st&4 != 0, st&8 != 0, st&16 != 0
 		name := fmt.Sprintf("Terminal input (running %v, exited %v, prefix %v, vim %v, alt %v)", running, exited, prefix, vimKeys, alt)
-		keyGridDiff(t, name,
+		widgettest.KeyGridDiff(t, name,
 			func(e tui.KeyEvent) string {
 				if e.Kind == tui.KeyRelease {
 					return ""
@@ -66,7 +67,7 @@ func TestTerminalInputKeysMatchTheOldHandlerWithNoMap(t *testing.T) {
 				if e.Kind == tui.KeyRelease {
 					return ""
 				}
-				return fmt.Sprint(inputAct(noKeymap, e, running, exited, prefix, vimKeys, alt))
+				return fmt.Sprint(inputAct(widgettest.NoKeymap, e, running, exited, prefix, vimKeys, alt))
 			},
 			terminalInputDeviation)
 	}
@@ -170,11 +171,11 @@ func normalDeviation(e tui.KeyEvent) string {
 	if kit.IsKey(e, TermWORD.Keys...) || kit.IsKey(e, TermWORDBack.Keys...) || kit.IsKey(e, TermWORDEnd.Keys...) {
 		return "W, B and E are new: the WORD motions, the editor's"
 	}
-	return cmp.Or(hyperOrMeta(e), ctrlShiftLetter(e))
+	return cmp.Or(widgettest.HyperOrMeta(e), ctrlShiftLetter(e))
 }
 
 func TestTerminalNormalKeysMatchTheOldHandlerWithNoMap(t *testing.T) {
-	keyGridDiff(t, "Terminal normal", presses(oldNormalKey),
+	widgettest.KeyGridDiff(t, "Terminal normal", presses(oldNormalKey),
 		presses(func(e tui.KeyEvent) string {
 			cmd, ok := (*tui.Context)(nil).KeyCommand(e, terminalNormalCommands...)
 			if !ok {

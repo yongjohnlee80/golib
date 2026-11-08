@@ -7,6 +7,7 @@ import (
 	"github.com/yongjohnlee80/golib/tui"
 	"github.com/yongjohnlee80/golib/tui/widget/internal/kit"
 	txt "github.com/yongjohnlee80/golib/tui/widget/internal/text"
+	"github.com/yongjohnlee80/golib/tui/widget/internal/widgettest"
 )
 
 // oldInputKey is TextInput.handleKey at golib 6a0b271, verbatim but for its receiver and its reads
@@ -126,22 +127,6 @@ func oldInputKey(t *TextInput, e tui.KeyEvent) bool {
 	return false
 }
 
-// hyperOrMeta is the deviation key.Of makes on purpose: a key with Hyper or Meta held
-// matches no command (the old TextInput moved the cursor under them, as though they were not held).
-//
-// And one the old field got wrong: its completion compared the raw Mods (e.Mods&^ModShift == 0), so
-// a lock bit a kitty terminal reports (Num Lock, Caps Lock) stopped Tab completing. Every binding now
-// drops lock bits, as Mods.Chord's contract says it must.
-func hyperOrMeta(e tui.KeyEvent) string {
-	switch {
-	case e.Mods&(tui.ModHyper|tui.ModMeta) != 0:
-		return "Hyper or Meta held matches no command"
-	case e.Code == tui.KeyTab && e.Mods&tui.LockMods != 0:
-		return "a lock bit no longer disables Tab completion"
-	}
-	return noTextShiftedPrintable(e)
-}
-
 func TestTextInputKeysMatchTheOldHandlerWithNoMap(t *testing.T) {
 	completer := func(text string, cursor int) (int, []string) { return 0, []string{"alpha", "beta"} }
 	for _, st := range []struct {
@@ -166,6 +151,6 @@ func TestTextInputKeysMatchTheOldHandlerWithNoMap(t *testing.T) {
 				return fmt.Sprintf("ret=%v value=%q cur=%d sel=%v[%d,%d] verr=%v submits=%q", ret, ti.Value(), ti.cursor(), sel, lo, hi, ti.verr != nil, submits)
 			}
 		}
-		keyGridDiff(t, "TextInput ("+st.name+")", run(oldInputKey), run((*TextInput).handleKey), hyperOrMeta)
+		widgettest.KeyGridDiff(t, "TextInput ("+st.name+")", run(oldInputKey), run((*TextInput).handleKey), widgettest.HyperOrMeta)
 	}
 }

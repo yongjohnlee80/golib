@@ -6,6 +6,7 @@ import (
 
 	"github.com/yongjohnlee80/golib/tui"
 	"github.com/yongjohnlee80/golib/tui/widget/internal/kit"
+	"github.com/yongjohnlee80/golib/tui/widget/internal/widgettest"
 )
 
 // oldTextAreaKey is TextArea.handleKey's decision before commands, verbatim but for its effects,
@@ -83,7 +84,7 @@ func oldTextAreaKey(e tui.KeyEvent) string {
 
 func TestTextAreaKeysMatchTheOldHandlerWithNoMap(t *testing.T) {
 	ta := &TextArea{}
-	keyGridDiff(t, "TextArea", oldTextAreaKey,
+	widgettest.KeyGridDiff(t, "TextArea", oldTextAreaKey,
 		func(e tui.KeyEvent) string {
 			if e.Kind == tui.KeyRelease {
 				return ""
@@ -96,5 +97,5 @@ func TestTextAreaKeysMatchTheOldHandlerWithNoMap(t *testing.T) {
 			}
 			return ""
 		},
-		hyperOrMeta)
+		widgettest.HyperOrMeta)
 }

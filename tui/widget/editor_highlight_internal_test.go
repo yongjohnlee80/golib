@@ -9,6 +9,7 @@ import (
 	"github.com/yongjohnlee80/golib/highlight"
 	"github.com/yongjohnlee80/golib/tui"
 	"github.com/yongjohnlee80/golib/tui/style"
+	"github.com/yongjohnlee80/golib/tui/widget/internal/widgettest"
 )
 
 // editor_highlight_internal_test.go holds the Editor's highlighter hook to its
@@ -83,10 +84,10 @@ func TestTheByteSpansMapOntoClusters(t *testing.T) {
 // renderEditor runs e on a test backend of w×h.
 func renderEditor(t *testing.T, e *Editor, w, h int) *tui.TestBackend {
 	t.Helper()
-	ih := startAppInternal(t, e, w, h)
-	t.Cleanup(ih.stopInternal)
-	ih.onLoopInternal(func() {})
-	return ih.tb
+	ih := widgettest.StartApp(t, e, w, h)
+	t.Cleanup(ih.Stop)
+	ih.OnLoop(func() {})
+	return ih.TB
 }
 
 func TestASpanPaintsOverTheTextAndUnderTheSelection(t *testing.T) {
@@ -112,16 +113,16 @@ func TestASpanPaintsOverTheTextAndUnderTheSelection(t *testing.T) {
 func TestTheSelectionWinsOverASpan(t *testing.T) {
 	e := NewEditor(WithCore(CoreHighlighter(&wordHighlighter{})), WithCore(CoreSyntaxStyles(syntaxRedGreen())))
 	e.SetValue("a kw b")
-	ih := startAppInternal(t, e, 20, 2)
-	t.Cleanup(ih.stopInternal)
-	ih.onLoopInternal(func() { e.Context().RequestFocus() })
+	ih := widgettest.StartApp(t, e, 20, 2)
+	t.Cleanup(ih.Stop)
+	ih.OnLoop(func() { e.Context().RequestFocus() })
 	key := func(ch rune) tui.KeyEvent {
 		return tui.KeyEvent{Kind: tui.KeyPress, Code: ch, Base: ch, Text: string(ch)}
 	}
-	if err := ih.tb.Inject(key('0'), key('w'), key('v')); err != nil {
+	if err := ih.TB.Inject(key('0'), key('w'), key('v')); err != nil {
 		t.Fatal(err)
 	}
-	waitCells(t, ih.tb, func(g [][]tui.Cell) bool {
+	waitCells(t, ih.TB, func(g [][]tui.Cell) bool {
 		c := g[0][2].Attrs
 		return c.Mask&tui.AttrReverse != 0 && c.FG == ansiCell(1)
 	})
@@ -135,19 +136,19 @@ func TestOnlyWhatIsSeenOrChangedIsHighlighted(t *testing.T) {
 		lines = append(lines, "kw x")
 	}
 	e.SetValue(strings.Join(lines, "\n"))
-	ih := startAppInternal(t, e, 20, 5)
-	t.Cleanup(ih.stopInternal)
+	ih := widgettest.StartApp(t, e, 20, 5)
+	t.Cleanup(ih.Stop)
 	// change runs fn on the loop and counts the highlighting the frames after
 	// it cost — counted around the change itself, since the frame that paints
 	// it runs as soon as it has.
 	change := func(fn func()) int32 {
 		before := hl.calls.Load()
-		ih.onLoopInternal(fn)
-		ih.onLoopInternal(func() {})
-		ih.onLoopInternal(func() {})
+		ih.OnLoop(fn)
+		ih.OnLoop(func() {})
+		ih.OnLoop(func() {})
 		return hl.calls.Load() - before
 	}
-	ih.onLoopInternal(func() {})
+	ih.OnLoop(func() {})
 	if first := hl.calls.Load(); first == 0 || first > 5 {
 		t.Fatalf("the first frame highlighted %d lines of 100, want at most the 5 on screen", first)
 	}
@@ -184,13 +185,13 @@ func TestACommentCarriesAcrossLinesOnScreen(t *testing.T) {
 func TestSetHighlighterNilTurnsItOff(t *testing.T) {
 	e := NewEditor(WithCore(CoreHighlighter(&wordHighlighter{})), WithCore(CoreSyntaxStyles(syntaxRedGreen())))
 	e.SetValue("kw")
-	ih := startAppInternal(t, e, 10, 2)
-	t.Cleanup(ih.stopInternal)
-	waitCells(t, ih.tb, func(g [][]tui.Cell) bool { return g[0][0].Attrs.FG == ansiCell(1) })
-	ih.onLoopInternal(func() { e.Core().SetHighlighter(nil) })
-	waitCells(t, ih.tb, func(g [][]tui.Cell) bool { return g[0][0].Attrs.FG == (tui.CellColor{}) })
-	ih.onLoopInternal(func() { e.core.SetSyntaxStyles(SyntaxStyles{}); e.core.SetHighlighter(&wordHighlighter{}) })
-	waitCells(t, ih.tb, func(g [][]tui.Cell) bool { return g[0][0].Attrs.FG == (tui.CellColor{}) })
+	ih := widgettest.StartApp(t, e, 10, 2)
+	t.Cleanup(ih.Stop)
+	waitCells(t, ih.TB, func(g [][]tui.Cell) bool { return g[0][0].Attrs.FG == ansiCell(1) })
+	ih.OnLoop(func() { e.Core().SetHighlighter(nil) })
+	waitCells(t, ih.TB, func(g [][]tui.Cell) bool { return g[0][0].Attrs.FG == (tui.CellColor{}) })
+	ih.OnLoop(func() { e.core.SetSyntaxStyles(SyntaxStyles{}); e.core.SetHighlighter(&wordHighlighter{}) })
+	waitCells(t, ih.TB, func(g [][]tui.Cell) bool { return g[0][0].Attrs.FG == (tui.CellColor{}) })
 }
 
 func ansiCell(n uint8) tui.CellColor { return tui.CellColor{Kind: tui.CellColorANSI, Index: n} }
@@ -235,16 +236,16 @@ func TestADeepJumpHighlightsInBoundedFrames(t *testing.T) {
 	}
 	lines[n-1] = "last"
 	e.SetValue(strings.Join(lines, "\n"))
-	ih := startAppInternal(t, e, 20, rows)
-	t.Cleanup(ih.stopInternal)
-	ih.syncInternal()
+	ih := widgettest.StartApp(t, e, 20, rows)
+	t.Cleanup(ih.Stop)
+	ih.Sync()
 
 	// Bounded by the budget, and — whatever the budget is set to — by a
 	// fraction of the file: the whole file in one frame is the defect.
 	bound := min(hlFrameBudget+rows, n/4)
 	var work int
 	var calls int32
-	ih.onLoopInternal(func() {
+	ih.OnLoop(func() {
 		e.core.goToLine(false, 1, true) // G
 		e.ensureVisible()
 		before := hl.calls.Load()
@@ -257,7 +258,7 @@ func TestADeepJumpHighlightsInBoundedFrames(t *testing.T) {
 	}
 	// The frames that follow finish the catch-up on their own, and the last
 	// line wears the comment colour carried from the first.
-	waitCells(t, ih.tb, func(g [][]tui.Cell) bool {
+	waitCells(t, ih.TB, func(g [][]tui.Cell) bool {
 		for _, row := range g {
 			if row[0].Content == "l" && row[1].Content == "a" && row[0].Attrs.FG == ansiCell(2) {
 				return true
@@ -268,13 +269,13 @@ func TestADeepJumpHighlightsInBoundedFrames(t *testing.T) {
 	// Caught up: a redraw examines the screen, not the 20,000 lines above it.
 	var redraw int
 	var prov bool
-	ih.onLoopInternal(func() { redraw, prov = frameWork(e, rows) })
+	ih.OnLoop(func() { redraw, prov = frameWork(e, rows) })
 	if redraw > rows || prov {
 		t.Errorf("a redraw at depth examined %d lines (provisional %v), want at most the %d on screen", redraw, prov, rows)
 	}
 	// An edit near the top invalidates from there: bounded again, and caught
 	// up again after.
-	ih.onLoopInternal(func() {
+	ih.OnLoop(func() {
 		e.core.buf.Lines[1] = "changed"
 		e.core.buf.Touch(1)
 		work, _ = frameWork(e, rows)
@@ -296,9 +297,9 @@ func TestTheCacheAgreesWithAFreshHighlightAfterAnyEdit(t *testing.T) {
 		lines = append(lines, []string{"kw a", "x /* open", "b */ kw", "plain"}[i%4])
 	}
 	e.SetValue(strings.Join(lines, "\n"))
-	ih := startAppInternal(t, e, 30, rows)
-	t.Cleanup(ih.stopInternal)
-	ih.syncInternal()
+	ih := widgettest.StartApp(t, e, 30, rows)
+	t.Cleanup(ih.Stop)
+	ih.Sync()
 
 	key := func(s string) []tui.Event {
 		var out []tui.Event
@@ -331,13 +332,13 @@ func TestTheCacheAgreesWithAFreshHighlightAfterAnyEdit(t *testing.T) {
 		return out
 	}
 	for _, step := range steps {
-		ih.onLoopInternal(func() {
+		ih.OnLoop(func() {
 			for _, ev := range key(step) {
 				e.HandleEvent(ev)
 			}
 		})
 		var got, want [][]highlight.Style
-		ih.onLoopInternal(func() {
+		ih.OnLoop(func() {
 			for {
 				f := e.beginHighlightFrame()
 				if f.f.provisional {

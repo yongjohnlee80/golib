@@ -6,6 +6,7 @@ import (
 	"testing"
 
 	"github.com/yongjohnlee80/golib/tui"
+	"github.com/yongjohnlee80/golib/tui/widget/internal/widgettest"
 )
 
 // oldSplitKey is Split.resolveKey before commands, verbatim but for the split's axis and step unit,
@@ -94,17 +95,17 @@ func lockedArrow(e tui.KeyEvent) string {
 func TestSplitKeysMatchTheOldHandlerWithNoMap(t *testing.T) {
 	for _, o := range []Orientation{Horizontal, Vertical} {
 		s := &Split{o: o, stepUnit: StepPercent}
-		keyGridDiff(t, map[Orientation]string{Horizontal: "Split horizontal", Vertical: "Split vertical"}[o],
+		widgettest.KeyGridDiff(t, map[Orientation]string{Horizontal: "Split horizontal", Vertical: "Split vertical"}[o],
 			func(e tui.KeyEvent) string { return actionName(oldSplitKey(e, o == Horizontal, s.stepUnit)) },
 			func(e tui.KeyEvent) string { return actionName(s.resolveKey(e)) },
-			func(e tui.KeyEvent) string { return cmp.Or(lockedArrow(e), hyperOrMeta(e)) })
+			func(e tui.KeyEvent) string { return cmp.Or(lockedArrow(e), widgettest.HyperOrMeta(e)) })
 	}
 }
 
 func TestResizableKeysMatchTheOldHandlerWithNoMap(t *testing.T) {
 	r := &Resizable{stepUnit: StepPercent}
-	keyGridDiff(t, "Resizable",
+	widgettest.KeyGridDiff(t, "Resizable",
 		func(e tui.KeyEvent) string { return actionName(oldResizableKey(e, r.stepUnit)) },
 		func(e tui.KeyEvent) string { return actionName(r.resizeKeys(e)) },
-		func(e tui.KeyEvent) string { return cmp.Or(lockedArrow(e), hyperOrMeta(e)) })
+		func(e tui.KeyEvent) string { return cmp.Or(lockedArrow(e), widgettest.HyperOrMeta(e)) })
 }
