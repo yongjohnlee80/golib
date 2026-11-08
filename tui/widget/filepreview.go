@@ -275,3 +275,13 @@ func trimPartialRune(b []byte) []byte {
 	}
 	return b
 }
+
+// withStyles restyles the preview's text and its frame.
+func (p *FilePreview) withStyles(st FilePaneStyles, styled bool) {
+	text := TextInputStyles{}
+	if styled {
+		text.Text = st.Surface
+	}
+	p.view.WithStyles(text)
+	stylePane(p.box, st, styled)
+}

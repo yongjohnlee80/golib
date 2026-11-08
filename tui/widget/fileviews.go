@@ -9,6 +9,7 @@ import (
 	"github.com/yongjohnlee80/golib/highlight"
 	"github.com/yongjohnlee80/golib/tui"
 	"github.com/yongjohnlee80/golib/tui/keymap"
+	"github.com/yongjohnlee80/golib/tui/style"
 )
 
 // FILE VIEWS — the bodies of an Open and a Save dialog, composed from the
@@ -1118,3 +1119,52 @@ var (
 	_ FileChooserStyler = (*FileSaveView)(nil)
 	_ FileChooserStyler = (*FileFolderView)(nil)
 )
+
+// WithStyles replaces the looks of every part of the view — the list, the
+// preview, each pane's frame and the gap between them. The zero value restores
+// golib's own.
+func (v *FileOpenView) WithStyles(st FilePaneStyles) *FileOpenView {
+	styled := st != (FilePaneStyles{})
+	v.cfg.st, v.cfg.styled = st, styled
+	v.list.withStyles(st, styled)
+	text := TextInputStyles{}
+	if styled {
+		text.Text = st.Surface
+	}
+	v.path.input.WithStyles(text)
+	stylePane(v.path.pane, st, styled)
+	if v.preview != nil {
+		v.preview.withStyles(st, styled)
+	}
+	if sp, ok := v.root.(*Split); ok {
+		gap := style.Style{}
+		if styled {
+			gap = st.Gap
+		}
+		sp.WithDividerStyle(gap)
+	}
+	return v
+}
+
+// WithStyles replaces the looks of every part of the view: the name field and
+// its frame, and the listing under it.
+func (v *FileSaveView) WithStyles(st FilePaneStyles) *FileSaveView {
+	styled := st != (FilePaneStyles{})
+	v.cfg.st, v.cfg.styled = st, styled
+	text := TextInputStyles{}
+	if styled {
+		text.Text = st.Surface
+	}
+	v.name.WithStyles(text)
+	stylePane(v.namePane, st, styled)
+	v.listing.WithStyles(st)
+	return v
+}
+
+// WithStyles restyles a folder view: its listing, path field included. A
+// host's own fields dress themselves.
+func (v *FileFolderView) WithStyles(st FilePaneStyles) *FileFolderView {
+	v.cfg.st, v.cfg.styled = st, st != (FilePaneStyles{})
+	v.listing.WithStyles(st)
+	return v
+}

@@ -216,8 +216,6 @@ func positions(cols []int, mark string) string {
 	return strings.Join(s[:len(s)-1], ", ") + " and " + s[len(s)-1]
 }
 
-func orderSpace(b byte) bool { return b == ' ' || b == '\t' || b == '\n' || b == '\r' }
-
 func orderDigits(s string) bool {
 	if s == "" {
 		return false

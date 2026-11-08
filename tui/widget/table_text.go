@@ -211,18 +211,6 @@ func (t *TableText) write(d tableData) bool {
 	return true
 }
 
-// padAligned is s in a column w cells wide, measured by measure, placed as a says.
-func padAligned(s string, w int, a style.Align, measure func(string) int) string {
-	gap := max(w-measure(s), 0)
-	switch a {
-	case style.AlignRight:
-		return strings.Repeat(" ", gap) + s
-	case style.AlignCenter:
-		return strings.Repeat(" ", gap/2) + s + strings.Repeat(" ", gap-gap/2)
-	}
-	return s + strings.Repeat(" ", gap)
-}
-
 // delimiterCell is a delimiter row's cell for a column w wide: --- (left), :-: (centre), --: (right).
 func delimiterCell(a style.Align, w int) string {
 	switch a {

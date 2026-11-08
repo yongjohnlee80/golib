@@ -141,14 +141,6 @@ func (l *List[T]) ScrollState() (offset, viewport, content int) {
 	return l.top, l.viewRows(), l.count
 }
 
-// ScrollState implements tui.Scroller, in rows; the header row is not counted.
-func (t *Table[T]) ScrollState() (offset, viewport, content int) { return t.list.ScrollState() }
-
-// ScrollState implements tui.Scroller, in visible rows.
-func (t *Tree) ScrollState() (offset, viewport, content int) {
-	return t.top, max(t.h, 0), len(t.flatten())
-}
-
 // ScrollState implements tui.Scroller, in wrapped rows.
 func (v *BufferView) ScrollState() (offset, viewport, content int) {
 	offset = v.scrollRow
@@ -213,18 +205,6 @@ func (t *Tabs) SetOnWindowButton(fn func(WindowOperation)) { t.strip.onWindow = 
 
 // TabWindowControls are the window controls on the bar, as drawn now.
 func (t *Tabs) TabWindowControls() []TabControl { return t.strip.controlSpans() }
-
-// SetWindowButtons shows _, + and x at the strip's right end, side by side as the title bar's, or
-// takes them off (the default, none): a panel's own minimize, maximize and close. A press runs SetOnWindowButton's function with the control's
-// WindowOperation.
-func (t *TerminalTabs) SetWindowButtons(on bool) { t.strip.setWindowButtons(on) }
-
-// SetOnWindowButton is what a press on a window control does (SetWindowButtons): fn with its
-// operation, WindowMinimize, WindowMaximize or WindowClose. nil does nothing.
-func (t *TerminalTabs) SetOnWindowButton(fn func(WindowOperation)) { t.strip.onWindow = fn }
-
-// TabWindowControls are the window controls on the strip, as drawn now.
-func (t *TerminalTabs) TabWindowControls() []TabControl { return t.strip.controlSpans() }
 
 var (
 	_ TabSpanner = (*Tabs)(nil)

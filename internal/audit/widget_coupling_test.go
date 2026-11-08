@@ -40,17 +40,48 @@ const (
 )
 
 // widgetGroups assign each file of tui/widget to a group by its name's prefix,
-// the longest prefix winning; a file no prefix names is core's.
+// the longest prefix winning; a file no prefix names is core's. A prefix says
+// where the file belongs when the package splits, not only what its name reads.
 var widgetGroups = map[string]string{
-	"editor": "editor", "commandline": "editor", "textbuffer": "editor", "buffer": "editor",
-	"keygrammar": "editor", "jumplist": "editor", "viewmark": "editor", "edithistory": "editor",
+	// EditorCore, the Editor, its views and the vim grammar; the command line, buffers, key grammar,
+	// jump list, undo history and registers.
+	"editor":       "editor",
+	"commandline":  "editor",
+	"buffer":       "editor",
+	"keygrammar":   "editor",
+	"jumplist":     "editor",
+	"edithistory":  "editor",
 	"editregister": "editor",
-	"table":        "table", "datatable": "table",
-	"filelist": "files", "fileviews": "files", "filesource": "files", "filepreview": "files",
-	"filepath": "files", "tree": "files",
+	// The Rendered view's Markdown cell renderer and its pictures (diagrams, charts, images): they lay
+	// their blocks through the editor's cellLayout.
+	"markdown": "editor",
+	"cell":     "editor",
+	// A Markdown table in an EditorCore's buffer, edited as a TableSource: the editor's tables.
+	"table_text": "editor",
+	// The text model TextInput, TextArea and the editor all edit: core, below the editor.
+	"textbuffer": "core",
+	// BufferView, the scrolling log view: no editor buffer, though it shares the "buffer" prefix.
+	"bufferview": "core",
+	// The mark a scrolled view keeps: List, Tree, the menus and the editor use it.
+	"viewmark": "core",
+	// The table and the data table, their sources and CSV.
+	"table":     "table",
+	"datatable": "table",
+	// The file list, the open, save and folder views, the path field, the preview and the tree.
+	"filelist":    "files",
+	"fileviews":   "files",
+	"filesource":  "files",
+	"filepreview": "files",
+	"filepath":    "files",
+	"tree":        "files",
+	// The PTY terminal and its VT emulation.
 	"terminal": "terminal",
-	"htmlview": "htmlview", "htmlimages": "htmlview", "htmldoc": "htmlview", "raster": "htmlview",
-	"image": "htmlview",
+	// The HTML view, its documents and raster images.
+	"htmlview":   "htmlview",
+	"htmlimages": "htmlview",
+	"htmldoc":    "htmlview",
+	"raster":     "htmlview",
+	"image":      "htmlview",
 }
 
 // widgetGroupOf is the group of the file named base.
@@ -278,6 +309,10 @@ func TestWidgetGroupsAssignByLongestPrefix(t *testing.T) {
 		"editorcore.go": "editor", "datatable.go": "table", "tablecore_render.go": "table",
 		"filepreview.go": "files", "htmlview.go": "htmlview", "terminal_vt.go": "terminal",
 		"menu.go": "core", "textinput.go": "core", "tabs.go": "core",
+		// the files a prefix places by what they are, not by the shorter prefix their name extends
+		"buffer.go": "editor", "bufferview.go": "core", "bufferview_writer.go": "core",
+		"textbuffer.go": "core", "viewmark.go": "core", "table.go": "table", "table_text.go": "editor",
+		"markdown_cells.go": "editor", "cell_pictures.go": "editor",
 	} {
 		if got := widgetGroupOf(base); got != want {
 			t.Errorf("widgetGroupOf(%q) = %s, want %s", base, got, want)

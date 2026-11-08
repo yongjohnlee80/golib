@@ -506,3 +506,15 @@ func (l *FileList) fitTitle() {
 	}
 	l.box.SetTitle(title)
 }
+
+// withStyles restyles the list's rows and its frame, as NewFileList styles
+// them.
+func (l *FileList) withStyles(st FilePaneStyles, styled bool) {
+	l.st, l.styled = st, styled
+	l.list.styles = defaultListStyles()
+	if styled {
+		l.list.SetStyles(fileListStyles(st))
+	}
+	l.list.MarkDirty()
+	stylePane(l.box, st, styled)
+}

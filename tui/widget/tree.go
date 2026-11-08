@@ -1263,3 +1263,11 @@ func (t *Tree) rowText(r treeRow) string {
 func (t *Tree) KeyBindings(m *keymap.Map) []keymap.Binding {
 	return tui.BindingsOf(m, treeKeyCommands...)
 }
+
+// ScrollState implements tui.Scroller, in visible rows.
+func (t *Tree) ScrollState() (offset, viewport, content int) {
+	return t.top, max(t.h, 0), len(t.flatten())
+}
+
+// AccessibleRole is the tree's accessible role (tui.RoleReporter, roles.go).
+func (t *Tree) AccessibleRole() tui.AccessibleRole { return tui.RoleTree }

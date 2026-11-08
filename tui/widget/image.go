@@ -568,3 +568,6 @@ func (m *Image) Render(s tui.Surface) {
 func (m *Image) Image() (tui.Image, bool) { return m.st.image(m.id) }
 
 var _ tui.ImageReporter = (*Image)(nil)
+
+// AccessibleRole is the image's accessible role (tui.RoleReporter, roles.go).
+func (m *Image) AccessibleRole() tui.AccessibleRole { return tui.RoleImage }

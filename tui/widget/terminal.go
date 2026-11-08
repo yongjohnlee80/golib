@@ -621,3 +621,6 @@ func (t *Terminal) SetTerminalView(v TerminalView) {
 // TerminalView is the view installed, nil for none: what a native style reads back to paint the
 // terminal.
 func (t *Terminal) TerminalView() TerminalView { return t.view }
+
+// AccessibleRole is the terminal's accessible role (tui.RoleReporter, roles.go).
+func (t *Terminal) AccessibleRole() tui.AccessibleRole { return tui.RoleTerminal }

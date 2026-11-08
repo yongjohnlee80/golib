@@ -293,3 +293,18 @@ func fitCell(s string, w int, mode Elide, a style.Align, measure func(string) in
 func matchFold(label, q string) bool {
 	return q == "" || strings.Contains(strings.ToLower(label), strings.ToLower(q))
 }
+
+// padAligned is s in a column w cells wide, measured by measure, placed as a says.
+func padAligned(s string, w int, a style.Align, measure func(string) int) string {
+	gap := max(w-measure(s), 0)
+	switch a {
+	case style.AlignRight:
+		return strings.Repeat(" ", gap) + s
+	case style.AlignCenter:
+		return strings.Repeat(" ", gap/2) + s + strings.Repeat(" ", gap-gap/2)
+	}
+	return s + strings.Repeat(" ", gap)
+}
+
+// orderSpace reports whether b is ASCII white space: a space, a tab, a newline or a carriage return.
+func orderSpace(b byte) bool { return b == ' ' || b == '\t' || b == '\n' || b == '\r' }

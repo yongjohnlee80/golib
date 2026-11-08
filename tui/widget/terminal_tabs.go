@@ -775,3 +775,15 @@ func (t *TerminalTabs) renderNormalHint(s tui.Surface, w int) {
 	text := truncate(t.normalHint, room, s.StringWidth)
 	drawText(s, end-s.StringWidth(text), 0, text, t.strip.tab)
 }
+
+// SetWindowButtons shows _, + and x at the strip's right end, side by side as the title bar's, or
+// takes them off (the default, none): a panel's own minimize, maximize and close. A press runs SetOnWindowButton's function with the control's
+// WindowOperation.
+func (t *TerminalTabs) SetWindowButtons(on bool) { t.strip.setWindowButtons(on) }
+
+// SetOnWindowButton is what a press on a window control does (SetWindowButtons): fn with its
+// operation, WindowMinimize, WindowMaximize or WindowClose. nil does nothing.
+func (t *TerminalTabs) SetOnWindowButton(fn func(WindowOperation)) { t.strip.onWindow = fn }
+
+// TabWindowControls are the window controls on the strip, as drawn now.
+func (t *TerminalTabs) TabWindowControls() []TabControl { return t.strip.controlSpans() }
