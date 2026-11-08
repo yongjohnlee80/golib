@@ -241,7 +241,21 @@ func (e *Editor) renderRendered(s tui.Surface, m rowMap) {
 	sz := s.Size()
 	l, c, r := &e.cells, e.core, m.r
 	first := r.topRow(l.top) + l.topIn
-	shown := map[int][2]int{} // each wide block's first and last row on the view, for its marks
+	shown := map[int][2]int{}            // each wide block's first and last row on the view, for its marks
+	marks := map[int][]highlight.Style{} // each source line's overlay (a find's marks, the host's), as painted
+	marked := func(ln, col int, st style.Style) style.Style {
+		ms, ok := marks[ln]
+		if !ok {
+			ms = c.OverlayStyles(ln)
+			marks[ln] = ms
+		}
+		if col < len(ms) && ms[col] != highlight.Normal {
+			if ms, ok := c.SyntaxStyle(ms[col]); ok {
+				return ms.Inherit(st)
+			}
+		}
+		return st
+	}
 	for y := 0; y < sz.H && first+y < len(r.rows); y++ {
 		ri := first + y
 		bi := r.rowBlock[ri]
@@ -257,8 +271,11 @@ func (e *Editor) renderRendered(s tui.Surface, m rowMap) {
 				break // past the room, or a wide block's right edge column
 			}
 			st := cl.Style
-			if cl.Line >= 0 && c.Highlighted(cl.Line, cl.Col, e.focused()) {
-				st = l.styles.Selection.Inherit(st)
+			if cl.Line >= 0 {
+				st = marked(cl.Line, cl.Col, st)
+				if c.Highlighted(cl.Line, cl.Col, e.focused()) {
+					st = l.styles.Selection.Inherit(st)
+				}
 			}
 			s.SetCell(x, y, cl.Text, st)
 		}
