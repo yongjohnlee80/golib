@@ -327,10 +327,11 @@ func TestATablesTopRuleShowsWithItsHeader(t *testing.T) {
 }
 
 // A table cell hides what the reader skips, as prose does: an inline comment (HideMetadata), the
-// text around it kept; a comment across two cells hides a <br> in it too, which breaks nothing. In
-// prose, a comment going on to the next line hides a <br> there as well.
+// text around it kept, a <br> inside it breaking nothing. (A "<!--" closed in the next cell is no
+// comment: GFM splits the cells before reading them, so it is text, as gui's table draws it.) In
+// prose, a comment going on to the next line hides a <br> there.
 func TestATablesCellsHideTheirMetadata(t *testing.T) {
-	h, _, _ := renderedEditor(t, "| a <!-- note --> | b |\n|---|---|\n| d | e |\n| f <!-- | <br> -->g | h |", mdRenderer())
+	h, _, _ := renderedEditor(t, "| a <!-- note --> | b |\n|---|---|\n| d | e |\n| f <!-- <br> -->g | h |", mdRenderer())
 	g := h.grid()
 	if strings.Contains(g, "<!--") || strings.Contains(g, "note") || strings.Contains(g, "-->") || strings.Contains(g, "<br>") {
 		t.Errorf("a cell's comment is drawn:\n%s", g)
@@ -339,8 +340,8 @@ func TestATablesCellsHideTheirMetadata(t *testing.T) {
 	if !strings.HasPrefix(got[1], "│ a") || !strings.HasSuffix(got[1], "│ b │") {
 		t.Errorf("the header row %q: want a, its comment hidden, then b", got[1])
 	}
-	if !strings.HasPrefix(got[3], "│ d") || !strings.HasPrefix(got[4], "│ f") || !strings.Contains(got[4], "│ g") || !strings.HasPrefix(got[5], "└") {
-		t.Errorf("the body: want d's row, then f and g on one row (the <br> in the comment breaking nothing), then the bottom rule:\n%s", g)
+	if !strings.HasPrefix(got[3], "│ d") || !strings.HasPrefix(got[4], "│ f") || !strings.Contains(got[4], "g │ h") || !strings.HasPrefix(got[5], "└") {
+		t.Errorf("the body: want d's row, then f and g in one cell's row (the <br> in the comment breaking nothing), then the bottom rule:\n%s", g)
 	}
 
 	p, _, _ := renderedEditor(t, "a <!-- x\n<br> --> b", mdRenderer())
@@ -438,16 +439,27 @@ func TestAPresentationChangeRevealsTheCaret(t *testing.T) {
 	h.inject(dtEsc)
 	h.barrier(sh)
 	shown("after Esc")
-	// i and a click queued behind it, before a frame: the click lands on the source revealed for i
-	caretAt(h, sh, ed, 2, len(line)-3)
-	h.inject(keyText("i"), tui.MouseEvent{Kind: tui.MousePress, Button: tui.MouseLeft, X: 5, Y: 1},
-		tui.MouseEvent{Kind: tui.MouseRelease, Button: tui.MouseLeft, X: 5, Y: 1})
-	h.barrier(sh)
-	var x, y int
-	var ok bool
-	h.onLoop(func() { x, y, ok = ed.Cursor() })
-	if !ok || x != 5 || y != 1 {
-		t.Errorf("i then a click at (5, 1) before a frame: the caret at (%d, %d) %v, want the clicked cell:\n%s", x, y, ok, h.grid())
+	// i and a click queued behind it, before a frame, land where the click lands after i's frame:
+	// the source position the revealed rows show there, not the one under the old offset
+	clickAfterI := func(burst bool) (ln, col int) {
+		h, sh, ed := mdEditorAt(t, "| h | i |\n|---|---|\n"+line, 40, 4)
+		caretAt(h, sh, ed, 2, 302) // mid first cell: ~20 rows down the rendered table, ~9 in its source
+		press := tui.MouseEvent{Kind: tui.MousePress, Button: tui.MouseLeft, X: 5, Y: 1}
+		release := tui.MouseEvent{Kind: tui.MouseRelease, Button: tui.MouseLeft, X: 5, Y: 1}
+		if burst {
+			h.inject(keyText("i"), press, release)
+		} else {
+			h.inject(keyText("i"))
+			h.barrier(sh)
+			h.inject(press, release)
+		}
+		h.barrier(sh)
+		h.onLoop(func() { ln, col = ed.Core().Line() })
+		return
+	}
+	l1, c1 := clickAfterI(false)
+	if l2, c2 := clickAfterI(true); l2 != l1 || c2 != c1 {
+		t.Errorf("i then a click at (5, 1) before a frame landed on (%d, %d); after i's frame, on (%d, %d)", l2, c2, l1, c1)
 	}
 	h.inject(dtEsc)
 	h.barrier(sh)
