@@ -171,6 +171,9 @@ type Editor struct {
 	// (editor_pictures.go); picGen counts their changes, a key of the layout.
 	pics   map[pictureAt]*pictureSlot
 	picGen uint64
+	// relayGen counts the host's asks to lay the Rendered view again (RelayRendered), a key of the
+	// layout.
+	relayGen uint64
 	// picBuf is the buffer the pictures are of. picArrived is set by the first picture to arrive
 	// since the last layout, which took then whether the cursor was on the view (picReveal); the
 	// layout consumes both. A slot's drop changes picGen but is no arrival.

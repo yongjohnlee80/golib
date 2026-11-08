@@ -26,11 +26,16 @@ var embedFiles = map[string]string{
 // mermaid fence as its diagram, a vega-lite fence as its chart, a table boxed with a note under
 // it, other Markdown (a notice) as its words, each in the line's place, the line's own text gone.
 // A src Embeds doesn't resolve is the image's, as before: here, its alt text. Typing on an embed's
-// line shows its source, and Esc draws it again.
+// line shows its source, and Esc draws it again. A file that changes is drawn anew once the host
+// says so (RelayRendered), its line's picture laid again from the new body.
 func TestAnImageOnlyLineIsDrawnAsTheFileItEmbeds(t *testing.T) {
+	files := map[string]string{}
+	for k, v := range embedFiles {
+		files[k] = v
+	}
 	r := mdRenderer()
-	r.Embeds = func(src string) (string, bool) {
-		md, ok := embedFiles[src]
+	r.Embeds = func(src string) (string, bool) { // on the loop, as the Editor lays the view
+		md, ok := files[src]
 		return md, ok
 	}
 	ed := widget.NewEditor(widget.WithCore(widget.CoreInitialText(embedNote)))
@@ -70,5 +75,15 @@ func TestAnImageOnlyLineIsDrawnAsTheFileItEmbeds(t *testing.T) {
 	h.waitFor("the diagram drawn again in Normal", func() bool {
 		g := h.grid()
 		return strings.Contains(g, "Gull") && !strings.Contains(g, "](a.mmd)")
+	})
+	// the chart's file changes under its line: told so (RelayRendered), the view draws the new one,
+	// a new picture laid for the same block
+	h.onLoop(func() {
+		files["b.chart.json"] = strings.ReplaceAll(strings.ReplaceAll(files["b.chart.json"], "Apples", "Plums"), "Pears", "Figs")
+		ed.RelayRendered()
+	})
+	h.waitFor("the changed chart drawn", func() bool {
+		g := h.grid()
+		return strings.Contains(g, "Plums") && strings.Contains(g, "Figs") && !strings.Contains(g, "Apples")
 	})
 }
