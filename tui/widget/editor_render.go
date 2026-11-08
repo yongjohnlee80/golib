@@ -272,8 +272,9 @@ func (e *Editor) renderRendered(s tui.Surface, m rowMap) {
 	th := e.cellTheme()
 	mark := th.Syntax[MarkdownQuietStyle].Inherit(th.Text)
 	for bi, ys := range shown {
-		x0, w := m.content(bi)
-		PaintPanMarks(s, x0-1, x0+w, (ys[0]+ys[1])/2, m.panOf(bi), m.maxPan(bi), mark)
+		if x0, w := m.content(bi); x0 > 0 { // a room too narrow for its edge columns has no marks
+			PaintPanMarks(s, x0-1, x0+w, (ys[0]+ys[1])/2, m.panOf(bi), m.maxPan(bi), mark)
+		}
 	}
 	if m.scrollable() {
 		paintScrollIndicator(s, sz.W-1, sz.H, first, max(len(r.rows)-sz.H, 0))
