@@ -14,6 +14,8 @@ func init() { register(GitGraph, "gitgraph", []string{"gitGraph"}, (*parser).git
 // GitGraphDiagram is a parsed gitGraph: its direction, its branches in the order they were made
 // (Branches[0] is main), and its commits in source order, which is the graph's time axis.
 type GitGraphDiagram struct {
+	// Title is the front matter's title (front matter's title:), drawn above the diagram; "" for none.
+	Title    string
 	Dir      Dir // LR (the default), TB or BT
 	Branches []GitBranch
 	Commits  []GitCommit

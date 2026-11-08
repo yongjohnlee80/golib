@@ -17,6 +17,8 @@ func init() {
 // RequirementDiagram is a parsed requirement diagram: requirements and elements, and the
 // relationships between them.
 type RequirementDiagram struct {
+	// Title is the front matter's title (front matter's title:), drawn above the diagram; "" for none.
+	Title     string
 	Dir       Dir
 	Nodes     []RequirementNode     // requirements and elements, in order of definition
 	Relations []RequirementRelation // in source order

@@ -145,6 +145,8 @@ type Style []StyleProp
 
 // FlowchartDiagram is a parsed flowchart.
 type FlowchartDiagram struct {
+	// Title is the front matter's title (front matter's title:), drawn above the diagram; "" for none.
+	Title     string
 	Dir       Dir
 	Nodes     []Node // in order of first mention
 	Edges     []Edge // in source order; a chain or & gives one edge per pair

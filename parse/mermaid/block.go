@@ -16,6 +16,8 @@ func init() {
 // BlockDiagram is a parsed block diagram: its blocks laid on a grid of columns, a group's own grid
 // inside it, and the links between blocks.
 type BlockDiagram struct {
+	// Title is the front matter's title (front matter's title:), drawn above the diagram; "" for none.
+	Title string
 	Root  BlockGroup
 	Edges []Edge // From and To are blocks' ids; MinLen is unused
 }
