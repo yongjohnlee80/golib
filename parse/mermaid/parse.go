@@ -33,6 +33,7 @@ type parser struct {
 	styles      map[string]Style
 	unsupported error
 	syntax      *SyntaxError
+	title       string // the front matter's title: (frontmatter.go); "" for none
 }
 
 type classUse struct{ id, class string }
@@ -127,10 +128,12 @@ func (p *parser) statements(from int) []stmt {
 }
 
 // header finds the diagram's type line and returns its keyword, the rest of that line, and where
-// the rest starts.
+// the rest starts: past blank lines, %% lines (comments and directives), and a front matter block
+// at the start (frontmatter.go), whose title it keeps.
 func (p *parser) header() (kw, rest string, restOff int, err error) {
 	s := p.src
-	i := 0
+	i, n := 0, 1 // the line's byte offset and its number
+	front := false
 	for i < len(s) {
 		j := strings.IndexByte(s[i:], '\n')
 		end := len(s)
@@ -140,8 +143,13 @@ func (p *parser) header() (kw, rest string, restOff int, err error) {
 		line := strings.TrimSpace(s[i:end])
 		switch {
 		case line == "" || strings.HasPrefix(line, "%%"):
-		case line == "---":
-			return "", "", 0, notDrawn(ErrUnsupported, 1, "front matter", "front matter (line 1)")
+		case line == "---" && !front:
+			next, lines, err := p.frontMatter(end+1, n)
+			if err != nil {
+				return "", "", 0, err
+			}
+			i, n, front = next, n+lines, true
+			continue
 		default:
 			lead := i + strings.Index(s[i:end], line)
 			kw = line
@@ -150,7 +158,7 @@ func (p *parser) header() (kw, rest string, restOff int, err error) {
 			}
 			return kw, line[len(kw):], lead + len(kw), nil
 		}
-		i = end + 1
+		i, n = end+1, n+1
 	}
 	return "", "", 0, &SyntaxError{Line: 1, Col: 1, Msg: "no diagram: the source is empty"}
 }
@@ -161,7 +169,13 @@ func (p *parser) parse() (Diagram, error) {
 		return nil, err
 	}
 	if k, ok := byKeyword[kw]; ok {
-		return registry[k].parse(p, rest, restOff)
+		d, err := registry[k].parse(p, rest, restOff)
+		if err == nil && p.title != "" {
+			if t := titleField(d); t != nil && *t == "" { // a title in the diagram's own body wins
+				*t = p.title
+			}
+		}
+		return d, err
 	}
 	what := fmt.Sprintf("%q diagrams", kw)
 	return nil, notDrawn(ErrUnsupported, 0, what, "%s", what)

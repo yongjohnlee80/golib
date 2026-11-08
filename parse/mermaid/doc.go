@@ -22,8 +22,12 @@
 // both forms; chains and &; subgraphs with a title and their own direction; classDef, class,
 // ::: and style; %% comments; quoted labels, Markdown-string labels (as plain text), entity
 // codes and <br>. Outside it, and so ErrUnsupported: click, linkStyle, Font Awesome icons, the
-// @{ } shape and edge-id syntax, front matter, links to a subgraph, and other HTML in labels.
+// @{ } shape and edge-id syntax, links to a subgraph, and other HTML in labels.
 // Each other type has its own subset, in its file; a type with none is ErrUnsupported.
+//
+// Every type reads a front matter block (frontmatter.go): its title: is the diagram's title
+// (TitleOf; a title the diagram's body names wins), and config: and its other keys are passed over,
+// as %%{init}%% directives are, since they style mermaid.js's own drawing.
 //
 // Standard library only.
 package mermaid
