@@ -303,14 +303,70 @@ func TestPicturesArrivingTogetherKeepTheReveal(t *testing.T) {
 			}
 		}
 		slices.SortFunc(ats, func(a, b pictureAt) int { return cmp.Or(a.from-b.from, a.cols-b.cols) })
-		for _, at := range ats {
-			e.pictureDone(tui.TaskResult{ID: e.pics[at].task, Value: rowsPicture{"PIC0", "PIC1"}})
+		for _, at := range ats { // through the Editor's own handling, as the loop delivers them
+			e.HandleEvent(tui.TaskResult{Owner: e.Context().ID(), ID: e.pics[at].task, Value: rowsPicture{"PIC0", "PIC1"}})
 		}
 	})
-	ih.syncInternal()
+	waitGrid(t, ih, "the pictures drawn", func(g string) bool { return strings.Contains(g, "PIC") })
 	var ok bool
 	ih.onLoopInternal(func() { _, _, ok = e.Cursor() })
 	if !ok {
 		t.Errorf("two pictures before one layout: the cursor, on the view before them, is off it after:\n%s", ih.tb.String())
+	}
+}
+
+// startAppHeld is startAppInternal with every frame after the first held back an hour: input is
+// routed with no frame between it and what came before it.
+func startAppHeld(t *testing.T, root tui.Component, w, h int) *internalHarness {
+	t.Helper()
+	tb := tui.NewTestBackend(w, h)
+	app := tui.NewApp(root, tui.WithBackend(tb), tui.WithMinFrameInterval(time.Hour))
+	ctx, cancel := context.WithCancel(context.Background())
+	ih := &internalHarness{t: t, app: app, tb: tb, res: make(chan error, 1), cxl: cancel}
+	go func() { ih.res <- app.Run(ctx) }()
+	ih.syncInternal()
+	return ih
+}
+
+// A picture's arrival settles the layout before the next input: with no frame after it (frames held),
+// a click lands on the rows the picture and the revealed view put under it, not on the old offset.
+// The cursor is deep in the fence's source (the view scrolled to it) when the picture arrives; it is
+// revealed on the picture, so the click on the view's first row is the fence's first line.
+func TestAPicturesArrivalSettlesBeforeTheNextInput(t *testing.T) {
+	src := strings.Repeat("x ", 300)
+	e := NewEditor(WithCore(CoreInitialText("```mermaid\n" + src + "\n```\nafter" + strings.Repeat("\nline", 20))))
+	lay := newHeldLay()
+	e.layPicture = lay.lay
+	e.SetRenderer(&MarkdownCellRenderer{MarkdownBlocks: MarkdownBlocks{HideMetadata: true}})
+	e.SetView(ViewRendered)
+	e.Core().SetLine(1, 590) // deep in the long line: the first frame reveals it, rows into the fence
+	ih := startAppHeld(t, e, 40, 10)
+	t.Cleanup(ih.stopInternal)
+	t.Cleanup(lay.releaseAll)
+	lay.await(t, lay.started, src, "request")
+	var gen uint64
+	ih.onLoopInternal(func() { gen = e.picGen })
+	lay.answer(src, rowsPicture{"PIC0", "PIC1"})
+	deadline := time.Now().Add(3 * time.Second)
+	for { // the picture handled on the loop (a frame stays held)
+		var now uint64
+		ih.onLoopInternal(func() { now = e.picGen })
+		if now != gen {
+			break
+		}
+		if time.Now().After(deadline) {
+			t.Fatal("the picture's result was not handled")
+		}
+		time.Sleep(time.Millisecond)
+	}
+	if err := ih.tb.Inject(tui.MouseEvent{Kind: tui.MousePress, Button: tui.MouseLeft, X: 1, Y: 0},
+		tui.MouseEvent{Kind: tui.MouseRelease, Button: tui.MouseLeft, X: 1, Y: 0}); err != nil {
+		t.Fatal(err)
+	}
+	ih.syncInternal()
+	var ln int
+	ih.onLoopInternal(func() { ln, _ = e.Core().Line() })
+	if ln != 0 {
+		t.Errorf("a click on the view's first row right after the picture landed on line %d, want 0 (the picture's fence)", ln)
 	}
 }
