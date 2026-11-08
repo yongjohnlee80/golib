@@ -165,6 +165,9 @@ type Editor struct {
 	// shown is the cursor and viewport Layout last kept the cursor in view for: a layout pass
 	// reveals it only when either changed, so the wheel's scroll stays
 	shown viewMark
+	// presented is the presentation the viewport was last revealed for (presentation): a change of
+	// it reveals the cursor again, though the cursor stayed.
+	presented [2]int
 
 	menu *EditorMenu // the right-click menu: off unless a consumer turns it on
 	// sw is the [ Raw | Rendered ] switch, drawn on the editor's first row while swOn and a document
