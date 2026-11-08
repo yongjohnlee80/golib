@@ -151,6 +151,7 @@ var actionSpecs = [actMax]actionSpec{
 	ActNewline:          {name: "Newline", desc: "Break the line, keeping its indent", modes: inInsert, mutating: true, exec: actInsertEdit},
 	ActBackspace:        {name: "Backspace", desc: "Delete the character before the cursor", modes: inInsert, mutating: true, exec: actInsertEdit},
 	ActDeleteForward:    {name: "DeleteForward", desc: "Delete the character under the cursor", modes: inInsert, mutating: true, exec: actInsertEdit},
+	ActScrollPrefix:     {name: "ScrollPrefix", desc: "Arm the view's sideways scroll prefix (zh, zl)", modes: inNormal | inVisual},
 }
 
 // Action is one enumerated Editor operation a chord can bind.
@@ -299,6 +300,8 @@ const (
 	ActNewline       // Enter (Insert): break the line, keeping its indent
 	ActBackspace     // Backspace (Insert): delete the cluster before the cursor
 	ActDeleteForward // Delete (Insert): delete the cluster under the cursor
+
+	ActScrollPrefix // z (Vim): zh and zl scroll the view sideways
 
 	actMax // sentinel for validation
 )

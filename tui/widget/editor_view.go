@@ -137,8 +137,8 @@ func (e *Editor) reveal(ln, col int) {
 		}
 		l.top, l.topIn = m.r.atRow(start)
 		l.left = 0
-		if row < len(m.r.rowBlock) { // a wide block pans until the caret's cell shows
-			if bi := m.r.rowBlock[row]; m.maxPan(bi) > 0 {
+		if row < len(m.r.rowBlock) { // a wide block pans until the caret's cell shows; a picture, only by hand (zh, zl)
+			if bi := m.r.rowBlock[row]; m.maxPan(bi) > 0 && m.r.blockPic[bi] == nil {
 				_, cx := m.r.caret(ln, col)
 				_, w := m.content(bi)
 				off := m.panOf(bi)
@@ -158,6 +158,40 @@ func (e *Editor) reveal(ln, col int) {
 	}
 	l.top, l.left = e.rowMap().reveal(l.top, l.left, ln, e.core.buf.cellsAt(ln, col, e.width))
 	l.topIn = 0
+}
+
+// ScrollColumns implements EditorSideScroller: in the Rendered view the wide block at the cursor
+// (a picture, which has no source to follow, or a table) pans n cells, within what it has to show;
+// anywhere else nothing moves.
+func (l *cellLayout) ScrollColumns(n int) bool { return l.panBlock(-1, n) }
+
+// panBlock pans the wide block on text row y n cells; y -1, or a row of no wide block: the cursor's.
+func (l *cellLayout) panBlock(y, n int) bool {
+	m := l.ed.rowMap()
+	if m.r == nil {
+		return false
+	}
+	bi := -1
+	if ri := m.r.topRow(l.top) + m.in + y; y >= 0 && ri < len(m.r.rowBlock) {
+		bi = m.r.rowBlock[ri]
+	}
+	if ln := l.ed.core.buf.ln; (bi < 0 || m.maxPan(bi) == 0) && ln < len(m.r.blockOf) {
+		bi = m.r.blockOf[ln]
+	}
+	if bi < 0 || m.maxPan(bi) == 0 {
+		return false
+	}
+	was := m.panOf(bi)
+	off := min(max(was+n, 0), m.maxPan(bi))
+	if off == was {
+		return false
+	}
+	if l.pan == nil {
+		l.pan = map[int]int{}
+	}
+	l.pan[m.r.blocks[bi].From] = off
+	l.ed.MarkDirty()
+	return true
 }
 
 // keepTopLine keeps the view's top line when the Rendered rows changed under it (a picture laid):

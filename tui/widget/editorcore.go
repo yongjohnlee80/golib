@@ -52,6 +52,12 @@ type EditorLayout interface {
 	Changed(fromLine int)
 }
 
+// EditorSideScroller is an EditorLayout whose view scrolls sideways under the cursor (zh, zl):
+// ScrollColumns moves it n columns, right when n is positive, and reports whether it moved.
+type EditorSideScroller interface {
+	ScrollColumns(n int) bool
+}
+
 // EditorCore is an editor's behaviour: text, cursor, modes, keys, undo, register, selection and
 // highlighting. See the package's EDITOR CORE notes.
 type EditorCore struct {
