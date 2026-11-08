@@ -171,7 +171,20 @@ func (t *blockParser) arrow(c *cursor, it *BlockItem) bool {
 	n := identLen(c.s[c.i:])
 	id := c.s[c.i : c.i+n]
 	c.i += n + len("<[")
+	// a quoted label runs to its closing quote, whatever it holds (]> too), as a shape's does
+	// (cursor.shapeText); an unquoted one to the first ]>
 	end := strings.Index(c.s[c.i:], "]>")
+	if strings.HasPrefix(c.s[c.i:], `"`) {
+		q := strings.IndexByte(c.s[c.i+1:], '"')
+		if q < 0 {
+			c.fail("a quoted label is not closed")
+			return false
+		}
+		end = 1 + q + 1
+		if !strings.HasPrefix(c.s[c.i+end:], "]>") {
+			end = -1
+		}
+	}
 	if end < 0 {
 		c.fail("a block arrow wants its closing ]>")
 		return false

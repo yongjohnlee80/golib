@@ -105,6 +105,8 @@ func TestBlockRefusals(t *testing.T) {
 		"block-beta\n  go<[\"next\"(right)\n":      "a block arrow wants its closing ]>",
 		"block-beta\n  go<[\"next\"]>\n":           "a block arrow wants its direction",
 		"block-beta\n  go<[\"next\"]>(sideways)\n": "a block arrow's direction is right, left, up, down, x or y",
+		"block-beta\n  go<[\"next ]>(right)\n":     "a quoted label is not closed",
+		"block-beta\n  go<[\"next\" ]>(right)\n":   "a block arrow wants its closing ]>",
 	} {
 		_, err := mermaid.Parse(src)
 		var se *mermaid.SyntaxError
@@ -138,5 +140,13 @@ func TestBlockArrowsAreRead(t *testing.T) {
 	}
 	if items[1].Label != "Next step" {
 		t.Errorf("the arrow's label %q; want it unquoted", items[1].Label)
+	}
+	// a quoted label runs to its closing quote, a ]> inside it included
+	d, err = mermaid.Parse("block-beta\n  a<[\"Keep ]> going\"]>(right) b\n")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if items := d.(*mermaid.BlockDiagram).Root.Items; len(items) != 2 || items[0].Label != "Keep ]> going" || items[0].Arrow != mermaid.ArrowRight || items[1].ID != "b" {
+		t.Errorf("a quoted ]> in an arrow's label: %+v", items)
 	}
 }
