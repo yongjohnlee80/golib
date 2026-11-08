@@ -1,10 +1,14 @@
 package widget
 
 import (
+	"context"
 	"fmt"
 	"reflect"
 	"strings"
 	"testing"
+	"time"
+
+	"github.com/yongjohnlee80/golib/tui"
 )
 
 // countingRenderer is a Markdown cell renderer that counts the blocks it lays.
@@ -202,4 +206,42 @@ func TestTypingLaysTheBlockLeftAndTheBlockEntered(t *testing.T) {
 		t.Fatalf("moving to line 2 laid %v, want the heading and line 2's block", laid)
 	}
 	sameAsFresh(t, e, "typing in the second block")
+}
+
+// A layout laid before the Editor is mounted measures by the default width policy; mounted in an
+// App that draws East Asian ambiguous characters wide, it is laid again by that policy: "±" two
+// cells, not the one it was.
+func TestAMountedEditorLaysByItsAppsWidthPolicy(t *testing.T) {
+	e, _ := cacheEditor(t, "a ± b")
+	if w := cellWidthOf(e.renderedRows(cacheWidth), "±"); w != 1 {
+		t.Fatalf("unmounted, ± is %d cells, want 1", w)
+	}
+	tb := tui.NewTestBackend(40, 5)
+	app := tui.NewApp(e, tui.WithBackend(tb), tui.WithMinFrameInterval(0), tui.WithWidthPolicy(tui.WidthPolicyAmbiguousWide))
+	ctx, cancel := context.WithCancel(context.Background())
+	done := make(chan struct{})
+	go func() { _ = app.Run(ctx); close(done) }()
+	t.Cleanup(func() { cancel(); <-done })
+	got := make(chan int, 1)
+	app.Update(func() { got <- cellWidthOf(e.renderedRows(cacheWidth), "±") })
+	select {
+	case w := <-got:
+		if w != 2 {
+			t.Fatalf("mounted under the wide policy, ± is %d cells, want 2", w)
+		}
+	case <-time.After(5 * time.Second):
+		t.Fatal("the loop did not run")
+	}
+}
+
+// cellWidthOf is the width of the first cell of text in r, -1 for none.
+func cellWidthOf(r *renderedLayout, text string) int {
+	for _, row := range r.rows {
+		for _, c := range row.Cells {
+			if c.Text == text {
+				return c.W
+			}
+		}
+	}
+	return -1
 }
