@@ -4,11 +4,13 @@ import (
 	"context"
 	"fmt"
 	"reflect"
+	"slices"
 	"strings"
 	"testing"
 	"time"
 
 	"github.com/yongjohnlee80/golib/tui"
+	"github.com/yongjohnlee80/golib/tui/style"
 )
 
 // countingRenderer is a Markdown cell renderer that counts the blocks it lays.
@@ -39,6 +41,11 @@ const cacheWidth = 40
 func cacheEditor(t *testing.T, text string) (*Editor, *countingRenderer) {
 	t.Helper()
 	e := NewEditor(WithCore(CoreInitialText(text)))
+	var st SyntaxStyles // code, marks and emphasis each look their own, so a block's kind shows in its cells
+	st[MarkdownCodeStyle] = style.New().Bold(true)
+	st[MarkdownMarkerStyle] = style.New().Underline(true)
+	st[MarkdownEmphStyle] = style.New().Italic(true)
+	e.core.SetSyntaxStyles(st)
 	c := &countingRenderer{md: &MarkdownCellRenderer{MarkdownBlocks: MarkdownBlocks{HideMetadata: true}}}
 	e.SetRenderer(c)
 	e.SetView(ViewRendered)
@@ -105,11 +112,15 @@ func cacheRowText(r CellRow) string {
 	return b.String()
 }
 
-// bigNote is a 5,000-line note: headings, list items, code and paragraphs, each with a blank line
-// after it.
+// bigNote is a note of over 5,000 lines: headings, list items, code, paragraphs and tables, each
+// with a blank line after it.
 func bigNote() string {
 	var b strings.Builder
 	for i := range 2500 {
+		if i%10 == 9 {
+			fmt.Fprintf(&b, "| a | b |\n| - | - |\n| %d | x |\n\n", i)
+			continue
+		}
 		switch i % 4 {
 		case 0:
 			fmt.Fprintf(&b, "# Part %d\n\n", i)
@@ -126,14 +137,14 @@ func bigNote() string {
 
 // On a 5,000-line note, an edit that changes no block's kind lays only its own block again: a word
 // typed into a paragraph's line in the middle lays that line's block, and a line added after it (a
-// prose line is a block of its own) lays only the new line's, the blocks after it moved a line down;
-// the layout is the one a fresh Editor lays, caret and hit agreeing.
+// prose line is a block of its own) lays only the new line's, the blocks after it (tables among
+// them) moved a line down; the layout is the one a fresh Editor lays, caret and hit agreeing.
 func TestAnEditLaysOnlyItsOwnBlockAgain(t *testing.T) {
 	e, c := cacheEditor(t, bigNote())
 	if n := len(e.core.buf.textLines); n < 5000 {
 		t.Fatalf("the note has %d lines, want 5,000", n)
 	}
-	ln := 2500 // about the middle: the next paragraph's line ("Some *words* of paragraph 1251.")
+	ln := len(e.core.buf.textLines) / 2 // about the middle: the next paragraph's line
 	for !strings.HasPrefix(e.core.buf.textLines[ln], "Some") {
 		ln++
 	}
@@ -172,26 +183,60 @@ func TestAnIndentedLinesKindFollowsTheLinesAboveIt(t *testing.T) {
 	sameAsFresh(t, e, "plain made a list item again: the indented line is not code")
 }
 
-// A comment closed later in the note hides the text before it: the blocks above the edit are laid
-// again; and two edits before one layout, list editing's InCode and InTable asked between them, are
-// laid as the text they leave.
-func TestACommentClosedLaterLaysTheBlocksAboveAgain(t *testing.T) {
-	e, c := cacheEditor(t, "<!-- a note\n\nhidden\n\nstill\n\nend\n\nafter")
+// A comment begun inside a line and closed lines later hides the text after its start: the line it
+// begins on keeps its block, laid again under its new mask (its bounds the same, its text too).
+func TestACommentClosedLaterLaysTheLineItBeganOnAgain(t *testing.T) {
+	e, c := cacheEditor(t, "a <!-- b\nc\nd\n\nafter")
 	sameAsFresh(t, e, "the comment open")
-	if _, err := e.core.Insert(TextPos{Line: 6, Col: 3}, " -->"); err != nil {
+	before := e.renderedRows(cacheWidth).blocks
+	if _, err := e.core.Insert(TextPos{Line: 2, Col: 1}, " -->"); err != nil {
 		t.Fatal(err)
 	}
+	laid := relaid(e, c)
 	sameAsFresh(t, e, "the comment closed")
+	after := e.renderedRows(cacheWidth).blocks
+	if before[0] != (Block{From: 0, To: 1}) || after[0] != before[0] || !slices.Contains(laid, before[0]) {
+		t.Fatalf("the line the comment begins on: blocks %v then %v, laid %v; want [0, 1) both times, laid again", before[:1], after[:1], laid)
+	}
+}
 
-	if _, err := e.core.Insert(TextPos{Line: 6, Col: 3}, "x"); err != nil { // "endx -->": the comment still closed
+// Two edits before one layout, list editing's InCode and InTable asked between them (a Batch: no
+// layout until it ends), are laid as the text they leave: a comment's close typed on its last line,
+// then taken off again.
+func TestTwoEditsBeforeOneLayoutAreLaidAsTheTextTheyLeave(t *testing.T) {
+	e, c := cacheEditor(t, "a <!-- b\nc\nd\n\nafter")
+	c.laid = nil
+	err := e.core.Batch(func() error {
+		if _, err := e.core.Insert(TextPos{Line: 2, Col: 1}, " -->"); err != nil {
+			return err
+		}
+		c.InCode(e.core.buf.textLines, 4) // the comment closed, prepared
+		if err := e.core.Delete(TextRange{From: TextPos{Line: 2, Col: 1}, To: TextPos{Line: 2, Col: 5}}); err != nil {
+			return err
+		}
+		c.InTable(e.core.buf.textLines, 4) // open again, prepared: the last Prepare saw no change
+		if len(c.laid) != 0 {
+			t.Errorf("laid %v between the edits, want no layout until the batch ends", c.laid)
+		}
+		return nil
+	})
+	if err != nil {
 		t.Fatal(err)
 	}
-	c.InCode(e.core.buf.textLines, 8)
-	if _, err := e.core.Replace(TextRange{From: TextPos{6, 4}, To: TextPos{6, 8}}, ""); err != nil { // the close removed
+	sameAsFresh(t, e, "two edits, the close typed and taken off")
+	if _, err := e.core.Insert(TextPos{Line: 2, Col: 1}, " -->"); err != nil {
 		t.Fatal(err)
 	}
-	c.InTable(e.core.buf.textLines, 8)
-	sameAsFresh(t, e, "two edits, the close typed on and removed")
+	err = e.core.Batch(func() error {
+		c.InCode(e.core.buf.textLines, 4)
+		_, err := e.core.Insert(TextPos{Line: 4, Col: 5}, "!")
+		c.InTable(e.core.buf.textLines, 4)
+		return err
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	sameAsFresh(t, e, "the close typed, laid at another width only, then another edit")
 }
 
 // The block typed in is laid as its source, and moving to another block while typing lays both
