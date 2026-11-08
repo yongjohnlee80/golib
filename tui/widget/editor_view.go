@@ -153,6 +153,15 @@ func (e *Editor) presentation() [2]int {
 	return p
 }
 
+// represent asks for a layout when the presentation changed (Insert entered or left on a rendered
+// block, the view switched): a mode's change only repaints, and Layout is where the view is revealed
+// for the rows laid anew.
+func (e *Editor) represent() {
+	if e.presentation() != e.presented {
+		e.RequestLayout()
+	}
+}
+
 // Layout is greedy on both axes. The gutter, when the numbers show, takes its columns from the
 // text's area, never all of it.
 func (e *Editor) Layout(c tui.Constraints) tui.Size {
