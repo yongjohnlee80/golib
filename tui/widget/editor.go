@@ -185,6 +185,9 @@ type Editor struct {
 	shownImages []shownPicture
 	// layPicture lays a picture off the loop: LayCellPicture when nil (a test lays its own).
 	layPicture func(ctx context.Context, lang, src string, measure func(string) int, cols int, syntax SyntaxStyles) (CellPicture, error)
+	// layAsked is whether the block being laid asked for a picture or an image (Picture, Image): such
+	// a block is laid again each time, its slot answering.
+	layAsked bool
 	// taskDone, when set, sees each task's result as it is taken, before it is handled (a test's
 	// fence: a result that changes nothing has arrived).
 	taskDone func(tui.TaskResult)

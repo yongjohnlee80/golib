@@ -51,6 +51,7 @@ var _ CellPictureHost = (*Editor)(nil)
 
 // Picture implements CellPictureHost.
 func (e *Editor) Picture(b Block, lang, src string, cols int) (CellPicture, bool) {
+	e.layAsked = true
 	ctx := e.Context()
 	if ctx == nil {
 		return nil, false

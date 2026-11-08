@@ -1,6 +1,8 @@
 package widget
 
 import (
+	"slices"
+
 	"github.com/yongjohnlee80/golib/highlight"
 	"github.com/yongjohnlee80/golib/tui/style"
 )
@@ -25,6 +27,15 @@ type CellRenderer interface {
 	// LayOut lays block b out to width cells, measuring each cluster with measure (the Editor's
 	// width policy). typing: b holds the cursor while text is typed, so it is laid as its source.
 	LayOut(b Block, lines []string, width int, measure func(string) int, typing bool, th CellTheme) CellBlock
+}
+
+// CellBlockContext is a CellRenderer whose blocks the Editor may keep across an edit: a block whose
+// lines, bounds (moved only by the lines an edit added or removed above it), typing and stamp are
+// unchanged is not laid again. BlockContext stamps what block b's LayOut reads beyond its own lines'
+// text (the lines around it that classify it, its renderer's settings): it must change whenever such
+// an input changes LayOut's result. A renderer without it is laid whole on every change.
+type CellBlockContext interface {
+	BlockContext(b Block, lines []string) uint64
 }
 
 // CellBlock is a block laid out: its rows, and the widest of them in cells.
@@ -179,6 +190,11 @@ type renderedLayout struct {
 	blockW   []int         // each block's width as laid out: wider than the room, it pans
 	blockRow []int         // each block's first row, -1 for none
 	blockPic []CellPicture // each block's picture, nil for none (CellBlock.Picture)
+	blockN   []int         // each block's rows
+	lines    []string      // the lines laid (a copy): the next layout keeps the blocks whose lines it still has
+	typed    []bool        // each block laid as its source (typing)
+	asked    []bool        // each block asked the Editor for a picture or an image, ready or not: laid again each time
+	stamps   []uint64      // each block's CellBlockContext stamp
 }
 
 // renderedRows is the Editor's Rendered layout at width, laid again only when something it depends
@@ -195,11 +211,26 @@ func (e *Editor) renderedRows(width int) *renderedLayout {
 			return r
 		}
 	}
-	r := &renderedLayout{key: key, lineRows: make([][]int, len(lines)), blockOf: make([]int, len(lines))}
+	r := &renderedLayout{key: key, lineRows: make([][]int, len(lines)), blockOf: make([]int, len(lines)), lines: slices.Clone(lines)}
 	r.blocks = e.render.Blocks(lines, 0, len(lines))
+	stamper, _ := e.render.(CellBlockContext)
+	keep := r.keeps(e.laid, stamper != nil)
 	for bi, b := range r.blocks {
 		typing := key.typing >= b.From && key.typing < b.To
-		cb := e.render.LayOut(b, lines, width, e.width, typing, key.theme)
+		var stamp uint64
+		if stamper != nil {
+			stamp = stamper.BlockContext(b, lines)
+		}
+		var cb CellBlock
+		if prev, oi, delta := keep(b); prev != nil && prev.typed[oi] == typing && !prev.asked[oi] && prev.stamps[oi] == stamp {
+			cb = prev.laidBlock(oi, delta)
+		} else {
+			e.layAsked = false
+			cb = e.render.LayOut(b, lines, width, e.width, typing, key.theme)
+		}
+		r.typed, r.asked, r.stamps = append(r.typed, typing), append(r.asked, e.layAsked), append(r.stamps, stamp)
+		e.layAsked = false
+		r.blockN = append(r.blockN, len(cb.Rows))
 		r.blockW = append(r.blockW, cb.Width)
 		first := -1
 		if len(cb.Rows) > 0 {
@@ -231,6 +262,82 @@ func (e *Editor) renderedRows(width int) *renderedLayout {
 	}
 	e.laid[1], e.laid[0] = e.laid[0], r // the newest first; the other width kept beside it
 	return r
+}
+
+// keeps finds, for a block of r, the block of an earlier layout laid from the same lines: one at the
+// same width, renderer, buffer and look, the block wholly in the lines before the first that
+// changed at its bounds, or wholly in those after the last at its bounds less the lines' count
+// change (delta). nil: none, the block is laid. Only a renderer that stamps its blocks keeps any.
+func (r *renderedLayout) keeps(laid [2]*renderedLayout, stamped bool) func(b Block) (prev *renderedLayout, oi, delta int) {
+	none := func(Block) (*renderedLayout, int, int) { return nil, 0, 0 }
+	if !stamped {
+		return none
+	}
+	var prev *renderedLayout
+	for _, o := range laid {
+		if o != nil && o.key.gen == r.key.gen && o.key.buf == r.key.buf && o.key.width == r.key.width && o.key.theme == r.key.theme {
+			prev = o
+			break
+		}
+	}
+	if prev == nil {
+		return none
+	}
+	n, m := len(r.lines), len(prev.lines)
+	p := 0
+	for p < min(n, m) && r.lines[p] == prev.lines[p] {
+		p++
+	}
+	s := 0
+	for s < min(n, m)-p && r.lines[n-1-s] == prev.lines[m-1-s] {
+		s++
+	}
+	delta := n - m
+	byFrom := make(map[int]int, len(prev.blocks))
+	for i, b := range prev.blocks {
+		byFrom[b.From] = i
+	}
+	return func(b Block) (*renderedLayout, int, int) {
+		d := 0
+		switch {
+		case b.To <= p:
+		case b.From >= n-s:
+			d = delta
+		default:
+			return nil, 0, 0 // a line of it changed
+		}
+		oi, ok := byFrom[b.From-d]
+		if !ok || prev.blocks[oi] != (Block{From: b.From - d, To: b.To - d}) {
+			return nil, 0, 0
+		}
+		return prev, oi, d
+	}
+}
+
+// laidBlock is block oi as laid, its rows moved delta lines down: a copy, the cells of a source
+// line (Line, Anchor >= 0) shifted, a decoration's (-1) kept.
+func (r *renderedLayout) laidBlock(oi, delta int) CellBlock {
+	var rows []CellRow
+	if first := r.blockRow[oi]; first >= 0 {
+		rows = r.rows[first : first+r.blockN[oi]]
+	}
+	if delta != 0 {
+		moved := make([]CellRow, len(rows))
+		for i, row := range rows {
+			row.Cells = slices.Clone(row.Cells)
+			for j := range row.Cells {
+				if row.Cells[j].Line >= 0 {
+					row.Cells[j].Line += delta
+				}
+			}
+			if row.Anchor >= 0 {
+				row.Anchor += delta
+			}
+			moved[i] = row
+		}
+		rows = moved
+	}
+	return CellBlock{Rows: slices.Clip(rows), Width: r.blockW[oi], Picture: r.blockPic[oi]}
 }
 
 // firstRow is line ln's first display row; a line of a block drawn with no row of a line's (a
