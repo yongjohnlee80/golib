@@ -112,6 +112,7 @@ func (fakePicture) Paint(tui.Surface, int, int) {}
 // buffer) no result is taken.
 func TestAPicturesStaleLayIsDropped(t *testing.T) {
 	e := NewEditor()
+	e.picBuf = e.core.Buffer() // the slots are the shown buffer's
 	at := pictureAt{from: 3, cols: 40}
 	e.pics = map[pictureAt]*pictureSlot{at: {task: 7, pending: true, pic: fakePicture("old")}}
 	gen := e.picGen
