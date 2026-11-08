@@ -40,6 +40,10 @@ type heldLay struct {
 	held      map[string]*heldPicture
 	started   chan string
 	cancelled chan string
+	// backlog holds, per channel, the announcements an await read while waiting for another:
+	// requests start concurrently, in any order, so none is lost to the wait that came first.
+	// The test's goroutine alone reads it.
+	backlog map[chan string][]string
 }
 
 // heldPicture is a source's answer: pic, once done is closed.
@@ -50,7 +54,7 @@ type heldPicture struct {
 }
 
 func newHeldLay() *heldLay {
-	return &heldLay{held: map[string]*heldPicture{}, started: make(chan string, 64), cancelled: make(chan string, 64)}
+	return &heldLay{held: map[string]*heldPicture{}, started: make(chan string, 64), cancelled: make(chan string, 64), backlog: map[chan string][]string{}}
 }
 
 func (l *heldLay) of(src string) *heldPicture {
@@ -100,14 +104,21 @@ func (l *heldLay) lay(ctx context.Context, _, src string, _ func(string) int, _ 
 	return h.pic, nil
 }
 
+// await takes one announcement of want on c: one an earlier await read already, else the next to
+// come; any other read meanwhile is kept for the await that wants it.
 func (l *heldLay) await(t *testing.T, c chan string, want, what string) {
 	t.Helper()
+	if i := slices.Index(l.backlog[c], want); i >= 0 {
+		l.backlog[c] = slices.Delete(l.backlog[c], i, i+1)
+		return
+	}
 	for {
 		select {
 		case got := <-c:
 			if got == want {
 				return
 			}
+			l.backlog[c] = append(l.backlog[c], got)
 		case <-time.After(3 * time.Second):
 			t.Fatalf("no %s of %q", what, want)
 		}
@@ -461,4 +472,17 @@ func TestAPicturesArrivalIsItsOwnersAlone(t *testing.T) {
 	if !settled || !ok {
 		t.Errorf("B's picture arrived with B's cursor on the view: after the layout, settled %v, the cursor shown %v (A's snapshot inherited?)", settled, ok)
 	}
+}
+
+// The fixture's await takes announcements in any order: T's requests before S's, awaiting S then T
+// finds both (the one read while waiting for S is kept, not dropped).
+func TestHeldLayAwaitTakesRequestsInAnyOrder(t *testing.T) {
+	l := newHeldLay()
+	for _, src := range []string{"T", "T", "S", "S"} { // two widths each, T's first
+		l.started <- src
+	}
+	l.await(t, l.started, "S", "request")
+	l.await(t, l.started, "T", "request")
+	l.await(t, l.started, "T", "second request")
+	l.await(t, l.started, "S", "second request")
 }
