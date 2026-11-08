@@ -30,8 +30,10 @@ const ellipsis = "…"
 // capLabel is s cut to its role's cap at a grapheme cluster's edge, with … last when it was cut: a
 // wide cluster that would cross the cap drops whole, and the … takes its own width from the cap.
 // w is the shown label's width. A kind measures a label only through it, before layout, so the
-// room a layout reserves is the room drawn.
+// room a layout reserves is the room drawn. A label is one row: a line break in it (a <br>, which
+// the parser makes "\n") is a space, so the words on either side stay apart.
 func capLabel(s string, r Role, m Measurer) (shown string, w int, capped bool) {
+	s = strings.ReplaceAll(s, "\n", " ")
 	w = m.StringWidth(s)
 	limit := caps[r]
 	if w <= limit {
