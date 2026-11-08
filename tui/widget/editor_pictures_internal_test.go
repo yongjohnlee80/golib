@@ -313,12 +313,15 @@ func TestPicturesArrivingTogetherKeepTheReveal(t *testing.T) {
 	e, ih := pictureEditor(t, doc, lay, 40, 10)
 	lay.await(t, lay.started, "S", "request")
 	lay.await(t, lay.started, "T", "request")
-	ih.onLoopInternal(func() { e.Core().SetLine(6, 0) }) // on the view, a few rows under the first fence
+	// on the view, a few rows under the first fence; laid out, so the view has taken the cursor where
+	// it is (a move alone repaints: its layout would otherwise reveal the cursor whatever the pictures)
+	ih.onLoopInternal(func() { e.Core().SetLine(6, 0); e.RequestLayout() })
 	ih.syncInternal()
 	var on bool
-	ih.onLoopInternal(func() { _, _, on = e.Cursor() })
-	if !on {
-		t.Fatal("precondition: the cursor off the view before the pictures")
+	var seen [2]int
+	ih.onLoopInternal(func() { _, _, on = e.Cursor(); seen = e.shown.cursor })
+	if !on || seen != [2]int{6, 0} {
+		t.Fatalf("precondition: the cursor on the view (%v) and laid out there (%v), want true and [6 0]", on, seen)
 	}
 	tall := make(rowsPicture, 15)
 	for i := range tall {
