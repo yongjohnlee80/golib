@@ -552,8 +552,9 @@ func TestGjKeepsTheViewsColumnAcrossPannedBlocks(t *testing.T) {
 	}
 }
 
-// A room of one, two or three cells (or two, its third the scroll indicator's) still pans: the far
-// column's last letter is reached by the caret, drawn where it says, and a click there lands on it.
+// A room of one, two or three cells (or two, its third the scroll indicator's; or one in a note taller
+// than the view, where the indicator would take the only column, so it isn't drawn) still pans: the
+// far column's last letter is reached by the caret, drawn where it says, and a click there lands on it.
 func TestANarrowRoomStillPans(t *testing.T) {
 	for _, c := range []struct {
 		name string
@@ -562,6 +563,7 @@ func TestANarrowRoomStillPans(t *testing.T) {
 	}{
 		{"1 cell", wideTable(), 1}, {"2 cells", wideTable(), 2}, {"3 cells", wideTable(), 3},
 		{"3 cells, one the scroll indicator's", wideTable() + strings.Repeat("\nline", 20), 3},
+		{"1 cell, the note taller than the view (no room for the scroll indicator)", wideTable() + strings.Repeat("\nline", 20), 1},
 	} {
 		h, sh, ed := mdEditorAt(t, c.text, c.w, 10)
 		x, y, ok := caretAt(h, sh, ed, 0, 70)
