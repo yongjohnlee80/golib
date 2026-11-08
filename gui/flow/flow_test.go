@@ -1,6 +1,7 @@
 package flow_test
 
 import (
+	"image/color"
 	"strings"
 	"testing"
 
@@ -358,5 +359,41 @@ func TestABreakSpanEndsItsLine(t *testing.T) {
 	p := flow.Lay([]flow.Span{plain("a"), br, br, plain("b")}, flow.Options{}, shaper())
 	if len(p.Lines) != 3 {
 		t.Fatalf("two breaks in a row: %d lines, want 3", len(p.Lines))
+	}
+}
+
+// Paint paints each fragment whole, its background then its text, in reading order: two code chips
+// side by side are chip, text, chip, text, so the second chip's padding lies over the first's last
+// glyph as it always has. PaintBackgrounds then PaintText paints every chip first, then every text.
+func TestPaintKeepsEachFragmentsBackgroundWithItsText(t *testing.T) {
+	chip := color.NRGBA{R: 0xee, G: 0xee, B: 0xee, A: 0xff}
+	code := func(s string) flow.Span {
+		return flow.Span{Text: s, Font: gui.Font{Size: 16}, Background: chip, Line: -1}
+	}
+	spans := []flow.Span{code("one"), code("two")}
+	// the texts collapse: a fragment may draw its text in more than one call
+	order := func(paint func(c gui.Canvas, p *flow.Para)) string {
+		rc := gui.NewRecordingCanvas(gui.Size{W: 300, H: 40}, gui.Size{W: 8, H: 16})
+		p := flow.Lay(spans, flow.Options{}, rc.Text())
+		paint(rc, p)
+		var out []string
+		for _, c := range rc.Calls {
+			switch {
+			case c.Op == "FillRect" && c.Brush.Color == chip:
+				out = append(out, "chip")
+			case c.Op == "DrawText" && (len(out) == 0 || out[len(out)-1] != "text"):
+				out = append(out, "text")
+			}
+		}
+		return strings.Join(out, " ")
+	}
+	if got := order(func(c gui.Canvas, p *flow.Para) { p.Paint(c, gui.Pt(0, 0), spans) }); got != "chip text chip text" {
+		t.Errorf("Paint: %q, want each fragment's chip with its text (chip text chip text)", got)
+	}
+	if got := order(func(c gui.Canvas, p *flow.Para) {
+		p.PaintBackgrounds(c, gui.Pt(0, 0), spans)
+		p.PaintText(c, gui.Pt(0, 0), spans)
+	}); got != "chip chip text text" {
+		t.Errorf("PaintBackgrounds then PaintText: %q, want chip chip text text", got)
 	}
 }
