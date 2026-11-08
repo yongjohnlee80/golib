@@ -170,6 +170,7 @@ type renderedLayout struct {
 	lineRows [][]int
 	blockOf  []int // each line's block, into blocks
 	rowBlock []int // each row's block, into blocks
+	blockRow []int // each block's first row, -1 for none
 }
 
 // renderedRows is the Editor's Rendered layout at width, laid again only when something it depends
@@ -191,6 +192,11 @@ func (e *Editor) renderedRows(width int) *renderedLayout {
 	for bi, b := range r.blocks {
 		typing := key.typing >= b.From && key.typing < b.To
 		cb := e.render.LayOut(b, lines, width, e.width, typing, key.theme)
+		first := -1
+		if len(cb.Rows) > 0 {
+			first = len(r.rows)
+		}
+		r.blockRow = append(r.blockRow, first)
 		for ln := b.From; ln < b.To && ln < len(lines); ln++ {
 			r.blockOf[ln] = bi
 		}
@@ -217,9 +223,15 @@ func (e *Editor) renderedRows(width int) *renderedLayout {
 	return r
 }
 
-// firstRow is line ln's first display row; a line with none (folded) takes the next line's that has
+// firstRow is line ln's first display row; a line of a block drawn with no row of a line's (a
+// picture) takes the block's first row; any other line with none (folded) the next line's that has
 // one, or the last row.
 func (r *renderedLayout) firstRow(ln int) int {
+	if ln >= 0 && ln < len(r.lineRows) && len(r.lineRows[ln]) == 0 {
+		if from, to := r.sourcelessRun(ln); r.picture(ln, from, to) {
+			return r.blockRow[r.blockOf[ln]]
+		}
+	}
 	for i := max(ln, 0); i < len(r.lineRows); i++ {
 		if rs := r.lineRows[i]; len(rs) > 0 {
 			return rs[0]
@@ -359,6 +371,15 @@ func (r *renderedLayout) hit(ri, x int) (ln, col int) {
 	if a := r.rows[ri].Anchor; a >= 0 {
 		return a, 0
 	}
+	if ri < len(r.rowBlock) { // a row of decorations only: its block's line before it, else its first line
+		bi := r.rowBlock[ri]
+		for i := ri - 1; i >= 0 && r.rowBlock[i] == bi; i-- {
+			if !r.rows[i].ShowsNoSource() || r.rows[i].Anchor >= 0 {
+				return r.lineOfRow(i), 0
+			}
+		}
+		return r.blocks[bi].From, 0
+	}
 	return r.lineOfRow(ri), 0
 }
 
@@ -377,5 +398,15 @@ func (l *cellLayout) FoldOf(line int) (from, to int, hidden, ok bool) {
 		return 0, 0, false, false
 	}
 	from, to = r.sourcelessRun(line)
-	return from, to, true, true
+	return from, to, !r.picture(line, from, to), true // a picture's whole fence is a fold that shows
+}
+
+// picture reports whether line's run of lines with no row, [from, to), is its whole block, drawn with
+// rows none of which is a line's: a picture in place of its fence.
+func (r *renderedLayout) picture(line, from, to int) bool {
+	if line < 0 || line >= len(r.blockOf) || r.blockOf[line] >= len(r.blockRow) {
+		return false
+	}
+	bi := r.blockOf[line]
+	return r.blocks[bi].From == from && r.blocks[bi].To == to && r.blockRow[bi] >= 0
 }

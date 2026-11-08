@@ -244,12 +244,5 @@ func kindOf(folder bool) pathKind {
 // returned stop, which its owner calls when something not run as a task (a
 // folder row, an fs.FS source) takes over.
 func goRead(ctx *tui.Context, group string, read func(context.Context) (any, error)) (tui.TaskID, context.CancelFunc) {
-	own, stop := context.WithCancel(context.Background())
-	id := ctx.Go(func(task context.Context) (any, error) {
-		c, cancel := context.WithCancel(task)
-		defer cancel()
-		defer context.AfterFunc(own, cancel)()
-		return read(c)
-	}, tui.Exclusive(group))
-	return id, stop
+	return ctx.GoStoppable(read, tui.Exclusive(group))
 }

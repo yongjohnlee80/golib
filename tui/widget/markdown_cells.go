@@ -317,12 +317,7 @@ func (r *MarkdownCellRenderer) fenced(lb *mdCellLines, cb *CellBlock, b Block, l
 	lead := len(open) - len(strings.TrimLeft(open, " "))
 	rest := open[lead+f.n:]
 	info := strings.TrimSpace(rest)
-	if info != "" {
-		at := lead + f.n + strings.Index(rest, info) // the info string's own bytes, after the fence's
-		muted := func(int) style.Style { return lb.role(MarkdownQuietStyle) }
-		lb.cells(cb, b.From, open[at:at+len(info)], clusterIndex(open, at), muted, nil, nil, nil, nil)
-	}
-	if lang := pictureLang(info); lang != "" && r.pictures != nil { // a diagram or a chart: its picture, its fences none
+	if lang := pictureLang(info); lang != "" && r.pictures != nil { // a diagram or a chart: its picture, its fence none
 		end := b.To
 		if end-1 > b.From && markdown.FenceCloses(lines[end-1], f.ch, f.n) {
 			end--
@@ -331,6 +326,11 @@ func (r *MarkdownCellRenderer) fenced(lb *mdCellLines, cb *CellBlock, b Block, l
 			cb.Rows = append(cb.Rows, pictureRows(p, lb.measure)...)
 			return
 		}
+	}
+	if info != "" {
+		at := lead + f.n + strings.Index(rest, info) // the info string's own bytes, after the fence's
+		muted := func(int) style.Style { return lb.role(MarkdownQuietStyle) }
+		lb.cells(cb, b.From, open[at:at+len(info)], clusterIndex(open, at), muted, nil, nil, nil, nil)
 	}
 	var hl highlight.Highlighter
 	if words := strings.Fields(info); len(words) > 0 {

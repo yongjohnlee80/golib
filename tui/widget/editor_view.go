@@ -138,6 +138,27 @@ func (e *Editor) reveal(ln, col int) {
 	l.topIn = 0
 }
 
+// keepTopLine keeps the view's top line when the Rendered rows changed under it (a picture laid):
+// the rows of it above the view are clamped to the rows its block has now, so the view never starts
+// past them.
+func (e *Editor) keepTopLine() {
+	l := &e.cells
+	m := e.rowMap()
+	if m.r == nil || len(m.r.rows) == 0 {
+		l.topIn = 0
+		return
+	}
+	start := min(m.r.topRow(l.top), len(m.r.rows)-1)
+	end := len(m.r.rows) // past the top's block's last row
+	for ri := start; ri < len(m.r.rows); ri++ {
+		if m.r.rowBlock[ri] != m.r.rowBlock[start] {
+			end = ri
+			break
+		}
+	}
+	l.topIn = max(min(l.topIn, end-1-start), 0)
+}
+
 // presentation is what the text is drawn as: its own Rendered layout or not, and the line laid as
 // its source while text is typed (-1: none). Entering Insert on a tall rendered block, or Ctrl+T,
 // lays the cursor's rows anew with the cursor where it was, so the view is revealed for them again;
@@ -175,7 +196,12 @@ func (e *Editor) Layout(c tui.Constraints) tui.Size {
 	e.cells.w = total - e.cells.gutter
 	e.cells.h = max(fillH(c)-e.headerRows(), 0)
 	moved := e.shown.moved([2]int{e.core.buf.ln, e.core.buf.col}, [2]int{e.cells.h, e.cells.w})
-	if p := e.presentation(); moved || p != e.presented {
+	pics := e.picLaid != e.picGen // a picture laid: the rows changed under the view
+	if pics {
+		e.picLaid = e.picGen
+		e.keepTopLine()
+	}
+	if p := e.presentation(); moved || p != e.presented || pics && e.picReveal {
 		e.presented = p
 		e.ensureVisible()
 	}
