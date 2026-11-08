@@ -28,26 +28,45 @@ import (
 //
 // Paint renders the laid-out paragraph onto canvas c with its top-left origin at position at.
 // The provided spans slice specifies the styles and color palettes; passing updated spans allows
-// an application to restyle or tint text without re-executing paragraph line layout.
+// an application to restyle or tint text without re-executing paragraph line layout. It is
+// PaintBackgrounds then PaintText: a caller that lays something between a span's background and
+// its glyphs (an editor's selection, a find's marks) calls the two itself.
 func (p *Para) Paint(c gui.Canvas, at gui.Point, spans []Span) {
+	p.PaintBackgrounds(c, at, spans)
+	p.PaintText(c, at, spans)
+}
+
+// PaintBackgrounds paints the spans' backgrounds (an inline code span's chip), each around its
+// glyphs, not its line: a tall line's chip is not a column.
+func (p *Para) PaintBackgrounds(c gui.Canvas, at gui.Point, spans []Span) {
+	for _, l := range p.Lines {
+		for _, f := range l.Frags {
+			sp := spans[f.Span]
+			if sp.Hidden || sp.Background.A == 0 || f.W <= 0 {
+				continue
+			}
+			x, top := at.X+f.X, at.Y+l.Y
+			// a plain rectangle: a rounded one is a path, and a page of code spans as paths made
+			// every frame slow
+			pad := sp.Font.Size * 0.18
+			chip := gui.Rect{X: x - pad/2, Y: at.Y + l.Baseline - f.ascent - pad/2, W: f.W + pad, H: sp.Font.Size*1.15 + pad}
+			if f.ascent == 0 {
+				chip = gui.Rect{X: x, Y: top, W: f.W, H: l.H}
+			}
+			c.FillRect(chip, gui.Solid(sp.Background))
+		}
+	}
+}
+
+// PaintText paints the spans' glyphs, atoms, underlines and strikes, over whatever lies under them.
+func (p *Para) PaintText(c gui.Canvas, at gui.Point, spans []Span) {
 	for _, l := range p.Lines {
 		for _, f := range l.Frags {
 			sp := spans[f.Span]
 			if sp.Hidden {
 				continue
 			}
-			x, top := at.X+f.X, at.Y+l.Y
-			if sp.Background.A > 0 && f.W > 0 {
-				// a chip around the glyphs, not the line: a tall line's chip is not a column. A
-				// plain rectangle: a rounded one is a path, and a page of code spans as paths
-				// made every frame slow
-				pad := sp.Font.Size * 0.18
-				chip := gui.Rect{X: x - pad/2, Y: at.Y + l.Baseline - f.ascent - pad/2, W: f.W + pad, H: sp.Font.Size*1.15 + pad}
-				if f.ascent == 0 {
-					chip = gui.Rect{X: x, Y: top, W: f.W, H: l.H}
-				}
-				c.FillRect(chip, gui.Solid(sp.Background))
-			}
+			x := at.X + f.X
 			if sp.Atom != nil {
 				if sp.Atom.Paint != nil {
 					sp.Atom.Paint(c.Sub(gui.Rect{X: x, Y: at.Y + l.Baseline - sp.Atom.Baseline, W: sp.Atom.W, H: sp.Atom.H}))

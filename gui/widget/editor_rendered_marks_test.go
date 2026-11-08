@@ -2,6 +2,7 @@ package widget
 
 import (
 	"image/color"
+	"slices"
 	"strings"
 	"testing"
 
@@ -77,13 +78,14 @@ func TestTheWindowsRenderedViewMarksEveryMatch(t *testing.T) {
 	}
 }
 
-// A find's tints sit between a line's own marks and the selection: a match in a table's header is
-// tinted over the header's opaque background, not under it, and the current match's selection is
-// laid over its tint, as the terminal lays the selection over its marks. On a sepia page and on a
+// A find's tints sit between what lies under a line's text and the selection: a match in a table's
+// header is tinted over the header's opaque background, and one in an inline code span over the
+// span's chip, not under them; the current match's selection is laid over its tint, as the terminal
+// lays the selection over its marks; the glyphs are drawn over all of it. On a sepia page and on a
 // dark one.
 func TestTheWindowsMarksSitBetweenTheBlockAndTheSelection(t *testing.T) {
 	h := startEditor(t, 60, 10, WithRenderer(NewMarkdownRenderer()),
-		WithCore(tuiwidget.CoreInitialText("| alpha | b |\n| --- | --- |\n| c | d |\n\nalpha beta")))
+		WithCore(tuiwidget.CoreInitialText("| alpha | b |\n| --- | --- |\n| c | d |\n\nalpha beta `alpha`")))
 	red := color.NRGBA{R: 200, A: 0x66}
 	var st tuiwidget.SyntaxStyles
 	st[highlight.Alert] = style.New().Foreground(style.RGB(200, 0, 0))
@@ -119,11 +121,17 @@ func TestTheWindowsMarksSitBetweenTheBlockAndTheSelection(t *testing.T) {
 				tints = append(tints, i)
 			}
 		}
-		if len(tints) != 2 {
-			t.Fatalf("%s: %d red tints, want two (the header's alpha and the prose's)", page.name, len(tints))
+		if len(tints) != 3 {
+			t.Fatalf("%s: %d red tints, want three (the header's alpha, the prose's, the code span's)", page.name, len(tints))
 		}
 		selected := false
 		for _, i := range tints {
+			tint := calls[i].Rect
+			if !slices.ContainsFunc(calls[i+1:], func(c gui.PaintCall) bool {
+				return c.Op == "DrawText" && c.Rect.X < tint.X+tint.W && tint.X < c.Rect.X+c.Rect.W && c.Rect.Y < tint.Y+tint.H && tint.Y < c.Rect.Y+c.Rect.H
+			}) {
+				t.Errorf("%s: no text drawn after the tint at %+v: the glyphs must lie over it", page.name, calls[i].Rect)
+			}
 			for _, c := range calls[i+1:] {
 				if c.Op != "FillRect" || !covers(c.Rect, calls[i].Rect) {
 					continue
