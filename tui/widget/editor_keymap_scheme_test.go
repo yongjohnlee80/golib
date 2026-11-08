@@ -137,3 +137,24 @@ func TestAnUnboundAltChordBubblesPastPendingGrammar(t *testing.T) {
 		t.Fatalf("d's pending operator did not survive Alt+h to complete dw: %q", got)
 	}
 }
+
+// A z command a scheme binds elsewhere runs from the App's key map: z, then Alt+L for
+// tui.editor.vim.z.right, pans a wide table in the Rendered view a cell (its left mark shows).
+func TestASchemeBoundZCommandRuns(t *testing.T) {
+	m := mustKeymap(t, `<mapping><shortcut id="tui.editor.vim.z.right"><key value="Alt+L"/></shortcut></mapping>`)
+	h, e, sh := mountedEditor(t, m, widget.WithCore(widget.CoreInitialText(wideTable())))
+	defer h.stop()
+	h.onLoop(func() {
+		e.SetRenderer(mdRenderer())
+		e.SetView(widget.ViewRendered)
+	})
+	h.barrier(sh)
+	if g := h.grid(); strings.Contains(g, "«") {
+		t.Fatalf("unpanned, the table shows a left mark:\n%s", g)
+	}
+	h.inject(ch('z'), tui.KeyEvent{Kind: tui.KeyPress, Code: 'l', Mods: tui.ModAlt})
+	h.barrier(sh)
+	if g := h.grid(); !strings.Contains(g, "«") {
+		t.Fatalf("z then Alt+L (z.right's key): the table not panned:\n%s", g)
+	}
+}
