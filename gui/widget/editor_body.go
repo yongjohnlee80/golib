@@ -409,16 +409,19 @@ func (v bodyView) Paint(c gui.Canvas) {
 		numbered := -1
 		for _, ll := range lb.bl.Lines {
 			at := gui.Pt(-l.left, oy+ll.Y)
-			for _, r := range selection(e.core, ll, visualLine, l.width, b.focused) {
-				tc.FillRect(gui.Rect{X: at.X + r.X, Y: at.Y + r.Y, W: r.W, H: r.H}, gui.Solid(sel))
+			// under the text, lowest first: the line's own marks (a quote's bar, a table header's
+			// background), the core's overlay (a find's every match, the host's marks, in Rendered as the
+			// text's highlighting shows them in Raw), then the selection and the current match over both
+			for _, m := range ll.Marks {
+				tc.FillRect(gui.Rect{X: at.X + m.Rect.X, Y: at.Y + m.Rect.Y, W: m.Rect.W, H: m.Rect.H}, gui.Solid(m.Color))
 			}
-			if rendered { // the core's overlay over rendered text, as the text's highlighting lays it in Raw
+			if rendered {
 				for _, m := range overlayMarks(e.core, ll, tint) {
 					tc.FillRect(gui.Rect{X: at.X + m.Rect.X, Y: at.Y + m.Rect.Y, W: m.Rect.W, H: m.Rect.H}, gui.Solid(m.Color))
 				}
 			}
-			for _, m := range ll.Marks {
-				tc.FillRect(gui.Rect{X: at.X + m.Rect.X, Y: at.Y + m.Rect.Y, W: m.Rect.W, H: m.Rect.H}, gui.Solid(m.Color))
+			for _, r := range selection(e.core, ll, visualLine, l.width, b.focused) {
+				tc.FillRect(gui.Rect{X: at.X + r.X, Y: at.Y + r.Y, W: r.W, H: r.H}, gui.Solid(sel))
 			}
 			ll.Para.Paint(tc, at, ll.Spans)
 			if e.ShownView() == tuiwidget.ViewRaw {
