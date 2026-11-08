@@ -220,7 +220,3 @@ func (c *TableCore) activateOrEdit() bool {
 	}
 	return c.activateCursor()
 }
-
-// tableGoLine is the key after the table's g that completes gg: a command of its own, as the
-// editor's tui.editor.vim.g.goLine is, so a key map moves the second key as well as the prefix.
-var tableGoLine = cmd("tui.table.g.goLine", "tui.table.g", "G")

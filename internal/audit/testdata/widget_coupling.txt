@@ -187,7 +187,6 @@ table	core	addCount	func
 table	core	boundedMax	func
 table	core	clampTop	func
 table	core	clusters	func
-table	core	cmd	func
 table	core	completeStop	func
 table	core	countDigit	func
 table	core	drawText	func
@@ -205,6 +204,7 @@ table	core	revealRow	func
 table	core	sameOpener	func
 table	core	tableCommands	var
 table	core	tableFieldCommands	var
+table	core	tableGoLine	var
 table	core	tableWheelRows	const
 table	core	truncate	func
 table	core	wordBefore	func
