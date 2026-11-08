@@ -97,7 +97,7 @@ type Tabs struct {
 
 	// strip is the bar: the shared tab-row engine TabStrip and TerminalTabs draw with (tab_strip.go),
 	// its tabs this container's, by index. Its styles are the bar's, the tabs' and the active tab's.
-	strip tabStrip
+	strip StripCore
 }
 
 type tabEntry struct {
@@ -142,17 +142,17 @@ func WithoutBar() TabsOption { return func(t *Tabs) { t.noBar = true } }
 // WithTabsStyles overrides the bar, tab, and active-tab styles.
 func WithTabsStyles(bar, tab, active style.Style) TabsOption {
 	return func(t *Tabs) {
-		t.strip.bar = bar.Inherit(t.strip.bar)
-		t.strip.tab = tab.Inherit(t.strip.tab)
-		t.strip.selected = active.Inherit(t.strip.selected)
+		t.strip.Bar = bar.Inherit(t.strip.Bar)
+		t.strip.Tab = tab.Inherit(t.strip.Tab)
+		t.strip.Selected = active.Inherit(t.strip.Selected)
 	}
 }
 
 // NewTabs builds a tab switcher. At least one tab is required.
 func NewTabs(opts ...TabsOption) *Tabs {
 	t := &Tabs{}
-	t.strip = tabStrip{base: &t.Base, anchor: t, layer: "tabs", markFocus: true, owner: t}
-	t.strip.bar, t.strip.tab, t.strip.selected = kit.DefaultTabsStyles()
+	t.strip = StripCore{OwnerBase: &t.Base, Anchor: t, Layer: "tabs", markFocus: true, Owner: t}
+	t.strip.Bar, t.strip.Tab, t.strip.Selected = kit.DefaultTabsStyles()
 	for _, o := range opts {
 		if o != nil {
 			o(t)
@@ -164,9 +164,9 @@ func NewTabs(opts ...TabsOption) *Tabs {
 	return t
 }
 
-// stripTabs, stripActive and stripChoose are the bar's owner side (stripOwner): the tabs by
+// StripTabs, stripActive and stripChoose are the bar's owner side (stripOwner): the tabs by
 // index, the active one, and Select.
-func (t *Tabs) stripTabs() []kit.StripTab {
+func (t *Tabs) StripTabs() []kit.StripTab {
 	out := make([]kit.StripTab, len(t.tabs))
 	for i, tab := range t.tabs {
 		out[i] = kit.StripTab{ID: strconv.Itoa(i), Label: kit.CellLabel(tab.label)}
@@ -174,9 +174,9 @@ func (t *Tabs) stripTabs() []kit.StripTab {
 	return out
 }
 
-func (t *Tabs) stripActive() string { return strconv.Itoa(t.active) }
+func (t *Tabs) StripActive() string { return strconv.Itoa(t.active) }
 
-func (t *Tabs) stripChoose(id string) {
+func (t *Tabs) StripChoose(id string) {
 	if i, err := strconv.Atoi(id); err == nil {
 		t.Select(i)
 	}
@@ -186,7 +186,7 @@ func (t *Tabs) stripChoose(id string) {
 // [WithTabsStyles] does at construction: what a style leaves unset is the default's, so zero
 // styles restore the defaults.
 func (t *Tabs) SetStyles(bar, tab, active style.Style) {
-	t.strip.bar, t.strip.tab, t.strip.selected = kit.TabsStyles(bar, tab, active)
+	t.strip.Bar, t.strip.Tab, t.strip.Selected = kit.TabsStyles(bar, tab, active)
 	t.MarkDirty()
 }
 
@@ -212,7 +212,7 @@ type TabsMenuAction struct {
 // ActionID implements tui.Action.
 func (a TabsMenuAction) ActionID() tui.ActionID { return a.ID }
 
-func (a TabsMenuAction) stripRun() func(string) {
+func (a TabsMenuAction) StripRun() func(string) {
 	if a.Run == nil {
 		return nil
 	}
@@ -228,9 +228,9 @@ func (a TabsMenuAction) stripRun() func(string) {
 // active one off a tab), each time it opens. A row's action is a
 // TabsMenuAction; a row with children is a submenu. nil unsets it.
 func (t *Tabs) SetMenu(build func(i int) []MenuItemModel) {
-	t.strip.menuRows = nil
+	t.strip.MenuRows = nil
 	if build != nil {
-		t.strip.menuRows = func(id string) []MenuItemModel {
+		t.strip.MenuRows = func(id string) []MenuItemModel {
 			i, _ := strconv.Atoi(id) // the strip's ids are Tabs' indices (stripTabs)
 			return build(i)
 		}
@@ -239,8 +239,8 @@ func (t *Tabs) SetMenu(build func(i int) []MenuItemModel) {
 	t.MarkDirty()
 }
 
-// listChildren feeds the package's focus walk (active content only).
-func (t *Tabs) listChildren() []tui.Component {
+// ListChildren feeds the package's focus walk (active content only).
+func (t *Tabs) ListChildren() []tui.Component {
 	return []tui.Component{t.tabs[t.active].comp}
 }
 
@@ -312,12 +312,12 @@ func (t *Tabs) HandleEvent(ev tui.Event) bool {
 			return false
 		}
 		if e.Button == tui.MouseRight && t.strip.hasMenu() {
-			return t.strip.press(e) // the bar's menu (SetMenu), over the tab pressed
+			return t.strip.Press(e) // the bar's menu (SetMenu), over the tab pressed
 		}
 		if e.Button != tui.MouseLeft {
 			return false
 		}
-		t.strip.press(e)
+		t.strip.Press(e)
 		return true // clicks on the empty bar are consumed, not bubbled
 	}
 	return false
@@ -358,7 +358,7 @@ func (t *Tabs) Layout(c tui.Constraints) tui.Size {
 	}
 	ch := max(h-barH, 0)
 	if !t.noBar {
-		t.ctx.AfterLayout(kit.TabWindowCommitKey, func() { t.strip.commitWindow(w) })
+		t.ctx.AfterLayout(kit.TabWindowCommitKey, func() { t.strip.CommitWindow(w) })
 	}
 	active := t.tabs[t.active]
 	if active.mounted && ch > 0 {
@@ -375,6 +375,6 @@ func (t *Tabs) Render(s tui.Surface) {
 		return // content-switcher mode: an external widget draws the menu
 	}
 	if w := s.Size().W; w > 0 {
-		t.strip.render(s, w)
+		t.strip.Render(s, w)
 	}
 }

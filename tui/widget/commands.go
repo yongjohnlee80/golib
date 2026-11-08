@@ -206,7 +206,9 @@ var (
 	TabStripAdd   = kit.Cmd("tui.tabStrip.add", TabStripScope, "+")      // with something to add
 	TabStripMenu  = kit.Cmd("tui.tabStrip.menu", TabStripScope, "Enter") // with a menu: the active tab's
 
-	tabStripCommands = []keymap.Command{TabStripAdd, TabStripMenu, TabStripPrev, TabStripNext,
+	// TabStripCommands are a strip's key commands, as StripCore reads them; golib's components
+	// draw through it.
+	TabStripCommands = []keymap.Command{TabStripAdd, TabStripMenu, TabStripPrev, TabStripNext,
 		TabStripLeft, TabStripRight}
 )
 

@@ -74,7 +74,7 @@ type TerminalTabs struct {
 	Base
 	entries []*terminalTab
 	active  TerminalTabID
-	strip   tabStrip // the row of tabs over the terminals (tab_strip.go)
+	strip   StripCore // the row of tabs over the terminals (tab_strip.go)
 	look    style.Style
 	empty   string // the body with no tab; "" is the default message
 	// defaults are what every tab takes, those added later too (SetMinimumContrast and the rest):
@@ -93,12 +93,12 @@ type TerminalTabs struct {
 // NewTerminalTabs creates a valid empty terminal container.
 func NewTerminalTabs() *TerminalTabs {
 	t := &TerminalTabs{}
-	t.strip = tabStrip{base: &t.Base, anchor: t, layer: "terminaltabs", owner: t}
-	t.strip.bar, t.strip.tab, t.strip.selected = kit.DefaultTabsStyles()
+	t.strip = StripCore{OwnerBase: &t.Base, Anchor: t, Layer: "terminaltabs", Owner: t}
+	t.strip.Bar, t.strip.Tab, t.strip.Selected = kit.DefaultTabsStyles()
 	return t
 }
 
-func (t *TerminalTabs) stripTabs() []kit.StripTab {
+func (t *TerminalTabs) StripTabs() []kit.StripTab {
 	out := make([]kit.StripTab, len(t.entries))
 	for i, e := range t.entries {
 		out[i] = kit.StripTab{ID: string(e.id), Label: terminalTabLabel(e)}
@@ -106,15 +106,15 @@ func (t *TerminalTabs) stripTabs() []kit.StripTab {
 	return out
 }
 
-func (t *TerminalTabs) stripActive() string   { return string(t.active) }
-func (t *TerminalTabs) stripChoose(id string) { _ = t.Select(TerminalTabID(id)) }
+func (t *TerminalTabs) StripActive() string   { return string(t.active) }
+func (t *TerminalTabs) StripChoose(id string) { _ = t.Select(TerminalTabID(id)) }
 
 // SetActions configures the separate '+' and right-click strip menu targets.
 // The host decides what to add and supplies its own contextual menu.
 func (t *TerminalTabs) SetActions(add func(), menu func(TerminalTabID)) {
-	t.strip.onAdd, t.strip.onMenu = add, nil
+	t.strip.OnAdd, t.strip.OnMenu = add, nil
 	if menu != nil {
-		t.strip.onMenu = func(id string) { menu(TerminalTabID(id)) }
+		t.strip.OnMenu = func(id string) { menu(TerminalTabID(id)) }
 	}
 }
 
@@ -228,7 +228,7 @@ type TerminalTabsMenuAction struct {
 // ActionID implements tui.Action.
 func (a TerminalTabsMenuAction) ActionID() tui.ActionID { return a.ID }
 
-func (a TerminalTabsMenuAction) stripRun() func(string) {
+func (a TerminalTabsMenuAction) StripRun() func(string) {
 	if a.Run == nil {
 		return nil
 	}
@@ -243,16 +243,16 @@ func (a TerminalTabsMenuAction) stripRun() func(string) {
 // is a TerminalTabsMenuAction; a row with children is a submenu ("Go to ›" every tab, say). Unset,
 // those open SetActions' menu callback instead; nil unsets it.
 func (t *TerminalTabs) SetMenu(build func(id TerminalTabID) []MenuItemModel) {
-	t.strip.menuRows = nil
+	t.strip.MenuRows = nil
 	if build != nil {
-		t.strip.menuRows = func(id string) []MenuItemModel { return build(TerminalTabID(id)) }
+		t.strip.MenuRows = func(id string) []MenuItemModel { return build(TerminalTabID(id)) }
 	}
 }
 
 // SetAddMenu makes the strip's + open a menu, under it, instead of calling SetActions' add
 // callback: build returns its rows each time it opens (the profiles to start, say). A row's action
 // is a TerminalTabsMenuAction, run with no tab (the zero TerminalTabID); nil unsets it.
-func (t *TerminalTabs) SetAddMenu(build func() []MenuItemModel) { t.strip.addRows = build }
+func (t *TerminalTabs) SetAddMenu(build func() []MenuItemModel) { t.strip.AddRows = build }
 
 // liveBody is whether a tab's terminal fills the body now: not with no tab, nor while the active
 // one closes (the body says so).
@@ -261,16 +261,16 @@ func (t *TerminalTabs) liveBody() bool {
 	return err == nil && e.closing == nil
 }
 
-func (t *TerminalTabs) closeMenu() { t.strip.closeMenu() }
+func (t *TerminalTabs) closeMenu() { t.strip.CloseMenu() }
 
 // MenuOpen reports whether the strip's own menu (SetMenu, SetAddMenu) is showing.
-func (t *TerminalTabs) MenuOpen() bool { return t.strip.menuOpen != nil }
+func (t *TerminalTabs) MenuOpen() bool { return t.strip.MenuOpen != nil }
 
 // addX is where the strip's + starts: after the last tab.
-func (t *TerminalTabs) addX() int { return t.strip.addX() }
+func (t *TerminalTabs) addX() int { return t.strip.AddX() }
 
 // tabX is where tab id's label starts on the strip.
-func (t *TerminalTabs) tabX(id TerminalTabID) int { return t.strip.tabX(string(id)) }
+func (t *TerminalTabs) tabX(id TerminalTabID) int { return t.strip.TabX(string(id)) }
 
 // SetLabel renames tab id: the strip shows label (an agent's codename, a shell's host).
 func (t *TerminalTabs) SetLabel(id TerminalTabID, label string) error {
@@ -423,8 +423,8 @@ func (t *TerminalTabs) Active() TerminalTabID { return t.active }
 
 // ActiveTabIndex and TabSpans describe only strip chrome for native renderers.
 // Runtime operations continue to use opaque IDs, never presentation indexes.
-func (t *TerminalTabs) ActiveTabIndex() int { return t.strip.activeIndex() }
-func (t *TerminalTabs) TabSpans() []TabSpan { return t.strip.spans() }
+func (t *TerminalTabs) ActiveTabIndex() int { return t.strip.ActiveIndex() }
+func (t *TerminalTabs) TabSpans() []TabSpan { return t.strip.Spans() }
 
 func (*TerminalTabs) AccessibleRole() tui.AccessibleRole { return tui.RolePageTabList }
 
@@ -656,7 +656,7 @@ func (t *TerminalTabs) Init(ctx *tui.Context) {
 }
 
 func (*TerminalTabs) AcceptsFocus() bool { return true }
-func (t *TerminalTabs) listChildren() []tui.Component {
+func (t *TerminalTabs) ListChildren() []tui.Component {
 	if e, err := t.find(t.active); err == nil && e.closing == nil {
 		return []tui.Component{e.terminal}
 	}
@@ -665,7 +665,7 @@ func (t *TerminalTabs) listChildren() []tui.Component {
 
 // SetStyles and SetDefaultLook preserve palette changes across existing and new tabs.
 func (t *TerminalTabs) SetStyles(bar, tab, selected style.Style) {
-	t.strip.bar, t.strip.tab, t.strip.selected = kit.TabsStyles(bar, tab, selected)
+	t.strip.Bar, t.strip.Tab, t.strip.Selected = kit.TabsStyles(bar, tab, selected)
 	t.MarkDirty()
 }
 func (t *TerminalTabs) SetDefaultLook(look style.Style) {
@@ -678,7 +678,7 @@ func (t *TerminalTabs) SetDefaultLook(look style.Style) {
 func (t *TerminalTabs) Layout(c tui.Constraints) tui.Size {
 	w, h := kit.FillW(c), kit.FillH(c)
 	if t.ctx != nil { // narrower than its tabs, the strip scrolls them between < and >
-		t.ctx.AfterLayout(kit.TabWindowCommitKey, func() { t.strip.commitWindow(w) })
+		t.ctx.AfterLayout(kit.TabWindowCommitKey, func() { t.strip.CommitWindow(w) })
 	}
 	if e, err := t.find(t.active); err == nil && e.closing == nil && h > 1 {
 		t.ctx.LayoutChild(e.terminal, tui.Tight(tui.Size{W: w, H: h - 1}))
@@ -702,7 +702,7 @@ func (t *TerminalTabs) Render(s tui.Surface) {
 	if w <= 0 || s.Size().H == 0 {
 		return
 	}
-	t.strip.render(s, w)
+	t.strip.Render(s, w)
 	t.renderNormalHint(s, w)
 	if s.Size().H > 1 {
 		message := ""
@@ -714,7 +714,7 @@ func (t *TerminalTabs) Render(s tui.Surface) {
 			message = "Closing terminal…"
 		}
 		if message != "" {
-			kit.DrawText(s, 0, 1, kit.Truncate(message, w, s.StringWidth), t.strip.tab)
+			kit.DrawText(s, 0, 1, kit.Truncate(message, w, s.StringWidth), t.strip.Tab)
 		}
 	}
 }
@@ -724,13 +724,13 @@ func (t *TerminalTabs) KeyScope() keymap.Scope { return TabStripScope }
 
 // KeyBindings is the strip's commands as m binds them (tui.KeyBinder).
 func (t *TerminalTabs) KeyBindings(m *keymap.Map) []keymap.Binding {
-	return tui.BindingsOf(m, tabStripCommands...)
+	return tui.BindingsOf(m, TabStripCommands...)
 }
 
 func (t *TerminalTabs) HandleEvent(ev tui.Event) bool {
 	switch e := ev.(type) {
 	case tui.KeyEvent:
-		return t.strip.key(e)
+		return t.strip.Key(e)
 	case tui.MouseEvent:
 		if e.Kind != tui.MousePress {
 			return false
@@ -739,13 +739,13 @@ func (t *TerminalTabs) HandleEvent(ev tui.Event) bool {
 			// a right press on the body with no terminal in it (no tab, or one closing) opens the
 			// strip's own menu where it was, as a right press on the strip does; a live terminal's
 			// body is the terminal's
-			if e.Button == tui.MouseRight && t.strip.menuRows != nil && !t.liveBody() {
-				t.strip.openMenu(string(t.active), tui.Point{X: e.X, Y: e.Y})
+			if e.Button == tui.MouseRight && t.strip.MenuRows != nil && !t.liveBody() {
+				t.strip.OpenMenu(string(t.active), tui.Point{X: e.X, Y: e.Y})
 				return true
 			}
 			return false
 		}
-		return t.strip.press(e)
+		return t.strip.Press(e)
 	}
 	return false
 }
@@ -762,32 +762,32 @@ func (t *TerminalTabs) renderNormalHint(s tui.Surface, w int) {
 		return
 	}
 	used, end := 0, w // the hint sits between the tabs' cells and the window controls, if any
-	for _, c := range t.strip.row() {
-		if c.kind == kit.CellControl {
-			end = min(end, c.x-1)
+	for _, c := range t.strip.Row() {
+		if c.Kind == kit.CellControl {
+			end = min(end, c.X-1)
 			continue
 		}
-		used = max(used, c.x+s.StringWidth(c.label))
+		used = max(used, c.X+s.StringWidth(c.Label))
 	}
 	room := end - used - 1
 	if room < 4 {
 		return
 	}
 	text := kit.Truncate(t.normalHint, room, s.StringWidth)
-	kit.DrawText(s, end-s.StringWidth(text), 0, text, t.strip.tab)
+	kit.DrawText(s, end-s.StringWidth(text), 0, text, t.strip.Tab)
 }
 
 // SetWindowButtons shows _, + and x at the strip's right end, side by side as the title bar's, or
 // takes them off (the default, none): a panel's own minimize, maximize and close. A press runs SetOnWindowButton's function with the control's
 // WindowOperation.
-func (t *TerminalTabs) SetWindowButtons(on bool) { t.strip.setWindowButtons(on) }
+func (t *TerminalTabs) SetWindowButtons(on bool) { t.strip.SetWindowButtons(on) }
 
 // SetOnWindowButton is what a press on a window control does (SetWindowButtons): fn with its
 // operation, WindowMinimize, WindowMaximize or WindowClose. nil does nothing.
-func (t *TerminalTabs) SetOnWindowButton(fn func(WindowOperation)) { t.strip.onWindow = fn }
+func (t *TerminalTabs) SetOnWindowButton(fn func(WindowOperation)) { t.strip.OnWindow = fn }
 
 // TabWindowControls are the window controls on the strip, as drawn now.
-func (t *TerminalTabs) TabWindowControls() []TabControl { return t.strip.controlSpans() }
+func (t *TerminalTabs) TabWindowControls() []TabControl { return t.strip.ControlSpans() }
 
 // The interfaces it answers, held at compile time (core declares them).
 var (

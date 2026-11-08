@@ -365,10 +365,10 @@ func (s *Split) Zoom(p SplitPane) {
 	s.Publish(SplitZoomEvent{Owner: s.NodeID(), Pane: p})
 }
 
-// listChildren feeds the package's focus walk, honoring zoom: a hidden
+// ListChildren feeds the package's focus walk, honoring zoom: a hidden
 // pane is not a focus target, so a nested zoomed Split cannot let focusFirst
 // wander into its logically hidden side.
-func (s *Split) listChildren() []tui.Component {
+func (s *Split) ListChildren() []tui.Component {
 	switch s.zoomed {
 	case PaneA:
 		return []tui.Component{s.a}
