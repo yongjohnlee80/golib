@@ -363,9 +363,14 @@ func TestAPicturesArrivalSettlesBeforeTheNextInput(t *testing.T) {
 		tui.MouseEvent{Kind: tui.MouseRelease, Button: tui.MouseLeft, X: 1, Y: 0}); err != nil {
 		t.Fatal(err)
 	}
-	ih.syncInternal()
 	var ln int
-	ih.onLoopInternal(func() { ln, _ = e.Core().Line() })
+	for deadline := time.Now().Add(3 * time.Second); ; { // the click routed (input and Updates are separate lanes)
+		ih.onLoopInternal(func() { ln, _ = e.Core().Line() })
+		if ln != 1 || time.Now().After(deadline) {
+			break
+		}
+		time.Sleep(time.Millisecond)
+	}
 	if ln != 0 {
 		t.Errorf("a click on the view's first row right after the picture landed on line %d, want 0 (the picture's fence)", ln)
 	}
