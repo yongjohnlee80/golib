@@ -4,9 +4,10 @@ import (
 	"testing"
 
 	"github.com/yongjohnlee80/golib/tui"
+	"github.com/yongjohnlee80/golib/tui/widget/internal/kit"
 )
 
-// Tests for layout and constraint geometry helpers (boundedMax and subFrame).
+// Tests for layout and constraint geometry helpers (kit.BoundedMax and subFrame).
 
 func TestLayoutUtil_BoundedMax(t *testing.T) {
 	tests := []struct {
@@ -43,7 +44,7 @@ func TestLayoutUtil_BoundedMax(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			got := boundedMax(tt.maxV, tt.minV)
+			got := kit.BoundedMax(tt.maxV, tt.minV)
 			if got != tt.want {
 				t.Errorf("boundedMax(%d, %d) = %d, want %d", tt.maxV, tt.minV, got, tt.want)
 			}

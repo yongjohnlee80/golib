@@ -5,6 +5,7 @@ import (
 
 	"github.com/yongjohnlee80/golib/tui"
 	"github.com/yongjohnlee80/golib/tui/keymap"
+	"github.com/yongjohnlee80/golib/tui/widget/internal/kit"
 )
 
 // ScrollView shows a vertical window onto one child taller than itself. The child
@@ -32,10 +33,10 @@ type ScrollView struct {
 const ScrollScope keymap.Scope = "tui.scroll"
 
 var (
-	ScrollPageUp   = cmd("tui.scroll.pageUp", ScrollScope, "PgUp")
-	ScrollPageDown = cmd("tui.scroll.pageDown", ScrollScope, "PgDown")
-	ScrollHome     = cmd("tui.scroll.home", ScrollScope, "Home")
-	ScrollEnd      = cmd("tui.scroll.end", ScrollScope, "End")
+	ScrollPageUp   = kit.Cmd("tui.scroll.pageUp", ScrollScope, "PgUp")
+	ScrollPageDown = kit.Cmd("tui.scroll.pageDown", ScrollScope, "PgDown")
+	ScrollHome     = kit.Cmd("tui.scroll.home", ScrollScope, "Home")
+	ScrollEnd      = kit.Cmd("tui.scroll.end", ScrollScope, "End")
 
 	scrollCommands = []keymap.Command{ScrollPageUp, ScrollPageDown, ScrollHome, ScrollEnd}
 )
@@ -131,7 +132,7 @@ func (v *ScrollView) HandleEvent(ev tui.Event) bool {
 		if v.content <= v.view {
 			return false // nothing to scroll: an outer one may
 		}
-		step := scrollWheelRows
+		step := kit.ScrollWheelRows
 		if e.Button == tui.WheelUp {
 			step = -step
 		}
@@ -167,7 +168,7 @@ func (v *ScrollView) ScrollState() (offset, viewport, content int) {
 func (v *ScrollView) Render(s tui.Surface) {
 	sz := s.Size()
 	if v.content > v.view && sz.W > 0 {
-		paintScrollIndicator(s, sz.W-1, sz.H, v.offset, v.content-v.view)
+		kit.PaintScrollIndicator(s, sz.W-1, sz.H, v.offset, v.content-v.view)
 	}
 }
 

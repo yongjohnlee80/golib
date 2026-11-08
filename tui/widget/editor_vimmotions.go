@@ -1,6 +1,9 @@
 package widget
 
-import "github.com/yongjohnlee80/golib/tui"
+import (
+	"github.com/yongjohnlee80/golib/tui"
+	"github.com/yongjohnlee80/golib/tui/widget/internal/kit"
+)
 
 // VIM LINE AND CHARACTER MOTIONS — Enter + - ^ Backspace, f F t T ; ,, %, H M L, Ctrl-d Ctrl-u,
 // W B E, ge gE: Normal and Visual, with counts, as Vim moves. Each lands the cursor where Vim does,
@@ -32,7 +35,7 @@ type charFind struct {
 func (c *EditorCore) firstNonBlank(ln int) int {
 	cs := c.buf.LineClusters(ln)
 	for i, cl := range cs {
-		if !isWS(cl) {
+		if !kit.IsWS(cl) {
 			return i
 		}
 	}

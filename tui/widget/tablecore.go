@@ -8,6 +8,7 @@ import (
 
 	"github.com/yongjohnlee80/golib/tui"
 	"github.com/yongjohnlee80/golib/tui/style"
+	"github.com/yongjohnlee80/golib/tui/widget/internal/kit"
 )
 
 // TABLE CORE — a table's behaviour apart from any view, as EditorCore is an editor's and
@@ -125,7 +126,7 @@ func (f TableCopyFormat) delimiter() rune {
 // TableCopyCSV). A format that is neither is a programmer error, refused as the core is built.
 func TableCopyAs(f TableCopyFormat) TableOption {
 	if !f.Valid() {
-		panic(fatalOf("widget: TableCopyAs", "unknown copy format", f.String()))
+		panic(kit.FatalOf("widget: TableCopyAs", "unknown copy format", f.String()))
 	}
 	return func(c *TableCore) { c.copyFormat = f }
 }
@@ -194,7 +195,7 @@ type TableCore struct {
 	tableKeyState    // the keys of a command not yet complete (tablecore_keys.go)
 	// presses are a view's pointer presses (press): a double-click paired by source row and field, and
 	// a press whose rows the owner replaced; reset with the source
-	presses       pressPairer[TablePos]
+	presses       kit.PressPairer[TablePos]
 	keysFirst     func(tui.KeyEvent) bool
 	layout        TableLayout
 	ctx           *tui.Context
@@ -621,7 +622,7 @@ func (c *TableCore) show() (live bool) {
 }
 
 // announce tells onCursor the cursor's source row when it changed, and reports whether the rows
-// survived it (pressPairer's epoch: the owner may replace them there).
+// survived it (kit.PressPairer's epoch: the owner may replace them there).
 func (c *TableCore) announce() (live bool) {
 	r := -1
 	if c.Len() > 0 && c.cur.Row < c.Len() { // the edge row is no source row

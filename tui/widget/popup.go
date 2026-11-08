@@ -3,6 +3,7 @@ package widget
 import (
 	"github.com/yongjohnlee80/golib/tui"
 	"github.com/yongjohnlee80/golib/tui/keymap"
+	"github.com/yongjohnlee80/golib/tui/widget/internal/kit"
 )
 
 // A PANEL OPENED AT A POINT, DISMISSED LIGHTLY: a context menu's shape.
@@ -101,8 +102,8 @@ func (p *popupLayer) TrapsFocus() bool { return true }
 func (p *popupLayer) receiveAnchor(anchor tui.Rect) { p.anchor = anchor }
 
 func (p *popupLayer) Layout(c tui.Constraints) tui.Size {
-	w := boundedMax(c.MaxW, c.MinW)
-	h := boundedMax(c.MaxH, c.MinH)
+	w := kit.BoundedMax(c.MaxW, c.MinW)
+	h := kit.BoundedMax(c.MaxH, c.MinH)
 	view := tui.Rect{X: 0, Y: 0, W: w, H: h}
 	sz := p.ctx.LayoutChild(p.panel, tui.Loose(tui.Size{W: w, H: h}))
 	point := tui.Rect{X: p.anchor.X + p.at.X, Y: p.anchor.Y + p.at.Y, W: 1, H: 1}

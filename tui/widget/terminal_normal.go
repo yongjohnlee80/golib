@@ -6,6 +6,7 @@ import (
 	"github.com/yongjohnlee80/golib/tui"
 	"github.com/yongjohnlee80/golib/tui/style"
 	"github.com/yongjohnlee80/golib/tui/vt"
+	"github.com/yongjohnlee80/golib/tui/widget/internal/kit"
 )
 
 // normalState is the Terminal's normal mode: a cursor and a view over the
@@ -120,12 +121,12 @@ func (n *normalState) key(t *Terminal, k tui.KeyEvent) bool {
 // goes on as a command.
 func (n *normalState) goSecond(t *Terminal, k tui.KeyEvent) bool {
 	switch {
-	case isKey(k, literalG...):
+	case kit.IsKey(k, literalG...):
 		n.line, n.col = 0, 0
-	case isKey(k, literalE...):
-		n.wordMotion(t, wordEndBackFrom, false)
-	case isKey(k, literalShiftE...):
-		n.wordMotion(t, wordEndBackFrom, true)
+	case kit.IsKey(k, literalE...):
+		n.wordMotion(t, kit.WordEndBackFrom, false)
+	case kit.IsKey(k, literalShiftE...):
+		n.wordMotion(t, kit.WordEndBackFrom, true)
 	default:
 		return false
 	}
@@ -155,12 +156,12 @@ var terminalNormalActions = map[string]normalAction{
 	TermLineEnd.ID: moving(func(n *normalState, t *Terminal) {
 		n.col = max(len(lineRunes(t.lineCells(n.line)))-1, 0)
 	}),
-	TermWord.ID:     moving(func(n *normalState, t *Terminal) { n.wordMotion(t, wordForwardFrom, false) }),
-	TermWordBack.ID: moving(func(n *normalState, t *Terminal) { n.wordMotion(t, wordBackFrom, false) }),
-	TermWordEnd.ID:  moving(func(n *normalState, t *Terminal) { n.wordMotion(t, wordEndFrom, false) }),
-	TermWORD.ID:     moving(func(n *normalState, t *Terminal) { n.wordMotion(t, wordForwardFrom, true) }),
-	TermWORDBack.ID: moving(func(n *normalState, t *Terminal) { n.wordMotion(t, wordBackFrom, true) }),
-	TermWORDEnd.ID:  moving(func(n *normalState, t *Terminal) { n.wordMotion(t, wordEndFrom, true) }),
+	TermWord.ID:     moving(func(n *normalState, t *Terminal) { n.wordMotion(t, kit.WordForwardFrom, false) }),
+	TermWordBack.ID: moving(func(n *normalState, t *Terminal) { n.wordMotion(t, kit.WordBackFrom, false) }),
+	TermWordEnd.ID:  moving(func(n *normalState, t *Terminal) { n.wordMotion(t, kit.WordEndFrom, false) }),
+	TermWORD.ID:     moving(func(n *normalState, t *Terminal) { n.wordMotion(t, kit.WordForwardFrom, true) }),
+	TermWORDBack.ID: moving(func(n *normalState, t *Terminal) { n.wordMotion(t, kit.WordBackFrom, true) }),
+	TermWORDEnd.ID:  moving(func(n *normalState, t *Terminal) { n.wordMotion(t, kit.WordEndFrom, true) }),
 	TermGoPrefix.ID: func(n *normalState, _ *Terminal) bool { n.pendingG = true; return true },
 	TermBottom.ID:   moving(func(n *normalState, t *Terminal) { n.line, n.col = t.lineCount()-1, 0 }),
 
@@ -251,7 +252,7 @@ func (n *normalState) searchKey(t *Terminal, k tui.KeyEvent) bool {
 		} else {
 			n.searching = false
 		}
-	case k.Text != "" && k.Mods.Chord()&nonTextMods == 0:
+	case k.Text != "" && k.Mods.Chord()&kit.NonTextMods == 0:
 		n.query += k.Text
 	default:
 		return true // a search line takes every key while it is open
@@ -335,14 +336,14 @@ type cellLines interface {
 // runes is line i's runes, as a selection reads them (cellLines).
 func (t *Terminal) runes(i int) []rune { return lineRunes(t.lineCells(i)) }
 
-// terminalWords is a Terminal's lines as the word motions read them (wordText): each line's
+// terminalWords is a Terminal's lines as the word motions read them (kit.WordText): each line's
 // grapheme clusters, a wide cluster once, the trailing blanks gone. w, b, e and ge then mean in
 // normal mode what they mean in the editor.
 type terminalWords struct{ t *Terminal }
 
-func (w terminalWords) lineCount() int { return w.t.lineCount() }
+func (w terminalWords) LineCount() int { return w.t.lineCount() }
 
-func (w terminalWords) lineClusters(i int) []string {
+func (w terminalWords) LineClusters(i int) []string {
 	cs, _ := lineClustersOf(w.t.lineCells(i))
 	return cs
 }
@@ -410,8 +411,8 @@ func cellOfCluster(cells []vt.Cell, idx int) int {
 
 // wordMotion runs one of the editor's word motions from the cursor, by WORD with big, and puts the
 // cursor where it lands.
-func (n *normalState) wordMotion(t *Terminal, motion func(*wordWalker) (int, int), big bool) {
-	ln, idx := motion(newWordWalker(terminalWords{t}, n.line, clusterAtCell(t.lineCells(n.line), n.col), big))
+func (n *normalState) wordMotion(t *Terminal, motion func(*kit.WordWalker) (int, int), big bool) {
+	ln, idx := motion(kit.NewWordWalker(terminalWords{t}, n.line, clusterAtCell(t.lineCells(n.line), n.col), big))
 	n.line, n.col = ln, cellOfCluster(t.lineCells(ln), idx)
 }
 

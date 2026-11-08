@@ -1,6 +1,9 @@
 package widget
 
-import "github.com/yongjohnlee80/golib/tui"
+import (
+	"github.com/yongjohnlee80/golib/tui"
+	"github.com/yongjohnlee80/golib/tui/widget/internal/kit"
+)
 
 // WindowTargetProvider is a container that places a WindowMod inside it: a WindowCore given no
 // target of its own (WithWindowTarget) asks the nearest ancestor implementing it, at Bind. Float is
@@ -25,7 +28,7 @@ func (f *Float) WindowTargetFor(core *WindowCore, owner *tui.Context) (any, func
 		f.windowTarget = &floatWindowTarget{float: f}
 	}
 	if old := f.windowTarget.core; old != nil && old != core && old.live() {
-		panic(fatalOf("widget: WindowCore.Bind", "Float already has a live window behavior owner", "compose capabilities on one widget"))
+		panic(kit.FatalOf("widget: WindowCore.Bind", "Float already has a live window behavior owner", "compose capabilities on one widget"))
 	}
 	f.windowTarget.core, f.windowTarget.workArea = core, core.workArea
 	return f.windowTarget, func(at tui.Point) tui.Point {

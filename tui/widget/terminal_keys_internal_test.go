@@ -7,6 +7,7 @@ import (
 	"testing"
 
 	"github.com/yongjohnlee80/golib/tui"
+	"github.com/yongjohnlee80/golib/tui/widget/internal/kit"
 )
 
 // oldInputAct is Terminal.inputKey's decision before commands, verbatim but for its effects, named as
@@ -166,7 +167,7 @@ func normalDeviation(e tui.KeyEvent) string {
 	if e.Text == "" && e.Code < 128 && e.Code > ' ' && e.Mods.Chord()&^tui.ModShift == 0 {
 		return "a character with no text reads its code"
 	}
-	if isKey(e, TermWORD.Keys...) || isKey(e, TermWORDBack.Keys...) || isKey(e, TermWORDEnd.Keys...) {
+	if kit.IsKey(e, TermWORD.Keys...) || kit.IsKey(e, TermWORDBack.Keys...) || kit.IsKey(e, TermWORDEnd.Keys...) {
 		return "W, B and E are new: the WORD motions, the editor's"
 	}
 	return cmp.Or(hyperOrMeta(e), ctrlShiftLetter(e))

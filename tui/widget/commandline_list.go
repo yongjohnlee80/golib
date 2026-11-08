@@ -3,6 +3,7 @@ package widget
 import (
 	"github.com/yongjohnlee80/golib/tui"
 	"github.com/yongjohnlee80/golib/tui/style"
+	"github.com/yongjohnlee80/golib/tui/widget/internal/kit"
 )
 
 // THE COMMAND LINE'S DROPDOWN: the candidates Tab offers, each with its arguments and help, under
@@ -58,7 +59,7 @@ func (c *completionList) Layout(cs tui.Constraints) tui.Size {
 	h := min(len(c.rows), completionRows)
 	switch {
 	case c.msg != "":
-		h = len(wrapLine(c.msg, max(w, 1), c.measure))
+		h = len(kit.WrapLine(c.msg, max(w, 1), c.measure))
 	case h > 0:
 		h += 2 // the frame
 		if cs.MaxW == tui.Unbounded {
@@ -85,11 +86,11 @@ func (c *completionList) Render(s tui.Surface) {
 	card := cardText()
 	s.Fill(tui.Rect{W: sz.W, H: sz.H}, " ", card)
 	if c.msg != "" {
-		for y, ln := range wrapLine(c.msg, sz.W, s.StringWidth) {
+		for y, ln := range kit.WrapLine(c.msg, sz.W, s.StringWidth) {
 			if y >= sz.H {
 				break
 			}
-			drawText(s, 0, y, ln, card)
+			kit.DrawText(s, 0, y, ln, card)
 		}
 		return
 	}
@@ -97,7 +98,7 @@ func (c *completionList) Render(s tui.Surface) {
 		return
 	}
 	// the frame, on the card's colours with the theme's border
-	drawFrame(s, tui.Rect{W: sz.W, H: sz.H}, card.Foreground(style.TokenBorder), style.BorderNormal)
+	kit.DrawFrame(s, tui.Rect{W: sz.W, H: sz.H}, card.Foreground(style.TokenBorder), style.BorderNormal)
 	inner := s.Sub(tui.Rect{X: 1, Y: 1, W: sz.W - 2, H: sz.H - 2})
 	iw, ih := sz.W-2, sz.H-2
 	chosen := style.New().Background(style.TokenPrimary).Foreground(style.TokenTextOnPrimary)
@@ -109,6 +110,6 @@ func (c *completionList) Render(s tui.Surface) {
 			st = chosen
 			inner.Fill(tui.Rect{Y: y, W: iw, H: 1}, " ", st)
 		}
-		drawText(inner, 0, y, truncate(c.rows[i], iw, inner.StringWidth), st)
+		kit.DrawText(inner, 0, y, kit.Truncate(c.rows[i], iw, inner.StringWidth), st)
 	}
 }

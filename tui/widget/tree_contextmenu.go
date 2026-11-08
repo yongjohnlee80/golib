@@ -4,11 +4,12 @@ import (
 	"slices"
 
 	"github.com/yongjohnlee80/golib/tui"
+	"github.com/yongjohnlee80/golib/tui/widget/internal/kit"
 )
 
 // TreeMenu is the key that asks a Tree's owner for a context menu on the cursor row, while the
 // tree has one (SetContextMenu); List's ListMenu keys.
-var TreeMenu = cmd("tui.tree.contextMenu", TreeScope, "Shift+F10", "Menu")
+var TreeMenu = kit.Cmd("tui.tree.contextMenu", TreeScope, "Shift+F10", "Menu")
 
 // treeKeyCommands are every command a Tree reads keys for: its own and the menu key.
 var treeKeyCommands = append(slices.Clip(treeCommands), TreeMenu)

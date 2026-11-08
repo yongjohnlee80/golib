@@ -1,14 +1,14 @@
-package widget
+package kit
 
 import (
 	"strings"
 	"unicode/utf8"
 )
 
-// walkStep is Tab's next place in a walk through n candidates from at (-1 before the first):
+// WalkStep is Tab's next place in a walk through n candidates from at (-1 before the first):
 // forward from the first, or with back (Shift+Tab) from the last, wrapping round. CommandLine's
 // completion and TextInput's walk by it.
-func walkStep(at, n int, back bool) int {
+func WalkStep(at, n int, back bool) int {
 	switch {
 	case at < 0 && back:
 		return n - 1
@@ -20,14 +20,14 @@ func walkStep(at, n int, back bool) int {
 	return (at + 1) % n
 }
 
-// wordBefore is the word ending at cursor and where it begins.
-func wordBefore(text string, cursor int) (start int, word string) {
+// WordBefore is the word ending at cursor and where it begins.
+func WordBefore(text string, cursor int) (start int, word string) {
 	cursor = min(max(cursor, 0), len(text))
 	if open := openQuote(text[:cursor]); open >= 0 {
 		return open, text[open:cursor]
 	}
 	start = cursor
-	for start > 0 && !completeStop(text[start-1]) {
+	for start > 0 && !CompleteStop(text[start-1]) {
 		start--
 	}
 	return start, text[start:cursor]
@@ -52,16 +52,16 @@ func openQuote(s string) int {
 	return open
 }
 
-func completeStop(b byte) bool {
-	return orderSpace(b) || strings.IndexByte(`()=!<>'",`, b) >= 0
+func CompleteStop(b byte) bool {
+	return OrderSpace(b) || strings.IndexByte(`()=!<>'",`, b) >= 0
 }
 
-func hasPrefixFold(s, prefix string) bool {
+func HasPrefixFold(s, prefix string) bool {
 	return len(s) >= len(prefix) && strings.EqualFold(s[:len(prefix)], prefix)
 }
 
-// commonPrefix is the longest prefix every candidate's name shares, at least typed.
-func commonPrefix(cs []string, typed string) string {
+// CommonPrefix is the longest prefix every candidate's name shares, at least typed.
+func CommonPrefix(cs []string, typed string) string {
 	p := cs[0]
 	for _, c := range cs[1:] {
 		for !strings.HasPrefix(c, p) {

@@ -1,6 +1,6 @@
-package widget
+package kit
 
-// pressPairer is a view's pointer presses on its rows: it pairs a double-click with the thing
+// PressPairer is a view's pointer presses on its rows: it pairs a double-click with the thing
 // pressed, not the cell, and it knows when the rows a press named are gone. The App counts presses on
 // one screen CELL in time (MouseEvent.Count), but a view that scrolls or reorders between the two
 // presses puts a different row under that cell, so each view keys its presses by its own identity:
@@ -15,25 +15,25 @@ package widget
 // Every press therefore goes through Press or Survives, which run the press's first step and report
 // whether the rows outlived it. A press whose rows are gone does nothing more: no pair, no
 // activation, no menu. This is the one place that rule lives.
-type pressPairer[K comparable] struct {
-	rowsEpoch // Reset advances it: the rows' identity, as a press saw it
+type PressPairer[K comparable] struct {
+	RowsEpoch // Reset advances it: the rows' identity, as a press saw it
 	last      K
 	has       bool
 }
 
-// rowsEpoch is a view's row identity over time: the one authority a view consults to learn whether
+// RowsEpoch is a view's row identity over time: the one authority a view consults to learn whether
 // the rows an operation began on are still there. advance starts a new epoch (a new source, rows
 // changed in place, a new listing); Survives runs a step that may tell an owner, who may advance it
-// there and then. pressPairer holds one for the views that pair presses (List, Tree, TableCore);
+// there and then. PressPairer holds one for the views that pair presses (List, Tree, TableCore);
 // a view that pairs none (FileList) holds its own.
-type rowsEpoch struct{ n uint64 }
+type RowsEpoch struct{ n uint64 }
 
-// advance starts a new epoch: the rows an operation in progress began on are gone.
-func (e *rowsEpoch) advance() { e.n++ }
+// Advance starts a new epoch: the rows an operation in progress began on are gone.
+func (e *RowsEpoch) Advance() { e.n++ }
 
 // Survives runs step and reports whether the rows are still the ones it began on: false when step
 // advanced the epoch (an owner it told replaced or refreshed them). A nil step survives.
-func (e *rowsEpoch) Survives(step func()) bool {
+func (e *RowsEpoch) Survives(step func()) bool {
 	n := e.n
 	if step != nil {
 		step()
@@ -44,7 +44,7 @@ func (e *rowsEpoch) Survives(step func()) bool {
 // Press is a press on k, with the App's count: it runs moved as Survives does and, when the rows
 // survived, records the press and reports whether it completes a double-click. live is false when the
 // rows are gone; the press is then not recorded, and paired is false.
-func (p *pressPairer[K]) Press(count int, k K, moved func()) (live, paired bool) {
+func (p *PressPairer[K]) Press(count int, k K, moved func()) (live, paired bool) {
 	if !p.Survives(moved) {
 		return false, false
 	}
@@ -56,4 +56,4 @@ func (p *pressPairer[K]) Press(count int, k K, moved func()) (live, paired bool)
 // Reset forgets the previous press and starts a new epoch. A view calls it when its identities change
 // meaning (a new source, rows mutated in place), so a press before cannot pair with one after, and a
 // press in progress learns its rows are gone; a pointer key is also released for the collector.
-func (p *pressPairer[K]) Reset() { *p = pressPairer[K]{rowsEpoch: rowsEpoch{n: p.n + 1}} }
+func (p *PressPairer[K]) Reset() { *p = PressPairer[K]{RowsEpoch: RowsEpoch{n: p.n + 1}} }

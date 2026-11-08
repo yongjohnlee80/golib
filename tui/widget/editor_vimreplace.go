@@ -4,6 +4,7 @@ import (
 	"strings"
 
 	"github.com/yongjohnlee80/golib/tui"
+	"github.com/yongjohnlee80/golib/tui/widget/internal/kit"
 	txt "github.com/yongjohnlee80/golib/tui/widget/internal/text"
 )
 
@@ -151,7 +152,7 @@ func (c *EditorCore) replaceDone() {
 // replaceKey is Replace's own keys: Enter breaks the line, Backspace pops the stack, Tab
 // overwrites as typed text does; an arrow key starts a new stack, and Insert's handling moves.
 func (c *EditorCore) replaceKey(k tui.KeyEvent, r insertKey) bool {
-	if r.qual&nonTextMods != 0 {
+	if r.qual&kit.NonTextMods != 0 {
 		return false
 	}
 	switch r.act {

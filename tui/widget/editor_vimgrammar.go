@@ -2,6 +2,7 @@ package widget
 
 import (
 	"github.com/yongjohnlee80/golib/tui"
+	"github.com/yongjohnlee80/golib/tui/widget/internal/kit"
 	txt "github.com/yongjohnlee80/golib/tui/widget/internal/text"
 )
 
@@ -366,7 +367,7 @@ func (c *EditorCore) takeFindChar(k tui.KeyEvent) bool {
 	if armed := c.keys.findArmed; armed != ActUnbound {
 		count := c.keys.findCount
 		c.keys.findArmed, c.keys.findCount = ActUnbound, 0
-		if k.Text != "" && k.Mods&nonTextMods == 0 {
+		if k.Text != "" && k.Mods&kit.NonTextMods == 0 {
 			f := charFindOf(armed, firstCluster(k.Text))
 			c.keys.lastFind = &f
 			if op := c.keys.op; op != ActUnbound {
@@ -393,15 +394,15 @@ func (c *EditorCore) takeReplaceChar(k tui.KeyEvent) bool {
 		c.keys.replArmed, c.keys.replCount = false, 0
 		visual := c.visual()
 		switch {
-		case visual && k.Text != "" && k.Mods&nonTextMods == 0:
+		case visual && k.Text != "" && k.Mods&kit.NonTextMods == 0:
 			c.visualOp(ActVisualReplace, count, firstCluster(k.Text)) // every character of the selection
 			return true
 		case visual:
 			// Enter, or a key with no text: r is cancelled, Visual stays
-		case k.Code == tui.KeyEnter && k.Mods&nonTextMods == 0:
+		case k.Code == tui.KeyEnter && k.Mods&kit.NonTextMods == 0:
 			c.replaceChars("\n", count)
 			return true
-		case k.Text != "" && k.Mods&nonTextMods == 0:
+		case k.Text != "" && k.Mods&kit.NonTextMods == 0:
 			c.replaceChars(firstCluster(k.Text), count)
 			return true
 		}
@@ -417,7 +418,7 @@ func (c *EditorCore) takeObjectName(k tui.KeyEvent) bool {
 		op, count := c.keys.op, max(c.keys.opCount, 1)*max(c.keys.objCount, 1)
 		c.keys.dropOp()
 		c.keys.count = 0
-		if k.Text != "" && k.Mods&nonTextMods == 0 {
+		if k.Text != "" && k.Mods&kit.NonTextMods == 0 {
 			r, found := c.textObject(obj == "i", firstCluster(k.Text), count)
 			switch {
 			case !found:
@@ -438,7 +439,7 @@ func (c *EditorCore) takeObjectName(k tui.KeyEvent) bool {
 func (c *EditorCore) takeMarkName(k tui.KeyEvent) bool {
 	if armed := c.keys.markArmed; armed != ActUnbound {
 		c.keys.markArmed = ActUnbound
-		if k.Text != "" && k.Mods&nonTextMods == 0 {
+		if k.Text != "" && k.Mods&kit.NonTextMods == 0 {
 			c.markKey(armed, []rune(k.Text)[0])
 			return true
 		}
@@ -453,7 +454,7 @@ func (c *EditorCore) takeMacroName(k tui.KeyEvent) bool {
 	if armed := c.keys.macroArmed; armed != ActUnbound {
 		count := c.keys.macroCount
 		c.keys.macroArmed, c.keys.macroCount = ActUnbound, 0
-		if k.Text != "" && k.Mods&nonTextMods == 0 {
+		if k.Text != "" && k.Mods&kit.NonTextMods == 0 {
 			if name := []rune(k.Text)[0]; armed == ActMacroRecord {
 				c.macroRecordKey(name)
 			} else {
@@ -471,7 +472,7 @@ func (c *EditorCore) takeMacroName(k tui.KeyEvent) bool {
 func (c *EditorCore) takeRegisterName(k tui.KeyEvent) bool {
 	if c.keys.regArmed {
 		c.keys.regArmed = false
-		if k.Text != "" && k.Mods&nonTextMods == 0 {
+		if k.Text != "" && k.Mods&kit.NonTextMods == 0 {
 			if name := []rune(k.Text)[0]; validRegister(name) {
 				c.keys.reg, c.keys.regFresh = name, true
 				return true
@@ -481,11 +482,11 @@ func (c *EditorCore) takeRegisterName(k tui.KeyEvent) bool {
 	return false
 }
 
-// takeCountDigit takes a count's digit (countDigit: a digit key with no modifier held): 1-9 always,
+// takeCountDigit takes a count's digit (kit.CountDigit: a digit key with no modifier held): 1-9 always,
 // 0 only extending a count, capped at editorCountMax. It reports whether it took the key.
 func (c *EditorCore) takeCountDigit(k tui.KeyEvent) bool {
-	d, ok := countDigit(k)
-	if !ok || !addCount(&c.keys.count, d, editorCountMax) {
+	d, ok := kit.CountDigit(k)
+	if !ok || !kit.AddCount(&c.keys.count, d, editorCountMax) {
 		return false
 	}
 	c.keys.pendingAct = ActUnbound

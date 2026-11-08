@@ -4,6 +4,7 @@ import (
 	"strings"
 
 	"github.com/yongjohnlee80/golib/tui"
+	"github.com/yongjohnlee80/golib/tui/widget/internal/kit"
 )
 
 // Elide is where a text too wide for its cell loses what does not fit, as Qt's
@@ -61,19 +62,19 @@ func elide(s string, w int, mode Elide, measure func(string) int) string {
 		for i := 1; i < len(gs); i++ {
 			if gs[i] == "/" {
 				if t := strings.Join(gs[i:], ""); measure(t) <= w-1 {
-					return ellipsis + t
+					return kit.Ellipsis + t
 				}
 			}
 		}
-		return ellipsis + tail(w-1)
+		return kit.Ellipsis + tail(w-1)
 	case ElideNone:
 		return head(w)
 	case ElideLeft:
-		return ellipsis + tail(w-1)
+		return kit.Ellipsis + tail(w-1)
 	case ElideMiddle:
 		back := (w - 1) / 2
-		return head(w-1-back) + ellipsis + tail(back)
+		return head(w-1-back) + kit.Ellipsis + tail(back)
 	default:
-		return truncate(s, w, measure)
+		return kit.Truncate(s, w, measure)
 	}
 }

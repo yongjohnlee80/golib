@@ -4,6 +4,7 @@ import (
 	"testing"
 
 	"github.com/yongjohnlee80/golib/tui"
+	"github.com/yongjohnlee80/golib/tui/widget/internal/kit"
 )
 
 // oldListKey is List.HandleEvent's key handling at golib 6a0b271, verbatim but for its effects, which
@@ -28,7 +29,7 @@ func oldListKey(e tui.KeyEvent, contextMenu, multi bool) string {
 	if contextMenu && isContextMenuKey(e) {
 		return "menu"
 	}
-	if e.Mods&nonTextMods != 0 {
+	if e.Mods&kit.NonTextMods != 0 {
 		return ""
 	}
 	code := e.Code

@@ -8,6 +8,7 @@ import (
 	"github.com/yongjohnlee80/golib/tui"
 	"github.com/yongjohnlee80/golib/tui/keymap"
 	"github.com/yongjohnlee80/golib/tui/style"
+	"github.com/yongjohnlee80/golib/tui/widget/internal/kit"
 )
 
 // Orientation selects a Split's main axis.
@@ -141,7 +142,7 @@ type Split struct {
 	zoomed SplitPane
 	// drag is the divider gesture in progress; its ctx is the node that took the pointer for it,
 	// since only the node that took a capture may release it.
-	drag pointerDrag[splitDrag]
+	drag kit.PointerDrag[splitDrag]
 
 	divider style.Style
 	// glyph is the divider's character, and step/stepUnit the keyboard's
@@ -380,7 +381,7 @@ func (s *Split) listChildren() []tui.Component {
 // Init mounts both panes. Re-entrant across remounts.
 func (s *Split) Init(ctx *tui.Context) {
 	s.Base.Init(ctx)
-	s.drag = pointerDrag[splitDrag]{} // a gesture never spans two mounts
+	s.drag = kit.PointerDrag[splitDrag]{} // a gesture never spans two mounts
 	ctx.SetDefaultActionResolvers(tui.ActionResolverFunc(s.resolve))
 	ctx.Mount(s.a)
 	ctx.Mount(s.b)
@@ -390,8 +391,8 @@ func (s *Split) Init(ctx *tui.Context) {
 // (deterministic half-up rounding — the two-child largest-remainder split),
 // clamped by the min sizes; the divider takes one cell; pane b the rest.
 func (s *Split) Layout(c tui.Constraints) tui.Size {
-	w := boundedMax(c.MaxW, c.MinW)
-	h := boundedMax(c.MaxH, c.MinH)
+	w := kit.BoundedMax(c.MaxW, c.MinW)
+	h := kit.BoundedMax(c.MaxH, c.MinH)
 	// A HIDDEN pane gives its space to the other, as zoom does — no blank
 	// area, no divider — and the ratio is kept for when it is shown again.
 	shown := s.zoomed
@@ -652,7 +653,7 @@ func (s *Split) resolveMouse(e tui.MouseEvent) (tui.Action, bool) {
 	if s.o == Vertical {
 		pos = e.Y
 	}
-	return resizeGesture(e, tui.Point{X: e.X, Y: e.Y}, s.drag.on, func() (Handle, bool) {
+	return resizeGesture(e, tui.Point{X: e.X, Y: e.Y}, s.drag.On, func() (Handle, bool) {
 		// The whole divider is grabbable, not just its first column. A two-cell divider whose
 		// second column did nothing would be an affordance that works on half the pixels the user
 		// can see it occupying.
@@ -681,7 +682,7 @@ func (s *Split) HandleAction(inv tui.ActionInvocation) bool {
 	case ResizeBeginAction:
 		return s.beginDrag(a.Handle)
 	case ResizeUpdateAction:
-		if !s.drag.on {
+		if !s.drag.On {
 			return false
 		}
 		s.requestCells(s.mainAxis(a.At))
@@ -691,7 +692,7 @@ func (s *Split) HandleAction(inv tui.ActionInvocation) bool {
 	case ResizeSetAction:
 		return s.setFromAction(a.Size)
 	case ResizeEndAction:
-		if !s.drag.on {
+		if !s.drag.On {
 			return false
 		}
 		s.endDrag()
@@ -748,20 +749,20 @@ func (s *Split) beginDrag(h Handle) bool {
 	if s.zoomed != PaneNone || s.avail <= 0 {
 		return false
 	}
-	s.drag.begin(splitDrag{beginRequested: s.requested})
-	s.drag.capture(s.Context())
+	s.drag.Begin(splitDrag{beginRequested: s.requested})
+	s.drag.Capture(s.Context())
 	return true
 }
 
 // endDrag finishes at the current division and releases the pointer.
 func (s *Split) endDrag() bool {
-	_, ok := s.drag.end()
+	_, ok := s.drag.End()
 	return ok
 }
 
 // cancelDrag restores the division asked for when the drag began.
 func (s *Split) cancelDrag() bool {
-	d, ok := s.drag.end()
+	d, ok := s.drag.End()
 	if !ok {
 		return false
 	}
@@ -776,7 +777,7 @@ func (s *Split) cancelDrag() bool {
 // reverting the user's drag would be a change they never made.
 func (s *Split) HandleEvent(ev tui.Event) bool {
 	if _, ok := ev.(tui.PointerCaptureLostEvent); ok {
-		s.drag.lost()
+		s.drag.Lost()
 	}
 	return false
 }

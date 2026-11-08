@@ -3,6 +3,8 @@ package widget
 import (
 	"strconv"
 	"strings"
+
+	"github.com/yongjohnlee80/golib/tui/widget/internal/kit"
 )
 
 // A BAR'S FIELD NAMES — completion of a field's name as the user types an ORDER BY or a WHERE
@@ -55,7 +57,7 @@ func whereQuoted(title string) bool {
 // a value is due: after a comparison's operator or LIKE.
 func TableFieldCompleter(bar TableBar, fields func() []TableField) TextCompleter {
 	return func(text string, cursor int) (int, []string) {
-		start, word := wordBefore(text, cursor)
+		start, word := kit.WordBefore(text, cursor)
 		if word == "" || inString(text[:start]) || valueDue(text[:start]) {
 			return 0, nil
 		}
@@ -64,7 +66,7 @@ func TableFieldCompleter(bar TableBar, fields func() []TableField) TextCompleter
 		typed := strings.TrimPrefix(word, `"`)
 		var out []string
 		for i, form := range forms {
-			if hasPrefixFold(form, word) || hasPrefixFold(fs[i].Title, typed) {
+			if kit.HasPrefixFold(form, word) || kit.HasPrefixFold(fs[i].Title, typed) {
 				out = append(out, form)
 			}
 		}
@@ -120,7 +122,7 @@ func valueDue(s string) bool {
 		return true
 	}
 	j := len(s)
-	for j > 0 && !completeStop(s[j-1]) {
+	for j > 0 && !kit.CompleteStop(s[j-1]) {
 		j--
 	}
 	return strings.EqualFold(s[j:], "LIKE")

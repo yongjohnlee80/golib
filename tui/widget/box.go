@@ -7,6 +7,7 @@ import (
 	"github.com/yongjohnlee80/golib/errs"
 	"github.com/yongjohnlee80/golib/tui"
 	"github.com/yongjohnlee80/golib/tui/style"
+	"github.com/yongjohnlee80/golib/tui/widget/internal/kit"
 )
 
 // Box is the standard panel container: a bordered, single-child panel
@@ -540,8 +541,8 @@ func (x *Box) layoutFrame(c tui.Constraints) (sz tui.Size, inL, inR int) {
 	fh := x.base.GetHorizontalFrameSize()
 	fv := x.base.GetVerticalFrameSize()
 	if x.child == nil {
-		w := boundedMax(c.MaxW, max(c.MinW, fh))
-		h := boundedMax(c.MaxH, max(c.MinH, fv))
+		w := kit.BoundedMax(c.MaxW, max(c.MinW, fh))
+		h := kit.BoundedMax(c.MaxH, max(c.MinH, fv))
 		return c.Constrain(tui.Size{W: w, H: h}), 0, 0
 	}
 	// The insets Render centres a capped box by are committed after layout, so a measure moves
@@ -684,14 +685,14 @@ func (x *Box) renderBorder(s tui.Surface, st style.Style, bs style.BorderStyle, 
 	bottomSt := edge(st.GetBorderBottomForeground())
 	leftSt := edge(st.GetBorderLeftForeground())
 
-	paintFrame(s, tui.Rect{X: bx, Y: by, W: bw, H: bh}, bs,
-		frameEdge{et, topSt}, frameEdge{er, rightSt}, frameEdge{eb, bottomSt}, frameEdge{el, leftSt})
+	kit.PaintFrame(s, tui.Rect{X: bx, Y: by, W: bw, H: bh}, bs,
+		kit.FrameEdge{On: et, St: topSt}, kit.FrameEdge{On: er, St: rightSt}, kit.FrameEdge{On: eb, St: bottomSt}, kit.FrameEdge{On: el, St: leftSt})
 }
 
 // renderBorderText paints one aligned, ellipsis-truncated text run into a
 // border row.
 func (x *Box) renderBorderText(s tui.Surface, text string, align style.Align, st style.Style, xOff, y, availW int) {
-	t := truncate(text, availW, s.StringWidth)
+	t := kit.Truncate(text, availW, s.StringWidth)
 	tw := s.StringWidth(t)
 	switch align {
 	case style.AlignCenter:

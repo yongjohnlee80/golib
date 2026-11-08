@@ -5,6 +5,8 @@ import (
 	"strconv"
 	"strings"
 	"unicode/utf8"
+
+	"github.com/yongjohnlee80/golib/tui/widget/internal/kit"
 )
 
 // A WHERE BAR'S TEXT — a filter a user types over a table's loaded rows, in SQL's words:
@@ -151,7 +153,7 @@ func (p *whereParser) is(kw string) bool { return p.tok.kind == wtKeyword && p.t
 
 // next reads the token after the spaces at p.i into p.tok.
 func (p *whereParser) next() error {
-	for p.i < len(p.text) && orderSpace(p.text[p.i]) {
+	for p.i < len(p.text) && kit.OrderSpace(p.text[p.i]) {
 		p.i++
 	}
 	start := p.i
@@ -259,7 +261,7 @@ func (p *whereParser) quoted(q byte) (string, error) {
 // whereStop reports whether b ends a bare word: a space, a parenthesis, an operator's first byte,
 // a quote, or punctuation the grammar has no use for.
 func whereStop(b byte) bool {
-	return orderSpace(b) || strings.IndexByte(`()=!<>'",;`, b) >= 0
+	return kit.OrderSpace(b) || strings.IndexByte(`()=!<>'",;`, b) >= 0
 }
 
 // THE PARSER

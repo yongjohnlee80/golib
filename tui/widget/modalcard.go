@@ -3,6 +3,7 @@ package widget
 import (
 	"github.com/yongjohnlee80/golib/tui"
 	"github.com/yongjohnlee80/golib/tui/style"
+	"github.com/yongjohnlee80/golib/tui/widget/internal/kit"
 )
 
 // modalCard is the visible panel of a dialog: border, optional title, the
@@ -213,7 +214,7 @@ func (c *modalCard) renderFooter(s tui.Surface, sz tui.Size) {
 // drawBorder paints a single-cell frame around sz, in the border st carries (BorderNormal when
 // none).
 func drawBorder(s tui.Surface, sz tui.Size, st style.Style) {
-	drawFrame(s, tui.Rect{W: sz.W, H: sz.H}, st, style.BorderNormal)
+	kit.DrawFrame(s, tui.Rect{W: sz.W, H: sz.H}, st, style.BorderNormal)
 }
 
 // Scrim dims everything beneath a dialog. The overlay host makes and owns it; it is exported

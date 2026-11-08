@@ -289,7 +289,7 @@ func (c *TableCore) clampPos(p TablePos) TablePos {
 }
 
 // press is a view's press at display position p, on what hit says: PressAt, through the core's
-// pressPairer. live is false when the owner told of the cursor's move replaced the source, and the
+// kit.PressPairer. live is false when the owner told of the cursor's move replaced the source, and the
 // view then does nothing more for the press. A press on a cell pairs by its SOURCE row and field, so
 // a sort or the wheel moving another row under the pressed cell does not; paired reports a
 // double-click there. Any other press pairs nothing.

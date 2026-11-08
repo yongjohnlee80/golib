@@ -5,6 +5,7 @@ import (
 
 	"github.com/yongjohnlee80/golib/errs"
 	"github.com/yongjohnlee80/golib/tui"
+	"github.com/yongjohnlee80/golib/tui/widget/internal/kit"
 )
 
 // PACKAGE ERRORS: the helpers that build the package's errs.Fatal values and validate a button
@@ -12,7 +13,7 @@ import (
 
 // tuiFatal builds the package's standard construction panic.
 func tuiFatal(op, rule string, got int) error {
-	return fatalOf(op, rule, "got "+strconv.Itoa(got))
+	return kit.FatalOf(op, rule, "got "+strconv.Itoa(got))
 }
 
 // checkButtonList is the CONSTRUCTION adapter over validateButtonList.

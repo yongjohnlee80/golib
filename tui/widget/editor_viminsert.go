@@ -1,6 +1,7 @@
 package widget
 
 import (
+	"github.com/yongjohnlee80/golib/tui/widget/internal/kit"
 	txt "github.com/yongjohnlee80/golib/tui/widget/internal/text"
 )
 
@@ -50,7 +51,7 @@ func (c *EditorCore) deleteBackFrom(line bool) int {
 	stop := 0
 	if line {
 		lead := 0 // the leading blanks, all of a blank line's (Vim's beginline(BL_WHITE))
-		for lead < len(cs) && isWS(cs[lead]) {
+		for lead < len(cs) && kit.IsWS(cs[lead]) {
 			lead++
 		}
 		if b.Col > lead {
@@ -63,12 +64,12 @@ func (c *EditorCore) deleteBackFrom(line bool) int {
 	from := stop
 	if !line {
 		from = b.Col
-		for from > stop && isWS(cs[from-1]) {
+		for from > stop && kit.IsWS(cs[from-1]) {
 			from--
 		}
 		if from > stop {
-			class := wordClass(cs[from-1], false)
-			for from > stop && !isWS(cs[from-1]) && wordClass(cs[from-1], false) == class {
+			class := kit.WordClass(cs[from-1], false)
+			for from > stop && !kit.IsWS(cs[from-1]) && kit.WordClass(cs[from-1], false) == class {
 				from--
 			}
 		}

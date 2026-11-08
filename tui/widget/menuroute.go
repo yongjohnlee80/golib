@@ -3,6 +3,7 @@ package widget
 import (
 	"github.com/yongjohnlee80/golib/tui"
 	"github.com/yongjohnlee80/golib/tui/style"
+	"github.com/yongjohnlee80/golib/tui/widget/internal/kit"
 )
 
 // THE MENU'S OWN RESOLVER AND STATE MACHINE.
@@ -539,11 +540,11 @@ func (m *Menu) activate(id ItemID, inv tui.ActionInvocation) bool {
 // the user's actual input, and the Menu has no way to state either, so it cannot
 // claim a keypress produced something a click did.
 func (m *Menu) runRowAction(it *MenuItemModel, inv tui.ActionInvocation) bool {
-	// nilLike, not == nil: a row carrying a nil *myAction satisfies tui.Action
+	// kit.NilLike, not == nil: a row carrying a nil *myAction satisfies tui.Action
 	// with a live type descriptor, and handing that to the executor makes a
 	// consumer's own type switch reach a nil receiver for a row the model says
 	// does nothing. The runtime defines a typed nil as no action; so does this.
-	if nilLike(it.Action) || m.exec == nil {
+	if kit.NilLike(it.Action) || m.exec == nil {
 		return false
 	}
 	forwarded := inv

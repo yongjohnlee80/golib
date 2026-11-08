@@ -70,15 +70,15 @@ in the same change. Never add a second copy "for now".
 | The backend cell grid (wide-cell continuation) | one exported grid in `tui`, used by every backend and `TestBackend` |
 | Hit-testing, bubbling to the modal ceiling, focus candidacy | `hitTestNode` (an optional admit check), `pathTo` (the walk to the ceiling), `isFocusable` / `acceptsFocus` / `trapsFocus` / `hiddenWithin` in `tui` core |
 | Screen ↔ local coordinates | `Rect.Translate`/`RelativeTo`/`Origin`, `Point.Translate`/`RelativeTo`, `MouseEvent.localTo`; never hand-rolled arithmetic |
-| Row viewport: scroll, page, wheel step, reveal, clipping, row painting | `widget/rowviewport.go`: `revealRow`, `clampTop`, `paintRows`, `rowsWidth`, the named wheel steps; `ListStyles.cursorLook` for the cursor row. A menu level's window is `levelView` (`menulevel.go`) over the same helpers: it declares and paints the rows it shows, so what is painted is what is addressable |
+| Row viewport: scroll, page, wheel step, reveal, clipping, row painting | `widget/internal/kit/rowviewport.go`: `RevealRow`, `ClampTop`, `PaintRows`, `RowsWidth`, the named wheel steps; `ListStyles.cursorLook` for the cursor row. A menu level's window is `levelView` (`menulevel.go`) over the same helpers: it declares and paints the rows it shows, so what is painted is what is addressable |
 | Row-view capabilities | `ContextMenuRequester` (List, Tree: ask the owner for a menu), `MenuOpener` (a menu a view opens itself: DataTable's; `*EditorMenu` is one), `RowStyler` (List, Table, Tree: `SetStyles`/`ResetStyles`); a DataTable is a `tui.Scroller` |
 | The file views' source and panes | `FileSource` (rooting, `kind`, reads through one `fileBackend`, `fsBackend` or `vfsBackend`, picked in `FileSource.backend`; `goRead` off the loop) in `widget/filesource.go`; pane framing (`FilePaneStyles`, `newFilePane`, `stylePane`) in `widget/filelist_pane.go`; restyling through `FileChooserStyler` (`SetPaneStyles`, `SetPreviewSourceHighlighting`) |
 | A Tree's visible rows | `Tree.flatten`, cached and dropped by `rowsChanged` at every write to what they are made of (roots, a node's children, loaded or expanded) |
 | A view delegate's Text template (decl) | `cellTemplate` in `decl/tableview_cells.go` (parse, check, present), shared by TableView and TreeView |
 | A picker dialog (decl) | `newChooserDialog` in `decl/filedialog.go`, over the `chooserSpec` FileDialog and FolderDialog read |
-| Press pairing (double/triple click on the same target); a positional view's row identity across owner callbacks | `pressPairer` (`Press`, `Survives`) built on `rowsEpoch` in `widget/presspair.go` (List, Tree, `TableCore.press`; FileList holds its own `rowsEpoch`) |
-| Drag state machine | `widget/drag.go`: `pointerDrag[S]` (begin, capture, end, lost), `resizeGesture`, `stepCellsOf`; WindowCore's richer gesture (focus entry, gesture observers, checkpoint) is its own |
-| Borders and frames | `widget/frame.go`: `paintFrame` (per edge), `drawFrame` (whole), honouring the `style.BorderStyle` a style carries; no hard-coded glyphs |
+| Press pairing (double/triple click on the same target); a positional view's row identity across owner callbacks | `kit.PressPairer` (`Press`, `Survives`) built on `kit.RowsEpoch` in `widget/internal/kit/presspair.go` (List, Tree, `TableCore.press`; FileList holds its own `RowsEpoch`) |
+| Drag state machine | `widget/internal/kit/drag.go`: `PointerDrag[S]` (Begin, Capture, End, Lost); `widget/drag.go`: `resizeGesture`, `stepCellsOf`; WindowCore's richer gesture (focus entry, gesture observers, checkpoint) is its own |
+| Borders and frames | `widget/internal/kit/frame.go`: `PaintFrame` (per edge), `DrawFrame` (whole), honouring the `style.BorderStyle` a style carries; no hard-coded glyphs |
 | Scrims and overlay layering | one scrim and one layer-tier capability on `OverlayHost` |
 | A popup: a panel over the host, closed by Esc or a press outside, trapping focus | `popupLayer` (`popup.go`, opened with `openPopupAt`): EditorMenu's menu, the tab strip's menu, and Select's options (`selectPanel`) |
 | Floating placement (rect, percent, clamp) | `Float.place` / `fixedRect`; the managed (WindowMod) layout adds only its work area and maximize |
@@ -86,7 +86,7 @@ in the same change. Never add a second copy "for now".
 | Buffer edits | the line primitives in `widget/internal/text/buffer.go` (`SetLine`, `InsertLines`, `RemoveLines`, `ReplaceLines`, `SetValue`, `DeleteRegion`, `InsertText`); no other file writes `.Lines` (internal/audit) |
 | Pointer policy, focus state, publishing | `widget.Base` |
 | A widget's shown text, plain or a catalog message | `uiText` (`plainText`, `messageText`, `inLanguage`) in `widget/message.go`, read where it is measured and painted, never resolved into a field in Layout |
-| Fatal construction errors | `fatalOf` → `errs.Fatal` |
+| Fatal construction errors | `kit.FatalOf` → `errs.Fatal` |
 | Parsing (expressions, SQL-ish where/order) | golib `parse` first |
 
 Two widgets that look alike must share their mechanism, and their copies must not "disagree on

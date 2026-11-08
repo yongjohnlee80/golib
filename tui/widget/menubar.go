@@ -2,6 +2,7 @@ package widget
 
 import (
 	"github.com/yongjohnlee80/golib/tui"
+	"github.com/yongjohnlee80/golib/tui/widget/internal/kit"
 )
 
 // MenuBar is a PLACEMENT SHELL over a Menu, not a parallel widget.
@@ -78,7 +79,7 @@ type MenuBarOption func(*MenuBar)
 // except layout.
 func NewMenuBar(m *Menu, opts ...MenuBarOption) *MenuBar {
 	if m == nil {
-		panic(fatalOf("widget: NewMenuBar", "nil Menu",
+		panic(kit.FatalOf("widget: NewMenuBar", "nil Menu",
 			"a bar is a placement shell over a menu and has nothing to show without one"))
 	}
 	b := &MenuBar{menu: m}

@@ -5,7 +5,7 @@ import "github.com/yongjohnlee80/golib/tui"
 // OVERLAY HOST CAPABILITIES.
 //
 // A widget that owns a layer finds its host as the nearest enclosing ancestor with what it needs
-// (hostFor), and names that need as an interface rather than the concrete *OverlayHost, so the
+// (kit.HostFor), and names that need as an interface rather than the concrete *OverlayHost, so the
 // lookup says exactly what it requires. Their methods are unexported where the layers they mount
 // are this package's own types, so only this package's OverlayHost can hold one.
 

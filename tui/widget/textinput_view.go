@@ -2,6 +2,7 @@ package widget
 
 import (
 	"github.com/yongjohnlee80/golib/tui"
+	"github.com/yongjohnlee80/golib/tui/widget/internal/kit"
 	txt "github.com/yongjohnlee80/golib/tui/widget/internal/text"
 )
 
@@ -45,7 +46,7 @@ func (t *TextInput) Layout(c tui.Constraints) tui.Size {
 	if ctx := t.Context(); ctx != nil && ctx.Capabilities().NativeViews {
 		t.pad = 1 // the native field's rounded frame: text starts a cell in from each end
 	}
-	w := boundedMax(c.MaxW, max(c.MinW, t.cellAt(t.length())+1+2*t.pad))
+	w := kit.BoundedMax(c.MaxW, max(c.MinW, t.cellAt(t.length())+1+2*t.pad))
 	if w <= 2*t.pad {
 		t.pad = 0
 	}
@@ -87,7 +88,7 @@ func (t *TextInput) Render(s tui.Surface) {
 	cs := t.clusters()
 	if len(cs) == 0 {
 		if ph := t.placeholder.inLanguage(&t.Base); ph != "" {
-			drawText(s, pad, 0, truncate(ph, inner, s.StringWidth), t.styles.Placeholder)
+			kit.DrawText(s, pad, 0, kit.Truncate(ph, inner, s.StringWidth), t.styles.Placeholder)
 		}
 		return
 	}
@@ -104,7 +105,7 @@ func (t *TextInput) Render(s tui.Surface) {
 		s.SetCell(pad+x, 0, cl, st)
 	})
 	if h := t.hint(); h != "" && x >= 0 && x < inner {
-		drawText(s, pad+x, 0, truncate(h, inner-x, s.StringWidth), t.styles.Placeholder)
+		kit.DrawText(s, pad+x, 0, kit.Truncate(h, inner-x, s.StringWidth), t.styles.Placeholder)
 	}
 }
 

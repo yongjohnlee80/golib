@@ -8,6 +8,7 @@ import (
 
 	"github.com/yongjohnlee80/golib/highlight"
 	"github.com/yongjohnlee80/golib/tui"
+	"github.com/yongjohnlee80/golib/tui/widget/internal/kit"
 )
 
 // FILE PREVIEW — a file's text, framed, for reading.
@@ -88,7 +89,7 @@ func (p *FilePreview) Init(ctx *tui.Context) {
 
 // Layout fills what it is given.
 func (p *FilePreview) Layout(c tui.Constraints) tui.Size {
-	sz := c.Constrain(tui.Size{W: boundedMax(c.MaxW, 40), H: boundedMax(c.MaxH, 12)})
+	sz := c.Constrain(tui.Size{W: kit.BoundedMax(c.MaxW, 40), H: kit.BoundedMax(c.MaxH, 12)})
 	ctx := p.Context()
 	// The note is the view's text. Setting it edits the view, which a pure phase must not do,
 	// so a note that reads differently in the new language is put in at the commit.
@@ -236,7 +237,7 @@ func (p *FilePreview) Hint() string { return p.translate(p.HintMessage()) }
 func (p *FilePreview) HintMessage() tui.Message { return tui.Msg("tui.files.hint.preview") }
 
 // noteText is the note in the App's language, its argument filled in.
-func (p *FilePreview) noteText() string { return withArg(p.translate(p.note), p.noteArg) }
+func (p *FilePreview) noteText() string { return kit.WithArg(p.translate(p.note), p.noteArg) }
 
 // previewOf is what a preview shows for a path: the file's text, or a note about it (a
 // folder, a binary file) with the note's argument.

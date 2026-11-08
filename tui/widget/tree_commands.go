@@ -1,22 +1,25 @@
 package widget
 
-import "github.com/yongjohnlee80/golib/tui/keymap"
+import (
+	"github.com/yongjohnlee80/golib/tui/keymap"
+	"github.com/yongjohnlee80/golib/tui/widget/internal/kit"
+)
 
-// A Tree's key commands (commands.go declares cmd and the shared helpers).
+// A Tree's key commands (declared through internal/kit's Cmd and its helpers).
 
 // TreeScope is a Tree's keys.
 const TreeScope keymap.Scope = "tui.tree"
 
 var (
-	TreeDown     = cmd("tui.tree.down", TreeScope, append(with("Down"), "J")...)
-	TreeUp       = cmd("tui.tree.up", TreeScope, append(with("Up"), "K")...)
-	TreePageDown = cmd("tui.tree.pageDown", TreeScope, with("PgDown")...)
-	TreePageUp   = cmd("tui.tree.pageUp", TreeScope, with("PgUp")...)
-	TreeFirst    = cmd("tui.tree.first", TreeScope, append(with("Home"), "G")...)
-	TreeLast     = cmd("tui.tree.last", TreeScope, append(with("End"), "Shift+G")...)
-	TreeExpand   = cmd("tui.tree.expand", TreeScope, append(with("Right"), "L")...)  // a leaf activates; an open branch steps in
-	TreeCollapse = cmd("tui.tree.collapse", TreeScope, append(with("Left"), "H")...) // a closed node steps to its parent
-	TreeActivate = cmd("tui.tree.activate", TreeScope, with("Enter")...)
+	TreeDown     = kit.Cmd("tui.tree.down", TreeScope, append(kit.With("Down"), "J")...)
+	TreeUp       = kit.Cmd("tui.tree.up", TreeScope, append(kit.With("Up"), "K")...)
+	TreePageDown = kit.Cmd("tui.tree.pageDown", TreeScope, kit.With("PgDown")...)
+	TreePageUp   = kit.Cmd("tui.tree.pageUp", TreeScope, kit.With("PgUp")...)
+	TreeFirst    = kit.Cmd("tui.tree.first", TreeScope, append(kit.With("Home"), "G")...)
+	TreeLast     = kit.Cmd("tui.tree.last", TreeScope, append(kit.With("End"), "Shift+G")...)
+	TreeExpand   = kit.Cmd("tui.tree.expand", TreeScope, append(kit.With("Right"), "L")...)  // a leaf activates; an open branch steps in
+	TreeCollapse = kit.Cmd("tui.tree.collapse", TreeScope, append(kit.With("Left"), "H")...) // a closed node steps to its parent
+	TreeActivate = kit.Cmd("tui.tree.activate", TreeScope, kit.With("Enter")...)
 
 	treeCommands = []keymap.Command{TreeDown, TreeUp, TreePageDown, TreePageUp, TreeFirst, TreeLast,
 		TreeExpand, TreeCollapse, TreeActivate}

@@ -5,6 +5,7 @@ import (
 
 	"github.com/yongjohnlee80/golib/tui"
 	"github.com/yongjohnlee80/golib/tui/keymap"
+	"github.com/yongjohnlee80/golib/tui/widget/internal/kit"
 	txt "github.com/yongjohnlee80/golib/tui/widget/internal/text"
 )
 
@@ -222,7 +223,7 @@ func (t *TextArea) handleKey(e tui.KeyEvent) bool {
 	}
 	cmd, ok := t.keyCommand(e)
 	if !ok {
-		if e.Text != "" && e.Mods&nonTextMods == 0 && e.Code != tui.KeyTab {
+		if e.Text != "" && e.Mods&kit.NonTextMods == 0 && e.Code != tui.KeyTab {
 			t.insert(e.Text)
 			return true
 		}
@@ -349,8 +350,8 @@ func (t *TextArea) ensureVisible() {
 
 // Layout is greedy on both axes.
 func (t *TextArea) Layout(c tui.Constraints) tui.Size {
-	t.w = fillW(c)
-	t.h = fillH(c)
+	t.w = kit.FillW(c)
+	t.h = kit.FillH(c)
 	t.ensureVisible()
 	return c.Constrain(tui.Size{W: t.w, H: t.h})
 }
@@ -370,7 +371,7 @@ func (t *TextArea) Render(s tui.Surface) {
 	}
 	s.Fill(tui.Rect{W: sz.W, H: sz.H}, " ", t.styles.Text)
 	if ph, ok := t.shownPlaceholder(s.StringWidth); ok {
-		drawText(s, 0, 0, ph, t.styles.Placeholder)
+		kit.DrawText(s, 0, 0, ph, t.styles.Placeholder)
 		return
 	}
 	selLo, selHi, hasSel := t.buf.Selection()
@@ -382,7 +383,7 @@ func (t *TextArea) Render(s tui.Surface) {
 		s.SetCell(x, y, cl, st)
 	})
 	if t.scrollable() {
-		paintScrollIndicator(s, sz.W-1, sz.H, t.top, txt.WrapMaxTop(t.buf.Lines, t.view()))
+		kit.PaintScrollIndicator(s, sz.W-1, sz.H, t.top, txt.WrapMaxTop(t.buf.Lines, t.view()))
 	}
 }
 
@@ -392,7 +393,7 @@ func (t *TextArea) shownPlaceholder(measure func(string) int) (string, bool) {
 	if len(t.buf.Lines) != 1 || t.buf.Lines[0] != "" {
 		return "", false
 	}
-	ph := truncate(t.placeholder.inLanguage(&t.Base), t.wrapWidth(), measure)
+	ph := kit.Truncate(t.placeholder.inLanguage(&t.Base), t.wrapWidth(), measure)
 	return ph, ph != ""
 }
 

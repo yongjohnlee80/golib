@@ -6,6 +6,7 @@ import (
 	"testing"
 
 	"github.com/yongjohnlee80/golib/tui"
+	"github.com/yongjohnlee80/golib/tui/widget/internal/kit"
 )
 
 // oldFileViewKey is FileOpenView's key tests before commands — pathKey, filterKey, then movePart, in
@@ -14,7 +15,7 @@ import (
 func oldFileViewKey(k tui.KeyEvent) string {
 	if k.Kind != tui.KeyRelease {
 		switch {
-		case k.Text == "~" && k.Mods&nonTextMods == 0:
+		case k.Text == "~" && k.Mods&kit.NonTextMods == 0:
 			return "home"
 		case k.Code == tui.KeyEscape:
 			return "cancel"

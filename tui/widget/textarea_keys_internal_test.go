@@ -5,6 +5,7 @@ import (
 	"testing"
 
 	"github.com/yongjohnlee80/golib/tui"
+	"github.com/yongjohnlee80/golib/tui/widget/internal/kit"
 )
 
 // oldTextAreaKey is TextArea.handleKey's decision before commands, verbatim but for its effects,
@@ -74,7 +75,7 @@ func oldTextAreaKey(e tui.KeyEvent) string {
 		return ""
 	}
 
-	if e.Text != "" && e.Mods&nonTextMods == 0 && e.Code != tui.KeyTab {
+	if e.Text != "" && e.Mods&kit.NonTextMods == 0 && e.Code != tui.KeyTab {
 		return "type"
 	}
 	return ""
@@ -90,7 +91,7 @@ func TestTextAreaKeysMatchTheOldHandlerWithNoMap(t *testing.T) {
 			if cmd, ok := ta.keyCommand(e); ok {
 				return strings.TrimPrefix(cmd.ID, "tui.textarea.")
 			}
-			if e.Text != "" && e.Mods&nonTextMods == 0 && e.Code != tui.KeyTab {
+			if e.Text != "" && e.Mods&kit.NonTextMods == 0 && e.Code != tui.KeyTab {
 				return "type"
 			}
 			return ""

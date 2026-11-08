@@ -7,6 +7,7 @@ import (
 	"github.com/yongjohnlee80/golib/tui"
 	"github.com/yongjohnlee80/golib/tui/keymap"
 	"github.com/yongjohnlee80/golib/tui/style"
+	"github.com/yongjohnlee80/golib/tui/widget/internal/kit"
 )
 
 // TabStrip, the public strip: a row of tabs over nothing of its own, drawn by the engine in
@@ -59,14 +60,14 @@ func (t *TabStrip) BarColor() (color.NRGBA, bool) {
 func NewTabStrip() *TabStrip {
 	t := &TabStrip{}
 	t.core = tabStrip{base: &t.Base, anchor: t, layer: "tabstrip", owner: t}
-	t.core.bar, t.core.tab, t.core.selected = defaultTabsStyles()
+	t.core.bar, t.core.tab, t.core.selected = kit.DefaultTabsStyles()
 	return t
 }
 
-func (t *TabStrip) stripTabs() []stripTab {
-	out := make([]stripTab, len(t.tabs))
+func (t *TabStrip) stripTabs() []kit.StripTab {
+	out := make([]kit.StripTab, len(t.tabs))
 	for i, tb := range t.tabs {
-		out[i] = stripTab{id: tb.ID, label: cellLabel(tb.Label)}
+		out[i] = kit.StripTab{ID: tb.ID, Label: kit.CellLabel(tb.Label)}
 	}
 	return out
 }
@@ -162,7 +163,7 @@ func (t *TabStrip) TabSpans() []TabSpan { return t.core.spans() }
 
 // SetStyles sets the strip's looks: its blank, a tab, and the active tab.
 func (t *TabStrip) SetStyles(bar, tab, selected style.Style) {
-	t.core.bar, t.core.tab, t.core.selected = tabsStyles(bar, tab, selected)
+	t.core.bar, t.core.tab, t.core.selected = kit.TabsStyles(bar, tab, selected)
 	t.MarkDirty()
 }
 
@@ -202,7 +203,7 @@ func (t *TabStrip) Layout(c tui.Constraints) tui.Size {
 	}
 	sz := c.Constrain(tui.Size{W: w, H: 1})
 	if ctx := t.Context(); ctx != nil { // a measure before mount commits nothing
-		ctx.AfterLayout(tabWindowCommitKey, func() { t.core.commitWindow(sz.W) })
+		ctx.AfterLayout(kit.TabWindowCommitKey, func() { t.core.commitWindow(sz.W) })
 	}
 	return sz
 }

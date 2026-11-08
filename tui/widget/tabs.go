@@ -7,6 +7,7 @@ import (
 	"github.com/yongjohnlee80/golib/tui"
 	"github.com/yongjohnlee80/golib/tui/keymap"
 	"github.com/yongjohnlee80/golib/tui/style"
+	"github.com/yongjohnlee80/golib/tui/widget/internal/kit"
 )
 
 // Multi-Tab Bar & Content Switcher Architecture
@@ -151,7 +152,7 @@ func WithTabsStyles(bar, tab, active style.Style) TabsOption {
 func NewTabs(opts ...TabsOption) *Tabs {
 	t := &Tabs{}
 	t.strip = tabStrip{base: &t.Base, anchor: t, layer: "tabs", markFocus: true, owner: t}
-	t.strip.bar, t.strip.tab, t.strip.selected = defaultTabsStyles()
+	t.strip.bar, t.strip.tab, t.strip.selected = kit.DefaultTabsStyles()
 	for _, o := range opts {
 		if o != nil {
 			o(t)
@@ -165,10 +166,10 @@ func NewTabs(opts ...TabsOption) *Tabs {
 
 // stripTabs, stripActive and stripChoose are the bar's owner side (stripOwner): the tabs by
 // index, the active one, and Select.
-func (t *Tabs) stripTabs() []stripTab {
-	out := make([]stripTab, len(t.tabs))
+func (t *Tabs) stripTabs() []kit.StripTab {
+	out := make([]kit.StripTab, len(t.tabs))
 	for i, tab := range t.tabs {
-		out[i] = stripTab{id: strconv.Itoa(i), label: cellLabel(tab.label)}
+		out[i] = kit.StripTab{ID: strconv.Itoa(i), Label: kit.CellLabel(tab.label)}
 	}
 	return out
 }
@@ -185,7 +186,7 @@ func (t *Tabs) stripChoose(id string) {
 // [WithTabsStyles] does at construction: what a style leaves unset is the default's, so zero
 // styles restore the defaults.
 func (t *Tabs) SetStyles(bar, tab, active style.Style) {
-	t.strip.bar, t.strip.tab, t.strip.selected = tabsStyles(bar, tab, active)
+	t.strip.bar, t.strip.tab, t.strip.selected = kit.TabsStyles(bar, tab, active)
 	t.MarkDirty()
 }
 
@@ -349,15 +350,15 @@ func (t *Tabs) KeyBindings(m *keymap.Map) []keymap.Binding { return tui.Bindings
 
 // Layout gives the bar one row and the active content the rest.
 func (t *Tabs) Layout(c tui.Constraints) tui.Size {
-	w := fillW(c)
-	h := fillH(c)
+	w := kit.FillW(c)
+	h := kit.FillH(c)
 	barH := 1
 	if t.noBar {
 		barH = 0
 	}
 	ch := max(h-barH, 0)
 	if !t.noBar {
-		t.ctx.AfterLayout(tabWindowCommitKey, func() { t.strip.commitWindow(w) })
+		t.ctx.AfterLayout(kit.TabWindowCommitKey, func() { t.strip.commitWindow(w) })
 	}
 	active := t.tabs[t.active]
 	if active.mounted && ch > 0 {

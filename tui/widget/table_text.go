@@ -6,6 +6,7 @@ import (
 
 	"github.com/yongjohnlee80/golib/tui"
 	"github.com/yongjohnlee80/golib/tui/style"
+	"github.com/yongjohnlee80/golib/tui/widget/internal/kit"
 	txt "github.com/yongjohnlee80/golib/tui/widget/internal/text"
 )
 
@@ -184,7 +185,7 @@ func (t *TableText) write(d tableData) bool {
 		var b strings.Builder
 		b.WriteString("|")
 		for c, w := range widths {
-			b.WriteString(" " + padAligned(cells[c], w, aligns[c], tui.StringWidth) + " |")
+			b.WriteString(" " + kit.PadAligned(cells[c], w, aligns[c], tui.StringWidth) + " |")
 		}
 		return b.String()
 	}

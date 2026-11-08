@@ -8,6 +8,7 @@ import (
 
 	"github.com/yongjohnlee80/golib/tui"
 	"github.com/yongjohnlee80/golib/tui/style"
+	"github.com/yongjohnlee80/golib/tui/widget/internal/kit"
 )
 
 // Toasts shows notifications stacked in a corner of the screen, as a desktop's toasts do: each a
@@ -57,7 +58,7 @@ type Toasts struct {
 	now     func() time.Time
 	st      style.Style
 	muted   style.Style
-	clock   ticker     // the tick, while anything is showing or waiting
+	clock   kit.Ticker // the tick, while anything is showing or waiting
 	laid    tui.Size   // the size last laid out, where the cards are placed
 	pressed *toastItem // the card a primary press landed on, activated by the release over it
 }
@@ -247,13 +248,13 @@ func (t *Toasts) expire() {
 		t.RequestLayout()
 	}
 	if len(t.showing) == 0 && len(t.queue) == 0 {
-		t.clock.halt()
+		t.clock.Halt()
 	}
 }
 
 // tick runs the clock once a second while anything shows or waits: the ages move, and the
 // lingering go.
-func (t *Toasts) tick() { t.clock.start(t.ctx, time.Second) }
+func (t *Toasts) tick() { t.clock.Start(t.ctx, time.Second) }
 
 func (t *Toasts) changed() {
 	t.RequestLayout()
@@ -263,7 +264,7 @@ func (t *Toasts) changed() {
 // Init starts the clock for what was posted before the stack was mounted.
 func (t *Toasts) Init(ctx *tui.Context) {
 	t.Base.Init(ctx)
-	t.clock.forget()
+	t.clock.Forget()
 	if len(t.showing)+len(t.queue) > 0 {
 		t.tick()
 	}
@@ -275,7 +276,7 @@ func (t *Toasts) Init(ctx *tui.Context) {
 func (t *Toasts) HandleEvent(ev tui.Event) bool {
 	switch e := ev.(type) {
 	case tui.TickEvent:
-		if !tickOf(e, t.NodeID()) {
+		if !kit.TickOf(e, t.NodeID()) {
 			return false
 		}
 		t.expire()
@@ -334,7 +335,7 @@ func age(d time.Duration) string {
 func (t *Toasts) box(it *toastItem, maxW int) (w int, lines []string) {
 	inner := max(min(t.width, maxW)-4, 1) // border and a column of padding each side
 	for _, para := range strings.Split(it.Text, "\n") {
-		lines = append(lines, wrapLine(para, inner, t.measure)...)
+		lines = append(lines, kit.WrapLine(para, inner, t.measure)...)
 	}
 	wide := t.measure(age(t.now().Sub(it.At))) + 4 // the age in the top border
 	for _, l := range lines {
@@ -348,7 +349,7 @@ func (t *Toasts) Layout(c tui.Constraints) tui.Size {
 	if len(t.showing) == 0 {
 		return c.Constrain(tui.Size{})
 	}
-	maxW := boundedMax(c.MaxW, t.width)
+	maxW := kit.BoundedMax(c.MaxW, t.width)
 	w, h := 0, t.margin
 	for _, it := range t.showing {
 		bw, lines := t.box(it, maxW)
@@ -408,13 +409,13 @@ func (t *Toasts) Render(s tui.Surface) {
 func (t *Toasts) paint(s tui.Surface, x, y, w int, lines []string, when string) {
 	h := len(lines) + 2
 	s.Fill(tui.Rect{X: x, Y: y, W: w, H: h}, " ", t.st)
-	drawFrame(s, tui.Rect{X: x, Y: y, W: w, H: h}, t.muted, style.BorderRounded)
+	kit.DrawFrame(s, tui.Rect{X: x, Y: y, W: w, H: h}, t.muted, style.BorderRounded)
 	label := " " + when + " "
 	if lw := t.measure(label); lw+3 <= w {
-		drawText(s, x+w-2-lw, y, label, t.muted)
+		kit.DrawText(s, x+w-2-lw, y, label, t.muted)
 	}
 	for i, l := range lines {
-		drawText(s, x+2, y+1+i, l, t.st)
+		kit.DrawText(s, x+2, y+1+i, l, t.st)
 	}
 }
 

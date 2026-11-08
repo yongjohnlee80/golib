@@ -9,6 +9,7 @@ import (
 	"github.com/yongjohnlee80/golib/tui"
 	"github.com/yongjohnlee80/golib/tui/keymap"
 	"github.com/yongjohnlee80/golib/tui/style"
+	"github.com/yongjohnlee80/golib/tui/widget/internal/kit"
 	txt "github.com/yongjohnlee80/golib/tui/widget/internal/text"
 )
 
@@ -449,8 +450,8 @@ func incompleteTail(b []byte) int {
 // Layout is greedy on both axes; it re-derives the wrapped row count and
 // scroll bounds.
 func (v *BufferView) Layout(c tui.Constraints) tui.Size {
-	v.w = fillW(c)
-	v.h = fillH(c)
+	v.w = kit.FillW(c)
+	v.h = kit.FillH(c)
 	v.recount()
 	v.clampScroll()
 	return c.Constrain(tui.Size{W: v.w, H: v.h})
@@ -482,7 +483,7 @@ func (v *BufferView) Render(s tui.Surface) {
 		}
 	}
 	if v.totalRows > sz.H {
-		paintScrollIndicator(s, sz.W-1, sz.H, start, v.totalRows-sz.H)
+		kit.PaintScrollIndicator(s, sz.W-1, sz.H, start, v.totalRows-sz.H)
 	}
 }
 

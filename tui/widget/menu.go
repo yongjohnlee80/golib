@@ -7,6 +7,7 @@ import (
 
 	"github.com/yongjohnlee80/golib/tui"
 	"github.com/yongjohnlee80/golib/tui/keymap"
+	"github.com/yongjohnlee80/golib/tui/widget/internal/kit"
 )
 
 // MENU.
@@ -137,7 +138,7 @@ func WithMenuStyle(s *MenuStyle) MenuOption {
 // does not fit. nil selects FlipClipPolicy.
 func WithAnchorPolicy(p AnchorPolicy) MenuOption {
 	return func(m *Menu) {
-		if nilLike(p) {
+		if kit.NilLike(p) {
 			m.policy = nil // the host substitutes its default
 			return
 		}
@@ -163,7 +164,7 @@ const defaultLevelMinWidth = 12
 func WithLevelMinWidth(cols int) MenuOption {
 	return func(m *Menu) {
 		if cols < 0 {
-			panic(fatalOf("widget: WithLevelMinWidth",
+			panic(kit.FatalOf("widget: WithLevelMinWidth",
 				"a negative width is not a narrower box; zero removes the floor",
 				strconv.Itoa(cols)))
 		}
@@ -214,7 +215,7 @@ func WithBarSubmenuMarker(v bool) MenuOption {
 // trusted everywhere it is read, instead of every reader repeating the check.
 func WithRowRenderer(r RowRenderer) MenuOption {
 	return func(m *Menu) {
-		if nilLike(r) {
+		if kit.NilLike(r) {
 			m.rows = nil
 			return
 		}

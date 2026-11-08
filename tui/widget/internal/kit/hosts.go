@@ -1,13 +1,13 @@
-package widget
+package kit
 
 import "github.com/yongjohnlee80/golib/tui"
 
-// hostFor resolves the nearest enclosing ancestor satisfying T.
+// HostFor resolves the nearest enclosing ancestor satisfying T.
 //
 // ONE rule about which host a widget belongs to — nearest enclosing, never a
 // sibling, never a broadcast — shared by every widget that owns a layer, with
 // the interface saying what that widget actually needs from it.
-func hostFor[T any](ctx *tui.Context) (T, bool) {
+func HostFor[T any](ctx *tui.Context) (T, bool) {
 	var zero T
 	if ctx == nil {
 		return zero, false

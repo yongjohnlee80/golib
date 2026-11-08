@@ -3,6 +3,7 @@ package widget
 import (
 	"github.com/yongjohnlee80/golib/tui"
 	"github.com/yongjohnlee80/golib/tui/keymap"
+	"github.com/yongjohnlee80/golib/tui/widget/internal/kit"
 )
 
 // THE VIM GRAMMAR'S SECOND KEYS: the key after an armed g, and the i or a
@@ -23,14 +24,14 @@ var vimZCommands = []struct {
 	cmd keymap.Command
 	dir int
 }{
-	{cmd("tui.editor.vim.z.left", vimZScope, "H"), -1},
-	{cmd("tui.editor.vim.z.right", vimZScope, "L"), 1},
+	{kit.Cmd("tui.editor.vim.z.left", vimZScope, "H"), -1},
+	{kit.Cmd("tui.editor.vim.z.right", vimZScope, "L"), 1},
 }
 
 // scrollKeyOf is the z command k is: its direction.
 func (c *EditorCore) scrollKeyOf(k tui.KeyEvent) (dir int, ok bool) {
 	for _, z := range vimZCommands {
-		if isKey(k, c.keys.builtFrom.KeysOf(z.cmd)...) {
+		if kit.IsKey(k, c.keys.builtFrom.KeysOf(z.cmd)...) {
 			return z.dir, true
 		}
 	}
@@ -60,17 +61,17 @@ var vimGCommands = []struct {
 	cmd keymap.Command
 	key goKey
 }{
-	{cmd("tui.editor.vim.g.goLine", vimGScope, "G"), goLine},
-	{cmd("tui.editor.vim.g.wordEndBack", vimGScope, "E"), goWordEndBack},
-	{cmd("tui.editor.vim.g.wORDEndBack", vimGScope, "Shift+E"), goWORDEndBack},
-	{cmd("tui.editor.vim.g.rowDown", vimGScope, "J"), goRowDown},
-	{cmd("tui.editor.vim.g.rowUp", vimGScope, "K"), goRowUp},
-	{cmd("tui.editor.vim.g.starPartial", vimGScope, "*"), goStarPartial},
-	{cmd("tui.editor.vim.g.hashPartial", vimGScope, "#"), goHashPartial},
-	{cmd("tui.editor.vim.g.joinRaw", vimGScope, "Shift+J"), goJoinRaw},
-	{cmd("tui.editor.vim.g.caseToggle", vimGScope, "~"), goCaseToggle},
-	{cmd("tui.editor.vim.g.lower", vimGScope, "U"), goLower},
-	{cmd("tui.editor.vim.g.upper", vimGScope, "Shift+U"), goUpper},
+	{kit.Cmd("tui.editor.vim.g.goLine", vimGScope, "G"), goLine},
+	{kit.Cmd("tui.editor.vim.g.wordEndBack", vimGScope, "E"), goWordEndBack},
+	{kit.Cmd("tui.editor.vim.g.wORDEndBack", vimGScope, "Shift+E"), goWORDEndBack},
+	{kit.Cmd("tui.editor.vim.g.rowDown", vimGScope, "J"), goRowDown},
+	{kit.Cmd("tui.editor.vim.g.rowUp", vimGScope, "K"), goRowUp},
+	{kit.Cmd("tui.editor.vim.g.starPartial", vimGScope, "*"), goStarPartial},
+	{kit.Cmd("tui.editor.vim.g.hashPartial", vimGScope, "#"), goHashPartial},
+	{kit.Cmd("tui.editor.vim.g.joinRaw", vimGScope, "Shift+J"), goJoinRaw},
+	{kit.Cmd("tui.editor.vim.g.caseToggle", vimGScope, "~"), goCaseToggle},
+	{kit.Cmd("tui.editor.vim.g.lower", vimGScope, "U"), goLower},
+	{kit.Cmd("tui.editor.vim.g.upper", vimGScope, "Shift+U"), goUpper},
 }
 
 // vimObjectCommands are the keys that name a text object's extent: inside it, or around it.
@@ -78,14 +79,14 @@ var vimObjectCommands = []struct {
 	cmd    keymap.Command
 	around bool
 }{
-	{cmd("tui.editor.vim.object.inner", vimObjectScope, "I"), false},
-	{cmd("tui.editor.vim.object.around", vimObjectScope, "A"), true},
+	{kit.Cmd("tui.editor.vim.object.inner", vimObjectScope, "I"), false},
+	{kit.Cmd("tui.editor.vim.object.around", vimObjectScope, "A"), true},
 }
 
 // goKeyOf is the g command k is, as the App's key map binds it (its defaults without one).
 func (c *EditorCore) goKeyOf(k tui.KeyEvent) goKey {
 	for _, g := range vimGCommands {
-		if isKey(k, c.keys.builtFrom.KeysOf(g.cmd)...) {
+		if kit.IsKey(k, c.keys.builtFrom.KeysOf(g.cmd)...) {
 			return g.key
 		}
 	}
@@ -95,7 +96,7 @@ func (c *EditorCore) goKeyOf(k tui.KeyEvent) goKey {
 // objectOf is whether k names a text object's extent, and whether it is around rather than inner.
 func (c *EditorCore) objectOf(k tui.KeyEvent) (around, ok bool) {
 	for _, o := range vimObjectCommands {
-		if isKey(k, c.keys.builtFrom.KeysOf(o.cmd)...) {
+		if kit.IsKey(k, c.keys.builtFrom.KeysOf(o.cmd)...) {
 			return o.around, true
 		}
 	}

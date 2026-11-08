@@ -7,6 +7,7 @@ import (
 	"testing"
 
 	"github.com/yongjohnlee80/golib/tui"
+	"github.com/yongjohnlee80/golib/tui/widget/internal/kit"
 )
 
 // oldTableKey is TableCore.HandleKey at golib 6a0b271, verbatim: the oracle of the no-map
@@ -17,7 +18,7 @@ func oldTableKey(c *TableCore, k tui.KeyEvent) bool {
 	if k.Kind == tui.KeyRelease {
 		return false
 	}
-	if mods := k.Mods & nonTextMods; mods != 0 {
+	if mods := k.Mods & kit.NonTextMods; mods != 0 {
 		c.dropPending()
 		if mods == tui.ModCtrl && (k.Code == 'v' || k.Code == 'V') {
 			c.toggleSelect(TableSelectBlock)

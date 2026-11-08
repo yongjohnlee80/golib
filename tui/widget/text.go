@@ -6,6 +6,7 @@ import (
 
 	"github.com/yongjohnlee80/golib/tui"
 	"github.com/yongjohnlee80/golib/tui/style"
+	"github.com/yongjohnlee80/golib/tui/widget/internal/kit"
 )
 
 // WrapMode selects how text-bearing widgets treat overflow. Text accepts
@@ -220,7 +221,7 @@ func (t *Text) Render(s tui.Surface) {
 		st = st.Italic(true)
 	}
 	if t.mode == Truncate {
-		tui.DrawText(s, 0, 0, truncate(t.lines()[0], sz.W, s.StringWidth), st)
+		tui.DrawText(s, 0, 0, kit.Truncate(t.lines()[0], sz.W, s.StringWidth), st)
 		return
 	}
 	y := 0

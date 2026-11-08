@@ -3,6 +3,7 @@ package widget
 import (
 	"strings"
 
+	"github.com/yongjohnlee80/golib/tui/widget/internal/kit"
 	txt "github.com/yongjohnlee80/golib/tui/widget/internal/text"
 )
 
@@ -254,7 +255,7 @@ func leadingBlanks(s string) string { return s[:len(s)-len(strings.TrimLeft(s, "
 func (c *EditorCore) opMotion(op Action, act Action, count int, hadCount bool) bool {
 	b := &c.buf
 	if op == ActChangePrefix && (act == ActWordForward || act == ActWORDForward) {
-		if cs := b.LineClusters(b.Ln); b.Col < len(cs) && !isWS(cs[b.Col]) {
+		if cs := b.LineClusters(b.Ln); b.Col < len(cs) && !kit.IsWS(cs[b.Col]) {
 			// cw and cW on a non-blank change to the word's end, as ce and cE
 			if act == ActWORDForward {
 				act = ActWORDEnd

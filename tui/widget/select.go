@@ -7,6 +7,7 @@ import (
 	"github.com/yongjohnlee80/golib/tui"
 	"github.com/yongjohnlee80/golib/tui/keymap"
 	"github.com/yongjohnlee80/golib/tui/style"
+	"github.com/yongjohnlee80/golib/tui/widget/internal/kit"
 	txt "github.com/yongjohnlee80/golib/tui/widget/internal/text"
 )
 
@@ -345,7 +346,7 @@ func (s *Select[T]) openPopup() {
 		return
 	}
 	ctx := s.Context()
-	host, ok := hostFor[popupHost](ctx)
+	host, ok := kit.HostFor[popupHost](ctx)
 	if !ok {
 		return // nothing can hold the popup; opening would be a lie
 	}
@@ -447,7 +448,7 @@ func (s *Select[T]) Layout(c tui.Constraints) tui.Size {
 
 // errorText is the field's report of a failed load, in the App's language.
 func (s *Select[T]) errorText() string {
-	return withArg(s.translate(tui.Msg("tui.select.error")), s.loadErr.Error())
+	return kit.WithArg(s.translate(tui.Msg("tui.select.error")), s.loadErr.Error())
 }
 
 func (s *Select[T]) longestLabel() int {
@@ -471,7 +472,7 @@ func (s *Select[T]) Render(sur tui.Surface) {
 		label = s.items[s.selected].Label
 	} else {
 		label = s.placeholder
-		st = mutedPlaceholder().Inherit(st)
+		st = kit.MutedPlaceholder().Inherit(st)
 	}
 	if s.loadErr != nil {
 		st = s.errSt.Inherit(st)
@@ -497,7 +498,7 @@ func (s *Select[T]) Render(sur tui.Surface) {
 		sur.SetCell(x, 0, " ", st)
 	}
 	if s.fieldW > 2 {
-		drawText(sur, 0, 0, truncate(label, s.fieldW-2, sur.StringWidth), st)
+		kit.DrawText(sur, 0, 0, kit.Truncate(label, s.fieldW-2, sur.StringWidth), st)
 	}
 	if !s.affordance {
 		return
@@ -545,7 +546,7 @@ func (p *selectPanel[T]) Init(ctx *tui.Context) {
 func (p *selectPanel[T]) refilter() {
 	p.matches = p.matches[:0]
 	for i, it := range p.owner.items {
-		if matchFold(it.Label, p.filter) {
+		if kit.MatchFold(it.Label, p.filter) {
 			p.matches = append(p.matches, i)
 		}
 	}
@@ -563,14 +564,14 @@ func (p *selectPanel[T]) rows() int {
 	return max(h, 1)
 }
 
-func (p *selectPanel[T]) ensureVisible() { p.top = revealRow(p.top, p.hi, p.rows()) }
+func (p *selectPanel[T]) ensureVisible() { p.top = kit.RevealRow(p.top, p.hi, p.rows()) }
 
 // Layout sizes the panel within the room the popup offers (the whole host): wide enough for the
 // longest label and the filter, and at least the field's width; tall enough for every match, capped
 // to the room with scrolling inside.
 func (p *selectPanel[T]) Layout(c tui.Constraints) tui.Size {
-	w := boundedMax(c.MaxW, c.MinW)
-	h := boundedMax(c.MaxH, c.MinH)
+	w := kit.BoundedMax(c.MaxW, c.MinW)
+	h := kit.BoundedMax(c.MaxH, c.MinH)
 	labelW := max(p.owner.longestLabel(), 8)
 	if p.owner.filterOn {
 		labelW = max(labelW, p.owner.measure(p.filter)+2)
@@ -623,7 +624,7 @@ func (p *selectPanel[T]) keyOf(e tui.KeyEvent, filterOn bool) popupKey {
 			return popupKeyOf[cmd.ID]
 		}
 	}
-	if filterOn && e.Kind != tui.KeyRelease && e.Text != "" && e.Mods&nonTextMods == 0 && e.Code != tui.KeyTab {
+	if filterOn && e.Kind != tui.KeyRelease && e.Text != "" && e.Mods&kit.NonTextMods == 0 && e.Code != tui.KeyTab {
 		return popupType
 	}
 	return popupNone
@@ -744,7 +745,7 @@ func (p *selectPanel[T]) Render(s tui.Surface) {
 	if p.owner.filterOn {
 		f := "/" + p.filter
 		sub := s.Sub(tui.Rect{X: innerX, Y: y, W: innerW, H: 1})
-		drawText(sub, 0, 0, truncate(f, innerW, s.StringWidth), filterSt)
+		kit.DrawText(sub, 0, 0, kit.Truncate(f, innerW, s.StringWidth), filterSt)
 		y++
 	}
 	rows := p.rows()
@@ -754,12 +755,12 @@ func (p *selectPanel[T]) Render(s tui.Surface) {
 		}
 		return optSt
 	}
-	paintRows(s.Sub(tui.Rect{X: innerX, Y: y, W: innerW, H: rows}), p.top, len(p.matches), innerW, styleOf,
+	kit.PaintRows(s.Sub(tui.Rect{X: innerX, Y: y, W: innerW, H: rows}), p.top, len(p.matches), innerW, styleOf,
 		func(s tui.Surface, mi, y, w int, st style.Style) {
-			drawText(s, 0, y, truncate(p.owner.items[p.matches[mi]].Label, w, s.StringWidth), st)
+			kit.DrawText(s, 0, y, kit.Truncate(p.owner.items[p.matches[mi]].Label, w, s.StringWidth), st)
 		})
 	if len(p.matches) > rows {
 		sub := s.Sub(tui.Rect{X: r.X + r.W - 1, Y: y, W: 1, H: rows})
-		paintScrollIndicator(sub, 0, rows, p.top, len(p.matches)-rows)
+		kit.PaintScrollIndicator(sub, 0, rows, p.top, len(p.matches)-rows)
 	}
 }

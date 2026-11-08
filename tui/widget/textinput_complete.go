@@ -3,6 +3,7 @@ package widget
 import (
 	"strings"
 
+	"github.com/yongjohnlee80/golib/tui/widget/internal/kit"
 	txt "github.com/yongjohnlee80/golib/tui/widget/internal/text"
 )
 
@@ -78,12 +79,12 @@ func (t *TextInput) complete(back bool) bool {
 			return true
 		}
 		t.walk = &textWalk{start: start, items: items, at: -1}
-		if p := commonPrefix(items, typed); len(p) > len(typed) {
+		if p := kit.CommonPrefix(items, typed); len(p) > len(typed) {
 			t.replaceWord(start, p)
 			return true
 		}
 	}
-	t.walk.at = walkStep(t.walk.at, len(t.walk.items), back)
+	t.walk.at = kit.WalkStep(t.walk.at, len(t.walk.items), back)
 	t.replaceWord(t.walk.start, t.walk.items[t.walk.at])
 	return true
 }
@@ -140,7 +141,7 @@ func (t *TextInput) hint() string {
 // with a double quote and not closed runs back to it. An empty word offers nothing.
 func WordCompleter(items func() []string) TextCompleter {
 	return func(text string, cursor int) (int, []string) {
-		start, word := wordBefore(text, cursor)
+		start, word := kit.WordBefore(text, cursor)
 		if word == "" {
 			return 0, nil
 		}
@@ -157,7 +158,7 @@ func matching(items []string, word string) []string {
 		if seen[it] {
 			continue
 		}
-		if hasPrefixFold(it, word) || strings.HasPrefix(it, `"`) && hasPrefixFold(it[1:], strings.TrimPrefix(word, `"`)) {
+		if kit.HasPrefixFold(it, word) || strings.HasPrefix(it, `"`) && kit.HasPrefixFold(it[1:], strings.TrimPrefix(word, `"`)) {
 			seen[it] = true
 			out = append(out, it)
 		}

@@ -178,7 +178,7 @@ func (r *Resizable) beginDrag(a ResizeBeginAction) bool {
 	if !r.sized {
 		return false
 	}
-	r.drag.begin(resizeDrag{
+	r.drag.Begin(resizeDrag{
 		handle: a.Handle,
 		origin: a.At,
 		// beginSize is the EFFECTIVE size, which is what a drag delta is
@@ -213,10 +213,10 @@ func (r *Resizable) supports(h Handle) bool {
 // so a drag that wanders and returns lands exactly where it started rather than
 // accumulating rounding.
 func (r *Resizable) dragTo(at tui.Point) bool {
-	if !r.drag.on {
+	if !r.drag.On {
 		return false
 	}
-	d := r.drag.start
+	d := r.drag.Start
 	w := d.beginSize.W + (at.X-d.origin.X)*d.handle.dx()
 	h := d.beginSize.H + (at.Y-d.origin.Y)*d.handle.dy()
 	r.SetSize(tui.Size{W: w, H: h})
@@ -225,7 +225,7 @@ func (r *Resizable) dragTo(at tui.Point) bool {
 
 // endDrag finishes at the current size.
 func (r *Resizable) endDrag() bool {
-	if _, ok := r.drag.end(); !ok {
+	if _, ok := r.drag.End(); !ok {
 		return false
 	}
 	if r.onEnd != nil {
@@ -245,7 +245,7 @@ func (r *Resizable) endDrag() bool {
 // return it to auto, or the wrapper silently stops tracking its child because
 // the user changed their mind.
 func (r *Resizable) cancelDrag() bool {
-	d, ok := r.drag.end()
+	d, ok := r.drag.End()
 	if !ok {
 		return false
 	}
@@ -260,7 +260,7 @@ func (r *Resizable) cancelDrag() bool {
 // would be a change they never made.
 func (r *Resizable) HandleEvent(ev tui.Event) bool {
 	if _, ok := ev.(tui.PointerCaptureLostEvent); ok {
-		r.drag.lost()
+		r.drag.Lost()
 	}
 	return false
 }
@@ -320,7 +320,7 @@ func (g *resizeHandle) resolve(ev tui.Event) (tui.Action, bool) {
 	if !ok {
 		return nil, false
 	}
-	return resizeGesture(e, g.toOwner(e.X, e.Y), g.owner.drag.on, func() (Handle, bool) { return g.handle, true })
+	return resizeGesture(e, g.toOwner(e.X, e.Y), g.owner.drag.On, func() (Handle, bool) { return g.handle, true })
 }
 
 // toOwner converts grip-local coordinates into the wrapper's frame.
@@ -334,7 +334,7 @@ func (g *resizeHandle) toOwner(x, y int) tui.Point {
 func (g *resizeHandle) HandleAction(inv tui.ActionInvocation) bool {
 	handled := g.owner.HandleAction(inv)
 	if _, ok := actionValue(inv.Action).(ResizeBeginAction); ok && handled {
-		g.owner.drag.capture(g.Context())
+		g.owner.drag.Capture(g.Context())
 	}
 	return handled
 }
@@ -348,7 +348,7 @@ func (g *resizeHandle) HandleEvent(ev tui.Event) bool {
 // ResolveCaptureEscape lets a grip cancel without stealing keyboard focus from
 // the content whose geometry it controls.
 func (g *resizeHandle) ResolveCaptureEscape(e tui.KeyEvent) (tui.Action, bool) {
-	if g.owner.drag.on { // the runtime matched tui.CancelCapture before asking
+	if g.owner.drag.On { // the runtime matched tui.CancelCapture before asking
 		return ResizeCancelAction{}, true
 	}
 	return nil, false
@@ -366,7 +366,7 @@ func (g *resizeHandle) Render(s tui.Surface) {
 		return
 	}
 	st := g.owner.st.Handle()
-	if g.owner.drag.on && g.owner.drag.start.handle == g.handle {
+	if g.owner.drag.On && g.owner.drag.Start.handle == g.handle {
 		st = g.owner.st.Active()
 	}
 	// FILL, not SetCell per column. A two-cell glyph written at every x

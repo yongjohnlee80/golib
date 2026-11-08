@@ -5,6 +5,7 @@ import (
 	"sync"
 
 	"github.com/yongjohnlee80/golib/tui"
+	"github.com/yongjohnlee80/golib/tui/widget/internal/kit"
 )
 
 // The Terminal's input: what a key does in input mode, and the bounded queue that writes to the
@@ -96,7 +97,7 @@ func inputAct(ctx tui.KeyResolver, k tui.KeyEvent, running, exited, prefix, vimK
 		switch {
 		case isCtrl(k, 'n'):
 			return termToNormal
-		case isKey(k, literalCtrlSlash...):
+		case kit.IsKey(k, literalCtrlSlash...):
 			return termSendPrefix
 		}
 		return termSendBoth

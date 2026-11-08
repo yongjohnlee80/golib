@@ -3,6 +3,7 @@ package widget
 import (
 	"github.com/yongjohnlee80/golib/tui"
 	"github.com/yongjohnlee80/golib/tui/style"
+	"github.com/yongjohnlee80/golib/tui/widget/internal/kit"
 )
 
 // TableColumn describes one column of a [Table]: a header title, a width specification,
@@ -158,7 +159,7 @@ func (t *Table[T]) paintRow(s tui.Surface, y, width int, item T, rowStyle style.
 	for col := range t.cols {
 		if col > 0 {
 			if x < width {
-				drawText(s, x, y, truncate("  ", width-x, s.StringWidth), rowStyle)
+				kit.DrawText(s, x, y, kit.Truncate("  ", width-x, s.StringWidth), rowStyle)
 			}
 			x += tableGap
 		}
@@ -176,7 +177,7 @@ func (t *Table[T]) paintRow(s tui.Surface, y, width int, item T, rowStyle style.
 			st = st.Reverse(false)
 		}
 		fit := min(t.widths[col], width-x)
-		drawText(s, x, y, fitCell(cell.Text, fit, t.cols[col].Elide, style.AlignLeft, s.StringWidth), st)
+		kit.DrawText(s, x, y, fitCell(cell.Text, fit, t.cols[col].Elide, style.AlignLeft, s.StringWidth), st)
 		x += t.widths[col]
 	}
 }
@@ -280,8 +281,8 @@ func (t *Table[T]) renderRow(item T) string {
 // Layout fills the height it is given. Offered an unbounded one, it asks for
 // its header and its rows — its content, as a Qt view's implicit height is.
 func (t *Table[T]) Layout(c tui.Constraints) tui.Size {
-	w := fillW(c)
-	h := boundedMax(c.MaxH, max(c.MinH, 1+max(t.list.Len(), 1)))
+	w := kit.FillW(c)
+	h := kit.BoundedMax(c.MaxH, max(c.MinH, 1+max(t.list.Len(), 1)))
 	t.resolveWidths(w)
 	if lh := max(h-1, 0); lh > 0 {
 		t.Context().LayoutChild(t.list, tui.Tight(tui.Size{W: w, H: lh}))
@@ -307,7 +308,7 @@ func (t *Table[T]) Render(s tui.Surface) {
 		if x >= sz.W {
 			break
 		}
-		drawText(s, x, 0, fitCell(c.Title, min(t.widths[i], sz.W-x), ElideRight, style.AlignLeft, s.StringWidth), t.headSt)
+		kit.DrawText(s, x, 0, fitCell(c.Title, min(t.widths[i], sz.W-x), ElideRight, style.AlignLeft, s.StringWidth), t.headSt)
 		x += t.widths[i]
 	}
 }
@@ -368,7 +369,7 @@ func (t *Table[T]) AccessibleRole() tui.AccessibleRole { return tui.RoleTable }
 // mode says, then padded and placed as a says. The one cell fitter for tables, so a CJK or emoji
 // cell takes exactly its column, and the next column starts where the header put it.
 func fitCell(s string, w int, mode Elide, a style.Align, measure func(string) int) string {
-	return padAligned(elide(s, w, mode, measure), w, a, measure)
+	return kit.PadAligned(elide(s, w, mode, measure), w, a, measure)
 }
 
 // The interfaces it answers, held at compile time (core declares them).

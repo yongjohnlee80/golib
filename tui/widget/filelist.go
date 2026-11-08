@@ -8,6 +8,7 @@ import (
 
 	"github.com/yongjohnlee80/golib/tui"
 	"github.com/yongjohnlee80/golib/tui/style"
+	"github.com/yongjohnlee80/golib/tui/widget/internal/kit"
 )
 
 // FILE LIST — a folder's files, and moving between folders.
@@ -107,7 +108,7 @@ type FileList struct {
 	// rows is the listing's epoch: each navigation or new source (loadThen) and each listing shown
 	// starts one, so an owner hook that moves elsewhere ends the reports still due for the listing it
 	// left (C1).
-	rows rowsEpoch
+	rows kit.RowsEpoch
 
 	list *List[fileEntry]
 	box  *Box
@@ -186,7 +187,7 @@ func (l *FileList) Init(ctx *tui.Context) {
 
 // Layout fills what it is given.
 func (l *FileList) Layout(c tui.Constraints) tui.Size {
-	sz := c.Constrain(tui.Size{W: boundedMax(c.MaxW, 40), H: boundedMax(c.MaxH, 12)})
+	sz := c.Constrain(tui.Size{W: kit.BoundedMax(c.MaxW, 40), H: kit.BoundedMax(c.MaxH, 12)})
 	ctx := l.Context()
 	ctx.LayoutChild(l.box, tui.Tight(sz))
 	ctx.PlaceChild(l.box, tui.Rect{W: sz.W, H: sz.H})
@@ -376,7 +377,7 @@ func (l *FileList) loadThen(dir, want string) {
 	// Every navigation and new source starts here, and from here the listing shown is on its way out:
 	// an operation still reporting it stops now, not when the new rows arrive (an async read may
 	// return before they do).
-	l.rows.advance()
+	l.rows.Advance()
 	if l.onLoad != nil {
 		l.onLoad()
 	}
@@ -419,7 +420,7 @@ func (l *FileList) stopRead() {
 // show puts a folder's rows in the list, the filter cleared and the cursor on
 // the first; err says the folder could not be read.
 func (l *FileList) show(dir string, dirs, files []fileEntry, err error) (live bool) {
-	l.rows.advance() // a listing arrived: the one shown is gone, whatever loadThen began
+	l.rows.Advance() // a listing arrived: the one shown is gone, whatever loadThen began
 	l.dir = dir
 	var entries []fileEntry
 	if dir != "." {
@@ -469,7 +470,7 @@ func (l *FileList) SetFilter(text string) {
 	if text != "" {
 		rows = nil
 		for _, e := range l.all {
-			if e.up || matchFold(e.name, text) {
+			if e.up || kit.MatchFold(e.name, text) {
 				rows = append(rows, e)
 			}
 		}
@@ -491,9 +492,9 @@ func (l *FileList) fitTitle() {
 	title := l.title
 	switch {
 	case l.loading != "":
-		title = withArg(l.translate(tui.Msg("tui.files.titleLoading")), title)
+		title = kit.WithArg(l.translate(tui.Msg("tui.files.titleLoading")), title)
 	case l.unreadable:
-		title = withArg(l.translate(tui.Msg("tui.files.titleCannotRead")), title)
+		title = kit.WithArg(l.translate(tui.Msg("tui.files.titleCannotRead")), title)
 	}
 	// The border's two corners, and a space either side of the title.
 	room := l.width - 4
