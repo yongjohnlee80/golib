@@ -17,7 +17,7 @@ import (
 func TestTheWindowsRenderedViewMarksEveryMatch(t *testing.T) {
 	h := startEditor(t, 60, 8, WithRenderer(NewMarkdownRenderer()),
 		WithCore(tuiwidget.CoreInitialText("# Head\n\nalpha beta alpha")))
-	red, blue := color.NRGBA{R: 200, A: markAlpha}, color.NRGBA{B: 200, A: markAlpha}
+	red, blue := color.NRGBA{R: 200, A: 0x66}, color.NRGBA{B: 200, A: 0x66} // the tint's opacity, markAlpha
 	var st tuiwidget.SyntaxStyles
 	st[highlight.Alert] = style.New().Foreground(style.RGB(200, 0, 0))
 	st[highlight.Keyword] = style.New().Foreground(style.RGB(0, 0, 200))
