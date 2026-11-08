@@ -182,9 +182,10 @@ type ListStyles struct {
 	CursorBlurred style.Style
 }
 
-// over is st laid over base, slot by slot: each set property of st wins, and base fills the rest. A
-// new slot is merged here, once, for every widget that takes ListStyles.
-func (st ListStyles) over(base ListStyles) ListStyles {
+// Over is st laid over base, slot by slot: each set property of st wins, and base fills the rest. A
+// new slot is merged here, once, for every widget that takes ListStyles. A row view of your own
+// styled by ListStyles merges a caller's styles over its own with it, as SetStyles does.
+func (st ListStyles) Over(base ListStyles) ListStyles {
 	return ListStyles{
 		Row:            st.Row.Inherit(base.Row),
 		CursorRow:      st.CursorRow.Inherit(base.CursorRow),
@@ -194,9 +195,10 @@ func (st ListStyles) over(base ListStyles) ListStyles {
 	}
 }
 
-// cursorLook is the cursor row's look: CursorBlurred while the view has not the keyboard, when one
-// is named, and CursorRow otherwise.
-func (st ListStyles) cursorLook(focused bool) style.Style {
+// CursorLook is the cursor row's look: CursorBlurred while the view has not the keyboard, when one
+// is named, and CursorRow otherwise. A row view of your own styled by ListStyles paints its cursor
+// row with it, as List and Tree do.
+func (st ListStyles) CursorLook(focused bool) style.Style {
 	if !focused && st.CursorBlurred != (style.Style{}) {
 		return st.CursorBlurred
 	}
@@ -272,7 +274,7 @@ func WithListOnContextMenu[T any](fn func(i int, at tui.Point)) ListOption[T] {
 // WithListStyles overrides the style hooks; zero fields keep defaults.
 func WithListStyles[T any](st ListStyles) ListOption[T] {
 	return func(l *List[T]) {
-		l.styles = st.over(l.styles)
+		l.styles = st.Over(l.styles)
 	}
 }
 
@@ -291,14 +293,14 @@ func defaultListStyles() ListStyles {
 // current values. Hosts use this for focus-dependent styling — the
 // widget cannot see focus that rests on a delegating wrapper.
 func (l *List[T]) SetStyles(st ListStyles) {
-	l.styles = st.over(l.styles)
+	l.styles = st.Over(l.styles)
 	l.MarkDirty()
 }
 
 // ResetStyles replaces the List's looks from its defaults. Unlike SetStyles,
 // absent fields drop previously supplied roles (as when QML removes a palette).
 func (l *List[T]) ResetStyles(st ListStyles) {
-	l.styles = st.over(defaultListStyles())
+	l.styles = st.Over(defaultListStyles())
 	l.MarkDirty()
 }
 
@@ -329,6 +331,27 @@ func (l *List[T]) requestMenu(i int, at tui.Point) {
 	if l.onMenu != nil {
 		l.onMenu(i, at)
 	}
+}
+
+// SetRowPainter paints each row with fn instead of as its text: fn draws row item at row y, w
+// cells wide, in the style the List chose for it (marked: the cursor's row or a selected one).
+// Navigation, clipping, the viewport and focus stay the List's. nil restores the List's text rows.
+// A row view of your own built on a List (a Table's columns) paints its rows through it.
+func (l *List[T]) SetRowPainter(fn func(s tui.Surface, y, w int, item T, st style.Style, marked bool)) {
+	l.paint = fn
+	l.MarkDirty()
+}
+
+// SetRowText replaces the text each row shows, and SelectionChangedEvent's Label carries, with
+// fn's: in place of the render func WithSource or WithItems gave. A row view of your own built
+// on a List (a Table's columns) gives its rows' text through it, so a caller's data source
+// cannot replace how they are drawn.
+func (l *List[T]) SetRowText(fn func(T) string) {
+	if fn == nil {
+		panic("widget: List.SetRowText: nil render func")
+	}
+	l.render = fn
+	l.MarkDirty()
 }
 
 // SetCursor moves the cursor to i (clamped), scrolling it into view.
@@ -592,7 +615,7 @@ func (l *List[T]) rowStyle(i int) style.Style {
 	case i == l.cursor && selected && l.multi:
 		return l.styles.CursorSelected.Inherit(l.styles.SelectedRow).Inherit(l.styles.Row)
 	case i == l.cursor:
-		return l.styles.cursorLook(l.Focused()).Inherit(l.styles.Row)
+		return l.styles.CursorLook(l.Focused()).Inherit(l.styles.Row)
 	case selected:
 		return l.styles.SelectedRow.Inherit(l.styles.Row)
 	default:

@@ -71,6 +71,6 @@ func WithInitialValue(s string) TextInputOption {
 // WithTextInputStyles overrides the style hooks; zero fields keep defaults.
 func WithTextInputStyles(st TextInputStyles) TextInputOption {
 	return func(t *TextInput) {
-		t.styles = st.over(t.styles)
+		t.styles = st.Over(t.styles)
 	}
 }

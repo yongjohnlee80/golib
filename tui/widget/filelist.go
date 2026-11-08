@@ -306,7 +306,7 @@ func (l *FileList) SetCurrent(name string) bool {
 	}
 	for i, e := range l.entries {
 		if !e.up && e.name == name {
-			if l.list.cursor == i {
+			if at, ok := l.list.Selected(); ok && at == i {
 				l.cursorOn(i) // SetCursor reports no move when the cursor is already there
 				return true
 			}
@@ -512,10 +512,10 @@ func (l *FileList) fitTitle() {
 // them.
 func (l *FileList) withStyles(st FilePaneStyles, styled bool) {
 	l.st, l.styled = st, styled
-	l.list.styles = defaultListStyles()
 	if styled {
-		l.list.SetStyles(fileListStyles(st))
+		l.list.ResetStyles(fileListStyles(st))
+	} else {
+		l.list.ResetStyles(ListStyles{})
 	}
-	l.list.MarkDirty()
 	stylePane(l.box, st, styled)
 }
