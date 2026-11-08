@@ -373,12 +373,16 @@ func (e *Editor) HandleEvent(ev tui.Event) bool {
 		return false // focus events are informational; let them bubble
 	case tui.TickEvent:
 		// the drag's auto-scroll, else the chord timeout
-		return e.pointer.HandleEvent(t) || e.core.HandleTick()
+		handled := e.pointer.HandleEvent(t) || e.core.HandleTick()
+		e.represent()
+		return handled
 	case tui.KeyEvent:
 		if e.pointer.MenuKey(t) { // the menu at the caret; off-screen, the key bubbles, the core untouched
 			return e.pointer.OpenMenu()
 		}
-		return e.core.HandleKey(t)
+		handled := e.core.HandleKey(t)
+		e.represent()
+		return handled
 	}
 	return false
 }
