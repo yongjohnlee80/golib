@@ -8,6 +8,7 @@ import (
 
 	"github.com/yongjohnlee80/golib/gui"
 	"github.com/yongjohnlee80/golib/gui/flow"
+	"github.com/yongjohnlee80/golib/highlight"
 	"github.com/yongjohnlee80/golib/tui"
 	"github.com/yongjohnlee80/golib/tui/style"
 	tuiwidget "github.com/yongjohnlee80/golib/tui/widget"
@@ -367,6 +368,7 @@ func (v bodyView) Paint(c gui.Canvas) {
 	// the gutter, and placed at the text's left edge.
 	textLeft := padX + l.gutter
 	tc := c.Sub(gui.Rect{X: textLeft, W: max(c.Size().W-textLeft, 0), H: h})
+	rendered, tint := e.ShownView() == tuiwidget.ViewRendered && e.render != nil, b.markTint(l)
 	if e.ruler > 0 && e.ShownView() == tuiwidget.ViewRaw {
 		// the guide sits under the text, so a line that crosses it stays readable
 		if x := l.textX() + float32(e.ruler-1)*l.monoCell(); x >= textLeft && x < c.Size().W {
@@ -409,6 +411,11 @@ func (v bodyView) Paint(c gui.Canvas) {
 			at := gui.Pt(-l.left, oy+ll.Y)
 			for _, r := range selection(e.core, ll, visualLine, l.width, b.focused) {
 				tc.FillRect(gui.Rect{X: at.X + r.X, Y: at.Y + r.Y, W: r.W, H: r.H}, gui.Solid(sel))
+			}
+			if rendered { // the core's overlay over rendered text, as the text's highlighting lays it in Raw
+				for _, m := range overlayMarks(e.core, ll, tint) {
+					tc.FillRect(gui.Rect{X: at.X + m.Rect.X, Y: at.Y + m.Rect.Y, W: m.Rect.W, H: m.Rect.H}, gui.Solid(m.Color))
+				}
 			}
 			for _, m := range ll.Marks {
 				tc.FillRect(gui.Rect{X: at.X + m.Rect.X, Y: at.Y + m.Rect.Y, W: m.Rect.W, H: m.Rect.H}, gui.Solid(m.Color))
@@ -544,6 +551,69 @@ func (b *editorBody) paintNumber(c gui.Canvas, ln int, baseline float32, current
 	digits := l.gutter - float32(gutterGap)*l.monoCell()
 	c.DrawText(t, gui.Pt(padX+digits-t.Width, baseline-t.Ascent), gui.Solid(col))
 }
+
+// overlayMarks are a rendered line's clusters the core's overlay marks (a find's every match, the
+// host's marks: EditorCore.OverlayStyles), as tinted rects under the text in the paragraph's
+// coordinates: Rendered shows what the text's highlighting shows in Raw.
+func overlayMarks(core *tuiwidget.EditorCore, ll LineLayout, tint func(highlight.Style) (color.NRGBA, bool)) []Mark {
+	var out []Mark
+	styles := map[int][]highlight.Style{}
+	for si, sp := range ll.Spans {
+		if sp.Line < 0 {
+			continue
+		}
+		ms, ok := styles[sp.Line]
+		if !ok {
+			ms = core.OverlayStyles(sp.Line)
+			styles[sp.Line] = ms
+		}
+		if ms == nil {
+			continue
+		}
+		at := func(k int) highlight.Style {
+			if c := sp.Col + k; c >= 0 && c < len(ms) {
+				return ms[c]
+			}
+			return highlight.Normal
+		}
+		n := clusters(sp.Text)
+		for k := 0; k < n; {
+			j, s := k+1, at(k)
+			for j < n && at(j) == s {
+				j++
+			}
+			if col, ok := tint(s); ok && s != highlight.Normal {
+				for _, r := range ll.Para.Rects(flow.Pos{Span: si, Offset: byteOfCluster(sp.Text, k)}, flow.Pos{Span: si, Offset: byteOfCluster(sp.Text, j)}) {
+					out = append(out, Mark{Rect: r, Color: col})
+				}
+			}
+			k = j
+		}
+	}
+	return out
+}
+
+// markTint is the tint a mark of highlight style k lays under rendered text: that style's colour in
+// the theme now, translucent; false for a style with no colour.
+func (b *editorBody) markTint(l *pixelLayout) func(highlight.Style) (color.NRGBA, bool) {
+	dark := isDark(l.th.Background)
+	return func(k highlight.Style) (color.NRGBA, bool) {
+		st, ok := b.e.core.SyntaxStyle(k)
+		if !ok {
+			return color.NRGBA{}, false
+		}
+		fg, set := st.GetForeground()
+		if !set {
+			return color.NRGBA{}, false
+		}
+		c, ok := colorOf(fg, b.styleTheme, dark, l.pal)
+		c.A = markAlpha
+		return c, ok
+	}
+}
+
+// markAlpha is a mark's tint's opacity: the text over it reads in every theme.
+const markAlpha = 0x66
 
 // selection is a line's highlighted clusters (the core's Highlighted: the selection while focused,
 // a pinned one, the current match) as rects, in the paragraph's coordinates. A Visual-line
