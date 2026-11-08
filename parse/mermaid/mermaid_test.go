@@ -197,7 +197,6 @@ func TestNotDrawnSaysItsLine(t *testing.T) {
 		// unsupported anywhere wins over a syntax error before it, at its own line
 		{"flowchart LR\n  A -->\n  click A call x()", mermaid.ErrUnsupported, 3, "click", "mermaid: not drawn natively: click (line 3)"},
 		{"kanban\n  todo", mermaid.ErrUnsupported, 0, `"kanban" diagrams`, `mermaid: not drawn natively: "kanban" diagrams`},
-		{"---\ntitle: x\n---\nflowchart LR\n  A-->B", mermaid.ErrUnsupported, 1, "front matter", "mermaid: not drawn natively: front matter (line 1)"},
 		{"flowchart LR\n  A-->B\n  A[" + long + "]", mermaid.ErrTooLarge, 3, "a label of 1025 bytes, more than 1024",
 			"mermaid: over a limit: a label of 1025 bytes on line 3, more than 1024"},
 	} {

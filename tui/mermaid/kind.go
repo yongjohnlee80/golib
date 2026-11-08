@@ -107,5 +107,15 @@ func Lay(ctx context.Context, d pm.Diagram, m Measurer) (*Grid, error) {
 	if err := Drawn(d); err != nil {
 		return nil, err
 	}
-	return kinds[d.Kind()].lay(ctx, d, m)
+	g, err := kinds[d.Kind()].lay(ctx, d, m)
+	if err != nil || ownTitle[d.Kind()] {
+		return g, err
+	}
+	g.titleAbove(pm.TitleOf(d), m) // its front matter's title, where it draws none
+	return g, nil
 }
+
+// ownTitle are the kinds whose layout draws the diagram's title itself (the shared title row);
+// any other takes its front matter's title above it (titleAbove).
+var ownTitle = map[pm.Kind]bool{pm.Pie: true, pm.Gantt: true, pm.Quadrant: true, pm.XYChart: true,
+	pm.Journey: true, pm.Timeline: true, pm.Sequence: true}

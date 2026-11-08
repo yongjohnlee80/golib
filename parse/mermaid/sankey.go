@@ -17,6 +17,8 @@ func init() {
 // SankeyDiagram is a parsed sankey diagram: its nodes, in order of first mention, and the flows
 // between them, each from a source to a target with its amount.
 type SankeyDiagram struct {
+	// Title is the front matter's title (front matter's title:), drawn above the diagram; "" for none.
+	Title string
 	Nodes []string
 	Links []SankeyLink // in source order
 }

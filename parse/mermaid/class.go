@@ -15,6 +15,8 @@ func init() { register(Class, "class", []string{"classDiagram", "classDiagram-v2
 
 // ClassDiagram is a parsed class diagram.
 type ClassDiagram struct {
+	// Title is the front matter's title (front matter's title:), drawn above the diagram; "" for none.
+	Title      string
 	Dir        Dir
 	Classes    []ClassBox // in order of first mention
 	Relations  []Relation // in source order
