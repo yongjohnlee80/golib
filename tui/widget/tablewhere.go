@@ -1,12 +1,11 @@
 package widget
 
 import (
+	"github.com/yongjohnlee80/golib/tui/widget/internal/kit"
 	"math/big"
 	"strconv"
 	"strings"
 	"unicode/utf8"
-
-	"github.com/yongjohnlee80/golib/tui/widget/internal/kit"
 )
 
 // A WHERE BAR'S TEXT — a filter a user types over a table's loaded rows, in SQL's words:
@@ -207,11 +206,11 @@ func (p *whereParser) next() error {
 		}
 		t.kind, t.val = wtPosition, s[j:p.i]
 	case decimalStarts(s, p.i):
-		p.i = decimalEnd(s, p.i)
+		p.i = kit.DecimalEnd(s, p.i)
 		if p.i < len(s) && !whereStop(s[p.i]) {
 			return p.fail(start, "%q is not a number", s[start:p.wordEnd()])
 		}
-		n, ok := parseDecimal(s[start:p.i])
+		n, ok := kit.ParseDecimal(s[start:p.i])
 		if !ok {
 			return p.fail(start, "%s is out of range", s[start:p.i])
 		}
@@ -519,7 +518,7 @@ func (w *whereCompare) eval(src TableSource, k TableKinds, r int) TableTruth {
 		if kind != TableCellNumber && kind != TableCellText {
 			return TableUnknown
 		}
-		n, ok := parseDecimal(strings.TrimSpace(text))
+		n, ok := kit.ParseDecimal(strings.TrimSpace(text))
 		if !ok {
 			return TableUnknown
 		}
@@ -679,10 +678,6 @@ func likeAt(seg []likeRune, text []rune, i int) bool {
 
 // DECIMALS
 
-// decimalExpMax bounds a decimal's exponent: a big.Rat of 1e999999999 would take a gigabyte. It is
-// far past any float64 and any number a cell holds in digits (those have no exponent).
-const decimalExpMax = 10000
-
 // decimalStarts reports whether a decimal starts at s[i]: a digit, or a point or a sign before one.
 func decimalStarts(s string, i int) bool {
 	digit := func(j int) bool { return j < len(s) && s[j] >= '0' && s[j] <= '9' }
@@ -690,57 +685,4 @@ func decimalStarts(s string, i int) bool {
 		i++
 	}
 	return digit(i) || i < len(s) && s[i] == '.' && digit(i+1)
-}
-
-// decimalEnd is where the decimal at s[i] ends: [sign] digits [. digits] [e [sign] digits], at
-// least one digit before the exponent.
-func decimalEnd(s string, i int) int {
-	digits := func() int {
-		j := i
-		for i < len(s) && s[i] >= '0' && s[i] <= '9' {
-			i++
-		}
-		return i - j
-	}
-	start := i
-	if i < len(s) && (s[i] == '+' || s[i] == '-') {
-		i++
-	}
-	n := digits()
-	if i < len(s) && s[i] == '.' {
-		i++
-		n += digits()
-	}
-	if n == 0 {
-		return start
-	}
-	if i < len(s) && (s[i] == 'e' || s[i] == 'E') {
-		mark := i
-		i++
-		if i < len(s) && (s[i] == '+' || s[i] == '-') {
-			i++
-		}
-		if digits() == 0 {
-			i = mark
-		}
-	}
-	return i
-}
-
-// parseDecimal is s as an exact decimal, when the whole of s is one and its exponent is in range.
-// Other syntaxes big.Rat reads (a fraction, a base prefix) are not decimals.
-func parseDecimal(s string) (*big.Rat, bool) {
-	if s == "" || decimalEnd(s, 0) != len(s) {
-		return nil, false
-	}
-	if e := strings.IndexAny(s, "eE"); e >= 0 {
-		exp := strings.TrimLeft(strings.TrimLeft(s[e+1:], "+-"), "0")
-		if len(exp) > 5 {
-			return nil, false
-		}
-		if n, _ := strconv.Atoi("0" + exp); n > decimalExpMax {
-			return nil, false
-		}
-	}
-	return new(big.Rat).SetString(s)
 }

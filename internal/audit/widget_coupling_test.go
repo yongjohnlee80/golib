@@ -344,45 +344,34 @@ func TestWidgetCoreReachesNoComponent(t *testing.T) {
 	}
 }
 
-// widgetComponentLinks are the crossings one component may make into another's unexported names:
-// the editor's Markdown tables sort by the table's order. Each is the editor's, so the split can
-// extract the table before the editor and no two components import each other.
-var widgetComponentLinks = map[[2]string]bool{{"editor", "table"}: true}
-
-// TestWidgetComponentsUseOnlyCoresExportedAPI holds the step before core is extracted: no component
-// uses an unexported name of core's, so with core a package of its own each component compiles
-// against what core exports. What core shares only with golib's own widgets lives in
-// tui/widget/internal (kit, text) instead.
-func TestWidgetComponentsUseOnlyCoresExportedAPI(t *testing.T) {
-	found, _ := widgetCrossings(t, repoRoot(t))
-	var rows []string
-	for _, c := range found {
-		if c.owner == "core" {
-			rows = append(rows, c.row())
-		}
-	}
-	if len(rows) > 0 {
-		t.Errorf("components use %d unexported name(s) of core's; once core is its own package they "+
-			"will not compile. Export it from core with a doc comment saying when a widget outside golib "+
-			"uses it, or move it to tui/widget/internal/kit if it needs none of core's public types:\n  %s",
-			len(rows), strings.Join(rows, "\n  "))
-	}
+// widgetComponentImports are the components a component may import once each is a package of its
+// own, the extraction order's edges: the editor is extracted before the file views, the HTML view
+// and the tables, which build on it. A use along an edge is of an exported name only.
+var widgetComponentImports = map[[2]string]bool{
+	{"files", "editor"}: true, {"htmlview", "editor"}: true, {"table", "editor"}: true,
 }
 
-// TestWidgetComponentsReachOnlyDown holds the second step of the split: a component uses another
-// component's unexported names only along widgetComponentLinks, so the components can be extracted
-// in an order with no import cycle (core, then files, terminal, htmlview and table, then the
-// editor).
+// TestWidgetComponentsReachOnlyDown holds the extraction order: a component uses another
+// component's names, exported ones counted, only along widgetComponentImports, and never an
+// unexported one, so the components can be extracted in an order with no import cycle (the
+// terminal, the editor, then the file views, the HTML view and the tables).
 func TestWidgetComponentsReachOnlyDown(t *testing.T) {
-	found, _ := widgetCrossings(t, repoRoot(t))
+	found, _ := widgetUses(t, repoRoot(t), true)
 	var rows []string
 	for _, c := range found {
-		if c.from != "core" && c.owner != "core" && !widgetComponentLinks[[2]string{c.from, c.owner}] {
+		if c.from == "core" || c.owner == "core" {
+			continue
+		}
+		last := c.name[strings.LastIndex(c.name, ".")+1:]
+		edge := widgetComponentImports[[2]string{c.from, c.owner}]
+		if !edge || !token.IsExported(last) {
 			rows = append(rows, c.row())
 		}
 	}
 	if len(rows) > 0 {
-		t.Errorf("a component uses %d unexported name(s) of another it may not import; move the code to "+
-			"core, or let the owner export it:\n  %s", len(rows), strings.Join(rows, "\n  "))
+		t.Errorf("a component uses %d name(s) of another it may not import, or an unexported one of one it "+
+			"may (widgetComponentImports): once each is a package it would not compile, or would import "+
+			"in a cycle. Move the code to core or internal/kit, or let the owner export it:\n  %s",
+			len(rows), strings.Join(rows, "\n  "))
 	}
 }
