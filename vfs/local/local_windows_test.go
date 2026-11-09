@@ -47,8 +47,14 @@ func TestAWriteLandsInItsPinnedDirectoryWhenAJunctionIsSwappedIn(t *testing.T) {
 		junction(t, filepath.Join(dir, "d"), outside)
 		return nil
 	}
+	// The commit lands in the pinned directory. After it, looking the path up again meets the
+	// junction, which the root refuses to follow out: the write reports itself committed, which is
+	// the truth, rather than reading anything outside.
 	if _, err := f.WriteFile(bg, "d/a.md", strings.NewReader("pinned")); err != nil {
-		t.Fatalf("WriteFile: %v", err)
+		var ce *vfs.CommitError
+		if !errors.As(err, &ce) {
+			t.Fatalf("WriteFile: %v; want success, or a CommitError once the path leads outside", err)
+		}
 	}
 	if b, err := os.ReadFile(landed); err != nil || string(b) != "pinned" {
 		t.Errorf("%s holds %q, %v; want the write in its pinned directory", landed, b, err)
