@@ -295,6 +295,9 @@ func (p *Panel) Render(s tui.Surface) {
 
 // HandleEvent takes the title bar's control clicks; the frame's drags are HandleUnclaimedPress's.
 func (p *Panel) HandleEvent(ev tui.Event) bool {
+	if _, ok := ev.(tui.PointerCaptureLostEvent); ok {
+		p.pressed = noControl // the gesture was taken away, whoever handles the loss: nothing acts
+	}
 	if p.behavior.HandleEvent(ev) {
 		return true
 	}
@@ -324,6 +327,9 @@ func (p *Panel) mouse(m tui.MouseEvent) bool {
 		}
 		armed := p.pressed
 		p.pressed = noControl
+		if p.ctx.HasPointerCapture() {
+			p.ctx.ReleasePointer()
+		}
 		if armed == noControl {
 			return false
 		}
@@ -337,7 +343,8 @@ func (p *Panel) mouse(m tui.MouseEvent) bool {
 		}
 		if c := p.controlAt(m.X); m.Y == 0 && c != noControl {
 			p.pressed = c
-			return true // the control acts on release, as a button does
+			p.ctx.CapturePointer() // its release comes here wherever it lands
+			return true            // the control acts on release, as a button does
 		}
 		if m.Y == 0 && m.Count == 2 && p.behavior.State().Maximize {
 			p.act(maximizeControl) // its title bar's own, on every backend: the frame's rule is the drags

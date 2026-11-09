@@ -142,12 +142,15 @@ func (b *TitleBar) HandleEvent(ev tui.Event) bool {
 		return b.mouse(e)
 	case tui.PointerLeaveEvent:
 		b.setHover(noControl)
+	case tui.PointerCaptureLostEvent:
+		b.pressed = noControl // the gesture was taken away: nothing acts
 	}
 	return false
 }
 
-// mouse acts as a button does: a control acts when a left press and its release both land on it;
-// a release anywhere else, or one no press here armed, does nothing.
+// mouse acts as a button does: a left press on a control arms it and captures the pointer, so its
+// release comes here wherever it lands, and the control acts only if that release is on it too. A
+// release anywhere else, one no press here armed, or a lost capture does nothing.
 func (b *TitleBar) mouse(m tui.MouseEvent) bool {
 	if b.window == nil {
 		return false
@@ -165,6 +168,7 @@ func (b *TitleBar) mouse(m tui.MouseEvent) bool {
 		}
 		if c := b.controlAt(m.X); c != noControl {
 			b.pressed = c
+			b.ctx.CapturePointer()
 			return true
 		}
 		if m.Count == 2 {
@@ -177,6 +181,9 @@ func (b *TitleBar) mouse(m tui.MouseEvent) bool {
 		}
 		armed := b.pressed
 		b.pressed = noControl
+		if b.ctx.HasPointerCapture() {
+			b.ctx.ReleasePointer()
+		}
 		if armed == noControl {
 			return false
 		}

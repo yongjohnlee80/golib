@@ -355,7 +355,8 @@ func TestPanelBarTextHasTheHigherWCAGContrast(t *testing.T) {
 
 // A control acts only when its press and its release both land on it: a press on maximize released
 // over close does neither, a release over close that no press armed does nothing, and a press
-// released off the bar is cancelled. A matching
+// released off the bar, or outside the whole panel (its capture brings the release back), is
+// cancelled. A matching
 // click afterwards still acts, so the events were all handled.
 func TestPanelControlsActOnlyOnTheirOwnPressAndRelease(t *testing.T) {
 	var closed atomic.Bool
@@ -369,6 +370,10 @@ func TestPanelControlsActOnlyOnTheirOwnPressAndRelease(t *testing.T) {
 	h.mouse(tui.MousePress, closeX, 2)
 	h.mouse(tui.MouseRelease, closeX, 5) // close's press released off the bar: cancelled
 	h.mouse(tui.MouseRelease, closeX, 2) // and no press armed this one
+	h.mouse(tui.MousePress, closeX, 2)
+	h.mouse(tui.MouseRelease, 0, 0)      // close's press released outside the whole panel
+	h.mouse(tui.MousePress, 0, 0)        // the background's press
+	h.mouse(tui.MouseRelease, closeX, 2) // released over close
 	h.mouse(tui.MousePress, maxX, 2)
 	h.mouse(tui.MouseRelease, maxX, 2) // a whole click on maximize
 	h.until("maximized", func() bool { return h.bounds() == (tui.Rect{W: 60, H: 20}) })
