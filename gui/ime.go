@@ -158,9 +158,11 @@ func (s *imeState) revise(start, end int, repl []rune) []imePiece {
 			rem = append(rem, head...)
 			rem = append(rem, tail...)
 			if len(rem) > 0 {
+				// Without a head, the tail is all that remains, and it now starts where the
+				// replacement ends.
 				at := p.from
 				if len(head) == 0 {
-					at = end + delta - len(tail)
+					at = end + delta
 				}
 				out = append(out, imePiece{runs: rem, from: at})
 			}
