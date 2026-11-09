@@ -11,6 +11,8 @@ import (
 	"syscall"
 	"testing"
 	"time"
+
+	"golang.org/x/sys/windows"
 )
 
 // output collects what a PTY prints, so a cell can wait for a marker in it. The console writes VT
@@ -153,4 +155,29 @@ func TestKillEndsTheProgramAndOtherSignalsAreUnsupported(t *testing.T) {
 		t.Fatalf("os.Kill: %v", err)
 	}
 	waitExit(t, p, 10*time.Second)
+}
+
+// Close returns within its bound even where closing the console waits for output nobody reads (a
+// Windows before 11 24H2): the grace period and the job's end don't wait on the console's close.
+func TestCloseReturnsWhenClosingTheConsoleBlocks(t *testing.T) {
+	hangupGrace = 300 * time.Millisecond
+	defer func() { hangupGrace = 2 * time.Second }()
+	release := make(chan struct{})
+	defer close(release)
+	orig := closePseudoConsole
+	closePseudoConsole = func(windows.Handle) { <-release } // never returns while Close runs
+	defer func() { closePseudoConsole = orig }()
+	// a program that prints and waits, with no one reading its output
+	p, err := Start(Cmd{Path: "cmd.exe", Args: []string{"/c", "for /L %i in (1,1,2000) do @echo line %i & ping -n 60 127.0.0.1 >nul"}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	done := make(chan error, 1)
+	go func() { done <- p.Close() }()
+	select {
+	case <-done:
+	case <-time.After(15 * time.Second):
+		t.Fatal("Close did not return while closing the console blocked: it waited on the console, not on its grace")
+	}
+	waitExit(t, p, 5*time.Second)
 }
