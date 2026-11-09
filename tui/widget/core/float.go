@@ -210,9 +210,11 @@ func (f *Float) Floating() bool {
 	return a.atRect || a.atFraction || a.align == tui.AlignCenter
 }
 
-// raise moves the float to the top of its OverlayHost's ordinary layers (OverlayHost.Raise), or
-// above the open dialogs when it is a shown modal one; a no-op outside an OverlayHost.
-func (f *Float) raise() {
+// Raise moves the float to the top of its OverlayHost's ordinary layers (OverlayHost.Raise), or
+// above the open dialogs when it is a shown modal one; a no-op outside an OverlayHost. The keyboard
+// stays where it is: a float already holding it comes forward as well, where focusing it would not
+// count as the keyboard entering.
+func (f *Float) Raise() {
 	if h, ok := kit.HostFor[layerRaiser](f.ctx); ok {
 		h.Raise(f)
 	}
@@ -262,7 +264,7 @@ func (f *Float) Show() {
 	// and the dialogs open before it, as a Modal's Open puts it; a panel above the panels, beneath
 	// the dialogs. A panel raised since this one was attached would otherwise cover it, and a
 	// non-modal one does not take the keyboard to raise itself.
-	f.raise()
+	f.Raise()
 	if f.modal {
 		if !focusFirst(f.layer.Context(), f.child) {
 			// No focusable content: the layer itself is the trap's tab stop (trapFallback), so
@@ -464,7 +466,7 @@ func (l *floatLayer) HandleEvent(ev tui.Event) bool {
 				l.holds = l.holds && l.Context().FocusWithin(l)
 			} else if !l.holds {
 				l.holds = true
-				l.owner.raise()
+				l.owner.Raise()
 			}
 		}
 		return false

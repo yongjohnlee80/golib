@@ -137,3 +137,68 @@ func TestAReloadOpensAnAddedFloatWindow(t *testing.T) {
 		t.Fatalf("the reload closed the first FloatWindow:\n%s", s)
 	}
 }
+
+// A Drawer and a FloatWindow holding the keyboard but under another of their kind come forward by
+// Raise; the keyboard stays in them.
+func TestADeclaredPanelHoldingTheKeyboardIsRaisedOverAnother(t *testing.T) {
+	type raisable interface {
+		Covered() bool
+		Raise()
+	}
+	for _, c := range []struct{ name, doc string }{
+		{"Drawer", `import tui 1.0
+Window { Text { text: "page" }
+Drawer { id: a; modal: false; edge: Tui.Left; size: 50; Frame { title: "one"; TextField { id: field } } }
+Drawer { id: b; modal: false; edge: Tui.Left; size: 50; Frame { title: "two"; TextField {} } } }`},
+		{"FloatWindow", `import tui 1.0
+Window { Text { text: "page" }
+FloatWindow { id: a; Frame { title: "one"; TextField { id: field } } }
+FloatWindow { id: b; Frame { title: "two"; TextField {} } } }`},
+	} {
+		t.Run(c.name, func(t *testing.T) {
+			s := decltest.Run(t, 40, 10, tuidecl.LayoutSource("main.qml", []byte(c.doc)), tuidecl.Types(controls.Types()...))
+			node := func(id string) raisable {
+				n, _ := s.Program.Find(id)
+				r, ok := n.(raisable)
+				if !ok {
+					t.Fatalf("%s (%T) has no Covered and Raise", id, n)
+				}
+				return r
+			}
+			onScreenLoop(t, s, func() {
+				for _, id := range []string{"a", "b"} {
+					if c.name == "Drawer" {
+						if err := s.Program.Call(id, "open"); err != nil {
+							t.Error(err)
+						}
+					}
+				}
+			})
+			s.WaitForText(t, "two")
+			onScreenLoop(t, s, func() {
+				if err := s.Program.Call("field", "forceActiveFocus"); err != nil {
+					t.Error(err)
+				}
+			})
+			// on the next turn, once the keyboard's entry has raised a: b back over it
+			onScreenLoop(t, s, func() { node("b").Raise() })
+			s.WaitFor(t, "b over a, the keyboard in a", func(string) bool {
+				var covered bool
+				onScreenLoop(t, s, func() { covered = node("a").Covered() })
+				return covered
+			})
+			onScreenLoop(t, s, func() { node("a").Raise() })
+			var aCovered, bCovered, within bool
+			onScreenLoop(t, s, func() {
+				f, _ := s.Program.Find("field")
+				aCovered, bCovered, within = node("a").Covered(), node("b").Covered(), s.Program.App().FocusWithin(f)
+			})
+			if aCovered || !bCovered {
+				t.Fatalf("raised: a covered %v, b covered %v", aCovered, bCovered)
+			}
+			if !within {
+				t.Fatal("raising a moved the keyboard")
+			}
+		})
+	}
+}

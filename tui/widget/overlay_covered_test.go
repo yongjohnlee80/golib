@@ -54,6 +54,39 @@ func TestAPanelBeneathAnOverlappingOneIsCovered(t *testing.T) {
 	}
 }
 
+// TestRaisingAFloatKeepsTheKeyboardWhereItIs: a panel holding the keyboard but under another comes
+// forward by Float.Raise; focusing it wouldn't count as the keyboard entering. The keyboard stays.
+func TestRaisingAFloatKeepsTheKeyboardWhereItIs(t *testing.T) {
+	host := core.NewOverlayHost(core.NewButton("base"))
+	a, btn := panelFloat("A", tui.Rect{X: 2, Y: 1, W: 20, H: 6})
+	b, _ := panelFloat("B", tui.Rect{X: 12, Y: 4, W: 20, H: 6})
+	host.Attach(a)
+	host.Attach(b)
+	h := startApp(t, host, 40, 14)
+	defer h.stop()
+	h.onLoop(func() { a.Show(); b.Show() })
+	h.settle()
+	h.onLoop(func() { h.app.FocusInto(btn); b.Raise() })
+	h.settle()
+	if !covered(t, h, host, a) {
+		t.Fatal("A, with the keyboard, is not under B to begin with")
+	}
+
+	h.onLoop(func() { a.Raise() })
+	h.settle()
+	if covered(t, h, host, a) {
+		t.Fatal("A, raised, is still covered")
+	}
+	if !covered(t, h, host, b) {
+		t.Fatal("B, now beneath A, is not covered")
+	}
+	var within bool
+	h.onLoop(func() { within = h.app.FocusWithin(btn) })
+	if !within {
+		t.Fatal("raising A moved the keyboard")
+	}
+}
+
 // TestOnlyAShownWindowAboveCovers: a hidden panel above covers nothing; a hidden panel is never
 // covered; a Float not attached to the host is not covered by it.
 func TestOnlyAShownWindowAboveCovers(t *testing.T) {

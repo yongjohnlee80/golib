@@ -98,6 +98,10 @@ func (n *floatWindowNode) WindowBehavior() *core.WindowCore { return n.mod.Core(
 // (widget.OverlayHost.Covered).
 func (n *floatWindowNode) Covered() bool { return n.float.Covered() }
 
+// Raise brings the FloatWindow above the panels and windows over it (widget.Float.Raise); the
+// keyboard stays where it is.
+func (n *floatWindowNode) Raise() { n.float.Raise() }
+
 // onScreen is what forceActiveFocus focuses into: its window, over the Window.
 func (n *floatWindowNode) onScreen() tui.Component { return n.mod }
 
