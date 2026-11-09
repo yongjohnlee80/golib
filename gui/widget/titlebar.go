@@ -31,8 +31,11 @@ type TitleBar struct {
 	barSt    style.Style
 }
 
-// titleX is where a title bar's title starts.
+// titleX is where a title bar's title starts, past room the system's own buttons take.
 const titleX = 1
+
+// systemButtonsDp is the room macOS's traffic lights take at an undecorated window's left, in dp.
+const systemButtonsDp = 72
 
 // NewTitleBar is a title bar showing title, with trailing at its right, before the controls: tui
 // children, with their own focus and keys.
@@ -67,16 +70,42 @@ func (b *TitleBar) Init(ctx *tui.Context) {
 	b.MultiChild.Init(ctx)
 }
 
-// controls are the window's controls, right to left; none on a terminal.
+// controls are the window's controls, right to left: none on a terminal, none where the system
+// draws the frame (the bar steps aside) or its own buttons (macOS).
 func (b *TitleBar) controls() []control {
-	if b.window == nil {
+	if b.window == nil || b.window.Decorated() || b.window.SystemButtons() {
 		return nil
 	}
 	return []control{closeControl, maximizeControl, minimizeControl}
 }
 
+// stepsAside reports whether the system draws the window's title bar: this one then takes no room.
+func (b *TitleBar) stepsAside() bool { return b.window != nil && b.window.Decorated() }
+
+// titleStart is the title's first column: past the system's buttons where it draws them.
+func (b *TitleBar) titleStart() int {
+	if b.window == nil || !b.window.SystemButtons() {
+		return titleX
+	}
+	cell := float32(8)
+	if b.ctx != nil {
+		if cp := b.ctx.CellPixels(); cp.W > 0 {
+			cell = cp.W
+		}
+	}
+	return int((systemButtonsDp+cell-1)/cell) + titleX
+}
+
 // Layout is one row across the width: the trailing widgets right to left before the controls.
 func (b *TitleBar) Layout(c tui.Constraints) tui.Size {
+	if b.stepsAside() { // the system's title bar is the window's: this one takes no room
+		for _, l := range b.trailing {
+			b.ctx.LayoutChild(l, tui.Constraints{})
+			b.ctx.PlaceChild(l, tui.Rect{})
+		}
+		b.w, b.titleEnd = 0, 0
+		return c.Constrain(tui.Size{})
+	}
 	w := c.MaxW
 	if w == tui.Unbounded {
 		w = max(c.MinW, len(b.title)+2+controlCells*len(b.controls()))
@@ -103,15 +132,15 @@ func (b *TitleBar) RenderTUI(s tui.Surface) {
 		return
 	}
 	s.Fill(tui.Rect{W: sz.W, H: 1}, " ", b.barSt)
-	if titleX < b.titleEnd {
-		tui.DrawText(s.Sub(tui.Rect{W: b.titleEnd, H: 1}), titleX, 0, b.title, b.barSt.Bold(true))
+	if x := b.titleStart(); x < b.titleEnd {
+		tui.DrawText(s.Sub(tui.Rect{W: b.titleEnd, H: 1}), x, 0, b.title, b.barSt.Bold(true))
 	}
 }
 
 // Paint is the native bar (titleRow), with the window's drag area over the bar's empty part: from
 // its left edge to the first trailing widget or control.
 func (b *TitleBar) Paint(c gui.Canvas) {
-	row := titleRow{title: b.title, titleX: titleX, titleEnd: b.titleEnd, fit: len(b.trailing) > 0,
+	row := titleRow{title: b.title, titleX: b.titleStart(), titleEnd: b.titleEnd, fit: len(b.trailing) > 0,
 		controls: b.controls(), hover: b.hover}
 	if _, _, _, ok := row.paint(c); !ok {
 		return

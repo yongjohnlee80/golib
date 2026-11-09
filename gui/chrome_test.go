@@ -45,3 +45,34 @@ func TestMaximizedFollowsTheWindowsConfiguration(t *testing.T) {
 		}
 	}
 }
+
+// Decorated is what the window's last ConfigEvent said, decorated until one says otherwise; a
+// change once the window runs makes the App lay out again (a ResizeEvent at the grid it has).
+// SystemButtons is macOS's alone, and only undecorated.
+func TestDecoratedFollowsTheWindowAndAChangeRelaysOut(t *testing.T) {
+	b := NewBackend()
+	w, _ := Window(tui.NewApp(&stubPane{}, tui.WithBackend(b)))
+	if !w.Decorated() || w.SystemButtons() {
+		t.Fatalf("before any configuration: Decorated %v SystemButtons %v; want decorated, none", w.Decorated(), w.SystemButtons())
+	}
+	b.metrics.Store(&metrics{grid: tui.Size{W: 40, H: 10}})
+	b.startOnce.Do(func() { close(b.started) })
+	b.configure(app.ConfigEvent{Config: app.Config{Decorated: false}})
+	if w.Decorated() || w.SystemButtons() != systemButtonsWhenUndecorated {
+		t.Fatalf("undecorated: Decorated %v SystemButtons %v; want false, %v", w.Decorated(), w.SystemButtons(), systemButtonsWhenUndecorated)
+	}
+	b.configure(app.ConfigEvent{Config: app.Config{Decorated: false}}) // no change: nothing queued
+	b.configure(app.ConfigEvent{Config: app.Config{Decorated: true}})
+	b.q.mu.Lock()
+	queued := append([]tui.Event(nil), b.q.queue...)
+	b.q.mu.Unlock()
+	var resizes int
+	for _, e := range queued {
+		if r, ok := e.(tui.ResizeEvent); ok && r == (tui.ResizeEvent{W: 40, H: 10}) {
+			resizes++
+		}
+	}
+	if resizes != 2 || !w.Decorated() {
+		t.Fatalf("queued %v; want a ResizeEvent at 40x10 for each of the two changes", queued)
+	}
+}

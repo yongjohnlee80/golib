@@ -16,6 +16,14 @@ type WindowControls interface {
 	Perform(a system.Action)
 	// Maximized reports whether the window is maximized, as the platform last said.
 	Maximized() bool
+	// Decorated reports whether the system draws the window's frame, title bar and buttons, as the
+	// platform last said: an app's own title bar steps aside then. WithDecorations(false) asks for
+	// none, but X11 always decorates, and a Wayland compositor may keep its own (server-side).
+	Decorated() bool
+	// SystemButtons reports whether the system draws the window's buttons over an undecorated
+	// window's top-left corner (macOS's traffic lights): an app's own title bar leaves them room
+	// and draws none of its own.
+	SystemButtons() bool
 }
 
 // Window returns the window controls when app runs on a GUI backend; ok is false on a terminal,
@@ -39,6 +47,12 @@ type windowControls struct{ b *Backend }
 func (w windowControls) Perform(a system.Action) { w.b.perform(a) }
 
 func (w windowControls) Maximized() bool { return w.b.maxed.Load() }
+
+func (w windowControls) Decorated() bool { return !w.b.undecorated.Load() }
+
+func (w windowControls) SystemButtons() bool {
+	return w.b.undecorated.Load() && systemButtonsWhenUndecorated
+}
 
 // perform hands a to the window; the window's methods may be called from any goroutine.
 func (b *Backend) perform(a system.Action) {
