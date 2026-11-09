@@ -258,7 +258,8 @@ func TestWindowsWatchBusyRootMoved(t *testing.T) {
 	}
 	stop := make(chan struct{})
 	done := make(chan struct{})
-	go func() { // a write every 5 ms in the moved directory: no read waits out the 50 ms check
+	t.Cleanup(func() { close(stop); <-done }) // the writer ends even when the cell fails
+	go func() {                               // a write every 5 ms in the moved directory: no read waits out the 50 ms check
 		defer close(done)
 		for i := 0; ; i++ {
 			select {
@@ -270,8 +271,6 @@ func TestWindowsWatchBusyRootMoved(t *testing.T) {
 		}
 	}()
 	seen := drainClosed(t, events)
-	close(stop)
-	<-done
 	if len(seen) == 0 || seen[len(seen)-1] != (vfs.Event{Path: "", Op: vfs.OpOverflow}) {
 		t.Fatalf("last event = %v, want OpOverflow{\"\"}", seen)
 	}

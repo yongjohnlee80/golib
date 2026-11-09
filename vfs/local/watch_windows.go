@@ -269,11 +269,14 @@ func (w *winWatch) issue() error {
 	return windows.ReadDirectoryChanges(w.h, &w.buf[0], uint32(len(w.buf)), w.m.recursive, winNotifyFilter, nil, &w.ov, 0)
 }
 
-// wait waits for the read in flight, checking every winRootCheck that the watched directory is
-// still there; it returns how many bytes of records the read left in buf.
+// wait waits for the read in flight, checking within winRootCheck of the last check that the
+// watched directory is still there; it returns how many bytes of records the read left in buf.
 func (w *winWatch) wait() (uint32, error) {
 	for {
-		ev, err := windows.WaitForSingleObject(w.ov.HEvent, uint32(winRootCheck/time.Millisecond))
+		// waits out what is left until the check is due, not a fresh interval: the check comes
+		// within winRootCheck of the last, busy or idle
+		left := max(winRootCheck-time.Since(w.checked), time.Millisecond)
+		ev, err := windows.WaitForSingleObject(w.ov.HEvent, uint32(left/time.Millisecond))
 		if err != nil || ev != uint32(windows.WAIT_TIMEOUT) {
 			break
 		}
