@@ -89,6 +89,30 @@ func (s FileSource) absolute(typed string) bool {
 	return (s.Root != "" && strings.HasPrefix(typed, s.Root)) || strings.HasPrefix(typed, "/")
 }
 
+// slashed is a typed path with Windows' separators made slashes, on Windows' local disk, where
+// either is one; elsewhere a backslash is part of a name and stays.
+func (s FileSource) slashed(typed string) string {
+	if s.drives {
+		return strings.ReplaceAll(typed, `\`, "/")
+	}
+	return typed
+}
+
+// typedPath reads what a person typed as an fs path of s: rooted when absolute says so, else
+// relative to dir, the folder listed. On Windows' local disk either separator is one, and a
+// relative path must land on a drive, as a rooted one must (driveFSPath).
+func (s FileSource) typedPath(dir, typed string) (string, bool) {
+	typed = s.slashed(typed)
+	if s.absolute(typed) {
+		return s.fsPath(typed)
+	}
+	p := path.Clean(path.Join(dir, typed))
+	if s.drives && p != "." {
+		return driveFSPath(p)
+	}
+	return p, fs.ValidPath(p)
+}
+
 // fsPath reads a rooted path back into an fs path, reporting false for one
 // outside this source. A relative path is taken as relative to the root.
 func (s FileSource) fsPath(rooted string) (string, bool) {

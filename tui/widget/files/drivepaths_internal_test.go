@@ -78,3 +78,40 @@ func TestWindowsDrivePathIsOnlyForTheSourcesOwnPaths(t *testing.T) {
 		}
 	}
 }
+
+// A path typed on Windows' local disk is read with either separator, relative to the folder listed
+// or rooted at a drive, and must land on a drive; elsewhere a backslash is part of a name.
+func TestWindowsDrivesReadATypedPath(t *testing.T) {
+	src := FileSource{drives: true}
+	for _, c := range []struct {
+		dir, typed, want string
+		ok               bool
+	}{
+		{"C:/base", `sub\file.txt`, "C:/base/sub/file.txt", true},
+		{"C:/base", `..\peer`, "C:/peer", true},
+		{"C:/base", `..\..`, ".", true},
+		{"C:/base", `D:\x`, "D:/x", true},
+		{"C:/base", "sub/x", "C:/base/sub/x", true},
+		{"C:/base", `a:b`, "", false},
+		{".", "notadrive", "", false},
+	} {
+		got, ok := src.typedPath(c.dir, c.typed)
+		if ok != c.ok || (ok && got != c.want) {
+			t.Errorf("typedPath(%q, %q) = %q, %v; want %q, %v", c.dir, c.typed, got, ok, c.want, c.ok)
+		}
+	}
+	unix := FileSource{Root: "/"}
+	if got, ok := unix.typedPath("home", `a\b`); !ok || got != `home/a\b` {
+		t.Errorf("a source with a Root read a backslash as a separator: %q, %v", got, ok)
+	}
+}
+
+// ~\ in a path field on Windows' local disk is the source's Home, as ~/ is.
+func TestWindowsDrivesTildeTakesEitherSeparator(t *testing.T) {
+	src := FileSource{drives: true, Home: `C:\Users\me`}
+	for _, typed := range []string{`~\notes`, "~/notes"} {
+		if p, _, ok := (&pathField{}).resolve(src, "D:/elsewhere", typed); !ok || p != "C:/Users/me/notes" {
+			t.Errorf("resolve(%q) = %q, %v; want C:/Users/me/notes", typed, p, ok)
+		}
+	}
+}
