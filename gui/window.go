@@ -153,6 +153,13 @@ func (b *Backend) run() {
 // change of keyboard focus, which the App hears as a FocusEvent.
 func (b *Backend) configure(e app.ConfigEvent) {
 	b.maxed.Store(e.Config.Mode == app.Maximized)
+	if was := b.undecorated.Swap(!e.Config.Decorated); was != !e.Config.Decorated && b.isStarted() {
+		// a title bar of the app's own steps aside or back (WindowControls.Decorated): the App
+		// lays out again at the grid it has
+		if m := b.metrics.Load(); m != nil {
+			b.q.push(tui.ResizeEvent{W: m.grid.W, H: m.grid.H})
+		}
+	}
 	if was := b.focused.Swap(e.Config.Focused); was != e.Config.Focused && b.isStarted() {
 		if !e.Config.Focused {
 			b.releaseHeld() // the window lost focus: no key stays down

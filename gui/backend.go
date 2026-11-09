@@ -88,7 +88,10 @@ type Backend struct {
 	metrics atomic.Pointer[metrics]
 	focused atomic.Bool // the window has keyboard focus
 	maxed   atomic.Bool // the window is maximized, as its last ConfigEvent said (chrome.go)
-	raw     atomic.Bool // SetRawKeys's request; the Gio goroutine applies it (rawkeys.go)
+	// undecorated: the system draws no frame, as the window's last ConfigEvent said (chrome.go).
+	// Zero, decorated, until one says otherwise, as a window opens.
+	undecorated atomic.Bool
+	raw         atomic.Bool // SetRawKeys's request; the Gio goroutine applies it (rawkeys.go)
 
 	q          *eventQueue
 	started    chan struct{} // closed by the first FrameEvent
