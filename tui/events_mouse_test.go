@@ -353,19 +353,42 @@ func TestDoubleClick_DifferentCellRestarts(t *testing.T) {
 	}
 }
 
-// Outside the window is not a double-click. A 1ns window makes
-// this deterministic without giving App an injectable clock.
+// Outside the window is not a double-click. The presses are 50 ms apart against a 1 ms window: two
+// presses sent at once may read the same instant from a coarse clock (Windows' ticks in milliseconds),
+// and the same instant is within any window.
 func TestDoubleClick_OutsideWindowRestarts(t *testing.T) {
 	t.Parallel()
 	a := newFocusProbe("a", Size{W: 8, H: 2})
 	root := NewFlex(Vertical)
 	root.Add(a)
-	h := startApp(t, root, 8, 2, WithDoubleClickWindow(time.Nanosecond))
+	h := startApp(t, root, 8, 2, WithDoubleClickWindow(time.Millisecond))
 
-	h.inject(pressAt(2, 1), pressAt(2, 1))
+	h.inject(pressAt(2, 1))
+	waitPresses(t, &a.probe, 1)
+	time.Sleep(50 * time.Millisecond)
+	h.inject(pressAt(2, 1))
 
 	if got := waitPresses(t, &a.probe, 2); !equalInts(got, []int{1, 1}) {
-		t.Errorf("press counts = %v, want [1 1] — a 1ns window can never continue a run", got)
+		t.Errorf("press counts = %v, want [1 1] — presses 50 ms apart are outside a 1 ms window", got)
+	}
+}
+
+// The window's edge, on the press clock itself: a press within the window continues the run, one a
+// nanosecond past it restarts it, and one at the same instant continues it, as two presses read from
+// a coarse clock may be.
+func TestDoubleClick_TheWindowsEdge(t *testing.T) {
+	a := &App{cfg: appConfig{doubleClickWindow: time.Millisecond}}
+	t0 := time.Unix(1000, 0)
+	press := MouseEvent{Kind: MousePress, Button: MouseLeft, X: 2, Y: 1}
+	for _, c := range []struct {
+		gap  time.Duration
+		want int
+	}{{0, 2}, {time.Millisecond, 2}, {time.Millisecond + 1, 1}} {
+		a.presses = pressCounter{}
+		a.pressOrdinalAt(press, nil, t0)
+		if got := a.pressOrdinalAt(press, nil, t0.Add(c.gap)); got != c.want {
+			t.Errorf("a press %v after the first: ordinal %d, want %d", c.gap, got, c.want)
+		}
 	}
 }
 
