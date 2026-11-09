@@ -173,6 +173,8 @@ jobs:
           jq -r 'select(.Action == "fail" and .Test == null) | .Package' "$RUNNER_TEMP/gui.json" | sort -u
           echo "== failing tests"
           jq -r 'select(.Action == "fail" and .Test != null) | "\(.Package) \(.Test)"' "$RUNNER_TEMP/gui.json" | head -60
+          echo "== what the failing tests printed"
+          jq -r 'select(.Action == "output" and .Test != null and (.Output | test("_test.go:[0-9]+:|panic|FAIL"))) | "\(.Test): \(.Output)"' "$RUNNER_TEMP/gui.json" | head -80
 
   # golib/gui: its own module, on Gio, with cgo. The root job never compiles it.
   gui:
@@ -378,6 +380,8 @@ jobs:
           jq -r 'select(.Action == "fail" and .Test == null) | .Package' "$RUNNER_TEMP/gui.json" | sort -u
           echo "== failing tests"
           jq -r 'select(.Action == "fail" and .Test != null) | "\(.Package) \(.Test)"' "$RUNNER_TEMP/gui.json" | head -60
+          echo "== what the failing tests printed"
+          jq -r 'select(.Action == "output" and .Test != null and (.Output | test("_test.go:[0-9]+:|panic|FAIL"))) | "\(.Test): \(.Output)"' "$RUNNER_TEMP/gui.json" | head -80
 
   # vfs/local watches with FSEvents on macOS, through cgo (ADR golib-vfs-0002): the Linux runner above
   # can only vet the cgo-less darwin build, so the watch itself is built and tested here, on a Mac.
