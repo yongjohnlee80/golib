@@ -1,6 +1,7 @@
 package gui
 
 import (
+	"fmt"
 	"image"
 	"math"
 
@@ -8,6 +9,7 @@ import (
 	"github.com/yongjohnlee80/gio/gpu/headless"
 	"github.com/yongjohnlee80/gio/op"
 	"github.com/yongjohnlee80/gio/text"
+	"github.com/yongjohnlee80/golib/errs"
 	"github.com/yongjohnlee80/golib/tui"
 )
 
@@ -16,21 +18,32 @@ import (
 // the pixels: size × scale, rounded up. Its text is golib's Go fonts, never the system's, so a snapshot
 // is the same on every machine with the same GPU driver. An error is no headless GPU here.
 //
-// For tests that assert what a widget draws in pixels: a golden, or a colour at a point.
+// For tests that assert what a widget draws in pixels: a golden, or a colour at a point. A machine
+// with no headless GPU returns an error that is ErrNoGPU, which a test skips on; any other error is
+// the drawing or its read-back failing, which a test must fail on.
 func Snapshot(v View, size Size, scale int) (*image.RGBA, error) {
 	scale = max(scale, 1)
 	w, h := snapshotPixels(size, scale)
 	hw, err := headless.NewWindow(w, h)
 	if err != nil {
-		return nil, err
+		return nil, errs.WrapCause(ErrNoGPU, err, "gui: Snapshot")
 	}
 	defer hw.Release()
 	return snapshotOn(hw, v, size, scale)
 }
 
-// snapshotOn is Snapshot on hw, a headless window of the snapshot's pixel size: a test drawing many
+// ErrNoGPU is Snapshot's error on a machine with no headless GPU to draw on.
+var ErrNoGPU = errs.Sentinel(errs.ErrUnsupported, "gui: no headless GPU")
+
+// snapshotTarget is what a snapshot draws on and reads back: a headless window, or a test's own.
+type snapshotTarget interface {
+	Frame(*op.Ops) error
+	Screenshot(*image.RGBA) error
+}
+
+// snapshotOn is Snapshot on t, a headless window of the snapshot's pixel size: a test drawing many
 // snapshots of one size reuses one window (EGL refuses some of many made in a row).
-func snapshotOn(hw *headless.Window, v View, size Size, scale int) (*image.RGBA, error) {
+func snapshotOn(t snapshotTarget, v View, size Size, scale int) (*image.RGBA, error) {
 	w, h := snapshotPixels(size, scale)
 	// one-dp cells, so the view's canvas is size, rounded up to whole dp
 	cols, rows := int(math.Ceil(float64(size.W))), int(math.Ceil(float64(size.H)))
@@ -43,12 +56,12 @@ func snapshotOn(hw *headless.Window, v View, size Size, scale int) (*image.RGBA,
 	call := r.frame(g, m, cursorState{}, []tui.NativePlacement{{View: v, Cols: cols, Rows: rows}}, nil, true)
 	ops := new(op.Ops)
 	call.Add(ops)
-	if err := hw.Frame(ops); err != nil {
-		return nil, err
+	if err := t.Frame(ops); err != nil {
+		return nil, fmt.Errorf("gui: Snapshot: drawing: %w", err)
 	}
 	img := image.NewRGBA(image.Rect(0, 0, w, h))
-	if err := hw.Screenshot(img); err != nil {
-		return nil, err
+	if err := t.Screenshot(img); err != nil {
+		return nil, fmt.Errorf("gui: Snapshot: reading back: %w", err)
 	}
 	return img, nil
 }

@@ -1,9 +1,13 @@
 package gui
 
 import (
+	"errors"
 	"image"
 	"image/color"
 	"testing"
+
+	"github.com/yongjohnlee80/gio/op"
+	"github.com/yongjohnlee80/golib/errs"
 )
 
 // Snapshot draws a view through the window's path at its scale: a red square inset in a blue view
@@ -16,8 +20,11 @@ func TestSnapshotDrawsAViewAtItsScale(t *testing.T) {
 	})
 	for _, s := range []int{1, 2} {
 		img, err := Snapshot(v, Size{W: 40, H: 23.5}, s)
-		if err != nil {
+		if errors.Is(err, ErrNoGPU) {
 			t.Skipf("no headless GPU here: %v", err)
+		}
+		if err != nil {
+			t.Fatal(err) // the drawing or its read-back failed: a GPU here, and something broken
 		}
 		if img.Bounds() != image.Rect(0, 0, 40*s, 24*s) {
 			t.Fatalf("at %dx the snapshot is %v, want %dx%d", s, img.Bounds(), 40*s, 24*s)
@@ -33,7 +40,36 @@ func TestSnapshotDrawsAViewAtItsScale(t *testing.T) {
 			t.Errorf("at %dx (31,12) is %v, want blue: the square ends at 30", s, c)
 		}
 	}
-	if img, err := Snapshot(v, Size{W: 4, H: 4}, 0); err == nil && img.Bounds() != image.Rect(0, 0, 4, 4) {
+	img, err := Snapshot(v, Size{W: 4, H: 4}, 0)
+	if err != nil {
+		t.Fatalf("scale 0: %v", err) // a GPU answered above
+	}
+	if img.Bounds() != image.Rect(0, 0, 4, 4) {
 		t.Fatalf("scale 0 gave %v, want scale 1's 4x4", img.Bounds())
+	}
+}
+
+// failingTarget is a GPU that initialised and then fails to draw or to read back.
+type failingTarget struct{ frame, shot error }
+
+func (f failingTarget) Frame(*op.Ops) error          { return f.frame }
+func (f failingTarget) Screenshot(*image.RGBA) error { return f.shot }
+
+// A drawing or read-back that fails after the GPU initialised is an error a test fails on, never
+// ErrNoGPU, which a test skips on.
+func TestASnapshotsFailureAfterTheGPUIsNotNoGPU(t *testing.T) {
+	boom := errors.New("boom")
+	v := ViewFunc(func(Canvas) {})
+	for _, c := range []struct {
+		name string
+		t    failingTarget
+	}{{"drawing", failingTarget{frame: boom}}, {"reading back", failingTarget{shot: boom}}} {
+		_, err := snapshotOn(c.t, v, Size{W: 4, H: 4}, 1)
+		if !errors.Is(err, boom) || errors.Is(err, ErrNoGPU) {
+			t.Errorf("%s failed: err %v; want the failure itself, not ErrNoGPU", c.name, err)
+		}
+	}
+	if !errors.Is(ErrNoGPU, errs.ErrUnsupported) {
+		t.Error("ErrNoGPU is not an unsupported condition")
 	}
 }
