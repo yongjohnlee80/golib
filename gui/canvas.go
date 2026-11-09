@@ -428,17 +428,49 @@ func (c *gioCanvas) fill(b Brush) { c.fillUnder(b, f32.Affine2D{}) }
 // fillUnder paints the current clip with b, under the logical-to-device transform and then extra,
 // pushed after it. Gio places a gradient's stops in device pixels from the pushed transform's
 // translation alone, ignoring its scale and rotation, so the stops (dp, as every Canvas
-// coordinate) are mapped to the device here and given relative to that translation.
+// coordinate) are mapped to the device here (deviceGradient) and given relative to that
+// translation.
+//
+// Gio paints a gradient correctly only under a pure translation: under any other transform it maps
+// the material through the bounds of the transformed paint area, which turns a sheared or rotated
+// gradient. So a gradient is painted with the pushed transform undone to the translation alone
+// (the clip it fills is already set, under the full transform), with its stops in device pixels.
 func (c *gioCanvas) fillUnder(b Brush, extra f32.Affine2D) {
-	if g := b.Gradient; g != nil {
-		t := c.deviceTransform()
-		off := t.Mul(extra).Transform(f32.Point{})
-		s1, s2 := t.Transform(fp(g.From)).Sub(off), t.Transform(fp(g.To)).Sub(off)
-		paint.LinearGradientOp{Stop1: s1, Color1: g.FromColor, Stop2: s2, Color2: g.ToColor}.Add(c.ops)
-	} else {
+	g := b.Gradient
+	if g == nil {
 		paint.ColorOp{Color: b.Color}.Add(c.ops)
+		paint.PaintOp{}.Add(c.ops)
+		return
 	}
+	t := c.deviceTransform()
+	pushed := t.Mul(extra)
+	off := pushed.Transform(f32.Point{})
+	s1, s2 := deviceGradient(t, fp(g.From), fp(g.To))
+	countTransform()
+	flat := op.Affine(pushed.Invert().Mul(f32.Affine2D{}.Offset(off))).Push(c.ops)
+	paint.LinearGradientOp{Stop1: s1.Sub(off), Color1: g.FromColor, Stop2: s2.Sub(off), Color2: g.ToColor}.Add(c.ops)
 	paint.PaintOp{}.Add(c.ops)
+	flat.Pop()
+}
+
+// deviceGradient is the device stops of a linear gradient from a to b under t. A point's place
+// along a gradient is its projection on b-a, and t keeps that place for the point's image; under a
+// uniform scale and a rotation that is t's own image of the stops, but under an uneven scale or a
+// shear, t turns b-a and the lines of equal colour differently. So the first stop is t(a), and the
+// second is t(a) plus the vector v along which the device projection measures the same place:
+// v/|v|² = L⁻ᵀ(b-a)/|b-a|², L being t's linear part. A degenerate gradient or transform maps the
+// stops as given.
+func deviceGradient(t f32.Affine2D, a, b f32.Point) (f32.Point, f32.Point) {
+	s1, d := t.Transform(a), b.Sub(a)
+	sx, hx, _, hy, sy, _ := t.Elems()
+	det := sx*sy - hx*hy
+	dd := d.X*d.X + d.Y*d.Y
+	if det == 0 || dd == 0 {
+		return s1, t.Transform(b)
+	}
+	u := f32.Pt((sy*d.X-hy*d.Y)/(det*dd), (-hx*d.X+sx*d.Y)/(det*dd)) // L⁻ᵀ(b-a)/|b-a|²
+	uu := u.X*u.X + u.Y*u.Y
+	return s1, s1.Add(u.Mul(1 / uu))
 }
 
 // FillPath rasterizes a vector path filled with the given brush.

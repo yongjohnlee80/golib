@@ -5,6 +5,7 @@ import (
 	"image/color"
 	"testing"
 
+	"github.com/yongjohnlee80/gio/f32"
 	"github.com/yongjohnlee80/gio/gpu/headless"
 )
 
@@ -68,6 +69,42 @@ func TestAGradientsStopsAreInDpAtEveryScale(t *testing.T) {
 		}
 		if n < 50 {
 			t.Errorf("text at %dx, view %d cells in: %d wholly covered glyph pixels; want enough to compare", k.s, k.col, n)
+		}
+	}
+}
+
+// Under an uneven scale or a shear a gradient keeps each point's colour: the point's image has the
+// colour the point has without the transform. A 40x40 dp gradient, red at (0,0) to blue at (40,40),
+// sampled at the image of (30,10) under scale (2,1) and under a shear, against no transform.
+func TestAGradientKeepsItsColoursUnderAnUnevenScaleAndAShear(t *testing.T) {
+	g := &LinearGradient{From: Pt(0, 0), To: Pt(40, 40), FromColor: color.NRGBA{R: 0xff, A: 0xff}, ToColor: color.NRGBA{B: 0xff, A: 0xff}}
+	hw, err := headless.NewWindow(96, 64)
+	if err != nil {
+		t.Skipf("no headless GPU here: %v", err)
+	}
+	defer hw.Release()
+	shot := func(m Affine) *image.RGBA {
+		return goldenShot(t, hw, func(c Canvas) {
+			c.PushTransform(m)
+			c.FillPath(new(Path).MoveTo(Pt(0, 0)).LineTo(Pt(40, 0)).LineTo(Pt(40, 40)).LineTo(Pt(0, 40)).Close(), Brush{Gradient: g})
+			c.Pop()
+		}, 1)
+	}
+	p := Pt(30, 10)
+	base := shot(Affine{}).RGBAAt(30, 10)
+	for _, c := range []struct {
+		name string
+		m    Affine
+	}{
+		{"scale (2,1)", Affine{}.Scale(f32.Point{}, f32.Pt(2, 1))},
+		{"shear", f32.NewAffine2D(1, 0.5, 0, 0, 1, 0)},
+		{"scale (1,1.5) and a rotation", Affine{}.Scale(f32.Point{}, f32.Pt(1, 1.5)).Rotate(f32.Pt(20, 20), 0.3)},
+	} {
+		q := c.m.Transform(f32.Pt(p.X, p.Y))
+		got := shot(c.m).RGBAAt(int(q.X), int(q.Y))
+		d := func(a, b uint8) int { return max(int(a)-int(b), int(b)-int(a)) }
+		if d(got.R, base.R) > 4 || d(got.B, base.B) > 4 {
+			t.Errorf("%s: (30,10) maps to (%.0f,%.0f), coloured %v; want the untransformed %v", c.name, q.X, q.Y, got, base)
 		}
 	}
 }
