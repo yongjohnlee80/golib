@@ -20,10 +20,13 @@ func TestABlockDiagramIsLaidOut(t *testing.T) {
 		box[n.id] = n.box
 	}
 	a, b, c, d, x, y := box["a"], box["b"], box["c"], box["d"], box["x"], box["y"]
+	// Edges that line up are sums of different widths: equal to well under a pixel, not to the
+	// last bit (on arm64 the compiler fuses multiply-adds, and the sums round differently).
+	same := func(v, w float32) bool { return v-w < 0.01 && w-v < 0.01 }
 	if a.Y != b.Y || c.Y != d.Y || c.Y <= a.Y+a.H {
 		t.Errorf("rows: a %+v b %+v, c %+v d %+v", a, b, c, d)
 	}
-	if c.X != a.X || b.X+b.W != d.X+d.W || b.W <= d.W {
+	if c.X != a.X || !same(b.X+b.W, d.X+d.W) || b.W <= d.W {
 		t.Errorf("spans: a %+v b %+v c %+v d %+v", a, b, c, d)
 	}
 	if len(l.group) != 1 {
@@ -35,7 +38,7 @@ func TestABlockDiagramIsLaidOut(t *testing.T) {
 			t.Errorf("%s %+v outside its group %+v", id, r, f)
 		}
 	}
-	if f.Y <= c.Y+c.H || f.X != a.X || f.X+f.W != d.X+d.W {
+	if f.Y <= c.Y+c.H || f.X != a.X || !same(f.X+f.W, d.X+d.W) {
 		t.Errorf("the group %+v isn't the third row, three columns wide", f)
 	}
 	if len(l.edges) != 1 {

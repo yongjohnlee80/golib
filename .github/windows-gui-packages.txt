@@ -1,0 +1,14 @@
+# gui packages (relative to gui/) whose tests pass on Windows: the gui-windows job runs these.
+# The list may only grow.
+.
+./decl/
+./examples/scene3d/
+./flow/
+./internal/css/
+./internal/linebreak/
+./internal/picture/
+./mermaid/
+./record/
+./svg/
+./vegalite/
+./widget/

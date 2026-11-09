@@ -15,9 +15,10 @@ on:
     branches: [canary]
   pull_request:
     branches: [main]
-  # Run by hand on a branch (gh workflow run go.yml --ref <branch>): only the windows job runs, so a
-  # Windows change is tested on Windows before it reaches canary. discover runs every package's tests
-  # and lists which pass, to grow .github/windows-packages.txt.
+  # Run by hand on a branch (gh workflow run go.yml --ref <branch>): only the windows, gui-windows and
+  # gui-macos jobs run, so a Windows or macOS change is tested there before it reaches canary.
+  # discover runs every package's tests and lists which pass, to grow .github/windows-packages.txt,
+  # .github/windows-gui-packages.txt and .github/macos-gui-packages.txt.
   workflow_dispatch:
     inputs:
       discover:
@@ -134,6 +135,47 @@ jobs:
           jq -r 'select(.Action == "pass" and .Test == null) | .Package' "$RUNNER_TEMP/win.json" | sort -u
           echo "== packages that fail on Windows"
           jq -r 'select(.Action == "fail" and .Test == null) | .Package' "$RUNNER_TEMP/win.json" | sort -u
+
+  # golib/gui on Windows (Gio's Direct3D 11 backend; no cgo): the packages in
+  # .github/windows-gui-packages.txt, which may only grow. The goldens are Linux's and skip here.
+  gui-windows:
+    if: github.event_name == 'push' || github.event_name == 'workflow_dispatch' || (github.head_ref == 'canary' || startsWith(github.head_ref, 'release/'))
+    name: gui (Windows, Direct3D)
+    runs-on: windows-latest
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - name: check out with LF line endings
+        run: git config --global core.autocrlf false
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+      - uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff # v5.6.0
+        with:
+          go-version-file: gui/go.mod
+          cache: true
+          cache-dependency-path: gui/go.sum
+      - name: use this commit's golib
+        run: go work init . ./gui
+      - name: test the ported gui packages
+        if: ${{ !inputs.discover }}
+        run: |
+          mapfile -t pkgs < <(grep -v '^#' .github/windows-gui-packages.txt | grep .)
+          cd gui && go test -count=3 -timeout 20m "${pkgs[@]}"
+      - name: discover which gui packages pass on Windows
+        if: ${{ inputs.discover }}
+        continue-on-error: true
+        run: |
+          cd gui
+          go test -count=1 -timeout 30m -json ./... > "$RUNNER_TEMP/gui.json" || true
+          echo "== gui packages that pass on Windows"
+          jq -r 'select(.Action == "pass" and .Test == null) | .Package' "$RUNNER_TEMP/gui.json" | sort -u
+          echo "== gui packages that fail on Windows"
+          jq -r 'select(.Action == "fail" and .Test == null) | .Package' "$RUNNER_TEMP/gui.json" | sort -u
+          echo "== failing tests"
+          jq -r 'select(.Action == "fail" and .Test != null) | "\(.Package) \(.Test)"' "$RUNNER_TEMP/gui.json" | head -60
+          echo "== the failing tests again, verbose"
+          jq -r 'select(.Action == "fail" and .Test != null and (.Test | contains("/") | not)) | "\(.Package) \(.Test)"' "$RUNNER_TEMP/gui.json" | tr -d '\r' | sort -u |
+            while read -r pkg test; do go test -count=1 -run "^${test}\$" -v "$pkg" 2>&1 | grep -E '_test.go:[0-9]+:|^(---|ok|FAIL|panic)' | head -40; done
 
   # golib/gui: its own module, on Gio, with cgo. The root job never compiles it.
   gui:
@@ -295,7 +337,7 @@ jobs:
   # renders into IOSurfaces that a headless Metal window draws without a copy, checked against the
   # CPU's picture.
   gui-macos:
-    if: github.event_name == 'push' || (github.head_ref == 'canary' || startsWith(github.head_ref, 'release/'))
+    if: github.event_name == 'push' || github.event_name == 'workflow_dispatch' || (github.head_ref == 'canary' || startsWith(github.head_ref, 'release/'))
     name: gui (macOS, Metal)
     runs-on: macos-latest
     defaults:
@@ -320,6 +362,28 @@ jobs:
 
       - name: test scene3d (Metal producer, IOSurface frames)
         run: go test -race -count=1 -timeout 10m -v ./examples/scene3d/
+
+      # The rest of the module on macOS: the packages in .github/macos-gui-packages.txt, which may only
+      # grow (paths relative to gui/). The goldens are Linux's and skip here.
+      - name: test the gui packages that pass on macOS
+        if: ${{ !inputs.discover }}
+        run: |
+          pkgs=$(grep -v '^#' ../.github/macos-gui-packages.txt | grep . | tr '\n' ' ')
+          go test -race -count=3 -timeout 20m $pkgs
+      - name: discover which gui packages pass on macOS
+        if: ${{ inputs.discover }}
+        continue-on-error: true
+        run: |
+          go test -count=1 -timeout 30m -json ./... > "$RUNNER_TEMP/gui.json" || true
+          echo "== gui packages that pass on macOS"
+          jq -r 'select(.Action == "pass" and .Test == null) | .Package' "$RUNNER_TEMP/gui.json" | sort -u
+          echo "== gui packages that fail on macOS"
+          jq -r 'select(.Action == "fail" and .Test == null) | .Package' "$RUNNER_TEMP/gui.json" | sort -u
+          echo "== failing tests"
+          jq -r 'select(.Action == "fail" and .Test != null) | "\(.Package) \(.Test)"' "$RUNNER_TEMP/gui.json" | head -60
+          echo "== the failing tests again, verbose"
+          jq -r 'select(.Action == "fail" and .Test != null and (.Test | contains("/") | not)) | "\(.Package) \(.Test)"' "$RUNNER_TEMP/gui.json" | tr -d '\r' | sort -u |
+            while read -r pkg test; do go test -count=1 -run "^${test}\$" -v "$pkg" 2>&1 | grep -E '_test.go:[0-9]+:|^(---|ok|FAIL|panic)' | head -40; done
 
   # vfs/local watches with FSEvents on macOS, through cgo (ADR golib-vfs-0002): the Linux runner above
   # can only vet the cgo-less darwin build, so the watch itself is built and tested here, on a Mac.
