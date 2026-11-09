@@ -104,12 +104,14 @@ func (c crossing) row() string { return c.from + "\t" + c.owner + "\t" + c.name 
 // files it read.
 func widgetCrossings(t *testing.T, root string) ([]crossing, int) {
 	t.Helper()
-	return widgetUses(t, root, false)
+	found, nfiles, _ := widgetUses(t, root, false)
+	return found, nfiles
 }
 
 // widgetUses is widgetCrossings with exported names too when exported: every name one group uses
-// and another declares.
-func widgetUses(t *testing.T, root string, exported bool) ([]crossing, int) {
+// and another declares. resolved is how many uses of the package's own names it read: the scan's
+// proof that it is looking, whether or not any crosses.
+func widgetUses(t *testing.T, root string, exported bool) (found []crossing, nfiles, resolved int) {
 	t.Helper()
 	// one platform for every host: the ledger is the linux build's, so macOS (whose build compiles
 	// other files) checks the same files against the same rows
@@ -170,6 +172,9 @@ func widgetUses(t *testing.T, root string, exported bool) ([]crossing, int) {
 	}
 	seen := map[crossing]bool{}
 	for id, obj := range info.Uses {
+		if obj.Pkg() == pkg && obj.Pos().IsValid() {
+			resolved++
+		}
 		if obj.Pkg() != pkg || obj.Exported() && !exported || !obj.Pos().IsValid() {
 			continue
 		}
@@ -187,7 +192,7 @@ func widgetUses(t *testing.T, root string, exported bool) ([]crossing, int) {
 		list = append(list, c)
 	}
 	sort.Slice(list, func(i, j int) bool { return list[i].row() < list[j].row() })
-	return list, len(files)
+	return list, len(files), resolved
 }
 
 // widgetObject names an object a package boundary would hide, with its kind: a
@@ -244,9 +249,11 @@ const widgetCouplingHeader = `# tui/widget's coupling: each unexported name, met
 // recorded, or a recorded one that is gone.
 func TestWidgetCouplingMatchesTheInventory(t *testing.T) {
 	root := repoRoot(t)
-	found, nfiles := widgetCrossings(t, root)
-	if nfiles < 100 || len(found) == 0 {
-		t.Fatalf("read %d files and found %d crossings: the inventory is not looking at tui/widget", nfiles, len(found))
+	found, nfiles, resolved := widgetUses(t, root, false)
+	// the control: the scan reads tui/widget and resolves its names. Crossings are not it: as the
+	// components leave for packages of their own, none is left to find.
+	if nfiles == 0 || resolved == 0 {
+		t.Fatalf("read %d files and resolved %d uses: the inventory is not looking at tui/widget", nfiles, resolved)
 	}
 	ledger := filepath.Join(root, "internal", "audit", widgetCouplingPath)
 	if os.Getenv(widgetCouplingEnv) == "1" {
@@ -329,7 +336,7 @@ func TestWidgetGroupsAssignByLongestPrefix(t *testing.T) {
 // package the components import. The ledger already stops any unexported
 // crossing from growing; this names the one direction that must stay empty.
 func TestWidgetCoreReachesNoComponent(t *testing.T) {
-	found, _ := widgetUses(t, repoRoot(t), true)
+	found, _, _ := widgetUses(t, repoRoot(t), true)
 	var rows []string
 	for _, c := range found {
 		if c.from == "core" {
@@ -356,7 +363,7 @@ var widgetComponentImports = map[[2]string]bool{
 // unexported one, so the components can be extracted in an order with no import cycle (the
 // terminal, the editor, then the file views, the HTML view and the tables).
 func TestWidgetComponentsReachOnlyDown(t *testing.T) {
-	found, _ := widgetUses(t, repoRoot(t), true)
+	found, _, _ := widgetUses(t, repoRoot(t), true)
 	var rows []string
 	for _, c := range found {
 		if c.from == "core" || c.owner == "core" {
