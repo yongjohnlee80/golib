@@ -87,6 +87,8 @@ type winWatch struct {
 
 	mu      sync.Mutex // orders issuing a read against cancelling it: no read starts after stop
 	stopped bool
+
+	checked time.Time // when rootHere last ran: a busy watch checks as often as an idle one
 }
 
 // newWinWatch opens dir for the watch. dir is opened through the root, so the jail resolves it, and
@@ -124,10 +126,11 @@ func (f *FS) newWinWatch(dir string, cfg vfs.WatchConfig) (*winWatch, error) {
 	}
 	winWatches.Add(1)
 	return &winWatch{
-		f:   f,
-		m:   winMapper{dir: dir, recursive: cfg.Recursive, cfg: cfg, stat: func(rel string) presence { return f.presence(rel) }},
-		out: make(chan vfs.Event),
-		h:   h, volume: hi.VolumeSerialNumber, index: uint64(hi.FileIndexHigh)<<32 | uint64(hi.FileIndexLow),
+		checked: time.Now(),
+		f:       f,
+		m:       winMapper{dir: dir, recursive: cfg.Recursive, cfg: cfg, stat: func(rel string) presence { return f.presence(rel) }},
+		out:     make(chan vfs.Event),
+		h:       h, volume: hi.VolumeSerialNumber, index: uint64(hi.FileIndexHigh)<<32 | uint64(hi.FileIndexLow),
 		ov:  windows.Overlapped{HEvent: ev},
 		buf: make([]byte, winNotifyBuffer),
 	}, nil
@@ -147,9 +150,20 @@ func (f *FS) presence(rel string) presence {
 	return unknown
 }
 
+// rootDue is rootHere when winRootCheck has passed since the last check, else true. A directory
+// moved away keeps reporting the changes made in it, so a check made only when nothing happens
+// would never come while it stays busy.
+func (w *winWatch) rootDue() bool {
+	if time.Since(w.checked) < winRootCheck {
+		return true
+	}
+	return w.rootHere()
+}
+
 // rootHere is whether the watched directory is still the one at dir: deleted (its name gone, or
 // pending its deletion), moved, or replaced, it is not.
 func (w *winWatch) rootHere() bool {
+	w.checked = time.Now()
 	fi, err := w.f.lstat(w.m.dir)
 	if err != nil {
 		return false
@@ -212,6 +226,9 @@ func (w *winWatch) run(ctx context.Context) {
 		case err != nil: // the directory went (a read on one pending its deletion is refused), or the handle failed
 			end(err.Error())
 			return
+		case !w.rootDue(): // checked before mapping: records of a moved directory name what is at dir now
+			end("moved or replaced")
+			return
 		default:
 			evs = w.m.mapBatch(parseNotify(w.buf[:n]))
 		}
@@ -260,7 +277,7 @@ func (w *winWatch) wait() (uint32, error) {
 		if err != nil || ev != uint32(windows.WAIT_TIMEOUT) {
 			break
 		}
-		if !w.rootHere() {
+		if !w.rootDue() {
 			_ = windows.CancelIoEx(w.h, &w.ov)
 			var n uint32
 			_ = windows.GetOverlappedResult(w.h, &w.ov, &n, true) // the kernel is done with buf
