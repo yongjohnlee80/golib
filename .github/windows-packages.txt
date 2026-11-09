@@ -87,3 +87,17 @@
 ./yaml
 ./tui/pty
 ./vfs/local
+./dao
+./graph/layout
+./parse/mermaid
+./parse/sql
+./parse/yaml
+./search/chunk/code
+./tui/decl
+./tui/decl/themes
+./tui/mermaid
+./tui/vegalite
+./tui/vt
+./tui/widget/editor
+./tui/widget/htmlview
+./view
