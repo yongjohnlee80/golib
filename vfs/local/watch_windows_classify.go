@@ -82,48 +82,16 @@ func (m *winMapper) mapBatch(batch []winRecord) []vfs.Event {
 		}
 		// a name that appeared, or that went and is there again, is a new entry; a modified one is a write
 		created := r.action != winActionModified
-		switch m.stat(rel) {
-		case absent:
-			add(vfs.Event{Path: rel, Op: vfs.OpRemove})
-		case presentDir:
-			if !created {
-				continue // a directory's own modification is its children's, which report themselves
-			}
-			add(vfs.Event{Path: rel, Op: vfs.OpCreate})
-			// a populated directory moved in reports only itself, so its subtree must be read, unless
-			// SkipDirs leaves it out, when reading it is the walk the caller asked not to make
-			if m.recursive && !m.cfg.Skipped(m.dir, rel, true) {
-				add(vfs.Event{Path: rel, Op: vfs.OpOverflow})
-			}
-		case presentFile:
-			if created {
-				add(vfs.Event{Path: rel, Op: vfs.OpCreate})
-			} else {
-				add(vfs.Event{Path: rel, Op: vfs.OpWrite})
-			}
-		case unknown:
-			add(vfs.Event{Path: rel, Op: vfs.OpWrite})
+		for _, ev := range presenceEvents(m.dir, rel, m.stat(rel), created, m.recursive, m.cfg) {
+			add(ev)
 		}
 	}
 	return out
 }
 
-// hidden reports a path the watch never reports: a temp name anywhere in it, anything under a
-// SkipDirs directory, or, for a watch that is not recursive, anything below dir's direct children
-// (which ReadDirectoryChangesW does not report then either). A skipped directory's own appearance,
-// going and renaming are still reported.
+// hidden reports a path the watch never reports (watchHidden). A record never tests the path
+// itself as a skipped directory: a skipped directory's own appearance, going and renaming are
+// still reported.
 func (m *winMapper) hidden(rel string) bool {
-	rest := rel
-	if m.dir != "." && m.dir != "" {
-		rest = strings.TrimPrefix(rel, m.dir+"/")
-	}
-	for name := range strings.SplitSeq(rest, "/") {
-		if vfs.IsTemp(name) {
-			return true
-		}
-	}
-	if !m.recursive && strings.Contains(rest, "/") {
-		return true
-	}
-	return m.cfg.Skipped(m.dir, rel, false)
+	return watchHidden(m.dir, rel, false, m.recursive, m.cfg)
 }

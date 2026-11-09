@@ -91,27 +91,8 @@ func (m *fseMapper) mapBatch(batch []fsevent) (out []vfs.Event, end bool) {
 			continue // HistoryDone, OwnEvent and the like
 		}
 		created := e.flags&(fseItemCreated|fseItemRenamed) != 0
-		switch m.stat(rel) {
-		case absent:
-			add(vfs.Event{Path: rel, Op: vfs.OpRemove})
-		case presentDir:
-			if !created {
-				continue // its children report their own changes
-			}
-			add(vfs.Event{Path: rel, Op: vfs.OpCreate})
-			// a populated directory moved in reports only itself, so its subtree must be read — unless
-			// SkipDirs leaves it out, when reading it is the walk the caller asked not to make
-			if m.recursive && !m.cfg.Skipped(m.dir, rel, true) {
-				add(vfs.Event{Path: rel, Op: vfs.OpOverflow})
-			}
-		case presentFile:
-			if created {
-				add(vfs.Event{Path: rel, Op: vfs.OpCreate})
-			} else {
-				add(vfs.Event{Path: rel, Op: vfs.OpWrite})
-			}
-		case unknown:
-			add(vfs.Event{Path: rel, Op: vfs.OpWrite})
+		for _, ev := range presenceEvents(m.dir, rel, m.stat(rel), created, m.recursive, m.cfg) {
+			add(ev)
 		}
 	}
 	return out, false
@@ -131,21 +112,7 @@ func (m *fseMapper) relative(abs string) (string, bool) {
 	return vfs.Join(m.dir, rest), true
 }
 
-// hidden reports a path the watch never reports: a temp name anywhere in it, anything under a
-// SkipDirs directory (isDir also tests rel itself), or, for a watch that is not recursive, anything
-// below dir's direct children.
+// hidden reports a path the watch never reports (watchHidden); isDir also tests rel itself.
 func (m *fseMapper) hidden(rel string, isDir bool) bool {
-	rest := rel
-	if m.dir != "." && m.dir != "" {
-		rest = strings.TrimPrefix(rel, m.dir+"/")
-	}
-	for name := range strings.SplitSeq(rest, "/") {
-		if vfs.IsTemp(name) {
-			return true
-		}
-	}
-	if !m.recursive && strings.Contains(rest, "/") {
-		return true
-	}
-	return m.cfg.Skipped(m.dir, rel, isDir)
+	return watchHidden(m.dir, rel, isDir, m.recursive, m.cfg)
 }
