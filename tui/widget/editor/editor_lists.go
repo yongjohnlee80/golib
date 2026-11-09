@@ -1,0 +1,168 @@
+package editor
+
+import (
+	"strconv"
+	"strings"
+
+	"github.com/yongjohnlee80/golib/parse/markdown"
+
+	"github.com/yongjohnlee80/golib/tui"
+	txt "github.com/yongjohnlee80/golib/tui/widget/internal/text"
+)
+
+// LIST EDITING — a Markdown list as a writer's editor keeps it, in Insert mode, when on
+// (CoreListEditing / SetListEditing):
+//
+//   - Enter on an item starts the next one: the same indentation and marker, an ordered number
+//     one up, a task's box unchecked. Enter on an empty item ends the list: the marker goes.
+//   - Backspace just after the marker removes the marker, leaving the indentation.
+//   - Tab anywhere on an item nests it one level, by its marker's width; Shift+Tab un-nests it.
+//
+// Nothing else changes: off a list item, and with a selection, the keys do what they always do.
+// A host whose document has lines that only look like items (Markdown's code blocks) says which
+// lines are prose with SetListEditingWhere.
+
+// CoreListEditing turns list editing on or off.
+func CoreListEditing(on bool) CoreOption { return func(c *EditorCore) { c.listEditing = on } }
+
+// SetListEditing turns list editing on or off.
+func (c *EditorCore) SetListEditing(on bool) { c.listEditing = on }
+
+// SetListEditingWhere limits list editing to the lines where reports true: a Markdown host
+// leaves its code blocks out, where "- x" is code. nil: every line.
+func (c *EditorCore) SetListEditingWhere(where func(ln int) bool) { c.listWhere = where }
+
+// ListEditing reports whether list editing is on.
+func (c *EditorCore) ListEditing() bool { return c.listEditing }
+
+// listItem is a list item's line read: its indentation, its marker (the bullet or number, the
+// spaces after it, and a task's box) and the marker's own width, which a nested item indents by.
+type listItem struct {
+	indent, marker string
+	unit           int // the bullet or number and one space: "- " is 2, "10. " is 4
+}
+
+// readListItem reads line as a list item: indentation, then '-', '*' or '+', or a number and '.'
+// or ')', then a space. A thematic break ("* * *", "---") is not one.
+func readListItem(line string) (listItem, bool) {
+	body := strings.TrimLeft(line, " \t")
+	indent := line[:len(line)-len(body)]
+	n := 0
+	switch {
+	case body != "" && strings.ContainsRune("-*+", rune(body[0])):
+		n = 1
+	default:
+		for n < len(body) && n < 9 && body[n] >= '0' && body[n] <= '9' {
+			n++
+		}
+		if n == 0 || n >= len(body) || (body[n] != '.' && body[n] != ')') {
+			return listItem{}, false
+		}
+		n++
+	}
+	if n >= len(body) || body[n] != ' ' || markdown.ThematicBreak(body) {
+		return listItem{}, false
+	}
+	unit := n + 1
+	m := unit
+	for m < len(body) && m < n+4 && body[m] == ' ' {
+		m++
+	}
+	if rest := body[m:]; len(rest) >= 3 && rest[0] == '[' && rest[2] == ']' && strings.ContainsRune(" xX", rune(rest[1])) &&
+		(len(rest) == 3 || rest[3] == ' ') {
+		m += min(4, len(rest))
+	}
+	return listItem{indent: indent, marker: body[:m], unit: unit}, true
+}
+
+// next is the marker of the item after it: the number one up, a task's box unchecked.
+func (it listItem) next() string {
+	m := it.marker
+	if m[0] >= '0' && m[0] <= '9' {
+		d := 0
+		for m[d] >= '0' && m[d] <= '9' {
+			d++
+		}
+		n, _ := strconv.Atoi(m[:d])
+		m = strconv.Itoa(n+1) + m[d:]
+	}
+	if i := strings.Index(m, "["); i >= 0 && i+2 < len(m) && m[i+2] == ']' {
+		m = m[:i+1] + " " + m[i+2:]
+	}
+	return m
+}
+
+// listKey handles an Insert-mode key on a list item, reporting whether it did.
+func (c *EditorCore) listKey(_ tui.KeyEvent, r insertKey) bool {
+	b := &c.buf
+	if !c.listEditing || c.readOnly || c.vAnchor != (txt.Pos{}) || b.Anchor != nil {
+		return false
+	}
+	if r.qual&^tui.ModShift != 0 || (r.qual&tui.ModShift != 0 && r.act != ActInsertTab) {
+		return false
+	}
+	line := b.Lines[b.Ln]
+	it, ok := readListItem(line)
+	if !ok || (c.listWhere != nil && !c.listWhere(b.Ln)) {
+		return false
+	}
+	start := len(it.indent) + len(it.marker) // in clusters: both are ASCII or tabs
+	switch r.act {
+	case ActNewline:
+		if b.Col < start {
+			return false
+		}
+		c.beginGroup()
+		if strings.TrimSpace(line[start:]) == "" {
+			b.DeleteRegion(txt.Pos{Ln: b.Ln, Col: 0}, txt.Pos{Ln: b.Ln, Col: len(b.LineClusters(b.Ln))})
+		} else {
+			b.InsertText("\n" + it.indent + it.next())
+		}
+		c.edited()
+		return true
+	case ActBackspace:
+		if b.Col != start {
+			return false
+		}
+		c.beginGroup()
+		b.DeleteRegion(txt.Pos{Ln: b.Ln, Col: len(it.indent)}, txt.Pos{Ln: b.Ln, Col: start})
+		c.edited()
+		return true
+	case ActInsertTab:
+		col := b.Col
+		c.beginGroup()
+		if r.qual&tui.ModShift == 0 {
+			unit := strings.Repeat(" ", it.unit)
+			if strings.HasPrefix(it.indent, "\t") {
+				unit = "\t"
+			}
+			b.Col = 0
+			b.InsertText(unit)
+			b.Col = col + len(unit)
+		} else {
+			n := 0
+			for n < len(it.indent) && n < it.unit && it.indent[n] == ' ' {
+				n++
+			}
+			if n == 0 && strings.HasPrefix(it.indent, "\t") {
+				n = 1
+			}
+			if n == 0 {
+				return true
+			}
+			b.DeleteRegion(txt.Pos{Ln: b.Ln, Col: 0}, txt.Pos{Ln: b.Ln, Col: n})
+			b.Col = max(col-n, 0)
+		}
+		b.Touch(b.Ln)
+		c.edited()
+		return true
+	}
+	return false
+}
+
+// MarkdownListItem reads line as a Markdown list item, as list editing does: its indentation
+// and its marker (the bullet or number, the spaces after it, and a task's box).
+func MarkdownListItem(line string) (indent, marker string, ok bool) {
+	it, ok := readListItem(line)
+	return it.indent, it.marker, ok
+}

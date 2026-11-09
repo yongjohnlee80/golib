@@ -21,11 +21,15 @@ func TestACappedLabelInAPannedDiagramIsHitWhereItIsShown(t *testing.T) {
 	if c.over(bi) == 0 {
 		t.Fatalf("precondition: the diagram fits its room (%d)", navRoom)
 	}
-	g := c.rows[first].grid.(*mermaidPicture).g
+	pic := c.rows[first].grid
+	g, ok := pic.(cellHits)
+	if !ok {
+		t.Fatalf("the diagram's picture (%T) has no hit regions", pic)
+	}
 	var gx, gy, gw int
 	found := false
-	for y := 0; y < g.Size.H && !found; y++ {
-		for x := 0; x < g.Size.W; x++ {
+	for y := 0; y < pic.Size().H && !found; y++ {
+		for x := 0; x < pic.Size().W; x++ {
 			if full, r, ok := g.HitAt(x, y); ok && full == long {
 				gx, gy, gw, found = r.X, r.Y, r.W, true
 				break
