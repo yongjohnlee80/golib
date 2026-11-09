@@ -16,16 +16,14 @@ import (
 
 // fakeWindow is a window's controls that records what it is asked.
 type fakeWindow struct {
-	maxed      bool
-	decorated  bool // the system draws the frame
-	sysButtons bool // the system draws its buttons (macOS)
-	asked      []system.Action
+	maxed     bool
+	decorated bool // the system draws the frame
+	asked     []system.Action
 }
 
 func (f *fakeWindow) Perform(a system.Action) { f.asked = append(f.asked, a) }
 func (f *fakeWindow) Maximized() bool         { return f.maxed }
 func (f *fakeWindow) Decorated() bool         { return f.decorated }
-func (f *fakeWindow) SystemButtons() bool     { return f.sysButtons }
 
 // titleBarApp runs bar as the root of a w x 1 TestBackend with caps, and waits for its first frame.
 func titleBarApp(t *testing.T, bar *TitleBar, w int, caps tui.Capabilities) (*tui.App, *tui.TestBackend) {
@@ -265,32 +263,4 @@ func TestATitleBarStepsAsideWhereTheSystemDecorates(t *testing.T) {
 	if len(bar.controls()) != 0 {
 		t.Fatal("a stepped-aside bar has controls")
 	}
-}
-
-// Where the system draws its own buttons (macOS's traffic lights), the bar draws none and starts its
-// title past their room: 72 dp, ten 8-dp cells with the title's own one.
-func TestATitleBarLeavesTheSystemsButtonsTheirRoom(t *testing.T) {
-	bar := NewTitleBar("Notes")
-	bar.window = &fakeWindow{sysButtons: true}
-	app, _ := titleBarApp(t, bar, 30, tui.Capabilities{NativeViews: true})
-	onLoop(t, app, func() {
-		if len(bar.controls()) != 0 {
-			t.Error("the bar draws controls beside the system's")
-		}
-		v, _ := bar.NativeView()
-		c := gui.NewRecordingCanvas(gui.Size{W: 240, H: 16}, gui.Size{W: 8, H: 16})
-		own := color.NRGBA{R: 0xf4, G: 0xec, B: 0xd8, A: 0xff}
-		c.Colors = func(int, int) (color.NRGBA, color.NRGBA) { return own, own }
-		v.(gui.View).Paint(c)
-		for _, call := range c.Calls {
-			switch call.Op {
-			case "DrawText":
-				if call.Rect.X != 10*8 {
-					t.Errorf("the title starts at %v px; want past the system's buttons, at %v", call.Rect.X, 10*8)
-				}
-			case "FillEllipse":
-				t.Error("the bar painted a control")
-			}
-		}
-	})
 }
