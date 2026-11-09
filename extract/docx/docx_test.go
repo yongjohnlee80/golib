@@ -187,10 +187,11 @@ func TestDocxStopsWhenCancelled(t *testing.T) {
 }
 
 // The document is read a token at a time and one paragraph is held: a large document's peak heap
-// stays near a constant, far under its decompressed size. The document is about 16 MB, so half of
-// it is well above the 4 MB the Go runtime lets the heap reach before its first collection
-// whatever the GC percent: at 6 MB, half was under that floor, and when the collector ran late
-// (seen on Windows) a streaming read grew past it.
+// stays near a constant, far under its decompressed size. The document is about 16 MB: a streaming
+// read's peak growth is a constant that varies by machine (measured: 0.3-1.5 MB on Linux, 3.3 MB on
+// the Windows runner), and reading document.xml whole grows about twice the document. At 6 MB, the
+// bound (half the document, 3.2 MB) sat inside a streaming read's range and failed on Windows; at
+// 16 MB it sits well clear of both.
 func TestDocxPeakHeapIsBounded(t *testing.T) {
 	var body strings.Builder
 	for i := 0; i < 150000; i++ {
