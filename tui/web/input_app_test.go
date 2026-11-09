@@ -15,7 +15,7 @@ import (
 	"time"
 
 	"github.com/yongjohnlee80/golib/tui"
-	"github.com/yongjohnlee80/golib/tui/widget"
+	"github.com/yongjohnlee80/golib/tui/widget/core"
 )
 
 // runDecoded decodes a client report the way a live session does and delivers the
@@ -74,7 +74,7 @@ func waitUntil(t *testing.T, what string, cond func() bool) {
 // A browser press, decoded here, must select the clicked list row — the same
 // behaviour a terminal press produces.
 func TestWebPressSelectsListRow(t *testing.T) {
-	list := widget.NewList(widget.WithItems([]string{"a", "b", "c", "d"},
+	list := core.NewList(core.WithItems([]string{"a", "b", "c", "d"},
 		func(s string) string { return s }))
 	_, app := runDecoded(t, list, 10, 4, MouseReport{Kind: "down", Button: 0, X: 1, Y: 2})
 
@@ -95,8 +95,8 @@ func TestWebPressSelectsListRow(t *testing.T) {
 // asserts FOCUS via Context().Focused(), and starts by focusing the TOP list so
 // there is a real transition to observe rather than an initial state to restate.
 func TestWebPressFocusesClickedWidget(t *testing.T) {
-	top := widget.NewList(widget.WithItems([]string{"t0", "t1"}, func(s string) string { return s }))
-	bottom := widget.NewList(widget.WithItems([]string{"b0", "b1"}, func(s string) string { return s }))
+	top := core.NewList(core.WithItems([]string{"t0", "t1"}, func(s string) string { return s }))
+	bottom := core.NewList(core.WithItems([]string{"b0", "b1"}, func(s string) string { return s }))
 	root := tui.NewFlex(tui.Vertical)
 	// Weighted, so each list really occupies half the viewport. With plain Add a
 	// List has no intrinsic height and the first can take everything, leaving the
@@ -107,7 +107,7 @@ func TestWebPressFocusesClickedWidget(t *testing.T) {
 	// Press the TOP list first, so focus starts somewhere it must move FROM.
 	send, app := runDecoded(t, root, 10, 4, MouseReport{Kind: "down", Button: 0, X: 1, Y: 0})
 
-	focused := func(l *widget.List[string]) bool {
+	focused := func(l *core.List[string]) bool {
 		var f bool
 		onLoop(t, app, func() {
 			if ctx := l.Context(); ctx != nil {
@@ -134,7 +134,7 @@ func TestWebWheelIsOneStepPerReport(t *testing.T) {
 	for i := range items {
 		items[i] = "row"
 	}
-	list := widget.NewList(widget.WithItems(items, func(s string) string { return s }))
+	list := core.NewList(core.WithItems(items, func(s string) string { return s }))
 	send, app := runDecoded(t, list, 10, 3,
 		MouseReport{Kind: "wheel", Dir: "down", X: 1, Y: 1},
 		MouseReport{Kind: "wheel", Dir: "down", X: 1, Y: 1},

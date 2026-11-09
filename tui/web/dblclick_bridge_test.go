@@ -13,12 +13,12 @@ import (
 	"testing"
 
 	"github.com/yongjohnlee80/golib/tui"
-	"github.com/yongjohnlee80/golib/tui/widget"
+	"github.com/yongjohnlee80/golib/tui/widget/core"
 )
 
 // countRecorder records the Count of every press it is delivered.
 type countRecorder struct {
-	widget.Base
+	core.Base
 	mu     sync.Mutex
 	counts []int
 }
