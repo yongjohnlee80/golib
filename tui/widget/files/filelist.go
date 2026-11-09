@@ -243,11 +243,11 @@ func (l *FileList) Focused() bool {
 // working directory when the source is the local disk, else the root.
 func (l *FileList) startDir() string {
 	start := l.start
-	if start == "" && l.src.Root == "/" {
+	if start == "" && l.src.local() {
 		start, _ = os.Getwd()
 	}
 	if start != "" {
-		if abs, err := filepath.Abs(start); err == nil && l.src.Root == "/" {
+		if abs, err := filepath.Abs(start); err == nil && l.src.local() {
 			start = abs
 		}
 		if p, ok := l.src.fsPath(start); ok {

@@ -102,3 +102,5 @@
 ./tui/widget/editor
 ./tui/widget/htmlview
 ./view
+./tui/widget
+./tui/examples/editor-qml
