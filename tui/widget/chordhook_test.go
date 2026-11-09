@@ -4,7 +4,7 @@ import (
 	"testing"
 
 	"github.com/yongjohnlee80/golib/tui"
-	"github.com/yongjohnlee80/golib/tui/widget"
+	"github.com/yongjohnlee80/golib/tui/widget/editor"
 )
 
 // SetChordHook: a Normal or Visual chord with nothing pending goes to the hook first; one it takes
@@ -13,15 +13,15 @@ import (
 // declines is the keymap's as before; nil removes it.
 func TestAChordHookTakesUnpendingChords(t *testing.T) {
 	c, _ := coreWith(t, "abcdef")
-	var got []widget.KeyChord
-	c.SetChordHook(func(kc widget.KeyChord) bool {
+	var got []editor.KeyChord
+	c.SetChordHook(func(kc editor.KeyChord) bool {
 		got = append(got, kc)
 		return kc.Code == 'x' || kc.Ctrl && kc.Code == 'k'
 	})
 	keys(c, "x")
 	c.HandleKey(tui.KeyEvent{Code: 'k', Mods: tui.ModCtrl})
-	if c.Value() != "abcdef" || len(got) != 2 || got[0] != (widget.KeyChord{Mode: widget.ModeNormal, Code: 'x'}) ||
-		got[1] != (widget.KeyChord{Mode: widget.ModeNormal, Code: 'k', Ctrl: true}) {
+	if c.Value() != "abcdef" || len(got) != 2 || got[0] != (editor.KeyChord{Mode: editor.ModeNormal, Code: 'x'}) ||
+		got[1] != (editor.KeyChord{Mode: editor.ModeNormal, Code: 'k', Ctrl: true}) {
 		t.Fatalf("taken: text %q, hook saw %+v", c.Value(), got)
 	}
 
@@ -65,7 +65,7 @@ func TestAChordHookTakesUnpendingChords(t *testing.T) {
 	}
 
 	// declined: the keymap's; removed: the keymap's
-	c.SetChordHook(func(widget.KeyChord) bool { return false })
+	c.SetChordHook(func(editor.KeyChord) bool { return false })
 	keys(c, "0x")
 	c.SetChordHook(nil)
 	keys(c, "x")
@@ -77,10 +77,10 @@ func TestAChordHookTakesUnpendingChords(t *testing.T) {
 // In Visual mode the hook sees the chord as Visual's.
 func TestAChordHookSeesVisualChords(t *testing.T) {
 	c, _ := coreWith(t, "abc")
-	var got []widget.KeyChord
-	c.SetChordHook(func(kc widget.KeyChord) bool { got = append(got, kc); return kc.Code == 'Q' })
+	var got []editor.KeyChord
+	c.SetChordHook(func(kc editor.KeyChord) bool { got = append(got, kc); return kc.Code == 'Q' })
 	keys(c, "vQ")
-	if len(got) != 2 || got[1] != (widget.KeyChord{Mode: widget.ModeVisual, Code: 'Q'}) || c.Mode() != widget.ModeVisual {
+	if len(got) != 2 || got[1] != (editor.KeyChord{Mode: editor.ModeVisual, Code: 'Q'}) || c.Mode() != editor.ModeVisual {
 		t.Fatalf("visual: %+v, mode %v", got, c.Mode())
 	}
 }
@@ -89,7 +89,7 @@ func TestAChordHookSeesVisualChords(t *testing.T) {
 func TestAChordHookAfterCtrlOResumesInsert(t *testing.T) {
 	c, _ := coreWith(t, "abc")
 	taken := 0
-	c.SetChordHook(func(kc widget.KeyChord) bool {
+	c.SetChordHook(func(kc editor.KeyChord) bool {
 		if kc.Code == 'Q' {
 			taken++
 			return true
@@ -98,11 +98,11 @@ func TestAChordHookAfterCtrlOResumesInsert(t *testing.T) {
 	})
 	keys(c, "i")
 	c.HandleKey(tui.KeyEvent{Code: 'o', Mods: tui.ModCtrl})
-	if c.Mode() != widget.ModeNormal {
+	if c.Mode() != editor.ModeNormal {
 		t.Fatalf("Ctrl-o left %v, not Normal for one command", c.Mode())
 	}
 	keys(c, "Q")
-	if taken != 1 || c.Mode() != widget.ModeInsert {
+	if taken != 1 || c.Mode() != editor.ModeInsert {
 		t.Fatalf("after the hook's chord: taken %d, mode %v; want Insert again", taken, c.Mode())
 	}
 	keys(c, "z")

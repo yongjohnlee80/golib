@@ -8,13 +8,14 @@ import (
 
 	"github.com/yongjohnlee80/golib/tui"
 	"github.com/yongjohnlee80/golib/tui/style"
-	"github.com/yongjohnlee80/golib/tui/widget"
+	"github.com/yongjohnlee80/golib/tui/widget/core"
+	"github.com/yongjohnlee80/golib/tui/widget/table"
 )
 
 type crewRow struct{ name, role, note string }
 
-func crewColumns() []widget.TableColumn[crewRow] {
-	return []widget.TableColumn[crewRow]{
+func crewColumns() []table.TableColumn[crewRow] {
+	return []table.TableColumn[crewRow]{
 		{Title: "Name", Width: 10, Cell: func(r crewRow) string { return r.name }},
 		{Title: "Role", Width: 8, Cell: func(r crewRow) string { return r.role }},
 		{Title: "Note", Width: 0, Cell: func(r crewRow) string { return r.note }}, // flex
@@ -22,7 +23,7 @@ func crewColumns() []widget.TableColumn[crewRow] {
 }
 
 func TestTableHeaderAndRows(t *testing.T) {
-	tab := widget.NewTable(crewColumns())
+	tab := table.NewTable(crewColumns())
 	sh := newShell(tab)
 	h := startApp(t, sh, 48, 6)
 	h.onLoop(func() {
@@ -61,12 +62,12 @@ func TestTableHeaderAndRows(t *testing.T) {
 }
 
 func TestStyledTableClearsInheritedReverseOnlyOnUnmarkedCells(t *testing.T) {
-	tab := widget.NewTable([]widget.TableColumn[string]{{Title: "VALUE", Width: 12, Cell: func(v string) string { return v }}},
-		widget.WithListStyles[string](widget.ListStyles{
+	tab := table.NewTable([]table.TableColumn[string]{{Title: "VALUE", Width: 12, Cell: func(v string) string { return v }}},
+		core.WithListStyles[string](core.ListStyles{
 			Row: style.New().Reverse(true), CursorRow: style.New().Reverse(true),
 		}))
-	tab.SetCellPresenter(func(v string, _ int) widget.StyledCell {
-		return widget.StyledCell{Text: v, Style: style.New().Foreground(style.ANSI(1))}
+	tab.SetCellPresenter(func(v string, _ int) table.StyledCell {
+		return table.StyledCell{Text: v, Style: style.New().Foreground(style.ANSI(1))}
 	})
 	sh := newShell(tab)
 	h := startApp(t, sh, 24, 5)
@@ -104,15 +105,15 @@ func TestStyledTableClearsInheritedReverseOnlyOnUnmarkedCells(t *testing.T) {
 }
 
 func TestStyledTableClipsCellsAtItsViewportBoundary(t *testing.T) {
-	tab := widget.NewTable[string]([]widget.TableColumn[string]{
+	tab := table.NewTable[string]([]table.TableColumn[string]{
 		{Title: "A", Width: 10, Cell: func(s string) string { return s }},
 		{Title: "B", Width: 10, Cell: func(string) string { return "hidden" }},
 	})
-	tab.SetCellPresenter(func(_ string, col int) widget.StyledCell {
+	tab.SetCellPresenter(func(_ string, col int) table.StyledCell {
 		if col == 0 {
-			return widget.StyledCell{Text: "abcdefghijk"}
+			return table.StyledCell{Text: "abcdefghijk"}
 		}
-		return widget.StyledCell{Text: "hidden"}
+		return table.StyledCell{Text: "hidden"}
 	})
 	sh := newShell(tab)
 	h := startApp(t, sh, 8, 3)
@@ -124,7 +125,7 @@ func TestStyledTableClipsCellsAtItsViewportBoundary(t *testing.T) {
 }
 
 func TestTableEmptyText(t *testing.T) {
-	tab := widget.NewTable(crewColumns(), widget.WithEmptyText[crewRow]("no crew yet"))
+	tab := table.NewTable(crewColumns(), core.WithEmptyText[crewRow]("no crew yet"))
 	sh := newShell(tab)
 	h := startApp(t, sh, 48, 6)
 	h.barrier(sh)
@@ -133,7 +134,7 @@ func TestTableEmptyText(t *testing.T) {
 }
 
 func TestTableCursorNavigation(t *testing.T) {
-	tab := widget.NewTable(crewColumns())
+	tab := table.NewTable(crewColumns())
 	sh := newShell(tab)
 	h := startApp(t, sh, 48, 6)
 	h.onLoop(func() {
@@ -161,12 +162,12 @@ func TestTableCursorNavigation(t *testing.T) {
 // row (autodb M6: a uuid id column took the whole results pane).
 func TestTableFlexColumnsShareWidth(t *testing.T) {
 	type row struct{ a, b, c string }
-	cols := []widget.TableColumn[row]{
+	cols := []table.TableColumn[row]{
 		{Title: "A", Cell: func(r row) string { return r.a }},
 		{Title: "B", Cell: func(r row) string { return r.b }},
 		{Title: "C", Cell: func(r row) string { return r.c }},
 	}
-	tbl := widget.NewTable(cols, widget.WithItems([]row{{
+	tbl := table.NewTable(cols, core.WithItems([]row{{
 		a: strings.Repeat("x", 40), b: "short", c: "tiny",
 	}}, func(r row) string { return r.a }))
 	sh := newShell(tbl)
@@ -199,12 +200,12 @@ func TestTableFlexColumnsShareWidth(t *testing.T) {
 // with WithItems (whose render func is for plain lists).
 func TestTableIgnoresCallerRowRenderer(t *testing.T) {
 	type row struct{ a, b string }
-	cols := []widget.TableColumn[row]{
+	cols := []table.TableColumn[row]{
 		{Title: "A", Width: 10, Cell: func(r row) string { return r.a }},
 		{Title: "B", Cell: func(r row) string { return r.b }},
 	}
-	tbl := widget.NewTable(cols,
-		widget.WithItems([]row{{a: "alpha", b: "beta"}},
+	tbl := table.NewTable(cols,
+		core.WithItems([]row{{a: "alpha", b: "beta"}},
 			func(r row) string { return "RAW-" + r.a })) // must NOT win
 	sh := newShell(tbl)
 	h := startApp(t, sh, 40, 6)
@@ -219,13 +220,13 @@ func TestTableIgnoresCallerRowRenderer(t *testing.T) {
 	}
 }
 
-func tableWithRows(t *testing.T, n, w, h int) (*harness, *widget.Table[string]) {
+func tableWithRows(t *testing.T, n, w, h int) (*harness, *table.Table[string]) {
 	t.Helper()
 	rows := make([]string, n)
 	for i := range rows {
 		rows[i] = "row-" + string(rune('a'+i%26))
 	}
-	tbl := widget.NewTable[string]([]widget.TableColumn[string]{
+	tbl := table.NewTable[string]([]table.TableColumn[string]{
 		{Title: "NAME", Width: 10, Cell: func(s string) string { return s }},
 	})
 	tbl.SetItems(rows)
@@ -234,7 +235,7 @@ func tableWithRows(t *testing.T, n, w, h int) (*harness, *widget.Table[string]) 
 	return hh, tbl
 }
 
-func selected(t *testing.T, tbl *widget.Table[string]) int {
+func selected(t *testing.T, tbl *table.Table[string]) int {
 	t.Helper()
 	i, ok := tbl.List().Selected()
 	if !ok {
@@ -291,7 +292,7 @@ func TestTableBodyPressAtScrollOffset(t *testing.T) {
 // Double-click in the body activates, using List's existing window.
 func TestTableBodyDoubleClickActivates(t *testing.T) {
 	h, tbl := tableWithRows(t, 8, 20, 6)
-	acts := record[widget.ActivateEvent](h)
+	acts := record[core.ActivateEvent](h)
 
 	h.inject(press(2), press(2)) // same row twice, well inside doubleClickWindow
 	h.settle()
@@ -360,14 +361,14 @@ func TestTableDoesNotSwallowAncestorDrag(t *testing.T) {
 	for i := range rows {
 		rows[i] = "r"
 	}
-	tbl := widget.NewTable[string]([]widget.TableColumn[string]{
+	tbl := table.NewTable[string]([]table.TableColumn[string]{
 		{Title: "NAME", Width: 6, Cell: func(s string) string { return s }},
 	})
 	tbl.SetItems(rows)
-	other := widget.NewText("other")
+	other := core.NewText("other")
 
 	// Horizontal split: the divider sits at a column, the Table is pane B.
-	sp := widget.NewSplit(widget.Horizontal, other, tbl, widget.WithRatio(0.5))
+	sp := core.NewSplit(core.Horizontal, other, tbl, core.WithRatio(0.5))
 	h := startApp(t, sp, 20, 8)
 	h.settle()
 
@@ -403,16 +404,16 @@ func TestTableDoesNotSwallowAncestorDrag(t *testing.T) {
 // header and the rows follow, with the rows' source kept.
 func TestSetColumnsRedrawsTheHeaderAndRows(t *testing.T) {
 	type row struct{ a, b string }
-	tbl := widget.NewTable([]widget.TableColumn[row]{
+	tbl := table.NewTable([]table.TableColumn[row]{
 		{Title: "FIRST", Width: 8, Cell: func(r row) string { return r.a }},
-	}, widget.WithItems([]row{{"one", "uno"}}, func(r row) string { return r.a }))
+	}, core.WithItems([]row{{"one", "uno"}}, func(r row) string { return r.a }))
 	h := startApp(t, tbl, 30, 4)
 	defer h.stop()
 	h.settle()
 	h.wantContains("FIRST")
 	h.wantContains("one")
 	h.onLoop(func() {
-		tbl.SetColumns([]widget.TableColumn[row]{
+		tbl.SetColumns([]table.TableColumn[row]{
 			{Title: "SECOND", Width: 8, Cell: func(r row) string { return r.b }},
 			{Title: "THIRD", Width: 0, Cell: func(r row) string { return r.a + "!" }},
 		})
@@ -428,7 +429,7 @@ func TestSetColumnsRedrawsTheHeaderAndRows(t *testing.T) {
 // No columns is a table too, as a Qt model with none is: it builds, draws an
 // empty header and blank rows, and takes columns later — and gives them up.
 func TestATableWithNoColumns(t *testing.T) {
-	tab := widget.NewTable[crewRow](nil)
+	tab := table.NewTable[crewRow](nil)
 	sh := newShell(tab)
 	h := startApp(t, sh, 48, 6)
 	h.onLoop(func() { tab.SetItems([]crewRow{{"ada", "eng", "first"}}) })

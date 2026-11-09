@@ -6,7 +6,7 @@ import (
 	"time"
 
 	"github.com/yongjohnlee80/golib/tui"
-	"github.com/yongjohnlee80/golib/tui/widget"
+	"github.com/yongjohnlee80/golib/tui/widget/core"
 )
 
 // teardown_test.go: an App's teardown unmounts the whole tree while a Float or
@@ -14,10 +14,10 @@ import (
 // declarative tree destroyed after the App stops — and hiding, detaching or
 // dismissing then must be a no-op, not a panic over a layer already gone.
 func TestAnOpenFloatOrModalCanBeReleasedAfterTheAppStops(t *testing.T) {
-	host := widget.NewOverlayHost(widget.NewText("base"))
-	float := widget.NewFloat(widget.NewText("floating"), widget.WithModal(true))
+	host := core.NewOverlayHost(core.NewText("base"))
+	float := core.NewFloat(core.NewText("floating"), core.WithModal(true))
 	host.Attach(float)
-	modal := widget.NewModal(widget.NewText("asking"))
+	modal := core.NewModal(core.NewText("asking"))
 	tb := tui.NewTestBackend(30, 6)
 	app := tui.NewApp(host, tui.WithBackend(tb), tui.WithMinFrameInterval(0))
 	ctx, cancel := context.WithCancel(context.Background())
@@ -40,7 +40,7 @@ func TestAnOpenFloatOrModalCanBeReleasedAfterTheAppStops(t *testing.T) {
 	// The tree is gone; its owners release what they held.
 	float.Hide()
 	host.Detach(float)
-	modal.Dismiss(widget.DismissProgrammatic)
+	modal.Dismiss(core.DismissProgrammatic)
 	if float.Shown() || modal.IsOpen() {
 		t.Errorf("after release: float shown %v, modal open %v", float.Shown(), modal.IsOpen())
 	}

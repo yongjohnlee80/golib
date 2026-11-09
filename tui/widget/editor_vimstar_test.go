@@ -3,7 +3,7 @@ package widget_test
 import (
 	"testing"
 
-	"github.com/yongjohnlee80/golib/tui/widget"
+	"github.com/yongjohnlee80/golib/tui/widget/editor"
 )
 
 // * # g* g#, as Vim's nv_ident: the expectations from headless Neovim where it was asked, the
@@ -36,8 +36,8 @@ func TestVimStar(t *testing.T) {
 // waits on the word's start.
 func TestVimStarHost(t *testing.T) {
 	c, _ := coreWith(t, "  foo x foo")
-	var got []widget.FindRequest
-	c.SetFindHost(func(r widget.FindRequest) bool { got = append(got, r); return true })
+	var got []editor.FindRequest
+	c.SetFindHost(func(r editor.FindRequest) bool { got = append(got, r); return true })
 	vimSeq(c, "2#")
 	if len(got) != 1 || got[0].Term != "foo" || !got[0].Options.WholeWord || !got[0].Backward || got[0].Count != 2 {
 		t.Fatalf("the host was asked %+v", got)
@@ -53,7 +53,7 @@ func TestVimStarHost(t *testing.T) {
 		t.Fatalf("g*: %+v", got)
 	}
 	declined, _ := coreWith(t, "foo x foo")
-	declined.SetFindHost(func(widget.FindRequest) bool { return false })
+	declined.SetFindHost(func(editor.FindRequest) bool { return false })
 	vimSeq(declined, "*")
 	if term, o := declined.FindTerm(); term != "foo" || !o.WholeWord {
 		t.Fatalf("a host that declined: the core's find is %q %+v", term, o)
@@ -64,23 +64,23 @@ func TestVimStarHost(t *testing.T) {
 func TestFindWholeWord(t *testing.T) {
 	c, _ := coreWith(t, "foo foobar _foo foo.bar 漢字abc")
 	var cols []int
-	for _, r := range c.FindAll("foo", widget.FindOptions{WholeWord: true}) {
+	for _, r := range c.FindAll("foo", editor.FindOptions{WholeWord: true}) {
 		cols = append(cols, r.From.Col)
 	}
 	if len(cols) != 2 || cols[0] != 0 || cols[1] != 16 {
 		t.Fatalf("whole foo at %v, want [0 16]", cols)
 	}
-	if n := len(c.FindAll("abc", widget.FindOptions{WholeWord: true})); n != 1 {
+	if n := len(c.FindAll("abc", editor.FindOptions{WholeWord: true})); n != 1 {
 		t.Fatalf("abc after 漢字: %d matches, want 1 (a class change ends a word)", n)
 	}
-	if !widget.IsKeyword("a") || !widget.IsKeyword("_") || !widget.IsKeyword("漢") || widget.IsKeyword(".") || widget.IsKeyword(" ") {
+	if !editor.IsKeyword("a") || !editor.IsKeyword("_") || !editor.IsKeyword("漢") || editor.IsKeyword(".") || editor.IsKeyword(" ") {
 		t.Fatal("IsKeyword")
 	}
 }
 
 // A viewer finds too: * changes nothing.
 func TestVimStarOnAViewer(t *testing.T) {
-	c, _ := coreWith(t, "foo x foo", widget.CoreReadOnly(true))
+	c, _ := coreWith(t, "foo x foo", editor.CoreReadOnly(true))
 	vimSeq(c, "*")
 	if _, col := c.Line(); col != 6 {
 		t.Fatalf("a viewer's *: col %d", col)

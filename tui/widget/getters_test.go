@@ -10,11 +10,11 @@ import (
 	"time"
 
 	"github.com/yongjohnlee80/golib/tui"
-	"github.com/yongjohnlee80/golib/tui/widget"
+	"github.com/yongjohnlee80/golib/tui/widget/core"
 )
 
 func TestTextInputGetters(t *testing.T) {
-	h, in, sh := focusedInput(t, widget.WithInitialValue("hello world"))
+	h, in, sh := focusedInput(t, core.WithInitialValue("hello world"))
 	h.inject(keyShift(tui.KeyLeft), keyShift(tui.KeyLeft))
 	h.barrier(sh)
 	var cur, start, end int
@@ -33,11 +33,11 @@ func TestTextInputGetters(t *testing.T) {
 		t.Fatalf("Scroll() = %d; want 6", scroll)
 	}
 
-	p := widget.NewTextInput(widget.WithPlaceholder("type"), widget.WithMask('*'))
+	p := core.NewTextInput(core.WithPlaceholder("type"), core.WithMask('*'))
 	if p.Placeholder() != "type" || !p.Masked() {
 		t.Fatalf("Placeholder %q, Masked %v", p.Placeholder(), p.Masked())
 	}
-	if widget.NewTextInput().Masked() {
+	if core.NewTextInput().Masked() {
 		t.Fatal("an unmasked input reports Masked")
 	}
 }
@@ -70,8 +70,8 @@ func TestTextAreaGetters(t *testing.T) {
 }
 
 func TestSelectGetters(t *testing.T) {
-	h, sel, sh := selectFixture(t, widget.WithOptions(selectItems("alpha", "beta")),
-		widget.WithSelectPlaceholder[string]("pick"))
+	h, sel, sh := selectFixture(t, core.WithOptions(selectItems("alpha", "beta")),
+		core.WithSelectPlaceholder[string]("pick"))
 	var label string
 	var open bool
 	read := func() { h.onLoop(func() { label, open = sel.Label(), sel.Open() }) }
@@ -93,18 +93,18 @@ func TestSelectGetters(t *testing.T) {
 }
 
 func TestSetterMirrors(t *testing.T) {
-	p := widget.NewProgressBar()
+	p := core.NewProgressBar()
 	p.SetProgress(0.25)
 	if f, det := p.Progress(); f != 0.25 || !det {
 		t.Fatalf("Progress = %v, %v", f, det)
 	}
 
-	tabs := widget.NewTabs(widget.WithTab("a", widget.NewText("")), widget.WithTab("b", widget.NewText("")))
+	tabs := core.NewTabs(core.WithTab("a", core.NewText("")), core.WithTab("b", core.NewText("")))
 	if got := tabs.Titles(); !slices.Equal(got, []string{"a", "b"}) {
 		t.Fatalf("Titles = %q", got)
 	}
 
-	sb := widget.NewStatusBar()
+	sb := core.NewStatusBar()
 	sb.SetLeft("l")
 	sb.SetCenter("c")
 	sb.SetRight("r")
@@ -112,12 +112,12 @@ func TestSetterMirrors(t *testing.T) {
 		t.Fatalf("segments %q %q %q", sb.Left(), sb.Center(), sb.Right())
 	}
 
-	b := widget.NewBox(nil, widget.WithTitle("T"), widget.WithStatus("S"))
+	b := core.NewBox(nil, core.WithTitle("T"), core.WithStatus("S"))
 	if b.Title() != "T" || b.Status() != "S" || b.FocusWithin() {
 		t.Fatalf("Box %q %q %v", b.Title(), b.Status(), b.FocusWithin())
 	}
 
-	m := widget.NewModal(widget.NewText(""), widget.WithModalTitle("Save?"))
+	m := core.NewModal(core.NewText(""), core.WithModalTitle("Save?"))
 	if m.Title() != "Save?" {
 		t.Fatalf("Modal title %q", m.Title())
 	}
@@ -128,7 +128,7 @@ func TestSetterMirrors(t *testing.T) {
 }
 
 func TestProgressIndeterminate(t *testing.T) {
-	p := widget.NewProgressBar()
+	p := core.NewProgressBar()
 	sh := newShell(p)
 	h := startApp(t, sh, 10, 1)
 	h.onLoop(func() { p.SetIndeterminate() })
@@ -144,7 +144,7 @@ func TestListScrollState(t *testing.T) {
 	for i := range items {
 		items[i] = strconv.Itoa(i)
 	}
-	h, l, sh := focusedList(t, widget.SliceSource(items), 10, 3)
+	h, l, sh := focusedList(t, core.SliceSource(items), 10, 3)
 	for range 5 {
 		h.inject(key(tui.KeyDown))
 	}
@@ -157,7 +157,7 @@ func TestListScrollState(t *testing.T) {
 }
 
 func TestButtonHovered(t *testing.T) {
-	b := widget.NewButton("OK")
+	b := core.NewButton("OK")
 	sh := newShell(b)
 	h := startApp(t, sh, 10, 1)
 	hovered := func() (v bool) { h.onLoop(func() { v = b.Hovered() }); return v }
@@ -168,11 +168,11 @@ func TestButtonHovered(t *testing.T) {
 }
 
 func TestToastsItems(t *testing.T) {
-	ts := widget.NewToasts()
+	ts := core.NewToasts()
 	sh := newShell(ts)
 	h := startApp(t, sh, 30, 6)
-	h.onLoop(func() { ts.Post(widget.Toast{Text: "saved"}) })
-	var items []widget.Toast
+	h.onLoop(func() { ts.Post(core.Toast{Text: "saved"}) })
+	var items []core.Toast
 	h.onLoop(func() { items = ts.Items() })
 	if len(items) != 1 || items[0].Text != "saved" {
 		t.Fatalf("Items = %+v", items)
@@ -181,10 +181,10 @@ func TestToastsItems(t *testing.T) {
 
 // A press inside each span selects that tab, as the bar's own hit-test does.
 func TestTabSpansAreWhereAPressSelects(t *testing.T) {
-	tabs := widget.NewTabs(widget.WithTab("one", widget.NewText("1")), widget.WithTab("two", widget.NewText("2")))
+	tabs := core.NewTabs(core.WithTab("one", core.NewText("1")), core.WithTab("two", core.NewText("2")))
 	sh := newShell(tabs)
 	h := startApp(t, sh, 20, 3)
-	var spans []widget.TabSpan
+	var spans []core.TabSpan
 	h.onLoop(func() { spans = tabs.TabSpans() })
 	if len(spans) != 2 || spans[0].X != 0 || spans[1].X != spans[0].W+1 {
 		t.Fatalf("spans %+v", spans)
@@ -194,11 +194,11 @@ func TestTabSpansAreWhereAPressSelects(t *testing.T) {
 }
 
 func TestModalCardRectAndMask(t *testing.T) {
-	base := widget.NewText("base")
-	host := widget.NewOverlayHost(base)
+	base := core.NewText("base")
+	host := core.NewOverlayHost(base)
 	sh := newShell(host)
 	h := startApp(t, sh, 30, 10)
-	m := widget.NewModal(widget.NewText("body"), widget.WithModalTitle("T"))
+	m := core.NewModal(core.NewText("body"), core.WithModalTitle("T"))
 	h.onLoop(func() {
 		if err := m.Open(host); err != nil {
 			t.Error(err)
@@ -208,7 +208,7 @@ func TestModalCardRectAndMask(t *testing.T) {
 		h.onLoop(func() { r := m.CardRect(); v = r.W > 0 && r.H > 0 && r.X+r.W <= 30 && r.Y+r.H <= 10 })
 		return v
 	})
-	if widget.NewTextInput(widget.WithMask('•')).Mask() != '•' || widget.NewTextInput().Mask() != 0 {
+	if core.NewTextInput(core.WithMask('•')).Mask() != '•' || core.NewTextInput().Mask() != 0 {
 		t.Fatal("Mask does not mirror WithMask")
 	}
 }
@@ -217,7 +217,7 @@ func TestModalCardRectAndMask(t *testing.T) {
 // and scrolling follow it; elsewhere nothing moves.
 func TestTextInputPadsInsideANativeFrame(t *testing.T) {
 	for _, native := range []bool{false, true} {
-		in := widget.NewTextInput(widget.WithInitialValue("abcdefghijkl"))
+		in := core.NewTextInput(core.WithInitialValue("abcdefghijkl"))
 		tb := tui.NewTestBackend(10, 1, tui.WithTestCapabilities(tui.Capabilities{NativeViews: native}))
 		app := tui.NewApp(in, tui.WithBackend(tb))
 		ctx, cancel := context.WithCancel(context.Background())
@@ -263,7 +263,7 @@ func TestButtonMnemonicIndexIsTheUnderlinedCluster(t *testing.T) {
 		{"Use", 0, 0, false},
 		{"Edit", 'z', 0, false},
 	} {
-		b := widget.NewButton(tc.label, widget.WithMnemonic(tc.key))
+		b := core.NewButton(tc.label, core.WithMnemonic(tc.key))
 		if i, ok := b.MnemonicIndex(); i != tc.want || ok != tc.ok {
 			t.Errorf("%q key %q: MnemonicIndex %d,%v; want %d,%v", tc.label, tc.key, i, ok, tc.want, tc.ok)
 		}
@@ -301,15 +301,15 @@ func TestButtonMnemonicIndexIsTheUnderlinedCluster(t *testing.T) {
 // tabs in view, and < and > around them), which is the active tab's label: not its place among
 // all the tabs.
 func TestActiveTabIndexIsTheActiveTabsSpan(t *testing.T) {
-	var opts []widget.TabsOption
+	var opts []core.TabsOption
 	for i := range 8 {
-		opts = append(opts, widget.WithTab(fmt.Sprintf("tab%d", i), widget.NewText(fmt.Sprint(i))))
+		opts = append(opts, core.WithTab(fmt.Sprintf("tab%d", i), core.NewText(fmt.Sprint(i))))
 	}
-	tabs := widget.NewTabs(opts...)
+	tabs := core.NewTabs(opts...)
 	h := startApp(t, newShell(tabs), 20, 3)
 	h.onLoop(func() { tabs.Select(7) })
 	h.waitFor("tab7 shown on the bar", func() bool { return strings.Contains(h.row(0), "tab7") })
-	var spans []widget.TabSpan
+	var spans []core.TabSpan
 	var at, active int
 	h.onLoop(func() { spans, at, active = tabs.TabSpans(), tabs.ActiveTabIndex(), tabs.Active() })
 	if at < 0 || at >= len(spans) {

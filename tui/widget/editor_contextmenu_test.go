@@ -7,7 +7,8 @@ import (
 
 	"github.com/yongjohnlee80/golib/tui"
 	"github.com/yongjohnlee80/golib/tui/style"
-	"github.com/yongjohnlee80/golib/tui/widget"
+	"github.com/yongjohnlee80/golib/tui/widget/core"
+	"github.com/yongjohnlee80/golib/tui/widget/editor"
 )
 
 func rightClick(x, y int) tui.MouseEvent {
@@ -16,10 +17,10 @@ func rightClick(x, y int) tui.MouseEvent {
 
 // ctxFixture mounts an editor with text under an OverlayHost (where the menu
 // opens) inside a shell (which records what bubbles past the editor).
-func ctxFixture(t *testing.T, w, hgt int, opts ...widget.EditorOption) (*harness, *widget.Editor, *shell) {
+func ctxFixture(t *testing.T, w, hgt int, opts ...editor.EditorOption) (*harness, *editor.Editor, *shell) {
 	t.Helper()
-	ed := widget.NewEditor(append([]widget.EditorOption{widget.WithCore(widget.CoreInitialText("hello world\nsecond line"))}, opts...)...)
-	sh := newShell(widget.NewOverlayHost(ed))
+	ed := editor.NewEditor(append([]editor.EditorOption{editor.WithCore(editor.CoreInitialText("hello world\nsecond line"))}, opts...)...)
+	sh := newShell(core.NewOverlayHost(ed))
 	h := startApp(t, sh, w, hgt)
 	h.inject(click(0, 0)) // focus the editor; the cursor goes to 1:1
 	h.settle()
@@ -42,7 +43,7 @@ func panelCorner(t *testing.T, h *harness) (x, y int) {
 	return 0, 0
 }
 
-func menuOpen(h *harness, ed *widget.Editor) bool {
+func menuOpen(h *harness, ed *editor.Editor) bool {
 	var open bool
 	h.onLoop(func() { open = ed.ContextMenu().IsOpen() })
 	return open
@@ -51,8 +52,8 @@ func menuOpen(h *harness, ed *widget.Editor) bool {
 // OFF UNLESS ASKED: a right press on an editor without the option bubbles to
 // its parents, as before this menu existed.
 func TestEditorContextMenu_OffByDefaultTheRightPressBubbles(t *testing.T) {
-	ed := widget.NewEditor(widget.WithCore(widget.CoreInitialText("hello")))
-	sh := newShell(widget.NewOverlayHost(ed))
+	ed := editor.NewEditor(editor.WithCore(editor.CoreInitialText("hello")))
+	sh := newShell(core.NewOverlayHost(ed))
 	h := startApp(t, sh, 30, 6)
 	h.inject(rightClick(2, 0))
 	h.settle()
@@ -69,7 +70,7 @@ func TestEditorContextMenu_OffByDefaultTheRightPressBubbles(t *testing.T) {
 // THE MENU OPENS AT THE POINTER, below and to the right of it, with the stock
 // rows: Undo and Redo, a separator, then Copy, Cut and Paste.
 func TestEditorContextMenu_OpensAtThePointer(t *testing.T) {
-	h, ed, _ := ctxFixture(t, 40, 12, widget.WithContextMenu(nil))
+	h, ed, _ := ctxFixture(t, 40, 12, editor.WithContextMenu(nil))
 	h.inject(rightClick(5, 1))
 	h.waitFor("the menu opened", func() bool { return menuOpen(h, ed) })
 	h.settle()
@@ -88,7 +89,7 @@ func TestEditorContextMenu_OpensAtThePointer(t *testing.T) {
 
 // NEAR THE BOTTOM EDGE IT OPENS ABOVE the pointer instead of off screen.
 func TestEditorContextMenu_FlipsAboveAtTheBottomEdge(t *testing.T) {
-	h, ed, _ := ctxFixture(t, 40, 8, widget.WithContextMenu(nil))
+	h, ed, _ := ctxFixture(t, 40, 8, editor.WithContextMenu(nil))
 	h.inject(rightClick(3, 7))
 	h.waitFor("the menu opened", func() bool { return menuOpen(h, ed) })
 	h.settle()
@@ -100,7 +101,7 @@ func TestEditorContextMenu_FlipsAboveAtTheBottomEdge(t *testing.T) {
 // COPY ON A SELECTION: the register and the system clipboard get the selected
 // text, the menu closes, and focus is back on the editor.
 func TestEditorContextMenu_CopyTakesTheSelection(t *testing.T) {
-	h, ed, _ := ctxFixture(t, 40, 12, widget.WithContextMenu(nil))
+	h, ed, _ := ctxFixture(t, 40, 12, editor.WithContextMenu(nil))
 	h.inject(typeString("vllll")...) // Visual over "hello"
 	h.settle()
 	h.inject(rightClick(2, 0))
@@ -130,9 +131,9 @@ func TestEditorContextMenu_CopyTakesTheSelection(t *testing.T) {
 // which is disabled too while the register is empty, so nothing is chosen.
 // Once the register holds text, Paste pastes it.
 func TestEditorContextMenu_PasteNeedsARegisterAndCopyNeedsASelection(t *testing.T) {
-	h, ed, _ := ctxFixture(t, 40, 12, widget.WithContextMenu(nil))
-	var rows []widget.MenuItemModel
-	h.onLoop(func() { rows = widget.EditorContextItems(ed) })
+	h, ed, _ := ctxFixture(t, 40, 12, editor.WithContextMenu(nil))
+	var rows []core.MenuItemModel
+	h.onLoop(func() { rows = editor.EditorContextItems(ed) })
 	for _, r := range rows {
 		if r.Enabled {
 			t.Errorf("%s is enabled with no selection and an empty register", r.Label)
@@ -154,14 +155,14 @@ func TestEditorContextMenu_PasteNeedsARegisterAndCopyNeedsASelection(t *testing.
 
 // READ-ONLY: Cut and Paste are disabled whatever the selection and register.
 func TestEditorContextMenu_ReadOnlyDisablesCutAndPaste(t *testing.T) {
-	h, ed, _ := ctxFixture(t, 40, 12, widget.WithContextMenu(nil), widget.WithCore(widget.CoreReadOnly(true)))
+	h, ed, _ := ctxFixture(t, 40, 12, editor.WithContextMenu(nil), editor.WithCore(editor.CoreReadOnly(true)))
 	h.inject(typeString("vll")...)
 	h.settle()
 	h.onLoop(func() { ed.Core().SetRegister("XY", false) })
-	var rows []widget.MenuItemModel
-	h.onLoop(func() { rows = widget.EditorContextItems(ed) })
+	var rows []core.MenuItemModel
+	h.onLoop(func() { rows = editor.EditorContextItems(ed) })
 	for _, r := range rows {
-		want := r.ID == widget.EditorMenuCopy
+		want := r.ID == editor.EditorMenuCopy
 		if r.Enabled != want {
 			t.Errorf("%s enabled = %v on a read-only editor with a selection", r.Label, r.Enabled)
 		}
@@ -171,7 +172,7 @@ func TestEditorContextMenu_ReadOnlyDisablesCutAndPaste(t *testing.T) {
 // LIGHT DISMISSAL: Escape closes the menu, and so does a press outside it —
 // which is not passed on to the editor underneath.
 func TestEditorContextMenu_EscapeAndAnOutsidePressClose(t *testing.T) {
-	h, ed, _ := ctxFixture(t, 40, 12, widget.WithContextMenu(nil))
+	h, ed, _ := ctxFixture(t, 40, 12, editor.WithContextMenu(nil))
 	h.inject(rightClick(5, 0))
 	h.waitFor("the menu opened", func() bool { return menuOpen(h, ed) })
 	h.inject(key(tui.KeyEscape))
@@ -193,15 +194,15 @@ func TestEditorContextMenu_EscapeAndAnOutsidePressClose(t *testing.T) {
 // against the editor, and the stock rows can be kept beside them.
 func TestEditorContextMenu_ConsumerRowsRun(t *testing.T) {
 	var ran int
-	build := func(e *widget.Editor) []widget.MenuItemModel {
-		rows := widget.EditorContextItems(e)
-		return append(rows, widget.NewCommand("upper", "Upper",
-			widget.EditorMenuAction{ID: "upper", Run: func(e *widget.Editor) {
+	build := func(e *editor.Editor) []core.MenuItemModel {
+		rows := editor.EditorContextItems(e)
+		return append(rows, core.NewCommand("upper", "Upper",
+			editor.EditorMenuAction{ID: "upper", Run: func(e *editor.Editor) {
 				ran++
 				e.SetValue(strings.ToUpper(e.Core().Value()))
 			}}))
 	}
-	h, ed, _ := ctxFixture(t, 40, 12, widget.WithContextMenu(build))
+	h, ed, _ := ctxFixture(t, 40, 12, editor.WithContextMenu(build))
 	h.inject(rightClick(1, 0))
 	h.waitFor("the menu opened", func() bool { return menuOpen(h, ed) })
 	h.settle()
@@ -224,8 +225,8 @@ func TestEditorContextMenu_ConsumerRowsRun(t *testing.T) {
 // editor's position (the popup layer, a sibling, cannot), and the click's
 // editor-local point is added to it.
 func TestEditorContextMenu_OpensAtThePointerWhenTheEditorIsInset(t *testing.T) {
-	ed := widget.NewEditor(widget.WithCore(widget.CoreInitialText("hello world\nsecond line")), widget.WithContextMenu(nil))
-	h := startApp(t, widget.NewOverlayHost(widget.NewBox(ed)), 40, 12) // the editor starts at 1,1
+	ed := editor.NewEditor(editor.WithCore(editor.CoreInitialText("hello world\nsecond line")), editor.WithContextMenu(nil))
+	h := startApp(t, core.NewOverlayHost(core.NewBox(ed)), 40, 12) // the editor starts at 1,1
 	h.inject(click(1, 1))
 	h.settle()
 	h.inject(rightClick(6, 2)) // screen 6,2 is the editor's 5,1
@@ -248,51 +249,51 @@ func TestEditorContextMenu_OpensAtThePointerWhenTheEditorIsInset(t *testing.T) {
 // UNDO AND REDO from the menu revert and reapply the last edit, and are enabled only when there
 // is one to revert or reapply.
 func TestEditorContextMenu_UndoRedo(t *testing.T) {
-	h, ed, _ := ctxFixture(t, 40, 12, widget.WithContextMenu(nil))
-	rows := func() map[widget.ItemID]bool {
-		on := map[widget.ItemID]bool{}
+	h, ed, _ := ctxFixture(t, 40, 12, editor.WithContextMenu(nil))
+	rows := func() map[core.ItemID]bool {
+		on := map[core.ItemID]bool{}
 		h.onLoop(func() {
-			for _, r := range widget.EditorContextItems(ed) {
+			for _, r := range editor.EditorContextItems(ed) {
 				on[r.ID] = r.Enabled
 			}
 		})
 		return on
 	}
-	if on := rows(); on[widget.EditorMenuUndo] || on[widget.EditorMenuRedo] {
+	if on := rows(); on[editor.EditorMenuUndo] || on[editor.EditorMenuRedo] {
 		t.Fatalf("Undo or Redo enabled before any edit: %v", on)
 	}
 	var before string
 	h.onLoop(func() { before = ed.Core().Value() })
 	h.inject(typeString("x")...) // x deletes the character under the cursor
 	h.settle()
-	if on := rows(); !on[widget.EditorMenuUndo] || on[widget.EditorMenuRedo] {
+	if on := rows(); !on[editor.EditorMenuUndo] || on[editor.EditorMenuRedo] {
 		t.Fatalf("after an edit: %v; want Undo only", on)
 	}
-	run := func(id widget.ItemID) {
+	run := func(id core.ItemID) {
 		h.onLoop(func() {
-			for _, r := range widget.EditorContextItems(ed) {
+			for _, r := range editor.EditorContextItems(ed) {
 				if r.ID == id {
-					r.Action.(widget.EditorMenuAction).Run(ed)
+					r.Action.(editor.EditorMenuAction).Run(ed)
 				}
 			}
 		})
 	}
-	run(widget.EditorMenuUndo)
+	run(editor.EditorMenuUndo)
 	var v string
 	h.onLoop(func() { v = ed.Core().Value() })
 	if v != before {
 		t.Fatalf("after Undo %q; want %q", v, before)
 	}
-	if on := rows(); !on[widget.EditorMenuRedo] {
+	if on := rows(); !on[editor.EditorMenuRedo] {
 		t.Fatal("Redo is not enabled after an Undo")
 	}
-	run(widget.EditorMenuRedo)
+	run(editor.EditorMenuRedo)
 	h.onLoop(func() { v = ed.Core().Value() })
 	if v == before {
 		t.Fatal("Redo did not reapply the edit")
 	}
 	h.onLoop(func() { ed.Core().SetReadOnly(true) })
-	if on := rows(); on[widget.EditorMenuUndo] {
+	if on := rows(); on[editor.EditorMenuUndo] {
 		t.Fatal("Undo enabled on a read-only editor")
 	}
 }
@@ -300,7 +301,7 @@ func TestEditorContextMenu_UndoRedo(t *testing.T) {
 // THE STOCK ROWS SPEAK THE APP'S LANGUAGE: they are named by catalog id, so an
 // application in Korean gets Korean rows without supplying its own.
 func TestEditorContextMenu_TheStockRowsFollowTheLanguage(t *testing.T) {
-	h, ed, _ := ctxFixture(t, 40, 12, widget.WithContextMenu(nil))
+	h, ed, _ := ctxFixture(t, 40, 12, editor.WithContextMenu(nil))
 	h.app.SetLanguage("ko_KR")
 	h.settle()
 	h.inject(rightClick(5, 1))
@@ -315,7 +316,7 @@ func TestEditorContextMenu_TheStockRowsFollowTheLanguage(t *testing.T) {
 // The menu's box is on the menu's own surface (TokenPanel): a bare box's border cells kept the
 // terminal's default background, a band of it around the menu in a window.
 func TestEditorContextMenu_TheBoxWearsTheMenusSurface(t *testing.T) {
-	h, _, _ := ctxFixture(t, 40, 12, widget.WithContextMenu(nil))
+	h, _, _ := ctxFixture(t, 40, 12, editor.WithContextMenu(nil))
 	th := style.NewTheme(style.RGB(0x8a, 0x5a, 0x2b), style.WithToken(style.TokenPanel, style.RGB(0xda, 0xcc, 0xa9)))
 	h.onLoop(func() { h.app.SetTheme(&th) })
 	h.settle()
@@ -332,7 +333,7 @@ func TestEditorContextMenu_TheBoxWearsTheMenusSurface(t *testing.T) {
 // press there would, below the caret's line.
 func TestEditorContextMenu_ShiftF10AndTheMenuKeyOpenItAtTheCaret(t *testing.T) {
 	for _, k := range []tui.KeyEvent{{Code: tui.KeyF10, Mods: tui.ModShift}, {Code: tui.KeyMenu}} {
-		h, ed, _ := ctxFixture(t, 40, 12, widget.WithContextMenu(nil))
+		h, ed, _ := ctxFixture(t, 40, 12, editor.WithContextMenu(nil))
 		h.inject(tui.KeyEvent{Code: 'j'}, tui.KeyEvent{Code: 'w'}) // Normal mode: to 2:8, "line"
 		h.settle()
 		h.inject(k)
@@ -347,8 +348,8 @@ func TestEditorContextMenu_ShiftF10AndTheMenuKeyOpenItAtTheCaret(t *testing.T) {
 // WITH THE MENU OFF the keys are the keyset's, as before: nothing opens, and they go on to the
 // editor's parents.
 func TestEditorContextMenu_OffTheKeysGoOn(t *testing.T) {
-	ed := widget.NewEditor(widget.WithCore(widget.CoreInitialText("hello")))
-	sh := newShell(widget.NewOverlayHost(ed))
+	ed := editor.NewEditor(editor.WithCore(editor.CoreInitialText("hello")))
+	sh := newShell(core.NewOverlayHost(ed))
 	h := startApp(t, sh, 30, 6)
 	h.inject(click(0, 0))
 	h.settle()
@@ -372,11 +373,11 @@ func TestEditorContextMenu_OnlyAPressedShiftF10(t *testing.T) {
 		{Code: tui.KeyF10},
 		{Code: tui.KeyF10, Mods: tui.ModShift | tui.ModCtrl},
 	} {
-		if widget.IsContextMenuKey(k) {
+		if editor.IsContextMenuKey(k) {
 			t.Errorf("%+v opens the context menu", k)
 		}
 	}
-	if !widget.IsContextMenuKey(tui.KeyEvent{Code: tui.KeyF10, Mods: tui.ModShift | tui.ModNumLock}) {
+	if !editor.IsContextMenuKey(tui.KeyEvent{Code: tui.KeyF10, Mods: tui.ModShift | tui.ModNumLock}) {
 		t.Error("Num Lock stopped Shift+F10")
 	}
 }
@@ -386,16 +387,16 @@ func TestEditorContextMenu_OnlyAPressedShiftF10(t *testing.T) {
 // Enter chooses it and the arrows move from there.
 func TestEditorContextMenu_TheKeyboardOpensItWithACursor(t *testing.T) {
 	var ran []string
-	build := func(e *widget.Editor) []widget.MenuItemModel {
-		row := func(id string) widget.MenuItemModel {
-			return widget.NewCommand(widget.ItemID(id), id, widget.EditorMenuAction{ID: tui.ActionID(id),
-				Run: func(*widget.Editor) { ran = append(ran, id) }})
+	build := func(e *editor.Editor) []core.MenuItemModel {
+		row := func(id string) core.MenuItemModel {
+			return core.NewCommand(core.ItemID(id), id, editor.EditorMenuAction{ID: tui.ActionID(id),
+				Run: func(*editor.Editor) { ran = append(ran, id) }})
 		}
 		// the stock rows are all disabled here (no edit, no selection, an empty register): the
 		// first row that can be chosen is the consumer's first
-		return append(widget.EditorContextItems(e), row("first"), row("second"))
+		return append(editor.EditorContextItems(e), row("first"), row("second"))
 	}
-	h, ed, _ := ctxFixture(t, 40, 12, widget.WithContextMenu(build))
+	h, ed, _ := ctxFixture(t, 40, 12, editor.WithContextMenu(build))
 	h.inject(tui.KeyEvent{Code: tui.KeyF10, Mods: tui.ModShift})
 	h.waitFor("the menu opened", func() bool { return menuOpen(h, ed) })
 	h.settle()
@@ -422,14 +423,14 @@ func TestEditorContextMenu_TheKeyboardOpensItWithACursor(t *testing.T) {
 // H J K L MOVE AS THE ARROWS DO in the editor's menu: j down, k up.
 func TestEditorContextMenu_HJKLMoveTheCursor(t *testing.T) {
 	var ran []string
-	build := func(e *widget.Editor) []widget.MenuItemModel {
-		row := func(id string) widget.MenuItemModel {
-			return widget.NewCommand(widget.ItemID(id), id, widget.EditorMenuAction{ID: tui.ActionID(id),
-				Run: func(*widget.Editor) { ran = append(ran, id) }})
+	build := func(e *editor.Editor) []core.MenuItemModel {
+		row := func(id string) core.MenuItemModel {
+			return core.NewCommand(core.ItemID(id), id, editor.EditorMenuAction{ID: tui.ActionID(id),
+				Run: func(*editor.Editor) { ran = append(ran, id) }})
 		}
-		return append(widget.EditorContextItems(e), row("first"), row("second"), row("third"))
+		return append(editor.EditorContextItems(e), row("first"), row("second"), row("third"))
 	}
-	h, ed, _ := ctxFixture(t, 40, 14, widget.WithContextMenu(build))
+	h, ed, _ := ctxFixture(t, 40, 14, editor.WithContextMenu(build))
 	h.inject(tui.KeyEvent{Code: tui.KeyF10, Mods: tui.ModShift})
 	h.waitFor("the menu opened", func() bool { return menuOpen(h, ed) })
 	h.inject(key('j'), key('j'), key('k'), key(tui.KeyEnter))
@@ -443,7 +444,7 @@ func TestEditorContextMenu_HJKLMoveTheCursor(t *testing.T) {
 // The menu key with the caret scrolled off the screen opens no menu and bubbles, the core never
 // seeing it: a pending d and its second d still delete the line, and a macro records nothing of it.
 func TestEditorContextMenu_KeyWithTheCaretOffScreenLeavesTheCoreAlone(t *testing.T) {
-	h, ed, sh := ctxFixture(t, 40, 6, widget.WithContextMenu(nil))
+	h, ed, sh := ctxFixture(t, 40, 6, editor.WithContextMenu(nil))
 	h.onLoop(func() { ed.SetValue(strings.Repeat("line\n", 30) + "last") })
 	h.settle()
 	for range 10 {

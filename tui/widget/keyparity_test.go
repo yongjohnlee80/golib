@@ -16,7 +16,7 @@ import (
 	"testing"
 
 	"github.com/yongjohnlee80/golib/tui"
-	"github.com/yongjohnlee80/golib/tui/widget"
+	"github.com/yongjohnlee80/golib/tui/widget/core"
 )
 
 func pressOn(h *harness, code rune) {
@@ -25,32 +25,32 @@ func pressOn(h *harness, code rune) {
 	h.settle()
 }
 
-func selectionOf(t *testing.T, h *harness, m *widget.Menu) widget.ItemID {
+func selectionOf(t *testing.T, h *harness, m *core.Menu) core.ItemID {
 	t.Helper()
-	var id widget.ItemID
+	var id core.ItemID
 	h.onLoop(func() { id, _ = m.Selected() })
 	return id
 }
 
 // vimBarModel has a row whose mnemonic IS an alias key, which is the collision
 // the precedence rule exists for.
-func vimBarModel() []widget.MenuItemModel {
-	file := widget.NewSubmenu("file", "File", []widget.MenuItemModel{
-		widget.NewCommand("new", "New", nil),
-		widget.NewCommand("open", "Open", nil),
+func vimBarModel() []core.MenuItemModel {
+	file := core.NewSubmenu("file", "File", []core.MenuItemModel{
+		core.NewCommand("new", "New", nil),
+		core.NewCommand("open", "Open", nil),
 	})
 	file.Hotkey = 'f'
-	opt := widget.NewSubmenu("option", "Option", []widget.MenuItemModel{
+	opt := core.NewSubmenu("option", "Option", []core.MenuItemModel{
 		// Hotkey 'k' — the same key the alias would use to move up.
-		hotkeyRow(widget.NewSubmenu("km", "Keymaps", []widget.MenuItemModel{
-			widget.NewCommand("vim", "Vim", nil),
+		hotkeyRow(core.NewSubmenu("km", "Keymaps", []core.MenuItemModel{
+			core.NewCommand("vim", "Vim", nil),
 		}), 'k'),
 	})
 	opt.Hotkey = 'o'
-	return []widget.MenuItemModel{file, opt}
+	return []core.MenuItemModel{file, opt}
 }
 
-func hotkeyRow(m widget.MenuItemModel, key rune) widget.MenuItemModel {
+func hotkeyRow(m core.MenuItemModel, key rune) core.MenuItemModel {
 	m.Hotkey = key
 	return m
 }
@@ -63,7 +63,7 @@ func hotkeyRow(m widget.MenuItemModel, key rune) widget.MenuItemModel {
 // stays reachable, or enabling the aliases would silently strand it.
 func TestVimAliasesMoveOnlyWhereNoMnemonicAnswers(t *testing.T) {
 	t.Run("j opens a category and j/k move rows", func(t *testing.T) {
-		m := widget.NewMenu(widget.WithMenuVimNavigation(true))
+		m := core.NewMenu(core.WithMenuVimNavigation(true))
 		h, _ := barFixture(t, m, vimBarModel(), 50, 14)
 		defer h.stop()
 		h.onLoop(func() { m.Context().RequestFocus(); m.Select("file") })
@@ -84,7 +84,7 @@ func TestVimAliasesMoveOnlyWhereNoMnemonicAnswers(t *testing.T) {
 	})
 
 	t.Run("h and l walk the bar", func(t *testing.T) {
-		m := widget.NewMenu(widget.WithMenuVimNavigation(true))
+		m := core.NewMenu(core.WithMenuVimNavigation(true))
 		h, _ := barFixture(t, m, vimBarModel(), 50, 14)
 		defer h.stop()
 		h.onLoop(func() { m.Context().RequestFocus(); m.Select("file") })
@@ -103,7 +103,7 @@ func TestVimAliasesMoveOnlyWhereNoMnemonicAnswers(t *testing.T) {
 		// THE COLLISION. Inside Option the only row answers to 'k', which is
 		// also the alias for Up. The mnemonic is specific intent and must win,
 		// or enabling the aliases makes that row unreachable by its own key.
-		m := widget.NewMenu(widget.WithMenuVimNavigation(true))
+		m := core.NewMenu(core.WithMenuVimNavigation(true))
 		h, _ := barFixture(t, m, vimBarModel(), 50, 14)
 		defer h.stop()
 		h.onLoop(func() { m.Context().RequestFocus() })
@@ -123,7 +123,7 @@ func TestVimAliasesMoveOnlyWhereNoMnemonicAnswers(t *testing.T) {
 		// The control: without the option the same keys are inert, so the
 		// assertions above are about the option and not about hjkl being bound
 		// somewhere else.
-		m := widget.NewMenu()
+		m := core.NewMenu()
 		h, _ := barFixture(t, m, vimBarModel(), 50, 14)
 		defer h.stop()
 		h.onLoop(func() { m.Context().RequestFocus(); m.Select("file") })
@@ -137,16 +137,16 @@ func TestVimAliasesMoveOnlyWhereNoMnemonicAnswers(t *testing.T) {
 
 // dialogFixture opens a two-button dialog with mnemonics, as the editor's exit
 // confirmation has.
-func dialogFixture(t *testing.T, opts ...widget.ModalOption) (*harness, *widget.Modal, *atomic.Int64, *atomic.Int64) {
+func dialogFixture(t *testing.T, opts ...core.ModalOption) (*harness, *core.Modal, *atomic.Int64, *atomic.Int64) {
 	t.Helper()
 	var yes, no atomic.Int64
-	yb := widget.NewButton("Yes", widget.WithRole(widget.ButtonRoleAccept), widget.WithDefault(true),
-		widget.WithMnemonic('y'), widget.WithOnActivate(func() { yes.Add(1) }))
-	nb := widget.NewButton("No", widget.WithRole(widget.ButtonRoleReject),
-		widget.WithMnemonic('n'), widget.WithOnActivate(func() { no.Add(1) }))
-	base := []widget.ModalOption{widget.WithModalTitle("Confirm"), widget.WithButtons(yb, nb)}
-	md := widget.NewModal(widget.NewText("Sure?"), append(base, opts...)...)
-	host := widget.NewOverlayHost(widget.NewText(""))
+	yb := core.NewButton("Yes", core.WithRole(core.ButtonRoleAccept), core.WithDefault(true),
+		core.WithMnemonic('y'), core.WithOnActivate(func() { yes.Add(1) }))
+	nb := core.NewButton("No", core.WithRole(core.ButtonRoleReject),
+		core.WithMnemonic('n'), core.WithOnActivate(func() { no.Add(1) }))
+	base := []core.ModalOption{core.WithModalTitle("Confirm"), core.WithButtons(yb, nb)}
+	md := core.NewModal(core.NewText("Sure?"), append(base, opts...)...)
+	host := core.NewOverlayHost(core.NewText(""))
 	h := startApp(t, host, 50, 12)
 	h.onLoop(func() {
 		if err := md.Open(host); err != nil {
@@ -218,7 +218,7 @@ func TestADialogIsNavigableWithTheArrowsAndItsMnemonics(t *testing.T) {
 	})
 
 	t.Run("vim aliases are opt-in", func(t *testing.T) {
-		h, _, yes, no := dialogFixture(t, widget.WithModalVimNavigation(true))
+		h, _, yes, no := dialogFixture(t, core.WithModalVimNavigation(true))
 		defer h.stop()
 		pressOn(h, 'j')
 		h.inject(tui.KeyEvent{Kind: tui.KeyPress, Code: ' '})
@@ -253,12 +253,12 @@ func TestADialogIsNavigableWithTheArrowsAndItsMnemonics(t *testing.T) {
 // a greyed control answering a key is worse than one that is simply absent.
 func TestADisabledButtonDoesNotAnswerItsMnemonic(t *testing.T) {
 	var yes, no atomic.Int64
-	yb := widget.NewButton("Yes", widget.WithRole(widget.ButtonRoleAccept), widget.WithDefault(true),
-		widget.WithMnemonic('y'), widget.WithOnActivate(func() { yes.Add(1) }))
-	nb := widget.NewButton("No", widget.WithRole(widget.ButtonRoleReject),
-		widget.WithMnemonic('n'), widget.WithOnActivate(func() { no.Add(1) }))
-	md := widget.NewModal(widget.NewText("Sure?"), widget.WithButtons(yb, nb))
-	host := widget.NewOverlayHost(widget.NewText(""))
+	yb := core.NewButton("Yes", core.WithRole(core.ButtonRoleAccept), core.WithDefault(true),
+		core.WithMnemonic('y'), core.WithOnActivate(func() { yes.Add(1) }))
+	nb := core.NewButton("No", core.WithRole(core.ButtonRoleReject),
+		core.WithMnemonic('n'), core.WithOnActivate(func() { no.Add(1) }))
+	md := core.NewModal(core.NewText("Sure?"), core.WithButtons(yb, nb))
+	host := core.NewOverlayHost(core.NewText(""))
 	h := startApp(t, host, 50, 12)
 	defer h.stop()
 	h.onLoop(func() {
@@ -289,12 +289,12 @@ func TestADisabledButtonDoesNotAnswerItsMnemonic(t *testing.T) {
 // controls, and choosing either silently would make the dialog behave
 // differently from how it reads.
 func TestTwoEnabledButtonsCannotShareAMnemonic(t *testing.T) {
-	mk := func(label string, key rune) *widget.Button {
-		return widget.NewButton(label, widget.WithMnemonic(key))
+	mk := func(label string, key rune) *core.Button {
+		return core.NewButton(label, core.WithMnemonic(key))
 	}
 	if f := fatalFromWidgetExt(func() {
-		widget.NewModal(widget.NewText("x"),
-			widget.WithButtons(mk("Save", 's'), mk("Send", 'S')))
+		core.NewModal(core.NewText("x"),
+			core.WithButtons(mk("Save", 's'), mk("Send", 'S')))
 	}); f == nil {
 		t.Error("two enabled buttons sharing a key were accepted")
 	}
@@ -306,17 +306,17 @@ func TestTwoEnabledButtonsCannotShareAMnemonic(t *testing.T) {
 	dis := mk("Send", 's')
 	dis.SetEnabled(false)
 	if f := fatalFromWidgetExt(func() {
-		widget.NewModal(widget.NewText("x"), widget.WithButtons(mk("Save", 's'), dis))
+		core.NewModal(core.NewText("x"), core.WithButtons(mk("Save", 's'), dis))
 	}); f == nil {
 		t.Error("an enabled and a disabled button sharing a key were accepted; " +
 			"enabling the second later would make the dialog ambiguous")
 	}
-	bothOff := []*widget.Button{mk("Save", 's'), mk("Send", 's')}
+	bothOff := []*core.Button{mk("Save", 's'), mk("Send", 's')}
 	for _, b := range bothOff {
 		b.SetEnabled(false)
 	}
 	if f := fatalFromWidgetExt(func() {
-		widget.NewModal(widget.NewText("x"), widget.WithButtons(bothOff...))
+		core.NewModal(core.NewText("x"), core.WithButtons(bothOff...))
 	}); f == nil {
 		t.Error("two disabled buttons sharing a key were accepted; uniqueness has " +
 			"to hold for the list's lifetime, not just while they are greyed")
@@ -325,8 +325,8 @@ func TestTwoEnabledButtonsCannotShareAMnemonic(t *testing.T) {
 	// The control: distinct keys are accepted, so the refusals above are about
 	// the collision rather than about mnemonics being rejected outright.
 	if f := fatalFromWidgetExt(func() {
-		widget.NewModal(widget.NewText("x"),
-			widget.WithButtons(mk("Save", 's'), mk("Quit", 'q')))
+		core.NewModal(core.NewText("x"),
+			core.WithButtons(mk("Save", 's'), mk("Quit", 'q')))
 	}); f != nil {
 		t.Errorf("distinct mnemonics were refused: %v", f)
 	}
@@ -355,7 +355,7 @@ func TestAMnemonicActivationReachesTheBus(t *testing.T) {
 // TestEscapeIsStagedAndUnhandledAtTheRoot restates the contract from the
 // consumer's side: the dialog's Escape is unaffected, and the menu's unwinds.
 func TestEscapeIsStagedAndUnhandledAtTheRoot(t *testing.T) {
-	m := widget.NewMenu()
+	m := core.NewMenu()
 	h, _ := barFixture(t, m, vimBarModel(), 50, 14)
 	defer h.stop()
 	h.onLoop(func() { m.Context().RequestFocus() })
@@ -446,9 +446,9 @@ func TestVimKeysInADialogAreInertUnlessAsked(t *testing.T) {
 // somewhere inert.
 func TestADialogWithNothingToStepToIsQuiet(t *testing.T) {
 	t.Run("no buttons", func(t *testing.T) {
-		md := widget.NewModal(widget.NewText("Just a message"),
-			widget.WithModalTitle("Notice"))
-		host := widget.NewOverlayHost(widget.NewText(""))
+		md := core.NewModal(core.NewText("Just a message"),
+			core.WithModalTitle("Notice"))
+		host := core.NewOverlayHost(core.NewText(""))
 		h := startApp(t, host, 40, 10)
 		defer h.stop()
 		h.onLoop(func() {
@@ -472,10 +472,10 @@ func TestADialogWithNothingToStepToIsQuiet(t *testing.T) {
 
 	t.Run("every button disabled", func(t *testing.T) {
 		var fired atomic.Int64
-		b := widget.NewButton("Only", widget.WithMnemonic('o'),
-			widget.WithOnActivate(func() { fired.Add(1) }))
-		md := widget.NewModal(widget.NewText("m"), widget.WithButtons(b))
-		host := widget.NewOverlayHost(widget.NewText(""))
+		b := core.NewButton("Only", core.WithMnemonic('o'),
+			core.WithOnActivate(func() { fired.Add(1) }))
+		md := core.NewModal(core.NewText("m"), core.WithButtons(b))
+		host := core.NewOverlayHost(core.NewText(""))
 		h := startApp(t, host, 40, 10)
 		defer h.stop()
 		h.onLoop(func() {
@@ -511,16 +511,16 @@ func TestADialogWithNothingToStepToIsQuiet(t *testing.T) {
 // settle: both intents are issued in one turn, as a terminal delivers a burst
 // of keystrokes, and the cascade must arrive anyway.
 func TestACascadeOpensWithoutWaitingForAFrame(t *testing.T) {
-	model := []widget.MenuItemModel{
-		widget.NewSubmenu("option", "Option", []widget.MenuItemModel{
-			widget.NewSubmenu("km", "Keymaps", []widget.MenuItemModel{
-				widget.NewCommand("vim", "Vim", nil),
+	model := []core.MenuItemModel{
+		core.NewSubmenu("option", "Option", []core.MenuItemModel{
+			core.NewSubmenu("km", "Keymaps", []core.MenuItemModel{
+				core.NewCommand("vim", "Vim", nil),
 			}),
 		}),
 	}
 
 	t.Run("two Opens in one turn", func(t *testing.T) {
-		m := widget.NewMenu()
+		m := core.NewMenu()
 		h, _ := barFixture(t, m, model, 50, 14)
 		defer h.stop()
 		h.onLoop(func() { m.Context().RequestFocus() })
@@ -551,10 +551,10 @@ func TestACascadeOpensWithoutWaitingForAFrame(t *testing.T) {
 		opt.Hotkey = 'o'
 		km := opt.Children[0]
 		km.Hotkey = 'k'
-		opt.Children = []widget.MenuItemModel{km}
-		burst := []widget.MenuItemModel{opt}
+		opt.Children = []core.MenuItemModel{km}
+		burst := []core.MenuItemModel{opt}
 
-		m := widget.NewMenu()
+		m := core.NewMenu()
 		h, _ := barFixture(t, m, burst, 50, 14)
 		defer h.stop()
 		h.onLoop(func() { m.Context().RequestFocus() })
@@ -581,14 +581,14 @@ func TestACascadeOpensWithoutWaitingForAFrame(t *testing.T) {
 // caller waiting for a frame that is never going to help — the failure mode
 // queuing was introduced to avoid, arrived at from the other side.
 func TestAnImpossibleAnchorIsStillAnError(t *testing.T) {
-	model := []widget.MenuItemModel{
-		widget.NewSubmenu("option", "Option", []widget.MenuItemModel{
-			widget.NewSubmenu("km", "Keymaps", []widget.MenuItemModel{
-				widget.NewCommand("vim", "Vim", nil),
+	model := []core.MenuItemModel{
+		core.NewSubmenu("option", "Option", []core.MenuItemModel{
+			core.NewSubmenu("km", "Keymaps", []core.MenuItemModel{
+				core.NewCommand("vim", "Vim", nil),
 			}),
 		}),
 	}
-	m := widget.NewMenu()
+	m := core.NewMenu()
 	h, _ := barFixture(t, m, model, 50, 14)
 	defer h.stop()
 
@@ -620,14 +620,14 @@ func TestAnImpossibleAnchorIsStillAnError(t *testing.T) {
 // another: a queued open that outlived a close would reopen a level the user
 // had just dismissed, a frame later and for no reason they could see.
 func TestAQueuedOpenDoesNotSurviveItsCascade(t *testing.T) {
-	model := []widget.MenuItemModel{
-		widget.NewSubmenu("option", "Option", []widget.MenuItemModel{
-			widget.NewSubmenu("km", "Keymaps", []widget.MenuItemModel{
-				widget.NewCommand("vim", "Vim", nil),
+	model := []core.MenuItemModel{
+		core.NewSubmenu("option", "Option", []core.MenuItemModel{
+			core.NewSubmenu("km", "Keymaps", []core.MenuItemModel{
+				core.NewCommand("vim", "Vim", nil),
 			}),
 		}),
 	}
-	m := widget.NewMenu()
+	m := core.NewMenu()
 	h, _ := barFixture(t, m, model, 50, 14)
 	defer h.stop()
 	h.onLoop(func() { m.Context().RequestFocus() })
@@ -665,18 +665,18 @@ func TestAQueuedOpenDoesNotSurviveItsCascade(t *testing.T) {
 func TestAClippedNestedRowIsRefusedRatherThanQueuedForever(t *testing.T) {
 	// Four commands and then a submenu, in a terminal too short for the popup
 	// to show all five rows. "deep" is the one that gets clipped.
-	model := []widget.MenuItemModel{
-		widget.NewSubmenu("file", "File", []widget.MenuItemModel{
-			widget.NewCommand("a", "One", nil),
-			widget.NewCommand("b", "Two", nil),
-			widget.NewCommand("c", "Three", nil),
-			widget.NewCommand("d", "Four", nil),
-			widget.NewSubmenu("deep", "Deeper", []widget.MenuItemModel{
-				widget.NewCommand("x", "Leaf", nil),
+	model := []core.MenuItemModel{
+		core.NewSubmenu("file", "File", []core.MenuItemModel{
+			core.NewCommand("a", "One", nil),
+			core.NewCommand("b", "Two", nil),
+			core.NewCommand("c", "Three", nil),
+			core.NewCommand("d", "Four", nil),
+			core.NewSubmenu("deep", "Deeper", []core.MenuItemModel{
+				core.NewCommand("x", "Leaf", nil),
 			}),
 		}),
 	}
-	m := widget.NewMenu()
+	m := core.NewMenu()
 	h, _ := barFixture(t, m, model, 40, 5)
 	defer h.stop()
 	h.onLoop(func() { m.Context().RequestFocus() })
@@ -696,7 +696,7 @@ func TestAClippedNestedRowIsRefusedRatherThanQueuedForever(t *testing.T) {
 	h.settle()
 	h.settle()
 
-	if !errors.Is(err, widget.ErrAnchorUnusable) {
+	if !errors.Is(err, core.ErrAnchorUnusable) {
 		t.Errorf("Open(deep) = %v for a row clipped out of a level that has "+
 			"already laid out, want ErrAnchorUnusable — no later frame can give "+
 			"it a rect\n%s", err, h.grid())
@@ -715,14 +715,14 @@ func TestAClippedNestedRowIsRefusedRatherThanQueuedForever(t *testing.T) {
 // expect, and did it only on the failure path — which is the path least likely
 // to be exercised.
 func TestARejectedSetModelKeepsAQueuedOpen(t *testing.T) {
-	model := []widget.MenuItemModel{
-		widget.NewSubmenu("option", "Option", []widget.MenuItemModel{
-			widget.NewSubmenu("km", "Keymaps", []widget.MenuItemModel{
-				widget.NewCommand("vim", "Vim", nil),
+	model := []core.MenuItemModel{
+		core.NewSubmenu("option", "Option", []core.MenuItemModel{
+			core.NewSubmenu("km", "Keymaps", []core.MenuItemModel{
+				core.NewCommand("vim", "Vim", nil),
 			}),
 		}),
 	}
-	m := widget.NewMenu()
+	m := core.NewMenu()
 	h, _ := barFixture(t, m, model, 50, 14)
 	defer h.stop()
 	h.onLoop(func() { m.Context().RequestFocus() })
@@ -734,9 +734,9 @@ func TestARejectedSetModelKeepsAQueuedOpen(t *testing.T) {
 	h.onLoop(func() {
 		_ = m.Open("option")
 		_ = m.Open("km")
-		setErr = m.SetModel([]widget.MenuItemModel{
-			widget.NewCommand("dup", "One", nil),
-			widget.NewCommand("dup", "Two", nil),
+		setErr = m.SetModel([]core.MenuItemModel{
+			core.NewCommand("dup", "One", nil),
+			core.NewCommand("dup", "Two", nil),
 		})
 	})
 	h.settle()
@@ -756,11 +756,11 @@ func TestARejectedSetModelKeepsAQueuedOpen(t *testing.T) {
 // TestMnemonicsFoldBeyondASCII: a mnemonic is folded as Unicode letters are, so 'ф' and 'Ф' are one
 // key and two buttons claiming them collide, as 's' and 'S' do (tui-widget-shell-D13).
 func TestMnemonicsFoldBeyondASCII(t *testing.T) {
-	mk := func(label string, key rune) *widget.Button {
-		return widget.NewButton(label, widget.WithMnemonic(key))
+	mk := func(label string, key rune) *core.Button {
+		return core.NewButton(label, core.WithMnemonic(key))
 	}
 	if f := fatalFromWidgetExt(func() {
-		widget.NewModal(widget.NewText("x"), widget.WithButtons(mk("Файл", 'ф'), mk("Формат", 'Ф')))
+		core.NewModal(core.NewText("x"), core.WithButtons(mk("Файл", 'ф'), mk("Формат", 'Ф')))
 	}); f == nil {
 		t.Error("two buttons claiming ф and Ф were accepted")
 	}
@@ -770,7 +770,7 @@ func TestMnemonicsFoldBeyondASCII(t *testing.T) {
 // negative ones included (tui-widget-shell-D13).
 func TestAPanicDetailKeepsANegativeNumber(t *testing.T) {
 	f := fatalFromWidgetExt(func() {
-		widget.NewResizable(widget.NewText("x"), widget.WithResizeStep(-2, widget.StepCells))
+		core.NewResizable(core.NewText("x"), core.WithResizeStep(-2, core.StepCells))
 	})
 	if f == nil || f.Detail != "got -2" {
 		t.Errorf("WithResizeStep(-2) panicked with %+v, want the detail \"got -2\"", f)
@@ -786,24 +786,24 @@ func TestABodyButtonAnswersItsMnemonic(t *testing.T) {
 		h                *harness
 		tabA, tabB, both atomic.Int64
 		yes              atomic.Int64
-		field            *widget.TextInput
-		b                *widget.Button
+		field            *core.TextInput
+		b                *core.Button
 	}
 	open := func(t *testing.T, withField bool) *rig {
 		t.Helper()
 		r := &rig{}
-		a := widget.NewButton("All", widget.WithMnemonic('a'), widget.WithOnActivate(func() { r.tabA.Add(1) }))
-		r.b = widget.NewButton("Unread", widget.WithMnemonic('u'), widget.WithOnActivate(func() { r.tabB.Add(1) }))
-		shared := widget.NewButton("Yonder", widget.WithMnemonic('y'), widget.WithOnActivate(func() { r.both.Add(1) }))
+		a := core.NewButton("All", core.WithMnemonic('a'), core.WithOnActivate(func() { r.tabA.Add(1) }))
+		r.b = core.NewButton("Unread", core.WithMnemonic('u'), core.WithOnActivate(func() { r.tabB.Add(1) }))
+		shared := core.NewButton("Yonder", core.WithMnemonic('y'), core.WithOnActivate(func() { r.both.Add(1) }))
 		var rest tui.Component = shared
 		if withField {
-			r.field = widget.NewTextInput()
-			rest = widget.NewSplit(widget.Horizontal, shared, r.field)
+			r.field = core.NewTextInput()
+			rest = core.NewSplit(core.Horizontal, shared, r.field)
 		}
-		body := widget.NewSplit(widget.Horizontal, a, widget.NewSplit(widget.Horizontal, r.b, rest))
-		yb := widget.NewButton("Yes", widget.WithRole(widget.ButtonRoleAccept), widget.WithMnemonic('y'),
-			widget.WithOnActivate(func() { r.yes.Add(1) }))
-		md := widget.NewModal(body, widget.WithButtons(yb))
+		body := core.NewSplit(core.Horizontal, a, core.NewSplit(core.Horizontal, r.b, rest))
+		yb := core.NewButton("Yes", core.WithRole(core.ButtonRoleAccept), core.WithMnemonic('y'),
+			core.WithOnActivate(func() { r.yes.Add(1) }))
+		md := core.NewModal(body, core.WithButtons(yb))
 		h, host, _ := modalFixture(t, md, 70, 12)
 		r.h = h
 		openOn(t, h, md, host)

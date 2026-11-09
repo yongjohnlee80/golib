@@ -4,10 +4,10 @@ import (
 	"testing"
 
 	"github.com/yongjohnlee80/golib/tui"
-	"github.com/yongjohnlee80/golib/tui/widget"
+	"github.com/yongjohnlee80/golib/tui/widget/editor"
 )
 
-var normalQ = widget.KeyChord{Mode: widget.ModeNormal, Code: 'q'}
+var normalQ = editor.KeyChord{Mode: editor.ModeNormal, Code: 'q'}
 
 // qKey is q as a terminal delivers it: its code and its text, which a key waiting for a name reads.
 var qKey = tui.KeyEvent{Code: 'q', Text: "q"}
@@ -22,16 +22,16 @@ func TestOverlayKeymapUnbindsAKeyOfABuiltEditor(t *testing.T) {
 	keys(c, "a") // the register q waits for: the macro starts recording
 	c.HandleKey(qKey)
 
-	c.OverlayKeymap(widget.Keymap{normalQ: widget.ActUnbound})
+	c.OverlayKeymap(editor.Keymap{normalQ: editor.ActUnbound})
 	if c.HandleKey(qKey) {
 		t.Error("an unbound q was handled by the editor")
 	}
-	c.SetKeyset(widget.KeysetNano)
-	c.SetKeyset(widget.KeysetVim)
+	c.SetKeyset(editor.KeysetNano)
+	c.SetKeyset(editor.KeysetVim)
 	if c.HandleKey(qKey) {
 		t.Error("q came back after another keyset and back: the overlay was not replayed")
 	}
-	if got := c.Keymap()[normalQ]; got == widget.ActMacroRecord {
+	if got := c.Keymap()[normalQ]; got == editor.ActMacroRecord {
 		t.Errorf("Keymap()[q] = %v; want it gone", got)
 	}
 }
@@ -40,7 +40,7 @@ func TestOverlayKeymapUnbindsAKeyOfABuiltEditor(t *testing.T) {
 func TestOverlayKeymapDropsAPendingKey(t *testing.T) {
 	c, _ := coreWith(t, "abc def")
 	keys(c, "d") // an operator waiting for its motion
-	c.OverlayKeymap(widget.Keymap{normalQ: widget.ActUnbound})
+	c.OverlayKeymap(editor.Keymap{normalQ: editor.ActUnbound})
 	keys(c, "w")
 	if got := c.Value(); got != "abc def" {
 		t.Errorf("d, the overlay, then w: %q; want nothing deleted, the d dropped", got)
@@ -56,7 +56,7 @@ func TestOverlayKeymapValidatesTheWholeOverlayFirst(t *testing.T) {
 				t.Error("an unknown action did not panic")
 			}
 		}()
-		c.OverlayKeymap(widget.Keymap{normalQ: widget.ActUnbound, {Mode: widget.ModeNormal, Code: 'Z'}: widget.Action(255)})
+		c.OverlayKeymap(editor.Keymap{normalQ: editor.ActUnbound, {Mode: editor.ModeNormal, Code: 'Z'}: editor.Action(255)})
 	}()
 	if !c.HandleKey(qKey) {
 		t.Error("half of a refused overlay applied: q was unbound")
@@ -65,9 +65,9 @@ func TestOverlayKeymapValidatesTheWholeOverlayFirst(t *testing.T) {
 
 // The Editor passes it to its core.
 func TestEditorOverlayKeymap(t *testing.T) {
-	e := widget.NewEditor(widget.WithCore(widget.CoreInitialText("abc")))
-	e.Core().OverlayKeymap(widget.Keymap{normalQ: widget.ActUnbound})
-	if _, ok := e.Core().Keymap()[normalQ]; ok && e.Core().Keymap()[normalQ] != widget.ActUnbound {
+	e := editor.NewEditor(editor.WithCore(editor.CoreInitialText("abc")))
+	e.Core().OverlayKeymap(editor.Keymap{normalQ: editor.ActUnbound})
+	if _, ok := e.Core().Keymap()[normalQ]; ok && e.Core().Keymap()[normalQ] != editor.ActUnbound {
 		t.Errorf("the Editor's keymap still binds q to %v", e.Core().Keymap()[normalQ])
 	}
 }
@@ -79,7 +79,7 @@ func TestOverlayKeymapDropsAnArmedQ(t *testing.T) {
 	if !c.HandleKey(qKey) {
 		t.Fatal("q is not bound before the overlay: the cell would prove nothing")
 	}
-	c.OverlayKeymap(widget.Keymap{normalQ: widget.ActUnbound})
+	c.OverlayKeymap(editor.Keymap{normalQ: editor.ActUnbound})
 	if c.HandleKey(qKey) {
 		t.Error("q, the overlay, q: the second q was taken as the register's name")
 	}
@@ -88,10 +88,10 @@ func TestOverlayKeymapDropsAnArmedQ(t *testing.T) {
 // Every command boundary forgets a key waiting for a name — q or @ for a register, m for a mark,
 // " for a register — so the next key is a command again: a, here, appends.
 func TestABoundaryForgetsAKeyWaitingForAName(t *testing.T) {
-	boundaries := map[string]func(c *widget.EditorCore){
-		"focus lost": func(c *widget.EditorCore) { c.FocusLost() },
-		"a press":    func(c *widget.EditorCore) { c.PressAt(0, 0) },
-		"a keyset":   func(c *widget.EditorCore) { c.SetKeyset(widget.KeysetNano); c.SetKeyset(widget.KeysetVim) },
+	boundaries := map[string]func(c *editor.EditorCore){
+		"focus lost": func(c *editor.EditorCore) { c.FocusLost() },
+		"a press":    func(c *editor.EditorCore) { c.PressAt(0, 0) },
+		"a keyset":   func(c *editor.EditorCore) { c.SetKeyset(editor.KeysetNano); c.SetKeyset(editor.KeysetVim) },
 	}
 	for name, cross := range boundaries {
 		for _, armer := range []string{"q", "@", "m", `"`} {
@@ -99,7 +99,7 @@ func TestABoundaryForgetsAKeyWaitingForAName(t *testing.T) {
 			keys(c, armer)
 			cross(c)
 			keys(c, "a")
-			if c.Mode() != widget.ModeInsert {
+			if c.Mode() != editor.ModeInsert {
 				t.Errorf("%s after %s: a was taken as a name (mode %v); want it to append", name, armer, c.Mode())
 			}
 		}

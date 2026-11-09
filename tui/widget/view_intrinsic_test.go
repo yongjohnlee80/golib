@@ -5,13 +5,14 @@ import (
 	"testing"
 
 	"github.com/yongjohnlee80/golib/tui"
-	"github.com/yongjohnlee80/golib/tui/widget"
+	"github.com/yongjohnlee80/golib/tui/widget/core"
+	"github.com/yongjohnlee80/golib/tui/widget/table"
 )
 
 // measurer lays its children out at an unbounded height, as a dialog card
 // measures its body, and records what each asked for.
 type measurer struct {
-	widget.Base
+	core.Base
 	kids []tui.Component
 	mu   sync.Mutex
 	got  []int
@@ -46,12 +47,12 @@ func (*measurer) Render(tui.Surface) {}
 func TestAViewsIntrinsicHeightIsItsContent(t *testing.T) {
 	text := func(s string) string { return s }
 	items := []string{"a", "b", "c", "d"}
-	table := widget.NewTable([]widget.TableColumn[string]{{Title: "X", Cell: text}})
-	table.SetItems(items)
+	tbl := table.NewTable([]table.TableColumn[string]{{Title: "X", Cell: text}})
+	tbl.SetItems(items)
 	m := &measurer{kids: []tui.Component{
-		widget.NewList(widget.WithItems(items, text)),
-		table,
-		widget.NewList(widget.WithItems([]string{}, text)),
+		core.NewList(core.WithItems(items, text)),
+		tbl,
+		core.NewList(core.WithItems([]string{}, text)),
 	}}
 	h := startApp(t, m, 20, 40)
 	defer h.stop()

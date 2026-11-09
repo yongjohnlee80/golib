@@ -19,7 +19,7 @@ import (
 
 	"github.com/yongjohnlee80/golib/tui"
 	"github.com/yongjohnlee80/golib/tui/style"
-	"github.com/yongjohnlee80/golib/tui/widget"
+	"github.com/yongjohnlee80/golib/tui/widget/core"
 )
 
 // nodeIDOf reads a mounted component's node identity on the loop.
@@ -31,7 +31,7 @@ func nodeIDOf(t *testing.T, h *harness, c interface{ NodeID() tui.NodeID }) tui.
 }
 
 // focusedOn reports whether the given button holds focus, read on the loop.
-func focusedOn(t *testing.T, h *harness, b *widget.Button) bool {
+func focusedOn(t *testing.T, h *harness, b *core.Button) bool {
 	t.Helper()
 	var f bool
 	h.onLoop(func() { f = b.Context() != nil && b.Context().Focused() })
@@ -70,13 +70,13 @@ func cellOfLabel(t *testing.T, h *harness, label string) (x, y int) {
 // node itself holds focus; once buttons arrive it is no longer the fallback, and
 // focus moves to the default among them (the body takes none).
 func TestButtonsAddedToAnEmptyDialogTakeFocus(t *testing.T) {
-	m := widget.NewModal(widget.NewText("Body"))
+	m := core.NewModal(core.NewText("Body"))
 	h, host, _ := modalFixture(t, m, 40, 12)
 	defer h.stop()
 	openOn(t, h, m, host)
 
-	normal := widget.NewButton("Normal")
-	def := widget.NewButton("OK", widget.WithRole(widget.ButtonRoleAccept), widget.WithDefault(true))
+	normal := core.NewButton("Normal")
+	def := core.NewButton("OK", core.WithRole(core.ButtonRoleAccept), core.WithDefault(true))
 	var err error
 	h.onLoop(func() { err = m.SetButtons(normal, def) })
 	if err != nil {
@@ -102,9 +102,9 @@ func TestButtonsAddedToAnEmptyDialogTakeFocus(t *testing.T) {
 // so no event is emitted and the dialog is left reporting that nothing is
 // selected while a button is visibly focused.
 func TestSetButtonsKeepsSelectionForAStillFocusedButton(t *testing.T) {
-	a := widget.NewButton("A")
-	b := widget.NewButton("B")
-	m := widget.NewModal(widget.NewText("Body"), widget.WithButtons(a, b))
+	a := core.NewButton("A")
+	b := core.NewButton("B")
+	m := core.NewModal(core.NewText("Body"), core.WithButtons(a, b))
 	h, host, _ := modalFixture(t, m, 40, 12)
 	defer h.stop()
 	openOn(t, h, m, host)
@@ -138,8 +138,8 @@ func TestSetButtonsKeepsSelectionForAStillFocusedButton(t *testing.T) {
 // dialog's nomination says where focus starts, and where it goes when it has
 // to move — never off a control that can still hold it.
 func TestAddingAButtonLeavesTheFocusedOneFocused(t *testing.T) {
-	plain := widget.NewButton("Plain")
-	m := widget.NewModal(widget.NewText("Body"), widget.WithButtons(plain))
+	plain := core.NewButton("Plain")
+	m := core.NewModal(core.NewText("Body"), core.WithButtons(plain))
 	h, host, _ := modalFixture(t, m, 40, 12)
 	defer h.stop()
 	openOn(t, h, m, host)
@@ -147,7 +147,7 @@ func TestAddingAButtonLeavesTheFocusedOneFocused(t *testing.T) {
 		t.Fatal("precondition failed: the only button never took focus")
 	}
 
-	def := widget.NewButton("OK", widget.WithRole(widget.ButtonRoleAccept), widget.WithDefault(true))
+	def := core.NewButton("OK", core.WithRole(core.ButtonRoleAccept), core.WithDefault(true))
 	var err error
 	h.onLoop(func() { err = m.SetButtons(def, plain) })
 	if err != nil {
@@ -172,50 +172,50 @@ func TestSetButtonsRejectsAnUnusableListWithoutChangingAnything(t *testing.T) {
 	for _, tc := range []struct {
 		name string
 		want error
-		list func(host *widget.OverlayHost, base *widget.Button, keep *widget.Button) []*widget.Button
+		list func(host *core.OverlayHost, base *core.Button, keep *core.Button) []*core.Button
 	}{
 		{
 			name: "a nil entry",
-			want: widget.ErrNilButton,
-			list: func(_ *widget.OverlayHost, _ *widget.Button, keep *widget.Button) []*widget.Button {
-				return []*widget.Button{keep, nil}
+			want: core.ErrNilButton,
+			list: func(_ *core.OverlayHost, _ *core.Button, keep *core.Button) []*core.Button {
+				return []*core.Button{keep, nil}
 			},
 		},
 		{
 			name: "the same button twice",
-			want: widget.ErrRepeatedButton,
-			list: func(_ *widget.OverlayHost, _ *widget.Button, keep *widget.Button) []*widget.Button {
-				return []*widget.Button{keep, keep}
+			want: core.ErrRepeatedButton,
+			list: func(_ *core.OverlayHost, _ *core.Button, keep *core.Button) []*core.Button {
+				return []*core.Button{keep, keep}
 			},
 		},
 		{
 			name: "a button mounted elsewhere in the tree",
-			want: widget.ErrForeignButton,
-			list: func(_ *widget.OverlayHost, base *widget.Button, keep *widget.Button) []*widget.Button {
-				return []*widget.Button{keep, base}
+			want: core.ErrForeignButton,
+			list: func(_ *core.OverlayHost, base *core.Button, keep *core.Button) []*core.Button {
+				return []*core.Button{keep, base}
 			},
 		},
 		{
 			name: "two default buttons",
-			want: widget.ErrDuplicateDefault,
-			list: func(_ *widget.OverlayHost, _ *widget.Button, keep *widget.Button) []*widget.Button {
-				return []*widget.Button{
+			want: core.ErrDuplicateDefault,
+			list: func(_ *core.OverlayHost, _ *core.Button, keep *core.Button) []*core.Button {
+				return []*core.Button{
 					keep,
-					widget.NewButton("X", widget.WithRole(widget.ButtonRoleAccept), widget.WithDefault(true)),
-					widget.NewButton("Y", widget.WithRole(widget.ButtonRoleAccept), widget.WithDefault(true)),
+					core.NewButton("X", core.WithRole(core.ButtonRoleAccept), core.WithDefault(true)),
+					core.NewButton("Y", core.WithRole(core.ButtonRoleAccept), core.WithDefault(true)),
 				}
 			},
 		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			keep := widget.NewButton("Keep")
-			m := widget.NewModal(widget.NewText("Body"), widget.WithButtons(keep))
+			keep := core.NewButton("Keep")
+			m := core.NewModal(core.NewText("Body"), core.WithButtons(keep))
 			h, host, base := modalFixture(t, m, 40, 12)
 			defer h.stop()
 			openOn(t, h, m, host)
 
 			beforeID := nodeIDOf(t, h, keep)
-			var before []*widget.Button
+			var before []*core.Button
 			h.onLoop(func() { before = m.Buttons() })
 
 			var err error
@@ -225,7 +225,7 @@ func TestSetButtonsRejectsAnUnusableListWithoutChangingAnything(t *testing.T) {
 			if !errors.Is(err, tc.want) {
 				t.Fatalf("SetButtons returned %v, want %v", err, tc.want)
 			}
-			var after []*widget.Button
+			var after []*core.Button
 			var sel int
 			h.onLoop(func() {
 				after = m.Buttons()
@@ -257,10 +257,10 @@ func TestSetButtonsRejectsAnUnusableListWithoutChangingAnything(t *testing.T) {
 // about the appearance can catch it. Document order is also TAB order, so the
 // reorder has to reach the tree rather than only the paint.
 func TestReorderingButtonsMovesThemWithoutRemounting(t *testing.T) {
-	a := widget.NewButton("A")
-	b := widget.NewButton("B")
-	c := widget.NewButton("C")
-	m := widget.NewModal(widget.NewText("Body"), widget.WithButtons(a, b, c))
+	a := core.NewButton("A")
+	b := core.NewButton("B")
+	c := core.NewButton("C")
+	m := core.NewModal(core.NewText("Body"), core.WithButtons(a, b, c))
 	h, host, _ := modalFixture(t, m, 40, 12)
 	defer h.stop()
 	openOn(t, h, m, host)
@@ -280,7 +280,7 @@ func TestReorderingButtonsMovesThemWithoutRemounting(t *testing.T) {
 	h.settle()
 
 	for i, pair := range []struct {
-		b  *widget.Button
+		b  *core.Button
 		id tui.NodeID
 	}{{a, ids[0]}, {b, ids[1]}, {c, ids[2]}} {
 		if got := nodeIDOf(t, h, pair.b); got != pair.id {
@@ -293,7 +293,7 @@ func TestReorderingButtonsMovesThemWithoutRemounting(t *testing.T) {
 	// order (a, b, c) the same walk from c would visit a then b.
 	h.onLoop(func() { c.Context().RequestFocus() })
 	h.settle()
-	for _, want := range []*widget.Button{b, a, c} {
+	for _, want := range []*core.Button{b, a, c} {
 		h.inject(tui.KeyEvent{Kind: tui.KeyPress, Code: tui.KeyTab})
 		h.settle()
 		if !focusedOn(t, h, want) {
@@ -320,9 +320,9 @@ func TestReorderingButtonsMovesThemWithoutRemounting(t *testing.T) {
 // None of that is visible on screen, which is why a rendered-output test —
 // including the one this package already had — cannot see it.
 func TestClosingAStackedDialogDoesNotRemountTheSurvivor(t *testing.T) {
-	lowerBtn := widget.NewButton("Lower")
-	lower := widget.NewModal(widget.NewText("first"), widget.WithButtons(lowerBtn))
-	upper := widget.NewModal(widget.NewText("later"), widget.WithModalTitle("Bravo"))
+	lowerBtn := core.NewButton("Lower")
+	lower := core.NewModal(core.NewText("first"), core.WithButtons(lowerBtn))
+	upper := core.NewModal(core.NewText("later"), core.WithModalTitle("Bravo"))
 
 	h, host, _ := modalFixture(t, lower, 40, 12)
 	defer h.stop()
@@ -335,7 +335,7 @@ func TestClosingAStackedDialogDoesNotRemountTheSurvivor(t *testing.T) {
 	}
 
 	openOn(t, h, upper, host)
-	h.onLoop(func() { upper.Dismiss(widget.DismissProgrammatic) })
+	h.onLoop(func() { upper.Dismiss(core.DismissProgrammatic) })
 	h.settle()
 
 	if got := nodeIDOf(t, h, lower); got != lowerID {
@@ -350,7 +350,7 @@ func TestClosingAStackedDialogDoesNotRemountTheSurvivor(t *testing.T) {
 	}
 	// And it is still usable: Escape must still reach it.
 	var dismissed atomic.Int64
-	unsub := tui.Subscribe(h.app.Bus(), func(widget.OverlayDismissedEvent) { dismissed.Add(1) })
+	unsub := tui.Subscribe(h.app.Bus(), func(core.OverlayDismissedEvent) { dismissed.Add(1) })
 	defer unsub()
 	h.inject(tui.KeyEvent{Kind: tui.KeyPress, Code: tui.KeyEscape})
 	h.waitFor("the survivor still responds to Escape", func() bool { return dismissed.Load() == 1 })
@@ -362,9 +362,9 @@ func TestClosingAStackedDialogDoesNotRemountTheSurvivor(t *testing.T) {
 // produces a state the model does not have — a dialog on top of nothing, still
 // trapping focus — and the ones above are then unreachable and uncloseable.
 func TestDismissingANonTopDialogUnwindsEverythingAboveIt(t *testing.T) {
-	bottom := widget.NewModal(widget.NewText("1"), widget.WithModalTitle("One"))
-	middle := widget.NewModal(widget.NewText("2"), widget.WithModalTitle("Two"))
-	top := widget.NewModal(widget.NewText("3"), widget.WithModalTitle("Three"))
+	bottom := core.NewModal(core.NewText("1"), core.WithModalTitle("One"))
+	middle := core.NewModal(core.NewText("2"), core.WithModalTitle("Two"))
+	top := core.NewModal(core.NewText("3"), core.WithModalTitle("Three"))
 
 	h, host, _ := modalFixture(t, bottom, 40, 14)
 	defer h.stop()
@@ -373,15 +373,15 @@ func TestDismissingANonTopDialogUnwindsEverythingAboveIt(t *testing.T) {
 	openOn(t, h, top, host)
 
 	var mu sync.Mutex
-	var reasons []widget.DismissReason
-	unsub := tui.Subscribe(h.app.Bus(), func(ev widget.OverlayDismissedEvent) {
+	var reasons []core.DismissReason
+	unsub := tui.Subscribe(h.app.Bus(), func(ev core.OverlayDismissedEvent) {
 		mu.Lock()
 		reasons = append(reasons, ev.Reason)
 		mu.Unlock()
 	})
 	defer unsub()
 
-	h.onLoop(func() { bottom.Dismiss(widget.DismissAccept) })
+	h.onLoop(func() { bottom.Dismiss(core.DismissAccept) })
 	h.waitFor("three dismissals published", func() bool {
 		mu.Lock()
 		defer mu.Unlock()
@@ -391,26 +391,26 @@ func TestDismissingANonTopDialogUnwindsEverythingAboveIt(t *testing.T) {
 
 	for _, m := range []struct {
 		name string
-		m    *widget.Modal
+		m    *core.Modal
 	}{{"bottom", bottom}, {"middle", middle}, {"top", top}} {
 		if m.m.IsOpen() {
 			t.Errorf("%s is still open after the bottom dialog was dismissed", m.name)
 		}
 	}
-	var left *widget.Modal
+	var left *core.Modal
 	h.onLoop(func() { left = host.TopModal() })
 	if left != nil {
 		t.Error("the host still holds an open dialog")
 	}
 
 	mu.Lock()
-	got := append([]widget.DismissReason(nil), reasons...)
+	got := append([]core.DismissReason(nil), reasons...)
 	mu.Unlock()
 	// Topmost first, and the ones the user did not act on are REPLACED: reporting
 	// the caller's Accept for all three would attribute an answer to two dialogs
 	// nobody answered.
-	want := []widget.DismissReason{
-		widget.DismissReplaced, widget.DismissReplaced, widget.DismissAccept,
+	want := []core.DismissReason{
+		core.DismissReplaced, core.DismissReplaced, core.DismissAccept,
 	}
 	if len(got) != len(want) {
 		t.Fatalf("%d dismissal events, want %d (one per dialog)", len(got), len(want))
@@ -431,12 +431,12 @@ func TestDismissingANonTopDialogUnwindsEverythingAboveIt(t *testing.T) {
 // reopen passes the open guard and the runtime refuses to mount one component
 // twice.
 func TestAnOnDismissCallbackMayReopenTheDialog(t *testing.T) {
-	var host *widget.OverlayHost
-	var m *widget.Modal
+	var host *core.OverlayHost
+	var m *core.Modal
 	var reopens atomic.Int64
 	var reopenErr error
 
-	m = widget.NewModal(widget.NewText("Body"), widget.WithOnDismiss(func(widget.DismissReason) {
+	m = core.NewModal(core.NewText("Body"), core.WithOnDismiss(func(core.DismissReason) {
 		if reopens.Add(1) == 1 {
 			reopenErr = m.Open(host)
 		}
@@ -446,7 +446,7 @@ func TestAnOnDismissCallbackMayReopenTheDialog(t *testing.T) {
 	host = hh
 	openOn(t, h, m, host)
 
-	h.onLoop(func() { m.Dismiss(widget.DismissProgrammatic) })
+	h.onLoop(func() { m.Dismiss(core.DismissProgrammatic) })
 	h.settle()
 
 	if reopenErr != nil {
@@ -455,7 +455,7 @@ func TestAnOnDismissCallbackMayReopenTheDialog(t *testing.T) {
 	if !m.IsOpen() {
 		t.Error("the dialog did not reopen; the callback ran but the reopen did not take")
 	}
-	var top *widget.Modal
+	var top *core.Modal
 	h.onLoop(func() { top = host.TopModal() })
 	if top != m {
 		t.Error("the reopened dialog is not on the host's stack")
@@ -474,13 +474,13 @@ func TestAReopenFromTheCancelButtonsDismissalStaysOpen(t *testing.T) {
 		{Kind: tui.KeyPress, Code: tui.KeyEscape},
 		{Kind: tui.KeyPress, Code: 'q', Text: "q"},
 	} {
-		var host *widget.OverlayHost
-		var m *widget.Modal
+		var host *core.OverlayHost
+		var m *core.Modal
 		var dismissals atomic.Int64
 		var reopenErr error
-		cancel := widget.NewButton("Nope", widget.WithRole(widget.ButtonRoleReject))
-		m = widget.NewModal(widget.NewText("Body"), widget.WithButtons(cancel), widget.WithModalDismissKeys('q'),
-			widget.WithOnDismiss(func(widget.DismissReason) {
+		cancel := core.NewButton("Nope", core.WithRole(core.ButtonRoleReject))
+		m = core.NewModal(core.NewText("Body"), core.WithButtons(cancel), core.WithModalDismissKeys('q'),
+			core.WithOnDismiss(func(core.DismissReason) {
 				if dismissals.Add(1) == 1 {
 					reopenErr = m.Open(host)
 				}
@@ -514,8 +514,8 @@ func TestAReopenFromTheCancelButtonsDismissalStaysOpen(t *testing.T) {
 // scheduled step created that window for no benefit — direct RequestFocus is
 // legal before layout.
 func TestOpenMovesFocusBeforeItReturns(t *testing.T) {
-	ok := widget.NewButton("OK", widget.WithRole(widget.ButtonRoleAccept), widget.WithDefault(true))
-	m := widget.NewModal(widget.NewText("Body"), widget.WithButtons(ok))
+	ok := core.NewButton("OK", core.WithRole(core.ButtonRoleAccept), core.WithDefault(true))
+	m := core.NewModal(core.NewText("Body"), core.WithButtons(ok))
 	h, host, base := modalFixture(t, m, 40, 12)
 	defer h.stop()
 
@@ -552,21 +552,21 @@ func TestOpenRollsBackWhenTheDialogCannotMount(t *testing.T) {
 	// construction and Open, so a foreign button never reaches the mount; a body
 	// is the caller's arbitrary component and is not, which is exactly why the
 	// mount itself has to be able to fail safely.
-	shared := widget.NewText("shared")
+	shared := core.NewText("shared")
 	baseRow := tui.NewFlex(tui.Vertical)
-	base := widget.NewButton("base")
+	base := core.NewButton("base")
 	baseRow.Add(base, shared)
-	host := widget.NewOverlayHost(baseRow)
+	host := core.NewOverlayHost(baseRow)
 	h := startApp(t, host, 40, 12)
 	defer h.stop()
 	h.onLoop(func() { base.Context().RequestFocus() })
 	h.settle()
 
-	first := widget.NewModal(widget.NewText("first"), widget.WithModalTitle("Alpha"))
+	first := core.NewModal(core.NewText("first"), core.WithModalTitle("Alpha"))
 	openOn(t, h, first, host)
 	before := h.grid()
 
-	bad := widget.NewModal(shared) // already mounted under baseRow
+	bad := core.NewModal(shared) // already mounted under baseRow
 	var openErr error
 	h.onLoop(func() { openErr = bad.Open(host) })
 	h.settle()
@@ -574,13 +574,13 @@ func TestOpenRollsBackWhenTheDialogCannotMount(t *testing.T) {
 	if openErr == nil {
 		t.Fatal("Open accepted a dialog whose body is mounted elsewhere")
 	}
-	if !errors.Is(openErr, widget.ErrModalNotMountable) {
+	if !errors.Is(openErr, core.ErrModalNotMountable) {
 		t.Errorf("Open returned %v, want ErrModalNotMountable", openErr)
 	}
 	if bad.IsOpen() {
 		t.Error("a refused Open left the dialog marked open")
 	}
-	var top *widget.Modal
+	var top *core.Modal
 	h.onLoop(func() { top = host.TopModal() })
 	if top != first {
 		t.Error("a refused Open changed which dialog is topmost")
@@ -601,10 +601,10 @@ func TestOpenRollsBackWhenTheDialogCannotMount(t *testing.T) {
 // watching the bus sees a keypress that activated nothing.
 func TestEscapeActivatesTheCancelButtonThroughTheRuntime(t *testing.T) {
 	var ran atomic.Int64
-	cancel := widget.NewButton("Nope",
-		widget.WithRole(widget.ButtonRoleReject),
-		widget.WithOnActivate(func() { ran.Add(1) }))
-	m := widget.NewModal(widget.NewText("Body"), widget.WithButtons(cancel))
+	cancel := core.NewButton("Nope",
+		core.WithRole(core.ButtonRoleReject),
+		core.WithOnActivate(func() { ran.Add(1) }))
+	m := core.NewModal(core.NewText("Body"), core.WithButtons(cancel))
 
 	h, host, _ := modalFixture(t, m, 40, 12)
 	defer h.stop()
@@ -612,14 +612,14 @@ func TestEscapeActivatesTheCancelButtonThroughTheRuntime(t *testing.T) {
 
 	var mu sync.Mutex
 	var acts []tui.ControlActivatedEvent
-	var dismissals []widget.OverlayDismissedEvent
+	var dismissals []core.OverlayDismissedEvent
 	unsubA := tui.Subscribe(h.app.Bus(), func(ev tui.ControlActivatedEvent) {
 		mu.Lock()
 		acts = append(acts, ev)
 		mu.Unlock()
 	})
 	defer unsubA()
-	unsubD := tui.Subscribe(h.app.Bus(), func(ev widget.OverlayDismissedEvent) {
+	unsubD := tui.Subscribe(h.app.Bus(), func(ev core.OverlayDismissedEvent) {
 		mu.Lock()
 		dismissals = append(dismissals, ev)
 		mu.Unlock()
@@ -637,7 +637,7 @@ func TestEscapeActivatesTheCancelButtonThroughTheRuntime(t *testing.T) {
 
 	mu.Lock()
 	gotActs := append([]tui.ControlActivatedEvent(nil), acts...)
-	gotDis := append([]widget.OverlayDismissedEvent(nil), dismissals...)
+	gotDis := append([]core.OverlayDismissedEvent(nil), dismissals...)
 	mu.Unlock()
 
 	if ran.Load() != 1 {
@@ -655,7 +655,7 @@ func TestEscapeActivatesTheCancelButtonThroughTheRuntime(t *testing.T) {
 		t.Errorf("activation origin = %v, want OriginKey: the provenance of the "+
 			"keypress must survive the forward", gotActs[0].Origin)
 	}
-	if len(gotDis) != 1 || gotDis[0].Reason != widget.DismissCancel {
+	if len(gotDis) != 1 || gotDis[0].Reason != core.DismissCancel {
 		t.Errorf("dismissals = %v, want exactly one with reason cancel", gotDis)
 	}
 }
@@ -675,10 +675,10 @@ func TestModalPointerPolicyReachesTheWholeSubtree(t *testing.T) {
 	}{{"set before mount", true}, {"set while open", false}} {
 		t.Run(tc.name, func(t *testing.T) {
 			var acts atomic.Int64
-			ok := widget.NewButton("OK",
-				widget.WithRole(widget.ButtonRoleAccept), widget.WithDefault(true),
-				widget.WithOnActivate(func() { acts.Add(1) }))
-			m := widget.NewModal(widget.NewText("Body"), widget.WithButtons(ok))
+			ok := core.NewButton("OK",
+				core.WithRole(core.ButtonRoleAccept), core.WithDefault(true),
+				core.WithOnActivate(func() { acts.Add(1) }))
+			m := core.NewModal(core.NewText("Body"), core.WithButtons(ok))
 			if tc.preMount {
 				m.WithPointerPolicy(tui.PointerDisabled)
 			}
@@ -718,12 +718,12 @@ func TestModalPointerPolicyReachesTheWholeSubtree(t *testing.T) {
 // one. The scrim is the host's layer but wears this dialog's look, so a restyle
 // that stopped at the card would leave the backdrop in the old theme.
 func TestModalWithStyleRestylesTheLiveCardAndScrim(t *testing.T) {
-	m := widget.NewModal(widget.NewText("Body"), widget.WithModalTitle("T"))
+	m := core.NewModal(core.NewText("Body"), core.WithModalTitle("T"))
 	h, host, _ := modalFixture(t, m, 30, 8)
 	defer h.stop()
 	openOn(t, h, m, host)
 
-	underlined := widget.NewModalStyle(styleOf(1), styleOf(2)).
+	underlined := core.NewModalStyle(styleOf(1), styleOf(2)).
 		WithScrim(style.New().Underline(true)).
 		WithCard(style.New().Underline(true))
 	h.onLoop(func() { m.WithStyle(underlined) })
@@ -753,10 +753,10 @@ func TestModalWithStyleRestylesTheLiveCardAndScrim(t *testing.T) {
 // lived as long as the application. Detaching runs the ordinary unmount cascade,
 // so a Float holding focus has it returned rather than stranded.
 func TestDetachRemovesAnAttachedFloat(t *testing.T) {
-	inner := widget.NewButton("Inside")
-	f := widget.NewFloat(inner)
-	base := widget.NewButton("base")
-	host := widget.NewOverlayHost(base)
+	inner := core.NewButton("Inside")
+	f := core.NewFloat(inner)
+	base := core.NewButton("base")
+	host := core.NewOverlayHost(base)
 	h := startApp(t, host, 30, 10)
 	defer h.stop()
 
@@ -811,7 +811,7 @@ func TestDetachRemovesAnAttachedFloat(t *testing.T) {
 // edge move. The last valid value is asserted accepted in the same breath, which
 // is the half that catches a bound that moved the other way.
 func TestModalPointerPolicyRejectsAnOutOfRangeValue(t *testing.T) {
-	m := widget.NewModal(widget.NewText("Body"))
+	m := core.NewModal(core.NewText("Body"))
 	if f := fatalFromWidgetExt(func() { m.WithPointerPolicy(tui.PointerDisabled) }); f != nil {
 		t.Errorf("the last valid policy was rejected: %v", f.Rule)
 	}
@@ -827,9 +827,9 @@ func TestModalPointerPolicyRejectsAnOutOfRangeValue(t *testing.T) {
 // the dialog that just went away. A restore that assumed every dialog wants one
 // would dim the screen behind a dialog that explicitly asked not to.
 func TestASurvivorThatWantsNoBackdropGetsNone(t *testing.T) {
-	lower := widget.NewModal(widget.NewText("plain"),
-		widget.WithModalTitle("Alpha"), widget.WithScrim(false))
-	upper := widget.NewModal(widget.NewText("later"), widget.WithModalTitle("Bravo"))
+	lower := core.NewModal(core.NewText("plain"),
+		core.WithModalTitle("Alpha"), core.WithScrim(false))
+	upper := core.NewModal(core.NewText("later"), core.WithModalTitle("Bravo"))
 
 	h, host, base := modalFixture(t, lower, 40, 12)
 	defer h.stop()
@@ -841,7 +841,7 @@ func TestASurvivorThatWantsNoBackdropGetsNone(t *testing.T) {
 	}
 
 	openOn(t, h, upper, host)
-	h.onLoop(func() { upper.Dismiss(widget.DismissProgrammatic) })
+	h.onLoop(func() { upper.Dismiss(core.DismissProgrammatic) })
 	h.settle()
 
 	if got := h.grid(); got != alone {
@@ -856,14 +856,14 @@ func TestASurvivorThatWantsNoBackdropGetsNone(t *testing.T) {
 // must repaint its own card and nothing else — repainting the scrim would let a
 // covered dialog change the look of the one covering it.
 func TestRestylingADialogThatIsNotOnTopLeavesTheBackdropAlone(t *testing.T) {
-	lower := widget.NewModal(widget.NewText("low"), widget.WithModalTitle("Alpha"))
-	upper := widget.NewModal(widget.NewText("up"), widget.WithModalTitle("Bravo"))
+	lower := core.NewModal(core.NewText("low"), core.WithModalTitle("Alpha"))
+	upper := core.NewModal(core.NewText("up"), core.WithModalTitle("Bravo"))
 	h, host, _ := modalFixture(t, lower, 30, 10)
 	defer h.stop()
 	openOn(t, h, lower, host)
 	openOn(t, h, upper, host)
 
-	underlined := widget.NewModalStyle(styleOf(1), styleOf(2)).
+	underlined := core.NewModalStyle(styleOf(1), styleOf(2)).
 		WithScrim(style.New().Underline(true))
 	h.onLoop(func() { lower.WithStyle(underlined) })
 	h.settle()
@@ -892,17 +892,17 @@ func TestRestylingADialogThatIsNotOnTopLeavesTheBackdropAlone(t *testing.T) {
 // the second visit unmounts nothing and publishes a duplicate event, so a
 // listener counting closures counts one dialog twice.
 func TestACallbackDismissingADialogTheUnwindWillReachClosesItOnce(t *testing.T) {
-	bottom := widget.NewModal(widget.NewText("1"), widget.WithModalTitle("One"))
-	middle := widget.NewModal(widget.NewText("2"), widget.WithModalTitle("Two"))
+	bottom := core.NewModal(core.NewText("1"), core.WithModalTitle("One"))
+	middle := core.NewModal(core.NewText("2"), core.WithModalTitle("Two"))
 	// The callback dismisses BOTH a dialog the unwind has yet to reach and the
 	// TARGET of the transition itself. The target is the case a re-derived
 	// position cannot handle on its own: its own close is still pending at the
 	// bottom of dismissModal, so without an already-closed guard it is closed
 	// once by the callback and once again on the way out.
-	top := widget.NewModal(widget.NewText("3"), widget.WithModalTitle("Three"),
-		widget.WithOnDismiss(func(widget.DismissReason) {
-			middle.Dismiss(widget.DismissProgrammatic)
-			bottom.Dismiss(widget.DismissProgrammatic)
+	top := core.NewModal(core.NewText("3"), core.WithModalTitle("Three"),
+		core.WithOnDismiss(func(core.DismissReason) {
+			middle.Dismiss(core.DismissProgrammatic)
+			bottom.Dismiss(core.DismissProgrammatic)
 		}))
 
 	h, host, _ := modalFixture(t, bottom, 40, 14)
@@ -912,15 +912,15 @@ func TestACallbackDismissingADialogTheUnwindWillReachClosesItOnce(t *testing.T) 
 	openOn(t, h, top, host)
 
 	var mu sync.Mutex
-	var seen []widget.OverlayDismissedEvent
-	unsub := tui.Subscribe(h.app.Bus(), func(ev widget.OverlayDismissedEvent) {
+	var seen []core.OverlayDismissedEvent
+	unsub := tui.Subscribe(h.app.Bus(), func(ev core.OverlayDismissedEvent) {
 		mu.Lock()
 		seen = append(seen, ev)
 		mu.Unlock()
 	})
 	defer unsub()
 
-	h.onLoop(func() { bottom.Dismiss(widget.DismissAccept) })
+	h.onLoop(func() { bottom.Dismiss(core.DismissAccept) })
 	h.waitFor("three dismissals published", func() bool {
 		mu.Lock()
 		defer mu.Unlock()
@@ -930,7 +930,7 @@ func TestACallbackDismissingADialogTheUnwindWillReachClosesItOnce(t *testing.T) 
 	h.settle()
 
 	mu.Lock()
-	got := append([]widget.OverlayDismissedEvent(nil), seen...)
+	got := append([]core.OverlayDismissedEvent(nil), seen...)
 	mu.Unlock()
 	if len(got) != 3 {
 		t.Errorf("%d dismissal events for three dialogs, want exactly 3", len(got))
@@ -952,8 +952,8 @@ func TestACallbackDismissingADialogTheUnwindWillReachClosesItOnce(t *testing.T) 
 // a degenerate one. The card lays out and paints around an absent body rather
 // than requiring callers to pass an empty placeholder.
 func TestADialogWithNoBodyIsStillUsable(t *testing.T) {
-	ok := widget.NewButton("OK", widget.WithRole(widget.ButtonRoleAccept), widget.WithDefault(true))
-	m := widget.NewModal(nil, widget.WithModalTitle("Sure?"), widget.WithButtons(ok))
+	ok := core.NewButton("OK", core.WithRole(core.ButtonRoleAccept), core.WithDefault(true))
+	m := core.NewModal(nil, core.WithModalTitle("Sure?"), core.WithButtons(ok))
 	h, host, _ := modalFixture(t, m, 30, 10)
 	defer h.stop()
 	openOn(t, h, m, host)
@@ -968,7 +968,7 @@ func TestADialogWithNoBodyIsStillUsable(t *testing.T) {
 	// directly, so only SetButtons exercises the offset the card applies when
 	// there is no body ahead of its buttons — with one, a wrong offset puts the
 	// first button past the end of the child list.
-	more := widget.NewButton("More")
+	more := core.NewButton("More")
 	var err error
 	h.onLoop(func() { err = m.SetButtons(more, ok) })
 	if err != nil {
@@ -999,13 +999,13 @@ func TestADialogWithNoBodyIsStillUsable(t *testing.T) {
 // validator built on the retained pointer reads a perfectly reusable button as
 // belonging to someone else.
 func TestAReopenedDialogMayKeepItsButtons(t *testing.T) {
-	ok := widget.NewButton("OK", widget.WithRole(widget.ButtonRoleAccept), widget.WithDefault(true))
-	m := widget.NewModal(widget.NewText("Again?"), widget.WithButtons(ok))
+	ok := core.NewButton("OK", core.WithRole(core.ButtonRoleAccept), core.WithDefault(true))
+	m := core.NewModal(core.NewText("Again?"), core.WithButtons(ok))
 	h, host, _ := modalFixture(t, m, 40, 12)
 	defer h.stop()
 
 	openOn(t, h, m, host)
-	h.onLoop(func() { m.Dismiss(widget.DismissProgrammatic) })
+	h.onLoop(func() { m.Dismiss(core.DismissProgrammatic) })
 	h.settle()
 
 	var err error
@@ -1028,15 +1028,15 @@ func TestAReopenedDialogMayKeepItsButtons(t *testing.T) {
 // existing callback test uses a buttonless dialog, so it cannot observe a
 // validation rule that only fires once there is a button to validate.
 func TestADismissCallbackMayReopenADialogThatHasButtons(t *testing.T) {
-	var host *widget.OverlayHost
-	var m *widget.Modal
+	var host *core.OverlayHost
+	var m *core.Modal
 	var reopens atomic.Int64
 	var reopenErr error
 
-	ok := widget.NewButton("OK", widget.WithRole(widget.ButtonRoleAccept), widget.WithDefault(true))
-	m = widget.NewModal(widget.NewText("Body"),
-		widget.WithButtons(ok),
-		widget.WithOnDismiss(func(widget.DismissReason) {
+	ok := core.NewButton("OK", core.WithRole(core.ButtonRoleAccept), core.WithDefault(true))
+	m = core.NewModal(core.NewText("Body"),
+		core.WithButtons(ok),
+		core.WithOnDismiss(func(core.DismissReason) {
 			if reopens.Add(1) == 1 {
 				reopenErr = m.Open(host)
 			}
@@ -1046,7 +1046,7 @@ func TestADismissCallbackMayReopenADialogThatHasButtons(t *testing.T) {
 	host = hh
 	openOn(t, h, m, host)
 
-	h.onLoop(func() { m.Dismiss(widget.DismissProgrammatic) })
+	h.onLoop(func() { m.Dismiss(core.DismissProgrammatic) })
 	h.settle()
 
 	if reopenErr != nil {
@@ -1063,9 +1063,9 @@ func TestADismissCallbackMayReopenADialogThatHasButtons(t *testing.T) {
 // list editing, and the intervening unmount must not make it someone else's
 // component.
 func TestAButtonMayBeRemovedAndAddedBackAgain(t *testing.T) {
-	keep := widget.NewButton("Keep")
-	gone := widget.NewButton("Gone")
-	m := widget.NewModal(widget.NewText("Body"), widget.WithButtons(keep, gone))
+	keep := core.NewButton("Keep")
+	gone := core.NewButton("Gone")
+	m := core.NewModal(core.NewText("Body"), core.WithButtons(keep, gone))
 	h, host, _ := modalFixture(t, m, 40, 12)
 	defer h.stop()
 	openOn(t, h, m, host)
@@ -1096,25 +1096,25 @@ func TestEveryValidationErrorMatchesBothTheUmbrellaAndItsOwnSentinel(t *testing.
 	for _, tc := range []struct {
 		name string
 		leaf error
-		list func(base, keep *widget.Button) []*widget.Button
+		list func(base, keep *core.Button) []*core.Button
 	}{
-		{"nil entry", widget.ErrNilButton,
-			func(_, keep *widget.Button) []*widget.Button { return []*widget.Button{keep, nil} }},
-		{"repeated button", widget.ErrRepeatedButton,
-			func(_, keep *widget.Button) []*widget.Button { return []*widget.Button{keep, keep} }},
-		{"foreign button", widget.ErrForeignButton,
-			func(base, keep *widget.Button) []*widget.Button { return []*widget.Button{keep, base} }},
-		{"duplicate role", widget.ErrDuplicateButtonRole,
-			func(_, keep *widget.Button) []*widget.Button {
-				return []*widget.Button{
-					widget.NewButton("X", widget.WithRole(widget.ButtonRoleReject)),
-					widget.NewButton("Y", widget.WithRole(widget.ButtonRoleReject)),
+		{"nil entry", core.ErrNilButton,
+			func(_, keep *core.Button) []*core.Button { return []*core.Button{keep, nil} }},
+		{"repeated button", core.ErrRepeatedButton,
+			func(_, keep *core.Button) []*core.Button { return []*core.Button{keep, keep} }},
+		{"foreign button", core.ErrForeignButton,
+			func(base, keep *core.Button) []*core.Button { return []*core.Button{keep, base} }},
+		{"duplicate role", core.ErrDuplicateButtonRole,
+			func(_, keep *core.Button) []*core.Button {
+				return []*core.Button{
+					core.NewButton("X", core.WithRole(core.ButtonRoleReject)),
+					core.NewButton("Y", core.WithRole(core.ButtonRoleReject)),
 				}
 			}},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			keep := widget.NewButton("Keep")
-			m := widget.NewModal(widget.NewText("Body"), widget.WithButtons(keep))
+			keep := core.NewButton("Keep")
+			m := core.NewModal(core.NewText("Body"), core.WithButtons(keep))
 			h, host, base := modalFixture(t, m, 40, 12)
 			defer h.stop()
 			openOn(t, h, m, host)
@@ -1129,7 +1129,7 @@ func TestEveryValidationErrorMatchesBothTheUmbrellaAndItsOwnSentinel(t *testing.
 			if !errors.Is(err, tc.leaf) {
 				t.Errorf("errors.Is(err, %v) = false; err = %v", tc.leaf, err)
 			}
-			if !errors.Is(err, widget.ErrInvalidButtonList) {
+			if !errors.Is(err, core.ErrInvalidButtonList) {
 				t.Errorf("errors.Is(err, ErrInvalidButtonList) = false, so a caller "+
 					"handling the whole class never matches; err = %v", err)
 			}
@@ -1144,11 +1144,11 @@ func TestEveryValidationErrorMatchesBothTheUmbrellaAndItsOwnSentinel(t *testing.
 // removes the layer — and removing a component mounted elsewhere unmounts it
 // from where it legitimately lives.
 func TestOpeningADialogThatIsAlreadyMountedElsewhereIsRefused(t *testing.T) {
-	inline := widget.NewModal(widget.NewText("inline"), widget.WithModalTitle("Inline"))
-	base := widget.NewButton("base")
+	inline := core.NewModal(core.NewText("inline"), core.WithModalTitle("Inline"))
+	base := core.NewButton("base")
 	root := tui.NewFlex(tui.Vertical)
 	root.Add(base, inline) // the dialog is ordinary content here
-	host := widget.NewOverlayHost(root)
+	host := core.NewOverlayHost(root)
 	h := startApp(t, host, 40, 14)
 	defer h.stop()
 	h.settle()
@@ -1158,7 +1158,7 @@ func TestOpeningADialogThatIsAlreadyMountedElsewhereIsRefused(t *testing.T) {
 	h.onLoop(func() { err = inline.Open(host) })
 	h.settle()
 
-	if !errors.Is(err, widget.ErrModalNotMountable) {
+	if !errors.Is(err, core.ErrModalNotMountable) {
 		t.Errorf("Open returned %v, want ErrModalNotMountable", err)
 	}
 	if inline.IsOpen() {

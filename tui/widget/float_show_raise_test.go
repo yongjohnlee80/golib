@@ -4,7 +4,7 @@ import (
 	"testing"
 
 	"github.com/yongjohnlee80/golib/tui"
-	"github.com/yongjohnlee80/golib/tui/widget"
+	"github.com/yongjohnlee80/golib/tui/widget/core"
 )
 
 // float_show_raise_test.go: a window that opens comes forward. Showing a Float raises it, a
@@ -13,8 +13,8 @@ import (
 // A panel shown while another panel holds the keyboard opens above it, and the keyboard stays where
 // it was: a card that opens on its own is seen, and takes no keys it was not given.
 func TestShowingANonModalFloatRaisesItWithoutTheKeyboard(t *testing.T) {
-	base := widget.NewButton("base")
-	host := widget.NewOverlayHost(base)
+	base := core.NewButton("base")
+	host := core.NewOverlayHost(base)
 	a, _ := panelFloat("A", tui.Rect{X: 2, Y: 1, W: 20, H: 6})
 	b, bBtn := panelFloat("B", tui.Rect{X: 12, Y: 4, W: 20, H: 6})
 	host.Attach(a) // attached first: beneath B by attach order
@@ -41,8 +41,8 @@ func TestShowingANonModalFloatRaisesItWithoutTheKeyboard(t *testing.T) {
 
 // A panel hidden and shown again comes forward again: shown is opened, wherever it was before.
 func TestShowingAHiddenFloatAgainRaisesIt(t *testing.T) {
-	base := widget.NewButton("base")
-	host := widget.NewOverlayHost(base)
+	base := core.NewButton("base")
+	host := core.NewOverlayHost(base)
 	a, _ := panelFloat("A", tui.Rect{X: 2, Y: 1, W: 20, H: 6})
 	b, _ := panelFloat("B", tui.Rect{X: 12, Y: 4, W: 20, H: 6})
 	host.Attach(a)

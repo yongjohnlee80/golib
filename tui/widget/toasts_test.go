@@ -8,7 +8,7 @@ import (
 	"time"
 
 	"github.com/yongjohnlee80/golib/tui"
-	"github.com/yongjohnlee80/golib/tui/widget"
+	"github.com/yongjohnlee80/golib/tui/widget/core"
 )
 
 // toastClock is a clock a test moves.
@@ -25,20 +25,20 @@ func (c *toastClock) add(d time.Duration) {
 }
 
 // toastScreen is a page of dots over a status row, with the toasts attached over it.
-func toastScreen(t *testing.T, opts ...widget.ToastsOption) (*harness, *widget.Toasts, *toastClock) {
+func toastScreen(t *testing.T, opts ...core.ToastsOption) (*harness, *core.Toasts, *toastClock) {
 	t.Helper()
 	clock := &toastClock{now: time.Date(2026, 9, 30, 12, 0, 0, 0, time.UTC)}
-	toasts := widget.NewToasts(append([]widget.ToastsOption{widget.WithToastClock(clock.Now), widget.WithToastMargin(1),
-		widget.WithToastWidth(24)}, opts...)...)
-	page := widget.NewText(strings.Repeat(strings.Repeat(".", 40)+"\n", 11)+"STATUS", widget.WithWrapMode(widget.Wrap))
-	host := widget.NewOverlayHost(page)
+	toasts := core.NewToasts(append([]core.ToastsOption{core.WithToastClock(clock.Now), core.WithToastMargin(1),
+		core.WithToastWidth(24)}, opts...)...)
+	page := core.NewText(strings.Repeat(strings.Repeat(".", 40)+"\n", 11)+"STATUS", core.WithWrapMode(core.Wrap))
+	host := core.NewOverlayHost(page)
 	host.Attach(toasts.Float())
 	h := startApp(t, host, 40, 12)
 	return h, toasts, clock
 }
 
 // tick is the clock's second passing, as the stack's timer delivers it.
-func tick(h *harness, toasts *widget.Toasts) {
+func tick(h *harness, toasts *core.Toasts) {
 	// a tick of the stack's own clock, addressed to it as the runtime addresses every timer's tick
 	h.onLoop(func() { toasts.HandleEvent(tui.TickEvent{Owner: toasts.NodeID()}) })
 	h.settle()
@@ -48,7 +48,7 @@ func tick(h *harness, toasts *widget.Toasts) {
 // the margin row under it left as it was; finished, it lingers, then goes.
 func TestAToastShowsAboveTheStatusLine(t *testing.T) {
 	h, toasts, clock := toastScreen(t)
-	h.onLoop(func() { toasts.Post(widget.Toast{Text: "saved a.md"}) })
+	h.onLoop(func() { toasts.Post(core.Toast{Text: "saved a.md"}) })
 	h.waitFor("the toast", func() bool { return strings.Contains(h.row(9), "saved a.md") })
 	if top := h.row(8); !strings.HasSuffix(top, "╮") || !strings.Contains(top, " now ") {
 		t.Fatalf("the top border %q, want its age, now, at the right", top)
@@ -75,7 +75,7 @@ func TestAToastShowsAboveTheStatusLine(t *testing.T) {
 	}
 }
 
-func toastsLen(h *harness, toasts *widget.Toasts) (showing, waiting int) {
+func toastsLen(h *harness, toasts *core.Toasts) (showing, waiting int) {
 	h.onLoop(func() { showing, waiting = toasts.Len() })
 	return
 }
@@ -86,7 +86,7 @@ func TestToastsStackQueueAndSayHowLongAgo(t *testing.T) {
 	h, toasts, clock := toastScreen(t)
 	h.onLoop(func() {
 		for _, s := range []string{"one", "two", "three", "four"} {
-			toasts.Post(widget.Toast{Text: s})
+			toasts.Post(core.Toast{Text: s})
 		}
 	})
 	h.waitFor("three stacked", func() bool {
@@ -115,14 +115,14 @@ func TestToastsStackQueueAndSayHowLongAgo(t *testing.T) {
 // place by a post with its ID, and lingers once finished.
 func TestAnOngoingToastStaysUntilDone(t *testing.T) {
 	h, toasts, clock := toastScreen(t)
-	h.onLoop(func() { toasts.Post(widget.Toast{ID: "embed", Text: "embedding 1/10", Ongoing: true}) })
+	h.onLoop(func() { toasts.Post(core.Toast{ID: "embed", Text: "embedding 1/10", Ongoing: true}) })
 	h.waitFor("the progress", func() bool { return strings.Contains(h.row(9), "embedding 1/10") })
 	clock.add(90 * time.Second)
 	tick(h, toasts)
 	if !strings.Contains(h.row(9), "embedding 1/10") || !strings.Contains(h.row(8), " 1m ago ") {
 		t.Fatalf("after 90s the ongoing toast is %q under %q", h.row(9), h.row(8))
 	}
-	h.onLoop(func() { toasts.Post(widget.Toast{ID: "embed", Text: "embedding 5/10", Ongoing: true}) })
+	h.onLoop(func() { toasts.Post(core.Toast{ID: "embed", Text: "embedding 5/10", Ongoing: true}) })
 	h.waitFor("updated in place", func() bool { return strings.Contains(h.row(9), "embedding 5/10") })
 	if s, _ := toastsLen(h, toasts); s != 1 {
 		t.Fatalf("%d toasts showing after the update, want the one", s)
@@ -138,9 +138,9 @@ func TestAnOngoingToastStaysUntilDone(t *testing.T) {
 	h.waitFor("gone", func() bool { return !strings.Contains(h.row(9), "embedding") })
 
 	// finished by a post without Ongoing
-	h.onLoop(func() { toasts.Post(widget.Toast{ID: "embed", Text: "embedding 1/2", Ongoing: true}) })
+	h.onLoop(func() { toasts.Post(core.Toast{ID: "embed", Text: "embedding 1/2", Ongoing: true}) })
 	h.waitFor("again", func() bool { return strings.Contains(h.row(9), "embedding 1/2") })
-	h.onLoop(func() { toasts.Post(widget.Toast{ID: "embed", Text: "embedded 2"}) })
+	h.onLoop(func() { toasts.Post(core.Toast{ID: "embed", Text: "embedded 2"}) })
 	clock.add(3 * time.Second)
 	tick(h, toasts)
 	h.waitFor("finished by the post", func() bool { return !strings.Contains(h.screen(), "embedd") })
@@ -149,10 +149,10 @@ func TestAnOngoingToastStaysUntilDone(t *testing.T) {
 // TestToastsInAnotherCornerLongerAndWrapped: at the top left the newest is at the top, under the
 // margin; a long message wraps to the toast's width; the linger is what was set.
 func TestToastsInAnotherCornerLongerAndWrapped(t *testing.T) {
-	h, toasts, clock := toastScreen(t, widget.WithToastCorner(widget.TopLeft), widget.WithToastLinger(10*time.Second))
+	h, toasts, clock := toastScreen(t, core.WithToastCorner(core.TopLeft), core.WithToastLinger(10*time.Second))
 	h.onLoop(func() {
-		toasts.Post(widget.Toast{Text: "old"})
-		toasts.Post(widget.Toast{Text: "a message long enough to wrap onto a second line"})
+		toasts.Post(core.Toast{Text: "old"})
+		toasts.Post(core.Toast{Text: "a message long enough to wrap onto a second line"})
 	})
 	h.waitFor("at the top left", func() bool { return strings.HasPrefix(h.row(1), "╭") })
 	if h.row(0) != strings.Repeat(".", 40) {
@@ -170,9 +170,9 @@ func TestToastsInAnotherCornerLongerAndWrapped(t *testing.T) {
 	tick(h, toasts)
 	h.waitFor("gone at 10s", func() bool { return !strings.Contains(h.screen(), "old") })
 	h.onLoop(func() {
-		toasts.SetCorner(widget.BottomRight)
+		toasts.SetCorner(core.BottomRight)
 		toasts.SetLinger(0) // at least a second
-		toasts.Post(widget.Toast{Text: "moved"})
+		toasts.Post(core.Toast{Text: "moved"})
 	})
 	h.waitFor("moved to the bottom right", func() bool { return strings.Contains(h.row(9), "moved") })
 	clock.add(time.Second)
@@ -183,7 +183,7 @@ func TestToastsInAnotherCornerLongerAndWrapped(t *testing.T) {
 // TestAToastsAge: now, seconds, minutes, hours.
 func TestAToastsAge(t *testing.T) {
 	h, toasts, clock := toastScreen(t)
-	h.onLoop(func() { toasts.Post(widget.Toast{ID: "x", Text: "x", Ongoing: true}) })
+	h.onLoop(func() { toasts.Post(core.Toast{ID: "x", Text: "x", Ongoing: true}) })
 	for _, c := range []struct {
 		after time.Duration
 		says  string
@@ -207,16 +207,16 @@ func (h *harness) screen() string {
 // the dialog keeping the keyboard. Two dialogs, the top one closed: the one beneath gets its
 // scrim back beneath it, and the toasts are still on top of both.
 func TestToastsStayAboveTheDialogs(t *testing.T) {
-	firstOK := widget.NewButton("first-ok", widget.WithRole(widget.ButtonRoleAccept), widget.WithDefault(true))
-	first := widget.NewModal(widget.NewText("first"), widget.WithButtons(firstOK), widget.WithScrim(true))
-	secondOK := widget.NewButton("second-ok", widget.WithRole(widget.ButtonRoleAccept), widget.WithDefault(true))
-	second := widget.NewModal(widget.NewText("second"), widget.WithButtons(secondOK), widget.WithScrim(true))
+	firstOK := core.NewButton("first-ok", core.WithRole(core.ButtonRoleAccept), core.WithDefault(true))
+	first := core.NewModal(core.NewText("first"), core.WithButtons(firstOK), core.WithScrim(true))
+	secondOK := core.NewButton("second-ok", core.WithRole(core.ButtonRoleAccept), core.WithDefault(true))
+	second := core.NewModal(core.NewText("second"), core.WithButtons(secondOK), core.WithScrim(true))
 	h, host, _ := modalFixture(t, first, 40, 12)
 	defer h.stop()
-	toasts := widget.NewToasts(widget.WithToastWidth(20))
+	toasts := core.NewToasts(core.WithToastWidth(20))
 	h.onLoop(func() {
 		host.AttachTopmost(toasts.Float())
-		toasts.Post(widget.Toast{Text: "hello", Ongoing: true})
+		toasts.Post(core.Toast{Text: "hello", Ongoing: true})
 	})
 	h.waitFor("the toast", func() bool { return strings.Contains(h.grid(), "hello") })
 	last := func() tui.Component {
@@ -241,7 +241,7 @@ func TestToastsStayAboveTheDialogs(t *testing.T) {
 	if !focused {
 		t.Fatal("the dialog under the toasts lost the keyboard")
 	}
-	h.onLoop(func() { second.Dismiss(widget.DismissProgrammatic) })
+	h.onLoop(func() { second.Dismiss(core.DismissProgrammatic) })
 	h.settle()
 	var order []string
 	h.onLoop(func() {
@@ -269,20 +269,20 @@ func TestToastsStayAboveTheDialogs(t *testing.T) {
 func TestAFinishedToastPostedOngoingAgainStartsAgain(t *testing.T) {
 	h, toasts, clock := toastScreen(t)
 	h.onLoop(func() {
-		toasts.Post(widget.Toast{ID: "sync", Text: "syncing", Ongoing: true})
-		toasts.Post(widget.Toast{ID: "sync", Text: "synced"})
-		toasts.Post(widget.Toast{ID: "sync", Text: "synced"}) // ended twice: nothing more
+		toasts.Post(core.Toast{ID: "sync", Text: "syncing", Ongoing: true})
+		toasts.Post(core.Toast{ID: "sync", Text: "synced"})
+		toasts.Post(core.Toast{ID: "sync", Text: "synced"}) // ended twice: nothing more
 	})
 	h.waitFor("ended", func() bool { return strings.Contains(h.row(9), "synced") })
 	clock.add(time.Second)
 	tick(h, toasts)
-	h.onLoop(func() { toasts.Post(widget.Toast{ID: "sync", Text: "syncing again", Ongoing: true}) })
+	h.onLoop(func() { toasts.Post(core.Toast{ID: "sync", Text: "syncing again", Ongoing: true}) })
 	clock.add(10 * time.Second) // well past the first end's linger
 	tick(h, toasts)
 	if !strings.Contains(h.row(9), "syncing again") || !strings.Contains(h.row(8), " 10s ago ") {
 		t.Fatalf("the second cycle: %q under %q; want it showing, aged from its own post", h.row(9), h.row(8))
 	}
-	h.onLoop(func() { toasts.Post(widget.Toast{ID: "sync", Text: "synced again"}) })
+	h.onLoop(func() { toasts.Post(core.Toast{ID: "sync", Text: "synced again"}) })
 	clock.add(2 * time.Second)
 	tick(h, toasts)
 	if !strings.Contains(h.row(9), "synced again") {
@@ -295,11 +295,11 @@ func TestAFinishedToastPostedOngoingAgainStartsAgain(t *testing.T) {
 	// waiting in the queue: three show, the fourth is ended and started again while it waits
 	h.onLoop(func() {
 		for _, s := range []string{"one", "two", "three"} {
-			toasts.Post(widget.Toast{ID: s, Text: s, Ongoing: true})
+			toasts.Post(core.Toast{ID: s, Text: s, Ongoing: true})
 		}
-		toasts.Post(widget.Toast{ID: "late", Text: "late started", Ongoing: true})
-		toasts.Post(widget.Toast{ID: "late", Text: "late ended"})
-		toasts.Post(widget.Toast{ID: "late", Text: "late again", Ongoing: true})
+		toasts.Post(core.Toast{ID: "late", Text: "late started", Ongoing: true})
+		toasts.Post(core.Toast{ID: "late", Text: "late ended"})
+		toasts.Post(core.Toast{ID: "late", Text: "late again", Ongoing: true})
 		toasts.Done("one")
 	})
 	clock.add(10 * time.Second) // one's linger is out: late shows in its place
@@ -313,4 +313,4 @@ func TestAFinishedToastPostedOngoingAgainStartsAgain(t *testing.T) {
 }
 
 // isScrim reports whether l is a dialog's scrim.
-func isScrim(l any) bool { _, ok := l.(*widget.Scrim); return ok }
+func isScrim(l any) bool { _, ok := l.(*core.Scrim); return ok }

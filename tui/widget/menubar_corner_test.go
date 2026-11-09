@@ -4,7 +4,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/yongjohnlee80/golib/tui/widget"
+	"github.com/yongjohnlee80/golib/tui/widget/core"
 )
 
 // menubar_corner_test.go: the MenuBar's corner widget (Qt's QMenuBar::setCornerWidget).
@@ -12,14 +12,14 @@ import (
 // TestTheMenuBarsCorner: the corner sits at the bar's right end, a PegRight menu just before it; a
 // bar too narrow for both keeps the menus whole and cuts the corner.
 func TestTheMenuBarsCorner(t *testing.T) {
-	m := widget.NewMenu()
-	help := widget.NewCommand("help", "Help", nil)
+	m := core.NewMenu()
+	help := core.NewCommand("help", "Help", nil)
 	help.PegRight = true
-	if err := m.SetModel([]widget.MenuItemModel{widget.NewCommand("file", "File", nil), help}); err != nil {
+	if err := m.SetModel([]core.MenuItemModel{core.NewCommand("file", "File", nil), help}); err != nil {
 		t.Fatalf("SetModel: %v", err)
 	}
-	bar := widget.NewMenuBar(m, widget.WithCornerWidget(widget.NewText("[dock]")))
-	h := startApp(t, widget.NewOverlayHost(bar), 40, 3)
+	bar := core.NewMenuBar(m, core.WithCornerWidget(core.NewText("[dock]")))
+	h := startApp(t, core.NewOverlayHost(bar), 40, 3)
 	defer h.stop()
 	h.settle()
 	row := strings.TrimRight(h.row(0), " ")
@@ -38,13 +38,13 @@ func TestTheMenuBarsCorner(t *testing.T) {
 // one unmounted, the new one drawn), keeps one set twice, and takes it away with nil; a vertical
 // bar puts the corner at its foot.
 func TestTheMenuBarsCornerIsReplacedAndRemoved(t *testing.T) {
-	m := widget.NewMenu()
-	if err := m.SetModel([]widget.MenuItemModel{widget.NewCommand("file", "File", nil)}); err != nil {
+	m := core.NewMenu()
+	if err := m.SetModel([]core.MenuItemModel{core.NewCommand("file", "File", nil)}); err != nil {
 		t.Fatalf("SetModel: %v", err)
 	}
-	first, second := widget.NewText("[one]"), widget.NewText("[two]")
-	bar := widget.NewMenuBar(m, widget.WithCornerWidget(first))
-	h := startApp(t, widget.NewOverlayHost(bar), 40, 3)
+	first, second := core.NewText("[one]"), core.NewText("[two]")
+	bar := core.NewMenuBar(m, core.WithCornerWidget(first))
+	h := startApp(t, core.NewOverlayHost(bar), 40, 3)
 	defer h.stop()
 	h.settle()
 	h.wantContains("[one]")
@@ -67,12 +67,12 @@ func TestTheMenuBarsCornerIsReplacedAndRemoved(t *testing.T) {
 		t.Fatal("SetCorner(nil) left a corner")
 	}
 
-	side := widget.NewMenu()
-	if err := side.SetModel([]widget.MenuItemModel{widget.NewCommand("a", "A", nil)}); err != nil {
+	side := core.NewMenu()
+	if err := side.SetModel([]core.MenuItemModel{core.NewCommand("a", "A", nil)}); err != nil {
 		t.Fatalf("SetModel: %v", err)
 	}
-	vbar := widget.NewMenuBar(side, widget.WithBarPlacement(widget.BarPlacementLeft), widget.WithCornerWidget(widget.NewText("Z")))
-	h2 := startApp(t, widget.NewOverlayHost(vbar), 10, 8)
+	vbar := core.NewMenuBar(side, core.WithBarPlacement(core.BarPlacementLeft), core.WithCornerWidget(core.NewText("Z")))
+	h2 := startApp(t, core.NewOverlayHost(vbar), 10, 8)
 	defer h2.stop()
 	h2.settle()
 	if !strings.Contains(h2.row(7), "Z") || strings.Contains(h2.row(0), "Z") {

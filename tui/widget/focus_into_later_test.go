@@ -4,7 +4,7 @@ import (
 	"testing"
 
 	"github.com/yongjohnlee80/golib/tui"
-	"github.com/yongjohnlee80/golib/tui/widget"
+	"github.com/yongjohnlee80/golib/tui/widget/core"
 )
 
 // focus_into_later_test.go: FocusInto on a pane shown in the same turn takes
@@ -13,10 +13,10 @@ import (
 
 // twoPanes is a field on top, and a pane holding another field below it,
 // hidden.
-func twoPanes(t *testing.T) (*harness, *widget.TextInput, *widget.TextInput, *widget.Box) {
+func twoPanes(t *testing.T) (*harness, *core.TextInput, *core.TextInput, *core.Box) {
 	t.Helper()
-	top, inner := widget.NewTextInput(), widget.NewTextInput()
-	pane := widget.NewBox(inner)
+	top, inner := core.NewTextInput(), core.NewTextInput()
+	pane := core.NewBox(inner)
 	pane.SetVisible(false)
 	root := tui.NewFlex(tui.Vertical)
 	root.Add(top, pane)
@@ -26,7 +26,7 @@ func twoPanes(t *testing.T) (*harness, *widget.TextInput, *widget.TextInput, *wi
 	return h, top, inner, pane
 }
 
-func focused(h *harness, w *widget.TextInput) bool {
+func focused(h *harness, w *core.TextInput) bool {
 	var ok bool
 	h.onLoop(func() { ok = w.Context() != nil && w.Context().Focused() })
 	return ok
@@ -58,8 +58,8 @@ func TestFocusIntoAHiddenPaneIsNotDeferred(t *testing.T) {
 }
 
 func TestAFocusChangeOvertakesADeferredFocusInto(t *testing.T) {
-	top, other, inner := widget.NewTextInput(), widget.NewTextInput(), widget.NewTextInput()
-	pane := widget.NewBox(inner)
+	top, other, inner := core.NewTextInput(), core.NewTextInput(), core.NewTextInput()
+	pane := core.NewBox(inner)
 	pane.SetVisible(false)
 	root := tui.NewFlex(tui.Vertical)
 	root.Add(top, other, pane)

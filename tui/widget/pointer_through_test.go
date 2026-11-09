@@ -6,7 +6,7 @@ import (
 	"testing"
 
 	"github.com/yongjohnlee80/golib/tui"
-	"github.com/yongjohnlee80/golib/tui/widget"
+	"github.com/yongjohnlee80/golib/tui/widget/core"
 )
 
 func pointerClick(h *harness, x, y int) {
@@ -20,10 +20,10 @@ func pointerClick(h *harness, x, y int) {
 // the pointer. (The toasts, always shown, once took every click on an application's screen.)
 func TestTheApplicationUnderANonModalFloatTakesItsClicks(t *testing.T) {
 	var under, card atomic.Int64
-	button := widget.NewButton("Under", widget.WithOnActivate(func() { under.Add(1) }))
-	host := widget.NewOverlayHost(button)
-	cardButton := widget.NewButton("Card", widget.WithOnActivate(func() { card.Add(1) }))
-	float := widget.NewFloat(cardButton, widget.WithAnchor(widget.BottomRight))
+	button := core.NewButton("Under", core.WithOnActivate(func() { under.Add(1) }))
+	host := core.NewOverlayHost(button)
+	cardButton := core.NewButton("Card", core.WithOnActivate(func() { card.Add(1) }))
+	float := core.NewFloat(cardButton, core.WithAnchor(core.BottomRight))
 	host.AttachTopmost(float)
 	h := startApp(t, host, 40, 8)
 	defer h.stop()
@@ -38,7 +38,7 @@ func TestTheApplicationUnderANonModalFloatTakesItsClicks(t *testing.T) {
 	pointerClick(h, cx, cy)
 	h.waitFor("the float's own content clicked", func() bool { return card.Load() == 1 })
 
-	modal := widget.NewFloat(widget.NewText("a dialog"), widget.WithModal(true))
+	modal := core.NewFloat(core.NewText("a dialog"), core.WithModal(true))
 	h.onLoop(func() { host.Attach(modal); modal.Show() })
 	h.settle()
 	pointerClick(h, x, y)
@@ -53,21 +53,21 @@ func TestTheApplicationUnderANonModalFloatTakesItsClicks(t *testing.T) {
 // topmost as AutoDoc attaches it, still opens a menu on a click on its title — the empty layer
 // contains no point, and a card that only tells passes the pointer through too.
 func TestAMenuTitleUnderTheToastsOpensItsMenu(t *testing.T) {
-	m := widget.NewMenu()
-	if err := m.SetModel([]widget.MenuItemModel{
-		widget.NewSubmenu("file", "File", []widget.MenuItemModel{widget.NewCommand("new", "New note", nil)}),
+	m := core.NewMenu()
+	if err := m.SetModel([]core.MenuItemModel{
+		core.NewSubmenu("file", "File", []core.MenuItemModel{core.NewCommand("new", "New note", nil)}),
 	}); err != nil {
 		t.Fatalf("SetModel: %v", err)
 	}
-	bar := widget.NewMenuBar(m)
+	bar := core.NewMenuBar(m)
 	root := tui.NewFlex(tui.Vertical)
-	root.Add(bar, widget.NewText("page"))
-	host := widget.NewOverlayHost(root)
-	toasts := widget.NewToasts()
+	root.Add(bar, core.NewText("page"))
+	host := core.NewOverlayHost(root)
+	toasts := core.NewToasts()
 	host.AttachTopmost(toasts.Float())
 	h := startApp(t, host, 40, 8)
 	defer h.stop()
-	h.onLoop(func() { toasts.Post(widget.Toast{Text: "connected"}) })
+	h.onLoop(func() { toasts.Post(core.Toast{Text: "connected"}) })
 	h.waitFor("the toast shown", func() bool { return strings.Contains(h.grid(), "connected") })
 
 	x, y := cellOfLabel(t, h, "File")
@@ -80,18 +80,18 @@ func TestAMenuTitleUnderTheToastsOpensItsMenu(t *testing.T) {
 // press and release on it runs OnClick once, the button beneath untouched.
 func TestAToastWithOnClickTakesAClickAndOthersPassItThrough(t *testing.T) {
 	var under, opened atomic.Int64
-	button := widget.NewButton(strings.Repeat("U", 36), widget.WithOnActivate(func() { under.Add(1) }))
+	button := core.NewButton(strings.Repeat("U", 36), core.WithOnActivate(func() { under.Add(1) }))
 	root := tui.NewFlex(tui.Vertical)
-	root.AddWeighted(widget.NewText("page"), 1)
+	root.AddWeighted(core.NewText("page"), 1)
 	root.Add(button) // the bottom row, under the card in the corner
-	host := widget.NewOverlayHost(root)
-	toasts := widget.NewToasts(widget.WithToastCorner(widget.BottomRight), widget.WithToastWidth(20))
+	host := core.NewOverlayHost(root)
+	toasts := core.NewToasts(core.WithToastCorner(core.BottomRight), core.WithToastWidth(20))
 	host.AttachTopmost(toasts.Float())
 	h := startApp(t, host, 40, 10)
 	defer h.stop()
 	const x, y = 30, 9 // the card's bottom border, over the button's right end
 
-	h.onLoop(func() { toasts.Post(widget.Toast{Text: "only tells"}) })
+	h.onLoop(func() { toasts.Post(core.Toast{Text: "only tells"}) })
 	h.waitFor("the toast shown", func() bool { return strings.Contains(h.grid(), "only tells") })
 	if c := h.tb.Snapshot()[y][x].Content; c != "─" {
 		t.Fatalf("the setup: (%d, %d) is %q, not the card's border:\n%s", x, y, c, h.grid())
@@ -99,7 +99,7 @@ func TestAToastWithOnClickTakesAClickAndOthersPassItThrough(t *testing.T) {
 	pointerClick(h, x, y)
 	h.waitFor("the button under a card that only tells clicked", func() bool { return under.Load() == 1 })
 
-	h.onLoop(func() { toasts.Post(widget.Toast{Text: "click me", OnClick: func() { opened.Add(1) }}) })
+	h.onLoop(func() { toasts.Post(core.Toast{Text: "click me", OnClick: func() { opened.Add(1) }}) })
 	h.waitFor("the clickable toast in the corner", func() bool { return strings.Contains(h.row(8), "click me") })
 	pointerClick(h, x, y)
 	h.waitFor("its OnClick ran", func() bool { return opened.Load() == 1 })

@@ -6,12 +6,12 @@ import (
 	"testing"
 
 	"github.com/yongjohnlee80/golib/tui"
-	"github.com/yongjohnlee80/golib/tui/widget"
+	"github.com/yongjohnlee80/golib/tui/widget/core"
 )
 
-func focusedArea(t *testing.T, w, h int, opts ...widget.TextAreaOption) (*harness, *widget.TextArea, *shell) {
+func focusedArea(t *testing.T, w, h int, opts ...core.TextAreaOption) (*harness, *core.TextArea, *shell) {
 	t.Helper()
-	ta := widget.NewTextArea(opts...)
+	ta := core.NewTextArea(opts...)
 	sh := newShell(ta)
 	hh := startApp(t, sh, w, h)
 	hh.inject(tab())
@@ -23,8 +23,8 @@ func focusedArea(t *testing.T, w, h int, opts ...widget.TextAreaOption) (*harnes
 // event at all — only ChangeEvent.
 func TestTextAreaEnterIsNewline(t *testing.T) {
 	h, ta, sh := focusedArea(t, 20, 5)
-	submits := record[widget.SubmitEvent](h)
-	changes := record[widget.ChangeEvent](h)
+	submits := record[core.SubmitEvent](h)
+	changes := record[core.ChangeEvent](h)
 
 	h.inject(typeString("ab")...)
 	h.inject(key(tui.KeyEnter))
@@ -53,7 +53,7 @@ func TestTextAreaEnterIsNewline(t *testing.T) {
 // TestTextAreaPasteMultiline: one paste, one ChangeEvent, lines split.
 func TestTextAreaPasteMultiline(t *testing.T) {
 	h, ta, sh := focusedArea(t, 20, 5)
-	changes := record[widget.ChangeEvent](h)
+	changes := record[core.ChangeEvent](h)
 	h.inject(tui.PasteEvent{Text: "one\ntwo\nthree"})
 	h.barrier(sh)
 	var val string
@@ -98,7 +98,7 @@ func TestTextAreaNavigation(t *testing.T) {
 // TestTextAreaWrapSoft: WrapSoft wraps at the viewport width; WrapNone
 // scrolls horizontally instead.
 func TestTextAreaWrapModes(t *testing.T) {
-	h, _, sh := focusedArea(t, 8, 4, widget.WithWrap(widget.WrapSoft))
+	h, _, sh := focusedArea(t, 8, 4, core.WithWrap(core.WrapSoft))
 	h.inject(tui.PasteEvent{Text: "alpha beta gamma"})
 	h.barrier(sh)
 	// Wrapped: "alpha" endures on row 0, "beta" on a later row.
@@ -107,7 +107,7 @@ func TestTextAreaWrapModes(t *testing.T) {
 	}
 	h.wantContains("beta")
 
-	h2, _, sh2 := focusedArea(t, 8, 4, widget.WithWrap(widget.WrapNone))
+	h2, _, sh2 := focusedArea(t, 8, 4, core.WithWrap(core.WrapNone))
 	h2.inject(tui.PasteEvent{Text: "alpha beta gamma"})
 	h2.barrier(sh2)
 	// No wrap: one line, scrolled so the cursor (end) is visible.

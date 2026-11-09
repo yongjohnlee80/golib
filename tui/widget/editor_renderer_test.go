@@ -5,7 +5,7 @@ import (
 	"testing"
 
 	"github.com/yongjohnlee80/golib/tui"
-	"github.com/yongjohnlee80/golib/tui/widget"
+	"github.com/yongjohnlee80/golib/tui/widget/editor"
 )
 
 // starRenderer is a small renderer for the Editor's own Rendered view: a block a line; `**` hidden;
@@ -13,33 +13,33 @@ import (
 // (hidden metadata, so a fold). While text is typed in a line it is laid as its source.
 type starRenderer struct{}
 
-func (starRenderer) Blocks(lines []string, from, to int) []widget.Block {
-	var out []widget.Block
+func (starRenderer) Blocks(lines []string, from, to int) []editor.Block {
+	var out []editor.Block
 	for i := from; i < to; i++ {
-		out = append(out, widget.Block{From: i, To: i + 1})
+		out = append(out, editor.Block{From: i, To: i + 1})
 	}
 	return out
 }
 
-func (starRenderer) LayOut(b widget.Block, lines []string, _ int, measure func(string) int, typing bool, th widget.CellTheme) widget.CellBlock {
+func (starRenderer) LayOut(b editor.Block, lines []string, _ int, measure func(string) int, typing bool, th editor.CellTheme) editor.CellBlock {
 	ln := b.From
 	line := lines[ln]
 	if !typing && strings.HasPrefix(line, "<!--") {
-		return widget.CellBlock{}
+		return editor.CellBlock{}
 	}
-	row := widget.CellRow{Anchor: -1}
+	row := editor.CellRow{Anchor: -1}
 	col := 0
 	for c := range tui.Graphemes(line) {
 		hidden := !typing && (c == "*" || (strings.HasPrefix(line, "# ") && col < 2))
 		if !hidden {
-			row.Cells = append(row.Cells, widget.RowCell{Text: c, W: measure(c), Style: th.Text, Line: ln, Col: col})
+			row.Cells = append(row.Cells, editor.RowCell{Text: c, W: measure(c), Style: th.Text, Line: ln, Col: col})
 		}
 		col++
 	}
 	if len(row.Cells) == 0 {
 		row.Anchor = ln
 	}
-	return widget.CellBlock{Rows: []widget.CellRow{row}}
+	return editor.CellBlock{Rows: []editor.CellRow{row}}
 }
 
 // structuredStar is starRenderer that knows its document's code and tables (none): a Markdown
@@ -52,14 +52,14 @@ func (structuredStar) InTable([]string, int) bool { return false }
 const starText = "# Title\n**bold** word\n\n<!-- note -->\nlast"
 
 // renderedEditor is a terminal Editor holding text, drawn Rendered through r, focused, at 40×10.
-func renderedEditor(t *testing.T, text string, r widget.CellRenderer) (*harness, *shell, *widget.Editor) {
+func renderedEditor(t *testing.T, text string, r editor.CellRenderer) (*harness, *shell, *editor.Editor) {
 	t.Helper()
-	ed := widget.NewEditor(widget.WithCore(widget.CoreInitialText(text)))
+	ed := editor.NewEditor(editor.WithCore(editor.CoreInitialText(text)))
 	sh := newShell(ed)
 	h := startApp(t, sh, 40, 10)
 	h.onLoop(func() {
 		ed.SetRenderer(r)
-		ed.SetView(widget.ViewRendered)
+		ed.SetView(editor.ViewRendered)
 		h.app.FocusInto(ed)
 	})
 	h.barrier(sh)
@@ -71,9 +71,9 @@ func renderedEditor(t *testing.T, text string, r widget.CellRenderer) (*harness,
 // row at all. Raw again draws the text as it is.
 func TestTheEditorDrawsThroughItsRenderer(t *testing.T) {
 	h, sh, ed := renderedEditor(t, starText, starRenderer{})
-	var shown widget.EditorView
+	var shown editor.EditorView
 	h.onLoop(func() { shown = ed.ShownView() })
-	if shown != widget.ViewRendered {
+	if shown != editor.ViewRendered {
 		t.Fatalf("drawn %v, want Rendered through the renderer", shown)
 	}
 	for y, want := range []string{"Title", "bold word", "", "last"} {
@@ -81,7 +81,7 @@ func TestTheEditorDrawsThroughItsRenderer(t *testing.T) {
 			t.Errorf("row %d = %q, want %q", y, got, want)
 		}
 	}
-	h.onLoop(func() { ed.SetView(widget.ViewRaw) })
+	h.onLoop(func() { ed.SetView(editor.ViewRaw) })
 	h.barrier(sh)
 	if got := strings.TrimRight(h.row(1), " "); got != "**bold** word" {
 		t.Errorf("Raw row 1 = %q, want the text", got)
@@ -144,7 +144,7 @@ func TestTypingRevealsTheLinesSource(t *testing.T) {
 // the shared owner's (MarkdownListWhere).
 type blockStar struct {
 	starRenderer
-	md widget.MarkdownBlocks
+	md editor.MarkdownBlocks
 }
 
 func (r *blockStar) InCode(lines []string, ln int) bool  { return r.md.InCode(lines, ln) }
@@ -164,9 +164,9 @@ func TestARenderedListSkipsCodeAndTableRows(t *testing.T) {
 		return ed.Core().Value()
 	}
 	lines := strings.Split(doc, "\n")
-	var md widget.MarkdownBlocks // the row's premise: the table holds it, it is no pipe-bounded row, and it reads as an item
-	_, bounded := widget.MarkdownTableCells(lines[6])
-	if _, _, item := widget.MarkdownListItem(lines[6]); !md.InTable(lines, 6) || bounded || !item {
+	var md editor.MarkdownBlocks // the row's premise: the table holds it, it is no pipe-bounded row, and it reads as an item
+	_, bounded := editor.MarkdownTableCells(lines[6])
+	if _, _, item := editor.MarkdownListItem(lines[6]); !md.InTable(lines, 6) || bounded || !item {
 		t.Fatalf("%q: in the table %v, a pipe-bounded row %v, an item %v; want true, false, true", lines[6], md.InTable(lines, 6), bounded, item)
 	}
 	opened := func(ln int) string { // doc with an empty line after line ln
@@ -204,7 +204,7 @@ func TestAStructuredRendererEditsLists(t *testing.T) {
 // With a renderer and no document view, Ctrl+T (the core's Rendered toggle) flips between the text
 // and the renderer's view, as it does for a document view.
 func TestCtrlTFlipsToTheRenderersView(t *testing.T) {
-	ed := widget.NewEditor(widget.WithCore(widget.CoreInitialText(starText)))
+	ed := editor.NewEditor(editor.WithCore(editor.CoreInitialText(starText)))
 	sh := newShell(ed)
 	h := startApp(t, sh, 40, 10)
 	h.onLoop(func() {
@@ -212,18 +212,18 @@ func TestCtrlTFlipsToTheRenderersView(t *testing.T) {
 		h.app.FocusInto(ed)
 	})
 	h.barrier(sh)
-	shown := func() (v widget.EditorView) { h.onLoop(func() { v = ed.ShownView() }); return }
-	if v := shown(); v != widget.ViewRaw {
+	shown := func() (v editor.EditorView) { h.onLoop(func() { v = ed.ShownView() }); return }
+	if v := shown(); v != editor.ViewRaw {
 		t.Fatalf("before Ctrl+T: %v, want Raw (the choice starts Raw)", v)
 	}
 	h.inject(ctrlEv('t'))
 	h.barrier(sh)
-	if v := shown(); v != widget.ViewRendered {
+	if v := shown(); v != editor.ViewRendered {
 		t.Fatalf("Ctrl+T: %v, want Rendered through the renderer", v)
 	}
 	h.inject(ctrlEv('t'))
 	h.barrier(sh)
-	if v := shown(); v != widget.ViewRaw {
+	if v := shown(); v != editor.ViewRaw {
 		t.Errorf("Ctrl+T again: %v, want Raw", v)
 	}
 }
@@ -249,15 +249,15 @@ func TestAnUncomparableRendererDrawsAgain(t *testing.T) {
 // tallRenderer lays each cluster of a line on a row of its own: one line taller than the view.
 type tallRenderer struct{ starRenderer }
 
-func (tallRenderer) LayOut(b widget.Block, lines []string, _ int, measure func(string) int, _ bool, th widget.CellTheme) widget.CellBlock {
-	var cb widget.CellBlock
+func (tallRenderer) LayOut(b editor.Block, lines []string, _ int, measure func(string) int, _ bool, th editor.CellTheme) editor.CellBlock {
+	var cb editor.CellBlock
 	col := 0
 	for c := range tui.Graphemes(lines[b.From]) {
-		cb.Rows = append(cb.Rows, widget.CellRow{Anchor: -1, Cells: []widget.RowCell{{Text: c, W: measure(c), Style: th.Text, Line: b.From, Col: col}}})
+		cb.Rows = append(cb.Rows, editor.CellRow{Anchor: -1, Cells: []editor.RowCell{{Text: c, W: measure(c), Style: th.Text, Line: b.From, Col: col}}})
 		col++
 	}
 	if len(cb.Rows) == 0 {
-		cb.Rows = []widget.CellRow{{Anchor: b.From}}
+		cb.Rows = []editor.CellRow{{Anchor: b.From}}
 	}
 	return cb
 }
@@ -296,12 +296,12 @@ func TestATallLinesLaterRowsAreRevealed(t *testing.T) {
 func TestTheRenderedLayoutIsTheShownBuffers(t *testing.T) {
 	h, sh, ed := renderedEditor(t, "# Alpha", starRenderer{})
 	a := ed.Core().Buffer()
-	b := widget.NewBuffer(widget.BufferText("# Beta"))
+	b := editor.NewBuffer(editor.BufferText("# Beta"))
 	if a.Revision() != b.Revision() {
 		t.Fatalf("the control needs equal revisions: %d and %d", a.Revision(), b.Revision())
 	}
 	for _, step := range []struct {
-		buf  *widget.Buffer
+		buf  *editor.Buffer
 		want string
 	}{{a, "Alpha"}, {b, "Beta"}, {a, "Alpha"}} {
 		h.onLoop(func() { ed.Core().SetBuffer(step.buf) })

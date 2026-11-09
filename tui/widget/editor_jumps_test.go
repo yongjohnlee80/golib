@@ -3,7 +3,7 @@ package widget_test
 import (
 	"testing"
 
-	"github.com/yongjohnlee80/golib/tui/widget"
+	"github.com/yongjohnlee80/golib/tui/widget/editor"
 )
 
 // Ctrl-o and Ctrl-i walk the editor's jumps: G and gg, {, }, %, a mark's jump; with a count.
@@ -25,14 +25,14 @@ func TestVimJumpsBackAndForth(t *testing.T) {
 // list is unchanged until the host commits. A step in the editor's own document is the editor's.
 func TestVimJumpsWithAHostList(t *testing.T) {
 	c, _ := coreWith(t, "a\nb\nc")
-	list := widget.NewJumpList(0)
-	list.Push(widget.JumpPos{Doc: "B", Line: 3})
-	var asked []widget.JumpStep
-	c.SetJumps(list, func(s widget.JumpStep) { asked = append(asked, s) })
+	list := editor.NewJumpList(0)
+	list.Push(editor.JumpPos{Doc: "B", Line: 3})
+	var asked []editor.JumpStep
+	c.SetJumps(list, func(s editor.JumpStep) { asked = append(asked, s) })
 	c.SetJumpDoc("A")
 	c.SetLine(1, 0)
 	vimSeq(c, "<cto>")
-	if len(asked) != 1 || asked[0].To != (widget.JumpPos{Doc: "B", Line: 3}) {
+	if len(asked) != 1 || asked[0].To != (editor.JumpPos{Doc: "B", Line: 3}) {
 		t.Fatalf("the host was asked %+v", asked)
 	}
 	if es, idx := list.Entries(); len(es) != 1 || idx != 1 {
@@ -41,7 +41,7 @@ func TestVimJumpsWithAHostList(t *testing.T) {
 	if !list.Commit(asked[0]) {
 		t.Fatal("the host's commit was refused")
 	}
-	if es, idx := list.Entries(); len(es) != 2 || es[1] != (widget.JumpPos{Doc: "A", Line: 1}) || idx != 0 {
+	if es, idx := list.Entries(); len(es) != 2 || es[1] != (editor.JumpPos{Doc: "A", Line: 1}) || idx != 0 {
 		t.Fatalf("after the host's commit: %+v at %d, want A's place recorded and the index at B", es, idx)
 	}
 
@@ -49,7 +49,7 @@ func TestVimJumpsWithAHostList(t *testing.T) {
 	vimSeq(c, "<cti>")
 	c.SetLine(0, 0)
 	vimSeq(c, "G")
-	if es, _ := list.Entries(); es[len(es)-1] != (widget.JumpPos{Doc: "A", Line: 0}) {
+	if es, _ := list.Entries(); es[len(es)-1] != (editor.JumpPos{Doc: "A", Line: 0}) {
 		t.Fatalf("G recorded %+v", es[len(es)-1])
 	}
 	asked = nil
@@ -60,7 +60,7 @@ func TestVimJumpsWithAHostList(t *testing.T) {
 
 	// another view of the same document is the host's too
 	c.SetJumpView(func() string { return "rendered" })
-	list.Push(widget.JumpPos{Doc: "A", Line: 2})
+	list.Push(editor.JumpPos{Doc: "A", Line: 2})
 	vimSeq(c, "<cto>")
 	if len(asked) != 1 || asked[0].To.View != "" {
 		t.Fatalf("a step to A's source from its rendered view: host asked %+v", asked)
@@ -70,7 +70,7 @@ func TestVimJumpsWithAHostList(t *testing.T) {
 // A viewer jumps (jumping isn't editing). In Insert, Ctrl-o is Insert's one Normal-mode command,
 // not a jump; a second Ctrl-o is that command, a jump back, and Insert resumes there.
 func TestVimJumpsOnAViewerAndInInsert(t *testing.T) {
-	c, _ := coreWith(t, "a\nb\nc", widget.CoreReadOnly(true))
+	c, _ := coreWith(t, "a\nb\nc", editor.CoreReadOnly(true))
 	vimSeq(c, "G<cto>")
 	if ln, _ := c.Line(); ln != 0 {
 		t.Fatalf("a viewer's G Ctrl-o: line %d", ln)
@@ -81,7 +81,7 @@ func TestVimJumpsOnAViewerAndInInsert(t *testing.T) {
 		t.Fatalf("Insert's Ctrl-o: line %d, one-shot %v; want no jump, the one-shot", ln, ins.InsertOneShot())
 	}
 	vimSeq(ins, "<cto>")
-	if ln, _ := ins.Line(); ln != 0 || ins.Mode() != widget.ModeInsert {
+	if ln, _ := ins.Line(); ln != 0 || ins.Mode() != editor.ModeInsert {
 		t.Fatalf("Ctrl-o's command Ctrl-o: line %d, mode %v; want back at line 0, in Insert", ln, ins.Mode())
 	}
 }

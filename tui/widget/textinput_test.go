@@ -8,13 +8,13 @@ import (
 	"testing"
 
 	"github.com/yongjohnlee80/golib/tui"
-	"github.com/yongjohnlee80/golib/tui/widget"
+	"github.com/yongjohnlee80/golib/tui/widget/core"
 )
 
 // focusedInput mounts a TextInput inside a recording shell and focuses it.
-func focusedInput(t *testing.T, opts ...widget.TextInputOption) (*harness, *widget.TextInput, *shell) {
+func focusedInput(t *testing.T, opts ...core.TextInputOption) (*harness, *core.TextInput, *shell) {
 	t.Helper()
-	in := widget.NewTextInput(opts...)
+	in := core.NewTextInput(opts...)
 	sh := newShell(in)
 	h := startApp(t, sh, 20, 1)
 	h.inject(tab())
@@ -24,8 +24,8 @@ func focusedInput(t *testing.T, opts ...widget.TextInputOption) (*harness, *widg
 
 func TestTextInputTypingAndEvents(t *testing.T) {
 	h, in, sh := focusedInput(t)
-	changes := record[widget.ChangeEvent](h)
-	submits := record[widget.SubmitEvent](h)
+	changes := record[core.ChangeEvent](h)
+	submits := record[core.SubmitEvent](h)
 
 	h.inject(typeString("hi")...)
 	h.inject(key(tui.KeyEnter))
@@ -81,7 +81,7 @@ func TestTextInputKeysConsumedVsBubbled(t *testing.T) {
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			h, _, sh := focusedInput(t, widget.WithInitialValue("word one"))
+			h, _, sh := focusedInput(t, core.WithInitialValue("word one"))
 			h.inject(tc.ev)
 			h.barrier(sh)
 			bubbled := false
@@ -101,8 +101,8 @@ func TestTextInputKeysConsumedVsBubbled(t *testing.T) {
 // — one ChangeEvent, no SubmitEvent from a pasted newline.
 func TestTextInputPasteAtomic(t *testing.T) {
 	h, in, sh := focusedInput(t)
-	changes := record[widget.ChangeEvent](h)
-	submits := record[widget.SubmitEvent](h)
+	changes := record[core.ChangeEvent](h)
+	submits := record[core.SubmitEvent](h)
 
 	h.inject(tui.PasteEvent{Text: "line1\nline2"})
 	h.barrier(sh)
@@ -122,7 +122,7 @@ func TestTextInputPasteAtomic(t *testing.T) {
 
 // TestTextInputMask asserts mask runes paint; Value() returns raw.
 func TestTextInputMask(t *testing.T) {
-	h, in, sh := focusedInput(t, widget.WithMask('•'))
+	h, in, sh := focusedInput(t, core.WithMask('•'))
 	h.inject(typeString("secret")...)
 	h.barrier(sh)
 	var val string
@@ -166,7 +166,7 @@ func TestTextInputIMECursor(t *testing.T) {
 // (default policy) and the cursor parked at column 1 while Render painted the
 // glyph two cells wide.
 func TestTextInputCursorAmbiguousWidePolicy(t *testing.T) {
-	in := widget.NewTextInput()
+	in := core.NewTextInput()
 	sh := newShell(in)
 	h := startAppOpts(t, sh, 20, 1, tui.WithWidthPolicy(tui.WidthPolicyAmbiguousWide))
 	h.inject(tab())
@@ -191,8 +191,8 @@ func TestTextInputValidation(t *testing.T) {
 		}
 		return nil
 	}
-	h, in, sh := focusedInput(t, widget.WithValidate(validate))
-	submits := record[widget.SubmitEvent](h)
+	h, in, sh := focusedInput(t, core.WithValidate(validate))
+	submits := record[core.SubmitEvent](h)
 
 	h.inject(typeString("ab")...)
 	h.inject(key(tui.KeyEnter))
@@ -221,7 +221,7 @@ func TestTextInputValidation(t *testing.T) {
 // TestTextInputSelectionAndReadline: Shift+arrows select (replaced by
 // typing); Ctrl+A/E/U/W behave readline-style.
 func TestTextInputSelectionAndReadline(t *testing.T) {
-	h, in, sh := focusedInput(t, widget.WithInitialValue("hello world"))
+	h, in, sh := focusedInput(t, core.WithInitialValue("hello world"))
 	get := func() string {
 		var v string
 		h.onLoop(func() { v = in.Value() })
@@ -258,7 +258,7 @@ func TestTextInputSelectionAndReadline(t *testing.T) {
 // TestTextInputPlaceholderAndScroll: placeholder paints while empty;
 // overflow keeps the cursor visible by scrolling horizontally.
 func TestTextInputPlaceholder(t *testing.T) {
-	h, _, sh := focusedInput(t, widget.WithPlaceholder("type here"))
+	h, _, sh := focusedInput(t, core.WithPlaceholder("type here"))
 	h.settle()
 	h.wantContains("type here")
 	h.inject(key('x'))
@@ -288,8 +288,8 @@ var errRejected = errors.New("rejected by validation (test)")
 // where Enter on the first is supposed to hand the second the next character.
 type twoFieldForm struct {
 	flex   *tui.Flex
-	first  *widget.TextInput
-	second *widget.TextInput
+	first  *core.TextInput
+	second *core.TextInput
 	ctx    *tui.Context
 }
 
@@ -309,8 +309,8 @@ func (f *twoFieldForm) HandleEvent(tui.Event) bool { return false }
 func TestTextInputOnSubmitRunsBeforeTheNextKey(t *testing.T) {
 	for round := 0; round < 40; round++ {
 		form := &twoFieldForm{}
-		form.second = widget.NewTextInput()
-		form.first = widget.NewTextInput(widget.WithOnSubmit(func(string) {
+		form.second = core.NewTextInput()
+		form.first = core.NewTextInput(core.WithOnSubmit(func(string) {
 			form.ctx.FocusComponent(form.second)
 		}))
 		form.flex = tui.NewFlex(tui.Vertical)
@@ -345,8 +345,8 @@ func TestTextInputOnSubmitRunsBeforeTheNextKey(t *testing.T) {
 // existed before this option must see exactly what it saw.
 func TestTextInputOnSubmitDoesNotReplaceTheEvent(t *testing.T) {
 	var hookCalls int
-	h, in, sh := focusedInput(t, widget.WithOnSubmit(func(string) { hookCalls++ }))
-	submits := record[widget.SubmitEvent](h)
+	h, in, sh := focusedInput(t, core.WithOnSubmit(func(string) { hookCalls++ }))
+	submits := record[core.SubmitEvent](h)
 
 	h.inject(typeString("hi")...)
 	h.inject(key(tui.KeyEnter))
@@ -376,7 +376,7 @@ func TestTextInputARefusedValueHoldsEnter(t *testing.T) {
 		}
 		return nil
 	}
-	h, _, sh := focusedInput(t, widget.WithValidate(validate))
+	h, _, sh := focusedInput(t, core.WithValidate(validate))
 	bubbledEnters := func() int {
 		n := 0
 		for _, k := range sh.bubbledKeys() {
@@ -403,9 +403,9 @@ func TestTextInputARefusedValueHoldsEnter(t *testing.T) {
 func TestTextInputOnSubmitSkippedWhenValidationFails(t *testing.T) {
 	var hookCalls int
 	h, _, sh := focusedInput(t,
-		widget.WithValidate(func(string) error { return errRejected }),
-		widget.WithOnSubmit(func(string) { hookCalls++ }))
-	submits := record[widget.SubmitEvent](h)
+		core.WithValidate(func(string) error { return errRejected }),
+		core.WithOnSubmit(func(string) { hookCalls++ }))
+	submits := record[core.SubmitEvent](h)
 
 	h.inject(typeString("x")...)
 	h.inject(key(tui.KeyEnter))
@@ -423,7 +423,7 @@ func TestTextInputOnSubmitSkippedWhenValidationFails(t *testing.T) {
 // the value — and not when the program replaces the value.
 func TestWithOnEditReportsEditsNotSetValue(t *testing.T) {
 	var got []string
-	h, in, _ := focusedInput(t, widget.WithOnEdit(func(v string) { got = append(got, v) }))
+	h, in, _ := focusedInput(t, core.WithOnEdit(func(v string) { got = append(got, v) }))
 	h.inject(tui.KeyEvent{Kind: tui.KeyPress, Code: 'a', Text: "a"}, tui.KeyEvent{Kind: tui.KeyPress, Code: 'b', Text: "b"})
 	h.waitFor("two edits", func() bool {
 		var n int

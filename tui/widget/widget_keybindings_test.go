@@ -8,7 +8,8 @@ import (
 	"github.com/yongjohnlee80/golib/tui"
 	tuikey "github.com/yongjohnlee80/golib/tui/key"
 	"github.com/yongjohnlee80/golib/tui/keymap"
-	"github.com/yongjohnlee80/golib/tui/widget"
+	"github.com/yongjohnlee80/golib/tui/widget/core"
+	"github.com/yongjohnlee80/golib/tui/widget/editor"
 )
 
 // stopScopes is the routing order of bs as the scopes of its stops, adjacent repeats folded.
@@ -37,9 +38,9 @@ func bindingOf(bs []keymap.Binding, id string) (keymap.Binding, bool) {
 func TestTheKeysReachingAButtonInAModal(t *testing.T) {
 	m := mustKeymap(t, `<mapping><shortcut id="tui.button.activate"><key value="Ctrl+Y"/></shortcut></mapping>`)
 	copyCmd := keymap.Command{ID: "host.copy", Scope: "host", Keys: tuikey.MustParse("Y")}
-	ok := widget.NewButton("OK")
-	md := widget.NewModal(widget.NewText("Body"), widget.WithButtons(ok),
-		widget.WithModalKeyBinder(func(km *keymap.Map) []keymap.Binding { return tui.BindingsOf(km, copyCmd) }))
+	ok := core.NewButton("OK")
+	md := core.NewModal(core.NewText("Body"), core.WithButtons(ok),
+		core.WithModalKeyBinder(func(km *keymap.Map) []keymap.Binding { return tui.BindingsOf(km, copyCmd) }))
 	h, host, base := modalFixture(t, md, 40, 12)
 	defer h.stop()
 	h.onLoop(func() { h.app.ApplyKeymap(m) })
@@ -56,14 +57,14 @@ func TestTheKeysReachingAButtonInAModal(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if scope != widget.ButtonScope || modalScope != widget.ModalScope {
+	if scope != core.ButtonScope || modalScope != core.ModalScope {
 		t.Errorf("scopes: button %q, modal %q", scope, modalScope)
 	}
-	want := []keymap.Scope{widget.ButtonScope, widget.ModalScope, "host", keymap.App}
+	want := []keymap.Scope{core.ButtonScope, core.ModalScope, "host", keymap.App}
 	if got := stopScopes(bs); !slices.Equal(got, want) {
 		t.Errorf("routing order %v, want %v", got, want)
 	}
-	act, _ := bindingOf(bs, widget.ButtonActivate.ID)
+	act, _ := bindingOf(bs, core.ButtonActivate.ID)
 	if !slices.Equal(act.Keys, tuikey.MustParse("Ctrl+Y")) || act.Source.Kind != keymap.FromScheme || len(act.Reaches) == 0 {
 		t.Errorf("the button's activation: keys %v, source %v, reaches %v", act.Keys, act.Source.Kind, act.Reaches)
 	}
@@ -77,8 +78,8 @@ func TestTheKeysReachingAButtonInAModal(t *testing.T) {
 
 // A Menu's stop lists its commands, in the order it consults them.
 func TestTheKeysReachingAMenu(t *testing.T) {
-	menu := widget.NewMenu()
-	host := widget.NewOverlayHost(menu)
+	menu := core.NewMenu()
+	host := core.NewOverlayHost(menu)
 	h := startApp(t, host, 40, 8)
 	defer h.stop()
 	var bs []keymap.Binding
@@ -88,18 +89,18 @@ func TestTheKeysReachingAMenu(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if scope != widget.MenuScope {
+	if scope != core.MenuScope {
 		t.Errorf("scope %q", scope)
 	}
 	var ids []string
 	for _, b := range bs {
-		if b.Scope == widget.MenuScope {
+		if b.Scope == core.MenuScope {
 			ids = append(ids, b.Command.ID)
 		}
 	}
-	want := []string{widget.MenuLeft.ID, widget.MenuRight.ID, widget.MenuUp.ID, widget.MenuDown.ID,
-		widget.MenuVimLeft.ID, widget.MenuVimDown.ID, widget.MenuVimUp.ID, widget.MenuVimRight.ID,
-		widget.MenuActivate.ID, widget.MenuClose.ID}
+	want := []string{core.MenuLeft.ID, core.MenuRight.ID, core.MenuUp.ID, core.MenuDown.ID,
+		core.MenuVimLeft.ID, core.MenuVimDown.ID, core.MenuVimUp.ID, core.MenuVimRight.ID,
+		core.MenuActivate.ID, core.MenuClose.ID}
 	if !slices.Equal(ids, want) {
 		t.Errorf("the menu's commands %v, want %v", ids, want)
 	}
@@ -109,9 +110,9 @@ func TestTheKeysReachingAMenu(t *testing.T) {
 // mode's scope; both follow the mode.
 func TestTheKeysReachingAnEditorFollowItsMode(t *testing.T) {
 	for _, menu := range []bool{false, true} {
-		var opts []widget.EditorOption
+		var opts []editor.EditorOption
 		if menu {
-			opts = append(opts, widget.WithContextMenu(nil))
+			opts = append(opts, editor.WithContextMenu(nil))
 		}
 		h, e, sh := mountedEditor(t, nil, opts...)
 		read := func() (keymap.Scope, []keymap.Binding) {
@@ -129,7 +130,7 @@ func TestTheKeysReachingAnEditorFollowItsMode(t *testing.T) {
 		if scope != normal {
 			t.Fatalf("menu %v: scope %q, want %q", menu, scope, normal)
 		}
-		_, listed := bindingOf(bs, widget.EditorContextMenu.ID)
+		_, listed := bindingOf(bs, editor.EditorContextMenu.ID)
 		if listed != menu {
 			t.Errorf("menu %v: the context menu listed %v", menu, listed)
 		}
@@ -163,7 +164,7 @@ func TestIsContextMenuKeyIsTheDefaultKeys(t *testing.T) {
 		{"F10", tui.KeyEvent{Kind: tui.KeyPress, Code: tui.KeyF10}, false},
 		{"Menu released", tui.KeyEvent{Kind: tui.KeyRelease, Code: tui.KeyMenu}, false},
 	} {
-		if got := widget.IsContextMenuKey(c.k); got != c.want {
+		if got := editor.IsContextMenuKey(c.k); got != c.want {
 			t.Errorf("%s: %v, want %v", c.name, got, c.want)
 		}
 	}

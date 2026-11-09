@@ -4,14 +4,14 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/yongjohnlee80/golib/tui/widget"
+	"github.com/yongjohnlee80/golib/tui/widget/editor"
 )
 
 // foldLayout is a fake layout that draws the runs of lines in folds as one, as the GUI's Rendered
 // view draws a diagram: closed unless the core is typing (Insert, Replace).
 type foldLayout struct {
 	fakeLayout
-	core  *widget.EditorCore
+	core  *editor.EditorCore
 	folds []foldRun
 }
 
@@ -21,7 +21,7 @@ type foldRun struct {
 }
 
 func (l *foldLayout) FoldOf(line int) (int, int, bool, bool) {
-	if m := l.core.Mode(); m == widget.ModeInsert || m == widget.ModeReplace {
+	if m := l.core.Mode(); m == editor.ModeInsert || m == editor.ModeReplace {
 		return 0, 0, false, false
 	}
 	for _, f := range l.folds {
@@ -33,9 +33,9 @@ func (l *foldLayout) FoldOf(line int) (int, int, bool, bool) {
 }
 
 // folded is a core over text whose layout folds folds.
-func folded(t *testing.T, text string, folds ...foldRun) *widget.EditorCore {
+func folded(t *testing.T, text string, folds ...foldRun) *editor.EditorCore {
 	t.Helper()
-	c := widget.NewEditorCore(widget.CoreInitialText(text))
+	c := editor.NewEditorCore(editor.CoreInitialText(text))
 	c.Bind(nil, &foldLayout{fakeLayout: fakeLayout{per: 1, page: 5}, core: c, folds: folds})
 	return c
 }
@@ -45,7 +45,7 @@ const diagramDoc = "above\n```mermaid\nflowchart LR\n  A --> B\n  B --> C\n  C -
 
 var diagram = foldRun{from: 1, to: 7}
 
-func atLine(t *testing.T, c *widget.EditorCore, what string, ln, col int) {
+func atLine(t *testing.T, c *editor.EditorCore, what string, ln, col int) {
 	t.Helper()
 	if l, cc := c.Line(); l != ln || cc != col {
 		t.Errorf("%s: cursor (%d,%d), want (%d,%d)", what, l, cc, ln, col)

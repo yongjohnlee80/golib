@@ -20,7 +20,7 @@ import (
 
 	"github.com/yongjohnlee80/golib/tui"
 	"github.com/yongjohnlee80/golib/tui/style"
-	"github.com/yongjohnlee80/golib/tui/widget"
+	"github.com/yongjohnlee80/golib/tui/widget/core"
 )
 
 // harness runs an App on a TestBackend in a background goroutine.
@@ -401,28 +401,28 @@ func cellAttrs(h *harness, x, y int) tui.CellAttrs {
 // pane, status bar.
 type sqlitApp struct {
 	root    tui.Component
-	tables  *widget.List[string]
-	editor  *widget.TextArea
-	results *widget.List[string]
-	status  *widget.StatusBar
+	tables  *core.List[string]
+	editor  *core.TextArea
+	results *core.List[string]
+	status  *core.StatusBar
 
 	ctx *tui.Context
 }
 
 func newSqlitApp() *sqlitApp {
 	a := &sqlitApp{
-		tables:  widget.NewList(widget.WithItems[string](nil, func(s string) string { return s })),
-		editor:  widget.NewTextArea(widget.WithWrap(widget.WrapNone)),
-		results: widget.NewList(widget.WithItems[string](nil, func(s string) string { return s })),
-		status:  widget.NewStatusBar(),
+		tables:  core.NewList(core.WithItems[string](nil, func(s string) string { return s })),
+		editor:  core.NewTextArea(core.WithWrap(core.WrapNone)),
+		results: core.NewList(core.WithItems[string](nil, func(s string) string { return s })),
+		status:  core.NewStatusBar(),
 	}
-	main := widget.NewSplit(widget.Vertical,
-		widget.NewBox(a.editor, widget.WithTitle("Query"), widget.WithStatus("F5 run")),
-		widget.NewBox(a.results, widget.WithTitle("Results")),
-		widget.WithRatio(0.4))
-	body := widget.NewSplit(widget.Horizontal,
-		widget.NewBox(a.tables, widget.WithTitle("Tables")),
-		main, widget.WithRatio(0.25), widget.WithMinSizes(20, 40))
+	main := core.NewSplit(core.Vertical,
+		core.NewBox(a.editor, core.WithTitle("Query"), core.WithStatus("F5 run")),
+		core.NewBox(a.results, core.WithTitle("Results")),
+		core.WithRatio(0.4))
+	body := core.NewSplit(core.Horizontal,
+		core.NewBox(a.tables, core.WithTitle("Tables")),
+		main, core.WithRatio(0.25), core.WithMinSizes(20, 40))
 	dock := tui.NewDock()
 	dock.Pin(tui.DockBottom, a.status)
 	dock.Add(body)
@@ -511,7 +511,7 @@ func TestSqlitComposition(t *testing.T) {
 	// Third stop: Results pane.
 	h.inject(tab())
 	h.inject(key(tui.KeyDown), key(tui.KeyEnter))
-	acts := record[widget.ActivateEvent](h)
+	acts := record[core.ActivateEvent](h)
 	h.inject(key(tui.KeyEnter))
 	h.waitFor("activate", func() bool { return acts.count() > 0 })
 }
@@ -520,29 +520,29 @@ func TestSqlitComposition(t *testing.T) {
 // the modal Float traps focus, dims, dismisses on Esc with OverlayDismissedEvent;
 // BufferView streams a fake subprocess script with ANSI colors intact.
 func TestLazygitComposition(t *testing.T) {
-	statusBox := widget.NewBox(widget.NewList(widget.WithItems([]string{"master → origin"}, func(s string) string { return s })), widget.WithTitle("Status"))
-	filesBox := widget.NewBox(widget.NewList(widget.WithItems([]string{"M main.go"}, func(s string) string { return s })), widget.WithTitle("Files"))
-	branchesBox := widget.NewBox(widget.NewList(widget.WithItems([]string{"master"}, func(s string) string { return s })), widget.WithTitle("Branches"))
-	commitsBox := widget.NewBox(widget.NewList(widget.WithItems([]string{"abc123 init"}, func(s string) string { return s })), widget.WithTitle("Commits"))
-	view := widget.NewBufferView()
-	mainBox := widget.NewBox(view, widget.WithTitle("Diff"))
-	hints := widget.NewStatusBar()
+	statusBox := core.NewBox(core.NewList(core.WithItems([]string{"master → origin"}, func(s string) string { return s })), core.WithTitle("Status"))
+	filesBox := core.NewBox(core.NewList(core.WithItems([]string{"M main.go"}, func(s string) string { return s })), core.WithTitle("Files"))
+	branchesBox := core.NewBox(core.NewList(core.WithItems([]string{"master"}, func(s string) string { return s })), core.WithTitle("Branches"))
+	commitsBox := core.NewBox(core.NewList(core.WithItems([]string{"abc123 init"}, func(s string) string { return s })), core.WithTitle("Commits"))
+	view := core.NewBufferView()
+	mainBox := core.NewBox(view, core.WithTitle("Diff"))
+	hints := core.NewStatusBar()
 
-	left := widget.NewSplit(widget.Vertical, statusBox,
-		widget.NewSplit(widget.Vertical, filesBox,
-			widget.NewSplit(widget.Vertical, branchesBox, commitsBox)))
+	left := core.NewSplit(core.Vertical, statusBox,
+		core.NewSplit(core.Vertical, filesBox,
+			core.NewSplit(core.Vertical, branchesBox, commitsBox)))
 	dock := tui.NewDock()
 	dock.Pin(tui.DockBottom, hints)
-	dock.Add(widget.NewSplit(widget.Horizontal, left, mainBox, widget.WithRatio(0.35)))
+	dock.Add(core.NewSplit(core.Horizontal, left, mainBox, core.WithRatio(0.35)))
 
-	msgInput := widget.NewTextInput(widget.WithPlaceholder("commit message"))
-	dialog := widget.NewFloat(widget.NewBox(msgInput, widget.WithTitle("Commit message")),
-		widget.WithModal(true), widget.WithDimBackground(true))
-	host := widget.NewOverlayHost(dock)
+	msgInput := core.NewTextInput(core.WithPlaceholder("commit message"))
+	dialog := core.NewFloat(core.NewBox(msgInput, core.WithTitle("Commit message")),
+		core.WithModal(true), core.WithDimBackground(true))
+	host := core.NewOverlayHost(dock)
 	host.Attach(dialog)
 
 	h := startApp(t, host, 80, 24)
-	dismissed := record[widget.OverlayDismissedEvent](h)
+	dismissed := record[core.OverlayDismissedEvent](h)
 	h.onLoop(func() { hints.SetLeft("c: commit · q: quit") })
 	h.settle()
 
@@ -601,17 +601,17 @@ func TestLazygitComposition(t *testing.T) {
 }
 
 func ExampleOverlayHost() {
-	sidebar := widget.NewBox(widget.NewText("Sidebar"))
-	mainView := widget.NewBox(widget.NewText("Main View"))
-	confirmBox := widget.NewBox(widget.NewText("Confirm action"))
+	sidebar := core.NewBox(core.NewText("Sidebar"))
+	mainView := core.NewBox(core.NewText("Main View"))
+	confirmBox := core.NewBox(core.NewText("Confirm action"))
 
-	rootLayout := widget.NewSplit(widget.Horizontal, sidebar, mainView, widget.WithRatio(0.25))
-	overlayHost := widget.NewOverlayHost(rootLayout)
+	rootLayout := core.NewSplit(core.Horizontal, sidebar, mainView, core.WithRatio(0.25))
+	overlayHost := core.NewOverlayHost(rootLayout)
 
-	modalDialog := widget.NewFloat(confirmBox,
-		widget.WithModal(true),
-		widget.WithDimBackground(true),
-		widget.WithAnchor(widget.Center),
+	modalDialog := core.NewFloat(confirmBox,
+		core.WithModal(true),
+		core.WithDimBackground(true),
+		core.WithAnchor(core.Center),
 	)
 	overlayHost.Attach(modalDialog)
 	_ = overlayHost
@@ -619,14 +619,14 @@ func ExampleOverlayHost() {
 }
 
 func ExampleText() {
-	_ = widget.NewText("Active Project: golib / tui / widget",
-		widget.WithTextStyle(style.New().Bold(true)),
-		widget.WithWrapMode(widget.Truncate),
+	_ = core.NewText("Active Project: golib / tui / widget",
+		core.WithTextStyle(style.New().Bold(true)),
+		core.WithWrapMode(core.Truncate),
 	)
 
-	_ = widget.NewText("This panel displays high-volume logging output with backpressure.",
-		widget.WithTextStyle(style.New().Faint(true)),
-		widget.WithWrapMode(widget.Wrap),
+	_ = core.NewText("This panel displays high-volume logging output with backpressure.",
+		core.WithTextStyle(style.New().Faint(true)),
+		core.WithWrapMode(core.Wrap),
 	)
 	// Output:
 }

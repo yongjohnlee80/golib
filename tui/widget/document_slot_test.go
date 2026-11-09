@@ -3,12 +3,13 @@ package widget_test
 import (
 	"testing"
 
-	"github.com/yongjohnlee80/golib/tui/widget"
+	"github.com/yongjohnlee80/golib/tui/widget/core"
+	"github.com/yongjohnlee80/golib/tui/widget/editor"
 )
 
 // slotView is a DocumentView that records what it was shown.
 type slotView struct {
-	*widget.Text
+	*core.Text
 	shown string
 }
 
@@ -19,25 +20,25 @@ func (v *slotView) ShowDocument(text []byte) { v.shown = string(text) }
 // Show hands the view the text and swaps its visibility, once per change; a slot with no view
 // changes nothing. The choice is kept while Raw is drawn.
 func TestADocumentSlotDrawsWhatCanRender(t *testing.T) {
-	var d widget.DocumentSlot
-	d.Choose(widget.ViewRendered)
-	if d.Drawn(false) != widget.ViewRaw || d.Drawn(true) != widget.ViewRendered {
+	var d editor.DocumentSlot
+	d.Choose(editor.ViewRendered)
+	if d.Drawn(false) != editor.ViewRaw || d.Drawn(true) != editor.ViewRendered {
 		t.Errorf("no view: drawn %v without a renderer, %v with one; want Raw, Rendered", d.Drawn(false), d.Drawn(true))
 	}
 	if d.Show(true, func() []byte { return []byte("x") }) {
 		t.Error("Show with no view reported a change")
 	}
-	v := &slotView{Text: widget.NewText("")}
+	v := &slotView{Text: core.NewText("")}
 	if old := d.PutDocument(v); old != nil || v.Visible() {
 		t.Errorf("PutDocument: old %v, visible %v; want none, hidden", old, v.Visible())
 	}
-	if d.Drawn(false) != widget.ViewRaw || d.Active() {
+	if d.Drawn(false) != editor.ViewRaw || d.Active() {
 		t.Error("a view not turned on renders")
 	}
-	if !d.SetOn(true) || d.SetOn(true) || d.Drawn(false) != widget.ViewRendered {
+	if !d.SetOn(true) || d.SetOn(true) || d.Drawn(false) != editor.ViewRendered {
 		t.Errorf("SetOn: drawn %v; want Rendered, and one change", d.Drawn(false))
 	}
-	if !d.SetEnabled(false) || d.Drawn(true) != widget.ViewRaw || d.Chosen() != widget.ViewRendered || d.Enabled() {
+	if !d.SetEnabled(false) || d.Drawn(true) != editor.ViewRaw || d.Chosen() != editor.ViewRendered || d.Enabled() {
 		t.Errorf("withheld: drawn %v, chosen %v; want Raw drawn, Rendered kept", d.Drawn(true), d.Chosen())
 	}
 	d.SetEnabled(true)

@@ -4,7 +4,7 @@ import (
 	"testing"
 
 	"github.com/yongjohnlee80/golib/tui"
-	"github.com/yongjohnlee80/golib/tui/widget"
+	"github.com/yongjohnlee80/golib/tui/widget/editor"
 )
 
 // The editor's one key system, through HandleKey: where a binding runs is its
@@ -19,11 +19,11 @@ func keyPress(code rune, mods tui.Mods) tui.KeyEvent { return tui.KeyEvent{Code:
 func TestReplaceSeesTheDefaultRightButNotAnOverlaysRight(t *testing.T) {
 	for _, tc := range []struct {
 		name string
-		opts []widget.CoreOption
+		opts []editor.CoreOption
 		want string
 	}{
 		{"the default Right", nil, "xbcdef"},
-		{"an overlay's Right", []widget.CoreOption{widget.CoreKeymap(widget.Keymap{{Mode: widget.ModeInsert, Code: tui.KeyRight}: widget.ActRight})}, "xacdef"},
+		{"an overlay's Right", []editor.CoreOption{editor.CoreKeymap(editor.Keymap{{Mode: editor.ModeInsert, Code: tui.KeyRight}: editor.ActRight})}, "xacdef"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			c, _ := coreWith(t, "abcdef", tc.opts...)
@@ -40,7 +40,7 @@ func TestReplaceSeesTheDefaultRightButNotAnOverlaysRight(t *testing.T) {
 // In a table, Tab and Shift+Tab move between cells; Ctrl+Tab, a heavy qualifier the table assist
 // declines, inserts a literal tab, as it always did.
 func TestATablesTabMovesCellsAndCtrlTabInsertsATab(t *testing.T) {
-	c, _ := coreWith(t, sampleTable, widget.CoreTableEditing(true))
+	c, _ := coreWith(t, sampleTable, editor.CoreTableEditing(true))
 	keys(c, "i")
 	c.HandleKey(keyPress(tui.KeyTab, 0))
 	if got := c.TextIn(cellSelection(t, c)); got != "Column2" {
@@ -61,13 +61,13 @@ func TestATablesTabMovesCellsAndCtrlTabInsertsATab(t *testing.T) {
 // A list continues on Enter; Shift+Enter, Shift a qualifier the list assist declines, breaks the line
 // without a new marker.
 func TestAListContinuesOnEnterButNotOnShiftEnter(t *testing.T) {
-	c, _ := coreWith(t, "- a", widget.CoreKeyset(widget.KeysetStandard), widget.CoreListEditing(true))
+	c, _ := coreWith(t, "- a", editor.CoreKeyset(editor.KeysetStandard), editor.CoreListEditing(true))
 	c.HandleKey(keyPress(tui.KeyEnd, 0))
 	c.HandleKey(keyPress(tui.KeyEnter, 0))
 	if got := c.Value(); got != "- a\n- " {
 		t.Fatalf("Enter on a list item: %q", got)
 	}
-	c2, _ := coreWith(t, "- a", widget.CoreKeyset(widget.KeysetStandard), widget.CoreListEditing(true))
+	c2, _ := coreWith(t, "- a", editor.CoreKeyset(editor.KeysetStandard), editor.CoreListEditing(true))
 	c2.HandleKey(keyPress(tui.KeyEnd, 0))
 	c2.HandleKey(keyPress(tui.KeyEnter, tui.ModShift))
 	if got := c2.Value(); got != "- a\n" {
@@ -80,19 +80,19 @@ func TestAListContinuesOnEnterButNotOnShiftEnter(t *testing.T) {
 // map; the keys are handed to it on the loop.
 func TestAMovedTabCommandTakesTheTablesTabWithIt(t *testing.T) {
 	m := mustKeymap(t, `<mapping><shortcut id="tui.editor.vim.insert.insertTab"><key value="Alt+I"/></shortcut></mapping>`)
-	h, e, sh := mountedEditor(t, m, widget.WithCore(widget.CoreInitialText(sampleTable)), widget.WithCore(widget.CoreTableEditing(true)))
+	h, e, sh := mountedEditor(t, m, editor.WithCore(editor.CoreInitialText(sampleTable)), editor.WithCore(editor.CoreTableEditing(true)))
 	defer h.stop()
 	h.inject(ch('i'))
 	h.barrier(sh)
 	var moved, took bool
-	var at widget.TextPos
+	var at editor.TextPos
 	h.onLoop(func() {
 		c := e.Core()
 		moved = c.HandleKey(tui.KeyEvent{Kind: tui.KeyPress, Code: 'i', Mods: tui.ModAlt})
 		at = c.Cursor()
 		took = c.HandleKey(keyPress(tui.KeyTab, 0))
 	})
-	if !moved || at != (widget.TextPos{Line: 0, Col: 19}) {
+	if !moved || at != (editor.TextPos{Line: 0, Col: 19}) {
 		t.Fatalf("Alt+I in a table: consumed %v, cursor %+v; want it at Column2's end", moved, at)
 	}
 	if took {
@@ -115,7 +115,7 @@ func TestTheHeldChordRuneSettlesOnLateAndEarlyKeys(t *testing.T) {
 		t.Fatalf("j then Ctrl+W: %q; want the held j settled, then deleted", got)
 	}
 	keys(c, "jk")
-	if c.Mode() != widget.ModeNormal {
+	if c.Mode() != editor.ModeNormal {
 		t.Fatalf("jk left the mode %v", c.Mode())
 	}
 }
@@ -123,7 +123,7 @@ func TestTheHeldChordRuneSettlesOnLateAndEarlyKeys(t *testing.T) {
 // An overlay's unbind of Tab in Insert releases Tab and its modified forms: none reaches the tab
 // command, so each bubbles.
 func TestAnUnboundTabLendsItsModifiedFormsNothing(t *testing.T) {
-	c, _ := coreWith(t, "", widget.CoreKeymap(widget.Keymap{{Mode: widget.ModeInsert, Code: tui.KeyTab}: widget.ActUnbound}))
+	c, _ := coreWith(t, "", editor.CoreKeymap(editor.Keymap{{Mode: editor.ModeInsert, Code: tui.KeyTab}: editor.ActUnbound}))
 	keys(c, "i")
 	for _, mods := range []tui.Mods{0, tui.ModCtrl, tui.ModAlt} {
 		if c.HandleKey(keyPress(tui.KeyTab, mods)) {
@@ -137,7 +137,7 @@ func TestAnUnboundTabLendsItsModifiedFormsNothing(t *testing.T) {
 
 // Modeless Esc clears the selection anchor, else cancels a find, else is the host's.
 func TestModelessEscWithNothingToClearBubbles(t *testing.T) {
-	c, _ := coreWith(t, "text", widget.CoreKeyset(widget.KeysetStandard))
+	c, _ := coreWith(t, "text", editor.CoreKeyset(editor.KeysetStandard))
 	if c.HandleKey(keyPress(tui.KeyEscape, 0)) {
 		t.Fatal("Esc with nothing to clear was consumed")
 	}
@@ -145,7 +145,7 @@ func TestModelessEscWithNothingToClearBubbles(t *testing.T) {
 
 // A read-only core refuses an editing key, consumed, and still moves on a caret key.
 func TestAReadOnlyCoreRefusesEditingKeysAndMoves(t *testing.T) {
-	c, _ := coreWith(t, "ab", widget.CoreKeyset(widget.KeysetStandard), widget.CoreReadOnly(true))
+	c, _ := coreWith(t, "ab", editor.CoreKeyset(editor.KeysetStandard), editor.CoreReadOnly(true))
 	if !c.HandleKey(keyPress(tui.KeyEnter, 0)) || c.Value() != "ab" {
 		t.Fatalf("Enter in a read-only core: %q", c.Value())
 	}
@@ -160,7 +160,7 @@ func TestAReadOnlyCoreRefusesEditingKeysAndMoves(t *testing.T) {
 // goLine command's key completes gg: !g goes to the first line, and !! does not.
 func TestGGFollowsTheGoLineCommand(t *testing.T) {
 	m := mustKeymap(t, `<mapping><shortcut id="tui.editor.vim.normal.goPrefix"><key value="!"/></shortcut></mapping>`)
-	h, e, sh := mountedEditor(t, m, widget.WithCore(widget.CoreInitialText("one\ntwo\nthree")))
+	h, e, sh := mountedEditor(t, m, editor.WithCore(editor.CoreInitialText("one\ntwo\nthree")))
 	defer h.stop()
 	line := func() int {
 		var l int
@@ -183,7 +183,7 @@ func TestGGFollowsTheGoLineCommand(t *testing.T) {
 // bubbling.
 func TestAnAltBoundGCommandRuns(t *testing.T) {
 	m := mustKeymap(t, `<mapping><shortcut id="tui.editor.vim.g.goLine"><key value="Alt+G"/></shortcut></mapping>`)
-	h, e, sh := mountedEditor(t, m, widget.WithCore(widget.CoreInitialText("one\ntwo")))
+	h, e, sh := mountedEditor(t, m, editor.WithCore(editor.CoreInitialText("one\ntwo")))
 	defer h.stop()
 	h.inject(ch('j'), ch('g'), tui.KeyEvent{Kind: tui.KeyPress, Code: 'g', Mods: tui.ModAlt})
 	h.barrier(sh)
@@ -197,7 +197,7 @@ func TestAnAltBoundGCommandRuns(t *testing.T) {
 // A root unbind of i in Normal does not stop i naming a text object after an operator: the object
 // sub-scope is looked up first.
 func TestARootUnbindDoesNotHideTheObjectSubScope(t *testing.T) {
-	c, _ := coreWith(t, "one two", widget.CoreKeymap(widget.Keymap{{Mode: widget.ModeNormal, Code: 'i'}: widget.ActUnbound}))
+	c, _ := coreWith(t, "one two", editor.CoreKeymap(editor.Keymap{{Mode: editor.ModeNormal, Code: 'i'}: editor.ActUnbound}))
 	keys(c, "diw")
 	if got := c.Value(); got != " two" {
 		t.Fatalf("diw with i unbound in Normal: %q", got)
@@ -218,15 +218,15 @@ func TestAModifiedDigitIsNotACount(t *testing.T) {
 func TestInsertsEditingCommandsAreListed(t *testing.T) {
 	c, _ := coreWith(t, "")
 	var tab bool
-	for _, b := range c.BindingsForMode(widget.ModeInsert) {
-		if b.Action == widget.ActInsertTab {
+	for _, b := range c.BindingsForMode(editor.ModeInsert) {
+		if b.Action == editor.ActInsertTab {
 			tab = true
 		}
 	}
 	if !tab {
 		t.Fatal("Insert's Tab is not among Insert's bindings")
 	}
-	if got := widget.VimKeymap()[widget.KeyChord{Mode: widget.ModeInsert, Code: tui.KeyTab}]; got != widget.ActUnbound {
+	if got := editor.VimKeymap()[editor.KeyChord{Mode: editor.ModeInsert, Code: tui.KeyTab}]; got != editor.ActUnbound {
 		t.Fatalf("VimKeymap, the legacy table, has Insert Tab bound to %v", got)
 	}
 }
@@ -245,7 +245,7 @@ func TestReplaceDeclinesAHeavilyQualifiedKey(t *testing.T) {
 
 // A keyset names itself; one the editor does not know is Custom.
 func TestAKeysetNamesItself(t *testing.T) {
-	for ks, want := range map[widget.Keyset]string{widget.KeysetVim: "Vim", widget.KeysetNano: "Nano", widget.KeysetStandard: "Standard", widget.Keyset(99): "Custom"} {
+	for ks, want := range map[editor.Keyset]string{editor.KeysetVim: "Vim", editor.KeysetNano: "Nano", editor.KeysetStandard: "Standard", editor.Keyset(99): "Custom"} {
 		if got := ks.String(); got != want {
 			t.Errorf("Keyset(%d) is %q, want %q", int(ks), got, want)
 		}
@@ -258,19 +258,19 @@ func TestAKeysetNamesItself(t *testing.T) {
 // application.
 func TestAnEarlyBoundCaretKeyStillMovesWithAModifier(t *testing.T) {
 	text := "0123\n1\n2\n3\n4\n5\n6\n7\n8\n9"
-	right := widget.CoreKeymap(widget.Keymap{{Mode: widget.ModeInsert, Code: tui.KeyRight}: widget.ActLineEnd})
+	right := editor.CoreKeymap(editor.Keymap{{Mode: editor.ModeInsert, Code: tui.KeyRight}: editor.ActLineEnd})
 	for _, tc := range []struct {
 		name string
-		opts []widget.CoreOption
+		opts []editor.CoreOption
 		pre  string // Vim keys before the caret key; Nano and Standard start in Insert
 		key  tui.KeyEvent
-		want widget.TextPos
+		want editor.TextPos
 	}{
-		{"Nano Ctrl+End", []widget.CoreOption{widget.CoreKeyset(widget.KeysetNano)}, "", keyPress(tui.KeyEnd, tui.ModCtrl), widget.TextPos{Line: 0, Col: 4}},
-		{"Standard Ctrl+End", []widget.CoreOption{widget.CoreKeyset(widget.KeysetStandard)}, "", keyPress(tui.KeyEnd, tui.ModCtrl), widget.TextPos{Line: 0, Col: 4}},
-		{"Nano Alt+PgDn", []widget.CoreOption{widget.CoreKeyset(widget.KeysetNano)}, "", keyPress(tui.KeyPageDown, tui.ModAlt), widget.TextPos{Line: 5, Col: 0}},
-		{"Standard Ctrl+PgDn", []widget.CoreOption{widget.CoreKeyset(widget.KeysetStandard)}, "", keyPress(tui.KeyPageDown, tui.ModCtrl), widget.TextPos{Line: 5, Col: 0}},
-		{"an overlay's Right, with Super", []widget.CoreOption{right}, "i", keyPress(tui.KeyRight, tui.ModSuper), widget.TextPos{Line: 0, Col: 1}},
+		{"Nano Ctrl+End", []editor.CoreOption{editor.CoreKeyset(editor.KeysetNano)}, "", keyPress(tui.KeyEnd, tui.ModCtrl), editor.TextPos{Line: 0, Col: 4}},
+		{"Standard Ctrl+End", []editor.CoreOption{editor.CoreKeyset(editor.KeysetStandard)}, "", keyPress(tui.KeyEnd, tui.ModCtrl), editor.TextPos{Line: 0, Col: 4}},
+		{"Nano Alt+PgDn", []editor.CoreOption{editor.CoreKeyset(editor.KeysetNano)}, "", keyPress(tui.KeyPageDown, tui.ModAlt), editor.TextPos{Line: 5, Col: 0}},
+		{"Standard Ctrl+PgDn", []editor.CoreOption{editor.CoreKeyset(editor.KeysetStandard)}, "", keyPress(tui.KeyPageDown, tui.ModCtrl), editor.TextPos{Line: 5, Col: 0}},
+		{"an overlay's Right, with Super", []editor.CoreOption{right}, "i", keyPress(tui.KeyRight, tui.ModSuper), editor.TextPos{Line: 0, Col: 1}},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			c, _ := coreWith(t, text, tc.opts...)
@@ -283,9 +283,9 @@ func TestAnEarlyBoundCaretKeyStillMovesWithAModifier(t *testing.T) {
 			}
 		})
 	}
-	c, _ := coreWith(t, text, widget.CoreKeyset(widget.KeysetStandard))
+	c, _ := coreWith(t, text, editor.CoreKeyset(editor.KeysetStandard))
 	c.HandleKey(keyPress(tui.KeyEnd, 0))
-	if !c.HandleKey(keyPress(tui.KeyHome, tui.ModCtrl)) || c.Cursor() != (widget.TextPos{}) {
+	if !c.HandleKey(keyPress(tui.KeyHome, tui.ModCtrl)) || c.Cursor() != (editor.TextPos{}) {
 		t.Fatalf("Standard End, Ctrl+Home: the caret at %+v, want the line's start", c.Cursor())
 	}
 }
@@ -294,11 +294,11 @@ func TestAnEarlyBoundCaretKeyStillMovesWithAModifier(t *testing.T) {
 // them to, as it always did: an overlay's Enter bound to Undo, or an unbound Tab, never reaches the
 // host while the viewer does nothing.
 func TestAReadOnlyCoreConsumesAnEditingKeyWhateverItsBinding(t *testing.T) {
-	km := widget.CoreKeymap(widget.Keymap{
-		{Mode: widget.ModeInsert, Code: tui.KeyEnter}: widget.ActUndo,
-		{Mode: widget.ModeInsert, Code: tui.KeyTab}:   widget.ActUnbound,
+	km := editor.CoreKeymap(editor.Keymap{
+		{Mode: editor.ModeInsert, Code: tui.KeyEnter}: editor.ActUndo,
+		{Mode: editor.ModeInsert, Code: tui.KeyTab}:   editor.ActUnbound,
 	})
-	c, _ := coreWith(t, "ab", widget.CoreKeyset(widget.KeysetStandard), widget.CoreReadOnly(true), km)
+	c, _ := coreWith(t, "ab", editor.CoreKeyset(editor.KeysetStandard), editor.CoreReadOnly(true), km)
 	for _, k := range []tui.KeyEvent{keyPress(tui.KeyEnter, 0), keyPress(tui.KeyTab, 0), keyPress(tui.KeyBackspace, tui.ModCtrl)} {
 		if !c.HandleKey(k) || c.Value() != "ab" {
 			t.Errorf("%+v in a read-only core: consumed false or %q; want it consumed and refused", k, c.Value())

@@ -5,24 +5,24 @@ import (
 	"testing"
 
 	"github.com/yongjohnlee80/golib/tui"
-	"github.com/yongjohnlee80/golib/tui/widget"
+	"github.com/yongjohnlee80/golib/tui/widget/core"
 )
 
 // A commit reports the choice, then the close, then tells the owner: the bus hears
 // SelectionChangedEvent before ClosedEvent, and the owner's hook runs once the options have closed.
 func TestASelectCommitsThenClosesThenTellsItsOwner(t *testing.T) {
-	var sel *widget.Select[string]
+	var sel *core.Select[string]
 	var mu sync.Mutex
 	var bus []string
 	var openAtChange []bool
-	sel = widget.NewSelect[string](widget.WithOptions(selectItems("alpha", "beta", "gamma")),
-		widget.WithSelectOnChange[string](func(i int) { openAtChange = append(openAtChange, sel.Open()) }))
+	sel = core.NewSelect[string](core.WithOptions(selectItems("alpha", "beta", "gamma")),
+		core.WithSelectOnChange[string](func(i int) { openAtChange = append(openAtChange, sel.Open()) }))
 	flex := tui.NewFlex(tui.Vertical)
 	flex.Add(sel)
-	sh := newShell(widget.NewOverlayHost(flex))
+	sh := newShell(core.NewOverlayHost(flex))
 	h := startApp(t, sh, 30, 10)
-	tui.Subscribe(h.app.Bus(), func(widget.SelectionChangedEvent) { mu.Lock(); bus = append(bus, "selected"); mu.Unlock() })
-	tui.Subscribe(h.app.Bus(), func(widget.ClosedEvent) { mu.Lock(); bus = append(bus, "closed"); mu.Unlock() })
+	tui.Subscribe(h.app.Bus(), func(core.SelectionChangedEvent) { mu.Lock(); bus = append(bus, "selected"); mu.Unlock() })
+	tui.Subscribe(h.app.Bus(), func(core.ClosedEvent) { mu.Lock(); bus = append(bus, "closed"); mu.Unlock() })
 	h.inject(tab())
 	h.barrier(sh)
 	h.inject(key(tui.KeyEnter))
@@ -46,7 +46,7 @@ func TestASelectCommitsThenClosesThenTellsItsOwner(t *testing.T) {
 // A wheel notch over the open options' backdrop, outside their panel, moves the highlight, as one
 // over the panel does: Enter then commits the next option.
 func TestASelectsWheelOverItsBackdropMovesTheHighlight(t *testing.T) {
-	h, sel, sh := selectFixture(t, widget.WithOptions(selectItems("alpha", "beta", "gamma")))
+	h, sel, sh := selectFixture(t, core.WithOptions(selectItems("alpha", "beta", "gamma")))
 	h.inject(key(tui.KeyEnter))
 	h.barrier(sh)
 	h.wantContains("gamma")

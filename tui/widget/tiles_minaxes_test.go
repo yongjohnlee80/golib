@@ -4,7 +4,7 @@ import (
 	"testing"
 
 	"github.com/yongjohnlee80/golib/tui"
-	"github.com/yongjohnlee80/golib/tui/widget"
+	"github.com/yongjohnlee80/golib/tui/widget/core"
 )
 
 // tiles_minaxes_test.go: a tile's minimum on each axis (TilePlace's MinW and MinH). A strip keeps
@@ -15,17 +15,17 @@ import (
 func TestACentresMinimumIsItsOwnOnEachAxis(t *testing.T) {
 	for _, c := range []struct {
 		name     string
-		place    widget.TilePlace
+		place    core.TilePlace
 		governed bool
 	}{
-		{"Min 40 on both axes", widget.TilePlace{Edge: tui.DockCenter, Min: 40}, false},
-		{"MinW 40, MinH 8", widget.TilePlace{Edge: tui.DockCenter, MinW: 40, MinH: 8}, true},
+		{"Min 40 on both axes", core.TilePlace{Edge: tui.DockCenter, Min: 40}, false},
+		{"MinW 40, MinH 8", core.TilePlace{Edge: tui.DockCenter, MinW: 40, MinH: 8}, true},
 	} {
 		t.Run(c.name, func(t *testing.T) {
-			tiles := widget.NewTiles()
-			tiles.Add("page", widget.NewBox(widget.NewText(""), widget.WithTitle("PG")), c.place)
-			a := newMember("AA", widget.AtRect(tui.Rect{X: 50, Y: 3, W: 12, H: 4}), widget.Left)
-			tiles.AddMember("a", a, widget.TilePlace{Edge: tui.DockLeft, Size: 30, MinW: 20, MinH: 6}, true)
+			tiles := core.NewTiles()
+			tiles.Add("page", core.NewBox(core.NewText(""), core.WithTitle("PG")), c.place)
+			a := newMember("AA", core.AtRect(tui.Rect{X: 50, Y: 3, W: 12, H: 4}), core.Left)
+			tiles.AddMember("a", a, core.TilePlace{Edge: tui.DockLeft, Size: 30, MinW: 20, MinH: 6}, true)
 			r := startTiles(t, 100, 30, tiles, tiles, map[string]*member{"a": a})
 			if got := r.governed("a"); got != c.governed {
 				t.Fatalf("the member governed %v beside a centre of %+v, want %v:\n%s", got, c.place, c.governed, r.h.tb.String())
@@ -38,8 +38,8 @@ func TestACentresMinimumIsItsOwnOnEachAxis(t *testing.T) {
 // 6 rows, not 20. Its Size asks less on either axis, so the minimum is what places it.
 func TestAStripKeepsTheMinimumAcrossItsEdgeWhereverItDocks(t *testing.T) {
 	f := newTiles(t, 100, 30, []tileSpec{
-		{"strip", widget.TilePlace{Edge: tui.DockLeft, Edges: []tui.DockEdge{tui.DockLeft, tui.DockBottom}, Size: 10, MinW: 20, MinH: 6}},
-		{"page", widget.TilePlace{Edge: tui.DockCenter, Min: 5}},
+		{"strip", core.TilePlace{Edge: tui.DockLeft, Edges: []tui.DockEdge{tui.DockLeft, tui.DockBottom}, Size: 10, MinW: 20, MinH: 6}},
+		{"page", core.TilePlace{Edge: tui.DockCenter, Min: 5}},
 	})
 	f.wantRects("at the left", map[string]tui.Rect{"strip": {X: 0, Y: 0, W: 20, H: 30}})
 	f.h.onLoop(func() { f.m.SetEdge("strip", tui.DockBottom) })
@@ -61,8 +61,8 @@ func TestMinHoldsOnAnAxisWhoseOwnMinimumIsUnset(t *testing.T) {
 	} {
 		t.Run(c.name, func(t *testing.T) {
 			f := newTiles(t, 100, 30, []tileSpec{
-				{"strip", widget.TilePlace{Edge: tui.DockLeft, Edges: []tui.DockEdge{tui.DockLeft, tui.DockBottom}, Size: 10, Min: c.min, MinH: c.minH}},
-				{"page", widget.TilePlace{Edge: tui.DockCenter, Min: 5}},
+				{"strip", core.TilePlace{Edge: tui.DockLeft, Edges: []tui.DockEdge{tui.DockLeft, tui.DockBottom}, Size: 10, Min: c.min, MinH: c.minH}},
+				{"page", core.TilePlace{Edge: tui.DockCenter, Min: 5}},
 			})
 			f.wantRects("at the left", map[string]tui.Rect{"strip": {X: 0, Y: 0, W: c.left, H: 30}})
 			f.h.onLoop(func() { f.m.SetEdge("strip", tui.DockBottom) })
@@ -76,8 +76,8 @@ func TestMinHoldsOnAnAxisWhoseOwnMinimumIsUnset(t *testing.T) {
 // 0 there gives the width back to its Min.
 func TestSetMinSizeMovesTheClampLive(t *testing.T) {
 	f := newTiles(t, 100, 30, []tileSpec{
-		{"strip", widget.TilePlace{Edge: tui.DockLeft, Size: 10, Min: 15}},
-		{"page", widget.TilePlace{Edge: tui.DockCenter, Min: 5}},
+		{"strip", core.TilePlace{Edge: tui.DockLeft, Size: 10, Min: 15}},
+		{"page", core.TilePlace{Edge: tui.DockCenter, Min: 5}},
 	})
 	f.wantRects("Min alone", map[string]tui.Rect{"strip": {X: 0, Y: 0, W: 15, H: 30}})
 	f.h.onLoop(func() { f.m.SetMinSize("strip", tui.Size{W: 30}) })

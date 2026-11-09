@@ -5,17 +5,19 @@ import (
 	"testing"
 
 	"github.com/yongjohnlee80/golib/tui"
-	"github.com/yongjohnlee80/golib/tui/widget"
+	"github.com/yongjohnlee80/golib/tui/widget/core"
+	"github.com/yongjohnlee80/golib/tui/widget/editor"
+	"github.com/yongjohnlee80/golib/tui/widget/table"
 )
 
 // tabsEditor is an Editor in a Box titled title, w×10, its switch on the box's title row and its
 // tabs (alpha active) on the box's bottom border while on, the box's status status; chose records
 // each tab chosen.
-func tabsEditor(t *testing.T, w int, title, status string, on bool, tabs ...widget.StripTab) (*harness, *shell, *widget.Editor, *[]string) {
+func tabsEditor(t *testing.T, w int, title, status string, on bool, tabs ...core.StripTab) (*harness, *shell, *editor.Editor, *[]string) {
 	t.Helper()
-	ed := widget.NewEditor(widget.WithCore(widget.CoreInitialText("name,n\nann,1\n")), widget.EditorModeSwitch(true))
+	ed := editor.NewEditor(editor.WithCore(editor.CoreInitialText("name,n\nann,1\n")), editor.EditorModeSwitch(true))
 	ed.SetModeSwitchInTitle(true)
-	ed.SetDocumentView(widget.NewTableDocument(ed.Core(), ','))
+	ed.SetDocumentView(table.NewTableDocument(ed.Core(), ','))
 	ed.SetRenderedDocument(true)
 	ed.SetTabsInFrame(on)
 	var chose []string
@@ -25,8 +27,8 @@ func tabsEditor(t *testing.T, w int, title, status string, on bool, tabs ...widg
 	if len(tabs) > 0 {
 		strip.SetActive(tabs[0].ID)
 	}
-	box := widget.NewBox(ed, widget.WithTitle(title), widget.WithStatus(status),
-		widget.WithTitleSlot(ed.TitleSwitch()), widget.WithBottomSlot(ed.FrameTabs()))
+	box := core.NewBox(ed, core.WithTitle(title), core.WithStatus(status),
+		core.WithTitleSlot(ed.TitleSwitch()), core.WithBottomSlot(ed.FrameTabs()))
 	sh := newShell(box)
 	h := startApp(t, sh, w, 10)
 	h.onLoop(func() { h.app.FocusInto(ed) })
@@ -34,7 +36,7 @@ func tabsEditor(t *testing.T, w int, title, status string, on bool, tabs ...widg
 	return h, sh, ed, &chose
 }
 
-var twoTabs = []widget.StripTab{{ID: "1", Label: "alpha"}, {ID: "2", Label: "beta"}}
+var twoTabs = []core.StripTab{{ID: "1", Label: "alpha"}, {ID: "2", Label: "beta"}}
 
 // col is the column, in cells, where sub starts on row y, -1 for none.
 func col(h *harness, y int, sub string) int {
@@ -52,7 +54,7 @@ func TestTheTabsSitOnTheFramesBottomBorder(t *testing.T) {
 	h, sh, _, chose := tabsEditor(t, 60, "notes.csv", "", true, twoTabs...)
 	defer h.stop()
 	top, bottom := h.row(0), h.row(9)
-	if !strings.HasPrefix(top, "┌ notes.csv ") || col(h, 0, "alpha") >= 0 || switchCol(h, 0) != 60-2-widget.ModeSwitchWidth {
+	if !strings.HasPrefix(top, "┌ notes.csv ") || col(h, 0, "alpha") >= 0 || switchCol(h, 0) != 60-2-editor.ModeSwitchWidth {
 		t.Fatalf("the title row %q; want the title and the switch, as without tabs", top)
 	}
 	a, b := col(h, 9, "alpha"), col(h, 9, "beta")
@@ -74,7 +76,7 @@ func TestTabsOffOrNoneTakeNoRoom(t *testing.T) {
 	for _, c := range []struct {
 		name string
 		on   bool
-		tabs []widget.StripTab
+		tabs []core.StripTab
 	}{
 		{"off", false, twoTabs},
 		{"no tabs", true, nil},
@@ -108,9 +110,9 @@ func TestTabsInFrameTurnsLive(t *testing.T) {
 // In a narrow frame the tabs scroll in the border's room, the active one in view, a border cell
 // before the corner.
 func TestNarrowTabsKeepToTheirRoom(t *testing.T) {
-	var many []widget.StripTab
+	var many []core.StripTab
 	for _, n := range []string{"one", "two", "three", "four", "five", "six", "seven"} {
-		many = append(many, widget.StripTab{ID: n, Label: n + ".md"})
+		many = append(many, core.StripTab{ID: n, Label: n + ".md"})
 	}
 	h, _, _, _ := tabsEditor(t, 40, "notes.csv", "", true, many...)
 	defer h.stop()
@@ -135,14 +137,14 @@ func TestTheStatusKeepsItsPlaceBesideTheTabs(t *testing.T) {
 
 // A press on a tab reaches the strip with the focus elsewhere, and leaves the focus where it was.
 func TestABorderTabTakesAPressWithTheFocusElsewhere(t *testing.T) {
-	ed := widget.NewEditor(widget.WithCore(widget.CoreInitialText("x\n")))
+	ed := editor.NewEditor(editor.WithCore(editor.CoreInitialText("x\n")))
 	ed.SetTabsInFrame(true)
 	var chose []string
 	ed.Tabs().SetOnSelect(func(id string) { chose = append(chose, id) })
 	ed.Tabs().SetTabs(twoTabs)
-	other := widget.NewTextInput()
-	box := widget.NewBox(ed, widget.WithTitle("t"), widget.WithBottomSlot(ed.FrameTabs()))
-	sh := newShell(widget.NewSplit(widget.Horizontal, other, box))
+	other := core.NewTextInput()
+	box := core.NewBox(ed, core.WithTitle("t"), core.WithBottomSlot(ed.FrameTabs()))
+	sh := newShell(core.NewSplit(core.Horizontal, other, box))
 	h := startApp(t, sh, 90, 8)
 	defer h.stop()
 	h.onLoop(func() { h.app.FocusInto(other) })
@@ -165,8 +167,8 @@ func TestABorderTabTakesAPressWithTheFocusElsewhere(t *testing.T) {
 
 // The bottom slot is the box's child: listed after the title slot, and removed by Remove.
 func TestTheBottomSlotIsABoxChild(t *testing.T) {
-	ed := widget.NewEditor()
-	box := widget.NewBox(ed, widget.WithTitleSlot(ed.TitleSwitch()), widget.WithBottomSlot(ed.FrameTabs()))
+	ed := editor.NewEditor()
+	box := core.NewBox(ed, core.WithTitleSlot(ed.TitleSwitch()), core.WithBottomSlot(ed.FrameTabs()))
 	var kids []tui.Component
 	for c := range box.Children() {
 		kids = append(kids, c)

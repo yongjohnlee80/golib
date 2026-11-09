@@ -4,7 +4,7 @@ import (
 	"testing"
 
 	"github.com/yongjohnlee80/golib/tui"
-	"github.com/yongjohnlee80/golib/tui/widget"
+	"github.com/yongjohnlee80/golib/tui/widget/core"
 )
 
 // panel is a container of one child that places it as a window: a WindowTargetProvider that is
@@ -22,7 +22,7 @@ func (t *panelTarget) Area() tui.Rect            { return tui.Rect{W: 40, H: 10}
 func (t *panelTarget) SetBounds(r tui.Rect) bool { t.bounds = r; return true }
 func (t *panelTarget) Checkpoint() func()        { b := t.bounds; return func() { t.bounds = b } }
 
-func (p *panel) WindowTargetFor(*widget.WindowCore, *tui.Context) (any, func(tui.Point) tui.Point) {
+func (p *panel) WindowTargetFor(*core.WindowCore, *tui.Context) (any, func(tui.Point) tui.Point) {
 	return p.target, nil
 }
 
@@ -30,7 +30,7 @@ func (p *panel) WindowTargetFor(*widget.WindowCore, *tui.Context) (any, func(tui
 // WindowTargetProvider, whatever its type: a move inside a container that is not a Float reaches
 // that container's target. Before, only a *Float was looked for, and the WindowMod had none.
 func TestAWindowModPlacesThroughAnyWindowTargetProvider(t *testing.T) {
-	w := widget.NewWindowMod(widget.NewText("x"), widget.WithWindowMove())
+	w := core.NewWindowMod(core.NewText("x"), core.WithWindowMove())
 	p := &panel{Flex: tui.NewFlex(tui.Vertical), target: &panelTarget{bounds: tui.Rect{X: 2, Y: 1, W: 10, H: 4}}}
 	p.Add(w)
 	h := startApp(t, p, 40, 10)

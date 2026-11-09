@@ -11,12 +11,12 @@ import (
 	"testing"
 
 	"github.com/yongjohnlee80/golib/tui"
-	"github.com/yongjohnlee80/golib/tui/widget"
+	"github.com/yongjohnlee80/golib/tui/widget/htmlview"
 )
 
-func mountedHTML(t *testing.T, w, h int, html string, opts ...widget.HTMLOption) (*harness, *widget.HTMLView, *shell) {
+func mountedHTML(t *testing.T, w, h int, html string, opts ...htmlview.HTMLOption) (*harness, *htmlview.HTMLView, *shell) {
 	t.Helper()
-	v := widget.NewHTMLView(opts...)
+	v := htmlview.NewHTMLView(opts...)
 	v.SetHTML([]byte(html))
 	sh := newShell(v)
 	hh := startApp(t, sh, w, h)
@@ -82,7 +82,7 @@ func TestHTMLViewSelectsAndCopies(t *testing.T) {
 func TestHTMLViewLinks(t *testing.T) {
 	var links []string
 	h, _, sh := mountedHTML(t, 30, 5, `<p>go <a href="next.md#s">there</a> now</p>`,
-		widget.WithOnLink(func(href string) { links = append(links, href) }))
+		htmlview.WithOnLink(func(href string) { links = append(links, href) }))
 	h.waitFor("drawn", func() bool { return strings.Contains(h.grid(), "there") })
 	h.inject(mouseAt(tui.MousePress, 4, 0), mouseAt(tui.MouseRelease, 4, 0))
 	h.inject(mouseAt(tui.MousePress, 0, 0), mouseAt(tui.MouseMotion, 4, 0), mouseAt(tui.MouseRelease, 4, 0))
@@ -107,7 +107,7 @@ func longDoc(n int, prefix string) string {
 // the top there when blocks are added above it.
 func TestHTMLViewScrollSync(t *testing.T) {
 	var tops []int
-	h, v, sh := mountedHTML(t, 20, 5, longDoc(30, "para "), widget.WithOnScroll(func(b int) { tops = append(tops, b) }))
+	h, v, sh := mountedHTML(t, 20, 5, longDoc(30, "para "), htmlview.WithOnScroll(func(b int) { tops = append(tops, b) }))
 	h.waitFor("drawn", func() bool { return strings.Contains(h.grid(), "para 0") })
 	h.inject(tui.MouseEvent{Kind: tui.MouseWheel, Button: tui.WheelDown})
 	h.waitFor("scrolled by the wheel", func() bool { return strings.HasPrefix(h.row(0), "para 2") || strings.HasPrefix(h.row(1), "para 2") })
@@ -171,7 +171,7 @@ func TestDirImagesStaysInItsRoot(t *testing.T) {
 	if err := os.Symlink(filepath.Join("img", "a.png"), filepath.Join(root, "in.png")); err != nil { // relative, inside
 		t.Fatal(err)
 	}
-	res := widget.DirImages(root)
+	res := htmlview.DirImages(root)
 	ctx := context.Background()
 	for _, ok := range []string{"img/a.png", "./img/a.png", "img/../img/a.png", "img/a.png?v=2", "in.png"} {
 		rc, err := res(ctx, ok)
@@ -190,7 +190,7 @@ func TestDirImagesStaysInItsRoot(t *testing.T) {
 		if rc, err := res(ctx, bad); err == nil {
 			_ = rc.Close()
 			t.Errorf("%q opened, want it refused", bad)
-		} else if bad != "" && !errors.Is(err, widget.ErrImageRefused) && !errors.Is(err, os.ErrNotExist) {
+		} else if bad != "" && !errors.Is(err, htmlview.ErrImageRefused) && !errors.Is(err, os.ErrNotExist) {
 			t.Errorf("%q: %v, want a refusal", bad, err)
 		}
 	}
@@ -211,7 +211,7 @@ func TestDirResourcesReadsAgainstTheBase(t *testing.T) {
 		}
 	}
 	ctx := context.Background()
-	res := widget.DirResources(root, "Aesop")
+	res := htmlview.DirResources(root, "Aesop")
 	for src, want := range map[string]string{"../assets/a.svg": "assets/a.svg", "img/b.png": "Aesop/img/b.png",
 		"c.css": "Aesop/c.css", "./c.css?v=1": "Aesop/c.css"} {
 		rc, err := res(ctx, src)
@@ -232,17 +232,17 @@ func TestDirResourcesReadsAgainstTheBase(t *testing.T) {
 		}
 	}
 	// an outside file's resolver: its own folder is the root, and its parent's assets are refused
-	own := widget.DirResources(filepath.Join(root, "Aesop"), "")
+	own := htmlview.DirResources(filepath.Join(root, "Aesop"), "")
 	if rc, err := own(ctx, "c.css"); err != nil {
 		t.Errorf("a sibling from the file's own root: %v", err)
 	} else {
 		_ = rc.Close()
 	}
-	if _, err := own(ctx, "../assets/a.svg"); !errors.Is(err, widget.ErrImageRefused) {
+	if _, err := own(ctx, "../assets/a.svg"); !errors.Is(err, htmlview.ErrImageRefused) {
 		t.Errorf("../assets from the file's own root: %v, want refused", err)
 	}
 	for _, base := range []string{"..", "../x", "/abs"} {
-		if _, err := widget.DirResources(root, base)(ctx, "assets/a.svg"); !errors.Is(err, widget.ErrImageRefused) {
+		if _, err := htmlview.DirResources(root, base)(ctx, "assets/a.svg"); !errors.Is(err, htmlview.ErrImageRefused) {
 			t.Errorf("base %q: %v, want everything refused", base, err)
 		}
 	}
@@ -286,7 +286,7 @@ func TestHTMLViewScrollsByVimKeys(t *testing.T) {
 // replaces what a clicked link calls.
 func TestHTMLViewShowDocumentAndSetOnLink(t *testing.T) {
 	var first, second []string
-	h, v, sh := mountedHTML(t, 30, 4, `<p>old</p>`, widget.WithOnLink(func(href string) { first = append(first, href) }))
+	h, v, sh := mountedHTML(t, 30, 4, `<p>old</p>`, htmlview.WithOnLink(func(href string) { first = append(first, href) }))
 	h.onLoop(func() {
 		v.ShowDocument([]byte(`<p><a href="b.html">the link</a></p>`))
 		v.SetOnLink(func(href string) { second = append(second, href) })
@@ -302,17 +302,17 @@ func TestHTMLViewShowDocumentAndSetOnLink(t *testing.T) {
 // DiagramsSet counts each WithDiagrams, whatever it gives: a function, which cannot be compared,
 // or the same value again. A pixel layout asks the diagrams again when it changes.
 func TestHTMLViewCountsTheDiagramsItIsGiven(t *testing.T) {
-	v := widget.NewHTMLView()
+	v := htmlview.NewHTMLView()
 	if v.DiagramsSet() != 0 || v.Diagrams() != nil {
 		t.Fatalf("a new view: set %d, diagrams %v", v.DiagramsSet(), v.Diagrams())
 	}
 	f := func() {}
-	widget.WithDiagrams(f)(v)
-	widget.WithDiagrams(f)(v)
+	htmlview.WithDiagrams(f)(v)
+	htmlview.WithDiagrams(f)(v)
 	if v.DiagramsSet() != 2 || v.Diagrams() == nil {
 		t.Errorf("after two WithDiagrams: set %d, diagrams %v", v.DiagramsSet(), v.Diagrams())
 	}
-	if widget.NewHTMLView(widget.WithDiagrams(f)).DiagramsSet() != 1 {
+	if htmlview.NewHTMLView(htmlview.WithDiagrams(f)).DiagramsSet() != 1 {
 		t.Error("a view built with its diagrams counts them once")
 	}
 }

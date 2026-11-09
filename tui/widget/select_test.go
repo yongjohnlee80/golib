@@ -9,26 +9,26 @@ import (
 
 	"github.com/yongjohnlee80/golib/tui"
 	"github.com/yongjohnlee80/golib/tui/style"
-	"github.com/yongjohnlee80/golib/tui/widget"
+	"github.com/yongjohnlee80/golib/tui/widget/core"
 )
 
-func selectItems(labels ...string) []widget.SelectItem[string] {
-	items := make([]widget.SelectItem[string], len(labels))
+func selectItems(labels ...string) []core.SelectItem[string] {
+	items := make([]core.SelectItem[string], len(labels))
 	for i, l := range labels {
-		items[i] = widget.SelectItem[string]{Label: l, Value: strings.ToUpper(l)}
+		items[i] = core.SelectItem[string]{Label: l, Value: strings.ToUpper(l)}
 	}
 	return items
 }
 
 // selectFixture: an OverlayHost root wrapping a Select and a sibling
 // TextInput (a second tab stop proving the trap).
-func selectFixture(t *testing.T, opts ...widget.SelectOption[string]) (*harness, *widget.Select[string], *shell) {
+func selectFixture(t *testing.T, opts ...core.SelectOption[string]) (*harness, *core.Select[string], *shell) {
 	t.Helper()
-	sel := widget.NewSelect[string](opts...)
+	sel := core.NewSelect[string](opts...)
 	flex := tui.NewFlex(tui.Vertical)
 	flex.Add(sel)
-	flex.Add(widget.NewTextInput(widget.WithPlaceholder("other stop")))
-	sh := newShell(widget.NewOverlayHost(flex))
+	flex.Add(core.NewTextInput(core.WithPlaceholder("other stop")))
+	sh := newShell(core.NewOverlayHost(flex))
 	h := startApp(t, sh, 30, 10)
 	h.inject(tab()) // focus the Select (first stop)
 	h.barrier(sh)
@@ -39,10 +39,10 @@ func selectFixture(t *testing.T, opts ...widget.SelectOption[string]) (*harness,
 // the overlay layer, Enter commits with SelectionChangedEvent, and the
 // popup closes.
 func TestSelectOpenOverlayAndCommit(t *testing.T) {
-	h, sel, sh := selectFixture(t, widget.WithOptions(selectItems("alpha", "beta", "gamma")))
-	opened := record[widget.OpenedEvent](h)
-	closed := record[widget.ClosedEvent](h)
-	sels := record[widget.SelectionChangedEvent](h)
+	h, sel, sh := selectFixture(t, core.WithOptions(selectItems("alpha", "beta", "gamma")))
+	opened := record[core.OpenedEvent](h)
+	closed := record[core.ClosedEvent](h)
+	sels := record[core.SelectionChangedEvent](h)
 
 	// Closed state: one-line field with the ▾ affordance; options hidden.
 	h.settle()
@@ -79,7 +79,7 @@ func TestSelectOpenOverlayAndCommit(t *testing.T) {
 // TestSelectFocusTrapAndEsc asserts that Tab cycles within the open
 // overlay (the trap), Esc restores the prior focus and selection.
 func TestSelectFocusTrapAndEsc(t *testing.T) {
-	h, sel, sh := selectFixture(t, widget.WithOptions(selectItems("alpha", "beta")))
+	h, sel, sh := selectFixture(t, core.WithOptions(selectItems("alpha", "beta")))
 	h.inject(key(tui.KeyEnter)) // open
 	h.barrier(sh)
 	h.wantContains("beta")
@@ -110,8 +110,8 @@ func TestSelectFocusTrapAndEsc(t *testing.T) {
 // Backspace edits the filter.
 func TestSelectFilter(t *testing.T) {
 	h, _, sh := selectFixture(t,
-		widget.WithOptions(selectItems("apple", "banana", "cherry")),
-		widget.WithFilter[string](true))
+		core.WithOptions(selectItems("apple", "banana", "cherry")),
+		core.WithFilter[string](true))
 	h.inject(key(tui.KeyEnter))
 	h.barrier(sh)
 	h.wantContains("banana")
@@ -156,7 +156,7 @@ func TestSelectAsyncOptions(t *testing.T) {
 // TestSelectClickOutsideCloses: the overlay layer sees outside clicks
 // first and closes.
 func TestSelectClickOutsideCloses(t *testing.T) {
-	h, _, sh := selectFixture(t, widget.WithOptions(selectItems("alpha", "beta")))
+	h, _, sh := selectFixture(t, core.WithOptions(selectItems("alpha", "beta")))
 	h.inject(key(tui.KeyEnter))
 	h.barrier(sh)
 	h.wantContains("beta")
@@ -179,7 +179,7 @@ func release(x, y int) tui.MouseEvent {
 // implements tui.Activatable, and Select did not. A click hit-tested to the
 // field, moved focus to it, and stopped — reported as "it just focuses".
 func TestSelectOpensOnClick(t *testing.T) {
-	h, _, sh := selectFixture(t, widget.WithOptions(selectItems("alpha", "beta")))
+	h, _, sh := selectFixture(t, core.WithOptions(selectItems("alpha", "beta")))
 	h.wantNotContains("beta") // closed: only the field is on screen
 
 	h.inject(click(0, 0), release(0, 0))
@@ -192,7 +192,7 @@ func TestSelectOpensOnClick(t *testing.T) {
 // is the behaviour that makes a dropdown impossible to dismiss by changing
 // your mind mid-click.
 func TestSelectClickAbandonedOutsideDoesNotOpen(t *testing.T) {
-	h, _, sh := selectFixture(t, widget.WithOptions(selectItems("alpha", "beta")))
+	h, _, sh := selectFixture(t, core.WithOptions(selectItems("alpha", "beta")))
 	h.inject(click(0, 0), release(0, 9)) // press on the field, release far away
 	h.barrier(sh)
 	h.wantNotContains("beta")
@@ -203,8 +203,8 @@ func TestSelectClickAbandonedOutsideDoesNotOpen(t *testing.T) {
 // label.
 func TestSelectPlaceholderShowsOnlyWhileNothingIsSelected(t *testing.T) {
 	h, _, sh := selectFixture(t,
-		widget.WithOptions(selectItems("alpha", "beta")),
-		widget.WithSelectPlaceholder[string]("empty…"))
+		core.WithOptions(selectItems("alpha", "beta")),
+		core.WithSelectPlaceholder[string]("empty…"))
 	h.wantContains("empty…")
 
 	// Commit a real choice; the placeholder must give way to it.
@@ -217,18 +217,18 @@ func TestSelectPlaceholderShowsOnlyWhileNothingIsSelected(t *testing.T) {
 // THE AFFORDANCE CAN BE WITHHELD, for a host that already marks the focused
 // row itself and does not want the same thing said twice in two places.
 func TestSelectAffordanceIsDrawnByDefaultAndCanBeWithheld(t *testing.T) {
-	h, _, _ := selectFixture(t, widget.WithOptions(selectItems("alpha")))
+	h, _, _ := selectFixture(t, core.WithOptions(selectItems("alpha")))
 	h.wantContains("▾")
 
 	h2, _, _ := selectFixture(t,
-		widget.WithOptions(selectItems("alpha")),
-		widget.WithAffordance[string](false))
+		core.WithOptions(selectItems("alpha")),
+		core.WithAffordance[string](false))
 	h2.wantNotContains("▾")
 }
 
 func TestSelectUsesCompactWidthAndResizesWithOptions(t *testing.T) {
 	h, sel, sh := placedSelectFixture(t, 0, 0, 50, 10,
-		widget.WithOptions(selectItems("alpha")))
+		core.WithOptions(selectItems("alpha")))
 	if got := strings.Index(h.row(0), "▾"); got != 7 {
 		t.Fatalf("arrow column = %d, want 7 for alpha: %q", got, h.row(0))
 	}
@@ -247,19 +247,19 @@ func TestSelectUsesCompactWidthAndResizesWithOptions(t *testing.T) {
 
 func TestSelectCapsWideOptions(t *testing.T) {
 	h, _, _ := placedSelectFixture(t, 0, 0, 60, 10,
-		widget.WithOptions(selectItems(strings.Repeat("a", 55))))
+		core.WithOptions(selectItems(strings.Repeat("a", 55))))
 	if got := strings.Index(h.row(0), "▾"); got != 39 {
 		t.Fatalf("arrow column = %d, want 39: %q", got, h.row(0))
 	}
 	h2, _, _ := placedSelectFixture(t, 0, 0, 60, 10,
-		widget.WithOptions(selectItems(strings.Repeat("a", 55))), widget.WithSelectMaxWidth[string](12))
+		core.WithOptions(selectItems(strings.Repeat("a", 55))), core.WithSelectMaxWidth[string](12))
 	if got := strings.Index(h2.row(0), "▾"); got != 11 {
 		t.Fatalf("custom cap arrow column = %d, want 11: %q", got, h2.row(0))
 	}
 }
 
 func TestSelectTightLayoutKeepsVisualAndPointerBoundsCompact(t *testing.T) {
-	selectField := widget.NewSelect(widget.WithOptions(selectItems("alpha", "beta")))
+	selectField := core.NewSelect(core.WithOptions(selectItems("alpha", "beta")))
 	size := selectField.Layout(tui.Constraints{MinW: 80, MaxW: 80, MinH: 1, MaxH: 1})
 	if size.W != 80 {
 		t.Fatalf("allocated width = %d, want 80", size.W)
@@ -271,7 +271,7 @@ func TestSelectTightLayoutKeepsVisualAndPointerBoundsCompact(t *testing.T) {
 
 // j AND k MOVE THE HIGHLIGHT on a select that is not filtering.
 func TestSelectVimMotionWhenNotFiltering(t *testing.T) {
-	h, sel, sh := selectFixture(t, widget.WithOptions(selectItems("alpha", "beta", "gamma")))
+	h, sel, sh := selectFixture(t, core.WithOptions(selectItems("alpha", "beta", "gamma")))
 	h.inject(key(tui.KeyEnter), key('j'), key('j'), key(tui.KeyEnter))
 	h.barrier(sh)
 
@@ -285,8 +285,8 @@ func TestSelectVimMotionWhenNotFiltering(t *testing.T) {
 // operator most needs to type: "jetbrains", "sqlite".
 func TestSelectFilteringKeepsJAndKAsText(t *testing.T) {
 	h, _, sh := selectFixture(t,
-		widget.WithOptions(selectItems("jetbrains", "kotlin", "alpha")),
-		widget.WithFilter[string](true))
+		core.WithOptions(selectItems("jetbrains", "kotlin", "alpha")),
+		core.WithFilter[string](true))
 	h.inject(key(tui.KeyEnter), key('j'))
 	h.barrier(sh)
 
@@ -300,7 +300,7 @@ func TestSelectFilteringKeepsJAndKAsText(t *testing.T) {
 // focus look it is the same row whether the keyboard is in it or not, so an
 // operator tabbing through a form could not tell they had reached it.
 func TestSelectFieldIsMarkedWhileFocused(t *testing.T) {
-	h, _, sh := selectFixture(t, widget.WithOptions(selectItems("alpha")))
+	h, _, sh := selectFixture(t, core.WithOptions(selectItems("alpha")))
 	// The fixture Tabs onto the Select, so it holds the keyboard here.
 	if cellAttrs(h, 0, 0).Mask&tui.AttrReverse == 0 {
 		t.Error("a focused select's field is not marked")
@@ -327,7 +327,7 @@ func rowOfLabel(h *harness, want string) int {
 // keyboard's shared entry point, and one that claimed success on an already
 // open list would tell the runtime a gesture had an effect it did not have.
 func TestSelectActivateIsNotRepeatable(t *testing.T) {
-	h, sel, sh := selectFixture(t, widget.WithOptions(selectItems("alpha")))
+	h, sel, sh := selectFixture(t, core.WithOptions(selectItems("alpha")))
 
 	// Activate and SetArmed mutate loop-owned state — both reach MarkDirty,
 	// which writes the dirty flag the running loop reads in maybeFrame. Called
@@ -354,8 +354,8 @@ func TestSelectActivateIsNotRepeatable(t *testing.T) {
 // A CUSTOM FOCUS LOOK REPLACES THE REVERSED DEFAULT.
 func TestSelectFocusedStyleIsReplaceable(t *testing.T) {
 	h, _, _ := selectFixture(t,
-		widget.WithOptions(selectItems("alpha")),
-		widget.WithSelectFocusedStyle[string](style.New().Bold(true)))
+		core.WithOptions(selectItems("alpha")),
+		core.WithSelectFocusedStyle[string](style.New().Bold(true)))
 	at := cellAttrs(h, 0, 0)
 	if at.Mask&tui.AttrReverse != 0 {
 		t.Error("the default reversed look survived a replacement style")
@@ -369,8 +369,8 @@ func TestSelectFocusedStyleIsReplaceable(t *testing.T) {
 // implementation that special-cased one letter.
 func TestSelectFilteringKeepsKAsText(t *testing.T) {
 	h, _, sh := selectFixture(t,
-		widget.WithOptions(selectItems("kotlin", "alpha")),
-		widget.WithFilter[string](true))
+		core.WithOptions(selectItems("kotlin", "alpha")),
+		core.WithFilter[string](true))
 	h.inject(key(tui.KeyEnter), key('k'))
 	h.barrier(sh)
 	h.wantContains("kotlin")
@@ -380,20 +380,20 @@ func TestSelectFilteringKeepsKAsText(t *testing.T) {
 // placedSelectFixture puts the Select at a given offset inside the screen, so
 // the anchored placement's edge cases have an edge to meet.
 func placedSelectFixture(t *testing.T, padRows, padCols, w, h int,
-	opts ...widget.SelectOption[string]) (*harness, *widget.Select[string], *shell) {
+	opts ...core.SelectOption[string]) (*harness, *core.Select[string], *shell) {
 	t.Helper()
-	sel := widget.NewSelect[string](opts...)
+	sel := core.NewSelect[string](opts...)
 	col := tui.NewFlex(tui.Vertical)
 	for range padRows {
-		col.Add(widget.NewText(" "))
+		col.Add(core.NewText(" "))
 	}
 	row := tui.NewFlex(tui.Horizontal)
 	if padCols > 0 {
-		row.Add(widget.NewText(strings.Repeat(" ", padCols)))
+		row.Add(core.NewText(strings.Repeat(" ", padCols)))
 	}
 	row.Add(sel)
 	col.Add(row)
-	sh := newShell(widget.NewOverlayHost(col))
+	sh := newShell(core.NewOverlayHost(col))
 	hh := startApp(t, sh, w, h)
 	hh.inject(tab())
 	hh.barrier(sh)
@@ -417,7 +417,7 @@ func popupBox(rows []string) (top, left, right int) {
 func TestSelectPopupIsAtLeastTheFieldsWidthInItsPalette(t *testing.T) {
 	placeholder := "choose a provider, please"
 	h, sel, sh := placedSelectFixture(t, 0, 0, 60, 12,
-		widget.WithOptions(selectItems("a", "b")), widget.WithSelectPlaceholder[string](placeholder))
+		core.WithOptions(selectItems("a", "b")), core.WithSelectPlaceholder[string](placeholder))
 	field := strings.Index(h.row(0), "▾") + 1
 	if field < len(placeholder) {
 		t.Fatalf("precondition: the field (%d) is as wide as its placeholder (%d)", field, len(placeholder))
@@ -443,14 +443,14 @@ func TestSelectPopupIsAtLeastTheFieldsWidthInItsPalette(t *testing.T) {
 }
 
 // selectAtRow is a Select on row y of a 40×20 screen, at its left edge, and focused.
-func selectAtRow(t *testing.T, y int, opts ...widget.SelectOption[string]) (*harness, *shell) {
+func selectAtRow(t *testing.T, y int, opts ...core.SelectOption[string]) (*harness, *shell) {
 	t.Helper()
 	flex := tui.NewFlex(tui.Vertical)
 	for range y {
-		flex.Add(widget.NewText("·"))
+		flex.Add(core.NewText("·"))
 	}
-	flex.Add(widget.NewSelect[string](opts...))
-	sh := newShell(widget.NewOverlayHost(flex))
+	flex.Add(core.NewSelect[string](opts...))
+	sh := newShell(core.NewOverlayHost(flex))
 	h := startApp(t, sh, 40, 20)
 	h.inject(tab())
 	h.barrier(sh)
@@ -460,7 +460,7 @@ func selectAtRow(t *testing.T, y int, opts ...widget.SelectOption[string]) (*har
 // THE LIST OPENS UNDER ITS FIELD: on the row below it, at its left edge, not in the middle of the
 // screen where a narrow field's choices read as someone else's.
 func TestSelectOpensUnderItsField(t *testing.T) {
-	h, sh := selectAtRow(t, 3, widget.WithOptions(selectItems("alpha", "beta")))
+	h, sh := selectAtRow(t, 3, core.WithOptions(selectItems("alpha", "beta")))
 	h.inject(key(tui.KeyEnter))
 	h.barrier(sh)
 	h.wantContains("beta")
@@ -473,7 +473,7 @@ func TestSelectOpensUnderItsField(t *testing.T) {
 
 // NEAR THE BOTTOM IT OPENS ABOVE THE FIELD, and still beside it.
 func TestSelectOpensAboveItsFieldAtTheBottom(t *testing.T) {
-	h, sh := selectAtRow(t, 18, widget.WithOptions(selectItems("alpha", "beta")))
+	h, sh := selectAtRow(t, 18, core.WithOptions(selectItems("alpha", "beta")))
 	h.inject(key(tui.KeyEnter))
 	h.barrier(sh)
 	h.wantContains("beta")
@@ -488,12 +488,12 @@ func TestSelectOpensAboveItsFieldAtTheBottom(t *testing.T) {
 // itself, which the column-0 cells above cannot tell from the screen's left edge.
 func TestSelectOpensUnderAFieldThatIsNotAtTheLeftEdge(t *testing.T) {
 	row := tui.NewFlex(tui.Horizontal)
-	row.Add(widget.NewText("a label: "))
-	row.Add(widget.NewSelect[string](widget.WithOptions(selectItems("alpha", "beta"))))
+	row.Add(core.NewText("a label: "))
+	row.Add(core.NewSelect[string](core.WithOptions(selectItems("alpha", "beta"))))
 	flex := tui.NewFlex(tui.Vertical)
-	flex.Add(widget.NewText("·"))
+	flex.Add(core.NewText("·"))
 	flex.Add(row)
-	sh := newShell(widget.NewOverlayHost(flex))
+	sh := newShell(core.NewOverlayHost(flex))
 	h := startApp(t, sh, 40, 20)
 	h.inject(tab())
 	h.barrier(sh)
@@ -509,7 +509,7 @@ func TestSelectOpensUnderAFieldThatIsNotAtTheLeftEdge(t *testing.T) {
 // FieldWidth is the field's own width, not its slot's: laid out tight and wider, the field keeps its
 // eight cells, as its pointer target does.
 func TestSelectFieldWidthIsTheFieldsNotItsSlots(t *testing.T) {
-	sel := widget.NewSelect(widget.WithOptions(selectItems("alpha", "beta")))
+	sel := core.NewSelect(core.WithOptions(selectItems("alpha", "beta")))
 	if size := sel.Layout(tui.Constraints{MinW: 80, MaxW: 80, MinH: 1, MaxH: 1}); size.W != 80 || sel.FieldWidth() != 8 {
 		t.Fatalf("laid out %d wide, the field %d; want 80 and 8", size.W, sel.FieldWidth())
 	}
@@ -520,10 +520,10 @@ func TestSelectFieldWidthIsTheFieldsNotItsSlots(t *testing.T) {
 
 // Affordance says whether the field draws its triangle: on by default, off with WithAffordance(false).
 func TestSelectAffordanceIsReported(t *testing.T) {
-	if !widget.NewSelect[string]().Affordance() {
+	if !core.NewSelect[string]().Affordance() {
 		t.Error("a Select draws no triangle by default")
 	}
-	if widget.NewSelect(widget.WithAffordance[string](false)).Affordance() {
+	if core.NewSelect(core.WithAffordance[string](false)).Affordance() {
 		t.Error("WithAffordance(false) still draws the triangle")
 	}
 }
@@ -532,8 +532,8 @@ func TestSelectAffordanceIsReported(t *testing.T) {
 // commits it, after the popup has closed (data-I4, as List's).
 func TestASelectTellsItsOwnerOfAChoice(t *testing.T) {
 	var chosen []int
-	h, _, sh := selectFixture(t, widget.WithOptions(selectItems("alpha", "beta", "gamma")),
-		widget.WithSelectOnChange[string](func(i int) { chosen = append(chosen, i) }))
+	h, _, sh := selectFixture(t, core.WithOptions(selectItems("alpha", "beta", "gamma")),
+		core.WithSelectOnChange[string](func(i int) { chosen = append(chosen, i) }))
 	h.inject(key(tui.KeyEnter), key(tui.KeyDown), key(tui.KeyEnter))
 	h.barrier(sh)
 	var got []int

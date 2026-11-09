@@ -10,7 +10,7 @@ import (
 	"testing/fstest"
 
 	"github.com/yongjohnlee80/golib/tui"
-	"github.com/yongjohnlee80/golib/tui/widget"
+	"github.com/yongjohnlee80/golib/tui/widget/files"
 )
 
 // typePath clears the path field, which has the keyboard, types s and presses Enter.
@@ -22,7 +22,7 @@ func typePath(h *harness, s string) {
 	h.inject(key(tui.KeyEnter))
 }
 
-func dirIs(h *harness, v widget.FileChooser, want string) func() bool {
+func dirIs(h *harness, v files.FileChooser, want string) func() bool {
 	return func() bool {
 		var d string
 		h.onLoop(func() { d = v.Dir() })
@@ -42,8 +42,8 @@ func hintIs(h *harness, v interface{ HintMessage() tui.Message }, want string) b
 func TestTheOpenViewsPathFieldGoesWhereTyped(t *testing.T) {
 	root := tree(t, map[string]string{"deep/down/n.md": "deep note", "sub/s.md": "sub note", "top.md": "top"})
 	var chosen atomic.Int32
-	v := widget.NewFileOpenView(widget.WithFileViewSource(widget.FileSource{FS: os.DirFS("/"), Root: "/"}),
-		widget.WithFileViewDir(root), widget.WithOnChoose(func() { chosen.Add(1) }))
+	v := files.NewFileOpenView(files.WithFileViewSource(files.FileSource{FS: os.DirFS("/"), Root: "/"}),
+		files.WithFileViewDir(root), files.WithOnChoose(func() { chosen.Add(1) }))
 	h := startBrowser(t, v)
 	defer h.stop()
 	h.shows("top.md")
@@ -102,8 +102,8 @@ func (f permFS) Stat(name string) (fs.FileInfo, error) {
 
 // A path the source will not say anything of is "cannot read", not "not found".
 func TestAPathTheSourceRefusesCannotBeRead(t *testing.T) {
-	v := widget.NewFileOpenView(widget.WithFileViewSource(widget.FileSource{FS: permFS{fstest.MapFS{"a.md": {Data: []byte("a")}}}, Root: "/"}),
-		widget.WithFileViewDir("/"))
+	v := files.NewFileOpenView(files.WithFileViewSource(files.FileSource{FS: permFS{fstest.MapFS{"a.md": {Data: []byte("a")}}}, Root: "/"}),
+		files.WithFileViewDir("/"))
 	h := startBrowser(t, v)
 	defer h.stop()
 	h.shows("a.md")
@@ -118,8 +118,8 @@ func TestAPathTheSourceRefusesCannotBeRead(t *testing.T) {
 // field puts back the folder listed and gives the keyboard back to the list.
 func TestTildeOpensThePathFieldAndEscRestoresIt(t *testing.T) {
 	root := tree(t, map[string]string{"notes/a.md": "a", "z.md": "z"})
-	v := widget.NewFileFolderView(widget.WithFileViewSource(widget.FileSource{FS: os.DirFS("/"), Root: "/", Home: root}),
-		widget.WithFileViewDir(root))
+	v := files.NewFileFolderView(files.WithFileViewSource(files.FileSource{FS: os.DirFS("/"), Root: "/", Home: root}),
+		files.WithFileViewDir(root))
 	h := startBrowser(t, v)
 	defer h.stop()
 	h.shows("z.md")
@@ -156,7 +156,7 @@ func TestTildeOpensThePathFieldAndEscRestoresIt(t *testing.T) {
 // folder is listed (as before).
 func TestTheFolderViewsFieldSaysWhatATypedPathIs(t *testing.T) {
 	root := tree(t, map[string]string{"in/f.md": "f"})
-	v := widget.NewFileFolderView(widget.WithFileViewDir(root))
+	v := files.NewFileFolderView(files.WithFileViewDir(root))
 	h := startBrowser(t, v)
 	defer h.stop()
 	h.shows("in/")
@@ -176,8 +176,8 @@ func TestTheFolderViewsFieldSaysWhatATypedPathIs(t *testing.T) {
 func TestTheSaveViewsPathFieldNamesTheTarget(t *testing.T) {
 	root := tree(t, map[string]string{"docs/old.md": "old", "here.md": "here"})
 	var chosen atomic.Int32
-	v := widget.NewFileSaveView(widget.WithFileViewSource(widget.FileSource{FS: os.DirFS("/"), Root: "/"}),
-		widget.WithFileViewDir(root), widget.WithOnChoose(func() { chosen.Add(1) }))
+	v := files.NewFileSaveView(files.WithFileViewSource(files.FileSource{FS: os.DirFS("/"), Root: "/"}),
+		files.WithFileViewDir(root), files.WithOnChoose(func() { chosen.Add(1) }))
 	h := startBrowser(t, v) // the name field has the keyboard
 	defer h.stop()
 	h.shows("here.md")
@@ -237,8 +237,8 @@ func TestThePathFieldChecksAnAsyncSourceOffTheLoop(t *testing.T) {
 	d := newGatedDir(vfsFiles)
 	d.g.release("dir:.")
 	d.g.release("dir:b") // a's listing stays held: the typed file below is chosen before it
-	v := widget.NewFileOpenView(widget.WithFileViewSource(widget.FileSource{FS: d, Root: "mem://", Async: true}),
-		widget.WithFileViewDir("mem://"), widget.WithFileViewPreview(false))
+	v := files.NewFileOpenView(files.WithFileViewSource(files.FileSource{FS: d, Root: "mem://", Async: true}),
+		files.WithFileViewDir("mem://"), files.WithFileViewPreview(false))
 	h := startBrowser(t, v)
 	defer h.stop()
 	h.shows("top.txt")
@@ -309,8 +309,8 @@ func TestThePathFieldChecksAnAsyncSourceOffTheLoop(t *testing.T) {
 // A source with no Root (an fs.FS written as is) reads a relative path relative to the folder
 // listed, in the path field and in the Save view's name: an empty Root is not a prefix of all.
 func TestARelativePathOfARootlessSource(t *testing.T) {
-	src := widget.FileSource{FS: fstest.MapFS{"a/b/c.md": {Data: []byte("c")}, "a/x.md": {Data: []byte("x")}}}
-	v := widget.NewFileOpenView(widget.WithFileViewSource(src), widget.WithFileViewDir("a"))
+	src := files.FileSource{FS: fstest.MapFS{"a/b/c.md": {Data: []byte("c")}, "a/x.md": {Data: []byte("x")}}}
+	v := files.NewFileOpenView(files.WithFileViewSource(src), files.WithFileViewDir("a"))
 	h := startBrowser(t, v)
 	defer h.stop()
 	h.shows("x.md")
@@ -319,7 +319,7 @@ func TestARelativePathOfARootlessSource(t *testing.T) {
 	h.waitFor("a/b listed", dirIs(h, v, "a/b"))
 	h.shows("c.md")
 
-	s := widget.NewFileSaveView(widget.WithFileViewSource(src), widget.WithFileViewDir("a"))
+	s := files.NewFileSaveView(files.WithFileViewSource(src), files.WithFileViewDir("a"))
 	hs := startBrowser(t, s)
 	defer hs.stop()
 	hs.shows("x.md")
@@ -340,8 +340,8 @@ func TestAnAsyncSaveTargetIsItsFolderWhileItLoads(t *testing.T) {
 	d.g.release("stat:b")        // its folder: a folder
 	// b's listing (dir:b) is held: the race is Enter on the name while it is on its way
 	var chosen atomic.Int32
-	v := widget.NewFileSaveView(widget.WithFileViewSource(widget.FileSource{FS: d, Root: "mem://", Async: true}),
-		widget.WithFileViewDir("mem://"), widget.WithOnChoose(func() { chosen.Add(1) }))
+	v := files.NewFileSaveView(files.WithFileViewSource(files.FileSource{FS: d, Root: "mem://", Async: true}),
+		files.WithFileViewDir("mem://"), files.WithOnChoose(func() { chosen.Add(1) }))
 	h := startBrowser(t, v)
 	defer h.stop()
 	h.shows("top.txt")
@@ -372,16 +372,16 @@ func TestAnAsyncSaveTargetIsItsFolderWhileItLoads(t *testing.T) {
 func TestANavigationDropsATypedPathsCheckAsItStarts(t *testing.T) {
 	for _, nav := range []struct {
 		name string
-		do   func(widget.FileChooser)
+		do   func(files.FileChooser)
 	}{
-		{"SetDir", func(v widget.FileChooser) { v.SetDir("mem://a") }},
-		{"Select", func(v widget.FileChooser) { v.Select("mem://a/x.txt") }},
+		{"SetDir", func(v files.FileChooser) { v.SetDir("mem://a") }},
+		{"Select", func(v files.FileChooser) { v.Select("mem://a/x.txt") }},
 	} {
 		d := newGatedDir(vfsFiles)
 		d.g.release("dir:.")
 		var chosen atomic.Int32
-		v := widget.NewFileOpenView(widget.WithFileViewSource(widget.FileSource{FS: d, Root: "mem://", Async: true}),
-			widget.WithFileViewDir("mem://"), widget.WithFileViewPreview(false), widget.WithOnChoose(func() { chosen.Add(1) }))
+		v := files.NewFileOpenView(files.WithFileViewSource(files.FileSource{FS: d, Root: "mem://", Async: true}),
+			files.WithFileViewDir("mem://"), files.WithFileViewPreview(false), files.WithOnChoose(func() { chosen.Add(1) }))
 		h := startBrowser(t, v)
 		h.shows("top.txt")
 		h.inject(keyMod('k', tui.ModCtrl))
@@ -403,8 +403,8 @@ func TestANavigationDropsATypedPathsCheckAsItStarts(t *testing.T) {
 // A source with no filesystem is the local disk, and keeps the Home it was given: ~ goes there.
 func TestALocalSourceKeepsTheHomeItWasGiven(t *testing.T) {
 	root := tree(t, map[string]string{"in-home/h.md": "h", "top.md": "t"})
-	v := widget.NewFileOpenView(widget.WithFileViewSource(widget.FileSource{Home: filepath.Join(root, "in-home")}),
-		widget.WithFileViewDir(root), widget.WithFileViewPreview(false))
+	v := files.NewFileOpenView(files.WithFileViewSource(files.FileSource{Home: filepath.Join(root, "in-home")}),
+		files.WithFileViewDir(root), files.WithFileViewPreview(false))
 	h := startBrowser(t, v)
 	defer h.stop()
 	h.shows("top.md")
@@ -417,8 +417,8 @@ func TestALocalSourceKeepsTheHomeItWasGiven(t *testing.T) {
 // The path field says "not found" for what names nothing it can go to: an empty path, and a path
 // that climbs out of its source. The folder listed stays as it was.
 func TestThePathFieldSaysAnEmptyPathAndOneOutsideTheSourceAreNotFound(t *testing.T) {
-	src := widget.FileSource{FS: fstest.MapFS{"in/f.md": {}}, Root: "/"}
-	v := widget.NewFileFolderView(widget.WithFileViewSource(src), widget.WithFileViewDir("/"))
+	src := files.FileSource{FS: fstest.MapFS{"in/f.md": {}}, Root: "/"}
+	v := files.NewFileFolderView(files.WithFileViewSource(src), files.WithFileViewDir("/"))
 	h := startBrowser(t, v)
 	defer h.stop()
 	h.shows("in/")

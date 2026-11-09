@@ -8,7 +8,7 @@ import (
 	"github.com/yongjohnlee80/golib/highlight"
 	"github.com/yongjohnlee80/golib/parse/golang"
 	"github.com/yongjohnlee80/golib/tui"
-	"github.com/yongjohnlee80/golib/tui/widget"
+	"github.com/yongjohnlee80/golib/tui/widget/editor"
 )
 
 var vimToken = regexp.MustCompile(`<[a-z]+(:[^>]*)?>`)
@@ -17,7 +17,7 @@ var vimToken = regexp.MustCompile(`<[a-z]+(:[^>]*)?>`)
 // those keys,
 // <redo> as Ctrl-r, <ctw> <ctu> <ctd> <cto> <cti> and <ctv> as Ctrl-w Ctrl-u Ctrl-d Ctrl-o Ctrl-i and Ctrl-v,
 // <tick> as the escape chord's timeout, <paste:TEXT> as a paste (\n for a line break).
-func vimSeq(c *widget.EditorCore, s string) {
+func vimSeq(c *editor.EditorCore, s string) {
 	for len(s) > 0 {
 		loc := vimToken.FindStringIndex(s)
 		if loc == nil {
@@ -75,7 +75,7 @@ type editCase struct {
 	wantLn  int
 	wantCol int
 	cursor  bool
-	opts    []widget.CoreOption
+	opts    []editor.CoreOption
 }
 
 func runEdits(t *testing.T, cases []editCase) {
@@ -146,16 +146,16 @@ func TestVimCase(t *testing.T) {
 // unindented line going out stay.
 func TestVimShift(t *testing.T) {
 	runEdits(t, []editCase{
-		{what: ">> with a unit set", text: "a", seq: ">>", want: "  a", opts: []widget.CoreOption{widget.CoreIndentUnit("  ")}},
+		{what: ">> with a unit set", text: "a", seq: ">>", want: "  a", opts: []editor.CoreOption{editor.CoreIndentUnit("  ")}},
 		{what: ">> with the buffer's own unit", text: "x\n   y", seq: ">>", want: "   x\n   y"},
 		{what: ">> with none: a tab's width", text: "x", seq: ">>", want: "    x", cursor: true, wantCol: 4},
 		{what: ">j", text: "a\nb\nc", seq: ">j", want: "    a\n    b\nc"},
 		{what: ">ip", text: "a\nb\n\nc", seq: ">ip", want: "    a\n    b\n\nc"},
 		{what: "a blank line is not indented", text: "a\n\nb", seq: ">2j", want: "    a\n\n    b"},
-		{what: "<< six columns", text: "      a", seq: "<<", want: "  a", opts: []widget.CoreOption{widget.CoreIndentUnit("    ")}},
+		{what: "<< six columns", text: "      a", seq: "<<", want: "  a", opts: []editor.CoreOption{editor.CoreIndentUnit("    ")}},
 		{what: "<< unindented", text: "a", seq: "<<", want: "a"},
-		{what: "<< a mixed indent", text: "\t  a", seq: "<<", want: "  a", opts: []widget.CoreOption{widget.CoreIndentUnit("    ")}},
-		{what: ">> in a tab unit", text: "  a", seq: ">>", want: "\t  a", opts: []widget.CoreOption{widget.CoreIndentUnit("\t")}},
+		{what: "<< a mixed indent", text: "\t  a", seq: "<<", want: "  a", opts: []editor.CoreOption{editor.CoreIndentUnit("    ")}},
+		{what: ">> in a tab unit", text: "  a", seq: ">>", want: "\t  a", opts: []editor.CoreOption{editor.CoreIndentUnit("\t")}},
 		{what: "3>>", text: "a\nb\nc\nd", seq: "3>>", want: "    a\n    b\n    c\nd"},
 	})
 }
@@ -192,8 +192,8 @@ func TestVimRepeat(t *testing.T) {
 	}
 	k, _ := coreWith(t, "abc")
 	vimSeq(k, "x")
-	k.SetKeyset(widget.KeysetStandard)
-	k.SetKeyset(widget.KeysetVim)
+	k.SetKeyset(editor.KeysetStandard)
+	k.SetKeyset(editor.KeysetVim)
 	vimSeq(k, "<esc>.")
 	if k.Value() != "bc" {
 		t.Fatalf("a keyset switch kept the change to repeat: %q", k.Value())
@@ -215,16 +215,16 @@ func TestVimRepeat(t *testing.T) {
 // A typed closer is aligned when replayed, a pasted one stays as pasted.
 func TestVimRepeatTypedAndPastedClosers(t *testing.T) {
 	d := golang.Definition()
-	src := widget.CoreSourceFactory(func() highlight.Source { return d.NewSource(nil) })
+	src := editor.CoreSourceFactory(func() highlight.Source { return d.NewSource(nil) })
 	// the indenter decides a closer's place from verified highlight state, as the editor's
 	// highlighter leaves it: verify every line before each edit
-	verified := func(c *widget.EditorCore) {
+	verified := func(c *editor.EditorCore) {
 		f := c.BeginHighlight(0)
 		f.Styles(c.LineCount())
 		f.Close()
 	}
 	doc := "func f() {\n\tx\n\t\nfunc g() {\n\ty\n\t"
-	typed, _ := coreWith(t, doc, widget.CoreAutoIndent(true), src)
+	typed, _ := coreWith(t, doc, editor.CoreAutoIndent(true), src)
 	verified(typed)
 	typed.SetLine(2, 0)
 	vimSeq(typed, "A}<esc>")
@@ -235,7 +235,7 @@ func TestVimRepeatTypedAndPastedClosers(t *testing.T) {
 	if got := strings.Split(typed.Value(), "\n")[5]; got != first || got != "}" {
 		t.Fatalf("a typed } replayed as %q (the original %q), want } aligned", got, first)
 	}
-	pasted, _ := coreWith(t, doc, widget.CoreAutoIndent(true), src)
+	pasted, _ := coreWith(t, doc, editor.CoreAutoIndent(true), src)
 	verified(pasted)
 	pasted.SetLine(2, 0)
 	vimSeq(pasted, "A<paste:}><esc>")
@@ -249,7 +249,7 @@ func TestVimRepeatTypedAndPastedClosers(t *testing.T) {
 
 // A viewer refuses the new edits, and they bubble to the host.
 func TestVimEditsOnAViewer(t *testing.T) {
-	ro := widget.NewEditorCore(widget.CoreInitialText("abc\ndef"), widget.CoreReadOnly(true))
+	ro := editor.NewEditorCore(editor.CoreInitialText("abc\ndef"), editor.CoreReadOnly(true))
 	ro.Bind(nil, &fakeLayout{per: 1, page: 5})
 	for _, r := range "rJ~><" {
 		if ro.HandleKey(tui.KeyEvent{Code: r, Text: string(r)}) {

@@ -10,7 +10,7 @@ import (
 
 	"github.com/yongjohnlee80/golib/tui"
 	"github.com/yongjohnlee80/golib/tui/style"
-	"github.com/yongjohnlee80/golib/tui/widget"
+	"github.com/yongjohnlee80/golib/tui/widget/core"
 )
 
 // Button is the toolkit's claim that the runtime layers underneath it carry
@@ -21,26 +21,26 @@ import (
 
 // compile-time: Button satisfies the capability it advertises, with the whole
 // method set. This fails to build if either half of Activatable drifts.
-var _ tui.Activatable = (*widget.Button)(nil)
+var _ tui.Activatable = (*core.Button)(nil)
 
 // armedOn / stateOn / enabledOn read Button state ON THE LOOP GOROUTINE.
 //
 // Component state is owned by the loop — that single-ownership rule is what
 // lets widget authors write plain Go with no mutexes — so a test reading it
 // directly is the exact race the model prevents, and -race says so.
-func armedOn(h *harness, b *widget.Button) bool {
+func armedOn(h *harness, b *core.Button) bool {
 	var v bool
 	h.onLoop(func() { v = b.Armed() })
 	return v
 }
 
-func stateOn(h *harness, b *widget.Button) widget.WidgetState {
-	var v widget.WidgetState
+func stateOn(h *harness, b *core.Button) core.WidgetState {
+	var v core.WidgetState
 	h.onLoop(func() { v = b.State() })
 	return v
 }
 
-func setEnabledOn(h *harness, b *widget.Button, v bool) {
+func setEnabledOn(h *harness, b *core.Button, v bool) {
 	h.onLoop(func() { b.SetEnabled(v) })
 }
 
@@ -51,26 +51,26 @@ func setEnabledOn(h *harness, b *widget.Button, v bool) {
 func TestAButtonActivatesFromEveryProducer(t *testing.T) {
 	for _, tc := range []struct {
 		name   string
-		drive  func(h *harness, b *widget.Button)
+		drive  func(h *harness, b *core.Button)
 		origin tui.ActionOrigin
 	}{
-		{"Enter", func(h *harness, b *widget.Button) {
+		{"Enter", func(h *harness, b *core.Button) {
 			h.inject(tui.KeyEvent{Kind: tui.KeyPress, Code: tui.KeyEnter})
 		}, tui.OriginKey},
-		{"Space", func(h *harness, b *widget.Button) {
+		{"Space", func(h *harness, b *core.Button) {
 			h.inject(tui.KeyEvent{Kind: tui.KeyPress, Code: ' '})
 		}, tui.OriginKey},
-		{"pointer press and release", func(h *harness, b *widget.Button) {
+		{"pointer press and release", func(h *harness, b *core.Button) {
 			h.inject(tui.MouseEvent{Kind: tui.MousePress, Button: tui.MouseLeft, X: 1, Y: 0})
 			h.inject(tui.MouseEvent{Kind: tui.MouseRelease, Button: tui.MouseLeft, X: 1, Y: 0})
 		}, tui.OriginPointer},
-		{"DoAction", func(h *harness, b *widget.Button) {
+		{"DoAction", func(h *harness, b *core.Button) {
 			h.onLoop(func() { b.Context().DoAction(tui.ActivateAction{}) })
 		}, tui.OriginProgrammatic},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			var fired atomic.Int64
-			b := widget.NewButton("OK", widget.WithOnActivate(func() { fired.Add(1) }))
+			b := core.NewButton("OK", core.WithOnActivate(func() { fired.Add(1) }))
 			h := startApp(t, b, 12, 1)
 			defer h.stop()
 			h.onLoop(func() { b.Context().RequestFocus() })
@@ -115,7 +115,7 @@ func TestTheButtonArmsAndDisarmsWithoutOwningAnyPointerCode(t *testing.T) {
 	// drag to and the drag-out half of the test asserts nothing. A vertical
 	// Flex leaves it its natural width at the left edge, so x >= its width is
 	// genuinely beyond it.
-	b := widget.NewButton("OK")
+	b := core.NewButton("OK")
 	// HORIZONTAL, not vertical: a vertical Flex stretches its children across
 	// the full cross axis, which would give the button the whole terminal width
 	// and leave nowhere outside it to drag to.
@@ -142,8 +142,8 @@ func TestTheButtonArmsAndDisarmsWithoutOwningAnyPointerCode(t *testing.T) {
 
 	h.inject(tui.MouseEvent{Kind: tui.MousePress, Button: tui.MouseLeft, X: 1, Y: 0})
 	h.waitFor("armed by the press", func() bool { return armedOn(h, b) })
-	if got := stateOn(h, b); got != widget.WidgetStateArmed {
-		t.Errorf("state while pressed = %v, want %v", got, widget.WidgetStateArmed)
+	if got := stateOn(h, b); got != core.WidgetStateArmed {
+		t.Errorf("state while pressed = %v, want %v", got, core.WidgetStateArmed)
 	}
 
 	// Dragging off disarms without ending the gesture; dragging back re-arms.
@@ -164,10 +164,10 @@ func TestTheButtonArmsAndDisarmsWithoutOwningAnyPointerCode(t *testing.T) {
 // be stated while disabled controls remain tab stops.
 func TestADisabledButtonRefusesEveryProducerAndLeavesTheRing(t *testing.T) {
 	var fired, sentinelFired atomic.Int64
-	b := widget.NewButton("OK", widget.WithOnActivate(func() { fired.Add(1) }))
+	b := core.NewButton("OK", core.WithOnActivate(func() { fired.Add(1) }))
 	// An enabled sibling: an ordered lane-A sentinel, and also the node focus
 	// should be repaired to when the first button is disabled.
-	sentinel := widget.NewButton("S", widget.WithOnActivate(func() { sentinelFired.Add(1) }))
+	sentinel := core.NewButton("S", core.WithOnActivate(func() { sentinelFired.Add(1) }))
 	root := tui.NewFlex(tui.Horizontal)
 	root.Add(b, sentinel)
 	h := startApp(t, root, 20, 1)
@@ -194,8 +194,8 @@ func TestADisabledButtonRefusesEveryProducerAndLeavesTheRing(t *testing.T) {
 		t.Error("focus stayed on a button that stopped accepting it; SetEnabled must " +
 			"revalidate the scope before returning")
 	}
-	if got := stateOn(h, b); got != widget.WidgetStateDisabled {
-		t.Errorf("state = %v, want %v", got, widget.WidgetStateDisabled)
+	if got := stateOn(h, b); got != core.WidgetStateDisabled {
+		t.Errorf("state = %v, want %v", got, core.WidgetStateDisabled)
 	}
 
 	// No keyboard case here, and its absence is the point: once a disabled
@@ -236,7 +236,7 @@ func TestADisabledButtonRefusesEveryProducerAndLeavesTheRing(t *testing.T) {
 // TestDisablingMidPressClearsThePressedLook. Leaving it armed would show a
 // control held down that nothing will now release.
 func TestDisablingMidPressClearsThePressedLook(t *testing.T) {
-	b := widget.NewButton("OK")
+	b := core.NewButton("OK")
 	h := startApp(t, b, 12, 1)
 	defer h.stop()
 	h.sync()
@@ -248,16 +248,16 @@ func TestDisablingMidPressClearsThePressedLook(t *testing.T) {
 	if armedOn(h, b) {
 		t.Error("still armed after being disabled mid-press")
 	}
-	if got := stateOn(h, b); got != widget.WidgetStateDisabled {
-		t.Errorf("state = %v, want %v", got, widget.WidgetStateDisabled)
+	if got := stateOn(h, b); got != core.WidgetStateDisabled {
+		t.Errorf("state = %v, want %v", got, core.WidgetStateDisabled)
 	}
 }
 
 // TestButtonStyleIsNilSafe. A button with no style asks a nil style for values
 // on every paint, so the nil check belongs here rather than in every
 func TestButtonStyleIsNilSafe(t *testing.T) {
-	var s *widget.ButtonStyle
-	def := widget.DefaultButtonStyle()
+	var s *core.ButtonStyle
+	def := core.DefaultButtonStyle()
 
 	if s.Normal() != def.Normal() {
 		t.Error("nil.Normal() does not match the default")
@@ -271,8 +271,8 @@ func TestButtonStyleIsNilSafe(t *testing.T) {
 	if s.Disabled() != def.Disabled() {
 		t.Error("nil.Disabled() does not match the default")
 	}
-	for _, st := range []widget.WidgetState{
-		widget.WidgetStateNormal, widget.WidgetStateFocused, widget.WidgetStateArmed, widget.WidgetStateDisabled,
+	for _, st := range []core.WidgetState{
+		core.WidgetStateNormal, core.WidgetStateFocused, core.WidgetStateArmed, core.WidgetStateDisabled,
 	} {
 		if s.Style(st) != def.Style(st) {
 			t.Errorf("nil.Style(%v) does not match the default", st)
@@ -289,7 +289,7 @@ func TestButtonStyleIsNilSafe(t *testing.T) {
 // design, so a With* that mutated in place would restyle every button holding
 // the same pointer.
 func TestButtonStyleIsImmutable(t *testing.T) {
-	base := widget.NewButtonStyle(style.New().Bold(true), style.New().Italic(true))
+	base := core.NewButtonStyle(style.New().Bold(true), style.New().Italic(true))
 	before := base.Normal()
 
 	derived := base.WithNormal(style.New().Faint(true))
@@ -311,7 +311,7 @@ func TestButtonStyleDerivesTheTwoLooksAuthorsSkip(t *testing.T) {
 	normal := style.New().Bold(true)
 	focused := style.New().Italic(true)
 
-	two := widget.NewButtonStyle(normal, focused)
+	two := core.NewButtonStyle(normal, focused)
 	if two.Disabled() != normal.Faint(true) {
 		t.Error("disabled is not derived as normal faded")
 	}
@@ -321,7 +321,7 @@ func TestButtonStyleDerivesTheTwoLooksAuthorsSkip(t *testing.T) {
 
 	disabled := style.New().Underline(true)
 	armed := style.New().Blink(true)
-	full := widget.NewButtonStyleFull(normal, focused, disabled, armed)
+	full := core.NewButtonStyleFull(normal, focused, disabled, armed)
 	if full.Disabled() != disabled || full.Armed() != armed {
 		t.Error("the full constructor did not override the derivations")
 	}
@@ -331,21 +331,21 @@ func TestButtonStyleDerivesTheTwoLooksAuthorsSkip(t *testing.T) {
 // apply its own precedence by picking an accessor itself; and an unknown state
 // paints normally rather than crashing mid-paint.
 func TestStyleSelectorMapsEveryStateAndFallsBack(t *testing.T) {
-	s := widget.NewButtonStyleFull(
+	s := core.NewButtonStyleFull(
 		style.New().Bold(true), style.New().Italic(true),
 		style.New().Underline(true), style.New().Blink(true))
 
-	for st, want := range map[widget.WidgetState]style.Style{
-		widget.WidgetStateNormal:   s.Normal(),
-		widget.WidgetStateFocused:  s.Focused(),
-		widget.WidgetStateArmed:    s.Armed(),
-		widget.WidgetStateDisabled: s.Disabled(),
+	for st, want := range map[core.WidgetState]style.Style{
+		core.WidgetStateNormal:   s.Normal(),
+		core.WidgetStateFocused:  s.Focused(),
+		core.WidgetStateArmed:    s.Armed(),
+		core.WidgetStateDisabled: s.Disabled(),
 	} {
 		if got := s.Style(st); got != want {
 			t.Errorf("Style(%v) returned the wrong look", st)
 		}
 	}
-	if got := s.Style(widget.WidgetState(200)); got != s.Normal() {
+	if got := s.Style(core.WidgetState(200)); got != s.Normal() {
 		t.Error("an unknown widget.WidgetState did not fall back to normal")
 	}
 }
@@ -353,31 +353,31 @@ func TestStyleSelectorMapsEveryStateAndFallsBack(t *testing.T) {
 // TestClosedEnumsNameEveryValue. These strings reach traces and failures, and
 // the default arms catch a value added later without a name.
 func TestClosedEnumsNameEveryValue(t *testing.T) {
-	for v, want := range map[widget.ButtonRole]string{
-		widget.ButtonRoleAction:      "action",
-		widget.ButtonRoleAccept:      "accept",
-		widget.ButtonRoleReject:      "reject",
-		widget.ButtonRoleDestructive: "destructive",
+	for v, want := range map[core.ButtonRole]string{
+		core.ButtonRoleAction:      "action",
+		core.ButtonRoleAccept:      "accept",
+		core.ButtonRoleReject:      "reject",
+		core.ButtonRoleDestructive: "destructive",
 	} {
 		if got := v.String(); got != want {
 			t.Errorf("widget.ButtonRole(%d).String() = %q, want %q", v, got, want)
 		}
 	}
-	if got := widget.ButtonRole(200).String(); got != "unknown" {
+	if got := core.ButtonRole(200).String(); got != "unknown" {
 		t.Errorf("an undefined role rendered as %q, want %q", got, "unknown")
 	}
 
-	for v, want := range map[widget.WidgetState]string{
-		widget.WidgetStateNormal:   "normal",
-		widget.WidgetStateFocused:  "focused",
-		widget.WidgetStateArmed:    "armed",
-		widget.WidgetStateDisabled: "disabled",
+	for v, want := range map[core.WidgetState]string{
+		core.WidgetStateNormal:   "normal",
+		core.WidgetStateFocused:  "focused",
+		core.WidgetStateArmed:    "armed",
+		core.WidgetStateDisabled: "disabled",
 	} {
 		if got := v.String(); got != want {
 			t.Errorf("widget.WidgetState(%d).String() = %q, want %q", v, got, want)
 		}
 	}
-	if got := widget.WidgetState(200).String(); got != "unknown" {
+	if got := core.WidgetState(200).String(); got != "unknown" {
 		t.Errorf("an undefined state rendered as %q, want %q", got, "unknown")
 	}
 }
@@ -385,10 +385,10 @@ func TestClosedEnumsNameEveryValue(t *testing.T) {
 // TestAZeroConfiguredButtonIsInertButUsable — the state an author reaches
 // before wiring anything up.
 func TestAZeroConfiguredButtonIsInertButUsable(t *testing.T) {
-	b := widget.NewButton("Hi")
+	b := core.NewButton("Hi")
 
-	if b.Role() != widget.ButtonRoleAction {
-		t.Errorf("role = %v, want %v", b.Role(), widget.ButtonRoleAction)
+	if b.Role() != core.ButtonRoleAction {
+		t.Errorf("role = %v, want %v", b.Role(), core.ButtonRoleAction)
 	}
 	if !b.Enabled() {
 		t.Error("a new button is disabled")
@@ -402,8 +402,8 @@ func TestAZeroConfiguredButtonIsInertButUsable(t *testing.T) {
 	if b.Armed() {
 		t.Error("a new button is armed")
 	}
-	if got := b.State(); got != widget.WidgetStateNormal {
-		t.Errorf("state = %v, want %v", got, widget.WidgetStateNormal)
+	if got := b.State(); got != core.WidgetStateNormal {
+		t.Errorf("state = %v, want %v", got, core.WidgetStateNormal)
 	}
 
 	h := startApp(t, b, 12, 1)
@@ -421,12 +421,12 @@ func TestAZeroConfiguredButtonIsInertButUsable(t *testing.T) {
 // TestTheButtonPaintsTheLookItsStateSelects. Rendering asks State rather than
 // choosing, so the precedence rule cannot drift from the rest of the toolkit.
 func TestTheButtonPaintsTheLookItsStateSelects(t *testing.T) {
-	st := widget.NewButtonStyleFull(
+	st := core.NewButtonStyleFull(
 		style.New().Foreground(style.TokenForeground),
 		style.New().Foreground(style.TokenPrimary),
 		style.New().Foreground(style.TokenTextMuted),
 		style.New().Foreground(style.TokenAccent))
-	b := widget.NewButton("Go", widget.WithButtonStyle(st))
+	b := core.NewButton("Go", core.WithButtonStyle(st))
 
 	h := startApp(t, b, 8, 1)
 	defer h.stop()
@@ -440,8 +440,8 @@ func TestTheButtonPaintsTheLookItsStateSelects(t *testing.T) {
 	// Render that ignored the state entirely.
 	h.onLoop(func() { b.Context().RequestFocus() })
 	h.sync()
-	if got := stateOn(h, b); got != widget.WidgetStateFocused {
-		t.Errorf("state after focusing = %v, want %v", got, widget.WidgetStateFocused)
+	if got := stateOn(h, b); got != core.WidgetStateFocused {
+		t.Errorf("state after focusing = %v, want %v", got, core.WidgetStateFocused)
 	}
 	focusedAttrs := cellAttrs(h, 0, 0)
 	if focusedAttrs == normalAttrs {
@@ -454,7 +454,7 @@ func TestTheButtonPaintsTheLookItsStateSelects(t *testing.T) {
 // TestPointerPolicyDisablesTheButtonsMouseOnly.
 func TestPointerPolicyDisablesTheButtonsMouseOnly(t *testing.T) {
 	var fired atomic.Int64
-	b := widget.NewButton("OK", widget.WithOnActivate(func() { fired.Add(1) }))
+	b := core.NewButton("OK", core.WithOnActivate(func() { fired.Add(1) }))
 	h := startApp(t, b, 12, 1)
 	defer h.stop()
 	h.onLoop(func() {
@@ -487,7 +487,7 @@ func TestTheCallbackRunsBeforeTheEventIsPublished(t *testing.T) {
 	var mu sync.Mutex
 	note := func(s string) { mu.Lock(); order = append(order, s); mu.Unlock() }
 
-	b := widget.NewButton("OK", widget.WithOnActivate(func() { note("callback") }))
+	b := core.NewButton("OK", core.WithOnActivate(func() { note("callback") }))
 	h := startApp(t, b, 12, 1)
 	defer h.stop()
 	h.onLoop(func() { b.Context().RequestFocus() })
@@ -516,7 +516,7 @@ func TestTheCallbackRunsBeforeTheEventIsPublished(t *testing.T) {
 // has put on Ctrl-Enter rather than to the button underneath it.
 func TestOnlyAnUnmodifiedKeyPressActivates(t *testing.T) {
 	var fired atomic.Int64
-	b := widget.NewButton("OK", widget.WithOnActivate(func() { fired.Add(1) }))
+	b := core.NewButton("OK", core.WithOnActivate(func() { fired.Add(1) }))
 	h := startApp(t, b, 12, 1)
 	defer h.stop()
 	h.onLoop(func() { b.Context().RequestFocus() })
@@ -543,7 +543,7 @@ func TestOnlyAnUnmodifiedKeyPressActivates(t *testing.T) {
 // that no longer exists, so activation after unmount is never safe.
 func TestAnUnmountedButtonRefusesToActivate(t *testing.T) {
 	var fired atomic.Int64
-	b := widget.NewButton("OK", widget.WithOnActivate(func() { fired.Add(1) }))
+	b := core.NewButton("OK", core.WithOnActivate(func() { fired.Add(1) }))
 
 	// Never mounted: no Context at all.
 	if b.Activate(tui.OriginProgrammatic) {
@@ -573,7 +573,7 @@ func TestAnUnmountedButtonRefusesToActivate(t *testing.T) {
 // be read mid-gesture, and calling the method the runtime calls is both simpler
 // and exactly what is being claimed.
 func TestADisabledButtonRefusesToShowPressed(t *testing.T) {
-	b := widget.NewButton("OK")
+	b := core.NewButton("OK")
 	h := startApp(t, b, 12, 1)
 	defer h.stop()
 	h.sync()
@@ -584,8 +584,8 @@ func TestADisabledButtonRefusesToShowPressed(t *testing.T) {
 		t.Error("a disabled button showed the pressed look; disabling and looking " +
 			"pressed at once is a state the user cannot resolve")
 	}
-	if got := stateOn(h, b); got != widget.WidgetStateDisabled {
-		t.Errorf("state = %v, want %v", got, widget.WidgetStateDisabled)
+	if got := stateOn(h, b); got != core.WidgetStateDisabled {
+		t.Errorf("state = %v, want %v", got, core.WidgetStateDisabled)
 	}
 
 	// The control: re-enabled, the same call is honoured, so the refusal above
@@ -604,7 +604,7 @@ func TestADisabledButtonRefusesToShowPressed(t *testing.T) {
 // — the classic being three that all write the same field — is invisible to a
 // test that only exercises WithNormal.
 func TestEveryWithMethodCopiesAndTouchesOnlyItsOwnLook(t *testing.T) {
-	base := widget.NewButtonStyleFull(
+	base := core.NewButtonStyleFull(
 		style.New().Bold(true),
 		style.New().Italic(true),
 		style.New().Faint(true),
@@ -613,17 +613,17 @@ func TestEveryWithMethodCopiesAndTouchesOnlyItsOwnLook(t *testing.T) {
 
 	for _, tc := range []struct {
 		name  string
-		apply func(*widget.ButtonStyle) *widget.ButtonStyle
-		got   func(*widget.ButtonStyle) style.Style
+		apply func(*core.ButtonStyle) *core.ButtonStyle
+		got   func(*core.ButtonStyle) style.Style
 	}{
-		{"WithNormal", func(s *widget.ButtonStyle) *widget.ButtonStyle { return s.WithNormal(marker) },
-			func(s *widget.ButtonStyle) style.Style { return s.Normal() }},
-		{"WithFocused", func(s *widget.ButtonStyle) *widget.ButtonStyle { return s.WithFocused(marker) },
-			func(s *widget.ButtonStyle) style.Style { return s.Focused() }},
-		{"WithArmed", func(s *widget.ButtonStyle) *widget.ButtonStyle { return s.WithArmed(marker) },
-			func(s *widget.ButtonStyle) style.Style { return s.Armed() }},
-		{"WithDisabled", func(s *widget.ButtonStyle) *widget.ButtonStyle { return s.WithDisabled(marker) },
-			func(s *widget.ButtonStyle) style.Style { return s.Disabled() }},
+		{"WithNormal", func(s *core.ButtonStyle) *core.ButtonStyle { return s.WithNormal(marker) },
+			func(s *core.ButtonStyle) style.Style { return s.Normal() }},
+		{"WithFocused", func(s *core.ButtonStyle) *core.ButtonStyle { return s.WithFocused(marker) },
+			func(s *core.ButtonStyle) style.Style { return s.Focused() }},
+		{"WithArmed", func(s *core.ButtonStyle) *core.ButtonStyle { return s.WithArmed(marker) },
+			func(s *core.ButtonStyle) style.Style { return s.Armed() }},
+		{"WithDisabled", func(s *core.ButtonStyle) *core.ButtonStyle { return s.WithDisabled(marker) },
+			func(s *core.ButtonStyle) style.Style { return s.Disabled() }},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			derived := tc.apply(base)
@@ -658,19 +658,19 @@ func TestEveryWithMethodCopiesAndTouchesOnlyItsOwnLook(t *testing.T) {
 // TestTheChainableStyleSetterRestylesALiveButton — the runtime half of the
 // styling story, and the one a consumer uses to re-theme without rebuilding.
 func TestTheChainableStyleSetterRestylesALiveButton(t *testing.T) {
-	loud := widget.NewButtonStyleFull(
+	loud := core.NewButtonStyleFull(
 		style.New().Foreground(style.TokenError),
 		style.New().Foreground(style.TokenError),
 		style.New().Foreground(style.TokenError),
 		style.New().Foreground(style.TokenError))
 
-	b := widget.NewButton("Go")
+	b := core.NewButton("Go")
 	h := startApp(t, b, 8, 1)
 	defer h.stop()
 	h.sync()
 	before := cellAttrs(h, 0, 0)
 
-	var returned *widget.Button
+	var returned *core.Button
 	h.onLoop(func() { returned = b.WithStyle(loud) })
 	h.settle()
 
@@ -684,7 +684,7 @@ func TestTheChainableStyleSetterRestylesALiveButton(t *testing.T) {
 
 // TestTheLabelCanBeReadAndReplaced.
 func TestTheLabelCanBeReadAndReplaced(t *testing.T) {
-	b := widget.NewButton("First")
+	b := core.NewButton("First")
 	if got := b.Label(); got != "First" {
 		t.Errorf("Label() = %q, want %q", got, "First")
 	}
@@ -729,7 +729,7 @@ func TestLabelWidthFollowsGraphemeClustersNotRunes(t *testing.T) {
 			// The brackets a button wears by default are clusters of their own
 			// and would just be added to every expectation below, testing the
 			// decoration twice and the measurement less clearly.
-			b := widget.NewButton(tc.label, widget.WithButtonDecoration("", ""))
+			b := core.NewButton(tc.label, core.WithButtonDecoration("", ""))
 			flex := tui.NewFlex(tui.Horizontal)
 			flex.Add(b)
 			// A terminal far wider than any label, so what is measured is the
@@ -753,7 +753,7 @@ func TestLabelWidthFollowsGraphemeClustersNotRunes(t *testing.T) {
 // way to draw it and the row's alignment is lost from there on.
 func TestAWideClusterIsNeverSplitAcrossTheEdge(t *testing.T) {
 	// Three wide clusters want six columns; the surface offers five.
-	b := widget.NewButton("確定中")
+	b := core.NewButton("確定中")
 	flex := tui.NewFlex(tui.Horizontal)
 	flex.Add(b)
 	h := startApp(t, flex, 5, 1)
@@ -775,7 +775,7 @@ func TestAWideClusterIsNeverSplitAcrossTheEdge(t *testing.T) {
 // than merely a stale picture.
 func TestChangingTheLabelRelayoutsTheParent(t *testing.T) {
 	var fired atomic.Int64
-	b := widget.NewButton("Hi", widget.WithOnActivate(func() { fired.Add(1) }))
+	b := core.NewButton("Hi", core.WithOnActivate(func() { fired.Add(1) }))
 	flex := tui.NewFlex(tui.Horizontal)
 	flex.Add(b)
 	h := startApp(t, flex, 30, 1)
@@ -804,7 +804,7 @@ func TestChangingTheLabelRelayoutsTheParent(t *testing.T) {
 // applying it only when mounted made that chain a silent no-op.
 func TestPointerPolicyChainedBeforeMountIsHonoured(t *testing.T) {
 	var fired atomic.Int64
-	b := widget.NewButton("OK", widget.WithOnActivate(func() { fired.Add(1) })).
+	b := core.NewButton("OK", core.WithOnActivate(func() { fired.Add(1) })).
 		WithPointerPolicy(tui.PointerDisabled)
 
 	h := startApp(t, b, 12, 1)
@@ -834,7 +834,7 @@ func TestPointerPolicyChainedBeforeMountIsHonoured(t *testing.T) {
 
 // TestAnInvalidPointerPolicyIsRejectedBeforeMountWithoutMutating.
 func TestAnInvalidPointerPolicyIsRejectedBeforeMountWithoutMutating(t *testing.T) {
-	b := widget.NewButton("OK").WithPointerPolicy(tui.PointerDisabled)
+	b := core.NewButton("OK").WithPointerPolicy(tui.PointerDisabled)
 
 	fatal := fatalFromWidgetExt(func() { b.WithPointerPolicy(tui.PointerPolicy(200)) })
 	if fatal == nil {
@@ -857,7 +857,7 @@ func TestAnInvalidPointerPolicyIsRejectedBeforeMountWithoutMutating(t *testing.T
 // inert — observers on the bus still see the activation, and the documentation
 // now says so.
 func TestACallbackFreeButtonStillPublishesItsActivation(t *testing.T) {
-	b := widget.NewButton("Hi") // no WithOnActivate
+	b := core.NewButton("Hi") // no WithOnActivate
 	h := startApp(t, b, 12, 1)
 	defer h.stop()
 	h.sync()
@@ -894,9 +894,9 @@ func fatalFromWidgetExt(fn func()) (f *errs.Fatal) {
 // dropped: the owner is told once, with a reason, exactly as it would be for
 // any other way a gesture dies.
 func TestDisablingMidPressCancelsTheGestureOnce(t *testing.T) {
-	b := widget.NewButton("OK")
+	b := core.NewButton("OK")
 	var sentinelFired atomic.Int64
-	sentinel := widget.NewButton("S", widget.WithOnActivate(func() { sentinelFired.Add(1) }))
+	sentinel := core.NewButton("S", core.WithOnActivate(func() { sentinelFired.Add(1) }))
 	root := tui.NewFlex(tui.Horizontal)
 	root.Add(b, sentinel)
 	h := startApp(t, root, 20, 1)
@@ -923,9 +923,9 @@ func TestDisablingMidPressCancelsTheGestureOnce(t *testing.T) {
 // from the visual half: the runtime must not begin a gesture whose only
 // possible outcome is an activation that will be refused.
 func TestADisabledButtonNeverStartsAGesture(t *testing.T) {
-	b := widget.NewButton("OK")
+	b := core.NewButton("OK")
 	var sibFired atomic.Int64
-	sib := widget.NewButton("S", widget.WithOnActivate(func() { sibFired.Add(1) }))
+	sib := core.NewButton("S", core.WithOnActivate(func() { sibFired.Add(1) }))
 	root := tui.NewFlex(tui.Horizontal)
 	root.Add(b, sib)
 	h := startApp(t, root, 20, 1)
@@ -950,7 +950,7 @@ func TestADisabledButtonNeverStartsAGesture(t *testing.T) {
 // cancellation can be checked at the boundary a real widget would act on rather
 // than through the runtime's private state.
 type lossRecordingButton struct {
-	*widget.Button
+	*core.Button
 	losses atomic.Int64
 	reason atomic.Int64
 }
@@ -970,7 +970,7 @@ func (l *lossRecordingButton) HandleEvent(ev tui.Event) bool {
 // and the reason is what a widget branches on: "the program ended this
 // gesture" and "focus wandered off" call for different cleanup.
 func TestDisablingMidPressCancelsRatherThanDriftingOut(t *testing.T) {
-	lb := &lossRecordingButton{Button: widget.NewButton("OK")}
+	lb := &lossRecordingButton{Button: core.NewButton("OK")}
 	flex := tui.NewFlex(tui.Horizontal)
 	flex.Add(lb)
 	h := startApp(t, flex, 20, 1)
@@ -1003,7 +1003,7 @@ func TestACombiningMarkIsPaintedWithItsBaseCharacter(t *testing.T) {
 	// Undecorated for the same reason as the width test above: this counts
 	// PAINTED CELLS, and brackets are painted cells with nothing to do with
 	// combining marks.
-	b := widget.NewButton("éx", widget.WithButtonDecoration("", "")) // "éx" as base + combining acute
+	b := core.NewButton("éx", core.WithButtonDecoration("", "")) // "éx" as base + combining acute
 	flex := tui.NewFlex(tui.Horizontal)
 	flex.Add(b)
 	h := startApp(t, flex, 10, 1)
@@ -1037,7 +1037,7 @@ func TestACombiningMarkIsPaintedWithItsBaseCharacter(t *testing.T) {
 // it. Cancelling the gesture then clears nothing, and only SetEnabled's own
 // reset gets the button out of a pressed-and-unavailable state.
 func TestDisablingClearsAnArmedLookThatNoGestureOwns(t *testing.T) {
-	b := widget.NewButton("OK")
+	b := core.NewButton("OK")
 	h := startApp(t, b, 12, 1)
 	defer h.stop()
 	h.sync()
@@ -1052,15 +1052,15 @@ func TestDisablingClearsAnArmedLookThatNoGestureOwns(t *testing.T) {
 		t.Error("a button armed without a gesture stayed pressed after being disabled; " +
 			"cancelling a gesture cannot clear a look no gesture owns")
 	}
-	if got := stateOn(h, b); got != widget.WidgetStateDisabled {
-		t.Errorf("state = %v, want %v", got, widget.WidgetStateDisabled)
+	if got := stateOn(h, b); got != core.WidgetStateDisabled {
+		t.Errorf("state = %v, want %v", got, core.WidgetStateDisabled)
 	}
 }
 
 // focusWatcher records the focus-loss events bubbled to it, so the promised
 // notification can be observed rather than inferred from the focused id.
 type focusWatcher struct {
-	*widget.Button
+	*core.Button
 	losses atomic.Int64
 }
 
@@ -1078,7 +1078,7 @@ func (f *focusWatcher) HandleEvent(ev tui.Event) bool {
 // repaints on the event keeps drawing itself focused. The notification is the
 // point, not the id.
 func TestDisablingTheOnlyFocusedButtonNotifiesItBeforeReturning(t *testing.T) {
-	fw := &focusWatcher{Button: widget.NewButton("Only")}
+	fw := &focusWatcher{Button: core.NewButton("Only")}
 	flex := tui.NewFlex(tui.Horizontal)
 	flex.Add(fw)
 	h := startApp(t, flex, 20, 1)
@@ -1116,8 +1116,8 @@ func TestDisablingTheOnlyFocusedButtonNotifiesItBeforeReturning(t *testing.T) {
 // that cleared focus to nothing would satisfy that and leave the dialog with no
 // keyboard target at all. The sibling must be the actual destination.
 func TestDisablingTheFocusedButtonFocusesTheEnabledSibling(t *testing.T) {
-	a := widget.NewButton("A")
-	b := widget.NewButton("B")
+	a := core.NewButton("A")
+	b := core.NewButton("B")
 	flex := tui.NewFlex(tui.Horizontal)
 	flex.Add(a, b)
 	h := startApp(t, flex, 20, 1)
@@ -1149,7 +1149,7 @@ func TestLabelWidthFollowsTheActiveWidthPolicy(t *testing.T) {
 	const ambiguous = "①" // East Asian Ambiguous: narrow by default, wide under the CJK policy
 
 	widthUnder := func(p tui.WidthPolicy) int {
-		b := widget.NewButton(ambiguous)
+		b := core.NewButton(ambiguous)
 		flex := tui.NewFlex(tui.Horizontal)
 		flex.Add(b)
 		h := startAppOpts(t, flex, 20, 1, tui.WithWidthPolicy(p))
@@ -1177,30 +1177,30 @@ func TestLabelWidthFollowsTheActiveWidthPolicy(t *testing.T) {
 func TestAButtonMayDisableItselfFromItsOwnActivation(t *testing.T) {
 	for _, tc := range []struct {
 		name  string
-		drive func(h *harness, b *widget.Button)
+		drive func(h *harness, b *core.Button)
 	}{
-		{"Enter", func(h *harness, b *widget.Button) {
+		{"Enter", func(h *harness, b *core.Button) {
 			h.inject(tui.KeyEvent{Kind: tui.KeyPress, Code: tui.KeyEnter})
 		}},
-		{"Space", func(h *harness, b *widget.Button) {
+		{"Space", func(h *harness, b *core.Button) {
 			h.inject(tui.KeyEvent{Kind: tui.KeyPress, Code: ' '})
 		}},
-		{"pointer press and release", func(h *harness, b *widget.Button) {
+		{"pointer press and release", func(h *harness, b *core.Button) {
 			h.inject(tui.MouseEvent{Kind: tui.MousePress, Button: tui.MouseLeft, X: 1, Y: 0})
 			h.inject(tui.MouseEvent{Kind: tui.MouseRelease, Button: tui.MouseLeft, X: 1, Y: 0})
 		}},
-		{"DoAction", func(h *harness, b *widget.Button) {
+		{"DoAction", func(h *harness, b *core.Button) {
 			h.onLoop(func() { b.Context().DoAction(tui.ActivateAction{}) })
 		}},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			var fired, sentinelFired atomic.Int64
-			var b *widget.Button
-			b = widget.NewButton("OK", widget.WithOnActivate(func() {
+			var b *core.Button
+			b = core.NewButton("OK", core.WithOnActivate(func() {
 				fired.Add(1)
 				b.SetEnabled(false)
 			}))
-			sentinel := widget.NewButton("S", widget.WithOnActivate(func() { sentinelFired.Add(1) }))
+			sentinel := core.NewButton("S", core.WithOnActivate(func() { sentinelFired.Add(1) }))
 			root := tui.NewFlex(tui.Horizontal)
 			root.Add(b, sentinel)
 			h := startApp(t, root, 20, 1)
@@ -1236,7 +1236,7 @@ type disableButton struct{}
 // cancel, and disabling must not panic. (Cancelling a gesture the button does hold is the handler
 // phases' alone, as before.)
 func TestAButtonDisabledFromABusDeliveryDoesNotPanic(t *testing.T) {
-	b := widget.NewButton("OK")
+	b := core.NewButton("OK")
 	h := startApp(t, b, 12, 1)
 	defer h.stop()
 	h.settle()
@@ -1255,7 +1255,7 @@ func TestAButtonDisabledFromABusDeliveryDoesNotPanic(t *testing.T) {
 // look. A Button takes no palette roles of its own (palette.buttonText is a Dialog's and a
 // FileDialog's), so color is how a host colours one.
 func TestAButtonsColorPaintsItsLabel(t *testing.T) {
-	b := widget.NewButton("Go")
+	b := core.NewButton("Go")
 	h := startApp(t, b, 8, 1)
 	defer h.stop()
 	h.sync()

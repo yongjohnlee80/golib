@@ -4,12 +4,12 @@ import (
 	"testing"
 
 	"github.com/yongjohnlee80/golib/tui"
-	"github.com/yongjohnlee80/golib/tui/widget"
+	"github.com/yongjohnlee80/golib/tui/widget/editor"
 )
 
 func TestEditorMotionsWordsAndParagraphs(t *testing.T) {
 	text := "first word\n\nsecond paragraph word\nthird"
-	h, ed, sh := focusedEditor(t, 40, 10, widget.WithCore(widget.CoreInitialText(text)))
+	h, ed, sh := focusedEditor(t, 40, 10, editor.WithCore(editor.CoreInitialText(text)))
 
 	// Initial cursor at (0, 0)
 	row, col := ed.Core().Line()
@@ -76,9 +76,9 @@ func TestEditorMotionsWordsAndParagraphs(t *testing.T) {
 
 func TestEditorMotionsNanoLineEnd(t *testing.T) {
 	h, ed, sh := focusedEditor(t, 40, 10,
-		widget.WithCore(widget.CoreInitialText("abc")),
-		widget.WithCore(widget.CoreKeymap(widget.NanoKeymap())),
-		widget.WithCore(widget.CoreModal(false)),
+		editor.WithCore(editor.CoreInitialText("abc")),
+		editor.WithCore(editor.CoreKeymap(editor.NanoKeymap())),
+		editor.WithCore(editor.CoreModal(false)),
 	)
 
 	// Ctrl+E in Nano moves to insertion boundary at end of line (col 3)

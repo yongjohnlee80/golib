@@ -6,7 +6,9 @@ import (
 	"testing"
 
 	"github.com/yongjohnlee80/golib/tui"
-	"github.com/yongjohnlee80/golib/tui/widget"
+	"github.com/yongjohnlee80/golib/tui/widget/core"
+	"github.com/yongjohnlee80/golib/tui/widget/editor"
+	"github.com/yongjohnlee80/golib/tui/widget/files"
 )
 
 // THE SCROLL INDICATOR'S THUMB spans the scroll range: on the top row when the
@@ -37,12 +39,12 @@ func TestEditorThumbSpansTheScrollRange(t *testing.T) {
 	for _, tc := range []struct {
 		name string
 		text string
-		opts []widget.EditorOption
+		opts []editor.EditorOption
 	}{
 		{"unwrapped", numberedLines(10), nil},
 		// each line wraps to two rows at this width, so the range is in lines whose rows fill the
 		// screen, not in lines
-		{"wrapped", strings.Repeat("aaaa bbbb cccc dddd eeee\n", 9) + "aaaa bbbb cccc dddd eeee", []widget.EditorOption{widget.WithEditorWrap(widget.WrapSoft)}},
+		{"wrapped", strings.Repeat("aaaa bbbb cccc dddd eeee\n", 9) + "aaaa bbbb cccc dddd eeee", []editor.EditorOption{editor.WithEditorWrap(core.WrapSoft)}},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			h, ed, sh := focusedEditor(t, 20, 5, tc.opts...)
@@ -74,11 +76,11 @@ func TestTextAreaThumbSpansTheScrollRange(t *testing.T) {
 }
 
 func TestTreeThumbSpansTheScrollRange(t *testing.T) {
-	var roots []*widget.TreeNode
+	var roots []*files.TreeNode
 	for i := range 10 {
-		roots = append(roots, widget.NewTreeNode(fmt.Sprint(i), fmt.Sprintf("node %d", i)))
+		roots = append(roots, files.NewTreeNode(fmt.Sprint(i), fmt.Sprintf("node %d", i)))
 	}
-	h, _, sh := focusedTree(t, 20, 5, widget.WithRoots(roots...))
+	h, _, sh := focusedTree(t, 20, 5, files.WithRoots(roots...))
 	if got := thumbRow(h); got != 0 {
 		t.Fatalf("at the first row the thumb is on row %d, want 0\n%s", got, h.grid())
 	}

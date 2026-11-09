@@ -7,19 +7,19 @@ import (
 	"github.com/yongjohnlee80/golib/parse/golang"
 	"github.com/yongjohnlee80/golib/parse/markdown"
 	"github.com/yongjohnlee80/golib/tui"
-	"github.com/yongjohnlee80/golib/tui/widget"
+	"github.com/yongjohnlee80/golib/tui/widget/editor"
 )
 
-func goCore(text string) *widget.EditorCore {
+func goCore(text string) *editor.EditorCore {
 	d := golang.Definition()
-	c := widget.NewEditorCore(widget.CoreKeyset(widget.KeysetStandard), widget.CoreAutoIndent(true), widget.CoreSourceFactory(func() highlight.Source { return d.NewSource(nil) }))
+	c := editor.NewEditorCore(editor.CoreKeyset(editor.KeysetStandard), editor.CoreAutoIndent(true), editor.CoreSourceFactory(func() highlight.Source { return d.NewSource(nil) }))
 	c.SetValue(text)
 	return c
 }
 
 func TestSourceSpaceNotifiesLayoutAfterIndentLookup(t *testing.T) {
 	d := golang.Definition()
-	c, layout := coreWith(t, "", widget.CoreAutoIndent(true), widget.CoreSourceFactory(func() highlight.Source { return d.NewSource(nil) }))
+	c, layout := coreWith(t, "", editor.CoreAutoIndent(true), editor.CoreSourceFactory(func() highlight.Source { return d.NewSource(nil) }))
 	keys(c, "i  ")
 	if got := c.Value(); got != "  " {
 		t.Fatalf("text = %q, want two spaces", got)
@@ -31,7 +31,7 @@ func TestSourceSpaceNotifiesLayoutAfterIndentLookup(t *testing.T) {
 
 func TestMarkdownBlankProseLineDoesNotIndentNextLine(t *testing.T) {
 	d := markdown.Definition()
-	c, _ := coreWith(t, "", widget.CoreAutoIndent(true), widget.CoreSourceFactory(func() highlight.Source { return d.NewSource(nil) }))
+	c, _ := coreWith(t, "", editor.CoreAutoIndent(true), editor.CoreSourceFactory(func() highlight.Source { return d.NewSource(nil) }))
 	keys(c, "i  ")
 	c.HandleKey(tui.KeyEvent{Code: tui.KeyEnter, Kind: tui.KeyPress})
 	if got := c.Value(); got != "  \n" {

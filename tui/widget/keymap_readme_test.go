@@ -5,7 +5,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/yongjohnlee80/golib/tui/widget"
+	"github.com/yongjohnlee80/golib/tui/widget/editor"
 )
 
 // Every golib command is in tui/keymap's README, where a user looks a key's id up; the Editor's, which
@@ -19,8 +19,8 @@ func TestEveryCommandIsInTheKeymapReadme(t *testing.T) {
 	if !strings.Contains(readme, "`tui.editor.<keyset>.<class>.<action>`") {
 		t.Error("the README does not give the Editor's command pattern")
 	}
-	for _, c := range widget.KeyCommands() {
-		if strings.HasPrefix(c.ID, "tui.editor.") && c.ID != widget.EditorContextMenu.ID {
+	for _, c := range editor.KeyCommands() {
+		if strings.HasPrefix(c.ID, "tui.editor.") && c.ID != editor.EditorContextMenu.ID {
 			continue
 		}
 		if !strings.Contains(readme, "`"+c.ID+"`") {

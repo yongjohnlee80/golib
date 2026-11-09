@@ -4,7 +4,7 @@ import (
 	"testing"
 
 	"github.com/yongjohnlee80/golib/tui"
-	"github.com/yongjohnlee80/golib/tui/widget"
+	"github.com/yongjohnlee80/golib/tui/widget/editor"
 )
 
 // R, Vim's Replace mode: every expectation is headless Neovim's on the same text and keys.
@@ -44,7 +44,7 @@ func TestVimReplace(t *testing.T) {
 func TestVimReplaceMode(t *testing.T) {
 	c, _ := coreWith(t, "1234")
 	vimSeq(c, "R")
-	if c.Mode() != widget.ModeReplace || c.Mode().String() != "REPLACE" {
+	if c.Mode() != editor.ModeReplace || c.Mode().String() != "REPLACE" {
 		t.Fatalf("R: mode %v", c.Mode())
 	}
 	c.HandlePaste("ab")
@@ -52,23 +52,23 @@ func TestVimReplaceMode(t *testing.T) {
 		t.Fatalf("a paste in Replace: %q", c.Value())
 	}
 	vimSeq(c, "<cto>")
-	if c.Mode() != widget.ModeNormal || c.OneShotMode() != widget.ModeReplace {
+	if c.Mode() != editor.ModeNormal || c.OneShotMode() != editor.ModeReplace {
 		t.Fatalf("Ctrl-o in Replace: mode %v, one-shot %v", c.Mode(), c.OneShotMode())
 	}
 	vimSeq(c, "l")
-	if c.Mode() != widget.ModeReplace || c.OneShotMode() != widget.ModeNormal {
+	if c.Mode() != editor.ModeReplace || c.OneShotMode() != editor.ModeNormal {
 		t.Fatalf("after Ctrl-o's command: mode %v", c.Mode())
 	}
 	vimSeq(c, "<esc>")
-	if c.Mode() != widget.ModeNormal {
+	if c.Mode() != editor.ModeNormal {
 		t.Fatalf("Esc: mode %v", c.Mode())
 	}
-	if c.OneShotMode() != widget.ModeNormal {
+	if c.OneShotMode() != editor.ModeNormal {
 		t.Fatal("a one-shot reported with none running")
 	}
 	i, _ := coreWith(t, "1234")
 	vimSeq(i, "i<cto>")
-	if i.OneShotMode() != widget.ModeInsert {
+	if i.OneShotMode() != editor.ModeInsert {
 		t.Fatalf("Ctrl-o from Insert: %v", i.OneShotMode())
 	}
 	a, _ := coreWith(t, "1234")
@@ -76,8 +76,8 @@ func TestVimReplaceMode(t *testing.T) {
 	if a.HandleKey(tui.KeyEvent{Code: 'x', Mods: tui.ModAlt}) || a.Value() != "1234" {
 		t.Fatalf("an Alt key in Replace: consumed, or %q", a.Value())
 	}
-	v, _ := coreWith(t, "1234", widget.CoreReadOnly(true))
-	if v.HandleKey(tui.KeyEvent{Code: 'R', Text: "R"}) || v.Mode() != widget.ModeNormal {
+	v, _ := coreWith(t, "1234", editor.CoreReadOnly(true))
+	if v.HandleKey(tui.KeyEvent{Code: 'R', Text: "R"}) || v.Mode() != editor.ModeNormal {
 		t.Fatalf("a viewer's R: mode %v", v.Mode())
 	}
 }
@@ -95,7 +95,7 @@ func TestVimReplacePress(t *testing.T) {
 
 // The terminal Editor's caret: an underline in Replace.
 func TestVimReplaceCaret(t *testing.T) {
-	ed := widget.NewEditor(widget.WithCore(widget.CoreInitialText("1234")))
+	ed := editor.NewEditor(editor.WithCore(editor.CoreInitialText("1234")))
 	ed.Core().HandleKey(tui.KeyEvent{Code: 'R', Text: "R"})
 	if got := ed.CursorShape(); got != tui.CursorShapeUnderline {
 		t.Fatalf("Replace's caret: %v", got)

@@ -4,15 +4,16 @@ import (
 	"testing"
 
 	"github.com/yongjohnlee80/golib/tui"
-	"github.com/yongjohnlee80/golib/tui/widget"
+	"github.com/yongjohnlee80/golib/tui/widget/core"
+	"github.com/yongjohnlee80/golib/tui/widget/editor"
 )
 
 // A window's resize stops at its maximum (WithWindowMaxSize), on each axis, by the pointer and by
 // a keyboard step; SetMaxSize changes it live, and a zero or negative dimension has none.
 func TestAWindowResizeStopsAtItsMaximum(t *testing.T) {
-	w := widget.NewWindowMod(widget.NewEditor(), widget.WithWindowResize(), widget.WithWindowMaxSize(tui.Size{W: 16, H: 7}))
-	f := widget.NewFloat(w, widget.WithAnchor(widget.AtRect(tui.Rect{X: 2, Y: 2, W: 12, H: 5})))
-	host := widget.NewOverlayHost(widget.NewText("base"))
+	w := core.NewWindowMod(editor.NewEditor(), core.WithWindowResize(), core.WithWindowMaxSize(tui.Size{W: 16, H: 7}))
+	f := core.NewFloat(w, core.WithAnchor(core.AtRect(tui.Rect{X: 2, Y: 2, W: 12, H: 5})))
+	host := core.NewOverlayHost(core.NewText("base"))
 	host.Attach(f)
 	h := startApp(t, host, 50, 20)
 	h.onLoop(f.Show)
@@ -56,15 +57,15 @@ func TestANegativeWindowMaximumIsRefused(t *testing.T) {
 			t.Fatal("NewWindowCore took a negative maximum")
 		}
 	}()
-	widget.NewWindowCore(widget.WithWindowResize(), widget.WithWindowMaxSize(tui.Size{W: -1}))
+	core.NewWindowCore(core.WithWindowResize(), core.WithWindowMaxSize(tui.Size{W: -1}))
 }
 
 // A retargeted core's target owns its geometry (a tile's shared border), so a resize then is not held
 // to the window's maximum; Retarget(nil) gives the window its own target and holds it again.
 func TestARetargetedResizeIsNotHeldToTheWindowsMaximum(t *testing.T) {
-	w := widget.NewWindowMod(widget.NewEditor(), widget.WithWindowResize(), widget.WithWindowMaxSize(tui.Size{W: 16, H: 7}))
-	f := widget.NewFloat(w, widget.WithAnchor(widget.AtRect(tui.Rect{X: 2, Y: 2, W: 12, H: 5})))
-	host := widget.NewOverlayHost(widget.NewText("base"))
+	w := core.NewWindowMod(editor.NewEditor(), core.WithWindowResize(), core.WithWindowMaxSize(tui.Size{W: 16, H: 7}))
+	f := core.NewFloat(w, core.WithAnchor(core.AtRect(tui.Rect{X: 2, Y: 2, W: 12, H: 5})))
+	host := core.NewOverlayHost(core.NewText("base"))
 	host.Attach(f)
 	h := startApp(t, host, 50, 20)
 	h.onLoop(f.Show)

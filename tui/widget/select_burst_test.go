@@ -5,7 +5,7 @@ import (
 	"time"
 
 	"github.com/yongjohnlee80/golib/tui"
-	"github.com/yongjohnlee80/golib/tui/widget"
+	"github.com/yongjohnlee80/golib/tui/widget/core"
 )
 
 // Keys typed after the Enter that chooses an option reach where the closed options leave the focus,
@@ -14,11 +14,11 @@ import (
 // text after it was lost (AutoDB's TestAddingAConnection, its DSN typed into the name, on a starved
 // loop). A frame cap of an hour keeps every frame out after the first.
 func TestKeysAfterAChoiceReachTheFieldAfterTheSelect(t *testing.T) {
-	sel := widget.NewSelect[string](widget.WithOptions(selectItems("alpha", "beta")))
-	in := widget.NewTextInput()
+	sel := core.NewSelect[string](core.WithOptions(selectItems("alpha", "beta")))
+	in := core.NewTextInput()
 	flex := tui.NewFlex(tui.Vertical)
 	flex.Add(sel, in)
-	sh := newShell(widget.NewOverlayHost(flex))
+	sh := newShell(core.NewOverlayHost(flex))
 	h := startAppOpts(t, sh, 30, 10, tui.WithMinFrameInterval(time.Hour))
 	h.inject(tab())
 	h.barrier(sh)
@@ -37,11 +37,11 @@ func TestKeysAfterAChoiceReachTheFieldAfterTheSelect(t *testing.T) {
 // leaves: the field under the closed options takes it, and the key after it. Before, the press
 // reached the options' layer, still mounted until the next layout, over the field.
 func TestAPressAfterAChoiceReachesTheFieldUnderTheOptions(t *testing.T) {
-	sel := widget.NewSelect[string](widget.WithOptions(selectItems("alpha", "beta")))
-	in := widget.NewTextInput()
+	sel := core.NewSelect[string](core.WithOptions(selectItems("alpha", "beta")))
+	in := core.NewTextInput()
 	flex := tui.NewFlex(tui.Vertical)
 	flex.Add(sel, in)
-	sh := newShell(widget.NewOverlayHost(flex))
+	sh := newShell(core.NewOverlayHost(flex))
 	h := startAppOpts(t, sh, 30, 10, tui.WithMinFrameInterval(time.Hour))
 	h.inject(tab())
 	h.barrier(sh)

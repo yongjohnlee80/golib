@@ -18,19 +18,19 @@ import (
 	"testing"
 
 	"github.com/yongjohnlee80/golib/tui"
-	"github.com/yongjohnlee80/golib/tui/widget"
+	"github.com/yongjohnlee80/golib/tui/widget/core"
 )
 
 // TestTheRatifiedResizeActionsExistWithTheirRatifiedShapes.
 func TestTheRatifiedResizeActionsExistWithTheirRatifiedShapes(t *testing.T) {
 	// The declarations, exactly as ratified.
 	var (
-		begin  = widget.ResizeBeginAction{Handle: widget.HandleTopLeft, At: tui.Point{X: 1, Y: 2}}
-		update = widget.ResizeUpdateAction{At: tui.Point{X: 3, Y: 4}}
-		step   = widget.ResizeStepAction{DX: 1, DY: -1, Unit: widget.StepCells}
-		set    = widget.ResizeSetAction{Size: tui.Size{W: 10, H: 5}}
-		end    = widget.ResizeEndAction{}
-		cancel = widget.ResizeCancelAction{}
+		begin  = core.ResizeBeginAction{Handle: core.HandleTopLeft, At: tui.Point{X: 1, Y: 2}}
+		update = core.ResizeUpdateAction{At: tui.Point{X: 3, Y: 4}}
+		step   = core.ResizeStepAction{DX: 1, DY: -1, Unit: core.StepCells}
+		set    = core.ResizeSetAction{Size: tui.Size{W: 10, H: 5}}
+		end    = core.ResizeEndAction{}
+		cancel = core.ResizeCancelAction{}
 	)
 	// Every one is a tui.Action — the seam a consumer's resolver returns them
 	// through — and each carries its stable published id.
@@ -59,17 +59,17 @@ func TestTheRatifiedResizeActionsExistWithTheirRatifiedShapes(t *testing.T) {
 // wire, and renumbering would silently turn a saved top-left grip into a
 // bottom-right one.
 func TestTheRatifiedHandleSetIsCompleteAndStablyNumbered(t *testing.T) {
-	for want, h := range []widget.Handle{
-		widget.HandleLeft,
-		widget.HandleRight,
-		widget.HandleTop,
-		widget.HandleBottom,
-		widget.HandleTopLeft,
-		widget.HandleTopRight,
-		widget.HandleBottomLeft,
-		widget.HandleBottomRight,
-		widget.HandleVerticalDivider,
-		widget.HandleHorizontalDivider,
+	for want, h := range []core.Handle{
+		core.HandleLeft,
+		core.HandleRight,
+		core.HandleTop,
+		core.HandleBottom,
+		core.HandleTopLeft,
+		core.HandleTopRight,
+		core.HandleBottomLeft,
+		core.HandleBottomRight,
+		core.HandleVerticalDivider,
+		core.HandleHorizontalDivider,
 	} {
 		if int(h) != want {
 			t.Errorf("%v has value %d, want %d — the numbering is public", h, h, want)
@@ -79,13 +79,13 @@ func TestTheRatifiedHandleSetIsCompleteAndStablyNumbered(t *testing.T) {
 		}
 	}
 	// The set is CLOSED at exactly ten, checked at its edge.
-	if (widget.HandleHorizontalDivider + 1).Valid() {
+	if (core.HandleHorizontalDivider + 1).Valid() {
 		t.Error("Handle.Valid does not bound the declared set at its edge")
 	}
 	// And the divider handles are the ones a Split uses, so they must not be
 	// confusable with a corner: a consumer reading a trace needs the names.
-	if widget.HandleVerticalDivider.String() != "vertical-divider" ||
-		widget.HandleHorizontalDivider.String() != "horizontal-divider" {
+	if core.HandleVerticalDivider.String() != "vertical-divider" ||
+		core.HandleHorizontalDivider.String() != "horizontal-divider" {
 		t.Error("the divider handles do not name themselves distinctly")
 	}
 }
@@ -96,12 +96,12 @@ func TestTheRatifiedHandleSetIsCompleteAndStablyNumbered(t *testing.T) {
 // action and does not know or care which of the two widgets will answer it.
 // Asserted by driving the identical value into both and seeing each act.
 func TestOneVocabularyServesBothWidgets(t *testing.T) {
-	grow := widget.ResizeStepAction{DX: 1, Unit: widget.StepCells}
+	grow := core.ResizeStepAction{DX: 1, Unit: core.StepCells}
 
 	// The wrapper grows by a cell.
 	child := &sizedChild{pref: tui.Size{W: 8, H: 4}}
-	r := widget.NewResizable(child, widget.WithMaxSize(tui.Size{W: 30, H: 15}))
-	rh := startApp(t, widget.NewOverlayHost(&looseCeiling{child: r, w: 30, hh: 15}), 40, 20)
+	r := core.NewResizable(child, core.WithMaxSize(tui.Size{W: 30, H: 15}))
+	rh := startApp(t, core.NewOverlayHost(&looseCeiling{child: r, w: 30, hh: 15}), 40, 20)
 	defer rh.stop()
 	rh.settle()
 	before := sizeOn(t, rh, r)
@@ -111,7 +111,7 @@ func TestOneVocabularyServesBothWidgets(t *testing.T) {
 	})
 
 	// The SAME action value moves the divider of a horizontal split.
-	sp := widget.NewSplit(widget.Horizontal, &pane{fill: "a"}, &pane{fill: "b"})
+	sp := core.NewSplit(core.Horizontal, &pane{fill: "a"}, &pane{fill: "b"})
 	sh := newShell(sp)
 	ph := startApp(t, sh, 40, 8)
 	defer ph.stop()

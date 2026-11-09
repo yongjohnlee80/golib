@@ -5,7 +5,8 @@ import (
 	"testing"
 
 	"github.com/yongjohnlee80/golib/tui"
-	"github.com/yongjohnlee80/golib/tui/widget"
+	"github.com/yongjohnlee80/golib/tui/widget/core"
+	"github.com/yongjohnlee80/golib/tui/widget/editor"
 )
 
 // cellAt is the cell of the harness's screen in the column where text starts on row y.
@@ -22,7 +23,7 @@ func cellAt(h *harness, y int, text string) (tui.Cell, bool) {
 // cannot be taken for a value typed or prefilled; the text typed over it is neither. The colour
 // alone, TokenTextMuted, is the foreground's by default, and drew the placeholder as bright as text.
 func TestAPlaceholderIsDrawnMutedNotAsText(t *testing.T) {
-	h, _, sh := focusedInput(t, widget.WithPlaceholder("https://example.com/repo"))
+	h, _, sh := focusedInput(t, core.WithPlaceholder("https://example.com/repo"))
 	h.settle()
 	c, ok := cellAt(h, 0, "https")
 	if !ok {
@@ -41,8 +42,8 @@ func TestAPlaceholderIsDrawnMutedNotAsText(t *testing.T) {
 // TestTheRulerIsDrawnInThePlaceholdersMutedLook: the Editor's guide is "drawn in the placeholder's
 // muted look", as its doc says: faint, where the Editor's default had no placeholder look at all.
 func TestTheRulerIsDrawnInThePlaceholdersMutedLook(t *testing.T) {
-	ed := widget.NewEditor(widget.WithRuler(10))
-	ed.Core().SetKeyset(widget.KeysetStandard)
+	ed := editor.NewEditor(editor.WithRuler(10))
+	ed.Core().SetKeyset(editor.KeysetStandard)
 	ed.SetValue("short")
 	h := startApp(t, ed, 40, 3)
 	defer h.stop()
@@ -54,8 +55,8 @@ func TestTheRulerIsDrawnInThePlaceholdersMutedLook(t *testing.T) {
 
 // TestASelectsPlaceholderIsMutedToo: Select's placeholder, drawn by the same muted look.
 func TestASelectsPlaceholderIsMutedToo(t *testing.T) {
-	h, _, _ := selectFixture(t, widget.WithOptions(selectItems("alpha", "beta")),
-		widget.WithSelectPlaceholder[string]("empty…"))
+	h, _, _ := selectFixture(t, core.WithOptions(selectItems("alpha", "beta")),
+		core.WithSelectPlaceholder[string]("empty…"))
 	h.wantContains("empty…")
 	y := -1
 	for i := range 10 {
@@ -72,7 +73,7 @@ func TestASelectsPlaceholderIsMutedToo(t *testing.T) {
 // TestATextAreasPlaceholderIsDrawnWhileItIsEmpty: a TextArea's placeholder shows, muted, while it
 // holds no text, and goes once a letter is typed.
 func TestATextAreasPlaceholderIsDrawnWhileItIsEmpty(t *testing.T) {
-	ta := widget.NewTextArea(widget.WithTextAreaPlaceholder("Commit message"))
+	ta := core.NewTextArea(core.WithTextAreaPlaceholder("Commit message"))
 	h := startApp(t, ta, 30, 3)
 	defer h.stop()
 	h.settle()

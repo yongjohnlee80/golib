@@ -4,7 +4,7 @@ import (
 	"testing"
 
 	"github.com/yongjohnlee80/golib/tui"
-	"github.com/yongjohnlee80/golib/tui/widget"
+	"github.com/yongjohnlee80/golib/tui/widget/core"
 )
 
 // focus_design_test.go: which widgets are focusable BY DESIGN — what
@@ -13,8 +13,8 @@ import (
 // A pane Box — not built WithFocusable — holding a Text holds nothing
 // focusable by design; a Box built WithFocusable(true) is focusable itself.
 func TestAPaneBoxIsNotFocusableByDesign(t *testing.T) {
-	pane := widget.NewBox(widget.NewText("label"))
-	stop := widget.NewBox(widget.NewText("stop"), widget.WithFocusable(true))
+	pane := core.NewBox(core.NewText("label"))
+	stop := core.NewBox(core.NewText("stop"), core.WithFocusable(true))
 	root := tui.NewFlex(tui.Vertical)
 	root.Add(pane, stop)
 	h := startApp(t, root, 20, 8)
@@ -35,8 +35,8 @@ func TestAPaneBoxIsNotFocusableByDesign(t *testing.T) {
 // A pane Box around a List holds a focusable: its list — so focus can be
 // moved INTO the pane, though the pane itself is never a stop.
 func TestAPaneBoxAroundAListHoldsItsList(t *testing.T) {
-	list := widget.NewList(widget.WithItems([]string{"a", "b"}, func(s string) string { return s }))
-	pane := widget.NewBox(list)
+	list := core.NewList(core.WithItems([]string{"a", "b"}, func(s string) string { return s }))
+	pane := core.NewBox(list)
 	root := tui.NewFlex(tui.Vertical)
 	root.Add(pane)
 	h := startApp(t, root, 20, 8)
@@ -57,8 +57,8 @@ func TestAPaneBoxAroundAListHoldsItsList(t *testing.T) {
 // that stop, does.
 func TestAFloatsLayerIsFocusableByDesignOnlyWhenModal(t *testing.T) {
 	for _, modal := range []bool{false, true} {
-		f := widget.NewFloat(widget.NewText("hello"), widget.WithModal(modal))
-		host := widget.NewOverlayHost(widget.NewText("behind"))
+		f := core.NewFloat(core.NewText("hello"), core.WithModal(modal))
+		host := core.NewOverlayHost(core.NewText("behind"))
 		sh := newShell(host)
 		h := startApp(t, sh, 40, 10)
 		h.onLoop(func() {

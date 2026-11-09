@@ -19,32 +19,32 @@ import (
 	"testing"
 
 	"github.com/yongjohnlee80/golib/tui"
-	"github.com/yongjohnlee80/golib/tui/widget"
+	"github.com/yongjohnlee80/golib/tui/widget/core"
 )
 
 // --- loop-goroutine readers -------------------------------------------------
 
-func ratioOn(t *testing.T, h *harness, s *widget.Split) float64 {
+func ratioOn(t *testing.T, h *harness, s *core.Split) float64 {
 	t.Helper()
 	var r float64
 	h.onLoop(func() { r = s.Ratio() })
 	return r
 }
 
-func requestedRatioOn(t *testing.T, h *harness, s *widget.Split) float64 {
+func requestedRatioOn(t *testing.T, h *harness, s *core.Split) float64 {
 	t.Helper()
 	var r float64
 	h.onLoop(func() { r = s.RequestedRatio() })
 	return r
 }
 
-func cellsOn(t *testing.T, h *harness, s *widget.Split) (a, b int, ok bool) {
+func cellsOn(t *testing.T, h *harness, s *core.Split) (a, b int, ok bool) {
 	t.Helper()
 	h.onLoop(func() { a, b, ok = s.Cells() })
 	return a, b, ok
 }
 
-func aCellsOn(t *testing.T, h *harness, s *widget.Split) int {
+func aCellsOn(t *testing.T, h *harness, s *core.Split) int {
 	t.Helper()
 	a, _, _ := cellsOn(t, h, s)
 	return a
@@ -52,9 +52,9 @@ func aCellsOn(t *testing.T, h *harness, s *widget.Split) int {
 
 // splitFixture mounts a horizontal Split of two focusable panes and leaves the
 // first one focused, so the divider's keyboard vocabulary has a route to it.
-func splitFixture(t *testing.T, w, hgt int, opts ...widget.SplitOption) (*harness, *widget.Split, *shell) {
+func splitFixture(t *testing.T, w, hgt int, opts ...core.SplitOption) (*harness, *core.Split, *shell) {
 	t.Helper()
-	s := widget.NewSplit(widget.Horizontal, &pane{fill: "a"}, &pane{fill: "b"}, opts...)
+	s := core.NewSplit(core.Horizontal, &pane{fill: "a"}, &pane{fill: "b"}, opts...)
 	sh := newShell(s)
 	h := startApp(t, sh, w, hgt)
 	h.inject(tab())
@@ -78,7 +78,7 @@ func TestTheEffectiveRatioIsWhatIsOnScreenAndTheRequestSurvives(t *testing.T) {
 	// request does — and a commit that overwrote the request with the effective
 	// value would be invisible, because the no-change guard returns before it.
 	// The cells have to move for the overwrite to have anywhere to happen.
-	h, s, sh := splitFixture(t, 20, 6, widget.WithMinSizes(12, 0), widget.WithRatio(0.8))
+	h, s, sh := splitFixture(t, 20, 6, core.WithMinSizes(12, 0), core.WithRatio(0.8))
 	if a := aCellsOn(t, h, s); a != 15 {
 		t.Fatalf("pane A starts with %d cells, want the unclamped 15; the fixture is "+
 			"not in the state this test needs", a)
@@ -112,8 +112,8 @@ func TestTheEffectiveRatioIsWhatIsOnScreenAndTheRequestSurvives(t *testing.T) {
 // reporting the intention: a caller reading back the ratio of a split it has
 // just configured should get what it configured.
 func TestRatioBeforeTheFirstLayoutReportsTheRequest(t *testing.T) {
-	s := widget.NewSplit(widget.Horizontal, &pane{fill: "a"}, &pane{fill: "b"},
-		widget.WithRatio(0.25))
+	s := core.NewSplit(core.Horizontal, &pane{fill: "a"}, &pane{fill: "b"},
+		core.WithRatio(0.25))
 	if got := s.Ratio(); got != 0.25 {
 		t.Errorf("Ratio() = %v before any layout, want the request 0.25", got)
 	}
@@ -137,9 +137,9 @@ func TestTheResizeEventTimingIsExact(t *testing.T) {
 	h := startApp(t, root, 40, 8)
 	h.settle()
 
-	resized := record[widget.SplitResizedEvent](h)
-	s := widget.NewSplit(widget.Horizontal, &pane{fill: "a"}, &pane{fill: "b"},
-		widget.WithMinSizes(10, 0))
+	resized := record[core.SplitResizedEvent](h)
+	s := core.NewSplit(core.Horizontal, &pane{fill: "a"}, &pane{fill: "b"},
+		core.WithMinSizes(10, 0))
 	h.onLoop(func() { root.AddWeighted(s, 1) })
 	h.settle()
 
@@ -187,7 +187,7 @@ func TestTheResizeEventTimingIsExact(t *testing.T) {
 // not ask for anything.
 func TestAnAmbientResizeCommitsAndAnnouncesItself(t *testing.T) {
 	h, s, sh := splitFixture(t, 20, 6)
-	resized := record[widget.SplitResizedEvent](h)
+	resized := record[core.SplitResizedEvent](h)
 
 	before := aCellsOn(t, h, s)
 	h.tb.InjectResize(60, 10)
@@ -215,10 +215,10 @@ func TestAnAmbientResizeCommitsAndAnnouncesItself(t *testing.T) {
 // the Split's rect: the divider froze mid-drag and the release was never seen,
 // so the flag stayed set and the next stray motion moved the divider again.
 func TestADividerDragSurvivesThePointerLeavingTheSplit(t *testing.T) {
-	s := widget.NewSplit(widget.Horizontal, &pane{fill: "a"}, &pane{fill: "b"})
+	s := core.NewSplit(core.Horizontal, &pane{fill: "a"}, &pane{fill: "b"})
 	root := tui.NewFlex(tui.Vertical)
 	root.AddWeighted(s, 1)
-	root.Add(widget.NewText("below")) // one row, so row 11 is outside the split
+	root.Add(core.NewText("below")) // one row, so row 11 is outside the split
 	sh := newShell(root)
 	h := startApp(t, sh, 40, 12)
 	h.barrier(sh)
@@ -284,7 +284,7 @@ func TestCancellingADividerDragRestoresTheRequest(t *testing.T) {
 // made. What the loss must do is END the gesture, so the next stray motion
 // does not move a divider nobody is holding.
 func TestARevokedCaptureLeavesTheDivisionWhereItIs(t *testing.T) {
-	s := widget.NewSplit(widget.Horizontal, &pane{fill: "a"}, &pane{fill: "b"})
+	s := core.NewSplit(core.Horizontal, &pane{fill: "a"}, &pane{fill: "b"})
 	outside := &pane{fill: "o"}
 	root := tui.NewFlex(tui.Vertical)
 	root.AddWeighted(s, 3)
@@ -326,7 +326,7 @@ func TestARevokedCaptureLeavesTheDivisionWhereItIs(t *testing.T) {
 // Alt-Left on a VERTICAL split is not a smaller step, it is a different
 // gesture, and consuming it would swallow a binding the application may want.
 func TestAltArrowsStepAlongTheSplitsOwnAxisOnly(t *testing.T) {
-	s := widget.NewSplit(widget.Vertical, &pane{fill: "a"}, &pane{fill: "b"})
+	s := core.NewSplit(core.Vertical, &pane{fill: "a"}, &pane{fill: "b"})
 	sh := newShell(s)
 	h := startApp(t, sh, 30, 20)
 	h.inject(tab())
@@ -391,7 +391,7 @@ func TestAZoomedSplitHasNoDividerToDragOrStep(t *testing.T) {
 	h, s, sh := splitFixture(t, 40, 8)
 
 	a0 := aCellsOn(t, h, s)
-	h.onLoop(func() { s.Zoom(widget.PaneA) })
+	h.onLoop(func() { s.Zoom(core.PaneA) })
 	h.barrier(sh)
 
 	h.inject(
@@ -406,7 +406,7 @@ func TestAZoomedSplitHasNoDividerToDragOrStep(t *testing.T) {
 		t.Errorf("RequestedRatio() = %v after input to a zoomed split, want the "+
 			"untouched 0.5", got)
 	}
-	h.onLoop(func() { s.Zoom(widget.PaneNone) })
+	h.onLoop(func() { s.Zoom(core.PaneNone) })
 	h.barrier(sh)
 	if got := aCellsOn(t, h, s); got != a0 {
 		t.Errorf("pane A holds %d cells after unzooming, want the untouched %d", got, a0)
@@ -433,9 +433,9 @@ func TestZoomingEndsADividerDragInProgress(t *testing.T) {
 	)
 	h.waitFor("the drag moved the divider", func() bool { return aCellsOn(t, h, s) == a0+5 })
 
-	h.onLoop(func() { s.Zoom(widget.PaneA) })
+	h.onLoop(func() { s.Zoom(core.PaneA) })
 	h.barrier(sh)
-	h.onLoop(func() { s.Zoom(widget.PaneNone) })
+	h.onLoop(func() { s.Zoom(core.PaneNone) })
 	h.barrier(sh)
 
 	if got := aCellsOn(t, h, s); got != a0+5 {
@@ -461,7 +461,7 @@ func TestZoomingEndsADividerDragInProgress(t *testing.T) {
 // moved" are very different contracts.
 func TestADragEmitsOneEventPerCOMMITTEDStep(t *testing.T) {
 	h, s, sh := splitFixture(t, 40, 8)
-	resized := record[widget.SplitResizedEvent](h)
+	resized := record[core.SplitResizedEvent](h)
 
 	a0 := aCellsOn(t, h, s)
 	h.inject(tui.MouseEvent{Kind: tui.MousePress, Button: tui.MouseLeft, X: a0, Y: 0})
@@ -509,11 +509,11 @@ func TestADragEmitsOneEventPerCOMMITTEDStep(t *testing.T) {
 func TestASplitRefusesAGestureOnAHandleItDoesNotHave(t *testing.T) {
 	for _, tc := range []struct {
 		name   string
-		handle widget.Handle
+		handle core.Handle
 	}{
-		{"a box corner", widget.HandleBottomRight},
-		{"the other axis's divider", widget.HandleHorizontalDivider},
-		{"a value outside the declared set", widget.HandleHorizontalDivider + 1},
+		{"a box corner", core.HandleBottomRight},
+		{"the other axis's divider", core.HandleHorizontalDivider},
+		{"a value outside the declared set", core.HandleHorizontalDivider + 1},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			h, s, sh := splitFixture(t, 40, 8) // horizontal: a VERTICAL divider
@@ -521,9 +521,9 @@ func TestASplitRefusesAGestureOnAHandleItDoesNotHave(t *testing.T) {
 
 			var begun, updated bool
 			h.onLoop(func() {
-				begun = s.Context().DoAction(widget.ResizeBeginAction{
+				begun = s.Context().DoAction(core.ResizeBeginAction{
 					Handle: tc.handle, At: tui.Point{X: a0, Y: 0}})
-				updated = s.Context().DoAction(widget.ResizeUpdateAction{
+				updated = s.Context().DoAction(core.ResizeUpdateAction{
 					At: tui.Point{X: a0 + 6, Y: 0}})
 			})
 			h.barrier(sh)
@@ -547,10 +547,10 @@ func TestASplitRefusesAGestureOnAHandleItDoesNotHave(t *testing.T) {
 	a0 := aCellsOn(t, h, s)
 	var ok bool
 	h.onLoop(func() {
-		ok = s.Context().DoAction(widget.ResizeBeginAction{
-			Handle: widget.HandleVerticalDivider, At: tui.Point{X: a0, Y: 0}})
-		s.Context().DoAction(widget.ResizeUpdateAction{At: tui.Point{X: a0 + 4, Y: 0}})
-		s.Context().DoAction(widget.ResizeEndAction{})
+		ok = s.Context().DoAction(core.ResizeBeginAction{
+			Handle: core.HandleVerticalDivider, At: tui.Point{X: a0, Y: 0}})
+		s.Context().DoAction(core.ResizeUpdateAction{At: tui.Point{X: a0 + 4, Y: 0}})
+		s.Context().DoAction(core.ResizeEndAction{})
 	})
 	h.barrier(sh)
 	if !ok {
@@ -574,7 +574,7 @@ func TestASplitIgnoresTheAxisItDoesNotHave(t *testing.T) {
 
 	var offAxis bool
 	h.onLoop(func() {
-		offAxis = s.Context().DoAction(widget.ResizeStepAction{DY: 3, Unit: widget.StepCells})
+		offAxis = s.Context().DoAction(core.ResizeStepAction{DY: 3, Unit: core.StepCells})
 	})
 	h.barrier(sh)
 	if offAxis {
@@ -588,7 +588,7 @@ func TestASplitIgnoresTheAxisItDoesNotHave(t *testing.T) {
 	// The positive control, and the mixed case that pins the rule down: an
 	// action carrying BOTH components moves by the on-axis one only.
 	h.onLoop(func() {
-		s.Context().DoAction(widget.ResizeStepAction{DX: 2, DY: 5, Unit: widget.StepCells})
+		s.Context().DoAction(core.ResizeStepAction{DX: 2, DY: 5, Unit: core.StepCells})
 	})
 	h.waitFor("the on-axis component moved the divider", func() bool {
 		return aCellsOn(t, h, s) == a0+2

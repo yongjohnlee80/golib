@@ -5,30 +5,30 @@ import (
 	"testing"
 
 	"github.com/yongjohnlee80/golib/tui"
-	"github.com/yongjohnlee80/golib/tui/widget"
+	"github.com/yongjohnlee80/golib/tui/widget/core"
 )
 
 // A Menu reports a selection on the bus before its owner hears of it, so an owner that answers by
 // selecting another row is reported after it: the bus sees [two three], in the order they happened.
 // (Before the change the owner was told first, and the bus saw [three two].)
 func TestAMenuReportsAReentrantSelectionInTheOrderItHappened(t *testing.T) {
-	var m *widget.Menu
-	m = widget.NewMenu(widget.WithOnSelectionChanged(func(id widget.ItemID) {
+	var m *core.Menu
+	m = core.NewMenu(core.WithOnSelectionChanged(func(id core.ItemID) {
 		if id == "two" {
 			m.Select("three")
 		}
 	}))
-	if err := m.SetModel([]widget.MenuItemModel{
-		widget.NewCommand("one", "One", nil),
-		widget.NewCommand("two", "Two", nil),
-		widget.NewCommand("three", "Three", nil),
+	if err := m.SetModel([]core.MenuItemModel{
+		core.NewCommand("one", "One", nil),
+		core.NewCommand("two", "Two", nil),
+		core.NewCommand("three", "Three", nil),
 	}); err != nil {
 		t.Fatal(err)
 	}
 	h, _ := menuFixture(t, m, 30, 10)
 	defer h.stop()
-	var events []widget.ItemID
-	unsub := tui.Subscribe(h.app.Bus(), func(ev widget.MenuSelectionChangedEvent) { events = append(events, ev.ItemID) })
+	var events []core.ItemID
+	unsub := tui.Subscribe(h.app.Bus(), func(ev core.MenuSelectionChangedEvent) { events = append(events, ev.ItemID) })
 	defer unsub()
 	h.onLoop(func() { m.Select("two") })
 	h.waitFor("two selection events", func() bool {
@@ -37,7 +37,7 @@ func TestAMenuReportsAReentrantSelectionInTheOrderItHappened(t *testing.T) {
 		return n >= 2
 	})
 	h.onLoop(func() {
-		if !reflect.DeepEqual(events, []widget.ItemID{"two", "three"}) {
+		if !reflect.DeepEqual(events, []core.ItemID{"two", "three"}) {
 			t.Errorf("selection events = %v, want [two three]", events)
 		}
 	})
@@ -48,21 +48,21 @@ func TestAMenuReportsAReentrantSelectionInTheOrderItHappened(t *testing.T) {
 func TestAMenuRowItsOwnerDisablesOnTheToggleDoesNotRunItsAction(t *testing.T) {
 	for _, disable := range []bool{false, true} {
 		t.Run(map[bool]string{false: "unchanged control", true: "disabled by the owner"}[disable], func(t *testing.T) {
-			var m *widget.Menu
+			var m *core.Menu
 			ran, toggled := 0, false
-			m = widget.NewMenu(
-				widget.WithActionExecutor(func(tui.ActionInvocation) bool { ran++; return true }),
-				widget.WithMenuOnToggled(func(id widget.ItemID, _, _ bool) {
+			m = core.NewMenu(
+				core.WithActionExecutor(func(tui.ActionInvocation) bool { ran++; return true }),
+				core.WithMenuOnToggled(func(id core.ItemID, _, _ bool) {
 					toggled = true
 					if disable {
 						m.SetEnabled(id, false)
 					}
 				}),
 			)
-			if err := m.SetModel([]widget.MenuItemModel{widget.NewCheck("item", "Item", saveAction{})}); err != nil {
+			if err := m.SetModel([]core.MenuItemModel{core.NewCheck("item", "Item", saveAction{})}); err != nil {
 				t.Fatal(err)
 			}
-			m.HandleAction(tui.ActionInvocation{Action: widget.MenuActivateAction{ItemID: "item"}})
+			m.HandleAction(tui.ActionInvocation{Action: core.MenuActivateAction{ItemID: "item"}})
 			if !toggled {
 				t.Fatal("the toggle hook never ran")
 			}
@@ -81,21 +81,21 @@ func TestAMenuPressOnARowItsOwnerReplacesActivatesNothing(t *testing.T) {
 	for _, replace := range []bool{false, true} {
 		t.Run(map[bool]string{false: "unchanged control", true: "model replaced on select"}[replace], func(t *testing.T) {
 			ran := 0
-			var m *widget.Menu
-			m = widget.NewMenu(
-				widget.WithActionExecutor(func(tui.ActionInvocation) bool { ran++; return true }),
-				widget.WithOnSelectionChanged(func(id widget.ItemID) {
+			var m *core.Menu
+			m = core.NewMenu(
+				core.WithActionExecutor(func(tui.ActionInvocation) bool { ran++; return true }),
+				core.WithOnSelectionChanged(func(id core.ItemID) {
 					if replace && id == "two" {
-						_ = m.SetModel([]widget.MenuItemModel{
-							widget.NewCommand("four", "Four", saveAction{}),
-							widget.NewCommand("five", "Five", saveAction{}),
+						_ = m.SetModel([]core.MenuItemModel{
+							core.NewCommand("four", "Four", saveAction{}),
+							core.NewCommand("five", "Five", saveAction{}),
 						})
 					}
 				}),
 			)
-			if err := m.SetModel([]widget.MenuItemModel{
-				widget.NewCommand("one", "One", saveAction{}),
-				widget.NewCommand("two", "Two", saveAction{}),
+			if err := m.SetModel([]core.MenuItemModel{
+				core.NewCommand("one", "One", saveAction{}),
+				core.NewCommand("two", "Two", saveAction{}),
 			}); err != nil {
 				t.Fatal(err)
 			}

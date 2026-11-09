@@ -4,7 +4,8 @@ import (
 	"testing"
 
 	"github.com/yongjohnlee80/golib/tui"
-	"github.com/yongjohnlee80/golib/tui/widget"
+	"github.com/yongjohnlee80/golib/tui/widget/core"
+	"github.com/yongjohnlee80/golib/tui/widget/files"
 )
 
 func TestWidgetRoles(t *testing.T) {
@@ -12,16 +13,16 @@ func TestWidgetRoles(t *testing.T) {
 		c    tui.Component
 		want tui.AccessibleRole
 	}{
-		{widget.NewButton("OK"), tui.RolePushButton},
-		{widget.NewTextInput(), tui.RoleEditableText},
-		{widget.NewTextArea(), tui.RoleTextArea},
-		{widget.NewProgressBar(), tui.RoleProgressBar},
-		{widget.NewTabs(widget.WithTab("a", widget.NewText(""))), tui.RolePageTabList},
-		{widget.NewStatusBar(), tui.RoleStatusBar},
-		{widget.NewBox(nil), tui.RoleGrouping},
-		{widget.NewText(""), tui.RoleStaticText},
-		{widget.NewTree(), tui.RoleTree},
-		{widget.NewFloat(widget.NewText("")), tui.RoleWindow},
+		{core.NewButton("OK"), tui.RolePushButton},
+		{core.NewTextInput(), tui.RoleEditableText},
+		{core.NewTextArea(), tui.RoleTextArea},
+		{core.NewProgressBar(), tui.RoleProgressBar},
+		{core.NewTabs(core.WithTab("a", core.NewText(""))), tui.RolePageTabList},
+		{core.NewStatusBar(), tui.RoleStatusBar},
+		{core.NewBox(nil), tui.RoleGrouping},
+		{core.NewText(""), tui.RoleStaticText},
+		{files.NewTree(), tui.RoleTree},
+		{core.NewFloat(core.NewText("")), tui.RoleWindow},
 	}
 	for _, c := range cases {
 		if got := tui.RoleOf(c.c); got != c.want {
