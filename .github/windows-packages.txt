@@ -89,3 +89,4 @@
 ./vfs/local
 ./tui/widget
 ./tui/examples/editor-qml
+./tui
