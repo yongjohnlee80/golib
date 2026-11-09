@@ -3,12 +3,12 @@ package widget
 import (
 	"cmp"
 	"fmt"
+	"github.com/yongjohnlee80/golib/tui/widget/internal/widgettest"
 	"strings"
 	"testing"
 
 	"github.com/yongjohnlee80/golib/tui"
 	"github.com/yongjohnlee80/golib/tui/widget/internal/kit"
-	"github.com/yongjohnlee80/golib/tui/widget/internal/widgettest"
 )
 
 // oldInputAct is Terminal.inputKey's decision before commands, verbatim but for its effects, named as
@@ -171,12 +171,12 @@ func normalDeviation(e tui.KeyEvent) string {
 	if kit.IsKey(e, TermWORD.Keys...) || kit.IsKey(e, TermWORDBack.Keys...) || kit.IsKey(e, TermWORDEnd.Keys...) {
 		return "W, B and E are new: the WORD motions, the editor's"
 	}
-	return cmp.Or(widgettest.HyperOrMeta(e), ctrlShiftLetter(e))
+	return cmp.Or(widgettest.HyperOrMeta(e), widgettest.CtrlShiftLetter(e))
 }
 
 func TestTerminalNormalKeysMatchTheOldHandlerWithNoMap(t *testing.T) {
-	widgettest.KeyGridDiff(t, "Terminal normal", presses(oldNormalKey),
-		presses(func(e tui.KeyEvent) string {
+	widgettest.KeyGridDiff(t, "Terminal normal", widgettest.Presses(oldNormalKey),
+		widgettest.Presses(func(e tui.KeyEvent) string {
 			cmd, ok := (*tui.Context)(nil).KeyCommand(e, terminalNormalCommands...)
 			if !ok {
 				return ""

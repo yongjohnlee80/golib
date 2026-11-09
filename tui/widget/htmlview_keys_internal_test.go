@@ -2,11 +2,11 @@ package widget
 
 import (
 	"cmp"
+	"github.com/yongjohnlee80/golib/tui/widget/internal/widgettest"
 	"strings"
 	"testing"
 
 	"github.com/yongjohnlee80/golib/tui"
-	"github.com/yongjohnlee80/golib/tui/widget/internal/widgettest"
 )
 
 // oldHTMLViewKey is HTMLView.key's decision before commands, verbatim but for its effects, which are
@@ -66,17 +66,6 @@ func oldHTMLViewKey(e tui.KeyEvent, hasSelection, vim bool) string {
 	return ""
 }
 
-// ctrlShiftLetter is the deviation key.Candidates makes on purpose: a Ctrl or Alt letter with Shift
-// held and no command of its own reaches the Shift-less chord, as a legacy terminal cannot tell them
-// apart; the old test of the exact chord refused it.
-func ctrlShiftLetter(e tui.KeyEvent) string {
-	if e.Mods&tui.ModShift != 0 && e.Mods&(tui.ModCtrl|tui.ModAlt) != 0 && e.Code < 128 &&
-		(e.Code >= 'a' && e.Code <= 'z' || e.Code >= 'A' && e.Code <= 'Z') {
-		return "a Ctrl or Alt letter with Shift reaches its Shift-less chord"
-	}
-	return ""
-}
-
 func TestHTMLViewKeysMatchTheOldHandlerWithNoMap(t *testing.T) {
 	for _, ks := range []Keyset{KeysetVim, KeysetStandard, KeysetNano} {
 		v := &HTMLView{}
@@ -93,7 +82,7 @@ func TestHTMLViewKeysMatchTheOldHandlerWithNoMap(t *testing.T) {
 					return strings.TrimPrefix(cmd.ID, "tui.htmlview.")
 				},
 				func(e tui.KeyEvent) string {
-					return cmp.Or(widgettest.HyperOrMeta(e), widgettest.ShiftSpentOnPrintable(e), ctrlShiftLetter(e))
+					return cmp.Or(widgettest.HyperOrMeta(e), widgettest.ShiftSpentOnPrintable(e), widgettest.CtrlShiftLetter(e))
 				})
 		}
 	}
