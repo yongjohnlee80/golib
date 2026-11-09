@@ -137,7 +137,6 @@ func (f *FS) Stat(ctx context.Context, name string) (vfs.FileInfo, error) {
 }
 
 // lstat is Stat without following a final symlink. The caller is inside enter/leave.
-func (f *FS) lstat(name string) (os.FileInfo, error) { return f.root.Lstat(name) }
 
 // ReadDir lists the directory at name, sorted by Name, without the driver's temporary files. Each entry
 // is reported itself, as Stat would.
@@ -190,7 +189,7 @@ func (f *FS) Open(ctx context.Context, name string, offset int64) (io.ReadCloser
 	if err != nil {
 		return nil, err
 	}
-	st, err := file.Stat()
+	st, err := fileStat(file)
 	if err != nil {
 		file.Close()
 		return nil, err
