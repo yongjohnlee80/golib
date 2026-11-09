@@ -183,7 +183,7 @@ func TestTerminalTabsPlusOpensTheAddMenu(t *testing.T) {
 	defer h.Stop()
 	var spans []core.TabSpan
 	var plus int
-	h.OnLoop(func() { spans, plus = tabs.TabSpans(), tabs.addX() })
+	h.OnLoop(func() { spans, plus = tabs.strip.TabSpans(), tabs.addX() })
 	if len(spans) != 3 || spans[1].X != plus {
 		t.Fatalf("spans %v: want the tab, + at %d and ≡", spans, plus)
 	}
@@ -235,7 +235,7 @@ func TestTerminalTabsAddMenuAloneShowsPlus(t *testing.T) {
 	defer h.Stop()
 	var spans []core.TabSpan
 	var plus int
-	h.OnLoop(func() { spans, plus = tabs.TabSpans(), tabs.addX() })
+	h.OnLoop(func() { spans, plus = tabs.strip.TabSpans(), tabs.addX() })
 	if len(spans) != 2 || spans[1].X != plus {
 		t.Fatalf("spans %v: want the tab and + at %d", spans, plus)
 	}
@@ -344,7 +344,7 @@ func TestTerminalTabsOpenTheirMenuAnywhereOnTheStripAndAnEmptyBody(t *testing.T)
 	h := widgettest.StartApp(t, core.NewOverlayHost(tabs), 40, 8)
 	defer h.Stop()
 	var spans []core.TabSpan
-	h.OnLoop(func() { spans = tabs.TabSpans() })
+	h.OnLoop(func() { spans = tabs.strip.TabSpans() })
 	if len(spans) != 1 {
 		t.Fatalf("no tab: spans %v, want ≡ alone", spans)
 	}
@@ -477,7 +477,7 @@ func TestTerminalTabsWindowButtonsAtTheStripsRightEnd(t *testing.T) {
 	h.Sync()
 	var controls []core.TabControl
 	var spans []core.TabSpan
-	h.OnLoop(func() { controls, spans = tabs.TabWindowControls(), tabs.TabSpans() })
+	h.OnLoop(func() { controls, spans = tabs.strip.TabWindowControls(), tabs.strip.TabSpans() })
 	wantOps := []core.WindowOperation{core.WindowMinimize, core.WindowMaximize, core.WindowClose}
 	if len(controls) != 3 || controls[2].X+controls[2].W != 40 {
 		t.Fatalf("controls %+v, want _, + and x ending at the strip's last cell", controls)
@@ -536,7 +536,7 @@ func TestTerminalTabsWindowButtonsAtTheStripsRightEnd(t *testing.T) {
 		}
 	})
 	h.Sync()
-	h.OnLoop(func() { controls, spans = tabs.TabWindowControls(), tabs.TabSpans() })
+	h.OnLoop(func() { controls, spans = tabs.strip.TabWindowControls(), tabs.strip.TabSpans() })
 	if len(controls) != 3 || controls[2].X+controls[2].W != 40 {
 		t.Fatalf("overflowing: controls %+v", controls)
 	}

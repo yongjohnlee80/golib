@@ -182,13 +182,14 @@ type TabControl struct {
 }
 
 // TabWindowController is a tab strip whose row may end in window controls, as a native painter reads
-// them: none unless its owner shows them (Tabs.SetWindowButtons, TerminalTabs.SetWindowButtons).
+// them: none unless its owner shows them (Tabs.SetWindowButtons, TabStrip.SetWindowButtons).
 type TabWindowController interface {
 	TabWindowControls() []TabControl
 }
 
 var (
 	_ TabWindowController = (*Tabs)(nil)
+	_ TabWindowController = (*TabStrip)(nil)
 )
 
 // SetWindowButtons shows _, + and x at the bar's right end, side by side as the title bar's, or takes
