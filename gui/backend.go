@@ -77,6 +77,8 @@ var errClosedBeforeOpen = errs.Sentinel(errs.ErrClosed, "gui: window closed befo
 type Backend struct {
 	cfg config
 	win *app.Window
+	// performHook replaces win.Perform in tests: what WindowControls asked the window for.
+	performHook func(system.Action)
 
 	// font is the cell font: SetFont's size and SetZoom's percent, and the fontState the Gio
 	// goroutine reads, one load per frame (fonts.go).
@@ -85,6 +87,7 @@ type Backend struct {
 	// metrics is the Gio goroutine's latest snapshot. Readers Load it once and use that value.
 	metrics atomic.Pointer[metrics]
 	focused atomic.Bool // the window has keyboard focus
+	maxed   atomic.Bool // the window is maximized, as its last ConfigEvent said (chrome.go)
 	raw     atomic.Bool // SetRawKeys's request; the Gio goroutine applies it (rawkeys.go)
 
 	q          *eventQueue
