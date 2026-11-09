@@ -26,7 +26,7 @@ import (
 	"github.com/yongjohnlee80/golib/tui"
 	tuidecl "github.com/yongjohnlee80/golib/tui/decl"
 	"github.com/yongjohnlee80/golib/tui/style"
-	"github.com/yongjohnlee80/golib/tui/widget"
+	"github.com/yongjohnlee80/golib/tui/widget/core"
 )
 
 // Types are TextField and Popup, for [tuidecl.Types] or [tuidecl.WithTypes].
@@ -60,24 +60,24 @@ var TextField = tuidecl.Type{
 	Build: buildTextField,
 	Ctor:  []string{"placeholderText", "echoMode"},
 	Setters: map[string]tuidecl.Setter{
-		"text":        tuidecl.StringSetter((*widget.TextInput).SetValue),
+		"text":        tuidecl.StringSetter((*core.TextInput).SetValue),
 		"completions": tuidecl.ModelSetter(setCompletions),
 	},
 	Methods: map[string]tuidecl.Method{
 		// Qt's TextField.clear(): empty the field — a prompt starting over.
-		"clear": tuidecl.NoArgMethod(func(t *widget.TextInput) error { t.SetValue(""); return nil }),
+		"clear": tuidecl.NoArgMethod(func(t *core.TextInput) error { t.SetValue(""); return nil }),
 	},
 	// What a handler reads by id when it runs: `App.login(user.text)`.
 	Getters: map[string]tuidecl.Getter{
-		"text": tuidecl.StringGetter((*widget.TextInput).Value),
+		"text": tuidecl.StringGetter((*core.TextInput).Value),
 	},
 	Signals: map[string][]string{"accepted": {"text"}, "textEdited": {"text"}},
 	Enums:   []tuidecl.Enum{EchoMode},
-	Restyle: tuidecl.Restyler(func(ti *widget.TextInput, p tuidecl.Palette) {
+	Restyle: tuidecl.Restyler(func(ti *core.TextInput, p tuidecl.Palette) {
 		// The placeholder sits on the field's base too, as in Qt; its own
 		// muted foreground stays golib's.
 		base, _ := p.Color(tuidecl.RoleBase)
-		st := widget.TextInputStyles{Text: p.Look(tuidecl.RoleBase, tuidecl.RoleText)}
+		st := core.TextInputStyles{Text: p.Look(tuidecl.RoleBase, tuidecl.RoleText)}
 		if _, ok := p.Color(tuidecl.RoleBase); ok {
 			st.Placeholder = style.New().Background(base)
 		}
@@ -91,9 +91,9 @@ var TextField = tuidecl.Type{
 // setCompletions is the completions setter: the word before the cursor is completed from the
 // model's rows, read at each Tab and paint so they follow the model. A host wanting other rules
 // (a table's field names, as its bar reads them) sets the field's completer from Go:
-// tuidecl.FindAs[*widget.TextInput](p, id) and SetCompleter(widget.TableFieldCompleter(widget.TableWhereBar, …)).
-func setCompletions(ti *widget.TextInput, m tuidecl.ItemModel) {
-	ti.SetCompleter(widget.WordCompleter(func() []string {
+// tuidecl.FindAs[*core.TextInput](p, id) and SetCompleter(widget.TableFieldCompleter(widget.TableWhereBar, …)).
+func setCompletions(ti *core.TextInput, m tuidecl.ItemModel) {
+	ti.SetCompleter(core.WordCompleter(func() []string {
 		role := ""
 		if roles := m.Roles(); len(roles) > 0 {
 			role = roles[0]
@@ -125,20 +125,20 @@ func buildTextField(b tuidecl.Build) (tui.Component, []string, error) {
 			}
 		}
 	}
-	opts := []widget.TextInputOption{
-		widget.WithOnSubmit(raise(accepted)),
-		widget.WithOnEdit(raise(edited)),
+	opts := []core.TextInputOption{
+		core.WithOnSubmit(raise(accepted)),
+		core.WithOnEdit(raise(edited)),
 	}
 	switch {
 	case placeholder.IsMessage():
-		opts = append(opts, widget.WithPlaceholderMessage(placeholder.Message))
+		opts = append(opts, core.WithPlaceholderMessage(placeholder.Message))
 	case placeholder.Plain != "":
-		opts = append(opts, widget.WithPlaceholder(placeholder.Plain))
+		opts = append(opts, core.WithPlaceholder(placeholder.Plain))
 	}
 	if echo == "Password" {
-		opts = append(opts, widget.WithMask('•'))
+		opts = append(opts, core.WithMask('•'))
 	}
-	return widget.NewTextInput(opts...), consumed, nil
+	return core.NewTextInput(opts...), consumed, nil
 }
 
 // ---------------------------------------------------------------- TextArea
@@ -162,19 +162,19 @@ var TextArea = tuidecl.Type{
 	Build: buildTextArea,
 	Ctor:  []string{"placeholderText", "wrapMode"},
 	Setters: map[string]tuidecl.Setter{
-		"text": tuidecl.StringSetter((*widget.TextArea).SetValue),
+		"text": tuidecl.StringSetter((*core.TextArea).SetValue),
 	},
 	Methods: map[string]tuidecl.Method{
-		"clear": tuidecl.NoArgMethod(func(t *widget.TextArea) error { t.SetValue(""); return nil }),
+		"clear": tuidecl.NoArgMethod(func(t *core.TextArea) error { t.SetValue(""); return nil }),
 	},
 	// What a handler reads by id when it runs: `App.reply(reply.text)`.
 	Getters: map[string]tuidecl.Getter{
-		"text": tuidecl.StringGetter((*widget.TextArea).Value),
+		"text": tuidecl.StringGetter((*core.TextArea).Value),
 	},
 	Enums: []tuidecl.Enum{WrapMode},
-	Restyle: tuidecl.Restyler(func(ta *widget.TextArea, p tuidecl.Palette) {
+	Restyle: tuidecl.Restyler(func(ta *core.TextArea, p tuidecl.Palette) {
 		base, _ := p.Color(tuidecl.RoleBase)
-		st := widget.TextInputStyles{Text: p.Look(tuidecl.RoleBase, tuidecl.RoleText)}
+		st := core.TextInputStyles{Text: p.Look(tuidecl.RoleBase, tuidecl.RoleText)}
 		if _, ok := p.Color(tuidecl.RoleBase); ok {
 			st.Placeholder = style.New().Background(base)
 		}
@@ -195,17 +195,17 @@ func buildTextArea(b tuidecl.Build) (tui.Component, []string, error) {
 	if err != nil {
 		return nil, nil, err
 	}
-	var opts []widget.TextAreaOption
+	var opts []core.TextAreaOption
 	switch {
 	case placeholder.IsMessage():
-		opts = append(opts, widget.WithTextAreaPlaceholderMessage(placeholder.Message))
+		opts = append(opts, core.WithTextAreaPlaceholderMessage(placeholder.Message))
 	case placeholder.Plain != "":
-		opts = append(opts, widget.WithTextAreaPlaceholder(placeholder.Plain))
+		opts = append(opts, core.WithTextAreaPlaceholder(placeholder.Plain))
 	}
 	if wrap == "WordWrap" {
-		opts = append(opts, widget.WithWrap(widget.WrapSoft))
+		opts = append(opts, core.WithWrap(core.WrapSoft))
 	}
-	return widget.NewTextArea(opts...), consumed, nil
+	return core.NewTextArea(opts...), consumed, nil
 }
 
 // ---------------------------------------------------------------- Popup
@@ -234,9 +234,9 @@ var Popup = tuidecl.Type{
 
 // popupNode is a Popup: the Float, and the overlay it is attached to (OverlayLayer).
 type popupNode struct {
-	widget.Base
+	core.Base
 	tuidecl.OverlayLayer
-	float  *widget.Float
+	float  *core.Float
 	frame  *popupFrame
 	opened func()
 	closed func()
@@ -255,7 +255,7 @@ func buildPopup(b tuidecl.Build) (tui.Component, []string, error) {
 	}
 	n := &popupNode{opened: b.Emitter("opened"), closed: b.Emitter("closed")}
 	n.frame = newPopupFrame(b.Children[0], n)
-	n.float = widget.NewFloat(n.frame, widget.WithModal(modal), widget.WithDimBackground(dim))
+	n.float = core.NewFloat(n.frame, core.WithModal(modal), core.WithDimBackground(dim))
 	n.OverlayLayer = tuidecl.NewOverlayLayer(n.float, "a Popup")
 	if b.Overlay != nil {
 		n.SetOverlay(b.Overlay, nil)
