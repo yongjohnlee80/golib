@@ -99,8 +99,8 @@ func TestAScrollingViewLaysNoBlockAgainUntilItsTextChanges(t *testing.T) {
 	if len(c.laid) != 0 {
 		t.Errorf("asked again with nothing changed, %d blocks were laid again: %v", len(c.laid), c.laid)
 	}
-	e.core.SetValue("a short text\n") // a change: the answer and the layout are worked out again
 	c.laid = nil
+	e.core.SetValue("a short text\n") // a change: the answer and the layout are worked out again (its reveal lays it)
 	if m := e.rowMap(); m.r == nil || m.r.key.width != cacheWidth || len(c.laid) == 0 {
 		t.Errorf("after the text changed to one that fits: width %v, blocks laid %d; want the view's width, laid afresh", m.r != nil && m.r.key.width == cacheWidth, len(c.laid))
 	}
