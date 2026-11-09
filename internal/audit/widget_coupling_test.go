@@ -99,17 +99,9 @@ type crossing struct {
 
 func (c crossing) row() string { return c.from + "\t" + c.owner + "\t" + c.name + "\t" + c.kind }
 
-// widgetCrossings type-checks tui/widget's non-test files (its dependencies come
-// from the build's export data) and answers every crossing, sorted, and how many
-// files it read.
-func widgetCrossings(t *testing.T, root string) ([]crossing, int) {
-	t.Helper()
-	found, nfiles, _ := widgetUses(t, root, false)
-	return found, nfiles
-}
-
-// widgetUses is widgetCrossings with exported names too when exported: every name one group uses
-// and another declares. resolved is how many uses of the package's own names it read: the scan's
+// widgetUses type-checks tui/widget's non-test files (its dependencies come from the build's export
+// data) and answers every unexported name one group uses and another declares (and the exported ones
+// too, when exported), sorted, and how many files it read. resolved is how many uses of the package's own names it read: the scan's
 // proof that it is looking, whether or not any crosses.
 func widgetUses(t *testing.T, root string, exported bool) (found []crossing, nfiles, resolved int) {
 	t.Helper()

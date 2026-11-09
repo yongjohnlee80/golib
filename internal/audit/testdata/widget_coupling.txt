@@ -1,1 +1,11 @@
-editor	table	compareCells	func
+# tui/widget's coupling: each unexported name, method or field one group of
+# files uses and another group declares (widget_coupling_test.go assigns the
+# groups by file name).
+#
+#   using group <TAB> owning group <TAB> name <TAB> kind
+#
+# The work list for splitting tui/widget into core and its components: a row
+# goes when its use is decoupled (an interface core owns, a callback, an export).
+# This list may only SHRINK. Empty is the destination.
+#
+# Regenerate: GOLIB_WIDGET_COUPLING_UPDATE=1 go test -run TestWidgetCoupling ./internal/audit/
