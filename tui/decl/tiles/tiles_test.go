@@ -9,7 +9,7 @@ import (
 	tuidecl "github.com/yongjohnlee80/golib/tui/decl"
 	"github.com/yongjohnlee80/golib/tui/decl/themes"
 	"github.com/yongjohnlee80/golib/tui/decl/tiles"
-	"github.com/yongjohnlee80/golib/tui/widget"
+	"github.com/yongjohnlee80/golib/tui/widget/core"
 )
 
 const layout = `import tui 1.0
@@ -23,7 +23,7 @@ Window {
 }`
 
 func collector() tuidecl.ProgramOption {
-	return tuidecl.AdapterOptions(tuidecl.WithWindowCollector(widget.NewMinimizedWindows()))
+	return tuidecl.AdapterOptions(tuidecl.WithWindowCollector(core.NewMinimizedWindows()))
 }
 
 // TilePanels build in a TileManager, a heading taking a string or a catalog message.
