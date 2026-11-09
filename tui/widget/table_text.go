@@ -1,12 +1,12 @@
 package widget
 
 import (
+	"github.com/yongjohnlee80/golib/tui/widget/internal/kit"
 	"slices"
 	"strings"
 
 	"github.com/yongjohnlee80/golib/tui"
 	"github.com/yongjohnlee80/golib/tui/style"
-	"github.com/yongjohnlee80/golib/tui/widget/internal/kit"
 	txt "github.com/yongjohnlee80/golib/tui/widget/internal/text"
 )
 
@@ -302,7 +302,7 @@ func (t *TableText) SortBy(col int, desc bool) bool {
 		return false
 	}
 	slices.SortStableFunc(d.rows, func(a, b []string) int {
-		r := compareCells(a[col], b[col])
+		r := kit.CompareCells(a[col], b[col])
 		if desc {
 			r = -r
 		}

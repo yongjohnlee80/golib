@@ -183,7 +183,7 @@ func TestTableSort_SeveralKeysApplyInOrder(t *testing.T) {
 	if col, desc, _ := c.Sorted(); col != 1 || desc {
 		t.Errorf("Sorted %d %v, want the first key", col, desc)
 	}
-	// without kinds the same keys order by compareCells, numbers still as numbers
+	// without kinds the same keys order by kit.CompareCells, numbers still as numbers
 	plain := &rowsSource{fields: src.fields, rows: src.rows}
 	c.SetSource(plain)
 	c.SortKeys([]TableSortKey{{Col: 1}, {Col: 2, Desc: true}, {Col: 0, Desc: true}})
