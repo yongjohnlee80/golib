@@ -24,8 +24,8 @@ func Window(app *tui.App) (w WindowControls, ok bool) {
 	if app == nil {
 		return nil, false
 	}
-	b, ok := app.Backend().(*Backend)
-	if !ok || b == nil {
+	b, _ := app.Backend().(*Backend) // another backend's assertion fails to nil
+	if b == nil {
 		return nil, false
 	}
 	return windowControls{b}, true
