@@ -31,9 +31,13 @@ func (e *Editor) rowMap() rowMap {
 	}
 	if e.rendered() {
 		w := max(m.v.W, 1)
-		r := e.renderedRows(w)
-		if m.v.H > 0 && len(r.rows) > m.v.H && w > 1 {
-			r = e.renderedRows(w - 1) // the scroll indicator takes the last column
+		// A text taller than the view scrolls, and the scroll indicator takes the last column: it is
+		// laid one narrower. Which width is asked first (tallerThan), so a long text is laid once.
+		var r *renderedLayout
+		if m.v.H > 0 && w > 1 && e.tallerThan(w, m.v.H) {
+			r = e.renderedRows(w - 1)
+		} else {
+			r = e.renderedRows(w)
 		}
 		m.r, m.in, m.pan = r, e.cells.topIn, e.cells.pan
 	}

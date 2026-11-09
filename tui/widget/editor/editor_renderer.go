@@ -209,22 +209,57 @@ type renderedLayout struct {
 	stamps   []uint64      // each block's CellBlockContext stamp
 }
 
-// renderedRows is the Editor's Rendered layout at width, laid again only when something it depends
-// on changed (its key).
-func (e *Editor) renderedRows(width int) *renderedLayout {
-	l := &e.cells
-	lines := e.core.buf.Lines
+// renderedKey is the key of the Editor's Rendered layout at width now.
+func (e *Editor) renderedKey(width int) renderedKey {
 	key := renderedKey{gen: e.renderGen, buf: e.core.Buffer(), rev: e.core.Revision(), width: width, typing: -1, theme: e.cellTheme(), pics: e.picGen, relay: e.relayGen}
 	if ctx := e.Context(); ctx != nil {
 		key.policy = ctx.WidthPolicy()
 	}
-	if l.typing() {
+	if e.cells.typing() {
 		key.typing = e.core.buf.Ln
 	}
+	return key
+}
+
+// laidAt is the Editor's Rendered layout at key, when it is kept; nil when it would be laid.
+func (e *Editor) laidAt(key renderedKey) *renderedLayout {
 	for _, r := range e.laid {
 		if r != nil && r.key == key {
 			return r
 		}
+	}
+	return nil
+}
+
+// tallerThan reports whether the Rendered layout at width has more than h rows: the kept layout's
+// count, or the blocks laid one by one until they pass h. It answers as renderedRows(width) would,
+// without laying a long text whole only to learn it scrolls.
+func (e *Editor) tallerThan(width, h int) bool {
+	key := e.renderedKey(width)
+	if r := e.laidAt(key); r != nil {
+		return len(r.rows) > h
+	}
+	lines := e.core.buf.Lines
+	n := 0
+	for _, b := range e.render.Blocks(lines, 0, len(lines)) {
+		typing := key.typing >= b.From && key.typing < b.To
+		e.layAsked = false
+		n += len(e.render.LayOut(b, lines, width, e.width, typing, key.theme).Rows)
+		e.layAsked = false
+		if n > h {
+			return true
+		}
+	}
+	return false
+}
+
+// renderedRows is the Editor's Rendered layout at width, laid again only when something it depends
+// on changed (its key).
+func (e *Editor) renderedRows(width int) *renderedLayout {
+	lines := e.core.buf.Lines
+	key := e.renderedKey(width)
+	if r := e.laidAt(key); r != nil {
+		return r
 	}
 	r := &renderedLayout{key: key, lineRows: make([][]int, len(lines)), blockOf: make([]int, len(lines)), lines: slices.Clone(lines)}
 	r.blocks = e.render.Blocks(lines, 0, len(lines))

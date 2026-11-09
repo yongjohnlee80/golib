@@ -767,12 +767,18 @@ func (lb *mdCellLines) cells(cb *CellBlock, ln int, text string, base int, look 
 		cont, contW = nil, 0
 	}
 	first := len(cb.Rows)
-	row := CellRow{Anchor: -1}
+	off := 0 // the byte of text being laid
+	// room is a row's cells laid from off on: at most its width's (a cell is a column or more), and
+	// at most the bytes left (a cell is a byte or more). Each row is made that size, so appending its
+	// cells never copies them: a 1 MiB document is a cell a character, and a cell is not small.
+	room := func(extra int) int { return extra + min(lb.width, len(text)-off) }
+	row := CellRow{Anchor: -1, Cells: make([]RowCell, 0, room(len(lead)))}
 	w, from := 0, 0 // the row's width, and where its own cells start (past cont)
 	lastSpace := -1 // the index in row.Cells after the last space: where a wrap may break
 	next := func(carry []RowCell) {
 		cb.Rows = append(cb.Rows, row)
-		row = CellRow{Anchor: -1, Cells: append(append([]RowCell(nil), cont...), carry...)}
+		cells := make([]RowCell, 0, room(len(cont)+len(carry)))
+		row = CellRow{Anchor: -1, Cells: append(append(cells, cont...), carry...)}
 		w, from, lastSpace = contW, len(cont), -1
 		for _, c := range carry {
 			w += c.W
@@ -804,7 +810,7 @@ func (lb *mdCellLines) cells(cb *CellBlock, ln int, text string, base int, look 
 	for _, c := range lead {
 		put(c, false)
 	}
-	off, col, lastBr := 0, base, 0
+	col, lastBr := base, 0
 	for c := range tui.Graphemes(text) {
 		if brk != nil {
 			if id := brk(off, col); id > 0 && id != lastBr { // a <br>'s first byte: two in a row are two
