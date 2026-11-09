@@ -5,7 +5,6 @@ import (
 	"errors"
 	"io"
 	"io/fs"
-	"os"
 	"path"
 	"path/filepath"
 	"sort"
@@ -26,7 +25,9 @@ import (
 // (an SFTP or object-store fs.FS) lists and previews the same way. Root is
 // what a path is written under — "/" locally, "sftp://host/" remotely — and
 // every path the widgets report or accept is in that ROOTED form, so a host
-// hears an ordinary absolute path from a local dialog.
+// hears an ordinary absolute path from a local dialog. On Windows the local
+// disk ([LocalFiles]) has no one root: its rooted paths are Windows' own
+// (C:\Users\me), any drive's, and its root, the list of drives, is "".
 //
 // An fs.FS is read on the UI loop, as the local disk always has been, unless
 // Async says to read it off the loop. A source that may be slow (a daemon's, a
@@ -49,25 +50,48 @@ type FileSource struct {
 	// Home is the rooted folder ~ stands for in a typed path; "" when the source has none, and
 	// then a typed ~ is refused rather than guessed.
 	Home string
+
+	// drives is the local disk on Windows (LocalFiles): an fs path begins with its drive
+	// ("C:/Users/me"), "." is the list of drives, and a rooted path is Windows' own ("C:\Users\me").
+	drives bool
 }
 
-// LocalFiles is the local filesystem, rooted at "/", ~ its user's home folder.
-func LocalFiles() FileSource {
-	home, _ := os.UserHomeDir()
-	return FileSource{FS: os.DirFS("/"), Root: "/", Home: home}
-}
+// LocalFiles is the local filesystem, ~ its user's home folder: rooted at "/", or on Windows every
+// drive, its paths Windows' own (C:\Users\me).
+func LocalFiles() FileSource { return localFiles() }
 
-// Rooted writes an fs path as a person reads it: "home/me" → "/home/me".
+// Rooted writes an fs path as a person reads it: "home/me" → "/home/me"; on Windows' local disk
+// "C:/Users/me" → "C:\Users\me".
 func (s FileSource) Rooted(p string) string {
+	if s.drives {
+		return driveRooted(p)
+	}
 	if p == "." || p == "" {
 		return s.Root
 	}
 	return s.Root + p
 }
 
+// local reports whether the source is the local disk, where a list starts in the working
+// directory: rooted at "/", or Windows' drives.
+func (s FileSource) local() bool { return s.drives || s.Root == "/" }
+
+// absolute reports whether a typed path is rooted rather than relative to the listed folder: one
+// under Root or starting with /, or on Windows' local disk one naming its drive or starting with
+// a separator.
+func (s FileSource) absolute(typed string) bool {
+	if s.drives {
+		return driveOf(filepath.ToSlash(typed)) != "" || strings.HasPrefix(typed, "/") || strings.HasPrefix(typed, `\`)
+	}
+	return (s.Root != "" && strings.HasPrefix(typed, s.Root)) || strings.HasPrefix(typed, "/")
+}
+
 // fsPath reads a rooted path back into an fs path, reporting false for one
 // outside this source. A relative path is taken as relative to the root.
 func (s FileSource) fsPath(rooted string) (string, bool) {
+	if s.drives {
+		return driveFSPath(rooted)
+	}
 	p := filepath.ToSlash(rooted)
 	if s.Root != "" && strings.HasPrefix(p, s.Root) {
 		p = strings.TrimPrefix(p, s.Root)

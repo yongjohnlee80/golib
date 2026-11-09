@@ -43,7 +43,9 @@ type FilePreview = files.FilePreview
 // (an SFTP or object-store fs.FS) lists and previews the same way. Root is
 // what a path is written under — "/" locally, "sftp://host/" remotely — and
 // every path the widgets report or accept is in that ROOTED form, so a host
-// hears an ordinary absolute path from a local dialog.
+// hears an ordinary absolute path from a local dialog. On Windows the local
+// disk ([LocalFiles]) has no one root: its rooted paths are Windows' own
+// (C:\Users\me), any drive's, and its root, the list of drives, is "".
 //
 // An fs.FS is read on the UI loop, as the local disk always has been, unless
 // Async says to read it off the loop. A source that may be slow (a daemon's, a
@@ -362,7 +364,8 @@ func NewFilePreview(a0 FilePaneStyles, a1 bool) *FilePreview {
 	return files.NewFilePreview(a0, a1)
 }
 
-// LocalFiles is the local filesystem, rooted at "/", ~ its user's home folder.
+// LocalFiles is the local filesystem, ~ its user's home folder: rooted at "/", or on Windows every
+// drive, its paths Windows' own (C:\Users\me).
 //
 // Deprecated: use [files.LocalFiles], from github.com/yongjohnlee80/golib/tui/widget/files.
 func LocalFiles() FileSource {

@@ -82,8 +82,8 @@ func (f *pathField) focused() bool {
 	return ctx != nil && ctx.Focused()
 }
 
-// resolve reads typed as an fs path of src: ~ and ~/x against its Home, a path starting with its
-// Root or / as rooted, anything else relative to dir, the folder listed. bad is the title to show
+// resolve reads typed as an fs path of src: ~ and ~/x against its Home, a rooted one (src.absolute)
+// as rooted, anything else relative to dir, the folder listed. bad is the title to show
 // when it cannot be read as one: ~ in a source without a Home, or a path outside the source.
 func (f *pathField) resolve(src FileSource, dir, typed string) (p string, bad tui.Message, ok bool) {
 	typed = strings.TrimSpace(typed)
@@ -96,7 +96,7 @@ func (f *pathField) resolve(src FileSource, dir, typed string) (p string, bad tu
 		}
 		typed = strings.TrimSuffix(src.Home, "/") + "/" + strings.TrimPrefix(strings.TrimPrefix(typed, "~"), "/")
 	}
-	if (src.Root != "" && strings.HasPrefix(typed, src.Root)) || strings.HasPrefix(typed, "/") {
+	if src.absolute(typed) {
 		p, ok = src.fsPath(typed)
 	} else {
 		p = path.Clean(path.Join(dir, typed))
