@@ -1,7 +1,9 @@
 # vfs/local
 
-The `vfs.FS` driver for a directory on local disk. **Linux and macOS only** — its one commit path is
-`golang.org/x/sys/unix` on a directory fd, and other platforms get no driver rather than a weaker one.
+The `vfs.FS` driver for a directory on local disk, on Linux, macOS and Windows. Each platform commits
+relative to the parent directory it pinned: a directory fd on Unix (`golang.org/x/sys/unix`), a
+directory handle on Windows (`golang.org/x/sys/windows`). Other platforms get no driver rather than a
+weaker one.
 
 ```go
 fsys, err := local.New("/srv/kb", local.WithLogger(log))
@@ -28,6 +30,10 @@ and streamed, so a name swapped for a FIFO after a caller looked at it cannot st
 3. **commit** — one `renameat` (replace), or `renameat2(RENAME_NOREPLACE)` on Linux /
    `renameatx_np(RENAME_EXCL)` on macOS for `CreateExclusive` and `RenameNoReplace`;
 4. `fsync` the parent. A failure from here on is a `*vfs.CommitError`.
+
+On Windows, step 2 is an exclusive create through the `os.Root`, step 3 moves the entry by handle
+(`NtSetInformationFile` with `FILE_RENAME_INFORMATION_EX`, relative to the destination's handle, with
+`REPLACE_IF_EXISTS` only for a replace), and step 4 has nothing to flush (NTFS journals its metadata).
 
 A filesystem that refuses the no-replace flag makes those calls return `errs.ErrUnsupported`. The
 kernel's EINVAL is ambiguous (it also means "a directory moved into itself", e.g. through a symlink

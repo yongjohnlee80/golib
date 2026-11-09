@@ -1,7 +1,7 @@
 # pty
 
-`pty` starts a program on a pseudo-terminal, on Linux and macOS, with the standard library and
-`golang.org/x/sys` only. It is the process layer of golib's terminal widget, and it stands alone:
+`pty` starts a program on a pseudo-terminal, on Linux, macOS and Windows (a ConPTY), with the
+standard library and `golang.org/x/sys` only. It is the process layer of golib's terminal widget, and it stands alone:
 anything that needs to drive an interactive program can use it.
 
 ## Install
@@ -22,7 +22,14 @@ go get github.com/yongjohnlee80/golib/tui/pty
   master closed once the program exits, and `SIGKILL` to the group after a two-second grace. A
   shell forwards the hang-up to its jobs. `Close` can block for the grace period, so a UI calls it
   off its loop.
-- Elsewhere (Windows), `Start` returns an error matching `errs.ErrUnsupported`.
+- **Windows:** the program runs on a pseudo-console (ConPTY), in a job object of its own, so its whole
+  tree ends with it.
+  - `os.Interrupt` is Ctrl+C typed into the console, `os.Kill` ends the job, and any other signal is
+    `errors.ErrUnsupported`.
+  - `Close` closes the console off the caller's path: the grace period and the job's end never wait
+    on it. Before Windows 11 24H2, closing a console waits until its output is read; if it is still
+    waiting once the program has exited, `Close` closes the output's read end, which ends the wait.
+- Elsewhere, `Start` returns an error matching `errs.ErrUnsupported`.
 
 On macOS the kernel hangs up a session leader's terminal as the leader exits, which can drop output
 not read yet: a program that prints and exits at once may lose its last output there. A shell, which

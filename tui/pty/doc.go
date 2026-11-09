@@ -21,7 +21,10 @@
 // prints and exits at once may lose its last output. A shell, which outlives
 // the commands it runs, does not.
 //
-// Linux and macOS are supported, through the standard library and
-// golang.org/x/sys only. Elsewhere Start returns an error matching
+// Linux, macOS and Windows are supported, through the standard library and
+// golang.org/x/sys only. On Windows the program runs on a pseudo-console
+// (ConPTY) in a job object of its own: os.Interrupt is a Ctrl+C typed in,
+// os.Kill ends the job, and Close closes the console without letting it hold
+// the grace period. Elsewhere Start returns an error matching
 // errs.ErrUnsupported.
 package pty
