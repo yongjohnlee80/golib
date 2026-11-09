@@ -2,7 +2,6 @@ package widgettest
 
 import (
 	"strings"
-	"testing"
 
 	"github.com/yongjohnlee80/golib/tui"
 	"github.com/yongjohnlee80/golib/tui/widget/internal/kit"
@@ -23,7 +22,7 @@ type StripMenu struct {
 // is drawn right under the strip: its panel's border on row 1, labelled (menu, or add for the +) on
 // row 2, with no empty row between. Escape closes each before the next. The strip is on row 0 of
 // an App 40 cells wide (a right press on the blank lands at x 38).
-func MenuOpensUnderTheStrip(t *testing.T, h *Harness, m StripMenu, menu, add string) {
+func MenuOpensUnderTheStrip(t TB, h *Harness, m StripMenu, menu, add string) {
 	t.Helper()
 	opens := func(how string, at tui.Point, button tui.MouseButton, label string) {
 		t.Helper()
