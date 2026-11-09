@@ -30,7 +30,7 @@ var (
 // concurrent use.
 //
 // It implements [vfs.ConditionalWriter], [vfs.ExclusiveCreator] and [vfs.NoReplaceRenamer], and
-// [vfs.Watcher] on Linux (inotify) and on macOS built with cgo (FSEvents). Conditions are exact among callers of one FS; a write by another process that
+// [vfs.Watcher] on Linux (inotify), on macOS built with cgo (FSEvents) and on Windows (ReadDirectoryChangesW). Conditions are exact among callers of one FS; a write by another process that
 // lands between the check and the commit is overwritten.
 type FS struct {
 	root    *os.Root
