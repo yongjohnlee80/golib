@@ -1,0 +1,39 @@
+package gui
+
+import (
+	"image"
+	"image/color"
+	"testing"
+)
+
+// Snapshot draws a view through the window's path at its scale: a red square inset in a blue view
+// lands at its dp place times the scale, and the pixels are the size's whole dp times the scale.
+func TestSnapshotDrawsAViewAtItsScale(t *testing.T) {
+	red, blue := color.NRGBA{R: 0xc0, A: 0xff}, color.NRGBA{B: 0xc0, A: 0xff}
+	v := ViewFunc(func(c Canvas) {
+		c.FillRect(Rect{W: c.Size().W, H: c.Size().H}, Solid(blue))
+		c.FillRect(Rect{X: 10, Y: 6, W: 20, H: 12}, Solid(red))
+	})
+	for _, s := range []int{1, 2} {
+		img, err := Snapshot(v, Size{W: 40, H: 23.5}, s)
+		if err != nil {
+			t.Skipf("no headless GPU here: %v", err)
+		}
+		if img.Bounds() != image.Rect(0, 0, 40*s, 24*s) {
+			t.Fatalf("at %dx the snapshot is %v, want %dx%d", s, img.Bounds(), 40*s, 24*s)
+		}
+		at := func(x, y int) color.RGBA { return img.RGBAAt(x*s, y*s) }
+		if c := at(20, 12); c.R < 0xa0 || c.B > 0x20 {
+			t.Errorf("at %dx (20,12) is %v, want the red square", s, c)
+		}
+		if c := at(5, 3); c.B < 0xa0 || c.R > 0x20 {
+			t.Errorf("at %dx (5,3) is %v, want the blue view", s, c)
+		}
+		if c := at(31, 12); c.B < 0xa0 || c.R > 0x20 {
+			t.Errorf("at %dx (31,12) is %v, want blue: the square ends at 30", s, c)
+		}
+	}
+	if img, err := Snapshot(v, Size{W: 4, H: 4}, 0); err == nil && img.Bounds() != image.Rect(0, 0, 4, 4) {
+		t.Fatalf("scale 0 gave %v, want scale 1's 4x4", img.Bounds())
+	}
+}
