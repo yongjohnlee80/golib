@@ -95,9 +95,9 @@ type Tabs struct {
 	noBar     bool
 	onChange  func(i int) // WithTabsOnChange
 
-	// strip is the bar: the shared tab-row engine TabStrip and TerminalTabs draw with (tab_strip.go),
+	// strip is the bar: the tab-row engine TabStrip draws with too (tab_strip_core.go),
 	// its tabs this container's, by index. Its styles are the bar's, the tabs' and the active tab's.
-	strip StripCore
+	strip stripCore
 }
 
 type tabEntry struct {
@@ -151,7 +151,7 @@ func WithTabsStyles(bar, tab, active style.Style) TabsOption {
 // NewTabs builds a tab switcher. At least one tab is required.
 func NewTabs(opts ...TabsOption) *Tabs {
 	t := &Tabs{}
-	t.strip = StripCore{OwnerBase: &t.Base, Anchor: t, Layer: "tabs", markFocus: true, Owner: t}
+	t.strip = stripCore{OwnerBase: &t.Base, Anchor: t, Layer: "tabs", markFocus: true, Owner: t}
 	t.strip.Bar, t.strip.Tab, t.strip.Selected = kit.DefaultTabsStyles()
 	for _, o := range opts {
 		if o != nil {
@@ -164,9 +164,9 @@ func NewTabs(opts ...TabsOption) *Tabs {
 	return t
 }
 
-// StripTabs, stripActive and stripChoose are the bar's owner side (stripOwner): the tabs by
+// stripTabs, stripActive and stripChoose are the bar's owner side (stripOwner): the tabs by
 // index, the active one, and Select.
-func (t *Tabs) StripTabs() []kit.StripTab {
+func (t *Tabs) stripTabs() []kit.StripTab {
 	out := make([]kit.StripTab, len(t.tabs))
 	for i, tab := range t.tabs {
 		out[i] = kit.StripTab{ID: strconv.Itoa(i), Label: kit.CellLabel(tab.label)}
@@ -174,9 +174,9 @@ func (t *Tabs) StripTabs() []kit.StripTab {
 	return out
 }
 
-func (t *Tabs) StripActive() string { return strconv.Itoa(t.active) }
+func (t *Tabs) stripActive() string { return strconv.Itoa(t.active) }
 
-func (t *Tabs) StripChoose(id string) {
+func (t *Tabs) stripChoose(id string) {
 	if i, err := strconv.Atoi(id); err == nil {
 		t.Select(i)
 	}

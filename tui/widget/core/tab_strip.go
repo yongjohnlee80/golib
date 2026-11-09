@@ -20,17 +20,17 @@ type StripTab struct {
 }
 
 // TabStrip is a row of tabs over nothing of its own: the host keeps what the tabs stand for (an
-// editor's buffers, say), sets them and the active one, and hears which the user chooses. It draws
-// and takes presses as TerminalTabs's strip does: a left press on a tab chooses it, a right one
-// opens its menu, and + and ≡ open theirs (SetActions, SetMenu, SetAddMenu). A GUI backend paints
-// it natively (TabSpans, ActiveTabIndex).
+// editor's buffers, say), sets them and the active one, and hears which the user chooses. A left
+// press on a tab chooses it, a right one opens its menu, and + and ≡ open theirs (SetActions,
+// SetMenu, SetAddMenu). A GUI backend paints it natively (TabSpans, ActiveTabIndex,
+// TabWindowControls).
 //
 // It takes no focus: it sits in a title bar, or on its host's first row, and the host's own keys
 // switch what it shows. A host that has focus may pass it the strip's keys (TabStripCommands)
 // through HandleEvent, which then act as on a focused strip: TerminalTabs's strip does.
 type TabStrip struct {
 	Base
-	core     StripCore
+	core     stripCore
 	tabs     []StripTab
 	active   string
 	onSelect func(id string)
@@ -61,12 +61,12 @@ func (t *TabStrip) BarColor() (color.NRGBA, bool) {
 // NewTabStrip is an empty strip.
 func NewTabStrip() *TabStrip {
 	t := &TabStrip{}
-	t.core = StripCore{OwnerBase: &t.Base, Anchor: t, Layer: "tabstrip", Owner: t}
+	t.core = stripCore{OwnerBase: &t.Base, Anchor: t, Layer: "tabstrip", Owner: t}
 	t.core.Bar, t.core.Tab, t.core.Selected = kit.DefaultTabsStyles()
 	return t
 }
 
-func (t *TabStrip) StripTabs() []kit.StripTab {
+func (t *TabStrip) stripTabs() []kit.StripTab {
 	out := make([]kit.StripTab, len(t.tabs))
 	for i, tb := range t.tabs {
 		out[i] = kit.StripTab{ID: tb.ID, Label: kit.CellLabel(tb.Label)}
@@ -74,8 +74,8 @@ func (t *TabStrip) StripTabs() []kit.StripTab {
 	return out
 }
 
-func (t *TabStrip) StripActive() string   { return t.active }
-func (t *TabStrip) StripChoose(id string) { t.choose(id) }
+func (t *TabStrip) stripActive() string   { return t.active }
+func (t *TabStrip) stripChoose(id string) { t.choose(id) }
 
 // SetTabs replaces the tabs, in order. The active tab stays active if it is still among them.
 func (t *TabStrip) SetTabs(tabs []StripTab) {
