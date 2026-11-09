@@ -25,14 +25,16 @@ type StripTab struct {
 // opens its menu, and + and ≡ open theirs (SetActions, SetMenu, SetAddMenu). A GUI backend paints
 // it natively (TabSpans, ActiveTabIndex).
 //
-// It takes no focus and no keys: it sits in a title bar, and the host's own keys switch what it
-// shows.
+// It takes no focus: it sits in a title bar, or on its host's first row, and the host's own keys
+// switch what it shows. A host that has focus may pass it the strip's keys (TabStripCommands)
+// through HandleEvent, which then act as on a focused strip: TerminalTabs's strip does.
 type TabStrip struct {
 	Base
 	core     StripCore
 	tabs     []StripTab
 	active   string
 	onSelect func(id string)
+	endHint  string                                     // SetEndHint: in the room the strip's cells leave
 	barColor atomic.Pointer[func() (color.NRGBA, bool)] // SetBarColor; read where a native painter paints
 }
 
@@ -161,6 +163,59 @@ func (t *TabStrip) MenuOpen() bool { return t.core.MenuOpen != nil }
 // TabSpans are the tabs', +'s and ≡'s cells on the strip, in order.
 func (t *TabStrip) TabSpans() []TabSpan { return t.core.Spans() }
 
+// SetWindowButtons shows _, + and x at the strip's right end, side by side as a title bar's, or
+// takes them off (the default, none): a panel's own minimize, maximize and close. A press runs
+// SetOnWindowButton's function with the control's WindowOperation.
+func (t *TabStrip) SetWindowButtons(on bool) { t.core.SetWindowButtons(on) }
+
+// SetOnWindowButton is what a press on a window control does (SetWindowButtons): fn with its
+// operation, WindowMinimize, WindowMaximize or WindowClose. nil does nothing.
+func (t *TabStrip) SetOnWindowButton(fn func(WindowOperation)) { t.core.OnWindow = fn }
+
+// TabWindowControls are the window controls on the strip, as drawn now (TabWindowController).
+func (t *TabStrip) TabWindowControls() []TabControl { return t.core.ControlSpans() }
+
+// OpenMenuAt opens the strip's menu for tab id ("" for none) at at, in the strip's coordinates,
+// as a right press on its blank does: SetMenu's rows, else SetActions' menu callback. A host opens
+// it where a right press on its own body landed (TerminalTabs, on a body no terminal fills). It
+// needs an OverlayHost above the strip.
+func (t *TabStrip) OpenMenuAt(id string, at tui.Point) { t.core.OpenMenu(id, at) }
+
+// CloseMenu closes the strip's menu (SetMenu, SetAddMenu), when one is open, as the program closes
+// it.
+func (t *TabStrip) CloseMenu() { t.core.CloseMenu() }
+
+// SetEndHint shows text at the strip's right end, before its window controls, in the room its
+// cells leave: cut when there is too little, none in fewer than four cells. "" (the default) shows
+// nothing. TerminalTabs shows its normal-mode hint here.
+func (t *TabStrip) SetEndHint(text string) {
+	if text != t.endHint {
+		t.endHint = text
+		t.MarkDirty()
+	}
+}
+
+// renderEndHint draws SetEndHint's text between the strip's own cells and its window controls.
+func (t *TabStrip) renderEndHint(s tui.Surface, w int) {
+	if t.endHint == "" {
+		return
+	}
+	used, end := 0, w
+	for _, c := range t.core.Row() {
+		if c.Kind == kit.CellControl {
+			end = min(end, c.X-1)
+			continue
+		}
+		used = max(used, c.X+s.StringWidth(c.Label))
+	}
+	room := end - used - 1
+	if room < 4 {
+		return
+	}
+	text := kit.Truncate(t.endHint, room, s.StringWidth)
+	kit.DrawText(s, end-s.StringWidth(text), 0, text, t.core.Tab)
+}
+
 // SetStyles sets the strip's looks: its blank, a tab, and the active tab.
 func (t *TabStrip) SetStyles(bar, tab, selected style.Style) {
 	t.core.Bar, t.core.Tab, t.core.Selected = kit.TabsStyles(bar, tab, selected)
@@ -211,6 +266,7 @@ func (t *TabStrip) Layout(c tui.Constraints) tui.Size {
 func (t *TabStrip) Render(s tui.Surface) {
 	if w := s.Size().W; w > 0 && s.Size().H > 0 {
 		t.core.Render(s, w)
+		t.renderEndHint(s, w)
 	}
 }
 
@@ -222,7 +278,14 @@ func (t *TabStrip) KeyBindings(m *keymap.Map) []keymap.Binding {
 	return tui.BindingsOf(m, TabStripCommands...)
 }
 
+// HandleEvent takes a press on the strip, and a key its focused host passes on (TabStripCommands),
+// which acts as on a focused strip.
 func (t *TabStrip) HandleEvent(ev tui.Event) bool {
-	e, ok := ev.(tui.MouseEvent)
-	return ok && e.Kind == tui.MousePress && e.Y == 0 && t.core.Press(e)
+	switch e := ev.(type) {
+	case tui.MouseEvent:
+		return e.Kind == tui.MousePress && e.Y == 0 && t.core.Press(e)
+	case tui.KeyEvent:
+		return t.core.key(e, true)
+	}
+	return false
 }

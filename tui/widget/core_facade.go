@@ -640,7 +640,7 @@ type TabSpanner = core.TabSpanner
 type TabControl = core.TabControl
 
 // TabWindowController is a tab strip whose row may end in window controls, as a native painter reads
-// them: none unless its owner shows them (Tabs.SetWindowButtons, TerminalTabs.SetWindowButtons).
+// them: none unless its owner shows them (Tabs.SetWindowButtons, TabStrip.SetWindowButtons).
 //
 // Deprecated: use [core.TabWindowController], from github.com/yongjohnlee80/golib/tui/widget/core.
 type TabWindowController = core.TabWindowController
@@ -1594,8 +1594,9 @@ type StripTab = core.StripTab
 // opens its menu, and + and ≡ open theirs (SetActions, SetMenu, SetAddMenu). A GUI backend paints
 // it natively (TabSpans, ActiveTabIndex).
 //
-// It takes no focus and no keys: it sits in a title bar, and the host's own keys switch what it
-// shows.
+// It takes no focus: it sits in a title bar, or on its host's first row, and the host's own keys
+// switch what it shows. A host that has focus may pass it the strip's keys (TabStripCommands)
+// through HandleEvent, which then act as on a focused strip: TerminalTabs's strip does.
 //
 // Deprecated: use [core.TabStrip], from github.com/yongjohnlee80/golib/tui/widget/core.
 type TabStrip = core.TabStrip

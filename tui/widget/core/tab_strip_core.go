@@ -599,9 +599,13 @@ func (s *StripCore) keyOf(e tui.KeyEvent, focused, hasAdd, menuShown bool) strip
 	return stripNone
 }
 
-// Key acts on the strip's keys.
-func (s *StripCore) Key(e tui.KeyEvent) bool {
-	k := s.keyOf(e, s.OwnerBase.Focused(), s.hasAdd(), s.menuShown())
+// Key acts on the strip's keys, the focused strip's ones while its owner has focus.
+func (s *StripCore) Key(e tui.KeyEvent) bool { return s.key(e, s.OwnerBase.Focused()) }
+
+// key acts on the strip's keys, the focused strip's ones when focused: a TabStrip passes true for a
+// key its host forwards (TabStrip.HandleEvent), since it takes no focus of its own.
+func (s *StripCore) key(e tui.KeyEvent, focused bool) bool {
+	k := s.keyOf(e, focused, s.hasAdd(), s.menuShown())
 	switch k {
 	case stripNone:
 		return false

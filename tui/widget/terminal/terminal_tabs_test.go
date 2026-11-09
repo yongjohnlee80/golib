@@ -132,7 +132,7 @@ func TestTerminalTabsRemovalRetainsErrorsAndRejectsClosingAndStaleTargets(t *tes
 		if err := tabs.ForceRemove(a); err != nil {
 			t.Error(err)
 		}
-		if tabs.Active() != "" || len(tabs.ListChildren()) != 0 {
+		if tabs.Active() != "" || len(tabs.ListChildren()) != 1 { // its strip alone
 			t.Error("last removal did not produce an empty container")
 		}
 		if err := tabs.SendText(a, "stale"); !errors.Is(err, ErrTerminalTabUnknown) {
@@ -196,11 +196,11 @@ func TestTerminalTabsNeverStartedRemovalAndDistinctStripTargets(t *testing.T) {
 	h := widgettest.StartApp(t, tabs, 40, 8)
 	defer h.Stop()
 	h.OnLoop(func() {
-		tabs.HandleEvent(tui.MouseEvent{Kind: tui.MousePress, Button: tui.MouseRight, X: 7})
+		tabs.strip.HandleEvent(tui.MouseEvent{Kind: tui.MousePress, Button: tui.MouseRight, X: 7}) // the strip, its first row
 		if menu != b || tabs.Active() != a {
 			t.Error("menu target selected or addressed the wrong page")
 		}
-		tabs.HandleEvent(tui.MouseEvent{Kind: tui.MousePress, Button: tui.MouseLeft, X: 13})
+		tabs.strip.HandleEvent(tui.MouseEvent{Kind: tui.MousePress, Button: tui.MouseLeft, X: 13}) // the strip, its first row
 		if added != 1 || tabs.Active() != a {
 			t.Error("plus target overlapped a page")
 		}

@@ -638,13 +638,14 @@ func TestATabStripsWindowControlsAreTheTitleBarsDots(t *testing.T) {
 func TestAnEmptyTabStripStillPaintsItsWindowControls(t *testing.T) {
 	tabs := terminal.NewTerminalTabs()
 	tabs.SetWindowButtons(true)
-	if n := len(tabs.TabSpans()); n != 0 {
+	strip := terminalStrip(t, tabs)
+	if n := len(strip.TabSpans()); n != 0 {
 		t.Fatalf("an empty strip has %d spans", n)
 	}
-	if n := len(tabs.TabWindowControls()); n != 3 {
+	if n := len(strip.TabWindowControls()); n != 3 {
 		t.Fatalf("%d controls; want _, + and x", n)
 	}
-	view, _, ok := paintTabs(tabs)
+	view, _, ok := paintTabs(strip)
 	if !ok {
 		t.Fatal("no view")
 	}
