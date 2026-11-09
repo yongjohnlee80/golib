@@ -25,8 +25,14 @@ func allocatedBy(fn func()) uint64 {
 
 // largeSetBudget is the most a Rendered Editor may allocate per byte of a long text it is given: a
 // cell a character, laid once, each row made its size. Laying the text whole at two widths, and
-// growing each row by appends, cost about 2,400 bytes a byte; once, sized, about 380.
-const largeSetBudget = 600
+// growing each row by appends, cost about 2,400 bytes a byte (plain build); once, sized, about 380,
+// and about 730 under -race, which allocates more for the same work.
+func largeSetBudget() int {
+	if raceBuild {
+		return 1100
+	}
+	return 600
+}
 
 // A 1 MiB document set into a Rendered Editor showing 100x30 is laid once, at the width it shows
 // at, its rows made their size: its allocations stay within largeSetBudget a byte of text.
@@ -39,8 +45,8 @@ func TestSettingALargeDocumentLaysItOutWithinItsBudget(t *testing.T) {
 	got := allocatedBy(func() { e.SetValue(text) })
 	perByte := float64(got) / float64(len(text))
 	t.Logf("SetValue of %d bytes allocated %d MiB (%.0f bytes a byte of text)", len(text), got>>20, perByte)
-	if perByte > largeSetBudget {
-		t.Errorf("setting %d bytes allocated %.0f bytes a byte of text, past the budget of %d: the text is laid more than once, or its rows grow by copying", len(text), perByte, largeSetBudget)
+	if perByte > float64(largeSetBudget()) {
+		t.Errorf("setting %d bytes allocated %.0f bytes a byte of text, past the budget of %d: the text is laid more than once, or its rows grow by copying", len(text), perByte, largeSetBudget())
 	}
 	if r := e.rowMap().r; r == nil || len(r.rows) <= e.cells.h || r.key.width != e.cells.w-1 {
 		t.Errorf("the long text's layout is not the scrolling one, one narrower than the view (%d): %+v", e.cells.w-1, r != nil)
