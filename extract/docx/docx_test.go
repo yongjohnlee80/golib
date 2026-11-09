@@ -187,10 +187,13 @@ func TestDocxStopsWhenCancelled(t *testing.T) {
 }
 
 // The document is read a token at a time and one paragraph is held: a large document's peak heap
-// stays near a constant, far under its decompressed size.
+// stays near a constant, far under its decompressed size. The document is about 16 MB, so half of
+// it is well above the 4 MB the Go runtime lets the heap reach before its first collection
+// whatever the GC percent: at 6 MB, half was under that floor, and when the collector ran late
+// (seen on Windows) a streaming read grew past it.
 func TestDocxPeakHeapIsBounded(t *testing.T) {
 	var body strings.Builder
-	for i := 0; i < 60000; i++ {
+	for i := 0; i < 150000; i++ {
 		body.WriteString(p("", "paragraph number with some words in it to make it longer than a few bytes"))
 	}
 	data := build(t, document(body.String()))
