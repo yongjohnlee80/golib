@@ -2120,8 +2120,8 @@ const (
 	WindowClose = core.WindowClose
 )
 
-// The forwarded vars are core's values, copied: read them, never assign one, since core's
-// widgets read core's.
+// The forwarded vars are core's values, copied: read them, never assign one, since
+// core's widgets read core's.
 var (
 	// ErrEmptyLayerID is returned when an anchored layer is opened under no id.
 	ErrEmptyLayerID = core.ErrEmptyLayerID
