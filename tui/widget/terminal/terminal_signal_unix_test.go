@@ -1,3 +1,9 @@
+//go:build linux || darwin
+
+// A terminal's signals are POSIX's: Signal sends to the running program's process group, as
+// kill -SIG -pgid does, and these cells read the program's state from /proc. Windows has no
+// process-group signals; its terminal tabs stop their program through the port's process trees.
+
 package terminal
 
 import (
