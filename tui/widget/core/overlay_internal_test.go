@@ -1,4 +1,4 @@
-package widget
+package core
 
 // The unkeyed overlay operations are UNEXPORTED — the layers they mount are this
 // package's own private types — so these tests live inside the package: nothing

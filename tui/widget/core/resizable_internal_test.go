@@ -1,4 +1,4 @@
-package widget
+package core
 
 // The grip's one structural guarantee, asserted structurally.
 //

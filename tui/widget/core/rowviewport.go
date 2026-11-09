@@ -1,4 +1,4 @@
-package widget
+package core
 
 // rowviewport.go: the arithmetic of a column of rows seen through a window of them — List, Tree,
 // the Select popup and DataTable's rows all scroll by it, so a fix to scrolling is made once.
