@@ -31,7 +31,7 @@ func gridWidth(t *testing.T, src string) int {
 	if err != nil {
 		t.Fatal(err)
 	}
-	g, err := tuimermaid.Lay(context.Background(), d, measureFunc(func(s string) int { return len([]rune(s)) }))
+	g, err := tuimermaid.Lay(context.Background(), d, runeWidths{})
 	if err != nil {
 		t.Fatalf("%q: %v", src, err)
 	}
@@ -72,16 +72,16 @@ func TestAWideDiagramPansWithinItsRoom(t *testing.T) {
 	}
 	c := layCells(t, "<p>before</p>"+navFence(wideSequence)+"<p>after</p>", navRoom)
 	bi, first := diagramBlock(t, c)
-	g := c.rows[first].grid.(*mermaidPicture).g
-	inner := navRoom - 2 // the room less its edge columns, the marks' while a block is wide
-	over := g.Size.W - inner
+	g := c.rows[first].grid // the diagram's picture
+	inner := navRoom - 2    // the room less its edge columns, the marks' while a block is wide
+	over := g.Size().W - inner
 	if got := c.over(bi); got != over {
-		t.Fatalf("over = %d, want %d (the grid %d wide, the room %d less its 2 mark columns)", got, over, g.Size.W, navRoom)
+		t.Fatalf("over = %d, want %d (the grid %d wide, the room %d less its 2 mark columns)", got, over, g.Size().W, navRoom)
 	}
 	// the grid as it lays out, whole: what each pan must show a window of
-	whole := newRecordSurface(g.Size.W, g.Size.H)
-	g.Paint(whole, 0, 0, -1, diagramTheme)
-	mid := first + (g.Size.H-1)/2
+	whole := newRecordSurface(g.Size().W, g.Size().H)
+	g.Paint(whole, 0, 0)
+	mid := first + (g.Size().H-1)/2
 	h := len(c.rows)
 	text := func(rows []string) (out []string) { // the rows outside the diagram
 		for ri, r := range rows {
@@ -95,7 +95,7 @@ func TestAWideDiagramPansWithinItsRoom(t *testing.T) {
 	check := func(name string, off int) {
 		t.Helper()
 		rows := navRows(c, 0, h)
-		for y := range g.Size.H {
+		for y := range g.Size().H {
 			row := []rune(rows[first+y] + strings.Repeat(" ", navRoom))[:navRoom]
 			want := []rune(strings.Join(whole.text[y], ""))[off : off+inner]
 			left, right := ' ', ' ' // the edge columns: blank, but on the middle row a mark where more lies
@@ -160,7 +160,7 @@ func TestAPannedDiagramStaysInItsRoom(t *testing.T) {
 		t.Fatalf("precondition: the diagram is in a quote (%d) and wide (%d)", b.quote, c.over(bi))
 	}
 	c.Pan(0, len(c.rows), htmlPanStep)
-	g := c.rows[first].grid.(*mermaidPicture).g
+	g := c.rows[first].grid
 	s := newRecordSurface(navRoom+5, len(c.rows))
 	for y := range s.h {
 		for x := range s.w {
@@ -168,7 +168,7 @@ func TestAPannedDiagramStaysInItsRoom(t *testing.T) {
 		}
 	}
 	c.PaintCells(s, 0, navRoom, DocPos{}, DocPos{})
-	for y := first; y < first+g.Size.H; y++ {
+	for y := first; y < first+g.Size().H; y++ {
 		for x := range 2 * b.quote {
 			if s.text[y][x] != "#" {
 				t.Errorf("row %d: the diagram painted %q at column %d, left of its room (the quote's)", y, s.text[y][x], x)
@@ -450,3 +450,8 @@ func navGolden(t *testing.T, name, got string) {
 		t.Errorf("%s differs:\n--- got\n%s\n--- want\n%s", path, got, want)
 	}
 }
+
+// runeWidths measures a string by its runes, as layCells does, for laying a diagram out alone.
+type runeWidths struct{}
+
+func (runeWidths) StringWidth(s string) int { return len([]rune(s)) }

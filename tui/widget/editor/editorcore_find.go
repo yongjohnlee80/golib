@@ -1,0 +1,370 @@
+package editor
+
+import (
+	"strings"
+
+	"github.com/yongjohnlee80/golib/highlight"
+	"github.com/yongjohnlee80/golib/tui/widget/internal/kit"
+	txt "github.com/yongjohnlee80/golib/tui/widget/internal/text"
+)
+
+// FIND AND REPLACE — editor core functions over the text, in buffer positions.
+//
+// A term matches whole grapheme clusters, within one line. The ACTIVE find (SetFind) is what n and
+// N step through and what the editor marks: every match on a painted line takes the Alert style,
+// over the host's own overlay, so the marks look like the host's Alert (an editor whose syntax
+// styles leave Alert unset shows no marks; the cursor still moves to each match).
+
+// FindOptions narrow a find. The zero value is a literal, case-sensitive, forward search that
+// stops at the end.
+type FindOptions struct {
+	IgnoreCase bool // fold case
+	Backward   bool // towards the start
+	Wrap       bool // continue from the other end
+	// WholeWord is Vim's \< and \> around the term (* and #): where the term begins with a keyword
+	// character (IsKeyword) the match must start a word, and where it ends with one it must end a
+	// word. A word ends where the character class changes, as Vim's regexp has it for multibyte
+	// text, so 漢字abc holds the words 漢字 and abc.
+	WholeWord bool
+}
+
+// IsKeyword reports a keyword cluster, as Vim's \< and \> and its w motions see one: a letter, a
+// digit or _, a CJK script's character, or an emoji (Vim's utf_class of 2 or more).
+func IsKeyword(cluster string) bool { return kit.WordClass(cluster, false) >= 2 }
+
+// findState is the active find.
+type findState struct {
+	term string
+	opts FindOptions
+	// host is the host's own overlay (SetHighlightOverlay): the marks go over it.
+	host highlight.Overlay
+	// cur is the current match, drawn as a selection (SetCurrentMatch); curOn says there is one
+	cur   TextRange
+	curOn bool
+}
+
+// plainHighlighter styles nothing: a core with no highlighter paints no overlay.
+var plainHighlighter = highlight.HighlighterFunc(func(string, highlight.State) ([]highlight.Span, highlight.State) {
+	return nil, 0
+})
+
+// matchesIn is every match of term (its clusters) in line, as cluster columns [start, end).
+func matchesIn(line string, term []string, o FindOptions) [][2]int {
+	if len(term) == 0 {
+		return nil
+	}
+	hay := txt.Clusters(line)
+	fold := o.IgnoreCase
+	var out [][2]int
+	for i := 0; i+len(term) <= len(hay); i++ {
+		ok := true
+		for k, t := range term {
+			if h := hay[i+k]; h != t && !(fold && strings.EqualFold(h, t)) {
+				ok = false
+				break
+			}
+		}
+		if ok && o.WholeWord {
+			ok = wordStarts(hay, i, term[0]) && wordEnds(hay, i+len(term), term[len(term)-1])
+		}
+		if ok {
+			out = append(out, [2]int{i, i + len(term)})
+			i += len(term) - 1 // matches do not overlap
+		}
+	}
+	return out
+}
+
+// FindAll is every match of term in the text, in order. Backward and Wrap do not apply.
+func (c *EditorCore) FindAll(term string, o FindOptions) []TextRange {
+	t := txt.Clusters(term)
+	var out []TextRange
+	for ln, line := range c.buf.Lines {
+		for _, m := range matchesIn(line, t, o) {
+			out = append(out, TextRange{From: TextPos{ln, m[0]}, To: TextPos{ln, m[1]}})
+		}
+	}
+	return out
+}
+
+// Find is the next match of term from `from`: forward, the first starting after from (so finding
+// again from a match moves on); backward, the last starting before it. With Wrap it continues from
+// the other end. ok is false when there is none.
+func (c *EditorCore) Find(term string, from TextPos, o FindOptions) (TextRange, bool) {
+	all := c.FindAll(term, o)
+	if len(all) == 0 {
+		return TextRange{}, false
+	}
+	at := c.clampPos(from)
+	after := func(r TextRange) bool {
+		return r.From.Line > at.Ln || (r.From.Line == at.Ln && r.From.Col > at.Col)
+	}
+	before := func(r TextRange) bool {
+		return r.From.Line < at.Ln || (r.From.Line == at.Ln && r.From.Col < at.Col)
+	}
+	if !o.Backward {
+		for _, r := range all {
+			if after(r) {
+				return r, true
+			}
+		}
+		if o.Wrap {
+			return all[0], true
+		}
+		return TextRange{}, false
+	}
+	for i := len(all) - 1; i >= 0; i-- {
+		if before(all[i]) {
+			return all[i], true
+		}
+	}
+	if o.Wrap {
+		return all[len(all)-1], true
+	}
+	return TextRange{}, false
+}
+
+// ReplaceAll replaces every match of term with `with`, in one undo group, and reports how many.
+func (c *EditorCore) ReplaceAll(term, with string, o FindOptions) (int, error) {
+	all := c.FindAll(term, o)
+	if len(all) == 0 {
+		return 0, nil
+	}
+	err := c.Batch(func() error {
+		// from the end: an earlier replacement would move every later match
+		for i := len(all) - 1; i >= 0; i-- {
+			if _, err := c.Replace(all[i], with); err != nil {
+				return err
+			}
+		}
+		return nil
+	})
+	if err != nil {
+		return 0, err
+	}
+	return len(all), nil
+}
+
+// OverlayStyles is line ln's clusters as the overlay alone styles them: the host's marks
+// (SetHighlightOverlay) and the active find's, highlight.Normal where it marks nothing, with no
+// highlighter's styles beneath. A view that draws the text its own way (the cell Editor's Rendered
+// view) lays these over its own cells, so a find marks every match there as it does in the text.
+// nil when there is no overlay, or no line ln.
+func (c *EditorCore) OverlayStyles(ln int) []highlight.Style {
+	if c.hl.overlay == nil || ln < 0 || ln >= len(c.buf.Lines) {
+		return nil
+	}
+	return c.hl.paintEntry(hlLine{text: c.buf.Lines[ln]})
+}
+
+// SetFind makes term the active find, or clears it with "": its matches are marked, and n and N
+// step through them. Backward and Wrap in o are ignored: n always goes forward and N back, both
+// wrapping.
+func (c *EditorCore) SetFind(term string, o FindOptions) {
+	c.find.term, c.find.opts = term, FindOptions{IgnoreCase: o.IgnoreCase, WholeWord: o.WholeWord}
+	c.find.curOn = false // a new find (or none) is on no match until n, N or SetCurrentMatch
+	if term != "" {
+		needPlain(c.bufferState, c)
+	} else {
+		dropPlain(c.bufferState, c)
+	}
+	c.hl.overlay = c.findOverlay()
+	c.InvalidateHighlightPaint()
+}
+
+// FindTerm is the active find's term and options; "" with none.
+func (c *EditorCore) FindTerm() (string, FindOptions) { return c.find.term, c.find.opts }
+
+// FindNext moves the cursor to the active find's next match (back, with back), wrapping, and
+// reports whether there was one. With no active find it does nothing and reports false.
+func (c *EditorCore) FindNext(back bool) bool {
+	if c.find.term == "" {
+		return false
+	}
+	o := c.find.opts
+	o.Backward, o.Wrap = back, true
+	r, ok := c.Find(c.find.term, c.Cursor(), o)
+	if ok {
+		c.SetLine(r.From.Line, r.From.Col)
+		c.SetCurrentMatch(r)
+	}
+	return ok
+}
+
+// SetCurrentMatch draws r as the current match, as a selection whatever the mode and the focus: the
+// one a find is on, so the user sees which. An empty r clears it; SetFind clears it too.
+func (c *EditorCore) SetCurrentMatch(r TextRange) {
+	lo, hi := c.clampRange(r)
+	c.find.cur = TextRange{From: TextPos{lo.Ln, lo.Col}, To: TextPos{hi.Ln, hi.Col}}
+	c.find.curOn = lo != hi
+	c.markDirty()
+}
+
+// CurrentMatch is the current match; ok is false with none.
+func (c *EditorCore) CurrentMatch() (TextRange, bool) { return c.find.cur, c.find.curOn }
+
+func (c *EditorCore) inCurrentMatch(ln, col int) bool {
+	if !c.find.curOn {
+		return false
+	}
+	r := c.find.cur
+	lo, hi := txt.Pos{Ln: r.From.Line, Col: r.From.Col}, txt.Pos{Ln: r.To.Line, Col: r.To.Col}
+	return (txt.Pos{Ln: ln, Col: col}).In(lo, hi)
+}
+
+// findOverlay is the host's overlay with the active find's marks over it.
+func (c *EditorCore) findOverlay() highlight.Overlay {
+	host := c.find.host
+	if c.find.term == "" {
+		return host
+	}
+	term, opts := txt.Clusters(c.find.term), c.find.opts
+	return func(line string, semantic []highlight.Span) []highlight.Span {
+		spans := semantic
+		if host != nil {
+			spans = host(line, spans)
+		}
+		return markMatches(line, spans, term, opts)
+	}
+}
+
+// markMatches lays an Alert span over every match in line, splitting the spans it covers.
+func markMatches(line string, spans []highlight.Span, term []string, o FindOptions) []highlight.Span {
+	found := matchesIn(line, term, o)
+	if len(found) == 0 {
+		return spans
+	}
+	// byte offset of each cluster boundary
+	cs := txt.Clusters(line)
+	at := make([]int, len(cs)+1)
+	for i, s := range cs {
+		at[i+1] = at[i] + len(s)
+	}
+	styles := make([]highlight.Style, len(line))
+	for _, s := range spans {
+		for i := max(s.Start, 0); i < s.End && i < len(styles); i++ {
+			styles[i] = s.Style
+		}
+	}
+	for _, m := range found {
+		for i := at[m[0]]; i < at[m[1]]; i++ {
+			styles[i] = highlight.Alert
+		}
+	}
+	var out []highlight.Span
+	for i := 0; i < len(styles); {
+		j := i
+		for j < len(styles) && styles[j] == styles[i] {
+			j++
+		}
+		if styles[i] != highlight.Normal {
+			out = append(out, highlight.Span{Start: i, End: j, Style: styles[i]})
+		}
+		i = j
+	}
+	return out
+}
+
+// ReplaceSession is replace's walk through the matches, one question at a time: a widget asks the
+// user at each match and answers with Answer. It walks the whole document from the top, each match
+// once, so a replacement that contains the term is never asked about again. Every replacement of
+// one session undoes with a single u.
+type ReplaceSession struct {
+	c        *EditorCore
+	term     []string
+	with     string
+	o        FindOptions
+	cur      TextRange
+	ok       bool // cur is a match waiting for its answer
+	grouped  bool // a replacement began the session's undo group
+	replaced int
+}
+
+// StartReplace begins a replace session at the first match in the document, selected; ok is
+// false when there is none.
+func (c *EditorCore) StartReplace(term, with string, o FindOptions) (*ReplaceSession, bool) {
+	s := &ReplaceSession{c: c, term: txt.Clusters(term), with: with, o: o}
+	s.seek(txt.Pos{}, true)
+	return s, s.ok
+}
+
+// seek selects the first match at or after `at`, or ends the session.
+func (s *ReplaceSession) seek(at txt.Pos, inclusive bool) {
+	s.ok = false
+	for ln := at.Ln; ln < len(s.c.buf.Lines); ln++ {
+		for _, m := range matchesIn(s.c.buf.Lines[ln], s.term, s.o) {
+			if ln == at.Ln && (m[0] < at.Col || (!inclusive && m[0] == at.Col)) {
+				continue
+			}
+			s.cur, s.ok = TextRange{From: TextPos{ln, m[0]}, To: TextPos{ln, m[1]}}, true
+			s.c.Select(s.cur)
+			return
+		}
+	}
+	s.c.Unselect()
+}
+
+// Current is the match waiting for an answer; ok is false once the session has ended.
+func (s *ReplaceSession) Current() (TextRange, bool) { return s.cur, s.ok }
+
+// Replaced is how many matches were replaced.
+func (s *ReplaceSession) Replaced() int { return s.replaced }
+
+// Answer replaces the current match (yes) or skips it (no), and goes to the next. more is false
+// when there are no more matches: the session has ended.
+func (s *ReplaceSession) Answer(yes bool) (more bool, err error) {
+	if !s.ok {
+		return false, nil
+	}
+	next := s.c.clampPos(s.cur.To)
+	if yes {
+		s.c.joinGroup = s.grouped
+		end, err := s.c.Replace(s.cur, s.with)
+		s.c.joinGroup = false
+		if err != nil {
+			s.Stop()
+			return false, err
+		}
+		s.grouped = true
+		s.replaced++
+		next = s.c.clampPos(end)
+	}
+	s.seek(next, true)
+	return s.ok, nil
+}
+
+// Stop ends the session where it is: the replacements made stay.
+func (s *ReplaceSession) Stop() {
+	if s.ok {
+		s.ok = false
+		s.c.Unselect()
+	}
+}
+
+// SetOnEscape gives the host Esc in Normal mode (or a modeless editor's Esc) when the editor has
+// nothing of its own to cancel (no pending count or operator, no selection, no active find): fn
+// reports whether it took the key (the host's own find in the page, say), and a key it did not
+// take bubbles as before. Only a focused editor sees that Esc, so the host's answer is scoped to
+// it. nil: none.
+func (c *EditorCore) SetOnEscape(fn func() bool) { c.onEscape = fn }
+
+// escapeFind is Esc with nothing else to cancel: the active find ends; else the host's (SetOnEscape)
+// answer. It reports whether the key was taken.
+func (c *EditorCore) escapeFind() bool {
+	if c.find.term != "" {
+		c.SetFind("", FindOptions{})
+		return true
+	}
+	return c.onEscape != nil && c.onEscape()
+}
+
+// wordStarts reports a whole-word match's start at hay[i]: none needed when the term begins with a
+// non-keyword; else the line's start, or a class change from the cluster before.
+func wordStarts(hay []string, i int, first string) bool {
+	return !IsKeyword(first) || i == 0 || kit.WordClass(hay[i-1], false) != kit.WordClass(hay[i], false)
+}
+
+// wordEnds reports a whole-word match's end before hay[end], as wordStarts does its start.
+func wordEnds(hay []string, end int, last string) bool {
+	return !IsKeyword(last) || end == len(hay) || kit.WordClass(hay[end], false) != kit.WordClass(hay[end-1], false)
+}

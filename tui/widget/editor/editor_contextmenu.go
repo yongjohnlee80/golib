@@ -1,0 +1,108 @@
+package editor
+
+import (
+	"github.com/yongjohnlee80/golib/tui"
+	"github.com/yongjohnlee80/golib/tui/widget/core"
+)
+
+// THE RIGHT-CLICK MENU.
+//
+// Off by default: a right press bubbles to the editor's parents as it always
+// has, so an application that gives the right button its own meaning keeps
+// it. WithContextMenu turns it on. The stock rows are Undo and Redo, then Copy, Cut and Paste;
+// a consumer can supply its own rows instead, built fresh each time the menu
+// opens so their enabled state reflects the editor at that moment.
+//
+// The menu acts on the editor through the same entry points a menu bar uses
+// (Undo, Redo, Copy, Cut, Paste): they keep the selection, settle a pending chord or
+// count, and do not need focus. Paste pastes the editor's register — what was
+// last copied or cut here. A terminal gives no way to read the system
+// clipboard; text from outside arrives as the terminal's own paste.
+
+// EditorMenuAction is a context-menu row's action: when the row is chosen, the
+// editor runs Run with itself. A row whose action is neither an EditorMenuAction
+// nor a CoreMenuAction (editormenu.go) does nothing.
+type EditorMenuAction struct {
+	ID  tui.ActionID
+	Run func(e *Editor)
+}
+
+// ActionID implements tui.Action.
+func (a EditorMenuAction) ActionID() tui.ActionID { return a.ID }
+
+// runIn runs Run with the menu's owner, which must be a tui Editor: in any other menu the row does
+// nothing.
+func (a EditorMenuAction) runIn(m *EditorMenu) func() {
+	e, ok := m.owner.(*Editor)
+	if !ok || a.Run == nil {
+		return nil
+	}
+	return func() { a.Run(e) }
+}
+
+// The stock rows' ids and actions.
+const (
+	EditorMenuUndo  core.ItemID = "editor.undo"
+	EditorMenuRedo  core.ItemID = "editor.redo"
+	EditorMenuEdits core.ItemID = "editor.sep.edits" // the separator after Redo
+	EditorMenuCopy  core.ItemID = "editor.copy"
+	EditorMenuCut   core.ItemID = "editor.cut"
+	EditorMenuPaste core.ItemID = "editor.paste"
+)
+
+// EditorContextItems are the stock rows for e, enabled as e stands now:
+//   - Undo and Redo, when there is an edit to undo or redo and e is writable;
+//   - a separator;
+//   - Copy, when there is a selection and copying is allowed;
+//   - Cut, when there is a selection and e is writable;
+//   - Paste, when e is writable and its register holds something.
+//
+// Their actions are EditorMenuActions. A consumer that wants the stock rows plus its own builds
+// on this slice. CoreContextItems is the same rows over an EditorCore.
+func EditorContextItems(e *Editor) []core.MenuItemModel {
+	return contextRows(e.core, func(id tui.ActionID, run func(*EditorCore)) tui.Action {
+		return EditorMenuAction{ID: id, Run: func(e *Editor) { run(e.core) }}
+	})
+}
+
+// WithContextMenu turns the right-click menu on. build returns the rows to
+// show and runs each time the menu opens; nil means EditorContextItems.
+func WithContextMenu(build func(e *Editor) []core.MenuItemModel) EditorOption {
+	return func(e *Editor) {
+		e.menu.SetEnabled(true)
+		if build != nil {
+			e.menu.SetRows(func() []core.MenuItemModel { return build(e) })
+		}
+	}
+}
+
+// SetContextMenu turns the right-click menu on or off, keeping the rows
+// WithContextMenu supplied (the stock rows when it supplied none). Turning it
+// off closes a menu that is open.
+func (e *Editor) SetContextMenu(on bool) { e.menu.SetEnabled(on) }
+
+// ContextMenu is the editor's right-click menu: off unless turned on (WithContextMenu, or
+// ContextMenu().SetEnabled), its rows the stock ones or a consumer's.
+func (e *Editor) ContextMenu() *EditorMenu { return e.menu }
+
+// OpenContextMenu opens the right-click menu from the keyboard, as a right press on the caret's
+// cell would: below its line, so the line stays in sight. Shift+F10 and the Menu key call it while the menu is
+// on. False when the menu is off or the caret is not on the screen.
+func (e *Editor) OpenContextMenu() bool { return e.pointer.OpenMenu() }
+
+// IsContextMenuKey reports whether k is one of the DEFAULT keys that open a context menu: Shift+F10,
+// the desktop convention, or the Menu key where the backend delivers it. A golib widget matches its own
+// context-menu command instead (EditorContextMenu, ListMenu), which a key map may move; this stays for
+// a host that has no command of its own.
+func IsContextMenuKey(k tui.KeyEvent) bool {
+	if k.Kind != tui.KeyPress {
+		return false
+	}
+	switch m := k.Mods.Chord(); {
+	case k.Code == tui.KeyF10 && m == tui.ModShift:
+		return true
+	case k.Code == tui.KeyMenu && m == 0:
+		return true
+	}
+	return false
+}
