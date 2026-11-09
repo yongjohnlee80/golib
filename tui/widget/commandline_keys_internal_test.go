@@ -1,10 +1,10 @@
 package widget
 
 import (
+	"github.com/yongjohnlee80/golib/tui/widget/internal/widgettest"
 	"testing"
 
 	"github.com/yongjohnlee80/golib/tui"
-	"github.com/yongjohnlee80/golib/tui/widget/internal/widgettest"
 )
 
 // oldCmdlineKey is CommandLine.keys' decision before commands, verbatim but for its effect, named, and
@@ -32,21 +32,11 @@ func oldReplaceKey(k tui.KeyEvent) string {
 	return ""
 }
 
-// presses is the grid as the Modal hands it to its own keys: presses only.
-func presses(f func(tui.KeyEvent) string) func(tui.KeyEvent) string {
-	return func(e tui.KeyEvent) string {
-		if e.Kind != tui.KeyPress {
-			return ""
-		}
-		return f(e)
-	}
-}
-
 func TestCommandLineKeysMatchTheOldHandlerWithNoMap(t *testing.T) {
 	for _, dropdown := range []bool{false, true} {
 		widgettest.KeyGridDiff(t, map[bool]string{false: "CommandLine", true: "CommandLine, dropdown open"}[dropdown],
-			presses(func(e tui.KeyEvent) string { return oldCmdlineKey(e, dropdown) }),
-			presses(func(e tui.KeyEvent) string {
+			widgettest.Presses(func(e tui.KeyEvent) string { return oldCmdlineKey(e, dropdown) }),
+			widgettest.Presses(func(e tui.KeyEvent) string {
 				back, ok := cmdlineStep(widgettest.NoKeymap, e, dropdown)
 				if !ok {
 					return ""
@@ -56,8 +46,8 @@ func TestCommandLineKeysMatchTheOldHandlerWithNoMap(t *testing.T) {
 			widgettest.HyperOrMeta)
 	}
 	widgettest.KeyGridDiff(t, "CommandLine replace question",
-		presses(oldReplaceKey),
-		presses(func(e tui.KeyEvent) string { return replaceAnswer(widgettest.NoKeymap, e).String() }),
+		widgettest.Presses(oldReplaceKey),
+		widgettest.Presses(func(e tui.KeyEvent) string { return replaceAnswer(widgettest.NoKeymap, e).String() }),
 		widgettest.HyperOrMeta)
 }
 
