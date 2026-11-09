@@ -723,7 +723,7 @@ func TestWrappingMakesAnUnmodifiedWidgetResizable(t *testing.T) {
 // own source knows nothing about it. A wrapper that had quietly required a hook
 // in its children would still pass the behavioural test.
 func TestTheWrappedWidgetsSourceNeverMentionsResizing(t *testing.T) {
-	for _, name := range []string{"editor.go", "core/textarea.go"} {
+	for _, name := range []string{"editor/editor.go", "core/textarea.go"} {
 		b, err := os.ReadFile(name)
 		if err != nil {
 			t.Fatalf("read %s: %v", name, err)
