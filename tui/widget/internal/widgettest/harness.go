@@ -4,18 +4,29 @@ import (
 	"context"
 	"slices"
 	"sync"
-	"testing"
 	"time"
 
 	"github.com/yongjohnlee80/golib/tui"
 )
+
+// TB is what the helpers need of a test: a test passes its *testing.T. The helpers take it rather
+// than the testing package's type, so this package, like all of tui's non-test code, imports no
+// testing package (internal/audit holds tui to that).
+type TB interface {
+	Helper()
+	Error(args ...any)
+	Errorf(format string, args ...any)
+	Fatal(args ...any)
+	Fatalf(format string, args ...any)
+	Logf(format string, args ...any)
+}
 
 // Harness runs an App for a test of tui/widget or a package under it. It is deliberately
 // minimal — App.Update is both the way onto the loop and the way to wait for
 // it, so nothing else is needed — rather than a copy of the external harness,
 // whose input injection and trace barriers no test here uses.
 type Harness struct {
-	T      *testing.T
+	T      TB
 	App    *tui.App
 	TB     *tui.TestBackend
 	Done   chan error
@@ -24,7 +35,7 @@ type Harness struct {
 
 // StartApp runs root in an App on a w×h TestBackend, on a goroutine of its own, and returns once
 // the loop has run once (Sync).
-func StartApp(t *testing.T, root tui.Component, w, h int) *Harness {
+func StartApp(t TB, root tui.Component, w, h int) *Harness {
 	t.Helper()
 	tb := tui.NewTestBackend(w, h)
 	app := tui.NewApp(root, tui.WithBackend(tb), tui.WithMinFrameInterval(0))

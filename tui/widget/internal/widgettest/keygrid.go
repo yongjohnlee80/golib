@@ -2,7 +2,6 @@ package widgettest
 
 import (
 	"fmt"
-	"testing"
 	"unicode"
 
 	"github.com/yongjohnlee80/golib/tui"
@@ -67,7 +66,7 @@ func NoTextShiftedPrintable(e tui.KeyEvent) string {
 }
 
 // KeyGridDiff compares old and new over the grid. deviation names why an event may differ, or "".
-func KeyGridDiff(t *testing.T, name string, old, new func(tui.KeyEvent) string, deviation func(tui.KeyEvent) string) {
+func KeyGridDiff(t TB, name string, old, new func(tui.KeyEvent) string, deviation func(tui.KeyEvent) string) {
 	t.Helper()
 	compared, deviated := 0, 0
 	for _, e := range KeyGrid() {
