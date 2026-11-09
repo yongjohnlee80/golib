@@ -244,6 +244,39 @@ func TestWindowsWatchRootMoved(t *testing.T) {
 	}
 }
 
+// The watched directory moved and then kept busy, its changes completing every read before the idle
+// check could come, is noticed all the same: a final OpOverflow{""}, then the close.
+func TestWindowsWatchBusyRootMoved(t *testing.T) {
+	old := winRootCheck
+	winRootCheck = 50 * time.Millisecond
+	t.Cleanup(func() { winRootCheck = old })
+	f, dir := newLocal(t)
+	_ = f.MkdirAll(bg, "w")
+	events, _ := startWatch(t, f, "w")
+	if err := f.Rename(bg, "w", "moved"); err != nil {
+		t.Fatal(err)
+	}
+	stop := make(chan struct{})
+	done := make(chan struct{})
+	go func() { // a write every 5 ms in the moved directory: no read waits out the 50 ms check
+		defer close(done)
+		for i := 0; ; i++ {
+			select {
+			case <-stop:
+				return
+			case <-time.After(5 * time.Millisecond):
+			}
+			_ = os.WriteFile(filepath.Join(dir, "moved", "busy-"+strconv.Itoa(i%20)+".md"), []byte(strconv.Itoa(i)), 0o644)
+		}
+	}()
+	seen := drainClosed(t, events)
+	close(stop)
+	<-done
+	if len(seen) == 0 || seen[len(seen)-1] != (vfs.Event{Path: "", Op: vfs.OpOverflow}) {
+		t.Fatalf("last event = %v, want OpOverflow{\"\"}", seen)
+	}
+}
+
 // A cancelled watch and a closed FS each close the channel and leave no handle open.
 func TestWindowsWatchCancelAndCloseRelease(t *testing.T) {
 	f, _ := newLocal(t)
