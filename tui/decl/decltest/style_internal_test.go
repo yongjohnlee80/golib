@@ -10,7 +10,7 @@ import (
 	"github.com/yongjohnlee80/golib/parse/qml"
 	"github.com/yongjohnlee80/golib/tui"
 	tuidecl "github.com/yongjohnlee80/golib/tui/decl"
-	"github.com/yongjohnlee80/golib/tui/widget"
+	"github.com/yongjohnlee80/golib/tui/widget/core"
 )
 
 // recordingTB records CheckStyle's failures instead of failing the test.
@@ -33,7 +33,7 @@ func TestCheckStyleNamesEachWayAReplacementFails(t *testing.T) {
 		}
 		return typ
 	}
-	text := func(tuidecl.Build) (tui.Component, []string, error) { return widget.NewText("styled"), nil, nil }
+	text := func(tuidecl.Build) (tui.Component, []string, error) { return core.NewText("styled"), nil, nil }
 
 	refusing := copyOf("ListView")
 	refusing.Build = func(tuidecl.Build) (tui.Component, []string, error) { return nil, nil, errors.New("no list") }
