@@ -352,3 +352,27 @@ func TestPanelBarTextHasTheHigherWCAGContrast(t *testing.T) {
 		t.Fatalf("the bar's text is %v on the page %v; want black, the higher contrast", text, page)
 	}
 }
+
+// A control acts only when its press and its release both land on it: a press on maximize released
+// over close does neither, a release over close that no press armed does nothing, and a press
+// released off the bar is cancelled. A matching
+// click afterwards still acts, so the events were all handled.
+func TestPanelControlsActOnlyOnTheirOwnPressAndRelease(t *testing.T) {
+	var closed atomic.Bool
+	h := startPanel(t, tui.Rect{X: 2, Y: 2, W: 30, H: 6},
+		gw.WithClosable(func() { closed.Store(true) }), gw.WithMaximizable())
+	right := 2 + 30
+	closeX, maxX := right-3+1, right-2*3+1
+	h.mouse(tui.MousePress, maxX, 2)
+	h.mouse(tui.MouseRelease, closeX, 2) // dragged from maximize to close
+	h.mouse(tui.MouseRelease, closeX, 2) // a release no press armed
+	h.mouse(tui.MousePress, closeX, 2)
+	h.mouse(tui.MouseRelease, closeX, 5) // close's press released off the bar: cancelled
+	h.mouse(tui.MouseRelease, closeX, 2) // and no press armed this one
+	h.mouse(tui.MousePress, maxX, 2)
+	h.mouse(tui.MouseRelease, maxX, 2) // a whole click on maximize
+	h.until("maximized", func() bool { return h.bounds() == (tui.Rect{W: 60, H: 20}) })
+	if closed.Load() {
+		t.Fatal("a release over close that its press didn't land on closed the panel")
+	}
+}

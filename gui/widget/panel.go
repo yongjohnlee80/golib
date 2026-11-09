@@ -56,6 +56,7 @@ type Panel struct {
 	// titleEnd is where the title's room ends: before the trailing widgets and the controls
 	titleEnd int
 	hover    control
+	pressed  control // the control a left press landed on: only a release on it acts
 	barSt    style.Style
 	// the native bar's colours, from its last paint: what a leading widget draws in, so it sits
 	// on the bar rather than on the cells' reversed row
@@ -80,7 +81,7 @@ type PanelOption func(*Panel)
 
 // NewPanel is a panel over content.
 func NewPanel(content tui.Component, opts ...PanelOption) *Panel {
-	p := &Panel{content: content, hover: noControl, barSt: style.New().Reverse(true)}
+	p := &Panel{content: content, hover: noControl, pressed: noControl, barSt: style.New().Reverse(true)}
 	p.Label("Panel")
 	for _, o := range opts {
 		if o != nil { // a nil option is no option
@@ -318,18 +319,24 @@ func (p *Panel) mouse(m tui.MouseEvent) bool {
 		}
 		return false
 	case tui.MouseRelease:
-		if m.Y == 0 && m.Button == tui.MouseLeft {
-			if c := p.controlAt(m.X); c != noControl {
-				p.act(c)
-				return true
-			}
+		if m.Button != tui.MouseLeft {
+			return false
 		}
-		return false
+		armed := p.pressed
+		p.pressed = noControl
+		if armed == noControl {
+			return false
+		}
+		if m.Y == 0 && p.controlAt(m.X) == armed {
+			p.act(armed) // a control acts when its press and its release both land on it
+		}
+		return true
 	case tui.MousePress:
 		if m.Button != tui.MouseLeft {
 			return false
 		}
-		if m.Y == 0 && p.controlAt(m.X) != noControl {
+		if c := p.controlAt(m.X); m.Y == 0 && c != noControl {
+			p.pressed = c
 			return true // the control acts on release, as a button does
 		}
 		if m.Y == 0 && m.Count == 2 && p.behavior.State().Maximize {
@@ -419,43 +426,12 @@ func (p *Panel) NativeView() (any, bool) {
 // NativeScope: the bar is the panel's own look, beneath its children.
 func (p *Panel) NativeScope() tui.NativeScope { return tui.ScopeChrome }
 
-// The bar is a surface of the page, not the cells' row: a terminal marks the bar by reversing
-// it, which in a window is a bright band across the panel. So the bar is the page colour around
-// the panel tinted a little toward the text, with a hairline under it and the title muted. The
-// text colour is whichever of the bar cells' colours stands off the page more, so a reversed or
-// a plain bar style both give it.
+// paintBar is the panel's title row (titleRow), keeping its colours for BarColors.
 func (p *Panel) paintBar(c gui.Canvas) {
-	cell := c.CellSize()
-	page := c.Backdrop()
-	fg, bg, ok := openColors(c, 1)
-	if !ok {
-		return // the bar is wholly covered: the host paints the covering cells, and BarColors keep the last
-	}
-	text := fg
-	if contrast(bg, page) > contrast(fg, page) {
-		text = bg
-	}
-	fill := mix(text, page, 0.06)
-	p.barText, p.barFill, p.barPage = text, fill, page
-	w := c.Size().W
-	c.FillRect(gui.Rect{W: w, H: cell.H}, gui.Solid(fill))
-	c.FillRect(gui.Rect{Y: cell.H - 1, W: w, H: 1}, gui.Solid(mix(text, page, 0.16)))
-	if p.title != "" {
-		// with trailing widgets, the title keeps to its room left of them: none if it does not fit
-		t := c.Text().Layout(p.title, gui.Font{Size: c.TextSize() * 0.92}, 0)
-		if len(p.trailing) == 0 || t.Width <= float32(p.titleEnd-p.titleX)*cell.W {
-			c.DrawText(t, gui.Pt(float32(p.titleX)*cell.W, (cell.H-t.Height)/2), gui.Solid(mix(text, page, 0.72)))
-		}
-	}
-	r := min(cell.H*0.32, cell.W*1.2)
-	for i, ctl := range p.controls() {
-		cx := c.Size().W - (float32(i)+0.5)*controlCells*cell.W
-		col := [...]color.NRGBA{closeRed, maximizeGreen, minimizeAmber}[ctl]
-		dot := gui.Rect{X: cx - r, Y: cell.H/2 - r, W: 2 * r, H: 2 * r}
-		c.FillEllipse(dot, gui.Solid(col))
-		if p.hover == ctl {
-			c.StrokeRRect(dot, r, 1, gui.Solid(color.NRGBA{A: 0x60}))
-		}
+	row := titleRow{title: p.title, titleX: p.titleX, titleEnd: p.titleEnd, fit: len(p.trailing) > 0,
+		controls: p.controls(), hover: p.hover}
+	if text, fill, page, ok := row.paint(c); ok {
+		p.barText, p.barFill, p.barPage = text, fill, page
 	}
 }
 
