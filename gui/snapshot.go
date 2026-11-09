@@ -21,16 +21,44 @@ import (
 // For tests that assert what a widget draws in pixels: a golden, or a colour at a point. A machine
 // with no headless GPU returns an error that is ErrNoGPU, which a test skips on; any other error is
 // the drawing or its read-back failing, which a test must fail on.
+//
+// Each call makes a headless window of its own. A test taking several snapshots of one size uses
+// a Snapshotter instead: EGL refuses some of many windows made in a row.
 func Snapshot(v View, size Size, scale int) (*image.RGBA, error) {
+	s, err := NewSnapshotter(size, scale)
+	if err != nil {
+		return nil, err
+	}
+	defer s.Release()
+	return s.Snap(v)
+}
+
+// Snapshotter takes snapshots of one size and scale on one headless window: what Snapshot does, for
+// a test that takes many. Release it when done. It is not safe for concurrent use.
+type Snapshotter struct {
+	hw    *headless.Window
+	size  Size
+	scale int
+}
+
+// NewSnapshotter is a Snapshotter of size dp at a whole scale (1 when not positive). Its error, on a
+// machine with no headless GPU, is ErrNoGPU.
+func NewSnapshotter(size Size, scale int) (*Snapshotter, error) {
 	scale = max(scale, 1)
 	w, h := snapshotPixels(size, scale)
 	hw, err := headless.NewWindow(w, h)
 	if err != nil {
 		return nil, errs.WrapCause(ErrNoGPU, err, "gui: Snapshot")
 	}
-	defer hw.Release()
-	return snapshotOn(hw, v, size, scale)
+	return &Snapshotter{hw: hw, size: size, scale: scale}, nil
 }
+
+// Snap renders v as Snapshot does, on the Snapshotter's window. An error is the drawing or its
+// read-back failing.
+func (s *Snapshotter) Snap(v View) (*image.RGBA, error) { return snapshotOn(s.hw, v, s.size, s.scale) }
+
+// Release frees the window.
+func (s *Snapshotter) Release() { s.hw.Release() }
 
 // ErrNoGPU is Snapshot's error on a machine with no headless GPU to draw on.
 var ErrNoGPU = errs.Sentinel(errs.ErrUnsupported, "gui: no headless GPU")

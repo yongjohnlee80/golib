@@ -14,10 +14,16 @@ import (
 func TestAShapesPixelsAreItsGeometry(t *testing.T) {
 	red, blue := color.NRGBA{R: 0xc0, A: 0xff}, color.NRGBA{B: 0xc0, A: 0xff}
 	size := gui.Size{W: 40, H: 24}
-	ground, err := gui.Snapshot(gui.ViewFunc(func(gui.Canvas) {}), size, 2)
+	// one window for every snapshot: EGL refuses some of many windows made in a row
+	snap, err := gui.NewSnapshotter(size, 2)
 	if errors.Is(err, gui.ErrNoGPU) {
 		t.Skipf("no headless GPU here: %v", err)
 	}
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer snap.Release()
+	ground, err := snap.Snap(gui.ViewFunc(func(gui.Canvas) {}))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -39,9 +45,9 @@ func TestAShapesPixelsAreItsGeometry(t *testing.T) {
 			[]point{{20, 12, "fill"}, {1, 12, "stroke"}, {20, 1, "stroke"}, {3, 3, "ground"}, {37, 21, "ground"}}},
 	} {
 		t.Run(c.name, func(t *testing.T) {
-			img, err := gui.Snapshot(c.s, size, 2)
+			img, err := snap.Snap(c.s)
 			if err != nil {
-				t.Fatal(err) // a GPU answered for the ground: any error here is a failure
+				t.Fatal(err) // the window drew the ground: any error here is a failure
 			}
 			if img.Bounds() != image.Rect(0, 0, 80, 48) {
 				t.Fatalf("snapshot %v, want 80x48", img.Bounds())
