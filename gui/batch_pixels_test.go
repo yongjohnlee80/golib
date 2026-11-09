@@ -82,9 +82,21 @@ func TestARowsBatchDrawsWhatEachCellDrew(t *testing.T) {
 			inked++
 		}
 	}
-	// the same glyphs at the same places; a merged path's antialiasing may differ by a shade
-	if worst > 8 || differ*20 > inked {
-		t.Errorf("%d of %d inked bytes differ, the worst by %d: the batch did not draw what each cell drew", differ, inked, worst)
+	// The same glyphs at the same places: the same pixels inked (past inkLevel from the white
+	// ground), so a glyph moved by a pixel fails. A merged path's antialiasing may differ by a
+	// shade at the edges, less than inkLevel: llvmpipe's worst is 8, Direct3D 11's 13.
+	shape := 0
+	for p := 0; p+3 < len(batched.Pix); p += 4 {
+		in := func(px []uint8) bool {
+			return 0xff-int(px[0]) > inkLevel || 0xff-int(px[1]) > inkLevel || 0xff-int(px[2]) > inkLevel
+		}
+		if in(batched.Pix[p:p+4]) != in(alone.Pix[p:p+4]) {
+			shape++
+		}
+	}
+	t.Logf("%d of %d inked bytes differ, the worst by %d; %d pixels inked in only one", differ, inked, worst, shape)
+	if worst > inkLevel || differ*20 > inked || shape != 0 {
+		t.Errorf("%d of %d inked bytes differ, the worst by %d, %d pixels inked in only one: the batch did not draw what each cell drew", differ, inked, worst, shape)
 	}
 	if inked == 0 {
 		t.Fatal("nothing was drawn: the comparison proves nothing")
