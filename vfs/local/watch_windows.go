@@ -101,7 +101,7 @@ func (f *FS) newWinWatch(dir string, cfg vfs.WatchConfig) (*winWatch, error) {
 	oa.Length = uint32(unsafe.Sizeof(*oa))
 	var h windows.Handle
 	var iosb windows.IO_STATUS_BLOCK
-	if err := windows.NtCreateFile(&h, windows.FILE_LIST_DIRECTORY|windows.SYNCHRONIZE, oa, &iosb, nil, 0,
+	if err := windows.NtCreateFile(&h, windows.FILE_LIST_DIRECTORY|windows.FILE_READ_ATTRIBUTES|windows.SYNCHRONIZE, oa, &iosb, nil, 0,
 		windows.FILE_SHARE_READ|windows.FILE_SHARE_WRITE|windows.FILE_SHARE_DELETE, windows.FILE_OPEN,
 		windows.FILE_DIRECTORY_FILE, 0, 0); err != nil {
 		return nil, fmt.Errorf("reopening the directory for a watch: %w", err)
@@ -109,12 +109,12 @@ func (f *FS) newWinWatch(dir string, cfg vfs.WatchConfig) (*winWatch, error) {
 	var hi windows.ByHandleFileInformation
 	if err := windows.GetFileInformationByHandle(h, &hi); err != nil {
 		windows.CloseHandle(h)
-		return nil, err
+		return nil, fmt.Errorf("reading the watched directory's identity: %w", err)
 	}
 	ev, err := windows.CreateEvent(nil, 1, 0, nil)
 	if err != nil {
 		windows.CloseHandle(h)
-		return nil, err
+		return nil, fmt.Errorf("creating the watch's event: %w", err)
 	}
 	winWatches.Add(1)
 	return &winWatch{
