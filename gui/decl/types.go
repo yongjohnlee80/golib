@@ -7,6 +7,7 @@ import (
 
 	"github.com/yongjohnlee80/golib/gui/internal/csscolor"
 	"github.com/yongjohnlee80/golib/gui/widget"
+	"github.com/yongjohnlee80/golib/parse/qml"
 	"github.com/yongjohnlee80/golib/tui"
 	tuidecl "github.com/yongjohnlee80/golib/tui/decl"
 )
@@ -104,16 +105,30 @@ func shapeType() tuidecl.Type {
 			return widget.NewShape(k, opts...), used, nil
 		},
 		Setters: map[string]tuidecl.Setter{
-			"fillColor": tuidecl.StringSetter(func(s *widget.Shape, v string) {
-				if c, ok := csscolor.Parse(v, color.NRGBA{}); ok {
-					s.SetFillColor(c)
-				}
-			}),
+			"fillColor":   fillColorSetter,
 			"radius":      tuidecl.NumberSetter(func(s *widget.Shape, r float64) { s.SetRadius(float32(r)) }),
 			"tuiFallback": fallbackSetter[*widget.Shape](),
 		},
 		Enums: []tuidecl.Enum{shapeEnum}, // Gui (tuiFallback's) is published once, by TitleBar's Type
 	}
+}
+
+// fillColorSetter is a Shape's fillColor at run time: a CSS colour, refused as construction refuses
+// one (the binding reports the error and the shape keeps its colour).
+func fillColorSetter(c tui.Component, v qml.SpecValue) error {
+	s, ok := c.(*widget.Shape)
+	if !ok {
+		return fmt.Errorf("fillColor: not a *widget.Shape (at %s)", v.Pos)
+	}
+	if v.Kind != qml.SpecValueString {
+		return fmt.Errorf("fillColor: want a colour string, got %s (at %s)", v.Kind, v.Pos)
+	}
+	col, ok := csscolor.Parse(v.Raw, color.NRGBA{})
+	if !ok {
+		return fmt.Errorf("Shape: fillColor %q is not a colour (at %s)", v.Raw, v.Pos)
+	}
+	s.SetFillColor(col)
+	return nil
 }
 
 // cssColor reads a colour property as CSS writes one ("#4080c0", "steelblue", "rgb(…)").

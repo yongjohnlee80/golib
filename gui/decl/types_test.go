@@ -1,10 +1,13 @@
 package decl
 
 import (
+	"image/color"
 	"strings"
 	"testing"
 
 	"github.com/yongjohnlee80/golib/gui"
+	"github.com/yongjohnlee80/golib/gui/widget"
+	"github.com/yongjohnlee80/golib/parse/qml"
 	"github.com/yongjohnlee80/golib/tui"
 	tuidecl "github.com/yongjohnlee80/golib/tui/decl"
 	"github.com/yongjohnlee80/golib/tui/decl/decltest"
@@ -87,5 +90,32 @@ func TestAShapesStrokeWidthDefaultsToOneAndTakesZero(t *testing.T) {
 		if stroked != c.want || (stroked && width != 1) {
 			t.Errorf("%s: stroked %v (width %v); want stroked %v, 1 wide", c.src, stroked, width, c.want)
 		}
+	}
+}
+
+// fillColor at run time takes a colour and refuses what isn't one, keeping the shape's colour.
+func TestAShapesFillColorSetterRefusesWhatIsNotAColour(t *testing.T) {
+	set := shapeType().Setters["fillColor"]
+	s := widget.NewShape(widget.ShapeRect, widget.WithFillColor(color.NRGBA{R: 1, A: 255}))
+	if err := set(s, qml.SpecValue{Kind: qml.SpecValueString, Raw: "#0000ff"}); err != nil {
+		t.Fatalf("fillColor #0000ff refused: %v", err)
+	}
+	paint := func() color.NRGBA {
+		rc := gui.NewRecordingCanvas(gui.Size{W: 8, H: 16}, gui.Size{W: 8, H: 16})
+		s.Paint(rc)
+		return rc.Calls[0].Brush.Color
+	}
+	if got := paint(); got != (color.NRGBA{B: 255, A: 255}) {
+		t.Fatalf("after fillColor #0000ff the fill is %v", got)
+	}
+	err := set(s, qml.SpecValue{Kind: qml.SpecValueString, Raw: "not-a-colour"})
+	if err == nil || !strings.Contains(err.Error(), `fillColor "not-a-colour" is not a colour`) {
+		t.Fatalf("fillColor not-a-colour = %v; want it refused", err)
+	}
+	if got := paint(); got != (color.NRGBA{B: 255, A: 255}) {
+		t.Fatalf("a refused fillColor changed the fill to %v", got)
+	}
+	if err := set(s, qml.SpecValue{Kind: qml.SpecValueNumber, Raw: "3"}); err == nil || !strings.Contains(err.Error(), "want a colour string, got") {
+		t.Fatalf("fillColor 3 = %v; want it refused as not a string", err)
 	}
 }
