@@ -10,9 +10,9 @@ import (
 	"github.com/yongjohnlee80/golib/tui/widget/terminal"
 )
 
-// TestTheFacadesVarsAreTerminals holds each var tui/widget forwards from terminal equal to
+// TestTheFacadeForwardsTerminalVars holds each var tui/widget forwards from terminal equal to
 // terminal's, so a later change there cannot leave a stale copy behind.
-func TestTheFacadesVarsAreTerminals(t *testing.T) {
+func TestTheFacadeForwardsTerminalVars(t *testing.T) {
 	for name, v := range map[string][2]any{
 		"ErrTerminalNotRunning":        {widget.ErrTerminalNotRunning, terminal.ErrTerminalNotRunning},
 		"ErrTerminalInputFull":         {widget.ErrTerminalInputFull, terminal.ErrTerminalInputFull},

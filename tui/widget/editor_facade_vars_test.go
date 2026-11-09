@@ -10,9 +10,9 @@ import (
 	"github.com/yongjohnlee80/golib/tui/widget/editor"
 )
 
-// TestTheFacadesVarsAreEditors holds each var tui/widget forwards from editor equal to
+// TestTheFacadeForwardsEditorVars holds each var tui/widget forwards from editor equal to
 // editor's, so a later change there cannot leave a stale copy behind.
-func TestTheFacadesVarsAreEditors(t *testing.T) {
+func TestTheFacadeForwardsEditorVars(t *testing.T) {
 	for name, v := range map[string][2]any{
 		"ErrNoCellPicture":    {widget.ErrNoCellPicture, editor.ErrNoCellPicture},
 		"CmdlineComplete":     {widget.CmdlineComplete, editor.CmdlineComplete},
