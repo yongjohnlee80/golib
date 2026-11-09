@@ -64,6 +64,12 @@ func (f *FS) Watch(ctx context.Context, dir string, opts ...vfs.WatchOption) (<-
 	if err != nil {
 		return nil, &fs.PathError{Op: "watch", Path: dir, Err: err}
 	}
+	// the first read is issued before Watch returns: the kernel records nothing for a handle until
+	// then, so a change made as soon as Watch returns would otherwise be lost
+	if err := w.issue(); err != nil {
+		w.closeHandles()
+		return nil, &fs.PathError{Op: "watch", Path: dir, Err: err}
+	}
 	go w.run(ctx)
 	return w.out, nil
 }
@@ -169,9 +175,7 @@ func (w *winWatch) run(ctx context.Context) {
 	defer func() {
 		close(quit)
 		<-cancelled // no CancelIoEx can reach h once it is closed, and maybe reused
-		windows.CloseHandle(w.ov.HEvent)
-		windows.CloseHandle(w.h)
-		winWatches.Add(-1)
+		w.closeHandles()
 		close(w.out)
 	}()
 	send := func(evs ...vfs.Event) bool {
@@ -191,7 +195,8 @@ func (w *winWatch) run(ctx context.Context) {
 		send(vfs.Event{Path: "", Op: vfs.OpOverflow})
 	}
 	for {
-		n, err := w.read()
+		n, err := w.wait()
+		var evs []vfs.Event
 		switch {
 		case errors.Is(err, errWatchStopped) || errors.Is(err, windows.ERROR_OPERATION_ABORTED):
 			return
@@ -203,18 +208,31 @@ func (w *winWatch) run(ctx context.Context) {
 				end("gone")
 				return
 			}
-			if !send(vfs.Event{Path: "", Op: vfs.OpOverflow}) { // the kernel's buffer overflowed
-				return
-			}
-			continue
+			evs = []vfs.Event{{Path: "", Op: vfs.OpOverflow}} // the kernel's buffer overflowed
 		case err != nil: // the directory went (a read on one pending its deletion is refused), or the handle failed
 			end(err.Error())
 			return
+		default:
+			evs = w.m.mapBatch(parseNotify(w.buf[:n]))
 		}
-		if !send(w.m.mapBatch(parseNotify(w.buf[:n]))...) {
+		if !send(evs...) {
+			return
+		}
+		// changes made meanwhile are kept by the kernel for this next read
+		if err := w.issue(); err != nil {
+			if !errors.Is(err, errWatchStopped) {
+				end(err.Error())
+			}
 			return
 		}
 	}
+}
+
+// closeHandles closes the watch's handles; the watch is then no longer counted.
+func (w *winWatch) closeHandles() {
+	windows.CloseHandle(w.ov.HEvent)
+	windows.CloseHandle(w.h)
+	winWatches.Add(-1)
 }
 
 var (
@@ -222,20 +240,21 @@ var (
 	errRootGone     = errors.New("the watched directory is no longer there")
 )
 
-// read issues one ReadDirectoryChangesW and waits for it, checking every winRootCheck that the
-// watched directory is still there; it returns how many bytes of records the read left in buf.
-func (w *winWatch) read() (uint32, error) {
+// issue starts one ReadDirectoryChangesW, unless the watch has been stopped: under mu, so a stop
+// either comes first, and no read starts, or comes after and cancels it.
+func (w *winWatch) issue() error {
 	w.mu.Lock()
+	defer w.mu.Unlock()
 	if w.stopped {
-		w.mu.Unlock()
-		return 0, errWatchStopped
+		return errWatchStopped
 	}
 	_ = windows.ResetEvent(w.ov.HEvent)
-	err := windows.ReadDirectoryChanges(w.h, &w.buf[0], uint32(len(w.buf)), w.m.recursive, winNotifyFilter, nil, &w.ov, 0)
-	w.mu.Unlock()
-	if err != nil {
-		return 0, err
-	}
+	return windows.ReadDirectoryChanges(w.h, &w.buf[0], uint32(len(w.buf)), w.m.recursive, winNotifyFilter, nil, &w.ov, 0)
+}
+
+// wait waits for the read in flight, checking every winRootCheck that the watched directory is
+// still there; it returns how many bytes of records the read left in buf.
+func (w *winWatch) wait() (uint32, error) {
 	for {
 		ev, err := windows.WaitForSingleObject(w.ov.HEvent, uint32(winRootCheck/time.Millisecond))
 		if err != nil || ev != uint32(windows.WAIT_TIMEOUT) {
@@ -249,6 +268,6 @@ func (w *winWatch) read() (uint32, error) {
 		}
 	}
 	var n uint32
-	err = windows.GetOverlappedResult(w.h, &w.ov, &n, true)
+	err := windows.GetOverlappedResult(w.h, &w.ov, &n, true)
 	return n, err
 }
