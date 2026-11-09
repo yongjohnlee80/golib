@@ -47,13 +47,9 @@ func ownerCallbackFiles(t *testing.T, root string) []string {
 	t.Helper()
 	var out []string
 	for _, glob := range []string{"list*.go", "tree*.go", "tablecore*.go", "datatable*.go", "select*.go", "filelist*.go"} {
-		// the views live in tui/widget and in tui/widget/core (List, Select): both are read
-		m, err := filepath.Glob(filepath.Join(root, "tui", "widget", glob))
-		if err != nil {
-			t.Fatal(err)
-		}
-		mc, err := filepath.Glob(filepath.Join(root, "tui", "widget", "core", glob))
-		m = append(m, mc...)
+		// the views live in the packages under tui/widget (List and Select in core, Tree and FileList in
+		// files, TableCore and DataTable in table): every one of them is read
+		m, err := filepath.Glob(filepath.Join(root, "tui", "widget", "*", glob))
 		if err != nil {
 			t.Fatal(err)
 		}

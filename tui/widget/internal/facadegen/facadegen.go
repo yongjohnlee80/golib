@@ -32,6 +32,9 @@ var Packages = []Package{
 	{"core", "github.com/yongjohnlee80/golib/tui/widget/core", "core"},
 	{"terminal", "github.com/yongjohnlee80/golib/tui/widget/terminal", "terminal"},
 	{"editor", "github.com/yongjohnlee80/golib/tui/widget/editor", "editor"},
+	{"table", "github.com/yongjohnlee80/golib/tui/widget/table", "table"},
+	{"htmlview", "github.com/yongjohnlee80/golib/tui/widget/htmlview", "htmlview"},
+	{"files", "github.com/yongjohnlee80/golib/tui/widget/files", "files"},
 }
 
 // Generate reads p's non-test Go files (dir, relative to tui/widget or absolute) and returns its
