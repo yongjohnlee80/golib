@@ -14,7 +14,8 @@ import (
 	tuidecl "github.com/yongjohnlee80/golib/tui/decl"
 	"github.com/yongjohnlee80/golib/tui/decl/controls"
 	"github.com/yongjohnlee80/golib/tui/decl/decltest"
-	"github.com/yongjohnlee80/golib/tui/widget"
+	"github.com/yongjohnlee80/golib/tui/widget/core"
+	"github.com/yongjohnlee80/golib/tui/widget/editor"
 )
 
 // controls_test.go holds TextField and Popup to the trial's rows. The DUAL
@@ -63,7 +64,7 @@ func runQML(t *testing.T, doc string, rec *recorder) *decltest.Screen {
 }
 
 // runNative runs a widget.TextInput as a Go program would.
-func runNative(t *testing.T, input *widget.TextInput) *tui.TestBackend {
+func runNative(t *testing.T, input *core.TextInput) *tui.TestBackend {
 	t.Helper()
 	be := tui.NewTestBackend(40, 8)
 	app := tui.NewApp(input, tui.WithBackend(be), tui.WithMinFrameInterval(0))
@@ -96,9 +97,9 @@ func TestW2ATextFieldIsTheTextInputOnBothPaths(t *testing.T) {
 	var mu sync.Mutex
 	var nativeAccepted []string
 	var edits int
-	native := widget.NewTextInput(
-		widget.WithOnSubmit(func(v string) { mu.Lock(); nativeAccepted = append(nativeAccepted, v); mu.Unlock() }),
-		widget.WithOnEdit(func(string) { mu.Lock(); edits++; mu.Unlock() }))
+	native := core.NewTextInput(
+		core.WithOnSubmit(func(v string) { mu.Lock(); nativeAccepted = append(nativeAccepted, v); mu.Unlock() }),
+		core.WithOnEdit(func(string) { mu.Lock(); edits++; mu.Unlock() }))
 	be := runNative(t, native)
 	accepted := func() []string { mu.Lock(); defer mu.Unlock(); return append([]string(nil), nativeAccepted...) }
 
@@ -134,7 +135,7 @@ func TestW2ATextFieldIsTheTextInputOnBothPaths(t *testing.T) {
 
 // W3 — Password masks as WithMask does; the placeholder shows while empty.
 func TestW3EchoModeAndPlaceholderMatchTheNativeOptions(t *testing.T) {
-	native := widget.NewTextInput(widget.WithMask('•'))
+	native := core.NewTextInput(core.WithMask('•'))
 	be := runNative(t, native)
 	rec := &recorder{}
 	s := runQML(t, "import tui 1.0\nTextField { focus: true; echoMode: TextInput.Password }", rec)
@@ -203,7 +204,7 @@ func TestW4APopupIsACommandPrompt(t *testing.T) {
 	waitFor(t, "typing in the editor again", func() bool {
 		done := make(chan struct{})
 		s.Program.Post(func() {
-			ed, _ := tuidecl.FindAs[*widget.Editor](s.Program, "ed")
+			ed, _ := tuidecl.FindAs[*editor.Editor](s.Program, "ed")
 			value = ed.Core().Value()
 			close(done)
 		})
@@ -319,7 +320,7 @@ func TestATextAreaWearsItsBaseOverEveryCell(t *testing.T) {
 // does not raise) must release it, or every refused mount or reload leaves
 // one more layer on the host.
 func TestARefusedPopupLeavesNoLayerOnTheOverlay(t *testing.T) {
-	host := widget.NewOverlayHost(widget.NewText("base"))
+	host := core.NewOverlayHost(core.NewText("base"))
 	layers := func() int {
 		n := 0
 		for range host.All() {
@@ -366,7 +367,7 @@ func TestATextFieldCompletesFromItsModel(t *testing.T) {
 		var items []string
 		done := make(chan struct{})
 		s.Program.Post(func() {
-			if f, ok := tuidecl.FindAs[*widget.TextInput](s.Program, "f"); ok && f.Value() == "na" {
+			if f, ok := tuidecl.FindAs[*core.TextInput](s.Program, "f"); ok && f.Value() == "na" {
 				items, _ = f.Completions()
 			}
 			close(done)
@@ -388,11 +389,11 @@ func TestATextFieldCompletesFromItsModel(t *testing.T) {
 // is not a TextField's widget, and a value that is not a model.
 func TestTheCompletionsSetterRefusesWhatItIsNotGiven(t *testing.T) {
 	set := controls.TextField.Setters["completions"]
-	notInput := fmt.Sprintf("not a %T", (*widget.TextInput)(nil)) // the type as the message prints it
-	if err := set(widget.NewButton("no"), qml.SpecValue{}); err == nil || !strings.Contains(err.Error(), notInput) {
+	notInput := fmt.Sprintf("not a %T", (*core.TextInput)(nil)) // the type as the message prints it
+	if err := set(core.NewButton("no"), qml.SpecValue{}); err == nil || !strings.Contains(err.Error(), notInput) {
 		t.Errorf("a component that is not a TextField: %v", err)
 	}
-	in := widget.NewTextInput()
+	in := core.NewTextInput()
 	if err := set(in, qml.SpecValue{Kind: qml.SpecValueString, Raw: "no"}); err == nil || !strings.Contains(err.Error(), "want a model") {
 		t.Errorf("a value that is not a model: %v", err)
 	}

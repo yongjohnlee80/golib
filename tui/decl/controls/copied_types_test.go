@@ -7,7 +7,7 @@ import (
 	tuidecl "github.com/yongjohnlee80/golib/tui/decl"
 	"github.com/yongjohnlee80/golib/tui/decl/controls"
 	"github.com/yongjohnlee80/golib/tui/decl/decltest"
-	"github.com/yongjohnlee80/golib/tui/widget"
+	"github.com/yongjohnlee80/golib/tui/widget/core"
 )
 
 // A copy of TextField or Popup whose Build makes another widget, as a style or a consumer's
@@ -16,7 +16,7 @@ import (
 // *widget.TextInput and Destroyed *popupNode, unchecked.
 func TestACopiedTextFieldOrPopupDoesNotPanic(t *testing.T) {
 	text := func(s string) func(tuidecl.Build) (tui.Component, []string, error) {
-		return func(tuidecl.Build) (tui.Component, []string, error) { return widget.NewText(s), nil, nil }
+		return func(tuidecl.Build) (tui.Component, []string, error) { return core.NewText(s), nil, nil }
 	}
 	field := controls.TextField
 	field.Name, field.Build, field.Enums, field.Ctor = "MyField", text("my field"), nil, nil
