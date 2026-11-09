@@ -3,7 +3,7 @@ package main
 import (
 	"errors"
 
-	"github.com/yongjohnlee80/golib/tui/widget"
+	"github.com/yongjohnlee80/golib/tui/widget/editor"
 )
 
 // THE COMMAND PROMPT — the editor's own. `:` in Normal mode opens it (Ctrl+P,
@@ -20,9 +20,9 @@ import (
 
 // addCommands composes this program's commands into the editor's.
 func (h *Host) addCommands() error {
-	return h.editor.Core().Commands().Add(widget.Command{
+	return h.editor.Core().Commands().Add(editor.Command{
 		Name: "e", Aliases: []string{"edit"}, Args: "<file>", Help: "open a file",
-		Run: func(x widget.CommandContext) error {
+		Run: func(x editor.CommandContext) error {
 			if x.Line == "" {
 				return errors.New("e: which file? e <file>")
 			}

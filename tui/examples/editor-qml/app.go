@@ -9,7 +9,7 @@ import (
 
 	"github.com/yongjohnlee80/golib/tui"
 	tuidecl "github.com/yongjohnlee80/golib/tui/decl"
-	"github.com/yongjohnlee80/golib/tui/widget"
+	"github.com/yongjohnlee80/golib/tui/widget/editor"
 )
 
 // Host is the program behind editor.qml.
@@ -30,7 +30,7 @@ import (
 //	theme.go     Option > Theme: switching the theme import at runtime
 type Host struct {
 	p      *tuidecl.Program
-	editor *widget.Editor
+	editor *editor.Editor
 
 	path  string
 	dirty bool
@@ -111,7 +111,7 @@ func newHost(opt Options) *Host {
 func (h *Host) attach(p *tuidecl.Program, path string) error {
 	h.p = p
 	var ok bool
-	if h.editor, ok = tuidecl.FindAs[*widget.Editor](p, "editor"); !ok {
+	if h.editor, ok = tuidecl.FindAs[*editor.Editor](p, "editor"); !ok {
 		return errors.New("editor.qml declares no Editor with id: editor")
 	}
 	return errors.Join(h.addCommands(), h.load(path))
