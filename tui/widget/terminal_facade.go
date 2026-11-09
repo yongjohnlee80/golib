@@ -10,6 +10,8 @@ import (
 )
 
 // TerminalMode is where a Terminal's keys go.
+//
+// Deprecated: use [terminal.TerminalMode], from github.com/yongjohnlee80/golib/tui/widget/terminal.
 type TerminalMode = terminal.TerminalMode
 
 // TerminalProcess is the program a Terminal runs: its output is read, keys
@@ -17,9 +19,13 @@ type TerminalMode = terminal.TerminalMode
 // UI loop). *pty.PTY is one.
 // Wait must be repeatable and safe for concurrent callers: the output reader
 // observes exit while the cleanup owner independently verifies reap.
+//
+// Deprecated: use [terminal.TerminalProcess], from github.com/yongjohnlee80/golib/tui/widget/terminal.
 type TerminalProcess = terminal.TerminalProcess
 
 // TerminalOption configures a Terminal.
+//
+// Deprecated: use [terminal.TerminalOption], from github.com/yongjohnlee80/golib/tui/widget/terminal.
 type TerminalOption = terminal.TerminalOption
 
 // Terminal runs one program on a pseudo-terminal and shows its screen. In
@@ -41,38 +47,54 @@ type TerminalOption = terminal.TerminalOption
 //
 // The wheel scrolls the scrollback in normal mode. With WithModelessScroll that view is no mode to
 // leave: the next key or paste goes back to input and to the program.
+//
+// Deprecated: use [terminal.Terminal], from github.com/yongjohnlee80/golib/tui/widget/terminal.
 type Terminal = terminal.Terminal
 
 // TerminalView is a host that draws a Terminal itself, at a cell size of its own (a GUI's native
 // painter). With none, a Terminal is drawn in the window's cells, as before.
+//
+// Deprecated: use [terminal.TerminalView], from github.com/yongjohnlee80/golib/tui/widget/terminal.
 type TerminalView = terminal.TerminalView
 
 // TerminalSignaler is a [TerminalProcess] that can signal its program's process group. *pty.PTY
 // is one; a process that is not cannot be signalled.
+//
+// Deprecated: use [terminal.TerminalSignaler], from github.com/yongjohnlee80/golib/tui/widget/terminal.
 type TerminalSignaler = terminal.TerminalSignaler
 
 // TerminalStopResult is one process generation's cleanup result. Stop, natural
 // exit and application shutdown share this handle and one cleanup owner.
 // Successful cleanup includes Close and Wait (reap); an expected nonzero exit
 // status is not a cleanup error. Methods are safe for concurrent waiters.
+//
+// Deprecated: use [terminal.TerminalStopResult], from github.com/yongjohnlee80/golib/tui/widget/terminal.
 type TerminalStopResult = terminal.TerminalStopResult
 
 // TerminalShutdownResult joins all active, closing and failed-cleanup generations
 // owned by a Terminal. It can be awaited after the UI loop has ended; no callback
 // is posted to an ended application. Timeout/cancellation never means success.
+//
+// Deprecated: use [terminal.TerminalShutdownResult], from github.com/yongjohnlee80/golib/tui/widget/terminal.
 type TerminalShutdownResult = terminal.TerminalShutdownResult
 
 // TerminalTabID is an opaque runtime identity, unrelated to a label or QML id.
 // IDs are never reused, including after removal and across container rebuilds.
+//
+// Deprecated: use [terminal.TerminalTabID], from github.com/yongjohnlee80/golib/tui/widget/terminal.
 type TerminalTabID = terminal.TerminalTabID
 
 // TerminalTab describes an instance without exposing its process or widget.
+//
+// Deprecated: use [terminal.TerminalTab], from github.com/yongjohnlee80/golib/tui/widget/terminal.
 type TerminalTab = terminal.TerminalTab
 
 // TerminalTabRemovalResult observes cleanup of every generation of the removed
 // instance, including older closing or failed-cleanup generations after restart.
 // Generation identifies the last attempt; Done/Wait cover the whole instance.
 // Cancellation affects only the waiter, never the cleanup owner.
+//
+// Deprecated: use [terminal.TerminalTabRemovalResult], from github.com/yongjohnlee80/golib/tui/widget/terminal.
 type TerminalTabRemovalResult = terminal.TerminalTabRemovalResult
 
 // TerminalTabs owns runtime terminal instances, independently of generic Tabs.
@@ -83,30 +105,46 @@ type TerminalTabRemovalResult = terminal.TerminalTabRemovalResult
 //
 // Mutations and inspection belong to the UI loop. ShutdownWithResult is the
 // exception: it is concurrent-safe and remains observable after destruction.
+//
+// Deprecated: use [terminal.TerminalTabs], from github.com/yongjohnlee80/golib/tui/widget/terminal.
 type TerminalTabs = terminal.TerminalTabs
 
 // TerminalTabsMenuAction is a row of the strip's menus: when the row is chosen, Run runs with the
 // tab the menu was opened for (SetMenu), or with no tab (SetAddMenu's +).
+//
+// Deprecated: use [terminal.TerminalTabsMenuAction], from github.com/yongjohnlee80/golib/tui/widget/terminal.
 type TerminalTabsMenuAction = terminal.TerminalTabsMenuAction
 
 const (
 	// TerminalInput sends every key to the program, except the ways out.
+	//
+	// Deprecated: use [terminal.TerminalInput], from github.com/yongjohnlee80/golib/tui/widget/terminal.
 	TerminalInput = terminal.TerminalInput
 	// TerminalNormal moves a cursor over the scrollback and screen; the
 	// program keeps running, and keys the mode does not use reach the host.
+	//
+	// Deprecated: use [terminal.TerminalNormal], from github.com/yongjohnlee80/golib/tui/widget/terminal.
 	TerminalNormal = terminal.TerminalNormal
 	// TerminalInputLimit bounds queued and in-flight input bytes per process.
+	//
+	// Deprecated: use [terminal.TerminalInputLimit], from github.com/yongjohnlee80/golib/tui/widget/terminal.
 	TerminalInputLimit = terminal.TerminalInputLimit
 	// TerminalScope is a Terminal's own keys in input mode, where every other key is the program's: the
 	// escape prefix (Ctrl+\, then Ctrl+n for normal mode or Ctrl+\ to send it; the key after it is its
 	// grammar, not a command), Esc into normal mode with WithVimKeys outside a full-screen program, and,
 	// once the program has exited, Enter or i to start one again.
+	//
+	// Deprecated: use [terminal.TerminalScope], from github.com/yongjohnlee80/golib/tui/widget/terminal.
 	TerminalScope = terminal.TerminalScope
 	// TerminalNormalScope is a Terminal's normal mode: moving through its scrollback, selecting and
 	// searching, as Vim reads the keys. The key after g is its grammar (g again: the first line).
+	//
+	// Deprecated: use [terminal.TerminalNormalScope], from github.com/yongjohnlee80/golib/tui/widget/terminal.
 	TerminalNormalScope = terminal.TerminalNormalScope
 	// TerminalSearchScope is a Terminal's search line in normal mode: it takes every key while open; typed
 	// text is not a command.
+	//
+	// Deprecated: use [terminal.TerminalSearchScope], from github.com/yongjohnlee80/golib/tui/widget/terminal.
 	TerminalSearchScope = terminal.TerminalSearchScope
 )
 
@@ -114,73 +152,129 @@ const (
 // terminal's widgets read terminal's.
 var (
 	// ErrTerminalNotRunning rejects typed input when there is no live process.
+	//
+	// Deprecated: use [terminal.ErrTerminalNotRunning], from github.com/yongjohnlee80/golib/tui/widget/terminal.
 	ErrTerminalNotRunning = terminal.ErrTerminalNotRunning
 	// ErrTerminalInputFull means the bounded input queue cannot accept this whole send.
+	//
+	// Deprecated: use [terminal.ErrTerminalInputFull], from github.com/yongjohnlee80/golib/tui/widget/terminal.
 	ErrTerminalInputFull = terminal.ErrTerminalInputFull
 	// ErrTerminalPasteUnbracketed is SendBracketedPaste refused: the program has not asked for
 	// bracketed paste (mode 2004), so the text would arrive as keys.
+	//
+	// Deprecated: use [terminal.ErrTerminalPasteUnbracketed], from github.com/yongjohnlee80/golib/tui/widget/terminal.
 	ErrTerminalPasteUnbracketed = terminal.ErrTerminalPasteUnbracketed
-	TerminalPrefix              = terminal.TerminalPrefix
-	TerminalToNormal            = terminal.TerminalToNormal
-	TerminalRestart             = terminal.TerminalRestart
-	TermHalfUp                  = terminal.TermHalfUp
-	TermHalfDown                = terminal.TermHalfDown
-	TermPageUp                  = terminal.TermPageUp
-	TermPageDown                = terminal.TermPageDown
-	TermCancel                  = terminal.TermCancel
-	TermInput                   = terminal.TermInput
-	TermLeft                    = terminal.TermLeft
-	TermRight                   = terminal.TermRight
-	TermDown                    = terminal.TermDown
-	TermUp                      = terminal.TermUp
-	TermLineStart               = terminal.TermLineStart
-	TermLineEnd                 = terminal.TermLineEnd
-	TermWord                    = terminal.TermWord
-	TermWordBack                = terminal.TermWordBack
-	TermWordEnd                 = terminal.TermWordEnd
-	TermWORD                    = terminal.TermWORD
-	TermWORDBack                = terminal.TermWORDBack
-	TermWORDEnd                 = terminal.TermWORDEnd
-	TermGoPrefix                = terminal.TermGoPrefix
-	TermBottom                  = terminal.TermBottom
-	TermVisual                  = terminal.TermVisual
-	TermVisualLine              = terminal.TermVisualLine
-	TermYank                    = terminal.TermYank
-	TermSearch                  = terminal.TermSearch
-	TermSearchBack              = terminal.TermSearchBack
-	TermNext                    = terminal.TermNext
-	TermPrev                    = terminal.TermPrev
-	TermSearchClose             = terminal.TermSearchClose
-	TermSearchRun               = terminal.TermSearchRun
-	TermSearchBackspace         = terminal.TermSearchBackspace
+	// Deprecated: use [terminal.TerminalPrefix], from github.com/yongjohnlee80/golib/tui/widget/terminal.
+	TerminalPrefix = terminal.TerminalPrefix
+	// Deprecated: use [terminal.TerminalToNormal], from github.com/yongjohnlee80/golib/tui/widget/terminal.
+	TerminalToNormal = terminal.TerminalToNormal
+	// Deprecated: use [terminal.TerminalRestart], from github.com/yongjohnlee80/golib/tui/widget/terminal.
+	TerminalRestart = terminal.TerminalRestart
+	// Deprecated: use [terminal.TermHalfUp], from github.com/yongjohnlee80/golib/tui/widget/terminal.
+	TermHalfUp = terminal.TermHalfUp
+	// Deprecated: use [terminal.TermHalfDown], from github.com/yongjohnlee80/golib/tui/widget/terminal.
+	TermHalfDown = terminal.TermHalfDown
+	// Deprecated: use [terminal.TermPageUp], from github.com/yongjohnlee80/golib/tui/widget/terminal.
+	TermPageUp = terminal.TermPageUp
+	// Deprecated: use [terminal.TermPageDown], from github.com/yongjohnlee80/golib/tui/widget/terminal.
+	TermPageDown = terminal.TermPageDown
+	// Deprecated: use [terminal.TermCancel], from github.com/yongjohnlee80/golib/tui/widget/terminal.
+	TermCancel = terminal.TermCancel
+	// Deprecated: use [terminal.TermInput], from github.com/yongjohnlee80/golib/tui/widget/terminal.
+	TermInput = terminal.TermInput
+	// Deprecated: use [terminal.TermLeft], from github.com/yongjohnlee80/golib/tui/widget/terminal.
+	TermLeft = terminal.TermLeft
+	// Deprecated: use [terminal.TermRight], from github.com/yongjohnlee80/golib/tui/widget/terminal.
+	TermRight = terminal.TermRight
+	// Deprecated: use [terminal.TermDown], from github.com/yongjohnlee80/golib/tui/widget/terminal.
+	TermDown = terminal.TermDown
+	// Deprecated: use [terminal.TermUp], from github.com/yongjohnlee80/golib/tui/widget/terminal.
+	TermUp = terminal.TermUp
+	// Deprecated: use [terminal.TermLineStart], from github.com/yongjohnlee80/golib/tui/widget/terminal.
+	TermLineStart = terminal.TermLineStart
+	// Deprecated: use [terminal.TermLineEnd], from github.com/yongjohnlee80/golib/tui/widget/terminal.
+	TermLineEnd = terminal.TermLineEnd
+	// Deprecated: use [terminal.TermWord], from github.com/yongjohnlee80/golib/tui/widget/terminal.
+	TermWord = terminal.TermWord
+	// Deprecated: use [terminal.TermWordBack], from github.com/yongjohnlee80/golib/tui/widget/terminal.
+	TermWordBack = terminal.TermWordBack
+	// Deprecated: use [terminal.TermWordEnd], from github.com/yongjohnlee80/golib/tui/widget/terminal.
+	TermWordEnd = terminal.TermWordEnd
+	// Deprecated: use [terminal.TermWORD], from github.com/yongjohnlee80/golib/tui/widget/terminal.
+	TermWORD = terminal.TermWORD
+	// Deprecated: use [terminal.TermWORDBack], from github.com/yongjohnlee80/golib/tui/widget/terminal.
+	TermWORDBack = terminal.TermWORDBack
+	// Deprecated: use [terminal.TermWORDEnd], from github.com/yongjohnlee80/golib/tui/widget/terminal.
+	TermWORDEnd = terminal.TermWORDEnd
+	// Deprecated: use [terminal.TermGoPrefix], from github.com/yongjohnlee80/golib/tui/widget/terminal.
+	TermGoPrefix = terminal.TermGoPrefix
+	// Deprecated: use [terminal.TermBottom], from github.com/yongjohnlee80/golib/tui/widget/terminal.
+	TermBottom = terminal.TermBottom
+	// Deprecated: use [terminal.TermVisual], from github.com/yongjohnlee80/golib/tui/widget/terminal.
+	TermVisual = terminal.TermVisual
+	// Deprecated: use [terminal.TermVisualLine], from github.com/yongjohnlee80/golib/tui/widget/terminal.
+	TermVisualLine = terminal.TermVisualLine
+	// Deprecated: use [terminal.TermYank], from github.com/yongjohnlee80/golib/tui/widget/terminal.
+	TermYank = terminal.TermYank
+	// Deprecated: use [terminal.TermSearch], from github.com/yongjohnlee80/golib/tui/widget/terminal.
+	TermSearch = terminal.TermSearch
+	// Deprecated: use [terminal.TermSearchBack], from github.com/yongjohnlee80/golib/tui/widget/terminal.
+	TermSearchBack = terminal.TermSearchBack
+	// Deprecated: use [terminal.TermNext], from github.com/yongjohnlee80/golib/tui/widget/terminal.
+	TermNext = terminal.TermNext
+	// Deprecated: use [terminal.TermPrev], from github.com/yongjohnlee80/golib/tui/widget/terminal.
+	TermPrev = terminal.TermPrev
+	// Deprecated: use [terminal.TermSearchClose], from github.com/yongjohnlee80/golib/tui/widget/terminal.
+	TermSearchClose = terminal.TermSearchClose
+	// Deprecated: use [terminal.TermSearchRun], from github.com/yongjohnlee80/golib/tui/widget/terminal.
+	TermSearchRun = terminal.TermSearchRun
+	// Deprecated: use [terminal.TermSearchBackspace], from github.com/yongjohnlee80/golib/tui/widget/terminal.
+	TermSearchBackspace = terminal.TermSearchBackspace
 	// ErrTerminalSignalUnsupported means the Terminal's process is no [TerminalSignaler].
+	//
+	// Deprecated: use [terminal.ErrTerminalSignalUnsupported], from github.com/yongjohnlee80/golib/tui/widget/terminal.
 	ErrTerminalSignalUnsupported = terminal.ErrTerminalSignalUnsupported
 	// ErrTerminalShutdown means this Terminal's owner has begun final destruction.
-	ErrTerminalShutdown      = terminal.ErrTerminalShutdown
-	ErrTerminalTabUnknown    = terminal.ErrTerminalTabUnknown
-	ErrTerminalTabClosing    = terminal.ErrTerminalTabClosing
+	//
+	// Deprecated: use [terminal.ErrTerminalShutdown], from github.com/yongjohnlee80/golib/tui/widget/terminal.
+	ErrTerminalShutdown = terminal.ErrTerminalShutdown
+	// Deprecated: use [terminal.ErrTerminalTabUnknown], from github.com/yongjohnlee80/golib/tui/widget/terminal.
+	ErrTerminalTabUnknown = terminal.ErrTerminalTabUnknown
+	// Deprecated: use [terminal.ErrTerminalTabClosing], from github.com/yongjohnlee80/golib/tui/widget/terminal.
+	ErrTerminalTabClosing = terminal.ErrTerminalTabClosing
+	// Deprecated: use [terminal.ErrTerminalTabsUnmounted], from github.com/yongjohnlee80/golib/tui/widget/terminal.
 	ErrTerminalTabsUnmounted = terminal.ErrTerminalTabsUnmounted
 	// ErrTerminalModeUnavailable is a mode the tab cannot take now: normal mode with no program.
+	//
+	// Deprecated: use [terminal.ErrTerminalModeUnavailable], from github.com/yongjohnlee80/golib/tui/widget/terminal.
 	ErrTerminalModeUnavailable = terminal.ErrTerminalModeUnavailable
 )
 
 // WithCommand is the program to run; the default is $SHELL, else /bin/sh.
+//
+// Deprecated: use [terminal.WithCommand], from github.com/yongjohnlee80/golib/tui/widget/terminal.
 func WithCommand(a0 string, a1 ...string) TerminalOption {
 	return terminal.WithCommand(a0, a1...)
 }
 
 // WithDir is the program's working directory.
+//
+// Deprecated: use [terminal.WithDir], from github.com/yongjohnlee80/golib/tui/widget/terminal.
 func WithDir(a0 string) TerminalOption {
 	return terminal.WithDir(a0)
 }
 
 // WithEnv adds variables to the environment the program inherits.
+//
+// Deprecated: use [terminal.WithEnv], from github.com/yongjohnlee80/golib/tui/widget/terminal.
 func WithEnv(a0 ...string) TerminalOption {
 	return terminal.WithEnv(a0...)
 }
 
 // WithScrollback keeps up to n lines above the screen (vt.DefaultScrollback
 // by default).
+//
+// Deprecated: use [terminal.WithScrollback], from github.com/yongjohnlee80/golib/tui/widget/terminal.
 func WithScrollback(a0 int) TerminalOption {
 	return terminal.WithScrollback(a0)
 }
@@ -188,6 +282,8 @@ func WithScrollback(a0 int) TerminalOption {
 // WithVimKeys makes Esc leave input mode for normal mode, as the editor's
 // insert mode does, except while the program shows the alternate screen
 // (a full-screen program such as vim or less needs Esc itself).
+//
+// Deprecated: use [terminal.WithVimKeys], from github.com/yongjohnlee80/golib/tui/widget/terminal.
 func WithVimKeys(a0 bool) TerminalOption {
 	return terminal.WithVimKeys(a0)
 }
@@ -197,6 +293,8 @@ func WithVimKeys(a0 bool) TerminalOption {
 // key or paste goes back to input and to the program, as if no view had opened; the view wheeled
 // back to the bottom is input again too. Normal mode asked for (the mode key, Ctrl+\ Ctrl+n, Esc
 // with WithVimKeys) stays modal. Off, the default, the wheel enters normal mode, as before.
+//
+// Deprecated: use [terminal.WithModelessScroll], from github.com/yongjohnlee80/golib/tui/widget/terminal.
 func WithModelessScroll() TerminalOption {
 	return terminal.WithModelessScroll()
 }
@@ -207,6 +305,8 @@ func WithModelessScroll() TerminalOption {
 // repeats are consumed and dropped, so one press toggles once. nil, the default, has no such key:
 // Ctrl+\ Ctrl+n (and Esc with WithVimKeys) enter normal mode, as before. A host giving Esc to its
 // programs (agents interrupt on it) pairs WithVimKeys(false) with a mode key.
+//
+// Deprecated: use [terminal.WithModeKey], from github.com/yongjohnlee80/golib/tui/widget/terminal.
 func WithModeKey(a0 func(tui.KeyEvent) bool) TerminalOption {
 	return terminal.WithModeKey(a0)
 }
@@ -215,48 +315,66 @@ func WithModeKey(a0 func(tui.KeyEvent) bool) TerminalOption {
 // the theme's (the default). The 16 ANSI colours are painted as ANSI, in
 // the host terminal's palette like every other ANSI colour in the
 // application; 256-colour and truecolor values are painted as given.
+//
+// Deprecated: use [terminal.WithThemeColors], from github.com/yongjohnlee80/golib/tui/widget/terminal.
 func WithThemeColors(a0 bool) TerminalOption {
 	return terminal.WithThemeColors(a0)
 }
 
 // WithOnExit is called on the UI loop when the program exits, with its exit
 // status (128 + the signal for a signalled program).
+//
+// Deprecated: use [terminal.WithOnExit], from github.com/yongjohnlee80/golib/tui/widget/terminal.
 func WithOnExit(a0 func(code int)) TerminalOption {
 	return terminal.WithOnExit(a0)
 }
 
 // WithOnTitle is called on the UI loop when the program sets its title.
+//
+// Deprecated: use [terminal.WithOnTitle], from github.com/yongjohnlee80/golib/tui/widget/terminal.
 func WithOnTitle(a0 func(string)) TerminalOption {
 	return terminal.WithOnTitle(a0)
 }
 
 // WithOnMode is called on the UI loop when the mode changes.
+//
+// Deprecated: use [terminal.WithOnMode], from github.com/yongjohnlee80/golib/tui/widget/terminal.
 func WithOnMode(a0 func(TerminalMode)) TerminalOption {
 	return terminal.WithOnMode(a0)
 }
 
 // WithMinimumContrast is SetMinimumContrast at construction: a TerminalTabs tab's own look.
+//
+// Deprecated: use [terminal.WithMinimumContrast], from github.com/yongjohnlee80/golib/tui/widget/terminal.
 func WithMinimumContrast(a0 float64) TerminalOption {
 	return terminal.WithMinimumContrast(a0)
 }
 
 // WithCursorColor is SetCursorColor at construction: a TerminalTabs tab's own look.
+//
+// Deprecated: use [terminal.WithCursorColor], from github.com/yongjohnlee80/golib/tui/widget/terminal.
 func WithCursorColor(a0 style.Color) TerminalOption {
 	return terminal.WithCursorColor(a0)
 }
 
 // WithStarter replaces how the program is started: a host can run it
 // somewhere else, and tests run a fake. The default is pty.Start.
+//
+// Deprecated: use [terminal.WithStarter], from github.com/yongjohnlee80/golib/tui/widget/terminal.
 func WithStarter(a0 func(pty.Cmd) (TerminalProcess, error)) TerminalOption {
 	return terminal.WithStarter(a0)
 }
 
 // NewTerminal returns a Terminal; Start runs its program.
+//
+// Deprecated: use [terminal.NewTerminal], from github.com/yongjohnlee80/golib/tui/widget/terminal.
 func NewTerminal(a0 ...TerminalOption) *Terminal {
 	return terminal.NewTerminal(a0...)
 }
 
 // NewTerminalTabs creates a valid empty terminal container.
+//
+// Deprecated: use [terminal.NewTerminalTabs], from github.com/yongjohnlee80/golib/tui/widget/terminal.
 func NewTerminalTabs() *TerminalTabs {
 	return terminal.NewTerminalTabs()
 }

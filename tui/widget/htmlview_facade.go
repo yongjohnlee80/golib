@@ -25,78 +25,112 @@ import (
 // byte of the block at the top as the view scrolls, and ScrollToSource brings a source byte's
 // block to the top. SetHTML keeps the reader's place: the block that was at the top, found again
 // by its source bytes, stays at the top.
+//
+// Deprecated: use [htmlview.HTMLView], from github.com/yongjohnlee80/golib/tui/widget/htmlview.
 type HTMLView = htmlview.HTMLView
 
 // HTMLLayout is what an HTMLView needs from whoever lays it out: the cell layout here, a pixel
 // layout from a native backend. Its coordinates are the document's, in its own units (cells, or
 // pixels): y grows down from the document's top, whatever is scrolled.
+//
+// Deprecated: use [htmlview.HTMLLayout], from github.com/yongjohnlee80/golib/tui/widget/htmlview.
 type HTMLLayout = htmlview.HTMLLayout
 
 // HTMLLayoutWidth is a layout the view tells its width, in the layout's units, as it is laid out.
+//
+// Deprecated: use [htmlview.HTMLLayoutWidth], from github.com/yongjohnlee80/golib/tui/widget/htmlview.
 type HTMLLayoutWidth = htmlview.HTMLLayoutWidth
 
 // HTMLLayoutTasks is a layout that runs work off the loop (decoding an image) through the view's
 // Context.Go: the view hands it each TaskResult, and lays out and paints again when it took one.
+//
+// Deprecated: use [htmlview.HTMLLayoutTasks], from github.com/yongjohnlee80/golib/tui/widget/htmlview.
 type HTMLLayoutTasks = htmlview.HTMLLayoutTasks
 
 // HTMLLayoutHScroll is a layout with parts that scroll sideways on their own (a pre wider than
 // the page): the view hands it a sideways wheel (Shift+wheel, or a horizontal wheel) at (x, y).
+//
+// Deprecated: use [htmlview.HTMLLayoutHScroll], from github.com/yongjohnlee80/golib/tui/widget/htmlview.
 type HTMLLayoutHScroll = htmlview.HTMLLayoutHScroll
 
 // HTMLLayoutPan is a layout with blocks wider than the page that pan sideways (the cell layout's
 // diagrams and code blocks): Pan pans by dx the wide block nearest the view's top among rows top to top+h-1, and
 // reports whether it moved. The view's Left/Right (h/l) are its keys; a layout without it (the
 // window's, which scrolls its wide boxes by the wheel) leaves them to the parent.
+//
+// Deprecated: use [htmlview.HTMLLayoutPan], from github.com/yongjohnlee80/golib/tui/widget/htmlview.
 type HTMLLayoutPan = htmlview.HTMLLayoutPan
 
 // HTMLLayoutTravel is a layout a reader travels by block: Starts is the first row of each block
 // (headings: of each heading), top to bottom, in its units. The view's ] [ and } { are its keys; a
 // layout without it leaves them to the parent.
+//
+// Deprecated: use [htmlview.HTMLLayoutTravel], from github.com/yongjohnlee80/golib/tui/widget/htmlview.
 type HTMLLayoutTravel = htmlview.HTMLLayoutTravel
 
 // HTMLLayoutLinks is a layout that tells where its links are: LinkRects appends to dst each link's
 // rects, in the layout's units, that fall between top and bottom. For a cell layout
 // (HTMLLayoutCells) the view shows the pointer's hand over them; a layout a backend paints gives
 // its hands itself (gui's PointerRegionsView).
+//
+// Deprecated: use [htmlview.HTMLLayoutLinks], from github.com/yongjohnlee80/golib/tui/widget/htmlview.
 type HTMLLayoutLinks = htmlview.HTMLLayoutLinks
 
 // HTMLLayoutActivate is a layout with parts a click acts on (a <details>' summary, which folds
 // and opens it): the view asks it on a click with no drag, before following a link; true when it
 // acted.
+//
+// Deprecated: use [htmlview.HTMLLayoutActivate], from github.com/yongjohnlee80/golib/tui/widget/htmlview.
 type HTMLLayoutActivate = htmlview.HTMLLayoutActivate
 
 // HTMLLayoutToolTips is a layout with text to reveal at a point (a diagram's capped label): its
 // text at (x, y) and the region it is for, in the layout's units; "" for none. The view is then a
 // tui.ToolTipRegioner: the App's tooltip card shows the text beside the region, armed per region.
+//
+// Deprecated: use [htmlview.HTMLLayoutToolTips], from github.com/yongjohnlee80/golib/tui/widget/htmlview.
 type HTMLLayoutToolTips = htmlview.HTMLLayoutToolTips
 
 // HTMLLayoutImages is a layout that keeps the images it loaded: SetImageResolver drops them and
 // their pending loads, since a page's relative src means another file under another resolver.
+//
+// Deprecated: use [htmlview.HTMLLayoutImages], from github.com/yongjohnlee80/golib/tui/widget/htmlview.
 type HTMLLayoutImages = htmlview.HTMLLayoutImages
 
 // HTMLLayoutCells is a layout drawn in the view's own cells, as the built-in one is. The view lays
 // it out a column narrower when it is taller than the view, for the scroll indicator, and paints it
 // from row top, w cells wide, with the selection from..to marked. A layout without it is drawn by
 // its backend.
+//
+// Deprecated: use [htmlview.HTMLLayoutCells], from github.com/yongjohnlee80/golib/tui/widget/htmlview.
 type HTMLLayoutCells = htmlview.HTMLLayoutCells
 
 // HTMLLayoutPixels is a layout whose units are the backend's pixels rather than cells. The view
 // turns a pointer's cell (and the point inside it) into pixels with the App's CellPixels, and
 // scrolls by a cell's height a line.
+//
+// Deprecated: use [htmlview.HTMLLayoutPixels], from github.com/yongjohnlee80/golib/tui/widget/htmlview.
 type HTMLLayoutPixels = htmlview.HTMLLayoutPixels
 
 // DocPos is a position in an HTMLView's document, between two clusters of text: the block it is
 // in, the span of that block, and the byte offset in the span's text. Its numbering is the
 // layout's own; positions compare in document order.
+//
+// Deprecated: use [htmlview.DocPos], from github.com/yongjohnlee80/golib/tui/widget/htmlview.
 type DocPos = htmlview.DocPos
 
 // Rect32 is a rectangle in a layout's units.
+//
+// Deprecated: use [htmlview.Rect32], from github.com/yongjohnlee80/golib/tui/widget/htmlview.
 type Rect32 = htmlview.Rect32
 
 // HTMLOption configures an HTMLView.
+//
+// Deprecated: use [htmlview.HTMLOption], from github.com/yongjohnlee80/golib/tui/widget/htmlview.
 type HTMLOption = htmlview.HTMLOption
 
 // HTMLLayoutMarks is a layout that marks a find's matches in the text it shows.
+//
+// Deprecated: use [htmlview.HTMLLayoutMarks], from github.com/yongjohnlee80/golib/tui/widget/htmlview.
 type HTMLLayoutMarks = htmlview.HTMLLayoutMarks
 
 // Image shows a PNG over the cells it is given, on a terminal that draws images (kitty's graphics
@@ -124,13 +158,19 @@ type HTMLLayoutMarks = htmlview.HTMLLayoutMarks
 // one placed. Scrolling within it places it again without sending it; scrolling into another
 // sends that one. SplitPNG cuts them (a second or so for a long page, off the UI thread); SetPNG
 // cuts a PNG too large itself, on the caller's thread.
+//
+// Deprecated: use [htmlview.Image], from github.com/yongjohnlee80/golib/tui/widget/htmlview.
 type Image = htmlview.Image
 
 // Strip is a horizontal cut of a PNG too tall for a terminal: its PNG, and its first row's place
 // in the whole.
+//
+// Deprecated: use [htmlview.Strip], from github.com/yongjohnlee80/golib/tui/widget/htmlview.
 type Strip = htmlview.Strip
 
 // Strips are a PNG cut for a scrollable Image (SetStrips): the whole's size, and its cuts.
+//
+// Deprecated: use [htmlview.Strips], from github.com/yongjohnlee80/golib/tui/widget/htmlview.
 type Strips = htmlview.Strips
 
 // Page is how RasterizeHTMLPage renders: Width pixels wide (with Wide, as wide as the page's
@@ -140,73 +180,132 @@ type Strips = htmlview.Strips
 // so a Wide page that is never long (a diagram) does well to bound its height. Background is the
 // page's own colour, "#rrggbb": what is cut beside the content and fills a short page. Without it
 // the bottom-right pixel is taken for it, which is wrong for content that reaches that corner.
+//
+// Deprecated: use [htmlview.Page], from github.com/yongjohnlee80/golib/tui/widget/htmlview.
 type Page = htmlview.Page
 
 const (
-	HTMLViewScope    = htmlview.HTMLViewScope
+	// Deprecated: use [htmlview.HTMLViewScope], from github.com/yongjohnlee80/golib/tui/widget/htmlview.
+	HTMLViewScope = htmlview.HTMLViewScope
+	// Deprecated: use [htmlview.HTMLViewVimScope], from github.com/yongjohnlee80/golib/tui/widget/htmlview.
 	HTMLViewVimScope = htmlview.HTMLViewVimScope
 	// MaxImagePixels is the widest and tallest image a terminal takes: kitty's and Ghostty's limit
 	// (Ghostty: "max_dimension = 10000", an error the placement's q=2 keeps quiet).
+	//
+	// Deprecated: use [htmlview.MaxImagePixels], from github.com/yongjohnlee80/golib/tui/widget/htmlview.
 	MaxImagePixels = htmlview.MaxImagePixels
-	CellPixelsW    = htmlview.CellPixelsW
-	CellPixelsH    = htmlview.CellPixelsH
+	// Deprecated: use [htmlview.CellPixelsW], from github.com/yongjohnlee80/golib/tui/widget/htmlview.
+	CellPixelsW = htmlview.CellPixelsW
+	// Deprecated: use [htmlview.CellPixelsH], from github.com/yongjohnlee80/golib/tui/widget/htmlview.
+	CellPixelsH = htmlview.CellPixelsH
 	// ImageScope is a scrollable Image's keys.
-	ImageScope      = htmlview.ImageScope
-	RasterTimeout   = htmlview.RasterTimeout
-	MaxRasterInput  = htmlview.MaxRasterInput
+	//
+	// Deprecated: use [htmlview.ImageScope], from github.com/yongjohnlee80/golib/tui/widget/htmlview.
+	ImageScope = htmlview.ImageScope
+	// Deprecated: use [htmlview.RasterTimeout], from github.com/yongjohnlee80/golib/tui/widget/htmlview.
+	RasterTimeout = htmlview.RasterTimeout
+	// Deprecated: use [htmlview.MaxRasterInput], from github.com/yongjohnlee80/golib/tui/widget/htmlview.
+	MaxRasterInput = htmlview.MaxRasterInput
+	// Deprecated: use [htmlview.MaxRasterOutput], from github.com/yongjohnlee80/golib/tui/widget/htmlview.
 	MaxRasterOutput = htmlview.MaxRasterOutput
-	MaxPageHeight   = htmlview.MaxPageHeight
-	MaxPageWidth    = htmlview.MaxPageWidth
+	// Deprecated: use [htmlview.MaxPageHeight], from github.com/yongjohnlee80/golib/tui/widget/htmlview.
+	MaxPageHeight = htmlview.MaxPageHeight
+	// Deprecated: use [htmlview.MaxPageWidth], from github.com/yongjohnlee80/golib/tui/widget/htmlview.
+	MaxPageWidth = htmlview.MaxPageWidth
 )
 
 // The forwarded vars are htmlview's values, copied: read them, never assign one, since
 // htmlview's widgets read htmlview's.
 var (
 	// ErrImageRefused is a resource a resolver will not open: outside its root, absolute, or a URL.
-	ErrImageRefused  = htmlview.ErrImageRefused
-	HTMLViewUp       = htmlview.HTMLViewUp
-	HTMLViewDown     = htmlview.HTMLViewDown
-	HTMLViewPageUp   = htmlview.HTMLViewPageUp
+	//
+	// Deprecated: use [htmlview.ErrImageRefused], from github.com/yongjohnlee80/golib/tui/widget/htmlview.
+	ErrImageRefused = htmlview.ErrImageRefused
+	// Deprecated: use [htmlview.HTMLViewUp], from github.com/yongjohnlee80/golib/tui/widget/htmlview.
+	HTMLViewUp = htmlview.HTMLViewUp
+	// Deprecated: use [htmlview.HTMLViewDown], from github.com/yongjohnlee80/golib/tui/widget/htmlview.
+	HTMLViewDown = htmlview.HTMLViewDown
+	// Deprecated: use [htmlview.HTMLViewPageUp], from github.com/yongjohnlee80/golib/tui/widget/htmlview.
+	HTMLViewPageUp = htmlview.HTMLViewPageUp
+	// Deprecated: use [htmlview.HTMLViewPageDown], from github.com/yongjohnlee80/golib/tui/widget/htmlview.
 	HTMLViewPageDown = htmlview.HTMLViewPageDown
-	HTMLViewHalfUp   = htmlview.HTMLViewHalfUp
+	// Deprecated: use [htmlview.HTMLViewHalfUp], from github.com/yongjohnlee80/golib/tui/widget/htmlview.
+	HTMLViewHalfUp = htmlview.HTMLViewHalfUp
+	// Deprecated: use [htmlview.HTMLViewHalfDown], from github.com/yongjohnlee80/golib/tui/widget/htmlview.
 	HTMLViewHalfDown = htmlview.HTMLViewHalfDown
-	HTMLViewTop      = htmlview.HTMLViewTop
-	HTMLViewBottom   = htmlview.HTMLViewBottom
-	HTMLViewCopy     = htmlview.HTMLViewCopy
-	HTMLViewClear    = htmlview.HTMLViewClear
+	// Deprecated: use [htmlview.HTMLViewTop], from github.com/yongjohnlee80/golib/tui/widget/htmlview.
+	HTMLViewTop = htmlview.HTMLViewTop
+	// Deprecated: use [htmlview.HTMLViewBottom], from github.com/yongjohnlee80/golib/tui/widget/htmlview.
+	HTMLViewBottom = htmlview.HTMLViewBottom
+	// Deprecated: use [htmlview.HTMLViewCopy], from github.com/yongjohnlee80/golib/tui/widget/htmlview.
+	HTMLViewCopy = htmlview.HTMLViewCopy
+	// Deprecated: use [htmlview.HTMLViewClear], from github.com/yongjohnlee80/golib/tui/widget/htmlview.
+	HTMLViewClear = htmlview.HTMLViewClear
 	// a layout's own (HTMLLayoutPan, HTMLLayoutTravel): a wide block's pan, block and heading travel
-	HTMLViewLeft            = htmlview.HTMLViewLeft
-	HTMLViewRight           = htmlview.HTMLViewRight
-	HTMLViewNextBlock       = htmlview.HTMLViewNextBlock
-	HTMLViewPreviousBlock   = htmlview.HTMLViewPreviousBlock
-	HTMLViewNextHeading     = htmlview.HTMLViewNextHeading
+	//
+	// Deprecated: use [htmlview.HTMLViewLeft], from github.com/yongjohnlee80/golib/tui/widget/htmlview.
+	HTMLViewLeft = htmlview.HTMLViewLeft
+	// Deprecated: use [htmlview.HTMLViewRight], from github.com/yongjohnlee80/golib/tui/widget/htmlview.
+	HTMLViewRight = htmlview.HTMLViewRight
+	// Deprecated: use [htmlview.HTMLViewNextBlock], from github.com/yongjohnlee80/golib/tui/widget/htmlview.
+	HTMLViewNextBlock = htmlview.HTMLViewNextBlock
+	// Deprecated: use [htmlview.HTMLViewPreviousBlock], from github.com/yongjohnlee80/golib/tui/widget/htmlview.
+	HTMLViewPreviousBlock = htmlview.HTMLViewPreviousBlock
+	// Deprecated: use [htmlview.HTMLViewNextHeading], from github.com/yongjohnlee80/golib/tui/widget/htmlview.
+	HTMLViewNextHeading = htmlview.HTMLViewNextHeading
+	// Deprecated: use [htmlview.HTMLViewPreviousHeading], from github.com/yongjohnlee80/golib/tui/widget/htmlview.
 	HTMLViewPreviousHeading = htmlview.HTMLViewPreviousHeading
 	// the Vim keyset's printing keys, each the command of HTMLViewScope it does (htmlViewVimDoes)
-	HTMLViewVimUp              = htmlview.HTMLViewVimUp
-	HTMLViewVimDown            = htmlview.HTMLViewVimDown
-	HTMLViewVimPageDown        = htmlview.HTMLViewVimPageDown
-	HTMLViewVimTop             = htmlview.HTMLViewVimTop
-	HTMLViewVimBottom          = htmlview.HTMLViewVimBottom
-	HTMLViewVimCopy            = htmlview.HTMLViewVimCopy
-	HTMLViewVimLeft            = htmlview.HTMLViewVimLeft
-	HTMLViewVimRight           = htmlview.HTMLViewVimRight
-	HTMLViewVimNextBlock       = htmlview.HTMLViewVimNextBlock
-	HTMLViewVimPreviousBlock   = htmlview.HTMLViewVimPreviousBlock
-	HTMLViewVimNextHeading     = htmlview.HTMLViewVimNextHeading
+	//
+	// Deprecated: use [htmlview.HTMLViewVimUp], from github.com/yongjohnlee80/golib/tui/widget/htmlview.
+	HTMLViewVimUp = htmlview.HTMLViewVimUp
+	// Deprecated: use [htmlview.HTMLViewVimDown], from github.com/yongjohnlee80/golib/tui/widget/htmlview.
+	HTMLViewVimDown = htmlview.HTMLViewVimDown
+	// Deprecated: use [htmlview.HTMLViewVimPageDown], from github.com/yongjohnlee80/golib/tui/widget/htmlview.
+	HTMLViewVimPageDown = htmlview.HTMLViewVimPageDown
+	// Deprecated: use [htmlview.HTMLViewVimTop], from github.com/yongjohnlee80/golib/tui/widget/htmlview.
+	HTMLViewVimTop = htmlview.HTMLViewVimTop
+	// Deprecated: use [htmlview.HTMLViewVimBottom], from github.com/yongjohnlee80/golib/tui/widget/htmlview.
+	HTMLViewVimBottom = htmlview.HTMLViewVimBottom
+	// Deprecated: use [htmlview.HTMLViewVimCopy], from github.com/yongjohnlee80/golib/tui/widget/htmlview.
+	HTMLViewVimCopy = htmlview.HTMLViewVimCopy
+	// Deprecated: use [htmlview.HTMLViewVimLeft], from github.com/yongjohnlee80/golib/tui/widget/htmlview.
+	HTMLViewVimLeft = htmlview.HTMLViewVimLeft
+	// Deprecated: use [htmlview.HTMLViewVimRight], from github.com/yongjohnlee80/golib/tui/widget/htmlview.
+	HTMLViewVimRight = htmlview.HTMLViewVimRight
+	// Deprecated: use [htmlview.HTMLViewVimNextBlock], from github.com/yongjohnlee80/golib/tui/widget/htmlview.
+	HTMLViewVimNextBlock = htmlview.HTMLViewVimNextBlock
+	// Deprecated: use [htmlview.HTMLViewVimPreviousBlock], from github.com/yongjohnlee80/golib/tui/widget/htmlview.
+	HTMLViewVimPreviousBlock = htmlview.HTMLViewVimPreviousBlock
+	// Deprecated: use [htmlview.HTMLViewVimNextHeading], from github.com/yongjohnlee80/golib/tui/widget/htmlview.
+	HTMLViewVimNextHeading = htmlview.HTMLViewVimNextHeading
+	// Deprecated: use [htmlview.HTMLViewVimPreviousHeading], from github.com/yongjohnlee80/golib/tui/widget/htmlview.
 	HTMLViewVimPreviousHeading = htmlview.HTMLViewVimPreviousHeading
-	ImageDown                  = htmlview.ImageDown
-	ImageUp                    = htmlview.ImageUp
-	ImageRight                 = htmlview.ImageRight
-	ImageLeft                  = htmlview.ImageLeft
-	ImagePageDown              = htmlview.ImagePageDown
-	ImagePageUp                = htmlview.ImagePageUp
-	ImageBottom                = htmlview.ImageBottom
-	ImageTop                   = htmlview.ImageTop
+	// Deprecated: use [htmlview.ImageDown], from github.com/yongjohnlee80/golib/tui/widget/htmlview.
+	ImageDown = htmlview.ImageDown
+	// Deprecated: use [htmlview.ImageUp], from github.com/yongjohnlee80/golib/tui/widget/htmlview.
+	ImageUp = htmlview.ImageUp
+	// Deprecated: use [htmlview.ImageRight], from github.com/yongjohnlee80/golib/tui/widget/htmlview.
+	ImageRight = htmlview.ImageRight
+	// Deprecated: use [htmlview.ImageLeft], from github.com/yongjohnlee80/golib/tui/widget/htmlview.
+	ImageLeft = htmlview.ImageLeft
+	// Deprecated: use [htmlview.ImagePageDown], from github.com/yongjohnlee80/golib/tui/widget/htmlview.
+	ImagePageDown = htmlview.ImagePageDown
+	// Deprecated: use [htmlview.ImagePageUp], from github.com/yongjohnlee80/golib/tui/widget/htmlview.
+	ImagePageUp = htmlview.ImagePageUp
+	// Deprecated: use [htmlview.ImageBottom], from github.com/yongjohnlee80/golib/tui/widget/htmlview.
+	ImageBottom = htmlview.ImageBottom
+	// Deprecated: use [htmlview.ImageTop], from github.com/yongjohnlee80/golib/tui/widget/htmlview.
+	ImageTop = htmlview.ImageTop
 	// ErrNoRasterizer is a rasterizer whose tool is not installed.
+	//
+	// Deprecated: use [htmlview.ErrNoRasterizer], from github.com/yongjohnlee80/golib/tui/widget/htmlview.
 	ErrNoRasterizer = htmlview.ErrNoRasterizer
 )
 
 // DirImages resolves relative paths under root: DirResources(root, "").
+//
+// Deprecated: use [htmlview.DirImages], from github.com/yongjohnlee80/golib/tui/widget/htmlview.
 func DirImages(a0 string) core.ImageResolver {
 	return htmlview.DirImages(a0)
 }
@@ -219,12 +318,16 @@ func DirImages(a0 string) core.ImageResolver {
 // refuses everything. A query or a fragment on the path is ignored. A symlink is followed only by a
 // relative target that stays inside root; an absolute target is refused even when it points
 // inside, as os.Root refuses it.
+//
+// Deprecated: use [htmlview.DirResources], from github.com/yongjohnlee80/golib/tui/widget/htmlview.
 func DirResources(a0, a1 string) core.ImageResolver {
 	return htmlview.DirResources(a0, a1)
 }
 
 // OrderDocPos is a and b in document order, the earlier first: a selection's ends, however it was
 // dragged.
+//
+// Deprecated: use [htmlview.OrderDocPos], from github.com/yongjohnlee80/golib/tui/widget/htmlview.
 func OrderDocPos(a0, a1 DocPos) (DocPos, DocPos) {
 	return htmlview.OrderDocPos(a0, a1)
 }
@@ -233,12 +336,16 @@ func OrderDocPos(a0, a1 DocPos) (DocPos, DocPos) {
 // with: the block whose source holds b, else the first that starts after it, else (a byte after
 // every block, the blank lines that end a note) the last before it. src(i) is block i's source
 // bytes, from-to, with from -1 when it has none. -1 when no block has any.
+//
+// Deprecated: use [htmlview.SourceIndex], from github.com/yongjohnlee80/golib/tui/widget/htmlview.
 func SourceIndex(a0 int, a1 func(i int) [2]int, a2 int) int {
 	return htmlview.SourceIndex(a0, a1, a2)
 }
 
 // WithOnLink is called with a link's target when the link is clicked (a press and release on it
 // without a drag).
+//
+// Deprecated: use [htmlview.WithOnLink], from github.com/yongjohnlee80/golib/tui/widget/htmlview.
 func WithOnLink(a0 func(href string)) HTMLOption {
 	return htmlview.WithOnLink(a0)
 }
@@ -246,24 +353,32 @@ func WithOnLink(a0 func(href string)) HTMLOption {
 // WithOnRefused is told, once per source for each page shown (until a different page, or another
 // resolver), of a resource the page names that the resolver refused (ErrImageRefused): a
 // stylesheet or an image outside its root, or a URL. A host says why a page draws without it.
+//
+// Deprecated: use [htmlview.WithOnRefused], from github.com/yongjohnlee80/golib/tui/widget/htmlview.
 func WithOnRefused(a0 func(src string)) HTMLOption {
 	return htmlview.WithOnRefused(a0)
 }
 
 // WithOnScroll is called with the source byte of the block at the top as the view scrolls to
 // another block (data-src); blocks without source bytes report nothing.
+//
+// Deprecated: use [htmlview.WithOnScroll], from github.com/yongjohnlee80/golib/tui/widget/htmlview.
 func WithOnScroll(a0 func(srcByte int)) HTMLOption {
 	return htmlview.WithOnScroll(a0)
 }
 
 // WithImageResolver gives a pixel layout its images (DirImages). The cell layout shows an image's
 // alt text whatever it is; with none, a pixel layout loads data: URIs alone.
+//
+// Deprecated: use [htmlview.WithImageResolver], from github.com/yongjohnlee80/golib/tui/widget/htmlview.
 func WithImageResolver(a0 core.ImageResolver) HTMLOption {
 	return htmlview.WithImageResolver(a0)
 }
 
 // WithStylesheet adds a stylesheet a pixel layout applies after the page's own. The cell layout
 // draws by structure, not by style.
+//
+// Deprecated: use [htmlview.WithStylesheet], from github.com/yongjohnlee80/golib/tui/widget/htmlview.
 func WithStylesheet(a0 string) HTMLOption {
 	return htmlview.WithStylesheet(a0)
 }
@@ -271,6 +386,8 @@ func WithStylesheet(a0 string) HTMLOption {
 // WithDiagrams gives a pixel layout what draws a page's diagrams (pre class="mermaid"), held
 // opaque here; the cell layout draws the kinds tui/mermaid draws and says the others aren't drawn
 // (WithDiagramNotice).
+//
+// Deprecated: use [htmlview.WithDiagrams], from github.com/yongjohnlee80/golib/tui/widget/htmlview.
 func WithDiagrams(a0 any) HTMLOption {
 	return htmlview.WithDiagrams(a0)
 }
@@ -281,6 +398,8 @@ func WithDiagrams(a0 any) HTMLOption {
 //
 // It may be applied after the view is built (as a host does to a view its layout built): the cell
 // layout asks for the words each time it lays out, and setting them lays the page out again.
+//
+// Deprecated: use [htmlview.WithDiagramNotice], from github.com/yongjohnlee80/golib/tui/widget/htmlview.
 func WithDiagramNotice(a0 func(kind string) string) HTMLOption {
 	return htmlview.WithDiagramNotice(a0)
 }
@@ -294,11 +413,15 @@ func WithDiagramNotice(a0 func(kind string) string) HTMLOption {
 // It may be applied when the view is made, before its document, or after it is built (as
 // WithDiagramNotice does): the cell layout highlights each time it lays out, and a change lays the
 // page out again.
+//
+// Deprecated: use [htmlview.WithSyntax], from github.com/yongjohnlee80/golib/tui/widget/htmlview.
 func WithSyntax(a0 *highlight.Catalog, a1 editor.SyntaxStyles) HTMLOption {
 	return htmlview.WithSyntax(a0, a1)
 }
 
 // NewHTMLView builds an empty view, laid out in cells until a backend binds another layout.
+//
+// Deprecated: use [htmlview.NewHTMLView], from github.com/yongjohnlee80/golib/tui/widget/htmlview.
 func NewHTMLView(a0 ...HTMLOption) *HTMLView {
 	return htmlview.NewHTMLView(a0...)
 }
@@ -307,16 +430,22 @@ func NewHTMLView(a0 ...HTMLOption) *HTMLView {
 // at the bottom, so any part up to half of MaxImagePixels tall lies whole in one. A PNG that fits
 // is one strip, itself. It decodes and encodes the image, so a host calls it off the UI thread. A
 // PNG wider than MaxImagePixels is refused: nothing cuts it to fit.
+//
+// Deprecated: use [htmlview.SplitPNG], from github.com/yongjohnlee80/golib/tui/widget/htmlview.
 func SplitPNG(a0 []byte) (Strips, error) {
 	return htmlview.SplitPNG(a0)
 }
 
 // NewImage returns an empty Image.
+//
+// Deprecated: use [htmlview.NewImage], from github.com/yongjohnlee80/golib/tui/widget/htmlview.
 func NewImage() *Image {
 	return htmlview.NewImage()
 }
 
 // SVGRasterizer is the tool RasterizeSVG would run, and whether one is installed.
+//
+// Deprecated: use [htmlview.SVGRasterizer], from github.com/yongjohnlee80/golib/tui/widget/htmlview.
 func SVGRasterizer() (string, bool) {
 	return htmlview.SVGRasterizer()
 }
@@ -324,11 +453,15 @@ func SVGRasterizer() (string, bool) {
 // HTMLRasterizer is the tool RasterizeHTML would run, and whether one is installed: a browser on
 // the PATH, else one installed as an application where the platform keeps them (macOS's
 // /Applications, where Chrome is not on the PATH).
+//
+// Deprecated: use [htmlview.HTMLRasterizer], from github.com/yongjohnlee80/golib/tui/widget/htmlview.
 func HTMLRasterizer() (string, bool) {
 	return htmlview.HTMLRasterizer()
 }
 
 // RasterizeSVG renders svg to a PNG width pixels wide, its height in proportion (rsvg-convert).
+//
+// Deprecated: use [htmlview.RasterizeSVG], from github.com/yongjohnlee80/golib/tui/widget/htmlview.
 func RasterizeSVG(a0 context.Context, a1 []byte, a2 int) ([]byte, error) {
 	return htmlview.RasterizeSVG(a0, a1, a2)
 }
@@ -342,6 +475,8 @@ func RasterizeSVG(a0 context.Context, a1 []byte, a2 int) ([]byte, error) {
 // admits only inline scripts and styles and data: and blob: subresources. The browser's own
 // sandbox always stays on: where it cannot run (a system that forbids user namespaces), the
 // browser refuses, the error says so, and the host shows its fallback.
+//
+// Deprecated: use [htmlview.RasterizeHTML], from github.com/yongjohnlee80/golib/tui/widget/htmlview.
 func RasterizeHTML(a0 context.Context, a1 []byte, a2, a3 int) ([]byte, error) {
 	return htmlview.RasterizeHTML(a0, a1, a2, a3)
 }
@@ -360,6 +495,8 @@ func RasterizeHTML(a0 context.Context, a1 []byte, a2, a3 int) ([]byte, error) {
 // at the bottom. To the right, a Wide page is cut where the window shows nothing more. A page
 // sized to the window (100vh) fills it. One shorter than MinHeight is filled to it with its
 // background.
+//
+// Deprecated: use [htmlview.RasterizeHTMLPage], from github.com/yongjohnlee80/golib/tui/widget/htmlview.
 func RasterizeHTMLPage(a0 context.Context, a1 []byte, a2 Page) ([]byte, error) {
 	return htmlview.RasterizeHTMLPage(a0, a1, a2)
 }

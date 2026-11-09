@@ -10,9 +10,13 @@ import (
 )
 
 // FileListOption configures a FileList under construction.
+//
+// Deprecated: use [files.FileListOption], from github.com/yongjohnlee80/golib/tui/widget/files.
 type FileListOption = files.FileListOption
 
 // FileList lists a folder.
+//
+// Deprecated: use [files.FileList], from github.com/yongjohnlee80/golib/tui/widget/files.
 type FileList = files.FileList
 
 // FilePaneStyles are the looks the file views paint. Surface is every pane's
@@ -21,10 +25,14 @@ type FileList = files.FileList
 // FocusedBorder frame each pane, without and with the keyboard. Gap is the
 // space between two panes, which belongs to whatever holds them — a dialog's
 // card — and so is painted in its colour, not left as the terminal's.
+//
+// Deprecated: use [files.FilePaneStyles], from github.com/yongjohnlee80/golib/tui/widget/files.
 type FilePaneStyles = files.FilePaneStyles
 
 // FilePreview shows one file's text — highlighted, when it is given a way to
 // pick a highlighter by file name ([FilePreview.SetHighlighting]).
+//
+// Deprecated: use [files.FilePreview], from github.com/yongjohnlee80/golib/tui/widget/files.
 type FilePreview = files.FilePreview
 
 // FileSource is a filesystem the file widgets list, and how its paths are
@@ -43,13 +51,19 @@ type FilePreview = files.FilePreview
 // loop, with the reading task's context: a listing or a preview that a newer
 // one supersedes, or that its dialog's closing ends, is stopped rather than
 // only dropped.
+//
+// Deprecated: use [files.FileSource], from github.com/yongjohnlee80/golib/tui/widget/files.
 type FileSource = files.FileSource
 
 // FileChooser is what a file dialog needs from its body.
+//
+// Deprecated: use [files.FileChooser], from github.com/yongjohnlee80/golib/tui/widget/files.
 type FileChooser = files.FileChooser
 
 // FileViewOption configures either file view. ONE option type for both, so a
 // Save view is configured with the same words as the Open view inside it.
+//
+// Deprecated: use [files.FileViewOption], from github.com/yongjohnlee80/golib/tui/widget/files.
 type FileViewOption = files.FileViewOption
 
 // FileOpenView chooses an existing file: a FileList, and a FilePreview beside
@@ -58,10 +72,14 @@ type FileViewOption = files.FileViewOption
 // `/` in the list opens a filter field above it, which narrows the rows as it is
 // typed in; Enter goes back to the list with the filter kept, Esc clears it.
 // The Save and Folder views' listings have no filter.
+//
+// Deprecated: use [files.FileOpenView], from github.com/yongjohnlee80/golib/tui/widget/files.
 type FileOpenView = files.FileOpenView
 
 // FileSaveView names a file to write: a FileOpenView with a name field at the
 // top of its left column.
+//
+// Deprecated: use [files.FileSaveView], from github.com/yongjohnlee80/golib/tui/widget/files.
 type FileSaveView = files.FileSaveView
 
 // FileFolderView chooses a folder: a FileOpenView whose path field, titled
@@ -69,11 +87,15 @@ type FileSaveView = files.FileSaveView
 // writes it there — and a path typed in it, then Enter, lists that folder. The
 // folder chosen is the field's. Files are listed too, and previewed, so a
 // folder is seen for what is in it.
+//
+// Deprecated: use [files.FileFolderView], from github.com/yongjohnlee80/golib/tui/widget/files.
 type FileFolderView = files.FileFolderView
 
 // FileChooserStyler is a file view a palette restyles in place: its panes (SetPaneStyles, the
 // non-fluent WithStyles) and its preview's source highlighting. FileOpenView, FileSaveView and
 // FileFolderView are each one, so a host restyles any of them through one assertion.
+//
+// Deprecated: use [files.FileChooserStyler], from github.com/yongjohnlee80/golib/tui/widget/files.
 type FileChooserStyler = files.FileChooserStyler
 
 // TreeNode represents a single node in a hierarchical [Tree] explorer.
@@ -120,20 +142,30 @@ type FileChooserStyler = files.FileChooserStyler
 //   - Duplicate pointer addresses within a forest are rejected (prevents cyclic graphs).
 //   - Duplicate IDs within any sibling set panic at construction.
 //   - Detaching a subtree releases ownership stamps, allowing the nodes to be cleanly re-attached.
+//
+// Deprecated: use [files.TreeNode], from github.com/yongjohnlee80/golib/tui/widget/files.
 type TreeNode = files.TreeNode
 
 // NodeOption customizes a TreeNode under construction.
+//
+// Deprecated: use [files.NodeOption], from github.com/yongjohnlee80/golib/tui/widget/files.
 type NodeOption = files.NodeOption
 
 // ExpandRequestEvent fires once per unloaded expand, carrying the request
 // generation the application must echo into SetChildren / SetLoadError.
+//
+// Deprecated: use [files.ExpandRequestEvent], from github.com/yongjohnlee80/golib/tui/widget/files.
 type ExpandRequestEvent = files.ExpandRequestEvent
 
 // ExpandEvent fires every time a node opens — loaded or not; an unloaded one
 // also fires its ExpandRequestEvent, first.
+//
+// Deprecated: use [files.ExpandEvent], from github.com/yongjohnlee80/golib/tui/widget/files.
 type ExpandEvent = files.ExpandEvent
 
 // CollapseEvent fires when a node collapses.
+//
+// Deprecated: use [files.CollapseEvent], from github.com/yongjohnlee80/golib/tui/widget/files.
 type CollapseEvent = files.CollapseEvent
 
 // Tree provides an interactive, lazy-expandable hierarchy widget designed for
@@ -203,91 +235,136 @@ type CollapseEvent = files.CollapseEvent
 //		widget.WithTitle("Project Files"),
 //		widget.WithStatus("Enter: open | h/l: collapse/expand"),
 //	)
+//
+// Deprecated: use [files.Tree], from github.com/yongjohnlee80/golib/tui/widget/files.
 type Tree = files.Tree
 
 // TreeOption customizes a Tree under construction.
+//
+// Deprecated: use [files.TreeOption], from github.com/yongjohnlee80/golib/tui/widget/files.
 type TreeOption = files.TreeOption
 
 const (
 	// FileViewScope is a file chooser's own keys, heard as they bubble up from its parts. Each acts only
 	// where it belongs: ~ and / in the listing, Enter in the filter field, Esc in the path field or with a
 	// filter to clear, and Ctrl and h, j, k or l among the parts.
+	//
+	// Deprecated: use [files.FileViewScope], from github.com/yongjohnlee80/golib/tui/widget/files.
 	FileViewScope = files.FileViewScope
 	// TreeScope is a Tree's keys.
+	//
+	// Deprecated: use [files.TreeScope], from github.com/yongjohnlee80/golib/tui/widget/files.
 	TreeScope = files.TreeScope
 )
 
 // The forwarded vars are files's values, copied: read them, never assign one, since
 // files's widgets read files's.
 var (
-	FileViewHome       = files.FileViewHome
-	FileViewFilter     = files.FileViewFilter
+	// Deprecated: use [files.FileViewHome], from github.com/yongjohnlee80/golib/tui/widget/files.
+	FileViewHome = files.FileViewHome
+	// Deprecated: use [files.FileViewFilter], from github.com/yongjohnlee80/golib/tui/widget/files.
+	FileViewFilter = files.FileViewFilter
+	// Deprecated: use [files.FileViewFilterDone], from github.com/yongjohnlee80/golib/tui/widget/files.
 	FileViewFilterDone = files.FileViewFilterDone
-	FileViewCancel     = files.FileViewCancel
-	FileViewPartDown   = files.FileViewPartDown
-	FileViewPartUp     = files.FileViewPartUp
-	FileViewPreview    = files.FileViewPreview
-	FileViewBack       = files.FileViewBack
-	TreeDown           = files.TreeDown
-	TreeUp             = files.TreeUp
-	TreePageDown       = files.TreePageDown
-	TreePageUp         = files.TreePageUp
-	TreeFirst          = files.TreeFirst
-	TreeLast           = files.TreeLast
-	TreeExpand         = files.TreeExpand
-	TreeCollapse       = files.TreeCollapse
-	TreeActivate       = files.TreeActivate
+	// Deprecated: use [files.FileViewCancel], from github.com/yongjohnlee80/golib/tui/widget/files.
+	FileViewCancel = files.FileViewCancel
+	// Deprecated: use [files.FileViewPartDown], from github.com/yongjohnlee80/golib/tui/widget/files.
+	FileViewPartDown = files.FileViewPartDown
+	// Deprecated: use [files.FileViewPartUp], from github.com/yongjohnlee80/golib/tui/widget/files.
+	FileViewPartUp = files.FileViewPartUp
+	// Deprecated: use [files.FileViewPreview], from github.com/yongjohnlee80/golib/tui/widget/files.
+	FileViewPreview = files.FileViewPreview
+	// Deprecated: use [files.FileViewBack], from github.com/yongjohnlee80/golib/tui/widget/files.
+	FileViewBack = files.FileViewBack
+	// Deprecated: use [files.TreeDown], from github.com/yongjohnlee80/golib/tui/widget/files.
+	TreeDown = files.TreeDown
+	// Deprecated: use [files.TreeUp], from github.com/yongjohnlee80/golib/tui/widget/files.
+	TreeUp = files.TreeUp
+	// Deprecated: use [files.TreePageDown], from github.com/yongjohnlee80/golib/tui/widget/files.
+	TreePageDown = files.TreePageDown
+	// Deprecated: use [files.TreePageUp], from github.com/yongjohnlee80/golib/tui/widget/files.
+	TreePageUp = files.TreePageUp
+	// Deprecated: use [files.TreeFirst], from github.com/yongjohnlee80/golib/tui/widget/files.
+	TreeFirst = files.TreeFirst
+	// Deprecated: use [files.TreeLast], from github.com/yongjohnlee80/golib/tui/widget/files.
+	TreeLast = files.TreeLast
+	// Deprecated: use [files.TreeExpand], from github.com/yongjohnlee80/golib/tui/widget/files.
+	TreeExpand = files.TreeExpand
+	// Deprecated: use [files.TreeCollapse], from github.com/yongjohnlee80/golib/tui/widget/files.
+	TreeCollapse = files.TreeCollapse
+	// Deprecated: use [files.TreeActivate], from github.com/yongjohnlee80/golib/tui/widget/files.
+	TreeActivate = files.TreeActivate
 	// TreeMenu is the key that asks a Tree's owner for a context menu on the cursor row, while the
 	// tree has one (SetContextMenu); List's ListMenu keys.
+	//
+	// Deprecated: use [files.TreeMenu], from github.com/yongjohnlee80/golib/tui/widget/files.
 	TreeMenu = files.TreeMenu
 )
 
 // WithFileListSource sets the filesystem the list reads. Default: the local
 // one.
+//
+// Deprecated: use [files.WithFileListSource], from github.com/yongjohnlee80/golib/tui/widget/files.
 func WithFileListSource(a0 FileSource) FileListOption {
 	return files.WithFileListSource(a0)
 }
 
 // WithFileListDir sets the folder the list opens in, as a rooted path.
 // Default: the working directory, locally; the root, elsewhere.
+//
+// Deprecated: use [files.WithFileListDir], from github.com/yongjohnlee80/golib/tui/widget/files.
 func WithFileListDir(a0 string) FileListOption {
 	return files.WithFileListDir(a0)
 }
 
 // WithFileListStyles dresses the list.
+//
+// Deprecated: use [files.WithFileListStyles], from github.com/yongjohnlee80/golib/tui/widget/files.
 func WithFileListStyles(a0 FilePaneStyles) FileListOption {
 	return files.WithFileListStyles(a0)
 }
 
 // WithOnCursor sets what runs when the cursor lands on a row: the row's fs
 // path, and whether it is a folder (`..` included).
+//
+// Deprecated: use [files.WithOnCursor], from github.com/yongjohnlee80/golib/tui/widget/files.
 func WithOnCursor(a0 func(path string, folder bool)) FileListOption {
 	return files.WithOnCursor(a0)
 }
 
 // WithOnFile sets what runs on Enter, or a double click, on a FILE, with its fs
 // path. A folder is not reported: the list goes into it.
+//
+// Deprecated: use [files.WithOnFile], from github.com/yongjohnlee80/golib/tui/widget/files.
 func WithOnFile(a0 func(path string)) FileListOption {
 	return files.WithOnFile(a0)
 }
 
 // WithOnDir sets what runs each time the list shows a folder, the first
 // included, with the folder as a rooted path: a path field that follows it.
+//
+// Deprecated: use [files.WithOnDir], from github.com/yongjohnlee80/golib/tui/widget/files.
 func WithOnDir(a0 func(rooted string)) FileListOption {
 	return files.WithOnDir(a0)
 }
 
 // NewFileList lists a folder.
+//
+// Deprecated: use [files.NewFileList], from github.com/yongjohnlee80/golib/tui/widget/files.
 func NewFileList(a0 ...FileListOption) *FileList {
 	return files.NewFileList(a0...)
 }
 
 // NewFilePreview builds an empty preview, dressed like the panes beside it.
+//
+// Deprecated: use [files.NewFilePreview], from github.com/yongjohnlee80/golib/tui/widget/files.
 func NewFilePreview(a0 FilePaneStyles, a1 bool) *FilePreview {
 	return files.NewFilePreview(a0, a1)
 }
 
 // LocalFiles is the local filesystem, rooted at "/", ~ its user's home folder.
+//
+// Deprecated: use [files.LocalFiles], from github.com/yongjohnlee80/golib/tui/widget/files.
 func LocalFiles() FileSource {
 	return files.LocalFiles()
 }
@@ -295,23 +372,31 @@ func LocalFiles() FileSource {
 // WithFileViewSource sets the filesystem a view lists: local by default, or
 // any fs.FS — a remote one included — with the root its paths are written
 // under.
+//
+// Deprecated: use [files.WithFileViewSource], from github.com/yongjohnlee80/golib/tui/widget/files.
 func WithFileViewSource(a0 FileSource) FileViewOption {
 	return files.WithFileViewSource(a0)
 }
 
 // WithFileViewDir sets the folder a view opens in, as a rooted path. Default:
 // the working directory, locally.
+//
+// Deprecated: use [files.WithFileViewDir], from github.com/yongjohnlee80/golib/tui/widget/files.
 func WithFileViewDir(a0 string) FileViewOption {
 	return files.WithFileViewDir(a0)
 }
 
 // WithFileViewStyles dresses every pane of a view.
+//
+// Deprecated: use [files.WithFileViewStyles], from github.com/yongjohnlee80/golib/tui/widget/files.
 func WithFileViewStyles(a0 FilePaneStyles) FileViewOption {
 	return files.WithFileViewStyles(a0)
 }
 
 // WithFileViewPreview sets whether a view shows a preview beside its listing.
 // Default: on for an Open view, off for a Save view.
+//
+// Deprecated: use [files.WithFileViewPreview], from github.com/yongjohnlee80/golib/tui/widget/files.
 func WithFileViewPreview(a0 bool) FileViewOption {
 	return files.WithFileViewPreview(a0)
 }
@@ -320,6 +405,8 @@ func WithFileViewPreview(a0 bool) FileViewOption {
 // Enter on a file, or Enter in the name field with a name in it; and, for an
 // async source, a typed name's check answering that it is the file (or, in a
 // Folder view, the folder) a Confirm turned away while it was asked.
+//
+// Deprecated: use [files.WithOnChoose], from github.com/yongjohnlee80/golib/tui/widget/files.
 func WithOnChoose(a0 func()) FileViewOption {
 	return files.WithOnChoose(a0)
 }
@@ -327,6 +414,8 @@ func WithOnChoose(a0 func()) FileViewOption {
 // WithFileViewFields puts fields at the top of a view's left column, above
 // its own: a folder picker's name for what the folder becomes, say. Each is
 // a part the keyboard moves to, as the view's own are.
+//
+// Deprecated: use [files.WithFileViewFields], from github.com/yongjohnlee80/golib/tui/widget/files.
 func WithFileViewFields(a0 ...tui.Component) FileViewOption {
 	return files.WithFileViewFields(a0...)
 }
@@ -334,53 +423,73 @@ func WithFileViewFields(a0 ...tui.Component) FileViewOption {
 // WithOnHint sets what runs when the keyboard moves to another part of the
 // dialog the view is in, with the keys that part answers to: a footer that
 // says what Enter does HERE.
+//
+// Deprecated: use [files.WithOnHint], from github.com/yongjohnlee80/golib/tui/widget/files.
 func WithOnHint(a0 func(string)) FileViewOption {
 	return files.WithOnHint(a0)
 }
 
 // NewFileOpenView builds an Open view.
+//
+// Deprecated: use [files.NewFileOpenView], from github.com/yongjohnlee80/golib/tui/widget/files.
 func NewFileOpenView(a0 ...FileViewOption) *FileOpenView {
 	return files.NewFileOpenView(a0...)
 }
 
 // NewFileSaveView builds a Save view. Its listing has no preview unless asked.
+//
+// Deprecated: use [files.NewFileSaveView], from github.com/yongjohnlee80/golib/tui/widget/files.
 func NewFileSaveView(a0 ...FileViewOption) *FileSaveView {
 	return files.NewFileSaveView(a0...)
 }
 
 // NewFileFolderView builds a folder view. Its listing previews unless asked
 // not to.
+//
+// Deprecated: use [files.NewFileFolderView], from github.com/yongjohnlee80/golib/tui/widget/files.
 func NewFileFolderView(a0 ...FileViewOption) *FileFolderView {
 	return files.NewFileFolderView(a0...)
 }
 
 // WithLeaf marks the node never-expandable (activation only).
+//
+// Deprecated: use [files.WithLeaf], from github.com/yongjohnlee80/golib/tui/widget/files.
 func WithLeaf() NodeOption {
 	return files.WithLeaf()
 }
 
 // WithBadge sets a trailing annotation (e.g. "view", "fn", row counts).
+//
+// Deprecated: use [files.WithBadge], from github.com/yongjohnlee80/golib/tui/widget/files.
 func WithBadge(a0 string) NodeOption {
 	return files.WithBadge(a0)
 }
 
 // WithNodeStyle overrides the node's label style.
+//
+// Deprecated: use [files.WithNodeStyle], from github.com/yongjohnlee80/golib/tui/widget/files.
 func WithNodeStyle(a0 style.Style) NodeOption {
 	return files.WithNodeStyle(a0)
 }
 
 // NewTreeNode builds an unattached node. id must be unique among the
 // siblings it is eventually attached with.
+//
+// Deprecated: use [files.NewTreeNode], from github.com/yongjohnlee80/golib/tui/widget/files.
 func NewTreeNode(a0, a1 string, a2 ...NodeOption) *TreeNode {
 	return files.NewTreeNode(a0, a1, a2...)
 }
 
 // WithRoots seeds the root nodes.
+//
+// Deprecated: use [files.WithRoots], from github.com/yongjohnlee80/golib/tui/widget/files.
 func WithRoots(a0 ...*TreeNode) TreeOption {
 	return files.WithRoots(a0...)
 }
 
 // WithTreeStyles overrides the row styles (List slots).
+//
+// Deprecated: use [files.WithTreeStyles], from github.com/yongjohnlee80/golib/tui/widget/files.
 func WithTreeStyles(a0 core.ListStyles) TreeOption {
 	return files.WithTreeStyles(a0)
 }
@@ -389,6 +498,8 @@ func WithTreeStyles(a0 core.ListStyles) TreeOption {
 // children are already known: known calls n.SetChildren(gen, kids) and reports true, and no
 // ExpandRequestEvent is sent. False sends one, as without it. A key queued behind the one that
 // opened the node then finds its children there: l j lands on the first child.
+//
+// Deprecated: use [files.WithKnownChildren], from github.com/yongjohnlee80/golib/tui/widget/files.
 func WithKnownChildren(a0 func(n *TreeNode, gen uint64) bool) TreeOption {
 	return files.WithKnownChildren(a0)
 }
@@ -396,33 +507,45 @@ func WithKnownChildren(a0 func(n *TreeNode, gen uint64) bool) TreeOption {
 // WithTreeOnCursor sets what runs, at once, when the cursor moves to another node: the bus's
 // SelectionChangedEvent reaches other subscribers a loop turn later. An owner composing a Tree uses
 // it rather than subscribing app-wide and filtering by Owner.
+//
+// Deprecated: use [files.WithTreeOnCursor], from github.com/yongjohnlee80/golib/tui/widget/files.
 func WithTreeOnCursor(a0 func(n *TreeNode)) TreeOption {
 	return files.WithTreeOnCursor(a0)
 }
 
 // WithTreeOnExpand sets what runs, at once, when a node opens (ExpandEvent).
+//
+// Deprecated: use [files.WithTreeOnExpand], from github.com/yongjohnlee80/golib/tui/widget/files.
 func WithTreeOnExpand(a0 func(n *TreeNode)) TreeOption {
 	return files.WithTreeOnExpand(a0)
 }
 
 // WithTreeOnExpandRequest sets what runs, at once, when an opened node's children are asked for
 // (ExpandRequestEvent): the owner answers with n.SetChildren(gen, …), now or later.
+//
+// Deprecated: use [files.WithTreeOnExpandRequest], from github.com/yongjohnlee80/golib/tui/widget/files.
 func WithTreeOnExpandRequest(a0 func(n *TreeNode, gen uint64)) TreeOption {
 	return files.WithTreeOnExpandRequest(a0)
 }
 
 // WithTreeOnActivate sets what runs, at once, when a node is activated (Enter, l on a leaf, a
 // double click): the bus's ActivateEvent reaches other subscribers a loop turn later.
+//
+// Deprecated: use [files.WithTreeOnActivate], from github.com/yongjohnlee80/golib/tui/widget/files.
 func WithTreeOnActivate(a0 func(n *TreeNode)) TreeOption {
 	return files.WithTreeOnActivate(a0)
 }
 
 // WithIndent sets the per-depth indent (default 2; non-positive panics).
+//
+// Deprecated: use [files.WithIndent], from github.com/yongjohnlee80/golib/tui/widget/files.
 func WithIndent(a0 int) TreeOption {
 	return files.WithIndent(a0)
 }
 
 // NewTree builds an empty tree.
+//
+// Deprecated: use [files.NewTree], from github.com/yongjohnlee80/golib/tui/widget/files.
 func NewTree(a0 ...TreeOption) *Tree {
 	return files.NewTree(a0...)
 }
@@ -430,6 +553,8 @@ func NewTree(a0 ...TreeOption) *Tree {
 // WithTreeOnContextMenu tells the owner at once when the tree asks for a context menu (SetContextMenu
 // on): the node it is for (nil: none, a press below the rows or an empty tree) and where, in the
 // tree's own cells. ContextMenuEvent follows on the bus. The tree opens no menu itself.
+//
+// Deprecated: use [files.WithTreeOnContextMenu], from github.com/yongjohnlee80/golib/tui/widget/files.
 func WithTreeOnContextMenu(a0 func(n *TreeNode, at tui.Point)) TreeOption {
 	return files.WithTreeOnContextMenu(a0)
 }
