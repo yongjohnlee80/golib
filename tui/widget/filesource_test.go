@@ -540,7 +540,7 @@ func TestAnAsyncLocalSourceFollowsLinksToFolders(t *testing.T) {
 	if err := os.Symlink("real", filepath.Join(root, "rel")); err != nil {
 		t.Fatal(err)
 	}
-	v := files.NewFileOpenView(files.WithFileViewSource(files.FileSource{FS: os.DirFS("/"), Root: "/", Async: true}),
+	v := files.NewFileOpenView(files.WithFileViewSource(func() files.FileSource { s := files.LocalFiles(); s.Async = true; return s }()),
 		files.WithFileViewDir(root))
 	h := startBrowser(t, v)
 	defer h.stop()

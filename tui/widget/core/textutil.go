@@ -10,9 +10,10 @@ import (
 // Elide is where a text too wide for its cell loses what does not fit, as Qt's
 // Qt::TextElideMode: the end (ElideRight, the zero value), the start
 // (ElideLeft), the middle, or nowhere (ElideNone: cut at the edge, no
-// ellipsis). ElidePath is golib's, for a path: the start, at a "/" so the
-// cut never falls inside a name (…/dao/name.go), and as ElideLeft when even
-// the last name does not fit.
+// ellipsis). ElidePath is golib's, for a path: the start, at a separator
+// ("/", or Windows' "\") so the cut never falls inside a name
+// (…/dao/name.go, …\dao\name.go), and as ElideLeft when even the last name
+// does not fit.
 type Elide int
 
 const (
@@ -60,9 +61,9 @@ func ElideText(s string, w int, mode Elide, measure func(string) int) string {
 	}
 	switch mode {
 	case ElidePath:
-		// the longest tail that starts at a "/" and fits after the ellipsis
+		// the longest tail that starts at a separator and fits after the ellipsis
 		for i := 1; i < len(gs); i++ {
-			if gs[i] == "/" {
+			if gs[i] == "/" || gs[i] == `\` {
 				if t := strings.Join(gs[i:], ""); measure(t) <= w-1 {
 					return kit.Ellipsis + t
 				}

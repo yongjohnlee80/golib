@@ -90,6 +90,8 @@ func TestTextUtilElide(t *testing.T) {
 		{"shared/adrs/0206-store.md", 21, ElidePath, "…/adrs/0206-store.md"},
 		{"shared/adrs/0206-store.md", 12, ElidePath, "…06-store.md"}, // not even the name fits: as ElideLeft
 		{"shared/adrs/0206-store.md", 25, ElidePath, path},
+		{`C:\Users\me\0206-store.md`, 17, ElidePath, `…\0206-store.md`}, // Windows' separator cuts too
+		{`C:\Users\me\0206-store.md`, 19, ElidePath, `…\me\0206-store.md`},
 		{"日本語メモ", 6, ElideMiddle, "日…モ"}, // 5 cells: 本 or メ would make 7
 	} {
 		if got := ElideText(c.s, c.w, c.mode, cells); got != c.want {
