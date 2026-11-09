@@ -1,11 +1,9 @@
 package widget
 
 import (
-	"bytes"
 	"context"
 	"encoding/base64"
-	"image"
-	"image/png"
+	"github.com/yongjohnlee80/golib/tui/widget/internal/widgettest"
 	"strings"
 	"testing"
 	"time"
@@ -13,16 +11,6 @@ import (
 	"github.com/yongjohnlee80/golib/tui"
 	"github.com/yongjohnlee80/golib/tui/widget/internal/cellimages"
 )
-
-// pngURI is a data: URI of a w × h PNG.
-func pngURI(t *testing.T, w, h int) string {
-	t.Helper()
-	var b bytes.Buffer
-	if err := png.Encode(&b, image.NewGray(image.Rect(0, 0, w, h))); err != nil {
-		t.Fatal(err)
-	}
-	return "data:image/png;base64," + base64.StdEncoding.EncodeToString(b.Bytes())
-}
 
 // pageRun is an HTMLView of html on a w × h test terminal with caps, running.
 type pageRun struct {
@@ -68,23 +56,11 @@ func (p *pageRun) onLoop(fn func()) {
 	}
 }
 
-var kitty = tui.Capabilities{ColorProfile: tui.ProfileTrueColor, KittyGraphics: tui.TriYes}
-
-// lineOf is the screen row holding s, -1 for none.
-func lineOf(screen, s string) int {
-	for i, l := range strings.Split(screen, "\n") {
-		if strings.Contains(l, s) {
-			return i
-		}
-	}
-	return -1
-}
-
 // A paragraph of one image, on a terminal that draws kitty's graphics, is the picture: its rows
 // reserved, blank, between the text before and after it, and its image placed over them at its own
 // size in cells (80 × 32 pixels, cells 8 × 16: 10 × 2), never its alt text.
 func TestAnImageIsDrawnOverItsRowsOnAKittyTerminal(t *testing.T) {
-	p := runPage(t, `<p>before</p><p><img alt="gull" src="`+pngURI(t, 80, 32)+`"></p><p>after</p>`, 40, 12, kitty)
+	p := runPage(t, `<p>before</p><p><img alt="gull" src="`+widgettest.PNGURI(t, 80, 32)+`"></p><p>after</p>`, 40, 12, widgettest.Kitty)
 	p.waitFor("the picture placed", func(sc string, imgs map[uint32]tui.ImagePlacement) bool { return len(imgs) == 1 })
 	sc, imgs := p.tb.String(), p.tb.Images()
 	var pl tui.ImagePlacement
@@ -93,7 +69,7 @@ func TestAnImageIsDrawnOverItsRowsOnAKittyTerminal(t *testing.T) {
 	if pl.Cols != 10 || pl.Rows != 2 || pl.X != 0 || len(pl.PNG) == 0 {
 		t.Fatalf("placed %+v; want 10 × 2 at the left", pl)
 	}
-	before, after := lineOf(sc, "before"), lineOf(sc, "after")
+	before, after := widgettest.LineOf(sc, "before"), widgettest.LineOf(sc, "after")
 	if strings.Contains(sc, "[gull]") || before < 0 || after < 0 || !(before < pl.Y && pl.Y+pl.Rows <= after) {
 		t.Fatalf("the picture at rows %d-%d, the text at %d and %d:\n%s", pl.Y, pl.Y+pl.Rows-1, before, after, sc)
 	}
@@ -112,9 +88,9 @@ func TestAnImageIsItsAltTextWhereItCantBeDrawn(t *testing.T) {
 		html string
 		caps tui.Capabilities
 	}{
-		"no kitty graphics": {`<p><img alt="gull" src="` + pngURI(t, 80, 32) + `"></p><p>after</p>`, tui.Capabilities{ColorProfile: tui.ProfileTrueColor}},
-		"an SVG":            {`<p><img alt="gull" src="` + svg + `"></p><p>after</p>`, kitty},
-		"in running text":   {`<p>a <img alt="gull" src="` + pngURI(t, 80, 32) + `"> in a sentence</p><p>after</p>`, kitty},
+		"no kitty graphics": {`<p><img alt="gull" src="` + widgettest.PNGURI(t, 80, 32) + `"></p><p>after</p>`, tui.Capabilities{ColorProfile: tui.ProfileTrueColor}},
+		"an SVG":            {`<p><img alt="gull" src="` + svg + `"></p><p>after</p>`, widgettest.Kitty},
+		"in running text":   {`<p>a <img alt="gull" src="` + widgettest.PNGURI(t, 80, 32) + `"> in a sentence</p><p>after</p>`, widgettest.Kitty},
 	} {
 		t.Run(name, func(t *testing.T) {
 			p := runPage(t, c.html, 40, 12, c.caps)
@@ -133,7 +109,7 @@ func TestAnImageIsItsAltTextWhereItCantBeDrawn(t *testing.T) {
 // An image wider than the room is scaled down to the room's width, keeping its shape (400 × 100
 // pixels in 20 columns: 20 × 3), never panned.
 func TestAnImageWiderThanTheRoomFitsIt(t *testing.T) {
-	p := runPage(t, `<p><img alt="gull" src="`+pngURI(t, 400, 100)+`"></p>`, 20, 10, kitty)
+	p := runPage(t, `<p><img alt="gull" src="`+widgettest.PNGURI(t, 400, 100)+`"></p>`, 20, 10, widgettest.Kitty)
 	p.waitFor("the picture placed", func(_ string, imgs map[uint32]tui.ImagePlacement) bool {
 		for _, pl := range imgs {
 			return pl.Cols == 20 && pl.Rows == 3
@@ -145,7 +121,7 @@ func TestAnImageWiderThanTheRoomFitsIt(t *testing.T) {
 // A picture scrolled partly above the view's top is cut to its rows that show, the same part of
 // its image placed over them.
 func TestAPictureScrolledPartlyOffIsCropped(t *testing.T) {
-	p := runPage(t, `<p><img alt="gull" src="`+pngURI(t, 80, 64)+`"></p><p>a</p><p>b</p><p>c</p><p>d</p><p>e</p><p>f</p>`, 40, 4, kitty)
+	p := runPage(t, `<p><img alt="gull" src="`+widgettest.PNGURI(t, 80, 64)+`"></p><p>a</p><p>b</p><p>c</p><p>d</p><p>e</p><p>f</p>`, 40, 4, widgettest.Kitty)
 	p.waitFor("the picture placed", func(_ string, imgs map[uint32]tui.ImagePlacement) bool {
 		for _, pl := range imgs {
 			return pl.Rows == 4 && pl.Y == 0
