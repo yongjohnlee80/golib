@@ -1,0 +1,5 @@
+# Every text file is LF in every checkout, a Windows one too: the code, its goldens and testdata
+# read the same on every OS.
+* text=auto eol=lf
+# Terminal transcripts are the bytes a program wrote, carriage returns included.
+*.bin binary
