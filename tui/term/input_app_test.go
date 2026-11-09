@@ -15,7 +15,7 @@ import (
 	"time"
 
 	"github.com/yongjohnlee80/golib/tui"
-	"github.com/yongjohnlee80/golib/tui/widget"
+	"github.com/yongjohnlee80/golib/tui/widget/core"
 )
 
 // runSGR decodes real SGR mouse bytes and delivers the events to a live App. It
@@ -71,7 +71,7 @@ func waitLoop(t *testing.T, what string, cond func() bool) {
 
 // An SGR press selects the clicked row: CSI < 0 ; col ; row M, 1-based.
 func TestSGRPressSelectsListRow(t *testing.T) {
-	list := widget.NewList(widget.WithItems([]string{"a", "b", "c", "d"},
+	list := core.NewList(core.WithItems([]string{"a", "b", "c", "d"},
 		func(s string) string { return s }))
 	// column 2, row 3 (1-based) -> local (1,2) -> list row 2.
 	_, app := runSGR(t, list, 10, 4, "\x1b[<0;2;3M")
@@ -86,15 +86,15 @@ func TestSGRPressSelectsListRow(t *testing.T) {
 
 // An SGR press also FOCUSES the clicked widget, through the terminal producer.
 func TestSGRPressFocusesClickedWidget(t *testing.T) {
-	top := widget.NewList(widget.WithItems([]string{"t0", "t1"}, func(s string) string { return s }))
-	bottom := widget.NewList(widget.WithItems([]string{"b0", "b1"}, func(s string) string { return s }))
+	top := core.NewList(core.WithItems([]string{"t0", "t1"}, func(s string) string { return s }))
+	bottom := core.NewList(core.WithItems([]string{"b0", "b1"}, func(s string) string { return s }))
 	root := tui.NewFlex(tui.Vertical)
 	root.AddWeighted(top, 1)
 	root.AddWeighted(bottom, 1)
 
 	// Press row 1 (top), then row 3 (bottom), both 1-based.
 	send, app := runSGR(t, root, 10, 4, "\x1b[<0;2;1M")
-	focused := func(l *widget.List[string]) bool {
+	focused := func(l *core.List[string]) bool {
 		var f bool
 		onAppLoop(t, app, func() {
 			if ctx := l.Context(); ctx != nil {
@@ -115,7 +115,7 @@ func TestSGRWheelScrolls(t *testing.T) {
 	for i := range items {
 		items[i] = "row"
 	}
-	list := widget.NewList(widget.WithItems(items, func(s string) string { return s }))
+	list := core.NewList(core.WithItems(items, func(s string) string { return s }))
 	send, app := runSGR(t, list, 10, 3, "\x1b[<65;2;2M\x1b[<65;2;2M")
 
 	// Two wheel reports are two steps: a press on the top row now selects row 2.
