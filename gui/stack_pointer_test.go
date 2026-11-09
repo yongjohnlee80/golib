@@ -6,7 +6,8 @@ import (
 	"github.com/yongjohnlee80/gio/io/pointer"
 	guiwidget "github.com/yongjohnlee80/golib/gui/widget"
 	"github.com/yongjohnlee80/golib/tui"
-	tuiwidget "github.com/yongjohnlee80/golib/tui/widget"
+	"github.com/yongjohnlee80/golib/tui/widget/core"
+	"github.com/yongjohnlee80/golib/tui/widget/editor"
 )
 
 // A card over the native editor, as a FloatWindow's AddAligned puts one (the editor filled, the card
@@ -14,8 +15,8 @@ import (
 // window runs them: on the card's rows the editor's I-beam stops where the card begins, and below it
 // runs the editor's width.
 func TestACardOverTheNativeEditorTakesItsCellsIBeam(t *testing.T) {
-	e := guiwidget.NewEditor(guiwidget.WithCore(tuiwidget.CoreInitialText("one two three four five six seven eight nine ten")))
-	card := tuiwidget.NewBox(tuiwidget.NewText("3 of 9 [X]"), tuiwidget.WithTitle("CARD")) // 12 columns, 3 rows
+	e := guiwidget.NewEditor(guiwidget.WithCore(editor.CoreInitialText("one two three four five six seven eight nine ten")))
+	card := core.NewBox(core.NewText("3 of 9 [X]"), core.WithTitle("CARD")) // 12 columns, 3 rows
 	st := tui.NewStack()
 	st.AddFilled(e)
 	st.AddAligned(card, tui.AlignTopRight)

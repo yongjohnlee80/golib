@@ -4,7 +4,7 @@ import (
 	"testing"
 
 	"github.com/yongjohnlee80/golib/tui"
-	"github.com/yongjohnlee80/golib/tui/widget"
+	"github.com/yongjohnlee80/golib/tui/widget/core"
 )
 
 // A floating panel (a Drawer moved off its edge floats AtFraction; one at Tui.Center is centred)
@@ -15,29 +15,29 @@ import (
 func TestFloatingPanelsGetAShadowAndDockedOnesDoNot(t *testing.T) {
 	cases := []struct {
 		name   string
-		anchor widget.Anchor
+		anchor core.Anchor
 		shadow bool
 	}{
-		{"moved off its edge", widget.AtFraction(25, 25, 50, 50), true},
-		{"centred", widget.Center, true},
-		{"dragging", widget.AtRect(tui.Rect{X: 4, Y: 2, W: 12, H: 4}), true},
-		{"docked left", widget.Left, false},
-		{"docked bottom", widget.Bottom, false},
-		{"maximised", widget.AtFraction(0, 0, 100, 100), false}, // fills its area: no shadow to see
-		{"a FloatWindow, live at its percentages", widget.AtLiveIn(func(a tui.Rect) (tui.Rect, bool) {
+		{"moved off its edge", core.AtFraction(25, 25, 50, 50), true},
+		{"centred", core.Center, true},
+		{"dragging", core.AtRect(tui.Rect{X: 4, Y: 2, W: 12, H: 4}), true},
+		{"docked left", core.Left, false},
+		{"docked bottom", core.Bottom, false},
+		{"maximised", core.AtFraction(0, 0, 100, 100), false}, // fills its area: no shadow to see
+		{"a FloatWindow, live at its percentages", core.AtLiveIn(func(a tui.Rect) (tui.Rect, bool) {
 			return tui.Rect{X: a.X + a.W/4, Y: a.Y + 2, W: a.W / 2, H: 5}, true
-		}, widget.AtFraction(25, 20, 50, 50)), true},
-		{"a reserving Drawer, live over its strip", widget.AtLive(func() (tui.Rect, bool) {
+		}, core.AtFraction(25, 20, 50, 50)), true},
+		{"a reserving Drawer, live over its strip", core.AtLive(func() (tui.Rect, bool) {
 			return tui.Rect{W: 8, H: 10}, true
-		}, widget.Left), false},
-		{"a governed tile member, live over its tile", widget.AtLive(func() (tui.Rect, bool) {
+		}, core.Left), false},
+		{"a governed tile member, live over its tile", core.AtLive(func() (tui.Rect, bool) {
 			return tui.Rect{X: 2, Y: 1, W: 10, H: 6}, true
-		}, widget.TopLeft), false},
+		}, core.TopLeft), false},
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
-			panel := widget.NewFloat(widget.NewBox(widget.NewText("panel"), widget.WithTitle("P")), widget.WithAnchor(c.anchor))
-			host := widget.NewOverlayHost(widget.NewText("beneath"))
+			panel := core.NewFloat(core.NewBox(core.NewText("panel"), core.WithTitle("P")), core.WithAnchor(c.anchor))
+			host := core.NewOverlayHost(core.NewText("beneath"))
 			host.Attach(panel)
 			app, sb := styledApp(t, host, 30, 10, NativeStyle())
 			onLoop(t, app, panel.Show)

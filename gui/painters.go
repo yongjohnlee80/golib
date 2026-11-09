@@ -8,7 +8,10 @@ import (
 
 	"github.com/yongjohnlee80/golib/tui"
 	"github.com/yongjohnlee80/golib/tui/style"
-	"github.com/yongjohnlee80/golib/tui/widget"
+	"github.com/yongjohnlee80/golib/tui/widget/core"
+	"github.com/yongjohnlee80/golib/tui/widget/htmlview"
+	"github.com/yongjohnlee80/golib/tui/widget/table"
+	"github.com/yongjohnlee80/golib/tui/widget/terminal"
 )
 
 // Native Styling and Painter Pipeline:
@@ -61,7 +64,7 @@ func NativeStyle() *Style {
 // paintHTMLView draws an HTMLView whose bound layout is a native view (gui/widget.BindHTML binds
 // one): that layout, over the widget's whole subtree. An HTMLView still laid out in cells is left
 // to its cells.
-func paintHTMLView(v *widget.HTMLView) (View, tui.NativeScope, bool) {
+func paintHTMLView(v *htmlview.HTMLView) (View, tui.NativeScope, bool) {
 	view, ok := v.BoundLayout().(View)
 	if !ok {
 		return nil, 0, false
@@ -72,7 +75,7 @@ func paintHTMLView(v *widget.HTMLView) (View, tui.NativeScope, bool) {
 // paintDataTable draws a DataTable whose bound layout is a native view (gui/widget.BindTable binds
 // one): that layout, over the widget's whole subtree. A DataTable still laid out in cells is left
 // to its cells.
-func paintDataTable(t *widget.DataTable) (View, tui.NativeScope, bool) {
+func paintDataTable(t *table.DataTable) (View, tui.NativeScope, bool) {
 	view, ok := t.BoundLayout().(View)
 	if !ok {
 		return nil, 0, false
@@ -83,7 +86,7 @@ func paintDataTable(t *widget.DataTable) (View, tui.NativeScope, bool) {
 // paintTerminal draws a Terminal whose view is a native view (gui/widget.TerminalViews makes them):
 // that view, over the terminal. A Terminal with no view, or one that is not a View, is left to its
 // cells.
-func paintTerminal(t *widget.Terminal) (View, tui.NativeScope, bool) {
+func paintTerminal(t *terminal.Terminal) (View, tui.NativeScope, bool) {
 	view, ok := t.TerminalView().(View)
 	if !ok {
 		return nil, 0, false
@@ -191,7 +194,7 @@ func labelFont(c Canvas) Font { return Font{Size: c.CellSize().H * 0.78} }
 // darker while pressed, with its label centred in the UI font. A button's label is not
 // selectable or pointed into, so it need not keep the cells' columns.
 func paintButton(comp tui.Component) (View, tui.NativeScope, bool) {
-	b, ok := comp.(*widget.Button)
+	b, ok := comp.(*core.Button)
 	if !ok {
 		return nil, 0, false
 	}
@@ -211,8 +214,8 @@ func paintButton(comp tui.Component) (View, tui.NativeScope, bool) {
 		}
 		r := Rect{W: c.Size().W, H: c.Size().H}
 		radius := min(r.H/2, 6)
-		fill, border, width := controlChrome(fg, bg, b.State() == widget.WidgetStateArmed, b.Hovered(),
-			b.State() == widget.WidgetStateFocused)
+		fill, border, width := controlChrome(fg, bg, b.State() == core.WidgetStateArmed, b.Hovered(),
+			b.State() == core.WidgetStateFocused)
 		c.FillRect(r, Solid(c.Backdrop())) // the corners show what is around the button
 		c.FillRRect(r, radius, Solid(fill))
 		c.StrokeRRect(r.Inset(width/2), radius, width, Solid(border))
@@ -417,7 +420,7 @@ func boxCells(c Canvas, cols int) int {
 // it: the glyphs over the native fill, and the selected cells whole, so every cluster stays at
 // the column tui hit-tests and no line crosses a glyph.
 func paintTextField(comp tui.Component) (View, tui.NativeScope, bool) {
-	ti, ok := comp.(*widget.TextInput)
+	ti, ok := comp.(*core.TextInput)
 	if !ok {
 		return nil, 0, false
 	}
@@ -445,7 +448,7 @@ func paintTextField(comp tui.Component) (View, tui.NativeScope, bool) {
 // square-edged field, its border brighter while focused. Its cells are drawn whole over the fill,
 // so a selection keeps tui's colours, and the border over them.
 func paintTextArea(comp tui.Component) (View, tui.NativeScope, bool) {
-	ta, ok := comp.(*widget.TextArea)
+	ta, ok := comp.(*core.TextArea)
 	if !ok {
 		return nil, 0, false
 	}
@@ -473,7 +476,7 @@ func paintTextArea(comp tui.Component) (View, tui.NativeScope, bool) {
 // areaColors are a text area's own colours: its first open cell on any row, each row's end cells
 // first, never one drawn as selected or under the placeholder, which wear their own. open is
 // whether any cell is uncovered; own whether one of those is the area's.
-func areaColors(c Canvas, ta *widget.TextArea, cols, rows int) (fg, bg color.NRGBA, own, open bool) {
+func areaColors(c Canvas, ta *core.TextArea, cols, rows int) (fg, bg color.NRGBA, own, open bool) {
 	var other []tui.Rect
 	if rs, ok := ta.SelectionCells(); ok {
 		other = append(other, rs...)
@@ -498,7 +501,7 @@ func areaColors(c Canvas, ta *widget.TextArea, cols, rows int) (fg, bg color.NRG
 
 // fieldColors are the field's own colours: its first open cell, the frame's end cells first, and
 // never a selected cell, which wears the selection's.
-func fieldColors(c Canvas, ti *widget.TextInput, cols int) (fg, bg color.NRGBA, ok bool) {
+func fieldColors(c Canvas, ti *core.TextInput, cols int) (fg, bg color.NRGBA, ok bool) {
 	x0, x1 := selectionSpan(ti)
 	var xs []int
 	for _, x := range endsFirst(max(cols, 1)) {
@@ -512,7 +515,7 @@ func fieldColors(c Canvas, ti *widget.TextInput, cols int) (fg, bg color.NRGBA, 
 // selectionSpan is the cells tui draws the field's selection over, as it reports them
 // (tui.SelectionCells: after the padding and scroll, clipped as Render clips, none while the field
 // is unfocused): x0 to x1, end excluded; -1, -1 when there are none.
-func selectionSpan(ti *widget.TextInput) (x0, x1 int) {
+func selectionSpan(ti *core.TextInput) (x0, x1 int) {
 	rs, ok := ti.SelectionCells()
 	if !ok || len(rs) == 0 {
 		return -1, -1
@@ -523,7 +526,7 @@ func selectionSpan(ti *widget.TextInput) (x0, x1 int) {
 // paintProgress draws a determinate bar as a rounded track and fill in the bar's colours; an
 // indeterminate one keeps its animated cells.
 func paintProgress(comp tui.Component) (View, tui.NativeScope, bool) {
-	p, ok := comp.(*widget.ProgressBar)
+	p, ok := comp.(*core.ProgressBar)
 	if !ok {
 		return nil, 0, false
 	}
@@ -557,7 +560,7 @@ func paintProgress(comp tui.Component) (View, tui.NativeScope, bool) {
 // panel's own, not its cells': the strip's cells cover the panel's bar, and in their colour the title
 // bar was two shades, the strip's band and the panel's tint beyond it (Johno: one or the other). The
 // strip keeps it (TabStrip.SetBarColor).
-func OnPanelBar(t *widget.TabStrip, bar func() (color.NRGBA, bool)) { t.SetBarColor(bar) }
+func OnPanelBar(t *core.TabStrip, bar func() (color.NRGBA, bool)) { t.SetBarColor(bar) }
 
 // barColorer is a tab strip that fills its bar in a colour of its own (TabStrip.SetBarColor).
 type barColorer interface{ BarColor() (color.NRGBA, bool) }
@@ -576,7 +579,7 @@ func panelBar(comp tui.Component) (color.NRGBA, bool) {
 // content below the bar is the active tab's child and draws over this view, so the scope is
 // the chrome.
 func paintTabs(comp tui.Component) (View, tui.NativeScope, bool) {
-	t, ok := comp.(widget.TabSpanner)
+	t, ok := comp.(core.TabSpanner)
 	if !ok {
 		return nil, 0, false
 	}
@@ -585,8 +588,8 @@ func paintTabs(comp tui.Component) (View, tui.NativeScope, bool) {
 		cols, _ := CanvasCells(c)
 		cs := c.CellSize()
 		spans := tabSpans()
-		var controls []widget.TabControl
-		if wc, ok := comp.(widget.TabWindowController); ok {
+		var controls []core.TabControl
+		if wc, ok := comp.(core.TabWindowController); ok {
 			controls = wc.TabWindowControls()
 		}
 		if cols <= 0 || len(spans) == 0 && len(controls) == 0 { // a strip with no tabs still has its controls
@@ -651,7 +654,7 @@ func paintTabs(comp tui.Component) (View, tui.NativeScope, bool) {
 // paintTabControls draws a tab strip's window controls (widget.TabWindowController) as the title
 // bar's: a dot in each control's colour (WindowControlColor) over its cells, on the bar's ground.
 // A control a panel covers is left to it.
-func paintTabControls(c Canvas, controls []widget.TabControl, cols int) {
+func paintTabControls(c Canvas, controls []core.TabControl, cols int) {
 	cs := c.CellSize()
 	for _, ctl := range controls {
 		if ctl.X >= cols {
@@ -671,13 +674,13 @@ func paintTabControls(c Canvas, controls []widget.TabControl, cols int) {
 
 // barCells are the cells the bar's colour is read from: its last, then the others in no tab's
 // span, from the right. The last is the bar's own unless the tabs overflow it.
-func barCells(spans []widget.TabSpan, cols int) []int {
+func barCells(spans []core.TabSpan, cols int) []int {
 	if cols <= 0 {
 		return nil
 	}
 	xs := []int{cols - 1}
 	for x := cols - 2; x >= 0; x-- {
-		if !slices.ContainsFunc(spans, func(s widget.TabSpan) bool { return x >= s.X && x < s.X+s.W }) {
+		if !slices.ContainsFunc(spans, func(s core.TabSpan) bool { return x >= s.X && x < s.X+s.W }) {
 			xs = append(xs, x)
 		}
 	}
@@ -711,12 +714,12 @@ func paintScrollbar(comp tui.Component) (View, tui.NativeScope, bool) {
 
 // paintScrollView draws a ScrollView's thumb as a list's: in the column it reserves for it, which
 // its child, laid out a column narrower, never covers.
-func paintScrollView(v *widget.ScrollView) (View, tui.NativeScope, bool) { return paintScrollbar(v) }
+func paintScrollView(v *core.ScrollView) (View, tui.NativeScope, bool) { return paintScrollbar(v) }
 
 // paintDialog draws a soft shadow around the dialog's card. The card and the scrim are tui's
 // cells, over and under it.
 func paintDialog(comp tui.Component) (View, tui.NativeScope, bool) {
-	m, ok := comp.(*widget.Modal)
+	m, ok := comp.(*core.Modal)
 	if !ok {
 		return nil, 0, false
 	}
@@ -730,7 +733,7 @@ func paintDialog(comp tui.Component) (View, tui.NativeScope, bool) {
 // the page, and a shadow on its inner side alone would make it look lifted off the edge it is
 // attached to. The shadow is what tells a floating panel from a docked one.
 func paintWindow(comp tui.Component) (View, tui.NativeScope, bool) {
-	f, ok := comp.(*widget.Float)
+	f, ok := comp.(*core.Float)
 	if !ok || !f.Floating() || fillsArea(f) {
 		return nil, 0, false
 	}
@@ -740,7 +743,7 @@ func paintWindow(comp tui.Component) (View, tui.NativeScope, bool) {
 // fillsArea reports whether f's content covers its whole area (a panel maximised to Center at
 // 100%): no shadow is seen there, and declining keeps the full-window native view out of the frame.
 // The painter is asked every frame, so a panel taken back from maximised gets its shadow again.
-func fillsArea(f *widget.Float) bool {
+func fillsArea(f *core.Float) bool {
 	cr, a := f.ContentRect(), f.Area()
 	return a.W > 0 && a.H > 0 && cr.X <= 0 && cr.Y <= 0 && cr.X+cr.W >= a.W && cr.Y+cr.H >= a.H
 }
@@ -779,7 +782,7 @@ const scrimDim = 0.45
 
 // paintScrim dims what is beneath a dialog, which stays visible through it: drawn natively, the
 // scrim writes no cells of its own.
-func paintScrim(*widget.Scrim) (View, tui.NativeScope, bool) {
+func paintScrim(*core.Scrim) (View, tui.NativeScope, bool) {
 	return ViewFunc(func(c Canvas) {
 		c.FillRect(Rect{W: c.Size().W, H: c.Size().H}, Solid(alpha(color.NRGBA{A: 0xff}, scrimDim)))
 	}), tui.ScopeChrome, true

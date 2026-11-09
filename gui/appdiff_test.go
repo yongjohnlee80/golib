@@ -9,7 +9,7 @@ import (
 	"time"
 
 	"github.com/yongjohnlee80/golib/tui"
-	"github.com/yongjohnlee80/golib/tui/widget"
+	"github.com/yongjohnlee80/golib/tui/widget/core"
 )
 
 // recorder is a tui.TestBackend that keeps every diff the App flushed, so the gui grid can be
@@ -78,7 +78,7 @@ func replay(t *testing.T, b *Backend, r *recorder, diffs [][]tui.CellUpdate) {
 // The App's real diffs, with Korean and emoji (width-2 cells) at the start, middle and right edge,
 // through a first frame, edits that swap wide and narrow cells, and two resizes.
 func TestGridFollowsTheAppsWideCells(t *testing.T) {
-	text := widget.NewText("한글 ab 😀 cd 가")
+	text := core.NewText("한글 ab 😀 cd 가")
 	rec := &recorder{TestBackend: tui.NewTestBackend(12, 3)}
 	app := tui.NewApp(text, tui.WithBackend(rec))
 	ctx, cancel := context.WithCancel(context.Background())

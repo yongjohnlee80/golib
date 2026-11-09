@@ -9,7 +9,8 @@ import (
 	guiwidget "github.com/yongjohnlee80/golib/gui/widget"
 	"github.com/yongjohnlee80/golib/tui"
 	"github.com/yongjohnlee80/golib/tui/pty"
-	tuiwidget "github.com/yongjohnlee80/golib/tui/widget"
+	"github.com/yongjohnlee80/golib/tui/widget/core"
+	"github.com/yongjohnlee80/golib/tui/widget/terminal"
 )
 
 // quietProc is a program that prints nothing and runs until closed.
@@ -63,12 +64,12 @@ func (h *shownHolder) show(on bool) {
 }
 
 // terminalTabs is a TerminalTabs with the native style's terminal views and one tab running.
-func terminalTabs(t *testing.T, p *pipeHost, tabs *tuiwidget.TerminalTabs) {
+func terminalTabs(t *testing.T, p *pipeHost, tabs *terminal.TerminalTabs) {
 	t.Helper()
 	views := guiwidget.NewTerminalViews(1)
 	p.update(t, func() {
 		tabs.SetTerminalViews(views.Make)
-		id, err := tabs.Add("a", tuiwidget.WithStarter(func(pty.Cmd) (tuiwidget.TerminalProcess, error) { return newQuietProc(), nil }))
+		id, err := tabs.Add("a", terminal.WithStarter(func(pty.Cmd) (terminal.TerminalProcess, error) { return newQuietProc(), nil }))
 		if err == nil {
 			err = tabs.Start(id)
 		}
@@ -93,7 +94,7 @@ func texted(t *testing.T, p *pipeHost, i int) []gui.CursorCells {
 // A terminal view is an I-beam over its body, through the App and the Backend as a window runs
 // them; its tab strip's row keeps the arrow. Hidden (its node unmounted), it leaves no I-beam behind.
 func TestATerminalViewIsAnIBeamOverItsBodyAndNoneOnceHidden(t *testing.T) {
-	tabs := tuiwidget.NewTerminalTabs()
+	tabs := terminal.NewTerminalTabs()
 	h := &shownHolder{child: tabs, on: true}
 	p := startPipe(t, h, 40, 10)
 	terminalTabs(t, p, tabs)
@@ -120,9 +121,9 @@ func TestATerminalViewIsAnIBeamOverItsBodyAndNoneOnceHidden(t *testing.T) {
 // A terminal view in a Float concealed, as a window minimized is, leaves no I-beam over the page
 // beneath it.
 func TestAConcealedTerminalViewLeavesNoIBeam(t *testing.T) {
-	tabs := tuiwidget.NewTerminalTabs()
-	float := tuiwidget.NewFloat(tabs, tuiwidget.WithAnchor(tuiwidget.AtRect(tui.Rect{X: 20, Y: 0, W: 20, H: 10})))
-	host := tuiwidget.NewOverlayHost(tuiwidget.NewText("page"))
+	tabs := terminal.NewTerminalTabs()
+	float := core.NewFloat(tabs, core.WithAnchor(core.AtRect(tui.Rect{X: 20, Y: 0, W: 20, H: 10})))
+	host := core.NewOverlayHost(core.NewText("page"))
 	host.Attach(float)
 	p := startPipe(t, host, 40, 10)
 	p.update(t, func() { float.Show() })
