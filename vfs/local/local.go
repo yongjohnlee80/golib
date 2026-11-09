@@ -159,7 +159,7 @@ func (f *FS) ReadDir(ctx context.Context, name string) ([]vfs.FileInfo, error) {
 		if vfs.IsTemp(e.Name()) {
 			continue
 		}
-		fi, err := e.Info()
+		fi, err := f.entryInfo(vfs.Join(name, e.Name()), e)
 		if err != nil {
 			if os.IsNotExist(err) {
 				continue // removed between the listing and the stat
