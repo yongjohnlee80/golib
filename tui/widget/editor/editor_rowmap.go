@@ -1,0 +1,302 @@
+package editor
+
+import (
+	txt "github.com/yongjohnlee80/golib/tui/widget/internal/text"
+)
+
+// THE EDITOR'S ROW MAP — the one owner of every question about how the Editor's lines sit on the
+// screen's rows: how many rows a line takes, where a (line, column) is drawn, which column a cell
+// holds, which lines a window shows, and how far it scrolls. Paint, the gutter, a click, the
+// caret, revealing it, scrolling and gj/gk all ask it, and none of them walks the wrap itself.
+//
+// It draws the Raw view: each line its wrapped rows (WrapSoft), or one row scrolled sideways by
+// the window's left (WrapNone), by the soft-wrap geometry Editor and TextArea share (internal/text/buffer.go).
+// A Rendered view the Editor draws itself lays its blocks out here too, so every one of those
+// questions keeps one answer.
+
+// rowMap is the Editor's lines in a view: the lines, and the view's size, wrap and measure.
+type rowMap struct {
+	lines []string
+	v     txt.WrapView
+	r     *renderedLayout // the Editor's own Rendered view, laid out; nil for the Raw view
+	in    int             // the Rendered view's rows of the top line above the view (cellLayout.topIn)
+	pan   map[int]int     // the Rendered view's wide blocks' pans (cellLayout.pan)
+}
+
+// rowMap is the map over the Editor's lines in its view, measuring as the Editor does.
+func (e *Editor) rowMap() rowMap {
+	m := rowMap{lines: e.core.buf.Lines, v: e.view()}
+	if b := e.core.Buffer(); e.cells.panBuf != b { // a pan is its buffer's blocks': another buffer starts with none
+		e.cells.pan, e.cells.panBuf = nil, b
+	}
+	if e.rendered() {
+		w := max(m.v.W, 1)
+		r := e.renderedRows(w)
+		if m.v.H > 0 && len(r.rows) > m.v.H && w > 1 {
+			r = e.renderedRows(w - 1) // the scroll indicator takes the last column
+		}
+		m.r, m.in, m.pan = r, e.cells.topIn, e.cells.pan
+	}
+	return m
+}
+
+// content is the cells block bi's rows are drawn in, from x0, w wide: the room, or for a block wider
+// than the room (a table that can't narrow) the room less its two edge columns, which hold its marks
+// when the room has a cell between them; a room of one or two cells is all content, with no marks.
+func (m rowMap) content(bi int) (x0, w int) {
+	room := max(m.width(), 1)
+	if m.wide(bi) && room > 2 {
+		return 1, room - 2
+	}
+	return 0, room
+}
+
+// wide reports whether block bi is wider than the room: it pans.
+func (m rowMap) wide(bi int) bool { return bi < len(m.r.blockW) && m.r.blockW[bi] > m.width() }
+
+// maxPan is how far block bi pans, in cells: 0 for a block that fits.
+func (m rowMap) maxPan(bi int) int {
+	if !m.wide(bi) {
+		return 0
+	}
+	_, w := m.content(bi)
+	return max(m.r.blockW[bi]-w, 0)
+}
+
+// onView is cell x of row ri as the view has it: its block's content start, less its pan.
+func (m rowMap) onView(ri, x int) int {
+	if ri < 0 || ri >= len(m.r.rowBlock) {
+		return x
+	}
+	bi := m.r.rowBlock[ri]
+	x0, _ := m.content(bi)
+	return x0 + x - m.panOf(bi)
+}
+
+// ofView is the cell of row ri the view shows at x: onView's inverse.
+func (m rowMap) ofView(ri, x int) int {
+	if ri < 0 || ri >= len(m.r.rowBlock) {
+		return x
+	}
+	bi := m.r.rowBlock[ri]
+	x0, _ := m.content(bi)
+	return x - x0 + m.panOf(bi)
+}
+
+// panOf is block bi's pan, within what it has to show.
+func (m rowMap) panOf(bi int) int {
+	return min(max(m.pan[m.r.blocks[bi].From], 0), m.maxPan(bi))
+}
+
+// measuring is m, measuring with measure: a painter measures with its surface.
+func (m rowMap) measuring(measure func(string) int) rowMap {
+	m.v.Measure = measure
+	return m
+}
+
+// settled is m with its wrap width worked out once, for a walk over many lines.
+func (m rowMap) settled() rowMap {
+	m.v = m.v.Settled(m.lines)
+	return m
+}
+
+// width is the width text wraps to: the view less its scroll indicator's column, when one shows.
+func (m rowMap) width() int {
+	if m.r != nil {
+		return m.r.key.width
+	}
+	return txt.WrapUsableWidth(m.lines, m.v)
+}
+
+// scrollable reports whether the lines are taller than the view: the scroll indicator shows.
+func (m rowMap) scrollable() bool {
+	if m.r != nil {
+		return m.v.H > 0 && len(m.r.rows) > m.v.H
+	}
+	return txt.WrapScrollable(m.lines, m.v)
+}
+
+// maxTop is the scroll range: the greatest first line that still shows the last line's end.
+func (m rowMap) maxTop() int {
+	if m.r != nil { // the first line whose first row leaves the last row on the view's last
+		bottom := len(m.r.rows) - m.v.H
+		for ln := range m.lines {
+			if m.r.topRow(ln) >= bottom {
+				return ln
+			}
+		}
+		return 0
+	}
+	return txt.WrapMaxTop(m.lines, m.v)
+}
+
+// rowCount is how many rows line ln takes: 1 unwrapped.
+func (m rowMap) rowCount(ln int) int {
+	if m.r != nil {
+		return max(len(m.r.lineRows[ln]), 1)
+	}
+	return txt.WrapRowsOfLine(m.lines, ln, m.v)
+}
+
+// ranges are line ln's rows, each its clusters [from, to) of cs (ln's clusters): one row of them
+// all unwrapped.
+func (m rowMap) ranges(cs []string) [][2]int {
+	if !m.v.Wrap {
+		return [][2]int{{0, len(cs)}}
+	}
+	return txt.WrapRanges(cs, m.v.UsableWidth(m.lines), m.v.Measure)
+}
+
+// wrapAt is a line's rows (cs its clusters) wrapped to w cells by m's measure: a painter's, at the
+// width it paints.
+func (m rowMap) wrapAt(cs []string, w int) [][2]int { return txt.WrapRanges(cs, w, m.v.Measure) }
+
+// rowOf is (ln, col)'s row within its line and its cell across that row.
+func (m rowMap) rowOf(ln, col int) (row, x int) {
+	if m.r != nil {
+		ri, x := m.r.caret(ln, col)
+		x = m.onView(ri, x) // the x the view shows it at: gj and gk keep it, across blocks panned apart
+		for k, r := range m.r.lineRows[ln] {
+			if r == ri {
+				return k, x
+			}
+		}
+		return 0, x
+	}
+	if !m.v.Wrap {
+		return 0, txt.CellsBefore(txt.Clusters(m.lines[ln]), col, m.v.Measure)
+	}
+	return txt.WrapPosOf(m.lines, ln, col, m.v)
+}
+
+// colAt is the column of line ln under cell x on its row `row` (clamped to the line's rows).
+func (m rowMap) colAt(ln, row, x int) int {
+	if m.r != nil {
+		rs := m.r.lineRows[ln]
+		if len(rs) == 0 {
+			return 0
+		}
+		ri := rs[max(0, min(row, len(rs)-1))]
+		hl, col := m.r.hit(ri, max(m.ofView(ri, x), 0))
+		switch {
+		case hl == ln:
+			return col
+		case hl > ln: // the cell under x is a later line's: ln's end
+			return max(len(txt.Clusters(m.lines[ln]))-1, 0)
+		}
+		return 0
+	}
+	cs := txt.Clusters(m.lines[ln])
+	rows := m.ranges(cs)
+	return txt.ColInRow(cs, rows, max(0, min(row, len(rows)-1)), x, m.v.Measure)
+}
+
+// visible is the lines from top to the last whose first row is in a view h rows tall: top always
+// starts at the view's first row, so it is never partly off.
+func (m rowMap) visible(top, h int) (first, last int) {
+	if m.r != nil {
+		first = max(0, min(top, len(m.lines)-1))
+		end := m.r.topRow(first) + m.in + h
+		last = first
+		for ln := first; ln < len(m.lines); ln++ {
+			if rs := m.r.lineRows[ln]; len(rs) > 0 {
+				if rs[0] >= end {
+					break
+				}
+				last = ln
+			}
+		}
+		return first, last
+	}
+	m = m.settled()
+	first = max(0, min(top, len(m.lines)-1))
+	last, rows := first, 0
+	for i := first; i < len(m.lines) && rows < h; i++ {
+		last = i
+		rows += txt.WrapRowsOfLine(m.lines, i, m.v)
+	}
+	return first, last
+}
+
+// txt.LowestTop is the first line that keeps line ln in a view h rows tall: top when it already does.
+func (m rowMap) lowestTop(top, ln, h int) int {
+	if m.r != nil {
+		if top >= ln {
+			return top
+		}
+		last := m.r.firstRow(ln)
+		if rs := m.r.lineRows[ln]; len(rs) > 0 {
+			last = rs[len(rs)-1]
+		}
+		t := ln
+		for t > top && last-m.r.topRow(t-1) < h {
+			t--
+		}
+		return t
+	}
+	return txt.LowestTop(m.lines, top, ln, h, m.v)
+}
+
+// reveal is the window, from line top and cell left, moved just enough to show line ln at cell cx.
+func (m rowMap) reveal(top, left, ln, cx int) (int, int) {
+	if m.r != nil {
+		if m.v.H <= 0 {
+			return top, left
+		}
+		top = m.lowestTop(min(top, ln), ln, m.v.H)
+		return max(0, min(top, len(m.lines)-1)), 0
+	}
+	return txt.RevealCaret(m.lines, m.v, top, left, ln, cx)
+}
+
+// caret is where (ln, col), at cell cx of its line, shows in the window from line top and cell left:
+// its cell in the text's area, and false when the window doesn't show it.
+func (m rowMap) caret(top, left, ln, col, cx int) (x, y int, ok bool) {
+	if m.r != nil {
+		ri, x := m.r.caret(ln, col)
+		y = ri - (m.r.topRow(top) + m.in)
+		if y < 0 || (m.v.H > 0 && y >= m.v.H) {
+			return 0, 0, false
+		}
+		if ri < len(m.r.rowBlock) {
+			bi := m.r.rowBlock[ri]
+			x0, w := m.content(bi)
+			if x = m.onView(ri, x); m.maxPan(bi) > 0 && (x < x0 || x >= x0+w) {
+				return 0, 0, false // panned out of the room
+			}
+		}
+		return x, y, true
+	}
+	return txt.CaretAt(m.lines, m.v, top, left, ln, col, cx)
+}
+
+// hit is the source under cell (x, y) of the window from line top and cell left: the exact inverse
+// of caret. Past a line's end it lands on the line's last column; below the last line drawn, on the
+// last line. A wide cluster is found by the cell it starts at (colAt walks measured widths), and a
+// wrapped row's blank tail stays on its own row.
+func (m rowMap) hit(top, left, x, y int, colAt func(cs []string, from, end, cells int) int, lastCol func(ln int) int) (ln, col int) {
+	lastLn := len(m.lines) - 1
+	if m.r != nil {
+		ri := m.r.topRow(top) + m.in + max(y, 0)
+		x = m.ofView(min(ri, len(m.r.rows)-1), x) // a wide block's cell under x: its pan counted
+		return m.r.hit(ri, max(x, 0))
+	}
+	if !m.v.Wrap {
+		ln = min(top+max(y, 0), lastLn)
+		cs := txt.Clusters(m.lines[ln])
+		return ln, colAt(cs, 0, len(cs), left+max(x, 0))
+	}
+	remaining := max(y, 0)
+	m = m.settled()
+	for i := top; i <= lastLn; i++ {
+		rows := txt.WrapRowsOfLine(m.lines, i, m.v)
+		if remaining < rows || i == lastLn {
+			cs := txt.Clusters(m.lines[i])
+			ranges := txt.WrapRanges(cs, m.v.Usable, m.v.Measure)
+			r := ranges[min(remaining, len(ranges)-1)]
+			return i, colAt(cs, r[0], r[1], max(x, 0))
+		}
+		remaining -= rows
+	}
+	return lastLn, lastCol(lastLn)
+}

@@ -133,7 +133,7 @@ func TestTheCellLayoutDrawsAMindmapAndSaysWhatItDoesnt(t *testing.T) {
 // can't pass by its fixtures alone.
 func TestTheCellLayoutDrawsAFlowchartThatFitsItsRoom(t *testing.T) {
 	const room = 30
-	runes := measureFunc(func(s string) int { return len([]rune(s)) })
+	runes := runeWidths{}
 	size := func(src string) tui.Size {
 		t.Helper()
 		d, err := pm.Parse(src)
@@ -146,13 +146,13 @@ func TestTheCellLayoutDrawsAFlowchartThatFitsItsRoom(t *testing.T) {
 		}
 		return g.Size
 	}
-	laid := func(src string) (*tuimermaid.Grid, string) {
+	laid := func(src string) (CellPicture, string) {
 		t.Helper()
 		c := layCells(t, `<pre class="mermaid">`+src+`</pre>`, room)
-		var g *tuimermaid.Grid
+		var g CellPicture // the page's only picture: the flowchart
 		for _, r := range c.rows {
-			if p, ok := r.grid.(*mermaidPicture); ok {
-				g = p.g
+			if r.grid != nil {
+				g = r.grid
 			}
 		}
 		return g, strings.Join(strings.Fields(strings.Join(c.rowTexts(), " ")), " ")
@@ -163,7 +163,7 @@ func TestTheCellLayoutDrawsAFlowchartThatFitsItsRoom(t *testing.T) {
 	if g, text := laid(small); g == nil || strings.Contains(text, notice) {
 		t.Fatalf("a flowchart that fits isn't drawn: %s", text)
 	} else {
-		s := newGridSurface(room, g.Size.H)
+		s := newGridSurface(room, g.Size().H)
 		c := layCells(t, `<pre class="mermaid">`+small+`</pre>`, room)
 		c.PaintCells(s, 0, room, DocPos{}, DocPos{})
 		if got := s.text(); !strings.Contains(got, "│ Start │") || !strings.Contains(got, "▼") {
@@ -179,7 +179,7 @@ func TestTheCellLayoutDrawsAFlowchartThatFitsItsRoom(t *testing.T) {
 	if down.W > room {
 		t.Fatalf("precondition: the chain laid TB is %d cells wide, past the room's %d", down.W, room)
 	}
-	if g, text := laid(across); g == nil || g.Size != down {
+	if g, text := laid(across); g == nil || g.Size() != down {
 		t.Fatalf("the LR chain too wide for the room isn't drawn as it is laid TB (%+v): %+v, %s", down, g, text)
 	}
 
@@ -196,7 +196,7 @@ func TestTheCellLayoutDrawsAFlowchartThatFitsItsRoom(t *testing.T) {
 		if want.W <= room {
 			t.Fatalf("precondition: %s is laid %d cells wide at its narrowest, not past the room's %d", name, want.W, room)
 		}
-		if g, text := laid(c.src); g == nil || strings.Contains(text, notice) || g.Size != want {
+		if g, text := laid(c.src); g == nil || strings.Contains(text, notice) || g.Size() != want {
 			t.Errorf("%s, too wide for the room: drawn %+v; want it drawn at its narrowest, %+v, to pan, no notice: %s", name, g, want, text)
 		}
 	}
