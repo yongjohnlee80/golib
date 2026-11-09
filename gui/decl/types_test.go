@@ -4,6 +4,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/yongjohnlee80/golib/gui"
 	"github.com/yongjohnlee80/golib/tui"
 	tuidecl "github.com/yongjohnlee80/golib/tui/decl"
 	"github.com/yongjohnlee80/golib/tui/decl/decltest"
@@ -54,5 +55,37 @@ func TestAShapesBadColourIsRefused(t *testing.T) {
 Shape { strokeColor: "not-a-colour" }`), tuidecl.AppOptions(tui.WithBackend(tui.NewTestBackend(10, 3))))...)
 	if err == nil || !strings.Contains(err.Error(), `strokeColor "not-a-colour" is not a colour`) {
 		t.Fatalf("NewProgram = %v; want the bad strokeColor refused", err)
+	}
+}
+
+// strokeWidth: omitted, a stroked shape's outline is 1 wide; declared 0, it draws none.
+func TestAShapesStrokeWidthDefaultsToOneAndTakesZero(t *testing.T) {
+	for _, c := range []struct {
+		src  string
+		want bool // an outline is painted
+	}{
+		{`Shape { id: s; strokeColor: "red" }`, true},
+		{`Shape { id: s; strokeColor: "red"; strokeWidth: 0 }`, false},
+	} {
+		p, err := tuidecl.NewProgram(append(guiProgram("import tui 1.0\n"+c.src), tuidecl.AppOptions(tui.WithBackend(tui.NewTestBackend(10, 3))))...)
+		if err != nil {
+			t.Fatal(err)
+		}
+		w, ok := p.Find("s")
+		if !ok {
+			t.Fatal("no shape s")
+		}
+		rc := gui.NewRecordingCanvas(gui.Size{W: 80, H: 48}, gui.Size{W: 8, H: 16})
+		w.(gui.View).Paint(rc)
+		var width float32
+		stroked := false
+		for _, call := range rc.Calls {
+			if call.Op == "StrokeRRect" {
+				stroked, width = true, call.Width
+			}
+		}
+		if stroked != c.want || (stroked && width != 1) {
+			t.Errorf("%s: stroked %v (width %v); want stroked %v, 1 wide", c.src, stroked, width, c.want)
+		}
 	}
 }

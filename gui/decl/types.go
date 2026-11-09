@@ -3,6 +3,7 @@ package decl
 import (
 	"fmt"
 	"image/color"
+	"slices"
 
 	"github.com/yongjohnlee80/golib/gui/internal/csscolor"
 	"github.com/yongjohnlee80/golib/gui/widget"
@@ -88,7 +89,13 @@ func shapeType() tuidecl.Type {
 				if err != nil {
 					return nil, nil, err
 				}
-				opts = append(opts, widget.WithStroke(c, float32(max(strokeWidth, 1))))
+				// an omitted strokeWidth is 1, as Qt's is; a declared one is Shape's to take,
+				// 0 drawing no outline
+				w := float32(1)
+				if slices.Contains(used, "strokeWidth") {
+					w = float32(strokeWidth)
+				}
+				opts = append(opts, widget.WithStroke(c, w))
 			}
 			k := widget.ShapeRect
 			if kind == "Ellipse" {
