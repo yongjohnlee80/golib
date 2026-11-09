@@ -10,9 +10,9 @@ import (
 	"github.com/yongjohnlee80/golib/tui/widget/htmlview"
 )
 
-// TestTheFacadesVarsAreHtmlviews holds each var tui/widget forwards from htmlview equal to
+// TestTheFacadeForwardsHtmlviewVars holds each var tui/widget forwards from htmlview equal to
 // htmlview's, so a later change there cannot leave a stale copy behind.
-func TestTheFacadesVarsAreHtmlviews(t *testing.T) {
+func TestTheFacadeForwardsHtmlviewVars(t *testing.T) {
 	for name, v := range map[string][2]any{
 		"ErrImageRefused":            {widget.ErrImageRefused, htmlview.ErrImageRefused},
 		"HTMLViewUp":                 {widget.HTMLViewUp, htmlview.HTMLViewUp},

@@ -10,9 +10,9 @@ import (
 	"github.com/yongjohnlee80/golib/tui/widget/files"
 )
 
-// TestTheFacadesVarsAreFiless holds each var tui/widget forwards from files equal to
+// TestTheFacadeForwardsFilesVars holds each var tui/widget forwards from files equal to
 // files's, so a later change there cannot leave a stale copy behind.
-func TestTheFacadesVarsAreFiless(t *testing.T) {
+func TestTheFacadeForwardsFilesVars(t *testing.T) {
 	for name, v := range map[string][2]any{
 		"FileViewHome":       {widget.FileViewHome, files.FileViewHome},
 		"FileViewFilter":     {widget.FileViewFilter, files.FileViewFilter},

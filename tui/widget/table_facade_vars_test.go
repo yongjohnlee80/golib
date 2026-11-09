@@ -10,9 +10,9 @@ import (
 	"github.com/yongjohnlee80/golib/tui/widget/table"
 )
 
-// TestTheFacadesVarsAreTables holds each var tui/widget forwards from table equal to
+// TestTheFacadeForwardsTableVars holds each var tui/widget forwards from table equal to
 // table's, so a later change there cannot leave a stale copy behind.
-func TestTheFacadesVarsAreTables(t *testing.T) {
+func TestTheFacadeForwardsTableVars(t *testing.T) {
 	for name, v := range map[string][2]any{
 		"TableUp":            {widget.TableUp, table.TableUp},
 		"TableDown":          {widget.TableDown, table.TableDown},
