@@ -68,15 +68,40 @@ func TestTallerThanAgreesWithTheWholeLayout(t *testing.T) {
 				if h < 1 {
 					continue
 				}
-				e.laid = [2]*renderedLayout{} // asked fresh, blocks laid one by one
+				e.laid, e.tall = [2]*renderedLayout{}, tallAnswer{} // asked fresh, blocks laid one by one
 				if got, want := e.tallerThan(w, h), rows > h; got != want {
 					t.Errorf("%d paragraphs at width %d, %d rows: tallerThan(%d) = %v, want %v", n, w, rows, h, got, want)
 				}
+				e.tall = tallAnswer{}
 				e.renderedRows(w) // and from the kept layout
 				if got, want := e.tallerThan(w, h), rows > h; got != want {
 					t.Errorf("%d paragraphs at width %d, kept: tallerThan(%d) = %v, want %v", n, w, h, got, want)
 				}
 			}
 		}
+	}
+}
+
+// A Rendered view that scrolls keeps its layout one narrower than the view, and its answer to
+// whether the text is taller than the view: asked again (each paint, a scroll, the caret revealed),
+// no block is laid again, at either width, until something the layout depends on changes.
+func TestAScrollingViewLaysNoBlockAgainUntilItsTextChanges(t *testing.T) {
+	e, c := cacheEditor(t, strings.Repeat("a paragraph long enough to wrap at forty columns, and then some more\n\n", 60))
+	e.cells.w, e.cells.h, e.cells.wrap = cacheWidth, 10, core.WrapSoft
+	if m := e.rowMap(); m.r == nil || m.r.key.width != cacheWidth-1 {
+		t.Fatalf("the long text's layout is not the scrolling one, one narrower than the view")
+	}
+	c.laid = nil
+	for range 3 {
+		e.rowMap()
+		e.ensureVisible()
+	}
+	if len(c.laid) != 0 {
+		t.Errorf("asked again with nothing changed, %d blocks were laid again: %v", len(c.laid), c.laid)
+	}
+	e.core.SetValue("a short text\n") // a change: the answer and the layout are worked out again
+	c.laid = nil
+	if m := e.rowMap(); m.r == nil || m.r.key.width != cacheWidth || len(c.laid) == 0 {
+		t.Errorf("after the text changed to one that fits: width %v, blocks laid %d; want the view's width, laid afresh", m.r != nil && m.r.key.width == cacheWidth, len(c.laid))
 	}
 }
