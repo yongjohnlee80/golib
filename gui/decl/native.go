@@ -31,7 +31,9 @@ import (
 	"github.com/yongjohnlee80/golib/gui/widget"
 	"github.com/yongjohnlee80/golib/tui"
 	tuidecl "github.com/yongjohnlee80/golib/tui/decl"
-	tuiwidget "github.com/yongjohnlee80/golib/tui/widget"
+	"github.com/yongjohnlee80/golib/tui/widget/core"
+	"github.com/yongjohnlee80/golib/tui/widget/editor"
+	"github.com/yongjohnlee80/golib/tui/widget/htmlview"
 	"maps"
 )
 
@@ -86,7 +88,7 @@ func WithDocumentViewFor(kind string, f func(tuidecl.DocumentSpec) widget.Docume
 // in pixels, which a host reaches through the Editor's DocumentView. Its pre class="mermaid" draw
 // through the style's one chain.
 func (n *native) htmlDocument(tuidecl.DocumentSpec) widget.DocumentView {
-	v := tuiwidget.NewHTMLView(widget.WithHTMLDiagrams(n.diagramChain()))
+	v := htmlview.NewHTMLView(widget.WithHTMLDiagrams(n.diagramChain()))
 	widget.BindHTML(v)
 	return v
 }
@@ -112,7 +114,7 @@ func Native(opts ...NativeOption) tuidecl.Style {
 	build := hv.Build
 	hv.Build = func(b tuidecl.Build) (tui.Component, []string, error) {
 		c, consumed, err := build(b)
-		if v, ok := c.(*tuiwidget.HTMLView); ok && err == nil {
+		if v, ok := c.(*htmlview.HTMLView); ok && err == nil {
 			widget.BindHTML(v)                           // laid out in pixels and drawn natively, the same widget to the host
 			widget.WithHTMLDiagrams(n.diagramChain())(v) // its pre class="mermaid", through the style's one chain
 		}
@@ -176,11 +178,11 @@ func (n *native) buildEditor(b tuidecl.Build) (tui.Component, []string, error) {
 
 // wrapMode is the QML wrap property as a WrapMode: true wraps long lines at the editor's width,
 // false keeps them on one row and scrolls sideways (the default, as tui's Editor's).
-func wrapMode(wrap bool) tuiwidget.WrapMode {
+func wrapMode(wrap bool) core.WrapMode {
 	if wrap {
-		return tuiwidget.WrapSoft
+		return core.WrapSoft
 	}
-	return tuiwidget.WrapNone
+	return core.WrapNone
 }
 
 // editorSetters are the Editor's runtime properties on gui's Editor: tui's Editor's, behaviour and
@@ -194,12 +196,12 @@ func editorSetters() map[string]tuidecl.Setter {
 
 // gui's Editor has the view capabilities EditorViewSetters sets.
 var (
-	_ tuiwidget.ViewChooser                 = (*widget.Editor)(nil)
-	_ tuiwidget.LineNumberer                = (*widget.Editor)(nil)
-	_ tuiwidget.Ruler                       = (*widget.Editor)(nil)
-	_ tuiwidget.Wrapper                     = (*widget.Editor)(nil)
-	_ tuiwidget.CursorColorer               = (*widget.Editor)(nil)
-	_ tuiwidget.ContextMenuEnabler          = (*widget.Editor)(nil)
+	_ editor.ViewChooser                    = (*widget.Editor)(nil)
+	_ editor.LineNumberer                   = (*widget.Editor)(nil)
+	_ editor.Ruler                          = (*widget.Editor)(nil)
+	_ editor.Wrapper                        = (*widget.Editor)(nil)
+	_ editor.CursorColorer                  = (*widget.Editor)(nil)
+	_ editor.ContextMenuEnabler             = (*widget.Editor)(nil)
 	_ interface{ SetRenderedEnabled(bool) } = (*widget.Editor)(nil)
 )
 
