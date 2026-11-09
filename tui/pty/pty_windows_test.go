@@ -162,11 +162,23 @@ func TestKillEndsTheProgramAndOtherSignalsAreUnsupported(t *testing.T) {
 func TestCloseReturnsWhenClosingTheConsoleBlocks(t *testing.T) {
 	hangupGrace = 300 * time.Millisecond
 	defer func() { hangupGrace = 2 * time.Second }()
-	release := make(chan struct{})
-	defer close(release)
+	entered, release, finished := make(chan struct{}), make(chan struct{}), make(chan struct{})
 	orig := closePseudoConsole
-	closePseudoConsole = func(windows.Handle) { <-release } // never returns while Close runs
-	defer func() { closePseudoConsole = orig }()
+	// blocks until released, as an older Windows's close does until its output is read; then closes
+	// the real console, so the test leaks no HPCON
+	closePseudoConsole = func(h windows.Handle) {
+		close(entered)
+		<-release
+		orig(h)
+		close(finished)
+	}
+	t.Cleanup(func() {
+		// the stub was entered before the hook goes back, and it has finished before the test ends
+		<-entered
+		close(release)
+		<-finished
+		closePseudoConsole = orig
+	})
 	// a program that prints and waits, with no one reading its output
 	p, err := Start(Cmd{Path: "cmd.exe", Args: []string{"/c", "for /L %i in (1,1,2000) do @echo line %i & ping -n 60 127.0.0.1 >nul"}})
 	if err != nil {
