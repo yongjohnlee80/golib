@@ -6,7 +6,7 @@ import (
 	"github.com/yongjohnlee80/golib/gui"
 	"github.com/yongjohnlee80/golib/gui/widget"
 	tuidecl "github.com/yongjohnlee80/golib/tui/decl"
-	tuiwidget "github.com/yongjohnlee80/golib/tui/widget"
+	"github.com/yongjohnlee80/golib/tui/widget/htmlview"
 )
 
 // The built-in markdown factory: MarkdownSpec.Mermaid gives the renderer the style's one Diagrams
@@ -43,7 +43,7 @@ func TestMermaidDrawsThroughTheStylesOneChain(t *testing.T) {
 // chain, the editor's: one cache for both.
 func TestTheDocumentViewDrawsThroughTheStylesOneChain(t *testing.T) {
 	n := &native{renderers: map[string]func(tuidecl.RendererSpec) widget.Renderer{}}
-	v, ok := n.htmlDocument(nil).(*tuiwidget.HTMLView)
+	v, ok := n.htmlDocument(nil).(*htmlview.HTMLView)
 	if !ok {
 		t.Fatalf("the document view is a %T, want an HTMLView", n.htmlDocument(nil))
 	}
