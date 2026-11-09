@@ -1,8 +1,10 @@
-package widget
+package files
 
 import (
 	"fmt"
 	"strings"
+
+	"github.com/yongjohnlee80/golib/tui/widget/core"
 
 	"github.com/yongjohnlee80/golib/errs"
 	"github.com/yongjohnlee80/golib/tui"
@@ -409,7 +411,7 @@ type CollapseEvent struct {
 //		widget.WithStatus("Enter: open | h/l: collapse/expand"),
 //	)
 type Tree struct {
-	Base
+	core.Base
 	roots []*TreeNode
 	// presses pairs a double-click by node. Pointer identity, not the id
 	// string: a host may render the same id under two parents (autodb does, for
@@ -423,7 +425,7 @@ type Tree struct {
 	shown  txt.ViewMark // as List's: Layout reveals the cursor only when it or the height changed
 	w, h   int
 	indent int
-	styles ListStyles
+	styles core.ListStyles
 	genSeq uint64
 	// selected is the node the last SelectionChangedEvent named: the event
 	// fires when the node under the cursor changes, not when its row number
@@ -544,7 +546,7 @@ func WithRoots(roots ...*TreeNode) TreeOption {
 }
 
 // WithTreeStyles overrides the row styles (List slots).
-func WithTreeStyles(st ListStyles) TreeOption {
+func WithTreeStyles(st core.ListStyles) TreeOption {
 	return func(t *Tree) {
 		t.styles = st.Over(t.styles)
 	}
@@ -659,17 +661,19 @@ func (t *Tree) SetRoots(roots ...*TreeNode) {
 // current values (see List.SetStyles — focus-dependent host styling). A Tree
 // has no multi-selection, so it paints Row, CursorRow and CursorBlurred, and
 // SelectedRow and CursorSelected have no row to apply to.
-func (t *Tree) SetStyles(st ListStyles) {
+func (t *Tree) SetStyles(st core.ListStyles) {
 	t.styles = st.Over(t.styles)
 	t.MarkDirty()
 }
 
 // defaultTreeStyles are a Tree's looks before any option: the cursor row reversed.
-func defaultTreeStyles() ListStyles { return ListStyles{CursorRow: style.New().Reverse(true)} }
+func defaultTreeStyles() core.ListStyles {
+	return core.ListStyles{CursorRow: style.New().Reverse(true)}
+}
 
 // ResetStyles replaces the Tree's looks from its defaults, so a removed QML
 // palette role does not leave the previously resolved color on a live view.
-func (t *Tree) ResetStyles(st ListStyles) {
+func (t *Tree) ResetStyles(st core.ListStyles) {
 	t.styles = st.Over(defaultTreeStyles())
 	t.MarkDirty()
 }
@@ -1001,7 +1005,7 @@ func (t *Tree) noteSelection() {
 		return
 	}
 	t.selected = node
-	t.Publish(SelectionChangedEvent{Owner: t.NodeID(), Index: t.cursor, Label: node.label})
+	t.Publish(core.SelectionChangedEvent{Owner: t.NodeID(), Index: t.cursor, Label: node.label})
 	if t.on.cursor != nil {
 		t.on.cursor(node)
 	}
@@ -1009,7 +1013,7 @@ func (t *Tree) noteSelection() {
 
 // activate reports the row at index idx activated: on the bus, then to the owner.
 func (t *Tree) activate(idx int) {
-	t.Publish(ActivateEvent{Owner: t.NodeID(), Index: idx})
+	t.Publish(core.ActivateEvent{Owner: t.NodeID(), Index: idx})
 	if rows := t.flatten(); t.on.activate != nil && idx >= 0 && idx < len(rows) {
 		t.on.activate(rows[idx].node)
 	}
@@ -1278,5 +1282,5 @@ func (t *Tree) AccessibleRole() tui.AccessibleRole { return tui.RoleTree }
 var (
 	_ tui.RoleReporter = (*Tree)(nil)
 	_ tui.Scroller     = (*Tree)(nil)
-	_ RowStyler        = (*Tree)(nil)
+	_ core.RowStyler   = (*Tree)(nil)
 )

@@ -1,8 +1,9 @@
-package widget
+package files
 
 import (
 	"github.com/yongjohnlee80/golib/tui"
 	"github.com/yongjohnlee80/golib/tui/style"
+	"github.com/yongjohnlee80/golib/tui/widget/core"
 )
 
 // The FILE PANES: how every part of every file view is framed and dressed.
@@ -23,15 +24,15 @@ type FilePaneStyles struct {
 // PADDED: a column of room either side, so a name does not run into the frame.
 // The frame carries the focus — Box lights its border while the keyboard is
 // inside — so the pane in use is named by its own border.
-func newFilePane(child tui.Component, title string, st FilePaneStyles, styled bool) *Box {
-	b := NewBox(child, WithTitle(title))
+func newFilePane(child tui.Component, title string, st FilePaneStyles, styled bool) *core.Box {
+	b := core.NewBox(child, core.WithTitle(title))
 	stylePane(b, st, styled)
 	return b
 }
 
 // stylePane dresses a pane's frame: its interior on Surface, the border in
 // Border's colour, and in FocusedBorder's while the keyboard is inside.
-func stylePane(b *Box, st FilePaneStyles, styled bool) {
+func stylePane(b *core.Box, st FilePaneStyles, styled bool) {
 	base := style.New().Padding(0, 1)
 	focused := style.Style{}
 	if styled {

@@ -1,4 +1,4 @@
-package widget
+package files
 
 import (
 	"github.com/yongjohnlee80/golib/tui/keymap"

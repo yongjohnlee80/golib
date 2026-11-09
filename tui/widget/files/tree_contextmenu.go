@@ -1,7 +1,10 @@
-package widget
+package files
 
 import (
 	"slices"
+
+	"github.com/yongjohnlee80/golib/tui/widget/core"
+	"github.com/yongjohnlee80/golib/tui/widget/editor"
 
 	"github.com/yongjohnlee80/golib/tui"
 	"github.com/yongjohnlee80/golib/tui/widget/internal/kit"
@@ -53,14 +56,14 @@ func (t *Tree) menuPress(e tui.MouseEvent) bool {
 
 // requestMenu emits ContextMenuEvent for n at row i (nil and -1: none), at at, then tells the owner.
 func (t *Tree) requestMenu(n *TreeNode, i int, at tui.Point) {
-	t.Publish(ContextMenuEvent{Owner: t.NodeID(), Index: i, At: at})
+	t.Publish(core.ContextMenuEvent{Owner: t.NodeID(), Index: i, At: at})
 	if t.on.menu != nil {
 		t.on.menu(n, at)
 	}
 }
 
 var (
-	_ ContextMenuRequester = (*List[int])(nil)
-	_ ContextMenuRequester = (*Tree)(nil)
-	_ MenuOpener           = (*EditorMenu)(nil)
+	_ core.ContextMenuRequester = (*core.List[int])(nil)
+	_ core.ContextMenuRequester = (*Tree)(nil)
+	_ core.MenuOpener           = (*editor.EditorMenu)(nil)
 )
