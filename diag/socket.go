@@ -13,7 +13,6 @@ import (
 	"runtime/pprof"
 	"strconv"
 	"strings"
-	"syscall"
 	"time"
 )
 
@@ -29,7 +28,8 @@ type socketServer struct {
 	stop chan struct{} // closed by close: a CPU profile in progress ends
 }
 
-// serveSocket listens on path, 0600. Called under the directory's lock, so nothing else probes,
+// serveSocket listens on path, only the user's: 0600 on Unix, a DACL granting the user alone on
+// Windows. Called under the directory's lock, so nothing else probes,
 // removes or listens here meanwhile. What is already at path decides:
 //   - nothing: listen;
 //   - a socket that answers: refused, a process outside the lock serves it;
@@ -43,14 +43,18 @@ func serveSocket(path string) (*socketServer, error) {
 	if err := clearStale(path); err != nil {
 		return nil, err
 	}
-	// Bound inside a fresh 0700 directory, made 0600, and only then renamed into place: a socket
-	// bound at path directly is reachable, under a loose umask, until its chmod lands. A process-wide
-	// umask would race every other goroutine creating a file.
+	// Bound inside a fresh directory only the user can reach (0700; on Windows a protected DACL the
+	// socket inherits), made the user's alone (restrictSocket), and only then renamed into place: a
+	// socket bound at path directly is reachable, under a loose umask or an inherited ACL, until it
+	// is restricted. A process-wide umask would race every other goroutine creating a file.
 	tmp, err := os.MkdirTemp(filepath.Dir(path), ".s")
 	if err != nil {
 		return nil, fmt.Errorf("diag: %w", err)
 	}
 	defer os.Remove(tmp)
+	if err := restrictBindDir(tmp); err != nil { // the user's alone, before anything is bound in it
+		return nil, fmt.Errorf("diag: %w", err)
+	}
 	bound := filepath.Join(tmp, "s")
 	if len(bound) > maxSocketPath {
 		return nil, fmt.Errorf("diag: the socket path %s is %d bytes, over the %d a unix socket allows: choose a shorter directory", bound, len(bound), maxSocketPath)
@@ -60,7 +64,7 @@ func serveSocket(path string) (*socketServer, error) {
 		return nil, fmt.Errorf("diag: %w", err)
 	}
 	ln.(*net.UnixListener).SetUnlinkOnClose(false) // close removes it, under the lock
-	if err := os.Chmod(bound, 0o600); err != nil { // before Serve: only the user connects
+	if err := restrictSocket(bound); err != nil {  // before Serve: only the user connects
 		ln.Close()
 		os.Remove(bound)
 		return nil, fmt.Errorf("diag: %w", err)
@@ -93,7 +97,7 @@ func clearStale(path string) error {
 	case err == nil:
 		c.Close()
 		return fmt.Errorf("diag: %s is served by another process: choose another directory", path)
-	case errors.Is(err, syscall.ECONNREFUSED):
+	case connRefused(err):
 		if err := os.Remove(path); err != nil {
 			return fmt.Errorf("diag: removing the stale socket: %w", err)
 		}

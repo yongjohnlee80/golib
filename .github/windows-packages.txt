@@ -104,3 +104,4 @@
 ./tui/widget
 ./tui/examples/editor-qml
 ./tui
+./diag
