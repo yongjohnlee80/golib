@@ -84,7 +84,7 @@ func (s FileSource) local() bool {
 // a separator.
 func (s FileSource) absolute(typed string) bool {
 	if s.drives {
-		return driveOf(filepath.ToSlash(typed)) != "" || strings.HasPrefix(typed, "/") || strings.HasPrefix(typed, `\`)
+		return driveOf(strings.ReplaceAll(typed, `\`, "/")) != "" || strings.HasPrefix(typed, "/") || strings.HasPrefix(typed, `\`)
 	}
 	return (s.Root != "" && strings.HasPrefix(typed, s.Root)) || strings.HasPrefix(typed, "/")
 }
