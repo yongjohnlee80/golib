@@ -3,7 +3,7 @@ package widget_test
 import (
 	"testing"
 
-	"github.com/yongjohnlee80/golib/tui/widget"
+	"github.com/yongjohnlee80/golib/tui/widget/core"
 )
 
 // An action arrives as a value or as a pointer to one, and every widget handler takes both, as
@@ -14,7 +14,7 @@ func TestAPointerActionIsTheSameAction(t *testing.T) {
 	a0 := aCellsOn(t, h, s)
 	var handled bool
 	h.onLoop(func() {
-		handled = s.Context().DoAction(&widget.ResizeStepAction{DX: 2, Unit: widget.StepCells})
+		handled = s.Context().DoAction(&core.ResizeStepAction{DX: 2, Unit: core.StepCells})
 	})
 	h.barrier(sh)
 	if !handled {

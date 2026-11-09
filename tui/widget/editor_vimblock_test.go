@@ -4,7 +4,7 @@ import (
 	"testing"
 
 	"github.com/yongjohnlee80/golib/tui"
-	"github.com/yongjohnlee80/golib/tui/widget"
+	"github.com/yongjohnlee80/golib/tui/widget/editor"
 )
 
 // Visual block's operators: the lines between the anchor and the cursor, and the display cells
@@ -65,7 +65,7 @@ func TestVimVisualBlockInsert(t *testing.T) {
 func TestVimVisualBlockMode(t *testing.T) {
 	c, _ := coreWith(t, "abcd\nefgh")
 	vimSeq(c, "l<ctv>jl")
-	if c.Mode() != widget.ModeVisualBlock || c.Mode().String() != "V-BLOCK" {
+	if c.Mode() != editor.ModeVisualBlock || c.Mode().String() != "V-BLOCK" {
 		t.Fatalf("Ctrl-v: mode %v", c.Mode())
 	}
 	for _, p := range []struct {
@@ -83,19 +83,19 @@ func TestVimVisualBlockMode(t *testing.T) {
 		t.Errorf("SelectionRange = %d %d %d %d %v", r, col, er, ec, ok)
 	}
 	vimSeq(c, "v")
-	if c.Mode() != widget.ModeVisual {
+	if c.Mode() != editor.ModeVisual {
 		t.Fatalf("v from a block: mode %v", c.Mode())
 	}
 	vimSeq(c, "<ctv>V")
-	if c.Mode() != widget.ModeVisualLine {
+	if c.Mode() != editor.ModeVisualLine {
 		t.Fatalf("V from a block: mode %v", c.Mode())
 	}
 	vimSeq(c, "<ctv><ctv>")
-	if c.Mode() != widget.ModeNormal {
+	if c.Mode() != editor.ModeNormal {
 		t.Fatalf("Ctrl-v twice: mode %v", c.Mode())
 	}
 	vimSeq(c, "<ctv><esc>")
-	if c.Mode() != widget.ModeNormal {
+	if c.Mode() != editor.ModeNormal {
 		t.Fatalf("Esc from a block: mode %v", c.Mode())
 	}
 	vimSeq(c, "gg0l<ctv>jly")
@@ -109,14 +109,14 @@ func TestVimVisualBlockMode(t *testing.T) {
 
 // On a viewer a block selects and yanks; its edits bubble, the text unchanged.
 func TestVimVisualBlockOnAViewer(t *testing.T) {
-	c, _ := coreWith(t, "abc\ndef", widget.CoreReadOnly(true))
+	c, _ := coreWith(t, "abc\ndef", editor.CoreReadOnly(true))
 	vimSeq(c, "<ctv>j")
 	for _, k := range []rune{'d', 'c', 'I', 'A', 'r', '~', '>'} {
 		if c.HandleKey(key(k)) {
 			t.Errorf("a viewer consumed block %q", k)
 		}
 	}
-	if c.Value() != "abc\ndef" || c.Mode() != widget.ModeVisualBlock {
+	if c.Value() != "abc\ndef" || c.Mode() != editor.ModeVisualBlock {
 		t.Fatalf("a viewer's block: %q, mode %v", c.Value(), c.Mode())
 	}
 	if !c.HandleKey(tui.KeyEvent{Code: 'y', Text: "y"}) {
@@ -198,7 +198,7 @@ func TestVimBlockPut(t *testing.T) {
 // The registers' kinds, and a block's pieces and width, through the API.
 func TestVimBlockRegisterAPI(t *testing.T) {
 	c, _ := coreWith(t, "abc\ndef")
-	kind := func(name rune) widget.RegisterKind {
+	kind := func(name rune) editor.RegisterKind {
 		k, ok := c.RegisterKind(name)
 		if !ok {
 			t.Fatalf("RegisterKind(%q): not ok", name)
@@ -206,7 +206,7 @@ func TestVimBlockRegisterAPI(t *testing.T) {
 		return k
 	}
 	vimSeq(c, `"ayy"byw<ctv>jl"cy`)
-	if kind('a') != widget.RegisterLines || kind('b') != widget.RegisterChars || kind('c') != widget.RegisterBlock {
+	if kind('a') != editor.RegisterLines || kind('b') != editor.RegisterChars || kind('c') != editor.RegisterBlock {
 		t.Fatalf("kinds: a %v b %v c %v", kind('a'), kind('b'), kind('c'))
 	}
 	if pieces, width, ok := c.NamedBlock('c'); !ok || width != 2 || len(pieces) != 2 || pieces[0] != "ab" || pieces[1] != "de" {
@@ -265,7 +265,7 @@ func TestVimBlockPaste(t *testing.T) {
 	c, _ := coreWith(t, "abc\ndef")
 	vimSeq(c, "l<ctv>j")
 	c.HandlePaste("X")
-	if got := c.Value(); got != "aXc\ndf" || c.Mode() != widget.ModeNormal {
+	if got := c.Value(); got != "aXc\ndf" || c.Mode() != editor.ModeNormal {
 		t.Fatalf("a paste over a block: %q, mode %v", got, c.Mode())
 	}
 	if vimSeq(c, "u"); c.Value() != "abc\ndef" {

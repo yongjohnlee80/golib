@@ -9,12 +9,12 @@ import (
 	"testing"
 
 	"github.com/yongjohnlee80/golib/tui"
-	"github.com/yongjohnlee80/golib/tui/widget"
+	"github.com/yongjohnlee80/golib/tui/widget/core"
 )
 
-func mountedView(t *testing.T, w, h int, opts ...widget.BufferViewOption) (*harness, *widget.BufferView, *shell) {
+func mountedView(t *testing.T, w, h int, opts ...core.BufferViewOption) (*harness, *core.BufferView, *shell) {
 	t.Helper()
-	v := widget.NewBufferView(opts...)
+	v := core.NewBufferView(opts...)
 	sh := newShell(v)
 	hh := startApp(t, sh, w, h)
 	hh.inject(tab())
@@ -61,7 +61,7 @@ func TestBufferViewANSIStyledCells(t *testing.T) {
 // TestBufferViewPassthroughOff asserts that WithANSIPassthrough(false)
 // strips escapes.
 func TestBufferViewPassthroughOff(t *testing.T) {
-	h, v, _ := mountedView(t, 30, 5, widget.WithANSIPassthrough(false))
+	h, v, _ := mountedView(t, 30, 5, core.WithANSIPassthrough(false))
 	var w io.Writer
 	h.onLoop(func() { w = v.Writer() })
 	write(t, w, "\x1b[31mred\x1b[0m plain\x1b]0;title\x07!\n")
@@ -75,7 +75,7 @@ func TestBufferViewPassthroughOff(t *testing.T) {
 // scroll-up disengages (event); End re-engages (event).
 func TestBufferViewFollowTail(t *testing.T) {
 	h, v, sh := mountedView(t, 20, 3)
-	follows := record[widget.FollowTailChangedEvent](h)
+	follows := record[core.FollowTailChangedEvent](h)
 	var w io.Writer
 	h.onLoop(func() { w = v.Writer() })
 
@@ -109,7 +109,7 @@ func TestBufferViewFollowTail(t *testing.T) {
 // TestBufferViewRing asserts the MaxLines ring drops the oldest
 // lines.
 func TestBufferViewRing(t *testing.T) {
-	h, v, _ := mountedView(t, 20, 10, widget.WithMaxLines(3))
+	h, v, _ := mountedView(t, 20, 10, core.WithMaxLines(3))
 	var w io.Writer
 	h.onLoop(func() { w = v.Writer() })
 	write(t, w, "a\nb\nc\nd\ne\n")

@@ -3,7 +3,7 @@ package widget_test
 import (
 	"testing"
 
-	"github.com/yongjohnlee80/golib/tui/widget"
+	"github.com/yongjohnlee80/golib/tui/widget/editor"
 )
 
 // m{a–z} sets a mark; ' goes to its line's first non-blank, ` to its place; ” and “ to where the
@@ -95,7 +95,7 @@ func TestVimMarksSetValueClears(t *testing.T) {
 
 // A viewer sets marks and jumps to them; d'a there is refused, and bubbles (#285).
 func TestVimMarksOnAViewer(t *testing.T) {
-	c, _ := coreWith(t, "a\nb\nc", widget.CoreReadOnly(true))
+	c, _ := coreWith(t, "a\nb\nc", editor.CoreReadOnly(true))
 	vimSeq(c, "majj'a")
 	if ln, _ := c.Line(); ln != 0 {
 		t.Fatalf("a viewer's 'a went to line %d", ln)

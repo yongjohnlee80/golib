@@ -4,14 +4,14 @@ import (
 	"testing"
 
 	"github.com/yongjohnlee80/golib/tui"
-	"github.com/yongjohnlee80/golib/tui/widget"
+	"github.com/yongjohnlee80/golib/tui/widget/editor"
 )
 
 func drag(x, y int) tui.MouseEvent {
 	return tui.MouseEvent{Kind: tui.MouseMotion, Button: tui.MouseLeft, X: x, Y: y}
 }
 
-func editorSelection(h *harness, ed *widget.Editor) (text string) {
+func editorSelection(h *harness, ed *editor.Editor) (text string) {
 	h.onLoop(func() { text = ed.Core().SelectedText() })
 	return text
 }
@@ -24,7 +24,7 @@ func TestEditorDragSelectsInVisualModeAndYCopies(t *testing.T) {
 
 	h.inject(click(0, 0), drag(2, 0), drag(4, 0), release(4, 0))
 	h.barrier(sh)
-	if _, mode, _, _ := edState(h, ed); mode != widget.ModeVisual {
+	if _, mode, _, _ := edState(h, ed); mode != editor.ModeVisual {
 		t.Fatalf("mode after a drag = %v; want visual", mode)
 	}
 	if got := editorSelection(h, ed); got != "hello" {
@@ -60,7 +60,7 @@ func TestEditorClickWithoutDragSelectsNothing(t *testing.T) {
 
 	h.inject(click(3, 0), drag(3, 0), release(3, 0))
 	h.barrier(sh)
-	if _, mode, ln, col := edState(h, ed); mode != widget.ModeNormal || ln != 0 || col != 3 {
+	if _, mode, ln, col := edState(h, ed); mode != editor.ModeNormal || ln != 0 || col != 3 {
 		t.Fatalf("after a click: mode %v at %d,%d; want normal at 0,3", mode, ln, col)
 	}
 	if got := editorSelection(h, ed); got != "" {
@@ -70,7 +70,7 @@ func TestEditorClickWithoutDragSelectsNothing(t *testing.T) {
 
 // In Text (modeless) mode, a drag selects and Ctrl+C copies.
 func TestEditorDragThenCtrlCInTextMode(t *testing.T) {
-	h, ed, sh := focusedEditor(t, 30, 4, widget.WithCore(widget.CoreKeyset(widget.KeysetStandard)))
+	h, ed, sh := focusedEditor(t, 30, 4, editor.WithCore(editor.CoreKeyset(editor.KeysetStandard)))
 	h.onLoop(func() { ed.SetValue("copy this text") })
 	h.barrier(sh)
 
@@ -111,7 +111,7 @@ func TestEditorClickAfterDragClearsTheSelection(t *testing.T) {
 	h.barrier(sh)
 	h.inject(click(8, 0), release(8, 0))
 	h.barrier(sh)
-	if _, mode, _, _ := edState(h, ed); mode != widget.ModeNormal {
+	if _, mode, _, _ := edState(h, ed); mode != editor.ModeNormal {
 		t.Fatalf("mode after a click = %v; want normal", mode)
 	}
 }

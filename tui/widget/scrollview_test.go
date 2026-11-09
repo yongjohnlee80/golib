@@ -6,7 +6,8 @@ import (
 
 	"github.com/yongjohnlee80/golib/tui"
 	"github.com/yongjohnlee80/golib/tui/pty"
-	"github.com/yongjohnlee80/golib/tui/widget"
+	"github.com/yongjohnlee80/golib/tui/widget/core"
+	"github.com/yongjohnlee80/golib/tui/widget/terminal"
 )
 
 // column is a vertical Flex of fixed-height children: a Text of n rows for an int, the component
@@ -16,7 +17,7 @@ func column(items ...any) *tui.Flex {
 	for i := 0; i < len(items); i++ {
 		switch it := items[i].(type) {
 		case int:
-			f.AddSized(widget.NewText(""), it)
+			f.AddSized(core.NewText(""), it)
 		case sized:
 			f.AddSized(it.c, it.n)
 		case tui.Component:
@@ -32,7 +33,7 @@ type sized struct {
 	n int
 }
 
-func scrollState(h *harness, v *widget.ScrollView) (off, view, content int) {
+func scrollState(h *harness, v *core.ScrollView) (off, view, content int) {
 	h.onLoop(func() { off, view, content = v.ScrollState() })
 	return
 }
@@ -42,10 +43,10 @@ func scrollState(h *harness, v *widget.ScrollView) (off, view, content int) {
 // (41: the leaf on its last row), then the outer from where that left it (20), so the leaf shows
 // on the screen's last row; neither moved on the other's old geometry.
 func TestNestedScrollViewsRevealTheFocusedLeafInnermostFirst(t *testing.T) {
-	first := widget.NewButton("first")
-	leaf := widget.NewButton("leaf")
-	inner := widget.NewScrollView(column(50, leaf, 20))
-	outer := widget.NewScrollView(column(first, 19, sized{inner, 10}, 20))
+	first := core.NewButton("first")
+	leaf := core.NewButton("leaf")
+	inner := core.NewScrollView(column(50, leaf, 20))
+	outer := core.NewScrollView(column(first, 19, sized{inner, 10}, 20))
 	h := startApp(t, outer, 30, 10)
 	h.onLoop(func() { first.Context().RequestFocus() })
 	h.settle()
@@ -67,12 +68,12 @@ func TestNestedScrollViewsRevealTheFocusedLeafInnermostFirst(t *testing.T) {
 // rest is served on the frames after it, and every view ends up moved.
 func TestADeepNestingIsRevealedOverMoreThanOneFrame(t *testing.T) {
 	const depth = 9
-	first := widget.NewButton("first")
-	leaf := widget.NewButton("leaf")
-	var c tui.Component = widget.NewScrollView(column(15, leaf))
-	views := []*widget.ScrollView{c.(*widget.ScrollView)}
+	first := core.NewButton("first")
+	leaf := core.NewButton("leaf")
+	var c tui.Component = core.NewScrollView(column(15, leaf))
+	views := []*core.ScrollView{c.(*core.ScrollView)}
 	for range depth - 1 {
-		v := widget.NewScrollView(column(15, sized{c, 10}))
+		v := core.NewScrollView(column(15, sized{c, 10}))
 		views = append(views, v)
 		c = v
 	}
@@ -96,8 +97,8 @@ func TestADeepNestingIsRevealedOverMoreThanOneFrame(t *testing.T) {
 // Once the focused leaf is shown, the request is over: the wheel scrolls it out again and nothing
 // pulls it back. The page keys, which the focused button declines, scroll too.
 func TestAWheelAfterARevealIsNotPulledBack(t *testing.T) {
-	leaf := widget.NewButton("leaf")
-	v := widget.NewScrollView(column(30, leaf, 10))
+	leaf := core.NewButton("leaf")
+	v := core.NewScrollView(column(30, leaf, 10))
 	h := startApp(t, v, 20, 6)
 	h.onLoop(func() { leaf.Context().RequestFocus() })
 	h.waitFor("the leaf revealed", func() bool { return rowOfLabel(h, "leaf") == 5 })
@@ -130,7 +131,7 @@ func TestAWheelAfterARevealIsNotPulledBack(t *testing.T) {
 // Content that fits does not scroll: the wheel bubbles past it, and the indicator's column stays
 // blank (its width reserved all the same).
 func TestContentThatFitsDoesNotScroll(t *testing.T) {
-	v := widget.NewScrollView(column(widget.NewText("only"), 2))
+	v := core.NewScrollView(column(core.NewText("only"), 2))
 	sh := newShell(v)
 	h := startApp(t, sh, 10, 6)
 	h.settle()
@@ -147,13 +148,13 @@ func TestContentThatFitsDoesNotScroll(t *testing.T) {
 func TestATerminalInAScrollViewIsLaidOutAtOneWidth(t *testing.T) {
 	var procs []*fakeProc
 	var cmds []pty.Cmd
-	term := widget.NewTerminal(widget.WithStarter(func(c pty.Cmd) (widget.TerminalProcess, error) {
+	term := terminal.NewTerminal(terminal.WithStarter(func(c pty.Cmd) (terminal.TerminalProcess, error) {
 		p := newFakeProc()
 		procs, cmds = append(procs, p), append(cmds, c)
 		return p, nil
 	}))
-	last := widget.NewButton("last")
-	v := widget.NewScrollView(column(sized{term, 6}, 20, last))
+	last := core.NewButton("last")
+	v := core.NewScrollView(column(sized{term, 6}, 20, last))
 	h := startApp(t, v, 30, 8)
 	h.onLoop(func() {
 		term.Context().RequestFocus()
@@ -185,10 +186,10 @@ func TestATerminalInAScrollViewIsLaidOutAtOneWidth(t *testing.T) {
 // card with an unbounded measure, which a ScrollView answers without storing anything. Its Layout
 // reset the offset to 0 on that measure, so every relayout scrolled the dialog back to the top.
 func TestAScrollViewInAModalKeepsItsOffset(t *testing.T) {
-	leaf := widget.NewButton("leaf")
-	sv := widget.NewScrollView(column(widget.NewButton("first"), 40, leaf))
-	modal := widget.NewModal(sv)
-	host := widget.NewOverlayHost(widget.NewText("base"))
+	leaf := core.NewButton("leaf")
+	sv := core.NewScrollView(column(core.NewButton("first"), 40, leaf))
+	modal := core.NewModal(sv)
+	host := core.NewOverlayHost(core.NewText("base"))
 	sh := newShell(host)
 	h := startApp(t, sh, 40, 14)
 	h.onLoop(func() {

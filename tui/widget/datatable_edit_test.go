@@ -5,18 +5,19 @@ import (
 	"testing"
 
 	"github.com/yongjohnlee80/golib/tui"
-	"github.com/yongjohnlee80/golib/tui/widget"
+	"github.com/yongjohnlee80/golib/tui/widget/editor"
+	"github.com/yongjohnlee80/golib/tui/widget/table"
 )
 
 // csvDataTable is a DataTable editing a CSV document, with the edges, and the document's core.
-func csvDataTable(t *testing.T, text string, w, h int) (*harness, *shell, *widget.DataTable, *widget.EditorCore) {
+func csvDataTable(t *testing.T, text string, w, h int) (*harness, *shell, *table.DataTable, *editor.EditorCore) {
 	t.Helper()
-	core := widget.NewEditorCore(widget.CoreInitialText(text))
-	hn, sh, dt := dataTable(t, widget.NewTableCSV(core, ','), w, h, widget.TableAppendEdges())
+	core := editor.NewEditorCore(editor.CoreInitialText(text))
+	hn, sh, dt := dataTable(t, table.NewTableCSV(core, ','), w, h, table.TableAppendEdges())
 	return hn, sh, dt, core
 }
 
-func dtPress(h *harness, sh *shell, dt *widget.DataTable, evs ...tui.Event) {
+func dtPress(h *harness, sh *shell, dt *table.DataTable, evs ...tui.Event) {
 	h.onLoop(func() {
 		for _, ev := range evs {
 			dt.HandleEvent(ev)
@@ -111,7 +112,7 @@ func TestADoubleClickEditsAnEditableCell(t *testing.T) {
 	plus := strings.Index(h.row(0), "+")
 	h.inject(tui.MouseEvent{Kind: tui.MousePress, Button: tui.MouseLeft, X: plus, Y: 2})
 	h.barrier(sh)
-	if got := tableCursor(h, dt); got != (widget.TablePos{Row: 0, Col: 2}) {
+	if got := tableCursor(h, dt); got != (table.TablePos{Row: 0, Col: 2}) {
 		t.Fatalf("a click on the edge field: %+v", got)
 	}
 }
@@ -142,7 +143,7 @@ func TestTheWheelScrollsTheFieldsSideways(t *testing.T) {
 	if !strings.HasPrefix(h.row(0), "id") {
 		t.Fatalf("back to the first field: %q", h.row(0))
 	}
-	if got := tableCursor(h, dt); got != (widget.TablePos{}) {
+	if got := tableCursor(h, dt); got != (table.TablePos{}) {
 		t.Fatalf("the wheel moved the cursor to %+v", got)
 	}
 }
@@ -150,8 +151,8 @@ func TestTheWheelScrollsTheFieldsSideways(t *testing.T) {
 // TestTheFieldKeepsItsCaretInSight: a value wider than its field shows its end, the caret after it;
 // with row numbers the edge row's gutter says +, and a press there places nothing.
 func TestTheFieldKeepsItsCaretInSight(t *testing.T) {
-	core := widget.NewEditorCore(widget.CoreInitialText("k,v\na," + strings.Repeat("x", 30) + "END\n"))
-	h, sh, dt := dataTable(t, widget.NewTableCSV(core, ','), 30, 6, widget.TableAppendEdges(), widget.TableRowNumbers(true))
+	core := editor.NewEditorCore(editor.CoreInitialText("k,v\na," + strings.Repeat("x", 30) + "END\n"))
+	h, sh, dt := dataTable(t, table.NewTableCSV(core, ','), 30, 6, table.TableAppendEdges(), table.TableRowNumbers(true))
 	if !strings.HasPrefix(h.row(3), "+ │") {
 		t.Fatalf("the edge row's gutter: %q", h.row(3))
 	}

@@ -6,7 +6,7 @@ import (
 	"testing"
 
 	"github.com/yongjohnlee80/golib/tui"
-	"github.com/yongjohnlee80/golib/tui/widget"
+	"github.com/yongjohnlee80/golib/tui/widget/editor"
 )
 
 func TestRunCommandGoesToALineNumber(t *testing.T) {
@@ -27,7 +27,7 @@ func TestRunCommandGoesToALineNumber(t *testing.T) {
 	if err := c.RunCommand("   "); err != nil {
 		t.Fatalf("an empty line = %v", err)
 	}
-	if err := c.RunCommand("frob x"); !errors.Is(err, widget.ErrUnknownCommand) {
+	if err := c.RunCommand("frob x"); !errors.Is(err, editor.ErrUnknownCommand) {
 		t.Fatalf("an unknown verb = %v", err)
 	}
 }
@@ -35,11 +35,11 @@ func TestRunCommandGoesToALineNumber(t *testing.T) {
 func TestWriteAndQuitReachTheHostsHooks(t *testing.T) {
 	var calls []string
 	c, _ := coreWith(t, "text",
-		widget.CoreOnWrite(func(quit bool) error {
+		editor.CoreOnWrite(func(quit bool) error {
 			calls = append(calls, map[bool]string{false: "write", true: "write+quit"}[quit])
 			return nil
 		}),
-		widget.CoreOnQuit(func(force bool) error {
+		editor.CoreOnQuit(func(force bool) error {
 			calls = append(calls, map[bool]string{false: "quit", true: "quit!"}[force])
 			return nil
 		}))
@@ -56,10 +56,10 @@ func TestWriteAndQuitReachTheHostsHooks(t *testing.T) {
 	}
 
 	bare, _ := coreWith(t, "")
-	if err := bare.RunCommand("w"); !errors.Is(err, widget.ErrNoWriter) {
+	if err := bare.RunCommand("w"); !errors.Is(err, editor.ErrNoWriter) {
 		t.Fatalf("w with no writer = %v", err)
 	}
-	if err := bare.RunCommand("q"); !errors.Is(err, widget.ErrNoQuit) {
+	if err := bare.RunCommand("q"); !errors.Is(err, editor.ErrNoQuit) {
 		t.Fatalf("q with no quit = %v", err)
 	}
 }
@@ -67,7 +67,7 @@ func TestWriteAndQuitReachTheHostsHooks(t *testing.T) {
 func TestCommandsComposeAndComplete(t *testing.T) {
 	c, _ := coreWith(t, "a")
 	var got cmdArgs
-	cmd := widget.Command{Name: "table", Args: "<cols> <rows>", Help: "a table", Run: func(x widget.CommandContext) error {
+	cmd := editor.Command{Name: "table", Args: "<cols> <rows>", Help: "a table", Run: func(x editor.CommandContext) error {
 		got = cmdArgs{x.Name, x.Bang, x.Args, x.Line}
 		return nil
 	}}
@@ -80,15 +80,15 @@ func TestCommandsComposeAndComplete(t *testing.T) {
 	if got.Name != "table" || !got.Bang || strings.Join(got.Args, ",") != "5,3" || got.Line != "5   3" {
 		t.Fatalf("context = %+v", got)
 	}
-	if err := c.Commands().Add(widget.Command{Name: "w", Run: cmd.Run}); !errors.Is(err, widget.ErrCommandExists) {
+	if err := c.Commands().Add(editor.Command{Name: "w", Run: cmd.Run}); !errors.Is(err, editor.ErrCommandExists) {
 		t.Fatalf("Add over w = %v", err)
 	}
-	if err := c.Commands().Add(widget.Command{Name: "12", Run: cmd.Run}); err == nil {
+	if err := c.Commands().Add(editor.Command{Name: "12", Run: cmd.Run}); err == nil {
 		t.Fatal("a verb of digits was accepted: it would read as a line number")
 	}
 	// Set replaces, alias and all
 	ran := false
-	if err := c.Commands().Set(widget.Command{Name: "write", Run: func(widget.CommandContext) error { ran = true; return nil }}); err != nil {
+	if err := c.Commands().Set(editor.Command{Name: "write", Run: func(editor.CommandContext) error { ran = true; return nil }}); err != nil {
 		t.Fatal(err)
 	}
 	if _, ok := c.Commands().Lookup("w"); ok {
@@ -147,7 +147,7 @@ func TestFindAndReplaceCommands(t *testing.T) {
 func TestAReplaceSessionAsksEachMatchOnceAndUndoesAsOne(t *testing.T) {
 	c, _ := coreWith(t, "cat cat\ncat")
 	var asked int
-	c.SetReplaceAsk(func(s *widget.ReplaceSession) error {
+	c.SetReplaceAsk(func(s *editor.ReplaceSession) error {
 		// the widget's questions: yes, no, yes
 		for _, yes := range []bool{true, false, true} {
 			if _, ok := s.Current(); !ok {
@@ -177,13 +177,13 @@ func TestAReplaceSessionAsksEachMatchOnceAndUndoesAsOne(t *testing.T) {
 		t.Fatalf("one undo after the session = %q", c.Value())
 	}
 	// stopping keeps what was replaced
-	s, ok := c.StartReplace("cat", "dog", widget.FindOptions{})
+	s, ok := c.StartReplace("cat", "dog", editor.FindOptions{})
 	if !ok {
 		t.Fatal("no session")
 	}
 	_, _ = s.Answer(true)
 	s.Stop()
-	if more, _ := s.Answer(true); more || c.Value() != "dog cat\ncat" || c.Mode() != widget.ModeNormal {
+	if more, _ := s.Answer(true); more || c.Value() != "dog cat\ncat" || c.Mode() != editor.ModeNormal {
 		t.Fatalf("after Stop: more %v, text %q, mode %v", more, c.Value(), c.Mode())
 	}
 }
@@ -203,12 +203,12 @@ func TestColonOpensTheWidgetsPromptOrBubbles(t *testing.T) {
 	if !c.HandleKey(colon) || opened != 2 {
 		t.Fatalf("':' in Visual: opened %d", opened)
 	}
-	none, _ := coreWith(t, "a", widget.CoreCommands(nil))
+	none, _ := coreWith(t, "a", editor.CoreCommands(nil))
 	none.SetCommandLine(func() bool { opened++; return true })
 	if none.HandleKey(colon) {
 		t.Fatal("':' on a core with no commands was consumed")
 	}
-	ro, _ := coreWith(t, "a", widget.CoreReadOnly(true))
+	ro, _ := coreWith(t, "a", editor.CoreReadOnly(true))
 	ro.SetCommandLine(func() bool { return true })
 	if !ro.HandleKey(colon) {
 		t.Fatal("':' on a read-only core was refused: find and <n> still work there")
@@ -217,7 +217,7 @@ func TestColonOpensTheWidgetsPromptOrBubbles(t *testing.T) {
 
 func TestACommandsEditsAreOneUndo(t *testing.T) {
 	c, _ := coreWith(t, "a")
-	_ = c.Commands().Add(widget.Command{Name: "three", Run: func(x widget.CommandContext) error {
+	_ = c.Commands().Add(editor.Command{Name: "three", Run: func(x editor.CommandContext) error {
 		for _, s := range []string{"1", "2", "3"} {
 			if _, err := x.Core.Insert(x.Core.Cursor(), s); err != nil {
 				return err

@@ -14,13 +14,14 @@ import (
 
 	"github.com/yongjohnlee80/golib/tui"
 	"github.com/yongjohnlee80/golib/tui/style"
-	"github.com/yongjohnlee80/golib/tui/widget"
+	"github.com/yongjohnlee80/golib/tui/widget/core"
+	"github.com/yongjohnlee80/golib/tui/widget/editor"
 )
 
 // sizedChild reports a size it is told to report, so a test can make the child's
 // intrinsic size change under an auto wrapper.
 type sizedChild struct {
-	widget.Base
+	core.Base
 	pref    tui.Size
 	sawMinW int
 	sawMaxW int
@@ -55,7 +56,7 @@ func (c *sizedChild) Render(s tui.Surface) {
 	s.Fill(tui.Rect{X: 0, Y: 0, W: sz.W, H: sz.H}, "·", style.New())
 }
 
-func sizeOn(t *testing.T, h *harness, r *widget.Resizable) tui.Size {
+func sizeOn(t *testing.T, h *harness, r *core.Resizable) tui.Size {
 	t.Helper()
 	var s tui.Size
 	h.onLoop(func() { s = r.Size() })
@@ -69,8 +70,8 @@ func sizeOn(t *testing.T, h *harness, r *widget.Resizable) tui.Size {
 // still reporting itself as tracking one.
 func TestAutoTracksTheChildEveryPass(t *testing.T) {
 	child := &sizedChild{pref: tui.Size{W: 6, H: 3}}
-	r := widget.NewResizable(child, widget.WithHandles())
-	host := widget.NewOverlayHost(r)
+	r := core.NewResizable(child, core.WithHandles())
+	host := core.NewOverlayHost(r)
 	h := startApp(t, host, 40, 20)
 	defer h.stop()
 	h.settle()
@@ -78,7 +79,7 @@ func TestAutoTracksTheChildEveryPass(t *testing.T) {
 	if got := sizeOn(t, h, r); got != (tui.Size{W: 6, H: 3}) {
 		t.Fatalf("Size() = %+v, want the child's intrinsic 6x3", got)
 	}
-	if mode := modeOn(t, h, r); mode != widget.SizeAuto {
+	if mode := modeOn(t, h, r); mode != core.SizeAuto {
 		t.Errorf("SizeMode() = %v, want auto", mode)
 	}
 	if _, ok := requestedOn(t, h, r); ok {
@@ -96,14 +97,14 @@ func TestAutoTracksTheChildEveryPass(t *testing.T) {
 	}
 }
 
-func modeOn(t *testing.T, h *harness, r *widget.Resizable) widget.SizeMode {
+func modeOn(t *testing.T, h *harness, r *core.Resizable) core.SizeMode {
 	t.Helper()
-	var m widget.SizeMode
+	var m core.SizeMode
 	h.onLoop(func() { m = r.SizeMode() })
 	return m
 }
 
-func requestedOn(t *testing.T, h *harness, r *widget.Resizable) (tui.Size, bool) {
+func requestedOn(t *testing.T, h *harness, r *core.Resizable) (tui.Size, bool) {
 	t.Helper()
 	var s tui.Size
 	var ok bool
@@ -120,10 +121,10 @@ func requestedOn(t *testing.T, h *harness, r *widget.Resizable) (tui.Size, bool)
 // desynchronises render, hit geometry and every descendant's placement.
 func TestTheChildIsMeasuredUnderTheConstraintsItIsPlacedIn(t *testing.T) {
 	child := &sizedChild{pref: tui.Size{W: 100, H: 100}} // asks for far too much
-	r := widget.NewResizable(child,
-		widget.WithHandles(),
-		widget.WithMaxSize(tui.Size{W: 12, H: 6}))
-	host := widget.NewOverlayHost(r)
+	r := core.NewResizable(child,
+		core.WithHandles(),
+		core.WithMaxSize(tui.Size{W: 12, H: 6}))
+	host := core.NewOverlayHost(r)
 	h := startApp(t, host, 40, 20)
 	defer h.stop()
 	h.settle()
@@ -147,18 +148,18 @@ func TestTheChildIsMeasuredUnderTheConstraintsItIsPlacedIn(t *testing.T) {
 func TestReserveCostsTheChildCellsAndOverlayDoesNot(t *testing.T) {
 	for _, tc := range []struct {
 		name     string
-		mode     widget.PlacementMode
+		mode     core.PlacementMode
 		wantSize tui.Size
 	}{
 		// Overlay draws over the child's corner: the wrapper IS the child.
-		{"overlay", widget.PlacementOverlay, tui.Size{W: 8, H: 4}},
+		{"overlay", core.PlacementOverlay, tui.Size{W: 8, H: 4}},
 		// Reserve gives the grip its own cells: child + handle, exactly.
-		{"reserve", widget.PlacementReserve, tui.Size{W: 9, H: 5}},
+		{"reserve", core.PlacementReserve, tui.Size{W: 9, H: 5}},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			child := &sizedChild{pref: tui.Size{W: 8, H: 4}}
-			r := widget.NewResizable(child, widget.WithHandlePlacement(tc.mode))
-			host := widget.NewOverlayHost(r)
+			r := core.NewResizable(child, core.WithHandlePlacement(tc.mode))
+			host := core.NewOverlayHost(r)
 			h := startApp(t, host, 40, 20)
 			defer h.stop()
 			h.settle()
@@ -171,7 +172,7 @@ func TestReserveCostsTheChildCellsAndOverlayDoesNot(t *testing.T) {
 			var childMax int
 			h.onLoop(func() { childMax = child.sawMaxW })
 			want := 40
-			if tc.mode == widget.PlacementReserve {
+			if tc.mode == core.PlacementReserve {
 				want = 39
 			}
 			if childMax != want {
@@ -189,10 +190,10 @@ func TestReserveCostsTheChildCellsAndOverlayDoesNot(t *testing.T) {
 // restore or claim a size it does not have.
 func TestSetSizeIsARequestAndSizeIsWhatWasReached(t *testing.T) {
 	child := &sizedChild{pref: tui.Size{W: 4, H: 2}}
-	r := widget.NewResizable(child,
-		widget.WithHandles(),
-		widget.WithMaxSize(tui.Size{W: 10, H: 10}))
-	host := widget.NewOverlayHost(r)
+	r := core.NewResizable(child,
+		core.WithHandles(),
+		core.WithMaxSize(tui.Size{W: 10, H: 10}))
+	host := core.NewOverlayHost(r)
 	h := startApp(t, host, 40, 20)
 	defer h.stop()
 	h.settle()
@@ -207,7 +208,7 @@ func TestSetSizeIsARequestAndSizeIsWhatWasReached(t *testing.T) {
 	if got := sizeOn(t, h, r); got != (tui.Size{W: 10, H: 10}) {
 		t.Errorf("Size() = %+v, want the clamped 10x10 that is actually on screen", got)
 	}
-	if mode := modeOn(t, h, r); mode != widget.SizeExplicit {
+	if mode := modeOn(t, h, r); mode != core.SizeExplicit {
 		t.Errorf("SizeMode() = %v after SetSize, want explicit", mode)
 	}
 
@@ -238,20 +239,20 @@ func TestTheResizeEventComesFromCommitWithTheRightTiming(t *testing.T) {
 	// already run the first commit, so subscribing afterwards would report zero
 	// events whether or not the first layout published one.
 	root := &looseCeiling{w: 30, hh: 18}
-	host := widget.NewOverlayHost(root)
+	host := core.NewOverlayHost(root)
 	h := startApp(t, host, 40, 20)
 	defer h.stop()
 	h.settle()
 
-	var events []widget.ResizedEvent
-	unsub := tui.Subscribe(h.app.Bus(), func(ev widget.ResizedEvent) {
+	var events []core.ResizedEvent
+	unsub := tui.Subscribe(h.app.Bus(), func(ev core.ResizedEvent) {
 		events = append(events, ev)
 	})
 	defer unsub()
 
 	child := &sizedChild{pref: tui.Size{W: 6, H: 3}}
-	r := widget.NewResizable(child, widget.WithHandles(),
-		widget.WithMaxSize(tui.Size{W: 20, H: 20}))
+	r := core.NewResizable(child, core.WithHandles(),
+		core.WithMaxSize(tui.Size{W: 20, H: 20}))
 	h.onLoop(func() { root.attach(r) })
 	h.settle()
 	h.settle()
@@ -328,15 +329,15 @@ func TestTheResizeEventComesFromCommitWithTheRightTiming(t *testing.T) {
 // every terminal resize.
 func TestAmbientResizeCommitsWithoutAnySetSizeCall(t *testing.T) {
 	child := &sizedChild{pref: tui.Size{W: 100, H: 100}}
-	r := widget.NewResizable(child, widget.WithHandles())
-	host := widget.NewOverlayHost(r)
+	r := core.NewResizable(child, core.WithHandles())
+	host := core.NewOverlayHost(r)
 	h := startApp(t, host, 30, 10)
 	defer h.stop()
 	h.settle()
 
 	first := sizeOn(t, h, r)
 	var events atomic.Int64
-	unsub := tui.Subscribe(h.app.Bus(), func(widget.ResizedEvent) { events.Add(1) })
+	unsub := tui.Subscribe(h.app.Bus(), func(core.ResizedEvent) { events.Add(1) })
 	defer unsub()
 
 	h.tb.InjectResize(50, 16)
@@ -352,8 +353,8 @@ func TestAmbientResizeCommitsWithoutAnySetSizeCall(t *testing.T) {
 // TestDraggingAGripResizes.
 func TestDraggingAGripResizes(t *testing.T) {
 	child := &sizedChild{pref: tui.Size{W: 6, H: 3}}
-	r := widget.NewResizable(child, widget.WithMaxSize(tui.Size{W: 30, H: 15}))
-	host := widget.NewOverlayHost(r)
+	r := core.NewResizable(child, core.WithMaxSize(tui.Size{W: 30, H: 15}))
+	host := core.NewOverlayHost(r)
 	h := startApp(t, host, 40, 20)
 	defer h.stop()
 	h.settle()
@@ -375,8 +376,8 @@ func TestDraggingAGripResizes(t *testing.T) {
 // the user changed their mind mid-gesture.
 func TestCancellingADragRestoresTheSizeAndTheMode(t *testing.T) {
 	child := &sizedChild{pref: tui.Size{W: 6, H: 3}}
-	r := widget.NewResizable(child, widget.WithMaxSize(tui.Size{W: 30, H: 15}))
-	host := widget.NewOverlayHost(r)
+	r := core.NewResizable(child, core.WithMaxSize(tui.Size{W: 30, H: 15}))
+	host := core.NewOverlayHost(r)
 	h := startApp(t, host, 40, 20)
 	defer h.stop()
 	h.settle()
@@ -392,7 +393,7 @@ func TestCancellingADragRestoresTheSizeAndTheMode(t *testing.T) {
 	h.inject(tui.KeyEvent{Kind: tui.KeyPress, Code: tui.KeyEscape})
 	h.waitFor("the cancel restored the size", func() bool { return sizeOn(t, h, r) == before })
 	h.settle()
-	if mode := modeOn(t, h, r); mode != widget.SizeAuto {
+	if mode := modeOn(t, h, r); mode != core.SizeAuto {
 		t.Errorf("SizeMode() = %v after cancelling a drag that began in auto, want auto",
 			mode)
 	}
@@ -405,9 +406,9 @@ func TestCancellingADragRestoresTheSizeAndTheMode(t *testing.T) {
 // nothing else.
 func TestKeyboardResizingWorksWithThePointerDisabled(t *testing.T) {
 	child := &sizedChild{pref: tui.Size{W: 6, H: 3}}
-	r := widget.NewResizable(child, widget.WithMaxSize(tui.Size{W: 30, H: 15})).
+	r := core.NewResizable(child, core.WithMaxSize(tui.Size{W: 30, H: 15})).
 		WithPointerPolicy(tui.PointerDisabled)
-	host := widget.NewOverlayHost(r)
+	host := core.NewOverlayHost(r)
 	h := startApp(t, host, 40, 20)
 	defer h.stop()
 	h.onLoop(func() { child.Context().RequestFocus() })
@@ -441,12 +442,12 @@ func TestKeyboardResizingWorksWithThePointerDisabled(t *testing.T) {
 // asked for — no special case, and it behaves the same through any nesting depth.
 func TestAWrapperUnderATightParentTellsTheTruth(t *testing.T) {
 	child := &sizedChild{pref: tui.Size{W: 4, H: 2}}
-	r := widget.NewResizable(child, widget.WithHandles())
+	r := core.NewResizable(child, core.WithHandles())
 	// A two-axis size fraction is the canonical tight parent: the outer policy
 	// fixes both axes, so the wrapper cannot change the visible rectangle.
-	f := widget.NewFloat(r, widget.WithSizeFraction(25, 25))
-	base := widget.NewButton("base")
-	host := widget.NewOverlayHost(base)
+	f := core.NewFloat(r, core.WithSizeFraction(25, 25))
+	base := core.NewButton("base")
+	host := core.NewOverlayHost(base)
 	h := startApp(t, host, 40, 20)
 	defer h.stop()
 	h.onLoop(func() {
@@ -456,7 +457,7 @@ func TestAWrapperUnderATightParentTellsTheTruth(t *testing.T) {
 	h.settle()
 
 	var events atomic.Int64
-	unsub := tui.Subscribe(h.app.Bus(), func(widget.ResizedEvent) { events.Add(1) })
+	unsub := tui.Subscribe(h.app.Bus(), func(core.ResizedEvent) { events.Add(1) })
 	defer unsub()
 
 	fixed := sizeOn(t, h, r)
@@ -489,17 +490,17 @@ func TestGripsAreNotTabStops(t *testing.T) {
 	// which quietly conceded the very thing the rule forbids. Wrapping
 	// arbitrary content changes traversal in no way at all.
 	order := func(wrap bool) []string {
-		before := widget.NewButton("before")
-		inner := widget.NewButton("inner")
-		after := widget.NewButton("after")
+		before := core.NewButton("before")
+		inner := core.NewButton("inner")
+		after := core.NewButton("after")
 		var middle tui.Component = inner
 		if wrap {
-			middle = widget.NewResizable(inner, widget.WithHandles(
-				widget.HandleBottomRight, widget.HandleRight, widget.HandleBottom))
+			middle = core.NewResizable(inner, core.WithHandles(
+				core.HandleBottomRight, core.HandleRight, core.HandleBottom))
 		}
 		root := tui.NewFlex(tui.Vertical)
 		root.Add(before, middle, after)
-		host := widget.NewOverlayHost(root)
+		host := core.NewOverlayHost(root)
 		h := startApp(t, host, 40, 20)
 		defer h.stop()
 		h.settle()
@@ -538,64 +539,64 @@ func TestGripsAreNotTabStops(t *testing.T) {
 
 // TestConstructionRefusesWhatCannotBeHonoured.
 func TestConstructionRefusesWhatCannotBeHonoured(t *testing.T) {
-	child := widget.NewText("x")
+	child := core.NewText("x")
 	for _, tc := range []struct {
 		name string
 		call func()
 	}{
-		{"a nil child", func() { widget.NewResizable(nil) }},
+		{"a nil child", func() { core.NewResizable(nil) }},
 		{"a minimum above the maximum", func() {
-			widget.NewResizable(child,
-				widget.WithMinSize(tui.Size{W: 10, H: 10}),
-				widget.WithMaxSize(tui.Size{W: 5, H: 5}))
+			core.NewResizable(child,
+				core.WithMinSize(tui.Size{W: 10, H: 10}),
+				core.WithMaxSize(tui.Size{W: 5, H: 5}))
 		}},
 		{"a zero initial size", func() {
-			widget.NewResizable(child, widget.WithInitialSize(tui.Size{W: 0, H: 4}))
+			core.NewResizable(child, core.WithInitialSize(tui.Size{W: 0, H: 4}))
 		}},
 		{"an undeclared handle", func() {
-			widget.NewResizable(child, widget.WithHandles(widget.HandleHorizontalDivider+1))
+			core.NewResizable(child, core.WithHandles(core.HandleHorizontalDivider+1))
 		}},
 		{"a divider handle, which belongs to Split", func() {
-			widget.NewResizable(child, widget.WithHandles(widget.HandleVerticalDivider))
+			core.NewResizable(child, core.WithHandles(core.HandleVerticalDivider))
 		}},
 		{"an empty grip glyph", func() {
-			widget.NewResizable(child, widget.WithHandleGlyph(""))
+			core.NewResizable(child, core.WithHandleGlyph(""))
 		}},
 		{"a multi-grapheme grip glyph", func() {
-			widget.NewResizable(child, widget.WithHandleGlyph("ab"))
+			core.NewResizable(child, core.WithHandleGlyph("ab"))
 		}},
 		{"a negative minimum width", func() {
-			widget.NewResizable(child, widget.WithMinSize(tui.Size{W: -1, H: 4}))
+			core.NewResizable(child, core.WithMinSize(tui.Size{W: -1, H: 4}))
 		}},
 		{"a negative minimum height", func() {
-			widget.NewResizable(child, widget.WithMinSize(tui.Size{W: 4, H: -1}))
+			core.NewResizable(child, core.WithMinSize(tui.Size{W: 4, H: -1}))
 		}},
 		{"Unbounded as a minimum width", func() {
 			// Unbounded is legal for a MAXIMUM only: as a minimum it asks for a
 			// box no terminal can satisfy, and normalising it away later hides
 			// the author's mistake instead of reporting it.
-			widget.NewResizable(child, widget.WithMinSize(tui.Size{W: tui.Unbounded, H: 4}))
+			core.NewResizable(child, core.WithMinSize(tui.Size{W: tui.Unbounded, H: 4}))
 		}},
 		{"Unbounded as a minimum height", func() {
-			widget.NewResizable(child, widget.WithMinSize(tui.Size{W: 4, H: tui.Unbounded}))
+			core.NewResizable(child, core.WithMinSize(tui.Size{W: 4, H: tui.Unbounded}))
 		}},
 		{"a negative maximum", func() {
-			widget.NewResizable(child, widget.WithMaxSize(tui.Size{W: -1, H: 10}))
+			core.NewResizable(child, core.WithMaxSize(tui.Size{W: -1, H: 10}))
 		}},
 		{"a zero-width grip glyph", func() {
 			// One cluster, no cells. It would be placed, hit-tested and
 			// invisible — the same failure as a wide glyph in a narrow rect,
 			// reached from the other end.
-			widget.NewResizable(child, widget.WithHandleGlyph("\u200b"))
+			core.NewResizable(child, core.WithHandleGlyph("\u200b"))
 		}},
 		{"an undeclared placement mode", func() {
-			widget.NewResizable(child, widget.WithHandlePlacement(widget.PlacementReserve+1))
+			core.NewResizable(child, core.WithHandlePlacement(core.PlacementReserve+1))
 		}},
 		{"a non-positive step", func() {
-			widget.NewResizable(child, widget.WithResizeStep(0, widget.StepCells))
+			core.NewResizable(child, core.WithResizeStep(0, core.StepCells))
 		}},
 		{"an undeclared step unit", func() {
-			widget.NewResizable(child, widget.WithResizeStep(1, widget.StepPercent+1))
+			core.NewResizable(child, core.WithResizeStep(1, core.StepPercent+1))
 		}},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
@@ -606,15 +607,15 @@ func TestConstructionRefusesWhatCannotBeHonoured(t *testing.T) {
 	}
 	// The controls: the last valid value of each closed set is accepted.
 	if f := fatalFromWidgetExt(func() {
-		widget.NewResizable(child,
-			widget.WithHandles(widget.HandleBottomRight),
-			widget.WithHandleGlyph("世"), // wide, but declared and measured
+		core.NewResizable(child,
+			core.WithHandles(core.HandleBottomRight),
+			core.WithHandleGlyph("世"), // wide, but declared and measured
 			// The boundary values of the minimum/maximum domain: zero is a
 			// legal minimum, and Unbounded is legal as a maximum.
-			widget.WithMinSize(tui.Size{W: 0, H: 0}),
-			widget.WithMaxSize(tui.Size{W: tui.Unbounded, H: 40}),
-			widget.WithHandlePlacement(widget.PlacementReserve),
-			widget.WithResizeStep(1, widget.StepPercent))
+			core.WithMinSize(tui.Size{W: 0, H: 0}),
+			core.WithMaxSize(tui.Size{W: tui.Unbounded, H: 40}),
+			core.WithHandlePlacement(core.PlacementReserve),
+			core.WithResizeStep(1, core.StepPercent))
 	}); f != nil {
 		t.Errorf("a legal configuration was rejected: %v", f.Rule)
 	}
@@ -642,10 +643,10 @@ func TestAGripIsDroppedWhenITSOWNRectangleWillNotFit(t *testing.T) {
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			child := &sizedChild{pref: tui.Size{W: 4, H: 4}}
-			r := widget.NewResizable(child,
-				widget.WithHandleGlyph(tc.glyph),
-				widget.WithHandlePlacement(widget.PlacementOverlay))
-			host := widget.NewOverlayHost(&fixedBox{child: r, w: tc.width, hh: 2})
+			r := core.NewResizable(child,
+				core.WithHandleGlyph(tc.glyph),
+				core.WithHandlePlacement(core.PlacementOverlay))
+			host := core.NewOverlayHost(&fixedBox{child: r, w: tc.width, hh: 2})
 			h := startApp(t, host, 20, 6)
 			defer h.stop()
 			h.settle()
@@ -677,8 +678,8 @@ func TestWrappingMakesAnUnmodifiedWidgetResizable(t *testing.T) {
 		name  string
 		build func() tui.Component
 	}{
-		{"Editor", func() tui.Component { return widget.NewEditor() }},
-		{"TextArea", func() tui.Component { return widget.NewTextArea() }},
+		{"Editor", func() tui.Component { return editor.NewEditor() }},
+		{"TextArea", func() tui.Component { return core.NewTextArea() }},
 		// Defined in THIS package: a consumer's own component, which the widget
 		// package has never heard of.
 		{"an out-of-package component", func() tui.Component {
@@ -687,10 +688,10 @@ func TestWrappingMakesAnUnmodifiedWidgetResizable(t *testing.T) {
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			wrapped := tc.build()
-			r := widget.NewResizable(wrapped,
-				widget.WithInitialSize(tui.Size{W: 10, H: 4}),
-				widget.WithMaxSize(tui.Size{W: 30, H: 15}))
-			host := widget.NewOverlayHost(r)
+			r := core.NewResizable(wrapped,
+				core.WithInitialSize(tui.Size{W: 10, H: 4}),
+				core.WithMaxSize(tui.Size{W: 30, H: 15}))
+			host := core.NewOverlayHost(r)
 			h := startApp(t, host, 40, 20)
 			defer h.stop()
 			h.settle()
@@ -708,7 +709,7 @@ func TestWrappingMakesAnUnmodifiedWidgetResizable(t *testing.T) {
 			// claims is that the widget became resizable by being wrapped,
 			// which the action and the grips both demonstrate for every child.
 			h.onLoop(func() {
-				r.Context().DoAction(widget.ResizeStepAction{DX: 1, Unit: widget.StepCells})
+				r.Context().DoAction(core.ResizeStepAction{DX: 1, Unit: core.StepCells})
 			})
 			h.waitFor("the wrapped widget resized", func() bool {
 				return sizeOn(t, h, r).W == 11
@@ -746,8 +747,8 @@ func TestTheWrappedWidgetsSourceNeverMentionsResizing(t *testing.T) {
 // 0x0 is the shape the chase produces when it does go wrong.
 func TestAutoTracksTheChildInONELayoutPassPerFrame(t *testing.T) {
 	child := &sizedChild{pref: tui.Size{W: 7, H: 3}}
-	r := widget.NewResizable(child, widget.WithHandles())
-	host := widget.NewOverlayHost(r)
+	r := core.NewResizable(child, core.WithHandles())
+	host := core.NewOverlayHost(r)
 	h := startApp(t, host, 40, 20)
 	defer h.stop()
 	h.settle()
@@ -783,24 +784,24 @@ func TestAutoTracksTheChildInONELayoutPassPerFrame(t *testing.T) {
 func TestAResizableInsideAFloatReportsTheFloatsTruth(t *testing.T) {
 	for _, tc := range []struct {
 		name  string
-		opts  []widget.FloatOption
+		opts  []core.FloatOption
 		fixed bool
 	}{
 		{"natural size", nil, false},
-		{"AtRect", []widget.FloatOption{
-			widget.WithAnchor(widget.AtRect(tui.Rect{X: 2, Y: 2, W: 14, H: 6}))}, true},
-		{"two-axis fraction", []widget.FloatOption{
-			widget.WithSizeFraction(40, 40)}, true},
+		{"AtRect", []core.FloatOption{
+			core.WithAnchor(core.AtRect(tui.Rect{X: 2, Y: 2, W: 14, H: 6}))}, true},
+		{"two-axis fraction", []core.FloatOption{
+			core.WithSizeFraction(40, 40)}, true},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			child := &sizedChild{pref: tui.Size{W: 6, H: 3}}
-			r := widget.NewResizable(child, widget.WithMaxSize(tui.Size{W: 30, H: 15}))
+			r := core.NewResizable(child, core.WithMaxSize(tui.Size{W: 30, H: 15}))
 			// Nesting depth, through a container that PASSES CONSTRAINTS ON
 			// unchanged. A Flex would stretch the wrapper to the Float's rect
 			// and make every case the fixed one, which would test the fixture
 			// rather than the Float's policy.
-			f := widget.NewFloat(&passthrough{child: r}, tc.opts...)
-			host := widget.NewOverlayHost(widget.NewText("base"))
+			f := core.NewFloat(&passthrough{child: r}, tc.opts...)
+			host := core.NewOverlayHost(core.NewText("base"))
 			h := startApp(t, host, 40, 20)
 			defer h.stop()
 			h.onLoop(func() {
@@ -810,7 +811,7 @@ func TestAResizableInsideAFloatReportsTheFloatsTruth(t *testing.T) {
 			h.settle()
 
 			before := sizeOn(t, h, r)
-			resized := record[widget.ResizedEvent](h)
+			resized := record[core.ResizedEvent](h)
 			h.onLoop(func() { child.Context().RequestFocus() })
 			h.settle()
 			h.inject(tui.KeyEvent{Kind: tui.KeyPress, Code: tui.KeyRight, Mods: tui.ModShift})
@@ -840,7 +841,7 @@ func TestAResizableInsideAFloatReportsTheFloatsTruth(t *testing.T) {
 // passthrough hands its constraints to its single child untouched and takes the
 // child's size, so a test can add nesting depth without adding a layout policy.
 type passthrough struct {
-	widget.Base
+	core.Base
 	child tui.Component
 }
 
@@ -871,13 +872,13 @@ func (p *passthrough) Render(tui.Surface) {}
 // looks only at Size() cannot see it.
 func TestARequestLargerThanTheParentNeverReachesTheChild(t *testing.T) {
 	child := &sizedChild{pref: tui.Size{W: 4, H: 2}}
-	r := widget.NewResizable(child,
-		widget.WithHandles(),
-		widget.WithInitialSize(tui.Size{W: 50, H: 30}),
-		widget.WithMaxSize(tui.Size{W: 100, H: 100}))
+	r := core.NewResizable(child,
+		core.WithHandles(),
+		core.WithInitialSize(tui.Size{W: 50, H: 30}),
+		core.WithMaxSize(tui.Size{W: 100, H: 100}))
 	// A LOOSE 20x10 ceiling: the parent allows anything up to it, so nothing
 	// downstream of the child's measurement will correct an over-large box.
-	host := widget.NewOverlayHost(&looseCeiling{child: r, w: 20, hh: 10})
+	host := core.NewOverlayHost(&looseCeiling{child: r, w: 20, hh: 10})
 	h := startApp(t, host, 40, 20)
 	defer h.stop()
 	h.settle()
@@ -898,7 +899,7 @@ func TestARequestLargerThanTheParentNeverReachesTheChild(t *testing.T) {
 // the shape that separates the request-side clamp from the returned-size one —
 // under a tight parent the final Constrain would hide the difference.
 type looseCeiling struct {
-	widget.Base
+	core.Base
 	child tui.Component
 	w, hh int
 }
@@ -941,9 +942,9 @@ func (l *looseCeiling) Render(tui.Surface) {}
 // size has already been handed up.
 func TestTheWrapperNeverReturnsASizeItsParentForbids(t *testing.T) {
 	child := &sizedChild{pref: tui.Size{W: 6, H: 3}}
-	r := widget.NewResizable(child, widget.WithMaxSize(tui.Size{W: 30, H: 8}))
+	r := core.NewResizable(child, core.WithMaxSize(tui.Size{W: 30, H: 8}))
 	// TIGHT at 40x12 — larger than the wrapper's cap on both axes.
-	host := widget.NewOverlayHost(&fixedBox{child: r, w: 40, hh: 12})
+	host := core.NewOverlayHost(&fixedBox{child: r, w: 40, hh: 12})
 	h := startApp(t, host, 60, 20)
 	defer h.stop()
 	h.settle()
@@ -971,21 +972,21 @@ func TestTheWrapperNeverReturnsASizeItsParentForbids(t *testing.T) {
 func TestAnInvalidGestureIsRefusedWithoutMutation(t *testing.T) {
 	for _, tc := range []struct {
 		name  string
-		begin widget.ResizeBeginAction
+		begin core.ResizeBeginAction
 	}{
 		{"a handle outside the declared set",
-			widget.ResizeBeginAction{Handle: widget.HandleHorizontalDivider + 1}},
+			core.ResizeBeginAction{Handle: core.HandleHorizontalDivider + 1}},
 		{"a divider, which is Split's and not a box's",
-			widget.ResizeBeginAction{Handle: widget.HandleVerticalDivider}},
+			core.ResizeBeginAction{Handle: core.HandleVerticalDivider}},
 		{"a handle this wrapper was not configured with",
-			widget.ResizeBeginAction{Handle: widget.HandleTopLeft}},
+			core.ResizeBeginAction{Handle: core.HandleTopLeft}},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			child := &sizedChild{pref: tui.Size{W: 8, H: 4}}
-			r := widget.NewResizable(child,
-				widget.WithHandles(widget.HandleBottomRight),
-				widget.WithMaxSize(tui.Size{W: 30, H: 15}))
-			host := widget.NewOverlayHost(&looseCeiling{child: r, w: 30, hh: 15})
+			r := core.NewResizable(child,
+				core.WithHandles(core.HandleBottomRight),
+				core.WithMaxSize(tui.Size{W: 30, H: 15}))
+			host := core.NewOverlayHost(&looseCeiling{child: r, w: 30, hh: 15})
 			h := startApp(t, host, 40, 20)
 			defer h.stop()
 			h.settle()
@@ -996,8 +997,8 @@ func TestAnInvalidGestureIsRefusedWithoutMutation(t *testing.T) {
 				begun = r.Context().DoAction(tc.begin)
 				// The follow-ups must be inert too: a refused Begin leaves no
 				// gesture, so there is nothing for them to act on.
-				updated = r.Context().DoAction(widget.ResizeUpdateAction{At: tui.Point{X: 99, Y: 99}})
-				ended = r.Context().DoAction(widget.ResizeEndAction{})
+				updated = r.Context().DoAction(core.ResizeUpdateAction{At: tui.Point{X: 99, Y: 99}})
+				ended = r.Context().DoAction(core.ResizeEndAction{})
 			})
 			h.settle()
 
@@ -1019,8 +1020,8 @@ func TestAnInvalidGestureIsRefusedWithoutMutation(t *testing.T) {
 // nothing is not a step, and a unit outside the closed set is not a unit.
 func TestAnInvalidStepIsRefused(t *testing.T) {
 	child := &sizedChild{pref: tui.Size{W: 8, H: 4}}
-	r := widget.NewResizable(child, widget.WithMaxSize(tui.Size{W: 30, H: 15}))
-	host := widget.NewOverlayHost(&looseCeiling{child: r, w: 30, hh: 15})
+	r := core.NewResizable(child, core.WithMaxSize(tui.Size{W: 30, H: 15}))
+	host := core.NewOverlayHost(&looseCeiling{child: r, w: 30, hh: 15})
 	h := startApp(t, host, 40, 20)
 	defer h.stop()
 	h.settle()
@@ -1028,9 +1029,9 @@ func TestAnInvalidStepIsRefused(t *testing.T) {
 
 	var zero, badUnit, good bool
 	h.onLoop(func() {
-		zero = r.Context().DoAction(widget.ResizeStepAction{Unit: widget.StepCells})
-		badUnit = r.Context().DoAction(widget.ResizeStepAction{DX: 1, Unit: widget.StepPercent + 1})
-		good = r.Context().DoAction(widget.ResizeStepAction{DX: 1, Unit: widget.StepCells})
+		zero = r.Context().DoAction(core.ResizeStepAction{Unit: core.StepCells})
+		badUnit = r.Context().DoAction(core.ResizeStepAction{DX: 1, Unit: core.StepPercent + 1})
+		good = r.Context().DoAction(core.ResizeStepAction{DX: 1, Unit: core.StepCells})
 	})
 	h.settle()
 
@@ -1058,11 +1059,11 @@ func TestAnInvalidStepIsRefused(t *testing.T) {
 // show a box the user never resized.
 func TestCancellingRestoresTheEXACTPriorRequest(t *testing.T) {
 	child := &sizedChild{pref: tui.Size{W: 4, H: 2}}
-	r := widget.NewResizable(child,
-		widget.WithHandles(widget.HandleBottomRight),
-		widget.WithMaxSize(tui.Size{W: 100, H: 100}))
+	r := core.NewResizable(child,
+		core.WithHandles(core.HandleBottomRight),
+		core.WithMaxSize(tui.Size{W: 100, H: 100}))
 	// A 12x6 ceiling: the 50x10 request below cannot be reached.
-	host := widget.NewOverlayHost(&looseCeiling{child: r, w: 12, hh: 6})
+	host := core.NewOverlayHost(&looseCeiling{child: r, w: 12, hh: 6})
 	h := startApp(t, host, 40, 20)
 	defer h.stop()
 	h.settle()
@@ -1080,12 +1081,12 @@ func TestCancellingRestoresTheEXACTPriorRequest(t *testing.T) {
 
 	// Drag, then cancel.
 	h.onLoop(func() {
-		r.Context().DoAction(widget.ResizeBeginAction{
-			Handle: widget.HandleBottomRight, At: tui.Point{X: 11, Y: 5}})
-		r.Context().DoAction(widget.ResizeUpdateAction{At: tui.Point{X: 4, Y: 2}})
+		r.Context().DoAction(core.ResizeBeginAction{
+			Handle: core.HandleBottomRight, At: tui.Point{X: 11, Y: 5}})
+		r.Context().DoAction(core.ResizeUpdateAction{At: tui.Point{X: 4, Y: 2}})
 	})
 	h.settle()
-	h.onLoop(func() { r.Context().DoAction(widget.ResizeCancelAction{}) })
+	h.onLoop(func() { r.Context().DoAction(core.ResizeCancelAction{}) })
 	h.settle()
 
 	got, ok := requestedOn(t, h, r)
@@ -1093,7 +1094,7 @@ func TestCancellingRestoresTheEXACTPriorRequest(t *testing.T) {
 		t.Errorf("RequestedSize() = (%+v, %v) after cancelling, want the exact prior "+
 			"request %+v; cancel wrote the clamped effective size back", got, ok, want)
 	}
-	if mode := modeOn(t, h, r); mode != widget.SizeExplicit {
+	if mode := modeOn(t, h, r); mode != core.SizeExplicit {
 		t.Errorf("SizeMode() = %v after cancelling an explicit drag, want explicit", mode)
 	}
 }
@@ -1108,23 +1109,23 @@ func TestCancellingRestoresTheEXACTPriorRequest(t *testing.T) {
 func TestReserveTakesCellsFromTheSIDEItsHandleIsOn(t *testing.T) {
 	for _, tc := range []struct {
 		name    string
-		handles []widget.Handle
+		handles []core.Handle
 	}{
-		{"top-left", []widget.Handle{widget.HandleTopLeft}},
-		{"bottom-right", []widget.Handle{widget.HandleBottomRight}},
-		{"left and right", []widget.Handle{widget.HandleLeft, widget.HandleRight}},
-		{"top and bottom", []widget.Handle{widget.HandleTop, widget.HandleBottom}},
-		{"all four corners", []widget.Handle{widget.HandleTopLeft, widget.HandleTopRight,
-			widget.HandleBottomLeft, widget.HandleBottomRight}},
+		{"top-left", []core.Handle{core.HandleTopLeft}},
+		{"bottom-right", []core.Handle{core.HandleBottomRight}},
+		{"left and right", []core.Handle{core.HandleLeft, core.HandleRight}},
+		{"top and bottom", []core.Handle{core.HandleTop, core.HandleBottom}},
+		{"all four corners", []core.Handle{core.HandleTopLeft, core.HandleTopRight,
+			core.HandleBottomLeft, core.HandleBottomRight}},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			child := &sizedChild{pref: tui.Size{W: 6, H: 4}}
-			r := widget.NewResizable(child,
-				widget.WithHandles(tc.handles...),
-				widget.WithHandlePlacement(widget.PlacementReserve),
-				widget.WithHandleGlyph("#"),
-				widget.WithMaxSize(tui.Size{W: 30, H: 15}))
-			host := widget.NewOverlayHost(&looseCeiling{child: r, w: 30, hh: 15})
+			r := core.NewResizable(child,
+				core.WithHandles(tc.handles...),
+				core.WithHandlePlacement(core.PlacementReserve),
+				core.WithHandleGlyph("#"),
+				core.WithMaxSize(tui.Size{W: 30, H: 15}))
+			host := core.NewOverlayHost(&looseCeiling{child: r, w: 30, hh: 15})
 			h := startApp(t, host, 40, 20)
 			defer h.stop()
 			h.settle()
@@ -1155,19 +1156,19 @@ func TestReserveTakesCellsFromTheSIDEItsHandleIsOn(t *testing.T) {
 
 // childExtent is how much of the wrapper the child keeps once each configured
 // handle has taken its band.
-func childExtent(handles []widget.Handle, eff tui.Size) (w, h int) {
+func childExtent(handles []core.Handle, eff tui.Size) (w, h int) {
 	var left, right, top, bottom int
 	for _, hh := range handles {
 		switch hh {
-		case widget.HandleLeft, widget.HandleTopLeft, widget.HandleBottomLeft:
+		case core.HandleLeft, core.HandleTopLeft, core.HandleBottomLeft:
 			left = 1
-		case widget.HandleRight, widget.HandleTopRight, widget.HandleBottomRight:
+		case core.HandleRight, core.HandleTopRight, core.HandleBottomRight:
 			right = 1
 		}
 		switch hh {
-		case widget.HandleTop, widget.HandleTopLeft, widget.HandleTopRight:
+		case core.HandleTop, core.HandleTopLeft, core.HandleTopRight:
 			top = 1
-		case widget.HandleBottom, widget.HandleBottomLeft, widget.HandleBottomRight:
+		case core.HandleBottom, core.HandleBottomLeft, core.HandleBottomRight:
 			bottom = 1
 		}
 	}
@@ -1178,7 +1179,7 @@ func childExtent(handles []widget.Handle, eff tui.Size) (w, h int) {
 // of them, so a Resizable inside it is free to choose its own size. A Flex would
 // hand it a tight cell and there would be nothing left to observe.
 type looseRow struct {
-	widget.Base
+	core.Base
 	a, b tui.Component
 }
 
@@ -1208,9 +1209,9 @@ func (l *looseRow) Render(tui.Surface) {}
 // stray motion does not resize a box nobody is holding.
 func TestARevokedCaptureLeavesTheResizeWhereItIs(t *testing.T) {
 	child := &sizedChild{pref: tui.Size{W: 6, H: 3}}
-	r := widget.NewResizable(child, widget.WithMaxSize(tui.Size{W: 18, H: 15}))
+	r := core.NewResizable(child, core.WithMaxSize(tui.Size{W: 18, H: 15}))
 	other := &pane{fill: "o"}
-	host := widget.NewOverlayHost(&looseRow{a: r, b: other})
+	host := core.NewOverlayHost(&looseRow{a: r, b: other})
 	h := startApp(t, host, 40, 20)
 	defer h.stop()
 	h.onLoop(func() { child.Context().RequestFocus() })
@@ -1252,10 +1253,10 @@ func TestARevokedCaptureLeavesTheResizeWhereItIs(t *testing.T) {
 func TestAPercentStepAlwaysMovesAtLeastOneCell(t *testing.T) {
 	// 5% of a 6x3 box is zero cells on both axes under integer division.
 	child := &sizedChild{pref: tui.Size{W: 6, H: 3}}
-	r := widget.NewResizable(child,
-		widget.WithMaxSize(tui.Size{W: 30, H: 15}),
-		widget.WithResizeStep(5, widget.StepPercent))
-	host := widget.NewOverlayHost(r)
+	r := core.NewResizable(child,
+		core.WithMaxSize(tui.Size{W: 30, H: 15}),
+		core.WithResizeStep(5, core.StepPercent))
+	host := core.NewOverlayHost(r)
 	h := startApp(t, host, 40, 20)
 	defer h.stop()
 	h.onLoop(func() { child.Context().RequestFocus() })
@@ -1289,24 +1290,24 @@ func TestAPercentStepAlwaysMovesAtLeastOneCell(t *testing.T) {
 func TestReserveKeepsTheOUTERContractTruthful(t *testing.T) {
 	for _, tc := range []struct {
 		name    string
-		handles []widget.Handle
+		handles []core.Handle
 		// bands is how many cells the configured handles reserve on each axis.
 		bandW, bandH int
 	}{
-		{"one corner", []widget.Handle{widget.HandleBottomRight}, 1, 1},
-		{"both vertical edges", []widget.Handle{widget.HandleLeft, widget.HandleRight}, 2, 0},
-		{"both horizontal edges", []widget.Handle{widget.HandleTop, widget.HandleBottom}, 0, 2},
+		{"one corner", []core.Handle{core.HandleBottomRight}, 1, 1},
+		{"both vertical edges", []core.Handle{core.HandleLeft, core.HandleRight}, 2, 0},
+		{"both horizontal edges", []core.Handle{core.HandleTop, core.HandleBottom}, 0, 2},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			minSize := tui.Size{W: 12, H: 6}
 			maxSize := tui.Size{W: 20, H: 10}
 			child := &sizedChild{pref: tui.Size{W: 1, H: 1}} // wants far less than the min
-			r := widget.NewResizable(child,
-				widget.WithHandles(tc.handles...),
-				widget.WithHandlePlacement(widget.PlacementReserve),
-				widget.WithMinSize(minSize),
-				widget.WithMaxSize(maxSize))
-			host := widget.NewOverlayHost(&looseCeiling{child: r, w: 40, hh: 20})
+			r := core.NewResizable(child,
+				core.WithHandles(tc.handles...),
+				core.WithHandlePlacement(core.PlacementReserve),
+				core.WithMinSize(minSize),
+				core.WithMaxSize(maxSize))
+			host := core.NewOverlayHost(&looseCeiling{child: r, w: 40, hh: 20})
 			h := startApp(t, host, 50, 24)
 			defer h.stop()
 			h.settle()
@@ -1342,9 +1343,9 @@ func TestReserveKeepsTheOUTERContractTruthful(t *testing.T) {
 func TestADragsEndIsHeardOnce(t *testing.T) {
 	child := &sizedChild{pref: tui.Size{W: 6, H: 3}}
 	var ends []tui.Size
-	r := widget.NewResizable(child, widget.WithMaxSize(tui.Size{W: 30, H: 15}),
-		widget.WithResizeEnd(func(s tui.Size) { ends = append(ends, s) }))
-	host := widget.NewOverlayHost(r)
+	r := core.NewResizable(child, core.WithMaxSize(tui.Size{W: 30, H: 15}),
+		core.WithResizeEnd(func(s tui.Size) { ends = append(ends, s) }))
+	host := core.NewOverlayHost(r)
 	h := startApp(t, host, 40, 20)
 	defer h.stop()
 	h.settle()

@@ -5,7 +5,8 @@ import (
 	"testing"
 
 	"github.com/yongjohnlee80/golib/tui"
-	"github.com/yongjohnlee80/golib/tui/widget"
+	"github.com/yongjohnlee80/golib/tui/widget/core"
+	"github.com/yongjohnlee80/golib/tui/widget/editor"
 )
 
 // TestTheEditorsLineNumbers: the gutter shows each line's number right-aligned, and the text starts
@@ -13,8 +14,8 @@ import (
 // columns. Hidden, the text takes the whole width again. A count that gains a digit widens the
 // gutter.
 func TestTheEditorsLineNumbers(t *testing.T) {
-	h, ed, sh := focusedEditor(t, 22, 6, widget.WithCore(widget.CoreInitialText("alpha\nbravo charlie delta echo\ngolf")),
-		widget.WithEditorLineNumbers(true), widget.WithEditorWrap(widget.WrapSoft))
+	h, ed, sh := focusedEditor(t, 22, 6, editor.WithCore(editor.CoreInitialText("alpha\nbravo charlie delta echo\ngolf")),
+		editor.WithEditorLineNumbers(true), editor.WithEditorWrap(core.WrapSoft))
 	h.settle()
 	for y, want := range []string{"   1  alpha", "   2  bravo charlie", "      delta echo", "   3  golf"} {
 		if got := strings.TrimRight(h.row(y), " "); got != want {
@@ -46,7 +47,7 @@ func TestTheEditorsLineNumbers(t *testing.T) {
 		t.Fatalf("the click put the cursor at %d:%d, want 2:2", ln, col)
 	}
 	// unwrapped: one row a line, the long one cut at the width
-	h.onLoop(func() { ed.SetWrap(widget.WrapNone) })
+	h.onLoop(func() { ed.SetWrap(core.WrapNone) })
 	h.waitFor("unwrapped", func() bool { return strings.TrimRight(h.row(2), " ") == "   3  golf" })
 	h.onLoop(func() { ed.SetLineNumbers(false) })
 	h.waitFor("no gutter", func() bool { return strings.HasPrefix(h.row(0), "alpha") })

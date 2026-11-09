@@ -6,13 +6,13 @@ import (
 	"testing"
 	"time"
 
-	"github.com/yongjohnlee80/golib/tui/widget"
+	"github.com/yongjohnlee80/golib/tui/widget/core"
 )
 
 // A determinate bar's filled columns are its full cells and the partial block after them; an
 // indeterminate bar has none to report.
 func TestAProgressBarsFilledColumnsAreWhatItDraws(t *testing.T) {
-	p := widget.NewProgressBar()
+	p := core.NewProgressBar()
 	for _, tc := range []struct {
 		f    float64
 		want int
@@ -27,7 +27,7 @@ func TestAProgressBarsFilledColumnsAreWhatItDraws(t *testing.T) {
 		t.Errorf("indeterminate: %d filled, want 0", got)
 	}
 	// a spinner bar draws one cell, a frame or a blank, at any progress: none of it a fill
-	sp := widget.NewProgressBar(widget.WithSpinner([]string{"|", "/"}, time.Second))
+	sp := core.NewProgressBar(core.WithSpinner([]string{"|", "/"}, time.Second))
 	sp.SetProgress(0.5)
 	if got := sp.FilledColumns(10); got != 0 {
 		t.Errorf("a spinner at 0.5: %d filled, want 0 (Render draws one blank cell)", got)
@@ -39,7 +39,7 @@ func TestAProgressBarsFilledColumnsAreWhatItDraws(t *testing.T) {
 
 // A button's mnemonic column is where its cells show the key's cluster.
 func TestAButtonsMnemonicColumnIsWhereItsKeyIsDrawn(t *testing.T) {
-	b := widget.NewButton("Open", widget.WithMnemonic('p'))
+	b := core.NewButton("Open", core.WithMnemonic('p'))
 	h := startAppOpts(t, newShell(b), 12, 1)
 	defer h.stop()
 	h.waitFor("the button drawn", func() bool { return strings.Contains(h.row(0), "Open") })
@@ -50,7 +50,7 @@ func TestAButtonsMnemonicColumnIsWhereItsKeyIsDrawn(t *testing.T) {
 	if !ok || col != want {
 		t.Fatalf("MnemonicColumn(12) = %d, %v; the key is drawn at %d in %q", col, ok, want, h.row(0))
 	}
-	h.onLoop(func() { col, ok = widget.NewButton("Open").MnemonicColumn(12) })
+	h.onLoop(func() { col, ok = core.NewButton("Open").MnemonicColumn(12) })
 	if ok {
 		t.Errorf("an unmounted button reported a mnemonic column %d", col)
 	}
@@ -59,7 +59,7 @@ func TestAButtonsMnemonicColumnIsWhereItsKeyIsDrawn(t *testing.T) {
 // A strip's bar colour is what SetBarColor gives, asked each time; none without one, or once taken
 // away.
 func TestATabStripsBarColorIsWhatItWasGiven(t *testing.T) {
-	s := widget.NewTabStrip()
+	s := core.NewTabStrip()
 	if _, ok := s.BarColor(); ok {
 		t.Fatal("a new strip has a bar colour")
 	}
@@ -80,13 +80,13 @@ func TestATabStripsBarColorIsWhatItWasGiven(t *testing.T) {
 
 // A WindowButtons' controls are its buttons in their order, each with the operation it invokes.
 func TestWindowButtonsControlsPairEachButtonWithItsOperation(t *testing.T) {
-	w := widget.NewWindowButtons(widget.NewWindowCore(widget.WithWindowClose(), widget.WithWindowMaximize()))
+	w := core.NewWindowButtons(core.NewWindowCore(core.WithWindowClose(), core.WithWindowMaximize()))
 	got := w.Controls()
-	if len(got) != 2 || got[0].Op != widget.WindowMaximize || got[1].Op != widget.WindowClose {
+	if len(got) != 2 || got[0].Op != core.WindowMaximize || got[1].Op != core.WindowClose {
 		t.Fatalf("Controls %+v, want maximize then close", got)
 	}
 	for _, c := range got {
-		want := map[widget.WindowOperation]string{widget.WindowMaximize: "+", widget.WindowClose: "x"}[c.Op]
+		want := map[core.WindowOperation]string{core.WindowMaximize: "+", core.WindowClose: "x"}[c.Op]
 		if c.Button == nil || c.Button.Label() != want {
 			t.Errorf("%v's button is %+v, want the one labelled %q", c.Op, c.Button, want)
 		}

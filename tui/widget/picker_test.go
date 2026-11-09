@@ -6,7 +6,8 @@ import (
 	"testing"
 
 	"github.com/yongjohnlee80/golib/tui"
-	"github.com/yongjohnlee80/golib/tui/widget"
+	"github.com/yongjohnlee80/golib/tui/widget/core"
+	"github.com/yongjohnlee80/golib/tui/widget/files"
 )
 
 // picker_test.go: the file views are one layout — the fields over the list in
@@ -19,7 +20,7 @@ func ctrl(r rune) tui.KeyEvent { return tui.KeyEvent{Code: r, Mods: tui.ModCtrl}
 // the left column, beside the preview, not across it.
 func TestTheSaveViewsNameIsInTheLeftColumn(t *testing.T) {
 	root := tree(t, map[string]string{"a.txt": "alpha"})
-	b := widget.NewFileSaveView(widget.WithFileViewDir(root), widget.WithFileViewPreview(true))
+	b := files.NewFileSaveView(files.WithFileViewDir(root), files.WithFileViewPreview(true))
 	h := startBrowser(t, b)
 	defer h.stop()
 	h.shows("Preview")
@@ -36,7 +37,7 @@ func TestTheSaveViewsNameIsInTheLeftColumn(t *testing.T) {
 // listed, into a folder and back out, and the folder chosen is the field's.
 func TestAFolderViewsPathFollowsTheListing(t *testing.T) {
 	root := tree(t, map[string]string{"sub/inner.md": "# in", "top.md": "# top"})
-	b := widget.NewFileFolderView(widget.WithFileViewDir(root))
+	b := files.NewFileFolderView(files.WithFileViewDir(root))
 	h := startBrowser(t, b)
 	defer h.stop()
 	var p, sel string
@@ -63,7 +64,7 @@ func TestAFolderViewsPathFollowsTheListing(t *testing.T) {
 // and is not chosen.
 func TestAPathTypedInTheFolderFieldListsIt(t *testing.T) {
 	root := tree(t, map[string]string{"deep/down/note.md": "# n", "file.md": "f"})
-	b := widget.NewFileFolderView(widget.WithFileViewDir(root))
+	b := files.NewFileFolderView(files.WithFileViewDir(root))
 	h := startBrowser(t, b)
 	defer h.stop()
 	h.inject(ctrl('k')) // up from the list to the path field
@@ -95,9 +96,9 @@ func TestAPathTypedInTheFolderFieldListsIt(t *testing.T) {
 // the first part: above the path, and where typing starts.
 func TestAHostsFieldsTopTheColumnAndHaveTheKeyboard(t *testing.T) {
 	root := tree(t, map[string]string{"n.md": "n"})
-	title := widget.NewTextInput()
-	pane := widget.NewBox(title, widget.WithTitle("title"))
-	b := widget.NewFileFolderView(widget.WithFileViewDir(root), widget.WithFileViewFields(pane))
+	title := core.NewTextInput()
+	pane := core.NewBox(title, core.WithTitle("title"))
+	b := files.NewFileFolderView(files.WithFileViewDir(root), files.WithFileViewFields(pane))
 	h := startBrowser(t, b)
 	defer h.stop()
 	h.shows("title")
@@ -119,9 +120,9 @@ func TestAHostsFieldsTopTheColumnAndHaveTheKeyboard(t *testing.T) {
 // preview and back to where the keyboard was, and nowhere past the ends.
 func TestCtrlHJKLMoveAmongTheParts(t *testing.T) {
 	root := tree(t, map[string]string{"n.md": "n"})
-	title := widget.NewTextInput()
-	b := widget.NewFileFolderView(widget.WithFileViewDir(root),
-		widget.WithFileViewFields(widget.NewBox(title, widget.WithTitle("title"))))
+	title := core.NewTextInput()
+	b := files.NewFileFolderView(files.WithFileViewDir(root),
+		files.WithFileViewFields(core.NewBox(title, core.WithTitle("title"))))
 	h := startBrowser(t, b)
 	defer h.stop()
 	hint := func() string {
@@ -152,7 +153,7 @@ func TestCtrlHJKLMoveAmongTheParts(t *testing.T) {
 // leave the keyboard on the list; in a preview entered by Tab, Ctrl+h goes back to the list.
 func TestCtrlHLWithoutAPreviewStayAndFromATabbedPreviewReturn(t *testing.T) {
 	root := tree(t, map[string]string{"n.md": "n"})
-	bare := widget.NewFileOpenView(widget.WithFileViewDir(root), widget.WithFileViewPreview(false))
+	bare := files.NewFileOpenView(files.WithFileViewDir(root), files.WithFileViewPreview(false))
 	h := startBrowser(t, bare)
 	for _, k := range []tui.KeyEvent{ctrl('l'), ctrl('h')} {
 		h.inject(k)
@@ -165,7 +166,7 @@ func TestCtrlHLWithoutAPreviewStayAndFromATabbedPreviewReturn(t *testing.T) {
 	}
 	h.stop()
 
-	b := widget.NewFileOpenView(widget.WithFileViewDir(root))
+	b := files.NewFileOpenView(files.WithFileViewDir(root))
 	h = startBrowser(t, b)
 	defer h.stop()
 	hint := func() string {
@@ -188,7 +189,7 @@ func TestCtrlHLWithoutAPreviewStayAndFromATabbedPreviewReturn(t *testing.T) {
 // the one listed.
 func TestAFolderTypedRelativeIsUnderTheListing(t *testing.T) {
 	root := tree(t, map[string]string{"deep/note.md": "# n", "top.md": "t"})
-	b := widget.NewFileFolderView(widget.WithFileViewDir(root))
+	b := files.NewFileFolderView(files.WithFileViewDir(root))
 	h := startBrowser(t, b)
 	defer h.stop()
 	h.inject(ctrl('k'))
@@ -206,7 +207,7 @@ func TestAFolderTypedRelativeIsUnderTheListing(t *testing.T) {
 // file, wherever the listing is.
 func TestASaveViewsNameIsTheFileNamed(t *testing.T) {
 	root := tree(t, map[string]string{"sub/": "", "a.txt": "a"})
-	b := widget.NewFileSaveView(widget.WithFileViewDir(root))
+	b := files.NewFileSaveView(files.WithFileViewDir(root))
 	h := startBrowser(t, b)
 	defer h.stop()
 	var ok bool

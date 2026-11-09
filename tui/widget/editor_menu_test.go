@@ -4,12 +4,13 @@ import (
 	"testing"
 
 	"github.com/yongjohnlee80/golib/tui"
-	"github.com/yongjohnlee80/golib/tui/widget"
+	"github.com/yongjohnlee80/golib/tui/widget/core"
+	"github.com/yongjohnlee80/golib/tui/widget/editor"
 )
 
 func TestEditorMenuActionsWorkAfterFocusMovesWithoutStealingItBack(t *testing.T) {
-	ed := widget.NewEditor(widget.WithCore(widget.CoreInitialText("one\ntwo")))
-	menu := widget.NewTextInput()
+	ed := editor.NewEditor(editor.WithCore(editor.CoreInitialText("one\ntwo")))
+	menu := core.NewTextInput()
 	root := tui.NewFlex(tui.Vertical)
 	root.Add(ed, menu)
 	h := startApp(t, root, 30, 8)

@@ -6,7 +6,8 @@ import (
 	"testing"
 
 	"github.com/yongjohnlee80/golib/tui"
-	"github.com/yongjohnlee80/golib/tui/widget"
+	"github.com/yongjohnlee80/golib/tui/widget/table"
+	"github.com/yongjohnlee80/golib/tui/widget/terminal"
 )
 
 // A prefix's continuation is its grammar, the literal key: a scheme moving the prefix moves the prefix
@@ -17,7 +18,7 @@ func fkey(code rune) tui.KeyEvent { return tui.KeyEvent{Kind: tui.KeyPress, Code
 // A table's g moved to F9: F9 then the literal g is the first row; g alone no longer waits.
 func TestAMovedTableGoPrefixKeepsItsLiteralSecondG(t *testing.T) {
 	m := mustKeymap(t, `<mapping><shortcut id="tui.table.goPrefix"><key value="F9"/></shortcut></mapping>`)
-	dt := widget.NewDataTable(widget.NewTableCore(numbered(20)))
+	dt := table.NewDataTable(table.NewTableCore(numbered(20)))
 	sh := newShell(dt)
 	h := startAppOpts(t, sh, 40, 12, tui.WithKeymap(m))
 	h.inject(tab(), key('G'))
@@ -35,7 +36,7 @@ func TestAMovedTableGoPrefixKeepsItsLiteralSecondG(t *testing.T) {
 // longer completes, the second g waiting again.
 func TestAMovedTableGoLineCompletesTheGoPrefix(t *testing.T) {
 	m := mustKeymap(t, `<mapping><shortcut id="tui.table.g.goLine"><key value="F8"/></shortcut></mapping>`)
-	dt := widget.NewDataTable(widget.NewTableCore(numbered(20)))
+	dt := table.NewDataTable(table.NewTableCore(numbered(20)))
 	sh := newShell(dt)
 	h := startAppOpts(t, sh, 40, 12, tui.WithKeymap(m))
 	h.inject(tab(), key('G'))
@@ -63,18 +64,18 @@ func TestAMovedTerminalPrefixKeepsItsLiteralContinuation(t *testing.T) {
 		t.Fatalf("F11 Ctrl+\\ sent %d Ctrl+\\ bytes, want 1: %q", n, f.proc().sent())
 	}
 	f.h.inject(fkey(tui.KeyF11), ctrl('n'))
-	f.h.waitFor("F11 Ctrl+n: normal mode", func() bool { return f.mode() == widget.TerminalNormal })
+	f.h.waitFor("F11 Ctrl+n: normal mode", func() bool { return f.mode() == terminal.TerminalNormal })
 }
 
 // Normal mode's g moved to F9: F9 then the literal g is the first line.
 func TestAMovedTerminalGoPrefixKeepsItsLiteralSecondG(t *testing.T) {
 	m := mustKeymap(t, `<mapping><shortcut id="tui.terminal.normal.goPrefix"><key value="F9"/></shortcut></mapping>`)
-	f := startTermApp(t, 20, 4, []tui.AppOption{tui.WithKeymap(m)}, widget.WithVimKeys(true), widget.WithScrollback(50))
+	f := startTermApp(t, 20, 4, []tui.AppOption{tui.WithKeymap(m)}, terminal.WithVimKeys(true), terminal.WithScrollback(50))
 	for i := range 20 {
 		f.output(fmt.Sprintf("line %d\r\n", i))
 	}
 	f.h.inject(key(tui.KeyEscape))
-	f.h.waitFor("normal", func() bool { return f.mode() == widget.TerminalNormal })
+	f.h.waitFor("normal", func() bool { return f.mode() == terminal.TerminalNormal })
 	row := func() int {
 		_, y, _ := f.h.tb.CursorPos()
 		return y

@@ -4,7 +4,9 @@ import (
 	"testing"
 
 	"github.com/yongjohnlee80/golib/tui"
-	"github.com/yongjohnlee80/golib/tui/widget"
+	"github.com/yongjohnlee80/golib/tui/widget/core"
+	"github.com/yongjohnlee80/golib/tui/widget/editor"
+	"github.com/yongjohnlee80/golib/tui/widget/table"
 )
 
 // openerProbe is a menu of the host's own kind, not an EditorMenu.
@@ -39,14 +41,14 @@ func TestADataTableOpensAnyMenuOpener(t *testing.T) {
 	h.inject(rightPress(5, 3))
 	h.barrier(sh)
 	var at tui.Point
-	var menu *widget.EditorMenu
+	var menu *editor.EditorMenu
 	h.onLoop(func() { opened, at, menu = first.opened, first.at, dt.Menu() })
 	if opened != 1 || at != (tui.Point{X: 5, Y: 3}) || menu != nil {
 		t.Fatalf("enabled: opened %d at %v, Menu() %v; want once at {5 3}, Menu() nil for a non-EditorMenu", opened, at, menu)
 	}
 	second := &openerProbe{on: true}
 	var closed int
-	var cur widget.MenuOpener
+	var cur core.MenuOpener
 	h.onLoop(func() { dt.SetMenuOpener(second); closed = first.closed })
 	if closed != 1 {
 		t.Errorf("a second menu: the first closed %d times, want 1", closed)
@@ -86,15 +88,15 @@ func (o sliceOpener) Close()                { o[0]++ }
 // A menu of a type that cannot be compared replaces another of its type without a panic, and the
 // one replaced is closed once.
 func TestADataTableReplacesAMenuOfANoncomparableType(t *testing.T) {
-	table := widget.NewDataTable(widget.NewTableCore(nil))
+	tbl := table.NewDataTable(table.NewTableCore(nil))
 	first := sliceOpener{0}
-	table.SetMenuOpener(first)
+	tbl.SetMenuOpener(first)
 	defer func() {
 		if r := recover(); r != nil {
 			t.Fatalf("replacing a noncomparable MenuOpener panicked: %v", r)
 		}
 	}()
-	table.SetMenuOpener(sliceOpener{0})
+	tbl.SetMenuOpener(sliceOpener{0})
 	if first[0] != 1 {
 		t.Fatalf("the replaced menu was closed %d times, want once", first[0])
 	}

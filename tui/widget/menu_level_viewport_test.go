@@ -6,15 +6,15 @@ import (
 	"testing"
 
 	"github.com/yongjohnlee80/golib/tui"
-	"github.com/yongjohnlee80/golib/tui/widget"
+	"github.com/yongjohnlee80/golib/tui/widget/core"
 )
 
 // rowsNamed are n commands labelled "<prefix> 00", "<prefix> 01", …
-func rowsNamed(prefix string, n int) []widget.MenuItemModel {
-	rows := make([]widget.MenuItemModel, n)
+func rowsNamed(prefix string, n int) []core.MenuItemModel {
+	rows := make([]core.MenuItemModel, n)
 	for i := range rows {
 		label := fmt.Sprintf("%s %02d", prefix, i)
-		rows[i] = widget.NewCommand(widget.ItemID(label), label, nil)
+		rows[i] = core.NewCommand(core.ItemID(label), label, nil)
 	}
 	return rows
 }
@@ -29,7 +29,7 @@ func pressKey(h *harness, code rune, times int) {
 // A column of rows taller than the screen scrolls to the row the keys select: it is painted, and
 // what is painted is what can be pointed at. The first rows show before any move, the control.
 func TestAMenuColumnShowsTheRowItsKeysSelect(t *testing.T) {
-	m := widget.NewMenu()
+	m := core.NewMenu()
 	if err := m.SetModel(rowsNamed("Item", 12)); err != nil {
 		t.Fatalf("SetModel: %v", err)
 	}
@@ -52,9 +52,9 @@ func TestAMenuColumnShowsTheRowItsKeysSelect(t *testing.T) {
 // row opens: its row is on screen, so it is an anchor.
 func TestAMenuLevelOpensTheSubmenuOfARowItsKeysScrolledTo(t *testing.T) {
 	children := rowsNamed("Child", 12)
-	children[8] = widget.NewSubmenu("deep", "Deeper", []widget.MenuItemModel{widget.NewCommand("leaf", "Leaf", nil)})
-	m := widget.NewMenu()
-	if err := m.SetModel([]widget.MenuItemModel{widget.NewSubmenu("more", "More", children)}); err != nil {
+	children[8] = core.NewSubmenu("deep", "Deeper", []core.MenuItemModel{core.NewCommand("leaf", "Leaf", nil)})
+	m := core.NewMenu()
+	if err := m.SetModel([]core.MenuItemModel{core.NewSubmenu("more", "More", children)}); err != nil {
 		t.Fatalf("SetModel: %v", err)
 	}
 	h, _ := menuFixture(t, m, 40, 8)
@@ -83,7 +83,7 @@ func TestAMenuLevelOpensTheSubmenuOfARowItsKeysScrolledTo(t *testing.T) {
 // not pull the window back to it: the selection moved nowhere, so there is nothing to reveal. The
 // rows overflowing the column show the scroll indicator.
 func TestAMenuColumnScrollsOnTheWheelAndStaysThere(t *testing.T) {
-	m := widget.NewMenu()
+	m := core.NewMenu()
 	if err := m.SetModel(rowsNamed("Item", 12)); err != nil {
 		t.Fatalf("SetModel: %v", err)
 	}
@@ -112,7 +112,7 @@ func TestAMenuColumnScrollsOnTheWheelAndStaysThere(t *testing.T) {
 // view. TestAMenuColumnScrollsOnTheWheelAndStaysThere is the control: an
 // unchanged selection leaves the wheel's scroll alone.
 func TestAMenuColumnRevealsANewSelectionAtTheOldOnesPlace(t *testing.T) {
-	m := widget.NewMenu()
+	m := core.NewMenu()
 	if err := m.SetModel(rowsNamed("Original", 12)); err != nil {
 		t.Fatal(err)
 	}

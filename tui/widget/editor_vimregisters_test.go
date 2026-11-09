@@ -5,11 +5,11 @@ import (
 	"testing"
 
 	"github.com/yongjohnlee80/golib/tui"
-	"github.com/yongjohnlee80/golib/tui/widget"
+	"github.com/yongjohnlee80/golib/tui/widget/editor"
 )
 
 // reg is register name's content as "text" with a trailing "⏎" when it is whole lines, "∅" for none.
-func reg(c *widget.EditorCore, name rune) string {
+func reg(c *editor.EditorCore, name rune) string {
 	text, linewise, ok := c.NamedRegister(name)
 	switch {
 	case !ok:
@@ -26,7 +26,7 @@ type regCase struct {
 	seq  string
 	want string          // the text after, "" to skip
 	regs map[rune]string // registers after, as reg shows them
-	opts []widget.CoreOption
+	opts []editor.CoreOption
 }
 
 func runRegs(t *testing.T, cases []regCase) {
@@ -147,7 +147,7 @@ func TestVimRegistersAPI(t *testing.T) {
 
 // A viewer names registers and yanks into them; a put from one is refused, and bubbles (#285).
 func TestVimRegistersOnAViewer(t *testing.T) {
-	c, _ := coreWith(t, "a\nb", widget.CoreReadOnly(true))
+	c, _ := coreWith(t, "a\nb", editor.CoreReadOnly(true))
 	vimSeq(c, `"ayy`)
 	if reg(c, 'a') != "a⏎" {
 		t.Fatalf("a viewer's \"ayy: a holds %q", reg(c, 'a'))
@@ -180,9 +180,9 @@ func TestVimRegistersClipboardExport(t *testing.T) {
 
 // clipEditor is a focused Vim editor holding text, its cursor at the start, on an App whose
 // TestBackend holds clipboard reads for the cell to answer; tb, when given, is that backend.
-func clipEditor(t *testing.T, text string, tb *tui.TestBackend) (*harness, *widget.Editor, *shell) {
+func clipEditor(t *testing.T, text string, tb *tui.TestBackend) (*harness, *editor.Editor, *shell) {
 	t.Helper()
-	ed := widget.NewEditor()
+	ed := editor.NewEditor()
 	sh := newShell(ed)
 	var opts []tui.AppOption
 	if tb != nil {
@@ -199,7 +199,7 @@ func clipEditor(t *testing.T, text string, tb *tui.TestBackend) (*harness, *widg
 	return h, ed, sh
 }
 
-func edValue(h *harness, ed *widget.Editor) (v string) {
+func edValue(h *harness, ed *editor.Editor) (v string) {
 	h.onLoop(func() { v = ed.Core().Value() })
 	return v
 }

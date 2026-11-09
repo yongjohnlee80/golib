@@ -5,25 +5,26 @@ import (
 	"time"
 
 	"github.com/yongjohnlee80/golib/tui"
-	"github.com/yongjohnlee80/golib/tui/widget"
+	"github.com/yongjohnlee80/golib/tui/widget/core"
+	"github.com/yongjohnlee80/golib/tui/widget/editor"
 )
 
 func TestWindowResizeByUsesPinnedHandleAndStateRefusals(t *testing.T) {
 	for _, tc := range []struct {
 		name        string
-		handle      widget.Handle
+		handle      core.Handle
 		start, want tui.Rect
 		dw, dh      int
 	}{
-		{"right", widget.HandleBottomLeft, tui.Rect{X: 15, Y: 2, W: 5, H: 4}, tui.Rect{X: 12, Y: 2, W: 8, H: 4}, 3, 0},
-		{"bottom", widget.HandleTopRight, tui.Rect{X: 2, Y: 6, W: 6, H: 4}, tui.Rect{X: 2, Y: 3, W: 6, H: 7}, 0, 3},
+		{"right", core.HandleBottomLeft, tui.Rect{X: 15, Y: 2, W: 5, H: 4}, tui.Rect{X: 12, Y: 2, W: 8, H: 4}, 3, 0},
+		{"bottom", core.HandleTopRight, tui.Rect{X: 2, Y: 6, W: 6, H: 4}, tui.Rect{X: 2, Y: 3, W: 6, H: 7}, 0, 3},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			model := widget.NewMinimizedWindows()
-			w := widget.NewWindowMod(widget.NewEditor(), widget.WithWindowMove(), widget.WithWindowResize(),
-				widget.WithWindowResizeHandle(tc.handle), widget.WithWindowMaximize(), widget.WithWindowMinimize(model))
-			f := widget.NewFloat(w, widget.WithAnchor(widget.AtRect(tc.start)))
-			host := widget.NewOverlayHost(widget.NewButton("base"))
+			model := core.NewMinimizedWindows()
+			w := core.NewWindowMod(editor.NewEditor(), core.WithWindowMove(), core.WithWindowResize(),
+				core.WithWindowResizeHandle(tc.handle), core.WithWindowMaximize(), core.WithWindowMinimize(model))
+			f := core.NewFloat(w, core.WithAnchor(core.AtRect(tc.start)))
+			host := core.NewOverlayHost(core.NewButton("base"))
 			host.Attach(f)
 			h := startApp(t, host, 20, 10)
 			h.onLoop(f.Show)
@@ -59,14 +60,14 @@ func TestWindowResizeByUsesPinnedHandleAndStateRefusals(t *testing.T) {
 }
 
 func TestWindowInlineRemountCloseCannotCloseTheNewMount(t *testing.T) {
-	var f *widget.Float
-	var w *widget.WindowMod
-	var events []widget.WindowChangedEvent
+	var f *core.Float
+	var w *core.WindowMod
+	var events []core.WindowChangedEvent
 	reentered := false
-	w = widget.NewWindowMod(widget.NewEditor(), widget.WithWindowMove(), widget.WithWindowChanged(func(e widget.WindowChangedEvent) { events = append(events, e) }),
-		widget.WithWindowCloseHandler(func() bool { f.Hide(); f.Show(); reentered = w.MoveBy(1, 0); return true }))
-	f = widget.NewFloat(w, widget.WithAnchor(widget.AtRect(tui.Rect{X: 2, Y: 2, W: 10, H: 4})))
-	host := widget.NewOverlayHost(widget.NewButton("base"))
+	w = core.NewWindowMod(editor.NewEditor(), core.WithWindowMove(), core.WithWindowChanged(func(e core.WindowChangedEvent) { events = append(events, e) }),
+		core.WithWindowCloseHandler(func() bool { f.Hide(); f.Show(); reentered = w.MoveBy(1, 0); return true }))
+	f = core.NewFloat(w, core.WithAnchor(core.AtRect(tui.Rect{X: 2, Y: 2, W: 10, H: 4})))
+	host := core.NewOverlayHost(core.NewButton("base"))
 	host.Attach(f)
 	h := startApp(t, host, 30, 12)
 	h.onLoop(f.Show)
@@ -94,10 +95,10 @@ func TestWindowInlineRemountCloseCannotCloseTheNewMount(t *testing.T) {
 
 func TestWindowClampedOutAndBackPreservesRequestAndNoCompletion(t *testing.T) {
 	changes := 0
-	w := widget.NewWindowMod(widget.NewEditor(), widget.WithWindowMove(), widget.WithWindowChanged(func(widget.WindowChangedEvent) { changes++ }))
+	w := core.NewWindowMod(editor.NewEditor(), core.WithWindowMove(), core.WithWindowChanged(func(core.WindowChangedEvent) { changes++ }))
 	request := tui.Rect{X: 30, Y: 10, W: 5, H: 3}
-	f := widget.NewFloat(w, widget.WithAnchor(widget.AtRect(request)))
-	host := widget.NewOverlayHost(widget.NewButton("base"))
+	f := core.NewFloat(w, core.WithAnchor(core.AtRect(request)))
+	host := core.NewOverlayHost(core.NewButton("base"))
 	host.Attach(f)
 	h := startApp(t, host, 20, 10)
 	h.onLoop(f.Show)
@@ -118,9 +119,9 @@ func TestWindowClampedOutAndBackPreservesRequestAndNoCompletion(t *testing.T) {
 }
 
 func TestWindowStepDuringDragUsesTheCheckpointGeometry(t *testing.T) {
-	w := widget.NewWindowMod(widget.NewEditor(), widget.WithWindowMove(), widget.WithWindowResize())
-	f := widget.NewFloat(w, widget.WithAnchor(widget.AtRect(tui.Rect{X: 2, Y: 2, W: 10, H: 4})))
-	host := widget.NewOverlayHost(widget.NewButton("base"))
+	w := core.NewWindowMod(editor.NewEditor(), core.WithWindowMove(), core.WithWindowResize())
+	f := core.NewFloat(w, core.WithAnchor(core.AtRect(tui.Rect{X: 2, Y: 2, W: 10, H: 4})))
+	host := core.NewOverlayHost(core.NewButton("base"))
 	host.Attach(f)
 	h := startApp(t, host, 40, 15)
 	h.onLoop(f.Show)
@@ -136,10 +137,10 @@ func TestWindowStepDuringDragUsesTheCheckpointGeometry(t *testing.T) {
 }
 
 func TestWindowRestoreNormalizesExternallyRevealedFloat(t *testing.T) {
-	model := widget.NewMinimizedWindows()
-	w := widget.NewWindowMod(widget.NewEditor(), widget.WithWindowMinimize(model))
-	f := widget.NewFloat(w, widget.WithAnchor(widget.AtRect(tui.Rect{X: 2, Y: 2, W: 10, H: 4})))
-	host := widget.NewOverlayHost(widget.NewButton("base"))
+	model := core.NewMinimizedWindows()
+	w := core.NewWindowMod(editor.NewEditor(), core.WithWindowMinimize(model))
+	f := core.NewFloat(w, core.WithAnchor(core.AtRect(tui.Rect{X: 2, Y: 2, W: 10, H: 4})))
+	host := core.NewOverlayHost(core.NewButton("base"))
 	host.Attach(f)
 	h := startApp(t, host, 30, 12)
 	h.onLoop(f.Show)
@@ -154,20 +155,20 @@ func TestWindowRestoreNormalizesExternallyRevealedFloat(t *testing.T) {
 }
 
 type windowReservationProbe struct {
-	*widget.WindowMod
+	*core.WindowMod
 	refuseBegin, refuseCancel, relaxedEscape bool
 	accepted                                 bool
 }
 
 func (w *windowReservationProbe) HandleAction(inv tui.ActionInvocation) bool {
 	switch inv.Action.(type) {
-	case widget.WindowDragBeginAction:
+	case core.WindowDragBeginAction:
 		if w.refuseBegin {
 			return false
 		}
 		w.accepted = w.WindowMod.HandleAction(inv)
 		return w.accepted
-	case widget.WindowDragCancelAction:
+	case core.WindowDragCancelAction:
 		if w.refuseCancel {
 			return false
 		}
@@ -176,13 +177,13 @@ func (w *windowReservationProbe) HandleAction(inv tui.ActionInvocation) bool {
 }
 func (w *windowReservationProbe) ResolveCaptureEscape(e tui.KeyEvent) (tui.Action, bool) {
 	if w.relaxedEscape {
-		return widget.WindowDragCancelAction{}, true
+		return core.WindowDragCancelAction{}, true
 	}
 	return w.WindowMod.ResolveCaptureEscape(e)
 }
 
 type windowFocusProbe struct {
-	widget.Base
+	core.Base
 	onFocus func()
 	presses int
 }
@@ -205,10 +206,10 @@ func (p *windowFocusProbe) HandleEvent(ev tui.Event) bool {
 
 func TestWindowBeginRechecksHiddenAncestorAfterFocus(t *testing.T) {
 	child := &windowFocusProbe{}
-	w := &windowReservationProbe{WindowMod: widget.NewWindowMod(child, widget.WithWindowMove())}
-	f := widget.NewFloat(w, widget.WithAnchor(widget.AtRect(tui.Rect{X: 2, Y: 2, W: 10, H: 4})))
+	w := &windowReservationProbe{WindowMod: core.NewWindowMod(child, core.WithWindowMove())}
+	f := core.NewFloat(w, core.WithAnchor(core.AtRect(tui.Rect{X: 2, Y: 2, W: 10, H: 4})))
 	child.onFocus = func() { f.SetVisible(false) }
-	host := widget.NewOverlayHost(widget.NewButton("base"))
+	host := core.NewOverlayHost(core.NewButton("base"))
 	host.Attach(f)
 	h := startApp(t, host, 30, 12)
 	h.onLoop(f.Show)
@@ -226,12 +227,12 @@ func TestWindowBeginPinsClosedAndAncestorVisibilityIndependently(t *testing.T) {
 	for _, name := range []string{"closed", "ancestor"} {
 		t.Run(name, func(t *testing.T) {
 			child := &windowFocusProbe{}
-			w := &windowReservationProbe{WindowMod: widget.NewWindowMod(child, widget.WithWindowMove(),
-				widget.WithWindowCloseHandler(func() bool { return true }))}
-			f := widget.NewFloat(w, widget.WithAnchor(widget.AtRect(tui.Rect{X: 2, Y: 2, W: 10, H: 4})))
-			host := widget.NewOverlayHost(widget.NewButton("base"))
+			w := &windowReservationProbe{WindowMod: core.NewWindowMod(child, core.WithWindowMove(),
+				core.WithWindowCloseHandler(func() bool { return true }))}
+			f := core.NewFloat(w, core.WithAnchor(core.AtRect(tui.Rect{X: 2, Y: 2, W: 10, H: 4})))
+			host := core.NewOverlayHost(core.NewButton("base"))
 			host.Attach(f)
-			ancestor := widget.NewBox(host)
+			ancestor := core.NewBox(host)
 			var root tui.Component = host
 			if name == "ancestor" {
 				root = ancestor
@@ -255,9 +256,9 @@ func TestWindowBeginPinsClosedAndAncestorVisibilityIndependently(t *testing.T) {
 
 func TestWindowRefusedReservationNeverReplaysThePress(t *testing.T) {
 	child := &windowFocusProbe{}
-	w := &windowReservationProbe{WindowMod: widget.NewWindowMod(child, widget.WithWindowMove()), refuseBegin: true}
-	f := widget.NewFloat(w, widget.WithAnchor(widget.AtRect(tui.Rect{X: 2, Y: 2, W: 10, H: 4})))
-	host := widget.NewOverlayHost(widget.NewButton("base"))
+	w := &windowReservationProbe{WindowMod: core.NewWindowMod(child, core.WithWindowMove()), refuseBegin: true}
+	f := core.NewFloat(w, core.WithAnchor(core.AtRect(tui.Rect{X: 2, Y: 2, W: 10, H: 4})))
+	host := core.NewOverlayHost(core.NewButton("base"))
 	host.Attach(f)
 	h := startApp(t, host, 30, 12)
 	h.onLoop(f.Show)
@@ -272,7 +273,7 @@ func TestWindowRefusedReservationNeverReplaysThePress(t *testing.T) {
 }
 
 type windowRecordedEditor struct {
-	*widget.Editor
+	*editor.Editor
 	keys []tui.KeyEvent
 }
 
@@ -286,13 +287,13 @@ func (e *windowRecordedEditor) HandleEvent(ev tui.Event) bool {
 func TestWindowCaptureEscapeFilteringAndRefusalAreNotReplayed(t *testing.T) {
 	for _, refuse := range []bool{false, true} {
 		t.Run(map[bool]string{false: "filter", true: "refusal"}[refuse], func(t *testing.T) {
-			editor := &windowRecordedEditor{Editor: widget.NewEditor()}
-			w := &windowReservationProbe{WindowMod: widget.NewWindowMod(editor, widget.WithWindowMove()), refuseCancel: refuse, relaxedEscape: !refuse}
-			f := widget.NewFloat(w, widget.WithAnchor(widget.AtRect(tui.Rect{X: 2, Y: 2, W: 10, H: 4})))
-			host := widget.NewOverlayHost(widget.NewButton("base"))
+			ed := &windowRecordedEditor{Editor: editor.NewEditor()}
+			w := &windowReservationProbe{WindowMod: core.NewWindowMod(ed, core.WithWindowMove()), refuseCancel: refuse, relaxedEscape: !refuse}
+			f := core.NewFloat(w, core.WithAnchor(core.AtRect(tui.Rect{X: 2, Y: 2, W: 10, H: 4})))
+			host := core.NewOverlayHost(core.NewButton("base"))
 			host.Attach(f)
 			h := startApp(t, host, 30, 12)
-			h.onLoop(func() { f.Show(); h.app.FocusInto(editor) })
+			h.onLoop(func() { f.Show(); h.app.FocusInto(ed) })
 			h.settle()
 			if refuse {
 				h.inject(key('i'))
@@ -300,13 +301,13 @@ func TestWindowCaptureEscapeFilteringAndRefusalAreNotReplayed(t *testing.T) {
 			}
 			h.inject(tui.MouseEvent{Kind: tui.MousePress, Button: tui.MouseLeft, Mods: tui.ModAlt, X: 5, Y: 4})
 			h.barrier(nil)
-			h.onLoop(func() { editor.keys = nil })
+			h.onLoop(func() { ed.keys = nil })
 			if refuse {
 				h.inject(key(tui.KeyEscape))
 				h.barrier(nil)
 				h.onLoop(func() {
-					if editor.Core().Mode() != widget.ModeInsert || len(editor.keys) != 1 || editor.keys[0].Code != barrierKey {
-						t.Errorf("refused Escape replayed: mode=%v keys=%+v", editor.Core().Mode(), editor.keys)
+					if ed.Core().Mode() != editor.ModeInsert || len(ed.keys) != 1 || ed.keys[0].Code != barrierKey {
+						t.Errorf("refused Escape replayed: mode=%v keys=%+v", ed.Core().Mode(), ed.keys)
 					}
 				})
 			} else {
@@ -314,13 +315,13 @@ func TestWindowCaptureEscapeFilteringAndRefusalAreNotReplayed(t *testing.T) {
 				h.barrier(nil)
 				h.onLoop(func() {
 					shift, release, ordinary := false, false, false
-					for _, k := range editor.keys {
+					for _, k := range ed.keys {
 						shift = shift || (k.Code == tui.KeyEscape && k.Mods == tui.ModShift)
 						release = release || (k.Code == tui.KeyEscape && k.Kind == tui.KeyRelease)
 						ordinary = ordinary || k.Code == 'i'
 					}
 					if !shift || !release || !ordinary || !w.Context().HasPointerCapture() {
-						t.Errorf("filtered keys=%+v capture=%v", editor.keys, w.Context().HasPointerCapture())
+						t.Errorf("filtered keys=%+v capture=%v", ed.keys, w.Context().HasPointerCapture())
 					}
 				})
 			}
@@ -329,10 +330,10 @@ func TestWindowCaptureEscapeFilteringAndRefusalAreNotReplayed(t *testing.T) {
 }
 
 func TestWindowHiddenAncestorFocusRepairUsesFreshVisibilityWithoutLayout(t *testing.T) {
-	hiddenChild := widget.NewButton("hidden first")
-	ancestor := widget.NewBox(hiddenChild)
-	eligible := widget.NewButton("eligible")
-	current := widget.NewButton("current")
+	hiddenChild := core.NewButton("hidden first")
+	ancestor := core.NewBox(hiddenChild)
+	eligible := core.NewButton("eligible")
+	current := core.NewButton("current")
 	root := tui.NewFlex(tui.Vertical)
 	root.Add(ancestor, eligible, current)
 	h := startApp(t, root, 30, 12)
@@ -349,11 +350,11 @@ func TestWindowHiddenAncestorFocusRepairUsesFreshVisibilityWithoutLayout(t *test
 }
 
 func TestWindowHandleActionOriginsAreInputScopedBothWays(t *testing.T) {
-	model := widget.NewMinimizedWindows()
-	w := widget.NewWindowMod(widget.NewEditor(), widget.WithWindowMinimize(model))
-	f := widget.NewFloat(w, widget.WithAnchor(widget.AtRect(tui.Rect{X: 2, Y: 2, W: 10, H: 4})))
-	dialog := widget.NewFloat(widget.NewButton("confirm"), widget.WithModal(true))
-	host := widget.NewOverlayHost(widget.NewButton("base"))
+	model := core.NewMinimizedWindows()
+	w := core.NewWindowMod(editor.NewEditor(), core.WithWindowMinimize(model))
+	f := core.NewFloat(w, core.WithAnchor(core.AtRect(tui.Rect{X: 2, Y: 2, W: 10, H: 4})))
+	dialog := core.NewFloat(core.NewButton("confirm"), core.WithModal(true))
+	host := core.NewOverlayHost(core.NewButton("base"))
 	host.Attach(f)
 	host.Attach(dialog)
 	h := startApp(t, host, 30, 12)
@@ -363,26 +364,26 @@ func TestWindowHandleActionOriginsAreInputScopedBothWays(t *testing.T) {
 		w.Minimize()
 		dialog.Show()
 		for _, origin := range []tui.ActionOrigin{tui.OriginKey, tui.OriginPointer, tui.OriginUser} {
-			if w.HandleAction(tui.ActionInvocation{Action: widget.WindowRestoreAction{}, Origin: origin}) {
+			if w.HandleAction(tui.ActionInvocation{Action: core.WindowRestoreAction{}, Origin: origin}) {
 				t.Errorf("input origin %v escaped scope", origin)
 			}
 		}
-		if !w.HandleAction(tui.ActionInvocation{Action: widget.WindowRestoreAction{}, Origin: tui.OriginProgrammatic}) {
+		if !w.HandleAction(tui.ActionInvocation{Action: core.WindowRestoreAction{}, Origin: tui.OriginProgrammatic}) {
 			t.Error("application origin was confined")
 		}
 		dialog.Hide()
 		w.Minimize()
-		if !w.HandleAction(tui.ActionInvocation{Action: widget.WindowRestoreAction{}, Origin: tui.OriginKey}) {
+		if !w.HandleAction(tui.ActionInvocation{Action: core.WindowRestoreAction{}, Origin: tui.OriginKey}) {
 			t.Error("eligible input origin refused")
 		}
 	})
 }
 
 func TestWindowUnmatchedRightPressDoesNotFocusContent(t *testing.T) {
-	base := widget.NewButton("base")
-	w := widget.NewWindowMod(widget.NewEditor(), widget.WithWindowMove())
-	f := widget.NewFloat(w, widget.WithAnchor(widget.AtRect(tui.Rect{X: 2, Y: 2, W: 10, H: 4})))
-	host := widget.NewOverlayHost(base)
+	base := core.NewButton("base")
+	w := core.NewWindowMod(editor.NewEditor(), core.WithWindowMove())
+	f := core.NewFloat(w, core.WithAnchor(core.AtRect(tui.Rect{X: 2, Y: 2, W: 10, H: 4})))
+	host := core.NewOverlayHost(base)
 	host.Attach(f)
 	h := startApp(t, host, 30, 12)
 	h.onLoop(func() { f.Show(); h.app.FocusInto(base) })
@@ -401,7 +402,7 @@ type windowPressAction struct{ preview int }
 func (windowPressAction) ActionID() tui.ActionID { return "fixture.window.press" }
 
 type windowResolverFixture struct {
-	widget.Base
+	core.Base
 	child            tui.Component
 	counts, previews []int
 	owner            tui.NodeID
@@ -427,7 +428,7 @@ func (w *windowResolverFixture) HandleAction(inv tui.ActionInvocation) bool {
 }
 
 func TestWindowReservationNearestOwnerOrdinalAndConfinement(t *testing.T) {
-	inner := &windowResolverFixture{child: widget.NewButton("target")}
+	inner := &windowResolverFixture{child: core.NewButton("target")}
 	outer := &windowResolverFixture{child: inner}
 	h := startAppOpts(t, outer, 30, 12, tui.WithDoubleClickWindow(time.Second))
 	h.settle()
@@ -441,8 +442,8 @@ func TestWindowReservationNearestOwnerOrdinalAndConfinement(t *testing.T) {
 		}
 	})
 
-	dialog := widget.NewFloat(widget.NewButton("modal"), widget.WithModal(true))
-	host := widget.NewOverlayHost(widget.NewButton("base"))
+	dialog := core.NewFloat(core.NewButton("modal"), core.WithModal(true))
+	host := core.NewOverlayHost(core.NewButton("base"))
 	host.Attach(dialog)
 	scopeOuter := &windowResolverFixture{child: host}
 	h2 := startApp(t, scopeOuter, 30, 12)

@@ -6,15 +6,18 @@ import (
 	"testing"
 
 	"github.com/yongjohnlee80/golib/tui"
-	"github.com/yongjohnlee80/golib/tui/widget"
+	"github.com/yongjohnlee80/golib/tui/widget/core"
+	"github.com/yongjohnlee80/golib/tui/widget/editor"
+	"github.com/yongjohnlee80/golib/tui/widget/htmlview"
+	"github.com/yongjohnlee80/golib/tui/widget/table"
 )
 
 // csvEditor is a terminal Editor holding text, its document view a TableDocument over its own core,
 // turned on, focused, at 40×10.
-func csvEditor(t *testing.T, text string, core ...widget.CoreOption) (*harness, *shell, *widget.Editor, *widget.TableDocument) {
+func csvEditor(t *testing.T, text string, core ...editor.CoreOption) (*harness, *shell, *editor.Editor, *table.TableDocument) {
 	t.Helper()
-	ed := widget.NewEditor(widget.WithCore(append([]widget.CoreOption{widget.CoreInitialText(text)}, core...)...))
-	doc := widget.NewTableDocument(ed.Core(), ',')
+	ed := editor.NewEditor(editor.WithCore(append([]editor.CoreOption{editor.CoreInitialText(text)}, core...)...))
+	doc := table.NewTableDocument(ed.Core(), ',')
 	ed.SetDocumentView(doc)
 	ed.SetRenderedDocument(true)
 	sh := newShell(ed)
@@ -25,7 +28,7 @@ func csvEditor(t *testing.T, text string, core ...widget.CoreOption) (*harness, 
 }
 
 // views is the editor's view chosen and drawn, and whether the table has the focus.
-func views(h *harness, ed *widget.Editor, doc *widget.TableDocument) (chosen, shown widget.EditorView, inTable bool) {
+func views(h *harness, ed *editor.Editor, doc *table.TableDocument) (chosen, shown editor.EditorView, inTable bool) {
 	h.onLoop(func() { chosen, shown, inTable = ed.View(), ed.ShownView(), h.app.FocusWithin(doc) })
 	return
 }
@@ -37,7 +40,7 @@ func TestTheTerminalEditorsDocumentView(t *testing.T) {
 	h, sh, ed, doc := csvEditor(t, "name,n\nann,1\nbob,2\n")
 	h.inject(ctrlEv('t'))
 	h.barrier(sh)
-	if c, s, in := views(h, ed, doc); c != widget.ViewRendered || s != widget.ViewRendered || !in {
+	if c, s, in := views(h, ed, doc); c != editor.ViewRendered || s != editor.ViewRendered || !in {
 		t.Fatalf("Ctrl+T: chosen %v, drawn %v, table focused %v", c, s, in)
 	}
 	if !strings.HasPrefix(h.row(0), "name") || !strings.Contains(h.row(3), "bob") {
@@ -50,7 +53,7 @@ func TestTheTerminalEditorsDocumentView(t *testing.T) {
 	}
 	h.inject(ctrlEv('t'))
 	h.barrier(sh)
-	if c, s, in := views(h, ed, doc); c != widget.ViewRaw || s != widget.ViewRaw || in {
+	if c, s, in := views(h, ed, doc); c != editor.ViewRaw || s != editor.ViewRaw || in {
 		t.Fatalf("Ctrl+T from the table: chosen %v, drawn %v, table focused %v", c, s, in)
 	}
 	if h.row(2) != "bob,20"+strings.Repeat(" ", 34) {
@@ -62,45 +65,45 @@ func TestTheTerminalEditorsDocumentView(t *testing.T) {
 // out of the table, Ctrl+T then toggling nothing; with the toggle unbound the table never shows
 // by key, and Ctrl+T from it is not consumed.
 func TestTheTableToggleIsTheKeymaps(t *testing.T) {
-	h, sh, ed, doc := csvEditor(t, "a,b\n1,2\n", widget.CoreKeymap(widget.Keymap{
-		{Mode: widget.ModeNormal, Code: 'g', Ctrl: true}: widget.ActToggleRendered,
-		{Mode: widget.ModeNormal, Code: 't', Ctrl: true}: widget.ActUnbound,
+	h, sh, ed, doc := csvEditor(t, "a,b\n1,2\n", editor.CoreKeymap(editor.Keymap{
+		{Mode: editor.ModeNormal, Code: 'g', Ctrl: true}: editor.ActToggleRendered,
+		{Mode: editor.ModeNormal, Code: 't', Ctrl: true}: editor.ActUnbound,
 	}))
 	h.inject(ctrlEv('t'))
 	h.barrier(sh)
-	if _, s, _ := views(h, ed, doc); s != widget.ViewRaw {
+	if _, s, _ := views(h, ed, doc); s != editor.ViewRaw {
 		t.Fatal("Ctrl+T, unbound, showed the table")
 	}
 	h.inject(ctrlEv('g'))
 	h.barrier(sh)
-	if _, s, in := views(h, ed, doc); s != widget.ViewRendered || !in {
+	if _, s, in := views(h, ed, doc); s != editor.ViewRendered || !in {
 		t.Fatalf("Ctrl+G, rebound: drawn %v, focused %v", s, in)
 	}
 	h.inject(ctrlEv('t'))
 	h.barrier(sh)
-	if _, s, _ := views(h, ed, doc); s != widget.ViewRendered {
+	if _, s, _ := views(h, ed, doc); s != editor.ViewRendered {
 		t.Fatal("Ctrl+T, unbound, left the table")
 	}
 	h.inject(ctrlEv('g'))
 	h.barrier(sh)
-	if _, s, _ := views(h, ed, doc); s != widget.ViewRaw {
+	if _, s, _ := views(h, ed, doc); s != editor.ViewRaw {
 		t.Fatal("Ctrl+G from the table did not return to the text")
 	}
 
-	h2, sh2, ed2, doc2 := csvEditor(t, "a,b\n1,2\n", widget.CoreKeymap(widget.Keymap{
-		{Mode: widget.ModeNormal, Code: 't', Ctrl: true}: widget.ActUnbound,
+	h2, sh2, ed2, doc2 := csvEditor(t, "a,b\n1,2\n", editor.CoreKeymap(editor.Keymap{
+		{Mode: editor.ModeNormal, Code: 't', Ctrl: true}: editor.ActUnbound,
 	}))
 	h2.inject(ctrlEv('t'))
 	h2.barrier(sh2)
-	if _, s, _ := views(h2, ed2, doc2); s != widget.ViewRaw {
+	if _, s, _ := views(h2, ed2, doc2); s != editor.ViewRaw {
 		t.Fatal("an unbound toggle showed the table")
 	}
-	h2.onLoop(func() { ed2.SetView(widget.ViewRendered) })
+	h2.onLoop(func() { ed2.SetView(editor.ViewRendered) })
 	h2.barrier(sh2)
 	before := len(sh2.bubbledKeys())
 	h2.inject(ctrlEv('t'))
 	h2.barrier(sh2)
-	if _, s, _ := views(h2, ed2, doc2); s != widget.ViewRendered || len(sh2.bubbledKeys()) == before {
+	if _, s, _ := views(h2, ed2, doc2); s != editor.ViewRendered || len(sh2.bubbledKeys()) == before {
 		t.Fatalf("an unbound Ctrl+T in the table: drawn %v; bubbled %v", s, len(sh2.bubbledKeys()) > before)
 	}
 }
@@ -111,14 +114,14 @@ func TestTheTableToggleIsTheKeymaps(t *testing.T) {
 func TestTheTableKeepsTheChosenView(t *testing.T) {
 	const text = "a,b\n1,2\n"
 	h, sh, ed, doc := csvEditor(t, text)
-	h.onLoop(func() { ed.SetView(widget.ViewRendered); ed.SetRenderedEnabled(false) })
+	h.onLoop(func() { ed.SetView(editor.ViewRendered); ed.SetRenderedEnabled(false) })
 	h.barrier(sh)
-	if c, s, _ := views(h, ed, doc); c != widget.ViewRendered || s != widget.ViewRaw {
+	if c, s, _ := views(h, ed, doc); c != editor.ViewRendered || s != editor.ViewRaw {
 		t.Fatalf("withheld: chosen %v, drawn %v", c, s)
 	}
 	h.onLoop(func() { ed.SetRenderedEnabled(true) })
 	h.barrier(sh)
-	if _, s, in := views(h, ed, doc); s != widget.ViewRendered || !in {
+	if _, s, in := views(h, ed, doc); s != editor.ViewRendered || !in {
 		t.Fatalf("given back: drawn %v, focused %v", s, in)
 	}
 	h.inject(dtEnter, keyText("9"))
@@ -188,11 +191,11 @@ func TestTheTableUndoesAndRedoesItsKeptEditByKey(t *testing.T) {
 // outside its selection as the menu's target (TableMenuSelects): the selection ends, the cursor
 // goes to the cell pressed, and the menu's Yank yanks that cell, not the rows selected before.
 func TestATableDocumentsRightPressActsOnWhatItWasOn(t *testing.T) {
-	ed := widget.NewEditor(widget.WithCore(widget.CoreInitialText("name,n\nann,1\nbob,2\ncid,3\n")))
-	doc := widget.NewTableDocument(ed.Core(), ',')
+	ed := editor.NewEditor(editor.WithCore(editor.CoreInitialText("name,n\nann,1\nbob,2\ncid,3\n")))
+	doc := table.NewTableDocument(ed.Core(), ',')
 	ed.SetDocumentView(doc)
 	ed.SetRenderedDocument(true)
-	sh := newShell(widget.NewOverlayHost(ed))
+	sh := newShell(core.NewOverlayHost(ed))
 	h := startApp(t, sh, 40, 10)
 	h.onLoop(func() { h.app.FocusInto(ed) })
 	h.barrier(sh)
@@ -209,7 +212,7 @@ func TestATableDocumentsRightPressActsOnWhatItWasOn(t *testing.T) {
 	h.shows("Insert row above")
 	h.onLoop(func() {
 		c := doc.Core()
-		if _, _, ok := c.Selection(); ok || c.Cursor() != (widget.TablePos{Row: 2, Col: 0}) {
+		if _, _, ok := c.Selection(); ok || c.Cursor() != (table.TablePos{Row: 2, Col: 0}) {
 			t.Errorf("after the right press on cid: selected %v, cursor %+v; want none, row 2 field 0", ok, c.Cursor())
 		}
 	})
@@ -240,13 +243,13 @@ func TestFocusGivenToAnEditorShowingItsDocumentGoesIntoIt(t *testing.T) {
 		for i := range 30 {
 			fmt.Fprintf(&text, "<p>p%02d</p>\n", i)
 		}
-		ed := widget.NewEditor(widget.WithCore(widget.CoreInitialText(text.String())))
-		v := widget.NewHTMLView()
+		ed := editor.NewEditor(editor.WithCore(editor.CoreInitialText(text.String())))
+		v := htmlview.NewHTMLView()
 		ed.SetDocumentView(v)
 		ed.SetRenderedDocument(true)
 		sh := newShell(ed)
 		h := startApp(t, sh, 40, 10)
-		h.onLoop(func() { h.app.FocusInto(ed); ed.SetView(widget.ViewRendered) })
+		h.onLoop(func() { h.app.FocusInto(ed); ed.SetView(editor.ViewRendered) })
 		h.barrier(sh)
 		h.shows("p03")
 		h.onLoop(func() { h.app.FocusInto(ed) })
@@ -267,7 +270,7 @@ func TestFocusGivenToAnEditorShowingItsDocumentGoesIntoIt(t *testing.T) {
 		h.barrier(sh)
 		h.onLoop(func() { h.app.FocusInto(ed) })
 		h.barrier(sh)
-		if _, s, in := views(h, ed, doc); s != widget.ViewRendered || !in {
+		if _, s, in := views(h, ed, doc); s != editor.ViewRendered || !in {
 			t.Fatalf("focus given to the editor: drawn %v, table focused %v", s, in)
 		}
 		h.inject(keyText("j"), keyText("l"), dtEnter, keyText("0"), dtEnter)
@@ -283,13 +286,13 @@ func TestFocusGivenToAnEditorShowingItsDocumentGoesIntoIt(t *testing.T) {
 // back to the editor goes on into the view, and keys edit through the table. Before, the focus
 // stayed on the editor, as the view was shown while the float held it.
 func TestAFloatClosingOverAShownDocumentFocusesTheView(t *testing.T) {
-	ed := widget.NewEditor(widget.WithCore(widget.CoreInitialText("name,n\nann,1\nbob,2\n")))
-	doc := widget.NewTableDocument(ed.Core(), ',')
+	ed := editor.NewEditor(editor.WithCore(editor.CoreInitialText("name,n\nann,1\nbob,2\n")))
+	doc := table.NewTableDocument(ed.Core(), ',')
 	ed.SetDocumentView(doc)
 	ed.SetRenderedDocument(true)
-	input := widget.NewTextInput()
-	flt := widget.NewFloat(input, widget.WithModal(true))
-	host := widget.NewOverlayHost(ed)
+	input := core.NewTextInput()
+	flt := core.NewFloat(input, core.WithModal(true))
+	host := core.NewOverlayHost(ed)
 	host.Attach(flt)
 	sh := newShell(host)
 	h := startApp(t, sh, 40, 10)
@@ -298,14 +301,14 @@ func TestAFloatClosingOverAShownDocumentFocusesTheView(t *testing.T) {
 	h.onLoop(flt.Show)
 	h.barrier(sh)
 	var inFloat bool
-	h.onLoop(func() { inFloat = h.app.FocusWithin(input); ed.SetView(widget.ViewRendered) })
+	h.onLoop(func() { inFloat = h.app.FocusWithin(input); ed.SetView(editor.ViewRendered) })
 	h.barrier(sh)
 	if !inFloat {
 		t.Fatal("the float did not take the focus")
 	}
 	h.onLoop(flt.Hide)
 	h.barrier(sh)
-	if _, s, in := views(h, ed, doc); s != widget.ViewRendered || !in {
+	if _, s, in := views(h, ed, doc); s != editor.ViewRendered || !in {
 		t.Fatalf("the float closed: drawn %v, table focused %v", s, in)
 	}
 	h.inject(keyText("j"), keyText("l"), dtEnter, keyText("0"), dtEnter)
@@ -334,7 +337,7 @@ func TestTheJumpListWalksFromAShownDocument(t *testing.T) {
 	h.barrier(sh)
 	h.inject(ctrlEv('o'))
 	h.barrier(sh)
-	if _, s, in := views(h, ed, doc); s != widget.ViewRendered || !in {
+	if _, s, in := views(h, ed, doc); s != editor.ViewRendered || !in {
 		t.Fatalf("Ctrl+O from the table: drawn %v, table focused %v", s, in)
 	}
 	if ln := line(); ln != 0 {
@@ -345,7 +348,7 @@ func TestTheJumpListWalksFromAShownDocument(t *testing.T) {
 	if ln := line(); ln != 4 {
 		t.Fatalf("Ctrl+I from the table: line %d, want 4", ln)
 	}
-	if _, s, _ := views(h, ed, doc); s != widget.ViewRendered {
+	if _, s, _ := views(h, ed, doc); s != editor.ViewRendered {
 		t.Fatalf("Ctrl+I from the table: drawn %v", s)
 	}
 }

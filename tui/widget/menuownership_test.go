@@ -18,16 +18,16 @@ import (
 	"testing"
 
 	"github.com/yongjohnlee80/golib/tui"
-	"github.com/yongjohnlee80/golib/tui/widget"
+	"github.com/yongjohnlee80/golib/tui/widget/core"
 )
 
 // fileMenuModel is a two-row model whose second row is a submenu, used wherever
 // a test needs a level to open.
-func fileMenuModel() []widget.MenuItemModel {
-	return []widget.MenuItemModel{
-		widget.NewCommand("quit", "Quit", nil),
-		widget.NewSubmenu("file", "File", []widget.MenuItemModel{
-			widget.NewCommand("new", "NewDoc", nil),
+func fileMenuModel() []core.MenuItemModel {
+	return []core.MenuItemModel{
+		core.NewCommand("quit", "Quit", nil),
+		core.NewSubmenu("file", "File", []core.MenuItemModel{
+			core.NewCommand("new", "NewDoc", nil),
 		}),
 	}
 }
@@ -36,7 +36,7 @@ func fileMenuModel() []widget.MenuItemModel {
 // allows, so a test can constrain one widget without constraining the host that
 // has to have room for its popups.
 type fixedBox struct {
-	widget.Base
+	core.Base
 	child tui.Component
 	w, hh int
 }
@@ -67,12 +67,12 @@ func (f *fixedBox) Render(tui.Surface) {}
 // unrelated host is not merely quiet, it is uninvolved, and that is what this
 // asserts — no layer of any kind appears in it.
 func TestOpeningALevelConcernsOnlyTheHostThatContainsTheMenu(t *testing.T) {
-	menu := widget.NewMenu()
+	menu := core.NewMenu()
 	if err := menu.SetModel(fileMenuModel()); err != nil {
 		t.Fatalf("SetModel: %v", err)
 	}
-	mine := widget.NewOverlayHost(menu)
-	theirs := widget.NewOverlayHost(widget.NewText("unrelated"))
+	mine := core.NewOverlayHost(menu)
+	theirs := core.NewOverlayHost(core.NewText("unrelated"))
 	root := tui.NewFlex(tui.Vertical)
 	root.AddWeighted(mine, 1)
 	root.AddWeighted(theirs, 1)
@@ -113,12 +113,12 @@ func TestOpeningALevelConcernsOnlyTheHostThatContainsTheMenu(t *testing.T) {
 // ordered by the container it actually lives in rather than escaping to an
 // outer host that knows nothing about it.
 func TestANestedHostServesTheMenuInsideIt(t *testing.T) {
-	menu := widget.NewMenu()
+	menu := core.NewMenu()
 	if err := menu.SetModel(fileMenuModel()); err != nil {
 		t.Fatalf("SetModel: %v", err)
 	}
-	inner := widget.NewOverlayHost(menu)
-	outer := widget.NewOverlayHost(inner)
+	inner := core.NewOverlayHost(menu)
+	outer := core.NewOverlayHost(inner)
 	h := startApp(t, outer, 40, 20)
 	h.settle()
 
@@ -150,7 +150,7 @@ func TestANestedHostServesTheMenuInsideIt(t *testing.T) {
 // caller waited for a popup that could never arrive. A Menu needs an overlay
 // host; saying so is the whole of the fix.
 func TestAMenuWithNoHostSaysSoRatherThanSilentlyDoingNothing(t *testing.T) {
-	menu := widget.NewMenu()
+	menu := core.NewMenu()
 	if err := menu.SetModel(fileMenuModel()); err != nil {
 		t.Fatalf("SetModel: %v", err)
 	}
@@ -162,7 +162,7 @@ func TestAMenuWithNoHostSaysSoRatherThanSilentlyDoingNothing(t *testing.T) {
 	var err error
 	h.onLoop(func() { err = menu.Open("file") })
 	h.settle()
-	if !errors.Is(err, widget.ErrAnchorUnusable) {
+	if !errors.Is(err, core.ErrAnchorUnusable) {
 		t.Errorf("Open returned %v with no host above the Menu, want ErrAnchorUnusable", err)
 	}
 	if n := openLevelsOn(t, h, menu); n != 0 {
@@ -178,13 +178,13 @@ func TestAMenuWithNoHostSaysSoRatherThanSilentlyDoingNothing(t *testing.T) {
 // idempotent against the stale entry, so Open returned success and mounted
 // nothing at all. The menu was then permanently unable to open that submenu.
 func TestALevelDoesNotOutliveTheMenuThatOpenedIt(t *testing.T) {
-	menu := widget.NewMenu()
+	menu := core.NewMenu()
 	if err := menu.SetModel(fileMenuModel()); err != nil {
 		t.Fatalf("SetModel: %v", err)
 	}
 	inner := tui.NewFlex(tui.Vertical)
 	inner.Add(menu)
-	host := widget.NewOverlayHost(inner)
+	host := core.NewOverlayHost(inner)
 	h := startApp(t, host, 40, 20)
 	h.settle()
 
@@ -236,11 +236,11 @@ func TestALevelDoesNotOutliveTheMenuThatOpenedIt(t *testing.T) {
 // is unmounted and still counted, and the next Open on that row is refused as a
 // duplicate.
 func TestAHostDrivenDismissalReachesTheMenusLevelStack(t *testing.T) {
-	menu := widget.NewMenu()
+	menu := core.NewMenu()
 	if err := menu.SetModel(fileMenuModel()); err != nil {
 		t.Fatalf("SetModel: %v", err)
 	}
-	host := widget.NewOverlayHost(menu)
+	host := core.NewOverlayHost(menu)
 	h := startApp(t, host, 40, 20)
 	h.settle()
 
@@ -254,7 +254,7 @@ func TestAHostDrivenDismissalReachesTheMenusLevelStack(t *testing.T) {
 
 	// An EXPLICIT close by the application, through the host's own API. Nothing
 	// tells the Menu; it has to be listening.
-	var layer widget.LayerID
+	var layer core.LayerID
 	h.onLoop(func() {
 		for id := range host.AnchoredLayers() {
 			layer = id
@@ -263,7 +263,7 @@ func TestAHostDrivenDismissalReachesTheMenusLevelStack(t *testing.T) {
 	if layer == "" {
 		t.Fatal("no anchored layer to close")
 	}
-	h.onLoop(func() { host.CloseAnchored(layer, widget.DismissProgrammatic) })
+	h.onLoop(func() { host.CloseAnchored(layer, core.DismissProgrammatic) })
 	h.settle()
 	h.settle()
 	if n := openLevelsOn(t, h, menu); n != 0 {
@@ -287,11 +287,11 @@ func TestAHostDrivenDismissalReachesTheMenusLevelStack(t *testing.T) {
 // The other way a host closes a level without being asked: the row it hangs off
 // stops being laid out, and the anchor-loss commit dismisses it.
 func TestALostAnchorReachesTheMenusLevelStackToo(t *testing.T) {
-	menu := widget.NewMenu()
+	menu := core.NewMenu()
 	if err := menu.SetModel(fileMenuModel()); err != nil {
 		t.Fatalf("SetModel: %v", err)
 	}
-	host := widget.NewOverlayHost(menu)
+	host := core.NewOverlayHost(menu)
 	h := startApp(t, host, 40, 20)
 	h.settle()
 
@@ -319,12 +319,12 @@ func TestALostAnchorReachesTheMenusLevelStackToo(t *testing.T) {
 // rectangle a click could land in, so a menu squeezed to one line would open a
 // popup pointing at a row the user cannot see.
 func TestAClippedRowIsNotAnAnchorAndIsNotClickable(t *testing.T) {
-	menu := widget.NewMenu()
+	menu := core.NewMenu()
 	if err := menu.SetModel(fileMenuModel()); err != nil {
 		t.Fatalf("SetModel: %v", err)
 	}
 	// One line: only "Quit" is painted, and "File" — the submenu — is clipped.
-	host := widget.NewOverlayHost(&fixedBox{child: menu, w: 20, hh: 1})
+	host := core.NewOverlayHost(&fixedBox{child: menu, w: 20, hh: 1})
 	h := startApp(t, host, 40, 20)
 	h.settle()
 
@@ -338,7 +338,7 @@ func TestAClippedRowIsNotAnAnchorAndIsNotClickable(t *testing.T) {
 	if err == nil {
 		t.Error("Open succeeded for a row that is not on screen; a clipped row has no " +
 			"region to anchor to, and the popup it produces points at nothing")
-	} else if !errors.Is(err, widget.ErrAnchorUnusable) {
+	} else if !errors.Is(err, core.ErrAnchorUnusable) {
 		t.Errorf("Open returned %v, want an ErrAnchorUnusable", err)
 	}
 	if n := openLevelsOn(t, h, menu); n != 0 {
@@ -355,15 +355,15 @@ func TestAClippedRowIsNotAnAnchorAndIsNotClickable(t *testing.T) {
 // around the same Menu silently re-laid-out the first, and a Menu that had ever
 // been in a bar stayed horizontal when later mounted on its own.
 func TestConstructingOneBarDoesNotReconfigureAnother(t *testing.T) {
-	menu := widget.NewMenu()
+	menu := core.NewMenu()
 	if err := menu.SetModel(fileMenuModel()); err != nil {
 		t.Fatalf("SetModel: %v", err)
 	}
-	top := widget.NewMenuBar(menu, widget.WithBarPlacement(widget.BarPlacementTop))
+	top := core.NewMenuBar(menu, core.WithBarPlacement(core.BarPlacementTop))
 	// Merely CONSTRUCTED, never mounted: it must not touch the Menu.
-	_ = widget.NewMenuBar(menu, widget.WithBarPlacement(widget.BarPlacementLeft))
+	_ = core.NewMenuBar(menu, core.WithBarPlacement(core.BarPlacementLeft))
 
-	host := widget.NewOverlayHost(top)
+	host := core.NewOverlayHost(top)
 	h := startApp(t, host, 40, 20)
 	h.settle()
 
@@ -382,13 +382,13 @@ func TestConstructingOneBarDoesNotReconfigureAnother(t *testing.T) {
 // orientation would have made it horizontal with no bar anywhere in the tree
 // and nothing to ever undo it.
 func TestABarThatWasNeverMountedChangesNothing(t *testing.T) {
-	menu := widget.NewMenu()
+	menu := core.NewMenu()
 	if err := menu.SetModel(fileMenuModel()); err != nil {
 		t.Fatalf("SetModel: %v", err)
 	}
-	_ = widget.NewMenuBar(menu, widget.WithBarPlacement(widget.BarPlacementTop))
+	_ = core.NewMenuBar(menu, core.WithBarPlacement(core.BarPlacementTop))
 
-	host := widget.NewOverlayHost(menu) // the MENU is mounted, not the bar
+	host := core.NewOverlayHost(menu) // the MENU is mounted, not the bar
 	h := startApp(t, host, 40, 20)
 	h.settle()
 
@@ -404,14 +404,14 @@ func TestABarThatWasNeverMountedChangesNothing(t *testing.T) {
 // mounted bare is a vertical menu again. Orientation belongs to the mounted
 // shell's lifetime, not to the Menu for ever.
 func TestAMenuLeavesABarTheWayItFoundIt(t *testing.T) {
-	menu := widget.NewMenu()
+	menu := core.NewMenu()
 	if err := menu.SetModel(fileMenuModel()); err != nil {
 		t.Fatalf("SetModel: %v", err)
 	}
-	bar := widget.NewMenuBar(menu, widget.WithBarPlacement(widget.BarPlacementTop))
+	bar := core.NewMenuBar(menu, core.WithBarPlacement(core.BarPlacementTop))
 	inner := tui.NewFlex(tui.Vertical)
 	inner.Add(bar)
-	host := widget.NewOverlayHost(inner)
+	host := core.NewOverlayHost(inner)
 	h := startApp(t, host, 40, 20)
 	h.settle()
 	if r := h.row(0); !strings.Contains(r, "Quit") || !strings.Contains(r, "File") {
@@ -435,7 +435,7 @@ func TestAMenuLeavesABarTheWayItFoundIt(t *testing.T) {
 // the interface with a live type descriptor — the shape `!= nil` cannot see.
 type nilRenderer struct{}
 
-func (*nilRenderer) RenderRow(tui.Surface, widget.RowView, widget.RowState) {}
+func (*nilRenderer) RenderRow(tui.Surface, core.RowView, core.RowState) {}
 
 // TestATypedNilRowRendererIsNoRenderer.
 //
@@ -445,11 +445,11 @@ func (*nilRenderer) RenderRow(tui.Surface, widget.RowView, widget.RowState) {}
 // and the menu is simply drawn.
 func TestATypedNilRowRendererIsNoRenderer(t *testing.T) {
 	var rr *nilRenderer
-	menu := widget.NewMenu(widget.WithRowRenderer(rr))
+	menu := core.NewMenu(core.WithRowRenderer(rr))
 	if err := menu.SetModel(fileMenuModel()); err != nil {
 		t.Fatalf("SetModel: %v", err)
 	}
-	host := widget.NewOverlayHost(menu)
+	host := core.NewOverlayHost(menu)
 	h := startApp(t, host, 30, 10)
 	h.settle()
 
@@ -479,12 +479,12 @@ func TestAHorizontalBarDoesNotAddressRowsPastItsEdge(t *testing.T) {
 		{"the row is pushed off the end", 6, true},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			menu := widget.NewMenu()
+			menu := core.NewMenu()
 			if err := menu.SetModel(fileMenuModel()); err != nil {
 				t.Fatalf("SetModel: %v", err)
 			}
-			bar := widget.NewMenuBar(menu, widget.WithBarPlacement(widget.BarPlacementTop))
-			host := widget.NewOverlayHost(&fixedBox{child: bar, w: tc.width, hh: 1})
+			bar := core.NewMenuBar(menu, core.WithBarPlacement(core.BarPlacementTop))
+			host := core.NewOverlayHost(&fixedBox{child: bar, w: tc.width, hh: 1})
 			h := startApp(t, host, 40, 20)
 			h.settle()
 
@@ -518,12 +518,12 @@ func TestAHorizontalBarDoesNotAddressRowsPastItsEdge(t *testing.T) {
 // one whose arithmetic silently inverts every bound derived from it, so the
 // row loop's own clipping test stops meaning anything.
 func TestAPopupSmallerThanItsOwnFrameDoesNotInvertItsInterior(t *testing.T) {
-	menu := widget.NewMenu()
+	menu := core.NewMenu()
 	if err := menu.SetModel(fileMenuModel()); err != nil {
 		t.Fatalf("SetModel: %v", err)
 	}
 	// The whole host is one cell, so the popup cannot fit even its frame.
-	host := widget.NewOverlayHost(menu)
+	host := core.NewOverlayHost(menu)
 	h := startApp(t, host, 1, 1)
 	h.settle()
 
@@ -541,7 +541,7 @@ func TestAPopupSmallerThanItsOwnFrameDoesNotInvertItsInterior(t *testing.T) {
 // concrete *OverlayHost — and it is the only way to exercise a host that
 // REFUSES, which the real one does only in races this test cannot stage.
 type refusingHost struct {
-	widget.Base
+	core.Base
 	child tui.Component
 	err   error
 	opens int
@@ -561,12 +561,12 @@ func (h *refusingHost) Layout(cs tui.Constraints) tui.Size {
 
 func (h *refusingHost) Render(tui.Surface) {}
 
-func (h *refusingHost) OpenAnchored(widget.LayerID, tui.Component, widget.AnchorSpec, widget.AnchorPolicy) error {
+func (h *refusingHost) OpenAnchored(core.LayerID, tui.Component, core.AnchorSpec, core.AnchorPolicy) error {
 	h.opens++
 	return h.err
 }
 
-func (h *refusingHost) CloseAnchored(widget.LayerID, widget.DismissReason) {}
+func (h *refusingHost) CloseAnchored(core.LayerID, core.DismissReason) {}
 
 // TestAHostRefusalLeavesTheMenuExactlyAsItWas.
 //
@@ -576,7 +576,7 @@ func (h *refusingHost) CloseAnchored(widget.LayerID, widget.DismissReason) {}
 // already-open row is idempotent, that stale entry made every later Open on
 // that row look like a duplicate and do nothing at all.
 func TestAHostRefusalLeavesTheMenuExactlyAsItWas(t *testing.T) {
-	menu := widget.NewMenu()
+	menu := core.NewMenu()
 	if err := menu.SetModel(fileMenuModel()); err != nil {
 		t.Fatalf("SetModel: %v", err)
 	}
@@ -626,12 +626,12 @@ func TestAHostRefusalLeavesTheMenuExactlyAsItWas(t *testing.T) {
 // The assertion is therefore that the app is still running, plus that the
 // unrelated host stayed empty.
 func TestASelectOpensInItsOwnHostOnly(t *testing.T) {
-	sel := widget.NewSelect(widget.WithOptions([]widget.SelectItem[string]{
+	sel := core.NewSelect(core.WithOptions([]core.SelectItem[string]{
 		{Label: "alpha", Value: "alpha"},
 		{Label: "beta", Value: "beta"},
 	}))
-	mine := widget.NewOverlayHost(sel)
-	theirs := widget.NewOverlayHost(widget.NewText("unrelated"))
+	mine := core.NewOverlayHost(sel)
+	theirs := core.NewOverlayHost(core.NewText("unrelated"))
 	root := tui.NewFlex(tui.Vertical)
 	root.AddWeighted(mine, 1)
 	root.AddWeighted(theirs, 1)
@@ -671,7 +671,7 @@ func TestASelectOpensInItsOwnHostOnly(t *testing.T) {
 // published its request into the void, set its own open flag, and then drew a
 // field claiming a list was showing that no host had ever mounted.
 func TestASelectWithNoHostDoesNotClaimToBeOpen(t *testing.T) {
-	sel := widget.NewSelect(widget.WithOptions([]widget.SelectItem[string]{
+	sel := core.NewSelect(core.WithOptions([]core.SelectItem[string]{
 		{Label: "alpha", Value: "alpha"},
 	}))
 	root := tui.NewFlex(tui.Vertical)
@@ -702,11 +702,11 @@ func TestASelectWithNoHostDoesNotClaimToBeOpen(t *testing.T) {
 // previous version of it settled twice and therefore observed eventual
 // reconciliation rather than the one-lifecycle invariant.
 func TestAHostCloseIsVisibleToTheMenuInTheSameTurn(t *testing.T) {
-	menu := widget.NewMenu()
+	menu := core.NewMenu()
 	if err := menu.SetModel(fileMenuModel()); err != nil {
 		t.Fatalf("SetModel: %v", err)
 	}
-	host := widget.NewOverlayHost(menu)
+	host := core.NewOverlayHost(menu)
 	h := startApp(t, host, 40, 20)
 	h.settle()
 
@@ -718,7 +718,7 @@ func TestAHostCloseIsVisibleToTheMenuInTheSameTurn(t *testing.T) {
 	h.settle()
 	h.wantContains("NewDoc")
 
-	var layer widget.LayerID
+	var layer core.LayerID
 	h.onLoop(func() {
 		for id := range host.AnchoredLayers() {
 			layer = id
@@ -732,7 +732,7 @@ func TestAHostCloseIsVisibleToTheMenuInTheSameTurn(t *testing.T) {
 	var reopenErr error
 	var afterReopen int
 	h.onLoop(func() {
-		host.CloseAnchored(layer, widget.DismissProgrammatic)
+		host.CloseAnchored(layer, core.DismissProgrammatic)
 		afterClose = menu.OpenLevels()
 		reopenErr = menu.Open("file")
 		afterReopen = menu.OpenLevels()
@@ -773,13 +773,13 @@ func TestAHostCloseIsVisibleToTheMenuInTheSameTurn(t *testing.T) {
 // package has declared unaddressable was still executing consumer code.
 func TestAClippedBarRowNeverReachesTheRowRenderer(t *testing.T) {
 	rr := &stateRecorder{}
-	menu := widget.NewMenu(widget.WithRowRenderer(rr))
+	menu := core.NewMenu(core.WithRowRenderer(rr))
 	if err := menu.SetModel(fileMenuModel()); err != nil {
 		t.Fatalf("SetModel: %v", err)
 	}
-	bar := widget.NewMenuBar(menu, widget.WithBarPlacement(widget.BarPlacementTop))
+	bar := core.NewMenuBar(menu, core.WithBarPlacement(core.BarPlacementTop))
 	// Six columns: " Quit " fills them, so "File" has no painted cells at all.
-	host := widget.NewOverlayHost(&fixedBox{child: bar, w: 6, hh: 1})
+	host := core.NewOverlayHost(&fixedBox{child: bar, w: 6, hh: 1})
 	h := startApp(t, host, 40, 20)
 	h.settle()
 	h.settle()

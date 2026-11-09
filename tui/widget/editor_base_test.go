@@ -5,7 +5,8 @@ import (
 
 	"github.com/yongjohnlee80/golib/tui"
 	"github.com/yongjohnlee80/golib/tui/style"
-	"github.com/yongjohnlee80/golib/tui/widget"
+	"github.com/yongjohnlee80/golib/tui/widget/core"
+	"github.com/yongjohnlee80/golib/tui/widget/editor"
 )
 
 // TestAnEditorWearsItsBaseOverItsWholeArea: the cells past each line's text,
@@ -13,7 +14,7 @@ import (
 // — a preview in a dialog is one colour, not text on bands of the dialog's.
 func TestAnEditorWearsItsBaseOverItsWholeArea(t *testing.T) {
 	base := style.New().Background(style.ANSI(4)).Foreground(style.ANSI(7))
-	ed := widget.NewEditor(widget.WithEditorStyles(widget.TextInputStyles{Text: base}))
+	ed := editor.NewEditor(editor.WithEditorStyles(core.TextInputStyles{Text: base}))
 	ed.SetValue("ab\nlonger line")
 	h := startApp(t, ed, 20, 4)
 	defer h.stop()

@@ -3,7 +3,7 @@ package widget_test
 import (
 	"testing"
 
-	"github.com/yongjohnlee80/golib/tui/widget"
+	"github.com/yongjohnlee80/golib/tui/widget/table"
 )
 
 // A table's reveal moves its first row just far enough to show the row, and keeps no blank below
@@ -16,7 +16,7 @@ func TestATablesRevealMovesJustFarEnough(t *testing.T) {
 		{18, 2, 6, 5, 1},  // rows gone: clamped to leave none blank, then the row shown
 		{0, 0, 0, 5, 0},   // no rows
 	} {
-		if got := widget.TableRevealRow(tc.top, tc.row, tc.count, tc.body); got != tc.want {
+		if got := table.TableRevealRow(tc.top, tc.row, tc.count, tc.body); got != tc.want {
 			t.Errorf("TableRevealRow(%d, %d, %d, %d) = %d, want %d", tc.top, tc.row, tc.count, tc.body, got, tc.want)
 		}
 	}
@@ -26,7 +26,7 @@ func TestATablesRevealMovesJustFarEnough(t *testing.T) {
 		{0, 4, 3}, // on until 3..4 fits
 		{5, 2, 2}, // back to the field
 	} {
-		if got := widget.TableRevealField(tc.left, tc.col, fitsTwo); got != tc.want {
+		if got := table.TableRevealField(tc.left, tc.col, fitsTwo); got != tc.want {
 			t.Errorf("TableRevealField(%d, %d) = %d, want %d", tc.left, tc.col, got, tc.want)
 		}
 	}

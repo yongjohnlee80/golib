@@ -18,7 +18,7 @@ import (
 	"testing"
 
 	"github.com/yongjohnlee80/golib/tui"
-	"github.com/yongjohnlee80/golib/tui/widget"
+	"github.com/yongjohnlee80/golib/tui/widget/core"
 )
 
 // bothPolicies is the pair every affordance has to survive.
@@ -41,12 +41,12 @@ func TestAGripIsVisibleAndCorrectlySizedUnderEitherWidthPolicy(t *testing.T) {
 	for _, p := range bothPolicies {
 		t.Run(p.name, func(t *testing.T) {
 			child := &sizedChild{pref: tui.Size{W: 8, H: 4}}
-			r := widget.NewResizable(child,
-				widget.WithHandleGlyph("±"),
-				widget.WithHandles(widget.HandleBottomRight),
-				widget.WithHandlePlacement(widget.PlacementReserve),
-				widget.WithMaxSize(tui.Size{W: 30, H: 15}))
-			host := widget.NewOverlayHost(&looseCeiling{child: r, w: 30, hh: 15})
+			r := core.NewResizable(child,
+				core.WithHandleGlyph("±"),
+				core.WithHandles(core.HandleBottomRight),
+				core.WithHandlePlacement(core.PlacementReserve),
+				core.WithMaxSize(tui.Size{W: 30, H: 15}))
+			host := core.NewOverlayHost(&looseCeiling{child: r, w: 30, hh: 15})
 			h := startAppOpts(t, host, 40, 20, tui.WithWidthPolicy(p.policy))
 			defer h.stop()
 			h.settle()
@@ -78,11 +78,11 @@ func TestTheDEFAULTAffordanceGlyphsSurviveEitherWidthPolicy(t *testing.T) {
 	for _, p := range bothPolicies {
 		t.Run(p.name+"/grip", func(t *testing.T) {
 			child := &sizedChild{pref: tui.Size{W: 8, H: 4}}
-			r := widget.NewResizable(child,
-				widget.WithHandles(widget.HandleBottomRight),
-				widget.WithHandlePlacement(widget.PlacementReserve),
-				widget.WithMaxSize(tui.Size{W: 30, H: 15}))
-			host := widget.NewOverlayHost(&looseCeiling{child: r, w: 30, hh: 15})
+			r := core.NewResizable(child,
+				core.WithHandles(core.HandleBottomRight),
+				core.WithHandlePlacement(core.PlacementReserve),
+				core.WithMaxSize(tui.Size{W: 30, H: 15}))
+			host := core.NewOverlayHost(&looseCeiling{child: r, w: 30, hh: 15})
 			h := startAppOpts(t, host, 40, 20, tui.WithWidthPolicy(p.policy))
 			defer h.stop()
 			h.settle()
@@ -96,7 +96,7 @@ func TestTheDEFAULTAffordanceGlyphsSurviveEitherWidthPolicy(t *testing.T) {
 			}
 		})
 		t.Run(p.name+"/divider", func(t *testing.T) {
-			s := widget.NewSplit(widget.Horizontal, &pane{fill: "a"}, &pane{fill: "b"})
+			s := core.NewSplit(core.Horizontal, &pane{fill: "a"}, &pane{fill: "b"})
 			sh := newShell(s)
 			h := startAppOpts(t, sh, 40, 6, tui.WithWidthPolicy(p.policy))
 			h.barrier(sh)
@@ -124,8 +124,8 @@ func TestTheDEFAULTAffordanceGlyphsSurviveEitherWidthPolicy(t *testing.T) {
 func TestADividerIsVisibleAndCorrectlySizedUnderEitherWidthPolicy(t *testing.T) {
 	for _, p := range bothPolicies {
 		t.Run(p.name, func(t *testing.T) {
-			s := widget.NewSplit(widget.Horizontal, &pane{fill: "a"}, &pane{fill: "b"},
-				widget.WithSplitDividerGlyphs("±", "─"))
+			s := core.NewSplit(core.Horizontal, &pane{fill: "a"}, &pane{fill: "b"},
+				core.WithSplitDividerGlyphs("±", "─"))
 			sh := newShell(s)
 			h := startAppOpts(t, sh, 40, 6, tui.WithWidthPolicy(p.policy))
 			h.barrier(sh)
@@ -168,12 +168,12 @@ func TestADividerIsVisibleAndCorrectlySizedUnderEitherWidthPolicy(t *testing.T) 
 // edge is covered rather than decorated at one end.
 func TestAWideEdgeGripRepeatsAlongItsWholeEdge(t *testing.T) {
 	child := &sizedChild{pref: tui.Size{W: 8, H: 4}}
-	r := widget.NewResizable(child,
-		widget.WithHandleGlyph("±"),
-		widget.WithHandles(widget.HandleTop),
-		widget.WithHandlePlacement(widget.PlacementReserve),
-		widget.WithMaxSize(tui.Size{W: 30, H: 15}))
-	host := widget.NewOverlayHost(&looseCeiling{child: r, w: 30, hh: 15})
+	r := core.NewResizable(child,
+		core.WithHandleGlyph("±"),
+		core.WithHandles(core.HandleTop),
+		core.WithHandlePlacement(core.PlacementReserve),
+		core.WithMaxSize(tui.Size{W: 30, H: 15}))
+	host := core.NewOverlayHost(&looseCeiling{child: r, w: 30, hh: 15})
 	h := startAppOpts(t, host, 40, 20, tui.WithWidthPolicy(tui.WidthPolicyAmbiguousWide))
 	defer h.stop()
 	h.settle()

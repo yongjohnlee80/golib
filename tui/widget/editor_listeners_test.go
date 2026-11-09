@@ -4,7 +4,7 @@ import (
 	"testing"
 
 	"github.com/yongjohnlee80/golib/tui"
-	"github.com/yongjohnlee80/golib/tui/widget"
+	"github.com/yongjohnlee80/golib/tui/widget/editor"
 )
 
 // editor_listeners_test.go covers the Editor's constructor-time listeners.
@@ -15,20 +15,20 @@ import (
 // non-change, or missed one, would make a status line lie.
 
 func TestOnModeChangeHearsEveryTransitionAndNothingElse(t *testing.T) {
-	var got []widget.EditorMode
-	h, ed, sh := focusedEditor(t, 30, 6, widget.WithCore(widget.CoreOnModeChange(func(m widget.EditorMode) {
+	var got []editor.EditorMode
+	h, ed, sh := focusedEditor(t, 30, 6, editor.WithCore(editor.CoreOnModeChange(func(m editor.EditorMode) {
 		got = append(got, m)
 	})))
-	bus := record[widget.ModeChangedEvent](h)
+	bus := record[editor.ModeChangedEvent](h)
 
 	h.inject(key('i'))
 	h.inject(typeString("abc")...) // typing in Insert is not a mode change
 	h.inject(key(tui.KeyEscape))
 	h.barrier(sh)
 
-	var modes []widget.EditorMode
+	var modes []editor.EditorMode
 	h.onLoop(func() { modes = append(modes, got...) })
-	if len(modes) != 2 || modes[0] != widget.ModeInsert || modes[1] != widget.ModeNormal {
+	if len(modes) != 2 || modes[0] != editor.ModeInsert || modes[1] != editor.ModeNormal {
 		t.Fatalf("listener heard %v, want [INSERT NORMAL]", modes)
 	}
 	if bus.count() != len(modes) {
@@ -43,7 +43,7 @@ func TestOnModeChangeHearsEveryTransitionAndNothingElse(t *testing.T) {
 // mark a freshly loaded file dirty the moment it opened.
 func TestOnChangeHearsEditsButNotSetValue(t *testing.T) {
 	edits := 0
-	h, ed, sh := focusedEditor(t, 30, 6, widget.WithCore(widget.CoreOnChange(func() { edits++ })))
+	h, ed, sh := focusedEditor(t, 30, 6, editor.WithCore(editor.CoreOnChange(func() { edits++ })))
 
 	h.onLoop(func() { ed.SetValue("loaded from disk") })
 	h.barrier(sh)
@@ -68,7 +68,7 @@ func TestOnChangeHearsEditsButNotSetValue(t *testing.T) {
 // leaves it where it was (a refused motion at the buffer's edge).
 func TestOnCursorPositionChangeHearsMovesNotStillKeys(t *testing.T) {
 	moves := 0
-	h, ed, sh := focusedEditor(t, 30, 6, widget.WithCore(widget.CoreOnCursorPositionChange(func() { moves++ })))
+	h, ed, sh := focusedEditor(t, 30, 6, editor.WithCore(editor.CoreOnCursorPositionChange(func() { moves++ })))
 	count := func() int {
 		h.barrier(sh)
 		var n int

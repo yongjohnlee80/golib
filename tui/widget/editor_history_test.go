@@ -4,11 +4,11 @@ import (
 	"testing"
 
 	"github.com/yongjohnlee80/golib/tui"
-	"github.com/yongjohnlee80/golib/tui/widget"
+	"github.com/yongjohnlee80/golib/tui/widget/editor"
 )
 
 func TestEditorHistoryUndoRedo(t *testing.T) {
-	h, ed, sh := focusedEditor(t, 40, 10, widget.WithCore(widget.CoreInitialText("initial")))
+	h, ed, sh := focusedEditor(t, 40, 10, editor.WithCore(editor.CoreInitialText("initial")))
 
 	// Mutate via insert: type " line"
 	h.inject(key('A'))
@@ -37,8 +37,8 @@ func TestEditorHistoryUndoRedo(t *testing.T) {
 
 func TestEditorHistoryDisabled(t *testing.T) {
 	h, ed, sh := focusedEditor(t, 40, 10,
-		widget.WithCore(widget.CoreInitialText("initial")),
-		widget.WithCore(widget.CoreUndo(false)),
+		editor.WithCore(editor.CoreInitialText("initial")),
+		editor.WithCore(editor.CoreUndo(false)),
 	)
 
 	h.inject(key('A'))
@@ -59,7 +59,7 @@ func TestEditorHistoryDisabled(t *testing.T) {
 }
 
 func TestEditorHistoryRingCapacity(t *testing.T) {
-	h, ed, sh := focusedEditor(t, 40, 10, widget.WithCore(widget.CoreInitialText("start")))
+	h, ed, sh := focusedEditor(t, 40, 10, editor.WithCore(editor.CoreInitialText("start")))
 
 	// Create 70 separate normal-mode edits (exceeding editHistoryCap = 64)
 	for i := 0; i < 70; i++ {
@@ -88,9 +88,9 @@ func TestEditorHistoryRingCapacity(t *testing.T) {
 
 func TestEditorHistoryModelessUndoRedo(t *testing.T) {
 	h, ed, sh := focusedEditor(t, 40, 10,
-		widget.WithCore(widget.CoreInitialText("")),
-		widget.WithCore(widget.CoreKeymap(widget.StandardKeymap())),
-		widget.WithCore(widget.CoreModal(false)),
+		editor.WithCore(editor.CoreInitialText("")),
+		editor.WithCore(editor.CoreKeymap(editor.StandardKeymap())),
+		editor.WithCore(editor.CoreModal(false)),
 	)
 
 	// Type "ab"

@@ -6,12 +6,12 @@ import (
 
 	"github.com/yongjohnlee80/golib/highlight"
 	"github.com/yongjohnlee80/golib/tui"
-	"github.com/yongjohnlee80/golib/tui/widget"
+	"github.com/yongjohnlee80/golib/tui/widget/editor"
 )
 
-func esc(c *widget.EditorCore) { c.HandleKey(tui.KeyEvent{Code: tui.KeyEscape}) }
+func esc(c *editor.EditorCore) { c.HandleKey(tui.KeyEvent{Code: tui.KeyEscape}) }
 
-func cursorAt(t *testing.T, c *widget.EditorCore, ln, col int, what string) {
+func cursorAt(t *testing.T, c *editor.EditorCore, ln, col int, what string) {
 	t.Helper()
 	if l, k := c.Line(); l != ln || k != col {
 		t.Fatalf("%s: cursor (%d, %d), want (%d, %d)", what, l, k, ln, col)
@@ -24,7 +24,7 @@ func TestABufferKeepsItsStateAcrossASwitch(t *testing.T) {
 	c, _ := coreWith(t, "alpha\nbeta")
 	a := c.Buffer()
 	keys(c, "jx") // A: "alpha\neta", cursor (1, 0)
-	b := widget.NewBuffer(widget.BufferText("one\ntwo\nthree"))
+	b := editor.NewBuffer(editor.BufferText("one\ntwo\nthree"))
 	c.SetBuffer(b)
 	cursorAt(t, c, 0, 0, "B, first shown")
 	keys(c, "jjdd") // B: "one\ntwo"
@@ -53,9 +53,9 @@ func TestABufferKeepsItsStateAcrossASwitch(t *testing.T) {
 // Showing a buffer is not an edit: no onChange, so a host never marks a buffer dirty by showing it.
 func TestSetBufferIsNotAnEdit(t *testing.T) {
 	changes := 0
-	c, _ := coreWith(t, "a", widget.CoreOnChange(func() { changes++ }))
+	c, _ := coreWith(t, "a", editor.CoreOnChange(func() { changes++ }))
 	a := c.Buffer()
-	b := widget.NewBuffer(widget.BufferText("b"))
+	b := editor.NewBuffer(editor.BufferText("b"))
 	c.SetBuffer(b)
 	c.SetBuffer(a)
 	c.SetBuffer(a) // the shown buffer: nothing
@@ -75,10 +75,10 @@ func TestAPlaceFollowsEditsMadeElsewhere(t *testing.T) {
 	c, _ := coreWith(t, "one\ntwo\nthree\nfour")
 	b := c.Buffer()
 	keys(c, "jjl") // on "three", col 1
-	c.SetBuffer(widget.NewBuffer())
+	c.SetBuffer(editor.NewBuffer())
 
-	h := widget.NewEditorCore(widget.CoreBuffer(b))
-	if _, err := h.Insert(widget.TextPos{}, "zero\nhalf\n"); err != nil {
+	h := editor.NewEditorCore(editor.CoreBuffer(b))
+	if _, err := h.Insert(editor.TextPos{}, "zero\nhalf\n"); err != nil {
 		t.Fatal(err)
 	}
 	c.SetBuffer(b)
@@ -87,8 +87,8 @@ func TestAPlaceFollowsEditsMadeElsewhere(t *testing.T) {
 		t.Fatalf("the place moved off its text: line 4 is %q", line)
 	}
 
-	c.SetBuffer(widget.NewBuffer())
-	if err := h.Delete(widget.TextRange{From: widget.TextPos{Line: 4}, To: widget.TextPos{Line: 5}}); err != nil {
+	c.SetBuffer(editor.NewBuffer())
+	if err := h.Delete(editor.TextRange{From: editor.TextPos{Line: 4}, To: editor.TextPos{Line: 5}}); err != nil {
 		t.Fatal(err)
 	}
 	c.SetBuffer(b)
@@ -131,15 +131,15 @@ func TestTwoEditorsShowOneBuffer(t *testing.T) {
 func TestDotAcrossASwitch(t *testing.T) {
 	c, _ := coreWith(t, "abc")
 	keys(c, "x") // A: "bc"; . is x
-	b := widget.NewBuffer(widget.BufferText("xyz"))
+	b := editor.NewBuffer(editor.BufferText("xyz"))
 	c.SetBuffer(b)
 	keys(c, ".")
 	if b.Value() != "yz" {
 		t.Fatalf(". in B: %q, want yz", b.Value())
 	}
 	keys(c, "iQ") // an Insert, interrupted by a switch
-	c.SetBuffer(widget.NewBuffer(widget.BufferText("mn")))
-	if c.Mode() != widget.ModeNormal {
+	c.SetBuffer(editor.NewBuffer(editor.BufferText("mn")))
+	if c.Mode() != editor.ModeNormal {
 		t.Fatalf("after a switch from Insert: mode %v", c.Mode())
 	}
 	keys(c, ".")
@@ -154,7 +154,7 @@ func TestTheStickyColumnSurvivesASwitch(t *testing.T) {
 	c, _ := coreWith(t, "abcdef\nab\nabcdef")
 	a := c.Buffer()
 	keys(c, "$j") // col 5 latched, on the short line at col 1
-	c.SetBuffer(widget.NewBuffer())
+	c.SetBuffer(editor.NewBuffer())
 	c.SetBuffer(a)
 	keys(c, "j")
 	cursorAt(t, c, 2, 5, "j after the switch")
@@ -166,8 +166,8 @@ func TestSetValueResetsThePlacesInIt(t *testing.T) {
 	c, _ := coreWith(t, "a\nb\nc")
 	b := c.Buffer()
 	keys(c, "jj")
-	c.SetBuffer(widget.NewBuffer())
-	h := widget.NewEditorCore(widget.CoreBuffer(b))
+	c.SetBuffer(editor.NewBuffer())
+	h := editor.NewEditorCore(editor.CoreBuffer(b))
 	h.SetValue("x\ny\nz")
 	c.SetBuffer(b)
 	cursorAt(t, c, 0, 0, "after SetValue in another editor")
@@ -177,18 +177,18 @@ func TestSetValueResetsThePlacesInIt(t *testing.T) {
 func TestReplaceFollowingKeepsTheCursorOnItsText(t *testing.T) {
 	for _, tc := range []struct {
 		name     string
-		from, to widget.TextPos
+		from, to editor.TextPos
 		with     string
 		ln, col  int
 	}{
-		{"above", widget.TextPos{Line: 0}, widget.TextPos{Line: 1}, "x\ny\n", 3, 2},
-		{"below", widget.TextPos{Line: 3}, widget.TextPos{Line: 4}, "", 2, 2},
-		{"over", widget.TextPos{Line: 2}, widget.TextPos{Line: 3}, "", 2, 2}, // its line takes the next line's text
+		{"above", editor.TextPos{Line: 0}, editor.TextPos{Line: 1}, "x\ny\n", 3, 2},
+		{"below", editor.TextPos{Line: 3}, editor.TextPos{Line: 4}, "", 2, 2},
+		{"over", editor.TextPos{Line: 2}, editor.TextPos{Line: 3}, "", 2, 2}, // its line takes the next line's text
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			c, _ := coreWith(t, "zero\none\ntwo two\nthree\nfour")
 			keys(c, "jjll") // (2, 2)
-			if err := c.ReplaceFollowing(widget.TextRange{From: tc.from, To: tc.to}, tc.with); err != nil {
+			if err := c.ReplaceFollowing(editor.TextRange{From: tc.from, To: tc.to}, tc.with); err != nil {
 				t.Fatal(err)
 			}
 			cursorAt(t, c, tc.ln, tc.col, "after ReplaceFollowing "+tc.name)
@@ -204,16 +204,16 @@ func TestReplaceFollowingKeepsTheCursorOnItsText(t *testing.T) {
 // command gives on the shown editor: the user's and a host's edits run one code path.
 func TestAHeadlessEditorRunsTheUsersCommands(t *testing.T) {
 	shown, _ := coreWith(t, "hello world")
-	if err := shown.Commands().Set(widget.Command{Name: "upper", Run: func(cc widget.CommandContext) error {
+	if err := shown.Commands().Set(editor.Command{Name: "upper", Run: func(cc editor.CommandContext) error {
 		ln, _ := cc.Core.Line()
 		line := strings.Split(cc.Core.Value(), "\n")[ln]
-		_, err := cc.Core.Replace(widget.TextRange{From: widget.TextPos{Line: ln}, To: widget.TextPos{Line: ln, Col: len([]rune(line))}}, strings.ToUpper(line))
+		_, err := cc.Core.Replace(editor.TextRange{From: editor.TextPos{Line: ln}, To: editor.TextPos{Line: ln, Col: len([]rune(line))}}, strings.ToUpper(line))
 		return err
 	}}); err != nil {
 		t.Fatal(err)
 	}
-	other := widget.NewBuffer(widget.BufferText("hello world"))
-	h := widget.NewEditorCore(widget.CoreBuffer(other), widget.CoreCommands(shown.Commands()))
+	other := editor.NewBuffer(editor.BufferText("hello world"))
+	h := editor.NewEditorCore(editor.CoreBuffer(other), editor.CoreCommands(shown.Commands()))
 	if err := shown.RunCommand("upper"); err != nil {
 		t.Fatal(err)
 	}
@@ -236,7 +236,7 @@ func TestHighlightingStaysWithItsBuffer(t *testing.T) {
 		}
 		return nil, in
 	})
-	c, _ := coreWith(t, "kw a\nb kw", widget.CoreHighlighter(kw))
+	c, _ := coreWith(t, "kw a\nb kw", editor.CoreHighlighter(kw))
 	a := c.Buffer()
 	render := func() [][]highlight.Style {
 		f := c.BeginHighlight(0)
@@ -244,7 +244,7 @@ func TestHighlightingStaysWithItsBuffer(t *testing.T) {
 		return [][]highlight.Style{f.Styles(0), f.Styles(1)}
 	}
 	render()
-	b := widget.NewBuffer(widget.BufferText("kw"))
+	b := editor.NewBuffer(editor.BufferText("kw"))
 	c.SetBuffer(b)
 	if c.Highlighting() {
 		t.Fatal("B has A's highlighter")
@@ -269,10 +269,10 @@ func TestTheSecondEditorPaintsTheNewSpans(t *testing.T) {
 		}
 		return nil, in
 	})
-	e1, _ := coreWith(t, "kw", widget.CoreHighlighter(kw))
+	e1, _ := coreWith(t, "kw", editor.CoreHighlighter(kw))
 	e2, _ := coreWith(t, "")
 	e2.SetBuffer(e1.Buffer())
-	render := func(c *widget.EditorCore) []highlight.Style {
+	render := func(c *editor.EditorCore) []highlight.Style {
 		f := c.BeginHighlight(0)
 		defer f.Close()
 		return f.Styles(0)
@@ -292,10 +292,10 @@ func TestTheSecondEditorPaintsTheNewSpans(t *testing.T) {
 // it alone and leaves what was typed before the switch. (A modal editor returns to Normal, whose
 // edits always begin a step.)
 func TestAnInsertsUndoGroupEndsAtASwitch(t *testing.T) {
-	c, _ := coreWith(t, "", widget.CoreModal(false))
+	c, _ := coreWith(t, "", editor.CoreModal(false))
 	a := c.Buffer()
 	keys(c, "Q")
-	c.SetBuffer(widget.NewBuffer(widget.BufferText("other")))
+	c.SetBuffer(editor.NewBuffer(editor.BufferText("other")))
 	c.SetBuffer(a)
 	keys(c, "Z")
 	if c.Value() != "QZ" {
@@ -310,20 +310,20 @@ func TestAnInsertsUndoGroupEndsAtASwitch(t *testing.T) {
 // A Batch that switches buffers announces each buffer's edits as that buffer's: A's when the switch
 // comes (to A's other editors too), B's at the batch's end, and B's edit is an undo step of its own.
 func TestABatchAcrossASwitchKeepsEachBuffersEdits(t *testing.T) {
-	var c *widget.EditorCore
+	var c *editor.EditorCore
 	var told []string
-	c, _ = coreWith(t, "a", widget.CoreOnChange(func() { told = append(told, c.Value()) }))
+	c, _ = coreWith(t, "a", editor.CoreOnChange(func() { told = append(told, c.Value()) }))
 	a := c.Buffer()
 	other, ol := coreWith(t, "")
 	other.SetBuffer(a)
 	ol.changed = nil
-	b := widget.NewBuffer(widget.BufferText("b"))
+	b := editor.NewBuffer(editor.BufferText("b"))
 	err := c.Batch(func() error {
-		if _, err := c.Insert(widget.TextPos{}, "A"); err != nil {
+		if _, err := c.Insert(editor.TextPos{}, "A"); err != nil {
 			return err
 		}
 		c.SetBuffer(b)
-		_, err := c.Insert(widget.TextPos{}, "B")
+		_, err := c.Insert(editor.TextPos{}, "B")
 		return err
 	})
 	if err != nil {
@@ -348,27 +348,27 @@ func TestTheFindsPlainHighlighterIsShared(t *testing.T) {
 	e1, _ := coreWith(t, "a b a")
 	e2, _ := coreWith(t, "")
 	e2.SetBuffer(e1.Buffer())
-	e1.SetFind("a", widget.FindOptions{})
-	e2.SetFind("a", widget.FindOptions{})
-	e1.SetFind("", widget.FindOptions{})
+	e1.SetFind("a", editor.FindOptions{})
+	e2.SetFind("a", editor.FindOptions{})
+	e1.SetFind("", editor.FindOptions{})
 	if !e2.Highlighting() {
 		t.Fatal("e1 clearing its find took the walk e2's find paints on")
 	}
-	e1.SetFind("a", widget.FindOptions{})
-	e1.SetBuffer(widget.NewBuffer())
+	e1.SetFind("a", editor.FindOptions{})
+	e1.SetBuffer(editor.NewBuffer())
 	if !e2.Highlighting() {
 		t.Fatal("e1 leaving took the walk e2's find paints on")
 	}
-	e2.SetFind("", widget.FindOptions{})
+	e2.SetFind("", editor.FindOptions{})
 	if e2.Highlighting() {
 		t.Fatal("the plain highlighter stayed with no find needing it")
 	}
 
 	kw := highlight.HighlighterFunc(func(string, highlight.State) ([]highlight.Span, highlight.State) { return nil, 0 })
 	e1.SetBuffer(e2.Buffer())
-	e1.SetFind("a", widget.FindOptions{}) // the plain one again
+	e1.SetFind("a", editor.FindOptions{}) // the plain one again
 	e2.SetHighlighter(kw)                 // the host's replaces it
-	e1.SetFind("", widget.FindOptions{})
+	e1.SetFind("", editor.FindOptions{})
 	if !e2.Highlighting() {
 		t.Fatal("clearing a find removed the host's highlighter")
 	}
@@ -383,16 +383,16 @@ func TestADocumentBoundaryDropsAPendingCommand(t *testing.T) {
 		keys(c, pending)
 		c.SetValue("alpha beta")
 		keys(c, "w")
-		if got := c.Value(); got != "alpha beta" || c.Mode() != widget.ModeNormal {
+		if got := c.Value(); got != "alpha beta" || c.Mode() != editor.ModeNormal {
 			t.Errorf("%s, SetValue, w: value %q in %v, want alpha beta in Normal", pending, got, c.Mode())
 		}
 
 		c, _ = coreWith(t, "one two")
-		b := widget.NewBuffer(widget.BufferText("alpha beta"))
+		b := editor.NewBuffer(editor.BufferText("alpha beta"))
 		keys(c, pending)
 		c.SetBuffer(b)
 		keys(c, "w")
-		if got := c.Value(); got != "alpha beta" || c.Mode() != widget.ModeNormal {
+		if got := c.Value(); got != "alpha beta" || c.Mode() != editor.ModeNormal {
 			t.Errorf("%s, SetBuffer, w: value %q in %v, want alpha beta in Normal", pending, got, c.Mode())
 		}
 	}

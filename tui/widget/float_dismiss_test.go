@@ -6,22 +6,22 @@ import (
 	"testing"
 
 	"github.com/yongjohnlee80/golib/tui"
-	"github.com/yongjohnlee80/golib/tui/widget"
+	"github.com/yongjohnlee80/golib/tui/widget/core"
 )
 
 // A Float says why it closed: Escape reports DismissEscape and Hide reports DismissProgrammatic, in
 // an OverlayDismissedEvent as Modal's. The deprecated DismissEvent is still published, just before
 // it, and each exactly once per hide: a Hide of a Float already hidden publishes nothing.
 func TestAFloatsDismissalSaysWhy(t *testing.T) {
-	dialog := widget.NewFloat(widget.NewBox(widget.NewTextInput()), widget.WithModal(true))
-	host := widget.NewOverlayHost(widget.NewBox(widget.NewTextInput()))
+	dialog := core.NewFloat(core.NewBox(core.NewTextInput()), core.WithModal(true))
+	host := core.NewOverlayHost(core.NewBox(core.NewTextInput()))
 	host.Attach(dialog)
 	sh := newShell(host)
 	h := startApp(t, sh, 30, 8)
 	var mu sync.Mutex
 	var got []string
 	note := func(s string) { mu.Lock(); got = append(got, s); mu.Unlock() }
-	tui.Subscribe(h.app.Bus(), func(e widget.OverlayDismissedEvent) { note("Overlay:" + e.Reason.String()) })
+	tui.Subscribe(h.app.Bus(), func(e core.OverlayDismissedEvent) { note("Overlay:" + e.Reason.String()) })
 	snapshot := func() []string { mu.Lock(); defer mu.Unlock(); return slices.Clone(got) }
 
 	h.onLoop(dialog.Show)
@@ -42,15 +42,15 @@ func TestAFloatsDismissalSaysWhy(t *testing.T) {
 // keeps a stop (the Float's own node, as trapFallback says), so the key reaches the Float. This is
 // the experience the fallback-stop cell's predicate is for.
 func TestEscapeClosesAModalFloatWhoseFocusedControlWasDisabled(t *testing.T) {
-	btn := widget.NewButton("ok")
-	dialog := widget.NewFloat(widget.NewBox(btn), widget.WithModal(true))
-	host := widget.NewOverlayHost(widget.NewBox(widget.NewTextInput()))
+	btn := core.NewButton("ok")
+	dialog := core.NewFloat(core.NewBox(btn), core.WithModal(true))
+	host := core.NewOverlayHost(core.NewBox(core.NewTextInput()))
 	host.Attach(dialog)
 	sh := newShell(host)
 	h := startApp(t, sh, 30, 8)
 	var mu sync.Mutex
 	var got []string
-	tui.Subscribe(h.app.Bus(), func(e widget.OverlayDismissedEvent) { mu.Lock(); got = append(got, e.Reason.String()); mu.Unlock() })
+	tui.Subscribe(h.app.Bus(), func(e core.OverlayDismissedEvent) { mu.Lock(); got = append(got, e.Reason.String()); mu.Unlock() })
 
 	h.onLoop(dialog.Show)
 	h.settle()

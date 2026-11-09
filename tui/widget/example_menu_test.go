@@ -13,7 +13,7 @@ import (
 	"fmt"
 
 	"github.com/yongjohnlee80/golib/tui"
-	"github.com/yongjohnlee80/golib/tui/widget"
+	"github.com/yongjohnlee80/golib/tui/widget/core"
 )
 
 // newFileAction and quitAction are the application's own actions. A row carries
@@ -35,8 +35,8 @@ func ExampleNewMenu() {
 		"app.quit": func() bool { fmt.Println("quit"); return true },
 	}
 
-	menu := widget.NewMenu(
-		widget.WithActionExecutor(func(inv tui.ActionInvocation) bool {
+	menu := core.NewMenu(
+		core.WithActionExecutor(func(inv tui.ActionInvocation) bool {
 			run, ok := commands[inv.Action.ActionID()]
 			if !ok {
 				return false // unhandled: the menu stays open
@@ -44,13 +44,13 @@ func ExampleNewMenu() {
 			return run()
 		}))
 
-	if err := menu.SetModel([]widget.MenuItemModel{
-		widget.NewSubmenu("file", "File", []widget.MenuItemModel{
-			widget.NewCommand("new", "New", newFileAction{}),
-			widget.NewSeparator("sep"),
-			widget.NewCheck("wrap", "Wrap lines", nil),
+	if err := menu.SetModel([]core.MenuItemModel{
+		core.NewSubmenu("file", "File", []core.MenuItemModel{
+			core.NewCommand("new", "New", newFileAction{}),
+			core.NewSeparator("sep"),
+			core.NewCheck("wrap", "Wrap lines", nil),
 		}),
-		widget.NewCommand("quit", "Quit", quitAction{}),
+		core.NewCommand("quit", "Quit", quitAction{}),
 	}); err != nil {
 		fmt.Println("model rejected:", err)
 		return
@@ -58,15 +58,15 @@ func ExampleNewMenu() {
 
 	// The bar places the menu along an edge. It wraps a Menu that already
 	// exists and configures it only while mounted.
-	bar := widget.NewMenuBar(menu, widget.WithBarPlacement(widget.BarPlacementTop))
+	bar := core.NewMenuBar(menu, core.WithBarPlacement(core.BarPlacementTop))
 
 	// A Menu's levels are anchored overlay layers, so whichever of the two is
 	// mounted must sit inside an OverlayHost. The nearest enclosing one holds
 	// them, so nesting hosts is well defined.
 	root := tui.NewFlex(tui.Vertical)
 	root.Add(bar)
-	root.AddWeighted(widget.NewText("content"), 1)
-	host := widget.NewOverlayHost(root)
+	root.AddWeighted(core.NewText("content"), 1)
+	host := core.NewOverlayHost(root)
 
 	fmt.Println(bar.Placement(), host != nil, menu.OpenLevels())
 	// Output: top true 0
@@ -75,9 +75,9 @@ func ExampleNewMenu() {
 // ExampleMenu_Open shows the error contract: Open reports what happened rather
 // than leaving a caller waiting for a popup that is not coming.
 func ExampleMenu_Open() {
-	menu := widget.NewMenu()
-	if err := menu.SetModel([]widget.MenuItemModel{
-		widget.NewCommand("quit", "Quit", nil),
+	menu := core.NewMenu()
+	if err := menu.SetModel([]core.MenuItemModel{
+		core.NewCommand("quit", "Quit", nil),
 	}); err != nil {
 		fmt.Println(err)
 		return

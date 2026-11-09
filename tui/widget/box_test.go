@@ -11,15 +11,15 @@ import (
 
 	"github.com/yongjohnlee80/golib/tui"
 	"github.com/yongjohnlee80/golib/tui/style"
-	"github.com/yongjohnlee80/golib/tui/widget"
+	"github.com/yongjohnlee80/golib/tui/widget/core"
 )
 
 // TestBoxChrome asserts title and status render inside the border
 // rows (outer height = child + 2), truncate with ellipsis, and the
 // focused-style merge activates when a descendant gains focus.
 func TestBoxChrome(t *testing.T) {
-	input := widget.NewTextInput(widget.WithInitialValue("v"))
-	box := widget.NewBox(input, widget.WithTitle("Query"), widget.WithStatus("F5 run"))
+	input := core.NewTextInput(core.WithInitialValue("v"))
+	box := core.NewBox(input, core.WithTitle("Query"), core.WithStatus("F5 run"))
 	h := startApp(t, box, 30, 5)
 	h.settle()
 
@@ -56,7 +56,7 @@ func TestBoxChrome(t *testing.T) {
 // TestBoxTitleTruncation narrows the box until the title truncates with an
 // ellipsis.
 func TestBoxTitleTruncation(t *testing.T) {
-	box := widget.NewBox(widget.NewText("x"), widget.WithTitle("A very long panel title"))
+	box := core.NewBox(core.NewText("x"), core.WithTitle("A very long panel title"))
 	h := startApp(t, box, 12, 3)
 	h.settle()
 	if !strings.Contains(h.row(0), "…") {
@@ -68,10 +68,10 @@ func TestBoxTitleTruncation(t *testing.T) {
 // height-1 widget reports child + 2 border rows when constraints are loose.
 func TestBoxOuterIsChildPlusFrame(t *testing.T) {
 	// Dock gives the bottom slot loose height: the Box answers 1+2 rows.
-	box := widget.NewBox(widget.NewTextInput())
+	box := core.NewBox(core.NewTextInput())
 	dock := tui.NewDock()
 	dock.Pin(tui.DockBottom, box)
-	fill := widget.NewText("")
+	fill := core.NewText("")
 	dock.Add(fill)
 	h := startApp(t, dock, 20, 8)
 	h.settle()
@@ -87,7 +87,7 @@ func TestBoxOuterIsChildPlusFrame(t *testing.T) {
 // TestBoxFocusableChildless: WithFocusable(true) puts a child-less Box in
 // the focus chain.
 func TestBoxFocusableChildless(t *testing.T) {
-	box := widget.NewBox(nil, widget.WithFocusable(true), widget.WithTitle("Pane"))
+	box := core.NewBox(nil, core.WithFocusable(true), core.WithTitle("Pane"))
 	h := startApp(t, box, 20, 4)
 	h.inject(tab())
 	h.waitFor("box focused", func() bool {
@@ -99,7 +99,7 @@ func TestBoxFocusableChildless(t *testing.T) {
 // TestBoxConsumesNothing: keys bubble through a Box (contract: HandleEvent
 // returns false).
 func TestBoxConsumesNothing(t *testing.T) {
-	box := widget.NewBox(nil, widget.WithFocusable(true))
+	box := core.NewBox(nil, core.WithFocusable(true))
 	sh := newShell(box)
 	h := startApp(t, sh, 20, 4)
 	h.inject(tab()) // focus the box itself
@@ -114,9 +114,9 @@ func TestBoxConsumesNothing(t *testing.T) {
 // TestBoxStyleOverrides: WithBorder and WithFocusedStyle replace the
 // defaults.
 func TestBoxStyleOverrides(t *testing.T) {
-	box := widget.NewBox(widget.NewText("x"),
-		widget.WithBorder(style.BorderDouble),
-		widget.WithFocusedStyle(style.New().BorderForeground(style.TokenError)))
+	box := core.NewBox(core.NewText("x"),
+		core.WithBorder(style.BorderDouble),
+		core.WithFocusedStyle(style.New().BorderForeground(style.TokenError)))
 	h := startApp(t, box, 10, 3)
 	h.settle()
 	if !strings.HasPrefix(h.row(0), "╔") {
@@ -129,8 +129,8 @@ func TestBoxStyleOverrides(t *testing.T) {
 // terminal's foreground.
 func TestABoxTitleWearsTheBoxsTextColour(t *testing.T) {
 	dark := style.RGB(0x10, 0x10, 0x10)
-	b := widget.NewBox(widget.NewText("x"), widget.WithTitle("Pane"),
-		widget.WithStyle(style.New().Background(style.RGB(0xee, 0xee, 0xee)).Foreground(dark)))
+	b := core.NewBox(core.NewText("x"), core.WithTitle("Pane"),
+		core.WithStyle(style.New().Background(style.RGB(0xee, 0xee, 0xee)).Foreground(dark)))
 	h := startApp(t, b, 20, 4)
 	defer h.stop()
 	h.settle()

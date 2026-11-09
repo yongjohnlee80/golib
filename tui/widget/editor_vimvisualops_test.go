@@ -3,7 +3,7 @@ package widget_test
 import (
 	"testing"
 
-	"github.com/yongjohnlee80/golib/tui/widget"
+	"github.com/yongjohnlee80/golib/tui/widget/editor"
 )
 
 // Visual's operators over the selection: c (s), r{c}, ~ u U, > and < (with a count), and o.
@@ -45,7 +45,7 @@ func TestVimVisualRepeat(t *testing.T) {
 
 // On a viewer the Visual operators bubble, the text unchanged; o still moves.
 func TestVimVisualOperatorsOnAViewer(t *testing.T) {
-	c, _ := coreWith(t, "abc", widget.CoreReadOnly(true))
+	c, _ := coreWith(t, "abc", editor.CoreReadOnly(true))
 	vimSeq(c, "vl")
 	for _, k := range []rune{'~', 'u', 'U', 'c', '>', 'r'} {
 		if c.HandleKey(key(k)) {

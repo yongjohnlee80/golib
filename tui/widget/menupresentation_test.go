@@ -14,20 +14,20 @@ import (
 	"testing"
 
 	"github.com/yongjohnlee80/golib/tui"
-	"github.com/yongjohnlee80/golib/tui/widget"
+	"github.com/yongjohnlee80/golib/tui/widget/core"
 )
 
 // barFixture is a horizontal bar plus a second focusable, so focus has
 // somewhere to be that is not the menu. Docked rather than stacked: a stack
 // puts both layers at the same origin and the button paints over the bar.
-func barFixture(t *testing.T, m *widget.Menu, items []widget.MenuItemModel, w, h int) (*harness, *widget.Button) {
+func barFixture(t *testing.T, m *core.Menu, items []core.MenuItemModel, w, h int) (*harness, *core.Button) {
 	t.Helper()
-	bar := widget.NewMenuBar(m, widget.WithBarPlacement(widget.BarPlacementTop))
-	other := widget.NewButton("ELSEWHERE")
+	bar := core.NewMenuBar(m, core.WithBarPlacement(core.BarPlacementTop))
+	other := core.NewButton("ELSEWHERE")
 	dock := tui.NewDock()
 	dock.Pin(tui.DockTop, bar)
 	dock.Add(other)
-	host := widget.NewOverlayHost(dock)
+	host := core.NewOverlayHost(dock)
 	hh := startApp(t, host, w, h)
 	hh.onLoop(func() {
 		if err := m.SetModel(items); err != nil {
@@ -39,15 +39,15 @@ func barFixture(t *testing.T, m *widget.Menu, items []widget.MenuItemModel, w, h
 }
 
 // twoCategories is the smallest bar that can show ordering and pegging.
-func twoCategories(pegHelp bool) []widget.MenuItemModel {
-	file := widget.NewSubmenu("file", "File", []widget.MenuItemModel{
-		widget.NewCommand("new", "New", nil),
+func twoCategories(pegHelp bool) []core.MenuItemModel {
+	file := core.NewSubmenu("file", "File", []core.MenuItemModel{
+		core.NewCommand("new", "New", nil),
 	})
-	help := widget.NewSubmenu("help", "Help", []widget.MenuItemModel{
-		widget.NewCommand("about", "About", nil),
+	help := core.NewSubmenu("help", "Help", []core.MenuItemModel{
+		core.NewCommand("about", "About", nil),
 	})
 	help.PegRight = pegHelp
-	return []widget.MenuItemModel{file, help}
+	return []core.MenuItemModel{file, help}
 }
 
 // TestAnUnfocusedMenuDoesNotPaintItsSelectionAsActive.
@@ -63,7 +63,7 @@ func twoCategories(pegHelp bool) []widget.MenuItemModel {
 // ordinary surface the widget would be equally broken in the other direction,
 // and an assertion naming only the unfocused case would call that a pass.
 func TestAnUnfocusedMenuDoesNotPaintItsSelectionAsActive(t *testing.T) {
-	m := widget.NewMenu()
+	m := core.NewMenu()
 	h, other := barFixture(t, m, twoCategories(false), 50, 6)
 	defer h.stop()
 
@@ -105,7 +105,7 @@ func TestAnUnfocusedMenuDoesNotPaintItsSelectionAsActive(t *testing.T) {
 // so the default is off in the bar and always on below it.
 func TestABarDrawsNoSubmenuMarkerUnlessAsked(t *testing.T) {
 	t.Run("off by default", func(t *testing.T) {
-		m := widget.NewMenu()
+		m := core.NewMenu()
 		h, _ := barFixture(t, m, twoCategories(false), 50, 6)
 		defer h.stop()
 		if line := h.row(0); strings.Contains(line, "▸") {
@@ -114,7 +114,7 @@ func TestABarDrawsNoSubmenuMarkerUnlessAsked(t *testing.T) {
 	})
 
 	t.Run("on when asked", func(t *testing.T) {
-		m := widget.NewMenu(widget.WithBarSubmenuMarker(true))
+		m := core.NewMenu(core.WithBarSubmenuMarker(true))
 		h, _ := barFixture(t, m, twoCategories(false), 50, 6)
 		defer h.stop()
 		if line := h.row(0); !strings.Contains(line, "▸") {
@@ -123,11 +123,11 @@ func TestABarDrawsNoSubmenuMarkerUnlessAsked(t *testing.T) {
 	})
 
 	t.Run("a popup always marks its submenu rows", func(t *testing.T) {
-		m := widget.NewMenu()
-		items := []widget.MenuItemModel{
-			widget.NewSubmenu("top", "Top", []widget.MenuItemModel{
-				widget.NewSubmenu("deeper", "Deeper", []widget.MenuItemModel{
-					widget.NewCommand("leaf", "Leaf", nil),
+		m := core.NewMenu()
+		items := []core.MenuItemModel{
+			core.NewSubmenu("top", "Top", []core.MenuItemModel{
+				core.NewSubmenu("deeper", "Deeper", []core.MenuItemModel{
+					core.NewCommand("leaf", "Leaf", nil),
 				}),
 			}),
 		}
@@ -157,7 +157,7 @@ func TestABarDrawsNoSubmenuMarkerUnlessAsked(t *testing.T) {
 func TestAPeggedRowSitsAtTheFarEndOfTheBar(t *testing.T) {
 	const width = 50
 
-	m := widget.NewMenu()
+	m := core.NewMenu()
 	h, _ := barFixture(t, m, twoCategories(true), width, 6)
 	defer h.stop()
 
@@ -176,7 +176,7 @@ func TestAPeggedRowSitsAtTheFarEndOfTheBar(t *testing.T) {
 
 	// THE CONTROL: without the flag the same model packs Help against File, so
 	// the assertion above is about pegging and not about the width of the bar.
-	m2 := widget.NewMenu()
+	m2 := core.NewMenu()
 	h2, _ := barFixture(t, m2, twoCategories(false), width, 6)
 	defer h2.stop()
 	if hx2, _ := cellOfLabel(t, h2, "Help"); hx2 >= width-10 {
@@ -191,7 +191,7 @@ func TestAPeggedRowSitsAtTheFarEndOfTheBar(t *testing.T) {
 // then discover the pegged row needs columns that are already taken. Squeezing
 // the bar until the two must collide is the case that exposes it.
 func TestAPeggedRowDoesNotOverlapTheRowBeforeIt(t *testing.T) {
-	m := widget.NewMenu()
+	m := core.NewMenu()
 	h, _ := barFixture(t, m, twoCategories(true), 16, 6)
 	defer h.stop()
 
@@ -223,22 +223,22 @@ func TestABarTooNarrowForItsPeggedRowsDropsThemRatherThanStacksThem(t *testing.T
 	// Two pegged rows and a leading one. "Help" needs six columns with its
 	// padding and the bar is given four, so Help must be clipped, Tools must
 	// find nothing left, and File must never reach the pegged block.
-	crowded := func() []widget.MenuItemModel {
-		file := widget.NewSubmenu("file", "File", []widget.MenuItemModel{
-			widget.NewCommand("new", "New", nil),
+	crowded := func() []core.MenuItemModel {
+		file := core.NewSubmenu("file", "File", []core.MenuItemModel{
+			core.NewCommand("new", "New", nil),
 		})
-		tools := widget.NewSubmenu("tools", "Tools", []widget.MenuItemModel{
-			widget.NewCommand("fmt", "Format", nil),
+		tools := core.NewSubmenu("tools", "Tools", []core.MenuItemModel{
+			core.NewCommand("fmt", "Format", nil),
 		})
-		help := widget.NewSubmenu("help", "Help", []widget.MenuItemModel{
-			widget.NewCommand("about", "About", nil),
+		help := core.NewSubmenu("help", "Help", []core.MenuItemModel{
+			core.NewCommand("about", "About", nil),
 		})
 		tools.PegRight = true
 		help.PegRight = true
-		return []widget.MenuItemModel{file, tools, help}
+		return []core.MenuItemModel{file, tools, help}
 	}
 
-	m := widget.NewMenu()
+	m := core.NewMenu()
 	h, _ := barFixture(t, m, crowded(), 4, 6)
 	defer h.stop()
 
@@ -272,7 +272,7 @@ func TestABarTooNarrowForItsPeggedRowsDropsThemRatherThanStacksThem(t *testing.T
 	// THE CONTROL: the same model on a bar with room places all three and Tools
 	// opens, so the absences above are about the width and not about pegging
 	// dropping rows it should have kept.
-	m2 := widget.NewMenu()
+	m2 := core.NewMenu()
 	h2, _ := barFixture(t, m2, crowded(), 50, 6)
 	defer h2.stop()
 	wide := h2.row(0)
@@ -297,10 +297,10 @@ func TestABarTooNarrowForItsPeggedRowsDropsThemRatherThanStacksThem(t *testing.T
 // than as the dialog's name. On the border is where a framed panel is titled
 // everywhere else.
 func TestADialogTitleSitsOnItsBorder(t *testing.T) {
-	md := widget.NewModal(widget.NewText("Are you sure to quit?"),
-		widget.WithModalTitle("Exit Confirmation"),
-		widget.WithButtons(widget.NewButton("Yes"), widget.NewButton("No")))
-	host := widget.NewOverlayHost(widget.NewText(""))
+	md := core.NewModal(core.NewText("Are you sure to quit?"),
+		core.WithModalTitle("Exit Confirmation"),
+		core.WithButtons(core.NewButton("Yes"), core.NewButton("No")))
+	host := core.NewOverlayHost(core.NewText(""))
 	h := startApp(t, host, 56, 12)
 	defer h.stop()
 	h.onLoop(func() {
@@ -338,10 +338,10 @@ func TestADialogTitleSitsOnItsBorder(t *testing.T) {
 // Without the blank line the controls sit directly under the last line of prose
 // and read as part of the sentence.
 func TestADialogSeparatesItsMessageFromItsButtons(t *testing.T) {
-	md := widget.NewModal(widget.NewText("Are you sure to quit?"),
-		widget.WithModalTitle("Exit Confirmation"),
-		widget.WithButtons(widget.NewButton("Yes"), widget.NewButton("No")))
-	host := widget.NewOverlayHost(widget.NewText(""))
+	md := core.NewModal(core.NewText("Are you sure to quit?"),
+		core.WithModalTitle("Exit Confirmation"),
+		core.WithButtons(core.NewButton("Yes"), core.NewButton("No")))
+	host := core.NewOverlayHost(core.NewText(""))
 	h := startApp(t, host, 56, 12)
 	defer h.stop()
 	h.onLoop(func() {
@@ -370,14 +370,14 @@ func TestADialogSeparatesItsMessageFromItsButtons(t *testing.T) {
 // rather than against fixed columns, so the test states the ORDERING the option
 // promises and survives a change in padding.
 func TestADialogPlacesItsButtonsWhereItWasTold(t *testing.T) {
-	col := func(t *testing.T, opts ...widget.ModalOption) (x, cardX, cardW int) {
+	col := func(t *testing.T, opts ...core.ModalOption) (x, cardX, cardW int) {
 		t.Helper()
-		base := []widget.ModalOption{
-			widget.WithModalTitle("A Dialog With A Long Title"),
-			widget.WithButtons(widget.NewButton("Yes"), widget.NewButton("No")),
+		base := []core.ModalOption{
+			core.WithModalTitle("A Dialog With A Long Title"),
+			core.WithButtons(core.NewButton("Yes"), core.NewButton("No")),
 		}
-		md := widget.NewModal(widget.NewText("short"), append(base, opts...)...)
-		host := widget.NewOverlayHost(widget.NewText(""))
+		md := core.NewModal(core.NewText("short"), append(base, opts...)...)
+		host := core.NewOverlayHost(core.NewText(""))
 		h := startApp(t, host, 64, 12)
 		defer h.stop()
 		h.onLoop(func() {
@@ -394,15 +394,15 @@ func TestADialogPlacesItsButtonsWhereItWasTold(t *testing.T) {
 	}
 
 	centred, cx, cw := col(t)
-	left, _, _ := col(t, widget.WithButtonAlign(widget.ButtonsLeft))
-	right, _, _ := col(t, widget.WithButtonAlign(widget.ButtonsRight))
+	left, _, _ := col(t, core.WithButtonAlign(core.ButtonsLeft))
+	right, _, _ := col(t, core.WithButtonAlign(core.ButtonsRight))
 
 	if !(left < centred && centred < right) {
 		t.Errorf("button columns are left=%d centred=%d right=%d; want strictly "+
 			"increasing (card starts at %d, %d wide)", left, centred, right, cx, cw)
 	}
 	// Centred is the ZERO VALUE, so a caller who says nothing gets it.
-	explicit, _, _ := col(t, widget.WithButtonAlign(widget.ButtonsCenter))
+	explicit, _, _ := col(t, core.WithButtonAlign(core.ButtonsCenter))
 	if explicit != centred {
 		t.Errorf("explicit ButtonsCenter put the buttons at %d but the default put "+
 			"them at %d; the zero value is not the documented default",
@@ -414,17 +414,17 @@ func TestADialogPlacesItsButtonsWhereItWasTold(t *testing.T) {
 // every other enum option in this package.
 func TestAnUndeclaredButtonAlignIsRefused(t *testing.T) {
 	if f := fatalFromWidgetExt(func() {
-		widget.NewModal(widget.NewText("x"),
-			widget.WithButtonAlign(widget.ButtonsRight+1))
+		core.NewModal(core.NewText("x"),
+			core.WithButtonAlign(core.ButtonsRight+1))
 	}); f == nil {
 		t.Error("an out-of-range ButtonAlign was accepted")
 	}
 	// The control: every declared value is accepted.
-	for _, a := range []widget.ButtonAlign{
-		widget.ButtonsCenter, widget.ButtonsLeft, widget.ButtonsRight,
+	for _, a := range []core.ButtonAlign{
+		core.ButtonsCenter, core.ButtonsLeft, core.ButtonsRight,
 	} {
 		if f := fatalFromWidgetExt(func() {
-			widget.NewModal(widget.NewText("x"), widget.WithButtonAlign(a))
+			core.NewModal(core.NewText("x"), core.WithButtonAlign(a))
 		}); f != nil {
 			t.Errorf("ButtonAlign %v was refused: %v", a, f)
 		}
@@ -451,17 +451,17 @@ func rowContaining(grid, sub string) int {
 // Driven through Open, and then again through a real pointer click, because the
 // two reach openLevel by different routes and only one of them was exercised.
 func TestOpeningACategoryClosesTheOneBeforeIt(t *testing.T) {
-	model := []widget.MenuItemModel{
-		widget.NewSubmenu("file", "File", []widget.MenuItemModel{
-			widget.NewCommand("new", "New", nil),
+	model := []core.MenuItemModel{
+		core.NewSubmenu("file", "File", []core.MenuItemModel{
+			core.NewCommand("new", "New", nil),
 		}),
-		widget.NewSubmenu("help", "Help", []widget.MenuItemModel{
-			widget.NewCommand("about", "About", nil),
+		core.NewSubmenu("help", "Help", []core.MenuItemModel{
+			core.NewCommand("about", "About", nil),
 		}),
 	}
 
 	t.Run("through Open", func(t *testing.T) {
-		m := widget.NewMenu()
+		m := core.NewMenu()
 		h, _ := barFixture(t, m, model, 50, 10)
 		defer h.stop()
 
@@ -496,7 +496,7 @@ func TestOpeningACategoryClosesTheOneBeforeIt(t *testing.T) {
 	})
 
 	t.Run("through a pointer click", func(t *testing.T) {
-		m := widget.NewMenu()
+		m := core.NewMenu()
 		h, _ := barFixture(t, m, model, 50, 10)
 		defer h.stop()
 
@@ -526,14 +526,14 @@ func TestOpeningACategoryClosesTheOneBeforeIt(t *testing.T) {
 	})
 
 	t.Run("a nested level keeps its parent", func(t *testing.T) {
-		nested := []widget.MenuItemModel{
-			widget.NewSubmenu("opt", "Option", []widget.MenuItemModel{
-				widget.NewSubmenu("km", "Keymaps", []widget.MenuItemModel{
-					widget.NewCommand("vim", "Vim", nil),
+		nested := []core.MenuItemModel{
+			core.NewSubmenu("opt", "Option", []core.MenuItemModel{
+				core.NewSubmenu("km", "Keymaps", []core.MenuItemModel{
+					core.NewCommand("vim", "Vim", nil),
 				}),
 			}),
 		}
-		m := widget.NewMenu()
+		m := core.NewMenu()
 		h, _ := barFixture(t, m, nested, 50, 12)
 		defer h.stop()
 
@@ -573,7 +573,7 @@ func TestALockKeyDoesNotDisableTheKeyboard(t *testing.T) {
 		tui.ModNumLock | tui.ModCapsLock,
 	} {
 		t.Run(mods.String(), func(t *testing.T) {
-			m := widget.NewMenu()
+			m := core.NewMenu()
 			h, _ := barFixture(t, m, twoCategories(false), 50, 10)
 			defer h.stop()
 			h.onLoop(func() { m.Context().RequestFocus() })
@@ -584,7 +584,7 @@ func TestALockKeyDoesNotDisableTheKeyboard(t *testing.T) {
 			// Right steps along the bar.
 			h.inject(tui.KeyEvent{Kind: tui.KeyPress, Code: tui.KeyRight, Mods: mods})
 			h.settle()
-			var sel widget.ItemID
+			var sel core.ItemID
 			h.onLoop(func() { sel, _ = m.Selected() })
 			if sel != "help" {
 				t.Errorf("Right with mods %v left the selection on %q; a lock key "+
@@ -606,7 +606,7 @@ func TestALockKeyDoesNotDisableTheKeyboard(t *testing.T) {
 // the lock bits must not turn every chord into a plain keystroke, or Ctrl-Right
 // would step the menu while the user meant it for something else.
 func TestARealModifierIsStillRejected(t *testing.T) {
-	m := widget.NewMenu()
+	m := core.NewMenu()
 	h, _ := barFixture(t, m, twoCategories(false), 50, 10)
 	defer h.stop()
 	h.onLoop(func() { m.Context().RequestFocus() })
@@ -617,7 +617,7 @@ func TestARealModifierIsStillRejected(t *testing.T) {
 	for _, mods := range []tui.Mods{tui.ModCtrl, tui.ModAlt, tui.ModCtrl | tui.ModNumLock} {
 		h.inject(tui.KeyEvent{Kind: tui.KeyPress, Code: tui.KeyRight, Mods: mods})
 		h.settle()
-		var sel widget.ItemID
+		var sel core.ItemID
 		h.onLoop(func() { sel, _ = m.Selected() })
 		if sel != "file" {
 			t.Errorf("Right with %v moved the selection to %q; a real chord is not "+
@@ -634,7 +634,7 @@ func TestARealModifierIsStillRejected(t *testing.T) {
 // categories with a dropdown following along is what a menu bar has always
 // done.
 func TestLeftAndRightWalkTheBarWhileADropdownIsOpen(t *testing.T) {
-	m := widget.NewMenu()
+	m := core.NewMenu()
 	h, _ := barFixture(t, m, twoCategories(false), 50, 12)
 	defer h.stop()
 	h.onLoop(func() { m.Context().RequestFocus() })
@@ -677,14 +677,14 @@ func TestLeftAndRightWalkTheBarWhileADropdownIsOpen(t *testing.T) {
 // TestLeftStillClosesANestedLevel is the control: making Left walk the bar must
 // not cost the cascade its way back out.
 func TestLeftStillClosesANestedLevel(t *testing.T) {
-	nested := []widget.MenuItemModel{
-		widget.NewSubmenu("opt", "Option", []widget.MenuItemModel{
-			widget.NewSubmenu("km", "Keymaps", []widget.MenuItemModel{
-				widget.NewCommand("vim", "Vim", nil),
+	nested := []core.MenuItemModel{
+		core.NewSubmenu("opt", "Option", []core.MenuItemModel{
+			core.NewSubmenu("km", "Keymaps", []core.MenuItemModel{
+				core.NewCommand("vim", "Vim", nil),
 			}),
 		}),
 	}
-	m := widget.NewMenu()
+	m := core.NewMenu()
 	h, _ := barFixture(t, m, nested, 50, 12)
 	defer h.stop()
 	h.onLoop(func() { m.Context().RequestFocus() })
@@ -715,9 +715,9 @@ func TestLeftStillClosesANestedLevel(t *testing.T) {
 // edge, and they are the default for that reason.
 func TestAButtonReadsAsAControl(t *testing.T) {
 	t.Run("bracketed by default", func(t *testing.T) {
-		md := widget.NewModal(widget.NewText("Quit?"),
-			widget.WithButtons(widget.NewButton("Yes"), widget.NewButton("No")))
-		host := widget.NewOverlayHost(widget.NewText(""))
+		md := core.NewModal(core.NewText("Quit?"),
+			core.WithButtons(core.NewButton("Yes"), core.NewButton("No")))
+		host := core.NewOverlayHost(core.NewText(""))
 		h := startApp(t, host, 50, 10)
 		defer h.stop()
 		h.onLoop(func() {
@@ -741,9 +741,9 @@ func TestAButtonReadsAsAControl(t *testing.T) {
 		// THE CONTROL. Without this, a decoration hard-coded into Render would
 		// pass the case above just as well, and a caller framing controls their
 		// own way would have no way out.
-		b := widget.NewButton("Yes", widget.WithButtonDecoration("", ""))
-		md := widget.NewModal(widget.NewText("Quit?"), widget.WithButtons(b))
-		host := widget.NewOverlayHost(widget.NewText(""))
+		b := core.NewButton("Yes", core.WithButtonDecoration("", ""))
+		md := core.NewModal(core.NewText("Quit?"), core.WithButtons(b))
+		host := core.NewOverlayHost(core.NewText(""))
 		h := startApp(t, host, 50, 10)
 		defer h.stop()
 		h.onLoop(func() {
@@ -761,7 +761,7 @@ func TestAButtonReadsAsAControl(t *testing.T) {
 	t.Run("the button is wide enough for its own brackets", func(t *testing.T) {
 		// The defect a decoration added only at paint time would have: the
 		// button measures the bare label, and the closing bracket is clipped.
-		b := widget.NewButton("Yes")
+		b := core.NewButton("Yes")
 		flex := tui.NewFlex(tui.Horizontal)
 		flex.Add(b)
 		h := startApp(t, flex, 40, 1)
@@ -783,7 +783,7 @@ func TestAButtonReadsAsAControl(t *testing.T) {
 // which is the shape a floating or detached menu needs. On by default.
 func TestADropdownNamesTheRowThatOpenedIt(t *testing.T) {
 	t.Run("on by default", func(t *testing.T) {
-		m := widget.NewMenu()
+		m := core.NewMenu()
 		h, _ := barFixture(t, m, twoCategories(false), 50, 12)
 		defer h.stop()
 		// FOCUSED, so the selected row wears the real selection look. Blurred,
@@ -828,12 +828,12 @@ func TestADropdownNamesTheRowThatOpenedIt(t *testing.T) {
 		// A level whose opening row is named longer than anything inside it
 		// must still fit the name: sized to the rows alone it would silently
 		// drop the title it reserved nothing for.
-		model := []widget.MenuItemModel{
-			widget.NewSubmenu("long", "Preferences", []widget.MenuItemModel{
-				widget.NewCommand("a", "On", nil),
+		model := []core.MenuItemModel{
+			core.NewSubmenu("long", "Preferences", []core.MenuItemModel{
+				core.NewCommand("a", "On", nil),
 			}),
 		}
-		m := widget.NewMenu()
+		m := core.NewMenu()
 		h, _ := barFixture(t, m, model, 50, 12)
 		defer h.stop()
 		h.onLoop(func() { _ = m.Open("long") })
@@ -850,7 +850,7 @@ func TestADropdownNamesTheRowThatOpenedIt(t *testing.T) {
 	})
 
 	t.Run("removable", func(t *testing.T) {
-		m := widget.NewMenu(widget.WithLevelTitle(false))
+		m := core.NewMenu(core.WithLevelTitle(false))
 		h, _ := barFixture(t, m, twoCategories(false), 50, 12)
 		defer h.stop()
 		h.onLoop(func() { _ = m.Open("file") })
@@ -871,7 +871,7 @@ func TestADropdownNamesTheRowThatOpenedIt(t *testing.T) {
 // opened, leaving the bar saying nothing about where the cascade below it came
 // from.
 func TestTheOpenCategoryStaysHighlighted(t *testing.T) {
-	m := widget.NewMenu()
+	m := core.NewMenu()
 	h, _ := barFixture(t, m, twoCategories(false), 50, 12)
 	defer h.stop()
 	h.onLoop(func() { m.Context().RequestFocus() })
@@ -886,7 +886,7 @@ func TestTheOpenCategoryStaysHighlighted(t *testing.T) {
 
 	// The selection really has moved into the level, so this is not just
 	// "File is still selected".
-	var sel widget.ItemID
+	var sel core.ItemID
 	h.onLoop(func() { sel, _ = m.Selected() })
 	if sel == "file" {
 		t.Fatalf("the selection is still on the category; this test cannot tell " +
@@ -909,31 +909,31 @@ func TestTheOpenCategoryStaysHighlighted(t *testing.T) {
 // level, Right still descends, because that is how the keymaps are reached at
 // all. Up is the way back out, which is what leaves Left and Right free.
 func TestTheBarsTwoAxesMeanDifferentThings(t *testing.T) {
-	model := []widget.MenuItemModel{
-		widget.NewSubmenu("file", "File", []widget.MenuItemModel{
-			widget.NewCommand("new", "New", nil),
-			widget.NewCommand("open", "Open", nil),
+	model := []core.MenuItemModel{
+		core.NewSubmenu("file", "File", []core.MenuItemModel{
+			core.NewCommand("new", "New", nil),
+			core.NewCommand("open", "Open", nil),
 		}),
-		widget.NewSubmenu("option", "Option", []widget.MenuItemModel{
-			widget.NewSubmenu("km", "Keymaps", []widget.MenuItemModel{
-				widget.NewCommand("vim", "Vim", nil),
+		core.NewSubmenu("option", "Option", []core.MenuItemModel{
+			core.NewSubmenu("km", "Keymaps", []core.MenuItemModel{
+				core.NewCommand("vim", "Vim", nil),
 			}),
 		}),
-		widget.NewSubmenu("help", "Help", []widget.MenuItemModel{
-			widget.NewCommand("about", "About", nil),
+		core.NewSubmenu("help", "Help", []core.MenuItemModel{
+			core.NewCommand("about", "About", nil),
 		}),
 	}
-	newBar := func(t *testing.T) (*harness, *widget.Menu) {
+	newBar := func(t *testing.T) (*harness, *core.Menu) {
 		t.Helper()
-		m := widget.NewMenu()
+		m := core.NewMenu()
 		h, _ := barFixture(t, m, model, 60, 14)
 		h.onLoop(func() { m.Context().RequestFocus() })
 		h.settle()
 		return h, m
 	}
-	selOf := func(t *testing.T, h *harness, m *widget.Menu) widget.ItemID {
+	selOf := func(t *testing.T, h *harness, m *core.Menu) core.ItemID {
 		t.Helper()
-		var id widget.ItemID
+		var id core.ItemID
 		h.onLoop(func() { id, _ = m.Selected() })
 		return id
 	}
@@ -1037,12 +1037,12 @@ func TestTheBarsTwoAxesMeanDifferentThings(t *testing.T) {
 // own.
 func TestADropdownHasAMinimumWidth(t *testing.T) {
 	// Rows far shorter than the floor, so the floor is what decides the width.
-	narrow := []widget.MenuItemModel{
-		widget.NewSubmenu("a", "A", []widget.MenuItemModel{
-			widget.NewCommand("x", "Go", nil),
+	narrow := []core.MenuItemModel{
+		core.NewSubmenu("a", "A", []core.MenuItemModel{
+			core.NewCommand("x", "Go", nil),
 		}),
 	}
-	widthOf := func(t *testing.T, m *widget.Menu) int {
+	widthOf := func(t *testing.T, m *core.Menu) int {
 		t.Helper()
 		h, _ := barFixture(t, m, narrow, 60, 12)
 		defer h.stop()
@@ -1073,7 +1073,7 @@ func TestADropdownHasAMinimumWidth(t *testing.T) {
 		return end - start + 1
 	}
 
-	floored := widthOf(t, widget.NewMenu())
+	floored := widthOf(t, core.NewMenu())
 	// The floor is an INTERIOR, so the frame is two wider.
 	if want := 12 + 2; floored != want {
 		t.Errorf("a narrow dropdown is %d columns wide, want %d", floored, want)
@@ -1081,19 +1081,19 @@ func TestADropdownHasAMinimumWidth(t *testing.T) {
 
 	// Removable, and the control that the number above comes from the floor
 	// rather than from the content.
-	unfloored := widthOf(t, widget.NewMenu(widget.WithLevelMinWidth(0)))
+	unfloored := widthOf(t, core.NewMenu(core.WithLevelMinWidth(0)))
 	if unfloored >= floored {
 		t.Errorf("with the floor removed the dropdown is %d wide and with it %d; "+
 			"the floor is not what widened it", unfloored, floored)
 	}
 
 	// And the floor never SHRINKS a level that needs more.
-	wide := []widget.MenuItemModel{
-		widget.NewSubmenu("a", "A", []widget.MenuItemModel{
-			widget.NewCommand("x", "A considerably longer row than the floor", nil),
+	wide := []core.MenuItemModel{
+		core.NewSubmenu("a", "A", []core.MenuItemModel{
+			core.NewCommand("x", "A considerably longer row than the floor", nil),
 		}),
 	}
-	m := widget.NewMenu()
+	m := core.NewMenu()
 	h, _ := barFixture(t, m, wide, 70, 12)
 	defer h.stop()
 	h.onLoop(func() { _ = m.Open("a") })
@@ -1108,12 +1108,12 @@ func TestADropdownHasAMinimumWidth(t *testing.T) {
 // is not a narrower box, and normalising it to zero would hide the mistake.
 func TestANegativeLevelMinWidthIsRefused(t *testing.T) {
 	if f := fatalFromWidgetExt(func() {
-		widget.NewMenu(widget.WithLevelMinWidth(-1))
+		core.NewMenu(core.WithLevelMinWidth(-1))
 	}); f == nil {
 		t.Error("a negative minimum width was accepted")
 	}
 	if f := fatalFromWidgetExt(func() {
-		widget.NewMenu(widget.WithLevelMinWidth(0))
+		core.NewMenu(core.WithLevelMinWidth(0))
 	}); f != nil {
 		t.Errorf("zero should remove the floor, not be refused: %v", f)
 	}

@@ -14,13 +14,13 @@ import (
 
 	"github.com/yongjohnlee80/golib/tui"
 	"github.com/yongjohnlee80/golib/tui/style"
-	"github.com/yongjohnlee80/golib/tui/widget"
+	"github.com/yongjohnlee80/golib/tui/widget/core"
 )
 
 // movingOwner declares a region whose POSITION it can change, and can retire
 // every ref it has issued — the two things a scrolling list does.
 type movingOwner struct {
-	widget.Base
+	core.Base
 	y          int
 	invalidate bool
 	ref        tui.AnchorRef
@@ -48,14 +48,14 @@ func (o *movingOwner) Render(s tui.Surface) { s.SetCell(0, 0, "O", style.New()) 
 // real loss.
 func TestAnOrdinaryRectMoveKeepsTheLayerOpen(t *testing.T) {
 	owner := &movingOwner{y: 1}
-	host := widget.NewOverlayHost(owner)
+	host := core.NewOverlayHost(owner)
 	h := startApp(t, host, 30, 12)
 	defer h.stop()
 	h.settle()
 
 	h.onLoop(func() {
-		if err := host.OpenAnchored("p", widget.NewText("POPUP"),
-			widget.AnchorSpec{Ref: owner.ref}, nil); err != nil {
+		if err := host.OpenAnchored("p", core.NewText("POPUP"),
+			core.AnchorSpec{Ref: owner.ref}, nil); err != nil {
 			t.Errorf("OpenAnchored: %v", err)
 		}
 	})
@@ -87,14 +87,14 @@ func TestAnOrdinaryRectMoveKeepsTheLayerOpen(t *testing.T) {
 // it, and everything would look fine.
 func TestAStaleGenerationResolvesToLostRatherThanToWhateverIsThereNow(t *testing.T) {
 	owner := &movingOwner{y: 1}
-	host := widget.NewOverlayHost(owner)
+	host := core.NewOverlayHost(owner)
 	h := startApp(t, host, 30, 12)
 	defer h.stop()
 	h.settle()
 
 	h.onLoop(func() {
-		if err := host.OpenAnchored("p", widget.NewText("POPUP"),
-			widget.AnchorSpec{Ref: owner.ref}, nil); err != nil {
+		if err := host.OpenAnchored("p", core.NewText("POPUP"),
+			core.AnchorSpec{Ref: owner.ref}, nil); err != nil {
 			t.Errorf("OpenAnchored: %v", err)
 		}
 	})
@@ -103,8 +103,8 @@ func TestAStaleGenerationResolvesToLostRatherThanToWhateverIsThereNow(t *testing
 		t.Fatal("precondition failed: the popup never appeared")
 	}
 
-	var reasons []widget.DismissReason
-	unsub := tui.Subscribe(h.app.Bus(), func(ev widget.OverlayDismissedEvent) {
+	var reasons []core.DismissReason
+	unsub := tui.Subscribe(h.app.Bus(), func(ev core.OverlayDismissedEvent) {
 		reasons = append(reasons, ev.Reason)
 	})
 	defer unsub()
@@ -120,7 +120,7 @@ func TestAStaleGenerationResolvesToLostRatherThanToWhateverIsThereNow(t *testing
 	})
 	h.settle()
 
-	if len(reasons) != 1 || reasons[0] != widget.DismissAnchorLost {
+	if len(reasons) != 1 || reasons[0] != core.DismissAnchorLost {
 		t.Errorf("dismissals = %v, want exactly one anchor-lost", reasons)
 	}
 }
@@ -133,7 +133,7 @@ func TestAStaleGenerationResolvesToLostRatherThanToWhateverIsThereNow(t *testing
 func TestAnAnchorOutsideTheHostIsRefused(t *testing.T) {
 	inside := &movingOwner{y: 1}
 	outside := &movingOwner{y: 1}
-	host := widget.NewOverlayHost(inside)
+	host := core.NewOverlayHost(inside)
 	root := tui.NewFlex(tui.Vertical)
 	root.Add(host, outside)
 	h := startApp(t, root, 30, 16)
@@ -142,18 +142,18 @@ func TestAnAnchorOutsideTheHostIsRefused(t *testing.T) {
 
 	var err error
 	h.onLoop(func() {
-		err = host.OpenAnchored("p", widget.NewText("POPUP"),
-			widget.AnchorSpec{Ref: outside.ref}, nil)
+		err = host.OpenAnchored("p", core.NewText("POPUP"),
+			core.AnchorSpec{Ref: outside.ref}, nil)
 	})
 	h.settle()
-	if !errors.Is(err, widget.ErrAnchorUnusable) {
+	if !errors.Is(err, core.ErrAnchorUnusable) {
 		t.Errorf("OpenAnchored returned %v, want ErrAnchorUnusable", err)
 	}
 	// The control: the same call with an anchor INSIDE the host succeeds, so the
 	// refusal above is about ownership rather than a broken fixture.
 	h.onLoop(func() {
-		err = host.OpenAnchored("p", widget.NewText("POPUP"),
-			widget.AnchorSpec{Ref: inside.ref}, nil)
+		err = host.OpenAnchored("p", core.NewText("POPUP"),
+			core.AnchorSpec{Ref: inside.ref}, nil)
 	})
 	h.settle()
 	if err != nil {
@@ -169,14 +169,14 @@ func TestAnAnchorOutsideTheHostIsRefused(t *testing.T) {
 // caller never asked for.
 func TestAFailedReplacementLeavesTheOldLayerOpen(t *testing.T) {
 	owner := &movingOwner{y: 1}
-	host := widget.NewOverlayHost(owner)
+	host := core.NewOverlayHost(owner)
 	h := startApp(t, host, 30, 12)
 	defer h.stop()
 	h.settle()
 
 	h.onLoop(func() {
-		if err := host.OpenAnchored("p", widget.NewText("FIRST"),
-			widget.AnchorSpec{Ref: owner.ref}, nil); err != nil {
+		if err := host.OpenAnchored("p", core.NewText("FIRST"),
+			core.AnchorSpec{Ref: owner.ref}, nil); err != nil {
 			t.Errorf("first open: %v", err)
 		}
 	})
@@ -185,7 +185,7 @@ func TestAFailedReplacementLeavesTheOldLayerOpen(t *testing.T) {
 	// A layer that cannot mount: already mounted as the host's own content.
 	var err error
 	h.onLoop(func() {
-		err = host.OpenAnchored("p", owner, widget.AnchorSpec{Ref: owner.ref}, nil)
+		err = host.OpenAnchored("p", owner, core.AnchorSpec{Ref: owner.ref}, nil)
 	})
 	h.settle()
 
@@ -212,12 +212,12 @@ func TestAFailedReplacementLeavesTheOldLayerOpen(t *testing.T) {
 // hanging off it has nothing left to point at. This is the model-level face of
 // per-layout region lifetime.
 func TestHidingARowClosesTheLevelItOpened(t *testing.T) {
-	m := widget.NewMenu()
-	if err := m.SetModel([]widget.MenuItemModel{
-		widget.NewSubmenu("file", "File", []widget.MenuItemModel{
-			widget.NewCommand("new", "New", nil),
+	m := core.NewMenu()
+	if err := m.SetModel([]core.MenuItemModel{
+		core.NewSubmenu("file", "File", []core.MenuItemModel{
+			core.NewCommand("new", "New", nil),
 		}),
-		widget.NewCommand("edit", "Edit", nil),
+		core.NewCommand("edit", "Edit", nil),
 	}); err != nil {
 		t.Fatalf("SetModel: %v", err)
 	}
@@ -250,11 +250,11 @@ func TestHidingARowClosesTheLevelItOpened(t *testing.T) {
 // Visibility is presentation; checkedness is state. Hiding a checked option does
 // not uncheck it, and a caller that meant to uncheck it has SetChecked.
 func TestAHiddenOrDisabledRowKeepsItsCheckedState(t *testing.T) {
-	m := widget.NewMenu()
-	if err := m.SetModel([]widget.MenuItemModel{
-		checked(widget.NewCheck("wrap", "Wrap", nil)),
-		checked(widget.NewCheck("nums", "Numbers", nil)),
-		widget.NewCommand("keep", "Keep", nil),
+	m := core.NewMenu()
+	if err := m.SetModel([]core.MenuItemModel{
+		checked(core.NewCheck("wrap", "Wrap", nil)),
+		checked(core.NewCheck("nums", "Numbers", nil)),
+		core.NewCommand("keep", "Keep", nil),
 	}); err != nil {
 		t.Fatalf("SetModel: %v", err)
 	}
@@ -287,12 +287,12 @@ func TestAHiddenOrDisabledRowKeepsItsCheckedState(t *testing.T) {
 // it stands; the command did not run, so the menu must not close as though it
 // had. A caller watching a menu vanish concludes the command ran.
 func TestAnUnhandledActionLeavesTheMenuOpenWithItsStateChanged(t *testing.T) {
-	m := widget.NewMenu(widget.WithActionExecutor(func(tui.ActionInvocation) bool {
+	m := core.NewMenu(core.WithActionExecutor(func(tui.ActionInvocation) bool {
 		return false // refused
 	}))
-	if err := m.SetModel([]widget.MenuItemModel{
-		widget.NewSubmenu("opts", "Options", []widget.MenuItemModel{
-			widget.NewCheck("wrap", "Wrap", saveAction{}),
+	if err := m.SetModel([]core.MenuItemModel{
+		core.NewSubmenu("opts", "Options", []core.MenuItemModel{
+			core.NewCheck("wrap", "Wrap", saveAction{}),
 		}),
 	}); err != nil {
 		t.Fatalf("SetModel: %v", err)
@@ -309,7 +309,7 @@ func TestAnUnhandledActionLeavesTheMenuOpenWithItsStateChanged(t *testing.T) {
 	h.settle()
 
 	var events atomic.Int64
-	unsub := tui.Subscribe(h.app.Bus(), func(widget.MenuActivatedEvent) { events.Add(1) })
+	unsub := tui.Subscribe(h.app.Bus(), func(core.MenuActivatedEvent) { events.Add(1) })
 	defer unsub()
 
 	h.inject(tui.KeyEvent{Kind: tui.KeyPress, Code: tui.KeyEnter})
@@ -333,11 +333,11 @@ func TestAnUnhandledActionLeavesTheMenuOpenWithItsStateChanged(t *testing.T) {
 // row and letting go abandons the click; it does not dismiss the cascade the
 // user is working in.
 func TestReleasingElsewhereLeavesTheOpenLevelsAlone(t *testing.T) {
-	m := widget.NewMenu(widget.WithActionExecutor(func(tui.ActionInvocation) bool { return true }))
-	if err := m.SetModel([]widget.MenuItemModel{
-		widget.NewSubmenu("file", "File", []widget.MenuItemModel{
-			widget.NewCommand("new", "New", saveAction{}),
-			widget.NewCommand("open", "Open", saveAction{}),
+	m := core.NewMenu(core.WithActionExecutor(func(tui.ActionInvocation) bool { return true }))
+	if err := m.SetModel([]core.MenuItemModel{
+		core.NewSubmenu("file", "File", []core.MenuItemModel{
+			core.NewCommand("new", "New", saveAction{}),
+			core.NewCommand("open", "Open", saveAction{}),
 		}),
 	}); err != nil {
 		t.Fatalf("SetModel: %v", err)
@@ -388,23 +388,23 @@ func TestReleasingElsewhereLeavesTheOpenLevelsAlone(t *testing.T) {
 // above: the event reaches the level, which forwards it to the Menu.
 func TestLosingTheCaptureClearsTheGestureWithoutClosingAnything(t *testing.T) {
 	var ran atomic.Int64
-	m := widget.NewMenu(widget.WithActionExecutor(func(tui.ActionInvocation) bool {
+	m := core.NewMenu(core.WithActionExecutor(func(tui.ActionInvocation) bool {
 		ran.Add(1)
 		return true
 	}))
-	if err := m.SetModel([]widget.MenuItemModel{
-		widget.NewSubmenu("file", "File", []widget.MenuItemModel{
-			widget.NewCommand("new", "New", saveAction{}),
+	if err := m.SetModel([]core.MenuItemModel{
+		core.NewSubmenu("file", "File", []core.MenuItemModel{
+			core.NewCommand("new", "New", saveAction{}),
 		}),
 	}); err != nil {
 		t.Fatalf("SetModel: %v", err)
 	}
 	// Something else focusable, so focus has somewhere to go that the capture
 	// owner's scope does not contain.
-	elsewhere := widget.NewButton("Elsewhere")
+	elsewhere := core.NewButton("Elsewhere")
 	base := tui.NewStack()
 	base.Add(m, elsewhere)
-	host := widget.NewOverlayHost(base)
+	host := core.NewOverlayHost(base)
 	h := startApp(t, host, 40, 14)
 	h.onLoop(func() { m.Context().RequestFocus() })
 	h.settle()
@@ -445,12 +445,12 @@ func TestLosingTheCaptureClearsTheGestureWithoutClosingAnything(t *testing.T) {
 // it, and it must still activate the row it started on.
 func TestANonPrimaryReleaseDoesNotEndAPrimaryGesture(t *testing.T) {
 	var ran atomic.Int64
-	m := widget.NewMenu(widget.WithActionExecutor(func(tui.ActionInvocation) bool {
+	m := core.NewMenu(core.WithActionExecutor(func(tui.ActionInvocation) bool {
 		ran.Add(1)
 		return true
 	}))
-	if err := m.SetModel([]widget.MenuItemModel{
-		widget.NewCommand("one", "One", saveAction{}),
+	if err := m.SetModel([]core.MenuItemModel{
+		core.NewCommand("one", "One", saveAction{}),
 	}); err != nil {
 		t.Fatalf("SetModel: %v", err)
 	}
@@ -481,11 +481,11 @@ func TestANonPrimaryReleaseDoesNotEndAPrimaryGesture(t *testing.T) {
 // the root swallows it from a consumer that may have its own meaning for it —
 // a menu can be nested inside something that does.
 func TestEscapeClosesOneLevelPerPressAndThenBubbles(t *testing.T) {
-	m := widget.NewMenu()
-	if err := m.SetModel([]widget.MenuItemModel{
-		widget.NewSubmenu("a", "A", []widget.MenuItemModel{
-			widget.NewSubmenu("b", "B", []widget.MenuItemModel{
-				widget.NewCommand("deep", "Deep", nil),
+	m := core.NewMenu()
+	if err := m.SetModel([]core.MenuItemModel{
+		core.NewSubmenu("a", "A", []core.MenuItemModel{
+			core.NewSubmenu("b", "B", []core.MenuItemModel{
+				core.NewCommand("deep", "Deep", nil),
 			}),
 		}),
 	}); err != nil {
@@ -558,14 +558,14 @@ func TestEscapeClosesOneLevelPerPressAndThenBubbles(t *testing.T) {
 // silently ignores the mouse. Nothing about the picture says so.
 func TestASubmenuRowIsClickable(t *testing.T) {
 	var ran atomic.Int64
-	m := widget.NewMenu(widget.WithActionExecutor(func(tui.ActionInvocation) bool {
+	m := core.NewMenu(core.WithActionExecutor(func(tui.ActionInvocation) bool {
 		ran.Add(1)
 		return true
 	}))
-	if err := m.SetModel([]widget.MenuItemModel{
-		widget.NewSubmenu("file", "File", []widget.MenuItemModel{
-			widget.NewCommand("new", "New", saveAction{}),
-			widget.NewCommand("open", "Open", saveAction{}),
+	if err := m.SetModel([]core.MenuItemModel{
+		core.NewSubmenu("file", "File", []core.MenuItemModel{
+			core.NewCommand("new", "New", saveAction{}),
+			core.NewCommand("open", "Open", saveAction{}),
 		}),
 	}); err != nil {
 		t.Fatalf("SetModel: %v", err)
@@ -580,8 +580,8 @@ func TestASubmenuRowIsClickable(t *testing.T) {
 	h.settle()
 	h.settle()
 
-	var events []widget.MenuActivatedEvent
-	unsub := tui.Subscribe(h.app.Bus(), func(ev widget.MenuActivatedEvent) {
+	var events []core.MenuActivatedEvent
+	unsub := tui.Subscribe(h.app.Bus(), func(ev core.MenuActivatedEvent) {
 		events = append(events, ev)
 	})
 	defer unsub()
@@ -608,14 +608,14 @@ func TestASubmenuRowIsClickable(t *testing.T) {
 // third check until somebody sets Enabled on one — and then traversal lands the
 // selection on a horizontal rule.
 func TestAnEnabledSeparatorIsStillNotSelectable(t *testing.T) {
-	sep := widget.NewSeparator("sep")
+	sep := core.NewSeparator("sep")
 	sep.Enabled = true // what a caller building rows by hand eventually does
 
-	m := widget.NewMenu()
-	if err := m.SetModel([]widget.MenuItemModel{
-		widget.NewCommand("one", "One", nil),
+	m := core.NewMenu()
+	if err := m.SetModel([]core.MenuItemModel{
+		core.NewCommand("one", "One", nil),
 		sep,
-		widget.NewCommand("two", "Two", nil),
+		core.NewCommand("two", "Two", nil),
 	}); err != nil {
 		t.Fatalf("SetModel: %v", err)
 	}
@@ -647,13 +647,13 @@ func TestAnEnabledSeparatorIsStillNotSelectable(t *testing.T) {
 // radio lives on leaves a member checked inside a submenu — two radios of one
 // group both set, which is the exact state a group exists to prevent.
 func TestARadioClearsMembersNestedDeeperThanItself(t *testing.T) {
-	m := widget.NewMenu()
-	if err := m.SetModel([]widget.MenuItemModel{
-		widget.NewRadio("light", "Light", "theme", nil),
-		widget.NewSubmenu("more", "More", []widget.MenuItemModel{
-			checked(widget.NewRadio("dark", "Dark", "theme", nil)),
-			widget.NewSubmenu("deeper", "Deeper", []widget.MenuItemModel{
-				checked(widget.NewRadio("midnight", "Midnight", "theme", nil)),
+	m := core.NewMenu()
+	if err := m.SetModel([]core.MenuItemModel{
+		core.NewRadio("light", "Light", "theme", nil),
+		core.NewSubmenu("more", "More", []core.MenuItemModel{
+			checked(core.NewRadio("dark", "Dark", "theme", nil)),
+			core.NewSubmenu("deeper", "Deeper", []core.MenuItemModel{
+				checked(core.NewRadio("midnight", "Midnight", "theme", nil)),
 			}),
 		}),
 	}); err != nil {
@@ -689,13 +689,13 @@ func TestARadioClearsMembersNestedDeeperThanItself(t *testing.T) {
 func TestTheExecutorSeesTheRuntimesOwnProvenance(t *testing.T) {
 	var origins []tui.ActionOrigin
 	var got []tui.ActionID
-	m := widget.NewMenu(widget.WithActionExecutor(func(inv tui.ActionInvocation) bool {
+	m := core.NewMenu(core.WithActionExecutor(func(inv tui.ActionInvocation) bool {
 		origins = append(origins, inv.Origin)
 		got = append(got, inv.Action.ActionID())
 		return true
 	}))
-	if err := m.SetModel([]widget.MenuItemModel{
-		widget.NewCommand("go", "Go", saveAction{}),
+	if err := m.SetModel([]core.MenuItemModel{
+		core.NewCommand("go", "Go", saveAction{}),
 	}); err != nil {
 		t.Fatalf("SetModel: %v", err)
 	}
@@ -728,20 +728,20 @@ func TestTheExecutorSeesTheRuntimesOwnProvenance(t *testing.T) {
 // off the edge and returned would find their click had evaporated.
 func TestTheCaptureSurvivesThePointerLeavingTheMenuEntirely(t *testing.T) {
 	var ran atomic.Int64
-	m := widget.NewMenu(widget.WithActionExecutor(func(tui.ActionInvocation) bool {
+	m := core.NewMenu(core.WithActionExecutor(func(tui.ActionInvocation) bool {
 		ran.Add(1)
 		return true
 	}))
-	if err := m.SetModel([]widget.MenuItemModel{
-		widget.NewCommand("one", "One", saveAction{}),
+	if err := m.SetModel([]core.MenuItemModel{
+		core.NewCommand("one", "One", saveAction{}),
 	}); err != nil {
 		t.Fatalf("SetModel: %v", err)
 	}
 	// A wide host, so there is somewhere genuinely OUTSIDE the menu to go.
-	other := widget.NewButton("far away")
+	other := core.NewButton("far away")
 	root := tui.NewFlex(tui.Horizontal)
 	root.Add(m, other)
-	host := widget.NewOverlayHost(root)
+	host := core.NewOverlayHost(root)
 	h := startApp(t, host, 60, 10)
 	defer h.stop()
 	h.onLoop(func() { m.Context().RequestFocus() })
@@ -765,10 +765,10 @@ func TestTheCaptureSurvivesThePointerLeavingTheMenuEntirely(t *testing.T) {
 // an activation happens, for every producer.
 func TestADisabledItemRefusesAProgrammaticActivationToo(t *testing.T) {
 	var ran atomic.Int64
-	item := widget.NewMenuItem("Delete",
-		widget.WithItemEnabled(false),
-		widget.WithOnRun(func() { ran.Add(1) }))
-	host := widget.NewOverlayHost(item)
+	item := core.NewMenuItem("Delete",
+		core.WithItemEnabled(false),
+		core.WithOnRun(func() { ran.Add(1) }))
+	host := core.NewOverlayHost(item)
 	h := startApp(t, host, 30, 6)
 	defer h.stop()
 	h.settle()
@@ -809,18 +809,18 @@ func TestADisabledItemRefusesAProgrammaticActivationToo(t *testing.T) {
 // "whatever policy is used, the rect is bounded" a promise rather than a hope.
 func TestTheHostBoundsAConsumerPolicyThatIgnoresTheViewport(t *testing.T) {
 	owner := &movingOwner{y: 1}
-	host := widget.NewOverlayHost(owner)
+	host := core.NewOverlayHost(owner)
 	h := startApp(t, host, 30, 12)
 	defer h.stop()
 	h.settle()
 
 	// A policy that places the layer far off-screen, deliberately.
-	rogue := widget.AnchorPolicyFunc(func(_, _ tui.Rect, want tui.Size, _ widget.Placement) tui.Rect {
+	rogue := core.AnchorPolicyFunc(func(_, _ tui.Rect, want tui.Size, _ core.Placement) tui.Rect {
 		return tui.Rect{X: 900, Y: 900, W: want.W, H: want.H}
 	})
 	h.onLoop(func() {
-		if err := host.OpenAnchored("p", widget.NewText("POPUP"),
-			widget.AnchorSpec{Ref: owner.ref}, rogue); err != nil {
+		if err := host.OpenAnchored("p", core.NewText("POPUP"),
+			core.AnchorSpec{Ref: owner.ref}, rogue); err != nil {
 			t.Errorf("OpenAnchored: %v", err)
 		}
 	})
@@ -838,10 +838,10 @@ func TestTheHostBoundsAConsumerPolicyThatIgnoresTheViewport(t *testing.T) {
 // STARTED on is armed, because the armed look is a promise about what releasing
 // here would do — and releasing over any other row does nothing.
 func TestDraggingAcrossRowsArmsOnlyThePressedOne(t *testing.T) {
-	m := widget.NewMenu(widget.WithActionExecutor(func(tui.ActionInvocation) bool { return true }))
-	if err := m.SetModel([]widget.MenuItemModel{
-		widget.NewCommand("one", "One", saveAction{}),
-		widget.NewCommand("two", "Two", saveAction{}),
+	m := core.NewMenu(core.WithActionExecutor(func(tui.ActionInvocation) bool { return true }))
+	if err := m.SetModel([]core.MenuItemModel{
+		core.NewCommand("one", "One", saveAction{}),
+		core.NewCommand("two", "Two", saveAction{}),
 	}); err != nil {
 		t.Fatalf("SetModel: %v", err)
 	}
@@ -896,22 +896,22 @@ func rowStyleAt(t *testing.T, h *harness, x, y int) tui.CellAttrs {
 // press that provably armed and the root's armed look is directly observable.
 func TestAnInvoluntaryCaptureLossClearsTheGesture(t *testing.T) {
 	var ran atomic.Int64
-	m := widget.NewMenu(widget.WithActionExecutor(func(tui.ActionInvocation) bool {
+	m := core.NewMenu(core.WithActionExecutor(func(tui.ActionInvocation) bool {
 		ran.Add(1)
 		return true
 	}))
-	if err := m.SetModel([]widget.MenuItemModel{
-		widget.NewSubmenu("file", "File", []widget.MenuItemModel{
-			widget.NewCommand("new", "New", saveAction{}),
+	if err := m.SetModel([]core.MenuItemModel{
+		core.NewSubmenu("file", "File", []core.MenuItemModel{
+			core.NewCommand("new", "New", saveAction{}),
 		}),
-		widget.NewCommand("quit", "Quit", saveAction{}),
+		core.NewCommand("quit", "Quit", saveAction{}),
 	}); err != nil {
 		t.Fatalf("SetModel: %v", err)
 	}
-	other := widget.NewButton("Other")
+	other := core.NewButton("Other")
 	root := tui.NewFlex(tui.Vertical)
 	root.Add(m, other)
-	host := widget.NewOverlayHost(root)
+	host := core.NewOverlayHost(root)
 	h := startApp(t, host, 50, 14)
 	defer h.stop()
 	h.onLoop(func() { m.Context().RequestFocus() })
@@ -957,27 +957,27 @@ func TestAnInvoluntaryCaptureLossClearsTheGesture(t *testing.T) {
 // so the preference is checked against a policy that does NOT flip, which is the
 // only arrangement in which the two answers differ.
 func TestTheBarStatesItsDropSideRatherThanRelyingOnTheFlip(t *testing.T) {
-	var asked []widget.PlacementSide
-	recording := widget.AnchorPolicyFunc(
-		func(anchor, viewport tui.Rect, want tui.Size, pref widget.Placement) tui.Rect {
+	var asked []core.PlacementSide
+	recording := core.AnchorPolicyFunc(
+		func(anchor, viewport tui.Rect, want tui.Size, pref core.Placement) tui.Rect {
 			asked = append(asked, pref.Side)
-			return widget.FlipClipPolicy{}.Place(anchor, viewport, want, pref)
+			return core.FlipClipPolicy{}.Place(anchor, viewport, want, pref)
 		})
 
-	m := widget.NewMenu(widget.WithAnchorPolicy(recording))
-	if err := m.SetModel([]widget.MenuItemModel{
-		widget.NewSubmenu("file", "File", []widget.MenuItemModel{
-			widget.NewCommand("new", "New", nil),
+	m := core.NewMenu(core.WithAnchorPolicy(recording))
+	if err := m.SetModel([]core.MenuItemModel{
+		core.NewSubmenu("file", "File", []core.MenuItemModel{
+			core.NewCommand("new", "New", nil),
 		}),
 	}); err != nil {
 		t.Fatalf("SetModel: %v", err)
 	}
-	bar := widget.NewMenuBar(m, widget.WithBarPlacement(widget.BarPlacementBottom))
-	body := widget.NewText("body")
+	bar := core.NewMenuBar(m, core.WithBarPlacement(core.BarPlacementBottom))
+	body := core.NewText("body")
 	root := tui.NewFlex(tui.Vertical)
 	root.AddWeighted(body, 1)
 	root.Add(bar)
-	host := widget.NewOverlayHost(root)
+	host := core.NewOverlayHost(root)
 	h := startApp(t, host, 40, 14)
 	defer h.stop()
 	h.onLoop(func() { m.Context().RequestFocus() })
@@ -995,7 +995,7 @@ func TestTheBarStatesItsDropSideRatherThanRelyingOnTheFlip(t *testing.T) {
 		if len(asked) == 0 {
 			t.Fatal("the policy was never consulted")
 		}
-		if asked[0] != widget.PlacementAbove {
+		if asked[0] != core.PlacementAbove {
 			t.Errorf("the bar asked for %v, want above; a bottom bar must STATE its "+
 				"drop side rather than leave the flip to rescue it", asked[0])
 		}
@@ -1010,17 +1010,17 @@ func TestTheBarStatesItsDropSideRatherThanRelyingOnTheFlip(t *testing.T) {
 // would then survive indefinitely — and a later HOVER, with no button down,
 // would be treated as the continuation of a drag and move the selection.
 func TestAbandoningADragOutsideTheMenuEndsItCleanly(t *testing.T) {
-	m := widget.NewMenu(widget.WithActionExecutor(func(tui.ActionInvocation) bool { return true }))
-	if err := m.SetModel([]widget.MenuItemModel{
-		widget.NewCommand("one", "One", saveAction{}),
-		widget.NewCommand("two", "Two", saveAction{}),
+	m := core.NewMenu(core.WithActionExecutor(func(tui.ActionInvocation) bool { return true }))
+	if err := m.SetModel([]core.MenuItemModel{
+		core.NewCommand("one", "One", saveAction{}),
+		core.NewCommand("two", "Two", saveAction{}),
 	}); err != nil {
 		t.Fatalf("SetModel: %v", err)
 	}
-	other := widget.NewButton("far away")
+	other := core.NewButton("far away")
 	root := tui.NewFlex(tui.Horizontal)
 	root.Add(m, other)
-	host := widget.NewOverlayHost(root)
+	host := core.NewOverlayHost(root)
 	h := startApp(t, host, 60, 10)
 	defer h.stop()
 	h.onLoop(func() { m.Context().RequestFocus() })

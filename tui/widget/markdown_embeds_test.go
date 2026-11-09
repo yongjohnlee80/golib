@@ -5,7 +5,7 @@ import (
 	"testing"
 
 	"github.com/yongjohnlee80/golib/tui"
-	"github.com/yongjohnlee80/golib/tui/widget"
+	"github.com/yongjohnlee80/golib/tui/widget/editor"
 )
 
 // embedNote embeds a diagram, a chart, a table, a file too large to draw, and a file that isn't
@@ -38,13 +38,13 @@ func TestAnImageOnlyLineIsDrawnAsTheFileItEmbeds(t *testing.T) {
 		md, ok := files[src]
 		return md, ok
 	}
-	ed := widget.NewEditor(widget.WithCore(widget.CoreInitialText(embedNote)))
+	ed := editor.NewEditor(editor.WithCore(editor.CoreInitialText(embedNote)))
 	sh := newShell(ed)
 	h := startApp(t, sh, 60, 60)
 	defer h.stop()
 	h.onLoop(func() {
 		ed.SetRenderer(r)
-		ed.SetView(widget.ViewRendered)
+		ed.SetView(editor.ViewRendered)
 		h.app.FocusInto(ed)
 	})
 	h.barrier(sh)

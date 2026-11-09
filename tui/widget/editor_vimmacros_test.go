@@ -6,7 +6,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/yongjohnlee80/golib/tui/widget"
+	"github.com/yongjohnlee80/golib/tui/widget/editor"
 )
 
 // q{a–z} records, q stops, @{a–z} plays, N@a N times, @@ the last played; each change a macro
@@ -46,7 +46,7 @@ func TestVimMacrosRegisterText(t *testing.T) {
 
 // On a viewer q and @ bubble to the host (a macro could change nothing there).
 func TestVimMacrosOnAViewer(t *testing.T) {
-	c, _ := coreWith(t, "a", widget.CoreReadOnly(true))
+	c, _ := coreWith(t, "a", editor.CoreReadOnly(true))
 	if c.HandleKey(key('q')) || c.HandleKey(key('@')) {
 		t.Fatal("a viewer consumed q or @")
 	}
@@ -87,7 +87,7 @@ func TestVimMacrosBoundedWork(t *testing.T) {
 // next @ has a budget of its own.
 func TestVimMacrosStoppedEvent(t *testing.T) {
 	h, ed, sh := focusedEditor(t, 30, 4)
-	rec := record[widget.MacroStoppedEvent](h)
+	rec := record[editor.MacroStoppedEvent](h)
 	h.onLoop(func() {
 		ed.SetValue("ab")
 		ed.Core().SetLine(0, 0)
@@ -97,7 +97,7 @@ func TestVimMacrosStoppedEvent(t *testing.T) {
 	h.inject(key('@'), key('a'))
 	h.barrier(sh)
 	evs := rec.events()
-	if len(evs) != 1 || evs[0].Register != 'a' || !errors.Is(evs[0].Err, widget.ErrMacroTooLong) {
+	if len(evs) != 1 || evs[0].Register != 'a' || !errors.Is(evs[0].Err, editor.ErrMacroTooLong) {
 		t.Fatalf("events %+v, want one for a, ErrMacroTooLong", evs)
 	}
 	h.inject(key('@'), key('b'))

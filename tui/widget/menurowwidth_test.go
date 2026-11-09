@@ -21,7 +21,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/yongjohnlee80/golib/tui/widget"
+	"github.com/yongjohnlee80/golib/tui/widget/core"
 )
 
 // popupLines returns the rendered lines that contain want, so an assertion can
@@ -38,16 +38,16 @@ func popupLines(grid, want string) []string {
 
 // openOnly builds a level holding exactly one row and opens it, so that row is
 // necessarily the widest and no neighbour lends it slack.
-func openOnly(t *testing.T, row widget.MenuItemModel) string {
+func openOnly(t *testing.T, row core.MenuItemModel) string {
 	t.Helper()
-	menu := widget.NewMenu()
-	host := widget.NewOverlayHost(menu)
+	menu := core.NewMenu()
+	host := core.NewOverlayHost(menu)
 	h := startApp(t, host, 60, 12)
 	defer h.stop()
 
 	h.onLoop(func() {
-		if err := menu.SetModel([]widget.MenuItemModel{
-			widget.NewSubmenu("top", "T", []widget.MenuItemModel{row}),
+		if err := menu.SetModel([]core.MenuItemModel{
+			core.NewSubmenu("top", "T", []core.MenuItemModel{row}),
 		}); err != nil {
 			t.Fatalf("SetModel: %v", err)
 		}
@@ -72,15 +72,15 @@ func openOnly(t *testing.T, row widget.MenuItemModel) string {
 func TestTheWidestRowOfALevelFitsInsideItsFrame(t *testing.T) {
 	for _, tc := range []struct {
 		name  string
-		row   widget.MenuItemModel
+		row   core.MenuItemModel
 		label string
 	}{
-		{"a submenu row", widget.NewSubmenu("only", "Keymaps", []widget.MenuItemModel{
-			widget.NewCommand("leaf", "Leaf", nil),
+		{"a submenu row", core.NewSubmenu("only", "Keymaps", []core.MenuItemModel{
+			core.NewCommand("leaf", "Leaf", nil),
 		}), "Keymaps"},
-		{"a check row", widget.NewCheck("only", "Checkable", nil), "Checkable"},
-		{"a radio row", widget.NewRadio("only", "Radioed", "g", nil), "Radioed"},
-		{"a plain row", widget.NewCommand("only", "Plain", nil), "Plain"},
+		{"a check row", core.NewCheck("only", "Checkable", nil), "Checkable"},
+		{"a radio row", core.NewRadio("only", "Radioed", "g", nil), "Radioed"},
+		{"a plain row", core.NewCommand("only", "Plain", nil), "Plain"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			grid := openOnly(t, tc.row)
@@ -109,7 +109,7 @@ func TestTheWidestRowOfALevelFitsInsideItsFrame(t *testing.T) {
 // — a control against a fix that simply widened every row until the symptoms
 // went away.
 func TestAnAcceleratorStillSitsInsideTheFrame(t *testing.T) {
-	row := widget.NewCommand("only", "Save", nil)
+	row := core.NewCommand("only", "Save", nil)
 	row.Accel = "Ctrl+S"
 	grid := openOnly(t, row)
 

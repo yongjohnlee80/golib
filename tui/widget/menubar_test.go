@@ -11,7 +11,7 @@ import (
 	"testing"
 
 	"github.com/yongjohnlee80/golib/tui"
-	"github.com/yongjohnlee80/golib/tui/widget"
+	"github.com/yongjohnlee80/golib/tui/widget/core"
 )
 
 // TestABarLaysItsRowsAlongOneLineAndDropsAwayFromItsEdge.
@@ -22,23 +22,23 @@ import (
 // opened it.
 func TestABarLaysItsRowsAlongOneLineAndDropsAwayFromItsEdge(t *testing.T) {
 	for _, tc := range []struct {
-		placement widget.BarPlacement
+		placement core.BarPlacement
 		wantAbove bool
 	}{
-		{widget.BarPlacementTop, false},
-		{widget.BarPlacementBottom, true},
+		{core.BarPlacementTop, false},
+		{core.BarPlacementBottom, true},
 	} {
 		t.Run(tc.placement.String(), func(t *testing.T) {
-			m := widget.NewMenu()
-			if err := m.SetModel([]widget.MenuItemModel{
-				widget.NewSubmenu("file", "File", []widget.MenuItemModel{
-					widget.NewCommand("new", "New", nil),
+			m := core.NewMenu()
+			if err := m.SetModel([]core.MenuItemModel{
+				core.NewSubmenu("file", "File", []core.MenuItemModel{
+					core.NewCommand("new", "New", nil),
 				}),
-				widget.NewCommand("edit", "Edit", nil),
+				core.NewCommand("edit", "Edit", nil),
 			}); err != nil {
 				t.Fatalf("SetModel: %v", err)
 			}
-			bar := widget.NewMenuBar(m, widget.WithBarPlacement(tc.placement))
+			bar := core.NewMenuBar(m, core.WithBarPlacement(tc.placement))
 			// Placed against the matching edge by an ordinary layout, which is
 			// how a caller does it and is the point of the test above.
 			// The body is WEIGHTED so it fills, which is what actually pushes the
@@ -46,7 +46,7 @@ func TestABarLaysItsRowsAlongOneLineAndDropsAwayFromItsEdge(t *testing.T) {
 			// natural one line and leave the "bottom" bar on line 1, where there
 			// is no room above it and the test would be measuring the flip
 			// policy's fallback rather than the bar's drop direction.
-			body := widget.NewText("body")
+			body := core.NewText("body")
 			root := tui.NewFlex(tui.Vertical)
 			if tc.wantAbove {
 				root.AddWeighted(body, 1)
@@ -55,7 +55,7 @@ func TestABarLaysItsRowsAlongOneLineAndDropsAwayFromItsEdge(t *testing.T) {
 				root.Add(bar)
 				root.AddWeighted(body, 1)
 			}
-			host := widget.NewOverlayHost(root)
+			host := core.NewOverlayHost(root)
 			h := startApp(t, host, 40, 12)
 			defer h.stop()
 			h.onLoop(func() { m.Context().RequestFocus() })
@@ -95,20 +95,20 @@ func TestABarLaysItsRowsAlongOneLineAndDropsAwayFromItsEdge(t *testing.T) {
 // about the menu is asked of the menu, so the two cannot come to disagree about
 // what is selected or what is open.
 func TestABarDelegatesItsWholeLifecycleToItsMenu(t *testing.T) {
-	m := widget.NewMenu()
-	if err := m.SetModel([]widget.MenuItemModel{
-		widget.NewSubmenu("file", "File", []widget.MenuItemModel{
-			widget.NewCommand("new", "New", nil),
+	m := core.NewMenu()
+	if err := m.SetModel([]core.MenuItemModel{
+		core.NewSubmenu("file", "File", []core.MenuItemModel{
+			core.NewCommand("new", "New", nil),
 		}),
-		widget.NewCommand("help", "Help", nil),
+		core.NewCommand("help", "Help", nil),
 	}); err != nil {
 		t.Fatalf("SetModel: %v", err)
 	}
-	bar := widget.NewMenuBar(m)
+	bar := core.NewMenuBar(m)
 	if bar.Menu() != m {
 		t.Fatal("Menu() does not return the menu the bar was built over")
 	}
-	host := widget.NewOverlayHost(bar)
+	host := core.NewOverlayHost(bar)
 	h := startApp(t, host, 40, 12)
 	defer h.stop()
 	h.onLoop(func() { m.Context().RequestFocus() })
@@ -136,17 +136,17 @@ func TestABarDelegatesItsWholeLifecycleToItsMenu(t *testing.T) {
 // a list rotated ninety degrees, which every user notices at once — and Down on
 // a bar should OPEN the dropdown, not move along it.
 func TestABarStepsWithTheHorizontalArrows(t *testing.T) {
-	m := widget.NewMenu()
-	if err := m.SetModel([]widget.MenuItemModel{
-		widget.NewSubmenu("file", "File", []widget.MenuItemModel{
-			widget.NewCommand("new", "New", nil),
+	m := core.NewMenu()
+	if err := m.SetModel([]core.MenuItemModel{
+		core.NewSubmenu("file", "File", []core.MenuItemModel{
+			core.NewCommand("new", "New", nil),
 		}),
-		widget.NewCommand("edit", "Edit", nil),
+		core.NewCommand("edit", "Edit", nil),
 	}); err != nil {
 		t.Fatalf("SetModel: %v", err)
 	}
-	bar := widget.NewMenuBar(m)
-	host := widget.NewOverlayHost(bar)
+	bar := core.NewMenuBar(m)
+	host := core.NewOverlayHost(bar)
 	h := startApp(t, host, 40, 12)
 	defer h.stop()
 	h.onLoop(func() { m.Context().RequestFocus() })
@@ -173,17 +173,17 @@ func TestABarStepsWithTheHorizontalArrows(t *testing.T) {
 
 // TestANilMenuIsRefusedAtConstruction.
 func TestANilMenuIsRefusedAtConstruction(t *testing.T) {
-	if f := fatalFromWidgetExt(func() { widget.NewMenuBar(nil) }); f == nil {
+	if f := fatalFromWidgetExt(func() { core.NewMenuBar(nil) }); f == nil {
 		t.Error("NewMenuBar(nil) was accepted; a placement shell over nothing shows nothing")
 	}
 	// And the placement bound is probed at its edge, not at a far value.
 	if f := fatalFromWidgetExt(func() {
-		widget.NewMenuBar(widget.NewMenu(), widget.WithBarPlacement(widget.BarPlacementRight))
+		core.NewMenuBar(core.NewMenu(), core.WithBarPlacement(core.BarPlacementRight))
 	}); f != nil {
 		t.Errorf("the last valid placement was rejected: %v", f.Rule)
 	}
 	if f := fatalFromWidgetExt(func() {
-		widget.NewMenuBar(widget.NewMenu(), widget.WithBarPlacement(widget.BarPlacementRight+1))
+		core.NewMenuBar(core.NewMenu(), core.WithBarPlacement(core.BarPlacementRight+1))
 	}); f == nil {
 		t.Error("WithBarPlacement accepted the first value past the declared set")
 	}
@@ -199,8 +199,8 @@ func TestANilMenuIsRefusedAtConstruction(t *testing.T) {
 // two types exist.
 func TestAStandaloneItemActivatesThroughTheRuntime(t *testing.T) {
 	var ran atomic.Int64
-	item := widget.NewMenuItem("Rename", widget.WithOnRun(func() { ran.Add(1) }))
-	host := widget.NewOverlayHost(item)
+	item := core.NewMenuItem("Rename", core.WithOnRun(func() { ran.Add(1) }))
+	host := core.NewOverlayHost(item)
 	h := startApp(t, host, 30, 6)
 	defer h.stop()
 	h.onLoop(func() { item.Context().RequestFocus() })
@@ -233,11 +233,11 @@ func TestAStandaloneItemActivatesThroughTheRuntime(t *testing.T) {
 // TestACheckItemTogglesBeforeItsCallbackRuns.
 func TestACheckItemTogglesBeforeItsCallbackRuns(t *testing.T) {
 	var sawChecked atomic.Bool
-	var item *widget.MenuItem
-	item = widget.NewMenuItem("Wrap",
-		widget.WithItemKind(widget.ItemKindCheck),
-		widget.WithOnRun(func() { sawChecked.Store(item.Checked()) }))
-	host := widget.NewOverlayHost(item)
+	var item *core.MenuItem
+	item = core.NewMenuItem("Wrap",
+		core.WithItemKind(core.ItemKindCheck),
+		core.WithOnRun(func() { sawChecked.Store(item.Checked()) }))
+	host := core.NewOverlayHost(item)
 	h := startApp(t, host, 30, 6)
 	defer h.stop()
 	h.onLoop(func() { item.Context().RequestFocus() })
@@ -257,13 +257,13 @@ func TestACheckItemTogglesBeforeItsCallbackRuns(t *testing.T) {
 // TestADisabledItemIsNeitherFocusableNorActivatable.
 func TestADisabledItemIsNeitherFocusableNorActivatable(t *testing.T) {
 	var ran atomic.Int64
-	item := widget.NewMenuItem("Delete",
-		widget.WithItemEnabled(false),
-		widget.WithOnRun(func() { ran.Add(1) }))
-	other := widget.NewButton("Other")
+	item := core.NewMenuItem("Delete",
+		core.WithItemEnabled(false),
+		core.WithOnRun(func() { ran.Add(1) }))
+	other := core.NewButton("Other")
 	root := tui.NewFlex(tui.Vertical)
 	root.Add(item, other)
-	host := widget.NewOverlayHost(root)
+	host := core.NewOverlayHost(root)
 	h := startApp(t, host, 30, 8)
 	defer h.stop()
 	h.settle()
@@ -300,16 +300,16 @@ func TestADisabledItemIsNeitherFocusableNorActivatable(t *testing.T) {
 // neither is a thing a standalone item can be. Refused at construction, where
 // the kind is written in source.
 func TestAStandaloneItemRefusesTheKindsItCannotBe(t *testing.T) {
-	for _, k := range []widget.ItemKind{widget.ItemKindSubmenu, widget.ItemKindSeparator, widget.ItemKindRadio + 1} {
+	for _, k := range []core.ItemKind{core.ItemKindSubmenu, core.ItemKindSeparator, core.ItemKindRadio + 1} {
 		if f := fatalFromWidgetExt(func() {
-			widget.NewMenuItem("X", widget.WithItemKind(k))
+			core.NewMenuItem("X", core.WithItemKind(k))
 		}); f == nil {
 			t.Errorf("NewMenuItem accepted kind %v", k)
 		}
 	}
-	for _, k := range []widget.ItemKind{widget.ItemKindCommand, widget.ItemKindCheck, widget.ItemKindRadio} {
+	for _, k := range []core.ItemKind{core.ItemKindCommand, core.ItemKindCheck, core.ItemKindRadio} {
 		if f := fatalFromWidgetExt(func() {
-			widget.NewMenuItem("X", widget.WithItemKind(k))
+			core.NewMenuItem("X", core.WithItemKind(k))
 		}); f != nil {
 			t.Errorf("NewMenuItem rejected the legal kind %v: %v", k, f.Rule)
 		}

@@ -4,21 +4,21 @@ import (
 	"testing"
 
 	"github.com/yongjohnlee80/golib/tui"
-	"github.com/yongjohnlee80/golib/tui/widget"
+	"github.com/yongjohnlee80/golib/tui/widget/editor"
 )
 
-func listCore(t *testing.T, text string, ln, col int) *widget.EditorCore {
+func listCore(t *testing.T, text string, ln, col int) *editor.EditorCore {
 	t.Helper()
-	c, _ := coreWith(t, text, widget.CoreKeyset(widget.KeysetStandard), widget.CoreListEditing(true))
+	c, _ := coreWith(t, text, editor.CoreKeyset(editor.KeysetStandard), editor.CoreListEditing(true))
 	c.SetLine(ln, col)
 	return c
 }
 
-func listPress(c *widget.EditorCore, code rune, mods tui.Mods) {
+func listPress(c *editor.EditorCore, code rune, mods tui.Mods) {
 	c.HandleKey(tui.KeyEvent{Code: code, Mods: mods})
 }
 
-func wantText(t *testing.T, c *widget.EditorCore, value string, ln, col int) {
+func wantText(t *testing.T, c *editor.EditorCore, value string, ln, col int) {
 	t.Helper()
 	if got := c.Value(); got != value {
 		t.Errorf("Value = %q, want %q", got, value)
@@ -89,7 +89,7 @@ func TestListEditingLeavesOtherLinesAlone(t *testing.T) {
 	listPress(c, tui.KeyEnter, 0)
 	wantText(t, c, "* * *\n", 1, 0)
 
-	c, _ = coreWith(t, "- one", widget.CoreKeyset(widget.KeysetStandard))
+	c, _ = coreWith(t, "- one", editor.CoreKeyset(editor.KeysetStandard))
 	c.SetLine(0, 5)
 	listPress(c, tui.KeyEnter, 0)
 	wantText(t, c, "- one\n", 1, 0)
@@ -134,10 +134,10 @@ func TestListEditingOnTabsAndBeforeTheMarker(t *testing.T) {
 	listPress(c, tui.KeyTab, tui.ModShift)
 	wantText(t, c, "\t- two", 0, 3)
 
-	if indent, marker, ok := widget.MarkdownListItem("  3. [x] three"); !ok || indent != "  " || marker != "3. [x] " {
+	if indent, marker, ok := editor.MarkdownListItem("  3. [x] three"); !ok || indent != "  " || marker != "3. [x] " {
 		t.Errorf("MarkdownListItem = (%q, %q, %v), want (\"  \", \"3. [x] \", true)", indent, marker, ok)
 	}
-	if _, _, ok := widget.MarkdownListItem("- - -"); ok {
+	if _, _, ok := editor.MarkdownListItem("- - -"); ok {
 		t.Error("MarkdownListItem read a thematic break as an item")
 	}
 }

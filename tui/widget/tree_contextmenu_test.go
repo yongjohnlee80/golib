@@ -4,16 +4,17 @@ import (
 	"testing"
 
 	"github.com/yongjohnlee80/golib/tui"
-	"github.com/yongjohnlee80/golib/tui/widget"
+	"github.com/yongjohnlee80/golib/tui/widget/core"
+	"github.com/yongjohnlee80/golib/tui/widget/files"
 )
 
 // tree_contextmenu_test.go: a node's context menu (Tree.SetContextMenu), as List's.
 
-func threeRoots() []*widget.TreeNode {
-	return []*widget.TreeNode{
-		widget.NewTreeNode("a", "alpha", widget.WithLeaf()),
-		widget.NewTreeNode("b", "beta", widget.WithLeaf()),
-		widget.NewTreeNode("c", "gamma", widget.WithLeaf()),
+func threeRoots() []*files.TreeNode {
+	return []*files.TreeNode{
+		files.NewTreeNode("a", "alpha", files.WithLeaf()),
+		files.NewTreeNode("b", "beta", files.WithLeaf()),
+		files.NewTreeNode("c", "gamma", files.WithLeaf()),
 	}
 }
 
@@ -21,9 +22,9 @@ func threeRoots() []*widget.TreeNode {
 // is asked for, and the press goes on to the tree's parent, as before.
 func TestTreeContextMenuIsOffByDefault(t *testing.T) {
 	asked := 0
-	h, tr, sh := focusedTree(t, 30, 6, widget.WithRoots(threeRoots()...),
-		widget.WithTreeOnContextMenu(func(*widget.TreeNode, tui.Point) { asked++ }))
-	menus := record[widget.ContextMenuEvent](h)
+	h, tr, sh := focusedTree(t, 30, 6, files.WithRoots(threeRoots()...),
+		files.WithTreeOnContextMenu(func(*files.TreeNode, tui.Point) { asked++ }))
+	menus := record[core.ContextMenuEvent](h)
 	h.inject(rightPress(3, 2), tui.KeyEvent{Kind: tui.KeyPress, Code: tui.KeyF10, Mods: tui.ModShift})
 	h.barrier(sh)
 	if id := selectedID(h, tr); id != "a" || asked != 0 || len(menus.events()) != 0 || shellMice(h, sh) != 1 {
@@ -38,9 +39,9 @@ func TestTreeContextMenuIsOffByDefault(t *testing.T) {
 func TestTreeContextMenuAsksForTheNodePressed(t *testing.T) {
 	var log []string
 	var at tui.Point
-	h, tr, sh := focusedTree(t, 30, 6, widget.WithRoots(threeRoots()...),
-		widget.WithTreeOnCursor(func(n *widget.TreeNode) { log = append(log, "cursor "+n.ID()) }),
-		widget.WithTreeOnContextMenu(func(n *widget.TreeNode, p tui.Point) {
+	h, tr, sh := focusedTree(t, 30, 6, files.WithRoots(threeRoots()...),
+		files.WithTreeOnCursor(func(n *files.TreeNode) { log = append(log, "cursor "+n.ID()) }),
+		files.WithTreeOnContextMenu(func(n *files.TreeNode, p tui.Point) {
 			id := "none"
 			if n != nil {
 				id = n.ID()
@@ -48,7 +49,7 @@ func TestTreeContextMenuAsksForTheNodePressed(t *testing.T) {
 			log, at = append(log, "menu "+id), p
 		}))
 	h.onLoop(func() { tr.SetContextMenu(true); log = nil })
-	menus := record[widget.ContextMenuEvent](h)
+	menus := record[core.ContextMenuEvent](h)
 
 	h.inject(rightPress(3, 1))
 	h.barrier(sh)
@@ -76,8 +77,8 @@ func TestTreeContextMenuAsksForTheNodePressed(t *testing.T) {
 // On, Shift+F10 and the Menu key ask for the cursor node's menu, at its row's first cell.
 func TestTreeContextMenuKeysAskForTheCursorNode(t *testing.T) {
 	var asked []string
-	h, tr, sh := focusedTree(t, 30, 6, widget.WithRoots(threeRoots()...),
-		widget.WithTreeOnContextMenu(func(n *widget.TreeNode, p tui.Point) {
+	h, tr, sh := focusedTree(t, 30, 6, files.WithRoots(threeRoots()...),
+		files.WithTreeOnContextMenu(func(n *files.TreeNode, p tui.Point) {
 			if n != nil && p == (tui.Point{Y: 2}) {
 				asked = append(asked, n.ID())
 			}
@@ -95,14 +96,14 @@ func TestTreeContextMenuKeysAskForTheCursorNode(t *testing.T) {
 // An owner told of the cursor that sets new roots gets no menu for the row that is gone.
 func TestTreeContextMenuForARowItsOwnerReplacedIsNotAsked(t *testing.T) {
 	asked := 0
-	var tr *widget.Tree
-	h, tr, sh := focusedTree(t, 30, 6, widget.WithRoots(threeRoots()...),
-		widget.WithTreeOnCursor(func(n *widget.TreeNode) {
+	var tr *files.Tree
+	h, tr, sh := focusedTree(t, 30, 6, files.WithRoots(threeRoots()...),
+		files.WithTreeOnCursor(func(n *files.TreeNode) {
 			if n.ID() == "b" {
-				tr.SetRoots(widget.NewTreeNode("x", "other", widget.WithLeaf()))
+				tr.SetRoots(files.NewTreeNode("x", "other", files.WithLeaf()))
 			}
 		}),
-		widget.WithTreeOnContextMenu(func(*widget.TreeNode, tui.Point) { asked++ }))
+		files.WithTreeOnContextMenu(func(*files.TreeNode, tui.Point) { asked++ }))
 	h.onLoop(func() { tr.SetContextMenu(true) })
 	h.inject(rightPress(3, 1))
 	h.barrier(sh)

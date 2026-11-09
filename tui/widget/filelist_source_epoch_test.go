@@ -4,21 +4,21 @@ import (
 	"testing"
 	"testing/fstest"
 
-	"github.com/yongjohnlee80/golib/tui/widget"
+	"github.com/yongjohnlee80/golib/tui/widget/files"
 )
 
 // fileListSwappingSource is a FileList listing /a whose owner, told of /c, replaces the source (async
 // or not) and notes it. events records the owner's reports.
-func fileListSwappingSource(async bool) (l *widget.FileList, events *[]string, moved *bool) {
+func fileListSwappingSource(async bool) (l *files.FileList, events *[]string, moved *bool) {
 	events, moved = new([]string), new(bool)
-	l = widget.NewFileList(
-		widget.WithFileListSource(widget.FileSource{FS: fstest.MapFS{"a/one.txt": {}, "c/old.txt": {}}, Root: "/"}),
-		widget.WithFileListDir("/a"),
-		widget.WithOnCursor(func(p string, _ bool) { *events = append(*events, "cursor "+p) }),
-		widget.WithOnDir(func(dir string) {
+	l = files.NewFileList(
+		files.WithFileListSource(files.FileSource{FS: fstest.MapFS{"a/one.txt": {}, "c/old.txt": {}}, Root: "/"}),
+		files.WithFileListDir("/a"),
+		files.WithOnCursor(func(p string, _ bool) { *events = append(*events, "cursor "+p) }),
+		files.WithOnDir(func(dir string) {
 			if dir == "/c" && !*moved {
 				*moved = true
-				l.SetSource(widget.FileSource{FS: fstest.MapFS{"a/new.txt": {}}, Root: "/", Async: async})
+				l.SetSource(files.FileSource{FS: fstest.MapFS{"a/new.txt": {}}, Root: "/", Async: async})
 				*events = append(*events, "source replaced")
 			}
 		}),

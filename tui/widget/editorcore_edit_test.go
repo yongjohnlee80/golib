@@ -7,16 +7,16 @@ import (
 	"testing"
 
 	"github.com/yongjohnlee80/golib/tui"
-	"github.com/yongjohnlee80/golib/tui/widget"
+	"github.com/yongjohnlee80/golib/tui/widget/editor"
 )
 
-func pos(l, c int) widget.TextPos { return widget.TextPos{Line: l, Col: c} }
+func pos(l, c int) editor.TextPos { return editor.TextPos{Line: l, Col: c} }
 
-func rng(l1, c1, l2, c2 int) widget.TextRange {
-	return widget.TextRange{From: pos(l1, c1), To: pos(l2, c2)}
+func rng(l1, c1, l2, c2 int) editor.TextRange {
+	return editor.TextRange{From: pos(l1, c1), To: pos(l2, c2)}
 }
 
-func undo(c *widget.EditorCore) { c.HandleKey(tui.KeyEvent{Code: 'u', Text: "u"}) }
+func undo(c *editor.EditorCore) { c.HandleKey(tui.KeyEvent{Code: 'u', Text: "u"}) }
 
 func TestInsertDeleteReplaceAndTheirPositions(t *testing.T) {
 	c, _ := coreWith(t, "alpha\nbeta")
@@ -48,7 +48,7 @@ func TestInsertDeleteReplaceAndTheirPositions(t *testing.T) {
 func TestEachEditIsOneUndoAndABatchIsOne(t *testing.T) {
 	c, _ := coreWith(t, "a")
 	var changes int
-	c2 := widget.NewEditorCore(widget.CoreInitialText("a"), widget.CoreOnChange(func() { changes++ }))
+	c2 := editor.NewEditorCore(editor.CoreInitialText("a"), editor.CoreOnChange(func() { changes++ }))
 	c2.Bind(nil, &fakeLayout{per: 1, page: 1})
 	_, _ = c.Insert(pos(0, 1), "b")
 	_, _ = c.Insert(pos(0, 2), "c")
@@ -86,14 +86,14 @@ func TestEachEditIsOneUndoAndABatchIsOne(t *testing.T) {
 }
 
 func TestEditsAreRefusedReadOnly(t *testing.T) {
-	c, _ := coreWith(t, "keep", widget.CoreReadOnly(true))
-	if _, err := c.Insert(pos(0, 0), "x"); !errors.Is(err, widget.ErrReadOnly) {
+	c, _ := coreWith(t, "keep", editor.CoreReadOnly(true))
+	if _, err := c.Insert(pos(0, 0), "x"); !errors.Is(err, editor.ErrReadOnly) {
 		t.Fatalf("Insert on a read-only core = %v", err)
 	}
-	if err := c.Delete(rng(0, 0, 0, 2)); !errors.Is(err, widget.ErrReadOnly) {
+	if err := c.Delete(rng(0, 0, 0, 2)); !errors.Is(err, editor.ErrReadOnly) {
 		t.Fatalf("Delete on a read-only core = %v", err)
 	}
-	if _, err := c.Replace(rng(0, 0, 0, 2), "x"); !errors.Is(err, widget.ErrReadOnly) || c.Value() != "keep" {
+	if _, err := c.Replace(rng(0, 0, 0, 2), "x"); !errors.Is(err, editor.ErrReadOnly) || c.Value() != "keep" {
 		t.Fatalf("Replace on a read-only core = %v; text %q", err, c.Value())
 	}
 }
@@ -193,14 +193,14 @@ func TestSelectShowsTheRangeAsVisual(t *testing.T) {
 	c, _ := coreWith(t, "hello world\nnext")
 	c.Select(rng(0, 6, 0, 11)) // "world"
 	r, ok := c.Selection()
-	if !ok || c.Mode() != widget.ModeVisual || r != rng(0, 6, 0, 11) {
+	if !ok || c.Mode() != editor.ModeVisual || r != rng(0, 6, 0, 11) {
 		t.Fatalf("Selection = %v, %v in %v; want world as Visual", r, ok, c.Mode())
 	}
 	if got := c.SelectedText(); got != "world" {
 		t.Fatalf("SelectedText = %q", got)
 	}
 	// a range ending at a line's start keeps the line break: the half-open range exactly
-	for _, want := range []widget.TextRange{rng(0, 6, 1, 0), rng(0, 0, 1, 0), rng(0, 11, 1, 0)} {
+	for _, want := range []editor.TextRange{rng(0, 6, 1, 0), rng(0, 0, 1, 0), rng(0, 11, 1, 0)} {
 		c.Select(want)
 		if r, ok := c.Selection(); !ok || r != want || c.SelectedText() != c.TextIn(want) {
 			t.Fatalf("Select(%v): Selection %v, %v; text %q, want %q", want, r, ok, c.SelectedText(), c.TextIn(want))
@@ -215,7 +215,7 @@ func TestSelectShowsTheRangeAsVisual(t *testing.T) {
 	}
 	keys(c, "v")
 	_, _ = c.Insert(pos(1, 0), ">")
-	if c.Mode() != widget.ModeNormal || c.Value() != "hello world\n>next" {
+	if c.Mode() != editor.ModeNormal || c.Value() != "hello world\n>next" {
 		t.Fatalf("an edit over a selection: mode %v, text %q", c.Mode(), c.Value())
 	}
 	c.Select(rng(0, 0, 0, 5))

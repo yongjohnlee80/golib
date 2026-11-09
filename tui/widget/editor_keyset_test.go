@@ -11,17 +11,17 @@ import (
 	"testing"
 
 	"github.com/yongjohnlee80/golib/tui"
-	"github.com/yongjohnlee80/golib/tui/widget"
+	"github.com/yongjohnlee80/golib/tui/widget/editor"
 )
 
 // setKeyset switches the profile on the loop goroutine, where every other
 // editor mutation happens.
-func setKeyset(h *harness, ed *widget.Editor, ks widget.Keyset) {
+func setKeyset(h *harness, ed *editor.Editor, ks editor.Keyset) {
 	h.onLoop(func() { ed.Core().SetKeyset(ks) })
 }
 
-func keysetOf(h *harness, ed *widget.Editor) widget.Keyset {
-	var ks widget.Keyset
+func keysetOf(h *harness, ed *editor.Editor) editor.Keyset {
+	var ks editor.Keyset
 	h.onLoop(func() { ks = ed.Core().Keyset() })
 	return ks
 }
@@ -36,19 +36,19 @@ func TestEditorSetKeysetKeepsDocumentAndUndoHistory(t *testing.T) {
 	h.inject(typeString("hello")...)
 	h.inject(key(tui.KeyEscape))
 	h.barrier(sh)
-	wantState(t, h, ed, "hello", widget.ModeNormal, 0, 4)
+	wantState(t, h, ed, "hello", editor.ModeNormal, 0, 4)
 
-	setKeyset(h, ed, widget.KeysetStandard)
+	setKeyset(h, ed, editor.KeysetStandard)
 	h.barrier(sh)
 
-	if got := keysetOf(h, ed); got != widget.KeysetStandard {
+	if got := keysetOf(h, ed); got != editor.KeysetStandard {
 		t.Fatalf("Keyset() = %v, want Standard", got)
 	}
 	val, mode, ln, col := edState(h, ed)
 	if val != "hello" {
 		t.Fatalf("value = %q, want %q — the switch lost the buffer", val, "hello")
 	}
-	if mode != widget.ModeInsert {
+	if mode != editor.ModeInsert {
 		t.Fatalf("mode = %v, want Insert (Standard is modeless)", mode)
 	}
 	if ln != 0 || col != 4 {
@@ -68,23 +68,23 @@ func TestEditorSetKeysetKeepsDocumentAndUndoHistory(t *testing.T) {
 // showing NORMAL/INSERT updates with no special case for the switch itself.
 func TestEditorSetKeysetPublishesOneModeChangePerSwitch(t *testing.T) {
 	h, ed, sh := focusedEditor(t, 30, 6)
-	modes := record[widget.ModeChangedEvent](h)
+	modes := record[editor.ModeChangedEvent](h)
 
-	setKeyset(h, ed, widget.KeysetStandard) // Normal -> Insert
+	setKeyset(h, ed, editor.KeysetStandard) // Normal -> Insert
 	h.barrier(sh)
 	if n := modes.count(); n != 1 {
 		t.Fatalf("mode events after Vim->Standard = %d, want 1", n)
 	}
-	setKeyset(h, ed, widget.KeysetVim) // Insert -> Normal
+	setKeyset(h, ed, editor.KeysetVim) // Insert -> Normal
 	h.barrier(sh)
 	if n := modes.count(); n != 2 {
 		t.Fatalf("mode events after Standard->Vim = %d, want 2", n)
 	}
 	evs := modes.events()
-	if evs[0].Mode != widget.ModeInsert || evs[1].Mode != widget.ModeNormal {
+	if evs[0].Mode != editor.ModeInsert || evs[1].Mode != editor.ModeNormal {
 		t.Fatalf("modes = %v, %v, want Insert, Normal", evs[0].Mode, evs[1].Mode)
 	}
-	if _, mode, _, _ := edState(h, ed); mode != widget.ModeNormal {
+	if _, mode, _, _ := edState(h, ed); mode != editor.ModeNormal {
 		t.Fatalf("mode = %v, want Normal", mode)
 	}
 }
@@ -97,7 +97,7 @@ func TestEditorSetKeysetPublishesOneModeChangePerSwitch(t *testing.T) {
 // Leaving a visual selection behind would let a later yank or delete act on a
 // span the operator can no longer see.
 func TestEditorSetKeysetClearsVisualSelection(t *testing.T) {
-	h, ed, sh := focusedEditor(t, 30, 6, widget.WithCore(widget.CoreInitialText("hello")))
+	h, ed, sh := focusedEditor(t, 30, 6, editor.WithCore(editor.CoreInitialText("hello")))
 
 	h.inject(key('v'), key('l'))
 	h.barrier(sh)
@@ -107,7 +107,7 @@ func TestEditorSetKeysetClearsVisualSelection(t *testing.T) {
 		t.Fatalf("SelectedText() = %q, want %q before the switch", sel, "he")
 	}
 
-	setKeyset(h, ed, widget.KeysetStandard)
+	setKeyset(h, ed, editor.KeysetStandard)
 	h.barrier(sh)
 	h.onLoop(func() { sel = ed.Core().SelectedText() })
 	if sel != "" {
@@ -119,32 +119,32 @@ func TestEditorSetKeysetClearsVisualSelection(t *testing.T) {
 // it. The binding survives a switch, and it survives the construction option
 // order that used to decide whether it applied at all.
 func TestEditorSetKeysetReplaysHostKeymap(t *testing.T) {
-	home := widget.KeyChord{Mode: widget.ModeInsert, Code: 'q', Ctrl: true}
-	overlay := widget.Keymap{home: widget.ActLineStart}
+	home := editor.KeyChord{Mode: editor.ModeInsert, Code: 'q', Ctrl: true}
+	overlay := editor.Keymap{home: editor.ActLineStart}
 
 	// The overlay is declared BEFORE the profile option: the profile installs
 	// a fresh base table, and the host binding still has to be there.
 	h, ed, sh := focusedEditor(t, 30, 6,
-		widget.WithCore(widget.CoreKeymap(overlay)), widget.WithCore(widget.CoreKeyset(widget.KeysetStandard)))
+		editor.WithCore(editor.CoreKeymap(overlay)), editor.WithCore(editor.CoreKeyset(editor.KeysetStandard)))
 
 	bound := func(when string) {
 		t.Helper()
 		var (
-			act widget.Action
+			act editor.Action
 			ok  bool
 		)
 		h.onLoop(func() { act, ok = ed.Core().ActionForChord(home) })
-		if !ok || act != widget.ActLineStart {
+		if !ok || act != editor.ActLineStart {
 			t.Fatalf("%s: Ctrl+Q -> (%v, %v), want ActLineStart, true", when, act, ok)
 		}
 	}
 	bound("after construction")
 
-	setKeyset(h, ed, widget.KeysetVim)
+	setKeyset(h, ed, editor.KeysetVim)
 	h.barrier(sh)
 	bound("after switching to Vim")
 
-	setKeyset(h, ed, widget.KeysetStandard)
+	setKeyset(h, ed, editor.KeysetStandard)
 	h.barrier(sh)
 	bound("after switching back to Standard")
 
@@ -161,21 +161,21 @@ func TestEditorSetKeysetReplaysHostKeymap(t *testing.T) {
 // with no keymap at all: it lands on Vim, the same normalization CoreKeyset
 // has always applied at construction.
 func TestEditorSetKeysetNormalizesUnknownProfile(t *testing.T) {
-	h, ed, sh := focusedEditor(t, 30, 6, widget.WithCore(widget.CoreKeyset(widget.KeysetStandard)))
+	h, ed, sh := focusedEditor(t, 30, 6, editor.WithCore(editor.CoreKeyset(editor.KeysetStandard)))
 
-	setKeyset(h, ed, widget.Keyset(99))
+	setKeyset(h, ed, editor.Keyset(99))
 	h.barrier(sh)
 
-	if got := keysetOf(h, ed); got != widget.KeysetVim {
+	if got := keysetOf(h, ed); got != editor.KeysetVim {
 		t.Fatalf("Keyset() = %v, want Vim", got)
 	}
-	if _, mode, _, _ := edState(h, ed); mode != widget.ModeNormal {
+	if _, mode, _, _ := edState(h, ed); mode != editor.ModeNormal {
 		t.Fatalf("mode = %v, want Normal", mode)
 	}
 	// The Vim table is live: `i` enters Insert rather than typing an "i".
 	h.inject(key('i'))
 	h.barrier(sh)
-	if val, mode, _, _ := edState(h, ed); val != "" || mode != widget.ModeInsert {
+	if val, mode, _, _ := edState(h, ed); val != "" || mode != editor.ModeInsert {
 		t.Fatalf("state = (%q, %v), want (\"\", Insert)", val, mode)
 	}
 }
@@ -184,7 +184,7 @@ func TestEditorSetKeysetNormalizesUnknownProfile(t *testing.T) {
 // forwards or backwards, one over multi-byte text (columns count clusters, not bytes), a line-wise
 // one, and none outside the visual modes.
 func TestEditorSelectionRange(t *testing.T) {
-	h, ed, sh := focusedEditor(t, 30, 6, widget.WithCore(widget.CoreInitialText("héllo\nworld")))
+	h, ed, sh := focusedEditor(t, 30, 6, editor.WithCore(editor.CoreInitialText("héllo\nworld")))
 	type region struct {
 		row, col, endRow, endCol int
 		ok                       bool

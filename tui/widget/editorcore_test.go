@@ -5,7 +5,8 @@ import (
 	"testing"
 
 	"github.com/yongjohnlee80/golib/tui"
-	"github.com/yongjohnlee80/golib/tui/widget"
+	"github.com/yongjohnlee80/golib/tui/widget/core"
+	"github.com/yongjohnlee80/golib/tui/widget/editor"
 )
 
 // fakeLayout is a widget's geometry in units of its own: each cluster measures per, except those
@@ -28,15 +29,15 @@ func (l *fakeLayout) Measure(s string) int {
 	return l.per * len([]rune(s))
 }
 
-func coreWith(t *testing.T, text string, opts ...widget.CoreOption) (*widget.EditorCore, *fakeLayout) {
+func coreWith(t *testing.T, text string, opts ...editor.CoreOption) (*editor.EditorCore, *fakeLayout) {
 	t.Helper()
 	l := &fakeLayout{per: 24, page: 5}
-	c := widget.NewEditorCore(append([]widget.CoreOption{widget.CoreInitialText(text)}, opts...)...)
+	c := editor.NewEditorCore(append([]editor.CoreOption{editor.CoreInitialText(text)}, opts...)...)
 	c.Bind(nil, l)
 	return c, l
 }
 
-func keys(c *widget.EditorCore, s string) {
+func keys(c *editor.EditorCore, s string) {
 	for _, r := range s {
 		c.HandleKey(tui.KeyEvent{Code: r, Text: string(r)})
 	}
@@ -49,7 +50,7 @@ func TestEditorCoreEditsWithNoWidget(t *testing.T) {
 	if got := c.Value(); got != "hello" {
 		t.Fatalf("Value = %q, want hello", got)
 	}
-	if c.Mode() != widget.ModeNormal {
+	if c.Mode() != editor.ModeNormal {
 		t.Fatalf("Mode = %v, want Normal", c.Mode())
 	}
 	if ln, col := c.Line(); ln != 0 || col != 4 {
@@ -113,12 +114,12 @@ func TestEditorCorePressAndDragSelect(t *testing.T) {
 		t.Fatal("a press did not start a drag")
 	}
 	c.DragTo(0, 1)
-	if c.Mode() != widget.ModeNormal {
+	if c.Mode() != editor.ModeNormal {
 		t.Fatal("a drag that has not moved selected")
 	}
 	c.DragTo(1, 2)
 	c.EndDrag()
-	if c.Mode() != widget.ModeVisual || c.Dragging() {
+	if c.Mode() != editor.ModeVisual || c.Dragging() {
 		t.Fatalf("after the drag: mode %v, dragging %v", c.Mode(), c.Dragging())
 	}
 	if got := c.SelectedText(); got != "ello\nwor" {
@@ -128,7 +129,7 @@ func TestEditorCorePressAndDragSelect(t *testing.T) {
 
 func TestEditorCoreTellsTheCursorsMoveOncePerInput(t *testing.T) {
 	moves := 0
-	c, _ := coreWith(t, "abc", widget.CoreOnCursorPositionChange(func() { moves++ }))
+	c, _ := coreWith(t, "abc", editor.CoreOnCursorPositionChange(func() { moves++ }))
 	keys(c, "l")
 	keys(c, "$")
 	if moves != 2 {
@@ -147,27 +148,27 @@ func TestEditorCoreTellsTheCursorsMoveOncePerInput(t *testing.T) {
 // The stock rows over a bare core: enabled as the core stands, and their CoreMenuActions act on it.
 func TestCoreContextItemsActOnTheCore(t *testing.T) {
 	c, _ := coreWith(t, "abc")
-	rows := func() map[widget.ItemID]widget.MenuItemModel {
-		m := map[widget.ItemID]widget.MenuItemModel{}
-		for _, r := range widget.CoreContextItems(c) {
+	rows := func() map[core.ItemID]core.MenuItemModel {
+		m := map[core.ItemID]core.MenuItemModel{}
+		for _, r := range editor.CoreContextItems(c) {
 			m[r.ID] = r
 		}
 		return m
 	}
-	if r := rows(); r[widget.EditorMenuUndo].Enabled || r[widget.EditorMenuCopy].Enabled {
+	if r := rows(); r[editor.EditorMenuUndo].Enabled || r[editor.EditorMenuCopy].Enabled {
 		t.Fatal("Undo or Copy enabled before an edit or a selection")
 	}
 	keys(c, "x")
-	undo := rows()[widget.EditorMenuUndo]
+	undo := rows()[editor.EditorMenuUndo]
 	if !undo.Enabled {
 		t.Fatal("Undo disabled after an edit")
 	}
-	undo.Action.(widget.CoreMenuAction).Run(c)
+	undo.Action.(editor.CoreMenuAction).Run(c)
 	if got := c.Value(); got != "abc" {
 		t.Fatalf("after the Undo row: %q, want abc", got)
 	}
 	keys(c, "vl")
-	if !rows()[widget.EditorMenuCopy].Enabled {
+	if !rows()[editor.EditorMenuCopy].Enabled {
 		t.Fatal("Copy disabled with a selection")
 	}
 }
@@ -175,7 +176,7 @@ func TestCoreContextItemsActOnTheCore(t *testing.T) {
 // A widget in another package draws from the core's read side alone: lines without a copy, the
 // selection, and a highlight frame's styles.
 func TestEditorCoreReadSide(t *testing.T) {
-	c := widget.NewEditorCore(widget.CoreInitialText("ab\ncd"), widget.CoreSelection(true))
+	c := editor.NewEditorCore(editor.CoreInitialText("ab\ncd"), editor.CoreSelection(true))
 	if c.LineCount() != 2 || c.LineAt(1) != "cd" || c.LineAt(5) != "" {
 		t.Fatalf("lines: %d %q %q", c.LineCount(), c.LineAt(1), c.LineAt(5))
 	}
@@ -197,11 +198,11 @@ func TestEditorCoreReadSide(t *testing.T) {
 // unconsumed; one whose widget answers it (SetToggleRendered) takes it.
 func TestToggleRenderedIsBoundAndBubblesWithoutAView(t *testing.T) {
 	ctrlT := tui.KeyEvent{Code: 't', Mods: tui.ModCtrl}
-	for _, ks := range []widget.Keyset{widget.KeysetVim, widget.KeysetNano, widget.KeysetStandard} {
-		c := widget.NewEditorCore(widget.CoreKeyset(ks), widget.CoreInitialText("x"))
+	for _, ks := range []editor.Keyset{editor.KeysetVim, editor.KeysetNano, editor.KeysetStandard} {
+		c := editor.NewEditorCore(editor.CoreKeyset(ks), editor.CoreInitialText("x"))
 		found := false
 		for _, b := range c.Bindings() {
-			if b.Action == widget.ActToggleRendered {
+			if b.Action == editor.ActToggleRendered {
 				found = true
 			}
 		}
@@ -218,11 +219,11 @@ func TestToggleRenderedIsBoundAndBubblesWithoutAView(t *testing.T) {
 		}
 	}
 	// in Vim's Insert mode too
-	c := widget.NewEditorCore(widget.CoreInitialText("x"))
+	c := editor.NewEditorCore(editor.CoreInitialText("x"))
 	calls := 0
 	c.SetToggleRendered(func() bool { calls++; return true })
 	c.HandleKey(tui.KeyEvent{Code: 'i', Text: "i"})
-	if !c.HandleKey(ctrlT) || calls != 1 || c.Mode() != widget.ModeInsert {
+	if !c.HandleKey(ctrlT) || calls != 1 || c.Mode() != editor.ModeInsert {
 		t.Errorf("Insert mode: consumed after %d calls, mode %v", calls, c.Mode())
 	}
 }
@@ -231,8 +232,8 @@ func TestToggleRenderedIsBoundAndBubblesWithoutAView(t *testing.T) {
 // Rendered toggle, a shifted letter is read by its text, a release and an Alt chord are bound to
 // nothing, and an explicit unbind is honoured.
 func TestEditorCoreActionOf(t *testing.T) {
-	c := widget.NewEditorCore(widget.CoreInitialText("abc"))
-	if act, ok := c.ActionOf(tui.KeyEvent{Code: 't', Mods: tui.ModCtrl}); !ok || act != widget.ActToggleRendered {
+	c := editor.NewEditorCore(editor.CoreInitialText("abc"))
+	if act, ok := c.ActionOf(tui.KeyEvent{Code: 't', Mods: tui.ModCtrl}); !ok || act != editor.ActToggleRendered {
 		t.Errorf("Ctrl+T: %v %v, want the Rendered toggle", act, ok)
 	}
 	if _, ok := c.ActionOf(tui.KeyEvent{Code: 't', Mods: tui.ModCtrl, Kind: tui.KeyRelease}); ok {
@@ -242,14 +243,14 @@ func TestEditorCoreActionOf(t *testing.T) {
 		t.Error("Ctrl+Alt+T is bound: Alt is not part of a chord")
 	}
 	g, okg := c.ActionOf(tui.KeyEvent{Code: 'g', Text: "G", Mods: tui.ModShift})
-	G, okG := c.ActionForChord(widget.KeyChord{Mode: widget.ModeNormal, Code: 'G'})
+	G, okG := c.ActionForChord(editor.KeyChord{Mode: editor.ModeNormal, Code: 'G'})
 	if okg != okG || g != G {
 		t.Errorf("Shift+g arriving as text G: %v %v, want G's %v %v", g, okg, G, okG)
 	}
 	if v, _ := c.Value(), 0; v != "abc" {
 		t.Errorf("ActionOf acted: the text is %q", v)
 	}
-	un := widget.NewEditorCore(widget.CoreKeymap(widget.Keymap{{Mode: widget.ModeNormal, Code: 't', Ctrl: true}: widget.ActUnbound}))
+	un := editor.NewEditorCore(editor.CoreKeymap(editor.Keymap{{Mode: editor.ModeNormal, Code: 't', Ctrl: true}: editor.ActUnbound}))
 	if _, ok := un.ActionOf(tui.KeyEvent{Code: 't', Mods: tui.ModCtrl}); ok {
 		t.Error("an unbound Ctrl+T is bound")
 	}
@@ -283,7 +284,7 @@ func TestInsertCaretKeysRevealTheCaret(t *testing.T) {
 			t.Errorf("key %v: reveals %v, want the caret (%d, %d) revealed", step.key, l.reveals, step.ln, step.col)
 		}
 	}
-	if c.Mode() != widget.ModeInsert {
+	if c.Mode() != editor.ModeInsert {
 		t.Fatalf("mode %v, want Insert", c.Mode())
 	}
 }

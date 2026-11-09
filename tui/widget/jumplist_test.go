@@ -4,12 +4,12 @@ import (
 	"slices"
 	"testing"
 
-	"github.com/yongjohnlee80/golib/tui/widget"
+	"github.com/yongjohnlee80/golib/tui/widget/editor"
 )
 
-func jp(line int) widget.JumpPos { return widget.JumpPos{Line: line} }
+func jp(line int) editor.JumpPos { return editor.JumpPos{Line: line} }
 
-func lines(l *widget.JumpList) ([]int, int) {
+func lines(l *editor.JumpList) ([]int, int) {
 	es, idx := l.Entries()
 	var out []int
 	for _, e := range es {
@@ -21,7 +21,7 @@ func lines(l *widget.JumpList) ([]int, int) {
 // Vim's rules (mark.c): a jump appends where it left; the first step back from the end records the
 // place now, so Forward returns to it; nothing past either end; an older duplicate of a line goes.
 func TestJumpListVimRules(t *testing.T) {
-	l := widget.NewJumpList(0)
+	l := editor.NewJumpList(0)
 	l.Push(jp(1))
 	l.Push(jp(5))
 	if _, ok := l.Forward(jp(9), 1); ok {
@@ -49,7 +49,7 @@ func TestJumpListVimRules(t *testing.T) {
 		t.Fatal("back from the oldest went somewhere")
 	}
 
-	dup := widget.NewJumpList(0)
+	dup := editor.NewJumpList(0)
 	dup.Push(jp(3))
 	dup.Push(jp(7))
 	dup.Push(jp(3))
@@ -63,14 +63,14 @@ func TestJumpListVimRules(t *testing.T) {
 		t.Fatal("3 back reached the dropped duplicate")
 	}
 
-	docs := widget.NewJumpList(0)
-	docs.Push(widget.JumpPos{Doc: "a", Line: 1})
-	docs.Push(widget.JumpPos{Doc: "b", Line: 1})
-	if step, _ := docs.Back(widget.JumpPos{Doc: "b", Line: 4}, 2); step.To.Doc != "a" {
+	docs := editor.NewJumpList(0)
+	docs.Push(editor.JumpPos{Doc: "a", Line: 1})
+	docs.Push(editor.JumpPos{Doc: "b", Line: 1})
+	if step, _ := docs.Back(editor.JumpPos{Doc: "b", Line: 4}, 2); step.To.Doc != "a" {
 		t.Fatalf("the same line of another document is no duplicate: %+v", step.To)
 	}
 
-	small := widget.NewJumpList(3)
+	small := editor.NewJumpList(3)
 	for i := 1; i <= 4; i++ {
 		small.Push(jp(i))
 	}
@@ -82,7 +82,7 @@ func TestJumpListVimRules(t *testing.T) {
 // A step is committed only while the list is as it was proposed from: a jump, or another commit,
 // makes it stale. Drop removes the step's entry for a place gone for good.
 func TestJumpListProposeCommitDrop(t *testing.T) {
-	l := widget.NewJumpList(0)
+	l := editor.NewJumpList(0)
 	l.Push(jp(1))
 	l.Push(jp(5))
 	step, _ := l.Back(jp(9), 1)
@@ -95,11 +95,11 @@ func TestJumpListProposeCommitDrop(t *testing.T) {
 	if !l.Commit(step) || l.Commit(step) || l.Commit(other) {
 		t.Fatal("a step committed twice, or one from before another's commit")
 	}
-	if widget.NewJumpList(0).Commit(step) {
+	if editor.NewJumpList(0).Commit(step) {
 		t.Fatal("another list took the step")
 	}
 
-	d := widget.NewJumpList(0)
+	d := editor.NewJumpList(0)
 	d.Push(jp(1))
 	d.Push(jp(5))
 	gone, _ := d.Back(jp(9), 1)
@@ -114,7 +114,7 @@ func TestJumpListProposeCommitDrop(t *testing.T) {
 	}
 
 	// a full list: recording the place now trims the oldest, and Drop still removes the step's entry
-	full := widget.NewJumpList(3)
+	full := editor.NewJumpList(3)
 	for _, ln := range []int{1, 2, 3} {
 		full.Push(jp(ln))
 	}
@@ -127,7 +127,7 @@ func TestJumpListProposeCommitDrop(t *testing.T) {
 	}
 
 	// a counted step over an entry that is gone: dropped, the same count lands on the next one back
-	c := widget.NewJumpList(0)
+	c := editor.NewJumpList(0)
 	for _, ln := range []int{1, 2, 3} {
 		c.Push(jp(ln))
 	}

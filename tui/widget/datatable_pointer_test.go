@@ -7,7 +7,9 @@ import (
 
 	"github.com/yongjohnlee80/golib/tui"
 	"github.com/yongjohnlee80/golib/tui/style"
-	"github.com/yongjohnlee80/golib/tui/widget"
+	"github.com/yongjohnlee80/golib/tui/widget/core"
+	"github.com/yongjohnlee80/golib/tui/widget/editor"
+	"github.com/yongjohnlee80/golib/tui/widget/table"
 )
 
 func motion(x, y int) tui.MouseEvent {
@@ -19,7 +21,7 @@ func mouseUp(x, y int) tui.MouseEvent {
 }
 
 // tableSelected is the table's selection as its kind and its copy, read on the loop.
-func tableSelected(h *harness, dt *widget.DataTable) (kind widget.TableSelectKind, text string, ok bool) {
+func tableSelected(h *harness, dt *table.DataTable) (kind table.TableSelectKind, text string, ok bool) {
 	h.onLoop(func() {
 		c := dt.Core()
 		_, _, ok = c.Selection()
@@ -56,7 +58,7 @@ func gesture(h *harness, pts ...[2]int) {
 // cells selects them in reading order, over the gutter (its rule too) whole rows, over the titles
 // the fields under them, every row.
 func TestDataTable_CellLayoutDragsOverCellsGutterAndHeaders(t *testing.T) {
-	h, sh, dt := dataTable(t, numbered(5), 30, 8, widget.TableRowNumbers(true))
+	h, sh, dt := dataTable(t, numbered(5), 30, 8, table.TableRowNumbers(true))
 	if at := cellIndex(h.row(0), "id"); at != 4 {
 		t.Fatalf("the id title at %d, want 4: after one digit, its rule and the gap\n%s", at, h.grid())
 	}
@@ -71,19 +73,19 @@ func TestDataTable_CellLayoutDragsOverCellsGutterAndHeaders(t *testing.T) {
 	}
 
 	gesture(h, [2]int{10, 3}, [2]int{10, 3}, [2]int{4, 5}) // row 1 name → row 3 id
-	if kind, text, _ := tableSelected(h, dt); kind != widget.TableSelectCells || text != "row1\t10\n2\trow2\t20\n3" {
+	if kind, text, _ := tableSelected(h, dt); kind != table.TableSelectCells || text != "row1\t10\n2\trow2\t20\n3" {
 		t.Errorf("a drag over cells: kind %v, %q", kind, text)
 	}
 
 	gesture(h, [2]int{2, 3}, [2]int{1, 4}) // the numbers of rows 1 and 2, from the rule
-	if kind, text, _ := tableSelected(h, dt); kind != widget.TableSelectRows || text != "1\trow1\t10\n2\trow2\t20" {
+	if kind, text, _ := tableSelected(h, dt); kind != table.TableSelectRows || text != "1\trow1\t10\n2\trow2\t20" {
 		t.Errorf("a drag over the gutter: kind %v, %q", kind, text)
 	}
 
 	gesture(h, [2]int{10, 0}, [2]int{20, 0}) // the name title → the n title
-	var from, to widget.TablePos
+	var from, to table.TablePos
 	h.onLoop(func() { from, to, _ = dt.Core().Selection() })
-	if kind, _, _ := tableSelected(h, dt); kind != widget.TableSelectBlock || from != (widget.TablePos{Row: 0, Col: 1}) || to != (widget.TablePos{Row: 4, Col: 2}) {
+	if kind, _, _ := tableSelected(h, dt); kind != table.TableSelectBlock || from != (table.TablePos{Row: 0, Col: 1}) || to != (table.TablePos{Row: 4, Col: 2}) {
 		t.Errorf("a drag over the titles: kind %v, %+v to %+v; want a block of fields 1-2, every row", kind, from, to)
 	}
 
@@ -103,7 +105,7 @@ func TestDataTable_CellLayoutDragsOverCellsGutterAndHeaders(t *testing.T) {
 // The rules are drawn in the Header's border: its Left after the numbers, its Top under the titles,
 // crossing in the border's weight. A hidden border hides both, and their crossing.
 func TestDataTable_TheRulesAreTheHeadersBorder(t *testing.T) {
-	h, sh, dt := dataTable(t, numbered(3), 20, 6, widget.TableRowNumbers(true))
+	h, sh, dt := dataTable(t, numbered(3), 20, 6, table.TableRowNumbers(true))
 	for _, c := range []struct {
 		name       string
 		border     style.BorderStyle
@@ -113,7 +115,7 @@ func TestDataTable_TheRulesAreTheHeadersBorder(t *testing.T) {
 		{"thick", style.BorderThick, "━━╋━", "1 ┃ 0"},
 		{"hidden", style.BorderHidden, "    ", "1   0"},
 	} {
-		h.onLoop(func() { dt.SetStyles(widget.DataTableStyles{Header: style.New().Bold(true).Border(c.border)}) })
+		h.onLoop(func() { dt.SetStyles(table.DataTableStyles{Header: style.New().Bold(true).Border(c.border)}) })
 		h.barrier(sh)
 		if !strings.HasPrefix(h.row(1), c.rule) || !strings.HasPrefix(h.row(2), c.cell) {
 			t.Errorf("a %s border's rules, want %q over %q:\n%s", c.name, c.rule, c.cell, h.grid())
@@ -125,7 +127,7 @@ func TestDataTable_TheRulesAreTheHeadersBorder(t *testing.T) {
 // arrives, and the fields and the pointer move with it.
 func TestDataTable_TheGutterGrowsFromNineRowsToTen(t *testing.T) {
 	src := numbered(9)
-	h, sh, dt := dataTable(t, src, 30, 14, widget.TableRowNumbers(true))
+	h, sh, dt := dataTable(t, src, 30, 14, table.TableRowNumbers(true))
 	if at := cellIndex(h.row(0), "id"); at != 4 || !strings.HasPrefix(h.row(10), "9 │ 8") {
 		t.Fatalf("9 rows: id at %d\n%s", at, h.grid())
 	}
@@ -146,7 +148,7 @@ func TestDataTable_TheGutterGrowsFromNineRowsToTen(t *testing.T) {
 		}
 	})
 	gesture(h, [2]int{4, 3}) // a cell of the id field with one digit; the gutter's gap with two
-	if kind, text, _ := tableSelected(h, dt); kind != widget.TableSelectRows || text != "1\trow1\t10" {
+	if kind, text, _ := tableSelected(h, dt); kind != table.TableSelectRows || text != "1\trow1\t10" {
 		t.Errorf("a press at x=4 with two digits: kind %v, %q; want row 1, from the gutter", kind, text)
 	}
 	h.onLoop(func() { dt.Core().SetRowNumbers(false) })
@@ -160,23 +162,23 @@ func TestDataTable_TheGutterGrowsFromNineRowsToTen(t *testing.T) {
 // fields 100 wide, rows 20 high under a header as high.
 type hittingTable struct{ placingTable }
 
-func (p *hittingTable) HitAt(x, y float32) (widget.TablePos, widget.TableHit) {
+func (p *hittingTable) HitAt(x, y float32) (table.TablePos, table.TableHit) {
 	switch {
 	case y < 20 && x >= 50:
-		return widget.TablePos{Col: int((x - 50) / 100)}, widget.TableHitHeader
+		return table.TablePos{Col: int((x - 50) / 100)}, table.TableHitHeader
 	case y < 20:
-		return widget.TablePos{}, widget.TableHitNone
+		return table.TablePos{}, table.TableHitNone
 	case x < 50:
-		return widget.TablePos{Row: int(y/20) - 1}, widget.TableHitGutter
+		return table.TablePos{Row: int(y/20) - 1}, table.TableHitGutter
 	case x < 250:
-		return widget.TablePos{Row: int(y/20) - 1, Col: int((x - 50) / 100)}, widget.TableHitCell
+		return table.TablePos{Row: int(y/20) - 1, Col: int((x - 50) / 100)}, table.TableHitCell
 	}
-	return widget.TablePos{}, widget.TableHitNone
+	return table.TablePos{}, table.TableHitNone
 }
 
-func boundTableApp(t *testing.T, l widget.TableLayout) (*harness, *widget.DataTable) {
+func boundTableApp(t *testing.T, l table.TableLayout) (*harness, *table.DataTable) {
 	t.Helper()
-	dt := widget.NewDataTable(widget.NewTableCore(numbered(20)))
+	dt := table.NewDataTable(table.NewTableCore(numbered(20)))
 	dt.BindLayout(l)
 	sh := newShell(dt)
 	tb := tui.NewTestBackend(30, 6)
@@ -192,17 +194,17 @@ func TestDataTable_ATableLayoutHitterPlacesTheGutter(t *testing.T) {
 	p := &hittingTable{}
 	h, dt := boundTableApp(t, p)
 	gesture(h, [2]int{2, 2}, [2]int{2, 4}) // the numbers of rows 1 to 3, at 20 pixels
-	if kind, text, _ := tableSelected(h, dt); kind != widget.TableSelectRows || text != "1\trow1\t10\n2\trow2\t20\n3\trow3\t30" {
+	if kind, text, _ := tableSelected(h, dt); kind != table.TableSelectRows || text != "1\trow1\t10\n2\trow2\t20\n3\trow3\t30" {
 		t.Errorf("a gutter drag: kind %v, %q", kind, text)
 	}
 	gesture(h, [2]int{7, 2}, [2]int{17, 3}) // row 1 id → row 2 name
-	if kind, text, _ := tableSelected(h, dt); kind != widget.TableSelectCells || text != "1\trow1\t10\n2\trow2" {
+	if kind, text, _ := tableSelected(h, dt); kind != table.TableSelectCells || text != "1\trow1\t10\n2\trow2" {
 		t.Errorf("a cell drag: kind %v, %q", kind, text)
 	}
 	gesture(h, [2]int{7, 0}, [2]int{17, 0}) // the id title → the name title
-	var from, to widget.TablePos
+	var from, to table.TablePos
 	h.onLoop(func() { from, to, _ = dt.Core().Selection() })
-	if kind, _, _ := tableSelected(h, dt); kind != widget.TableSelectBlock || from != (widget.TablePos{}) || to != (widget.TablePos{Row: 19, Col: 1}) {
+	if kind, _, _ := tableSelected(h, dt); kind != table.TableSelectBlock || from != (table.TablePos{}) || to != (table.TablePos{Row: 19, Col: 1}) {
 		t.Errorf("a header drag: kind %v, %+v to %+v", kind, from, to)
 	}
 	h.onLoop(func() {
@@ -219,7 +221,7 @@ func TestDataTable_APlainTableLayoutPointerHasNoGutter(t *testing.T) {
 	p := &placingTable{}
 	h, dt := boundTableApp(t, p)
 	gesture(h, [2]int{1, 0})
-	var from, to widget.TablePos
+	var from, to table.TablePos
 	h.onLoop(func() { from, to, _ = dt.Core().Selection() })
 	if _, _, ok := tableSelected(h, dt); ok {
 		t.Errorf("a header press without HitAt selected %+v to %+v; CellAt names no field, so it must select nothing", from, to)
@@ -238,7 +240,7 @@ func TestDataTable_APlainTableLayoutPointerHasNoGutter(t *testing.T) {
 		t.Error("a press at the left edge selected: read as a gutter")
 	}
 	gesture(h, [2]int{1, 2}, [2]int{12, 3}) // row 1 id → row 2 name
-	if kind, text, _ := tableSelected(h, dt); kind != widget.TableSelectCells || text != "1\trow1\t10\n2\trow2" {
+	if kind, text, _ := tableSelected(h, dt); kind != table.TableSelectCells || text != "1\trow1\t10\n2\trow2" {
 		t.Errorf("a drag from the left edge: kind %v, %q; want cells", kind, text)
 	}
 	h.onLoop(func() {
@@ -251,8 +253,8 @@ func TestDataTable_APlainTableLayoutPointerHasNoGutter(t *testing.T) {
 // The cursor is Cursor while the table has the keys and CursorBlurred while it has not, faint
 // Cursor by default; the focus coming back brings Cursor back.
 func TestDataTable_TheCursorBlursWithoutTheKeys(t *testing.T) {
-	dt := widget.NewDataTable(widget.NewTableCore(numbered(3)))
-	other := widget.NewTextInput()
+	dt := table.NewDataTable(table.NewTableCore(numbered(3)))
+	other := core.NewTextInput()
 	root := tui.NewFlex(tui.Vertical)
 	root.AddSized(dt, 5)
 	root.Add(other)
@@ -275,7 +277,7 @@ func TestDataTable_TheCursorBlursWithoutTheKeys(t *testing.T) {
 		t.Errorf("with the keys again: %+v, want not faint", a)
 	}
 	h.onLoop(func() {
-		dt.SetStyles(widget.DataTableStyles{Cursor: style.New().Bold(true), CursorBlurred: style.New().Underline(true)})
+		dt.SetStyles(table.DataTableStyles{Cursor: style.New().Bold(true), CursorBlurred: style.New().Underline(true)})
 	})
 	focus(other)
 	if a := cursor(); a.Mask&tui.AttrUnderline == 0 || a.Mask&tui.AttrBold != 0 {
@@ -290,18 +292,18 @@ func TestDataTable_TheCursorBlursWithoutTheKeys(t *testing.T) {
 // A right press inside the selection opens the menu at the pointer and leaves the selection as it
 // was; MenuAt is where it was pressed, and a row chosen runs, on a menu with no editor core.
 func TestDataTable_ARightPressOpensTheMenuOverTheSelection(t *testing.T) {
-	dt := widget.NewDataTable(widget.NewTableCore(numbered(5)))
-	sh := newShell(widget.NewOverlayHost(dt))
+	dt := table.NewDataTable(table.NewTableCore(numbered(5)))
+	sh := newShell(core.NewOverlayHost(dt))
 	h := startApp(t, sh, 40, 12)
 	h.barrier(sh)
-	ran := make(chan widget.TablePos, 1)
-	var at widget.TablePos
-	var hit widget.TableHit
-	menu := widget.NewEditorMenu(dt, nil)
-	menu.SetRows(func() []widget.MenuItemModel {
+	ran := make(chan table.TablePos, 1)
+	var at table.TablePos
+	var hit table.TableHit
+	menu := editor.NewEditorMenu(dt, nil)
+	menu.SetRows(func() []core.MenuItemModel {
 		at, hit = dt.MenuAt()
-		return []widget.MenuItemModel{widget.NewCommand("table.copy", "Copy rows", widget.CoreMenuAction{
-			ID: "table.copy", Run: func(*widget.EditorCore) { ran <- dt.Core().Cursor() }})}
+		return []core.MenuItemModel{core.NewCommand("table.copy", "Copy rows", editor.CoreMenuAction{
+			ID: "table.copy", Run: func(*editor.EditorCore) { ran <- dt.Core().Cursor() }})}
 	})
 	h.onLoop(func() {
 		dt.SetMenu(menu)
@@ -318,11 +320,11 @@ func TestDataTable_ARightPressOpensTheMenuOverTheSelection(t *testing.T) {
 	})
 	h.settle()
 	h.wantContains("Copy rows")
-	if kind, text, ok := tableSelected(h, dt); !ok || kind != widget.TableSelectRows || text != "0\trow0\t0\n1\trow1\t10" {
+	if kind, text, ok := tableSelected(h, dt); !ok || kind != table.TableSelectRows || text != "0\trow0\t0\n1\trow1\t10" {
 		t.Errorf("after the right press: kind %v (%v), %q; want rows 0-1 still selected", kind, ok, text)
 	}
 	h.onLoop(func() {
-		if at != (widget.TablePos{Row: 1, Col: 1}) || hit != widget.TableHitCell {
+		if at != (table.TablePos{Row: 1, Col: 1}) || hit != table.TableHitCell {
 			t.Errorf("MenuAt %+v %v, want row 1 field 1, a cell", at, hit)
 		}
 	})
@@ -339,13 +341,13 @@ func TestDataTable_ARightPressOpensTheMenuOverTheSelection(t *testing.T) {
 // A right press outside the selection on a cell moves the cursor there and ends the selection
 // before the menu opens: the menu acts on what was pressed. No drag starts.
 func TestDataTable_ARightPressOutsideTheSelectionTakesTheCell(t *testing.T) {
-	dt := widget.NewDataTable(widget.NewTableCore(numbered(5), widget.TableMenuSelects(true)))
-	sh := newShell(widget.NewOverlayHost(dt))
+	dt := table.NewDataTable(table.NewTableCore(numbered(5), table.TableMenuSelects(true)))
+	sh := newShell(core.NewOverlayHost(dt))
 	h := startApp(t, sh, 40, 12)
 	h.barrier(sh)
-	menu := widget.NewEditorMenu(dt, nil)
-	menu.SetRows(func() []widget.MenuItemModel {
-		return []widget.MenuItemModel{widget.NewCommand("table.copy", "Copy rows", widget.CoreMenuAction{ID: "table.copy"})}
+	menu := editor.NewEditorMenu(dt, nil)
+	menu.SetRows(func() []core.MenuItemModel {
+		return []core.MenuItemModel{core.NewCommand("table.copy", "Copy rows", editor.CoreMenuAction{ID: "table.copy"})}
 	})
 	h.onLoop(func() {
 		dt.SetMenu(menu)
@@ -362,7 +364,7 @@ func TestDataTable_ARightPressOutsideTheSelectionTakesTheCell(t *testing.T) {
 	})
 	h.onLoop(func() {
 		c := dt.Core()
-		if _, _, ok := c.Selection(); ok || c.Cursor() != (widget.TablePos{Row: 3, Col: 1}) || c.Dragging() {
+		if _, _, ok := c.Selection(); ok || c.Cursor() != (table.TablePos{Row: 3, Col: 1}) || c.Dragging() {
 			t.Errorf("after a right press on row 3: selection %v, cursor %+v, dragging %v; want none, row 3 field 1, no drag",
 				ok, c.Cursor(), c.Dragging())
 		}
@@ -371,11 +373,11 @@ func TestDataTable_ARightPressOutsideTheSelectionTakesTheCell(t *testing.T) {
 
 // A menu with no core and no rows has nothing to show: the right press goes on, and nothing breaks.
 func TestDataTable_AMenuWithNoRowsLetsTheRightPressGoOn(t *testing.T) {
-	dt := widget.NewDataTable(widget.NewTableCore(numbered(3)))
-	sh := newShell(widget.NewOverlayHost(dt))
+	dt := table.NewDataTable(table.NewTableCore(numbered(3)))
+	sh := newShell(core.NewOverlayHost(dt))
 	h := startApp(t, sh, 30, 8)
 	h.barrier(sh)
-	menu := widget.NewEditorMenu(dt, nil)
+	menu := editor.NewEditorMenu(dt, nil)
 	h.onLoop(func() {
 		dt.SetMenu(menu)
 		menu.SetEnabled(true)
@@ -427,7 +429,7 @@ func TestDataTable_YCopiesTheCellAndYYTheRow(t *testing.T) {
 func TestDataTable_ACopyPastTheLimitCopiesNothing(t *testing.T) {
 	var refused []int
 	h, sh, dt := dataTable(t, numbered(3), 30, 6,
-		widget.TableCopyLimit(8), widget.TableOnCopyRefused(func(limit int) { refused = append(refused, limit) }))
+		table.TableCopyLimit(8), table.TableOnCopyRefused(func(limit int) { refused = append(refused, limit) }))
 	h.onLoop(func() {
 		dt.HandleEvent(key('j'))
 		dt.HandleEvent(key('l'))
@@ -473,7 +475,7 @@ func TestDataTable_RTogglesARowCursorThatYCopiesWhole(t *testing.T) {
 		return 0, 0
 	}
 	h.onLoop(func() {
-		dt.SetStyles(widget.DataTableStyles{Cursor: style.New().Bold(true), CursorBlurred: style.New().Underline(true)})
+		dt.SetStyles(table.DataTableStyles{Cursor: style.New().Bold(true), CursorBlurred: style.New().Underline(true)})
 		dt.HandleEvent(key('j'))
 		dt.HandleEvent(key('l'))
 	})
@@ -511,7 +513,7 @@ func TestDataTable_RTogglesARowCursorThatYCopiesWhole(t *testing.T) {
 func TestDataTable_ACSVTableCopiesCSV(t *testing.T) {
 	src := numbered(2)
 	src.rows[1][1] = `say "hi", then`
-	h, _, dt := dataTable(t, src, 40, 6, widget.TableCopyAs(widget.TableCopyCSV))
+	h, _, dt := dataTable(t, src, 40, 6, table.TableCopyAs(table.TableCopyCSV))
 	h.onLoop(func() {
 		dt.HandleEvent(key('j'))
 		dt.HandleEvent(key('l'))
@@ -535,24 +537,24 @@ func TestDataTable_ACSVTableCopiesCSV(t *testing.T) {
 // A right press whose cursor callback (TableOnCursor) replaces the source opens no menu: the row it
 // was for is gone. The control is TestDataTable_ARightPressOutsideTheSelectionTakesTheCell.
 func TestDataTable_ARightPressOpensNoMenuForRowsItsCallbackReplaced(t *testing.T) {
-	var core *widget.TableCore
+	var tc *table.TableCore
 	replaced := false
-	dt := widget.NewDataTable(widget.NewTableCore(numbered(5), widget.TableMenuSelects(true),
-		widget.TableOnCursor(func(int) {
-			if !replaced && core != nil {
+	dt := table.NewDataTable(table.NewTableCore(numbered(5), table.TableMenuSelects(true),
+		table.TableOnCursor(func(int) {
+			if !replaced && tc != nil {
 				replaced = true
-				core.SetSource(numbered(5))
+				tc.SetSource(numbered(5))
 			}
 		})))
-	sh := newShell(widget.NewOverlayHost(dt))
+	sh := newShell(core.NewOverlayHost(dt))
 	h := startApp(t, sh, 40, 12)
 	h.barrier(sh)
-	menu := widget.NewEditorMenu(dt, nil)
-	menu.SetRows(func() []widget.MenuItemModel {
-		return []widget.MenuItemModel{widget.NewCommand("table.copy", "Copy rows", widget.CoreMenuAction{ID: "table.copy"})}
+	menu := editor.NewEditorMenu(dt, nil)
+	menu.SetRows(func() []core.MenuItemModel {
+		return []core.MenuItemModel{core.NewCommand("table.copy", "Copy rows", editor.CoreMenuAction{ID: "table.copy"})}
 	})
 	h.onLoop(func() {
-		core = dt.Core()
+		tc = dt.Core()
 		dt.SetMenu(menu)
 		menu.SetEnabled(true)
 	})

@@ -9,7 +9,7 @@ import (
 	"testing"
 
 	"github.com/yongjohnlee80/golib/tui"
-	"github.com/yongjohnlee80/golib/tui/widget"
+	"github.com/yongjohnlee80/golib/tui/widget/core"
 )
 
 // contexter is the Base plumbing surface every widget promotes.
@@ -23,18 +23,18 @@ type contexter interface {
 // Base.Init chaining).
 func TestBaseInitPlumbing(t *testing.T) {
 	widgets := map[string]tui.Component{
-		"TextInput":   widget.NewTextInput(),
-		"TextArea":    widget.NewTextArea(),
-		"Select":      widget.NewSelect[string](),
-		"List":        widget.NewList(widget.WithItems([]string{"a"}, func(s string) string { return s })),
-		"BufferView":  widget.NewBufferView(),
-		"Tabs":        widget.NewTabs(widget.WithTab("t", widget.NewText("x"))),
-		"Split":       widget.NewSplit(widget.Horizontal, widget.NewText("a"), widget.NewText("b")),
-		"Float":       widget.NewFloat(widget.NewText("f")),
-		"StatusBar":   widget.NewStatusBar(),
-		"ProgressBar": widget.NewProgressBar(),
-		"Text":        widget.NewText("hello"),
-		"Box":         widget.NewBox(widget.NewText("c")),
+		"TextInput":   core.NewTextInput(),
+		"TextArea":    core.NewTextArea(),
+		"Select":      core.NewSelect[string](),
+		"List":        core.NewList(core.WithItems([]string{"a"}, func(s string) string { return s })),
+		"BufferView":  core.NewBufferView(),
+		"Tabs":        core.NewTabs(core.WithTab("t", core.NewText("x"))),
+		"Split":       core.NewSplit(core.Horizontal, core.NewText("a"), core.NewText("b")),
+		"Float":       core.NewFloat(core.NewText("f")),
+		"StatusBar":   core.NewStatusBar(),
+		"ProgressBar": core.NewProgressBar(),
+		"Text":        core.NewText("hello"),
+		"Box":         core.NewBox(core.NewText("c")),
 	}
 	for name, w := range widgets {
 		t.Run(name, func(t *testing.T) {

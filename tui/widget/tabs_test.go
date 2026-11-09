@@ -11,12 +11,12 @@ import (
 
 	"github.com/yongjohnlee80/golib/tui"
 	"github.com/yongjohnlee80/golib/tui/style"
-	"github.com/yongjohnlee80/golib/tui/widget"
+	"github.com/yongjohnlee80/golib/tui/widget/core"
 )
 
 // lifeProbe records mounts/unmounts (Tabs keep-mounted semantics).
 type lifeProbe struct {
-	widget.Base
+	core.Base
 	label    string
 	inits    atomic.Int32
 	unmounts atomic.Int32
@@ -41,10 +41,10 @@ func (p *lifeProbe) Render(s tui.Surface) {
 func TestTabsSwitching(t *testing.T) {
 	a := &lifeProbe{label: "AAAAA"}
 	b := &lifeProbe{label: "BBBBB"}
-	tabs := widget.NewTabs(widget.WithTab("one", a), widget.WithTab("two", b))
+	tabs := core.NewTabs(core.WithTab("one", a), core.WithTab("two", b))
 	sh := newShell(tabs)
 	h := startApp(t, sh, 20, 4)
-	changed := record[widget.TabChangedEvent](h)
+	changed := record[core.TabChangedEvent](h)
 	h.inject(tab()) // focus the bar
 	h.barrier(sh)
 
@@ -80,7 +80,7 @@ func TestTabsSwitching(t *testing.T) {
 func TestTabsKeepMounted(t *testing.T) {
 	a := &lifeProbe{label: "AAAAA"}
 	b := &lifeProbe{label: "BBBBB"}
-	tabs := widget.NewTabs(widget.WithTab("one", a), widget.WithTab("two", b), widget.WithKeepMounted(true))
+	tabs := core.NewTabs(core.WithTab("one", a), core.WithTab("two", b), core.WithKeepMounted(true))
 	sh := newShell(tabs)
 	h := startApp(t, sh, 20, 4)
 	h.inject(tab())
@@ -97,7 +97,7 @@ func TestTabsKeepMounted(t *testing.T) {
 func TestTabsArrowSwitching(t *testing.T) {
 	a := &lifeProbe{label: "AAAAA"}
 	b := &lifeProbe{label: "BBBBB"}
-	tabs := widget.NewTabs(widget.WithTab("one", a), widget.WithTab("two", b), widget.WithKeepMounted(true))
+	tabs := core.NewTabs(core.WithTab("one", a), core.WithTab("two", b), core.WithKeepMounted(true))
 	sh := newShell(tabs)
 	h := startApp(t, sh, 20, 4)
 	h.inject(tab()) // focus the bar
@@ -120,8 +120,8 @@ func TestTabsArrowSwitching(t *testing.T) {
 func TestTabsAutoFocus(t *testing.T) {
 	a := &lifeProbe{label: "AAAAA"}
 	b := &lifeProbe{label: "BBBBB"}
-	tabs := widget.NewTabs(widget.WithTab("one", a), widget.WithTab("two", b),
-		widget.WithKeepMounted(true), widget.WithAutoFocus(true))
+	tabs := core.NewTabs(core.WithTab("one", a), core.WithTab("two", b),
+		core.WithKeepMounted(true), core.WithAutoFocus(true))
 	sh := newShell(tabs)
 	h := startApp(t, sh, 20, 4)
 	h.barrier(sh)
@@ -137,9 +137,9 @@ func TestTabsAutoFocus(t *testing.T) {
 func TestTabsWithoutBar(t *testing.T) {
 	a := &lifeProbe{label: "AAAAA"}
 	b := &lifeProbe{label: "BBBBB"}
-	tabs := widget.NewTabs(
-		widget.WithTab("one", a), widget.WithTab("two", b),
-		widget.WithKeepMounted(true), widget.WithoutBar())
+	tabs := core.NewTabs(
+		core.WithTab("one", a), core.WithTab("two", b),
+		core.WithKeepMounted(true), core.WithoutBar())
 	sh := newShell(tabs)
 	h := startApp(t, sh, 20, 4)
 	h.barrier(sh)
@@ -152,8 +152,8 @@ func TestTabsWithoutBar(t *testing.T) {
 // switches it (data-I4).
 func TestTabsTellTheirOwnerOfAChange(t *testing.T) {
 	var got []int
-	tabs := widget.NewTabs(widget.WithTab("one", &lifeProbe{label: "A"}), widget.WithTab("two", &lifeProbe{label: "B"}),
-		widget.WithTabsOnChange(func(i int) { got = append(got, i) }))
+	tabs := core.NewTabs(core.WithTab("one", &lifeProbe{label: "A"}), core.WithTab("two", &lifeProbe{label: "B"}),
+		core.WithTabsOnChange(func(i int) { got = append(got, i) }))
 	sh := newShell(tabs)
 	h := startApp(t, sh, 20, 4)
 	h.inject(tab(), key(']'))

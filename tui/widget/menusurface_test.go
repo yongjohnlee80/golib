@@ -13,31 +13,31 @@ import (
 
 	"github.com/yongjohnlee80/golib/tui"
 	"github.com/yongjohnlee80/golib/tui/style"
-	"github.com/yongjohnlee80/golib/tui/widget"
+	"github.com/yongjohnlee80/golib/tui/widget/core"
 )
 
 // TestMenuStyleIsNilSafeAndImmutable — the same contract as ButtonStyle and
 // ModalStyle, because a consumer who has learned one has learned them all.
 func TestMenuStyleIsNilSafeAndImmutable(t *testing.T) {
-	var s *widget.MenuStyle
-	def := widget.DefaultMenuStyle()
+	var s *core.MenuStyle
+	def := core.DefaultMenuStyle()
 	if s.Surface() != def.Surface() || s.Selected() != def.Selected() ||
 		s.Armed() != def.Armed() || s.Disabled() != def.Disabled() ||
 		s.Accel() != def.Accel() || s.Border() != def.Border() {
 		t.Error("a nil MenuStyle does not fall back to the defaults")
 	}
 
-	base := widget.NewMenuStyle(styleOf(1), styleOf(2))
+	base := core.NewMenuStyle(styleOf(1), styleOf(2))
 	for name, tc := range map[string]struct {
-		derive func(*widget.MenuStyle) *widget.MenuStyle
-		read   func(*widget.MenuStyle) style.Style
+		derive func(*core.MenuStyle) *core.MenuStyle
+		read   func(*core.MenuStyle) style.Style
 	}{
-		"WithSurface":  {func(x *widget.MenuStyle) *widget.MenuStyle { return x.WithSurface(styleOf(6)) }, (*widget.MenuStyle).Surface},
-		"WithSelected": {func(x *widget.MenuStyle) *widget.MenuStyle { return x.WithSelected(styleOf(6)) }, (*widget.MenuStyle).Selected},
-		"WithArmed":    {func(x *widget.MenuStyle) *widget.MenuStyle { return x.WithArmed(styleOf(6)) }, (*widget.MenuStyle).Armed},
-		"WithDisabled": {func(x *widget.MenuStyle) *widget.MenuStyle { return x.WithDisabled(styleOf(6)) }, (*widget.MenuStyle).Disabled},
-		"WithAccel":    {func(x *widget.MenuStyle) *widget.MenuStyle { return x.WithAccel(styleOf(6)) }, (*widget.MenuStyle).Accel},
-		"WithBorder":   {func(x *widget.MenuStyle) *widget.MenuStyle { return x.WithBorder(styleOf(6)) }, (*widget.MenuStyle).Border},
+		"WithSurface":  {func(x *core.MenuStyle) *core.MenuStyle { return x.WithSurface(styleOf(6)) }, (*core.MenuStyle).Surface},
+		"WithSelected": {func(x *core.MenuStyle) *core.MenuStyle { return x.WithSelected(styleOf(6)) }, (*core.MenuStyle).Selected},
+		"WithArmed":    {func(x *core.MenuStyle) *core.MenuStyle { return x.WithArmed(styleOf(6)) }, (*core.MenuStyle).Armed},
+		"WithDisabled": {func(x *core.MenuStyle) *core.MenuStyle { return x.WithDisabled(styleOf(6)) }, (*core.MenuStyle).Disabled},
+		"WithAccel":    {func(x *core.MenuStyle) *core.MenuStyle { return x.WithAccel(styleOf(6)) }, (*core.MenuStyle).Accel},
+		"WithBorder":   {func(x *core.MenuStyle) *core.MenuStyle { return x.WithBorder(styleOf(6)) }, (*core.MenuStyle).Border},
 	} {
 		was := tc.read(base)
 		got := tc.derive(base)
@@ -54,7 +54,7 @@ func TestMenuStyleIsNilSafeAndImmutable(t *testing.T) {
 
 	// NewMenuStyle states the two looks a caller has an opinion about and
 	// derives the rest, so a partial statement still yields a complete style.
-	d := widget.NewMenuStyle(styleOf(1), styleOf(2))
+	d := core.NewMenuStyle(styleOf(1), styleOf(2))
 	if d.Border() != d.Surface() {
 		t.Error("NewMenuStyle did not derive the border from the surface")
 	}
@@ -77,11 +77,11 @@ func TestMenuStyleIsNilSafeAndImmutable(t *testing.T) {
 // one the Menu cannot produce, and a test asserting it would be measuring an
 // arrangement no user can reach.
 func TestADisabledRowPaintsAsDisabled(t *testing.T) {
-	st := widget.NewMenuStyle(styleOf(1), styleOf(2))
-	m := widget.NewMenu(widget.WithMenuStyle(st))
-	if err := m.SetModel([]widget.MenuItemModel{
-		widget.NewCommand("first", "First", nil),
-		widget.NewCommand("second", "Second", nil),
+	st := core.NewMenuStyle(styleOf(1), styleOf(2))
+	m := core.NewMenu(core.WithMenuStyle(st))
+	if err := m.SetModel([]core.MenuItemModel{
+		core.NewCommand("first", "First", nil),
+		core.NewCommand("second", "Second", nil),
 	}); err != nil {
 		t.Fatalf("SetModel: %v", err)
 	}
@@ -105,12 +105,12 @@ func TestADisabledRowPaintsAsDisabled(t *testing.T) {
 // TestTheEnumsNameEveryValue — these strings appear in traces and failures, so
 // a kind that renders as a number is a message nobody can read.
 func TestTheEnumsNameEveryValue(t *testing.T) {
-	for k, want := range map[widget.ItemKind]string{
-		widget.ItemKindCommand:   "command",
-		widget.ItemKindSubmenu:   "submenu",
-		widget.ItemKindSeparator: "separator",
-		widget.ItemKindCheck:     "check",
-		widget.ItemKindRadio:     "radio",
+	for k, want := range map[core.ItemKind]string{
+		core.ItemKindCommand:   "command",
+		core.ItemKindSubmenu:   "submenu",
+		core.ItemKindSeparator: "separator",
+		core.ItemKindCheck:     "check",
+		core.ItemKindRadio:     "radio",
 	} {
 		if got := k.String(); got != want {
 			t.Errorf("ItemKind(%d).String() = %q, want %q", k, got, want)
@@ -118,50 +118,50 @@ func TestTheEnumsNameEveryValue(t *testing.T) {
 	}
 	// The FIRST invalid value, not a far one: an off-by-one bound rejects 200 as
 	// readily as a correct bound does.
-	if !widget.ItemKindRadio.Valid() || (widget.ItemKindRadio + 1).Valid() {
+	if !core.ItemKindRadio.Valid() || (core.ItemKindRadio + 1).Valid() {
 		t.Error("ItemKind.Valid does not bound the declared set at its edge")
 	}
-	if got := (widget.ItemKindRadio + 1).String(); got != "unknown" {
+	if got := (core.ItemKindRadio + 1).String(); got != "unknown" {
 		t.Errorf("an undeclared kind rendered as %q", got)
 	}
 
 	// RowState is four INDEPENDENT flags, so its rendering has to show
 	// combinations rather than pick the winner an enum would have to.
 	for _, tc := range []struct {
-		st   widget.RowState
+		st   core.RowState
 		want string
 	}{
-		{widget.RowState{}, "normal"},
-		{widget.RowState{Selected: true}, "selected"},
-		{widget.RowState{Armed: true}, "armed"},
-		{widget.RowState{Selected: true, Open: true}, "selected+open"},
-		{widget.RowState{Selected: true, Focused: true, Open: true}, "selected+focused+open"},
+		{core.RowState{}, "normal"},
+		{core.RowState{Selected: true}, "selected"},
+		{core.RowState{Armed: true}, "armed"},
+		{core.RowState{Selected: true, Open: true}, "selected+open"},
+		{core.RowState{Selected: true, Focused: true, Open: true}, "selected+focused+open"},
 	} {
 		if got := tc.st.String(); got != tc.want {
 			t.Errorf("RowState%+v.String() = %q, want %q", tc.st, got, tc.want)
 		}
 	}
 
-	for p, want := range map[widget.BarPlacement]string{
-		widget.BarPlacementTop:    "top",
-		widget.BarPlacementBottom: "bottom",
-		widget.BarPlacementLeft:   "left",
-		widget.BarPlacementRight:  "right",
+	for p, want := range map[core.BarPlacement]string{
+		core.BarPlacementTop:    "top",
+		core.BarPlacementBottom: "bottom",
+		core.BarPlacementLeft:   "left",
+		core.BarPlacementRight:  "right",
 	} {
 		if got := p.String(); got != want {
 			t.Errorf("BarPlacement(%d).String() = %q, want %q", p, got, want)
 		}
 	}
-	if got := (widget.BarPlacementRight + 1).String(); got != "unknown" {
+	if got := (core.BarPlacementRight + 1).String(); got != "unknown" {
 		t.Errorf("an undeclared placement rendered as %q", got)
 	}
 }
 
 // swatchRenderer is a consumer row painter: the declared extension seam for a
 // row kind the closed ItemKind does not provide.
-type swatchRenderer struct{ seen []widget.RowView }
+type swatchRenderer struct{ seen []core.RowView }
 
-func (r *swatchRenderer) RenderRow(s tui.Surface, row widget.RowView, st widget.RowState) {
+func (r *swatchRenderer) RenderRow(s tui.Surface, row core.RowView, st core.RowState) {
 	r.seen = append(r.seen, row)
 	for i, cluster := range []string{"[", "#", "]"} {
 		s.SetCell(i, 0, cluster, style.New())
@@ -176,10 +176,10 @@ func (r *swatchRenderer) RenderRow(s tui.Surface, row widget.RowView, st widget.
 // hand consumer code a slice header aliasing the Menu's own storage.
 func TestARowRendererPaintsTheWholeRowAndSeesNoChildren(t *testing.T) {
 	rr := &swatchRenderer{}
-	m := widget.NewMenu(widget.WithRowRenderer(rr))
-	if err := m.SetModel([]widget.MenuItemModel{
-		widget.NewSubmenu("colours", "Colours", []widget.MenuItemModel{
-			widget.NewCommand("red", "Red", nil),
+	m := core.NewMenu(core.WithRowRenderer(rr))
+	if err := m.SetModel([]core.MenuItemModel{
+		core.NewSubmenu("colours", "Colours", []core.MenuItemModel{
+			core.NewCommand("red", "Red", nil),
 		}),
 	}); err != nil {
 		t.Fatalf("SetModel: %v", err)
@@ -190,7 +190,7 @@ func TestARowRendererPaintsTheWholeRowAndSeesNoChildren(t *testing.T) {
 	if got := h.grid(); !strings.Contains(got, "[#]") {
 		t.Errorf("the consumer renderer did not paint the row:\n%s", got)
 	}
-	var seen []widget.RowView
+	var seen []core.RowView
 	h.onLoop(func() { seen = append(seen, rr.seen...) })
 	if len(seen) == 0 {
 		t.Fatal("the renderer was never called")
@@ -201,7 +201,7 @@ func TestARowRendererPaintsTheWholeRowAndSeesNoChildren(t *testing.T) {
 	if !seen[0].HasChildren {
 		t.Error("HasChildren is false for a submenu row")
 	}
-	if seen[0].Kind != widget.ItemKindSubmenu {
+	if seen[0].Kind != core.ItemKindSubmenu {
 		t.Errorf("the view's kind is %v, want submenu", seen[0].Kind)
 	}
 }
@@ -212,21 +212,21 @@ func TestARowRendererPaintsTheWholeRowAndSeesNoChildren(t *testing.T) {
 // alongside the menu takes the callback, while an observer that would rather not
 // be coupled to construction takes the event.
 func TestSelectionChangesReachBothTheCallbackAndTheBus(t *testing.T) {
-	var called []widget.ItemID
-	m := widget.NewMenu(widget.WithOnSelectionChanged(func(id widget.ItemID) {
+	var called []core.ItemID
+	m := core.NewMenu(core.WithOnSelectionChanged(func(id core.ItemID) {
 		called = append(called, id)
 	}))
-	if err := m.SetModel([]widget.MenuItemModel{
-		widget.NewCommand("one", "One", nil),
-		widget.NewCommand("two", "Two", nil),
+	if err := m.SetModel([]core.MenuItemModel{
+		core.NewCommand("one", "One", nil),
+		core.NewCommand("two", "Two", nil),
 	}); err != nil {
 		t.Fatalf("SetModel: %v", err)
 	}
 	h, _ := menuFixture(t, m, 30, 10)
 	defer h.stop()
 
-	var events []widget.MenuSelectionChangedEvent
-	unsub := tui.Subscribe(h.app.Bus(), func(ev widget.MenuSelectionChangedEvent) {
+	var events []core.MenuSelectionChangedEvent
+	unsub := tui.Subscribe(h.app.Bus(), func(ev core.MenuSelectionChangedEvent) {
 		events = append(events, ev)
 	})
 	defer unsub()
@@ -257,10 +257,10 @@ func TestSelectionChangesReachBothTheCallbackAndTheBus(t *testing.T) {
 // which is the state a user notices immediately and a screenshot test of the
 // root would not.
 func TestAMenuRestylesItsOpenLevelsToo(t *testing.T) {
-	m := widget.NewMenu()
-	if err := m.SetModel([]widget.MenuItemModel{
-		widget.NewSubmenu("file", "File", []widget.MenuItemModel{
-			widget.NewCommand("new", "New", nil),
+	m := core.NewMenu()
+	if err := m.SetModel([]core.MenuItemModel{
+		core.NewSubmenu("file", "File", []core.MenuItemModel{
+			core.NewCommand("new", "New", nil),
 		}),
 	}); err != nil {
 		t.Fatalf("SetModel: %v", err)
@@ -278,7 +278,7 @@ func TestAMenuRestylesItsOpenLevelsToo(t *testing.T) {
 	nx, ny := cellOfLabel(t, h, "New")
 	before := rowStyleAt(t, h, nx, ny)
 
-	underlined := widget.NewMenuStyle(
+	underlined := core.NewMenuStyle(
 		style.New().Underline(true), style.New().Underline(true))
 	h.onLoop(func() { m.WithStyle(underlined) })
 	h.settle()
@@ -290,18 +290,18 @@ func TestAMenuRestylesItsOpenLevelsToo(t *testing.T) {
 
 // TestTheMenuPointerPolicyBoundIsProbedAtItsEdge.
 func TestTheMenuPointerPolicyBoundIsProbedAtItsEdge(t *testing.T) {
-	m := widget.NewMenu()
+	m := core.NewMenu()
 	if f := fatalFromWidgetExt(func() { m.WithPointerPolicy(tui.PointerDisabled) }); f != nil {
 		t.Errorf("the last valid policy was rejected: %v", f.Rule)
 	}
 	if f := fatalFromWidgetExt(func() { m.WithPointerPolicy(tui.PointerDisabled + 1) }); f == nil {
 		t.Error("Menu.WithPointerPolicy accepted the first value past the declared set")
 	}
-	item := widget.NewMenuItem("X")
+	item := core.NewMenuItem("X")
 	if f := fatalFromWidgetExt(func() { item.WithPointerPolicy(tui.PointerDisabled + 1) }); f == nil {
 		t.Error("MenuItem.WithPointerPolicy accepted the first value past the declared set")
 	}
-	bar := widget.NewMenuBar(widget.NewMenu())
+	bar := core.NewMenuBar(core.NewMenu())
 	if f := fatalFromWidgetExt(func() { bar.WithPointerPolicy(tui.PointerDisabled + 1) }); f == nil {
 		t.Error("MenuBar.WithPointerPolicy accepted the first value past the declared set")
 	}
@@ -313,11 +313,11 @@ func TestTheMenuPointerPolicyBoundIsProbedAtItsEdge(t *testing.T) {
 // reads back. An option that stored the value somewhere nothing painted from
 // would look configured and render default.
 func TestAStyledMenuReachesItsRowsAndItsAccessors(t *testing.T) {
-	underlined := widget.NewMenuStyle(
+	underlined := core.NewMenuStyle(
 		style.New().Underline(true), style.New().Underline(true))
-	m := widget.NewMenu(widget.WithMenuStyle(underlined))
-	if err := m.SetModel([]widget.MenuItemModel{
-		widget.NewCommand("one", "One", nil),
+	m := core.NewMenu(core.WithMenuStyle(underlined))
+	if err := m.SetModel([]core.MenuItemModel{
+		core.NewCommand("one", "One", nil),
 	}); err != nil {
 		t.Fatalf("SetModel: %v", err)
 	}
@@ -334,16 +334,16 @@ func TestAStyledMenuReachesItsRowsAndItsAccessors(t *testing.T) {
 
 // TestAMenuItemReportsWhatItWasBuiltWith.
 func TestAMenuItemReportsWhatItWasBuiltWith(t *testing.T) {
-	item := widget.NewMenuItem("Rename",
-		widget.WithItemKind(widget.ItemKindCheck),
-		widget.WithItemAccel("F2"),
-		widget.WithItemChecked(true),
-		widget.WithItemStyle(widget.NewMenuStyle(styleOf(1), styleOf(2))))
+	item := core.NewMenuItem("Rename",
+		core.WithItemKind(core.ItemKindCheck),
+		core.WithItemAccel("F2"),
+		core.WithItemChecked(true),
+		core.WithItemStyle(core.NewMenuStyle(styleOf(1), styleOf(2))))
 
 	if item.Label() != "Rename" {
 		t.Errorf("Label() = %q", item.Label())
 	}
-	if item.Kind() != widget.ItemKindCheck {
+	if item.Kind() != core.ItemKindCheck {
 		t.Errorf("Kind() = %v, want check", item.Kind())
 	}
 	if !item.Checked() {
@@ -372,11 +372,11 @@ func TestAMenuItemReportsWhatItWasBuiltWith(t *testing.T) {
 // label after it, and the accelerator right-aligned. Getting the widths wrong
 // shows up as an accelerator that overwrites the label.
 func TestAMenuItemPaintsItsMarkLabelAndAccelerator(t *testing.T) {
-	item := widget.NewMenuItem("Wrap lines",
-		widget.WithItemKind(widget.ItemKindCheck),
-		widget.WithItemChecked(true),
-		widget.WithItemAccel("Ctrl+W"))
-	host := widget.NewOverlayHost(item)
+	item := core.NewMenuItem("Wrap lines",
+		core.WithItemKind(core.ItemKindCheck),
+		core.WithItemChecked(true),
+		core.WithItemAccel("Ctrl+W"))
+	host := core.NewOverlayHost(item)
 	h := startApp(t, host, 40, 4)
 	defer h.stop()
 	h.settle()
@@ -404,8 +404,8 @@ func TestAMenuItemPaintsItsMarkLabelAndAccelerator(t *testing.T) {
 
 // TestAMenuItemRestylesAtRuntime.
 func TestAMenuItemRestylesAtRuntime(t *testing.T) {
-	item := widget.NewMenuItem("Plain")
-	host := widget.NewOverlayHost(item)
+	item := core.NewMenuItem("Plain")
+	host := core.NewOverlayHost(item)
 	h := startApp(t, host, 30, 4)
 	defer h.stop()
 	h.settle()
@@ -413,7 +413,7 @@ func TestAMenuItemRestylesAtRuntime(t *testing.T) {
 	x, y := cellOfLabel(t, h, "Plain")
 	before := rowStyleAt(t, h, x, y)
 	h.onLoop(func() {
-		item.WithStyle(widget.NewMenuStyle(
+		item.WithStyle(core.NewMenuStyle(
 			style.New().Underline(true), style.New().Underline(true)))
 	})
 	h.settle()
@@ -429,21 +429,21 @@ func TestAMenuItemRestylesAtRuntime(t *testing.T) {
 // The bar is not focusable: the Menu inside it is, and a focusable shell would
 // insert a Tab stop that does nothing between the application and its menu.
 func TestABarReportsItsPlacementAndIsNotATabStop(t *testing.T) {
-	m := widget.NewMenu()
-	if err := m.SetModel([]widget.MenuItemModel{
-		widget.NewCommand("file", "File", nil),
+	m := core.NewMenu()
+	if err := m.SetModel([]core.MenuItemModel{
+		core.NewCommand("file", "File", nil),
 	}); err != nil {
 		t.Fatalf("SetModel: %v", err)
 	}
-	bar := widget.NewMenuBar(m, widget.WithBarPlacement(widget.BarPlacementRight))
-	if bar.Placement() != widget.BarPlacementRight {
+	bar := core.NewMenuBar(m, core.WithBarPlacement(core.BarPlacementRight))
+	if bar.Placement() != core.BarPlacementRight {
 		t.Errorf("Placement() = %v, want right", bar.Placement())
 	}
 
-	other := widget.NewButton("Other")
+	other := core.NewButton("Other")
 	root := tui.NewFlex(tui.Vertical)
 	root.Add(bar, other)
-	host := widget.NewOverlayHost(root)
+	host := core.NewOverlayHost(root)
 	h := startApp(t, host, 40, 10)
 	defer h.stop()
 	h.settle()
@@ -464,15 +464,15 @@ func TestABarReportsItsPlacementAndIsNotATabStop(t *testing.T) {
 
 // TestAVerticalBarLaysItsRowsDownAColumn.
 func TestAVerticalBarLaysItsRowsDownAColumn(t *testing.T) {
-	m := widget.NewMenu()
-	if err := m.SetModel([]widget.MenuItemModel{
-		widget.NewCommand("file", "File", nil),
-		widget.NewCommand("edit", "Edit", nil),
+	m := core.NewMenu()
+	if err := m.SetModel([]core.MenuItemModel{
+		core.NewCommand("file", "File", nil),
+		core.NewCommand("edit", "Edit", nil),
 	}); err != nil {
 		t.Fatalf("SetModel: %v", err)
 	}
-	bar := widget.NewMenuBar(m, widget.WithBarPlacement(widget.BarPlacementLeft))
-	host := widget.NewOverlayHost(bar)
+	bar := core.NewMenuBar(m, core.WithBarPlacement(core.BarPlacementLeft))
+	host := core.NewOverlayHost(bar)
 	h := startApp(t, host, 40, 10)
 	defer h.stop()
 	h.settle()
@@ -500,16 +500,16 @@ func TestAVerticalBarLaysItsRowsDownAColumn(t *testing.T) {
 // level ON SCREEN, because a mnemonic for a row the user cannot see is a
 // keystroke with an invisible effect.
 func TestAMnemonicActivatesItsRowFromAnywhereInTheLevel(t *testing.T) {
-	var ran []widget.ItemID
-	m := widget.NewMenu(widget.WithActionExecutor(func(tui.ActionInvocation) bool { return true }))
-	quit := widget.NewCommand("quit", "Quit", saveAction{})
+	var ran []core.ItemID
+	m := core.NewMenu(core.WithActionExecutor(func(tui.ActionInvocation) bool { return true }))
+	quit := core.NewCommand("quit", "Quit", saveAction{})
 	quit.Hotkey = 'Q'
 	quit.HotkeyIdx = 0
-	hidden := widget.NewCommand("hidden", "Zap", saveAction{})
+	hidden := core.NewCommand("hidden", "Zap", saveAction{})
 	hidden.Hotkey = 'z'
 	hidden.Visible = false
-	if err := m.SetModel([]widget.MenuItemModel{
-		widget.NewCommand("open", "Open", saveAction{}),
+	if err := m.SetModel([]core.MenuItemModel{
+		core.NewCommand("open", "Open", saveAction{}),
 		quit,
 		hidden,
 	}); err != nil {
@@ -518,7 +518,7 @@ func TestAMnemonicActivatesItsRowFromAnywhereInTheLevel(t *testing.T) {
 	h, _ := menuFixture(t, m, 30, 10)
 	defer h.stop()
 
-	unsub := tui.Subscribe(h.app.Bus(), func(ev widget.MenuActivatedEvent) {
+	unsub := tui.Subscribe(h.app.Bus(), func(ev core.MenuActivatedEvent) {
 		ran = append(ran, ev.ItemID)
 	})
 	defer unsub()
@@ -555,10 +555,10 @@ func TestAMnemonicActivatesItsRowFromAnywhereInTheLevel(t *testing.T) {
 // share the row with the label without overwriting it, which is the part that
 // goes wrong when the width arithmetic is off.
 func TestAMenuRowPaintsItsAcceleratorToTheRight(t *testing.T) {
-	save := widget.NewCommand("save", "Save", nil)
+	save := core.NewCommand("save", "Save", nil)
 	save.Accel = "Ctrl+S"
-	m := widget.NewMenu()
-	if err := m.SetModel([]widget.MenuItemModel{save}); err != nil {
+	m := core.NewMenu()
+	if err := m.SetModel([]core.MenuItemModel{save}); err != nil {
 		t.Fatalf("SetModel: %v", err)
 	}
 	h, _ := menuFixture(t, m, 40, 8)
@@ -584,11 +584,11 @@ func TestAMenuRowPaintsItsAcceleratorToTheRight(t *testing.T) {
 // in the morning. An error saying only "invalid model" leaves them diffing two
 // slices by hand.
 func TestAModelRejectionSaysWhichRowAndWhy(t *testing.T) {
-	m := widget.NewMenu()
-	err := m.SetModel([]widget.MenuItemModel{
-		widget.NewCommand("dup", "One", nil),
-		widget.NewSubmenu("s", "More", []widget.MenuItemModel{
-			widget.NewCommand("dup", "Two", nil),
+	m := core.NewMenu()
+	err := m.SetModel([]core.MenuItemModel{
+		core.NewCommand("dup", "One", nil),
+		core.NewSubmenu("s", "More", []core.MenuItemModel{
+			core.NewCommand("dup", "Two", nil),
 		}),
 	})
 	if err == nil {
@@ -607,20 +607,20 @@ func TestAModelRejectionSaysWhichRowAndWhy(t *testing.T) {
 // actually delivers.
 type stateRecorder struct {
 	mu   sync.Mutex
-	seen map[widget.ItemID]widget.RowState
+	seen map[core.ItemID]core.RowState
 }
 
-func (r *stateRecorder) RenderRow(s tui.Surface, row widget.RowView, st widget.RowState) {
+func (r *stateRecorder) RenderRow(s tui.Surface, row core.RowView, st core.RowState) {
 	r.mu.Lock()
 	if r.seen == nil {
-		r.seen = map[widget.ItemID]widget.RowState{}
+		r.seen = map[core.ItemID]core.RowState{}
 	}
 	r.seen[row.ID] = st
 	r.mu.Unlock()
 	s.SetCell(0, 0, "x", style.New())
 }
 
-func (r *stateRecorder) stateOf(id widget.ItemID) widget.RowState {
+func (r *stateRecorder) stateOf(id core.ItemID) core.RowState {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	return r.seen[id]
@@ -635,25 +635,25 @@ func (r *stateRecorder) stateOf(id widget.ItemID) widget.RowState {
 // precisely the distinctions a custom row painter exists to draw.
 func TestARendererSeesFourIndependentFlags(t *testing.T) {
 	rr := &stateRecorder{}
-	m := widget.NewMenu(widget.WithRowRenderer(rr))
-	if err := m.SetModel([]widget.MenuItemModel{
-		widget.NewSubmenu("file", "File", []widget.MenuItemModel{
-			widget.NewCommand("new", "New", nil),
+	m := core.NewMenu(core.WithRowRenderer(rr))
+	if err := m.SetModel([]core.MenuItemModel{
+		core.NewSubmenu("file", "File", []core.MenuItemModel{
+			core.NewCommand("new", "New", nil),
 		}),
 	}); err != nil {
 		t.Fatalf("SetModel: %v", err)
 	}
-	elsewhere := widget.NewButton("elsewhere")
+	elsewhere := core.NewButton("elsewhere")
 	root := tui.NewFlex(tui.Vertical)
 	root.Add(m, elsewhere)
-	host := widget.NewOverlayHost(root)
+	host := core.NewOverlayHost(root)
 	h := startApp(t, host, 40, 20)
 	defer h.stop()
 	h.onLoop(func() { m.Context().RequestFocus() })
 	h.settle()
 
 	// Selected and focused, nothing open.
-	if got := rr.stateOf("file"); got != (widget.RowState{Selected: true, Focused: true}) {
+	if got := rr.stateOf("file"); got != (core.RowState{Selected: true, Focused: true}) {
 		t.Errorf("state = %+v, want selected+focused", got)
 	}
 
@@ -690,7 +690,7 @@ func TestARendererSeesFourIndependentFlags(t *testing.T) {
 }
 
 // sawRow reports whether the renderer was ever handed this row.
-func (r *stateRecorder) sawRow(id widget.ItemID) bool {
+func (r *stateRecorder) sawRow(id core.ItemID) bool {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	_, ok := r.seen[id]
@@ -708,14 +708,14 @@ func (r *stateRecorder) sawRow(id widget.ItemID) bool {
 func TestTheHotkeyTakesTheStylesHotkeyLookOverItsRow(t *testing.T) {
 	surface := style.New().Background(style.ANSI(7)).Foreground(style.ANSI(0))
 	selected := style.New().Background(style.ANSI(2)).Foreground(style.ANSI(0))
-	st := widget.NewMenuStyle(surface, selected).WithHotkey(style.New().Foreground(style.ANSI(1)))
-	m := widget.NewMenu(widget.WithMenuStyle(st))
-	row := func(id widget.ItemID, label string) widget.MenuItemModel {
-		it := widget.NewCommand(id, label, nil)
+	st := core.NewMenuStyle(surface, selected).WithHotkey(style.New().Foreground(style.ANSI(1)))
+	m := core.NewMenu(core.WithMenuStyle(st))
+	row := func(id core.ItemID, label string) core.MenuItemModel {
+		it := core.NewCommand(id, label, nil)
 		it.Hotkey, it.HotkeyIdx = rune(label[0]+'a'-'A'), 0
 		return it
 	}
-	if err := m.SetModel([]widget.MenuItemModel{row("one", "One"), row("two", "Two")}); err != nil {
+	if err := m.SetModel([]core.MenuItemModel{row("one", "One"), row("two", "Two")}); err != nil {
 		t.Fatalf("SetModel: %v", err)
 	}
 	h, _ := menuFixture(t, m, 30, 10)
@@ -747,9 +747,9 @@ func TestTheHotkeyTakesTheStylesHotkeyLookOverItsRow(t *testing.T) {
 
 // TestTheDefaultHotkeyIsAnUnderline: the look every existing menu has, kept.
 func TestTheDefaultHotkeyIsAnUnderline(t *testing.T) {
-	for name, st := range map[string]*widget.MenuStyle{
-		"default": widget.DefaultMenuStyle(),
-		"built":   widget.NewMenuStyle(style.New(), style.New()),
+	for name, st := range map[string]*core.MenuStyle{
+		"default": core.DefaultMenuStyle(),
+		"built":   core.NewMenuStyle(style.New(), style.New()),
 		"nil":     nil,
 	} {
 		if u, set := st.Hotkey().GetUnderline(); !u || !set {
@@ -761,11 +761,11 @@ func TestTheDefaultHotkeyIsAnUnderline(t *testing.T) {
 // A dropdown with a checkable row gives every row the check column, as Qt's does: an unchecked
 // row's label lines up with its neighbours' instead of sitting two cells in.
 func TestACheckableRowDoesNotIndentItsDropdown(t *testing.T) {
-	m := widget.NewMenu()
-	if err := m.SetModel([]widget.MenuItemModel{
-		widget.NewCommand("search", "Search", nil),
-		widget.NewCheck("agent", "Agent", nil),
-		widget.NewCommand("outline", "Outline", nil),
+	m := core.NewMenu()
+	if err := m.SetModel([]core.MenuItemModel{
+		core.NewCommand("search", "Search", nil),
+		core.NewCheck("agent", "Agent", nil),
+		core.NewCommand("outline", "Outline", nil),
 	}); err != nil {
 		t.Fatalf("SetModel: %v", err)
 	}

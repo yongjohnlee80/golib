@@ -6,7 +6,7 @@ import (
 	"testing"
 
 	"github.com/yongjohnlee80/golib/tui"
-	"github.com/yongjohnlee80/golib/tui/widget"
+	"github.com/yongjohnlee80/golib/tui/widget/editor"
 )
 
 // fakeViewport is a fakeLayout that shows lines first..last and records its scrolls.
@@ -19,21 +19,21 @@ type fakeViewport struct {
 func (v *fakeViewport) VisibleLines() (int, int) { return v.first, v.last }
 func (v *fakeViewport) ScrollLines(d int)        { v.scrolls = append(v.scrolls, d) }
 
-func viewportCore(t *testing.T, text string, first, last, page int) (*widget.EditorCore, *fakeViewport) {
+func viewportCore(t *testing.T, text string, first, last, page int) (*editor.EditorCore, *fakeViewport) {
 	t.Helper()
 	v := &fakeViewport{fakeLayout: fakeLayout{per: 24, page: page}, first: first, last: last}
-	c := widget.NewEditorCore(widget.CoreInitialText(text))
+	c := editor.NewEditorCore(editor.CoreInitialText(text))
 	c.Bind(nil, v)
 	return c, v
 }
 
-func special(c *widget.EditorCore, code rune) bool { return c.HandleKey(tui.KeyEvent{Code: code}) }
+func special(c *editor.EditorCore, code rune) bool { return c.HandleKey(tui.KeyEvent{Code: code}) }
 
-func ctrlKey(c *widget.EditorCore, r rune) bool {
+func ctrlKey(c *editor.EditorCore, r rune) bool {
 	return c.HandleKey(tui.KeyEvent{Code: r, Mods: tui.ModCtrl})
 }
 
-func at(t *testing.T, c *widget.EditorCore, what string, ln, col int) {
+func at(t *testing.T, c *editor.EditorCore, what string, ln, col int) {
 	t.Helper()
 	if l, cc := c.Line(); l != ln || cc != col {
 		t.Fatalf("%s: cursor (%d, %d), want (%d, %d)", what, l, cc, ln, col)
@@ -156,14 +156,14 @@ func TestVimCharacterFindArgument(t *testing.T) {
 	keys(c, "l")
 	at(t, c, "a press drops f", 0, 1)
 	keys(c, "f")
-	c.Select(widget.TextRange{From: widget.TextPos{Line: 0, Col: 0}, To: widget.TextPos{Line: 0, Col: 2}})
+	c.Select(editor.TextRange{From: editor.TextPos{Line: 0, Col: 0}, To: editor.TextPos{Line: 0, Col: 2}})
 	keys(c, "l")
 	at(t, c, "a mode change (Select, into Visual) drops f", 0, 2)
 	special(c, tui.KeyEscape)
 	keys(c, "0lf")
 	keys(c, "i")
 	at(t, c, "f then i finds no i", 0, 1)
-	if c.Mode() != widget.ModeNormal {
+	if c.Mode() != editor.ModeNormal {
 		t.Fatalf("f i entered %v: i was the target", c.Mode())
 	}
 }
@@ -300,7 +300,7 @@ func TestVimNewMotionsExtendVisualAndWorkReadOnly(t *testing.T) {
 		t.Fatalf("then L: selection to row %d ok=%v", er, ok)
 	}
 
-	ro := widget.NewEditorCore(widget.CoreInitialText("a(b)\n c"), widget.CoreReadOnly(true))
+	ro := editor.NewEditorCore(editor.CoreInitialText("a(b)\n c"), editor.CoreReadOnly(true))
 	ro.Bind(nil, &fakeLayout{per: 1, page: 2})
 	keys(ro, "%")
 	at(t, ro, "% on a viewer", 0, 3)
@@ -314,11 +314,11 @@ func TestVimNewMotionsExtendVisualAndWorkReadOnly(t *testing.T) {
 // A host may rebind the new motions like any other action: an overlay naming one does not panic,
 // and the chord does the motion.
 func TestVimNewMotionsRebind(t *testing.T) {
-	c, _ := coreWith(t, "a\n  b\nc,d", widget.CoreKeymap(widget.Keymap{
-		{Mode: widget.ModeNormal, Code: 'z'}: widget.ActLineDownFirst,
-		{Mode: widget.ModeVisual, Code: 'z'}: widget.ActLineDownFirst,
-		{Mode: widget.ModeNormal, Code: 'q'}: widget.ActFindCharForward,
-		{Mode: widget.ModeNormal, Code: '+'}: widget.ActUnbound,
+	c, _ := coreWith(t, "a\n  b\nc,d", editor.CoreKeymap(editor.Keymap{
+		{Mode: editor.ModeNormal, Code: 'z'}: editor.ActLineDownFirst,
+		{Mode: editor.ModeVisual, Code: 'z'}: editor.ActLineDownFirst,
+		{Mode: editor.ModeNormal, Code: 'q'}: editor.ActFindCharForward,
+		{Mode: editor.ModeNormal, Code: '+'}: editor.ActUnbound,
 	}))
 	keys(c, "z")
 	at(t, c, "z rebound to LineDownFirst", 1, 2)

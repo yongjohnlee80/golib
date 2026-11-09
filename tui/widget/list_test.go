@@ -9,7 +9,7 @@ import (
 
 	"github.com/yongjohnlee80/golib/tui"
 	"github.com/yongjohnlee80/golib/tui/style"
-	"github.com/yongjohnlee80/golib/tui/widget"
+	"github.com/yongjohnlee80/golib/tui/widget/core"
 )
 
 // countingSource records every Len/Item call (loop-goroutine calls; the
@@ -47,10 +47,10 @@ func (c *countingSource) reset() {
 	c.lens, c.items = 0, nil
 }
 
-func focusedList(t *testing.T, src widget.ListSource[string], w, hh int, opts ...widget.ListOption[string]) (*harness, *widget.List[string], *shell) {
+func focusedList(t *testing.T, src core.ListSource[string], w, hh int, opts ...core.ListOption[string]) (*harness, *core.List[string], *shell) {
 	t.Helper()
-	opts = append([]widget.ListOption[string]{widget.WithSource(src, func(s string) string { return s })}, opts...)
-	l := widget.NewList(opts...)
+	opts = append([]core.ListOption[string]{core.WithSource(src, func(s string) string { return s })}, opts...)
+	l := core.NewList(opts...)
 	sh := newShell(l)
 	h := startApp(t, sh, w, hh)
 	h.inject(tab())
@@ -92,10 +92,10 @@ func TestListViewportOnlyFetch(t *testing.T) {
 // TestListKeysAndEvents: cursor keys emit SelectionChangedEvent (Owner
 // set); Enter emits ActivateEvent; End jumps and scrolls.
 func TestListKeysAndEvents(t *testing.T) {
-	src := widget.SliceSource([]string{"alpha", "beta", "gamma", "delta", "epsilon", "zeta"})
+	src := core.SliceSource([]string{"alpha", "beta", "gamma", "delta", "epsilon", "zeta"})
 	h, l, sh := focusedList(t, src, 20, 3)
-	sels := record[widget.SelectionChangedEvent](h)
-	acts := record[widget.ActivateEvent](h)
+	sels := record[core.SelectionChangedEvent](h)
+	acts := record[core.ActivateEvent](h)
 
 	h.inject(key(tui.KeyDown), key(tui.KeyDown), key(tui.KeyEnter))
 	h.barrier(sh)
@@ -125,7 +125,7 @@ func TestListKeysAndEvents(t *testing.T) {
 // TestListWithItemsSugar asserts that WithItems/SetItems behave as
 // SliceSource sugar, and RefreshSource re-reads Len and clamps the cursor.
 func TestListWithItemsSugar(t *testing.T) {
-	l := widget.NewList(widget.WithItems([]string{"a", "b", "c"}, func(s string) string { return s }))
+	l := core.NewList(core.WithItems([]string{"a", "b", "c"}, func(s string) string { return s }))
 	sh := newShell(l)
 	h := startApp(t, sh, 10, 5)
 	h.inject(tab())
@@ -157,9 +157,9 @@ func TestListWithItemsSugar(t *testing.T) {
 
 // TestListMultiSelect: Space toggles; SelectedAll reports ascending.
 func TestListMultiSelect(t *testing.T) {
-	src := widget.SliceSource([]string{"a", "b", "c"})
-	h, l, sh := focusedList(t, src, 10, 5, widget.WithMultiSelect[string](true))
-	sels := record[widget.SelectionChangedEvent](h)
+	src := core.SliceSource([]string{"a", "b", "c"})
+	h, l, sh := focusedList(t, src, 10, 5, core.WithMultiSelect[string](true))
+	sels := record[core.SelectionChangedEvent](h)
 
 	h.inject(key(' '), key(tui.KeyDown), key(tui.KeyDown), key(' '))
 	h.barrier(sh)
@@ -175,9 +175,9 @@ func TestListMultiSelect(t *testing.T) {
 
 // TestListMouse: click selects; double-click activates; wheel scrolls.
 func TestListMouse(t *testing.T) {
-	src := widget.SliceSource([]string{"a", "b", "c", "d", "e", "f"})
+	src := core.SliceSource([]string{"a", "b", "c", "d", "e", "f"})
 	h, l, sh := focusedList(t, src, 10, 3)
-	acts := record[widget.ActivateEvent](h)
+	acts := record[core.ActivateEvent](h)
 
 	h.inject(click(2, 1))
 	h.barrier(sh)
@@ -198,7 +198,7 @@ func TestListMouse(t *testing.T) {
 
 // TestListUnknownKeysBubble: non-list keys pass through.
 func TestListUnknownKeysBubble(t *testing.T) {
-	src := widget.SliceSource([]string{"a"})
+	src := core.SliceSource([]string{"a"})
 	h, _, sh := focusedList(t, src, 10, 3)
 	h.inject(key('x'), keyMod('r', tui.ModCtrl))
 	h.barrier(sh)
@@ -208,7 +208,7 @@ func TestListUnknownKeysBubble(t *testing.T) {
 }
 
 func TestListHonorsVimMotions(t *testing.T) {
-	l := widget.NewList(widget.WithItems([]string{"a", "b", "c", "d"}, func(s string) string { return s }))
+	l := core.NewList(core.WithItems([]string{"a", "b", "c", "d"}, func(s string) string { return s }))
 	sh := newShell(l)
 	h := startApp(t, sh, 30, 6)
 	h.inject(tab())
@@ -242,7 +242,7 @@ func TestListHonorsVimMotions(t *testing.T) {
 }
 
 func TestListIgnoresApplicationChords(t *testing.T) {
-	l := widget.NewList(widget.WithItems([]string{"a", "b", "c"}, func(s string) string { return s }))
+	l := core.NewList(core.WithItems([]string{"a", "b", "c"}, func(s string) string { return s }))
 	sh := newShell(l)
 	h := startApp(t, sh, 30, 6)
 	h.inject(tab())
@@ -258,7 +258,7 @@ func TestListIgnoresApplicationChords(t *testing.T) {
 }
 
 func TestListHostControls(t *testing.T) {
-	l := widget.NewList(widget.WithItems([]string{"a", "b", "c"}, func(s string) string { return s }))
+	l := core.NewList(core.WithItems([]string{"a", "b", "c"}, func(s string) string { return s }))
 	sh := newShell(l)
 	h := startApp(t, sh, 30, 6)
 	h.inject(tab())
@@ -266,7 +266,7 @@ func TestListHostControls(t *testing.T) {
 
 	h.onLoop(func() {
 		l.SetCursor(2)
-		l.SetStyles(widget.ListStyles{CursorRow: style.New().Background(style.ANSI(8))})
+		l.SetStyles(core.ListStyles{CursorRow: style.New().Background(style.ANSI(8))})
 	})
 	h.barrier(sh)
 	var idx, n int
@@ -283,9 +283,9 @@ func TestListHostControls(t *testing.T) {
 // rows and refused this pair; the first conversion to the boundary count
 // compared only the cell and activated row 2 after a click on row 1.
 func TestListDoubleClickAcrossAScrollDoesNotActivate(t *testing.T) {
-	src := widget.SliceSource([]string{"a", "b", "c", "d", "e", "f"})
+	src := core.SliceSource([]string{"a", "b", "c", "d", "e", "f"})
 	h, l, sh := focusedList(t, src, 10, 3)
-	acts := record[widget.ActivateEvent](h)
+	acts := record[core.ActivateEvent](h)
 
 	h.inject(click(2, 1)) // logical row 1
 	h.barrier(sh)
@@ -312,9 +312,9 @@ func TestListDoubleClickAcrossAScrollDoesNotActivate(t *testing.T) {
 // The same pair WITHOUT the scroll still activates, so the control above is
 // about identity and not about the wheel resetting something.
 func TestListDoubleClickWithoutScrollStillActivates(t *testing.T) {
-	src := widget.SliceSource([]string{"a", "b", "c", "d", "e", "f"})
+	src := core.SliceSource([]string{"a", "b", "c", "d", "e", "f"})
 	h, l, sh := focusedList(t, src, 10, 3)
-	acts := record[widget.ActivateEvent](h)
+	acts := record[core.ActivateEvent](h)
 	_ = l
 
 	h.inject(click(2, 1))
@@ -330,9 +330,9 @@ func TestListDoubleClickWithoutScrollStillActivates(t *testing.T) {
 // Finding 3 — a triple-click is ONE activation, not two. With `>= 2` it fired
 // on counts 2 and 3.
 func TestListTripleClickActivatesOnce(t *testing.T) {
-	src := widget.SliceSource([]string{"a", "b", "c", "d"})
+	src := core.SliceSource([]string{"a", "b", "c", "d"})
 	h, _, sh := focusedList(t, src, 10, 4)
-	acts := record[widget.ActivateEvent](h)
+	acts := record[core.ActivateEvent](h)
 
 	h.inject(click(2, 1), click(2, 1), click(2, 1))
 	h.barrier(sh)
@@ -347,9 +347,9 @@ func TestListTripleClickActivatesOnce(t *testing.T) {
 // used to emit ActivateEvent{Index:1} for the NEW row 1, which the user had
 // clicked exactly once.
 func TestListDoubleClickAcrossASourceReplacementDoesNotActivate(t *testing.T) {
-	src := widget.SliceSource([]string{"a", "b", "c", "d"})
+	src := core.SliceSource([]string{"a", "b", "c", "d"})
 	h, l, sh := focusedList(t, src, 10, 4)
-	acts := record[widget.ActivateEvent](h)
+	acts := record[core.ActivateEvent](h)
 
 	h.inject(click(2, 1)) // old logical row 1
 	h.barrier(sh)
@@ -371,8 +371,8 @@ func TestListDoubleClickAcrossASourceReplacementDoesNotActivate(t *testing.T) {
 // and can reorder rows without SetSource ever being called.
 func TestListDoubleClickAcrossARefreshDoesNotActivate(t *testing.T) {
 	items := []string{"a", "b", "c", "d"}
-	h, l, sh := focusedList(t, widget.SliceSource(items), 10, 4)
-	acts := record[widget.ActivateEvent](h)
+	h, l, sh := focusedList(t, core.SliceSource(items), 10, 4)
+	acts := record[core.ActivateEvent](h)
 
 	h.inject(click(2, 1))
 	h.barrier(sh)
@@ -390,9 +390,9 @@ func TestListDoubleClickAcrossARefreshDoesNotActivate(t *testing.T) {
 // alone, the identical gesture still activates. Without this, clearing the index
 // unconditionally would pass both controls and break double-click entirely.
 func TestListDoubleClickWithUnchangedSourceStillActivates(t *testing.T) {
-	src := widget.SliceSource([]string{"a", "b", "c", "d"})
+	src := core.SliceSource([]string{"a", "b", "c", "d"})
 	h, _, sh := focusedList(t, src, 10, 4)
-	acts := record[widget.ActivateEvent](h)
+	acts := record[core.ActivateEvent](h)
 
 	h.inject(click(2, 1), click(2, 1))
 	h.barrier(sh)
@@ -407,14 +407,14 @@ func TestListDoubleClickWithUnchangedSourceStillActivates(t *testing.T) {
 // key handling, and may replace the rows it was told about (a model reset). The list then reads
 // nothing of the old rows: no panic, and the bus hears the row as it was when the cursor moved.
 func TestAListOwnersCallbackMayReplaceTheRows(t *testing.T) {
-	var l *widget.List[string]
+	var l *core.List[string]
 	moved := 0
-	h, l, sh := focusedList(t, widget.SliceSource([]string{"alpha", "beta", "gamma"}), 20, 3,
-		widget.WithListOnCursor[string](func(int) {
+	h, l, sh := focusedList(t, core.SliceSource([]string{"alpha", "beta", "gamma"}), 20, 3,
+		core.WithListOnCursor[string](func(int) {
 			moved++
 			l.SetItems(nil) // the owner's model went away
 		}))
-	sels := record[widget.SelectionChangedEvent](h)
+	sels := record[core.SelectionChangedEvent](h)
 	h.inject(key(tui.KeyDown))
 	h.barrier(sh)
 	var calls int
