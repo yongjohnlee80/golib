@@ -1,6 +1,9 @@
 package files
 
-import "testing"
+import (
+	"testing"
+	"testing/fstest"
+)
 
 // Windows' local disk, as the file widgets write and read its paths: built and run on every OS,
 // since it is string work alone.
@@ -112,6 +115,27 @@ func TestWindowsDrivesTildeTakesEitherSeparator(t *testing.T) {
 	for _, typed := range []string{`~\notes`, "~/notes"} {
 		if p, _, ok := (&pathField{}).resolve(src, "D:/elsewhere", typed); !ok || p != "C:/Users/me/notes" {
 			t.Errorf("resolve(%q) = %q, %v; want C:/Users/me/notes", typed, p, ok)
+		}
+	}
+}
+
+// The save view's own entry, Selected, reads a name typed on Windows' local disk with either
+// separator, relative to the folder listed or rooted, and refuses one that lands on no drive. The
+// source is a MapFS standing for the drives, so the cell runs on every OS.
+func TestASaveViewNamesAWindowsPathTypedEitherWay(t *testing.T) {
+	src := FileSource{drives: true, FS: fstest.MapFS{"C:/base/x.md": {}}}
+	v := NewFileSaveView(WithFileViewSource(src))
+	v.listing.list.dir = "C:/base"
+	for typed, want := range map[string]string{
+		`sub\file.txt`: `C:\base\sub\file.txt`,
+		`..\peer.txt`:  `C:\peer.txt`,
+		`D:\x\y.md`:    `D:\x\y.md`,
+		"sub/z.md":     `C:\base\sub\z.md`,
+		`a:b`:          "",
+	} {
+		v.SetName(typed)
+		if got := v.Selected(); got != want {
+			t.Errorf("Selected after the name %q = %q, want %q", typed, got, want)
 		}
 	}
 }
