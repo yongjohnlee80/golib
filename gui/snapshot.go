@@ -16,7 +16,7 @@ import (
 // Snapshot renders v in a size dp view at a whole scale (device pixels per dp, 1 when not positive)
 // on a headless GPU, through the window's own path (a native view placed over the grid), and returns
 // the pixels: size × scale, rounded up. Its text is golib's Go fonts, never the system's, so a snapshot
-// is the same on every machine with the same GPU driver. An error is no headless GPU here.
+// is the same on every machine with the same GPU driver.
 //
 // For tests that assert what a widget draws in pixels: a golden, or a colour at a point. A machine
 // with no headless GPU returns an error that is ErrNoGPU, which a test skips on; any other error is
