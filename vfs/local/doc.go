@@ -1,4 +1,4 @@
-//go:build linux || darwin
+//go:build linux || darwin || windows
 
 // Package local is the [github.com/yongjohnlee80/golib/vfs.FS] driver for a directory on local disk,
 // for Linux and macOS.
