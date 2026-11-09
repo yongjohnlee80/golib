@@ -1,8 +1,10 @@
-package widget
+package terminal
 
 import (
 	"fmt"
 	"os"
+
+	"github.com/yongjohnlee80/golib/tui/widget/core"
 
 	"github.com/yongjohnlee80/golib/errs"
 
@@ -79,7 +81,7 @@ func (t *Terminal) Start() error {
 	t.resizer = &ptyResizer{proc: proc}
 	t.running, t.exited = true, false
 	t.in = newInputQueue(proc)
-	t.wr = NewBufferWriter(func(b []byte) {
+	t.wr = core.NewBufferWriter(func(b []byte) {
 		if gen == t.gen { // hidden or not: the screen keeps taking output
 			t.ingest(b)
 		}

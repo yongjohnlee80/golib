@@ -16,8 +16,8 @@ import (
 // TestWidgetDefaultsAndRenderPathsUseSemanticColours protects the theming
 // boundary without policing unrelated production code. Constructor/default
 // functions and Render methods are the seeds; same-package helpers reachable
-// from them are followed, and so are the helpers of tui/widget/core and tui/widget's internal
-// packages (internal/kit's painters, internal/text's), which the widgets call by their import name. Tests and examples are
+// from them are followed, and so are the helpers of the packages under tui/widget (core, terminal,
+// internal/kit's painters, internal/text's), which the widgets call by their import name. Tests and examples are
 // outside the scanned files.
 // The ANSI content parser remains legal unless a widget default or render path
 // starts calling it and thereby makes its literal colours presentation policy.
@@ -30,7 +30,8 @@ func TestWidgetDefaultsAndRenderPathsUseSemanticColours(t *testing.T) {
 			return err
 		}
 		if d.IsDir() {
-			if path != dir && path != filepath.Join(dir, "core") && filepath.Dir(path) != filepath.Join(dir, "internal") && path != filepath.Join(dir, "internal") {
+			// tui/widget, the packages its widgets moved into (core, terminal, …), and its internal ones
+			if path != dir && filepath.Dir(path) != dir && filepath.Dir(path) != filepath.Join(dir, "internal") {
 				return filepath.SkipDir
 			}
 			return nil
@@ -69,16 +70,14 @@ type colourFunc struct {
 	file       string
 	decl       *ast.FuncDecl
 	styleNames map[string]bool
-	// internals are the names this file imports tui/widget/core and tui/widget's internal packages
-	// by: a call through one is followed as a call of the same-named function
+	// internals are the names this file imports the packages under tui/widget by: a call through
+	// one is followed as a call of the same-named function
 	internals map[string]bool
 }
 
-// widgetInternalPrefix is the import path of tui/widget's internal packages; widgetCorePath core's.
-const (
-	widgetInternalPrefix = "github.com/yongjohnlee80/golib/tui/widget/internal/"
-	widgetCorePath       = "github.com/yongjohnlee80/golib/tui/widget/core"
-)
+// widgetPackagesPrefix begins the import path of every package under tui/widget: those its widgets
+// moved into (core, terminal, …) and its internal ones.
+const widgetPackagesPrefix = "github.com/yongjohnlee80/golib/tui/widget/"
 
 func widgetColourFindings(files map[string][]byte) ([]string, int, error) {
 	funcs := map[string]*colourFunc{}
@@ -89,7 +88,7 @@ func widgetColourFindings(files map[string][]byte) ([]string, int, error) {
 		}
 		styleNames, internals := map[string]bool{}, map[string]bool{}
 		for _, imp := range f.Imports {
-			if path := strings.Trim(imp.Path.Value, `"`); strings.HasPrefix(path, widgetInternalPrefix) || path == widgetCorePath {
+			if path := strings.Trim(imp.Path.Value, `"`); strings.HasPrefix(path, widgetPackagesPrefix) {
 				alias := path[strings.LastIndex(path, "/")+1:]
 				if imp.Name != nil {
 					alias = imp.Name.Name

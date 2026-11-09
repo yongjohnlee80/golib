@@ -1,4 +1,4 @@
-package widget
+package terminal
 
 import (
 	tuikey "github.com/yongjohnlee80/golib/tui/key"

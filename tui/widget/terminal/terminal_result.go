@@ -1,10 +1,12 @@
-package widget
+package terminal
 
 import (
 	"context"
 	"errors"
 	"sync"
 	"time"
+
+	"github.com/yongjohnlee80/golib/tui/widget/core"
 
 	"github.com/yongjohnlee80/golib/errs"
 )
@@ -44,11 +46,11 @@ type TerminalStopResult struct {
 	startErr   error
 	proc       TerminalProcess
 	input      *inputQueue
-	bridge     *BufferWriter
+	bridge     *core.BufferWriter
 	once       sync.Once
 }
 
-func newTerminalStopResult(proc TerminalProcess, generation int, input *inputQueue, bridge *BufferWriter) *TerminalStopResult {
+func newTerminalStopResult(proc TerminalProcess, generation int, input *inputQueue, bridge *core.BufferWriter) *TerminalStopResult {
 	return &TerminalStopResult{completion: terminalCompletion{done: make(chan struct{})},
 		proc: proc, generation: generation, started: true, input: input, bridge: bridge}
 }
