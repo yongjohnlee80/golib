@@ -1,0 +1,3 @@
+# gui packages (relative to gui/) whose tests pass on macOS: the gui-macos job runs these.
+# The list may only grow.
+./internal/css/

@@ -1,0 +1,3 @@
+# gui packages (relative to gui/) whose tests pass on Windows: the gui-windows job runs these.
+# The list may only grow.
+./internal/css/
