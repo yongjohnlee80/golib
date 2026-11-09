@@ -201,6 +201,10 @@ func (n *drawerNode) WindowBehavior() *core.WindowCore {
 // (widget.OverlayHost.Covered): open, but not all in front.
 func (n *drawerNode) Covered() bool { return n.float.Covered() }
 
+// Raise brings the Drawer above the panels and windows over it (widget.Float.Raise); the keyboard
+// stays where it is.
+func (n *drawerNode) Raise() { n.float.Raise() }
+
 // Govern implements widget.GovernedWindow: its TileManager places the Drawer over its tile, and its
 // window takes the tile's target. Its own edge, size, length and floating rectangle are untouched, so
 // Release puts it back exactly where it was.
