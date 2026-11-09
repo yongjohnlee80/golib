@@ -335,7 +335,7 @@ func (e *Editor) applyView() {
 		e.core.SetListEditing(shown == ViewRendered && md && !e.doc.Active())
 	}
 	e.showDocument(shown == ViewRendered && e.doc.Active()) // only a document view is shown and focused
-	e.laid = [2]*renderedLayout{}
+	e.laid, e.tall = [2]*renderedLayout{}, tallAnswer{}
 	e.cells.pan = nil // a pan is the Rendered layout's blocks'
 	e.dropPictures()  // a picture is the Rendered layout's block's
 	e.cells.topIn = 0 // a row offset is the Rendered layout's: a view switch starts its line at the top

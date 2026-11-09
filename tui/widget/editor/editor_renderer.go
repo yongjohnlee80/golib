@@ -231,11 +231,31 @@ func (e *Editor) laidAt(key renderedKey) *renderedLayout {
 	return nil
 }
 
+// tallAnswer is tallerThan's answer for a layout's key at a height.
+type tallAnswer struct {
+	key    renderedKey
+	h      int
+	taller bool
+	ok     bool
+}
+
 // tallerThan reports whether the Rendered layout at width has more than h rows: the kept layout's
 // count, or the blocks laid one by one until they pass h. It answers as renderedRows(width) would,
-// without laying a long text whole only to learn it scrolls.
+// without laying a long text whole only to learn it scrolls. The answer is kept while the layout's
+// key and h hold, so a view that scrolls, which keeps only its narrower layout, never lays its first
+// blocks again at each paint (nor asks their pictures again at a width it doesn't show).
 func (e *Editor) tallerThan(width, h int) bool {
 	key := e.renderedKey(width)
+	if t := e.tall; t.ok && t.key == key && t.h == h {
+		return t.taller
+	}
+	taller := e.measureTaller(key, width, h)
+	e.tall = tallAnswer{key: key, h: h, taller: taller, ok: true}
+	return taller
+}
+
+// measureTaller is tallerThan's answer worked out: from the kept layout at key, or laying blocks.
+func (e *Editor) measureTaller(key renderedKey, width, h int) bool {
 	if r := e.laidAt(key); r != nil {
 		return len(r.rows) > h
 	}
