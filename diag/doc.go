@@ -7,7 +7,8 @@
 // line ranking the allocation sites holding the live heap ([WithTop]), summed by package and type
 // with [WithGroups]. [WithLogger] also writes both to a program's own log. With [WithSocket] it
 // serves heap, allocs, goroutine and CPU profiles on pprof.sock, a unix socket only the user can
-// open, and [Fetch] reads one from a running process. One monitor owns its directory until Close.
+// open (0600, or on Windows a DACL granting the user alone), and [Fetch] reads one from a running
+// process. One monitor owns its directory until Close.
 //
 // Held and retained are told apart: a sample's heap_live is what the last collection found
 // reachable, and heap_free is memory the runtime freed and still holds from the OS, which is not a

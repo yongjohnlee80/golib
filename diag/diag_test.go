@@ -153,10 +153,7 @@ func TestTheSocketServesFourProfiles(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer m.Close()
-	fi, err := os.Stat(m.Socket())
-	if err != nil || fi.Mode().Perm() != 0o600 {
-		t.Fatalf("the socket's mode: %v, %v; want 0600", fi.Mode().Perm(), err)
-	}
+	userOnly(t, m.Socket())
 	for _, p := range []string{"heap", "allocs", "goroutine", "profile?seconds=1"} {
 		var b bytes.Buffer
 		if err := Fetch(context.Background(), m.Socket(), p, &b); err != nil || !gzipped(b.Bytes()) {
@@ -307,6 +304,9 @@ func TestWhatIsAtTheSocketPath(t *testing.T) {
 		}
 	})
 	t.Run("denied", func(t *testing.T) {
+		if runtime.GOOS == "windows" {
+			t.Skip("a folder's read-only attribute does not stop writes on Windows: its ACL does, which this cell does not set")
+		}
 		if os.Geteuid() == 0 {
 			t.Skip("root reads and writes every directory")
 		}

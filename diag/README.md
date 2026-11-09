@@ -18,14 +18,20 @@ A monitor owns its directory until `Close`: a second `Start` there is refused. O
 must be the user's own and not writable by group or others (a 0755 one passes), and not a symlink:
 whoever could write it could swap the files the monitor opens by name in it. Those files are opened
 without following a symlink, and the socket is bound in a private directory, made 0600, and only
-then moved into place. It writes:
+then moved into place.
+
+On Windows a socket's access is its ACL, not a mode: the socket is bound in a directory whose
+protected DACL grants the user alone, and given that DACL itself, protected, before it is moved
+into place. The ownership is a `LockFileEx` lock, released by the kernel if the process dies, as
+`flock` is on unix. The directory itself is not checked there (its owner and ACL): choose one under
+the user's profile, such as `%LOCALAPPDATA%`, which only the user can write. It writes:
 
 | File | What | Contains |
 | --- | --- | --- |
 | `samples.jsonl` `sample` lines | every period (`WithEvery`, default 5s): live heap, heap free, unused and released, Go total, resident size, goroutines, GC cycles | numbers |
 | `samples.jsonl` `snapshot` lines | each time the live heap grows by `WithStep` (default 64 MiB), and at Close: the top allocation sites (`WithTop`, default 15) | allocation stacks |
 | `heap-<n>.pb.gz` | the heap profile at each snapshot, for `go tool pprof` and `-diff_base` | allocation stacks |
-| `pprof.sock` (`WithSocket`) | a 0600 unix socket serving `heap`, `allocs`, `goroutine` and `profile?seconds=N` (CPU) | heap and allocs: stacks; goroutine and CPU: stacks and the program's pprof labels |
+| `pprof.sock` (`WithSocket`) | a unix socket only the user can open (0600; on Windows a user-only DACL) serving `heap`, `allocs`, `goroutine` and `profile?seconds=N` (CPU) | heap and allocs: stacks; goroutine and CPU: stacks and the program's pprof labels |
 
 Reading it:
 
